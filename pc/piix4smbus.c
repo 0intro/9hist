@@ -26,7 +26,7 @@ enum
 	 Failed=	(1<<4),	 	//  transaction terminated by KILL
 	 Bus_error=	(1<<3),		//  transactio collision
 	 Dev_error=	(1<<2),		//  device error interrupt
-	 Host_complete=	(1<<2),		//  host command completion interrupt 
+	 Host_complete=	(1<<1),		//  host command completion interrupt 
 	 Host_busy=	(1<<0),		//
 	Slavestatus=	0x1,		//  (writing 1 bits reset)
 	 Alert_sts=	(1<<5),		//  someone asserted SMBALERT#
@@ -72,28 +72,15 @@ static struct
 	[SMBsend]	{ 0,	1,	0,	Byte },
 	[SMBbytewrite]	{ 0,	1,	1,	ByteData },
 	[SMBwordwrite]	{ 0,	1,	2,	WordData },
-	[SMBrecv]	{ Read,	1,	0, 	Byte },
+	[SMBrecv]	{ Read,	0,	1, 	Byte },
 	[SMBbyteread]	{ Read,	1,	1,	ByteData },
 	[SMBwordread]	{ Read,	1,	2,	WordData },
 };
 
-static int
-spin(Pcidev *p, int bit)
-{
-	int tries;
-
-	for(tries = 0; tries < 1000000; tries++){
-		if((pcicfgr8(p, Hoststatus) & bit) == 0)
-			return 0;
-		sched();
-	}
-	return -1;
-}
-
 static void
 transact(SMBus *s, int type, int addr, int cmd, uchar *data)
 {
-	Pcidev *p = s->arg;
+	int tries;
 
 	if(type < 0 || type > nelem(proto))
 		panic("piix4smbus: illegal transaction type %d", type);
@@ -105,48 +92,70 @@ transact(SMBus *s, int type, int addr, int cmd, uchar *data)
 	qlock(s);
 
 	// wait a while for the host interface to be available
-	if(spin(p, Host_busy) != 0){
+	for(tries = 0; tries < 1000000; tries++){
+		if((inb(s->base+Hoststatus) & Host_busy) == 0)
+			break;
+		sched();
+	}
+	if(tries >= 1000000){
 		// try aborting current transaction
-		pcicfgw8(p, Hostcontrol, Kill);
-		if(spin(p, Host_busy) < 0)
-			error("SMBus broken");
+		outb(s->base+Hostcontrol, Kill);
+		for(tries = 0; tries < 1000000; tries++){
+			if((inb(s->base+Hoststatus) & Host_busy) == 0)
+				break;
+			sched();
+		}
+		if(tries >= 1000000){
+			print("SMBus status: %2.2ux", inb(s->base+Hoststatus));
+			error("SMBus broken1");
+		}
 	}
 
 	// set up for transaction
-	pcicfgw8(p, Hostaddress, (addr<<1)|proto[type].rw);
+	outb(s->base+Hostaddress, (addr<<1)|proto[type].rw);
 	if(proto[type].cmd)
-		pcicfgw8(p, Hostcommand, cmd);
+		outb(s->base+Hostcommand, cmd);
 	if(proto[type].rw != Read){
 		switch(proto[type].len){
 		case 2:
-			pcicfgw8(p, Hostdata1, data[1]);
+			outb(s->base+Hostdata1, data[1]);
 			// fall through
 		case 1:
-			pcicfgw8(p, Hostdata0, data[0]);
+			outb(s->base+Hostdata0, data[0]);
 			break;
 		}
 	}
 
 	// reset the completion bit and start transaction
-	pcicfgw8(p, Hoststatus, Host_complete);
-	pcicfgw8(p, Hostcontrol, Start|proto[type].proto);
+	outb(s->base+Hoststatus, Host_complete);
+print("before %2.2ux\n", inb(s->base+Hoststatus));
+	outb(s->base+Hostcontrol, Start|proto[type].proto);
+print("after %2.2ux\n", inb(s->base+Hoststatus));
 
 	// wait for completion
-	if(spin(p, Host_complete) < 0)
-		error("SMBus broken");
+	for(tries = 0; tries < 1000000; tries++){
+		if(inb(s->base+Hoststatus) & Host_complete)
+			break;
+		sched();
+	}
+	if(tries >= 1000000){
+		print("SMBus status: %2.2ux", inb(s->base+Hoststatus));
+		error("SMBus broken2");
+	}
 
 	// get results
 	if(proto[type].rw == Read){
 		switch(proto[type].len){
 		case 2:
-			data[1] = pcicfgr8(p, Hostdata1);
+			data[1] = inb(s->base+Hostdata1);
 			// fall through
 		case 1:
-			data[0] = pcicfgr8(p, Hostdata0);
+			data[0] = inb(s->base+Hostdata0);
 			break;
 		}
 	}
 	qunlock(s);
+	poperror();
 }
 
 static SMBus smbusproto =
@@ -192,8 +201,8 @@ print("SMB base ialloc is 0x%lux\n", s->base);
 	}
 
 	// disable SMBus interrupts, abort any transaction in progress
-	pcicfgw8(p, Hostcontrol, Kill);
-	pcicfgw8(p, Slavecontrol, 0);
+	outb(s->base+Hostcontrol, Kill);
+	outb(s->base+Slavecontrol, 0);
 
 	// enable the smbus
 	pcicfgw8(p, SMBconfig, IRQ9enable|SMBenable);
