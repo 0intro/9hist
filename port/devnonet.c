@@ -208,7 +208,7 @@ nonetstat(Chan *c, char *dp)
 	if(c->qid.path == CHDIR)
 		devstat(c, dp, nonetdir, conf.nnoconv+1, devgen);
 	else if(c->qid.path == Ncloneqid)
-		devstat(c, dp, nonetdir, 1, devgen);
+		devstat(c, dp, &nonetdir[conf.nnoconv], 1, devgen);
 	else
 		devstat(c, dp, nosubdir, Nsubdir, streamgen);
 }
