@@ -96,3 +96,22 @@ int	x86(void);
 void	NS16552special(int, int, Queue**, Queue**, int (*)(Queue*, int));
 int	NS16552m3mouse(Queue*, int);
 int	NS16552mouse(Queue*, int);
+
+void	hnputl(void*, ulong v);
+void	hnputs(void*, ushort v);
+ulong	nhgetl(void*);
+ushort	nhgets(void*);
+
+void	ifwrite(void*, Block*, int);
+void*	ifinit(int);
+ulong	ifaddr(void*);
+void	filiput(Block*);
+void	fiberint(Ureg*, void*);
+ulong	fwblock(ulong, void*, ulong);
+ulong	frblock(ulong, void*, ulong);
+void	ifree(void*);
+void	ifflush(void*);
+Block*	iallocb(int);
+void*	ifroute(ulong);
+ulong	ifunroute(ulong);
+void	parseip(char*, char*);

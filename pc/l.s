@@ -747,3 +747,36 @@ bybyte:
 	MOVL	BX, CX
 	REP;	MOVSB
 	RET
+
+/*
+ * Fiber block copy routines
+ */
+TEXT	fwblock(SB),$0
+	MOVL	p+0(FP),DX
+	MOVL	a+4(FP),SI
+	MOVL	$128,CX
+	CLD; REP; OUTSL
+
+	MOVL	p+0(FP),DX
+	MOVL	$128,CX
+	MOVL	csum+8(FP), AX
+wcsum:
+	XORL	0(DX), AX
+	ADDL	$4,DX
+	LOOP	rcsum	
+	RET
+
+TEXT	frblock(SB),$0
+	MOVL	p+0(FP),DX
+	MOVL	a+4(FP),SI
+	MOVL	$128,CX
+	CLD; REP; INSL
+
+	MOVL	p+0(FP),DX
+	MOVL	$128,CX
+	MOVL	csum+8(FP), AX
+rcsum:
+	XORL	0(DX), AX
+	ADDL	$4,DX
+	LOOP	rcsum	
+	RET
