@@ -342,7 +342,7 @@ intrcommon:
 	POPL	DS
 	ADDL	$8,SP	/* error code and trap type */
 	IRETL
-	RET
+	RET		/* this has to be here because of ken */
 
 intrscommon:
 	PUSHL	DS
@@ -355,10 +355,10 @@ intrscommon:
 	POPL	DS
 	ADDL	$8,SP	/* error code and trap type */
 	IRETL
-	RET
+	RET		/* this has to be here because of ken */
 
 /*
- *  turn interrupts and traps on
+ *  interrupt level is interrupts on or off
  */
 TEXT	spllo(SB),$0
 	PUSHFL
@@ -366,18 +366,12 @@ TEXT	spllo(SB),$0
 	STI
 	RET
 
-/*
- *  turn interrupts and traps off
- */
 TEXT	splhi(SB),$0
 	PUSHFL
 	POPL	AX
 	CLI
 	RET
 
-/*
- *  set interrupt level
- */
 TEXT	splx(SB),$0
 	MOVL	s+0(FP),AX
 	PUSHL	AX
@@ -409,4 +403,22 @@ TEXT	setlabel(SB),$0
 	RET
 
 TEXT	touser(SB),$0
+	MOVL	$(USERADDR+BY2PG-5*BY2WD),AX
+	MOVL	$(UTZERO+32),0(AX)	/* header is in text */
+	MOVL	$(UESEL),4(AX)
+	MOVL	$(IFLAG|2),8(AX)
+	MOVL	$(USTKTOP-4*BY2WD),12(AX)
+	MOVL	$(UDSEL),16(AX)
+	MOVL	AX,SP
+	IRETL
+
+/*
+ *  save/restore floating point
+ *	- to be filled in at some future time
+ */
+TEXT	fpsave(SB),$0
 	RET
+
+TEXT	fprestore(SB),$0
+	RET
+

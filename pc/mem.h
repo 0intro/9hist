@@ -69,10 +69,8 @@
 #define NULLSEL	SELECTOR(NULLSEG, SELGDT, 0)
 #define KESEL	SELECTOR(KESEG, SELGDT, 0)
 #define KDSEL	SELECTOR(KDSEG, SELGDT, 0)
-#define KSSEL	SELECTOR(KDSEG, SELGDT, 0)
 #define UESEL	SELECTOR(UESEG, SELGDT, 3)
 #define UDSEL	SELECTOR(UDSEG, SELGDT, 3)
-#define USSEL	SELECTOR(UDSEG, SELGDT, 3)
 #define RDSEL	SELECTOR(RDSEG, SELGDT, 0)
 #define RESEL	SELECTOR(RESEG, SELGDT, 0)
 
@@ -112,3 +110,8 @@
 #define	PTERONLY	(0<<1)
 #define	PTEKERNEL	(0<<2)
 #define	PTEUSER		(1<<2)
+
+/*
+ *  flag register bits that we care about
+ */
+#define IFLAG	0x200

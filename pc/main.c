@@ -4,209 +4,40 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"io.h"
+#include	"ureg.h"
+#include	"init.h"
 
+char	user[NAMELEN] = "bootes";
+extern long edata;
 
-extern ulong edata;
-
-/*
- *  predeclared
- */
-int	fdboot(void);
-int	hdboot(void);
-int	duartboot(void);
-int	parse(char*);
-int	getline(int);
-int	getstr(char*, char*, int, char*, int);
-int	menu(void);
-
-char	file[2*NAMELEN];
-char	server[NAMELEN];
-char	sysname[NAMELEN];
-char	user[NAMELEN] = "none";
-char	linebuf[256];
-Conf	conf;
-
-
-typedef	struct Booter	Booter;
-struct Booter
-{
-	char	*name;
-	char	*srv;
-	int	(*func)(void);
-};
-Booter	booter[] = {
-	{ "fd",		0,	fdboot },
-	{ "hd",		0,	hdboot },
-	{ "2400",	0,	duartboot },
-	{ "1200",	0,	duartboot },
-};
-
-int	bootdev;
-char	*bootchars = "fh21";
-int	usecache;
-
+void
 main(void)
 {
-	char	*path;			/* file path */
-	char	element[2*NAMELEN];	/* next element in a file path */
-	char	def[2*NAMELEN];
-
 	machinit();
 	confinit();
 	screeninit();
+	printinit();
 	print("%d pages in bank0, %d pages in bank1\n", conf.npage0, conf.npage1);
 	print("edata == %lux, end == %lux\n", &edata, &end);
-	trapinit();
 	mmuinit();
-	clockinit();
+	procinit0();
+	initseg();
+	grpinit();
+	chaninit();
 	alarminit();
-	kbdinit();
-	clockinit();
-	floppyinit();
-	spllo();
+	chandevreset();
+	streaminit();
+	trapinit();
+	swapinit();
+	pageinit();
+	userinit();
 
-	for(;;){
-		sprint(def, "%s!%s!/%s", booter[bootdev].name, booter[bootdev].srv,
-			usecache ? "9.cache" : "9.com");
-		if(getstr("server", element, sizeof element, def, 0)<0)
-			continue;
-		if(parse(element) < 0)
-			continue;
-		if(getstr("user", user, sizeof user, 0, 0)<0)
-			continue;
-		if(*user==0)
-			continue;
-		if((*booter[bootdev].func)() < 0)
-			continue;
-		print("success\n");
-	}
+	schedinit();
 }
 
 /*
- *  parse the server line.  return 0 if OK, -1 if bullshit
+ *	BUG -- needs floating point support
  */
-int
-parse(char *line)
-{
-	char *def[3];
-	char **d;
-	char *s;
-	int i;
-
-	def[0] = booter[bootdev].name;
-	def[1] = booter[bootdev].srv;
-	def[2] = "/9.com";
-
-	d = &def[2];
-	s = line + strlen(line);
-	while((*d = s) > line)
-		if(*--s == '!'){
-			if(d-- == def)
-				return -1;
-			*s = '\0';
-		}
-
-	for(i = 0; i < strlen(bootchars); i++){
-		if(strcmp(def[0], booter[i].name)==0){
-			strcpy(server, def[1]);
-			strcpy(file, def[2]);
-			bootdev = i;
-			return 0;
-		}
-	}
-
-	return -1;
-}
-
-/*
- *  read a line from the keyboard.
- */
-int
-getline(int quiet)
-{
-	int c, i=0;
-	long start;
-
-	for (start=m->ticks;;) {
-	    	do{
-			if(TK2SEC(m->ticks - start) > 60)
-				return -2;
-			c = getc(&kbdq);
-		} while(c==-1);
-		if(c == '\r')
-			c = '\n'; /* turn carriage return into newline */
-		if(c == '\177')
-			c = '\010';	/* turn delete into backspace */
-		if(!quiet){
-			if(c == '\033'){
-				menu();
-				return -1;
-			}
-			if(c == '\025')
-				screenputc('\n');	/* echo ^U as a newline */
-			else
-				screenputc(c);
-		}
-		if(c == '\010'){
-			if(i > 0)
-				i--; /* bs deletes last character */
-			continue;
-		}
-		/* a newline ends a line */
-		if (c == '\n')
-			break;
-		/* ^U wipes out the line */
-		if (c =='\025')
-			return -1;
-		linebuf[i++] = c;
-	}
-	linebuf[i] = 0;
-	return i;
-}
-
-/*
- *  prompt for a string from the keyboard.  <cr> returns the default.
- */
-int
-getstr(char *prompt, char *buf, int size, char *def, int quiet)
-{
-	int len;
-	char *cp;
-
-	for (;;) {
-		if(def)
-			print("%s[default==%s]: ", prompt, def);
-		else
-			print("%s: ", prompt);
-		len = getline(quiet);
-		switch(len){
-		case -1:
-			/* ^U typed */
-			continue;
-		case -2:
-			/* timeout */
-			return -1;
-		default:
-			break;
-		}
-		if(len >= size){
-			print("line too long\n");
-			continue;
-		}
-		break;
-	}
-	if(*linebuf==0 && def)
-		strcpy(buf, def);
-	else
-		strcpy(buf, linebuf);
-	return 0;
-}
-
-int
-menu(void)
-{
-}
-
 void
 machinit(void)
 {
@@ -216,19 +47,98 @@ machinit(void)
 	memset(m, 0, sizeof(Mach));
 	m->machno = n;
 	m->mmask = 1<<m->machno;
+	m->fpstate = FPinit;
 	active.machs = 1;
 }
 
 void
-delay(int l)
+init0(void)
+{
+	Chan *c;
+
+	u->nerrlab = 0;
+	m->proc = u->p;
+	u->p->state = Running;
+	u->p->mach = m;
+
+	spllo();
+
+	/*
+	 * These are o.k. because rootinit is null.
+	 * Then early kproc's will have a root and dot.
+	 */
+	u->slash = (*devtab[0].attach)(0);
+	u->dot = clone(u->slash, 0);
+
+	chandevinit();
+
+/*	kickpager();	/* BUG */
+	touser();
+}
+
+void
+userinit(void)
+{
+	Proc *p;
+	Segment *s;
+	User *up;
+	KMap *k;
+
+	p = newproc();
+	p->pgrp = newpgrp();
+	p->egrp = newegrp();
+	p->fgrp = newfgrp();
+
+	strcpy(p->text, "*init*");
+	p->fpstate = FPinit;
+
+	/*
+	 * Kernel Stack
+	 */
+	p->sched.pc = (ulong)init0;
+	p->sched.sp = USERADDR + BY2PG - 24;
+	p->upage = newpage(1, 0, USERADDR|(p->pid&0xFFFF));
+
+	/*
+	 * User
+	 */
+	k = kmap(p->upage);
+	up = (User*)VA(k);
+	up->p = p;
+	kunmap(k);
+
+	/*
+	 * User Stack
+	 */
+	s = newseg(SG_STACK, USTKTOP-BY2PG, 1);
+	p->seg[SSEG] = s;
+
+	/*
+	 * Text
+	 */
+	s = newseg(SG_TEXT, UTZERO, 1);
+	p->seg[TSEG] = s;
+	segpage(s, newpage(1, 0, UTZERO));
+	k = kmap(s->map[0]->pages[0]);
+	memmove((ulong*)VA(k), initcode, sizeof initcode);
+	kunmap(k);
+
+	ready(p);
+}
+
+void
+exit(void)
 {
 	int i;
 
-	while(--l){
-		for(i=0; i < 404; i++)
-			;
-	}
+	u = 0;
+	splhi();
+	print("exiting\n");
+	for(;;)
+		;
 }
+
+Conf	conf;
 
 void
 confinit(void)
@@ -314,124 +224,48 @@ confinit(void)
 	conf.cntrlp = 0;
 }
 
-int
-sprint(char *s, char *fmt, ...)
+/*
+ *  set up floating point for a new process
+ *	BUG -- needs floating point support
+ */
+void
+procsetup(Proc *p)
 {
-	return doprint(s, s+PRINTSIZE, fmt, (&fmt+1)) - s;
+	p->fpstate = FPinit;
+	m->fpstate = FPinit;
 }
 
-int
-print(char *fmt, ...)
+/*
+ * Save the part of the process state.
+ *	BUG -- needs floating point support
+ */
+void
+procsave(uchar *state, int len)
 {
-	char buf[PRINTSIZE];
-	int n;
+}
 
-	n = doprint(buf, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
-	screenputs(buf, n);
-	return n;
+/*
+ *  Restore what procsave() saves
+ *	BUG -- needs floating point support
+ */
+void
+procrestore(Proc *p, uchar *state)
+{
 }
 
 void
-panic(char *fmt, ...)
+firmware(void)
 {
-	char buf[PRINTSIZE];
-	int n;
-
-	screenputs("panic: ", 7);
-	n = doprint(buf, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
-	screenputs(buf, n);
-	screenputs("\n", 1);
-	spllo();
-	for(;;)
-		idle();
+	panic("firmware");
 }
 
-int
-kbdputc(IOQ* q, int c)
-{
-	if(c==0x10)
-		panic("^p");
-	putc(q, c);
-}
-
-struct Palloc palloc;
-
-void*
-ialloc(ulong n, int align)
-{
-	ulong p;
-
-	if(palloc.active && n!=0)
-		print("ialloc bad\n");
-	if(palloc.addr == 0)
-		palloc.addr = ((ulong)&end)&~KZERO;
-	if(align)
-		palloc.addr = PGROUND(palloc.addr);
-
-	memset((void*)(palloc.addr|KZERO), 0, n);
-	p = palloc.addr;
-	palloc.addr += n;
-	if(align)
-		palloc.addr = PGROUND(palloc.addr);
-
-	if(palloc.addr >= conf.maxialloc)
-		panic("keep bill joy away");
-
-	return (void*)(p|KZERO);
-}
-
-/*
- *  some dummy's so we can use kernel code
- */
-void
-sched(void)
-{ }
 
 void
-ready(Proc*p)
-{ }
-
-int
-postnote(Proc*p, int x, char* y, int z)
+buzz(int f, int d)
 {
-	panic("postnote");
 }
 
-
-/*
- *  boot from hard disk
- */
-int
-hdboot(void)
+void
+lights(int val)
 {
-	print("hdboot unimplemented\n");
-	return -1;
-}
-
-/*
- *  boot from the duart
- */
-int
-duartboot(void)
-{
-	print("duartboot unimplemented\n");
-	return -1;
-}
-
-#include "dosfs.h"
-
-/*
- *  boot from the floppy
- */
-int
-fdboot(void)
-{
-	Dosbpb b;
-	extern int dosboot(Dosbpb*);
-
-	print("booting from floppy 0\n");
-	b.seek = floppyseek;
-	b.read = floppyread;
-	b.dev = 0;
-	return dosboot(&b);
 }

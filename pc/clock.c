@@ -29,7 +29,7 @@ clockinit(void)
 	/*
 	 *  set vector for clock interrupts
 	 */
-	setvec(Clockvec, clock, SEGIG);
+	setvec(Clockvec, clock);
 
 	/*
 	 *  make clock output a square wave with a 1/HZ period

@@ -9,7 +9,7 @@
 void
 faultinit(void)
 {
-	setvec(Faultvec, fault386, SEGTG);
+	setvec(Faultvec, fault386);
 }
 
 void

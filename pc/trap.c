@@ -36,10 +36,8 @@ sethvec(int v, void (*r)(void), int type, int pri)
 }
 
 void
-setvec(int v, void (*r)(Ureg*), int type)
+setvec(int v, void (*r)(Ureg*))
 {
-	ilt[v].d1 &= ~SEGTYPE;
-	ilt[v].d1 |= type;
 	ivec[v] = r;
 
 	/*
@@ -97,7 +95,7 @@ trapinit(void)
 	 *  system calls
 	 */
 	sethvec(64, intr64, SEGTG, 3);
-/*	setvec(64, syscall, SEGTG);	/**/
+	setvec(64, (void (*)(Ureg*))syscall);
 
 	/*
 	 *  tell the hardware where the table is (and how long)

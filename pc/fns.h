@@ -11,6 +11,8 @@ void	floppyintr(Ureg*);
 long	floppyseek(int, long);
 long	floppyread(int, void*, long);
 #define	flushvirt();
+void	fpsave(FPsave*);
+void	fprestore(FPsave*);
 void	idle(void);
 int	inb(int);
 void	intr0(void);
@@ -46,13 +48,10 @@ void	lidt(Segdesc*, int);
 void	mmuinit(void);
 void	outb(int, int);
 void	prhex(ulong);
-#define	procrestore(x,y)
-#define	procsave(x,y)
-#define	procsetup(p)	((p)->fpstate = FPinit)
 void	screeninit(void);
 void	screenputc(int);
 void	screenputs(char*, int);
-void	setvec(int, void (*)(Ureg*), int);
+void	setvec(int, void (*)(Ureg*));
 void	systrap(void);
 void	touser(void);
 void	trapinit(void);

@@ -33,7 +33,7 @@ struct Label
 
 
 /*
- * FPsave.fpstatus
+ * FPsave.status
  */
 enum
 {
@@ -44,8 +44,8 @@ enum
 
 struct	FPsave	/* ??? needs to be fixed ??? */
 {
-	long	fpreg[32];
-	long	fpstatus;
+	long	status;
+	char	reg[66];
 };
 
 struct Conf

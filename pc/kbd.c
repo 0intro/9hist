@@ -238,7 +238,7 @@ void
 kbdinit(void)
 {
 	initq(&kbdq);
-	setvec(Kbdvec, kbdintr, SEGIG);
+	setvec(Kbdvec, kbdintr);
 }
 
 /*

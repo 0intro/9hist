@@ -72,10 +72,20 @@ extern ulong tpt[];
 void
 mmuinit(void)
 {
-
+	/*
+	 *  set up the global descriptor table
+	 */
 	gdt[SYSGATE].d0 = ((ulong)systrap)&0xFFFF|(KESEL<<16);
 	gdt[SYSGATE].d1 = ((ulong)systrap)&0xFFFF0000|SEGP|SEGPL(3)|SEGCG;
 	lgdt(gdt, sizeof gdt);
+
+	/*
+	 *  set up system page tables
+	 */
+
+	/*
+	 *  set up the task segment
+	 */
 }
 
 void
