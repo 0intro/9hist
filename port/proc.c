@@ -734,13 +734,19 @@ kproc(char *name, void (*func)(void *), void *arg)
 void
 procctl(Proc *p)
 {
+	char *state;
+
 	switch(p->procctl) {
 	case Proc_exitme:
 		pexit("Killed", 1);
 	case Proc_stopme:
 		p->procctl = 0;
+		state = p->psstate;
+		p->psstate = "Stopped";
+
 		p->state = Stopped;
 		sched();
+		p->psstate = state;
 		return;
 	}
 }

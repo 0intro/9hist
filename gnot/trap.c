@@ -99,8 +99,12 @@ trap(Ureg *ur)
 		exit();
 	}
 
-	if(user && u->nnote)
-		notify(ur);
+	if(user) {
+		if(u->p->procctl)
+			procctl(u->p);
+		if(u->nnote)
+			notify(ur);
+	}
 }
 
 void
@@ -271,6 +275,10 @@ syscall(Ureg *aur)
 		m->fpstate = FPinit;
 	}
 	spllo();
+
+	if(u->p->procctl)
+		procctl(u->p);
+
 	r0 = ur->r0;
 	sp = ur->usp;
 
@@ -297,12 +305,9 @@ syscall(Ureg *aur)
 		poperror();
 	}
 
-	if(u->nerrlab){
-		print("bad errstack [%d]: %d extra\n", r0, u->nerrlab);
-		for(i = 0; i < NERR; i++)
-			print("sp=%lux pc=%lux\n", u->errlab[i].sp, u->errlab[i].pc);
-		panic("error stack");
-	}
+	u->nerrlab = 0;
+	if(u->p->procctl)
+		procctl(u->p);
 
 	u->p->insyscall = 0;
 	u->p->psstate = 0;

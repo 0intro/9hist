@@ -222,25 +222,20 @@ ipopen(Chan *c, int omode)
 Ipconv *
 ipclonecon(Chan *c)
 {
-	Ipconv *base, *new, *etab;
+	Ipconv *new, *base;
 
 	base = ipconv[c->dev];
-	etab = &base[conf.ip];
-	for(new = base; new < etab; new++) {
-		new = ipincoming(base);
-		if(new == 0)
-			error(Enodev);
+	new = ipincoming(base);
+	if(new == 0)
+		error(Enodev);
 
-		c->qid.path = CHDIR|STREAMQID(new-base, ipchanqid);
-		devwalk(c, "ctl", 0, 0, streamgen);
+	c->qid.path = CHDIR|STREAMQID(new-base, ipchanqid);
+	devwalk(c, "ctl", 0, 0, streamgen);
 
-		streamopen(c, &ipinfo);
-		pushq(c->stream, new->stproto);
-		new->ref--;
-		return new;
-	}
-
-	error(Enodev);
+	streamopen(c, &ipinfo);
+	pushq(c->stream, new->stproto);
+	new->ref--;
+	return new;
 }
 
 Ipconv *

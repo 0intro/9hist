@@ -27,7 +27,6 @@ faultmips(Ureg *ur, int user, int code)
 			sprint(buf, "sys: fault %s pc=0x%lux addr=0x%lux",
 				read? "read" : "write", ur->pc, ur->badvaddr);
 			postnote(u->p, 1, buf, NDebug);
-			notify(ur);
 			return;
 		}
 		print("kernel %s badvaddr=0x%lux\n", excname[code], ur->badvaddr);

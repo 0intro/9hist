@@ -133,14 +133,18 @@ trap(Ureg *ur)
 			dumpregs(ur);
 			for(;;);
 		}
-		if(user && u->nnote)
-			notify(ur);
 	}
     Return:
-	if(user && u && u->p->fpstate == FPinactive) {
-		restfpregs(&u->fpsave);
-		u->p->fpstate = FPactive;
-		ur->psr |= PSREF;
+	if(user) {
+		if(u->p->procctl)
+			procctl(u->p);
+		if(u->nnote)
+			notify(ur);
+		if(u->p->fpstate == FPinactive) {
+			restfpregs(&u->fpsave);
+			u->p->fpstate = FPactive;
+			ur->psr |= PSREF;
+		}
 	}
 }
 
@@ -176,8 +180,6 @@ dumpstack(void)
 	ulong l, v;
 	int i;
 	extern ulong etext;
-print("no dumpstack\n");
-return;
 
 	if(u){
 		i = 0;
@@ -342,6 +344,10 @@ syscall(Ureg *aur)
 		ur->psr &= ~PSREF;
 	}
 	spllo();
+
+	if(u->p->procctl)
+		procctl(u->p);
+
 	r7 = ur->r7;
 	sp = ur->usp;
 
@@ -368,12 +374,10 @@ syscall(Ureg *aur)
 	}
 	ur->pc += 4;
 	ur->npc = ur->pc+4;
-	if(u->nerrlab){
-		print("bad error stack [%d]: %d extra\n", r7, u->nerrlab);
-		for(i = 0; i < NERR; i++)
-			print("sp=%lux pc=%lux\n", u->errlab[i].sp, u->errlab[i].pc);
-		panic("error stack");
-	}
+	u->nerrlab = 0;
+	if(u->p->procctl)
+		procctl(u->p);
+
 	u->p->insyscall = 0;
 	u->p->psstate = 0;
 	if(r7 == NOTED)	/* ugly hack */

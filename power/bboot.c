@@ -227,16 +227,16 @@ dkdial(char *arg)
 	/*
 	 *  grab a datakit channel and call up the file server
 	 */
-	fd = open("#kdk/5/data", 2);
+	fd = open("#k/dk/5/data", 2);
 	if(fd < 0) {
-		prerror("opening #kdk/5/data");
+		prerror("opening #k/dk/5/data");
 		return -1;
 	}
-	cfd = open("#kdk/5/ctl", 2);
+	cfd = open("#k/dk/5/ctl", 2);
 	if(cfd < 0){
 		close(fd);
 		fd = -1;
-		prerror("opening #kdk/5/ctl");
+		prerror("opening #k/dk/5/ctl");
 		return -1;
 	}
 	sprint(cmd, "connect %s", arg);

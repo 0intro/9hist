@@ -456,6 +456,7 @@ procwrite(Chan *c, void *va, long n, ulong offset)
 		}
 		else
 		if(n >= 4 && strncmp(va, "kill", 4) == 0) {
+			postnote(p, 0, "sys: killed", NExit);
 			p->procctl = Proc_exitme;
 			break;
 		}

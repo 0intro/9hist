@@ -405,54 +405,6 @@ evfree(Envval *ev)
 	envalloc.free[n] = ev;
 }
 
-void
-envdump(void)
-{
-	Envval *ev;
-	int i, j;
-
-	qlock(&evlock);
-	print("pages allocated: %d\n", envalloc.npage);
-	print("bytes left in page: %d\n", envalloc.lim - envalloc.block);
-	for(i = 0; i < EVFREE + 1; i++){
-		j = 0;
-		if(i == EVFREE)
-			print("big blocks:\n");
-		else
-			print("%d byte blocks:\n", (i + 1) * ALIGN);
-		for(ev = envalloc.free[i]; ev; ev = ev->next){
-			if(j++ == 1000){
-				print("circular\n");
-				break;
-			}
-			if(j < 10)
-				print("\tenv %d %lux n%lux p%lux r%d\n",
-					ev->len, ev, ev->next, ev->prev, ev->ref);
-		}
-	}
-	for(i = 0; i < EVHASH; i++){
-		j = 0;
-		for(ev = evhash[i].next; ev; ev = ev->next){
-			uchar *t, *s;
-			int h, n;
-
-			s = (uchar*)ev->val;
-			n = ev->len;
-			h = 0;
-			for(t = s; t - s < n; t++)
-				h = (h << 1) ^ *t;
-			h &= EVHASH - 1;
-			if(h != i)
-				print("hash conflict: %d %d\n", i, h);
-			if(j++ == 1000){
-				print("hash bucket %d circular\n", i);
-				break;
-			}
-		}
-	}
-	qunlock(&evlock);
-}
-
 /*
  *  to let the kernel set environment variables
  */

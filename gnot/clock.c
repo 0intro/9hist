@@ -45,6 +45,8 @@ clock(Ureg *ur)
 		}
 		if((ur->sr&SUPER) == 0){
 			(*(ulong*)(USTKTOP-BY2WD)) += TK2MS(1);	/* profiling clock */
+			if(u->p->procctl)
+				procctl(u->p);
 			if(u->nnote)
 				notify(ur);
 		}

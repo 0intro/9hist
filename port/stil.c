@@ -11,6 +11,7 @@
 #include	"arp.h"
 #include 	"ipdat.h"
 
+#define	 DBG	if(0)print
 int 		ilcksum = 1;
 static 	int 	initseq = 25000;
 static	Rendez	ilackr;
@@ -107,7 +108,8 @@ iloput(Queue *q, Block *bp)
 	if(ipc->psrc == 0)
 		error(Enoport);
 
-	switch(ipc->ilctl.state) {
+	ic = &ipc->ilctl;
+	switch(ic->state) {
 	case Ilclosed:
 	case Illistening:
 	case Ilclosing:
@@ -135,9 +137,7 @@ iloput(Queue *q, Block *bp)
 
 	/* Make space to fit il & ip & ethernet header */
 	bp = padb(bp, IL_EHSIZE+IL_HDRSIZE);
-
 	ih = (Ilhdr *)(bp->rptr);
-	ic = &ipc->ilctl;
 
 	/* Ip fields */
 	hnputl(ih->src, Myip);
@@ -213,6 +213,7 @@ ilrcvmsg(Ipconv *ipc, Block *bp)
 	Ipconv *s, *etab, *new;
 	short sp, dp;
 	Ipaddr dst;
+	char *st;
 
 	ih = (Ilhdr *)bp->rptr;
 
@@ -224,14 +225,16 @@ ilrcvmsg(Ipconv *ipc, Block *bp)
 	if(illen+IL_EHSIZE > plen)
 		goto drop;
 
-	if(ilcksum && ptcl_csum(bp, IL_EHSIZE, illen) != 0) {
-		print("il: cksum error\n");
-		goto drop;
-	}
-
 	sp = nhgets(ih->ildst);
 	dp = nhgets(ih->ilsrc);
 	dst = nhgetl(ih->src);
+
+	if(ilcksum && ptcl_csum(bp, IL_EHSIZE, illen) != 0) {
+		st = (ih->iltype < 0 || ih->iltype > Ilclose) ? "?" : iltype[ih->iltype];
+		print("il: cksum error, pkt(%s id %d ack %d %d.%d.%d.%d/%d->%d)\n",
+			st, nhgetl(ih->ilid), nhgetl(ih->ilack), fmtaddr(dst), sp, dp);
+		goto drop;
+	}
 
 	etab = &ipc[conf.ip];
 	for(s = ipc; s < etab; s++)
@@ -398,13 +401,17 @@ _ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 				h = (Ilhdr*)nb;
 				h->iltype = Ildataquery;
 				hnputl(h->ilack, ic->recvd);
+				h->ilsum[0] = 0;
+				h->ilsum[1] = 0;
+				if(ilcksum)
+					hnputs(h->ilsum, ptcl_csum(nb, IL_EHSIZE, IL_HDRSIZE));
 				PUTNEXT(Ipoutput, nb);
 			}
 			freeb(bp);
 			break;
 		case Ilclose:
 			freeb(bp);
-			if(id != ic->recvd)
+			if(id != ic->recvd) 
 				break;
 			ilsendctl(s, 0, Ilclose);
 			ic->state = Ilclosing;
@@ -418,18 +425,14 @@ _ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 	case Ilclosing:
 		switch(h->iltype) {
 		case Ilclose:
+			ic->recvd = id;
 			if(ack == ic->next) {
 				ic->state = Ilclosed;
 				ilhangup(s);
 			}
-			else {
-				ic->recvd = id;
-				ilsendctl(s, 0, Ilclose);
-			}
+			ilsendctl(s, 0, Ilclose);
 			break;
 		default:
-			ilsendctl(s, 0, Ilclose);
-			ilhangup(s);
 			break;
 		}
 		freeb(bp);
@@ -443,14 +446,15 @@ ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 {
 	Ilcb *ic = &s->ilctl;
 
-	print("%s rcv %d/%d snt %d/%d pkt(%s id %d ack %d %d->%d) ",
+	USED(ic);
+	DBG("%s rcv %d/%d snt %d/%d pkt(%s id %d ack %d %d->%d) ",
 		ilstate[ic->state],  ic->rstart, ic->recvd, ic->start, ic->next,
 		iltype[h->iltype], nhgetl(h->ilid), nhgetl(h->ilack), 
 		nhgets(h->ilsrc), nhgets(h->ildst));
 
 	_ilprocess(s, h, bp);
 
-	print("%s rcv %d snt %d\n", ilstate[ic->state], ic->recvd, ic->next);
+	DBG("%s rcv %d snt %d\n", ilstate[ic->state], ic->recvd, ic->next);
 }
 
 void
@@ -573,7 +577,7 @@ ilsendctl(Ipconv *ipc, Ilhdr *inih, int type)
 	if(ilcksum)
 		hnputs(ih->ilsum, ptcl_csum(bp, IL_EHSIZE, IL_HDRSIZE));
 
-	print("ctl(%s id %d ack %d %d->%d) ",
+	DBG("\nctl(%s id %d ack %d %d->%d)\n",
 		iltype[ih->iltype], nhgetl(ih->ilid), nhgetl(ih->ilack), 
 		nhgets(ih->ilsrc), nhgets(ih->ildst));
 

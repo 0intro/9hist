@@ -209,16 +209,16 @@ dkdial(char *arg)
 	/*
 	 *  grab a datakit channel and call up the file server
 	 */
-	fd = open("#kdk/5/data", ORDWR);
+	fd = open("#k/dk/5/data", ORDWR);
 	if(fd < 0) {
-		prerror("opening #kdk/5/data");
+		prerror("opening #k/dk/5/data");
 		return -1;
 	}
-	cfd = open("#kdk/5/ctl", ORDWR);
+	cfd = open("#k/dk/5/ctl", ORDWR);
 	if(cfd < 0){
 		close(fd);
 		fd = -1;
-		prerror("opening #kdk/5/ctl");
+		prerror("opening #k/dk/5/ctl");
 		return -1;
 	}
 	sprint(cmd, "connect %s", arg);
@@ -230,7 +230,7 @@ dkdial(char *arg)
 		return -1;
 	}
 	net = "dk";
-	netdev = "#kdk";
+	netdev = "#k";
 	return fd;
 }
 
@@ -398,8 +398,11 @@ boot(int ask)
 	if(netdev){
 		char buf[64];
 		sprint(buf, "/net/%s", net);
-		bind(netdev, buf, MREPL);
-		bind(netdev, "/net/net", MREPL);
+		if(strcmp(netdev, "#k")==0)
+			bind(netdev, "/net", MBEFORE);
+		else
+			bind(netdev, buf, MREPL);
+		bind(buf, "/net/net", MREPL);
 	}
 	if(net){
 		char buf[64];

@@ -10,15 +10,6 @@
 
 #define	NOW	(MACHP(0)->ticks)
 
-enum {
-	/*
-	 *  relative or immutable
-	 */
-	Nline = 256,		/* max lines per dk */
-	Ndir = Nline + 1,	/* entries in the dk directory */
-	Nsubdir = 5,		/* entries in the sub directory */
-};
-
 typedef struct Dkmsg	Dkmsg;
 typedef struct Line	Line;
 typedef struct Dk	Dk;
@@ -125,6 +116,7 @@ struct Dk {
 	Rendez	timer;
 	int	closeall;	/* set when we receive a closeall message */
 	Rendez	closeallr;	/* wait here for a closeall */
+	Network	net;
 
 	Block	*alloc;
 };
@@ -184,7 +176,6 @@ static void	dkmuxconfig(Queue*, Block*);
 static Chan*	dkopenline(Dk*, int);
 static int	dkmesg(Chan*, int, int, int, int);
 static void	dkcsckproc(void*);
-static int	dklisten(Chan*);
 static void	dkanswer(Chan*, int, int);
 static void	dkwindow(Chan*);
 static void	dkcall(int, Chan*, char*, char*, char*);
@@ -193,6 +184,17 @@ static void	dkchgmesg(Chan*, Dk*, Dkmsg*, int);
 static void	dkreplymesg(Dk*, Dkmsg*, int);
 Chan*		dkopen(Chan*, int);
 static void	dkhangup(Line*);
+
+/*
+ *  for standard network interface (net.c)
+ */
+static int	dkcloneline(Chan*);
+static int	dklisten(Chan*);
+static void	dkfilladdr(Chan*, char*, int);
+static void	dkfillraddr(Chan*, char*, int);
+static void	dkfillruser(Chan*, char*, int);
+
+extern Qinfo dkinfo;
 
 /*
  *  the datakit multiplexor stream module definition
@@ -220,6 +222,7 @@ dkalloc(char *name, int ncsc, int lines)
 	Dk *freep;
 	Block *bp;
 	int i, n;
+	Line *lp;
 
 	lock(&dklock);
 	freep = 0;
@@ -235,8 +238,10 @@ dkalloc(char *name, int ncsc, int lines)
 		unlock(&dklock);
 		error(Enoifc);
 	}
-	if(lines == 0)
+	if(lines == 0){
+		unlock(&dklock);
 		errors("unknown dk interface");
+	}
 
 	/*
  	 *  init the structures
@@ -251,26 +256,47 @@ dkalloc(char *name, int ncsc, int lines)
 	/*
 	 *  allocate memory for line structures
 	 */
-	n = sizeof(Line*)*dp->lines;
+	n = sizeof(Line*)*(dp->lines+1);
 	bp = allocb(n);
 	if(bp->lim - bp->base < n){
 		unlock(&dklock);
 		errors("too many lines");
 	}
+	memset(bp->base, 0, bp->lim-bp->base);
 	dp->linep = (Line **)bp->base;
 	bp->wptr += n;
 	dp->alloc = bp;
-	for(i = 0; i < n; i++){
+	n = sizeof(Line)*(dp->lines);
+	for(i = 1; i <= dp->lines; i++){
 		if(bp->lim - bp->wptr < sizeof(Line)){
 			bp = allocb(sizeof(Line)*n);
+			memset(bp->base, 0, bp->lim-bp->base);
 			bp->next = dp->alloc;
 			dp->alloc = bp;
 		}
 		dp->linep[i] = (Line*)bp->wptr;
 		dp->linep[i]->lineno = i;
 		bp->wptr += sizeof(Line);
+		n -= sizeof(Line);
 	}
-		
+
+	/*
+	 *  fill in the network structure
+	 */
+	dp->net.name = dp->name;
+	dp->net.nconv = dp->lines+1;
+	dp->net.devp = &dkinfo;
+	dp->net.protop = &urpinfo;
+	dp->net.listen = dklisten;
+	dp->net.clone = dkcloneline;
+	dp->net.ninfo = 3;
+	dp->net.info[0].name = "addr";
+	dp->net.info[0].fill = dkfilladdr;
+	dp->net.info[1].name = "raddr";
+	dp->net.info[1].fill = dkfillraddr;
+	dp->net.info[2].name = "ruser";
+	dp->net.info[2].fill = dkfillruser;
+
 	unlock(&dklock);
 	return dp;
 }
@@ -666,44 +692,6 @@ dkmuxconfig(Queue *q, Block *bp)
 	kproc(buf, dktimer, dp);
 }
 
-/*
- *  qid's
- */
-enum {
-	/*
-	 *  per line
-	 */
-	Daddrqid,
-	Dlistenqid,
-	Draddrqid,
-	Duserqid,
-	Dlineqid,
-
-	/*
-	 *  per device
-	 */
-	Dcloneqid,
-};
-
-/*
- *  the dk directory
- */
-Dirtab dkdir[Ndir];
-
-/*
- *  the per stream directory structure
- */
-Dirtab dksubdir[]={
-	"addr",		{Daddrqid},	0,	0600,
-	"listen",	{Dlistenqid},	0,	0600,
-	"raddr",	{Draddrqid},	0, 	0600,
-	"ruser",	{Duserqid},	0, 	0600,
-};
-
-/*
- *  dk file system.  most of the calls use dev.c to access the dk
- *  directory and stream.c to access the dk devices.
- */
 void
 dkreset(void)
 {
@@ -711,37 +699,9 @@ dkreset(void)
 	newqinfo(&dkmuxinfo);
 }
 
-/*
- *  create the dk directory.  the files are `clone' and stream
- *  directories '1' to '32' (or whatever Nline is in decimal)
- */
 void
 dkinit(void)
 {
-	int i;
-
-	/*
-	 *  create the directory.
-	 */
-	/*
-	 *  the circuits
-	 */
-	for(i = 1; i < Nline; i++) {
-		sprint(dkdir[i].name, "%d", i);
-		dkdir[i].qid.path = CHDIR|STREAMQID(i, Dlineqid);
-		dkdir[i].qid.vers = 0;
-		dkdir[i].length = 0;
-		dkdir[i].perm = 0600;
-	}
-
-	/*
-	 *  the clone device
-	 */
-	strcpy(dkdir[0].name, "clone");
-	dkdir[0].qid.path = Dcloneqid;
-	dkdir[0].qid.vers = 0;
-	dkdir[0].length = 0;
-	dkdir[0].perm = 0600;
 }
 
 Chan*
@@ -774,105 +734,19 @@ dkclone(Chan *c, Chan *nc)
 int	 
 dkwalk(Chan *c, char *name)
 {
-	if(c->qid.path == CHDIR)
-		return devwalk(c, name, dkdir, dk[c->dev].lines, devgen);
-	else
-		return devwalk(c, name, dksubdir, Nsubdir, streamgen);
+	return netwalk(c, name, &dk[c->dev].net);
 }
 
 void	 
 dkstat(Chan *c, char *dp)
 {
-	if(c->qid.path == CHDIR)
-		devstat(c, dp, dkdir, dk[c->dev].lines, devgen);
-	else if(c->qid.path == Dcloneqid)
-		devstat(c, dp, dkdir, 1, devgen);
-	else
-		devstat(c, dp, dksubdir, Nsubdir, streamgen);
+	netstat(c, dp, &dk[c->dev].net);
 }
 
-/*
- *  opening a dk device allocates a Line.  Opening the `clone'
- *  device is a ``macro'' for finding a free Line and opening
- *  its ctl file.
- *
- *  opening the `listen' sub device is a macro for listening for
- *  a new call.  Lile `clone' the ctl file of the new channel is
- *  returned.
- */
 Chan*
 dkopen(Chan *c, int omode)
 {
-	extern Qinfo dkinfo;
-	Stream *s;
-	Line *lp;
-	Dk *dp;
-	int line;
-
-	if(c->qid.path & CHDIR){
-		/*
-		 *  directories are read only
-		 */
-		if(omode != OREAD)
-			error(Ebadarg);
-	} else switch(STREAMTYPE(c->qid.path)){
-	case Dcloneqid:
-		dp = &dk[c->dev];
-		/*
-		 *  get an unused device and open its control file
-		 */
-		for(line = dp->ncsc+1; line < dp->lines; line++){
-			lp = dp->linep[line];
-			if(lp->state == Lclosed && canqlock(lp)){
-				if(lp->state != Lclosed){
-					qunlock(lp);
-					continue;
-				}
-				c->qid.path = STREAMQID(line, Sctlqid);
-				lp->state = Lopened;
-				qunlock(lp);
-				break;
-			}
-		}
-		if(line == dp->lines)
-			error(Enodev);
-		streamopen(c, &dkinfo);
-		pushq(c->stream, &urpinfo);
-		break;
-	case Dlistenqid:
-		/*
-		 *  listen for a call and open the control file for the
-		 *  channel on which the call arrived.
-		 */
-		line = dklisten(c);
-		c->qid.path = STREAMQID(line, Sctlqid);
-		streamopen(c, &dkinfo);
-		pushq(c->stream, &urpinfo);
-		dkwindow(c);
-		break;
-	case Daddrqid:
-	case Draddrqid:
-	case Duserqid:
-		/*
-		 *  read only files
-		 */
-		if(omode != OREAD)
-			error(Ebadarg);
-		break;
-	default:
-		/*
-		 *  open whatever c points to, make sure it has an urp
-		 */
-		streamopen(c, &dkinfo);
-		if(strcmp(c->stream->procq->next->info->name, "urp")!=0)
-			pushq(c->stream, &urpinfo);
-		break;
-	}
-
-	c->mode = openmode(omode);
-	c->flag |= COPEN;
-	c->offset = 0;
-	return c;
+	return netopen(c, omode, &dk[c->dev].net);
 }
 
 void	 
@@ -891,28 +765,7 @@ dkclose(Chan *c)
 long	 
 dkread(Chan *c, void *a, long n, ulong offset)
 {
-	Line *lp;
-
-	if(c->stream)
-		return streamread(c, a, n);
-
-	if(c->qid.path & CHDIR){
-		if(c->qid.path == CHDIR)
-			return devdirread(c, a, n, dkdir, dk[c->dev].lines, devgen);
-		else
-			return devdirread(c, a, n, dksubdir, Nsubdir, streamgen);
-	}
-
-	lp = dk[c->dev].linep[STREAMID(c->qid.path)];
-	switch(STREAMTYPE(c->qid.path)){
-	case Daddrqid:
-		return stringread(c, a, n, lp->addr, offset);
-	case Draddrqid:
-		return stringread(c, a, n, lp->raddr, offset);
-	case Duserqid:
-		return stringread(c, a, n, lp->ruser, offset);
-	}
-	error(Eperm);
+	return netread(c, a, n, offset,  &dk[c->dev].net);
 }
 
 long	 
@@ -978,6 +831,35 @@ dkwstat(Chan *c, char *dp)
 }
 
 /*
+ *  return the number of an unused line (reserve it)
+ */
+static int
+dkcloneline(Chan *c)
+{
+	Line *lp;
+	Dk *dp;
+	int line;
+
+	dp = &dk[c->dev];
+	/*
+	 *  get an unused device and open its control file
+	 */
+	for(line = dp->ncsc+1; line < dp->lines; line++){
+		lp = dp->linep[line];
+		if(lp->state == Lclosed && canqlock(lp)){
+			if(lp->state != Lclosed){
+				qunlock(lp);
+				continue;
+			}
+			lp->state = Lopened;
+			qunlock(lp);
+			return lp->lineno;
+		}
+	}
+	error(Enodev);
+}
+
+/*
  *  open the common signalling channel
  */
 static Chan*
@@ -997,6 +879,25 @@ dkopenline(Dk *dp, int line)
 	poperror();
 
 	return c;
+}
+
+/*
+ *  return the contents of the info files
+ */
+void
+dkfilladdr(Chan *c, char *buf, int len)
+{
+	strncpy(buf, dk[c->dev].linep[STREAMID(c->qid.path)]->addr, len);
+}
+void
+dkfillraddr(Chan *c, char *buf, int len)
+{
+	strncpy(buf, dk[c->dev].linep[STREAMID(c->qid.path)]->raddr, len);
+}
+void
+dkfillruser(Chan *c, char *buf, int len)
+{
+	strncpy(buf, dk[c->dev].linep[STREAMID(c->qid.path)]->ruser, len);
 }
 
 /*
@@ -1464,6 +1365,7 @@ dkcsckproc(void *a)
 		close(dp->csc);
 		return;
 	}
+	DPRINT("dkcsckproc: %d\n", dp->ncsc);
 
 	/*
 	 *  loop forever listening
@@ -1477,7 +1379,7 @@ dkcsckproc(void *a)
 			continue;
 		}
 		line = (d.param0h<<8) + d.param0l;
-/*		print("t(%d)s(%d)l(%d)\n", d.type, d.srv, line); /**/
+		DPRINT("t(%d)s(%d)l(%d)\n", d.type, d.srv, line);
 		switch (d.type) {
 
 		case T_CHG:	/* controller wants to close a line */

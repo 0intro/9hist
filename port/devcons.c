@@ -225,9 +225,6 @@ echo(int c)
 		switch(c){
 		case 0x14:
 			break;	/* pass it on */
-		case 'e':
-			envdump();
-			return;
 		case 'm':
 			mntdump();
 			return;

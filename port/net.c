@@ -5,12 +5,15 @@
 #include	"fns.h"
 #include	"errno.h"
 
+#include	"fcall.h"
+
 enum
 {
 	Qlisten=	1,
 	Qclone=		2,
 	Q2nd=		3,
 	Q3rd=		4,
+	Qinf=		5,
 };
 
 /*
@@ -40,7 +43,7 @@ netgen(Chan *c, void *vp, int ntab, int i, Dir *dp)
 	}
 
 	/* second level contains clone plus all the conversations */
-	if(c->qid.path == (CHDIR | Q2nd)){
+	if(STREAMID(c->qid.path) == 0){
 		if(i == 0){
 			q.path = Qclone;
 			devdir(c, q, "clone", 0, 0666, dp);
@@ -52,9 +55,6 @@ netgen(Chan *c, void *vp, int ntab, int i, Dir *dp)
 			return -1;
 		return 1;
 	}
-
-	if((c->qid.path & CHDIR) == 0)
-		return -1;
 
 	/* third level depends on the number of info files */
 	switch(i){
@@ -73,13 +73,65 @@ netgen(Chan *c, void *vp, int ntab, int i, Dir *dp)
 		devdir(c, q, "listen", 0, 0666, dp);
 		break;
 	default:
-		if(i >= 3 + np->ninfo)
-			return -1;
 		i -= 3;
-		q.path = Qlisten + i + 1;
+		if(i >= np->ninfo)
+			return -1;
+		q.path = STREAMQID(STREAMID(c->qid.path), Qinf+i);
 		devdir(c, q, np->info[i].name, 0, 0666, dp);
+		break;
 	}
 	return 1;
+}
+
+int	 
+netwalk(Chan *c, char *name, Network *np)
+{
+	if(strcmp(name, "..") == 0) {
+		switch(STREAMTYPE(c->qid.path)){
+		case Q2nd:
+			c->qid.path = CHDIR;
+			break;
+		case Q3rd:
+			c->qid.path = CHDIR|Q2nd;
+			break;
+		default:
+			panic("netwalk %lux", c->qid.path);
+		}
+		return 1;
+	}
+
+	return devwalk(c, name, (Dirtab*)np, 0, netgen);
+}
+
+void
+netstat(Chan *c, char *db, Network *np)
+{
+	int i;
+	Dir dir;
+
+	for(i=0;; i++)
+		switch(netgen(c, (Dirtab*)np, 0, i, &dir)){
+		case -1:
+			/*
+			 * devices with interesting directories usually don't get
+			 * here, which is good because we've lost the name by now.
+			 */
+			if(c->qid.path & CHDIR){
+				devdir(c, c->qid, ".", 0L, CHDIR|0700, &dir);
+				convD2M(&dir, db);
+				return;
+			}
+			print("netstat %c %lux\n", devchar[c->type], c->qid.path);
+			error(Enonexist);
+		case 0:
+			break;
+		case 1:
+			if(eqqid(c->qid, dir.qid)){
+				convD2M(&dir, db);
+				return;
+			}
+			break;
+		}
 }
 
 Chan *
@@ -125,7 +177,7 @@ netopen(Chan *c, int omode, Network *np)
 long
 netread(Chan *c, void *a, long n, ulong offset, Network *np)
 {
-	int i;
+	int t;
 	char buf[256];
 
 	if(c->stream)
@@ -134,10 +186,10 @@ netread(Chan *c, void *a, long n, ulong offset, Network *np)
 	if(c->qid.path&CHDIR)
 		return devdirread(c, a, n, (Dirtab*)np, 0, netgen);
 
-	if(c->qid.path <= Qlisten || c->qid.path > Qlisten + np->ninfo)
+	t = STREAMTYPE(c->qid.path);
+	if(t < Qinf || t >= Qinf + np->ninfo)
 		error(Ebadusefd);
 
-	i = c->qid.path - Qlisten - 1;
-	(*np->info[i].fill)(c, buf, sizeof(buf));
+	(*np->info[t-Qinf].fill)(c, buf, sizeof(buf));
 	return stringread(c, a, n, buf, offset);
 }

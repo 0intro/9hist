@@ -40,7 +40,6 @@ faultsparc(Ureg *ur)
 			sprint(buf, "sys: fault %s pc=0x%lux addr=0x%lux",
 				read? "read" : "write", ur->pc, badvaddr);
 			postnote(u->p, 1, buf, NDebug);
-			notify(ur);
 			return;
 		}
 		dumpregs(ur);

@@ -92,6 +92,8 @@ fault68020(Ureg *ur, FFrame *f)
 			sprint(buf, "sys: fault %s pc=0x%lux addr=0x%lux",
 				read? "read" : "write", ur->pc, badvaddr);
 			postnote(u->p, 1, buf, NDebug);
+			if(u->p->procctl)
+				procctl(u->p);
 			notify(ur);
 			return;
 		}
