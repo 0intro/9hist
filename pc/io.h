@@ -23,8 +23,8 @@ enum
 	 Vector11=	Int0vec+11,	/*  unassigned, usually scsi */
 	 Mousevec=	Int0vec+12,	/*  mouse interrupt */
 	 Matherr2vec=	Int0vec+13,	/*  math coprocessor */
-	 Hardvec=	Int0vec+14,	/*  hard disk */
-	 Vector15=	Int0vec+15,	/*  unassigned */
+	 ATAvec0=	Int0vec+14,	/*  ATA controller #1 */
+	 ATAvec1=	Int0vec+15,	/*  ATA controller #2 */
 
 	Syscallvec=	64,
 };

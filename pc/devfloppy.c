@@ -56,6 +56,10 @@ enum
 	Drivemask=	3<<0,
 	Seekend=	1<<5,
 	Codemask=	(3<<6)|(3<<3),
+	Cmdexec=	1<<6,
+
+	/* status 1 byte */
+	Overrun=	0x10,
 
 	/* file types */
 	Qdir=		0,
@@ -1006,7 +1010,10 @@ floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 		DPRINT("xfer: failed %lux %lux %lux\n", fl.stat[0],
 			fl.stat[1], fl.stat[2]);
 		DPRINT("offset %lud len %d\n", off, dp->len);
-		dp->confused = 1;
+		if((fl.stat[0]&Codemask)==Cmdexec && fl.stat[1]==Overrun)
+			DPRINT("DMA overrun: retry\n");
+		else
+			dp->confused = 1;
 		error(Eio);
 	}
 

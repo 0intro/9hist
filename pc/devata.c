@@ -19,7 +19,8 @@ typedef struct Repl		Repl;
 enum
 {
 	/* ports */
-	Pbase=		0x1F0,
+	Pbase0=		0x1F0,
+	Pbase1=		0x170,
 	Pdata=		0,	/* data port (16 bits) */
 	Perror=		1,	/* error port (read) */
 	Pprecomp=	1,	/* buffer mode port (write) */
@@ -64,6 +65,8 @@ enum
 	Maxxfer=	BY2PG,		/* maximum transfer size/cmd */
 	Npart=		8+2,		/* 8 sub partitions, disk, and partition */
 	Nrepl=		64,		/* maximum replacement blocks */
+
+	Hardtimeout=	4000,		/* disk access timeout */
 };
 #define PART(x)		((x)&0xF)
 #define DRIVE(x)	(((x)>>4)&0x7)
@@ -201,8 +204,8 @@ atareset(void)
 	cp->buf = 0;
 	cp->lastcmd = cp->cmd;
 	cp->cmd = 0;
-	cp->pbase = Pbase;
-	setvec(Hardvec, ataintr, 0);
+	cp->pbase = Pbase0;
+	setvec(ATAvec0, ataintr, 0);
 
 	dp = ata;
 	if(equip & 0xf0){
@@ -290,8 +293,9 @@ ataopen(Chan *c, int omode)
 }
 
 void
-atacreate(Chan*, char*, int, ulong)
+atacreate(Chan *c, char *name, int omode, ulong perm)
 {
+	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
@@ -505,6 +509,17 @@ atarepl(Drive *dp, long bblk)
 	}
 }
 
+static void
+atasleep(Controller *cp)
+{
+	tsleep(&cp->r, cmddone, cp, Hardtimeout);
+	if(cp->cmd && cp->cmd != Cident2){
+		DPRINT("hard drive timeout\n");
+		error("ata drive timeout");
+	}
+}
+
+
 /*
  *  transfer a number of sectors.  ataintr will perform all the iterative
  *  parts.
@@ -547,6 +562,8 @@ ataxfer(Drive *dp, Partition *pp, int cmd, long start, long len, char *buf)
 		sec = (lblk % dp->sectors) + 1;
 		head = ((lblk/dp->sectors) % dp->heads);
 	}
+
+/*print("ataxfer cyl %d sec %d head %d\n", cyl, sec, head);/**/
 
 	cp = dp->cp;
 	qlock(cp);
@@ -604,7 +621,7 @@ ataxfer(Drive *dp, Partition *pp, int cmd, long start, long len, char *buf)
 			nexterror();
 		}
 	}
-	sleep(&cp->r, cmddone, cp);
+	atasleep(cp);
 	dp->state = Sspinning;
 	dp->usetime = m->ticks;
 	poperror();
@@ -650,7 +667,7 @@ atasetbuf(Drive *dp, int on)
 	outb(cp->pbase+Pcmd, Csetbuf);
 	iunlock(&cp->reglock);
 
-	sleep(&cp->r, cmddone, cp);
+	atasleep(cp);
 
 /*	if(cp->status & Serr)
 		DPRINT("hd%d setbuf err: status %lux, err %lux\n",
@@ -713,6 +730,7 @@ ataident(Drive *dp)
 	char *buf;
 	Ident *ip;
 	char id[21];
+	ulong lbasecs;
 
 	cp = dp->cp;
 	buf = smalloc(Maxxfer);
@@ -734,7 +752,8 @@ ataident(Drive *dp)
 	outb(cp->pbase+Pcmd, Cident);
 	iunlock(&cp->reglock);
 
-	sleep(&cp->r, cmddone, cp);
+	atasleep(cp);
+
 	if(cp->status & Serr){
 		DPRINT("bad disk ident status\n");
 		error(Eio);
@@ -749,14 +768,15 @@ ataident(Drive *dp)
 	 * causing a panic and much confusion.
 	 */
 	if (cp->cmd == Cident2)
-		tsleep(&cp->r, return0, 0, 10);
+		tsleep(&cp->r, return0, 0, Hardtimeout);
 
 	memmove(id, ip->model, sizeof(id)-1);
 	id[sizeof(id)-1] = 0;
 
-	if(ip->capabilities & (1<<9)){
+	lbasecs = (ip->lbasecs[0]) | (ip->lbasecs[1]<<16);
+	if((ip->capabilities & (1<<9)) && (lbasecs & 0xf0000000) == 0){
 		dp->lba = 1;
-		dp->sectors = (ip->lbasecs[0]) | (ip->lbasecs[1]<<16);
+		dp->sectors = lbasecs;
 		dp->cap = dp->bytes * dp->sectors;
 /*print("\nata%d model %s with %d lba sectors\n", dp->drive, id, dp->sectors);/**/
 	} else {
@@ -823,7 +843,7 @@ ataprobe(Drive *dp, int cyl, int sec, int head)
 	outb(cp->pbase+Pcmd, Cread);
 	iunlock(&cp->reglock);
 
-	sleep(&cp->r, cmddone, cp);
+	atasleep(cp);
 
 	if(cp->status & Serr)
 		rv = -1;
@@ -864,7 +884,6 @@ ataparams(Drive *dp)
 	 *  the drive lied, determine parameters by seeing which ones
 	 *  work to read sectors.
 	 */
-print("ata%d probing...\n", dp->drive);
 	dp->lba = 0;
 	for(i = 0; i < 32; i++)
 		if(ataprobe(dp, 0, 0, i) < 0)
@@ -1036,7 +1055,7 @@ atapart(Drive *dp)
 
 enum
 {
-	Maxloop=	10000,
+	Maxloop=	1000000,
 };
 
 /*
@@ -1063,11 +1082,9 @@ ataintr(Ureg *ur, void *arg)
 
 	loop = 0;
 	while((cp->status = inb(cp->pbase+Pstatus)) & Sbusy){
-		if(++loop > Maxloop) {
-			DPRINT("cmd=%lux status=%lux\n",
+		if(++loop > Maxloop)
+			panic("ataintr: wait busy cmd=%lux status=%lux",
 				cp->cmd, inb(cp->pbase+Pstatus));
-			panic("ataintr: wait busy");
-		}
 	}
 
 	switch(cp->cmd){
@@ -1083,11 +1100,9 @@ ataintr(Ureg *ur, void *arg)
 		if(cp->sofar < cp->nsecs){
 			loop = 0;
 			while(((cp->status = inb(cp->pbase+Pstatus)) & Sdrq) == 0)
-				if(++loop > Maxloop) {
-					DPRINT("cmd=%lux status=%lux\n",
+				if(++loop > Maxloop)
+					panic("ataintr: write cmd=%lux status=%lux\n",
 						cp->cmd, inb(cp->pbase+Pstatus));
-					panic("ataintr: write");
-				}
 			addr = cp->buf;
 			if(addr){
 				addr += cp->sofar*dp->bytes;
@@ -1103,10 +1118,11 @@ ataintr(Ureg *ur, void *arg)
 	case Cident:
 		loop = 0;
 		while((cp->status & (Serr|Sdrq)) == 0){
-			if(++loop > Maxloop) {
-				DPRINT("cmd=%lux status=%lux\n",
+			if(++loop > Maxloop){
+				print("ataintr: read/ident cmd=%lux status=%lux\n",
 					cp->cmd, inb(cp->pbase+Pstatus));
-				panic("ataintr: read/ident");
+				cp->status |= Serr;
+				break;
 			}
 			cp->status = inb(cp->pbase+Pstatus);
 		}
@@ -1121,10 +1137,6 @@ ataintr(Ureg *ur, void *arg)
 		if(addr){
 			addr += cp->sofar*dp->bytes;
 			inss(cp->pbase+Pdata, addr, dp->bytes/2);
-		} else {
-			/* old drives/controllers hang unless the buffer is emptied */
-			for(loop = dp->bytes/2; --loop >= 0;)
-				ins(cp->pbase+Pdata);
 		}
 		cp->sofar++;
 		if(cp->sofar > cp->nsecs)
