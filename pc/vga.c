@@ -187,10 +187,6 @@ screeninit(void)
 		*l = (*l<<24) | ((*l>>8)&0x0000ff00) | ((*l<<8)&0x00ff0000) | (*l>>24);
 
 	gbitblt(&gscreen, Pt(0, 0), &gscreen, gscreen.r, flipD[0]);
-	delay(2000);
-	gbitblt(&gscreen, Pt(0, 0), &gscreen, gscreen.r, flipD[F]);
-	delay(2000);
-	gbitblt(&gscreen, Pt(0, 0), &gscreen, gscreen.r, flipD[0]);
 	out.pos.x = MINX;
 	out.pos.y = 0;
 	out.bwid = defont0.info[' '].width;
@@ -207,6 +203,8 @@ screenputnl(void)
 	    Rect(0, out.pos.y, gscreen.r.max.x, out.pos.y+2*defont0.height), flipD[0]);
 }
 
+Lock screenlock;
+
 void
 screenputs(char *s, int n)
 {
@@ -214,7 +212,7 @@ screenputs(char *s, int n)
 	int i;
 	char buf[4];
 
-	lock(&printq);
+	lock(&screenlock);
 	while(n > 0){
 		i = chartorune(&r, s);
 		if(i == 0){
@@ -243,7 +241,7 @@ screenputs(char *s, int n)
 			out.pos = gsubfstring(&gscreen, out.pos, defont, buf, flipD[S]);
 		}
 	}
-	unlock(&printq);
+	unlock(&screenlock);
 }
 
 int

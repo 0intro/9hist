@@ -125,8 +125,6 @@ Chan*
 mntattach(char *muxattach)
 {
 	Mnt *m, *e;
-	Stream *s;
-	Qinfo *qi;
 	Chan *c;
 	struct bogus{
 		Chan	*chan;
@@ -183,18 +181,6 @@ mntattach(char *muxattach)
 		nexterror();
 	}
 
-	/* If we have a stream based protocol (TCP/IP) we push fcall to block
-	 * up P9 protocol messages into single deliminted blocks
-	 */
-	s = m->c->stream;
-	qi = qinfofind("fcall");
-	if(s)
-	if(s->procq->next)
-	if(s->procq->next->info->nodelim) {
-		if(qi == 0)
-			error(Ebadctl);
-		pushq(s, qi);
-	}
 	c = mattach(m, bogus.spec, bogus.serv);
 	poperror();
 	return c;

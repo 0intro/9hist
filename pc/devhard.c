@@ -225,13 +225,14 @@ hardattach(char *spec)
 	for(dp = hard; dp < &hard[conf.nhard]; dp++){
 		if(!waserror()){
 			dp->bytes = 512;
-			hardsetbuf(dp, 1);
+			hardsetbuf(dp, 0);
 			hardident(dp);
 			switch(dp->id.magic){
 			case 0xA5A:	/* conner drive on the AT&T NSX (safari) */
 				dp->cyl = dp->id.lcyls;
 				dp->heads = dp->id.lheads;
 				dp->sectors = dp->id.ls2t;
+				hardsetbuf(dp, 1);
 				break;
 			case 0x324A:	/* hard drive on the AT&T 6386 */
 				dp->cyl = dp->id.lcyls - 4;
@@ -494,7 +495,7 @@ hardxfer(Drive *dp, Partition *pp, int cmd, long start, long len)
 print("\tnsecs %d, sofar %d\n", cp->nsecs, cp->sofar);/**/
 	outb(cp->pbase+Pcount, cp->nsecs);
 	outb(cp->pbase+Psector, cp->tsec);
-	outb(cp->pbase+Pdh, (dp->drive<<4) | cp->thead);
+	outb(cp->pbase+Pdh, 0x20 | (dp->drive<<4) | cp->thead);
 	outb(cp->pbase+Pcyllsb, cp->tcyl);
 	outb(cp->pbase+Pcylmsb, cp->tcyl>>8);
 	outb(cp->pbase+Pcmd, cmd);
@@ -536,8 +537,8 @@ hardsetbuf(Drive *dp, int on)
 	cmdreadywait(cp);
 
 	cp->cmd = Csetbuf;
-	outb(cp->pbase+Pprecomp, on ? 0xAA : 0x55);
-	outb(cp->pbase+Pdh, (dp->drive<<4));
+	outb(cp->pbase+Pprecomp, on ? 0xAA : 0xFF);
+	outb(cp->pbase+Pdh, 0x20 | (dp->drive<<4));
 	outb(cp->pbase+Pcmd, Csetbuf);
 
 	sleep(&cp->r, cmddone, cp);
@@ -567,7 +568,7 @@ hardident(Drive *dp)
 	cp->sofar = 0;
 	cp->cmd = Cident;
 	cp->dp = dp;
-	outb(cp->pbase+Pdh, (dp->drive<<4));
+	outb(cp->pbase+Pdh, 0x20 | (dp->drive<<4));
 	outb(cp->pbase+Pcmd, Cident);
 	sleep(&cp->r, cmddone, cp);
 	if(cp->status & Serr){
