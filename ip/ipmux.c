@@ -106,6 +106,7 @@ struct Ipmuxrock
 };
 
 static int	ipmuxsprint(Ipmux*, int, char*, int);
+static void	ipmuxkick(void *x);
 
 static char*
 skipwhite(char *p)
@@ -613,7 +614,7 @@ ipmuxcreate(Conv *c)
 	Ipmuxrock *r;
 
 	c->rq = qopen(64*1024, Qmsg, 0, c);
-	c->wq = qopen(64*1024, 0, 0, 0);
+	c->wq = qopen(64*1024, Qkick, ipmuxkick, c);
 	r = (Ipmuxrock*)(c->ptcl);
 	r->chain = nil;
 }
@@ -652,8 +653,9 @@ ipmuxclose(Conv *c)
  *  the stack
  */
 static void
-ipmuxkick(Conv *c)
+ipmuxkick(void *x)
 {
+	Conv *c = x;
 	Block *bp;
 	struct Ip6hdr *ih6;
 
@@ -836,7 +838,6 @@ ipmuxinit(Fs *f)
 	ipmux = smalloc(sizeof(Proto));
 	ipmux->priv = nil;
 	ipmux->name = "ipmux";
-	ipmux->kick = ipmuxkick;
 	ipmux->connect = ipmuxconnect;
 	ipmux->announce = ipmuxannounce;
 	ipmux->state = ipmuxstate;

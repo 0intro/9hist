@@ -1053,8 +1053,6 @@ ipwrite(Chan* ch, void *v, long n, vlong off)
 			error(Eperm);
 
 		qwrite(c->wq, a, n);
-		if(x->kick != nil)
-			x->kick(c);
 		break;
 	case Qarp:
 		return arpwrite(f, a, n);
@@ -1147,8 +1145,6 @@ ipbwrite(Chan* ch, Block* bp, ulong offset)
 			bp = concatblock(bp);
 		n = BLEN(bp);
 		qbwrite(c->wq, bp);
-		if(x->kick != nil)
-			x->kick(c);
 		return n;
 	default:
 		return devbwrite(ch, bp, offset);

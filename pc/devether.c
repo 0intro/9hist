@@ -247,7 +247,10 @@ etherwrite(Chan* chan, void* buf, long n, vlong)
 		nn = netifwrite(ether, chan, buf, n);
 		if(nn >= 0)
 			return nn;
-
+		if(n == sizeof("nonblocking")-1 && strncmp((char*)buf, "nonblocking", n) == 0){
+			qnoblock(ether->oq, 1);
+			return n;
+		}
 		if(ether->ctl!=nil)
 			return ether->ctl(ether,buf,n);
 			
@@ -414,7 +417,7 @@ etherprobe(int cardno, int ctlrno)
 	print(buf);
 
 	if(ether->mbps >= 100){
-		netifinit(ether, name, Ntypes, 512*1024);
+		netifinit(ether, name, Ntypes, 256*1024);
 		if(ether->oq == 0)
 			ether->oq = qopen(256*1024, Qmsg, 0, 0);
 	}

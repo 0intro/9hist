@@ -335,8 +335,9 @@ ilclose(Conv *c)
 }
 
 void
-ilkick(Conv *c)
+ilkick(void *x)
 {
+	Conv *c = x;
 	Ilhdr *ih;
 	Ilcb *ic;
 	int dlen;
@@ -417,7 +418,7 @@ static void
 ilcreate(Conv *c)
 {
 	c->rq = qopen(64*1024, Qmsg, 0, c);
-	c->wq = qopen(64*1024, 0, 0, 0);
+	c->wq = qopen(64*1024, Qkick, ilkick, c);
 }
 
 int
@@ -1378,7 +1379,6 @@ ilinit(Fs *f)
 	il = smalloc(sizeof(Proto));
 	il->priv = smalloc(sizeof(Ilpriv));
 	il->name = "il";
-	il->kick = ilkick;
 	il->connect = ilconnect;
 	il->announce = ilannounce;
 	il->state = ilstate;

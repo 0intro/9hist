@@ -274,7 +274,6 @@ void
 igmpinit(Fs *fs)
 {
 	igmp.name = "igmp";
-	igmp.kick = nil;
 	igmp.connect = nil;
 	igmp.announce = nil;
 	igmp.ctl = nil;

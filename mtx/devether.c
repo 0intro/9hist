@@ -247,6 +247,11 @@ etherwrite(Chan* chan, void* buf, long n, vlong)
 		if(nn >= 0)
 			return nn;
 
+		if(n == sizeof("nonblocking")-1 && strncmp((char*)buf, "nonblocking", n) == 0){
+			qnoblock(ether->oq, 1);
+			return;
+		}
+
 		if(ether->ctl!=nil)
 			return ether->ctl(ether,buf,n);
 			

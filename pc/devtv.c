@@ -1072,7 +1072,7 @@ tvinterrupt(Ureg *, Tv *tv)
 			break;
 
 		if (astat)
-		print("vstat %.8uX, astat %.8uX\n", vstat, astat);
+		print("vstat %.8luX, astat %.8luX\n", vstat, astat);
 
 		bt848->intstat = vstat;
 		if (bt878)

@@ -108,6 +108,8 @@ struct Etherarp
 	uchar	tpa[4];
 };
 
+static char *nbmsg = "nonblocking";
+
 /*
  *  called to bind an IP ifc to an ethernet device
  *  called with ifc wlock'd
@@ -145,13 +147,18 @@ etherbind(Ipifc *ifc, int argc, char **argv)
 	}
 
 	/*
-	 *  open ip conversation
+	 *  open ip converstation
 	 *
 	 *  the dial will fail if the type is already open on
 	 *  this device.
 	 */
 	snprint(addr, sizeof(addr), "%s!0x800", argv[2]);
 	mchan4 = chandial(addr, nil, dir, &cchan4);
+
+	/*
+	 *  make it non-blocking
+	 */
+	devtab[cchan4->type]->write(cchan4, nbmsg, strlen(nbmsg), 0);
 
 	/*
 	 *  get mac address
@@ -189,6 +196,11 @@ etherbind(Ipifc *ifc, int argc, char **argv)
 	 */
 	snprint(addr, sizeof(addr), "%s!0x86DD", argv[2]);
 	mchan6 = chandial(addr, nil, dir, &cchan6);
+
+	/*
+	 *  make it non-blocking
+	 */
+	devtab[cchan6->type]->write(cchan6, nbmsg, strlen(nbmsg), 0);
 
 	er = smalloc(sizeof(*er));
 	er->mchan4 = mchan4;

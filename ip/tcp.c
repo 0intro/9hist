@@ -198,18 +198,19 @@ struct Tcpctl
 		ulong	una;		/* Unacked data pointer */
 		ulong	nxt;		/* Next sequence expected */
 		ulong	ptr;		/* Data pointer */
-		ushort wnd;		/* Tcp send window */
+		ushort	wnd;		/* Tcp send window */
 		ulong	urg;		/* Urgent data pointer */
 		ulong	wl2;
 		/* to implement tahoe and reno TCP */
-		ulong dupacks;    /* number of duplicate acks rcvd */
-		int   recovery;   /* loss recovery flag */
-		ulong rxt;              /* right window marker for recovery */
+		ulong	dupacks;	/* number of duplicate acks rcvd */
+		int	recovery;	/* loss recovery flag */
+		ulong	rxt;		/* right window marker for recovery */
 	} snd;
 	struct {
 		ulong	nxt;		/* Receive pointer to next uchar slot */
 		ushort	wnd;		/* Receive window incoming */
 		ulong	urg;		/* Urgent pointer */
+		ulong	lastacked;	/* Last ack sent */
 		int	blocked;
 	} rcv;
 	ulong	iss;			/* Initial sequence number */
@@ -220,7 +221,6 @@ struct Tcpctl
 	ushort	mss;			/* Mean segment size */
 	int	rerecv;			/* Overlap of data rerecevived */
 	ushort	window;			/* Recevive window */
-	ulong	last_ack;		/* Last acknowledege received */
 	uchar	backoff;		/* Exponential backoff counter */
 	int	backedoff;		/* ms we've backed off for rexmits */
 	uchar	flags;			/* State flags */
@@ -501,8 +501,9 @@ tcpclose(Conv *c)
 }
 
 void
-tcpkick(Conv *s)
+tcpkick(void *x)
 {
+	Conv *s = x;
 	Tcpctl *tcb;
 
 	tcb = (Tcpctl*)s->ptcl;
@@ -531,12 +532,6 @@ tcpkick(Conv *s)
 
 	qunlock(s);
 	poperror();
-}
-
-void
-tcpqkick(void *x)
-{
-	tcpkick((Conv*)x);
 }
 
 void
@@ -581,7 +576,7 @@ static void
 tcpcreate(Conv *c)
 {
 	c->rq = qopen(QMAX, Qcoalesce, tcpacktimer, c);
-	c->wq = qopen(2*QMAX, Qkick, tcpqkick, c);
+	c->wq = qopen(2*QMAX, Qkick, tcpkick, c);
 }
 
 static void
@@ -1229,11 +1224,11 @@ tcphangup(Conv *s)
 	if(s->raddr != 0) {
 		seg.flags = RST | ACK;
 		seg.ack = tcb->rcv.nxt;
+		tcb->rcv.lastacked = tcb->rcv.nxt;
 		seg.seq = tcb->snd.ptr;
 		seg.wnd = 0;
 		seg.urg = 0;
 		seg.mss = 0;
-		tcb->last_ack = tcb->rcv.nxt;
 		switch(s->ipversion) {
 		case V4:
 			tcb->protohdr.tcp4hdr.vihl = IP_VER4;
@@ -1294,9 +1289,9 @@ sndsynack(Proto *tcp, Limbo *lp)
 	seg.seq = lp->iss;
 	seg.ack = lp->irs+1;
 	seg.flags = SYN|ACK;
-	seg.wnd = 0;
 	seg.urg = 0;
 	seg.mss = tcpmtu(tcp, lp->laddr, lp->version);
+	seg.wnd = QMAX;
 
 	switch(lp->version) {
 	case V4:
@@ -1660,7 +1655,7 @@ update(Conv *s, Tcp *seg)
 		return;
 	}
 
-	/* added by Dong for fast retransmission */
+	/* added by Dong Lin for fast retransmission */
 	if(seg->ack == tcb->snd.una
 	&& tcb->snd.una != tcb->snd.nxt
 	&& seg->len == 0
@@ -1779,9 +1774,10 @@ done:
 	if(seq_gt(seg->ack, tcb->snd.urg))
 		tcb->snd.urg = seg->ack;
 
-	tcphalt(tpriv, &tcb->timer);
 	if(tcb->snd.una != tcb->snd.nxt)
 		tcpgo(tpriv, &tcb->timer);
+	else
+		tcphalt(tpriv, &tcb->timer);
 
 	if(seq_lt(tcb->snd.ptr, tcb->snd.una))
 		tcb->snd.ptr = tcb->snd.una;
@@ -2003,10 +1999,11 @@ reset:
 	 *  This is an attempt to defeat these stateless DOS attacks.  See
 	 *  corresponding code in tcpsendka().
 	 */
-	if(tcb->state != Syn_received){
+	if(tcb->state != Syn_received && (seg.flags & RST) == 0){
 		if(seq_within(seg.ack, tcb->snd.una-(1<<31), tcb->snd.una-(1<<29))){
-			print("stateless hog %lux - %lux - %lux\n", tcb->snd.una-(1<<31), seg.ack,
-				tcb->snd.una-(1<<29));
+			print("stateless hog %I.%d->%I.%d f %ux %lux - %lux - %lux\n",
+				source, seg.source, dest, seg.dest, seg.flags,
+				tcb->snd.una-(1<<31), seg.ack, tcb->snd.una-(1<<29));
 			localclose(s, "stateless hog");
 		}
 	}
@@ -2162,7 +2159,7 @@ reset:
 				 *  force an ack if we've got 2 segs since we
 				 *  last acked.
 				 */
-				if(tcb->rcv.nxt - tcb->last_ack >= 2*tcb->mss)
+				if(tcb->rcv.nxt - tcb->rcv.lastacked >= 2*tcb->mss)
 					tcb->flags |= FORCE;
 
 				/*
@@ -2365,9 +2362,9 @@ tcpoutput(Conv *s)
 			}
 			break;
 		}
-		tcb->last_ack = tcb->rcv.nxt;
 		seg.seq = tcb->snd.ptr;
 		seg.ack = tcb->rcv.nxt;
+		tcb->rcv.lastacked = tcb->rcv.nxt;
 		seg.wnd = tcb->rcv.wnd;
 
 		/* Pull out data to send */
@@ -2490,8 +2487,8 @@ tcpsendka(Conv *s)
 	seg.mss = 0;
 	seg.seq = tcb->snd.una-(1<<30)-nrand(1<<20);
 	seg.ack = tcb->rcv.nxt;
+	tcb->rcv.lastacked = tcb->rcv.nxt;
 	seg.wnd = tcb->rcv.wnd;
-	tcb->last_ack = tcb->rcv.nxt;
 	if(tcb->state == Finwait2){
 		seg.flags |= FIN;
 	} else {
@@ -2959,12 +2956,10 @@ tcpsettimer(Tcpctl *tcb)
 	x = backoff(tcb->backoff) *
 	    (tcb->mdev + (tcb->srtt>>LOGAGAIN) + MSPTICK) / MSPTICK;
 
-	/* take into account delayed ack */
-	if((tcb->snd.ptr - tcb->snd.una) <= 2*tcb->mss)
-		x += TCP_ACK/MSPTICK;
-
-	/* sanity check */
-	if(x > (10000/MSPTICK))
+	/* bounded twixt 1/2 and 10 seconds */
+	if(x < 500/MSPTICK)
+		x = 500/MSPTICK;
+	else if(x > (10000/MSPTICK))
 		x = 10000/MSPTICK;
 	tcb->timer.start = x;
 }
@@ -2978,7 +2973,6 @@ tcpinit(Fs *fs)
 	tcp = smalloc(sizeof(Proto));
 	tpriv = tcp->priv = smalloc(sizeof(Tcppriv));
 	tcp->name = "tcp";
-	tcp->kick = nil;
 	tcp->connect = tcpconnect;
 	tcp->announce = tcpannounce;
 	tcp->ctl = tcpctl;

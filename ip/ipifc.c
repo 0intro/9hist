@@ -283,8 +283,9 @@ ipifcinuse(Conv *c)
  *  called when a process writes to an interface's 'data'
  */
 static void
-ipifckick(Conv *c)
+ipifckick(void *x)
 {
+	Conv *c = x;
 	Block *bp;
 	Ipifc *ifc;
 
@@ -841,7 +842,6 @@ ipifcinit(Fs *f)
 
 	ipifc = smalloc(sizeof(Proto));
 	ipifc->name = "ipifc";
-	ipifc->kick = ipifckick;
 	ipifc->connect = ipifcconnect;
 	ipifc->announce = nil;
 	ipifc->bind = ipifcbind;

@@ -120,6 +120,7 @@ static	void shaahinit(Espcb*, char*, uchar *key, int keylen);
 static	void md5ahinit(Espcb*, char*, uchar *key, int keylen);
 static	void desespinit(Espcb *ecb, char *name, uchar *k, int n);
 static	void rc4espinit(Espcb *ecb, char *name, uchar *k, int n);
+static	void espkick(void *x);
 
 static Algorithm espalg[] =
 {
@@ -199,7 +200,7 @@ static void
 espcreate(Conv *c)
 {
 	c->rq = qopen(64*1024, Qmsg, 0, 0);
-	c->wq = qopen(64*1024, 0, 0, 0);
+	c->wq = qopen(64*1024, Qkick, espkick, c);
 }
 
 static void
@@ -219,9 +220,10 @@ espclose(Conv *c)
 	memset(ecb, 0, sizeof(Espcb));
 }
 
-void
-espkick(Conv *c)
+static void
+espkick(void *x)
 {
+	Conv *c = x;
 	Esphdr *eh;
 	Esptail *et;
 	Userhdr *uh;
@@ -845,7 +847,6 @@ espinit(Fs *fs)
 	esp = smalloc(sizeof(Proto));
 	esp->priv = smalloc(sizeof(Esppriv));
 	esp->name = "esp";
-	esp->kick = espkick;
 	esp->connect = espconnect;
 	esp->announce = nil;
 	esp->ctl = espctl;

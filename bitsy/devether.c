@@ -463,6 +463,10 @@ etherwrite(Chan* chan, void* buf, long n, vlong)
 		l = netifwrite(ether, chan, buf, n);
 		if(l >= 0)
 			goto out;
+		if(n == sizeof("nonblocking")-1 && strncmp((char*)buf, "nonblocking", n) == 0){
+			qnoblock(ether->oq, 1);
+			goto out;
+		}
 		if(ether->ctl!=nil){
 			l = ether->ctl(ether,buf,n);
 			goto out;

@@ -172,6 +172,15 @@ enum {
 	mtuopt	= 5,
 };
 
+static void icmpkick6(void *x);
+
+static void
+icmpcreate6(Conv *c)
+{
+	c->rq = qopen(64*1024, Qmsg, 0, c);
+	c->wq = qopen(64*1024, Qkick, icmpkick6, c);
+}
+
 static void
 set_cksum(Block *bp)
 {
@@ -218,9 +227,10 @@ icmpadvise6(Proto *icmp, Block *bp, char *msg)
 	freeblist(bp);
 }
 
-void
-icmpkick6(Conv *c)
+static void
+icmpkick6(void *x)
 {
+	Conv *c = x;
 	IPICMP *p;
 	Block *bp;
 	uchar laddr[IPaddrlen], raddr[IPaddrlen];
@@ -880,7 +890,6 @@ icmpstats6(Proto *icmp6, char *buf, int len)
 extern int	icmpstate(Conv *c, char *state, int n);
 extern char*	icmpannounce(Conv *c, char **argv, int argc);
 extern char*	icmpconnect(Conv *c, char **argv, int argc);
-extern void	icmpcreate(Conv *c);
 extern void	icmpclose(Conv *c);
 
 void
@@ -890,11 +899,10 @@ icmp6init(Fs *fs)
 
 	icmp6->priv = smalloc(sizeof(Icmppriv6));
 	icmp6->name = "icmpv6";
-	icmp6->kick = icmpkick6;
 	icmp6->connect = icmpconnect;
 	icmp6->announce = icmpannounce;
 	icmp6->state = icmpstate;
-	icmp6->create = icmpcreate;
+	icmp6->create = icmpcreate6;
 	icmp6->close = icmpclose;
 	icmp6->rcv = icmpiput6;
 	icmp6->stats = icmpstats6;

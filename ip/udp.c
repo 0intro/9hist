@@ -93,6 +93,7 @@ struct Udppriv
 };
 
 void (*etherprofiler)(char *name, int qlen);
+void udpkick(void *x);
 
 /*
  *  protocol specific part of Conv
@@ -147,7 +148,7 @@ static void
 udpcreate(Conv *c)
 {
 	c->rq = qopen(128*1024, Qmsg, 0, 0);
-	c->wq = qopen(128*1024, 0, 0, 0);
+	c->wq = qopen(128*1024, Qkick, udpkick, c);
 }
 
 static void
@@ -175,8 +176,9 @@ udpclose(Conv *c)
 }
 
 void
-udpkick(Conv *c)
+udpkick(void *x)
 {
+	Conv *c = x;
 	Udp4hdr *uh4;
 	Udp6hdr *uh6;
 	ushort rport;
@@ -623,7 +625,6 @@ udpinit(Fs *fs)
 	udp = smalloc(sizeof(Proto));
 	udp->priv = smalloc(sizeof(Udppriv));
 	udp->name = "udp";
-	udp->kick = udpkick;
 	udp->connect = udpconnect;
 	udp->announce = udpannounce;
 	udp->ctl = udpctl;

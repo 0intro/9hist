@@ -104,6 +104,15 @@ struct Icmppriv
 	ulong	out[Maxtype+1];
 };
 
+static void icmpkick(void *x);
+
+static void
+icmpcreate(Conv *c)
+{
+	c->rq = qopen(64*1024, Qmsg, 0, c);
+	c->wq = qopen(64*1024, Qkick, icmpkick, c);
+}
+
 extern char*
 icmpconnect(Conv *c, char **argv, int argc)
 {
@@ -122,13 +131,6 @@ icmpstate(Conv *c, char *state, int n)
 {
 	USED(c);
 	return snprint(state, n, "%s", "Datagram");
-}
-
-extern void
-icmpcreate(Conv *c)
-{
-	c->rq = qopen(64*1024, Qmsg, 0, c);
-	c->wq = qopen(64*1024, 0, 0, 0);
 }
 
 extern char*
@@ -154,9 +156,10 @@ icmpclose(Conv *c)
 	c->lport = 0;
 }
 
-extern void
-icmpkick(Conv *c)
+static void
+icmpkick(void *x)
 {
+	Conv *c = x;
 	Icmp *p;
 	Block *bp;
 	Icmppriv *ipriv;
@@ -455,7 +458,6 @@ icmpinit(Fs *fs)
 	icmp = smalloc(sizeof(Proto));
 	icmp->priv = smalloc(sizeof(Icmppriv));
 	icmp->name = "icmp";
-	icmp->kick = icmpkick;
 	icmp->connect = icmpconnect;
 	icmp->announce = icmpannounce;
 	icmp->state = icmpstate;

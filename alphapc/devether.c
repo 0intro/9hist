@@ -241,8 +241,15 @@ etherwrite(Chan* chan, void* buf, long n, vlong)
 	Block *bp;
 
 	ether = etherxx[chan->dev];
-	if(NETTYPE(chan->qid.path) != Ndataqid)
+	if(NETTYPE(chan->qid.path) != Ndataqid){
+
+		if(n == sizeof("nonblocking")-1 && strncmp((char*)buf, "nonblocking", n) == 0){
+			qnoblock(ether->oq, 1);
+			return n;
+		}
+
 		return netifwrite(ether, chan, buf, n);
+	}
 
 	if(n > ETHERMAXTU)
 		error(Etoobig);
