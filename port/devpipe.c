@@ -221,8 +221,10 @@ pipeclose(Chan *c)
 	 */
 	if(c->stream){
 		remote = c->stream->devq->ptr;
-		if(streamclose(c) <= 0)
-			streamexit(remote, 0);
+		if(streamclose(c) <= 0){
+			if(remote)
+				streamexit(remote, 0);
+		}
 	}
 
 	/*

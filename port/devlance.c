@@ -802,7 +802,7 @@ lancekproc(void *arg)
 			len = MPus(m->cntflags) - 4;
 			lancedebq('i', p, len);/**/
 			for(e = &l.e[0]; e < &l.e[Ntypes]; e++){
-				if(!canqlock(e))
+				if(e->q==0 || t!=e->type || !canqlock(e))
 					continue;
 				if(e->q && t == e->type)
 					break;
@@ -815,18 +815,18 @@ lancekproc(void *arg)
 			 */
 			if(e == &l.e[Ntypes]){
 				for(e = &l.e[0]; e < &l.e[Ntypes]; e++){
-					if(!canqlock(e))
+					if(e->q==0 || e->type!=-1 || !canqlock(e))
 						continue;
 					if(e->q && e->type == -1)
 						break;
 					qunlock(e);
 				}
 			}
-			if(e!=&l.e[Ntypes] && e->q->next->len<=Streamhi){
-				/*
-				 *  The lock on e makes sure the queue is still there.
-				 */
-				if(!waserror()){
+			/*
+			 *  The lock on e makes sure the queue is still there.
+			 */
+			if(e!=&l.e[Ntypes]){
+				if(e->q->next->len<=Streamhi && !waserror()){
 					bp = allocb(len);
 					memcpy(bp->rptr, (uchar *)p, len);
 					bp->wptr += len;

@@ -7,6 +7,8 @@ char	buf[100];
 char	bootline[64];
 char	bootdevice;
 char	bootserver[64];
+int	format;
+int	manual;
 
 void	error(char*);
 void	sendmsg(int, char*);
@@ -82,7 +84,7 @@ main(int argc, char *argv[])
 	bind("#k", "/net/net", MREPL);
 	bind("#k", "/net/dk", MREPL);
 
-	if(strchr(bootline, ' '))
+	if(manual)
 		execl("/68020/init", "init", "-m", 0);
 	else
 		execl("/68020/init", "init", 0);
@@ -198,11 +200,28 @@ void
 bootparams(void)
 {
 	int f;
+	char *cp;
 
+	format = 0;
+	manual = 0;
 	f = open("#e/bootline", OREAD);
 	if(f >= 0){
-		read(f, bootline, sizeof bootline);
+		read(f, bootline, sizeof(bootline)-1);
 		close(f);
+		cp = bootline;
+		while(cp = strchr(cp, ' ')){
+			if(*++cp != '-')
+				continue;
+			while(*cp && *cp!=' ')
+				switch(*cp++){
+				case 'f':
+					format = 1;
+					break;
+				case 'm':
+					manual = 1;
+					break;
+				}
+		}
 	}
 	f = open("#e/bootdevice", OREAD);
 	if(f >= 0){
@@ -307,7 +326,10 @@ cache(int fd)
 		close(fd);
 		dup(p[0], 1);
 		close(p[0]);
-		execl("/cfs", "bootcfs", "-s", 0);
+		if(format)
+			execl("/cfs", "bootcfs", "-fs", 0);
+		else
+			execl("/cfs", "bootcfs", "-s", 0);
 		break;
 	default:
 		close(p[0]);

@@ -252,6 +252,7 @@ userinit(void)
 	k = kmap(p->upage);
 	up = (User*)VA(k);
 	up->p = p;
+	up->fpsave.fpstatus = initfp.fpstatus;
 	kunmap(k);
 
 	/*

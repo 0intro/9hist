@@ -121,13 +121,13 @@ trap(Ureg *ur)
 
 	case CCPU:
 		if(u && u->p && u->p->fpstate == FPinit) {
-			restfpregs(&initfp);
+			restfpregs(&initfp, u->fpsave.fpstatus);
 			u->p->fpstate = FPactive;
 			ur->status |= CU1;
 			break;
 		}
 		if(u && u->p && u->p->fpstate == FPinactive) {
-			restfpregs(&u->fpsave);
+			restfpregs(&u->fpsave, u->fpsave.fpstatus);
 			u->p->fpstate = FPactive;
 			ur->status |= CU1;
 			break;
@@ -166,7 +166,7 @@ trap(Ureg *ur)
 		notify(ur);
 	splhi();
 	if(user && u && u->p->fpstate == FPinactive) {
-		restfpregs(&u->fpsave);
+		restfpregs(&u->fpsave, u->fpsave.fpstatus);
 		u->p->fpstate = FPactive;
 		ur->status |= CU1;
 	}
@@ -458,9 +458,11 @@ syscall(Ureg *aur)
 	ur->cause = 15<<2;		/* for debugging: system call is undef 15;
 	/*
 	 * since the system call interface does not
-	 * guarantee anything about registers,
+	 * guarantee anything about registers, we can
+	 * smash them.  but we must save fpstatus.
 	 */
 	if(u->p->fpstate == FPactive) {
+		u->fpsave.fpstatus = fcr31();
 		u->p->fpstate = FPinit;
 		ur->status &= ~CU1;
 	}

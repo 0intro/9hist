@@ -447,7 +447,7 @@ TEXT	restfpregs(SB), $0
 	MOVW	0(FP), R1
 	OR	$CU1, R3
 	MOVW	R3, M(STATUS)
-	MOVW	0x80(R1), R2
+	MOVW	fpstat+4(FP), R2
 	NOOP
 
 	MOVD	0x00(R1), F0
@@ -470,6 +470,11 @@ TEXT	restfpregs(SB), $0
 	MOVW	R2, FCR31
 	AND	$~CU1, R3
 	MOVW	R3, M(STATUS)
+	RET
+
+TEXT	fcr31(SB), $0
+
+	MOVW	FCR31, R1
 	RET
 
 /*

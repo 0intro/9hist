@@ -239,3 +239,5 @@ Chan	*walk(Chan*, char*, int);
 
 #define P_write(sel, addr, val, type)	P_oper(sel, *(type *)(PORT+addr) = val)
 
+
+#define flushpage(x) if(x)
