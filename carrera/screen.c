@@ -60,22 +60,6 @@ static Bitmap hwcursor=
 	0,
 };
 
-uchar bdata[] =
-{
-	0xa0,
-};
-
-Bitmap bgrnd =
-{
-	{ 0, 0, 1, 1 },
-	{ 0, 0, 1, 1 },
-	3,
-	(ulong*)bdata,
-	0,
-	4,
-	0
-};
-
 static Rectangle window;
 static Point curpos;
 static int h, w;
@@ -89,8 +73,9 @@ screenwin(void)
 	Cursor zero;
 
 	memset((void*)Screenvirt, 0xff, 3*1024*1024);
+	for(y=gscreen.r.min.y; y<gscreen.r.max.y; y++)
+		memset(byteaddr(&gscreen, Pt(gscreen.r.min.x, y)), 0xa0, Dx(gscreen.r));
 
-	texture(&gscreen, gscreen.r, &bgrnd, S);
 	w = defont0.info[' '].width;
 	h = defont0.height;
 
