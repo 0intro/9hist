@@ -61,6 +61,19 @@ struct
 	int	free;
 } halloc;
 
+/*
+ *  somewhere to drop crash info
+ */
+typedef struct
+{
+	ulong	magic;
+	void	*kbot;
+	void	*ksp;
+	char	text[NAMELEN];
+	Ureg	ureg;
+	uchar	kstack[KSTACK];
+} Crashstate;
+
 void
 sethvec(int v, void (*r)(void), int type, int pri)
 {
@@ -340,12 +353,20 @@ dumpregs2(Ureg *ur)
 void
 dumpregs(Ureg *ur)
 {
+	Crashstate *cs;
+	extern ulong etext;
 	ulong *x;
+
 
 	x = (ulong*)(ur+1);
 	dumpregs2(ur);
 	print("  magic %lux %lux %lux\n", x[0], x[1], x[2]);
 	print("  ur %lux up %lux\n", ur, up);
+
+	/* save crash info */
+	print("crasharea 0x%lux\n", crasharea);
+	cs = (Crashstate*)crasharea;
+	memmove(&cs->ureg, ur, sizeof(Ureg));
 }
 
 void
@@ -354,13 +375,14 @@ dumpstack(void)
 	ulong l, v, i;
 	extern ulong etext;
 	int lim;
+	Crashstate *cs;
 
 	if(up == 0)
 		return;
 
 	i = 0;
 	lim = 6;
-	for(l=(ulong)&l; l<(ulong)(up->kstack+BY2PG) && lim; l+=4){
+	for(l=(ulong)&l; l<(ulong)(up->kstack+KSTACK) && lim; l+=4){
 		v = *(ulong*)l;
 		if(KTZERO < v && v < (ulong)&etext){
 			print("%lux ", v);
@@ -373,6 +395,14 @@ dumpstack(void)
 		}
 	}
 
+	/* save crash info */
+	print("crasharea 0x%lux\n", crasharea);
+	cs = (Crashstate*)crasharea;
+	memmove(cs->kstack, up->kstack, KSTACK);
+	cs->kbot = up->kstack;
+	memmove(cs->text, up->text, NAMELEN);
+	cs->magic = 0xdeaddead;
+	cs->ksp = &l;
 }
 
 /*

@@ -31,6 +31,7 @@ char filaddr[NAMELEN];
 char *confname[MAXCONF];
 char *confval[MAXCONF];
 int nconf;
+ulong crasharea;
 
 /* memory map */
 #define MAXMEG 64
@@ -63,6 +64,7 @@ main(void)
 	chandevreset();
 	swapinit();
 	userinit();
+conf.npage0 += CRASHSIZE;
 	schedinit();
 }
 
@@ -353,7 +355,6 @@ confinit(void)
 			/*
 			 *  zero memory to set ECC but skip over the kernel
 			 *  do a quick memory test also
-			 */
 			if(i != 1){
 				for(j = 0; j < MB/BY2PG; j += BY2PG){
 					lp = mapaddr(KZERO|(i*MB+j));
@@ -376,6 +377,7 @@ confinit(void)
 					memset(lp, 0, BY2PG);
 				}
 			}
+			 */
 		}
 		x += 0x3141526;
 	}
@@ -387,16 +389,17 @@ confinit(void)
 	conf.base0 = ktop;
 	for(i = 1; mmap[i] == 'x'; i++)
 		;
-	conf.npage0 = (i*MB - ktop)/BY2PG;
+	conf.npage0 = (i*MB - ktop - CRASHSIZE)/BY2PG;
+	crasharea = KZERO|(conf.base0 + conf.npage0*BY2PG);
 	conf.topofmem = i*MB;
 
 	/*
-	 *  bank1 usually goes from the end of BOOTARGS to 640k
+	 *  bank1 usually goes from the end of BOOTARGS to 640k - crash space
 	 */
-	conf.base1 = (ulong)(BOOTARGS+BOOTARGSLEN);
+	conf.base1 = (ulong)(BOOTARGS + BOOTARGSLEN);
 	conf.base1 = PGROUND(conf.base1);
 	conf.base1 = PADDR(conf.base1);
-	conf.npage1 = (640*1024-conf.base1)/BY2PG;
+	conf.npage1 = (640*1024 - conf.base1)/BY2PG;
 
 	/*
 	 *  if there is a hole in memory (due to a shadow BIOS) make the
@@ -568,15 +571,11 @@ procrestore(Proc *p)
 	USED(p);
 }
 
-
 /*
  *  the following functions all are slightly different from
  *  PC to PC.
  */
 
-/*
- *  reset the i387 chip
- */
 void
 exit(int ispanic)
 {

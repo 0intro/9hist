@@ -214,6 +214,9 @@ echo(Rune r, char *buf, int n)
 		switch(r){
 		case 0x14:
 			break;	/* pass it on */
+		case 's':
+			dumpstack();
+			break;
 		case 'x':
 			xsummary();
 			ixsummary();
