@@ -34,7 +34,6 @@ struct Mouseinfo
 Mouseinfo	mouse;
 Cursorinfo	cursor;
 int		mouseshifted;
-int		mouseswap;
 Cursor		curs;
 
 void	Cursortocursor(Cursor*);
@@ -48,11 +47,16 @@ enum{
 	Qmousectl,
 };
 
-Dirtab mousedir[]={
+static Dirtab mousedir[]={
 	"cursor",	{Qcursor},	0,			0666,
 	"mouse",	{Qmouse},	0,			0666,
 	"mousectl",	{Qmousectl},	0,			0220,
 };
+
+static uchar buttonmap[8] = {
+	0, 1, 2, 3, 4, 5, 6, 7,
+};
+static int mouseswap;
 
 extern	Memimage	gscreen;
 
@@ -194,7 +198,7 @@ mouseread(Chan *c, void *va, long n, vlong off)
 
 		sprint(buf, "m%11d %11d %11d %11d",
 			mouse.xy.x, mouse.xy.y,
-			mouseswap ? map[mouse.buttons&7] : mouse.buttons,
+			buttonmap[mouse.buttons&7],
 			TK2MS(MACHP(0)->ticks));
 		mouse.lastcounter = mouse.counter;
 		unlock(&cursor);
@@ -206,12 +210,56 @@ mouseread(Chan *c, void *va, long n, vlong off)
 	return 0;
 }
 
+static void
+setbuttonmap(char* map)
+{
+	int i, x, one, two, three;
+
+	one = two = three = 0;
+	for(i = 0; i < 3; i++){
+		if(map[i] == 0)
+			error(Ebadarg);
+		if(map[i] == '1'){
+			if(one)
+				error(Ebadarg);
+			one = 1<<i;
+		}
+		else if(map[i] == '2'){
+			if(two)
+				error(Ebadarg);
+			two = 1<<i;
+		}
+		else if(map[i] == '3'){
+			if(three)
+				error(Ebadarg);
+			three = 1<<i;
+		}
+		else
+			error(Ebadarg);
+	}
+	if(map[i])
+		error(Ebadarg);
+
+	memset(buttonmap, 0, 8);
+	for(i = 0; i < 8; i++){
+		x = 0;
+		if(i & 1)
+			x |= one;
+		if(i & 2)
+			x |= two;
+		if(i & 4)
+			x |= three;
+		buttonmap[x] = i;
+	}
+}
+
 static long
 mousewrite(Chan *c, void *va, long n, vlong)
 {
 	char *p;
 	Point pt;
-	char buf[64];
+	char buf[64], *field[3];
+	int nf;
 
 	p = va;
 	switch(c->qid.path){
@@ -246,7 +294,22 @@ mousewrite(Chan *c, void *va, long n, vlong)
 			buf[n-1] = 0;
 		else
 			buf[n] = 0;
-		mousectl(buf);
+		nf = parsefields(buf, field, 3, " ");
+		if(strcmp(field[0], "swap") == 0){
+			if(mouseswap)
+				setbuttonmap("123");
+			else
+				setbuttonmap("321");
+			mouseswap ^= 1;
+		}
+		else if(strcmp(field[0], "buttonmap") == 0){
+			if(nf == 1)
+				setbuttonmap("123");
+			else
+				setbuttonmap(field[1]);
+		}
+		else
+			mousectl(field, nf);
 		return n;
 
 	case Qmouse:

@@ -397,11 +397,11 @@ kbdinit(void)
 }
 
 void
-mousectl(char *cmd)
+mousectl(char* field[], int)
 {
 	int s;
 
-	if(strncmp(cmd, "reset", 5) == 0){
+	if(strncmp(field[0], "reset", 5) == 0){
 		s = splhi();
 		mousecmd(0xF6);
 		mousecmd(0xEA);	/* streaming */
@@ -410,7 +410,7 @@ mousectl(char *cmd)
 		mousecmd(0xF4);	/* enabled */
 		splx(s);
 	}
-	else if(strcmp(cmd, "accelerated") == 0){
+	else if(strcmp(field[0], "accelerated") == 0){
 		s = splhi();
 		mousecmd(0xE7);
 		splx(s);

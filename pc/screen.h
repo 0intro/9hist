@@ -11,7 +11,6 @@ extern Point mousexy(void);
 extern void mouseaccelerate(char*);
 extern int m3mouseputc(void*, int);
 extern int mouseputc(void*, int);
-extern int mouseswap;
 
 extern Cursorinfo cursor;
 extern Cursor arrow;
@@ -106,7 +105,7 @@ enum {
 };
 
 /* mouse.c */
-extern void mousectl(char*);
+extern void mousectl(char*[], int);
 
 /* screen.c */
 extern void	flushmemscreen(Rectangle);

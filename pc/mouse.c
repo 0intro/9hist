@@ -101,12 +101,8 @@ ps2mouse(void)
 }
 
 void
-mousectl(char* arg)
+mousectl(char* field[], int n)
 {
-	int n;
-	char *field[3];
-
-	n = parsefields(arg, field, 3, " ");
 	if(strncmp(field[0], "serial", 6) == 0){
 		switch(n){
 		case 1:
@@ -154,8 +150,7 @@ mousectl(char* arg)
 			i8042auxcmd(n);
 			break;
 		}
-	} else if(strcmp(field[0], "swap") == 0)
-		mouseswap ^= 1;
+	}
 	else
 		error(Ebadctl);
 }

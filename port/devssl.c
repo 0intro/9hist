@@ -72,6 +72,8 @@ Lock	dslock;
 int	dshiwat;
 int	maxdstate = 20;
 Dstate** dstate;
+char	*encalgs;
+char	*hashalgs;
 
 enum
 {
@@ -81,12 +83,15 @@ enum
 
 enum{
 	Qtopdir		= 1,	/* top level directory */
+	Qprotodir,
 	Qclonus,
 	Qconvdir,		/* directory for a conversation */
 	Qdata,
 	Qctl,
 	Qsecretin,
-	Qsecretout
+	Qsecretout,
+	Qencalgs,
+	Qhashalgs,
 };
 
 #define TYPE(x) 	((x).path & 0xf)
@@ -117,6 +122,12 @@ sslgen(Chan *c, Dirtab *d, int nd, int s, Dir *dp)
 	q.vers = 0;
 	switch(TYPE(c->qid)) {
 	case Qtopdir:
+		if(s > 0)
+			return -1;
+		q.path = QID(0, Qprotodir)|CHDIR;
+		devdir(c, q, "ssl", 0, eve, 0555, dp);
+		return 1;
+	case Qprotodir:
 		if(s < dshiwat) {
 			sprint(name, "%d", s);
 			q.path = QID(s, Qconvdir)|CHDIR;
@@ -158,18 +169,19 @@ sslgen(Chan *c, Dirtab *d, int nd, int s, Dir *dp)
 			q.path = QID(CONV(c->qid), Qsecretout);
 			p = "secretout";
 			break;
+		case 4:
+			q.path = QID(CONV(c->qid), Qencalgs);
+			p = "encalgs";
+			break;
+		case 5:
+			q.path = QID(CONV(c->qid), Qhashalgs);
+			p = "hashalgs";
+			break;
 		}
 		devdir(c, q, p, 0, nm, 0660, dp);
 		return 1;
 	}
 	return -1;
-}
-
-static void
-sslinit(void)
-{
-	if((dstate = smalloc(sizeof(Dstate*) * maxdstate)) == 0)
-		panic("sslinit");
 }
 
 static Chan*
@@ -219,6 +231,7 @@ sslopen(Chan *c, int omode)
 	default:
 		panic("sslopen");
 	case Qtopdir:
+	case Qprotodir:
 	case Qconvdir:
 		if(omode != OREAD)
 			error(Eperm);
@@ -251,6 +264,11 @@ sslopen(Chan *c, int omode)
 		}
 		unlock(&dslock);
 		poperror();
+		break;
+	case Qencalgs:
+	case Qhashalgs:
+		if(omode != OREAD)
+			error(Eperm);
 		break;
 	}
 	c->mode = openmode(omode);
@@ -533,6 +551,12 @@ sslread(Chan *c, void *a, long n, vlong off)
 		return readstr(offset, a, n, buf);
 	case Qdata:
 		b.b = sslbread(c, n, offset);
+		break;
+	case Qencalgs:
+		return readstr(offset, a, n, encalgs);
+		break;
+	case Qhashalgs:
+		return readstr(offset, a, n, hashalgs);
 		break;
 	}
 
@@ -920,6 +944,46 @@ out:
 	qunlock(&s.s->out.q);
 	poperror();
 	return n;
+}
+
+static void
+sslinit(void)
+{
+	struct Encalg *e;
+	struct Hashalg *h;
+	int n;
+	char *cp;
+
+	if((dstate = smalloc(sizeof(Dstate*) * maxdstate)) == 0)
+		panic("sslinit");
+
+	n = 1;
+	for(e = encrypttab; e->name != nil; e++)
+		n += strlen(e->name) + 1;
+	cp = encalgs = smalloc(n);
+	for(e = encrypttab;;){
+		strcpy(cp, e->name);
+		cp += strlen(e->name);
+		e++;
+		if(e->name == nil)
+			break;
+		*cp++ = ' ';
+	}
+	*cp = 0;
+
+	n = 1;
+	for(h = hashtab; h->name != nil; h++)
+		n += strlen(h->name) + 1;
+	cp = hashalgs = smalloc(n);
+	for(h = hashtab;;){
+		strcpy(cp, h->name);
+		cp += strlen(h->name);
+		h++;
+		if(h->name == nil)
+			break;
+		*cp++ = ' ';
+	}
+	*cp = 0;
 }
 
 Dev ssldevtab = {

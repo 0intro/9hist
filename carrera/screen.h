@@ -14,5 +14,5 @@ extern int	cursoron(int);
 extern Point	mousexy(void);
 void		setcursor(Cursor*);
 
-void		mousectl(char*);
+void		mousectl(char*[], int);
 void		mousetrack(int, int, int);
