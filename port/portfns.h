@@ -59,7 +59,7 @@ void	envpgclose(Env*);
 void	envpgcopy(Env*, Env*);
 int	eqchan(Chan*, Chan*, long);
 int	eqqid(Qid, Qid);
-void	error(int);
+void	error(char []);
 void	errors(char*);
 long	execregs(ulong, ulong, ulong);
 void	exit(void);

@@ -3,7 +3,7 @@
 #include	"mem.h"
 #include	"dat.h"
 #include	"fns.h"
-#include	"errno.h"
+#include	"../port/error.h"
 
 struct{
 	Lock;
@@ -223,7 +223,7 @@ unmount(Chan *mnt, Chan *mounted)
 
 	if(m == 0) {
 		wunlock(&pg->ns);
-		errors("not mounted");
+		error(Eunmount);
 	}
 
 	if(mounted == 0) {
@@ -254,7 +254,7 @@ unmount(Chan *mnt, Chan *mounted)
 		p = &f->next;
 	}
 	wunlock(&pg->ns);
-	errors("not in union");
+	error(Eunion);
 }
 
 Chan*
@@ -600,7 +600,7 @@ namec(char *name, int amode, int omode, ulong perm)
 			strcpy(createerr, u->error);
 			nc = walk(c, elem, 1);
 			if(nc == 0)
-				errors(createerr);
+				error(createerr);
 			c = nc;
 			omode |= OTRUNC;
 			goto Open;

@@ -4,7 +4,7 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"ureg.h"
-#include	"errno.h"
+#include	"../port/error.h"
 
 #define DPRINT
 
@@ -185,7 +185,7 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 		c = s->image->c;
 		qlock(&c->rdl);
 		while(waserror()) {
-			if(strcmp(u->error, errstrtab[Eintr]) == 0)
+			if(strcmp(u->error, Eintr) == 0)
 				continue;
 			qunlock(&c->rdl);
 			kunmap(k);

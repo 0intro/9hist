@@ -3,7 +3,7 @@
 #include	"mem.h"
 #include	"dat.h"
 #include	"fns.h"
-#include	"errno.h"
+#include	"../port/error.h"
 #include 	"arp.h"
 #include 	"ipdat.h"
 
@@ -16,7 +16,7 @@ state_upcall(Ipconv *s, char oldstate, char newstate)
 	Block *bp;
 	int len;
 
-	DPRINT("state_upcall: %s -> %s err %d\n", 
+	DPRINT("state_upcall: %s -> %s err %s\n", 
 	      tcpstate[oldstate], tcpstate[newstate], s->err);
 
 	if(oldstate == newstate)
@@ -33,9 +33,9 @@ state_upcall(Ipconv *s, char oldstate, char newstate)
 			break;
 
 		if(s->err) {
-			len = strlen(errstrtab[s->err]);
+			len = strlen(s->err);
 			bp = allocb(len);
-			strcpy((char *)bp->wptr, errstrtab[s->err]);
+			strcpy((char *)bp->wptr, s->err);
 			bp->wptr += len;
 		}
 		else

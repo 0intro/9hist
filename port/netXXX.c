@@ -3,7 +3,7 @@
 #include	"mem.h"
 #include	"dat.h"
 #include	"fns.h"
-#include	"errno.h"
+#include	"../port/error.h"
 
 static void nulloput(Queue*, Block*);
 static void protooput(Queue*, Block*);

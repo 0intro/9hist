@@ -3,7 +3,7 @@
 #include	"mem.h"
 #include	"dat.h"
 #include	"fns.h"
-#include	"errno.h"
+#include	"../port/error.h"
 
 struct
 {
@@ -764,9 +764,9 @@ procctl(Proc *p)
 #include "errstr.h"
 
 void
-error(int code)
+error(char err[])
 {
-	strncpy(u->error, errstrtab[code], ERRLEN);
+	strncpy(u->error, err, ERRLEN);
 	nexterror();
 }
 

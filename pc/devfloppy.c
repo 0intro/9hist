@@ -4,7 +4,7 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"io.h"
-#include	"errno.h"
+#include	"../port/error.h"
 
 /* Intel 82077A (8272A compatible) floppy controller */
 
@@ -770,7 +770,7 @@ floppythrice(Drive *dp, int cmd, void *a, long off, long n)
 
 	for(tries = 0; ; tries++){
 		if(waserror()){
-			if(strcmp(u->error, errstrtab[Eintr])==0 || tries > 3)
+			if(strcmp(u->error, Eintr)==0 || tries > 3)
 				nexterror();
 		} else {
 			rv = floppyxfer(dp, cmd, a, off, n);

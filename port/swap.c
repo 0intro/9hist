@@ -4,7 +4,7 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"ureg.h"
-#include	"errno.h"
+#include	"../port/error.h"
 
 /* Predeclaration */
 void	pageout(Proc *p, Segment*);

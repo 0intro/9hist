@@ -608,8 +608,10 @@ passtokey(char *key, char *p, int n)
 	int c;
 
 	memset(t, ' ', sizeof t);
-	if(n > 10 || n < 5)
+	if(n < 5)
 		return 0;
+	if(n > 10)
+		n = 10;
 	strncpy((char*)t, p, n);
 	if(n >= 9){
 		c = p[8] & 0xf;

@@ -281,7 +281,7 @@ struct Ipconv
 	QLock	listenq;		/* List of people waiting incoming cons */
 	Rendez	listenr;		/* Some where to sleep while waiting */
 		
-	char	err;			/* Async protocol error */
+	char	*err;			/* Async protocol error */
 	int	backlog;		/* Maximum number of waiting connections */
 	int	curlog;			/* Number of waiting connections */
 	int 	newcon;			/* Flags that this is the start of a connection */
@@ -449,7 +449,7 @@ int	seq_within(int, int, int);
 void	update(Ipconv *, Tcp *);
 int	trim(Tcpctl *, Tcp *, Block **, ushort *);
 void	add_reseq(Tcpctl *, char, Tcp *, Block *, ushort);
-void	close_self(Ipconv *, int);
+void	close_self(Ipconv *, char []);
 int	seq_gt(int, int);
 Ipconv	*ip_conn(Ipconv *, Port, Port, Ipaddr dest, char proto);
 void	ipmkdir(Qinfo *, Dirtab *, Ipconv *);
@@ -460,7 +460,6 @@ void	start_timer(Timer *);
 void	stop_timer(Timer *);
 int	copyupb(Block **, uchar *, int);
 void	init_tcpctl(Ipconv *);
-void	close_self(Ipconv *, int);
 int	iss(void);
 int	seq_within(int, int, int);
 int	seq_lt(int, int);

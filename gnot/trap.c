@@ -5,7 +5,7 @@
 #include	"fns.h"
 #include	"ureg.h"
 #include	"io.h"
-#include	"errno.h"
+#include	"../port/error.h"
 
 void	noted(Ureg*, ulong);
 void	rfnote(Ureg*);

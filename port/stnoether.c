@@ -10,7 +10,7 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"io.h"
-#include	"errno.h"
+#include	"../port/error.h"
 #include	"../port/nonet.h"
 
 #define DPRINT if(pnonet)print

@@ -4,7 +4,7 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"ureg.h"
-#include	"errno.h"
+#include	"../port/error.h"
 
 #define	FORMAT(ur)	((((ur)->vo)>>12)&0xF)
 #define	OFFSET(ur)	(((ur)->vo)&0xFFF)

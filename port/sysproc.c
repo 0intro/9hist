@@ -4,7 +4,7 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"ureg.h"
-#include	"errno.h"
+#include	"../port/error.h"
 
 #include	<a.out.h>
 
@@ -454,7 +454,7 @@ syserrstr(ulong *arg)
 
 	validaddr(arg[0], ERRLEN, 1);
 	memmove((char*)arg[0], u->error, ERRLEN);
-	strncpy(u->error, errstrtab[0], ERRLEN);
+	strncpy(u->error, Enoerror, ERRLEN);
 	return 0;
 }
 

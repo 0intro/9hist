@@ -7,7 +7,7 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"io.h"
-#include	"errno.h"
+#include	"../port/error.h"
 #include	"arp.h"
 #include 	"ipdat.h"
 

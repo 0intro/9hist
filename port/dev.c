@@ -3,7 +3,7 @@
 #include	"mem.h"
 #include	"dat.h"
 #include	"fns.h"
-#include	"errno.h"
+#include	"../port/error.h"
 #define	DEVTAB
 #include	"devtab.h"
 
@@ -98,7 +98,7 @@ devwalk(Chan *c, char *name, Dirtab *tab, int ntab, Devgen *gen)
 	for(i=0;; i++)
 		switch((*gen)(c, tab, ntab, i, &dir)){
 		case -1:
-			strncpy(u->error, errstrtab[Enonexist], NAMELEN);
+			strncpy(u->error, Enonexist, NAMELEN);
 			return 0;
 		case 0:
 			continue;

@@ -4,7 +4,7 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"io.h"
-#include	"errno.h"
+#include	"../port/error.h"
 
 #define	DPRINT	if(0) print
 
@@ -241,13 +241,9 @@ dkalloc(char *name, int ncsc, int lines)
 		if(dp->name[0] == 0 && dp->ref == 0)
 			freep = dp;
 	}
-	if(freep == 0){
+	if(freep == 0 || lines == 0){
 		unlock(&dklock);
 		error(Enoifc);
-	}
-	if(lines == 0){
-		unlock(&dklock);
-		errors("unknown dk interface");
 	}
 
 	/*
@@ -267,7 +263,7 @@ dkalloc(char *name, int ncsc, int lines)
 	bp = allocb(n);
 	if(bp->lim - bp->base < n){
 		unlock(&dklock);
-		errors("too many lines");
+		error(Ebadarg);
 	}
 	memset(bp->base, 0, bp->lim-bp->base);
 	dp->linep = (Line **)bp->base;
@@ -1118,9 +1114,9 @@ dkcall(int type, Chan *c, char *addr, char *nuser, char *machine)
 	DPRINT("got reply %d\n", lp->state);
 	if(lp->state != Lconnected) {
 		if(lp->err >= DKERRS)
-			errors(dkerr[0]);
+			error(dkerr[0]);
 		else
-			errors(dkerr[lp->err]);
+			error(dkerr[lp->err]);
 	}
 
 	/*

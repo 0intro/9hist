@@ -4,7 +4,7 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"io.h"
-#include	"errno.h"
+#include	"../port/error.h"
 
 typedef	struct Drive		Drive;
 typedef	struct Ident		Ident;

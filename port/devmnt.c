@@ -3,7 +3,7 @@
 #include	"mem.h"
 #include	"dat.h"
 #include	"fns.h"
-#include	"errno.h"
+#include	"../port/error.h"
 #include	"devtab.h"
 #include	"fcall.h"
 
@@ -482,7 +482,7 @@ mountrpc(Mnt *m, Mntrpc *r)
 	if(r->reply.type == Rerror)
 		errors(r->reply.ename);
 	if(r->reply.type == Rflush)
-		errors(errstrtab[Eintr]);
+		error(Eintr);
 
 	if(r->reply.type != r->request.type+1) {
 		print("devmnt: mismatched reply 0x%lux T%d R%d tags req %d fls %d rep %d\n",
@@ -670,7 +670,7 @@ mntflush(Mnt *m, Mntrpc *r)
 	if(waserror()) {
 		if(!m->mux)
 			qunlock(&m->c->wrl);
-		if(strcmp(u->error, errstrtab[Eintr]) == 0)
+		if(strcmp(u->error, Eintr) == 0)
 			return 1;
 		mntqrm(m, r);
 		return 0;

@@ -4,7 +4,7 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"ureg.h"
-#include	"errno.h"
+#include	"../port/error.h"
 
 /*
  *  find out fault address and type of access.

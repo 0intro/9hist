@@ -4,7 +4,7 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"ureg.h"
-#include	"errno.h"
+#include	"../port/error.h"
 
 #define PGHFUN(x, y)	(((ulong)x^(ulong)y)%PGHSIZE)
 #define	pghash(s)	palloc.hash[PGHFUN(s->image, p->daddr)]

@@ -670,7 +670,6 @@ extern	ulong	initcode[];
 extern	Dev	devtab[];
 extern	char	devchar[];
 extern	char	*conffile;
-extern	char	*errstrtab[];
 extern	char	*statename[];
 extern	Palloc 	palloc;
 extern  Image	swapimage;

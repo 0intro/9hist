@@ -5,7 +5,7 @@
 #include	"fns.h"
 #include	"io.h"
 #include	"ureg.h"
-#include	"errno.h"
+#include	"../port/error.h"
 
 #include	<libg.h>
 #include	<gnot.h>

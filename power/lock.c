@@ -4,7 +4,7 @@
 #include "dat.h"
 #include "fns.h"
 #include "io.h"
-#include "errno.h"
+#include "../port/error.h"
 
 /*
  * The hardware semaphores are strange.  64 per page, replicated 16 times

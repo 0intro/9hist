@@ -3,7 +3,7 @@
 #include "mem.h"
 #include "dat.h"
 #include "fns.h"
-#include "errno.h"
+#include "../port/error.h"
 
 #define PCOFF -1
 

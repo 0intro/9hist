@@ -3,7 +3,7 @@
 #include	"mem.h"
 #include	"dat.h"
 #include	"fns.h"
-#include	"errno.h"
+#include	"../port/error.h"
 #include 	"arp.h"
 #include 	"ipdat.h"
 
@@ -234,12 +234,12 @@ ipwrite(Chan *c, char *a, long n, ulong offset)
 
 	m = getfields(buf, field, 5, ' ');
 	if(m < 1)
-		errors("bad ip control");
+		error(Ebadarg);
 
 	if(strcmp(field[0], "connect") == 0) {
 		if((cp->stproto == &tcpinfo && cp->tcpctl.state != Closed) ||
 		   (cp->stproto == &ilinfo && cp->ilctl.state != Ilclosed))
-				error(Edevbusy);
+				error(Enetbusy);
 
 		if(m != 2)
 			error(Ebadarg);
@@ -281,7 +281,7 @@ ipwrite(Chan *c, char *a, long n, ulong offset)
 	else if(strcmp(field[0], "announce") == 0) {
 		if((cp->stproto == &tcpinfo && cp->tcpctl.state != Closed) ||
 		   (cp->stproto == &ilinfo && cp->ilctl.state != Ilclosed))
-				error(Edevbusy);
+				error(Enetbusy);
 
 		if(m != 2)
 			error(Ebadarg);

@@ -3,7 +3,7 @@
 #include	"mem.h"
 #include	"dat.h"
 #include	"fns.h"
-#include	"errno.h"
+#include	"../port/error.h"
 #include 	"arp.h"
 #include 	"ipdat.h"
 
@@ -261,7 +261,7 @@ process:
 		case Last_ack:
 			update(s, &seg);
 			if(tcb->sndcnt == 0) {
-				close_self(s, 0);
+				close_self(s, Enoerror);
 				goto done;
 			}			
 		case Time_wait:
@@ -849,7 +849,7 @@ init_tcpctl(Ipconv *s)
 }
 
 void
-close_self(Ipconv *s, int reason)
+close_self(Ipconv *s, char reason[])
 {
 	Reseq *rp,*rp1;
 	Tcpctl *tcb = &s->tcpctl;
