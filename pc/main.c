@@ -355,6 +355,7 @@ confinit(void)
 
 	pcnt = 0;
 
+
 	/*
 	 *  parse configuration args from dos file plan9.ini
 	 */
