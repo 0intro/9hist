@@ -30,7 +30,7 @@ typedef struct
 	Target	target[NTarget];
 } Ctlr;
 
-static Ctlr *scsi[MaxScsi];
+static	Ctlr*	scsi[MaxScsi];
 
 typedef struct Link Link;
 typedef struct Link
@@ -260,16 +260,17 @@ scsicap(Target *t, char lun, ulong *size, ulong *bsize)
 	cmd[0] = 0x25;
 	cmd[1] = lun<<5;
 
-	d = malloc(8);
-	if(d == 0)
-		return -1;
-
 	nbytes = 8;
-	if((s = scsiexec(t, SCSIread, cmd, sizeof(cmd), d, &nbytes)) == STok){
+	d = scsialloc(nbytes);
+	if(d == 0)
+		error(Enomem);
+
+	s = scsiexec(t, SCSIread, cmd, sizeof(cmd), d, &nbytes);
+	if(s == STok) {
 		*size  = (d[0]<<24)|(d[1]<<16)|(d[2]<<8)|(d[3]<<0);
 		*bsize = (d[4]<<24)|(d[5]<<16)|(d[6]<<8)|(d[7]<<0);
 	}
-	free(d);
+	scsifree(d);
 	return s;
 }
 
@@ -394,26 +395,25 @@ scsireqsense(Target *t, char lun, void *data, int *nbytes, int quiet)
 int
 scsidiskinfo(Target *t, char lun, uchar *data)
 {
-	int s, nbytes, try;
-	uchar cmd[10];
+	int s, nbytes;
+	uchar cmd[10], *d;
 
-	for(try=0; try<3; try++) {
+	nbytes = 4;
 
-		nbytes = 4;
+	memset(cmd, 0, sizeof(cmd));
+	cmd[0] = 0x43;
+	cmd[1] = lun<<5;
+	cmd[7] = nbytes>>8;
+	cmd[8] = nbytes>>0;
 
-		memset(cmd, 0, sizeof(cmd));
-		cmd[0] = 0x43;
-		cmd[1] = lun<<5;
-		cmd[7] = nbytes>>8;
-		cmd[8] = nbytes>>0;
+	d = scsialloc(nbytes);
+	if(d == 0)
+		error(Enomem);
 
-		s = scsiexec(t, SCSIread, cmd, sizeof(cmd), data, &nbytes);
-		if(s == STok)
-			break;
-
-		nbytes = Nscratch;
-		scsireqsense(t, lun, t->scratch, &nbytes, 0);
-	}
+	memset(d, 0, nbytes);
+	s = scsiexec(t, SCSIread, cmd, sizeof(cmd), d, &nbytes);
+	memmove(data, d, 4);
+	scsifree(d);
 	return s;
 }
 
@@ -421,7 +421,7 @@ int
 scsitrackinfo(Target *t, char lun, int track, uchar *data)
 {
 	int s, nbytes;
-	uchar cmd[10];
+	uchar cmd[10], *d;
 
 	nbytes = 12;
 
@@ -432,6 +432,72 @@ scsitrackinfo(Target *t, char lun, int track, uchar *data)
 	cmd[7] = nbytes>>8;
 	cmd[8] = nbytes>>0;
 
-	s = scsiexec(t, SCSIread, cmd, sizeof(cmd), data, &nbytes);
+	d = scsialloc(nbytes);
+	if(d == 0)
+		error(Enomem);
+
+	memset(d, 0, nbytes);
+	s = scsiexec(t, SCSIread, cmd, sizeof(cmd), d, &nbytes);
+	memmove(data, d, 12);
+	scsifree(d);
+
 	return s;
+}
+
+int
+scsibufsize(Target *t, char lun, int size)
+{
+	int s, nbytes;
+	uchar cmd[6], *d;
+
+
+	nbytes = 12;
+
+	memset(cmd, 0, sizeof(cmd));
+	cmd[0] = 0x15;
+	cmd[1] = lun<<5;
+	cmd[4] = nbytes;
+
+	d = scsialloc(nbytes);
+	if(d == 0)
+		error(Enomem);
+
+	memset(d, 0, nbytes);
+	d[3] = 8;
+	d[9] = size>>16;
+	d[10] = size>>8;
+	d[11] = size>>0;
+
+	s = scsiexec(t, SCSIwrite, cmd, sizeof(cmd), d, &nbytes);
+	scsifree(d);
+	return s;
+}
+
+int
+scsireadcdda(Target *t, char lun, void *b, long n, long bsize, long bno)
+{
+	uchar cmd[10];
+	int s, nbytes;
+
+	memset(cmd, 0, sizeof(cmd));
+
+	cmd[0] = 0xd8;
+	cmd[1] = (lun<<5);
+	cmd[2] = bno >> 24;
+	cmd[3] = bno >> 16;
+	cmd[4] = bno >> 8;
+	cmd[5] = bno;
+	cmd[6] = n>>24;
+	cmd[7] = n>>16;
+	cmd[8] = n>>8;
+	cmd[9] = n;
+
+	nbytes = n*bsize;
+	s = scsiexec(t, SCSIread, cmd, sizeof(cmd), b, &nbytes);
+	if(s < 0) {
+		nbytes = Nscratch;
+		scsireqsense(t, lun, t->scratch, &nbytes, 0);
+		return -1;
+	}
+	return nbytes;
 }
