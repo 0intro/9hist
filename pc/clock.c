@@ -38,6 +38,8 @@ clockintr(Ureg* ureg, void*)
 {
 	Clock0link *lp;
 
+	// this needs to be here for synchronizing mp clocks
+	// see mp.c's squidboy()
 	fastticks(nil);
 	m->ticks++;
 	if(m->proc)

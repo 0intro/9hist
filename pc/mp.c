@@ -351,6 +351,8 @@ checkmtrr(void)
 static void
 squidboy(Apic* apic)
 {
+	ulong x;
+
 //	iprint("Hello Squidboy\n");
 
 	machinit();
@@ -367,8 +369,12 @@ squidboy(Apic* apic)
 	/*
 	 * Restrain your octopus! Don't let it go out on the sea!
 	 */
-	while(MACHP(0)->ticks == 0)
-		wrmsr(0x10, MACHP(0)->fastclock); /* synchronize fast counters */
+	lock(&active);
+	x = MACHP(0)->ticks;
+	while(MACHP(0)->ticks == x)
+		;
+	wrmsr(0x10, MACHP(0)->fastclock); /* synchronize fast counters */
+	unlock(&active);
 
 	lapicinit(apic);
 	lapiconline();
