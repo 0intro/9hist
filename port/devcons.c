@@ -791,8 +791,10 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 	case Qreboot:
 		if(!iseve())
 			error(Eperm);
-		if(strncmp(a, "reboot", 6) == 0)
+		if(strncmp(a, "reboot", 6) == 0){
+			print("conswrite: reboot\n");
 			exit(0);
+		}
 		break;
 
 	case Qsysstat:

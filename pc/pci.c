@@ -361,7 +361,7 @@ pcimatch(Pcidev* previous, int vid, int did)
 	else
 		previous = previous->next;
 
-	for(p = previous; p; p = p->next){
+	for(p = previous; p; p = p->next) {
 		if(p->vid != vid)
 			continue;
 		if(did == 0 || p->did == did)
