@@ -43,13 +43,15 @@ static int debug = 1;
 /* 
  * L3 setup and hold times (expressed in µs)
  */
-#define L3_DataSetupTime	1		/* 190 ns */
-#define L3_DataHoldTime		1		/*  30 ns */
-#define L3_ModeSetupTime	1		/* 190 ns */
-#define L3_ModeHoldTime		1		/* 190 ns */
-#define L3_ClockHighTime	10		/* 250 ns (min is 64*fs, 35µs @ 44.1 Khz) */
-#define L3_ClockLowTime		10		/* 250 ns (min is 64*fs, 35µs @ 44.1 Khz) */
-#define L3_HaltTime			1		/* 190 ns */
+enum {
+	L3_DataSetupTime =	1,		/* 190 ns */
+	L3_DataHoldTime =	1,		/*  30 ns */
+	L3_ModeSetupTime =	1,		/* 190 ns */
+	L3_ModeHoldTime =	1,		/* 190 ns */
+	L3_ClockHighTime =	10,		/* 250 ns (min is 64*fs, 35µs @ 44.1 Khz) */
+	L3_ClockLowTime =	10,		/* 250 ns (min is 64*fs, 35µs @ 44.1 Khz) */
+	L3_HaltTime =		1,		/* 190 ns */
+};
 
 /* UDA 1341 Registers */
 enum {
@@ -73,10 +75,13 @@ enum {
 /*
  * UDA1341 L3 address and command types
  */
-#define UDA1341_DATA0	0
-#define UDA1341_DATA1	1
-#define UDA1341_STATUS	2
-#define UDA1341_L3Addr	0x14
+
+enum {
+	UDA1341_DATA0 =	0,
+	UDA1341_DATA1,
+	UDA1341_STATUS,
+	UDA1341_L3Addr = 0x14,
+};
 
 typedef struct	AQueue	AQueue;
 typedef struct	Buf	Buf;
@@ -122,6 +127,7 @@ audiodir[] =
 struct	Buf
 {
 	uchar*	virt;
+	ulong	phys;
 	uint	nbytes;
 };
 
@@ -137,6 +143,8 @@ struct	IOstate
 	volatile Buf	*current;		/* next dma to finish */
 	volatile Buf	*next;			/* next candidate for dma */
 	volatile Buf	*filling;		/* buffer being filled */
+/* just be be cute (and to have defines like linux, a real operating system) */
+#define emptying filling
 };
 
 static	struct
@@ -172,7 +180,7 @@ static	struct
 } volumes[] =
 {
 [Vaudio]	"audio",	Fout|Fmono,		50,	50,
-[Vmic]		"mic",		Fin,			 0,	 0,
+[Vmic]		"mic",		Fin|Fmono,		 0,	 0,
 
 [Vtreb]		"treb",		Fout|Fmono,		50,	50,
 [Vbass]		"bass",		Fout|Fmono, 	50,	50,
@@ -379,8 +387,10 @@ bufinit(IOstate *b)
 	int i;
 
 	if (debug) print("#A: bufinit\n");
-	for (i = 0; i < Nbuf; i++)
+	for (i = 0; i < Nbuf; i++) {
 		b->buf[i].virt = xalloc(Bufsize);
+		b->buf[i].phys = PADDR(b->buf[i].virt);
+	}
 	b->bufinit = 1;
 };
 
@@ -399,11 +409,18 @@ setempty(IOstate *b)
 }
 
 static int
+audioqnotempty(void *x)
+{
+	IOstate *s = x;
+
+	return dmaidle(s->dma) || s->emptying != s->next;
+}
+
+static int
 audioqnotfull(void *x)
 {
 	IOstate *s = x;
 
-	/* called with lock */
 	return dmaidle(s->dma) || s->filling != s->current;
 }
 
@@ -418,8 +435,12 @@ uchar	status1	= 0x80;
 uchar	data00	= 0x00;		/* volume control, bits 0 – 5 */
 uchar	data01	= 0x40;
 uchar	data02	= 0x90;
+ushort	data0e0	= 0xe0c0;
+ushort	data0e1	= 0xe0c1;
 ushort	data0e2	= 0xf2c2;
-ushort	data0e4	= 0xf3c4;
+/* there is no data0e3 */
+ushort	data0e4	= 0xe0c4;
+ushort	data0e5	= 0xe0c5;
 ushort	data0e6	= 0xe3c6;
 
 static void
@@ -459,7 +480,6 @@ enable(void)
 	L3_write(UDA1341_L3Addr | UDA1341_STATUS, (uchar*)&status1, 1);
 	L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data02, 1);
 	L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data0e2, 2);
-	L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data0e4, 2 );
 	L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data0e6, 2 );
 
 	if (debug) {
@@ -495,6 +515,22 @@ mxvolume(void) {
 	if(audio.amode & Aread){
 		left = audio.livol;
 		right = audio.rivol;
+		if (left[Vmic]+right[Vmic] == 0) {
+			/* Turn on automatic gain control (AGC) */
+			data0e4 |= 0x1000;
+			L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data0e4, 2 );
+		} else {
+			int v;
+			/* Turn on manual gain control */
+			v = ((left[Vmic]+right[Vmic])*0x7f/200)&0x7f;
+			data0e4 &= ~0x1300;
+			data0e5 &= ~0x1f00;
+			data0e4 |= (v & 0x3)<<8;
+			data0e5 |= (v & 0x7c)<<6;
+			L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data0e4, 2 );
+			L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data0e5, 2 );
+		}
+		
 	}
 	if(audio.amode & Awrite){
 		left = audio.lovol;
@@ -576,7 +612,7 @@ sendaudio(IOstate *s) {
 	ilock(&s->ilock);
 	while (s->next != s->filling) {
 		assert(s->next->nbytes);
-		if ((n = dmastart(s->dma, s->next->virt, s->next->nbytes)) == 0) {
+		if ((n = dmastart(s->dma, s->next->phys, s->next->nbytes)) == 0) {
 			iostats.faildma++;
 			break;
 		}
@@ -599,6 +635,36 @@ sendaudio(IOstate *s) {
 }
 
 static void
+recvaudio(IOstate *s) {
+	/* interrupt routine calls this too */
+	int n;
+
+	if (debug > 1) print("#A: recvaudio\n");
+	ilock(&s->ilock);
+	while (s->next != s->emptying) {
+		assert(s->next->nbytes == 0);
+		if ((n = dmastart(s->dma, s->next->phys, Bufsize)) == 0) {
+			iostats.faildma++;
+			break;
+		}
+		iostats.totaldma++;
+		switch (n) {
+		case 1:
+			iostats.idledma++;
+			break;
+		case 3:
+			iostats.faildma++;
+			break;
+		}
+		if (debug > 1) print("#A: dmastart @%p\n", s->next);
+		s->next++;
+		if (s->next == &s->buf[Nbuf])
+			s->next = &s->buf[0];
+	}
+	iunlock(&s->ilock);
+}
+
+static void
 audiointr(void *x, ulong ndma) {
 	IOstate *s = x;
 
@@ -610,6 +676,15 @@ audiointr(void *x, ulong ndma) {
 			s->current = &s->buf[0];
 		if (ndma > 0)
 			sendaudio(s);
+	} else if (s == &audio.i) {
+		/* Only interrupt routine touches s->current */
+		if (debug > 1) iprint("#A: audio interrupt @%p\n", s->current);
+		s->current->nbytes = Bufsize;
+		s->current++;
+		if (s->current == &s->buf[Nbuf])
+			s->current = &s->buf[0];
+		if (ndma > 0)
+			recvaudio(s);
 	}
 	wakeup(&s->vous);
 }
@@ -667,10 +742,10 @@ audioopen(Chan *c, int omode)
 			/* read */
 			audio.amode |= Aread;
 			if(audio.i.bufinit == 0)
-				bufinit(&audio.i);
-			setempty(&audio.i);
+				bufinit(s);
+			setempty(s);
 			s->chan = c;
-			s->dma = dmaalloc(0, 0, 4, 2, SSPRecvDMA, Port4SSP, audiointr, (void*)&audio.o);
+			s->dma = dmaalloc(0, 0, 4, 2, SSPRecvDMA, Port4SSP, audiointr, (void*)s);
 		}
 		if (omode & 0x2) {
 			outenable();
@@ -722,15 +797,14 @@ audioclose(Chan *c)
 				nexterror();
 			}
 			if (audio.o.chan == c) {
+				/* closing the write end */
+				audio.amode &= ~Awrite;
 				s = &audio.o;
 				qlock(s);
 				if(waserror()){
 					qunlock(s);
 					nexterror();
 				}
-				/* closing the write end */
-				audio.amode &= ~Awrite;
-
 				if (s->filling->nbytes) {
 					/* send remaining partial buffer */
 					s->filling++;
@@ -749,8 +823,18 @@ audioclose(Chan *c)
 			if (audio.i.chan == c) {
 				/* closing the read end */
 				audio.amode &= ~Aread;
+				s = &audio.i;
+				qlock(s);
+				if(waserror()){
+					qunlock(s);
+					nexterror();
+				}
+				dmawait(s->dma);
 				indisable();
-				setempty(&audio.i);
+				setempty(s);
+				dmafree(s->dma);
+				qunlock(s);
+				poperror();
 			}
 			if (audio.amode == 0) {
 				/* turn audio off */
@@ -775,26 +859,62 @@ audioread(Chan *c, void *v, long n, vlong off)
 	char buf[300];
 	int j;
 	ulong offset = off;
-	char *a;
+	char *p;
+	IOstate *s;
 
 	n0 = n;
-	a = v;
+	p = v;
 	switch(c->qid.path & ~CHDIR) {
 	default:
 		error(Eperm);
 		break;
 
 	case Qdir:
-		return devdirread(c, a, n, audiodir, nelem(audiodir), devgen);
+		return devdirread(c, p, n, audiodir, nelem(audiodir), devgen);
 
 	case Qaudio:
+		if (debug > 1) print("#A: read %ld\n", n);
+		if((audio.amode & Aread) == 0)
+			error(Emode);
+		s = &audio.o;
+		qlock(s);
+		if(waserror()){
+			qunlock(s);
+			nexterror();
+		}
+		while(n > 0) {
+			/* wait if dma in progress */
+			while (!dmaidle(s->dma) && s->emptying == s->next) {
+				if (debug > 1) print("#A: sleep\n");
+				sleep(&s->vous, audioqnotempty, s);
+			}
+
+			m = Bufsize - s->emptying->nbytes;
+			if(m > n)
+				m = n;
+			memmove(p, s->emptying->virt + s->emptying->nbytes, m);
+
+			s->emptying->nbytes -= m;
+			n -= m;
+			p += m;
+			if(s->emptying->nbytes == 0) {
+				if (debug > 1) print("#A: emptied @%p\n", s->emptying);
+				s->emptying++;
+				if (s->emptying == &s->buf[Nbuf])
+					s->emptying = s->buf;
+				sendaudio(s);
+			}
+		}
+		poperror();
+		qunlock(s);
+		break;
 		break;
 
 	case Qstatus:
 		buf[0] = 0;
 		snprint(buf, sizeof(buf), "bytes %lud\ntime %lld\n",
 			audio.totcount, audio.tottime);
-		return readstr(offset, a, n, buf);
+		return readstr(offset, p, n, buf);
 
 	case Qvolume:
 		j = 0;
@@ -835,7 +955,7 @@ audioread(Chan *c, void *v, long n, vlong off)
 			}
 			j += snprint(buf+j, sizeof(buf)-j, "\n");
 		}
-		return readstr(offset, a, n, buf);
+		return readstr(offset, p, n, buf);
 	}
 	return n0-n;
 }
@@ -874,6 +994,8 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 			 */
 			if(field[i][0] >= '0' && field[i][0] <= '9') {
 				m = strtoul(field[i], 0, 10);
+				if (m < 0 || m > 100) 
+					error(Evolume);
 				if(left && out)
 					audio.lovol[v] = m;
 				if(left && in)

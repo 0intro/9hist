@@ -57,9 +57,9 @@ struct dmaregs {
 	ulong	dcsr_set;
 	ulong	dcsr_clr;
 	ulong	dcsr_rd;
-	void*	dstrtA;
+	ulong	dstrtA;
 	ulong	dxcntA;
-	void*	dstrtB;
+	ulong	dstrtB;
 	ulong	dxcntB;
 } *dmaregs;
 
@@ -116,7 +116,7 @@ dmafree(int i) {
 }
 
 ulong
-dmastart(int chan, void *addr, int count) {
+dmastart(int chan,  ulong addr, int count) {
 	ulong status, n;
 	static int last;
 
@@ -128,7 +128,7 @@ dmastart(int chan, void *addr, int count) {
 	if ((status & (1<<STRTA|1<<STRTB|1<<RUN)) == (1<<STRTA|1<<STRTB|1<<RUN)) {
 		return 0;
 	}
-	cachewbregion((ulong)addr, count);
+	cachewbregion(addr, count);
 	n = 1;
 	if ((status & (1<<BIU | 1<<STRTB)) == (1<<BIU | 1<<STRTB) ||
 		(status & (1<<BIU | 1<<STRTA)) == 0) {

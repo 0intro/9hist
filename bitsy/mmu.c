@@ -51,7 +51,7 @@ enum
 };
 
 ulong *l1table;
-
+static int mmuinited;
 
 /*
  *  We map all of memory, flash, and the zeros area with sections.
@@ -67,28 +67,27 @@ mmuinit(void)
 	l1table = xspanalloc(16*1024, 16*1024, 0);
 	memset(l1table, 0, 16*1024);
 
-	/* map low mem */
+	/* map low mem (I really don't know why I have to do this -- presotto) */
 	for(o = 0; o < 1*OneMeg; o += OneMeg)
 		l1table[(0+o)>>20] = L1Section | L1KernelRW| L1Domain0 
 			| L1Cached | L1Buffered
 			| ((0+o)&L1SectBaseMask);
 
 	/* map DRAM */
-	for(o = 0; o < 128*OneMeg; o += OneMeg)
+	for(o = 0; o < DRAMTOP-DRAMZERO; o += OneMeg)
 		l1table[(DRAMZERO+o)>>20] = L1Section | L1KernelRW| L1Domain0 
 			| L1Cached | L1Buffered
 			| ((PHYSDRAM0+o)&L1SectBaseMask);
 
 	/* map zeros area */
-	for(o = 0; o < 128 * OneMeg; o += OneMeg)
+	for(o = 0; o < NULLTOP-NULLZERO; o += OneMeg)
 		l1table[(NULLZERO+o)>>20] = L1Section | L1KernelRW | L1Domain0
 			| L1Cached | L1Buffered
 			| ((PHYSNULL0+o)&L1SectBaseMask);
 
 	/* map flash */
-	for(o = 0; o < 128 * OneMeg; o += OneMeg)
+	for(o = 0; o < FLASHTOP-FLASHZERO; o += OneMeg)
 		l1table[(FLASHZERO+o)>>20] = L1Section | L1KernelRW | L1Domain0
-			| L1Cached | L1Buffered
 			| ((PHYSFLASH0+o)&L1SectBaseMask);
 
 	/* map peripheral control module regs */
@@ -117,13 +116,15 @@ mmuinit(void)
 	mmuinvalidate();
 	mmuenable();
 	cacheflush();
+
+	mmuinited = 1;
 }
 
 /*
- *  map special space uncached, assume that the space isn't already mapped
+ *  map on request
  */
-void*
-mapspecial(ulong pa, int len)
+static void*
+_map(ulong pa, int len, ulong zero, ulong top, ulong l1prop, ulong l2prop)
 {
 	ulong *t;
 	ulong va, i, base, end, off, entry;
@@ -141,14 +142,14 @@ mapspecial(ulong pa, int len)
 	}
 	off = pa - base;
 
-	for(va = REGZERO; va < REGTOP && base <= end; va += OneMeg){
+	for(va = zero; va < top && base <= end; va += OneMeg){
 		switch(l1table[va>>20] & L1TypeMask){
 		default:
 			/* found unused entry on level 1 table */
 			if(large){
 				if(rv == nil)
 					rv = (ulong*)(va+off);
-				l1table[va>>20] = L1Section | L1KernelRW | L1Domain0 |
+				l1table[va>>20] = L1Section | l1prop | L1Domain0 |
 							(base & L1SectBaseMask);
 				base += OneMeg;
 				continue;
@@ -166,7 +167,7 @@ mapspecial(ulong pa, int len)
 			entry = l1table[va>>20];
 			i = entry & L1SectBaseMask;
 			if(pa >= i && (pa+len) <= i + OneMeg)
-			if((entry & ~L1SectBaseMask) == (L1Section | L1KernelRW | L1Domain0))
+			if((entry & ~L1SectBaseMask) == (L1Section | l1prop | L1Domain0))
 				return (void*)(va + (pa & (OneMeg-1)));
 				
 			continue;
@@ -185,7 +186,7 @@ mapspecial(ulong pa, int len)
 			if((entry & L2TypeMask) != L2SmallPage){
 				if(rv == nil)
 					rv = (ulong*)(va+i+off);
-				t[i>>PGSHIFT] = L2SmallPage | L2KernelRW | 
+				t[i>>PGSHIFT] = L2SmallPage | l2prop | 
 						(base & L2PageBaseMask);
 				base += BY2PG;
 				continue;
@@ -199,6 +200,109 @@ mapspecial(ulong pa, int len)
 	cacheflush();
 
 	return rv;
+}
+
+/* map in i/o registers */
+void*
+mapspecial(ulong pa, int len)
+{
+	return _map(pa, len, REGZERO, REGTOP, L1KernelRW, L2KernelRW);
+}
+
+/* map add on memory */
+void*
+mapmem(ulong pa, int len)
+{
+	return _map(pa, len, EMEMZERO, EMEMTOP, L1KernelRW|L1Cached|L1Buffered,
+			L2KernelRW|L2Cached|L2Buffered);
+}
+
+/* map a virtual address to a physical one */
+ulong
+mmu_paddr(ulong va)
+{
+	ulong entry;
+	ulong *t;
+
+	entry = l1table[va>>20];
+	switch(entry & L1TypeMask){
+	case L1Section:
+		return (entry & L1SectBaseMask) | (va & (OneMeg-1));
+	case L1PageTable:
+		t = (ulong*)(entry & L1PTBaseMask);
+		va &= OneMeg-1;
+		entry = t[va>>PGSHIFT];
+		switch(entry & L1TypeMask){
+		case L2SmallPage:
+			return (entry & L2PageBaseMask) | (va & (BY2PG-1));
+		}
+	}
+	return 0;
+}
+
+/* map a physical address to a virtual one */
+static ulong
+findva(ulong pa, ulong zero, ulong top)
+{
+	int i;
+	ulong entry, va;
+	ulong start, end;
+	ulong *t;
+
+	for(va = zero; va < top; va += OneMeg){
+		/* search the L1 entry */
+		entry = l1table[va>>20];
+		switch(entry & L1TypeMask){
+		default:
+			return 0;	/* no holes */
+		case L1Section:
+			start = entry & L1SectBaseMask;
+			end = start + OneMeg;
+			if(pa >= start && pa < end)
+				return va | (pa & (OneMeg-1));
+			continue;
+		case L1PageTable:
+			break;
+		}
+
+		/* search the L2 entry */
+		t = (ulong*)(l1table[va>>20] & L1PTBaseMask);
+		for(i = 0; i < OneMeg; i += BY2PG){
+			entry = t[i>>PGSHIFT];
+
+			/* found unused entry on level 2 table */
+			if((entry & L2TypeMask) != L2SmallPage)
+				break;
+
+			start = entry & L2PageBaseMask;
+			end = start + BY2PG;
+			if(pa >= start && pa < end)
+				return va | (BY2PG*i) | (pa & (BY2PG-1));
+		}
+	}
+	return 0;
+}
+ulong
+mmu_kaddr(ulong pa)
+{
+	ulong va;
+
+	/* try the easy stuff first (the first case is true most of the time) */
+	if(pa >= PHYSDRAM0 && pa <= PHYSDRAM0+(DRAMTOP-DRAMZERO))
+		return DRAMZERO+(pa-PHYSDRAM0);
+	if(pa >= PHYSFLASH0 && pa <= PHYSFLASH0+(FLASHTOP-FLASHZERO))
+		return FLASHZERO+(pa-PHYSFLASH0);
+	if(pa >= PHYSNULL0 && pa <= PHYSNULL0+(NULLTOP-NULLZERO))
+		return NULLZERO+(pa-PHYSNULL0);
+
+	if(!mmuinited)
+		return 0;	/* this shouldn't happen */
+
+	/* walk the map for the special regs and extended memory */
+	va = findva(pa, EMEMZERO, EMEMTOP);
+	if(va != 0)
+		return va;
+	return findva(pa, REGZERO, REGTOP);
 }
 
 /*

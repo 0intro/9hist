@@ -45,8 +45,10 @@
 #define	UTZERO		(UZERO+BY2PG)		/* first address in user text */
 #define	KZERO		0xC0000000		/* base of kernel address space */
 #define	KTZERO		0xC0008000		/* first address in kernel text */
-#define	REGZERO		0xA0000000		/* 256 meg for mapspecial regs */
-#define	REGTOP		0xB0000000		/* ... */
+#define	EMEMZERO	0x90000000		/* 256 meg for add on memory */
+#define	EMEMTOP		0xA0000000		/* ... */
+#define	REGZERO		0xA0000000		/* 128 meg for mapspecial regs */
+#define	REGTOP		0xA8000000		/* ... */
 #define	FLASHZERO	0xB0000000		/* 128 meg for flash */
 #define	FLASHTOP	0xB8000000		/* ... */
 #define	DRAMZERO	0xC0000000		/* 128 meg for memory */
@@ -105,6 +107,16 @@
 #define GPIOREGS	0x90040000	/* 28 general purpose IO pins */
 #define INTRREGS	0x90050000	/* interrupt registers */
 #define OSTIMERREGS	0x90000000	/* operating system timer registers */
+
+/*
+ *  PCMCIA addresses
+ */
+#define PHYSPCM0REGS	0x20000000
+#define PYHSPCM0ATTR	0x28000000
+#define PYHSPCM0MEM	0x2C000000
+#define PHYSPCM1REGS	0x30000000
+#define PYHSPCM1ATTR	0x38000000
+#define PYHSPCM1MEM	0x3C000000
 
 /*
  *  Program Status Registers

@@ -407,7 +407,7 @@ sspinit(void) {
 
 static ulong egpiosticky;
 
-static void
+void
 egpiobits(ulong bits, int on)
 {
 	if(on)
@@ -457,4 +457,12 @@ void
 flashprogpower(int on)
 {
 	egpiobits(EGPIO_prog_flash, on);
+}
+
+void
+exppackpower(int on)
+{
+	egpiobits(EGPIO_exp_full_power|EGPIO_exp_nvram_power, on);
+	if(on)
+		delay(100);
 }

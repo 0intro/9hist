@@ -9,6 +9,7 @@ typedef struct Notsave	Notsave;
 typedef struct PCArch	PCArch;
 typedef struct Pcidev	Pcidev;
 typedef struct PCMmap	PCMmap;
+typedef struct PCMslot	PCMslot;
 typedef struct Page	Page;
 typedef struct PMMU	PMMU;
 typedef struct Proc	Proc;

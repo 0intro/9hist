@@ -11,7 +11,7 @@ void	dmainit(void);
 int		dmaalloc(int, int, int, int, int, ulong, void (*)(void*, ulong), void*);
 void	dmafree(int);
 
-ulong	dmastart(int, void *, int);
+ulong	dmastart(int, ulong, int);
 
 void	dmawait(int);
 int		dmaidle(int);
