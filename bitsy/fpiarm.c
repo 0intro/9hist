@@ -15,14 +15,12 @@
 
 #include "fpi.h"
 
-#define	R13OK
 /* undef this if correct kernel r13 isn't in Ureg;
  * check calculation in fpiarm below
  */
 
 
 #define	REG(x) (*(long*)(((char*)ur)+roff[(x)]))
-#define	FPENV	(*ufp)
 #define	FR(x) (*(Internal*)ufp->regs[(x)&7])
 
 /* BUG: check fetch (not worthwhile in Inferno) */
@@ -51,7 +49,7 @@ enum {
 	REGPC = 15,
 };
 
-int	fpemudebug = 0;
+int	fpemudebug = 1;
 
 #undef OFR
 #define	OFR(X)	((ulong)&((Ureg*)0)->X)
@@ -60,11 +58,7 @@ static	int	roff[] = {
 	OFR(r0), OFR(r1), OFR(r2), OFR(r3),
 	OFR(r4), OFR(r5), OFR(r6), OFR(r7),
 	OFR(r8), OFR(r9), OFR(r10), OFR(r11),
-#ifdef R13OK
 	OFR(r12), OFR(r13), OFR(r14), OFR(pc),
-#else
-	OFR(r12), OFR(type), OFR(r14), OFR(pc),
-#endif
 };
 
 static Internal fpconst[8] = {	/* indexed by op&7 */
@@ -392,22 +386,22 @@ fpemu(ulong pc, ulong op, Ureg *ur, FPsave *ufp)
 				print("MOV[FD]W	F%d, R%d =%ld\n", rn, rd, REG(rd));
 			break;
 		case 2:	/* FPSR := Rd */
-			FPENV.status = REG(rd);
+			ufp->status = REG(rd);
 			if(fpemudebug)
 				print("MOVW	R%d, FPSR\n", rd);
 			break;
 		case 3:	/* Rd := FPSR */
-			REG(rd) = FPENV.status;
+			REG(rd) = ufp->status;
 			if(fpemudebug)
 				print("MOVW	FPSR, R%d\n", rd);
 			break;
 		case 4:	/* FPCR := Rd */
-			FPENV.control = REG(rd);
+			ufp->control = REG(rd);
 			if(fpemudebug)
 				print("MOVW	R%d, FPCR\n", rd);
 			break;
 		case 5:	/* Rd := FPCR */
-			REG(rd) = FPENV.control;
+			REG(rd) = ufp->control;
 			if(fpemudebug)
 				print("MOVW	FPCR, R%d\n", rd);
 			break;
@@ -458,25 +452,23 @@ fpiarm(Ureg *ur)
 	FPsave *ufp;
 	int n;
 
-#ifndef R13OK
-/*	ur->type = &ur->pc+1;	/* calculate kernel sp/R13 and put it here for roff[13] */
-	ur->type = (ulong)(ur + 1);
-#endif
 	if (up == nil)
 		panic("fpiarm not in a process");
 	ufp = &up->fpsave;
 		/* because all the state is in the proc structure,
 		 * it need not be saved/restored
 		 */
-	if(up->fpstate != FPACTIVE) {
-		up->fpstate = FPACTIVE;
+	if(up->fpstate != FPactive) {
+//		assert(sizeof(Internal) == sizeof(ufp->regs[0]));
+		up->fpstate = FPactive;
 		ufp->control = 0;
 		ufp->status = (0x01<<28)|(1<<12);	/* software emulation, alternative C flag */
 		for(n = 0; n < 8; n++)
 			FR(n) = fpconst[0];
 	}
-	for(n=0;;n++){
-		op = getulong(ur->pc);
+	for(n=0; ;n++){
+		validaddr(ur->pc, 4, 0);
+		op = *(ulong*)(ur->pc);
 		o = (op>>24) & 0xF;
 		if(((op>>8) & 0xF) != 1 || o != 0xE && (o&~1) != 0xC)
 			break;

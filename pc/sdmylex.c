@@ -630,16 +630,8 @@ mylex32rio(SDreq* r)
 	 */
 	while(waserror())
 		;
-	tsleep(ccb, done32, ccb, 30*1000);
+	sleep(ccb, done32, ccb);
 	poperror();
-
-	if(!done32(ccb)){
-		print("%s: %d/%d: sd32rio timeout\n",
-			ctlr->sdev->name, target, r->lun);
-		ccbfree(ctlr, (Ccb*)ccb);
-
-		return SDtimeout;
-	}
 
 	/*
 	 * Save the status and patch up the number of

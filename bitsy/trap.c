@@ -265,52 +265,23 @@ trap(Ureg *ureg)
 		}
 		break;
 	case PsrMund:	/* undefined instruction */
-#ifdef NOTDEF
-		/* Inferno break handling, something for us? [SJM] */
-		if(*(ulong*)ureg->pc == BREAK && breakhandler) {
-			int s;
-			Proc *p;
-
-			p = up;
-			/* if (!waslo(ureg->psr) || (ureg->pc >= (ulong)splhi && ureg->pc < (ulong)islo))
-				p = 0; */
-			s = breakhandler(ureg, p);
-			if(s == BrkSched) {
-				c.callsched = 1;
-				sched();
-			} else if(s == BrkNoSched) {
-				c.callsched = 0;
-				if(up)
-					up->dbgreg = 0;
-				return;
-			}
-			break;
-		}
-		/* End of Inferno break handling [SJM] */
-#endif
 		/* start of Inferno code [SJM] */
 		spllo();
 		if (waserror()) {
 			warnregs(ureg, "floating point error");
 			panic("floating point error");
 		}
-		if (!fpiarm(ureg)) {
-			warnregs(ureg, "illegal instruction");
-			panic("illegal instruction");
-		}
-		poperror();
-		/* end of Inferno code [SJM] */
-#ifdef NOTDEF
-		/* We'll see what we do with this later [SJM] */
-		if(user){
-			sprint(buf, "undefined instruction: pc 0x%lux\n",
-					ureg->pc);
-			postnote(up, 1, buf, NDebug);
+		if (user) {
+			if (!fpiarm(ureg)) {
+				sprint(buf, "undefined instruction: pc 0x%lux\n", ureg->pc);
+				postnote(up, 1, buf, NDebug);
+			}
 		}else{
 			warnregs(ureg, "undefined instruction");
 			panic("undefined instruction");
 		}
-#endif
+		poperror();
+		/* end of Inferno code [SJM] */
 		break;
 	}
 

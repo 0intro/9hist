@@ -40,9 +40,9 @@ struct Label
  */
 enum
 {
-	FPINIT,
-	FPACTIVE,
-	FPINACTIVE,
+	FPinit,
+	FPactive,
+	FPinactive,
 };
 struct	FPsave
 {

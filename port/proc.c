@@ -327,7 +327,7 @@ newproc(void)
 	p->fgrp = 0;
 	p->rgrp = 0;
 	p->pdbg = 0;
-	p->fpstate = FPINIT;
+	p->fpstate = FPinit;
 	p->kp = 0;
 	p->procctl = 0;
 	p->notepending = 0;
