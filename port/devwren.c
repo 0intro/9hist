@@ -262,7 +262,8 @@ wrenpart(int dev)
 
 	scsiready(dev);
 	scsisense(dev, buf);
-	scsicap(dev, buf);
+	if (scsicap(dev, buf))
+		error(Eio);
 	dp = &wren[dev];
 	dp->drive = dev;
 

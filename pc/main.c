@@ -276,7 +276,7 @@ matherror(Ureg *ur)
 			msg = mathmsg[i];
 			break;
 		}
-	sprint(note, "math: %s, status 0x%ux, pc 0x%lux", msg, status, ur->pc);
+	sprint(note, "sys: fp: %s, status 0x%ux, pc 0x%lux", msg, status, ur->pc);
 	postnote(u->p, 1, note, NDebug);
 }
 

@@ -78,6 +78,7 @@ static int	ownid = 0x08|7; /* enable advanced features */
 
 int	scsiexec(Scsi*, int);
 int	scsiintr(void);
+void	scsireset(void);
 
 static int
 scsigen1(Chan *c, long qid, Dir *dp)

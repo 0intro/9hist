@@ -779,7 +779,7 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 			u->p->user[n] = '\0';
 		}else
 			error(Eperm);
-		if(!conf.cntrlp && strcmp(u->p->user, "none") != 0)
+		if(!conf.cntrlp && strcmp(eve, "bootes") == 0)
 			memmove(eve, u->p->user, NAMELEN);
 		break;
 

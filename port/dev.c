@@ -9,6 +9,8 @@
 
 #include	"fcall.h"
 
+extern ulong	kerndate;
+
 int
 devno(int c, int user)
 {
@@ -35,7 +37,7 @@ devdir(Chan *c, Qid qid, char *n, long length, char *user, long perm, Dir *db)
 	else
 		db->mode = perm;
 	db->atime = seconds();
-	db->mtime = db->atime;
+	db->mtime = kerndate;
 	db->hlength = 0;
 	db->length = length;
 	strncpy(db->uid, user, NAMELEN);
