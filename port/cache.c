@@ -58,6 +58,7 @@ struct Ecache
 static Image fscache;
 static Cache cache;
 static Ecache ecache;
+static int maxcache = MAXCACHE;
 
 static void
 extentfree(Extent* e)
@@ -108,6 +109,9 @@ cinit(void)
 
 	cache.head = xalloc(sizeof(Mntcache)*NFILE);
 	m = cache.head;
+
+	if(conf.npage*BY2PG > 200*MB)
+		maxcache = 10*MAXCACHE;
 
 	for(i = 0; i < NFILE-1; i++) {
 		m->next = m+1;
@@ -290,7 +294,7 @@ cread(Chan *c, uchar *buf, int len, vlong off)
 	int o, l, total;
 	ulong offset;
 
-	if(off+len > MAXCACHE)
+	if(off+len > maxcache)
 		return 0;
 
 	m = c->mcp;
@@ -453,7 +457,7 @@ cupdate(Chan *c, uchar *buf, int len, vlong off)
 	int o, ee, eblock;
 	ulong offset;
 
-	if(off > MAXCACHE || len == 0)
+	if(off > maxcache || len == 0)
 		return;
 
 	m = c->mcp;
@@ -563,7 +567,7 @@ cwrite(Chan* c, uchar *buf, int len, vlong off)
 	Extent *p, *f, *e, *tail;
 	ulong offset;
 
-	if(off > MAXCACHE || len == 0)
+	if(off > maxcache || len == 0)
 		return;
 
 	m = c->mcp;
