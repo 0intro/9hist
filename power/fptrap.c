@@ -165,7 +165,7 @@ fpunimp(ulong iw)
 	default:	/* probably a compare */
 		return 0;
 	}
-	if(ed <= -(maxe-4)){	/* guess: underflow */
+	if(ed <= -(maxe-5)){	/* guess: underflow */
 		zeroreg(&u->fpsave, fmt, fd, sd);
 		/* Set underflow exception and sticky */
 		u->fpsave.fpstatus |= (1<<3)|(1<<13);
