@@ -506,6 +506,7 @@ void
 pexit(char *exitstr, int freemem)
 {
 	int n;
+	long utime, stime;
 	Proc *p, *c;
 	Segment **s, **es, *os;
 	Waitq *wq, *f, *next;
@@ -527,8 +528,10 @@ pexit(char *exitstr, int freemem)
 	if(c->kp == 0 && (p = c->parent)) {
 		wq = newwaitq();
 		wq->w.pid = c->pid;
-		wq->w.time[TUser] = TK2MS(c->time[TUser]);
-		wq->w.time[TSys] = TK2MS(c->time[TSys]);
+		utime = c->time[TUser] + c->time[TCUser];
+		stime = c->time[TSys] + c->time[TCSys];
+		wq->w.time[TUser] = TK2MS(utime);
+		wq->w.time[TSys] = TK2MS(stime);
 		wq->w.time[TReal] = TK2MS(MACHP(0)->ticks - c->time[TReal]);
 		if(exitstr && exitstr[0]){
 			n = sprint(wq->w.msg, "%s %d:", c->text, c->pid);
@@ -540,8 +543,8 @@ pexit(char *exitstr, int freemem)
 		/* My parent still alive */
 		if(p->pid == c->parentpid && p->state != Broken && p->nwait < 128) {	
 			p->nchild--;
-			p->time[TCUser] += c->time[TUser] + c->time[TCUser];
-			p->time[TCSys] += c->time[TSys] + c->time[TCSys];
+			p->time[TCUser] += utime;
+			p->time[TCSys] += stime;
 	
 			wq->next = p->waitq;
 			p->waitq = wq;

@@ -9,7 +9,7 @@
 /* Centronix parallel (printer) port */
 
 /* base addresses */
-int lptbase[] = {
+static int lptbase[] = {
 	0x3bc,	/* lpt1 */
 	0x378,	/* lpt2 (sic) */
 	0x278	/* lpt3 (sic) */

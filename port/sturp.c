@@ -169,7 +169,10 @@ urpopen(Queue *q, Stream *s)
 		WR(q)->ptr = 0;
 		exhausted("urp structures");
 	}
-
+/*
+	q->flag |= QDEBUG;
+	q->other->flag |= QDEBUG;
+*/
 	q->ptr = q->other->ptr = up;
 	q->rp = &urpkr;
 	up->rq = q;
@@ -298,16 +301,19 @@ urpciput(Queue *q, Block *bp)
 	case 0:
 		break;
 	case ENQ:
+		DPRINT("rENQ(c)\n");
 		urpstat.enqsr++;
 		sendctl(up, up->lastecho);
 		sendctl(up, ACK+up->iseq);
 		break;
 
 	case CHECK:
+		DPRINT("rCHECK(c)\n");
 		sendctl(up, ACK+up->iseq);
 		break;
 
 	case AINIT:
+		DPRINT("rAINIT(c)\n");
 		up->state &= ~INITING;
 		flushinput(up);
 		wakeup(&urpkr);
@@ -315,6 +321,7 @@ urpciput(Queue *q, Block *bp)
 
 	case INIT0:
 	case INIT1:
+		DPRINT("rINIT%d(c)\n", ctl-INIT0);
 		sendctl(up, AINIT);
 		if(ctl == INIT1)
 			q->put = urpiput;
@@ -322,6 +329,7 @@ urpciput(Queue *q, Block *bp)
 		break;
 
 	case INITREQ:
+		DPRINT("rINITREQ(c)\n");
 		initoutput(up, 0);
 		break;
 
@@ -330,6 +338,7 @@ urpciput(Queue *q, Block *bp)
 
 	case REJ+0: case REJ+1: case REJ+2: case REJ+3:
 	case REJ+4: case REJ+5: case REJ+6: case REJ+7:
+		DPRINT("rREJ%d(c)\n", ctl-REJ);
 		rcvack(up, ctl);
 		break;
 	
@@ -337,11 +346,13 @@ urpciput(Queue *q, Block *bp)
 	case ACK+4: case ACK+5: case ACK+6: case ACK+7:
 	case ECHO+0: case ECHO+1: case ECHO+2: case ECHO+3:
 	case ECHO+4: case ECHO+5: case ECHO+6: case ECHO+7:
+		DPRINT("%s%d(c)\n", (ctl&ECHO)?"rECHO":"rACK", ctl&7);
 		rcvack(up, ctl);
 		break;
 
 	case SEQ+0: case SEQ+1: case SEQ+2: case SEQ+3:
 	case SEQ+4: case SEQ+5: case SEQ+6: case SEQ+7:
+		DPRINT("rSEQ%d(c)\n", ctl-SEQ);
 		qlock(&up->ack);
 		i = ctl & Nmask;
 		if(!QFULL(q->next))
@@ -427,10 +438,12 @@ urpiput(Queue *q, Block *bp)
 		break;
 
 	case CHECK:
+		DPRINT("rCHECK\n");
 		sendctl(up, ACK+up->iseq);
 		break;
 
 	case AINIT:
+		DPRINT("rAINIT\n");
 		up->state &= ~INITING;
 		flushinput(up);
 		wakeup(&urpkr);
@@ -438,6 +451,7 @@ urpiput(Queue *q, Block *bp)
 
 	case INIT0:
 	case INIT1:
+		DPRINT("rINIT%d\n", ctl-INIT0);
 		sendctl(up, AINIT);
 		if(ctl == INIT0)
 			q->put = urpciput;
@@ -445,6 +459,7 @@ urpiput(Queue *q, Block *bp)
 		break;
 
 	case INITREQ:
+		DPRINT("rINITREQ\n");
 		initoutput(up, 0);
 		break;
 
@@ -454,14 +469,14 @@ urpiput(Queue *q, Block *bp)
 	case BOT:
 	case BOTM:
 	case BOTS:
-		DPRINT("rBOT%d...", ctl-BOT);
+		DPRINT("rBOT%c...", " MS"[ctl-BOT]);
 		up->trx = 1;
 		up->trbuf[0] = ctl;
 		break;
 
 	case REJ+0: case REJ+1: case REJ+2: case REJ+3:
 	case REJ+4: case REJ+5: case REJ+6: case REJ+7:
-		DPRINT("rREJ\n");
+		DPRINT("rREJ%d\n", ctl-REJ);
 		rcvack(up, ctl);
 		break;
 	
@@ -469,7 +484,7 @@ urpiput(Queue *q, Block *bp)
 	case ACK+4: case ACK+5: case ACK+6: case ACK+7:
 	case ECHO+0: case ECHO+1: case ECHO+2: case ECHO+3:
 	case ECHO+4: case ECHO+5: case ECHO+6: case ECHO+7:
-		DPRINT("rACK %ux\n", ctl);
+		DPRINT("%s%d\n", (ctl&ECHO)?"rECHO":"rACK", ctl&7);
 		rcvack(up, ctl);
 		break;
 
@@ -481,6 +496,7 @@ urpiput(Queue *q, Block *bp)
 	 */
 	case SEQ+0: case SEQ+1: case SEQ+2: case SEQ+3:
 	case SEQ+4: case SEQ+5: case SEQ+6: case SEQ+7:
+		DPRINT("rSEQ%d...", ctl-SEQ);
 		i = ctl & Nmask;
 		if(up->trx != 3){
 			urpstat.rjtrs++;
@@ -499,7 +515,7 @@ urpiput(Queue *q, Block *bp)
 			flushinput(up);
 			break;
 		}
-		DPRINT("rSEQ%d accept %d\n", i, q->len);
+		DPRINT("accept %d\n", q->len);
 
 		/*
 		 *  send data upstream
@@ -622,6 +638,8 @@ output(Urp *up)
 	now = NOW;
 	if(up->state & INITING){
 		if(now > up->timer){
+			q = up->wq;
+			DPRINT("INITING timer (%d, %d): ", now, up->timer);
 			sendctl(up, INIT1);
 			up->timer = now + MSrexmit;
 		}
@@ -667,6 +685,7 @@ output(Urp *up)
 		 *  if a retransmit time has elapsed since a transmit,
 		 *  send an ENQ
 		 */
+		DPRINT("OUTPUT timer (%d, %d): ", NOW, up->timer);
 		up->timer = NOW + MSrexmit;
 		up->state &= ~REJECTING;
 		urpstat.enqsx++;
@@ -715,8 +734,8 @@ sendctl(Urp *up, int ctl)
 	bp->rptr = bp->lim-1;
 	*bp->rptr = ctl;
 	bp->flags |= S_DELIM;
-	PUTNEXT(q, bp);
 	DPRINT("sCTL %ulx\n", ctl);
+	PUTNEXT(q, bp);
 }
 
 /*
@@ -763,6 +782,7 @@ sendack(Urp *up)
 	/*
 	 *  send the ack
 	 */
+	{ Queue *q = up->wq; DPRINT("sendack: "); }
 	sendctl(up, up->lastecho = ECHO|up->iseq);
 	qunlock(&up->ack);
 }
@@ -810,7 +830,7 @@ sendblock(Urp *up, int bn)
 	m->rptr[2] = n<<8;
 	m->flags |= S_DELIM;
 	PUTNEXT(q, m);
-	DPRINT("sb %d\n", bn);
+	DPRINT("sb %d (%d)\n", bn, up->timer);
 }
 
 /*
@@ -930,6 +950,7 @@ initoutput(Urp *up, int window)
 	 */
 	up->state |= INITING;
 	up->timer = NOW + MSrexmit;
+	{ Queue *q = up->wq; DPRINT("initoutput (%d): ", up->timer); }
 	sendctl(up, INIT1);
 }
 
@@ -1021,6 +1042,6 @@ urpfillstats(Chan *c, char *buf, int len)
 	USED(c);
 	sprint(b, "in: %d\nout: %d\nrexmit: %d\nrjtrs: %d\nrjpks: %d\nrjseq: %d\nenqsx: %d\nenqsr: %d\n",
 		urpstat.input, urpstat.output, urpstat.rexmit, urpstat.rjtrs,
-		urpstat.rjpks, urpstat.rjseq, urpstat.enqsr, urpstat.enqsr);
+		urpstat.rjpks, urpstat.rjseq, urpstat.enqsx, urpstat.enqsr);
 	strncpy(buf, b, len);
 }
