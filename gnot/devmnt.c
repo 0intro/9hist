@@ -291,6 +291,7 @@ mntattach(char *spec)
 	mh = mhalloc();
 	if(waserror()){
 		mhfree(mh);
+		mqfree(q);
 		close(c);
 		nexterror();
 	}

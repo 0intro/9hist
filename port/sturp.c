@@ -1013,6 +1013,7 @@ urptimer(Alarm *a)
 	Urp *last;
 	Queue *q;
 
+	cancel(a);
 	urptiming = 0;
 	for(up = urp, last = &urp[conf.nurp]; up < last; up++){
 		if(up->state==0)

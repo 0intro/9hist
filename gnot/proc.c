@@ -575,7 +575,6 @@ kproc(char *name, void (*func)(void *), void *arg)
 	int lastvar;	/* used to compute stack address */
 	User *up;
 	KMap *k;
-	static Pgrp *kpgrp;
 
 	/*
 	 * Kernel stack
@@ -613,16 +612,12 @@ kproc(char *name, void (*func)(void *), void *arg)
 		p->mach = m;
 		m->proc = p;
 		spllo();
+		strncpy(p->text, name, sizeof p->text);
 		(*func)(arg);
 		pexit(0, 1);
 	}
-	if(kpgrp == 0){
-		kpgrp = newpgrp();
-		strcpy(kpgrp->user, "bootes");
-	}
-	p->pgrp = kpgrp;
-	incref(kpgrp);
-	sprint(p->text, "%s.%.6s", name, u->p->pgrp->user);
+	p->pgrp = u->p->pgrp;
+	incref(p->pgrp);
 	p->nchild = 0;
 	p->parent = 0;
 	memset(p->time, 0, sizeof(p->time));

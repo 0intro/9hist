@@ -50,7 +50,6 @@ enum{
 	Enobitmap,	/* out of bitmap descriptors */
 	Enobitstore,	/* out of bitmap storage */
 	Ebadbitmap,	/* unallocated bitmap */
-	Ebadfont,	/* unallocated font */
 	Eshortmsg,	/* short message */
 	Ebadmsg,	/* format error or mismatch in message */
 	Ebadcnt,	/* read count greater than requested */

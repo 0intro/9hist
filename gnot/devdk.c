@@ -456,7 +456,6 @@ dkmuxconfig(Dk *dp, Block *bp)
 	 */
 	dp->restart = 1;
 	n = getfields((char *)bp->rptr, fields, 4, ' ');
-	strcpy(dp->name, "dk");
 	switch(n){
 	case 4:
 		strncpy(dp->name, fields[3], sizeof(dp->name));
@@ -495,7 +494,7 @@ dkmuxconfig(Dk *dp, Block *bp)
 	/*
 	 *  start a process to deal with it
 	 */
-	sprint(buf, "csckproc%d", dp->ncsc);
+	sprint(buf, "**csckproc%d**", dp->ncsc);
 	kproc(buf, dkcsckproc, dp);
 	poperror();
 
@@ -504,7 +503,7 @@ dkmuxconfig(Dk *dp, Block *bp)
 	 */
 	if(dktimeron == 0){
 		dktimeron = 1;
-		kproc("dktimer", dktimer, 0);
+		kproc("**dktimer**", dktimer, 0);
 	}
 }
 
@@ -593,10 +592,8 @@ dkattach(char *spec)
 	Dk *dp;
 
 	/*
-	 *  find a multiplexor with the same name (default dk)
+	 *  find a multiplexor with the same name
 	 */
-	if(*spec == 0)
-		spec = "dk";
 	for(dp = dk; dp < &dk[Ndk]; dp++){
 		qlock(dp);
 		if(dp->wq && strcmp(spec, dp->name)==0) {
