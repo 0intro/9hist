@@ -129,6 +129,8 @@ vgaread(Chan* c, void* a, long n, vlong off)
 	return 0;
 }
 
+static char Ebusy[] = "vga already configured";
+
 static void
 vgactl(char* a)
 {
@@ -195,6 +197,9 @@ vgactl(char* a)
 	else if(strcmp(field[0], "size") == 0){
 		if(n < 3)
 			error(Ebadarg);
+		if(drawhasclients())
+			error(Ebusy);
+
 		x = strtoul(field[1], &p, 0);
 		if(x == 0 || x > 2048)
 			error(Ebadarg);
@@ -264,8 +269,17 @@ vgactl(char* a)
 		return;
 	}
 	else if(strcmp(field[0], "drawinit") == 0){
+		/*
+		 * This is a separate message, but first we need to make
+		 * aux/vga send it; once everyone has the new vga, we
+		 * can take the drawinit stuff out of hwgc.
+		 */
+
+		/*
 		if(scr && scr->dev && scr->dev->drawinit)
 			scr->dev->drawinit(scr);
+		*/
+
 		return;
 	}
 	else if(strcmp(field[0], "linear") == 0){

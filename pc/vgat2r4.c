@@ -45,8 +45,8 @@ enum {						/* index registers */
 
 	CursorArray	= 0x100,
 
-	CursorMode32x32	= 0x03,
-	CursorMode64x64	= 0x07,
+	CursorMode32x32	= 0x23,
+	CursorMode64x64	= 0x27,
 	CursorMode	= CursorMode64x64,
 };
 
@@ -185,9 +185,9 @@ t2r4curdisable(VGAscr* scr)
 static void
 t2r4curload(VGAscr* scr, Cursor* curs)
 {
-	int x, y;
-	ulong *mmio;
-	uchar *data, p, p0, p1;
+	uchar *data;
+	int x, y, zoom;
+	ulong clr, *mmio, pixels, set;
 
 	mmio = scr->mmio;
 	if(mmio == 0)
@@ -219,13 +219,32 @@ t2r4curload(VGAscr* scr, Cursor* curs)
 	 *	 1  0	cursor colour 1
 	 *	 1  1	cursor colour 2
 	 * Put the cursor into the top-left of the array.
+	 *
+	 * Although this looks a lot like the IBM RGB524 cursor, the
+	 * scanlines appear to be twice as long as they should be and
+	 * some of the other features are missing.
 	 */
+	if(mmio[Zoom] & 0x0F)
+		zoom = 32;
+	else
+		zoom = 16;
 	data = (uchar*)&mmio[Data];
-	for(y = 0; y < 32; y++){
-		*data = 0xFF;
-		*data = 0xAA;
-		*data = 0xFF;
-		*data = 0xAA;
+	for(y = 0; y < zoom; y++){
+		clr = (curs->clr[2*y]<<8)|curs->clr[y*2 + 1];
+		set = (curs->set[2*y]<<8)|curs->set[y*2 + 1];
+		pixels = 0;
+		for(x = 0; x < 16; x++){
+			if(set & (1<<x))
+				pixels |= 0x03<<(x*2);
+			else if(clr & (1<<x))
+				pixels |= 0x02<<(x*2);
+		}
+
+		*data = pixels>>24;
+		*data = pixels>>16;
+		*data = pixels>>8;
+		*data = pixels;
+
 		*data = 0x00;
 		*data = 0x00;
 		*data = 0x00;

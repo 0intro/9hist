@@ -723,6 +723,12 @@ drawnewclient(void)
 	return cl;
 }
 
+int
+drawhasclients(void)
+{
+	return sdraw.nclient != 0;
+}
+
 Client*
 drawclientofpath(ulong path)
 {

@@ -131,7 +131,10 @@ extern void	setcursor(Cursor*);
 extern int	screensize(int, int, int, ulong);
 extern int	screenaperture(int, int);
 extern Rectangle physgscreenr;	/* actual monitor size */
+
+/* devdraw.c */
 extern void	deletescreenimage(void);
+extern int		drawhasclients(void);
 
 /* vga.c */
 extern void	vgascreenwin(VGAscr*);
