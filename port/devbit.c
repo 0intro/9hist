@@ -173,6 +173,43 @@ Dirtab bitdir[]={
 #define	HDR	3
 
 void
+bitdebug(void)
+{
+	int i;
+	long l;
+	Arena *a;
+
+	l = 0;
+	for(i=0; i<bit.narena; i++){
+		a = &bit.arena[i];
+		if(a->words){
+			l += a->nwords;
+			print("%d: %ld used; %ld total\n", i,
+				(a->wfree-a->words)*sizeof(ulong),
+				a->nwords*sizeof(ulong));
+		}
+	}
+	print("arena: %ld words\n", l*sizeof(ulong));
+	l = 0;
+	for(i=0; i<bit.nmap; i++)
+		if(bit.map[i])
+			l++;
+	print("%d bitmaps ", l);
+	l = 0;
+	for(i=0; i<bit.nfont; i++)
+		if(bit.font[i])
+			l++;
+	print("%d fonts ", l);
+	l = 0;
+	for(i=0; i<bit.nsubfont; i++)
+		if(bit.subfont[i]){
+			print("%d: %lux %lux ", i, bit.subfont[i]->qid[0], bit.subfont[i]->qid[1]);
+			l++;
+		}
+	print("%d subfonts\n", l);
+}
+
+void
 bitreset(void)
 {
 	int i;
@@ -891,8 +928,10 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 				if(j == i)
 					continue;
 				tf = bit.subfont[j];
-				if(tf && tf->qid[0]==f->qid[0] && tf->qid[1]==f->qid[1])
+				if(tf && tf->qid[0]==f->qid[0] && tf->qid[1]==f->qid[1]){
 					f->qid[0] = ~0;	/* uncached */
+					break;
+				}
 			}
 			f->ref = 1;
 			v = BGSHORT(p+5);
@@ -1173,7 +1212,8 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 
 		case 'v':
 			/*
-			 * clear font cache and bitmap
+			 * clear font cache and bitmap.
+			 * if error, font is unchanged.
 			 *	'v'		1
 			 *	id		2
 			 *	ncache		2
@@ -1185,6 +1225,14 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			t = BGSHORT(p+3);
 			if(t<0 || v<0 || v>=bit.nfont || (ff=bit.font[v])==0)
 				error(Ebadblt);
+			x = BGSHORT(p+5);
+			i = bitalloc(Rect(0, 0, t*x, ff->height), ff->ldepth);
+			/* now committed */
+			if(ff->b)
+				bitfree(ff->b);
+			ff->b = bit.map[i];
+			bit.map[i] = 0;	/* disconnect it from GBitmap space */
+			ff->width = x;
 			/*
 			 * memset not necessary but helps avoid
 			 * confusion if the cache is mishandled by the
@@ -1197,13 +1245,6 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 				ff->cache = smalloc(t*sizeof(ff->cache[0]));
 				ff->ncache = t;
 			}
-			if(ff->b)
-				bitfree(ff->b);
-			ff->width = BGSHORT(p+5);
-			ff->b = 0;
-			i = bitalloc(Rect(0, 0, t*ff->width, ff->height), ff->ldepth);
-			ff->b = bit.map[i];
-			bit.map[i] = 0;	/* disconnect it from GBitmap space */
 			p += 7;
 			m -= 7;
 			break;

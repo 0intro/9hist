@@ -231,6 +231,9 @@ echo(Rune r, char *buf, int n)
 		case 'x':
 			xsummary();
 			break;
+		case 'b':
+			bitdebug();
+			break;
 		case 'd':
 			consdebug();
 			return;

@@ -2,6 +2,7 @@ void		alarmkproc(void*);
 Block*		allocb(ulong);
 int		anyready(void);
 Image*		attachimage(int, Chan*, ulong, ulong);
+void		bitdebug(void);
 int		blen(Block *);
 int		bround(Block *, int);
 void		buzz(int, int);

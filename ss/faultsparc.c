@@ -6,13 +6,20 @@
 #include	"ureg.h"
 #include	"../port/error.h"
 
+enum
+{
+	SE_WRITE	= 0x8000,
+	SE_INV		= 0x0080,
+	SE_PROT		= 0x0040,
+};
+
 void
 faultsparc(Ureg *ur)
 {
 	ulong addr, badvaddr;
 	char buf[ERRLEN];
 	int user, read;
-	ulong tbr;
+	ulong tbr, ser;
 
 	tbr = (ur->tbr&0xFFF)>>4;
 	addr = ur->pc;			/* assume instr. exception */
@@ -22,7 +29,8 @@ faultsparc(Ureg *ur)
 		 * According to the book, this isn't good enough.  We'll see.
 		 */
 		addr = getw2(SEVAR);
-		if(getw2(SER) & 0x8000)
+		ser = getw2(SER);
+		if(ser&(SE_WRITE|SE_PROT))
 			read = 0;
 	}
 	spllo();
