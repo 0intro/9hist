@@ -30,7 +30,6 @@ typedef struct
 } Schedq;
 
 int	nrdy;
-int	lastreadied;
 Schedq	runq[Nrq];
 
 char *statename[] =
@@ -122,11 +121,16 @@ anyready(void)
 int
 anyhigher(void)
 {
-	int x;
+	Schedq *rq;
 
-	x = lastreadied;
-	lastreadied = 0;
-	return nrdy && x >= up->priority;
+	if(nrdy == 0)
+		return 0;
+
+	for(rq = &runq[Nrq-1]; rq > &runq[up->priority]; rq--)
+		if(rq->head != nil)
+			return 1;
+	
+	return 0;
 }
 
 enum
@@ -177,8 +181,6 @@ ready(Proc *p)
 	nrdy++;
 	p->readytime = m->ticks;
 	p->state = Ready;
-	if(p->priority > lastreadied)
-		lastreadied = p->priority;
 	unlock(runq);
 	splx(s);
 }
