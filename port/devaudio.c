@@ -430,7 +430,7 @@ waitaudio(void)
 	pokeaudio();
 	tsleep(&audio.vous, anybuf, 0, 10*1000);
 	if(audio.intr == 0) {
-		print("audio timeout\n");	/**/
+/*		print("audio timeout\n");	/**/
 		audio.active = 0;
 		pokeaudio();
 	}
