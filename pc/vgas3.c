@@ -17,6 +17,7 @@
 static Lock s3pagelock;
 static ulong storage;
 static Point hotpoint;
+static Cursor loaded;
 
 extern Bitmap gscreen;
 
@@ -116,15 +117,28 @@ load(Cursor *c)
 	int x, y;
 
 	/*
-	 * Disable the cursor and lock the display
-	 * memory so we can update the cursor bitmap.
+	 * Lock the display memory so we can update the
+	 * cursor bitmap if necessary.
+	 * If it's the same as the last cursor we loaded,
+	 * just make sure it's enabled.
+	 */
+	lock(&s3pagelock);
+	if(memcmp(c, &loaded, sizeof(Cursor)) == 0){
+		vsyncactive();
+		vgaxo(Crtx, 0x45, 0x01);
+		unlock(&s3pagelock);
+		return;
+	}
+	memmove(&loaded, c, sizeof(Cursor));
+
+	/*
+	 * Disable the cursor.
 	 * Set the display page (do we need to restore
 	 * the current contents when done?) and the
 	 * pointer to the two planes. What if this crosses
 	 * into a new page?
 	 */
 	disable();
-	lock(&s3pagelock);
 
 	sets3page(storage>>16);
 	p = ((uchar*)gscreen.base) + (storage & 0xFFFF);
@@ -138,6 +152,9 @@ load(Cursor *c)
 	 *	 1   0	background colour
 	 *	 1   1	foreground colour
 	 * Put the cursor into the top-left of the 64x64 array.
+	 *
+	 * The cursor pattern in memory is interleaved words of
+	 * AND and XOR patterns.
 	 */
 	for(y = 0; y < 64; y++){
 		for(x = 0; x < 64/8; x += 2){
@@ -155,7 +172,6 @@ load(Cursor *c)
 			}
 		}
 	}
-	unlock(&s3pagelock);
 
 	/*
 	 * Set the cursor hotpoint and enable the cursor.
@@ -163,6 +179,8 @@ load(Cursor *c)
 	hotpoint = c->offset;
 	vsyncactive();
 	vgaxo(Crtx, 0x45, 0x01);
+
+	unlock(&s3pagelock);
 }
 
 static int
@@ -170,10 +188,16 @@ move(Point p)
 {
 	int x, xo, y, yo;
 
+	if(canlock(&s3pagelock) == 0)
+		return -1;
+
 	/*
 	 * Mustn't position the cursor offscreen even partially,
 	 * or it disappears. Therefore, if x or y is -ve, adjust the
 	 * cursor offset instead.
+	 * There seems to be a bug in that if the offset is 1, the
+	 * cursor doesn't disappear off the left edge properly, so
+	 * round it up to be even.
 	 */
 	if((x = p.x+hotpoint.x) < 0){
 		xo = -x;
@@ -196,6 +220,7 @@ move(Point p)
 	vgaxo(Crtx, 0x4F, yo);
 	vgaxo(Crtx, 0x48, (y>>8) & 0x07);
 
+	unlock(&s3pagelock);
 	return 0;
 }
 

@@ -27,7 +27,8 @@ enum
 	Freq=	1193182,	/* Real clock frequency */
 };
 
-static int cpufreq = 66;
+static int cpufreq = 66000000;
+static int cpumhz = 66;
 static int cputype = 486;
 static int loopconst = 100;
 
@@ -59,14 +60,16 @@ clock(Ureg *ur, void *arg)
 	nrun = (nrdy+nrun)*1000;
 	MACHP(0)->load = (MACHP(0)->load*19+nrun)/20;
 
-	if(up && (ur->cs&0xffff) == UESEL && up->state == Running){
+	if(up && up->state == Running){
 		if(anyready())
 			sched();
 	
 		/* user profiling clock */
-		islow = 1;
-		spllo();		/* in case we fault */
-		(*(ulong*)(USTKTOP-BY2WD)) += TK2MS(1);
+		if((ur->cs&0xffff) == UESEL){
+			islow = 1;
+			spllo();		/* in case we fault */
+			(*(ulong*)(USTKTOP-BY2WD)) += TK2MS(1);
+		}
 	}
 
 	/*
@@ -96,7 +99,7 @@ delay(int l)
 void
 printcpufreq(void)
 {
-	print("CPU is a %ud MHz %d\n", cpufreq, cputype);
+	print("CPU is a %ud MHz (%ud Hz) %d\n", cpumhz, cpufreq, cputype);
 }
 
 void
@@ -104,6 +107,21 @@ clockinit(void)
 {
 	ulong x, y;	/* change in counter */
 	ulong cycles, loops;
+
+	switch(cputype = x86()){
+	case 386:
+		loops = 10000;
+		cycles = 32;
+		break;
+	case 486:
+		loops = 10000;
+		cycles = 22;
+		break;
+	default:
+		loops = 30000;
+		cycles = 23;
+		break;
+	}
 
 	/*
 	 *  set vector for clock interrupts
@@ -117,6 +135,7 @@ clockinit(void)
 	outb(T0cntr, (Freq/HZ));	/* low byte */
 	outb(T0cntr, (Freq/HZ)>>8);	/* high byte */
 
+
 	/*
 	 *  measure time for the loop
 	 *
@@ -129,7 +148,6 @@ clockinit(void)
 	 *  prefetch buffer.
 	 *
 	 */
-	loops = 10000;
 	outb(Tmode, Latch0);
 	x = inb(T0cntr);
 	x |= inb(T0cntr)<<8;
@@ -141,27 +159,18 @@ clockinit(void)
 
 	/*
 	 *  counter  goes at twice the frequency, once per transition,
-	 *  i.e., twice per the square wave
+	 *  i.e., twice per square wave
 	 */
 	x >>= 1;
 
 	/*
  	 *  figure out clock frequency and a loop multiplier for delay().
 	 */
-	switch(cputype = x86()){
-	case 386:
-		cycles = 32;
-		break;
-	case 486:
-		cycles = 22;
-		break;
-	default:
-		cycles = 24;
-		break;
-	}
 	cpufreq = loops*((cycles*Freq)/x);
 	loopconst = (cpufreq/1000)/cycles;	/* AAM+LOOP's for 1 ms */
 
-	/* convert to MHz */
-	cpufreq = cpufreq/1000000;
+	/*
+	 *  add in possible .1% error and convert to MHz
+	 */
+	cpumhz = (cpufreq + cpufreq/1000)/1000000;
 }

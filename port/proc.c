@@ -111,6 +111,12 @@ anyready(void)
 	return nrdy;
 }
 
+int
+anyready0(void)
+{
+	return runq->head != 0;
+}
+
 void
 ready(Proc *p)
 {
@@ -734,6 +740,7 @@ procdump(void)
 			print(" %d", p->pid);
 		print("\n");
 	}
+	print("nrdy %d\n", nrdy);
 }
 
 void

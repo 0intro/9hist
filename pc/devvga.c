@@ -825,20 +825,20 @@ screenload(Rectangle r, uchar *data, int tl, int l, int dolock)
 			data += l;
 		}
 	}else for(y=r.min.y; y<r.max.y; y++){
-			if(q + tl <= e){
-				*q ^= (*data^*q) & m;
-				if(tl > 2)
-					memmove(q+1, data+1, tl-2);
-				q[tl-1] ^= (data[tl-1]^q[tl-1]) & mr;
-			} else {	/* new page */
-				q += byteload(q, data, m, &page, e);
-				if(tl > 2)
-					q += lineload(q+1, data+1, tl-2, &page, e);
-				q += byteload(q+tl-1, data+tl-1, mr, &page, e);
-			}
-			q += sw;
-			data += l;
+		if(q + tl <= e){
+			*q ^= (*data^*q) & m;
+			if(tl > 2)
+				memmove(q+1, data+1, tl-2);
+			q[tl-1] ^= (data[tl-1]^q[tl-1]) & mr;
+		} else {	/* new page */
+			q += byteload(q, data, m, &page, e);
+			if(tl > 2)
+				q += lineload(q+1, data+1, tl-2, &page, e);
+			q += byteload(q+tl-1, data+tl-1, mr, &page, e);
 		}
+		q += sw;
+		data += l;
+	}
 
 	unlock(&palettelock);
 	if(dolock && hwgc == 0)
@@ -900,9 +900,10 @@ lineunload(uchar *q, uchar *data, int len, int *page, uchar *e)
 }
 
 /*
- *   paste tile into hard screen.
- *   tile is at location r, first pixel in *data.  tl is length of scan line to insert,
- *   l is amount to advance data after each scan line.
+ * get a tile from screen memory.
+ * tile is at location r, first pixel in *data. 
+ * tl is length of scan line to insert,
+ * l is amount to advance data after each scan line.
  */
 void
 screenunload(Rectangle r, uchar *data, int tl, int l, int dolock)
@@ -981,20 +982,20 @@ screenunload(Rectangle r, uchar *data, int tl, int l, int dolock)
 			data += l;
 		}
 	}else for(y=r.min.y; y<r.max.y; y++){
-			if(q + tl <= e){
-				*data ^= (*q^*data) & m;
-				if(tl > 2)
-					memmove(data+1, q+1, tl-2);
-				data[tl-1] ^= (q[tl-1]^data[tl-1]) & mr;
-			} else {	/* new page */
-				q += byteunload(q, data, m, &page, e);
-				if(tl > 2)
-					q += lineunload(q+1, data+1, tl-2, &page, e);
-				q += byteunload(q+tl-1, data+tl-1, mr, &page, e);
-			}
-			q += sw;
-			data += l;
+		if(q + tl <= e){
+			*data ^= (*q^*data) & m;
+			if(tl > 2)
+				memmove(data+1, q+1, tl-2);
+			data[tl-1] ^= (q[tl-1]^data[tl-1]) & mr;
+		} else {	/* new page */
+			q += byteunload(q, data, m, &page, e);
+			if(tl > 2)
+				q += lineunload(q+1, data+1, tl-2, &page, e);
+			q += byteunload(q+tl-1, data+tl-1, mr, &page, e);
 		}
+		q += sw;
+		data += l;
+	}
 
 	unlock(&palettelock);
 	if(dolock && hwgc == 0)
