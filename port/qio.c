@@ -97,6 +97,21 @@ enum
 };
 
 void
+checkb(Block *b, char *msg)
+{
+	if(b->base > b->lim)
+		panic("checkb 0 %s %lux %lux", msg, b->base, b->lim);
+	if(b->rp < b->base)
+		panic("checkb 1 %s %lux %lux", msg, b->base, b->rp);
+	if(b->wp < b->base)
+		panic("checkb 2 %s %lux %lux", msg, b->base, b->wp);
+	if(b->rp > b->lim)
+		panic("checkb 3 %s %lux %lux", msg, b->rp, b->lim);
+	if(b->wp > b->lim)
+		panic("checkb 4 %s %lux %lux", msg, b->wp, b->lim);
+}
+
+void
 poison(Block *b)
 {
 	b->next = (void*)0xdeadbabe;
@@ -310,7 +325,6 @@ allocb(int size)
 	b->rp = b->base;
 	b->wp = b->base;
 	b->lim = ((uchar*)b) + size;
-	b->flag = 0;
 
 	return b;
 }
@@ -335,6 +349,7 @@ qconsume(Queue *q, void *vp, int len)
 		unlock(q);
 		return -1;
 	}
+checkb(b, "qconsume 1");
 
 	n = BLEN(b);
 	if(n < len)
@@ -342,8 +357,7 @@ qconsume(Queue *q, void *vp, int len)
 	memmove(p, b->rp, len);
 	if((q->state & Qmsg) || len == n)
 		q->bfirst = b->next;
-	else
-		b->rp += len;
+	b->rp += len;
 	q->len -= len;
 
 	/* if writer flow controlled, restart */
@@ -358,6 +372,7 @@ qconsume(Queue *q, void *vp, int len)
 	if(dowakeup)
 		wakeup(&q->wr);
 
+checkb(b, "qconsume 2");
 	/* discard the block if we're done with it */
 	if((q->state & Qmsg) || len == n) {
 		poison(b);
@@ -403,26 +418,21 @@ qproduce(Queue *q, void *vp, int len)
 	}
 
 	/* save in buffer */
-	b = q->bfirst;
-	if((q->state & Qmsg) == 0 && b && b->lim - b->wp <= len){
-		memmove(b->wp, p, len);
-		b->wp += len;
-		b->flag |= Bfilled;
-	} else {
-		b = iallocb(len);
-		if(b == 0){
-			unlock(q);
-			return -2;
-		}
-		memmove(b->wp, p, len);
-		b->wp += len;
-		if(q->bfirst)
-			q->blast->next = b;
-		else
-			q->bfirst = b;
-		q->blast = b;
+	b = iallocb(len);
+	if(b == 0){
+		unlock(q);
+		return -2;
 	}
+	memmove(b->wp, p, len);
+	b->wp += len;
+	if(q->bfirst)
+		q->blast->next = b;
+	else
+		q->bfirst = b;
+	q->blast = b;
 	q->len += len;
+checkb(b, "qproduce");
+
 	if(q->state & Qstarve){
 		q->state &= ~Qstarve;
 		dowakeup = 1;
@@ -542,6 +552,7 @@ qread(Queue *q, void *vp, int len)
 			sleep(&q->rr, notempty, q);
 		}
 	}
+checkb(b, "qread 1");
 
 	/* remove a buffered block */
 	q->bfirst = b->next;
@@ -563,6 +574,7 @@ qread(Queue *q, void *vp, int len)
 	memmove(p, b->rp, n);
 	b->rp += n;
 
+checkb(b, "qread 2");
 	/* free it or put what's left on the queue */
 	if(b->rp >= b->wp || (q->state&Qmsg)) {
 		poison(b);
@@ -663,7 +675,8 @@ qwrite(Queue *q, void *vp, int len, int nowait)
 			splx(x);
 			error(Ehungup);
 		}
-	
+
+checkb(b, "qwrite");
 		if(q->syncbuf){
 			/* we guessed wrong and did an extra copy */
 			if(n > q->synclen)

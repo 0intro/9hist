@@ -99,6 +99,7 @@ struct Drive
 	Repl	repl;
 	ulong	usetime;
 	int	state;
+	char	vol[NAMELEN];
 
 	ulong	cap;		/* total bytes */
 	int	bytes;		/* bytes/sector */
@@ -165,7 +166,7 @@ hardgen(Chan *c, Dirtab *tab, long ntab, long s, Dir *dirp)
 		return 0;
 
 	pp = &dp->p[s];
-	sprint(name, "hd%d%s", drive, pp->name);
+	sprint(name, "%s%s", dp->vol, pp->name);
 	name[NAMELEN] = 0;
 	qid.path = MKQID(drive, s);
 	l = (pp->end - pp->start) * dp->bytes;
@@ -854,6 +855,8 @@ hardpart(Drive *dp)
 	int i;
 	char *buf;
 
+	sprint(dp->vol, "hd%d", dp - hard);
+
 	/*
 	 *  we always have a partition for the whole disk
 	 *  and one for the partition table
@@ -907,16 +910,21 @@ hardpart(Drive *dp)
 	if(n && strncmp(line[0], PARTMAGIC, sizeof(PARTMAGIC)-1) == 0){
 		for(i = 1; i < n; i++){
 			pp++;
-			if(getfields(line[i], field, 3, ' ') != 3)
-				break;
-			strncpy(pp->name, field[0], NAMELEN);
-			if(strncmp(pp->name, "repl", NAMELEN) == 0)
-				dp->repl.p = pp;
-			pp->start = strtoul(field[1], 0, 0);
-			pp->end = strtoul(field[2], 0, 0);
-			if(pp->start > pp->end || pp->start >= dp->p[0].end)
-				break;
-			dp->npart++;
+			switch(getfields(line[i], field, 3, ' ')) {
+			case 2:
+				if(strcmp(field[0], "unit") == 0)
+					strncpy(dp->vol, field[1], NAMELEN);
+				break;	
+			case 3:
+				strncpy(pp->name, field[0], NAMELEN);
+				if(strncmp(pp->name, "repl", NAMELEN) == 0)
+					dp->repl.p = pp;
+				pp->start = strtoul(field[1], 0, 0);
+				pp->end = strtoul(field[2], 0, 0);
+				if(pp->start > pp->end || pp->start >= dp->p[0].end)
+					break;
+				dp->npart++;
+			}
 		}
 	}
 	free(buf);

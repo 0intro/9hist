@@ -274,7 +274,7 @@ good:
 		unlock(&arena);
 
 		if(bp->magic != 0)
-			panic("malloc");
+			panic("malloc %lux %lux", bp->magic, bp->pc);
 
 		bp->magic = Magic2n;
 		bp->pc = getcallerpc(((uchar*)&size) - sizeof(size));
@@ -368,7 +368,7 @@ free(void *ptr)
 
 	bp = (Bucket*)((ulong)ptr - bdatoff);
 	if(bp->magic != Magic2n)
-		panic("free");
+		panic("free %lux %lux", bp->magic, bp->pc);
 
 	bp->magic = 0;
 	lock(&arena);

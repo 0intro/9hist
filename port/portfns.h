@@ -214,7 +214,7 @@ void		schedinit(void);
 int		screenbits(void);
 void		screenupdate(void);
 int		scsiexec(Target*, int, uchar*, int, void*, int);
-int		scsiinv(int, int, Target**, uchar**, int*, int*);
+int		scsiinv(int, int, Target**, uchar**, char*);
 long		seconds(void);
 ulong		segattach(Proc*, ulong, char *, ulong, ulong);
 void		segpage(Segment*, Page*);
