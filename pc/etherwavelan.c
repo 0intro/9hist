@@ -13,7 +13,6 @@
 
 	BUGS: Endian, alignment and mem/io issues?
  */
-
 #include "u.h"
 #include "../port/lib.h"
 #include "mem.h"
@@ -23,7 +22,6 @@
 #include "../port/error.h"
 #include "../port/netif.h"
 #include "etherif.h"
-
 
 #define DEBUG	if(1)print
 
@@ -476,7 +474,6 @@ w_read(Ctlr* ctlr, int type, int off, void* buf, ulong len)
 	return n;
 }
 
-
 static int
 w_write(Ctlr* ctlr, int type, int off, void* buf, ulong len)
 {
@@ -528,7 +525,6 @@ w_alloc(Ctlr* ctlr, int len)
 			}
 	return -1;
 }
-
 
 static int 
 w_enable(Ether* ether)
@@ -588,9 +584,7 @@ w_enable(Ether* ether)
 	ctlr->txbusy= 0;
 	w_intena(ctlr);
 	return 0;
-
 }
-
 
 static void
 w_rxdone(Ether* ether)
@@ -880,13 +874,13 @@ static void
 attach(Ether* ether)
 {
 	Ctlr* ctlr;
-	char name[NAMELEN];
+	char name[64];
 	int rc;
 
 	if (ether->ctlr == 0)
 		return;
 
-	snprint(name, NAMELEN, "#l%dtimer", ether->ctlrno);
+	snprint(name, sizeof(name), "#l%dtimer", ether->ctlrno);
 	ctlr = (Ctlr*) ether->ctlr;
 	if (ctlr->attached == 0){
 		ilock(&ctlr->Lock);
@@ -1037,15 +1031,19 @@ option(Ctlr* ctlr, char* buf, long n)
 		strncpy(ctlr->nodename, cb->f[1], WNameLen);
 	}
 	else if(cistrcmp(cb->f[0], "channel") == 0){
-		i = atoi(cb->f[1]);
-		if(i >= 1 && i <= 16 )
+		if((i = atoi(cb->f[1])) >= 1 && i <= 16)
 			ctlr->chan = i;
 		else
 			r = -1;
 	}
 	else if(cistrcmp(cb->f[0], "mode") == 0){
-		i = atoi(cb->f[1]);
-		if(i >= 1 && i <= 3 )
+		if(cistrcmp(cb->f[1], "managed") == 0)
+			ctlr->ptype = 1;
+		else if(cistrcmp(cb->f[1], "wds") == 0)
+			ctlr->ptype = 2;
+		else if(cistrcmp(cb->f[1], "adhoc") == 0)
+			ctlr->ptype = 3;
+		else if((i = atoi(cb->f[1])) >= 1 && i <= 3)
 			ctlr->ptype = i;
 		else
 			r = -1;
@@ -1067,8 +1065,7 @@ option(Ctlr* ctlr, char* buf, long n)
 			r = -1;
 	}
 	else if(cistrncmp(cb->f[0], "key", 3) == 0){
-		i = atoi(cb->f[0]+3);
-		if(i >= 1 && i <= WNKeys){
+		if((i = atoi(cb->f[0]+3)) >= 1 && i <= WNKeys){
 			ctlr->txkey = i-1;
 			key = &ctlr->keys.keys[ctlr->txkey];
 			key->len = strlen(cb->f[1]);
@@ -1080,6 +1077,12 @@ option(Ctlr* ctlr, char* buf, long n)
 		else
 			r = -1;
 	} 
+	else if(cistrcmp(cb->f[0], "txkey") == 0){
+		if((i = atoi(cb->f[1])) >= 1 && i <= WNKeys)
+			ctlr->txkey = i-1;
+		else
+			r = -1;
+	}
 	else if(cistrcmp(cb->f[0], "pm") == 0){
 		if(cistrcmp(cb->f[1], "off") == 0)
 			ctlr->pmena = 0;
@@ -1152,8 +1155,6 @@ promiscuous(void* arg, int on)
 	ltv_outs(ctlr, WTyp_Prom, (on?1:0));
 	iunlock(&ctlr->Lock);
 }
-
-
 
 static void 
 interrupt(Ureg* ,void* arg)
