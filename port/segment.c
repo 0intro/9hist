@@ -94,16 +94,17 @@ putseg(Segment *s)
 void
 relocateseg(Segment *s, ulong offset)
 {
-	Pte **p, **endpte;
-	Page **pg, **endpages;
+	Page **pg, *x;
+	Pte *pte, **p, **endpte;
 
 	endpte = &s->map[SEGMAPSIZE];
 	for(p = s->map; p < endpte; p++) {
-		if(*p) {
-			endpages = &((*p)->pages[PTEPERTAB]);
-			for(pg = (*p)->pages; pg < endpages; pg++)
-				if(*pg)
-					(*pg)->va += offset;
+		if(*p == 0)
+			continue;
+		pte = *p;
+		for(pg = pte->first; pg <= pte->last; pg++) {
+			if(x = *pg)
+				x->va += offset;
 		}
 	}
 }

@@ -59,13 +59,14 @@ newpage(int clear, Segment **s, ulong va)
 {
 	Page *p;
 	KMap *k;
-	int hw, dontalloc;
+	int hw, dontalloc, fc;
 
 retry:
 	lock(&palloc);
 
 	hw = swapalloc.highwater;
-	while((palloc.freecount < hw && up->kp == 0) || palloc.freecount == 0) {
+	fc = palloc.freecount;
+	while((fc < hw && up->kp == 0) || fc == 0) {
 		palloc.wanted++;
 		unlock(&palloc);
 		dontalloc = 0;
@@ -74,9 +75,9 @@ retry:
 			*s = 0;
 			dontalloc = 1;
 		}
-		qlock(&palloc.pwait);			/* Hold memory requesters here */
+		qlock(&palloc.pwait);	/* Hold memory requesters here */
 
-		while(waserror())			/* Ignore interrupts */
+		while(waserror())	/* Ignore interrupts */
 			;
 
 		kickpager();
@@ -87,9 +88,10 @@ retry:
 		qunlock(&palloc.pwait);
 
 		/*
-		 * If called from fault and we lost the segment from underneath
-		 * don't waste time allocating and freeing a page. Fault will call
-		 * newpage again when it has reacquired the segment locks
+		 * If called from fault and we lost the segment from
+		 * underneath don't waste time allocating and freeing 
+		 * a page. Fault will call newpage again when it has 
+		 * reacquired the segment locks
 		 */
 		if(dontalloc)
 			return 0;
@@ -119,7 +121,7 @@ retry:
 	memset(p->cachectl, PG_DATINVALID, sizeof(p->cachectl));
 	unlock(p);
 
-	if(clear){
+	if(clear) {
 		k = kmap(p);
 		memset((void*)VA(k), 0, BY2PG);
 		kunmap(k);
@@ -144,55 +146,40 @@ putpage(Page *p)
 	}
 
 	lock(p);
-	if(--p->ref == 0) {
-		lock(&palloc);
-		if(p->image && p->image != &swapimage) {
-			if(palloc.tail) {
-				p->prev = palloc.tail;
-				palloc.tail->next = p;
-			}
-			else {
-				palloc.head = p;
-				p->prev = 0;
-			}
-			palloc.tail = p;
-			p->next = 0;
+	if(--p->ref > 0) {
+		unlock(p);
+		return;
+	}
+	vcacheinval(p);
+	lock(&palloc);
+	if(p->image && p->image != &swapimage) {
+		if(palloc.tail) {
+			p->prev = palloc.tail;
+			palloc.tail->next = p;
 		}
 		else {
-			if(palloc.head) {
-				p->next = palloc.head;
-				palloc.head->prev = p;
-			}
-			else {
-				palloc.tail = p;
-				p->next = 0;
-			}
 			palloc.head = p;
 			p->prev = 0;
 		}
-
-		palloc.freecount++;	/* Release people waiting for memory */
-		unlock(&palloc);
+		palloc.tail = p;
+		p->next = 0;
 	}
+	else {
+		if(palloc.head) {
+			p->next = palloc.head;
+			palloc.head->prev = p;
+		}
+		else {
+			palloc.tail = p;
+			p->next = 0;
+		}
+		palloc.head = p;
+		p->prev = 0;
+	}
+
+	palloc.freecount++;	/* Release people waiting for memory */
+	unlock(&palloc);
 	unlock(p);
-}
-
-void
-simpleputpage(Page *pg)			/* Always call with palloc locked */
-{
-	if(pg->ref != 1)
-		panic("simpleputpage");
-	pg->ref = 0;
-	palloc.freecount++;
-	if(palloc.head == 0) {
-		palloc.head = palloc.tail = pg;
-		pg->prev = pg->next = 0;
-		return;
-	}
-	pg->next = palloc.head;
-	palloc.head->prev = pg;
-	pg->prev = 0;
-	palloc.head = pg;
 }
 
 void
