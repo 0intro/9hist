@@ -198,7 +198,8 @@ typedef struct Ctlr {
 	int	active;
 	int	id;			/* (pcidev->did<<16)|pcidev->vid */
 
-	uchar	srom[128];
+	uchar*	srom;
+	int	sromsz;			/* address size in bits */
 	uchar*	sromea;			/* MAC address */
 	uchar*	leaf;
 	int	sct;			/* selected connection type */
@@ -347,7 +348,7 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 	n -= len;
 
 	l = snprint(p, READSTR, "srom:");
-	for(i = 0; i < sizeof(ctlr->srom); i++){
+	for(i = 0; i < (1<<ctlr->sromsz); i++){
 		if(i && ((i & 0x0F) == 0))
 			l += snprint(p+l, READSTR-l, "\n     ");
 		l += snprint(p+l, READSTR-l, " %2.2uX", ctlr->srom[i]);
@@ -720,7 +721,7 @@ miiw(Ctlr* ctlr, int phyad, int regad, int data)
 static int
 sromr(Ctlr* ctlr, int r)
 {
-	int i, op, data;
+	int i, op, data, size;
 
 	if(ctlr->id == Pnic){
 		i = 1000;
@@ -738,6 +739,7 @@ sromr(Ctlr* ctlr, int r)
 	 * in the EEPROM is taken straight from Section
 	 * 7.4 of the 21140 Hardware Reference Manual.
 	 */
+reread:
 	csr9w(ctlr, Rd|Ss);
 	csr9w(ctlr, Rd|Ss|Scs);
 	csr9w(ctlr, Rd|Ss|Sclk|Scs);
@@ -751,11 +753,20 @@ sromr(Ctlr* ctlr, int r)
 		csr9w(ctlr, data);
 	}
 
-	for(i = 6-1; i >= 0; i--){
-		data = Rd|Ss|(((r>>i) & 0x01)<<2)|Scs;
+	/*
+	 * First time through must work out the EEPROM size.
+	 */
+	if((size = ctlr->sromsz) == 0)
+		size = 8;
+
+	for(size = size-1; size >= 0; size--){
+		data = Rd|Ss|(((r>>size) & 0x01)<<2)|Scs;
 		csr9w(ctlr, data);
 		csr9w(ctlr, data|Sclk);
 		csr9w(ctlr, data);
+		microdelay(1);
+		if(!(csr32r(ctlr, 9) & Sdo))
+			break;
 	}
 
 	data = 0;
@@ -767,6 +778,12 @@ sromr(Ctlr* ctlr, int r)
 	}
 
 	csr9w(ctlr, 0);
+
+	if(ctlr->sromsz == 0){
+		ctlr->sromsz = 8-size;
+		ctlr->srom = malloc((1<<ctlr->sromsz)*sizeof(ushort));
+		goto reread;
+	}
 
 	return data & 0xFFFF;
 }
@@ -1217,8 +1234,11 @@ srom(Ctlr* ctlr)
 	 * 'Digital Semiconductor 21X4 Serial ROM Format, Version 4.05,
 	 * 2-Mar-98'. Only the 2114[03] are handled, support for other
 	 * controllers can be added as needed.
+	 * Do a dummy read first to get the size
+	 * and allocate ctlr->srom.
 	 */
-	for(i = 0; i < sizeof(ctlr->srom)/2; i++){
+	sromr(ctlr, 0);
+	for(i = 0; i < (1<<ctlr->sromsz); i++){
 		x = sromr(ctlr, i);
 		ctlr->srom[2*i] = x;
 		ctlr->srom[2*i+1] = x>>8;
