@@ -175,9 +175,7 @@ etherreset(void)
 {
 	Ether *ctlr;
 	int i, n, ctlrno;
-	ulong irqmask;
 
-	irqmask = 0;
 	for(ctlr = 0, ctlrno = 0; ctlrno < MaxEther; ctlrno++){
 		if(ctlr == 0)
 			ctlr = malloc(sizeof(Ether));
@@ -197,10 +195,7 @@ etherreset(void)
 			 */
 			if(ctlr->irq == 2)
 				ctlr->irq = 9;
-			if((irqmask & (1<<ctlr->irq)) == 0){
-				setvec(Int0vec+ctlr->irq, ctlr->interrupt, ctlr);
-				irqmask |= 1<<ctlr->irq;
-			}
+			setvec(Int0vec+ctlr->irq, ctlr->interrupt, ctlr);
 
 			print("ether%d: %s: port %lux irq %d addr %lux size %d:",
 				ctlrno, ctlr->type, ctlr->port, ctlr->irq, ctlr->mem, ctlr->size);

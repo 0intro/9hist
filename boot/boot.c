@@ -215,13 +215,13 @@ rootserver(char *arg)
 			outin(prompt, reply, sizeof(reply));
 		mp = findmethod(reply);
 		if(mp){
-			for(cp = reply; bargc < Nbarg-1 && *cp; cp++){
+			for(cp = reply; bargc < Nbarg-1 && *cp;){
 				while(*cp && *cp != ' ')
 					cp++;
 				while(*cp == ' ')
 					*cp++ = 0;
 				if(*cp)
-					bargv[bargc++] = cp;
+					bargv[bargc++] = cp++;
 			}
 			cp = strchr(reply, '!');
 			if(cp)
