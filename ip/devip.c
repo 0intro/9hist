@@ -1080,7 +1080,10 @@ Fsconnected(Conv* c, char* msg)
 Proto*
 Fsrcvpcol(Fs* f, uchar proto)
 {
-	return f->t2p[proto];
+	if(f->t2m[proto] && f->ipmux)
+		return f->ipmux;
+	else
+		return f->t2p[proto];
 }
 
 Conv*

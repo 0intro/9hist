@@ -205,7 +205,7 @@ pcicfginit(void)
 			list = &pciroot;
 			for(bno = 0; bno < 256; bno++){
 				bno = pciscan(bno, list);
-				while(*list && (*list)->link)
+				while(*list)
 					list = &(*list)->link;
 			}
 				

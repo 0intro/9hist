@@ -8,6 +8,7 @@ typedef struct	Ipselftab	Ipselftab;
 typedef struct	Iplink	Iplink;
 typedef struct	Iplifc	Iplifc;
 typedef struct	Ipmulti	Ipmulti;
+typedef struct	Ipmux	Ipmux;
 typedef struct	IProuter IProuter;
 typedef struct	Ipifc	Ipifc;
 typedef struct	Log	Log;
@@ -241,7 +242,9 @@ struct Fs
 	int	np;
 	Proto*	p[Maxproto+1];		/* list of supported protocols */
 	Proto*	t2p[256];		/* vector of all ip protocol handlers */
+	Ipmux*	t2m[256];		/* vector of all ip multiplexors */
 	Proto*	ipifc;			/* kludge for ipifcremroute & ipifcaddroute */
+	Proto*	ipmux;			/* kludge for finding an ip multiplexor */
 
 	IP	*ip;
 	Ipselftab	*self;
