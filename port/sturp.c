@@ -190,7 +190,7 @@ urpclose(Queue *q)
 	 *  process we're closing.
 	 */
 	up->state |= CLOSING;
-	sleep(&up->r, isflushed, up);
+	tsleep(&up->r, isflushed, up, 60*1000);
 
 	/*
 	 *  ack all outstanding messages

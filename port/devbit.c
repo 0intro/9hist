@@ -50,6 +50,7 @@ struct{
 	int	track;		/* update cursor on screen */
 	Mouse;
 	int	changed;	/* mouse structure changed since last read */
+	int	newbuttons;	/* interrupt time access only */
 	Rendez	r;
 }mouse;
 
@@ -106,6 +107,7 @@ Bitmap cursorback =
 void	cursortobitmap(void);
 void	cursoron(int);
 void	cursoroff(int);
+int	mousechanged(void*);
 
 enum{
 	Qdir,
@@ -256,48 +258,78 @@ bitread(Chan *c, void *va, long n)
 	if(c->qid & CHDIR)
 		return devdirread(c, va, n, bitdir, NBIT, devgen);
 
-	if(c->qid != Qbitblt)
-		error(0, Egreg);
-	p = va;
-	/*
-	 * Fuss about and figure out what to say.
-	 */
-	if(bit.init){
+	switch(c->qid){
+	case Qmouse:
 		/*
-		 * init:
-		 *	'I'		1
-		 *	ldepth		1
-		 * 	rectangle	16
+		 * mouse:
+		 *	'm'		1
+		 *	buttons		1
+		 * 	point		8
 		 */
-		if(n < 18)
+		if(n < 10)
 			error(0, Ebadblt);
-		p[0] = 'I';
-		p[1] = screen.ldepth;
-		PLONG(p+2, screen.r.min.x);
-		PLONG(p+6, screen.r.min.y);
-		PLONG(p+10, screen.r.max.x);
-		PLONG(p+14, screen.r.max.y);
-		bit.init = 0;
-		n = 18;
-		goto done;
-	}
-	if(bit.lastid > 0){
-		/*
-		 * allocate:
-		 *	'A'		1
-		 *	bitmap id	2
-		 */
-		if(n < 3)
-			error(0, Ebadblt);
-		p[0] = 'A';
-		PSHORT(p+1, bit.lastid);
-		bit.lastid = -1;
-		n = 3;
-		goto done;
-	}
-	error(0, Ebadblt);
+	    Again:
+		while(mouse.changed == 0)
+			sleep(&mouse.r, mousechanged, 0);
+		lock(&cursor);
+		if(mouse.changed == 0){
+			unlock(&cursor);
+			goto Again;
+		}
+		p = va;
+		p[0] = 'm';
+		p[1] = mouse.buttons;
+		PLONG(p+2, mouse.xy.x);
+		PLONG(p+6, mouse.xy.y);
+		mouse.changed = 0;
+		unlock(&cursor);
+		n = 10;
+		break;
 
-    done:
+	case Qbitblt:
+		p = va;
+		/*
+		 * Fuss about and figure out what to say.
+		 */
+		if(bit.init){
+			/*
+			 * init:
+			 *	'I'		1
+			 *	ldepth		1
+			 * 	rectangle	16
+			 */
+			if(n < 18)
+				error(0, Ebadblt);
+			p[0] = 'I';
+			p[1] = screen.ldepth;
+			PLONG(p+2, screen.r.min.x);
+			PLONG(p+6, screen.r.min.y);
+			PLONG(p+10, screen.r.max.x);
+			PLONG(p+14, screen.r.max.y);
+			bit.init = 0;
+			n = 18;
+			break;
+		}
+		if(bit.lastid > 0){
+			/*
+			 * allocate:
+			 *	'A'		1
+			 *	bitmap id	2
+			 */
+			if(n < 3)
+				error(0, Ebadblt);
+			p[0] = 'A';
+			PSHORT(p+1, bit.lastid);
+			bit.lastid = -1;
+			n = 3;
+			break;
+		}
+		error(0, Ebadblt);
+
+	default:
+		error(0, Egreg);
+	}
+
 	return n;
 }
 
@@ -665,15 +697,20 @@ cursoroff(int dolock)
 }
 
 void
-mousebuttons(int b)	/* called splhi */
+mousebuttons(int b)	/* called spl5 */
 {
-	mouse.buttons = b;
-	mouse.changed = 1;
-	wakeup(&mouse.r);
+	/*
+	 * It is possible if you click very fast and get bad luck
+	 * you could miss a button click (down up).  Doesn't seem
+	 * likely or important enough to worry about.
+	 */
+	mouse.newbuttons = b;
+	mouse.track = 1;		/* aggressive but o.k. */
+	mouseclock();
 }
 
 void
-mouseclock(void)	/* called splhi */
+mouseclock(void)	/* called spl6 */
 {
 	int x, y;
 
@@ -694,8 +731,15 @@ mouseclock(void)	/* called splhi */
 		mouse.dx = 0;
 		mouse.dy = 0;
 		mouse.track = 0;
+		mouse.buttons = mouse.newbuttons;
 		mouse.changed = 1;
 		unlock(&cursor);
 		wakeup(&mouse.r);
 	}
+}
+
+int
+mousechanged(void *m)
+{
+	return mouse.changed;
 }
