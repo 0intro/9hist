@@ -5,13 +5,7 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
-struct
-{
-	Lock;
-	Pgrp	*arena;
-	Pgrp	*free;
-	ulong	pgrpid;
-}pgrpalloc;
+Pgrps pgrpalloc;
 
 struct
 {
@@ -43,10 +37,10 @@ grpinit(void)
 	Mhead *hm, *hem;
 	Crypt *cr;
 
-	/*
-	 * need to /dev/proc read protect crypt memory
-	 */
-	cr = ialloc(conf.npgrp*sizeof(Crypt), 0);
+	i = conf.npgrp*sizeof(Crypt);
+	cr = ialloc(i, 0);
+	pgrpalloc.cryptbase = (ulong)cr;
+	pgrpalloc.crypttop = (ulong)cr + i;
 	pgrpalloc.arena = ialloc(conf.npgrp*sizeof(Pgrp), 0);
 	pgrpalloc.free = pgrpalloc.arena;
 

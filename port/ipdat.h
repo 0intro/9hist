@@ -194,9 +194,8 @@ struct Timer
 	void	*arg;
 };
 
-struct Tcpctl
+struct Tctl
 {
-	QLock;
 	uchar	state;		/* Connection state */
 	uchar	type;		/* Listening or active connection */
 	uchar	code;		/* Icmp code */		
@@ -241,6 +240,11 @@ struct Tcpctl
 	int	rttseq;			/* Round trip sequence */
 	int	srtt;			/* Shortened round trip */
 	int	mdev;			/* Mean deviation of round trip */
+};
+struct Tcpctl
+{
+	QLock;
+	struct Tctl;
 };
 
 struct	Tcp
@@ -435,7 +439,7 @@ void	udprcvmsg(Ipconv *, Block*);
 Block	*btrim(Block*, int, int);
 Block	*ip_reassemble(int, Block*, Etherhdr*);
 Ipconv	*portused(Ipconv *, Port);
-Port	nextport(Ipconv *, Port);
+Port	nextport(Ipconv *, int);
 Fragq   *ipfragallo(void);
 void	ipfragfree(Fragq*, int);
 void	iproute(uchar*, uchar*);

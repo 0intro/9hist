@@ -23,6 +23,7 @@ typedef struct Network	Network;
 typedef struct Note	Note;
 typedef struct Page	Page;
 typedef struct Palloc	Palloc;
+typedef struct Pgrps	Pgrps;
 typedef struct Pgrp	Pgrp;
 typedef struct Proc	Proc;
 typedef struct Pte	Pte;
@@ -427,6 +428,16 @@ struct Palloc
 	int	wanted;			/* Do the wakeup at free */
 };
 
+struct Pgrps
+{
+	Lock;
+	Pgrp	*arena;
+	Pgrp	*free;
+	ulong	pgrpid;
+	ulong	cryptbase;
+	ulong	crypttop;
+};
+
 struct Waitq
 {
 	Waitmsg	w;
@@ -672,6 +683,7 @@ extern	char	devchar[];
 extern	char	*conffile;
 extern	char	*statename[];
 extern	Palloc 	palloc;
+extern	Pgrps 	pgrpalloc;
 extern  Image	swapimage;
 extern  char	eve[];
 extern	int	nrdy;

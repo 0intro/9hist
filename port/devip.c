@@ -212,9 +212,9 @@ ipread(Chan *c, void *a, long n, ulong offset)
 long
 ipwrite(Chan *c, char *a, long n, ulong offset)
 {
-	int 	m, backlog, type;
+	int 	m, backlog, type, priv;
 	char 	*field[5], *ctlarg[5], buf[256];
-	Port	port, base;
+	Port	port;
 	Ipconv  *cp;
 
 	type = STREAMTYPE(c->qid.path);
@@ -248,12 +248,12 @@ ipwrite(Chan *c, char *a, long n, ulong offset)
 		default:
 			error(Ebadarg);
 		case 2:
-			base = PORTALLOC;
+			priv = 0;
 			break;
 		case 3:
 			if(strcmp(ctlarg[2], "r") != 0)
 				error(Eperm);
-			base = PRIVPORTALLOC;
+			priv = 1;
 			break;
 		}
 		cp->dst = ipparse(ctlarg[0]);
@@ -262,7 +262,7 @@ ipwrite(Chan *c, char *a, long n, ulong offset)
 		/* If we have no local port assign one */
 		qlock(&ipalloc);
 		if(cp->psrc == 0)
-			cp->psrc = nextport(ipconv[c->dev], base);
+			cp->psrc = nextport(ipconv[c->dev], priv);
 		qunlock(&ipalloc);
 
 		if(cp->stproto == &tcpinfo)
@@ -557,6 +557,7 @@ tcpstopen(Queue *q, Stream *s)
 
 	ipc->readq = RD(q);
 	ipc->readq->rp = &tcpflowr;
+	ipc->err = 0;
 
 	RD(q)->ptr = (void *)ipc;
 	WR(q)->next->ptr = (void *)ipc->ipinterface;
@@ -852,14 +853,32 @@ portused(Ipconv *ic, Port port)
 	return 0;
 }
 
+static Port lastport[2] = { PORTALLOC-1, PRIVPORTALLOC-1 };
+
 Port
-nextport(Ipconv *ic, Port base)
+nextport(Ipconv *ic, int priv)
 {
+	Port base;
+	Port max;
+	Port *p;
 	Port i;
 
-	for(i = base; i < PORTMAX; i++)
+	if(priv){
+		base = PRIVPORTALLOC;
+		max = PORTALLOC;
+		p = &lastport[1];
+	} else {
+		base = PORTALLOC;
+		max = PORTMAX;
+		p = &lastport[0];
+	}
+	
+	for(i = *p + 1; i < max; i++)
 		if(!portused(ic, i))
-			return(i);
+			return(*p = i);
+	for(i = base ; i <= *p; i++)
+		if(!portused(ic, i))
+			return(*p = i);
 
 	return(0);
 }

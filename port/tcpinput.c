@@ -824,13 +824,19 @@ copyb(Block *bp, int count)
 ushort tcp_mss = DEF_MSS;	/* Maximum segment size to be sent with SYN */
 int tcp_irtt = DEF_RTT;		/* Initial guess at round trip time */
 
+static void
+cleartcp(struct Tctl *a)
+{
+	memset(a, 0, sizeof(struct Tctl));
+}
+
 void
 init_tcpctl(Ipconv *s)
 {
 
 	Tcpctl *tcb = &s->tcpctl;
 
-	memset(tcb, 0, sizeof(Tcpctl));
+	cleartcp(tcb);
 
 	tcb->cwind = tcb->mss = tcp_mss;
 	tcb->ssthresh = 65535;

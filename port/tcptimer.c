@@ -1,4 +1,4 @@
-#include	"u.h"
+#include	"u.h"
 #include	"lib.h"
 #include	"mem.h"
 #include	"dat.h"
