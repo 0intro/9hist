@@ -38,12 +38,12 @@ static int	gpioirqref[12];
 typedef struct Vpage0 {
 	void	(*vectors[8])(void);
 	ulong	vtable[8];
-
-	/* Doze goes here because it needs to be on a cache-line boundary */
-	ulong	doze[16];
 } Vpage0;
 Vpage0 *vpage0;
 
+/*
+ *  An cached line for the doze code
+ */
 void (*doze)(void);
 
 static void	irq(Ureg*);
@@ -60,12 +60,10 @@ trapinit(void)
 	memmove(vpage0->vectors, vectors, sizeof(vpage0->vectors));
 	memmove(vpage0->vtable, vtable, sizeof(vpage0->vtable));
 
-	/* Move the twelve instructions of doze() to a cache-line boundary: */
-	memmove(vpage0->doze, _doze, 12*sizeof(long));
+	/* relocate the doze routine to a cache line boundary in cached mem */
+	doze = xspanalloc(12*sizeof(long), 16, 0);
+	memmove(doze, _doze, 12*sizeof(long));
 	wbflush();
-		
-	/* Set the doze function pointer to the moved _doze() routine */
-	doze = (void(*)(void))vpage0->doze;
 
 	/* use exception vectors at 0xFFFF0000 */
 	mappedIvecEnable();
@@ -87,6 +85,9 @@ trapinit(void)
 	gpioregs->rising = 0;
 	gpioregs->falling = 0;
 	gpioregs->edgestatus = gpioregs->edgestatus;
+
+	/* allow all enabled interrupts to take processor out of sleep mode */
+	intrregs->iccr = 0;
 }
 
 void

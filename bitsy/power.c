@@ -76,5 +76,16 @@ idlehands(void)
 void
 idlehands(void)
 {
-//	doze();
+	char *msgb = "idlehands called with splhi\n";
+	char *msga = "doze returns with splhi\n";
+
+	if(!islo()){
+		serialputs(msga, strlen(msga));
+		spllo();
+	}
+	doze();
+	if(!islo()){
+		serialputs(msgb, strlen(msgb));
+		spllo();
+	}
 }
