@@ -21,7 +21,6 @@ enum
 					 *  period is the counter period
 					 */
 	Freq=		1193182,	/* Real clock frequency */
-	FHZ=		1000,		/* hertz for fast clock */
 };
 
 /*
@@ -58,20 +57,25 @@ void
 clock(Ureg *ur)
 {
 	Proc *p;
+	int nrun = 0;
 
 	m->ticks++;
 
 	checkalarms();
+	uartclock();
 
 	/*
 	 *  process time accounting
 	 */
 	p = m->proc;
 	if(p){
+		nrun = 1;
 		p->pc = ur->pc;
 		if (p->state==Running)
 			p->time[p->insyscall]++;
 	}
+	nrun = (nrdy+nrun)*1000;
+	MACHP(0)->load = (MACHP(0)->load*19+nrun)/20;
 
 	if(u && p && p->state==Running){
 		/*

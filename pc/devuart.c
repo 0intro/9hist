@@ -72,7 +72,6 @@ struct Uart
 	Rendez	r;		/* kproc waiting for input */
 	Alarm	*a;		/* alarm for waking the kernel process */
  	int	kstarted;	/* kproc started */
-	uchar	delim[256/8];	/* characters that act as delimiters */
 
 	/* error statistics */
 	ulong	frame;
@@ -239,11 +238,8 @@ uartintr(Uart *up)
 			ch = uartrdreg(up, Data) & 0xff;
 			if(cq->putc)
 				(*cq->putc)(cq, ch);
-			else {
+			else
 				putc(cq, ch);
-				if(up->delim[ch/8] & (1<<(ch&7)) )
-					wakeup(&cq->r);
-			}
 			break;
 	
 		case 2:	/* transmitter empty */
@@ -281,6 +277,20 @@ uartintr1(Ureg *ur)
 	uartintr(&uart[1]);
 }
 
+void
+uartclock(void)
+{
+	Uart *up;
+	IOQ *cq;
+
+	for(up = uart; up < &uart[2]; up++){
+		cq = up->iq;
+		if(up->wq && cangetc(cq))
+			wakeup(&cq->r);
+	}
+}
+
+
 /*
  *  turn on a port's interrupts.  set DTR and RTS
  */
@@ -299,11 +309,6 @@ uartenable(Uart *up)
 		if(modem(0) < 0)
 			print("can't turn on modem speaker\n");
 	}
-
-	/*
-	 *  speed up the clock to poll the uart
-	fclockinit();
-	 */
 
 	/*
 	 *  set up i/o routines
@@ -431,9 +436,6 @@ uartstopen(Queue *q, Stream *s)
 	RD(q)->ptr = up;
 	qunlock(up);
 
-	/* start with all characters as delimiters */
-	memset(up->delim, 0xff, sizeof(up->delim));
-	
 	if(up->kstarted == 0){
 		up->kstarted = 1;
 		sprint(name, "uart%d", s->id);
@@ -486,18 +488,6 @@ uartoput(Queue *q, Block *bp)
 		case 'd':
 			uartdtr(up, n);
 			break;
-		case 'e':
-		case 'E':
-			/*
-			 *  the characters in the block are the message
-			 *  delimiters to use upstream
-			 */
-			memset(up->delim, 0, sizeof(up->delim));
-			while(++(bp->rptr) < bp->wptr){
-				m = *bp->rptr;
-				up->delim[m/8] |= 1<<(m&7);
-			}
-			break;
 		case 'K':
 		case 'k':
 			uartbreak(up, n);
@@ -531,6 +521,7 @@ uartkproc(void *a)
 	Block *bp;
 	int n;
 	ulong frame, overrun;
+	static ulong ints;
 
 	frame = 0;
 	overrun = 0;
@@ -540,6 +531,8 @@ uartkproc(void *a)
 
 	for(;;){
 		sleep(&cq->r, cangetc, cq);
+		if((ints++ & 0x1f) == 0)
+			owl(ints>>5);
 		qlock(up);
 		if(up->wq == 0){
 			cq->out = cq->in;

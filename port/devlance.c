@@ -17,6 +17,8 @@ enum {
 
 #define NOW (MACHP(0)->ticks*MS2HZ)
 
+static int netlight;
+
 /*
  *  Communication with the lance is via a transmit and receive ring of
  *  message descriptors.  The Initblock contains pointers to and sizes of

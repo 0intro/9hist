@@ -1,6 +1,7 @@
 #include "../port/portfns.h"
 
 void	meminit(void);
+void	bigcursor(void);
 #define	clearmmucache()		/* 386 doesn't have one */
 void	clock(Ureg*);
 void	clockinit(void);
@@ -30,6 +31,7 @@ void	mmuinit(void);
 int	modem(int);
 void	outb(int, int);
 void	outss(int, void*, int);
+void	owl(int);
 int	pmuwrbit(int, int, int);
 void	prhex(ulong);
 void	procrestore(Proc*, uchar*);
@@ -48,6 +50,7 @@ void	systrap(void);
 void	touser(void);
 void	trapinit(void);
 int	tas(Lock*);
+void	uartclock(void);
 void	uartintr0(Ureg*);
 void	vgainit(void);
 #define	waserror()	(u->nerrlab++, setlabel(&u->errlab[u->nerrlab-1]))

@@ -106,7 +106,6 @@ procreset(void)
 Chan*
 procattach(char *spec)
 {
-	Chan *c;
 	return devattach('p', spec);
 }
 
@@ -596,58 +595,43 @@ procstopped(void *a)
 int
 procctlmemio(Proc *p, ulong offset, int n, void *va, int read)
 {
-	Pte **pte;
+	Pte *pte;
 	Page *pg;
 	KMap *k;
 	Segment *s;
 	ulong soff;
 	char *a = va, *b;
 
-Again:
-	s = seg(p, offset, 1);
-	if(s == 0)
-		errors("not in address space");
+	for(;;) {
+		s = seg(p, offset, 1);
+		if(s == 0)
+			errors("not in address space");
 
-	if(offset+n >= s->top)
-		n = s->top-offset;
+		if(offset+n >= s->top)
+			n = s->top-offset;
 
-	if(read == 0 && (s->type&SG_TYPE) == SG_TEXT)
-		s = txt2data(p, s);
+		if((s->type&SG_TYPE) == SG_TEXT)
+			s = txt2data(p, s);
 
-	s->steal++;
-	soff = offset-s->base;
-	pte = &s->map[soff/PTEMAPMEM];
-	if(*pte == 0) {
+		s->steal++;
+		soff = offset-s->base;
 		if(waserror()) {
 			s->steal--;
 			nexterror();
 		}
-		if(fixfault(s, offset, read, 0) != 0) {
-			s->steal--;
-			poperror();
-			goto Again;
-		}
+		if(fixfault(s, offset, read, 0) == 0)
+			break;
 		poperror();
-		if(*pte == 0)
-			panic("procctlmemio"); 
+		s->steal--;
 	}
-	pg = (*pte)->pages[(soff&(PTEMAPMEM-1))/BY2PG];
-	if(pagedout(pg)) {
-		if(waserror()) {
-			s->steal--;
-			nexterror();
-		}
-		if(fixfault(s, offset, read, 0) != 0) {
-			s->steal--;
-			poperror();
-			goto Again;
-		}
-		poperror();
-		pg = (*pte)->pages[(soff&(PTEMAPMEM-1))/BY2PG];
-		if(pg == 0)
-			panic("procctlmemio1");
-	}
-
+	poperror();
+	pte = s->map[soff/PTEMAPMEM];
+	if(pte == 0)
+		panic("procctlmemio"); 
+	pg = pte->pages[(soff&(PTEMAPMEM-1))/BY2PG];
+	if(pagedout(pg))
+		panic("procctlmemio1"); 
+		
 	k = kmap(pg);
 	b = (char*)VA(k);
 	if(read == 1)

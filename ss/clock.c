@@ -42,17 +42,22 @@ void
 clock(Ureg *ur)
 {
 	Proc *p;
-	ulong i;
+	ulong i, ss, nrun = 0;
+	Segment *s;
 
 	i = ctr->lim1;	/* clear interrupt */
 	USED(i);
 	m->ticks++;
 	p = m->proc;
 	if(p){
+		nrun = 1;
 		p->pc = ur->pc;
 		if (p->state==Running)
 			p->time[p->insyscall]++;
 	}
+	nrun = (nrdy+nrun)*1000;
+	MACHP(0)->load = (MACHP(0)->load*19+nrun)/20;
+
 	checkalarms();
 	kbdclock();
 	mouseclock();
@@ -66,8 +71,10 @@ clock(Ureg *ur)
 				sched();
 		}
 		if((ur->psr&PSRPSUPER) == 0){
-/*			*(ulong*)(USTKTOP-BY2WD) += TK2MS(1); /**/
+			ss = spllo();				/* Low because we may fault */
+			*(ulong*)(USTKTOP-BY2WD) += TK2MS(1);
 			notify(ur);
+			splx(ss);				/* return hi for restore */
 		}
 	}
 }

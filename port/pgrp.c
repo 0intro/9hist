@@ -313,20 +313,21 @@ envcpy(Egrp *to, Egrp *from)
 void
 pgrpcpy(Pgrp *to, Pgrp *from)
 {
-	Mhead **h, **e, *f, **l, *mh;
+	Mhead **h, **e, *f, **tom, **l, *mh;
 	Mount *n, *m, **link;
 
 	rlock(&from->ns);
 
 	e = &from->mnthash[MNTHASH];
+	tom = to->mnthash;
 	for(h = from->mnthash; h < e; h++) {
+		l = tom++;
 		for(f = *h; f; f = f->hash) {
 			mh = newmnthead();
 			mh->from = f->from;
 			incref(mh->from);
-			l = &MOUNTH(to, mh->from);
-			mh->hash = *l;
 			*l = mh;
+			l = &mh->hash;
 			link = &mh->mount;
 			for(m = f->mount; m; m = m->next) {
 				n = newmount(mh, m->to);

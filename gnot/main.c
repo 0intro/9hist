@@ -37,6 +37,8 @@ main(void)
 	u = 0;
 	unloadboot();
 	machinit();
+	active.exiting = 0;
+	active.machs = 1;
 	mmuinit();
 	confinit();
 	kmapinit();

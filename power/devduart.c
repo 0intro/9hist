@@ -841,4 +841,4 @@ duartactive(void)
 	for(i = 0; i < nduartport; i++)
 		if(duartport[i].printing)
 			return 1;
-	return 0;                                                                         }
+	return 0;                                                             }

@@ -475,7 +475,7 @@ consread(Chan *c, void *buf, long n, ulong offset)
 	char *cbuf = buf;
 	char *user;
 	int userlen;
-	char tmp[6*NUMSIZE], xbuf[1024];
+	char tmp[6*NUMSIZE], xbuf[512];
 	Mach *mp;
 
 	if(n <= 0)
@@ -603,6 +603,7 @@ consread(Chan *c, void *buf, long n, ulong offset)
 
 	case Qsysstat:
 		j = 0;
+		xbuf[0] = 0;
 		for(id = 0; id < 32; id++) {
 			if(active.machs & (1<<id)) {
 				mp = MACHP(id);
@@ -621,6 +622,8 @@ consread(Chan *c, void *buf, long n, ulong offset)
 		return readstr(offset, buf, n, xbuf);
 	case Qlights:
 		errors("write only");
+	case Qnoise:
+		return 0;
 	default:
 		panic("consread %lux\n", c->qid);
 		return 0;

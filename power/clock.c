@@ -99,7 +99,7 @@ clock(Ureg *ur)
 				}
 			}
 			nrun = (nrdy+nrun)*1000;
-			m->load = (m->load+nrun)/2;
+			m->load = (m->load*19+nrun)/20;
 		}
 		duartslave();
 		if(active.exiting && active.machs&(1<<m->machno)){

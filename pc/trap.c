@@ -179,6 +179,20 @@ trapinit(void)
 	outb(Int0aux, int0mask);
 }
 
+char *excname[] =
+{
+[0]	"divide error",
+[1]	"debug exception",
+[4]	"overflow",
+[5]	"bounds check",
+[6]	"invalid opcode",
+[8]	"double fault",
+[10]	"invalid TSS",
+[11]	"segment not present",
+[12]	"stack exception",
+[13]	"general protection violation",
+};
+
 /*
  *  All traps
  */
@@ -187,16 +201,13 @@ trap(Ureg *ur)
 {
 	int v, user;
 	int c;
-	static int spuriousfloppy;
+	char buf[ERRLEN];
 
 	v = ur->trap;
 
 	user = ((ur->cs)&0xffff)!=KESEL && v!=Syscallvec;
 	if(user)
 		u->dbgreg = ur;
-
-	if(v>=256 || ivec[v] == 0)
-		panic("bad trap type %d %lux %lux %lux\n", v, ur->pc, int0mask, int1mask);
 
 	/*
 	 *  tell the 8259 that we're done with the
@@ -210,6 +221,20 @@ trap(Ureg *ur)
 		outb(Int0ctl, EOI);
 		if(v != Uart0vec)
 			uartintr0(ur);
+	}
+
+	if(v>=256 || ivec[v] == 0){
+		if(v <= 16){
+			if(user){
+				sprint(buf, "sys: %s pc=0x%lux", excname[v], ur->pc);
+				postnote(u->p, 1, buf, NDebug);
+				return;
+			} else {
+				dumpregs(ur);
+				panic("%s pc=0x%lux", excname[v], ur->pc);
+			}
+		}
+		panic("bad trap type %d pc=0x%lux\n", v, ur->pc);
 	}
 
 	(*ivec[v])(ur);

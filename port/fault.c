@@ -76,11 +76,11 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 			*pg = new;
 			new = 0;
 		}
-						/* NO break */
+		/* NO break */
 	case SG_DATA:
 		if(pagedout(*pg))
 			pio(s, addr, soff, pg);
-
+		
 		if(type == SG_SHARED)
 			goto done;
 

@@ -21,6 +21,8 @@ main(void)
 	memset(&edata, 0, (char*)&end-(char*)&edata);
 
 	machinit();
+	active.exiting = 0;
+	active.machs = 1;
 	confinit();
 	mmuinit();
 	screeninit();

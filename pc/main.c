@@ -14,11 +14,12 @@ main(void)
 {
 	meminit();
 	machinit();
+	active.exiting = 0;
+	active.machs = 1;
 	confinit();
 	screeninit();
 	printinit();
 	print("%ludK bytes of physical memory\n", (conf.base1 + conf.npage1*BY2PG)/1024);
-vgadump();
 	mmuinit();
 	trapinit();
 	mathinit();
@@ -30,6 +31,7 @@ vgadump();
 	grpinit();
 	chaninit();
 	alarminit();
+	bigcursor();
 	chandevreset();
 	streaminit();
 	swapinit();
@@ -39,9 +41,6 @@ vgadump();
 	schedinit();
 }
 
-/*
- *	BUG -- needs floating point support
- */
 void
 machinit(void)
 {
@@ -51,7 +50,6 @@ machinit(void)
 	memset(m, 0, sizeof(Mach));
 	m->machno = n;
 	m->mmask = 1<<m->machno;
-	active.machs = 1;
 }
 
 ulong garbage;
@@ -504,10 +502,12 @@ buzz(int f, int d)
 void
 lights(int val)
 {
-	static QLock ll;
-
-	qlock(&ll);
 	pmuwrbit(0, (val&1), 4);		/* owl */
 	pmuwrbit(0, ((val>>1)&1), 1);		/* mail */
-	qunlock(&ll);
+}
+
+void
+owl(int val)
+{
+	pmuwrbit(0, (val&1), 4);		/* owl */
 }

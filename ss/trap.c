@@ -33,20 +33,27 @@ char *trapname[]={
 char*
 excname(ulong tbr)
 {
-	static char buf[32];	/* BUG: not reentrant! */
+	static char buf[64];	/* BUG: not reentrant! */
 
 	if(tbr < sizeof trapname/sizeof(char*))
 		return trapname[tbr];
-	if(tbr == 36)
-		return "cp disabled";
-	if(tbr == 40)
-		return "cp exception";
-	if(tbr >= 128)
+	if(tbr >= 130)
 		sprint(buf, "trap instruction %d", tbr-128);
 	else if(17<=tbr && tbr<=31)
 		sprint(buf, "interrupt level %d", tbr-16);
-	else
+	else switch(tbr){
+	case 36:
+		return "cp disabled";
+	case 40:
+		return "cp exception";
+	case 128:
+		return "syscall";
+	case 129:
+		return "breakpoint";
+	default:
 		sprint(buf, "unknown trap %d", tbr);
+	}
+    Return:
 	return buf;
 }
 
@@ -57,8 +64,11 @@ trap(Ureg *ur)
 	char buf[64];
 	ulong tbr;
 
-	if(u)
+	if(u) {
 		u->p->pc = ur->pc;		/* BUG */
+		u->dbgreg = ur;
+	}
+
 	user = !(ur->psr&PSRPSUPER);
 	tbr = (ur->tbr&0xFFF)>>4;
 	if(tbr > 16){			/* interrupt */
@@ -124,7 +134,7 @@ trap(Ureg *ur)
     Error:
 		if(user){
 			spllo();
-			sprint(buf, "sys: trap: pc=0x%lux %s", ur->pc, excname(tbr));
+			sprint(buf, "sys: %s pc=0x%lux", excname(tbr), ur->pc);
 			if(tbr == 8)
 				sprint(buf+strlen(buf), " FSR %lux", u->fpsave.fsr);
 			postnote(u->p, 1, buf, NDebug);
@@ -168,6 +178,7 @@ trapinit(void)
 	a += 0x40000000;
 	*(ulong*)t = a;			/* CALL syscall(SB) */
 	*(ulong*)(t+4) = 0xa7480000;	/* MOVW PSR, R19 */
+
 	puttbr(TRAPS);
 }
 
@@ -220,6 +231,7 @@ notify(Ureg *ur)
 		procctl(u->p);
 	if(u->nnote == 0)
 		return;
+
 	lock(&u->p->debug);
 	u->p->notepending = 0;
 	if(u->nnote==0){

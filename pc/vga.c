@@ -24,9 +24,6 @@ struct{
  */
 #define MAXX	640
 #define MAXY	480
-int	xperiod = 800;	/* Hsync freq == 31.47 KHZ */
-int	yperiod	= 525;	/* Vsync freq == 59.9 HZ */
-int	yborder = 7;	/* top/bottom border of screen */
 
 #define SCREENMEM	(0xA0000 | KZERO)
 
@@ -48,35 +45,58 @@ enum
 	EFCR=		0x3CA,
 	GRX=		0x3CE,		/* index to graphics registers */
 	GR=		0x3CF,		/* graphics registers */
-	 Grot=		 0x03,		/*  data rotate register */
-	 Gmode=		 0x05,		/*  mode register */
-	 Gmisc=		 0x06,		/*  miscillaneous register */
 	 Grms=		 0x04,		/*  read map select register */
 	SRX=		0x3C4,		/* index to sequence registers */
 	SR=		0x3C5,		/* sequence registers */
-	 Sclock=	 0x01,		/*  clocking register */
-	 Smode=		 0x04,		/*  mode register */
 	 Smmask=	 0x02,		/*  map mask */
 	CRX=		0x3D4,		/* index to crt registers */
 	CR=		0x3D5,		/* crt registers */
-	 Cvt=		 0x06,		/*  vertical total */
-	 Cvover=	 0x07,		/*  bits that didn't fit elsewhere */
-	 Cmsl=		 0x09,		/*  max scan line */
-	 Cvrs=		 0x10,		/*  vertical retrace start */
 	 Cvre=		 0x11,		/*  vertical retrace end */
-	 Cvde=	 	 0x12,		/*  vertical display end */
-	 Cvbs=		 0x15,		/*  vertical blank start */
-	 Cvbe=		 0x16,		/*  vertical blank end */
-	 Cmode=		 0x17,		/*  mode register */
 	ARX=		0x3C0,		/* index to attribute registers */
 	AR=		0x3C1,		/* attribute registers */
-	 Amode=		 0x10,		/*  mode register */
-	 Acpe=		 0x12,		/*  color plane enable */
+};
+
+typedef struct VGAmode	VGAmode;
+struct VGAmode
+{
+	uchar	general[4];
+	uchar	sequencer[5];
+	uchar	crt[0x19];
+	uchar	graphics[9];
+	uchar	attribute[0x15];
 };
 
 /*
- *  routines for setting vga registers
+ *  640x480 display, 16 bit color
  */
+VGAmode mode12 = 
+{
+	/* general */
+	0xe3, 0x00, 0x70, 0x04,
+	/* sequence */
+	0x03, 0x01, 0x0f, 0x00, 0x06,
+	/* crt */
+	0x5f, 0x4f, 0x50, 0x82, 0x54, 0x80, 0x0b, 0x3e,
+	0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x59,
+	0xea, 0x0c, 0xdf, 0x28, 0x00, 0xe7, 0x04, 0xe3,
+	0xff,
+	/* graphics */
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x0f,
+	0xff,
+	/* attribute */
+	0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x14, 0x07,
+	0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f,
+	0x01, 0x00, 0x0f, 0x00, 0x00,
+};
+
+void
+genout(int reg, int val)
+{
+	if(reg == 0)
+		outb(EMISCW, val);
+	else if (reg == 1)
+		outb(EFCW, val);
+}
 void
 srout(int reg, int val)
 {
@@ -122,68 +142,28 @@ vgardplane(int p)
 vgadump(void)
 {
 	print("misc is 0x%ux fc is 0x%ux\n", inb(EMISCR), inb(EFCR));
-	outb(EMISCW, 0xc7);/**/
 }
 
-vgaclock(void)
+void
+setmode(VGAmode *v)
 {
-	outb(EMISCW, 0xc7);/**/
-}
+	int i;
 
-/*
- *  set up like vga mode 0x12
- *	16 color (though we only use values 0x0 and 0xf)
- *	640x480
- *
- *  we assume the BIOS left the registers in a
- *  CGA-like mode.  Thus we don't set all the registers.
- */
-vga12(void)
-{
-	int overflow;
-	int msl;
+	for(i = 0; i < sizeof(v->general); i++)
+		genout(i, v->general[i]);
 
-	arout(Acpe, 0x00);	/* disable planes for output */
+	for(i = 0; i < sizeof(v->sequencer); i++)
+		srout(i, v->sequencer[i]);
 
-	gscreen.ldepth = 0;
-	arout(Amode, 0x01);	/* color graphics mode */
-	grout(Gmisc, 0x01);	/* graphics mode */
-	grout(Gmode, 0x00);	/* 1 bit deep */
-	grout(Grot, 0x00);	/* CPU writes bytes to video
-				 * mem without modifications */
+	crout(Cvre, 0);	/* allow writes to CRT registers 0-7 */
+	for(i = 0; i < sizeof(v->crt); i++)
+		crout(i, v->crt[i]);
 
-	msl = overflow = 0;
-	/* turn off address wrap & word mode */
-	crout(Cmode, 0xe3);
-	/* last scan line displayed (first is 0) */
-	crout(Cvde, MAXY-1);
-	overflow |= ((MAXY-1)&0x200) ? 0x40 : 0;
-	overflow |= ((MAXY-1)&0x100) ? 0x2 : 0;
-	/* total scan lines (including retrace) - 2 */
-	crout(Cvt, (yperiod-2));
-	overflow |= ((yperiod-2)&0x200) ? 0x20 : 0;
-	overflow |= ((yperiod-2)&0x100) ? 0x1 : 0;
-	/* scan lines at which vertcal retrace starts & ends */
-	crout(Cvrs, (MAXY+0x0a)); /**/
-	overflow |= ((MAXY+0x0a)&0x200) ? 0x80 : 0;
-	overflow |= ((MAXY+0x0a)&0x100) ? 0x4 : 0;
-	crout(Cvre, ((yperiod-1)&0xf)|0xa0);	/* also disable vertical interrupts */
-	/* scan lines at which vertical blanking starts & ends */
-	crout(Cvbs, (MAXY+yborder));
-	msl |= ((MAXY+yborder)&0x100) ? 0x20 : 0;
-	overflow |= ((MAXY+yborder)&0x100) ? 0x8 : 0;
-	crout(Cvbe, (yperiod-yborder)&0x7f);
-	/* the overflow bits from the other registers */
-	crout(Cvover, 0x10|overflow);	/* also 9th bit of line compare */
-	/* pixels per scan line (always 0 for graphics) */
-	crout(Cmsl, 0x40|msl);	/* also 10th bit of line compare */
+	for(i = 0; i < sizeof(v->graphics); i++)
+		grout(i, v->graphics[i]);
 
-	srout(Smode, 0x06);	/* extended memory,
-				 * odd/even off */
-	srout(Sclock, 0x01);	/* 8 bits/char */
-	srout(Smmask, 0x0f);	/* enable 4 planes for writing */
-
-	arout(Acpe, 0x0f);	/* enable 4 planes for output */
+	for(i = 0; i < sizeof(v->attribute); i++)
+		arout(i, v->attribute[i]);
 }
 
 void
@@ -193,7 +173,8 @@ screeninit(void)
 	int c;
 	ulong *l;
 
-	vga12();
+	setmode(&mode12);
+	bigcursor();
 
 	/*
 	 *  swizzle the font longs.
@@ -321,4 +302,31 @@ vgaset(char *cmd)
 		srout(reg, val);
 		break;
 	}
+}
+
+
+/*
+ *  a fatter than usual cursor for the safari
+ */
+Cursor fatarrow = {
+	{ -1, -1 },
+	{
+		0xff, 0xff, 0x80, 0x01, 0x80, 0x02, 0x80, 0x0c, 
+		0x80, 0x10, 0x80, 0x10, 0x80, 0x08, 0x80, 0x04, 
+		0x80, 0x02, 0x80, 0x01, 0x80, 0x02, 0x8c, 0x04, 
+		0x92, 0x08, 0x91, 0x10, 0xa0, 0xa0, 0xc0, 0x40, 
+	},
+	{
+		0x00, 0x00, 0x7f, 0xfe, 0x7f, 0xfc, 0x7f, 0xf0, 
+		0x7f, 0xe0, 0x7f, 0xe0, 0x7f, 0xf0, 0x7f, 0xf8, 
+		0x7f, 0xfc, 0x7f, 0xfe, 0x7f, 0xfc, 0x73, 0xf8, 
+		0x61, 0xf0, 0x60, 0xe0, 0x40, 0x40, 0x00, 0x00, 
+	},
+};
+void
+bigcursor(void)
+{
+	extern Cursor arrow;
+
+	memmove(&arrow, &fatarrow, sizeof(fatarrow));
 }

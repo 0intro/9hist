@@ -22,7 +22,7 @@ void
 clock(Ureg *ur)
 {
 	Proc *p;
-	int user;
+	int user, nrun = 0;
 
 	user = (ur->sr&SUPER) == 0;
 	if(user)
@@ -32,10 +32,13 @@ clock(Ureg *ur)
 	m->ticks++;
 	p = m->proc;
 	if(p){
+		nrun = 1;
 		p->pc = ur->pc;
 		if (p->state==Running)
 			p->time[p->insyscall]++;
 	}
+	nrun = (nrdy+nrun)*1000;
+	MACHP(0)->load = (MACHP(0)->load*19+nrun)/20;
 	checkalarms();
 	kbdclock();
 	mouseclock();

@@ -68,14 +68,18 @@ char *trapname[]={
 };
 
 char*
-excname(unsigned vo)
+excname(unsigned vo, ulong pc)
 {
 	static char buf[32];	/* BUG: not reentrant! */
 
 	vo &= 0x0FFF;
 	vo >>= 2;
-	if(vo < sizeof trapname/sizeof(char*))
+	if(vo < sizeof trapname/sizeof(char*)){
+		/* special case, and pc will be o.k. */
+		if(vo==4 && *(ushort*)pc==0x4848)
+			return "breakpoint";
 		return trapname[vo];
+	}
 	sprint(buf, "offset 0x%ux", vo<<2);
 	return buf;
 }
@@ -93,10 +97,10 @@ trap(Ureg *ur)
 		u->dbgreg = ur;
 	}
 	if(user){
-		sprint(buf, "sys: %s pc=0x%lux", excname(ur->vo), ur->pc);
+		sprint(buf, "sys: %s pc=0x%lux", excname(ur->vo, ur->pc), ur->pc);
 		postnote(u->p, 1, buf, NDebug);
 	}else{
-		print("kernel trap vo=0x%ux pc=0x%lux\n", ur->vo, ur->pc);
+		print("kernel trap %s pc=0x%lux\n", excname(ur->vo, ur->pc), ur->pc);
 		dumpregs(ur);
 		exit();
 	}

@@ -1,6 +1,7 @@
 #include "mem.h"
 
-#define	SYSPSR	(SPL(0x0)|PSREF|PSRSUPER)
+#define	SYSPSR	(SPL(0x0)|PSREF|PSRSUPER|0)
+#define	NOOP	OR R0, R0; OR R0, R0; OR R0, R0
 
 TEXT	start(SB), $-4
 
@@ -16,6 +17,7 @@ TEXT	start(SB), $-4
 	MOVW	$setSB(SB), R2
 	MOVW	$startvirt(SB), R7
 	JMPL	(R7)
+	MOVW	$_mul(SB), R0	/* touch _mul etc.; doesn't need to execute */
 	RETURN			/* can't get here */
 
 TEXT	startvirt(SB), $-4
@@ -47,8 +49,8 @@ TEXT	startvirt(SB), $-4
 	FMOVD	F24, F22
 
 	MOVW	$mach0(SB), R(MACH)
-	MOVW	$0x8, R7
-	MOVW	R7, WIM
+/*	MOVW	$0x8, R7 /**/
+	MOVW	R0, WIM
 	JMPL	main(SB)
 	MOVW	(R0), R0
 	RETURN
@@ -71,9 +73,7 @@ TEXT	swap1x(SB), $0
 	MOVW	R9, R10
 	AND	$~PSRET, R10		/* BUG: book says this is buggy */
 	MOVW	R10, PSR
-	OR	R0, R0
-	OR	R0, R0
-	OR	R0, R0
+	NOOP
 	MOVW	(R7), R7
 	CMP	R7, R0
 	BNE	was1
@@ -89,9 +89,7 @@ TEXT	spllo(SB), $0
 	MOVW	R7, R10
 	OR	$PSRET, R10
 	MOVW	R10, PSR
-	OR	R0, R0
-	OR	R0, R0
-	OR	R0, R0
+	NOOP
 	RETURN
 
 TEXT	splhi(SB), $0
@@ -101,18 +99,14 @@ TEXT	splhi(SB), $0
 	MOVW	R7, R10
 	AND	$~PSRET, R10	/* BUG: book says this is buggy */
 	MOVW	R10, PSR
-	OR	R0, R0
-	OR	R0, R0
-	OR	R0, R0
+	NOOP
 	RETURN
 
 TEXT	splx(SB), $0
 
 	MOVW	R15, 4(R(MACH))	/* save PC in m->splpc */
 	MOVW	R7, PSR		/* BUG: book says this is buggy */
-	OR	R0, R0
-	OR	R0, R0
-	OR	R0, R0
+	NOOP
 	RETURN
 
 TEXT	spldone(SB), $0
@@ -122,9 +116,7 @@ TEXT	spldone(SB), $0
 TEXT	touser(SB), $0
 	MOVW	$(SYSPSR&~PSREF), R8
 	MOVW	R8, PSR
-	OR	R0, R0
-	OR	R0, R0
-	OR	R0, R0
+	NOOP
 
 	MOVW	R7, R1
 	SAVE	R0, R0			/* RETT is implicit RESTORE */
@@ -143,6 +135,7 @@ TEXT	traplink(SB), $-4
 	/* R8 to R23 are free to play with */
 	/* R17 contains PC, R18 contains nPC */
 	/* R19 has PSR loaded from vector code */
+
 	ANDCC	$PSRPSUPER, R19, R0
 	BE	usertrap
 
@@ -191,18 +184,14 @@ trap1:
 	SUB	$8, R1
 	MOVW	$SYSPSR, R8
 	MOVW	R8, PSR
-	OR	R0, R0
-	OR	R0, R0
-	OR	R0, R0
+	NOOP
 	JMPL	trap(SB)
 
 	ADD	$8, R1
 restore:
 	MOVW	(4*(32+2))(R1), R8		/* PSR */
 	MOVW	R8, PSR
-	OR	R0, R0
-	OR	R0, R0
-	OR	R0, R0
+	NOOP
 
 	MOVD	(4*30)(R1), R30
 	MOVD	(4*28)(R1), R28
@@ -250,6 +239,7 @@ TEXT	syslink(SB), $-4
 	/* R17 contains PC, R18 contains nPC */
 	/* R19 has PSR loaded from vector code */
 	/* assume user did it; syscall checks */
+
 	MOVW	R1, R8
 	MOVW	R2, R9
 	MOVW	$setSB(SB), R2
@@ -282,9 +272,7 @@ TEXT	syslink(SB), $-4
 	ADD	$8, R1
 	MOVW	(4*(32+2))(R1), R8		/* PSR */
 	MOVW	R8, PSR
-	OR	R0, R0
-	OR	R0, R0
-	OR	R0, R0
+	NOOP
 
 	MOVW	(4*15)(R1), R15
 	SAVE	R0, R0
@@ -299,9 +287,7 @@ TEXT	syslink(SB), $-4
 TEXT	puttbr(SB), $0
 
 	MOVW	R7, TBR
-	OR	R0, R0
-	OR	R0, R0
-	OR	R0, R0
+	NOOP
 	RETURN
 
 TEXT	gettbr(SB), $0
@@ -342,6 +328,11 @@ TEXT	putcxsegm(SB), $0
 	JMPL	(R7)
 	RETURN
 
+TEXT	getpsr(SB), $0
+
+	MOVW	PSR, R7
+	RETURN
+
 TEXT	putcxreg(SB), $0
 
 	MOVW	$CONTEXT, R8
@@ -374,6 +365,11 @@ TEXT	putw4(SB), $0
 
 	MOVW	4(FP), R8
 	MOVW	R8, (R7, 4)
+	RETURN
+
+TEXT	getw4(SB), $0
+
+	MOVW	(R7, 4), R7
 	RETURN
 
 TEXT	putwC(SB), $0
@@ -475,9 +471,7 @@ TEXT	putsegm(SB), $0
 TEXT	savefpregs(SB), $0
 
 	MOVW	FSR, 0(R7)
-
-	ADD	$(4+7), R7		/* double-align so can MOVD */
-	ANDN	$7, R7
+	ADD	$4, R7		/* assumes R7 is now MOVD-aligned */
 
 	MOVD	F0, (0*4)(R7)
 	MOVD	F2, (2*4)(R7)
@@ -507,10 +501,10 @@ TEXT	restfpregs(SB), $0
 	OR	$PSREF, R8
 	MOVW	R8, PSR
 
-	MOVW	(R7), FSR
+	NOOP
 
-	ADD	$(4+7), R7		/* double-align so can MOVD */
-	ANDN	$7, R7
+	MOVW	(R7), FSR
+	ADD	$4, R7		/* assumes R7 is now MOVD-aligned */
 
 	MOVD	(0*4)(R7), F0
 	MOVD	(2*4)(R7), F2

@@ -51,7 +51,7 @@ enum
 struct	FPsave
 {
 	long	fsr;
-	long	fpreg[32+1];	/* +1 so we can double-align */
+	long	fpreg[32];
 };
 
 struct Conf
@@ -156,10 +156,11 @@ struct Mach
 struct User
 {
 	Proc	*p;
+					/* &fpsave must be 4 mod 8 */
+	FPsave	fpsave;			/* address of this is known by db */
 	int	nerrlab;
 	Label	errlab[NERR];
 	char	error[ERRLEN];
-	FPsave	fpsave;			/* address of this is known by vdb */
 	char	elem[NAMELEN];		/* last name element from namec */
 	Chan	*slash;
 	Chan	*dot;
