@@ -1076,11 +1076,34 @@ streamread(Chan *c, void *vbuf, long n)
 }
 
 /*
+ *  look for an instance of the line discipline `name' on
+ *  the stream `s'
+ */
+void
+qlook(Stream *s, char *name)
+{
+	Queue *q;
+
+	for(q = s->procq; q; q = q->next){
+		if(strcmp(q->info->name, name) == 0)
+			return;
+
+		/*
+		 *  this may be 2 streams joined device end to device end
+		 */
+		if(q == s->devq->other)
+			break;
+	}
+	errors("not found");
+}
+
+/*
  *  Handle a ctl request.  Streamwide requests are:
  *
  *	hangup			-- send an M_HANGUP up the stream
  *	push ldname		-- push the line discipline named ldname
  *	pop			-- pop a line discipline
+ *	look ldname		-- look for a line discipline
  *
  *  This routing is entrered with s->wrlock'ed and must unlock.
  */
@@ -1115,6 +1138,9 @@ streamctlwrite(Chan *c, void *a, long n)
 		freeb(bp);
 	} else if(streamparse("pop", bp)){
 		popq(s);
+		freeb(bp);
+	} else if(streamparse("look", bp)){
+		qlook(s, (char *)bp->rptr);
 		freeb(bp);
 	} else {
 		bp->type = M_CTL;

@@ -162,7 +162,6 @@ fault(Ureg *ur, FFrame *f)
 			k = kmap(pg);
 			qlock(o->chan);
 			if(waserror()){
-				print("demand load i/o error %s\n", u->error);
 				kunmap(k);
 				qunlock(o->chan);
 				pg->o = 0;

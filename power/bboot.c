@@ -7,12 +7,11 @@
 #define DEFSYS "bit!bootes"
 
 Fcall	hdr;
-char	*sys;
 char	*scmd;
-char	*bootfile;
+char	bootfile[5*NAMELEN];
+char	conffile[5*NAMELEN];
+char	sys[NAMELEN];
 
-char	sbuf[2*NAMELEN];
-char	bbuf[5*NAMELEN];
 char	buf[4*1024];
 
 int fd;
@@ -66,7 +65,7 @@ int	bitdial(char *);
 int	readseg(int, int, long, long, int);
 int	readkernel(int);
 int	readconf(int);
-int	outin(char *, char *, char *, int);
+int	outin(char *, char *, int);
 void	prerror(char *);
 void	error(char *);
 void	boot(int, char *);
@@ -97,15 +96,15 @@ main(int argc, char *argv[])
 			break;
 	}
 
-	sys = DEFSYS;
-	bootfile = DEFFILE;
+	strcpy(sys, DEFSYS);
+	strcpy(bootfile, DEFFILE);
 	switch(argc){
 	case 1:
-		bootfile = argv[0];
+		strcpy(bootfile, argv[0]);
 		break;
 	case 2:
-		bootfile = argv[0];
-		sys = argv[1];
+		strcpy(bootfile, argv[0]);
+		strcpy(sys, argv[1]);
 		break;
 	}
 
@@ -255,14 +254,11 @@ void
 boot(int ask, char *addr)
 {
 	int n, tries;
-	char conffile[128];
 	char *srvname;
 
 	if(ask){
-		outin("bootfile", bootfile, bbuf, sizeof(bbuf));
-		bootfile = bbuf;
-		outin("server", sys, sbuf, sizeof(sbuf));
-		sys = sbuf;
+		outin("bootfile", bootfile, sizeof(bootfile));
+		outin("server", sys, sizeof(sys));
 	}
 
 	for(tries = 0; tries < 5; tries++){
@@ -271,8 +267,8 @@ boot(int ask, char *addr)
 			fd = bitdial(srvname = &sys[4]);
 		else if(strncmp(sys, "dk!", 3) == 0)
 			fd = dkdial(srvname = &sys[3]);
-		else if(strncmp(sys, "nonet!", 5) == 0)
-			fd = nonetdial(srvname = &sys[5]);
+		else if(strncmp(sys, "nonet!", 6) == 0)
+			fd = nonetdial(srvname = &sys[6]);
 		else
 			fd = nonetdial(srvname = sys);
 		if(fd >= 0)
@@ -361,7 +357,7 @@ boot(int ask, char *addr)
 	sprint(conffile, "/mips/conf/%s", addr);
 	print("%s...", conffile);
 	while((fd = open(conffile, OREAD)) < 0){
-		outin("conffile", conffile, conffile, sizeof(conffile));
+		outin("conffile", conffile, sizeof(conffile));
 	}
 	if(readconf(fd) < 0)
 		prerror("readconf");
@@ -369,8 +365,7 @@ boot(int ask, char *addr)
 
 	print("%s...", bootfile);
 	while((fd = open(bootfile, OREAD)) < 0){
-		outin("bootfile", bootfile, bbuf, sizeof(bbuf));
-		bootfile = bbuf;
+		outin("bootfile", bootfile, sizeof(bootfile));
 	}
 	readkernel(fd);
 	prerror("couldn't read kernel");
@@ -551,7 +546,7 @@ readkernel(int fd)
  *  prompt and get input
  */
 int
-outin(char *prompt, char *def, char *buf, int len)
+outin(char *prompt, char *def, int len)
 {
 	int n;
 
@@ -561,9 +556,9 @@ outin(char *prompt, char *def, char *buf, int len)
 	}while(n==0);
 	if(n < 0)
 		error("can't read #c/cons; please reboot");
-	if(n == 1)
-		strcpy(buf, def);
-	else
+	if(n != 1){
 		buf[n-1] = 0;
+		strcpy(def, buf);
+	}
 	return n;
 }

@@ -94,7 +94,6 @@ fault(Ureg *ur, int user, int code)
 			pg = newpage(1, o, addr);
 			qlock(o->chan);
 			if(waserror()){
-				print("demand load i/o error %s\n", u->error);
 				qunlock(o->chan);
 				pg->o = 0;
 				pg->ref--;

@@ -6,12 +6,11 @@
 #define DEFFILE "/mips/9"
 
 Fcall	hdr;
-char	*sys;
 char	*scmd;
-char	*bootfile;
 
-char	sbuf[2*NAMELEN];
 char	buf[4*1024];
+char	bootfile[5*NAMELEN];
+char	sys[NAMELEN];
 
 int fd;
 int cfd;
@@ -35,7 +34,7 @@ Address addr[] = {
 /*
  *  predeclared
  */
-int	outin(char *, char *, char *, int);
+int	outin(char *, char *, int);
 void	prerror(char *);
 void	error(char *);
 void	boot(int);
@@ -60,7 +59,7 @@ main(int argc, char *argv[])
 	i = create("#e/sysname", 1, 0666);
 	if(i < 0)
 		error("sysname");
-	if(write(i, argv[0], strlen(argv[0])) <= 0)
+	if(write(i, argv[0], strlen(argv[0])) != strlen(argv[0]))
 		error("sysname");
 	close(i);
 
@@ -77,15 +76,15 @@ main(int argc, char *argv[])
 			break;
 	}
 
-	sys = DEFSYS;
-	bootfile = DEFFILE;
+	strcpy(sys, DEFSYS);
+	strcpy(bootfile, DEFFILE);
 	switch(argc){
 	case 1:
-		bootfile = argv[0];
+		strcpy(bootfile, argv[0]);
 		break;
 	case 2:
-		bootfile = argv[0];
-		sys = argv[1];
+		strcpy(bootfile, argv[0]);
+		strcpy(sys, argv[1]);
 		break;
 	}
 
@@ -238,8 +237,7 @@ boot(int ask)
 	char *srvname;
 
 	if(ask){
-		outin("server", sys, sbuf, sizeof(sbuf));
-		sys = sbuf;
+		outin("server", sys, sizeof(sys));
 	}
 
 	for(tries = 0; tries < 5; tries++){
@@ -248,8 +246,8 @@ boot(int ask)
 			fd = bitdial(srvname = &sys[4]);
 		else if(strncmp(sys, "dk!", 3) == 0)
 			fd = dkdial(srvname = &sys[3]);
-		else if(strncmp(sys, "nonet!", 5) == 0)
-			fd = nonetdial(srvname = &sys[5]);
+		else if(strncmp(sys, "nonet!", 6) == 0)
+			fd = nonetdial(srvname = &sys[6]);
 		else
 			fd = nonetdial(srvname = sys);
 		if(fd >= 0)
@@ -385,9 +383,11 @@ error(char *s)
  *  prompt and get input
  */
 int
-outin(char *prompt, char *def, char *buf, int len)
+int
+outin(char *prompt, char *def, int len)
 {
 	int n;
+	char buf[256];
 
 	do{
 		print("%s[%s]: ", prompt, def);
@@ -395,9 +395,9 @@ outin(char *prompt, char *def, char *buf, int len)
 	}while(n==0);
 	if(n < 0)
 		error("can't read #c/cons; please reboot");
-	if(n == 1)
-		strcpy(buf, def);
-	else
+	if(n != 1){
 		buf[n-1] = 0;
+		strcpy(def, buf);
+	}
 	return n;
 }
