@@ -65,11 +65,10 @@ vgaopen(Chan* c, int omode)
 }
 
 static void
-vgaclose(Chan*c)
+vgaclose(Chan*)
 {		
 	VGAscr *scr;
 
-	pprint("vgaclose: pid %d, %d, %p\n", up->pid, c->ref, c);
 	scr = &vgascreen[0];
 	if (scr && scr->dev && scr->dev->ovlctl) {
 		static char disable[] = "disable\n"; 

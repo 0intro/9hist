@@ -205,19 +205,14 @@ cyber938xcurenable(VGAscr* scr)
 	vgaxo(Crtx, 0x50, CursorON);
 }
 
-static void
-cyber938xdrawinit(VGAscr *scr)
-{
-}
-
 VGAdev vgacyber938xdev = {
 	"cyber938x",
 
-	0,				/* enable */
-	0,				/* disable */
+	nil,				/* enable */
+	nil,				/* disable */
 	cyber938xpage,			/* page */
 	cyber938xlinear,		/* linear */
-	cyber938xdrawinit,		/* drawinit */
+	nil,				/* drawinit */
 };
 
 VGAcur vgacyber938xcur = {

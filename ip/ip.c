@@ -206,7 +206,8 @@ ipoput(Fs *f, Block *bp, int gating, int ttl, int tos)
 	if(!gating)
 		eh->vihl = IP_VER|IP_HLEN;
 	eh->ttl = ttl;
-	eh->tos = tos;
+	if(!gating)
+		eh->tos = tos;
 
 	if(!canrlock(ifc))
 		goto free;
@@ -223,8 +224,10 @@ ipoput(Fs *f, Block *bp, int gating, int ttl, int tos)
 		if(!gating)
 			hnputs(eh->id, incref(&ip->id));
 		hnputs(eh->length, len);
-		eh->frag[0] = 0;
-		eh->frag[1] = 0;
+		if(!gating){
+			eh->frag[0] = 0;
+			eh->frag[1] = 0;
+		}
 		eh->cksum[0] = 0;
 		eh->cksum[1] = 0;
 		hnputs(eh->cksum, ipcsum(&eh->vihl));
@@ -265,7 +268,12 @@ ipoput(Fs *f, Block *bp, int gating, int ttl, int tos)
 	}
 	xp->rp += offset;
 
-	for(fragoff = 0; fragoff < dlen; fragoff += seglen) {
+	if(gating)
+		fragoff = nhgets(eh->frag);
+	else
+		fragoff = 0;
+	dlen += fragoff;
+	for(; fragoff < dlen; fragoff += seglen) {
 		nb = allocb(IPHDR+seglen);
 		feh = (Iphdr*)(nb->rp);
 

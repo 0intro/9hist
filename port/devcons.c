@@ -426,6 +426,9 @@ kbdputc(Queue*, int ch)
 	Rune r;
 	char *next;
 
+	if(kbd.ir == nil)
+		return 0;		/* in case we're not inited yet */
+	
 	ilock(&kbd.lockputc);		/* just a mutex */
 	r = ch;
 	n = runetochar(buf, &r);

@@ -367,8 +367,7 @@ ipopen(Chan* c, int omode)
 	int perm;
 	Fs *f;
 
-	omode &= 3;
-	perm = m2p[omode];
+	perm = m2p[omode&3];
 
 	f = ipfs[c->dev];
 
