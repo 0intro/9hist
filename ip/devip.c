@@ -1099,6 +1099,12 @@ Fsrcvpcol(Fs* f, uchar proto)
 		return f->t2p[proto];
 }
 
+Proto*
+Fsrcvpcolx(Fs *f, uchar proto)
+{
+	return f->t2p[proto];
+}
+
 Conv*
 Fsnewcall(Conv *c, uchar *raddr, ushort rport, uchar *laddr, ushort lport)
 {

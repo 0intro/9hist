@@ -141,8 +141,21 @@ icmpnoconv(Fs *f, Block *bp)
 {
 	Block	*nbp;
 	Icmp	*p, *np;
+	int	i;
+	uchar	addr[IPaddrlen];
 
 	p = (Icmp *)bp->rp;
+
+	/* only do this for unicast sources and destinations */
+	v4tov6(addr, p->dst);
+	i = ipforme(f, addr);
+	if((i&Runi) == 0)
+		return;
+	v4tov6(addr, p->src);
+	i = ipforme(f, addr);
+	if((i&Runi) == 0)
+		return;
+
 	netlog(f, Logicmp, "sending icmpnoconv -> %V\n", p->src);
 	nbp = allocb(ICMP_IPSIZE + ICMP_HDRSIZE + ICMP_IPSIZE + 8);
 	nbp->wp += ICMP_IPSIZE + ICMP_HDRSIZE + ICMP_IPSIZE + 8;
@@ -263,7 +276,7 @@ icmpiput(Proto *icmp, uchar*, Block *bp)
 			goto raise;
 		}
 		p = (Icmp *)bp->rp;
-		pr = Fsrcvpcol(icmp->f, p->proto);
+		pr = Fsrcvpcolx(icmp->f, p->proto);
 		if(pr != nil && pr->advise != nil) {
 			(*pr->advise)(pr, bp, msg);
 			return;
@@ -282,7 +295,7 @@ icmpiput(Proto *icmp, uchar*, Block *bp)
 				goto raise;
 			}
 			p = (Icmp *)bp->rp;
-			pr = Fsrcvpcol(icmp->f, p->proto);
+			pr = Fsrcvpcolx(icmp->f, p->proto);
 			if(pr != nil && pr->advise != nil) {
 				(*pr->advise)(pr, bp, m2);
 				return;

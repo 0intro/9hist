@@ -54,7 +54,7 @@ mga2164wlinear(VGAscr* scr, int* size, int* align)
 
 	if(p = mgapcimatch()){
 		aperture = p->mem[p->did==MGA2064? 1 : 0].bar & ~0x0F;
-		*size = 16*1024*1024;
+		*size = (p->did==MGA2064? 8 :16)*1024*1024;
 	}
 	else
 		aperture = 0;
@@ -117,7 +117,7 @@ mga2164wenable(VGAscr* scr)
 	scr->io = (ulong)KADDR(scr->io);
 
 	/* need to map frame buffer here too, so vga can find memory size */
-	size = 16*1024*1024;
+	size = (p->did==MGA2064? 8 :16)*1024*1024;
 	align = 0;
 	aperture = mga2164wlinear(scr, &size, &align);
 	if(aperture) {

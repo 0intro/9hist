@@ -284,12 +284,9 @@ udpiput(Proto *udp, uchar *ia, Block *bp)
 		upriv->ustats.udpNoPorts++;
 		netlog(f, Logudp, "udp: no conv %I!%d -> %I!%d\n", raddr, rport,
 			laddr, lport);
-		/* don't complain about broadcasts... */
-		if(ipforme(f, raddr) == 0){
-			uh->Unused = ottl;
-			hnputs(uh->udpplen, olen);
-			icmpnoconv(f, bp);
-		}
+		uh->Unused = ottl;
+		hnputs(uh->udpplen, olen);
+		icmpnoconv(f, bp);
 		freeblist(bp);
 		return;
 	}
