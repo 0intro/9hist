@@ -123,67 +123,71 @@ TEXT _vund(SB), $-4				/* undefined */
 	B	_vswitch
 
 TEXT _vsvc(SB), $-4				/* reset or SWI or reserved */
-	SUB	$12, R13
-	MOVW	R14, 8(R13)
-	MOVW	CPSR, R14
-	MOVW	R14, 4(R13)
-	MOVW	$PsrMsvc, R14
-	MOVW	R14, (R13)
-	MOVW	8(R13), R14
+	SUB	$12, R13			/* make room for pc, psr, & type */
+	MOVW	R14, 8(R13)			/* ureg->pc = interupted PC */
+	MOVW	SPSR, R14			/* ureg->psr = SPSR */
+	MOVW	R14, 4(R13)			/* ... */
+	MOVW	$PsrMsvc, R14			/* ureg->type = PsrMsvc */
+	MOVW	R14, (R13)			/* ... */
 	B	_vsaveu
 
 TEXT _vpab(SB), $-4				/* prefetch abort */
-	MOVM.IA	[R0-R3], (R13)
-	MOVW	$PsrMabt, R0
+	MOVM.IA	[R0-R3], (R13)			/* free some working space */
+	MOVW	$PsrMabt, R0			/* r0 = type */
 	B	_vswitch
 
 TEXT _vdab(SB), $-4				/* data abort */
-	MOVM.IA	[R0-R3], (R13)
-	MOVW	$(PsrMabt+1), R0
-	B	_vswitch
+	MOVM.IA	[R0-R3], (R13)			/* free some working space */
+	MOVW	$(PsrMabt+1), R0		/* r0 = type */
+	B	_vswitch			/* 
 
 TEXT _virq(SB), $-4				/* IRQ */
-	MOVM.IA	[R0-R3], (R13)
-	MOVW	$PsrMirq, R0
+	MOVM.IA	[R0-R3], (R13)			/* free some working space */
+	MOVW	$PsrMirq, R0			/* r0 = type */
 	B	_vswitch
 
 TEXT _vfiq(SB), $-4				/* FIQ */
-	MOVM.IA	[R0-R3], (R13)
-	MOVW	$PsrMfiq, R0
+	MOVM.IA	[R0-R3], (R13)			/* free some working space */
+	MOVW	$PsrMfiq, R0			/* r0 = type */
 	B	_vswitch
 
+	/*
+	 *  come here with type in R0 and R13 pointing above saved [r0-r3]
+	 */
 _vswitch:				/* switch to svc, type in R0 */
-	MOVW	SPSR, R1		/* psr for ureg */
-	MOVW	R14, R2			/* saved pc for ureg */
+	MOVW	SPSR, R1		/* SPSR for ureg */
+	MOVW	R14, R2			/* interrupted pc for ureg */
 	MOVW	R13, R3			/* [R0-R3] save area */
 
-	MOVW	CPSR, R14		/* switch */
+	/* switch to svc mode, we get new R13 pointing to top of svc stack */
+	MOVW	CPSR, R14
 	BIC	$PsrMask, R14
 	ORR	$(PsrDirq|PsrDfiq|PsrMsvc), R14
 	MOVW	R14, CPSR
 
-	MOVM.DB.W [R0-R2], (R13)	/* top of ureg */
-	MOVM.IA	  (R3), [R0-R3]		/* restore [R0-R3] */
+	MOVM.DB.W [R0-R2], (R13)	/* set ureg->{pc, psr, type}; r13 points to ureg->type  */
+	MOVM.IA	  (R3), [R0-R3]		/* restore [R0-R3] from previous mode's stack */
 	B	_vsaveu
 
-	/* push the registers as in ureg */
+	/* 
+	 *  come here with R13 pointing to ureg->type
+	 */
 _vsaveu:
-	SUB	$4, R13			/* save link */
-	MOVW	R14, (R13)
-	MOVM.DB.W.S [R0-R14], (R13)	/* save svc registers */
+	MOVM.DB.W.S [R0-R14], (R13)	/* save user level registers, r13 points to ureg */
 
 	MOVW	$setR12(SB), R12	/* the SB from user mode is different */
-	MOVW	R13, R0			/* argument is &ureg */
+
+	MOVW	R13, R0			/* first arg is pointer to ureg */
 	SUB	$8, R13			/* space for argument+link */
 	BL	exception(SB)
 
-_vrfe:
-	ADD	$(8+4*15), R13		/* [r0-R14]+argument+link */
-	MOVW	(R13), R14		/* restore link */
-	MOVW	8(R13), R0		/* restore SPSR */
-	MOVW	R0, SPSR
-	MOVM.DB.S (R13), [R0-R14]		/* restore registers */
-	ADD	$12, R13		/* skip saved link+type+SPSR */
+_vrfe: 
+	ADD	$(8+4*15), R13		/* r13 points to ureg->type */
+	MOVW	8(R13), R14		/* restore link */
+	MOVW	4(R13), R0		/* restore SPSR */
+	MOVW	R0, SPSR		/* ... */
+	MOVM.DB.S (R13), [R0-R14]	/* restore registers */
+	ADD	$8, R13			/* skip saved type+SPSR */
 	RFE				/* MOVM.IA.S.W (R13), [R15] */
 
 TEXT splhi(SB), $-4

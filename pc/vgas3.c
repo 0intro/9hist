@@ -12,6 +12,28 @@
 #include <cursor.h>
 #include "screen.h"
 
+enum {
+	PCIS3		= 0x5333,		/* PCI VID */
+
+	SAVAGE3D	= 0x8A20,	/* PCI DID */
+	SAVAGE3DMV	= 0x8A21,
+	SAVAGE4		= 0x8A22,
+	SAVAGEMXMV	= 0x8C10,
+	SAVAGEMX	= 0x8C11,
+	SAVAGEIXMV	= 0x8C12,
+	SAVAGEIX	= 0x8C13,
+	SAVAGE2000	= 0x9102,
+
+	VIRGE		= 0x5631,
+	VIRGEGX2	= 0x8A10,
+	VIRGEDXGX	= 0x8A01,
+	VIRGEVX		= 0x883D,
+	VIRGEMX		= 0x8C01,
+	VIRGEMXP	= 0x8C03,
+
+	AURORA64VPLUS	= 0x8812,
+};
+
 static int
 s3pageset(VGAscr* scr, int page)
 {
@@ -50,7 +72,7 @@ s3page(VGAscr* scr, int page)
 	id = (vgaxi(Crtx, 0x2D)<<8)|vgaxi(Crtx, 0x2E);
 	switch(id){
 
-	case 0x8A10:				/* ViRGE/GX2 */
+	case VIRGEGX2:
 		break;
 
 	default:
@@ -78,7 +100,7 @@ s3linear(VGAscr* scr, int* size, int* align)
 	mmiosize = 0;
 	mmiobase = 0;
 	mmioname = nil;
-	if(p = pcimatch(nil, 0x5333, 0)){
+	if(p = pcimatch(nil, PCIS3, 0)){
 		for(i=0; i<nelem(p->mem); i++){
 			if(p->mem[i].size >= *size
 			&& ((p->mem[i].bar & ~0x0F) & (*align-1)) == 0)
@@ -92,7 +114,7 @@ s3linear(VGAscr* scr, int* size, int* align)
 		*size = p->mem[i].size;
 
 		id = (vgaxi(Crtx, 0x2D)<<8)|vgaxi(Crtx, 0x2E);
-		if(id == 0x8A22){		/* find Savage4 mmio */
+		if(id == SAVAGE4){		/* find Savage4 mmio */
 			/*
 			 * We could assume that the MMIO registers
 			 * will be in the screen segment and just use
@@ -108,6 +130,7 @@ s3linear(VGAscr* scr, int* size, int* align)
 				if(p->mem[j].size==512*1024 || p->mem[j].size==16*1024*1024){
 					mmiobase = p->mem[j].bar & ~0x0F;
 					mmiosize = 512*1024;
+					scr->mmio = (ulong*)upamalloc(mmiobase, mmiosize, 16*1024*1024);
 					mmioname = "savage4mmio";
 					break;
 				}
@@ -196,12 +219,12 @@ s3load(VGAscr* scr, Cursor* curs)
 	id = (vgaxi(Crtx, 0x2D)<<8)|vgaxi(Crtx, 0x2E);
 	switch(id){
 
-	case 0x5631:				/* ViRGE */
-	case 0x8A01:				/* ViRGE/[DG]X */
-	case 0x8A10:				/* ViRGE/GX2 */
-	case 0x883D:				/* ViRGE/VX */
-	case 0x8C12:				/* Savage4/IX-MV */
-	case 0x8A22:				/* Savage4 */
+	case VIRGE:
+	case VIRGEDXGX:
+	case VIRGEGX2:
+	case VIRGEVX:	
+	case SAVAGEIXMV:
+	case SAVAGE4:
 		p += scr->storage;
 		break;
 
@@ -244,12 +267,12 @@ s3load(VGAscr* scr, Cursor* curs)
 
 	switch(id){
 
-	case 0x5631:				/* ViRGE */
-	case 0x8A01:				/* ViRGE/[DG]X */
-	case 0x8A10:				/* ViRGE/GX2 */
-	case 0x883D:				/* ViRGE/VX */
-	case 0x8C12:				/* Savage4/IX-MV */
-	case 0x8A22:				/* Savage4 */
+	case VIRGE:
+	case VIRGEDXGX:
+	case VIRGEGX2:
+	case VIRGEVX:	
+	case SAVAGEIXMV:
+	case SAVAGE4:
 		break;
 
 	default:
@@ -526,9 +549,11 @@ s3blank(int blank)
 	vgaxo(Seqx, CursorSyncCtl, x);
 }
 
+
 static void
 s3drawinit(VGAscr *scr)
 {
+	extern void savageinit(VGAscr*);	/* vgasavage.c */
 	ulong id;
 
 	id = (vgaxi(Crtx, 0x2D)<<8)|vgaxi(Crtx, 0x2E);
@@ -542,13 +567,17 @@ s3drawinit(VGAscr *scr)
 	 * above.
 	 */
 	switch(id){
-	case 0x5631:				/* ViRGE */
-	case 0x883D:				/* ViRGE/VX */
-	case 0x8A10:				/* ViRGE/GX2 */
+	case VIRGE:				/* ViRGE */
+	case VIRGEVX:				/* ViRGE/VX */
+	case VIRGEGX2:				/* ViRGE/GX2 */
 		scr->mmio = (ulong*)(scr->aperture+0x1000000);
 		scr->fill = hwfill;
 		scr->scroll = hwscroll;
 		/* scr->blank = hwblank; */
+		break;
+	case SAVAGE4:
+		savageinit(scr);
+		break;
 	}
 }
 
