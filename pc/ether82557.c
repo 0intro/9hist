@@ -6,6 +6,8 @@
  *	the PCI scanning code could be made common to other adapters;
  *	PCI code needs rewritten to handle byte, word, dword accesses
  *	  and using the devno as a bus+dev+function triplet;
+ *	tidy/fix locking;
+ *	optionally use memory-mapped registers;
  *	stats.
  */
 #include "u.h"
@@ -30,7 +32,7 @@ enum {					/* CSR */
 	Ack		= 0x01,		/* byte */
 	Command		= 0x02,		/* byte or word (word includes Interrupt) */
 	Interrupt	= 0x03,		/* byte */
-	Pointer		= 0x04,		/* dword */
+	General		= 0x04,		/* dword */
 	Port		= 0x08,		/* dword */
 	Fcr		= 0x0C,		/* Flash control register */
 	Ecr		= 0x0E,		/* EEPROM control register */
@@ -156,7 +158,7 @@ enum {					/* action command */
 	CbC		= 0x00008000,	/* execution Complete */
 
 	CbNOP		= 0x00000000,
-	CbIAS		= 0x00010000,	/* Indvidual Address Setup */
+	CbIAS		= 0x00010000,	/* Individual Address Setup */
 	CbConfigure	= 0x00020000,
 	CbMAS		= 0x00030000,	/* Multicast Address Setup */
 	CbTransmit	= 0x00040000,
@@ -237,7 +239,7 @@ custart(Ctlr* ctlr)
 	}
 	ctlr->cbqbusy = 1;
 
-	csr32w(ctlr, Pointer, PADDR(ctlr->cbqhead->rp));
+	csr32w(ctlr, General, PADDR(ctlr->cbqhead->rp));
 	while(csr8r(ctlr, Command))
 		;
 	csr8w(ctlr, Command, CUstart);
@@ -278,7 +280,7 @@ attach(Ether* ether)
 	ilock(&ctlr->rlock);
 	status = csr16r(ctlr, Status);
 	if((status & RUstatus) == RUidle){
-		csr32w(ctlr, Pointer, PADDR(ctlr->rfd[ctlr->rfdx]->rp));
+		csr32w(ctlr, General, PADDR(ctlr->rfd[ctlr->rfdx]->rp));
 		while(csr8r(ctlr, Command))
 			;
 		csr8w(ctlr, Command, RUstart);
@@ -617,16 +619,16 @@ reset(Ether* ether)
 	if((x & 0x05) != 0x05)
 		print("PCI command = %uX\n", x);
 
-	csr32w(ctlr, Pointer, 0);
+	csr32w(ctlr, General, 0);
+	while(csr8r(ctlr, Command))
+		;
 	csr8w(ctlr, Command, LoadRUB);
 	while(csr8r(ctlr, Command))
 		;
 	csr8w(ctlr, Command, LoadCUB);
-	while(csr8r(ctlr, Command))
-		;
 
 	/*
-	 * Initialise the action and receive frame areas.
+	 * Initialise the receive frame and configuration areas.
 	 */
 	ctlrinit(ctlr);
 
