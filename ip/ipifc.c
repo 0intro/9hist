@@ -749,15 +749,15 @@ remselfcache(Ipifc *ifc, Iplifc *lifc, uchar *a)
 	*l_self = link->selflink;
 	iplinkfree(link);
 
+	if(p->link != nil)
+		goto out;
+
 	/* remove from routing table */
 	if(isv4(a))
 		v4delroute(a+IPv4off, IPallbits+IPv4off);
 	else
 		v6delroute(a, IPallbits);
 	
-	if(p->link != nil)
-		goto out;
-
 	/* no more links, remove from hash and free */
 	*l = p->next;
 	ipselffree(p);
@@ -783,10 +783,42 @@ dumpselftab(void)
 			continue;
 		count = 0;
 		for(; p != nil && count++ < 6; p = p->next)
-			print("(%i %d %lux)", p->a, p->type, p);
+			print("(%I %d %lux)", p->a, p->type, p);
 		print("\n");
 	}
 	qunlock(&selftab);
+}
+
+static char *stformat = "%-32.32I %2.2d %4.4s\n";
+enum
+{
+	Nstformat= 41,
+};
+
+long
+ipselftabread(char *cp, ulong offset, int n)
+{
+	int i, m, nifc;
+	Ipself *p;
+	Iplink *link;
+	char state[8];
+
+	m = 0;
+	qlock(&selftab);
+	for(i = 0; i < NHASH && m < n; i++){
+		for(p = selftab.hash[i]; p != nil && m < n; p = p->next){
+			if(offset == 0){
+				nifc = 0;
+				for(link = p->link; link; link = link->selflink)
+					nifc++;
+				routetype(p->type, state);
+				m += snprint(cp + m, n - m, stformat, p->a, nifc, state);
+			}
+			offset -= Nstformat;
+		}
+	}
+	qunlock(&selftab);
+	return m;
 }
 
 

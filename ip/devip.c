@@ -16,6 +16,7 @@ enum
 	Qarp=		Qtopbase,
 	Qiproute,
 	Qiprouter,
+	Qipselftab,
 	Qlog,
 
 	Qprotodir,			/* directory for a protocol */
@@ -107,7 +108,9 @@ ip1gen(Chan *c, int i, Dir *dp)
 {
 	Qid q;
 	char *p;
+	int prot;
 
+	prot = 0666;
 	switch(i) {
 	default:
 		return -1;
@@ -119,6 +122,11 @@ ip1gen(Chan *c, int i, Dir *dp)
 		p = "iproute";
 		q = (Qid){QID(0, 0, Qiproute), 0};
 		break;
+	case Qipselftab:
+		p = "ipselftab";
+		prot = 0444;
+		q = (Qid){QID(0, 0, Qipselftab), 0};
+		break;
 	case Qiprouter:
 		p = "iprouter";
 		q = (Qid){QID(0, 0, Qiprouter), 0};
@@ -128,7 +136,7 @@ ip1gen(Chan *c, int i, Dir *dp)
 		q = (Qid){QID(0, 0, Qlog), 0};
 		break;
 	}
-	devdir(c, q, p, 0, network, 0666, dp);
+	devdir(c, q, p, 0, network, prot, dp);
 	return 1;
 }
 
@@ -154,6 +162,7 @@ ipgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 	case Qlog:
 	case Qiproute:
 	case Qiprouter:
+	case Qipselftab:
 		return ip1gen(c, TYPE(c->qid), dp);
 	case Qprotodir:
 		if(s < fs.p[PROTO(c->qid)]->ac) {
@@ -295,6 +304,7 @@ ipopen(Chan* c, int omode)
 	case Qremote:
 	case Qlocal:
 	case Qstats:
+	case Qipselftab:
 		if(omode != OREAD)
 			error(Eperm);
 		break;
@@ -464,8 +474,8 @@ ipread(Chan *ch, void *a, long n, ulong offset)
 		return arpread(a, offset, n);
 	case Qiproute:
 		return routeread(a, offset, n);
-	case Qiprouter:
-		return iprouterread(a, n);
+	case Qipselftab:
+		return ipselftabread(a, offset, n);
 	case Qlog:
 		return netlogread(a, offset, n);
 	case Qctl:

@@ -24,12 +24,14 @@ enum
 	Qtext,
 	Qwait,
 	Qprofile,
+	Qfd,
 };
 
 #define	STATSIZE	(2*NAMELEN+12+9*12)
 Dirtab procdir[] =
 {
 	"ctl",		{Qctl},		0,			0000,
+	"fd",		{Qfd},		0,			0000,
 	"fpregs",	{Qfpregs},	sizeof(FPsave),		0000,
 	"kregs",	{Qkregs},	sizeof(Ureg),		0000,
 	"mem",		{Qmem},		0,			0000,
@@ -57,10 +59,10 @@ char *sname[]={ "Text", "Data", "Bss", "Stack", "Shared", "Phys", "Shdata", "Map
  *	32 bits of pid, for consistency checking
  * If notepg, c->pgrpid.path is pgrp slot, .vers is noteid.
  */
-#define	QSHIFT	4	/* location in qid of proc slot # */
+#define	QSHIFT	5	/* location in qid of proc slot # */
 
-#define	QID(q)		(((q).path&0x0000000F)>>0)
-#define	SLOT(q)		((((q).path&0x07FFFFFF0)>>QSHIFT)-1)
+#define	QID(q)		(((q).path&0x0000001F)>>0)
+#define	SLOT(q)		((((q).path&0x07FFFFFE0)>>QSHIFT)-1)
 #define	PID(q)		((q).vers)
 #define	NOTEID(q)	((q).vers)
 
@@ -183,6 +185,7 @@ procopen(Chan *c, int omode)
 	case Qkregs:
 	case Qsegment:
 	case Qprofile:
+	case Qfd:
 		if(omode != OREAD)
 			error(Eperm);
 		break;
@@ -240,6 +243,37 @@ procwstat(Chan *c, char *db)
 
 	convM2D(db, &d);
 	p->procmode = d.mode&0777;
+}
+
+static int
+procfds(Fgrp *f, char *va, int count, long offset)
+{
+	Chan *c;
+	int n, i;
+
+	n = 0;
+	for(i = 0; i <= f->maxfd; i++) {
+		c = f->fd[i];
+		if(c == nil)
+			continue;
+		n += snprint(va+n, count-n, "%3d %.2s %.8lux.%.8d %8d ",
+			i,
+			&"r w rw"[(c->mode&3)<<1],
+			c->qid.path, c->qid.vers,
+			c->offset);
+		n += ptpath(c->path, va+n, count-n);
+		n += snprint(va+n, count-n, "\n");
+		if(offset > 0) {
+			offset -= n;
+			if(offset < 0) {
+				memmove(va, va+n+offset, -offset);
+				n = -offset;
+			}
+			else
+				n = 0;
+		}
+	}
+	return n;
 }
 
 static void
@@ -483,6 +517,8 @@ procread(Chan *c, void *va, long n, ulong offset)
 		return a - (char*)va;
 	case Qnoteid:
 		return readnum(offset, va, n, p->noteid, NUMSIZE);
+	case Qfd:
+		return procfds(p->fgrp, va, n, offset);
 	}
 	error(Egreg);
 	return 0;		/* not reached */

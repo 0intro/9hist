@@ -340,6 +340,7 @@ extern Route*	v4lookup(uchar *a);
 extern Route*	v6lookup(uchar *a);
 extern long	routeread(char*, ulong, int);
 extern long	routewrite(Chan*, char*, int);
+extern void	routetype(int, char*);
 
 /*
  *  arp.c
@@ -432,6 +433,7 @@ extern void	ipifcremmulti(Conv *c, uchar *ma, uchar *ia);
 extern void	ipifcaddmulti(Conv *c, uchar *ma, uchar *ia);
 extern char*	ipifcrem(Ipifc *ifc, char **argv, int argc, int dolock);
 extern char*	ipifcadd(Ipifc *ifc, char **argv, int argc);
+extern long	ipselftabread(char *a, ulong offset, int n);
 
 /*
  *  ip.c

@@ -544,6 +544,27 @@ next:		;
 	return q;
 }
 
+void
+routetype(int type, char *p)
+{
+	memset(p, ' ', 4);
+	p[4] = 0;
+	if(type & Rv4)
+		*p++ = '4';
+	else
+		*p++ = '6';
+	if(type & Rifc)
+		*p++ = 'i';
+	if(type & Runi)
+		*p++ = 'u';
+	else if(type & Rbcast)
+		*p++ = 'b';
+	else if(type & Rmulti)
+		*p++ = 'm';
+	if(type & Rptpt)
+		*p = 'p';
+}
+
 enum
 {
 	Rlinelen=	89,
@@ -555,7 +576,6 @@ void
 convroute(Route *r, uchar *addr, uchar *mask, uchar *gate, char *t, int *nifc)
 {
 	int i;
-	char *p = t;
 
 	if(r->type & Rv4){
 		memmove(addr, v4prefix, IPv4off);
@@ -572,22 +592,7 @@ convroute(Route *r, uchar *addr, uchar *mask, uchar *gate, char *t, int *nifc)
 		memmove(gate, r->v6.gate, IPaddrlen);
 	}
 
-	memset(t, ' ', 4);
-	t[4] = 0;
-	if(r->type & Rv4)
-		*p++ = '4';
-	else
-		*p++ = '6';
-	if(r->type & Rifc)
-		*p++ = 'i';
-	if(r->type & Runi)
-		*p++ = 'u';
-	else if(r->type & Rbcast)
-		*p++ = 'b';
-	else if(r->type & Rmulti)
-		*p++ = 'm';
-	if(r->type & Rptpt)
-		*p = 'p';
+	routetype(r->type, t);
 
 	if(r->ifc)
 		*nifc = r->ifc->conv->x;
