@@ -37,7 +37,6 @@ extern	ulong	rdbglen;
 void
 main(void)
 {
-	rdbginit();
 	tlbinit();
 	ioinit(1);		/* Very early to establish IO mappings */
 	arginit();
@@ -173,7 +172,7 @@ serialinit(void)
 void
 ioinit(int mapeisa)
 {
-	ulong devphys, isaphys, intphys, isamphys;
+	ulong devphys, isaphys, intphys, isamphys, promphys;
 
 	/*
 	 * If you want to segattach the eisa space these
@@ -206,8 +205,10 @@ ioinit(int mapeisa)
 	/* Enable all device interrupts */
 	IO(ushort, Intenareg) = 0xffff;
 
-	/* Look at the first 16M of Eisa memory */
-/*	IO(uchar, EisaLatch) = 0; /**/
+	/* Map the rom back into Promvirt to allow NMI handling */
+	promphys = IOPTE|PPN(Promphys);
+
+	puttlbx(3, Promvirt, promphys, PTEGLOBL, PGSZ1M);
 }
 
 /*

@@ -58,6 +58,9 @@ enum
 	Intenareg	= 0xE0200004,	/* Device interrupt enable */
 	Intcause	= 0xE0200007,	/* Decice interrupt cause register */
 
+	Promvirt	= 0xE1000000,	/* From ARCS chipset */
+	Promphys	= 0x1FC00000,	/* MIPs processors */
+
 	Ttbr		= 0x8000001C,	/* Translation table base address */
 	Tlrb		= 0x80000024,	/* Translation table limit address */
 	Tir		= 0x8000002c,	/* Translation invalidate register */

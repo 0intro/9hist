@@ -113,7 +113,6 @@ struct Mach
 	Ureg*	ur;
 	KMap*	kactive;		/* active on this machine */
 	int	knext;
-	uchar	ktlbx[NTLB];		/* tlb index used for kmap */
 	uchar	ktlbnext;
 	int	speed;			/* cpu speed */
 	ulong	delayloop;		/* for the delay() routine */
@@ -138,6 +137,7 @@ struct KMap
 	ulong	phys1;
 	KMap*	next;
 	KMap*	konmach[MAXMACH];
+	int	tlbi[MAXMACH];
 	Page*	pg;
 };
 

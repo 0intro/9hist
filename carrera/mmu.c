@@ -108,8 +108,8 @@ kmap(Page *pg)
 	}
 
 	x = m->ktlbnext;
-	puttlbx(x, (virt & ~BY2PG)|TLBPID(tlbvirt()), k->phys0, k->phys1, PGSZ4K);
-	m->ktlbx[x] = 1;
+	k->tlbi[m->machno] = x;
+	puttlbx(x, (virt&~BY2PG)|TLBPID(tlbvirt()), k->phys0, k->phys1, PGSZ4K);
 	if(++x >= NTLB)
 		m->ktlbnext = TLBROFF;
 	else
@@ -144,11 +144,14 @@ kunmap(KMap *k)
 void
 kfault(Ureg *ur)
 {
+	int mno;
 	KMap *k, *f;
 	ulong x, index, virt, addr;
 
+	mno = m->machno;
 	addr = ur->badvaddr;
 	index = (addr & ~KMAPADDR) >> KMAPSHIFT;
+
 	if(index >= KPTESIZE)
 		panic("kmapfault: %lux", addr);
 
@@ -156,20 +159,21 @@ kfault(Ureg *ur)
 	if(k->virt == 0)
 		panic("kmapfault: unmapped %lux", addr);
 
-	for(f = m->kactive; f; f = f->konmach[m->machno])
+	for(f = m->kactive; f; f = f->konmach[mno])
 		if(f == k)
 			break;
+
 	if(f == 0) {
 		incref(k);
-		k->konmach[m->machno] = m->kactive;
+		k->konmach[mno] = m->kactive;
 		m->kactive = k;
 	}
 
 	x = m->ktlbnext;
 	virt = (k->virt&~BY2PG)|TLBPID(tlbvirt());
 	puttlbx(x, virt, k->phys0, k->phys1, PGSZ4K);
+	k->tlbi[mno] = x;
 
-	m->ktlbx[x] = 1;
 	if(++x >= NTLB)
 		m->ktlbnext = TLBROFF;
 	else
@@ -179,25 +183,17 @@ kfault(Ureg *ur)
 void
 kmapinval()
 {
-	int mno, i, curpid;
+	int mno, curpid;
 	KMap *k, *next;
-	uchar *ktlbx;
 
 	if(m->kactive == 0)
 		return;
 
 	curpid = PTEPID(TLBPID(tlbvirt()));
-	ktlbx = m->ktlbx+TLBROFF;
-	for(i = TLBROFF; i < NTLB; i++, ktlbx++) {
-		if(*ktlbx == 0)
-			continue;
-		TLBINVAL(i, curpid);
-		*ktlbx = 0;
-	}
-
 	mno = m->machno;
 	for(k = m->kactive; k; k = next) {
 		next = k->konmach[mno];
+		TLBINVAL(k->tlbi[mno], curpid);
 		kunmap(k);
 	}
 	m->kactive = 0;

@@ -116,7 +116,7 @@
 
 #define PIDXSHFT	12
 #define PIDX		(0x7<<PIDXSHFT)
-#define	KMAPADDR	0xE1000000
+#define	KMAPADDR	0xE2000000
 #define KMAPMASK	0xFF000000
 #define KMAPSHIFT	15
 #define NCOLOR		8

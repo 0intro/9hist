@@ -15,8 +15,8 @@
 
 #define SONICADDR	((Sonic*)Sonicbase)
 
-#define RD(rn)		(delay(0), *(ulong*)((ulong)&SONICADDR->rn^4))
-#define WR(rn, v)	(delay(0), *(ulong*)((ulong)&SONICADDR->rn^4) = (v))
+#define RD(rn)		(sncdly(), *(ulong*)((ulong)&SONICADDR->rn^4))
+#define WR(rn, v)	(sncdly(), *(ulong*)((ulong)&SONICADDR->rn^4) = (v))
 #define ISquad(s)	if((ulong)s & 0x7) panic("sonic: Quad alignment");
 
 typedef struct Pbuf Pbuf;
@@ -74,7 +74,7 @@ typedef struct
 
 enum
 {
-	Nrb		= 8,		/* receive buffers */
+	Nrb		= 16,		/* receive buffers */
 	Ntb		= 8,		/* transmit buffers */
 };
 
@@ -249,6 +249,16 @@ Ether *ether[Nether];
 #define MS16(addr)	((PADDR(addr)>>16) & 0xFFFF)
 
 void sonicswap(void*, int);
+
+static void
+sncdly(void)
+{
+	int i, j, *pj;
+
+	pj = &j;
+	for(i = 0; i < 200; i++)
+		*pj++;
+}
 
 static void
 wus(ushort *a, ushort v)
@@ -530,10 +540,8 @@ etherintr(void)
 			status &= ~Hbl;
 		}
 		if(status & Br){
-			WR(cr, 0);
-			iprint("sonic: bus retry occurred\n");
+			print("sonic: bus retry occurred\n");
 			status &= ~Br;
-			for(;;);
 		}
 	
 		if(status & AllIntr)

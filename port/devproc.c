@@ -809,11 +809,16 @@ procctlmemio(Proc *p, ulong offset, int n, void *va, int read)
 
 	kunmap(k);
 
+	/* Ensure the process sees text page changes */
+	if(s->flushme)
+		memset(pg->cachectl, PG_TXTFLUSH, sizeof(pg->cachectl));
+
 	s->steal--;
-	qunlock(&s->lk);
 
 	if(read == 0)
 		p->newtlb = 1;
+
+	qunlock(&s->lk);
 
 	return n;
 }
