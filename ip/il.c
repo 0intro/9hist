@@ -201,7 +201,7 @@ ilstate(Conv *c, char *state, int n)
 	Ilcb *ic;
 
 	ic = (Ilcb*)(c->ptcl);
-	return snprint(state, n, "%14.14s del %5.5d Br %5.5d md %5.5d una %5.5d rex %5.5d max %5.5d",
+	return snprint(state, n, "%s del %5.5d Br %5.5d md %5.5d una %5.5d rex %5.5d max %5.5d",
 		ilstates[ic->state],
 		ic->delay>>LogAGain, ic->rate>>LogAGain, ic->mdev>>LogDGain,
 		ic->unackeduchars, ic->rexmit, ic->maxrtt);

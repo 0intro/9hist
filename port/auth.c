@@ -479,7 +479,7 @@ authcheck(Chan *c, char *a, int n)
 
 /*
  *  reading authcheck after writing into it yields the
- *  nonce key
+ *  unencrypted ticket
  */
 long
 authcheckread(Chan *c, char *a, int n)
@@ -528,6 +528,10 @@ authentwrite(Chan *c, char *a, int n)
 	return n;
 }
 
+/*
+ *  create an authenticator and return it and optionally the
+ *  unencripted ticket
+ */
 long
 authentread(Chan *c, char *a, int n)
 {
