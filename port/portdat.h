@@ -580,7 +580,7 @@ struct Proc
 	/* statistics */
 	ulong	counter[Pcounter];	/* specialized per process counters */
 	ulong	syscall[NSYSCALL];
-
+ulong qpc;
 	/*
 	 *  machine specific MMU
 	 */

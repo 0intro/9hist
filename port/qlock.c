@@ -10,7 +10,7 @@ qlock(QLock *q)
 {
 	Proc *p, *mp;
 
-if(up==0) { iprint("QLOCK at ilevel PC=%lux\n", getcallerpc(0)); for(;;); }
+up->qpc =  getcallerpc(0);
 
 	lock(&q->use);
 	if(!q->locked) {
@@ -34,6 +34,7 @@ if(up==0) { iprint("QLOCK at ilevel PC=%lux\n", getcallerpc(0)); for(;;); }
 int
 canqlock(QLock *q)
 {
+up->qpc =  getcallerpc(0);
 	if(!canlock(&q->use))
 		return 0;
 	if(q->locked){

@@ -87,6 +87,13 @@ struct Notsave
 
 #define NCALLBACK	32
 
+typedef struct Callbk Callbk;
+struct Callbk
+{
+	void	(*func)(void*);
+	void*	arg;
+};
+
 /* First FOUR members offsets known by l.s */
 struct Mach
 {
@@ -114,10 +121,10 @@ struct Mach
 	Schedq	hiq;
 	Schedq	loq;
 
-	void	(**cbin)(void);
-	void	(**cbout)(void);
-	void	(**cbend)(void);
-	void	(*calls[NCALLBACK])(void);
+	Callbk*	cbin;
+	Callbk*	cbout;
+	Callbk*	cbend;
+	Callbk	calls[NCALLBACK];
 
 	int	pfault;
 	int	cs;

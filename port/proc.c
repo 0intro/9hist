@@ -107,29 +107,30 @@ anyready(void)
 	return m->hiq.head != 0 || m->loq.head != 0;
 }
 
-int
-newcallback(void (*func)(void))
+void
+newcallback(void (*func)(void*), void *a)
 {
-	*m->cbin = func;
+	Callbk *c;
+
+	c = m->cbin;
 	if(++m->cbin >= m->cbend)
 		m->cbin = m->calls;
 
-	if(m->hiq.head == 0 && m->loq.head == 0)
-		return 1;
-
-	return 0;
+	c->func = func;
+	c->arg = a;
 }
 
 void
 callbacks(void)
 {
-	void (*func)(void);
+	Callbk *c;
 
 	while(m->cbin != m->cbout) {
-		func = *m->cbout;
+		c = m->cbout;
 		if(++m->cbout >= m->cbend)
 			m->cbout = m->calls;
-		func();
+
+		c->func(c->arg);
 	}
 }
 
@@ -710,9 +711,9 @@ procdump(void)
 		s = p->psstate;
 		if(s == 0)
 			s = "kproc";
-		print("%3d:%10s pc %8lux %8s (%s) ut %ld st %ld bss %lux\n",
+		print("%3d:%10s pc %8lux %8s (%s) q %lux ut %ld st %ld bss %lux\n",
 			p->pid, p->text, p->pc,  s, statename[p->state],
-			p->time[0], p->time[1], bss);
+			p->qpc, p->time[0], p->time[1], bss);
 	}
 }
 
@@ -843,7 +844,7 @@ killbig(void)
 		if(p->state == Dead || p->kp)
 			continue;
 		l = 0;
-		for(i=1; i<NSEG; i++){
+		for(i=1; i<NSEG; i++) {
 			s = p->seg[i];
 			if(s)
 				l += s->top - s->base;
@@ -853,7 +854,7 @@ killbig(void)
 			max = l;
 		}
 	}
-	print("%d: %s killed because no swap configured", kp->pid, kp->text);
+	print("%d: %s killed because no swap configured\n", kp->pid, kp->text);
 	kp->procctl = Proc_exitme;
 	postnote(kp, 1, "killed: proc too big", NExit);
 }

@@ -313,6 +313,7 @@ mousewrite(Chan *c, void *va, long n, ulong offset)
 	Point pt;
 	char buf[64];
 
+	USED(offset);
 	p = va;
 	switch(c->qid.path){
 	case CHDIR:

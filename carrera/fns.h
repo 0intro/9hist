@@ -122,7 +122,7 @@ void	hnputs(void*, ushort v);
 ulong	nhgetl(void*);
 ushort	nhgets(void*);
 
-void	ifwrite(void*, Block*);
+void	ifwrite(void*, Block*, int);
 void*	ifinit(int);
 void	ifjab(void);
 ulong	ifaddr(void*);

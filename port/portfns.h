@@ -16,7 +16,7 @@ void		buzz(int, int);
 void		cachedel(Image*, ulong);
 void		cachepage(Page*, Image*);
 void		callbacks(void);
-int		newcallback(void (*)(void));
+void		newcallback(void (*)(void*), void*);
 int		cangetc(void*);
 int		canlock(Lock*);
 int		canpage(Proc*);
