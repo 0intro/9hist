@@ -362,18 +362,20 @@ int
 scsireqsense(Target *t, char lun, void *data, int *nbytes, int quiet)
 {
 	char *s;
-	int status, try;
+	int n, status, try;
 	uchar cmd[6], *sense;
 
-	sense = malloc(*nbytes);
+	n = *nbytes;
+	sense = malloc(n);
 
 	for(try = 0; try < 20; try++) {
 		memset(cmd, 0, sizeof(cmd));
 		cmd[0] = CMDreqsense;
 		cmd[1] = lun<<5;
-		cmd[4] = *nbytes;
-		memset(sense, 0, *nbytes);
+		cmd[4] = n;
+		memset(sense, 0, n);
 
+		*nbytes = n;
 		status = scsiexec(t, SCSIread, cmd, sizeof(cmd), sense, nbytes);
 		if(status != STok){
 			free(sense);
