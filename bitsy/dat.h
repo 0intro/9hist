@@ -255,6 +255,7 @@ struct PCMslot
  */
 struct DevConf
 {
+	RWlock;			/* write: configure/unconfigure/suspend; read: normal access */
 	ulong	mem;	/* mapped memory address */
 	ulong	port;		/* mapped i/o regs */
 	int		size;		/* access size */

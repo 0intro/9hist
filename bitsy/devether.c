@@ -37,13 +37,14 @@ etherconfig(int on, char *spec, DevConf *cf)
 	char name[32], buf[128];
 	char *p, *e;
 
-	/* can't unconfigure yet */
-	if(on == 0)
-		return -1;
-
 	ctlrno = atoi(spec);
 	if(etherxx[ctlrno] != nil)
 		return -1;
+
+	/* can't unconfigure yet */
+	if(on == 0){
+		return -1;
+	}
 
 	ether = malloc(sizeof(Ether));
 	if(ether == nil)
@@ -122,29 +123,46 @@ etherattach(char* spec)
 	if(etherxx[ctlrno] == 0)
 		error(Enodev);
 
+	rlock(etherxx[ctlrno]);
 	chan = devattach('l', spec);
 	chan->dev = ctlrno;
 	if(etherxx[ctlrno]->attach)
 		etherxx[ctlrno]->attach(etherxx[ctlrno]);
+	runlock(etherxx[ctlrno]);
 	return chan;
 }
 
 static Walkqid*
 etherwalk(Chan* chan, Chan* nchan, char** name, int nname)
 {
-	return netifwalk(etherxx[chan->dev], chan, nchan, name, nname);
+	Walkqid *q;
+
+	rlock(etherxx[chan->dev]);
+	q = netifwalk(etherxx[chan->dev], chan, nchan, name, nname);
+	runlock(etherxx[chan->dev]);
+	return q;
 }
 
 static int
 etherstat(Chan* chan, uchar* dp, int n)
 {
-	return netifstat(etherxx[chan->dev], chan, dp, n);
+	int s;
+
+	rlock(etherxx[chan->dev]);
+	s = netifstat(etherxx[chan->dev], chan, dp, n);
+	runlock(etherxx[chan->dev]);
+	return s;
 }
 
 static Chan*
 etheropen(Chan* chan, int omode)
 {
-	return netifopen(etherxx[chan->dev], chan, omode);
+	Chan *c;
+
+	rlock(etherxx[chan->dev]);
+	c = netifopen(etherxx[chan->dev], chan, omode);
+	runlock(etherxx[chan->dev]);
+	return c;
 }
 
 static void
@@ -155,7 +173,9 @@ ethercreate(Chan*, char*, int, ulong)
 static void
 etherclose(Chan* chan)
 {
+	rlock(etherxx[chan->dev]);
 	netifclose(etherxx[chan->dev], chan);
+	runlock(etherxx[chan->dev]);
 }
 
 static long
@@ -163,8 +183,10 @@ etherread(Chan* chan, void* buf, long n, vlong off)
 {
 	Ether *ether;
 	ulong offset = off;
+	long n;
 
 	ether = etherxx[chan->dev];
+	rlock(ether);
 	if((chan->qid.type & QTDIR) == 0 && ether->ifstat){
 		/*
 		 * With some controllers it is necessary to reach
@@ -176,19 +198,29 @@ etherread(Chan* chan, void* buf, long n, vlong off)
 			ether->ifstat(ether, buf, 0, offset);
 	}
 
-	return netifread(ether, chan, buf, n, offset);
+	n = netifread(ether, chan, buf, n, offset);
+	runlock(ether);
+	return n;
 }
 
 static Block*
 etherbread(Chan* chan, long n, ulong offset)
 {
-	return netifbread(etherxx[chan->dev], chan, n, offset);
+	Block *b;
+
+	rlock(etherxx[chan->dev]);
+	b = netifbread(etherxx[chan->dev], chan, n, offset);
+	runlock(etherxx[chan->dev]);
+	return b;
 }
 
 static int
 etherwstat(Chan* chan, uchar* dp, int n)
 {
-	return netifwstat(etherxx[chan->dev], chan, dp, n);
+	rlock(etherxx[chan->dev]);
+	n = netifwstat(etherxx[chan->dev], chan, dp, n);
+	runlock(etherxx[chan->dev]);
+	return n;
 }
 
 static void
@@ -334,30 +366,41 @@ etherwrite(Chan* chan, void* buf, long n, vlong)
 	Ether *ether;
 	Block *bp;
 	int nn;
+	long l;
 
 	ether = etherxx[chan->dev];
+	rlock(etherxx[chan->dev]);
 	if(NETTYPE(chan->qid.path) != Ndataqid) {
 		nn = netifwrite(ether, chan, buf, n);
-		if(nn >= 0)
+		if(nn >= 0){
+			runlock(etherxx[chan->dev]);
 			return nn;
-
-		if(ether->ctl!=nil)
-			return ether->ctl(ether,buf,n);
-			
+		}
+		if(ether->ctl!=nil){
+			l = ether->ctl(ether,buf,n);
+			runlock(etherxx[chan->dev]);
+			return l;
+		}
+		runlock(etherxx[chan->dev]);
 		error(Ebadctl);
 	}
 
-	if(n > ether->maxmtu)
+	if(n > ether->maxmtu){
+		runlock(etherxx[chan->dev]);
 		error(Etoobig);
-	if(n < ether->minmtu)
+	}
+	if(n < ether->minmtu){
+		runlock(etherxx[chan->dev]);
 		error(Etoosmall);
-
+	}
 	bp = allocb(n);
 	memmove(bp->rp, buf, n);
 	memmove(bp->rp+Eaddrlen, ether->ea, Eaddrlen);
 	bp->wp += n;
 
-	return etheroq(ether, bp);
+	l = etheroq(ether, bp);
+	runlock(etherxx[chan->dev]);
+	return l;
 }
 
 static long
@@ -377,16 +420,20 @@ etherbwrite(Chan* chan, Block* bp, ulong)
 		freeb(bp);
 		return n;
 	}
+	rlock(etherxx[chan->dev]);
 	ether = etherxx[chan->dev];
 
 	if(n > ether->maxmtu){
 		freeb(bp);
+		runlock(etherxx[chan->dev]);
 		error(Etoobig);
 	}
 	if(n < ether->minmtu){
 		freeb(bp);
+		runlock(etherxx[chan->dev]);
 		error(Etoosmall);
 	}
+	runlock(etherxx[chan->dev]);
 
 	return etheroq(ether, bp);
 }

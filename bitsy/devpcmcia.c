@@ -348,15 +348,16 @@ pcmctlwrite(char *p, long n, ulong, PCMslot *sp)
 		}
 
 		/* configure device */
-		cf.type = nil;
+		memset(&cf, 0, sizeof cf);
+		wlock(&cf);
 		kstrdup(&cf.type, cmd->f[2]);
 		cf.mem = (ulong)sp->mem;
 		cf.port = (ulong)sp->regs;
 		cf.itype = GPIOfalling;
 		cf.interrupt = bitno(sp == slot ? GPIO_CARD_IRQ0_i : GPIO_CARD_IRQ1_i);
-		cf.size = 0;
 		if(devtab[dtx]->config(1, p, &cf) < 0)
 			error("couldn't configure device");
+		wunlock(&cf);
 
 		wunlock(sp);
 		poperror();

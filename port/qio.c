@@ -57,7 +57,7 @@ enum
 	Qflow		= (1<<3),
 	Qcoalesce	= (1<<4),	/* coallesce packets on read */
 
-	Maxatomic	= 32*1024,
+	Maxatomic	= 64*1024,
 };
 
 uint	qiomaxatomic = Maxatomic;
