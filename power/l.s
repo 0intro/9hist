@@ -141,6 +141,12 @@ TEXT	gotolabel(SB), $0
 	MOVW	4(R2), R29
 	RET
 
+TEXT	gotopc(SB), $0
+
+	MOVW	0(FP), R2
+	JAL	(R2)
+	RET			/* shouldn't get here */
+
 TEXT	puttlb(SB), $4
 
 	JAL	splhi(SB)

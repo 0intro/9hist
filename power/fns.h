@@ -64,6 +64,7 @@ Block	*getq(Queue*);
 void	gettlb(int, ulong*);
 ulong	gettlbvirt(int);
 void	gotolabel(Label*);
+void	gotopc(void*);
 void	growpte(Orig*, ulong);
 void	*ialloc(ulong, int);
 int	incref(Ref*);

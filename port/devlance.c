@@ -477,6 +477,10 @@ lancestart(void)
 	l.ea[3] = LANCEID[8]>>8;
 	l.ea[4] = LANCEID[4]>>8;
 	l.ea[5] = LANCEID[0]>>8;
+/*
+	print("lance addr = %.4ux %.4ux %.4ux\n", lm->etheraddr[0], lm->etheraddr[1],
+		lm->etheraddr[2]);
+/**/
 
 	/*
 	 *  ignore multicast addresses
