@@ -176,6 +176,7 @@ newpage(int clear, Segment **s, ulong va)
 	}
 
 	pageunchain(p);
+
 	lock(p);
 	if(p->ref != 0)
 		panic("newpage");

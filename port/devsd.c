@@ -276,16 +276,16 @@ sdgetunit(SDev* sdev, int subno)
 		}
 		sdev->unitflg[subno] = 1;
 
-		if(sdev->enabled == 0 && sdev->ifc->enable)
-			sdev->ifc->enable(sdev);
-		sdev->enabled = 1;
-
 		snprint(buf, sizeof(buf), "%s%d", sdev->name, subno);
 		kstrdup(&unit->name, buf);
 		kstrdup(&unit->user, eve);
 		unit->perm = 0555;
 		unit->subno = subno;
 		unit->dev = sdev;
+
+		if(sdev->enabled == 0 && sdev->ifc->enable)
+			sdev->ifc->enable(sdev);
+		sdev->enabled = 1;
 
 		/*
 		 * No need to lock anything here as this is only
