@@ -1,5 +1,4 @@
 typedef struct Conf	Conf;
-typedef struct Timer	Timer;
 typedef struct FPsave	FPsave;
 typedef struct ISAConf	ISAConf;
 typedef struct Label	Label;
@@ -184,6 +183,7 @@ struct Mach
 
 	int	loopconst;
 
+	Lock	apictimerlock;
 	int	cpumhz;
 	vlong	cpuhz;
 	int	cpuidax;
@@ -191,7 +191,6 @@ struct Mach
 	char	cpuidid[16];
 	char*	cpuidtype;
 	int	havetsc;
-	vlong	lasttsc;		/* last sampled value */
 
 	vlong	mtrrcap;
 	vlong	mtrrdef;
@@ -199,17 +198,6 @@ struct Mach
 	vlong	mtrrvar[32];		/* 256 max. */
 
 	int	stack[1];
-};
-
-/*
- * fasttick timer interrupts
- */
-struct Timer
-{
-	vlong	when;			/* fastticks when f should be called */
-	void	(*f)(Ureg*, Timer*);
-	void	*a;
-	Timer	*next;
 };
 
 /*
@@ -246,6 +234,7 @@ struct PCArch
 
 	void	(*clockenable)(void);
 	uvlong	(*fastclock)(uvlong*);
+	void	(*timerset)(uvlong);
 };
 
 /*

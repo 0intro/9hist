@@ -384,14 +384,6 @@ echo(char *buf, int n)
 		case 'q':
 			scheddump();
 			return;
-#ifdef RSC
-case 'Q':
-{
-extern void dumpschedlog(void);
-dumpschedlog();
-return;
-}
-#endif
 		case 'k':
 			if(!cpuserver)
 				killbig();

@@ -1,5 +1,4 @@
 typedef struct Conf	Conf;
-typedef struct Timer		Timer;
 typedef struct FPsave	FPsave;
 typedef struct ISAConf	ISAConf;
 typedef struct Label	Label;
@@ -191,16 +190,6 @@ struct ISAConf {
 
 	int	nopt;
 	char	*opt[NISAOPT];
-};
-/*
- * fasttick timer interrupts (Dummy for now)
- */
-struct Timer
-{
-	vlong	when;			/* fastticks when f should be called */
-	void	(*f)(Ureg*, Timer*);
-	void	*a;
-	Timer	*next;
 };
 
 #define	MACHP(n)	((Mach *)((int)&mach0+n*BY2PG))

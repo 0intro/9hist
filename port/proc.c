@@ -4,7 +4,6 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"../port/error.h"
-#include	"../port/edf.h"
 
 int	nrdy;
 Ref	noteidalloc;
@@ -43,37 +42,6 @@ char *statename[] =
 static void pidhash(Proc*);
 static void pidunhash(Proc*);
 
-/*DEBUGGING: scheduling event log */
-#ifdef RSC
-static ulong *lg;
-enum {Nlg = 1024*1024};
-static ulong wp, rp;
-static void
-le(int c, Proc *p)
-{
-	if(lg==nil)
-		lg = malloc(Nlg*sizeof(lg[0]));
-	lg[wp++&(Nlg-1)] = MACHP(0)->ticks;
-	lg[wp++&(Nlg-1)] = c;
-	lg[wp++&(Nlg-1)] = (ulong)p;
-}
-void
-dumpschedlog(void)
-{
-	int i;
-
-	i=0;
-	iprint("%lux=>%lux\n", rp, wp);
-	while((rp&(Nlg-1))!=(wp&(Nlg-1))){
-		iprint("%lux ", lg[rp++&(Nlg-1)]);
-		if(++i%8==0)
-			iprint("\n");
-	}
-	if(i%8)
-		iprint("\n");	
-}
-#endif
-
 /*
  * Always splhi()'ed.
  */
@@ -90,7 +58,7 @@ schedinit(void)		/* never returns */
 		case Moribund:
 			up->state = Dead;
 			if (isedf(up))
-				edf_bury(up);
+				edfbury(up);
 
 			/*
 			 * Holding locks from pexit:
@@ -150,7 +118,7 @@ sched(void)
 int
 anyready(void)
 {
-	return nrdy || edf_anyready();
+	return nrdy || edfanyready();
 }
 
 int
@@ -180,12 +148,9 @@ ready(Proc *p)
 	Schedq *rq;
 
 	s = splhi();
-#ifdef RSC
-le('r',p);
-#endif
 
 	if(isedf(p)){
-		edf_ready(p);
+		edfready(p);
 		splx(s);
 		return;
 	}
@@ -239,7 +204,7 @@ runproc(void)
 	Proc *p, *l;
 	ulong rt;
 
-	if ((p = edf_runproc()) != nil)
+	if ((p = edfrunproc()) != nil)
 		return p;
 
 loop:
@@ -533,7 +498,7 @@ sleep(Rendez *r, int (*f)(void*), void *arg)
 			// Behind unlock, we may call wakeup on ourselves.
 
 			if (isedf(up))
-				edf_block(up);
+				edfblock(up);
 
 			gotolabel(&m->sched);
 		}
@@ -743,7 +708,7 @@ addbroken(Proc *p)
 	qunlock(&broken);
 
 	if (isedf(up))
-		edf_bury(up);
+		edfbury(up);
 	p->state = Broken;
 	p->psstate = 0;
 	sched();
@@ -912,7 +877,7 @@ pexit(char *exitstr, int freemem)
 	lock(&palloc);
 
 	if (isedf(up))
-		edf_bury(up);
+		edfbury(up);
 	up->state = Moribund;
 	sched();
 	panic("pexit");
@@ -1166,7 +1131,7 @@ procctl(Proc *p)
 		splhi();
 		p->state = Stopped;
 		if (isedf(up))
-			edf_block(up);
+			edfblock(up);
 		sched();
 		p->psstate = state;
 		splx(s);

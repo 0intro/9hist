@@ -4,7 +4,6 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"../port/error.h"
-#include	"../port/edf.h"
 
 #include	<a.out.h>
 
@@ -827,7 +826,7 @@ sysrendezvous(ulong *arg)
 	up->state = Rendezvous;
 	unlock(up->rgrp);
 	if (isedf(up))
-		edf_block(up);
+		edfblock(up);
 
 	sched();
 

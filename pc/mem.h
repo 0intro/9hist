@@ -125,6 +125,7 @@
 #define	PTEKERNEL	(0<<2)
 #define	PTEUSER		(1<<2)
 #define	PTESIZE		(1<<7)
+#define	PTEGLOBAL	(1<<8)
 
 /*
  * Macros for calculating offsets within the page directory base

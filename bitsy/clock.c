@@ -78,7 +78,7 @@ clockinit(void)
  *  us at least once a second and we overflow once every 1165
  *  seconds, we won't miss an overflow.
  */
-vlong
+uvlong
 fastticks(uvlong *hz)
 {
 	static uvlong high;

@@ -508,6 +508,7 @@ PCArch archgeneric = {
 	i8253enable,				/* clockenable */
 
 	i8253read,				/* read the standard timer */
+	i8253timerset,
 };
 
 typedef struct {
@@ -681,6 +682,12 @@ cpuidentify(void)
 			rdmsr(0x01, &mct);
 	}
 
+	if(t->family >= 6){
+		cr4 = getcr4();
+		cr4 |= 0x80;		/* page global enable bit */
+		putcr4(cr4);
+	}
+
 	cputype = t;
 	return t->family;
 }
@@ -724,8 +731,6 @@ archinit(void)
 			arch->intrinit = archgeneric.intrinit;
 		if(arch->intrenable == 0)
 			arch->intrenable = archgeneric.intrenable;
-		if(arch->intrenable == 0)
-			arch->intrenable = archgeneric.intrenable;
 	}
 
 	/*
@@ -757,4 +762,22 @@ pcmspecialclose(int a)
 {
 	if (_pcmspecialclose != nil)
 		_pcmspecialclose(a);
+}
+
+/*
+ *  return value and speed of timer set in arch->clockenable
+ */
+uvlong
+fastticks(uvlong *hz)
+{
+	return (*arch->fastclock)(hz);
+}
+
+/*
+ *  set next timer interrupt
+ */
+void
+timerset(uvlong x)
+{
+	(*arch->timerset)(x);
 }

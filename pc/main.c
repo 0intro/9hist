@@ -30,6 +30,7 @@ char *confval[MAXCONF];
 int nconf;
 uchar	*sp;	/* user stack of init proc */
 
+
 static void
 options(void)
 {
@@ -93,6 +94,7 @@ main(void)
 	mmuinit();
 	if(arch->intrinit)
 		arch->intrinit();
+	timersinit();
 	mathinit();
 	kbdinit();
 	if(arch->clockenable)

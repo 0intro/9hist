@@ -42,6 +42,7 @@ typedef struct Segment	Segment;
 typedef struct Session	Session;
 typedef struct Task	Task;
 typedef struct Talarm	Talarm;
+typedef struct Timer	Timer;
 typedef struct Uart	Uart;
 typedef struct Waitq	Waitq;
 typedef struct Walkqid	Walkqid;
@@ -825,6 +826,18 @@ struct Uart
 	int	dohup;
 
 	Rendez	r;
+};
+
+/*
+ * fasttick timer interrupts (Dummy for now)
+ */
+struct Timer
+{
+	uvlong	when;			/* fastticks when f should be called */
+	void	(*f)(Ureg*, Timer*);
+	void	*a;
+	Timer	*next;
+	ulong	period;
 };
 
 #define DEVDOTDOT -1

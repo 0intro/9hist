@@ -16,7 +16,6 @@ typedef struct PCMconftab	PCMconftab;
 typedef struct PhysUart		PhysUart;
 typedef struct PMMU		PMMU;
 typedef struct Proc		Proc;
-typedef struct Timer		Timer;
 typedef struct Uart		Uart;
 typedef struct Ureg		Ureg;
 typedef struct Vctl		Vctl;
@@ -261,16 +260,4 @@ struct DevConf
 	int		itype;	/* type of interrupt */
 	ulong	interrupt;	/* interrupt number */
 	char		*type;	/* card type, mallocated */
-};
-
-/*
- * Timer interrupts
- */
-struct Timer
-{
-	uvlong	when;			/* fastticks when f should be called */
-	ulong	period;			/* non-zero for recurring periodic timers */
-	void		(*f)(Ureg*, Timer*);	/* function to call */
-	void		*a;				/* User parameter */
-	Timer	*next;
 };

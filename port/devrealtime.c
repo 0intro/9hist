@@ -76,7 +76,7 @@ dumptask(char *p, char *e, Task *t, Ticks now)
 	char c;
 
 	p = seprint(p, e, "{%s, D%U, Δ%U,T%U, C%U, S%U",
-		edf_statename[t->state], t->D, t->Delta, t->T, t->C, t->S);
+		edfstatename[t->state], t->D, t->Delta, t->T, t->C, t->S);
 	n = t->r - now;
 	if (n >= 0)
 		c = ' ';
@@ -224,16 +224,12 @@ devrtinit(void)
 static Chan *
 devrtattach(char *param)
 {
-	if(havetimer() == 0)
-		error("no edf on multiprocessors");
 	return devattach('R', param);
 }
 
 static Walkqid *
 devrtwalk(Chan *c, Chan *nc, char **name, int nname)
 {
-	if (havetimer() == 0)
-		error("no edf on multiprocessors");
 	return devwalk(c, nc, name, nname, nil, 0, schedgen);
 }
 
@@ -267,8 +263,6 @@ devrtopen(Chan *c, int mode)
 {
 	Task *t;
 
-	if (havetimer() == 0)
-		error("no edf on multiprocessors");
 	switch ((ulong)c->qid.path){
 	case Qlog:
 	case Qnblog:
@@ -292,7 +286,7 @@ devrtopen(Chan *c, int mode)
 	case Qclone:
 		if (mode == OREAD) 
 			error(Eperm);
-		edf_init();
+		edfinit();
 		/* open a new task */
 		for (t = tasks; t< tasks + Maxtasks; t++){
 			qlock(t);
@@ -465,7 +459,7 @@ devrtread(Chan *c, void *v, long n, vlong offs)
 		p = buf;
 		e = p + sizeof(buf);
 		p = seprint(p, e, "task=%d", s);
-		p = seprint(p, e, " state=%s", edf_statename[t->state]);
+		p = seprint(p, e, " state=%s", edfstatename[t->state]);
 		if (t->T)
 			p = seprint(p, e, " T=%T", ticks2time(t->T));
 		if (t->D)
@@ -634,7 +628,7 @@ removetask(Task *t)
 	Resource *r;
 
 	qlock(t);
-	edf_expel(t);
+	edfexpel(t);
 	for (pp = t->procs; pp < t->procs + nelem(t->procs); pp++)
 		if (p = *pp)
 			p->task = nil;
@@ -720,7 +714,7 @@ devrtwrite(Chan *c, void *va, long n, vlong)
 				if (e=parsetime(&time, v))
 					error(e);
 				ticks = time2ticks(time);
-				edf_expel(t);
+				edfexpel(t);
 				switch(add){
 				case -1:
 					if (ticks > t->T)
@@ -739,7 +733,7 @@ devrtwrite(Chan *c, void *va, long n, vlong)
 				if (e=parsetime(&time, v))
 					error(e);
 				ticks = time2ticks(time);
-				edf_expel(t);
+				edfexpel(t);
 				switch(add){
 				case -1:
 					if (ticks > t->D)
@@ -758,7 +752,7 @@ devrtwrite(Chan *c, void *va, long n, vlong)
 				if (e=parsetime(&time, v))
 					error(e);
 				ticks = time2ticks(time);
-				edf_expel(t);
+				edfexpel(t);
 				switch(add){
 				case -1:
 					if (ticks > t->C)
@@ -776,7 +770,7 @@ devrtwrite(Chan *c, void *va, long n, vlong)
 			}else if (strcmp(a, "resources") == 0){
 				if (v == nil)
 					error("resources: value missing");
-				edf_expel(t);
+				edfexpel(t);
 				if (add == 0){
 					for (rp = t->res; rp < t->res + nelem(t->res); rp++)
 						if (*rp){
@@ -801,7 +795,7 @@ devrtwrite(Chan *c, void *va, long n, vlong)
 				if (v == nil)
 					error("procs: value missing");
 				if (add <= 0){
-					edf_expel(t);
+					edfexpel(t);
 				}
 				if (add == 0){
 					for (pp = t->procs; pp < t->procs + nelem(t->procs); pp++)
@@ -828,11 +822,11 @@ devrtwrite(Chan *c, void *va, long n, vlong)
 				}
 			}else if (strcmp(a, "admit") == 0){
 				/* Do the admission test */
-				if (e = edf_admit(t))
+				if (e = edfadmit(t))
 					error(e);
 			}else if (strcmp(a, "expel") == 0){
 				/* Do the admission test */
-				edf_expel(t);
+				edfexpel(t);
 			}else if (strcmp(a, "remove") == 0){
 				/* Do the admission test */
 				removetask(t);
@@ -854,7 +848,7 @@ devrtwrite(Chan *c, void *va, long n, vlong)
 					t->flags |= Useblocking;
 			}else if (strcmp(a, "yield") == 0){
 				if (isedf(up) && up->task == t){
-					edf_deadline(up);	/* schedule next release */
+					edfdeadline(up);	/* schedule next release */
 					sched();
 				}else
 					error("yield outside task");

@@ -46,37 +46,28 @@ enum
 	Trigger=0x0,		/* interrupt on terminal count */
 	Sstrobe=0x8,		/* software triggered strobe */
 
-	/* counter 2 controls */
-	C2gate=	0x1,
-	C2speak=0x2,
-	C2out=	0x10,
-
 	/* T2ctl bits */
 	T2gate=	(1<<0),		/* enable T2 counting */
 	T2spkr=	(1<<1),		/* connect T2 out to speaker */
 	T2out=	(1<<5),		/* output of T2 */
 
 	Freq=	1193182,	/* Real clock frequency */
-	Tickshift= 8,		/* increase tick wriggle room */
-
-	Minusec=20,		/* minimum cycles for a clock interrupt */
-
-	FreqMul=16,		/* extra accuracy in fastticks/Freq calculation; ok up to ~8ghz */
+	Tickshift=8,		/* extra accuracy */
+	MaxPeriod=Freq/HZ,
+	MinPeriod=Freq/(100*HZ),
 };
 
 static struct
 {
 	Lock;
+	ulong	period;		/* current clock period */
 	int	enabled;
-	int	mode;
-	vlong	when;		/* next fastticks a clock interrupt should occur */
-	vlong	timerwhen;	/* next fastticks a cycintr happens; 0 == infinity */
-	long	fastperiod;	/* fastticks/hz */
-	long	fast2freq;	/* fastticks*FreqMul/Freq */
+	uvlong	hz;
 
 	ushort	last;		/* last value of clock 1 */
 	uvlong	ticks;		/* cumulative ticks of counter 1 */
 }i8253;
+
 
 void
 i8253init(void)
@@ -87,12 +78,12 @@ i8253init(void)
 	ioalloc(T2ctl, 1, 0, "i8253.cntr2ctl");
 
 	/*
-	 *  set interrupting clock for 1/HZ seconds
+	 *  enable a 1/HZ interrupt for providing scheduling interrupts
 	 */
 	outb(Tmode, Load0|Square);
-	i8253.mode = Square;
 	outb(T0cntr, (Freq/HZ));	/* low byte */
 	outb(T0cntr, (Freq/HZ)>>8);	/* high byte */
+	i8253.period = Freq/HZ;
 
 	/*
 	 *  enable a longer period counter to use as a clock
@@ -100,10 +91,11 @@ i8253init(void)
 	outb(Tmode, Load2|Square);
 	outb(T2cntr, 0);		/* low byte */
 	outb(T2cntr, 0);		/* high byte */
+	i8253.period = Freq/HZ;
 	x = inb(T2ctl);
 	x |= T2gate;
 	outb(T2ctl, x);
-
+	
 	/*
 	 * Introduce a little delay to make sure the count is
 	 * latched and the timer is counting down; with a fast
@@ -189,97 +181,58 @@ guesscpuhz(int aalcycles)
 		m->cpumhz = (cpufreq + cpufreq/200)/1000000;
 		m->cpuhz = cpufreq;
 	}
+
+	i8253.hz = Freq<<Tickshift;
 }
 
-/*
- * schedule the next interrupt
- * timerwhen is the time of the next interrupt
- */
-static void
-clockintrsched0(vlong next)
-{
-	vlong now;
-	long set;
-
-	i8253.timerwhen = next;
-	if(i8253.mode == Square && next == 0)
-		return;
-
-	now = fastticks(nil);
-	if(next || now < i8253.when - i8253.fastperiod || now > i8253.when - ((3*i8253.fastperiod)>>2)){
-		if(next > i8253.when)
-			next = i8253.when;
-		set = (long)(next - now) * FreqMul / i8253.fast2freq;
-		set -= 3;	/* three cycles for the count to take effect: outb, outb, wait */
-		if(i8253.mode != Trigger){
-			outb(Tmode, Load0|Trigger);
-			i8253.mode = Trigger;
-			set--;
-		}
-		if(set < Minusec)
-			set = Minusec;
-		outb(T0cntr, set);	/* low byte */
-		outb(T0cntr, set>>8);	/* high byte */
-	}else if(i8253.mode != Square){
-		i8253.mode = Square;
-		outb(Tmode, Load0|Square);
-		outb(T0cntr, (Freq/HZ));	/* low byte */
-		outb(T0cntr, (Freq/HZ)>>8);	/* high byte */
-	}
-}
-
-int
-havetimer(void)
-{
-	return i8253.enabled;
-}
+ulong i8253periodset;
 
 void
-clockintrsched(void)
+i8253timerset(uvlong next)
 {
-	vlong next;
+	ulong period;
+	ulong want;
+	ulong now;
 
-	ilock(&i8253);
-	if(i8253.enabled){
-		next = timernext();
-		if(next != i8253.timerwhen)
-			clockintrsched0(next);
+	want = next>>Tickshift;
+	now = i8253.ticks;	/* assuming whomever called us just did fastticks() */
+
+	period = MaxPeriod;
+	if(next != 0){
+		period = want - now;
+		if(period < MinPeriod)
+			period = MinPeriod;
+		else if(period > (4*MaxPeriod)/5)	/* strong attraction to MaxPeriod */
+			period = MaxPeriod;
 	}
-	iunlock(&i8253);
+
+	/* histeresis */
+	if(i8253.period != period){
+		ilock(&i8253);
+		/* load new value */
+		outb(Tmode, Load0|Square);
+		outb(T0cntr, period);		/* low byte */
+		outb(T0cntr, period>>8);	/* high byte */
+
+		/* remember period */
+		i8253.period = period;
+		i8253periodset++;
+		iunlock(&i8253);
+	}
 }
 
 static void
-clockintr0(Ureg* ureg, void *v)
+i8253clock(Ureg* ureg, void*)
 {
-	vlong now, when;
-
-	/* goes with syncing in squidboy */
-	if(m->havetsc)
-		rdtsc(&m->lasttsc);
-
-	now = fastticks(nil);
-	when = i8253.when;
-
-	if(now >= i8253.when){
-		clockintr(ureg, v);
-		do
-			i8253.when += i8253.fastperiod;
-		while(i8253.when < now);
-	}
-	if(i8253.timerwhen || i8253.mode != Square)
-		clockintrsched0(checktimer(ureg, v));
+	timerintr(ureg, 0);
 }
 
 void
 i8253enable(void)
 {
-	uvlong hz;
-
-	i8253.when = fastticks(&hz);
-	i8253.fastperiod = (hz + HZ/2) / HZ;
-	i8253.fast2freq = (hz * FreqMul) / Freq;
 	i8253.enabled = 1;
-	intrenable(IrqCLOCK, clockintr0, 0, BUSUNKNOWN, "clock");
+	i8253.period = Freq/HZ;
+	intrenable(IrqCLOCK, i8253clock, 0, BUSUNKNOWN, "clock");
 }
 
 /*
@@ -294,7 +247,7 @@ i8253read(uvlong *hz)
 	uvlong ticks;
 
 	if(hz)
-		*hz = Freq<<Tickshift;
+		*hz = i8253.hz;
 
 	ilock(&i8253);
 	outb(Tmode, Latch2);
@@ -304,7 +257,7 @@ i8253read(uvlong *hz)
 	if(y < i8253.last)
 		x = i8253.last - y;
 	else
-		x = i8253.last + (0x1000 - y);
+		x = i8253.last + (0x10000 - y);
 	i8253.last = y;
 	i8253.ticks += x>>1;
 	ticks = i8253.ticks;
@@ -313,11 +266,34 @@ i8253read(uvlong *hz)
 	return ticks<<Tickshift;
 }
 
-/*
- *  return value and speed of timer set in arch->clockenable
- */
-vlong
-fastticks(uvlong *hz)
+void
+delay(int millisecs)
 {
-	return (*arch->fastclock)(hz);
+	millisecs *= m->loopconst;
+	if(millisecs <= 0)
+		millisecs = 1;
+	aamloop(millisecs);
+}
+
+void
+microdelay(int microsecs)
+{
+	microsecs *= m->loopconst;
+	microsecs /= 1000;
+	if(microsecs <= 0)
+		microsecs = 1;
+	aamloop(microsecs);
+}
+
+ulong
+TK2MS(ulong ticks)
+{
+	uvlong t, hz;
+
+	t = ticks;
+	hz = HZ;
+	t *= 1000L;
+	t = t/hz;
+	ticks = t;
+	return ticks;
 }

@@ -129,9 +129,6 @@ loopbackattach(char *spec)
 	int chan;
 	int dev;
 
-	if(!havetimer())
-		error("can't time packets");
-
 	dev = 0;
 	if(spec != nil){
 		dev = atoi(spec);

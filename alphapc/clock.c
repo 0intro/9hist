@@ -42,7 +42,7 @@ cycletimer(void)
 	return MACHP(0)->fastclock;
 }
 
-vlong
+uvlong
 fastticks(uvlong* hz)
 {
 	uvlong ticks;
@@ -55,7 +55,12 @@ fastticks(uvlong* hz)
 	if(hz)
 		*hz = m->cpuhz;
 
-	return (vlong)ticks;
+	return ticks;
+}
+
+void
+timerset(uvlong)
+{
 }
 
 void
@@ -87,7 +92,7 @@ clock(Ureg *ureg)
 		return;
 	count -= 1024;
 
-	portclock(ureg);
+	timerintr(ureg, 0);
 }
 
 ulong

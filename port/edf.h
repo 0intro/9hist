@@ -97,30 +97,12 @@ extern Taskq		qwaitrelease;
 extern Taskq		qreleased;
 extern Taskq		qextratime;
 extern Taskq		edfstack[];
-extern int			edf_stateupdate;
+extern int			edfstateupdate;
 extern void		(*devrt)(Task *, Ticks, int);
-extern char *		edf_statename[];
+extern char *		edfstatename[];
 
 #pragma	varargck	type	"T"		Time
 #pragma	varargck	type	"U"		Ticks
 
-/* Interface: */
-void		edf_preempt(Task*);		/* Stop current task, administrate run time, leave on stack */
-void		edf_deadline(Proc*);		/* Remove current task from edfstack, schedule its next release */
-void		edf_release(Task*);		/* Release a task */
-void		edf_schedule(Task *);	/* Run a released task: remove from qrelease, push onto edfstack */
-char *	edf_admit(Task*);
-void		edf_expel(Task*);
-void		edf_bury(Proc*);		/* Proc dies, update Task membership */
-void		edf_sched(Task*);		/* Figure out what to do with task (after a state change) */
-int		isedf(Proc*);			/* Proc must be edf scheduled */
-void		edf_stop(Proc*);		/* Just event generation; should probably be done differently */
-int		edf_anyready(void);
-void		edf_ready(Proc*);
-Proc	*	edf_runproc(void);
-void		edf_block(Proc*);		/* Edf proc has blocked, do the admin */
-void		edf_init(void);
-int		edf_waitlock(Lock*);
-void		edf_releaselock(Lock*);
 Time		ticks2time(Ticks);
 Ticks	time2ticks(Time);

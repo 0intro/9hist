@@ -32,6 +32,7 @@ main(void)
 	kbdinit();
 	procinit0();
 	initseg();
+	timersinit();
 	links();
 	chandevreset();
 	pageinit();

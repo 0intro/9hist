@@ -90,17 +90,11 @@ identify(void)
 }
 
 PCArch archmp = {
-	"_MP_",					/* id */
-	identify,				/* ident */
-	mpshutdown,				/* reset */
-	0,					/* serialpower */
-	0,					/* modempower */
-
-	mpinit,					/* intrinit */
-	mpintrenable,				/* intrenable */
-	0,					/* intrvecno */
-	0,					/* intrdisable */
-
-	0,					/* clockenable */
-	i8253read,				/* fastclock */
+.id=		"_MP_",	
+.ident=		identify,
+.reset=		mpshutdown,
+.intrinit=	mpinit,
+.intrenable=	mpintrenable,
+.fastclock=	i8253read,
+.timerset=	lapictimerset,
 };

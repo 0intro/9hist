@@ -54,13 +54,12 @@ clockintr(Ureg *ureg)
 	}
 	putdec(clkreload-v);
 
-	if(m->flushmmu){
-		if(up)
-			flushmmu();
-		m->flushmmu = 0;
-	}
+	timerintr(ureg, 0);
+}
 
-	portclock(ureg);
+void
+timerset(uvlong)
+{
 }
 
 void
@@ -88,7 +87,7 @@ microdelay(int l)
 		;
 }
 
-vlong
+uvlong
 fastticks(uvlong *hz)
 {
 	if(hz)

@@ -19,7 +19,6 @@ static int machno2apicno[MaxAPICNO+1];	/* inverse map: machno -> APIC ID */
 static Lock mprdthilock;
 static int mprdthi;
 static Ref mpvnoref;			/* unique vector assignment */
-static Lock mpclocksynclock;
 
 static char* buses[] = {
 	"CBUSI ",
@@ -42,41 +41,6 @@ static char* buses[] = {
 	"XPRESS",
 	0,
 };
-
-void
-apicclkenable(void)
-{
-	Apic *apic;
-
-	/* Uniprocessor local apic init for apic clock */
-	apic = &mpapic[0];
-	apic->type = PcmpPROCESSOR;
-	apic->apicno = 0;
-	apic->flags = 0;
-	apic->lintr[0] = ApicIMASK;
-	apic->lintr[1] = ApicIMASK;
-	apic->machno = 0;
-	apic->addr = (ulong*)0xfee00000;
-	machno2apicno[0] = 0;
-
-	/*
-	 * Map the local APIC.
-	 */
-	if(mmukmap((ulong)apic->addr, 0, 1024) == 0)
-		return;
-
-	/*
-	 * These interrupts are local to the processor
-	 * and do not appear in the I/O APIC so it is OK
-	 * to set them now.
-	 */
-	intrenable(IrqTIMER, clockintr, 0, BUSUNKNOWN, "clock");
-	intrenable(IrqERROR, lapicerror, 0, BUSUNKNOWN, "lapicerror");
-	intrenable(IrqSPURIOUS, lapicspurious, 0, BUSUNKNOWN, "lapicspurious");
-
-	lapicinit(apic);
-	lapiconline();
-}
 
 static Apic*
 mkprocessor(PCMPprocessor* p)
@@ -386,8 +350,6 @@ checkmtrr(void)
 static void
 squidboy(Apic* apic)
 {
-	ulong x;
-
 //	iprint("Hello Squidboy\n");
 
 	machinit();
@@ -401,19 +363,9 @@ squidboy(Apic* apic)
 	mprdthi |= (1<<apic->apicno)<<24;
 	unlock(&mprdthilock);
 
-	if(m->havetsc){
-		/*
-		 * Restrain your octopus! Don't let it go out on the sea!
-		 */
-		ilock(&mpclocksynclock);
-		x = MACHP(0)->ticks;
-		while(MACHP(0)->ticks == x)
-			;
-		wrmsr(0x10, MACHP(0)->lasttsc); /* synchronize fast counters */
-		iunlock(&mpclocksynclock);
-	}
 	lapicinit(apic);
 	lapiconline();
+	timersinit();
 
 	lock(&active);
 	active.machs |= 1<<m->machno;
@@ -587,7 +539,7 @@ mpinit(void)
 	 * and do not appear in the I/O APIC so it is OK
 	 * to set them now.
 	 */
-	intrenable(IrqTIMER, clockintr, 0, BUSUNKNOWN, "clock");
+	intrenable(IrqTIMER, lapicclock, 0, BUSUNKNOWN, "clock");
 	intrenable(IrqERROR, lapicerror, 0, BUSUNKNOWN, "lapicerror");
 	intrenable(IrqSPURIOUS, lapicspurious, 0, BUSUNKNOWN, "lapicspurious");
 	lapiconline();
