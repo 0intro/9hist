@@ -366,7 +366,6 @@ screenwin(void)
 	h = memdefont->height;
 
 	r = insetrect(gscreen->r, 4);
-	r.max.y -= 56;
 
 	memimagedraw(gscreen, r, memblack, ZP, memopaque, ZP);
 	window = insetrect(r, 4);

@@ -1097,7 +1097,6 @@ readtime(ulong off, char *buf, int n)
 	vlong	nsec, ticks;
 	long sec;
 	char str[7*NUMSIZE];
-				// char
 
 	nsec = todget(&ticks);
 	if(fasthz == 0LL)

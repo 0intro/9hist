@@ -78,7 +78,7 @@ enum{
 static Dirtab mousedir[]={
 	"mouse",	{Qmouse},		0,			0666,
 	"mousein",	{Qmousein},		0,			0220,
-	"mousectl",	{Qmousectl},	0,			0220,
+	"mousectl",	{Qmousectl},	0,			0660,
 };
 
 static uchar buttonmap[8] = {
@@ -237,6 +237,15 @@ penmouseread(Chan *c, void *va, long n, vlong)
 	switch(c->qid.path){
 	case CHDIR:
 		return devdirread(c, va, n, mousedir, nelem(mousedir), devgen);
+
+	case Qmousectl:
+		sprint(buf, "c%11ld %11ld %11ld %11ld",
+				calibration.scalex, calibration.scaley,
+				calibration.transx, calibration.transy);
+		if(n > 1+4*12)
+			n = 1+4*12;
+		memmove(va, buf, n);
+		return n;
 
 	case Qmouse:
 		while(penmousechanged(0) == 0)
