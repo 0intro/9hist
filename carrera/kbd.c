@@ -166,9 +166,8 @@ kbdwait(void)
 	int tries;
 
 	for(tries = 0; tries < 2000; tries++){
-		if(KBDCTL & Sobf){
+		if(KBDCTL & Sobf)
 			return 1;
-		}
 		kdbdly(1);
 	}
 	return 0;
@@ -183,6 +182,16 @@ kbdackwait(void)
 	if(kbdintr())
 		return KBDDAT;
 	return 0;
+}
+
+void
+mouseintr(void)
+{
+	uchar code;
+
+	kbdwait();
+	code = KBDDAT;
+	print("mouse intr %d\n", code);
 }
 
 int

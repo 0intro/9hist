@@ -305,6 +305,9 @@ intr(Ureg *ur)
 			case 0x1C:
 				kbdintr();
 				break;
+			case 0x20:
+				mouseintr();
+				break;
 			}
 		}
 		cause &= ~INTR3;

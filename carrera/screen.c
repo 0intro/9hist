@@ -270,7 +270,7 @@ screenputc(char *buf)
 		cursor.x += pos*w;
 		break;
 	case '\b':
-		if(cursor.x-w >= 0)
+		if(cursor.x-w >= window.min.x)
 			cursor.x -= w;
 		break;
 	default:
