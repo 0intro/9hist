@@ -364,6 +364,12 @@ imagechanreclaim(void)
 	if(!canqlock(&imagealloc.fcreclaim))
 		return;
 
+	/*
+	 * We don't have to recheck that nfreechan > 0 after we
+	 * acquire the lock, because we're the only ones who decrement 
+	 * it (the other lock contender increments it), and there's only
+	 * one of us thanks to the qlock above.
+	 */
 	while(imagealloc.nfreechan > 0){
 		lock(&imagealloc);
 		imagealloc.nfreechan--;

@@ -64,7 +64,6 @@ static void
 poolprint(Pool *p, char *fmt, ...)
 {
 	va_list v;
-	int n;
 	Private *pv;
 
 	pv = p->private;
