@@ -290,8 +290,8 @@ scsicap(Target *t, char lun, ulong *size, ulong *bsize)
 
 	s = scsiexec(t, SCSIread, cmd, sizeof(cmd), d, &nbytes);
 	if(s == STok) {
-		*size  = nhgetl(d+0);
-		*bsize = nhgetl(d+4);
+		*size = (d[0]<<24)|(d[1]<<16)|(d[2]<<8)|d[3];
+		*bsize = (d[4]<<24)|(d[5]<<16)|(d[6]<<8)|d[7];
 	}
 	scsifree(d);
 	return s;
@@ -303,14 +303,15 @@ scsibio(Target *t, char lun, int dir, void *b, long n, long bsize, long bno)
 	uchar cmd[10];
 	int s, cdbsiz, nbytes;
 
-	memset(cmd, 0, sizeof cmd);
 	if(bno <= 0x1fffff && n < 256) {
 		cmd[0] = 0x0A;
 		if(dir == SCSIread)
 			cmd[0] = 0x08;
 		cmd[1] = (lun<<5) | bno >> 16;
-		hnputs(cmd+2, bno);
+		cmd[2] = bno>>8;
+		cmd[3] = bno;
 		cmd[4] = n;
+		cmd[5] = 0;
 		cdbsiz = 6;
 	}
 	else {
@@ -318,8 +319,13 @@ scsibio(Target *t, char lun, int dir, void *b, long n, long bsize, long bno)
 		if(dir == SCSIread)
 			cmd[0] = 0x28;
 		cmd[1] = (lun<<5);
-		hnputl(cmd+2, bno);
-		hnputs(cmd+7, n);
+		cmd[2] = bno>>24;
+		cmd[3] = bno>>16;
+		cmd[4] = bno>>8;
+		cmd[5] = bno;
+		cmd[7] = n>>8;
+		cmd[8] = n;
+		cmd[9] = 0;
 		cdbsiz = 10;
 	}
 	nbytes = n*bsize;
@@ -432,7 +438,8 @@ scsidiskinfo(Target *t, char lun, int track, uchar *data)
 	cmd[0] = 0x43;
 	cmd[1] = lun<<5;
 	cmd[6] = track;
-	hnputs(cmd+7, nbytes);
+	cmd[7] = nbytes>>8;
+	cmd[8] = nbytes;
 
 	d = scsialloc(nbytes);
 	if(d == 0)
@@ -457,7 +464,8 @@ scsitrackinfo(Target *t, char lun, int track, uchar *data)
 	cmd[0] = 0xe5;
 	cmd[1] = lun<<5;
 	cmd[5] = track;
-	hnputs(cmd+7, nbytes);
+	cmd[7] = nbytes>>8;
+	cmd[8] = nbytes;
 
 	d = scsialloc(nbytes);
 	if(d == 0)
@@ -491,7 +499,10 @@ scsibufsize(Target *t, char lun, int size)
 
 	memset(d, 0, nbytes);
 	d[3] = 8;
-	hnputl(d+8, size);
+	d[8] = size>>24;
+	d[9] = size>>16;
+	d[10] = size>>8;
+	d[11] = size;
 
 	s = scsiexec(t, SCSIwrite, cmd, sizeof(cmd), d, &nbytes);
 	scsifree(d);
@@ -508,8 +519,12 @@ scsireadcdda(Target *t, char lun, int, void *b, long n, long bsize, long bno)
 
 	cmd[0] = 0xd8;
 	cmd[1] = (lun<<5);
-	hnputl(cmd+2, bno);
-	hnputl(cmd+6, n);
+	cmd[2] = bno>>24;
+	cmd[3] = bno>>16;
+	cmd[4] = bno>>8;
+	cmd[5] = bno;
+	cmd[6] = n>>8;
+	cmd[7] = n;
 
 	nbytes = n*bsize;
 	s = scsiexec(t, SCSIread, cmd, sizeof(cmd), b, &nbytes);

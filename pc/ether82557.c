@@ -183,7 +183,7 @@ typedef struct Ctlr {
 
 	uchar	configdata[24];
 
-	Lock	rlock;			/* registers */
+	Lock	lock;
 
 	Block*	rfd[Nrfd];		/* receive side */
 	int	rfdl;
@@ -193,7 +193,7 @@ typedef struct Ctlr {
 	Block*	cbqtail;
 	int	cbqbusy;
 
-	Lock	dlock;		/* dump statistical counters */
+	Lock	dlock;			/* dump statistical counters */
 	ulong	dump[17];
 } Ctlr;
 
@@ -274,7 +274,7 @@ attach(Ether* ether)
 	Ctlr *ctlr;
 
 	ctlr = ether->ctlr;
-	ilock(&ctlr->rlock);
+	ilock(&ctlr->lock);
 	status = csr16r(ctlr, Status);
 	if((status & RUstatus) == RUidle){
 		while(csr8r(ctlr, Command))
@@ -282,7 +282,7 @@ attach(Ether* ether)
 		csr32w(ctlr, General, PADDR(ctlr->rfd[ctlr->rfdx]->rp));
 		csr8w(ctlr, Command, RUstart);
 	}
-	iunlock(&ctlr->rlock);
+	iunlock(&ctlr->lock);
 }
 
 static Block*
@@ -313,9 +313,9 @@ promiscuous(void* arg, int on)
 	ctlr = ((Ether*)arg)->ctlr;
 	bp = configure(ctlr, on);
 
-	ilock(&ctlr->rlock);
+	ilock(&ctlr->lock);
 	action(ctlr, bp);
-	iunlock(&ctlr->rlock);
+	iunlock(&ctlr->lock);
 }
 
 static long
@@ -329,11 +329,11 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 	lock(&ctlr->dlock);
 	ctlr->dump[16] = 0;
 
-	ilock(&ctlr->rlock);
+	ilock(&ctlr->lock);
 	while(csr8r(ctlr, Command))
 		;
 	csr8w(ctlr, Command, DumpSC);
-	iunlock(&ctlr->rlock);
+	iunlock(&ctlr->lock);
 
 	/*
 	 * Wait for completion status, should be 0xA005.
@@ -397,9 +397,9 @@ write(Ether* ether, void* buf, long n)
 	bp->wp += n;
 
 	ctlr = ether->ctlr;
-	ilock(&ctlr->rlock);
+	ilock(&ctlr->lock);
 	action(ctlr, bp);
-	iunlock(&ctlr->rlock);
+	iunlock(&ctlr->lock);
 
 	ether->outpackets++;
 
@@ -418,7 +418,7 @@ interrupt(Ureg*, void* arg)
 	ether = arg;
 	ctlr = ether->ctlr;
 
-	ilock(&ctlr->rlock);
+	ilock(&ctlr->lock);
 	for(;;){
 		status = csr16r(ctlr, Status);
 		csr8w(ctlr, Ack, (status>>8) & 0xFF);
@@ -481,7 +481,7 @@ interrupt(Ureg*, void* arg)
 		if(status & (StatCX|StatFR|StatCNA|StatRNR|StatMDI|StatSWI))
 			panic("%s#%d: status %uX\n", ctlr->type,  ctlr->ctlrno, status);
 	}
-	iunlock(&ctlr->rlock);
+	iunlock(&ctlr->lock);
 }
 
 static void
@@ -600,7 +600,7 @@ struct Adapter {
 static Adapter *adapter;
 
 static int
-i82557(Ether* ether, int* pcidevno)
+i82557pci(Ether* ether, int* pcidevno)
 {
 	PCIcfg pcicfg;
 	static int devno = 0;
@@ -666,7 +666,7 @@ reset(Ether* ether)
 			break;
 		}
 	}
-	if(port == 0 && (port = i82557(ether, &pcidevno)) == 0)
+	if(port == 0 && (port = i82557pci(ether, &pcidevno)) == 0)
 		return -1;
 
 	/*
@@ -683,7 +683,7 @@ reset(Ether* ether)
 	ctlr->type = ether->type;
 	ctlr->port = port;
 
-	ilock(&ctlr->rlock);
+	ilock(&ctlr->lock);
 
 	csr32w(ctlr, Port, 0);
 	delay(1);
@@ -763,7 +763,7 @@ reset(Ether* ether)
 	memmove(cb->data, ether->ea, Eaddrlen);
 	action(ctlr, bp);
 
-	iunlock(&ctlr->rlock);
+	iunlock(&ctlr->lock);
 
 	/*
 	 * Linkage to the generic ethernet driver.

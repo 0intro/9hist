@@ -54,5 +54,6 @@ extern void *dp8390write(Dp8390*, ulong, void*, ulong);
 extern void dp8390setea(Ether*);
 
 #define NEXT(x, l)	(((x)+1)%(l))
+#define PREV(x, l)	(((x) == 0) ? (l)-1: (x)-1)
 #define	HOWMANY(x, y)	(((x)+((y)-1))/(y))
 #define ROUNDUP(x, y)	(HOWMANY((x), (y))*(y))
