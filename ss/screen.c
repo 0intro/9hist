@@ -78,8 +78,44 @@ screenputc(int c)
 void
 screenputs(char *s, int n)
 {
-	while(n-- > 0)
-		screenputc(*s++);
+	Rune r;
+	int i;
+	char buf[4];
+
+	while(n > 0){
+		i = chartorune(&r, s);
+		if(i == 0){
+			s++;
+			--n;
+			continue;
+		}
+		memmove(buf, s, i);
+		buf[i] = 0;
+		n -= i;
+		s += i;
+		if(r == '\n'){
+			out.pos.x = MINX;
+			out.pos.y += defont0.height;
+			if(out.pos.y > gscreen.r.max.y-defont0.height)
+				out.pos.y = gscreen.r.min.y;
+			gbitblt(&gscreen, Pt(0, out.pos.y), &gscreen,
+			    Rect(0, out.pos.y, gscreen.r.max.x, out.pos.y+2*defont0.height), 0);
+		}else if(r == '\t'){
+			out.pos.x += (8-((out.pos.x-MINX)/out.bwid&7))*out.bwid;
+			if(out.pos.x >= gscreen.r.max.x)
+				screenputs("\n", 1);
+		}else if(r == '\b'){
+			if(out.pos.x >= out.bwid+MINX){
+				out.pos.x -= out.bwid;
+				screenputs(" ", 1);
+				out.pos.x -= out.bwid;
+			}
+		}else{
+			if(out.pos.x >= gscreen.r.max.x-out.bwid)
+				screenputs("\n", 1);
+			out.pos = gstring(&gscreen, out.pos, defont, buf, S);
+		}
+	}
 }
 
 /*

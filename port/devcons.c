@@ -209,15 +209,14 @@ prflush(void)
 }
 
 void
-echo(int c)
+echo(Rune r, char *buf, int n)
 {
-	char ch;
 	static int ctrlt;
 
 	/*
 	 * ^p hack
 	 */
-	if(c==0x10 && conf.cntrlp)
+	if(r==0x10 && conf.cntrlp)
 		panic("^p");
 
 	/*
@@ -225,7 +224,7 @@ echo(int c)
 	 */
 	if(ctrlt == 2){
 		ctrlt = 0;
-		switch(c){
+		switch(r){
 		case 0x14:
 			break;	/* pass it on */
 		case 'm':
@@ -241,19 +240,17 @@ echo(int c)
 			exit();
 			break;
 		}
-	}else if(c == 0x14){
+	}else if(r == 0x14){
 		ctrlt++;
 		return;
 	}
 	ctrlt = 0;
 	if(raw.ref)
 		return;
-	if(c == 0x15)
+	if(r == 0x15)
 		putstrn("^U\n", 3);
-	else{
-		ch = c;
-		putstrn(&ch, 1);
-	}
+	else
+		putstrn(buf, n);
 }
 
 /*
@@ -268,19 +265,29 @@ kbdcr2nl(IOQ *q, int ch)
 }
 
 /*
- *  Put character into read queue at interrupt time.
+ *  Put character, possibly a rune, into read queue at interrupt time.
  *  Always called splhi from processor 0.
  */
 int
 kbdputc(IOQ *q, int ch)
 {
+	int i, n;
+	char buf[3];
+	Rune r;
+
 	USED(q);
-	echo(ch);
-	kbdq.c = ch;
-	*kbdq.in++ = ch;
-	if(kbdq.in == kbdq.buf+sizeof(kbdq.buf))
-		kbdq.in = kbdq.buf;
-	if(raw.ref || ch=='\n' || ch==0x04)
+	r = ch;
+	n = runetochar(buf, &r);
+	if(n == 0)
+		return 0;
+	echo(r, buf, n);
+	kbdq.c = r;
+	for(i=0; i<n; i++){
+		*kbdq.in++ = buf[i];
+		if(kbdq.in == kbdq.buf+sizeof(kbdq.buf))
+			kbdq.in = kbdq.buf;
+	}
+	if(raw.ref || r=='\n' || r==0x04)
 		wakeup(&kbdq.r);
 	return 0;
 }
