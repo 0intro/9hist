@@ -369,8 +369,8 @@ void
 confinit(void)
 {
 	char *p;
-	int i, pcnt;
-	ulong maxmem;
+	int i, userpcnt;
+	ulong kpages, maxmem;
 	extern int defmaxmsg;
 
 	if(p = getconf("*maxmem"))
@@ -378,9 +378,9 @@ confinit(void)
 	else
 		maxmem = 0;
 	if(p = getconf("*kernelpercent"))
-		pcnt = 100 - strtol(p, 0, 0);
+		userpcnt = 100 - strtol(p, 0, 0);
 	else
-		pcnt = 0;
+		userpcnt = 0;
 	if(p = getconf("*defmaxmsg")){
 		i = strtol(p, 0, 0);
 		if(i < defmaxmsg && i >=128)
@@ -391,31 +391,36 @@ confinit(void)
 
 	conf.npage = conf.npage0 + conf.npage1;
 	if(cpuserver) {
-		if(pcnt < 10)
-			pcnt = 70;
+		if(userpcnt < 10)
+			userpcnt = 70;
+		kpages = conf.npage - (conf.npage*userpcnt)/100;
+
+		/*
+		 * Hack for the big boys. Only good while physmem < 4GB.
+		 * Give the kernel a max. of 16MB + enough to allocate the
+		 * page pool.
+		 * This is an overestimate as conf.upages < conf.npages.
+		 */
+		if(kpages > (16*MB + conf.npage*sizeof(Page))/BY2PG)
+			kpages = (16*MB + conf.npage*sizeof(Page))/BY2PG;
 	} else {
-		if(pcnt < 10) {
+		if(userpcnt < 10) {
 			if(conf.npage*BY2PG < 16*MB)
-				pcnt = 40;
+				userpcnt = 40;
 			else
-				pcnt = 60;
+				userpcnt = 60;
 		}
+		kpages = conf.npage - (conf.npage*userpcnt)/100;
+
 		/*
 		 * Make sure terminals with low memory get at least
 		 * 4MB on the first Image chunk allocation.
 		 */
 		if(conf.npage*BY2PG < 16*MB)
 			poolsetparam("Image", 0, 0, 4*1024*1024);
-		/*
-		 * give terminals lots of image memory, too; the dynamic
-		 * allocation will balance the load properly, hopefully.
-		 * be careful with 32-bit overflow.
-		 */
-		poolsetparam("Image", (BY2PG*conf.npage/100)*(100-pcnt), 0, 0);
 	}
-	poolsetparam("Main", (BY2PG*conf.npage/100)*(100-pcnt), 0, 0);
+	conf.upages = conf.npage - kpages;
 
-	conf.upages = (conf.npage*pcnt)/100;
 	conf.ialloc = ((conf.npage-conf.upages)/2)*BY2PG;
 
 	conf.nproc = 100 + ((conf.npage*BY2PG)/MB)*5;
@@ -423,9 +428,30 @@ confinit(void)
 		conf.nproc *= 3;
 	if(conf.nproc > 2000)
 		conf.nproc = 2000;
+	conf.nimage = 200;
 	conf.nswap = conf.nproc*80;
 	conf.nswppo = 4096;
-	conf.nimage = 200;
+
+	/*
+	 * Guess how much is taken by the large permanent
+	 * datastructures. Mntcache and Mntrpc are not accounted for
+	 * (probably ~300KB).
+	 */
+	kpages *= BY2PG;
+	kpages -= conf.upages*sizeof(Page)
+		+ conf.nproc*sizeof(Proc)
+		+ conf.nimage*sizeof(Image)
+		+ conf.nswap
+		+ conf.nswppo*sizeof(Page);
+	poolsetparam("Main", kpages, 0, 0);
+	if(!cpuserver){
+		/*
+		 * give terminals lots of image memory, too; the dynamic
+		 * allocation will balance the load properly, hopefully.
+		 * be careful with 32-bit overflow.
+		 */
+		poolsetparam("Image", kpages, 0, 0);
+	}
 }
 
 static char* mathmsg[] =
