@@ -60,6 +60,8 @@ putswap(Page *p)
 	lock(&swapalloc);
 	idx = &swapalloc.swmap[((ulong)p)/BY2PG];
 	if(--(*idx) == 0) {
+		if(swapalloc.swmap[((ulong)p)/BY2PG]==255)
+			panic("putswap");
 		swapalloc.free++;
 		if(idx < swapalloc.last)
 			swapalloc.last = idx;
@@ -71,8 +73,16 @@ void
 dupswap(Page *p)
 {
 	lock(&swapalloc);
+	if(swapalloc.swmap[((ulong)p)/BY2PG]==255)
+		panic("dupswap");
 	swapalloc.swmap[((ulong)p)/BY2PG]++;
 	unlock(&swapalloc);
+}
+
+int
+swapcount(ulong daddr)
+{
+	return swapalloc.swmap[daddr/BY2PG];
 }
 
 void
@@ -106,17 +116,21 @@ loop:
 	sleep(&swapalloc.r, needpages, 0);
 
 	while(needpages(junk)) {
-		p++;
-		if(p >= ep)
-			p = proctab(0);
-
-		if(p->state == Dead || p->kp)
-			continue;
 
 		if(swapimage.c) {
+			p++;
+			if(p >= ep)
+				p = proctab(0);
+	
+			if(p->state == Dead || p->kp)
+				continue;
+
+			qlock(&p->seglock);
 			for(i = 0; i < NSEG; i++) {
-				if(!needpages(junk))
+				if(!needpages(junk)){
+					qunlock(&p->seglock);
 					goto loop;
+				}
 
 				if(s = p->seg[i]) {
 					switch(s->type&SG_TYPE) {
@@ -141,6 +155,7 @@ loop:
 					}
 				}
 			}
+			qunlock(&p->seglock);
 		}
 		else {
 			if(!cpuserver)
@@ -264,12 +279,24 @@ pagepte(int type, Page **pg)
 	case SG_SHARED:
 	case SG_SHDATA:
 	case SG_MAP:
+		/* if it's already on disk, we're done */
+#ifdef asdf
+		lock(outp);
+		if(outp->daddr != 0 && outp->image == &swapimage){
+			dupswap((Page*)outp->daddr);
+			*pg = (Page*)(outp->daddr|PG_ONSWAP);
+			unlock(outp);
+			putpage(outp);
+			return;
+		}
+		unlock(outp);
+#endif asdf
+
 		daddr = newswap();
 		cachedel(&swapimage, daddr);
 		lock(outp);
 		outp->ref++;
 		uncachepage(outp);
-		unlock(outp);
 
 		/* Enter swap page into cache before segment is unlocked so that
 		 * a fault will cause a cache recovery rather than a pagein on a
@@ -278,6 +305,7 @@ pagepte(int type, Page **pg)
 		outp->daddr = daddr;
 		cachepage(outp, &swapimage);
 		*pg = (Page*)(daddr|PG_ONSWAP);
+		unlock(outp);
 
 		/* Add me to IO transaction list */
 		iolist[ioptr++] = outp;

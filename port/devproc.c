@@ -975,6 +975,7 @@ txt2data(Proc *p, Segment *s)
 	ps->flen = s->flen;
 	ps->flushme = 1;
 
+	qlock(&p->seglock);
 	for(i = 0; i < NSEG; i++)
 		if(p->seg[i] == s)
 			break;
@@ -985,6 +986,7 @@ txt2data(Proc *p, Segment *s)
 	putseg(s);
 	qlock(&ps->lk);
 	p->seg[i] = ps;
+	qunlock(&p->seglock);
 
 	return ps;
 }

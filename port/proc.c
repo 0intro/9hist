@@ -796,6 +796,7 @@ pexit(char *exitstr, int freemem)
 	if(!freemem)
 		addbroken(up);
 
+	qlock(&up->seglock);
 	es = &up->seg[NSEG];
 	for(s = up->seg; s < es; s++) {
 		if(*s) {
@@ -803,6 +804,7 @@ pexit(char *exitstr, int freemem)
 			*s = 0;
 		}
 	}
+	qunlock(&up->seglock);
 
 	lock(&up->exl);		/* Prevent my children from leaving waits */
 	up->pid = 0;

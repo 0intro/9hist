@@ -51,6 +51,7 @@ int
 fixfault(Segment *s, ulong addr, int read, int doputmmu)
 {
 	int type;
+	int ref;
 	Pte **p, *etp;
 	char buf[ERRLEN];
 	ulong va, mmuphys=0, soff;
@@ -92,6 +93,11 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 
 		lkp = *pg;
 		lock(lkp);
+
+		/* uncache the current page (since we may be changing it)
+		 * and, if a text page, put a duplicate back onto
+		 * the free list
+		 */
 		if(lkp->image)
 			duppage(lkp);
 		unlock(lkp);
@@ -129,7 +135,11 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 
 		lkp = *pg;
 		lock(lkp);
-		if(lkp->ref > 1) {
+		if(lkp->image == &swapimage && lkp->daddr)
+			ref = lkp->ref + swapcount(lkp->daddr);
+		else
+			ref = lkp->ref;
+		if(ref > 1) {
 			unlock(lkp);
 			new = newpage(0, &s, addr);
 			if(s == 0)
@@ -139,7 +149,8 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 			putpage(lkp);
 		}
 		else {
-			/* put a duplicate of a text page back onto
+			/* uncache the current page (since we may be changing it)
+			 * and, if a text page, put a duplicate back onto
 			 * the free list
 			 */
 			if(lkp->image)
@@ -181,7 +192,7 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 void
 pio(Segment *s, ulong addr, ulong soff, Page **p)
 {
-	Page *new;
+	Page *new, *new2;
 	KMap *k;
 	Chan *c;
 	int n, ask;
@@ -197,7 +208,7 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 	else {
 		daddr = swapaddr(loadrec);
 		new = lookpage(&swapimage, daddr);
-		if(new)
+		if(new != nil)
 			putswap(loadrec);
 	}
 
@@ -235,7 +246,8 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 		poperror();
 		kunmap(k);
 		qlock(&s->lk);
-		if(*p == 0) { 		/* Someone may have got there first */
+		/* race, we may have multiple simultaneous reads */
+		if(*p == 0) { 
 			new->daddr = daddr;
 			cachepage(new, s->image);
 			*p = new;
@@ -245,10 +257,21 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 	}
 	else {				/* This is paged out */
 		c = swapimage.c;
+		qlock(&swapimage.rdlock);	/* mutex */
+
+		new2 = lookpage(&swapimage, daddr);
+		if(new2 != nil){
+			putpage(new);
+			putswap(*p);
+			*p = new2;
+			qunlock(&swapimage.rdlock);
+			return;
+		}
 
 		if(waserror()) {
 			kunmap(k);
 			putpage(new);
+			qunlock(&swapimage.rdlock);
 			qlock(&s->lk);
 			qunlock(&s->lk);
 			faulterror("sys: page in I/O error");
@@ -262,14 +285,12 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 		kunmap(k);
 		qlock(&s->lk);
 
-		if(pagedout(*p)) {
-			new->daddr = daddr;
-			cachepage(new, &swapimage);
-			putswap(*p);
-			*p = new;
-		}
-		else
-			putpage(new);
+		new->daddr = daddr;
+		putswap(*p);
+		cachepage(new, &swapimage);
+		*p = new;
+
+		qunlock(&swapimage.rdlock);
 	}
 
 	if(s->flushme)

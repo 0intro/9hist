@@ -270,9 +270,15 @@ retry:
 	if(retries++ > 10000)
 		panic("duppage %d", retries);
 
-	/* No dup for swap/cache pages */
-	if(p->ref == 0 || p->image == nil || p->image->notext)
+	/* don't dup pages with no image */
+	if(p->ref == 0 || p->image == nil)
 		return;
+
+	/* No dup for swap/cache pages but we still have to uncache */
+	if(p->image->notext){
+		uncachepage(p);
+		return;
+	}
 
 	/*
 	 *  normal lock ordering is to call
@@ -390,6 +396,9 @@ cachedel(Image *i, ulong daddr)
 	for(f = *l; f; f = f->hash) {
 		if(f->image == i && f->daddr == daddr) {
 			*l = f->hash;
+			putimage(f->image);
+			f->image = 0;
+			f->daddr = 0;
 			break;
 		}
 		l = &f->hash;

@@ -293,6 +293,7 @@ int		spllo(void);
 void		splx(int);
 void		splxpc(int);
 void		srvrecover(Chan*, Chan*);
+int		swapcount(ulong);
 void		swapinit(void);
 Block*		trimblock(Block*, int, int);
 void		tsleep(Rendez*, int (*)(void*), void*, int);

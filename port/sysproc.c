@@ -92,9 +92,16 @@ sysrfork(ulong *arg)
 
 	/* Make a new set of memory segments */
 	n = flag & RFMEM;
+	qlock(&p->seglock);
+	if(waserror()){
+		qunlock(&p->seglock);
+		nexterror();
+	}
 	for(i = 0; i < NSEG; i++)
 		if(up->seg[i])
 			p->seg[i] = dupseg(up->seg, i, n);
+	qunlock(&p->seglock);
+	poperror();
 
 	/* File descriptors */
 	if(flag & (RFFDG|RFCFDG)) {
@@ -304,6 +311,11 @@ sysexec(ulong *arg)
 	if(spage > TSTKSIZ)
 		error(Enovmem);
 
+	qlock(&up->seglock);
+	if(waserror()){
+		qunlock(&up->seglock);
+		nexterror();
+	}
 	up->seg[ESEG] = newseg(SG_STACK, TSTKTOP-USTKSIZE, USTKSIZE/BY2PG);
 
 	/*
@@ -383,6 +395,8 @@ sysexec(ulong *arg)
 	s = up->seg[ESEG];
 	up->seg[ESEG] = 0;
 	up->seg[SSEG] = s;
+	qunlock(&up->seglock);
+	poperror();
 	s->base = USTKTOP-USTKSIZE;
 	s->top = USTKTOP;
 	relocateseg(s, USTKTOP-TSTKTOP);
@@ -587,6 +601,12 @@ syssegdetach(ulong *arg)
 	ulong addr;
 	Segment *s;
 
+	qlock(&up->seglock);
+	if(waserror()){
+		qunlock(&up->seglock);
+		nexterror();
+	}
+
 	s = 0;
 	addr = arg[0];
 	for(i = 0; i < NSEG; i++)
@@ -609,6 +629,8 @@ found:
 	up->seg[i] = 0;
 	qunlock(&s->lk);
 	putseg(s);
+	qunlock(&up->seglock);
+	poperror();
 
 	/* Ensure we flush any entries from the lost segment */
 	flushmmu();

@@ -326,6 +326,7 @@ struct Image
 	Image	*hash;			/* Qid hash chains */
 	Image	*next;			/* Free list */
 	int	notext;			/* no file associated */
+	QLock	rdlock;			/* mutex for reading from image */
 };
 
 struct Pte
@@ -543,6 +544,7 @@ struct Proc
 	int	state;
 	char	*psstate;	/* What /proc/#/status reports */
 	Segment	*seg[NSEG];
+	QLock	seglock;	/* locked whenever seg[] changes */
 	ulong	pid;
 	ulong	noteid;		/* Equivalent of note group */
 
