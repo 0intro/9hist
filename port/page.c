@@ -29,7 +29,7 @@ pageinit(void)
 		p->next = p+1;
 		p->pa = palloc.p0;
 		p->color = color;
-		palloc.freecol[color]++;
+		palloc.freecount++;
 		color = (color+1)%NCOLOR;
 		palloc.p0 += BY2PG;
 		palloc.np0--;
@@ -40,7 +40,7 @@ pageinit(void)
 		p->next = p+1;
 		p->pa = palloc.p1;
 		p->color = color;
-		palloc.freecol[color]++;
+		palloc.freecount++;
 		color = (color+1)%NCOLOR;
 		palloc.p1 += BY2PG;
 		palloc.np1--;
@@ -70,18 +70,17 @@ newpage(int clear, Segment **s, ulong va)
 	KMap *k;
 	int i, hw, dontalloc, color;
 
-retry:
-	lock(&palloc);
 
+	lock(&palloc);
+retry:
 	color = getpgcolor(va);
 	hw = swapalloc.highwater;
 	for(;;) {
-		if(palloc.freecol[color] > hw/NCOLOR)
+		if(palloc.freecount > hw)
 			break;
-		if(up->kp && palloc.freecol[color] > 0)
+		if(up->kp && palloc.freecount > 0)
 			break;
 
-		palloc.wanted++;
 		unlock(&palloc);
 		dontalloc = 0;
 		if(s && *s) {
@@ -89,17 +88,17 @@ retry:
 			*s = 0;
 			dontalloc = 1;
 		}
-		qlock(&palloc.pwait[color]); /* Hold memory requesters here */
+		qlock(&palloc.pwait);	/* Hold memory requesters here */
 
 		while(waserror())	/* Ignore interrupts */
 			;
 
 		kickpager();
-		tsleep(&palloc.r[color], ispages, (void*)color, 1000);
+		tsleep(&palloc.r, ispages, 0, 1000);
 
 		poperror();
 
-		qunlock(&palloc.pwait[color]);
+		qunlock(&palloc.pwait);
 
 		/*
 		 * If called from fault and we lost the segment from
@@ -111,15 +110,18 @@ retry:
 			return 0;
 
 		lock(&palloc);
-		palloc.wanted--;
 	}
 
+	/* First try for out colour */
 	for(p = palloc.head; p; p = p->next)
 		if(p->color == color)
 			break;
 
-	if(p == 0)
-		panic("newpage");
+	if(p == 0) {
+		p = palloc.head;
+		memset(p->cachectl, PG_DATFLUSH, sizeof(p->cachectl));
+		p->color = color;
+	}
 
 	if(p->prev) 
 		p->prev->next = p->next;
@@ -132,12 +134,15 @@ retry:
 		palloc.tail = p->prev;
 
 
-	palloc.freecol[color]--;
+	palloc.freecount--;
 	unlock(&palloc);
 
 	lock(p);
 	if(p->ref != 0) {	/* lookpage has priority on steal */
 		unlock(p);
+		print("stolen\n");
+		lock(&palloc);
+		palloc.freecount++;
 		goto retry;
 	}
 
@@ -161,17 +166,13 @@ retry:
 int
 ispages(void *p)
 {
-	int color;
-
-	color = (int)p;
-	return palloc.freecol[color] >= swapalloc.highwater/NCOLOR;
+	USED(p);
+	return palloc.freecount >= swapalloc.highwater;
 }
 
 void
 putpage(Page *p)
 {
-	Rendez *r;
-
 	if(onswap(p)) {
 		putswap(p);
 		return;
@@ -209,10 +210,9 @@ putpage(Page *p)
 		p->prev = 0;
 	}
 
-	palloc.freecol[p->color]++;
-	r = &palloc.r[p->color];
-	if(r->p != 0)
-		wakeup(r);
+	palloc.freecount++;
+	if(palloc.r.p != 0)
+		wakeup(&palloc.r);
 
 	unlock(&palloc);
 	unlock(p);
@@ -225,13 +225,13 @@ auxpage()
 
 	lock(&palloc);
 	p = palloc.head;
-	if(palloc.freecol[p->color] < swapalloc.highwater/NCOLOR) {
+	if(palloc.freecount < swapalloc.highwater) {
 		unlock(&palloc);
 		return 0;
 	}
 	p->next->prev = 0;
 	palloc.head = p->next;
-	palloc.freecol[p->color]--;
+	palloc.freecount--;
 	unlock(&palloc);
 
 	lock(p);
@@ -259,7 +259,7 @@ duppage(Page *p)				/* Always call with p locked */
 
 	lock(&palloc);
 	/* No freelist cache when memory is very low */
-	if(palloc.freecol[p->color] < swapalloc.highwater/NCOLOR) {
+	if(palloc.freecount < swapalloc.highwater) {
 		unlock(&palloc);
 		uncachepage(p);	
 		return;
@@ -419,7 +419,7 @@ lookpage(Image *i, ulong daddr)
 				else
 					palloc.tail = f->prev;
 
-				palloc.freecol[f->color]--;
+				palloc.freecount--;
 			}
 			unlock(&palloc);
 

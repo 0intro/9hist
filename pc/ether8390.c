@@ -446,10 +446,7 @@ receive(Ether *ether)
 			for(fp = ether->f; fp < ep; fp++) {
 				f = *fp;
 				if(f && (f->type == type || f->type < 0))
-{
-print("Q%d|", len);
 					qproduce(f->in, &ether->rpkt, len);
-}
 			}
 		}
 
@@ -473,10 +470,11 @@ istxavail(void *arg)
 }
 
 static long
-write(Ether *ether, void *buf, long n)
+write(Ether *ether, void *buf, long len)
 {
 	Dp8390 *dp8390;
 	ulong port;
+	Etherpkt *pkt;
 
 	dp8390 = ether->private;
 	port = dp8390->dp8390;
@@ -486,18 +484,38 @@ write(Ether *ether, void *buf, long n)
 		print("dp8390: transmitter jammed\n");
 		return 0;
 	}
-	ether->tlen = n;
+	ether->tlen = len;
 
+	/*
+	 * If it's a shared-memory interface, copy the packet
+	 * directly to the shared-memory area. Otherwise, copy
+	 * it to a staging buffer so the I/O-port write can be
+	 * done in one.
+	 */
 	if(dp8390->ram)
-		memmove((void*)(ether->mem+dp8390->tstart*Dp8390BufSz), buf, n);
+		pkt = (Etherpkt*)(ether->mem+dp8390->tstart*Dp8390BufSz);
 	else
-		dp8390write(dp8390, dp8390->tstart*Dp8390BufSz, buf, n);
+		pkt = &ether->tpkt;
+	memmove(pkt, buf, len);
 
-	dp8390outb(port+Tbcr0, n & 0xFF);
-	dp8390outb(port+Tbcr1, (n>>8) & 0xFF);
+	/*
+	 * Give the packet a source address and make sure it
+	 * is of minimum length.
+	 */
+	memmove(pkt->s, ether->ea, sizeof(ether->ea));
+	if(len < ETHERMINTU){
+		memset(pkt->d+len, 0, ETHERMINTU-len);
+		len = ETHERMINTU;
+	}
+
+	if(dp8390->ram == 0)
+		dp8390write(dp8390, dp8390->tstart*Dp8390BufSz, pkt, len);
+
+	dp8390outb(port+Tbcr0, len & 0xFF);
+	dp8390outb(port+Tbcr1, (len>>8) & 0xFF);
 	dp8390outb(port+Cr, Page0|RDMAabort|Txp|Sta);
 
-	return n;
+	return len;
 }
 
 static void
@@ -551,7 +569,6 @@ interrupt(Ether *ether)
 	 */
 	dp8390outb(port+Imr, 0x00);
 	while(isr = dp8390inb(port+Isr)){
-print("I%2.2ux|", isr);
 
 		if(isr & Ovw){
 			overflow(ether);

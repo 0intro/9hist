@@ -118,7 +118,9 @@ loop:
 		if(p->state == Dead || p->kp)
 			continue;
 
-		/* don't swap out programs from devroot.c */
+		/* don't swap out programs from devroot.c - they
+		 * supply important system services
+		 */
 		img = p->seg[SG_TEXT]->image;
 		if(img && devchar[img->c->type] == '/')
 			continue;
@@ -155,9 +157,8 @@ loop:
 
 			/* Emulate the old system if no swap channel */
 			print("no physical memory\n");
-			tsleep(&swapalloc.r, return0, 0, 1000);
-			for(i = 0; i < NCOLOR; i++)
-				wakeup(&palloc.r[i]);
+			tsleep(&swapalloc.r, return0, 0, 5000);
+			wakeup(&palloc.r);
 		}
 	}
 	goto loop;
@@ -326,13 +327,8 @@ executeio(void)
 int
 needpages(void *p)
 {
-	int i;
-
 	USED(p);
-	for(i = 0; i < NCOLOR; i++)
-		if(palloc.freecol[i] < swapalloc.headroom/NCOLOR)
-			return 1;
-	return 0;
+	return palloc.freecount < swapalloc.headroom;
 }
 
 void

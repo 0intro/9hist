@@ -94,6 +94,46 @@ etherwstat(Chan *c, char *dp)
 	netifwstat(ether[c->dev], c, dp);
 }
 
+void
+etherrloop(Ether *ctlr, Etherpkt *pkt, long len)
+{
+	ushort type;
+	Netfile *f, **fp, **ep;
+
+	type = (pkt->type[0]<<8)|pkt->type[1];
+	ep = &ctlr->f[Ntypes];
+	for(fp = ctlr->f; fp < ep; fp++){
+		f = *fp;
+		if(f && (f->type == type || f->type < 0)){
+			switch(qproduce(f->in, pkt->d, len)){
+
+			case -1:
+				print("etherrloop overflow\n");
+				break;
+
+			case -2:
+				print("etherrloop memory\n");
+				break;
+			}
+		}
+	}
+}
+
+static int
+etherwloop(Ether *ctlr, Etherpkt *pkt, long len)
+{
+	int s, different;
+
+	different = memcmp(pkt->d, pkt->s, sizeof(pkt->s));
+	if(different && memcmp(pkt->d, ctlr->bcast, sizeof(pkt->d)))
+		return 0;
+
+	s = splhi();
+	etherrloop(ctlr, pkt, len);
+	splx(s);
+	return !different;
+}
+
 long
 etherwrite(Chan *c, void *buf, long n, ulong offset)
 {
@@ -106,6 +146,9 @@ etherwrite(Chan *c, void *buf, long n, ulong offset)
 
 	if(NETTYPE(c->qid.path) != Ndataqid)
 		return netifwrite(ctlr, c, buf, n);
+
+	if(etherwloop(ctlr, buf, n))
+		return n;
 
 	qlock(&ctlr->tlock);
 	if(waserror()){
@@ -204,6 +247,7 @@ etherreset(void)
 
 			ether[ctlrno] = ctlr;
 			ctlr = 0;
+			break;
 		}
 	}
 	if(ctlr)

@@ -654,11 +654,8 @@ consread(Chan *c, void *buf, long n, ulong offset)
 		return n;
 
 	case Qswap:
-		k = 0;
-		for(i = 0; i < NCOLOR; i++)
-			k += palloc.freecol[i];
-
-		sprint(tmp, "%d/%d memory %d/%d swap\n", palloc.user-k,
+		sprint(tmp, "%d/%d memory %d/%d swap\n",
+			palloc.user-palloc.freecount,
 			palloc.user, conf.nswap-swapalloc.free, conf.nswap);
 
 		return readstr(offset, buf, n, tmp);
