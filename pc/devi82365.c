@@ -294,7 +294,7 @@ pcmmap(int slotno, ulong offset, int len, int attr)
 		}
 		m->isa = PADDR(umbmalloc(0, len, Mgran));
 		if(m->isa == 0){
-			print("pcmmap: out of isa space\n");
+			print("pcmmap: %d out of isa space\n", len);
 			unlock(&pp->mlock);
 			return 0;
 		}

@@ -146,26 +146,30 @@ ready(Proc *p)
 
 	s = splhi();
 
-	/* history counts */
-	if(p->state == Running){
-		p->rt++;
-		pri = ((p->art + (p->rt<<1))>>2)/Squantum;
+	if(p->fixedpri){
+		pri = p->basepri;
 	} else {
-		p->art = (p->art + (p->rt<<1))>>2;
-		p->rt = 0;
-		pri = p->art/Squantum;
+		/* history counts */
+		if(p->state == Running){
+			p->rt++;
+			pri = ((p->art + (p->rt<<1))>>2)/Squantum;
+		} else {
+			p->art = (p->art + (p->rt<<1))>>2;
+			p->rt = 0;
+			pri = p->art/Squantum;
+		}
+		pri = p->basepri - pri;
+		if(pri < 0)
+			pri = 0;
+	
+		/* the only intersection between the classes is at PriNormal */
+		if(pri < PriNormal && p->basepri > PriNormal)
+			pri = PriNormal;
+
+		/* stick at low priority any process waiting for a lock */
+		if(p->lockwait)
+			pri = PriLock;
 	}
-	pri = p->basepri - pri;
-	if(pri < 0)
-		pri = 0;
-
-	/* the only intersection between the classes is at PriNormal */
-	if(pri < PriNormal && p->basepri > PriNormal)
-		pri = PriNormal;
-
-	/* stick at low priority any process waiting for a lock */
-	if(p->lockwait)
-		pri = PriLock;
 
 	p->priority = pri;
 	rq = &runq[p->priority];

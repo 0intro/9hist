@@ -41,6 +41,7 @@ typedef struct Session	Session;
 typedef struct Talarm	Talarm;
 typedef struct Target	Target;
 typedef struct Waitq	Waitq;
+typedef struct Watchdog	Watchdog;
 typedef int    Devgen(Chan*, Dirtab*, int, int, Dir*);
 
 
@@ -613,6 +614,7 @@ struct Proc
 	Mach	*mp;		/* machine this process last ran on */
 	ulong	priority;	/* priority level */
 	ulong	basepri;	/* base priority level */
+	uchar	fixedpri;	/* priority level deson't change */
 	ulong	rt;		/* # ticks used since last blocked */
 	ulong	art;		/* avg # ticks used since last blocked */
 	ulong	movetime;	/* last time process switched processors */

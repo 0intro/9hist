@@ -948,6 +948,21 @@ procctlreq(Proc *p, char *va, int n)
 		if(i > p->basepri && !iseve())
 			error(Eperm);
 		p->basepri = i;
+		p->fixedpri = 0;
+	}
+	else
+	if(strncmp(buf, "fixedpri", 8) == 0) {
+		if(n < 9)
+			error(Ebadctl);
+		i = atoi(buf+9);
+		if(i < 0)
+			i = 0;
+		if(i >= Nrq)
+			i = Nrq - 1;
+		if(i > p->basepri && !iseve())
+			error(Eperm);
+		p->basepri = i;
+		p->fixedpri = 1;
 	}
 	else
 	if(strncmp(buf, "wired", 5) == 0) {
