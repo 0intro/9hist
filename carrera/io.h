@@ -9,6 +9,7 @@ enum
 	Devicephys	= 0x80000000,
 	Eisaphys	= 0x90000000,	/* IO port physical */
 	Devicevirt	= 0xE0000000,
+	  MCTgcr	= 0xE0000004,
 	Dmabase		= 0xE0000100,	
 	  R4030ier	= 0xE00000EC,	/* Interrupt enable register */
 	  R4030ipr	= 0xE00000EC,	/* Interrupt pending register */

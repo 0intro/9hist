@@ -424,6 +424,22 @@ exit(long type)
 	firmware(type);
 }
 
+ulong
+memsize(void)
+{
+	ulong gcr;
+
+	gcr = IO(ulong, MCTgcr);
+	/* Check for bank one enable -
+	 * assumes both have 4Meg SIMMS
+	 */
+	if(gcr & 0x20){
+		memset(UNCACHED(void, 16*MB), 0, 16*MB);
+		return 32*MB;
+	}
+	return 16*MB;
+}
+
 void
 confinit(void)
 {
@@ -431,7 +447,7 @@ confinit(void)
 
 	ktop = PGROUND((ulong)end);
 	ktop = PADDR(ktop);
-	top = (16*1024*1024)/BY2PG;
+	top = memsize()/BY2PG;
 
 	conf.base0 = 0;
 	conf.npage0 = top;
