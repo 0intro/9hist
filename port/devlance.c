@@ -605,7 +605,7 @@ lancewalk(Chan *c, char *name)
 void	 
 lancestat(Chan *c, char *dp)
 {
-	if(c->qid == CHDIR)
+	if(c->qid==CHDIR || c->qid==Ltraceqid)
 		devstat(c, dp, lancedir, Ndir, devgen);
 	else
 		devstat(c, dp, 0, 0, streamgen);

@@ -644,7 +644,14 @@ dkopen(Chan *c, int omode)
 	Dk *dp;
 	int line;
 
-	if(c->qid == Dcloneqid){
+	if(c->qid & CHDIR){
+		/*
+		 *  directories are read only
+		 */
+		if(omode != OREAD)
+			error(0, Ebadarg);
+	} else switch(STREAMTYPE(c->qid)){
+	case Dcloneqid:
 		/*
 		 *  get an unused device and open it's control file
 		 */
@@ -665,7 +672,8 @@ dkopen(Chan *c, int omode)
 			error(0, Enodev);
 		streamopen(c, &dkinfo);
 		pushq(c->stream, &urpinfo);
-	} else if(STREAMTYPE(c->qid) == Dlistenqid){
+		break;
+	case Dlistenqid:
 		/*
 		 *  listen for a call and open the control file for the
 		 *  channel on which the call arrived.
@@ -675,13 +683,25 @@ dkopen(Chan *c, int omode)
 		streamopen(c, &dkinfo);
 		pushq(c->stream, &urpinfo);
 		dkwindow(c);
-	} else if(c->qid != CHDIR){
+		break;
+	case Daddrqid:
+	case Draddrqid:
+	case Duserqid:
+	case Dotherqid:
+		/*
+		 *  read only files
+		 */
+		if(omode != OREAD)
+			error(0, Ebadarg);
+		break;
+	default:
 		/*
 		 *  open whatever c points to, make sure it has an urp
 		 */
 		streamopen(c, &dkinfo);
 		if(strcmp(c->stream->procq->next->info->name, "urp")!=0)
 			pushq(c->stream, &urpinfo);
+		break;
 	}
 
 	c->mode = openmode(omode);
@@ -702,7 +722,7 @@ dkclose(Chan *c)
 	Dk *dp;
 
 	/* real closing happens in lancestclose */
-	if(c->qid != CHDIR)
+	if(c->stream)
 		streamclose(c);
 
 	dp = &dk[c->dev];
@@ -714,17 +734,20 @@ dkclose(Chan *c)
 long	 
 dkread(Chan *c, void *a, long n)
 {
-	int t;
 	Line *lp;
 
-	t = STREAMTYPE(c->qid);
-	if(t>=Slowqid || t==Dlineqid)
+	if(c->stream)
 		return streamread(c, a, n);
-	if(c->qid == CHDIR)
-		return devdirread(c, a, n, dkdir, dk[c->dev].lines, devgen);
+
+	if(c->qid & CHDIR){
+		if(c->qid == CHDIR)
+			return devdirread(c, a, n, dkdir, dk[c->dev].lines, devgen);
+		else
+			return devdirread(c, a, n, dksubdir, Nsubdir, streamgen);
+	}
 
 	lp = &dk[c->dev].line[STREAMID(c->qid)];
-	switch(t){
+	switch(STREAMTYPE(c->qid)){
 	case Daddrqid:
 		return stringread(c, a, n, lp->addr);
 	case Draddrqid:
@@ -781,9 +804,6 @@ dkwrite(Chan *c, void *a, long n)
 			return streamwrite(c, a, n, 0);
 		return n;
 	}
-
-	if(t >= Slowqid)
-		return streamwrite(c, a, n, 0);
 
 	error(0, Eperm);
 }
