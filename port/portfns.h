@@ -189,6 +189,7 @@ Pte*		ptealloc(void);
 Pte*		ptecpy(Pte*);
 Path*		ptenter(Pthash*, Path*, char*);
 int		ptpath(Path*, char*, int);
+Block*		pullupblock(Block*, int);
 void		putimage(Image*);
 void		putmmu(ulong, ulong, Page*);
 void		putpage(Page*);

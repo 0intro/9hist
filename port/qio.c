@@ -773,3 +773,54 @@ qstate(Queue *q)
 {
 	return q->state;
 }
+
+/*
+ *  make sure the first block has at least n bytes
+ */
+Block*
+pullupblock(Block *bp, int n)
+{
+	int i;
+	Block *nbp;
+
+	/*
+	 *  this should almost always be true, the rest it
+	 *  just to avoid every caller checking.
+	 */
+	if(BLEN(bp) >= n)
+		return bp;
+
+	/*
+	 *  if not enough room in the first block,
+	 *  add another to the front of the list.
+	 */
+	if(bp->lim - bp->rp < n){
+		nbp = allocb(n);
+		nbp->next = bp;
+		bp = nbp;
+	}
+
+	/*
+	 *  copy bytes from the trailing blocks into the first
+	 */
+	n -= BLEN(bp);
+	while(nbp = bp->next){
+		i = BLEN(nbp);
+		if(i >= n) {
+			memmove(bp->wp, nbp->rp, n);
+			bp->wp += n;
+			nbp->rp += n;
+			return bp;
+		}
+		else {
+			memmove(bp->wp, nbp->rp, i);
+			bp->wp += i;
+			bp->next = nbp->next;
+			nbp->next = 0;
+			freeb(nbp);
+			n -= i;
+		}
+	}
+	freeb(bp);
+	return 0;
+}
