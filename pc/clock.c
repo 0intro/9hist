@@ -96,13 +96,13 @@ clock(Ureg *ur, void *arg)
 }
 
 /*
- *  experimentally determined and justified by counting cycles in
- *  delay()'s inner loop
+ *  experimentally determined
  */
 enum
 {
 	mul386=	380,
 	mul486=	121,
+	mul586=	121,
 };
 
 void
@@ -113,6 +113,9 @@ printcpufreq(void)
 
 	switch(cpu = x86()){
 	default:
+	case 586:
+		freq = mul586;
+		break;
 	case 486:
 		freq = mul486;
 		break;

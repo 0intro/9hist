@@ -12,6 +12,10 @@
 /*
  *  R4000 instructions
  */
+#define	LD(offset, base, rt)	WORD	$((067<<26)|((base)<<21)|((rt)<<16)|((offset)&0xFFFF))
+#define	STD(rt, offset, base)	WORD	$((077<<26)|((base)<<21)|((rt)<<16)|((offset)&0xFFFF))
+#define	DSLL(sa, rt, rd)	WORD	$(((rt)<<16)|((rd)<<11)|((sa)<<6)|070)
+#define	DSRA(sa, rt, rd)	WORD	$(((rt)<<16)|((rd)<<11)|((sa)<<6)|073)
 #define	LL(base, rt)		WORD	$((060<<26)|((base)<<21)|((rt)<<16))
 #define	SC(base, rt)		WORD	$((070<<26)|((base)<<21)|((rt)<<16))
 
@@ -22,13 +26,16 @@
  */
 TEXT	start(SB), $-4
 
+DBG(0x55aa0000)
 	MOVW	$setR30(SB), R30
 	MOVW	$(CU1|INTR7|INTR6|INTR5|INTR4|INTR3|INTR2|INTR1|INTR0), R1
 	MOVW	R1, M(STATUS)
 	WAIT
+DBG(0x55aa0001)
 
 	MOVW	$TLBROFF, R1
 	MOVW	R1, M(WIRED)
+DBG(0x55aa0002)
 
 	MOVW	$((0x1C<<7)|(1<<24)), R1
 	MOVW	R1, FCR31	/* permit only inexact and underflow */
@@ -50,14 +57,19 @@ TEXT	start(SB), $-4
 	MOVD	F24, F18
 	MOVD	F24, F20
 	MOVD	F24, F22
+DBG(0x55aa0003)
 
 	MOVW	$MACHADDR, R(MACH)
 	ADDU	$(BY2PG-4), R(MACH), SP
 	MOVW	$0, R(USER)
+DBG(0x55aa0010)
+MOVW R(MACH),4(R20)
 	MOVW	R0, 0(R(MACH))
+DBG(0x55aa0011)
 
 	MOVW	$edata(SB), R1
 	MOVW	$end(SB), R2
+DBG(0x55aa0004)
 
 clrbss:
 	MOVB	$0, (R1)
@@ -85,7 +97,7 @@ TEXT	touser(SB), $-4
 	MOVW	R4, M(STATUS)
 	WAIT
 	MOVW	R1, SP
-	MOVV	R2, M(EPC)
+	MOVW	R2, M(EPC)
 	ERET
 
 TEXT	firmware(SB), $0
@@ -274,7 +286,6 @@ TEXT	gettlbvirt(SB), $0
 	NOOP
 	RET
 
-/* also vector80 */
 TEXT	vector0(SB), $-4
 	NOOP4
 	NOOP4
@@ -361,33 +372,34 @@ TEXT	vector180(SB), $-4
 	NOOP4
 	MOVW	$exception(SB), R26
 	JMP	(R26)
+	NOP
 
 TEXT	exception(SB), $-4
 	MOVW	M(STATUS), R26
 	WAIT
 	AND	$KUSER, R26
 	BEQ	R26, waskernel
-
 wasuser:
 	CONST	(MACHADDR, R27)		/* R27 = m-> */
 	MOVW	8(R27), R26		/* R26 = m->proc */
 	MOVW	8(R26), R27		/* R27 = m->proc->kstack */
-	MOVV	SP, R26			/* save user sp */
-	ADDU	$(KSTACK-UREGSIZE), R27, SP
+	MOVW	SP, R26			/* save user sp */
+	ADDU	$(KSTACK-UREGSIZE-2*BY2WD), R27, SP
 
-	MOVV	R26, Ureg_sp(SP)		/* user SP */
-	MOVV	R31, Ureg_r31(SP)
-	MOVV	R30, Ureg_r30(SP)
+	MOVW	R26, 0x10(SP)			/* user SP */
+	MOVW	R31, 0x28(SP)
+	MOVW	R30, 0x2C(SP)
 	MOVW	M(CAUSE), R26
-	MOVV	R25, Ureg_r25(SP)		/* R(USER), R(MACH) */
-	MOVV	R24, Ureg_r24(SP)
+	MOVW	R(MACH), 0x3C(SP)
+	MOVW	R(USER), 0x40(SP)
 	AND	$(EXCMASK<<2), R26
 	SUBU	$(CSYS<<2), R26
 
 	JAL	saveregs(SB)
 
 	MOVW	$setR30(SB), R30
-	CONST	(MACHADDR, R(MACH))		/* R(MACH) = m-> */
+	CONST	(MACHADDR, R1)
+	MOVW	R1, R(MACH)			/* R(MACH) = m-> */
 	MOVW	8(R(MACH)), R(USER)		/* up = m->proc */
 	MOVW	4(SP), R1			/* first arg for syscall/trap */
 	BNE	R26, notsys
@@ -395,60 +407,62 @@ wasuser:
 	JAL	syscall(SB)
 
 sysrestore:
-	MOVV	Ureg_r31(SP), R31
-	MOVW	Ureg_status(SP), R26
-	MOVV	Ureg_r30(SP), R30
+	MOVW	0x28(SP), R31
+	MOVW	0x08(SP), R26
+	MOVW	0x2C(SP), R30
 	MOVW	R26, M(STATUS)
 	WAIT
-	MOVV	Ureg_pc(SP), R26		/* old pc */
-	MOVV	Ureg_sp(SP), SP
-	MOVV	R26, M(EPC)
+	MOVW	0x0C(SP), R26		/* old pc */
+	MOVW	0x10(SP), SP
+	MOVW	R26, M(EPC)
 	ERET
 
 notsys:
 	JAL	trap(SB)
 restore:
 	JAL	restregs(SB)
-	MOVV	Ureg_r31(SP), R31
-	MOVV	Ureg_r30(SP), R30
-	MOVV	Ureg_r25(SP), R25			/* R(USER), R(MACH) */
-	MOVV	Ureg_r24(SP), R24
-	MOVV	Ureg_sp(SP), SP
-	MOVV	R26, M(EPC)
+	MOVW	0x28(SP), R31
+	MOVW	0x2C(SP), R30
+	MOVW	0x3C(SP), R(MACH)
+	MOVW	0x40(SP), R(USER)
+	MOVW	0x10(SP), SP
+	MOVW	R26, M(EPC)
 	ERET
 
 waskernel:
-	MOVV	SP, R26
-	SUBU	$UREGSIZE, SP
-	OR	$7, SP
-	XOR	$7, SP
-	MOVV	R26, Ureg_sp(SP)
-	MOVV	R31, Ureg_r31(SP)
 	MOVW	$1, R26			/* not syscall */
+	MOVW	SP, -(UREGSIZE-16)(SP)
+	SUBU	$UREGSIZE, SP
+	MOVW	R31, 0x28(SP)
 	JAL	saveregs(SB)
 	MOVW	4(SP), R1		/* first arg for trap */
 	JAL	trap(SB)
 	JAL	restregs(SB)
-	MOVV	Ureg_r31(SP), R31
-	MOVV	Ureg_sp(SP), SP
-	MOVV	R26, M(EPC)
+	MOVW	0x28(SP), R31
+	ADDU	$UREGSIZE, SP
+	MOVW	R26, M(EPC)
 	ERET
 
-TEXT	forkret(SB), $-4
-	MOVV	R0, R1			/* Fake out system call return */
+TEXT	forkret(SB), $0
+	MOVW	R0, R1			/* Fake out system call return */
 	JMP	sysrestore
 
 TEXT	saveregs(SB), $-4
-	MOVV	R1, Ureg_r1(SP)		/* save early to use as temp */
-	MOVV	R2, Ureg_r2(SP)
-
-	ADDU	$Uoffset,SP, R1
-	MOVW	R1, 4(SP)		/* arg to base of regs */
+	MOVW	R1, 0x9C(SP)
+	MOVW	R2, 0x98(SP)
+	/* save R5, R6 as 64 bits */
+	ADDU	$(UREGSIZE-16), SP, R1
+	MOVW	$~7, R2			/* don't let him use R28 */
+	AND		R2, R1
+	STD		(5, 0,(1))
+	STD		(6, 8,(1))
+	ADDU	$8, SP, R1
+	MOVW	R1, 0x04(SP)		/* arg to base of regs */
 	MOVW	M(STATUS), R1
-	MOVV	M(EPC), R2
+	MOVW	M(EPC), R2
 	WAIT
-	MOVW	R1, Ureg_status(SP)
-	MOVV	R2, Ureg_pc(SP)
+	MOVW	R1, 0x08(SP)
+	MOVW	R2, 0x0C(SP)
 
 	MOVW	$(~KMODEMASK),R2	/* don't let him use R28 */
 	AND	R2, R1
@@ -457,86 +471,93 @@ TEXT	saveregs(SB), $-4
 	BEQ	R26, return		/* sys call, don't save */
 
 	MOVW	M(CAUSE), R1
-	MOVV	M(BADVADDR), R2
+	MOVW	M(BADVADDR), R2
 	NOOP
-	MOVW	R1, Ureg_cause(SP)
-	MOVV	M(TLBVIRT), R1
+	MOVW	R1, 0x14(SP)
+	MOVW	M(TLBVIRT), R1
 	NOOP
-	MOVV	R2, Ureg_badvaddr(SP)
-	MOVV	R1, Ureg_tlbvirt(SP)
+	MOVW	R2, 0x18(SP)
+	MOVW	R1, 0x1C(SP)
 	MOVW	HI, R1
 	MOVW	LO, R2
-	MOVV	R1, Ureg_hi(SP)
-	MOVV	R2, Ureg_lo(SP)
+	MOVW	R1, 0x20(SP)
+	MOVW	R2, 0x24(SP)
 					/* LINK,SB,SP missing */
-	MOVV	R28, Ureg_r28(SP)
+	MOVW	R28, 0x30(SP)
 					/* R27, R26 not saved */
 					/* R25, R24 missing */
-	MOVV	R23, Ureg_r23(SP)
-	MOVV	R22, Ureg_r22(SP)
-	MOVV	R21, Ureg_r21(SP)
-	MOVV	R20, Ureg_r20(SP)
-	MOVV	R19, Ureg_r19(SP)
-	MOVV	R18, Ureg_r18(SP)
-	MOVV	R17, Ureg_r17(SP)
-	MOVV	R16, Ureg_r16(SP)
-	MOVV	R15, Ureg_r15(SP)
-	MOVV	R14, Ureg_r14(SP)
-	MOVV	R13, Ureg_r13(SP)
-	MOVV	R12, Ureg_r12(SP)
-	MOVV	R11, Ureg_r11(SP)
-	MOVV	R10, Ureg_r10(SP)
-	MOVV	R9, Ureg_r9(SP)
-	MOVV	R8, Ureg_r8(SP)
-	MOVV	R7, Ureg_r7(SP)
-	MOVV	R6, Ureg_r6(SP)
-	MOVV	R5, Ureg_r5(SP)
-	MOVV	R4, Ureg_r4(SP)
-	MOVV	R3, Ureg_r3(SP)
+	MOVW	R23, 0x44(SP)
+	MOVW	R22, 0x48(SP)
+	MOVW	R21, 0x4C(SP)
+	MOVW	R20, 0x50(SP)
+	MOVW	R19, 0x54(SP)
+	MOVW	R18, 0x58(SP)
+	MOVW	R17, 0x5C(SP)
+	MOVW	R16, 0x60(SP)
+	MOVW	R15, 0x64(SP)
+	MOVW	R14, 0x68(SP)
+	MOVW	R13, 0x6C(SP)
+	MOVW	R12, 0x70(SP)
+	MOVW	R11, 0x74(SP)
+	MOVW	R10, 0x78(SP)
+	MOVW	R9, 0x7C(SP)
+	MOVW	R8, 0x80(SP)
+	MOVW	R7, 0x84(SP)
+	MOVW	R6, 0x88(SP)
+	MOVW	R5, 0x8C(SP)
+	MOVW	R4, 0x90(SP)
+	MOVW	R3, 0x94(SP)
 return:
 	RET
 
 TEXT	restregs(SB), $-4
 					/* LINK,SB,SP missing */
-	MOVV	Ureg_r28(SP), R28
+	MOVW	0x30(SP), R28
 					/* R27, R26 not saved */
 					/* R25, R24 missing */
-	MOVV	Ureg_r23(SP), R23
-	MOVV	Ureg_r22(SP), R22
-	MOVV	Ureg_r21(SP), R21
-	MOVV	Ureg_r20(SP), R20
-	MOVV	Ureg_r19(SP), R19
-	MOVV	Ureg_r18(SP), R18
-	MOVV	Ureg_r17(SP), R17
-	MOVV	Ureg_r16(SP), R16
-	MOVV	Ureg_r15(SP), R15
-	MOVV	Ureg_r14(SP), R14
-	MOVV	Ureg_r13(SP), R13
-	MOVV	Ureg_r12(SP), R12
-	MOVV	Ureg_r11(SP), R11
-	MOVV	Ureg_r10(SP), R10
-	MOVV	Ureg_r9(SP), R9
-	MOVV	Ureg_r8(SP), R8
-	MOVV	Ureg_r7(SP), R7
-	MOVV	Ureg_r6(SP), R6
-	MOVV	Ureg_r5(SP), R5
-	MOVV	Ureg_r4(SP), R4
-	MOVV	Ureg_r3(SP), R3
-
-	MOVV	Ureg_lo(SP), R2
-	MOVV	Ureg_hi(SP), R1
+	MOVW	0x44(SP), R23
+	MOVW	0x48(SP), R22
+	MOVW	0x4C(SP), R21
+	MOVW	0x50(SP), R20
+	MOVW	0x54(SP), R19
+	MOVW	0x58(SP), R18
+	MOVW	0x5C(SP), R17
+	MOVW	0x60(SP), R16
+	MOVW	0x64(SP), R15
+	MOVW	0x68(SP), R14
+	MOVW	0x6C(SP), R13
+	MOVW	0x70(SP), R12
+	MOVW	0x74(SP), R11
+	MOVW	0x78(SP), R10
+	MOVW	0x7C(SP), R9
+	MOVW	0x80(SP), R8
+	MOVW	0x84(SP), R7
+	/*
+	 * restored below
+	 * MOVW	0x88(SP), R6
+	 * MOVW	0x8C(SP), R5
+	 */
+	MOVW	0x90(SP), R4
+	MOVW	0x94(SP), R3
+	MOVW	0x24(SP), R2
+	MOVW	0x20(SP), R1
 	MOVW	R2, LO
 	MOVW	R1, HI
-
-	MOVW	Ureg_status(SP), R1
-	MOVV	Ureg_r2(SP), R2
+	/* restore 64-bit R5, R6 */
+	ADDU	$(UREGSIZE-16), SP, R1
+	MOVW	$~7, R2			/* don't let him use R28 */
+	AND		R2, R1
+	LD		(0,(1), 5)
+	LD		(8,(1), 6)
+	MOVW	0x08(SP), R1
+	MOVW	0x98(SP), R2
 	MOVW	R1, M(STATUS)
 	WAIT
-	MOVV	Ureg_r1(SP), R1
-	MOVV	Ureg_pc(SP), R26		/* old pc */
+	MOVW	0x9C(SP), R1
+	MOVW	0x0C(SP), R26		/* old pc */
 	RET
 
-TEXT	rfnote(SB), $-4
+TEXT	rfnote(SB), $0
 	MOVW	R1, R26			/* 1st arg is &uregpointer */
 	SUBU	$(BY2WD), R26, SP	/* pc hole */
 	JMP	restore

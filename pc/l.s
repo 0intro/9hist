@@ -566,15 +566,16 @@ TEXT	x86(SB),$0
 
 	PUSHFL
 	MOVL	0(SP),AX
-	ORL	$0x240000,AX
+	XORL	$0x240000,AX
 	PUSHL	AX
 	POPFL
 	PUSHFL
 	MOVL	0(SP),AX
-	ANDL	$0x40000,AX
+	XORL	4(SP),AX
+	MOVL	AX, BX
+	ANDL	$0x40000,BX	/* on 386 we can't change this bit */
 	JZ	is386
-	POPL	AX
-	ANDL	$0x200000,AX
+	ANDL	$0x200000,AX	/* on 486 we can't change this bit */
 	JZ	is486
 	MOVL	$586,AX
 	JMP	done
@@ -582,9 +583,9 @@ is486:
 	MOVL	$486,AX
 	JMP	done
 is386:
-	POPL	AX
 	MOVL	$386,AX
 done:
+	POPL	BX
 	POPFL
 	RET
 
