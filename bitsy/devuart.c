@@ -133,6 +133,10 @@ static int uartndir;
 static char	Ekinuse[] = "device in use by kernel";
 
 static void	uartsetbaud(Uart *p, int rate);
+static void	uartflow(void *v);
+static void	uartkick0(void *v);
+static void	uartkick(void *v);
+static void	uartrts(Uart *p, int on);
 
 /*
  *  define a Uart.
@@ -149,7 +153,6 @@ uartsetup(Uartregs *regs, ulong freq, char *name)
 	uart[nuart] = p;
 	strcpy(p->name, name);
 	p->dev = nuart++;
-	p->port = port;
 	p->freq = freq;
 	p->regs = regs;
 
@@ -231,8 +234,6 @@ uartreset(void)
 {
 	int i;
 	Dirtab *dp;
-
-	uartsetup(uart3regs, ;
 
 	uartndir = 3*nuart;
 	uartdir = xalloc(uartndir * sizeof(Dirtab));
@@ -522,6 +523,9 @@ Dev uartdevtab = {
 	uartwstat,
 };
 
+/*
+ *  set the buad rate
+ */
 static void
 uartsetbaud(Uart *p, int rate)
 {
@@ -535,6 +539,70 @@ uartsetbaud(Uart *p, int rate)
 	p->regs->ctl[2] = brconst;
 
 	p->baud = rate;
+}
+
+/*
+ *  turn on/off rts
+ */
+static void
+uartrts(Uart *p, int on)
+{
+}
+
+/*
+ *  restart input if it's off
+ */
+static void
+uartflow(void *v)
+{
+	Uart *p;
+
+	p = v;
+	if(p->modem){
+		uartrts(p, 1);
+		ilock(&p->rlock);
+		p->haveinput = 1;
+		iunlock(&p->rlock);
+	}
+}
+
+/*
+ *  restart output if not blocked and OK to send
+ */
+static void
+uartkick0(void *v)
+{
+	int i;
+	Uart *p;
+
+	p = v;
+	if(p->cts == 0 || p->blocked)
+		return;
+
+	/*
+	 *  128 here is an arbitrary limit to make sure
+	 *  we don't stay in this loop too long.  If the
+	 *  chips output queue is longer than 128, too
+	 *  bad -- presotto
+	 */
+	for(i = 0; i < 128; i++){
+//		if(!(uartrdreg(p, Lstat) & Outready))
+//			break;
+//		if(p->op >= p->oe && stageoutput(p) == 0)
+//			break;
+//		outb(p->port + Data, *(p->op++));
+	}
+}
+
+static void
+uartkick(void *v)
+{
+	Uart *p;
+
+	p = v;
+	ilock(&p->tlock);
+	uartkick0(p);
+	iunlock(&p->tlock);
 }
 
 void

@@ -15,17 +15,20 @@ ulong	getfsr(void);
 void	idle(void);
 #define	idlehands()			/* nothing to do in the runproc */
 int	iprint(char*, ...);
-ulong*	mapspecial(ulong, int);
+void*	mapspecial(ulong, int);
 void	meminit(void);
 void	mmuinit(void);
 void	mmuenable(void);
 void	mmudisable(void);
+void	noted(Ureg*, ulong);
+int	notify(Ureg*);
 #define	procrestore(p)
 void	procsave(Proc*);
 void	procsetup(Proc*);
 void	putdac(ulong);
 void	putttb(ulong);
 void	putpid(ulong);
+void	reset(void);
 void	screeninit(void);
 int	screenprint(char*, ...);			/* debugging */
 void	(*screenputs)(char*, int);

@@ -153,40 +153,49 @@ TEXT exceptionvectors(SB), $-4
 	WORD	$_vfiq(SB)		/* FIQ, switch to svc mode */
 
 TEXT _vrst(SB), $-4
-	BL	reset
+	BL	reset(SB)
 
 TEXT _vsvc(SB), $-4			/* SWI */
-	SUB	$12, R13		/* make room for pc, psr, & type */
-	MOVW	R14, 8(R13)		/* ureg->pc = interupted PC */
+	MOVW.DB.W R14, (R13)		/* ureg->pc = interupted PC */
 	MOVW	SPSR, R14		/* ureg->psr = SPSR */
-	MOVW	R14, 4(R13)		/* ... */
+	MOVW.DB.W R14, (R13)		/* ... */
 	MOVW	$PsrMsvc, R14		/* ureg->type = PsrMsvc */
-	MOVW	R14, (R13)		/* ... */
+	MOVW.DB.W R14, (R13)		/* ... */
 	MOVM.DB.W.S [R0-R14], (R13)	/* save user level registers, at end r13 points to ureg */
-	B	_vexcep			/* call the exception handler */
+	MOVW	$setR12(SB), R12	/* Make sure we've got the kernel's SB loaded */
+	MOVW	R13, R0			/* first arg is pointer to ureg */
+	SUB	$8, R13			/* space for argument+link */
+
+	BL	syscall(SB)
+
+	ADD	$(8+4*15), R13		/* make r13 point to ureg->type */
+	MOVW	8(R13), R14		/* restore link */
+	MOVW	4(R13), R0		/* restore SPSR */
+	MOVW	R0, SPSR		/* ... */
+	MOVM.DB.S (R13), [R0-R14]	/* restore registers */
+	ADD	$8, R13			/* pop past ureg->{type+psr} */
+	RFE				/* MOVM.IA.S.W (R13), [R15] */
 
 TEXT _vund(SB), $-4			/* undefined */
-	MOVM.IA	[R0-R3], (R13)		/* free some working space */
+	MOVM.IA	[R0-R4], (R13)		/* free some working space */
 	MOVW	$PsrMund, R0
 	B	_vswitch
 
 TEXT _vabt(SB), $-4			/* prefetch abort */
-	MOVM.IA	[R0-R3], (R13)		/* free some working space */
+	MOVM.IA	[R0-R4], (R13)		/* free some working space */
 	MOVW	$PsrMabt, R0		/* r0 = type */
 	B	_vswitch
 
 TEXT _virq(SB), $-4			/* IRQ */
-	MOVM.IA	[R0-R3], (R13)		/* free some working space */
+	MOVM.IA	[R0-R4], (R13)		/* free some working space */
 	MOVW	$PsrMirq, R0		/* r0 = type */
 	B	_vswitch
 
-TEXT _vfiq(SB), $-4			/* FIQ */
-	RFE				/* RIQ is special, ignore it for now */
-
 	/*
-	 *  come here with type in R0 and R13 pointing above saved [r0-r3]
+	 *  come here with type in R0 and R13 pointing above saved [r0-r4]
+	 *  and type in r0.  we'll switch to SVC mode and then call trap.
 	 */
-_vswitch:				/* switch to svc, type in R0 */
+_vswitch:
 	MOVW	SPSR, R1		/* save SPSR for ureg */
 	MOVW	R14, R2			/* save interrupted pc for ureg */
 	MOVW	R13, R3			/* save pointer to where the original [R0-R3] are */
@@ -197,39 +206,56 @@ _vswitch:				/* switch to svc, type in R0 */
 	ORR	$(PsrDirq|PsrDfiq|PsrMsvc), R14
 	MOVW	R14, CPSR
 
-	/*
-	 *  R13 and R14 is now R13_SVC and R14_SVC.  The values of the previous mode's
-	 *  R13 and R14 are no longer accessible.  That's why R3 was left to point to where
-	 *  the old [r0-r3] are stored.
-	 */
+	/* interupted code kernel or user? */
+	AND.S	$0xf, R1, R4
+	B.EQ	_userexcep
+
+	/* here for trap from SVC mode */
 	MOVM.DB.W [R0-R2], (R13)	/* set ureg->{type, psr, pc}; r13 points to ureg->type  */
-	MOVM.IA	  (R3), [R0-R3]		/* restore [R0-R3] from previous mode's stack */
-	MOVM.DB.W.S [R0-R14], (R13)	/* save user level registers, at end r13 points to ureg */
-
-	/*
-	 *  if the original interrupt happened while executing SVC mode,
-	 *  the User R14 in the Ureg is wrong.  We need to save the SVC one there.
-	 */
-	MOVW	0x40(R13), R1
-	AND.S	$0xf, R1
-	MOVW.NE	R14,0x38(R13)
-	B	_vexcep
-
-	/*
- 	 *  call the exception routine, the ureg is at the bottom of the stack
-	 */
-_vexcep:
+	MOVM.IA	  (R3), [R0-R4]		/* restore [R0-R4] from previous mode's stack */
+	MOVM.DB.W [R0-R14], (R13)	/* save kernel level registers, at end r13 points to ureg */
 	MOVW	$setR12(SB), R12	/* Make sure we've got the kernel's SB loaded */
 	MOVW	R13, R0			/* first arg is pointer to ureg */
-	SUB	$8, R13			/* space for argument+link */
+	SUB	$8, R13			/* space for argument+link (for debugger) */
+
 	BL	trap(SB)
 
-_vrfe: 
 	ADD	$(8+4*15), R13		/* make r13 point to ureg->type */
 	MOVW	8(R13), R14		/* restore link */
 	MOVW	4(R13), R0		/* restore SPSR */
 	MOVW	R0, SPSR		/* ... */
-	MOVM.DB.W.S (R13), [R0-R14]	/* restore registers */
+	MOVM.DB (R13), [R0-R14]	/* restore registers */
+	ADD	$8, R13			/* pop past ureg->{type+psr} */
+	RFE				/* MOVM.IA.S.W (R13), [R15] */
+
+	/* here for trap from USER mode */
+_userexcep:
+	MOVM.DB.W [R0-R2], (R13)	/* set ureg->{type, psr, pc}; r13 points to ureg->type  */
+	MOVM.IA	  (R3), [R0-R4]		/* restore [R0-R4] from previous mode's stack */
+	MOVM.DB.W.S [R0-R14], (R13)	/* save kernel level registers, at end r13 points to ureg */
+	MOVW	$setR12(SB), R12	/* Make sure we've got the kernel's SB loaded */
+	MOVW	R13, R0			/* first arg is pointer to ureg */
+	SUB	$8, R13			/* space for argument+link (for debugger) */
+
+	BL	trap(SB)
+
+	ADD	$(8+4*15), R13		/* make r13 point to ureg->type */
+	MOVW	8(R13), R14		/* restore link */
+	MOVW	4(R13), R0		/* restore SPSR */
+	MOVW	R0, SPSR		/* ... */
+	MOVM.DB.S (R13), [R0-R14]	/* restore registers */
+	ADD	$8, R13			/* pop past ureg->{type+psr} */
+	RFE				/* MOVM.IA.S.W (R13), [R15] */
+
+TEXT _vfiq(SB), $-4			/* FIQ */
+	RFE				/* FIQ is special, ignore it for now */
+
+TEXT forkret(SB),$-4
+	ADD	$(4*15), R13		/* make r13 point to ureg->type */
+	MOVW	8(R13), R14		/* restore link */
+	MOVW	4(R13), R0		/* restore SPSR */
+	MOVW	R0, SPSR		/* ... */
+	MOVM.DB.S (R13), [R0-R14]	/* restore registers */
 	ADD	$8, R13			/* pop past ureg->{type+psr} */
 	RFE				/* MOVM.IA.S.W (R13), [R15] */
 

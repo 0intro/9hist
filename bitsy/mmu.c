@@ -98,7 +98,7 @@ mmuinit(void)
 	putttb((ulong)l1table);
 
 	/* map the uart so that we can continue using iprint */
-	uart3regs = (Uartregs*)mapspecial(UART3REGS, 64);
+	uart3regs = mapspecial(UART3REGS, 64);
 
 	/* enable mmu, and make 0xFFFF0000 the virtual address of the exception vecs */
 	mmuenable();
@@ -109,7 +109,7 @@ mmuinit(void)
 /*
  *  map special space uncached, assume that the space isn't already mapped
  */
-ulong*
+void*
 mapspecial(ulong pa, int len)
 {
 	ulong *t;
