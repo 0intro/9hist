@@ -284,7 +284,7 @@ getconf(char *name)
  *  zero memory to set ECC.
  *  do a quick memory test also.
  *
- *  if any part of a meg is missing/broken, drop the whole meg.
+ *  if any part of a meg is missing/broken, return -1.
  */
 int
 memclrtest(int meg, int len, long seed)
@@ -311,7 +311,7 @@ memclrtest(int meg, int len, long seed)
 		for(n = 0; n < BY2PG/BY2WD; n++)
 			if(lp[n] != ~(seed + (n^((BY2PG/BY2WD)-1))))
 				return -1;
-		memset(lp, 0, BY2PG);
+		memset(lp, '!', BY2PG);
 	}
 	return 0;
 }
@@ -383,8 +383,9 @@ confinit(void)
 		/*
 		 *  check for correct value
 		 */
-		if(*mapaddr(KZERO|(i*MB)) == x && *mapaddr(KZERO|((i+1)*MB-BY2WD)) == x)
-			mmap[i] = 'x';
+		if(*mapaddr(KZERO|(i*MB)) == x)
+			if(*mapaddr(KZERO|((i+1)*MB-BY2WD)) == x)
+				mmap[i] = 'x';
 		x += 0x3141526;
 	}
 
@@ -398,9 +399,9 @@ confinit(void)
 			continue;
 		j = MB;
 		if(crasharea == 0){
-			crasharea = i*MB - CRASHSIZE;
+			crasharea = (i+1)*MB - PGROUND(CRASHSIZE);
 			crashend = crasharea + CRASHSIZE;
-			j = MB - CRASHSIZE;
+			j = MB - PGROUND(CRASHSIZE);
 		}
 		if(memclrtest(i, j, x) < 0)
 			mmap[i] = ' ';
