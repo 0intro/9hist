@@ -352,7 +352,6 @@ int
 kbdinit(void)
 {
 	int i;
-return 0;
 
 	/*
 	 *  empty the buffer
