@@ -620,6 +620,59 @@ promiscuous(void *arg, int on)
 	r = Ab;
 	if(on)
 		r |= Pro;
+	if(ether->nmaddr)
+		r |= Am;
+	ilock(ctlr);
+	regw(ctlr, Rcr, r);
+	iunlock(ctlr);
+}
+
+static void
+multicast(void* arg, uchar *addr, int on)
+{
+	Ether *ether;
+	Dp8390 *ctlr;
+	uchar r, cr;
+	int i;
+	ulong h;
+
+	USED(addr, on);
+
+	ether = arg;
+	ctlr = ether->ctlr;
+
+	/*
+	 *  change filter bits
+	 */
+	h = ethercrc(addr, 6);
+	h = h>>(32-6);
+	i = h/8;
+	h = h%8;
+	ilock(ctlr);
+	cr = regr(ctlr, Cr) & ~Txp;
+	regw(ctlr, Cr, Page1|(~(Ps1|Ps0) & cr));
+	r = regr(ctlr, Mar0+i);
+	if(on){
+		if(++(ctlr->mref[h]) == 1)
+			r |= 1<<h;
+	} else {
+		if(--(ctlr->mref[h]) <= 0){
+			ctlr->mref[h] = 0;
+			r &= ~(1<<h);
+		}
+	}	
+	regw(ctlr, Mar0+i, r);
+	regw(ctlr, Cr, cr);
+	iunlock(ctlr);
+
+	/*
+	 * Set/reset promiscuous mode.
+	 */
+	r = Ab;
+	if(ether->nmaddr)
+		r |= Am;
+	if(ether->prom)
+		r |= Pro;
 	ilock(ctlr);
 	regw(ctlr, Rcr, r);
 	iunlock(ctlr);
@@ -642,6 +695,8 @@ attach(Ether* ether)
 	r = Ab;
 	if(ether->prom)
 		r |= Pro;
+	if(ether->nmaddr)
+		r |= Am;
 	ilock(ctlr);
 	regw(ctlr, Rcr, r);
 	r = regr(ctlr, Cntr2);
@@ -719,6 +774,7 @@ dp8390reset(Ether* ether)
 	ether->ifstat = 0;
 
 	ether->promiscuous = promiscuous;
+	ether->multicast = multicast;
 	ether->arg = ether;
 
 	return 0;

@@ -19,6 +19,8 @@ typedef struct {
 
 	int	txbusy;			/* transmit */
 	uchar	tstart;			/* 8390 ring addresses */
+
+	int	mref[64];		/* reference counts for multicast groups */
 } Dp8390;
 
 #define Dp8390BufSz	256

@@ -135,7 +135,6 @@ void		kprocchild(Proc*, void (*)(void*), void*);
 void		(*kproftimer)(ulong);
 void		ksetenv(char*, char*);
 long		latin1(uchar*, int);
-void		links(void);
 void		lock(Lock*);
 void		lockinit(void);
 Page*		lookpage(Image*, ulong);

@@ -467,10 +467,12 @@ multicast(void* arg, uchar *addr, int on)
 	ether = (Ether*)arg;
 	port = ether->port;
 
-print("mutlicast nmaddr == %d\n", ether->nmaddr);
+print("multicast nmaddr == %d\n", ether->nmaddr);
 	filter = receiveBroadcast|receiveIndividual;
 	if(ether->nmaddr)
 		filter |= receiveMulticast;
+	if(ether->prom)
+		filter |= receiveAllFrames;
 	COMMAND(port, SetRxFilter, filter);
 }
 

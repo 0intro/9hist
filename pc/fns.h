@@ -48,11 +48,10 @@ void	insl(int, void*, int);
 void	intrenable(int, void (*)(Ureg*, void*), void*, int);
 int	iprint(char*, ...);
 int	isaconfig(char*, int, ISAConf*);
-ulong	getisa(ulong, int, int);
-void	putisa(ulong, int);
 void	kbdinit(void);
 void	lgdt(ushort[3]);
 void	lidt(ushort[3]);
+void	links(void);
 void	ltr(ulong);
 void	mathinit(void);
 #define mmuflushtlb(pdb) putcr3(pdb)
