@@ -128,11 +128,12 @@ TEXT	spllo(SB), $0
 TEXT	muxlock(SB),$0
 
 	MOVW	R1, R2		/* sbsem */
-	MOVW	4(FP), R3	/* lk->val */
+	MOVW	4(FP), R3	/* &lk->val */
 
 	MOVW	M(STATUS), R5	/* splhi */
 	AND	$~IEC, R5, R4
 	MOVW	R4, M(STATUS)
+	NOOP
 
 	MOVW	0(R2),R4	/* grab sbsem */
 	AND	$1, R4

@@ -274,13 +274,13 @@ good:
 	bp = arena.btab[pow];
 	if(bp) {
 		arena.btab[pow] = bp->next;
-		unlock(&arena);
-
-		if(bp->magic != 0 || bp->size != pow)
+		if(bp->magic != 0 || bp->size != pow){
+			unlock(&arena);
 			panic("malloc bp %lux magic %lux size %d next %lux pow %d", bp,
 				bp->magic, bp->size, bp->next, pow);
-
+		}
 		bp->magic = Magic2n;
+		unlock(&arena);
 
 		memset(bp->data, 0, size);
 		return  bp->data;
@@ -314,9 +314,7 @@ good:
 		if(bp == nil)
 			return nil;
 
-		lock(&arena);
 		arena.nbuck[pow]++;
-		unlock(&arena);
 	}
 
 	bp->size = pow;
