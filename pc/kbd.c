@@ -398,16 +398,6 @@ kbdinit(void)
 {
 	int c;
 
-	kbdq = qopen(4*1024, 0, 0, 0);
-	if(kbdq == nil)
-		panic("kbdinit");
-	qnoblock(kbdq, 1);
-
-	ioalloc(Data, 1, 0, "kbd");
-	ioalloc(Cmd, 1, 0, "kbd");
-
-	intrenable(IrqKBD, i8042intr, 0, BUSUNKNOWN, "kbd");
-
 	/* wait for a quiescent controller */
 	while((c = inb(Status)) & (Outbusy | Inready))
 		if(c & Inready)
@@ -432,4 +422,18 @@ kbdinit(void)
 		print("kbd init failed\n");
 	outb(Data, ccc);
 	outready();
+}
+
+void
+kbdenable(void)
+{
+	kbdq = qopen(4*1024, 0, 0, 0);
+	if(kbdq == nil)
+		panic("kbdinit");
+	qnoblock(kbdq, 1);
+
+	ioalloc(Data, 1, 0, "kbd");
+	ioalloc(Cmd, 1, 0, "kbd");
+
+	intrenable(IrqKBD, i8042intr, 0, BUSUNKNOWN, "kbd");
 }

@@ -9,7 +9,6 @@ int chandebug=0;		/* toggled by sysr1 */
 QLock chanprint;		/* probably asking for trouble (deadlocks) -rsc */
 
 int domount(Chan**, Mhead**);
-Ref mheadcounter;
 
 void
 dumpmount(void)		/* DEBUGGING */
@@ -478,7 +477,6 @@ if(old->umh)
 		 *  head and add to the hash table.
 		 */
 		m = smalloc(sizeof(Mhead));
-incref(&mheadcounter);
 		m->ref = 1;
 		m->from = old;
 		incref(old);
@@ -1364,13 +1362,14 @@ char isfrog[256]={
  * or a valid character.
  */
 void
-validname(char *name, int slashok)
+validname(char *aname, int slashok)
 {
-	char *p, *ename;
+	char *p, *ename, *name;
 	uint t;
 	int c;
 	Rune r;
 
+	name = aname;
 	if(((ulong)name & KZERO) != KZERO) {
 		p = name;
 		t = BY2PG-((ulong)p&(BY2PG-1));
@@ -1391,8 +1390,10 @@ validname(char *name, int slashok)
 			name += chartorune(&r, name);
 		else{
 			if(isfrog[c])
-				if(!slashok || c!='/')
-					error(Ebadchar);
+				if(!slashok || c!='/'){
+					snprint(up->genbuf, sizeof(up->genbuf), "%s: %q", Ebadchar, aname);
+					error(up->genbuf);
+			}
 			name++;
 		}
 	}
@@ -1429,7 +1430,6 @@ void
 putmhead(Mhead *m)
 {
 	if(m && decref(m) == 0){
-decref(&mheadcounter);
 		m->mount = (Mount*)0xCafeBeef;
 		free(m);
 	}

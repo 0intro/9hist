@@ -66,6 +66,7 @@ int	ioalloc(int, int, int, char*);
 int	ioreserve(int, int, int, char*);
 int	iprint(char*, ...);
 int	isaconfig(char*, int, ISAConf*);
+void	kbdenable(void);
 void	kbdinit(void);
 #define	kmapinval()
 void	lapicclock(Ureg*, void*);

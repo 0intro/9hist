@@ -229,10 +229,13 @@ rootserver(char *arg)
 	/* parse replies */
 	for(;;){
 		outin(prompt, reply, sizeof(reply));
+		if(strlen(reply) == 0)
+			continue;
 		mp = findmethod(reply);
 		if(mp){
 	    HaveMethod:
-			bargc = tokenize(reply, bargv, Nbarg-1);
+			bargc = tokenize(reply, bargv, Nbarg-2);
+			bargv[bargc] = nil;
 			cp = strchr(reply, '!');
 			if(cp)
 				strcpy(sys, cp+1);

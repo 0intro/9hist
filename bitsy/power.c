@@ -266,9 +266,16 @@ onoffintr(Ureg* , void*)
 	wakeup(&powerr);
 }
 
+static void
+blanktimer(void)
+{
+	drawactive(0);
+}
+
 void
 powerinit(void)
 {
+	addclock0link(blanktimer);
 	intrenable(GPIOrising, bitno(GPIO_PWR_ON_i), onoffintr, nil, "on/off");
 }
 

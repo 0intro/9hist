@@ -133,10 +133,8 @@ pgrpcpy(Pgrp *to, Pgrp *from)
 	for(i = 0; i < MNTHASH; i++) {
 		l = tom++;
 		for(f = from->mnthash[i]; f; f = f->hash) {
-extern Ref mheadcounter;
 			rlock(&f->lock);
 			mh = smalloc(sizeof(Mhead));
-incref(&mheadcounter);
 			mh->from = f->from;
 			mh->ref = 1;
 			incref(mh->from);

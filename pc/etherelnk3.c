@@ -1388,10 +1388,8 @@ tcm509isa(void)
 	 * it fully.
 	 */
 	while(port = activate()){
-		if(ioalloc(port, 0x10, 0, "tcm509isa") < 0){
-			print("tcm509isa: port 0x%uX in use\n", port);
+		if(ioalloc(port, 0x10, 0, "tcm509isa") < 0)
 			continue;
-		}
 
 		/*
 		 * 6. Tag the adapter so it won't respond in future.
@@ -1450,10 +1448,9 @@ tcm5XXeisa(void)
 	 */
 	for(slot = 1; slot < MaxEISA; slot++){
 		port = slot*0x1000;
-		if(ioalloc(port, 0x1000, 0, "tcm5XXeisa") < 0){
-			print("tcm5XXeisa: port 0x%uX in use\n", port);
+		if(ioalloc(port, 0x1000, 0, "tcm5XXeisa") < 0)
 			continue;
-		}
+
 		if(ins(port+0xC80+ManufacturerID) != 0x6D50){
 			iofree(port);
 			continue;
@@ -1493,10 +1490,9 @@ tcm59Xpci(void)
 			continue;
 		port = p->mem[0].bar & ~0x01;
 		if((port = ioalloc((port == 0)? -1: port,  p->mem[0].size, 
-					  0, "tcm59Xpci")) < 0){
-			print("tcm59Xpci: port 0x%uX in use\n", port);
+					  0, "tcm59Xpci")) < 0)
 			continue;
-		}
+
 		irq = p->intl;
 		COMMAND(port, GlobalReset, 0);
 		while(STATUS(port) & commandInProgress)

@@ -19,8 +19,10 @@ typedef struct OSTimer
 OSTimer *timerregs = (OSTimer*)OSTIMERREGS;
 static int clockinited;
 
-static void	clockintr(Ureg*, void*);
-static uvlong when;	/* scheduled time of next interrupt */
+static void		clockintr(Ureg*, void*);
+static uvlong	when;	/* scheduled time of next interrupt */
+
+long	timeradjust;
 
 enum
 {
@@ -105,7 +107,7 @@ timerset(uvlong v)
 	/* post next interrupt: calculate # of tics from now */
 	tics = next - timerregs->oscr - Maxfreq;
 	if (tics > Minfreq){
-		iprint("%lud %lud %lud %d\n", next, tics, timerregs->oscr, Minfreq);
+		timeradjust++;
 		next = timerregs->oscr + Maxfreq;
 	}
 	timerregs->osmr[0] = next;

@@ -734,13 +734,12 @@ archinit(void)
 	}
 
 	/*
-	 * Decide whether to use copy-on-reference (386 and mp).
+	 *  Decide whether to use copy-on-reference (386 and mp).
+	 *  We get another chance to set it in mpinit() for a
+	 *  multiprocessor.
 	 */
-	if(X86FAMILY(m->cpuidax) == 3 || conf.nmach > 1)
+	if(X86FAMILY(m->cpuidax) == 3)
 		conf.copymode = 1;
-
-	if(X86FAMILY(m->cpuidax) >= 5 && conf.nmach > 1)
-		coherence = wbflush;
 
 	addarchfile("cputype", 0444, cputyperead, nil);
 }

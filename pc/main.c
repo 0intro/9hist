@@ -81,6 +81,7 @@ main(void)
 
 	print("\nPlan 9\n");
 
+	kbdinit();
 	i8253init();
 	cpuidentify();
 	screeninit();
@@ -96,7 +97,7 @@ main(void)
 		arch->intrinit();
 	timersinit();
 	mathinit();
-	kbdinit();
+	kbdenable();
 	if(arch->clockenable)
 		arch->clockenable();
 	procinit0();

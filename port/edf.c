@@ -104,10 +104,7 @@ isedf(Proc *p)
 int
 edfanyready(void)
 {
-	/* If any edf tasks (with runnable procs in them) are released,
-	 * at least one of them must be on the stack
-	 */
-	return edfstack[m->machno].head != nil;
+	return edfstack[m->machno].head || qreleased.head;
 }
 
 static void
@@ -686,6 +683,11 @@ edfrunproc(void)
 	static ulong nilcount;
 	int i;
 
+	if (edfstack[m->machno].head == nil && qreleased.head== nil){
+		// quick way out
+		nilcount++;
+		return nil;
+	}
 	/* Figure out if the current proc should be preempted*/
 	ilock(&edflock);
 	now = fastticks(nil);
