@@ -64,6 +64,28 @@ exit(int ispanic)
 	(*f)();
 }
 
+/*
+ *  quicker panic
+ */
+void
+qpanic(char *fmt, ...)
+{
+	int n;
+	va_list arg;
+	char buf[PRINTSIZE];
+
+	splhi();
+	strcpy(buf, "panic: ");
+	va_start(arg, fmt);
+	n = doprint(buf+strlen(buf), buf+sizeof(buf), fmt, arg) - buf;
+	va_end(arg);
+	buf[n] = '\n';
+	serialputs(buf, n+1);
+
+	exit(1);
+}
+
+
 static uchar *sp;
 
 /*

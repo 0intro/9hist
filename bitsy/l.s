@@ -39,21 +39,6 @@ TEXT flushmmu(SB), $-4
 	MCR	CpMMU, 0, R0, C(CpTLBFlush), C(0x7)
 	RET
 
-/* flush instruction cache */
-TEXT flushicache(SB), $-4
-	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0x5), 0
-	/* drain prefetch */
-	MOVW	R0,R0					
-	MOVW	R0,R0
-	MOVW	R0,R0
-	MOVW	R0,R0
-	RET
-
-/* flush data cache */
-TEXT flushdcache(SB), $-4
-	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0x6), 0
-	RET
-
 /* flush i and d caches */
 TEXT flushcache(SB), $-4
 	/* write back any dirty data */
@@ -72,7 +57,6 @@ _wbloop:
 	MOVW	R0,R0
 	MOVW	R0,R0
 	MOVW	R0,R0
-	RET
 
 /* drain write buffer */
 TEXT wbflush(SB), $-4
@@ -104,13 +88,13 @@ TEXT putttb(SB), $-4
  */
 TEXT mmuenable(SB), $-4
 	MRC	CpMMU, 0, R0, C(CpControl), C(0x0)
-	ORR	$(CpCmmuena|CpCdcache|CpCicache), R0
+	ORR	$(CpCmmuena), R0
 	MCR     CpMMU, 0, R0, C(CpControl), C(0x0)
 	RET
 
 TEXT mmudisable(SB), $-4
 	MRC	CpMMU, 0, R0, C(CpControl), C(0x0)
-	BIC	$(CpCmmuena|CpCdcache|CpCicache|CpCvivec), R0
+	BIC	$(CpCmmuena|CpCvivec), R0
 	MCR     CpMMU, 0, R0, C(CpControl), C(0x0)
 	RET
 
@@ -387,13 +371,3 @@ TEXT gotolabel(SB), $-4
 	MOVW	4(R0), R14			/* pc */
 	MOVW	$1, R0
 	RET
-
-TEXT mmuctlregr(SB), $-4
-	MRC		CpMMU, 0, R0, C(CpControl), C(0)
-	RET	
-
-TEXT mmuctlregw(SB), $-4
-	MCR		CpMMU, 0, R0, C(CpControl), C(0)
-	MOVW		R0, R0
-	MOVW		R0, R0
-	RET	

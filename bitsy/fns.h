@@ -34,6 +34,7 @@ void	procsetup(Proc*);
 void	putdac(ulong);
 void	putttb(ulong);
 void	putpid(ulong);
+void	qpanic(char *, ...);
 void	reset(void);
 void	rs232power(int);
 Uart*	uartsetup(PhysUart*, void*, ulong, char*);

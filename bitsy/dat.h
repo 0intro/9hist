@@ -80,8 +80,8 @@ enum
 
 struct PMMU
 {
-	ulong	tlbpid;		/* current pid (0 if none) */
-	Page	*l1[Nmeg];	/* this's process' level 1 entries */
+	Page	*l1page[Nmeg];	/* this's process' level 1 entries */
+	ulong	l1table[Nmeg];	/* ... */
 };
 
 /*

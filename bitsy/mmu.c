@@ -67,8 +67,14 @@ mmuinit(void)
 	l1table = xspanalloc(16*1024, 16*1024, 0);
 	memset(l1table, 0, 16*1024);
 
+	/* map low mem */
+	for(o = 0; o < 1*OneMeg; o += OneMeg)
+		l1table[(0+o)>>20] = L1Section | L1KernelRW| L1Domain0 
+			| L1Cached | L1Buffered
+			| ((0+o)&L1SectBaseMask);
+
 	/* map DRAM */
-	for(o = 0; o < DRAMTOP; o += OneMeg)
+	for(o = 0; o < 128*OneMeg; o += OneMeg)
 		l1table[(DRAMZERO+o)>>20] = L1Section | L1KernelRW| L1Domain0 
 			| L1Cached | L1Buffered
 			| ((PHYSDRAM0+o)&L1SectBaseMask);
@@ -194,37 +200,6 @@ mapspecial(ulong pa, int len)
 }
 
 /*
- *  maintain pids
- */
-static Lock pidlock;
-
-void
-flushpids(void)
-{
-	memset(l1table, 0, BY2WD*nelem(m->pid2proc)*32);
-	memset(m->pid2proc, 0, sizeof(m->pid2proc));
-	flushcache();
-	flushmmu();
-}
-
-int
-newtlbpid(Proc *p)
-{
-	int i;
-
-	ilock(&pidlock);
-	i = ++(m->lastpid);
-	if(i >= nelem(m->pid2proc)){
-		flushpids();
-		i = m->lastpid = 0;
-	}
-	m->pid2proc[i] = p;
-	p->tlbpid = i+1;
-	iunlock(&pidlock);
-	return p->tlbpid;
-}
-
-/*
  *  table to map fault.c bits to physical bits
  */
 static ulong mmubits[16] =
@@ -246,34 +221,30 @@ static ulong mmubits[16] =
 void
 putmmu(ulong va, ulong pa, Page*)
 {
-	ulong pva;
 	Page *p;
 	ulong *t;
 
 iprint("putmmu(0x%.8lux, 0x%.8lux)\n", va, pa);
-	/* if user memory, add pid value */
-	if((va & 0xfe000000) == 0)
-		pva = va | (up->tlbpid << 25);
-	else
-		pva = va;
-
 	/* always point L1 entry to L2 page, can't hurt */
-	p = up->l1[va>>20];
+	p = up->l1page[va>>20];
 	if(p == nil){
 		p = auxpage();
 		if(p == nil)
 			pexit("out of memory", 1);
 		p->va = VA(kmap(p));
-		up->l1[va>>20] = p;
+		up->l1page[va>>20] = p;
 	}
-	l1table[pva>>20] = L1PageTable | L1Domain0 | (p->pa & L1PTBaseMask);
+	l1table[va>>20] = L1PageTable | L1Domain0 | (p->pa & L1PTBaseMask);
+iprint("%lux[%lux] = %lux\n", l1table, va>>20, l1table[va>>20]);
+	up->l1table[va>>20] = l1table[va>>20];
 	t = (ulong*)p->va;
 
 	/* set L2 entry */
-	t[(pva & (OneMeg-1))>>PGSHIFT] = mmubits[pa & (PTEKERNEL|PTEVALID|PTEUNCACHED|PTEWRITE)]
+	t[(va & (OneMeg-1))>>PGSHIFT] = mmubits[pa & (PTEKERNEL|PTEVALID|PTEUNCACHED|PTEWRITE)]
 		| (pa & ~(PTEKERNEL|PTEVALID|PTEUNCACHED|PTEWRITE));
+iprint("%lux[%lux] = %lux\n", (ulong)t, (va & (OneMeg-1))>>PGSHIFT, t[(va & (OneMeg-1))>>PGSHIFT]);
 
-	wbflush();
+	flushmmu();
 }
 
 /*
@@ -285,26 +256,21 @@ mmurelease(Proc* p)
 	Page *pg;
 	int i;
 
-	for(i = 0; i < nelem(p->l1); i++){
-		pg = p->l1[i];
+	for(i = 0; i < nelem(p->l1page); i++){
+		pg = p->l1page[i];
 		if(pg == nil)
 			continue;
 		if(--pg->ref)
 			panic("mmurelease: pg->ref %d\n", pg->ref);
 		pagechainhead(pg);
-		p->l1[i] = nil;
+		p->l1page[i] = nil;
 	}
 }
 
 void
 mmuswitch(Proc* p)
 {
-	/* set pid */
-	if(p->tlbpid <= 0)
-		p->tlbpid = newtlbpid(p);
-iprint("using tlbpid %d\n", p->tlbpid);
-	putpid(p->tlbpid<<25);
-
-	/* set domain register to this + the kernel's domains */
-	putdac((Dclient<<(2*p->tlbpid)) | Dclient);
+//	flushcache();	/* drain and flush the cache */
+//	flushmmu();
+//	memmove(l1table, p->l1table, sizeof(p->l1table));
 }

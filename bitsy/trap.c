@@ -87,7 +87,7 @@ trapdump(char *tag)
 void
 dumpregs(Ureg *ur)
 {
-	iprint("r0  0x%.8lux r1  0x%.8lux r3  0x%.8lux r3  0x%.8lux\n",
+	iprint("r0  0x%.8lux r1  0x%.8lux r2  0x%.8lux r3  0x%.8lux\n",
 		ur->r0, ur->r1, ur->r2, ur->r3);
 	iprint("r4  0x%.8lux r5  0x%.8lux r6  0x%.8lux r7  0x%.8lux\n",
 		ur->r4, ur->r5, ur->r6, ur->r7);
@@ -136,7 +136,7 @@ iprint("fault returns %d\n", n);
 	if(n < 0){
 		if(!user){
 			dumpregs(ureg);
-			panic("fault: 0x%lux\n", va);
+			qpanic("fault: 0x%lux\n", va);
 		}
 		sprint(buf, "sys: trap: fault %s va=0x%lux",
 			read? "read" : "write", va);
@@ -160,18 +160,19 @@ trap(Ureg *ureg)
 	user = (ureg->psr & PsrMask) == PsrMusr;
 	switch(ureg->type){
 	default:
-		panic("unknown trap");
+		qpanic("unknown trap");
 		break;
 	case PsrMabt:	/* prefetch fault */
-		iprint("prefetch abort at %lux\n", ureg->pc-4);
+		iprint("prefetch abort at 0x%lux\n", ureg->pc-4);
 		faultarm(ureg, ureg->pc - 4, user, 1);
 		break;
 	case PsrMabt+1:	/* data fault */
 		pc = ureg->pc - 8;
 		va = getfar();
+		iprint("data fault pc 0x%lux va 0x%lux fsr 0x%lux\n", pc, va, getfsr());
 		switch(getfsr() & 0xf){
 		case 0x0:
-			panic("vector exception at %lux\n", pc);
+			qpanic("vector exception at %lux\n", pc);
 			break;
 		case 0x1:
 		case 0x3:
@@ -180,10 +181,10 @@ trap(Ureg *ureg)
 					pc, va);
 				postnote(up, 1, buf, NDebug);
 			} else
-				panic("kernel alignment: pc 0x%lux va 0x%lux", pc, va);
+				qpanic("kernel alignment: pc 0x%lux va 0x%lux", pc, va);
 			break;
 		case 0x2:
-			panic("terminal exception at %lux\n", pc);
+			qpanic("terminal exception at %lux\n", pc);
 			break;
 		case 0x4:
 		case 0x6:
@@ -191,7 +192,7 @@ trap(Ureg *ureg)
 		case 0xa:
 		case 0xc:
 		case 0xe:
-			panic("external abort at %lux\n", pc);
+			qpanic("external abort at %lux\n", pc);
 			break;
 		case 0x5:
 		case 0x7:
@@ -205,7 +206,7 @@ trap(Ureg *ureg)
 				sprint(buf, "sys: access violation: pc 0x%lux va 0x%lux\n", pc, va);
 				postnote(up, 1, buf, NDebug);
 			} else
-				panic("kernel access violation: pc 0x%lux va 0x%lux\n", pc, va);
+				qpanic("kernel access violation: pc 0x%lux va 0x%lux\n", pc, va);
 			break;
 		case 0xd:
 		case 0xf:
@@ -215,7 +216,7 @@ trap(Ureg *ureg)
 		}
 		break;
 	case PsrMund:	/* undefined instruction */
-		panic("undefined instruction");
+		qpanic("undefined instruction");
 		break;
 	case PsrMirq:	/* device interrupt */
 		for(i = 0; i < 32; i++)
@@ -249,7 +250,7 @@ syscall(Ureg* ureg)
 	int	i, scallnr;
 
 	if((ureg->psr & PsrMask) != PsrMusr)
-		panic("syscall: cs 0x%4.4uX\n", ureg->psr);
+		qpanic("syscall: cs 0x%4.4uX\n", ureg->psr);
 
 	m->syscall++;
 	up->insyscall = 1;
@@ -285,7 +286,7 @@ syscall(Ureg* ureg)
 		for(i = 0; i < NERR; i++)
 			print("sp=%lux pc=%lux\n",
 				up->errlab[i].sp, up->errlab[i].pc);
-		panic("error stack");
+		qpanic("error stack");
 	}
 
 	up->insyscall = 0;
