@@ -78,6 +78,7 @@ pipeattach(char *spec)
 	lock(&pipealloc);
 	if(pipealloc.free == 0){
 		unlock(&pipealloc);
+		close(c);
 		error(Enopipe);
 	}
 	p = pipealloc.free;

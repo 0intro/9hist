@@ -629,10 +629,10 @@ confinit(void)
 	conf.nurp = 25;
 	conf.nqueue = 5 * conf.nstream;
 	conf.nblock = 10 * conf.nstream;
-	conf.npipe = conf.nstream/2;
 
 	confread();
 
+	conf.npipe = conf.nstream/2;	/* must be after confread */
 	if(conf.nmach > MAXMACH)
 		panic("confinit");
 	conf.copymode = 1;		/* copy on reference */

@@ -72,11 +72,10 @@ pgrpnote(Pgrp *pg, char *a, long n, int flag)
 				unlock(&p->debug);
 				continue;
 			}
-			if(waserror()){
-				unlock(&p->debug);
-				continue;
+			if(!waserror()){
+				postnote(p, 0, buf, flag);
+				poperror();
 			}
-			postnote(p, 0, buf, flag);
 			unlock(&p->debug);
 		}
 	}
