@@ -411,10 +411,10 @@ pcihinv(Pcidev* p)
 
 	if(p == nil) {
 		p = pciroot;
-		print("bus dev type vid  did  memory\n");
+		print("bus dev type vid  did intl memory\n");
 	}
 	for(t = p; t != nil; t = t->link) {
-		print("%d  %2d/%d %.4ux %.4ux %.4ux %d ",
+		print("%d  %2d/%d %.4ux %.4ux %.4ux %2d  ",
 			BUSBNO(t->tbdf), BUSDNO(t->tbdf), BUSFNO(t->tbdf),
 			t->ccru, t->vid, t->did, t->intl);
 
