@@ -384,6 +384,7 @@ newproc(void)
 	kstrdup(&p->text, "*notext");
 	kstrdup(&p->args, "");
 	p->nargs = 0;
+	p->setargs = 0;
 	memset(p->seg, 0, sizeof p->seg);
 	p->pid = incref(&pidalloc);
 	pidhash(p);

@@ -506,7 +506,11 @@ procargs(Proc *p, char *buf, int nbuf)
 	int n;
 
 	a = p->args;
-	n = p->nargs;	
+	if(p->setargs){
+		snprint(buf, nbuf, "%s [%s]", p->text, p->args);
+		return strlen(buf);
+	}
+	n = p->nargs;
 	for(j = 0; j < nbuf - 1; j += m){
 		if(n <= 0)
 			break;
@@ -880,6 +884,7 @@ procwrite(Chan *c, void *va, long n, vlong off)
 		free(p->args);
 		p->nargs = m;
 		p->args = arg;
+		p->setargs = 1;
 		break;
 
 	case Qmem:
