@@ -65,7 +65,7 @@ Cmdtab rebootmsg[] =
 void
 printinit(void)
 {
-	lineq = qopen(2*1024, 0, 0, 0);
+	lineq = qopen(2*1024, 0, nil, nil);
 	if(lineq == nil)
 		panic("printinit");
 	qnoblock(lineq, 1);
