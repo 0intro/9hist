@@ -143,27 +143,42 @@ clrbss:
 	CMP	R3, R4
 	BNE	clrbss
 
+	/* off to main */
 	BL	main(SB)
 	BR	0(PC)
 
-TEXT	kernelmmu(SB), $0
-	TLBIA
-	ISYNC
 
+TEXT	kernelmmu(SB), $0
+
+	/* dont use CASID yet - set to zero for now */
 	MOVW	$0, R4
-	MOVW	R4, SPR(M_CASID)	/* set supervisor space */
-	MOVW	$(0<<29), R4		/* allow i-cache when IR=0 */
+	MOVW	R4, SPR(M_CASID)
+	
+	/* set Ks = 0 Kp = 1 for all acess groups */
+	MOVW	$0x55555555, R4
+	MOVW	R4, SPR(MI_AP)
+	MOVW	R4, SPR(MD_AP)
+
+	/*
+	 * set:
+	 *  PowerPC mode
+	 *  Page protection mode - no 1K pages
+	 *  CI when MMU is disbaled - this will change
+	 *  WT when DMMU is disbaled - this will change
+	 *  disable protected TLB for the momment
+	 *  ignore user/supervisor state when looking for TLB
+	 *  set first tlb entry to 28 - first lockable entry
+	 */
+	MOVW	$(MMUCIDEF|(31<<8)), R4
 	MOVW	R4, SPR(MI_CTR)	/* i-mmu control */
 	ISYNC
-	MOVW	$((1<<29)|(1<<28)), R4	/* cache inhibit when DR=0, write-through */
-	SYNC
+	MOVW	$(MMUCIDEF|MMUWTDEF|(31<<8)), R4
 	MOVW	R4, SPR(MD_CTR)	/* d-mmu control */
 	ISYNC
-	TLBIA
 
 	/* map various things 1:1 */
-	MOVW	$tlbtab-KZERO(SB), R4
-	MOVW	$tlbtabe-KZERO(SB), R5
+	MOVW	$tlbtab(SB), R4
+	MOVW	$tlbtabe(SB), R5
 	SUB	R4, R5
 	MOVW	$(3*4), R6
 	DIVW	R6, R5
@@ -181,29 +196,13 @@ ltlb:
 	MOVW	R5, SPR(MI_RPN)
 	BDNZ	ltlb
 
-	MOVW	$(1<<25), R4
-	MOVW	R4, SPR(IC_CST)	/* enable i-cache */
-	ISYNC
-
-	MOVW	$(1<<24), R4
-	SYNC
-	MOVW	R4, SPR(DC_CST)	/* force write through mode */
-	MOVW	$(1<<25), R4
-	SYNC
-	MOVW	R4, SPR(DC_CST)	/* enable d-cache */
-	ISYNC
-
-	/* enable MMU and set kernel PC to virtual space */
-	MOVW	$((0<<29)|(1<<28)), R4	/* cache when DR=0, write-through */
-	SYNC
-	MOVW	R4, SPR(MD_CTR)	/* d-mmu control */
-	MOVW	LR, R3
-	OR	$KZERO, R3
-	MOVW	R3, SPR(SRR0)
+	/* enable MMU */
 	MOVW	MSR, R4
-	OR	$(MSR_ME|MSR_IR|MSR_DR), R4	/* had ME|FPE|FE0|FE1 */
-	MOVW	R4, SPR(SRR1)
-	RFI	/* resume in kernel mode in caller */
+	OR	$(MSR_IR|MSR_DR), R4
+	MOVW	R4, MSR
+	ISYNC
+
+	RETURN
 
 TEXT	splhi(SB), $0
 	MOVW	MSR, R3
@@ -384,11 +383,11 @@ TEXT	getcallerpc(SB), $-4
 	MOVW	0(R1), R3
 	RETURN
 
-TEXT getdar(SB), $0
+TEXT	getdar(SB), $0
 	MOVW	SPR(DAR), R3
 	RETURN
 
-TEXT getdsisr(SB), $0
+TEXT	getdsisr(SB), $0
 	MOVW	SPR(DSISR), R3
 	RETURN
 
@@ -408,6 +407,13 @@ TEXT	putmsr(SB), $0
 
 TEXT	eieio(SB), $0
 	EIEIO
+	RETURN
+
+TEXT	flushmmu(SB), $0
+	TLBIA
+	RETURN
+
+TEXT	putmmu(SB), $0
 	RETURN
 
 TEXT	gotopc(SB), $0
@@ -609,22 +615,19 @@ GLOBL	spltbl+0(SB), $4
 GLOBL	intrtbl+0(SB), $4
 GLOBL	isavetbl+0(SB), $4
 
+	RETURN
+
 /*
  * TLB prototype entries, loaded once-for-all at startup,
  * remaining unchanged thereafter.
- * Limit the table to at most 8 entries to ensure
- * it works on the 823 (other 8xx processors allow up to 32 TLB entries).
+ * Limit the table to at most 4 entries
  */
-#define	TLBE(epn,rpn,twc)	WORD	$(epn);  WORD	$(twc); WORD	$(rpn)
+#define	TLBE(epn,twc,rpn)	WORD	$(epn);	WORD	$(twc);	WORD	$(rpn)
 
 TEXT	tlbtab(SB), $-4
-
 	/* epn, rpn, twc */
-/*	TLBE(KZERO|DRAMMEM|TLBVALID, DRAMMEM|PTEWRITE|PTELPS|PTESH|PTEVALID, PTE8MB|PTEWT|PTEVALID)	/* DRAM, 8M */
-/*	TLBE(KZERO|BCSRMEM|TLBVALID, BCSRMEM|PTEWRITE|PTESH|PTECI|PTEVALID, PTE4K|PTEWT|PTEVALID)	/* Board CSR, 4K */
-/*	TLBE(KZERO|INTMEM|TLBVALID, INTMEM|PTEWRITE|PTELPS|PTESH|PTECI|PTEVALID, PTE4K|PTEWT|PTEVALID)	/* IMMR, 16K */
-/*	TLBE(KZERO|FLASHMEM|TLBVALID, FLASHMEM|PTEWRITE|PTELPS|PTESH|PTECI|PTEVALID, PTE8MB|PTEWT|PTEVALID)	/* Flash, 8M */
-/*	TLBE(KZERO|SDRAMMEM|TLBVALID, SDRAMMEM|PTEWRITE|PTELPS|PTESH|PTEVALID, PTE8MB|PTEWT|PTEVALID)	/* SDRAM, 8M */
-/*	TLBE(KZERO|PCMCIAMEM|TLBVALID, PCMCIAMEM|PTEWRITE|PTELPS|PTESH|PTECI|PTEVALID, PTE8MB|PTEWT|PTEVALID)	/* PCMCIA, 8M */
+	TLBE(DRAMMEM|MMUEV, MMUPS8M|MMUWT|MMUV, DRAMMEM|MMUPP|MMUSPS|MMUSH|MMUCI|MMUV)	/* DRAM, 8M */
+	TLBE((DRAMMEM+8*(1<<20))|MMUEV, MMUPS8M|MMUWT|MMUV, (DRAMMEM+8*(1<<20))|MMUPP|MMUSPS|MMUSH|MMUCI|MMUV)	/* DRAM, second 8M */
+	TLBE(INTMEM|MMUEV, MMUPS8M|MMUWT|MMUV, INTMEM|MMUPP|MMUSPS|MMUSH|MMUCI|MMUV)	/* IO space 8M */
 TEXT	tlbtabe(SB), $-4
 	RETURN

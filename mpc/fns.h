@@ -10,7 +10,7 @@ void	clockcheck(void);
 void	clockinit(void);
 void	clockintr(Ureg*);
 void	clrfptrap(void);
-#define coherence()		// not need on signle processor machines
+#define coherence()		// not need on single processor machines
 void	cpminit(void);
 int	cpuidentify(void);
 void	cpuidprint(void);
@@ -19,7 +19,8 @@ void	delay(int);
 ulong	draminit(ulong*);
 void	dtlbmiss(void);
 void	dumpregs(Ureg*);
-void	eieio(void);
+//void	eieio(void);
+#define	eieio()
 void	evenaddr(ulong);
 void	faultpower(Ureg*);
 void	firmware(int);
@@ -49,6 +50,7 @@ void	itlbmiss(void);
 int	isaconfig(char*, int, ISAConf*);
 void	kbdinit(void);
 void	kbdreset(void);
+void	kernelmmu(void);
 void	links(void);
 void	mapfree(RMap*, ulong, int);
 void	mapinit(RMap*, Map*, int);

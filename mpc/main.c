@@ -40,7 +40,7 @@ main(void)
 	printinit();
 	cpminit();
 	uartinstall();
-delay(500);
+	mmuinit();
 	spllo();
 	for(i=0; ; i++) {
 		print("hello again %d\n", i);
@@ -136,8 +136,8 @@ iprint(char *fmt, ...)
 	n = doprint(buf, buf+sizeof(buf), fmt, arg) - buf;
 	va_end(arg);
 
-//	putstrn(buf, n);
-//	uartwait();
+	putstrn(buf, n);
+	uartwait();
 
 	return n;
 }

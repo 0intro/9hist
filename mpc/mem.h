@@ -102,8 +102,8 @@
  * MMU
  */
 
+#ifdef notdef
 /* L1 table entry and Mx_TWC flags */
-#define PTEVALID	(1<<0)
 #define PTEWT		(1<<1)	/* write through */
 #define PTE4K		(0<<2)
 #define PTE512K		(1<<2)
@@ -114,21 +114,48 @@
 #define PTECI		(1<<1)	/*  cache inhibit */
 #define PTESH		(1<<2)	/* page is shared; ASID ignored */
 #define PTELPS		(1<<3)	/* large page size */
-#define PTEWRITE	0x9F0
 
-/*
- *  physical MMU - bogus at the momement
- */
-#define	PTEUNCACHED	(1<<4)
-#define	PTERONLY	(0<<1)
 #define	PTEKERNEL	(0<<2)
 #define	PTEUSER		(1<<2)
 #define PTESIZE		(1<<7)
+#endif
+/*
+ *  portable MMU bits for fault.c - though still machine specific
+ */
+#define PTEVALID	(1<<0) 
+#define PTEWRITE	(2<<10)
+#define	PTERONLY	(3<<10)
+#define	PTEUNCACHED	(1<<4)
 
-/* TLB and MxEPN flag */
-#define	TLBVALID	(1<<9)
+/*
+ * physical MMU bits
+ */
 
-#define	TLBSETS	32	/* number of tlb sets */
+/* Mx_CTR */
+#define MMUGPM		(1<<31)	/* group protection mode */
+#define	MMUPPM		(1<<30)	/* page protect mode */
+#define MMUCIDEF	(1<<29)	/* default CI value when MMU is disabled */
+#define MMUWTDEF	(1<<28)	/* default WT value when MMU is disabled */
+#define MMURSV4		(1<<27) /* reserve 4 TLB entries */
+#define MMUTWAM		(1<<26) /* table walk assist mode */
+#define	MMUPPCS		(1<<25) /* privilege/user compare mode */
+
+/* Mx_EPN */
+#define MMUEV		(1<<9)	/* TLB entry valid */
+
+/* Mx_TWC */
+#define	MMUG		(1<<4)	/* guard */
+#define MMUPS4K		(0<<2)	/* 4K or 16K pages */
+#define MMUPS512K	(1<<2)	/* 512K pages */
+#define MMUPS8M		(3<<2)	/* 8M pages */
+#define MMUWT		(1<<1)	/* write through */
+#define MMUV		(1<<0)	/* valid */
+
+/* Mx_RPN */
+#define MMUPP		(0x1f<<4) /* page protection defaults */
+#define MMUSPS		(1<<3)	/* small page size */
+#define MMUSH		(1<<2)	/* shared page */
+#define MMUCI		(1<<1)	/* cache inhibit */
 
 /*
  *  Address spaces
@@ -153,7 +180,7 @@
 #define	FLASH0MEM	0x80200000
 #define	FLASH1MEM	0x80400000
 #define	SDRAMMEM	0x03000000
-#define DRAMMEM		0xff000000		// to 0xffffffff: 16 Meg
+#define DRAMMEM		0xff000000		/* to 0xffffffff: 16 Meg */
 
 #define	SIRAM	(INTMEM+0xC00)
 #define	LCDCOLR	(INTMEM+0xE00)
