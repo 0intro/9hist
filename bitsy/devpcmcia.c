@@ -300,13 +300,19 @@ slotinfo(Ureg*, void*)
 		slot[0].occupied = 0;
 		slot[1].occupied = 0;
 	} else {
-		if(!slot[0].occupied && (x & GPIO_CARD_IND0_i)){
+		if(x & GPIO_CARD_IND0_i){
+			slot[0].occupied = 0;
+			slot[0].cisread = 0;
+		} else if(slot[0].occupied == 0){
 			slot[0].occupied = 1;
 			slot[0].cisread = 0;
 		}
-		if(!slot[1].occupied && (x & GPIO_CARD_IND1_i)){
+		if(x & GPIO_CARD_IND1_i){
+			slot[1].occupied = 0;
+			slot[1].cisread = 0;
+		} else if(slot[1].occupied == 0){
 			slot[1].occupied = 1;
-			slot[0].cisread = 0;
+			slot[1].cisread = 0;
 		}
 	}
 }
@@ -350,14 +356,14 @@ slotmap(int slotno, ulong regs, ulong attr, ulong mem)
 	pp->mem = mapmem(mem, 64*OneMeg, 0);
 	pp->memmap.ca = 0;
 	pp->memmap.cea = 64*MB;
-	pp->memmap.isa = (ulong)pp->mem;
+	pp->memmap.isa = (ulong)mem;
 	pp->memmap.len = 64*OneMeg;
 	pp->memmap.attr = 0;
 
 	pp->attr = mapmem(attr, OneMeg, 0);
 	pp->attrmap.ca = 0;
 	pp->attrmap.cea = MB;
-	pp->attrmap.isa = (ulong)pp->attr;
+	pp->attrmap.isa = (ulong)attr;
 	pp->attrmap.len = OneMeg;
 	pp->attrmap.attr = 1;
 
