@@ -8,20 +8,10 @@
 
 #include	"io.h"
 
-typedef struct Bitmsg Bitmsg;
-struct Bitmsg
-{
-	ulong	cmd;
-	ulong	addr;
-	ulong	count;
-	ulong	result;
-};
-
 static struct
 {
 	QLock;
 	int	open;
-	Bitmsg	msg;
 	char	buf[10*1024];
 }bit;
 
@@ -36,23 +26,17 @@ enum
 };
 
 void
-bitsend(ulong cmd, void *addr, ulong count)
+bitsend(Bitmsg *bp, ulong cmd, void *addr, ulong count)
 {
-	bit.msg.cmd = cmd;
-	bit.msg.addr = (ulong)addr;
-	bit.msg.count = count;
+	bp->cmd = cmd;
+	bp->addr = (ulong)addr;
+	bp->count = count;
 	if(*BITADDR)
 		panic("bitsend");
-	*BITADDR = &bit.msg;
+	*BITADDR = bp;
 	wbflush();
 	*BITINTR = 0x20;
-}
-
-void
-bitsync(void)
-{
-	while(*BITADDR)
-		;
+	do; while(*BITADDR);
 }
 
 void
@@ -102,6 +86,9 @@ bitstat(Chan *c, char *dp)
 Chan*
 bitopen(Chan *c, int omode)
 {
+	Bitmsg *bp;
+
+	bp = &((User*)(u->p->upage->pa|KZERO))->bit;
 	if(c->qid!=1 || omode!=ORDWR)
 		error(0, Eperm);
 	qlock(&bit);
@@ -110,9 +97,7 @@ bitopen(Chan *c, int omode)
 print("multiple bit open\n");
 		error(0, Einuse);
 	}
-	bitsync();
-	bitsend(RESET, 0, 0);
-	bitsync();
+	bitsend(bp, RESET, 0, 0);
 	bit.open = 1;
 	qunlock(&bit);
 	c->mode = openmode(omode);
@@ -146,21 +131,28 @@ bitclose(Chan *c)
 long	 
 bitread(Chan *c, void *buf, long n)
 {
+	Bitmsg *bp;
+	int docpy;
+
+	bp = &((User*)(u->p->upage->pa|KZERO))->bit;
 	switch(c->qid){
 	case 1:
 		if(n > sizeof bit.buf)
 			error(0, Egreg);
+		docpy = 0;
 		qlock(&bit);
-		if((((ulong)buf)&(KSEGM|3)) == KSEG0){
-			bitsend(READ, buf, n);
-			bitsync();
-		}else{
-			bitsend(READ, bit.buf, n);
-			bitsync();
-			memcpy(buf, bit.buf, n);
+		if((((ulong)buf)&(KSEGM|3)) == KSEG0)
+			bitsend(bp, READ, buf, n);
+		else{
+			bitsend(bp, READ, bit.buf, n);
+			docpy = 1;
 		}
-		n = bit.msg.result;
 		qunlock(&bit);
+		do
+			n = bp->count;
+		while(n == 0);
+		if(docpy)
+			memcpy(buf, bit.buf, n);
 		return n;
 	}
 	error(0, Egreg);
@@ -170,18 +162,19 @@ bitread(Chan *c, void *buf, long n)
 long	 
 bitwrite(Chan *c, void *buf, long n)
 {
+	Bitmsg *bp;
+
+	bp = &((User*)(u->p->upage->pa|KZERO))->bit;
 	switch(c->qid){
 	case 1:
 		if(n > sizeof bit.buf)
 			error(0, Egreg);
 		qlock(&bit);
-		if((((ulong)buf)&(KSEGM|3)) == KSEG0){
-			bitsend(WRITE, buf, n);
-			bitsync();
-		}else{
+		if((((ulong)buf)&(KSEGM|3)) == KSEG0)
+			bitsend(bp, WRITE, buf, n);
+		else{
 			memcpy(bit.buf, buf, n);
-			bitsend(WRITE, bit.buf, n);
-			bitsync();
+			bitsend(bp, WRITE, bit.buf, n);
 		}
 		qunlock(&bit);
 		return n;

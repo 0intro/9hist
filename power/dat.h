@@ -1,4 +1,5 @@
 typedef struct Alarm	Alarm;
+typedef struct Bitmsg	Bitmsg;
 typedef struct Blist	Blist;
 typedef struct Block	Block;
 typedef struct Chan	Chan;
@@ -73,6 +74,13 @@ struct Alarm
 	long	dt;		/* may underflow in clock(); must be signed */
 	void	(*f)(void*);
 	void	*arg;
+};
+
+struct Bitmsg
+{
+	ulong	cmd;
+	ulong	addr;
+	ulong	count;
 };
 
 #define	CHDIR	0x80000000L
@@ -327,6 +335,11 @@ struct User
 	Chan	*dot;
 	Chan	*fd[NFD];
 	int	maxfd;			/* highest fd in use */
+	/*
+	 * I/O point for bit interface.  This is the easiest way to allocate
+	 * them, but not the prettiest or most general.
+	 */
+	Bitmsg	bit;
 	/*
 	 * Rest of structure controlled by devproc.c and friends.
 	 * lock(&p->debug) to modify.

@@ -11,14 +11,17 @@
  */
 enum {
 	Ntypes=		8,		/* max number of ethernet packet types */
+	Ndir=		Ntypes+1,	/* entries in top level directory */
 	LogNrrb=	7,		/* log of number of receive buffers */
 	Nrrb=		(1<<LogNrrb),	/* number of recieve buffers */
 	LogNtrb=	7,		/* log of number of transmit buffers */
 	Ntrb=		(1<<LogNtrb),	/* number of transmit buffers */
-	Ndpkt=		30,		/* number of debug packets */
+	Ndpkt=		1000,		/* number of debug packets */
 };
 #define RSUCC(x) (((x)+1)%Nrrb)
 #define TSUCC(x) (((x)+1)%Ntrb)
+
+#define NOW (MACHP(0)->ticks)
 
 /*
  *  Communication with the lance is via a transmit and receive ring of
@@ -102,11 +105,15 @@ typedef struct {
 	uchar data[40];
 } Dpkt;
 typedef struct {
+	ulong	ticks;
+	char	tag;
+	int	len;
+	Dpkt	p;
+} Trace;
+typedef struct {
 	Lock;
 	int	next;
-	char	*tag[Ndpkt];
-	int	len[Ndpkt];
-	Dpkt	p[Ndpkt];
+	Trace	t[Ndpkt];
 } Debqueue;
 
 /*
@@ -136,7 +143,6 @@ typedef struct {
 
 	Ethertype e[Ntypes];
 	int	debug;
-	int	prdebug;
 	int	kstarted;
 	Debqueue dq;
 } Lance;
@@ -215,26 +221,32 @@ void lancekproc(void *);
 /*
  *  print a packet preceded by a message
  */
-printpacket(char *tag, Pkt *p, int len)
+sprintpacket(char *buf, Trace *t)
 {
-  print("%s: %d d(%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux)s(%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux)t(%ux %ux)d(%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux)\n",
-	tag, len,
-	p->d[0], p->d[1], p->d[2], p->d[3], p->d[4], p->d[5],
-	p->s[0], p->s[1], p->s[2], p->s[3], p->s[4], p->s[5], p->type[0], p->type[1],
-	p->data[0], p->data[1], p->data[2], p->data[3], p->data[4], p->data[5],
-	p->data[6], p->data[7], p->data[8], p->data[9], p->data[10], p->data[11]);
+	Dpkt *p = &t->p;
+
+	sprint(buf, "%c: %.8ud %.4d d(%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux)s(%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux)t(%.2ux %.2ux)d(%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux)\n",
+	    t->tag, t->ticks, t->len,
+	    p->d[0], p->d[1], p->d[2], p->d[3], p->d[4], p->d[5],
+	    p->s[0], p->s[1], p->s[2], p->s[3], p->s[4], p->s[5], p->type[0],p->type[1],
+	    p->data[0], p->data[1], p->data[2], p->data[3], p->data[4], p->data[5],
+	    p->data[6], p->data[7], p->data[8], p->data[9], p->data[10], p->data[11]);
 }
 
 /*
  *  save a message in a circular queue for later debugging
  */
 void
-lancedebq(char *tag, Pkt *p, int len)
+lancedebq(char tag, Pkt *p, int len)
 {
+	Trace *t;
+
 	lock(&l.dq);
-	l.dq.tag[l.dq.next] = tag;
-	l.dq.len[l.dq.next] = len;
-	memcpy(&l.dq.p[l.dq.next], p, sizeof(Dpkt));
+	t = &l.dq.t[l.dq.next];
+	t->ticks = NOW;
+	t->tag = tag;
+	t->len = len;
+	memcpy(&(t->p), p, sizeof(Dpkt));
 	l.dq.next = (l.dq.next+1) % Ndpkt;
 	unlock(&l.dq);
 }
@@ -351,7 +363,7 @@ lanceoput(Queue *q, Block *bp )
 	len = 0;
 	while(bp = getq(q)){
 		if(sizeof(Pkt) - len >= (n = bp->wptr - bp->rptr)){
-			slowcpy(((uchar *)p)+len, bp->rptr, n);
+			memcpy(((uchar *)p)+len, bp->rptr, n);
 			len += n;
 		} else
 			print("no room damn it\n");
@@ -373,7 +385,7 @@ lanceoput(Queue *q, Block *bp )
 	if(len < 60)
 		len = 60;
 
-	lancedebq("out", p, len);
+	lancedebq('o', p, len);
 
 	/*
 	 *  set up the ring descriptor and hand to lance
@@ -392,9 +404,10 @@ lanceoput(Queue *q, Block *bp )
  *  lance directory
  */
 enum {
-	Lchanqid = 1
+	Lchanqid = 1,
+	Ltraceqid = 2,
 };
-Dirtab lancedir[Ntypes];
+Dirtab lancedir[Ndir];
 
 
 /*
@@ -549,6 +562,10 @@ lanceinit(void)
 		lancedir[i].length = 0;
 		lancedir[i].perm = 0600;
 	}
+	strcpy(lancedir[Ntypes].name, "trace");
+	lancedir[Ntypes].qid = Ltraceqid;
+	lancedir[Ntypes].length = 0;
+	lancedir[Ntypes].perm = 0600;
 }
 
 Chan*
@@ -580,7 +597,7 @@ int
 lancewalk(Chan *c, char *name)
 {
 	if(c->qid == CHDIR)
-		return devwalk(c, name, lancedir, Ntypes, devgen);
+		return devwalk(c, name, lancedir, Ndir, devgen);
 	else
 		return devwalk(c, name, 0, 0, streamgen);
 }
@@ -589,7 +606,7 @@ void
 lancestat(Chan *c, char *dp)
 {
 	if(c->qid == CHDIR)
-		devstat(c, dp, lancedir, Ntypes, devgen);
+		devstat(c, dp, lancedir, Ndir, devgen);
 	else
 		devstat(c, dp, 0, 0, streamgen);
 }
@@ -602,11 +619,16 @@ lanceopen(Chan *c, int omode)
 {
 	extern Qinfo nonetinfo;
 
-	if(c->qid == CHDIR){
+	switch(c->qid){
+	case CHDIR:
+	case Ltraceqid:
 		if(omode != OREAD)
 			error(0, Eperm);
-	}else
+		break;
+	default:
 		streamopen(c, &lanceinfo);
+		break;
+	}
 	c->mode = openmode(omode);
 	c->flag |= COPEN;
 	c->offset = 0;
@@ -623,17 +645,60 @@ void
 lanceclose(Chan *c)
 {
 	/* real closing happens in lancestclose */
-	if(c->qid != CHDIR)
+	switch(c->qid){
+	case CHDIR:
+	case Ltraceqid:
+		break;
+	default:
 		streamclose(c);
+		break;
+	}
+}
+
+static long
+lancetraceread(Chan *c, void *a, long n)
+{
+	char buf[512];
+	long rv;
+	int i;
+	char *ca = a;
+	int offset;
+	Trace *t;
+	int plen;
+
+	rv = 0;
+	sprintpacket(buf, l.dq.t);
+	plen = strlen(buf);
+	offset = c->offset % plen;
+	for(t = &l.dq.t[c->offset/plen]; n && t < &l.dq.t[Ndpkt]; t++){
+		if(t->tag == 0)
+			break;
+		lock(&l.dq);
+		sprintpacket(buf, t);
+		unlock(&l.dq);
+		i = plen - offset;
+		if(i > n)
+			i = n;
+		memcpy(ca, buf + offset, i);
+		n -= i;
+		ca += i;
+		rv += i;
+		offset = 0;
+	}
+	return rv;
 }
 
 long	 
 lanceread(Chan *c, void *a, long n)
 {
-	if(c->qid == CHDIR)
-		return devdirread(c, a, n, lancedir, Ntypes, devgen);
-	else
+	switch(c->qid){
+	case CHDIR:
+		return devdirread(c, a, n, lancedir, Ndir, devgen);
+	case Ltraceqid:
+		return lancetraceread(c, a, n);
+	default:
 		return streamread(c, a, n);
+	}
 }
 
 long	 
@@ -752,7 +817,7 @@ lancekproc(void *arg)
 			p = l.rp[l.rl];
 			t = (p->type[0]<<8) | p->type[1];
 			len = m->cntflags - 4;
-			lancedebq("in", p, len);
+			lancedebq('i', p, len);
 			for(e = &l.e[0]; e < &l.e[Ntypes]; e++){
 				if(!canqlock(e))
 					continue;
@@ -779,7 +844,7 @@ lancekproc(void *arg)
 				 *  The lock on e makes sure the queue is still there.
 				 */
 				bp = allocb(len);
-				slowcpy(bp->rptr, (uchar *)p, len);
+				memcpy(bp->rptr, (uchar *)p, len);
 				bp->wptr += len;
 				bp->flags |= S_DELIM;
 				PUTNEXT(e->q, bp);
@@ -797,18 +862,6 @@ stage:
 			m->flags = OWN|HADDR(l.rp[l.rc]);
 			l.rc = RSUCC(l.rc);
 		}
-		if(l.prdebug){
-			lock(&l.dq);
-			i = l.dq.next;
-			do {
-				if(l.dq.tag[i])
-					printpacket(l.dq.tag[i], (Pkt *)&l.dq.p[i],
-						l.dq.len[i]);
-				i = (i+1) % Ndpkt;
-			} while(i != l.dq.next);
-			unlock(&l.dq);
-			l.prdebug = 0;
-		}
 		sleep(&l.rr, isinput, 0);
 	}
 }
@@ -819,20 +872,4 @@ lanceparity(void)
 	print("lance DRAM parity error lmp=%ux\n", l.lmp);
 	MODEREG->promenet &= ~4;
 	MODEREG->promenet |= 4;
-}
-
-void
-LANCEDEBUG()
-{
-	l.debug ^= 1;
-}
-
-/*
- *  print the debug queue
- */
-void
-LANCEPRDEBQ()
-{
-	l.prdebug = 1;
-	wakeup(&l.rr);
 }

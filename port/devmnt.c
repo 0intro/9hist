@@ -554,6 +554,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 	ulong n;
 	Mntbuf *mbr, *mbw;
 	Chan *mntpt;
+	int isbit;
 
 	mbr = mballoc();
 	mbw = mballoc();
@@ -568,10 +569,15 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		qunlock(m);
 		error(0, Eshutdown);
 	}
-	qlock(m->msg);
+	isbit = 0;
+	if(devchar[m->msg->type] == 'b')
+		isbit = 1;
+	if(!isbit)
+		qlock(m->msg);
 	if(waserror()){
 		qunlock(m);
-		qunlock(m->msg);
+		if(!isbit)
+			qunlock(m->msg);
 		nexterror();
 	}
 	if((*devtab[m->msg->type].write)(m->msg, mbw->buf, n) != n){
@@ -584,7 +590,8 @@ mntxmit(Mnt *m, Mnthdr *mh)
 	 */
 	n = (*devtab[m->msg->type].read)(m->msg, mbr->buf, BUFSIZE);
 	qunlock(m);
-	qunlock(m->msg);
+	if(!isbit)
+		qunlock(m->msg);
 	poperror();
 
 	if(convM2S(mbr->buf, &mh->rhdr, n) == 0){

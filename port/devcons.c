@@ -238,10 +238,6 @@ echo(int c)
 	 */
 	if(c == 0x14)
 		DEBUG();
-	else if(c == 0x0c)
-		LANCEDEBUG();
-	else if(c == 0x02)
-		LANCEPRDEBQ();
 	if(c == 0x15)
 		putstrn("^U\n", 3);
 	else{

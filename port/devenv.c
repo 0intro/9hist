@@ -299,6 +299,7 @@ envopen(Chan *c, int omode)
 		if(waserror()){
 			unlock(e);
 			unlock(&envalloc);
+			unlock(pg);
 			nexterror();
 		}
 		if(e->pgref == 0)
