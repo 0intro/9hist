@@ -70,6 +70,7 @@ void	flushmmu(void);
 void	forkmod(Seg*, Seg*, Proc*);
 void	freeb(Block*);
 int	freebroken(void);
+void	freechan(Chan*);
 void	freepage(Orig*, int);
 void	freepte(Orig*);
 void	freesegs(int);

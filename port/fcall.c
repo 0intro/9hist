@@ -92,6 +92,12 @@ convS2M(Fcall *f, char *ap)
 		SHORT(fid);
 		STRING(stat, sizeof(f->stat));
 		break;
+
+	case Tclwalk:
+		SHORT(fid);
+		SHORT(newfid);
+		STRING(name, sizeof(f->name));
+		break;
 /*
  */
 	case Rnop:
@@ -117,6 +123,7 @@ convS2M(Fcall *f, char *ap)
 		SHORT(fid);
 		break;
 
+	case Rclwalk:
 	case Rwalk:
 		SHORT(fid);
 		LONG(qid.path);
@@ -284,6 +291,12 @@ convM2S(char *ap, Fcall *f, int n)
 		SHORT(fid);
 		STRING(stat, sizeof(f->stat));
 		break;
+
+	case Tclwalk:
+		SHORT(fid);
+		SHORT(newfid);
+		STRING(name, sizeof(f->name));
+		break;
 /*
  */
 	case Rnop:
@@ -310,6 +323,7 @@ convM2S(char *ap, Fcall *f, int n)
 		break;
 
 	case Rwalk:
+	case Rclwalk:
 		SHORT(fid);
 		LONG(qid.path);
 		LONG(qid.vers);

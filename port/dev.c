@@ -107,10 +107,21 @@ devwalk(Chan *c, char *name, Dirtab *tab, int ntab, Devgen *gen)
 		}
 }
 
-int devclwalk(Chan *c, Chan *nc, char *name, Dirtab *tab, int ntab, Devgen *gen)
+Chan*
+devclwalk(Chan *c, char *name)
 {
-	c = devclone(c, nc);
-	return devwalk(c, name, tab, ntab, gen);
+	Chan *nc;
+
+	nc = 0;
+	if(waserror()){
+		if(nc)
+			close(nc);
+		return 0;
+	}
+	nc = (*devtab[c->type].clone)(c, 0);
+	(*devtab[nc->type].walk)(nc, name);
+	poperror();
+	return nc;
 }
 
 void

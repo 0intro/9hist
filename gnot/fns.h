@@ -70,6 +70,7 @@ void	fprestore(FPsave*);
 void	fpregrestore(char*);
 void	freeb(Block*);
 int	freebroken(void);
+void	freechan(Chan*);
 void	freenextmod(PTE*);
 void	freepage(Orig*, int);
 void	freepte(Orig*);

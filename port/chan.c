@@ -101,11 +101,13 @@ loop:
 void
 freechan(Chan *c)
 {
-	c->flag = CFREE;
-	lock(&chanalloc);
-	c->next = chanalloc.free;
-	chanalloc.free = c;
-	unlock(&chanalloc);
+	if(decref(c) == 0){
+		c->flag = CFREE;
+		lock(&chanalloc);
+		c->next = chanalloc.free;
+		chanalloc.free = c;
+		unlock(&chanalloc);
+	}
 }
 
 void
@@ -114,13 +116,15 @@ close(Chan *c)
 	if(c->flag & CFREE)
 		panic("close");
 	if(decref(c) == 0){
-		if(waserror()) {
-			freechan(c);
-			nexterror();
+		if(!waserror()) {
+			(*devtab[c->type].close)(c);
+			poperror();
 		}
-		(*devtab[c->type].close)(c);
-		freechan(c);
-		poperror();
+		c->flag = CFREE;
+		lock(&chanalloc);
+		c->next = chanalloc.free;
+		chanalloc.free = c;
+		unlock(&chanalloc);
 	}
 }
 

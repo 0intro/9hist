@@ -388,6 +388,33 @@ mntwalk(Chan *c, char *name)
 	return found;
 }
 
+Chan *
+mntclwalk(Chan *c, char *name)
+{
+	Mnt *m;
+	Mnthdr *mh;
+	Chan *nc;
+
+	nc = newchan();
+	m = mntdev(c->dev, 0);
+	mh = mhalloc();
+	mh->thdr.type = Tclwalk;
+	mh->thdr.fid = c->fid;
+	mh->thdr.newfid = nc->fid;
+	strcpy(mh->thdr.name, name);
+	if(waserror()){	/* BUG: can check type of error? */
+		freechan(nc);
+		nc = 0;
+		goto Out;
+	}
+	mntxmit(m, mh);
+	nc->qid = mh->rhdr.qid;
+	poperror();
+    Out:
+	mhfree(mh);
+	return nc;
+}
+
 void	 
 mntstat(Chan *c, char *dp)
 {
