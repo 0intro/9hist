@@ -126,6 +126,7 @@ struct Reliable
 	ulong	ackrcvd;	/* last msg for which ack was rcvd */
 
 	/* flow control */
+	QLock	lock;
 	Rendez	vous;
 	int	blocked;
 };
@@ -435,6 +436,7 @@ rudpkick(Conv *c, int)
 	hnputs(uh->udpcksum, ptclcsum(bp, UDP_IPHDR, dlen+UDP_RHDRSIZE));
 
 	relackq(r, bp);
+	qunlock(ucb);
 
 	upriv->ustats.rudpOutDatagrams++;
 
@@ -444,13 +446,14 @@ rudpkick(Conv *c, int)
 	doipoput(c, f, bp, 0, c->ttl, c->tos);
 
 	/* flow control of sorts */
+	qlock(&r->lock);
 	if(UNACKED(r) > Maxunacked){
 		r->blocked = 1;
 		sleep(&r->vous, flow, r);
 		r->blocked = 0;
 	}
+	qunlock(&r->lock);
 	relput(r);
-	qunlock(ucb);
 }
 
 void

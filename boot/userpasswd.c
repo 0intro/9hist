@@ -47,5 +47,4 @@ userpasswd(int islocal, Method *mp)
 	/* set host's owner (and uid of current process) */
 	if(writefile("#c/hostowner", username, strlen(username)) < 0)
 		fatal(homsg);
-	close(fd);
 }
