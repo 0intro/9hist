@@ -80,6 +80,8 @@ struct Alarm
 };
 
 #define	CHDIR	0x80000000L
+#define	CHAPPEND 0x40000000L
+#define	CHEXCL	0x20000000L
 #define	QPATH	0x0000FFFFL
 struct Chan
 {

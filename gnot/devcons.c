@@ -17,7 +17,7 @@ static struct
 
 typedef struct IOQ	IOQ;
 
-#define	NQ	1024
+#define	NQ	2048
 struct IOQ{
 	union{
 		Lock;
@@ -100,8 +100,9 @@ putstrn(char *str, long n)
 }
 
 int
-cangetc(IOQ *q)
+cangetc(void *arg)
 {
+	IOQ *q = (IOQ *)arg;
 	int n = q->in - q->out;
 	if (n < 0)
 		n += sizeof(q->buf);
@@ -109,14 +110,16 @@ cangetc(IOQ *q)
 }
 
 int
-canputc(IOQ *q)
+canputc(void *arg)
 {
+	IOQ *q = (IOQ *)arg;
 	return sizeof(q->buf)-cangetc(q)-1;
 }
 
 int
-isbrkc(IOQ *q)
+isbrkc(void *arg)
 {
+	IOQ *q = (IOQ *)arg;
 	uchar *p;
 
 	for(p=q->out; p!=q->in; ){
@@ -352,21 +355,25 @@ enum{
 	Qtime,
 	Quser,
 	Qklog,
+	Qmsec,
+	Qclock,
 };
 
 Dirtab consdir[]={
-	"cons",		Qcons,		0,	0600,
-	"cputime",	Qcputime,	72,	0600,
-	"null",		Qnull,		0,	0600,
-	"pgrpid",	Qpgrpid,	12,	0600,
-	"pid",		Qpid,		12,	0600,
-	"ppid",		Qppid,		12,	0600,
-	"rcons",	Qrcons,		0,	0600,
-	"rs232",	Qrs232,		0,	0600,
-	"rs232ctl",	Qrs232ctl,	0,	0600,
-	"time",		Qtime,		12,	0600,
-	"user",		Quser,		0,	0600,
-	"klog",		Qklog,		0,	0400,
+	"cons",		Qcons,		0,		0600,
+	"cputime",	Qcputime,	6*NUMSIZE,	0600,
+	"null",		Qnull,		0,		0600,
+	"pgrpid",	Qpgrpid,	NUMSIZE,	0600,
+	"pid",		Qpid,		NUMSIZE,	0600,
+	"ppid",		Qppid,		NUMSIZE,	0600,
+	"rcons",	Qrcons,		0,		0600,
+	"rs232",	Qrs232,		0,		0600,
+	"rs232ctl",	Qrs232ctl,	0,		0600,
+	"time",		Qtime,		NUMSIZE,	0600,
+	"user",		Quser,		0,		0600,
+	"klog",		Qklog,		0,		0400,
+	"msec",		Qmsec,		NUMSIZE,	0400,
+	"clock",	Qclock,		2*NUMSIZE,	0400,
 };
 
 #define	NCONS	(sizeof consdir/sizeof(Dirtab))
@@ -520,7 +527,7 @@ consread(Chan *c, void *buf, long n)
 			nexterror();
 		}
 		while(!cangetc(&lineq)){
-			sleep(&kbdq.r, (int(*)(void*))isbrkc, &kbdq);
+			sleep(&kbdq.r, isbrkc, &kbdq);
 			do{
 				lock(&lineq);
 				ch = getc(&kbdq);
@@ -567,12 +574,13 @@ consread(Chan *c, void *buf, long n)
 			nexterror();
 		}
 		while(!cangetc(&rs232iq))
-			sleep(&rs232iq.r, (int(*)(void*))cangetc, &rs232iq);
+			sleep(&rs232iq.r, cangetc, &rs232iq);
 		for(i=0; i<n; i++){
 			if((ch=getc(&rs232iq)) == -1)
 				break;
 			*cbuf++ = ch;
 		}
+		poperror();
 		qunlock(&rs232iq);
 		return i;
 
@@ -606,7 +614,20 @@ consread(Chan *c, void *buf, long n)
 		return readnum(c->offset, buf, n, u->p->parentpid, NUMSIZE);
 
 	case Qtime:
-		return readnum(c->offset, buf, n, boottime+TK2SEC(MACHP(0)->ticks), 12);
+		return readnum(c->offset, buf, n, boottime+TK2SEC(MACHP(0)->ticks), NUMSIZE);
+
+	case Qmsec:
+		return readnum(c->offset, buf, n, TK2MS(MACHP(0)->ticks), NUMSIZE);
+	case Qclock:
+		k = c->offset;
+		if(k >= 2*NUMSIZE)
+			return 0;
+		if(k+n > 2*NUMSIZE)
+			n = 2*NUMSIZE - k;
+		readnum(0, tmp, NUMSIZE, MACHP(0)->ticks, NUMSIZE);
+		readnum(0, tmp+NUMSIZE, NUMSIZE, HZ, NUMSIZE);
+		memcpy(buf, tmp+k, n);
+		return n;
 
 	case Quser:
 		return readstr(c->offset, buf, n, u->p->pgrp->user);
@@ -621,12 +642,13 @@ consread(Chan *c, void *buf, long n)
 			nexterror();
 		}
 		while(!cangetc(&klogq))
-			sleep(&klogq.r, (int(*)(void*))cangetc, &klogq);
+			sleep(&klogq.r, cangetc, &klogq);
 		for(i=0; i<n; i++){
 			if((ch=getc(&klogq)) == -1)
 				break;
 			*cbuf++ = ch;
 		}
+		poperror();
 		qunlock(&klogq);
 		return i;
 
@@ -664,10 +686,14 @@ conswrite(Chan *c, void *va, long n)
 
 	case Qrs232:
 		qlock(&rs232oq);
+		if(waserror()){
+			qunlock(&rs232oq);
+			nexterror();
+		}
 		l = n;
 		while(--l >= 0) {
 			while (putc(&rs232oq, *a) < 0)
-				sleep(&rs232oq.r, (int(*)(void*))canputc, &rs232oq);
+				sleep(&rs232oq.r, canputc, &rs232oq);
 			a++;
 			if(rs232oq.state == 0){
 				splhi();
@@ -678,6 +704,7 @@ conswrite(Chan *c, void *va, long n)
 				spllo();
 			}
 		}
+		poperror();
 		qunlock(&rs232oq);
 		break;
 

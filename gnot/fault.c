@@ -79,6 +79,7 @@ fault(Ureg *ur, FFrame *f)
 			panic("prefetch pagefault");
 	}else
 		panic("prefetch format");
+	addr &= VAMASK;
 	badvaddr = addr;
 	addr &= ~(BY2PG-1);
 	user = !(ur->sr&SUPER);
@@ -99,7 +100,7 @@ fault(Ureg *ur, FFrame *f)
 			}
 			u->p->state = MMUing;
 			dumpregs(ur);
-			panic("fault");
+			panic("fault: 0x%lux", badvaddr);
 			exit();
 		}
 		s = &u->p->seg[SSEG];
@@ -108,15 +109,14 @@ fault(Ureg *ur, FFrame *f)
 		/* grow stack */
 		o = s->o;
 		n = o->npte;
-		lock(o);
 		if(waserror()){
-			unlock(o);
 			pprint("can't allocate stack page\n");
 			goto cant;
 		}
 		growpte(o, (s->maxva-addr)>>PGSHIFT);
 		poperror();
 		/* stacks grown down, sigh */
+		lock(o);
 		memcpy(o->pte+(o->npte-n), o->pte, n*sizeof(PTE));
 		memset(o->pte, 0, (o->npte-n)*sizeof(PTE));
 		unlock(o);

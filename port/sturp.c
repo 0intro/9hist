@@ -771,10 +771,8 @@ sendblock(Urp *up, int bn)
 	 *  message 1, the BOT and the data
 	 */
 	bp = up->xb[bn];
-	if(bp == 0){
-		urpvomit("sendblock", up);
+	if(bp == 0)
 		return;
-	}
 	m = allocb(1);
 	m->rptr = m->lim - 1;
 	m->wptr = m->lim;
@@ -947,6 +945,7 @@ todo(void *arg)
 	return (up->state&INITING)
 	? NOW>up->timer					/* time to INIT1 */
 	: ((up->unacked!=up->next && NOW>up->timer)	/* time to ENQ */
+	  || WINDOW(up)>0 && up->next!=up->nxb
 	  || (!QFULL(up->rq->next) && up->iseq!=(up->lastecho&7))); /* time to ECHO */
 }
 static void

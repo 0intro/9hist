@@ -6,8 +6,9 @@
 #include	"io.h"
 #include	"errno.h"
 
-#define NOW (MACHP(0)->ticks)
-#define DPRINT if(0)
+#define	DPRINT	if(0)	/*kprint*/
+
+#define	NOW	(MACHP(0)->ticks)
 
 enum {
 	/*
@@ -477,6 +478,8 @@ dkmuxconfig(Dk *dp, Block *bp)
 		dp->lines = 16;
 		error(0, Ebadarg);
 	}
+	DPRINT("dkmuxconfig: ncsc=%d, lines=%d, restart=%d, name=\"%s\"\n",
+		dp->ncsc, dp->lines, dp->restart, dp->name);
 
 	/*
 	 *  open a stream for the csc and push urp onto it
@@ -495,7 +498,7 @@ dkmuxconfig(Dk *dp, Block *bp)
 	/*
 	 *  start a process to deal with it
 	 */
-	sprint(buf, "csckproc%d", dp->ncsc);
+	sprint(buf, "csc.%s.%d", dp->name, dp->ncsc);
 	kproc(buf, dkcsckproc, dp);
 	poperror();
 
@@ -1316,8 +1319,11 @@ dkcsckproc(void *a)
 	/*
 	 *  tell datakit we've rebooted. It should close all channels.
 	 */
-	if(dp->restart)
+	if(dp->restart) {
+		DPRINT("dkcsckproc: restart %s\n", dp->name);
 		dkmesg(dp, T_ALIVE, D_RESTART, 0, 0);
+	}
+	DPRINT("dkcsckproc: closeall %s\n", dp->name);
 	dkmesg(dp, T_CHG, D_CLOSEALL, 0, 0);
 
 	/*

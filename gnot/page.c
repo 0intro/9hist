@@ -311,16 +311,13 @@ loop:
 			o->mqid = -1;
 			o->mchan = 0;
 		}
-		lock(o);
 		if(u && u->p && waserror()){
-			unlock(o);
 			unlock(&origalloc);
 			nexterror();
 		}
 		growpte(o, npte);
 		if(u && u->p)
 			poperror();
-		unlock(o);
 		unlock(&origalloc);
 		return o;
 	}
@@ -515,15 +512,8 @@ segaddr(Seg *s, ulong min, ulong max)
 		 * Grow
 		 */
 		/* BUG: check spill onto other segments */
-		lock(o);
-		if(waserror()){
-			unlock(o);
-			nexterror();
-		}
 		if(o->va+BY2PG*o->npte < max)
 			growpte(o, (max-o->va)>>PGSHIFT);
-		unlock(o);
-		poperror();
 		s->maxva = max;
 		return 1;
 	}
@@ -568,6 +558,10 @@ freepte(Orig *o)	/* o is locked */
 	p->o = 0;
 }
 
+/*
+ * o is locked.  this will always do a grow; if n<=o->npte someone
+ * else got here first and we can just return.
+ */
 void
 growpte(Orig *o, ulong n)
 {
@@ -575,43 +569,30 @@ growpte(Orig *o, ulong n)
 	ulong nfree;
 
 	lock(&ptealloc);
+	lock(o);
 	if(o->pte){
-		if(o->npte == n){
-if(u && u->p) print("%s: ", u->p->text);
-			print("growpte pointless\n");
+		if(o->npte >= n)
 			goto Return;
-		}
 		p = (PTEA*)(o->pte - 1);
-		if(o->npte > n){
-			print("growpte shrink");
-			goto Return;
-			nfree = o->npte - n;
-			p->n -= nfree;
-			o->npte -= nfree;
-			p += p->n;
-			p->o = 0;
-			p->n = nfree;
+		n++;
+		if(p+p->n == ptealloc.free){
+			if(!compactpte(o, n - p->n))
+				goto Trouble;
+			p = (PTEA*)(o->pte - 1);
+			ptealloc.free += n - p->n;
 		}else{
-			n++;
-			if(p+p->n == ptealloc.free){
-				if(!compactpte(o, n - p->n))
-					goto Trouble;
-				p = (PTEA*)(o->pte - 1);
-				ptealloc.free += n - p->n;
-			}else{
-				if(!compactpte(o, n))
-					goto Trouble;
-				p = ptealloc.free;
-				ptealloc.free += n;
-				memcpy(p+1, o->pte, o->npte*sizeof(PTE));
-				p->o = o;
-				((PTEA*)(o->pte-1))->o = 0;
-				o->pte = p+1;
-			}
-			memset(p+1+o->npte, 0, (n-(1+o->npte))*sizeof(PTE));
-			p->n = n;
-			o->npte = n-1;
+			if(!compactpte(o, n))
+				goto Trouble;
+			p = ptealloc.free;
+			ptealloc.free += n;
+			memcpy(p+1, o->pte, o->npte*sizeof(PTE));
+			p->o = o;
+			((PTEA*)(o->pte-1))->o = 0;
+			o->pte = p+1;
 		}
+		memset(p+1+o->npte, 0, (n-(1+o->npte))*sizeof(PTE));
+		p->n = n;
+		o->npte = n-1;
 		goto Return;
 	}
 	n++;
@@ -626,10 +607,12 @@ if(u && u->p) print("%s: ", u->p->text);
 	o->npte = n-1;
     Return:
 	unlock(&ptealloc);
+	unlock(o);
 	return;
 
     Trouble:
 	unlock(&ptealloc);
+	unlock(o);
 	if(u && u->p)
 		error(0, Enovmem);
 	panic("growpte fails %d %lux %d\n", n, o->va, o->npte);

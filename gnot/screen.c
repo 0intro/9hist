@@ -65,8 +65,7 @@ screenputc(int c)
 		bitblt(&screen, Pt(0, out.pos.y), &screen,
 		    Rect(0, out.pos.y, screen.r.max.x, out.pos.y+2*defont0.height), 0);
 	}else if(c == '\t'){
-		nx = out.pos.x + (8-(out.pos.x/out.bwid&7))*out.bwid;
-		out.pos.x = nx;
+		out.pos.x += (8-((out.pos.x-MINX)/out.bwid&7))*out.bwid;
 		if(out.pos.x >= screen.r.max.x)
 			screenputc('\n');
 	}else if(c == '\b'){

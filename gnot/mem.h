@@ -18,10 +18,11 @@
 /*
  * Time
  */
-#define	MS2HZ		(1000/60)		/* millisec per clock tick */
-#define	TK2SEC(t)	((t)/60)		/* ticks to seconds */
-#define	TK2MS(t)	(((t)*1000)/60)		/* ticks to milliseconds */
-#define	MS2TK(t)	(((t)*60)/1000)		/* milliseconds to ticks */
+#define	HZ		(60)			/* clock frequency */
+#define	MS2HZ		(1000/HZ)		/* millisec per clock tick */
+#define	TK2SEC(t)	((t)/HZ)		/* ticks to seconds */
+#define	TK2MS(t)	(((t)*1000)/HZ)		/* ticks to milliseconds */
+#define	MS2TK(t)	(((t)*HZ)/1000)		/* milliseconds to ticks */
 
 /*
  * SR bits
@@ -59,6 +60,7 @@
  * MMU
  */
 
+#define	VAMASK	0xCFFFFFFF	/* clear balu bits in address */
 #define	KUSEG	0x00000000
 #define KSEG	0x80000000
 

@@ -447,7 +447,7 @@ namec(char *name, int amode, int omode, ulong perm)
 		mntok = 0;
 		if(!((ulong)name & KZERO))
 			validaddr((ulong)(name+1), 2, 0);
-		if(name[1]=='|' || ('A'<=name[1] && name[1]<='Z'))
+		if(name[1]=='|' || name[1]=='M')
 			error(0, Enonexist);
 		t = devno(name[1], 1);
 		if(t == -1)

@@ -49,6 +49,7 @@ void	flushcpucache(void);
 void	flushmmu(void);
 void	forkmod(Seg*, Seg*, Proc*);
 void	freeb(Block*);
+void	freenextmod(PTE*);
 void	freepage(Orig*);
 void	freepte(Orig*);
 void	freesegs(int);

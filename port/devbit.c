@@ -973,11 +973,24 @@ bitfree(Bitmap *bp)
 	bit.free = bp;
 }
 
+QLock	bitlock;
+
+Bitmap *
+id2bit(int k)
+{
+	Bitmap *bp;
+	bp = &bit.map[k];
+	if(k<0 || k>=conf.nbitmap || bp->ldepth < 0)
+		error(0, Ebadbitmap);
+	return bp;
+}
+
 void
 bitcompact(void)
 {
 	ulong *p1, *p2;
 
+	qlock(&bitlock);
 	p1 = p2 = bit.words;
 	while(p2 < bit.wfree){
 		if(p2[1] == 0){
@@ -992,6 +1005,7 @@ bitcompact(void)
 		p1 += 2 + p1[0];
 	}
 	bit.wfree = p1;
+	qunlock(&bitlock);
 }
 
 void

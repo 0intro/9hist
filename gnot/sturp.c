@@ -771,10 +771,8 @@ sendblock(Urp *up, int bn)
 	 *  message 1, the BOT and the data
 	 */
 	bp = up->xb[bn];
-	if(bp == 0){
-		urpvomit("sendblock", up);
+	if(bp == 0)
 		return;
-	}
 	m = allocb(1);
 	m->rptr = m->lim - 1;
 	m->wptr = m->lim;
