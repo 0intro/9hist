@@ -116,7 +116,7 @@ main(int argc, char *argv[])
 				if(fd < 0)
 					break;
 				if(mount(fd, "/n/kfs", MAFTER|MCREATE, "", "") < 0)
-					fatal("mount");
+					print("failed to mount kfs\n");
 				close(fd);
 				break;
 			}
