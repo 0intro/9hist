@@ -360,9 +360,10 @@ savagewaitidle(VGAscr *scr)
 
 	switch(scr->id){
 	case SAVAGE4:
+		/* wait for engine idle and FIFO empty */
 		statw = (ulong*)((uchar*)scr->mmio+AltStatus0);
-		mask = Ge2Idle;
-		goal = 0;
+		mask = 0x0081FFFF;
+		goal = 0x00800000;
 		break;
 	/* case SAVAGEMXMV: ? */
 	/* case SAVAGEMX: ? */
