@@ -764,9 +764,10 @@ ipstatusfill(Chan *c, char *buf, int len)
 	connection = STREAMID(c->qid.path);
 	cp = ipcreateconv(ipifc[c->dev], connection);
 	if(cp->ifc->protop == &tcpinfo)
-		sprint(buf, "tcp/%d %d %s %s\n", connection, cp->ref,
+		sprint(buf, "tcp/%d %d %s %s %d+%d\n", connection, cp->ref,
 			tcpstate[cp->tcpctl.state],
-			cp->tcpctl.flags & CLONE ? "listen" : "connect");
+			cp->tcpctl.flags & CLONE ? "listen" : "connect",
+			cp->tcpctl.srtt, cp->tcpctl.mdev);
 	else if(cp->ifc->protop == &ilinfo)
 		sprint(buf, "il/%d %d %s rtt %d ms %d csum\n", connection, cp->ref,
 			ilstate[cp->ilctl.state], cp->ilctl.rtt,
