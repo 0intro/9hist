@@ -319,6 +319,10 @@ sleep(Rendez *r, int (*f)(void*), void *arg)
 		sched();	/* notepending may go true while asleep */
 	if(p->notepending){
 		p->notepending = 0;
+		lock(r);
+		if(r->p == p)
+			r->p = 0;
+		unlock(r);
 		error(Eintr);
 	}
 }
@@ -338,6 +342,10 @@ tsleep(Rendez *r, int (*f)(void*), void *arg, int ms)
 	}
 	if(p->notepending){
 		p->notepending = 0;
+		lock(r);
+		if(r->p == p)
+			r->p = 0;
+		unlock(r);
 		error(Eintr);
 	}
 }
@@ -419,11 +427,11 @@ postnote(Proc *p, int dolock, char *n, int flag)
 		s = splhi();
 		lock(r);
 		if(p->r==r && r->p==p){	/* check we won the race */
-			r->p = 0;
-			if(p->state != Wakeme)
-				panic("postnote wakeup: not Wakeme");
-			p->r = 0;
-			ready(p);
+			if(p->state == Wakeme){
+				r->p = 0;
+				p->r = 0;
+				ready(p);
+			}
 		}
 		unlock(r);
 		splx(s);
