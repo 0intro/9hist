@@ -179,8 +179,6 @@ bridgeattach(char* spec)
 static int
 bridgewalk(Chan *c, char *name)
 {
-	Path *op;
-
 	if(strcmp(name, "..") == 0){
 		switch(TYPE(c->qid)){
 		case Qtopdir:
@@ -193,9 +191,6 @@ bridgewalk(Chan *c, char *name)
 		default:
 			panic("bridgewalk %lux", c->qid.path);
 		}
-		op = c->path;
-		c->path = ptenter(&syspt, op, name);
-		decref(op);
 		return 1;
 	}
 

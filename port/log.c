@@ -108,7 +108,7 @@ logread(Log *alog, void *a, ulong, long n)
 char*
 logctl(Log *alog, int argc, char *argv[], Logflag *flags)
 {
-	int i, n, set;
+	int i, set;
 	Logflag *fp;
 
 	if(argc < 2)

@@ -117,7 +117,7 @@ long		hostdomainwrite(char*, int);
 long		hostownerwrite(char*, int);
 void		iallocinit(void);
 Block*		iallocb(int);
-void		iallocsumary(void);
+void		iallocsummary(void);
 long		ibrk(ulong, int);
 void		ilock(Lock*);
 void		iunlock(Lock*);

@@ -159,7 +159,7 @@ addelem(Cname *n, char *s)
 	}
 
 	i = strlen(s);
-	if(n->len+1+i+1 < n->alen){
+	if(n->len+1+i+1 > n->alen){
 		a = n->len+1+i+1 + CNAMESLOP;
 		t = smalloc(a);
 		memmove(t, n->s, n->len+1);

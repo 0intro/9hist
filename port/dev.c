@@ -72,7 +72,6 @@ devattach(int tc, char *spec)
 	c->qid = (Qid){CHDIR, 0};
 	c->type = devno(tc, 0);
 	sprint(buf, "#%C%s", tc, spec==nil? "" : spec);
-	free(c->name);
 	c->name = newcname(buf);
 	return c;
 }
@@ -100,8 +99,6 @@ devclone(Chan *c, Chan *nc)
 	nc->mchan = c->mchan;
 	nc->mqid = c->mqid;
 	nc->mcp = c->mcp;
-	if(c->name)
-		incref(c->name);
 	return nc;
 }
 

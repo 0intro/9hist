@@ -587,7 +587,7 @@ iliput(Proto *il, uchar*, Block *bp)
 	if(new == nil){
 		qunlock(il);
 		netlog(il->f, Logil, "il: bad newcall %I/%ud->%ud\n", raddr, sp, dp);
-		ilsendctl(nil, ih, Ilclose, 0, nhgetl(ih->ilid), 0);
+		ilsendctl(s, ih, Ilclose, 0, nhgetl(ih->ilid), 0);
 		goto raise;
 	}
 
@@ -985,11 +985,9 @@ ilsendctl(Conv *ipc, Ilhdr *inih, int type, ulong id, ulong ack, int ilspec)
 	if(ilcksum)
 		hnputs(ih->ilsum, ptclcsum(bp, IL_IPSIZE, IL_HDRSIZE));
 
-	if(ipc){
-		netlog(ipc->p->f, Logilmsg, "ctl(%s id %d ack %d %d->%d)\n",
+	netlog(ipc->p->f, Logilmsg, "ctl(%s id %d ack %d %d->%d)\n",
 		iltype[ih->iltype], nhgetl(ih->ilid), nhgetl(ih->ilack), 
 		nhgets(ih->ilsrc), nhgets(ih->ildst));
-	}
 
 	ipoput(ipc->p->f, bp, 0, ttl);
 }
