@@ -192,6 +192,7 @@ ulong		pwait(Waitmsg*);
 int		qcanread(Queue*);
 void		qclose(Queue*);
 int		qconsume(Queue*, void*, int);
+void		qflush(Queue*);
 void		qhangup(Queue*);
 void		qinit(void);
 int		qlen(Queue*);

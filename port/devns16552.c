@@ -830,6 +830,10 @@ ns16552ctl(Uart *p, char *cmd)
 	case 'd':
 		ns16552dtr(p, n);
 		break;
+	case 'f':
+	case 'F':
+		qflush(p->oq);
+		break;
 	case 'H':
 	case 'h':
 		qhangup(p->iq);

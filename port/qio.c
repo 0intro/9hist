@@ -609,6 +609,7 @@ qclose(Queue *q)
 	bfirst = q->bfirst;
 	q->bfirst = 0;
 	q->len = 0;
+	q->noblock = 0;
 	iunlock(q);
 
 	/* free queued blocks */
@@ -649,7 +650,6 @@ qreopen(Queue *q)
 	q->state &= ~Qclosed;
 	q->state |= Qstarve;
 	q->eof = 0;
-	q->noblock = 0;
 	q->limit = q->inilim;
 }
 
@@ -701,4 +701,30 @@ void
 qnoblock(Queue *q, int onoff)
 {
 	q->noblock = onoff;
+}
+
+/*
+ *  flush the output queue
+ */
+void
+qflush(Queue *q)
+{
+	Block *b, *bfirst;
+
+	/* mark it */
+	ilock(q);
+	bfirst = q->bfirst;
+	q->bfirst = 0;
+	q->len = 0;
+	iunlock(q);
+
+	/* free queued blocks */
+	while(bfirst){
+		b = bfirst->next;
+		freeb(bfirst);
+		bfirst = b;
+	}
+
+	/* wake up readers/writers */
+	wakeup(&q->wr);
 }
