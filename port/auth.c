@@ -106,7 +106,7 @@ sysfsession(ulong *arg)
 	validaddr(arg[1], TICKREQLEN, 1);
 	c = fdtochan(arg[0], OWRITE, 0, 1);
 	if(waserror()){
-		close(c);
+		cclose(c);
 		nexterror();
 	}
 
@@ -142,11 +142,11 @@ sysfsession(ulong *arg)
 			f.type = Tsession;
 			memmove(f.chal, s->cchal, CHALLEN);
 			n = convS2M(&f, buf);
-			if((*devtab[c->type].write)(c, buf, n, 0) != n)
+			if(devtab[c->type]->write(c, buf, n, 0) != n)
 				error(Emountrpc);
-			n = (*devtab[c->type].read)(c, buf, sizeof buf, 0);
+			n = devtab[c->type]->read(c, buf, sizeof buf, 0);
 			if(n == 2 && buf[0] == 'O' && buf[1] == 'K')
-				n = (*devtab[c->type].read)(c, buf, sizeof buf, 0);
+				n = devtab[c->type]->read(c, buf, sizeof buf, 0);
 			poperror();
 			if(convM2S(buf, &f, n) == 0){
 				unlock(&s->send);
@@ -195,7 +195,7 @@ sysfsession(ulong *arg)
 	memmove(tr.hostid, eve, NAMELEN);
 	convTR2M(&tr, (char*)arg[1]);
 
-	close(c);
+	cclose(c);
 	poperror();
 	return 0;
 }

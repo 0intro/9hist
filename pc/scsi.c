@@ -75,7 +75,7 @@ scsireset(void)
 		for(lp = link; lp; lp = lp->link){
 			if(strcmp(lp->type, ctlr->type))
 				continue;
-			if((ctlr->io = (*lp->reset)(ctlrno, ctlr)) == 0)
+			if((ctlr->io = lp->reset(ctlrno, ctlr)) == 0)
 				break;
 
 			print("scsi#%d: %s: port 0x%luX irq %d",
@@ -116,7 +116,7 @@ scsiexec(Target *t, int rw, uchar *cmd, int cbytes, void *data, int *dbytes)
 	 * There should be no calls to 'error()' below this
 	 * which percolate back up.
 	 */
-	switch(s = (*scsi[t->ctlrno]->io)(t, rw, cmd, cbytes, data, dbytes)){
+	switch(s = scsi[t->ctlrno]->io(t, rw, cmd, cbytes, data, dbytes)){
 
 	case STcheck:
 		memmove(lastcmd, cmd, cbytes);
@@ -244,7 +244,6 @@ scsiinv(int devno, int *type, Target **rt, uchar **inq, char *id)
 	}
 	return -1;
 }
-
 
 int
 scsitest(Target *t, char lun)
@@ -540,8 +539,8 @@ scsireadcdda(Target *t, char lun, int, void *b, long n, long bsize, long bno)
 	cmd[3] = bno>>16;
 	cmd[4] = bno>>8;
 	cmd[5] = bno;
-	cmd[8] = n>>8;
-	cmd[9] = n;
+	cmd[6] = n>>8;
+	cmd[7] = n;
 
 	nbytes = n*bsize;
 	s = scsiexec(t, SCSIread, cmd, sizeof(cmd), b, &nbytes);

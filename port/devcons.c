@@ -5,11 +5,11 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
+void	(*consdebug)(void);
 
-Queue	*mouseq;
-Queue	*kbdq;		/* unprocessed console input */
-Queue	*lineq;		/* processed console input */
-Queue	*printq;	/* console output */
+Queue*	kbdq;			/* unprocessed console input */
+Queue*	lineq;			/* processed console input */
+Queue*	printq;			/* console output */
 
 static struct
 {
@@ -28,7 +28,7 @@ static struct
 
 char	sysname[NAMELEN];
 
-static ulong	randomread(uchar*, ulong);
+static ulong	randomread(void*, ulong);
 static void	randominit(void);
 static void	seednrand(void);
 
@@ -37,6 +37,21 @@ printinit(void)
 {
 	lineq = qopen(2*1024, 0, 0, 0);
 	qnoblock(lineq, 1);
+}
+
+int
+consactive(void)
+{
+	if(printq)
+		return qlen(printq) > 0;
+	return 0;
+}
+
+void
+prflush(void)
+{
+	while(consactive())
+		;
 }
 
 /*
@@ -110,8 +125,8 @@ snprint(char *s, int n, char *fmt, ...)
 int
 sprint(char *s, char *fmt, ...)
 {
-	va_list arg;
 	int n;
+	va_list arg;
 
 	va_start(arg, fmt);
 	n = doprint(s, s+PRINTSIZE, fmt, arg) - s;
@@ -122,9 +137,9 @@ sprint(char *s, char *fmt, ...)
 int
 print(char *fmt, ...)
 {
-	char buf[PRINTSIZE];
-	va_list arg;
 	int n;
+	va_list arg;
+	char buf[PRINTSIZE];
 
 	va_start(arg, fmt);
 	n = doprint(buf, buf+sizeof(buf), fmt, arg) - buf;
@@ -135,11 +150,11 @@ print(char *fmt, ...)
 }
 
 int
-fprint(int, char *fmt, ...)
+fprint(int, char *fmt, ...)	/* needed so we can use user-level libg */
 {
-	char buf[PRINTSIZE];
-	va_list arg;
 	int n;
+	va_list arg;
+	char buf[PRINTSIZE];
 
 	va_start(arg, fmt);
 	n = doprint(buf, buf+sizeof(buf), fmt, arg) - buf;
@@ -152,9 +167,9 @@ fprint(int, char *fmt, ...)
 void
 panic(char *fmt, ...)
 {
-	char buf[PRINTSIZE];
-	va_list arg;
 	int n;
+	va_list arg;
+	char buf[PRINTSIZE];
 
 	strcpy(buf, "panic: ");
 	va_start(arg, fmt);
@@ -172,10 +187,10 @@ panic(char *fmt, ...)
 int
 pprint(char *fmt, ...)
 {
-	char buf[2*PRINTSIZE];
+	int n;
 	Chan *c;
 	va_list arg;
-	int n;
+	char buf[2*PRINTSIZE];
 
 	if(up->fgrp == 0)
 		return 0;
@@ -190,7 +205,7 @@ pprint(char *fmt, ...)
 
 	if(waserror())
 		return 0;
-	(*devtab[c->type].write)(c, buf, n, c->offset);
+	devtab[c->type]->write(c, buf, n, c->offset);
 	poperror();
 
 	lock(c);
@@ -198,13 +213,6 @@ pprint(char *fmt, ...)
 	unlock(c);
 
 	return n;
-}
-
-void
-prflush(void)
-{
-	while(consactive())
-		;
 }
 
 void
@@ -238,7 +246,8 @@ echo(Rune r, char *buf, int n)
 			ixsummary();
 			break;
 		case 'd':
-			consdebug();
+			if(consdebug != nil)
+				consdebug();
 			return;
 		case 'p':
 			procdump();
@@ -333,14 +342,6 @@ kbdclock(void)
 		kbdputc(kbdq, kbd.c);
 }
 
-int
-consactive(void)
-{
-	if(printq)
-		return qlen(printq) > 0;
-	return 0;
-}
-
 enum{
 	Qdir,
 	Qauth,
@@ -354,9 +355,7 @@ enum{
 	Qkey,
 	Qhostdomain,
 	Qhostowner,
-	Qlights,
 	Qmsec,
-	Qnoise,
 	Qnull,
 	Qpgrpid,
 	Qpid,
@@ -382,9 +381,7 @@ Dirtab consdir[]={
 	"hostowner",	{Qhostowner},	NAMELEN,	0664,
 	"hz",		{Qhz},		NUMSIZE,	0666,
 	"key",		{Qkey},		DESKEYLEN,	0622,
-	"lights",	{Qlights},	0,		0220,
 	"msec",		{Qmsec},	NUMSIZE,	0444,
-	"noise",	{Qnoise},	0,		0220,
 	"null",		{Qnull},	0,		0666,
 	"pgrpid",	{Qpgrpid},	NUMSIZE,	0444,
 	"pid",		{Qpid},		NUMSIZE,	0444,
@@ -397,8 +394,6 @@ Dirtab consdir[]={
 	"time",		{Qtime},	NUMSIZE,	0664,
  	"user",		{Quser},	NAMELEN,	0666,
 };
-
-#define	NCONS	(sizeof consdir/sizeof(Dirtab))
 
 ulong	boottime;		/* seconds since epoch at boot */
 
@@ -437,18 +432,13 @@ readstr(ulong off, char *buf, ulong n, char *str)
 	return n;
 }
 
-void
-consreset(void)
-{
-}
-
-void
+static void
 consinit(void)
 {
 	randominit();
 }
 
-Chan*
+static Chan*
 consattach(char *spec)
 {
 	static int seeded;
@@ -460,25 +450,19 @@ consattach(char *spec)
 	return devattach('c', spec);
 }
 
-Chan*
-consclone(Chan *c, Chan *nc)
-{
-	return devclone(c, nc);
-}
-
-int
+static int
 conswalk(Chan *c, char *name)
 {
-	return devwalk(c, name, consdir, NCONS, devgen);
+	return devwalk(c, name, consdir, nelem(consdir), devgen);
 }
 
-void
+static void
 consstat(Chan *c, char *dp)
 {
-	devstat(c, dp, consdir, NCONS, devgen);
+	devstat(c, dp, consdir, nelem(consdir), devgen);
 }
 
-Chan*
+static Chan*
 consopen(Chan *c, int omode)
 {
 	c->aux = 0;
@@ -491,16 +475,10 @@ consopen(Chan *c, int omode)
 		qunlock(&kbd);
 		break;
 	}
-	return devopen(c, omode, consdir, NCONS, devgen);
+	return devopen(c, omode, consdir, nelem(consdir), devgen);
 }
 
-void
-conscreate(Chan*, char*, int, ulong)
-{
-	error(Eperm);
-}
-
-void
+static void
 consclose(Chan *c)
 {
 	/* last close of control file turns off raw */
@@ -520,7 +498,7 @@ consclose(Chan *c)
 	}
 }
 
-long
+static long
 consread(Chan *c, void *buf, long n, ulong offset)
 {
 	ulong l;
@@ -534,15 +512,15 @@ consread(Chan *c, void *buf, long n, ulong offset)
 		return n;
 	switch(c->qid.path & ~CHDIR){
 	case Qdir:
-		return devdirread(c, buf, n, consdir, NCONS, devgen);
+		return devdirread(c, buf, n, consdir, nelem(consdir), devgen);
 
 	case Qcons:
 		qlock(&kbd);
-		if(waserror()){
+		if(waserror()) {
 			qunlock(&kbd);
 			nexterror();
 		}
-		while(!qcanread(lineq)){
+		while(!qcanread(lineq)) {
 			qread(kbdq, &kbd.line[kbd.x], 1);
 			ch = kbd.line[kbd.x];
 			if(kbd.raw){
@@ -693,54 +671,7 @@ consread(Chan *c, void *buf, long n, ulong offset)
 	return -1;		/* never reached */
 }
 
-Block*
-consbread(Chan *c, long n, ulong offset)
-{
-	return devbread(c, n, offset);
-}
-
-void
-conslights(char *a, int n)
-{
-	char line[128];
-	char *lp;
-	int c;
-
-	lp = line;
-	while(n--){
-		*lp++ = c = *a++;
-		if(c=='\n' || n==0 || lp==&line[sizeof(line)-1])
-			break;
-	}
-	*lp = 0;
-	lights(strtoul(line, 0, 0));
-}
-
-void
-consnoise(char *a, int n)
-{
-	int freq;
-	int duration;
-	char line[128];
-	char *lp;
-	int c;
-
-	lp = line;
-	while(n--){
-		*lp++ = c = *a++;
-		if(c=='\n' || n==0 || lp==&line[sizeof(line)-1]){
-			*lp = 0;
-			freq = strtoul(line, &lp, 0);
-			while(*lp==' ' || *lp=='\t')
-				lp++;
-			duration = strtoul(lp, &lp, 0);
-			buzz(freq, duration);
-			lp = line;
-		}
-	}
-}
-
-long
+static long
 conswrite(Chan *c, void *va, long n, ulong offset)
 {
 	char cbuf[64];
@@ -829,14 +760,6 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 	case Qnull:
 		break;
 
-	case Qnoise:
-		consnoise(a, n);
-		break;
-
-	case Qlights:
-		conslights(a, n);
-		break;
-
 	case Qreboot:
 		if(!iseve())
 			error(Eperm);
@@ -895,24 +818,6 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 	return n;
 }
 
-long
-consbwrite(Chan *c, Block *bp, ulong offset)
-{
-	return devbwrite(c, bp, offset);
-}
-
-void
-consremove(Chan*)
-{
-	error(Eperm);
-}
-
-void
-conswstat(Chan*, char*)
-{
-	error(Eperm);
-}
-
 void
 setterm(char *f)
 {
@@ -922,12 +827,30 @@ setterm(char *f)
 	ksetenv("terminal", buf);
 }
 
+Dev consdevtab = {
+	devreset,
+	consinit,
+	consattach,
+	devclone,
+	conswalk,
+	consstat,
+	consopen,
+	devcreate,
+	consclose,
+	consread,
+	devbread,
+	conswrite,
+	devbwrite,
+	devremove,
+	devwstat,
+};
+
 static struct
 {
 	QLock;
-	ulong	randomcount;
 	Rendez	producer;
 	Rendez	consumer;
+	ulong	randomcount;
 	uchar	buf[4096];
 	uchar	*ep;
 	uchar	*rp;
@@ -941,7 +864,7 @@ static struct
 static void
 seednrand(void)
 {
-	randomread((uchar*)&rb.randn, sizeof(rb.randn));
+	randomread((void*)&rb.randn, sizeof(rb.randn));
 }
 
 int
@@ -958,6 +881,12 @@ rbnotfull(void*)
 
 	i = rb.rp - rb.wp;
 	return i != 1 && i != (1 - sizeof(rb.buf));
+}
+
+static int
+rbnotempty(void*)
+{
+	return rb.wp != rb.rp;
 }
 
 void
@@ -978,6 +907,7 @@ genrandom(void*)
 static void
 randominit(void)
 {
+	addclock0link(randomclock);
 	rb.ep = rb.buf + sizeof(rb.buf);
 	rb.rp = rb.wp = rb.buf;
 	kproc("genrandom", genrandom, 0);
@@ -1010,19 +940,15 @@ randomclock(void)
 		wakeup(&rb.consumer);
 }
 
-static int
-rbnotempty(void*)
-{
-	return rb.wp != rb.rp;
-}
-
 /*
  *  consume random bytes from a circular buffer
  */
 static ulong
-randomread(uchar *p, ulong n)
+randomread(void *xp, ulong n)
 {
-	uchar *e;
+	uchar *e, *p;
+
+	p = xp;
 
 	if(waserror()){
 		qunlock(&rb);

@@ -10,8 +10,6 @@
 #include	"io.h"
 #include	"audio.h"
 
-#define	NPORT		(sizeof audiodir/sizeof(Dirtab))
-
 typedef struct	AQueue	AQueue;
 typedef struct	Buf	Buf;
 
@@ -94,18 +92,18 @@ static	struct
 	int	irval;
 } volumes[] =
 {
-[Vaudio]		"audio",		Fout, 		50,	50,
-[Vsynth]		"synth",		Fin|Fout,		0,	0,
-[Vcd]		"cd",		Fin|Fout,		0,	0,
-[Vline]		"line",		Fin|Fout,		0,	0,
+[Vaudio]	"audio",	Fout, 		50,	50,
+[Vsynth]	"synth",	Fin|Fout,	0,	0,
+[Vcd]		"cd",		Fin|Fout,	0,	0,
+[Vline]		"line",		Fin|Fout,	0,	0,
 [Vmic]		"mic",		Fin|Fout|Fmono,	0,	0,
 [Vspeaker]	"speaker",	Fout|Fmono,	0,	0,
 
 [Vtreb]		"treb",		Fout, 		50,	50,
 [Vbass]		"bass",		Fout, 		50,	50,
 
-[Vspeed]		"speed",		Fin|Fout|Fmono,	Speed,	Speed,
-	0
+[Vspeed]	"speed",	Fin|Fout|Fmono,	Speed,	Speed,
+		0
 };
 
 static struct
@@ -142,7 +140,7 @@ sbcmd(int val)
 			return 0;
 		}
 	}
-/*	print("SB16 sbcmd (#%.2x) timeout\n", val);	/**/
+/*	print("#A: sbcmd (#%.2x) timeout\n", val);	/**/
 	return 1;
 }
 
@@ -157,7 +155,7 @@ sbread(void)
 			return inb(blaster.read);
 		}
 	}
-/*	print("SB16 sbread did not respond\n");	/**/
+/*	print("#A: sbread did not respond\n");	/**/
 	return 0xbb;
 }
 
@@ -422,14 +420,14 @@ audiosbintr(void)
 void
 pcaudiosbintr(Ureg*, void*)
 {
-/*	print("sb16 audio interrupt\n");	/**/
+/*	print("#A: audio interrupt\n");	/**/
 	audiosbintr();
 }
 
 void
 audiodmaintr(void)
 {
-/*	print("sb16 dma interrupt\n");	/**/
+/*	print("#A: dma interrupt\n");	/**/
 }
 
 static int
@@ -450,7 +448,7 @@ waitaudio(void)
 	pokeaudio();
 	tsleep(&audio.vous, anybuf, 0, 10*1000);
 	if(audio.intr == 0) {
-/*		print("audio timeout\n");	/**/
+/*		print("#A: audio timeout\n");	/**/
 		audio.active = 0;
 		pokeaudio();
 	}
@@ -487,11 +485,6 @@ setempty(void)
 	iunlock(&blaster);
 }
 
-void
-audioreset(void)
-{
-}
-
 static	void
 resetlevel(void)
 {
@@ -505,7 +498,7 @@ resetlevel(void)
 	}
 }
 
-void
+static void
 audioinit(void)
 {
 	ISAConf sbconf;
@@ -525,7 +518,7 @@ audioinit(void)
 	case 0x280:
 		break;
 	default:
-		print("devaudio: bad sb16 port 0x%x\n", sbconf.port);
+		print("#A: bad port 0x%x\n", sbconf.port);
 		return;
 	}
 	switch(sbconf.irq){
@@ -535,11 +528,9 @@ audioinit(void)
 	case 10:
 		break;
 	default:
-		print("devaudio: bad sb16 irq %d\n", sbconf.irq);
+		print("#A: bad irq %d\n", sbconf.irq);
 		return;
 	}
-
-	blaster.dma = sbconf.dma;
 
 	blaster.reset = sbconf.port + 0x6;
 	blaster.read = sbconf.port + 0xa;
@@ -551,6 +542,7 @@ audioinit(void)
 	blaster.clri8 = sbconf.port + 0xe;
 	blaster.clri16 = sbconf.port + 0xf;
 	blaster.clri401 = sbconf.port + 0x100;
+	blaster.dma = sbconf.dma;
 
 	seteisadma(blaster.dma, audiodmaintr);
 	setvec(Int0vec+sbconf.irq, pcaudiosbintr, 0);
@@ -565,7 +557,7 @@ audioinit(void)
 
 	i = sbread();
 	if(i != 0xaa) {
-		print("sound blaster didnt respond #%.2x\n", i);
+		print("#A: no response #%.2x\n", i);
 		return;
 	}
 
@@ -574,7 +566,7 @@ audioinit(void)
 	audio.minor = sbread();
 
 	if(audio.major != 4) {
-		print("bad soundblaster model #%.2x #%.2x; not SB 16\n", audio.major, audio.minor);
+		print("#A: model #%.2x #%.2x; not SB 16\n", audio.major, audio.minor);
 		return;
 	}
 	/*
@@ -595,31 +587,25 @@ audioinit(void)
 	mxcmd(0x81, 1<<blaster.dma);	/* dma */
 }
 
-Chan*
+static Chan*
 audioattach(char *param)
 {
 	return devattach('A', param);
 }
 
-Chan*
-audioclone(Chan *c, Chan *nc)
-{
-	return devclone(c, nc);
-}
-
-int
+static int
 audiowalk(Chan *c, char *name)
 {
-	return devwalk(c, name, audiodir, NPORT, devgen);
+	return devwalk(c, name, audiodir, nelem(audiodir), devgen);
 }
 
-void
+static void
 audiostat(Chan *c, char *db)
 {
-	devstat(c, db, audiodir, NPORT, devgen);
+	devstat(c, db, audiodir, nelem(audiodir), devgen);
 }
 
-Chan*
+static Chan*
 audioopen(Chan *c, int omode)
 {
 	int amode;
@@ -656,7 +642,7 @@ audioopen(Chan *c, int omode)
 		mxvolume();
 		break;
 	}
-	c = devopen(c, omode, audiodir, NPORT, devgen);
+	c = devopen(c, omode, audiodir, nelem(audiodir), devgen);
 	c->mode = openmode(omode);
 	c->flag |= COPEN;
 	c->offset = 0;
@@ -664,13 +650,7 @@ audioopen(Chan *c, int omode)
 	return c;
 }
 
-void
-audiocreate(Chan*, char*, int, ulong)
-{
-	error(Eperm);
-}
-
-void
+static void
 audioclose(Chan *c)
 {
 
@@ -701,7 +681,7 @@ audioclose(Chan *c)
 	}
 }
 
-long
+static long
 audioread(Chan *c, char *a, long n, ulong offset)
 {
 	int liv, riv, lov, rov;
@@ -717,7 +697,7 @@ audioread(Chan *c, char *a, long n, ulong offset)
 		break;
 
 	case Qdir:
-		return devdirread(c, a, n, audiodir, NPORT, devgen);
+		return devdirread(c, a, n, audiodir, nelem(audiodir), devgen);
 
 	case Qaudio:
 		if(audio.amode != Aread)
@@ -795,13 +775,7 @@ audioread(Chan *c, char *a, long n, ulong offset)
 	return n0-n;
 }
 
-Block*
-audiobread(Chan *c, long n, ulong offset)
-{
-	return devbread(c, n, offset);
-}
-
-long
+static long
 audiowrite(Chan *c, char *a, long n, ulong)
 {
 	long m, n0;
@@ -928,24 +902,6 @@ audiowrite(Chan *c, char *a, long n, ulong)
 	return n0 - n;
 }
 
-long
-audiobwrite(Chan *c, Block *bp, ulong offset)
-{
-	return devbwrite(c, bp, offset);
-}
-
-void
-audioremove(Chan*)
-{
-	error(Eperm);
-}
-
-void
-audiowstat(Chan*, char*)
-{
-	error(Eperm);
-}
-
 static	void
 swab(uchar *a)
 {
@@ -963,3 +919,21 @@ swab(uchar *a)
 		*p++ = b;
 	}
 }
+
+Dev audiodevtab = {
+	devreset,
+	audioinit,
+	audioattach,
+	devclone,
+	audiowalk,
+	audiostat,
+	audioopen,
+	devcreate,
+	audioclose,
+	audioread,
+	devbread,
+	audiowrite,
+	devbwrite,
+	devremove,
+	devwstat,
+};

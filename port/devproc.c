@@ -57,7 +57,6 @@ char *sname[]={ "Text", "Data", "Bss", "Stack", "Shared", "Phys", "Shdata" };
  *	32 bits of pid, for consistency checking
  * If notepg, c->pgrpid.path is pgrp slot, .vers is noteid.
  */
-#define	NPROC	(sizeof procdir/sizeof(Dirtab))
 #define	QSHIFT	4	/* location in qid of proc slot # */
 
 #define	QID(q)		(((q).path&0x0000000F)>>0)
@@ -72,7 +71,7 @@ Segment* txt2data(Proc*, Segment*);
 int	procstopped(void*);
 void	mntscan(Mntwalk*);
 
-int
+static int
 procgen(Chan *c, Dirtab *tab, int, int s, Dir *dp)
 {
 	Qid qid;
@@ -93,7 +92,7 @@ procgen(Chan *c, Dirtab *tab, int, int s, Dir *dp)
 		devdir(c, qid, buf, 0, p->user, CHDIR|0555, dp);
 		return 1;
 	}
-	if(s >= NPROC)
+	if(s >= nelem(procdir))
 		return -1;
 	if(tab)
 		panic("procgen");
@@ -125,31 +124,20 @@ procgen(Chan *c, Dirtab *tab, int, int s, Dir *dp)
 	return 1;
 }
 
-void
+static void
 procinit(void)
 {
 	if(conf.nproc >= (1<<(16-QSHIFT))-1)
 		print("warning: too many procs for devproc\n");
 }
 
-void
-procreset(void)
-{
-}
-
-Chan*
+static Chan*
 procattach(char *spec)
 {
 	return devattach('p', spec);
 }
 
-Chan*
-procclone(Chan *c, Chan *nc)
-{
-	return devclone(c, nc);
-}
-
-int
+static int
 procwalk(Chan *c, char *name)
 {
 	if(strcmp(name, "..") == 0) {
@@ -160,13 +148,13 @@ procwalk(Chan *c, char *name)
 	return devwalk(c, name, 0, 0, procgen);
 }
 
-void
+static void
 procstat(Chan *c, char *db)
 {
 	devstat(c, db, 0, 0, procgen);
 }
 
-Chan *
+static Chan*
 procopen(Chan *c, int omode)
 {
 	Proc *p;
@@ -234,19 +222,7 @@ procopen(Chan *c, int omode)
 	return devopen(c, omode, 0, 0, procgen);
 }
 
-void
-proccreate(Chan*, char*, int, ulong)
-{
-	error(Eperm);
-}
-
-void
-procremove(Chan*)
-{
-	error(Eperm);
-}
-
-void
+static void
 procwstat(Chan *c, char *db)
 {
 	Proc *p;
@@ -266,14 +242,14 @@ procwstat(Chan *c, char *db)
 	p->procmode = d.mode&0777;
 }
 
-void
+static void
 procclose(Chan * c)
 {
 	if(QID(c->qid) == Qns && c->aux != 0)
 		free(c->aux);
 }
 
-long
+static long
 procread(Chan *c, void *va, long n, ulong offset)
 {
 	long l;
@@ -510,12 +486,6 @@ procread(Chan *c, void *va, long n, ulong offset)
 	return 0;		/* not reached */
 }
 
-Block*
-procbread(Chan *c, long n, ulong offset)
-{
-	return devbread(c, n, offset);
-}
-
 void
 mntscan(Mntwalk *mw)
 {
@@ -554,7 +524,7 @@ mntscan(Mntwalk *mw)
 	runlock(&pg->ns);
 }
 
-long
+static long
 procwrite(Chan *c, void *va, long n, ulong offset)
 {
 	int id;
@@ -648,13 +618,25 @@ procwrite(Chan *c, void *va, long n, ulong offset)
 	return n;
 }
 
-long
-procbwrite(Chan *c, Block *bp, ulong offset)
-{
-	return devbwrite(c, bp, offset);
-}
+Dev procdevtab = {
+	devreset,
+	procinit,
+	procattach,
+	devclone,
+	procwalk,
+	procstat,
+	procopen,
+	devcreate,
+	procclose,
+	procread,
+	devbread,
+	procwrite,
+	devbwrite,
+	devremove,
+	procwstat,
+};
 
-Chan *
+Chan*
 proctext(Chan *c, Proc *p)
 {
 	Chan *tc;
@@ -686,7 +668,7 @@ proctext(Chan *c, Proc *p)
 		error(Eprocdied);
 
 	if(incref(tc) == 1 || (tc->flag&COPEN) == 0 || tc->mode!=OREAD) {
-		close(tc);
+		cclose(tc);
 		error(Eprocdied);
 	}
 
@@ -740,7 +722,7 @@ procctlfgrp(Fgrp *f)
 		if(c != 0) {
 			f->fd[i] = 0;
 			unlock(f);
-			close(c);
+			cclose(c);
 			lock(f);
 		}
 	}

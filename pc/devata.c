@@ -155,6 +155,7 @@ struct Controller
 
 	int	pbase;		/* base port */
 	uchar	ctlrno;
+	int	tbdf;
 	uchar	resetok;
 
 	/*
@@ -180,7 +181,7 @@ static Controller *atactlr[NCtlr];
 static QLock atactlrlock[NCtlr];
 static Drive *atadrive[NDrive];
 static int spindownmask;
-static int have640b = -1;
+static int have640b;
 static int pbase[NCtlr] = {
 	Pbase0, Pbase1, Pbase2, Pbase3,
 };
@@ -196,6 +197,7 @@ static void	ataparams(Drive*);
 static void	atapart(Drive*);
 static int	ataprobe(Drive*, int, int, int);
 static void	atasleep(Controller*, int);
+static void	ataclock(void);
 
 static int	isatapi(Drive*);
 static long	atapirwio(Chan*, char*, ulong, ulong);
@@ -203,7 +205,7 @@ static void	atapipart(Drive*);
 static void	atapiintr(Controller*);
 
 static int
-atagen(Chan *c, Dirtab*, int, int s, Dir *dirp)
+atagen(Chan* c, Dirtab*, int, int s, Dir* dirp)
 {
 	Qid qid;
 	int drive;
@@ -237,10 +239,8 @@ atagen(Chan *c, Dirtab*, int, int s, Dir *dirp)
 static void
 cmd640b(void)
 {
-	PCIcfg* pcicfg;
-	uchar r50[12];
-	int devno;
-	extern void pcicfgw8(int, int, int, int, void*, int);
+	Pcidev *p;
+	int r;
 
 	/*
 	 * Look for CMD640B dual PCI controllers. Amongst other
@@ -249,12 +249,9 @@ cmd640b(void)
 	 * controllers this is, so if one is found then all controller
 	 * pairs are synchronised.
 	 */
-	pcicfg = malloc(sizeof(PCIcfg));
-	pcicfg->vid = 0x1095;
-	pcicfg->did = 0x0640;
-	devno = 0;
-	while((devno = pcimatch(0, devno, pcicfg)) != -1){
-		have640b = devno-1;
+	p = 0;
+	while(p = pcimatch(p, 0x1095, 0x0640)){
+		have640b++;
 		/*
 		 * If one is found, make sure read-ahead is disabled on all
 		 * drives and that the 2nd controller is enabled:
@@ -263,41 +260,34 @@ cmd640b(void)
 		 *  		bit 3 - 2nd controller enable
 		 *   reg 0x57:	bit 3 - drive 1 read ahead disable
 		 *  		bit 2 - drive 0 read ahead disable
-		 * Doing byte-writes to PCI configuration space is not in the
-		 * spec...
 		 */
-		pcicfgr(0, have640b, 0, 0x50, r50, sizeof(r50));
-		r50[0x01] |= 0xC8;
-		pcicfgw8(0, have640b, 0, 0x51, &r50[0x01], sizeof(r50[0x01]));
-		r50[0x07] |= 0x0C;
-		pcicfgw8(0, have640b, 0, 0x57, &r50[0x07], sizeof(r50[0x07]));
+		r = pcicfgr8(p, 0x51);
+		r |= 0xC8;
+		pcicfgw8(p, 0x51, r);
+		r = pcicfgr8(p, 0x57);
+		r |= 0x0C;
+		pcicfgw8(p, 0x57, r);
 	}
-	free(pcicfg);
 }
 
 static void
 rz1000(void)
 {
-	PCIcfg* pcicfg;
-	ulong r40;
-	int devno;
+	Pcidev *p;
+	ulong r;
 
 	/*
 	 * Look for PC-Tech RZ1000 controllers and turn off prefetch.
 	 * This is overkill, but cheap.
 	 */
-	pcicfg = malloc(sizeof(PCIcfg));
-	pcicfg->vid = 0x1042;
-	pcicfg->did = 0;
-	devno = 0;
-	while((devno = pcimatch(0, devno, pcicfg)) != -1){
-		if(pcicfg->did != 0x1000 && pcicfg->did != 0x1001)
+	p = 0;
+	while(p = pcimatch(p, 0x1042, 0)){
+		if(p->did != 0x1000 && p->did != 0x1001)
 			continue;
-		pcicfgr(0, devno-1, 0, 0x40, &r40, sizeof(r40));
-		r40 &= ~0x2000;
-		pcicfgw(0, devno-1, 0, 0x40, &r40, sizeof(r40));
+		r = pcicfgr32(p, 0x40);
+		r &= ~0x2000;
+		pcicfgw32(p, 0x40, r);
 	}
-	free(pcicfg);
 }
 
 static int
@@ -378,6 +368,7 @@ atactlrprobe(int ctlrno, int irq)
 		return -1;
 	ctlr->pbase = port;
 	ctlr->ctlrno = ctlrno;
+	ctlr->tbdf = BUSUNKNOWN;
 	ctlr->lastcmd = 0xFF;
 
 
@@ -414,7 +405,7 @@ atactlrprobe(int ctlrno, int irq)
 		inb(port+Pcylmsb), inb(port+Pcyllsb));
 	if(status == 0 && inb(port+Pcylmsb) == 0xEB && inb(port+Pcyllsb) == 0x14){
 		DPRINT("ata%d: ATAPI ok\n", ctlrno);
-		setvec(irq, ataintr, ctlr);
+		intrenable(irq, ataintr, ctlr, ctlr->tbdf);
 		atapi |= 0x01;
 		mask |= 0x01;
 		goto skipedd;
@@ -425,7 +416,7 @@ atactlrprobe(int ctlrno, int irq)
 		xfree(ctlr);
 		return -1;
 	}
-	setvec(irq, ataintr, ctlr);
+	intrenable(irq, ataintr, ctlr, ctlr->tbdf);
 	ctlr->cmd = Cedd;
 	outb(port+Pcmd, Cedd);
 	atasleep(ctlr, Hardtimeout);
@@ -480,7 +471,7 @@ skipedd:
 	}
 	atactlr[ctlrno] = ctlr;
 
-	if(have640b >= 0 && (ctlrno & 0x01))
+	if(have640b && (ctlrno & 0x01))
 		ctlr->ctlrlock = &atactlrlock[ctlrno-1];
 	else
 		ctlr->ctlrlock = &atactlrlock[ctlrno];
@@ -493,7 +484,7 @@ skipedd:
 	return 0;
 }
 
-void
+static void
 atactlrreset(void)
 {
 	int ctlrno, driveno, i, slave, spindown;
@@ -509,7 +500,7 @@ atactlrreset(void)
 		if(isa.irq == 0 && (isa.irq = defirq[ctlrno]) == 0)
 			continue;
 
-		if(atactlrprobe(ctlrno, Int0vec+isa.irq))
+		if(atactlrprobe(ctlrno, VectorPIC+isa.irq))
 			continue;
 	
 		for(i = 0; i < isa.nopt; i++){
@@ -539,24 +530,17 @@ atactlrreset(void)
 				atactlr[ctlrno]->resetok = 1;
 		}
 	}
-}
 
-void
-atareset(void)
-{
-}
-
-void
-atainit(void)
-{
+	if(spindownmask)
+		addclock0link(ataclock);
 }
 
 /*
  *  Get the characteristics of each drive.  Mark unresponsive ones
  *  off line.
  */
-Chan*
-ataattach(char *spec)
+static Chan*
+ataattach(char* spec)
 {
 	int driveno;
 	Drive *dp;
@@ -600,38 +584,26 @@ ataattach(char *spec)
 	return devattach('H', spec);
 }
 
-Chan*
-ataclone(Chan *c, Chan *nc)
-{
-	return devclone(c, nc);
-}
-
-int
-atawalk(Chan *c, char *name)
+static int
+atawalk(Chan* c, char* name)
 {
 	return devwalk(c, name, 0, 0, atagen);
 }
 
-void
-atastat(Chan *c, char *dp)
+static void
+atastat(Chan* c, char* dp)
 {
 	devstat(c, dp, 0, 0, atagen);
 }
 
-Chan*
-ataopen(Chan *c, int omode)
+static Chan*
+ataopen(Chan* c, int omode)
 {
 	return devopen(c, omode, 0, 0, atagen);
 }
 
 void
-atacreate(Chan*, char*, int, ulong)
-{
-	error(Eperm);
-}
-
-void
-ataclose(Chan *c)
+ataclose(Chan* c)
 {
 	Drive *dp;
 	Partition *p;
@@ -657,20 +629,8 @@ ataclose(Chan *c)
 	poperror();
 }
 
-void
-ataremove(Chan*)
-{
-	error(Eperm);
-}
-
-void
-atawstat(Chan*, char*)
-{
-	error(Eperm);
-}
-
-long
-ataread(Chan *c, void *a, long n, ulong offset)
+static long
+ataread(Chan* c, void* a, long n, ulong offset)
 {
 	Drive *dp;
 	long rv, i;
@@ -723,13 +683,7 @@ ataread(Chan *c, void *a, long n, ulong offset)
 	return rv;
 }
 
-Block*
-atabread(Chan *c, long n, ulong offset)
-{
-	return devbread(c, n, offset);
-}
-
-long
+static long
 atawrite(Chan *c, void *a, long n, ulong offset)
 {
 	Drive *dp;
@@ -800,12 +754,6 @@ atawrite(Chan *c, void *a, long n, ulong offset)
 	poperror();
 
 	return rv;
-}
-
-long
-atabwrite(Chan *c, Block *bp, ulong offset)
-{
-	return devbwrite(c, bp, offset);
 }
 
 /*
@@ -1601,8 +1549,8 @@ ataintr(Ureg*, void* arg)
 	IUNLOCK(&cp->reglock);
 }
 
-void
-hardclock(void)
+static void
+ataclock(void)
 {
 	int driveno, mask;
 	Drive *dp;
@@ -1962,3 +1910,21 @@ atapiintr(Controller *cp)
 		break;
 	}
 }
+
+Dev atadevtab = {
+	devreset,
+	devinit,
+	ataattach,
+	devclone,
+	atawalk,
+	atastat,
+	ataopen,
+	devcreate,
+	ataclose,
+	ataread,
+	devbread,
+	atawrite,
+	devbwrite,
+	devremove,
+	devwstat,
+};

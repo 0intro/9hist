@@ -15,16 +15,11 @@ enum
 	/* default footprint is 64k */
 	Footshift=	16,
 	Footprint=	1<<Footshift,
-
-	/*  CGA screen dimensions */
-	CGAWIDTH=	160,
-	CGAHEIGHT=	24,
 }; 
 /*
  *  screen memory addresses
  */
 #define SCREENMEM	(0xA0000 | KZERO)
-#define CGASCREEN	((uchar*)(0xB8000 | KZERO))
 
 static	ulong	screenmem = SCREENMEM;
 static	int	footprint = Footprint;
@@ -41,11 +36,9 @@ Lock palettelock;			/* access to DAC registers */
 Cursor curcursor;			/* current cursor */
 
 /* vga screen */
-static	Lock	screenlock;
+extern	QLock	screenlock;
 static	ulong	colormap[Pcolours][3];
-
-/* cga screen */
-static	int	cga = 1;		/* true if in cga mode */
+static	Lock	myscreenlock;
 
 /* system window */
 static	Rectangle window;
@@ -77,8 +70,6 @@ Bitmap cursorwork;
 
 /* predefined for the stupid compiler */
 static void	setscreen(int, int, int);
-static void	cgascreenputc(int);
-static void	cgascreenputs(char*, int);
 static void	screenputc(char*);
 static void	scroll(void);
 static void	workinit(Bitmap*, int, int);
@@ -86,7 +77,9 @@ extern void	screenload(Rectangle, uchar*, int, int, int);
 extern void	screenunload(Rectangle, uchar*, int, int, int);
 static void	cursorlock(Rectangle);
 static void	cursorunlock(void);
+static void	cursorinit(void);
 
+extern void	(*vgascreenputc)(char*);
 extern int	graphicssubtile(uchar*, int, int, Rectangle, Rectangle, uchar**);
 
 /*
@@ -99,65 +92,62 @@ enum
 	Qvgaiow		= 2,
 	Qvgaiol		= 3,
 	Qvgactl		= 4,
-	Qvgaiosl	= 5,
-	Nvga		= Qvgaiosl,
 };
 Dirtab vgadir[]={
 	"vgaiob",	{ Qvgaiob },	0,	0666,
 	"vgaiow",	{ Qvgaiow },	0,	0666,
 	"vgaiol",	{ Qvgaiol },	0,	0666,
-	"vgaiosl",	{ Qvgaiosl },	0,	0666,	/* Debugging: philw */
 	"vgactl",	{ Qvgactl },	0,	0666,
 };
 
-void
+static void
 vgareset(void)
 {
 	cursor.disable++;
+	conf.monitor = 1;
 }
 
-void
+static void
 vgainit(void)
 {
+	int i;
+	ulong *l;
+
+	/*
+	 *  swizzle the font longs.
+	 */
+	l = defont0.bits->base;
+	for(i = defont0.bits->width*Dy(defont0.bits->r); i > 0; i--, l++)
+		*l = (*l<<24) | ((*l>>8)&0x0000ff00) | ((*l<<8)&0x00ff0000) | (*l>>24);
 }
 
-Chan*
-vgaattach(char *upec)
+static Chan*
+vgaattach(char *spec)
 {
-	return devattach('v', upec);
-}
-
-Chan*
-vgaclone(Chan *c, Chan *nc)
-{
-	return devclone(c, nc);
+	if(*spec && strcmp(spec, "0"))
+		error(Eio);
+	return devattach('v', spec);
 }
 
 int
 vgawalk(Chan *c, char *name)
 {
-	return devwalk(c, name, vgadir, Nvga, devgen);
+	return devwalk(c, name, vgadir, nelem(vgadir), devgen);
 }
 
-void
+static void
 vgastat(Chan *c, char *dp)
 {
-	devstat(c, dp, vgadir, Nvga, devgen);
+	devstat(c, dp, vgadir, nelem(vgadir), devgen);
 }
 
-Chan*
+static Chan*
 vgaopen(Chan *c, int omode)
 {
-	return devopen(c, omode, vgadir, Nvga, devgen);
+	return devopen(c, omode, vgadir, nelem(vgadir), devgen);
 }
 
-void
-vgacreate(Chan*, char*, int, ulong)
-{
-	error(Eperm);
-}
-
-void
+static void
 vgaclose(Chan*)
 {
 }
@@ -172,7 +162,7 @@ checkvgaport(int port, int len)
 	return -1;
 }
 
-long
+static long
 vgaread(Chan *c, void *buf, long n, ulong offset)
 {
 	int port;
@@ -184,9 +174,9 @@ vgaread(Chan *c, void *buf, long n, ulong offset)
 
 	switch(c->qid.path&~CHDIR){
 	case Qdir:
-		return devdirread(c, buf, n, vgadir, Nvga, devgen);
+		return devdirread(c, buf, n, vgadir, nelem(vgadir), devgen);
 	case Qvgactl:
-		if(cga)
+		if(vgascreenputc == nil)
 			return readstr(offset, buf, n, "type: cga\n");
 		vgacp = vgac;
 		port = sprint(cbuf, "type: %s\n", vgacp->name);
@@ -226,12 +216,6 @@ vgaread(Chan *c, void *buf, long n, ulong offset)
 	return 0;
 }
 
-Block*
-vgabread(Chan *c, long n, ulong offset)
-{
-	return devbread(c, n, offset);
-}
-
 static void
 vgactl(char *arg)
 {
@@ -257,7 +241,7 @@ vgactl(char *arg)
 			error(Ebadarg);
 		if(strcmp(field[1], "off") == 0){
 			if(hwgc){
-				(*hwgc->disable)();
+				hwgc->disable();
 				hwgc = 0;
 				cursoron(1);
 			}
@@ -267,11 +251,11 @@ vgactl(char *arg)
 		for(hwgcp = hwgctlr; hwgcp; hwgcp = hwgcp->link){
 			if(strcmp(field[1], hwgcp->name) == 0){
 				if(hwgc)
-					(*hwgc->disable)();
+					hwgc->disable();
 				else
 					cursoroff(1);
 				hwgc = hwgcp;
-				(*hwgc->enable)();
+				hwgc->enable();
 				setcursor(&curs);
 				cursoron(1);
 				return;
@@ -361,9 +345,9 @@ vgactl(char *arg)
 
 		mem = 0;
 		if(vgac->linear)
-			(*vgac->linear)(&mem, &size, &align);
+			vgac->linear(&mem, &size, &align);
 		else
-			mem = getspace(size, align);
+			mem = upamalloc(0, size, align);
 		if(mem == 0)
 			error("not enough free address space");
 		screenmem = mem;
@@ -379,7 +363,7 @@ vgactl(char *arg)
 	error(Ebadarg);
 }
 
-long
+static long
 vgawrite(Chan *c, void *buf, long n, ulong offset)
 {
 	int port;
@@ -419,33 +403,28 @@ vgawrite(Chan *c, void *buf, long n, ulong offset)
 		for (lp = buf, port=offset; port<offset+n; port+=4)
 			outl(port, *lp++);
 		return n*4;
-	case Qvgaiosl:
-		if((n & 03) || (offset & 03))
-			error(Ebadarg);
-		outsl(offset, buf, n/4);
-		return n;
 	}
 	error(Eperm);
 	return 0;
 }
 
-long
-vgabwrite(Chan *c, Block *bp, ulong offset)
-{
-	return devbwrite(c, bp, offset);
-}
-
-void
-vgaremove(Chan*)
-{
-	error(Eperm);
-}
-
-void
-vgawstat(Chan*, char*)
-{
-	error(Eperm);
-}
+Dev vgadevtab = {
+	vgareset,
+	vgainit,
+	vgaattach,
+	devclone,
+	vgawalk,
+	vgastat,
+	vgaopen,
+	devcreate,
+	vgaclose,
+	vgaread,
+	devbread,
+	vgawrite,
+	devbwrite,
+	devremove,
+	devwstat,
+};
 
 int
 vgaxi(long port, uchar index)
@@ -529,30 +508,6 @@ vgaxo(long port, uchar index, uchar data)
 	return 0;
 }
 
-/*
- *  start the screen in CGA mode.  Create the fonts for VGA.  Called by
- *  main().
- */
-void
-screeninit(void)
-{
-	int i;
-	ulong *l;
-
-	/*
-	 *  swizzle the font longs.
-	 */
-	l = defont0.bits->base;
-	for(i = defont0.bits->width*Dy(defont0.bits->r); i > 0; i--, l++)
-		*l = (*l<<24) | ((*l>>8)&0x0000ff00) | ((*l<<8)&0x00ff0000) | (*l>>24);
-
-	/*
-	 *  start in CGA mode
-	 */
-	cga = 1;
-	memset(CGASCREEN, 0, CGAWIDTH*CGAHEIGHT);
-}
-
 static ulong
 xnto32(uchar x, int n)
 {
@@ -579,10 +534,11 @@ setscreen(int maxx, int maxy, int ldepth)
 	Rectangle r;
 
 	if(waserror()){
-		unlock(&screenlock);
+		qunlock(&screenlock);
 		nexterror();
 	}
-	lock(&screenlock);
+
+	qlock(&screenlock);
 
 	/* setup a bitmap for the new size */
 	gscreen.ldepth = ldepth;
@@ -623,7 +579,11 @@ setscreen(int maxx, int maxy, int ldepth)
 		screenload(r, (uchar*)scrollwork.base, tl, l, 1);
 	}
 
-	unlock(&screenlock);
+	/* switch software to graphics mode */
+	if(vgascreenputc == nil)
+		vgascreenputc = screenputc;
+
+	qunlock(&screenlock);
 	poperror();
 
 	/* default color map (has to be outside the lock) */
@@ -640,9 +600,6 @@ setscreen(int maxx, int maxy, int ldepth)
 		}
 		break;
 	}
-
-	/* switch software to graphics mode */
-	cga = 0;
 }
 
 /*
@@ -727,13 +684,13 @@ screenload(Rectangle r, uchar *data, int tl, int l, int dolock)
 	ulong off;
 	uchar *q, *e;
 
-	if(screendisabled || cga || !rectclip(&r, gscreen.r) || tl<=0)
+	if(screendisabled || vgascreenputc == nil || !rectclip(&r, gscreen.r) || tl<=0)
 		return;
 
 	if(dolock && hwgc == 0)
 		cursorlock(r);
-	lock(&palettelock);
 
+	lock(&myscreenlock);
 	q = byteaddr(&gscreen, r.min);
 	mx = 7>>gscreen.ldepth;
 	lpart = (r.min.x & mx) << gscreen.ldepth;
@@ -812,7 +769,7 @@ screenload(Rectangle r, uchar *data, int tl, int l, int dolock)
 		data += l;
 	}
 
-	unlock(&palettelock);
+	unlock(&myscreenlock);
 	if(dolock && hwgc == 0)
 		cursorunlock();
 }
@@ -884,13 +841,13 @@ screenunload(Rectangle r, uchar *data, int tl, int l, int dolock)
 	ulong off;
 	uchar *q, *e;
 
-	if(screendisabled || cga || !rectclip(&r, gscreen.r) || tl<=0)
+	if(screendisabled || vgascreenputc == nil || !rectclip(&r, gscreen.r) || tl<=0)
 		return;
 
 	if(dolock && hwgc == 0)
 		cursorlock(r);
-	lock(&palettelock);
 
+	lock(&myscreenlock);
 	q = byteaddr(&gscreen, r.min);
 	mx = 7>>gscreen.ldepth;
 	lpart = (r.min.x & mx) << gscreen.ldepth;
@@ -969,107 +926,14 @@ screenunload(Rectangle r, uchar *data, int tl, int l, int dolock)
 		data += l;
 	}
 
-	unlock(&palettelock);
+	unlock(&myscreenlock);
 	if(dolock && hwgc == 0)
 		cursorunlock();
-}
-
-/*
- *  write a string to the screen
- */
-void
-screenputs(char *s, int n)
-{
-	int i;
-	Rune r;
-	char buf[4];
-
-	if(cga) {
-		cgascreenputs(s, n);
-		return;
-	}
-
-	if((getstatus() & IFLAG) == 0) {
-		/* don't deadlock trying to print in interrupt */
-		if(!canlock(&screenlock))
-			return;	
-	} else
-		lock(&screenlock);
-
-	while(n > 0) {
-		i = chartorune(&r, s);
-		if(i == 0){
-			s++;
-			--n;
-			continue;
-		}
-		memmove(buf, s, i);
-		buf[i] = 0;
-		n -= i;
-		s += i;
-		screenputc(buf);
-	}
-
-	unlock(&screenlock);
 }
 
 static void
 nopage(int)
 {
-}
-
-static int pos;
-
-static void
-cgaregw(uchar index, uchar data)
-{
-	outb(0x03D4, index);
-	outb(0x03D4+1, data);
-}
-
-static void
-movecursor(void)
-{
-	cgaregw(0x0E, (pos/2>>8) & 0xFF);
-	cgaregw(0x0F, pos/2 & 0xFF);
-	CGASCREEN[pos+1] = 2;
-}
-
-static void
-cgascreenputc(int c)
-{
-	int i;
-	static int color;
-
-	if(c == '\n'){
-		pos = pos/CGAWIDTH;
-		pos = (pos+1)*CGAWIDTH;
-	} else if(c == '\t'){
-		i = 8 - ((pos/2)&7);
-		while(i-->0)
-			cgascreenputc(' ');
-	} else if(c == '\b'){
-		if(pos >= 2)
-			pos -= 2;
-		cgascreenputc(' ');
-		pos -= 2;
-	} else {
-		CGASCREEN[pos++] = c;
-		CGASCREEN[pos++] = 2;	/* green on black */
-	}
-	if(pos >= CGAWIDTH*CGAHEIGHT){
-		memmove(CGASCREEN, &CGASCREEN[CGAWIDTH], CGAWIDTH*(CGAHEIGHT-1));
-		memset(&CGASCREEN[CGAWIDTH*(CGAHEIGHT-1)], 0, CGAWIDTH);
-		pos = CGAWIDTH*(CGAHEIGHT-1);
-	}
-	movecursor();
-}
-
-static void
-cgascreenputs(char *s, int n)
-{
-	while(n-- > 0)
-		cgascreenputc(*s++);
 }
 
 /*
@@ -1149,7 +1013,7 @@ screenputc(char *buf)
 		subfstring(&chwork, Pt(off, 0), &defont0, buf, S);
 
 		/* move work area to screen */
-		screenload(r, (uchar*)chwork.base, tl, l, 0);
+		screenload(r, (uchar*)chwork.base, tl, l, 1);
 
 		curpos.x += w;
 	}
@@ -1248,7 +1112,7 @@ Bitmap	set =
 	1,
 };
 
-void
+static void
 cursorinit(void)
 {
 	static int already;
@@ -1273,7 +1137,7 @@ setcursor(Cursor *curs)
 	int i;
 
 	if(hwgc)
-		(*hwgc->load)(curs);
+		hwgc->load(curs);
 	else for(i=0; i<16; i++){
 		p = (uchar*)&set.base[i];
 		*p = curs->set[2*i];
@@ -1303,12 +1167,12 @@ cursoron(int dolock)
 	if(dolock){
 		s = 0;		/* to avoid compiler warning */
 		lock(&cursor);
-	} else
+	} /*else
 		s = spllo();	/* to avoid freezing out the eia ports */
 
 	ret = 0;
 	if(hwgc)
-		ret = (*hwgc->move)(mousexy());
+		ret = hwgc->move(mousexy());
 	else if(cursor.visible++ == 0){
 		cursor.r.min = mousexy();
 		cursor.r.max = add(cursor.r.min, Pt(16, 16));
@@ -1357,8 +1221,8 @@ cursoron(int dolock)
 
 	if(dolock)
 		unlock(&cursor);
-	else
-		splx(s);
+	/*else
+		splx(s);*/
 
 	return ret;
 }

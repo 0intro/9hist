@@ -4,21 +4,14 @@
 #include <fcall.h>
 #include "../boot/boot.h"
 
-typedef struct Net	Net;
-typedef struct Flavor	Flavor;
-
 char	cputype[NAMELEN];
-char	terminal[NAMELEN];
 char	sys[2*NAMELEN];
 char	username[NAMELEN];
-char	bootfile[3*NAMELEN];
-char	conffile[NAMELEN];
 char 	reply[256];
 int	printcol;
 int	mflag;
 int	fflag;
 int	kflag;
-int	aflag;
 
 char	*bargv[Nbarg];
 int	bargc;
@@ -67,9 +60,6 @@ boot(int argc, char *argv[])
 #endif DEBUG
 
 	ARGBEGIN{
-	case 'a':
-		aflag = 1;
-		break;
 	case 'u':
 		strcpy(username, ARGF());
 		break;
@@ -85,8 +75,6 @@ boot(int argc, char *argv[])
 	}ARGEND
 
 	readfile("#e/cputype", cputype, sizeof(cputype));
-	readfile("#e/terminal", terminal, sizeof(cputype));
-	getconffile(conffile, terminal);
 
 	/*
 	 *  pick a method and initialize it
@@ -155,7 +143,7 @@ boot(int argc, char *argv[])
 	swapproc();
 
 	sprint(cmd, "/%s/init", cputype);
-	sprint(flags, "-%s%s%s", cpuflag ? "c" : "t", mflag ? "m" : "", aflag ? "a" : "");
+	sprint(flags, "-%s%s", cpuflag ? "c" : "t", mflag ? "m" : "");
 	execl(cmd, "init", flags, 0);
 	fatal(cmd);
 }
@@ -218,14 +206,7 @@ rootserver(char *arg)
 		outin(prompt, reply, sizeof(reply));
 		mp = findmethod(reply);
 		if(mp){
-			for(cp = reply; bargc < Nbarg-1 && *cp;){
-				while(*cp && *cp != ' ')
-					cp++;
-				while(*cp == ' ')
-					*cp++ = 0;
-				if(*cp)
-					bargv[bargc++] = cp++;
-			}
+			bargc = parsefields(reply, bargv, Nbarg-1, " ");
 			cp = strchr(reply, '!');
 			if(cp)
 				strcpy(sys, cp+1);

@@ -219,13 +219,13 @@ sysexec(ulong *arg)
 	for(;;){
 		tc = namec(file, Aopen, OEXEC, 0);
 		if(waserror()){
-			close(tc);
+			cclose(tc);
 			nexterror();
 		}
 		if(!indir)
 			strcpy(elem, up->elem);
 	
-		n = (*devtab[tc->type].read)(tc, &exec, sizeof(Exec), 0);
+		n = devtab[tc->type]->read(tc, &exec, sizeof(Exec), 0);
 		if(n < 2)
 			error(Ebadexec);
 		magic = l2be(exec.magic);
@@ -259,7 +259,7 @@ sysexec(ulong *arg)
 		file = progarg[0];
 		progarg[0] = elem;
 		poperror();
-		close(tc);
+		cclose(tc);
 	}
 
 	data = l2be(exec.data);
@@ -401,7 +401,7 @@ sysexec(ulong *arg)
 		up->basepri = PriRoot;
 	up->priority = up->basepri;
 	poperror();
-	close(tc);
+	cclose(tc);
 
 	/*
 	 *  At this point, the mmu contains info about the old address

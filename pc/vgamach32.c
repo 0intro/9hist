@@ -9,11 +9,14 @@
 #include "screen.h"
 #include "vga.h"
 
+static Lock mach32lock;
+
 static void
 mach32page(int page)
 {
 	uchar ae, p;
 
+	lock(&mach32lock);
 
 	p = (page & 0x0F)<<1;
 	p |= (page & 0x07)<<5;
@@ -26,6 +29,8 @@ mach32page(int page)
 	p |= p<<2;
 	p |= ae & 0xF0;
 	outs(0x1CE, (p<<8)|0xAE);
+
+	unlock(&mach32lock);
 }
 
 static Vgac mach32 = {

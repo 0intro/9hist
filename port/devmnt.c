@@ -34,7 +34,7 @@ struct Mntalloc
 #define limit(n, max)	(n > max ? max : n)
 
 void	mattach(Mnt*, Chan*, char*);
-void	mntauth(Mnt *, Mntrpc *, char *, ushort);
+void	mntauth(Mnt*, Mntrpc*, char*, ushort);
 Mnt*	mntchk(Chan*);
 void	mntdirfix(uchar*, Chan*);
 int	mntflush(Mnt*, Mntrpc*);
@@ -43,8 +43,8 @@ void	mntgate(Mnt*);
 void	mntpntfree(Mnt*);
 void	mntqrm(Mnt*, Mntrpc*);
 Mntrpc*	mntralloc(Chan*);
-long	mntrdwr(int , Chan*, void*,long , ulong);
-long	mnt9prdwr(int , Chan*, void*,long , ulong);
+long	mntrdwr(int, Chan*, void*, long, ulong);
+long	mnt9prdwr(int, Chan*, void*, long, ulong);
 void	mntrpcread(Mnt*, Mntrpc*);
 void	mountio(Mnt*, Mntrpc*);
 void	mountmux(Mnt*, Mntrpc*);
@@ -63,7 +63,7 @@ enum
 	Tagend		= 0xfffe,
 };
 
-void
+static void
 mntreset(void)
 {
 	mntalloc.id = 1;
@@ -72,12 +72,7 @@ mntreset(void)
 	cinit();
 }
 
-void
-mntinit(void)
-{
-}
-
-Chan*
+static Chan*
 mntattach(char *muxattach)
 {
 	Mnt *m;
@@ -149,14 +144,6 @@ mntattach(char *muxattach)
 		m->blocksize = defmaxmsg;
 	m->flags = bogus.flags & ~MCACHE;
 
-	switch(devchar[m->c->type]) {
-	default:
-		m->mux = 0;
-		break;
-	case 'C':			/* Cyclone */
-		m->mux = 1;
-		break;
-	}
 	incref(m->c);
 
 	sprint(buf, "#M%d", m->id);
@@ -247,7 +234,7 @@ mattach(Mnt *m, Chan *c, char *spec)
 	mntfree(r);
 }
 
-Chan*
+static Chan*
 mntclone(Chan *c, Chan *nc)
 {
 	Mnt *m;
@@ -263,7 +250,7 @@ mntclone(Chan *c, Chan *nc)
 	if(waserror()) {
 		mntfree(r);
 		if(alloc)
-			close(nc);
+			cclose(nc);
 		nexterror();
 	}
 
@@ -282,7 +269,7 @@ mntclone(Chan *c, Chan *nc)
 	return nc;
 }
 
-int	 
+static int	 
 mntwalk(Chan *c, char *name)
 {
 	Mnt *m;
@@ -311,7 +298,7 @@ mntwalk(Chan *c, char *name)
 	return 1;
 }
 
-void	 
+static void	 
 mntstat(Chan *c, char *dp)
 {
 	Mnt *m;
@@ -333,7 +320,7 @@ mntstat(Chan *c, char *dp)
 	mntfree(r);
 }
 
-Chan*
+static Chan*
 mntopen(Chan *c, int omode)
 {
 	Mnt *m;
@@ -363,7 +350,7 @@ mntopen(Chan *c, int omode)
 	return c;
 }
 
-void	 
+static void	 
 mntcreate(Chan *c, char *name, int omode, ulong perm)
 {
 	Mnt *m;
@@ -392,7 +379,7 @@ mntcreate(Chan *c, char *name, int omode, ulong perm)
 		copen(c);
 }
 
-void	 
+static void	 
 mntclunk(Chan *c, int t)
 {
 	Mnt *m;
@@ -431,7 +418,7 @@ mclose(Mnt *m, Chan *c)
 		mntfree(q);
 	}
 	m->id = 0;
-	close(m->c);
+	cclose(m->c);
 	mntpntfree(m);
 }
 
@@ -455,19 +442,19 @@ mntpntfree(Mnt *m)
 	unlock(&mntalloc);
 }
 
-void
+static void
 mntclose(Chan *c)
 {
 	mntclunk(c, Tclunk);
 }
 
-void	 
+static void	 
 mntremove(Chan *c)
 {
 	mntclunk(c, Tremove);
 }
 
-void
+static void
 mntwstat(Chan *c, char *dp)
 {
 	Mnt *m;
@@ -493,7 +480,7 @@ mntread9p(Chan *c, void *buf, long n, ulong offset)
 	return mnt9prdwr(Tread, c, buf, n, offset);
 }
 
-long	 
+static long	 
 mntread(Chan *c, void *buf, long n, ulong offset)
 {
 	uchar *p, *e;
@@ -530,28 +517,16 @@ mntread(Chan *c, void *buf, long n, ulong offset)
 	return n;
 }
 
-Block*
-mntbread(Chan *c, long n, ulong offset)
-{
-	return devbread(c, n, offset);
-}
-
 long	 
 mntwrite9p(Chan *c, void *buf, long n, ulong offset)
 {
 	return mnt9prdwr(Twrite, c, buf, n, offset);
 }
 
-long	 
+static long	 
 mntwrite(Chan *c, void *buf, long n, ulong offset)
 {
 	return mntrdwr(Twrite, c, buf, n, offset);
-}
-
-long
-mntbwrite(Chan *c, Block *bp, ulong offset)
-{
-	return devbwrite(c, bp, offset);
 }
 
 long
@@ -685,6 +660,8 @@ mountio(Mnt *m, Mntrpc *r)
 
 	/* Transmit a file system rpc */
 	n = convS2M(&r->request, r->rpc);
+	if(n < 0)
+		panic("bad message type in mountio");
 	if(waserror()) {
 		if(mntflush(m, r) == 0)
 			nexterror();
@@ -694,15 +671,10 @@ mountio(Mnt *m, Mntrpc *r)
 			if(mnt9prdwr(Twrite, m->c, r->rpc, n, 0) != n)
 				error(Emountrpc);
 		}else{
-			if((*devtab[m->c->type].write)(m->c, r->rpc, n, 0) != n)
+			if(devtab[m->c->type]->write(m->c, r->rpc, n, 0) != n)
 				error(Emountrpc);
 		}
 		poperror();
-	}
-	if(m->mux) {
-		mntqrm(m, r);
-		mntrpcread(m, r);
-		return;
 	}
 
 	/* Gate readers onto the mount point one at a time */
@@ -738,8 +710,7 @@ mntrpcread(Mnt *m, Mntrpc *r)
 	for(;;) {
 		if(waserror()) {
 			if(mntflush(m, r) == 0) {
-				if(m->mux == 0)
-					mntgate(m);
+				mntgate(m);
 				nexterror();
 			}
 			continue;
@@ -749,7 +720,7 @@ mntrpcread(Mnt *m, Mntrpc *r)
 		if(devchar[m->c->type] == L'M')
 			n = mnt9prdwr(Tread, m->c, r->rpc, MAXRPC, 0);
 		else
-			n = devtab[m->c->type].read(m->c, r->rpc, MAXRPC, 0);
+			n = devtab[m->c->type]->read(m->c, r->rpc, MAXRPC, 0);
 		poperror();
 		if(n == 0)
 			continue;
@@ -763,7 +734,6 @@ void
 mntgate(Mnt *m)
 {
 	Mntrpc *q;
-	int x;
 
 	lock(m);
 	m->rip = 0;
@@ -821,6 +791,8 @@ mntflush(Mnt *m, Mntrpc *r)
 	flush.tag = r->flushtag;
 	flush.oldtag = r->request.tag;
 	n = convS2M(&flush, r->flush);
+	if(n < 0)
+		panic("bad message type in mntflush");
 
 	if(waserror()) {
 		if(strcmp(up->error, Eintr) == 0)
@@ -828,14 +800,14 @@ mntflush(Mnt *m, Mntrpc *r)
 		mntqrm(m, r);
 		return 0;
 	}
-	l = (*devtab[m->c->type].write)(m->c, r->flush, n, 0);
+	l = devtab[m->c->type]->write(m->c, r->flush, n, 0);
 	if(l != n)
 		error(Ehungup);
 	poperror();
 	return 1;
 }
 
-Mntrpc *
+Mntrpc*
 mntralloc(Chan *c)
 {
 	Mntrpc *new;
@@ -857,6 +829,7 @@ mntralloc(Chan *c)
 	new->c = c;
 	new->done = 0;
 	new->flushed = 0;
+	new->flushtag = 0;
 	return new;
 }
 
@@ -941,7 +914,7 @@ recoverchan(Mnt *m, Chan *c)
 		mntopen(c, c->mode);
 }
 
-Mnt *
+Mnt*
 mntchk(Chan *c)
 {
 	Mnt *m;
@@ -1069,7 +1042,7 @@ mntrepl(char *buf)
 	srvrecover(m->c, c1);
 
 	lock(m);
-	close(m->c);
+	cclose(m->c);
 	m->c = c1;
 	m->recprog = 0;
 
@@ -1079,3 +1052,21 @@ mntrepl(char *buf)
 
 	unlock(m);
 }
+
+Dev mntdevtab = {
+	mntreset,
+	devinit,
+	mntattach,
+	mntclone,
+	mntwalk,
+	mntstat,
+	mntopen,
+	mntcreate,
+	mntclose,
+	mntread,
+	devbread,
+	mntwrite,
+	devbwrite,
+	mntremove,
+	mntwstat,
+};

@@ -15,7 +15,8 @@ enum
 #define uartrdreg(u,r)		inb((u)->port + r)
 
 void	ns16552setup(ulong, ulong, char*);
-
+void	ns16552special(int, int, Queue**, Queue**, int (*)(Queue*, int));
+void	uartclock(void);
 /*
  *  definition of an optional serial card
  */
@@ -32,11 +33,11 @@ uartpower(int dev, int onoff)
 {
 	switch(dev){
 	case Modem:
-		if(modem(onoff) < 0)
+		if((*arch->modempower)(onoff) < 0)
 			print("can't turn %s modem speaker\n", onoff?"on":"off");
 		break;
 	case Serial:
-		if(serial(onoff) < 0)
+		if((*arch->serialpower)(onoff) < 0)
 			print("can't turn %s serial port power\n", onoff?"on":"off");
 		break;
 	}
@@ -46,10 +47,8 @@ uartpower(int dev, int onoff)
  *  handle an interrupt to a single uart
  */
 static void
-ns16552intrx(Ureg *ur, void *arg)
+ns16552intrx(Ureg*, void* arg)
 {
-	USED(ur);
-
 	ns16552intr((ulong)arg);
 }
 
@@ -58,13 +57,12 @@ ns16552intrx(Ureg *ur, void *arg)
  *  tells which of 8 devices interrupted.
  */
 static void
-mp008intr(Ureg *ur, void *arg)
+mp008intr(Ureg* ureg, void* arg)
 {
 	int i, loops;
 	uchar n;
 	Scard *mp;
 
-	USED(ur);
 	mp = arg;
 	for(loops = 0; loops < 1024; loops++){
 		n = ~inb(mp->mem);
@@ -72,7 +70,7 @@ mp008intr(Ureg *ur, void *arg)
 			return;
 		for(i = 0; n; i++){
 			if(n & 1)
-				ns16552intrx(ur, (void*)(mp->first+i));
+				ns16552intrx(ureg, (void*)(mp->first+i));
 			n >>= 1;
 		}
 	}
@@ -85,7 +83,7 @@ void
 ns16552install(void)
 {
 	int i, j, port, nscard;
-	char *p;
+	char *p, *q;
 	Scard *sc;
 	char name[NAMELEN];
 	static int already;
@@ -96,14 +94,17 @@ ns16552install(void)
 
 	/* first two ports are always there and always the normal frequency */
 	ns16552setup(0x3F8, UartFREQ, "eia0");
-	setvec(Uart0vec, ns16552intrx, (void*)0);
+	intrenable(VectorUART0, ns16552intrx, (void*)0, BUSUNKNOWN);
 	ns16552setup(0x2F8, UartFREQ, "eia1");
-	setvec(Uart1vec, ns16552intrx, (void*)1);
+	intrenable(VectorUART1, ns16552intrx, (void*)1, BUSUNKNOWN);
+	addclock0link(uartclock);
 
 	/* set up a serial console */
-	p = getconf("console");
-	if(p)
-		ns16552special(atoi(p), 9600, &kbdq, &printq, kbdcr2nl);
+	if(p = getconf("console")){
+		port = strtol(p, &q, 0);
+		if(p != q && (port == 0 || port == 1))
+			ns16552special(port, 9600, &kbdq, &printq, kbdcr2nl);
+	}
 
 	/* the rest come out of plan9.ini */
 	nscard = 0;
@@ -128,7 +129,7 @@ ns16552install(void)
 			if(sc->freq == 0)
 				sc->freq = UartFREQ;
 			sc->first = nuart;
-			setvec(Int0vec+sc->irq, mp008intr, sc);
+			intrenable(VectorPIC+sc->irq, mp008intr, sc, BUSUNKNOWN);
 			port = sc->port;
 			for(j=0; j < sc->size; j++){
 				sprint(name, "eia%d%2.2d", nscard, j);
@@ -145,7 +146,7 @@ ns16552install(void)
 				sc->freq = UartFREQ;
 			sprint(name, "eia%d00", nscard);
 			ns16552setup(sc->port, sc->freq, name);
-			setvec(Int0vec+sc->irq, ns16552intrx, (void*)(nuart-1));
+			intrenable(VectorPIC+sc->irq, ns16552intrx, (void*)(nuart-1), BUSUNKNOWN);
 		}
 		nscard++;
 	}

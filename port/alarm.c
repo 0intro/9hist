@@ -52,7 +52,7 @@ checkalarms(void)
 	if(p && p->alarm <= now)
 		wakeup(&alarmr);
 
-	if(talarm.list == 0 || canlock(&talarm) == 0)
+	if(talarm.list == 0 || !canlock(&talarm))
 		return;
 
 	for(;;) {

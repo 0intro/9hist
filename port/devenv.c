@@ -11,17 +11,7 @@ enum
 	Maxenvsize = 16300,
 };
 
-void
-envreset(void)
-{
-}
-
-void
-envinit(void)
-{
-}
-
-int
+static int
 envgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 {
 	Egrp *eg;
@@ -43,31 +33,25 @@ envgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 	return 1;
 }
 
-Chan*
+static Chan*
 envattach(char *spec)
 {
 	return devattach('e', spec);
 }
 
-Chan*
-envclone(Chan *c, Chan *nc)
-{
-	return devclone(c, nc);
-}
-
-int
+static int
 envwalk(Chan *c, char *name)
 {
 	return devwalk(c, name, 0, 0, envgen);
 }
 
-void
+static void
 envstat(Chan *c, char *db)
 {
 	devstat(c, db, 0, 0, envgen);
 }
 
-Chan *
+static Chan*
 envopen(Chan *c, int omode)
 {
 	Egrp *eg;
@@ -101,7 +85,7 @@ envopen(Chan *c, int omode)
 	return c;
 }
 
-void
+static void
 envcreate(Chan *c, char *name, int omode, ulong)
 {
 	Egrp *eg;
@@ -140,7 +124,7 @@ envcreate(Chan *c, char *name, int omode, ulong)
 	c->flag |= COPEN;
 }
 
-void
+static void
 envremove(Chan *c)
 {
 	Egrp *eg;
@@ -172,18 +156,12 @@ envremove(Chan *c)
 	free(e);
 }
 
-void
-envwstat(Chan*, char*)
-{
-	error(Eperm);
-}
-
-void
+static void
 envclose(Chan*)
 {
 }
 
-long
+static long
 envread(Chan *c, void *a, long n, ulong offset)
 {
 	Egrp *eg;
@@ -213,13 +191,7 @@ envread(Chan *c, void *a, long n, ulong offset)
 	return n;
 }
 
-Block*
-envbread(Chan *c, long n, ulong offset)
-{
-	return devbread(c, n, offset);
-}
-
-long
+static long
 envwrite(Chan *c, void *a, long n, ulong offset)
 {
 	char *s;
@@ -258,11 +230,23 @@ envwrite(Chan *c, void *a, long n, ulong offset)
 	return n;
 }
 
-long
-envbwrite(Chan *c, Block *bp, ulong offset)
-{
-	return devbwrite(c, bp, offset);
-}
+Dev envdevtab = {
+	devreset,
+	devinit,
+	envattach,
+	devclone,
+	envwalk,
+	envstat,
+	envopen,
+	envcreate,
+	envclose,
+	envread,
+	devbread,
+	envwrite,
+	devbwrite,
+	envremove,
+	devwstat,
+};
 
 void
 envcpy(Egrp *to, Egrp *from)
@@ -315,6 +299,6 @@ ksetenv(char *ename, char *eval)
 
 	sprint(buf, "#e/%s", ename);
 	c = namec(buf, Acreate, OWRITE, 0600);
-	(*devtab[c->type].write)(c, eval, strlen(eval), 0);
-	close(c);
+	devtab[c->type]->write(c, eval, strlen(eval), 0);
+	cclose(c);
 }

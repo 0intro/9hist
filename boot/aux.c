@@ -172,31 +172,19 @@ outin(char *prompt, char *def, int len)
 	return n;
 }
 
-/*
- *  get second word of the terminal environment variable.   If it
- *  ends in "boot", get rid of that part.
- */
-void
-getconffile(char *conffile, char *terminal)
+int
+parsefields(char *lp, char **fields, int n, char *sep)
 {
-	char *p, *q;
-	char *s;
-	int n;
+	int i;
 
-	s = conffile;
-	*conffile = 0;
-	p = terminal;
-	if((p = strchr(p, ' ')) == 0 || p[1] == ' ' || p[1] == 0)
-		return;
-	p++;
-	for(q = p; *q && *q != ' '; q++)
-		;
-	while(p < q)
-		*conffile++ = *p++;
-	*conffile = 0;
-
-	/* dump a trailing boot */
-	n = strlen(s);
-	if(n > 4 && strcmp(s + n - 4, "boot") == 0)
-		*(s+n-4) = 0;
+	for(i=0; lp && *lp && i<n; i++){
+		while(*lp && strchr(sep, *lp) != 0)
+			*lp++=0;
+		if(*lp == 0)
+			break;
+		fields[i]=lp;
+		while(*lp && strchr(sep, *lp) == 0)
+			lp++;
+	}
+	return i;
 }

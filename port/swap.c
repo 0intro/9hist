@@ -303,7 +303,7 @@ executeio(void)
 		if(waserror())
 			panic("executeio: page out I/O error");
 
-		n = (*devtab[c->type].write)(c, kaddr, BY2PG, out->daddr);
+		n = devtab[c->type]->write(c, kaddr, BY2PG, out->daddr);
 		if(n != BY2PG)
 			nexterror();
 
@@ -331,7 +331,7 @@ setswapchan(Chan *c)
 	if(swapimage.c) {
 		if(swapalloc.free != conf.nswap)
 			error(Einuse);
-		close(swapimage.c);
+		cclose(swapimage.c);
 	}
 	incref(c);
 	swapimage.c = c;

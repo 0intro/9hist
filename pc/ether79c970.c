@@ -2,11 +2,7 @@
  * AM79C970
  * PCnet-PCI Single-Chip Ethernet Controller for PCI Local Bus
  * To do:
- *	bag the tsleep in write, buffer them up;
- *	loop in interrupt routine until all done;
- *	only issue transmit interrupt if necessary?
- *	dynamically increase rings as necessary?
- *	use Block's as receive buffers?
+ *	finish this rewrite
  */
 #include "u.h"
 #include "../port/lib.h"
@@ -20,66 +16,60 @@
 #include "etherif.h"
 
 enum {
-	Lognrdre	= 7,
-	Nrdre		= (1<<Lognrdre),	/* receive descriptor ring entries */
-	Logntdre	= 5,
-	Ntdre		= (1<<Logntdre),	/* transmit descriptor ring entries */
+	Lognrdre	= 6,
+	Nrdre		= (1<<Lognrdre),/* receive descriptor ring entries */
+	Logntdre	= 4,
+	Ntdre		= (1<<Logntdre),/* transmit descriptor ring entries */
 
-	Rbsize		= ETHERMAXTU+4,		/* ring buffer size (+4 for CRC) */
+	Rbsize		= ETHERMAXTU+4,	/* ring buffer size (+4 for CRC) */
 };
 
-enum {						/* DWIO I/O resource map */
-	Aprom		= 0x0000,		/* physical address */
-	Rdp		= 0x0010,		/* register data port */
-	Rap		= 0x0014,		/* register address port */
-	Sreset		= 0x0018,		/* software reset */
-	Bdp		= 0x001C,		/* bus configuration register data port */
+enum {					/* DWIO I/O resource map */
+	Aprom		= 0x0000,	/* physical address */
+	Rdp		= 0x0010,	/* register data port */
+	Rap		= 0x0014,	/* register address port */
+	Sreset		= 0x0018,	/* software reset */
+	Bdp		= 0x001C,	/* bus configuration register data port */
 };
 
-enum {						/* CSR0 */
-	Init		= 0x0001,		/* begin initialisation */
-	Strt		= 0x0002,		/* enable chip */
-	Stop		= 0x0004,		/* disable chip */
-	Tdmd		= 0x0008,		/* transmit demand */
-	Txon		= 0x0010,		/* transmitter on */
-	Rxon		= 0x0020,		/* receiver on */
-	Iena		= 0x0040,		/* interrupt enable */
-	Intr		= 0x0080,		/* interrupt flag */
-	Idon		= 0x0100,		/* initialisation done */
-	Tint		= 0x0200,		/* transmit interrupt */
-	Rint		= 0x0400,		/* receive interrupt */
-	Merr		= 0x0800,		/* memory error */
-	Miss		= 0x1000,		/* missed frame */
-	Cerr		= 0x2000,		/* collision */
-	Babl		= 0x4000,		/* transmitter timeout */
-	Err		= 0x8000,		/* Babl|Cerr|Miss|Merr */
+enum {					/* CSR0 */
+	Init		= 0x0001,	/* begin initialisation */
+	Strt		= 0x0002,	/* enable chip */
+	Stop		= 0x0004,	/* disable chip */
+	Tdmd		= 0x0008,	/* transmit demand */
+	Txon		= 0x0010,	/* transmitter on */
+	Rxon		= 0x0020,	/* receiver on */
+	Iena		= 0x0040,	/* interrupt enable */
+	Intr		= 0x0080,	/* interrupt flag */
+	Idon		= 0x0100,	/* initialisation done */
+	Tint		= 0x0200,	/* transmit interrupt */
+	Rint		= 0x0400,	/* receive interrupt */
+	Merr		= 0x0800,	/* memory error */
+	Miss		= 0x1000,	/* missed frame */
+	Cerr		= 0x2000,	/* collision */
+	Babl		= 0x4000,	/* transmitter timeout */
+	Err		= 0x8000,	/* Babl|Cerr|Miss|Merr */
 };
 	
-enum {						/* CSR3 */
-	Bswp		= 0x0004,		/* byte swap */
-	Emba		= 0x0008,		/* enable modified back-off algorithm */
-	Dxmt2pd		= 0x0010,		/* disable transmit two part deferral */
-	Lappen		= 0x0020,		/* look-ahead packet processing enable */
-	Idonm		= 0x0100,		/* initialisation done mask */
-	Tintm		= 0x0200,		/* transmit interrupt mask */
-	Rintm		= 0x0400,		/* receive interrupt mask */
-	Merrm		= 0x0800,		/* memory error mask */
-	Missm		= 0x1000,		/* missed frame mask */
-	Bablm		= 0x4000,		/* babl mask */
+enum {					/* CSR3 */
+	Bswp		= 0x0004,	/* byte swap */
+	Emba		= 0x0008,	/* enable modified back-off algorithm */
+	Dxmt2pd		= 0x0010,	/* disable transmit two part deferral */
+	Lappen		= 0x0020,	/* look-ahead packet processing enable */
 };
 
-enum {						/* CSR4 */
-	ApadXmt		= 0x0800,		/* auto pad transmit */
+enum {					/* CSR4 */
+	ApadXmt		= 0x0800,	/* auto pad transmit */
 };
 
-enum {						/* CSR15 */
-	Prom		= 0x8000,		/* promiscuous mode */
+enum {					/* CSR15 */
+	Prom		= 0x8000,	/* promiscuous mode */
 };
 
-typedef struct {				/* Initialisation Block */
+typedef struct {			/* Initialisation Block */
 	ushort	mode;
-	uchar	rlen;				/* upper 4 bits */
-	uchar	tlen;				/* upper 4 bits */
+	uchar	rlen;			/* upper 4 bits */
+	uchar	tlen;			/* upper 4 bits */
 	uchar	padr[6];
 	uchar	res[2];
 	uchar	ladr[8];
@@ -87,101 +77,148 @@ typedef struct {				/* Initialisation Block */
 	ulong	tdra;
 } Iblock;
 
-typedef struct {				/* receive descriptor ring entry */
-	ulong	rbadr;
-	ulong	rmd1;				/* status|bcnt */
-	ulong	rmd2;				/* rcc|rpc|mcnt */
-	ulong	rmd3;				/* reserved */
-} Rdre;
+typedef struct {			/* descriptor ring entry */
+	ulong	addr;
+	ulong	md1;			/* status|bcnt */
+	ulong	md2;			/* rcc|rpc|mcnt */
+	Block*	bp;
+} Dre;
 
-typedef struct {				/* transmit descriptor ring entry */
-	ulong	tbadr;
-	ulong	tmd1;				/* status|bcnt */
-	ulong	tmd2;				/* errors */
-	ulong	tmd3;				/* reserved */
-} Tdre;
-
-enum {						/* [RT]dre status bits */
-	Enp		= 0x01000000,		/* end of packet */
-	Stp		= 0x02000000,		/* start of packet */
-	RxBuff		= 0x04000000,		/* buffer error */
-	TxDef		= 0x04000000,		/* deferred */
-	RxCrc		= 0x08000000,		/* CRC error */
-	TxOne		= 0x08000000,		/* one retry needed */
-	RxOflo		= 0x10000000,		/* overflow error */
-	TxMore		= 0x10000000,		/* more than one retry needed */
-	Fram		= 0x20000000,		/* framing error */
-	RxErr		= 0x40000000,		/* Fram|Oflo|Crc|RxBuff */
-	TxErr		= 0x40000000,		/* Uflo|Lcol|Lcar|Rtry */
+enum {					/* md1 */
+	Enp		= 0x01000000,	/* end of packet */
+	Stp		= 0x02000000,	/* start of packet */
+	RxBuff		= 0x04000000,	/* buffer error */
+	Def		= 0x04000000,	/* deferred */
+	Crc		= 0x08000000,	/* CRC error */
+	One		= 0x08000000,	/* one retry needed */
+	Oflo		= 0x10000000,	/* overflow error */
+	More		= 0x10000000,	/* more than one retry needed */
+	Fram		= 0x20000000,	/* framing error */
+	RxErr		= 0x40000000,	/* Fram|Oflo|Crc|RxBuff */
+	TxErr		= 0x40000000,	/* Uflo|Lcol|Lcar|Rtry */
 	Own		= 0x80000000,
 };
 
-typedef struct {
-	Lock	raplock;			/* registers other than CSR0 */
+enum {					/* md2 */
+	Rtry		= 0x04000000,	/* failed after repeated retries */
+	Lcar		= 0x08000000,	/* loss of carrier */
+	Lcol		= 0x10000000,	/* late collision */
+	Uflo		= 0x40000000,	/* underflow error */
+	TxBuff		= 0x80000000,	/* buffer error */
+};
 
+typedef struct Ctlr {
+	Lock;
+	int	port;
+
+	int	init;			/* initialisation in progress */
 	Iblock	iblock;
 
-	Rdre*	rdr;				/* receive descriptor ring */
-	void*	rrb;				/* receive ring buffers */
-	int	rdrx;				/* index into rdr */
+	Dre*	rdr;			/* receive descriptor ring */
+	int	rdrx;
 
-	Rendez	trendez;			/* wait here for free tdre */
-	Tdre*	tdr;				/* transmit descriptor ring */
-	void*	trb;				/* transmit ring buffers */
-	int	tdrx;				/* index into tdr */
+	Dre*	tdr;			/* transmit descriptor ring */
+	int	tdrh;			/* host index into tdr */
+	int	tdri;			/* interface index into tdr */
+	int	ntq;			/* descriptors active */
+
+	ulong	rxbuff;			/* receive statistics */
+	ulong	crc;
+	ulong	oflo;
+	ulong	fram;
+
+	ulong	rtry;			/* transmit statistics */
+	ulong	lcar;
+	ulong	lcol;
+	ulong	uflo;
+	ulong	txbuff;
 } Ctlr;
+
+#define csr32r(c, r)	(inl((c)->port+(r)))
+#define csr32w(c, r, l)	(outl((c)->port+(r), (ulong)(l)))
 
 static void
 attach(Ether* ether)
 {
-	int port;
+	Ctlr *ctlr;
 
-	port = ether->port;
-	outl(port+Rdp, Iena|Strt);
+	ctlr = ether->ctlr;
+
+	ilock(ctlr);
+	if(ctlr->init){
+		iunlock(ctlr);
+		return;
+	}
+	csr32w(ctlr, Rdp, Iena|Strt);
+	iunlock(ctlr);
+}
+
+static long
+ifstat(Ether* ether, void* a, long n, ulong offset)
+{
+	Ctlr *ctlr;
+	char buf[512];
+	int len;
+
+	ctlr = ether->ctlr;
+
+	ether->crcs = ctlr->crc;
+	ether->frames = ctlr->fram;
+	ether->buffs = ctlr->rxbuff+ctlr->txbuff;
+	ether->overflows = ctlr->oflo;
+
+	if(n == 0)
+		return 0;
+
+	len = sprint(buf, "Rxbuff: %ld\n", ctlr->rxbuff);
+	len += sprint(buf+len, "Crc: %ld\n", ctlr->crc);
+	len += sprint(buf+len, "Oflo: %ld\n", ctlr->oflo);
+	len += sprint(buf+len, "Fram: %ld\n", ctlr->fram);
+	len += sprint(buf+len, "Rtry: %ld\n", ctlr->rtry);
+	len += sprint(buf+len, "Lcar: %ld\n", ctlr->lcar);
+	len += sprint(buf+len, "Lcol: %ld\n", ctlr->lcol);
+	len += sprint(buf+len, "Uflo: %ld\n", ctlr->uflo);
+	sprint(buf+len, "Txbuff: %ld\n", ctlr->txbuff);
+
+	return readstr(offset, a, n, buf);
 }
 
 static void
 ringinit(Ctlr* ctlr)
 {
-	int i, x;
+	Dre *dre;
 
 	/*
-	 * Initialise the receive and transmit buffer rings. The ring
-	 * entries must be aligned on 16-byte boundaries.
+	 * Initialise the receive and transmit buffer rings.
+	 * The ring entries must be aligned on 16-byte boundaries.
+	 *
+	 * This routine is protected by ctlr->init.
 	 */
-	if(ctlr->rdr == 0)
-		ctlr->rdr = xspanalloc(Nrdre*sizeof(Rdre), 0x10, 0);
-	if(ctlr->rrb == 0)
-		ctlr->rrb = xalloc(Nrdre*Rbsize);
-	x = PADDR(ctlr->rrb);
-	for(i = 0; i < Nrdre; i++){
-		ctlr->rdr[i].rbadr = x;
-		x += Rbsize;
-		ctlr->rdr[i].rmd1 = Own|(-Rbsize & 0xFFFF);
+	if(ctlr->rdr == 0){
+		ctlr->rdr = xspanalloc(Nrdre*sizeof(Dre), 0x10, 0);
+		for(dre = ctlr->rdr; dre < &ctlr->rdr[Nrdre]; dre++){
+			dre->bp = iallocb(Rbsize);
+			dre->addr = PADDR(dre->bp->rp);
+			dre->md2 = 0;
+			dre->md1 = Own|(-Rbsize & 0xFFFF);
+		}
 	}
 	ctlr->rdrx = 0;
 
 	if(ctlr->tdr == 0)
-		ctlr->tdr = xspanalloc(Ntdre*sizeof(Tdre), 0x10, 0);
-	if(ctlr->trb == 0)
-		ctlr->trb = xalloc(Ntdre*Rbsize);
-	x = PADDR(ctlr->trb);
-	for(i = 0; i < Ntdre; i++){
-		ctlr->tdr[i].tbadr = x;
-		x += Rbsize;
-	}
-	ctlr->tdrx = 0;
+		ctlr->tdr = xspanalloc(Ntdre*sizeof(Dre), 0x10, 0);
+	memset(ctlr->tdr, 0, Ntdre*sizeof(Dre));
+	ctlr->tdrh = ctlr->tdri = 0;
 }
 
 static void
 promiscuous(void* arg, int on)
 {
 	Ether *ether;
-	int port, x;
+	int x;
 	Ctlr *ctlr;
 
 	ether = arg;
-	port = ether->port;
 	ctlr = ether->ctlr;
 
 	/*
@@ -192,94 +229,103 @@ promiscuous(void* arg, int on)
 	 * base addresses when Strt is set (unlike the older Lance chip),
 	 * so the rings must be re-initialised.
 	 */
-	qlock(&ether->tlock);
+	ilock(ctlr);
+	if(ctlr->init){
+		iunlock(ctlr);
+		return;
+	}
+	ctlr->init = 1;
+	iunlock(ctlr);
 
-	ilock(&ctlr->raplock);
-	outl(port+Rdp, Stop);
+	while(ctlr->ntq)
+		;
 
-	outl(port+Rap, 15);
-	x = inl(port+Rdp) & ~Prom;
+	csr32w(ctlr, Rdp, Stop);
+
+	csr32w(ctlr, Rap, 15);
+	x = csr32r(ctlr, Rdp) & ~Prom;
 	if(on)
 		x |= Prom;
-	outl(port+Rdp, x);
-	outl(port+Rap, 0);
+	csr32w(ctlr, Rdp, x);
+	csr32w(ctlr, Rap, 0);
 
 	ringinit(ctlr);
-	outl(port+Rdp, Iena|Strt);
-	iunlock(&ctlr->raplock);
 
-	qunlock(&ether->tlock);
+	ilock(ctlr);
+	ctlr->init = 0;
+	csr32w(ctlr, Rdp, Iena|Strt);
+	iunlock(ctlr);
 }
 
-static int
-owntdre(void* arg)
+static void
+txstart(Ether* ether)
 {
-	return (((Tdre*)arg)->tmd1 & Own) == 0;
-}
-
-static long
-write(Ether* ether, void* buf, long n)
-{
-	int port;
 	Ctlr *ctlr;
-	Tdre *tdre;
-	Etherpkt *pkt;
+	Block *bp;
+	Dre *dre;
 
-	port = ether->port;
 	ctlr = ether->ctlr;
 
-	/*
-	 * Wait for a transmit ring descriptor (and hence a buffer) to become
-	 * free. If none become free after a reasonable period, give up.
-	 */
-	tdre = &ctlr->tdr[ctlr->tdrx];
-	tsleep(&ctlr->trendez, owntdre, tdre, 100);
-	if(owntdre(tdre) == 0)
-		return 0;
+	if(ctlr->init)
+		return;
 
-	/*
-	 * Copy the packet to the transmit buffer and fill in the
-	 * source ethernet address. There's no need to pad to ETHERMINTU
-	 * here as ApadXmit is set in CSR4.
-	 */
-	pkt = KADDR(tdre->tbadr);
-	memmove(pkt->d, buf, n);
-	memmove(pkt->s, ether->ea, sizeof(pkt->s));
+	while(ctlr->ntq < (Ntdre-1)){
+		bp = qget(ether->oq);
+		if(bp == nil)
+			break;
 
-	/*
-	 * Give ownership of the descriptor to the chip, increment the
-	 * software ring descriptor pointer and tell the chip to poll.
-	 */
-	tdre->tmd2 = 0;
-	tdre->tmd1 = Own|Stp|Enp|(-n & 0xFFFF);
-	ctlr->tdrx = NEXT(ctlr->tdrx, Ntdre);
-	outl(port+Rdp, Iena|Tdmd);
+		/*
+		 * Give ownership of the descriptor to the chip,
+		 * increment the software ring descriptor pointer
+		 * and tell the chip to poll.
+		 * There's no need to pad to ETHERMINTU
+		 * here as ApadXmit is set in CSR4.
+		 */
+		dre = &ctlr->tdr[ctlr->tdrh];
+		dre->bp = bp;
+		dre->addr = PADDR(bp->rp);
+		dre->md2 = 0;
+		dre->md1 = Own|Stp|Enp|(-BLEN(bp) & 0xFFFF);
+		ctlr->ntq++;
+		csr32w(ctlr, Rdp, Iena|Tdmd);
+		ctlr->tdrh = NEXT(ctlr->tdrh, Ntdre);
+	}
+}
 
-	ether->outpackets++;
-	return n;
+static void
+transmit(Ether* ether)
+{
+	Ctlr *ctlr;
+
+	ctlr = ether->ctlr;
+	ilock(ctlr);
+	txstart(ether);
+	iunlock(ctlr);
 }
 
 static void
 interrupt(Ureg*, void* arg)
 {
-	Ether *ether;
-	int port, csr0, status;
 	Ctlr *ctlr;
-	Rdre *rdre;
-	Etherpkt *pkt;
+	Ether *ether;
+	int csr0, len;
+	Dre *dre;
+	Block *bp;
 
 	ether = arg;
-	port = ether->port;
 	ctlr = ether->ctlr;
 
 	/*
 	 * Acknowledge all interrupts and whine about those that shouldn't
 	 * happen.
 	 */
-	csr0 = inl(port+Rdp);
-	outl(port+Rdp, Babl|Cerr|Miss|Merr|Rint|Tint|Iena);
+intrloop:
+	csr0 = csr32r(ctlr, Rdp) & 0xFFFF;
+	csr32w(ctlr, Rdp, Babl|Cerr|Miss|Merr|Rint|Tint|Iena);
 	if(csr0 & (Babl|Miss|Merr))
-		print("AMD70C970#%d: csr0 = 0x%uX\n", ether->ctlrno, csr0);
+		print("#l%d: csr0 = 0x%uX\n", ether->ctlrno, csr0);
+	if(!(csr0 & (Rint|Tint)))
+		return;
 
 	/*
 	 * Receiver interrupt: run round the descriptor ring logging
@@ -287,75 +333,112 @@ interrupt(Ureg*, void* arg)
 	 * until a descriptor is encountered still owned by the chip.
 	 */
 	if(csr0 & Rint){
-		rdre = &ctlr->rdr[ctlr->rdrx];
-		while(((status = rdre->rmd1) & Own) == 0){
-			if(status & RxErr){
-				if(status & RxBuff)
-					ether->buffs++;
-				if(status & RxCrc)
-					ether->crcs++;
-				if(status & RxOflo)
-					ether->overflows++;
+		dre = &ctlr->rdr[ctlr->rdrx];
+		while(!(dre->md1 & Own)){
+			if(dre->md1 & RxErr){
+				if(dre->md1 & RxBuff)
+					ctlr->rxbuff++;
+				if(dre->md1 & Crc)
+					ctlr->crc++;
+				if(dre->md1 & Oflo)
+					ctlr->oflo++;
+				if(dre->md1 & Fram)
+					ctlr->fram++;
 			}
-			else{
-				ether->inpackets++;
-				pkt = KADDR(rdre->rbadr);
-				etherrloop(ether, pkt, (rdre->rmd2 & 0x0FFF)-4);
+			else if(bp = iallocb(Rbsize)){
+				len = (dre->md2 & 0x0FFF)-4;
+				dre->bp->wp = dre->bp->rp+len;
+				etheriq(ether, dre->bp, 1);
+				dre->bp = bp;
+				dre->addr = PADDR(bp->rp);
 			}
 
 			/*
 			 * Finished with this descriptor, reinitialise it,
 			 * give it back to the chip, then on to the next...
 			 */
-			rdre->rmd2 = 0;
-			rdre->rmd1 = Own|(-Rbsize & 0xFFFF);
+			dre->md2 = 0;
+			dre->md1 = Own|(-Rbsize & 0xFFFF);
 
 			ctlr->rdrx = NEXT(ctlr->rdrx, Nrdre);
-			rdre = &ctlr->rdr[ctlr->rdrx];
+			dre = &ctlr->rdr[ctlr->rdrx];
 		}
 	}
 
 	/*
 	 * Transmitter interrupt: wakeup anyone waiting for a free descriptor.
 	 */
-	if(csr0 & Tint)
-		wakeup(&ctlr->trendez);
+	if(csr0 & Tint){
+		lock(ctlr);
+		while(ctlr->ntq){
+			dre = &ctlr->tdr[ctlr->tdri];
+			if(dre->md1 & Own)
+				break;
+	
+			if(dre->md1 & TxErr){
+				if(dre->md2 & Rtry)
+					ctlr->rtry++;
+				if(dre->md2 & Lcar)
+					ctlr->lcar++;
+				if(dre->md2 & Lcol)
+					ctlr->lcol++;
+				if(dre->md2 & Uflo)
+					ctlr->uflo++;
+				if(dre->md2 & TxBuff)
+					ctlr->txbuff++;
+				ether->oerrs++;
+			}
+	
+			freeb(dre->bp);
+	
+			ctlr->ntq--;
+			ctlr->tdri = NEXT(ctlr->tdri, Ntdre);
+		}
+		txstart(ether);
+		unlock(ctlr);
+	}
+	goto intrloop;
 }
 
-typedef struct Adapter Adapter;
-struct Adapter {
-	Adapter*	next;
-	int		port;
-	int		irq;
-};
-static Adapter *adapter;
+typedef struct Adapter {
+	int	port;
+	int	irq;
+	int	tbdf;
+} Adapter;
+static Block* adapter;
+
+static void
+amd79c970adapter(Block** bpp, int port, int irq, int tbdf)
+{
+	Block *bp;
+	Adapter *ap;
+
+	bp = allocb(sizeof(Adapter));
+	ap = (Adapter*)bp->rp;
+	ap->port = port;
+	ap->irq = irq;
+	ap->tbdf = tbdf;
+
+	bp->next = *bpp;
+	*bpp = bp;
+}
 
 static int
 amd79c90(Ether* ether)
 {
-	PCIcfg pcicfg;
-	static int devno = 0;
+	static Pcidev *p;
 	int irq, port;
-	Adapter *ap;
 
-	for(;;){
-		pcicfg.vid = 0x1022;
-		pcicfg.did = 0x2000;
-		if((devno = pcimatch(0, devno, &pcicfg)) == -1)
-			break;
-
-		port = pcicfg.baseaddr[0] & ~0x01;
-		irq = pcicfg.irq;
+	while(p = pcimatch(p, 0x1022, 0x2000)){
+		port = p->bar[0] & ~0x01;
+		irq = p->intl;
 		if(ether->port == 0 || ether->port == port){
 			ether->irq = irq;
+			ether->tbdf = p->tbdf;
 			return port;
 		}
 
-		ap = malloc(sizeof(Adapter));
-		ap->port = port;
-		ap->irq = irq;
-		ap->next = adapter;
-		adapter = ap;
+		amd79c970adapter(&adapter, port, irq, p->tbdf);
 	}
 
 	return 0;
@@ -365,22 +448,26 @@ static int
 reset(Ether* ether)
 {
 	int port, x;
-	Adapter *ap, **app;
+	Block *bp, **bpp;
+	Adapter *ap;
 	uchar ea[Eaddrlen];
 	Ctlr *ctlr;
 
 	/*
 	 * Any adapter matches if no ether->port is supplied, otherwise the
 	 * ports must match. First see if an adapter that fits the bill has
-	 * already been found. If not then scan for another.
+	 * already been found. If not, scan for another.
 	 */
 	port = 0;
-	for(app = &adapter, ap = *app; ap; app = &ap->next, ap = ap->next){
+	bpp = &adapter;
+	for(bp = *bpp; bp; bp = bp->next){
+		ap = (Adapter*)bp->rp;
 		if(ether->port == 0 || ether->port == ap->port){
 			port = ap->port;
 			ether->irq = ap->irq;
-			*app = ap->next;
-			free(ap);
+			ether->tbdf = ap->tbdf;
+			*bpp = bp->next;
+			freeb(bp);
 			break;
 		}
 	}
@@ -388,8 +475,17 @@ reset(Ether* ether)
 		return -1;
 
 	/*
+	 * Allocate a controller structure and start to initialise it.
+	 */
+	ether->ctlr = malloc(sizeof(Ctlr));
+	ctlr = ether->ctlr;
+	ilock(ctlr);
+	ctlr->init = 1;
+	ctlr->port = port;
+
+	/*
 	 * How to tell what mode the chip is in at this point - if it's in WORD
-	 * mode then the only 32-bit access allowedis a write to the RDP, which
+	 * mode then the only 32-bit access allowed is a write to the RDP, which
 	 * forces the chip to DWORD mode; if it's in DWORD mode then only DWORD
 	 * accesses are allowed?
 	 * Assuming a DWORD write is done to the RDP, what will be overwritten as
@@ -401,18 +497,18 @@ reset(Ether* ether)
 	 * Set the software style in BCR20 to be PCnet-PCI to ensure 32-bit access.
 	 * Set the auto pad transmit in CSR4.
 	 */
-	outl(port+Rdp, 0x00);
-	inl(port+Sreset);
-	outl(port+Rdp, Stop);
+	csr32w(ctlr, Rdp, 0x00);
+	csr32r(ctlr, Sreset);
+	csr32w(ctlr, Rdp, Stop);
 
-	outl(port+Rap, 20);
-	outl(port+Bdp, 0x0002);
+	csr32w(ctlr, Rap, 20);
+	csr32w(ctlr, Bdp, 0x0002);
 
-	outl(port+Rap, 4);
-	x = inl(port+Rdp) & 0xFFFF;
-	outl(port+Rdp, ApadXmt|x);
+	csr32w(ctlr, Rap, 4);
+	x = csr32r(ctlr, Rdp) & 0xFFFF;
+	csr32w(ctlr, Rdp, ApadXmt|x);
 
-	outl(port+Rap, 0);
+	csr32w(ctlr, Rap, 0);
 
 	/*
 	 * Check if the adapter's station address is to be over-ridden.
@@ -420,24 +516,21 @@ reset(Ether* ether)
 	 * station address in the initialisation block.
 	 */
 	memset(ea, 0, Eaddrlen);
-	if(memcmp(ea, ether->ea, Eaddrlen) == 0){
-		x = inl(port+Aprom);
-		ether->ea[0] = x & 0xFF;
-		ether->ea[1] = (x>>8) & 0xFF;
-		ether->ea[2] = (x>>16) & 0xFF;
-		ether->ea[3] = (x>>24) & 0xFF;
-		x = inl(port+Aprom+4);
-		ether->ea[4] = x & 0xFF;
-		ether->ea[5] = (x>>8) & 0xFF;
+	if(!memcmp(ea, ether->ea, Eaddrlen)){
+		x = csr32r(ctlr, Aprom);
+		ether->ea[0] = x;
+		ether->ea[1] = x>>8;
+		ether->ea[2] = x>>16;
+		ether->ea[3] = x>>24;
+		x = csr32r(ctlr, Aprom+4);
+		ether->ea[4] = x;
+		ether->ea[5] = x>>8;
 	}
 
 	/*
-	 * Allocate a controller structure and start to fill in the
-	 * initialisation block (must be DWORD aligned).
+	 * Start to fill in the initialisation block
+	 * (must be DWORD aligned).
 	 */
-	ether->ctlr = malloc(sizeof(Ctlr));
-	ctlr = ether->ctlr;
-
 	ctlr->iblock.rlen = Lognrdre<<4;
 	ctlr->iblock.tlen = Logntdre<<4;
 	memmove(ctlr->iblock.padr, ether->ea, sizeof(ctlr->iblock.padr));
@@ -452,26 +545,32 @@ reset(Ether* ether)
 	 * enables will be set later when attaching to the network.
 	 */
 	x = PADDR(&ctlr->iblock);
-	outl(port+Rap, 1);
-	outl(port+Rdp, x & 0xFFFF);
-	outl(port+Rap, 2);
-	outl(port+Rdp, (x>>16) & 0xFFFF);
-	outl(port+Rap, 3);
-	outl(port+Rdp, Idonm);
-	outl(port+Rap, 0);
-	outl(port+Rdp, Init);
+	csr32w(ctlr, Rap, 1);
+	csr32w(ctlr, Rdp, x & 0xFFFF);
+	csr32w(ctlr, Rap, 2);
+	csr32w(ctlr, Rdp, (x>>16) & 0xFFFF);
+	csr32w(ctlr, Rap, 3);
+	csr32w(ctlr, Rdp, Idon);
+	csr32w(ctlr, Rap, 0);
+	csr32w(ctlr, Rdp, Init);
 
-	while((inl(port+Rdp) & Idon) == 0)
+	while(!(csr32r(ctlr, Rdp) & Idon))
 		;
-	outl(port+Rdp, Idon|Stop);
-	
+	csr32w(ctlr, Rdp, Idon|Stop);
+	ctlr->init = 0;
+	iunlock(ctlr);
+
+	/*
+	 * Linkage to the generic ethernet driver.
+	 */
 	ether->port = port;
 	ether->attach = attach;
-	ether->write = write;
+	ether->transmit = transmit;
 	ether->interrupt = interrupt;
+	ether->ifstat = ifstat;
 
-	ether->promiscuous = promiscuous;
 	ether->arg = ether;
+	ether->promiscuous = promiscuous;
 
 	return 0;
 }

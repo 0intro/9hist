@@ -245,7 +245,7 @@ screenputs(char *s, int n)
 	Rune r;
 	char buf[4];
 
-	if((getstatus() & IE) == 0) {
+	if(!islo()) {
 		/* don't deadlock trying to print in interrupt */
 		if(!canlock(&screenlock))
 			return;	

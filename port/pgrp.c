@@ -79,7 +79,7 @@ closepgrp(Pgrp *p)
 		e = &p->mnthash[MNTHASH];
 		for(h = p->mnthash; h < e; h++) {
 			for(f = *h; f; f = next) {
-				close(f->from);
+				cclose(f->from);
 				mountfree(f->mount);
 				next = f->hash;
 				free(f);
@@ -190,7 +190,7 @@ closefgrp(Fgrp *f)
 	if(decref(f) == 0) {
 		for(i = 0; i <= f->maxfd; i++)
 			if(c = f->fd[i])
-				close(c);
+				cclose(c);
 
 		free(f);
 	}
@@ -220,7 +220,7 @@ mountfree(Mount *m)
 
 	while(m) {
 		f = m->next;
-		close(m->to);
+		cclose(m->to);
 		m->mountid = 0;
 		free(m);
 		m = f;

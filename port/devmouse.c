@@ -1,11 +1,11 @@
 #include	"u.h"
 #include	"../port/lib.h"
-#include	<libg.h>
 #include	"mem.h"
 #include	"dat.h"
 #include	"fns.h"
 #include	"../port/error.h"
 
+#include	<libg.h>
 #include	"screen.h"
 
 typedef struct Mouseinfo	Mouseinfo;
@@ -53,6 +53,7 @@ Cursor	arrow = {
 
 void	Cursortocursor(Cursor*);
 int	mousechanged(void*);
+static void mouseclock(void);
 
 enum{
 	Qdir,
@@ -67,11 +68,9 @@ Dirtab mousedir[]={
 	"mousectl",	{Qmousectl},	0,			0220,
 };
 
-#define	NMOUSE	(sizeof(mousedir)/sizeof(Dirtab))
-
 extern	Bitmap	gscreen;
 
-void
+static void
 mousereset(void)
 {
 	if(!conf.monitor)
@@ -79,9 +78,10 @@ mousereset(void)
 
 	curs = arrow;
 	Cursortocursor(&arrow);
+	addclock0link(mouseclock);
 }
 
-void
+static void
 mouseinit(void)
 {
 	if(!conf.monitor)
@@ -90,7 +90,7 @@ mouseinit(void)
 	cursoron(1);
 }
 
-Chan*
+static Chan*
 mouseattach(char *spec)
 {
 	if(!conf.monitor)
@@ -98,7 +98,7 @@ mouseattach(char *spec)
 	return devattach('m', spec);
 }
 
-Chan*
+static Chan*
 mouseclone(Chan *c, Chan *nc)
 {
 	nc = devclone(c, nc);
@@ -107,19 +107,19 @@ mouseclone(Chan *c, Chan *nc)
 	return nc;
 }
 
-int
+static int
 mousewalk(Chan *c, char *name)
 {
-	return devwalk(c, name, mousedir, NMOUSE, devgen);
+	return devwalk(c, name, mousedir, nelem(mousedir), devgen);
 }
 
-void
+static void
 mousestat(Chan *c, char *db)
 {
-	devstat(c, db, mousedir, NMOUSE, devgen);
+	devstat(c, db, mousedir, nelem(mousedir), devgen);
 }
 
-Chan*
+static Chan*
 mouseopen(Chan *c, int omode)
 {
 	switch(c->qid.path){
@@ -146,7 +146,7 @@ mouseopen(Chan *c, int omode)
 	return c;
 }
 
-void
+static void
 mousecreate(Chan*, char*, int, ulong)
 {
 	if(!conf.monitor)
@@ -154,19 +154,7 @@ mousecreate(Chan*, char*, int, ulong)
 	error(Eperm);
 }
 
-void
-mouseremove(Chan*)
-{
-	error(Eperm);
-}
-
-void
-mousewstat(Chan*, char*)
-{
-	error(Eperm);
-}
-
-void
+static void
 mouseclose(Chan *c)
 {
 	if(c->qid.path!=CHDIR && (c->flag&COPEN)){
@@ -184,7 +172,7 @@ mouseclose(Chan *c)
 }
 
 
-long
+static long
 mouseread(Chan *c, void *va, long n, ulong offset)
 {
 	char buf[4*12+1];
@@ -194,7 +182,7 @@ mouseread(Chan *c, void *va, long n, ulong offset)
 	p = va;
 	switch(c->qid.path){
 	case CHDIR:
-		return devdirread(c, va, n, mousedir, NMOUSE, devgen);
+		return devdirread(c, va, n, mousedir, nelem(mousedir), devgen);
 
 	case Qcursor:
 		if(offset != 0)
@@ -231,13 +219,7 @@ mouseread(Chan *c, void *va, long n, ulong offset)
 	return 0;
 }
 
-Block*
-mousebread(Chan *c, long n, ulong offset)
-{
-	return devbread(c, n, offset);
-}
-
-long
+static long
 mousewrite(Chan *c, void *va, long n, ulong)
 {
 	char *p;
@@ -305,11 +287,23 @@ mousewrite(Chan *c, void *va, long n, ulong)
 	return -1;
 }
 
-long
-mousebwrite(Chan *c, Block *bp, ulong offset)
-{
-	return devbwrite(c, bp, offset);
-}
+Dev mousedevtab = {
+	mousereset,
+	mouseinit,
+	mouseattach,
+	mouseclone,
+	mousewalk,
+	mousestat,
+	mouseopen,
+	mousecreate,
+	mouseclose,
+	mouseread,
+	devbread,
+	mousewrite,
+	devbwrite,
+	devremove,
+	devwstat,
+};
 
 void
 Cursortocursor(Cursor *c)
@@ -324,7 +318,7 @@ Cursortocursor(Cursor *c)
 /*
  *  called by the clock routine to redraw the cursor
  */
-void
+static void
 mouseclock(void)
 {
 	if(mouse.track){

@@ -8,6 +8,7 @@
 #include "../port/netif.h"
 
 #include "etherif.h"
+#include "ether8390.h"
 
 /*
  * Driver written for the 'Notebook Computer Ethernet LAN Adapter',
@@ -26,12 +27,13 @@ enum {
 };
 
 static int
-reset(Ether *ether)
+reset(Ether* ether)
 {
 	ushort buf[16];
 	ulong port;
-	Dp8390 *dp8390;
+	Dp8390 *ctlr;
 	int i;
+	uchar ea[Eaddrlen];
 
 	/*
 	 * Set up the software configuration.
@@ -49,16 +51,24 @@ reset(Ether *ether)
 	port = ether->port;
 
 	ether->ctlr = malloc(sizeof(Dp8390));
-	dp8390 = ether->ctlr;
-	dp8390->bit16 = 1;
-	dp8390->ram = 0;
+	ctlr = ether->ctlr;
+	ctlr->width = 2;
+	ctlr->ram = 0;
 
-	dp8390->dp8390 = port;
-	dp8390->data = port+Data;
+	ctlr->port = port;
+	ctlr->data = port+Data;
 
-	dp8390->tstart = HOWMANY(ether->mem, Dp8390BufSz);
-	dp8390->pstart = dp8390->tstart + HOWMANY(sizeof(Etherpkt), Dp8390BufSz);
-	dp8390->pstop = dp8390->tstart + HOWMANY(ether->size, Dp8390BufSz);
+	ctlr->tstart = HOWMANY(ether->mem, Dp8390BufSz);
+	ctlr->pstart = ctlr->tstart + HOWMANY(sizeof(Etherpkt), Dp8390BufSz);
+	ctlr->pstop = ctlr->tstart + HOWMANY(ether->size, Dp8390BufSz);
+
+	ctlr->dummyrr = 1;
+	for(i = 0; i < ether->nopt; i++){
+		if(strcmp(ether->opt[i], "nodummyrr"))
+			continue;
+		ctlr->dummyrr = 0;
+		break;
+	}
 
 	/*
 	 * Reset the board. This is done by doing a read
@@ -73,29 +83,29 @@ reset(Ether *ether)
 	 * Init the (possible) chip, then use the (possible)
 	 * chip to read the (possible) PROM for ethernet address
 	 * and a marker byte.
-	 * We could just look at the DP8390 command register after
+	 * Could just look at the DP8390 command register after
 	 * initialisation has been tried, but that wouldn't be
 	 * enough, there are other ethernet boards which could
 	 * match.
 	 */
 	dp8390reset(ether);
 	memset(buf, 0, sizeof(buf));
-	dp8390read(dp8390, buf, 0, sizeof(buf));
+	dp8390read(ctlr, buf, 0, sizeof(buf));
 	if((buf[0x0E] & 0xFF) != 0x57 || (buf[0x0F] & 0xFF) != 0x57){
 		free(ether->ctlr);
 		return -1;
 	}
 
 	/*
-	 * Stupid machine. We asked for shorts, we got shorts,
-	 * although the PROM is a byte array.
-	 * Now we can set the ethernet address.
+	 * Stupid machine. Shorts were asked for,
+	 * shorts were delivered, although the PROM is a byte array.
+	 * Set the ethernet address.
 	 */
-	if((ether->ea[0]|ether->ea[1]|ether->ea[2]|ether->ea[3]|ether->ea[4]|ether->ea[5]) == 0){
+	memset(ea, 0, Eaddrlen);
+	if(memcmp(ea, ether->ea, Eaddrlen) == 0){
 		for(i = 0; i < sizeof(ether->ea); i++)
 			ether->ea[i] = buf[i];
 	}
-
 	dp8390setea(ether);
 
 	return 0;

@@ -190,7 +190,7 @@ readdata(Tfs *fs, ulong bno, uchar *buf, int *lenp)
 {
 	if(bno >= fs->nblocks)
 		return 0;
-	if(devtab[fs->c->type].read(fs->c, buf, Blen, Blen*bno) != Blen)
+	if(devtab[fs->c->type]->read(fs->c, buf, Blen, Blen*bno) != Blen)
 		error(Eio);
 	return validdata(fs, buf, lenp);
 }
@@ -217,7 +217,7 @@ writedata(Tfs *fs, ulong bno, ulong next, uchar *buf, int len, int last)
 	memmove(md.data, buf, len);
 	md.sum = 0 - checksum((uchar*)&md);
 	
-	if(devtab[fs->c->type].write(fs->c, &md, Blen, Blen*bno) != Blen)
+	if(devtab[fs->c->type]->write(fs->c, &md, Blen, Blen*bno) != Blen)
 		error(Eio);
 }
 
@@ -238,7 +238,7 @@ writedir(Tfs *fs, Tfile *f)
 	PUTS(md->pin, f->pin);
 	md->sum = 0 - checksum(buf);
 
-	if(devtab[fs->c->type].write(fs->c, buf, Blen, Blen*f->bno) != Blen)
+	if(devtab[fs->c->type]->write(fs->c, buf, Blen, Blen*f->bno) != Blen)
 		error(Eio);
 }
 
@@ -253,7 +253,7 @@ freeblocks(Tfs *fs, ulong bno, ulong bend)
 
 	while(bno != bend && bno != Notabno){
 		mapclr(fs, bno);
-		if(devtab[fs->c->type].read(fs->c, buf, Blen, Blen*bno) != Blen)
+		if(devtab[fs->c->type]->read(fs->c, buf, Blen, Blen*bno) != Blen)
 			break;
 		md = validdata(fs, buf, 0);
 		if(md == 0)
@@ -276,10 +276,10 @@ freefile(Tfs *fs, Tfile *f, ulong bend)
 
 	/* change file type to free on medium */
 	if(f->bno != Notabno){
-		if(devtab[fs->c->type].read(fs->c, buf, Blen, Blen*f->bno) != Blen)
+		if(devtab[fs->c->type]->read(fs->c, buf, Blen, Blen*f->bno) != Blen)
 			return;
 		buf[0] = Tagfree;
-		devtab[fs->c->type].write(fs->c, buf, Blen, Blen*f->bno);
+		devtab[fs->c->type]->write(fs->c, buf, Blen, Blen*f->bno);
 		mapclr(fs, f->bno);
 	}
 
@@ -364,7 +364,7 @@ fsinit(Tfs *fs)
 	Mdir *mdir;
 	Mdata *mdata;
 
-	devtab[fs->c->type].stat(fs->c, dbuf);
+	devtab[fs->c->type]->stat(fs->c, dbuf);
 	convM2D(dbuf, &d);
 	fs->nblocks = d.length/Blen;
 	if(fs->nblocks < 3)
@@ -379,7 +379,7 @@ fsinit(Tfs *fs)
 
 	/* find files */
 	for(bno = 0; bno < fs->nblocks; bno++){
-		n = devtab[fs->c->type].read(fs->c, buf, Blen, Blen*bno);
+		n = devtab[fs->c->type]->read(fs->c, buf, Blen, Blen*bno);
 		if(n != Blen)
 			break;
 
@@ -408,7 +408,7 @@ fsinit(Tfs *fs)
 				freefile(fs, f, bno);
 				break;
 			}
-			n = devtab[fs->c->type].read(fs->c, buf, Blen, Blen*bno);
+			n = devtab[fs->c->type]->read(fs->c, buf, Blen, Blen*bno);
 			if(n != Blen){
 				freefile(fs, f, bno);
 				break;
@@ -459,19 +459,14 @@ tinyfsgen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
 	return 1;
 }
 
-void
+static void
 tinyfsreset(void)
 {
 	if(Nlen > NAMELEN)
 		panic("tinyfsreset");
 }
 
-void
-tinyfsinit(void)
-{
-}
-
-Chan *
+static Chan*
 tinyfsattach(char *spec)
 {
 	Tfs *fs;
@@ -493,7 +488,7 @@ tinyfsattach(char *spec)
 
 	cc = namec(p, Aopen, ORDWR, 0);
 	if(waserror()){
-		close(cc);
+		cclose(cc);
 		nexterror();
 	}
 
@@ -508,7 +503,7 @@ tinyfsattach(char *spec)
 	if(i < Maxfs){
 		fs->r++;
 		qunlock(&fs->ql);
-		close(cc);
+		cclose(cc);
 	} else {
 		for(fs = tinyfs.fs; fs < &tinyfs.fs[Maxfs]; fs++){
 			qlock(&fs->ql);
@@ -536,7 +531,7 @@ tinyfsattach(char *spec)
 	return c;
 }
 
-Chan *
+static Chan*
 tinyfsclone(Chan *c, Chan *nc)
 {
 	Tfs *fs;
@@ -550,7 +545,7 @@ tinyfsclone(Chan *c, Chan *nc)
 	return devclone(c, nc);
 }
 
-int
+static int
 tinyfswalk(Chan *c, char *name)
 {
 	int n;
@@ -568,13 +563,13 @@ tinyfswalk(Chan *c, char *name)
 	return n;
 }
 
-void
+static void
 tinyfsstat(Chan *c, char *db)
 {
 	devstat(c, db, 0, 0, tinyfsgen);
 }
 
-Chan *
+static Chan*
 tinyfsopen(Chan *c, int omode)
 {
 	Tfs *fs;
@@ -610,7 +605,7 @@ tinyfsopen(Chan *c, int omode)
 	return devopen(c, omode, 0, 0, tinyfsgen);
 }
 
-void
+static void
 tinyfscreate(Chan *c, char *name, int omode, ulong perm)
 {
 	Tfs *fs;
@@ -634,7 +629,7 @@ tinyfscreate(Chan *c, char *name, int omode, ulong perm)
 	c->mode = openmode(omode);
 }
 
-void
+static void
 tinyfsremove(Chan *c)
 {
 	Tfs *fs;
@@ -649,14 +644,7 @@ tinyfsremove(Chan *c)
 	qunlock(&fs->ql);
 }
 
-void
-tinyfswstat(Chan *c, char *dp)
-{
-	USED(c, dp);
-	error(Eperm);
-}
-
-void
+static void
 tinyfsclose(Chan *c)
 {
 	Tfs *fs;
@@ -706,13 +694,13 @@ tinyfsclose(Chan *c)
 		if(fs->map)
 			free(fs->map);
 		fs->map = 0;
-		close(fs->c);
+		cclose(fs->c);
 		fs->c = 0;
 	}
 	qunlock(&fs->ql);
 }
 
-long
+static long
 tinyfsread(Chan *c, void *a, long n, ulong offset)
 {
 	Tfs *fs;
@@ -780,17 +768,11 @@ tinyfsread(Chan *c, void *a, long n, ulong offset)
 	return sofar;
 }
 
-Block*
-tinyfsbread(Chan *c, long n, ulong offset)
-{
-	return devbread(c, n, offset);
-}
-
 /*
  *  if we get a write error in this routine, blocks will
  *  be lost.  They should be recovered next fsinit.
  */
-long
+static long
 tinyfswrite(Chan *c, void *a, long n, ulong offset)
 {
 	Tfs *fs;
@@ -889,8 +871,20 @@ tinyfswrite(Chan *c, void *a, long n, ulong offset)
 	return n;
 }
 
-long
-tinyfsbwrite(Chan *c, Block *bp, ulong offset)
-{
-	return devbwrite(c, bp, offset);
-}
+Dev tinyfsdevtab = {
+	tinyfsreset,
+	devinit,
+	tinyfsattach,
+	tinyfsclone,
+	tinyfswalk,
+	tinyfsstat,
+	tinyfsopen,
+	tinyfscreate,
+	tinyfsclose,
+	tinyfsread,
+	devbread,
+	tinyfswrite,
+	devbwrite,
+	tinyfsremove,
+	devwstat,
+};

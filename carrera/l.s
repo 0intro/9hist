@@ -123,6 +123,12 @@ TEXT	spllo(SB), $0
 TEXT	spldone(SB), $0
 	RET
 
+TEXT	islo(SB), $0
+	MOVW	M(STATUS), R1
+	AND	$IE, R1
+	WAIT
+	RET
+
 TEXT	wbflush(SB), $-4
 	RET
 
@@ -137,18 +143,6 @@ TEXT	gotolabel(SB), $-4
 	MOVW	4(R1), R31
 	MOVW	$1, R1
 	RET
-
-TEXT	gotopc(SB), $8
-	MOVW	R1, 0(FP)		/* save arguments for later */
-	MOVW	$(64*1024), R7
-	MOVW	R7, 8(SP)
-	JAL	icflush(SB)
-	MOVW	0(FP), R7
-	MOVW	_argc(SB), R4
-	MOVW	_argv(SB), R5
-	MOVW	_env(SB), R6
-	MOVW	R0, 4(SP)
-	JMP	(R7)
 
 TEXT	puttlb(SB), $0
 	MOVW	R1, M(TLBVIRT)
@@ -790,76 +784,4 @@ TEXT	rdcount(SB), $0
 
 TEXT	wrcompare(SB), $0
 	MOVW	R1, M(COMPARE)
-	RET
-
-TEXT	uvld(SB), $-4		/* uvld(address, dst) */
-	MOVW	4(FP), R2
-	MOVV	0(R1), R5
-	MOVV	R5, 0(R2)
-	RET
-
-TEXT	uvst(SB), $-4		/* uvst(address, src) */
-	MOVW	4(FP), R2
-	MOVV	0(R2), R5
-	MOVV	R5, 0(R1)
-	RET
-
-TEXT	fwblock(SB), $-4	/* fwblock(void*port, void *block, csum) */
-	MOVW	4(FP), R2
-	MOVW	8(FP), R6
-	SLLV	$32, R6
-	SRLV	$32, R6		/* zero extend */
-
-	MOVW	$16, R4
-fwloop:
-	MOVV	0(R2), R5
-	MOVV	R5, 0(R1)
-	XOR	R5, R6
-	MOVV	8(R2), R7
-	MOVV	R7, 0(R1)
-	XOR	R7, R6
-	MOVV	16(R2), R8
-	MOVV	R8, 0(R1)
-	XOR	R8, R6
-	MOVV	24(R2), R9
-	MOVV	R9, 0(R1)
-	XOR	R9, R6
-
-	ADD	$32, R2
-	SUB	$1, R4
-	BNE	R4, fwloop
-
-	MOVW	R6, R1
-	SRLV	$32, R6
-	XOR	R6, R1
-	RET
-
-TEXT	frblock(SB), $-4	/* frblock(void*port, void *block, csum) */
-	MOVW	4(FP), R2
-	MOVW	8(FP), R6
-	SLLV	$32, R6
-	SRLV	$32, R6		/* zero extend */
-
-	MOVW	$16, R4
-frloop:
-	MOVV	0(R1), R5
-	MOVV	R5, 0(R2)
-	XOR	R5, R6
-	MOVV	0(R1), R7
-	MOVV	R7, 8(R2)
-	XOR	R7, R6
-	MOVV	0(R1), R8
-	MOVV	R8, 16(R2)
-	XOR	R8, R6
-	MOVV	0(R1), R9
-	MOVV	R9, 24(R2)
-	XOR	R9, R6
-
-	ADD	$32, R2
-	SUB	$1, R4
-	BNE	R4, frloop
-
-	MOVW	R6, R1
-	SRLV	$32, R6
-	XOR	R6, R1
 	RET

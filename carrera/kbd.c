@@ -6,6 +6,8 @@
 #include	"io.h"
 #include	"../port/error.h"
 
+#include	<libg.h>
+#include	"screen.h"
 
 enum
 {

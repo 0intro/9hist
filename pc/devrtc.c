@@ -45,52 +45,34 @@ enum{
 	Qnvram,
 };
 
-#define	NRTC	2
 Dirtab rtcdir[]={
 	"nvram",	{Qnvram, 0},	Nvsize,	0664,
 	"rtc",		{Qrtc, 0},	0,	0664,
 };
 
-ulong rtc2sec(Rtc*);
-void sec2rtc(ulong, Rtc*);
-int *yrsize(int);
+static ulong rtc2sec(Rtc*);
+static void sec2rtc(ulong, Rtc*);
 
-void
-rtcreset(void)
-{
-}
-
-void
-rtcinit(void)
-{
-}
-
-Chan*
-rtcattach(char *spec)
+static Chan*
+rtcattach(char* spec)
 {
 	return devattach('r', spec);
 }
 
-Chan*
-rtcclone(Chan *c, Chan *nc)
+static int	 
+rtcwalk(Chan* c, char* name)
 {
-	return devclone(c, nc);
+	return devwalk(c, name, rtcdir, nelem(rtcdir), devgen);
 }
 
-int	 
-rtcwalk(Chan *c, char *name)
+static void	 
+rtcstat(Chan* c, char* dp)
 {
-	return devwalk(c, name, rtcdir, NRTC, devgen);
+	devstat(c, dp, rtcdir, nelem(rtcdir), devgen);
 }
 
-void	 
-rtcstat(Chan *c, char *dp)
-{
-	devstat(c, dp, rtcdir, NRTC, devgen);
-}
-
-Chan*
-rtcopen(Chan *c, int omode)
+static Chan*
+rtcopen(Chan* c, int omode)
 {
 	omode = openmode(omode);
 	switch(c->qid.path){
@@ -102,16 +84,10 @@ rtcopen(Chan *c, int omode)
 		if(strcmp(up->user, eve)!=0)
 			error(Eperm);
 	}
-	return devopen(c, omode, rtcdir, NRTC, devgen);
+	return devopen(c, omode, rtcdir, nelem(rtcdir), devgen);
 }
 
-void	 
-rtccreate(Chan*, char*, int, ulong)
-{
-	error(Eperm);
-}
-
-void	 
+static void	 
 rtcclose(Chan*)
 {
 }
@@ -164,7 +140,7 @@ _rtctime(void)
 	return rtc2sec(&rtc);
 }
 
-Lock rtlock;
+static Lock rtlock;
 
 long
 rtctime(void)
@@ -189,14 +165,14 @@ rtctime(void)
 	return t;
 }
 
-long	 
-rtcread(Chan *c, void *buf, long n, ulong offset)
+static long	 
+rtcread(Chan* c, void* buf, long n, ulong offset)
 {
 	ulong t;
 	char *a;
 
 	if(c->qid.path & CHDIR)
-		return devdirread(c, buf, n, rtcdir, NRTC, devgen);
+		return devdirread(c, buf, n, rtcdir, nelem(rtcdir), devgen);
 
 	switch(c->qid.path){
 	case Qrtc:
@@ -226,16 +202,10 @@ rtcread(Chan *c, void *buf, long n, ulong offset)
 	return 0;
 }
 
-Block*
-rtcbread(Chan *c, long n, ulong offset)
-{
-	return devbread(c, n, offset);
-}
-
 #define PUTBCD(n,o) bcdclock[o] = (n % 10) | (((n / 10) % 10)<<4)
 
-long	 
-rtcwrite(Chan *c, void *buf, long n, ulong offset)
+static long	 
+rtcwrite(Chan* c, void* buf, long n, ulong offset)
 {
 	int t;
 	char *a;
@@ -306,23 +276,23 @@ rtcwrite(Chan *c, void *buf, long n, ulong offset)
 	return 0;
 }
 
-long
-rtcbwrite(Chan *c, Block *bp, ulong offset)
-{
-	return devbwrite(c, bp, offset);
-}
-
-void	 
-rtcremove(Chan*)
-{
-	error(Eperm);
-}
-
-void	 
-rtcwstat(Chan*, char*)
-{
-	error(Eperm);
-}
+Dev rtcdevtab = {
+	devreset,
+	devinit,
+	rtcattach,
+	devclone,
+	rtcwalk,
+	rtcstat,
+	rtcopen,
+	devcreate,
+	rtcclose,
+	rtcread,
+	devbread,
+	rtcwrite,
+	devbwrite,
+	devremove,
+	devwstat,
+};
 
 #define SEC2MIN 60L
 #define SEC2HOUR (60L*SEC2MIN)
@@ -343,7 +313,7 @@ static	int	ldmsize[] =
 /*
  *  return the days/month for the given year
  */
-int *
+static int*
 yrsize(int yr)
 {
 	if((yr % 4) == 0)
@@ -355,7 +325,7 @@ yrsize(int yr)
 /*
  *  compute seconds since Jan 1 1970
  */
-ulong
+static ulong
 rtc2sec(Rtc *rtc)
 {
 	ulong secs;
@@ -390,7 +360,7 @@ rtc2sec(Rtc *rtc)
 /*
  *  compute rtc from seconds since Jan 1 1970
  */
-void
+static void
 sec2rtc(ulong secs, Rtc *rtc)
 {
 	int d;
@@ -439,9 +409,26 @@ sec2rtc(ulong secs, Rtc *rtc)
 	return;
 }
 
+static Lock nvramlock;
+
 uchar
-nvramread(int offset)
+nvramread(int addr)
 {
-	outb(Paddr, offset);
-	return inb(Pdata);
+	uchar data;
+
+	lock(&nvramlock);
+	outb(Paddr, addr);
+	data = inb(Pdata);
+	unlock(&nvramlock);
+
+	return data;
+}
+
+void
+nvramwrite(int addr, uchar data)
+{
+	lock(&nvramlock);
+	outb(Paddr, addr);
+	outb(Pdata, data);
+	unlock(&nvramlock);
 }

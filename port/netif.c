@@ -6,8 +6,6 @@
 #include	"../port/error.h"
 #include	"../port/netif.h"
 
-uchar etherbcast[6] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
-
 static int netown(Netfile*, char*, int);
 static int openfile(Netif*, int);
 static char* matchtoken(char*, char*);
@@ -18,7 +16,8 @@ static char* matchtoken(char*, char*);
 void
 netifinit(Netif *nif, char *name, int nfile, ulong limit)
 {
-	nif->name = name;
+	strncpy(nif->name, name, NAMELEN-1);
+	nif->name[NAMELEN-1] = 0;
 	nif->nfile = nfile;
 	nif->f = xalloc(nfile*sizeof(Netfile*));
 	memset(nif->f, 0, nfile*sizeof(Netfile*));
@@ -197,6 +196,15 @@ netifread(Netif *nif, Chan *c, void *a, long n, ulong offset)
 	return -1;	/* not reached */
 }
 
+Block*
+netifbread(Netif *nif, Chan *c, long n, ulong offset)
+{
+	if((c->qid.path & CHDIR) || NETTYPE(c->qid.path) != Ndataqid)
+		return devbread(c, n, offset);
+
+	return qbread(nif->f[NETID(c->qid.path)]->in, n);
+}
+
 /*
  *  the devxxx.c that calls us handles writing data, it knows best
  */
@@ -224,8 +232,8 @@ netifwrite(Netif *nif, Chan *c, void *a, long n)
 	} else if(matchtoken(buf, "promiscuous")){
 		f->prom = 1;
 		nif->prom++;
-		if(nif->prom == 1)
-			(*nif->promiscuous)(nif->arg, 1);
+		if(nif->prom == 1 && nif->promiscuous != nil)
+			nif->promiscuous(nif->arg, 1);
 	}
 	qunlock(nif);
 	return n;
@@ -273,8 +281,8 @@ netifclose(Netif *nif, Chan *c)
 	if(--(f->inuse) == 0){
 		if(f->prom){
 			qlock(nif);
-			if(--(nif->prom) == 0)
-				(*nif->promiscuous)(nif->arg, 0);
+			if(--(nif->prom) == 0 && nif->promiscuous != nil)
+				nif->promiscuous(nif->arg, 0);
 			qunlock(nif);
 			f->prom = 0;
 		}
@@ -423,6 +431,7 @@ ulong
 nhgetl(void *p)
 {
 	uchar *a;
+
 	a = p;
 	return (a[0]<<24)|(a[1]<<16)|(a[2]<<8)|(a[3]<<0);
 }
@@ -431,6 +440,7 @@ ushort
 nhgets(void *p)
 {
 	uchar *a;
+
 	a = p;
 	return (a[0]<<8)|(a[1]<<0);
 }

@@ -11,21 +11,21 @@ Ref	noteidalloc;
 struct
 {
 	Lock;
-	Proc	*arena;
-	Proc	*free;
+	Proc*	arena;
+	Proc*	free;
 }procalloc;
 
 struct
 {
 	Lock;
-	Waitq	*free;
+	Waitq*	free;
 }waitqalloc;
 
 typedef struct
 {
 	Lock;
-	Proc	*head;
-	Proc	*tail;
+	Proc*	head;
+	Proc*	tail;
 	int	n;
 } Schedq;
 
@@ -365,6 +365,8 @@ procinit0(void)		/* bad planning - clashes with devproc.c */
 	int i;
 
 	procalloc.free = xalloc(conf.nproc*sizeof(Proc));
+	if(procalloc.free == nil)
+		panic("cannot allocate %d procs\n", conf.nproc);
 	procalloc.arena = procalloc.free;
 
 	p = procalloc.free;
@@ -435,7 +437,7 @@ sleep(Rendez *r, int (*f)(void*), void *arg)
 int
 tfn(void *arg)
 {
-	return MACHP(0)->ticks >= up->twhen || (*up->tfn)(arg);
+	return MACHP(0)->ticks >= up->twhen || up->tfn(arg);
 }
 
 void
@@ -649,7 +651,7 @@ pexit(char *exitstr, int freemem)
 	if(up->rgrp)
 		closergrp(up->rgrp);
 
-	close(up->dot);
+	cclose(up->dot);
 	closepgrp(up->pgrp);
 
 	/*
@@ -985,6 +987,7 @@ exhausted(char *resource)
 	char buf[ERRLEN];
 
 	sprint(buf, "no free %s", resource);
+	iprint("%s\n", buf);
 	error(buf);
 }
 

@@ -17,80 +17,82 @@ enum{
 Dirtab XXXtab[]={
 	"data",		{Qdata, 0},	0,	0600,
 };
-#define NXXXtab (sizeof(XXXtab)/sizeof(Dirtab))
 
-void
-XXXreset(void)
+static void
+XXXreset(void)						/* default in dev.c */
 {
 }
 
-void
-XXXinit(void)
+static void
+XXXinit(void)						/* default in dev.c */
 {
 }
 
-Chan *
-XXXattach(char *spec)
+static Chan*
+XXXattach(char* spec)
 {
 	return devattach('X', spec);
 }
 
-Chan *
-XXXclone(Chan *c, Chan *nc)
+static Chan*
+XXXclone(Chan* c, Chan* nc)				/* default in dev.c */
 {
 	return devclone(c, nc);
 }
 
-int
-XXXwalk(Chan *c, char *name)
+static int
+XXXwalk(Chan* c, char* name)
 {
-	return devwalk(c, name, XXXtab, NXXXtab, devgen);
+	return devwalk(c, name, XXXtab, nelem(XXXtab), devgen);
 }
 
-void
-XXXstat(Chan *c, char *db)
+static void
+XXXstat(Chan* c, char* db)
 {
-	devstat(c, db, XXXtab, NXXXtab, devgen);
+	devstat(c, db, XXXtab, nelem(XXXtab), devgen);
 }
 
-Chan *
-XXXopen(Chan *c, int omode)
+static Chan*
+XXXopen(Chan* c, int omode)
 {
-	return devopen(c, omode, XXXtab, NXXXtab, devgen);
+	return devopen(c, omode, XXXtab, nelem(XXXtab), devgen);
 }
 
-void
-XXXcreate(Chan *c, char *name, int omode, ulong perm)
+static void
+XXXcreate(Chan* c, char* name, int omode, ulong perm)	/* default in dev.c */
 {
 	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
-void
-XXXremove(Chan *c)
+static void
+XXXremove(Chan* c)					/* default in dev.c */
 {
 	USED(c);
 	error(Eperm);
 }
 
-void
-XXXwstat(Chan *c, char *dp)
+static void
+XXXwstat(Chan* c, char* dp)				/* default in dev.c */
 {
 	USED(c, dp);
 	error(Eperm);
 }
 
-void
-XXXclose(Chan *c)
+static void
+XXXclose(Chan* c)
 {
+	USED(c);
 }
 
-long
-XXXread(Chan *c, void *a, long n, ulong offset)
+static long
+XXXread(Chan* c, void* a, long n, ulong offset)
 {
+	USED(offset);
+
 	switch(c->qid.path & ~CHDIR){
 	case Qdir:
-		return devdirread(c, a, n, XXXtab, NXXXtab, devgen);
+		return devdirread(c, a, n, XXXtab, nelem(XXXtab), devgen);
 	case Qdata:
 		break;
 	default:
@@ -100,15 +102,17 @@ XXXread(Chan *c, void *a, long n, ulong offset)
 	return n;
 }
 
-Block*
-XXXbread(Chan *c, long n, ulong offset)
+static Block*
+XXXbread(Chan* c, long n, ulong offset)			/* default in dev.c */
 {
 	return devbread(c, n, offset);
 }
 
-long
-XXXwrite(Chan *c, char *a, long n, ulong offset)
+static long
+XXXwrite(Chan* c, char* a, long n, ulong offset)
 {
+	USED(a, offset);
+
 	switch(c->qid.path & ~CHDIR){
 	case Qdata:
 		break;
@@ -118,8 +122,26 @@ XXXwrite(Chan *c, char *a, long n, ulong offset)
 	return n;
 }
 
-long
-XXXbwrite(Chan *c, Block *bp, ulong offset)
+static long
+XXXbwrite(Chan* c, Block* bp, ulong offset)		/* default in dev.c */
 {
 	return devbwrite(c, bp, offset);
 }
+
+Dev XXXdevtab = {					/* defaults in dev.c */
+	XXXreset,					/* devreset */
+	XXXinit,					/* devinit */
+	XXXattach,
+	XXXclone,					/* devclone */
+	XXXwalk,
+	XXXstat,
+	XXXopen,
+	XXXcreate,					/* devcreate */
+	XXXclose,
+	XXXread,
+	XXXbread,					/* devbread */
+	XXXwrite,
+	XXXbwrite,					/* devbwrite */
+	XXXremove,					/* devremove */
+	XXXwstat,					/* devwstat */
+};

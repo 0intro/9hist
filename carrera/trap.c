@@ -482,7 +482,7 @@ dumpregs(Ureg *ur)
 		print("registers for kernel\n");
 
 	l = &ur->status;
-	for(i=0; i<sizeof regname/sizeof(char*); i+=2, l+=2)
+	for(i=0; i<nelem(regname); i+=2, l+=2)
 		print("%s\t0x%.8lux\t%s\t0x%.8lux\n",
 				regname[i], l[0], regname[i+1], l[1]);
 }
@@ -711,7 +711,7 @@ syscall(Ureg *aur)
 	up->s = *((Sargs*)(sp+BY2WD));
 	up->psstate = sysctab[up->scallnr];
 
-	ret = (*systab[up->scallnr])(up->s.args);
+	ret = systab[up->scallnr](up->s.args);
 	poperror();
 
 error:
@@ -757,7 +757,7 @@ void
 linkproc(void)
 {
 	spllo();
-	(*up->kpfun)(up->kparg);
+	up->kpfun(up->kparg);
 }
 
 void

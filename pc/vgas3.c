@@ -14,7 +14,7 @@
  * generic S3 chipset.
  * Assume we're in enhanced mode.
  */
-static Lock s3pagelock;
+static Lock s3lock;
 static ulong storage;
 static Point hotpoint;
 
@@ -57,7 +57,7 @@ vsyncactive(void)
 }
 
 static void
-disable(void)
+_disable(void)
 {
 	uchar crt45;
 
@@ -70,11 +70,21 @@ disable(void)
 }
 
 static void
+disable(void)
+{
+	lock(&s3lock);
+	_disable();
+	unlock(&s3lock);
+}
+
+static void
 enable(void)
 {
 	int i;
 
-	disable();
+	lock(&s3lock);
+
+	_disable();
 
 	/*
 	 * Cursor colours. Set both the CR0[EF] and the colour
@@ -105,6 +115,8 @@ enable(void)
 	vgaxo(Crtx, 0x55, vgaxi(Crtx, 0x55)|0x10);
 	vsyncactive();
 	vgaxo(Crtx, 0x45, 0x01);
+
+	unlock(&s3lock);
 }
 
 static void
@@ -119,11 +131,11 @@ load(Cursor *c)
 	 * If it's the same as the last cursor we loaded,
 	 * just make sure it's enabled.
 	 */
-	lock(&s3pagelock);
+	lock(&s3lock);
 	if(memcmp(c, &curcursor, sizeof(Cursor)) == 0){
 		vsyncactive();
 		vgaxo(Crtx, 0x45, 0x01);
-		unlock(&s3pagelock);
+		unlock(&s3lock);
 		return;
 	}
 	memmove(&curcursor, c, sizeof(Cursor));
@@ -135,7 +147,7 @@ load(Cursor *c)
 	 * pointer to the two planes. What if this crosses
 	 * into a new page?
 	 */
-	disable();
+	_disable();
 
 	sets3page(storage>>16);
 	p = ((uchar*)gscreen.base) + (storage & 0xFFFF);
@@ -177,7 +189,7 @@ load(Cursor *c)
 	vsyncactive();
 	vgaxo(Crtx, 0x45, 0x01);
 
-	unlock(&s3pagelock);
+	unlock(&s3lock);
 }
 
 static int
@@ -185,7 +197,7 @@ move(Point p)
 {
 	int x, xo, y, yo;
 
-	if(canlock(&s3pagelock) == 0)
+	if(canlock(&s3lock) == 0)
 		return 1;
 
 	/*
@@ -217,7 +229,7 @@ move(Point p)
 	vgaxo(Crtx, 0x4F, yo);
 	vgaxo(Crtx, 0x48, (y>>8) & 0x07);
 
-	unlock(&s3pagelock);
+	unlock(&s3lock);
 	return 0;
 }
 
@@ -234,13 +246,9 @@ Hwgc s3hwgc = {
 static void
 s3page(int page)
 {
-	if(hwgc == &s3hwgc){
-		lock(&s3pagelock);
-		sets3page(page);
-		unlock(&s3pagelock);
-	}
-	else
-		sets3page(page);
+	lock(&s3lock);
+	sets3page(page);
+	unlock(&s3lock);
 }
 
 static Vgac s3 = {

@@ -134,7 +134,7 @@ struct Softlance
 
 static void	promiscuous(void*, int);
 
-void
+static void
 lancereset(void)
 {
 	static int inited;
@@ -144,10 +144,10 @@ lancereset(void)
 		lancesetup(&l);
 
 		/* general network interface structure */
-		netifinit(&l, "ether", Ntypes, 32*1024);
+		netifinit(&l, "ether0", Ntypes, 32*1024);
 		l.alen = 6;
-		memmove(l.addr, l.ea, 6);
-		memmove(l.bcast, etherbcast, 6);
+		memmove(l.addr, l.ea, Eaddrlen);
+		memset(l.bcast, 0xFF, Eaddrlen);
 
 		l.promiscuous = promiscuous;
 		l.arg = &l;
@@ -374,7 +374,7 @@ promiscuous(void*, int on)
 		lancestart(0);;
 }
 
-void
+static void
 lanceinit(void)
 {
 	lancestart(0);
@@ -382,51 +382,45 @@ lanceinit(void)
 		l.ea[0], l.ea[1], l.ea[2], l.ea[3], l.ea[4], l.ea[5]);
 }
 
-Chan*
+static Chan*
 lanceattach(char *spec)
 {
+	char *s;
+
+	s = spec;
+	if(s && *s && (*s != '0' || *(s+1)))
+		error(Enodev);
+
 	return devattach('l', spec);
 }
 
-Chan*
-lanceclone(Chan *c, Chan *nc)
-{
-	return devclone(c, nc);
-}
-
-int
+static int
 lancewalk(Chan *c, char *name)
 {
 	return netifwalk(&l, c, name);
 }
 
-Chan*
+static Chan*
 lanceopen(Chan *c, int omode)
 {
 	return netifopen(&l, c, omode);
 }
 
-void
+static void
 lancecreate(Chan*, char*, int, ulong)
 {
 }
 
-void
+static void
 lanceclose(Chan *c)
 {
 	netifclose(&l, c);
 }
 
-long
+static long
 lanceread(Chan *c, void *buf, long n, ulong offset)
 {
 	return netifread(&l, c, buf, n, offset);
-}
-
-Block*
-lancebread(Chan *c, long n, ulong offset)
-{
-	return devbread(c, n, offset);
 }
 
 static int
@@ -462,7 +456,7 @@ etherloop(Etherpkt *p, long n)
 	return !different;
 }
 
-long
+static long
 lancewrite(Chan *c, void *buf, long n, ulong)
 {
 	Msg *m;
@@ -511,25 +505,60 @@ lancewrite(Chan *c, void *buf, long n, ulong)
 	return n;
 }
 
-long
-lancebwrite(Chan *c, Block *bp, ulong offset)
-{
-	return devbwrite(c, bp, offset);
-}
-
-void
+static void
 lanceremove(Chan*)
 {
 }
 
-void
+static void
 lancestat(Chan *c, char *dp)
 {
 	netifstat(&l, c, dp);
 }
 
-void
+static void
 lancewstat(Chan *c, char *dp)
 {
 	netifwstat(&l, c, dp);
 }
+
+int
+parseether(uchar *to, char *from)
+{
+	char nip[4];
+	char *p;
+	int i;
+
+	p = from;
+	for(i = 0; i < 6; i++){
+		if(*p == 0)
+			return -1;
+		nip[0] = *p++;
+		if(*p == 0)
+			return -1;
+		nip[1] = *p++;
+		nip[2] = 0;
+		to[i] = strtoul(nip, 0, 16);
+		if(*p == ':')
+			p++;
+	}
+	return 0;
+}
+
+Dev lancedevtab = {
+	lancereset,
+	lanceinit,
+	lanceattach,
+	devclone,
+	lancewalk,
+	lancestat,
+	lanceopen,
+	lancecreate,
+	lanceclose,
+	lanceread,
+	devbread,
+	lancewrite,
+	devbwrite,
+	lanceremove,
+	lancewstat,
+};

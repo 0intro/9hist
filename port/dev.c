@@ -59,7 +59,17 @@ devgen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
 	return 1;
 }
 
-Chan *
+void
+devreset(void)
+{
+}
+
+void
+devinit(void)
+{
+}
+
+Chan*
 devattach(int tc, char *spec)
 {
 	Chan *c;
@@ -75,7 +85,7 @@ devattach(int tc, char *spec)
 	return c;
 }
 
-Chan *
+Chan*
 devclone(Chan *c, Chan *nc)
 {
 	if(c->flag & COPEN)
@@ -129,7 +139,7 @@ devwalk(Chan *c, char *name, Dirtab *tab, int ntab, Devgen *gen)
 			continue;
 		}
 	}
-	return 0;	/* not reached */
+	return 0;
 }
 
 void
@@ -146,8 +156,10 @@ devstat(Chan *c, char *db, Dirtab *tab, int ntab, Devgen *gen)
 				convD2M(&dir, db);
 				return;
 			}
-			print("%s %s: devstat %C %lux\n", up->text, up->user,
-						devchar[c->type], c->qid.path);
+			print("%s %s: devstat %C %lux\n",
+				up->text, up->user,
+				devchar[c->type], c->qid.path);
+
 			error(Enonexist);
 		case 0:
 			break;
@@ -189,7 +201,7 @@ devdirread(Chan *c, char *d, long n, Dirtab *tab, int ntab, Devgen *gen)
 	return m;
 }
 
-Chan *
+Chan*
 devopen(Chan *c, int omode, Dirtab *tab, int ntab, Devgen *gen)
 {
 	int i;
@@ -230,6 +242,12 @@ Return:
 	return c;
 }
 
+void	 
+devcreate(Chan*, char*, int, ulong)
+{
+	error(Eperm);
+}
+
 Block*
 devbread(Chan *c, long n, ulong offset)
 {
@@ -242,7 +260,7 @@ devbread(Chan *c, long n, ulong offset)
 		freeb(bp);
 		nexterror();
 	}
-	bp->wp += devtab[c->type].read(c, bp->wp, n, offset);
+	bp->wp += devtab[c->type]->read(c, bp->wp, n, offset);
 	poperror();
 	return bp;
 }
@@ -252,9 +270,20 @@ devbwrite(Chan *c, Block *bp, ulong offset)
 {
 	long n;
 
-	n = devtab[c->type].write(c, bp->rp, BLEN(bp), offset);
+	n = devtab[c->type]->write(c, bp->rp, BLEN(bp), offset);
 	freeb(bp);
 
 	return n;	
 }
 
+void
+devremove(Chan*)
+{
+	error(Eperm);
+}
+
+void
+devwstat(Chan*, char*)
+{
+	error(Eperm);
+}

@@ -12,7 +12,7 @@
 extern Bitmap gscreen;
 extern Cursor curcursor;
 
-static Lock et4000pagelock;
+static Lock et4000lock;
 static ulong storage;
 static Point hotpoint;
 
@@ -35,9 +35,11 @@ disable(void)
 {
 	uchar imaF7;
 
+	lock(&et4000lock);
 	outb(0x217A, 0xF7);
 	imaF7 = inb(0x217B) & ~0x80;
 	outb(0x217B, imaF7);
+	unlock(&et4000lock);
 }
 
 static void
@@ -45,7 +47,14 @@ enable(void)
 {
 	uchar imaF7;
 
-	disable();
+	lock(&et4000lock);
+
+	/*
+	 * disable();
+	 */
+	outb(0x217A, 0xF7);
+	imaF7 = inb(0x217B) & ~0x80;
+	outb(0x217B, imaF7);
 
 	/*
 	 * Configure CRTCB for Sprite, 64x64,
@@ -110,12 +119,14 @@ enable(void)
 	outb(0x217A, 0xF7);
 	imaF7 = inb(0x217B);
 	outb(0x217B, 0x80|imaF7);
+
+	unlock(&et4000lock);
 }
 
 static void
 load(Cursor *c)
 {
-	uchar p0, p1, *mem;
+	uchar imaF7, p0, p1, *mem;
 	int i, x, y;
 	ushort p;
 
@@ -123,12 +134,12 @@ load(Cursor *c)
 	 * Lock the display memory so we can update the
 	 * cursor bitmap if necessary.
 	 */
-	lock(&et4000pagelock);
+	lock(&et4000lock);
 	if(memcmp(c, &curcursor, sizeof(Cursor)) == 0){
 		outb(0x217A, 0xF7);
 		p0 = inb(0x217B);
 		outb(0x217B, 0x80|p0);
-		unlock(&et4000pagelock);
+		unlock(&et4000lock);
 		return;
 	}
 	memmove(&curcursor, c, sizeof(Cursor));
@@ -140,7 +151,9 @@ load(Cursor *c)
 	 * pointer to the two planes. What if this crosses
 	 * into a new page?
 	 */
-	disable();
+	outb(0x217A, 0xF7);
+	imaF7 = inb(0x217B) & ~0x80;
+	outb(0x217B, imaF7);
 
 	setet4000page(storage>>16);
 	mem = ((uchar*)gscreen.base) + (storage & 0xFFFF);
@@ -190,7 +203,7 @@ load(Cursor *c)
 	p = inb(0x217B)|0x80;
 	outb(0x217B, p);
 
-	unlock(&et4000pagelock);
+	unlock(&et4000lock);
 }
 
 static int
@@ -198,7 +211,7 @@ move(Point p)
 {
 	int x, xo, y, yo;
 
-	if(canlock(&et4000pagelock) == 0)
+	if(canlock(&et4000lock) == 0)
 		return 1;
 
 	/*
@@ -244,7 +257,7 @@ move(Point p)
 	outb(0x217A, 0xE4);
 	outb(0x217B, y & 0xFF);
 
-	unlock(&et4000pagelock);
+	unlock(&et4000lock);
 	return 0;
 }
 
@@ -261,13 +274,9 @@ Hwgc et4000hwgc = {
 static void
 et4000page(int page)
 {
-	if(hwgc == &et4000hwgc){
-		lock(&et4000pagelock);
-		setet4000page(page);
-		unlock(&et4000pagelock);
-	}
-	else
-		setet4000page(page);
+	lock(&et4000lock);
+	setet4000page(page);
+	unlock(&et4000lock);
 }
 
 static Vgac et4000 = {

@@ -94,12 +94,7 @@ sdgen(Chan *c, Dirtab*, int, int s, Dir *dirp)
 	return 1;
 }
 
-void
-sdreset(void)
-{
-}
-
-void
+static void
 sdinit(void)
 {
 	Disk *d;
@@ -142,7 +137,7 @@ sdinit(void)
 			 * the get capacity until the drive is attached.
 			 */
 			if(scsicap(d->t, d->lun, &d->size, &d->bsize) != STok) {
-				nbytes = sizeof(scratch);
+				nbytes = 0xFF;
 				memset(scratch, 0, nbytes);
 				scsireqsense(d->t, 0, scratch, &nbytes, 1);
 				if((scratch[2] & 0x0F) != 0x02 && (scratch[2] & 0x0F) != 0)
@@ -183,7 +178,7 @@ sdinit(void)
 	scsifree(scratch);
 }
 
-Chan*
+static Chan*
 sdattach(char *spec)
 {
 	int i;
@@ -198,49 +193,25 @@ sdattach(char *spec)
 	return devattach('w', spec);
 }
 
-Chan *
-sdclone(Chan *c, Chan *nc)
-{
-	return devclone(c, nc);
-}
-
-int
+static int
 sdwalk(Chan *c, char *name)
 {
 	return devwalk(c, name, 0, 0, sdgen);
 }
 
-void
+static void
 sdstat(Chan *c, char *db)
 {
 	devstat(c, db, 0, 0, sdgen);
 }
 
-Chan *
+static Chan*
 sdopen(Chan *c, int omode)
 {
 	return devopen(c, omode, 0, 0, sdgen);
 }
 
-void
-sdcreate(Chan*, char*, int, ulong)
-{
-	error(Eperm);
-}
-
-void
-sdremove(Chan*)
-{
-	error(Eperm);
-}
-
-void
-sdwstat(Chan*, char*)
-{
-	error(Eperm);
-}
-
-void
+static void
 sdclose(Chan *c)
 {
 	Disk *d;
@@ -259,7 +230,7 @@ sdclose(Chan *c)
 	}
 }
 
-long
+static long
 sdread(Chan *c, void *a, long n, ulong offset)
 {
 	if(c->qid.path & CHDIR)
@@ -268,13 +239,7 @@ sdread(Chan *c, void *a, long n, ulong offset)
 	return sdio(c, 0, a, n, offset);
 }
 
-Block*
-sdbread(Chan *c, long n, ulong offset)
-{
-	return devbread(c, n, offset);
-}
-
-long
+static long
 sdwrite(Chan *c, char *a, long n, ulong offset)
 {
 	Disk *d;
@@ -286,11 +251,23 @@ sdwrite(Chan *c, char *a, long n, ulong offset)
 	return sdio(c, 1, a, n, offset);
 }
 
-long
-sdbwrite(Chan *c, Block *bp, ulong offset)
-{
-	return devbwrite(c, bp, offset);
-}
+Dev sddevtab = {
+	devreset,
+	sdinit,
+	sdattach,
+	devclone,
+	sdwalk,
+	sdstat,
+	sdopen,
+	devcreate,
+	sdclose,
+	sdread,
+	devbread,
+	sdwrite,
+	devbwrite,
+	devremove,
+	devwstat,
+};
 
 static int
 sdrdpart(Disk *d)
@@ -343,10 +320,10 @@ sdrdpart(Disk *d)
 	/*
 	 *  parse partition table.
 	 */
-	n = parsefields(b, line, Npart+2, "\n");
+	n = parsefields(b, line, nelem(line), "\n");
 	if(n > 0 && strncmp(line[0], MAGIC, sizeof(MAGIC)-1) == 0) {
 		for(i = 1; i < n; i++) {
-			if(parsefields(line[i], field, 3, " ") != 3)
+			if(parsefields(line[i], field, nelem(field), " ") != 3)
 				break;
 			if(p >= &d->table[Npart])
 				break;

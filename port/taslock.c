@@ -13,7 +13,7 @@ lockloop(Lock *l, ulong pc)
 	dumpaproc(up);
 
 	/* lower priority till we get the lock */
-	if(up && up->state == Running && (getstatus()&IE)){
+	if(up && up->state == Running && islo()){
 		up->lockpri = 1;
 		sched();
 	}
@@ -94,8 +94,8 @@ canlock(Lock *l)
 void
 unlock(Lock *l)
 {
-	l->key = 0;
 	l->pc = 0;
+	l->key = 0;
 	coherence();
 }
 
@@ -105,8 +105,8 @@ iunlock(Lock *l)
 	ulong sr;
 
 	sr = l->sr;
-	l->key = 0;
 	l->pc = 0;
+	l->key = 0;
 	splx(sr);
 	coherence();
 }

@@ -241,14 +241,14 @@ struct Ether
 	Netif;
 };
 
-Ether *ether[Nether];
+static Ether *ether[Nether];
 
 #define NEXT(x, l)	(((x)+1)%(l))
 #define PREV(x, l)	(((x) == 0) ? (l)-1: (x)-1)
 #define LS16(addr)	(PADDR(addr) & 0xFFFF)
 #define MS16(addr)	((PADDR(addr)>>16) & 0xFFFF)
 
-void sonicswap(void*, int);
+static void sonicswap(void*, int);
 
 static void
 wus(ushort *a, ushort v)
@@ -400,7 +400,7 @@ reset(Ether *ctlr)
 	WR(imr, AllIntr);
 }
 
-void
+static void
 sonicpkt(Ether *ctlr, RXpkt *r, Pbuf *p)
 {
 	int len;
@@ -606,7 +606,7 @@ initbufs(Ether *c)
 		panic("sonic init");
 }
 
-void
+static void
 etherreset(void)
 {
 	Ether *ctlr;
@@ -630,7 +630,7 @@ etherreset(void)
 	memset(ctlr->ba, 0xFF, sizeof(ctlr->ba));
 
 	/* general network interface structure */
-	netifinit(ether[0], "ether", Ntypes, 32*1024);
+	netifinit(ether[0], "ether0", Ntypes, 32*1024);
 	ether[0]->alen = 6;
 	memmove(ether[0]->addr, ether[0]->ea, 6);
 	memmove(ether[0]->bcast, ctlr->ba, 6);
@@ -638,12 +638,7 @@ etherreset(void)
 	ether[0]->arg = ether[0];
 }
 
-void
-etherinit(void)
-{
-}
-
-Chan*
+static Chan*
 etherattach(char *spec)
 {
 	static int enable;
@@ -657,31 +652,25 @@ etherattach(char *spec)
 	return devattach('l', spec);
 }
 
-Chan*
-etherclone(Chan *c, Chan *nc)
-{
-	return devclone(c, nc);
-}
-
-int
+static int
 etherwalk(Chan *c, char *name)
 {
 	return netifwalk(ether[0], c, name);
 }
 
-Chan*
+static Chan*
 etheropen(Chan *c, int omode)
 {
 	return netifopen(ether[0], c, omode);
 }
 
-void
+static void
 ethercreate(Chan *c, char *name, int omode, ulong perm)
 {
 	USED(c, name, omode, perm);
 }
 
-void
+static void
 etherclose(Chan *c)
 {
 	netifclose(ether[0], c);
@@ -691,12 +680,6 @@ long
 etherread(Chan *c, void *buf, long n, ulong offset)
 {
 	return netifread(ether[0], c, buf, n, offset);
-}
-
-Block*
-etherbread(Chan *c, long n, ulong offset)
-{
-	return devbread(c, n, offset);
 }
 
 static int
@@ -731,7 +714,7 @@ etherloop(Etherpkt *p, long n)
 	return !different;
 }
 
-long
+static long
 etherwrite(Chan *c, void *buf, long n, ulong offset)
 {
 	Pbuf *p;
@@ -792,25 +775,19 @@ etherwrite(Chan *c, void *buf, long n, ulong offset)
 	return n;
 }
 
-long
-etherbwrite(Chan *c, Block *bp, ulong offset)
-{
-	return devbwrite(c, bp, offset);
-}
-
-void
+static void
 etherremove(Chan *c)
 {
 	USED(c);
 }
 
-void
+static void
 etherstat(Chan *c, char *dp)
 {
 	netifstat(ether[0], c, dp);
 }
 
-void
+static void
 etherwstat(Chan *c, char *dp)
 {
 	netifwstat(ether[0], c, dp);
@@ -818,7 +795,7 @@ etherwstat(Chan *c, char *dp)
 
 #define swiz(s)	(s<<24)|((s>>8)&0xff00)|((s<<8)&0xff0000)|(s>>24)
 
-void
+static void
 sonicswap(void *a, int n)
 {
 	ulong *p, t0, t1;
@@ -834,3 +811,44 @@ sonicswap(void *a, int n)
 		n -= 8;
 	}
 }
+
+int
+parseether(uchar *to, char *from)
+{
+	char nip[4];
+	char *p;
+	int i;
+
+	p = from;
+	for(i = 0; i < 6; i++){
+		if(*p == 0)
+			return -1;
+		nip[0] = *p++;
+		if(*p == 0)
+			return -1;
+		nip[1] = *p++;
+		nip[2] = 0;
+		to[i] = strtoul(nip, 0, 16);
+		if(*p == ':')
+			p++;
+	}
+	return 0;
+}
+
+Dev etherdevtab = {
+	etherreset,
+	devinit,
+	etherattach,
+	devclone,
+	etherwalk,
+	etherstat,
+	etheropen,
+	ethercreate,
+	etherclose,
+	etherread,
+	devbread,
+	etherwrite,
+	devbwrite,
+	etherremove,
+	etherwstat,
+};

@@ -34,10 +34,10 @@ struct Netfile
 	ulong	mode;
 	char	owner[NAMELEN];
 
-	int	type;		/* multiplexor type */
-	int	prom;		/* promiscuous mode */
+	int	type;			/* multiplexor type */
+	int	prom;			/* promiscuous mode */
 
-	Queue	*in;		/* input buffer */
+	Queue	*in;			/* input buffer */
 };
 
 /*
@@ -48,7 +48,7 @@ struct Netif
 	QLock;
 
 	/* multiplexing */
-	char	*name;			/* for top level directory */
+	char	name[NAMELEN];		/* for top level directory */
 	int	nfile;			/* max number of Netfiles */
 	Netfile	**f;
 
@@ -81,6 +81,7 @@ int	netifwalk(Netif*, Chan*, char*);
 Chan*	netifopen(Netif*, Chan*, int);
 void	netifclose(Netif*, Chan*);
 long	netifread(Netif*, Chan*, void*, long, ulong);
+Block*	netifbread(Netif*, Chan*, long, ulong);
 long	netifwrite(Netif*, Chan*, void*, long);
 void	netifwstat(Netif*, Chan*, char*);
 void	netifstat(Netif*, Chan*, char*);
@@ -103,5 +104,3 @@ struct Etherpkt
 	uchar	type[2];
 	uchar	data[1500];
 };
-
-extern uchar etherbcast[6];

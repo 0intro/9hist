@@ -283,7 +283,6 @@ ns16552mflow(Uart *p, int n)
 		uartwrreg(p, Iena, 0);
 		p->modem = 0;
 		p->cts = 1;
-		iunlock(&p->tlock);
 	}
 	iunlock(&p->tlock);
 
@@ -377,9 +376,8 @@ ns16552disable(Uart *p)
 	ns16552rts(p, 0);
 	ns16552mflow(p, 0);
 	ilock(&p->tlock);
-	p->blocked = 0;
+	p->xonoff = p->blocked = 0;
 	iunlock(&p->tlock);
-	p->xonoff = 0;
 
 	uartpower(p->dev, 0);
 
@@ -559,7 +557,7 @@ ns16552intr(int dev)
 			}
 			unlock(&p->tlock);
 			if(p->putc)
-				(*p->putc)(p->iq, ch);
+				p->putc(p->iq, ch);
 			else {
 				lock(&p->rlock);
 				if(p->ip < p->ie)
@@ -661,7 +659,7 @@ setlength(int i)
 /*
  *  all uarts must be ns16552setup() by this point or inside of ns16552install()
  */
-void
+static void
 ns16552reset(void)
 {
 	int i;
@@ -689,30 +687,19 @@ ns16552reset(void)
 	}
 }
 
-void
-ns16552init(void)
-{
-}
-
-Chan*
+static Chan*
 ns16552attach(char *spec)
 {
 	return devattach('t', spec);
 }
 
-Chan*
-ns16552clone(Chan *c, Chan *nc)
-{
-	return devclone(c, nc);
-}
-
-int
+static int
 ns16552walk(Chan *c, char *name)
 {
 	return devwalk(c, name, ns16552dir, ndir, devgen);
 }
 
-void
+static void
 ns16552stat(Chan *c, char *dp)
 {
 	if(NETTYPE(c->qid.path) == Ndataqid)
@@ -720,7 +707,7 @@ ns16552stat(Chan *c, char *dp)
 	devstat(c, dp, ns16552dir, ndir, devgen);
 }
 
-Chan*
+static Chan*
 ns16552open(Chan *c, int omode)
 {
 	Uart *p;
@@ -744,13 +731,7 @@ ns16552open(Chan *c, int omode)
 	return c;
 }
 
-void
-ns16552create(Chan*, char*, int, ulong)
-{
-	error(Eperm);
-}
-
-void
+static void
 ns16552close(Chan *c)
 {
 	Uart *p;
@@ -775,7 +756,7 @@ ns16552close(Chan *c)
 	}
 }
 
-long
+static long
 uartstatus(Chan*, Uart *p, void *buf, long n, long offset)
 {
 	uchar mstat;
@@ -809,7 +790,7 @@ for(j = 0; j < 8; j++) i+=sprint(str+i, " %ux", uartrdreg(p, j));
 	return readstr(offset, buf, n, str);
 }
 
-long
+static long
 ns16552read(Chan *c, void *buf, long n, ulong offset)
 {
 	Uart *p;
@@ -832,13 +813,7 @@ ns16552read(Chan *c, void *buf, long n, ulong offset)
 	return 0;
 }
 
-Block*
-ns16552bread(Chan *c, long n, ulong offset)
-{
-	return devbread(c, n, offset);
-}
-
-void
+static void
 ns16552ctl(Uart *p, char *cmd)
 {
 	int i, n;
@@ -869,8 +844,8 @@ ns16552ctl(Uart *p, char *cmd)
 		break;
 	case 'H':
 	case 'h':
-		qhangup(p->iq);
-		qhangup(p->oq);
+		qhangup(p->iq, 0);
+		qhangup(p->oq, 0);
 		break;
 	case 'L':
 	case 'l':
@@ -907,12 +882,14 @@ ns16552ctl(Uart *p, char *cmd)
 		break;
 	case 'X':
 	case 'x':
+		ilock(&p->tlock);
 		p->xonoff = n;
+		iunlock(&p->tlock);
 		break;
 	}
 }
 
-long
+static long
 ns16552write(Chan *c, void *buf, long n, ulong)
 {
 	Uart *p;
@@ -945,19 +922,7 @@ ns16552write(Chan *c, void *buf, long n, ulong)
 	}
 }
 
-long
-ns16552bwrite(Chan *c, Block *bp, ulong offset)
-{
-	return devbwrite(c, bp, offset);
-}
-
-void
-ns16552remove(Chan*)
-{
-	error(Eperm);
-}
-
-void
+static void
 ns16552wstat(Chan *c, char *dp)
 {
 	Dir d;
@@ -975,3 +940,21 @@ ns16552wstat(Chan *c, char *dp)
 	d.mode &= 0666;
 	dt[0].perm = dt[1].perm = d.mode;
 }
+
+Dev ns16552devtab = {
+	ns16552reset,
+	devinit,
+	ns16552attach,
+	devclone,
+	ns16552walk,
+	ns16552stat,
+	ns16552open,
+	devcreate,
+	ns16552close,
+	ns16552read,
+	devbread,
+	ns16552write,
+	devbwrite,
+	devremove,
+	ns16552wstat,
+};

@@ -185,11 +185,11 @@ static nslot;
 
 static void	cisread(Slot*);
 static void	i82365intr(Ureg*, void*);
+static void	i82365reset(void);
 static int	pcmio(int, ISAConf*);
 static long	pcmread(int, int, void*, long, ulong);
 static long	pcmwrite(int, int, void*, long, ulong);
 
-void i82365reset(void);
 static void i82365dump(Slot*);
 
 /*
@@ -353,10 +353,10 @@ pcmmap(int slotno, ulong offset, int len, int attr)
 	/* if isa space isn't big enough, free it and get more */
 	if(m->len < len){
 		if(m->isa){
-			putisa(m->isa, m->len);
+			umbfree(m->isa, m->len);
 			m->len = 0;
 		}
-		m->isa = getisa(0, len, Mgran)&~KZERO;
+		m->isa = umbmalloc(0, len, Mgran)&~KZERO;
 		if(m->isa == 0){
 			print("pcmmap: out of isa space\n");
 			unlock(&pp->mlock);
@@ -398,7 +398,6 @@ pcmunmap(int slotno, PCMmap* m)
 	m->ref--;
 	unlock(&pp->mlock);
 }
-
 
 static void
 increfp(Slot *pp)
@@ -598,7 +597,7 @@ i82365dump(Slot *pp)
 /*
  *  set up for slot cards
  */
-void
+static void
 i82365reset(void)
 {
 	static int already;
@@ -632,45 +631,34 @@ i82365reset(void)
 			slotdis(pp);
 
 			/* interrupt on status change */
-			wrreg(pp, Rcscic, ((PCMCIAvec-Int0vec)<<4) | Fchangeena);
+			wrreg(pp, Rcscic, ((VectorPCMCIA-VectorPIC)<<4) | Fchangeena);
 			rdreg(pp, Rcsc);
 		}
 	}
 
 	/* for card management interrupts */
-	setvec(PCMCIAvec, i82365intr, 0);
+	intrenable(VectorPCMCIA, i82365intr, 0, BUSUNKNOWN);
 }
 
-void
-i82365init(void)
-{
-}
-
-Chan *
+static Chan*
 i82365attach(char *spec)
 {
 	return devattach('y', spec);
 }
 
-Chan *
-i82365clone(Chan *c, Chan *nc)
-{
-	return devclone(c, nc);
-}
-
-int
+static int
 i82365walk(Chan *c, char *name)
 {
 	return devwalk(c, name, 0, 0, pcmgen);
 }
 
-void
+static void
 i82365stat(Chan *c, char *db)
 {
 	devstat(c, db, 0, 0, pcmgen);
 }
 
-Chan *
+static Chan*
 i82365open(Chan *c, int omode)
 {
 	if(c->qid.path == CHDIR){
@@ -684,25 +672,7 @@ i82365open(Chan *c, int omode)
 	return c;
 }
 
-void
-i82365create(Chan*, char*, int, ulong)
-{
-	error(Eperm);
-}
-
-void
-i82365remove(Chan*)
-{
-	error(Eperm);
-}
-
-void
-i82365wstat(Chan*, char*)
-{
-	error(Eperm);
-}
-
-void
+static void
 i82365close(Chan *c)
 {
 	if(c->flag & COPEN)
@@ -778,13 +748,7 @@ pcmread(int slotno, int attr, void *a, long n, ulong offset)
 	return n;
 }
 
-Block*
-i82365bread(Chan *c, long n, ulong offset)
-{
-	return devbread(c, n, offset);
-}
-
-long
+static long
 i82365read(Chan *c, void *a, long n, ulong offset)
 {
 	char *cp, buf[2048];
@@ -833,12 +797,6 @@ i82365read(Chan *c, void *a, long n, ulong offset)
 	return n;
 }
 
-long
-i82365bwrite(Chan *c, Block *bp, ulong offset)
-{
-	return devbwrite(c, bp, offset);
-}
-
 static long
 pcmwrite(int dev, int attr, void *a, long n, ulong offset)
 {
@@ -881,7 +839,7 @@ pcmwrite(int dev, int attr, void *a, long n, ulong offset)
 	return n;
 }
 
-long
+static long
 i82365write(Chan *c, void *a, long n, ulong offset)
 {
 	ulong p;
@@ -917,6 +875,24 @@ i82365write(Chan *c, void *a, long n, ulong offset)
 	}
 	return n;
 }
+
+Dev i82365devtab = {
+	i82365reset,
+	devinit,
+	i82365attach,
+	devclone,
+	i82365walk,
+	i82365stat,
+	i82365open,
+	devcreate,
+	i82365close,
+	i82365read,
+	devbread,
+	i82365write,
+	devbwrite,
+	devremove,
+	devwstat,
+};
 
 /*
  *  configure the Slot for IO.  We assume very heavily that we can read
@@ -1252,7 +1228,7 @@ timing(Slot *pp, Conftab *ct)
 		ct->otherwait = ttiming(pp, i);		/* reserved wait */
 }
 
-void
+static void
 iospaces(Slot *pp, Conftab *ct)
 {
 	uchar c;

@@ -56,7 +56,7 @@ chandevreset(void)
 	int i;
 
 	for(i=0; devchar[i]; i++)
-		(*devtab[i].reset)();
+		devtab[i]->reset();
 }
 
 void
@@ -65,7 +65,7 @@ chandevinit(void)
 	int i;
 
 	for(i=0; devchar[i]; i++)
-		(*devtab[i].init)();
+		devtab[i]->init();
 }
 
 Chan*
@@ -128,16 +128,15 @@ chanfree(Chan *c)
 }
 
 void
-close(Chan *c)
+cclose(Chan *c)
 {
 	if(c->flag&CFREE)
-		panic("close");
-
+		panic("cclose %lux", getcallerpc(c));
 	if(decref(c))
 		return;
 
 	if(!waserror()) {
-		(*devtab[c->type].close)(c);
+		devtab[c->type]->close(c);
 		poperror();
 	}
 
@@ -165,7 +164,7 @@ eqchan(Chan *a, Chan *b, int pathonly)
 }
 
 int
-mount(Chan *new, Chan *old, int flag, char *spec)
+cmount(Chan *new, Chan *old, int flag, char *spec)
 {
 	Pgrp *pg;
 	int order, flg;
@@ -255,7 +254,7 @@ mount(Chan *new, Chan *old, int flag, char *spec)
 }
 
 void
-unmount(Chan *mnt, Chan *mounted)
+cunmount(Chan *mnt, Chan *mounted)
 {
 	Pgrp *pg;
 	Mhead *m, **l;
@@ -280,7 +279,7 @@ unmount(Chan *mnt, Chan *mounted)
 		*l = m->hash;
 		wunlock(&pg->ns);
 		mountfree(m->mount);
-		close(m->from);
+		cclose(m->from);
 		free(m);
 		return;
 	}
@@ -296,7 +295,7 @@ unmount(Chan *mnt, Chan *mounted)
 			if(m->mount == 0) {
 				*l = m->hash;
 				wunlock(&pg->ns);
-				close(m->from);
+				cclose(m->from);
 				free(m);
 				return;
 			}
@@ -310,9 +309,9 @@ unmount(Chan *mnt, Chan *mounted)
 }
 
 Chan*
-clone(Chan *c, Chan *nc)
+cclone(Chan *c, Chan *nc)
 {
-	return (*devtab[c->type].clone)(c, nc);
+	return devtab[c->type]->clone(c, nc);
 }
 
 Chan*
@@ -332,11 +331,11 @@ domount(Chan *c)
 
 	for(m = MOUNTH(pg, c); m; m = m->hash)
 		if(eqchan(m->from, c, 1)) {
-			nc = clone(m->mount->to, 0);
+			nc = cclone(m->mount->to, 0);
 			nc->mnt = m->mount;
 			nc->xmnt = nc->mnt;
 			nc->mountid = m->mount->mountid;
-			close(c);
+			cclose(c);
 			c = nc;	
 			break;			
 		}
@@ -365,8 +364,8 @@ undomount(Chan *c)
 		for(f = *h; f; f = f->hash) {
 			for(t = f->mount; t; t = t->next) {
 				if(eqchan(c, t->to, 1)) {
-					close(c);
-					c = clone(t->head->from, 0);
+					cclose(c);
+					c = cclone(t->head->from, 0);
 					break;
 				}
 			}
@@ -394,7 +393,7 @@ walk(Chan *ac, char *name, int domnt)
 		dotdot = 1;
 	}
 
-	if((*devtab[ac->type].walk)(ac, name) != 0) {
+	if(devtab[ac->type]->walk(ac, name) != 0) {
 		if(dotdot)
 			ac = undomount(ac);
 		if(domnt)
@@ -412,14 +411,14 @@ walk(Chan *ac, char *name, int domnt)
 	if(waserror()) {
 		runlock(&pg->ns);
 		if(c)
-			close(c);
+			cclose(c);
 		nexterror();
 	}
 	for(f = ac->mnt; f; f = f->next) {
-		c = clone(f->to, 0);
-		if((*devtab[c->type].walk)(c, name) != 0)
+		c = cclone(f->to, 0);
+		if(devtab[c->type]->walk(c, name) != 0)
 			break;
-		close(c);
+		cclose(c);
 		c = 0;
 	}
 	poperror();
@@ -434,13 +433,13 @@ walk(Chan *ac, char *name, int domnt)
 	c->mnt = 0;
 	if(domnt) {
 		if(waserror()) {
-			close(c);
+			cclose(c);
 			nexterror();
 		}
 		c = domount(c);
 		poperror();
 	}
-	close(ac);
+	cclose(ac);
 	return c;	
 }
 
@@ -462,16 +461,16 @@ createdir(Chan *c)
 	}
 	for(f = c->mnt; f; f = f->next) {
 		if(f->to->flag&CCREATE) {
-			nc = clone(f->to, 0);
+			nc = cclone(f->to, 0);
 			nc->mnt = f;
 			runlock(&pg->ns);
 			poperror();
-			close(c);
+			cclose(c);
 			return nc;
 		}
 	}
 	error(Enocreate);
-	return 0;		/* not reached */
+	return 0;
 }
 
 Chan*
@@ -505,7 +504,7 @@ mchan(char *id, int walkname)
 						incref(c);
 					}
 					else
-						c = clone(c, 0);
+						c = cclone(c, 0);
 					runlock(&pg->ns);
 					poperror();
 					return c;
@@ -554,7 +553,7 @@ namec(char *name, int amode, int omode, ulong perm)
 	isdot = 0;
 	switch(name[0]) {
 	case '/':
-		c = clone(up->slash, 0);
+		c = cclone(up->slash, 0);
 		name = skipslash(name);
 		break;
 	case '#':
@@ -583,18 +582,18 @@ namec(char *name, int amode, int omode, ulong perm)
 		if(t == -1)
 			error(Ebadsharp);
 
-		c = (*devtab[t].attach)(elem+n);
+		c = devtab[t]->attach(elem+n);
 		name = skipslash(name);
 		break;
 	default:
-		c = clone(up->dot, 0);
+		c = cclone(up->dot, 0);
 		name = skipslash(name);
 		if(*name == 0)
 			isdot = 1;
 	}
 
 	if(waserror()){
-		close(c);
+		cclose(c);
 		nexterror();
 	}
 
@@ -656,7 +655,7 @@ namec(char *name, int amode, int omode, ulong perm)
 		if(omode == OEXEC)
 			c->flag &= ~CCACHE;
 	
-		c = (*devtab[c->type].open)(c, omode);
+		c = devtab[c->type]->open(c, omode);
 
 		if(omode & OCEXEC)
 			c->flag |= CCEXEC;
@@ -686,21 +685,21 @@ namec(char *name, int amode, int omode, ulong perm)
 		 *  first, just in case someone is trying to
 		 *  use clwalk outside the kernel.
 		 */
-		cc = clone(c, 0);
+		cc = cclone(c, 0);
 		if(waserror()){
-			close(cc);
+			cclose(cc);
 			nexterror();
 		}
 		nameok(elem);
 		nc = walk(cc, elem, 1);
 		if(nc != 0) {
 			poperror();
-			close(c);
+			cclose(c);
 			c = nc;
 			omode |= OTRUNC;
 			goto Open;
 		}
-		close(cc);
+		cclose(cc);
 		poperror();
 
 		/*
@@ -722,7 +721,7 @@ namec(char *name, int amode, int omode, ulong perm)
 			omode |= OTRUNC;
 			goto Open;
 		}
-		(*devtab[c->type].create)(c, elem, omode, perm);
+		devtab[c->type]->create(c, elem, omode, perm);
 		if(omode & OCEXEC)
 			c->flag |= CCEXEC;
 		if(omode & ORCLOSE)

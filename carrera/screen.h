@@ -8,8 +8,10 @@ struct Cursorinfo
 
 extern Cursorinfo	cursor;
 
-extern void	mouseupdate(int);
 extern int	cursoron(int);
 #define		cursoroff(x)
 extern Point	mousexy(void);
-void			setcursor(Cursor*);
+void		setcursor(Cursor*);
+
+void		mousectl(char*);
+void		mousetrack(int, int, int);

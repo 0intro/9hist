@@ -5,9 +5,7 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
-
-
-int
+static int
 dupgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 {
 	char buf[8];
@@ -24,41 +22,25 @@ dupgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 	return 1;
 }
 
-void
-dupinit(void)
-{
-}
-
-void
-dupreset(void)
-{
-}
-
-Chan *
+static Chan*
 dupattach(char *spec)
 {
 	return devattach('d', spec);
 }
 
-Chan *
-dupclone(Chan *c, Chan *nc)
-{
-	return devclone(c, nc);
-}
-
-int
+static int
 dupwalk(Chan *c, char *name)
 {
 	return devwalk(c, name, (Dirtab *)0, 0, dupgen);
 }
 
-void
+static void
 dupstat(Chan *c, char *db)
 {
 	devstat(c, db, (Dirtab *)0, 0L, dupgen);
 }
 
-Chan *
+static Chan*
 dupopen(Chan *c, int omode)
 {
 	Chan *f;
@@ -73,37 +55,19 @@ dupopen(Chan *c, int omode)
 	}
 	fdtochan(c->qid.path, openmode(omode), 0, 0);	/* error check only */
 	f = up->fgrp->fd[c->qid.path];
-	close(c);
+	cclose(c);
 	incref(f);
 	if(omode & OCEXEC)
 		f->flag |= CCEXEC;
 	return f;
 }
 
-void
-dupcreate(Chan*, char*, int, ulong)
-{
-	error(Eperm);
-}
-
-void
-dupremove(Chan*)
-{
-	error(Eperm);
-}
-
-void
-dupwstat(Chan*, char*)
-{
-	error(Egreg);
-}
-
-void
+static void
 dupclose(Chan*)
 {
 }
 
-long
+static long
 dupread(Chan *c, void *va, long n, ulong)
 {
 	char *a = va;
@@ -113,21 +77,27 @@ dupread(Chan *c, void *va, long n, ulong)
 	return devdirread(c, a, n, (Dirtab *)0, 0L, dupgen);
 }
 
-Block*
-dupbread(Chan *c, long n, ulong offset)
-{
-	return devbread(c, n, offset);
-}
-
-long
+static long
 dupwrite(Chan*, void*, long, ulong)
 {
 	panic("dupwrite");
 	return 0;		/* not reached */
 }
 
-long
-dupbwrite(Chan *c, Block *bp, ulong offset)
-{
-	return devbwrite(c, bp, offset);
-}
+Dev dupdevtab = {
+	devreset,
+	devinit,
+	dupattach,
+	devclone,
+	dupwalk,
+	dupstat,
+	dupopen,
+	devcreate,
+	dupclose,
+	dupread,
+	devbread,
+	dupwrite,
+	devbwrite,
+	devremove,
+	devwstat,
+};

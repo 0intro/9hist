@@ -20,7 +20,7 @@ struct Rtc
 	int	mon;
 	int	year;
 };
-QLock rtclock;	/* mutex on clock operations */
+static QLock rtclock;	/* mutex on clock operations */
 
 
 enum
@@ -39,51 +39,33 @@ enum
 	Nvsize = 4096,
 };
 
-#define	NRTC	2
 Dirtab rtcdir[]={
 	"nvram",	{Qnvram, 0},	Nvsize,	0664,
 	"rtc",		{Qrtc, 0},	0,	0664,
 };
 
-ulong rtc2sec(Rtc*);
-void sec2rtc(ulong, Rtc*);
-int *yrsize(int);
+static ulong rtc2sec(Rtc*);
+static void sec2rtc(ulong, Rtc*);
 
-void
-rtcreset(void)
-{
-}
-
-void
-rtcinit(void)
-{
-}
-
-Chan*
+static Chan*
 rtcattach(char *spec)
 {
 	return devattach('r', spec);
 }
 
-Chan*
-rtcclone(Chan *c, Chan *nc)
-{
-	return devclone(c, nc);
-}
-
-int	 
+static int	 
 rtcwalk(Chan *c, char *name)
 {
-	return devwalk(c, name, rtcdir, NRTC, devgen);
+	return devwalk(c, name, rtcdir, nelem(rtcdir), devgen);
 }
 
-void	 
+static void	 
 rtcstat(Chan *c, char *dp)
 {
-	devstat(c, dp, rtcdir, NRTC, devgen);
+	devstat(c, dp, rtcdir, nelem(rtcdir), devgen);
 }
 
-Chan*
+static Chan*
 rtcopen(Chan *c, int omode)
 {
 	omode = openmode(omode);
@@ -96,17 +78,10 @@ rtcopen(Chan *c, int omode)
 		if(strcmp(up->user, eve)!=0)
 			error(Eperm);
 	}
-	return devopen(c, omode, rtcdir, NRTC, devgen);
+	return devopen(c, omode, rtcdir, nelem(rtcdir), devgen);
 }
 
-void	 
-rtccreate(Chan *c, char *name, int omode, ulong perm)
-{
-	USED(c, name, omode, perm);
-	error(Eperm);
-}
-
-void	 
+static void	 
 rtcclose(Chan *c)
 {
 	USED(c);
@@ -151,14 +126,14 @@ rtctime(void)
 	return rtc2sec(&rtc);
 }
 
-long	 
+static long	 
 rtcread(Chan *c, void *buf, long n, ulong offset)
 {
 	ulong t, ot;
 	uchar *f, *to, *e;
 
 	if(c->qid.path & CHDIR)
-		return devdirread(c, buf, n, rtcdir, NRTC, devgen);
+		return devdirread(c, buf, n, rtcdir, nelem(rtcdir), devgen);
 
 	switch(c->qid.path){
 	case Qrtc:
@@ -185,12 +160,6 @@ rtcread(Chan *c, void *buf, long n, ulong offset)
 	return 0;
 }
 
-Block*
-rtcbread(Chan *c, long n, ulong offset)
-{
-	return devbread(c, n, offset);
-}
-
 static void
 binary2bcd(int reg, uchar val)
 {
@@ -201,7 +170,7 @@ binary2bcd(int reg, uchar val)
 }
 
 
-long	 
+static long	 
 rtcwrite(Chan *c, void *buf, long n, ulong offset)
 {
 	Rtc rtc;
@@ -255,25 +224,23 @@ rtcwrite(Chan *c, void *buf, long n, ulong offset)
 	return 0;
 }
 
-long
-rtcbwrite(Chan *c, Block *bp, ulong offset)
-{
-	return devbwrite(c, bp, offset);
-}
-
-void	 
-rtcremove(Chan *c)
-{
-	USED(c);
-	error(Eperm);
-}
-
-void	 
-rtcwstat(Chan *c, char *dp)
-{
-	USED(c, dp);
-	error(Eperm);
-}
+Dev rtcdevtab = {
+	devreset,
+	devinit,
+	rtcattach,
+	devclone,
+	rtcwalk,
+	rtcstat,
+	rtcopen,
+	devcreate,
+	rtcclose,
+	rtcread,
+	devbread,
+	rtcwrite,
+	devbwrite,
+	devremove,
+	devwstat,
+};
 
 #define SEC2MIN 60L
 #define SEC2HOUR (60L*SEC2MIN)
@@ -294,7 +261,7 @@ static	int	ldmsize[] =
 /*
  *  return the days/month for the given year
  */
-int *
+static int*
 yrsize(int yr)
 {
 	if((yr % 4) == 0)
@@ -306,7 +273,7 @@ yrsize(int yr)
 /*
  *  compute seconds since Jan 1 1970
  */
-ulong
+static ulong
 rtc2sec(Rtc *rtc)
 {
 	ulong secs;
@@ -341,7 +308,7 @@ rtc2sec(Rtc *rtc)
 /*
  *  compute rtc from seconds since Jan 1 1970
  */
-void
+static void
 sec2rtc(ulong secs, Rtc *rtc)
 {
 	int d;

@@ -14,8 +14,27 @@ struct Cursorinfo
 };
 
 Cursorinfo	cursor;
+Cursor		curs;
 extern int	cursoron(int);
 extern void	cursoroff(int);
-extern Point	mousexy(void);
-extern void	cursorinit(void);
 extern void	setcursor(Cursor*);
+
+/*
+ *  mouse types
+ */
+enum
+{
+	Mouseother=	0,
+	Mouseserial=	1,
+	MousePS2=	2,
+};
+extern int	mousetype;
+
+extern void	mousectl(char*);
+extern void	mousetrack(int, int, int);
+extern Point	mousexy(void);
+
+extern void	mouseaccelerate(char*);
+extern int	m3mouseputc(void*, int);
+extern int	mouseputc(void*, int);
+extern int	mouseswap;

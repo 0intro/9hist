@@ -315,7 +315,7 @@ setpage(Astar *a, ulong offset)
 /*
  *  generate the astar directory entries
  */
-int
+static int
 astargen(Chan *c, Dirtab *tab, int ntab, int i, Dir *db)
 {
 	int dev, sofar, ch, t;
@@ -386,7 +386,7 @@ astargen(Chan *c, Dirtab *tab, int ntab, int i, Dir *db)
 	return 1;
 }
 
-void
+static void
 astarreset(void)
 {
 	int i;
@@ -416,7 +416,7 @@ astarreset(void)
 			a->irq = 15;
 		a->id = i;
 
-		a->mem = getisa(a->mem, Pagesize, Pagesize);
+		a->mem = umbmalloc(a->mem, Pagesize, Pagesize);
 		if(a->mem == 0)
 			panic("astarreset: %lux", a->mem);
 		a->mem &= ~KZERO;
@@ -436,7 +436,7 @@ astarreset(void)
 }
 
 /* isa ports an ax00i can appear at */
-int isaport[] = { 0x200, 0x208, 0x300, 0x308, 0x600, 0x608, 0x700, 0x708, 0 };
+static int isaport[] = { 0x200, 0x208, 0x300, 0x308, 0x600, 0x608, 0x700, 0x708, 0 };
 
 static int
 astarprobe(int port)
@@ -499,36 +499,25 @@ astarsetup(Astar *a)
 	return 0;
 }
 
-void
-astarinit(void)
-{
-}
-
-Chan*
+static Chan*
 astarattach(char *spec)
 {
 	return devattach('G', spec);
 }
 
-Chan*
-astarclone(Chan *c, Chan *nc)
-{
-	return devclone(c, nc);
-}
-
-int
+static int
 astarwalk(Chan *c, char *name)
 {
 	return devwalk(c, name, 0, 0, astargen);
 }
 
-void
+static void
 astarstat(Chan *c, char *dp)
 {
 	devstat(c, dp, 0, 0, astargen);
 }
 
-Chan*
+static Chan*
 astaropen(Chan *c, int omode)
 {
 	Astar *a;
@@ -565,7 +554,7 @@ astaropen(Chan *c, int omode)
 	return c;
 }
 
-void
+static void
 astarclose(Chan *c)
 {
 	Astar *a;
@@ -687,7 +676,7 @@ statread(Astarchan *ac, void *buf, long n, ulong offset)
 	return readstr(offset, buf, n, s);
 }
 
-long
+static long
 astarread(Chan *c, void *buf, long n, ulong offset)
 {
 	Astar *a;
@@ -711,12 +700,6 @@ astarread(Chan *c, void *buf, long n, ulong offset)
 	}
 
 	return 0;
-}
-
-Block*
-astarbread(Chan *c, long n, ulong offset)
-{
-	return devbread(c, n, offset);
 }
 
 /*
@@ -890,7 +873,7 @@ startcp(Astar *a)
 	c |= ISAien|isairqcode[a->irq];
 	outb(a->port+ISActl1, c);
 
-	setvec(Int0vec + a->irq, astarintr, a);
+	intrenable(VectorPIC + a->irq, astarintr, a, BUSUNKNOWN);
 
 	/* enable control program interrupt generation */
 	LOCKPAGE(a, 0);
@@ -1095,8 +1078,8 @@ astarctl(Astarchan *ac, char *cmd)
 		break;
 	case 'H':
 	case 'h':
-		qhangup(ac->iq);
-		qhangup(ac->oq);
+		qhangup(ac->iq, nil);
+		qhangup(ac->oq, nil);
 		break;
 	case 'L':
 	case 'l':
@@ -1189,7 +1172,7 @@ astarctl(Astarchan *ac, char *cmd)
 		chancmd(ac, command);
 }
 
-long
+static long
 astarwrite(Chan *c, void *buf, long n, ulong offset)
 {
 	Astar *a;
@@ -1233,26 +1216,7 @@ astarwrite(Chan *c, void *buf, long n, ulong offset)
 	return 0;
 }
 
-long
-astarbwrite(Chan *c, Block *bp, ulong offset)
-{
-	return devbwrite(c, bp, offset);
-}
-
-void
-astarcreate(Chan*, char*, int, ulong)
-{
-	error(Eperm);
-}
-
-void
-astarremove(Chan *c)
-{
-	USED(c);
-	error(Eperm);
-}
-
-void
+static void
 astarwstat(Chan *c, char *dp)
 {
 	Dir d;
@@ -1270,6 +1234,24 @@ astarwstat(Chan *c, char *dp)
 	d.mode &= 0666;
 	ac->perm = d.mode;
 }
+
+Dev astardevtab = {
+	astarreset,
+	devinit,
+	astarattach,
+	devclone,
+	astarwalk,
+	astarstat,
+	astaropen,
+	devcreate,
+	astarclose,
+	astarread,
+	devbread,
+	astarwrite,
+	devbwrite,
+	devremove,
+	astarwstat,
+};
 
 /*
  *  get output going
@@ -1314,6 +1296,7 @@ astaroutput(Astarchan *ac)
 		ccb->outwp = LEUS(wp - a->addr);
 	}
 }
+
 static void
 astarkick(Astarchan *ac)
 {

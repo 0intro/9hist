@@ -9,3 +9,6 @@ enum
 #define seteisadma(a, b)	;
 #define CACHELINESZ		8
 #define UNCACHED(type, v)	(type*)((ulong)(v))
+
+#define Int0vec			VectorPIC
+#define setvec(v, f, a)		intrenable(v, f, a, BUSUNKNOWN)

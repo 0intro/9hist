@@ -15,7 +15,7 @@
 #define ROUND(s, sz)	(((s)+(sz-1))&~(sz-1))
 #define PGROUND(s)	ROUND(s, BY2PG)
 
-#define	MAXMACH		1			/* max # cpus system can run */
+#define	MAXMACH		8			/* max # cpus system can run */
 
 /*
  * Time
@@ -29,6 +29,16 @@
 /*
  * Fundamental addresses
  */
+#define IDTADDR		0x80000800		/* idt */
+#define APBOOTSTRAP	0x80001000		/* AP bootstrap code */
+#define CONFADDR	0x80001200		/* info passed from boot loader */
+#define CPU0PDB		0x80002000		/* bootstrap processor PDB */
+#define CPU0PTE		0x80003000		/* bootstrap processor PTE's for 0-2MB */
+#define CPU0MACHPTE	0x80004000		/* bootstrap processor PTE for MACHADDR */
+#define CPU0MACH	0x80005000		/* Mach for bootstrap processor */
+
+#define MACHADDR	0xFEF00000		/* as seen by current processor */
+#define	MACHSIZE	4096
 
 /*
  *  Address spaces
@@ -52,8 +62,6 @@
 #define ROMBIOS		(KZERO|0xF0000)
 #define	ISAMEMSIZE	(4*MB)			/* mem space reserved for ISA */
 #define globalmem(x)	((((ulong)x)&0xF0000000)==KZERO)	/* addresses valid in all contexts */
-
-#define	MACHSIZE	4096
 
 /*
  *  known 80386 segments (in GDT) and their selectors
@@ -101,8 +109,8 @@
  *  virtual MMU
  */
 #define PTEMAPMEM	(1024*1024)	
-#define SEGMAPSIZE	16
 #define	PTEPERTAB	(PTEMAPMEM/BY2PG)
+#define SEGMAPSIZE	512
 #define PPN(x)		((x)&~(BY2PG-1))
 
 /*
@@ -115,11 +123,6 @@
 #define	PTERONLY	(0<<1)
 #define	PTEKERNEL	(0<<2)
 #define	PTEUSER		(1<<2)
-
-/*
- *  flag register bits that we care about
- */
-#define IFLAG	0x200
-#define IE	0x200
+#define PTESIZE		(1<<7)
 
 #define getpgcolor(a)	0

@@ -202,6 +202,7 @@ copen(Chan *c)
 	*l = m;
 	ctail(m);
 
+	qlock(m);
 	c->mcp = m;
 	e = m->list;
 	m->list = 0;
@@ -212,6 +213,7 @@ copen(Chan *c)
 		free(e);
 		e = next;
 	}
+	qunlock(m);
 }
 
 static int

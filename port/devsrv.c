@@ -21,7 +21,7 @@ static QLock	srvlk;
 static Srv	*srv;
 static int	qidpath;
 
-int
+static int
 srvgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 {
 	Srv *sp;
@@ -39,42 +39,31 @@ srvgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 	return 1;
 }
 
-void
+static void
 srvinit(void)
 {
 	qidpath = 1;
 }
 
-void
-srvreset(void)
-{
-}
-
-Chan*
+static Chan*
 srvattach(char *spec)
 {
 	return devattach('s', spec);
 }
 
-Chan*
-srvclone(Chan *c, Chan *nc)
-{
-	return devclone(c, nc);
-}
-
-int
+static int
 srvwalk(Chan *c, char *name)
 {
 	return devwalk(c, name, 0, 0, srvgen);
 }
 
-void
+static void
 srvstat(Chan *c, char *db)
 {
 	devstat(c, db, 0, 0, srvgen);
 }
 
-Chan*
+static Chan*
 srvopen(Chan *c, int omode)
 {
 	Srv *sp;
@@ -105,14 +94,14 @@ srvopen(Chan *c, int omode)
 	if(omode!=sp->chan->mode && sp->chan->mode!=ORDWR)
 		error(Eperm);
 
-	close(c);
+	cclose(c);
 	incref(sp->chan);
 	qunlock(&srvlk);
 	poperror();
 	return sp->chan;
 }
 
-void
+static void
 srvcreate(Chan *c, char *name, int omode, ulong perm)
 {
 	Srv *sp;
@@ -144,7 +133,7 @@ srvcreate(Chan *c, char *name, int omode, ulong perm)
 	c->mode = OWRITE;
 }
 
-void
+static void
 srvremove(Chan *c)
 {
 	Srv *sp, **l;
@@ -175,11 +164,11 @@ srvremove(Chan *c)
 	poperror();
 
 	if(sp->chan)
-		close(sp->chan);
+		cclose(sp->chan);
 	free(sp);
 }
 
-void
+static void
 srvwstat(Chan *c, char *dp)
 {
 	Dir d;
@@ -209,25 +198,19 @@ srvwstat(Chan *c, char *dp)
 	poperror();
 }
 
-void
+static void
 srvclose(Chan*)
 {
 }
 
-long
+static long
 srvread(Chan *c, void *va, long n, ulong)
 {
 	isdir(c);
 	return devdirread(c, va, n, 0, 0, srvgen);
 }
 
-Block*
-srvbread(Chan *c, long n, ulong offset)
-{
-	return devbread(c, n, offset);
-}
-
-long
+static long
 srvwrite(Chan *c, void *va, long n, ulong)
 {
 	Srv *sp;
@@ -246,7 +229,7 @@ srvwrite(Chan *c, void *va, long n, ulong)
 	qlock(&srvlk);
 	if(waserror()) {
 		qunlock(&srvlk);
-		close(c1);
+		cclose(c1);
 		nexterror();
 	}
 	for(sp = srv; sp; sp = sp->link)
@@ -265,11 +248,23 @@ srvwrite(Chan *c, void *va, long n, ulong)
 	return n;
 }
 
-long
-srvbwrite(Chan *c, Block *bp, ulong offset)
-{
-	return devbwrite(c, bp, offset);
-}
+Dev srvdevtab = {
+	devreset,
+	srvinit,
+	srvattach,
+	devclone,
+	srvwalk,
+	srvstat,
+	srvopen,
+	srvcreate,
+	srvclose,
+	srvread,
+	devbread,
+	srvwrite,
+	devbwrite,
+	srvremove,
+	srvwstat,
+};
 
 void
 srvrecover(Chan *old, Chan *new)
@@ -282,7 +277,7 @@ srvrecover(Chan *old, Chan *new)
 			sp->chan = new;
 			incref(new);
 			qunlock(&srvlk);
-			close(old);
+			cclose(old);
 			return;
 		}
 	}

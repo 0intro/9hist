@@ -1,11 +1,12 @@
 /*
  * Etherlink III and Fast EtherLink adapters.
  * To do:
- *	check robustness in the face of errors;
+ *	check robustness in the face of errors (e.g. busmaster & rxUnderrun);
  *	RxEarly and busmaster;
  *	autoSelect;
  *	PCI latency timer and master enable;
- *	errata list.
+ *	errata list;
+ *	3C90x.
  *
  * Product ID:
  *	9150 ISA	3C509[B]
@@ -47,8 +48,8 @@ enum {
 };
 
 enum {						/* all windows */
-	Command			= 0x000E,
-	IntStatus		= 0x000E,
+	CommandR		= 0x000E,
+	IntStatusR		= 0x000E,
 };
 
 enum {						/* Commands */
@@ -122,8 +123,8 @@ enum {						/* IntStatus bits */
 	interruptMask		= 0x01FE,
 };
 
-#define COMMAND(port, cmd, a)	outs((port)+Command, ((cmd)<<11)|(a))
-#define STATUS(port)		ins((port)+IntStatus)
+#define COMMAND(port, cmd, a)	outs((port)+CommandR, ((cmd)<<11)|(a))
+#define STATUS(port)		ins((port)+IntStatusR)
 
 enum {						/* Window 0 - setup */
 	Wsetup			= 0x0000,
@@ -200,6 +201,10 @@ enum {						/* Window 3 - FIFO management */
 	ResetOptions		= 0x0008,	/* 3C59[0257] */
 	RxFree			= 0x000A,
 						/* InternalConfig bits */
+	ramPartition5to3	= 0x00000000,
+	ramPartition3to1	= 0x00010000,
+	ramPartition1to1	= 0x00020000,
+	ramPartitionMask	= 0x00030000,
 	xcvr10BaseT		= 0x00000000,
 	xcvrAui			= 0x00100000,	/* 10BASE5 */
 	xcvr10Base2		= 0x00300000,
@@ -256,7 +261,7 @@ enum {						/* Window 5 - internal state */
 	Wstate			= 0x0005,
 						/* registers */
 	TxStartThresh		= 0x0000,
-	TxAvalableThresh	= 0x0002,
+	TxAvailableThresh	= 0x0002,
 	RxEarlyThresh		= 0x0006,
 	RxFilter		= 0x0008,
 	InterruptEnable		= 0x000A,
@@ -303,11 +308,9 @@ typedef struct {
 
 	int	attached;
 	int	busmaster;
-	Block*	rbp[2];				/* receive buffers */
-	int	rbpix;
+	Block*	rbp;				/* receive buffer */
 
-	Block*	txqhead;			/* transmit queue */
-	Block*	txqtail;
+	Block*	txbp;				/* */
 	int	txthreshold;
 	int	txbusy;
 
@@ -329,11 +332,12 @@ typedef struct {
 
 	int	xcvr;				/* transceiver type */
 	int	rxstatus9;			/* old-style RxStatus register */
+	int	rxearly;			/* RxEarlyThreshold */
 	int	ts;				/* threshold shift */
 } Ctlr;
 
 static Block*
-allocrbp(void)
+allocrbp(Block* (*f)(int))
 {
 	Block *bp;
 	ulong addr;
@@ -342,10 +346,11 @@ allocrbp(void)
 	 * The receive buffers must be on a 32-byte
 	 * boundary for EISA busmastering.
 	 */
-	bp = allocb(ROUNDUP(sizeof(Etherpkt), 4) + 31);
-	addr = (ulong)bp->base;
-	addr = ROUNDUP(addr, 32);
-	bp->rp = (uchar*)addr;
+	if(bp = f(ROUNDUP(sizeof(Etherpkt), 4) + 31)){
+		addr = (ulong)bp->base;
+		addr = ROUNDUP(addr, 32);
+		bp->rp = (uchar*)addr;
+	}
 
 	return bp;
 }
@@ -364,7 +369,7 @@ startdma(Ether* ether, ulong address)
 	wp = KADDR(inl(port+MasterAddress));
 	status = ins(port+MasterStatus);
 	if(status & (masterInProgress|targetAbort|masterAbort))
-		print("elnk3#%d: BM status 0x%uX\n", ether->ctlrno, status);
+		print("#l%d: BM status 0x%uX\n", ether->ctlrno, status);
 	outs(port+MasterStatus, masterMask);
 	outl(port+MasterAddress, address);
 	outs(port+MasterLen, sizeof(Etherpkt));
@@ -409,7 +414,7 @@ attach(Ether* ether)
 	 */
 	promiscuous(ether, ether->prom);
 
-	x = interruptMask|interruptLatch;
+	x = interruptMask;
 	if(ctlr->busmaster)
 		x &= ~(rxEarly|rxComplete);
 	COMMAND(port, SetIndicationEnable, x);
@@ -422,9 +427,8 @@ attach(Ether* ether)
 	 * Prime the busmaster channel for receiving directly into a
 	 * receive packet buffer if necessary.
 	 */
-	ctlr->rbpix = 0;
 	if(ctlr->busmaster)
-		startdma(ether, PADDR(ctlr->rbp[ctlr->rbpix]->rp));
+		startdma(ether, PADDR(ctlr->rbp->rp));
 
 	ctlr->attached = 1;
 	iunlock(&ctlr->wlock);
@@ -472,7 +476,7 @@ statistics(Ether* ether)
 }
 
 static void
-transmit(Ether* ether)
+txstart(Ether* ether)
 {
 	int port, len;
 	Ctlr *ctlr;
@@ -490,60 +494,52 @@ transmit(Ether* ether)
 	 * level and expects to be called with ctlr->wlock already locked
 	 * and the correct register window (Wop) in place.
 	 */
-	while(bp = ctlr->txqhead){
+	for(;;){
+		if(ctlr->txbp){
+			bp = ctlr->txbp;
+			ctlr->txbp = 0;
+		}
+		else{
+			bp = qget(ether->oq);
+			if(bp == nil)
+				break;
+		}
+
 		len = ROUNDUP(BLEN(bp), 4);
 		if(len+4 <= ins(port+TxFree)){
 			outl(port+Fifo, BLEN(bp));
 			outsl(port+Fifo, bp->rp, len/4);
 
-			ctlr->txqhead = bp->next;
 			freeb(bp);
 
 			ether->outpackets++;
 		}
-		else if(ctlr->txbusy == 0){
-			ctlr->txbusy = 1;
-			COMMAND(port, SetTxAvailableThresh, len>>ctlr->ts);
-			return;
+		else{
+			ctlr->txbp = bp;
+			if(ctlr->txbusy == 0){
+				ctlr->txbusy = 1;
+				COMMAND(port, SetTxAvailableThresh, len>>ctlr->ts);
+			}
+			break;
 		}
 	}
 }
 
-static long
-write(Ether* ether, void* buf, long n)
+static void
+transmit(Ether* ether)
 {
 	Ctlr *ctlr;
-	Block *bp;
 	int port, w;
 
 	port = ether->port;
 	ctlr = ether->ctlr;
 
-	/*
-	 * Pack the write request up in a buffer, give it a source address
-	 * and place it on the end of the transmit queue. The data written to the
-	 * FIFO must be padded to a dword boundary, hence the ROUNDUP allocation.
-	 * Call transmit() to stuff it into the TxFIFO if possible. 
-	 */
-	bp = allocb(ROUNDUP(n, 4));
-	memmove(bp->wp, buf, n);
-	memmove(bp->wp+Eaddrlen, ether->ea, Eaddrlen);
-	bp->wp += n;
-
 	ilock(&ctlr->wlock);
 	w = (STATUS(port)>>13) & 0x07;
 	COMMAND(port, SelectRegisterWindow, Wop);
-	if(ctlr->txqhead == 0)
-		ctlr->txqhead = bp;
-	else
-		ctlr->txqtail->next = bp;
-	ctlr->txqtail = bp;
-	if(ctlr->txbusy == 0)
-		transmit(ether);
+	txstart(ether);
 	COMMAND(port, SelectRegisterWindow, w);
 	iunlock(&ctlr->wlock);
-
-	return n;
 }
 
 static void
@@ -599,35 +595,47 @@ receive(Ether* ether)
 				if(rxerror & crcError)
 					ether->crcs++;
 			}
+		}
 
+		/*
+		 * If there was an error or a new receive buffer can't be
+		 * allocated, discard the packet and go on to the next.
+		 */
+		if((rxstatus & rxError) || (bp = allocrbp(iallocb)) == 0){
 			COMMAND(port, RxDiscard, 0);
 			while(STATUS(port) & commandInProgress)
 				;
 
 			if(ctlr->busmaster)
-				startdma(ether, PADDR(ctlr->rbp[ctlr->rbpix]->rp));
+				startdma(ether, PADDR(ctlr->rbp->rp));
+
+			continue;
 		}
-		else{
-			ether->inpackets++;
-			bp = ctlr->rbp[ctlr->rbpix];
 
-			if(ctlr->busmaster == 0){
-				len = (rxstatus & rxBytes9);
-				bp->wp = bp->rp + len;
-				insl(port+Fifo, bp->rp, HOWMANY(len, 4));
-			}
-
-			COMMAND(port, RxDiscard, 0);
-			while(STATUS(port) & commandInProgress)
-				;
-
-			if(ctlr->busmaster){
-				ctlr->rbpix ^= 1;
-				bp->wp = startdma(ether, PADDR(ctlr->rbp[ctlr->rbpix]->rp));
-			}
-
-			etherrloop(ether, (Etherpkt*)bp->rp, BLEN(bp));
+		/*
+		 * A valid receive packet awaits:
+		 *	if using PIO, read it into the buffer;
+		 *	discard the packet from the FIFO;
+		 *	if using busmastering, start a new transfer for
+		 *	  the next packet and as a side-effect get the
+		 *	  end-pointer of the one just received;
+		 *	pass the packet on to whoever wants it.
+		 */
+		if(ctlr->busmaster == 0){
+			len = (rxstatus & rxBytes9);
+			ctlr->rbp->wp = ctlr->rbp->rp + len;
+			insl(port+Fifo, ctlr->rbp->rp, HOWMANY(len, 4));
 		}
+
+		COMMAND(port, RxDiscard, 0);
+		while(STATUS(port) & commandInProgress)
+			;
+
+		if(ctlr->busmaster)
+			ctlr->rbp->wp = startdma(ether, PADDR(bp->rp));
+
+		etheriq(ether, ctlr->rbp, 1);
+		ctlr->rbp = bp;
 	}
 }
 
@@ -635,7 +643,7 @@ static void
 interrupt(Ureg*, void* arg)
 {
 	Ether *ether;
-	int port, status, txstatus, w, x;
+	int port, status, s, w, x;
 	Ctlr *ctlr;
 
 	ether = arg;
@@ -648,19 +656,7 @@ interrupt(Ureg*, void* arg)
 
 	ctlr->interrupts++;
 	ctlr->timer += inb(port+Timer) & 0xFF;
-	for(;;){
-		/*
-		 * Clear the interrupt latch.
-		 * It's possible to receive a packet and for another
-		 * to become complete before exiting the interrupt
-		 * handler so this must be done first to ensure another
-		 * interrupt will occur.
-		 */
-		COMMAND(port, AcknowledgeInterrupt, interruptLatch);
-		status = STATUS(port);
-		if((status & interruptMask) == 0)
-			break;
-
+	for(status = STATUS(port); status & interruptMask; status = STATUS(port)){
 		if(status & hostError){
 			/*
 			 * Adapter failure, try to find out why, reset if
@@ -670,7 +666,7 @@ interrupt(Ureg*, void* arg)
 			COMMAND(port, SelectRegisterWindow, Wdiagnostic);
 			x = ins(port+FifoDiagnostic);
 			COMMAND(port, SelectRegisterWindow, Wop);
-			print("elnk3#%d: status 0x%uX, diag 0x%uX\n",
+			print("#l%d: status 0x%uX, diag 0x%uX\n",
 			    ether->ctlrno, status, x);
 
 			if(x & txOverrun){
@@ -679,17 +675,23 @@ interrupt(Ureg*, void* arg)
 				else
 					COMMAND(port, TxReset, dmaReset);
 				COMMAND(port, TxEnable, 0);
-				wakeup(&ether->tr);
 			}
 
 			if(x & rxUnderrun){
 				/*
 				 * This shouldn't happen...
+				 * Reset the receiver and restore the filter and RxEarly
+				 * threshold before re-enabling.
 				 * Need to restart any busmastering?
 				 */
+				COMMAND(port, SelectRegisterWindow, Wstate);
+				s = (port+RxFilter) & 0x000F;
+				COMMAND(port, SelectRegisterWindow, Wop);
 				COMMAND(port, RxReset, 0);
 				while(STATUS(port) & commandInProgress)
 					;
+				COMMAND(port, SetRxFilter, s);
+				COMMAND(port, SetRxEarlyThresh, ctlr->rxearly>>ctlr->ts);
 				COMMAND(port, RxEnable, 0);
 			}
 
@@ -710,14 +712,14 @@ interrupt(Ureg*, void* arg)
 			 * as a busmaster receive may be in progress.
 			 * For all conditions enable the transmitter.
 			 */
-			txstatus = 0;
+			s = 0;
 			do{
 				if(x = inb(port+TxStatus))
 					outb(port+TxStatus, 0);
-				txstatus |= x;
+				s |= x;
 			}while(STATUS(port) & txComplete);
 
-			if(txstatus & txUnderrun){
+			if(s & txUnderrun){
 				COMMAND(port, SelectRegisterWindow, Wdiagnostic);
 				while(ins(port+MediaStatus) & txInProg)
 					;
@@ -726,7 +728,7 @@ interrupt(Ureg*, void* arg)
 					ctlr->txthreshold += ETHERMINTU;
 			}
 
-			if(txstatus & (txJabber|txUnderrun)){
+			if(s & (txJabber|txUnderrun)){
 				if(ctlr->busmaster == 0)
 					COMMAND(port, TxReset, 0);
 				else
@@ -744,7 +746,7 @@ interrupt(Ureg*, void* arg)
 		if(status & txAvailable){
 			COMMAND(port, AcknowledgeInterrupt, txAvailable);
 			ctlr->txbusy = 0;
-			transmit(ether);
+			txstart(ether);
 			status &= ~txAvailable;
 		}
 
@@ -765,8 +767,9 @@ interrupt(Ureg*, void* arg)
 		 * Panic if there are any interrupts not dealt with.
 		 */
 		if(status & interruptMask)
-			panic("elnk3#%d: interrupt mask 0x%uX\n", ether->ctlrno, status);
+			panic("#l%d: interrupt mask 0x%uX\n", ether->ctlrno, status);
 	}
+	COMMAND(port, AcknowledgeInterrupt, interruptLatch);
 
 	COMMAND(port, SelectRegisterWindow, w);
 	unlock(&ctlr->wlock);
@@ -806,13 +809,28 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 	return readstr(offset, a, n, buf);
 }
 
-typedef struct Adapter Adapter;
-struct Adapter {
-	Adapter*	next;
-	int		port;
-	int		irq;
-};
-static Adapter *adapter;
+typedef struct Adapter {
+	int	port;
+	int	irq;
+	int	tbdf;
+} Adapter;
+static Block* adapter;
+
+static void
+tcmadapter(int port, int irq, int tbdf)
+{
+	Block *bp;
+	Adapter *ap;
+
+	bp = allocb(sizeof(Adapter));
+	ap = (Adapter*)bp->rp;
+	ap->port = port;
+	ap->irq = irq;
+	ap->tbdf = tbdf;
+
+	bp->next = adapter;
+	adapter = bp;
+}
 
 /*
  * Write two 0 bytes to identify the IDport and then reset the
@@ -914,7 +932,6 @@ static ulong
 tcm509isa(Ether* ether)
 {
 	int irq, port;
-	Adapter *ap;
 
 	/*
 	 * Attempt to activate adapters until one matches the
@@ -958,11 +975,7 @@ tcm509isa(Ether* ether)
 			return port;
 		}
 
-		ap = malloc(sizeof(Adapter));
-		ap->port = port;
-		ap->irq = irq;
-		ap->next = adapter;
-		adapter = ap;
+		tcmadapter(port, irq, BUSUNKNOWN);
 	}
 
 	return 0;
@@ -974,7 +987,6 @@ tcm5XXeisa(Ether* ether)
 	static int slot = 1;
 	ushort x;
 	int irq, port;
-	Adapter *ap;
 
 	/*
 	 * First time through, check if this is an EISA machine.
@@ -1010,11 +1022,7 @@ tcm5XXeisa(Ether* ether)
 			return port;
 		}
 
-		ap = malloc(sizeof(Adapter));
-		ap->port = port;
-		ap->irq = irq;
-		ap->next = adapter;
-		adapter = ap;
+		tcmadapter(port, irq, BUSUNKNOWN);
 	}
 
 	return 0;
@@ -1023,31 +1031,19 @@ tcm5XXeisa(Ether* ether)
 static int
 tcm59Xpci(Ether* ether)
 {
-	PCIcfg pcicfg;
-	static int devno = 0;
+	static Pcidev *p;
 	int irq, port;
-	Adapter *ap;
 
-	for(;;){
-		pcicfg.vid = 0x10B7;
-		pcicfg.did = 0;
-		if((devno = pcimatch(0, devno, &pcicfg)) == -1)
-			break;
-		port = pcicfg.baseaddr[0] & ~0x01;
-		COMMAND(port, GlobalReset, 0);
-		while(STATUS(port) & commandInProgress)
-			;
-		irq = pcicfg.irq;
+	while(p = pcimatch(p, 0x10B7, 0)){
+		port = p->bar[0] & ~0x01;
+		irq = p->intl;
 		if(ether->port == 0 || ether->port == port){
 			ether->irq = irq;
+			ether->tbdf = p->tbdf;
 			return port;
 		}
 
-		ap = malloc(sizeof(Adapter));
-		ap->port = port;
-		ap->irq = irq;
-		ap->next = adapter;
-		adapter = ap;
+		tcmadapter(port, irq, p->tbdf);
 	}
 
 	return 0;
@@ -1147,7 +1143,8 @@ int
 etherelnk3reset(Ether* ether)
 {
 	int busmaster, i, port, rxearly, rxstatus9, x, xcvr;
-	Adapter *ap, **app;
+	Block *bp, **bpp;
+	Adapter *ap;
 	uchar ea[Eaddrlen];
 	Ctlr *ctlr;
 
@@ -1163,20 +1160,27 @@ etherelnk3reset(Ether* ether)
 	rxearly = 2044;
 	rxstatus9 = 0;
 	xcvr = 0;
-	for(app = &adapter, ap = *app; ap; app = &ap->next, ap = ap->next){
+	bpp = &adapter;
+	for(bp = *bpp; bp; bp = bp->next){
+		ap = (Adapter*)bp->rp;
 		if(ether->port == 0 || ether->port == ap->port){
 			port = ap->port;
 			ether->irq = ap->irq;
-			*app = ap->next;
-			free(ap);
+			ether->tbdf = ap->tbdf;
+			*bpp = bp->next;
+			freeb(bp);
 			break;
 		}
+		bpp = &bp->next;
 	}
 	if(port == 0 && (port = tcm5XXpcmcia(ether))){
 		xcvr = ((ins(port+AddressConfig) & xcvrMask9)>>14)<<20;
 		rxstatus9 = 1;
 	}
 	else if(port == 0 && (port = tcm59Xpci(ether))){
+		COMMAND(port, GlobalReset, 0);
+		while(STATUS(port) & commandInProgress)
+			;
 		COMMAND(port, SelectRegisterWindow, Wfifo);
 		rxearly = 8188;
 		xcvr = inl(port+InternalConfig) & (autoSelect|xcvrMask);
@@ -1241,8 +1245,11 @@ etherelnk3reset(Ether* ether)
 	COMMAND(port, SelectRegisterWindow, Wdiagnostic);
 	x = ins(port+MediaStatus) & ~(linkBeatEnable|jabberGuardEnable);
 	outs(port+MediaStatus, x);
-	if(x & dataRate100)
+	if(x & dataRate100){
 		busmaster = 1;
+		x = inl(port+InternalConfig) & ~ramPartitionMask;
+		outl(port+InternalConfig, x|ramPartition1to1);
+	}
 	else
 		busmaster = 0;
 	switch(xcvr){
@@ -1298,25 +1305,23 @@ etherelnk3reset(Ether* ether)
 	ctlr->busmaster = busmaster;
 	ctlr->xcvr = xcvr;
 	ctlr->rxstatus9 = rxstatus9;
+	ctlr->rxearly = rxearly;
 	if(rxearly >= 2048)
 		ctlr->ts = 2;
 
 	COMMAND(port, StatisticsEnable, 0);
 
 	/*
-	 * Allocate the receive buffers.
+	 * Allocate the receive buffer.
 	 */
-	ctlr->rbpix = 0;
-	ctlr->rbp[0] = allocrbp();
-	if(ctlr->busmaster)
-		ctlr->rbp[1] = allocrbp();
+	ctlr->rbp = allocrbp(allocb);
 
 	/*
 	 * Set a base TxStartThresh which will be incremented
 	 * if any txUnderrun errors occur and ensure no RxEarly
 	 * interrupts happen.
 	 */
-	ctlr->txthreshold = ETHERMINTU*2;
+	ctlr->txthreshold = ETHERMAXTU/2;
 	COMMAND(port, SetTxStartThresh, ctlr->txthreshold>>ctlr->ts);
 	COMMAND(port, SetRxEarlyThresh, rxearly>>ctlr->ts);
 
@@ -1327,7 +1332,7 @@ etherelnk3reset(Ether* ether)
 	 */
 	ether->port = port;
 	ether->attach = attach;
-	ether->write = write;
+	ether->transmit = transmit;
 	ether->interrupt = interrupt;
 	ether->ifstat = ifstat;
 

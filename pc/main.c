@@ -6,60 +6,98 @@
 #include	"io.h"
 #include	"ureg.h"
 #include	"init.h"
-#include	<ctype.h>
 
+Mach *m;
 
-uchar *sp;	/* stack pointer for /boot */
+static  uchar *sp;	/* stack pointer for /boot */
 
-extern PCArch nsx20, generic, ncr3170;
-
-PCArch *arch;
-PCArch *knownarch[] =
-{
-	&nsx20,
-	&ncr3170,
-	&generic,
-};
-
-/* where b.com leaves configuration info */
-#define BOOTARGS	((char*)(KZERO|1024))
-#define	BOOTARGSLEN	1024
+/*
+ * Where configuration info is left for the loaded programme.
+ * This will turn into a structure as more is done by the boot loader
+ * (e.g. why parse the .ini file twice?).
+ * There are 1024 bytes available at CONFADDR.
+ */
+#define BOOTLINE	((char *)CONFADDR)
+#define BOOTLINELEN	64
+#define BOOTARGS	((char*)(CONFADDR+BOOTLINELEN))
+#define	BOOTARGSLEN	(1024-BOOTLINELEN)
 #define	MAXCONF		32
 
 char bootdisk[NAMELEN];
-char filaddr[NAMELEN];
 char *confname[MAXCONF];
 char *confval[MAXCONF];
 int nconf;
 
-/* memory map */
-#define MAXMEG 128
-char mmap[MAXMEG+2];
+extern void ns16552install(void);	/* botch: config */
+
+static int isoldbcom;
+
+static void
+bcompatibility(void)
+{
+	uchar *bda;
+
+	if(strncmp(BOOTARGS, "ZORT 0\r\n", 8) == 0)
+		return;
+	isoldbcom = 1;
+
+	memmove(BOOTARGS, KADDR(1024), BOOTARGSLEN);
+	memmove(BOOTLINE, KADDR(0x100), BOOTLINELEN);
+
+	bda = KADDR(0x400);
+	bda[0x13] = 639;
+	bda[0x14] = 639>>8;
+}
 
 void
 main(void)
 {
-	ident();
-	i8042a20();		/* enable address lines 20 and up */
+	outb(0x3F2, 0x00);		/* botch: turn off the floppy motor */
+
+	/*
+	 * There is a little leeway here in the ordering but care must be
+	 * taken with dependencies:
+	 *	function		depends on
+	 *	========		==========
+	 *	machinit		m->machno, m->pdb
+	 *	cpuidentify		m
+	 *	memscan			cpuidentify (needs to know processor
+	 *				type for caching, etc.)
+	 *	archinit		memscan (MP config table may be at the
+	 *				top of system physical memory);
+	 *				conf.nmach (not critical, mpinit will check);
+	 *	confinit		meminit
+	 *	arch->intrinit		trapinit
+	 */
+	conf.nmach = 1;
+	MACHP(0) = (Mach*)CPU0MACH;
+	m->pdb = (void*)CPU0PDB;
 	machinit();
-	active.exiting = 0;
 	active.machs = 1;
+	active.exiting = 0;
+	cpuidentify();
+	bcompatibility();
+	memscan();
+	archinit();
 	confinit();
 	xinit();
-	dmainit();
+	trapinit();
 	screeninit();
 	printinit();
-	mmuinit();
-	trapinit();
-	ns16552install();
+	if(isoldbcom)
+		print("    ****OLD B.COM - UPGRADE****\n");
 	pageinit();
+	mmuinit();
+	if(arch->intrinit)
+		arch->intrinit();
+	ns16552install();			/* botch: config */
 	mathinit();
-	clockinit();
-	faultinit();
 	kbdinit();
+	if(arch->clockenable)
+		arch->clockenable();
 	procinit0();
 	initseg();
-	printcpufreq();
+	cpuidprint();
 	links();
 	chandevreset();
 	swapinit();
@@ -67,32 +105,17 @@ main(void)
 	schedinit();
 }
 
-/*
- *  This tries to capture architecture dependencies since things
- *  like power management/reseting/mouse are outside the hardware
- *  model.
- */
-void
-ident(void)
-{
-	char *id = (char*)(ROMBIOS + 0xFF40);
-	PCArch **p;
-
-	for(p = knownarch; *p != &generic; p++)
-		if(strncmp((*p)->id, id, strlen((*p)->id)) == 0)
-			break;
-	arch = *p;
-}
-
 void
 machinit(void)
 {
-	int n;
+	int machno;
+	void *pdb;
 
-	n = m->machno;
+	machno = m->machno;
+	pdb = m->pdb;
 	memset(m, 0, sizeof(Mach));
-	m->machno = n;
-	m->mmask = 1<<m->machno;
+	m->machno = machno;
+	m->pdb = pdb;
 }
 
 void
@@ -119,7 +142,7 @@ init0(void)
 	 * Then early kproc's will have a root and dot.
 	 */
 	up->slash = namec("#/", Atodir, 0, 0);
-	up->dot = clone(up->slash, 0);
+	up->dot = cclone(up->slash, 0);
 
 	chandevinit();
 
@@ -128,10 +151,6 @@ init0(void)
 		strcat(tstr, " %s");
 		ksetterm(tstr);
 		ksetenv("cputype", "386");
-		if(cpuserver)
-			ksetenv("service", "cpu");
-		else
-			ksetenv("service", "terminal");
 		for(i = 0; i < nconf; i++)
 			if(confname[i])
 				ksetenv(confname[i], confval[i]);
@@ -223,7 +242,7 @@ bootargs(ulong base)
 
 	ac = 0;
 	av[ac++] = pusharg("/386/9dos");
-	cp[64] = 0;
+	cp[BOOTLINELEN-1] = 0;
 	buf[0] = 0;
 	if(strncmp(cp, "fd!", 3) == 0){
 		sprint(buf, "local!#f/fd%ddisk", atoi(cp+3));
@@ -285,105 +304,35 @@ getconf(char *name)
 	return 0;
 }
 
-/*
- *  zero memory to set ECC.
- *  do a quick memory test also.
- *
- *  if any part of a meg is missing/broken, return -1.
- */
-int
-memclrtest(int meg, int len, long seed)
-{
-	int j, n;
-	long y;
-	long *lp;
-	
-	for(j = 0; j < len; j += BY2PG){
-		lp = mapaddr(KZERO|(meg*MB+j));
-		for(n = 0; n < BY2PG/BY2WD; n++)
-			lp[n] = seed + n;
-	}
-	for(j = 0; j < len; j += BY2PG){
-		lp = mapaddr(KZERO|(meg*MB+j));
-		for(n = 0; n < BY2PG/(2*BY2WD); n++){
-			y = lp[n];
-			lp[n] = ~lp[n^((BY2PG/BY2WD)-1)];
-			lp[n^((BY2PG/BY2WD)-1)] = ~y;
-		}
-	}
-	for(j = 0; j < len; j += BY2PG){
-		lp = mapaddr(KZERO|(meg*MB+j));
-		for(n = 0; n < BY2PG/BY2WD; n++)
-			if(lp[n] != ~(seed + (n^((BY2PG/BY2WD)-1))))
-				return -1;
-/*		memset(lp, '!', BY2PG);/**/
-	}
-	return 0;
-}
-
-/*
- *  look for unused address space in 0xC8000 to 1 meg
- */
-void
-romscan(void)
-{
-	uchar *p;
-
-	p = (uchar*)(KZERO+0xC8000);
-	while(p < (uchar*)(KZERO+0xE0000)){
-		p[0] = 0x55;
-		p[1] = 0xAA;
-		p[2] = 4;
-		if(p[0] == 0x55 && p[1] == 0xAA){
-			p += p[2]*512;
-			continue;
-		}
-		p[0] = 0xCC;
-		p[2048-1] = 0xCC;
-		if(p[0] != 0xCC && p[2048-1] != 0xCC)
-			putisa(PADDR(p), 2048);
-		p += 2048;
-	}
-
-	p = (uchar*)(KZERO+0xE0000);
-	if(p[0] != 0x55 || p[1] != 0xAA){
-		p[0] = 0xCC;
-		p[64*1024-1] = 0xff;
-		if(p[0] != 0xCC && p[64*1024-1] != 0xCC)
-			putisa(PADDR(p), 64*1024);
-	}
-}
-
 static int
-getcfields(char *lp, char **fields, int n, char sep)
+getcfields(char* lp, char** fields, int n, char* sep)
 {
 	int i;
 
-	for(i=0; lp && *lp && i<n; i++){
-		while(*lp == sep)
-			*lp++=0;
+	for(i = 0; lp && *lp && i < n; i++){
+		while(*lp && strchr(sep, *lp) != 0)
+			*lp++ = 0;
 		if(*lp == 0)
 			break;
-		fields[i]=lp;
-		while(*lp && *lp != sep){
+		fields[i] = lp;
+		while(*lp && strchr(sep, *lp) == 0){
 			if(*lp == '\\' && *(lp+1) == '\n')
 				*lp++ = ' ';
 			lp++;
 		}
 	}
+
 	return i;
 }
 
 void
 confinit(void)
 {
-	long x, i, j, n;
+	long i, j, n;
 	int pcnt;
-	ulong ktop;
-	char *cp, *line[MAXCONF], *p, *q;
+	char *cp;
+	char *line[MAXCONF], *p, *q;
 	extern int defmaxmsg;
-
-	pcnt = 0;
 
 	/*
 	 *  parse configuration args from dos file plan9.ini
@@ -404,7 +353,8 @@ confinit(void)
 	}
 	*p = 0;
 
-	n = getcfields(cp, line, MAXCONF, '\n');
+	pcnt = 0;
+	n = getcfields(cp, line, MAXCONF, "\n");
 	for(j = 0; j < n; j++){
 		if(*line[j] == '#')
 			continue;
@@ -416,107 +366,19 @@ confinit(void)
 			*(line[j]+NAMELEN-1) = 0;
 		confname[nconf] = line[j];
 		confval[nconf] = cp;
-		if(strcmp(confname[nconf], "kernelpercent") == 0)
+		if(cistrcmp(confname[nconf], "kernelpercent") == 0)
 			pcnt = 100 - atoi(confval[nconf]);
-		if(strcmp(confname[nconf], "defmaxmsg") == 0){
+		if(cistrcmp(confname[nconf], "defmaxmsg") == 0){
 			i = atoi(confval[nconf]);
 			if(i < defmaxmsg && i >=128)
 				defmaxmsg = i;
 		}
-		if(strcmp(confname[nconf], "filaddr") == 0)
-			strcpy(filaddr, confval[nconf]);
 		nconf++;
 	}
 
-	/*
-	 *  size memory above 1 meg. Kernel sits at 1 meg.  We
-	 *  only recognize MB size chunks.
-	 */
-	memset(mmap, ' ', sizeof(mmap));
-	x = 0x12345678;
-	for(i = 1; i <= MAXMEG; i++){
-		/*
-		 *  write the first & last word in a megabyte of memory
-		 */
-		*mapaddr(KZERO|(i*MB)) = x;
-		*mapaddr(KZERO|((i+1)*MB-BY2WD)) = x;
-
-		/*
-		 *  write the first and last word in all previous megs to
-		 *  handle address wrap around
-		 */
-		for(j = 1; j < i; j++){
-			*mapaddr(KZERO|(j*MB)) = ~x;
-			*mapaddr(KZERO|((j+1)*MB-BY2WD)) = ~x;
-		}
-
-		/*
-		 *  check for correct value
-		 */
-		if(*mapaddr(KZERO|(i*MB)) == x)
-			if(*mapaddr(KZERO|((i+1)*MB-BY2WD)) == x)
-				mmap[i] = 'x';
-		x += 0x3141526;
-	}
-
-	/*
-	 *  zero and clear all except first 2 meg.
-	 */
-	x = 0x12345678;
-	for(i = MAXMEG; i > 1; i--){
-		if(mmap[i] != 'x')
-			continue;
-/*
-		if(memclrtest(i, MB, x) < 0)
-			mmap[i] = ' ';
- */
-		x += 0x3141526;
-	}
-
-	/*
-	 *  bank0 usually goes from the end of kernel bss to the end of memory
-	 */
-	ktop = PGROUND((ulong)end);
-	ktop = PADDR(ktop);
-	conf.base0 = ktop;
-	for(i = 1; mmap[i] == 'x'; i++)
-		;
-	conf.npage0 = (i*MB - ktop)/BY2PG;
-	conf.topofmem = i*MB;
-
-	/*
-	 *  bank1 usually goes from the end of BOOTARGS to 640k
-	 */
-	conf.base1 = (ulong)(BOOTARGS + BOOTARGSLEN);
-	conf.base1 = PGROUND(conf.base1);
-	conf.base1 = PADDR(conf.base1);
-	conf.npage1 = (640*1024 - conf.base1)/BY2PG;
-
-	/*
-	 *  if there is a hole in memory (e.g. due to a shadow BIOS) make the
-	 *  memory after the hole be bank 1. The memory from 0 to 640k
-	 *  is lost.
-	 */
-	for(; i <= MAXMEG; i++)
-		if(mmap[i] == 'x'){
-			conf.base1 = i*MB;
-			for(j = i+1; mmap[j] == 'x'; j++)
-				;
-			conf.npage1 = (j - i)*MB/BY2PG;
-			conf.topofmem = j*MB;
-			break;
-		}
-
-	/*
- 	 *  add address space holes holes under 16 meg to available
-	 *  isa space.
-	 */
-	romscan();
-	if(conf.topofmem < 16*MB)
-		putisa(conf.topofmem, 16*MB - conf.topofmem);
+	meminit();
 
 	conf.npage = conf.npage0 + conf.npage1;
-	conf.ldepth = 0;
 	if(pcnt < 10)
 		pcnt = 70;
 	conf.upages = (conf.npage*pcnt)/100;
@@ -525,12 +387,10 @@ confinit(void)
 	conf.nproc = 100 + ((conf.npage*BY2PG)/MB)*5;
 	if(cpuserver)
 		conf.nproc *= 3;
-	conf.monitor = 1;
+	if(conf.nproc > 2000)
+		conf.nproc = 2000;
 	conf.nswap = conf.nproc*80;
-	conf.nimage = 50;
-	conf.nfloppy = 2;
-	conf.nhard = 2;
-	conf.nmach = 1;
+	conf.nimage = 200;
 }
 
 char *mathmsg[] =
@@ -549,14 +409,12 @@ char *mathmsg[] =
  *  math coprocessor error
  */
 void
-matherror(Ureg *ur, void *arg)
+matherror(Ureg *ur, void*)
 {
 	ulong status;
 	int i;
 	char *msg;
 	char note[ERRLEN];
-
-	USED(arg);
 
 	/*
 	 *  a write cycle to port 0xF0 clears the interrupt latch attached
@@ -591,9 +449,8 @@ matherror(Ureg *ur, void *arg)
  *  math coprocessor emulation fault
  */
 void
-mathemu(Ureg *ur, void *arg)
+mathemu(Ureg*, void*)
 {
-	USED(ur, arg);
 	switch(up->fpstate){
 	case FPinit:
 		fpinit();
@@ -613,20 +470,19 @@ mathemu(Ureg *ur, void *arg)
  *  math coprocessor segment overrun
  */
 void
-mathover(Ureg *ur, void *arg)
+mathover(Ureg*, void*)
 {
-	USED(ur, arg);
-print("sys: fp: math overrun pc 0x%lux pid %d\n", ur->pc, up->pid);
 	pexit("math overrun", 0);
 }
 
 void
 mathinit(void)
 {
-	setvec(Matherr1vec, matherror, 0);
-	setvec(Matherr2vec, matherror, 0);
-	setvec(Mathemuvec, mathemu, 0);
-	setvec(Mathovervec, mathover, 0);
+	intrenable(VectorCERR, matherror, 0, BUSUNKNOWN);
+	if(X86FAMILY(m->cpuidax) == 3)
+		intrenable(VectorIRQ13, matherror, 0, BUSUNKNOWN);
+	intrenable(VectorCNA, mathemu, 0, BUSUNKNOWN);
+	intrenable(VectorCSO, mathover, 0, BUSUNKNOWN);
 }
 
 /*
@@ -654,122 +510,40 @@ procsave(Proc *p)
 	}
 }
 
-/*
- *  Restore what procsave() saves
- */
-void
-procrestore(Proc *p)
-{
-	USED(p);
-}
-
-/*
- *  the following functions all are slightly different from
- *  PC to PC.
- */
-
 void
 exit(int ispanic)
 {
-	up = 0;
-	active.machs = 0;
-	print("exiting\n");
+	int ms, once;
+
+	lock(&active);
+	if(ispanic)
+		active.ispanic = ispanic;
+	else if(m->machno == 0 && (active.machs & (1<<m->machno)) == 0)
+		active.ispanic = 0;
+	once = active.machs & (1<<m->machno);
+	active.machs &= ~(1<<m->machno);
+	active.exiting = 1;
+	unlock(&active);
+
+	if(once)
+		print("cpu%d: exiting\n", m->machno);
 	spllo();
-	if(ispanic){
+	for(ms = 5*1000; ms > 0; ms -= TK2MS(2)){
+		delay(TK2MS(2));
+		if(active.machs == 0 && consactive() == 0)
+			break;
+	}
+
+	if(active.ispanic && m->machno == 0){
 		if(cpuserver)
 			delay(10000);
 		else
 			for(;;);
-	} else
+	}
+	else
 		delay(1000);
 
-	(*arch->reset)();
-}
-
-/*
- *  set cpu speed
- *	0 == low speed
- *	1 == high speed
- */
-int
-cpuspeed(int speed)
-{
-	if(arch->cpuspeed)
-		return (*arch->cpuspeed)(speed);
-	else
-		return 0;
-}
-
-/*
- *  f == frequency (Hz)
- *  d == duration (ms)
- */
-void
-buzz(int f, int d)
-{
-	if(arch->buzz)
-		(*arch->buzz)(f, d);
-}
-
-/*
- *  each bit in val stands for a light
- */
-void
-lights(int val)
-{
-	if(arch->lights)
-		(*arch->lights)(val);
-}
-
-/*
- *  power to serial port
- *	onoff == 1 means on
- *	onoff == 0 means off
- */
-int
-serial(int onoff)
-{
-	if(arch->serialpower)
-		return (*arch->serialpower)(onoff);
-	else
-		return 0;
-}
-
-/*
- *  power to modem
- *	onoff == 1 means on
- *	onoff == 0 means off
- */
-int
-modem(int onoff)
-{
-	if(arch->modempower)
-		return (*arch->modempower)(onoff);
-	else
-		return 0;
-}
-
-static int
-parseether(uchar *to, char *from)
-{
-	char nip[4];
-	char *p;
-	int i;
-
-	p = from;
-	for(i = 0; i < 6; i++){
-		if(*p == 0)
-			return -1;
-		nip[0] = *p++;
-		if(*p == 0)
-			return -1;
-		nip[1] = *p++;
-		nip[2] = 0;
-		to[i] = strtoul(nip, 0, 16);
-		if(*p == ':')
-			p++;
-	}
-	return 0;
+	arch->reset();
 }
 
 int
@@ -780,7 +554,7 @@ isaconfig(char *class, int ctlrno, ISAConf *isa)
 
 	sprint(cc, "%s%d", class, ctlrno);
 	for(n = 0; n < nconf; n++){
-		if(strncmp(confname[n], cc, NAMELEN))
+		if(cistrncmp(confname[n], cc, NAMELEN))
 			continue;
 		isa->nopt = 0;
 		p = confval[n];
@@ -789,7 +563,7 @@ isaconfig(char *class, int ctlrno, ISAConf *isa)
 				p++;
 			if(*p == '\0')
 				break;
-			if(strncmp(p, "type=", 5) == 0){
+			if(cistrncmp(p, "type=", 5) == 0){
 				p += 5;
 				for(q = isa->type; q < &isa->type[NAMELEN-1]; q++){
 					if(*p == '\0' || *p == ' ' || *p == '\t')
@@ -798,22 +572,18 @@ isaconfig(char *class, int ctlrno, ISAConf *isa)
 				}
 				*q = '\0';
 			}
-			else if(strncmp(p, "port=", 5) == 0)
+			else if(cistrncmp(p, "port=", 5) == 0)
 				isa->port = strtoul(p+5, &p, 0);
-			else if(strncmp(p, "irq=", 4) == 0)
+			else if(cistrncmp(p, "irq=", 4) == 0)
 				isa->irq = strtoul(p+4, &p, 0);
-			else if(strncmp(p, "dma=", 4) == 0)
+			else if(cistrncmp(p, "dma=", 4) == 0)
 				isa->dma = strtoul(p+4, &p, 0);
-			else if(strncmp(p, "mem=", 4) == 0)
+			else if(cistrncmp(p, "mem=", 4) == 0)
 				isa->mem = strtoul(p+4, &p, 0);
-			else if(strncmp(p, "size=", 5) == 0)
+			else if(cistrncmp(p, "size=", 5) == 0)
 				isa->size = strtoul(p+5, &p, 0);
-			else if(strncmp(p, "freq=", 5) == 0)
+			else if(cistrncmp(p, "freq=", 5) == 0)
 				isa->freq = strtoul(p+5, &p, 0);
-			else if(strncmp(p, "ea=", 3) == 0){
-				if(parseether(isa->ea, p+3) == -1)
-					memset(isa->ea, 0, 6);
-			}
 			else if(isa->nopt < NISAOPT){
 				r = isa->opt[isa->nopt];
 				while(*p && *p != ' ' && *p != '\t'){
@@ -867,5 +637,30 @@ cistrcmp(char *a, char *b)
 		if(bc == 0)
 			break;
 	}
+	return 0;
+}
+
+int
+cistrncmp(char *a, char *b, int n)
+{
+	unsigned ac, bc;
+
+	while(n > 0){
+		ac = *a++;
+		bc = *b++;
+		n--;
+
+		if(ac >= 'A' && ac <= 'Z')
+			ac = 'a' + (ac - 'A');
+		if(bc >= 'A' && bc <= 'Z')
+			bc = 'a' + (bc - 'A');
+
+		ac -= bc;
+		if(ac)
+			return ac;
+		if(bc == 0)
+			break;
+	}
+
 	return 0;
 }

@@ -108,12 +108,7 @@ static void	sslhangup(Dstate*);
 static Dstate*	dsclone(Chan *c);
 static void	dsnew(Chan *c, Dstate **);
 
-void
-sslreset(void)
-{
-}
-
-int
+static int
 sslgen(Chan *c, Dirtab *d, int nd, int s, Dir *dp)
 {
 	Qid q;
@@ -173,14 +168,14 @@ sslgen(Chan *c, Dirtab *d, int nd, int s, Dir *dp)
 	return -1;
 }
 
-void
+static void
 sslinit(void)
 {
 	if((dstate = malloc(sizeof(Dstate*) * maxdstate)) == 0)
 		panic("sslinit");
 }
 
-Chan *
+static Chan*
 sslattach(void *spec)
 {
 	Chan *c;
@@ -191,25 +186,19 @@ sslattach(void *spec)
 	return c;
 }
 
-Chan *
-sslclone(Chan *c, Chan *nc)
-{
-	return devclone(c, nc);
-}
-
-int
+static int
 sslwalk(Chan *c, char *name)
 {
 	return devwalk(c, name, 0, 0, sslgen);
 }
 
-void
+static void
 sslstat(Chan *c, char *db)
 {
 	devstat(c, db, 0, 0, sslgen);
 }
 
-Chan *
+static Chan*
 sslopen(Chan *c, int omode)
 {
 	Dstate *s, **pp;
@@ -273,24 +262,7 @@ sslopen(Chan *c, int omode)
 	return c;
 }
 
-void
-sslcreate(Chan *c, char *name, int omode, ulong perm)
-{
-	USED(c);
-	USED(name);
-	USED(omode);
-	USED(perm);
-	error(Eperm);
-}
-
-void
-sslremove(Chan *c)
-{
-	USED(c);
-	error(Eperm);
-}
-
-void
+static void
 sslwstat(Chan *c, char *dp)
 {
 	Dir d;
@@ -308,7 +280,7 @@ sslwstat(Chan *c, char *dp)
 	s->perm = d.mode;
 }
 
-void
+static void
 sslclose(Chan *c)
 {
 	Dstate *s;
@@ -335,7 +307,7 @@ sslclose(Chan *c)
 
 		sslhangup(s);
 		if(s->c)
-			close(s->c);
+			cclose(s->c);
 		if(s->in.secret)
 			free(s->in.secret);
 		if(s->out.secret)
@@ -347,16 +319,6 @@ sslclose(Chan *c)
 		free(s);
 
 	}
-}
-
-static int
-blen(Block *bp)
-{
-	int i = 0;
-
-	for(; bp; bp = bp->next)
-		i += BLEN(bp);
-	return i;
 }
 
 /*
@@ -377,7 +339,7 @@ ensure(Dstate *s, Block **l, int n)
 	}
 
 	while(sofar < n){
-		bl = (*devtab[s->c->type].bread)(s->c, Maxdmsg, 0);
+		bl = devtab[s->c->type]->bread(s->c, Maxdmsg, 0);
 		if(bl == 0)
 			error(Ehungup);
 		*l = bl;
@@ -415,20 +377,6 @@ consume(Block **l, uchar *p, int n)
 		if(BLEN(b))
 			break;
 		*l = b->next;
-		freeb(b);
-	}
-}
-
-/* 
- *  free a list of blocks
- */
-void
-freeblist(Block *b)
-{
-	Block *next;
-
-	for(; b != 0; b = next){
-		next = b->next;
 		freeb(b);
 	}
 }
@@ -481,7 +429,7 @@ qremove(Block **l, int n, int discard)
 	return first;
 }
 
-Block*
+static Block*
 sslbread(Chan *c, long n, ulong offset)
 {
 	volatile struct { Dstate *s; } s;
@@ -560,7 +508,7 @@ sslbread(Chan *c, long n, ulong offset)
 	return b;
 }
 
-long
+static long
 sslread(Chan *c, void *a, long n, ulong offset)
 {
 	volatile struct { Block *b; } b;
@@ -627,7 +575,7 @@ randfill(uchar *buf, int len)
 /*
  *  use SSL record format, add in count and digest or encrypt
  */
-long
+static long
 sslbwrite(Chan *c, Block *b, ulong offset)
 {
 	volatile struct { Dstate *s; } s;
@@ -718,7 +666,7 @@ sslbwrite(Chan *c, Block *b, ulong offset)
 		}
 
 		m = BLEN(nb);
-		(*devtab[s.s->c->type].bwrite)(s.s->c, nb, s.s->c->offset);
+		devtab[s.s->c->type]->bwrite(s.s->c, nb, s.s->c->offset);
 		s.s->c->offset += m;
 	}
 	qunlock(&s.s->out.q);
@@ -776,7 +724,7 @@ initRC4key(OneWay *w)
 	setupRC4state(w->state, w->secret, w->slen);
 }
 
-long
+static long
 sslwrite(Chan *c, void *a, long n, ulong offset)
 {
 	volatile struct { Dstate *s; } s;
@@ -930,6 +878,23 @@ out:
 	return n;
 }
 
+Dev ssldevtab = {
+	devreset,
+	sslinit,
+	sslattach,
+	devclone,
+	sslwalk,
+	sslstat,
+	sslopen,
+	devcreate,
+	sslclose,
+	sslread,
+	sslbread,
+	sslwrite,
+	sslbwrite,
+	devremove,
+	sslwstat,
+};
 
 static Block*
 encryptb(Dstate *s, Block *b, int offset)
@@ -1039,8 +1004,8 @@ digestb(Dstate *s, Block *b, int offset)
 	n = BLEN(b) - h;
 
 	/* hash secret + message */
-	(*s->hf)(w->secret, w->slen, 0, &ss);
-	(*s->hf)(b->rp + h, n, 0, &ss);
+	s->hf(w->secret, w->slen, 0, &ss);
+	s->hf(b->rp + h, n, 0, &ss);
 
 	/* hash message id */
 	p = msgid;
@@ -1049,7 +1014,7 @@ digestb(Dstate *s, Block *b, int offset)
 	*p++ = n>>16;
 	*p++ = n>>8;
 	*p = n;
-	(*s->hf)(msgid, 4, b->rp + offset, &ss);
+	s->hf(msgid, 4, b->rp + offset, &ss);
 
 	return b;
 }
@@ -1070,7 +1035,7 @@ checkdigestb(Dstate *s, Block *inb)
 	memset(&ss, 0, sizeof(ss));
 
 	/* hash secret */
-	(*s->hf)(w->secret, w->slen, 0, &ss);
+	s->hf(w->secret, w->slen, 0, &ss);
 
 	/* hash message */
 	h = s->diglen;
@@ -1078,7 +1043,7 @@ checkdigestb(Dstate *s, Block *inb)
 		n = BLEN(b) - h;
 		if(n < 0)
 			panic("checkdigestb");
-		(*s->hf)(b->rp + h, n, 0, &ss);
+		s->hf(b->rp + h, n, 0, &ss);
 		h = 0;
 	}
 
@@ -1089,7 +1054,7 @@ checkdigestb(Dstate *s, Block *inb)
 	*p++ = n>>16;
 	*p++ = n>>8;
 	*p = n;
-	(*s->hf)(msgid, 4, digest, &ss);
+	s->hf(msgid, 4, digest, &ss);
 
 	if(memcmp(digest, inb->rp, s->diglen) != 0)
 		error("bad digest");

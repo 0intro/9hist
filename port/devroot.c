@@ -72,30 +72,19 @@ addrootfile(char *name, uchar *contents, ulong len)
 	nroot++;
 }
 
-void
+static void
 rootreset(void)
 {
 	addrootfile("boot", bootcode, bootlen);	/* always have a boot file */
 }
 
-void
-rootinit(void)
-{
-}
-
-Chan*
+static Chan*
 rootattach(char *spec)
 {
 	return devattach('/', spec);
 }
 
-Chan*
-rootclone(Chan *c, Chan *nc)
-{
-	return devclone(c, nc);
-}
-
-int	 
+static int	 
 rootwalk(Chan *c, char *name)
 {
 	if(strcmp(name, "..") == 0) {
@@ -107,13 +96,13 @@ rootwalk(Chan *c, char *name)
 	return devwalk(c, name, rootdir, nroot, devgen);
 }
 
-void	 
+static void	 
 rootstat(Chan *c, char *dp)
 {
 	devstat(c, dp, rootdir, nroot, devgen);
 }
 
-Chan*
+static Chan*
 rootopen(Chan *c, int omode)
 {
 	switch(c->qid.path & ~CHDIR) {
@@ -131,16 +120,10 @@ rootopen(Chan *c, int omode)
 	return devopen(c, omode, rootdir, nroot, devgen);
 }
 
-void	 
-rootcreate(Chan*, char*, int, ulong)
-{
-	error(Eperm);
-}
-
 /*
  * sysremove() knows this is a nop
  */
-void	 
+static void	 
 rootclose(Chan *c)
 {
 	switch(c->qid.path) {
@@ -153,13 +136,13 @@ rootclose(Chan *c)
 	}
 }
 
-int
+static int
 rdrdy(void*)
 {
 	return reclist.q != 0;
 }
 
-long	 
+static long	 
 rootread(Chan *c, void *buf, long n, ulong offset)
 {
 	ulong t;
@@ -209,13 +192,7 @@ rootread(Chan *c, void *buf, long n, ulong offset)
 	return n;
 }
 
-Block*
-rootbread(Chan *c, long n, ulong offset)
-{
-	return devbread(c, n, offset);
-}
-
-long	 
+static long	 
 rootwrite(Chan *c, void *buf, long n, ulong)
 {
 	char tmp[256];
@@ -235,23 +212,23 @@ rootwrite(Chan *c, void *buf, long n, ulong)
 	return 0;
 }
 
-long
-rootbwrite(Chan *c, Block *bp, ulong offset)
-{
-	return devbwrite(c, bp, offset);
-}
-
-void	 
-rootremove(Chan*)
-{
-	error(Eperm);
-}
-
-void	 
-rootwstat(Chan*, char*)
-{
-	error(Eperm);
-}
+Dev rootdevtab = {
+	rootreset,
+	devinit,
+	rootattach,
+	devclone,
+	rootwalk,
+	rootstat,
+	rootopen,
+	devcreate,
+	rootclose,
+	rootread,
+	devbread,
+	rootwrite,
+	devbwrite,
+	devremove,
+	devwstat,
+};
 
 void
 rootrecover(Path *p, char *mntname)

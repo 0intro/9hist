@@ -241,7 +241,6 @@ struct Mnt
 	Mntrpc	*recwait;	/* List of rpc's with recovery pending */
 	ulong	id;		/* Multiplexor id for channel check */
 	Mnt	*list;		/* Free list */
-	char	mux;		/* Set if the device does the multiplexing */
 	int	flags;		/* recover/cache */
 	char	recprog;	/* Recovery in progress */
 	int	blocksize;	/* read/write block size */
@@ -621,16 +620,13 @@ enum
 extern	Conf	conf;
 extern	char*	conffile;
 extern	int	cpuserver;
-extern	int	cpuserver;
 extern	Rune*	devchar;
-extern	Dev	devtab[];
+extern	Dev*	devtab[];
 extern  char	eve[];
 extern	char	hostdomain[];
-extern	int	hwcurs;
 extern	uchar	initcode[];
 extern	FPsave	initfp;
-extern  Queue	*kbdq;
-extern  Queue	*mouseq;
+extern  Queue*	kbdq;
 extern  Ref	noteidalloc;
 extern	int	nrdy;
 extern	Palloc	palloc;
@@ -690,19 +686,6 @@ enum
 	SCSImaxxfer	= 2048*1024,
 };
 
-/*
- *  mouse types
- */
-enum
-{
-	Mouseother=	0,
-	Mouseserial=	1,
-	MousePS2=	2,
-};
-extern int mouseshifted;
-extern int mousetype;
-extern int mouseswap;
-
 enum
 {
 	LRESPROF	= 3,
@@ -710,6 +693,3 @@ enum
 
 extern int nsyscall;
 extern Physseg physseg[];
-extern ulong crasharea;
-extern ulong crashend;
-extern ulong randomcount;

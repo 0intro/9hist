@@ -28,14 +28,20 @@ disable(void)
 {
 	uchar seq20;
 
+	lock(&ark2000pvlock);
+
 	seq20 = vgaxi(Seqx, 0x20) & ~0x08;
 	vgaxo(Seqx, 0x20, seq20);
+
+	unlock(&ark2000pvlock);
 }
 
 static void
 enable(void)
 {
 	uchar seq20;
+
+	lock(&ark2000pvlock);
 
 	/*
 	 * Disable the cursor then configure for X-Windows style,
@@ -66,6 +72,8 @@ enable(void)
 	 * Enable the cursor.
 	 */
 	vgaxo(Seqx, 0x20, seq20);
+
+	unlock(&ark2000pvlock);
 }
 
 static void
@@ -185,17 +193,9 @@ static Hwgc ark2000pvhwgc = {
 static void
 ark2000pvpage(int page)
 {
-	/*
-	 * Shouldn't need to lock if linear addressing
-	 * is enabled.
-	 */
-	if((vgaxi(Seqx, 0x10) & 0x10) == 0 && hwgc == &ark2000pvhwgc){
-		lock(&ark2000pvlock);
-		setark2000pvpage(page);
-		unlock(&ark2000pvlock);
-	}
-	else
-		setark2000pvpage(page);
+	lock(&ark2000pvlock);
+	setark2000pvpage(page);
+	unlock(&ark2000pvlock);
 }
 
 static Vgac ark2000pv = {

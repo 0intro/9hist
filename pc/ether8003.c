@@ -8,11 +8,12 @@
 #include "../port/netif.h"
 
 #include "etherif.h"
+#include "ether8390.h"
 
 /*
  * Western Digital/Standard Microsystems Corporation cards (WD80[01]3).
  * Also handles 8216 cards (Elite Ultra).
- * Configuration code based on that provided by SMC.
+ * Configuration code based on that provided by SMC a long time ago.
  */
 enum {					/* 83C584 Bus Interface Controller */
 	Msr		= 0x00,		/* Memory Select Register */
@@ -68,21 +69,21 @@ static int irq8216[8] = {
 };
 
 static void
-reset8003(Ether *ether, uchar ea[Eaddrlen], uchar ic[8])
+reset8003(Ether* ether, uchar ea[Eaddrlen], uchar ic[8])
 {
-	Dp8390 *dp8390;
+	Dp8390 *ctlr;
 	ulong port;
 
-	dp8390 = ether->ctlr;
+	ctlr = ether->ctlr;
 	port = ether->port;
 
 	/*
 	 * Check for old, dumb 8003E, which doesn't have an interface
-	 * chip. Only the msr exists out of the 1st eight registers, reads
+	 * chip. Only Msr exists out of the 1st eight registers, reads
 	 * of the others just alias the 2nd eight registers, the LAN
-	 * address ROM. We can check icr, irr and laar against the ethernet
+	 * address ROM. Can check Icr, Irr and Laar against the ethernet
 	 * address read above and if they match it's an 8003E (or an
-	 * 8003EBT, 8003S, 8003SH or 8003WT, we don't care), in which
+	 * 8003EBT, 8003S, 8003SH or 8003WT, doesn't matter), in which
 	 * case the default irq gets used.
 	 */
 	if(memcmp(&ea[1], &ic[1], 5) == 0){
@@ -92,8 +93,8 @@ reset8003(Ether *ether, uchar ea[Eaddrlen], uchar ic[8])
 	else{
 		/*
 		 * As a final sanity check for the 8013EBT, which doesn't have
-		 * the 83C584 interface chip, but has 2 real registers, write Gp2 and if
-		 * it reads back the same, it's not an 8013EBT.
+		 * the 83C584 interface chip, but has 2 real registers, write Gp2
+		 * and if it reads back the same, it's not an 8013EBT.
 		 */
 		outb(port+Gp2, 0xAA);
 		inb(port+Msr);				/* wiggle bus */
@@ -106,50 +107,51 @@ reset8003(Ether *ether, uchar ea[Eaddrlen], uchar ic[8])
 
 		/*
 		 * Check if 16-bit card.
-		 * If Bit16 is read/write, then we have an 8-bit card.
-		 * If Bit16 is set, we're in a 16-bit slot.
+		 * If Bit16 is read/write, then it's an 8-bit card.
+		 * If Bit16 is set, it's in a 16-bit slot.
 		 */
 		outb(port+Icr, ic[Icr]^Bit16);
 		inb(port+Msr);				/* wiggle bus */
 		if((inb(port+Icr) & Bit16) == (ic[Icr] & Bit16)){
-			dp8390->bit16 = 1;
+			ctlr->width = 2;
 			ic[Icr] &= ~Bit16;
 		}
 		outb(port+Icr, ic[Icr]);
 
-		if(dp8390->bit16 && (inb(port+Icr) & Bit16) == 0)
-			dp8390->bit16 = 0;
+		if(ctlr->width == 2 && (inb(port+Icr) & Bit16) == 0)
+			ctlr->width = 1;
 	}
 
 	ether->mem = KZERO|((ic[Msr] & 0x3F)<<13);
-	if(dp8390->bit16)
+	if(ctlr->width == 2)
 		ether->mem |= (ic[Laar] & 0x1F)<<19;
 	else
 		ether->mem |= 0x80000;
 
 	if(ic[Icr] & (1<<3))
 		ether->size = 32*1024;
-	if(dp8390->bit16)
+	if(ctlr->width == 2)
 		ether->size <<= 1;
 
 	/*
 	 * Enable interface RAM, set interface width.
 	 */
 	outb(port+Msr, ic[Msr]|Menb);
-	if(dp8390->bit16)
+	if(ctlr->width == 2)
 		outb(port+Laar, ic[Laar]|L16en|M16en|ZeroWS16);
 }
 
 static void
-reset8216(Ether *ether, uchar[8])
+reset8216(Ether* ether, uchar[8])
 {
 	uchar hcr, irq, x;
 	ulong addr, port;
-	Dp8390 *dp8390;
+	Dp8390 *ctlr;
 
-	dp8390 = ether->ctlr;
-	dp8390->bit16 = 1;
+	ctlr = ether->ctlr;
 	port = ether->port;
+
+	ctlr->width = 2;
 
 	/*
 	 * Switch to the alternate register set and retrieve the memory
@@ -166,8 +168,7 @@ reset8216(Ether *ether, uchar[8])
 	ether->irq = irq8216[((irq>>4) & 0x04)|((irq>>2) & 0x03)];
 
 	/*
-	 * Enable interface RAM, set interface width,
-	 * and enable interrupts.
+	 * Enable interface RAM, set interface width, and enable interrupts.
 	 */
 	x = inb(port+Msr) & ~Rst;
 	outb(port+Msr, Menb|x);
@@ -178,16 +179,15 @@ reset8216(Ether *ether, uchar[8])
 
 /*
  * Get configuration parameters, enable memory.
- * There are opportunities here for buckets of code.
- * We'll try to resist.
+ * There are opportunities here for buckets of code, try to resist.
  */
 static int
-reset(Ether *ether)
+reset(Ether* ether)
 {
 	int i;
-	uchar ea[Eaddrlen], ic[8], id, sum;
+	uchar ea[Eaddrlen], ic[8], id, nullea[Eaddrlen], sum;
 	ulong port;
-	Dp8390 *dp8390;
+	Dp8390 *ctlr;
 
 	/*
 	 * Set up the software configuration.
@@ -225,8 +225,8 @@ reset(Ether *ether)
 		return -1;
 
 	ether->ctlr = malloc(sizeof(Dp8390));
-	dp8390 = ether->ctlr;
-	dp8390->ram = 1;
+	ctlr = ether->ctlr;
+	ctlr->ram = 1;
 
 	if((id & 0xFE) == 0x2A)
 		reset8216(ether, ic);
@@ -236,23 +236,24 @@ reset(Ether *ether)
 	/*
 	 * Set the DP8390 ring addresses.
 	 */
-	dp8390->dp8390 = port+0x10;
-	dp8390->tstart = 0;
-	dp8390->pstart = HOWMANY(sizeof(Etherpkt), Dp8390BufSz);
-	dp8390->pstop = HOWMANY(ether->size, Dp8390BufSz);
+	ctlr->port = port+0x10;
+	ctlr->tstart = 0;
+	ctlr->pstart = HOWMANY(sizeof(Etherpkt), Dp8390BufSz);
+	ctlr->pstop = HOWMANY(ether->size, Dp8390BufSz);
 
 	/*
-	 * Finally, init the 8390 and set the
-	 * ethernet address.
+	 * Finally, init the 8390,set the ethernet address
+	 * and claim the memory used.
 	 */
 	dp8390reset(ether);
-	if((ether->ea[0]|ether->ea[1]|ether->ea[2]|ether->ea[3]|ether->ea[4]|ether->ea[5]) == 0){
+	memset(nullea, 0, Eaddrlen);
+	if(memcmp(nullea, ether->ea, Eaddrlen) == 0){
 		for(i = 0; i < sizeof(ether->ea); i++)
 			ether->ea[i] = ea[i];
 	}
 	dp8390setea(ether);
 
-	if(getisa(ether->mem, ether->size, 0) == 0)
+	if(umbmalloc(ether->mem, ether->size, 0) == 0)
 		panic("ether8003: 0x%lux reused", ether->mem);
 
 	return 0;

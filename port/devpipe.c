@@ -38,7 +38,7 @@ Dirtab pipedir[] =
 };
 #define NPIPEDIR 2
 
-void
+static void
 pipeinit(void)
 {
 	if(conf.pipeqsize == 0){
@@ -49,15 +49,10 @@ pipeinit(void)
 	}
 }
 
-void
-pipereset(void)
-{
-}
-
 /*
  *  create a pipe, no streams are created until an open
  */
-Chan*
+static Chan*
 pipeattach(char *spec)
 {
 	Pipe *p;
@@ -91,7 +86,7 @@ pipeattach(char *spec)
 	return c;
 }
 
-Chan*
+static Chan*
 pipeclone(Chan *c, Chan *nc)
 {
 	Pipe *p;
@@ -114,7 +109,7 @@ pipeclone(Chan *c, Chan *nc)
 	return nc;
 }
 
-int
+static int
 pipegen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
 {
 	int id;
@@ -130,13 +125,13 @@ pipegen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
 }
 
 
-int
+static int
 pipewalk(Chan *c, char *name)
 {
 	return devwalk(c, name, pipedir, NPIPEDIR, pipegen);
 }
 
-void
+static void
 pipestat(Chan *c, char *db)
 {
 	Pipe *p;
@@ -163,7 +158,7 @@ pipestat(Chan *c, char *db)
 /*
  *  if the stream doesn't exist, create it
  */
-Chan *
+static Chan*
 pipeopen(Chan *c, int omode)
 {
 	Pipe *p;
@@ -195,25 +190,7 @@ pipeopen(Chan *c, int omode)
 	return c;
 }
 
-void
-pipecreate(Chan*, char*, int, ulong)
-{
-	error(Egreg);
-}
-
-void
-piperemove(Chan*)
-{
-	error(Egreg);
-}
-
-void
-pipewstat(Chan*, char*)
-{
-	error(Eperm);
-}
-
-void
+static void
 pipeclose(Chan *c)
 {
 	Pipe *p;
@@ -229,14 +206,14 @@ pipeclose(Chan *c)
 		case Qdata0:
 			p->qref[0]--;
 			if(p->qref[0] == 0){
-				qhangup(p->q[1]);
+				qhangup(p->q[1], 0);
 				qclose(p->q[0]);
 			}
 			break;
 		case Qdata1:
 			p->qref[1]--;
 			if(p->qref[1] == 0){
-				qhangup(p->q[0]);
+				qhangup(p->q[0], 0);
 				qclose(p->q[1]);
 			}
 			break;
@@ -265,7 +242,7 @@ pipeclose(Chan *c)
 		qunlock(p);
 }
 
-long
+static long
 piperead(Chan *c, void *va, long n, ulong)
 {
 	Pipe *p;
@@ -285,7 +262,7 @@ piperead(Chan *c, void *va, long n, ulong)
 	return -1;	/* not reached */
 }
 
-Block*
+static Block*
 pipebread(Chan *c, long n, ulong offset)
 {
 	Pipe *p;
@@ -306,12 +283,12 @@ pipebread(Chan *c, long n, ulong offset)
  *  a write to a closed pipe causes a note to be sent to
  *  the process.
  */
-long
+static long
 pipewrite(Chan *c, void *va, long n, ulong)
 {
 	Pipe *p;
 
-	if((getstatus()&IE) == 0)
+	if(!islo())
 		print("pipewrite hi %lux\n", getcallerpc(c));
 	if(waserror()) {
 		/* avoid notes when pipe is a mounted queue */
@@ -339,7 +316,7 @@ pipewrite(Chan *c, void *va, long n, ulong)
 	return n;
 }
 
-long
+static long
 pipebwrite(Chan *c, Block *bp, ulong)
 {
 	long n;
@@ -370,3 +347,21 @@ pipebwrite(Chan *c, Block *bp, ulong)
 	poperror();
 	return n;
 }
+
+Dev pipedevtab = {
+	devreset,
+	pipeinit,
+	pipeattach,
+	pipeclone,
+	pipewalk,
+	pipestat,
+	pipeopen,
+	devcreate,
+	pipeclose,
+	piperead,
+	pipebread,
+	pipewrite,
+	pipebwrite,
+	devremove,
+	devwstat,
+};

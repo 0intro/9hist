@@ -4,8 +4,6 @@
  * of smarts, unfortunately none of them are in the right place.
  * To do:
  *	the PCI scanning code could be made common to other adapters;
- *	PCI code needs rewritten to handle byte, word, dword accesses
- *	  and using the devno as a bus+dev+function triplet;
  *	auto-negotiation;
  *	optionally use memory-mapped registers.
  */
@@ -108,7 +106,7 @@ typedef struct Rfd {
 	ushort	count;
 	ushort	size;
 
-	Etherpkt;
+	uchar	data[sizeof(Etherpkt)];
 } Rfd;
 
 enum {					/* field */
@@ -137,20 +135,27 @@ enum {					/* count */
 	RfdEOF		= 0x00008000,
 };
 
+typedef struct Cb Cb;
 typedef struct Cb {
-	int	command;
-	ulong	link;
-	uchar	data[24];		/* CbIAS + CbConfigure */
-} Cb;
+	Cb*	next;
+	Block*	bp;
 
-typedef struct TxCB {
 	int	command;
 	ulong	link;
-	ulong	tbd;
-	ushort	count;
-	uchar	threshold;
-	uchar	number;
-} TxCB;
+	union {
+		uchar	data[24];	/* CbIAS + CbConfigure */
+		struct {
+			ulong	tbd;
+			ushort	count;
+			uchar	threshold;
+			uchar	number;
+
+			ulong	tba;
+			ushort	tbasz;
+			ushort	pad;
+		};
+	};
+} Cb;
 
 enum {					/* action command */
 	CbOK		= 0x00002000,	/* DMA completed OK */
@@ -165,7 +170,7 @@ enum {					/* action command */
 	CbDiagnose	= 0x00070000,
 	CbCommand	= 0x00070000,	/* mask */
 
-	CbSF		= 0x00080000,	/* CbTransmit */
+	CbSF		= 0x00080000,	/* Flexible-mode CbTransmit */
 
 	CbI		= 0x20000000,	/* Interrupt after completion */
 	CbS		= 0x40000000,	/* Suspend after completion */
@@ -178,21 +183,23 @@ enum {					/* CbTransmit count */
 
 typedef struct Ctlr {
 	int	port;
-
-	int	ctlrno;
-	char*	type;
-
 	uchar	configdata[24];
 
-	Lock	lock;
+	Lock	rlock;			/* registers */
 
-	Block*	rfd[Nrfd];		/* receive side */
-	int	rfdl;
-	int	rfdx;
+	Lock	rfdlock;		/* receive side */
+	Block*	rfdhead;
+	Block*	rfdtail;
+	int	nrfd;
 
-	Block*	cbqhead;		/* transmit side */
-	Block*	cbqtail;
+	Lock	cbqlock;		/* transmit side */
+	Cb*	cbqhead;
+	Cb*	cbqtail;
 	int	cbqbusy;
+
+	Lock	cbplock;		/* pool of free Cb's */
+	Cb*	cbpool;
+
 
 	Lock	dlock;			/* dump statistical counters */
 	ulong	dump[17];
@@ -200,13 +207,13 @@ typedef struct Ctlr {
 
 static uchar configdata[24] = {
 	0x16,				/* byte count */
-	0x44,				/* Rx/Tx FIFO limit */
+	0x08,				/* Rx/Tx FIFO limit */
 	0x00,				/* adaptive IFS */
 	0x00,	
-	0x04,				/* Rx DMA maximum byte count */
-	0x84,				/* Tx DMA maximum byte count */
-	0x33,				/* late SCB, CNA interrupts */
-	0x01,				/* discard short Rx frames */
+	0x00,				/* Rx DMA maximum byte count */
+	0x80,				/* Tx DMA maximum byte count */
+	0x32,				/* !late SCB, CNA interrupts */
+	0x03,				/* discard short Rx frames */
 	0x00,				/* 503/MII */
 
 	0x00,	
@@ -218,7 +225,7 @@ static uchar configdata[24] = {
 	0xC8,				/* promiscuous mode off */
 	0x00,	
 	0x40,	
-	0xF2,				/* transmit padding enable */
+	0xF3,				/* transmit padding enable */
 	0x80,				/* full duplex pin enable */
 	0x3F,				/* no Multi IA */
 	0x05,				/* no Multi Cast ALL */
@@ -231,6 +238,56 @@ static uchar configdata[24] = {
 #define csr16w(c, r, w)	(outs((c)->port+(r), (ushort)(w)))
 #define csr32w(c, r, l)	(outl((c)->port+(r), (ulong)(l)))
 
+static Block*
+rfdalloc(ulong link)
+{
+	Block *bp;
+	Rfd *rfd;
+
+	if(bp = iallocb(sizeof(Rfd))){
+		rfd = (Rfd*)bp->rp;
+		rfd->field = 0;
+		rfd->link = link;
+		rfd->rbd = NullPointer;
+		rfd->count = 0;
+		rfd->size = sizeof(Etherpkt);
+	}
+
+	return bp;
+}
+
+static Cb*
+cballoc(Ctlr* ctlr, int command)
+{
+	Cb *cb;
+
+	ilock(&ctlr->cbplock);
+	if(cb = ctlr->cbpool){
+		ctlr->cbpool = cb->next;
+		iunlock(&ctlr->cbplock);
+		cb->next = 0;
+		cb->bp = 0;
+	}
+	else{
+		iunlock(&ctlr->cbplock);
+		cb = smalloc(sizeof(Cb));
+	}
+
+	cb->command = command;
+	cb->link = NullPointer;
+
+	return cb;
+}
+
+static void
+cbfree(Ctlr* ctlr, Cb* cb)
+{
+	ilock(&ctlr->cbplock);
+	cb->next = ctlr->cbpool;
+	ctlr->cbpool = cb;
+	iunlock(&ctlr->cbplock);
+}
+
 static void
 custart(Ctlr* ctlr)
 {
@@ -240,32 +297,35 @@ custart(Ctlr* ctlr)
 	}
 	ctlr->cbqbusy = 1;
 
+	ilock(&ctlr->rlock);
 	while(csr8r(ctlr, Command))
 		;
-	csr32w(ctlr, General, PADDR(ctlr->cbqhead->rp));
+	csr32w(ctlr, General, PADDR(&ctlr->cbqhead->command));
 	csr8w(ctlr, Command, CUstart);
+	iunlock(&ctlr->rlock);
 }
 
 static void
-action(Ctlr* ctlr, Block* bp)
+action(Ctlr* ctlr, Cb* cb)
 {
-	Cb *cb;
+	Cb* tail;
 
-	cb = (Cb*)bp->rp;
 	cb->command |= CbEL;
 
+	ilock(&ctlr->cbqlock);
 	if(ctlr->cbqhead){
-		ctlr->cbqtail->next = bp;
-		cb = (Cb*)ctlr->cbqtail->rp;
-		cb->link = PADDR(bp->rp);
-		cb->command &= ~CbEL;
+		tail = ctlr->cbqtail;
+		tail->next = cb;
+		tail->link = PADDR(&cb->command);
+		tail->command &= ~CbEL;
 	}
 	else
-		ctlr->cbqhead = bp;
-	ctlr->cbqtail = bp;
+		ctlr->cbqhead = cb;
+	ctlr->cbqtail = cb;
 
-	if(ctlr->cbqbusy == 0)
+	if(!ctlr->cbqbusy)
 		custart(ctlr);
+	iunlock(&ctlr->cbqlock);
 }
 
 static void
@@ -275,48 +335,33 @@ attach(Ether* ether)
 	Ctlr *ctlr;
 
 	ctlr = ether->ctlr;
-	ilock(&ctlr->lock);
+	ilock(&ctlr->rlock);
 	status = csr16r(ctlr, Status);
 	if((status & RUstatus) == RUidle){
 		while(csr8r(ctlr, Command))
 			;
-		csr32w(ctlr, General, PADDR(ctlr->rfd[ctlr->rfdx]->rp));
+		csr32w(ctlr, General, PADDR(ctlr->rfdhead->rp));
 		csr8w(ctlr, Command, RUstart);
 	}
-	iunlock(&ctlr->lock);
+	iunlock(&ctlr->rlock);
 }
 
-static Block*
+static void
 configure(Ctlr* ctlr, int promiscuous)
 {
-	Block *bp;
 	Cb *cb;
 
-	bp = allocb(sizeof(Cb));
-	cb = (Cb*)bp->rp;
-	bp->wp += sizeof(Cb);
-
-	cb->command = CbConfigure;
-	cb->link = NullPointer;
+	cb = cballoc(ctlr, CbConfigure);
 	memmove(cb->data, ctlr->configdata, sizeof(ctlr->configdata));
 	if(promiscuous)
 		cb->data[15] |= 0x01;
-
-	return bp;
+	action(ctlr, cb);
 }
 
 static void
 promiscuous(void* arg, int on)
 {
-	Ctlr *ctlr;
-	Block *bp;
-
-	ctlr = ((Ether*)arg)->ctlr;
-	bp = configure(ctlr, on);
-
-	ilock(&ctlr->lock);
-	action(ctlr, bp);
-	iunlock(&ctlr->lock);
+	configure(((Ether*)arg)->ctlr, on);
 }
 
 static long
@@ -330,11 +375,11 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 	lock(&ctlr->dlock);
 	ctlr->dump[16] = 0;
 
-	ilock(&ctlr->lock);
+	ilock(&ctlr->rlock);
 	while(csr8r(ctlr, Command))
 		;
 	csr8w(ctlr, Command, DumpSC);
-	iunlock(&ctlr->lock);
+	iunlock(&ctlr->rlock);
 
 	/*
 	 * Wait for completion status, should be 0xA005.
@@ -375,43 +420,37 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 	return readstr(offset, a, n, buf);
 }
 
-static long
-write(Ether* ether, void* buf, long n)
+static void
+transmit(Ether* ether)
 {
 	Ctlr *ctlr;
 	Block *bp;
-	TxCB *txcb;
+	Cb *cb;
 
-	bp = allocb(n+sizeof(TxCB));
-	txcb = (TxCB*)bp->wp;
-	bp->wp += sizeof(TxCB);
-
-	txcb->command = CbTransmit;
-	txcb->link = NullPointer;
-	txcb->tbd = NullPointer;
-	txcb->count = CbEOF|n;
-	txcb->threshold = 2;
-	txcb->number = 0;
-
-	memmove(bp->wp, buf, n);
-	memmove(bp->wp+Eaddrlen, ether->ea, Eaddrlen);
-	bp->wp += n;
+	bp = qget(ether->oq);
+	if(bp == nil)
+		return;
 
 	ctlr = ether->ctlr;
-	ilock(&ctlr->lock);
-	action(ctlr, bp);
-	iunlock(&ctlr->lock);
 
-	ether->outpackets++;
+	cb = cballoc(ctlr, CbSF|CbTransmit);
+	cb->bp = bp;
+	cb->tbd = PADDR(&cb->tba);
+	cb->count = 0;
+	cb->threshold = 2;
+	cb->number = 1;
+	cb->tba = PADDR(bp->rp);
+	cb->tbasz = BLEN(bp);
 
-	return n;
+	action(ctlr, cb);
 }
 
 static void
 interrupt(Ureg*, void* arg)
 {
 	Rfd *rfd;
-	Block *bp;
+	Cb* cb;
+	Block *bp, *xbp;
 	Ctlr *ctlr;
 	Ether *ether;
 	int status;
@@ -419,70 +458,103 @@ interrupt(Ureg*, void* arg)
 	ether = arg;
 	ctlr = ether->ctlr;
 
-	ilock(&ctlr->lock);
 	for(;;){
+		lock(&ctlr->rlock);
 		status = csr16r(ctlr, Status);
 		csr8w(ctlr, Ack, (status>>8) & 0xFF);
+		unlock(&ctlr->rlock);
 
-		if((status & (StatCX|StatFR|StatCNA|StatRNR|StatMDI|StatSWI)) == 0)
+		if(!(status & (StatCX|StatFR|StatCNA|StatRNR|StatMDI|StatSWI)))
 			break;
 
 		if(status & StatFR){
-			bp = ctlr->rfd[ctlr->rfdx];
+			bp = ctlr->rfdhead;
 			rfd = (Rfd*)bp->rp;
 			while(rfd->field & RfdC){
-				if(rfd->field & RfdOK){
-					etherrloop(ether, rfd, rfd->count & 0x3FFF);
-					ether->inpackets++;
+				/*
+				 * If it's an OK receive frame and a replacement buffer
+				 * can be allocated then
+				 *	adjust the received buffer pointers for the
+				 *	  actual data received;
+				 *	initialise the replacement buffer to point to
+				 *	  the next in the ring;
+				 *	pass the received buffer on for disposal;
+				 *	initialise bp to point to the replacement.
+				 * If not, just adjust the necessary fields for reuse.
+				 */
+				if((rfd->field & RfdOK) && (xbp = rfdalloc(rfd->link))){
+					bp->rp += sizeof(Rfd)-sizeof(Etherpkt);
+					bp->wp = bp->rp + (rfd->count & 0x3FFF);
+
+					xbp->next = bp->next;
+					bp->next = 0;
+
+					etheriq(ether, bp, 1);
+					bp = xbp;
+				}
+				else{
+					rfd->field = 0;
+					rfd->count = 0;
 				}
 
 				/*
-				 * Reinitialise the frame for reception and bump
-				 * the receive frame processing index;
-				 * bump the sentinel index, mark the new sentinel
-				 * and clear the old sentinel suspend bit;
-				 * set bp and rfd for the next receive frame to
-				 * process.
+				 * The ring tail pointer follows the head with with one
+				 * unused buffer in between to defeat hardware prefetch;
+				 * once the tail pointer has been bumped on to the next
+				 * and the new tail has the Suspend bit set, it can be
+				 * removed from the old tail buffer.
+				 * As a replacement for the current head buffer may have
+				 * been allocated above, ensure that the new tail points
+				 * to it (next and link).
 				 */
-				rfd->field = 0;
-				rfd->count = 0;
-				ctlr->rfdx = NEXT(ctlr->rfdx, Nrfd);
-
-				rfd = (Rfd*)ctlr->rfd[ctlr->rfdl]->rp;
-				ctlr->rfdl = NEXT(ctlr->rfdl, Nrfd);
-				((Rfd*)ctlr->rfd[ctlr->rfdl]->rp)->field |= RfdS;
+				rfd = (Rfd*)ctlr->rfdtail->rp;
+				ctlr->rfdtail = ctlr->rfdtail->next;
+				ctlr->rfdtail->next = bp;
+				((Rfd*)ctlr->rfdtail->rp)->link = PADDR(bp->rp);
+				((Rfd*)ctlr->rfdtail->rp)->field |= RfdS;
 				rfd->field &= ~RfdS;
 
-				bp = ctlr->rfd[ctlr->rfdx];
+				/*
+				 * Finally done with the current (possibly replaced)
+				 * head, move on to the next and maintain the sentinel
+				 * between tail and head.
+				 */
+				ctlr->rfdhead = bp->next;
+				bp = ctlr->rfdhead;
 				rfd = (Rfd*)bp->rp;
 			}
 			status &= ~StatFR;
 		}
 
 		if(status & StatRNR){
+			lock(&ctlr->rlock);
 			while(csr8r(ctlr, Command))
 				;
 			csr8w(ctlr, Command, RUresume);
+			unlock(&ctlr->rlock);
 
 			status &= ~StatRNR;
 		}
 
 		if(status & StatCNA){
-			while(bp = ctlr->cbqhead){
-				if((((Cb*)bp->rp)->command & CbC) == 0)
+			lock(&ctlr->cbqlock);
+			while(cb = ctlr->cbqhead){
+				if(!(cb->command & CbC))
 					break;
-				ctlr->cbqhead = bp->next;
-				freeb(bp);
+				ctlr->cbqhead = cb->next;
+				if(cb->bp)
+					freeb(cb->bp);
+				cbfree(ctlr, cb);
 			}
 			custart(ctlr);
+			unlock(&ctlr->cbqlock);
 
 			status &= ~StatCNA;
 		}
 
 		if(status & (StatCX|StatFR|StatCNA|StatRNR|StatMDI|StatSWI))
-			panic("%s#%d: status %uX\n", ctlr->type,  ctlr->ctlrno, status);
+			panic("#l%d: status %uX\n", ether->ctlrno, status);
 	}
-	iunlock(&ctlr->lock);
 }
 
 static void
@@ -493,28 +565,28 @@ ctlrinit(Ctlr* ctlr)
 	Rfd *rfd;
 	ulong link;
 
+	/*
+	 * Create the Receive Frame Area (RFA) as a ring of allocated
+	 * buffers.
+	 * A sentinel buffer is maintained between the last buffer in
+	 * the ring (marked with RfdS) and the head buffer to defeat the
+	 * hardware prefetch of the next RFD and allow dynamic buffer
+	 * allocation.
+	 */
 	link = NullPointer;
-	for(i = Nrfd-1; i >= 0; i--){
-		if(ctlr->rfd[i] == 0){
-			bp = allocb(sizeof(Rfd));
-			ctlr->rfd[i] = bp;
-		}
-		else
-			bp = ctlr->rfd[i];
-		rfd = (Rfd*)bp->rp;
-
-		rfd->field = 0;
-		rfd->link = link;
-		link = PADDR(rfd);
-		rfd->rbd = NullPointer;
-		rfd->count = 0;
-		rfd->size = sizeof(Etherpkt);
+	for(i = 0; i < Nrfd; i++){
+		bp = rfdalloc(link);
+		if(ctlr->rfdhead == nil)
+			ctlr->rfdtail = bp;
+		bp->next = ctlr->rfdhead;
+		ctlr->rfdhead = bp;
+		link = PADDR(bp->rp);
 	}
-	((Rfd*)ctlr->rfd[Nrfd-1]->rp)->link = PADDR(ctlr->rfd[0]->rp);
-
-	ctlr->rfdl = 0;
-	((Rfd*)ctlr->rfd[0]->rp)->field |= RfdS;
-	ctlr->rfdx = 2;
+	ctlr->rfdtail->next = ctlr->rfdhead;
+	rfd = (Rfd*)ctlr->rfdtail->rp;
+	rfd->link = PADDR(ctlr->rfdhead->rp);
+	rfd->field |= RfdS;
+	ctlr->rfdhead = ctlr->rfdhead->next;
 
 	memmove(ctlr->configdata, configdata, sizeof(configdata));
 }
@@ -572,7 +644,7 @@ hy93c46r(Ctlr* ctlr, int r)
 		delay(1);
 		csr16w(ctlr, Ecr, data);
 		delay(1);
-		if((csr16r(ctlr, Ecr) & EEdo) == 0)
+		if(!(csr16r(ctlr, Ecr) & EEdo))
 			break;
 	}
 
@@ -591,51 +663,50 @@ hy93c46r(Ctlr* ctlr, int r)
 	return data;
 }
 
-typedef struct Adapter Adapter;
-struct Adapter {
-	Adapter*	next;
-	int		port;
-	int		irq;
-	int		pcidevno;
-};
-static Adapter *adapter;
+typedef struct Adapter {
+	int	port;
+	int	irq;
+	int	tbdf;
+} Adapter;
+static Block* adapter;
 
-static int
-i82557pci(Ether* ether, int* pcidevno)
+static void
+i82557adapter(Block** bpp, int port, int irq, int tbdf)
 {
-	PCIcfg pcicfg;
-	static int devno = 0;
-	int i, irq, port;
+	Block *bp;
 	Adapter *ap;
 
-	for(;;){
-		pcicfg.vid = 0x8086;
-		pcicfg.did = 0x1229;
-		if((devno = pcimatch(0, devno, &pcicfg)) == -1)
-			break;
+	bp = allocb(sizeof(Adapter));
+	ap = (Adapter*)bp->rp;
+	ap->port = port;
+	ap->irq = irq;
+	ap->tbdf = tbdf;
 
-		port = 0;
-		irq = 0;
-		for(i = 0; i < 6; i++){
-			if((pcicfg.baseaddr[i] & 0x03) != 0x01)
-				continue;
-			port = pcicfg.baseaddr[i] & ~0x01;
-			irq = pcicfg.irq;
-			if(ether->port == 0 || ether->port == port){
-				ether->irq = irq;
-				*pcidevno = devno-1;
-				return port;
-			}
+	bp->next = *bpp;
+	*bpp = bp;
+}
+
+static int
+i82557pci(Ether* ether)
+{
+	static Pcidev *p;
+	int irq, port;
+
+	while(p = pcimatch(p, 0x8086, 0x1229)){
+		/*
+		 * bar[0] is the memory-mapped register address (4KB),
+		 * bar[1] is the I/O port register address (32 bytes) and
+		 * bar[2] is for the flash ROM (1MB).
+		 */
+		port = p->bar[1] & ~0x01;
+		irq = p->intl;
+		if(ether->port == 0 || ether->port == port){
+			ether->irq = irq;
+			ether->tbdf = p->tbdf;
+			return port;
 		}
-		if(port == 0)
-			continue;
 
-		ap = malloc(sizeof(Adapter));
-		ap->port = port;
-		ap->irq = irq;
-		ap->pcidevno = devno-1;
-		ap->next = adapter;
-		adapter = ap;
+		i82557adapter(&adapter, port, irq, p->tbdf);
 	}
 
 	return 0;
@@ -644,11 +715,11 @@ i82557pci(Ether* ether, int* pcidevno)
 static int
 reset(Ether* ether)
 {
-	int i, pcidevno, port, x;
-	Adapter *ap, **app;
+	int i, port, x;
+	Block *bp, **bpp;
+	Adapter *ap;
 	uchar ea[Eaddrlen];
 	Ctlr *ctlr;
-	Block *bp;
 	Cb *cb;
 
 	/*
@@ -657,17 +728,19 @@ reset(Ether* ether)
 	 * already been found. If not, scan for another.
 	 */
 	port = 0;
-	pcidevno = -1;
-	for(app = &adapter, ap = *app; ap; app = &ap->next, ap = ap->next){
+	bpp = &adapter;
+	for(bp = *bpp; bp; bp = bp->next){
+		ap = (Adapter*)bp->rp;
 		if(ether->port == 0 || ether->port == ap->port){
+			port = ap->port;
 			ether->irq = ap->irq;
-			pcidevno = ap->pcidevno;
-			*app = ap->next;
-			free(ap);
+			ether->tbdf = ap->tbdf;
+			*bpp = bp->next;
+			freeb(bp);
 			break;
 		}
 	}
-	if(port == 0 && (port = i82557pci(ether, &pcidevno)) == 0)
+	if(port == 0 && (port = i82557pci(ether)) == 0)
 		return -1;
 
 	/*
@@ -680,12 +753,9 @@ reset(Ether* ether)
 	 */
 	ether->ctlr = malloc(sizeof(Ctlr));
 	ctlr = ether->ctlr;
-	ctlr->ctlrno = ether->ctlrno;
-	ctlr->type = ether->type;
 	ctlr->port = port;
 
-	ilock(&ctlr->lock);
-
+	ilock(&ctlr->rlock);
 	csr32w(ctlr, Port, 0);
 	delay(1);
 
@@ -702,7 +772,7 @@ reset(Ether* ether)
 		;
 	csr32w(ctlr, General, PADDR(ctlr->dump));
 	csr8w(ctlr, Command, LoadDCA);
-
+	iunlock(&ctlr->rlock);
 
 	/*
 	 * Initialise the receive frame and configuration areas.
@@ -727,14 +797,14 @@ reset(Ether* ether)
 			continue;
 
 		x = dp83840r(ctlr, i, 0x19);
-		if((x & 0x0040) == 0){
+		if(!(x & 0x0040)){
 			ether->mbps = 100;
 			ctlr->configdata[8] = 1;
 			ctlr->configdata[15] &= ~0x80;
 		}
 		else{
 			x = dp83840r(ctlr, i, 0x1B);
-			if((x & 0x0200) == 0){
+			if(!(x & 0x0200)){
 				ctlr->configdata[8] = 1;
 				ctlr->configdata[15] &= ~0x80;
 			}
@@ -745,8 +815,7 @@ reset(Ether* ether)
 	/*
 	 * Load the chip configuration
 	 */
-	bp = configure(ctlr, 0);
-	action(ctlr, bp);
+	configure(ctlr, 0);
 
 	/*
 	 * Check if the adapter's station address is to be overridden.
@@ -754,31 +823,25 @@ reset(Ether* ether)
 	 * the station address with the Individual Address Setup command.
 	 */
 	memset(ea, 0, Eaddrlen);
-	if(memcmp(ea, ether->ea, Eaddrlen) == 0){
+	if(!memcmp(ea, ether->ea, Eaddrlen)){
 		for(i = 0; i < Eaddrlen/2; i++){
 			x = hy93c46r(ctlr, i);
-			ether->ea[2*i] = x & 0xFF;
-			ether->ea[2*i+1] = (x>>8) & 0xFF;
+			ether->ea[2*i] = x;
+			ether->ea[2*i+1] = x>>8;
 		}
 	}
 
-	bp = allocb(sizeof(Cb));
-	cb = (Cb*)bp->rp;
-	bp->wp += sizeof(Cb);
-
-	cb->command = CbIAS;
-	cb->link = NullPointer;
+	cb = cballoc(ctlr, CbIAS);
 	memmove(cb->data, ether->ea, Eaddrlen);
-	action(ctlr, bp);
+	action(ctlr, cb);
 
-	iunlock(&ctlr->lock);
 
 	/*
 	 * Linkage to the generic ethernet driver.
 	 */
 	ether->port = port;
 	ether->attach = attach;
-	ether->write = write;
+	ether->transmit = transmit;
 	ether->interrupt = interrupt;
 	ether->ifstat = ifstat;
 

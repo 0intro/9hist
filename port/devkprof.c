@@ -22,29 +22,44 @@ enum{
 	Kprofdirqid,
 	Kprofdataqid,
 	Kprofctlqid,
-	Nkproftab=Kprofctlqid,
-	Kprofmaxqid,
 };
-Dirtab kproftab[Nkproftab]={
+Dirtab kproftab[]={
 	"kpdata",	{Kprofdataqid},		0,	0600,
 	"kpctl",	{Kprofctlqid},		0,	0600,
 };
 
-void kproftimer(ulong);
-
-void
-kprofreset(void)
+static void
+_kproftimer(ulong pc)
 {
+	extern void spldone(void);
+
+	if(kprof.time == 0)
+		return;
+	/*
+	 *  if the pc is coming out of spllo or splx,
+	 *  use the pc saved when we went splhi.
+	 */
+	if(pc>=(ulong)spllo && pc<=(ulong)spldone)
+		pc = m->splpc;
+
+	kprof.buf[0] += TK2MS(1);
+	if(kprof.minpc<=pc && pc<kprof.maxpc){
+		pc -= kprof.minpc;
+		pc >>= LRES;
+		kprof.buf[pc] += TK2MS(1);
+	}else
+		kprof.buf[1] += TK2MS(1);
 }
 
-void
+static void
 kprofinit(void)
 {
 	if(SZ != sizeof kprof.buf[0])
 		panic("kprof size");
+	kproftimer = _kproftimer;
 }
 
-Chan *
+static Chan*
 kprofattach(char *spec)
 {
 	ulong n;
@@ -62,25 +77,20 @@ kprofattach(char *spec)
 	kproftab[0].length = n;
 	return devattach('T', spec);
 }
-Chan *
-kprofclone(Chan *c, Chan *nc)
-{
-	return devclone(c, nc);
-}
 
-int
+static int
 kprofwalk(Chan *c, char *name)
 {
-	return devwalk(c, name, kproftab, (long)Nkproftab, devgen);
+	return devwalk(c, name, kproftab, nelem(kproftab), devgen);
 }
 
-void
+static void
 kprofstat(Chan *c, char *db)
 {
-	devstat(c, db, kproftab, (long)Nkproftab, devgen);
+	devstat(c, db, kproftab, nelem(kproftab), devgen);
 }
 
-Chan *
+static Chan*
 kprofopen(Chan *c, int omode)
 {
 	if(c->qid.path == CHDIR){
@@ -93,30 +103,12 @@ kprofopen(Chan *c, int omode)
 	return c;
 }
 
-void
-kprofcreate(Chan*, char*, int, ulong)
-{
-	error(Eperm);
-}
-
-void
-kprofremove(Chan*)
-{
-	error(Eperm);
-}
-
-void
-kprofwstat(Chan*, char*)
-{
-	error(Eperm);
-}
-
-void
+static void
 kprofclose(Chan*)
 {
 }
 
-long
+static long
 kprofread(Chan *c, void *va, long n, ulong offset)
 {
 	ulong end;
@@ -125,7 +117,7 @@ kprofread(Chan *c, void *va, long n, ulong offset)
 
 	switch(c->qid.path & ~CHDIR){
 	case Kprofdirqid:
-		return devdirread(c, va, n, kproftab, Nkproftab, devgen);
+		return devdirread(c, va, n, kproftab, nelem(kproftab), devgen);
 
 	case Kprofdataqid:
 		end = kprof.nbuf*SZ;
@@ -157,13 +149,7 @@ kprofread(Chan *c, void *va, long n, ulong offset)
 	return n;
 }
 
-Block*
-kprofbread(Chan *c, long n, ulong offset)
-{
-	return devbread(c, n, offset);
-}
-
-long
+static long
 kprofwrite(Chan *c, char *a, long n, ulong)
 {
 	switch((int)(c->qid.path&~CHDIR)){
@@ -182,31 +168,20 @@ kprofwrite(Chan *c, char *a, long n, ulong)
 	return n;
 }
 
-long
-kprofbwrite(Chan *c, Block *bp, ulong offset)
-{
-	return devbwrite(c, bp, offset);
-}
-
-void
-kproftimer(ulong pc)
-{
-	extern void spldone(void);
-
-	if(kprof.time == 0)
-		return;
-	/*
-	 *  if the pc is coming out of spllo or splx,
-	 *  use the pc saved when we went splhi.
-	 */
-	if(pc>=(ulong)spllo && pc<=(ulong)spldone)
-		pc = m->splpc;
-
-	kprof.buf[0] += TK2MS(1);
-	if(kprof.minpc<=pc && pc<kprof.maxpc){
-		pc -= kprof.minpc;
-		pc >>= LRES;
-		kprof.buf[pc] += TK2MS(1);
-	}else
-		kprof.buf[1] += TK2MS(1);
-}
+Dev kprofdevtab = {
+	devreset,
+	kprofinit,
+	kprofattach,
+	devclone,
+	kprofwalk,
+	kprofstat,
+	kprofopen,
+	devcreate,
+	kprofclose,
+	kprofread,
+	devbread,
+	kprofwrite,
+	devbwrite,
+	devremove,
+	devwstat,
+};

@@ -316,7 +316,7 @@ imagechanreclaim(void)
 		imagealloc.nfreechan--;
 		c = imagealloc.freechan[imagealloc.nfreechan];
 		unlock(&imagealloc);
-		close(c);
+		cclose(c);
 	}
 
 	qunlock(&imagealloc.fcreclaim);

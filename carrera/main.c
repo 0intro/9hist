@@ -108,7 +108,7 @@ arginit(void)
 	 */
 	if(*sysname == 0)
 		for(av = _env; *av; av++)
-			for(i=0; i < sizeof bootenv/sizeof bootenv[0]; i++){
+			for(i=0; i < nelem(bootenv); i++){
 				n = strlen(bootenv[i].name);
 				if(strncmp(*av, bootenv[i].name, n) == 0){
 					strncpy(bootenv[i].val, (*av)+n, NAMELEN);
@@ -328,7 +328,7 @@ init0(void)
 	 * Then early kproc's will have a root and dot.
 	 */
 	up->slash = namec("#/", Atodir, 0, 0);
-	up->dot = clone(up->slash, 0);
+	up->dot = cclone(up->slash, 0);
 
 	chandevinit();
 

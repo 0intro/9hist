@@ -5,8 +5,6 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
-void	faulterror(char*);
-
 int
 fault(ulong addr, int read)
 {
@@ -37,6 +35,16 @@ fault(ulong addr, int read)
 
 	up->psstate = sps;
 	return 0;
+}
+
+static void
+faulterror(char *s)
+{
+	if(up->nerrlab) {
+		postnote(up, 1, s, NDebug);
+		error(s);
+	}
+	pexit(s, 0);
 }
 
 int
@@ -211,7 +219,7 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 		if(ask > BY2PG)
 			ask = BY2PG;
 
-		n = (*devtab[c->type].read)(c, kaddr, ask, daddr);
+		n = devtab[c->type]->read(c, kaddr, ask, daddr);
 		if(n != ask)
 			error(Eioload);
 		if(ask < BY2PG)
@@ -239,7 +247,7 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 			faulterror("sys: page in I/O error");
 		}
 
-		n = (*devtab[c->type].read)(c, kaddr, BY2PG, daddr);
+		n = devtab[c->type]->read(c, kaddr, BY2PG, daddr);
 		if(n != BY2PG)
 			error(Eioload);
 
@@ -259,16 +267,6 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 
 	if(s->flushme)
 		memset((*p)->cachectl, PG_TXTFLUSH, sizeof((*p)->cachectl));
-}
-
-void
-faulterror(char *s)
-{
-	if(up->nerrlab) {
-		postnote(up, 1, s, NDebug);
-		error(s);
-	}
-	pexit(s, 0);
 }
 
 /*

@@ -51,7 +51,6 @@ Dirtab lptdir[]={
 	"pcr",		{Qpcr},		0,		0222,
 	"data",		{Qdata},	0,		0222,
 };
-#define NLPT	(sizeof lptdir/sizeof lptdir[0])
 
 static int
 lptgen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
@@ -71,16 +70,7 @@ lptgen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
 	return 1;
 }
 
-void
-lptreset(void)
-{
-}
-
-void
-lptinit(void)
-{}
-
-Chan*
+static Chan*
 lptattach(char *spec)
 {
 	Chan *c;
@@ -90,7 +80,7 @@ lptattach(char *spec)
 	if(!set){
 		outb(lptbase[i-1]+Qpcr, 0);	/* turn off interrupts */
 		set = 1;
-		setvec(Parallelvec, lptintr, 0);
+		intrenable(VectorLPT, lptintr, 0, BUSUNKNOWN);
 	}
 	if(i < 1 || i > NDEV)
 		error(Ebadarg);
@@ -99,63 +89,37 @@ lptattach(char *spec)
 	return c;
 }
 
-Chan*
-lptclone(Chan *c, Chan *nc)
-{
-	return devclone(c, nc);
-}
-
-int
+static int
 lptwalk(Chan *c, char *name)
 {
-	return devwalk(c, name, lptdir, NLPT, lptgen);
+	return devwalk(c, name, lptdir, nelem(lptdir), lptgen);
 }
 
-void
+static void
 lptstat(Chan *c, char *dp)
 {
-	devstat(c, dp, lptdir, NLPT, lptgen);
+	devstat(c, dp, lptdir, nelem(lptdir), lptgen);
 }
 
-Chan*
+static Chan*
 lptopen(Chan *c, int omode)
 {
-	return devopen(c, omode, lptdir, NLPT, lptgen);
+	return devopen(c, omode, lptdir, nelem(lptdir), lptgen);
 }
 
-void
-lptcreate(Chan*, char*, int, ulong)
-{
-	error(Eperm);
-}
-
-void
+static void
 lptclose(Chan *c)
 {
 	USED(c);
 }
 
-void
-lptremove(Chan *c)
-{
-	USED(c);
-	error(Eperm);
-}
-
-void
-lptwstat(Chan *c, char *dp)
-{
-	USED(c, dp);
-	error(Eperm);
-}
-
-long
-lptread(Chan *c, void *a, long n)
+static long
+lptread(Chan *c, void *a, long n, ulong)
 {
 	char str[16]; int size;
 
 	if(c->qid.path == CHDIR)
-		return devdirread(c, a, n, lptdir, NLPT, lptgen);
+		return devdirread(c, a, n, lptdir, nelem(lptdir), lptgen);
 	size = sprint(str, "0x%2.2ux\n", inb(c->qid.path));
 	if(c->offset >= size)
 		return 0;
@@ -165,14 +129,8 @@ lptread(Chan *c, void *a, long n)
 	return n;
 }
 
-Block*
-lptbread(Chan *c, long n, ulong offset)
-{
-	return devbread(c, n, offset);
-}
-
-long
-lptwrite(Chan *c, void *a, long n)
+static long
+lptwrite(Chan *c, void *a, long n, ulong)
 {
 	char str[16], *p;
 	long base, k;
@@ -198,12 +156,6 @@ lptwrite(Chan *c, void *a, long n)
 		outch(base, *p++);
 	poperror();
 	return n;
-}
-
-long
-lptbwrite(Chan *c, Block *bp, ulong offset)
-{
-	return devbwrite(c, bp, offset);
 }
 
 static void
@@ -239,3 +191,21 @@ lptintr(Ureg *ur, void *arg)
 	USED(ur, arg);
 	wakeup(&lptrendez);
 }
+
+Dev lptdevtab = {
+	devreset,
+	devinit,
+	lptattach,
+	devclone,
+	lptwalk,
+	lptstat,
+	lptopen,
+	devcreate,
+	lptclose,
+	lptread,
+	devbread,
+	lptwrite,
+	devbwrite,
+	devremove,
+	devwstat,
+};

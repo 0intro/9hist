@@ -1,5 +1,7 @@
 typedef struct Conf	Conf;
 typedef struct FPsave	FPsave;
+typedef struct Irq	Irq;
+typedef struct Irqctl	Irqctl;
 typedef struct ISAConf	ISAConf;
 typedef struct Label	Label;
 typedef struct Lock	Lock;
@@ -7,17 +9,12 @@ typedef struct MMU	MMU;
 typedef struct Mach	Mach;
 typedef struct Notsave	Notsave;
 typedef struct PCArch	PCArch;
-typedef struct PCIcfg	PCIcfg;
+typedef struct Pcidev	Pcidev;
 typedef struct PCMmap	PCMmap;
 typedef struct Page	Page;
 typedef struct PMMU	PMMU;
 typedef struct Segdesc	Segdesc;
 typedef struct Ureg	Ureg;
-
-#define	MACHP(n)	(n==0? &mach0 : *(Mach**)0)
-
-extern	Mach	mach0;
-extern  void	(*kprofp)(ulong);
 
 /*
  *  parameters for sysproc.c
@@ -73,7 +70,6 @@ struct Conf
 	ulong	monitor;	/* has monitor? */
 	ulong	npage0;		/* total physical pages of memory */
 	ulong	npage1;		/* total physical pages of memory */
-	ulong	topofmem;	/* highest physical address + 1 */
 	ulong	npage;		/* total physical pages of memory */
 	ulong	upages;		/* user page pool */
 	ulong	nimage;		/* number of page cache image headers */
@@ -81,11 +77,6 @@ struct Conf
 	ulong	base0;		/* base of bank 0 */
 	ulong	base1;		/* base of bank 1 */
 	ulong	copymode;	/* 0 is copy on write, 1 is copy on reference */
-	ulong	nfloppy;	/* number of floppy drives */
-	ulong	nhard;		/* number of hard drives */
-	ulong	ldepth;		/* screen depth */
-	ulong	maxx;		/* screen width */
-	ulong	maxy;		/* screen length */
 	ulong	ialloc;		/* max interrupt time allocation in bytes */
 	ulong	pipeqsize;	/* size in bytes of pipe queues */
 };
@@ -93,14 +84,12 @@ struct Conf
 /*
  *  MMU stuff in proc
  */
-#define MAXMMU	4
-#define MAXSMMU	1
 #define NCOLOR 1
 struct PMMU
 {
-	Page	*mmutop;	/* 1st level table */
-	Page	*mmufree;	/* unused page table pages */
-	Page	*mmuused;	/* used page table pages */
+	Page*	mmupdb;			/* page directory base */
+	Page*	mmufree;		/* unused page table pages */
+	Page*	mmuused;		/* used page table pages */
 };
 
 /*
@@ -115,21 +104,60 @@ struct Notsave
 
 #include "../port/portdat.h"
 
-/*
- *  machine dependent definitions not used by ../port/dat.h
- */
+typedef struct {
+	ulong	link;			/* link (old TSS selector) */
+	ulong	esp0;			/* privilege level 0 stack pointer */
+	ulong	ss0;			/* privilege level 0 stack selector */
+	ulong	esp1;			/* privilege level 1 stack pointer */
+	ulong	ss1;			/* privilege level 1 stack selector */
+	ulong	esp2;			/* privilege level 2 stack pointer */
+	ulong	ss2;			/* privilege level 2 stack selector */
+	ulong	cr3;			/* page directory base register */
+	ulong	eip;			/* instruction pointer */
+	ulong	eflags;			/* flags register */
+	ulong	eax;			/* general registers */
+	ulong 	ecx;
+	ulong	edx;
+	ulong	ebx;
+	ulong	esp;
+	ulong	ebp;
+	ulong	esi;
+	ulong	edi;
+	ulong	es;			/* segment selectors */
+	ulong	cs;
+	ulong	ss;
+	ulong	ds;
+	ulong	fs;
+	ulong	gs;
+	ulong	ldt;			/* selector for task's LDT */
+	ulong	iomap;			/* I/O map base address + T-bit */
+} Tss;
+
+struct Segdesc
+{
+	ulong	d0;
+	ulong	d1;
+};
 
 struct Mach
 {
 	int	machno;			/* physical id of processor */
 	ulong	splpc;			/* pc of last caller to splhi */
-	int	mmask;			/* 1<<m->machno */
+
+	void*	pdb;			/* page directory base for this processor (va) */
+	Tss*	tss;			/* tss for this processor */
+	Segdesc	gdt[6];			/* gdt for this processor */
+
+	Proc*	proc;			/* current process on this processor */
+	Proc*	externup;		/* extern register Proc *up */
+
+	Page*	pdbpool;
+	int	pdbcnt;
+
 	ulong	ticks;			/* of the clock since boot time */
-	Proc	*proc;			/* current process on this processor */
 	Label	sched;			/* scheduler wakeup */
 	Lock	alarmlock;		/* access to alarm list */
-	void	*alarm;			/* alarms bound to this clock */
-	int	nrdy;
+	void*	alarm;			/* alarms bound to this clock */
 
 	int	tlbfault;
 	int	tlbpurge;
@@ -138,6 +166,14 @@ struct Mach
 	int	syscall;
 	int	load;
 	int	intr;
+
+	int	loopconst;
+
+	int	cpumhz;
+	int	cpuidax;
+	int	cpuiddx;
+	char	cpuidid[16];
+	char*	cpuidtype;
 
 	int	stack[1];
 };
@@ -150,20 +186,12 @@ typedef void		KMap;
 #define	kmap(p)		(KMap*)((p)->pa|KZERO)
 #define	kunmap(k)
 
-/*
- *  segment descriptor/gate
- */
-struct Segdesc
-{
-	ulong	d0;
-	ulong	d1;
-};
-
 struct
 {
 	Lock;
-	short	machs;
-	short	exiting;
+	int	machs;			/* bitmap of active CPUs */
+	int	exiting;		/* shutdown */
+	int	ispanic;		/* shutdown in response to a panic */
 }active;
 
 /*
@@ -171,14 +199,16 @@ struct
  */
 struct PCArch
 {
-	char	*id;
+	char*	id;
+	int	(*ident)(void);		/* this should be in the model */
 	void	(*reset)(void);		/* this should be in the model */
-	int	(*cpuspeed)(int);	/* 0 = low, 1 = high */
-	void	(*buzz)(int, int);	/* make a noise */
-	void	(*lights)(int);		/* turn lights or icons on/off */
 	int	(*serialpower)(int);	/* 1 == on, 0 == off */
 	int	(*modempower)(int);	/* 1 == on, 0 == off */
-	int	(*extvga)(int);		/* 1 == external, 0 == internal */
+
+	void	(*intrinit)(void);
+	int	(*intrenable)(int, int, Irqctl*);
+
+	void	(*clockenable)(void);
 };
 
 /*
@@ -191,29 +221,29 @@ struct ISAConf {
 	char	type[NAMELEN];
 	ulong	port;
 	ulong	irq;
-	int	dma;
+	ulong	dma;
 	ulong	mem;
 	ulong	size;
 	ulong	freq;
-	uchar	ea[6];
 
 	int	nopt;
 	char	opt[NISAOPT][ISAOPTLEN];
 };
 
-/*
- *  maps between ISA memory space and PCMCIA card memory space
- */
-struct PCMmap
-{
-	ulong	ca;		/* card address */
-	ulong	cea;		/* card end address */
-	ulong	isa;		/* ISA address */
-	int	len;		/* length of the ISA area */
-	int	attr;		/* attribute memory */
-	int	ref;
-};
+extern PCArch	*arch;			/* PC architecture */
 
+/*
+ * Each processor sees its own Mach structure at address MACHADDR.
+ * However, the Mach structures must also be available via the per-processor
+ * MMU information array machp, mainly for disambiguation and access to
+ * the clock which is only maintained by the bootstrap processor (0).
+ */
+Mach* machp[MAXMACH];
+	
+#define	MACHP(n)	(machp[n])
+
+extern Mach	*m;
+#define up	(((Mach*)MACHADDR)->externup)
 
 /*
  *  SCSI bus
@@ -234,12 +264,17 @@ struct Target {
 };
 typedef int 	(*Scsiio)(Target*, int, uchar*, int, void*, int*);
 
-#define MAXPCMCIA 8			/* maximum number of PCMCIA cards */
-#define BOOTLINE ((char *)0x80000100)	/*  bootline passed by boot program */
+typedef struct Irq {
+	void	(*f)(Ureg*, void*);	/* handler to call */
+	void*	a;			/* argument to call it with */
 
-extern PCArch	*arch;			/* PC architecture */
-extern int	cpuflag;		/* true if this is a CPU */
+	Irq*	next;			/* link to next handler */
+} Irq;
 
-extern Mach	*m;
-extern Proc	*up;
-extern char	filaddr[];
+typedef struct Irqctl {
+	int	(*isr)(int);		/* get isr bit for this irq */
+	int	(*eoi)(int);		/* eoi */
+	int	isintr;
+
+	Irq*	irq;			/* handlers on this IRQ */
+} Irqctl;

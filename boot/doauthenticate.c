@@ -1,7 +1,7 @@
 #include <u.h>
 #include <libc.h>
 #include <auth.h>
-#include <../boot/boot.h>
+#include "../boot/boot.h"
 
 static char *pbmsg = "AS protocol botch";
 static char *ccmsg = "can't connect to AS";

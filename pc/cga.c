@@ -1,202 +1,122 @@
-#include	"u.h"
-#include	"../port/lib.h"
-#include	"mem.h"
-#include	"dat.h"
-#include	"fns.h"
+#include "u.h"
+#include "../port/lib.h"
+#include "mem.h"
+#include "dat.h"
+#include "fns.h"
+#include "io.h"
+#include "../port/error.h"
 
-#define	WIDTH	160
-#define	HEIGHT	24
-#define SCREEN	((char *)(0xB8000|KZERO))
-int pos;
+enum {
+	Width		= 160,
+	Height		= 25,
+
+	Attr		= 7,		/* white on black */
+};
+
+#define CGASCREENBASE	((uchar*)KADDR(0xB8000))
+
+static int pos;
+static int screeninitdone;
+QLock screenlock;
+void (*vgascreenputc)(char*);
+
+static uchar
+cgaregr(int index)
+{
+	outb(0x3D4, index);
+	return inb(0x3D4+1) & 0xFF;
+}
+
+static void
+cgaregw(int index, int data)
+{
+	outb(0x3D4, index);
+	outb(0x3D4+1, data);
+}
+
+static void
+movecursor(void)
+{
+	cgaregw(0x0E, (pos/2>>8) & 0xFF);
+	cgaregw(0x0F, pos/2 & 0xFF);
+	CGASCREENBASE[pos+1] = Attr;
+}
+
+static void
+cgascreenputc(int c)
+{
+	int i;
+
+	if(c == '\n'){
+		pos = pos/Width;
+		pos = (pos+1)*Width;
+	}
+	else if(c == '\t'){
+		i = 8 - ((pos/2)&7);
+		while(i-->0)
+			cgascreenputc(' ');
+	}
+	else if(c == '\b'){
+		if(pos >= 2)
+			pos -= 2;
+		cgascreenputc(' ');
+		pos -= 2;
+	}
+	else{
+		CGASCREENBASE[pos++] = c;
+		CGASCREENBASE[pos++] = Attr;
+	}
+	if(pos >= Width*Height){
+		memmove(CGASCREENBASE, &CGASCREENBASE[Width], Width*(Height-1));
+		memset(&CGASCREENBASE[Width*(Height-1)], 0, Width);
+		pos = Width*(Height-1);
+	}
+	movecursor();
+}
 
 void
 screeninit(void)
 {
-	void vgadump(void);
-
-	memset(SCREEN+pos, 0, WIDTH*HEIGHT-pos);
-	vgadump();
+	pos = cgaregr(0x0E)<<8;
+	pos |= cgaregr(0x0F);
+	pos *= 2;
+	screeninitdone = 1;
 }
 
 void
-screenputc(int c)
+screenputs(char* s, int n)
 {
 	int i;
-	static int color;
+	Rune r;
+	char buf[4];
 
-	if(c == '\n'){
-		pos = pos/WIDTH;
-		pos = (pos+1)*WIDTH;
-	} else if(c == '\t'){
-		i = 8 - ((pos/2)&7);
-		while(i-->0)
-			screenputc(' ');
-	} else if(c == '\b'){
-		if(pos >= 2)
-			pos -= 2;
-		screenputc(' ');
-		pos -= 2;
-	} else {
-		SCREEN[pos++] = c;
-		SCREEN[pos++] = 0x1d;
+	if(!islo()){
+		if(!canqlock(&screenlock))
+			return;
 	}
-	if(pos >= WIDTH*HEIGHT){
-		memmove(SCREEN, &SCREEN[WIDTH], WIDTH*(HEIGHT-1));
-		memset(&SCREEN[WIDTH*(HEIGHT-1)], 0, WIDTH);
-		pos = WIDTH*(HEIGHT-1);
-	}
-}
-
-void
-screenputs(char *s, int n)
-{
-	while(n-- > 0)
-		screenputc(*s++);
-}
-
-int
-screenbits(void)
-{
-	return 4;
-}
-
-
-#include	<libg.h>
-#include	<gnot.h>
-#include	"screen.h"
-
-/*
- *  screen dimensions
- */
-#define MAXX	640
-#define MAXY	480
-
-#define SCREENMEM	(0xA0000 | KZERO)
-GBitmap	gscreen =
-{
-	(ulong*)SCREENMEM,
-	0,
-	640/32,
-	0,
-	0, 0, MAXX, MAXY,
-	0
-};
-
-typedef struct VGAmode	VGAmode;
-struct VGAmode
-{
-	uchar	general[4];
-	uchar	sequencer[5];
-	uchar	crt[0x19];
-	uchar	graphics[9];
-	uchar	attribute[0x15];
-};
-
-enum
-{
-	EMISCR=		0x3CC,		/* control sync polarity */
-	EMISCW=		0x3C2,
-	EFCW=		0x3DA,		/* feature control */
-	EFCR=		0x3CA,
-	GRX=		0x3CE,		/* index to graphics registers */
-	GR=		0x3CF,		/* graphics registers */
-	 Grms=		 0x04,		/*  read map select register */
-	SRX=		0x3C4,		/* index to sequence registers */
-	SR=		0x3C5,		/* sequence registers */
-	 Smmask=	 0x02,		/*  map mask */
-	CRX=		0x3D4,		/* index to crt registers */
-	CR=		0x3D5,		/* crt registers */
-	 Cvre=		 0x11,		/*  vertical retrace end */
-	ARX=		0x3C0,		/* index to attribute registers */
-	AR=		0x3C1,		/* attribute registers */
-};
-
-uchar
-genin(int reg)
-{
-	if(reg == 0)
-		return inb(EMISCR);
-	else if (reg == 1)
-		return inb(EFCR);
-}
-uchar
-srin(int reg)
-{
-	outb(SRX, reg);
-	return inb(SR);
-}
-uchar
-grin(int reg)
-{
-	outb(GRX, reg);
-	return inb(GR);
-}
-uchar
-arin(int reg)
-{
-	inb(0x3DA);
-	outb(ARX, reg | 0x20);
-	return inb(AR);
-}
-uchar
-crin(int reg)
-{
-	outb(CRX, reg);
-	return inb(CR);
-}
-
-void
-vgadump(void)
-{
-	int i;
-	VGAmode *v;
-
-	print("GEN ");
-	for(i = 0; i < sizeof(v->general); i++)
-		print("%d-%ux ", i, genin(i));
-	print("\nSR ");
-	for(i = 0; i < sizeof(v->sequencer); i++)
-		print("%d-%ux ", i, srin(i));
-	print("\nCR ");
-	for(i = 0; i < sizeof(v->crt); i++)
-		print("%d-%ux ", i, crin(i));
-	print("\nGR ");
-	for(i = 0; i < sizeof(v->graphics); i++)
-		print("%d-%ux ", i, grin(i));
-	print("\nAR ");
-	for(i = 0; i < sizeof(v->attribute); i++)
-		print("%d-%ux ", i, arin(i));
-	print("\n ");
-}
-
-void
-bigcursor(void)
-{}
-
-void
-getcolor(ulong p, ulong *pr, ulong *pg, ulong *pb)
-{
-	ulong ans;
-
-	/*
-	 * The safari monochrome says 0 is black (zero intensity)
-	 */
-	if(p == 0)
-		ans = 0;
 	else
-		ans = ~0;
-	*pr = *pg = *pb = ans;
-}
+		qlock(&screenlock);
 
+	if(vgascreenputc == nil){
+		while(n-- > 0)
+			cgascreenputc(*s++);
+		qunlock(&screenlock);
+		return;
+	}
 
-int
-setcolor(ulong p, ulong r, ulong g, ulong b)
-{
-	return 0;	/* can't change mono screen colormap */
-}
+	while(n > 0) {
+		i = chartorune(&r, s);
+		if(i == 0){
+			s++;
+			--n;
+			continue;
+		}
+		memmove(buf, s, i);
+		buf[i] = 0;
+		n -= i;
+		s += i;
+		vgascreenputc(buf);
+	}
 
-void
-mouseclock(void)
-{
-	mouseupdate(1);
+	qunlock(&screenlock);
 }
