@@ -9,6 +9,8 @@
 typedef	struct Drive		Drive;
 typedef	struct Ident		Ident;
 typedef	struct Controller	Controller;
+typedef struct Partition	Partition;
+typedef struct Ptable		Ptable;
 
 enum
 {
@@ -16,7 +18,7 @@ enum
 	Pbase=		0x1F0,
 	Pdata=		0,	/* data port (16 bits) */
 	Perror=		1,	/* error port (read) */
-	Pbmode=		1,	/* buffer mode port (write) */
+	Pprecomp=	1,	/* buffer mode port (write) */
 	Pcount=		2,	/* sector count port */
 	Psector=	3,	/* sector number port */
 	Pcyllsb=	4,	/* least significant byte cylinder # */
@@ -25,7 +27,7 @@ enum
 	Pstatus=	7,	/* status port (read) */
 	 Sbusy=		 (1<<7),
 	 Sready=	 (1<<6),
-	 Sdrq=		 (1<<5),
+	 Sdrq=		 (1<<3),
 	 Serr=		 (1<<0),
 	Pcmd=		7,	/* cmd port (write) */
 
@@ -38,12 +40,16 @@ enum
 
 	/* file types */
 	Qdir=		0,
-	Qdata=		(1<<4),
-	Qstruct=	(2<<4),
-	Qmask=		(3<<4),
+	Qdata=		(1<<(3+3)),
+	Qpart=		(2<<(3+3)),
+	Qmask=		(3<<(3+3)),
 
 	Maxxfer=	4*1024,		/* maximum transfer size/cmd */
+	Npart=		8+1,		/* 8 sub partitions and one for the disk */
 };
+#define PART(x)		((x)&0x3)
+#define DRIVE(x)	(((x)>>3)&0x7)
+#define MKQID(t,d,p)	((t) | ((d)<<3) | (p))
 
 /*
  *  ident sector from drive
@@ -83,6 +89,25 @@ struct Ident
 	ushort	reserved2[120];
 };
 
+struct Partition
+{
+	ulong	start;
+	ulong	end;
+	uchar	name[NAMELEN];
+};
+
+struct Ptable 
+{
+	uchar		magic[4];	/* ascii "disk" */
+	uchar		n[4];		/* number of partitions */
+	struct
+	{
+		uchar	start[4];	/* starting block */
+		uchar	end[4];		/* ending block */
+		uchar	name[NAMELEN];
+	} p[1];
+};
+
 /*
  *  a hard drive
  */
@@ -92,8 +117,10 @@ struct Drive
 	int	drive;
 	int	confused;	/* needs to be recalibrated (or worse) */
 	int	online;
+	int	npart;		/* number of real partitions */
+	Partition p[Npart];
 
-	ulong	cap;		/* drive capacity */
+	ulong	cap;		/* total bytes */
 	int	bytes;		/* bytes/sector */
 	int	sectors;	/* sectors/track */
 	int	heads;		/* heads/cyl */
@@ -139,7 +166,40 @@ static void	hardintr(Ureg*);
 static long	hardxfer(Drive*, int, void*, long, long);
 static long	hardident(Drive*);
 static void	hardsetbuf(Drive*, int);
+static void	hardpart(Drive*);
 
+static int
+hardgen(Chan *c, Dirtab *tab, long ntab, long s, Dir *dirp)
+{
+	Qid qid;
+	int drive;
+	char *name;
+	Drive *dp;
+	Partition *pp;
+	ulong l;
+
+	qid.vers = 0;
+	drive = s/(Npart+1);
+	s = s % (Npart+1);
+	if(drive >= conf.nhard)
+		return -1;
+	dp = &hard[drive];
+
+	if(s == 0){
+		sprint(name, "hd%dparition", drive);
+		qid.path = MKQID(Qpart, drive, 0);
+		l = dp->npart * sizeof(Partition);
+	} else if(s-1 < p.npart){
+		pp = &dp->p[s-1];
+		sprint(name, "hd%d%s", drive, pp->name);
+		qid.path = MKQID(Qdata, drive, s-1);
+		l = (pp->end - pp->start) * dp->cp->bytes;
+	} else
+		return 0;
+
+	devdir(c, qid, name, l, 0600, dirp);
+	return 1;
+}
 /*
  *  we assume drives 0 and 1 are on the first controller, 2 and 3 on the
  *  second, etc.
@@ -197,15 +257,16 @@ hardattach(char *spec)
 
 	for(dp = hard; dp < &hard[conf.nhard]; dp++){
 		if(!waserror()){
+			dp->bytes = 512;
 			hardsetbuf(dp, 1);
 			hardident(dp);
+			hardpart(dp);
 			dp->cyl = dp->id.lcyls;
 			dp->heads = dp->id.lheads;
 			dp->sectors = dp->id.ls2t;
 			dp->bytes = 512;
 			dp->cap = dp->bytes * dp->cyl * dp->heads * dp->sectors;
 			harddir[NHDIR*dp->drive].length = dp->cap;
-print("drive %d online\n", dp - hard);
 			dp->online = 1;
 			poperror();
 		} else
@@ -338,9 +399,25 @@ hardwrite(Chan *c, void *a, long n)
 static int
 cmddone(void *a)
 {
-	Controller *cp;
+	Controller *cp = a;
 
 	return cp->cmd == 0;
+}
+
+/*
+ *  wait for the controller to be ready to accept a command
+ */
+static void
+cmdreadywait(Controller *cp)
+{
+	long start;
+
+	start = m->ticks;
+	while((inb(cp->pbase+Pstatus) & (Sready|Sbusy)) != Sready)
+		if(TK2MS(m->ticks - start) > 1){
+print("cmdreadywait failed\n");
+			errors("disk not responding");
+		}
 }
 
 /*
@@ -387,11 +464,7 @@ hardxfer(Drive *dp, int cmd, void *va, long off, long len)
 	else
 		cp->len = cyl*dp->sectors*dp->heads*dp->bytes - off;
 
-	/*
-	 *  wait for the controller to accept commands
-	 */
-	while(inb(cp->pbase+Pstatus) & Sbusy)
-		;
+	cmdreadywait(cp);
 
 	/*
 	 *  start the transfer
@@ -399,9 +472,10 @@ hardxfer(Drive *dp, int cmd, void *va, long off, long len)
 	cp->secs = cp->len/dp->bytes;
 	cp->sofar = 0;
 	cp->cmd = cmd;
+	cp->dp = dp;
 	outb(cp->pbase+Pcount, cp->secs);
 	outb(cp->pbase+Psector, cp->tsec);
-	outb(cp->pbase+Pdh, (1<<5) | (dp->drive<<4) | cp->thead);
+	outb(cp->pbase+Pdh, (dp->drive<<4) | cp->thead);
 	outb(cp->pbase+Pcyllsb, cp->tcyl);
 	outb(cp->pbase+Pcylmsb, cp->tcyl>>8);
 	outb(cp->pbase+Pcmd, cmd);
@@ -439,9 +513,13 @@ hardsetbuf(Drive *dp, int on)
 		nexterror();
 	}
 
-	outb(cp->pbase+Pbmode, on ? 0xAA : 0x55);
-	outb(cp->pbase+Pdh, (1<<5) | dp->drive<<4);
+	cmdreadywait(cp);
+
+	outb(cp->pbase+Pprecomp, on ? 0xAA : 0x55);
+	outb(cp->pbase+Pdh, (dp->drive<<4));
 	outb(cp->pbase+Pcmd, Csetbuf);
+
+	sleep(&cp->r, cmddone, cp);
 
 	poperror();
 	qunlock(cp);
@@ -462,11 +540,14 @@ hardident(Drive *dp)
 		nexterror();
 	}
 
+	cmdreadywait(cp);
+
 	cp->len = 512;
 	cp->secs = 1;
 	cp->sofar = 0;
 	cp->cmd = Cident;
-	outb(cp->pbase+Pdh, (1<<5) | dp->drive<<4);
+	cp->dp = dp;
+	outb(cp->pbase+Pdh, (dp->drive<<4));
 	outb(cp->pbase+Pcmd, Cident);
 	sleep(&cp->r, cmddone, cp);
 	if(cp->status & Serr){
@@ -480,11 +561,29 @@ print("bad disk magic\n");
 		errors("bad disk magic");
 	}
 
-if((dp->id.interface & 0x4000) == 0)
-	print("lookaheads disabled\n");	
-
 	poperror();
 	qunlock(cp);
+}
+
+/*
+ *  read partition table
+ */
+static void
+hardpart(Drive *dp)
+{
+	Partition *pp;
+	Ptable *pt;
+	uchar buf[1024];
+
+	pp = &dp->p[0];
+	strcpy(pp->name, "disk");
+	pp->start = 0;
+	pp->end = pp->cap / dp->bytes;
+
+	qlock(dp->cp);
+	hardxfer(dp, Cread, buf, pp->end - 1, dp->bytes);
+	
+	qunlock(dp->cp);
 }
 
 /*
@@ -494,6 +593,7 @@ static void
 hardintr(Ureg *ur)
 {
 	Controller *cp;
+	long loop;
 
 	/*
  	 *  BUG!! if there is ever more than one controller, we need a way to
@@ -513,7 +613,8 @@ hardintr(Ureg *ur)
 		cp->sofar++;
 		if(cp->sofar != cp->secs){
 			while((inb(cp->pbase+Pstatus) & Sdrq) == 0)
-				;
+				if(++loop > 10000)
+					panic("hardintr 1");
 			outss(cp->pbase+Pdata, &cp->buf[cp->sofar*cp->dp->bytes],
 				cp->dp->bytes/2);
 		} else{
@@ -529,8 +630,10 @@ hardintr(Ureg *ur)
 			wakeup(&cp->r);
 			return;
 		}
+		loop = 0;
 		while((inb(cp->pbase+Pstatus) & Sdrq) == 0)
-			;
+			if(++loop > 10000)
+				panic("hardintr 2");
 		inss(cp->pbase+Pdata, &cp->buf[cp->sofar*cp->dp->bytes],
 			cp->dp->bytes/2);
 		cp->sofar++;

@@ -30,7 +30,6 @@ struct MntQ
 	MntQ	*next;		/* for allocation */
 	Chan	*msg;		/* for reading and writing messages */
 	Proc	*reader;	/* process reading response */
-	int	tag;		/* increments per message; lock Ref while changing */
 	Mnthdr	*writer;	/* queue of headers of written messages */
 };
 
@@ -166,7 +165,6 @@ mqalloc(Chan *msg)	/* mntqalloc is qlocked */
 		lock(q);
 		q->ref = 1;
 		q->msg = msg;
-		q->tag = 0;
 		unlock(q);
 		incref(msg);
 		q->writer = 0;
@@ -684,6 +682,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 	MntQ *q;
 	int qlocked, tag, written;
 
+	if(&qlocked);	/* force qlocked not to be registerized */
 	mh->mbr = 0;
 	mbw = mballoc();
 	if(waserror()){			/* 1 */
@@ -815,7 +814,8 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		if(tag == mh->thdr.tag){	/* it's mine */
 			if(mh->rhdr.type != Rerror)
 			if(mh->rhdr.type != mh->thdr.type+1){
-				print(" T(%d)%c %d %d ", tag, devchar[m->q->msg->type],
+				print("mail rob: '%s T(%d)%c %d %d'\n", u->p->text,
+					tag, devchar[m->q->msg->type],
 					mh->rhdr.type, mh->thdr.type+1);
 				goto FreeRead;
 			}
@@ -854,7 +854,8 @@ mntxmit(Mnt *m, Mnthdr *mh)
 			goto FreeRead;
 		if(mh->rhdr.type != Rerror)
 		if(mh->rhdr.type != w->thdr.type+1){
-			print(" t(%d)%c %d %d ", tag, devchar[m->q->msg->type],
+			print("mail rob: '%s w(%d)%c %d %d'\n",
+				u->p->text, tag, devchar[m->q->msg->type],
 				mh->rhdr.type, w->thdr.type+1);
 			goto FreeRead;
 		}
@@ -932,7 +933,8 @@ mntdump(void)
 		p = q->reader;
 		print("q rdr %d wrtr ", p? p->pid : 0);
 		for(h=q->writer; h; h=h->next)
-			print("(%lux %lux %d)", h, &h->r, (p=h->p)? p->pid : 0);
+			print("(%lux %lux %d %d)", h, &h->r, h->thdr.tag,
+				(p=h->p)? p->pid : 0);
 		print("\n");
 	}
 }
