@@ -11,6 +11,7 @@ enum{
 	Qbin,
 	Qboot,
 	Qcfs,
+	Qcryptfs,
 	Qdev,
 	Qenv,
 	Qproc,
@@ -19,6 +20,9 @@ enum{
 extern long	cfslen;
 extern ulong	cfscode[];
 
+extern long	cryptfslen;
+extern ulong	cryptfscode[];
+
 
 Dirtab rootdir[]={
 	"bin",		{Qbin|CHDIR},	0,			0700,
@@ -26,6 +30,7 @@ Dirtab rootdir[]={
 	"dev",		{Qdev|CHDIR},	0,			0700,
 	"env",		{Qenv|CHDIR},	0,			0700,
 	"proc",		{Qproc|CHDIR},	0,			0700,
+	"cryptfs",	{Qcryptfs},	0,			0700,
 	"cfs",		{Qcfs},		0,			0700,
 };
 
@@ -111,6 +116,14 @@ rootread(Chan *c, void *buf, long n, ulong offset)
 		if(offset+n > cfslen)
 			n = cfslen - offset;
 		memmove(buf, ((char*)cfscode)+offset, n);
+		return n;
+
+	case Qcryptfs:		/* cryptfs */
+		if(offset >= cryptfslen)
+			return 0;
+		if(offset+n > cryptfslen)
+			n = cryptfslen - offset;
+		memmove(buf, ((char*)cryptfscode)+offset, n);
 		return n;
 
 	case Qdev:
