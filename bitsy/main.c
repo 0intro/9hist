@@ -62,11 +62,6 @@ rdb(void)
 {
 }
 
-enum
-{
-	OneMeg=	1024*1024,
-};
-
 /*
  *  probe the last location in a meg of memory, make sure it's not
  *  reflected into something else we've already found.

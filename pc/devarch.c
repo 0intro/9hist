@@ -452,6 +452,16 @@ static X86type x86amd[] =
 	{ -1,	-1,	23,	"unknown", },	/* total default */
 };
 
+/*
+ * WinChip 240MHz
+ */
+static X86type x86winchip[] =
+{
+	{5,	4,	23,	"Winchip",},	/* guesswork */
+	{ -1,	-1,	23,	"unknown", },	/* total default */
+};
+
+
 static uvlong fasthz;
 static X86type *cputype;
 
@@ -480,6 +490,8 @@ cpuidentify(void)
 	cpuid(m->cpuidid, &m->cpuidax, &m->cpuiddx);
 	if(strncmp(m->cpuidid, "AuthenticAMD", 12) == 0)
 		t = x86amd;
+	else if(strncmp(m->cpuidid, "CentaurHauls", 12) == 0)
+		t = x86winchip;
 	else
 		t = x86intel;
 	family = X86FAMILY(m->cpuidax);

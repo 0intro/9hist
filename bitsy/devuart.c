@@ -15,7 +15,6 @@ enum
 };
 
 /* hardware registers */
-typedef struct Uartregs Uartregs;
 struct Uartregs
 {
 	ulong	ctl0;
@@ -29,7 +28,7 @@ struct Uartregs
 	ulong	status1;
 };
 
-static Uartregs *uart3regs = UART3REGS;
+Uartregs *uart3regs = UART3REGS;
 
 /* ctl0 bits */
 enum

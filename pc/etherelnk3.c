@@ -1811,9 +1811,9 @@ etherelnk3reset(Ether* ether)
 /*
  * forgive me, but i am weak
  */
-if(did == 0x9055 || did ==0x9200){
+if(did == 0x9055 || did == 0x9200){
    xcvr = xcvrMii;
-   XCVRDEBUG("9055 reset ops 0x%uX\n",
+   XCVRDEBUG("905[BC] reset ops 0x%uX\n",
 	ins(port+ResetOp905B));
 }
 else

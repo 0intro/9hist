@@ -178,3 +178,8 @@ Mach* machp[MAXMACH];
 
 extern Mach	*m;
 #define up	(((Mach*)MACHADDR)->externup)
+
+enum
+{
+	OneMeg=	1024*1024,
+};

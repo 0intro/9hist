@@ -46,6 +46,7 @@
 #define	KZERO		0xC0000000		/* base of kernel address space */
 #define	KTZERO		0xC0008000		/* first address in kernel text */
 #define	REGZERO		0xA0000000		/* 256 meg for special regs */
+#define	REGTOP		0xB0000000		/* 256 meg for special regs */
 #define	FLASHZERO	0xB0000000		/* 256 meg for flash */
 #define	USTKTOP		(REGZERO-BY2PG)		/* byte just beyond user stack */
 #define	USTKSIZE	(16*1024*1024)		/* size of user stack */
@@ -172,6 +173,7 @@
 #define	PTERONLY	0	/* this is implied by the absence of PTEWRITE */
 #define	PTEWRITE	(1<<1)
 #define	PTEUNCACHED	(1<<2)
+#define PTEKERNEL	(1<<3)	/* no user access */
 
 /*
  *  H3650 specific definitions
