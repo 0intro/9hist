@@ -583,16 +583,16 @@ namec(char *name, int amode, int omode, ulong perm)
 		name = nextelem(name, elem);
 	}
 
-	switch(amode){
+	switch(amode) {
 	case Aaccess:
-		if(isdot)
+		if(isdot) {
 			c = domount(c);
-		else {
-			nc = walk(c, elem, mntok);
-			if(nc == 0)
-				error(Enonexist);
-			c = nc;
+			break;
 		}
+		nc = walk(c, elem, mntok);
+		if(nc == 0)
+			error(Enonexist);
+		c = nc;
 		break;
 
 	case Atodir:
