@@ -76,7 +76,6 @@ void		iomapinit(void);
 void		enetaddr(uchar*);
 
 #define	waserror()		setlabel(&up->errlab[up->nerrlab++])
-#define	kmapperm(x)		kmap(x)
 
 #define KADDR(a)	((void*)((ulong)(a)|KSEG0))
 #define KADDR1(a)	((void*)((ulong)(a)|KSEG1))
