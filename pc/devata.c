@@ -394,7 +394,6 @@ atactlrprobe(int ctlrno, int irq, int resetok)
 	ctlr->tbdf = BUSUNKNOWN;
 	ctlr->lastcmd = 0xFF;
 
-
 	/*
 	 * Attempt to check the existence of drives on the controller
 	 * by issuing a 'check device diagnostics' command.
@@ -418,6 +417,7 @@ atactlrprobe(int ctlrno, int irq, int resetok)
 			DPRINT("ata%d: Srst status 0x%uX/0x%uX/0x%uX\n", ctlrno,
 				inb(port+Pstatus), inb(port+Pcylmsb), inb(port+Pcyllsb));
 			xfree(ctlr);
+			return -1;
 		}
 	}
 
@@ -425,6 +425,7 @@ atactlrprobe(int ctlrno, int irq, int resetok)
 retry:
 	atapi = 0;
 	mask = 0;
+	status = inb(port+Pstatus);
 	DPRINT("ata%d: ATAPI 0x%uX 0x%uX 0x%uX\n", ctlrno, status,
 		inb(port+Pcylmsb), inb(port+Pcyllsb));
 	if(/*status == 0 &&*/ inb(port+Pcylmsb) == 0xEB && inb(port+Pcyllsb) == 0x14){
