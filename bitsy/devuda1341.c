@@ -839,7 +839,6 @@ audioopen(Chan *c, int mode)
 			s->dma = dmaalloc(0, 0, 4, 2, SSPXmitDMA, Port4SSP, audiointr, (void*)s);
 			audio.amode |= Awrite;
 		}
-		resetlevel();
 		mxvolume();
 		qunlock(&audio);
 		if (debug) print("open done\n");

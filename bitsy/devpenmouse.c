@@ -269,7 +269,6 @@ penmouseread(Chan *c, void *va, long n, vlong)
 		} else {
 			m = mouse.Mousestate;
 		}
-
 		sprint(buf, "m%11d %11d %11d %11lud",
 			m.xy.x, m.xy.y,
 			m.buttons,
