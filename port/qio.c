@@ -150,6 +150,22 @@ blocklen(Block *bp)
 }
 
 /*
+ * return count of space in blocks
+ */
+int
+blockalloclen(Block *bp)
+{
+	int len;
+
+	len = 0;
+	while(bp) {
+		len += BALLOC(bp);
+		bp = bp->next;
+	}
+	return len;
+}
+
+/*
  *  copy the  string of blocks into
  *  a single block and free the string
  */
@@ -831,20 +847,21 @@ qwait(Queue *q)
 }
 
 /*
- * add a block to a queue
+ * add a block list to a queue
  */
 void
-qadd(Queue *q, Block *b)
+qaddlist(Queue *q, Block *b)
 {
 	/* queue the block */
 	if(q->bfirst)
 		q->blast->next = b;
 	else
 		q->bfirst = b;
+	q->len += blockalloclen(b);
+	q->dlen += blocklen(b);
+	while(b->next)
+		b = b->next;
 	q->blast = b;
-	b->next = 0;
-	q->len += BALLOC(b);
-	q->dlen += BLEN(b);
 }
 
 /*

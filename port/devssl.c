@@ -415,7 +415,7 @@ ensure(Dstate *s, Block **l, int n)
 	while(sofar < n){
 		bl = devtab[s->c->type]->bread(s->c, Maxdmsg, 0);
 		if(bl == 0)
-			error(Ehungup);
+			nexterror();
 		*l = bl;
 		i = 0;
 		for(b = bl; b; b = b->next){
@@ -457,7 +457,6 @@ consume(Block **l, uchar *p, int n)
 
 /*
  *  give back n bytes
- */
 static void
 regurgitate(Dstate *s, uchar *p, int n)
 {
@@ -477,6 +476,7 @@ regurgitate(Dstate *s, uchar *p, int n)
 		memmove(b->rp, p, n);
 	}
 }
+ */
 
 /*
  *  remove at most n bytes from the queue, if discard is set
@@ -538,8 +538,8 @@ sslbread(Chan *c, long n, ulong)
 {
 	volatile struct { Dstate *s; } s;
 	Block *b;
-	uchar consumed[3];
-	int nconsumed;
+	uchar consumed[3], *p;
+	int toconsume;
 	int len, pad;
 
 	s.s = dstate[CONV(c->qid)];
@@ -548,44 +548,58 @@ sslbread(Chan *c, long n, ulong)
 	if(s.s->state == Sincomplete)
 		error(Ebadusefd);
 
-	nconsumed = 0;
+	qlock(&s.s->in.q);
 	if(waserror()){
-		if(strcmp(up->error, Eintr) != 0)
-			regurgitate(s.s, consumed, nconsumed);
 		qunlock(&s.s->in.q);
 		nexterror();
 	}
-	qlock(&s.s->in.q);
 
 	if(s.s->processed == 0){
-		/* read in the whole message */
-		ensure(s.s, &s.s->unprocessed, 2);
-		consume(&s.s->unprocessed, consumed, 2);
-		nconsumed = 2;
-		if(consumed[0] & 0x80){
-			len = ((consumed[0] & 0x7f)<<8) | consumed[1];
+		/*
+		 * Read in the whole message.  Until we've got it all,
+		 * it stays on s.s->unprocessed, so that if we get Eintr,
+		 * we'll pick up where we left off.
+		 */
+		ensure(s.s, &s.s->unprocessed, 3);
+		s.s->unprocessed = pullupblock(s.s->unprocessed, 2);
+		p = s.s->unprocessed->rp;
+		if(p[0] & 0x80){
+			len = ((p[0] & 0x7f)<<8) | p[1];
 			ensure(s.s, &s.s->unprocessed, len);
 			pad = 0;
+			toconsume = 2;
 		} else {
-			len = ((consumed[0] & 0x3f)<<8) | consumed[1];
-			ensure(s.s, &s.s->unprocessed, len+1);
-			consume(&s.s->unprocessed, &consumed[2], 1);
-			pad = consumed[2];
+			len = ((p[0] & 0x3f)<<8) | p[1];
+			pad = p[2];
 			if(pad > len){
 				print("pad %d buf len %d\n", pad, len);
 				error("bad pad in ssl message");
 			}
+			toconsume = 3;
 		}
-		USED(nconsumed);
-		nconsumed = 0;
+		ensure(s.s, &s.s->unprocessed, toconsume+len+pad);
 
-		/*  if an Eintr happens after this, we're screwed.  Make
-		 *  sure nothing we call can sleep.  Luckily, allocb
-		 *  won't sleep, it'll just error out.
+		/*
+		 * Now we have a full SSL packet in the unprocessed list.
+		 * Start processing.  We can't get Eintr's here.
+		 * The only cause for errors from here until the end of the
+		 * loop is allocation failures in the block manipulation.
+		 * We'll worry about that when we come across it.
 		 */
 
+		if(waserror()){
+			print("devssl: unhandled allocation failure\n");
+			nexterror();
+		}
+
+		/* skip header */
+		consume(&s.s->unprocessed, consumed, toconsume);
+
 		/* grab the next message and decode/decrypt it */
-		b = qtake(&s.s->unprocessed, len, 0);
+		b = qtake(&s.s->unprocessed, len+pad, 0);
+
+		if(blocklen(b) != len+pad)
+			print("devssl: sslbread got wrong count %d != %d", blocklen(b), len);
 
 		if(waserror()){
 			qunlock(&s.s->in.ctlq);
@@ -596,12 +610,14 @@ sslbread(Chan *c, long n, ulong)
 		qlock(&s.s->in.ctlq);
 		switch(s.s->state){
 		case Sencrypting:
+			if(b == nil)
+				error("ssl message too short (encrypting)");
 			b = decryptb(s.s, b);
 			break;
 		case Sdigesting:
 			b = pullupblock(b, s.s->diglen);
 			if(b == nil)
-				error("ssl message too short");
+				error("ssl message too short (digesting)");
 			checkdigestb(s.s, b);
 			b->rp += s.s->diglen;
 			break;
@@ -609,7 +625,7 @@ sslbread(Chan *c, long n, ulong)
 			b = decryptb(s.s, b);
 			b = pullupblock(b, s.s->diglen);
 			if(b == nil)
-				error("ssl message too short");
+				error("ssl message too short (dig+enc)");
 			checkdigestb(s.s, b);
 			b->rp += s.s->diglen;
 			len -= s.s->diglen;
@@ -625,7 +641,7 @@ sslbread(Chan *c, long n, ulong)
 		s.s->in.mid++;
 		qunlock(&s.s->in.ctlq);
 		poperror();
-		USED(nconsumed);
+		poperror();
 	}
 
 	/* return at most what was asked for */

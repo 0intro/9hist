@@ -837,7 +837,7 @@ mntrpcread(Mnt *m, Mntrpc *r)
 		b = devtab[m->c->type]->bread(m->c, 2*MAXRPC, 0);
 		if(b == nil)
 			return -1;
-		qadd(m->q, b);
+		qaddlist(m->q, b);
 	}
 	nb = pullupqueue(m->q, BIT32SZ+BIT8SZ+BIT16SZ);
 	len = GBIT32(nb->rp);
@@ -847,7 +847,7 @@ mntrpcread(Mnt *m, Mntrpc *r)
 		b = devtab[m->c->type]->bread(m->c, 2*MAXRPC, 0);
 		if(b == nil)
 			return -1;
-		qadd(m->q, b);
+		qaddlist(m->q, b);
 	}
 
 	/* pullup the header (i.e. everything except data) */
