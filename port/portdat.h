@@ -109,6 +109,7 @@ enum
 	CFREE	= 0x0010,		/* not in use */
 	CRCLOSE	= 0x0020,		/* remove on close */
 	CRECOV	= 0x0040,		/* requires recovery */
+	CCACHE	= 0x0080,		/* client cache */
 };
 
 struct Path

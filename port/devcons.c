@@ -165,7 +165,10 @@ prflush(void)
 void
 echo(Rune r, char *buf, int n)
 {
-	static int ctrlt;
+	static int ctrlt, pid;
+	ulong l, v, top;
+	extern ulong etext;
+	Proc *p, *ep;
 
 	/*
 	 * ^p hack
@@ -176,7 +179,22 @@ echo(Rune r, char *buf, int n)
 	/*
 	 * ^t hack BUG
 	 */
-	if(ctrlt == 2){
+	switch(ctrlt) {
+	case 0:
+		if(r == 0x14){
+			ctrlt = 1;
+			return;
+		}
+		break;
+	case 1:
+		if(r > '0' && r <= '9') {
+			ctrlt = 3;
+			pid = r-'0';
+			return;
+		}
+		ctrlt = 2;
+		return;
+	case 2:
 		ctrlt = 0;
 		switch(r){
 		case 0x14:
@@ -195,9 +213,28 @@ echo(Rune r, char *buf, int n)
 			exit(0);
 			break;
 		}
-	}else if(r == 0x14){
-		ctrlt++;
-		return;
+		break;
+	case 3:
+		if(r > '0' && r <= '9') {
+			pid = (pid*10)+(r-'0');
+			return;
+		}
+		print("PID %d\n", pid);
+		p = proctab(0);
+		ep = p+conf.nproc;
+		for(; p < ep; p++) {
+			if(p->pid == pid) {
+				top = (ulong)p->kstack + KSTACK;
+				for(l=(ulong)p->sched.sp; l < top; l += BY2WD) {
+					v = *(ulong*)l;
+					if(KTZERO < v && v < (ulong)&etext) {
+						print("%lux=%lux\n", l, v);
+						delay(100);
+					}
+				}
+			}
+		}
+		break;
 	}
 	ctrlt = 0;
 	if(kbd.raw)

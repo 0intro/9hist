@@ -58,7 +58,7 @@ cinit(void)
 	cache.head = xalloc(sizeof(Mntcache)*NFILE);
 	m = cache.head;
 	
-	for(i = 0; i < NFILE; i++) {
+	for(i = 0; i < NFILE-1; i++) {
 		m->next = m+1;
 		m->prev = m-1;
 		m++;
@@ -69,36 +69,11 @@ cinit(void)
 	cache.head->prev = 0;
 }
 
-Mntcache*
-clook(Chan *c)
-{
-	int h;
-	Mntcache *m;
-
-	h = c->qid.path%NHASH;
-
-	lock(&cache);
-	for(m = cache.hash[h]; m; m = m->hash) {
-		if(m->path == c->qid.path) {
-			qlock(m);
-			if(m->path == c->qid.path)
-			if(m->dev  == c->dev)
-			if(m->type == c->type) {
-				unlock(&cache);
-				return m;
-			}
-			qunlock(m);
-		}
-	}
-	unlock(&cache);
-	return 0;
-}
-
 void
 cprint(Mntcache *m, char *s)
 {
 	Extent *e;
-return;
+
 	print("%s: 0x%lux.0x%lux %d %d\n",
 			s, m->path, m->vers, m->type, m->dev);
 
@@ -134,11 +109,8 @@ cnodata(Mntcache *m)
 }
 
 void
-ctail(Mntcache *m, int dolock)
+ctail(Mntcache *m)
 {
-	if(dolock)
-		lock(&cache);
-
 	/* Unlink and send to the tail */
 	if(m->prev) 
 		m->prev->next = m->next;
@@ -159,9 +131,6 @@ ctail(Mntcache *m, int dolock)
 		cache.head = cache.tail = m;
 		m->prev = m->next = 0;
 	}
-
-	if(dolock)
-		unlock(&cache);
 }
 
 void
@@ -172,47 +141,49 @@ copen(Chan *c)
 	if(c->qid.path & CHDIR)
 		return;
 
-	m = clook(c);
-	if(m != 0) {
-		c->mcp = m;
-		ctail(m, 1);
+	lock(&cache);
+	for(m = cache.hash[c->qid.path%NHASH]; m; m = m->hash) {
+		if(m->path == c->qid.path)
+		if(m->dev == c->dev && m->type == c->type) {
+			c->mcp = m;
+			ctail(m);
+			unlock(&cache);
 
-		/* File was updated */
-		if(m->vers != c->qid.vers) {
-cprint(m, "copen mod");
-			cnodata(m);
-			m->vers = c->qid.vers;
+			/* File was updated, invalidate cache */
+			if(m->vers != c->qid.vers) {
+				qlock(m);
+				cnodata(m);
+				m->vers = c->qid.vers;
+				qunlock(m);
+			}
+			return;
 		}
-		qunlock(m);
-cprint(m, "copen lru");
-		return;
 	}
 
 	/* LRU the cache headers */
 	m = cache.head;
-	qlock(m);
-	lock(&cache);
 	l = &cache.hash[m->path%NHASH];
-	for(f = *l; f; f = f->next) {
+	for(f = *l; f; f = f->hash) {
 		if(f == m) {
-			*l = f->next;
+			*l = f->hash;
 			break;
 		}
-		l = &f->next;
+		l = &f->hash;
 	}
 	l = &cache.hash[c->qid.path%NHASH];
 	m->hash = *l;
 	*l = m;
-	ctail(m, 0);
-	unlock(&cache);
+	ctail(m);
 
 	m->Qid = c->qid;
 	m->dev = c->dev;
 	m->type = c->type;
-	cnodata(m);
 	c->mcp = m;
+	unlock(&cache);
+
+	qlock(m);
+	cnodata(m);
 	qunlock(m);
-cprint(m, "copen new");
 }
 
 static int
@@ -254,8 +225,12 @@ cread(Chan *c, uchar *buf, int len, ulong offset)
 	end = offset+len;
 	t = &m->list;
 	for(e = *t; e; e = e->next) {
-		if(e->start >= offset && e->start+e->len < end)
+		if(offset > e->start && offset < e->start+e->len)
 			break;
+		if(offset < e->start) {
+			qunlock(m);
+			return 0;
+		}	
 		t = &e->next;
 	}
 
@@ -288,6 +263,8 @@ cread(Chan *c, uchar *buf, int len, ulong offset)
 			l = e->len-o;
 
 		memmove(buf, (uchar*)VA(k) + o, l);
+
+		poperror();
 		kunmap(k);
 		putpage(p);
 
@@ -313,6 +290,7 @@ cchain(uchar *buf, ulong offset, int len, Extent **tail)
 	Extent *e, *start, **t;
 
 	start = 0;
+	*tail = 0;
 	t = &start;
 	while(len) {
 		e = malloc(sizeof(Extent));
@@ -348,6 +326,7 @@ cchain(uchar *buf, ulong offset, int len, Extent **tail)
 		*tail = e;
 		t = &e->next;
 	}
+
 	return start;
 }
 
@@ -370,15 +349,12 @@ cpgmove(Extent *e, uchar *buf, int boff, int len)
 }
 
 void
-cupdate(Chan *c, uchar *buf, int len, ulong offset)
+cxupdate(Chan *c, uchar *buf, int len, ulong offset)
 {
 	Mntcache *m;
 	Extent *tail;
 	Extent *e, *f, *p;
 	int o, ee, eblock;
-
-	if(c->qid.path & CHDIR)
-		return;
 
 	if(offset > MAXCACHE || len == 0)
 		return;
@@ -413,9 +389,11 @@ cupdate(Chan *c, uchar *buf, int len, ulong offset)
 			}
 		}
 		e = cchain(buf, offset, len, &tail);
-		m->list = e;
-		if(tail != 0)
-			tail->next = f;
+		if(e != 0) {
+			m->list = e;
+			if(tail != 0)
+				tail->next = f;
+		}
 		qunlock(m);
 		return;
 	}
@@ -438,10 +416,6 @@ cupdate(Chan *c, uchar *buf, int len, ulong offset)
 		o = len;
 		if(o > BY2PG - p->len)
 			o = BY2PG - p->len;
-		if(len <= 0) {
-			qunlock(m);
-			return;
-		}
 		if(cpgmove(p, buf, p->len, o)) {
 			p->len += o;
 			buf += o;
@@ -465,11 +439,11 @@ cupdate(Chan *c, uchar *buf, int len, ulong offset)
 	eblock = offset+len;
 	if(eblock > f->start) {
 		o = eblock - f->start;
-		if(o < 0) {
+		len -= o;
+		if(len <= 0) {
 			qunlock(m);
 			return;
 		}
-		len -= o;
 	}
 
 	/* insert a middle block */
@@ -480,6 +454,13 @@ cupdate(Chan *c, uchar *buf, int len, ulong offset)
 		tail->next = f;
 
 	qunlock(m);
+}
+
+void
+cupdate(Chan *c, uchar *buf, int len, ulong offset)
+{
+	cxupdate(c, buf, len, offset);
+	cprint(c->mcp, "cupdate");
 }
 
 void
@@ -517,7 +498,7 @@ cwrite(Chan* c, uchar *buf, int len, ulong offset)
 		if(ee > offset) {
 			o = ee - offset;
 			p->len -= o;
-			if(p->len)
+			if(p->len == 0)
 				panic("del empty extent");
 		}
 	}
@@ -531,12 +512,14 @@ cwrite(Chan* c, uchar *buf, int len, ulong offset)
 	}
 
 	e = cchain(buf, offset, len, &tail);
-	if(p == 0)
-		m->list = e;
-	else
-		p->next = e;
-	if(tail != 0)
-		tail->next = f;
+	if(e != 0) {
+		if(p == 0)
+			m->list = e;
+		else
+			p->next = e;
+		if(tail != 0)
+			tail->next = f;
+	}
 	qunlock(m);
 cprint(m, "cwrite");
 }
