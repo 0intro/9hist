@@ -782,7 +782,8 @@ tvstat(Chan *c, uchar *db, int n)
 static Chan*
 tvopen(Chan *c, int omode)
 {
-	if (omode != OREAD && TYPE(c->qid) != Qctl)
+	if (omode != OREAD && 
+		TYPE(c->qid) != Qctl && TYPE(c->qid) != Qvdata)
 		error(Eperm);
 
 	switch (TYPE(c->qid)) {

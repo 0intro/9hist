@@ -89,6 +89,8 @@ capopen(Chan *c, int omode)
 	qlock(&capalloc);
 	switch((ulong)c->qid.path){
 	case Qhash:
+		if(!iseve())
+			error(Eperm);
 		if(capalloc.opens > 0){
 			qunlock(&capalloc);
 			error("exclusive use");
