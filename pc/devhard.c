@@ -6,6 +6,8 @@
 #include	"io.h"
 #include	"../port/error.h"
 
+#define DPRINT if(0)print
+
 typedef	struct Drive		Drive;
 typedef	struct Ident		Ident;
 typedef	struct Controller	Controller;
@@ -459,7 +461,7 @@ cmdreadywait(Controller *cp)
 	start = m->ticks;
 	while((inb(cp->pbase+Pstatus) & (Sready|Sbusy)) != Sready)
 		if(TK2MS(m->ticks - start) > 1){
-print("cmdreadywait failed\n");
+			DPRINT("cmdreadywait failed\n");
 			error(Eio);
 		}
 }
@@ -473,7 +475,7 @@ hardrepl(Drive *dp, long bblk)
 		return;
 	for(i = 0; i < dp->repl.nrepl; i++){
 		if(dp->repl.blk[i] == bblk)
-			print("found bblk %ld at offset %ld\n", bblk, i);
+			DPRINT("found bblk %ld at offset %ld\n", bblk, i);
 	}
 }
 
@@ -559,10 +561,10 @@ hardxfer(Drive *dp, Partition *pp, int cmd, long start, long len, char *buf)
 	sleep(&cp->r, cmddone, cp);
 
 	if(cp->status & Serr){
-		print("hd%d err: lblk %ld status %lux, err %lux\n",
+		DPRINT("hd%d err: lblk %ld status %lux, err %lux\n",
 			dp-hard, lblk, cp->status, cp->error);
-		print("\tcyl %d, sec %d, head %d\n", cyl, sec, head);
-		print("\tnsecs %d, sofar %d\n", cp->nsecs, cp->sofar);
+		DPRINT("\tcyl %d, sec %d, head %d\n", cyl, sec, head);
+		DPRINT("\tnsecs %d, sofar %d\n", cp->nsecs, cp->sofar);
 		hardrepl(dp, lblk+cp->sofar);
 		error(Eio);
 	}
@@ -597,7 +599,7 @@ hardsetbuf(Drive *dp)
 	sleep(&cp->r, cmddone, cp);
 
 	if(cp->status & Serr)
-		print("hd%d setbuf err: status %lux, err %lux\n",
+		DPRINT("hd%d setbuf err: status %lux, err %lux\n",
 			dp-hard, cp->status, cp->error);
 
 	poperror();
@@ -632,7 +634,7 @@ hardident(Drive *dp)
 	outb(cp->pbase+Pcmd, Cident);
 	sleep(&cp->r, cmddone, cp);
 	if(cp->status & Serr){
-		print("bad disk ident status\n");
+		DPRINT("bad disk ident status\n");
 		error(Eio);
 	}
 	memmove(&dp->id, buf, dp->bytes);
@@ -798,7 +800,7 @@ hardintr(Ureg *ur)
 	loop = 0;
 	while((cp->status = inb(cp->pbase+Pstatus)) & Sbusy){
 		if(++loop > 100) {
-			print("cmd=%lux status=%lux\n",
+			DPRINT("cmd=%lux status=%lux\n",
 				cp->cmd, inb(cp->pbase+Pstatus));
 			panic("hardintr: wait busy");
 		}
@@ -817,7 +819,7 @@ hardintr(Ureg *ur)
 			loop = 0;
 			while(((cp->status = inb(cp->pbase+Pstatus)) & Sdrq) == 0)
 				if(++loop > 100) {
-					print("cmd=%lux status=%lux\n",
+					DPRINT("cmd=%lux status=%lux\n",
 						cp->cmd, inb(cp->pbase+Pstatus));
 					panic("hardintr: write");
 				}
@@ -837,7 +839,7 @@ hardintr(Ureg *ur)
 		loop = 0;
 		while((inb(cp->pbase+Pstatus) & Sdrq) == 0)
 			if(++loop > 10000) {
-				print("cmd=%lux status=%lux\n",
+				DPRINT("cmd=%lux status=%lux\n",
 					cp->cmd, inb(cp->pbase+Pstatus));
 				panic("hardintr: read/ident");
 		}

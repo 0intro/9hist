@@ -12,6 +12,8 @@ typedef	struct Drive		Drive;
 typedef	struct Controller	Controller;
 typedef struct Type		Type;
 
+#define DPRINT if(0)print
+
 /* bits in the registers */
 enum
 {
@@ -552,7 +554,7 @@ floppycmd(void)
 	for(i = 0; i < fl.ncmd; i++){
 		for(tries = 0; ; tries++){
 			if(tries > 1000){
-print("cmd %ux can't be sent (%d %ux)\n", fl.cmd[0], i, inb(Pmsr));
+			DPRINT("cmd %ux can't be sent (%d %ux)\n", fl.cmd[0], i, inb(Pmsr));
 				fl.confused = 1;
 				return -1;
 			}
@@ -635,7 +637,7 @@ floppysense(void)
 	if(floppycmd() < 0)
 		return -1;
 	if(floppyresult() < 2){
-/*print("can't read sense response\n");/**/
+		DPRINT("can't read sense response\n");
 		fl.confused = 1;
 		return -1;
 	}
@@ -682,7 +684,7 @@ floppyrecal(Drive *dp)
 	}
 	dp->cyl = fl.stat[1]/dp->t->steps;
 	if(dp->cyl != 0){
-		print("recalibrate went to wrong cylinder %d\n", dp->cyl);
+		DPRINT("recalibrate went to wrong cylinder %d\n", dp->cyl);
 		dp->confused = 1;
 		return -1;
 	}
@@ -732,13 +734,13 @@ floppyseek(Drive *dp, long off)
 	if(dp->cyl == dp->tcyl)
 		return dp->cyl;
 
-/* print("seeking tcyl %d, thead %d\n", dp->tcyl, dp->thead); /**/
+	DPRINT("seeking tcyl %d, thead %d\n", dp->tcyl, dp->thead);
 	fl.ncmd = 0;
 	fl.cmd[fl.ncmd++] = Fseek;
 	fl.cmd[fl.ncmd++] = (dp->thead<<2) | dp->dev;
 	fl.cmd[fl.ncmd++] = dp->tcyl * dp->t->steps;
 	if(floppycmd() < 0){
-		print("seek cmd failed\n");
+		DPRINT("seek cmd failed\n");
 		return -1;
 	}
 	floppywait();
@@ -747,7 +749,7 @@ floppyseek(Drive *dp, long off)
 		return -1;
 	}
 	if((fl.stat[0] & (Codemask|Seekend)) != Seekend){
-		print("seek failed\n");
+		DPRINT("seek failed\n");
 		dp->confused = 1;
 		return -1;
 	}
@@ -794,8 +796,8 @@ floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 	if(floppyseek(dp, off) < 0)
 		error(Eio);
 
-/*print("tcyl %d, thead %d, tsec %d, addr %lux, n %d\n",
-	dp->tcyl, dp->thead, dp->tsec, a, dp->len);/**/
+	DPRINT("tcyl %d, thead %d, tsec %d, addr %lux, n %d\n",
+	dp->tcyl, dp->thead, dp->tsec, a, dp->len);
 
 	/*
 	 *  set up the dma (dp->len may be trimmed)
@@ -818,7 +820,7 @@ floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 	fl.cmd[fl.ncmd++] = 0xFF;
 	if(floppycmd() < 0){
 		spllo();
-/*		print("xfer cmd failed\n");/**/
+		DPRINT("xfer cmd failed\n");
 		error(Eio);
 	}
 
@@ -832,14 +834,14 @@ floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 	 *  check for errors
 	 */
 	if(fl.nstat < 7){
-/*		print("xfer result failed %lux\n", inb(Pmsr));/**/
+		DPRINT("xfer result failed %lux\n", inb(Pmsr));
 		fl.confused = 1;
 		error(Eio);
 	}
 	if((fl.stat[0] & Codemask)!=0 || fl.stat[1] || fl.stat[2]){
-		print("xfer failed %lux %lux %lux\n", fl.stat[0],
+		DPRINT("xfer failed %lux %lux %lux\n", fl.stat[0],
 			fl.stat[1], fl.stat[2]);
-		print("offset %lud len %d\n", off, dp->len);
+		DPRINT("offset %lud len %d\n", off, dp->len);
 		dp->confused = 1;
 		error(Eio);
 	}
