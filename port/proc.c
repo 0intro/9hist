@@ -443,14 +443,17 @@ pexit(char *s, int freemem)
 	c = u->p;
 	c->alarm = 0;
 	mypid = c->pid;
+
+	for(n=0; n<=u->maxfd; n++)
+		if(ch = u->fd[n])	/* assign = */
+			close(ch);
+
+
 	if(freemem){
 		freesegs(-1);
 		closepgrp(c->pgrp);
 		close(u->dot);
 	}
-	for(n=0; n<=u->maxfd; n++)
-		if(ch = u->fd[n])	/* assign = */
-			close(ch);
 	/*
 	 * Any of my children exiting?
 	 */
