@@ -463,7 +463,7 @@ bitread(Chan *c, void *va, long n, ulong offset)
 {
 	uchar *p, *q;
 	long miny, maxy, t, x, y;
-	ulong l, v, nw, ws, rv, gv, bv;
+	ulong l, nw, ws, rv, gv, bv;
 	int off, j;
 	Fontchar *i;
 	GBitmap *src;
@@ -525,12 +525,13 @@ bitread(Chan *c, void *va, long n, ulong offset)
 		p = va;
 		for(y=miny; y<maxy; y++){
 			q = (uchar*)gaddr(&gscreen, Pt(0, y));
-			for(x=0; x<l; x++,p++,q++){
-				v = *q;
-				if(flipping)
-					v = ~v;
-				BPLONG(p, v);
-			}
+			memmove(p, q, l);
+			if(flipping)
+				/* is screen, so must be word aligned */
+				for(x=0; x<l; x+=sizeof(ulong),p+=sizeof(ulong))
+					*(ulong*)p ^= ~0;
+			else
+				p += l;
 			n += l;
 		}
 		return n;
@@ -718,12 +719,13 @@ bitread(Chan *c, void *va, long n, ulong offset)
 		for(y=miny; y<maxy; y++){
 			q = (uchar*)gaddr(src, Pt(src->r.min.x, y));
 			q += (src->r.min.x&((sizeof(ulong))*ws-1))/ws;
-			if(bit.rid == 0)
-				for(x=0; x<l; x++,p++,q++)
-					BPLONG(p, ~*q);
+			memmove(p, q, l);
+			if(bit.rid==0 && flipping)
+				/* is screen, so must be word aligned */
+				for(x=0; x<l; x+=sizeof(ulong),p+=sizeof(ulong))
+					*(ulong*)p ^= ~0;
 			else
-				for(x=0; x<l; x++)
-					*p++ = *q++;
+				p += l;
 			n += l;
 		}
 		if(off)
@@ -739,9 +741,10 @@ bitread(Chan *c, void *va, long n, ulong offset)
 long
 bitwrite(Chan *c, void *va, long n, ulong offset)
 {
-	uchar *p, *q;
+	uchar *p, *q, *oq;
 	long m, v, miny, maxy, t, x, y;
 	ulong l, nw, ws, rv, q0, q1;
+	ulong *lp;
 	int off, isoff, i, j, ok;
 	Point pt, pt1, pt2;
 	Rectangle rect;
@@ -1391,14 +1394,16 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 				isoff = 1;
 			}
 			for(y=miny; y<maxy; y++){
-				q = (uchar*)gaddr(dst, Pt(dst->r.min.x, y));
-				q += (dst->r.min.x&((sizeof(ulong))*ws-1))/ws;
-				if(v == 0 && flipping)	/* flip bits */
-					for(x=0; x<l; x++)
-						*q++ = ~(*p++);
-				else
-					for(x=0; x<l; x++)
-						*q++ = *p++;
+				oq = (uchar*)gaddr(dst, Pt(dst->r.min.x, y));
+				q = oq + (dst->r.min.x&((sizeof(ulong))*ws-1))/ws;
+				memmove(q, p, l);
+				if(v==0 && flipping){	/* flip bits */
+					/* we know it's all word aligned */
+					lp = (ulong*)oq;
+					for(x=0; x<l; x+=sizeof(ulong))
+						*lp++ ^= ~0;
+				}
+				p += l;
 				m -= l;
 			}
 			break;
@@ -1414,7 +1419,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 				error(Ebadblt);
 			pt1.x = BGLONG(p+1);
 			pt1.y = BGLONG(p+5);
-/*			if(!eqpt(mouse.xy, pt1))*/{
+			if(ptinrect(pt1, gscreen.r)){
 				mouse.xy = pt1;
 				mouse.track = 1;
 				mouseclock();

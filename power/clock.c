@@ -114,7 +114,7 @@ clock(Ureg *ur)
 		}
 		checkalarms();
 		kproftimer(ur->pc);
-		if(u && (ur->status&IEP) && u->p && u->p->state==Running){
+		if(u && (ur->status&IEP) && u->p->state==Running){
 			if(anyready()){
 				if(u->p->hasspin)
 					u->p->hasspin = 0;	/* just in case */

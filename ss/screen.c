@@ -49,7 +49,7 @@ struct screens
 }screens[] = {
 	{ "bwtwo", 1152, 900, 0, 0x400000 },
 	{ "cgsix", 1152, 900, 3, 0x200000 },
-	{ "cgthree", 1152, 900, 3, 0x200000 },
+	{ "cgthree", 1152, 900, 3, 0x200000 },	/* PURE GUESS! */
 	0
 };
 
