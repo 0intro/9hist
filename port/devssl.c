@@ -712,9 +712,6 @@ initRC4key(OneWay *w)
 		w->state = 0;
 	}
 
-	if(w->slen > 5)
-		w->slen = 5;
-
 	w->state = smalloc(sizeof(RC4state));
 	setupRC4state(w->state, w->secret, w->slen);
 }
