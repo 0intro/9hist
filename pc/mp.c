@@ -187,6 +187,9 @@ mpintrinit(Bus* bus, PCMPintr* intr, int vector)
 	 */
 	v = vector;
 
+	po = intr->flags & PcmpPOMASK;
+	el = intr->flags & PcmpELMASK;
+
 	switch(intr->intr){
 
 	default:				/* PcmpINT */
@@ -195,6 +198,8 @@ mpintrinit(Bus* bus, PCMPintr* intr, int vector)
 
 	case PcmpNMI:
 		v |= ApicNMI;
+		po = PcmpHIGH;
+		el = PcmpEDGE;
 		break;
 
 	case PcmpSMI:
@@ -205,9 +210,6 @@ mpintrinit(Bus* bus, PCMPintr* intr, int vector)
 		v |= ApicExtINT;
 		break;
 	}
-
-	po = intr->flags & PcmpPOMASK;
-	el = intr->flags & PcmpELMASK;
 
 	/*
 	 */
@@ -368,7 +370,7 @@ mpinit(void)
 	PCMP *pcmp;
 	ulong *pte;
 	uchar *e, *p;
-	Apic *apic;
+	Apic *apic, *bpapic;
 	int clkin;
 
 	i8259init();
@@ -376,7 +378,6 @@ mpinit(void)
 	if(_mp_ == 0)
 		return;
 	pcmp = KADDR(_mp_->physaddr);
-	clkin = 0;
 
 	/*
 	 * Map the local APIC. This should be in the same 4MB segment
@@ -388,6 +389,8 @@ mpinit(void)
 		*pte = pcmp->lapicbase|PTEWRITE|PTEUNCACHED|PTEVALID;
 		mmuflushtlb(PADDR(m->pdb));
 	}
+
+	bpapic = 0;
 
 	/*
 	 * Run through the table saving information needed for starting application
@@ -401,7 +404,7 @@ mpinit(void)
 	case PcmpPROCESSOR:
 		if(apic = mkprocessor((PCMPprocessor*)p)){
 			/*
-			 * Must initialise the bootstrap processor APIC
+			 * Must take a note of bootstrap processor APIC
 			 * now as it will be needed in order to start the
 			 * application processors later and there's no
 			 * guarantee that the bootstrap processor appears
@@ -409,7 +412,7 @@ mpinit(void)
 			 */
 			apic->addr = KADDR(pcmp->lapicbase);
 			if(apic->flags & PcmpBP)
-				clkin = lapicinit(apic);
+				bpapic = apic;
 		}
 		p += sizeof(PCMPprocessor);
 		continue;
@@ -437,31 +440,33 @@ mpinit(void)
 	}
 
 	/*
-	 * Initialise all the processors.
+	 * No bootstrap processor, no need to go further.
+	 */
+	if(bpapic == 0)
+		return;
+
+	clkin = lapicinit(bpapic);
+	lock(&mprdthilock);
+	mprdthi |= (1<<bpapic->apicno)<<24;
+	unlock(&mprdthilock);
+
+	/*
+	 * These interrupts are local to the processor
+	 * and do not appear in the I/O APIC so it is OK
+	 * to set them now.
+	 */
+	intrenable(VectorTIMER, clockintr, 0, BUSUNKNOWN);
+	intrenable(VectorERROR, lapicerror, 0, BUSUNKNOWN);
+	intrenable(VectorSPURIOUS, lapicspurious, 0, BUSUNKNOWN);
+	lapiconline(clkin);
+
+	/*
+	 * Initialise the application processors.
 	 */
 	memmove((void*)APBOOTSTRAP, apbootstrap, sizeof(apbootstrap));
 	for(apic = mpapic; apic <= &mpapic[MaxAPICNO]; apic++){
-		if(!(apic->flags & PcmpEN) || apic->type != PcmpPROCESSOR)
-			continue;
-
-		if(apic->flags & PcmpBP){
-			lock(&mprdthilock);
-			mprdthi |= (1<<apic->apicno)<<24;
-			unlock(&mprdthilock);
-
-			/*
-			 * These interrupts are local to the processor
-			 * and do not appear in the I/O APIC so it is OK
-			 * to set them now.
-			 */
-			intrenable(VectorTIMER, clockintr, 0, BUSUNKNOWN);
-			intrenable(VectorERROR, lapicerror, 0, BUSUNKNOWN);
-			intrenable(VectorSPURIOUS, lapicspurious, 0, BUSUNKNOWN);
-			lapiconline(clkin);
-			continue;
-		}
-
-		mpstartap(apic);
+		if((apic->flags & (PcmpBP|PcmpEN)) == PcmpEN && apic->type == PcmpPROCESSOR)
+			mpstartap(apic);
 	}
 
 	/*

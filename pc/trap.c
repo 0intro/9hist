@@ -44,6 +44,22 @@ intrenable(int v, void (*f)(Ureg*, void*), void* a, int tbdf)
 	unlock(&irqctllock);
 }
 
+static void
+nmienable(void)
+{
+	int x;
+
+	/*
+	 * Hack: should be locked with NVRAM access.
+	 */
+	outb(0x70, 0x80);
+	outb(0x70, 0);
+
+	x = inb(0x61);
+	outb(0x61, 0x08|x);
+	outb(0x61, x & ~0x08);
+}
+
 void
 trapinit(void)
 {
@@ -66,6 +82,8 @@ trapinit(void)
 	intrenable(VectorBPT, debugbpt, 0, BUSUNKNOWN);
 	intrenable(VectorPF, fault386, 0, BUSUNKNOWN);
 	intrenable(VectorSYSCALL, syscall, 0, BUSUNKNOWN);
+
+	nmienable();
 }
 
 char *excname[] = {
@@ -142,6 +160,11 @@ trap(Ureg* ureg)
 		return;
 	}
 	else{
+		if(v == 2){
+			if(m->machno != 0)
+				for(;;);
+			nmienable();
+		}
 		dumpregs(ureg);
 		if(v < nelem(excname))
 			panic("%s", excname[v]);
