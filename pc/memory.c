@@ -223,7 +223,7 @@ umbscan(void)
 	 * at 0xE0000 then the whole 64KB up to 0xF0000 is theoretically up
 	 * for grabs; check anyway.
 	 */
-	p = KADDR(0xC8000);
+	p = KADDR(0xC0000);
 	while(p < (uchar*)KADDR(0xE0000)){
 		p[0] = 0xCC;
 		p[2*KB-1] = 0xCC;
@@ -235,7 +235,8 @@ umbscan(void)
 				p += p[2]*512;
 				continue;
 			}
-			mapfree(&rmapumb, PADDR(p), 2*KB);
+			if(p[0] == 0xFF && p[1] == 0xFF)
+				mapfree(&rmapumb, PADDR(p), 2*KB);
 		}
 		else
 			mapfree(&rmapumbrw, PADDR(p), 2*KB);

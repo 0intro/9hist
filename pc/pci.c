@@ -31,8 +31,6 @@ static Pcidev* pciroot;
 static Pcidev* pcilist;
 static Pcidev* pcitail;
 
-static int pcicfgrw8(int, int, int, int);
-static int pcicfgrw16(int, int, int, int);
 static int pcicfgrw32(int, int, int, int);
 
 static int
@@ -40,7 +38,7 @@ pciscan(int bno, Pcidev** list)
 {
 	ulong v;
 	Pcidev *p, *head, *tail;
-	int dno, fno, i, l, maxfno, maxubn, rno, sbn, tbdf, ubn;
+	int dno, fno, i, hdt, l, maxfno, maxubn, rno, sbn, tbdf, ubn;
 
 	maxubn = bno;
 	head = nil;
@@ -70,19 +68,51 @@ pciscan(int bno, Pcidev** list)
 				pcilist = p;
 			pcitail = p;
 
-			p->intl = pcicfgrw8(tbdf, PciINTL, 0, 1);
-			p->ccru = pcicfgrw16(tbdf, PciCCRu, 0, 1);
+			p->intl = pcicfgr8(p, PciINTL);
+			p->ccru = pcicfgr16(p, PciCCRu);
 
-			rno = PciBAR0 - 4;
-			for(i = 0; i < nelem(p->mem); i++) {
-				rno += 4;
-				p->mem[i].bar = pcicfgrw32(tbdf, rno, 0, 1);
-				if(i > 0 && p->ccru == ((0x06<<8)|0x04))
-					continue;
-				pcicfgrw32(tbdf, rno, -1, 0);
-				v = pcicfgrw32(tbdf, rno, 0, 1);
-				pcicfgrw32(tbdf, rno, p->mem[i].bar, 0);
-				p->mem[i].size = -(v & ~0xF);
+			/*
+			 * If the device is a multi-function device adjust the
+			 * loop count so all possible functions are checked.
+			 */
+			hdt = pcicfgr8(p, PciHDT);
+			if(hdt & 0x80)
+				maxfno = MaxFNO;
+
+			/*
+			 * If appropriate, read the base address registers
+			 * and work out the sizes.
+			 */
+			switch(p->ccru>>8){
+
+			case 0x01:		/* mass storage controller */
+			case 0x02:		/* network controller */
+			case 0x03:		/* display controller */
+			case 0x04:		/* multimedia device */
+			case 0x07:		/* simple communication controllers */
+			case 0x08:		/* base system peripherals */
+			case 0x09:		/* input devices */
+			case 0x0A:		/* docking stations */
+			case 0x0B:		/* processors */
+			case 0x0C:		/* serial bus controllers */
+				if((hdt & 0x7F) != 0)
+					break;
+				rno = PciBAR0 - 4;
+				for(i = 0; i < nelem(p->mem); i++){
+					rno += 4;
+					p->mem[i].bar = pcicfgr32(p, rno);
+					pcicfgw32(p, rno, -1);
+					v = pcicfgr32(p, rno);
+					pcicfgw32(p, rno, p->mem[i].bar);
+					p->mem[i].size = -(v & ~0xF);
+				}
+				break;
+
+			case 0x00:
+			case 0x05:		/* memory controller */
+			case 0x06:		/* bridge device */
+			default:
+				break;
 			}
 
 			if(head != nil)
@@ -90,34 +120,14 @@ pciscan(int bno, Pcidev** list)
 			else
 				head = p;
 			tail = p;
-
-			/*
-			 * If the device is a multi-function device adjust the
-			 * loop count so all possible functions are checked.
-			 */
-			l = pcicfgrw8(tbdf, PciHDT, 0, 1);
-			if(l & 0x80)
-				maxfno = MaxFNO;
 		}
 	}
 
 	*list = head;
 	for(p = head; p != nil; p = p->link){
 		/*
-		 * Find bridges and recursively descend the tree.
-		 * Special case the Intel 82454GX Host-to-PCI bridge,
-		 * there can be two of them.
-		 * Otherwise, only descend PCI-to-PCI bridges.
+		 * Find PCI-PCI bridges and recursively descend the tree.
 		 */
-		if(p->ccru == ((0x06<<8)|0) && p->vid == 0x8086 && p->did == 0x84C4){
-			tbdf = p->tbdf;
-			if((sbn = pcicfgrw8(tbdf, 0x4A, 0, 1)) == 0)
-				continue;
-			ubn = pcicfgrw8(tbdf, 0x4B, 0, 1);
-			maxubn = ubn;
-			pciscan(sbn, &p->bridge);
-			continue;
-		}
 		if(p->ccru != ((0x06<<8)|0x04))
 			continue;
 
@@ -129,9 +139,8 @@ pciscan(int bno, Pcidev** list)
 		 * buses are behind this one; the final value is set on the way
 		 * back up.
 		 */
-		tbdf = p->tbdf;
-		sbn = pcicfgrw8(tbdf, PciSBN, 0, 1);
-		ubn = pcicfgrw8(tbdf, PciUBN, 0, 1);
+		sbn = pcicfgr8(p, PciSBN);
+		ubn = pcicfgr8(p, PciUBN);
 		if(sbn == 0 || ubn == 0){
 			sbn = maxubn+1;
 			/*
@@ -142,13 +151,13 @@ pciscan(int bno, Pcidev** list)
 			 *
 			 * Initialisation of the bridge should be done here.
 			 */
-			pcicfgrw32(tbdf, PciPCR, 0xFFFF0000, 0);
+			pcicfgw32(p, PciPCR, 0xFFFF0000);
 			l = (MaxUBN<<16)|(sbn<<8)|bno;
-			pcicfgrw32(tbdf, PciPBN, l, 0);
-			pcicfgrw16(tbdf, PciSPSR, 0xFFFF, 0);
+			pcicfgw32(p, PciPBN, l);
+			pcicfgw16(p, PciSPSR, 0xFFFF);
 			maxubn = pciscan(sbn, &p->bridge);
 			l = (maxubn<<16)|(sbn<<8)|bno;
-			pcicfgrw32(tbdf, PciPBN, l, 0);
+			pcicfgw32(p, PciPBN, l);
 		}
 		else{
 			maxubn = ubn;
@@ -162,6 +171,10 @@ pciscan(int bno, Pcidev** list)
 static void
 pcicfginit(void)
 {
+	char *p;
+	int bno;
+	Pcidev **list;
+
 	lock(&pcicfginitlock);
 	if(pcicfgmode == -1){
 		/*
@@ -169,7 +182,7 @@ pcicfginit(void)
 		 * Mode2 uses a byte at 0xCF8 and another at 0xCFA; Mode1 uses
 		 * a DWORD at 0xCF8 and another at 0xCFC and will pass through
 		 * any non-DWORD accesses as normal I/O cycles. There shouldn't be
-		 * a device behind theses addresses so if Mode2 accesses fail try
+		 * a device behind these addresses so if Mode2 accesses fail try
 		 * for Mode1 (which is preferred, Mode2 is deprecated).
 		 */
 		outb(PciCSE, 0);
@@ -185,8 +198,18 @@ pcicfginit(void)
 			}
 		}
 	
-		if(pcicfgmode > 0)
-			pciscan(0, &pciroot);
+		if(pcicfgmode > 0){
+			if(p = getconf("*pcimaxdno"))
+				pcimaxdno = strtoul(p, 0, 0);
+
+			list = &pciroot;
+			for(bno = 0; bno < 256; bno++){
+				bno = pciscan(bno, list);
+				while(*list && (*list)->link)
+					list = &(*list)->link;
+			}
+				
+		}
 	}
 	unlock(&pcicfginitlock);
 }
@@ -361,19 +384,6 @@ pcicfgw32(Pcidev* pcidev, int rno, int data)
 	pcicfgrw32(pcidev->tbdf, rno, data, 0);
 }
 
-ulong
-pcibarsize(Pcidev* p, int rno)
-{
-	ulong v, size;
-
-	v = pcicfgrw32(p->tbdf, rno, 0, 1);
-	pcicfgrw32(p->tbdf, rno, 0xFFFFFFF0, 0);
-	size = pcicfgrw32(p->tbdf, rno, 0, 1);
-	pcicfgrw32(p->tbdf, rno, v, 0);
-
-	return -(size & ~0x0F);
-}
-
 Pcidev*
 pcimatch(Pcidev* prev, int vid, int did)
 {
@@ -421,43 +431,6 @@ pcihinv(Pcidev* p)
 			pcihinv(p->bridge);
 		p = p->link;
 	}
-}
-
-/*
- * Hack for now to get SYMBIOS controller on-line.
- */
-void*
-pcimemmap(int tbdf, int rno, ulong *paddr)
-{
-	long size;
-	ulong p, v;
-
-	if(pcicfgmode == -1)
-		pcicfginit();
-
-	v = pcicfgrw32(tbdf, rno, 0, 1);
-	if(v & 1){
-		print("pcimemmap: not a memory base register\n");
-		return 0;
-	}
-	if(v & 6){
-		print("pcimemmap: only 32 bit relocs supported\n");
-		return 0;
-	}
-	v = 0xFFFFFFFF;
-	pcicfgrw32(tbdf, rno, v, 0);
-	v = pcicfgrw32(tbdf, rno, 0, 1);
-	/*
-	 * Clear out bottom bits and negate to find size.
-	 * If none can be found could try for UPA memory here.
-	 */
-	size = -(v & ~0x0F);
-	v = umbmalloc(0, size, size);
-	p = PADDR(v);
-	if(paddr)
-		*paddr = p;
-	pcicfgrw32(tbdf, rno, p, 0);
-	return (void*)v;
 }
 
 void

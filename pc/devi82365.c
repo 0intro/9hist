@@ -356,7 +356,7 @@ pcmmap(int slotno, ulong offset, int len, int attr)
 			umbfree(m->isa, m->len);
 			m->len = 0;
 		}
-		m->isa = umbmalloc(0, len, Mgran)&~KZERO;
+		m->isa = PADDR(umbmalloc(0, len, Mgran));
 		if(m->isa == 0){
 			print("pcmmap: out of isa space\n");
 			unlock(&pp->mlock);
@@ -515,12 +515,12 @@ static char *chipname[] =
 static I82365*
 i82386probe(int x, int d, int dev)
 {
-	uchar c;
+	uchar c, id;
 	I82365 *cp;
 
 	outb(x, Rid + (dev<<7));
-	c = inb(d);
-	if((c & 0xf0) != 0x80)
+	id = inb(d);
+	if((id & 0xf0) != 0x80)
 		return 0;		/* not this family */
 
 	cp = xalloc(sizeof(I82365));
@@ -530,9 +530,10 @@ i82386probe(int x, int d, int dev)
 	cp->type = Ti82365;
 	cp->nslot = 2;
 
-	switch(c){
+	switch(id){
 	case 0x82:
 	case 0x83:
+	case 0x84:
 		/* could be a cirrus */
 		outb(x, Rchipinfo + (dev<<7));
 		outb(d, 0);
@@ -559,7 +560,8 @@ i82386probe(int x, int d, int dev)
 		outb(d, c|0xC0);
 		outb(x, Rid + (dev<<7));
 		c = inb(d);
-		print("ctlr id %uX\n", c & 0xFF);
+		if(c != id && !(c & 0x08))
+			print("#y%d: id %uX changed to %uX\n", ncontroller, id, c);
 		if(c & 0x08)
 			cp->type = Tvg46x;
 		outb(x, 0x3A + (dev<<7));
@@ -567,8 +569,7 @@ i82386probe(int x, int d, int dev)
 		outb(d, c & ~0xC0);
 	}
 
-	print("pcmcia controller%d is a %d slot %s\n", ncontroller, cp->nslot,
-		chipname[cp->type]);
+	print("#y%d: %d slot %s\n", ncontroller, cp->nslot, chipname[cp->type]);
 
 	/* low power mode */
 	outb(x, Rmisc2 + (dev<<7));
@@ -712,7 +713,6 @@ pcmread(int slotno, int attr, void *a, long n, ulong offset)
 {
 	int i, len;
 	PCMmap *m;
-	ulong ka;
 	uchar *ac;
 	Slot *pp;
 
@@ -738,8 +738,7 @@ pcmread(int slotno, int attr, void *a, long n, ulong offset)
 			i = m->cea - offset;
 		else
 			i = len;
-		ka = KZERO|(m->isa + offset - m->ca);
-		memmoveb(ac, (void*)ka, i);
+		memmoveb(ac, KADDR(m->isa + offset - m->ca), i);
 		pcmunmap(pp->slotno, m);
 		offset += i;
 		ac += i;
@@ -752,50 +751,42 @@ pcmread(int slotno, int attr, void *a, long n, ulong offset)
 static long
 i82365read(Chan *c, void *a, long n, ulong offset)
 {
-	char *cp, buf[2048];
-	ulong p;
+	char *p;
+	int len;
 	Slot *pp;
 
-	p = TYPE(c);
-	switch(p){
+	switch(TYPE(c)){
 	case Qdir:
 		return devdirread(c, a, n, 0, 0, pcmgen);
 	case Qmem:
 	case Qattr:
-		return pcmread(SLOTNO(c), p==Qattr, a, n, offset);
+		return pcmread(SLOTNO(c), TYPE(c) == Qattr, a, n, offset);
 	case Qctl:
-		cp = buf;
+		p = malloc(READSTR);
+		len = 0;
 		pp = slot + SLOTNO(c);
-		if(pp->occupied)
-			cp += sprint(cp, "occupied\n");
-		if(pp->enabled)
-			cp += sprint(cp, "enabled\n");
-		if(pp->powered)
-			cp += sprint(cp, "powered\n");
-		if(pp->configed)
-			cp += sprint(cp, "configed\n");
-		if(pp->wrprot)
-			cp += sprint(cp, "write protected\n");
-		if(pp->busy)
-			cp += sprint(cp, "busy\n");
-		cp += sprint(cp, "battery lvl %d\n", pp->battery);
-{
-	int i;
 
-	for(i = 0; i < 0x40; i++){
-		if((i&0x7) == 0)
-			cp += sprint(cp, "\n%ux:	", i);
-		cp += sprint(cp, "%ux ", rdreg(pp, i));
+		if(pp->occupied)
+			len += snprint(p+len, READSTR-len, "occupied\n");
+		if(pp->enabled)
+			len += snprint(p+len, READSTR-len, "enabled\n");
+		if(pp->powered)
+			len += snprint(p+len, READSTR-len, "powered\n");
+		if(pp->configed)
+			len += snprint(p+len, READSTR-len, "configed\n");
+		if(pp->wrprot)
+			len += snprint(p+len, READSTR-len, "write protected\n");
+		if(pp->busy)
+			len += snprint(p+len, READSTR-len, "busy\n");
+		snprint(p+len, READSTR-len, "battery lvl %d\n", pp->battery);
+
+		n = readstr(offset, a, n, p);
+		free(p);
+
+		return n;
 	}
-	cp += sprint(cp, "\n");
-}
-		*cp = 0;
-		return readstr(offset, a, n, buf);
-	default:
-		n=0;
-		break;
-	}
-	return n;
+	error(Ebadarg);
+	return -1;	/* not reached */
 }
 
 static long
@@ -803,7 +794,6 @@ pcmwrite(int dev, int attr, void *a, long n, ulong offset)
 {
 	int i, len;
 	PCMmap *m;
-	ulong ka;
 	uchar *ac;
 	Slot *pp;
 
@@ -829,8 +819,7 @@ pcmwrite(int dev, int attr, void *a, long n, ulong offset)
 			i = m->cea - offset;
 		else
 			i = len;
-		ka = KZERO|(m->isa + offset - m->ca);
-		memmoveb((void*)ka, ac, i);
+		memmoveb(KADDR(m->isa + offset - m->ca), ac, i);
 		pcmunmap(pp->slotno, m);
 		offset += i;
 		ac += i;
@@ -843,12 +832,10 @@ pcmwrite(int dev, int attr, void *a, long n, ulong offset)
 static long
 i82365write(Chan *c, void *a, long n, ulong offset)
 {
-	ulong p;
 	Slot *pp;
 	char buf[32];
 
-	p = TYPE(c);
-	switch(p){
+	switch(TYPE(c)){
 	case Qctl:
 		if(n >= sizeof(buf))
 			n = sizeof(buf) - 1;
@@ -861,20 +848,19 @@ i82365write(Chan *c, void *a, long n, ulong offset)
 		/* set vpp on card */
 		if(strncmp(buf, "vpp", 3) == 0)
 			wrreg(pp, Rpc, vcode(atoi(buf+3))|Fautopower|Foutena|Fcardena);
-		break;
+		return n;
 	case Qmem:
 	case Qattr:
 		pp = slot + SLOTNO(c);
 		if(pp->occupied == 0 || pp->enabled == 0)
 			error(Eio);
-		n = pcmwrite(pp->slotno, p == Qattr, a, n, offset);
+		n = pcmwrite(pp->slotno, TYPE(c) == Qattr, a, n, offset);
 		if(n < 0)
 			error(Eio);
-		break;
-	default:
-		error(Ebadusefd);
+		return n;
 	}
-	return n;
+	error(Ebadarg);
+	return -1;	/* not reached */
 }
 
 Dev i82365devtab = {
@@ -1000,7 +986,7 @@ pcmio(int slotno, ISAConf *isa)
 	if(pp->cpresent & (1<<Rconfig)){
 		/*  Reset adapter */
 		m = pcmmap(slotno, pp->caddr + Rconfig, 1, 1);
-		p = (uchar*)(KZERO|(m->isa + pp->caddr + Rconfig - m->ca));
+		p = KADDR(m->isa + pp->caddr + Rconfig - m->ca);
 
 		/* set configuration and interrupt type */
 		x = ct->index;
@@ -1056,7 +1042,7 @@ cisread(Slot *pp)
 	m = pcmmap(pp->slotno, 0, 0, 1);
 	if(m == 0)
 		return;
-	pp->cisbase = (uchar*)(KZERO|m->isa);
+	pp->cisbase = KADDR(m->isa);
 	pp->cispos = 0;
 
 	/* loop through all the tuples */
@@ -1381,4 +1367,3 @@ tvers1(Slot *pp, int ttype)
 	}
 	pp->verstr[i] = 0;
 }
-

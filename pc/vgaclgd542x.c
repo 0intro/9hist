@@ -58,8 +58,8 @@ clgd542xenable(VGAscr* scr)
 	/*
 	 * Disable the cursor.
 	 */
-	sr12 = vgaxi(Seqx, 0x12) & ~0x01;
-	vgaxo(Seqx, 0x12, sr12);
+	sr12 = vgaxi(Seqx, 0x12);
+	vgaxo(Seqx, 0x12, sr12 & ~0x01);
 
 	/*
 	 * Cursor colours.
