@@ -7,7 +7,7 @@ void		alarmkproc(void*);
 Block*		allocb(int);
 int		anyhigher(void);
 int		anyready(void);
-#define	assert(x)	if(x){}else panic("assert(x) failed");
+#define	assert(x)	if(x){}else panic("assert(x) failed")
 void		_assert(char*);
 Image*		attachimage(int, Chan*, ulong, ulong);
 long		authcheck(Chan*, char*, int);
