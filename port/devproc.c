@@ -341,7 +341,12 @@ procread(Chan *c, void *va, long n, ulong offset)
 		return n;
 
 	case Qproc:
-		return readnum(offset, va, n, (ulong)p, NUMSIZE);
+		if(offset >= sizeof(Proc))
+			return 0;
+		if(offset+n > sizeof(Proc))
+			n = sizeof(Proc) - offset;
+		memmove(a, ((char*)p)+offset, n);
+		return n;
 
 	case Qregs:
 		rptr = (uchar*)p->dbgreg;
