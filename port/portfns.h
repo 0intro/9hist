@@ -1,5 +1,6 @@
 Alarm*	alarm(int, void (*)(Alarm*), void*);
 void	alarminit(void);
+void	alarmkproc(void*);
 Block*	allocb(ulong);
 int	anyready(void);
 void	append(List**, List*);

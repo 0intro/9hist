@@ -135,11 +135,13 @@ init0(void)
 	u->p->state = Running;
 	u->p->mach = m;
 	spllo();
-
-	chandevinit();
 	
 	u->slash = (*devtab[0].attach)(0);
 	u->dot = clone(u->slash, 0);
+
+	kproc("alarm", alarmkproc, 0);
+	chandevinit();
+
 	if(!waserror()){
 		ksetterm("at&t %s");
 		ksetenv("cputype", "68020");

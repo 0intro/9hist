@@ -5,34 +5,34 @@
 #include	"fns.h"
 #include	"io.h"
 
-Alarm	*alarmtab;
+struct {
+	QLock;
+	Alarm	*tab;	/* table of all alarm structures */
+	void	*list;	/* busy alarms */
+	Rendez	r;
+} alarmalloc;
+
 Alarms	alarms;
 
 Alarm*
 alarm(int ms, void (*f)(Alarm*), void *arg)
 {
 	Alarm *a, *w, *pw;
-	ulong s;
+
 	if(ms < 0)
 		ms = 0;
 	a = newalarm();
-	a->dt = MS2TK(ms);
+	a->when = MACHP(0)->ticks+MS2TK(ms);
 	a->f = f;
 	a->arg = arg;
-	s = splhi();
-	lock(&m->alarmlock);
+	qlock(&alarmalloc);
 	pw = 0;
-	for(w=m->alarm; w; pw=w, w=w->next){
-		if(w->dt <= a->dt){
-			a->dt -= w->dt;
-			continue;
-		}
-		w->dt -= a->dt;
-		break;
+	for(w=alarmalloc.list; w; pw=w, w=w->next){
+		if(w->when > a->when)
+			break;
 	}
-	insert(&m->alarm, pw, a);
-	unlock(&m->alarmlock);
-	splx(s);
+	insert(&alarmalloc.list, pw, a);
+	qunlock(&alarmalloc);
 	return a;
 }
 
@@ -48,7 +48,7 @@ newalarm(void)
 	int i;
 	Alarm *a;
 
-	for(i=0,a=alarmtab; i<conf.nalarm; i++,a++)
+	for(i=0,a=alarmalloc.tab; i<conf.nalarm; i++,a++)
 		if(a->busy==0 && a->f==0 && canlock(a)){
 			if(a->busy){
 				unlock(a);
@@ -61,6 +61,7 @@ newalarm(void)
 			return a;
 		}
 	panic("newalarm");
+	return 0;	/* not reached */
 }
 
 /* allocate locks here since you can't allocate them at interrupt time (on the SGI) */
@@ -69,18 +70,20 @@ alarminit(void)
 {
 	int i;
 
-	alarmtab = ialloc(conf.nalarm*sizeof(Alarm), 0);
+	alarmalloc.tab = ialloc(conf.nalarm*sizeof(Alarm), 0);
 	for(i=0; i<conf.nalarm; i++){
-		lock(&alarmtab[i]);
-		unlock(&alarmtab[i]);
+		lock(&alarmalloc.tab[i]);
+		unlock(&alarmalloc.tab[i]);
 	}
-	lock(&alarms);
-	unlock(&alarms);
+	qlock(&alarmalloc);
+	qunlock(&alarmalloc);
+	qlock(&alarms);
+	qunlock(&alarms);
 }
 
-#define NA 10		/* alarms per clock tick */
+#define NA 10		/* alarms per wakeup */
 void
-checkalarms(void)
+alarmkproc(void *arg)
 {
 	int i, n;
 	Alarm *a;
@@ -89,35 +92,48 @@ checkalarms(void)
 	ulong now;
 	Proc *rp;
 
-	if(canlock(&m->alarmlock)){
-		a = m->alarm;
-		if(a){
-			for(n=0; a && a->dt<=0 && n<NA; n++){
-				alist[n] = a;
-				delete(&m->alarm, 0, a);
-				a = m->alarm;
-			}
-			if(a)
-				a->dt--;
-			unlock(&m->alarmlock);
+	USED(arg);
 
-			/*  execute alarm functions outside the lock */
-			for(i = 0; i < n; i++){
-				f = alist[i]->f;	/* avoid race with cancel */
-				if(f)
-					(*f)(alist[i]);
-				alist[i]->busy = 0;
+	for(;;){
+		now = MACHP(0)->ticks;
+
+		qlock(&alarmalloc);
+		a = alarmalloc.list;
+		if(a){
+			for(n=0; a && a->when<=now && n<NA; n++){
+				alist[n] = a;
+				delete(&alarmalloc.list, 0, a);
+				a = alarmalloc.list;
+			}
+			qunlock(&alarmalloc);
+
+			/*
+			 *  execute alarm functions outside the lock since they
+			 *  might call alarm().
+			 */
+			f = 0;
+			if(waserror()){
+				print("alarm func %lux caused error %s\n", f, u->error);
+			} else {
+				for(i = 0; i < n; i++){
+					f = alist[i]->f; /* avoid race with cancel */
+					if(f)
+						(*f)(alist[i]);
+					alist[i]->busy = 0;
+				}
+				poperror();
 			}
 		}else
-			unlock(&m->alarmlock);
-	}
+			qunlock(&alarmalloc);
 
-	if(m == MACHP(0) && canlock(&alarms)){
-		now = MACHP(0)->ticks;
+		qlock(&alarms);
 		while((rp = alarms.head) && rp->alarm <= now){
 			if(rp->alarm != 0L){
 				if(canqlock(&rp->debug)){
-					postnote(rp, 0, "alarm", NUser);
+					if(!waserror()){
+						postnote(rp, 0, "alarm", NUser);
+						poperror();
+					}
 					qunlock(&rp->debug);
 					rp->alarm = 0L;
 				}else
@@ -125,8 +141,30 @@ checkalarms(void)
 			}
 			alarms.head = rp->palarm;
 		}
-		unlock(&alarms);
+		qunlock(&alarms);
+
+		sleep(&alarmalloc.r, return0, 0);
 	}
+}
+
+/*
+ *  called every clock tick
+ */
+void
+checkalarms(void)
+{
+	ulong now;
+	Proc *p;
+	Alarm *a;
+
+	if(m != MACHP(0))
+		return;
+	a = alarmalloc.list;
+	p = alarms.head;
+	now = MACHP(0)->ticks;
+
+	if((a && a->when <= now) || (p && p->alarm <= now))
+		wakeup(&alarmalloc.r);
 }
 
 ulong
@@ -143,7 +181,7 @@ procalarm(ulong time)
 	when = MS2TK(time);
 	when += MACHP(0)->ticks;
 
-	lock(&alarms);
+	qlock(&alarms);
 	l = &alarms.head;
 	for(f = *l; f; f = f->palarm){
 		if(u->p == f){
@@ -170,7 +208,7 @@ procalarm(ulong time)
 		alarms.head = u->p;
 done:
 	u->p->alarm = when;
-	unlock(&alarms);
+	qunlock(&alarms);
 
 	return old;			
 }

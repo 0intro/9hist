@@ -76,14 +76,14 @@ struct Alarm
 	List;
 	Lock;
 	int	busy;
-	long	dt;			/* may underflow in clock(); must be signed */
+	ulong	when;			/* may underflow in clock(); must be signed */
 	void	(*f)(void*);
 	void	*arg;
 };
 
 struct Alarms
 {
-	Lock;
+	QLock;
 	Proc	*head;
 };
 

@@ -232,7 +232,7 @@ duartbaud(Duartport *dp, int b)
 		x = BD300;
 		break;
 	default:
-		error(Ebadarg);
+		return;
 	}
 	if(x & 0x0100)
 		dp->duart->ipc_acr = duartacr |= 0x80;
