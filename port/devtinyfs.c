@@ -49,7 +49,7 @@ typedef struct Mdata Mdata;
 struct Mdata {
 	uchar	type;
 	uchar	bno[2];
-	char	data[Dlen];
+	uchar	data[Dlen];
 	uchar	sum;
 };
 
@@ -63,6 +63,10 @@ struct Tfile {
 	ushort	pin;
 	uchar	flag;
 	ulong	length;
+
+	/* hint to avoid egregious reading */
+	ushort	fbno;
+	ulong	finger;
 };
 
 typedef struct Tfs Tfs;
@@ -80,7 +84,6 @@ struct Tfs {
 struct {
 	QLock;
 	Tfs	fs[Maxfs];
-	short	nfs;
 } tinyfs;
 
 #define GETS(x) ((x)[0]|((x)[1]<<8))
@@ -125,7 +128,6 @@ mapalloc(Tfs *fs)
 	int i, j, lim;
 	uchar x;
 
-	qlock(fs);
 	lim = (fs->nblocks + 8 - 1)/8;
 	for(i = 0; i < lim; i++){
 		x = fs->map[i];
@@ -134,12 +136,11 @@ mapalloc(Tfs *fs)
 		for(j = 0; j < 8; j++)
 			if((x & (1<<j)) == 0){
 				fs->map[i] = x|(1<<j);
-				qunlock(fs);
 				return i*8 + j;
 			}
 	}
-	qunlock(fs);
-	return -1;
+
+	return Notabno;
 }
 
 static Mdir*
@@ -245,19 +246,17 @@ writedir(Tfs *fs, Tfile *f)
 }
 
 static void
-freefile(Tfs *fs, Tfile *f, ulong bend)
+freeblocks(Tfs *fs, ulong bno, ulong bend)
 {
 	uchar buf[Blen];
-	ulong bno;
-	int n;
 	Mdata *md;
 
-	/* remove blocks from map */
-	bno = f->dbno;
+	if(waserror())
+		return;
+
 	while(bno != bend && bno != Notabno){
 		mapclr(fs, bno);
-		n = devtab[fs->c->type].read(fs->c, buf, Blen, Blen*bno);
-		if(n != Blen)
+		if(devtab[fs->c->type].read(fs->c, buf, Blen, Blen*bno) != Blen)
 			break;
 		md = validdata(fs, buf, 0);
 		if(md == 0)
@@ -267,13 +266,24 @@ freefile(Tfs *fs, Tfile *f, ulong bend)
 		bno = GETS(md->bno);
 	}
 
+	poperror();
+}
+
+static void
+freefile(Tfs *fs, Tfile *f, ulong bend)
+{
+	uchar buf[Blen];
+
+	/* remove blocks from map */
+	freeblocks(fs, f->dbno, bend);
+
 	/* change file type to free on medium */
 	if(f->bno != Notabno){
-		n = devtab[fs->c->type].read(fs->c, buf, Blen, Blen*f->bno);
-		if(n != Blen)
+		if(devtab[fs->c->type].read(fs->c, buf, Blen, Blen*f->bno) != Blen)
 			return;
 		buf[0] = Tagfree;
 		devtab[fs->c->type].write(fs->c, buf, Blen, Blen*f->bno);
+		mapclr(fs, f->bno);
 	}
 
 	/* forget we ever knew about it */
@@ -288,8 +298,10 @@ expand(Tfs *fs)
 	fs->fsize += 8;
 	f = smalloc(fs->fsize*sizeof(*f));
 
-	memmove(f, fs->f, fs->nf*sizeof(f));
-	free(fs->f);
+	if(fs->f){
+		memmove(f, fs->f, fs->nf*sizeof(*f));
+		free(fs->f);
+	}
 	fs->f = f;
 }
 
@@ -310,8 +322,11 @@ newfile(Tfs *fs, char *name)
 			}
 		}
 
-		if(i < fs->fsize)
+		if(i < fs->fsize){
+			if(i >= fs->nf)
+				fs->nf = i+1;
 			break;
+		}
 
 		expand(fs);
 	}
@@ -319,6 +334,8 @@ newfile(Tfs *fs, char *name)
 	f->flag = Fcreating;
 	f->dbno = Notabno;
 	f->bno = mapalloc(fs);
+	f->fbno = Notabno;
+	f->r = 1;
 
 	/* write directory block */
 	if(waserror()){
@@ -437,6 +454,8 @@ tinyfsgen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
 	if(i >= fs->nf)
 		return -1;
 	f = &fs->f[i];
+	if(f->name[0] == 0)
+		return 0;
 	qid.path = i;
 	qid.vers = 0;
 	devdir(c, qid, f->name, f->length, eve, 0664, dp);
@@ -461,37 +480,49 @@ tinyfsattach(char *spec)
 	Tfs *fs;
 	Chan *c, *cc;
 	int i;
+	char *p;
 
-	cc = namec(spec, Aopen, ORDWR, 0);
+	p = 0;
+	if(strcmp(spec, "hd0") == 0)
+		p = "#H/hd0nvram";
+	else
+		error("bad spec");
+
+	cc = namec(p, Aopen, ORDWR, 0);
 	if(waserror()){
 		close(cc);
-		qunlock(&tinyfs);
 		nexterror();
 	}
 
-	qlock(&tinyfs);
 	fs = 0;
-	for(i = 0; i < tinyfs.nfs; i++){
+	for(i = 0; i < Maxfs; i++){
 		fs = &tinyfs.fs[i];
-		if(fs && eqchan(cc, fs->c, 0))
-			break;
-	}
-	if(i < tinyfs.nfs){
 		qlock(fs);
+		if(fs->r && eqchan(cc, fs->c, 0))
+			break;
+		qunlock(fs);
+	}
+	if(i < Maxfs){
 		fs->r++;
 		qunlock(fs);
 		close(cc);
 	} else {
-		if(tinyfs.nfs >= Maxfs)
+		for(fs = tinyfs.fs; fs < &tinyfs.fs[Maxfs]; fs++){
+			qlock(fs);
+			if(fs->r == 0)
+				break;
+			qunlock(fs);
+		}
+		if(fs == &tinyfs.fs[Maxfs])
 			error("too many tinyfs's");
-		fs = &tinyfs.fs[tinyfs.nfs];
-		memset(fs, 0, sizeof(*fs));
 		fs->c = cc;
 		fs->r = 1;
+		fs->f = 0;
+		fs->nf = 0;
+		fs->fsize = 0;
 		fsinit(fs);
-		tinyfs.nfs++;
+		qunlock(fs);
 	}
-	qunlock(&tinyfs);
 	poperror();
 
 	c = devattach('U', spec);
@@ -553,14 +584,24 @@ tinyfsopen(Chan *c, int omode)
 			error(Eperm);
 	} else {
 		qlock(fs);
-		if(omode == (OTRUNC|ORDWR)){
-			f = newfile(fs, fs->f[c->qid.path].name);
-			c->qid.path = f - fs->f;
-		} else if(omode != OREAD){
+		if(waserror()){
 			qunlock(fs);
+			nexterror();
+		}
+		switch(omode){
+		case OTRUNC|ORDWR:
+		case OTRUNC|OWRITE:
+			f = newfile(fs, fs->f[c->qid.path].name);
+			fs->f[c->qid.path].r--;
+			c->qid.path = f - fs->f;
+			break;
+		case OREAD:
+			break;
+		default:
 			error(Eperm);
 		}
 		qunlock(fs);
+		poperror();
 	}
 
 	return devopen(c, omode, 0, 0, tinyfsgen);
@@ -572,14 +613,18 @@ tinyfscreate(Chan *c, char *name, int omode, ulong perm)
 	Tfs *fs;
 	Tfile *f;
 
-	if(perm & CHDIR)
-		error("directory creation illegal");
+	USED(perm);
 
 	fs = &tinyfs.fs[c->dev];
 
 	qlock(fs);
+	if(waserror()){
+		qunlock(fs);
+		nexterror();
+	}
 	f = newfile(fs, name);
 	qunlock(fs);
+	poperror();
 
 	c->qid.path = f - fs->f;
 	c->qid.vers = 0;
@@ -589,8 +634,16 @@ tinyfscreate(Chan *c, char *name, int omode, ulong perm)
 void
 tinyfsremove(Chan *c)
 {
-	USED(c);
-	error(Eperm);
+	Tfs *fs;
+	Tfile *f;
+
+	if(c->qid.path == CHDIR)
+		error(Eperm);
+	fs = &tinyfs.fs[c->dev];
+	f = &fs->f[c->qid.path];
+	qlock(fs);
+	freefile(fs, f, Notabno);
+	qunlock(fs);
 }
 
 void
@@ -603,7 +656,7 @@ tinyfswstat(Chan *c, char *dp)
 void
 tinyfsclose(Chan *c)
 {
-	Tfs *fs, **l;
+	Tfs *fs;
 	Tfile *f, *nf;
 	int i;
 
@@ -612,48 +665,48 @@ tinyfsclose(Chan *c)
 	qlock(fs);
 
 	/* dereference file and remove old versions */
-	if(c->qid.path != CHDIR){
-		f = &fs->f[c->qid.path];
-		f->r--;
-		if(f->r == 0){
-			if(f->flag & Fcreating){
-				/* remove all other files with this name */
-				for(i = 0; i < fs->fsize; i++){
-					nf = &fs->f[i];
-					if(f == nf)
-						continue;
-					if(strcmp(nf->name, f->name) == 0){
-						if(nf->r)
-							nf->flag |= Frmonclose;
-						else
-							freefile(fs, nf, Notabno);
+	if(!waserror()){
+		if(c->qid.path != CHDIR){
+			f = &fs->f[c->qid.path];
+			f->r--;
+			if(f->r == 0){
+				if(f->flag & Frmonclose)
+					freefile(fs, f, Notabno);
+				else if(f->flag & Fcreating){
+					/* remove all other files with this name */
+					for(i = 0; i < fs->fsize; i++){
+						nf = &fs->f[i];
+						if(f == nf)
+							continue;
+						if(strcmp(nf->name, f->name) == 0){
+							if(nf->r)
+								nf->flag |= Frmonclose;
+							else
+								freefile(fs, nf, Notabno);
+						}
 					}
+					f->flag &= ~Fcreating;
 				}
-				f->flag &= ~(Frmonclose|Fcreating);
 			}
-			if(f->flag & Frmonclose)
-				freefile(fs, f, Notabno);
 		}
+		poperror();
 	}
 
 	/* dereference fs and remove on zero refs */
 	fs->r--;
-	qunlock(fs);
-	qlock(&tinyfs);
 	if(fs->r == 0){
-		for(l = &fs->l; *l;){
-			if(*l == fs){
-				*l = fs->next;
-				break;
-			}
-			l = &(*l)->next;
-		}
-		free(fs->f);
-		free(fs->map);
+		if(fs->f)
+			free(fs->f);
+		fs->f = 0;
+		fs->nf = 0;
+		fs->fsize = 0;
+		if(fs->map)
+			free(fs->map);
+		fs->map = 0;
 		close(fs->c);
-		memset(fs, 0, sizeof(*fs));
+		fs->c = 0;
 	}
-	qunlock(&tinyfs);
+	qunlock(fs);
 }
 
 long
@@ -661,7 +714,7 @@ tinyfsread(Chan *c, void *a, long n, ulong offset)
 {
 	Tfs *fs;
 	Tfile *f;
-	int sofar, i;
+	int sofar, i, off;
 	ulong bno;
 	Mdata *md;
 	uchar buf[Blen];
@@ -670,34 +723,56 @@ tinyfsread(Chan *c, void *a, long n, ulong offset)
 	if(c->qid.path & CHDIR)
 		return devdirread(c, a, n, 0, 0, tinyfsgen);
 
-	fs = tinyfs.fs[c->dev];
+	fs = &tinyfs.fs[c->dev];
 	f = &fs->f[c->qid.path];
 	if(offset >= f->length)
 		return 0;
+
+	qlock(fs);
+	if(waserror()){
+		qunlock(fs);
+		nexterror();
+	}
 	if(n + offset >= f->length)
 		n = f->length - offset;
 
 	/* walk to starting data block */
-	bno = f->dbno;
-	for(sofar = 0; sofar + Blen < offset; sofar += Blen){
+	if(f->finger < offset && f->fbno != Notabno){
+		sofar = f->finger;
+		bno = f->fbno;
+	} else {
+		sofar = 0;
+		bno = f->dbno;
+	}
+	for(; sofar + Dlen < offset; sofar += Dlen){
 		md = readdata(fs, bno, buf, 0);
+		if(md == 0)
+			error(Eio);
 		bno = GETS(md->bno);
 	}
 
 	/* read data */
-	offset = offset%Blen;
+	off = offset%Dlen;
+	offset -= off;
 	for(sofar = 0; sofar < n; sofar += i){
 		md = readdata(fs, bno, buf, &i);
-		i -= offset;
+		if(md == 0)
+			error(Eio);
+
+		/* update finger for successful read */
+		f->finger = offset + sofar;
+		f->fbno = bno;
+
+		i -= off;
 		if(i > n)
 			i = n;
-		if(i < 0)
-			break;
 		memmove(p, md->data, i);
 		p += i;
 		bno = GETS(md->bno);
-		offset = 0;
+		off = 0;
 	}
+	qunlock(fs);
+	poperror();
 
 	return sofar;
 }
@@ -708,13 +783,17 @@ tinyfsbread(Chan *c, long n, ulong offset)
 	return devbread(c, n, offset);
 }
 
+/*
+ *  if we get a write error in this routine, blocks will
+ *  be lost.  They should be recovered next fsinit.
+ */
 long
-tinyfswrite(Chan *c, char *a, long n, ulong offset)
+tinyfswrite(Chan *c, void *a, long n, ulong offset)
 {
 	Tfs *fs;
 	Tfile *f;
-	int sofar, i, x;
-	ulong bno, tbno;
+	int last, next, i, off, finger;
+	ulong bno, dbno, fbno;
 	Mdata *md;
 	uchar buf[Blen];
 	uchar *p = a;
@@ -725,7 +804,7 @@ tinyfswrite(Chan *c, char *a, long n, ulong offset)
 	if(n == 0)
 		return 0;
 
-	fs = tinyfs.fs[c->dev];
+	fs = &tinyfs.fs[c->dev];
 	f = &fs->f[c->qid.path];
 
 	/* files are append only, anything else is illegal */
@@ -733,57 +812,78 @@ tinyfswrite(Chan *c, char *a, long n, ulong offset)
 		error("append only");
 
 	qlock(fs);
+	dbno = Notabno;
 	if(waserror()){
-		f->flag |= Frmonclose;
+		freeblocks(fs, dbno, Notabno);
 		qunlock(fs);
 		nexterror();
 	}
 
+	/* write blocks backwards */
+	p += n;
+	last = offset + n;
+	off = offset;
+	fbno = Notabno;
+	finger = 0;
+	for(next = (last/Dlen)*Dlen; next >= off; next -= Dlen){
+		bno = mapalloc(fs);
+		if(bno == Notabno){
+			error("out of space");
+		}
+		i = last - next;
+		p -= i;
+		if(last == n+offset){
+			writedata(fs, bno, dbno, p, i, 1);
+			finger = next;	/* remember for later */
+			fbno = bno;
+		} else
+			writedata(fs, bno, dbno, p, i, 0);
+		dbno = bno;
+		last = next;
+	}
+
 	/* walk to last data block */
-	bno = f->dbno;
-	for(sofar = 0; sofar + Blen < offset; sofar += Blen){
+	md = (Mdata*)buf;
+	if(f->finger < offset && f->fbno != Notabno){
+		next = f->finger;
+		bno = f->fbno;
+	} else {
+		next = 0;
+		bno = f->dbno;
+	}
+	for(; next < offset; next += Dlen){
 		md = readdata(fs, bno, buf, 0);
+		if(md == 0)
+			error(Eio);
 		if(md->type == Tagend)
 			break;
 		bno = GETS(md->bno);
 	}
 
-	sofar = 0;
-	i = offset%Dlen;
-	if(i){
-		x = n;
-		if(i + x > Dlen)
-			x = Dlen - i;
-		memmove(md->data + i, p, sofar);
-		f->length += x;
-		sofar += x;
-	}
-
-	while(x = n - sofar) {
-		tbno = mapalloc(fs);
-		if(f->length == 0){
-			f->dbno = tbno;
-			writedir(fs, f);
-		} else {
-			writedata(fs, bno, tbno, md->data, Dlen, 0);
+	/* point to new blocks */
+	if(offset == 0){
+		f->dbno = dbno;
+		writedir(fs, f);
+	} else {
+		i = last - offset;
+		next = offset%Dlen;
+		if(i > 0){
+			p -= i;
+			memmove(md->data + next, p, i);
 		}
-		if(x > Dlen)
-			x = Dlen;
-		memmove(md->data, p + sofar, x);
-		sofar += x;
-		f->length += x;
-		bno = tbno;
+		writedata(fs, bno, dbno, md->data, i+next, last == n+offset);
 	}
+	f->length += n;
 
-	i = f->length%Dlen;
-	if(i == 0)
-		i = Dlen;
-	writedata(fs, bno, tbno, md->data, i, 1);
-
+	/* update finger */
+	if(fbno != Notabno){
+		f->finger = finger;
+		f->fbno =  fbno;
+	}
 	poperror();
 	qunlock(fs);
 
-	return sofar;
+	return n;
 }
 
 long
