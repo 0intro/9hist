@@ -39,8 +39,10 @@ boot(int argc, char *argv[])
 	int fd;
 	Method *mp;
 	char cmd[64];
+	char rootbuf[64];
 	char flags[6];
 	int islocal, ishybrid;
+	char *rp;
 
 	sleep(1000);
 
@@ -117,13 +119,22 @@ boot(int argc, char *argv[])
 	 */
 	if(bind("/", "/", MREPL) < 0)
 		fatal("bind /");
-	if(mount(fd, "/root", MREPL|MCREATE, "") < 0)
+	rp = getenv("rootspec");
+	if(rp == nil)
+		rp = "";
+	if(mount(fd, "/root", MREPL|MCREATE, rp) < 0)
 		fatal("mount /");
-	if(bind(rootdir, "/", MAFTER|MCREATE) < 0)
-		fatal("bind /");
+	rp = getenv("rootdir");
+	if(rp == nil)
+		rp = rootdir;
+	if(strncmp(rp, "/root", 5) != 0){
+		snprint(rootbuf, sizeof rootbuf, "/root/%s", rp);
+		rp = rootbuf;
+	}
+	if(bind(rp, "/", MAFTER|MCREATE) < 0)
+		fatal("second bind /");
 	close(fd);
-
-	setenv("rootdir", rootdir);
+	setenv("rootdir", rp);
 
 	/*
 	 *  if a local file server exists and it's not

@@ -41,17 +41,17 @@ settime(int islocal)
 		f = open(timeserver, ORDWR);
 		if(f < 0)
 			return;
-		if(mount(f, "/n/boot", MREPL, "") < 0){
+		if(mount(f, "/mnt", MREPL, "") < 0){
 			warning("settime mount");
 			close(f);
 			return;
 		}
 		close(f);
-		if(stat("/n/boot", dirbuf) < 0)
+		if(stat("/mnt", dirbuf) < 0)
 			fatal("stat");
 		convM2D(dirbuf, &dir);
 		sprint(dirbuf, "%ld", dir.atime);
-		unmount(0, "/n/boot");
+		unmount(0, "/mnt");
 	}
 
 	f = open("#c/time", OWRITE);
