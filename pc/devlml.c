@@ -23,32 +23,38 @@ int debug = 0;
 
 // Lml 22 driver
 
+#ifdef MEMMAP
 struct {
 	ulong pci;
 	ulong statcom;
 	ulong codedata;
 } lmlmap;
+#endif
 
 enum{
 	Qdir,
+#ifdef MEMMAP
 	Q060,
 	Q819,
 	Q856,
 	Qreg,
 	Qmap,
 	Qbuf,
+#endif
 	Qjvideo,
 	Qjframe,
 };
 
 static Dirtab lmldir[]={
 //	 name,		 qid,		size,		mode
+#ifdef MEMMAP
 	"lml060",	{Q060},		0x400,		0644,
 	"lml819",	{Q819},		0,		0644,
 	"lml856",	{Q856},		0,		0644,
 	"lmlreg",	{Qreg},		0x400,		0644,
 	"lmlmap",	{Qmap},		sizeof lmlmap,	0444,
 	"lmlbuf",	{Qbuf},		0,		0644,
+#endif
 	"jvideo",	{Qjvideo},	0,		0666,
 	"jframe",	{Qjframe},	0,		0666,
 };
@@ -75,6 +81,11 @@ static FrameHeader frameHeader = {
 	-1, 0, 0, 0, 0
 };
 
+
+#ifndef MEMMAP
+#define writel(v, a) *(ulong *)(a) = (v)
+#define readl(a) *(ulong*)(a)
+#else
 ulong
 writel(ulong v, ulong a) {
 	if (debug&DBGREGS)
@@ -83,6 +94,16 @@ writel(ulong v, ulong a) {
 	return *(ulong *)a = v;
 }
 
+ulong
+readl(ulong a) {
+	ulong v;
+
+	v = *(ulong*)a;
+	if (debug&DBGREGS)
+		pprint("%.8lux (%.8lux) --> %.8lux\n",
+			a, (ulong)a-pciBaseAddr, v);
+	return v;
+}
 ushort
 writew(ushort v, ulong a) {
 	if (debug&DBGREGS)
@@ -97,17 +118,6 @@ writeb(uchar v, ulong a) {
 		pprint("%.8lux (%.8lux) <--       %.2ux\n",
 			a, (ulong)a-pciBaseAddr, v);
 	return *(uchar *)a = v;
-}
-
-ulong
-readl(ulong a) {
-	ulong v;
-
-	v = *(ulong*)a;
-	if (debug&DBGREGS)
-		pprint("%.8lux (%.8lux) --> %.8lux\n",
-			a, (ulong)a-pciBaseAddr, v);
-	return v;
 }
 
 ushort
@@ -432,6 +442,7 @@ zr060_read(int reg) {
 		return -1;
 	return post_read(GID060, 3);
 }
+#endif
 
 static int
 prepareBuffer(int i) {
@@ -652,23 +663,26 @@ lmlreset(void)
 	Physseg segreg;
 //
 	ulong regpa;
+	ulong cdsize;
 	int i;
 
 	pcidev = pcimatch(nil, PCI_VENDOR_ZORAN, PCI_DEVICE_ZORAN_36067);
 	if (pcidev == nil) {
 		return;
 	}
-	codeData = (CodeData*)xspanalloc(sizeof(CodeData), BY2PG, 0);
+	cdsize = (sizeof(CodeData) + BY2PG - 1) & ~(BY2PG - 1);
+	codeData = (CodeData*)xspanalloc(cdsize, BY2PG, 0);
 	if (codeData == nil) {
-		print("devlml: xspanalloc(%ux, %ux, 0)\n", sizeof(CodeData), BY2PG);
+		print("devlml: xspanalloc(%lux, %ux, 0)\n", cdsize, BY2PG);
 		return;
 	}
 
 	print("Installing Motion JPEG driver %s\n", MJPG_VERSION); 
-	print("Buffer at 0x%.8lux, size 0x%.8ux\n", codeData, sizeof(CodeData)); 
+	print("Buffer at 0x%.8lux, size 0x%.8lux\n", codeData, cdsize); 
 
 	// Get access to DMA memory buffer
 	memset(codeData, 0xAA, sizeof(CodeData));
+	codeData->physaddr = PADDR(&(codeData->statCom[0]));
 	for (i = 0; i < NBUF; i++) {
 		codeData->statCom[i] = PADDR(&(codeData->fragdesc[i]));
 		codeData->fragdesc[i].addr = PADDR(&(codeData->frag[i]));
@@ -700,9 +714,11 @@ lmlreset(void)
 	// Interrupt handler
 	intrenable(pcidev->intl, lmlintr, nil, pcidev->tbdf);
 
+#ifdef MEMMAP
 	lmlmap.pci = pciBaseAddr;
 	lmlmap.statcom = PADDR(codeData->statCom);
 	lmlmap.codedata = (ulong)codeData;
+#endif
 
 // LMLSEG
 	memset(&segbuf, 0, sizeof(segbuf));
@@ -710,8 +726,11 @@ lmlreset(void)
 	segbuf.name = smalloc(NAMELEN);
 	snprint(segbuf.name, NAMELEN, "lmlmjpg");
 	segbuf.pa = PADDR(codeData);
-	segbuf.size = sizeof(CodeData);
-	addphysseg(&segbuf);
+	segbuf.size = cdsize;
+	if (addphysseg(&segbuf) == -1) {
+		print("lml: physsegment: lmlmjpg\n");
+		return;
+	}
 
 	memset(&segreg, 0, sizeof(segreg));
 	segreg.attr = SG_PHYSICAL;
@@ -719,7 +738,10 @@ lmlreset(void)
 	snprint(segreg.name, NAMELEN, "lmlregs");
 	segreg.pa = (ulong)regpa;
 	segreg.size = pcidev->mem[0].size;
-	addphysseg(&segreg);
+	if (addphysseg(&segreg) == -1) {
+		print("lml: physsegment: lmlmjpg\n");
+		return;
+	}
 //
 
 	return; 
@@ -749,6 +771,7 @@ lmlopen(Chan *c, int omode) {
 
 	c->aux = 0;
 	switch(c->qid.path){
+#ifdef MEMMAP
 	case Q060:
 	case Q819:
 	case Q856:
@@ -756,6 +779,7 @@ lmlopen(Chan *c, int omode) {
 	case Qmap:
 	case Qbuf:
 		break;
+#endif
 	case Qjframe:
 	case Qjvideo:
 		if (nopens)
@@ -776,6 +800,7 @@ static void
 lmlclose(Chan *c) {
 
 	switch(c->qid.path){
+#ifdef MEMMAP
 	case Q060:
 	case Q819:
 	case Q856:
@@ -784,6 +809,7 @@ lmlclose(Chan *c) {
 	case Qbuf:
 		authclose(c);
 		break;
+#endif
 	case Qjvideo:
 	case Qjframe:
 		nopens = 0;
@@ -793,7 +819,9 @@ lmlclose(Chan *c) {
 
 static long
 lmlread(Chan *c, void *va, long n, vlong voff) {
+#ifdef MEMMAP
 	int i, d;
+#endif
 	uchar *buf = va;
 	long off = voff;
 
@@ -802,6 +830,7 @@ lmlread(Chan *c, void *va, long n, vlong voff) {
 	case Qdir:
 		return devdirread(c, (char *)buf, n, lmldir, nelem(lmldir), devgen);
 
+#ifdef MEMMAP
 	case Q060:
 		if (off < 0 || off + n > 0x400)
 			return 0;
@@ -887,6 +916,7 @@ lmlread(Chan *c, void *va, long n, vlong voff) {
 			return 0;
 		}
 		return n;
+#endif
 	case Qjvideo:
 	case Qjframe:
 		return vread(c, buf, n, off);
@@ -895,7 +925,9 @@ lmlread(Chan *c, void *va, long n, vlong voff) {
 
 static long
 lmlwrite(Chan *c, void *va, long n, vlong voff) {
+#ifdef MEMMAP
 	int i;
+#endif
 	uchar *buf = va;
 	long off = voff;
 
@@ -904,6 +936,7 @@ lmlwrite(Chan *c, void *va, long n, vlong voff) {
 	case Qdir:
 		error(Eperm);
 
+#ifdef MEMMAP
 	case Q060:
 		if (off < 0 || off + n > 0x400)
 			return 0;
@@ -977,6 +1010,7 @@ lmlwrite(Chan *c, void *va, long n, vlong voff) {
 			return 0;
 		}
 		return n;
+#endif
 	case Qjvideo:
 	case Qjframe:
 		return vwrite(c, buf, n, off);
