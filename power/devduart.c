@@ -201,6 +201,7 @@ duartinit(void)
 	duartsetup(p, d, 0);
 	p++;
 	duartsetup(p, d, 1);
+	d->inited = 1;
 }
 
 /*
