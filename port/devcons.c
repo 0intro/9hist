@@ -31,7 +31,7 @@ char	sysname[NAMELEN];
 
 static ulong	randomread(void*, ulong);
 static void	randominit(void);
-static void	seednrand(void);
+static void	seedrand(void);
 static long	qtimer(long, vlong);
 
 int qtimerentry = -1;
@@ -462,12 +462,6 @@ consinit(void)
 static Chan*
 consattach(char *spec)
 {
-	static int seeded;
-
-	if(!seeded){
-		seednrand();
-		seeded = 1;
-	}
 	return devattach('c', spec);
 }
 
@@ -945,7 +939,7 @@ static struct
 } rb;
 
 static void
-seednrand(void)
+seedrand(void)
 {
 	randomread((void*)&rb.randn, sizeof(rb.randn));
 }
@@ -953,9 +947,19 @@ seednrand(void)
 int
 nrand(int n)
 {
+	if(rb.randn == 0)
+		seedrand();
 	rb.randn = rb.randn*1103515245 + 12345 + MACHP(0)->ticks;
 	return (rb.randn>>16) % n;
 }
+
+int
+rand(void)
+{
+	nrand(1);
+	return rb.randn;
+}
+
 
 static int
 rbnotfull(void*)
@@ -1073,7 +1077,8 @@ randomread(void *xp, ulong n)
 }
 
 static long
-qtimer(long n, vlong offset) {
+qtimer(long n, vlong offset)
+{
 	/* block until time ≥ offset;
 	 * add n to offset
 	 * return increment to offset (i.e., n)

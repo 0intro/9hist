@@ -322,11 +322,13 @@ fault386(Ureg* ureg, void*)
 	int read, user, n, insyscall;
 	char buf[ERRLEN];
 
+	addr = getcr2();
+	user = (ureg->cs & 0xFFFF) == UESEL;
+	if(!user && mmukmapsync(addr))
+		return;
+	read = !(ureg->ecode & 2);
 	insyscall = up->insyscall;
 	up->insyscall = 1;
-	addr = getcr2();
-	read = !(ureg->ecode & 2);
-	user = (ureg->cs&0xffff) == UESEL;
 	spllo();
 	n = fault(addr, read);
 	if(n < 0){
@@ -336,10 +338,8 @@ fault386(Ureg* ureg, void*)
 			postnote(up, 1, buf, NDebug);
 			return;
 		}
-		if(mmukmapsync(addr) == 0){	
-			dumpregs(ureg);
-			panic("fault: 0x%lux\n", addr);
-		}
+		dumpregs(ureg);
+		panic("fault: 0x%lux\n", addr);
 	}
 	up->insyscall = insyscall;
 }

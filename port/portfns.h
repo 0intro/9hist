@@ -236,6 +236,7 @@ int		qwindow(Queue*);
 int		qwrite(Queue*, void*, int);
 void		qsetlimit(Queue*, int);
 void		qnoblock(Queue*, int);
+int		rand(void);
 int		readnum(ulong, char*, ulong, ulong, int);
 int		readstr(ulong, char*, ulong, char*);
 void		ready(Proc*);

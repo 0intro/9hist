@@ -492,7 +492,7 @@ rudpiput(Proto *rudp, uchar *ia, Block *bp)
 		break;
 	default:
 		/* connection oriented rudp */
-		if(c->raddr == 0){
+		if(ipcmp(c->raddr, IPnoaddr) == 0){
 			/* save the src address in the conversation */
 		 	ipmove(c->raddr, raddr);
 			c->rport = rport;
@@ -691,7 +691,7 @@ relstate(Rudpcb *ucb, uchar *addr, ushort port, char *from)
 	/* no state for this addr/port, create some */
 	if(r == nil){
 		if(generation == 0)
-			generation = TK2SEC(MACHP(0)->ticks);
+			generation = rand();
 		DPRINT("from %s new state %d for %I!%d\n", 
 		        from, generation, addr, port);
 		r = smalloc(sizeof(Reliable));
@@ -727,8 +727,6 @@ reliput(Conv *c, Block *bp, uchar *addr, ushort port)
 	Reliable *r;
 	Rudphdr *rh;
 	ulong seq, ack, sgen, agen, ackreal;
-
-
 
 	/* get fields */
 	uh = (Udphdr*)(bp->rp);

@@ -345,7 +345,7 @@ udpiput(Proto *udp, uchar *ia, Block *bp)
 		break;
 	default:
 		/* connection oriented udp */
-		if(c->raddr == 0){
+		if(ipcmp(c->raddr, IPnoaddr) == 0){
 			/* save the src address in the conversation */
 		 	ipmove(c->raddr, raddr);
 			c->rport = rport;
