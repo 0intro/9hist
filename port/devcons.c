@@ -193,6 +193,12 @@ panic(char *fmt, ...)
 	exit(1);
 }
 
+void
+_assert(char *fmt)
+{
+	panic("assert failed: %s", fmt);
+}
+
 int
 pprint(char *fmt, ...)
 {

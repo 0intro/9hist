@@ -255,7 +255,9 @@ goticmpkt(Proto *icmp, Block *bp)
 		s = *c;
 		if(s->lport == recid)
 		if(ipcmp(s->raddr, dst) == 0){
-			qpass(s->rq, bp);
+			bp = concatblock(bp);
+			if(bp != nil)
+				qpass(s->rq, bp);
 			return;
 		}
 	}

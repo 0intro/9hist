@@ -1,4 +1,5 @@
 #define outb(p, ch)			*(uchar*)((p)^7) = ch	
+#define inb(p)	*(uchar*)((p)^7)
 #define uartwrreg(u,r,v)	outb((u)->port + (r), (u)->sticky[r] | (v))
 #define uartrdreg(u,r)		*(uchar*)(((u)->port + (r))^7)
 
@@ -16,30 +17,3 @@ ns16552install(void)
 	ns16552setup(Uart1, UartFREQ, "eia0", Ns550);
 }
 
-#define RD(r)	(*(uchar*)((Uart1+r)^7))
-static void
-ns16552iputc(char c)
-{
-	while((RD(5) & (1<<5)) == 0)
-		;
-	*(uchar*)(Uart1^7) = c;
-	while((RD(5) & (1<<5)) == 0)
-		;
-}
-
-int
-iprint(char *fmt, ...)
-{
-	int n, i;
-	char buf[512];
-	va_list arg;
-
-	va_start(arg, fmt);
-	n = doprint(buf, buf+sizeof(buf), fmt, arg) - buf;
-	va_end(arg);
-
-	for(i = 0; i < n; i++)
-		ns16552iputc(buf[i]);
-	
-	return n;
-}

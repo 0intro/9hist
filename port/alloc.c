@@ -4,13 +4,20 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"error.h"
-#include	"pool.h"
+#include	<pool.h>
 
 static void poolprint(Pool*, char*, ...);
 static void ppanic(Pool*, char*, ...);
 static void plock(Pool*);
 static void punlock(Pool*);
 
+typedef struct Private	Private;
+struct Private {
+	Lock		lk;
+	char		msg[128];	/* a rock for messages to be printed at unlock */
+};
+
+static Private pmainpriv;
 static Pool pmainmem = {
 	.name=	"Main",
 	.maxsize=	4*1024*1024,
@@ -24,8 +31,11 @@ static Pool pmainmem = {
 	.unlock=	punlock,
 	.print=	poolprint,
 	.panic=	ppanic,
+
+	.private=	&pmainpriv,
 };
 
+static Private pimagpriv;
 static Pool pimagmem = {
 	.name=	"Image",
 	.maxsize=	16*1024*1024,
@@ -39,6 +49,8 @@ static Pool pimagmem = {
 	.unlock=	punlock,
 	.print=	poolprint,
 	.panic=	ppanic,
+
+	.private=	&pimagpriv,
 };
 
 Pool*	mainmem = &pmainmem;
@@ -53,15 +65,17 @@ poolprint(Pool *p, char *fmt, ...)
 {
 	va_list v;
 	int n;
+	Private *pv;
 
+	pv = p->private;
 	va_start(v, fmt);
-	n = doprint(p->msg, p->msg+sizeof p->msg, fmt, v)-p->msg;
+	n = doprint(pv->msg, pv->msg+sizeof pv->msg, fmt, v)-pv->msg;
 	va_end(v);
-	if(n >= sizeof p->msg);
-		n = sizeof(p->msg)-1;
+	if(n >= sizeof pv->msg);
+		n = sizeof(pv->msg)-1;
 	if(n < 0)
 		n = 0;
-	p->msg[n] = 0;
+	pv->msg[n] = 0;
 }
 
 static void
@@ -69,39 +83,46 @@ ppanic(Pool *p, char *fmt, ...)
 {
 	va_list v;
 	int n;
+	Private *pv;
 
+	pv = p->private;
 	va_start(v, fmt);
-	n = doprint(p->msg, p->msg+sizeof p->msg, fmt, v)-p->msg;
+	n = doprint(pv->msg, pv->msg+sizeof pv->msg, fmt, v)-pv->msg;
 	va_end(v);
-	if(n >= sizeof p->msg);
-		n = sizeof(p->msg)-1;
+	if(n >= sizeof pv->msg);
+		n = sizeof(pv->msg)-1;
 	if(n < 0)
 		n = 0;
-	p->msg[n] = 0;
-	iunlock(&p->lk);
-	panic("%s", p->msg);
+	pv->msg[n] = 0;
+	iunlock(&pv->lk);
+	panic("%s", pv->msg);
 }
 
 static void
 plock(Pool *p)
 {
-	ilock(&p->lk);
-	p->msg[0] = 0;
+	Private *pv;
+
+	pv = p->private;
+	ilock(&pv->lk);
+	pv->msg[0] = 0;
 }
 
 static void
 punlock(Pool *p)
 {
-	char msg[sizeof p->msg];
+	Private *pv;
+	char msg[sizeof pv->msg];
 
-	if(p->msg[0] == 0){
-		iunlock(&p->lk);
+	pv = p->private;
+	if(pv->msg[0] == 0){
+		iunlock(&pv->lk);
 		return;
 	}
 
-	memmove(msg, p->msg, sizeof msg);
-	iunlock(&p->lk);
-	print("%.*s", sizeof p->msg, msg);
+	memmove(msg, pv->msg, sizeof msg);
+	iunlock(&pv->lk);
+	print("%.*s", sizeof pv->msg, msg);
 }
 
 void

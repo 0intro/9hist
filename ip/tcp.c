@@ -801,16 +801,19 @@ ntohtcp(Tcp *tcph, Block **bpp)
 
 	optr = h->tcpopt;
 	for(i = TCP_HDRSIZE; i < hdrlen;) {
-		switch(*optr++) {
+		switch(optr[i]) {
+		default:
+			i += optr[i+1];
+			break;
 		case EOLOPT:
 			return hdrlen;
 		case NOOPOPT:
 			i++;
 			break;
 		case MSSOPT:
-			optlen = *optr++;
+			optlen = optr[i+1];
 			if(optlen == MSS_LENGTH)
-				tcph->mss = nhgets(optr);
+				tcph->mss = nhgets(optr+2);
 			i += optlen;
 			break;
 		}
