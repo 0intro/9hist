@@ -1,7 +1,6 @@
-typedef struct Bit3msg	Bit3msg;
 typedef struct Conf	Conf;
 typedef struct FPsave	FPsave;
-typedef struct Hotmsg	Hotmsg;
+typedef struct Cycmsg	Cycmsg;
 typedef struct Lance	Lance;
 typedef struct Lancemem	Lancemem;
 typedef struct Label	Label;
@@ -101,25 +100,12 @@ struct PMMU
 
 #include "../port/portdat.h"
 
-/*
- *  machine dependent definitions not used by ../port/dat.h
- */
-struct Bit3msg
-{
-	ulong	cmd;
-	ulong	addr;
-	ulong	count;
-	ulong	rcount;
-};
-
-struct Hotmsg
+struct Cycmsg
 {
 	ulong	cmd;
 	ulong	param[5];
 	Rendez	r;
 	uchar	intr;			/* flag: interrupt has occurred */
-	uchar	abort;			/* flag: don't interrupt */
-	ushort	wlen;			/* length of last message written */
 };
 
 struct Mach
@@ -221,7 +207,7 @@ struct User
 	Chan	*dot;
 	/*
 	 * Rest of structure controlled by devproc.c and friends.
-	 * lock(&p->debug) to modify.
+	 * qlock(&p->debug) to modify.
 	 */
 	Note	note[NNOTE];
 	short	nnote;
@@ -236,22 +222,13 @@ struct User
 	 *  machine dependent User stuff
 	 */
 	/*
-	 * I/O point for bit3 and hotrod interfaces.
+	 * I/O point for hotrod interfaces.
 	 * This is the easiest way to allocate
 	 * them, but not the prettiest or most general.
 	 */
-	union{				/* for i/o from kernel */
-		Bit3msg	kbit3;
-		Hotmsg	khot;
-	};
-	union{				/* for i/o from user */
-		Bit3msg	ubit3;
-		Hotmsg	uhot;
-	};
-	union{				/* special location for Tflush */
-		Bit3msg	fbit3;
-		Hotmsg	fhot;
-	};
+	Cycmsg	kcyc;
+	Cycmsg	ucyc;
+	Cycmsg	fcyc;
 };
 
 extern register Mach	*m;

@@ -48,8 +48,7 @@ struct Mntalloc
 	int	id;
 }mntalloc;
 
-#define BITBOTCH	256
-#define MAXRPC		(MAXFDATA+MAXMSG+BITBOTCH)
+#define MAXRPC		(MAXFDATA+MAXMSG)
 #define limit(n, max)	(n > max ? max : n)
 
 Chan 	*mattach(Mnt*, char*, char*);
@@ -540,8 +539,8 @@ mntrdwr(int type, Chan *c, void *buf, long n, ulong offset)
 void
 mountrpc(Mnt *m, Mntrpc *r)
 {
-	r->reply.tag = 0;		/* safety check */
-	r->reply.type = 4;		/* safety check */
+	r->reply.tag = 0;		/* safety checks */
+	r->reply.type = 4;
 	mountio(m, r);
 	if(r->reply.type == Rerror)
 		error(r->reply.ename);
