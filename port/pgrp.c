@@ -74,21 +74,24 @@ pgrptab(int i)
 }
 
 void
-pgrpnote(Pgrp *pg, char *a, long n, int flag)
+pgrpnote(ulong noteid, char *a, long n, int flag)
 {
-	int i;
-	Proc *p;
+	Proc *p, *ep;
 	char buf[ERRLEN];
 
 	if(n >= ERRLEN-1)
 		error(Etoobig);
+
 	memmove(buf, a, n);
 	buf[n] = 0;
 	p = proctab(0);
-	for(i=0; i<conf.nproc; i++, p++) {
-		if(p->pgrp == pg && p->kp == 0) {
+	ep = p+conf.nproc;
+	for(; p < ep; p++) {
+		if(p->state == Dead)
+			continue;
+		if(p->noteid == noteid && p->kp == 0) {
 			qlock(&p->debug);
-			if(p->pid==0 || p->pgrp!=pg){
+			if(p->pid==0 || p->noteid != noteid){
 				qunlock(&p->debug);
 				continue;
 			}

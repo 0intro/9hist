@@ -155,7 +155,7 @@ void	pageinit(void);
 void	panic(char*, ...);
 void	pexit(char*, int);
 void	pgrpcpy(Pgrp*, Pgrp*);
-void	pgrpnote(Pgrp*, char*, long, int);
+void	pgrpnote(ulong, char*, long, int);
 Pgrp*	pgrptab(int);
 void	pio(Segment *, ulong, ulong, Page **);
 #define	poperror()	u->nerrlab--

@@ -325,50 +325,52 @@ consactive(void)
 }
 
 enum{
-	Qdir,
+	Qchal,
+	Qclock,
 	Qcons,
 	Qconsctl,
 	Qcputime,
+	Qcrypt,
+	Qdir,
+	Qkey,
+	Qklog,
 	Qlights,
+	Qmsec,
 	Qnoise,
+	Qnoteid,
 	Qnull,
 	Qpgrpid,
 	Qpid,
 	Qppid,
+	Qswap,
+	Qsysname,
+	Qsysstat,
 	Qtime,
 	Quser,
-	Qklog,
-	Qmsec,
-	Qclock,
-	Qsysstat,
-	Qswap,
-	Qcrypt,
-	Qkey,
-	Qchal,
-	Qsysname,
 };
 
 Dirtab consdir[]={
+	"chal",		{Qchal},	8,		0666,
+	"clock",	{Qclock},	2*NUMSIZE,	0444,
 	"cons",		{Qcons},	0,		0660,
 	"consctl",	{Qconsctl},	0,		0220,
 	"cputime",	{Qcputime},	6*NUMSIZE,	0444,
-	"time",		{Qtime},	NUMSIZE,	0664,
-	"clock",	{Qclock},	2*NUMSIZE,	0444,
-	"msec",		{Qmsec},	NUMSIZE,	0444,
+	"crypt",	{Qcrypt},	0,		0666,
+	"key",		{Qkey},		DESKEYLEN,	0622,
+	"klog",		{Qklog},	0,		0444,
 	"lights",	{Qlights},	0,		0220,
+	"msec",		{Qmsec},	NUMSIZE,	0444,
 	"noise",	{Qnoise},	0,		0220,
+	"noteid",	{Qnoteid},	NUMSIZE,	0444,
 	"null",		{Qnull},	0,		0666,
 	"pgrpid",	{Qpgrpid},	NUMSIZE,	0444,
 	"pid",		{Qpid},		NUMSIZE,	0444,
 	"ppid",		{Qppid},	NUMSIZE,	0444,
-	"user",		{Quser},	0,		0666,
-	"chal",		{Qchal},	8,		0666,
-	"crypt",	{Qcrypt},	0,		0666,
-	"key",		{Qkey},		DESKEYLEN,	0622,
-	"klog",		{Qklog},	0,		0444,
-	"sysstat",	{Qsysstat},	0,		0666,
-	"sysname",	{Qsysname},	0,		0664,
 	"swap",		{Qswap},	0,		0664,
+	"sysname",	{Qsysname},	0,		0664,
+	"sysstat",	{Qsysstat},	0,		0666,
+	"time",		{Qtime},	NUMSIZE,	0664,
+	"user",		{Quser},	0,		0666,
 };
 
 #define	NCONS	(sizeof consdir/sizeof(Dirtab))
@@ -569,6 +571,9 @@ consread(Chan *c, void *buf, long n, ulong offset)
 
 	case Qpgrpid:
 		return readnum(offset, buf, n, u->p->pgrp->pgrpid, NUMSIZE);
+
+	case Qnoteid:
+		return readnum(offset, buf, n, u->p->noteid, NUMSIZE);
 
 	case Qpid:
 		return readnum(offset, buf, n, u->p->pid, NUMSIZE);

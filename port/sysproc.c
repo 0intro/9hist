@@ -21,7 +21,13 @@ long
 sysfork(ulong *arg)
 {
 	USED(arg);
-	return rfork(Forkfd);
+	return rfork(FORKFDG|FORKPCS);
+}
+
+long
+sys__rfork__(ulong *arg)
+{
+	return rfork(arg[0]|FORKPCS);
 }
 
 /* This call will obsolete fork */
@@ -40,10 +46,47 @@ rfork(ulong flag)
 	int n, on, i;
 	Chan *c;
 	KMap *k;
+	Pgrp *opg;
+	Egrp *oeg;
+	Fgrp *ofg;
 	/*
 	 * used to compute last valid system stack address for copy
 	 */
 	int lastvar;	
+
+	p = u->p;
+	if((flag&FORKPCS) == 0) {
+		if(flag & (FORKNSG|FORKCNSG)) {
+			if((flag & (FORKNSG|FORKCNSG)) == (FORKNSG|FORKCNSG))
+				error(Ebadarg);
+			opg = p->pgrp;
+			p->pgrp = newpgrp();
+			if(flag & FORKNSG)
+				pgrpcpy(p->pgrp, opg);
+			closepgrp(opg);
+		}
+		if(flag & (FORKEVG|FORKCEVG)) {
+			if((flag & (FORKEVG|FORKCEVG)) == (FORKEVG|FORKCEVG))
+				error(Ebadarg);
+			oeg = p->egrp;
+			p->egrp = newegrp();
+			if(flag & FORKEVG)
+				envcpy(p->egrp, oeg);
+			closeegrp(oeg);
+		}
+		if(flag & FORKFDG)
+			error(Ebadarg);
+		if(flag & FORKCFDG) {
+			ofg = p->fgrp;
+			p->fgrp = newfgrp();
+			closefgrp(ofg);
+		}
+		if(flag & FORKNTG)
+			p->noteid = incref(&noteidalloc);
+		if(flag & FORKMEM)
+			error(Ebadarg);
+		return 0;
+	}
 
 	p = newproc();
 
@@ -66,30 +109,57 @@ rfork(ulong flag)
 			p->seg[i] = dupseg(u->p->seg[i]);
 
 	/* Refs */
-	incref(u->dot);					/* File descriptors etc. */
+	incref(u->dot);	
 
-	if(flag & Forkfd)
-		p->fgrp = dupfgrp(u->p->fgrp);
-	else{
+	if(flag & FORKMEM)
+		error(Egreg);
+
+	/* File descriptors */
+	if(flag & (FORKFDG|FORKCFDG)) {
+		if((flag & (FORKFDG|FORKCFDG)) == (FORKFDG|FORKCFDG))
+			error(Ebadarg);
+		if(flag & FORKFDG)
+			p->fgrp = dupfgrp(u->p->fgrp);
+		else
+		if(flag & FORKCFDG)
+			p->fgrp = newfgrp();
+	}
+	else {
 		p->fgrp = u->p->fgrp;
 		incref(p->fgrp);
 	}
 
-	if(flag & Forkpg) {
-		p->pgrp = newpgrp();
-		pgrpcpy(p->pgrp, u->p->pgrp);
+	/* Process groups */
+	if(flag & (FORKNSG|FORKCNSG)) {	
+		if((flag & (FORKNSG|FORKCNSG)) == (FORKNSG|FORKCNSG))
+			error(Ebadarg);
+		if(flag & FORKNSG) {
+			p->pgrp = newpgrp();
+			pgrpcpy(p->pgrp, u->p->pgrp);
+		}
+		else
+		if(flag & FORKCNSG)
+			p->pgrp = newpgrp();
 	}
 	else {
-		p->pgrp = u->p->pgrp;			/* Process groups */
+		p->pgrp = u->p->pgrp;
 		incref(p->pgrp);
 	}
 
-	if(flag & Forkeg) {
-		p->egrp = newegrp();
-		envcpy(p->egrp, u->p->egrp);
+	/* Environment group */
+	if(flag & (FORKEVG|FORKCEVG)) {
+		if((flag & (FORKEVG|FORKCEVG)) == (FORKEVG|FORKCEVG))
+			error(Ebadarg);
+		if(flag & FORKEVG) {
+			p->egrp = newegrp();
+			envcpy(p->egrp, u->p->egrp);
+		}
+		else
+		if(flag & FORKCEVG)
+			p->egrp = newegrp();
 	}
 	else {
-		p->egrp = u->p->egrp;			/* Environment group */
+		p->egrp = u->p->egrp;
 		incref(p->egrp);
 	}
 
@@ -111,6 +181,8 @@ rfork(ulong flag)
 
 	p->parent = u->p;
 	p->parentpid = u->p->pid;
+	if((flag&FORKNTG) == 0)
+		p->noteid = u->p->noteid;
 
 	p->fpstate = u->p->fpstate;
 	lock(&u->p->exl);
@@ -513,6 +585,7 @@ sysforkpgrp(ulong *arg)
 		u->notified = 0;
 		memset(u->note, 0, sizeof(u->note));
 	}
+	u->p->noteid = incref(&noteidalloc);
 
 	poperror();
 	closepgrp(u->p->pgrp);

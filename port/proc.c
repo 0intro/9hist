@@ -6,6 +6,7 @@
 #include	"../port/error.h"
 
 Ref	pidalloc;
+Ref	noteidalloc;
 
 struct
 {
@@ -229,7 +230,8 @@ newproc(void)
 			p->notepending = 0;
 			memset(p->seg, 0, sizeof p->seg);
 			p->pid = incref(&pidalloc);
-			if(p->pid == 0)
+			p->noteid = incref(&noteidalloc);
+			if(p->pid==0 || p->noteid==0)
 				panic("pidalloc");
 			return p;
 		}

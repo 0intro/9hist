@@ -458,9 +458,15 @@ enum					/* Argument to forkpgrp call */
 
 enum
 {
-	Forkpg	  = 1,
-	Forkeg	  = 2,
-	Forkfd	  = 4,
+	FORKNSG		= (1<<0),
+	FORKEVG		= (1<<1),
+	FORKFDG		= (1<<2),
+	FORKNTG		= (1<<3),
+	FORKPCS		= (1<<4),
+	FORKMEM		= (1<<5),
+	FORKCNSG	= (1<<10),
+	FORKCEVG	= (1<<11),
+	FORKCFDG	= (1<<12)
 };
 
 /*
@@ -522,10 +528,11 @@ struct Proc
 	QLock	*qlock;			/* address of qlock being queued for DEBUG */
 	ulong	qlockpc;		/* pc of last call to qlock */
 	int	state;
-	char	*psstate;		/* What /proc/???/status reports */
+	char	*psstate;		/* What /proc/#/status reports */
 	Page	*upage;			/* BUG: should be unlinked from page list */
 	Segment	*seg[NSEG];
 	ulong	pid;
+	ulong	noteid;			/* Equivalent of note group */
 
 	Lock	exl;			/* Lock count and waitq */
 	Waitq	*waitq;			/* Exited processes wait children */
@@ -696,6 +703,7 @@ extern  char	eve[];
 extern	int	nrdy;
 extern	char	sysname[NAMELEN];
 extern	int	cpuserver;
+extern  Ref	noteidalloc;
 
 #define	CHDIR		0x80000000L
 #define	CHAPPEND 	0x40000000L

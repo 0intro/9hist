@@ -55,6 +55,7 @@ Hotmsg**
 hotsend(Commrod *h, Hotmsg *m)
 {
 	Hotmsg **mp;
+int i;
 
 	lock(h);
 	mp = (Hotmsg**)&h->addr->reqstq[h->wi];

@@ -22,11 +22,11 @@ Syscall sysread;
 Syscall sysseek;
 Syscall syssleep;
 Syscall sysstat;
-Syscall sys__wait__;
+Syscall sysrfork;
 Syscall syswrite;
 Syscall syspipe;
 Syscall syscreate;
-Syscall sysrfork;
+Syscall sys__rfork__;
 Syscall sysbrk_;
 Syscall sysremove;
 Syscall syswstat;
@@ -61,11 +61,11 @@ Syscall *systab[]={
 	[SEEK]		sysseek,
 	[SLEEP]		syssleep,
 	[STAT]		sysstat,
-	[__WAIT__]	sys__wait__,
+	[RFORK]		sysrfork,
 	[WRITE]		syswrite,
 	[PIPE]		syspipe,
 	[CREATE]	syscreate,
-	[RFORK]		sysrfork,
+	[__RFORK__]	sys__rfork__,
 	[BRK_]		sysbrk_,
 	[REMOVE]	sysremove,
 	[WSTAT]		syswstat,
@@ -101,11 +101,11 @@ char *sysctab[]={
 	[SEEK]		"Seek",
 	[SLEEP]		"Sleep",
 	[STAT]		"Stat",
-	[__WAIT__]	"__wait_",
+	[RFORK]		"Rfork",
 	[WRITE]		"Write",
 	[PIPE]		"Pipe",
 	[CREATE]	"Create",
-	[RFORK]		"Rfork",
+	[__RFORK__]	"__rfork_",
 	[BRK_]		"Brk",
 	[REMOVE]	"Remove",
 	[WSTAT]		"Wstat",

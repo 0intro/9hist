@@ -13,7 +13,10 @@ lock(Lock *l)
 	ulong pc;
 
 	pc = getcallerpc(((uchar*)&l) - sizeof(l));
-
+if(l == 0){
+print("pc= %lux", pc);
+for(;;);
+}
 	for(i = 0; i < 1000000; i++){
     		if (tas(&ll->key) == 0){
 			if(u)

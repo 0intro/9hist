@@ -42,17 +42,18 @@ char *sname[]={ "Text", "Data", "Bss", "Stack", "Shared", "Phys" };
  *	23 bits of process slot number + 1
  *	     in vers,
  *	32 bits of pid, for consistency checking
- * If notepg, c->pgrpid.path is pgrp slot, .vers is pgrpid.
+ * If notepg, c->pgrpid.path is pgrp slot, .vers is noteid.
  */
 #define	NPROC	(sizeof procdir/sizeof(Dirtab))
 #define	QSHIFT	4	/* location in qid of proc slot # */
-#define	QID(q)	(((q).path&0x0000000F)>>0)
-#define	SLOT(q)	((((q).path&0x07FFFFFF0)>>QSHIFT)-1)
-#define	PID(q)	((q).vers)
+
+#define	QID(q)		(((q).path&0x0000000F)>>0)
+#define	SLOT(q)		((((q).path&0x07FFFFFF0)>>QSHIFT)-1)
+#define	PID(q)		((q).vers)
+#define	NOTEID(q)	((q).vers)
 
 void	procctlreq(Proc*, char*, int);
 int	procctlmemio(Proc*, ulong, int, void*, int);
-Chan   *procctlnotepg(Chan*, void*, int);
 Chan   *proctext(Chan*, Proc*);
 Segment *txt2data(Proc*, Segment*);
 int	procstopped(void*);
@@ -171,7 +172,7 @@ procopen(Chan *c, int omode)
 		if(omode!=OWRITE || pg->pgrpid==1)	/* easy to do by mistake */
 			error(Eperm);
 		c->pgrpid.path = pg->index+1;
-		c->pgrpid.vers = pg->pgrpid;
+		c->pgrpid.vers = p->noteid;
 		break;
 	default:
 		pprint("procopen %lux\n", c->qid);
@@ -386,9 +387,9 @@ procwrite(Chan *c, void *va, long n, ulong offset)
 
 	p = proctab(SLOT(c->qid));
 
-	/* Use the remembered pgrp id in the channel rather than the process pgrpid */
-	if(QID(c->qid) == Qnotepg){
-		procctlnotepg(c, va, n);
+	/* Use the remembered noteid in the channel rather than the process pgrpid */
+	if(QID(c->qid) == Qnotepg) {
+		pgrpnote(NOTEID(c->pgrpid), va, n, NUser);
 		return n;
 	}
 
@@ -507,26 +508,6 @@ proctext(Chan *c, Proc *p)
 	poperror();
 
 	return tc;
-}
-
-Chan *
-procctlnotepg(Chan *c, void *va, int n)
-{
-	Pgrp *pg;
-
-	pg = pgrptab(c->pgrpid.path-1);
-	qlock(&pg->debug);
-	if(waserror()){
-		qunlock(&pg->debug);
-		nexterror();
-	}
-	if(pg->pgrpid != c->pgrpid.vers){
-		qunlock(&pg->debug);
-		error(Eprocdied);
-	}
-	pgrpnote(pg, va, n, NUser);
-	poperror();
-	qunlock(&pg->debug);
 }
 
 void
