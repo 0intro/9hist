@@ -421,6 +421,7 @@ notify(Ureg *ur)
 		memmove((char*)sp, u->note[0].msg, ERRLEN);
 		sp -= 3*BY2WD;
 		*(ulong*)(sp+2*BY2WD) = sp+3*BY2WD;	/* arg 2 is string */
+		u->svr1 = ur->r1;			/* save away r1 */
 		ur->r1 = (ulong)u->ureg;		/* arg 1 is ureg* */
 		*(ulong*)(sp+0*BY2WD) = 0;		/* arg 0 is pc */
 		ur->usp = sp;
@@ -550,7 +551,7 @@ syscall(Ureg *aur)
 		noted(&aur, *(ulong*)(sp+BY2WD));	/* doesn't return */
 	splhi();
 	if(r1!=FORK && (u->nnote || p->procctl)){
-		u->svr1 = ret;
+		ur->r1 = ret;				/* load up for noted() */
 		if(notify(ur))
 			return ur->r1;
 	}

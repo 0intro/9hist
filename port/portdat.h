@@ -642,8 +642,8 @@ enum {
 	Sdataqid = Shighqid,
 	Sctlqid = Sdataqid-1,
 	Slowqid = Sctlqid,
-	Streamhi= (9*1024),		/* byte count high water mark */
-	Streambhi= 32,			/* block count high water mark */
+	Streamhi= (32*1024),		/* byte count high water mark */
+	Streambhi= 128,			/* block count high water mark */
 };
 
 /*

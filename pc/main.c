@@ -25,9 +25,9 @@ main(void)
 	mmuinit();
 	trapinit();
 	mathinit();
-	kbdinit();
 	clockinit();
 	faultinit();
+	kbdinit();
 	procinit0();
 	initseg();
 	grpinit();
@@ -422,6 +422,8 @@ exit(void)
 {
 	int i;
 
+etherdump();
+return;
 	u = 0;
 	print("exiting\n");
 	switch(machtype){

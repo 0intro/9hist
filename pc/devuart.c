@@ -236,8 +236,10 @@ uartintr(Uart *up)
 			break;
 	
 		case 4:	/* received data available */
-			cq = up->iq;
 			ch = uartrdreg(up, Data) & 0xff;
+			cq = up->iq;
+			if(cq == 0)
+				break;
 			if(cq->putc)
 				(*cq->putc)(cq, ch);
 			else
@@ -246,6 +248,8 @@ uartintr(Uart *up)
 	
 		case 2:	/* transmitter empty */
 			cq = up->oq;
+			if(cq == 0)
+				break;
 			lock(cq);
 			ch = getc(cq);
 			if(ch < 0){
@@ -263,7 +267,7 @@ uartintr(Uart *up)
 		default:
 			if(s&1)
 				return;
-/*			print("weird modem interrupt\n");/**/
+			print("weird modem interrupt\n");
 			break;
 		}
 	}

@@ -943,7 +943,7 @@ initoutput(Urp *up, int window)
 	if(up->maxblock < 64)
 		up->maxblock = 64;
 	up->maxblock -= 4;
-	up->maxout = 3;
+	up->maxout = 4;
 
 	/*
 	 *  set sequence varialbles

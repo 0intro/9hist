@@ -223,8 +223,6 @@ kbdinit(void)
 
 		/* set up /dev/eia0 as the mouse */
 		uartspecial(0, 0, &mouseq, 1200);
-print("uartspecial done\n");
-delay(1000);
 		break;
 	}
 }

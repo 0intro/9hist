@@ -174,7 +174,6 @@ screeninit(void)
 	ulong *l;
 
 	setmode(&mode12);
-	bigcursor();
 
 	/*
 	 *  swizzle the font longs.

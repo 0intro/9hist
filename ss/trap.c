@@ -278,6 +278,7 @@ notify(Ureg *ur)
 		sp -= 3*BY2WD;
 		*(ulong*)(sp+2*BY2WD) = sp+3*BY2WD;	/* arg 2 is string */
 		*(ulong*)(sp+1*BY2WD) = (ulong)u->ureg;	/* arg 1 is ureg* (compat) */
+		u->svr7 = ur->r7;			/* save away r7 */
 		ur->r7 = (ulong)u->ureg;		/* arg 1 is ureg* */
 		*(ulong*)(sp+0*BY2WD) = 0;		/* arg 0 is pc */
 		ur->usp = sp;
@@ -410,7 +411,7 @@ syscall(Ureg *aur)
 
 	splhi();
 	if(r7!=FORK && (u->p->procctl || u->nnote)){
-		u->svr7 = ret;
+		ur->r7 = ret;				/* load up for noted() */
 		if(notify(ur))
 			return ur->r7;
 	}

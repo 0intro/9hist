@@ -111,7 +111,6 @@ struct Ctlr {
 	Queue	rq;
 	uchar	bnry;
 	uchar	curr;
-	uchar	ovw;
 
 	Etherpkt *xpkt;
 	QLock	xl;
@@ -145,7 +144,7 @@ isxfree(void *arg)
 {
 	Ctlr *cp = arg;
 
-	return cp->xbusy == 0 && cp->ovw == 0;
+	return cp->xbusy == 0;
 }
 
 static void
@@ -378,22 +377,8 @@ intr(Ureg *ur)
 			cp->xbusy = 0;
 			wakeup(&cp->xr);
 		}
-		/*
-		 * the receive ring is full.
-		 * put the NIC into loopback mode to give
-		 * kproc a chance to process some packets.
-		 */
-		if(isr & Ovw){
-			outb(cp->iobase+Cr, 0x21);	/* Page0, RD2|STP */
-			outb(cp->iobase+Rbcr0, 0);
-			outb(cp->iobase+Rbcr1, 0);
-			while((inb(cp->iobase+Isr) & Rst) == 0)
-				delay(1);
-			outb(cp->iobase+Tcr, 0x20);	/* LB0 */
-			outb(cp->iobase+Cr, 0x22);	/* Page0, RD2|STA */
-			cp->ovw = 1;
+		if(isr & Ovw)
 			cp->overflows++;
-		}
 		/*
 		 * we have received packets.
 		 * this is the only place, other than the init code,
@@ -404,6 +389,8 @@ intr(Ureg *ur)
 		if(isr & (Ovw|Prx)){
 			outb(cp->iobase+Cr, 0x62);	/* Page1, RD2|STA */
 			cp->curr = inb(cp->iobase+Curr);
+if(cp->curr == 0)
+    print("C0: b%d i%ux\n", cp->bnry, isr);
 			outb(cp->iobase+Cr, 0x22);	/* Page0, RD2|STA */
 			wakeup(&cp->rr);
 		}
@@ -451,8 +438,14 @@ etherreset(void)
 {
 	Ctlr *cp = &ctlr[0];
 	int i;
+	uchar msr;
 
 	cp->iobase = IObase;
+	msr = 0x40|inb(cp->iobase);
+	outb(cp->iobase, msr);
+for(i = 0; i < 0x10; i++)
+    print("#%2.2ux ", inb(cp->iobase+i));
+print("\n");
 	for(i = 0; i < sizeof(cp->ea); i++)
 		cp->ea[i] = inb(cp->iobase+EA+i);
 	init(cp);
@@ -574,16 +567,6 @@ etherkproc(void *arg)
 			cp->bnry = PREV(bnry, 32);
 			outb(cp->iobase+Bnry, cp->bnry);
 		}
-
-		/*
-		 * if we idled input because of overflow,
-		 * restart
-		 */
-		if(cp->ovw){
-			cp->ovw = 0;
-			outb(cp->iobase+Tcr, 0);
-			wakeup(&cp->xr);
-		}
 	}
 }
 
@@ -668,4 +651,24 @@ long
 etherwrite(Chan *c, char *a, long n, ulong offset)
 {
 	return streamwrite(c, a, n, 0);
+}
+
+void
+etherdump(void)
+{
+	Ctlr *cp = &ctlr[0];
+	uchar bnry, curr, isr;
+	int s;
+
+	s = splhi();
+	bnry = inb(cp->iobase+Bnry);
+	outb(cp->iobase+Cr, 0x62);			/* Page1, RD2|STA */
+	curr = inb(cp->iobase+Curr);
+	outb(cp->iobase+Cr, 0x22);			/* Page0, RD2|STA */
+	isr = inb(cp->iobase+Isr);
+	print("b%d c%d x%d B%d C%d I%ux",
+	    cp->bnry, cp->curr, cp->xbusy, bnry, curr, isr);
+	print("\t%d %d %d %d %d %d %d\n", cp->inpackets, cp->opackets,
+	    cp->crcs, cp->oerrs, cp->frames, cp->overflows, cp->buffs);
+	splx(s);
 }

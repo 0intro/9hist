@@ -95,6 +95,7 @@ struct Line {
 	char	addr[64];
 	char	raddr[64];
 	char	ruser[32];
+	char	other[32];
 	Dk *dp;			/* interface contianing this line */
 };
 
@@ -200,6 +201,7 @@ static int	dklisten(Chan*);
 static void	dkfilladdr(Chan*, char*, int);
 static void	dkfillraddr(Chan*, char*, int);
 static void	dkfillruser(Chan*, char*, int);
+static void	dkfillother(Chan*, char*, int);
 
 extern Qinfo dkinfo;
 
@@ -293,7 +295,7 @@ dkalloc(char *name, int ncsc, int lines)
 	dp->net.listen = dklisten;
 	dp->net.clone = dkcloneline;
 	dp->net.prot = dp->prot;
-	dp->net.ninfo = 4;
+	dp->net.ninfo = 5;
 	dp->net.info[0].name = "addr";
 	dp->net.info[0].fill = dkfilladdr;
 	dp->net.info[1].name = "raddr";
@@ -302,6 +304,8 @@ dkalloc(char *name, int ncsc, int lines)
 	dp->net.info[2].fill = dkfillruser;
 	dp->net.info[3].name = "stats";
 	dp->net.info[3].fill = urpfillstats;
+	dp->net.info[4].name = "other";
+	dp->net.info[4].fill = dkfillother;
 
 	unlock(&dklock);
 	return dp;
@@ -545,6 +549,7 @@ out:
 	if(lp->lineno == dp->ncsc)
 		dp->csc = 0;
 	netdisown(&dp->net, lp->lineno);
+	lp->window = 0;
 
 	lock(dp);
 	dp->ref--;
@@ -945,6 +950,11 @@ dkfillruser(Chan *c, char *buf, int len)
 {
 	strncpy(buf, dk[c->dev].linep[STREAMID(c->qid.path)]->ruser, len);
 }
+void
+dkfillother(Chan *c, char *buf, int len)
+{
+	strncpy(buf, dk[c->dev].linep[STREAMID(c->qid.path)]->other, len);
+}
 
 /*
  *  send a message to the datakit on the common signaling line
@@ -1152,6 +1162,7 @@ dkcall(int type, Chan *c, char *addr, char *nuser, char *machine)
 	 */
 	strncpy(lp->addr, addr, sizeof(lp->addr)-1);
 	strncpy(lp->raddr, addr, sizeof(lp->raddr)-1);
+	sprint(lp->other, "w=%d", lp->window);
 
 	/*
 	 *  reset the protocol
@@ -1366,6 +1377,22 @@ dkanswer(Chan *c, int line, int code)
 	streamwrite(dc, reply, strlen(reply), 1);
 	close(dc);
 	poperror();
+
+	/*
+ 	 *  set window size
+	 */
+	if(code == 0){
+		if(waserror()){
+			close(dc);
+			nexterror();
+		}
+		sprint(reply, "init %d %d", lp->window, Streamhi);
+		dc = dkopenline(dp, line);
+		dc->qid.path = STREAMQID(line, Sctlqid);
+		streamwrite(dc, reply, strlen(reply), 1);
+		close(dc);
+		poperror();
+	}
 }
 
 /*

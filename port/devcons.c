@@ -13,9 +13,9 @@ struct {
 	QLock;			/* qlock to getc */
 }klogq;
 
+IOQ	mouseq;
 IOQ	lineq;			/* lock to getc; interrupt putc's */
 IOQ	printq;
-IOQ	mouseq;
 KIOQ	kbdq;
 
 static Ref	ctl;			/* number of opens to the control file */
