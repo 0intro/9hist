@@ -145,7 +145,7 @@ delay(int ms)
 }
 
 void
-µdelay(ulong µs)
+microdelay(int µs)
 {
 	ulong start;
 	int i;

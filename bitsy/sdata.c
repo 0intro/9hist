@@ -368,7 +368,7 @@ ataready(int cmdport, int ctlport, int dev, int reset, int ready, int micro)
 			atadebug(0, 0, "ataready: %d 0x%2.2uX\n", micro, as);
 			break;
 		}
-		µdelay(4);
+		microdelay(4);
 	}
 	atadebug(cmdport, ctlport, "ataready: timeout");
 
@@ -431,7 +431,7 @@ atarwmmode(Drive* drive, int cmdport, int ctlport, int dev)
 		return 0;
 	outb(cmdport+Count, rwm);
 	outb(cmdport+Command, Csm);
-	µdelay(4);
+	microdelay(4);
 	as = ataready(cmdport, ctlport, 0, Bsy, Drdy|Df|Err, 1000);
 	inb(cmdport+Status);
 	if(as < 0 || (as & (Df|Err)))
@@ -482,7 +482,7 @@ ataidentify(int cmdport, int ctlport, int dev, int pkt, void* info)
 	if(as < 0)
 		return as;
 	outb(cmdport+Command, command);
-	µdelay(4);
+	microdelay(4);
 
 	as = ataready(cmdport, ctlport, 0, Bsy, Drq|Err, 400*1000);
 	if(as < 0)
@@ -600,11 +600,11 @@ atasrst(int ctlport)
 	 * Also, there will be problems here if overlapped commands
 	 * are ever supported.
 	 */
-	µdelay(20);
+	microdelay(20);
 	outb(ctlport+Dc, Srst);
-	µdelay(20);
+	microdelay(20);
 	outb(ctlport+Dc, 0);
-	µdelay(4*1000);
+	microdelay(4*1000);
 }
 
 static SDev*
@@ -631,7 +631,7 @@ ataprobe(int cmdport, int ctlport, int irq)
 	dev = Dev0;
 	if(inb(ctlport+As) & Bsy){
 		outb(cmdport+Dh, dev);
-		µdelay(5);
+		microdelay(5);
 trydev1:
 		atadebug(cmdport, ctlport, "ataprobe bsy");
 		outb(cmdport+Cyllo, 0xAA);
@@ -732,7 +732,7 @@ tryedd1:
 			}
 			else{
 				outb(cmdport+Dh, Dev0);
-				µdelay(1);
+				microdelay(1);
 			}
 		}
 #endif
@@ -846,13 +846,13 @@ atanop(Drive* drive, int subcommand)
 	ctlr->command = Cnop;		/* debugging */
 	outb(cmdport+Command, Cnop);
 
-	µdelay(1);
+	microdelay(1);
 	ctlport = ctlr->ctlport;
 	for(timeo = 0; timeo < 1000; timeo++){
 		as = inb(ctlport+As);
 		if(!(as & Bsy))
 			break;
-		µdelay(1);
+		microdelay(1);
 	}
 	drive->error |= Abrt;
 }
@@ -1078,7 +1078,7 @@ atapktio(Drive* drive, uchar* cmd, int clen)
 	outb(cmdport+Command, Cpkt);
 
 	if((drive->info[Iconfig] & 0x0060) != 0x0020){
-		µdelay(1);
+		microdelay(1);
 		as = ataready(cmdport, ctlport, 0, Bsy, Drq|Chk, 4*1000);
 		if(as < 0)
 			r = SDtimeout;
@@ -1180,7 +1180,7 @@ atageniostart(Drive* drive, int lba)
 	switch(drive->command){
 	case Cws:
 	case Cwsm:
-		µdelay(1);
+		microdelay(1);
 		as = ataready(cmdport, ctlport, 0, Bsy, Drq|Err, 1000);
 		if(as < 0 || (as & Err)){
 			iunlock(ctlr);

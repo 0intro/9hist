@@ -18,7 +18,6 @@ void	clockpower(int);
 #define	coherence()
 #define	dcflush(a, b)
 void	delay(int);
-void	µdelay(ulong);
 void	µcpower(int);
 void	deepsleep(void);
 void	dmainit(void);
