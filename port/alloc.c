@@ -528,13 +528,7 @@ pooldump(Pool *p)
 */
 
 void
-poolsetcompact(Pool *p, void (*move)(void*, void*))
-{
-	p->move = move;
-}
-
-void
-poolsetparam(char *name, ulong maxsize, int quanta, int chunk)
+poolsetparam(char *name, ulong maxsize, int quanta, int chunk, void (*move)(void*, void*))
 {
 	Pool *p;
 	int i;
@@ -542,12 +536,14 @@ poolsetparam(char *name, ulong maxsize, int quanta, int chunk)
 	for(i=0; i<table.n; i++){
 		p = &table.pool[i];
 		if(strcmp(name, p->name) == 0){
-			if(maxsize)
+			if(maxsize != 0)
 				p->maxsize = maxsize;
-			if(quanta)
+			if(quanta != 0)
 				p->quanta = quanta;
-			if(chunk)
+			if(chunk != 0)
 				p->chunk = chunk;
+			if(move != nil)
+				p->move = move;
 			return;
 		}
 	}
