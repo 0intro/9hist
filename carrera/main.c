@@ -503,7 +503,7 @@ rdbginit(void)
 {
 	uchar *vec;
 	ulong jba;
-return;/**/
+/*return;/**/
 	/* Only interested in the PC */
 	Mipsjmpbuf.pc = 0x8001C020;
 
@@ -523,5 +523,5 @@ return;/**/
 	vec[7] = jba;
 
 	/* Install the debugger code in a known place */
-	memmove((void*)0x8001C000, rdbgcode, rdbglen);
+	memmove((void*)0xA001C000, rdbgcode, rdbglen);
 }
