@@ -53,10 +53,8 @@ rfork(ulong flag)
 	k = kmap(p->upage);
 	upa = VA(k);
 
-	/*
-	 * Save time: only copy u-> data and useful stack
-	 */
-	clearmmucache();	/* so child doesn't inherit any of your mappings */
+	/* Save time: only copy u-> data and useful stack */
+	clearmmucache();
 	memmove((void*)upa, u, sizeof(User));
 	n = USERADDR+BY2PG - (ulong)&lastvar;
 	n = (n+32) & ~(BY2WD-1);	/* be safe & word align */
@@ -69,9 +67,7 @@ rfork(ulong flag)
 		if(u->p->seg[i])
 			p->seg[i] = dupseg(u->p->seg[i]);
 
-	/*
-	 * Refs
-	 */
+	/* Refs */
 	incref(u->dot);				/* File descriptors etc. */
 
 	if(flag & Forkfd)
@@ -98,6 +94,9 @@ rfork(ulong flag)
 		p->egrp = u->p->egrp;			/* Environment group */
 		incref(p->egrp);
 	}
+
+	p->hang = u->p->hang;
+	p->procmode = u->p->procmode;
 
 	/*
 	 * Sched
@@ -355,6 +354,9 @@ sysexec(ulong *arg)
 	u->notified = 0;
 	procsetup(p);
 	unlock(&p->debug);
+	if(p->hang)
+		p->procctl = Proc_stopme;
+
 	return (USTKTOP-BY2WD);	/* address of user-level clock */
 }
 

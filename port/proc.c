@@ -213,42 +213,37 @@ newproc(void)
 {
 	Proc *p;
 
-loop:
-	lock(&procalloc);
-	if(p = procalloc.free){		/* assign = */
-		procalloc.free = p->qnext;
-		p->state = Scheding;
-		p->psstate = "New";
+	for(;;) {
+		lock(&procalloc);
+		if(p = procalloc.free){		/* assign = */
+			procalloc.free = p->qnext;
+			p->state = Scheding;
+			p->psstate = "New";
+			unlock(&procalloc);
+			p->mach = 0;
+			p->qnext = 0;
+			p->nchild = 0;
+			p->nwait = 0;
+			p->waitq = 0;
+			p->pgrp = 0;
+			p->egrp = 0;
+			p->fgrp = 0;
+			p->pdbg = 0;
+			p->fpstate = FPinit;
+			p->kp = 0;
+			p->procctl = 0;
+			p->notepending = 0;
+			memset(p->seg, 0, sizeof p->seg);
+			lock(&pidalloc);
+			p->pid = ++pidalloc.pid;
+			unlock(&pidalloc);
+			if(p->pid == 0)
+				panic("pidalloc");
+			return p;
+		}
 		unlock(&procalloc);
-		p->mach = 0;
-		p->qnext = 0;
-		p->nchild = 0;
-		p->nwait = 0;
-		p->waitq = 0;
-		p->pgrp = 0;
-		p->egrp = 0;
-		p->fgrp = 0;
-		p->procmode = 0644;
-		p->fpstate = FPinit;
-		p->kp = 0;
-		p->procctl = 0;
-		p->notepending = 0;
-		memset(p->seg, 0, sizeof p->seg);
-		lock(&pidalloc);
-		p->pid = ++pidalloc.pid;
-		unlock(&pidalloc);
-		if(p->pid == 0)
-			panic("pidalloc");
-		return p;
+		resrcwait("no procs");
 	}
-	unlock(&procalloc);
-	print("no procs\n");
-	if(u == 0)
-		panic("newproc");
-	u->p->state = Wakeme;
-	alarm(1000, wakeme, u->p);
-	sched();
-	goto loop;
 }
 
 void
@@ -584,8 +579,14 @@ pexit(char *exitstr, int freemem)
 	/*
 	 * sched() cannot wait on these locks
 	 */
-	lock(&procalloc);
 	lock(&c->debug);
+	/* release debuggers */
+	if(c->pdbg) {
+		wakeup(&c->pdbg->sleep);
+		c->pdbg = 0;
+	}
+
+	lock(&procalloc);
 	lock(&palloc);
 
 	c->state = Moribund;
@@ -740,11 +741,21 @@ procctl(Proc *p)
 	switch(p->procctl) {
 	case Proc_exitme:
 		pexit("Killed", 1);
+	case Proc_traceme:
+		if(u->nnote == 0)
+			return;
+		/* No break */
 	case Proc_stopme:
 		p->procctl = 0;
 		state = p->psstate;
 		p->psstate = "Stopped";
-
+		/* free a waiting debugger */
+		lock(&p->debug);
+		if(p->pdbg) {
+			wakeup(&p->pdbg->sleep);
+			p->pdbg = 0;
+		}
+		unlock(&p->debug);
 		p->state = Stopped;
 		sched();
 		p->psstate = state;

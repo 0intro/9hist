@@ -55,6 +55,7 @@ int	readlog(ulong, char*, ulong);
 void	restfpregs(FPsave*, ulong);
 #define	screenputs
 void	setvmevec(int, void (*)(int));
+void	setregisters(Ureg*, char*, char*, int);
 void	sinit(void);
 uchar*	smap(int, uchar*);
 void	sunmap(int, uchar*);

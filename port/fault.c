@@ -123,6 +123,9 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 		panic("fault");
 	}
 
+	if(s->flushme)
+		memset((*pg)->cachectl, PG_TXTFLUSH, sizeof(new->cachectl));
+
 	qunlock(&s->lk);
 
 	/*
@@ -201,8 +204,6 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 			new->daddr = daddr;
 			cachepage(new, s->image);
 			*p = new;
-			if(s->flushme)
-				memset(new->cachectl, PG_TXTFLUSH, sizeof(new->cachectl));
 		}
 		else 
 			putpage(new);
@@ -234,8 +235,6 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 			cachepage(new, &swapimage);
 			putswap(*p);
 			*p = new;
-			if(s->flushme)
-				memset(new->cachectl, PG_TXTFLUSH, sizeof(new->cachectl));
 		}
 		else
 			putpage(new);

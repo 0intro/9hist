@@ -111,8 +111,7 @@ clock(Ureg *ur)
 			}
 			if(ur->status & KUP){
 				(*(ulong*)(USTKTOP-BY2WD)) += TK2MS(1);	/* profiling clock */
-				if(u->nnote)
-					notify(ur);
+				notify(ur);
 			}
 		}
 		return;

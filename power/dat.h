@@ -216,7 +216,7 @@ struct User
 	int	nerrlab;
 	Label	errlab[NERR];
 	char	error[ERRLEN];
-	FPsave	fpsave;			/* address of this is known by vdb */
+	FPsave	fpsave;			/* address of this is known by db */
 	char	elem[NAMELEN];		/* last name element from namec */
 	Chan	*slash;
 	Chan	*dot;
@@ -229,7 +229,8 @@ struct User
 	short	notified;		/* sysnoted is due */
 	Note	lastnote;
 	int	(*notify)(void*, char*);
-	void	*ureg;
+	void	*ureg;			/* User registers for notes */
+	void	*dbgreg;		/* User registers for debugging in proc */
 	ulong	svstatus;
 	/*
 	 *  machine dependent User stuff

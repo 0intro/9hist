@@ -82,9 +82,10 @@ trap(Ureg *ur)
 	SET(x);
 	ecode = EXCCODE(ur->cause);
 	user = ur->status&KUP;
-	if(u)
+	if(u) {
 		u->p->pc = ur->pc;		/* BUG */
-
+		u->dbgreg = ur;
+	}
 	switch(ecode){
 	case CINT:
 		if(u && u->p->state==Running){
@@ -165,12 +166,8 @@ trap(Ureg *ur)
 		}
 	}
 
-	if(user) {
-		if(u->p->procctl)
-			procctl(u->p);
-		if(u->nnote)
-			notify(ur);
-	}
+	if(user)
+		notify(ur);
 
 	splhi();
 	if(user && u && u->p->fpstate == FPinactive) {
@@ -372,11 +369,11 @@ notify(Ureg *ur)
 {
 	ulong sp;
 
-	lock(&u->p->debug);
-	if(u->nnote==0){
-		unlock(&u->p->debug);
+	if(u->p->procctl)
+		procctl(u->p);
+	if(u->nnote == 0)
 		return;
-	}
+	lock(&u->p->debug);
 	u->p->notepending = 0;
 	if(u->note[0].flag!=NUser && (u->notified || u->notify==0)){
 		if(u->note[0].flag == NDebug)
@@ -484,6 +481,7 @@ syscall(Ureg *aur)
 	u->p->insyscall = 1;
 	ur = aur;
 	u->p->pc = ur->pc;		/* BUG */
+	u->dbgreg = aur;
 	ur->cause = 15<<2;		/* for debugging: system call is undef 15;
 	/*
 	 * since the system call interface does not
@@ -496,9 +494,6 @@ syscall(Ureg *aur)
 		ur->status &= ~CU1;
 	}
 	spllo();
-
-	if(u->p->procctl)
-		procctl(u->p);
 
 	r1 = ur->r1;
 	sp = ur->sp;
@@ -528,15 +523,13 @@ syscall(Ureg *aur)
 	}
 	ur->pc += 4;
 	u->nerrlab = 0;
-	if(u->p->procctl)
-		procctl(u->p);
 
 	splhi();
 	u->p->psstate = 0;
 	u->p->insyscall = 0;
 	if(r1 == NOTED)					/* ugly hack */
 		noted(&aur, *(ulong*)(sp+BY2WD));	/* doesn't return */
-	if(u->nnote && r1!=FORK){
+	if(u->p->procctl || (u->nnote && r1!=FORK)){
 		ur->r1 = ret;
 		notify(ur);
 	}
@@ -571,4 +564,17 @@ setvmevec(int v, void (*f)(int))
 	if(g && g != novme)
 		print("second setvmevec to 0x%.2x\n", v);
 	vmevec[v] = f;
+}
+
+/* This routine must save the values of registers the user is not permitted to write from devproc 
+ * and the restore them before returning
+ */
+void
+setregisters(Ureg *xp, char *pureg, char *uva, int n)
+{
+	ulong status;
+
+	status = xp->status;
+	memmove(pureg, uva, n);
+	xp->status = status;
 }

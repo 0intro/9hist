@@ -253,6 +253,7 @@ userinit(void)
 	p->pgrp = newpgrp();
 	p->egrp = newegrp();
 	p->fgrp = newfgrp();
+	p->procmode = 0644;
 
 	strcpy(p->text, "*init*");
 	strcpy(p->user, eve);

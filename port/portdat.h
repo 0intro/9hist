@@ -470,6 +470,7 @@ enum
 {
 	Proc_stopme = 1,
 	Proc_exitme = 2,
+	Proc_traceme = 3,
 };
 
 /*
@@ -518,18 +519,20 @@ struct Proc
 	int	fpstate;
 
 	Lock	debug;			/* to access debugging elements of User */
+	Proc	*pdbg;			/* the debugging process */
 	ulong	procmode;		/* proc device file mode */
+	int	hang;			/* hang at next exec for debug */
+	int	procctl;		/* Control for /proc debugging */
+	ulong	pc;			/* DEBUG only */
 
 	Rendez	*r;			/* rendezvous point slept on */
-	Rendez	sleep;			/* place for tsleep and syssleep */
+	Rendez	sleep;			/* place for tsleep/syssleep/debug */
 	int	notepending;		/* note issued but not acted on */
-	ulong	pc;			/* DEBUG only */
 	int	kp;			/* true if a kernel process */
 	Proc	*palarm;		/* Next alarm time */
 	ulong	alarm;			/* Time of call */
 	int 	hasspin;		/* I hold a spin lock */
 	int	newtlb;			/* Pager has touched my tables so I must flush */
-	int	procctl;		/* Control for /proc debugging */
 
 	ulong	rendtag;		/* Tag for rendezvous */ 
 	ulong	rendval;		/* Value for rendezvous */
