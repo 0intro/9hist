@@ -102,7 +102,8 @@ VGAmode mode13 =
 
 static	Rectangle mbb;
 static	Rectangle NULLMBB = {10000, 10000, -10000, -10000};
-static	void nopage(int), tsengpage(int), parapage(int);
+static	void nopage(int), tsengpage(int), tridentpage(int), parapage(int);
+static	void vgaupdate(void);
 
 /*
  *  definitions of known cards
@@ -116,17 +117,19 @@ struct Vgacard
 
 enum
 {
-	Tseng,		/* tseng labs te4000 */
+	Ati,		/* ATI */
 	Pvga1a,		/* paradise */
-	Ati,
+	Trident,	/* Trident 8900 */
+	Tseng,		/* tseng labs te4000 */
 	Generic,
 };
 
 Vgacard vgacards[] =
 {
-[Pvga1a]	{ "pvga1a", parapage, },
-[Tseng]		{ "tseng", tsengpage, },
 [Ati]		{ "ati", nopage, },
+[Pvga1a]	{ "pvga1a", parapage, },
+[Trident]	{ "trident", tridentpage, },
+[Tseng]		{ "tseng", tsengpage, },
 [Generic]	{ "generic", nopage, },
 		{ 0, 0, },
 };
@@ -221,8 +224,10 @@ vgaread(Chan *c, void *buf, long n, ulong offset)
 	case Qvgatype:
 		return readstr(offset, buf, n, vgacard->name);
 	case Qvgaport:
+		/* at the moment, I need freedom for the ATI card - ches
 		if (offset + n >= 0x8000 || offset < 0x300)
 			error(Ebadarg);
+		*/
 		for (port=offset; port<offset+n; port++)
 			*cp++ = inb(port);
 		return n;
@@ -286,7 +291,9 @@ vgawrite(Chan *c, void *buf, long n, ulong offset)
 		|| maxx > 1280 || maxy > 1024
 		|| ldepth > 3 || ldepth < 0)
 			error(Ebadarg);
+		cursoroff(1);
 		setscreen(maxx, maxy, ldepth);
+		cursoron(1);
 		return n;
 	case Qvgaport:
 		cp = buf;
@@ -498,7 +505,6 @@ setscreen(int maxx, int maxy, int ldepth)
 	vgascreen.r.min = Pt(0, 0);
 	vgascreen.r.max = Pt(maxx, vgamaxy);
 	vgascreen.clipr = vgascreen.r;
-	memset(vgascreen.base, 0xff, vgascreen.width * BY2WD * vgamaxy);
 
 	/*
 	 *  setup new soft screen, free memory for old screen
@@ -545,6 +551,12 @@ setscreen(int maxx, int maxy, int ldepth)
 		break;
 	}
 	cga = 0;
+
+	/*
+	 * clear screen
+	 */
+	mbb = gscreen.r;
+	vgaupdate();
 }
 
 void
@@ -612,6 +624,11 @@ static void
 nopage(int page)
 {
 	USED(page);
+}
+static void
+tridentpage(int page)
+{
+	srout(0x0e, page^0x02);	/* yes, the page bit needs to be toggled! */
 }
 static void
 tsengpage(int page)

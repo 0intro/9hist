@@ -33,6 +33,8 @@ int		consactive(void);
 void		consdebug(void);
 Block*		copyb(Block*, int);
 void		copypage(Page*, Page*);
+void		cursoron(int);
+void		cursoroff(int);
 Segment*	data2txt(Segment*);
 int		decref(Ref*);
 int		decrypt(void*, void*, int);

@@ -159,8 +159,6 @@ GBitmap cursorback =
 };
 
 void	Cursortocursor(Cursor*);
-void	cursoron(int);
-void	cursoroff(int);
 int	mousechanged(void*);
 
 enum{

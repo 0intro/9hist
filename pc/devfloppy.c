@@ -392,6 +392,7 @@ changed(Chan *c, Drive *dp)
 	 *  if floppy has changed or first time through
 	 */
 	if((inb(Pdir)&Fchange) || dp->vers == 0){
+DPRINT("changed: msr %ux dir %ux\n", inb(Pmsr), inb(Pdir));
 		dp->vers++;
 		setdef(dp);
 		start = dp->t;
@@ -406,9 +407,9 @@ changed(Chan *c, Drive *dp)
 					break;
 			}
 			floppydir[NFDIR*dp->dev].length = dp->t->cap;
+			floppyon(dp);
 			if(dp->t == start)
 				nexterror();
-			floppyon(dp);
 			DPRINT("changed: trying %s\n", dp->t->name);
 		}
 		floppyxfer(dp, Fread, dp->cache, 0, dp->t->tsize);
@@ -751,6 +752,8 @@ static void
 floppywait(void)
 {
 	tsleep(&fl.r, cmddone, 0, 2000);
+	if(!cmddone(0))
+		floppyintr(0);
 }
 
 /*
@@ -762,6 +765,7 @@ floppyrecal(Drive *dp)
 	dp->ccyl = -1;
 	dp->cyl = -1;
 
+DPRINT("floppyrecal: msr %ux dir %ux\n", inb(Pmsr), inb(Pdir));
 	fl.ncmd = 0;
 	fl.cmd[fl.ncmd++] = Frecal;
 	fl.cmd[fl.ncmd++] = dp->dev;
@@ -803,6 +807,7 @@ floppyrevive(void)
 	 *  reset the controller if it's confused
 	 */
 	if(fl.confused){
+DPRINT("floppyrevive: msr %ux dir %ux\n", inb(Pmsr), inb(Pdir));
 		/* reset controller and turn all motors off */
 		splhi();
 		fl.cmd[0] = 0;
@@ -816,7 +821,8 @@ floppyrevive(void)
 		floppywait();
 		fl.confused = 0;
 		outb(Pdsr, 0);
-		fl.rate = -1;
+		fl.rate = 0;
+DPRINT("floppyrevive: msr %ux dir %ux\n", inb(Pmsr), inb(Pdir));
 	}
 }
 
