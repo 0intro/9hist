@@ -237,6 +237,7 @@ newchan(void)
 	c->iounit = 0;
 	c->umh = 0;
 	c->uri = 0;
+	c->dri = 0;
 	c->aux = 0;
 	c->mchan = 0;
 	c->mcp = 0;
@@ -546,9 +547,9 @@ cunmount(Chan *mnt, Chan *mounted)
 	Mount *f, **p;
 
 if(mnt->umh)	/* should not happen */
-	print("cunmount newp extra umh\n");
+	print("cunmount newp extra umh %p has %p\n", mnt, mnt->umh);
 if(mounted && mounted->umh)
-	print("cunmount old extra umh\n");
+	print("cunmount old extra umh %p has %p\n", mounted, mounted->umh);
 
 	pg = up->pgrp;
 	wlock(&pg->ns);
@@ -771,7 +772,7 @@ walk(Chan **cp, char **names, int nnames, int nomount)
 				runlock(&mh->lock);
 				nexterror();
 			}
-			for(f = mh->mount; f; f = f->next)
+			for(f = mh->mount->next; f; f = f->next)
 				if((wq = devtab[f->to->type]->walk(f->to, nil, names, ntry)) != nil)
 					break;
 			poperror();
@@ -969,6 +970,7 @@ namec(char *aname, int amode, int omode, ulong perm)
 	Elemlist e;
 	Rune r;
 	Mhead *m;
+	char createerr[ERRMAX];
 	char *name;
 
 	name = aname;
@@ -1086,29 +1088,36 @@ namec(char *aname, int amode, int omode, ulong perm)
 		cnameclose(c->name);
 		c->name = cname;
 
-		if(amode == Aremove){
+		switch(amode){
+		case Aremove:
 			putmhead(m);
 			break;
-		}
 
+		case Aopen:
+		case Acreate:
 if(c->umh != nil){
 	print("cunique umh\n");
 	putmhead(c->umh);
 }
-		c->umh = m;
+			if(c->qid.type&QTDIR)
+				c->umh = m;
+			else
+				putmhead(m);
 
-		/* save registers else error() in open has wrong value of c saved */
-		saveregisters();
+			/* save registers else error() in open has wrong value of c saved */
+			saveregisters();
 
-		if(omode == OEXEC)
-			c->flag &= ~CCACHE;
+			if(omode == OEXEC)
+				c->flag &= ~CCACHE;
 
-		c = devtab[c->type]->open(c, omode&~OCEXEC);
+			c = devtab[c->type]->open(c, omode&~OCEXEC);
 
-		if(omode & OCEXEC)
-			c->flag |= CCEXEC;
-		if(omode & ORCLOSE)
-			c->flag |= CRCLOSE;
+			if(omode & OCEXEC)
+				c->flag |= CCEXEC;
+			if(omode & ORCLOSE)
+				c->flag |= CRCLOSE;
+			break;
+		}
 		break;
 
 	case Atodir:
@@ -1222,8 +1231,10 @@ if(c->umh != nil){
 				putmhead(m);
 			if(omode & OEXCL)
 				nexterror();
+			/* save error */
+			kstrcpy(createerr, up->error, sizeof createerr);
 			if(walk(&c, e.elems+e.nelems-1, 1, nomount) < 0)
-				nexterror();
+				error(createerr);	/* report true error */
 			omode |= OTRUNC;
 			goto Open;
 		}
@@ -1242,6 +1253,7 @@ if(c->umh != nil){
 		kstrcpy(up->genbuf, ".", sizeof up->genbuf);
 	free(e.name);
 	free(e.elems);
+
 	return c;
 }
 

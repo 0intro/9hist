@@ -557,6 +557,7 @@ sseek(ulong *arg)
 	}
 	*(vlong*)arg[0] = off;
 	c->uri = 0;
+	c->dri = 0;
 	cclose(c);
 	poperror();
 }
@@ -783,7 +784,7 @@ sysunmount(ulong *arg)
 			nexterror();
 		}
 		validaddr(arg[0], 1, 0);
-		cmounted = namec((char*)arg[0], Aopen, OREAD, 0);
+		cmounted = namec((char*)arg[0], Aaccess, OREAD, 0);
 		poperror();
 	}
 

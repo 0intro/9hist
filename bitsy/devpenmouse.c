@@ -92,7 +92,10 @@ extern	Memimage*	gscreen;
 
 void
 penbutton(int up, int b) {
-	if (b & 0x20) {
+	// button 5 (side button) immediately causes an event
+	// when the pen is down (button 1), other buttons also
+	// cause events, allowing chording with button 1
+	if ((b & 0x20) || (mouse.buttons & 0x1)) {
 		if (up)
 			mouse.buttons &= ~b;
 		else

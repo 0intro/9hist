@@ -276,6 +276,7 @@ vgactl(char* a)
 		return;
 	}
 	else if(strcmp(field[0], "drawinit") == 0){
+		memimagedraw(scr->gscreen, scr->gscreen->r, memblack, ZP, nil, ZP);
 		if(scr && scr->dev && scr->dev->drawinit)
 			scr->dev->drawinit(scr);
 		return;

@@ -155,6 +155,7 @@ struct Chan
 	Chan*	umc;			/* channel in union; held for union read */
 	QLock	umqlock;		/* serialize unionreads */
 	int	uri;			/* union read index */
+	int	dri;			/* devdirread index */
 	ulong	mountid;
 	Mntcache *mcp;			/* Mount cache pointer */
 	Mnt		*mux;		/* Mnt for clients using me for messages */
@@ -609,7 +610,8 @@ struct Proc
 	Sargs	s;		/* address of this is known by db */
 	int	nerrlab;
 	Label	errlab[NERR];
-	char	error[ERRMAX];
+	char	syserror[ERRMAX];	/* last error from a system call */
+	char	error[ERRMAX];		/* reason we're unwinding the error stack */
 	char	genbuf[128];	/* buffer used e.g. for last name element from namec */
 	Chan	*slash;
 	Chan	*dot;

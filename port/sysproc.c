@@ -633,40 +633,35 @@ werrstr(char *fmt, ...)
 	va_end(va);
 }
 
+static long
+generrstr(char *buf, uint nbuf)
+{
+	char tmp[sizeof up->syserror];
+
+	validaddr((ulong)buf, nbuf, 1);
+	if(nbuf > sizeof tmp)
+		nbuf = sizeof tmp;
+	memmove(tmp, buf, nbuf);
+	/* make sure it's NUL-terminated */
+	tmp[nbuf-1] = '\0';
+	memmove(buf, up->syserror, nbuf);
+	buf[nbuf-1] = '\0';
+	memmove(up->syserror, tmp, nbuf);
+	return 0;
+}
+
 long
 syserrstr(ulong *arg)
 {
-	char *e, tmp[sizeof up->error];
-	uint n;
-
-	n = arg[1];
-	if(n > sizeof tmp)
-		n = sizeof tmp;
-	validaddr(arg[0], n, 1);
-	e = (char*)arg[0];
-	memmove(tmp, e, n);
-	/* make sure it's NUL-terminated */
-	tmp[n-1] = '\0';
-	memmove(e, up->error, n);
-	e[n-1] = '\0';
-	memmove(up->error, tmp, n);
-	return 0;
+	return generrstr((char*)arg[0], arg[1]);
 }
 
 /* compatibility for old binaries */
 long
 sys_errstr(ulong *arg)
 {
-	char *e, tmp[64];
-
-	validaddr(arg[0], 64, 1);
-	e = (char*)arg[0];
-	memmove(tmp, e, 64);
-	memmove(e, up->error, 64);
-	memmove(up->error, tmp, 64);
-	return 0;
+	return generrstr((char*)arg[0], 64);
 }
-
 
 long
 sysnotify(ulong *arg)

@@ -688,7 +688,8 @@ TEXT power_down(SB), $-4
 	MOVW	R2,0x10(R3)
 	MOVW	$0,R2
 	MOVW	R2,0x18(R3)
-	MOVW	$power_resume+0(SB),R2
+/*	MOVW	$power_resume+0(SB),R2	*/
+	MOVW	$0,R2
 	MOVW	R2,0x8(R3)
 	MOVW	$0,R2
 	MOVW	R2,0x4(R6)

@@ -275,7 +275,6 @@ powerinit(void)
 void
 idlehands(void)
 {
-#ifdef notdef
 	char *msgb = "idlehands called with splhi\n";
 	char *msga = "doze returns with splhi\n";
 
@@ -288,6 +287,5 @@ idlehands(void)
 		serialputs(msgb, strlen(msgb));
 		spllo();
 	}
-#endif
 }
 

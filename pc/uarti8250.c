@@ -135,14 +135,14 @@ static Uart i8250uart[2] = {
 	.name	= "COM1",
 	.freq	= UartFREQ,
 	.phys	= &i8250physuart,
-	.special=0,
+	.special= 0,
 	.next	= &i8250uart[1], },
 
 {	.regs	= &i8250ctlr[1],
 	.name	= "COM2",
 	.freq	= UartFREQ,
 	.phys	= &i8250physuart,
-	.special=0,
+	.special= 0,
 	.next	= nil, },
 };
 

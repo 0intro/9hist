@@ -410,7 +410,6 @@ mntwalk(Chan *c, Chan *nc, char **name, int nname)
 	if(waserror()) {
 		mntfree(r);
 		nexterror();
-		return nil;
 	}
 	r->request.type = Twalk;
 	r->request.fid = c->fid;

@@ -189,6 +189,7 @@ vgascreenwin(VGAscr* scr)
 	curpos = window.min;
 
 	screenputs = vgascreenputs;
+
 }
 
 /*

@@ -72,9 +72,6 @@ screensize(int x, int y, int z, ulong chan)
 	if(gscreen == nil)
 		return -1;
 
-/*	memset(gscreen->data->bdata, 0x15, (x*y*z+7)/8);	/* RSC BUG */
-	memfillcolor(gscreen, DRed);
-
 	scr->palettedepth = 6;	/* default */
 	scr->gscreendata = &gscreendata;
 	scr->memdefont = getmemdefont();

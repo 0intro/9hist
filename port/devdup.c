@@ -103,7 +103,7 @@ dupread(Chan *c, void *va, long n, vlong offset)
 {
 	char *a = va;
 	char buf[256];
-	int fd, twicefd, m;
+	int fd, twicefd;
 	Fgrp *f;
 
 	if(c->qid.type == QTDIR)

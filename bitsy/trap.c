@@ -462,6 +462,9 @@ syscall(Ureg* ureg)
 
 		ret = systab[scallnr](up->s.args);
 		poperror();
+	}else{
+		/* failure: save the error buffer for errstr */
+		kstrcpy(up->syserror, up->error, sizeof up->syserror);
 	}
 	if(up->nerrlab){
 		print("bad errstack [%d]: %d extra\n", scallnr, up->nerrlab);

@@ -254,20 +254,18 @@ devstat(Chan *c, uchar *db, int n, Dirtab *tab, int ntab, Devgen *gen)
 long
 devdirread(Chan *c, char *d, long n, Dirtab *tab, int ntab, Devgen *gen)
 {
-	long k, m, dsz;
+	long m, dsz;
 	struct{
 		Dir;
 		char slop[100];
 	}dir;
 
-	k = c->offset;
-	for(m=0; m<n; k++) {
-		switch((*gen)(c, nil, tab, ntab, k, &dir)){
+	for(m=0; m<n; c->dri++) {
+		switch((*gen)(c, nil, tab, ntab, c->dri, &dir)){
 		case -1:
 			return m;
 
 		case 0:
-			c->offset++;	/* BUG??? (was DIRLEN: skip entry) */
 			break;
 
 		case 1:
