@@ -54,6 +54,8 @@ void	mclose(Mnt*, Chan*);
 void	mntrecover(Mnt*, Mntrpc*);
 Chan*	mntchan(void);
 
+int defmaxmsg = MAXFDATA;
+
 enum
 {
 	Tagspace	= 1,
@@ -136,7 +138,7 @@ mntattach(char *muxattach)
 	m->rip = 0;
 	m->c = c;
 	m->c->flag |= CMSG;
-	m->blocksize = MAXFDATA;	/**/
+	m->blocksize = defmaxmsg;
 	m->flags = bogus.flags & ~MCACHE;
 
 	switch(devchar[m->c->type]) {

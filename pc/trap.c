@@ -183,7 +183,7 @@ trapinit(void)
 	 *  Set the 8259 as master with edge triggered
 	 *  input with fully nested interrupts.
 	 */
-	outb(Int0ctl, (1<<4)|(1<<3)|(1<<0));	/* ICW1 - master, level triggered,
+	outb(Int0ctl, (1<<4)|(0<<3)|(1<<0));	/* ICW1 - master, level triggered,
 					  	 ICW4 will be sent */
 	outb(Int0aux, Int0vec);		/* ICW2 - interrupt vector offset */
 	outb(Int0aux, 0x04);		/* ICW3 - have slave on level 2 */
@@ -192,7 +192,7 @@ trapinit(void)
 	/*
 	 *  Set up the second 8259 interrupt processor.
 	 *  Make 8259 interrupts start at CPU vector Int0vec.
-	 *  Set the 8259 as master with edge triggered
+	 *  Set the 8259 as master with level triggered
 	 *  input with fully nested interrupts.
 	 */
 	outb(Int1ctl, (1<<4)|(1<<3)|(1<<0));	/* ICW1 - master, level triggered,
@@ -529,21 +529,23 @@ noted(Ureg *ur, ulong arg0)
 {
 	Ureg *nur;
 
-	nur = up->ureg;		/* pointer to user returned Ureg struct */
-	if(nur->cs!=up->svcs || nur->ss!=up->svss
-	|| (nur->flags&0xff00)!=(up->svflags&0xff00)){
-		pprint("bad noted ureg cs %ux ss %ux flags %ux\n", nur->cs, nur->ss,
-			nur->flags);
-    Die:
-		pexit("Suicide", 0);
-	}
 	qlock(&up->debug);
-	if(!up->notified){
-		pprint("call to noted() when not notified\n");
+	if(!up->notified) {
 		qunlock(&up->debug);
+		pprint("call to noted() when not notified\n");
 		return;
 	}
 	up->notified = 0;
+
+	nur = up->ureg;		/* pointer to user returned Ureg struct */
+	if(nur->cs!=up->svcs || nur->ss!=up->svss ||
+	  (nur->flags&0xff00)!=(up->svflags&0xff00)) {
+		qunlock(&up->debug);
+		pprint("bad noted ureg cs %ux ss %ux flags %ux\n",
+				nur->cs, nur->ss, nur->flags);
+			pexit("Suicide", 0);
+	}
+
 	nur->flags = (up->svflags&0xffffff00) | (nur->flags&0xff);
 	memmove(ur, nur, sizeof(Ureg));
 	switch(arg0){
@@ -551,7 +553,7 @@ noted(Ureg *ur, ulong arg0)
 		if(!okaddr(nur->pc, 1, 0) || !okaddr(nur->usp, BY2WD, 0)){
 			pprint("suicide: trap in noted\n");
 			qunlock(&up->debug);
-			goto Die;
+			pexit("Suicide", 0);
 		}
 		qunlock(&up->debug);
 		return;
@@ -581,7 +583,7 @@ execregs(ulong entry, ulong ssize, ulong nargs)
 	ur = up->dbgreg;
 	ur->usp = (ulong)sp;
 	ur->pc = entry;
-	return USTKTOP-BY2WD;			/* address of user-level clock */
+	return USTKTOP-BY2WD;		/* address of user-level clock */
 }
 
 ulong

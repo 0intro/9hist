@@ -88,6 +88,7 @@ lptattach(char *spec)
 	static int set;
 
 	if(!set){
+		outb(lptbase[i-1]+Qpcr, 0);	/* turn off interrupts */
 		set = 1;
 		setvec(Parallelvec, lptintr, 0);
 	}

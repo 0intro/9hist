@@ -529,11 +529,6 @@ noted(Ureg **urp, ulong arg0)
 {
 	Ureg *nur;
 
-	nur = up->ureg;
-	if(nur->status!=up->svstatus) {
-		pprint("bad noted ureg status %lux\n", nur->status);
-		pexit("Suicide", 0);
-	}
 	qlock(&up->debug);
 	if(!up->notified) {
 		qunlock(&up->debug);
@@ -541,6 +536,14 @@ noted(Ureg **urp, ulong arg0)
 		pexit("Suicide", 0);
 	}
 	up->notified = 0;
+
+	nur = up->ureg;
+	if(nur->status!=up->svstatus) {
+		qunlock(&up->debug);
+		pprint("bad noted ureg status %lux\n", nur->status);
+		pexit("Suicide", 0);
+	}
+
 	memmove(*urp, up->ureg, sizeof(Ureg));
 	(*urp)->r1 = up->svr1;
 	switch(arg0) {

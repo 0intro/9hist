@@ -287,6 +287,7 @@ confinit(void)
 	long *lp;
 	char *cp;
 	char *line[MAXCONF];
+	extern int defmaxmsg;
 
 	pcnt = 0;
 
@@ -310,6 +311,11 @@ confinit(void)
 		confval[nconf] = cp;
 		if(strcmp(confname[nconf], "kernelpercent") == 0)
 			pcnt = 100 - atoi(confval[nconf]);
+		if(strcmp(confname[nconf], "defmaxmsg") == 0){
+			i = atoi(confval[nconf]);
+			if(i < defmaxmsg && i >=128)
+				defmaxmsg = i;
+		}
 		nconf++;
 	}
 	/*
