@@ -13,9 +13,9 @@ void	(*serialputs)(char*, int) = nil;
 
 Queue*	kbdq;			/* unprocessed console input */
 Queue*	lineq;			/* processed console input */
-Queue*	serialoq;			/* serial console output */
-Queue*	kprintoq;			/* console output, for /dev/kprint */
-Lock		kprintinuse;		/* test and set whether /dev/kprint is open */
+Queue*	serialoq;		/* serial console output */
+Queue*	kprintoq;		/* console output, for /dev/kprint */
+Lock	kprintinuse;		/* test and set whether /dev/kprint is open */
 
 static struct
 {
@@ -35,7 +35,11 @@ static struct
 	char	*iw;
 	char	*ir;
 	char	*ie;
-} kbd;
+} kbd = {
+	.iw	= kbd.istage,
+	.ir	= kbd.istage,
+	.ie	= kbd.istage + sizeof(kbd.istage),
+};
 
 char	*sysname;
 vlong	fasthz;
@@ -492,14 +496,6 @@ kbdputcclock(void)
 	}
 }
 
-static void
-kbdputcinit(void)
-{
-	kbd.ir = kbd.iw = kbd.istage;
-	kbd.ie = kbd.istage + sizeof(kbd.istage);
-	addclock0link(kbdputcclock);
-}
-
 enum{
 	Qdir,
 	Qbintime,
@@ -589,7 +585,7 @@ consinit(void)
 {
 	todinit();
 	randominit();
-	kbdputcinit();
+	addclock0link(kbdputcclock);
 }
 
 static Chan*

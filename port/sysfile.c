@@ -530,6 +530,8 @@ sseek(ulong *arg)
 		off = o.v;
 		if((c->qid.type & QTDIR) && off != 0)
 			error(Eisdir);
+		if(off < 0)
+			error(Enegoff);
 		c->offset = off;
 		break;
 
@@ -538,6 +540,8 @@ sseek(ulong *arg)
 			error(Eisdir);
 		lock(c);	/* lock for read/write update */
 		off = o.v + c->offset;
+		if(off < 0)
+			error(Enegoff);
 		c->offset = off;
 		unlock(c);
 		break;
@@ -549,6 +553,8 @@ sseek(ulong *arg)
 		if(convM2D(buf, n, &dir, nil) == 0)
 			error("internal error: stat error in seek");
 		off = dir.length + o.v;
+		if(off < 0)
+			error(Enegoff);
 		c->offset = off;
 		break;
 
