@@ -3,6 +3,7 @@
 #include <../boot/boot.h>
 
 static char *disk;
+static char *niob;
 
 void
 configlocal(Method *mp)
@@ -11,6 +12,8 @@ configlocal(Method *mp)
 		disk = sys;
 	else
 		disk = mp->arg;
+	if(niob = strchr(disk, ' '))	/* assign = */
+		*niob++ = 0;
 	USED(mp);
 }
 
@@ -27,6 +30,7 @@ connectlocal(void)
 	char d[DIRLEN];
 	char partition[2*NAMELEN];
 	char *dev;
+	char *args[16], **argp;
 
 	if(stat("/fs", d) < 0)
 		return -1;
@@ -54,7 +58,17 @@ connectlocal(void)
 		dup(p[1], 1);
 		close(p[0]);
 		close(p[1]);
-		execl("/fs", "fs", "-f", partition, "-s", 0);
+		argp = args;
+		*argp++ = "fs";
+		if(niob){
+			*argp++ = "-B";
+			*argp++ = niob;
+		}
+		*argp++ = "-f";
+		*argp++ = partition;
+		*argp++ = "-s";
+		*argp = 0;
+		exec("/fs", args);
 		fatal("can't exec fs");
 	default:
 		break;

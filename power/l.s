@@ -229,9 +229,19 @@ TEXT	puttlbx(SB), $0
 	RET
 
 TEXT	tlbp(SB), $0
+	MOVW	M(TLBVIRT), R2
+	AND	$(~(BY2PG-1)), R1, R4	/* get the VPN */
+	AND	$((NTLBPID-1)<<6), R2	/* get the pid */
+	OR	R4, R2
+	MOVW	R2, M(TLBVIRT)
+	NOOP
 	TLBP
 	NOOP
-	MOVW	M(INDEX), R1
+	MOVW	M(INDEX), R2
+	MOVW	R0, R1
+	BLTZ	R2, bad
+	MOVW	$1, R1
+bad:
 	RET
 	
 TEXT	tlbvirt(SB), $0

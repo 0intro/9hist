@@ -130,6 +130,7 @@ sysfsession(ulong *arg)
 		memset(s, 0, sizeof(Session));
 		for(i = 0; i < CHALLEN; i++)
 			s->cchal[i] = nrand(256);
+		f->tag = NOTAG;
 		f->type = Tsession;
 		memmove(f->chal, s->cchal, CHALLEN);
 		n = convS2M(f, buf);
@@ -237,10 +238,12 @@ sysfauth(ulong *arg)
 void
 freesession(Session *s)
 {
-	Crypt *cp;
+	Crypt *cp, *next;
 
-	for(cp = s->cache; cp; cp = cp->next)
+	for(cp = s->cache; cp; cp = next) {
+		next = cp->next;
 		freecrypt(cp);
+	}
 	free(s);
 }
 
@@ -262,9 +265,14 @@ authrequest(Session *s, Fcall *f)
 
 	/* look for ticket in cache */
 	dofree = 0;
+	lock(s);
 	for(cp = s->cache; cp; cp = cp->next)
 		if(strcmp(cp->t.cuid, u->p->user) == 0)
 			break;
+
+	id = s->cid++;
+	unlock(s);
+
 	if(cp == 0){
 		/*
 		 *  create a ticket using hostkey, this solves the
@@ -280,9 +288,6 @@ authrequest(Session *s, Fcall *f)
 		dofree = 1;
 	} else
 		memmove(f->ticket, cp->tbuf, TICKETLEN);
-	lock(s);
-	id = s->cid++;
-	unlock(s);
 
 	/* create an authenticator */
 	memmove(cp->a.chal, s->schal, CHALLEN);
@@ -305,9 +310,11 @@ authreply(Session *s, ulong id, Fcall *f)
 	if(s == 0)
 		return;
 
+	lock(s);
 	for(cp = s->cache; cp; cp = cp->next)
 		if(strcmp(cp->t.cuid, u->p->user) == 0)
 			break;
+	unlock(s);
 
 	/* we're getting around authentication */
 	if(s == 0 || cp == 0 || s->authid[0] == 0 || strcmp(u->p->user, "none") == 0)

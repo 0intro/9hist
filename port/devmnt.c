@@ -193,14 +193,16 @@ mattach(Mnt *m, char *spec)
 
 	if(waserror()){
 		mntfree(r);
-		/* Close must not be called since it will call mnt recursively */
+		/* Close must not be called since
+		 * it will call mnt recursively
+		 */
 		chanfree(c);
 		nexterror();
 	}
 
 	r->request.type = Tattach;
 	r->request.fid = c->fid;
-	memmove(r->request.uname, u->p->user, NAMELEN);
+	memmove(r->request.uname, up->user, NAMELEN);
 	strncpy(r->request.aname, spec, NAMELEN);
 	id = authrequest(m->c->session, &r->request);
 	mountrpc(m, r);
