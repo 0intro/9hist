@@ -106,11 +106,11 @@ pcicfgw(int busno, int devno, int funcno, int regno, void* data, int nbytes)
 	case 1:
 		addr = 0x80000000|((busno & 0xFF)<<16)|((devno & 0x1F)<<11)|((funcno & 0x03)<<8);
 		p = data;
-		for(len = nbytes/sizeof(ulong); len > 0; len--){
+		for(len = nbytes/sizeof(*p); len > 0; len--){
 			outl(PCIaddr, addr|(regno & 0xFF));
 			outl(PCIdata, *p);
 			p++;
-			regno += sizeof(ulong);
+			regno += sizeof(*p);
 		}
 	
 		outl(PCIaddr, 0);
@@ -124,8 +124,47 @@ pcicfgw(int busno, int devno, int funcno, int regno, void* data, int nbytes)
 	
 		base = (0xC000|(devno<<8)) + regno;
 		p = data;
-		for(len = nbytes/sizeof(ulong); len > 0; len--){
+		for(len = nbytes/sizeof(*p); len > 0; len--){
 			outl(base, *p);
+			p++;
+			base += sizeof(*p);
+		}
+	
+		outb(PCIcse, 0);
+	}
+
+	unlock(&pcicfglock);
+}
+
+/*
+ * This is not in the spec, but at least the CMD640B requires it.
+ */
+void
+pcicfgw8(int busno, int devno, int funcno, int regno, void* data, int nbytes)
+{
+	uchar *p;
+	int base, len;
+
+	lock(&pcicfglock);
+	if(pcicfgmode == -1)
+		pcicfginit(busno);
+
+	switch(pcicfgmode){
+
+	default:
+		panic("pcicfgw8: pcicfgmode %d\n", pcicfgmode);
+		break;
+
+	case 2:
+		if(devno >= 16)
+			break;
+		outb(PCIcse, 0x80|((funcno & 0x07)<<1));
+		outb(PCIforward, busno);
+	
+		base = (0xC000|(devno<<8)) + regno;
+		p = data;
+		for(len = nbytes/sizeof(*p); len > 0; len--){
+			outb(base, *p);
 			p++;
 			base += sizeof(*p);
 		}
