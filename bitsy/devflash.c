@@ -153,6 +153,7 @@ typedef struct FPart FPart;
 struct FPart
 {
 	char	*name;
+	char	*ctlname;
 	ulong	start;
 	ulong	end;
 };
@@ -166,7 +167,6 @@ static int
 gen(Chan *c, char*, Dirtab*, int, int i, Dir *dp)
 {
 	Qid q;
-	char buf[KNAMELEN];
 	FPart *fp;
 
 	q.vers = 0;
@@ -208,10 +208,9 @@ gen(Chan *c, char*, Dirtab*, int, int i, Dir *dp)
 			q.type = QTFILE;
 			devdir(c, q, fp->name, fp->end-fp->start, eve, 0660, dp);
 		} else {
-			snprint(buf, sizeof(buf), "%sctl", fp->name);
 			q.path = FQID(i>>1, Qfctl);
 			q.type = QTFILE;
-			devdir(c, q, buf, 0, eve, 0660, dp);
+			devdir(c, q, fp->ctlname, 0, eve, 0660, dp);
 		}
 		break;
 	}
@@ -235,6 +234,7 @@ static void
 addpart(FPart *fp, char *name, ulong start, ulong end)
 {
 	int i;
+	char ctlname[64];
 
 	if(fp == nil){
 		if(start >= flash.size || end > flash.size)
@@ -260,6 +260,8 @@ addpart(FPart *fp, char *name, ulong start, ulong end)
 		error("no more partitions");
 	fp = &part[i];
 	kstrdup(&fp->name, name);
+	snprint(ctlname, sizeof ctlname, "%sctl", name);
+	kstrdup(&fp->ctlname, ctlname);
 	fp->start = start;
 	fp->end = end;
 }
@@ -267,11 +269,14 @@ addpart(FPart *fp, char *name, ulong start, ulong end)
 static void
 rempart(FPart *fp)
 {
-	char *p;
+	char *p, *cp;
 
 	p = fp->name;
 	fp->name = nil;
+	cp = fp->ctlname;
+	fp->ctlname = nil;
 	free(p);
+	free(cp);
 }
 
 void
