@@ -25,9 +25,96 @@ static void	recover(Method*);
 static Method	*rootserver(char*);
 
 void
+pipetest(void)
+{
+	int i, n, p[2];
+	ulong buf[1];
+
+	if(bind("#c", "/dev", MREPL) < 0)
+		print("can't bind #c\n");
+
+	if(pipe(p) < 0){
+		print("pipe fails\n");
+		exits(0);
+	}
+	switch(fork()){
+	case -1:
+		print("fork fails\n");
+		exits(0);
+	case 0:
+		close(p[0]);
+		for(;;){
+			n = read(p[1], buf, 1);
+			if(n <= 0){
+				print("1 exiting %d\n", time(0));
+				exits(0);
+			}
+			write(p[1], buf, 1);
+		}
+	default:
+		close(p[1]);
+		print("start %d\n", time(0));
+		for(i = 0; i < 100000; i++){
+			if(write(p[0], buf, 1) != 1){
+				print("sndr broke\n");
+				exits(0);
+			}
+			n = read(p[0], buf, 1);
+			if(n <= 0){
+				print("0 exiting %d\n", time(0));
+				exits(0);
+			}
+		}
+		close(p[0]);
+		sleep(1000);
+	}
+}
+
+void
+pipetest2(void)
+{
+	int i, n, p[2];
+	uchar buf[4096];
+
+	if(bind("#c", "/dev", MREPL) < 0)
+		print("can't bind #c\n");
+
+	if(pipe(p) < 0){
+		print("pipe fails\n");
+		exits(0);
+	}
+	switch(fork()){
+	case -1:
+		print("fork fails\n");
+		exits(0);
+	case 0:
+		close(p[0]);
+		for(;;){
+			n = read(p[1], buf, sizeof(buf));
+			if(n <= 0){
+				print("1 exiting %d\n", time(0));
+				exits(0);
+			}
+		}
+	default:
+		close(p[1]);
+		print("start %d\n", time(0));
+		for(i = 0; i < 40000; i++){
+			if(write(p[0], buf, sizeof(buf)) != sizeof(buf)){
+				print("sndr broke\n");
+				exits(0);
+			}
+		}
+		close(p[0]);
+		sleep(1000);
+	}
+
+}
+
+void
 ethertest(void)
 {
-	int cf, df, n, t;
+	int cf, df, n, t, i;
 	char buf[64];
 	struct Etherpkt
 	{
@@ -58,7 +145,7 @@ ethertest(void)
 		exits(0);
 	}
 	close(cf);
-	for(;;){
+	for(i=0;i<20;i++){
 		n = read(df, &p, sizeof(p));
 		if(n <= 0){
 			print("read returns %d: %r\n", n);
@@ -67,6 +154,7 @@ ethertest(void)
 		t = (p.type[0]<<8) | p.type[1];
 		print("%d %2.2ux%2.2ux%2.2ux%2.2ux%2.2ux%2.2ux -> %2.2ux%2.2ux%2.2ux%2.2ux%2.2ux%2.2ux %ux\n", n, p.s[0], p.s[1], p.s[2], p.s[3], p.s[4], p.s[5], p.d[0], p.d[1], p.d[2], p.d[3], p.d[4], p.d[5], t);
 	}
+	close(df);
 }
 
 void
@@ -83,11 +171,15 @@ boot(int argc, char *argv[])
 	open("#c/cons", OREAD);
 	open("#c/cons", OWRITE);
 	open("#c/cons", OWRITE);
+#ifdef DEBUG
 	print("argc=%d\n", argc);
 	for(fd = 0; fd < argc; fd++)
 		print("%s ", argv[fd]);
-	print("\n");/**/
+	print("\n");
+#endif DEBUG
 
+	pipetest();
+	pipetest2();
 	ethertest();
 
 	if(argc <= 1)

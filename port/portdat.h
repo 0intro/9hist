@@ -656,11 +656,6 @@ struct Block
 struct Queue
 {
 	Lock;
-	QLock	rlock;		/* mutex for reading processes */
-	QLock	wlock;		/* mutex for writing processes */
-
-	Block	*rfirst;	/* waiting readers */
-	Block	*rlast;
 
 	Block	*bfirst;	/* buffer */
 	Block	*blast;
@@ -672,7 +667,10 @@ struct Queue
 	void	(*kick)(void*);	/* restart output */
 	void	*arg;		/* argument to kick */
 
-	Rendez	r;
+	QLock	rlock;		/* mutex for reading processes */
+	Rendez	rr;		/* process waiting to read */
+	QLock	wlock;		/* mutex for writing processes */
+	Rendez	wr;		/* process waiting to write */
 };
 
 enum
@@ -681,8 +679,10 @@ enum
 	Bfilled=1,		/* block filled */
 
 	/* Queue.state */	
-	Qstarve=1,		/* consumer starved */
-	Qmsg=2,			/* message stream */
+	Qstarve=	(1<<0),		/* consumer starved */
+	Qmsg=		(1<<1),		/* message stream */
+	Qclosed=	(1<<2),
+	Qflow=		(1<<3),
 };
 
 

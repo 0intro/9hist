@@ -13,7 +13,7 @@ lock(Lock *l)
 
 	pc = getcallerpc(((uchar*)&l) - sizeof(l));
 
-	for(i = 0; i < 10000000; i++){
+	for(i = 0; i < 20000000; i++){
     		if (tas(&l->key) == 0){
 			l->pc = pc;
 			return;

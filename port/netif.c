@@ -269,6 +269,8 @@ netifclose(Netif *nif, Chan *c)
 			qunlock(nif);
 		}
 		f->owner[0] = 0;
+		f->type = 0;
+		qclose(f->in);
 	}
 	qunlock(f);
 }
@@ -320,6 +322,7 @@ openfile(Netif *nif, int id)
 		if(f == 0)
 			error(Enodev);
 		qlock(f);
+		qreopen(f->in);
 		f->inuse++;
 		qunlock(f);
 		return id;
@@ -346,6 +349,7 @@ openfile(Netif *nif, int id)
 			}
 		}
 		f->inuse = 1;
+		qreopen(f->in);
 		netown(f, up->user, 0);
 		qunlock(f);
 		qunlock(nif);

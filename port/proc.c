@@ -160,6 +160,8 @@ loop:
 	/* p->mach==0 only when process state is saved */
 	if(p == 0 || p->mach){	
 		unlock(&runhiq);
+		if(conf.nmach > 1)
+			delay(7);	/* keep off the bus (tuned for everest) */
 		goto loop;
 	}
 	if(p->rnext == 0)

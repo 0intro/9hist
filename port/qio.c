@@ -150,10 +150,10 @@ iallocb(int size)
 			cl->first = p->next;
 			unlock(cl);
 			b = (Block *)p;
+			memset(b, 0, sizeof(Block));
 			b->base = (uchar*)(b+1);
 			b->wp = b->rp = b->base;
 			b->lim = b->base + (1<<pow) - sizeof(Block);
-			b->flag = 0;
 			return b;
 		}
 	panic("iallocb %d\n", size);
@@ -186,6 +186,7 @@ allocb(int size)
 	if(b == 0)
 		exhausted("Blocks");
 
+	memset(b, 0, sizeof(Block));
 	b->base = (uchar*)(b+1);
 	b->rp = b->wp = b->base;
 	b->lim = b->base + size;
@@ -202,7 +203,7 @@ int
 qconsume(Queue *q, uchar *p, int len)
 {
 	Block *b;
-	int n;
+	int n, dowakeup;
 
 	/* sync with qwrite */
 	lock(q);
@@ -213,6 +214,7 @@ qconsume(Queue *q, uchar *p, int len)
 		unlock(q);
 		return -1;
 	}
+
 	n = BLEN(b);
 	if(n < len)
 		len = n;
@@ -223,41 +225,33 @@ qconsume(Queue *q, uchar *p, int len)
 		b->rp += len;
 	q->len -= len;
 
-	/* wakeup flow controlled writers (with a bit of histeresis) */
-	if(q->len+len >= q->limit && q->len < q->limit/2)
-		wakeup(&q->r);
+	/* if writer flow controlled, restart */
+	if((q->state & Qflow) && q->len < q->limit/2){
+		q->state &= ~Qflow;
+		dowakeup = 1;
+	} else
+		dowakeup = 0;
 
 	unlock(q);
 
+	if(dowakeup)
+		wakeup(&q->wr);
+
+	/* discard the block if we're done with it */
 	if((q->state & Qmsg) || len == n)
 		ifree(b);
 
 	return len;
 }
 
-static int
-qproduce0(Queue *q, uchar *p, int len)
+int
+qproduce(Queue *q, uchar *p, int len)
 {
 	Block *b;
-	int n;
+	int dowakeup;
 
 	/* sync with qread */
 	lock(q);
-
-	b = q->rfirst;
-	if(b){
-		/* hand to waiting receiver */
-		q->rfirst = b->next;
-		unlock(q);
-		n = b->lim - b->wp;
-		if(n < len)
-			len = n;
-		memmove(b->wp, p, len);
-		b->wp += len;
-		b->flag |= Bfilled;
-		wakeup(&b->r);
-		return len;
-	}
 
 	/* no waiting receivers, room in buffer? */
 	if(q->len >= q->limit){
@@ -279,7 +273,6 @@ qproduce0(Queue *q, uchar *p, int len)
 		}
 		memmove(b->wp, p, len);
 		b->wp += len;
-		b->flag |= Bfilled;
 		if(q->bfirst)
 			q->blast->next = b;
 		else
@@ -287,24 +280,17 @@ qproduce0(Queue *q, uchar *p, int len)
 		q->blast = b;
 	}
 	q->len += len;
+	if(q->state & Qstarve){
+		q->state &= ~Qstarve;
+		dowakeup = 1;
+	} else
+		dowakeup = 0;
 	unlock(q);
 
+	if(dowakeup)
+		wakeup(&q->rr);
+
 	return len;
-}
-
-int
-qproduce(Queue *q, uchar *p, int len)
-{
-	int n, sofar;
-
-	sofar = 0;
-	do {
-		n = qproduce0(q, p + sofar, len - sofar);
-		if(n < 0)
-			break;
-		sofar += n;
-	} while(sofar < len && (q->state & Qmsg) == 0);
-	return sofar;
 }
 
 /*
@@ -317,7 +303,9 @@ qopen(int limit, void (*kick)(void*), void *arg)
 
 	q = malloc(sizeof(Queue));
 	if(q == 0)
-		exhausted("Queues");
+		return 0;
+
+	memset(q, 0, sizeof(Queue));
 	q->limit = limit;
 	q->kick = kick;
 	q->arg = arg;
@@ -326,196 +314,91 @@ qopen(int limit, void (*kick)(void*), void *arg)
 	return q;
 }
 
-ulong qrtoomany;
-ulong qrtoofew;
-
 static int
-bfilled(void *a)
+notempty(void *a)
 {
-	Block *b = a;
+	Queue *q = a;
 
-	return b->flag & Bfilled;
+	return q->bfirst != 0;
 }
 
+/*
+ *  read a queue.  if no data is queued, post a Block
+ *  and wait on its Rendez.
+ */
 long
 qread(Queue *q, char *p, int len)
 {
-	Block *b, *bb, **l;
-	int x, n;
+	Block *b;
+	int x, n, dowakeup;
 
 	qlock(&q->rlock);
-	b = 0;
 	if(waserror()){
 		qunlock(&q->rlock);
-		if(b)
-			free(b);
 		nexterror();
 	}
 
-	/*
-	 *  If there are no buffered blocks, allocate a block
-	 *  for the qproducer/qwrite to fill.  This is
-	 *  optimistic and and we will
-	 *  sometimes be wrong: after locking we may either
-	 *  have to throw away or allocate one.
-	 *
-	 *  We hope to replace the allocb with a kmap later on.
-	 */
-retry:
-	if(q->bfirst == 0)
-		b = allocb(len);
+	/* wait for data */
+	for(;;){
+		/* sync with qwrite/qproduce */
+		x = splhi();
+		lock(q);
 
-	/* sync with qwrite/qproduce */
-	x = splhi();
-	lock(q);
-
-	bb = q->bfirst;
-	if(bb == 0){
-		if(b == 0){
-			/* we guessed wrong, drop the locks and try again */
+		if(q->state & Qclosed){
 			unlock(q);
 			splx(x);
-			qrtoofew++;
-			goto retry;
+			return 0;
 		}
 
-		/* add ourselves to the list of readers */
-		if(q->rfirst)
-			q->rlast->next = b;
-		else
-			q->rfirst = b;
-		q->rlast = b;
+		b = q->bfirst;
+		if(b)
+			break;
+		q->state |= Qstarve;
 		unlock(q);
 		splx(x);
-		qunlock(&q->rlock);
-		poperror();
-
-		if(waserror()){
-			/* on error, unlink us from the chain */
-			x = splhi();
-			lock(q);
-			l = &q->rfirst;
-			for(bb = q->rfirst; bb; bb = bb->next){
-				if(b == bb){
-					*l = bb->next;
-					break;
-				} else
-					l = &bb->next;
-			}
-			unlock(q);
-			splx(x);
-			free(b);
-			nexterror();
-		}
-
-		/* wait for the producer */
-		sleep(&b->r, bfilled, b);
-		n = BLEN(b);
-		memmove(p, b->rp, n);
-		poperror();
-		free(b);
-
-		return n;
+		sleep(&q->rr, notempty, q);
 	}
 
-	/* copy from a buffered block */
-	q->bfirst = bb->next;
-	n = BLEN(bb);
-	if(n > len)
-		n = len;
+	/* remove a buffered block */
+	q->bfirst = b->next;
+	n = BLEN(b);
 	q->len -= n;
+
+	/* if writer flow controlled, restart */
+	if((q->state & Qflow) && q->len < q->limit/2){
+		q->state &= ~Qflow;
+		dowakeup = 1;
+	} else
+		dowakeup = 0;
 	unlock(q);
 	splx(x);
 
 	/* do this outside of the lock(q)! */
-	memmove(p, bb->rp, n);
-	bb->rp += n;
+	if(n > len)
+		n = len;
+	memmove(p, b->rp, n);
+	b->rp += n;
 
-	/* free it or put it back on the queue */
-	if(bb->rp >= bb->wp || (q->state&Qmsg))
-		free(bb);
+	/* free it or put it what's left on the queue */
+	if(b->rp >= b->wp || (q->state&Qmsg))
+		free(b);
 	else {
 		x = splhi();
 		lock(q);
-		bb->next = q->bfirst;
-		q->bfirst = bb;
+		b->next = q->bfirst;
+		q->bfirst = b;
+		q->len += BLEN(b);
 		unlock(q);
 		splx(x);
 	}
+
+	/* wakeup flow controlled writers (with a bit of histeresis) */
+	if(dowakeup)
+		wakeup(&q->wr);
 
 	poperror();
 	qunlock(&q->rlock);
-	if(b){
-		qrtoomany++;
-		free(b);
-	}
 	return n;
-}
-
-ulong qwtoomany;
-ulong qwtoofew;
-
-static long
-qwrite0(Queue *q, char *p, int len, Block *b)
-{
-	Block *bb;
-	int x, n, sofar;
-
-	/* sync with qconsume/qread */
-	x = splhi();
-	lock(q);
-
-	sofar = 0;
-	while(bb = q->rfirst){
-		/* hand to waiting receiver */
-		q->rfirst = bb->next;
-		unlock(q);
-		splx(x);
-
-		n = bb->lim - bb->wp;
-		if(n > len-sofar)
-			n = len - sofar;
-		memmove(bb->wp, p+sofar, n);
-		bb->wp += n;
-		bb->flag |= Bfilled;
-		wakeup(&bb->r);
-
-		sofar += n;
-		if(sofar == len){
-			if(b){
-				free(b);	/* we were wrong to allocate */
-				qwtoomany++;
-			}
-			return len;
-		}
-	}
-
-	/* buffer what ever is left */
-	if(b == 0){
-		/* we should have alloc'd, return to qwrite and have it do it */
-		unlock(q);
-		splx(x);
-		qwtoofew++;
-		return sofar;
-	}
-	b->rp += sofar;
-
-	x = splhi();
-	lock(q);
-	if(q->bfirst)
-		q->blast->next = b;
-	else
-		q->bfirst = b;
-	q->blast = b;
-	q->len += len;
-	if((q->state & Qstarve) && q->kick){
-		q->state &= ~Qstarve;
-		(*q->kick)(q->arg);
-	}
-	unlock(q);
-	splx(x);
-
-	return len;
 }
 
 static int
@@ -526,48 +409,112 @@ qnotfull(void *a)
 	return q->len < q->limit;
 }
 
+/*
+ *  write to a queue.  if no reader blocks are posted
+ *  queue the data.
+ */
 long
 qwrite(Queue *q, char *p, int len)
 {
-	int n, i;
+	int x, dowakeup;
 	Block *b;
 
-	/*
-	 *  If there are no readers, grab a buffer and copy
-	 *  into it before locking anything down.  This
-	 *  provides the highest concurrency but we will
-	 *  sometimes be wrong: after locking we may either
-	 *  have to throw away or allocate one.
-	 */
-	if(q->rfirst == 0){
-		b = allocb(len);
-		memmove(b->wp, p, len);
-		b->wp += len;
-	} else
-		b = 0;
-
-	/* ensure atomic writes */
-	qlock(&q->wlock);
-	if(waserror()){
-		qunlock(&q->wlock);
-		nexterror();
-	}
+	b = allocb(len);
+	memmove(b->wp, p, len);
+	b->wp += len;
 
 	/* flow control */
-	sleep(&q->r, qnotfull, q);
-
-	n = qwrite0(q, p, len, b);
-	if(n != len){
-		/* no readers and we need a buffer */
-		i = len - n;
-		b = allocb(i);
-		memmove(b->wp, p + n, i);
-		b->wp += n;
-		n += qwrite0(q, p + n, i, b);
+	while(!qnotfull(q)){
+		qlock(&q->wlock);
+		q->state |= Qflow;
+		sleep(&q->wr, qnotfull, q);
+		qunlock(&q->wlock);
 	}
 
-	qunlock(&q->wlock);
-	poperror();
+	x = splhi();
+	lock(q);
 
-	return n;
+	if(q->state & Qclosed){
+		unlock(q);
+		splx(x);
+		error(Ehungup);
+	}
+
+	b->next = q->bfirst;
+	q->bfirst = b;
+	q->len += len;
+
+	if(q->state & Qstarve){
+		q->state &= ~Qstarve;
+		dowakeup = 1;
+	} else
+		dowakeup = 0;
+
+	unlock(q);
+	splx(x);
+
+	if(dowakeup)
+		wakeup(&q->rr);
+
+	return len;
+}
+
+/*
+ *  Mark a queue as closed.  No further IO is permitted.
+ *  All blocks are released.
+ */
+void
+qclose(Queue *q)
+{
+	int x;
+	Block *b, *bfirst;
+
+	/* mark it */
+	x = splhi();
+	lock(q);
+	q->state |= Qclosed;
+	bfirst = q->bfirst;
+	q->bfirst = 0;
+	unlock(q);
+	splx(x);
+
+	/* free queued blocks */
+	while(b = bfirst){
+		bfirst = b->next;
+		free(b);
+	}
+
+	/* wake up readers/writers */
+	wakeup(&q->rr);
+	wakeup(&q->wr);
+}
+
+/*
+ *  Mark a queue as closed.  Wakeup any readers.  Don't remove queued
+ *  blocks.
+ */
+void
+qhangup(Queue *q)
+{
+	int x;
+
+	/* mark it */
+	x = splhi();
+	lock(q);
+	q->state |= Qclosed;
+	unlock(q);
+	splx(x);
+
+	/* wake up readers/writers */
+	wakeup(&q->rr);
+	wakeup(&q->wr);
+}
+
+/*
+ *  mark a queue as no longer hung up
+ */
+void
+qreopen(Queue *q)
+{
+	q->state &= ~Qclosed;
 }
