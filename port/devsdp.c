@@ -45,6 +45,7 @@ enum
 	SecretLength= 32,	// a secret per direction
 	SeqMax = (1<<24),
 	SeqWindow = 32,
+	NCompStats = 8,
 };
 
 #define TYPE(x) 	((x).path & 0xff)
@@ -58,6 +59,7 @@ struct Stats
 	ulong	outDataBytes;
 	ulong	outCompDataBytes;
 	ulong	outCompBytes;
+	ulong	outCompStats[NCompStats];
 	ulong	inPackets;
 	ulong	inDataPackets;
 	ulong	inDataBytes;
@@ -190,6 +192,7 @@ struct AckPkt
 	uchar	outDataPackets[4];
 	uchar	outDataBytes[4];
 	uchar	outCompDataBytes[4];
+	uchar	outCompStats[4*NCompStats];
 	uchar	inPackets[4];
 	uchar	inDataPackets[4];
 	uchar	inDataBytes[4];
@@ -1018,6 +1021,7 @@ convstats(Conv *c, int local, char *buf, int n)
 {
 	Stats *stats;
 	char *p, *ep;
+	int i;
 
 	if(local) {
 		stats = &c->lstats;
@@ -1032,20 +1036,26 @@ convstats(Conv *c, int local, char *buf, int n)
 	qlock(c);
 	p = buf;
 	ep = buf + n;
-	p += snprint(p, ep-p, "outPackets: %ld\n", stats->outPackets);
-	p += snprint(p, ep-p, "outDataPackets: %ld\n", stats->outDataPackets);
-	p += snprint(p, ep-p, "outDataBytes: %ld\n", stats->outDataBytes);
-	p += snprint(p, ep-p, "outCompDataBytes: %ld\n", stats->outCompDataBytes);
-	p += snprint(p, ep-p, "inPackets: %ld\n", stats->inPackets);
-	p += snprint(p, ep-p, "inDataPackets: %ld\n", stats->inDataPackets);
-	p += snprint(p, ep-p, "inDataBytes: %ld\n", stats->inDataBytes);
-	p += snprint(p, ep-p, "inCompDataBytes: %ld\n", stats->inCompDataBytes);
-	p += snprint(p, ep-p, "inMissing: %ld\n", stats->inMissing);
-	p += snprint(p, ep-p, "inDup: %ld\n", stats->inDup);
-	p += snprint(p, ep-p, "inReorder: %ld\n", stats->inReorder);
-	p += snprint(p, ep-p, "inBadComp: %ld\n", stats->inBadComp);
-	p += snprint(p, ep-p, "inBadAuth: %ld\n", stats->inBadAuth);
-	p += snprint(p, ep-p, "inBadSeq: %ld\n", stats->inBadSeq);
+	p += snprint(p, ep-p, "outPackets: %lud\n", stats->outPackets);
+	p += snprint(p, ep-p, "outDataPackets: %lud\n", stats->outDataPackets);
+	p += snprint(p, ep-p, "outDataBytes: %lud\n", stats->outDataBytes);
+	p += snprint(p, ep-p, "outCompDataBytes: %lud\n", stats->outCompDataBytes);
+	for(i=0; i<NCompStat; i++) {
+		if(stat->outCompStats[i] == 0)
+			continue;
+		p += snprint(p, ep-p, "outCompStats[%d]: %lud\n", i, stats->outCompStats[i]);
+	}
+	p += snprint(p, ep-p, "outCompDataBytes: %lud\n", stats->outCompDataBytes);
+	p += snprint(p, ep-p, "inPackets: %lud\n", stats->inPackets);
+	p += snprint(p, ep-p, "inDataPackets: %lud\n", stats->inDataPackets);
+	p += snprint(p, ep-p, "inDataBytes: %lud\n", stats->inDataBytes);
+	p += snprint(p, ep-p, "inCompDataBytes: %lud\n", stats->inCompDataBytes);
+	p += snprint(p, ep-p, "inMissing: %lud\n", stats->inMissing);
+	p += snprint(p, ep-p, "inDup: %lud\n", stats->inDup);
+	p += snprint(p, ep-p, "inReorder: %lud\n", stats->inReorder);
+	p += snprint(p, ep-p, "inBadComp: %lud\n", stats->inBadComp);
+	p += snprint(p, ep-p, "inBadAuth: %lud\n", stats->inBadAuth);
+	p += snprint(p, ep-p, "inBadSeq: %lud\n", stats->inBadSeq);
 	USED(p);
 	qunlock(c);
 }
@@ -1057,6 +1067,7 @@ convack(Conv *c)
 	Block *b;
 	AckPkt *ack;
 	Stats *s;
+	int i;
 
 	b = allocb(sizeof(AckPkt));
 	ack = (AckPkt*)b->wp;
@@ -1067,6 +1078,8 @@ convack(Conv *c)
 	hnputl(ack->outDataPackets, s->outDataPackets);
 	hnputl(ack->outDataBytes, s->outDataBytes);
 	hnputl(ack->outCompDataBytes, s->outCompDataBytes);
+	for(i=0; i<NCompStat; i++)
+		hnputl(ack->outCompStats+i*4, s->outCompStats[i]);
 	hnputl(ack->inPackets, s->inPackets);
 	hnputl(ack->inDataPackets, s->inDataPackets);
 	hnputl(ack->inDataBytes, s->inDataBytes);
@@ -1311,6 +1324,7 @@ convicontrol(Conv *c, int subtype, Block *b)
 {
 	ulong cseq;
 	AckPkt *ack;
+	int i;
 
 	if(BLEN(b) < 4)
 		return;
@@ -1988,7 +2002,7 @@ thwackcomp(Conv *c, int, ulong seq, Block **bp)
 	b->rp[3] = c->in.seq;
 
 	bb = allocb(BLEN(b));
-	nn = thwack(c->out.compstate, bb->wp, b->rp, BLEN(b), seq);
+	nn = thwack(c->out.compstate, bb->wp, b->rp, BLEN(b), seq, c->lstats.outCompStats);
 	if(nn < 0) {
 		freeb(bb);
 		*bp = b;
