@@ -669,7 +669,7 @@ struct Queue
 
 enum
 {
-	Qcsleep=1,	/* consumer sleeping */
+	Qstarve=1,	/* consumer starved */
 };
 
 /*

@@ -4,65 +4,155 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
-static Queue *freed;
+typedef struct Chunk	Chunk;
+typedef	struct Chunkl	Chunkl;
+typedef	struct Arena	Arena;
+
+enum
+{
+	Minpow= 7,
+	Maxpow=	12,
+};
+
+struct Chunk
+{
+	Chunk	*next;
+};
+
+struct Alloc
+{
+	Lock;
+	Chunk	*first;
+	int	had;
+	int	goal;
+	int	last;
+};
+
+struct Arena
+{
+	Chunkl	alloc[Maxpow-Minpow+1];
+	Chunkl	freed;
+};
+
+static Arena arena;
 
 /*
- *  Interrupt handlers use freeb() to release blocks.  They are
- *  garbage collected by the kproc running bgc().
+ *  Manage interrupt level memory allocation.
  */
 static void
-bgc(void *arg)
+iallockproc(void *arg)
 {
-	Block *b, *nb;
+	Chunk *p, *first, **l;
+	Chunkl *cl;
+	int pow, x, i;
 
 	USED(arg);
 	for(;;){
 		tsleep(&freed->r, return0, 0, 500);
-		if(freed->first == 0)
-			continue;
 
-		x = slphi();
-		lock(&freed);
-		b = freed->first;
-		freed->first = freed->last = 0;;
-		unlock(&freed);
-		spllo();
+		/* really free what was freed at interrupt level */
+		cl = &arena.freed;
+		if(cl->first){
+			x = slphi();
+			lock(cl);
+			first = cl->first;
+			cl->first = 0;
+			unlock(cl);
+			spllo();
+	
+			for(; first; first = p){
+				p = first->next;
+				free(first);
+			}
+		}
 
-		for(; b; b = nb){
-			nb = b->next;
-			free(b);
+		/* make sure we have blocks available for interrupt level */
+		for(pow = Minpow; pow <= Maxpow; pow++){
+			cl = &arena.alloc[pow];
+			if(cl->have >= cl->goal){
+				cl->had = cl->have;
+				continue;
+			}
+
+			/* increase goal if we've been drained twice in a row */
+			if(cl->have == 0 && cl->had == 0)
+				cl->goal += cl->goal>>2;
+			cl->had = cl->have;
+			l = &first;
+			for(i = x = cl->goal - cl->have; x > 0; x--){
+				p = alloc(1<<pow);
+				if(p == 0)
+					break;
+				*l = p;
+				l = &p->next;
+			}
+			if(first){
+				x = splhi();
+				lock(cl);
+				*l = cl->first;
+				cl->first = first;
+				cl->have += i;
+				unlock(cl);
+				spllo(x);
+			}
 		}
 	}
 }
 
 void
-freeb(Block *b)
+iallocinit(void)
 {
-	lock(&freed);
-	b->next = freed->first;
-	freed->first = b;
-	unlock(&freed);
+	int pow;
+	Chunkl *cl;
+
+	for(pow = Minpow; pow <= Maxpow; pow++){
+		cl = &arena.alloc[pow];
+		cl->goal = Maxpow-pow + 4;
+	}
+
+	/* start garbage collector */
+	kproc("iallockproc", iallockproc, 0);
+}
+
+void*
+ialloc(int size)
+{
+	int pow;
+	Chunkl *cl;
+	Chunk *p;
+
+	for(pow = Min; pow <= Maxpow; pow++)
+		if(size <= (1<<pow)){
+			cl = &arena.alloc[pow];
+			lock(cl);
+			p = cl->first;
+			if(p){
+				cl->have--;
+				cl->first = p->next;
+			}
+			unlock(cl);
+			return (void*)p;
+		}
+	panic("ialloc %d\n", size);
 }
 
 void
-blockinit(void)
+ifree(void *a)
 {
-	/* start garbage collector */
-	kproc("buffer", bgc, 0);
+	Chunk *p;
+	Chunkl *cl;
+
+	cl = &arena.freed;
+	p = a;
+	lock(cl);
+	p->next = cl->first;
+	cl->first = p;
+	unlock(cl);
 }
 
 /*
  *  allocate queues and blocks
  */
-Queue*
-allocq(int limit)
-{
-	Queue *q;
-
-	q = smalloc(sizeof(Queue));
-	q->limit = limit;
-}
-
 Block*
 allocb(int size)
 {
@@ -80,7 +170,8 @@ allocb(int size)
 }
 
 /*
- *  copy out of a queue, returns # bytes copied
+ *  Interrupt level copy out of a queue, return # bytes copied.  If drop is
+ *  set, any bytes left in a block afer a consume are discarded.
  */
 int
 consume(Queue *q, uchar *p, int len, int drop)
@@ -91,13 +182,27 @@ consume(Queue *q, uchar *p, int len, int drop)
 	lock(q);
 	b = q->first;
 	if(b == 0){
-		q->state |= Qcsleep;
+		q->state |= Qstarve;
 		unlock(q);
 		return -1;
 	}
 	n = BLEN(b);
-	if(n < len){
-		memmove(p, b->rp, n);
-	} else {
-		memmove(p, b->rp, len);
+	if(n < len)
+		len = n;
+	memmove(p, b->rp, len);
+	if(len == n || drop){
+		q->first = b->next;
+		ifree(b);
+	} else
+		b->rp += len;
+	unlock(q);
+	return len;
+}
+
+int
+produce(Queue *q, uchar *p, int len)
+{
+	Block *b;
+
+	b = ialloc(sizeof(Block)
 }
