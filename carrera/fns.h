@@ -126,6 +126,7 @@ void		enetaddr(uchar*);
 void	ifwrite(void*, Block*, int);
 void*	ifinit(int);
 void	ifjab(void);
+int	ifgetsr(void);
 ulong	ifaddr(void*);
 void	filiput(Block*);
 void	fiberint(int);

@@ -123,6 +123,7 @@ void	ifree(void*);
 void	ifflush(void*);
 Block*	iallocb(int);
 void*	ifroute(ulong);
+int	ifgetsr(void);
 ulong	ifunroute(ulong);
 void	parseip(char*, char*);
 
