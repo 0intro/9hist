@@ -76,7 +76,7 @@ cprint(Chan *c, Mntcache *m, char *s)
 	int nb, ct;
 	Extent *e;
 	char buf[128];
-return;
+
 	ptpath(c->path, buf, sizeof(buf));
 	nb = 0;
 	ct = 1;
@@ -175,10 +175,7 @@ copen(Chan *c)
 				qlock(m);
 				cnodata(m);
 				qunlock(m);
-cprint(c, m, "open mod");
 			}
-else
-cprint(c, m, "open cached");
 			return;
 		}
 	}
@@ -213,7 +210,6 @@ cprint(c, m, "open cached");
 		free(e);
 		e = next;
 	}
-cprint(c, m, "open new");
 }
 
 static int
