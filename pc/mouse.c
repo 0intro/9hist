@@ -151,6 +151,12 @@ mousectl(char* field[], int n)
 			i8042auxcmd(n);
 			break;
 		}
+	} else if(strcmp(field[0], "reset") == 0){
+		i8042auxcmd(0xF6);
+		i8042auxcmd(0xEA);	/* streaming */
+		i8042auxcmd(0xE8);	/* set resolution */
+		i8042auxcmd(3);
+		i8042auxcmd(0xF4);	/* enabled */
 	}
 	else
 		error(Ebadctl);

@@ -856,7 +856,7 @@ procctlreq(Proc *p, char *va, int n)
 			i = 0;
 		if(i >= Nrq)
 			i = Nrq - 1;
-		if(i < p->basepri && !iseve())
+		if(i > p->basepri && !iseve())
 			error(Eperm);
 		p->basepri = i;
 	}
