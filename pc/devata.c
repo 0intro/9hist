@@ -1392,15 +1392,18 @@ atapart(Drive *dp)
 		 *  we still check if there is a valid partition table in
 		 *  the last sector if none is found in the second last.
 		 */
-		ataxfer(dp, &dp->p[0], Cread, dp->p[0].end-1, dp->bytes, buf);
+print("R%d|", dp->p[0].end-2);
+		ataxfer(dp, &dp->p[0], Cread, dp->p[0].end-2, dp->bytes, buf);
 		buf[dp->bytes-1] = 0;
 		n = getfields((char*)buf, line, Npart+1, "\n");
 		if(n > 0 && strncmp(line[0], PARTMAGIC, sizeof(PARTMAGIC)-1) == 0){
 			dp->p[0].end--;
 			dp->p[1].start--;
 			dp->p[1].end--;
+print("OK%d|", dp->p[1].start);
 		}
 		else{
+print("r%d|", dp->p[1].start);
 			ataxfer(dp, &dp->p[1], Cread, 0, dp->bytes, buf);
 			buf[dp->bytes-1] = 0;
 			n = getfields((char*)buf, line, Npart+1, "\n");
@@ -1408,7 +1411,9 @@ atapart(Drive *dp)
 				dp->p[0].end--;
 				dp->p[1].start--;
 				dp->p[1].end--;
+print("nok%d|", dp->p[1].start);
 			}
+else print("ok%d|", dp->p[1].start);
 		}
 	}
 	else{
