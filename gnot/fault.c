@@ -185,9 +185,9 @@ fault(Ureg *ur, FFrame *f)
 		}
 	}
 	/*
-	 * Copy on reference
+	 * Copy on write
 	 */
-	if((o->flag & OWRPERM)
+	if((o->flag & OWRPERM) && !read
 	&& ((head && ((o->flag&OPURE) || o->nproc>1))
 	    || (!head && pte->page->ref>1))){
 

@@ -308,7 +308,7 @@ confinit(void)
 	conf.nqueue = 5 * conf.nstream;
 	conf.nblock = 24 * conf.nstream;
 	conf.nsrv = 32*mul;
-	conf.nbitmap = 100*mul;
+	conf.nbitmap = 300*mul;
 	conf.nbitbyte = 300*1024*mul;
 	if(*(uchar*)MOUSE & (1<<4))
 		conf.nbitbyte *= 2;	/* ldepth 1 */
