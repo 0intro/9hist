@@ -25,7 +25,6 @@ int	dmadone(int);
 void	dmaend(int);
 int	dmainit(int, int);
 long	dmasetup(int, void*, long, int);
-void	(*doze)(void);
 #define	evenaddr(x)				/* x86 doesn't care */
 void	fpenv(FPsave*);
 void	fpinit(void);
@@ -49,7 +48,7 @@ uvlong	i8253read(uvlong*);
 void	i8259init(void);
 int	i8259enable(Vctl*);
 void	idle(void);
-#define	idlehands()		if(doze==0);else doze()	/* nothing to do in the runproc */
+void	idlehands(void);
 int	inb(int);
 void	insb(int, void*, int);
 ushort	ins(int);

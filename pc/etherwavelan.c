@@ -10,7 +10,7 @@
 	For known BUGS see the comments below. Besides,
 	the driver keeps interrupts disabled for just too
 	long. When it gets robust, locks should be revisited.
-	WEP is not tested (see BUGs too).
+	(see BUGs).
  */
 
 #include "u.h"
@@ -251,7 +251,7 @@ struct Stats
 	ulong	nalloc;			// allocation (reclaim) events
 	ulong	ninfo;
 	ulong	nidrop;
-	ulong	nwatchdogs;		// transmits time outs, actually
+	ulong	nwatchdogs;		// transmit time outs, actually
 };
 
 struct Ctlr 
@@ -289,7 +289,6 @@ struct Ctlr
 	Stats;
 	WStats;
 };
-
 
 // w_... routines do not ilock the Ctlr and should 
 // be called locked.
