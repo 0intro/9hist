@@ -933,6 +933,10 @@ tcpincoming(Conv *s, Tcp *segp, uchar *src, uchar *dst)
 	tcb->timer.state = TimerOFF;
 	tcb->acktimer.arg = new;
 	tcb->acktimer.state = TimerOFF;
+	tcb->katimer.arg = new;
+	tcb->katimer.state = TimerOFF;
+	tcb->rtt_timer.arg = new;
+	tcb->rtt_timer.state = TimerOFF;
 
 	h = &tcb->protohdr;
 	memset(h, 0, sizeof(*h));
@@ -1293,6 +1297,9 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 		netlog(f, Logtcp, "tcp len < 0, %lux\n", seg.seq);
 		update(s, &seg);
 		if(tcb->sndcnt == 0 && tcb->state == Closing) {
+			tcphalt(tpriv, &tcb->rtt_timer);
+			tcphalt(tpriv, &tcb->acktimer);
+			tcphalt(tpriv, &tcb->katimer);
 			tcpsetstate(s, Time_wait);
 			tcb->timer.start = MSL2*(1000 / MSPTICK);
 			tcpgo(tpriv, &tcb->timer);
@@ -1353,6 +1360,8 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 		case Finwait1:
 			update(s, &seg);
 			if(tcb->sndcnt == 0){
+				tcphalt(tpriv, &tcb->rtt_timer);
+				tcphalt(tpriv, &tcb->acktimer);
 				tcb->kacounter = MAXBACKOFF;
 				tcpsetstate(s, Finwait2);
 				tcb->katimer.start = MSL2 * (1000 / MSPTICK);
@@ -1365,6 +1374,9 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 		case Closing:
 			update(s, &seg);
 			if(tcb->sndcnt == 0) {
+				tcphalt(tpriv, &tcb->rtt_timer);
+				tcphalt(tpriv, &tcb->acktimer);
+				tcphalt(tpriv, &tcb->katimer);
 				tcpsetstate(s, Time_wait);
 				tcb->timer.start = MSL2*(1000 / MSPTICK);
 				tcpgo(tpriv, &tcb->timer);
@@ -1454,6 +1466,9 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 			case Finwait1:
 				tcb->rcv.nxt++;
 				if(tcb->sndcnt == 0) {
+					tcphalt(tpriv, &tcb->rtt_timer);
+					tcphalt(tpriv, &tcb->acktimer);
+					tcphalt(tpriv, &tcb->katimer);
 					tcpsetstate(s, Time_wait);
 					tcb->timer.start = MSL2*(1000/MSPTICK);
 					tcpgo(tpriv, &tcb->timer);
@@ -1463,6 +1478,9 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 				break;
 			case Finwait2:
 				tcb->rcv.nxt++;
+				tcphalt(tpriv, &tcb->rtt_timer);
+				tcphalt(tpriv, &tcb->acktimer);
+				tcphalt(tpriv, &tcb->katimer);
 				tcpsetstate(s, Time_wait);
 				tcb->timer.start = MSL2 * (1000/MSPTICK);
 				tcpgo(tpriv, &tcb->timer);
