@@ -348,8 +348,7 @@ astargen(Chan *c, Dirtab *, int , int i, Dir *db)
 			sprint(db->name, "astar%dmem", astar[dev]->id);
 			db->qid.path = QID(dev, 0, Qmem);
 			db->mode = 0660;
-			db->length1 = astar[dev]->memsize; /* BOTCH */
-			db->length2 = astar[dev]->memsize; /* BOTCH */
+			db->length = astar[dev]->memsize;
 			break;
 		}
 		sofar++;
@@ -569,6 +568,18 @@ astarsetup(Astar *a)
 static Chan*
 astarattach(char *spec)
 {
+	ulong ctlrno;
+	char *p;
+
+	ctlrno = 0;
+	if(spec && *spec){
+		ctlrno = strtoul(spec, &p, 0);
+		if((ctlrno == 0 && p == spec) || *p || (ctlrno >= Maxcard))
+			error(Ebadarg);
+	}
+	if(astar[ctlrno] == nil)
+		error(Enodev);
+
 	return devattach('G', spec);
 }
 

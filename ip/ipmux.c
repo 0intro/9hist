@@ -631,11 +631,15 @@ static void
 ipmuxkick(Conv *c, int)
 {
 	Block *bp;
+	Iphdr *ih;
 
 	bp = qget(c->wq);
 	if(bp == nil)
 		return;
-	ipoput(c->p->f, bp, 0, 0);
+
+	ih = (Iphdr*)(bp->rp);
+
+	ipoput(c->p->f, bp, 0, ih->ttl);
 }
 
 static void
@@ -717,11 +721,13 @@ yes:
 			c = mux->conv;
 		mux = mux->yes;
 	}
+	runlock(f);
+
 	if(c != nil){
 		qpass(c->rq, bp);
 		return;
 	}
-	runlock(f);
+
 nomatch:
 	/* doesn't match any filter, hand it to the specific protocol handler */
 	ip = (Iphdr*)bp->rp;

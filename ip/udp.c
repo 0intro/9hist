@@ -165,15 +165,13 @@ udpkick(Conv *c, int)
 		bp->rp += IPaddrlen;
 		ipmove(laddr, bp->rp);
 		bp->rp += IPaddrlen;
+		/* pick interface closest to dest */
 		if(ipforme(f, laddr) != Runi)
-			findlocalip(f, laddr, raddr);	/* pick interface closest to dest */
+			findlocalip(f, laddr, raddr);
 		rport = nhgets(bp->rp);
-		bp->rp += 2;
-		/* ignore local port number */
-		bp->rp += 2;
+		bp->rp += 2+2;			/* Igonore local port */
 		break;
 	case 4:
-		/* get user specified addresses */
 		bp = pullupblock(bp, UDP_USEAD4);
 		if(bp == nil)
 			return;
@@ -182,11 +180,9 @@ udpkick(Conv *c, int)
 		v4tov6(laddr, bp->rp);
 		bp->rp += IPv4addrlen;
 		if(ipforme(f, laddr) != Runi)
-			findlocalip(f, laddr, raddr);	/* pick interface closest to dest */
+			findlocalip(f, laddr, raddr);
 		rport = nhgets(bp->rp);
-		bp->rp += 2;
-		/* ignore local port number */
-		bp->rp += 2;
+		bp->rp += 2+2;
 		break;
 	default:
 		rport = 0;
@@ -209,21 +205,17 @@ udpkick(Conv *c, int)
 	uh->frag[1] = 0;
 	hnputs(uh->udpplen, ptcllen);
 	switch(ucb->headers){
+	case 4:
 	case 6:
 		v6tov4(uh->udpdst, raddr);
 		hnputs(uh->udpdport, rport);
 		v6tov4(uh->udpsrc, laddr);
 		break;
-	case 4:
-		memmove(uh->udpdst, raddr, IPv4addrlen);
-		hnputs(uh->udpdport, rport);
-		memmove(uh->udpsrc, laddr, IPv4addrlen);
-		break;
 	default:
 		v6tov4(uh->udpdst, c->raddr);
 		hnputs(uh->udpdport, c->rport);
 		if(ipcmp(c->laddr, IPnoaddr) == 0)
-			findlocalip(f, c->laddr, c->raddr);	/* pick interface closest to dest */
+			findlocalip(f, c->laddr, c->raddr);
 		v6tov4(uh->udpsrc, c->laddr);
 		break;
 	}
@@ -290,7 +282,7 @@ udpiput(Proto *udp, uchar *ia, Block *bp)
 
 	if(*p == nil) {
 		upriv->ustats.udpNoPorts++;
-		netlog(f, Logudp, "udp: no conv %I.%d -> %I.%d\n", raddr, rport,
+		netlog(f, Logudp, "udp: no conv %I!%d -> %I!%d\n", raddr, rport,
 			laddr, lport);
 		/* don't complain about broadcasts... */
 		if(ipforme(f, raddr) == 0){
@@ -334,9 +326,9 @@ udpiput(Proto *udp, uchar *ia, Block *bp)
 	case 4:
 		/* pass the src address */
 		bp = padblock(bp, UDP_USEAD4);
-		memmove(bp->rp, raddr, IPv4addrlen);
+		v6tov4(bp->rp, raddr);
 		if(ipforme(f, laddr) == Runi)
-			memmove(bp->rp+IPv4addrlen, laddr, IPv4addrlen);
+			v6tov4(bp->rp+IPv4addrlen, laddr);
 		else
 			memmove(bp->rp+IPv4addrlen, ia, IPv4addrlen);
 		hnputs(bp->rp + 2*IPv4addrlen, rport);
@@ -422,7 +414,7 @@ udpstats(Proto *udp, char *buf, int len)
 	Udppriv *upriv;
 
 	upriv = udp->priv;
-	return snprint(buf, len, "%d %d %d %d",
+	return snprint(buf, len, "%d %d %d %d\n",
 		upriv->ustats.udpInDatagrams,
 		upriv->ustats.udpNoPorts,
 		upriv->ustats.udpInErrors,
