@@ -14,6 +14,7 @@
 #define	PGSHIFT		12			/* log(BY2PG) */
 #define ROUND(s, sz)	(((s)+(sz-1))&~(sz-1))
 #define PGROUND(s)	ROUND(s, BY2PG)
+#define	BLOCKALIGN	8
 
 #define	MAXMACH		1			/* max # cpus system can run */
 
@@ -27,10 +28,21 @@
 #define	MS2TK(t)	((((ulong)(t))*HZ)/1000)	/* milliseconds to ticks */
 
 /*
+ * Fundamental addresses
+ */
+#define MACHADDR	(KZERO+0x00001000)
+
+/*
  *  Address spaces
  */
-#define KZERO		0xC0000000
-#define MACHADDR	(KZERO+0x00001000)
+#define	UZERO		0			/* base of user address space */
+#define	UTZERO		(UZERO+BY2PG)		/* first address in user text */
+#define	KZERO		0xC0000000		/* base of kernel address space */
+#define	KTZERO		0xC0008000		/* first address in kernel text */
+#define	USTKTOP		(KZERO-BY2PG)		/* byte just beyond user stack */
+#define	USTKSIZE	(16*1024*1024)		/* size of user stack */
+#define	TSTKTOP		(USTKTOP-USTKSIZE)	/* end of new stack in sysexec */
+#define TSTKSIZ 	100
 
 #define KSTACK		(16*1024)		/* Size of kernel stack */
 
@@ -46,3 +58,8 @@
 /*
  *  physical MMU
  */
+#define	PTEVALID	0
+#define	PTERONLY	0
+#define	PTEWRITE	0
+#define	PTEUNCACHED	0
+

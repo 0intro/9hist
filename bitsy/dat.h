@@ -34,6 +34,15 @@ struct Label
 /*
  *  no floating point, hence nothing to save
  */
+
+/*
+ * FPsave.status
+ */
+enum
+{
+	FPinit,
+	FPinactive,
+};
 struct	FPsave
 {
 	int	dummy;

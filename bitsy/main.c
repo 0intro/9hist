@@ -9,13 +9,51 @@
 #include	"pool.h"
 
 Mach *m;
+Conf conf;
 
 void
 main(void)
 {
+
 }
 
+/*
+ *  exit kernel either on a panic or user request
+ */
 void
-exit(int)
+exit(int ispanic)
+{
+	USED(ispanic);
+}
+
+/*
+ *  set mach dependent process state for a new process
+ */
+void
+procsetup(Proc *p)
+{
+	p->fpstate = FPinit;
+}
+
+/*
+ *  Save the mach dependent part of the process state.
+ */
+void
+procsave(Proc *p)
+{
+	USED(p);
+}
+
+/* place holder */
+void
+serialputs(char*, int)
+{
+}
+
+/*
+ *  dummy since rdb is not included 
+ */
+void
+rdb(void)
 {
 }

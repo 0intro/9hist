@@ -17,11 +17,15 @@ _main:
 	ORR	$(CpCdcache|CpCwb), R1
 	MCR     CpMMU, 0, R1, C(CpControl), C(0x0)
 
+	/* turn off interrupts */
+	BL	splhi(SB)
+
 	MOVW	$(MACHADDR+BY2PG), R13		/* stack */
 	SUB	$4, R13				/* link */
 	BL	main(SB)
 	BL	exit(SB)
 	/* we shouldn't get here */
+	BL	_div(SB)			/* hack to get _div etc loaded */
 _mainloop:
 	B	_mainloop
 
@@ -162,12 +166,13 @@ _vswitch:				/* switch to svc, type in R0 */
 	MOVM.IA	  (R3), [R0-R3]		/* restore [R0-R3] */
 	B	_vsaveu
 
+	/* push the registers as in ureg */
 _vsaveu:
 	SUB	$4, R13			/* save link */
 	MOVW	R14, (R13)
-	MOVM.DB.W [R0-R14], (R13)	/* save svc registers */
+	MOVM.DB.W.S [R0-R14], (R13)	/* save svc registers */
 
-	MOVW	$setR12(SB), R12	/* safety */
+	MOVW	$setR12(SB), R12	/* the SB from user mode is different */
 	MOVW	R13, R0			/* argument is &ureg */
 	SUB	$8, R13			/* space for argument+link */
 	BL	exception(SB)
@@ -177,7 +182,7 @@ _vrfe:
 	MOVW	(R13), R14		/* restore link */
 	MOVW	8(R13), R0		/* restore SPSR */
 	MOVW	R0, SPSR
-	MOVM.DB (R13), [R0-R14]	/* restore registers */
+	MOVM.DB.S (R13), [R0-R14]		/* restore registers */
 	ADD	$12, R13		/* skip saved link+type+SPSR */
 	RFE				/* MOVM.IA.S.W (R13), [R15] */
 
@@ -194,6 +199,12 @@ TEXT spllo(SB), $-4
 	RET
 
 TEXT splx(SB), $-4
+	MOVW	R0, R1
+	MOVW	CPSR, R0
+	MOVW	R1, CPSR
+	RET
+
+TEXT splxpc(SB), $0				/* for iunlock */
 	MOVW	R0, R1
 	MOVW	CPSR, R0
 	MOVW	R1, CPSR

@@ -7,8 +7,11 @@ void	clockintr(Ureg*, void*);
 void	clockintrsched(void);
 void	(*coherence)(void);
 void	delay(int);
+void	evenaddr(ulong);
+#define	getpgcolor(a)	0
 void	idle(void);
 #define	idlehands()			/* nothing to do in the runproc */
+int	iprint(char*, ...);
 #define	procrestore(p)
 void	procsave(Proc*);
 void	procsetup(Proc*);

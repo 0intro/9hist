@@ -712,6 +712,9 @@ execregs(ulong entry, ulong ssize, ulong nargs)
 	return USTKTOP-BY2WD;		/* address of user-level clock */
 }
 
+/*
+ *  return the userpc the last exception happened at
+ */
 ulong
 userpc(void)
 {
