@@ -6,6 +6,7 @@
  *	the PCI scanning code could be made common to other adapters;
  *	PCI code needs rewritten to handle byte, word, dword accesses
  *	  and using the devno as a bus+dev+function triplet;
+ *	auto-negotiation;
  *	optionally use memory-mapped registers.
  */
 #include "u.h"
@@ -725,11 +726,18 @@ reset(Ether* ether)
 		if(x != 0x80017)
 			continue;
 
-		x = dp83840r(ctlr, i, 0x1B);
-		if((x & 0x0200) == 0){
+		x = dp83840r(ctlr, i, 0x19);
+		if((x & 0x0040) == 0){
+			ether->mbps = 100;
 			ctlr->configdata[8] = 1;
 			ctlr->configdata[15] &= ~0x80;
-			ether->mbps = 100;
+		}
+		else{
+			x = dp83840r(ctlr, i, 0x1B);
+			if((x & 0x0200) == 0){
+				ctlr->configdata[8] = 1;
+				ctlr->configdata[15] &= ~0x80;
+			}
 		}
 		break;
 	}
