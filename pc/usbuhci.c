@@ -1198,21 +1198,24 @@ isoio(Ctlr *ctlr, Endpt *e, void *a, long n, ulong offset, int w)
 			if(e->psize > e->maxpkt)
 				panic("packet size > maximum");
 		}
+		if((i = n) >= e->psize)
+			i = e->psize;
+		if (w)
+			e->buffered += i;
+		else{
+			e->buffered -= i;
+			if (e->buffered < 0)
+				e->buffered = 0;
+		}
+		isolock = 0;
+		iunlock(&ctlr->activends);
 		td->flags &= ~IsoClean;
 		bp = x->bp0 + (td - x->td0) * e->maxpkt / e->pollms;
 		q = bp + e->off;
-		if((i = n) >= e->psize)
-			i = e->psize;
 		if (w){
 			memmove(q, p, i);
-			e->buffered += i;
 		}else{
 			memmove(p, q, i);
-			e->buffered -= i;
-			if (e->buffered < 0){
-				XPRINT("e->buffered %d?\n", e->buffered);
-				e->buffered = 0;
-			}
 		}
 		p += i;
 		n -= i;
@@ -1231,11 +1234,9 @@ isoio(Ctlr *ctlr, Endpt *e, void *a, long n, ulong offset, int w)
 	} while(n > 0);
 	n = p-(uchar*)a;
 	e->foffset += n;
-	if (isolock){
-		isolock = 0;
-		iunlock(&ctlr->activends);
-	}
 	poperror();
+	if (isolock)
+		iunlock(&ctlr->activends);
 	qunlock(&e->rlock);
 	return n;
 }
@@ -1361,24 +1362,10 @@ XPRINT("qh %s: q=%p first=%p last=%p entries=%.8lux\n",
 	return p-(uchar*)a;
 }
 
-static struct
-{
-	int	vid;
-	int	did;
-}
-supported[] =
-{
-	{ 0x8086, 0x7112 },		/* Intel chipset PIIX 4 */
-	{ 0x8086, 0x2442 },		/* Intel chipset 815E */
-	{ 0x8086, 0x2444 },		/* Intel chipset 815E */
-	{ 0x1106, 0x0586 },		/* Via chipset */
-	{ 0x1106, 0x3038 },		/* Via chipset */
-};
-
 static void
 scanpci(void)
 {
-	int i, io;
+	int io;
 	Ctlr *ctlr;
 	Pcidev *p;
 	static int already = 0;
@@ -1386,35 +1373,39 @@ scanpci(void)
 	if(already)
 		return;
 	already = 1;
-	for(i = 0; i < nelem(supported); i++) {
-		p = nil;
-		while(p = pcimatch(p, supported[i].vid, supported[i].did)) {
-			io = p->mem[4].bar & ~0x0F;
-			if(io == 0) {
-				print("usbuhci: failed to map registers\n");
-				continue;
-			}
-			if(ioalloc(io, p->mem[4].size, 0, "usbuhci") < 0){
-				print("usbuhci: port %d in use\n", io);
-				continue;
-			}
-			if(p->intl == 0xFF || p->intl == 0) {
-				print("usbuhci: no irq assigned for port %d\n", io);
-				continue;
-			}
-
-			XPRINT("usbuhci: %x/%x port 0x%ux size 0x%x irq %d\n",
-				p->vid, p->did, io, p->mem[4].size, p->intl);
-
-			ctlr = malloc(sizeof(Ctlr));
-			ctlr->pcidev = p;
-			ctlr->io = io;
-			if(ctlrhead != nil)
-				ctlrtail->next = ctlr;
-			else
-				ctlrhead = ctlr;
-			ctlrtail = ctlr;
+	p = nil;
+	while(p = pcimatch(p, 0, 0)) {
+		/*
+		 * Find UHCI controllers.  Class = 12 (serial controller),
+		 * Sub-class = 3 (USB) and Programming Interface = 0.
+		 */
+		if(p->ccrb != 0x0C || p->ccru != 0x03 || p->ccrp != 0x00)
+			continue;
+		io = p->mem[4].bar & ~0x0F;
+		if(io == 0) {
+			print("usbuhci: failed to map registers\n");
+			continue;
 		}
+		if(ioalloc(io, p->mem[4].size, 0, "usbuhci") < 0){
+			print("usbuhci: port %d in use\n", io);
+			continue;
+		}
+		if(p->intl == 0xFF || p->intl == 0) {
+			print("usbuhci: no irq assigned for port %d\n", io);
+			continue;
+		}
+
+		XPRINT("usbuhci: %x/%x port 0x%ux size 0x%x irq %d\n",
+			p->vid, p->did, io, p->mem[4].size, p->intl);
+
+		ctlr = malloc(sizeof(Ctlr));
+		ctlr->pcidev = p;
+		ctlr->io = io;
+		if(ctlrhead != nil)
+			ctlrtail->next = ctlr;
+		else
+			ctlrhead = ctlr;
+		ctlrtail = ctlr;
 	}
 }
 

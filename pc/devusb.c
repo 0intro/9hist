@@ -1,17 +1,3 @@
-/*
- * UHCI USB driver
- *	(c) 1998, 1999 C H Forsyth, forsyth@caldo.demon.co.uk
- * to do:
- *	endpoint open/close
- *	build Endpt on open from attributes stored in Udev?
- *	build data0/data1 rings for bulk and interrupt endpoints
- *	endpoint TD rings (can there be prefetch?)
- *	hubs?
- *	special handling of isochronous traffic?
- *	is use of Queues justified? (could have client clean TD rings on wakeup)
- *	bandwidth check
- */
-
 #include	"u.h"
 #include	"../port/lib.h"
 #include	"mem.h"
@@ -20,172 +6,15 @@
 #include	"io.h"
 #include	"../port/error.h"
 
+#include	"usb.h"
+
+static int debug = 0;
+
 #define Chatty	1
 #define DPRINT if(Chatty)print
 #define XPRINT if(debug)iprint
 
-static int debug = 0;
-
-/*
- * USB packet definitions
- */
-enum {
-	TokIN = 0x69,
-	TokOUT = 0xE1,
-	TokSETUP = 0x2D,
-
-	/* request type */
-	RH2D = 0<<7,
-	RD2H = 1<<7,
-	Rstandard = 0<<5,
-	Rclass = 1<<5,
-	Rvendor = 2<<5,
-	Rdevice = 0,
-	Rinterface = 1,
-	Rendpt = 2,
-	Rother = 3,
-};
-
-typedef struct Ctlr Ctlr;
-typedef struct Endpt Endpt;
-typedef struct Udev Udev;
-
-/*
- * UHCI hardware structures, aligned on 16-byte boundary
- */
-typedef struct QH QH;
-typedef struct TD TD;
-
-#define Class(csp)		((csp)&0xff)
-#define Subclass(csp)	(((csp)>>8)&0xff)
-#define Proto(csp)		(((csp)>>16)&0xff)
-#define CSP(c, s, p)	((c) | ((s)<<8) | ((p)<<16))
-
-struct TD {
-	ulong	link;
-	ulong	status;	/* controller r/w */
-	ulong	dev;
-	ulong	buffer;
-
-	/* software */
-	ulong	flags;
-	union{
-		Block*	bp;		/* non-iso */
-		ulong	offset;	/* iso */
-	};
-	Endpt*	ep;
-	TD*	next;
-};
-#define	TFOL(p)	((TD*)KADDR((ulong)(p) & ~0xF))
-
-struct QH {
-	ulong	head;
-	ulong	entries;	/* address of next TD or QH to process (updated by controller) */
-
-	/* software */
-	QH*		hlink;
-	TD*		first;
-	QH*		next;		/* free list */
-	TD*		last;
-	ulong	_d1;		/* fillers */
-	ulong	_d2;
-};
-#define	QFOL(p)	((QH*)KADDR((ulong)(p) & ~0xF))
-
-/*
- * UHCI interface registers and bits
- */
-enum {
-	/* i/o space */
-	Cmd = 0,
-	Status = 2,
-	Usbintr = 4,
-	Frnum = 6,
-	Flbaseadd = 8,
-	SOFMod = 0xC,
-	Portsc0 = 0x10,
-	Portsc1 = 0x12,
-
-	/* port status */
-	Suspend =		1<<12,
-	PortReset =		1<<9,
-	SlowDevice =		1<<8,
-	ResumeDetect =	1<<6,
-	PortChange =		1<<3,	/* write 1 to clear */
-	PortEnable =		1<<2,
-	StatusChange =	1<<1,	/* write 1 to clear */
-	DevicePresent =	1<<0,
-
-	NFRAME = 	1024,
-	FRAMESIZE=	NFRAME*sizeof(ulong),	/* fixed by hardware; aligned to same */
-	FRAMEMASK=	FRAMESIZE-1,
-	NISOTD = 4,			/* number of TDs for isochronous io per frame */
-
-	Vf =			1<<2,	/* TD only */
-	IsQH =		1<<1,
-	Terminate =	1<<0,
-
-	/* TD.status */
-	SPD =		1<<29,
-	ErrLimit0 =	0<<27,
-	ErrLimit1 =	1<<27,
-	ErrLimit2 =	2<<27,
-	ErrLimit3 =	3<<27,
-	LowSpeed =	1<<26,
-	IsoSelect =	1<<25,
-	IOC =		1<<24,
-	Active =		1<<23,
-	Stalled =		1<<22,
-	DataBufferErr =	1<<21,
-	Babbling =	1<<20,
-	NAKed =		1<<19,
-	CRCorTimeout = 1<<18,
-	BitstuffErr =	1<<17,
-	AnyError = (Stalled | DataBufferErr | Babbling | NAKed | CRCorTimeout | BitstuffErr),
-
-	/* TD.dev */
-	IsDATA1 =	1<<19,
-
-	/* TD.flags (software) */
-	CancelTD=	1<<0,
-	IsoClean=		1<<2,
-};
-
-#define	GET2(p)	((((p)[1]&0xFF)<<8)|((p)[0]&0xFF))
-#define	PUT2(p,v)	(((p)[0] = (v)), ((p)[1] = (v)>>8))
-
-/*
- * active USB device
- */
-struct Udev {
-	Ref;
-	Lock;
-	int		x;		/* index in usbdev[] */
-	int		busy;
-	int		state;
-	int		id;
-	uchar	port;		/* port number on connecting hub */
-	ulong	csp;
-	int		ls;
-	int		npt;
-	Endpt*	ep[16];	/* active end points */
-	Udev*	ports;	/* active ports, if hub */
-	Udev*	next;		/* next device on this hub */
-};
-
-/* device parameters */
-enum {
-	/* Udev.state */
-	Disabled = 0,
-	Attached,
-	Enabled,
-	Assigned,
-	Configured,
-
-	/* Udev.class */
-	Noclass = 0,
-	Hubclass = 9,
-};
+Usbhost*	usbhost[MaxUsb];
 
 static char *devstates[] = {
 	[Disabled]		"Disabled",
@@ -195,109 +24,62 @@ static char *devstates[] = {
 	[Configured]	"Configured",
 };
 
-/*
- * device endpoint
- */
-struct Endpt {
-	Ref;
-	Lock;
-	int		x;		/* index in Udev.ep */
-	int		id;		/* hardware endpoint address */
-	int		maxpkt;	/* maximum packet size (from endpoint descriptor) */
-	int		data01;	/* 0=DATA0, 1=DATA1 */
-	uchar	eof;
-	ulong	csp;
-/*	uchar	isopen;	 ep operations forbidden on open endpoints */
-	uchar	mode;	/* OREAD, OWRITE, ORDWR */
-	uchar	nbuf;	/* number of buffers allowed */
-	uchar	iso;
-	uchar	debug;
-	uchar	active;	/* listed for examination by interrupts */
-	int		setin;
-	/* ISO related: */
-	void*	tdalloc;
-	void*	bpalloc;
-	int		hz;
-	int		remain;	/* for packet size calculations */
-	int		samplesz;
-	int		sched;	/* schedule index; -1 if undefined or aperiodic */
-	int		pollms;	/* polling interval in msec */
-	int		psize;	/* (remaining) size of this packet */
-	int		off;		/* offset into packet */
-	uchar*	bp0;		/* first block in array */
-	TD	*	td0;		/* first td in array */
-	TD	*	etd;		/* pointer into circular list of TDs for isochronous ept */
-	TD	*	xtd;		/* next td to be cleaned */
-	/* Real-time iso stuff */
-	ulong	foffset;	/* file offset (to detect seeks) */
-	ulong	poffset;	/* offset of next packet to be queued */
-	ulong	toffset;	/* offset associated with time */
-	vlong	time;		/* timeassociated with offset */
-	int		buffered;	/* bytes captured but unread, or written but unsent */
-	/* end ISO stuff */
-	QH	*	epq;		/* queue of TDs for this endpoint */
-	QLock	rlock;
-	Rendez	rr;
-	Queue*	rq;
-	QLock	wlock;
-	Rendez	wr;
-	Queue*	wq;
-
-	int		ntd;
-	char*	err;
-
-	Udev*	dev;	/* owning device */
-
-	Endpt*	activef;	/* active endpoint list */
-
-	ulong	nbytes;
-	ulong	nblocks;
-};
-
-struct Ctlr {
-	Lock;	/* protects state shared with interrupt (eg, free list) */
-	int		io;
-	ulong*	frames;	/* frame list */
-	ulong*	frameld;	/* real time load on each of the frame list entries */
-	int		idgen;	/* version number to distinguish new connections */
-	QLock	resetl;	/* lock controller during USB reset */
-
-	TD*		tdpool;	/* first NFRAMES*NISOTD entries are preallocated */
-	TD*		freetd;
-	QH*		qhpool;
-	QH*		freeqh;
-
-	QH*		ctlq;	/* queue for control i/o */
-	QH*		bwsop;	/* empty bandwidth sop (to PIIX4 errata specifications) */
-	QH*		bulkq;	/* queue for bulk i/o (points back to bandwidth sop) */
-	QH*		recvq;	/* receive queues for bulk i/o */
-
-	Udev*	ports[2];
-};
-#define	IN(x)	ins(ub->io+(x))
-#define	OUT(x, v)	outs(ub->io+(x), (v))
-
-static	long usbints;
-static	long framenumber;
-static	long frameptr;
-static	long	usbbogus;
-
-static	Ctlr	ubus;
-static	char	Estalled[] = "usb endpoint stalled";
 static	char	Ebadusbmsg[] = "invalid parameters to USB ctl message";
-
-static	QLock	usbstate;	/* protects name space state */
-static	Udev*	usbdev[32];
-static struct {
-	Lock;
-	Endpt*	f;
-} activends;
 
 enum
 {
-	BCMdisable,
-	BCMenable,
-	BCMreset,
+	Qtopdir = 0,
+	Q2nd,
+	Qnew,
+	Qport,
+	Q3rd,
+	Qctl,
+	Qstatus,
+	Qep0,
+	/* other endpoint files */
+};
+
+/*
+ * Qid path is:
+ *	8 bits of file type (qids above)
+ *	8 bits of slot number; default address 0 used for per-controller files
+ *	4 bits of controller number
+ */
+enum {
+	TYPEBITS	= 8,
+	SLOTBITS	= 8,
+	CTLRBITS	= 4,
+
+	SLOTSHIFT	= TYPEBITS,
+	CTLRSHIFT	= SLOTSHIFT+SLOTBITS,
+
+	TYPEMASK	= (1<<TYPEBITS)-1,
+	SLOTMASK	= (1<<SLOTBITS)-1,
+	CTLRMASK	= (1<<CTLRBITS)-1,
+};
+
+#define	TYPE(q)		(((ulong)(q).path)&TYPEMASK)
+#define	SLOT(q)		((((ulong)(q).path)>>SLOTSHIFT)&SLOTMASK)
+#define	CTLR(q)		((((ulong)(q).path)>>CTLRSHIFT)&CTLRMASK)
+#define	PATH(t, s, c)	((t)|((s)<<SLOTSHIFT)|((c)<<CTLRSHIFT))
+
+static Dirtab usbdir2[] = {
+	"new",	{Qnew},			0,	0666,
+	"port",	{Qport},			0,	0666,
+};
+
+static Dirtab usbdir3[]={
+	"ctl",		{Qctl},			0,	0666,
+	"status",	{Qstatus},			0,	0444,
+	"setup",	{Qep0},			0,	0666,
+	/* epNdata names are generated on demand */
+};
+
+enum
+{
+	PMdisable,
+	PMenable,
+	PMreset,
 };
 
 enum
@@ -312,11 +94,11 @@ enum
 	CMunstall,
 };
 
-static Cmdtab usbbusctlmsg[] =
+static Cmdtab usbportmsg[] =
 {
-	BCMdisable,	"disable",	2,
-	BCMenable,	"enable",	2,
-	BCMreset,	"reset",	2,
+	PMdisable,	"disable",	2,
+	PMenable,		"enable",	2,
+	PMreset,		"reset",	2,
 };
 
 static Cmdtab usbctlmsg[] =
@@ -331,634 +113,60 @@ static Cmdtab usbctlmsg[] =
 	CMunstall,	"unstall",	2,
 };
 
-static long readusb(Endpt*, void*, long);
-static long writeusb(Endpt*, void*, long, int);
-
-static TD *
-alloctd(Ctlr *ub)
+static struct
 {
-	TD *t;
+	char*	type;
+	int	(*reset)(Usbhost*);
+} usbtypes[MaxUsb+1];
 
-	ilock(ub);
-	t = ub->freetd;
-	if(t == nil)
-		panic("alloctd");	/* TO DO */
-	ub->freetd = t->next;
-	t->next = nil;
-	iunlock(ub);
-	t->ep = nil;
-	t->bp = nil;
-	t->status = 0;
-	t->link = Terminate;
-	t->buffer = 0;
-	t->flags = 0;
-	return t;
+void
+addusbtype(char* t, int (*r)(Usbhost*))
+{
+	static int ntype;
+
+	if(ntype == MaxUsb)
+		panic("too many USB host interface types");
+	usbtypes[ntype].type = t;
+	usbtypes[ntype].reset = r;
+	ntype++;
 }
 
-static void
-freetd(TD *t)
+static Udev*
+usbdeviceofslot(Usbhost *uh, int s)
 {
-	Ctlr *ub;
-
-	ub = &ubus;
-	t->ep = nil;
-	if(t->bp)
-		freeb(t->bp);
-	t->bp = nil;
-	ilock(ub);
-	t->buffer = 0xdeadbeef;
-	t->next = ub->freetd;
-	ub->freetd = t;
-	iunlock(ub);
+	if(s < 0 || s > nelem(uh->dev))
+		return nil;
+	return uh->dev[s];
 }
 
-static void
-dumpdata(Block *b, int n)
+static Udev*
+usbdevice(Chan *c)
 {
-	int i;
+	int bus;
+	Udev *d;
+	Usbhost *uh;
 
-	XPRINT("\tb %8.8lux[%d]: ", (ulong)b->rp, n);
-	if(n > 16)
-		n = 16;
-	for(i=0; i<n; i++)
-		XPRINT(" %2.2ux", b->rp[i]);
-	XPRINT("\n");
-}
-
-static void
-dumptd(TD *t, int follow)
-{
-	int i, n;
-	char buf[20], *s;
-	TD *t0;
-
-	t0 = t;
-	while(t){
-		i = t->dev & 0xFF;
-		if(i == TokOUT || i == TokSETUP)
-			n = ((t->dev>>21) + 1) & 0x7FF;
-		else if((t->status & Active) == 0)
-			n = (t->status + 1) & 0x7FF;
-		else
-			n = 0;
-		s = buf;
-		if(t->status & Active)
-			*s++ = 'A';
-		if(t->status & Stalled)
-			*s++ = 'S';
-		if(t->status & DataBufferErr)
-			*s++ = 'D';
-		if(t->status & Babbling)
-			*s++ = 'B';
-		if(t->status & NAKed)
-			*s++ = 'N';
-		if(t->status & CRCorTimeout)
-			*s++ = 'T';
-		if(t->status & BitstuffErr)
-			*s++ = 'b';
-		if(t->status & LowSpeed)
-			*s++ = 'L';
-		*s = 0;
-		XPRINT("td %8.8lux: ", t);
-		XPRINT("l=%8.8lux s=%8.8lux d=%8.8lux b=%8.8lux %8.8lux f=%8.8lux\n",
-			t->link, t->status, t->dev, t->buffer, t->bp?(ulong)t->bp->rp:0, t->flags);
-		XPRINT("\ts=%s,ep=%ld,d=%ld,D=%ld\n",
-			buf, (t->dev>>15)&0xF, (t->dev>>8)&0xFF, (t->dev>>19)&1);
-		if(debug && t->bp && (t->flags & CancelTD) == 0)
-			dumpdata(t->bp, n);
-		if(!follow || t->link & Terminate || t->link & IsQH)
-			break;
-		t = TFOL(t->link);
-		if(t == t0)
-			break;	/* looped */
+	bus = CTLR(c->qid);
+	if(bus > nelem(usbhost) || (uh = usbhost[bus]) == nil) {
+		error(Egreg);
+		return nil;		/* for compiler */
 	}
-}
-
-static TD *
-alloctde(Endpt *e, int pid, int n)
-{
-	TD *t;
-	int tog, id;
-
-	t = alloctd(&ubus);
-	id = (e->x<<7)|(e->dev->x&0x7F);
-	tog = 0;
-	if(e->data01 && pid != TokSETUP)
-		tog = IsDATA1;
-	t->ep = e;
-	t->status = ErrLimit3 | Active | IOC;	/* or put IOC only on last? */
-	if(e->dev->ls)
-		t->status |= LowSpeed;
-	t->dev = ((n-1)<<21) | ((id&0x7FF)<<8) | pid | tog;
-	return t;
-}
-
-static QH *
-allocqh(Ctlr *ub)
-{
-	QH *qh;
-
-	ilock(ub);
-	qh = ub->freeqh;
-	if(qh == nil)
-		panic("allocqh");	/* TO DO */
-	ub->freeqh = qh->next;
-	qh->next = nil;
-	iunlock(ub);
-	qh->head = Terminate;
-	qh->entries = Terminate;
-	qh->hlink = nil;
-	qh->first = nil;
-	qh->last = nil;
-	return qh;
-}
-
-static void
-freeqh(Ctlr *ub, QH *qh)
-{
-	ilock(ub);
-	qh->next = ub->freeqh;
-	ub->freeqh = qh;
-	iunlock(ub);
-}
-
-static void
-dumpqh(QH *q)
-{
-	int i;
-	QH *q0;
-
-	q0 = q;
-	for(i = 0; q != nil && i < 10; i++){
-		XPRINT("qh %8.8lux: %8.8lux %8.8lux\n", q, q->head, q->entries);
-		if((q->entries & Terminate) == 0)
-			dumptd(TFOL(q->entries), 1);
-		if(q->head & Terminate)
-			break;
-		if((q->head & IsQH) == 0){
-			XPRINT("head:");
-			dumptd(TFOL(q->head), 1);
-			break;
-		}
-		q = QFOL(q->head);
-		if(q == q0)
-			break;	/* looped */
-	}
-}
-
-static void
-queuetd(Ctlr *ub, QH *q, TD *t, int vf, char *why)
-{
-	TD *lt;
-
-	for(lt = t; lt->next != nil; lt = lt->next)
-		lt->link = PADDR(lt->next) | vf;
-	lt->link = Terminate;
-	ilock(ub);
-	XPRINT("queuetd %s: t=%p lt=%p q=%p first=%p last=%p entries=%.8lux\n",
-		why, t, lt, q, q->first, q->last, q->entries);
-	if(q->first != nil){
-		q->last->link = PADDR(t) | vf;
-		q->last->next = t;
-	}else{
-		q->first = t;
-		q->entries = PADDR(t);
-	}
-	q->last = lt;
-	XPRINT("	t=%p q=%p first=%p last=%p entries=%.8lux\n",
-		t, q, q->first, q->last, q->entries);
-	dumpqh(q);
-	iunlock(ub);
-}
-
-static void
-cleantd(TD *t, int discard)
-{
-	Block *b;
-	int n, err;
-
-	XPRINT("cleanTD: %8.8lux %8.8lux %8.8lux %8.8lux\n",
-		t->link, t->status, t->dev, t->buffer);
-	if(t->ep != nil && t->ep->debug)
-		dumptd(t, 0);
-	if(t->status & Active)
-		panic("cleantd Active");
-	err = t->status & (AnyError&~NAKed);
-	/* TO DO: on t->status&AnyError, q->entries will not have advanced */
-	if (err)
-		XPRINT("cleanTD: Error %8.8lux %8.8lux %8.8lux %8.8lux\n",
-			t->link, t->status, t->dev, t->buffer);
-	switch(t->dev&0xFF){
-	case TokIN:
-		if(discard || (t->flags & CancelTD) || t->ep == nil || t->ep->x!=0&&err){
-			if(t->ep != nil){
-				if(err != 0)
-					t->ep->err = err==Stalled? Estalled: Eio;
-				wakeup(&t->ep->rr);	/* in case anyone cares */
-			}
-			break;
-		}
-		b = t->bp;
-		n = (t->status + 1) & 0x7FF;
-		if(n > b->lim - b->wp)
-			n = 0;
-		b->wp += n;
-		if(Chatty)
-			dumpdata(b, n);
-		t->bp = nil;
-		t->ep->nbytes += n;
-		t->ep->nblocks++;
-		qpass(t->ep->rq, b);	/* TO DO: flow control */
-		wakeup(&t->ep->rr);	/* TO DO */
-		break;
-	case TokSETUP:
-		XPRINT("cleanTD: TokSETUP %lux\n", &t->ep);
-		/* don't really need to wakeup: subsequent IN or OUT gives status */
-		if(t->ep != nil) {
-			wakeup(&t->ep->wr);	/* TO DO */
-			XPRINT("cleanTD: wakeup %lux\n", &t->ep->wr);
-		}
-		break;
-	case TokOUT:
-		/* TO DO: mark it done somewhere */
-		XPRINT("cleanTD: TokOut %lux\n", &t->ep);
-		if(t->ep != nil){
-			if(t->bp){
-				n = BLEN(t->bp);
-				t->ep->nbytes += n;
-				t->ep->nblocks++;
-			}
-			if(t->ep->x!=0 && err != 0)
-				t->ep->err = err==Stalled? Estalled: Eio;
-			if(--t->ep->ntd < 0)
-				panic("cleantd ntd");
-			wakeup(&t->ep->wr);	/* TO DO */
-			XPRINT("cleanTD: wakeup %lux\n", &t->ep->wr);
-		}
-		break;
-	}
-	freetd(t);
-}
-
-static void
-cleanq(QH *q, int discard, int vf)
-{
-	TD *t, *tp;
-	Ctlr *ub;
-
-	ub = &ubus;
-	ilock(ub);
-	tp = nil;
-	for(t = q->first; t != nil;){
-		XPRINT("cleanq: %8.8lux %8.8lux %8.8lux %8.8lux %8.8lux %8.8lux\n",
-			t->link, t->status, t->dev, t->buffer, t->flags, t->next);
-		if(t->status & Active){
-			if(t->status & NAKed){
-				t->status = (t->status & ~NAKed) | IOC;	/* ensure interrupt next frame */
-				tp = t;
-				t = t->next;
-				continue;
-			}
-			if(t->flags & CancelTD){
-				XPRINT("cancelTD: %8.8lux\n", (ulong)t);
-				t->status = (t->status & ~Active) | IOC;	/* ensure interrupt next frame */
-				tp = t;
-				t = t->next;
-				continue;
-			}
-			tp = t;
-			t = t->next;
-			continue;
-			break;
-		}
-		t->status &= ~IOC;
-		if (tp == nil) {
-			q->first = t->next;
-			if(q->first != nil)
-				q->entries = PADDR(q->first);
-			else
-				q->entries = Terminate;
-		} else {
-			tp->next = t->next;
-			if (t->next != nil)
-				tp->link = PADDR(t->next) | vf;
-			else
-				tp->link = Terminate;
-		}
-		if (q->last == t)
-			q->last = tp;
-		iunlock(ub);
-		cleantd(t, discard);
-		ilock(ub);
-		if (tp)
-			t = tp->next;
-		else
-			t = q->first;
-		XPRINT("t = %8.8lux\n", t);
-		dumpqh(q);
-	}
-	if(q->first && q->entries != PADDR(q->first)){
-		usbbogus++;
-		q->entries = PADDR(q->first);
-	}
-	iunlock(ub);
-}
-
-static void
-canceltds(Ctlr *ub, QH *q, Endpt *e)
-{
-	TD *t;
-
-	if(q != nil){
-		ilock(ub);
-		for(t = q->first; t != nil; t = t->next)
-			if(t->ep == e)
-				t->flags |= CancelTD;
-		iunlock(ub);
-		XPRINT("cancel:\n");
-		dumpqh(q);
-	}
-}
-
-static void
-eptcancel(Endpt *e)
-{
-	Ctlr *ub;
-
-	if(e == nil)
-		return;
-	ub = &ubus;
-	canceltds(ub, e->epq, e);
-	canceltds(ub, ub->ctlq, e);
-	canceltds(ub, ub->bulkq, e);
-}
-
-static void
-eptactivate(Endpt *e)
-{
-	ilock(&activends);
-	if(e->active == 0){
-		XPRINT("activate 0x%p\n", e);
-		e->active = 1;
-		e->activef = activends.f;
-		activends.f = e;
-	}
-	iunlock(&activends);
-}
-
-static void
-eptdeactivate(Endpt *e)
-{
-	Endpt **l;
-
-	/* could be O(1) but not worth it yet */
-	ilock(&activends);
-	if(e->active){
-		e->active = 0;
-		XPRINT("deactivate 0x%p\n", e);
-		for(l = &activends.f; *l != e; l = &(*l)->activef)
-			if(*l == nil){
-				iunlock(&activends);
-				panic("usb eptdeactivate");
-			}
-		*l = e->activef;
-	}
-	iunlock(&activends);
-}
-
-static void
-queueqh(QH *qh) {
-	QH *q;
-	Ctlr *ub;
-
-	ub = &ubus;
-	// See if it's already queued
-	for (q = ub->recvq->next; q; q = q->hlink)
-		if (q == qh)
-			return;
-	if ((qh->hlink = ub->recvq->next) == nil)
-		qh->head = Terminate;
-	else
-		qh->head = PADDR(ub->recvq->next) | IsQH;
-	ub->recvq->next = qh;
-	ub->recvq->entries = PADDR(qh) | IsQH;
-}
-
-static QH*
-qxmit(Endpt *e, Block *b, int pid)
-{
-	TD *t;
-	int n, vf;
-	Ctlr *ub;
-	QH *qh;
-
-	if(b != nil){
-		n = BLEN(b);
-		t = alloctde(e, pid, n);
-		t->bp = b;
-		t->buffer = PADDR(b->rp);
-	}else
-		t = alloctde(e, pid, 0);
-	ub = &ubus;
-	ilock(ub);
-	e->ntd++;
-	iunlock(ub);
-	if(e->debug) pprint("QTD: %8.8lux n=%ld\n", t, b?BLEN(b): 0);
-	vf = 0;
-	if(e->x == 0){
-		qh = ub->ctlq;
-		vf = 0;
-	}else if((qh = e->epq) == nil || e->mode != OWRITE){
-		qh = ub->bulkq;
-		vf = Vf;
-	}
-	queuetd(ub, qh, t, vf, "qxmit");
-	return qh;
-}
-
-static QH*
-qrcv(Endpt *e)
-{
-	TD *t;
-	Block *b;
-	Ctlr *ub;
-	QH *qh;
-	int vf;
-
-	t = alloctde(e, TokIN, e->maxpkt);
-	b = allocb(e->maxpkt);
-	t->bp = b;
-	t->buffer = PADDR(b->wp);
-	ub = &ubus;
-	vf = 0;
-	if(e->x == 0){
-		qh = ub->ctlq;
-	}else if((qh = e->epq) == nil || e->mode != OREAD){
-		qh = ub->bulkq;
-		vf = Vf;
-	}
-	queuetd(ub, qh, t, vf, "qrcv");
-	return qh;
-}
-
-static Block *
-usbreq(int type, int req, int value, int offset, int count)
-{
-	Block *b;
-
-	b = allocb(8);
-	b->wp[0] = type;
-	b->wp[1] = req;
-	PUT2(b->wp+2, value);
-	PUT2(b->wp+4, offset);
-	PUT2(b->wp+6, count);
-	b->wp += 8;
-	return b;
-}
-
-/*
- * return smallest power of 2 >= n
- */
-static int
-flog2(int n)
-{
-	int i;
-
-	for(i=0; (1<<i)<n; i++)
-		;
-	return i;
-}
-
-static int
-usbsched(	Ctlr *ub, int pollms, ulong load)
-{
-	int i, d, q;
-	ulong best, worst;
-
-	best = 1000000;
-	q = -1;
-	for (d = 0; d < pollms; d++){
-		worst = 0;
-		for (i = d; i < NFRAME; i++){
-			if (ub->frameld[i] + load > worst)
-				worst = ub->frameld[i] + load;
-		}
-		if (worst < best){
-			best = worst;
-			q = d;
-		}
-	}
-	return q;
-}
-
-static int
-schedendpt(Endpt *e)
-{
-	Ctlr *ub;
-	TD *td;
-	uchar *bp;
-	int i, id, ix, size, frnum;
-
-	if(!e->iso || e->sched >= 0)
-		return 0;
-	ub = &ubus;
-
-	if (e->active){
-		return -1;
-	}
-	e->off = 0;
-	e->sched = usbsched(ub, e->pollms, e->maxpkt);
-	if(e->sched < 0)
-		return -1;
-
-	if (e->tdalloc || e->bpalloc)
-		panic("usb: tdalloc/bpalloc");
-	e->tdalloc = mallocz(0x10 + NFRAME*sizeof(TD), 1);
-	e->bpalloc = mallocz(0x10 + e->maxpkt*NFRAME/e->pollms, 1);
-	e->td0 = (TD*)(((ulong)e->tdalloc + 0xf) & ~0xf);
-	e->bp0 = (uchar *)(((ulong)e->bpalloc + 0xf) & ~0xf);
-	frnum = (IN(Frnum) + 1) & 0x3ff;
-	frnum = (frnum & ~(e->pollms - 1)) + e->sched;
-	e->xtd = &e->td0[(frnum+8)&0x3ff];	/* Next td to finish */
-	e->etd = nil;
-	e->remain = 0;
-	e->nbytes = 0;
-	td = e->td0;
-	for(i = e->sched; i < NFRAME; i += e->pollms){
-		bp = e->bp0 + e->maxpkt*i/e->pollms;
-		td->buffer = PADDR(bp);
-		td->ep = e;
-		td->next = &td[1];
-		ub->frameld[i] += e->maxpkt;
-		td++;
-	}
-	td[-1].next = e->td0;
-	for(i = e->sched; i < NFRAME; i += e->pollms){
-		ix = (frnum+i) & 0x3ff;
-		td = &e->td0[ix];
-
-		id = (e->x<<7)|(e->dev->x&0x7F);
-		if (e->mode == OREAD)
-			/* enable receive on this entry */
-			td->dev = ((e->maxpkt-1)<<21) | ((id&0x7FF)<<8) | TokIN;
-		else{
-			size = (e->hz + e->remain)*e->pollms/1000;
-			e->remain = (e->hz + e->remain)*e->pollms%1000;
-			size *= e->samplesz;
-			td->dev = ((size-1)<<21) | ((id&0x7FF)<<8) | TokOUT;
-		}
-		td->status = ErrLimit1 | Active | IsoSelect | IOC;
-		td->link = ub->frames[ix];
-		td->flags |= IsoClean;
-		ub->frames[ix] = PADDR(td);
-	}
-	return 0;
-}
-
-static void
-unschedendpt(Endpt *e)
-{
-	Ctlr *ub;
-	TD *td;
-	ulong *addr;
-	int q;
-
-	ub = &ubus;
-	if(!e->iso || e->sched < 0)
-		return;
-
-	if (e->tdalloc == nil)
-		panic("tdalloc");
-	for (q = e->sched; q < NFRAME; q += e->pollms){
-		td = e->td0++;
-		addr = &ub->frames[q];
-		while (*addr != PADDR(td)){
-			if (*addr & IsQH)
-				panic("usb: TD expected");
-			addr = &TFOL(*addr)->link;
-		}
-		*addr = td->link;
-		ub->frameld[q] -= e->maxpkt;
-	}
-	free(e->tdalloc);
-	free(e->bpalloc);
-	e->tdalloc = nil;
-	e->bpalloc = nil;
-	e->etd = nil;
-	e->td0 = nil;
-	e->sched = -1;
+	d = usbdeviceofslot(uh, SLOT(c->qid));
+	if(d == nil || d->id != c->qid.vers || d->state == Disabled)
+		error(Ehungup);
+	return d;
 }
 
 static Endpt *
 devendpt(Udev *d, int id, int add)
 {
+	Usbhost *uh;
 	Endpt *e, **p;
-	Ctlr *ub;
 
-	ub = &ubus;
 	p = &d->ep[id&0xF];
 	lock(d);
-	if((e = *p) != nil){
+	e = *p;
+	if(e != nil){
 		incref(e);
 		XPRINT("incref(0x%p) in devendpt, new value %ld\n", e, e->ref);
 		unlock(d);
@@ -967,6 +175,7 @@ devendpt(Udev *d, int id, int add)
 	unlock(d);
 	if(!add)
 		return nil;
+
 	e = mallocz(sizeof(*e), 1);
 	e->ref = 1;
 	e->x = id&0xF;
@@ -976,15 +185,16 @@ devendpt(Udev *d, int id, int add)
 	e->nbuf = 1;
 	e->dev = d;
 	e->active = 0;
-	e->epq = allocqh(ub);
-	if(e->epq == nil)
-		panic("devendpt");
+
+	uh = d->uh;
+	uh->epalloc(uh, e);
 
 	lock(d);
 	if(*p != nil){
 		incref(*p);
 		XPRINT("incref(0x%p) in devendpt, new value %ld\n", *p, (*p)->ref);
 		unlock(d);
+		uh->epfree(uh, e);
 		free(e);
 		return *p;
 	}
@@ -995,30 +205,54 @@ devendpt(Udev *d, int id, int add)
 	return e;
 }
 
-static int
+static void
 freept(Endpt *e)
 {
+	Usbhost *uh;
+
 	if(e != nil && decref(e) == 0){
 		XPRINT("freept(%d,%d)\n", e->dev->x, e->x);
-		eptdeactivate(e);
-		unschedendpt(e);
+		uh = e->dev->uh;
+		uh->epclose(uh, e);
 		e->dev->ep[e->x] = nil;
-		if(e->epq != nil)
-			freeqh(&ubus, e->epq);
+		uh->epfree(uh, e);
 		free(e);
-		return 1;
 	}
-	if (e) XPRINT("decref(0x%p) in freept, new value %ld\n", e, e->ref);
-	return 0;
 }
 
-static void
-usbdevreset(Udev *d)
+static Udev*
+usbnewdevice(Usbhost *uh)
 {
-	d->state = Disabled;
-	if(Class(d->csp) == Hubclass)
-		for(d = d->ports; d != nil; d = d->next)
-			usbdevreset(d);
+	int i;
+	Udev *d;
+	Endpt *e;
+
+	d = nil;
+	qlock(uh);
+	if(waserror()){
+		qunlock(uh);
+		nexterror();
+	}
+	for(i=0; i<nelem(uh->dev); i++)
+		if(uh->dev[i] == nil){
+			uh->idgen++;
+			d = mallocz(sizeof(*d), 1);
+			d->uh = uh;
+			d->ref = 1;
+			d->x = i;
+			d->id = (uh->idgen << 8) | i;
+			d->state = Enabled;
+			XPRINT("calling devendpt in usbnewdevice\n");
+			e = devendpt(d, 0, 1);	/* always provide control endpoint 0 */
+			e->mode = ORDWR;
+			e->iso = 0;
+			e->sched = -1;
+			uh->dev[i] = d;
+			break;
+		}
+	poperror();
+	qunlock(uh);
+	return d;
 }
 
 static void
@@ -1026,513 +260,61 @@ freedev(Udev *d, int ept)
 {
 	int i;
 	Endpt *e;
+	Usbhost *uh;
 
-	if(d != nil && decref(d) == 0){
+	uh = d->uh;
+	if(decref(d) == 0){
 		XPRINT("freedev 0x%p, 0\n", d);
 		for(i=0; i<nelem(d->ep); i++)
 			freept(d->ep[i]);
 		if(d->x >= 0)
-			usbdev[d->x] = nil;
+			uh->dev[d->x] = nil;
 		free(d);
 	} else {
 		if(ept >= 0 && ept < nelem(d->ep)){
 			e = d->ep[ept];
 			XPRINT("freedev, freept 0x%p\n", e);
-			if(e != nil){
-				eptdeactivate(e);
-				unschedendpt(e);
-			}
+			if(e != nil)
+				uh->epclose(uh, e);
 		}
 	}	
-}
-
-static void
-hubportreset(Udev *h, int p)
-{
-	USED(h, p);
-	/* reset state of each attached device? */
-}
-
-static	int	ioports[] = {-1, Portsc0, Portsc1};
-
-static void
-portreset(int port)
-{
-	Ctlr *ub;
-	int i, p;
-
-	/* should check that device not being configured on other port? */
-	p = ioports[port];
-	ub = &ubus;
-	qlock(&ub->resetl);
-	if(waserror()){
-		qunlock(&ub->resetl);
-		nexterror();
-	}
-	XPRINT("r: %x\n", IN(p));
-	ilock(ub);
-	OUT(p, PortReset);
-	delay(12);	/* BUG */
-	XPRINT("r2: %x\n", IN(p));
-	OUT(p, IN(p) & ~PortReset);
-	XPRINT("r3: %x\n", IN(p));
-	OUT(p, IN(p) | PortEnable);
-	microdelay(64);
-	for(i=0; i<1000 && (IN(p) & PortEnable) == 0; i++)
-		;
-	XPRINT("r': %x %d\n", IN(p), i);
-	OUT(p, (IN(p) & ~PortReset)|PortEnable);
-	iunlock(ub);
-	hubportreset(nil, port);
-	poperror();
-	qunlock(&ub->resetl);
-}
-
-static void
-portenable(int port, int on)
-{
-	Ctlr *ub;
-	int w, p;
-
-	/* should check that device not being configured on other port? */
-	p = ioports[port];
-	ub = &ubus;
-	qlock(&ub->resetl);
-	if(waserror()){
-		qunlock(&ub->resetl);
-		nexterror();
-	}
-	ilock(ub);
-	w = IN(p);
-	if(on)
-		w |= PortEnable;
-	else
-		w &= ~PortEnable;
-	OUT(p, w);
-	microdelay(64);
-	iunlock(ub);
-	XPRINT("e: %x\n", IN(p));
-	if(!on)
-		hubportreset(nil, port);
-	poperror();
-	qunlock(&ub->resetl);
-}
-
-static int
-portinfo(Ctlr *ub, int *p0, int *p1)
-{
-	int m, v;
-
-	ilock(ub);
-	m = 0;
-	if((v = IN(Portsc0)) & PortChange){
-		OUT(Portsc0, v);
-		m |= 1<<0;
-	}
-	*p0 = v;
-	if((v = IN(Portsc1)) & PortChange){
-		OUT(Portsc1, v);
-		m |= 1<<1;
-	}
-	*p1 = v;
-	iunlock(ub);
-	return m;
-}
-
-static void
-cleaniso(Endpt *e, int frnum)
-{
-	TD *td;
-	int id, n, i;
-	uchar *bp;
-
-	td = e->xtd;
-	if (td->status & Active)
-		return;
-	id = (e->x<<7)|(e->dev->x&0x7F);
-	do {
-		if (td->status & AnyError)
-			iprint("usbisoerror 0x%lux\n", td->status);
-		n = (td->status + 1) & 0x3ff;
-		e->nbytes += n;
-		if ((td->flags & IsoClean) == 0)
-			e->nblocks++;
-		if (e->mode == OREAD){
-			e->buffered += n;
-			e->poffset += (td->status + 1) & 0x3ff;
-			td->offset = e->poffset;
-			td->dev = ((e->maxpkt -1)<<21) | ((id&0x7FF)<<8) | TokIN;
-			e->toffset = td->offset;
-		}else{
-			if ((td->flags & IsoClean) == 0){
-				e->buffered -= n;
-				if (e->buffered < 0){
-					print("e->buffered %d?\n", e->buffered);
-					e->buffered = 0;
-				}
-			}
-			e->toffset = td->offset;
-			n = (e->hz + e->remain)*e->pollms/1000;
-			e->remain = (e->hz + e->remain)*e->pollms%1000;
-			n *= e->samplesz;
-			td->dev = ((n -1)<<21) | ((id&0x7FF)<<8) | TokOUT;
-			td->offset = e->poffset;
-			e->poffset += n;
-		}
-		td = td->next;
-		if (e->xtd == td){
-			XPRINT("@");
-			break;
-		}
-	} while ((td->status & Active) == 0);
-	e->time = todget(nil);
-	e->xtd = td;
-	for (n = 2; n < 4; n++){
-		i = ((frnum + n)&0x3ff);
-		td = e->td0 + i;
-		bp = e->bp0 + e->maxpkt*i/e->pollms;
-		if (td->status & Active)
-			continue;
-
-		if (e->mode == OWRITE){
-			if (td == e->etd) {
-				XPRINT("*");
-				memset(bp+e->off, 0, e->maxpkt-e->off);
-				if (e->off == 0)
-					td->flags |= IsoClean;
-				else
-					e->buffered += (((td->dev>>21) +1) & 0x3ff) - e->off;
-				e->etd = nil;
-			}else if ((td->flags & IsoClean) == 0){
-				XPRINT("-");
-				memset(bp, 0, e->maxpkt);
-				td->flags |= IsoClean;
-			}
-		} else {
-			/* Unread bytes are now lost */
-			e->buffered -= (td->status + 1) & 0x3ff;
-		}
-		td->status = ErrLimit1 | Active | IsoSelect | IOC;
-	}
-	wakeup(&e->wr);
-}
-
-static void
-usbinterrupt(Ureg*, void *a)
-{
-	Ctlr *ub;
-	Endpt *e;
-	int s, frnum;
-	QH *q;
-
-	ub = a;
-	s = IN(Status);
-
-	frameptr = inl(ub->io+Flbaseadd);
-	framenumber = IN(Frnum) & 0x3ff;
-	OUT(Status, s);
-	if ((s & 0x1f) == 0)
-		return;
-	usbints++;
-	frnum = IN(Frnum) & 0x3ff;
-	if (s & 0x1a) {
-		XPRINT("cmd #%x sofmod #%x\n", IN(Cmd), inb(ub->io+SOFMod));
-		XPRINT("sc0 #%x sc1 #%x\n", IN(Portsc0), IN(Portsc1));
-	}
-
-	ilock(&activends);
-	for(e = activends.f; e != nil; e = e->activef){
-		if(!e->iso && e->epq != nil) {
-			XPRINT("cleanq(e->epq, 0, 0)\n");
-			cleanq(e->epq, 0, 0);
-		}
-		if(e->iso) {
-			XPRINT("cleaniso(e)\n");
-			cleaniso(e, frnum);
-		}
-	}
-	iunlock(&activends);
-	XPRINT("cleanq(ub->ctlq, 0, 0)\n");
-	cleanq(ub->ctlq, 0, 0);
-	XPRINT("cleanq(ub->bulkq, 0, Vf)\n");
-	cleanq(ub->bulkq, 0, Vf);
-	XPRINT("clean recvq\n");
-	for (q = ub->recvq->next; q; q = q->hlink) {
-		XPRINT("cleanq(q, 0, Vf)\n");
-		cleanq(q, 0, Vf);
-	}
-}
-
-enum
-{
-	Qtopdir = 0,
-	Q2nd,
-	Qbusctl,
-	Qnew,
-	Qport,
-	Q3rd,
-	Qctl,
-	Qsetup,
-	Qdebug,
-	Qstatus,
-	Qep0,
-	/* other endpoint files */
-};
-
-/*
- * Qid path is:
- *	 8 bits of file type (qids above)
- *	10 bits of slot number +1; 0 means not attached to device
- */
-#define	QSHIFT	8	/* location in qid of device # */
-#define	QMASK	((1<<QSHIFT)-1)
-
-#define	QID(q)		((ulong)(q).path&QMASK)
-#define	DEVPATH(p)	((p)>>QSHIFT)
-
-static Dirtab usbdir2[] = {
-	"new",	{Qnew},			0,	0666,
-	"ctl",		{Qbusctl},			0,	0666,
-	"port",	{Qport},			0,	0444,
-};
-
-static Dirtab usbdir3[]={
-	"ctl",		{Qctl},			0,	0666,
-	"setup",	{Qsetup},			0,	0666,
-	"status",	{Qstatus},			0,	0444,
-	"debug",	{Qdebug},			0,	0666,
-	/* epNdata names are generated on demand */
-};
-
-static Udev *
-usbdeviceofpath(ulong path)
-{
-	int s;
-
-	s = DEVPATH(path);
-	if(s == 0)
-		return nil;
-	return usbdev[s-1];
-}
-
-static Udev *
-usbdevice(Chan *c)
-{
-	Udev *d;
-
-	d = usbdeviceofpath(c->qid.path);
-	if(d == nil || d->id != c->qid.vers || d->state == Disabled)
-		error(Ehungup);
-	return d;
-}
-
-static Udev *
-usbnewdevice(void)
-{
-	Udev *d;
-	Endpt *e;
-	int i;
-
-	d = nil;
-	qlock(&usbstate);
-	if(waserror()){
-		qunlock(&usbstate);
-		nexterror();
-	}
-	for(i=0; i<nelem(usbdev); i++)
-		if(usbdev[i] == nil){
-			ubus.idgen++;
-			d = mallocz(sizeof(*d), 1);
-			d->ref = 1;
-			d->x = i;
-			d->id = (ubus.idgen << 8) | i;
-			d->state = Enabled;
-			XPRINT("calling devendpt in usbnewdevice\n");
-			e = devendpt(d, 0, 1);	/* always provide control endpoint 0 */
-			e->mode = ORDWR;
-			e->iso = 0;
-			e->sched = -1;
-			usbdev[i] = d;
-			break;
-		}
-	poperror();
-	qunlock(&usbstate);
-	return d;
-}
-
-static void
-usbreset(void)
-{
-	Pcidev *cfg;
-	int i;
-	ulong port;
-	TD *t;
-	Ctlr *ub;
-	ISAConf isa;
-
-	if(isaconfig("usb", 0, &isa) == 0) {
-		XPRINT("usb not in plan9.ini\n");
-		return;
-	}
-	ub = &ubus;
-	cfg = nil;
-	while(cfg = pcimatch(cfg, 0, 0)){
-		/*
-		 * Look for devices with the correct class and
-		 * sub-class code and known device and vendor ID.
-		 */
-		if(cfg->ccrb != 0x0C || cfg->ccru != 0x03)
-			continue;
-		if(cfg->did == 0x2482 || cfg->did == 0x2487)
-			continue;
-// 		switch(cfg->vid | cfg->did<<16){
-// 		default:
-// 			continue;
-// 		case 0x8086 | 0x7112<<16:	/* 82371[AE]B (PIIX4[E]) */
-// 		case 0x8086 | 0x719A<<16:	/* 82443MX */
-// 		case 0x0586 | 0x1106<<16:	/* VIA 82C586 */
-// 			break;
-// 		}
-		if((cfg->mem[4].bar & ~0x0F) != 0)
-			break;
-	}
-	if(cfg == nil) {
-		DPRINT("No USB device found\n");
-		return;
-	}
-	port = cfg->mem[4].bar & ~0x0F;
-
-	DPRINT("USB: %x/%x port 0x%lux size 0x%x irq %d\n",
-		cfg->vid, cfg->did, port, cfg->mem[4].size, cfg->intl);
-
-	i = inb(port+SOFMod);
-if(0){
-		OUT(Cmd, 4);	/* global reset */
-		delay(15);
-		OUT(Cmd, 0);	/* end reset */
-		delay(4);
-	}
-	outb(port+SOFMod, i);
-	/*
-	 * Interrupt handler.
-	 * Bail out if no IRQ assigned by the BIOS.
-	 */
-	if(cfg->intl == 0xFF || cfg->intl == 0)
-		return;
-	intrenable(cfg->intl, usbinterrupt, ub, cfg->tbdf, "usb");
-
-	ub->io = port;
-	ub->tdpool = (TD*)(((ulong)xalloc(128*sizeof(TD) + 0x10) + 0xf) & ~0xf);
-	for(i=128; --i>=0;){
-		ub->tdpool[i].next = ub->freetd;
-		ub->freetd = &ub->tdpool[i];
-	}
-	ub->qhpool = (QH*)(((ulong)xalloc(32*sizeof(QH) + 0x10) + 0xf) & ~0xf);
-	for(i=32; --i>=0;){
-		ub->qhpool[i].next = ub->freeqh;
-		ub->freeqh = &ub->qhpool[i];
-	}
-
-	/*
-	 * the last entries of the periodic (interrupt & isochronous) scheduling TD entries
-	 * point to the control queue and the bandwidth sop for bulk traffic.
-	 * this is looped following the instructions in PIIX4 errata 29773804.pdf:
-	 * a QH links to a looped but inactive TD as its sole entry,
-	 * with its head entry leading on to the bulk traffic, the last QH of which
-	 * links back to the empty QH.
-	 */
-	ub->ctlq = allocqh(ub);
-	ub->bwsop = allocqh(ub);
-	ub->bulkq = allocqh(ub);
-	ub->recvq = allocqh(ub);
-	t = alloctd(ub);	/* inactive TD, looped */
-	t->link = PADDR(t);
-
-	ub->ctlq->head = PADDR(ub->bulkq) | IsQH;
-	ub->bulkq->head = PADDR(ub->recvq) | IsQH;
-	ub->recvq->head = PADDR(ub->bwsop) | IsQH;
-	ub->bwsop->head = Terminate;	/* loop back */
-//	ub->bwsop->head = PADDR(ub->bwsop) | IsQH;	/* loop back */
-	ub->bwsop->entries = PADDR(t);
-
-	XPRINT("usbcmd\t0x%.4x\nusbsts\t0x%.4x\nusbintr\t0x%.4x\nfrnum\t0x%.2x\n",
-		IN(Cmd), IN(Status), IN(Usbintr), inb(port+Frnum));
-	XPRINT("frbaseadd\t0x%.4x\nsofmod\t0x%x\nportsc1\t0x%.4x\nportsc2\t0x%.4x\n",
-		IN(Flbaseadd), inb(port+SOFMod), IN(Portsc0), IN(Portsc1));
-	OUT(Cmd, 0);	/* stop */
-	ub->frames = (ulong*)(((ulong)xalloc(2*FRAMESIZE) + FRAMEMASK) & ~FRAMEMASK);
-	ub->frameld = xallocz(FRAMESIZE, 1);
-
-	for (i = 0; i < NFRAME; i++)
-		ub->frames[i] = PADDR(ub->ctlq) | IsQH;
-
-	outl(port+Flbaseadd, PADDR(ub->frames));
-	OUT(Frnum, 0);
-	OUT(Usbintr, 0xF);	/* enable all interrupts */
-	XPRINT("cmd 0x%x sofmod 0x%x\n", IN(Cmd), inb(port+SOFMod));
-	XPRINT("sc0 0x%x sc1 0x%x\n", IN(Portsc0), IN(Portsc1));
-}
-
-void
-usbinit(void)
-{
-	Udev *d;
-
-	if(ubus.io != 0 && usbdev[0] == nil){
-		d = usbnewdevice();	/* reserve device 0 for configuration */
-		incref(d);
-		d->state = Attached;
-	}
-}
-
-Chan *
-usbattach(char *spec)
-{
-	Ctlr *ub;
-
-	ub = &ubus;
-	if(ub->io == 0) {
-		XPRINT("usbattach failed\n");
-		error(Enodev);
-	}
-	if((IN(Cmd)&1)==0 || *spec)
-		OUT(Cmd, 1);	/* run */
-//	pprint("at: c=%x s=%x c0=%x\n", IN(Cmd), IN(Status), IN(Portsc0));
-	return devattach('U', spec);
 }
 
 static int
 usbgen(Chan *c, char *, Dirtab*, int, int s, Dir *dp)
 {
-	int t;
 	Qid q;
-	ulong path;
 	Udev *d;
-	Dirtab *tab;
 	Endpt *e;
-	vlong len;
+	Dirtab *tab;
+	Usbhost *uh;
+	int t, bus, slot, perm;
 
 	/*
-	 * Top level directory contains the name of the device.
+	 * Top level directory contains the controller names.
 	 */
-	if(QID(c->qid) == Qtopdir){
+	if(c->qid.path == Qtopdir){
 		if(s == DEVDOTDOT){
 			mkqid(&q, Qtopdir, 0, QTDIR);
 			devdir(c, q, "#U", 0, eve, 0555, dp);
 			return 1;
 		}
-		if(s == 0){
-			mkqid(&q, Q2nd, 0, QTDIR);
-			devdir(c, q, "usb", 0, eve, 0555, dp);
-			return 1;
-		}
-		return -1;
+		if(s >= nelem(usbhost) || usbhost[s] == nil)
+			return -1;
+		mkqid(&q, PATH(Q2nd, 0, s), 0, QTDIR);
+		snprint(up->genbuf, sizeof up->genbuf, "usb%d", s);
+		devdir(c, q, up->genbuf, 0, eve, 0555, dp);
+		return 1;
 	}
+	bus = CTLR(c->qid);
+	if(bus >= nelem(usbhost) || (uh = usbhost[bus]) == nil)
+			return -1;
 
 	/*
-	 * Second level contains "new" plus all the clients.
+	 * Second level contains "new", "port", and a numbered
+	 * directory for each enumerated device on the bus.
 	 */
-	t = QID(c->qid);
+	t = TYPE(c->qid);
 	if(t < Q3rd){
 		if(s == DEVDOTDOT){
 			mkqid(&q, Qtopdir, 0, QTDIR);
@@ -1540,17 +322,21 @@ usbgen(Chan *c, char *, Dirtab*, int, int s, Dir *dp)
 			return 1;
 		}
 		if(s < nelem(usbdir2)){
+			d = uh->dev[0];
+			if(d == nil)
+				return -1;
 			tab = &usbdir2[s];
-			devdir(c, tab->qid, tab->name, tab->length, eve, tab->perm, dp);
+			mkqid(&q, PATH(tab->qid.path, 0, bus), d->id, QTFILE);
+			devdir(c, q, tab->name, tab->length, eve, tab->perm, dp);
 			return 1;
 		}
 		s -= nelem(usbdir2);
-		if(s >= 0 && s < nelem(usbdev)){
-			d = usbdev[s];
+		if(s >= 0 && s < nelem(uh->dev)) {
+			d = uh->dev[s];
 			if(d == nil)
-				return -1;
+				return 0;
 			sprint(up->genbuf, "%d", s);
-			mkqid(&q, ((s+1)<<QSHIFT)|Q3rd, d->id, QTDIR);
+			mkqid(&q, PATH(Q3rd, s, bus), d->id, QTDIR);
 			devdir(c, q, up->genbuf, 0, eve, 0555, dp);
 			return 1;
 		}
@@ -1560,34 +346,120 @@ usbgen(Chan *c, char *, Dirtab*, int, int s, Dir *dp)
 	/*
 	 * Third level.
 	 */
-	len = 0;
-	path = c->qid.path & ~QMASK;	/* slot component */
-	if(s == DEVDOTDOT){
-		mkqid(&q, Q2nd, c->qid.vers, QTDIR);
-		devdir(c, q, "usb", 0, eve, 0555, dp);
+	slot = SLOT(c->qid);
+	if(s == DEVDOTDOT) {
+		mkqid(&q, PATH(Q2nd, 0, bus), c->qid.vers, QTDIR);
+		snprint(up->genbuf, sizeof up->genbuf, "usb%d", bus);
+		devdir(c, q, up->genbuf, 0, eve, 0555, dp);
 		return 1;
 	}
-	if(s < nelem(usbdir3)){
-		Dirtab *tab = &usbdir3[s];
-		mkqid(&q, path | tab->qid.path, c->qid.vers, QTFILE);
+	if(s < nelem(usbdir3)) {
+		tab = &usbdir3[s];
+		mkqid(&q, PATH(tab->qid.path, slot, bus), c->qid.vers, QTFILE);
 		devdir(c, q, tab->name, tab->length, eve, tab->perm, dp);
 		return 1;
 	}
+	s -= nelem(usbdir3);
 
 	/* active endpoints */
-	d = usbdeviceofpath(path);
-	if(d == nil)
-		return -1;
-	s -= nelem(usbdir3);
-	if(s < 0 || s >= nelem(d->ep))
+	d = usbdeviceofslot(uh, slot);
+	if(d == nil || s >= nelem(d->ep))
 		return -1;
 	if(s == 0 || (e = d->ep[s]) == nil)	/* ep0data is called "setup" */
 		return 0;
 	sprint(up->genbuf, "ep%ddata", s);
-	mkqid(&q, path | (Qep0+s), c->qid.vers, QTFILE);
-	len = e->buffered;
-	devdir(c, q, up->genbuf, len, eve, e->mode==OREAD? 0444: e->mode==OWRITE? 0222: 0666, dp);
+	mkqid(&q, PATH(Qep0+s, slot, bus), c->qid.vers, QTFILE);
+	switch(e->mode) {
+	case OREAD:
+		perm = 0444;
+		break;
+	case OWRITE:
+		perm = 0222;
+		break;
+	default:
+		perm = 0666;
+		break;
+	}
+	devdir(c, q, up->genbuf, e->buffered, eve, perm, dp);
 	return 1;
+}
+
+static void
+usbreset(void)
+{
+	int n, ctlrno;
+	Usbhost *uh;
+	char name[64], buf[128], *p, *ebuf, *type;
+
+	uh = nil;
+	for(ctlrno = 0; ctlrno < MaxUsb; ctlrno++){
+		if(uh == nil)
+			uh = malloc(sizeof(Usbhost));
+		memset(uh, 0, sizeof(Usbhost));
+		uh->tbdf = BUSUNKNOWN;
+		if(isaconfig("usb", ctlrno, uh) == 0)
+			continue;
+		for(n = 0; usbtypes[n].type; n++){
+			type = uh->type;
+			if(type == nil || *type == '\0')
+				type = "uhci";
+			if(cistrcmp(usbtypes[n].type, type))
+				continue;
+			if(usbtypes[n].reset(uh))
+				break;
+
+			/*
+			 * IRQ2 doesn't really exist, it's used to gang the interrupt
+			 * controllers together. A device set to IRQ2 will appear on
+			 * the second interrupt controller as IRQ9.
+			 */
+			if(uh->irq == 2)
+				uh->irq = 9;
+			snprint(name, sizeof(name), "usb%d", ctlrno);
+			intrenable(uh->irq, uh->interrupt, uh, uh->tbdf, name);
+
+			ebuf = buf + sizeof buf;
+			p = seprint(buf, ebuf, "#U/usb%d: %s: port 0x%luX irq %lud", ctlrno, type, uh->port, uh->irq);
+			if(uh->mem)
+				p = seprint(p, ebuf, " addr 0x%luX", PADDR(uh->mem));
+			if(uh->size)
+				seprint(p, ebuf, " size 0x%luX", uh->size);
+			print("%s\n", buf);
+
+			usbhost[ctlrno] = uh;
+			uh = nil;
+			break;
+		}
+	}
+	if(uh != nil)
+		free(uh);
+}
+
+void
+usbinit(void)
+{
+	Udev *d;
+	int ctlrno;
+	Usbhost *uh;
+
+	for(ctlrno = 0; ctlrno < MaxUsb; ctlrno++){
+		uh = usbhost[ctlrno];
+		if(uh == nil)
+			continue;
+		if(uh->init != 0)
+			uh->init(uh);
+
+		/* reserve device for configuration */
+		d = usbnewdevice(uh);
+		incref(d);
+		d->state = Attached;
+	}
+}
+
+Chan *
+usbattach(char *spec)
+{
+	return devattach('U', spec);
 }
 
 static Walkqid*
@@ -1602,42 +474,47 @@ usbstat(Chan *c, uchar *db, int n)
 	return devstat(c, db, n, nil, 0, usbgen);
 }
 
-Chan *
+Chan*
 usbopen(Chan *c, int omode)
 {
 	Udev *d;
-	int f, s;
+	Endpt *e;
+	int f, s, type;
+	Usbhost *uh;
 
 	if(c->qid.type == QTDIR)
 		return devopen(c, omode, nil, 0, usbgen);
 
 	f = 0;
-	if(QID(c->qid) == Qnew){
-		d = usbnewdevice();
+	type = TYPE(c->qid);
+	if(type == Qnew){
+		d = usbdevice(c);
+		d = usbnewdevice(d->uh);
 		XPRINT("usbopen, new dev 0x%p\n", d);
 		if(d == nil) {
 			XPRINT("usbopen failed (usbnewdevice)\n");
 			error(Enodev);
 		}
-		c->qid.path = Qctl|((d->x+1)<<QSHIFT);
-		c->qid.vers = d->id;
+		type = Qctl;
+		mkqid(&c->qid, PATH(type, d->x, CTLR(c->qid)), d->id, QTFILE);
 		f = 1;
 	}
 
-	if(QID(c->qid) < Q3rd){
+	if(type < Q3rd){
 		XPRINT("usbopen, devopen < Q3rd\n");
 		return devopen(c, omode, nil, 0, usbgen);
 	}
 
-	qlock(&usbstate);
+	d = usbdevice(c);
+	uh = d->uh;
+	qlock(uh);
 	if(waserror()){
-		qunlock(&usbstate);
+		qunlock(uh);
 		nexterror();
 	}
 
-	switch(QID(c->qid)){
+	switch(type){
 	case Qctl:
-		d = usbdevice(c);
 		if(0&&d->busy)
 			error(Einuse);
 		d->busy = 1;
@@ -1647,33 +524,25 @@ usbopen(Chan *c, int omode)
 		break;
 
 	default:
-		d = usbdevice(c);
-		s = QID(c->qid) - Qep0;
+		s = type - Qep0;
 		XPRINT("usbopen, default 0x%p, %d\n", d, s);
 		if(s >= 0 && s < nelem(d->ep)){
-			Endpt *e;
 			if((e = d->ep[s]) == nil) {
 				XPRINT("usbopen failed (endpoint)\n");
 				error(Enodev);
 			}
 			XPRINT("usbopen: dev 0x%p, ept 0x%p\n", d, e);
-			if(schedendpt(e) < 0){
-				if (e->active)
-					error("can't schedule USB endpoint, active");
-				else
-					error("can't schedule USB endpoint");
-			}
+			uh->epopen(uh, e);
 			e->foffset = 0;
 			e->toffset = 0;
 			e->poffset = 0;
 			e->buffered = 0;
-			eptactivate(e);
 		}
 		incref(d);
 		break;
 	}
 	poperror();
-	qunlock(&usbstate);
+	qunlock(uh);
 	c->mode = openmode(omode);
 	c->flag |= COPEN;
 	c->offset = 0;
@@ -1681,403 +550,116 @@ usbopen(Chan *c, int omode)
 }
 
 void
-usbcreate(Chan *c, char *name, int omode, ulong perm)
-{
-	USED(c, name, omode, perm);
-	error(Eperm);
-}
-
-void
-usbremove(Chan*)
-{
-	error(Eperm);
-}
-
-void
 usbclose(Chan *c)
 {
 	Udev *d;
-	int ept;
+	int ept, type;
+	Usbhost *uh;
 
-	if(c->qid.type == QTDIR || QID(c->qid) < Q3rd)
+	type = TYPE(c->qid);
+	if(c->qid.type == QTDIR || type < Q3rd)
 		return;
-	qlock(&usbstate);
-	if(waserror()){	/* usbdevice can error */
-		qunlock(&usbstate);
+	d = usbdevice(c);
+	uh = d->uh;
+	qlock(uh);
+	if(waserror()){
+		qunlock(uh);
 		nexterror();
 	}
-	d = usbdevice(c);
-	if(QID(c->qid) == Qctl)
+	if(type == Qctl)
 		d->busy = 0;
 	XPRINT("usbclose: dev 0x%p\n", d);
 	if(c->flag & COPEN){
-		ept = (QID(c->qid) != Qctl) ? QID(c->qid) - Qep0 : -1;
+		ept = (type != Qctl) ? type - Qep0 : -1;
 		XPRINT("usbclose: freedev 0x%p\n", d);
 		freedev(d, ept);
 	}
 	poperror();
-	qunlock(&usbstate);
+	qunlock(uh);
 }
 
-static int
-eptinput(void *arg)
+static char *
+epstatus(char *s, char *se, Endpt *e, int i)
 {
-	Endpt *e;
+	char *p;
 
-	e = arg;
-	return e->eof || e->err || qcanread(e->rq);
-}
-
-static int
-isoready(void *arg)
-{
-	Endpt *e;
-
-	e = arg;
-	return e->etd == nil || (e->etd != e->xtd && (e->etd->status & Active) == 0);
-}
-
-static long
-isoio(Endpt *e, void *a, long n, ulong offset, int w)
-{
-	int i, frnum;
-	volatile int isolock;
-	uchar *p, *q, *bp;
-	Ctlr *ub;
-	TD *td;
-
-	qlock(&e->rlock);
-	isolock = 0;
-	if(waserror()){
-		if (isolock){
-			isolock = 0;
-			iunlock(&activends);
-		}
-		qunlock(&e->rlock);
-		eptcancel(e);
-		nexterror();
-	}
-	p = a;
-	ub = &ubus;
-	if (offset != 0 && offset != e->foffset){
-		iprint("offset %lud, foffset %lud\n", offset, e->foffset);
-		/* Seek to a specific position */
-		frnum = (IN(Frnum) + 8) & 0x3ff;
-		td = e->td0 +frnum;
-		if (offset < td->offset)
-			error("ancient history");
-		while (offset > e->toffset){
-			tsleep(&e->wr, return0, 0, 500);
-		}
-		while (offset >= td->offset + ((w?(td->dev >> 21):td->status) + 1) & 0x7ff){
-			td = td->next;
-			if (td == e->xtd)
-				iprint("trouble\n");
-		}
-		ilock(&activends);
-		isolock = 1;
-		e->off = td->offset - offset;
-		if (e->off >= e->maxpkt){
-			iprint("I can't program: %d\n", e->off);
-			e->off = 0;
-		}
-		e->etd = td;
-		e->foffset = offset;
-	}
-	do {
-		if (isolock == 0){
-			ilock(&activends);
-			isolock = 1;
-		}
-		td = e->etd;
-		if (td == nil || e->off == 0){
-			if (td == nil){
-				XPRINT("0");
-				if (w){
-					frnum = (IN(Frnum) + 1) & 0x3ff;
-					td = e->td0 + frnum;
-					while(td->status & Active)
-						td = td->next;
-				}else{
-					frnum = (IN(Frnum) - 4) & 0x3ff;
-					td = e->td0 + frnum;
-					while(td->next != e->xtd)
-						td = td->next;
-				}
-				e->etd = td;
-				e->off = 0;
-			}else{
-				/* New td, make sure it's ready */
-				isolock = 0;
-				iunlock(&activends);
-				while (isoready(e) == 0){
-					sleep(&e->wr, isoready, e);
-				}
-				ilock(&activends);
-				isolock = 1;
-				if (e->etd == nil){
-					XPRINT("!");
-					continue;
-				}
-			}
-			if (w)
-				e->psize = ((td->dev >> 21) + 1) & 0x7ff;
-			else
-				e->psize = (e->etd->status + 1) & 0x7ff;
-			if (e->psize > e->maxpkt)
-				panic("packet size > maximum");
-		}
-		if((i = n) >= e->psize)
-			i = e->psize;
-		if (w)
-			e->buffered += i;
-		else{
-			e->buffered -= i;
-			if (e->buffered < 0)
-				e->buffered = 0;
-		}
-		isolock = 0;
-		iunlock(&activends);
-		td->flags &= ~IsoClean;
-		bp = e->bp0 + (td - e->td0) * e->maxpkt / e->pollms;
-		q = bp + e->off;
-		if (w){
-			memmove(q, p, i);
-		}else{
-			memmove(p, q, i);
-		}
-		p += i;
-		n -= i;
-		e->off += i;
-		e->psize -= i;
-		if (e->psize){
-			if (n != 0)
-				panic("usb iso: can't happen");
-			break;
-		}
-		if(w)
-			td->offset = offset + (p-(uchar*)a) - (((td->dev >> 21) + 1) & 0x7ff);
-		td->status = ErrLimit3 | Active | IsoSelect | IOC;
-		e->etd = td->next;
-		e->off = 0;
-	} while(n > 0);
-	n = p-(uchar*)a;
-	e->foffset += n;
-	poperror();
-	if (isolock)
-		iunlock(&activends);
-	qunlock(&e->rlock);
-	return n;
-}
-
-static long
-readusb(Endpt *e, void *a, long n)
-{
-	Block *b;
-	uchar *p;
-	int l, i;
-
-	XPRINT("qlock(%p)\n", &e->rlock);
-	qlock(&e->rlock);
-	XPRINT("got qlock(%p)\n", &e->rlock);
-	if(waserror()){
-		qunlock(&e->rlock);
-		eptcancel(e);
-		nexterror();
-	}
-	p = a;
-	do {
-		if(e->eof) {
-			XPRINT("e->eof\n");
-			break;
-		}
-		if(e->err)
-			error(e->err);
-		qrcv(e);
-		if(!e->iso)
-			e->data01 ^= 1;
-		sleep(&e->rr, eptinput, e);
-		if(e->err)
-			error(e->err);
-		b = qget(e->rq);	/* TO DO */
-		if(b == nil) {
-			XPRINT("b == nil\n");
-			break;
-		}
-		if(waserror()){
-			freeb(b);
-			nexterror();
-		}
-		l = BLEN(b);
-		if((i = l) > n)
-			i = n;
-		if(i > 0){
-			memmove(p, b->rp, i);
-			p += i;
-		}
-		poperror();
-		freeb(b);
-		n -= i;
-		if (l != e->maxpkt)
-			break;
-	} while (n > 0);
-	poperror();
-	qunlock(&e->rlock);
-	return p-(uchar*)a;
-}
-
-int
-epstatus(char *s, int n, Endpt *e, int i)
-{
-	int l;
-
-	l = 0;
-	l += snprint(s+l, n-l, "%2d %#6.6lux %10lud bytes %10lud blocks\n",
-		i, e->csp, e->nbytes, e->nblocks);
-	if (e->iso){
-		l += snprint(s+l, n-l, "bufsize %6d buffered %6d",
-			e->maxpkt, e->buffered);
+	p = seprint(s, se, "%2d %#6.6lux %10lud bytes %10lud blocks\n", i, e->csp, e->nbytes, e->nblocks);
+	if(e->iso){
+		p = seprint(p, se, "bufsize %6d buffered %6d", e->maxpkt, e->buffered);
 		if(e->toffset)
-			l += snprint(s+l, n-l, " offset  %10lud time %19lld\n",
-				e->toffset, e->time);
-		if (n-l > 0)
-			s[l++] = '\n';
-		s[l] = '\0';
+			p = seprint(p, se, " offset  %10lud time %19lld\n", e->toffset, e->time);
+		p = seprint(p, se, "\n");
 	}
-	return l;
+	return p;
 }
 
 long
 usbread(Chan *c, void *a, long n, vlong offset)
 {
-	Endpt *e;
+	int t, i;
 	Udev *d;
-	char buf[48], *s;
-	int t, w0, w1, ps, l, i;
+	Endpt *e;
+	Usbhost *uh;
+	char *s, *se, *p;
 
 	if(c->qid.type == QTDIR)
 		return devdirread(c, a, n, nil, 0, usbgen);
 
-	t = QID(c->qid);
-	switch(t){
-	case Qbusctl:
-		snprint(buf, sizeof(buf), "%11d %11d ", 0, 0);
-		return readstr(offset, a, n, buf);
+	d = usbdevice(c);
+	uh = d->uh;
+	t = TYPE(c->qid);
 
-	case Qport:
-		ps = portinfo(&ubus, &w0, &w1);
-		snprint(buf, sizeof(buf), "0x%ux 0x%ux 0x%ux ", ps, w0, w1);
-		return readstr(offset, a, n, buf);
-
-	case Qctl:
-		d = usbdevice(c);
-		sprint(buf, "%11d %11d ", d->x, d->id);
-		return readstr(offset, a, n, buf);
-
-	case Qsetup:	/* endpoint 0 */
-		d = usbdevice(c);
-		if((e = d->ep[0]) == nil)
-			error(Eio);	/* can't happen */
-		e->data01 = 1;
-		n = readusb(e, a, n);
-		if(e->setin){
-			e->setin = 0;
+	if(t >= Qep0) {
+		t -= Qep0;
+		if(t >= nelem(d->ep))
+			error(Eio);
+		e = d->ep[t];
+		if(e == nil || e->mode == OWRITE)
+			error(Egreg);
+		if(t == 0) {
+			if(e->iso)
+				error(Egreg);
 			e->data01 = 1;
-			writeusb(e, "", 0, TokOUT);
+			n = uh->read(uh, e, a, n, 0LL);
+			if(e->setin){
+				e->setin = 0;
+				e->data01 = 1;
+				uh->write(uh, e, "", 0, 0LL, TokOUT);
+			}
+			return n;
 		}
+		return uh->read(uh, e, a, n, offset);
+	}
+
+	s = smalloc(READSTR);
+	se = s+READSTR;
+	if(waserror()){
+		free(s);
+		nexterror();
+	}
+	switch(t){
+	case Qport:
+		uh->portinfo(uh, s, se);
 		break;
 
-	case Qdebug:
-		n=0;
+	case Qctl:
+		seprint(s, se, "%11d %11d\n", d->x, d->id);
 		break;
 
 	case Qstatus:
-		d = usbdevice(c);
-		s = smalloc(READSTR);
-		if(waserror()){
-			free(s);
-			nexterror();
+		p = seprint(s, se, "%s %#6.6lux\n", devstates[d->state], d->csp);
+		for(i=0; i<nelem(d->ep); i++) {
+			e = d->ep[i];
+			if(e == nil)
+				continue;
+			/* TO DO: freeze e */
+			p = epstatus(p, se, e, i);
 		}
-		l = snprint(s, READSTR, "%s %#6.6lux\n", devstates[d->state], d->csp);
-		for(i=0; i<nelem(d->ep); i++)
-			if((e = d->ep[i]) != nil){	/* TO DO: freeze e */
-				l += epstatus(s+l, READSTR-l, e, i);
-			}
-		n = readstr(offset, a, n, s);
-		poperror();
-		free(s);
-		break;
-
-	default:
-		d = usbdevice(c);
-		if((t -= Qep0) < 0 || t >= nelem(d->ep))
-			error(Eio);
-		if((e = d->ep[t]) == nil || e->mode == OWRITE)
-			error(Eio);	/* can't happen */
-		if (e->iso)
-			n=isoio(e, a, n, (ulong)offset, 0);
-		else
-			n=readusb(e, a, n);
-		break;
 	}
-	return n;
-}
-
-static int
-qisempty(void *arg)
-{
-	return ((QH*)arg)->entries & Terminate;
-}
-
-static long
-writeusb(Endpt *e, void *a, long n, int tok)
-{
-	int i;
-	Block *b;
-	uchar *p;
-	QH *qh;
-
-	qlock(&e->wlock);
-	if(waserror()){
-		qunlock(&e->wlock);
-		eptcancel(e);
-		nexterror();
-	}
-	p = a;
-	do {
-		int j;
-
-		if(e->err)
-			error(e->err);
-		if((i = n) >= e->maxpkt)
-			i = e->maxpkt;
-		b = allocb(i);
-		if(waserror()){
-			freeb(b);
-			nexterror();
-		}
-		XPRINT("out [%d]", i);
-		for (j = 0; j < i; j++) XPRINT(" %.2x", p[j]);
-		XPRINT("\n");
-		memmove(b->wp, p, i);
-		b->wp += i;
-		p += i;
-		n -= i;
-		poperror();
-		qh = qxmit(e, b, tok);
-		tok = TokOUT;
-		e->data01 ^= 1;
-		if(e->ntd >= e->nbuf) {
-XPRINT("qh %s: q=%p first=%p last=%p entries=%.8lux\n",
- "writeusb sleep", qh, qh->first, qh->last, qh->entries);
-			XPRINT("writeusb: sleep %lux\n", &e->wr);
-			sleep(&e->wr, qisempty, qh);
-			XPRINT("writeusb: awake\n");
-		}
-	} while(n > 0);
+	n = readstr(offset, a, n, s);
 	poperror();
-	qunlock(&e->wlock);
-	return p-(uchar*)a;
+	free(s);
+	return n;
 }
 
 long
@@ -2085,44 +667,42 @@ usbwrite(Chan *c, void *a, long n, vlong offset)
 {
 	Udev *d;
 	Endpt *e;
-	Cmdbuf *cb;
 	Cmdtab *ct;
+	Cmdbuf *cb;
+	Usbhost *uh;
 	int id, nw, t, i;
 	char cmd[50];
 
 	if(c->qid.type == QTDIR)
 		error(Egreg);
-	t = QID(c->qid);
-	if(t == Qbusctl){
+	d = usbdevice(c);
+	uh = d->uh;
+	t = TYPE(c->qid);
+	switch(t){
+	case Qport:
 		cb = parsecmd(a, n);
 		if(waserror()){
 			free(cb);
 			nexterror();
 		}
 
-		ct = lookupcmd(cb, usbbusctlmsg, nelem(usbbusctlmsg));
+		ct = lookupcmd(cb, usbportmsg, nelem(usbportmsg));
 		id = strtol(cb->f[1], nil, 0);
-		if(id != 1 && id != 2)
-			cmderror(cb, "usb port number not 1 or 2 in");
 		switch(ct->index){
-		case BCMdisable:
-			portenable(id, 0);
+		case PMdisable:
+			uh->portenable(uh, id, 0);
 			break;
-		case BCMenable:
-			portenable(id, 1);
+		case PMenable:
+			uh->portenable(uh, id, 1);
 			break;
-		case BCMreset:
-			portreset(id);
+		case PMreset:
+			uh->portreset(uh, id);
 			break;
 		}
 	
 		poperror();
 		free(cb);
 		return n;
-	}
-	d = usbdevice(c);
-	t = QID(c->qid);
-	switch(t){
 	case Qctl:
 		cb = parsecmd(a, n);
 		if(waserror()){
@@ -2217,31 +797,17 @@ usbwrite(Chan *c, void *a, long n, vlong offset)
 				XPRINT("calling devendpt in usbwrite (CMep)\n");
 				e = devendpt(d, i, 1);
 			}
-			qlock(&usbstate);
+			qlock(uh);
 			if(waserror()){
 				freept(e);
-				qunlock(&usbstate);
+				qunlock(uh);
 				nexterror();
 			}
-			if (e->active)
+			if(e->active)
 				error(Eperm);
 			if(strcmp(cb->f[2], "bulk") == 0){
-				Ctlr *ub;
-
-				e->iso = 0;
 				/* ep n `bulk' mode maxpkt nbuf */
-				ub = &ubus;
-				/* Each bulk device gets a queue head hanging off the
-				 * bulk queue head
-				 */
-				if (e->epq == nil) {
-					e->epq = allocqh(ub);
-					if(e->epq == nil)
-						panic("usbwrite: allocqh");
-				}
-				queueqh(e->epq);
-				e->mode = strcmp(cb->f[3],"r") == 0? OREAD :
-					  	strcmp(cb->f[3],"w") == 0? OWRITE : ORDWR;
+				e->iso = 0;
 				i = strtoul(cb->f[4], nil, 0);
 				if(i < 8 || i > 1023)
 					i = 8;
@@ -2250,7 +816,7 @@ usbwrite(Chan *c, void *a, long n, vlong offset)
 				if(i >= 1 && i <= 32)
 					e->nbuf = i;
 			} else {
-				/* ep n period mode samplesize KHz */
+				/* ep n period mode samplesize Hz */
 				i = strtoul(cb->f[2], nil, 0);
 				if(i > 0 && i <= 1000){
 					e->pollms = i;
@@ -2258,8 +824,6 @@ usbwrite(Chan *c, void *a, long n, vlong offset)
 					XPRINT("field 4: 0 <= %d <= 1000\n", i);
 					error(Ebadarg);
 				}
-				e->mode = strcmp(cb->f[3],"r") == 0? OREAD :
-					  	strcmp(cb->f[3],"w") == 0? OWRITE : ORDWR;
 				i = strtoul(cb->f[4], nil, 0);
 				if(i >= 1 && i <= 8){
 					e->samplesz = i;
@@ -2279,26 +843,30 @@ usbwrite(Chan *c, void *a, long n, vlong offset)
 				e->maxpkt = (e->hz * e->pollms + 999)/1000 * e->samplesz;
 				e->iso = 1;
 			}
+			e->mode = strcmp(cb->f[3],"r") == 0? OREAD :
+				  	strcmp(cb->f[3],"w") == 0? OWRITE : ORDWR;
+			uh->epmode(uh, e);
 			poperror();
-			qunlock(&usbstate);
+			qunlock(uh);
 		}
 	
 		poperror();
 		free(cb);
 		return n;
 
-	case Qsetup:	/* SETUP endpoint 0 */
+	case Qep0:	/* SETUP endpoint 0 */
 		/* should canqlock etc */
-		if((e = d->ep[0]) == nil)
-			error(Eio);	/* can't happen */
+		e = d->ep[0];
+		if(e == nil || e->iso)
+			error(Egreg);
 		if(n < 8 || n > 1023)
 			error(Eio);
 		nw = *(uchar*)a & RD2H;
 		e->data01 = 0;
-		n = writeusb(e, a, n, TokSETUP);
-		if(nw == 0){	/* host to device: use IN[DATA1] to ack */
+		n = uh->write(uh, e, a, n, 0LL, TokSETUP);
+		if(nw == 0) {	/* host to device: use IN[DATA1] to ack */
 			e->data01 = 1;
-			nw = readusb(e, cmd, 8);
+			nw = uh->read(uh, e, cmd, 0LL, 8);
 			if(nw != 0)
 				error(Eio);	/* could provide more status */
 		}else
@@ -2306,17 +874,13 @@ usbwrite(Chan *c, void *a, long n, vlong offset)
 		break;
 
 	default:	/* sends DATA[01] */
-		if((t -= Qep0) < 0 || t >= nelem(d->ep)) {
-			print("t = %d\n", t);
-			error(Eio);
-		}
-		if((e = d->ep[t]) == nil || e->mode == OREAD) {
-			error(Eio);	/* can't happen */
-		}
-		if (e->iso)
-			n = isoio(e, a, n, (ulong)offset, 1);
-		else
-			n = writeusb(e, a, n, TokOUT);
+		t -= Qep0;
+		if(t < 0 || t >= nelem(d->ep))
+			error(Egreg);
+		e = d->ep[t];
+		if(e == nil || e->mode == OREAD)
+			error(Egreg);
+		n = uh->write(uh, e, a, n, offset, TokOUT);
 		break;
 	}
 	return n;
