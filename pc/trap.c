@@ -381,8 +381,10 @@ dumpregs(Ureg *ur)
 
 
 	x = (ulong*)(ur+1);
+/*
 	dumpregs2(&scndlastur);
 	dumpregs2(&lastur);
+*/
 	dumpregs2(ur);
 	print("  CR0 %8.8lux CR2 %8.8lux\n", getcr0(), getcr2());
 	print("  magic %lux %lux %lux\n", x[0], x[1], x[2]);
