@@ -76,6 +76,7 @@ sdgen(Chan *c, Dirtab*, int, int s, Dir *dirp)
 	Part *p;
 	int unit;
 	char name[2*NAMELEN];
+	vlong l;
 
 	d = disk;
 	while(s >= d->npart) {
@@ -90,7 +91,8 @@ sdgen(Chan *c, Dirtab*, int, int s, Dir *dirp)
 	sprint(name, "%s%s", d->vol, p->name);
 	name[NAMELEN-1] = '\0';
 	qid = (Qid){(unit<<LogNpart)+s, 0};
-	devdir(c, qid, name, (p->end - p->beg) * d->bsize, eve, 0666, dirp);
+	l = (p->end - p->beg) * (vlong)d->bsize;
+	devdir(c, qid, name, l, eve, 0666, dirp);
 	return 1;
 }
 

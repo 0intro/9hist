@@ -27,13 +27,13 @@ enum
 
 static int int0mask;			/* interrupts enabled for first 8259 */
 static int int1mask;			/* interrupts enabled for second 8259 */
-static int elcr;			/* mask of level-triggered interrupts */
+int elcr;				/* mask of level-triggered interrupts */
 static Lock i8259lock;
 
 void
 i8259init(void)
 {
-	int elcr1;
+	int x;
 
 	ilock(&i8259lock);
 	int0mask = 0xFF;
@@ -83,18 +83,22 @@ i8259init(void)
 	/*
 	 * Check for Edge/Level register.
 	 * This check may not work for all chipsets.
+	 * First try a non-intrusive test - the bits for
+	 * IRQs 13, 8, 2, 1 and 0 must be edge (0). If
+	 * that's OK try a R/W test.
 	 */
-	elcr1 = inb(Elcr1);
-	outb(Elcr1, 0);
-	if(inb(Elcr1) == 0){
-		outb(Elcr1, 0x20);
-		if(inb(Elcr1) == 0x20)
-			elcr = (inb(Elcr2)<<8)|elcr1;
+	x = (inb(Elcr2)<<8)|inb(Elcr1);
+	if(!(x & 0x2107)){
+		outb(Elcr1, 0);
+		if(inb(Elcr1) == 0){
+			outb(Elcr1, 0x20);
+			if(inb(Elcr1) == 0x20)
+				elcr = x;
+			outb(Elcr1, x & 0xFF);
+			//print("ELCR: %4.4uX\n", elcr);
+		}
 	}
-	outb(Elcr1, elcr1);
 	iunlock(&i8259lock);
-//	if(elcr)
-//		print("ELCR: %4.4uX\n", elcr);
 }
 
 int

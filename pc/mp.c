@@ -13,6 +13,7 @@ static Bus* mpbus;
 static Bus* mpbuslast;
 static int mpisabus = -1;
 static int mpeisabus = -1;
+extern int elcr;			/* mask of level-triggered interrupts */
 static Apic mpapic[MaxAPICNO+1];
 static int machno2apicno[MaxAPICNO+1];	/* inverse map: machno -> APIC ID */
 static Lock mprdthilock;
@@ -181,7 +182,7 @@ mkiointr(PCMPintr* p)
 }
 
 static int
-mpintrinit(Bus* bus, PCMPintr* intr, int vno)
+mpintrinit(Bus* bus, PCMPintr* intr, int vno, int /*irq*/)
 {
 	int el, po, v;
 
@@ -228,7 +229,7 @@ mpintrinit(Bus* bus, PCMPintr* intr, int vno)
 
 	/*
 	 */
-	if(bus->type == BusEISA && !po && !el){
+	if(bus->type == BusEISA && !po && !el /*&& !(elcr & (1<<irq))*/){
 		po = PcmpHIGH;
 		el = PcmpEDGE;
 	}
@@ -275,7 +276,7 @@ mklintr(PCMPintr* p)
 	if(p->intr == PcmpExtINT || p->intr == PcmpNMI)
 		v = ApicIMASK;
 	else
-		v = mpintrinit(bus, p, VectorLAPIC+intin);
+		v = mpintrinit(bus, p, VectorLAPIC+intin, p->irq);
 
 	if(p->apicno == 0xFF){
 		for(apic = mpapic; apic <= &mpapic[MaxAPICNO]; apic++){
@@ -650,7 +651,7 @@ mpintrenablex(Vctl* v)
 				vno, v->irq, v->tbdf);
 			return -1;
 		}
-		lo = mpintrinit(bus, aintr->intr, vno);
+		lo = mpintrinit(bus, aintr->intr, vno, v->irq);
 		if(lo & ApicIMASK)
 			return -1;
 		lo |= ApicLOGICAL;
