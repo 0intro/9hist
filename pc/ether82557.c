@@ -1,11 +1,10 @@
 /*
  * Intel 82557 Fast Ethernet PCI Bus LAN Controller
  * as found on the Intel EtherExpress PRO/100B. This chip is full
- * of smarts, unfortunately they're not all in the right place.
+ * of smarts, unfortunately none of them are in the right place.
  * To do:
  *	the PCI scanning code could be made common to other adapters;
  *	auto-negotiation;
- *	full-duplex;
  *	optionally use memory-mapped registers.
  */
 #include "u.h"
@@ -694,30 +693,20 @@ i82557adapter(Block** bpp, int port, int irq, int tbdf)
 	*bpp = bp;
 }
 
-static int
-i82557pci(Ether* ether)
+static void
+i82557pci(void)
 {
-	static Pcidev *p;
-	int irq, port;
+	Pcidev *p;
 
+	p = nil;
 	while(p = pcimatch(p, 0x8086, 0x1229)){
 		/*
 		 * bar[0] is the memory-mapped register address (4KB),
 		 * bar[1] is the I/O port register address (32 bytes) and
 		 * bar[2] is for the flash ROM (1MB).
 		 */
-		port = p->bar[1] & ~0x01;
-		irq = p->intl;
-		if(ether->port == 0 || ether->port == port){
-			ether->irq = irq;
-			ether->tbdf = p->tbdf;
-			return port;
-		}
-
-		i82557adapter(&adapter, port, irq, p->tbdf);
+		i82557adapter(&adapter, p->bar[1] & ~0x01, p->intl, p->tbdf);
 	}
-
-	return 0;
 }
 
 static int
@@ -729,6 +718,12 @@ reset(Ether* ether)
 	uchar ea[Eaddrlen];
 	Ctlr *ctlr;
 	Cb *cb;
+	static int scandone;
+
+	if(scandone == 0){
+		i82557pci();
+		scandone = 1;
+	}
 
 	/*
 	 * Any adapter matches if no ether->port is supplied, otherwise the
@@ -747,8 +742,9 @@ reset(Ether* ether)
 			freeb(bp);
 			break;
 		}
+		bpp = &bp->next;
 	}
-	if(port == 0 && (port = i82557pci(ether)) == 0)
+	if(port == 0)
 		return -1;
 
 	/*
@@ -792,17 +788,17 @@ reset(Ether* ether)
 	 * EtherExpress PRO/100B appears to bring it up with a sensible default
 	 * configuration. However, should check for the existence of the PHY
 	 * and, if found, check whether to use 82503 (serial) or MII (nibble)
-	 * mode. Verify the PHY is a National Semiconductor DP83840 by looking
-	 * at the Organizationally Unique Identifier (OUI) in registers 2 and
-	 * 3 which should be 0x80017.
+	 * mode. Verify the PHY is a National Semiconductor DP83840 (OUI 0x80017)
+	 * or an Intel 82555 (OUI 0xAA00) by looking at the Organizationally Unique
+	 * Identifier (OUI) in registers 2 and 3.
 	 */
 	for(i = 1; i < 32; i++){
 		if((x = dp83840r(ctlr, i, 2)) == 0xFFFF)
 			continue;
 		x <<= 6;
 		x |= dp83840r(ctlr, i, 3)>>10;
-		if(x != 0x80017)
-			continue;
+		if(x != 0x80017 && x != 0xAA00)
+			print("#l%d: unrecognised PHY - OUI 0x%4.4uX\n", ether->ctlrno, x);
 
 		x = dp83840r(ctlr, i, 0x19);
 		if(!(x & 0x0040)){

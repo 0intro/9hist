@@ -474,6 +474,7 @@ reset(Ether* ether)
 			freeb(bp);
 			break;
 		}
+		bpp = &bp->next;
 	}
 	if(port == 0 && (port = amd79c90(ether)) == 0)
 		return -1;
