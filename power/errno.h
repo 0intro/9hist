@@ -49,4 +49,5 @@ enum{
 	Egreg,		/* it's all greg's fault */
 	Eshortmsg,	/* short message */
 	Ebadmsg,	/* format error or mismatch in message */
+	Ebadcnt,	/* read count greater than requested */
 };

@@ -52,6 +52,7 @@ enum{
 	Ebadbitmap,	/* unallocated bitmap */
 	Eshortmsg,	/* short message */
 	Ebadmsg,	/* format error or mismatch in message */
+	Ebadcnt,	/* read count greater than requested */
 	Enofont,	/* out of font descriptors */
 	Egreg,		/* it's all greg's fault */
 };

@@ -769,7 +769,12 @@ mntxmit(Mnt *m, Mnthdr *mh)
     Read:
 		qunlock(q);
 		qlocked = 0;
+		if(waserror()){
+			mnterrdequeue(q, mh);
+			nexterror();
+		}
 		n = (*devtab[q->msg->type].read)(q->msg, mh->mbr->buf, BUFSIZE);
+		poperror();
 		if(convM2S(mh->mbr->buf, &mh->rhdr, n) == 0){
 			mnterrdequeue(q, mh);
 			error(0, Ebadmsg);
@@ -845,8 +850,11 @@ mntxmit(Mnt *m, Mnthdr *mh)
 	/*
 	 * Copy out on read
 	 */
-	if(mh->thdr.type == Tread)
+	if(mh->thdr.type == Tread){
+		if(mh->rhdr.count > mh->thdr.count)
+			error(0, Ebadcnt);
 		memcpy(mh->thdr.data, mh->rhdr.data, mh->rhdr.count);
+	}
 	mbfree(mh->mbr);
 	mbfree(mbw);
 	poperror();

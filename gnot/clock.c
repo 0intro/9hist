@@ -121,7 +121,10 @@ clock(Ureg *ur)
 	mouseclock();
 	if((ur->sr&SPL(7)) == 0){
 		spllo();
-		if(p && p->state==Running)
+		if(p && p->state==Running){
 			checksched();
+			if(u->nnote && (ur->sr&SUPER)==0)
+				notify(ur);
+		}
 	}
 }

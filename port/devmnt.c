@@ -769,7 +769,12 @@ mntxmit(Mnt *m, Mnthdr *mh)
     Read:
 		qunlock(q);
 		qlocked = 0;
+		if(waserror()){
+			mnterrdequeue(q, mh);
+			nexterror();
+		}
 		n = (*devtab[q->msg->type].read)(q->msg, mh->mbr->buf, BUFSIZE);
+		poperror();
 		if(convM2S(mh->mbr->buf, &mh->rhdr, n) == 0){
 			mnterrdequeue(q, mh);
 			error(0, Ebadmsg);
@@ -810,10 +815,6 @@ mntxmit(Mnt *m, Mnthdr *mh)
 				wakeup(&w->r);
 				goto Read;
 			}
-print("devmnt: undelivered response fid %d type %d\n", mh->rhdr.fid, mh->rhdr.type);
-print("reader pid %d fid %d type %d\n", u->p->pid, mh->thdr.fid, mh->thdr.type);
-for(w=q->writer; w; w=w->next)print("writer pid %d fid %d type %d\n",w->p->pid,w->thdr.fid,w->thdr.type);
-
 		goto Read;
 	}else{
 		mh->p = u->p;
@@ -849,8 +850,11 @@ for(w=q->writer; w; w=w->next)print("writer pid %d fid %d type %d\n",w->p->pid,w
 	/*
 	 * Copy out on read
 	 */
-	if(mh->thdr.type == Tread)
+	if(mh->thdr.type == Tread){
+		if(mh->rhdr.count > mh->thdr.count)
+			error(0, Ebadcnt);
 		memcpy(mh->thdr.data, mh->rhdr.data, mh->rhdr.count);
+	}
 	mbfree(mh->mbr);
 	mbfree(mbw);
 	poperror();

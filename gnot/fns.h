@@ -91,6 +91,7 @@ Pgrp	*newpgrp(void);
 Proc	*newproc(void);
 void	newqinfo(Qinfo*);
 char	*nextelem(char*, char*);
+void	notify(Ureg*);
 void	nullput(Queue*, Block*);
 int	openmode(ulong);
 void	pageinit(void);
