@@ -58,6 +58,7 @@ void	puttlbx(int, ulong, ulong);
 int	readlog(ulong, char*, ulong);
 void	restfpregs(FPsave*, ulong);
 #define	screenputs syslog
+void	scsiintr(int);
 void	setvmevec(int, void (*)(int));
 void	sinit(void);
 uchar*	smap(int, uchar*);

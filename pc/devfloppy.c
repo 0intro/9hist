@@ -13,12 +13,16 @@ typedef	struct Drive		Drive;
 typedef	struct Controller	Controller;
 typedef struct Type		Type;
 
-#define DPRINT if(floppydebug)print
+#define DPRINT if(floppydebug)kprint
 int floppydebug;
 
 /* bits in the registers */
 enum
 {
+	/* status registers a & b */
+	Psra=		0x3f0,
+	Psrb=		0x3f1,
+
 	/* digital output register */
 	Pdor=		0x3f2,
 	Fintena=	0x8,	/* enable floppy interrupt */
@@ -212,6 +216,13 @@ Dirtab floppydir[]={
 };
 #define NFDIR	2	/* directory entries/drive */
 
+static void
+fldump(void)
+{
+	DPRINT("sra %ux srb %ux dor %ux msr %ux dir %ux\n", inb(Psra), inb(Psrb),
+		inb(Pdor), inb(Pmsr), inb(Pdir));
+}
+
 /*
  *  set floppy drive to its default type
  */
@@ -380,7 +391,7 @@ islegal(ulong offset, long n, Drive *dp)
  *
  *  if the read fails, cycle through the possible floppy
  *  density till one works or we've cycled through all
- *  possibilities.
+ *  possibilities for this drive.
  */
 static void
 changed(Chan *c, Drive *dp)
@@ -392,7 +403,8 @@ changed(Chan *c, Drive *dp)
 	 *  if floppy has changed or first time through
 	 */
 	if((inb(Pdir)&Fchange) || dp->vers == 0){
-DPRINT("changed: msr %ux dir %ux\n", inb(Pmsr), inb(Pdir));
+		DPRINT("changed\n");
+		fldump();
 		dp->vers++;
 		setdef(dp);
 		start = dp->t;
@@ -408,9 +420,10 @@ DPRINT("changed: msr %ux dir %ux\n", inb(Pmsr), inb(Pdir));
 			}
 			floppydir[NFDIR*dp->dev].length = dp->t->cap;
 			floppyon(dp);
+			DPRINT("changed: trying %s\n", dp->t->name);
+			fldump();
 			if(dp->t == start)
 				nexterror();
-			DPRINT("changed: trying %s\n", dp->t->name);
 		}
 		floppyxfer(dp, Fread, dp->cache, 0, dp->t->tsize);
 		poperror();
@@ -594,8 +607,13 @@ floppyon(Drive *dp)
 	alreadyon = fl.motor & MOTORBIT(dp->dev);
 	fl.motor |= MOTORBIT(dp->dev);
 	outb(Pdor, fl.motor | Fintena | Fena | dp->dev);
-	if(!alreadyon)
+	if(!alreadyon){
+		/* wait for drive to spin up */
 		tsleep(&dp->r, return0, 0, 750);
+
+		/* clear any pending interrupts */
+		floppysense();
+	}
 
 	/* set transfer rate */
 	if(fl.rate != dp->t->rate){
@@ -646,10 +664,12 @@ floppycmd(void)
 	fl.nstat = 0;
 	for(i = 0; i < fl.ncmd; i++){
 		for(tries = 0; ; tries++){
-			if(tries > 10000){
-				DPRINT("cmd %ux can't be sent (%d %ux)\n",
-					fl.cmd[0], i, inb(Pmsr));
-				fl.confused = 1;
+			if(tries > 1000){
+				DPRINT("cmd %ux can't be sent (%d)\n", fl.cmd[0], i);
+				fldump();
+
+				/* empty fifo, might have been a bad command */
+				floppyresult();
 				return -1;
 			}
 			if((inb(Pmsr)&(Ffrom|Fready)) == Fready)
@@ -673,24 +693,28 @@ floppyresult(void)
 	int i, s;
 	int tries;
 
+	/* get the result of the operation */
 	for(i = 0; i < sizeof(fl.stat); i++){
+		/* wait for status byte */
 		for(tries = 0; ; tries++){
 			if(tries > 1000){
+				DPRINT("floppyresult: %d stats\n", i);
+				fldump();
 				fl.confused = 1;
 				return -1;
 			}
 			s = inb(Pmsr)&(Ffrom|Fready);
 			if(s == Fready){
 				fl.nstat = i;
-				return i;
+				return fl.nstat;
 			}
 			if(s == (Ffrom|Fready))
 				break;
 		}
 		fl.stat[i] = inb(Pdata);
 	}
-	fl.nstat = i;
-	return i;
+	fl.nstat = sizeof(fl.stat);
+	return fl.nstat;
 }
 
 /*
@@ -732,6 +756,7 @@ floppysense(void)
 		return -1;
 	if(floppyresult() < 2){
 		DPRINT("can't read sense response\n");
+		fldump();
 		fl.confused = 1;
 		return -1;
 	}
@@ -746,12 +771,15 @@ cmddone(void *a)
 }
 
 /*
- *  wait for a floppy interrupt
+ *  Wait for a floppy interrupt.  If none occurs in 5 seconds, we
+ *  may have missed one.  This only happens on some portables which
+ *  do power management behind our backs.  Call the interrupt
+ *  routine to try to clear any conditions.
  */
 static void
 floppywait(void)
 {
-	tsleep(&fl.r, cmddone, 0, 2000);
+	tsleep(&fl.r, cmddone, 0, 5000);
 	if(!cmddone(0))
 		floppyintr(0);
 }
@@ -765,7 +793,6 @@ floppyrecal(Drive *dp)
 	dp->ccyl = -1;
 	dp->cyl = -1;
 
-DPRINT("floppyrecal: msr %ux dir %ux\n", inb(Pmsr), inb(Pdir));
 	fl.ncmd = 0;
 	fl.cmd[fl.ncmd++] = Frecal;
 	fl.cmd[fl.ncmd++] = dp->dev;
@@ -807,22 +834,31 @@ floppyrevive(void)
 	 *  reset the controller if it's confused
 	 */
 	if(fl.confused){
-DPRINT("floppyrevive: msr %ux dir %ux\n", inb(Pmsr), inb(Pdir));
+		DPRINT("floppyrevive in\n");
+		fldump();
+
 		/* reset controller and turn all motors off */
 		splhi();
+		fl.ncmd = 1;
 		fl.cmd[0] = 0;
 		outb(Pdor, 0);
 		delay(1);
 		outb(Pdor, Fintena|Fena);
 		spllo();
+		fl.motor = 0;
+		fl.confused = 0;
+		floppywait();
+
+		/* mark all drives in an unknown state */
 		for(dp = fl.d; dp < &fl.d[conf.nfloppy]; dp++)
 			dp->confused = 1;
-		fl.motor = 0;
-		floppywait();
-		fl.confused = 0;
+
+		/* set rate to a known value */
 		outb(Pdsr, 0);
 		fl.rate = 0;
-DPRINT("floppyrevive: msr %ux dir %ux\n", inb(Pmsr), inb(Pdir));
+
+		DPRINT("floppyrevive out\n");
+		fldump();
 	}
 }
 
@@ -839,7 +875,6 @@ floppyseek(Drive *dp, long off)
 		return dp->tcyl;
 	dp->cyl = -1;
 
-	DPRINT("seek: tcyl %d, thead %d\n", dp->tcyl, dp->thead);
 	fl.ncmd = 0;
 	fl.cmd[fl.ncmd++] = Fseek;
 	fl.cmd[fl.ncmd++] = (dp->thead<<2) | dp->dev;
@@ -890,9 +925,6 @@ floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 		dp->confused = 1;
 		error(Eio);
 	}
-
-	DPRINT("floppyxfer: tcyl %d, thead %d, tsec %d, addr %lux, n %d\n",
-	dp->tcyl, dp->thead, dp->tsec, a, dp->len);
 
 	/*
 	 *  set up the dma (dp->len may be trimmed)

@@ -773,8 +773,7 @@ mntchk(Chan *c)
 void
 mntdirfix(uchar *dirbuf, Chan *c)
 {
-	dirbuf[DIRLEN-4] = devchar[c->type];
-	dirbuf[DIRLEN-3] = 0;
+	*(ushort*)&dirbuf[DIRLEN-4] = devchar[c->type];
 	dirbuf[DIRLEN-2] = c->dev;
 	dirbuf[DIRLEN-1] = c->dev>>8;
 }

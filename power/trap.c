@@ -172,7 +172,7 @@ intr(Ureg *ur)
 	int i, any;
 	ulong cause;
 	static int bogies;
-	uchar pend, npend, xxx;
+	uchar pend, xxx;
 
 	m->intr++;
 	cause = ur->cause&(INTR5|INTR4|INTR3|INTR2|INTR1);
@@ -209,7 +209,6 @@ intr(Ureg *ur)
 		 *  3. read pending interrupts
 		 */
 		pend = SBCCREG->fintpending;
-		npend = pend;
 
 		/*
 		 *  4. clear pending register
@@ -227,7 +226,6 @@ intr(Ureg *ur)
 		xxx = SBCCREG->fintpending;
 		if(xxx){
 			print("new pend %ux\n", xxx);
-			npend = pend |= xxx;
 			i = SBCCREG->flevel;
 			USED(i);
 		}

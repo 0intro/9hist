@@ -34,6 +34,7 @@ enum
 	Rdata		= 0x19,		/* data register */
 	Raux		= 0x1F,		/* auxiliary status register */
 	  Dbr		=   0x01,	/* data buffer ready */
+	  Cip		=   0x10,	/* command in progress */
 	  Intrpend	=   0x80,	/* interrupt pending */
 
 	Creset		= 0x00,		/* reset */
@@ -60,6 +61,7 @@ typedef struct Target Target;
 struct Target
 {
 	QLock;
+	Lock	regs;
 	Rendez;
 	ulong	flags;
 	uchar	sync;
@@ -115,6 +117,15 @@ static Target target[NCtlr][NTarget];
 
 static	void	dmamap(Target*);
 
+static void
+issue(Target *ctlr, uchar cmd)
+{
+	while(*ctlr->addr & Cip)
+		;
+	*ctlr->addr = Rcmd;
+	*ctlr->data = cmd;
+}
+
 /*
  * Set up and start a data transfer. This maybe
  * a continuation.
@@ -165,8 +176,7 @@ start(Target *tp)
 	/*
 	 * Select and transfer.
 	 */
-	*dev->addr = Rcmd;
-	*dev->data = tp->transfer;
+	issue(dev, tp->transfer);
 }
 
 /*
@@ -200,8 +210,7 @@ arbitrate(Target *dev)
 	*dev->data = 0x00;				/* cmdphase */
 	*dev->addr = Rdestid;
 	*dev->data = tp->target;
-	*dev->addr = Rcmd;
-	*dev->data = CselectATN;
+	issue(dev, CselectATN);
 }
 
 static int
@@ -241,12 +250,13 @@ scsiio(int nbus, Scsi *p, int rw)
 	tp->dmalen = p->data.lim - p->data.base;
 	tp->dmatx = 0;
 	tp->status = 0x6002;
+	tp->lun = p->lun;
 
 	tp->clen = p->cmd.lim - p->cmd.base;
 	memmove(tp->cdb, p->cmd.base, tp->clen);
 
 	s = splhi();
-	qlock(ctlr);
+	lock(&ctlr->regs);
 
 	/*
 	 * Link the target onto the end of the
@@ -264,7 +274,7 @@ scsiio(int nbus, Scsi *p, int rw)
 		arbitrate(ctlr);
 	}
 
-	qunlock(ctlr);
+	unlock(&ctlr->regs);
 	splx(s);
 
 	/*
@@ -335,7 +345,7 @@ complete(Target *ctlr)
 	 * one up.
 	 */
 	tp->flags &= Fidentified;
-	*tp->dmafls = 1;
+	*tp->dmafls = 0;
 
 	wakeup(tp);
 
@@ -362,11 +372,10 @@ disconnect(Target *ctlr)
 	tp->flags |= Fdisconnected;
 	ctlr->active = tp->active;
 
-	if(ctlr->active){
+	if(ctlr->active)
 		arbitrate(ctlr);
-		return;
-	}
-	ctlr->flags &= ~Fbusy;
+	else
+		ctlr->flags &= ~Fbusy;
 }
 
 /*
@@ -404,9 +413,11 @@ identify(Target *tp, uchar status)
 	switch(status){
 
 	case 0x11:				/* select complete */
-		delay(7);
-		*dev->addr = Rcmd;
-		*dev->data = Catn;
+		/*
+		 * This is what WD calls an 'extended interrupt',
+		 * the next interrupt (0x8E) is already in the
+		 * pipe, we don't have to do anything.
+		 */
 		break;
 
 	case 0x8E:				/* service required - MSGOUT */
@@ -421,8 +432,7 @@ identify(Target *tp, uchar status)
 		*dev->data = 0x00;
 		*dev->data = 0x00;
 		*dev->data = sizeof(msgout);
-		*dev->addr = Rcmd;
-		*dev->data = Ctinfo;
+		issue(dev, Ctinfo);
 		msgout[0] = Midentify|tp->lun;
 		*dev->addr = Rdata;
 		n = 0;
@@ -463,8 +473,7 @@ identify(Target *tp, uchar status)
 		*dev->data = 0x00;
 		*dev->data = 0x00;
 		*dev->data = 5;
-		*dev->addr = Rcmd;
-		*dev->data = Ctinfo;
+		issue(dev, Ctinfo);
 		*dev->addr = Rdata;
 		for(i = sizeof(msgin)-1, n = 0; n < i; n++){
 			while((*dev->addr & Dbr) == 0){
@@ -489,8 +498,24 @@ identify(Target *tp, uchar status)
 		break;
 
 	case 0x4E:
-		*dev->addr = Rcmd;
-		*dev->data = Csbt|Ctinfo;
+		/*
+		 * The target went to message-out phase, so send
+		 * it a NOP to keep it happy.
+		 * There seems to be no reason for this delay, other than
+		 * that we just end up busy without an interrupt if it
+		 * isn't there.
+		 * I wish I understood this.
+		 */
+		delay(10);
+		*dev->addr = Rstatus;
+		n = *dev->data;
+		USED(n);
+
+		*dev->addr = Rtchi;
+		*dev->data = 0x00;
+		*dev->data = 0x00;
+		*dev->data = 1;
+		issue(dev, Ctinfo);
 		*dev->addr = Rdata;
 		while((*dev->addr & Dbr) == 0){
 			if(*dev->addr & Intrpend)
@@ -499,10 +524,8 @@ identify(Target *tp, uchar status)
 		*dev->data = Mnop;
 		break;
 
-	case 0x20:				/* transfer info paused */
-		delay(7);
-		*dev->addr = Rcmd;
-		*dev->data = Cnack;
+	case 0x20:					/* transfer info paused */
+		issue(dev, Cnack);
 		break;
 
 	case 0x1A:
@@ -527,7 +550,7 @@ saveptr(Target *tp)
 	Target *dev;
 	ulong count, tx;
 
-	*tp->dmafls = 1;
+	*tp->dmafls = 0;
 
 	dev = tp->ctlr;
 	/*
@@ -538,6 +561,11 @@ saveptr(Target *tp)
 	count =  (*dev->data & 0xFF)<<16;
 	count += (*dev->data & 0xFF)<<8;
 	count += (*dev->data & 0xFF);
+
+	*dev->addr = Rtchi;
+	*dev->data = 0;
+	*dev->data = 0;
+	*dev->data = 0;
 
 	tx = tp->dmalen - count;
 	tp->dmaaddr += tx;
@@ -557,28 +585,38 @@ scsistatus(Target *ctlr)
 	return status;
 }
 
-void
-scsiintr(int ctlrno)
+static void
+scsiprocessint(int ctlrno, Target *ctlr)
 {
-	uchar status, x, phase;
-	Target *ctlr, *tp;
+	Target *tp;
+	uchar aux, status, sid, phase, x;
 
-	ctlr = &target[ctlrno][CtlrID];
 	tp = ctlr->active;
 
-	if(*ctlr->addr & 0x20)
-		print("busy\n");
+	while(*ctlr->addr & 0x20)		/* Wait for busy to clear */
+		;
+
+	aux = *ctlr->addr;
+	if((aux&0x80) == 0) {
+		print("scsi%d: bogus int #%2.2lux\n", ctlrno, *ctlr->addr);
+		return;
+	}
+	if(aux & 0x02)
+		print("scsi%d: parity error (ignored)\n", ctlrno);
+	if(aux & 0x10)
+		print("scsi%d: cip #%2.2lux\n", ctlrno, aux);
 
 	*ctlr->addr = Rcmdphase;
 	phase = *ctlr->data;
-
+	*ctlr->addr = Rsrcid;
+	sid = *ctlr->data;
 	*ctlr->addr = Rstatus;
 	status = *ctlr->data;
 
-	switch(status){
-	case 0x00:				/* reset interrupt */
-		return;
+	if((aux&0x40) && status != 0x81)
+		print("lci but not reconnect #%2.2lux\n", status);
 
+	switch(status) {
 	case 0x42:				/* timeout */
 		tp->flags &= ~Fretry;
 		scsistatus(ctlr);		/* Must read lun register */
@@ -586,12 +624,6 @@ scsiintr(int ctlrno)
 		return;
 
 	case 0x16:				/* select-and-transfer complete */
-		/*
-		 * The target status comes back in the Rlun
-		 * register. Returned status is combined
-		 * with the final command phase, which
-		 * should be 0x60.
-		 */
 		saveptr(tp);
 		tp->status = scsistatus(ctlr);	/* target status */
 		complete(ctlr);
@@ -599,8 +631,7 @@ scsiintr(int ctlrno)
 
 	case 0x21:				/* save data pointers */
 		saveptr(tp);
-		*ctlr->addr = Rcmd;
-		*ctlr->data = tp->transfer;
+		issue(ctlr, tp->transfer);
 		return;
 
 	case 0x4B:				/* unexpected status phase */
@@ -610,17 +641,12 @@ scsiintr(int ctlrno)
 			*ctlr->data = 0x41;	/* resume no data */
 		else
 			*ctlr->data = 0x46;	/* collect status */
-		*ctlr->addr = Rtchi;
-		*ctlr->data = 0;
-		*ctlr->data = 0;
-		*ctlr->data = 0;
-		*ctlr->addr = Rcmd;
-		*ctlr->data = tp->transfer;
+		issue(ctlr, tp->transfer);
 		return;
 
-	case 0x85:					/* disconnect */
+	case 0x85:				/* disconnect */
 		if(tp->flags & Fidentifying){
-			tp->cmdphase = 0x00;		/* complete retry */
+			tp->cmdphase = 0x00;	/* complete retry */
 			complete(ctlr);
 			return;
 		}
@@ -628,31 +654,52 @@ scsiintr(int ctlrno)
 		return;
 
 	case 0x81:
-		*ctlr->addr = Rsrcid;
-		x = *ctlr->data;
-		if(x & Siv){				/* source ID valid */
-			reselect(ctlr, x & 0x07);
-			ctlr->active->cmdphase = 0x44;	/* reselected by target */
-			start(ctlr->active);
-			return;
+		*ctlr->addr = Rdata;
+		x = *ctlr->data;		/* the identify message */
+		USED(x);
+		if((sid & Siv) == 0) {		/* source ID valid */
+			print("scsi%d: invalid src id\n", ctlrno);
+			break;
 		}
-		break;
+		reselect(ctlr, sid & 0x07);
+		ctlr->active->cmdphase = 0x45;	/* reselected by target */
+		start(ctlr->active);
+		return;
 
 	default:
+		if(tp == 0) {
+			print("scsi%d: bogus sr #%2.2lux phase #%2.2lux\n",
+					ctlrno, status, phase);
+			return;
+		}
 		if((tp->flags & Fidentifying) && identify(tp, status) == 0)
 			return;
 		break;
 	}
-	delay(1000);
-	print("scsi intr status #%.2ux\n", status);
-	print("scsi aux status #%.2ux\n", *ctlr->addr & 0xFF);
+	print("scsi%d:\n", ctlrno);
+	if(tp) print("unit %d cmd #%2.2lux flags #%4.4lux phase #%2.2lux\n",
+			tp->target, tp->cdb[0], tp->flags, tp->cmdphase);
+	print("scsi status #%.2ux phase #%2.2lux\n", status, phase);
+	print("aux  status #%2.2ux was #%2.2lux\n", *ctlr->addr, aux);
 	for(*ctlr->addr = 0x00, x = 0x00; x < 0x19; x++){
 		if((x & 0x07) == 0x07)
-			print("#%.2ux: #%.2ux\n", x, *ctlr->data & 0xFF);
+			print("#%.2ux: #%2.2ux\n", x, *ctlr->data);
 		else
-			print("#%.2ux: #%.2ux ", x, *ctlr->data & 0xFF);
+			print("#%.2ux: #%2.2ux ", x, *ctlr->data);
 	}
-	panic("scsiintr\n");
+	panic("\nscsiintr");
+}
+
+void
+scsiintr(int ctlrno)
+{
+	Target *ctlr;
+
+	ctlr = &target[ctlrno][CtlrID];
+
+	lock(&ctlr->regs);
+	scsiprocessint(ctlrno, ctlr);
+	unlock(&ctlr->regs);
 }
 
 void

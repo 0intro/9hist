@@ -297,8 +297,10 @@ vgawrite(Chan *c, void *buf, long n, ulong offset)
 		return n;
 	case Qvgaport:
 		cp = buf;
+		/*
 		if (offset + n >= 0x8000 || offset < 0x300)
 			error(Ebadarg);
+		*/
 		for (port=offset; port<offset+n; port++) {
 			outb(port, *cp++);
 		}

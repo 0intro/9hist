@@ -733,7 +733,7 @@ enum
 extern	Conf	conf;
 extern	char*	conffile;
 extern	int	cpuserver;
-extern	char*	devchar;
+extern	Rune*	devchar;
 extern	Dev	devtab[];
 extern  char	eve[];
 extern	uchar	initcode[];

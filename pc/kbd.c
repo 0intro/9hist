@@ -188,7 +188,7 @@ mousecmd(int cmd)
 		c = inb(Data);
 	} while(c == 0xFE || c == 0);
 	if(c != 0xFA){
-		print("mouse returns %2.2ux to the %2.2ux command\n", c, cmd);
+		kprint("mouse returns %2.2ux to the %2.2ux command\n", c, cmd);
 		return -1;
 	}
 	return 0;
