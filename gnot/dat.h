@@ -417,6 +417,7 @@ struct Queue {
 #define QHUNGUP	0x1	/* flag bit meaning the stream has been hung up */
 #define QINUSE	0x2
 #define QHIWAT	0x4	/* queue has gone past the high water mark */	
+#define QDEBUG	0x8
 
 /*
  *  a stream head

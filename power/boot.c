@@ -22,22 +22,23 @@ typedef
 struct address {
 	char *name;
 	char *cmd;
+	char *srvname;
 } Address;
 
 Address addr[] = {
-	{ "bitbootes", "bitconnect" },
-	{ "ross", "connect 020701005eff" },
-	{ "bootes", "connect 080069020205" },
-	{ "helix", "connect 080069020427" },
-	{ "spindle", "connect 0800690202df" },
-	{ "r70", "connect 08002b04265d" },
+	{ "bitbootes", "bitconnect", "bit!bootes" },
+	{ "ross", "connect 020701005eff", "nonet!ross" },
+	{ "bootes", "connect 080069020205", "nonet!bootes" },
+	{ "helix", "connect 080069020427", "nonet!helix" },
+	{ "spindle", "connect 0800690202df", "nonet!spindle" },
+	{ "r70", "connect 08002b04265d", "nonet!r70" },
 	{ 0 }
 };
 
 /*
  *  predeclared
  */
-char	*lookup(char *);
+Address* lookup(char *);
 int	outin(char *, char *, char *, int);
 void	prerror(char *);
 void	error(char *);
@@ -106,18 +107,18 @@ void
 boot(int ask)
 {
 	int n, f;
+	Address *a;
 
-	if(!ask)
-		scmd = lookup(sys);
-	else {
+	if(ask){
 		outin("server", sys, sbuf, sizeof(sbuf));
 		sys = sbuf;
-		scmd = lookup(sys);
 	}
-	if(scmd == 0){
+	a = lookup(sys);
+	if(a == 0){
 		fprint(2, "boot: %s unknown\n", sys);
 		return;
 	}
+	scmd = a->cmd;
 
 	/*
 	 *  for the bit, we skip all the ether goo
@@ -148,16 +149,20 @@ boot(int ask)
 		prerror("push noether");
 		return;
 	}
+	if(write(efd, "config nonet", sizeof("config nonet")-1)<0){
+		prerror("config nonet");
+		return;
+	}
 
 	/*
 	 *  grab a nonet channel and call up the ross file server
 	 */
-	fd = open("#n/2/data", 2);
+	fd = open("#nnonet/2/data", 2);
 	if(fd < 0) {
 		prerror("opening #n/2/data");
 		return;
 	}
-	cfd = open("#n/2/ctl", 2);
+	cfd = open("#nnonet/2/ctl", 2);
 	if(cfd < 0){
 		prerror("opening #n/2/ctl");
 		return;
@@ -220,7 +225,7 @@ boot(int ask)
 	}
 
 	print("post...");
-	sprint(buf, "#s/%s", sys);
+	sprint(buf, "#s/%s", a->srvname);
 	f = create(buf, 1, 0666);
 	if(f < 0)
 		error("create");
@@ -279,7 +284,7 @@ error(char *s)
 /*
  *  lookup the address for a system
  */
-char *
+Address *
 lookup(char *arg)
 {
 	Address *a;
@@ -291,7 +296,7 @@ lookup(char *arg)
 	}
 	for(a = addr; a->name; a++){
 		if(strcmp(a->name, arg) == 0)
-			return a->cmd;
+			return a;
 	}
 	return 0;
 }

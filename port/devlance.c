@@ -313,8 +313,8 @@ lancestclose(Queue *q)
 {
 	Ethertype *et;
 
-	qlock(et);
 	et = (Ethertype *)(q->ptr);
+	qlock(et);
 	et->type = 0;
 	et->q = 0;
 	qunlock(et);

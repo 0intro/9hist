@@ -471,7 +471,7 @@ bitwrite(Chan *c, void *va, long n)
 	uchar *p, *q;
 	long m, v, miny, maxy, t, x, y;
 	ulong l, nw, ws;
-	int off, i;
+	int off, isoff, i;
 	Point pt, pt1, pt2;
 	Rectangle rect;
 	Cursor curs;
@@ -485,6 +485,12 @@ bitwrite(Chan *c, void *va, long n)
 	if(c->qid != Qbitblt)
 		error(0, Egreg);
 
+	isoff = 0;
+	if(waserror()){
+		if(isoff)
+			cursoron(1);
+		nexterror();
+	}
 	p = va;
 	m = n;
 	while(m > 0)
@@ -580,11 +586,11 @@ bitwrite(Chan *c, void *va, long n)
 			rect.max.x = GLONG(p+21);
 			rect.max.y = GLONG(p+25);
 			v = GSHORT(p+29);
-			if(off)
+			if(off && !isoff){
 				cursoroff(1);
+				isoff = 1;
+			}
 			bitblt(dst, pt, src, rect, v);
-			if(off)
-				cursoron(1);
 			m -= 31;
 			p += 31;
 			break;
@@ -599,9 +605,11 @@ bitwrite(Chan *c, void *va, long n)
 			 *	set		32
 			 */
 			if(m == 1){
-				cursoroff(1);
+				if(!isoff){
+					cursoroff(1);
+					isoff = 1;
+				}
 				Cursortocursor(&arrow);
-				cursoron(1);
 				m -= 1;
 				p += 1;
 				break;
@@ -612,9 +620,11 @@ bitwrite(Chan *c, void *va, long n)
 			curs.offset.y = GLONG(p+5);
 			memcpy(curs.clr, p+9, 2*16);
 			memcpy(curs.set, p+41, 2*16);
-			cursoroff(1);
+			if(!isoff){
+				cursoroff(1);
+				isoff = 1;
+			}
 			Cursortocursor(&curs);
-			cursoron(1);
 			m -= 73;
 			p += 73;
 			break;
@@ -736,11 +746,11 @@ bitwrite(Chan *c, void *va, long n)
 			pt2.y = GLONG(p+15);
 			t = p[19];
 			v = GSHORT(p+20);
-			if(off)
+			if(off && !isoff){
 				cursoroff(1);
+				isoff = 1;
+			}
 			segment(dst, pt1, pt2, t, v);
-			if(off)
-				cursoron(1);
 			m -= 22;
 			p += 22;
 			break;
@@ -801,11 +811,11 @@ bitwrite(Chan *c, void *va, long n)
 			q = memchr(p, 0, m);
 			if(q == 0)
 				error(0, Ebadblt);
-			if(off)
+			if(off && !isoff){
 				cursoroff(1);
+				isoff = 1;
+			}
 			string(dst, pt, f, (char*)p, v);
-			if(off)
-				cursoron(1);
 			q++;
 			m -= q-p;
 			p = q;
@@ -846,11 +856,11 @@ bitwrite(Chan *c, void *va, long n)
 
 				for(i=0; i<16; i++)
 					t.bits[i] = src->base[i]>>16;
-				if(off)
+				if(off && !isoff){
 					cursoroff(1);
+					isoff = 1;
+				}
 				texture(dst, rect, &t, v);
-				if(off)
-					cursoron(1);
 			}
 			m -= 23;
 			p += 23;
@@ -891,8 +901,10 @@ bitwrite(Chan *c, void *va, long n)
 			m -= 11;
 			if(m < l*(maxy-miny))
 				error(0, Ebadblt);
-			if(off)
+			if(off && !isoff){
 				cursoroff(1);
+				isoff = 1;
+			}
 			for(y=miny; y<maxy; y++){
 				q = (uchar*)addr(dst, Pt(dst->r.min.x, y));
 				q += (dst->r.min.x&((sizeof(ulong))*ws-1))/8;
@@ -900,11 +912,11 @@ bitwrite(Chan *c, void *va, long n)
 					*q++ = U2K(*p++);
 				m -= l;
 			}
-			if(off)
-				cursoron(1);
 			break;
 		}
 
+	if(isoff)
+		cursoron(1);
 	return n;
 }
 

@@ -11,7 +11,7 @@ enum {
 	Nmask=		0x7,
 };
 
-#define DPRINT if(0)
+#define DPRINT /*if(q->flag&QDEBUG)kprint*/
 
 typedef struct Urp	Urp;
 
@@ -438,8 +438,9 @@ urpiput(Queue *q, Block *bp)
 		break;
 
 	case BOT:
-	case BOTS:
 	case BOTM:
+	case BOTS:
+		DPRINT("rBOT%d...", ctl-BOT);
 		up->trx = 1;
 		up->trbuf[0] = ctl;
 		break;
@@ -458,8 +459,8 @@ urpiput(Queue *q, Block *bp)
 		break;
 
 	/*
-	 *  if the seuence number is the next expected
-	 *	and te trailer length == 3
+	 *  if the sequence number is the next expected
+	 *	and the trailer length == 3
 	 *	and the block count matches the bytes received
 	 *  then send the bytes upstream.
 	 */
@@ -483,6 +484,7 @@ urpiput(Queue *q, Block *bp)
 			flushinput(up);
 			break;
 		}
+		DPRINT("rSEQ%d accept %d\n", i, q->len);
 
 		/*
 		 *  send data upstream
@@ -533,6 +535,21 @@ urpctloput(Urp *up, Queue *q, Block *bp)
 			}
 /*			initinput(up, inwin); */
 			initoutput(up, outwin);
+			freeb(bp);
+			return;
+		}
+		if(streamparse("debug", bp)){
+			switch(getfields((char *)bp->rptr, fields, 2, ' ')){
+			case 1:
+				if (strcmp(fields[0], "on") == 0) {
+					q->flag |= QDEBUG;
+					q->other->flag |= QDEBUG;
+				}
+				if (strcmp(fields[0], "off") == 0) {
+					q->flag &= ~QDEBUG;
+					q->other->flag &= ~QDEBUG;
+				}
+			}
 			freeb(bp);
 			return;
 		}
@@ -688,6 +705,7 @@ sendctl(Urp *up, int ctl)
 static void
 sendrej(Urp *up)
 {
+	Queue *q = up->wq;
 	flushinput(up);
 	qlock(&up->ack);
 	if((up->lastecho&~Nmask) == ECHO){
@@ -923,9 +941,10 @@ todo(void *arg)
 static void
 urpkproc(void *arg)
 {
-	Urp *up;
+	Urp *up; Queue *q;
 
 	up = (Urp *)arg;
+	q = up->wq;
 
 	if(waserror()){
 		print("urpkproc error %ux\n", up);

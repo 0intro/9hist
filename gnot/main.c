@@ -289,13 +289,13 @@ confinit(void)
 	conf.base1 = 16*1024*1024;
 	conf.npage = conf.npage0+conf.npage1;
 	mul = 1 + (conf.npage1>0);
-	conf.nproc = 40*mul;
+	conf.nproc = 50*mul;
 	conf.npgrp = 12*mul;
 	conf.npte = 700*mul;
 	conf.nmod = 400*mul;
 	conf.nalarm = 1000;
 	conf.norig = 150*mul;
-	conf.nchan = 150*mul;
+	conf.nchan = 200*mul;
 	conf.nenv = 100*mul;
 	conf.nenvchar = 8000*mul;
 	conf.npgenv = 200*mul;
