@@ -345,6 +345,7 @@ enum{
 	Qconsctl,
 	Qcputime,
 	Qdrivers,
+	Qfastclock,
 	Qhz,
 	Qkey,
 	Qhostdomain,
@@ -373,6 +374,7 @@ static Dirtab consdir[]={
 	"consctl",	{Qconsctl},	0,		0220,
 	"cputime",	{Qcputime},	6*NUMSIZE,	0444,
 	"drivers",	{Qdrivers},	0,		0644,
+	"fastclock",	{Qfastclock},	4*NUMSIZE,	0444,
 	"hostdomain",	{Qhostdomain},	DOMLEN,		0664,
 	"hostowner",	{Qhostowner},	NAMELEN,	0664,
 	"hz",		{Qhz},		NUMSIZE,	0666,
@@ -398,6 +400,21 @@ long
 seconds(void)
 {
 	return boottime + TK2SEC(MACHP(0)->ticks);
+}
+
+int
+readvlnum(ulong off, char *buf, ulong n, uvlong val, int size)
+{
+	char tmp[64];
+
+	snprint(tmp, sizeof(tmp), "%*.0ulld", size-1, val);
+	tmp[size-1] = ' ';
+	if(off >= size)
+		return 0;
+	if(off+n > size)
+		n = size-off;
+	memmove(buf, tmp+off, n);
+	return n;
 }
 
 int
@@ -515,6 +532,7 @@ consread(Chan *c, void *buf, long n, vlong off)
 	char *cbuf = buf;
 	int ch, i, k, id, eol;
 	vlong offset = off;
+	uvlong ticks, fasthz;
 
 	if(n <= 0)
 		return n;
@@ -620,6 +638,19 @@ consread(Chan *c, void *buf, long n, vlong off)
 			n = 2*NUMSIZE - k;
 		readnum(0, tmp, NUMSIZE, MACHP(0)->ticks, NUMSIZE);
 		readnum(0, tmp+NUMSIZE, NUMSIZE, HZ, NUMSIZE);
+		memmove(buf, tmp+k, n);
+		return n;
+
+	case Qfastclock:
+		ticks = fastticks(&fasthz);
+
+		k = offset;
+		if(k >= 4*NUMSIZE)
+			return 0;
+		if(k+n > 4*NUMSIZE)
+			n = 4*NUMSIZE - k;
+		readvlnum(0, tmp, 2*NUMSIZE, ticks, 2*NUMSIZE);
+		readvlnum(0, tmp+2*NUMSIZE, 2*NUMSIZE, fasthz, 2*NUMSIZE);
 		memmove(buf, tmp+k, n);
 		return n;
 

@@ -221,6 +221,7 @@ struct PCArch
 	int	(*intrenable)(int, int, Irqctl*);
 
 	void	(*clockenable)(void);
+	uvlong	(*fastclock)(uvlong*);
 };
 
 /*

@@ -91,6 +91,7 @@ void		error(char*);
 long		execregs(ulong, ulong, ulong);
 void		exhausted(char*);
 void		exit(int);
+uvlong		fastticks(uvlong*);
 int		fault(ulong, int);
 void		fdclose(int, int);
 Chan*		fdtochan(int, int, int, int);

@@ -17,6 +17,8 @@ nop(void)
 }
 
 void (*coherence)(void) = nop;
+void cycletimerinit(void);
+uvlong cycletimer(uvlong*);
 
 PCArch* arch;
 extern PCArch* knownarch[];
@@ -32,6 +34,8 @@ PCArch archgeneric = {
 	i8259enable,				/* intrenable */
 
 	i8253enable,				/* clockenable */
+
+	i8253read,				/* read the standard timer */
 };
 
 typedef struct {
@@ -185,6 +189,12 @@ archinit(void)
 			arch->intrenable = archgeneric.intrenable;
 	}
 
+	/* pick the better timer */
+	if(X86FAMILY(m->cpuidax) >= 5){
+		cycletimerinit();
+		arch->fastclock = cycletimer;
+	}
+
 	/*
 	 * Decide whether to use copy-on-reference (386 and mp).
 	 */
@@ -193,4 +203,32 @@ archinit(void)
 
 	if(X86FAMILY(m->cpuidax) == 6 /*&& conf.nmach > 1*/)
 		coherence = wbflush;
+}
+
+static uvlong fasthz;
+
+void
+cycletimerinit(void)
+{
+	fasthz = 1000000LL*m->cpumhz;
+}
+
+/*
+ *  return the most precice clock we have
+ */
+uvlong
+cycletimer(uvlong *hz)
+{
+	uvlong tsc;
+
+	rdmsr(0x10, (vlong*)&tsc);
+	if(hz != nil)
+		*hz = fasthz;
+	return tsc;
+}
+
+uvlong
+fastticks(uvlong *hz)
+{
+	return (*arch->fastclock)(hz);
 }

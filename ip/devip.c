@@ -520,7 +520,7 @@ ipread(Chan *ch, void *a, long n, vlong off)
 	Conv *c;
 	Proto *x;
 	char *buf, *p;
-	long m, rv;
+	long rv;
 	Fs *f;
 	ulong offset = off;
 
