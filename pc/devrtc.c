@@ -118,24 +118,31 @@ rtcclose(Chan*)
 
 #define GETBCD(o) ((bcdclock[o]&0xf) + 10*(bcdclock[o]>>4))
 
-long	 
-rtctime(void)
+static long	 
+_rtctime(void)
 {
 	uchar bcdclock[Nbcd];
 	Rtc rtc;
 	int i;
 
+	/* don't do the read until the clock is no longer busy */
 	for(i = 0; i < 10000; i++){
 		outb(Paddr, Status);
-		if((inb(Pdata) & 1) == 0)
+		if(inb(Pdata) & 0x80)
+			continue;
+
+		/* read clock values */
+		outb(Paddr, Seconds);	bcdclock[0] = inb(Pdata);
+		outb(Paddr, Minutes);	bcdclock[1] = inb(Pdata);
+		outb(Paddr, Hours);	bcdclock[2] = inb(Pdata);
+		outb(Paddr, Mday);	bcdclock[3] = inb(Pdata);
+		outb(Paddr, Month);	bcdclock[4] = inb(Pdata);
+		outb(Paddr, Year);	bcdclock[5] = inb(Pdata);
+
+		outb(Paddr, Status);
+		if((inb(Pdata) & 0x80) == 0)
 			break;
 	}
-	outb(Paddr, Seconds);	bcdclock[0] = inb(Pdata);
-	outb(Paddr, Minutes);	bcdclock[1] = inb(Pdata);
-	outb(Paddr, Hours);	bcdclock[2] = inb(Pdata);
-	outb(Paddr, Mday);	bcdclock[3] = inb(Pdata);
-	outb(Paddr, Month);	bcdclock[4] = inb(Pdata);
-	outb(Paddr, Year);	bcdclock[5] = inb(Pdata);
 
 	/*
 	 *  convert from BCD
@@ -157,10 +164,35 @@ rtctime(void)
 	return rtc2sec(&rtc);
 }
 
+Lock rtlock;
+
+long
+rtctime(void)
+{
+	int i;
+	long t, ot;
+
+	ilock(&rtlock);
+
+	/* loop till we get two reads in a row the same */
+	t = _rtctime();
+	for(i = 0; i < 100; i++){
+		ot = t;
+		t = _rtctime();
+		if(ot == t)
+			break;
+	}
+	if(i == 100) print("we are boofheads\n");
+
+	iunlock(&rtlock);
+
+	return t;
+}
+
 long	 
 rtcread(Chan *c, void *buf, long n, ulong offset)
 {
-	ulong t, ot;
+	ulong t;
 	char *a;
 
 	if(c->qid.path & CHDIR)
@@ -170,10 +202,6 @@ rtcread(Chan *c, void *buf, long n, ulong offset)
 	case Qrtc:
 		qlock(&rtclock);
 		t = rtctime();
-		do{
-			ot = t;
-			t = rtctime();	/* make sure there's no skew */
-		}while(t != ot);
 		qunlock(&rtclock);
 		n = readnum(offset, buf, n, t, 12);
 		return n;
