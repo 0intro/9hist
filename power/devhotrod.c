@@ -179,7 +179,6 @@ hotrodopen(Chan *c, int omode)
 		delay(100);
 		print("reset\n");
 
-#ifdef asdf
 		/*
 		 * Issue test
 		 */
@@ -188,7 +187,6 @@ hotrodopen(Chan *c, int omode)
 		hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->khot);
 		delay(100);
 		print("tested\n");
-#endif
 	}
 	c->mode = openmode(omode);
 	c->flag |= COPEN;
