@@ -43,7 +43,7 @@ enum
 	Qdir=		0,
 
 	Maxxfer=	4*1024,		/* maximum transfer size/cmd */
-	Maxread=	4*1024,		/* maximum transfer size/read */
+	Maxread=	1*1024,		/* maximum transfer size/read */
 	Npart=		8+2,		/* 8 sub partitions, disk, and partition */
 	Nrepl=		16,		/* maximum replacement blocks */
 };
