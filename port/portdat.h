@@ -103,6 +103,7 @@ struct Sargs
 enum
 {
 	Aaccess,			/* as in stat, wstat */
+	Abind,			/* for left-hand-side of bind */
 	Atodir,				/* as in chdir */
 	Aopen,				/* for i/o */
 	Amount,				/* to be mounted or mounted upon */

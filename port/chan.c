@@ -426,8 +426,6 @@ cmount(Chan **newp, Chan *old, int flag, char *spec)
 	if(QTDIR & (old->qid.type^(*newp)->qid.type))
 		error(Emount);
 
-if((*newp)->umh)	/* should not happen */
-	print("cmount newp extra umh\n");
 if(old->umh)
 	print("cmount old extra umh\n");
 
@@ -436,9 +434,8 @@ if(old->umh)
 	if((old->qid.type&QTDIR)==0 && order != MREPL)
 		error(Emount);
 
-	mh = nil;
-	domount(newp, &mh);
 	new = *newp;
+	mh = new->umh;
 
 	/*
 	 * Not allowed to bind when the old directory
@@ -1076,6 +1073,13 @@ namec(char *aname, int amode, int omode, ulong perm)
 	case Aaccess:
 		if(!nomount)
 			domount(&c, nil);
+		break;
+
+	case Abind:
+		m = nil;
+		if(!nomount)
+			domount(&c, &m);
+		c->umh = m;
 		break;
 
 	case Aremove:

@@ -719,11 +719,10 @@ bindmount(int ismount, int fd, int afd, char* arg0, char* arg1, ulong flag, char
 		if(ac)
 			cclose(ac);
 		cclose(bc);
-	}
-	else {
+	}else{
 		bogus.spec = 0;
 		validaddr((ulong)arg0, 1, 0);
-		c0 = namec(arg0, Amount, 0, 0);
+		c0 = namec(arg0, Abind, 0, 0);
 	}
 
 	if(waserror()){
