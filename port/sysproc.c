@@ -136,7 +136,7 @@ sysrfork(ulong *arg)
 		p->egrp = up->egrp;
 		incref(p->egrp);
 	}
-
+memset(p->ltlbpid, 255, sizeof(p->ltlbpid));
 	p->hang = up->hang;
 	p->procmode = up->procmode;
 
