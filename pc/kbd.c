@@ -213,6 +213,10 @@ i8042a20(void)
 void
 i8042reset(void)
 {
+	ushort *s = (ushort*)(KZERO|0x472);
+
+	*s = 0x1234;		/* BIOS warm-boot flag */
+
 	/*
 	 *  this works for dhog
 	 */
