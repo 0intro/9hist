@@ -110,7 +110,7 @@ lockstats.glare++;
 	} else
 		oldpri = 0;
 	if(conf.nmach < 2)
-		panic("ilock: no way out: pc %uX held by %uX\n", pc, l->pc);
+		panic("ilock: no way out: pc %uX\n", pc);
 
 	for(;;){
 lockstats.inglare++;

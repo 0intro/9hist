@@ -18,7 +18,8 @@ typedef struct Clock0link {
 static Clock0link *clock0link;
 static Lock clock0lock;
 static ulong		incr;		/* compare register increment */
-static uvlong		fasthz;		/* ticks/sec of fast clock */
+static ulong		lastcmp;
+
 
 void
 addclock0link(void (*clock)(void))
@@ -51,8 +52,6 @@ delay(int l)
 			;
 }
 
-ulong lastcmp;
-
 void
 clockinit(void)
 {
@@ -73,21 +72,7 @@ clockinit(void)
 		m->delayloop = 1;
 
 	incr = (m->speed*1000000)/HZ;
-	fasthz = m->speed*1000000;
 	wrcompare(lastcmp = rdcount()+incr);
-}
-
-uvlong
-updatefastclock(ulong count)
-{
-	ulong delta;
-
-	/* keep track of higher precision time */
-	delta = count - m->lastcyclecount;
-	m->lastcyclecount = count;
-	m->fastclock += delta;
-
-	return m->fastclock;
 }
 
 void
@@ -97,8 +82,11 @@ clock(Ureg *ur)
 	ulong count;
 
 	count = rdcount();
-	wrcompare(lastcmp = count+incr);
-	updatefastclock(count);
+	if(lastcmp+incr < count+100)
+		lastcmp = count+incr;
+	else
+		lastcmp += incr;
+	wrcompare(lastcmp);
 
 	m->ticks++;
 	if(m->proc)
@@ -146,48 +134,10 @@ clock(Ureg *ur)
 		sched();
 }
 
-ulong timewarp;
-
 vlong
 fastticks(uvlong *hz)
 {
-	uvlong cyclecount;
-	ulong cnt, d;
-	int x;
-
-	x = splhi();
-	cnt = rdcount();
-	cyclecount = updatefastclock(cnt);
-	d = lastcmp - cnt + 100;
-	if(d > incr+100){
-		wrcompare(lastcmp = cnt+incr);
-		timewarp++;
-	}
-	splx(x);
-
-	if(hz)
-		*hz = fasthz;
-
-	return (vlong)cyclecount;
-}
-
-void
-idlehands(void)
-{
-#ifdef adsfasdf
-	ulong cnt, cmp, d;
-	int x;
-
-	x = splhi();
-	cnt = rdcount();
-	cmp = rdcompare();
-	cnt -= 100;		/* to cover for time from splhi to rdcount */
-	d = cmp - cnt;
-	if(d > incr+100){
-		wrcompare(lastcmp = cnt+incr);
-		timewarp++;
-//		print("%lud %lud %d %lux\n", cnt, cmp, cnt-cmp, d);
-	}
-	splx(x);
-#endif
+	if(hz != nil)
+		*hz = HZ*100;
+	return m->ticks*100;
 }

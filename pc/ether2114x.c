@@ -827,7 +827,8 @@ typephylink(Ctlr* ctlr, uchar*)
 		csr6 |= Fd;
 	if(ctlr->ttm & x)
 		csr6 |= Ttm;
-	debug("csr6 0x%2.2uX 0x%2.2uX\n", csr6, ctlr->csr6);
+	debug("csr6 0x%8.8uX 0x%8.8uX 0x%8.8luX\n",
+		csr6, ctlr->csr6, csr32r(ctlr, 6));
 	if(csr6 != ctlr->csr6){
 		ctlr->csr6 = csr6;
 		csr32w(ctlr, 6, csr6);
@@ -1226,16 +1227,16 @@ srom(Ctlr* ctlr)
 			p += (*p & ~0x80)+1;
 		}
 		else{
-debug("type0: 0x%2.2uX 0x%2.2uX 0x%2.2uX 0x%2.2uX\n",
-    p[0], p[1], p[2], p[3]); 
+			debug("type0: 0x%2.2uX 0x%2.2uX 0x%2.2uX 0x%2.2uX\n",
+				p[0], p[1], p[2], p[3]); 
 			if(ctlr->sct != 0x0800 && *p == (ctlr->sct & 0xFF))
 				ctlr->sctk = k;
 			p += 4;
 		}
 	}
 	ctlr->curk = ctlr->sctk;
-debug("sct 0x%uX medium 0x%uX k %d curk %d phy %d\n",
-    ctlr->sct, ctlr->medium, ctlr->k, ctlr->curk, phy);
+	debug("sct 0x%uX medium 0x%uX k %d curk %d phy %d\n",
+		ctlr->sct, ctlr->medium, ctlr->k, ctlr->curk, phy);
 
 	if(phy){
 		x = 0;

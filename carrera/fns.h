@@ -25,7 +25,7 @@ void		gettlb(int, ulong*);
 int		gettlbp(ulong, ulong*);
 ulong		gettlbvirt(int);
 void		icflush(void *, ulong);
-void		idlehands(void);
+#define		idlehands()
 void		intr(Ureg*);
 void		ioinit(int);
 int		iprint(char*, ...);

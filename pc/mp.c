@@ -19,6 +19,7 @@ static int machno2apicno[MaxAPICNO+1];	/* inverse map: machno -> APIC ID */
 static Lock mprdthilock;
 static int mprdthi;
 static Ref mpvnoref;			/* unique vector assignment */
+static Lock mpclocksynclock;
 
 static char* buses[] = {
 	"CBUSI ",
@@ -214,13 +215,14 @@ mpintrinit(Bus* bus, PCMPintr* intr, int vno, int /*irq*/)
 	case PcmpExtINT:
 		v |= ApicExtINT;
 		/*
-		 * The AMI Goliath doesn't boot successfully with it's LINTR0 entry
-		 * which decodes to low+level. The PPro manual says ExtINT should be
-		 * level, whereas the Pentium is edge. Setting the Goliath to edge+high
-		 * seems to cure the problem. Other PPro MP tables (e.g. ASUS P/I-P65UP5
-		 * have a entry which decodes to edge+high, so who knows.
-		 * Perhaps it would be best just to not set an ExtINT entry at all,
-		 * it shouldn't be needed for SMP mode.
+		 * The AMI Goliath doesn't boot successfully with it's LINTR0
+		 * entry which decodes to low+level. The PPro manual says ExtINT
+		 * should be level, whereas the Pentium is edge. Setting the
+		 * Goliath to edge+high seems to cure the problem. Other PPro
+		 * MP tables (e.g. ASUS P/I-P65UP5 have a entry which decodes
+		 * to edge+high, so who knows.
+		 * Perhaps it would be best just to not set an ExtINT entry at
+		 * all, it shouldn't be needed for SMP mode.
 		 */
 		po = PcmpHIGH;
 		el = PcmpEDGE;
@@ -229,7 +231,7 @@ mpintrinit(Bus* bus, PCMPintr* intr, int vno, int /*irq*/)
 
 	/*
 	 */
-	if(bus->type == BusEISA && !po && !el /*&& !(elcr & (1<<irq))*/){
+	if(bus->type == BusEISA && !po && !el /*&& !(i8259elcr & (1<<irq))*/){
 		po = PcmpHIGH;
 		el = PcmpEDGE;
 	}
@@ -280,7 +282,8 @@ mklintr(PCMPintr* p)
 
 	if(p->apicno == 0xFF){
 		for(apic = mpapic; apic <= &mpapic[MaxAPICNO]; apic++){
-			if((apic->flags & PcmpEN) && apic->type == PcmpPROCESSOR)
+			if((apic->flags & PcmpEN)
+			&& apic->type == PcmpPROCESSOR)
 				apic->lintr[intin] = v;
 		}
 	}
@@ -348,8 +351,6 @@ checkmtrr(void)
 #define PDX(va)		((((ulong)(va))>>22) & 0x03FF)
 #define PTX(va)		((((ulong)(va))>>12) & 0x03FF)
 
-Lock clocksynclock;
-
 static void
 squidboy(Apic* apic)
 {
@@ -371,12 +372,12 @@ squidboy(Apic* apic)
 	/*
 	 * Restrain your octopus! Don't let it go out on the sea!
 	 */
-	ilock(&clocksynclock);
+	ilock(&mpclocksynclock);
 	x = MACHP(0)->ticks;
 	while(MACHP(0)->ticks == x)
 		;
 	wrmsr(0x10, MACHP(0)->fastclock); /* synchronize fast counters */
-	iunlock(&clocksynclock);
+	iunlock(&mpclocksynclock);
 
 	lapicinit(apic);
 	lapiconline();
@@ -480,16 +481,17 @@ mpinit(void)
 	bpapic = 0;
 
 	/*
-	 * Run through the table saving information needed for starting application
-	 * processors and initialising any I/O APICs. The table is guaranteed to be in
-	 * order such that only one pass is necessary.
+	 * Run through the table saving information needed for starting
+	 * application processors and initialising any I/O APICs. The table
+	 * is guaranteed to be in order such that only one pass is necessary.
 	 */
 	p = ((uchar*)pcmp)+sizeof(PCMP);
 	e = ((uchar*)pcmp)+pcmp->length;
 	while(p < e) switch(*p){
 
 	default:
-		print("mpinit: unknown PCMP type 0x%uX (e-p 0x%luX)\n", *p, e-p);
+		print("mpinit: unknown PCMP type 0x%uX (e-p 0x%luX)\n",
+			*p, e-p);
 		while(p < e){
 			print("%uX ", *p);
 			p++;
@@ -562,7 +564,8 @@ mpinit(void)
 	 */
 	memmove((void*)APBOOTSTRAP, apbootstrap, sizeof(apbootstrap));
 	for(apic = mpapic; apic <= &mpapic[MaxAPICNO]; apic++){
-		if((apic->flags & (PcmpBP|PcmpEN)) == PcmpEN && apic->type == PcmpPROCESSOR)
+		if((apic->flags & (PcmpBP|PcmpEN)) == PcmpEN
+		&& apic->type == PcmpPROCESSOR)
 			mpstartap(apic);
 	}
 
@@ -575,7 +578,7 @@ mpinit(void)
 }
 
 static int
-mpintrenablex(Vctl* v)
+mpintrenablex(Vctl* v, int tbdf)
 {
 	Bus *bus;
 	Aintr *aintr;
@@ -584,12 +587,11 @@ mpintrenablex(Vctl* v)
 	int bno, dno, irq, lo, n, type, vno;
 
 	/*
-	 * Find the bus, default is ISA.
-	 * There cannot be multiple ISA or EISA buses.
+	 * Find the bus.
 	 */
-	type = BUSTYPE(v->tbdf);
-	bno = BUSBNO(v->tbdf);
-	dno = BUSDNO(v->tbdf);
+	type = BUSTYPE(tbdf);
+	bno = BUSBNO(tbdf);
+	dno = BUSDNO(tbdf);
 	n = 0;
 	for(bus = mpbus; bus != nil; bus = bus->next){
 		if(bus->type != type)
@@ -610,12 +612,12 @@ mpintrenablex(Vctl* v)
 	 * obtained from the PCI config space.
 	 */
 	if(bus->type == BusPCI){
-		pcidev = pcimatchtbdf(v->tbdf);
+		pcidev = pcimatchtbdf(tbdf);
 		if(pcidev != nil && (n = pcicfgr8(pcidev, PciINTP)) != 0)
 			irq = (dno<<2)|(n-1);
 		else
 			irq = -1;
-		//print("pcidev %uX: irq %uX v->irq %uX\n", v->tbdf, irq, v->irq);
+		//print("pcidev %uX: irq %uX v->irq %uX\n", tbdf, irq, v->irq);
 	}
 	else
 		irq = v->irq;
@@ -629,37 +631,42 @@ mpintrenablex(Vctl* v)
 			continue;
 
 		/*
-		 * Check not already enabled. This is a bad thing as it implies the
-		 * same device is requesting the same interrupt to be enabled multiple
-		 * times. The RDT read here is safe for now as currently interrupts
-		 * are never disabled once enabled.
+		 * Check not already enabled. This is a bad thing as it implies
+		 * the same device is requesting the same interrupt to be
+		 * enabled multiple times. The RDT read here is safe for now
+		 * as currently interrupts are never disabled once enabled.
 		 */
 		apic = aintr->apic;
 		ioapicrdtr(apic, aintr->intr->intin, 0, &lo);
 		if(!(lo & ApicIMASK)){
-			print("mpintrenable: multiple enable of irq %d, tbdf %uX\n",
-				v->irq, v->tbdf);
+			print("mpintrenable: multiple enable irq%d, tbdf %uX\n",
+				v->irq, tbdf);
 			return -1;
 		}
 
 		/*
-		 * With the APIC a unique vector can be assigned to each request
-		 * to enable an interrupt. There are two reasons this is a good idea:
-		 * 1) to prevent lost interrupts, no more than 2 interrupts should
-		 *    be assigned per block of 16 vectors (there is an in-service
-		 *    entry and a holding entry for each priority level and there is
-		 *    a priority level per block of 16 interrupts).
-		 * 2) each input pin on the IOAPIC will receive a different vector
-		 *    regardless of whether the devices on that pin use the same IRQ
-		 *    as devices on another pin.
+		 * With the APIC a unique vector can be assigned to each
+		 * request to enable an interrupt. There are two reasons this
+		 * is a good idea:
+		 * 1) to prevent lost interrupts, no more than 2 interrupts
+		 *    should be assigned per block of 16 vectors (there is an
+		 *    in-service entry and a holding entry for each priority
+		 *    level and there is one priority level per block of 16
+		 *    interrupts).
+		 * 2) each input pin on the IOAPIC will receive a different
+		 *    vector regardless of whether the devices on that pin use
+		 *    the same IRQ as devices on another pin.
 		 */
 		vno = VectorAPIC + (incref(&mpvnoref)-1)*8;
 		if(vno > MaxVectorAPIC){
 			print("mpintrenable: vno %d, irq %d, tbdf %uX\n",
-				vno, v->irq, v->tbdf);
+				vno, v->irq, tbdf);
 			return -1;
 		}
 		lo = mpintrinit(bus, aintr->intr, vno, v->irq);
+		//print("lo 0x%uX: busno %d intr %d vno %d irq %d elcr 0x%uX\n",
+		//	lo, bus->busno, aintr->intr->irq, vno,
+		//	v->irq, i8259elcr);
 		if(lo & ApicIMASK)
 			return -1;
 		lo |= ApicLOGICAL;
@@ -669,6 +676,9 @@ mpintrenablex(Vctl* v)
  			ioapicrdtw(apic, aintr->intr->intin, mprdthi, lo);
 			unlock(&mprdthilock);
 		}
+		//else
+		//	print("lo not enabled 0x%uX %d\n",
+		//		apic->flags, apic->type);
 
 		v->isr = lapicisr;
 		v->eoi = lapiceoi;
@@ -691,7 +701,7 @@ mpintrenable(Vctl* v)
 	 * breakpoint and page-fault).
 	 */
 	tbdf = v->tbdf;
-	if(tbdf != BUSUNKNOWN && (vno = mpintrenablex(v)) != -1)
+	if(tbdf != BUSUNKNOWN && (vno = mpintrenablex(v, tbdf)) != -1)
 		return vno;
 
 	irq = v->irq;
@@ -716,15 +726,13 @@ mpintrenable(Vctl* v)
 	 * polarity set to 'default for this bus' which wouldn't
 	 * be compatible with ISA.
 	 */
-	if(mpisabus != -1){
-		v->tbdf = MKBUS(BusISA, 0, 0, 0);
-		vno = mpintrenablex(v);
+	if(mpeisabus != -1){
+		vno = mpintrenablex(v, MKBUS(BusEISA, 0, 0, 0));
 		if(vno != -1)
 			return vno;
 	}
-	if(mpeisabus != -1){
-		v->tbdf = MKBUS(BusEISA, 0, 0, 0);
-		vno = mpintrenablex(v);
+	if(mpisabus != -1){
+		vno = mpintrenablex(v, MKBUS(BusISA, 0, 0, 0));
 		if(vno != -1)
 			return vno;
 	}
@@ -767,7 +775,7 @@ mpshutdown(void)
 	 * warm-boot sequence is tried. The following is Intel specific and
 	 * seems to perform a cold-boot, but at least it comes back.
 	 */
-	*(ushort*)KADDR(0x472) = 0x1234;		/* BIOS warm-boot flag */
+	*(ushort*)KADDR(0x472) = 0x1234;	/* BIOS warm-boot flag */
 	outb(0xCF9, 0x02);
 	outb(0xCF9, 0x06);
 #else

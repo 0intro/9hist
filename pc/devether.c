@@ -213,7 +213,7 @@ etheroq(Ether* ether, Block* bp)
 	 * If it's a loopback packet indicate to etheriq that the data isn't
 	 * needed and return, etheriq will pass-on or free the block.
 	 * To enable bridging to work, only packets that were originated
-	 * by this interface are feedback
+	 * by this interface are fed back.
 	 */
 	pkt = (Etherpkt*)bp->rp;
 	len = BLEN(bp);
