@@ -117,3 +117,11 @@ clock(Ureg *ur)
 		segclock(ur->pc);
 	}
 }
+
+uvlong
+fastticks(uvlong *hz)
+{
+	if(hz)
+		*hz = HZ;
+	return m->ticks;
+}
