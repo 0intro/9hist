@@ -190,7 +190,7 @@ static void	atafeature(Drive*, uchar);
 static void	ataparams(Drive*);
 static void	atapart(Drive*);
 static int	ataprobe(Drive*, int, int, int);
-static void	atasleep(Controller*);
+static void	atasleep(Controller*, int);
 
 static int	isatapi(Drive*);
 static long	atapirwio(Chan*, char*, ulong, ulong);
@@ -411,7 +411,7 @@ atactlrprobe(int ctlrno, int irq)
 	setvec(irq, ataintr, ctlr);
 	ctlr->cmd = Cedd;
 	outb(port+Pcmd, Cedd);
-	atasleep(ctlr);
+	atasleep(ctlr, Hardtimeout);
 	poperror();
 
 	/*
@@ -832,9 +832,9 @@ atarepl(Drive *dp, long bblk)
 }
 
 static void
-atasleep(Controller *cp)
+atasleep(Controller *cp, int ms)
 {
-	tsleep(&cp->r, cmddone, cp, Hardtimeout);
+	tsleep(&cp->r, cmddone, cp, ms);
 	if(cp->cmd && cp->cmd != Cident2){
 		DPRINT("ata%d: cmd 0x%uX timeout\n", cp->ctlrno, cp->cmd);
 		error("ata drive timeout");
@@ -942,7 +942,7 @@ ataxfer(Drive *dp, Partition *pp, int cmd, long start, long len, uchar *buf)
 			nexterror();
 		}
 	}
-	atasleep(cp);
+	atasleep(cp, Hardtimeout);
 	dp->usetime = m->ticks;
 	dp->state = Sspinning;
 	poperror();
@@ -996,7 +996,7 @@ atafeature(Drive *dp, uchar arg)
 	outb(cp->pbase+Pcmd, Cfeature);
 	IUNLOCK(&cp->reglock);
 
-	atasleep(cp);
+	atasleep(cp, Hardtimeout);
 
 	if(cp->status & Serr)
 		DPRINT("%s: setbuf err: status %lux, err %lux\n",
@@ -1086,7 +1086,7 @@ retryatapi:
 	IUNLOCK(&cp->reglock);
 
 	DPRINT("%s: ident command %ux sent\n", dp->vol, cmd);
-	atasleep(cp);
+	atasleep(cp, 1000);
 
 	if(cp->status & Serr){
 		DPRINT("%s: bad disk ident status\n", dp->vol);
@@ -1203,7 +1203,7 @@ ataprobe(Drive *dp, int cyl, int sec, int head)
 	outb(cp->pbase+Pcmd, Cread);
 	IUNLOCK(&cp->reglock);
 
-	atasleep(cp);
+	atasleep(cp, Hardtimeout);
 
 	if(cp->status & Serr){
 		DPRINT("%s: probe err: status %lux, err %lux\n",
@@ -1527,15 +1527,8 @@ ataintr(Ureg*, void* arg)
 			print("%s: intr %d %d\n", dp->vol, cp->sofar, cp->nsecs);
 		if(cp->sofar >= cp->nsecs){
 			cp->lastcmd = cp->cmd;
-#ifdef notdef
-			if(cp->cmd == Cidentd)
+			if(cp->cmd != Cread)
 				cp->cmd = Cident2;
-			else if(cp->cmd == Cident && (cp->status & Sready) == 0)
-				cp->cmd = Cident2;
-#else
-			if(cp->cmd != Cread && (cp->status & (Sbusy|Sready)) != Sready)
-				cp->cmd = Cident2;
-#endif /* notdef */
 			else
 				cp->cmd = 0;
 			inb(cp->pbase+Pstatus);
@@ -1679,7 +1672,7 @@ atapiexec(Drive *dp)
 			nexterror();
 		}
 	}
-	atasleep(cp);
+	atasleep(cp, Hardtimeout);
 	poperror();
 	if(loop)
 		nexterror();
