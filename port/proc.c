@@ -785,13 +785,31 @@ proctab(int i)
 }
 
 void
+dumpaproc(Proc *p)
+{
+	ulong bss;
+	char *s;
+
+	if(p == 0)
+		return;
+
+	bss = 0;
+	if(p->seg[BSEG])
+		bss = p->seg[BSEG]->top;
+
+	s = p->psstate;
+	if(s == 0)
+		s = "kproc";
+	print("%3d:%10s pc %8lux dbgpc %8lux  %8s (%s) ut %ld st %ld bss %lux\n",
+		p->pid, p->text, p->pc, dbgpc(p),  s, statename[p->state],
+		p->time[0], p->time[1], bss, p->priority);
+}
+
+void
 procdump(void)
 {
 	int i;
-	char *s;
 	Proc *p;
-	ulong bss;
-	Schedq *rq;
 
 	if(up)
 		print("up %d\n", up->pid);
@@ -801,17 +819,18 @@ procdump(void)
 		p = &procalloc.arena[i];
 		if(p->state == Dead)
 			continue;
-		bss = 0;
-		if(p->seg[BSEG])
-			bss = p->seg[BSEG]->top;
 
-		s = p->psstate;
-		if(s == 0)
-			s = "kproc";
-		print("%3d:%10s pc %8lux dbgpc %8lux  %8s (%s) ut %ld st %ld bss %lux\n",
-			p->pid, p->text, p->pc, dbgpc(p),  s, statename[p->state],
-			p->time[0], p->time[1], bss);
+		dumpaproc(p);
+		delay(150);
 	}
+}
+
+void
+scheddump(void)
+{
+	Proc *p;
+	Schedq *rq;
+
 	for(rq = &runq[Nrq-1]; rq >= runq; rq--){
 		if(rq->head == 0)
 			continue;
@@ -820,6 +839,7 @@ procdump(void)
 			print(" %d(%d, %d)", p->pid, m->ticks - p->readytime,
 				m->ticks - p->movetime);
 		print("\n");
+		delay(150);
 	}
 	print("nrdy %d\n", nrdy);
 }

@@ -25,6 +25,7 @@ struct Lock
 	int	val;
 	ulong	pc;
 	ulong	sr;
+	ulong	pid;
 };
 
 struct Label

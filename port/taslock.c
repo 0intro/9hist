@@ -6,26 +6,38 @@
 #include "../port/error.h"
 
 void
+lockloop(Lock *l, ulong pc)
+{
+	print("lock loop key 0x%lux pc 0x%lux held by pc 0x%lux proc %d\n",
+		l->key, pc, l->pc, l->pid);
+	dumpaproc(up);
+}
+
+void
 lock(Lock *l)
 {
 	int i;
-	ulong pc;
+	ulong pc, pid;
 
 	pc = getcallerpc(l);
+	pid = up ? up->pid : 0;
 
 	if(tas(&l->key) == 0){
 		l->pc = pc;
+		l->pid = pid;
 		return;
 	}
 
 	for(;;){
 		i = 0;
 		while(l->key)
-			if(i++ > 100000000)
-				panic("lock loop key 0x%lux pc 0x%lux held by pc 0x%lux pl 0x%lux\n",
-					l->key, pc, l->pc, splhi());
+			if(i++ > 100000000){
+				i = 0;
+				lockloop(l, pc);
+			}
 		if(tas(&l->key) == 0){
 			l->pc = pc;
+			l->pid = pid;
 			return;
 		}
 	}
@@ -35,14 +47,16 @@ void
 ilock(Lock *l)
 {
 	ulong x;
-	ulong pc;
+	ulong pc, pid;
 
 	pc = getcallerpc(l);
+	pid = up ? up->pid : 0;
 
 	x = splhi();
 	if(tas(&l->key) == 0){
 		l->sr = x;
 		l->pc = pc;
+		l->pid = pid;
 		return;
 	}
 
@@ -52,6 +66,7 @@ ilock(Lock *l)
 		if(tas(&l->key) == 0){
 			l->sr = x;
 			l->pc = pc;
+			l->pid = pid;
 			return;
 		}
 	}
@@ -64,6 +79,7 @@ canlock(Lock *l)
 		return 0;
 
 	l->pc = getcallerpc(l);
+	l->pid = up ? up->pid : 0;
 	return 1;
 }
 

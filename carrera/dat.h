@@ -26,6 +26,7 @@ struct Lock
 	ulong	key;			/* semaphore (non-zero = locked) */
 	ulong	sr;
 	ulong	pc;
+	ulong	pid;
 };
 
 struct Label

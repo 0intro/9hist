@@ -217,6 +217,9 @@ echo(Rune r, char *buf, int n)
 		case 'p':
 			procdump();
 			return;
+		case 'q':
+			scheddump();
+			break;
 		case 'k':
 			if(!cpuserver)
 				killbig();

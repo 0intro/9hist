@@ -62,6 +62,7 @@ Chan*		devopen(Chan*, int, Dirtab*, int, Devgen*);
 void		devstat(Chan*, char*, Dirtab*, int, Devgen*);
 int		devwalk(Chan*, char*, Dirtab*, int, Devgen*);
 Chan*		domount(Chan*);
+void		dumpaproc(Proc*);
 void		dumpqueues(void);
 void		dumpregs(Ureg*);
 void		dumpstack(void);
@@ -237,6 +238,7 @@ void		sccclock(void);
 int		sccintr(void);
 void		sccsetup(void*, ulong, int);
 void		sched(void);
+void		scheddump(void);
 void		schedinit(void);
 int		screenbits(void);
 #define		scsialloc(n)	mallocz((n)+512, 0)
