@@ -35,7 +35,7 @@ lock(Lock *l)
 	/* priority interacts with code in ready() in proc.c */
 	pri = up->priority;
 
-	for(i=0; i<1000; i++){
+	for(i=0; i<1000000; i++){
 		up->lockpri = l->pri;		/* assume priority of process holding lock */
 		if(tas(&l->key) == 0){
 			l->pri = pri;
