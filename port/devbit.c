@@ -93,7 +93,7 @@ void	bitcompact(void);
 int	bitalloc(Rectangle, int);
 void	bitfree(GBitmap*);
 void	fontfree(GFont*);
-void	subfontfree(BSubfont*);
+void	subfontfree(BSubfont*, int);
 void	arenafree(Arena*);
 void	bitstring(GBitmap*, Point, GFont*, uchar*, long, Fcode);
 void	bitloadchar(GFont*, int, GSubfont*, int);
@@ -330,7 +330,7 @@ bitclose(Chan *c)
 			for(sp=bit.subfont; sp<esp; sp++){
 				s = *sp;
 				if(s)
-					subfontfree(s);
+					subfontfree(s, sp-bit.subfont);
 				/* don't clear *sp: cached */
 			}
 			efp = &bit.font[bit.nfont];
@@ -509,7 +509,7 @@ bitread(Chan *c, void *va, long n, ulong offset)
 		 *	fontchars	6*(subfont->n+1)
 		 */
 		p[0] = 'J';
-		if(bit.cacheid<0)
+		if(bit.cacheid < 0)
 			error(Ebadfont);
 		s = bit.subfont[bit.cacheid];
 		if(s==0 || s->ref==0)
@@ -635,7 +635,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 	Fcode fc;
 	Fontchar *fcp;
 	GBitmap *b, *src, *dst, *bp;
-	BSubfont *f, **fp;
+	BSubfont *f, *tf, **fp;
 	GFont *ff, **ffp;
 
 	if(c->qid.path == CHDIR)
@@ -792,7 +792,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			v = BGSHORT(p+1);
 			if(v<0 || v>=bit.nsubfont || (f=bit.subfont[v])==0 || f->ref==0)
 				error(Ebadfont);
-			subfontfree(f);
+			subfontfree(f, v);
 			m -= 3;
 			p += 3;
 			break;
@@ -830,7 +830,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			 * subfont cache check
 			 *
 			 *	'j'		1
-			 *	qid		8	BUG: ignored
+			 *	qid		8
 			 */
 			if(m < 9)
 				error(Ebadblt);
@@ -886,6 +886,14 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			f->ascent = p[4];
 			f->qid[0] = BGLONG(p+7);
 			f->qid[1] = BGLONG(p+11);
+			/* check to see if already there, uncache if so */
+			for(j=0; j<bit.nsubfont; j++){
+				if(j == i)
+					continue;
+				tf = bit.subfont[j];
+				if(tf && tf->qid[0]==f->qid[0] && tf->qid[1]==f->qid[1])
+					f->qid[0] = ~0;	/* uncached */
+			}
 			f->ref = 1;
 			v = BGSHORT(p+5);
 			if(v<0 || v>=bit.nmap || (dst=bit.map[v])==0)
@@ -1401,10 +1409,9 @@ bitalloc(Rectangle rect, int ld)
 	for(i=0; i<bit.nsubfont; i++){
 		s = bit.subfont[i];
 		if(s && s!=defont && s->ref==0){
-			bitfree(s->bits);
-			free(s->info);
-			free(s);
-			bit.subfont[i] = 0;
+			s->ref = 1;
+			s->qid[0] = ~0;	/* force cleanup */
+			subfontfree(s, i);
 		}
 	}
 	bitcompact();
@@ -1479,10 +1486,17 @@ fontfree(GFont *f)
 }
 
 void
-subfontfree(BSubfont *s)
+subfontfree(BSubfont *s, int i)
 {
-	if(s != defont)	/* don't free subfont 0, defont */
+	if(s!=defont && s->ref>0){	/* don't free subfont 0, defont */
 		s->ref--;
+		if(s->ref==0 && s->qid[0]==~0){	/* uncached */
+			bitfree(s->bits);
+			free(s->info);
+			free(s);
+			bit.subfont[i] = 0;
+		}
+	}
 	return;
 }
 
