@@ -95,7 +95,7 @@ Pcidev* pcimatch(Pcidev*, int, int);
 Pcidev* pcimatchtbdf(int);
 void	pcireset(void);
 void	pcisetbme(Pcidev*);
-int	pcmcistuple(int, int, void*, int);
+int	pcmcistuple(int, int, int, void*, int);
 PCMmap*	pcmmap(int, ulong, int, int);
 int	pcmspecial(char*, ISAConf*);
 void	pcmspecialclose(int);

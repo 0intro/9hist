@@ -256,6 +256,62 @@ pprint(char *fmt, ...)
 	return n;
 }
 
+static void
+echoscreen(char *buf, int n)
+{
+	char *e, *p;
+	char ebuf[128];
+	int x;
+
+	p = ebuf;
+	e = ebuf + sizeof(ebuf) - 4;
+	while(n-- > 0){
+		if(p >= e){
+			screenputs(ebuf, p - ebuf);
+			p = ebuf;
+		}
+		x = *buf++;
+		if(x == 0x15){
+			*p++ = '^';
+			*p++ = 'U';
+			*p++ = '\n';
+		} else
+			*p++ = x;
+	}
+	if(p != ebuf)
+		screenputs(ebuf, p - ebuf);
+}
+
+static void
+echoprintq(char *buf, int n)
+{
+	char *e, *p;
+	char ebuf[128];
+	int x;
+
+	p = ebuf;
+	e = ebuf + sizeof(ebuf) - 4;
+	while(n-- > 0){
+		if(p >= e){
+			qiwrite(printq, ebuf, p - ebuf);
+			p = ebuf;
+		}
+		x = *buf++;
+		if(x == '\n'){
+			*p++ = '\r';
+			*p++ = '\n';
+		} else if(x == 0x15){
+			*p++ = '^';
+			*p++ = 'U';
+			*p++ = '\n';
+		} else
+			*p++ = x;
+	}
+	if(p != ebuf)
+		qiwrite(printq, ebuf, p - ebuf);
+}
+
+
 void
 echo(char *buf, int n)
 {
@@ -263,7 +319,6 @@ echo(char *buf, int n)
 	extern ulong etext;
 	int x;
 	char *e, *p;
-	char ebuf[128];
 
 	e = buf+n;
 	for(p = buf; p < e; p++){
@@ -330,34 +385,9 @@ echo(char *buf, int n)
 	if(kbd.raw)
 		return;
 
-	/*
-	 *  finally, the actual echoing
-	 */
-	p = ebuf;
-	e = ebuf + sizeof(ebuf) - 4;
-	while(n-- > 0){
-		if(p >= e){
-			screenputs(ebuf, p - ebuf);
-			if(printq)
-				qiwrite(printq, ebuf, p - ebuf);
-			p = ebuf;
-		}
-		x = *buf++;
-		if(x == '\n'){
-			*p++ = '\r';
-			*p++ = '\n';
-		} else if(x == 0x15){
-			*p++ = '^';
-			*p++ = 'U';
-			*p++ = '\n';
-		} else
-			*p++ = x;
-	}
-	if(p == ebuf)
-		return;
-	screenputs(ebuf, p - ebuf);
+	echoscreen(buf, n);
 	if(printq)
-		qiwrite(printq, ebuf, p - ebuf);
+		echoprintq(buf, n);
 }
 
 /*

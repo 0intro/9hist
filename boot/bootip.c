@@ -27,7 +27,7 @@ configip(void)
 
 	arg = malloc((bargc+1) * sizeof(char*));
 	if(arg == nil)
-		fatal("%r");
+		fatal("malloc");
 	memmove(arg, bargv, (bargc+1) * sizeof(char*));
 
 	argc = bargc;
@@ -56,7 +56,7 @@ configip(void)
 	/* let ipconfig configure the ip interface */
 	switch(pid = fork()){
 	case -1:
-		fatal("configuring ip: %r");
+		fatal("configuring ip");
 	case 0:
 		exec("/ipconfig", arg);
 		fatal("execing /ipconfig");

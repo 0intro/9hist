@@ -1225,7 +1225,7 @@ printmesg(char *fmt, uchar *a, int plsprnt)
 	char *p, *q;
 	int s;
 
-	if(1|| plsprnt==0){
+	if(1 || plsprnt==0){
 		SET(s,q,p);
 		USED(fmt, a, buf, p, q, s);
 		return;

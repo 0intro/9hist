@@ -8,7 +8,7 @@
 #include	"../port/error.h"
 
 #define	Image	IMAGE
-#include	<draw.h>
+#include	<draw.h>
 #include	<memdraw.h>
 #include	<cursor.h>
 #include	"screen.h"
@@ -63,7 +63,7 @@ static Memimage xgscreen =
 	0,	/* zero */
 	512,	/* width */
 	0,	/* layer */
-	Frepl,	/* flags */
+	0,	/* flags */
 };
 
 Memimage *gscreen;

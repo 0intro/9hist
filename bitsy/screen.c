@@ -123,14 +123,14 @@ static Memimage xgscreen =
 	{ 0, 0, Wid, Ht },	/* r */
 	{ 0, 0, Wid, Ht },	/* clipr */
 	16,					/* depth */
-	1,					/* nchan */
+	3,					/* nchan */
 	RGB16,				/* chan */
 	nil,				/* cmap */
 	&xgdata,			/* data */
 	0,					/* zero */
 	Wid/2,				/* width */
 	0,					/* layer */
-	Frepl,				/* flags */
+	0,					/* flags */
 };
 
 Memimage *gscreen;
@@ -174,7 +174,6 @@ lcdinit(void)
 	lcd->lccr2 = (Ht-1)<<LPP | vsw<<VSW | efw<<EFW | bfw<<BFW;
 	lcd->lccr1 = (Wid-16)<<PPL | hsw<<HSW | elw<<ELW | blw<<BLW;
 	lcd->lccr0 = 1<<LEN | 0<<CMS | 0<<SDS | 1<<LDM | 1<<BAM | 1<<ERM | 1<<PAS | 0<<BLE | 0<<DPD | 0<<PDD;
-
 }
 
 void
@@ -185,14 +184,12 @@ screeninit(void)
 	/* map the lcd regs into the kernel's virtual space */
 	lcd = (struct sa1110regs*)mapspecial(LCDREGS, sizeof(struct sa1110regs));;
 
-	framebuf = xspanalloc(sizeof *framebuf, 0x10, 0);
+	framebuf = xspanalloc(sizeof *framebuf, 0x20, 0);
 	/* the following works because main memory is direct mapped */
 
 	framebuf->palette[0] = Pal0;
 
-	iprint("LCD power up\n");
 	lcdpower(1);
-
 	lcdinit();
 
 	gscreen = &xgscreen;
@@ -335,6 +332,7 @@ screenputc(char *buf)
 	Rectangle r;
 	static int *xp;
 	static int xbuf[256];
+return;
 
 	if(xp < xbuf || xp >= &xbuf[sizeof(xbuf)])
 		xp = xbuf;

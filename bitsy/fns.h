@@ -33,8 +33,11 @@ void	mmuenable(void);
 void	mmudisable(void);
 void	mmuinvalidate(void);
 void	mmuinvalidateaddr(ulong);
+int	µcputc(Queue*, int);
 void	noted(Ureg*, ulong);
 int	notify(Ureg*);
+void	penbutton(int, int);
+void	pentrackxy(int x, int y);
 #define	procrestore(p)
 void	procsave(Proc*);
 void	procsetup(Proc*);
@@ -50,6 +53,7 @@ void	sa1100_uartsetup(int);
 void	screeninit(void);
 int	screenprint(char*, ...);			/* debugging */
 void	screenputs(char*, int);
+void	serialµcputs(uchar *str, int n);
 void	setr13(int, ulong*);
 uchar*	tarlookup(uchar*, char*, int*);
 void	touser(void*);

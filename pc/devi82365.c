@@ -1093,14 +1093,14 @@ readc(Cisdat *pp, uchar *x)
 }
 
 static int
-xcistuple(int slotno, int tuple, void *v, int nv, int attr)
+xcistuple(int slotno, int tuple, int subtuple, void *v, int nv, int attr)
 {
 	PCMmap *m;
 	Cisdat cis;
 	int i, l;
 	uchar *p;
-	uchar type, link;
-	int this;
+	uchar type, link, n, c;
+	int this, subtype;
 
 	m = pcmmap(slotno, 0, 0, attr);
 	if(m == 0)
@@ -1122,9 +1122,19 @@ xcistuple(int slotno, int tuple, void *v, int nv, int attr)
 			break;
 		if(link == 0xFF)
 			break;
-		if(type == tuple) {
+
+		n = link;
+		if (link > 1 && subtuple != -1) {
+			if (readc(&cis, &c) != 1)
+				break;
+			subtype = c;
+			n--;
+		} else
+			subtype = -1;
+
+		if(type == tuple && subtype == subtuple) {
 			p = v;
-			for(l=0; l<nv && l<link; l++)
+			for(l=0; l<nv && l<n; l++)
 				if(readc(&cis, p++) != 1)
 					break;
 			pcmunmap(slotno, m);
@@ -1137,14 +1147,14 @@ xcistuple(int slotno, int tuple, void *v, int nv, int attr)
 }
 
 int
-pcmcistuple(int slotno, int tuple, void *v, int nv)
+pcmcistuple(int slotno, int tuple, int subtuple, void *v, int nv)
 {
 	int n;
 
 	/* try attribute space, then memory */
-	if((n = xcistuple(slotno, tuple, v, nv, 1)) >= 0)
+	if((n = xcistuple(slotno, tuple, subtuple, v, nv, 1)) >= 0)
 		return n;
-	return xcistuple(slotno, tuple, v, nv, 0);
+	return xcistuple(slotno, tuple, subtuple, v, nv, 0);
 }
 
 static void
@@ -1161,7 +1171,7 @@ cisread(Slot *pp)
 	pp->nctab = 0;
 
 	for(i = 0; i < nelem(cistab); i++) {
-		if((nv = pcmcistuple(pp->slotno, cistab[i].n, v, sizeof(v))) >= 0) {
+		if((nv = pcmcistuple(pp->slotno, cistab[i].n, -1, v, sizeof(v))) >= 0) {
 			cis.cisbase = v;
 			cis.cispos = 0;
 			cis.cisskip = 1;
