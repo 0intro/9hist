@@ -88,7 +88,7 @@ loop:
 	JMP	loop
 
 GLOBL	mach0+0(SB), $MACHSIZE
-GLOBL	u(SB), $4
+GLOBL	up(SB), $4
 GLOBL	m(SB), $4
 GLOBL	tpt(SB), $(BY2PG*3)
 
