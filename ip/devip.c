@@ -1231,7 +1231,7 @@ Fsnewcall(Conv *c, uchar *raddr, ushort rport, uchar *laddr, ushort lport)
 	nc->lport = lport;
 	nc->next = nil;
 	*l = nc;
-	c->state = Connected;
+	nc->state = Connected;
 	qunlock(c);
 
 	wakeup(&c->listenr);
