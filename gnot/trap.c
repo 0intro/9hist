@@ -199,21 +199,29 @@ noted(Ureg *ur, ulong arg0)
 	Ureg *nur;
 
 	nur = u->ureg;
-	validaddr(nur->pc, 1, 0);
-	validaddr(nur->usp, BY2WD, 0);
 	if(nur->sr!=u->svsr || nur->vo!=u->svvo){
 		pprint("bad noted ureg sr %ux vo %ux\n", nur->sr, nur->vo);
+    Die:
 		pexit("Suicide", 0);
 	}
 	lock(&u->p->debug);
 	if(!u->notified){
 		unlock(&u->p->debug);
-		return;
+		pprint("call to noted() when not notified\n");
+		goto Die;
 	}
 	u->notified = 0;
 	memmove(ur, u->ureg, sizeof(Ureg));
 	switch(arg0){
 	case NCONT:
+		if(waserror()){
+			pprint("suicide: trap in noted\n");
+			unlock(&u->p->debug);
+			goto Die;
+		}
+		validaddr(nur->pc, 1, 0);
+		validaddr(nur->usp, BY2WD, 0);
+		poperror();
 		splhi();
 		unlock(&u->p->debug);
 		rfnote(ur);

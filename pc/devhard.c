@@ -10,7 +10,6 @@ typedef	struct Drive		Drive;
 typedef	struct Ident		Ident;
 typedef	struct Controller	Controller;
 typedef struct Partition	Partition;
-typedef struct Ptable		Ptable;
 
 enum
 {
@@ -45,7 +44,7 @@ enum
 	Qmask=		(3<<(3+3)),
 
 	Maxxfer=	4*1024,		/* maximum transfer size/cmd */
-	Npart=		8+1,		/* 8 sub partitions and one for the disk */
+	Npart=		8+2,		/* 8 sub partitions, disk, and partiiton */
 };
 #define PART(x)		((x)&0x3)
 #define DRIVE(x)	(((x)>>3)&0x7)
@@ -93,19 +92,7 @@ struct Partition
 {
 	ulong	start;
 	ulong	end;
-	uchar	name[NAMELEN];
-};
-
-struct Ptable 
-{
-	uchar		magic[4];	/* ascii "disk" */
-	uchar		n[4];		/* number of partitions */
-	struct
-	{
-		uchar	start[4];	/* starting block */
-		uchar	end[4];		/* ending block */
-		uchar	name[NAMELEN];
-	} p[1];
+	char	name[NAMELEN+1];
 };
 
 /*
@@ -159,11 +146,9 @@ struct Controller
 
 Controller	*hardc;
 Drive		*hard;
-Dirtab 		*harddir;
-#define NHDIR	2	/* directory entries/drive */
 
 static void	hardintr(Ureg*);
-static long	hardxfer(Drive*, int, void*, long, long);
+static long	hardxfer(Drive*, Partition*, int, void*, long, long);
 static long	hardident(Drive*);
 static void	hardsetbuf(Drive*, int);
 static void	hardpart(Drive*);
@@ -173,33 +158,30 @@ hardgen(Chan *c, Dirtab *tab, long ntab, long s, Dir *dirp)
 {
 	Qid qid;
 	int drive;
-	char *name;
+	char name[NAMELEN];
 	Drive *dp;
 	Partition *pp;
 	ulong l;
 
 	qid.vers = 0;
-	drive = s/(Npart+1);
-	s = s % (Npart+1);
+	drive = s/Npart;
+	s = s % Npart;
 	if(drive >= conf.nhard)
 		return -1;
 	dp = &hard[drive];
 
-	if(s == 0){
-		sprint(name, "hd%dparition", drive);
-		qid.path = MKQID(Qpart, drive, 0);
-		l = dp->npart * sizeof(Partition);
-	} else if(s-1 < p.npart){
-		pp = &dp->p[s-1];
+	if(s < dp->npart){
+		pp = &dp->p[s];
 		sprint(name, "hd%d%s", drive, pp->name);
-		qid.path = MKQID(Qdata, drive, s-1);
-		l = (pp->end - pp->start) * dp->cp->bytes;
+		qid.path = MKQID(Qdata, drive, s);
+		l = (pp->end - pp->start) * dp->bytes;
 	} else
 		return 0;
 
 	devdir(c, qid, name, l, 0600, dirp);
 	return 1;
 }
+
 /*
  *  we assume drives 0 and 1 are on the first controller, 2 and 3 on the
  *  second, etc.
@@ -210,11 +192,9 @@ hardreset(void)
 	Drive *dp;
 	Controller *cp;
 	int drive;
-	Dirtab *dir;
 
 	hard = ialloc(conf.nhard * sizeof(Drive), 0);
 	hardc = ialloc(((conf.nhard+1)/2 + 1) * sizeof(Controller), 0);
-	dir = harddir = ialloc(NHDIR * conf.nhard * sizeof(Dirtab), 0);
 	
 	for(drive = 0; drive < conf.nhard; drive++){
 		dp = &hard[drive];
@@ -228,16 +208,6 @@ hardreset(void)
 			cp->pbase = Pbase + (cp-hardc)*8;	/* BUG!! guessing */
 			setvec(Hardvec + (cp-hardc)*8, hardintr); /* BUG!! guessing */
 		}
-		sprint(harddir[drive*2].name, "hd%ddata", drive);
-		dir->length = 0;
-		dir->qid.path = Qdata + drive;
-		dir->perm = 0600;
-		dir++;
-		sprint(dir->name, "hd%dstruct", drive);
-		dir->length = 8;
-		dir->qid.path = Qstruct + drive;
-		dir->perm = 0600;
-		dir++;
 	}
 }
 
@@ -260,14 +230,13 @@ hardattach(char *spec)
 			dp->bytes = 512;
 			hardsetbuf(dp, 1);
 			hardident(dp);
-			hardpart(dp);
 			dp->cyl = dp->id.lcyls;
 			dp->heads = dp->id.lheads;
 			dp->sectors = dp->id.ls2t;
 			dp->bytes = 512;
 			dp->cap = dp->bytes * dp->cyl * dp->heads * dp->sectors;
-			harddir[NHDIR*dp->drive].length = dp->cap;
 			dp->online = 1;
+			hardpart(dp);
 			poperror();
 		} else
 			dp->online = 0;
@@ -285,19 +254,19 @@ hardclone(Chan *c, Chan *nc)
 int
 hardwalk(Chan *c, char *name)
 {
-	return devwalk(c, name, harddir, conf.nhard*NHDIR, devgen);
+	return devwalk(c, name, 0, 0, hardgen);
 }
 
 void
 hardstat(Chan *c, char *dp)
 {
-	devstat(c, dp, harddir, conf.nhard*NHDIR, devgen);
+	devstat(c, dp, 0, 0, hardgen);
 }
 
 Chan*
 hardopen(Chan *c, int omode)
 {
-	return devopen(c, omode, harddir, conf.nhard*NHDIR, devgen);
+	return devopen(c, omode, 0, 0, hardgen);
 }
 
 void
@@ -323,43 +292,29 @@ hardwstat(Chan *c, char *dp)
 	error(Eperm);
 }
 
-static void
-ul2user(uchar *a, ulong x)
-{
-	a[0] = x >> 24;
-	a[1] = x >> 16;
-	a[2] = x >> 8;
-	a[3] = x;
-}
-
 long
 hardread(Chan *c, void *a, long n)
 {
 	Drive *dp;
 	long rv, i;
 	uchar *aa = a;
+	Partition *pp;
 
 	if(c->qid.path == CHDIR)
-		return devdirread(c, a, n, harddir, conf.nhard*NHDIR, devgen);
+		return devdirread(c, a, n, 0, 0, hardgen);
 
 	rv = 0;
 	dp = &hard[c->qid.path & ~Qmask];
 	switch ((int)(c->qid.path & Qmask)) {
 	case Qdata:
 		for(rv = 0; rv < n; rv += i){
-			i = hardxfer(dp, Cread, aa+rv, c->offset+rv, n-rv);
+			pp = &dp->p[PART(c->qid.path)];
+			i = hardxfer(dp, pp, Cread, aa+rv, c->offset+rv, n-rv);
 			if(i <= 0)
 				break;
 		}
 		break;
-	case Qstruct:
-		if (n < 2*sizeof(ulong))
-			error(Ebadarg);
-		if (c->offset >= 2*sizeof(ulong))
-			return 0;
-		rv = 2*sizeof(ulong);
-		ul2user((uchar*)a, dp->cap);
-		ul2user((uchar*)a+sizeof(ulong), dp->bytes);
+	case Qpart:
 		break;
 	default:
 		panic("hardread: bad qid");
@@ -373,19 +328,20 @@ hardwrite(Chan *c, void *a, long n)
 	Drive *dp;
 	long rv, i;
 	uchar *aa = a;
+	Partition *pp;
 
 	rv = 0;
 	dp = &hard[c->qid.path & ~Qmask];
 	switch ((int)(c->qid.path & Qmask)) {
 	case Qdata:
 		for(rv = 0; rv < n; rv += i){
-			i = hardxfer(dp, Cwrite, aa+rv, c->offset+rv, n-rv);
+			pp = &dp->p[PART(c->qid.path)];
+			i = hardxfer(dp, pp, Cwrite, aa+rv, c->offset+rv, n-rv);
 			if(i <= 0)
 				break;
 		}
 		break;
-	case Qstruct:
-		error(Eperm);
+	case Qpart:
 		break;
 	default:
 		panic("hardwrite: bad qid");
@@ -425,7 +381,7 @@ print("cmdreadywait failed\n");
  *  parts.
  */
 static long
-hardxfer(Drive *dp, int cmd, void *va, long off, long len)
+hardxfer(Drive *dp, Partition *pp, int cmd, void *va, long off, long len)
 {
 	Controller *cp;
 	int err;
@@ -439,6 +395,9 @@ hardxfer(Drive *dp, int cmd, void *va, long off, long len)
 	if(off % dp->bytes)
 		errors("bad offset");	/* BUG - this shouldn't be a problem */
 
+print("hardxfer %ld %ld\n", off, len);
+print("hardxfer part %s %ld %ld\n", pp->name, pp->start, pp->end);
+
 	cp = dp->cp;
 	qlock(cp);
 	if(waserror()){
@@ -450,6 +409,9 @@ hardxfer(Drive *dp, int cmd, void *va, long off, long len)
 	 *  calculate the physical address of off
 	 */
 	lsec = off/dp->bytes;
+	lsec += pp->start;
+	if(lsec >= pp->end)
+		errors("xfer past end of partition\n");
 	cp->tcyl = lsec/(dp->sectors*dp->heads);
 	cp->tsec = (lsec % dp->sectors) + 1;
 	cp->thead = (lsec/dp->sectors) % dp->heads;
@@ -458,6 +420,9 @@ hardxfer(Drive *dp, int cmd, void *va, long off, long len)
 	 *  can't xfer across cylinder boundaries.
 	 */
 	lsec = (off+len)/dp->bytes;
+	lsec += pp->start;
+	if(lsec > pp->end)
+		errors("xfer past end of partition\n");
 	cyl = lsec/(dp->sectors*dp->heads);
 	if(cyl == cp->tcyl)
 		cp->len = len;
@@ -515,6 +480,7 @@ hardsetbuf(Drive *dp, int on)
 
 	cmdreadywait(cp);
 
+	cp->cmd = Csetbuf;
 	outb(cp->pbase+Pprecomp, on ? 0xAA : 0x55);
 	outb(cp->pbase+Pdh, (dp->drive<<4));
 	outb(cp->pbase+Pcmd, Csetbuf);
@@ -536,6 +502,7 @@ hardident(Drive *dp)
 	cp = dp->cp;
 	qlock(cp);
 	if(waserror()){
+print("waserror in hardident\n");
 		qunlock(cp);
 		nexterror();
 	}
@@ -566,24 +533,64 @@ print("bad disk magic\n");
 }
 
 /*
- *  read partition table
+ *  read partition table.  The partition table is just ascii strings.
  */
+#define MAGIC "plan9 partitions"
 static void
 hardpart(Drive *dp)
 {
 	Partition *pp;
-	Ptable *pt;
-	uchar buf[1024];
+	char *line[Npart+1];
+	char *field[3];
+	char buf[1024];
+	ulong n;
+	int i;
 
 	pp = &dp->p[0];
 	strcpy(pp->name, "disk");
 	pp->start = 0;
-	pp->end = pp->cap / dp->bytes;
+	pp->end = dp->cap / dp->bytes;
+	pp++;
+	strcpy(pp->name, "partition");
+	pp->start = dp->p[0].end - 1;
+	pp->end = dp->p[0].end;
+	dp->npart = 2;
 
-	qlock(dp->cp);
-	hardxfer(dp, Cread, buf, pp->end - 1, dp->bytes);
-	
-	qunlock(dp->cp);
+	if(waserror()){
+		print("error in hardpart\n");
+		nexterror();
+	}
+
+	hardxfer(dp, pp, Cread, buf, (pp->end - 1)*dp->bytes, dp->bytes);
+	buf[dp->bytes] = 0;
+
+	n = getfields(buf, line, Npart+1, '\n');
+	if(strncmp(line[0], MAGIC, sizeof(MAGIC)-1) != 0){
+		print("bad partition table 1\n");
+		goto out;
+	}
+	for(i = 1; i < n; i++){
+		pp++;
+		if(getfields(line[i], field, 3, 0) != 3){
+			print("bad partition field\n");
+			goto out;
+		}
+		if(strlen(field[0]) > NAMELEN){
+			print("bad partition name\n");
+			goto out;
+		}
+		strcpy(pp->name, field[0]);
+		pp->start = strtoul(field[1], 0, 0);
+		pp->end = strtoul(field[2], 0, 0);
+		if(pp->start > pp->end || pp->start >= dp->p[0].end){
+			print("bad partition limit\n");
+			goto out;
+		}
+print("partition %s from %d to %d\n", pp->name, pp->start, pp->end);
+		dp->npart++;
+	}
+out:
+	poperror();
 }
 
 /*
@@ -642,8 +649,12 @@ hardintr(Ureg *ur)
 			wakeup(&cp->r);
 		}
 		break;
+	case Csetbuf:
+		cp->cmd = 0;
+		wakeup(&cp->r);
+		break;
 	default:
-		print("wierd disk interrupt\n");
+		print("weird disk interrupt\n");
 		break;
 	}
 }

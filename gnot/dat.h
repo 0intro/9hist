@@ -200,7 +200,7 @@ struct Scsi
 	uchar	cmdblk[16];
 };
 
-#define	NERR	15
+#define	NERR	25
 #define	NNOTE	5
 struct User
 {

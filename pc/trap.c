@@ -373,10 +373,12 @@ noted(Ureg *ur, ulong arg0)
 	|| (nur->flags&0xff00)!=(u->svflags&0xff00)){
 		pprint("bad noted ureg cs %ux ss %ux flags %ux\n", nur->cs, nur->ss,
 			nur->flags);
+    Die:
 		pexit("Suicide", 0);
 	}
 	lock(&u->p->debug);
 	if(!u->notified){
+		pprint("call to noted() when not notified\n");
 		unlock(&u->p->debug);
 		return;
 	}
@@ -385,6 +387,14 @@ noted(Ureg *ur, ulong arg0)
 	memmove(ur, u->ureg, sizeof(Ureg));
 	switch(arg0){
 	case NCONT:
+		if(waserror()){
+			pprint("suicide: trap in noted\n");
+			unlock(&u->p->debug);
+			goto Die;
+		}
+		validaddr(nur->pc, 1, 0);
+		validaddr(nur->usp, BY2WD, 0);
+		poperror();
 		unlock(&u->p->debug);
 		return;
 
