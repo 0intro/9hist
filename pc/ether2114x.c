@@ -873,6 +873,7 @@ typephymode(Ctlr* ctlr, uchar* block, int wait)
 	ctlr->ttm |= *p<<8;
 	debug("mc %4.4uX nway %4.4uX fdx %4.4uX ttm %4.4uX\n",
 		mc, nway, ctlr->fdx, ctlr->ttm);
+	USED(mc);
 
 	phyx = block[2];
 	ctlr->curphyad = ctlr->phy[phyx];
@@ -1247,6 +1248,7 @@ debug("sct 0x%uX medium 0x%uX k %d curk %d phy %d\n",
 				miir(ctlr, k, 1);
 				debug("phy%d: index %d oui %uX reg1 %uX\n",
 					x, k, oui, miir(ctlr, k, 1));
+				USED(oui);
 			}
 			ctlr->phy[x] = k;
 		}
@@ -1263,52 +1265,53 @@ dec2114xpci(void)
 {
 	Ctlr *ctlr;
 	Pcidev *p;
-	int cfdd;
+	int x;
 
 	p = nil;
 	while(p = pcimatch(p, 0x1011, 0)){
 		switch(p->did){
 		default:
-			break;
+			continue;
 
 		case 0x0019:		/* 21143 */
 			/*
 			 * Exit sleep mode.
 			 */
-			cfdd = pcicfgr32(p, 0x40);
-			cfdd &= ~0xc0000000;
-			pcicfgw32(p, 0x40, cfdd);
+			x = pcicfgr32(p, 0x40);
+			x &= ~0xc0000000;
+			pcicfgw32(p, 0x40, x);
 			/*FALLTHROUGH*/
 
 		case 0x0009:		/* 21140 */
-			ctlr = malloc(sizeof(Ctlr));
-			/*
-			 * bar[0] is the I/O port register address and
-			 * bar[1] is the memory-mapped register address.
-			 */
-			ctlr->port = p->mem[0].bar & ~0x01;
-			ctlr->pcidev = p;
-
-			/*
-			 * Some cards (e.g. ANA-6910FX) seem to need the Ps bit
-			 * set or they don't always work right after a hardware
-			 * reset.
-			 */
-			csr32w(ctlr, 6, Mbo|Ps);
-			softreset(ctlr);
-
-			if(srom(ctlr)){
-				free(ctlr);
-				break;
-			}
-
-			if(ctlrhead != nil)
-				ctlrtail->next = ctlr;
-			else
-				ctlrhead = ctlr;
-			ctlrtail = ctlr;
 			break;
 		}
+
+		/*
+		 * bar[0] is the I/O port register address and
+		 * bar[1] is the memory-mapped register address.
+		 */
+		ctlr = malloc(sizeof(Ctlr));
+		ctlr->port = p->mem[0].bar & ~0x01;
+		ctlr->pcidev = p;
+
+		/*
+		 * Some cards (e.g. ANA-6910FX) seem to need the Ps bit
+		 * set or they don't always work right after a hardware
+		 * reset.
+		 */
+		csr32w(ctlr, 6, Mbo|Ps);
+		softreset(ctlr);
+
+		if(srom(ctlr)){
+			free(ctlr);
+			break;
+		}
+
+		if(ctlrhead != nil)
+			ctlrtail->next = ctlr;
+		else
+			ctlrhead = ctlr;
+		ctlrtail = ctlr;
 	}
 }
 
@@ -1392,6 +1395,7 @@ reset(Ether* ether)
 	 */
 	ctlr->nrdr = Nrde;
 	ctlr->ntdr = Ntde;
+	pcisetbme(ctlr->pcidev);
 	ctlrinit(ether);
 
 	/*

@@ -669,7 +669,18 @@ pcireset(void)
 		pcicfginit();
 
 	for(p = pcilist; p != nil; p = p->list){
-		pcr = pcicfgr16(p, PciPSR);
-		pcicfgw16(p, PciPSR, pcr & ~0x04);
+		pcr = pcicfgr16(p, PciPCR);
+		pcr &= ~0x0004;
+		pcicfgw16(p, PciPCR, pcr);
 	}
+}
+
+void
+pcisetbme(Pcidev* p)
+{
+	int pcr;
+
+	pcr = pcicfgr16(p, PciPCR);
+	pcr |= 0x0004;
+	pcicfgw16(p, PciPCR, pcr);
 }

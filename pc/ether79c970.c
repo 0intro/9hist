@@ -446,8 +446,10 @@ amd79c970pci(void)
 	Pcidev *p;
 
 	p = nil;
-	while(p = pcimatch(p, 0x1022, 0x2000))
+	while(p = pcimatch(p, 0x1022, 0x2000)){
 		amd79c970adapter(&adapter, p->mem[0].bar & ~0x01, p->intl, p->tbdf);
+		pcisetbme(p);
+	}
 }
 
 static int

@@ -1396,6 +1396,7 @@ tcm59Xpci(void)
 			;
 
 		tcmadapter(port, irq, p->tbdf);
+		pcisetbme(p);
 	}
 }
 

@@ -906,6 +906,7 @@ i82557pci(void)
 		 * bar[2] is for the flash ROM (1MB).
 		 */
 		i82557adapter(&adapter, p->mem[1].bar & ~0x01, p->intl, p->tbdf);
+		pcisetbme(p);
 	}
 }
 
