@@ -22,6 +22,11 @@ void
 clock(Ureg *ur)
 {
 	Proc *p;
+	int user;
+
+	user = (ur->sr&SUPER) == 0;
+	if(user)
+		u->dbgreg = ur;
 
 	SYNCREG[1] = 0x5F;	/* clear interrupt */
 	m->ticks++;
@@ -43,12 +48,9 @@ clock(Ureg *ur)
 			else
 				sched();
 		}
-		if((ur->sr&SUPER) == 0){
+		if(user){
 			(*(ulong*)(USTKTOP-BY2WD)) += TK2MS(1);	/* profiling clock */
-			if(u->p->procctl)
-				procctl(u->p);
-			if(u->nnote)
-				notify(ur);
+			notify(ur);
 		}
 	}
 }

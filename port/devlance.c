@@ -511,12 +511,12 @@ lanceinit(void)
 		lancedir[i].qid.path = CHDIR|STREAMQID(i, Lchanqid);
 		lancedir[i].qid.vers = 0;
 		lancedir[i].length = 0;
-		lancedir[i].perm = 0600;
+		lancedir[i].perm = 0666;
 	}
 	strcpy(lancedir[Ntypes].name, "stats");
 	lancedir[Ntypes].qid.path = Lstatsqid;
 	lancedir[Ntypes].length = 0;
-	lancedir[Ntypes].perm = 0600;
+	lancedir[Ntypes].perm = 0666;
 
 }
 

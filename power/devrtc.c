@@ -44,7 +44,7 @@ QLock	rtclock;		/* mutex on nvram operations */
 
 static Dirtab rtcdir[]={
 	"rtc",		{Qrtc, 0},	0,	0644,
-	"nvram",	{Qnvram, 0},	0,	0644,
+	"nvram",	{Qnvram, 0},	0,	0600,
 };
 #define	NRTC	(sizeof(rtcdir)/sizeof(rtcdir[0]))
 
@@ -97,12 +97,6 @@ rtcstat(Chan *c, char *dp)
 Chan*
 rtcopen(Chan *c, int omode)
 {
-	if(c->qid.path==Qrtc && (omode&(OWRITE|OTRUNC)))
-	if(strcmp(u->p->user, "bootes") != 0)	/* BUG */
-		error(Eperm);
-	if(c->qid.path == Qnvram)
-	if(strcmp(u->p->user, "bootes") != 0)	/* BUG */
-		error(Eperm);
 	return devopen(c, omode, rtcdir, NRTC, devgen);
 }
 

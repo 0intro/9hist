@@ -70,11 +70,11 @@ enum {
 
 Dirtab *nonetdir;
 Dirtab nosubdir[]={
-	"addr",		{Naddrqid},	0,	0600,
-	"listen",	{Nlistenqid},	0,	0600,
-	"raddr",	{Nraddrqid},	0,	0600,
-	"ruser",	{Nruserqid},	0,	0600,
-	"stats",	{Nstatsqid},	0,	0600,
+	"addr",		{Naddrqid},	0,	0666,
+	"listen",	{Nlistenqid},	0,	0666,
+	"raddr",	{Nraddrqid},	0,	0666,
+	"ruser",	{Nruserqid},	0,	0666,
+	"stats",	{Nstatsqid},	0,	0666,
 };
 
 /*
@@ -127,7 +127,7 @@ nonetreset(void)
 		nonetdir[i].qid.path = CHDIR|STREAMQID(i, Nchanqid);
 		nonetdir[i].qid.vers = 0;
 		nonetdir[i].length = 0;
-		nonetdir[i].perm = 0600;
+		nonetdir[i].perm = 0777;
 	}
 
 	/*
@@ -137,7 +137,7 @@ nonetreset(void)
 	nonetdir[i].qid.path = Ncloneqid;
 	nonetdir[i].qid.vers = 0;
 	nonetdir[i].length = 0;
-	nonetdir[i].perm = 0600;
+	nonetdir[i].perm = 0666;
 }
 
 void
@@ -1432,8 +1432,15 @@ nokproc(void *arg)
 		 *  loop through all active interfaces
 		 */
 		for(ifc = noifc; ifc < &noifc[conf.nnoifc]; ifc++){
-			if(ifc->wq==0 || !canlock(ifc))
+			if(ifc->wq==0)
 				continue;
+			lock(ifc);
+			if(ifc->wq==0){
+				unlock(ifc);
+				continue;
+			}
+			ifc->ref++;
+			unlock(ifc);
 	
 			/*
 			 *  loop through all active conversations
@@ -1468,7 +1475,7 @@ nokproc(void *arg)
 				}
 				qunlock(cp);
 			}
-			unlock(ifc);
+			nonetfreeifc(ifc);
 		}
 		tsleep(&nonetkr, return0, 0, MSrexmit/2);
 	}

@@ -180,14 +180,14 @@ static int	cmddone(void*);
 void Xdelay(int);
 
 Dirtab floppydir[]={
-	"fd0disk",		{Qdata + 0},	0,	0600,
-	"fd0ctl",		{Qctl + 0},	0,	0600,
-	"fd1disk",		{Qdata + 1},	0,	0600,
-	"fd1ctl",		{Qctl + 1},	0,	0600,
-	"fd2disk",		{Qdata + 2},	0,	0600,
-	"fd2ctl",		{Qctl + 2},	0,	0600,
-	"fd3disk",		{Qdata + 3},	0,	0600,
-	"fd3ctl",		{Qctl + 3},	0,	0600,
+	"fd0disk",		{Qdata + 0},	0,	0666,
+	"fd0ctl",		{Qctl + 0},	0,	0666,
+	"fd1disk",		{Qdata + 1},	0,	0666,
+	"fd1ctl",		{Qctl + 1},	0,	0666,
+	"fd2disk",		{Qdata + 2},	0,	0666,
+	"fd2ctl",		{Qctl + 2},	0,	0666,
+	"fd3disk",		{Qdata + 3},	0,	0666,
+	"fd3ctl",		{Qctl + 3},	0,	0666,
 };
 #define NFDIR	2	/* directory entries/drive */
 

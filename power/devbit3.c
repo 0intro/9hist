@@ -135,7 +135,6 @@ bit3read(Chan *c, void *buf, long n, ulong offset)
 {
 	Bit3msg *bp;
 	int docpy;
-	ulong t0;
 
 	switch(c->qid.path){
 	case 1:
@@ -150,11 +149,9 @@ bit3read(Chan *c, void *buf, long n, ulong offset)
 			qlock(&bit3);
 			bit3send(bp, READ, buf, n);
 			qunlock(&bit3);
-			t0 = MACHP(0)->ticks;
 			do
 				n = bp->rcount;
 			while(n == 0);
-			m->spinlock += MACHP(0)->ticks - t0;
 		}else{
 			/*
 			 *  use bit3 buffer.  lock the buffer till the reply
@@ -165,11 +162,9 @@ bit3read(Chan *c, void *buf, long n, ulong offset)
 			qlock(&bit3);
 			bit3send(bp, READ, bit3.buf, n);
 			qunlock(&bit3);
-			t0 = MACHP(0)->ticks;
 			do
 				n = bp->rcount;
 			while(n == 0);
-			m->spinlock += MACHP(0)->ticks - t0;
 			memmove(buf, bit3.buf, n);
 			qunlock(&bit3.buflock);
 		}

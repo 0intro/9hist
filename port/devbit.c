@@ -129,9 +129,9 @@ enum{
 };
 
 Dirtab bitdir[]={
-	"bitblt",	{Qbitblt},	0,			0600,
-	"mouse",	{Qmouse},	0,			0600,
-	"screen",	{Qscreen},	0,			0400,
+	"bitblt",	{Qbitblt},	0,			0666,
+	"mouse",	{Qmouse},	0,			0666,
+	"screen",	{Qscreen},	0,			0444,
 };
 
 #define	NBIT	(sizeof bitdir/sizeof(Dirtab))

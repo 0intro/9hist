@@ -67,9 +67,9 @@ enum
 };
 
 static Dirtab scsidir[]={
-	"cmd",		{Qcmd},		0,	0600,
-	"data",		{Qdata},	0,	0600,
-	"debug",	{Qdebug},	1,	0600,
+	"cmd",		{Qcmd},		0,	0666,
+	"data",		{Qdata},	0,	0666,
+	"debug",	{Qdebug},	1,	0666,
 };
 #define	NSCSI	(sizeof scsidir/sizeof(Dirtab))
 
@@ -83,16 +83,16 @@ static int
 scsigen1(Chan *c, long qid, Dir *dp)
 {
 	if (qid == CHDIR)
-		devdir(c, (Qid){qid,0}, ".", 0, 0500, dp);
+		devdir(c, (Qid){qid,0}, ".", 0, eve, 0555, dp);
 	else if (qid == 1)
-		devdir(c, (Qid){qid,0}, "id", 1, 0600, dp);
+		devdir(c, (Qid){qid,0}, "id", 1, eve, 0666, dp);
 	else if (qid&CHDIR) {
 		char name[2];
 		name[0] = '0'+((qid>>4)&7), name[1] = 0;
-		devdir(c, (Qid){qid,0}, name, 0, 0500, dp);
+		devdir(c, (Qid){qid,0}, name, 0, eve, 0555, dp);
 	} else {
 		Dirtab *tab = &scsidir[(qid&7)-1];
-		devdir(c, (Qid){qid,0}, tab->name, tab->length, tab->perm, dp);
+		devdir(c, (Qid){qid,0}, tab->name, tab->length, eve, tab->perm, dp);
 	}
 	return 1;
 }

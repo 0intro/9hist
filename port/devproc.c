@@ -26,10 +26,10 @@ Dirtab procdir[]={
 	"ctl",		{Qctl},		0,			0000,
 	"mem",		{Qmem},		0,			0000,
 	"note",		{Qnote},	0,			0000,
-	"notepg",	{Qnotepg},	0,			0200,
+	"notepg",	{Qnotepg},	0,			0000,
 	"proc",		{Qproc},	sizeof(Proc),		0000,
-	"segment",	{Qsegment},	0,			0400,
-	"status",	{Qstatus},	STATSIZE,		0400,
+	"segment",	{Qsegment},	0,			0444,
+	"status",	{Qstatus},	STATSIZE,		0444,
 	"text",		{Qtext},	0,			0000,
 };
 
@@ -72,7 +72,7 @@ procgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 		if(pid == 0)
 			return 0;
 		sprint(buf, "%d", pid);
-		devdir(c, (Qid){CHDIR|((s+1)<<QSHIFT), pid}, buf, 0, p->user, CHDIR|0500, dp);
+		devdir(c, (Qid){CHDIR|((s+1)<<QSHIFT), pid}, buf, 0, p->user, CHDIR|0555, dp);
 		return 1;
 	}
 	if(s >= NPROC)
@@ -141,11 +141,9 @@ procopen(Chan *c, int omode)
 	Segment *s;
 	Chan *tc;
 
-	if(c->qid.path == CHDIR){
-		if(omode != OREAD)
-			error(Eperm);
-		goto done;
-	}
+	if(c->qid.path & CHDIR)
+		return devopen(c, omode, 0, 0, procgen);
+
 	p = proctab(SLOT(c->qid));
 	pg = p->pgrp;
 	if(p->pid != PID(c->qid))
@@ -155,6 +153,8 @@ procopen(Chan *c, int omode)
 
 	switch(QID(c->qid)){
 	case Qtext:
+		if(omode != OREAD)
+			error(Eperm);
 		tc = proctext(c, p);
 		tc->offset = 0;
 
@@ -164,6 +164,8 @@ procopen(Chan *c, int omode)
 	case Qnote:
 	case Qmem:
 	case Qsegment:
+	case Qproc:
+	case Qstatus:
 		break;
 
 	case Qnotepg:
@@ -171,13 +173,6 @@ procopen(Chan *c, int omode)
 			error(Eperm);
 		c->pgrpid.path = pg->index+1;
 		c->pgrpid.vers = pg->pgrpid;
-		break;
-
-	case Qdir:
-	case Qproc:
-	case Qstatus:
-		if(omode != OREAD)
-			error(Eperm);
 		break;
 	default:
 		pprint("unknown qid in devopen\n");
@@ -187,11 +182,9 @@ procopen(Chan *c, int omode)
 	/* Affix pid to qid */
 	if(p->state != Dead)
 		c->qid.vers = p->pid;
-   done:
-	c->mode = omode;
-	c->flag |= COPEN;
-	c->offset = 0;
-	return c;
+
+	return devopen(c, omode, 0, 0, procgen);
+;
 }
 
 void
@@ -211,6 +204,9 @@ procwstat(Chan *c, char *db)
 {
 	Proc *p;
 	Dir d;
+
+	if(c->qid.path&CHDIR)
+		error(Eperm);
 
 	convM2D(db, &d);
 	p = proctab(SLOT(c->qid));
@@ -349,6 +345,8 @@ procread(Chan *c, void *va, long n, ulong offset)
 			return 0;
 		if(offset+n > j)
 			n = j-offset;
+		if(n == 0 && offset == 0)
+			errors("no segments");
 		memmove(a, &statbuf[offset], n);
 		return n;
 	}
@@ -425,6 +423,8 @@ procwrite(Chan *c, void *va, long n, ulong offset)
 		break;
 
 	case Qnote:
+		if(p->kp)
+			errors("can' t note kproc");
 		k = kmap(p->upage);
 		up = (User*)VA(k);
 		if(up->p != p){
@@ -460,7 +460,9 @@ proctext(Chan *c, Proc *p)
 	Segment *s;
 
 	s = p->seg[TSEG];
-	if(s==0 || p->state==Dead)
+	if(s == 0)
+		errors("no text segment");
+	if(p->state==Dead)
 		error(Eprocdied);
 
 	lock(s);
@@ -546,48 +548,42 @@ procstopwait(Proc *p, int ctl)
 void
 procctlreq(Proc *p, char *va, int n)
 {
-	if(n >= 4) {
-		if(strncmp(va, "exit", 4) == 0) {
-			if(p->state == Broken)
-				ready(p);
-			return;
-		}
-		if(strncmp(va, "stop", 4) == 0) {
-			procstopwait(p, Proc_stopme);
-			return;
-		}
-		if(strncmp(va, "kill", 4) == 0) {
-			postnote(p, 0, "sys: killed", NExit);
-			p->procctl = Proc_exitme;
-			return;
-		}
-		if(strncmp(va, "hang", 4) == 0) {
-			p->hang = 1;
-			return;
-		}
-	}
+	char buf[NAMELEN];
 
-	if(n >= 8 && strncmp(va, "waitstop", 8) == 0) {
-		procstopwait(p, 0);
-		return;
+	if(n > NAMELEN)
+		n = NAMELEN;
+	strncpy(buf, va, n);
+
+	if(strncmp(buf, "exit", 4) == 0) {
+		if(p->state == Broken)
+			ready(p);
 	}
- 
-	if(n >= 9 && strncmp(va, "startstop", 9) == 0) {
+	else if(strncmp(buf, "stop", 4) == 0)
+		procstopwait(p, Proc_stopme);
+	else if(strncmp(buf, "kill", 4) == 0) {
+		if(p->state == Stopped)
+			ready(p);
+		postnote(p, 0, "sys: killed", NExit);
+		p->procctl = Proc_exitme;
+	}
+	else if(strncmp(buf, "hang", 4) == 0)
+		p->hang = 1;
+	else if(strncmp(buf, "waitstop", 8) == 0)
+		procstopwait(p, 0);
+	else if(strncmp(buf, "startstop", 9) == 0) {
 		if(p->state != Stopped)
 			errors("not stopped");
 		p->procctl = Proc_traceme;
 		ready(p);
 		procstopwait(p, Proc_traceme);
-		return;
 	}
-	if(n >= 5 && strncmp(va, "start", 5) == 0) {
+	else if(strncmp(buf, "start", 5) == 0) {
 		if(p->state != Stopped)
 			errors("not stopped");
 		ready(p);
-		return;
 	}
-
-	error(Ebadctl);
+	else
+		error(Ebadctl);
 }
 
 int

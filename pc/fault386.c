@@ -16,6 +16,7 @@ fault386(Ureg *ur)
 	int user;
 	int n;
 	int insyscall;
+	char buf[ERRLEN];
 
 	insyscall = u->p->insyscall;
 	u->p->insyscall = 1;
@@ -25,10 +26,10 @@ fault386(Ureg *ur)
 	n = fault(addr, read);
 	if(n < 0){
 		if(user){
-			pprint("user %s error addr=0x%lux\n", read?"read":"write", addr);
-			pprint("status=0x%lux pc=0x%lux sp=0x%lux\n", ur->flags,
-				ur->pc, ur->usp);
-			pexit("Suicide", 0);
+			sprint(buf, "sys: fault %s pc=0x%lux addr=0x%lux",
+				read? "read" : "write", ur->pc, addr);
+			postnote(u->p, 1, buf, NDebug);
+			return;
 		}
 		dumpregs(ur);
 		panic("fault: 0x%lux", addr);

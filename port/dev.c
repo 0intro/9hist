@@ -38,8 +38,8 @@ devdir(Chan *c, Qid qid, char *n, long length, char *user, long perm, Dir *db)
 	db->mtime = db->atime;
 	db->hlength = 0;
 	db->length = length;
-	memmove(db->uid, user, NAMELEN);
-	memmove(db->gid, user, NAMELEN);
+	strncpy(db->uid, user, NAMELEN);
+	strncpy(db->gid, eve, NAMELEN);
 }
 
 int
@@ -170,6 +170,7 @@ devopen(Chan *c, int omode, Dirtab *tab, int ntab, Devgen *gen)
 {
 	int i;
 	Dir dir;
+	ulong t, mode;
 	static int access[] = { 0400, 0200, 0600, 0100 };
 
 	for(i=0;; i++)
@@ -180,8 +181,16 @@ devopen(Chan *c, int omode, Dirtab *tab, int ntab, Devgen *gen)
 		case 0:
 			break;
 		case 1:
-			if(eqqid(c->qid, dir.qid)){
-				if((access[omode&3] & dir.mode) == access[omode&3])
+			if(eqqid(c->qid, dir.qid)) {
+				if(strcmp(u->p->user, dir.uid) == 0)	/* User */
+					mode = dir.mode;
+				else if(strcmp(u->p->user, eve) == 0)	/* Bootes is group */
+					mode = dir.mode<<3;
+				else
+					mode = dir.mode<<6;		/* Other */
+
+				t = access[omode&3];
+				if((t & mode) == t)
 					goto Return;
 				error(Eperm);
 			}

@@ -55,6 +55,7 @@ fault68020(Ureg *ur, FFrame *f)
 	}
 	insyscall = u->p->insyscall;
 	u->p->insyscall = 1;
+	u->dbgreg = ur;
 	addr = 0;	/* set */
 	if(f->ssw & DF)
 		addr = f->addr;
@@ -92,8 +93,6 @@ fault68020(Ureg *ur, FFrame *f)
 			sprint(buf, "sys: fault %s pc=0x%lux addr=0x%lux",
 				read? "read" : "write", ur->pc, badvaddr);
 			postnote(u->p, 1, buf, NDebug);
-			if(u->p->procctl)
-				procctl(u->p);
 			notify(ur);
 			return;
 		}

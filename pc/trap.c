@@ -68,6 +68,19 @@ setvec(int v, void (*r)(Ureg*))
 	}
 }
 
+void
+debugbpt(Ureg *ur)
+{
+	char buf[ERRLEN];
+
+	if(u == 0)
+		panic("kernel bpt");
+	/* restore pc to instruction that caused the trap */
+	ur->pc--;
+	sprint(buf, "sys: breakpoint pc=0x%lux", ur->pc);
+	postnote(u->p, 1, buf, NDebug);
+}
+
 /*
  *  set up the interrupt/trap gates
  */
@@ -88,7 +101,6 @@ trapinit(void)
 	sethvec(0, intr0, SEGTG, 0);
 	sethvec(1, intr1, SEGTG, 0);
 	sethvec(2, intr2, SEGTG, 0);
-	sethvec(3, intr3, SEGTG, 0);
 	sethvec(4, intr4, SEGTG, 0);
 	sethvec(5, intr5, SEGTG, 0);
 	sethvec(6, intr6, SEGTG, 0);
@@ -128,6 +140,8 @@ trapinit(void)
 	 */
 	sethvec(Syscallvec, intr64, SEGTG, 3);
 	setvec(Syscallvec, (void (*)(Ureg*))syscall);
+	sethvec(Bptvec, intr3, SEGTG, 3);
+	setvec(Bptvec, debugbpt);
 
 	/*
 	 *  tell the hardware where the table is (and how long)
@@ -171,18 +185,18 @@ trapinit(void)
 void
 trap(Ureg *ur)
 {
-	int v;
+	int v, user;
 	int c;
 	static int spuriousfloppy;
 
 	v = ur->trap;
-	if(v>=256 || ivec[v] == 0){
-		if(v == 10 && spuriousfloppy == 0){
-			v = Floppyvec;
-			spuriousfloppy = 1;
-		}else
-			panic("bad trap type %d %lux %lux %lux\n", v, ur->pc, int0mask, int1mask);
-	}
+
+	user = ((ur->cs)&0xffff)!=KESEL && v!=Syscallvec;
+	if(user)
+		u->dbgreg = ur;
+
+	if(v>=256 || ivec[v] == 0)
+		panic("bad trap type %d %lux %lux %lux\n", v, ur->pc, int0mask, int1mask);
 
 	/*
 	 *  tell the 8259 that we're done with the
@@ -203,7 +217,7 @@ trap(Ureg *ur)
 	/*
 	 *  syscall does it's own notifying
 	 */
-	if(((ur->cs)&0xffff)!=KESEL && u->nnote && v!=Syscallvec)
+	if(user)
 		notify(ur);
 }
 
@@ -273,6 +287,7 @@ syscall(Ureg *ur)
 
 	u->p->insyscall = 1;
 	u->p->pc = ur->pc;
+	u->dbgreg = ur;
 	if((ur->cs)&0xffff == KESEL)
 		panic("recursive system call");
 
@@ -307,7 +322,7 @@ syscall(Ureg *ur)
 	ur->ax = ret;
 	if(ax == NOTED){
 		noted(ur, *(ulong*)(sp+BY2WD));
-	} else if(u->nnote && ax!=FORK){
+	} else if(u->p->procctl || (u->nnote && ax!=FORK)){
 		notify(ur);
 	}
 	return ret;
@@ -322,11 +337,11 @@ notify(Ureg *ur)
 {
 	ulong sp;
 
-	lock(&u->p->debug);
-	if(u->nnote==0){
-		unlock(&u->p->debug);
+	if(u->p->procctl)
+		procctl(u->p);
+	if(u->nnote==0)
 		return;
-	}
+	lock(&u->p->debug);
 	u->p->notepending = 0;
 	if(u->note[0].flag!=NUser && (u->notified || u->notify==0)){
 		if(u->note[0].flag == NDebug)
@@ -420,4 +435,23 @@ noted(Ureg *ur, ulong arg0)
 		unlock(&u->p->debug);
 		pexit(u->lastnote.msg, u->lastnote.flag!=NDebug);
 	}
+}
+
+/* This routine must save the values of registers the user is not permitted to write
+ * from devproc and the restore the saved values before returning
+ */
+void
+setregisters(Ureg *xp, char *pureg, char *uva, int n)
+{
+	ulong flags;
+	ulong cs;
+	ulong ss;
+
+	flags = xp->flags;
+	cs = xp->cs;
+	ss = xp->ss;
+	memmove(pureg, uva, n);
+	xp->flags = (xp->flags & 0xff) | (flags & 0xff00);
+	xp->cs = cs;
+	xp->ss = ss;
 }

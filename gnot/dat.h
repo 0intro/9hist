@@ -138,7 +138,7 @@ struct Mach
 	int	pfault;
 	int	cs;
 	int	syscall;
-	int	spinlock;
+	int	load;
 	int	intr;
 
 	int	stack[1];
@@ -189,10 +189,10 @@ struct Scsibuf
 struct User
 {
 	Proc	*p;
+	FPsave	fpsave;			/* address of this is known by vdb */
 	int	nerrlab;
 	Label	errlab[NERR];
 	char	error[ERRLEN];
-	FPsave	fpsave;			/* address of this is known by vdb */
 	char	elem[NAMELEN];		/* last name element from namec */
 	Chan	*slash;
 	Chan	*dot;
@@ -206,6 +206,7 @@ struct User
 	Note	lastnote;
 	int	(*notify)(void*, char*);
 	void	*ureg;
+	void	*dbgreg;
 	ushort	svsr;
 	ushort	svvo;
 	/*

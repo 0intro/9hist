@@ -87,9 +87,7 @@ clock(Ureg *ur)
 		 *  notes for processes that might be spinning
 		 *  in user mode.
 		 */
-		if((ur->cs&0xffff) == UESEL){
-			if(u->nnote)
-				notify(ur);
-		}
+		if((ur->cs&0xffff) == UESEL)
+			notify(ur);
 	}
 }

@@ -657,6 +657,7 @@ extern	char	*statename[];
 extern	Palloc 	palloc;
 extern  Image	swapimage;
 extern  char	eve[];
+extern	int	nrdy;
 
 #define	CHDIR		0x80000000L
 #define	CHAPPEND 	0x40000000L

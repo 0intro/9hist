@@ -145,7 +145,7 @@ struct Mach
 	int	pfault;
 	int	cs;
 	int	syscall;
-	int	spinlock;
+	int	load;
 	int	intr;
 
 	int	stack[1];

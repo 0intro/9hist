@@ -23,16 +23,16 @@ extern long	kfslen;
 extern ulong	kfscode[];
 
 Dirtab rootdir[]={
-	"bin",		{Qbin|CHDIR},	0,			0700,
-	"boot",		{Qboot},	0,			0700,
-	"dev",		{Qdev|CHDIR},	0,			0700,
-	"env",		{Qenv|CHDIR},	0,			0700,
-	"proc",		{Qproc|CHDIR},	0,			0700,
+	"bin",		{Qbin|CHDIR},	0,			0777,
+	"boot",		{Qboot},	0,			0777,
+	"dev",		{Qdev|CHDIR},	0,			0777,
+	"env",		{Qenv|CHDIR},	0,			0777,
+	"proc",		{Qproc|CHDIR},	0,			0777,
 };
 #define	NROOT	(sizeof rootdir/sizeof(Dirtab))
 Dirtab rootpdir[]={
-	"cfs",		{Qcfs},		0,			0700,
-	"kfs",		{Qkfs},		0,			0700,
+	"cfs",		{Qcfs},		0,			0777,
+	"kfs",		{Qkfs},		0,			0777,
 };
 Dirtab *rootmap[sizeof rootpdir/sizeof(Dirtab)];
 int	nroot;

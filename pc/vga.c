@@ -24,9 +24,9 @@ struct{
  */
 #define MAXX	640
 #define MAXY	480
-#define XPERIOD	800	/* Hsync freq == 31.47 KHZ */
-#define YPERIOD	525	/* Vsync freq == 59.9 HZ */
-#define YBORDER 2
+int	xperiod = 800;	/* Hsync freq == 31.47 KHZ */
+int	yperiod	= 525;	/* Vsync freq == 59.9 HZ */
+int	yborder = 7;	/* top/bottom border of screen */
 
 #define SCREENMEM	(0xA0000 | KZERO)
 
@@ -42,6 +42,10 @@ GBitmap	gscreen =
 
 enum
 {
+	EMISCR=		0x3CC,		/* control sync polarity */
+	EMISCW=		0x3C2,
+	EFCW=		0x3DA,		/* feature control */
+	EFCR=		0x3CA,
 	GRX=		0x3CE,		/* index to graphics registers */
 	GR=		0x3CF,		/* graphics registers */
 	 Grot=		 0x03,		/*  data rotate register */
@@ -115,6 +119,17 @@ vgardplane(int p)
 	grout(Grms, p&3);
 }
 
+vgadump(void)
+{
+	print("misc is 0x%ux fc is 0x%ux\n", inb(EMISCR), inb(EFCR));
+	outb(EMISCW, 0xc7);/**/
+}
+
+vgaclock(void)
+{
+	outb(EMISCW, 0xc7);/**/
+}
+
 /*
  *  set up like vga mode 0x12
  *	16 color (though we only use values 0x0 and 0xf)
@@ -138,30 +153,30 @@ vga12(void)
 				 * mem without modifications */
 
 	msl = overflow = 0;
-	crout(Cmode, 0xe3);	/* turn off address wrap &
-				 * word mode */
+	/* turn off address wrap & word mode */
+	crout(Cmode, 0xe3);
 	/* last scan line displayed (first is 0) */
 	crout(Cvde, MAXY-1);
 	overflow |= ((MAXY-1)&0x200) ? 0x40 : 0;
 	overflow |= ((MAXY-1)&0x100) ? 0x2 : 0;
 	/* total scan lines (including retrace) - 2 */
-	crout(Cvt, (YPERIOD-2));
-	overflow |= ((YPERIOD-2)&0x200) ? 0x20 : 0;
-	overflow |= ((YPERIOD-2)&0x100) ? 0x1 : 0;
+	crout(Cvt, (yperiod-2));
+	overflow |= ((yperiod-2)&0x200) ? 0x20 : 0;
+	overflow |= ((yperiod-2)&0x100) ? 0x1 : 0;
 	/* scan lines at which vertcal retrace starts & ends */
-	crout(Cvrs, (MAXY+10));
-	overflow |= ((MAXY+10)&0x200) ? 0x80 : 0;
-	overflow |= ((MAXY+10)&0x100) ? 0x4 : 0;
-	crout(Cvre, ((YPERIOD-1)&0xf)|0xa0);	/* also disable vertical interrupts */
+	crout(Cvrs, (MAXY+0x0a)); /**/
+	overflow |= ((MAXY+0x0a)&0x200) ? 0x80 : 0;
+	overflow |= ((MAXY+0x0a)&0x100) ? 0x4 : 0;
+	crout(Cvre, ((yperiod-1)&0xf)|0xa0);	/* also disable vertical interrupts */
 	/* scan lines at which vertical blanking starts & ends */
-	crout(Cvbs, (MAXY+YBORDER));
-	msl |= ((MAXY+YBORDER)&0x200) ? 0x20 : 0;
-	overflow |= ((MAXY+YBORDER)&0x100) ? 0x8 : 0;
-	crout(Cvbe, (YPERIOD-YBORDER)&0x7f);
-	/* pixels per scan line (always 0 for graphics) */
-	crout(Cmsl, 0x40|msl);	/* also 10th bit of line compare */
+	crout(Cvbs, (MAXY+yborder));
+	msl |= ((MAXY+yborder)&0x100) ? 0x20 : 0;
+	overflow |= ((MAXY+yborder)&0x100) ? 0x8 : 0;
+	crout(Cvbe, (yperiod-yborder)&0x7f);
 	/* the overflow bits from the other registers */
 	crout(Cvover, 0x10|overflow);	/* also 9th bit of line compare */
+	/* pixels per scan line (always 0 for graphics) */
+	crout(Cmsl, 0x40|msl);	/* also 10th bit of line compare */
 
 	srout(Smode, 0x06);	/* extended memory,
 				 * odd/even off */

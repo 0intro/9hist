@@ -88,8 +88,10 @@ trap(Ureg *ur)
 
 	user = !(ur->sr&SUPER);
 
-	if(u)
+	if(u) {
 		u->p->pc = ur->pc;		/* BUG */
+		u->dbgreg = ur;
+	}
 	if(user){
 		sprint(buf, "sys: %s pc=0x%lux", excname(ur->vo), ur->pc);
 		postnote(u->p, 1, buf, NDebug);
@@ -99,12 +101,8 @@ trap(Ureg *ur)
 		exit();
 	}
 
-	if(user) {
-		if(u->p->procctl)
-			procctl(u->p);
-		if(u->nnote)
-			notify(ur);
-	}
+	if(user)
+		notify(ur);
 }
 
 void
@@ -147,11 +145,12 @@ notify(Ureg *ur)
 {
 	ulong sp;
 
-	lock(&u->p->debug);
-	if(u->nnote==0){
-		unlock(&u->p->debug);
+	if(u->p->procctl)
+		procctl(u->p);
+	if(u->nnote==0)
 		return;
-	}
+
+	lock(&u->p->debug);
 	u->p->notepending = 0;
 	if(u->note[0].flag!=NUser && (u->notified || u->notify==0)){
 		if(u->note[0].flag == NDebug)
@@ -259,6 +258,7 @@ syscall(Ureg *aur)
 
 	u->p->insyscall = 1;
 	ur = aur;
+	u->dbgreg = aur;
 	u->p->pc = ur->pc;
 	if(ur->sr & SUPER)
 		panic("recursive system call");
@@ -306,15 +306,12 @@ syscall(Ureg *aur)
 	}
 
 	u->nerrlab = 0;
-	if(u->p->procctl)
-		procctl(u->p);
-
 	u->p->insyscall = 0;
 	u->p->psstate = 0;
 
 	if(r0 == NOTED)		/* ugly hack */
 		noted(aur, *(ulong*)(sp+BY2WD));	/* doesn't return */
-	if(u->nnote && r0!=FORK){
+	if(u->p->procctl || (u->nnote && r0!=FORK)){
 		ur->r0 = ret;
 		notify(ur);
 	}
@@ -325,4 +322,28 @@ void
 execpc(ulong entry)
 {
 	((Ureg*)UREGADDR)->pc = entry;
+}
+
+/* This routine must save the values of registers the user is not permitted to write
+ * from devproc and the restore the saved values before returning
+ */
+void
+setregisters(Ureg *xp, char *pureg, char *uva, int n)
+{
+	ushort sr;
+	ulong magic;
+	ushort vo;
+	char microstate[UREGVARSZ];
+
+	sr = xp->sr;
+	vo = xp->vo;
+	magic = xp->magic;
+	memmove(microstate, xp->microstate, UREGVARSZ);
+
+	memmove(pureg, uva, n);
+
+	xp->sr = (sr&0xff00) |(xp->sr&0xff);
+	xp->vo = vo;
+	xp->magic = magic;
+	memmove(xp->microstate, microstate, UREGVARSZ);
 }

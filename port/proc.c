@@ -31,7 +31,8 @@ typedef struct
 	Proc	*tail;
 }Schedq;
 
-Schedq runhiq, runloq;
+Schedq	runhiq, runloq;
+int	nrdy;
 
 char *statename[]={	/* BUG: generate automatically */
 	"Dead",
@@ -95,8 +96,6 @@ sched(void)
 {
 	uchar procstate[64];
 	Proc *p;
-	ulong tlbvirt, tlbphys;
-	void (*f)(ulong, ulong);
 
 	if(u){
 		splhi();
@@ -147,6 +146,7 @@ ready(Proc *p)
 		rq->head = p;
 	rq->tail = p;
 
+	nrdy++;
 	p->state = Ready;
 	unlock(&runhiq);
 	splx(s);
@@ -182,6 +182,7 @@ loop:
 	if(p->rnext == 0)
 		rq->tail = 0;
 	rq->head = p->rnext;
+	nrdy--;
 	if(p->state != Ready)
 		print("runproc %s %d %s\n", p->text, p->pid, statename[p->state]);
 	unlock(&runhiq);
@@ -674,6 +675,7 @@ kproc(char *name, void (*func)(void *), void *arg)
 	 */
 	p = newproc();
 	p->psstate = 0;
+	p->procmode = 0644;
 	p->kp = 1;
 	p->upage = newpage(1, 0, USERADDR|(p->pid&0xFFFF));
 	k = kmap(p->upage);

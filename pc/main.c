@@ -18,6 +18,7 @@ main(void)
 	screeninit();
 	printinit();
 	print("%ludK bytes of physical memory\n", (conf.base1 + conf.npage1*BY2PG)/1024);
+vgadump();
 	mmuinit();
 	trapinit();
 	mathinit();
@@ -96,6 +97,7 @@ userinit(void)
 	p->pgrp = newpgrp();
 	p->egrp = newegrp();
 	p->fgrp = newfgrp();
+	p->procmode = 0640;
 
 	strcpy(p->text, "*init*");
 	strcpy(p->user, eve);

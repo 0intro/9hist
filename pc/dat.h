@@ -130,7 +130,7 @@ struct Mach
 	int	pfault;
 	int	cs;
 	int	syscall;
-	int	spinlock;
+	int	load;
 	int	intr;
 
 	int	stack[1];
@@ -149,10 +149,10 @@ typedef void		KMap;
 struct User
 {
 	Proc	*p;
+	FPsave	fpsave;			/* address of this is known by vdb */
 	int	nerrlab;
 	Label	errlab[NERR];
 	char	error[ERRLEN];
-	FPsave	fpsave;			/* address of this is known by vdb */
 	char	elem[NAMELEN];		/* last name element from namec */
 	Chan	*slash;
 	Chan	*dot;
@@ -166,6 +166,7 @@ struct User
 	Note	lastnote;
 	int	(*notify)(void*, char*);
 	void	*ureg;
+	void	*dbgreg;		/* User registers for debugging in proc */
 	ulong	svcs;		/* cs before a notify */
 	ulong	svss;		/* ss before a notify */
 	ulong	svflags;		/* flags before a notify */

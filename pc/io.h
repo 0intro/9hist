@@ -3,6 +3,7 @@
  */
 enum
 {
+	Bptvec=		3,		/* breakpoints */
 	Mathemuvec=	7,		/* math coprocessor emulation interrupt */
 	Mathovervec=	9,		/* math coprocessor overrun interrupt */
 	Matherr1vec=	16,		/* math coprocessor error interrupt */

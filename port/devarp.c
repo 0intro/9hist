@@ -58,9 +58,9 @@ enum{
 };
 
 Dirtab arptab[]={
-	"stats",	{arpstatqid},		0,	0600,
-	"ctl",		{arpctlqid},		0,	0600,
-	"data",		{arpdataqid},		0,	0600,
+	"stats",	{arpstatqid},		0,	0666,
+	"ctl",		{arpctlqid},		0,	0666,
+	"data",		{arpdataqid},		0,	0666,
 };
 #define Narptab (sizeof(arptab)/sizeof(Dirtab))
 

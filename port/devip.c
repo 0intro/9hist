@@ -57,10 +57,10 @@ enum
 };
 
 Dirtab ipsubdir[]={
-	"listen",	{iplistenqid},		0,	0600,
-	"local",	{iplportqid},		0,	0600,
-	"remote",	{iprportqid},		0,	0600,
-	"status",	{ipstatusqid},		0,	0600,
+	"listen",	{iplistenqid},		0,	0666,
+	"local",	{iplportqid},		0,	0666,
+	"remote",	{iprportqid},		0,	0666,
+	"status",	{ipstatusqid},		0,	0666,
 };
 
 void

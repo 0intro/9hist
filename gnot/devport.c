@@ -14,7 +14,7 @@ enum {
 };
 
 Dirtab portdir[]={
-	"data",		{Qdata},	0,	0600,
+	"data",		{Qdata},	0,	0666,
 };
 
 #define	NPORT	(sizeof portdir/sizeof(Dirtab))

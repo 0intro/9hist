@@ -334,21 +334,21 @@ enum{
 };
 
 Dirtab consdir[]={
-	"cons",		{Qcons},	0,		0600,
-	"cputime",	{Qcputime},	6*NUMSIZE,	0600,
-	"lights",	{Qlights},	0,		0600,
-	"noise",	{Qnoise},	0,		0600,
-	"null",		{Qnull},	0,		0600,
-	"pgrpid",	{Qpgrpid},	NUMSIZE,	0600,
-	"pid",		{Qpid},		NUMSIZE,	0600,
-	"ppid",		{Qppid},	NUMSIZE,	0600,
-	"rcons",	{Qrcons},	0,		0600,
-	"time",		{Qtime},	NUMSIZE,	0600,
-	"user",		{Quser},	0,		0600,
-	"klog",		{Qklog},	0,		0400,
-	"msec",		{Qmsec},	NUMSIZE,	0400,
-	"clock",	{Qclock},	2*NUMSIZE,	0400,
-	"sysstat",	{Qsysstat},	0,		0600,
+	"cons",		{Qcons},	0,		0666,
+	"cputime",	{Qcputime},	6*NUMSIZE,	0666,
+	"lights",	{Qlights},	0,		0666,
+	"noise",	{Qnoise},	0,		0666,
+	"null",		{Qnull},	0,		0666,
+	"pgrpid",	{Qpgrpid},	NUMSIZE,	0666,
+	"pid",		{Qpid},		NUMSIZE,	0666,
+	"ppid",		{Qppid},	NUMSIZE,	0666,
+	"rcons",	{Qrcons},	0,		0666,
+	"time",		{Qtime},	NUMSIZE,	0666,
+	"user",		{Quser},	0,		0644,
+	"klog",		{Qklog},	0,		0444,
+	"msec",		{Qmsec},	NUMSIZE,	0444,
+	"clock",	{Qclock},	2*NUMSIZE,	0444,
+	"sysstat",	{Qsysstat},	0,		0444,
 	"swap",		{Qswap},	0,		0666,
 };
 
@@ -432,14 +432,6 @@ consopen(Chan *c, int omode)
 	int ch;
 
 	switch(c->qid.path){
-	case Quser:
-		if(omode==(OWRITE|OTRUNC)){
-			if(strcmp(u->p->user, eve) == 0)
-				u->p->user[0] = 0;
-			else
-				error(Eperm);
-		}
-		break;
 	case Qrcons:
 		if(conf.cntrlp)
 			error(Eperm);
@@ -616,7 +608,7 @@ consread(Chan *c, void *buf, long n, ulong offset)
 				mp = MACHP(id);
 				j += sprint(&xbuf[j], "%d %d %d %d %d %d %d %d\n",
 					id, mp->cs, mp->intr, mp->syscall, mp->pfault,
-					    mp->tlbfault, mp->tlbpurge, m->spinlock);
+					    mp->tlbfault, mp->tlbpurge, mp->load);
 			}
 		}
 		return readstr(offset, buf, n, xbuf);
@@ -717,8 +709,6 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 		break;
 
 	case Quser:
-		if(u->p->user[0])		/* trying to overwrite /dev/user */
-			error(Eperm);
 		if(offset >= NAMELEN-1)
 			return 0;
 		if(offset+n >= NAMELEN-1)
@@ -754,7 +744,6 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 				mp->pfault = 0;
 				mp->tlbfault = 0;
 				mp->tlbpurge = 0;
-				mp->spinlock = 0;
 			}
 		}
 		break;
