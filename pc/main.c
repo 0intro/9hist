@@ -232,10 +232,7 @@ userinit(void)
 	p->pgrp = newpgrp();
 	p->egrp = smalloc(sizeof(Egrp));
 	p->egrp->ref = 1;
-	p->fgrp = smalloc(sizeof(Fgrp));
-	p->fgrp->ref = 1;
-	p->fgrp->fd = smalloc(DELTAFD*sizeof(Chan*));
-	p->fgrp->nfd = DELTAFD;
+	p->fgrp = dupfgrp(nil);
 	p->rgrp = newrgrp();
 	p->procmode = 0640;
 

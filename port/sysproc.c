@@ -55,8 +55,7 @@ sysrfork(ulong *arg)
 		else
 		if(flag & RFCFDG) {
 			ofg = up->fgrp;
-			up->fgrp = smalloc(sizeof(Fgrp));
-			up->fgrp->ref = 1;
+			up->fgrp = dupfgrp(nil);
 			closefgrp(ofg);
 		}
 		if(flag & RFNOTEG)
@@ -105,10 +104,8 @@ sysrfork(ulong *arg)
 	if(flag & (RFFDG|RFCFDG)) {
 		if(flag & RFFDG)
 			p->fgrp = dupfgrp(up->fgrp);
-		else {
-			p->fgrp = smalloc(sizeof(Fgrp));
-			p->fgrp->ref = 1;
-		}
+		else
+			p->fgrp = dupfgrp(nil);
 	}
 	else {
 		p->fgrp = up->fgrp;

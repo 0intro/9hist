@@ -30,11 +30,14 @@ newfd(Chan *c)
 	 * of fid in 9P
 	 */
 	if(f->nfd >= 5000){
+   Exhausted:
 		unlock(f);
 		exhausted("file descriptors");
 		return -1;
 	}
-	newfd = smalloc((f->nfd+DELTAFD)*sizeof(Chan*));
+	newfd = malloc((f->nfd+DELTAFD)*sizeof(Chan*));
+	if(newfd == 0)
+		goto Exhausted;
 	oldfd = f->fd;
 	memmove(newfd, oldfd, f->nfd*sizeof(Chan*));
 	f->fd = newfd;

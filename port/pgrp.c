@@ -167,15 +167,26 @@ dupfgrp(Fgrp *f)
 	int i;
 
 	new = smalloc(sizeof(Fgrp));
+	if(f == nil){
+		new->fd = smalloc(DELTAFD*sizeof(Chan*));
+		new->nfd = DELTAFD;
+		new->ref = 1;
+		return new;
+	}
+
+	lock(f);
 	/* Make new fd list shorter if possible, preserving quantization */
 	new->nfd = f->maxfd+1;
 	i = new->nfd%DELTAFD;
 	if(i != 0)
 		new->nfd += DELTAFD - i;
-	new->fd = smalloc(new->nfd*sizeof(Chan*));
+	new->fd = malloc(new->nfd*sizeof(Chan*));
+	if(new->fd == 0){
+		unlock(f);
+		error("no memory for fgrp");
+	}
 	new->ref = 1;
 
-	lock(f);
 	new->maxfd = f->maxfd;
 	for(i = 0; i <= f->maxfd; i++) {
 		if(c = f->fd[i]){
