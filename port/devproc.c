@@ -85,6 +85,7 @@ procgen(Chan *c, char *name, Dirtab *tab, int, int s, Dir *dp)
 {
 	Qid qid;
 	Proc *p;
+	char *ename;
 	Segment *q;
 	ulong pid, path, perm, len;
 
@@ -97,8 +98,8 @@ procgen(Chan *c, char *name, Dirtab *tab, int, int s, Dir *dp)
 	if(c->qid.path == Qdir){
 		if(name != nil){
 			/* ignore s and use name to find pid */
-			pid = strtol(name, &name, 0);
-			if(pid==0 || name[0]!='\0')
+			pid = strtol(name, &ename, 10);
+			if(pid==0 || ename[0]!='\0')
 				return -1;
 			s = procindex(pid);
 			if(s < 0)
@@ -111,6 +112,11 @@ procgen(Chan *c, char *name, Dirtab *tab, int, int s, Dir *dp)
 		if(pid == 0)
 			return 0;
 		sprint(up->genbuf, "%lud", pid);
+		/*
+		 * String comparison is done in devwalk so name must match its formatted pid
+		*/
+		if(name != nil && strcmp(name, up->genbuf) != 0)
+			return -1;
 		mkqid(&qid, (s+1)<<QSHIFT, pid, QTDIR);
 		devdir(c, qid, up->genbuf, 0, p->user, DMDIR|0555, dp);
 		return 1;

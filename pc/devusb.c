@@ -832,10 +832,6 @@ schedendpt(Endpt *e)
 	e->etd = nil;
 	e->remain = 0;
 	e->nbytes = 0;
-	e->foffset = 0;
-	e->toffset = 0;
-	e->poffset = 0;
-	e->buffered = 0;
 	td = e->td0;
 	for(i = e->sched; i < NFRAME; i += e->pollms){
 		bp = e->bp0 + e->maxpkt*i/e->pollms;
@@ -1595,6 +1591,10 @@ usbopen(Chan *c, int omode)
 				else
 					error("can't schedule USB endpoint");
 			}
+			e->foffset = 0;
+			e->toffset = 0;
+			e->poffset = 0;
+			e->buffered = 0;
 			eptactivate(e);
 		}
 		incref(d);
@@ -1687,6 +1687,7 @@ isoio(Endpt *e, void *a, long n, ulong offset, int w)
 	p = a;
 	ub = &ubus;
 	if (offset != 0 && offset != e->foffset){
+		iprint("offset %lud, foffset %lud\n", offset, e->foffset);
 		/* Seek to a specific position */
 		frnum = (IN(Frnum) + 8) & 0x3ff;
 		td = e->td0 +frnum;
@@ -1857,9 +1858,15 @@ epstatus(char *s, int n, Endpt *e, int i)
 	l = 0;
 	l += snprint(s+l, n-l, "%2d %#6.6lux %10lud bytes %10lud blocks\n",
 		i, e->csp, e->nbytes, e->nblocks);
-	if (e->iso && e->toffset){
-		l += snprint(s+l, n-l, "bufsize %6d buffered %6d offset  %10lud time %19lld\n",
-			e->maxpkt, e->buffered, e->toffset, e->time);
+	if (e->iso){
+		l += snprint(s+l, n-l, "bufsize %6d buffered %6d",
+			e->maxpkt, e->buffered);
+		if(e->toffset)
+			l += snprint(s+l, n-l, " offset  %10lud time %19lld\n",
+				e->toffset, e->time);
+		if (n-l > 0)
+			s[l++] = '\n';
+		s[l] = '\0';
 	}
 	return l;
 }

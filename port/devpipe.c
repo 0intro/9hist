@@ -98,6 +98,7 @@ pipegen(Chan *c, char*, Dirtab *tab, int ntab, int i, Dir *dp)
 		devdir(c, c->qid, "#|", 0, eve, DMDIR|0555, dp);
 		return 1;
 	}
+	i++;	/* skip . */
 	if(tab==0 || i>=ntab)
 		return -1;
 
