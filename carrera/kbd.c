@@ -448,8 +448,10 @@ kbdinit(void)
 	KBDCTL = Kmseena;
 	empty();
 
-	mousecmd(0xEA);
-	mousecmd(0xF4);
+	mousecmd(0xEA);	/* streaming */
+	mousecmd(0xE8);	/* set resolution */
+	mousecmd(3);
+	mousecmd(0xF4);	/* enabled */
 
 	return 1;
 }

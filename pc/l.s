@@ -766,6 +766,7 @@ _dp8390outb0:
 TEXT slowinb(SB), $0
 	MOVL	$0x84, DX
 	INB
+	INB
 
 	MOVL	p+0(FP),DX
 	XORL	AX,AX
@@ -774,6 +775,7 @@ TEXT slowinb(SB), $0
 
 TEXT slowoutb(SB),$0
 	MOVL	$0x84, DX
+	INB
 	INB
 
 	MOVL	p+0(FP),DX

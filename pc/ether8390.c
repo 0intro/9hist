@@ -285,7 +285,9 @@ dp8390write(Dp8390 *dp8390, ulong to, void *from, ulong len)
 	ulong port = dp8390->dp8390;
 	ulong crda;
 	uchar cr;
+	int s, tries;
 
+	s = splhi();
 	/*
 	 * Write some data to offset 'to' in the card's memory
 	 * using the DP8390 remote DMA facility, reading it at
@@ -336,14 +338,19 @@ dp8390write(Dp8390 *dp8390, ulong to, void *from, ulong len)
 		outss(dp8390->data, from, len/2);
 	else
 		outsb(dp8390->data, from, len);
+	splx(s);
 
 	/*
 	 * Wait for the remote DMA to finish. We'll need
 	 * a timeout here if this ever gets called before
 	 * we know there really is a chip there.
 	 */
+	tries = 0;
 	while((slowinb(port+Isr) & Rdc) == 0)
-			;
+		if(tries++ >= 10000000){
+			print("dp8390write whoops\n");
+			break;
+		}
 
 	slowoutb(port+Isr, Rdc);
 	slowoutb(port+Cr, cr);
