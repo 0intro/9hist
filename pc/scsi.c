@@ -103,6 +103,9 @@ scsireset(void)
 		free(ctlr);
 }
 
+static uchar lastcmd[16];
+static int lastcmdsz;
+
 int
 scsiexec(Target *t, int rw, uchar *cmd, int cbytes, void *data, int *dbytes)
 {
@@ -114,6 +117,11 @@ scsiexec(Target *t, int rw, uchar *cmd, int cbytes, void *data, int *dbytes)
 	 * which percolate back up.
 	 */
 	switch(s = (*scsi[t->ctlrno]->io)(t, rw, cmd, cbytes, data, dbytes)){
+
+	case STcheck:
+		memmove(lastcmd, cmd, cbytes);
+		lastcmdsz = cbytes;
+		/*FALLTHROUGH*/
 
 	default:
 		/*
@@ -323,6 +331,7 @@ scsibio(Target *t, char lun, int dir, void *b, long n, long bsize, long bno)
 		cmd[3] = bno>>16;
 		cmd[4] = bno>>8;
 		cmd[5] = bno;
+		cmd[6] = 0;
 		cmd[7] = n>>8;
 		cmd[8] = n;
 		cmd[9] = 0;
@@ -423,6 +432,12 @@ buggery:
 		s = key[sense[2]&0x0F];
 		print("scsi#%d: unit %d reqsense: '%s' code #%2.2ux #%2.2ux\n",
 			t->ctlrno, t->target, s, sense[12], sense[13]);
+		print("scsi#%d: byte 2: #%2.2uX, bytes 15-17: #%2.2uX #%2.2uX #%2.2uX\n",
+			t->ctlrno, sense[2], sense[15], sense[16], sense[17]);
+		print("lastcmd (%d): ", lastcmdsz);
+		for(n = 0; n < lastcmdsz; n++)
+			print(" #%2.2uX", lastcmd[n]);
+		print("\n");
 	}
 	free(sense);
 	return STcheck;
