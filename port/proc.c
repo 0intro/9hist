@@ -120,8 +120,8 @@ anyhigher(void)
 	int x;
 
 	x = lastreadied;
-	lastreadied = Nrq;
-	return nrdy && x <= up->priority;
+	lastreadied = 0;
+	return nrdy && x >= up->priority;
 }
 
 void
@@ -133,8 +133,8 @@ ready(Proc *p)
 	s = splhi();
 
 	if(p->state == Running){
-		if(p->priority < Nrq-1)
-			p->priority++;
+		if(p->priority > 0)
+			p->priority--;
 	} else
 		p->priority = p->basepri;
 	rq = &runq[p->priority];
@@ -150,7 +150,7 @@ ready(Proc *p)
 	nrdy++;
 	p->readyticks = m->ticks;
 	p->state = Ready;
-	if(lastreadied > p->priority)
+	if(p->priority > lastreadied)
 		lastreadied = p->priority;
 	unlock(runq);
 	splx(s);
@@ -165,18 +165,16 @@ runproc(void)
 loop:
 
 	/*
-	 *  find a process at level 0 (programs from '/' file system),
-	 *  one that last ran on this processor (affinity),
+	 *  find a process that last ran on this processor (affinity),
 	 *  or one that hasn't moved in a while (load balancing).
 	 */
 	spllo();
 	for(;;){
-		for(rq = runq; rq < &runq[Nrq]; rq++){
+		for(rq = &runq[Nrq-1]; rq >= runq; rq--){
 			if(rq->head == 0)
 				continue;
 			for(p = rq->head; p; p = p->rnext){
-				if(rq == runq || p->mp == m || 
-				   m->ticks - p->movetime > HZ/2)
+				if(p->mp == m || m->ticks - p->movetime > HZ/2)
 					goto found;
 			}
 		}
@@ -189,7 +187,7 @@ found:
 
 	l = 0;
 	for(p = rq->head; p; p = p->rnext){
-		if(rq == runq || p->mp == m || m->ticks - p->movetime > HZ/2)
+		if(p->mp == m || m->ticks - p->movetime > HZ/2)
 			break;
 		l = p;
 	}
@@ -198,7 +196,7 @@ found:
 	 *  p->mach==0 only when process state is saved
 	 */
 	if(p == 0 || p->mach){	
-		unlock(&runq[0]);
+		unlock(runq);
 		goto loop;
 	}
 	if(p->rnext == 0)
@@ -226,13 +224,13 @@ canpage(Proc *p)
 	int ok = 0;
 
 	splhi();
-	lock(&runq[0]);
+	lock(runq);
 	/* Only reliable way to see if we are Running */
 	if(p->mach == 0) {
 		p->newtlb = 1;
 		ok = 1;
 	}
-	unlock(&runq[0]);
+	unlock(runq);
 	spllo();
 
 	return ok;
@@ -740,7 +738,7 @@ procdump(void)
 			p->pid, p->text, p->pc,  s, statename[p->state],
 			p->time[0], p->time[1], bss);
 	}
-	for(rq = runq; rq < &runq[Nrq]; rq++){
+	for(rq = &runq[Nrq-1]; rq >= runq; rq--){
 		if(rq->head == 0)
 			continue;
 		print("rq%d:", rq-runq);

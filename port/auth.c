@@ -573,6 +573,7 @@ userwrite(char *a, int n)
 		error(Eperm);
 	memset(up->user, 0, NAMELEN);
 	strcpy(up->user, "none");
+	up->basepri = PriNormal;
 	return n;
 }
 
@@ -596,6 +597,7 @@ hostownerwrite(char *a, int n)
 		error(Ebadarg);
 	memmove(eve, buf, NAMELEN);
 	memmove(up->user, buf, NAMELEN);
+	up->basepri = PriNormal;
 	return n;
 }
 

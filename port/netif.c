@@ -255,6 +255,9 @@ netifclose(Netif *nif, Chan *c)
 	Netfile *f;
 	int t;
 
+	if((c->flag & COPEN) == 0)
+		return;
+
 	t = NETTYPE(c->qid.path);
 	if(t != Ndataqid && t != Nctlqid)
 		return;

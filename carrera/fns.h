@@ -62,6 +62,7 @@ void		newstart(void);
 int		newtlbpid(Proc*);
 void		nonettoggle(void);
 void		novme(int);
+void		ns16552install(void);
 void		online(void);
 Block*		prepend(Block*, int);
 void		prflush(void);

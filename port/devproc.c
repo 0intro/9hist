@@ -27,7 +27,7 @@ enum
 	Qwait,
 };
 
-#define	STATSIZE	(2*NAMELEN+12+7*12)
+#define	STATSIZE	(2*NAMELEN+12+9*12)
 Dirtab procdir[] =
 {
 	"ctl",		{Qctl},		0,			0000,
@@ -396,6 +396,8 @@ procread(Chan *c, void *va, long n, ulong offset)
 				l += s->top - s->base;
 		}
 		readnum(0, statbuf+j+NUMSIZE*6, NUMSIZE, l>>10, NUMSIZE);
+		readnum(0, statbuf+j+NUMSIZE*7, NUMSIZE, p->basepri, NUMSIZE);
+		readnum(0, statbuf+j+NUMSIZE*8, NUMSIZE, p->priority, NUMSIZE);
 		memmove(a, statbuf+offset, n);
 		return n;
 
@@ -739,8 +741,12 @@ procctlreq(Proc *p, char *va, int n)
 		if(n < 4)
 			error(Ebadctl);
 		i = atoi(buf+4);
-		if(i < 0 || i >= Nrq)
-			error(Ebadctl);
+		if(i < 0)
+			i = 0;
+		if(i >= Nrq)
+			i = Nrq - 1;
+		if(i < p->basepri && !iseve())
+			error(Eperm);
 		p->basepri = i;
 	}
 	else

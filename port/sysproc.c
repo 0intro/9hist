@@ -394,12 +394,10 @@ sysexec(ulong *arg)
 	relocateseg(s, USTKTOP-TSTKTOP);
 
 	/*
-	 *  '/' processes are high priority (hack to make /ip more responsive)
+	 *  '/' processes are higher priority (hack to make /ip more responsive).
 	 */
 	if(devchar[tc->type] == L'/')
 		up->basepri = PriRoot;
-	else
-		up->basepri = PriNormal;
 	up->priority = up->basepri;
 	poperror();
 	close(tc);
