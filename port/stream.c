@@ -246,6 +246,7 @@ allocq(Qinfo *qi)
 	q->len = q->nb = 0;
 	wq = q->other = q + 1;
 
+	wq->flag = QINUSE;
 	wq->r.p = 0;
 	wq->info = qi;
 	wq->put = qi->oput;

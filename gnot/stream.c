@@ -78,11 +78,12 @@ dumpqueues(void)
 			continue;
 		for(count = 0, bp = q->first; bp; bp = bp->next)
 			count++;
-		print("%s %ux  R c %d l %d f %ux", q->info->name, q, count,
-			q->len, q->flag);
+		print("%s %ux  R c %d l %d f %ux r %ux", q->info->name, q, count,
+			q->len, q->flag, &(q->r));
 		for(count = 0, bp = WR(q)->first; bp; bp = bp->next)
 			count++;
-		print("  W c %d l %d f %ux\n", count, WR(q)->len, WR(q)->flag);
+		print("  W c %d l %d f %ux r %ux\n", count, WR(q)->len, WR(q)->flag,
+			&(WR(q)->r));
 	}
 	print("\n");
 	for(bcp=bclass; bcp<&bclass[Nclass]; bcp++){
@@ -246,6 +247,7 @@ allocq(Qinfo *qi)
 	q->len = q->nb = 0;
 	wq = q->other = q + 1;
 
+	wq->flag = QINUSE;
 	wq->r.p = 0;
 	wq->info = qi;
 	wq->put = qi->oput;

@@ -203,8 +203,6 @@ echo(int c)
 	if(c == 0x14)
 		DEBUG();
 	if(c == 0x16){
-		incontoggle();
-		urpdump();
 		dumpqueues();
 	}
 	if(raw.ref)

@@ -958,7 +958,7 @@ urpvomit(char *msg, Urp* up)
 	print("\tiseq: %uo lastecho: %uo trx: %d trbuf: %uo %uo %uo\n",
 		up->iseq, up->lastecho, up->trx, up->trbuf[0], up->trbuf[1],
 		up->trbuf[2]);
-	print("\tupq: %ux %d %d\n", up->rq->next->first,  up->rq->next->nb,
+	print("\tupq: %ux %d %d\n", &up->rq->next->r,  up->rq->next->nb,
 		up->rq->next->len);
 }
 
