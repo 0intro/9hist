@@ -52,8 +52,8 @@ reset(Ether *ether)
 		ether->size = 16*1024;
 	port = ether->port;
 
-	ether->private = malloc(sizeof(Dp8390));
-	dp8390 = ether->private;
+	ether->ctlr = malloc(sizeof(Dp8390));
+	dp8390 = ether->ctlr;
 	dp8390->bit16 = 1;
 	dp8390->ram = 0;
 

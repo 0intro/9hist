@@ -104,8 +104,8 @@ reset(Ether *ether)
 	if(sum != 0xFF)
 		return -1;
 
-	ether->private = malloc(sizeof(Dp8390));
-	dp8390 = ether->private;
+	ether->ctlr = malloc(sizeof(Dp8390));
+	dp8390 = ether->ctlr;
 	dp8390->ram = 1;
 
 	/*

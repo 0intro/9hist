@@ -189,7 +189,7 @@ dp8390ring(Dp8390 *dp8390)
 void
 dp8390setea(Ether *ether)
 {
-	ulong port = ((Dp8390*)ether->private)->dp8390;
+	ulong port = ((Dp8390*)ether->ctlr)->dp8390;
 	uchar cr;
 	int i;
 
@@ -210,7 +210,7 @@ dp8390setea(Ether *ether)
 void
 dp8390getea(Ether *ether)
 {
-	ulong port = ((Dp8390*)ether->private)->dp8390;
+	ulong port = ((Dp8390*)ether->ctlr)->dp8390;
 	uchar cr;
 	int i;
 
@@ -384,7 +384,7 @@ receive(Ether *ether)
 	Hdr hdr;
 	ulong port, data, len, len1;
 
-	dp8390 = ether->private;
+	dp8390 = ether->ctlr;
 	port = dp8390->dp8390;
 	for(curr = getcurr(dp8390); dp8390->nxtpkt != curr; curr = getcurr(dp8390)){
 		ether->inpackets++;
@@ -455,7 +455,7 @@ receive(Ether *ether)
 			/*
 			 * Copy the packet to whoever wants it.
 			 */
-			etherrloop(ether, &ether->rpkt, len, 1);
+			etherrloop(ether, &ether->rpkt, len);
 		}
 
 		/*
@@ -484,7 +484,7 @@ write(Ether *ether, void *buf, long len)
 	ulong port;
 	Etherpkt *pkt;
 
-	dp8390 = ether->private;
+	dp8390 = ether->ctlr;
 	port = dp8390->dp8390;
 
 	tsleep(&ether->tr, istxavail, ether, 10000);
@@ -534,7 +534,7 @@ overflow(Ether *ether)
 	uchar txp;
 	int resend;
 
-	dp8390 = ether->private;
+	dp8390 = ether->ctlr;
 	port = dp8390->dp8390;
 
 	/*
@@ -572,7 +572,7 @@ interrupt(Ureg *ur, void *arg)
 	USED(ur);
 
 	ether = arg;
-	dp8390 = ether->private;
+	dp8390 = ether->ctlr;
 	port = dp8390->dp8390;
 
 	/*
@@ -631,7 +631,7 @@ interrupt(Ureg *ur, void *arg)
 static void
 promiscuous(void *arg, int on)
 {
-	Dp8390 *dp8390 = ((Ether*)arg)->private;
+	Dp8390 *dp8390 = ((Ether*)arg)->ctlr;
 
 	/*
 	 * Set/reset promiscuous mode.
@@ -645,7 +645,7 @@ promiscuous(void *arg, int on)
 static void
 attach(Ether *ether)
 {
-	Dp8390 *dp8390 = ether->private;
+	Dp8390 *dp8390 = ether->ctlr;
 
 	/*
 	 * Enable the chip for transmit/receive.
@@ -663,7 +663,7 @@ dp8390reset(Ether *ether)
 	Dp8390 *dp8390;
 	ulong port;
 
-	dp8390 = ether->private;
+	dp8390 = ether->ctlr;
 	port = dp8390->dp8390;
 
 	/*

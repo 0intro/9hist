@@ -190,7 +190,7 @@ receive(Ether *ether)
 			/*
 			 * Copy the packet to whoever wants it.
 			 */
-			etherrloop(ether, &ether->rpkt, len, 1);
+			etherrloop(ether, &ether->rpkt, len);
 		}
 
 		/*
@@ -571,16 +571,16 @@ static PCIcfg*
 tcm590(Ether *ether)
 {
 	PCIcfg* pcicfg;
-	static uchar devno = 0;
-	ulong port;
+	static int devno = 0;
+	int port;
 	Adapter *ap;
 
 	pcicfg = malloc(sizeof(PCIcfg));
-	while(devno < 16){
+	for(;;){
 		pcicfg->vid = 0x10B7;
 		pcicfg->did = 0;
-		if(pcimatch(0, devno++, pcicfg) == 0)
-			continue;
+		if((devno = pcimatch(0, devno, pcicfg)) == -1)
+			break;
 
 		port = pcicfg->baseaddr[0] & ~0x01;
 		COMMAND(port, GlobalReset, 0);

@@ -48,8 +48,8 @@ reset(Ether *ether)
 		ether->size = 16*1024;
 	port = ether->port;
 
-	ether->private = malloc(sizeof(Dp8390));
-	dp8390 = ether->private;
+	ether->ctlr = malloc(sizeof(Dp8390));
+	dp8390 = ether->ctlr;
 	dp8390->bit16 = 1;
 	dp8390->ram = 0;
 
@@ -81,7 +81,7 @@ reset(Ether *ether)
 	memset(buf, 0, sizeof(buf));
 	dp8390read(dp8390, buf, 0, sizeof(buf));
 	if((buf[0x0E] & 0xFF) != 0x57 || (buf[0x0F] & 0xFF) != 0x57){
-		free(ether->private);
+		free(ether->ctlr);
 		return -1;
 	}
 

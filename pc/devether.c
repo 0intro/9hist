@@ -101,7 +101,7 @@ etherwstat(Chan *c, char *dp)
 }
 
 void
-etherrloop(Ether *ctlr, Etherpkt *pkt, long len, int tome)
+etherrloop(Ether *ctlr, Etherpkt *pkt, long len)
 {
 	Block *bp;
 	ushort type;
@@ -111,7 +111,7 @@ etherrloop(Ether *ctlr, Etherpkt *pkt, long len, int tome)
 	type = (pkt->type[0]<<8)|pkt->type[1];
 	ep = &ctlr->f[Ntypes];
 	for(fp = ctlr->f; fp < ep; fp++){
-		if((f = *fp) && ((tome && f->type==type) || f->type < 0)){
+		if((f = *fp) && (f->type == type || f->type < 0)){
 			if(f->type > -2){
 				if(qproduce(f->in, pkt->d, len) < 0)
 					ctlr->soverflows++;
@@ -139,18 +139,17 @@ etherrloop(Ether *ctlr, Etherpkt *pkt, long len, int tome)
 static int
 etherwloop(Ether *ctlr, Etherpkt *pkt, long len)
 {
-	int s, tome, bcast;
+	int s, different;
 
-	tome = memcmp(pkt->d, ctlr->ea, sizeof(pkt->d)) == 0;
-	bcast = memcmp(pkt->d, ctlr->bcast, sizeof(pkt->d)) == 0;
-	if(!tome && !bcast && ctlr->prom==0 && ctlr->all==0)
+	different = memcmp(pkt->d, ctlr->ea, sizeof(pkt->d));
+	if(different && memcmp(pkt->d, ctlr->bcast, sizeof(pkt->d)))
 		return 0;
 
 	s = splhi();
-	etherrloop(ctlr, pkt, len, tome||bcast);
+	etherrloop(ctlr, pkt, len);
 	splx(s);
 
-	return tome;
+	return different == 0;
 }
 
 long

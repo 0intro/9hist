@@ -6,11 +6,12 @@ enum {
 typedef struct Ether Ether;
 struct Ether {
 	ISAConf;			/* hardware info */
+	int	ctlrno;
 
 	void	(*attach)(Ether*);	/* filled in by reset routine */
 	long	(*write)(Ether*, void*, long);
 	void	(*interrupt)(Ureg*, void*);
-	void	*private;
+	void	*ctlr;
 
 	Etherpkt tpkt;			/* transmit buffer */
 	Etherpkt rpkt;			/* receive buffer */
@@ -22,7 +23,7 @@ struct Ether {
 	Netif;
 };
 
-extern void etherrloop(Ether*, Etherpkt*, long, int);
+extern void etherrloop(Ether*, Etherpkt*, long);
 extern void addethercard(char*, int(*)(Ether*));
 
 /*
