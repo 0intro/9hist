@@ -1,4 +1,4 @@
-#include	"u.h"
+ #include	"u.h"
 #include	"../port/lib.h"
 #include	"mem.h"
 #include	"dat.h"
@@ -521,8 +521,9 @@ procwrite(Chan *c, void *va, long n, ulong offset)
 {
 	int id;
 	Proc *p, *t, *et;
-	char buf[ERRLEN];
+	char *a, buf[ERRLEN];
 
+	a = va;
 	if(c->qid.path & CHDIR)
 		error(Eisdir);
 
@@ -583,7 +584,7 @@ procwrite(Chan *c, void *va, long n, ulong offset)
 			error("note not posted");
 		break;
 	case Qnoteid:
-		id = atoi((char*)va);
+		id = atoi(a);
 		if(id == p->pid) {
 			p->noteid = id;
 			break;

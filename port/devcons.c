@@ -482,6 +482,7 @@ consclose(Chan *c)
 				kbd.raw = 0;
 			qunlock(&kbd);
 		}
+		break;
 	case Qauth:
 	case Qauthcheck:
 	case Qauthent:

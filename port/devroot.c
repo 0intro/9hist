@@ -33,6 +33,7 @@ Dirtab rootdir[Nfiles]={
 
 static uchar	*rootdata[Nfiles];
 static int	nroot = Qboot - 1;
+static int	recovbusy;
 
 typedef struct Recover Recover;
 struct Recover
@@ -118,8 +119,11 @@ rootopen(Chan *c, int omode)
 	default:
 		break;
 	case Qrecover:
+		if(recovbusy)
+			error(Einuse);		
 		if(strcmp(up->user, eve) != 0)
 			error(Eperm);
+		recovbusy = 1;
 		break;
 	}
 
@@ -140,6 +144,14 @@ void
 rootclose(Chan *c)
 {
 	USED(c);
+	switch(c->qid.path) {
+	default:
+		break;
+	case Qrecover:
+		if(c->flag&COPEN)
+			recovbusy = 0;
+		break;
+	}
 }
 
 int
