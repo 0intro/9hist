@@ -335,7 +335,7 @@ mmukmap(ulong pa, ulong va, int size)
 				 */
 				x = PPN(*table);
 				if(x != pa)
-					panic("mmukmap1: pa %ux  entry %uX\n",
+					panic("mmukmap1: pa %uX  entry %uX\n",
 						pa, *table);
 				x += 4*MB;
 				if(pae <= x){
@@ -358,7 +358,7 @@ mmukmap(ulong pa, ulong va, int size)
 				if(pte && *pte & PTEVALID){
 					x = PPN(*pte);
 					if(x != pa)
-						panic("mmukmap2: pa %ux entry %uX\n",
+						panic("mmukmap2: pa %uX entry %uX\n",
 							pa, *pte);
 					pgsz = BY2PG;
 					pa += pgsz;

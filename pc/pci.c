@@ -395,12 +395,27 @@ pcimatch(Pcidev* prev, int vid, int did)
 	else
 		prev = prev->list;
 
-	while(prev != nil) {
+	while(prev != nil){
 		if(prev->vid == vid && (did == 0 || prev->did == did))
 			break;
 		prev = prev->list;
 	}
 	return prev;
+}
+
+Pcidev*
+pcimatchtbdf(int tbdf)
+{
+	Pcidev *pcidev;
+
+	if(pcicfgmode == -1)
+		pcicfginit();
+
+	for(pcidev = pcilist; pcidev != nil; pcidev = pcidev->list){
+		if(pcidev->tbdf == tbdf)
+			break;
+	}
+	return pcidev;
 }
 
 void

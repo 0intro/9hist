@@ -63,13 +63,13 @@ static X86type x86intel[] =
 	{ 5,	4,	23,	"P55C MMX", },
 	{ 5,	7,	23,	"P54C VRT", },
 	{ 6,	1,	16,	"PentiumPro", },/* determined by trial and error */
-	{ 6,	3,	16,	"PentiumII", },	/* determined by trial and error */
-	{ 6,	5,	16,	"PentiumII", },	/* determined by trial and error */
+	{ 6,	3,	16,	"PentiumII", },
+	{ 6,	5,	16,	"PentiumII/Xeon", },
 
 	{ 3,	-1,	32,	"386", },	/* family defaults */
 	{ 4,	-1,	22,	"486", },
-	{ 5,	-1,	23,	"Pentium", },
-	{ 6,	-1,	16,	"PentiumPro", },
+	{ 5,	-1,	23,	"P5", },
+	{ 6,	-1,	16,	"P6", },
 
 	{ -1,	-1,	23,	"unknown", },	/* total default */
 };

@@ -41,39 +41,39 @@ typedef struct {
 	Lock;
 } RMap;
 
-static Map mapupa[8];
+static Map mapupa[16];
 static RMap rmapupa = {
 	"unallocated unbacked physical memory",
 	mapupa,
-	&mapupa[7],
+	&mapupa[nelem(mapupa)-1],
 };
 
-static Map xmapupa[8];
+static Map xmapupa[16];
 static RMap xrmapupa = {
 	"unbacked physical memory",
 	xmapupa,
-	&xmapupa[7],
+	&xmapupa[nelem(xmapupa)-1],
 };
 
-static Map mapram[8];
+static Map mapram[16];
 static RMap rmapram = {
 	"physical memory",
 	mapram,
-	&mapram[7],
+	&mapram[nelem(mapram)-1],
 };
 
 static Map mapumb[64];
 static RMap rmapumb = {
 	"upper memory block",
 	mapumb,
-	&mapumb[63],
+	&mapumb[nelem(mapumb)-1],
 };
 
-static Map mapumbrw[8];
+static Map mapumbrw[16];
 static RMap rmapumbrw = {
 	"UMB device memory",
 	mapumbrw,
-	&mapumbrw[7],
+	&mapumbrw[nelem(mapumbrw)-1],
 };
 
 void
