@@ -259,10 +259,6 @@ confinit(void)
 	conf.nmntbuf = conf.nmntdev+3;
 	conf.nmnthdr = 2*conf.nmntdev;
 	conf.nsrv = 16*mul;			/* was 32 */
-	conf.nbitmap = 512*mul;
-	conf.nbitbyte = conf.nbitmap*1024*screenbits();
-	conf.nfont = 10*mul;
-	conf.nsubfont = 30*mul;
 	conf.nurp = 32;
 	conf.nasync = 1;
 	conf.nstream = (conf.nproc*3)/2;

@@ -52,8 +52,6 @@ main(void)
 	chaninit();
 	chandevreset();
 	streaminit();
-/*	serviceinit(); /**/
-/*	filsysinit(); /**/
 	swapinit();
 	pageinit();
 	kmapinit();
@@ -278,19 +276,19 @@ banksize(int base)
 	if(end > (char *)((KZERO|1024L*1024L)-BY2PG))
 		return 0;
 	va = UZERO;	/* user page 1 is free to play with */
-	putmmu(va, PTEVALID|(base+0)*1024L*1024L/BY2PG, 0);
+	putmmu(va, PTEVALID|(base+0)*MB/BY2PG, 0);
 	*(ulong*)va = 0;	/* 0 at 0M */
-	putmmu(va, PTEVALID|(base+1)*1024L*1024L/BY2PG, 0);
+	putmmu(va, PTEVALID|(base+1)*MB/BY2PG, 0);
 	*(ulong*)va = 1;	/* 1 at 1M */
-	putmmu(va, PTEVALID|(base+4)*1024L*1024L/BY2PG, 0);
+	putmmu(va, PTEVALID|(base+4)*MB/BY2PG, 0);
 	*(ulong*)va = 4;	/* 4 at 4M */
-	putmmu(va, PTEVALID|(base+0)*1024L*1024L/BY2PG, 0);
+	putmmu(va, PTEVALID|(base+0)*MB/BY2PG, 0);
 	if(*(ulong*)va == 0)
 		return 16;
-	putmmu(va, PTEVALID|(base+1)*1024L*1024L/BY2PG, 0);
+	putmmu(va, PTEVALID|(base+1)*MB/BY2PG, 0);
 	if(*(ulong*)va == 1)
 		return 4;
-	putmmu(va, PTEVALID|(base+0)*1024L*1024L/BY2PG, 0);
+	putmmu(va, PTEVALID|(base+0)*MB/BY2PG, 0);
 	if(*(ulong*)va == 4)
 		return 1;
 	return 0;
@@ -307,10 +305,10 @@ confinit(void)
 		panic("confinit");
 	bank[0] = banksize(0);
 	bank[1] = banksize(16);
-	conf.npage0 = (bank[0]*1024*1024)/BY2PG;
+	conf.npage0 = (bank[0]*MB)/BY2PG;
 	conf.base0 = 0;
-	conf.npage1 = (bank[1]*1024*1024)/BY2PG;
-	conf.base1 = 16*1024*1024;
+	conf.npage1 = (bank[1]*MB)/BY2PG;
+	conf.base1 = 16*MB;
 	conf.npage = conf.npage0+conf.npage1;
 	conf.upages = (conf.npage*70)/100;
 
@@ -323,14 +321,7 @@ confinit(void)
 	conf.npgenv = 200*mul;
 	conf.nstream = 40 + 32*mul;
 	conf.nqueue = 5 * conf.nstream;
-	conf.nsrv = 16*mul;			/* was 32 */
-	conf.nbitmap = 300*mul;
-	conf.nbitbyte = 300*1024*mul;
 	conf.nmux = 10;
-	if(*(uchar*)MOUSE & (1<<4))
-		conf.nbitbyte *= 2;	/* ldepth 1 */
-	conf.nsubfont = 30*mul;
-	conf.nfont = 10*mul;
 	conf.nurp = 32;
 	conf.nasync = 1;
 	conf.copymode = 0;		/* copy on write */

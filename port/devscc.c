@@ -665,9 +665,9 @@ sccreset(void)
 		sp = scc[i];
 		if(sp->nostream)
 			continue;
-		sp->iq = ialloc(sizeof(IOQ), 0);
+		sp->iq = xalloc(sizeof(IOQ));
 		initq(sp->iq);
-		sp->oq = ialloc(sizeof(IOQ), 0);
+		sp->oq = xalloc(sizeof(IOQ));
 		initq(sp->oq);
 		sccenable(sp);
 	}

@@ -73,21 +73,6 @@ struct Arena
 static Arena	arena;
 static Xalloc	xlists;
 
-void*
-ialloc(ulong size, int align)
-{
-	ulong p;
-
-	if(align) {
-		size += BY2PG;
-		p = (ulong)xalloc(size);
-		p += BY2PG;
-		p &= ~(BY2PG-1);
-		return (void*)p;
-	}
-	return xalloc(size);;
-}
-
 void
 xinit(void)
 {
@@ -305,8 +290,11 @@ smalloc(ulong size)
 	void *p;
 
 	p = malloc(size);
-	if(p == nil)
+	if(p == nil) {
+		print("asking for %d\n", size);
+		xsummary();
 		panic("smalloc should sleep");
+	}
 	return p;
 }
 

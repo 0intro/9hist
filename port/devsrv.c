@@ -8,49 +8,56 @@
 #include	"devtab.h"
 
 typedef struct Srv Srv;
-struct Srv{
+struct Srv
+{
 	char	name[NAMELEN];
 	char	owner[NAMELEN];
 	ulong	perm;
 	Chan	*chan;
+	Srv	*link;
+	ulong	path;
 };
 
-Lock	srvlk;
-Srv	*srv;
+static QLock	srvlk;
+static Srv	*srv;
+static int	path;
 
 int
 srvgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 {
 	Srv *sp;
 
-	if(s >= conf.nsrv)
-		return -1;
+	qlock(&srvlk);
+	for(sp = srv; sp && s; sp = sp->link)
+		s--;
 
-	sp = &srv[s];
-	if(sp->chan == 0)
-		return 0;
-	devdir(c, (Qid){s, 0}, sp->name, 0, sp->owner, sp->perm, dp);
+	if(sp == 0) {
+		qunlock(&srvlk);
+		return -1;
+	}
+	devdir(c, (Qid){sp->path, 0}, sp->name, 0, sp->owner, sp->perm, dp);
+	qunlock(&srvlk);
 	return 1;
 }
 
 void
 srvinit(void)
 {
+	path = 1;
 }
 
 void
 srvreset(void)
 {
-	srv = ialloc(conf.nsrv*sizeof(Srv), 0);
 }
 
-Chan *
+Chan*
 srvattach(char *spec)
 {
 	return devattach('s', spec);
 }
 
-Chan *
+Chan*
 srvclone(Chan *c, Chan *nc)
 {
 	return devclone(c, nc);
@@ -68,10 +75,10 @@ srvstat(Chan *c, char *db)
 	devstat(c, db, 0, 0, srvgen);
 }
 
-Chan *
+Chan*
 srvopen(Chan *c, int omode)
 {
-	Chan *f;
+	Srv *sp;
 
 	if(c->qid.path == CHDIR){
 		if(omode != OREAD)
@@ -81,60 +88,59 @@ srvopen(Chan *c, int omode)
 		c->offset = 0;
 		return c;
 	}
-	lock(&srvlk);
+	qlock(&srvlk);
 	if(waserror()){
-		unlock(&srvlk);
+		qunlock(&srvlk);
 		nexterror();
 	}
-	f = srv[c->qid.path].chan;
-	if(f == 0)
+
+	for(sp = srv; sp; sp = sp->link)
+		if(sp->path == c->qid.path)
+			break;
+
+	if(sp == 0 || sp->chan == 0)
 		error(Eshutdown);
+
 	if(omode&OTRUNC)
 		error(Eperm);
-	if(omode!=f->mode && f->mode!=ORDWR)
+	if(omode!=sp->chan->mode && sp->chan->mode!=ORDWR)
 		error(Eperm);
+
 	close(c);
-	incref(f);
-	unlock(&srvlk);
+	incref(sp->chan);
+	qunlock(&srvlk);
 	poperror();
-	return f;
+	return sp->chan;
 }
 
 void
 srvcreate(Chan *c, char *name, int omode, ulong perm)
 {
-	int j, i;
 	Srv *sp;
 
 	if(omode != OWRITE)
 		error(Eperm);
 
-	lock(&srvlk);
+	sp = malloc(sizeof(Srv));
+	if(sp == 0)
+		error(Enomem);
+
+	qlock(&srvlk);
 	if(waserror()){
-		unlock(&srvlk);
+		qunlock(&srvlk);
 		nexterror();
 	}
-	j = -1;
-	for(i=0; i<conf.nsrv; i++){
-		if(srv[i].chan == 0){
-			if(j == -1)
-				j = i;
-		}
-		else if(strcmp(name, srv[i].name) == 0)
-			error(Einuse);
-	}
-	if(j == -1)
-		exhausted("server slots");
-	sp = &srv[j];
-	sp->chan = c;
-	incref(c);
-	unlock(&srvlk);
+	sp->path = path++;
+	sp->link = srv;
+	c->qid.path = sp->path;
+	srv = sp;
+	qunlock(&srvlk);
 	poperror();
+
 	strncpy(sp->name, name, NAMELEN);
 	strncpy(sp->owner, u->p->user, NAMELEN);
 	sp->perm = perm&0777;
 
-	c->qid.path = j;
 	c->flag |= COPEN;
 	c->mode = OWRITE;
 }
@@ -143,24 +149,36 @@ void
 srvremove(Chan *c)
 {
 	Chan *f;
+	Srv *sp, **l;
 
 	if(c->qid.path == CHDIR)
 		error(Eperm);
 
-	lock(&srvlk);
+	qlock(&srvlk);
 	if(waserror()){
-		unlock(&srvlk);
+		qunlock(&srvlk);
 		nexterror();
 	}
-	f = srv[c->qid.path].chan;
-	if(f == 0)
-		error(Eshutdown);
-	if(strcmp(srv[c->qid.path].name, "boot") == 0)
+	l = &srv;
+	for(sp = *l; sp; sp = sp->link) {
+		if(sp->path == c->qid.path)
+			break;
+
+		l = &srv->link;
+	}
+	if(sp == 0)
+		error(Enonexist);
+
+	if(strcmp(sp->name, "boot") == 0)
 		error(Eperm);
-	srv[c->qid.path].chan = 0;
-	unlock(&srvlk);
+
+	*l = sp->link;
+	qunlock(&srvlk);
 	poperror();
-	close(f);
+
+	if(sp->chan)
+		close(sp->chan);
+	free(sp);
 }
 
 void
@@ -186,10 +204,11 @@ srvread(Chan *c, void *va, long n, ulong offset)
 long
 srvwrite(Chan *c, void *va, long n, ulong offset)
 {
+	Srv *sp;
 	Fgrp *f;
+	Chan *c1;
 	int i, fd;
 	char buf[32];
-	Chan *c1;
 
 	if(n >= sizeof buf)
 		error(Egreg);
@@ -209,18 +228,24 @@ srvwrite(Chan *c, void *va, long n, ulong offset)
 	unlock(f);
 	poperror();
 
-	lock(&srvlk);
-	if (waserror()) {
-		unlock(&srvlk);
+	qlock(&srvlk);
+	if(waserror()) {
+		qunlock(&srvlk);
 		close(c1);
 		nexterror();
 	}
-	i = c->qid.path;
-	if(srv[i].chan != c)	/* already been written to */
-		error(Egreg);
+	for(sp = srv; sp; sp = sp->link)
+		if(sp->path == c->qid.path)
+			break;
 
-	srv[i].chan = c1;
-	unlock(&srvlk);
+	if(sp == 0)
+		error(Enonexist);
+
+	if(sp->chan)
+		panic("srvwrite");
+
+	sp->chan = c1;
+	qunlock(&srvlk);
 	poperror();
 	return n;
 }

@@ -55,7 +55,7 @@ initfrag(int size)
 {
 	Fragq *fq, *eq;
 
-	fragfree = (Fragq*)ialloc(sizeof(Fragq) * size, 0);
+	fragfree = (Fragq*)xalloc(sizeof(Fragq) * size);
 
 	eq = &fragfree[size];
 	for(fq = fragfree; fq < eq; fq++)

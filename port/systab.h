@@ -12,8 +12,8 @@ Syscall sysdup;
 Syscall sysalarm;
 Syscall sysexec;
 Syscall sysexits;
-Syscall sys__fork__;
-Syscall sys__forkpgrp__;
+Syscall sysdeath;
+Syscall sysdeath;
 Syscall sysfstat;
 Syscall syssegbrk;
 Syscall sysmount;
@@ -26,7 +26,7 @@ Syscall sysrfork;
 Syscall syswrite;
 Syscall syspipe;
 Syscall syscreate;
-Syscall sys__rfork__;
+Syscall sysdeath;
 Syscall sysbrk_;
 Syscall sysremove;
 Syscall syswstat;
@@ -51,8 +51,8 @@ Syscall *systab[]={
 	[ALARM]		sysalarm,
 	[EXEC]		sysexec,
 	[EXITS]		sysexits,
-	[__FORK__]	sys__fork__,
-	[__FORKPGRP__]	sys__forkpgrp__,
+	[__FORK__]	sysdeath,
+	[__FORKPGRP__]	sysdeath,
 	[FSTAT]		sysfstat,
 	[SEGBRK]	syssegbrk,
 	[MOUNT]		sysmount,
@@ -65,7 +65,7 @@ Syscall *systab[]={
 	[WRITE]		syswrite,
 	[PIPE]		syspipe,
 	[CREATE]	syscreate,
-	[__RFORK__]	sys__rfork__,
+	[__RFORK__]	sysdeath,
 	[BRK_]		sysbrk_,
 	[REMOVE]	sysremove,
 	[WSTAT]		syswstat,

@@ -99,9 +99,9 @@ kmapinit(void)
 	print("%lud free map registers\n", e-i);
 
 	kmapalloc.free = 0;
-	for(k=&kmapalloc.arena[i]; i<e; i++,k++){
+	for(k=&kmapalloc.arena[i]; i < e; i++){
 		k->va = i*BY2PG|KZERO;
-		kunmap(k);
+		kunmap(k++);
 	}
 }
 

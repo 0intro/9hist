@@ -8,7 +8,6 @@
 #include	<a.out.h>
 
 int	shargs(char*, int, char**);
-long	rfork(ulong);
 
 long
 sysr1(ulong *arg)
@@ -17,52 +16,24 @@ sysr1(ulong *arg)
 	return 0;
 }
 
-enum					/* Argument to forkpgrp call */
-{
-	FPall 	  = 0,			/* Concession to back portablility */
-	FPnote 	  = 1,
-	FPnamespc = 2,
-	FPenv	  = 4,
-	FPclear	  = 8,
-};
-
-long
-sys__fork__(ulong *arg)
-{
-	USED(arg);
-	return rfork(RFFDG|RFPROC);
-}
-
-long
-sys__rfork__(ulong *arg)
-{
-	return rfork(arg[0]|RFPROC);
-}
-
-/* This call will obsolete fork */
 long
 sysrfork(ulong *arg)
 {
-	return rfork(arg[0]);
-}
-
-long
-rfork(ulong flag)
-{
-	Proc *p, *parent;
-	Segment *s;
-	ulong usp, upa, pid;
-	int n, on, i;
 	Chan *c;
 	KMap *k;
 	Pgrp *opg;
 	Egrp *oeg;
 	Fgrp *ofg;
+	Segment *s;
+	int n, on, i;
+	Proc *p, *parent;
+	ulong usp, upa, pid, flag;
 	/*
 	 * used to compute last valid system stack address for copy
 	 */
 	int lastvar;	
 
+	flag = arg[0];
 	p = u->p;
 	if((flag&RFPROC) == 0) {
 		if(flag & (RFNAMEG|RFCNAMEG)) {
@@ -522,36 +493,6 @@ syswait(ulong *arg)
 }
 
 long
-sys__wait__(ulong *arg)			/* binary compatibility: BUG */
-{
-	int i;
-
-	struct oldWaitmsg
-	{
-		int	pid;		/* of loved one */
-		int	status;		/* unused; a vestige */
-		long	time[3];	/* of loved one & descendants */
-		char	msg[ERRLEN];
-	} *wp;
-	Waitmsg w;
-
-	if(arg[0]){
-		validaddr(arg[0], sizeof(struct oldWaitmsg), 1);
-		evenaddr(arg[0]);
-		i = pwait(&w);
-		wp = (struct oldWaitmsg*)arg[0];
-		wp->pid = atoi(w.pid);
-		wp->status = 0;
-		wp->time[TUser] = atoi(w.time+TUser*NUMSIZE);
-		wp->time[TSys] = atoi(w.time+TSys*NUMSIZE);
-		wp->time[TReal] = atoi(w.time+TReal*NUMSIZE);
-		memmove(wp->msg, w.msg, ERRLEN);
-		return i;
-	}
-	return pwait(0);
-}
-
-long
 sysdeath(ulong *arg)
 {
 	USED(arg);
@@ -569,48 +510,6 @@ syserrstr(ulong *arg)
 	memmove((char*)arg[0], u->error, ERRLEN);
 	strncpy(u->error, Enoerror, ERRLEN);
 	return 0;
-}
-
-long
-sys__forkpgrp__(ulong *arg)
-{
-	int mask;
-	Pgrp *pg;
-	Egrp *eg;
-
-	pg = newpgrp();
-	eg = newegrp();
-	if(waserror()){
-		closepgrp(pg);
-		closeegrp(eg);
-		nexterror();
-	}
-
-	mask = arg[0];
-	if(mask == FPall)
-		mask = FPnote|FPenv|FPnamespc;
-
-	if(mask & FPnamespc)
-		pgrpcpy(pg, u->p->pgrp);
-	else
-		*pg->crypt = *u->p->pgrp->crypt;
-
-	if(mask & FPenv)
-		envcpy(eg, u->p->egrp);
-
-	if((mask & FPnote) == 0) {
-		u->nnote = 0;
-		u->notified = 0;
-		memset(u->note, 0, sizeof(u->note));
-	}
-	u->p->noteid = incref(&noteidalloc);
-
-	poperror();
-	closepgrp(u->p->pgrp);
-	closeegrp(u->p->egrp);
-	u->p->pgrp = pg;
-	u->p->egrp = eg;
-	return pg->pgrpid;
 }
 
 long

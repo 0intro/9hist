@@ -13,51 +13,35 @@
  * Writing a semaphore sets the value, so writing 0 resets (clears) the semaphore.
  */
 
-#define	SEMPERPG	64		/* hardware semaphores per page */
-#define NSEMPG		1024
-#define ULOCKPG		512
+enum
+{
+	SEMPERPG	= 64,		/* hardware semaphores per page */
+	NSEMPG		= 1024,
+	ULOCKPG		= 512,
+};
 
 struct
 {
 	Lock	lock;			/* lock to allocate */
-	ulong	*nextsem;		/* next one to allocate */
-	int	nsem;			/* at SEMPERPG, jump to next page */
 	uchar	bmap[NSEMPG];		/* allocation map */
 	int	ulockpg;		/* count of user lock available */
 }semalloc;
 
 Page lkpgheader[NSEMPG];
+#define lhash(laddr)	((int)laddr>>2)&(((NSEMPG-ULOCKPG)*(BY2PG>>2))-1)
 
 void
 lockinit(void)
 {
 	memset(semalloc.bmap, 0, sizeof(semalloc.bmap));
-	semalloc.bmap[0] = 1;
-
+	/*
+	 * Initialise the system semaphore hardware
+	 */
+	memset(SBSEM, 0, (NSEMPG-ULOCKPG)*BY2PG);
 	semalloc.ulockpg = ULOCKPG;
-	semalloc.lock.sbsem = SBSEM;
-	semalloc.nextsem = SBSEM+1;
-	semalloc.nsem = 1;
-	unlock(&semalloc.lock);
 }
 
-/* return the address of the next free page of locks */
-ulong*
-lkpgalloc(void)
-{
-	uchar *p, *top;
-
-	top = &semalloc.bmap[NSEMPG];
-	for(p = semalloc.bmap; *p && p < top; p++)
-		;
-	if(p == top)
-		panic("lkpgalloc");
-
-	*p = 1;
-	return (p-semalloc.bmap)*WD2PG + SBSEM;
-}
-
-/* Moral equivalent of newpage for pages of hardware lock */
+/* Moral equivalent of newpage for pages of hardware locks */
 Page*
 lkpage(ulong va)
 {
@@ -103,78 +87,64 @@ lkpgfree(Page *pg)
 	unlock(&semalloc.lock);
 }
 
-/*
- * If l->sbsem is zero, allocate a hardware semaphore first.
- */
 void
-lock(Lock *l)
+lock(Lock *lk)
 {
-	int i;
-	ulong *sbsem;
+	int *hwsem;
+	int i, hash;
 
-	sbsem = l->sbsem;
-	if(sbsem == 0){
-		lock(&semalloc.lock);
-		if(l->sbsem == 0){
-			if(semalloc.nsem == SEMPERPG){
-				semalloc.nsem = 0;
-				semalloc.nextsem = lkpgalloc();
+	hash = lhash(lk);
+	hwsem = (int*)SBSEM+hash;
+
+	i = 1000000;
+	for(;;) {
+		if((*hwsem & 1) == 0) {
+			if(lk->val)
+				*hwsem = 0;
+			else {
+				lk->val = 1;
+				*hwsem = 0;
+				lk->pc = getcallerpc(lk);
+				return;
 			}
-			l->sbsem = semalloc.nextsem;
-			semalloc.nextsem++;
-			semalloc.nsem++;
-			unlock(l);		/* put sem in known state */
 		}
-		unlock(&semalloc.lock);
-		sbsem = l->sbsem;
+		while(lk->val && i)
+			i--;
+		if(i <= 0)
+			break;
 	}
-	/*
-	 * Try the fast grab first
-	 */
-	if((*sbsem&1) == 0){
-		l->pc = getcallerpc(l);
-		return;
-	}
-	for(i=0; i<10000000; i++)
-    		if((*sbsem&1) == 0){
-			l->pc = getcallerpc(l);
-			return;
-	}
-	*sbsem = 0;
-	print("lock loop %lux pc %lux held by pc %lux\n", l, getcallerpc(l), l->pc);
+	print("lock loop %lux pc %lux held by pc %lux\n", lk, getcallerpc(lk), lk->pc);
 	dumpstack();
-}
+}	
 
 int
-canlock(Lock *l)
+canlock(Lock *lk)
 {
-	ulong *sbsem;
+	int *hwsem;
+	int i, hash;
 
-	sbsem = l->sbsem;
-	if(sbsem == 0){
-		lock(&semalloc.lock);
-		if(l->sbsem == 0){
-			if(semalloc.nsem == SEMPERPG){
-				semalloc.nsem = 0;
-				semalloc.nextsem = lkpgalloc();
+	hash = lhash(lk);
+	hwsem = (int*)SBSEM+hash;
+
+	for(;;) {
+		if((*hwsem & 1) == 0) {
+			if(lk->val)
+				*hwsem = 0;
+			else {
+				lk->val = 1;
+				*hwsem = 0;
+				lk->pc = getcallerpc(lk);
+				return 1;
 			}
-			l->sbsem = semalloc.nextsem;
-			semalloc.nextsem++;
-			semalloc.nsem++;
-			unlock(l);		/* put sem in known state */
 		}
-		unlock(&semalloc.lock);
-		sbsem = l->sbsem;
+		if(lk->val)
+			return 0;
 	}
-	if(*sbsem & 1)
-		return 0;
-	l->pc = getcallerpc(l);
-	return 1;
 }
 
 void
 unlock(Lock *l)
 {
 	l->pc = 0;
-	*l->sbsem = 0;
+	l->val = 0;
 }

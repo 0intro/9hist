@@ -10,35 +10,36 @@
 
 typedef struct Lapd	Lapd;
 
-#define NOW	TK2MS(MACHP(0)->ticks)
-#define	T200	(NOW+2500)
-
-	/* C/R bits */
-
-#define	UCmd	0	/* command, user to network */
-#define	UResp	2	/* response, user to network */
-#define	NCmd	2	/* command, network to user */
-#define	NResp	0	/* response, network to user */
-
+#define NOW		TK2MS(MACHP(0)->ticks)
+#define	T200		(NOW+2500)
 #define	SAPI(s, cr)	(((s)<<2)|cr)
 #define	TEI(t)		(((t)<<1)|1)
 
 /*
  *  Commands and responses
  */
+enum
+{
+	RR	= 0x01,	/* Receiver Ready */
+	RNR	= 0x05,	/* Receiver Not Ready */
+	REJ	= 0x09,	/* Reject */
+	SABME	= 0x6f,	/* Set Asynchronous Balanced Mode Extended */
+	DM	= 0x0f,	/* Disconnect Mode */
+	UI	= 0x03,	/* Unnumbered Information */
+	DISC	= 0x43,	/* Disconnect */
+	UA	= 0x63,	/* Unnumbered Acknowledgement */
+	FRMR	= 0x87,	/* Frame Reject */
+	XID	= 0xaf,	/* Exchange Identification */
 
-#define	RR	0x01	/* Receiver Ready */
-#define	RNR	0x05	/* Receiver Not Ready */
-#define	REJ	0x09	/* Reject */
-#define	SABME	0x6f	/* Set Asynchronous Balanced Mode Extended */
-#define	DM	0x0f	/* Disconnect Mode */
-#define	UI	0x03	/* Unnumbered Information */
-#define	DISC	0x43	/* Disconnect */
-#define	UA	0x63	/* Unnumbered Acknowledgement */
-#define	FRMR	0x87	/* Frame Reject */
-#define	XID	0xaf	/* Exchange Identification */
+	/* C/R bits */
+	UCmd	= 0,	/* command, user to network */
+	UResp	= 2,	/* response, user to network */
+	NCmd	= 2,	/* command, network to user */
+	NResp	= 0	/* response, network to user */
+};
 
-enum States {
+enum States
+{
 	Unused = 0,
 	NoTEI,
 	WaitTEI,
@@ -48,12 +49,13 @@ enum States {
 	WaitRel,
 };
 
-enum Flags {
-	Ownbusy = 0x01,
-	Peerbusy = 0x02,
-	Rejecting = 0x04,
-	Timeout = 0x08,
-	Hungup = 0x80
+enum Flags
+{
+	Ownbusy 	= 0x01,
+	Peerbusy 	= 0x02,
+	Rejecting	= 0x04,
+	Timeout		= 0x08,
+	Hungup		= 0x80
 };
 
 #define	SMASK		127
@@ -69,7 +71,8 @@ enum Flags {
 #define	RSTATE(lp)	((lp->flags&Ownbusy) ? RNR : \
 			(lp->flags&Rejecting) ? REJ : RR)
 
-struct Lapd {
+struct Lapd
+{
 	QLock;		/* access, state change */
 	Rendez;		/* waiting for state change */
 	int	state;
@@ -158,7 +161,7 @@ lapderror(Lapd *lp, int code)
 static void
 lapdreset(void)
 {
-	lapd = ialloc(conf.nlapd*sizeof(Lapd), 0);
+	lapd = xalloc(conf.nlapd*sizeof(Lapd));
 }
 
 static void

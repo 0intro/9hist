@@ -215,11 +215,6 @@ confinit(void)
 	conf.npgenv = 200*mul;
 	conf.nstream = 40 + 32*mul;
 	conf.nqueue = 5 * conf.nstream;
-	conf.nsrv = 16*mul;			/* was 32 */
-	conf.nbitmap = 300*mul;
-	conf.nbitbyte = 300*1024*mul;
-	conf.nfont = 10*mul;
-	conf.nsubfont = 10*mul;
 	conf.nurp = 32;
 	conf.nasync = 1;
 	conf.copymode = 0;		/* copy on write */
@@ -276,7 +271,7 @@ lancesetup(Lance *lp)
 	 */
 	i = (lp->nrrb+lp->ntrb)*sizeof(Etherpkt);
 	i = (i+(BY2PG-1))/BY2PG;
-	pa = (ulong)ialloc(i*BY2PG, 1)&~KZERO;
+	pa = (ulong)xspanalloc(i*BY2PG, BY2PG, 0)&~KZERO;
 	va = 0;
 	for(j=i-1; j>=0; j--){
 		k = kmappa(pa+j*BY2PG, PTEMAINMEM|PTENOCACHE);

@@ -15,7 +15,14 @@ enum {
 };
 
 /* input states */
-enum { Hunt=0, Framing, Framed, Data, Escape };
+enum
+{
+	Hunt,
+	Framing,
+	Framed,
+	Data,
+	Escape
+};
 
 typedef struct Async {
 	QLock;
@@ -24,7 +31,6 @@ typedef struct Async {
 	Queue	*wq;
 
 	/* output state */
-
 	QLock	xmit;		/* transmit lock */
 	int	chan;		/* current urp channel */
 	Block	*bp;		/* current output buffer */
@@ -32,14 +38,12 @@ typedef struct Async {
 	ushort	crc;
 
 	/* input state */
-
 	int	state;		/* input state */
 	uchar	buf[MAXFRAME];	/* current input buffer */
 	int	icount;
 	ushort	icrc;
 
 	/* statistics */
-
 	ulong	chan0;
 	ulong	toolong;
 	ulong	tooshort;
@@ -93,7 +97,7 @@ static ushort crc_table[256] = {
 static void
 asyncreset(void)
 {
-	async = (Async *)ialloc(conf.nasync*sizeof(Async), 0);
+	async = (Async *)xalloc(conf.nasync*sizeof(Async));
 }
 
 /*

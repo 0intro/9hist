@@ -157,9 +157,9 @@ runproc(void)
 loop:
 	spllo();
 	while(runhiq.head==0 && runloq.head==0)
-		for(i=0; i<10; i++)	/* keep out of shared memory for a while */
-			;
+		;
 	splhi();
+
 	lock(&runhiq);
 	if(runhiq.head)
 		rq = &runhiq;

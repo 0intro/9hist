@@ -21,7 +21,7 @@ pageinit(void)
 	palloc.head = xalloc(np*sizeof(Page));
 	if(palloc.head == 0)
 		panic("pageinit");
-print("page: %lux %d %lux %d\n", palloc.p0, palloc.np0, palloc.p1, palloc.np1);
+
 	p = palloc.head;
 	while(palloc.np0 > 0) {
 		p->prev = p-1;

@@ -71,3 +71,5 @@ void	vmereset(void);
 void	wbflush(void);
 #define	waserror()	setlabel(&u->errlab[u->nerrlab++])
 #define	kmapperm(x)	kmap(x)
+#define KADDR(a)	((void*)((ulong)(a)|KZERO))
+#define PADDR(a)	((ulong)(a)&~KZERO)

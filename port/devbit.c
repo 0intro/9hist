@@ -37,26 +37,36 @@ int flipping;	/* are flip tables being used to transform Fcodes? */
  */
 
 /*
- * Arena is a word containing N, followed by a pointer to its bitmap,
- * followed by N blocks.  The bitmap pointer is zero if block is free.
+ * Arena is a word containing N, followed by a pointer to the Arena,
+ * followed by a pointer to the Bitmap, followed by N words.
+ * The bitmap pointer is zero if block is free.
  * bit.map is an array of pointers to GBitmaps.  The GBitmaps are
  * freed individually and their corresponding entries in bit.map are zeroed.
  * The index into bit.map is the Bitmap id as seen in libg.  Subfonts and
  * fonts are handled similarly.
  */
 
+typedef struct	Arena	Arena;
+struct Arena
+{
+	ulong	*words;		/* storage */
+	ulong	*wfree;		/* pointer to next free word */
+	ulong	nwords;		/* total in arena */
+	int	nbusy;		/* number of busy blocks */
+};
+
 struct
 {
 	Ref;
+	QLock;
 	GBitmap	**map;		/* indexed array */
 	int	nmap;		/* number allocated */
-	ulong	*words;		/* storage */
-	ulong	nwords;		/* total in arena */
-	ulong	*wfree;		/* pointer to next free word */
 	GFont	**font;		/* indexed array */
 	int	nfont;		/* number allocated */
 	GSubfont**subfont;	/* indexed array */
 	int	nsubfont;	/* number allocated */
+	Arena	*arena;		/* array */
+	int	narena;		/* number allocated */
 	int	lastid;		/* last allocated bitmap id */
 	int	lastsubfid;	/* last allocated subfont id */
 	int	lastfid;	/* last allocated font id */
@@ -67,13 +77,15 @@ struct
 	int	mid;		/* colormap read bitmap id */
 }bit;
 
-#define	DMAP	32		/* delta increase in size of arrays */
+#define	DMAP	16		/* delta increase in size of arrays */
 #define	FREE	0x80000000
+
 void	bitcompact(void);
 int	bitalloc(Rectangle, int);
 void	bitfree(GBitmap*);
 void	fontfree(GFont*);
 void	subfontfree(GSubfont*);
+void	arenafree(Arena*);
 void	bitstring(GBitmap*, Point, GFont*, uchar*, long, Fcode);
 void	bitloadchar(GFont*, int, GSubfont*, int);
 extern	GBitmap	gscreen;
@@ -149,6 +161,7 @@ Dirtab bitdir[]={
 
 #define	NBIT	(sizeof bitdir/sizeof(Dirtab))
 #define	NINFO	8192
+#define	HDR	3
 
 void
 bitreset(void)
@@ -156,6 +169,7 @@ bitreset(void)
 	int i;
 	GBitmap *bp;
 	ulong r;
+	Arena *a;
 
 	bit.map = smalloc(DMAP*sizeof(GBitmap*));
 	bit.nmap = DMAP;
@@ -165,14 +179,23 @@ bitreset(void)
 	bit.lastid = -1;
 	bit.lastsubfid = -1;
 	bit.lastfid = -1;
-	bit.words = ialloc(conf.nbitbyte, 0);
-print("bitreset %lux\n", bit.words);
-	bit.nwords = conf.nbitbyte/sizeof(ulong);
-	bit.wfree = bit.words;
 	bit.font = smalloc(DMAP*sizeof(GFont*));
 	bit.nfont = DMAP;
 	bit.subfont = smalloc(DMAP*sizeof(GSubfont*));
 	bit.nsubfont = DMAP;
+	bit.arena = smalloc(DMAP*sizeof(Arena));
+	bit.narena = DMAP;
+	a = &bit.arena[0];
+	/*
+	 * Somewhat of a heuristic: start with three screensful and
+	 * allocate single screensful dynamically if needed.
+	 */
+	a->nwords = 3*(gscreen.width*gscreen.r.max.y+HDR);
+	a->words = xalloc(a->nwords*sizeof(ulong));
+	if(a->words == 0)
+		panic("bitreset");
+	a->wfree = a->words;
+	a->nbusy = 1;	/* keep 0th arena from being freed */
 	Cursortocursor(&arrow);
 }
 
@@ -336,8 +359,7 @@ bitread(Chan *c, void *va, long n, ulong offset)
 	if(c->qid.path & CHDIR)
 		return devdirread(c, va, n, bitdir, NBIT, devgen);
 
-	switch(c->qid.path){
-	case Qmouse:
+	if(c->qid.path == Qmouse){
 		/*
 		 * mouse:
 		 *	'm'		1
@@ -361,179 +383,9 @@ bitread(Chan *c, void *va, long n, ulong offset)
 		PLONG(p+6, mouse.xy.y);
 		mouse.changed = 0;
 		unlock(&cursor);
-		n = 10;
-		break;
-
-	case Qbitblt:
-		p = va;
-		/*
-		 * Fuss about and figure out what to say.
-		 */
-		if(bit.init){
-			/*
-			 * init:
-			 *	'I'		1
-			 *	ldepth		1
-			 * 	rectangle	16
-			 * if count great enough, also
-			 *	font info	3*12
-			 *	fontchars	6*(defont->n+1)
-			 */
-			if(n < 18)
-				error(Ebadblt);
-			p[0] = 'I';
-			p[1] = gscreen.ldepth;
-			PLONG(p+2, gscreen.r.min.x);
-			PLONG(p+6, gscreen.r.min.y);
-			PLONG(p+10, gscreen.r.max.x);
-			PLONG(p+14, gscreen.r.max.y);
-			dn = 18;
-			if(bit.init=='j' && n>=18+16){
-				PLONG(p+18, gscreen.clipr.min.x);
-				PLONG(p+22, gscreen.clipr.min.y);
-				PLONG(p+26, gscreen.clipr.max.x);
-				PLONG(p+30, gscreen.clipr.max.y);
-				dn += 16;
-			}
-			if(n >= dn+3*12+6*(defont->n+1)){
-				p += dn;
-				sprint((char*)p, "%11d %11d %11d ", defont->n,
-					defont->height, defont->ascent);
-				p += 3*12;
-				for(i=defont->info,j=0; j<=defont->n; j++,i++,p+=6){
-					PSHORT(p, i->x);
-					p[2] = i->top;
-					p[3] = i->bottom;
-					p[4] = i->left;
-					p[5] = i->width;
-				}
-				n = dn+3*12+6*(defont->n+1);
-			}else
-				n = dn;
-			bit.init = 0;
-			break;
-		}
-		if(bit.lastid > 0){
-			/*
-			 * allocate:
-			 *	'A'		1
-			 *	bitmap id	2
-			 */
-			if(n < 3)
-				error(Ebadblt);
-			p[0] = 'A';
-			PSHORT(p+1, bit.lastid);
-			bit.lastid = -1;
-			n = 3;
-			break;
-		}
-		if(bit.lastsubfid > 0){
-			/*
-			 * allocate subfont:
-			 *	'K'		1
-			 *	subfont id	2
-			 */
-			if(n < 3)
-				error(Ebadblt);
-			p[0] = 'K';
-			PSHORT(p+1, bit.lastsubfid);
-			bit.lastsubfid = -1;
-			n = 3;
-			break;
-		}
-		if(bit.lastfid >= 0){
-			/*
-			 * allocate font:
-			 *	'N'		1
-			 *	font id		2
-			 */
-			if(n < 3)
-				error(Ebadblt);
-			p[0] = 'N';
-			PSHORT(p+1, bit.lastfid);
-			bit.lastfid = -1;
-			n = 3;
-			break;
-		}
-		if(bit.mid >= 0){
-			/*
-			 * read colormap:
-			 *	data		12*(2**bitmapdepth)
-			 */
-			src = bit.map[bit.mid];
-			if(src == 0)
-				error(Ebadbitmap);
-			l = (1<<src->ldepth);
-			nw = 1 << l;
-			if(n < 12*nw)
-				error(Ebadblt);
-			for(j = 0; j < nw; j++){
-				if(bit.mid == 0){
-					getcolor(flipping? ~j : j, &rv, &gv, &bv);
-				}else{
-					rv = j;
-					for(off = 32-l; off > 0; off -= l)
-						rv = (rv << l) | j;
-					gv = bv = rv;
-				}
-				PLONG(p, rv);
-				PLONG(p+4, gv);
-				PLONG(p+8, bv);
-				p += 12;
-			}
-			bit.mid = -1;
-			n = 12*nw;
-			break;
-		}
-		if(bit.rid >= 0){
-			/*
-			 * read bitmap:
-			 *	data		bytewidth*(maxy-miny)
-			 */
-			src = bit.map[bit.rid];
-			if(src == 0)
-				error(Ebadbitmap);
-			off = 0;
-			if(bit.rid == 0)
-				off = 1;
-			miny = bit.rminy;
-			maxy = bit.rmaxy;
-			if(miny>maxy || miny<src->r.min.y || maxy>src->r.max.y)
-				error(Ebadblt);
-			ws = 1<<(3-src->ldepth);	/* pixels per byte */
-			/* set l to number of bytes of incoming data per scan line */
-			if(src->r.min.x >= 0)
-				l = (src->r.max.x+ws-1)/ws - src->r.min.x/ws;
-			else{	/* make positive before divide */
-				t = (-src->r.min.x)+ws-1;
-				t = (t/ws)*ws;
-				l = (t+src->r.max.x+ws-1)/ws;
-			}
-			if(n < l*(maxy-miny))
-				error(Ebadblt);
-			if(off)
-				cursoroff(1);
-			n = 0;
-			p = va;
-			for(y=miny; y<maxy; y++){
-				q = (uchar*)gaddr(src, Pt(src->r.min.x, y));
-				q += (src->r.min.x&((sizeof(ulong))*ws-1))/ws;
-				if(bit.rid == 0 && flipping)	/* flip bits */
-					for(x=0; x<l; x++)
-						*p++ = ~(*q++);
-				else
-					for(x=0; x<l; x++)
-						*p++ = *q++;
-				n += l;
-			}
-			if(off)
-				cursoron(1);
-			bit.rid = -1;
-			break;
-		}
-		error(Ebadblt);
-
-	case Qscreen:
+		return 10;
+	}
+	if(c->qid.path == Qscreen){
 		if(offset==0){
 			if(n < 5*12)
 				error(Eio);
@@ -541,8 +393,7 @@ bitread(Chan *c, void *va, long n, ulong offset)
 				gscreen.ldepth, gscreen.r.min.x,
 				gscreen.r.min.y, gscreen.r.max.x,
 				gscreen.r.max.y);
-			n = 5*12;
-			break;
+			return 5*12;
 		}
 		ws = 1<<(3-gscreen.ldepth);	/* pixels per byte */
 		l = (gscreen.r.max.x+ws-1)/ws - gscreen.r.min.x/ws;
@@ -565,12 +416,174 @@ bitread(Chan *c, void *va, long n, ulong offset)
 					*p++ = *q++;
 			n += l;
 		}
-		break;
-
-	default:
+		return n;
+	}
+	if(c->qid.path != Qbitblt)
 		error(Egreg);
+
+	qlock(&bit);
+	if(waserror()){
+		qunlock(&bit);
+		nexterror();
+	}
+	p = va;
+	/*
+	 * Fuss about and figure out what to say.
+	 */
+	if(bit.init){
+		/*
+		 * init:
+		 *	'I'		1
+		 *	ldepth		1
+		 * 	rectangle	16
+		 * if count great enough, also
+		 *	font info	3*12
+		 *	fontchars	6*(defont->n+1)
+		 */
+		if(n < 18)
+			error(Ebadblt);
+		p[0] = 'I';
+		p[1] = gscreen.ldepth;
+		PLONG(p+2, gscreen.r.min.x);
+		PLONG(p+6, gscreen.r.min.y);
+		PLONG(p+10, gscreen.r.max.x);
+		PLONG(p+14, gscreen.r.max.y);
+		dn = 18;
+		if(bit.init=='j' && n>=18+16){
+			PLONG(p+18, gscreen.clipr.min.x);
+			PLONG(p+22, gscreen.clipr.min.y);
+			PLONG(p+26, gscreen.clipr.max.x);
+			PLONG(p+30, gscreen.clipr.max.y);
+			dn += 16;
+		}
+		if(n >= dn+3*12+6*(defont->n+1)){
+			p += dn;
+			sprint((char*)p, "%11d %11d %11d ", defont->n,
+				defont->height, defont->ascent);
+			p += 3*12;
+			for(i=defont->info,j=0; j<=defont->n; j++,i++,p+=6){
+				PSHORT(p, i->x);
+				p[2] = i->top;
+				p[3] = i->bottom;
+				p[4] = i->left;
+				p[5] = i->width;
+			}
+			n = dn+3*12+6*(defont->n+1);
+		}else
+			n = dn;
+		bit.init = 0;
+	}else if(bit.lastid > 0){
+		/*
+		 * allocate:
+		 *	'A'		1
+		 *	bitmap id	2
+		 */
+		if(n < 3)
+			error(Ebadblt);
+		p[0] = 'A';
+		PSHORT(p+1, bit.lastid);
+		bit.lastid = -1;
+		n = 3;
+	}else if(bit.lastsubfid > 0){
+		/*
+		 * allocate subfont:
+		 *	'K'		1
+		 *	subfont id	2
+		 */
+		if(n < 3)
+			error(Ebadblt);
+		p[0] = 'K';
+		PSHORT(p+1, bit.lastsubfid);
+		bit.lastsubfid = -1;
+		n = 3;
+	}else if(bit.lastfid >= 0){
+		/*
+		 * allocate font:
+		 *	'N'		1
+		 *	font id		2
+		 */
+		if(n < 3)
+			error(Ebadblt);
+		p[0] = 'N';
+		PSHORT(p+1, bit.lastfid);
+		bit.lastfid = -1;
+		n = 3;
+	}else if(bit.mid >= 0){
+		/*
+		 * read colormap:
+		 *	data		12*(2**bitmapdepth)
+		 */
+		src = bit.map[bit.mid];
+		if(src == 0)
+			error(Ebadbitmap);
+		l = (1<<src->ldepth);
+		nw = 1 << l;
+		if(n < 12*nw)
+			error(Ebadblt);
+		for(j = 0; j < nw; j++){
+			if(bit.mid == 0){
+				getcolor(flipping? ~j : j, &rv, &gv, &bv);
+			}else{
+				rv = j;
+				for(off = 32-l; off > 0; off -= l)
+					rv = (rv << l) | j;
+				gv = bv = rv;
+			}
+			PLONG(p, rv);
+			PLONG(p+4, gv);
+			PLONG(p+8, bv);
+			p += 12;
+		}
+		bit.mid = -1;
+		n = 12*nw;
+	}else if(bit.rid >= 0){
+		/*
+		 * read bitmap:
+		 *	data		bytewidth*(maxy-miny)
+		 */
+		src = bit.map[bit.rid];
+		if(src == 0)
+			error(Ebadbitmap);
+		off = 0;
+		if(bit.rid == 0)
+			off = 1;
+		miny = bit.rminy;
+		maxy = bit.rmaxy;
+		if(miny>maxy || miny<src->r.min.y || maxy>src->r.max.y)
+			error(Ebadblt);
+		ws = 1<<(3-src->ldepth);	/* pixels per byte */
+		/* set l to number of bytes of incoming data per scan line */
+		if(src->r.min.x >= 0)
+			l = (src->r.max.x+ws-1)/ws - src->r.min.x/ws;
+		else{	/* make positive before divide */
+			t = (-src->r.min.x)+ws-1;
+			t = (t/ws)*ws;
+			l = (t+src->r.max.x+ws-1)/ws;
+		}
+		if(n < l*(maxy-miny))
+			error(Ebadblt);
+		if(off)
+			cursoroff(1);
+		n = 0;
+		p = va;
+		for(y=miny; y<maxy; y++){
+			q = (uchar*)gaddr(src, Pt(src->r.min.x, y));
+			q += (src->r.min.x&((sizeof(ulong))*ws-1))/ws;
+			if(bit.rid == 0 && flipping)	/* flip bits */
+				for(x=0; x<l; x++)
+					*p++ = ~(*q++);
+			else
+				for(x=0; x<l; x++)
+					*p++ = *q++;
+			n += l;
+		}
+		if(off)
+			cursoron(1);
+		bit.rid = -1;
 	}
 
+	poperror();
+	qunlock(&bit);
 	return n;
 }
 
@@ -598,7 +611,9 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 		error(Egreg);
 
 	isoff = 0;
+	qlock(&bit);
 	if(waserror()){
+		qunlock(&bit);
 		if(isoff)
 			cursoron(1);
 		nexterror();
@@ -1001,48 +1016,6 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			m -= 11;
 			break;
 
-		case 's':
-			/*
-			 * subfstring
-			 *	's'		1
-			 *	id		2
-			 *	pt		8
-			 *	subfont id	2
-			 *	code		2
-			 * 	string		n (null terminated)
-			 */
-			if(m < 16)
-				error(Ebadblt);
-			v = GSHORT(p+1);
-			if(v<0 || v>=bit.nmap || (dst=bit.map[v])==0)
-				error(Ebadbitmap);
-			off = 0;
-			fc = GSHORT(p+13) & 0xF;
-			if(v == 0){
-				if(flipping)
-					fc = flipD[fc];
-				off = 1;
-			}
-			pt.x = GLONG(p+3);
-			pt.y = GLONG(p+7);
-			v = GSHORT(p+11);
-			if(v<0 || v>=bit.nsubfont || (f=bit.subfont[v])==0)
-				error(Ebadblt);
-			p += 15;
-			m -= 15;
-			q = memchr(p, 0, m);
-			if(q == 0)
-				error(Ebadblt);
-			if(off && !isoff){
-				cursoroff(1);
-				isoff = 1;
-			}
-			gsubfstring(dst, pt, f, (char*)p, fc);
-			q++;
-			m -= q-p;
-			p = q;
-			break;
-
 		case 't':
 			/*
 			 * texture
@@ -1234,13 +1207,13 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			if(m < 9)
 				error(Ebadblt);
 			v = GSHORT(p+1);
-			if(v<0 || v>=conf.nfont || (ff=bit.font[v])==0)
+			if(v<0 || v>=bit.nfont || (ff=bit.font[v])==0)
 				error(Ebadblt);
 			l = GSHORT(p+3);
 			if(l >= NFCACHE+NFLOOK)
 				error(Ebadblt);
 			v = GSHORT(p+5);
-			if(v<0 || v>=conf.nsubfont || (f=bit.subfont[v])==0)
+			if(v<0 || v>=bit.nsubfont || (f=bit.subfont[v])==0)
 				error(Ebadblt);
 			nw = GSHORT(p+7);
 			if(nw >= f->n)
@@ -1286,18 +1259,19 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 	poperror();
 	if(isoff)
 		cursoron(1);
+	qunlock(&bit);
 	return n;
 }
 
 int
 bitalloc(Rectangle rect, int ld)
 {
+	Arena *a, *ea, *na, *aa;
 	GBitmap *b, **bp, **ep;
 	ulong l, ws, nw;
 	long t;
-	int i;
+	int i, try;
 
-print("bitalloc %lux\n", bit.wfree);
 	ws = 1<<(5-ld);	/* pixels per word */
 	if(rect.min.x >= 0){
 		l = (rect.max.x+ws-1)/ws;
@@ -1308,17 +1282,58 @@ print("bitalloc %lux\n", bit.wfree);
 		l = (t+rect.max.x+ws-1)/ws;
 	}
 	nw = l*Dy(rect);
-	if(bit.wfree+2+nw > bit.words+bit.nwords){
-		bitcompact();
-		if(bit.wfree+2+nw > bit.words+bit.nwords)
-			error(Enobitstore);
+	ea = &bit.arena[bit.narena];
+
+	/* first try easy fit */
+	for(a=bit.arena; a<ea; a++){
+		if(a->words == 0)
+			continue;
+		if(a->wfree+HDR+nw <= a->words+a->nwords)
+			goto found;
 	}
+
+	/* compact and try again */
+	bitcompact();
+	aa = 0;
+	for(a=bit.arena; a<ea; a++){
+		if(a->words == 0){
+			if(aa == 0)
+				aa = a;
+			continue;
+		}
+		if(a->wfree+HDR+nw <= a->words+a->nwords)
+			goto found;
+	}
+
+	/* need new arena */
+	if(aa)
+		a = aa;
+	else{
+		na = bit.arena;
+		bit.arena = smalloc((bit.narena+DMAP)*sizeof(Arena));
+		memmove(bit.arena, na, bit.narena*sizeof(Arena));
+		free(na);
+		a = bit.arena+bit.narena;
+		bit.narena += DMAP;
+	}
+	a->nwords = gscreen.width*gscreen.r.max.y+HDR;
+	if(a->nwords < HDR+nw)
+		a->nwords = HDR+nw;
+	a->words = xalloc(a->nwords*sizeof(ulong));
+	if(a->words == 0)
+		error(Enobitstore);
+	a->wfree = a->words;
+	a->nbusy = 0;
+	
+    found:
 	b = smalloc(sizeof(GBitmap));
-	*bit.wfree++ = nw;
-	*bit.wfree++ = (ulong)b;
-	b->base = bit.wfree;
+	*a->wfree++ = nw;
+	*a->wfree++ = (ulong)a;
+	*a->wfree++ = (ulong)b;
+	b->base = a->wfree;
 	memset(b->base, 0, nw*sizeof(ulong));
-	bit.wfree += nw;
+	a->wfree += nw;
+	a->nbusy++;
 	b->zero = l*rect.min.y;
 	if(rect.min.x >= 0)
 		b->zero += rect.min.x/ws;
@@ -1350,6 +1365,12 @@ print("bitalloc %lux\n", bit.wfree);
 void
 bitfree(GBitmap *b)
 {
+	Arena *a;
+
+	a = (Arena*)(b->base[-2]);
+	a->nbusy--;
+	if(a->nbusy == 0)
+		arenafree(a);
 	b->base[-1] = 0;
 	free(b);
 }
@@ -1367,6 +1388,13 @@ subfontfree(GSubfont *s)
 {
 	free(s->info);
 	free(s);
+}
+
+void
+arenafree(Arena *a)
+{
+	xfree(a->words);
+	a->words = 0;
 }
 
 void
@@ -1435,29 +1463,65 @@ bitloadchar(GFont *f, int ci, GSubfont *subf, int si)
 	gbitblt(f->b, Pt(c->x, f->ascent-subf->ascent), subf->bits, rect, S);
 }
 
-QLock	bitlock;
-
 void
 bitcompact(void)
 {
-	ulong *p1, *p2;
+	Arena *a, *b, *ea, *na;
+	ulong *p1, *p2, n;
 
-	qlock(&bitlock);
-	p1 = p2 = bit.words;
-	while(p2 < bit.wfree){
-		if(p2[1] == 0){
-			p2 += 2 + p2[0];
+	ea = &bit.arena[bit.narena];
+	for(a=bit.arena; a<ea; a++){
+		if(a->words == 0)
 			continue;
+		/* first compact what's here */
+		p1 = p2 = a->words;
+		while(p2 < a->wfree){
+			n = HDR+p2[0];
+			if(p2[2] == 0){
+				p2 += n;
+				continue;
+			}
+			if(p1 != p2){
+				memmove(p1, p2, n*sizeof(ulong));
+				((GBitmap*)p1[2])->base = p1+HDR;
+			}
+			p2 += n;
+			p1 += n;
 		}
-		if(p1 != p2){
-			memmove(p1, p2, (2+p2[0])*sizeof(ulong));
-			((GBitmap*)p1[1])->base = p1+2;
+		/* now pull stuff from later arena to fill this one */
+		na = a+1;
+		while(na<ea && p1<a->words+a->nwords){
+			p2 = na->words;
+			if(p2 == 0){
+				na++;
+				continue;
+			}
+			while(p2 < na->wfree){
+				n = HDR+p2[0];
+				if(p2[2] == 0){
+					p2 += n;
+					continue;
+				}
+				if(p1+n < a->words+a->nwords){
+					memmove(p1, p2, n*sizeof(ulong));
+					((GBitmap*)p1[2])->base = p1+HDR;
+					/* block now in new arena... */
+					p1[1] = (ulong)a;
+					a->nbusy++;
+					/* ... not in old arena */
+					na->nbusy--;
+					p2[2] = 0;
+					p1 += n;
+				}
+				p2 += n;
+			}
+			na++;
 		}
-		p2 += 2 + p1[0];
-		p1 += 2 + p1[0];
+		a->wfree = p1;
 	}
-	bit.wfree = p1;
-	qunlock(&bitlock);
+	for(a=bit.arena; a<ea && a->words; a++)
+		if(a->nbusy == 0)
+			arenafree(a);
 }
 
 void

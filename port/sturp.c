@@ -135,7 +135,7 @@ Qinfo urpinfo =
 static void
 urpreset(void)
 {
-	urp = (Urp *)ialloc(conf.nurp*sizeof(Urp), 0);
+	urp = (Urp *)xalloc(conf.nurp*sizeof(Urp));
 }
 
 static void

@@ -333,7 +333,7 @@ concdevstoput(Queue *q, Block *bp)
 void
 concreset(void)
 {
-	concs = ialloc(conf.nconc*sizeof(Conc), 0);
+	concs = xalloc(conf.nconc*sizeof(Conc));
 	newqinfo(&concinfo);
 }
 

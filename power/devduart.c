@@ -695,7 +695,7 @@ duartreset(void)
  	 *  allocate the directory and fill it in
 	 */
 	nduartport = 2*conf.nmach;
-	duartdir = ialloc(nduartport*2*sizeof(Dirtab), 0);
+	duartdir = xalloc(nduartport*2*sizeof(Dirtab));
 	for(i = 0; i < nduartport; i++){
 		sprint(duartdir[2*i].name, "eia%d", i+1);
 		sprint(duartdir[2*i+1].name, "eia%dctl", i+1);
@@ -714,11 +714,11 @@ duartreset(void)
 		if(p->nostream)
 			continue;
 
-		p->iq = ialloc(sizeof(IOQ), 0);
+		p->iq = xalloc(sizeof(IOQ));
 		initq(p->iq);
 		p->iq->ptr = p;
 
-		p->oq = ialloc(sizeof(IOQ), 0);
+		p->oq = xalloc(sizeof(IOQ));
 		initq(p->oq);
 		p->oq->ptr = p;
 		p->oq->puts = duartputs;

@@ -74,10 +74,6 @@ struct Conf
 	ulong	nqueue;		/* stream queues */
 	ulong	nblock;		/* stream blocks */
 	ulong	nsrv;		/* public servers (devsrv.c) */
-	ulong	nbitmap;	/* bitmap structs (devbit.c) */
-	ulong	nbitbyte;	/* bytes of bitmap data (devbit.c) */
-	int	nfont;		/* GFont structs (devbit.c) */
-	ulong	nsubfont;	/* Gsubfont structs (devbit.c) */
 	ulong	nurp;		/* max urp conversations */
 	ulong	nasync;		/* number of async protocol modules */
 	ulong	npipe;		/* number of pipes */

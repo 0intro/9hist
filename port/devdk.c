@@ -159,14 +159,14 @@ enum {
 	DKreject,
 };
 char* dkerr[]={
-	[DKok]"",
-	[DKbusy]"devdk: destination busy",
-	[DKnetotl]"devdk: network not answering",
-	[DKdestotl]"devdk: destination not answering",
-	[DKbadnet]"devdk: unknown address",
-	[DKnetbusy]"devdk: network busy",
-	[DKinuse]"devdk: service in use",
-	[DKreject]"devdk: connection refused", 
+	[DKok]		"",
+	[DKbusy]	"devdk: destination busy",
+	[DKnetotl]	"devdk: network not answering",
+	[DKdestotl]	"devdk: destination not answering",
+	[DKbadnet]	"devdk: unknown address",
+	[DKnetbusy]	"devdk: network busy",
+	[DKinuse]	"devdk: service in use",
+	[DKreject]	"devdk: connection refused", 
 };
 #define DKERRS sizeof(dkerr)/sizeof(char*)
 
@@ -229,7 +229,6 @@ dkalloc(char *name, int ncsc, int lines)
 {
 	Dk *dp;
 	Dk *freep;
-	Block *bp;
 	int i, n;
 	Line *lp;
 
@@ -261,28 +260,15 @@ dkalloc(char *name, int ncsc, int lines)
 	/*
 	 *  allocate memory for line structures
 	 */
-	n = sizeof(Line*)*(dp->lines);
-	bp = allocb(n);
-	if(bp->lim - bp->base < n){
-		unlock(&dklock);
-		error(Ebadarg);
-	}
-	memset(bp->base, 0, bp->lim-bp->base);
-	dp->linep = (Line **)bp->base;
-	bp->wptr += n;
-	dp->alloc = bp;
-	n = sizeof(Line)*(dp->lines);
-	for(i = 0; i < dp->lines; i++){
-		if(bp->lim - bp->wptr < sizeof(Line)){
-			bp = allocb(sizeof(Line)*n);
-			memset(bp->base, 0, bp->lim-bp->base);
-			bp->next = dp->alloc;
-			dp->alloc = bp;
-		}
-		dp->linep[i] = (Line*)bp->wptr;
-		dp->linep[i]->lineno = i;
-		bp->wptr += sizeof(Line);
-		n -= sizeof(Line);
+	dp->linep = (Line **)xalloc(sizeof(Line*) * dp->lines);
+	if(dp->linep == 0)
+		error(Enomem);
+	lp = xalloc(dp->lines*sizeof(Line));
+	if(lp == 0)
+		error(Enomem);
+	for(i = 0; i < dp->lines; i++) {
+		lp->lineno = i;
+		dp->linep[i] = lp++;
 	}
 
 	/*
@@ -720,9 +706,9 @@ void
 dkreset(void)
 {
 	int i;
-	dk = (Dk*)ialloc(conf.dkif*sizeof(Dk), 0);
+	dk = (Dk*)xalloc(conf.dkif*sizeof(Dk));
 	for(i = 0; i < conf.dkif; i++)
-		dk[i].prot = (Netprot*)ialloc(conf.nurp*sizeof(Netprot), 0);
+		dk[i].prot = (Netprot*)xalloc(conf.nurp*sizeof(Netprot));
 	newqinfo(&dkmuxinfo);
 }
 

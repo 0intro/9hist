@@ -5,7 +5,6 @@
 #include	"fns.h"
 #include	"../port/error.h"
 #include	"devtab.h"
-#include	"fcall.h"
 
 #include	"io.h"
 #include	"../../fs/cyc/comm.h"

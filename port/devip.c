@@ -68,7 +68,7 @@ ipinitnet(Network *np, Qinfo *stproto, Ipconv *cp)
 	if(stproto != &udpinfo)
 		np->listen = iplisten;
 	np->clone = ipclonecon;
-	np->prot = (Netprot *)ialloc(sizeof(Netprot) * conf.ip, 0);
+	np->prot = (Netprot *)xalloc(sizeof(Netprot) * conf.ip);
 	np->ninfo = 3;
 	np->info[0].name = "remote";
 	np->info[0].fill = ipremotefill;
@@ -83,11 +83,11 @@ ipreset(void)
 {
 	int i, j;
 
-	ipifc = (Ipifc *)ialloc(sizeof(Ipifc) * conf.ip, 0);
+	ipifc = (Ipifc *)xalloc(sizeof(Ipifc) * conf.ip);
 
 	for(i = 0; protocols[i]; i++) {
-		ipconv[i] = (Ipconv *)ialloc(sizeof(Ipconv) * conf.ip, 0);
-		ipnet[i] = (Network *)ialloc(sizeof(Network), 0);
+		ipconv[i] = (Ipconv *)xalloc(sizeof(Ipconv) * conf.ip);
+		ipnet[i] = (Network *)xalloc(sizeof(Network));
 		ipinitnet(ipnet[i], protocols[i], ipconv[i]);
 		newqinfo(protocols[i]);
 	}

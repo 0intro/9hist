@@ -42,7 +42,7 @@ void	evfree(Envval*);
 void
 envreset(void)
 {
-	evscratch = ialloc(BY2PG, 0);
+	evscratch = xalloc(BY2PG);
 }
 
 void

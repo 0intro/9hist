@@ -6,37 +6,16 @@
 #include	"io.h"
 #include	"init.h"
 
-/*
- * software tlb simulation
- */
-Softtlb stlb[4][STLBSIZE];
-
-/*
- *  args passed by boot process
- */
-int _argc; char **_argv; char **_env;
-
-/*
- *  arguments passed to initcode
- */
-char argbuf[128];
-int argsize;
-
-/*
- *  environment variables extracted from NVRAM
- */
-char consname[NAMELEN];
-char diskless[NAMELEN];
-
-/*
- *  configuration file read by boot program
- */
-char confbuf[4*1024];
-
-/*
- *  IO board type
- */
-int ioid;
+Softtlb stlb[MAXMACH][STLBSIZE];		/* software tlb simulation */
+int	_argc;					/* args passed by boot process */
+char 	**_argv;
+char	**_env;
+char 	argbuf[128];				/* arguments passed to initcode */
+int	argsize;
+char	consname[NAMELEN];			/* environment vars from NVRAM */
+char	diskless[NAMELEN];
+char	confbuf[4*1024];			/* config file read by boot program */
+int	ioid;					/* IO board type */
 
 void
 main(void)
@@ -47,20 +26,20 @@ main(void)
 	arginit();
 	confinit();
 	lockinit();
+	xinit();
 	printinit();
 	duartspecial(0, &printq, &kbdq, 9600);
+	pageinit();
+xsummary();
 	tlbinit();
 	vecinit();
 	procinit0();
 	initseg();
-	grpinit();
-	chaninit();
 	clockinit();
 	ioboardinit();
 	chandevreset();
 	streaminit();
 	swapinit();
-	pageinit();
 	userinit();
 	launchinit();
 	schedinit();
@@ -521,14 +500,14 @@ confinit(void)
 	/*
 	 *  copy configuration down from high memory
 	 */
-	strcpy(confbuf, (char *)(0x80000000 + 4*1024*1024 - 4*1024));
+	strcpy(confbuf, (char *)(0x80000000 + (4*MB) - BY2PG));
 
 	/*
 	 *  size memory
 	 */
 	x = 0x12345678;
 	for(i=4; i<128; i+=4){
-		l = (long*)(KSEG1|(i*1024L*1024L));
+		l = (long*)(KSEG1|(i*MB));
 		*l = x;
 		wbflush();
 		*(ulong*)KSEG1 = *(ulong*)KSEG1;	/* clear latches */
@@ -541,8 +520,11 @@ confinit(void)
 	conf.npage = conf.npage0;
 	conf.npage1 = 0;
 	conf.base1 = 0;
-	conf.maxialloc = 16*1024*1024;
 
+	conf.upages = (conf.npage*70)/100;
+	i = conf.npage-conf.upages;
+	if(i > (12*MB)/BY2PG)
+		conf.upages +=  i - ((12*MB)/BY2PG);
 	/*
  	 *  clear MP bus error caused by sizing memory
 	 */
@@ -554,27 +536,15 @@ confinit(void)
 	 */
 	conf.nmach = 1;
 	conf.nproc = 100;
-	conf.npgrp = conf.nproc / 4;
-	conf.npgenv = 4 * conf.npgrp;
+	conf.npgenv = 4 * conf.nproc;
 	conf.nenv = 4 * conf.nproc;
 	conf.nenvchar = 20 * conf.nenv;
-	conf.nmtab = conf.nproc;
-	conf.nseg = 4 * conf.nproc;
-	conf.npagetab = conf.nseg*3;
 	conf.nswap = 262144;
 	conf.nimage = 200;
-	conf.nchan = 20 * conf.nproc;
-	conf.nmntdev = conf.nproc;
-	conf.nmntbuf = conf.nproc;
-	conf.nmnthdr = conf.nproc;
 	conf.nstream = 2 * conf.nproc;
-	conf.nalarm = 2500;
-	conf.nmount = 500;
-	conf.nsrv = 20;
 	conf.nurp = 25;
 	conf.dkif = 1;
 	conf.nqueue = 5 * conf.nstream;
-	conf.nblock = 10 * conf.nstream;
 	conf.ipif = 8;
 	conf.ip = 64;
 	conf.arp = 32;
@@ -582,7 +552,6 @@ confinit(void)
 
 	confread();
 
-	conf.npipe = conf.nstream/2;	/* must be after confread */
 	if(conf.nmach > MAXMACH)
 		panic("confinit");
 
@@ -597,7 +566,8 @@ confinit(void)
  *
  *  also grab any environment variables that might be useful
  */
-struct{
+struct
+{
 	char	*name;
 	char	*val;
 }bootenv[] = {
@@ -718,7 +688,7 @@ lanceIO3setup(Lance *lp)
 	 *  space
 	 */
 	len = (lp->nrrb + lp->ntrb)*sizeof(Etherpkt);
-	lp->rp = (Etherpkt*)ialloc(len , 1);
+	lp->rp = (Etherpkt*)xspanalloc(len , BY2PG, 0);
 	lp->tp = lp->rp + lp->nrrb;
 	x = (ulong)lp->rp;
 	lp->lrp = (Etherpkt*)(x & 0xFFF);

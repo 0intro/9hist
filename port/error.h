@@ -23,7 +23,6 @@ extern char Ebadbitmap[];	/* unallocated bitmap */
 extern char Enobitmap[];	/* out of bitmap descriptors */
 extern char Enobitstore[];	/* out of bitmap storage */
 extern char Ebadfont[];		/* unallocated font */
-extern char Enofont[];		/* no free font descriptors */
 extern char Enetaddr[];		/* bad network address */
 extern char Emsgsize[];		/* message is too big for protocol */
 extern char Enetbusy[];		/* network device is busy or allocated */
@@ -51,4 +50,5 @@ extern char Econrefused[];	/* connection refused */
 extern char Enetunreach[];	/* network unreachable */
 extern char Eintr[];		/* interrupted */
 extern char Eneedservice[];	/* service required for tcp/udp/il calls */
+extern char Enomem[];		/* kernel allocate failed */
 extern char Egreg[];		/* it's a thermal problem */

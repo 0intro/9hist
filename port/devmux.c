@@ -127,7 +127,7 @@ muxinit(void)
 void
 muxreset(void)
 {
-	muxes = ialloc(conf.nmux*sizeof(Mux), 0);
+	muxes = xalloc(conf.nmux*sizeof(Mux));
 }
 
 Chan *
