@@ -165,6 +165,11 @@ fdclose(int fd, int flag)
 
 	lock(f);
 	c = f->fd[fd];
+	if(c == 0){
+		/* can happen for users with shared fd tables */
+		unlock(f);
+		return;
+	}
 	if(flag){
 		if(c==0 || !(c->flag&flag)){
 			unlock(f);
@@ -177,8 +182,6 @@ fdclose(int fd, int flag)
 			f->maxfd = i;
 
 	unlock(f);
-	if(c == 0)
-		panic("fdclose");
 	close(c);
 }
 

@@ -141,6 +141,8 @@ init0(void)
 	print("frame buffer id %lux %s\n", conf.monitor, fbstr);
 	print("NKLUDGE %d\n", NKLUDGE);
 
+mapdump();
+
 	u->slash = (*devtab[0].attach)(0);
 	u->dot = clone(u->slash, 0);
 

@@ -27,13 +27,13 @@ void		(*kprofp)(ulong);
 typedef struct	DAC DAC;
 struct DAC
 {
-	uchar	addr;	/* DAC address register */
+	uchar	addr;		/* address register */
 	uchar	pad0[3];
-	uchar	color;	/* DAC color palette */
+	uchar	color;		/* color palette */
 	uchar	pad1[3];
-	uchar	cntrl;	/* DAC control register */
+	uchar	cntrl;		/* control register */
 	uchar	pad2[3];
-	uchar	ovrl;	/* DAC overlay palette */
+	uchar	ovrl;		/* overlay palette */
 	uchar	pad3[3];
 }*dac;
 
@@ -90,6 +90,14 @@ screeninit(char *str)
 	out.bwid = defont0.info[' '].width;
 	dac = (DAC*)(kmappa(FRAMEBUF+s->dacaddr, PTENOCACHE|PTEIO)->va);
 	if(gscreen.ldepth == 3){
+		dac->addr = 4;
+		dac->cntrl = 0xFF;	/* enable all planes */
+		dac->addr = 5;
+		dac->cntrl = 0x00;	/* no blinking */
+		dac->addr = 6;
+		dac->cntrl = 0x43;	/* enable palette ram and display */
+		dac->addr = 7;
+		dac->cntrl = 0x00;	/* no tests */
 		havecol = 0;	
 		if(havecol) {
 			/*
@@ -108,17 +116,6 @@ screeninit(char *str)
 			setcolor(85, 0xAAAAAAAA, 0xAAAAAAAA, 0xAAAAAAAA);
 			setcolor(170, 0x55555555, 0x55555555, 0x55555555);
 		} else {
-/*
-			dac->addr = 4;
-			dac->cntrl = 0xFF;
-			dac->addr = 5;
-			dac->cntrl = 0x00;
-			dac->addr = 6;
-			dac->cntrl = 0x40;
-			dac->addr = 7;
-			dac->cntrl = 0x00;
-*/
-
 			dac->addr = 0;
 			for(i=255; i>=0; i--){
 				dac->color = i;
@@ -127,6 +124,18 @@ screeninit(char *str)
 			}
 		}
 	}
+}
+
+mapdump(void)
+{
+	dac->addr = 4;
+	print("cntrl4 %.2ux\n", dac->cntrl);
+	dac->addr = 5;
+	print("cntrl5 %.2ux\n", dac->cntrl);
+	dac->addr = 6;
+	print("cntrl6 %.2ux\n", dac->cntrl);
+	dac->addr = 7;
+	print("cntrl7 %.2ux\n", dac->cntrl);
 }
 
 void
