@@ -1292,7 +1292,7 @@ drawmesg(Client *client, void *av, int n)
 	fmt = nil;
 	if(waserror()){
 		if(fmt) printmesg(fmt, a, 1);
-	/*	iprint("error: %s\n", up->error);	*/
+	/*	iprint("error: %s\n", up->errstr);	*/
 		nexterror();
 	}
 	while((n-=m) > 0){

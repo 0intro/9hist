@@ -107,7 +107,8 @@ ioinit(void)
 
 	// a dummy entry at 2^16
 	ioalloc(0x10000, 1, 0, "dummy");
-	ioalloc(0x1000, 1, 0, "dummy");
+	ioalloc(0x0fff, 1, 0, "dummy");	// i82557 is at 0x1000, the dummy
+							// entry is needed for swappable devs.
 }
 
 // Reserve a range to be ioalloced later.  This is in particular useful for exchangable cards, such

@@ -1818,7 +1818,7 @@ convreader(void *a)
 		}
 		qlock(c);
 		if(b == nil) {
-			if(strcmp(up->error, Eintr) != 0) {
+			if(strcmp(up->errstr, Eintr) != 0) {
 				convsetstate(c, CClosed);
 				break;
 			}
