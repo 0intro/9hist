@@ -45,9 +45,10 @@ bbfree(void *va, int n)
 	print("sanity bbfree\n");
 }
 
-void*
-bbdflush(void *p, int n)
+int
+bbonstack(void)
 {
-	return p;
+	if(u)
+		return 1;
+	return 0;
 }
-

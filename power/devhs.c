@@ -352,6 +352,10 @@ hsvmeoput(Queue *q, Block *bp)
 	 *  one transmitter at a time
 	 */
 	hp = (Hsvme *)q->ptr;
+	if(waserror()){
+		qunlock(&hp->xmit);
+		nexterror();
+	}
 	qlock(&hp->xmit);
 	addr = hp->addr;
 
@@ -419,6 +423,7 @@ hsvmeoput(Queue *q, Block *bp)
 	addr->data = TXEOD;
 
 	qunlock(&hp->xmit);
+	poperror();
 }
 
 /*
