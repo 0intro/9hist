@@ -7,7 +7,7 @@
 #include	"../port/error.h"
 #include	"sa1110dma.h"
 
-static int debug = 1;
+static int debug = 0;
 
 /*
  *	DMA helper routines
@@ -138,7 +138,7 @@ dmastart(int chan,  ulong addr, int count) {
 			n = (last == 1)?2:3;
 		last = 2;
 		dmaregs[chan].dstrtA = addr;
-		dmaregs[chan].dxcntA = count-1;
+		dmaregs[chan].dxcntA = count;
 		dmaregs[chan].dcsr_set = 1<<RUN | 1<<IE | 1<<STRTA;
 	} else {
 		if (status & 1<<STRTB)
@@ -147,7 +147,7 @@ dmastart(int chan,  ulong addr, int count) {
 			n = (last == 2)?2:3;
 		last = 1;
 		dmaregs[chan].dstrtB = addr;
-		dmaregs[chan].dxcntB = count-1;
+		dmaregs[chan].dxcntB = count;
 		dmaregs[chan].dcsr_set = 1<<RUN | 1<<IE | 1<<STRTB;
 	}
 	return n;

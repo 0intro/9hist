@@ -22,10 +22,10 @@ struct Calibration
 	long	transx;
 	long	transy;
 } calibration = {
-	-16858,
-	23540,
-	252,
-	342
+	-16435,
+	23275,
+	253,
+	-23
 };
 
 struct Mousestate

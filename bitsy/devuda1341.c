@@ -19,7 +19,7 @@
 #include	"io.h"
 #include	"sa1110dma.h"
 
-static int debug = 1;
+static int debug = 0;
 
 /*
  * GPIO based L3 bus support.
@@ -107,9 +107,11 @@ enum
 	Vtreb,
 	Vbass,
 	Vspeed,
+	Vfilter,
+	Vinvert,
 	Nvol,
 
-	Bufsize		= 8*1024,	/* 46 ms each */
+	Bufsize		= 4*1024,	/* 46 ms each */
 	Nbuf		= 32,		/* 1.5 seconds total */
 
 	Speed		= 44100,
@@ -179,11 +181,13 @@ static	struct
 	int	irval;
 } volumes[] =
 {
-[Vaudio]	"audio",	Fout|Fmono,		50,	50,
-[Vmic]		"mic",		Fin|Fmono,		 0,	 0,
+[Vaudio]	"audio",	Fout|Fmono,		 80,	 80,
+[Vmic]		"mic",		Fin|Fmono,		  0,	  0,
 
-[Vtreb]		"treb",		Fout|Fmono,		50,	50,
-[Vbass]		"bass",		Fout|Fmono, 	50,	50,
+[Vtreb]		"treb",		Fout|Fmono,		 50,	 50,
+[Vbass]		"bass",		Fout|Fmono, 	 50,	 50,
+[Vfilter]	"filter",	Fout|Fmono,		  0,	  0,
+[Vinvert]	"invert",	Fin|Fout|Fmono,	  0,	  0,
 
 [Vspeed]	"speed",	Fin|Fout|Fmono,	Speed,	Speed,
 		0
@@ -434,7 +438,7 @@ uchar	status0	= 0x22;
 uchar	status1	= 0x80;
 uchar	data00	= 0x00;		/* volume control, bits 0 – 5 */
 uchar	data01	= 0x40;
-uchar	data02	= 0x90;
+uchar	data02	= 0x80;
 ushort	data0e0	= 0xe0c0;
 ushort	data0e1	= 0xe0c1;
 ushort	data0e2	= 0xf2c2;
@@ -512,6 +516,7 @@ static void
 mxvolume(void) {
 	int *left, *right;
 
+	if (debug) print("mxvolume\n");
 	if(audio.amode & Aread){
 		left = audio.livol;
 		right = audio.rivol;
@@ -537,23 +542,33 @@ mxvolume(void) {
 		right = audio.rovol;
 		data00 &= ~0x3f;
 		data00 |= ((200-left[Vaudio]-right[Vaudio])*0x3f/200)&0x3f;
-		L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data00, 1);
-		if (debug) print("uchar	data00	= 0x%2.2ux (audio out)\n", data00);
 		if (left[Vtreb]+right[Vtreb] <= 100
-		 && left[Vbass]+right[Vbass] <= 100) {
+		 && left[Vbass]+right[Vbass] <= 100)
 			/* settings neutral */
 			data02 &= ~0x03;
-			L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data02, 1);
-			if (debug) print("uchar	data02	= 0x%2.2ux (mode flat)\n", data02);
-		} else {
+		else {
 			data02 |= 0x03;
-			L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data02, 1);
-			if (debug) print("uchar	data02	= 0x%2.2ux (mode boost)\n", data02);
-			data01 |= ~0x3f;
+			data01 &= ~0x3f;
 			data01 |= ((left[Vtreb]+right[Vtreb]-100)*0x3/100)&0x03;
 			data01 |= (((left[Vbass]+right[Vbass]-100)*0xf/100)&0xf)<<2;
-			L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data01, 1);
-			if (debug) print("uchar	data01	= 0x%2.2ux (bass&treb)\n", data01);
+		}
+		if (left[Vfilter]+right[Vfilter] == 0)
+			data02 &= ~0x10;
+		else
+			data02 |= 0x10;
+		if (left[Vinvert]+right[Vinvert] == 0)
+			status1 &= ~0x14;
+		else
+			status1 |= 0x14;
+		L3_write(UDA1341_L3Addr | UDA1341_STATUS, (uchar*)&status1, 1);
+		L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data00, 1);
+		L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data01, 1);
+		L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data02, 1);
+		if (debug) {
+			print("uchar	status1	= 0x%2.2ux;\n", status1);
+			print("uchar	data00	= 0x%2.2ux; /* audio out */\n", data00);
+			print("uchar	data01	= 0x%2.2ux; /* bass&treb */\n", data01);
+			print("uchar	data02	= 0x%2.2ux; /* mode */\n", data02);
 		}
 	}
 
@@ -760,6 +775,7 @@ audioopen(Chan *c, int omode)
 			s->chan = c;
 			s->dma = dmaalloc(0, 0, 4, 2, SSPXmitDMA, Port4SSP, audiointr, (void*)s);
 		}
+		resetlevel();
 		mxvolume();
 		qunlock(&audio);
 		if (debug) print("#A: open done\n");
@@ -902,7 +918,7 @@ audioread(Chan *c, void *v, long n, vlong off)
 				s->emptying++;
 				if (s->emptying == &s->buf[Nbuf])
 					s->emptying = s->buf;
-				sendaudio(s);
+				recvaudio(s);
 			}
 		}
 		poperror();
@@ -1020,7 +1036,10 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 
 			if(strcmp(field[i], "reset") == 0) {
 				resetlevel();
-				mxvolume();
+				goto cont0;
+			}
+			if(strcmp(field[i], "debug") == 0) {
+				debug = debug?0:1;
 				goto cont0;
 			}
 			if(strcmp(field[i], "in") == 0) {
@@ -1047,6 +1066,7 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 			break;
 		cont0:;
 		}
+		mxvolume();
 		break;
 
 	case Qaudio:
