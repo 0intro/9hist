@@ -17,7 +17,7 @@ dupgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 		return -1;
 	if((f=fgrp->fd[s]) == 0)
 		return 0;
-	sprint(buf, "%ld", s);
+	sprint(buf, "%d", s);
 	devdir(c, (Qid){s, 0}, buf, 0, eve, perm[f->mode&3], dp);
 	return 1;
 }

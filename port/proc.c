@@ -263,7 +263,7 @@ found:
 	rq->n--;
 	nrdy--;
 	if(p->state != Ready)
-		print("runproc %s %d %s\n", p->text, p->pid, statename[p->state]);
+		print("runproc %s %lud %s\n", p->text, p->pid, statename[p->state]);
 	unlock(runq);
 
 	p->state = Scheding;
@@ -442,7 +442,7 @@ sleep(Rendez *r, int (*f)(void*), void *arg)
 
 	lock(&up->rlock);
 	if(r->p){
-		print("double sleep %d %d\n", r->p->pid, up->pid);
+		print("double sleep %lud %lud\n", r->p->pid, up->pid);
 		dumpstack();
 	}
 
@@ -591,7 +591,7 @@ postnote(Proc *p, int dolock, char *n, int flag)
 		qlock(&p->debug);
 
 	if(p->kp)
-		print("sending %s to kproc %d %s\n", n, p->pid, p->text);
+		print("sending %s to kproc %lud %s\n", n, p->pid, p->text);
 
 	if(flag != NUser && (p->notify == 0 || p->notified))
 		p->nnote = 0;
@@ -756,7 +756,7 @@ pexit(char *exitstr, int freemem)
 		readnum(0, &wq->w.time[TReal*12], NUMSIZE,
 			TK2MS(MACHP(0)->ticks - up->time[TReal]), NUMSIZE);
 		if(exitstr && exitstr[0]){
-			n = sprint(wq->w.msg, "%s %d:", up->text, up->pid);
+			n = sprint(wq->w.msg, "%s %lud:", up->text, up->pid);
 			strncpy(wq->w.msg+n, exitstr, ERRLEN-n);
 			wq->w.msg[ERRLEN-1] = 0;
 		}
@@ -897,7 +897,7 @@ dumpaproc(Proc *p)
 	s = p->psstate;
 	if(s == 0)
 		s = "kproc";
-	print("%3d:%10s pc %8lux dbgpc %8lux  %8s (%s) ut %ld st %ld bss %lux pri %d\n",
+	print("%3lud:%10s pc %8lux dbgpc %8lux  %8s (%s) ut %ld st %ld bss %lux pri %lud\n",
 		p->pid, p->text, p->pc, dbgpc(p),  s, statename[p->state],
 		p->time[0], p->time[1], bss, p->priority);
 }
@@ -909,7 +909,7 @@ procdump(void)
 	Proc *p;
 
 	if(up)
-		print("up %d\n", up->pid);
+		print("up %lud\n", up->pid);
 	else
 		print("no current process\n");
 	for(i=0; i<conf.nproc; i++) {
@@ -976,9 +976,9 @@ scheddump(void)
 	for(rq = &runq[Nrq-1]; rq >= runq; rq--){
 		if(rq->head == 0)
 			continue;
-		print("rq%d:", rq-runq);
+		print("rq%ld:", rq-runq);
 		for(p = rq->head; p; p = p->rnext)
-			print(" %d(%d, %d)", p->pid, m->ticks - p->readytime,
+			print(" %lud(%lud, %lud)", p->pid, m->ticks - p->readytime,
 				m->ticks - p->movetime);
 		print("\n");
 		delay(150);
@@ -1143,7 +1143,7 @@ killbig(void)
 			qunlock(&s->lk);
 		}
 	}
-	print("%d: %s killed because no swap configured\n", kp->pid, kp->text);
+	print("%lud: %s killed because no swap configured\n", kp->pid, kp->text);
 }
 
 /*

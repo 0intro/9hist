@@ -254,7 +254,7 @@ poolalloc(Pool *p, int size)
 		}
 
 		iunlock(&p->l);
-		print("%s arena too large: size %d cursize %d arenasize %d maxsize %d\n",
+		print("%s arena too large: size %d cursize %lud arenasize %lud maxsize %lud\n",
 			 p->name, size, p->cursize, p->arenasize, p->maxsize);
 		return nil;
 	}
@@ -337,7 +337,7 @@ poolread(char *va, int count, ulong offset)
 	signed_off = offset;
 	for(i = 0; i < table.n; i++) {
 		p = &table.pool[i];
-		n += snprint(va+n, count-n, "%11d %11d %11d %11d %11d %11d %s\n",
+		n += snprint(va+n, count-n, "%11lud %11lud %11lud %11d %11d %11d %s\n",
 			p->cursize,
 			p->maxsize,
 			p->hw,
@@ -484,7 +484,10 @@ poolsummary(void)
 	int i;
 
 	for(i = 0; i < table.n; i++)
-		print("Arena: %s cursize=%d; maxsize=%d\n", table.pool[i].name, table.pool[i].cursize, table.pool[i].maxsize);
+		print("Arena: %s cursize=%lud; maxsize=%lud\n",
+			table.pool[i].name,
+			table.pool[i].cursize,
+			table.pool[i].maxsize);
 }
 
 /*

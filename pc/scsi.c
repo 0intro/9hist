@@ -78,7 +78,7 @@ scsireset(void)
 			if((ctlr->io = lp->reset(ctlrno, ctlr)) == 0)
 				break;
 
-			print("scsi#%d: %s: port 0x%luX irq %d",
+			print("scsi#%d: %s: port 0x%luX irq %lud",
 				ctlrno, ctlr->type, ctlr->port,
 				ctlr->irq);
 			if(ctlr->mem)

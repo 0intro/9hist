@@ -484,7 +484,7 @@ mpinit(void)
 	while(p < e) switch(*p){
 
 	default:
-		print("mpinit: unknown PCMP type 0x%uX (e-p 0x%uX)\n", *p, e-p);
+		print("mpinit: unknown PCMP type 0x%uX (e-p 0x%luX)\n", *p, e-p);
 		while(p < e){
 			print("%uX ", *p);
 			p++;

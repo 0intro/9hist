@@ -65,7 +65,7 @@ lptgen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
 	if(qid.path < Qdata)
 		qid.path += lptbase[c->dev];
 	qid.vers = c->dev;
-	sprint(name, "lpt%d%s", c->dev+1, tab->name);
+	sprint(name, "lpt%lud%s", c->dev+1, tab->name);
 	devdir(c, qid, name, tab->length, eve, tab->perm, dp);
 	return 1;
 }

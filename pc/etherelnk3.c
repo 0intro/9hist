@@ -426,13 +426,13 @@ typedef struct {
 
 	int	upqmax;
 	int	upqmaxhw;
-	long	upinterrupts;
-	long	upqueued;
-	int	upstalls;
+	ulong	upinterrupts;
+	ulong	upqueued;
+	ulong	upstalls;
 	int	dnqmax;
 	int	dnqmaxhw;
-	long	dninterrupts;
-	long	dnqueued;
+	ulong	dninterrupts;
+	ulong	dnqueued;
 
 	int	xcvr;				/* transceiver type */
 	int	rxstatus9;			/* old-style RxStatus register */

@@ -209,7 +209,7 @@ trap(Ureg* ureg)
 		if(v == VectorNMI){
 			nmienable();
 			if(m->machno != 0){
-				print("cpu%d: PC %8.8uX\n", m->machno, ureg->pc);
+				print("cpu%d: PC %8.8luX\n", m->machno, ureg->pc);
 				for(;;);
 			}
 		}
@@ -232,17 +232,17 @@ void
 dumpregs2(Ureg* ureg)
 {
 	if(up)
-		print("cpu%d: registers for %s %d\n", m->machno, up->text, up->pid);
+		print("cpu%d: registers for %s %lud\n", m->machno, up->text, up->pid);
 	else
 		print("cpu%d: registers for kernel\n", m->machno);
-	print("FLAGS=%lux TRAP=%lux ECODE=%lux PC=%lux", ureg->flags, ureg->trap,
+	print("FLAGS=%luX TRAP=%luX ECODE=%luX PC=%luX", ureg->flags, ureg->trap,
 		ureg->ecode, ureg->pc);
-	print(" SS=%4.4lux USP=%lux\n", ureg->ss & 0xFFFF, ureg->usp);
-	print("  AX %8.8lux  BX %8.8lux  CX %8.8lux  DX %8.8lux\n",
+	print(" SS=%4.4luX USP=%luX\n", ureg->ss & 0xFFFF, ureg->usp);
+	print("  AX %8.8luX  BX %8.8luX  CX %8.8luX  DX %8.8luX\n",
 		ureg->ax, ureg->bx, ureg->cx, ureg->dx);
-	print("  SI %8.8lux  DI %8.8lux  BP %8.8lux\n",
+	print("  SI %8.8luX  DI %8.8luX  BP %8.8luX\n",
 		ureg->si, ureg->di, ureg->bp);
-	print("  CS %4.4uX  DS %4.4uX  ES %4.4uX  FS %4.4uX  GS %4.4uX\n",
+	print("  CS %4.4luX  DS %4.4luX  ES %4.4luX  FS %4.4luX  GS %4.4luX\n",
 		ureg->cs & 0xFFFF, ureg->ds & 0xFFFF, ureg->es & 0xFFFF,
 		ureg->fs & 0xFFFF, ureg->gs & 0xFFFF);
 }

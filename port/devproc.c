@@ -89,7 +89,7 @@ procgen(Chan *c, Dirtab *tab, int, int s, Dir *dp)
 		pid = p->pid;
 		if(pid == 0)
 			return 0;
-		sprint(buf, "%d", pid);
+		sprint(buf, "%lud", pid);
 		qid = (Qid){CHDIR|((s+1)<<QSHIFT), pid};
 		devdir(c, qid, buf, 0, p->user, CHDIR|0555, dp);
 		return 1;
@@ -268,7 +268,7 @@ procfds(Proc *p, char *va, int count, long offset)
 		c = f->fd[i];
 		if(c == nil)
 			continue;
-		n += snprint(va+n, count-n, "%3d %.2s %.8lux.%.8d %8d ",
+		n += snprint(va+n, count-n, "%3d %.2s %.8lux.%.8lud %8lld ",
 			i,
 			&"r w rw"[(c->mode&3)<<1],
 			c->qid.path, c->qid.vers,
@@ -462,7 +462,7 @@ procread(Chan *c, void *va, long n, vlong off)
 			sg = p->seg[i];
 			if(sg == 0)
 				continue;
-			j += sprint(statbuf+j, "%-6s %c%c %.8lux %.8lux %4d\n",
+			j += sprint(statbuf+j, "%-6s %c%c %.8lux %.8lux %4ld\n",
 				sname[sg->type&SG_TYPE],
 				sg->type&SG_RONLY ? 'R' : ' ',
 				sg->profile ? 'P' : ' ',

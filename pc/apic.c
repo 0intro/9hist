@@ -237,7 +237,7 @@ lapicerror(Ureg*, void*)
 	case 0x52C:				/* stepping cC0 */
 		return;
 	}
-	print("cpu%d: lapicerror: 0x%8.8luX\n", m->machno, esr);
+	print("cpu%d: lapicerror: 0x%8.8uX\n", m->machno, esr);
 }
 
 void

@@ -98,7 +98,7 @@ void
 ixsummary(void)
 {
 	debugging ^= 1;
-	print("ialloc %d/%d %d\n", ialloc.bytes, conf.ialloc, debugging);
+	print("ialloc %lud/%lud %d\n", ialloc.bytes, conf.ialloc, debugging);
 	print("pad %lud, concat %lud, pullup %lud, copy %lud\n",
 		padblockcnt, concatblockcnt, pullupblockcnt, copyblockcnt);
 	print("consume %lud, produce %lud, qcopy %lud\n",

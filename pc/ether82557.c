@@ -429,9 +429,9 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 	len += snprint(p+len, READSTR-len, "receive short frame errors: %lud\n", dump[15]);
 	if(ctlr->cbqmax > ctlr->cbqmaxhw)
 		ctlr->cbqmaxhw = ctlr->cbqmax;
-	len += snprint(p+len, READSTR-len, "cbqmax: %lud\n", ctlr->cbqmax);
+	len += snprint(p+len, READSTR-len, "cbqmax: %d\n", ctlr->cbqmax);
 	ctlr->cbqmax = 0;
-	snprint(p+len, READSTR-len, "threshold: %lud\n", ctlr->threshold);
+	snprint(p+len, READSTR-len, "threshold: %d\n", ctlr->threshold);
 
 	n = readstr(offset, a, n, p);
 	free(p);

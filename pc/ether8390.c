@@ -393,7 +393,7 @@ receive(Ether* ether)
 		 */
 		if(hdr.next < ctlr->pstart || hdr.next >= ctlr->pstop
 		  || len < 60 || len > sizeof(Etherpkt)){
-			print("dp8390: H#%2.2ux#%2.2ux#%2.2ux#%2.2ux,%d\n",
+			print("dp8390: H#%2.2ux#%2.2ux#%2.2ux#%2.2ux,%lud\n",
 				hdr.status, hdr.next, hdr.len0, hdr.len1, len);
 			regw(ctlr, Cr, Page0|RdABORT|Stp);
 			ringinit(ctlr);

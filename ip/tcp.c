@@ -1980,7 +1980,7 @@ tcpstats(Proto *tcp, char *buf, int len)
 
 
 
-	return snprint(buf, len, "%d %d %d %d %d %d %d %d %d %d %d %d %d %d",
+	return snprint(buf, len, "%lud %lud %lud %lud %lud %lud %lud %lud %lud %lud %lud %lud %lud %lud",
 		tpriv->tstats.tcpRtoAlgorithm,
 		tpriv->tstats.tcpRtoMin,
 		tpriv->tstats.tcpRtoMax,

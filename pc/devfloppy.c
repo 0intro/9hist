@@ -833,9 +833,9 @@ floppyxfer(FDrive *dp, int cmd, void *a, long off, long n)
 		error(Eio);
 	}
 	if((fl.stat[0] & Codemask)!=0 || fl.stat[1] || fl.stat[2]){
-		DPRINT("xfer: failed %lux %lux %lux\n", fl.stat[0],
+		DPRINT("xfer: failed %ux %ux %ux\n", fl.stat[0],
 			fl.stat[1], fl.stat[2]);
-		DPRINT("offset %lud len %d\n", off, dp->len);
+		DPRINT("offset %lud len %ld\n", off, dp->len);
 		if((fl.stat[0]&Codemask)==Cmdexec && fl.stat[1]==Overrun){
 			DPRINT("DMA overrun: retry\n");
 		} else
@@ -969,7 +969,7 @@ floppyformat(FDrive *dp, char *params)
 			error(Eio);
 		}
 		if((fl.stat[0]&Codemask)!=0 || fl.stat[1]|| fl.stat[2]){
-			DPRINT("format: failed %lux %lux %lux\n",
+			DPRINT("format: failed %ux %ux %ux\n",
 				fl.stat[0], fl.stat[1], fl.stat[2]);
 			dp->confused = 1;
 			error(Eio);

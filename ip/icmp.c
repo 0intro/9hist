@@ -415,7 +415,7 @@ icmpstats(Proto *icmp, char *buf, int len)
 
 	ipriv = icmp->priv;
 
-	return snprint(buf,len,"%d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d",
+	return snprint(buf,len,"%lud %lud %lud %lud %lud %lud %lud %lud %lud %lud %lud %lud %lud %lud %lud %lud %lud %lud %lud %lud %lud %lud %lud %lud %lud %lud",
 			ipriv->istats.icmpInMsgs,
 			ipriv->istats.icmpInErrors,
 			ipriv->in[Unreachable],

@@ -550,7 +550,7 @@ sslread(Chan *c, void *a, long n, vlong off)
 	default:
 		error(Ebadusefd);
 	case Qctl:
-		sprint(buf, "%d", CONV(c->qid));
+		sprint(buf, "%lud", CONV(c->qid));
 		return readstr(offset, a, n, buf);
 	case Qdata:
 		b.b = sslbread(c, n, offset);

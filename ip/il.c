@@ -201,7 +201,7 @@ ilstate(Conv *c, char *state, int n)
 	Ilcb *ic;
 
 	ic = (Ilcb*)(c->ptcl);
-	return snprint(state, n, "%s del %5.5d Br %5.5d md %5.5d una %5.5d rex %5.5d max %5.5d",
+	return snprint(state, n, "%s del %5.5d Br %5.5d md %5.5d una %5.5lud rex %5.5d max %5.5d",
 		ilstates[ic->state],
 		ic->delay>>LogAGain, ic->rate>>LogAGain, ic->mdev>>LogDGain,
 		ic->unackeduchars, ic->rexmit, ic->maxrtt);
@@ -355,9 +355,9 @@ ilxstats(Proto *il, char *buf, int len)
 	ipriv = il->priv;
 
 	n = snprint(buf, len,
-		"il: csum %d hlen %d len %d order %d rexmit %d",
+		"il: csum %lud hlen %lud len %lud order %lud rexmit %lud",
 		ipriv->csumerr, ipriv->hlenerr, ipriv->lenerr, ipriv->order, ipriv->rexmit);
-	n += snprint(buf+n, len-n, " dupp %d dupb %d\n",
+	n += snprint(buf+n, len-n, " dupp %lud dupb %lud\n",
 		ipriv->dup, ipriv->dupb);
 	return n;
 }

@@ -318,7 +318,7 @@ setpage(Astar *a, ulong offset)
 	int i;
 
 	if(a->pci){
-		print("#G%d: setpage caller pc %uX\n", a->id, getcallerpc(a));
+		print("#G%d: setpage caller pc %luX\n", a->id, getcallerpc(a));
 		return;
 	}
 
@@ -495,7 +495,7 @@ astarreset(void)
 				inb(a->port+ISAstat1), inb(a->port+ISAstat2));
 		}
 
-		print("#G%d: %s port 0x%luX addr 0x%luX irq %d\n",
+		print("#G%d: %s port 0x%luX addr 0x%luX irq %lud\n",
 			a->id, a->type, a->port, a->addr, a->irq);
 		nastar++;
 	}
@@ -545,7 +545,7 @@ astarsetup(Astar *a)
 
 	/* check interrupt level */
 	if(isairqcode[a->irq] == -1){
-		print("#G%d: bad irq %d\n", a->id, a->irq);
+		print("#G%d: bad irq %lud\n", a->id, a->irq);
 		return -1;
 	}
 
@@ -739,7 +739,7 @@ bctlread(Astar *a, void *buf, long n, ulong offset)
 	char s[128];
 
 	if(a->pci)
-		sprint(s, "range %uX remap %uX region %uX mailbox %uX doorbell0 %uX doorbell1 %uX control %uX command %uX",
+		sprint(s, "range %luX remap %luX region %luX mailbox %luX doorbell0 %luX doorbell1 %luX control %luX command %luX",
 			inl(a->port+PCIrange),
 			inl(a->port+PCIremap),
 			inl(a->port+PCIregion),
@@ -1111,27 +1111,27 @@ bctlwrite(Astar *a, char *cmsg)
 #else
 		p = a->addr;
 		*p = 'A';
-		print(" 0K: %8.8uX %2.2uX\n", inl(a->port+PCIremap), *p);
+		print(" 0K: %8.8luX %2.2uX\n", inl(a->port+PCIremap), *p);
 
 		p = a->addr+(16*1024);
 		*p = 'B';
-		print("16K: %8.8uX %2.2uX\n", inl(a->port+PCIremap), *p);
+		print("16K: %8.8luX %2.2uX\n", inl(a->port+PCIremap), *p);
 
 		p = a->addr;
-		print(" 0K: %8.8uX %2.2uX\n", inl(a->port+PCIremap), *p);
+		print(" 0K: %8.8luX %2.2uX\n", inl(a->port+PCIremap), *p);
 
 		*p = 'C';
-		print(" 0K: %8.8uX %2.2uX\n", inl(a->port+PCIremap), *p);
+		print(" 0K: %8.8luX %2.2uX\n", inl(a->port+PCIremap), *p);
 
 		p = a->addr+(64*1024);
 		*p = 'D';
-		print("64K: %8.8uX %2.2uX\n", inl(a->port+PCIremap), *p);
+		print("64K: %8.8luX %2.2uX\n", inl(a->port+PCIremap), *p);
 
 		p = a->addr;
-		print(" 0K: %8.8uX %2.2uX\n", inl(a->port+PCIremap), *p);
+		print(" 0K: %8.8luX %2.2uX\n", inl(a->port+PCIremap), *p);
 
 		p = a->addr+(16*1024);
-		print("16K: %8.8uX %2.2uX\n", inl(a->port+PCIremap), *p);
+		print("16K: %8.8luX %2.2uX\n", inl(a->port+PCIremap), *p);
 #endif /* notdef */
 
 	} else

@@ -546,7 +546,7 @@ ipread(Chan *ch, void *a, long n, vlong off)
 		return netlogread(f, a, offset, n);
 	case Qctl:
 		buf = smalloc(16);
-		sprint(buf, "%d", CONV(ch->qid));
+		sprint(buf, "%lud", CONV(ch->qid));
 		rv = readstr(offset, p, n, buf);
 		free(buf);
 		return rv;

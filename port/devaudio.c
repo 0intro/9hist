@@ -674,7 +674,7 @@ ess1688(ISAConf* sbconf)
 		i = 0x50|(3<<2);
 		break;
 	default:
-		print("#A: bad ESS1688 irq %d\n", sbconf->irq);
+		print("#A: bad ESS1688 irq %lud\n", sbconf->irq);
 		return 1;
 	}
 	ess1688w(0xB1, i);
@@ -690,7 +690,7 @@ ess1688(ISAConf* sbconf)
 		i = 0x50|(3<<2);
 		break;
 	default:
-		print("#A: bad ESS1688 dma %d\n", sbconf->dma);
+		print("#A: bad ESS1688 dma %lud\n", sbconf->dma);
 		return 1;
 	}
 	ess1688w(0xB2, i);
@@ -723,7 +723,7 @@ audioinit(void)
 	case 0x280:
 		break;
 	default:
-		print("#A: bad port 0x%x\n", sbconf.port);
+		print("#A: bad port 0x%lux\n", sbconf.port);
 		return;
 	}
 	switch(sbconf.irq){
@@ -733,7 +733,7 @@ audioinit(void)
 	case 10:
 		break;
 	default:
-		print("#A: bad irq %d\n", sbconf.irq);
+		print("#A: bad irq %lud\n", sbconf.irq);
 		return;
 	}
 

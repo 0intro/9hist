@@ -146,7 +146,7 @@ mntattach(char *muxattach)
 
 	incref(m->c);
 
-	sprint(buf, "#M%d", m->id);
+	sprint(buf, "#M%lud", m->id);
 	m->tree.root = ptenter(&m->tree, 0, buf);
 
 	unlock(m);
@@ -639,7 +639,7 @@ mountrpc(Mnt *m, Mntrpc *r)
 	default:
 		if(t == r->request.type+1)
 			break;
-		print("mnt: proc %s %d: mismatch rep 0x%lux T%d R%d rq %d fls %d rp %d\n",
+		print("mnt: proc %s %lud: mismatch rep 0x%lux T%d R%d rq %d fls %d rp %d\n",
 			up->text, up->pid,
 			r, r->request.type, r->reply.type, r->request.tag,
 			r->flushtag, r->reply.tag);

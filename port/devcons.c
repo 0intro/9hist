@@ -186,7 +186,7 @@ pprint(char *fmt, ...)
 	c = up->fgrp->fd[2];
 	if(c==0 || (c->mode!=OWRITE && c->mode!=ORDWR))
 		return 0;
-	n = sprint(buf, "%s %d: ", up->text, up->pid);
+	n = sprint(buf, "%s %lud: ", up->text, up->pid);
 	va_start(arg, fmt);
 	n = doprint(buf+n, buf+sizeof(buf), fmt, arg) - buf;
 	va_end(arg);
@@ -419,7 +419,7 @@ readnum(ulong off, char *buf, ulong n, ulong val, int size)
 {
 	char tmp[64];
 
-	snprint(tmp, sizeof(tmp), "%*.0ud", size-1, val);
+	snprint(tmp, sizeof(tmp), "%*.0lud", size-1, val);
 	tmp[size-1] = ' ';
 	if(off >= size)
 		return 0;
@@ -690,7 +690,7 @@ consread(Chan *c, void *buf, long n, vlong off)
 		return n;
 
 	case Qswap:
-		sprint(tmp, "%d/%d memory %d/%d swap\n",
+		sprint(tmp, "%lud/%lud memory %lud/%lud swap\n",
 			palloc.user-palloc.freecount,
 			palloc.user, conf.nswap-swapalloc.free, conf.nswap);
 
@@ -864,7 +864,7 @@ conswrite(Chan *c, void *va, long n, vlong off)
 		break;
 
 	default:
-		print("conswrite: %d\n", c->qid.path);
+		print("conswrite: %lud\n", c->qid.path);
 		error(Egreg);
 	}
 	return n;

@@ -306,19 +306,19 @@ bootargs(ulong base)
 	cp[BOOTLINELEN-1] = 0;
 	buf[0] = 0;
 	if(strncmp(cp, "fd!", 3) == 0){
-		sprint(buf, "local!#f/fd%ddisk", strtol(cp+3, 0, 0));
+		sprint(buf, "local!#f/fd%lddisk", strtol(cp+3, 0, 0));
 		av[ac++] = pusharg(buf);
 	} else if(strncmp(cp, "h!", 2) == 0){
-		sprint(buf, "local!#H/hd%dfs", strtol(cp+2, 0, 0));
+		sprint(buf, "local!#H/hd%ldfs", strtol(cp+2, 0, 0));
 		av[ac++] = pusharg(buf);
 	} else if(strncmp(cp, "hd!", 3) == 0){
-		sprint(buf, "local!#H/hd%ddisk", strtol(cp+3, 0, 0));
+		sprint(buf, "local!#H/hd%lddisk", strtol(cp+3, 0, 0));
 		av[ac++] = pusharg(buf);
 	} else if(strncmp(cp, "s!", 2) == 0){
-		sprint(buf, "local!#w/sd%dfs", strtol(cp+2, 0, 0));
+		sprint(buf, "local!#w/sd%ldfs", strtol(cp+2, 0, 0));
 		av[ac++] = pusharg(buf);
 	} else if(strncmp(cp, "sd!", 3) == 0){
-		sprint(buf, "local!#w/sd%ddisk", strtol(cp+3, 0, 0));
+		sprint(buf, "local!#w/sd%lddisk", strtol(cp+3, 0, 0));
 		av[ac++] = pusharg(buf);
 	} else if(strncmp(cp, "e!", 2) == 0)
 		av[ac++] = pusharg("-n");

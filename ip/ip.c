@@ -421,8 +421,8 @@ ipstats(Fs *f, char *buf, int len)
 
 	ip = f->ip;
 	ip->istats.ipDefaultTTL = MAXTTL;
-	return snprint(buf, len, "%d %d %d %d %d %d %d %d %d %d "
-				 "%d %d %d %d %d %d %d %d %d",
+	return snprint(buf, len, "%lud %lud %lud %lud %lud %lud %lud %lud %lud %lud "
+				 "%lud %lud %lud %lud %lud %lud %lud %lud %lud",
 		ip->istats.ipForwarding, ip->istats.ipDefaultTTL,
 		ip->istats.ipInReceives, ip->istats.ipInHdrErrors,
 		ip->istats.ipInAddrErrors, ip->istats.ipForwDatagrams,

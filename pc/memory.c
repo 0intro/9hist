@@ -88,17 +88,17 @@ memdebug(void)
 	maxpa = (nvramread(0x18)<<8)|nvramread(0x17);
 	maxpa1 = (nvramread(0x31)<<8)|nvramread(0x30);
 	maxpa2 = (nvramread(0x16)<<8)|nvramread(0x15);
-	print("maxpa = %uX -> %uX, maxpa1 = %uX maxpa2 = %uX\n",
+	print("maxpa = %luX -> %luX, maxpa1 = %luX maxpa2 = %luX\n",
 		maxpa, MB+maxpa*KB, maxpa1, maxpa2);
 
 	for(mp = rmapram.map; mp->size; mp++)
-		print("%8.8uX %8.8uX %8.8uX\n", mp->addr, mp->size, mp->addr+mp->size);
+		print("%8.8luX %8.8uX %8.8luX\n", mp->addr, mp->size, mp->addr+mp->size);
 	for(mp = rmapumb.map; mp->size; mp++)
-		print("%8.8uX %8.8uX %8.8uX\n", mp->addr, mp->size, mp->addr+mp->size);
+		print("%8.8luX %8.8uX %8.8luX\n", mp->addr, mp->size, mp->addr+mp->size);
 	for(mp = rmapumbrw.map; mp->size; mp++)
-		print("%8.8uX %8.8uX %8.8uX\n", mp->addr, mp->size, mp->addr+mp->size);
+		print("%8.8luX %8.8uX %8.8luX\n", mp->addr, mp->size, mp->addr+mp->size);
 	for(mp = rmapupa.map; mp->size; mp++)
-		print("%8.8uX %8.8uX %8.8uX\n", mp->addr, mp->size, mp->addr+mp->size);
+		print("%8.8luX %8.8uX %8.8luX\n", mp->addr, mp->size, mp->addr+mp->size);
 }
 
 void
@@ -132,7 +132,7 @@ mapfree(RMap* rmap, ulong addr, ulong size)
 		}
 		else do{
 			if(mp >= rmap->mapend){
-				print("mapfree: %s: losing 0x%uX, %d\n",
+				print("mapfree: %s: losing 0x%luX, %ld\n",
 					rmap->name, addr, size);
 				break;
 			}
@@ -402,7 +402,7 @@ ramscan(ulong maxmem)
 	if(maxmem < 0xFFE00000)
 		mapfree(&rmapupa, maxmem, 0xFFE00000-maxmem);
 	if(MEMDEBUG)
-		print("maxmem %uX %uX\n", maxmem, 0xFFE00000-maxmem);
+		print("maxmem %luX %luX\n", maxmem, 0xFFE00000-maxmem);
 	*k0 = kzero;
 }
 

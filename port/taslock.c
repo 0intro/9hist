@@ -17,7 +17,7 @@ lockloop(Lock *l, ulong pc)
 	Proc *p;
 
 	p = l->p;
-	print("lock loop key 0x%lux pc 0x%lux held by pc 0x%lux proc %d\n",
+	print("lock loop key 0x%lux pc 0x%lux held by pc 0x%lux proc %lud\n",
 		l->key, pc, l->pc, p ? p->pid : 0);
 	dumpaproc(up);
 	if(p != nil)
@@ -149,7 +149,7 @@ unlock(Lock *l)
 {
 
 	if(l->key == 0)
-		print("unlock: not locked: pc %uX\n", getcallerpc(l));
+		print("unlock: not locked: pc %luX\n", getcallerpc(l));
 	if(l->isilock)
 		print("iunlock of lock: pc %lux, held by %lux\n", getcallerpc(l), l->pc);
 	l->pc = 0;
@@ -163,7 +163,7 @@ iunlock(Lock *l)
 	ulong sr;
 
 	if(l->key == 0)
-		print("iunlock: not locked: pc %uX\n", getcallerpc(l));
+		print("iunlock: not locked: pc %luX\n", getcallerpc(l));
 	if(!l->isilock)
 		print("unlock of ilock: pc %lux, held by %lux\n", getcallerpc(l), l->pc);
 

@@ -842,7 +842,7 @@ atarepl(Drive *dp, long bblk)
 		return;
 	for(i = 0; i < dp->repl.nrepl; i++){
 		if(dp->repl.blk[i] == bblk)
-			DPRINT("%s: found bblk %ld at offset %ld\n",
+			DPRINT("%s: found bblk %ld at offset %d\n",
 			dp->vol, bblk, i);
 	}
 }
@@ -902,7 +902,7 @@ ataxfer(Drive *dp, Partition *pp, int cmd, vlong off, long len, uchar *buf)
 		head = ((lblk/dp->sectors) % dp->heads);
 	}
 
-	XPRINT("%s: ataxfer cyl %d sec %d head %d len %d\n",
+	XPRINT("%s: ataxfer cyl %d sec %d head %d len %ld\n",
 		dp->vol, cyl, sec, head, len);
 
 	cp = dp->cp;
@@ -968,7 +968,7 @@ ataxfer(Drive *dp, Partition *pp, int cmd, vlong off, long len, uchar *buf)
 		nexterror();
 
 	if(cp->status & Serr){
-		DPRINT("%s err: lblk %ld status %lux, err %lux\n",
+		DPRINT("%s err: lblk %ld status %ux, err %ux\n",
 			dp->vol, lblk, cp->status, cp->error);
 		DPRINT("\tcyl %d, sec %d, head %d\n", cyl, sec, head);
 		DPRINT("\tnsecs %d, sofar %d\n", cp->nsecs, cp->sofar);
@@ -1017,7 +1017,7 @@ atafeature(Drive *dp, uchar arg)
 	atasleep(cp, Hardtimeout);
 
 	if(cp->status & Serr)
-		DPRINT("%s: setbuf err: status %lux, err %lux\n",
+		DPRINT("%s: setbuf err: status %ux, err %ux\n",
 			dp->vol, cp->status, cp->error);
 
 	cp->dp = 0;
@@ -1159,7 +1159,7 @@ retryatapi:
 		dp->cyl = ip->ccyls;
 		dp->heads = ip->cheads;
 		dp->sectors = ip->cs2t;
-		XPRINT("%s: changed to %d cyl %d head %d sec\n",
+		XPRINT("%s: changed to %ld cyl %d head %d sec\n",
 			dp->vol, dp->cyl, dp->heads, dp->sectors);
 	}
 
@@ -1168,7 +1168,7 @@ retryatapi:
 		dp->lba = 1;
 		dp->lbasecs = lbasecs;
 		dp->cap = (vlong)dp->bytes * dp->lbasecs;
-		XPRINT("%s: LBA: %s %d sectors %lld bytes\n",
+		XPRINT("%s: LBA: %s %lud sectors %lld bytes\n",
 			dp->vol, id, dp->lbasecs,
 			dp->cap);
 	} else {
@@ -1176,7 +1176,7 @@ retryatapi:
 		dp->lbasecs = 0;
 		dp->cap = (vlong)dp->bytes * dp->cyl * dp->heads * dp->sectors;
 	}
-	XPRINT("%s: %s %d/%d/%d CHS %lld bytes\n",
+	XPRINT("%s: %s %ld/%d/%d CHS %lld bytes\n",
 		dp->vol, id, dp->cyl, dp->heads, dp->sectors,
 		dp->cap);
 
@@ -1234,7 +1234,7 @@ ataprobe(Drive *dp, int cyl, int sec, int head)
 	atasleep(cp, Hardtimeout);
 
 	if(cp->status & Serr){
-		DPRINT("%s: probe err: status %lux, err %lux\n",
+		DPRINT("%s: probe err: status %ux, err %ux\n",
 			dp->vol, cp->status, cp->error);
 		rv = -1;
 	}
@@ -1301,7 +1301,7 @@ ataparams(Drive *dp)
 	}
 	dp->cyl = lo + 1;
 	dp->cap = (vlong)dp->bytes * dp->cyl * dp->heads * dp->sectors;
-	DPRINT("%s: probed: %d/%d/%d CHS %lld bytes\n",
+	DPRINT("%s: probed: %ld/%d/%d CHS %lld bytes\n",
 		dp->vol, dp->cyl, dp->heads, dp->sectors,
 		dp->cap);
 	if(dp->cyl == 0 || dp->heads == 0 || dp->sectors == 0)
@@ -1500,7 +1500,7 @@ ataintr(Ureg*, void* arg)
 	loop = 0;
 	while((cp->status = inb(cp->pbase+Pstatus)) & Sbusy){
 		if(++loop > Maxloop){
-			print("ata%d: cmd=%lux, lastcmd=%lux status=%lux\n",
+			print("ata%d: cmd=%ux, lastcmd=%ux status=%ux\n",
 				cp->ctlrno, cp->cmd, cp->lastcmd, inb(cp->pbase+Pstatus));
 			panic("%s: wait busy\n", dp->vol);
 		}
@@ -1539,7 +1539,7 @@ ataintr(Ureg*, void* arg)
 		loop = 0;
 		while((cp->status & (Serr|Sdrq)) == 0){
 			if(++loop > Maxloop){
-				print("%s: read/ident cmd=%lux status=%lux\n",
+				print("%s: read/ident cmd=%ux status=%ux\n",
 					dp->vol, cp->cmd, inb(cp->pbase+Pstatus));
 				cp->status |= Serr;
 				break;
@@ -1916,7 +1916,7 @@ retry:
 	if(dp->bytes > 2048 && dp->bytes <= 2352)
 		dp->bytes = 2048;
 	dp->cap = dp->lbasecs*dp->bytes;
-	DPRINT("%s: atapipart secs %ud, bytes %ud, cap %ud\n",
+	DPRINT("%s: atapipart secs %lud, bytes %ud, cap %lld\n",
 		dp->vol, dp->lbasecs, dp->bytes, dp->cap);
 	cp->dp = 0;
 	free(cp->buf);

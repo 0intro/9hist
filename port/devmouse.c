@@ -196,7 +196,7 @@ mouseread(Chan *c, void *va, long n, vlong off)
 		while(!canlock(&cursor))
 			tsleep(&up->sleep, return0, 0, TK2MS(1));
 
-		sprint(buf, "m%11d %11d %11d %11d",
+		sprint(buf, "m%11d %11d %11d %11lud",
 			mouse.xy.x, mouse.xy.y,
 			buttonmap[mouse.buttons&7],
 			TK2MS(MACHP(0)->ticks));

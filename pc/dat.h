@@ -174,7 +174,7 @@ struct Mach
 	int	flushmmu;		/* make current proc flush it's mmu state */
 
 	ulong	spuriousintr;
-	ulong	lastintr;
+	int	lastintr;
 
 	int	loopconst;
 

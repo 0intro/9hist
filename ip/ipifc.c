@@ -213,7 +213,7 @@ ipifcstate(Conv *c, char *state, int n)
 	rlock(ifc);
 	for(lifc = ifc->lifc; lifc && n > m; lifc = lifc->next)
 		m += snprint(state+m, n - m,
-			" %-20.20I %-20.20M %-20.20I %-7d %-7d %-7d %-7d\n",
+			" %-20.20I %-20.20M %-20.20I %-7lud %-7lud %-7lud %-7lud\n",
 				lifc->local, lifc->mask, lifc->remote,
 				ifc->in, ifc->out, ifc->inerr, ifc->outerr);
 	runlock(ifc);
