@@ -80,7 +80,8 @@ static struct
 static void
 transact(SMBus *s, int type, int addr, int cmd, uchar *data)
 {
-	int tries;
+	int tries, status;
+	char err[ERRLEN];
 
 	if(type < 0 || type > nelem(proto))
 		panic("piix4smbus: illegal transaction type %d", type);
@@ -106,8 +107,8 @@ transact(SMBus *s, int type, int addr, int cmd, uchar *data)
 			sched();
 		}
 		if(tries >= 1000000){
-			print("SMBus status: %2.2ux", inb(s->base+Hoststatus));
-			error("SMBus broken1");
+			snprint(err, sizeof(err), "SMBus jammed: %2.2ux", inb(s->base+Hoststatus));
+			error(err);
 		}
 	}
 
@@ -125,22 +126,22 @@ transact(SMBus *s, int type, int addr, int cmd, uchar *data)
 			break;
 		}
 	}
+	 
 
-	// reset the completion bit and start transaction
-	outb(s->base+Hoststatus, Host_complete);
-print("before %2.2ux\n", inb(s->base+Hoststatus));
+	// reset the completion/error bits and start transaction
+	outb(s->base+Hoststatus, Failed|Bus_error|Dev_error|Host_complete);
 	outb(s->base+Hostcontrol, Start|proto[type].proto);
-print("after %2.2ux\n", inb(s->base+Hoststatus));
 
 	// wait for completion
 	for(tries = 0; tries < 1000000; tries++){
-		if(inb(s->base+Hoststatus) & Host_complete)
+		status = inb(s->base+Hoststatus);
+		if(status & (Failed|Bus_error|Dev_error|Host_complete))
 			break;
 		sched();
 	}
-	if(tries >= 1000000){
-		print("SMBus status: %2.2ux", inb(s->base+Hoststatus));
-		error("SMBus broken2");
+	if((status & Host_complete) == 0){
+		snprint(err, sizeof(err), "SMBus request failed: %2.2ux", status);
+		error(err);
 	}
 
 	// get results

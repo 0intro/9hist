@@ -7,17 +7,31 @@
 #include "ureg.h"
 #include "../port/error.h"
 
-// this driver assumes that noone has changed the serial address
-// of the device.  if they have, there's no way we can figure it
-// out -- presotto
-
+// this driver doesn't implement the management interrupts.  we
+// leave the LM78 interrupts set to whatever the BIOS did.  we do
+// allow reading and writing the the readouts and alarm values.
+// Read(2)ing or write(2)ing at offset 0x0-0x1f, is
+// equivalent to reading or writing lm78 registers 0x20-0x3f.
 enum
 {
 	// address of chip on serial interface
 	Serialaddr=	0x2d,
 
+	// parallel access registers
+	Rpaddr=		0x5,
+	 Bbusy=		 (1<<7),
+	Rpdata=		0x6,
+
 	// internal register addresses
 	Rconfig=	0x40,
+	 Bstart=	 (1<<0),
+	 Bsmiena=	 (1<<1),
+	 Birqena=	 (1<<2),
+	 Bintclr=	 (1<<3),
+	 Breset=	 (1<<4),
+	 Bnmi=		 (1<<5),	// if set, use nmi, else irq
+	 Bpowbypass=	 (1<<6),
+	 Binit=		 (1<<7),
 	Ristat1=	0x41,
 	Ristat2=	0x42,
 	Rsmimask1=	0x43,
@@ -55,56 +69,113 @@ enum
 
 static struct {
 	QLock;
-
-	int 	ifc;
-
-	// serial interface
-	SMBus	*smbus;
-
-	// parallel interface
-	int	port;
+	int	probed;
+	int 	ifc;	// which interface is connected
+	SMBus	*smbus;	// serial interface
+	int	port;	// parallel interface
 } lm78;
 
 extern SMBus*	piix4smbus(void);
 
+// wait for device to become quiescent and then set the
+// register address
+static void
+setreg(int reg)
+{
+	int tries;
+
+	for(tries = 0; tries < 1000000; tries++)
+		if((inb(lm78.port+Rpaddr) & Bbusy) == 0){
+			outb(lm78.port+Rpaddr, reg);
+			return;
+		}
+	error("lm78 broken");
+}
+
 // routines that actually touch the device
-static int
+static void
 lm78wrreg(int reg, uchar val)
 {
+	if(waserror()){
+		qunlock(&lm78);
+		nexterror();
+	}
+	qlock(&lm78);
+
 	switch(lm78.ifc){
 	case Smbus:
 		lm78.smbus->transact(lm78.smbus, SMBbytewrite, Serialaddr, reg, &val);
-		return 0;
+		break;
+	case Parallel:
+		setreg(reg);
+		outb(lm78.port+Rpdata, val);
+		break;
+	default:
+		error(Enodev);
+		break;
 	}
-	return -1;
+
+	qunlock(&lm78);
+	poperror();
 }
 
 static int
 lm78rdreg(int reg)
 {
-	uchar rv;
+	uchar val;
+
+	if(waserror()){
+		qunlock(&lm78);
+		nexterror();
+	}
+	qlock(&lm78);
 
 	switch(lm78.ifc){
 	case Smbus:
 		lm78.smbus->transact(lm78.smbus, SMBsend, Serialaddr, reg, nil);
-		lm78.smbus->transact(lm78.smbus, SMBrecv, Serialaddr, 0, &rv);
-		return rv;
+		lm78.smbus->transact(lm78.smbus, SMBrecv, Serialaddr, 0, &val);
+		break;
+	case Parallel:
+		setreg(reg);
+		val = inb(lm78.port+Rpdata);
+		break;
+	default:
+		error(Enodev);
+		break;
 	}
-	return -1;
+
+	qunlock(&lm78);
+	poperror();
+	return val;
 }
 
-static int
-lm78probe(void)
+// start the chip monitoring but don't change any smi
+// interrupts and/or alarms that the BIOS may have set up.
+//
+// this isn't locked because it's thought to be idempotent
+static void
+lm78enable(void)
 {
-	switch(lm78.ifc){
-	case Smbus:
+	uchar config;
+
+	if(lm78.ifc == None)
+		error(Enodev);
+
+	if(lm78.probed == 0){
+		// make sure its really there
 		if(lm78rdreg(Raddr) != Serialaddr){
 			lm78.ifc = None;
-			break;
+			error(Enodev);
+		} else {
+			// start the sampling
+			config = lm78rdreg(Rconfig);
+pprint("config before %2.2ux\n", config);
+			config = (config | Bstart) & ~(Bintclr|Binit);
+			lm78wrreg(Rconfig, config);
+pprint("config after %2.2ux\n", lm78rdreg(Rconfig));
 		}
-		return 0;
+		lm78.probed = 1;
 	}
-	return -1;
 }
 
 enum
@@ -119,7 +190,7 @@ enum
 	PCSC8bytes=	0x01,
 };
 
-// figure out what kind of interface and if there's an lm78 there
+// figure out what kind of interface we could have
 void
 lm78reset(void)
 {
@@ -166,16 +237,8 @@ lm78reset(void)
 static Chan*
 lm78attach(char* spec)
 {
-	static int probed;
+	lm78enable();
 
-	if(lm78.ifc == None)
-		error(Enodev);
-
-	if(probed == 0){
-		if(lm78probe() < 0)
-			error(Enodev);
-		probed = 1;
-	}
 	return devattach('T', spec);
 }
 
@@ -222,18 +285,11 @@ lm78read(Chan *c, void *a, long n, vlong offset)
 	case Qlm78vram:
 		if(off >=  VRsize)
 			return 0;
-		if(waserror()){
-			qunlock(&lm78);
-			nexterror();
-		}
-		qlock(&lm78);
 		e = off + n;
 		if(e > VRsize)
 			e = VRsize;
 		for(; off < e; off++)
-			*va++ = lm78rdreg(off);
-		qunlock(&lm78);
-		poperror();
+			*va++ = lm78rdreg(Rvalue+off);
 		return va - (uchar*)a;
 	}
 	return 0;
@@ -254,18 +310,11 @@ lm78write(Chan *c, void *a, long n, vlong offset)
 	case Qlm78vram:
 		if(off >=  VRsize)
 			return 0;
-		if(waserror()){
-			qunlock(&lm78);
-			nexterror();
-		}
-		qlock(&lm78);
 		e = off + n;
 		if(e > VRsize)
 			e = VRsize;
 		for(; off < e; off++)
-			lm78wrreg(off, *va++);
-		qunlock(&lm78);
-		poperror();
+			lm78wrreg(Rvalue+off, *va++);
 		return va - (uchar*)a;
 	}
 	return 0;
