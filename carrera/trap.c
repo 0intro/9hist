@@ -238,9 +238,6 @@ trap(Ureg *ur)
 
 	Default:
 	default:
-		((ulong*)0x80020000)[7] = 0x87654321;
-		((void(*)(void))0xA001C020)();
-
 		if(user) {
 			spllo();
 			sprint(buf, "sys: %s", excname[ecode]);

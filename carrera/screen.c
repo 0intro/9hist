@@ -62,14 +62,13 @@ extern	struct GBitmap	gscreen;
 
 VGAmode dfltmode = 
 {
-	/* general */
-	0x23, 0x00, 
+	0xef, 0x00, 
 	/* sequence */
 	0x03, 0x01, 0x0f, 0x00, 0x06, 
 	/* crt */
-	0xcb, 0x9f, 0xa0, 0x8e, 0xa9, 0x04, 0x4f, 0x52, 
-	0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
-	0x11, 0x89, 0xff, 0x50, 0x00, 0x09, 0x46, 0xc3, 
+	0xa1, 0x7f, 0x7f, 0x85, 0x85, 0x96, 0x24, 0xf5, 
+	0x00, 0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+	0x02, 0x88, 0xff, 0x40, 0x00, 0xff, 0x25, 0xc3, 
 	0xff, 
 	/* graphics */
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x0f, 
@@ -80,7 +79,7 @@ VGAmode dfltmode =
 	0x01, 0x00, 0x0f, 0x00, 0x00, 
 	/* special */
 	0x00, 0x00, 0xbc, 0x00, 0x00, 0x00, 0x28, 0x00, 
-	0x0a, 0x9b, 0x43, 0x1f, 
+	0x0a, 0x00, 0x43, 0x1f, 
 };
 
 extern	GSubfont	defont0;
@@ -92,10 +91,10 @@ GBitmap	gscreen =
 {
 	0,
 	0,
-	(1280*(1<<0))/32,
+	(1024*(1<<0))/32,
 	0,
-	{ 0, 0, 1280, 1024 },
-	{ 0, 0, 1280, 1024 },
+	{ 0, 0, 1024, 768 },
+	{ 0, 0, 1024, 768 },
 	0
 };
 
@@ -103,10 +102,10 @@ GBitmap	vgascreen =
 {
 	EISA(0xA0000),
 	0,
-	(1280*(1<<0))/32,
+	(1024*(1<<0))/32,
 	0,
-	{ 0, 0, 1280, 1024 },
-	{ 0, 0, 1280, 1024 },
+	{ 0, 0, 1024, 768 },
+	{ 0, 0, 1024, 768 },
 	0
 };
 
@@ -122,6 +121,12 @@ static int isscroll;
 void
 screenwin(void)
 {
+	int i;
+
+	for(i = 0; i < 768; i += 2) {
+		memset(gscreen.base+(i*gscreen.width), 0xCC, 160);
+		memset(gscreen.base+((i+1)*gscreen.width), 0xCC^0xff, 160);
+	}
 	w = defont0.info[' '].width;
 	h = defont0.height;
 	defont = &defont0;	
@@ -152,15 +157,29 @@ x3to32(uchar x)
 	y = (x<<(32-6))|(x<<(32-12))|(x<<(32-18))|(x<<(32-24))|(x<<(32-30));
 	return y;
 }
+static ulong
+x6to32(uchar x)
+{
+	ulong y;
+
+	x = x&0x3f;
+	y = (x<<(32-6))|(x<<(32-12))|(x<<(32-18))|(x<<(32-24))|(x<<(32-30));
+	return y;
+}
 
 void
 screeninit(void)
 {
-	int i;
+	int i, x;
 
 	setmode(&dfltmode);
-	for(i = 0; i < 256; i++)
-		setcolor(i, x3to32(i>>5), x3to32(i>>2), x3to32(i<<1));
+
+	gscreen.ldepth = 3;
+	for(i = 0; i < 16; i++){
+		x = x6to32((i*63)/15);
+		setcolor(i, x, x, x);
+	}
+	gscreen.ldepth = 0;
 
 	/* allocate a new soft bitmap area */
 	gscreen.base = xalloc(1024*1024);
@@ -298,7 +317,7 @@ setcolor(ulong p, ulong r, ulong g, ulong b)
 	colormap[p][0] = r;
 	colormap[p][1] = g;
 	colormap[p][2] = b;
-	EISAOUTB(CMWX, 255-p);
+	EISAOUTB(CMWX, p);
 	EISAOUTB(CM, r>>(32-6));
 	EISAOUTB(CM, g>>(32-6));
 	EISAOUTB(CM, b>>(32-6));
@@ -457,7 +476,7 @@ screenupdate(void)
 	Rectangle r;
 	ulong *s, *h, in1, in2;
 	uchar *sp, *hp, *edisp;
-	int i, y, len, off, page, inc;
+	int i, y, len, off, page, inc, pixshft;
 
 	r = mbb;
 	mbb = NULLMBB;
@@ -480,6 +499,10 @@ screenupdate(void)
 	if(len <= 0)
 		return;
 
+	pixshft = 3-gscreen.ldepth;
+	len = (len>>pixshft)+8;
+	r.min.x = (r.min.x>>pixshft) & ~7;
+	
 	inc = gscreen.width*4;
 	off = r.min.y * inc + r.min.x;
 
@@ -489,8 +512,8 @@ screenupdate(void)
 	off &= (1<<16)-1;
 	hp = 0;
 	edisp = 0;
-	for(y = r.min.y; y < r.max.y; y++){
-		if(hp >= edisp){
+	for(y = r.min.y; y < r.max.y; y++) {
+		if(hp >= edisp) {
 			hp = ((uchar*)vgascreen.base) + off;
 			edisp = ((uchar*)vgascreen.base) + 64*1024;
 			EISAOUTB(0x3cd, (page<<4) | page);
@@ -579,7 +602,7 @@ screenload(Rectangle r, uchar *data, int tl, int l)
 			*q ^= (*data^*q) & m;
 			if(tl > 2)
 				memmove(q+1, data+1, tl-2);
-			q[tl-1] ^= (data[tl-1]^q[l-1]) & mr;
+			q[tl-1] ^= (data[tl-1]^q[tl-1]) & mr;
 			q += gscreen.width*sizeof(ulong);
 			data += l;
 		}
