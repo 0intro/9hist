@@ -95,6 +95,7 @@ sysrfork(ulong *arg)
 	incref(p->dot);
 
 	memmove(p->note, up->note, sizeof(p->note));
+	p->privatemem = up->privatemem;
 	p->nnote = up->nnote;
 	p->notified = 0;
 	p->lastnote = up->lastnote;

@@ -12,7 +12,7 @@ void	clockintr(Ureg*);
 void	clrfptrap(void);
 #define coherence()
 void	cpminit(void);
-int	cpuidentify(void);
+void	cpuidentify(void);
 void	cpuidprint(void);
 void	dcflush(void*, ulong);
 void	delay(int);
@@ -22,10 +22,9 @@ void	dtlberror(void);
 void	dumpregs(Ureg*);
 void	delayloopinit(void);
 void	eieio(void);
-//#define	eieio()
 void	evenaddr(ulong);
 void	faultpower(Ureg*, ulong addr, int read);
-void	firmware(int);
+void	firmware(void);
 void	fpinit(void);
 int	fpipower(Ureg*);
 void	fpoff(void);

@@ -148,7 +148,7 @@
 /*
  * Fundamental addresses
  */
-#define	MACHADDR	(KTZERO-MAXMACH*MACHSIZE)
+#define	MACHADDR	(KZERO+0x2000)
 #define	MACHP(n)	((Mach *)(MACHADDR+(n)*MACHSIZE))
 
 #define	UREGSIZE	((8+32)*4)
@@ -208,8 +208,9 @@
 #define	USTKTOP	(TSTKTOP-TSTKSIZ*BY2PG)	/* byte just beyond user stack */
 #define	TSTKTOP	KZERO	/* top of temporary stack */
 #define	TSTKSIZ 100
-#define	KZERO	0x80000000	/* base of kernel address space */
-#define	KTZERO	(KZERO+0x400000)		/* first address in kernel text */
+//#define	KZERO	0x80000000	/* base of kernel address space */
+#define	KZERO	0
+#define	KTZERO	(KZERO+0x4000)		/* first address in kernel text */
 #define	USTKSIZE	(4*1024*1024)	/* size of user stack */
 
 #define	PCI1			0x40000000

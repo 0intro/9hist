@@ -19,9 +19,13 @@
 #define	UREGSPACE	(UREGSIZE+8)
 
 	TEXT start(SB), $-4
+
 	MOVW	$setSB(SB), R2
+	MOVW	$MACHADDR, R(MACH)
+	MOVW	$(KTZERO-8), R1	/* stack, in Mach */
 
 	BL	main(SB)
+
 	RETURN		/* not reached */
 
 TEXT	splhi(SB), $0
@@ -131,6 +135,13 @@ tas0:
 	ISYNC
 	RETURN
 
+TEXT	firmware(SB), $0
+	MOVW	$0, R4
+	MOVW	R4, SPR(SRR1)
+	MOVW	$0x100, R5
+	MOVW	R5, SPR(SRR0)
+	RFI
+
 TEXT	getpvr(SB), $0
 	MOVW	SPR(PVR), R3
 	RETURN
@@ -192,14 +203,6 @@ TEXT	trapvec(SB), $-4
 	MOVW	R1, SPR(SAVER1)
 	MOVW	R0, SPR(SAVEXX)	/* vector */
 
-/*
-	to enable hardware break points
-	MOVW	MSR, R1
-	OR		$(MSR_RI), R1
-	MOVW	R1, MSR
-	ISYNC
-*/	
-
 	/* did we come from user space */
 	MOVW	SPR(SRR1), R0
 	MOVW	CR, R1
@@ -209,7 +212,7 @@ TEXT	trapvec(SB), $-4
 	/* switch to kernel stack */
 	MOVW	R1, CR
 	MOVW	$(MACHADDR&~KZERO), R1	/* PADDR(m->) */
-	MOVW	12(R1), R1				/* m->proc  */
+	MOVW	8(R1), R1				/* m->proc  */
 	RLWNM	$0, R1, $~KZERO, R1		/* PADDR(m->proc) */
 	MOVW	8(R1), R1				/* m->proc->kstack */
 	RLWNM	$0, R1, $~KZERO, R1		/* PADDR(m->proc->kstack) */
@@ -226,7 +229,6 @@ ktrap:
 	BL	trap(SB)
 	BR	restoreureg
 
-
 /*
  * enter with stack set and mapped.
  * on return, SB (R2) has been set, and R3 has the Ureg*,
@@ -241,7 +243,7 @@ TEXT	saveureg(SB), $-4
 	MOVMW	R2, 48(R1)	/* r2:r31 */
 	MOVW	$setSB(SB), R2
 	MOVW	$(MACHADDR&~KZERO), R(MACH)
-	MOVW	12(R(MACH)), R(USER)
+	MOVW	8(R(MACH)), R(USER)
 	MOVW	$MACHADDR, R(MACH)
 	MOVW	SPR(SAVER1), R4
 	MOVW	R4, 44(R1)
@@ -271,9 +273,9 @@ TEXT	saveureg(SB), $-4
 //	OR	$(MSR_IR|MSR_DR|MSR_RI), R5	/* enable MMU */
 	MOVW	R5, SPR(SRR1)
 	MOVW	LR, R31
-//	OR	$KZERO, R31	/* return PC in KSEG0 */
+	OR	$KZERO, R31	/* return PC in KSEG0 */
 	MOVW	R31, SPR(SRR0)
-//	OR	$KZERO, R1	/* fix stack pointer */
+	OR	$KZERO, R1	/* fix stack pointer */
 	RFI	/* returns to trap handler */
 
 /*

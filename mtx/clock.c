@@ -19,7 +19,9 @@ clockintr(Ureg *ureg)
 		m->flushmmu = 0;
 	}
 
+print("portclock\n");
 	portclock(ureg);
+print("done portclock\n");
 }
 
 void
@@ -27,10 +29,10 @@ delay(int l)
 {
 	ulong i, j;
 
-//	j = m->delayloop;
-//	while(l-- > 0)
-//		for(i=0; i < j; i++)
-//			;
+	j = m->loopconst;
+	while(l-- > 0)
+		for(i=0; i < j; i++)
+			;
 }
 
 void
@@ -38,13 +40,19 @@ microdelay(int l)
 {
 	ulong i;
 
-//	l *= m->delayloop;
-//	l += 500;
-//	l /= 1000;
-//	if(l <= 0)
-//		l = 1;
-//	for(i = 0; i < l; i++)
-//		;
+return;
+	l *= m->loopconst;
+	l += 500;
+	l /= 1000;
+	if(l <= 0)
+		l = 1;
+	for(i = 0; i < l; i++)
+		;
+}
+
+void
+clockinit(void)
+{
 }
 
 vlong

@@ -13,24 +13,15 @@ FPsave	initfp;
 void
 main(void)
 {
+	memset(edata, 0, (ulong)end-(ulong)edata);
 	conf.nmach = 1;
 	machinit();
-	active.machs = 1;
-	active.exiting = 0;
+	clockinit();
 	i8250console();
 	print("\nPlan 9\n");
-//	cpuidentify();
 //	confinit();
 //	xinit();
 	trapinit();
-print("trapinit done\n");
-*(ulong*)-1 = 0;
-print("survived!\n");
-spllo();
-putdec(64);
-print("still here\n");
-{ void (*f)(void); f = (void (*)(void))0x200; f(); }
-for(;;);
 //	printinit();
 //	cpuidprint();
 //	mmuinit();
@@ -42,12 +33,18 @@ for(;;);
 //	swapinit();
 //	userinit();
 //	schedinit();
+spllo();
+putdec(64);
+putmsr(getmsr() | MSR_IR | MSR_DR);
+*(ulong*)-1 = 0;
+firmware();
 }
 
 void
 machinit(void)
 {
 	memset(m, 0, sizeof(Mach));
+//	m->cputype = getpvr()>>16;
 
 	/*
 	 * For polled uart output at boot, need
@@ -55,7 +52,28 @@ machinit(void)
 	 * be enough for a while. Cpuidentify will
 	 * calculate the real value later.
 	 */
-//	m->loopconst = 100000;
+	m->loopconst = 100000;
+m->loopconst = 5000;
+
+	active.machs = 1;
+	active.exiting = 0;
+}
+
+void
+cpuidprint(void)
+{
+	char *id;
+
+	id = "?";
+	switch(m->cputype) {
+	case 9:
+		id = "PowerPC 604e";
+		break;
+	default:
+		panic("unknown PowerPC");
+		break;
+	}
+	print("cpu0: %s\n", id);
 }
 
 static struct
@@ -214,8 +232,7 @@ exit(int ispanic)
 	else
 		delay(1000);
 
-	for(;;)
-		;
+	firmware();
 }
 
 /*

@@ -52,9 +52,21 @@ enum
 	FPinactive,
 };
 
+/*
+ * This structure must agree with fpsave and fprestore asm routines
+ */
 struct	FPsave
 {
-int dummy;
+	double	fpreg[32];
+	union {
+		double	fpscrd;
+		struct {
+			ulong	pad;
+			ulong	fpscr;
+		};
+	};
+	int	fpistate;	/* emulated fp */
+	ulong	emreg[32][3];	/* emulated fp */
 };
 
 struct Conf
@@ -106,22 +118,6 @@ typedef	void		KMap;
 #define	kmap(p)		(KMap*)((p)->pa|KZERO)
 #define	kunmap(k)
 
-/*
- *	Process Control Block, used by PALcode
- */
-struct PCB {
-	uvlong	ksp;
-	uvlong	usp;
-	uvlong	ptbr;
-	ulong	asn;
-	ulong	pcc;
-	uvlong	unique;
-	ulong	fen;
-	ulong	dummy;
-	uvlong	rsrv1;
-	uvlong	rsrv2;
-};
-
 struct Mach
 {
 	/* OFFSETS OF THE FOLLOWING KNOWN BY l.s */
@@ -136,6 +132,8 @@ struct Mach
 	Lock	alarmlock;		/* access to alarm list */
 	void	*alarm;			/* alarms bound to this clock */
 	int	inclockintr;
+	int	cputype;
+	ulong	loopconst;
 
 	ulong	fairness;		/* for runproc */
 
@@ -155,8 +153,6 @@ struct Mach
 
 	ulong	spuriousintr;
 	int	lastintr;
-
-	PCB;
 
 	/* MUST BE LAST */
 	int	stack[1];

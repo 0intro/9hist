@@ -32,7 +32,6 @@ struct
 } halloc;
 
 void	faultpower(Ureg *ur, ulong addr, int read);
-void	kernfault(Ureg*, int);
 void	syscall(Ureg* ureg);
 void	noted(Ureg*, ulong);
 void	reset(void);
@@ -49,35 +48,17 @@ char *excname[] =
 	"program exception",
 	"floating-point unavailable",
 	"decrementer",
-	"i/o controller interface error",
+	"reserved A",
 	"reserved B",
 	"system call",
 	"trace trap",
 	"floating point assist",
 	"reserved F",
-	"software emulation",
-	"ITLB miss",
-	"DTLB miss",
-	"ITLB error",
-	"DTLB error",
-	"reserved 15",
-	"reserved 16",
-	"reserved 17",
-	"reserved 18",
-	"reserved 19",
-	"reserved 1A",
-	"reserved 1B",
-	"data breakpoint",
-	"instruction breakpoint",
-	"peripheral breakpoint",
-	"development port",
-	/* the following are made up on a program exception */
-	"floating point exception",		/* 20: FPEXC */
-	"illegal instruction",	/* 21 */
-	"privileged instruction",	/* 22 */
-	"trap",	/* 23 */
-	"illegal operation",	/* 24 */
-	"breakpoint",	/* 25 */
+	"reserved 10",
+	"reserved 11",
+	"reserved 12",
+	"instruction address breakpoint",
+	"system management interrupt",
 };
 
 char *fpcause[] =
@@ -118,11 +99,10 @@ char *regname[]={
 void
 trap(Ureg *ur)
 {
-	int ecode;
-	static struct {int callsched;} c = {1};
-	int user;
-	char buf[ERRMAX];
+	int ecode,user;
+	char buf[ERRMAX], *s;
 
+if(m->loopconst != 5000) print("XXX\n");
 print("trap\n");
 	m->intrts = fastticks(nil);
 	ecode = (ur->cause >> 8) & 0xff;
@@ -132,56 +112,58 @@ if(ur->status & MSR_RI == 0)
 print("double fault?: ecode = %d\n", ecode);
 	switch(ecode){
 	case CEI:
+print("intr\n");
 		intr(ur);
 		break;
 
 	case CDEC:
+print("clock\n");
 		clockintr(ur);
 		break;
-/*
-	case CIMISS:
-		faultpower(ur, ur->pc, 1);
-		break;
-	case CITLBE:
-		faultpower(ur, ur->pc, 1);
-		break;
-	case CDMISS:
-if(0) print("CDMISS: %lux %lux\n", m->epn, m->cmp1);
-		faultpower(ur, m->dar, 1);
-		break;
-	case CDTLBE:
-		faultpower(ur, m->dar, !(m->dsisr & (1<<25)));
-		break;
-*/
 
 	case CSYSCALL:
+print("syscall\n");
 		syscall(ur);
 		break;
 
 	case CPROG:
+print("program\n");
 		if(ur->status & (1<<19))
-			ecode = 0x20;
-		if(ur->status & (1<<18))
-			ecode = 0x21;
-		if(ur->status & (1<<17))
-			ecode = 0x22;
-		goto Default;
-
-	Default:
-	default:
-		spllo();
-		print("ecode = %d\n", ecode);
-		if(ecode < 0 || ecode >= 0x1F)
-			ecode = 0x1F;
-		print("kernel %s pc=0x%lux\n", excname[ecode], ur->pc);
+			s = "floating point exception";
+		else if(ur->status & (1<<18))
+			s = "illegal instruction";
+		else if(ur->status & (1<<17))
+			s = "privileged instruction";
+		else
+			s = "undefined program exception";
+		if(user){
+			spllo();
+			sprint(buf, "sys: trap: %s", s);
+			postnote(up, 1, buf, NDebug);
+			break;
+		}
 		dumpregs(ur);
-		dumpstack();
-		delay(100);
-		reset();
+		panic(s);
+		break;
+
+	default:
+print("default\n");
+		if(ecode <= nelem(excname) && user){
+			spllo();
+			sprint(buf, "sys: trap: %s", excname[ecode]);
+			postnote(up, 1, buf, NDebug);
+			break;
+		}
+		dumpregs(ur);
+		if(ecode < nelem(excname))
+			panic("%s", excname[ecode]);
+		panic("unknown trap/intr: %d\n", ecode);
 	}
-	splhi();
-	if(user)
+
+	if(user && (up->procctl || up->nnote)){
+		splhi();
 		notify(ur);
+	}
 }
 
 void
@@ -203,8 +185,7 @@ if(0)print("fault: pid=%ld pc = %lux, addr = %lux read = %d user = %d stack=%ulx
 		}
 print("fault: pid=%ld pc = %lux, addr = %lux read = %d user = %d stack=%ulx\n", up->pid, ureg->pc, addr, read, user, &ureg);
 dumpregs(ureg);
-		sprint(buf, "sys: trap: fault %s addr=0x%lux",
-			read? "read" : "write", addr);
+		sprint(buf, "sys: trap: fault %s addr=0x%lux", read? "read" : "write", addr);
 		postnote(up, 1, buf, NDebug);
 	}
 	up->insyscall = insyscall;
@@ -251,14 +232,13 @@ trapinit(void)
 {
 	int i;
 
-	putdec(~0);
-	putmsr(getmsr() & ~MSR_IP);
-
 	/*
-	 * set all exceptions to trap
+	 * set all exceptions to trap, except reset
 	 */
-	for(i = 0x0; i < 0x2000; i += 0x100)
+	for(i = 0x200; i < 0x2000; i += 0x100)
 		sethvec(i, trapvec);
+
+	putmsr(getmsr() & ~MSR_IP);
 }
 
 void
@@ -385,24 +365,6 @@ fpexcname(Ureg *ur, ulong fpscr, char *buf)
 	return buf;
 }
 
-#define KERNPC(x)	(KTZERO<(ulong)(x)&&(ulong)(x)<(ulong)etext)
-
-void
-kernfault(Ureg *ur, int code)
-{
-	Label l;
-
-	print("panic: kfault %s dar=0x%lux\n", excname[code], getdar());
-	print("u=0x%lux status=0x%lux pc=0x%lux sp=0x%lux\n",
-				up, ur->status, ur->pc, ur->sp);
-	dumpregs(ur);
-	l.sp = ur->sp;
-	l.pc = ur->pc;
-	dumpstack();
-	for(;;)
-		sched();
-}
-
 /*
  * Fill in enough of Ureg to get a stack trace, and call a function.
  * Used by debugging interface rdb.
@@ -452,7 +414,7 @@ dumpregs(Ureg *ur)
 	ulong *l;
 	if(up) {
 		print("registers for %s %ld\n", up->text, up->pid);
-//		if(ur->srr1 & MSR_PR == 0)
+		if(ur->srr1 & MSR_PR == 0)
 		if(ur->usp < (ulong)up->kstack || ur->usp > (ulong)up->kstack+KSTACK)
 			print("invalid stack ptr\n");
 	}
@@ -468,7 +430,6 @@ dumpregs(Ureg *ur)
 static void
 linkproc(void)
 {
-//print("linkproc %ulx\n", up);
 	spllo();
 	(*up->kpfun)(up->kparg);
 	pexit("", 0);
@@ -482,36 +443,6 @@ kprocchild(Proc *p, void (*func)(void*), void *arg)
 
 	p->kpfun = func;
 	p->kparg = arg;
-}
-
-int
-isvalid_pc(ulong pc)
-{
-	return KERNPC(pc) && (pc&3) == 0;
-}
-
-void
-dumplongs(char*, ulong*, int)
-{
-}
-
-void
-reset(void)
-{
-#ifdef BLOG
-	IMM *io;
-
-	io = m->iomem;
-	io->plprcrk = KEEP_ALIVE_KEY;	// unlock
-	io->plprcr |= IBIT(24);		// enable checkstop reset
-	putmsr(getmsr() & ~(MSR_ME|MSR_RI));
-predawn = 1;
-print("reset = %ulx\n", getmsr());
-	delay(1000);
-	// cause checkstop -> causes reset
-	*(uchar*)(0xdeadbeef) = 0;
-	*(ulong*)(0) = 0;
-#endif
 }
 
 /*
