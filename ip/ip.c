@@ -183,8 +183,8 @@ ipoput(Fs *f, Block *bp, int gating, int ttl)
 	if(!gating){
 		eh->vihl = IP_VER|IP_HLEN;
 		eh->tos = 0;
-		eh->ttl = ttl;
 	}
+	eh->ttl = ttl;
 
 	if(!canrlock(ifc))
 		goto free;
