@@ -415,17 +415,21 @@ astarreset(void)
 			astar[nastar] = 0;
 			continue;
 		}
-		print("serial%d avanstar port %d addr %lux irq %d\n", i, a->port,
+		print("serial%d avanstar port 0x%lux addr %lux irq %d\n", i, a->port,
 			a->addr, a->irq);
 		nastar++;
 
+		/* disable ISA memory response */
+		c = inb(a->port+ISActl2);
+		outb(a->port+ISActl2, c & ~ISAmen);
+
+		/* download mode to turn off cpu */
 		c = inb(a->port+ISActl1);
 		outb(a->port+ISActl1, c & ~ISAnotdl);
 		a->memsize = Pramsize;
-
-		c = inb(a->port+ISActl2);
-		outb(a->port+ISActl2, c & ~ISAmen);
 		a->page = -1;
+
+		setvec(Int0vec + a->irq, astarintr, a);
 	}
 }
 
@@ -722,6 +726,7 @@ startcp(Astar *a)
 		error(Eio);
 
 	/* take board out of download mode and enable IRQ */
+print("out of download\n");
 	outb(a->port+ISActl1, ISAien|isairqcode[a->irq]|ISAnotdl);
 	a->memsize = a->ramsize;
 	setpage(a, 0);
@@ -731,6 +736,7 @@ startcp(Astar *a)
 		a->needpage = 1;
 
 	/* wait for control program to signal life */
+print("waiting for cp\n");
 	for(i = 0; i < 21; i++){
 		if(inb(a->port+ISActl1) & ISApr)
 			break;
@@ -745,6 +751,7 @@ startcp(Astar *a)
 		UNLOCKPAGE(a);
 		poperror();
 	}
+
 	LOCKPAGE(a, 0);
 	i = LEUS(a->gcb->type);
 	switch(i){
@@ -776,8 +783,12 @@ startcp(Astar *a)
 		}
 	}
 
+	/* enable control program interrupt generation */
+	a->gcb->cmd2 = LEUS(Gintack);
+
 	UNLOCKPAGE(a);
 	poperror();
+print("setting up channels\n");
 
 	/* setup the channels */
 	a->running = 1;
@@ -792,12 +803,6 @@ startcp(Astar *a)
 		ac->oq = qopen(4*1024, 0, astarkick, ac);
 		x += sz;
 	}
-
-	/* enable control program interrupt generation */
-	setvec(Int0vec + a->irq, astarintr, a);
-	LOCKPAGE(a, 0);
-	a->gcb->cmd2 = LEUS(Gintack);
-	UNLOCKPAGE(a);
 }
 
 static void
@@ -1293,6 +1298,10 @@ astarintr(Ureg *ur, void *arg)
 	lock(&a->pagelock);
 	if(a->needpage)
 		setpage(a, 0);
+	if(a->running == 0){
+		print("astar interrupt but cp not running\n");
+		return;
+	}
 
 	/* get causes */
 	invec = LEUS(xchgw(&a->gcb->inserv, 0));

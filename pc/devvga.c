@@ -539,6 +539,7 @@ VGAmode mode13 =
 static void
 setmode(VGAmode *vga)
 {
+	uchar seq00, seq01;
 	int i;
 
 	/*
@@ -547,16 +548,18 @@ setmode(VGAmode *vga)
 	 * Load the generic VGA registers:
 	 *	misc;
 	 *	sequencer;
-	 *	take the sequencer out of reset;
+	 *	restore the sequencer reset state;
 	 *	take off write-protect on crt[0x00-0x07];
 	 *	crt;
 	 *	graphics;
 	 *	attribute;
-	 * Turn on the screen.
+	 * Restore the screen state.
 	 */
-	vgaxo(Seqx, 0x01, 0x21);
-
+	seq00 = vgaxi(Seqx, 0x00);
 	vgaxo(Seqx, 0x00, 0x00);
+
+	seq01 = vgaxi(Seqx, 0x01);
+	vgaxo(Seqx, 0x01, seq01|0x20);
 
 	vgao(MiscW, vga->misc);
 
@@ -565,7 +568,7 @@ setmode(VGAmode *vga)
 			continue;
 		vgaxo(Seqx, i, vga->sequencer[i]);
 	}
-	vgaxo(Seqx, 0x00, 0x03);
+	vgaxo(Seqx, 0x00, seq00);
 
 	vgaxo(Crtx, 0x11, vga->crt[0x11] & ~0x80);
 	for(i = 0; i < NCrtx; i++)
@@ -577,7 +580,7 @@ setmode(VGAmode *vga)
 	for(i = 0; i < NAttrx; i++)
 		vgaxo(Attrx, i, vga->attribute[i]);
 
-	vgaxo(Seqx, 0x01, vga->sequencer[1]);
+	vgaxo(Seqx, 0x01, seq01);
 }
 
 static ulong
