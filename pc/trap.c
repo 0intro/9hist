@@ -445,6 +445,9 @@ syscall(Ureg *ur, void *arg)
 	if(up->scallnr == NOTED)
 		noted(ur, *(ulong*)(sp+BY2WD));
 
+	if(up->nerrlab != 0)
+		panic("nerrlab = %d syscall = %d\n", up->nerrlab, up->scallnr);
+
 	splhi(); /* avoid interrupts during the iret */
 	if(up->scallnr!=RFORK && (up->procctl || up->nnote))
 		notify(ur);
