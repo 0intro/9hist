@@ -1353,7 +1353,7 @@ limbo(Conv *s, uchar *source, uchar *dest, Tcp *seg, int version)
 		if(ipcmp(lp->laddr, dest) != 0)
 			continue;
 
-		/* each new SYN restarts the retramsmits */
+		/* each new SYN restarts the retransmits */
 		lp->irs = seg->seq;
 		break;
 	}
