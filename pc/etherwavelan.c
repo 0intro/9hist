@@ -34,7 +34,7 @@ typedef struct Stats	Stats;
 typedef struct WStats	WStats;
 typedef struct WKey	WKey;
 
-struct WStats 
+struct WStats
 {
 	ulong	ntxuframes;		// unicast frames
 	ulong	ntxmframes;		// multicast frames
@@ -85,8 +85,8 @@ struct WFrame
 };
 
 // Lucent's Length-Type-Value records  to talk to the wavelan.
-// most operational parameters are read/set using this. 
-enum 
+// most operational parameters are read/set using this.
+enum
 {
 	WTyp_Stats	= 0xf100,
 	WTyp_Ptype	= 0xfc00,
@@ -217,7 +217,7 @@ struct Wltv
 {
 	ushort	len;
 	ushort	type;
-	union 
+	union
 	{
 		struct {
 			ushort	val;
@@ -254,7 +254,7 @@ struct Stats
 	ulong	nwatchdogs;		// transmit time outs, actually
 };
 
-struct Ctlr 
+struct Ctlr
 {
 	Lock;
 	Rendez	timer;
@@ -292,20 +292,20 @@ struct Ctlr
 	WStats;
 };
 
-// w_... routines do not ilock the Ctlr and should 
+// w_... routines do not ilock the Ctlr and should
 // be called locked.
 
-static void 
+static void
 w_intdis(Ctlr* ctlr)
 {
-	csr_outs(ctlr, WR_IntEna, 0); 
+	csr_outs(ctlr, WR_IntEna, 0);
 	csr_ack(ctlr, 0xffff);
 }
 
 static void
 w_intena(Ctlr* ctlr)
 {
-	csr_outs(ctlr, WR_IntEna, WEvs); 
+	csr_outs(ctlr, WR_IntEna, WEvs);
 }
 
 static int
@@ -444,7 +444,7 @@ static char*
 ltv_inname(Ctlr* ctlr, int type)
 {
 	static Wltv l;
-	
+
 	memset(&l,0,sizeof(l));
 	l.type = type;
 	l.len  = WNameLen/2+2;
@@ -481,7 +481,7 @@ w_write(Ctlr* ctlr, int type, int off, void* buf, ulong len)
 	ulong l = len / 2;
 	int i,tries;
 
-	for (tries=0; tries < WTmOut; tries++){	
+	for (tries=0; tries < WTmOut; tries++){
 		if (w_seek(ctlr, type, off, 0)){
 			DEBUG("wavelan: w_write: seek failed\n");
 			return 0;
@@ -526,7 +526,7 @@ w_alloc(Ctlr* ctlr, int len)
 	return -1;
 }
 
-static int 
+static int
 w_enable(Ether* ether)
 {
 	Wltv l;
@@ -622,8 +622,7 @@ w_rxdone(Ether* ether)
 			DEBUG("wavelan: read 802.11 error\n");
 			goto rxerror;
 		}
-		bp->wp +=  l+2;
-		bp = trimblock(bp, 0, f.dlen+ETHERHDRSIZE);
+		bp->wp = bp->rp+(ETHERHDRSIZE+f.dlen);
 		break;
 	default:
 		l = ETHERHDRSIZE + f.dlen + 2;
@@ -649,20 +648,20 @@ w_rxdone(Ether* ether)
 static int
 w_txstart(Ether* ether, int again)
 {
-
 	Etherpkt* ep;
 	Ctlr* ctlr = (Ctlr*) ether->ctlr;
-	Block* bp; 
-	int		txid;
+	Block* bp;
+	int txid;
+
 	if (ctlr == 0 || ctlr->attached == 0 )
 		return -1;
 	if (ctlr->txbusy && again==0)
 		return -1;
 
 	txid = ctlr->txdid;
-	if (again){		
-		bp = 0;		// a watchdog reenabled the card. 
-		goto retry;	// must retry a previously failed tx. 
+	if (again){
+		bp = 0;		// a watchdog reenabled the card.
+		goto retry;	// must retry a previously failed tx.
 	}
 
 	bp = qget(ether->oq);
@@ -670,10 +669,10 @@ w_txstart(Ether* ether, int again)
 		return 0;
 	ep = (Etherpkt*) bp->rp;
 	ctlr->txbusy = 1;
-	
+
 	// BUG: only  IP/ARP/RARP seem to be ok for 802.3
 	// Other packets should be just copied to the board.
-	// The driver is not doing so, though. 
+	// The driver is not doing so, though.
 	// Besides, the Block should be used instead of txbuf,
 	// to save a memory copy.
 	memset(ctlr->txbuf,0,sizeof(ctlr->txbuf));
@@ -694,16 +693,16 @@ w_txstart(Ether* ether, int again)
 		freeb(bp);
 		return -1;
 	}
-	memmove(ctlr->txbuf, bp->rp+sizeof(ETHERHDRSIZE)+10, 
+	memmove(ctlr->txbuf, bp->rp+sizeof(ETHERHDRSIZE)+10,
 			ctlr->txlen - ETHERHDRSIZE  );
 retry:
-	w_write(ctlr, txid, 0, &ctlr->txf, sizeof(ctlr->txf)); 
+	w_write(ctlr, txid, 0, &ctlr->txf, sizeof(ctlr->txf));
 
 	w_write(ctlr, txid, WF_802_11_Off, ctlr->txbuf,
 			ctlr->txlen - ETHERHDRSIZE + 2);
 	if (w_cmd(ctlr, WCmdTxFree, txid)){
 		DEBUG("wavelan: transmit failed\n");
-		ctlr->txbusy=0;	// added 
+		ctlr->txbusy=0;	// added
 		ctlr->ntxerr++;
 		freeb(bp);
 		return -1;
@@ -761,14 +760,14 @@ w_intr(Ether *ether)
 
 	if (ctlr->attached == 0){
 		csr_ack(ctlr, 0xffff);
-		csr_outs(ctlr, WR_IntEna, 0); 
+		csr_outs(ctlr, WR_IntEna, 0);
 		return;
 	}
 	for(i=0; i<7; i++){
 		csr_outs(ctlr, WR_IntEna, 0);
 		rc = csr_ins(ctlr, WR_EvSts);
 		csr_ack(ctlr, ~WEvs);	// Not interested on them
-	
+
 		if (rc & WRXEv){
 			w_rxdone(ether);
 			csr_ack(ctlr, WRXEv);
@@ -799,13 +798,13 @@ w_intr(Ether *ether)
 			ctlr->nidrop++;
 			csr_ack(ctlr, WIDropEv);
 		}
-	
+
 		w_intena(ctlr);
 		w_txstart(ether,0);
 	}
- }
+}
 
-// Watcher to ensure that the card still works properly and 
+// Watcher to ensure that the card still works properly and
 // to request WStats updates once a minute.
 // BUG: it runs much more often, see the comment below.
 
@@ -837,7 +836,7 @@ w_timer(void* arg)
 		// This can be seen clearly by commenting out
 		// the next if and doing a ping: it will stop
 		// receiving (although the icmp replies are being
-		// issued from the remote) after a few seconds. 
+		// issued from the remote) after a few seconds.
 		// Of course this `bug' could be because I'm reading
 		// the card frames in the wrong way; due to the
 		// lack of documentation I cannot know.
@@ -852,7 +851,7 @@ w_timer(void* arg)
 				if (w_enable(ether)){
 					DEBUG("wavelan: wdog enable failed\n");
 				}
-				if (ctlr->txbusy) 
+				if (ctlr->txbusy)
 					w_txstart(ether,1);
 			}
 			if (tick % 120 == 0)
@@ -860,14 +859,14 @@ w_timer(void* arg)
 				w_cmd(ctlr, WCmdAskStats, WTyp_Stats);
 		}
 		iunlock(&ctlr->Lock);
-	} 
+	}
 	pexit("terminated",0);
 }
 
 static void
 multicast(void*, uchar*, int)
 {
-	// BUG: to be added. 
+	// BUG: to be added.
 }
 
 static void
@@ -891,7 +890,7 @@ attach(Ether* ether)
 			kproc(name, w_timer, ether);
 		} else
 			print("#l%d: enable failed\n",ether->ctlrno);
-	} 
+	}
 }
 
 #define PRINTSTAT(fmt,val)	l += snprint(p+l, READSTR-l, (fmt), (val))
@@ -1025,7 +1024,7 @@ option(Ctlr* ctlr, char* buf, long n)
 			memset(ctlr->wantname, 0, sizeof(ctlr->wantname));
 			strncpy(ctlr->wantname, p, WNameLen);
 		}
-	} 
+	}
 	else if(cistrcmp(cb->f[0], "station") == 0){
 		memset(ctlr->nodename, 0, sizeof(ctlr->nodename));
 		strncpy(ctlr->nodename, cb->f[1], WNameLen);
@@ -1076,7 +1075,7 @@ option(Ctlr* ctlr, char* buf, long n)
 		}
 		else
 			r = -1;
-	} 
+	}
 	else if(cistrcmp(cb->f[0], "txkey") == 0){
 		if((i = atoi(cb->f[1])) >= 1 && i <= WNKeys)
 			ctlr->txkey = i-1;
@@ -1103,8 +1102,8 @@ option(Ctlr* ctlr, char* buf, long n)
 
 	return r;
 }
-		
-static long 
+
+static long
 ctl(Ether* ether, void* buf, long n)
 {
 	Ctlr *ctlr;
@@ -1156,7 +1155,7 @@ promiscuous(void* arg, int on)
 	iunlock(&ctlr->Lock);
 }
 
-static void 
+static void
 interrupt(Ureg* ,void* arg)
 {
 	Ether* ether = (Ether*) arg;
@@ -1187,24 +1186,41 @@ reset(Ether* ether)
 		return -1;
 
 	ilock(&ctlr->Lock);
-	
+
 	if (ether->port==0)
 		ether->port=WDfltIOB;
 	ctlr->iob = ether->port;
 	if (ether->irq==0)
 		ether->irq=WDfltIRQ;
+
+	if (ioalloc(ether->port,WIOLen,0,"wavelan")<0){
+		print("#l%d: port 0x%lx in use\n",
+				ether->ctlrno, ether->port);
+		goto abort;
+	}
+
 	if ((ctlr->slot = pcmspecial("WaveLAN/IEEE", ether))<0){
 		DEBUG("no wavelan found\n");
 		goto abort;
 	}
-	DEBUG("#l%d: port=0x%lx irq=%ld\n", 
+	DEBUG("#l%d: port=0x%lx irq=%ld\n",
 			ether->ctlrno, ether->port, ether->irq);
-  
+
+	w_intdis(ctlr);
+	if (w_cmd(ctlr,WCmdIni,0)){
+		print("#l%d: init failed\n", ether->ctlrno);
+		goto abort;
+	}
+	w_intdis(ctlr);
+	ltv_outs(ctlr, WTyp_Tick, 8);
+
 	ctlr->chan = 0;
 	ctlr->ptype = WDfltPType;
 	ctlr->txkey = 0;
 	ctlr->keys.len = sizeof(WKey)*WNKeys/2 + 1;
 	ctlr->keys.type = WTyp_Keys;
+	if(ctlr->hascrypt = ltv_ins(ctlr, WTyp_HasCrypt))
+		ctlr->crypt = 1;
 	*ctlr->netname = *ctlr->wantname = 0;
 	strcpy(ctlr->nodename, "wvlancard");
 
@@ -1223,29 +1239,15 @@ reset(Ether* ether)
 	ctlr->wantname[WNameLen-1] = 0;
 	ctlr->nodename[WNameLen-1] =0;
 
-	if (ioalloc(ether->port,WIOLen,0,"wavelan")<0){
-		print("#l%d: port 0x%lx in use\n", 
-				ether->ctlrno, ether->port);
-		goto abort;
-	}
-
-	w_intdis(ctlr);
-	if (w_cmd(ctlr,WCmdIni,0)){
-		print("#l%d: init failed\n", ether->ctlrno);
-		goto abort;
-	}
-	w_intdis(ctlr);
-	ltv_outs(ctlr, WTyp_Tick, 8);
-
 	ltv.type = WTyp_Mac;
 	ltv.len	= 4;
 	if (w_inltv(ctlr, &ltv)){
-		print("#l%d: unable to read mac addr\n", 
+		print("#l%d: unable to read mac addr\n",
 			ether->ctlrno);
 		goto abort;
 	}
 	memmove(ether->ea, ltv.addr, Eaddrlen);
-	DEBUG("#l%d: %2.2uX%2.2uX%2.2uX%2.2uX%2.2uX%2.2uX\n", 
+	DEBUG("#l%d: %2.2uX%2.2uX%2.2uX%2.2uX%2.2uX%2.2uX\n",
 			ether->ctlrno,
 			ether->ea[0], ether->ea[1], ether->ea[2],
 			ether->ea[3], ether->ea[4], ether->ea[5]);
@@ -1258,12 +1260,10 @@ reset(Ether* ether)
 	ctlr->maxlen = WMaxLen;
 	ctlr->pmena = 0;
 	ctlr->pmwait= 100;
-	if(ctlr->hascrypt = ltv_ins(ctlr, WTyp_HasCrypt))
-		ctlr->crypt = 1;
 
 	// link to ether
 	ether->ctlr = ctlr;
-	ether->mbps = 10;	
+	ether->mbps = 10;
 	ether->attach = attach;
 	ether->interrupt = interrupt;
 	ether->transmit = transmit;
@@ -1280,7 +1280,7 @@ reset(Ether* ether)
 		ether->ea[3], ether->ea[4], ether->ea[5]);
 
 	iunlock(&ctlr->Lock);
-	return 0; 
+	return 0;
 
 abort:
 	iunlock(&ctlr->Lock);

@@ -779,15 +779,10 @@ notempty(void *a)
 static int
 qwait(Queue *q)
 {
-	Block *b;
-
 	/* wait for data */
 	for(;;){
-		b = q->bfirst;
-		if(b){
-			QDEBUG checkb(b, "qbread 0");
+		if(q->bfirst != nil)
 			break;
-		}
 
 		if(q->state & Qclosed){
 			if(++q->eof > 3)
@@ -829,10 +824,6 @@ qremove(Queue *q)
 static void
 qputback(Queue *q, Block *b)
 {
-	if(q->state & (Qclosed|Qmsg)){
-		freeb(b);
-		return;
-	}
 	b->next = q->bfirst;
 	if(q->bfirst == nil)
 		q->blast = b;
@@ -928,8 +919,11 @@ long
 qread(Queue *q, void *vp, int len)
 {
 	Block *b, *first, *next, **l;
-	int m, n;
-	uchar *p = vp;
+	int m;
+	uchar *s, *e, *p;
+
+	s = p = vp;
+	e = s+len;
 
 	qlock(&q->rlock);
 	if(waserror()){
@@ -955,7 +949,8 @@ again:
 	/* if we get here, there's at least one block in the queue */
 	if(q->state & Qcoalesce){
 		/* when coalescing, 0 length blocks just go away */
-		if(q->dlen <= 0){
+		b = q->bfirst;
+		if(BLEN(b) <= 0){
 			freeb(qremove(q));
 			goto again;
 		}
@@ -965,18 +960,17 @@ again:
 		 *  fit in the read.
 		 */
 		l = &first;
-		b = q->bfirst;
 		m = BLEN(b);
-		n = 0;
 		for(;;) {
 			*l = qremove(q);
 			l = &b->next;
-			n += m;
+			p += m;
+
 			b = q->bfirst;
 			if(b == nil)
 				break;
 			m = BLEN(b);
-			if(n+m > len)
+			if(p+m > e)
 				break;
 		}
 	} else {
@@ -985,19 +979,18 @@ again:
 
 	/* copy to user space outside of the ilock */
 	iunlock(q);
-	n = 0;
+	p = s;
 	for(b = first; b != nil; b = next){
 		m = BLEN(b);
-		if(m > len-n){
-			m = len - n;
-			n = len;
+		if(m > e - p){
+			m = e - p;
 			memmove(p, b->rp, m);
+			p += m;
 			b->rp += m;
 			break;
 		}
 		memmove(p, b->rp, m);
 		p += m;
-		n += m;
 		next = b->next;
 		b->next = nil;
 		freeb(b);
@@ -1017,7 +1010,7 @@ again:
 
 	poperror();
 	qunlock(&q->rlock);
-	return n;
+	return p-s;
 }
 
 static int
