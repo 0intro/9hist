@@ -76,11 +76,13 @@ scsireset(void)
 			if((ctlr->io = (*lp->reset)(ctlrno, ctlr)) == 0)
 				break;
 
-			print("scsi%d: %s: port %lux irq %d",
+			print("scsi%d: %s: port 0x%luX irq %d",
 				ctlrno, ctlr->type, ctlr->port,
 				ctlr->irq, ctlr->mem, ctlr->size);
 			if(ctlr->mem)
-				print(" addr %lux size %d\n", ctlr->mem, ctlr->size);
+				print(" addr 0x%luX", ctlr->mem & ~KZERO);
+			if(ctlr->size)
+				print(" size 0x%luX", ctlr->size);
 			print("\n");
 
 			for(t = 0; t < NTarget; t++){
@@ -203,7 +205,6 @@ scsiinv(int devno, int *type, Target **rt, uchar **inq, char *id)
 				*rt = t;
 				*inq = t->inq;
 				sprint(id, "scsi%d: unit %d", ctlr, unit);
-print("devno %d = %s\n", devno, id);
 				return devno;
 			}
 		}
