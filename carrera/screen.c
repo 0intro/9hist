@@ -46,8 +46,8 @@ GBitmap	gscreen =
 	0,
 	512,
 	3,
-	{ 0, 0, 1599, 1239 },
-	{ 0, 0, 1599, 1239 },
+	{ 0, 0, 1600, 1240 },
+	{ 0, 0, 1600, 1240 },
 	0
 };
 
@@ -276,6 +276,7 @@ static void
 screenputc(char *buf)
 {
 	int pos;
+	Rectangle r;
 
 	switch(buf[0]) {
 	case '\n':
@@ -293,8 +294,14 @@ screenputc(char *buf)
 		cursor.x += pos*w;
 		break;
 	case '\b':
-		if(cursor.x-w >= 0)
+		if(cursor.x-w >= 0){
+			r.min.x = cursor.x-w;
+			r.max.x = cursor.x;
+			r.min.y = cursor.y;
+			r.max.y = cursor.y+defont0.height;
+			gbitblt(&gscreen, r.min, &gscreen, r, Zero);
 			cursor.x -= w;
+		}
 		break;
 	default:
 		if(cursor.x >= window.max.x-w)
