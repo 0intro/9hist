@@ -816,7 +816,7 @@ TEXT	fwblock(SB), $-4	/* fwblock(void*port, void *block, csum) */
 	MOVW	4(FP), R2
 	MOVW	8(FP), R6
 
-	MOVW	$64, R4
+	MOVW	$32, R4
 fwloop:
 	MOVV	0(R2), R5
 	MOVV	R5, 0(R1)
@@ -826,7 +826,7 @@ fwloop:
 	XOR	R5, R6
 
 	ADD	$16, R2
-	SUB	$2, R4
+	SUB	$1, R4
 	BNE	R4, fwloop
 
 	MOVW	R6, R1
@@ -838,7 +838,7 @@ TEXT	frblock(SB), $-4	/* frblock(void*port, void *block, csum) */
 	MOVW	4(FP), R2
 	MOVW	8(FP), R6
 
-	MOVW	$64, R4
+	MOVW	$32, R4
 frloop:
 	MOVV	0(R1), R5
 	MOVV	R5, 0(R2)
@@ -847,7 +847,7 @@ frloop:
 	MOVV	R5, 8(R2)
 	XOR	R5, R6
 	ADD	$16, R2
-	SUB	$2, R4
+	SUB	$1, R4
 	BNE	R4, frloop
 
 	MOVW	R6, R1
