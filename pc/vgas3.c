@@ -12,6 +12,8 @@
 #include <cursor.h>
 #include "screen.h"
 
+#define	round16(x)	(((x)+15)&~15)
+
 enum {
 	PCIS3		= 0x5333,		/* PCI VID */
 
@@ -22,6 +24,7 @@ enum {
 	SAVAGEMX	= 0x8C11,
 	SAVAGEIXMV	= 0x8C12,
 	SAVAGEIX	= 0x8C13,
+	SUPERSAVAGEIXC16 = 0x8C2E,
 	SAVAGE2000	= 0x9102,
 
 	VIRGE		= 0x5631,
@@ -124,7 +127,9 @@ s3linear(VGAscr* scr, int* size, int* align)
 		*size = p->mem[i].size;
 
 		id = (vgaxi(Crtx, 0x2D)<<8)|vgaxi(Crtx, 0x2E);
-		if(id == SAVAGE4){		/* find Savage4 mmio */
+		switch(id){			/* find mmio */
+		case SAVAGE4:
+		case SUPERSAVAGEIXC16:
 			/*
 			 * We could assume that the MMIO registers
 			 * will be in the screen segment and just use
@@ -140,8 +145,8 @@ s3linear(VGAscr* scr, int* size, int* align)
 				if(p->mem[j].size==512*1024 || p->mem[j].size==16*1024*1024){
 					mmiobase = p->mem[j].bar & ~0x0F;
 					mmiosize = 512*1024;
-					scr->mmio = (ulong*)upamalloc(mmiobase, mmiosize, 16*1024*1024);
-					mmioname = "savage4mmio";
+					scr->mmio = (ulong*)upamalloc(mmiobase, mmiosize, 0);
+					mmioname = "savagemmio";
 					break;
 				}
 			}
@@ -204,7 +209,7 @@ static void
 s3load(VGAscr* scr, Cursor* curs)
 {
 	uchar *p;
-	int id, opage, x, y;
+	int id, dolock, opage, x, y;
 
 	/*
 	 * Disable the cursor and
@@ -223,10 +228,13 @@ s3load(VGAscr* scr, Cursor* curs)
 	case VIRGEVX:	
 	case SAVAGEIXMV:
 	case SAVAGE4:
+	case SUPERSAVAGEIXC16:
+		dolock = 0;
 		p += scr->storage;
 		break;
 
 	default:
+		dolock = 1;
 		lock(&scr->devlock);
 		opage = s3pageset(scr, scr->storage>>16);
 		p += (scr->storage & 0xFFFF);
@@ -263,20 +271,9 @@ s3load(VGAscr* scr, Cursor* curs)
 		}
 	}
 
-	switch(id){
-
-	case VIRGE:
-	case VIRGEDXGX:
-	case VIRGEGX2:
-	case VIRGEVX:	
-	case SAVAGEIXMV:
-	case SAVAGE4:
-		break;
-
-	default:
+	if(dolock){
 		s3pageset(scr, opage);
 		unlock(&scr->devlock);
-		break;
 	}
 
 	/*
@@ -466,7 +463,7 @@ hwscroll(VGAscr *scr, Rectangle r, Rectangle sr)
 	d = scr->gscreen->depth;
 	did = (d-8)/8;
 	cmd = 0x00000020|(Bitbltop<<17)|(did<<2);
-	stride = Dx(scr->gscreen->r)*d/8;
+	stride = round16(Dx(scr->gscreen->r))*d/8;
 
 	if(r.min.x <= sr.min.x){
 		cmd |= 1<<25;
@@ -511,7 +508,7 @@ hwfill(VGAscr *scr, Rectangle r, ulong sval)
 	d = scr->gscreen->depth;
 	did = (d-8)/8;
 	cmd = 0x16000120|(Bitbltop<<17)|(did<<2);
-	stride = Dx(scr->gscreen->r)*d/8;
+	stride = round16(Dx(scr->gscreen->r))*d/8;
 	mmio = scr->mmio;
 	waitforlinearfifo(scr);
 	waitforfifo(scr, 8);
@@ -577,6 +574,7 @@ s3drawinit(VGAscr *scr)
 		scr->mmio = (ulong*)(scr->aperture+0x1000000);
 		savageinit(scr);	
 		break;
+	case SUPERSAVAGEIXC16:
 	case SAVAGE4:
 		/* scr->mmio is set by s3linear */
 		savageinit(scr);

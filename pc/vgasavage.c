@@ -12,6 +12,7 @@
 #include <cursor.h>
 #include "screen.h"
 
+#define	round16(x)	(((x)+15)&~15)
 enum {
 	PCIS3		= 0x5333,		/* PCI VID */
 
@@ -22,6 +23,7 @@ enum {
 	SAVAGEMX	= 0x8C11,
 	SAVAGEIXMV	= 0x8C12,
 	SAVAGEIX	= 0x8C13,
+	SUPERSAVAGEIXC16 = 0x8C2E,
 	SAVAGE2000	= 0x9102,
 
 	VIRGE		= 0x5631,
@@ -346,10 +348,11 @@ enum {
 
 struct {
 	ulong idletimeout;
+	ulong tostatw[16];
 } savagestats;
 
 enum {
-	Maxloop = 1<<25
+	Maxloop = 1<<20
 };
 
 static void
@@ -360,10 +363,11 @@ savagewaitidle(VGAscr *scr)
 
 	switch(scr->id){
 	case SAVAGE4:
+	case SUPERSAVAGEIXC16:
 		/* wait for engine idle and FIFO empty */
 		statw = (ulong*)((uchar*)scr->mmio+AltStatus0);
-		mask = 0x0081FFFF;
-		goal = 0x00800000;
+		mask = CBEMask | Ge2Idle;
+		goal = Ge2Idle;
 		break;
 	/* case SAVAGEMXMV: ? */
 	/* case SAVAGEMX: ? */
@@ -372,8 +376,8 @@ savagewaitidle(VGAscr *scr)
 	case SAVAGEIXMV:
 		/* wait for engine idle and FIFO empty */
 		statw = (ulong*)((uchar*)scr->mmio+XStatus0);
-		mask = 0x0008FFFF;
-		goal = 0x00080000;
+		mask = CBEMaskA | Ge2IdleA;
+		goal = Ge2IdleA;
 		break;
 	default:
 		/* 
@@ -387,7 +391,8 @@ savagewaitidle(VGAscr *scr)
 		if((*statw & mask) == goal)
 			return;
 
-	savagestats.idletimeout++;
+	savagestats.tostatw[savagestats.idletimeout++&15] = *statw;
+	savagestats.tostatw[savagestats.idletimeout++&15] = (ulong)statw;
 }
 
 static int
@@ -452,6 +457,21 @@ savagescroll(VGAscr *scr, Rectangle r, Rectangle sr)
 	return 1;
 }
 
+
+static void
+savageblank(VGAscr*, int blank)
+{
+	uchar seqD;
+
+	vgaxo(Seqx, 8, vgaxi(Seqx,8)|0x06);
+	seqD = vgaxi(Seqx, 0xD);
+	seqD &= 0x03;
+	if(blank)
+		seqD |= 0x50;
+	vgaxo(Seqx, 0xD, seqD);
+}
+
+
 void
 savageinit(VGAscr *scr)
 {
@@ -462,6 +482,7 @@ savageinit(VGAscr *scr)
 	switch(scr->id){
 	case SAVAGE4:
 	case SAVAGEIXMV:
+	case SUPERSAVAGEIXC16:
 		break;
 	default:
 		print("unknown savage %.4lux\n", scr->id);
@@ -500,10 +521,11 @@ savageinit(VGAscr *scr)
 
 	/* set bitmap descriptors */
 	bd = (scr->gscreen->depth<<DepthShift) |
-		(Dx(scr->gscreen->r)<<StrideShift) | BlockWriteDis;
+		(round16(Dx(scr->gscreen->r))<<StrideShift) | BlockWriteDis
+		| BDS64;
 
 	*(ulong*)(mmio+GBD1) = 0;
-	*(ulong*)(mmio+GBD2) = bd | BDS64;
+	*(ulong*)(mmio+GBD2) = bd;
 
 	*(ulong*)(mmio+PBD1) = 0;
 	*(ulong*)(mmio+PBD2) = bd;

@@ -898,7 +898,15 @@ i82557pci(void)
 	Ctlr *ctlr;
 
 	p = nil;
-	while(p = pcimatch(p, 0x8086, 0x1229)){
+	while(p = pcimatch(p, 0x8086, 0)){
+		switch(p->did){
+		default:
+			continue;
+		case 0x1229:		/* Intel 8255[789] */
+		case 0x1031:		/* Intel 82562EM */
+			break;
+		}
+
 		/*
 		 * bar[0] is the memory-mapped register address (4KB),
 		 * bar[1] is the I/O port register address (32 bytes) and

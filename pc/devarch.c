@@ -360,7 +360,7 @@ archread(Chan *c, void *a, long n, vlong offset)
 		return n;
 
 	case Qiow:
-		if((n & 0x01) || (offset & 0x01))
+		if(n & 1)
 			error(Ebadarg);
 		checkport(offset, offset+n);
 		n /= 2;
@@ -370,7 +370,7 @@ archread(Chan *c, void *a, long n, vlong offset)
 		return n*2;
 
 	case Qiol:
-		if((n & 0x03) || (offset & 0x03))
+		if(n & 3)
 			error(Ebadarg);
 		checkport(offset, offset+n);
 		n /= 4;
