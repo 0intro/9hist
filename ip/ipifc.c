@@ -208,7 +208,7 @@ ipifcstate(Conv *c, char *state, int n)
 
 	ifc = (Ipifc*)c->ptcl;
 
-	m = snprint(state, n, "%-12.12s %-5d", ifc->dev, ifc->maxmtu);
+	m = snprint(state, n, "%-12s %-5d", ifc->dev, ifc->maxmtu);
 
 	rlock(ifc);
 	for(lifc = ifc->lifc; lifc && n > m; lifc = lifc->next)
