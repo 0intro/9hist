@@ -13,7 +13,7 @@ authentication(int cpuflag)
 	char *argv[16], **av;
 	int ac;
 
-	if(access("/factotum", 05) < 0){
+	if(access("/factotum", AEXEC) < 0){
 		glenda();
 		return;
 	}

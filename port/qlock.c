@@ -84,7 +84,7 @@ qunlock(QLock *q)
 void
 rlock(RWlock *q)
 {
-	Proc *p, *mp;
+	Proc *p;
 
 	lock(&q->use);
 	rwstats.rlock++;
@@ -97,19 +97,18 @@ rlock(RWlock *q)
 
 	rwstats.rlockq++;
 	p = q->tail;
-	mp = up;
-	if(mp == nil)
+	if(up == nil)
 		panic("rlock");
 	if(p == 0)
-		q->head = mp;
+		q->head = up;
 	else
-		p->qnext = mp;
-	q->tail = mp;
-	mp->qnext = 0;
-	mp->state = QueueingR;
+		p->qnext = up;
+	q->tail = up;
+	up->qnext = 0;
+	up->state = QueueingR;
 	unlock(&q->use);
-	if (isedf(mp))
-		edfblock(mp);
+	if (isedf(up))
+		edfblock(up);
 	sched();
 }
 
@@ -139,7 +138,7 @@ runlock(RWlock *q)
 void
 wlock(RWlock *q)
 {
-	Proc *p, *mp;
+	Proc *p;
 
 	lock(&q->use);
 	rwstats.wlock++;
@@ -155,19 +154,18 @@ wlock(RWlock *q)
 	/* wait */
 	rwstats.wlockq++;
 	p = q->tail;
-	mp = up;
-	if(mp == nil)
+	if(up == nil)
 		panic("wlock");
 	if(p == nil)
-		q->head = mp;
+		q->head = up;
 	else
-		p->qnext = mp;
-	q->tail = mp;
-	mp->qnext = 0;
-	mp->state = QueueingW;
+		p->qnext = up;
+	q->tail = up;
+	up->qnext = 0;
+	up->state = QueueingW;
 	unlock(&q->use);
-	if (isedf(mp))
-		edfblock(mp);
+	if (isedf(up))
+		edfblock(up);
 	sched();
 }
 
