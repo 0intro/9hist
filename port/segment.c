@@ -95,7 +95,9 @@ putseg(Segment *s)
 		return;
 
 	i = s->image;
-	if(i && i->s == s && s->ref == 1){
+	if(i)
+	if(i->s == s)
+	if(s->ref == 1) {
 		lock(i);
 		if(s->ref == 1)
 			i->s = 0;
@@ -166,6 +168,7 @@ dupseg(Segment *s)
 		n->image = s->image;
 		n->fstart = s->fstart;
 		n->flen = s->flen;
+
 	copypte:
 		for(i = 0; i < SEGMAPSIZE; i++)
 			if(pte = s->map[i])
@@ -272,30 +275,20 @@ imagereclaim(void)
 	if(!canqlock(&ireclaim))	/* Somebody is already cleaning the page cache */
 		return;
 
-	if(conf.cntrlp)
-	print("ireclaim %lud\n", TK2MS(MACHP(0)->ticks));
-
 	for(;;) {
 		lock(&palloc);
-		for(p = palloc.head; p; p = p->next)
+		for(p = palloc.head; p; p = p->next) {
 			if(p->image)
 			if(p->ref == 0)
-			if(p->image != &swapimage)
-				break;
-
+			if(p->image != &swapimage) {
+				lockpage(p);
+				if(p->ref == 0)
+					uncachepage(p);
+				unlockpage(p);
+			}
+		}
 		unlock(&palloc);
-		if(p == 0)
-			break;
-
-		lockpage(p);
-		if(p->ref == 0)
-			uncachepage(p);
-		unlockpage(p);
 	}
-
-	if(conf.cntrlp)
-	print("ireclaim done %lud\n", TK2MS(MACHP(0)->ticks));
-
 	qunlock(&ireclaim);
 }
 

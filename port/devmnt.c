@@ -186,14 +186,19 @@ mattach(Mnt *m, char *spec, char *serv)
 	int i;
 
 	r = mntralloc();
-
 	c = devattach('M', spec);
 	lock(&mntalloc);
 	c->dev = mntalloc.id++;
 	unlock(&mntalloc);
 	c->mntindex = m-mntalloc.mntarena;
 
-	if(*serv && !waserror()){
+	if(waserror()){
+		mntfree(r);
+		close(c);
+		nexterror();
+	}
+
+	if(*serv){
 		r->request.type = Tauth;
 		r->request.fid = c->fid;
 		memmove(r->request.uname, u->p->user, NAMELEN);
@@ -203,21 +208,22 @@ mattach(Mnt *m, char *spec, char *serv)
 		memmove(r->request.chal, chal, 8);
 		strncpy(r->request.chal+8, serv, NAMELEN);
 		encrypt(u->p->pgrp->crypt->key, r->request.chal, 8+NAMELEN);
-		mountrpc(m, r);
-		decrypt(u->p->pgrp->crypt->key, r->reply.chal, 2*8+2*DESKEYLEN);
-		chal[0] = 4;
-		if(memcmp(chal, r->reply.chal, 8) != 0)
-			error(Eperm);
-		memmove(r->request.auth, r->reply.chal+8+DESKEYLEN, 8+DESKEYLEN);
-		poperror();
+		if(waserror())
+			memset(r->request.auth, 0, sizeof r->request.auth);
+		else{
+			mountrpc(m, r);
+			poperror();
+			decrypt(u->p->pgrp->crypt->key, r->reply.chal, 2*8+2*DESKEYLEN);
+			chal[0] = 4;
+			if(memcmp(chal, r->reply.chal, 8) != 0)
+				error(Eperm);
+			memmove(r->request.auth, r->reply.chal+8+DESKEYLEN, 8+DESKEYLEN);
+		}
+		r->done = 0;
+		r->flushed = 0;
 	}else
 		memset(r->request.auth, 0, sizeof r->request.auth);
 
-	if(waserror()){
-		mntfree(r);
-		close(c);
-		nexterror();
-	}
 	r->request.type = Tattach;
 	r->request.fid = c->fid;
 	memmove(r->request.uname, u->p->user, NAMELEN);

@@ -23,18 +23,14 @@ tcpackproc(void *junk)
 	for(;;) {
 		expired = 0;
 
-		/* Run through the list of running timers, decrementing each one.
-		 * If one has expired, take it off the running list and put it
-		 * on a singly linked list of expired timers
-		 */
-
 		qlock(&timerlock);
 		for(t = timers;t != 0; t = tp) {
 			tp = t->next;
 			if(tp == t)
 				panic("Timer loop at %lux\n",(long)tp);
 	
- 			if(t->state == TIMER_RUN && --(t->count) == 0){
+ 			if(t->state == TIMER_RUN)
+			if(--(t->count) == 0){
 
 				/* Delete from active timer list */
 				if(timers == t)
@@ -52,9 +48,14 @@ tcpackproc(void *junk)
 		}
 		qunlock(&timerlock);
 
-		while((t = expired) != 0){
+		for(;;) {
+			t = expired;
+			if(t == 0)
+				break;
+
 			expired = t->next;
-			if(t->state == TIMER_EXPIRE && t->func)
+			if(t->state == TIMER_EXPIRE)
+			if(t->func)
 				(*t->func)(t->arg);
 		}
 
@@ -118,9 +119,10 @@ tcpflow(void *conv)
 		sleep(&tcpflowr, return0, 0);
 
 		for(ifc = base; ifc < etab; ifc++) {
-			if(ifc->stproto == &tcpinfo &&
-			   ifc->ref != 0 && ifc->readq &&
-			   !QFULL(ifc->readq->next)) {
+			if(ifc->readq)
+			if(ifc->ref != 0)
+			if(ifc->stproto == &tcpinfo)
+			if(!QFULL(ifc->readq->next)) {
 				tcprcvwin(ifc);
 				tcp_acktimer(ifc);
 			}

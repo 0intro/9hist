@@ -431,6 +431,9 @@ lancestart(int mode, int dolock)
 	Lancemem *lm = LANCEMEM;
 	Msg *m;
 
+if(mode == PROM)
+	print("setting promiscuous mode\n");
+
 	/*
 	 *   wait till both receiver and transmitter are
 	 *   quiescent
