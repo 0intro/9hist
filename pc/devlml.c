@@ -12,8 +12,8 @@ static void *		pciPhysBaseAddr;
 static ulong		pciBaseAddr;
 static Pcidev *		pcidev;
 
-#define DBGREAD 0x01
-#define DBGWRIT 0x02
+#define DBGREAD	0x01
+#define DBGWRIT	0x02
 #define DBGINTR	0x04
 #define DBGINTS	0x08
 
@@ -141,6 +141,10 @@ lmlreset(void)
 	void *grabbuf;
 	ulong grablen;
 
+	if(isaconfig("lml", 0, &isa) == 0) {
+		if (debug) print("lml not in plan9.ini\n");
+		return;
+	}
 	pcidev = pcimatch(nil, PCI_VENDOR_ZORAN, PCI_DEVICE_ZORAN_36067);
 	if (pcidev == nil) {
 		return;

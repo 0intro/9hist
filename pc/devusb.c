@@ -232,6 +232,7 @@ struct Endpt {
 	ulong	poffset;	/* offset of next packet to be queued */
 	ulong	toffset;	/* offset associated with time */
 	vlong	time;		/* timeassociated with offset */
+	int		buffered;	/* bytes captured but unread, or written but unsent */
 	/* end ISO stuff */
 	QH	*	epq;		/* queue of TDs for this endpoint */
 	QLock	rlock;
@@ -832,6 +833,7 @@ schedendpt(Endpt *e)
 	e->foffset = 0;
 	e->toffset = 0;
 	e->poffset = 0;
+	e->buffered = 0;
 	td = e->td0;
 	for(i = e->sched; i < NFRAME; i += e->pollms){
 		bp = e->bp0 + e->maxpkt*i/e->pollms;
@@ -1086,15 +1088,24 @@ cleaniso(Endpt *e, int frnum)
 	do {
 		if (td->status & AnyError)
 			iprint("usbisoerror 0x%lux\n", td->status);
-		e->nbytes += (td->status + 1) & 0x3ff;
+		n = (td->status + 1) & 0x3ff;
+		e->nbytes += n;
 		if ((td->flags & IsoClean) == 0)
 			e->nblocks++;
 		if (e->mode == OREAD){
+			e->buffered += n;
 			e->poffset += (td->status + 1) & 0x3ff;
 			td->offset = e->poffset;
 			td->dev = ((e->maxpkt -1)<<21) | ((id&0x7FF)<<8) | TokIN;
 			e->toffset = td->offset;
 		}else{
+			if ((td->flags & IsoClean) == 0){
+				e->buffered -= n;
+				if (e->buffered < 0){
+					iprint("e->buffered %d?\n", e->buffered);
+					e->buffered = 0;
+				}
+			}
 			e->toffset = td->offset;
 			n = (e->hz + e->remain)*e->pollms/1000;
 			e->remain = (e->hz + e->remain)*e->pollms%1000;
@@ -1111,23 +1122,30 @@ cleaniso(Endpt *e, int frnum)
 	} while ((td->status & Active) == 0);
 	e->time = todget(nil);
 	e->xtd = td;
-	for (n = 2; n < 6; n++){
+	for (n = 2; n < 4; n++){
 		i = ((frnum + n)&0x3ff);
 		td = e->td0 + i;
 		bp = e->bp0 + e->maxpkt*i/e->pollms;
 		if (td->status & Active)
 			continue;
 
-		if (td == e->etd) {
-			XPRINT("*");
-			memset(bp+e->off, 0, e->maxpkt-e->off);
-			if (e->off == 0)
+		if (e->mode == OWRITE){
+			if (td == e->etd) {
+				XPRINT("*");
+				memset(bp+e->off, 0, e->maxpkt-e->off);
+				if (e->off == 0)
+					td->flags |= IsoClean;
+				else
+					e->buffered += (((td->dev>>21) +1) & 0x3ff) - e->off;
+				e->etd = nil;
+			}else if ((td->flags & IsoClean) == 0){
+				XPRINT("-");
+				memset(bp, 0, e->maxpkt);
 				td->flags |= IsoClean;
-			e->etd = nil;
-		}else if ((td->flags & IsoClean) == 0){
-			XPRINT("-");
-			memset(bp, 0, e->maxpkt);
-			td->flags |= IsoClean;
+			}
+		} else {
+			/* Unread bytes are now lost */
+			e->buffered -= (td->status + 1) & 0x3ff;
 		}
 		td->status = ErrLimit1 | Active | IsoSelect | IOC;
 	}
@@ -1708,24 +1726,32 @@ isoio(Endpt *e, void *a, long n, ulong offset, int w)
 		if (td == nil || e->off == 0){
 			if (td == nil){
 				XPRINT("0");
-				if (w)
-					frnum = (IN(Frnum) + 8) & 0x3ff;
-				else
-					frnum = (IN(Frnum) - 8) & 0x3ff;
-				td = e->etd = e->td0 +frnum;
+				if (w){
+					frnum = (IN(Frnum) + 1) & 0x3ff;
+					td = e->td0 + frnum;
+					while(td->status & Active)
+						td = td->next;
+				}else{
+					frnum = (IN(Frnum) - 4) & 0x3ff;
+					td = e->td0 + frnum;
+					while(td->next != e->xtd)
+						td = td->next;
+				}
+				e->etd = td;
 				e->off = 0;
-			}
-			/* New td, make sure it's ready */
-			isolock = 0;
-			iunlock(&activends);
-			while (isoready(e) == 0){
-				sleep(&e->wr, isoready, e);
-			}
-			ilock(&activends);
-			isolock = 1;
-			if (e->etd == nil){
-				XPRINT("!");
-				continue;
+			}else{
+				/* New td, make sure it's ready */
+				isolock = 0;
+				iunlock(&activends);
+				while (isoready(e) == 0){
+					sleep(&e->wr, isoready, e);
+				}
+				ilock(&activends);
+				isolock = 1;
+				if (e->etd == nil){
+					XPRINT("!");
+					continue;
+				}
 			}
 			if (w)
 				e->psize = ((td->dev >> 21) + 1) & 0x7ff;
@@ -1741,10 +1767,17 @@ isoio(Endpt *e, void *a, long n, ulong offset, int w)
 		q = bp + e->off;
 		if((i = n) >= e->psize)
 			i = e->psize;
-		if (w)
+		if (w){
 			memmove(q, p, i);
-		else
+			e->buffered += i;
+		}else{
 			memmove(p, q, i);
+			e->buffered -= i;
+			if (e->buffered < 0){
+				iprint("e->buffered %d?\n", e->buffered);
+				e->buffered = 0;
+			}
+		}
 		p += i;
 		n -= i;
 		e->off += i;
@@ -1823,6 +1856,22 @@ readusb(Endpt *e, void *a, long n)
 	return p-(uchar*)a;
 }
 
+int
+epstatus(char *s, int n, Endpt *e, int i)
+{
+	int l;
+
+	l = 0;
+	l += snprint(s+l, n-l, "%2d %#6.6lux %10lud bytes %10lud blocks",
+		i, e->csp, e->nbytes, e->nblocks);
+	if (e->iso && e->toffset){
+		l += snprint(s+l, n-l, " %6d buffered %10lud offset %19lld time",
+			e->buffered, e->toffset, e->time);
+	}
+	l += snprint(s+l, n-l, "\n");
+	return l;
+}
+
 long
 usbread(Chan *c, void *a, long n, vlong offset)
 {
@@ -1877,11 +1926,7 @@ usbread(Chan *c, void *a, long n, vlong offset)
 		l = snprint(s, READSTR, "%s %#6.6lux\n", devstates[d->state], d->csp);
 		for(i=0; i<nelem(d->ep); i++)
 			if((e = d->ep[i]) != nil){	/* TO DO: freeze e */
-				l += snprint(s+l, READSTR-l, "%2d %#6.6lux %10lud bytes %10lud blocks", i, e->csp, e->nbytes, e->nblocks);
-				if (e->iso && e->toffset){
-					l += snprint(s+l, READSTR-l, " %10lud offset %19lld time", e->toffset, e->time);
-				}
-				l += snprint(s+l, READSTR-l, "\n");
+				l += epstatus(s+l, READSTR-l, e, i);
 			}
 		n = readstr(offset, a, n, s);
 		poperror();
