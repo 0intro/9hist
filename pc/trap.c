@@ -208,18 +208,24 @@ trapinit(void)
 	outb(Int0aux, int0mask);
 }
 
-char *excname[] =
-{
-[0]	"divide error",
-[1]	"debug exception",
-[4]	"overflow",
-[5]	"bounds check",
-[6]	"invalid opcode",
-[8]	"double fault",
-[10]	"invalid TSS",
-[11]	"segment not present",
-[12]	"stack exception",
-[13]	"general protection violation",
+char *excname[] = {
+	[0]	"divide error",
+	[1]	"debug exception",
+	[2]	" nonmaskable interrupt",
+	[3]	"breakpoint",
+	[4]	"overflow",
+	[5]	"bounds check",
+	[6]	"invalid opcode",
+	[7]	"coprocessor not available",
+	[8]	"double fault",
+	[9]	"9 (reserved)",
+	[10]	"invalid TSS",
+	[11]	"segment not present",
+	[12]	"stack exception",
+	[13]	"general protection violation",
+	[14]	"page fault",
+	[15]	"15 (reserved)",
+	[16]	"coprocessor error",
 };
 
 /*
@@ -278,7 +284,7 @@ trap(Ureg *ur)
 		}
 
 		if(v >= Int0vec || v < Int0vec+16){
-			/* an unknown interrupts */
+			/* an unknown interrupt */
 			v -= Int0vec;
 			if(badintr[v]++ == 0 || (badintr[v]%100000) == 0)
 				print("unknown interrupt %d pc=0x%lux: total %d\n", v,
