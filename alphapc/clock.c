@@ -44,6 +44,7 @@ uvlong
 cycletimer(void)
 {
 	ulong pcc;
+	vlong delta;
 
 	pcc = rpcc(nil) & 0xFFFFFFFF;
 	if(m->cpuhz == 0){
@@ -60,10 +61,11 @@ cycletimer(void)
 		m->cpuhz = hwrpb->cfreq;
 		m->pcclast = pcc;
 	}
-	if(pcc < m->pcclast)
-		m->fastclock += 0x100000000LL;
-	m->fastclock += pcc;
+	delta = pcc - m->pcclast;
+	if(delta < 0)
+		delta += 0x100000000LL;
 	m->pcclast = pcc;
+	m->fastclock += delta;
 
 	return MACHP(0)->fastclock;
 }
@@ -106,6 +108,7 @@ clock(Ureg *ur)
 	Clock0link *lp;
 	static int count;
 
+	cycletimer();
 	/* HZ == 100, timer == 1024Hz.  error < 1ms */
 	count += 100;
 	if (count < 1024)

@@ -405,8 +405,8 @@ vwrite(Chan *, void *va, long count, vlong pos) {
 			memmove((char*)&frameHeader + hdrPos, buf, hdrLeft);
 			// Make sure we have a standard LML33 header
 			if (frameHeader.mrkSOI == MRK_SOI
-			 && frameHeader.mrkAPP3==MRK_APP3
-			 && strcmp(frameHeader.nm,APP_NAME) == 0) {
+			 && frameHeader.mrkAPP3 == MRK_APP3
+			 && strcmp(frameHeader.nm, APP_NAME) == 0) {
 				//print("Starting new buffer len=0x%x frame=%d\n", frameHeader.frameSize, frameHeader.frameSeqNo);
 				// Obtain values we need for playback process from the header
 				currentBufferLength = frameHeader.frameSize;
@@ -609,16 +609,18 @@ vidread(Chan *c, void *va, long n, vlong off) {
 		}
 		return 1;
 	case Qreg:
-		if (off < 0 || off + n > 0x200 || (off & 0x3))
+		if (off < 0 || off + n > 0x400)
 			return 0;
 		switch(n) {
 		case 1:
 			*buf = readb(pciBaseAddr + off);
 			break;
 		case 2:
+			if (off & (n-1)) return 0;
 			*(short *)buf = readw(pciBaseAddr + off);
 			break;
 		case 4:
+			if (off & (n-1)) return 0;
 			*(long *)buf = readl(pciBaseAddr + off);
 			break;
 		default:

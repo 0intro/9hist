@@ -350,7 +350,7 @@ ilkick(Conv *c, int l)
 		ic->rttlen = dlen + IL_IPSIZE + IL_HDRSIZE;
 	}
 
-	if(later(msec, ic->timeout, "ilkick"))
+	if(later(msec, ic->timeout, nil))
 		ilsettimeout(ic);
 	ipoput(f, bp, 0, c->ttl);
 }
@@ -1035,12 +1035,13 @@ later(ulong t1, ulong t2, char *x)
 
 	dt = t1 - t2;
 	if(dt > 0) {
-		if(dt > Tfuture)
+		if(x != nil && dt > Tfuture)
 			print("%s: way future %d\n", x, dt);
 		return 1;
 	}
 	if(dt < -Tfuture) {
-		print("%s: way past %d\n", x, -dt);
+		if(x != nil)
+			print("%s: way past %d\n", x, -dt);
 		return 1;
 	}
 	return 0;
