@@ -366,7 +366,7 @@ enum {						/* 3C90x extended register set */
 	updnLastFrag		= 0x80000000,	/* (dpd->len) */
 
 	Nup			= 32,
-	Ndn			= 16,
+	Ndn			= 32,
 };
 
 /*
@@ -1110,7 +1110,7 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 
 	if(ctlr->upenabled){
 		len += snprint(p+len, READSTR-len, "up: q %lud i %lud m %d s %lud\n",
-			ctlr->upqueued, ctlr->upinterrupts, ctlr->dnqmax, ctlr->upstalls);
+			ctlr->upqueued, ctlr->upinterrupts, ctlr->upqmax, ctlr->upstalls);
 		ctlr->upqmax = 0;
 	}
 	if(ctlr->dnenabled){
