@@ -143,12 +143,6 @@ KMap*
 kmap(Page *pg)
 {
 	KMap *k;
-	int s = 0;
-
-	if(u) {
-		s = u->p->state;
-		u->p->state = MMUing;
-	}
 	
 	lock(&kmapalloc);
 	k = kmapalloc.free;
@@ -161,8 +155,6 @@ kmap(Page *pg)
 
 	k->pa = pg->pa;
 	putkmmu(k->va, PPN(k->pa) | PTEVALID | PTEKERNEL);
-	if(s)
-		u->p->state = s;
 
 	return k;
 }

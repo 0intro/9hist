@@ -58,7 +58,7 @@ intrinit(void)
 }
 
 void
-reset(void)
+systemreset(void)
 {
 	delay(100);
 	putb2(ENAB, ENABRESET);
@@ -109,6 +109,16 @@ init0(void)
 	
 	u->slash = (*devtab[0].attach)(0);
 	u->dot = clone(u->slash, 0);
+
+	if(!waserror()){
+		c = namec("#e/terminal", Acreate, OWRITE, 0600);
+		(*devtab[c->type].write)(c, "sun sparc slc", strlen("sun sparc slc"), 0);
+		close(c);
+		c = namec("#e/cputype", Acreate, OWRITE, 0600);
+		(*devtab[c->type].write)(c, "sparc", strlen("sparc"), 0);
+		close(c);
+		poperror();
+	}
 
 	touser(USTKTOP-(1+MAXSYSARG)*BY2WD);
 }
@@ -178,7 +188,7 @@ exit(void)
 		for(i=0; i<1000; i++)
 			;
 	splhi();
-	reset();
+	systemreset();
 }
 
 Conf	conf;
@@ -231,6 +241,10 @@ confinit(void)
 	conf.nservice = 3*mul;			/* was conf.nproc/5 */
 	conf.nfsyschan = 31 + conf.nchan/20;
 	conf.copymode = 0;		/* copy on write */
+	conf.ipif = 8;
+	conf.ip = 64;
+	conf.arp = 32;
+	conf.frag = 32;
 	conf.cntrlp = 0;
 }
 
@@ -302,5 +316,5 @@ print("%d lance buffers\n", i);
 void
 firmware(void)
 {
-	reset();
+	systemreset();
 }

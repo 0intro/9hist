@@ -18,6 +18,12 @@ struct
 	Proc	*free;
 }procalloc;
 
+struct
+{
+	Lock;
+	Waitq	*free;
+}waitqalloc;
+
 typedef struct
 {
 	Lock;
@@ -30,14 +36,10 @@ Schedq runhiq, runloq;
 char *statename[]={	/* BUG: generate automatically */
 	"Dead",
 	"Moribund",
-	"Zombie",
 	"Ready",
 	"Scheding",
 	"Running",
 	"Queueing",
-	"MMUing",
-	"Exiting",
-	"Inwait",
 	"Wakeme",
 	"Broken",
 	"Stopped",
@@ -227,13 +229,14 @@ loop:
 	lock(&procalloc);
 	if(p = procalloc.free){		/* assign = */
 		procalloc.free = p->qnext;
-		p->state = Zombie;
+		p->state = Scheding;
+		p->psstate = "New";
 		unlock(&procalloc);
 		p->mach = 0;
 		p->qnext = 0;
 		p->nchild = 0;
-		p->child = 0;
-		p->exiting = 0;
+		p->nwait = 0;
+		p->waitq = 0;
 		p->pgrp = 0;
 		p->egrp = 0;
 		p->fgrp = 0;
@@ -492,6 +495,7 @@ addbroken(Proc *c)
 	broken.p[broken.n++] = c;
 	unlock(&broken);
 	c->state = Broken;
+	c->psstate = 0;
 	sched();		/* until someone lets us go */
 	lock(&broken);
 	for(b=0; b<NBROKEN; b++)
@@ -520,99 +524,72 @@ freebroken(void)
 void
 pexit(char *exitstr, int freemem)
 {
-	ulong mypid;
-	Proc *p, *c, *k, *l;
-	int n, i;
-	Chan *ch;
-	char msg[ERRLEN];
-	ulong *up, *ucp, *wp;
+	Proc *p, *c;
 	Segment **s, **es, *os;
+	Waitq *wq, *f, *next;
 
-	if(exitstr) 			/* squirrel away before we lose our address space */
-		strcpy(msg, exitstr);
-	else
-		msg[0] = 0;
-	
 	c = u->p;
 	c->alarm = 0;
-	mypid = c->pid;
 
 	if(c->fgrp)
 		closefgrp(c->fgrp);
 
-	if(freemem){
-		flushvirt();
-		es = &c->seg[NSEG];
-		for(s = c->seg; s < es; s++)
-			if(os = *s) {
-				*s = 0;
-				putseg(os);
-			}
-		closepgrp(c->pgrp);
-		if(c->egrp)
-			closeegrp(c->egrp);
-		close(u->dot);
-	}
-	/*
-	 * Any of my children exiting?
-	 */
-	while(c->nchild){
-		lock(&c->wait.queue);
-		if(canlock(&c->wait.use)){	/* no child is exiting */
-			c->exiting = 1;
-			unlock(&c->wait.use);
-			unlock(&c->wait.queue);
-			break;
-		}else{				/* must wait for child */
-			unlock(&c->wait.queue);
-			pwait(0);
-		}
-	}
+	wq = newwaitq();
+	wq->w.pid = c->pid;
+	wq->w.time[TUser] = TK2MS(c->time[TUser]);
+	wq->w.time[TCUser] = TK2MS(c->time[TCUser]);
+	wq->w.time[TSys] = TK2MS(c->time[TSys]);
+	wq->w.time[TCSys] = TK2MS(c->time[TCSys]);
+	wq->w.time[TReal] = TK2MS(MACHP(0)->ticks - c->time[TReal]);
+	if(exitstr)
+		strncpy(wq->w.msg, exitstr, ERRLEN);
+	else
+		wq->w.msg[0] = '\0';
 
-	c->time[TReal] = MACHP(0)->ticks - c->time[TReal];
-	/*
-	 * Tell my parent
-	 */
+	/* Find my parent */
 	p = c->parent;
-	if(p == 0)
-		goto out;
-	qlock(&p->wait);
-	lock(&p->wait.queue);
-	if(p->pid==c->parentpid && !p->exiting){
-		memmove(p->waitmsg.msg, msg, ERRLEN);
-		p->waitmsg.pid = mypid;
-		wp = &p->waitmsg.time[TUser];
-		up = &c->time[TUser];
-		ucp = &c->time[TCUser];
-		*wp++ = TK2MS(*up++ + *ucp++);
-		*wp++ = TK2MS(*up++ + *ucp  );
-		*wp   = TK2MS(*up           );
-		p->child = c;
-		c->state = Exiting;
-		if(p->state == Inwait)
-			ready(p);
-		unlock(&p->wait.queue);
-		sched();
-	}else{
-		unlock(&p->wait.queue);
-		qunlock(&p->wait);
+
+	lock(&p->exl);
+	/* My parent still alive */
+	if(p->pid == c->parentpid && p->state != Broken && p->nwait < 128) {	
+		p->nchild--;
+		p->time[TCUser] += c->time[TUser] + c->time[TCUser];
+		p->time[TCSys] += c->time[TSys] + c->time[TCSys];
+
+		wq->next = p->waitq;
+		p->waitq = wq;
+		p->nwait++;
+		unlock(&p->exl);
+
+		wakeup(&p->waitr);
 	}
-   out:
-	if(!freemem){
-		addbroken(c);
-		flushvirt();
-		es = &c->seg[NSEG];
-		for(s = c->seg; s < es; s++)
-			if(os = *s) {
-				*s = 0;
-				putseg(os);
-			}
-		closepgrp(c->pgrp);
-		closeegrp(c->egrp);
-		close(u->dot);
+	else {
+		unlock(&p->exl);
+		freewaitq(wq);
 	}
 
-    done:
+	if(!freemem)
+		addbroken(c);
+
+	flushvirt();
+	es = &c->seg[NSEG];
+	for(s = c->seg; s < es; s++)
+		if(os = *s) {
+			*s = 0;
+			putseg(os);
+		}
+	closepgrp(c->pgrp);
+	closeegrp(c->egrp);
+	close(u->dot);
+
+	lock(&c->exl);		/* Prevent my children from leaving waits */
+	c->pid = 0;
+	unlock(&c->exl);
+
+	for(f = c->waitq; f; f = next) {
+		next = f->next;
+		freewaitq(f);
+	}
 
 	/*
 	 * sched() cannot wait on these locks
@@ -626,45 +603,45 @@ pexit(char *exitstr, int freemem)
 	panic("pexit");
 }
 
+int
+haswaitq(void *x)
+{
+	Proc *p;
+
+	p = (Proc *)x;
+	return p->waitq != 0;
+}
+
 ulong
 pwait(Waitmsg *w)
 {
-	Proc *c, *p;
+	Proc *p;
 	ulong cpid;
+	Waitq *wq;
 
 	p = u->p;
-again:
-	while(canlock(&p->wait.use)){
-		if(p->nchild == 0){
-			qunlock(&p->wait);
-			error(Enochild);
-		}
-		p->state = Inwait;
-		qunlock(&p->wait);
-		sched();
+
+	lock(&p->exl);
+	if(p->nchild == 0 && p->waitq == 0) {
+		unlock(&p->exl);
+		error(Enochild);
 	}
-	lock(&p->wait.queue);	/* wait until child is finished */
-	c = p->child;
-	if(c == 0){
-		p->state = Inwait;
-		unlock(&p->wait.queue);
-		sched();
-		goto again;
-	}
-	p->child = 0;
+	unlock(&p->exl);
+
+	sleep(&p->waitr, haswaitq, u->p);
+
+	lock(&p->exl);
+	wq = p->waitq;
+	p->waitq = wq->next;
+	p->nwait--;
+	unlock(&p->exl);
+
 	if(w)
-		*w = p->waitmsg;
-	cpid = p->waitmsg.pid;
-	p->time[TCUser] += c->time[TUser] + c->time[TCUser];
-	p->time[TCSys] += c->time[TSys] + c->time[TCSys];
-	p->time[TCReal] += c->time[TReal];
-	p->nchild--;
-	unlock(&p->wait.queue);
-	qunlock(&p->wait);
-	ready(c);
+		memmove(w, &wq->w, sizeof(Waitmsg));
+	cpid = wq->w.pid;
+	freewaitq(wq);
 	return cpid;
 }
-
 
 Proc*
 proctab(int i)
@@ -706,6 +683,7 @@ kproc(char *name, void (*func)(void *), void *arg)
 	 * Kernel stack
 	 */
 	p = newproc();
+	p->psstate = 0;
 	p->kp = 1;
 	p->upage = newpage(1, 0, USERADDR|(p->pid&0xFFFF));
 	k = kmap(p->upage);
@@ -732,15 +710,6 @@ kproc(char *name, void (*func)(void *), void *arg)
 	 * Sched
 	 */
 	if(setlabel(&p->sched)){
-		/*
-		 *  use u->p instead of p, because we
-		 *  don't trust the compiler, after a
-		 *  gotolabel, to find the correct contents
-		 *  of a local variable.  Passed parameters
-		 *  (func & arg) are a bit safer since we
-		 *  don't play with them anywhere else.
-		 */
-		p = u->p;
 		p->state = Running;
 		p->mach = m;
 		m->proc = p;
@@ -765,14 +734,13 @@ kproc(char *name, void (*func)(void *), void *arg)
 	p->parent = 0;
 	memset(p->time, 0, sizeof(p->time));
 	p->time[TReal] = MACHP(0)->ticks;
+	ready(p);
 	/*
 	 *  since the bss/data segments are now shareable,
 	 *  any mmu info about this process is now stale
 	 *  and has to be discarded.
 	 */
 	flushmmu();
-	clearmmucache();
-	ready(p);
 }
 
 void
@@ -811,3 +779,37 @@ nexterror(void)
 	gotolabel(&u->errlab[--u->nerrlab]);
 }
 
+Waitq *
+newwaitq(void)
+{
+	Waitq *wq, *e, *f;
+
+	for(;;) {
+		lock(&waitqalloc);
+		if(wq = waitqalloc.free) {
+			waitqalloc.free = wq->next;
+			unlock(&waitqalloc);
+			return wq;
+		}
+		unlock(&waitqalloc);
+
+		wq = (Waitq*)VA(kmap(newpage(0, 0, 0)));
+		e = &wq[(BY2PG/sizeof(Waitq))-1];
+		for(f = wq; f < e; f++)
+			f->next = f+1;
+
+		lock(&waitqalloc);
+		e->next = waitqalloc.free;
+		waitqalloc.free = wq;
+		unlock(&waitqalloc);
+	}
+}
+
+void
+freewaitq(Waitq *wq)
+{
+	lock(&waitqalloc);
+	wq->next = waitqalloc.free;
+	waitqalloc.free = wq;
+	unlock(&waitqalloc);
+}

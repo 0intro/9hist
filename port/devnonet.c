@@ -564,7 +564,8 @@ nooput(Queue *q, Block *bp)
 	Noconv *cp;
 	int next;
 	Nomsg *mp;
-	int retries;
+	Block *first, *last;
+	int len;
 
 	cp = (Noconv *)(q->ptr);
 
@@ -586,12 +587,24 @@ nooput(Queue *q, Block *bp)
 	}
 
 	/*
+	 *  take the collected message out of the queue
+	 */
+	first = q->first;
+	last = q->last;
+	len = q->len;
+	q->len = q->nb = 0;
+	q->first = q->last = 0;
+	if(len == 0){
+		freeb(first);
+		qunlock(&cp->mlock);
+		return;
+	}
+
+	/*
 	 *  block till we get an output buffer
 	 */
 	if(waserror()){
-		/* throw out the message */
-		while(bp = getb(q))
-			freeb(bp);
+		freeb(first);
 		qunlock(&cp->mlock);
 		nexterror();
 	}
@@ -607,17 +620,12 @@ nooput(Queue *q, Block *bp)
 	 *  point the output buffer to the message
 	 */
 	mp->time = NOW + MSrexmit;
-	mp->first = q->first;
-	mp->last = q->last;
-	mp->len = q->len;
+	mp->first = first;
+	mp->last = last;
+	mp->len = len;
 	mp->mid ^= Nnomsg;
 	mp->acked = 0;
 
-	/*
-	 *  take the message out of the queue
-	 */
-	q->len = q->nb = 0;
-	q->first = q->last = 0;
 	cp->sent++;
 
 	/*
@@ -1427,51 +1435,51 @@ nokproc(void *arg)
 			qunlock(cp);
 	}
 
-loop:
-	/*
-	 *  loop through all active interfaces
-	 */
-	for(ifc = noifc; ifc < &noifc[conf.nnoifc]; ifc++){
-		if(ifc->wq==0 || !canlock(ifc))
-			continue;
-
+	for(;;){
 		/*
-		 *  loop through all active conversations
+		 *  loop through all active interfaces
 		 */
-		ep = ifc->conv + conf.nnoconv;
-		for(cp = ifc->conv; cp < ep; cp++){
-			if(cp->state<=Copen || !canqlock(cp))
+		for(ifc = noifc; ifc < &noifc[conf.nnoifc]; ifc++){
+			if(ifc->wq==0 || !canlock(ifc))
 				continue;
-			if(cp->state <= Copen){
+	
+			/*
+			 *  loop through all active conversations
+			 */
+			ep = ifc->conv + conf.nnoconv;
+			for(cp = ifc->conv; cp < ep; cp++){
+				if(cp->state<=Copen || !canqlock(cp))
+					continue;
+				if(cp->state <= Copen){
+					qunlock(cp);
+					continue;
+				}
+	
+				/*
+				 *  resend the first message
+				 */
+				if(cp->first!=cp->next && NOW>=cp->out[cp->first].time){
+					mp = &(cp->out[cp->first]);
+					if(cp->rexmit++ > 15){
+						norack(cp, mp->mid);
+						noreset(cp);
+					} else
+						nosend(cp, mp);
+				}
+	
+				/*
+				 *  get the acknowledges out
+				 */
+				while(cp->afirst!=cp->anext && cp->rq->next->len<16*1024){
+					DPRINT("sending ack %d\n", cp->ack[cp->afirst]);
+					nosendctl(cp, /*NO_NULL*/0, 0);
+				}
 				qunlock(cp);
-				continue;
 			}
-
-			/*
-			 *  resend the first message
-			 */
-			if(cp->first!=cp->next && NOW>=cp->out[cp->first].time){
-				mp = &(cp->out[cp->first]);
-				if(cp->rexmit++ > 15){
-					norack(cp, mp->mid);
-					noreset(cp);
-				} else
-					nosend(cp, mp);
-			}
-
-			/*
-			 *  get the acknowledges out
-			 */
-			while(cp->afirst!=cp->anext && cp->rq->next->len<16*1024){
-				DPRINT("sending ack %d\n", cp->ack[cp->afirst]);
-				nosendctl(cp, /*NO_NULL*/0, 0);
-			}
-			qunlock(cp);
+			unlock(ifc);
 		}
-		unlock(ifc);
+		tsleep(&nonetkr, return0, 0, MSrexmit/2);
 	}
-	tsleep(&nonetkr, return0, 0, MSrexmit/2);
-	goto loop;
 }
 
 void

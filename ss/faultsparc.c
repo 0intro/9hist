@@ -43,7 +43,6 @@ faultsparc(Ureg *ur)
 			notify(ur);
 			return;
 		}
-		u->p->state = MMUing;
 		dumpregs(ur);
 		panic("fault: 0x%lux", badvaddr);
 		exit();

@@ -35,6 +35,7 @@ struct Mnt
 	int	id;		/* Multiplexor id for channel check */
 	Mnt	*list;		/* Free list */
 	char	mux;		/* Set if the device aleady does the multiplexing */
+	int	blocksize;	/* read/write block size */
 };
 
 struct Mntalloc
@@ -152,6 +153,7 @@ mntattach(char *muxattach)
 	m->queue = 0;
 	m->rip = 0;
 	m->c = bogus.chan;
+	m->blocksize = MAXFDATA;
 
 	switch(devchar[m->c->type]) {
 	case 'H':			/* Hotrod */
@@ -447,7 +449,7 @@ mntrdwr(int type, Chan *c, void *buf, long n, ulong offset)
 		r->request.fid = c->fid;
 		r->request.offset = offset;
 		r->request.data = uba;
-		r->request.count = limit(n, MAXFDATA);
+		r->request.count = limit(n, m->blocksize);
 		mountrpc(m, r);
 		nr = r->reply.count;
 		if(type == Tread)

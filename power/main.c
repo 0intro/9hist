@@ -213,6 +213,7 @@ init0(void)
 {
 	int i;
 	ulong *sp;
+	Chan *c;
 
 	m->proc = u->p;
 	u->p->state = Running;
@@ -228,8 +229,14 @@ init0(void)
 
 	chandevinit();
 
-	sp = (ulong*)(USTKTOP - argsize);
+	if(!waserror()){
+		c = namec("#e/cputype", Acreate, OWRITE, 0600);
+		(*devtab[c->type].write)(c, "mips", strlen("mips"), 0);
+		close(c);
+		poperror();
+	}
 
+	sp = (ulong*)(USTKTOP - argsize);
 	touser(sp);
 }
 

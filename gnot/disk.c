@@ -41,7 +41,7 @@ Dev	devtab[]={
 	{ duartreset, duartinit, duartattach, duartclone, duartwalk, duartstat, duartopen, duartcreate,
 	  duartclose, duartread, duartwrite, duartremove, duartwstat, },
 };
-char devchar[]="/ce|psMikdbxSrt";
+char devchar[]="/ce|psMikdbxSwt";
 extern Qinfo	urpinfo;
 extern Qinfo	asyncinfo;
 extern Qinfo	fcallinfo;
@@ -50,6 +50,5 @@ void streaminit0(void){
 	newqinfo(&asyncinfo);
 	newqinfo(&fcallinfo);
 }
-	long kfslen = 0; ulong kfscode[1];
-	long cryptfslen = 0; ulong cryptfscode[1];
 	#include "cfs.h"
+	#include "kfs.h"

@@ -223,3 +223,5 @@ void	validaddr(ulong, ulong, int);
 void*	vmemchr(void*, int, int);
 void	wakeme(Alarm*);
 void	wakeup(Rendez*);
+void	freewaitq(Waitq*);
+Waitq	*newwaitq(void);

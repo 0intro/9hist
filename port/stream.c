@@ -791,7 +791,6 @@ streamnew(ushort type, ushort dev, ushort id, Qinfo *qi, int noopen)
 	/*
  	 *  hang a device and process q off the stream
 	 */
-	s->forcedelim = 0;
 	s->inuse = 1;
 	if(noopen)
 		s->opens = 0;
@@ -808,7 +807,6 @@ streamnew(ushort type, ushort dev, ushort id, Qinfo *qi, int noopen)
 	RD(s->procq)->next = 0;
 	RD(s->devq)->next = RD(s->procq);
 	WR(s->devq)->next = 0;
-	s->flushmsg = 0;
 
 	if(qi->open)
 		(*qi->open)(RD(s->devq), s);
@@ -1264,10 +1262,10 @@ long
 streamwrite(Chan *c, void *a, long n, int docopy)
 {
 	Stream *s;
-	Block *bp;
 	Queue *q;
 	long rem;
 	int i;
+	Block *bp, *first, *last;
 
 	s = c->stream;
 
@@ -1289,60 +1287,33 @@ streamwrite(Chan *c, void *a, long n, int docopy)
 	}
 
 	/*
-	 *  if an error occurs during write n,
-	 *  force a delim before write n+1
+	 *  copy the whole write into kernel space
 	 */
-	if(waserror()){
-		s->forcedelim = 1;
-		nexterror();
-	}
-	if(s->forcedelim){
-		FLOWCTL(q);
-		bp = allocb(0);
-		bp->flags |= S_DELIM;
+	first = last = 0;
+	for(rem = n; ; rem -= i) {
+		bp = allocb(rem);
+		i = bp->lim - bp->wptr;
+		if(i >= rem)
+			i = rem;
+		memmove(bp->wptr, a, i);
+		bp->wptr += i;
 		bp->type = M_DATA;
-		PUTNEXT(q, bp);
-		s->forcedelim = 0;
+		a = ((char*)a) + i;
+		if(first == 0)
+			first = bp;
+		else
+			last->next = bp;
+		last = bp;
+		if(i == rem)
+			break;
 	}
 
-	if(0 && !docopy && isphys(a)){
-		/*
-		 *  `a' is global to the whole system, just create a
-		 *  pointer to it and pass it on.
-		 */
-		FLOWCTL(q);
-		bp = allocb(0);
-		bp->rptr = bp->base = (uchar *)a;
-		bp->wptr = bp->lim = (uchar *)a+n;
-		bp->flags |= S_DELIM;
-		bp->type = M_DATA;
-		PUTNEXT(q, bp);
-	} else {
-		/*
-		 *  `a' is in the user's address space, copy it into
-		 *  system buffers and pass the buffers on.
-		 */
-		for(rem = n; ; rem -= i) {
-			FLOWCTL(q);
-			bp = allocb(rem);
-			i = bp->lim - bp->wptr;
-			if(i >= rem){
-				memmove(bp->wptr, a, rem);
-				bp->flags |= S_DELIM;
-				bp->wptr += rem;
-				bp->type = M_DATA;
-				PUTNEXT(q, bp);
-				break;
-			} else {
-				memmove(bp->wptr, a, i);
-				bp->wptr += i;
-				bp->type = M_DATA;
-				PUTNEXT(q, bp);
-				a = ((char*)a) + i;
-			}
-		}
-	}
-	poperror();
+	/*
+	 *  send it down stream
+	 */
+	last->flags |= S_DELIM;
+	FLOWCTL(q);
+	PUTNEXT(q, first);
 	return n;
 }
 

@@ -95,7 +95,6 @@ putmmu(ulong tlbvirt, ulong tlbphys, Page *pg)
 /*	if(p->state != Running)
 		panic("putmmu state %lux %lux %s\n", u, p, statename[p->state]);
 */
-	p->state = MMUing;
 	tp = p->pidonmach[m->machno];
 	if(tp == 0)
 		tp = newtlbpid(p);
@@ -103,7 +102,6 @@ putmmu(ulong tlbvirt, ulong tlbphys, Page *pg)
 	putstlb(tlbvirt, tlbphys);
 	puttlb(tlbvirt, tlbphys);
 	m->pidhere[tp] = 1;
-	p->state = Running;
 	spllo();
 }
 

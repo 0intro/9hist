@@ -47,82 +47,87 @@ int	authenticate(int);
 void	termtype(char*);
 void	setuser(char*);
 int	fileserver(void);
-int	inconctl(void);
-int	asyncctl(char*);
+int	inconfs(void);
+int	asyncfs(char*);
+int	localfs(int);
 void	dkconfig(int);
-void	boot(int);
+void	srvcreate(char*, int);
+void	settime(int);
 
 /*
  * Ethernet type stations boot over ether or use dk via RS232.
  */
 main(int argc, char *argv[])
 {
-	int cfd;
 	int fd;
-
+	int fromserver;
 
 	open("#c/cons", OREAD);
 	open("#c/cons", OWRITE);
 	open("#c/cons", OWRITE);
-	sleep(1000);
+	termtype("at&t gnot 1");
 
 	/*
 	 *  get parameters passed by boot rom to kernel
 	 */
 	bootparams();
-	termtype("at&t gnot 1");
 
 	/*
-	 *  user/passwd pair if the boot rom didn't
-	 *  authenticate
+	 *  prompt for user if the boot rom didn't authenticate
 	 */
 	if(!authenticated){
 		strcpy(username, "none");
 		outin("user", username, sizeof(username));
-		passwd();
 	} else {
 		strcpy(username, bootuser);
 	}
 	setuser(username);
 
 	/*
-	 *  get the control channel for the network
-	 *  device
+	 *  make the root a union
+	 */
+	if(bind("/", "/", MREPL) < 0)
+		error("bind");
+
+	/*
+	 *  connect to file systems
 	 */
 	switch(fileserver()){
 	case 'a':
-		cfd = asyncctl("B19200");
+		asyncfs("B19200");
+		localfs(0);
+		fromserver = 1;
 		break;
 	case 'A':
-		cfd = asyncctl("B9600");
+		asyncfs("B9600");
+		localfs(0);
+		fromserver = 1;
 		break;
 	case 'i':
+		inconfs();
+		localfs(0);
+		fromserver = 1;
+		break;
 	default:
-		cfd = inconctl();
+		localfs(1);
+		fromserver = 0;
 		break;
 	}
+	settime(fromserver);
 
 	/*
-	 *  start up the datakit and connect to
-	 *  file server
+	 *  put a default net into the name space
 	 */
-	dkconfig(cfd);
-	for(;;){
-		fd = dkdial(sys);
-		if(fd >= 0)
-			break;
-		print("can't connect, retrying...\n");
-		sleep(1000);
+	if(netdev){
+		sprint(buf, "/net/%s", net);
+		bind(netdev, buf, MREPL);
+		bind(netdev, "/net/net", MREPL);
+	}
+	if(net){
+		sprint(buf, "/lib/netaddr.%s", net);
+		bind(buf, "/lib/netaddr.net", MREPL);
 	}
 
-	/*
-	 *  set up the file system connection
-	 */
-	boot(fd);
-
-	/*
-	 *  go to init
-	 */
 	if(manual)
 		execl("/68020/init", "init", "-m", 0);
 	else
@@ -132,7 +137,7 @@ main(int argc, char *argv[])
 
 /*
  *  read arguments passed by kernel as
- *  environment variables - YECH!
+ *  environment variables
  */
 void
 bootparams(void)
@@ -168,20 +173,16 @@ bootparams(void)
 	}
 	f = open("#e/bootuser", OREAD);
 	if(f >= 0){
-		read(f, &bootuser, sizeof(bootuser)-1);
+		read(f, &bootuser, sizeof(bootuser));
 		close(f);
 	}
 	f = open("#e/bootserver", OREAD);
 	if(f >= 0){
-		read(f, sys, sizeof(sys)-1);
+		read(f, sys, sizeof(sys));
 		close(f);
 	} else
 		strcpy(sys, DEFSYS);
-
-	/*
-	 *  perhaps a stupid assumption
-	 */
-	if(bootdevice == 'i')
+	if(bootdevice != 's')
 		authenticated = 1;
 }
 
@@ -215,13 +216,12 @@ setuser(char *name)
 	 */
 	fd = open("#c/user", OWRITE|OTRUNC);
 	if(fd >= 0){
-		if(write(fd, username, strlen(username)) <= 0)
-			print("error writing %s to /dev/user\n", username);
+		write(fd, username, strlen(username));
 		close(fd);
 	}
 }
 
-#define FS "(9)600 serial, (1)9200 serial, (i)incon"
+#define FS "remote fs is (9)600 serial, (1)9200 serial, (n)ot used"
 /*
  *  if we've booted off the disk, figure out where to get the
  *  file service from
@@ -235,64 +235,20 @@ fileserver(void)
 		return bootdevice;
 
 	for(;;){
-		strcpy(reply, "9");
+		strcpy(reply, "n");
 		strcpy(sys, DEFSYS);
 		outin(FS, reply, sizeof(reply));
 		switch(reply[0]){
 		case 'i':
-			outin("server", sys, sizeof(sys));
 			return 'i';
-		case 'l':
-			return 'l';
+		case 'n':
+			return 'n';
 		case '1':
-			outin("server", sys, sizeof(sys));
 			return 'a';
 		case '9':
-			outin("server", sys, sizeof(sys));
 			return 'A';
 		}
 	}
-}
-
-/*
- *  get the incon control channel
- */
-int
-inconctl(void)
-{
-	int cfd;
-
-	cfd = open("#i/ctl", ORDWR);
-	if(cfd < 0)
-		error("opening #i/ctl");
-
-	return cfd;
-}
-
-/*
- *  get the serial control channel and let the
- *  user connect to the TSM8
- */
-int
-asyncctl(char *baud)
-{
-	int cfd, dfd;
-	char reply[4];
-
-	cfd = open("#t/tty0ctl", ORDWR);
-	if(cfd < 0)
-		error("opening #t/tty0ctl");
-
-	sendmsg(cfd, baud);
-
-	dfd = open("#t/tty0", ORDWR);
-	if(dfd < 0)
-		error("opening #t/tty0");
-
-	connect(dfd);
-	close(dfd);
-	sendmsg(cfd, "push async");
-	return cfd;
 }
 
 /*
@@ -350,7 +306,6 @@ dkdial(char *arg)
 		close(cfd);
 		sleep(500);
 	}
-	print("connected to %s\n", arg);
 	sendmsg(cfd, "init");
 	close(cfd);
 	net = "dk";
@@ -358,28 +313,166 @@ dkdial(char *arg)
 	return fd;	
 }
 
-void
-boot(int fd)
+/*
+ *  connect to a file system over the serial line
+ */
+int
+asyncfs(char *baud)
 {
-	int n, f;
-	char *srvname;
-	Dir dir;
-	char dirbuf[DIRLEN];
+	int fd, cfd, dfd;
+	char reply[4];
 
-	srvname = strrchr(sys, '/');
-	if(srvname)
-		srvname++;
-	else
-		srvname = sys;
+	if(!authenticated){
+		passwd();
+		outin("server", sys, sizeof(sys));
+	}
+
+	cfd = open("#t/tty0ctl", ORDWR);
+	if(cfd < 0)
+		error("opening #t/tty0ctl");
+	sendmsg(cfd, baud);
+
+	dfd = open("#t/tty0", ORDWR);
+	if(dfd < 0)
+		error("opening #t/tty0");
+	connect(dfd);
+	close(dfd);
+	sendmsg(cfd, "push async");
+
+	dkconfig(cfd);
+	for(;;){
+		fd = dkdial(sys);
+		if(fd >= 0)
+			break;
+		print("can't connect, retrying...\n");
+		sleep(1000);
+	}
+
 	nop(fd);
 	session(fd);
 	fd = cache(fd);
+	srvcreate(sys, fd);
+	srvcreate("boot", fd);
+	if(mount(fd, "/", MAFTER|MCREATE, "", "") < 0)
+		error("mount");
+	close(fd);
+
+	return 0;
+}
+
+/*
+ *  connect to a file system over the incon
+ */
+int
+inconfs(void)
+{
+	int fd, cfd, dfd;
+	char reply[4];
+
+	if(!authenticated){
+		passwd();
+		outin("server", sys, sizeof(sys));
+	}
+	cfd = open("#i/ctl", ORDWR);
+	if(cfd < 0)
+		error("opening #i/ctl");
+
+	dkconfig(cfd);
+	for(;;){
+		fd = dkdial(sys);
+		if(fd >= 0)
+			break;
+		print("can't connect, retrying...\n");
+		sleep(1000);
+	}
+
+	nop(fd);
+	session(fd);
+	fd = cache(fd);
+	srvcreate(sys, fd);
+	srvcreate("boot", fd);
+	if(mount(fd, "/", MAFTER|MCREATE, "", "") < 0)
+		error("mount");
+	close(fd);
+
+	return 0;
+}
+
+/*
+ *  plug the local file system into the name space
+ */
+int
+localfs(int bootfs)
+{
+	ulong i;
+	int p[2];
+	Dir d;
+	char sbuf[32];
+	char rbuf[32];
+	char *mtpt;
+
+	if(dirstat("/kfs", &d) < 0)
+		return -1;
+	if(dirstat("#w/hd0fs", &d) < 0)
+		return -1;
+
+	print("local\n");
 
 	/*
-	 *  stick handles to the file system
-	 *  into /srv
+	 *  because kfs uses /dev/time, /dev/pid, and /proc/#
 	 */
-	print("post...");
+	if(bind("#c", "/dev", MREPL) < 0)
+		error("bind #c");
+	if(bind("#p", "/proc", MREPL) < 0)
+		error("bind #p");
+
+	if(pipe(p)<0)
+		error("pipe");
+	switch(fork()){
+	case -1:
+		error("fork");
+	case 0:
+		sprint(sbuf, "%d", p[0]);
+		sprint(rbuf, "%d", p[1]);
+		execl("/kfs", "kfs", "-f", "#w/hd0fs", "-s", sbuf, rbuf, 0);
+		error("can't exec kfs");
+	default:
+		break;
+	}
+
+	close(p[1]);
+
+/*
+ *  NEW KERNEL - these can both be MAFTER
+ */
+	if(bootfs){
+		mtpt = "/";
+		if(mount(p[0], mtpt, MAFTER|MCREATE, "", "") < 0)
+			error("mount");
+		srvcreate("boot", p[0]);
+	} else {
+		mtpt = "/n/kfs";
+		if(mount(p[0], mtpt, MREPL|MCREATE, "", "") < 0)
+			error("mount");
+	}
+	
+	close(p[0]);
+
+	return 0;
+}
+
+void
+srvcreate(char *name, int fd)
+{
+	char *srvname;
+	int f;
+
+	srvname = strrchr(name, '/');
+	if(srvname)
+		srvname++;
+	else
+		srvname = name;
+
 	sprint(buf, "#s/%s", srvname);
 	f = create(buf, 1, 0666);
 	if(f < 0)
@@ -388,53 +481,65 @@ boot(int fd)
 	if(write(f, buf, strlen(buf)) != strlen(buf))
 		error("write");
 	close(f);
-	f = create("#s/boot", 1, 0666);
-	if(f < 0)
-		error("create");
-	sprint(buf, "%d", fd);
-	if(write(f, buf, strlen(buf)) != strlen(buf))
-		error("write");
-	close(f);
+}
 
-	/*
-	 *  make the root a union
-	 */
-	print("mount...");
-	if(bind("/", "/", MREPL) < 0)
-		error("bind");
-	if(mount(fd, "/", MAFTER|MCREATE, "", "") < 0)
-		error("mount");
+/*
+ *  set the system time
+ */
+void
+settime(int fromserver)
+{
+	int n, f;
+	Dir dir;
+	char dirbuf[DIRLEN];
+	char *srvname;
 
-	/*
-	 *  set the time from the access time of the root
-	 *  of the file server, accessible as /..
-	 */
 	print("time...");
-	if(stat("/..", dirbuf) < 0)
-		error("stat");
-	convM2D(dirbuf, &dir);
+	if(!fromserver){
+		/*
+		 *  set the time from the real time clock or file system
+		 */
+		f = open("#r/rtc", ORDWR);
+		if(f > 0){
+			if((n = read(f, dirbuf, sizeof(dirbuf)-1)) < 0)
+				error("reading rtc");
+			dirbuf[n] = 0;
+			close(f);
+		} else
+			fromserver = 1;
+	}
+	if(fromserver){
+		/*
+		 *  set the time from the access time of the root
+		 *  of the file server
+		 */
+		f = open("#s/boot", ORDWR);
+		if(f < 0)
+			return;
+		if(mount(f, "/n/boot", MREPL, "", "") < 0){
+			close(f);
+			return;
+		}
+		close(f);
+		if(stat("/n/boot", dirbuf) < 0)
+			error("stat");
+		convM2D(dirbuf, &dir);
+		sprint(dirbuf, "%ld", dir.atime);
+/*		unmount(0, "/n/boot"); /**/
+		/*
+		 *  set real time clock if there is one
+		 */
+		f = open("#r/rtc", ORDWR);
+		if(f > 0){
+			if(write(f, dirbuf, strlen(dirbuf)) < 0)
+				error("writing rtc");
+			close(f);
+		}
+		close(f);
+	}
 	f = open("#c/time", OWRITE);
-	sprint(dirbuf, "%ld", dir.atime);
 	write(f, dirbuf, strlen(dirbuf));
 	close(f);
-
-	print("success\n");
-
-	/*
-	 *  put a generic network device into the namespace
-	 */
-	if(netdev){
-		char buf[64];
-		sprint(buf, "/net/%s", net);
-		bind(netdev, buf, MREPL);
-		bind(netdev, "/net/net", MREPL);
-	}
-	if(net){
-		char buf[64];
-		sprint(buf, "/lib/netaddr.%s", net);
-		print("binding %s onto /lib/netaddr.net\n", buf);
-		bind(buf, "/lib/netaddr.net", MREPL);
-	}
 }
 
 /*
@@ -537,7 +642,7 @@ cache(int fd)
 	 */
 	if(dirstat("/cfs", &d) < 0)
 		return fd;
-	if(dirstat("#r/hd0cache", &d) < 0)
+	if(dirstat("#w/hd0cache", &d) < 0)
 		return fd;
 	print("cfs...");
 
@@ -557,9 +662,9 @@ cache(int fd)
 		dup(p[0], 1);
 		close(p[0]);
 		if(format)
-			execl("/cfs", "bootcfs", "-fs", "-p", "#r/hd0cache", 0);
+			execl("/cfs", "bootcfs", "-fs", "-p", "#w/hd0cache", 0);
 		else
-			execl("/cfs", "bootcfs", "-s", "-p", "#r/hd0cache", 0);
+			execl("/cfs", "bootcfs", "-s", "-p", "#w/hd0cache", 0);
 		break;
 	default:
 		close(p[0]);

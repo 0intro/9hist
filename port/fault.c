@@ -16,15 +16,22 @@ fault(ulong addr, int read)
 	Pte **p;
 	Page **pg, *lkp, *new = 0;
 	int type;
+	char *sps;
+
+	sps = u->p->psstate;
+	u->p->psstate = "Fault";
 
 	m->pfault++;
 again:
 	s = seg(u->p, addr, 1);
-	if(s == 0)
+	if(s == 0) {
+		u->p->psstate = sps;
 		return -1;
+	}
 
 	if(!read && (s->type&SG_RONLY)) {
 		qunlock(&s->lk);
+		u->p->psstate = sps;
 		return -1;
 	}
 
@@ -112,6 +119,7 @@ again:
 		putpage(new);
 
 	putmmu(addr, mmuphys, *pg);
+	u->p->psstate = sps;
 	return 0;
 }
 

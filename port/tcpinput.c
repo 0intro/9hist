@@ -438,7 +438,7 @@ tcp_icmp(Ipconv *ipc, Ipaddr source, Ipaddr dest, char type, char code, Block **
 			close_self(s, Etimedout);
 		break;
 	case ICMP_SOURCEQUENCH:
-		tcb->cwind /= 2;
+		tcb->cwind = tcb->cwind/2;
 		tcb->cwind = MAX(tcb->mss,tcb->cwind);
 		break;
 	}

@@ -523,6 +523,7 @@ syscall(Ureg *aur)
 		}
 		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-(1+MAXSYSARG)*BY2WD))
 			validaddr(sp, (1+MAXSYSARG)*BY2WD, 0);
+		u->p->psstate = sysctab[r1];
 		ret = (*systab[r1])((ulong*)(sp+BY2WD));
 	}
 	ur->pc += 4;
@@ -531,8 +532,9 @@ syscall(Ureg *aur)
 		procctl(u->p);
 
 	splhi();
+	u->p->psstate = 0;
 	u->p->insyscall = 0;
-	if(r1 == NOTED)	/* ugly hack */
+	if(r1 == NOTED)					/* ugly hack */
 		noted(&aur, *(ulong*)(sp+BY2WD));	/* doesn't return */
 	if(u->nnote && r1!=FORK){
 		ur->r1 = ret;

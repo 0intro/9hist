@@ -292,6 +292,7 @@ syscall(Ureg *aur)
 		}
 		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-(1+MAXSYSARG)*BY2WD))
 			validaddr(sp, (1+MAXSYSARG)*BY2WD, 0);
+		u->p->psstate = sysctab[r0];
 		ret = (*systab[r0])((ulong*)(sp+BY2WD));
 		poperror();
 	}
@@ -304,6 +305,7 @@ syscall(Ureg *aur)
 	}
 
 	u->p->insyscall = 0;
+	u->p->psstate = 0;
 
 	if(r0 == NOTED)		/* ugly hack */
 		noted(aur, *(ulong*)(sp+BY2WD));	/* doesn't return */

@@ -112,7 +112,9 @@ pager(void *junk)
 			if(p->state == Dead || p->kp)
 				continue;
 
+			u->p->psstate = "Idle";
 			sleep(&swapalloc.r, needpages, 0);
+			u->p->psstate = "Pageout";
 
 			if(p->state == Dead || p->kp)
 				continue;

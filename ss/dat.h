@@ -94,6 +94,10 @@ struct Conf
 	int	nfsyschan;	/* number of filsys open channels */
 	ulong	maxialloc;	/* maximum bytes used by ialloc */
 	int	copymode;	/* 0 is copy on write, 1 is copy on reference */
+	ulong	ipif;		/* Ip protocol interfaces */
+	ulong	ip;		/* Ip conversations per interface */
+	ulong	arp;		/* Arp table size */
+	ulong	frag;		/* Ip fragment assemble queue size */
 	int	cntrlp;		/* panic on ^P */
 };
 

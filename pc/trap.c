@@ -288,6 +288,7 @@ syscall(Ureg *ur)
 		}
 		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-(1+MAXSYSARG)*BY2WD))
 			validaddr(sp, (1+MAXSYSARG)*BY2WD, 0);
+		u->p->psstate = sysctab[ax];
 		ret = (*systab[ax])((ulong*)(sp+BY2WD));
 		poperror();
 	}
@@ -298,6 +299,7 @@ syscall(Ureg *ur)
 		panic("error stack");
 	}
 	u->p->insyscall = 0;
+	u->p->psstate = 0;
 	ur->ax = ret;
 	if(ax == NOTED){
 		noted(ur, *(ulong*)(sp+BY2WD));

@@ -682,7 +682,7 @@ lanceup(Ethertype *e, Etherpkt *p, int len)
 	 *  only a trace channel gets packets destined for other machines
 	 */
 	if(e->type != -1){
-		if(!(p->d[0]&0x80) && memcmp(p->d, l.ea, sizeof(p->d))!=0)
+		if(p->d[0]!=0xff && memcmp(p->d, l.ea, sizeof(p->d))!=0)
 			return;
 	}
 	if(e->q && e->q->next->len<=Streamhi && !waserror()){

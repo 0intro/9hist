@@ -21,6 +21,7 @@ faultmips(Ureg *ur, int user, int code)
 	addr = ur->badvaddr;
 	addr &= ~(BY2PG-1);
 	read = !(code==CTLBM || code==CTLBS);
+
 	if(fault(addr, read) < 0){
 		if(user){
 			sprint(buf, "sys: fault %s pc=0x%lux addr=0x%lux",
@@ -31,7 +32,6 @@ faultmips(Ureg *ur, int user, int code)
 		}
 		print("kernel %s badvaddr=0x%lux\n", excname[code], ur->badvaddr);
 		print("status=0x%lux pc=0x%lux sp=0x%lux\n", ur->status, ur->pc, ur->sp);
-		u->p->state = MMUing;
 		dumpregs(ur);
 		panic("fault");
 	}

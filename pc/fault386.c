@@ -30,7 +30,6 @@ fault386(Ureg *ur)
 				ur->pc, ur->usp);
 			pexit("Suicide", 0);
 		}
-		u->p->state = MMUing;
 		dumpregs(ur);
 		panic("fault: 0x%lux", addr);
 	}

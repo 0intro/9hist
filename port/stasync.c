@@ -242,6 +242,7 @@ asyncoput(Queue *q, Block *bp)
 {
 	Async *ap = (Async *)q->ptr;
 	int c, chan, ctl;
+	Block *msg;
 
 	if(bp->type != M_DATA){
 		if(streamparse("debug", bp))
@@ -251,28 +252,25 @@ asyncoput(Queue *q, Block *bp)
 	}
 
 	/*
-	 *  get a whole message before handing bytes to the device
+	 *  each datakit message has a 2 byte channel number followed by
+	 *  one control byte
 	 */
-	if(!putq(q, bp))
-		return;
-
-	/*
-	 *  one transmitter at a time
-	 */
-	qlock(&ap->xmit);
-
-	/*
-	 *  parse message
-	 */
-	bp = getq(q);
-	if(bp->wptr - bp->rptr < 3){
-		freemsg(q, bp);
-		qunlock(&ap->xmit);
+	msg = pullup(bp, 3);
+	if(BLEN(msg) < 3){
+		print("asyncoput msglen < 3\n");
+		freeb(bp);
 		return;
 	}
-	chan = bp->rptr[0] | (bp->rptr[1]<<8);
-	ctl = bp->rptr[2];
-	bp->rptr += 3;
+	chan = msg->rptr[0] | (msg->rptr[1]<<8);
+	ctl = msg->rptr[2];
+	msg->rptr += 3;
+
+	qlock(&ap->xmit);
+	if(waserror()){
+		qunlock(&ap->xmit);
+		freeb(msg);
+		nexterror();
+	}
 
 	/*
 	 *  new frame if the channel number has changed
@@ -288,27 +286,12 @@ asyncoput(Queue *q, Block *bp)
 	/*
 	 *  send the 8 bit data
 	 */
-	for(;;){
-		/*
-		 *  put in next packet
-		 */
+	for(bp = msg; bp; bp = bp->next){
 		while (bp->rptr < bp->wptr) {
 			asputc(ap, c = *bp->rptr++);
 			if(c == STUF)
 				asputc(ap, 0);
 		}
-
-		/*
-		 *  get next block 
-		 */
-		if(bp->flags & S_DELIM){
-			freeb(bp);
-			break;
-		}
-		freeb(bp);
-		bp = getq(q);
-		if(bp==0)
-			break;
 	}
 
 	/*
@@ -329,7 +312,9 @@ asyncoput(Queue *q, Block *bp)
 	if(debugcount > 0 && --debugcount == 0)
 		asyncdebug = 1;
 
+	freeb(msg);
 	qunlock(&ap->xmit);
+	poperror();
 	return;
 }
 

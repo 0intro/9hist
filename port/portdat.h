@@ -30,6 +30,7 @@ typedef struct Ref	Ref;
 typedef struct Rendez	Rendez;
 typedef struct Segment	Segment;
 typedef struct Stream	Stream;
+typedef struct Waitq	Waitq;
 
 typedef int Devgen(Chan*, Dirtab*, int, int, Dir*);
 
@@ -410,6 +411,12 @@ struct Palloc
 	int	wanted;			/* Do the wakeup at free */
 };
 
+struct Waitq
+{
+	Waitmsg	w;
+	Waitq	*next;
+};
+
 enum					/* Argument to forkpgrp call */
 {
 	FPall 	  = 0,			/* Concession to back portablility */
@@ -441,14 +448,10 @@ enum
 {
 	Dead = 0,
 	Moribund,
-	Zombie,
 	Ready,
 	Scheding,
 	Running,
 	Queueing,
-	MMUing,
-	Exiting,
-	Inwait,
 	Wakeme,
 	Broken,
 	Stopped,
@@ -487,13 +490,16 @@ struct Proc
 	QLock	*qlock;			/* address of qlock being queued for DEBUG */
 	ulong	qlockpc;		/* pc of last call to qlock */
 	int	state;
+	char	*psstate;		/* What /proc/???/status reports */
 	Page	*upage;			/* BUG: should be unlinked from page list */
 	Segment	*seg[NSEG];
 	ulong	pid;
-	int	nchild;
-	QLock	wait;			/* exiting children to be waited for */
-	Waitmsg	waitmsg;		/* this is large but must be addressable */
-	Proc	*child;
+
+	Lock	exl;			/* Lock count and waitq */
+	Waitq	*waitq;			/* Exited processes wait children */
+	int	nchild;			/* Number of living children */
+	int	nwait;			/* Number of uncollected wait records */
+	Rendez	waitr;			/* Place to hang out in wait */
 	Proc	*parent;
 
 	Pgrp	*pgrp;			/* Process group for notes and namespace */
@@ -502,7 +508,6 @@ struct Proc
 
 	ulong	parentpid;
 	ulong	time[6];		/* User, Sys, Real; child U, S, R */
-	short	exiting;
 	short	insyscall;
 	int	fpstate;
 	Lock	debug;			/* to access debugging elements of User */
@@ -573,7 +578,6 @@ struct Stream {
 	Queue	*procq;			/* write queue at process end */
 	Queue	*devq;			/* read queue at device end */
 	Block	*err;			/* error message from down stream */
-	int	forcedelim;		/* force a delimiter before the next message */
 	int	flushmsg;		/* flush up till the next delimiter */
 };
 

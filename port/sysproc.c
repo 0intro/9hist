@@ -121,7 +121,9 @@ rfork(ulong flag)
 	p->parentpid = u->p->pid;
 
 	p->fpstate = u->p->fpstate;
+	lock(&u->p->exl);
 	u->p->nchild++;
+	unlock(&u->p->exl);
 	pid = p->pid;
 	memset(p->time, 0, sizeof(p->time));
 	p->time[TReal] = MACHP(0)->ticks;
