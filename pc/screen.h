@@ -10,8 +10,8 @@ extern void mousetrack(int, int, int);
 extern Point mousexy(void);
 
 extern void mouseaccelerate(int);
-extern int m3mouseputc(void*, int);
-extern int mouseputc(void*, int);
+extern int m3mouseputc(Queue*, int);
+extern int mouseputc(Queue*, int);
 
 extern Cursorinfo cursor;
 extern Cursor arrow;

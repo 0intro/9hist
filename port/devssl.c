@@ -187,7 +187,7 @@ sslgen(Chan *c, Dirtab *d, int nd, int s, Dir *dp)
 }
 
 static Chan*
-sslattach(void *spec)
+sslattach(char *spec)
 {
 	Chan *c;
 

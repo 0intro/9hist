@@ -239,8 +239,8 @@ void	tcpstart(Conv*, int, ushort);
 void	tcptimeout(void*);
 void	tcpsndsyn(Tcpctl*);
 void	tcprcvwin(Conv*);
-void	tcpacktimer(Conv*);
-void	tcpkeepalive(Conv*);
+void	tcpacktimer(void*);
+void	tcpkeepalive(void*);
 
 void
 tcpsetstate(Conv *s, uchar newstate)
@@ -435,10 +435,12 @@ tcprcvwin(Conv *s)				/* Call with tcb locked */
 }
 
 void
-tcpacktimer(Conv *s)
+tcpacktimer(void *v)
 {
 	Tcpctl *tcb;
+	Conv *s;
 
+	s = v;
 	tcb = (Tcpctl*)s->ptcl;
 
 	qlock(s);
@@ -1769,10 +1771,12 @@ tcpsendka(Conv *s)
  *  otherwise, send a keepalive and restart the timer
  */
 void
-tcpkeepalive(Conv *s)
+tcpkeepalive(void *v)
 {
 	Tcpctl *tcb;
+	Conv *s;
 
+	s = v;
 	tcb = (Tcpctl*)s->ptcl;
 	if(--(tcb->kacounter) <= 0)
 		localclose(s, Etimedout);

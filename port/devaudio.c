@@ -908,7 +908,7 @@ audioclose(Chan *c)
 }
 
 static long
-audioread(Chan *c, char *a, long n, vlong off)
+audioread(Chan *c, void *v, long n, vlong off)
 {
 	int liv, riv, lov, rov;
 	long m, n0;
@@ -916,8 +916,10 @@ audioread(Chan *c, char *a, long n, vlong off)
 	Buf *b;
 	int j;
 	ulong offset = off;
+	char *a;
 
 	n0 = n;
+	a = v;
 	switch(c->qid.path & ~CHDIR) {
 	default:
 		error(Eperm);
@@ -1009,13 +1011,15 @@ audioread(Chan *c, char *a, long n, vlong off)
 }
 
 static long
-audiowrite(Chan *c, char *a, long n, vlong)
+audiowrite(Chan *c, void *vp, long n, vlong)
 {
 	long m, n0;
 	int i, nf, v, left, right, in, out;
 	char buf[255], *field[Ncmd];
 	Buf *b;
+	char *a;
 
+	a = vp;
 	n0 = n;
 	switch(c->qid.path & ~CHDIR) {
 	default:

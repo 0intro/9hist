@@ -863,7 +863,7 @@ ttlctlmsg(Conv *c, Cmdbuf *cb)
 }
 
 static long
-ipwrite(Chan* ch, char* a, long n, vlong)
+ipwrite(Chan* ch, void *v, long n, vlong)
 {
 	Conv *c;
 	Proto *x;
@@ -871,7 +871,9 @@ ipwrite(Chan* ch, char* a, long n, vlong)
 	Cmdbuf *cb;
 	uchar ia[IPaddrlen], ma[IPaddrlen];
 	Fs *f;
+	char *a;
 
+	a = v;
 	f = ipfs[ch->dev];
 
 	switch(TYPE(ch->qid)){

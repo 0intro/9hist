@@ -25,7 +25,7 @@ static void	etherremmulti(Ipifc *ifc, uchar *a, uchar *ia);
 static Block*	multicastarp(Fs *f, Arpent *a, uchar *mac);
 static void	sendarp(Ipifc *ifc, Arpent *a);
 static int	multicastea(uchar *ea, uchar *ip);
-static void	recvarpproc(Ipifc *ifc);
+static void	recvarpproc(void*);
 
 Medium ethermedium =
 {
@@ -453,8 +453,9 @@ recvarp(Ipifc *ifc)
 }
 
 static void
-recvarpproc(Ipifc *ifc)
+recvarpproc(void *v)
 {
+	Ipifc *ifc = v;
 	Etherrock *er = ifc->arg;
 
 	er->arpp = up;

@@ -459,7 +459,7 @@ mousetrack(int b, int dx, int dy)
  *  shift & right button is the same as middle button (for 2 button mice)
  */
 int
-m3mouseputc(void*, int c)
+m3mouseputc(Queue*, int c)
 {
 	static uchar msg[3];
 	static int nb;
@@ -500,7 +500,7 @@ m3mouseputc(void*, int c)
  *  shift & right button is the same as middle button (for 2 button mice)
  */
 int
-mouseputc(void*, int c)
+mouseputc(Queue*, int c)
 {
 	static short msg[5];
 	static int nb;

@@ -30,11 +30,11 @@ netifinit(Netif *nif, char *name, int nfile, ulong limit)
  *  generate a 3 level directory
  */
 static int
-netifgen(Chan *c, void *vp, int, int i, Dir *dp)
+netifgen(Chan *c, Dirtab *vp, int, int i, Dir *dp)
 {
 	Qid q;
 	char buf[32];
-	Netif *nif = vp;
+	Netif *nif = (Netif*)vp;
 	Netfile *f;
 	int t;
 	int perm;

@@ -433,10 +433,12 @@ stageoutput(Uart *p)
  *  (re)start output
  */
 static void
-ns16552kick0(Uart *p)
+ns16552kick0(void *v)
 {
 	int i;
+	Uart *p;
 
+	p = v;
 	if(p->cts == 0 || p->blocked)
 		return;
 
@@ -456,8 +458,11 @@ ns16552kick0(Uart *p)
 }
 
 static void
-ns16552kick(Uart *p)
+ns16552kick(void *v)
 {
+	Uart *p;
+
+	p = v;
 	ilock(&p->tlock);
 	ns16552kick0(p);
 	iunlock(&p->tlock);
@@ -467,8 +472,11 @@ ns16552kick(Uart *p)
  *  restart input if it's off
  */
 static void
-ns16552flow(Uart *p)
+ns16552flow(void *v)
 {
+	Uart *p;
+
+	p = v;
 	if(p->modem){
 		ns16552rts(p, 1);
 		ilock(&p->rlock);
@@ -889,7 +897,7 @@ ns16552ctl(Uart *p, char *cmd)
 
 	/* let output drain for a while */
 	for(i = 0; i < 16 && qlen(p->oq); i++)
-		tsleep(&p->r, qlen, p->oq, 125);
+		tsleep(&p->r, (int(*)(void*))qlen, p->oq, 125);
 
 	if(strncmp(cmd, "break", 5) == 0){
 		ns16552break(p, 0);

@@ -257,7 +257,7 @@ sdread(Chan *c, void *a, long n, vlong off)
 }
 
 static long
-sdwrite(Chan *c, char *a, long n, vlong off)
+sdwrite(Chan *c, void *a, long n, vlong off)
 {
 	Disk *d;
 

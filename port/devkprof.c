@@ -151,7 +151,7 @@ kprofread(Chan *c, void *va, long n, vlong off)
 }
 
 static long
-kprofwrite(Chan *c, char *a, long n, vlong)
+kprofwrite(Chan *c, void *a, long n, vlong)
 {
 	switch((int)(c->qid.path&~CHDIR)){
 	case Kprofctlqid:

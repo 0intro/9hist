@@ -308,8 +308,10 @@ doipoput(Conv *c, Fs *f, Block *bp, int x, int ttl)
 }
 
 int
-flow(Reliable *r)
+flow(void *v)
 {
+	Reliable *r = v;
+
 	return UNACKED(r) <= Maxunacked;
 }
 

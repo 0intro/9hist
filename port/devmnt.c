@@ -54,7 +54,7 @@ void	mntrpcread(Mnt*, Mntrpc*);
 void	mountio(Mnt*, Mntrpc*);
 void	mountmux(Mnt*, Mntrpc*);
 void	mountrpc(Mnt*, Mntrpc*);
-int	rpcattn(Mntrpc*);
+int	rpcattn(void*);
 void	mclose(Mnt*, Chan*);
 void	mntrecover(Mnt*, Mntrpc*);
 Chan*	mntchan(void);
@@ -993,14 +993,20 @@ mntdirfix(uchar *dirbuf, Chan *c)
 }
 
 int
-rpcattn(Mntrpc *r)
+rpcattn(void *v)
 {
+	Mntrpc *r;
+
+	r = v;
 	return r->done || r->m->rip == 0;
 }
 
 int
-recdone(Mnt *m)
+recdone(void *v)
 {
+	Mnt *m;
+
+	m = v;
 	return m->recprog == 0;
 }
 

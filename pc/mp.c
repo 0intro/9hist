@@ -348,6 +348,8 @@ checkmtrr(void)
 #define PDX(va)		((((ulong)(va))>>22) & 0x03FF)
 #define PTX(va)		((((ulong)(va))>>12) & 0x03FF)
 
+Lock clocksynclock;
+
 static void
 squidboy(Apic* apic)
 {
@@ -369,12 +371,12 @@ squidboy(Apic* apic)
 	/*
 	 * Restrain your octopus! Don't let it go out on the sea!
 	 */
-	lock(&active);
+	ilock(&clocksynclock);
 	x = MACHP(0)->ticks;
 	while(MACHP(0)->ticks == x)
 		;
 	wrmsr(0x10, MACHP(0)->fastclock); /* synchronize fast counters */
-	unlock(&active);
+	iunlock(&clocksynclock);
 
 	lapicinit(apic);
 	lapiconline();
