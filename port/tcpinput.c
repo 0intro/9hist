@@ -624,11 +624,13 @@ void
 add_reseq(Tcpctl *tcb, char tos, Tcp *seg, Block *bp, ushort length)
 {
 	Reseq *rp, *rp1;
+	static int dropped;
 
 	qlock(&reseqlock);
 	if(!reseqfree) {
 		qunlock(&reseqlock);
-		print("tcp: no resequence descriptors\n");
+		if((dropped++%256) == 0)
+			print("tcp: no resequence descriptors\n");
 		freeb(bp);
 		return;
 	}

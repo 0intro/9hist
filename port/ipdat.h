@@ -340,7 +340,7 @@ struct Ipconv
 #define TIMER_RUN	1
 #define TIMER_EXPIRE	2
 
-#define Nreseq		64
+#define Nreseq		128
 
 #define	set_timer(t,x)	(((t)->start) = (x)/MSPTICK)
 #define	run_timer(t)	((t)->state == TIMER_RUN)
