@@ -308,6 +308,7 @@ sysexec(ulong *arg)
 		nargs++;
 	}
 	ssize = BY2WD*(nargs+1) + ((nbytes+(BY2WD-1)) & ~(BY2WD-1));
+
 	/*
 	 * 8-byte align SP for those (e.g. sparc) that need it.
 	 * execregs() will subtract another 4 bytes for argc.

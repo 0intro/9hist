@@ -78,32 +78,16 @@ enum {
 #define COMMAND(hw, cmd, a)	outs(hw->addr+Command, ((cmd)<<11)|(a))
 
 /*
- * get configuration parameters
+ *  Write two 0 bytes to idnetify the IDport and them reset the
+ *  ID sequence.  Then send the ID sequenced to the card to get
+ *  the card it into command state.
  */
-static int
-reset(EtherCtlr *cp)
+void
+idseq(void)
 {
-	EtherHw *hw = cp->hw;
-	int i, ea;
-	ushort acr;
+	int i;
 	uchar al;
 
-	cp->rb = xspanalloc(sizeof(EtherBuf)*Nrb, BY2PG, 0);
-	cp->nrb = Nrb;
-	cp->tb = xspanalloc(sizeof(EtherBuf)*Ntb, BY2PG, 0);
-	cp->ntb = Ntb;
-
-	/*
-	 * Do the little configuration dance. We only look
-	 * at the first board that responds, if we ever have more
-	 * than one we'll need to modify this sequence.
-	 *
-	 * 2. Write two 0 bytes then the ID sequence to the IDport.
-	 */
-	outb(IDport, 0);
-	outb(IDport, 0);
-	outb(IDport, 0xc0);
-	delay(100)
 	outb(IDport, 0);
 	outb(IDport, 0);
 	for(al = 0xFF, i = 0; i < 255; i++){
@@ -115,6 +99,34 @@ reset(EtherCtlr *cp)
 		else
 			al <<= 1;
 	}
+}
+
+/*
+ * get configuration parameters
+ */
+static int
+reset(EtherCtlr *cp)
+{
+	EtherHw *hw = cp->hw;
+	int i, ea;
+	ushort x, acr;
+
+	cp->rb = xspanalloc(sizeof(EtherBuf)*Nrb, BY2PG, 0);
+	cp->nrb = Nrb;
+	cp->tb = xspanalloc(sizeof(EtherBuf)*Ntb, BY2PG, 0);
+	cp->ntb = Ntb;
+
+	/*
+	 * Do the little configuration dance. We only look
+	 * at the first board that responds, if we ever have more
+	 * than one we'll need to modify this sequence.
+	 *
+	 * 2. get to cammand state, reset, then return to command state
+	 */
+	idseq();
+	outb(IDport, 0xC1);
+	delay(2);
+	idseq();
 
 	/*
 	 * 3. Read the Product ID from the EEPROM.
@@ -128,12 +140,12 @@ reset(EtherCtlr *cp)
 	 * probably isn't there, so barf.
 	 */
 	outb(IDport, 0x83);
-	for(acr = 0, i = 0; i < 16; i++){
+	for(x = 0, i = 0; i < 16; i++){
 		delay(5);
-		acr <<= 1;
-		acr |= inb(IDport) & 0x01;
+		x <<= 1;
+		x |= inb(IDport) & 0x01;
 	}
-	if((acr & 0xF0FF) != 0x9050)
+	if((x & 0xF0FF) != 0x9050)
 		return -1;
 
 	/*
@@ -172,9 +184,9 @@ reset(EtherCtlr *cp)
 		outs(hw->addr+EEPROMcmd, (2<<6)|i);
 		while(ins(hw->addr+EEPROMcmd) & 0x8000)
 			;
-		acr = ins(hw->addr+EEPROMdata);
-		cp->ea[ea] = (acr>>8) & 0xFF;
-		cp->ea[ea+1] = acr & 0xFF;
+		x = ins(hw->addr+EEPROMdata);
+		cp->ea[ea] = (x>>8) & 0xFF;
+		cp->ea[ea+1] = x & 0xFF;
 	}
 
 	/*

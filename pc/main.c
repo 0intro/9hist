@@ -8,23 +8,18 @@
 #include	"init.h"
 #include	<ctype.h>
 
-/* configuration parameters */
-enum
-{
-	/* what kind of power management */
-	PMUother=	0,
-	PMUnsx20=	1,
-
-	/* how to reset the processor */
-	Resetother=	0,
-	Reset8042=	1,
-	Resetheadland=	2,
-};
-int pmutype;
-int resettype;
-char machtype[9];
 
 uchar *sp;	/* stack pointer for /boot */
+
+extern PCArch nsx20, generic, ncr3170;
+
+PCArch *arch;
+PCArch *knownarch[] =
+{
+	&nsx20,
+	&ncr3170,
+	&generic,
+};
 
 void
 main(void)
@@ -51,7 +46,6 @@ main(void)
 	streaminit();
 	swapinit();
 	userinit();
-
 	schedinit();
 }
 
@@ -64,21 +58,12 @@ void
 ident(void)
 {
 	char *id = (char*)(ROMBIOS + 0xFF40);
-	int i;
+	PCArch **p;
 
-	for(i = 0; i < 8; i++){
-		if(isprint(id[i]) == 0)
+	for(p = knownarch; *p != &generic; p++)
+		if(strncmp((*p)->id, id, strlen((*p)->id)) == 0)
 			break;
-		machtype[i] = id[i];
-	}
-	if(i == 0)
-		strcpy(machtype, "generic");
-	if(strcmp(machtype, "AT&TNSX") == 0){
-		pmutype = PMUnsx20;
-		resettype = Resetheadland;
-	}else if(strcmp(machtype, "NCRD.0") == 0){
-		resettype = Reset8042;
-	}
+	arch = *p;
 }
 
 void
@@ -117,7 +102,7 @@ init0(void)
 	chandevinit();
 
 	if(!waserror()){
-		strcpy(tstr, machtype);
+		strcpy(tstr, arch->id);
 		strcat(tstr, " %s");
 		ksetterm(tstr);
 		ksetenv("cputype", "386");
@@ -447,15 +432,7 @@ exit(int ispanic)
 	if(ispanic)
 		for(;;);
 
-	switch(resettype){
-	case Resetheadland:
-		headreset();
-	case Reset8042:
-		i8042reset();		/* via keyboard controller */
-	default:
-		print("Reset the machine!\n");
-		for(;;);
-	}
+	(*arch->reset)();
 }
 
 /*
@@ -466,12 +443,10 @@ exit(int ispanic)
 int
 cpuspeed(int speed)
 {
-	switch(pmutype){
-	case PMUnsx20:
-		return pmucpuspeed(speed);
-	default:
+	if(arch->cpuspeed)
+		return (*arch->cpuspeed)(speed);
+	else
 		return 0;
-	}
 }
 
 /*
@@ -481,13 +456,8 @@ cpuspeed(int speed)
 void
 buzz(int f, int d)
 {
-	switch(pmutype){
-	case PMUnsx20:
-		pmubuzz(f, d);
-		break;
-	default:
-		break;
-	}
+	if(arch->buzz)
+		(*arch->buzz)(f, d);
 }
 
 /*
@@ -496,13 +466,8 @@ buzz(int f, int d)
 void
 lights(int val)
 {
-	switch(pmutype){
-	case PMUnsx20:
-		pmulights(val);
-		break;
-	default:
-		break;
-	}
+	if(arch->lights)
+		(*arch->lights)(val);
 }
 
 /*
@@ -513,12 +478,10 @@ lights(int val)
 int
 serial(int onoff)
 {
-	switch(pmutype){
-	case PMUnsx20:
-		return pmuserial(onoff);
-	default:
+	if(arch->serialpower)
+		return (*arch->serialpower)(onoff);
+	else
 		return 0;
-	}
 }
 
 /*
@@ -529,10 +492,8 @@ serial(int onoff)
 int
 modem(int onoff)
 {
-	switch(pmutype){
-	case PMUnsx20:
-		return pmumodem(onoff);
-	default:
+	if(arch->modempower)
+		return (*arch->modempower)(onoff);
+	else
 		return 0;
-	}
 }

@@ -6,6 +6,10 @@
 #include	"io.h"
 
 /*
+ *  safari nsx20 specific routines
+ */
+
+/*
  *  intel power management unit (i80c51)
  */
 enum {
@@ -54,8 +58,8 @@ pmubusy(void)
 /*
  *  set a bit in the PMU
  */
-Lock pmulock;
-int
+static Lock pmulock;
+static int
 pmuwrbit(int index, int bit, int pos)
 {
 	lock(&pmulock);
@@ -90,8 +94,8 @@ pmuwrbit(int index, int bit, int pos)
  *	onoff == 1 means on
  *	onoff == 0 means off
  */
-int
-pmuserial(int onoff)
+static int
+nsx20serialpower(int onoff)
 {
 	return pmuwrbit(1, 1^onoff, 6);
 }
@@ -101,8 +105,8 @@ pmuserial(int onoff)
  *	onoff == 1 means on
  *	onoff == 0 means off
  */
-int
-pmumodem(int onoff)
+static int
+nsx20modempower(int onoff)
 {
 	if(pmuwrbit(1, 1^onoff, 0)<0)		/* modem speaker */
 		return -1;
@@ -114,8 +118,8 @@ pmumodem(int onoff)
  * 	0 == low speed
  *	1 == high speed
  */
-int
-pmucpuspeed(int speed)
+static int
+nsx20cpuspeed(int speed)
 {
 	return pmuwrbit(0, speed, 0);
 }
@@ -124,8 +128,8 @@ pmucpuspeed(int speed)
  *  f == frequency in Hz
  *  d == duration in ms
  */
-void
-pmubuzz(int f, int d)
+static void
+nsx20buzz(int f, int d)
 {
 	static QLock bl;
 	static Rendez br;
@@ -142,9 +146,43 @@ pmubuzz(int f, int d)
  *  1 == owl eye
  *  2 == mail icon
  */
-void
-pmulights(int val)
+static void
+nsx20lights(int val)
 {
 	pmuwrbit(0, (val&1), 4);		/* owl */
 	pmuwrbit(0, ((val>>1)&1), 1);		/* mail */
 }
+
+/*
+ *  headland system controller (ht21)
+ */
+enum
+{
+	/*
+	 *  system control port
+	 */
+	Head=		0x92,		/* control port */
+	 Reset=		(1<<0),		/* reset the 386 */
+	 A20ena=	(1<<1),		/* enable address line 20 */
+};
+
+/*
+ *  reset machine
+ */
+static void
+headreset(void)
+{
+	outb(Head, Reset);
+}
+
+PCArch nsx20 =
+{
+	"AT&TNSX",
+	headreset,
+	nsx20cpuspeed,
+	nsx20buzz,
+	nsx20lights,
+	nsx20serialpower,
+	nsx20modempower,
+	0,
+};
