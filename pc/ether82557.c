@@ -192,6 +192,8 @@ typedef struct Ctlr {
 	int	port;
 	ushort	eeprom[0x40];
 
+	Lock	miilock;
+
 	Rendez	timer;			/* watchdog timer for receive lockup errata */
 	int	tick;
 
@@ -379,7 +381,7 @@ static long
 ifstat(Ether* ether, void* a, long n, ulong offset)
 {
 	char *p;
-	int len;
+	int i, len, phyaddr;
 	Ctlr *ctlr;
 	ulong dump[17];
 
@@ -431,8 +433,27 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 		ctlr->cbqmaxhw = ctlr->cbqmax;
 	len += snprint(p+len, READSTR-len, "cbqmax: %d\n", ctlr->cbqmax);
 	ctlr->cbqmax = 0;
-	snprint(p+len, READSTR-len, "threshold: %d\n", ctlr->threshold);
+	len += snprint(p+len, READSTR-len, "threshold: %d\n", ctlr->threshold);
 
+	len += snprint(p+len, READSTR-len, "eeprom:");
+	for(i = 0; i < 0x40; i++){
+		if(i && ((i & 0x07) == 0))
+			len += snprint(p+len, READSTR-len, "\n       ");
+		len += snprint(p+len, READSTR-len, " %4.4uX", ctlr->eeprom[i]);
+	}
+
+	if((ctlr->eeprom[6] & 0x1F00) && !(ctlr->eeprom[6] & 0x8000)){
+		phyaddr = ctlr->eeprom[6] & 0x00FF;
+		len += snprint(p+len, READSTR-len, "\nphy %2d:", phyaddr);
+		for(i = 0; i < 6; i++){
+			static int miir(Ctlr*, int, int);
+
+			len += snprint(p+len, READSTR-len, " %4.4uX",
+				miir(ctlr, phyaddr, i));
+		}
+	}
+
+	snprint(p+len, READSTR-len, "\n");
 	n = readstr(offset, a, n, p);
 	free(p);
 
@@ -731,6 +752,7 @@ miir(Ctlr* ctlr, int phyadd, int regadd)
 {
 	int mcr, timo;
 
+	lock(&ctlr->miilock);
 	csr32w(ctlr, Mcr, MDIread|(phyadd<<21)|(regadd<<16));
 	mcr = 0;
 	for(timo = 64; timo; timo--){
@@ -739,6 +761,7 @@ miir(Ctlr* ctlr, int phyadd, int regadd)
 			break;
 		microdelay(1);
 	}
+	unlock(&ctlr->miilock);
 
 	if(mcr & MDIready)
 		return mcr & 0xFFFF;
@@ -751,6 +774,7 @@ miiw(Ctlr* ctlr, int phyadd, int regadd, int data)
 {
 	int mcr, timo;
 
+	lock(&ctlr->miilock);
 	csr32w(ctlr, Mcr, MDIwrite|(phyadd<<21)|(regadd<<16)|(data & 0xFFFF));
 	mcr = 0;
 	for(timo = 64; timo; timo--){
@@ -759,6 +783,7 @@ miiw(Ctlr* ctlr, int phyadd, int regadd, int data)
 			break;
 		microdelay(1);
 	}
+	unlock(&ctlr->miilock);
 
 	if(mcr & MDIready)
 		return 0;
@@ -853,10 +878,22 @@ i82557pci(void)
 	}
 }
 
+static char* mediatable[9] = {
+	"10BASE-T",				/* TP */
+	"10BASE-2",				/* BNC */
+	"10BASE-5",				/* AUI */
+	"100BASE-TX",
+	"10BASE-TFD",
+	"100BASE-TXFD",
+	"100BASE-T4",
+	"100BASE-FX",
+	"100BASE-FXFD",
+};
+
 static int
 reset(Ether* ether)
 {
-	int anar, anlpar, bmcr, bmsr, force, i, phyaddr, port, x;
+	int anar, anlpar, bmcr, bmsr, i, k, medium, phyaddr, port, x;
 	unsigned short sum;
 	Block *bp, **bpp;
 	Adapter *ap;
@@ -1024,25 +1061,46 @@ reset(Ether* ether)
 		 * Force speed and duplex if no auto-negotiation.
 		 */
 		if(anlpar == 0){
-			force = 0;
+			medium = -1;
 			for(i = 0; i < ether->nopt; i++){
-				if(cistrcmp(ether->opt[i], "fullduplex") == 0){
-					force = 1;
-					bmcr |= 0x0100;
-					ctlr->configdata[19] |= 0x40;
+				for(k = 0; k < nelem(mediatable); k++){
+					if(cistrcmp(mediatable[k], ether->opt[i]))
+						continue;
+					medium = k;
+					break;
 				}
-				else if(cistrcmp(ether->opt[i], "speed") == 0){
-					force = 1;
-					x = strtol(&ether->opt[i][6], 0, 0);
-					if(x == 10)
-						bmcr &= ~0x2000;
-					else if(x == 100)
-						bmcr |= 0x2000;
-					else
-						force = 0;
+		
+				switch(medium){
+				default:
+					break;
+
+				case 0x00:			/* 10BASE-T */
+				case 0x01:			/* 10BASE-2 */
+				case 0x02:			/* 10BASE-5 */
+					bmcr &= ~(0x2000|0x0100);
+					ctlr->configdata[19] &= ~0x40;
+					break;
+
+				case 0x03:			/* 100BASE-TX */
+				case 0x06:			/* 100BASE-T4 */
+				case 0x07:			/* 100BASE-FX */
+					ctlr->configdata[19] &= ~0x40;
+					bmcr |= 0x2000;
+					break;
+
+				case 0x04:			/* 10BASE-TFD */
+					bmcr = (bmcr & ~0x2000)|0x0100;
+					ctlr->configdata[19] |= 0x40;
+					break;
+
+				case 0x05:			/* 100BASE-TXFD */
+				case 0x08:			/* 100BASE-FXFD */
+					bmcr |= 0x2000|0x0100;
+					ctlr->configdata[19] |= 0x40;
+					break;
 				}
 			}
-			if(force)
+			if(medium != -1)
 				miiw(ctlr, phyaddr, 0x00, bmcr);
 		}
 

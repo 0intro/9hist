@@ -1196,6 +1196,7 @@ qclose(Queue *q)
 	bfirst = q->bfirst;
 	q->bfirst = 0;
 	q->len = 0;
+	q->dlen = 0;
 	q->noblock = 0;
 	iunlock(q);
 

@@ -7,6 +7,16 @@
 
 #include	"ip.h"
 
+enum				/* Connection state */
+{
+	Ilclosed,
+	Ilsyncer,
+	Ilsyncee,
+	Ilestablished,
+	Illistening,
+	Ilclosing,
+};
+
 char	*ilstates[] = 
 { 
 	"Closed",
@@ -16,18 +26,6 @@ char	*ilstates[] =
 	"Listening",
 	"Closing" 
 };
-
-char	*iltype[] = 
-{	
-	"sync",
-	"data",
-	"dataquery",
-	"ack",
-	"query",
-	"state",
-	"close" 
-};
-static char *etime = "connection timed out";
 
 enum				/* Packet types */
 {
@@ -40,15 +38,18 @@ enum				/* Packet types */
 	Ilclose,
 };
 
-enum				/* Connection state */
-{
-	Ilclosed,
-	Ilsyncer,
-	Ilsyncee,
-	Ilestablished,
-	Illistening,
-	Ilclosing,
+char	*iltype[] = 
+{	
+	"sync",
+	"data",
+	"dataquery",
+	"ack",
+	"query",
+	"state",
+	"close" 
 };
+
+static char *etime = "connection timed out";
 
 enum
 {
@@ -68,25 +69,30 @@ struct Ilcb			/* Control block */
 	Block	*outoforder;
 	ulong	next;		/* Id of next to send */
 	ulong	recvd;		/* Last packet received */
+	ulong	acksent;	/* Last packet acked */
 	ulong	start;		/* Local start id */
 	ulong	rstart;		/* Remote start id */
-	int	timeout;	/* Time out counter */
-	int	slowtime;	/* Slow time counter */
-	int	fasttime;	/* Retransmission timer */
-	int	acktime;	/* Acknowledge timer */
-	int	querytime;	/* Query timer */
-	int	deathtime;	/* Time to kill connection */
+	int	window;		/* Maximum receive window */
+	int	rxtot;		/* number of retransmits on this connection */
+	int	rexmit;		/* number of retransmits of *unacked */
+	ulong	qt[Nqt+1];	/* state table for query messages */
+	int	qtx;		/* ... index into qt */
+
+	/* timers */
+	ulong	lastxmit;	/* time of last xmit */
+	ulong	lastrecv;	/* time of last recv */
+	ulong	timeout;	/* retransmission time for *unacked */
+	ulong	acktime;	/* time to send next ack */
+	ulong	querytime;	/* time to send next query */
+
+	/* adaptive measurements */
 	int	delay;		/* Average of the fixed rtt delay */
 	int	rate;		/* Average uchar rate */
 	int	mdev;		/* Mean deviation of rtt */
 	int	maxrtt;		/* largest rtt seen */
 	ulong	rttack;		/* The ack we are waiting for */
 	int	rttlen;		/* Length of rttack packet */
-	ulong	rttms;		/* Time we issued rttack packet */
-	int	window;		/* Maximum receive window */
-	int	rexmit;		/* number of retransmits */
-	ulong	qt[Nqt+1];	/* state table for query messages */
-	int	qtx;		/* ... index into qt */
+	uvlong	rttstart;	/* Time we issued rttack packet */
 };
 
 enum
@@ -142,20 +148,16 @@ struct Ilpriv
 	QLock	apl;
 };
 
-/* Always Acktime < Fasttime < Slowtime << Ackkeepalive */
 enum
 {
 	Seconds		= 1000,
-	Iltickms 	= 100,		/* time base */
+	Iltickms 	= 50,		/* time base */
+	AckDelay	= 2*Iltickms,	/* max time twixt message rcvd & ack sent */
+	MaxTimeout 	= 4*Seconds,	/* max time between rexmit */
+	QueryTime	= 5*Seconds,	/* time between subsequent queries */
+	DeathTime	= 5*QueryTime,
 
-	Ackkeepalive	= 600*Seconds,
-	Acktime		= 2*Iltickms,	/* max time twixt message rcvd & ack sent */
-
-	Slowtime 	= 90*Seconds,	/* max time waiting for an ack before hangup */
-	Fasttime 	= 4*Seconds,	/* max time between rexmit */
-	Querytime	= 5*Seconds,	/* time between subsequent queries */
-	Keepalivetime	= 60*Seconds,	/* time before first query */
-	Deathtime	= 120*Seconds,	/* time between first query and hangup */
+	MaxRexmit 	= 10,		/* max retransmissions before hangup */
 	Defaultwin	= 20,
 
 	LogAGain	= 3,
@@ -163,6 +165,7 @@ enum
 	LogDGain	= 2,
 	DGain		= 1<<LogDGain,
 	DefByteRate	= 1000,		/* 10 meg ether */
+	DefRtt		= 50,		/* cross country on a great day */
 };
 
 /* state for query/dataquery messages */
@@ -177,16 +180,19 @@ void	ilhangup(Conv*, char*);
 void	ilfreeq(Ilcb*);
 void	ilrexmit(Ilcb*);
 void	ilbackoff(Ilcb*);
-void	iltimers(Ilcb*);
-char*	ilstart(Conv*, int, int);
+void	ilsettimeout(Ilcb*);
+char*	ilstart(Conv*, int);
 void	ilackproc(void*);
 void	iloutoforder(Conv*, Ilhdr*, Block*);
 void	iliput(Proto*, uchar*, Block*);
 void	iladvise(Proto*, Block*, char*);
 int	ilnextqt(Ilcb*);
+void	ilcbinit(Ilcb*);
 
 	int 	ilcksum = 1;
 static 	int 	initseq = 25001;
+static	int	microshift;
+
 
 static char*
 ilconnect(Conv *c, char **argv, int argc)
@@ -196,7 +202,7 @@ ilconnect(Conv *c, char **argv, int argc)
 	e = Fsstdconnect(c, argv, argc);
 	if(e != nil)
 		return e;
-	return ilstart(c, IL_CONNECT, 20);
+	return ilstart(c, IL_CONNECT);
 }
 
 static int
@@ -208,7 +214,7 @@ ilstate(Conv *c, char *state, int n)
 	return snprint(state, n, "%s del %5.5d Br %5.5d md %5.5d una %5.5lud rex %5.5d max %5.5d",
 		ilstates[ic->state],
 		ic->delay>>LogAGain, ic->rate>>LogAGain, ic->mdev>>LogDGain,
-		ic->unackeduchars, ic->rexmit, ic->maxrtt);
+		ic->unackeduchars, ic->rxtot, ic->maxrtt);
 }
 
 static int
@@ -230,7 +236,7 @@ ilannounce(Conv *c, char **argv, int argc)
 	e = Fsstdannounce(c, argv, argc);
 	if(e != nil)
 		return e;
-	e = ilstart(c, IL_LISTEN, 20);
+	e = ilstart(c, IL_LISTEN);
 	if(e != nil)
 		return e;
 	Fsconnected(c, nil);
@@ -275,7 +281,7 @@ ilkick(Conv *c, int l)
 	Ilhdr *ih;
 	Ilcb *ic;
 	int dlen;
-	ulong id;
+	ulong id, ack;
 	Block *bp;
 	Fs *f;
 
@@ -318,8 +324,10 @@ ilkick(Conv *c, int l)
 	qlock(&ic->ackq);
 	id = ic->next++;
 	hnputl(ih->ilid, id);
-
-	hnputl(ih->ilack, ic->recvd);
+	ack = ic->recvd;
+	hnputl(ih->ilack, ack);
+	ic->acksent = ack;
+	ic->acktime = msec + AckDelay;
 	ih->iltype = Ildata;
 	ih->ilspec = 0;
 	ih->ilsum[0] = 0;
@@ -335,11 +343,12 @@ ilkick(Conv *c, int l)
 	/* Start the round trip timer for this packet if the timer is free */
 	if(ic->rttack == 0) {
 		ic->rttack = id;
-		ic->rttms = msec;
+		ic->rttstart = fastticks(nil);
 		ic->rttlen = dlen + IL_IPSIZE + IL_HDRSIZE;
 	}
-	ic->acktime = Ackkeepalive;
 
+	if(ic->timeout <= msec)
+		ilsettimeout(ic);
 	ipoput(f, bp, 0, c->ttl);
 }
 
@@ -367,31 +376,6 @@ ilxstats(Proto *il, char *buf, int len)
 }
 
 void
-ilinit(Fs *f)
-{
-	Proto *il;
-
-	il = smalloc(sizeof(Proto));
-	il->priv = smalloc(sizeof(Ilpriv));
-	il->name = "il";
-	il->kick = ilkick;
-	il->connect = ilconnect;
-	il->announce = ilannounce;
-	il->state = ilstate;
-	il->create = ilcreate;
-	il->close = ilclose;
-	il->rcv = iliput;
-	il->ctl = nil;
-	il->advise = iladvise;
-	il->stats = ilxstats;
-	il->inuse = ilinuse;
-	il->ipproto = IP_ILPROTO;
-	il->nc = Nchans;
-	il->ptclsize = sizeof(Ilcb);
-	Fsproto(f, il);
-}
-
-void
 ilackq(Ilcb *ic, Block *bp)
 {
 	Block *np;
@@ -403,11 +387,8 @@ ilackq(Ilcb *ic, Block *bp)
 	np = copyblock(bp, n);
 	if(ic->unacked)
 		ic->unackedtail->list = np;
-	else {
-		/* Start timer since we may have been idle for some time */
-		iltimers(ic);
+	else
 		ic->unacked = np;
-	}
 	ic->unackedtail = np;
 	np->list = nil;
 	ic->unackeduchars += n;
@@ -415,29 +396,37 @@ ilackq(Ilcb *ic, Block *bp)
 
 static
 void
-ilrttcalc(Ilcb *ic)
+ilrttcalc(Ilcb *ic, Block *bp)
 {
-	int rtt, tt, pt, delay, rate;
+	uvlong fastrtt;
+	int rtt, tt, pt, delay, rate, mrtt;
 
-	/* add in clock resolution hack */
-	rtt = (msec + TK2MS(1) - 1) - ic->rttms;
+	fastrtt = fastticks(nil) - ic->rttstart;
+	if(microshift >= 0)
+		rtt = fastrtt >> microshift;
+	else
+		rtt = fastrtt << -microshift;
+	mrtt = rtt >> 10;
 	delay = ic->delay;
 	rate = ic->rate;
 
-	/* Guard against the ulong zero wrap of MACHP(0)->ticks */
-	if(rtt > 120000)
+	/* Guard against zero wrap */
+	if(rtt > 120000000)
 		return;
 
 	/* guess fixed delay as rtt of small packets */
 	if(ic->rttlen < 128){
-		delay += rtt - (delay>>LogAGain);
+		delay += mrtt - (delay>>LogAGain);
 		if(delay < AGain)
 			delay = AGain;
 		ic->delay = delay;
 	}
 
-	/* rate */
-	tt = rtt - (delay>>LogAGain);
+	/* this block had to be transmitted after the one acked so count its size */
+	ic->rttlen += blocklen(bp)  + IL_IPSIZE + IL_HDRSIZE;
+
+	/* if packet took longer than round trip delay, reset rate */
+	tt = mrtt - (delay>>LogAGain);
 	if(tt > 0){
 		rate += ic->rttlen/tt - (rate>>LogAGain);
 		if(rate < AGain)
@@ -447,21 +436,20 @@ ilrttcalc(Ilcb *ic)
 
 	/* mdev */
 	pt = ic->rttlen/(rate>>LogAGain) + (delay>>LogAGain);
-	ic->mdev += abs(rtt-pt) - (ic->mdev>>LogDGain);
+	ic->mdev += abs(mrtt-pt) - (ic->mdev>>LogDGain);
 
-	if(rtt > ic->maxrtt)
-		ic->maxrtt = rtt;
+	if(mrtt > ic->maxrtt)
+		ic->maxrtt = mrtt;
 }
 
 void
-ilackto(Ilcb *ic, ulong ackto)
+ilackto(Ilcb *ic, ulong ackto, Block *bp)
 {
 	Ilhdr *h;
-	Block *bp;
 	ulong id;
 
 	if(ic->rttack == ackto)
-		ilrttcalc(ic);
+		ilrttcalc(ic, bp);
 
 	/* Cancel if we've passed the packet we were interested in */
 	if(ic->rttack <= ackto)
@@ -479,6 +467,8 @@ ilackto(Ilcb *ic, ulong ackto)
 		bp->list = nil;
 		ic->unackeduchars -= blocklen(bp);
 		freeblist(bp);
+		ic->rexmit = 0;
+		ilsettimeout(ic);
 	}
 	qunlock(&ic->ackq);
 }
@@ -585,19 +575,8 @@ iliput(Proto *il, uchar*, Block *bp)
 	ic = (Ilcb*)new->ptcl;
 	ic->conv = new;
 	ic->state = Ilsyncee;
-	initseq += msec;
-	ic->start = initseq & 0xffffff;
-	ic->next = ic->start+1;
-	ic->recvd = 0;
+	ilcbinit(ic);
 	ic->rstart = nhgetl(ih->ilid);
-	ic->slowtime = Slowtime;
-	ic->delay = Iltickms<<LogAGain;
-	ic->mdev = Iltickms<<LogDGain;
-	ic->rate = DefByteRate<<LogAGain;
-	ic->querytime = Keepalivetime;
-	ic->deathtime = Deathtime;
-	ic->window = Defaultwin;
-	ic->unackeduchars = 0;
 
 	ilprocess(new, ih, bp);
 	return;
@@ -618,8 +597,7 @@ _ilprocess(Conv *s, Ilhdr *h, Block *bp)
 
 	ic = (Ilcb*)s->ptcl;
 
-	ic->querytime = Keepalivetime;
-	ic->deathtime = Deathtime;
+	ic->lastrecv = msec;
 
 	switch(ic->state) {
 	default:
@@ -641,7 +619,6 @@ _ilprocess(Conv *s, Ilhdr *h, Block *bp)
 				ic->state = Ilestablished;
 				Fsconnected(s, nil);
 				ilpullup(s);
-				iltimers(ic);
 			}
 			break;
 		case Ilclose:
@@ -661,14 +638,12 @@ _ilprocess(Conv *s, Ilhdr *h, Block *bp)
 			else {
 				ic->recvd = id;
 				ilsendctl(s, nil, Ilsync, ic->start, ic->recvd, 0);
-				iltimers(ic);
 			}
 			break;
 		case Ilack:
 			if(ack == ic->start) {
 				ic->state = Ilestablished;
 				ilpullup(s);
-				iltimers(ic);
 			}
 			break;
 		case Ilclose:
@@ -683,45 +658,38 @@ _ilprocess(Conv *s, Ilhdr *h, Block *bp)
 		case Ilsync:
 			if(id != ic->rstart)
 				ilhangup(s, "remote close");
-			else {
+			else
 				ilsendctl(s, nil, Ilack, ic->next, ic->rstart, 0);
-				iltimers(ic);
-			}
 			freeblist(bp);	
 			break;
 		case Ildata:
-			iltimers(ic);
-			ilackto(ic, ack);
-			ic->acktime = Acktime;
+			ilackto(ic, ack, bp);
 			iloutoforder(s, h, bp);
 			ilpullup(s);
 			break;
 		case Ildataquery:
-			iltimers(ic);
-			ilackto(ic, ack);
-			ic->acktime = Acktime;
+			ilackto(ic, ack, bp);
 			iloutoforder(s, h, bp);
 			ilpullup(s);
 			ilsendctl(s, nil, Ilstate, ic->next, ic->recvd, h->ilspec);
 			break;
 		case Ilack:
-			ilackto(ic, ack);
-			iltimers(ic);
+			ilackto(ic, ack, bp);
 			freeblist(bp);
 			break;
 		case Ilquery:
-			ilackto(ic, ack);
+			ilackto(ic, ack, bp);
 			ilsendctl(s, nil, Ilstate, ic->next, ic->recvd, h->ilspec);
-			iltimers(ic);
 			freeblist(bp);
 			break;
 		case Ilstate:
-			ilackto(ic, ack);
+			ilackto(ic, ack, bp);
 			if(h->ilspec > Nqt)
 				h->ilspec = 0;
-			if(ic->qt[h->ilspec] > ack)
+			if(ic->qt[h->ilspec] > ack){
 				ilrexmit(ic);
-			iltimers(ic);
+				ilsettimeout(ic);
+			}
 			freeblist(bp);
 			break;
 		case Ilclose:
@@ -731,7 +699,6 @@ _ilprocess(Conv *s, Ilhdr *h, Block *bp)
 			ilsendctl(s, nil, Ilclose, ic->next, ic->recvd, 0);
 			ic->state = Ilclosing;
 			ilfreeq(ic);
-			iltimers(ic);
 			break;
 		}
 		break;
@@ -745,7 +712,6 @@ _ilprocess(Conv *s, Ilhdr *h, Block *bp)
 			ilsendctl(s, nil, Ilclose, ic->next, ic->recvd, 0);
 			if(ack == ic->next)
 				ilhangup(s, nil);
-			iltimers(ic);
 			break;
 		default:
 			break;
@@ -762,8 +728,6 @@ ilrexmit(Ilcb *ic)
 	Block *nb;
 	Conv *c;
 	ulong id;
-	int x;
-	Ilpriv *ipriv;
 
 	nb = nil;
 	qlock(&ic->ackq);
@@ -784,25 +748,15 @@ ilrexmit(Ilcb *ic)
 	hnputs(h->ilsum, ptclcsum(nb, IL_IPSIZE, nhgets(h->illen)));
 
 	c = ic->conv;
-	ipriv = c->p->priv;
 	id = nhgetl(h->ilid);
-	netlog(c->p->f, Logil, "il: rexmit %ud %ud: %d %d: %i %d/%d\n", id, ic->recvd,
-		ic->fasttime, ic->timeout,
+	netlog(c->p->f, Logil, "il: rexmit %d %ud: %d %d: %i %d/%d\n", id, ic->recvd,
+		ic->rexmit, ic->timeout,
 		c->raddr, c->lport, c->rport);
 
-	ipriv->rexmit++;
-	ic->rexmit++;
-
-	/*
-	 *  Double delay estimate and half bandwidth estimate.  This is
-	 *  in keeping with van jacobson's tcp alg.
-	 */
+	/* rtt calcs are useless during retransmissions */
 	ic->rttack = 0;
-	if((ic->delay>>LogAGain) < 2*Seconds)
-		ic->delay *= 2;
-	x = ic->rate>>1;
-	if(x >= (1<<LogAGain))
-		ic->rate = x;
+
+	ilbackoff(ic);
 
 	ipoput(c->p->f, nb, 0, ic->conv->ttl);
 }
@@ -832,7 +786,8 @@ ilhangup(Conv *s, char *msg)
 	Ilcb *ic;
 	int callout;
 
-	netlog(s->p->f, Logil, "il: hangup! %I %d/%d: %s\n", s->raddr, s->lport, s->rport, msg?msg:"no reason");
+	netlog(s->p->f, Logil, "il: hangup! %I %d/%d: %s\n", s->raddr,
+		s->lport, s->rport, msg?msg:"no reason");
 
 	ic = (Ilcb*)s->ptcl;
 	callout = ic->state == Ilsyncer;
@@ -981,7 +936,8 @@ ilsendctl(Conv *ipc, Ilhdr *inih, int type, ulong id, ulong ack, int ilspec)
 		hnputl(ih->ilid, id);
 		hnputl(ih->ilack, ack);
 		ic = (Ilcb*)ipc->ptcl;
-		ic->acktime = Ackkeepalive;
+		ic->acksent = ack;
+		ic->acktime = msec;
 		ttl = ipc->ttl;
 	}
 	ih->iltype = type;
@@ -1002,6 +958,40 @@ ilsendctl(Conv *ipc, Ilhdr *inih, int type, ulong id, ulong ack, int ilspec)
 }
 
 void
+ilsettimeout(Ilcb *ic)
+{
+	ulong pt;
+
+	pt = (ic->delay>>LogAGain) + ic->unackeduchars/(ic->rate>>LogAGain) + ic->mdev;
+	pt += AckDelay;
+	if(pt > MaxTimeout)
+		pt = MaxTimeout;
+	ic->timeout = msec + pt;
+}
+
+void
+ilbackoff(Ilcb *ic)
+{
+	ulong pt;
+	int i;
+	Ilpriv *priv;
+
+	pt = (ic->delay>>LogAGain) + ic->unackeduchars/(ic->rate>>LogAGain) + ic->mdev;
+	pt += AckDelay;
+	for(i = 0; i < ic->rexmit; i++)
+		pt = pt + (pt>>1);
+	if(pt > MaxTimeout)
+		pt = MaxTimeout;
+	ic->timeout = msec + pt;
+
+	ic->rxtot++;
+	ic->rexmit++;
+
+	priv = ic->conv->p->priv;
+	priv->rexmit++;
+}
+
+void
 ilackproc(void *x)
 {
 	Ilcb *ic;
@@ -1018,56 +1008,52 @@ loop:
 		p = *s;
 		ic = (Ilcb*)p->ptcl;
 
-		ic->timeout += Iltickms;
 		switch(ic->state) {
 		case Ilclosed:
 		case Illistening:
 			break;
 		case Ilclosing:
-			if(ic->timeout >= ic->fasttime) {
+			if(ic->timeout <= msec) {
+				if(ic->rexmit > MaxRexmit){
+					ilhangup(p, nil);
+					break;
+				}
 				ilsendctl(p, nil, Ilclose, ic->next, ic->recvd, 0);
 				ilbackoff(ic);
 			}
-			if(ic->timeout >= ic->slowtime)
-				ilhangup(p, nil);
 			break;
 		case Ilsyncee:
 		case Ilsyncer:
-			if(ic->timeout >= ic->fasttime) {
+			if(ic->timeout <= msec) {
+				if(ic->rexmit > MaxRexmit){
+					ilhangup(p, etime);
+					break;
+				}
 				ilsendctl(p, nil, Ilsync, ic->start, ic->recvd, 0);
 				ilbackoff(ic);
 			}
-			if(ic->timeout >= ic->slowtime)
-				ilhangup(p, etime);
 			break;
 		case Ilestablished:
-			ic->acktime -= Iltickms;
-			if(ic->acktime <= 0)
+			if(ic->recvd != ic->acksent && ic->acktime <= msec)
 				ilsendctl(p, nil, Ilack, ic->next, ic->recvd, 0);
 
-			ic->querytime -= Iltickms;
-			if(ic->querytime <= 0){
-				ic->deathtime -= Querytime;
-				if(ic->deathtime < 0){
-					netlog(il->f, Logil, "il: hangup due to deathtime (%d) < 0 \n", ic->deathtime);
+			if(ic->querytime <= msec){
+				if(msec - ic->lastrecv > DeathTime){
+					netlog(il->f, Logil, "il: hangup: deathtime\n");
 					ilhangup(p, etime);
 					break;
 				}
 				ilsendctl(p, nil, Ilquery, ic->next, ic->recvd, ilnextqt(ic));
-				ic->querytime = Querytime;
+				ic->querytime = msec + QueryTime;
 			}
-			if(ic->unacked == nil) {
-				ic->timeout = 0;
-				break;
-			}
-			if(ic->timeout >= ic->fasttime) {
+
+			if(ic->unacked != nil && ic->timeout <= msec) {
+				if(ic->rexmit > MaxRexmit){
+					netlog(il->f, Logil, "il: hangup: too many rexmits\n");
+					ilhangup(p, etime);
+					break;
+				}
 				ilrexmit(ic);
-				ilbackoff(ic);
-			}
-			if(ic->timeout >= ic->slowtime) {
-				netlog(il->f, Logil, "il: hangup due to timeout (%d) >= slowtime (%d)\n", ic->timeout, ic->slowtime);
-				ilhangup(p, etime);
-				break;
 			}
 			break;
 		}
@@ -1076,17 +1062,31 @@ loop:
 }
 
 void
-ilbackoff(Ilcb *ic)
+ilcbinit(Ilcb *ic)
 {
-	ic->fasttime += ic->fasttime>>1;
-	if(ic->fasttime > Fasttime)
-		ic->fasttime = Fasttime;
+	ic->start = nrand(0x1000000);
+	ic->next = ic->start+1;
+	ic->recvd = 0;
+	ic->window = Defaultwin;
+	ic->unackeduchars = 0;
+	ic->unacked = nil;
+	ic->outoforder = nil;
+	ic->rexmit = 0;
+	ic->rxtot = 0;
+	ic->qtx = 1;
+
+	/* timers */
+	ic->delay = DefRtt<<LogAGain;
+	ic->mdev = DefRtt<<LogDGain;
+	ic->rate = DefByteRate<<LogAGain;
+	ic->querytime = msec + QueryTime;
+	ic->lastrecv = msec;	/* or we'll timeout right away */
+	ilsettimeout(ic);
 }
 
 char*
-ilstart(Conv *c, int type, int window)
+ilstart(Conv *c, int type)
 {
-	char *e;
 	Ilcb *ic;
 	Ilpriv *ipriv;
 	char kpname[NAMELEN];
@@ -1106,26 +1106,10 @@ ilstart(Conv *c, int type, int window)
 	ic = (Ilcb*)c->ptcl;
 	ic->conv = c;
 
-	e = nil;
-
 	if(ic->state != Ilclosed)
-		return e;
+		return nil;
 
-	ic->unacked = nil;
-	ic->outoforder = nil;
-	ic->unackeduchars = 0;
-	ic->delay = Iltickms<<LogAGain;
-	ic->mdev = Iltickms<<LogDGain;
-	ic->rate = DefByteRate<<LogAGain;
-	iltimers(ic);
-
-	initseq += msec;
-	ic->start = initseq & 0xffffff;
-	ic->next = ic->start+1;
-	ic->recvd = 0;
-	ic->window = window;
-	ic->rexmit = 0;
-	ic->qtx = 1;
+	ilcbinit(ic);
 
 	switch(type) {
 	default:
@@ -1140,7 +1124,7 @@ ilstart(Conv *c, int type, int window)
 		break;
 	}
 
-	return e;
+	return nil;
 }
 
 void
@@ -1163,21 +1147,6 @@ ilfreeq(Ilcb *ic)
 	}
 	ic->outoforder = nil;
 	qunlock(&ic->outo);
-}
-
-void
-iltimers(Ilcb *ic)
-{
-	int pt;
-
-	ic->timeout = 0;
-	pt = (ic->delay>>LogAGain) + ic->unackeduchars/(ic->rate>>LogAGain) + ic->mdev;
-	ic->fasttime = Acktime + pt + Iltickms - 1;
-	if(ic->fasttime > Fasttime)
-		ic->fasttime = Fasttime;
-	ic->slowtime = (Slowtime/Seconds)*pt;
-	if(ic->slowtime < Slowtime)
-		ic->slowtime = Slowtime;
 }
 
 void
@@ -1229,4 +1198,48 @@ ilnextqt(Ilcb *ic)
 	qunlock(&ic->ackq);
 
 	return x;
+}
+
+/* quick and dirty conversion from fastticks to microseconds */
+static void
+initfast(void)
+{
+	int i;
+	uvlong x, hz;
+
+	fastticks(&hz);
+	x = 3;
+	for(i = 1; i < 40; i++){
+		if(x >= hz)
+			break;
+		x <<= 1;
+	}
+	microshift = i - 20;
+}
+
+void
+ilinit(Fs *f)
+{
+	Proto *il;
+
+	initfast();
+
+	il = smalloc(sizeof(Proto));
+	il->priv = smalloc(sizeof(Ilpriv));
+	il->name = "il";
+	il->kick = ilkick;
+	il->connect = ilconnect;
+	il->announce = ilannounce;
+	il->state = ilstate;
+	il->create = ilcreate;
+	il->close = ilclose;
+	il->rcv = iliput;
+	il->ctl = nil;
+	il->advise = iladvise;
+	il->stats = ilxstats;
+	il->inuse = ilinuse;
+	il->ipproto = IP_ILPROTO;
+	il->nc = Nchans;
+	il->ptclsize = sizeof(Ilcb);
+	Fsproto(f, il);
 }
