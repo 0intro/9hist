@@ -98,6 +98,7 @@ int	x86(void);
 #define KADDR(a)	((void*)((ulong)(a)|KZERO))
 #define PADDR(a)	((ulong)(a)&~KZERO)
 
+void	ns16552install(void);
 void	ns16552special(int, int, Queue**, Queue**, int (*)(Queue*, int));
 
 void	hnputl(void*, ulong v);
