@@ -30,7 +30,7 @@ struct IOQ{
 	Rendez	r;
 };
 
-IOQ	lineq;		/* lock to getc; interrupt putc's */
+IOQ	lineq;
 
 struct{
 	IOQ;		/* qlock to getc; interrupt putc's */
@@ -38,6 +38,8 @@ struct{
 	int	repeat;
 	int	count;
 }kbdq;
+
+Ref	raw;		/* whether kbd i/o is raw (rcons is open) */
 
 void
 printinit(void)
@@ -88,6 +90,8 @@ isbrkc(IOQ *q)
 	uchar *p;
 
 	for(p=q->out; p!=q->in; ){
+		if(raw.ref)
+			return 1;
 		if(*p==0x04 || *p=='\n')
 			return 1;
 		p++;
@@ -180,6 +184,8 @@ echo(int c)
 	 */
 	if(c == 0x14)
 		DEBUG();
+	if(raw.ref)
+		return;
 	if(c == 0x15)
 		putstrn("^U\n", 3);
 	else{
@@ -207,7 +213,7 @@ kbdchar(int c)
 	*kbdq.in++ = c;
 	if(kbdq.in == kbdq.buf+sizeof(kbdq.buf))
 		kbdq.in = kbdq.buf;
-	if(c=='\n' || c==0x04)
+	if(raw.ref || c=='\n' || c==0x04)
 		wakeup(&kbdq.r);
 }
 
@@ -244,6 +250,7 @@ enum{
 	Qpgrpid,
 	Qpid,
 	Qppid,
+	Qrcons,
 	Qtime,
 	Quser,
 };
@@ -255,6 +262,7 @@ Dirtab consdir[]={
 	"pgrpid",	Qpgrpid,	12,	0600,
 	"pid",		Qpid,		12,	0600,
 	"ppid",		Qppid,		12,	0600,
+	"rcons",	Qrcons,		0,	0600,
 	"time",		Qtime,		12,	0600,
 	"user",		Quser,		0,	0600,
 };
@@ -336,6 +344,8 @@ consstat(Chan *c, char *dp)
 Chan*
 consopen(Chan *c, int omode)
 {
+	int ch;
+
 	if(c->qid==Quser && omode==(OWRITE|OTRUNC)){
 		/* truncate? */
 		if(strcmp(u->p->pgrp->user, "bootes") == 0)	/* BUG */
@@ -343,6 +353,16 @@ consopen(Chan *c, int omode)
 		else
 			error(0, Eperm);
 	}
+	if(c->qid == Qrcons)
+		if(incref(&raw) == 0){
+			lock(&lineq);
+			while((ch=getc(&kbdq)) != -1){
+				*lineq.in++ = ch;
+				if(lineq.in == lineq.buf+sizeof(lineq.buf))
+					lineq.in = lineq.buf;
+			}
+			unlock(&lineq);
+		}
 	return devopen(c, omode, consdir, NCONS, devgen);
 }
 
@@ -355,6 +375,8 @@ conscreate(Chan *c, char *name, int omode, ulong perm)
 void
 consclose(Chan *c)
 {
+	if(c->qid == Qrcons)
+		decref(&raw);
 }
 
 long
@@ -374,12 +396,18 @@ consread(Chan *c, void *buf, long n)
 	case Qdir:
 		return devdirread(c, buf, n, consdir, NCONS, devgen);
 
+	case Qrcons:
 	case Qcons:
 		qlock(&kbdq);
 		while(!cangetc(&lineq)){
 			sleep(&kbdq.r, (int(*)(void*))isbrkc, &kbdq);
 			do{
+				lock(&lineq);
 				ch = getc(&kbdq);
+				if(raw.ref){
+					unlock(&lineq);
+					goto Default;
+				}
 				switch(ch){
 				case '\b':
 					if(lineq.in != lineq.out){
@@ -391,17 +419,19 @@ consread(Chan *c, void *buf, long n)
 				case 0x15:
 					lineq.in = lineq.out;
 					break;
+				Default:
 				default:
 					*lineq.in++ = ch;
 					if(lineq.in == lineq.buf+sizeof(lineq.buf))
-					lineq.in = lineq.buf;
+						lineq.in = lineq.buf;
 				}
-			}while(ch!='\n' && ch!=0x04);
+				unlock(&lineq);
+			}while(raw.ref==0 && ch!='\n' && ch!=0x04);
 		}
 		i = 0;
-		while(n>0){
+		while(n > 0){
 			ch = getc(&lineq);
-			if(ch == 0x04 || ch == -1)
+			if(ch==-1 || (raw.ref==0 && ch==0x04))
 				break;
 			i++;
 			*cbuf++ = ch;
@@ -461,6 +491,7 @@ conswrite(Chan *c, void *va, long n)
 
 	switch(c->qid){
 	case Qcons:
+	case Qrcons:
 		/*
 		 * Damn. Can't page fault in putstrn, so copy the data locally.
 		 */

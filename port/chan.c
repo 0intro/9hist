@@ -490,10 +490,8 @@ namec(char *name, int amode, int omode, ulong perm)
 
 	switch(amode){
 	case Aaccess:
-		if((nc=walk(c, elem, mntok)) == 0){
-			print("%d pc %lux\n", u->nerrlab, u->errlab[u->nerrlab-1].pc);
+		if((nc=walk(c, elem, mntok)) == 0)
 			error(0, Enonexist);
-		}
 		c = nc;
 		break;
 

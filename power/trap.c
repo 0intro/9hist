@@ -451,7 +451,7 @@ syscall(Ureg *aur)
 			goto Bad;
 		}
 		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-4*BY2WD))
-			validaddr(ur->sp, 4*BY2WD, 0);
+			validaddr(sp, 4*BY2WD, 0);
 		ret = (*systab[r1])((ulong*)(sp+2*BY2WD));
 	}
 	ur->pc += 4;

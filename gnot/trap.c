@@ -278,8 +278,8 @@ syscall(Ureg *aur)
 			goto Bad;
 		}
 		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-4*BY2WD))
-			validaddr(ur->sp, 4*BY2WD, 0);
-		ret = (*systab[r0])((ulong*)(sp+2*BY2WD));
+			validaddr(sp, 4*BY2WD, 0);
+		ret = (*systab[r0])((ulong*)(sp+BY2WD));
 	}
 	u->nerrlab = 0;
 	u->p->insyscall = 0;

@@ -26,7 +26,6 @@ extern Font	defont0;	/* BUG */
 
 struct{
 	Ref;
-	int	bltuse;
 	Bitmap	*map;		/* arena */
 	Bitmap	*free;		/* free list */
 	ulong	*words;		/* storage */
@@ -148,7 +147,6 @@ void
 bitinit(void)
 {
 	lock(&bit);
-	bit.bltuse = 0;
 	unlock(&bit);
 	cursoron(1);
 }
@@ -185,9 +183,9 @@ bitopen(Chan *c, int omode)
 	if(c->qid == CHDIR){
 		if(omode != OREAD)
 			error(0, Eperm);
-	}else{
+	}else if(c->qid == Qbitblt){
 		lock(&bit);
-		if(bit.bltuse){
+		if(bit.ref){
 			unlock(&bit);
 			error(0, Einuse);
 		}
@@ -232,7 +230,6 @@ bitclose(Chan *c)
 			for(i=1,bp=&bit.map[1]; i<conf.nbitmap; i++,bp++)
 				if(bp->ldepth >= 0)
 					bitfree(bp);
-			bit.bltuse = 0;
 		}
 		unlock(&bit);
 	}
