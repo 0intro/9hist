@@ -1095,17 +1095,18 @@ tlsread(Chan *c, void *a, long n, vlong off)
 		buf = smalloc(Statlen);
 		qlock(&tr->in.seclock);
 		qlock(&tr->out.seclock);
+		s = buf;
 		e = buf + Statlen;
-		s = seprint(buf, e, "%s version 0x%lux", tlsstate(tr->state), tr->version);
+		s = seprint(s, e, "State: %s\n", tlsstate(tr->state));
+		s = seprint(s, e, "Version: 0x%lux\n", tr->version);
 		if(tr->in.sec != nil)
-			s = seprint(s, e, " EncIn %s HashIn %s", tr->in.sec->encalg, tr->in.sec->hashalg);
+			s = seprint(s, e, "EncIn: %s\nHashIn: %s\n", tr->in.sec->encalg, tr->in.sec->hashalg);
 		if(tr->in.new != nil)
-			s = seprint(s, e, " NewEncIn %s NewHashIn %s", tr->in.new->encalg, tr->in.new->hashalg);
+			s = seprint(s, e, "NewEncIn: %s\nNewHashIn: %s\n", tr->in.new->encalg, tr->in.new->hashalg);
 		if(tr->out.sec != nil)
-			s = seprint(s, e, " EncOut %s HashOut %s", tr->out.sec->encalg, tr->out.sec->hashalg);
+			s = seprint(s, e, "EncOut: %s\nHashOut: %s\n", tr->out.sec->encalg, tr->out.sec->hashalg);
 		if(tr->out.new != nil)
-			s = seprint(s, e, " NewEncOut %s NewHashOut %s", tr->out.new->encalg, tr->out.new->hashalg);
-		seprint(s, e, "\n");
+			seprint(s, e, "NewEncOut: %s\nNewHashOut: %s\n", tr->out.new->encalg, tr->out.new->hashalg);
 		qunlock(&tr->in.seclock);
 		qunlock(&tr->out.seclock);
 		n = readstr(offset, a, n, buf);
@@ -1854,9 +1855,9 @@ tlsstate(int s)
 	case SOpen:
 		return "Established";
 	case SRClose:
-		return "RemoteHangup";
+		return "RemoteClosed";
 	case SLClose:
-		return "LocalHangup";
+		return "LocalClosed";
 	case SAlert:
 		return "Alerting";
 	case SError:
