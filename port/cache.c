@@ -526,23 +526,19 @@ cwrite(Chan* c, uchar *buf, int len, ulong offset)
 		p = f;		
 	}
 
-	if(f != 0) {
+	if(f != 0 && offset < f->start+f->len) {
 		o = offset - f->start;
-		if(o >= 0) {
-			n = f->len - o;
-			if(n > len)
-				n = len;
-			if(n > 0) {
-				if(cpgmove(f, buf, o, n)) {
-					buf += n;
-					len -= n;
-					offset += n;
-				}
-				if(len == 0) {
-					qunlock(m);
-					return;
-				}
-			}	
+		n = f->len - o;
+		if(n > len)
+			n = len;
+		if(cpgmove(f, buf, o, n)) {
+			len -= n;
+			if(len == 0) {
+				qunlock(m);
+				return;
+			}
+			offset += n;
+			buf += n;
 		}
 	}
 
