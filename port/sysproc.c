@@ -432,7 +432,6 @@ sysexec(ulong *arg)
 	for(i=0; i<=f->maxfd; i++)
 		fdclose(i, CCEXEC);
 
-print("set up segments for pid %lud\n", up->pid);
 	/* Text.  Shared. Attaches to cache image if possible */
 	/* attachimage returns a locked cache image */
 	img = attachimage(SG_TEXT|SG_RONLY, tc, UTZERO, (t-UTZERO)>>PGSHIFT);
