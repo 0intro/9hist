@@ -874,7 +874,8 @@ mntxmit(Mnt *m, Mnthdr *mh)
 	poperror();		/* 1 */
 }
 
-mntdump()
+void
+mntdump(void)
 {
 	int i;
 	MntQ *q;

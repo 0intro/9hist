@@ -535,7 +535,8 @@ proctab(int i)
 }
 
 #include <ureg.h>
-DEBUG()
+void
+DEBUG(void)
 {
 	int i;
 	Proc *p;
