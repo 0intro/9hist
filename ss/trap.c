@@ -325,10 +325,8 @@ syscall(Ureg *aur)
 	char *msg;
 
 	ur = aur;
-	if(ur->psr & PSRPSUPER){
-		dumpregs(ur);
+	if(ur->psr & PSRPSUPER)
 		panic("recursive system call");
-	}
 	u->p->insyscall = 1;
 	u->p->pc = ur->pc;
 
@@ -340,9 +338,7 @@ syscall(Ureg *aur)
 		u->p->fpstate = FPinit;
 		ur->psr &= ~PSREF;
 	}
-print("syscall %d\n", ur->r7);
 	spllo();
-print("got low in syscall\n");
 	r7 = ur->r7;
 	sp = ur->usp;
 

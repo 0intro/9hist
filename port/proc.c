@@ -491,7 +491,8 @@ pexit(char *s, int freemem)
 	c->alarm = 0;
 	mypid = c->pid;
 
-	closefgrp(c->fgrp);
+	if(c->fgrp)
+		closefgrp(c->fgrp);
 
 	if(freemem){
 		flushvirt();
@@ -499,7 +500,8 @@ pexit(char *s, int freemem)
 			if(c->seg[i])
 				putseg(c->seg[i]);
 		closepgrp(c->pgrp);
-		closeegrp(c->egrp);
+		if(c->egrp)
+			closeegrp(c->egrp);
 		close(u->dot);
 	}
 	/*
@@ -672,7 +674,6 @@ kproc(char *name, void (*func)(void *), void *arg)
 	 * Refs
 	 */
 	incref(up->dot);
-	p->fgrp = newfgrp();
 	kunmap(k);
 
 	/*

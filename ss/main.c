@@ -110,7 +110,7 @@ init0(void)
 	u->slash = (*devtab[0].attach)(0);
 	u->dot = clone(u->slash, 0);
 
-	kickpager();
+	kickpager(); /**/
 	touser(USTKTOP-(1+MAXSYSARG)*BY2WD);
 }
 

@@ -517,21 +517,21 @@ long
 syssegfree(ulong *arg)
 {
 	Segment *s;
-	ulong from, len;
+	ulong from, pages;
 
 	from = PGROUND(arg[0]);
 	s = seg(u->p, from, 1);
 	if(s == 0)
 		errors("not in address space");
 
-	len = arg[1];
+	pages = (arg[1]+BY2PG-1)/BY2PG;
 
-	if(from+len > s->top) {
+	if(from+pages*BY2PG > s->top) {
 		qunlock(&s->lk);
 		errors("segment too short");
 	}
 
-	mfreeseg(s, from, len);
+	mfreeseg(s, from, pages);
 	qunlock(&s->lk);
 
 	return 0;

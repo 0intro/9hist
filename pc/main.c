@@ -6,15 +6,50 @@
 #include	"io.h"
 
 
-char sysname[NAMELEN];
-Conf	conf;
-char	user[NAMELEN] = "bootes";
-
 extern ulong edata;
+
+/*
+ *  predeclared
+ */
+int	fdboot(void);
+int	hdboot(void);
+int	duartboot(void);
+int	parse(char*);
+int	getline(int);
+int	getstr(char*, char*, int, char*, int);
+int	menu(void);
+
+char	file[2*NAMELEN];
+char	server[NAMELEN];
+char	sysname[NAMELEN];
+char	user[NAMELEN] = "none";
+char	linebuf[256];
+Conf	conf;
+
+
+typedef	struct Booter	Booter;
+struct Booter
+{
+	char	*name;
+	char	*srv;
+	int	(*func)(void);
+};
+Booter	booter[] = {
+	{ "fd",		0,	fdboot },
+	{ "hd",		0,	hdboot },
+	{ "2400",	0,	duartboot },
+	{ "1200",	0,	duartboot },
+};
+
+int	bootdev;
+char	*bootchars = "fh21";
+int	usecache;
 
 main(void)
 {
-	int i;
+	char	*path;			/* file path */
+	char	element[2*NAMELEN];	/* next element in a file path */
+	char	def[2*NAMELEN];
 
 	machinit();
 	confinit();
@@ -30,17 +65,146 @@ main(void)
 	floppyinit();
 	spllo();
 
-	for(i=0; i<100; i++){
-		int c;
-
-		c = getc(&kbdq);
-		if(c!=-1)
-			screenputc(c);
-		idle();
-		floppyseek(0, 0);
-		floppyseek(0, 18*512*20);
+	for(;;){
+		sprint(def, "%s!%s!/%s", booter[bootdev].name, booter[bootdev].srv,
+			usecache ? "9.cache" : "9.com");
+		if(getstr("server", element, sizeof element, def, 0)<0)
+			continue;
+		if(parse(element) < 0)
+			continue;
+		if(getstr("user", user, sizeof user, 0, 0)<0)
+			continue;
+		if(*user==0)
+			continue;
+		if((*booter[bootdev].func)() < 0)
+			continue;
+		print("success\n");
 	}
-	for(;;);
+}
+
+/*
+ *  parse the server line.  return 0 if OK, -1 if bullshit
+ */
+int
+parse(char *line)
+{
+	char *def[3];
+	char **d;
+	char *s;
+	int i;
+
+	def[0] = booter[bootdev].name;
+	def[1] = booter[bootdev].srv;
+	def[2] = "/9.com";
+
+	d = &def[2];
+	s = line + strlen(line);
+	while((*d = s) > line)
+		if(*--s == '!'){
+			if(d-- == def)
+				return -1;
+			*s = '\0';
+		}
+
+	for(i = 0; i < strlen(bootchars); i++){
+		if(strcmp(def[0], booter[i].name)==0){
+			strcpy(server, def[1]);
+			strcpy(file, def[2]);
+			bootdev = i;
+			return 0;
+		}
+	}
+
+	return -1;
+}
+
+/*
+ *  read a line from the keyboard.
+ */
+int
+getline(int quiet)
+{
+	int c, i=0;
+	long start;
+
+	for (start=m->ticks;;) {
+	    	do{
+			if(TK2SEC(m->ticks - start) > 60)
+				return -2;
+			c = getc(&kbdq);
+		} while(c==-1);
+		if(c == '\r')
+			c = '\n'; /* turn carriage return into newline */
+		if(c == '\177')
+			c = '\010';	/* turn delete into backspace */
+		if(!quiet){
+			if(c == '\033'){
+				menu();
+				return -1;
+			}
+			if(c == '\025')
+				screenputc('\n');	/* echo ^U as a newline */
+			else
+				screenputc(c);
+		}
+		if(c == '\010'){
+			if(i > 0)
+				i--; /* bs deletes last character */
+			continue;
+		}
+		/* a newline ends a line */
+		if (c == '\n')
+			break;
+		/* ^U wipes out the line */
+		if (c =='\025')
+			return -1;
+		linebuf[i++] = c;
+	}
+	linebuf[i] = 0;
+	return i;
+}
+
+/*
+ *  prompt for a string from the keyboard.  <cr> returns the default.
+ */
+int
+getstr(char *prompt, char *buf, int size, char *def, int quiet)
+{
+	int len;
+	char *cp;
+
+	for (;;) {
+		if(def)
+			print("%s[default==%s]: ", prompt, def);
+		else
+			print("%s: ", prompt);
+		len = getline(quiet);
+		switch(len){
+		case -1:
+			/* ^U typed */
+			continue;
+		case -2:
+			/* timeout */
+			return -1;
+		default:
+			break;
+		}
+		if(len >= size){
+			print("line too long\n");
+			continue;
+		}
+		break;
+	}
+	if(*linebuf==0 && def)
+		strcpy(buf, def);
+	else
+		strcpy(buf, linebuf);
+	return 0;
+}
+
+int
+menu(void)
+{
 }
 
 void
@@ -216,6 +380,9 @@ ialloc(ulong n, int align)
 	return (void*)(p|KZERO);
 }
 
+/*
+ *  some dummy's so we can use kernel code
+ */
 void
 sched(void)
 { }
@@ -228,4 +395,43 @@ int
 postnote(Proc*p, int x, char* y, int z)
 {
 	panic("postnote");
+}
+
+
+/*
+ *  boot from hard disk
+ */
+int
+hdboot(void)
+{
+	print("hdboot unimplemented\n");
+	return -1;
+}
+
+/*
+ *  boot from the duart
+ */
+int
+duartboot(void)
+{
+	print("duartboot unimplemented\n");
+	return -1;
+}
+
+#include "dosfs.h"
+
+/*
+ *  boot from the floppy
+ */
+int
+fdboot(void)
+{
+	Dosbpb b;
+	extern int dosboot(Dosbpb*);
+
+	print("booting from floppy 0\n");
+	b.seek = floppyseek;
+	b.read = floppyread;
+	b.dev = 0;
+	return dosboot(&b);
 }

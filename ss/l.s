@@ -117,13 +117,12 @@ TEXT	splx(SB), $0
 	RETURN
 
 TEXT	touser(SB), $-4
-
 	MOVW	$(SYSPSR&~PSREF), R7
 	MOVW	R7, PSR
+	OR	R0, R0
+	OR	R0, R0
+	OR	R0, R0
 
-	OR	R0, R0
-	OR	R0, R0
-	OR	R0, R0
 	MOVW	sp+0(FP), R1
 	SAVE	R0, R0			/* RETT is implicit RESTORE */
 	MOVW	$(UTZERO+32), R7	/* PC; header appears in text */
@@ -331,7 +330,6 @@ TEXT	gotolabel(SB), $0
 	MOVW	b+0(FP), R8
 	MOVW	(R8), R1
 	MOVW	4(R8), R15
-	MOVW	R15, 0(R1)
 	MOVW	$1, R7
 	RETURN
 

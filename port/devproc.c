@@ -19,6 +19,7 @@ enum{
 	Qtext,
 };
 
+#define	STATSIZE	(2*NAMELEN+12+6*12)
 Dirtab procdir[]={
 	"ctl",		{Qctl},		0,			0600,
 	"mem",		{Qmem},		0,			0600,
@@ -26,7 +27,7 @@ Dirtab procdir[]={
 	"notepg",	{Qnotepg},	0,			0200,
 	"proc",		{Qproc},	sizeof(Proc),		0600,
 	"segment",	{Qsegment},	0,			0400,
-	"status",	{Qstatus},	NAMELEN+12+6*12,	0600,
+	"status",	{Qstatus},	STATSIZE,		0600,
 	"text",		{Qtext},	0,			0600,
 };
 
@@ -348,17 +349,18 @@ procread(Chan *c, void *va, long n, ulong offset)
 		return n;
 
 	case Qstatus:
-		if(offset >= sizeof statbuf)
+		if(offset >= STATSIZE)
 			return 0;
-		if(offset+n > sizeof statbuf)
-			n = sizeof statbuf - offset;
-		sprint(statbuf, "%-27s %-27s %-11s ", p->text, p->pgrp->user, statename[p->state]);
+		if(offset+n > STATSIZE)
+			n = STATSIZE - offset;
+		j = sprint(statbuf, "%-27s %-27s %-11s ",
+			p->text, p->pgrp->user, statename[p->state]);
 		for(i=0; i<6; i++){
 			l = p->time[i];
 			if(i == TReal)
 				l = MACHP(0)->ticks - l;
 			l = TK2MS(l);
-			readnum(0, statbuf+2*NAMELEN+12+NUMSIZE*i, NUMSIZE, l, NUMSIZE);
+			readnum(0, statbuf+j+NUMSIZE*i, NUMSIZE, l, NUMSIZE);
 		}
 		memmove(a, statbuf+offset, n);
 		return n;
