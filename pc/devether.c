@@ -475,7 +475,7 @@ etherkproc(void *arg)
 			rb = &cp->rb[cp->rh];
 			etherup(cp, rb->pkt, rb->len);
 			rb->owner = Interface;
-			cp->rh = NEXT(cp->rh, Nrb);
+			cp->rh = NEXT(cp->rh, cp->nrb);
 		}
 
 		qunlock(&cp->rlock);
@@ -614,10 +614,10 @@ wd8013reset(Ctlr *cp)
 	int i;
 	uchar msr;
 
-	cp->tb = ialloc(sizeof(Buffer)*Ntb, 1);
-	cp->ntb = Ntb;
 	cp->rb = ialloc(sizeof(Buffer)*Nrb, 1);
 	cp->nrb = Nrb;
+	cp->tb = ialloc(sizeof(Buffer)*Ntb, 1);
+	cp->ntb = Ntb;
 
 	msr = IN(hw, msr);
 	OUT(hw, msr, 0x40|msr);
@@ -684,8 +684,6 @@ wd8013online(Ctlr *cp, int on)
 	OUT(cp->hw, w.tcr, 0);
 }
 
-static ulong wraps;
-
 static void
 wd8013receive(Ctlr *cp)
 {
@@ -708,26 +706,22 @@ wd8013receive(Ctlr *cp)
 		cp->inpackets++;
 		p = &((Ring*)hw->ram)[next];
 		len = (p->len1<<8)|p->len0-4;
-if(len > sizeof(Etherpkt))
-    print("!");
 
 		rb = &cp->rb[cp->ri];
 		if(rb->owner == Interface){
 			rb->len = len;
-			/*copy in packet*/
-			if(p->data+len >= hw->ram+hw->size){
-wraps++;
+			if((p->data+len) >= (hw->ram+hw->size)){
 				len = hw->ram+hw->size - p->data;
 				memmove(rb->pkt+len,
 					&((Ring*)hw->ram)[hw->pstart],
-					p->data+rb->len - hw->ram+hw->size);
+					(p->data+rb->len) - (hw->ram+hw->size));
 			}
 			memmove(rb->pkt, p->data, len);
 			rb->owner = Host;
-			cp->ri = NEXT(cp->ri, Nrb);
+			cp->ri = NEXT(cp->ri, cp->nrb);
 		}
 
-p->status = 0;
+		p->status = 0;
 		next = p->next;
 		bnry = next-1;
 		if(bnry < hw->pstart)
@@ -747,7 +741,6 @@ wd8013transmit(Ctlr *cp)
 	tb = &cp->tb[cp->ti];
 	if(tb->busy == 0 && tb->owner == Interface){
 		hw = cp->hw;
-tb->len = tb->len+1 & ~1;
 		memmove(hw->ram, tb->pkt, tb->len);
 		OUT(hw, w.tbcr0, tb->len & 0xFF);
 		OUT(hw, w.tbcr1, (tb->len>>8) & 0xFF);
@@ -785,7 +778,7 @@ wd8013intr(Ureg *ur)
 			tb = &cp->tb[cp->ti];
 			tb->owner = Host;
 			tb->busy = 0;
-			cp->ti = NEXT(cp->ti, Ntb);
+			cp->ti = NEXT(cp->ti, cp->ntb);
 			(*cp->hw->transmit)(cp);
 			wakeup(&cp->tr);
 		}
@@ -820,22 +813,4 @@ static Hw wd8013 = {
 void
 consdebug(void)
 {
-	Ctlr *cp = &ctlr[0];
-	Hw *hw = cp->hw;
-	Buffer *bp;
-	uchar bnry, curr;
-
-	print("th%d ti%d rh%d ri%d\n",
-		cp->th, cp->ti, cp->rh, cp->ri);
-	bp = &cp->tb[cp->ti];
-	print("t: owner %d busy %d len %d\n",
-		bp->owner, bp->busy, bp->len);
-	bnry = IN(hw, r.bnry);
-	OUT(hw, w.cr, 0x62);
-	curr = IN(hw, curr);
-	OUT(hw, w.cr, 0x22);
-	print("bnry %d, curr %d\n", bnry, curr);
-	print("in %d out %d crcs %d oerrs %d frames %d overflows %d buffs %d wraps %d\n",
-		cp->inpackets, cp->outpackets, cp->crcs, cp->oerrs, cp->frames,
-		cp->overflows, cp->buffs, wraps);
 }

@@ -22,8 +22,13 @@ struct{
 /*
  *  screen dimensions
  */
+
+/*
 #define MAXX	800
 #define MAXY	600
+*/
+#define MAXX	640
+#define MAXY	480
 
 #define SCREENMEM	(0xA0000 | KZERO)
 
@@ -72,7 +77,7 @@ struct VGAmode
 VGAmode mode12 = 
 {
 	/* general */
-	0xe7, 0x00,  /* 0x70, 0x04, these are read-only */
+	0xe7, 0x00,
 	/* sequence */
 	0x03, 0x01, 0x0f, 0x00, 0x06,
 	/* crt */
@@ -90,17 +95,17 @@ VGAmode mode12 =
 };
 
 /*
- *  VESA standard (?) 800x600 display, 16 bit color 
+ *  VESA standard (?) 800x600 display, 16 bit color. 
  */
 VGAmode mode6a = 
 {
 	/* general */
-	0x2f, 0x00,  /* 0x70, 0x04, these are read-only */
+	0xe3, 0x00,  /* 0x70, 0x04, these are read-only */
 	/* sequence */
 	0x03, 0x01, 0x0f, 0x00, 0x06,
 	/* crt */
-	0x7f, 0x63, 0x64, 0x9d, 0x67, 0x92, 0x77, 0xf0,
-	0x00, 0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x7f, 0x63, 0x64, 0x02, 0x6a, 0x1d, 0x77, 0xf0,
+	0x00, 0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x60,
 	0x5d, 0x8f, 0x57, 0x32, 0x00, 0x5b, 0x74, 0xc3,
 	0xff,  
 	/* graphics */
@@ -205,8 +210,60 @@ setmode(VGAmode *v)
 
 #ifdef VGATROUBLE
 void
-dumpmodes(VGAmode *v)
-{
+getmode(VGAmode *v) {
+	int i;
+	v->general[0] = inb(0x3cc);
+	v->general[1] = inb(0x3ca);
+	for(i = 0; i < sizeof(v->sequencer); i++) {
+		outb(SRX, i);
+		v->sequencer[i] = inb(SR);
+	}
+	for(i = 0; i < sizeof(v->crt); i++) {
+		outb(CRX, i);
+		v->crt[i] = inb(CR);
+	}
+	for(i = 0; i < sizeof(v->graphics); i++) {
+		outb(GRX, i);
+		v->graphics[i] = inb(GR);
+	}
+	for(i = 0; i < sizeof(v->attribute); i++) {
+		inb(0x3DA);
+		outb(ARW, i | 0x20);
+		v->attribute[i] = inb(ARR);
+	}
+}
+
+void
+printmode(VGAmode *v) {
+	int i;
+	print("general registers: %02x %02x\n",
+		v->general[0], v->general[1]);
+
+	print("sequence registers: ");
+	for(i = 0; i < sizeof(v->sequencer); i++) {
+		print(" %02x", v->sequencer[i]);
+	}
+
+	print("\nCRT registers: ");
+	for(i = 0; i < sizeof(v->crt); i++) {
+		print(" %02x", v->crt[i]);
+	}
+
+	print("\nGraphics registers: ");
+	for(i = 0; i < sizeof(v->graphics); i++) {
+		print(" %02x", v->graphics[i]);
+	}
+
+	print("\nAttribute registers: ");
+	for(i = 0; i < sizeof(v->attribute); i++) {
+		print(" %02x", v->attribute[i]);
+	}
+	print("\n");
+}
+
+void
+dumpmodes(void) {
+	VGAmode *v;
 	int i;
 
 	print("general registers: %02x %02x %02x %02x\n",
@@ -236,8 +293,6 @@ dumpmodes(VGAmode *v)
 		outb(ARW, i | 0x20);
 		print(" %02x", inb(ARR));
 	}
-
-	print("\nPEL Mask Register = %02x\n\n", inb(0x3c6)&0xff);
 }
 #endif
 
@@ -247,6 +302,7 @@ screeninit(void)
 	int i, j, k;
 	int c;
 	ulong *l;
+	VGAmode v;
 
 	setmode(&mode12);
 
