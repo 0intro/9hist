@@ -254,9 +254,8 @@ xhole(ulong addr, ulong size)
 void*
 mallocz(ulong size, int zero)
 {
-	ulong next;
 	int pow, n;
-	Bucket *bp, *nbp;
+	Bucket *bp, **l;
 
 	for(pow = 3; pow <= Maxpow; pow++)
 		if(size <= (1<<pow))
@@ -293,18 +292,16 @@ good:
 		if(bp == nil)
 			return nil;
 
-		next = (ulong)bp+size;
-		nbp = (Bucket*)next;
 		ilock(&arena);
-		arena.btab[pow] = nbp;
 		arena.nbuck[pow] += n;
-		for(n -= 2; n; n--) {
-			next = (ulong)nbp+size;
-			nbp->next = (Bucket*)next;
-			nbp->size = pow;
-			nbp = nbp->next;
+		l = &arena.btab[pow];
+		/* add all but the last to the free list */
+		while(--n){
+			bp->size = pow;
+			bp->next = *l;
+			*l = bp;
+			bp = (Bucket*)((ulong)bp+size);
 		}
-		nbp->size = pow;
 		iunlock(&arena);
 	}
 	else {
@@ -370,7 +367,7 @@ free(void *ptr)
 
 	bp = (Bucket*)((ulong)ptr - bdatoff);
 	if(bp->magic != Magic2n)
-		panic("free %lux %lux", bp->magic, bp->pc);
+		panic("free %lux %lux %lux", bp->magic, bp->pc, getcallerpc(ptr));
 
 	bp->magic = 0;
 	ilock(&arena);
