@@ -213,8 +213,6 @@ edfreleasetimer(void)
 	if ((t = qwaitrelease.head) == nil)
 		return;
 	DPRINT("edfreleasetimer clock\n");
-	if (releasetimer[m->machno].when)
-		timerdel(&releasetimer[m->machno]);
 	releasetimer[m->machno].when = t->r;
 	if (releasetimer[m->machno].when <= now)
 		releasetimer[m->machno].when = now;
@@ -356,8 +354,6 @@ edfadmit(Task *t)
 		}
 		assert(t->runq.n > 0 || (up && up->task == t));
 		edfpush(t);
-		if (deadlinetimer[m->machno].when)
-			timerdel(&deadlinetimer[m->machno]);
 		deadlinetimer[m->machno].when = t->d;
 		timeradd(&deadlinetimer[m->machno]);
 	}else{
@@ -478,6 +474,8 @@ edfdeadlineintr(Ureg*, Timer *timer)
 		now = fastticks(nil);
 
 		t = up->task;
+
+		assert(t->state == EdfRunning);
 		assert(t->scheduled > 0);
 	
 		used = now - t->scheduled;
@@ -806,12 +804,9 @@ runt:
 		DPRINT("%d edftimer: %T too late\n", m->machno, ticks2time(now-when));
 		when = now;
 	}
-	if (deadlinetimer[m->machno].when){
-		if(deadlinetimer[m->machno].when == when){
-			iunlock(&edflock);
-			return p;
-		}
-		timerdel(&deadlinetimer[m->machno]);
+	if(deadlinetimer[m->machno].when == when){
+		iunlock(&edflock);
+		return p;
 	}
 	deadlinetimer[m->machno].when = when;
 	timeradd(&deadlinetimer[m->machno]);
@@ -1081,7 +1076,6 @@ resacquire(Task *t, CSN *c)
 		t->curcsn->S -= used;
 	when = now + c->S;
 	if (when < deadlinetimer[m->machno].when){
-		timerdel(&deadlinetimer[m->machno]);
 		deadlinetimer[m->machno].when = when;
 		timeradd(&deadlinetimer[m->machno]);
 	}
@@ -1119,8 +1113,6 @@ resrelease(Task *t)
 		t->Delta = Infinity;
 	c->S = 0LL;	/* don't allow reuse */
 	if(devrt) devrt(t, now, SResrel);
-	if (deadlinetimer[m->machno].when)
-		timerdel(&deadlinetimer[m->machno]);
 	deadlinetimer[m->machno].when = when;
 	timeradd(&deadlinetimer[m->machno]);
 

@@ -188,6 +188,8 @@ guesscpuhz(int aalcycles)
 ulong i8253periodset;
 int i8253dotimerset = 1;
 
+ulong phist[128];
+
 void
 i8253timerset(uvlong next)
 {
@@ -212,11 +214,13 @@ i8253timerset(uvlong next)
 
 	/* hysteresis */
 	if(i8253.period != period){
+memmove(&phist[0], &phist[1], sizeof(phist)-sizeof(ulong));
+phist[nelem(phist)-1] = period;
 		ilock(&i8253);
 		/* load new value */
 		outb(Tmode, Load0|Square);
 		outb(T0cntr, period);		/* low byte */
-		outb(T0cntr, period>>8);	/* high byte */
+		outb(T0cntr, period>>8);		/* high byte */
 
 		/* remember period */
 		i8253.period = period;
