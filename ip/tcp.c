@@ -418,18 +418,6 @@ tcpkick(Conv *s, int len)
 	}
 }
 
-static void
-deltimer(Tcppriv *priv, Timer *t)
-{
-	if(priv->timers == t)
-		priv->timers = t->next;
-	if(t->next)
-		t->next->prev = t->prev;
-	if(t->prev)
-		t->prev->next = t->next;
-	t->next = t->prev = nil;
-}
-
 void
 tcprcvwin(Conv *s)				/* Call with tcb locked */
 {
@@ -468,6 +456,38 @@ tcpcreate(Conv *c)
 	c->wq = qopen(2*QMAX, 0, 0, 0);
 }
 
+static void
+timerstate(Tcppriv *priv, Timer *t, int newstate)
+{
+	if(newstate != TimerON){
+		if(t->state == TimerON){
+			// unchain
+			if(priv->timers == t){
+				priv->timers = t->next;
+				if(t->prev != nil)
+					panic("timerstate1");
+			}
+			if(t->next)
+				t->next->prev = t->prev;
+			if(t->prev)
+				t->prev->next = t->next;
+			t->next = t->prev = nil;
+		}
+	} else {
+		if(t->state != TimerON){
+			// chain
+			if(t->prev != nil || t->next != nil)
+				panic("timerstate2");
+			t->prev = nil;
+			t->next = priv->timers;
+			if(t->next)
+				t->next->prev = t;
+			priv->timers = t;
+		}
+	}
+	t->state = newstate;
+}
+
 void
 tcpackproc(void *a)
 {
@@ -492,8 +512,7 @@ tcpackproc(void *a)
  			if(t->state == TimerON) {
 				t->count--;
 				if(t->count == 0) {
-					deltimer(priv, t);
-					t->state = TimerDONE;
+					timerstate(priv, t, TimerDONE);
 					t->readynext = timeo;
 					timeo = t;
 				}
@@ -519,14 +538,7 @@ tcpgo(Tcppriv *priv, Timer *t)
 
 	qlock(&priv->tl);
 	t->count = t->start;
-	if(t->state != TimerON) {
-		t->state = TimerON;
-		t->prev = nil;
-		t->next = priv->timers;
-		if(t->next)
-			t->next->prev = t;
-		priv->timers = t;
-	}
+	timerstate(priv, t, TimerON);
 	qunlock(&priv->tl);
 }
 
@@ -537,9 +549,7 @@ tcphalt(Tcppriv *priv, Timer *t)
 		return;
 
 	qlock(&priv->tl);
-	if(t->state == TimerON)
-		deltimer(priv, t);
-	t->state = TimerOFF;
+	timerstate(priv, t, TimerOFF);
 	qunlock(&priv->tl);
 }
 
@@ -2009,7 +2019,7 @@ addreseq(Tcpctl *tcb, Tcp *seg, Block *bp, ushort length)
 		}
 		rp1 = rp1->next;
 	}
-	if(i > 100 && once++ == 0){
+	if(length > QMAX && once++ == 0){
 		print("very long tcp resequence queue: %d\n", length);
 		for(rp1 = tcb->reseq, i = 0; i < 10 && rp1 != nil; rp1 = rp1->next, i++)
 			print("0x%lux 0x%lux 0x%ux\n", rp1->seg.seq, rp1->seg.ack,

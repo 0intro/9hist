@@ -761,18 +761,13 @@ mountmux(Mnt *m, Mntrpc *r)
 				q->rpc = r->rpc;
 				r->rpc = dp;
 				q->reply = r->reply;
-				if(mntstats != nil)
-					(*mntstats)(q->request.type,
-						m->c, q->stime,
-						q->reqlen + r->replen);
-				wakeup(&q->r);
-			}else {
-				if(mntstats != nil)
-					(*mntstats)(r->request.type,
-						m->c, r->stime,
-						r->reqlen + r->replen);
-				q->done = 1;
 			}
+			if(mntstats != nil)
+				(*mntstats)(q->request.type,
+					m->c, q->stime,
+					q->reqlen + r->replen);
+			if(q != r)
+				wakeup(&q->r);
 			return;
 		}
 		l = &q->list;
