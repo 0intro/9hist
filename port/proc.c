@@ -496,7 +496,7 @@ unbreak(Proc *p)
 
 	qlock(&broken);
 	for(b=0; b < broken.n; b++)
-		if(broken.p[b] != p) {
+		if(broken.p[b] == p) {
 			broken.n--;
 			memmove(&broken.p[b], &broken.p[b+1],
 					sizeof(Proc*)*(NBROKEN-(b+1)));
