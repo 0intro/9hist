@@ -32,6 +32,9 @@ enum {
 	NPktype		= 9,		/* types/interface */
 };
 
+#define NEXT(x, l)	((((x)+1)%(l)) == 0 ? 6: (((x)+1)%(l)))
+#define PREV(x, l)	(((x)-1) == 5 ? (l-1): ((x)-1))
+
 /*
  * register offsets from IObase
  */
@@ -389,6 +392,7 @@ intr(Ureg *ur)
 			outb(cp->iobase+Tcr, 0x20);	/* LB0 */
 			outb(cp->iobase+Cr, 0x22);	/* Page0, RD2|STA */
 			cp->ovw = 1;
+			cp->overflows++;
 		}
 		/*
 		 * we have received packets.
@@ -423,8 +427,8 @@ init(Ctlr *cp)
 	outb(cp->iobase+Rbcr1, 0);
 	outb(cp->iobase+Rcr, 0x04);		/* AB */
 	outb(cp->iobase+Tcr, 0x20);		/* LB0 */
-	outb(cp->iobase+Bnry, 6);
 	cp->bnry = 6;
+	outb(cp->iobase+Bnry, cp->bnry);
 	cp->ring = (Ring*)(KZERO|RAMbase);
 	outb(cp->iobase+Pstart, 6);		/* 6*256 */
 	outb(cp->iobase+Pstop, 32);		/* 8*1024/256 */
@@ -434,8 +438,8 @@ init(Ctlr *cp)
 	outb(cp->iobase+Cr, 0x61);		/* Page1, RD2|STP */
 	for(i = 0; i < sizeof(cp->ea); i++)
 		outb(cp->iobase+Par0+i, cp->ea[i]);
-	outb(cp->iobase+Curr, 6);		/* 6*256 */
-	cp->curr = 6;
+	cp->curr = cp->bnry+1;
+	outb(cp->iobase+Curr, cp->curr);
 
 	outb(cp->iobase+Cr, 0x22);		/* Page0, RD2|STA */
 	outb(cp->iobase+Tpsr, 0);
@@ -449,11 +453,10 @@ etherreset(void)
 	int i;
 
 	cp->iobase = IObase;
-	init(cp);
-	setvec(Ethervec, intr);
-
 	for(i = 0; i < sizeof(cp->ea); i++)
 		cp->ea[i] = inb(cp->iobase+EA+i);
+	init(cp);
+	setvec(Ethervec, intr);
 	memset(cp->ba, 0xFF, sizeof(cp->ba));
 
 	cp->net.name = "ether";
@@ -530,7 +533,7 @@ isinput(void *arg)
 {
 	Ctlr *cp = arg;
 
-	return cp->bnry != cp->curr;
+	return NEXT(cp->bnry, 32) != cp->curr;
 }
 
 static void
@@ -558,17 +561,20 @@ etherkproc(void *arg)
 			etherup(cp, (Etherpkt*)bp->rptr, BLEN(bp));
 			freeb(bp);
 		}
+
 		/*
 		 * process any received packets
 		 */
-		cp->bnry = inb(cp->iobase+Bnry);
-		while(cp->bnry != cp->curr){
-			rp = &cp->ring[cp->bnry];
+		bnry = NEXT(cp->bnry, 32);
+		while(bnry != cp->curr){
+			rp = &cp->ring[bnry];
 			cp->inpackets++;
 			etherup(cp, (Etherpkt*)rp->data, ((rp->len1<<8)+rp->len0)-4);
-			cp->bnry = rp->next;
+			bnry = rp->next;
+			cp->bnry = PREV(bnry, 32);
 			outb(cp->iobase+Bnry, cp->bnry);
 		}
+
 		/*
 		 * if we idled input because of overflow,
 		 * restart

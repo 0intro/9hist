@@ -33,7 +33,6 @@ main(void)
 	grpinit();
 	chaninit();
 	alarminit();
-	bigcursor();
 	chandevreset();
 	streaminit();
 	swapinit();
@@ -430,8 +429,8 @@ exit(void)
 		headreset();		/* via headland chip */
 		break;
 	case At:
-		putcr3(0);		/* crash and burn */
 		for(;;);
+		putcr3(0);		/* crash and burn */
 	}
 }
 

@@ -120,6 +120,7 @@ static void	initoutput(Urp*, int);
 static void	initinput(Urp*, int);
 static void	urpkproc(void *arg);
 static void	urpvomit(char*, Urp*);
+static void	tryoutput(Urp*);
 
 Qinfo urpinfo =
 {
@@ -316,7 +317,7 @@ urpciput(Queue *q, Block *bp)
 		DPRINT("rAINIT(c)\n");
 		up->state &= ~INITING;
 		flushinput(up);
-		wakeup(&urpkr);
+		tryoutput(up);
 		break;
 
 	case INIT0:
@@ -371,6 +372,9 @@ urpciput(Queue *q, Block *bp)
  *  Simplifying assumption:  one put == one message && the control byte
  *	is in the first block.  If this isn't true, strange bytes will be
  *	used as control bytes.
+ *
+ *	There's no input lock.  The channel could be closed while we're
+ *	processing a message.
  */
 void
 urpiput(Queue *q, Block *bp)
@@ -446,7 +450,7 @@ urpiput(Queue *q, Block *bp)
 		DPRINT("rAINIT\n");
 		up->state &= ~INITING;
 		flushinput(up);
-		wakeup(&urpkr);
+		tryoutput(up);
 		break;
 
 	case INIT0:
@@ -720,6 +724,18 @@ out:
 }
 
 /*
+ *  try output, this is called by an input process
+ */
+void
+tryoutput(Urp *up)
+{
+	if(!waserror()){
+		output(up);
+		poperror();
+	}
+}
+
+/*
  *  send a control byte, put the byte at the end of the allocated
  *  space in case a lower layer needs header room.
  */
@@ -894,8 +910,9 @@ rcvack(Urp *up, int msg)
 		break;
 	}
 
-	wakeup(&urpkr);
-	wakeup(&up->r);
+	tryoutput(up);
+	if(up->state & CLOSING)
+		wakeup(&up->r);
 }
 
 /*
@@ -1005,7 +1022,7 @@ urpkproc(void *arg)
 			qunlock(up);
 			poperror();
 		}
-		tsleep(&urpkr, return0, 0, 1000);
+		tsleep(&urpkr, return0, 0, 500);
 	}
 }
 

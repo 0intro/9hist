@@ -253,6 +253,7 @@ trap(Ureg *ur)
 void
 dumpregs(Ureg *ur)
 {
+splhi();
 	if(u)
 		print("registers for %s %d\n", u->p->text, u->p->pid);
 	else

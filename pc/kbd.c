@@ -188,10 +188,7 @@ kbdinit(void)
 	int c, s;
 	int tries;
 
-	initq(&kbdq);
 	setvec(Kbdvec, kbdintr);
-	initq(&mouseq);
-	setvec(Mousevec, kbdintr);
 
 	/* wait for a quiescent controller */
 	while((c = inb(Status)) & (Outbusy | Inready))
@@ -200,6 +197,9 @@ kbdinit(void)
 
 	switch(machtype){
 	case Attnsx:
+		bigcursor();
+		setvec(Mousevec, kbdintr);
+
 		/* enable kbd/mouse xfers and interrupts */
 		outb(Cmd, 0x60);
 		if(outready() < 0)
@@ -220,6 +220,11 @@ kbdinit(void)
 		if(outready() < 0)
 			print("kbd init failed\n");
 		outb(Data, 0x65);
+
+		/* set up /dev/eia0 as the mouse */
+		uartspecial(0, 0, &mouseq, 1200);
+print("uartspecial done\n");
+delay(1000);
 		break;
 	}
 }
