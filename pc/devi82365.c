@@ -42,6 +42,7 @@ enum
 	Rio= 		0x7,		/* I/O control */
 	 Fwidth16=	 (1<<0),	/*  16 bit data width */
 	 Fiocs16=	 (1<<1),	/*  IOCS16 determines data width */
+	 Fzerows=	 (1<<2),	/*  zero wait state */
 	 Ftiming=	 (1<<3),	/*  timing register to use */
 	Riobtm0lo=	0x8,		/* I/O address 0 start low byte */
 	Riobtm0hi=	0x9,		/* I/O address 0 start high byte */
@@ -128,10 +129,13 @@ struct Conftab
 {
 	int	index;
 	ushort	irqs;		/* legal irqs */
-	ushort	port;		/* port address */
 	uchar	irqtype;
-	ulong	nioregs;	/* number of io registers */
 	uchar	bit16;		/* true for 16 bit access */
+	struct {
+		ulong	start;
+		ulong	len;
+	} io[16];
+	int	nio;
 	uchar	vpp1;
 	uchar	vpp2;
 	uchar	memwait;
@@ -938,32 +942,35 @@ pcmio(int slotno, ISAConf *isa)
 			ct = pp->ctab;
 	
 		/* try for best match */
-		if(ct->nioregs == 0 || ct->port != isa->port || ((1<<irq) & ct->irqs) == 0){
+		if(ct->nio == 0
+		|| ct->io[0].start != isa->port || ((1<<irq) & ct->irqs) == 0){
 			for(t = pp->ctab; t < et; t++)
-				if(t->nioregs && t->port == isa->port && ((1<<irq) & t->irqs)){
+				if(t->nio
+				&& t->io[0].start == isa->port
+				&& ((1<<irq) & t->irqs)){
 					ct = t;
 					break;
 				}
 		}
-		if(ct->nioregs == 0 || ((1<<irq) & ct->irqs) == 0){
+		if(ct->nio == 0 || ((1<<irq) & ct->irqs) == 0){
 			for(t = pp->ctab; t < et; t++)
-				if(t->nioregs && ((1<<irq) & t->irqs)){
+				if(t->nio && ((1<<irq) & t->irqs)){
 					ct = t;
 					break;
 				}
 		}
-		if(ct->nioregs == 0){
+		if(ct->nio == 0){
 			for(t = pp->ctab; t < et; t++)
-				if(t->nioregs){
+				if(t->nio){
 					ct = t;
 					break;
 				}
 		}
 	}
 
-	if(ct == et || ct->nioregs == 0)
+	if(ct == et || ct->nio == 0)
 		return -1;
-	if(isa->port == 0 && ct->port == 0)
+	if(isa->port == 0 && ct->io[0].start == 0)
 		return -1;
 
 	/* route interrupts */
@@ -976,20 +983,32 @@ pcmio(int slotno, ISAConf *isa)
 
 	/* 16-bit data path */
 	if(ct->bit16)
-		x = Fiocs16|Fwidth16;
+		x = Ftiming|Fiocs16|Fwidth16;
 	else
-		x = 0;
-	wrreg(pp, Rio, Ftiming|x);
+		x = Ftiming;
+	if(ct->nio == 2 && ct->io[1].start)
+		x |= x<<4;
+	wrreg(pp, Rio, x);
 
 	/* enable io port map 0 */
 	if(isa->port == 0)
-		isa->port = ct->port;
+		isa->port = ct->io[0].start;
 	we = rdreg(pp, Rwe);
 	wrreg(pp, Riobtm0lo, isa->port);
 	wrreg(pp, Riobtm0hi, isa->port>>8);
-	wrreg(pp, Riotop0lo, (isa->port+ct->nioregs-1));
-	wrreg(pp, Riotop0hi, (isa->port+ct->nioregs-1)>>8);
-	wrreg(pp, Rwe, we | (1<<6));
+	i = isa->port+ct->io[0].len-1;
+	wrreg(pp, Riotop0lo, i);
+	wrreg(pp, Riotop0hi, i>>8);
+	we |= 1<<6;
+	if(ct->nio == 2 && ct->io[1].start){
+		wrreg(pp, Riobtm1lo, ct->io[1].start);
+		wrreg(pp, Riobtm1hi, ct->io[1].start>>8);
+		i = ct->io[1].start+ct->io[1].len-1;
+		wrreg(pp, Riotop1lo, i);
+		wrreg(pp, Riotop1hi, i>>8);
+		we |= 1<<7;
+	}
+	wrreg(pp, Rwe, we);
 
 	/* only touch Rconfig if it is present */
 	if(pp->cpresent & (1<<Rconfig)){
@@ -1230,25 +1249,29 @@ static void
 iospaces(Slot *pp, Conftab *ct)
 {
 	uchar c;
-	int i;
-	ulong len;
+	int i, nio;
 
+	ct->nio = 0;
 	if(readc(pp, &c) != 1)
 		return;
 
-	ct->nioregs = 1<<(c&0x1f);
 	ct->bit16 = ((c>>5)&3) >= 2;
-	if((c & 0x80) == 0)
+	if(!(c & 0x80)){
+		ct->io[0].start = 0;
+		ct->io[0].len = 1<<(c&0x1f);
+		ct->nio = 1;
 		return;
+	}
 
 	if(readc(pp, &c) != 1)
 		return;
 
-	for(i = (c&0xf)+1; i; i--){
-		ct->port = getlong(pp, (c>>4)&0x3);
-		len = getlong(pp, (c>>6)&0x3);
-		USED(len);
+	nio = (c&0xf)+1;
+	for(i = 0; i < nio; i++){
+		ct->io[i].start = getlong(pp, (c>>4)&0x3);
+		ct->io[0].len = getlong(pp, (c>>6)&0x3);
 	}
+	ct->nio = nio;
 }
 
 static void
