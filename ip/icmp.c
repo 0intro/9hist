@@ -118,7 +118,7 @@ icmpkick(Conv *c, int l)
 	hnputs(p->icmpid, c->lport);
 	memset(p->cksum, 0, sizeof(p->cksum));
 	hnputs(p->cksum, ptclcsum(bp, ICMP_IPSIZE, blocklen(bp) - ICMP_IPSIZE));
-	ipoput(bp, 0, MAXTTL);
+	ipoput(bp, 0, c->ttl);
 }
 
 extern void
@@ -136,10 +136,11 @@ icmpnoconv(Block *bp)
 	memmove(np->data, bp->rp, ICMP_IPSIZE + 8);
 	np->type = Unreachable;
 	np->code = 3;
-	p->proto = IP_ICMPPROTO;
-	hnputs(p->icmpid, 0);
-	memset(p->cksum, 0, sizeof(p->cksum));
-	hnputs(p->cksum, ptclcsum(bp, ICMP_IPSIZE, blocklen(bp) - ICMP_IPSIZE));
+	np->proto = IP_ICMPPROTO;
+	hnputs(np->icmpid, 0);
+	hnputs(np->seq, 0);
+	memset(np->cksum, 0, sizeof(np->cksum));
+	hnputs(np->cksum, ptclcsum(nbp, ICMP_IPSIZE, blocklen(nbp) - ICMP_IPSIZE));
 	ipoput(nbp, 0, MAXTTL);
 }
 
@@ -276,6 +277,29 @@ raise:
 }
 
 void
+icmpadvise(Block *bp, char *msg)
+{
+	Conv	**c, *s;
+	Icmp	*p;
+	Ipaddr	dst;
+	ushort	recid;
+
+	p = (Icmp *) bp->rp;
+	dst = nhgetl(p->dst);
+	recid = nhgets(p->icmpid);
+
+	for(c = icmp.conv; *c; c++) {
+		s = *c;
+		if(s->lport == recid && s->raddr == dst){
+			qhangup(s->rq, msg);
+			qhangup(s->wq, msg);
+			break;
+		}
+	}
+	freeblist(bp);
+}
+
+void
 icmpinit(Fs *fs)
 {
 	icmp.name = "icmp";
@@ -287,7 +311,7 @@ icmpinit(Fs *fs)
 	icmp.close = icmpclose;
 	icmp.rcv = icmpiput;
 	icmp.ctl = nil;
-	icmp.advise = nil;
+	icmp.advise = icmpadvise;
 	icmp.ipproto = IP_ICMPPROTO;
 	icmp.nc = 16;
 	icmp.ptclsize = 0;

@@ -198,7 +198,7 @@ udpkick(Conv *c, int l)
 void
 udpiput(Media *m, Block *bp)
 {
-	int len;
+	int len, olen, ottl;
 	Udphdr *uh;
 	Conv *c, **p;
 	Udpcb *ucb;
@@ -210,9 +210,11 @@ udpiput(Media *m, Block *bp)
 	USED(m);
 	uh = (Udphdr*)(bp->rp);
 
-	/* Put back pseudo header for checksum */
+	/* Put back pseudo header for checksum (remember old values for icmpnoconv()) */
+	ottl = uh->Unused;
 	uh->Unused = 0;
 	len = nhgets(uh->udplen);
+	olen = nhgets(uh->udpplen);
 	hnputs(uh->udpplen, len);
 
 	raddr = nhgetl(uh->udpsrc);
@@ -244,7 +246,12 @@ udpiput(Media *m, Block *bp)
 	if(*p == nil) {
 		netlog(Logudp, "udp: no conv %I.%d -> %I.%d\n", src, rport,
 			dst, lport);
-		icmpnoconv(bp);
+		/* don't complain about broadcasts... */
+		if(Mediaforme(dst) > 0){
+			uh->Unused = ottl;
+			hnputs(uh->udpplen, olen);
+			icmpnoconv(bp);
+		}
 		freeblist(bp);
 		return;
 	}
