@@ -13,7 +13,7 @@ enum {
 /*
  *  action log
  */
-struct Log {
+struct Netlog {
 	Lock;
 	int	opens;
 	char*	buf;
@@ -29,12 +29,12 @@ struct Log {
 	Rendez;
 };
 
-typedef struct Logflag {
+typedef struct Netlogflag {
 	char*	name;
 	int	mask;
-} Logflag;
+} Netlogflag;
 
-static Logflag flags[] =
+static Netlogflag flags[] =
 {
 	{ "ppp",	Logppp, },
 	{ "ip",		Logip, },
@@ -49,6 +49,7 @@ static Logflag flags[] =
 	{ "tcpmsg",	Logtcp|Logtcpmsg, },
 	{ "udpmsg",	Logudp|Logudpmsg, },
 	{ "ipmsg",	Logip|Logipmsg, },
+	{ "esp",	Logesp, },
 	{ nil,		0, },
 };
 
@@ -57,7 +58,7 @@ static char Ebadnetctl[] = "unknown netlog ctl message";
 void
 netloginit(Fs *f)
 {
-	f->alog = smalloc(sizeof(Log));
+	f->alog = smalloc(sizeof(Netlog));
 }
 
 void
@@ -158,7 +159,7 @@ char*
 netlogctl(Fs *f, char* s, int len)
 {
 	int i, n, set;
-	Logflag *fp;
+	Netlogflag *fp;
 	char *fields[10], *p, buf[256];
 
 	if(len == 0)

@@ -565,8 +565,13 @@ ipread(Chan *ch, void *a, long n, vlong off)
 		return rv;
 	case Qremote:
 		buf = smalloc(Statelen);
-		c = f->p[PROTO(ch->qid)]->conv[CONV(ch->qid)];
-		sprint(buf, "%I!%d\n", c->raddr, c->rport);
+		x = f->p[PROTO(ch->qid)];
+		c = x->conv[CONV(ch->qid)];
+		if(x->remote == nil) {
+			sprint(buf, "%I!%d\n", c->raddr, c->rport);
+		} else {
+			(*x->remote)(c, buf, Statelen-2);
+		}
 		rv = readstr(offset, p, n, buf);
 		free(buf);
 		return rv;
@@ -905,6 +910,8 @@ ipwrite(Chan* ch, char* a, long n, vlong)
 			free(cb);
 			nexterror();
 		}
+		if(cb->nf < 1)
+			error("short control request");
 		if(strcmp(cb->f[0], "connect") == 0)
 			connectctlmsg(x, c, cb);
 		else if(strcmp(cb->f[0], "announce") == 0)

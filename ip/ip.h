@@ -11,7 +11,7 @@ typedef struct	Ipmulti	Ipmulti;
 typedef struct	Ipmux	Ipmux;
 typedef struct	IProuter IProuter;
 typedef struct	Ipifc	Ipifc;
-typedef struct	Log	Log;
+typedef struct	Netlog	Netlog;
 typedef struct	Ifclog	Ifclog;
 typedef struct	Medium	Medium;
 typedef struct	Proto	Proto;
@@ -212,6 +212,7 @@ struct Proto
 	void		(*advise)(Proto*, Block*, char*);
 	int		(*stats)(Proto*, char*, int);
 	int		(*local)(Conv*, char*, int);
+	int		(*remote)(Conv*, char*, int);
 	int		(*inuse)(Conv*);
 
 	Fs		*f;		/* file system this proto is part of */
@@ -258,7 +259,7 @@ struct Fs
 	Route	*v6root[1<<Lroot];	/* v6 routing forest */
 	Route	*queue;			/* used as temp when reinjecting routes */
 
-	Log	*alog;
+	Netlog	*alog;
 	Ifclog	*ilog;
 };
 
@@ -295,7 +296,7 @@ enum
 	Logipmsg=	1<<14,
 	Logrudp=	1<<15,
 	Logrudpmsg=	1<<16,
-
+	Logesp=		1<<17,
 };
 
 void	netloginit(Fs*);
@@ -415,14 +416,6 @@ extern void	arpenter(Fs*, int version, uchar *ip, uchar *mac, int len, int noref
  * ipaux.c
  */
 
-typedef struct Cmdbuf	Cmdbuf;
-struct Cmdbuf
-{
-	char	buf[64];
-	char	*f[16];
-	int	nf;
-};
-
 extern int	myetheraddr(uchar*, char*);
 extern ulong	parseip(uchar*, char*);
 extern ulong	parseipmask(uchar*, char*);
@@ -433,7 +426,6 @@ extern uchar*	defmask(uchar*);
 extern int	isv4(uchar*);
 extern void	v4tov6(uchar *v6, uchar *v4);
 extern int	v6tov4(uchar *v4, uchar *v6);
-extern Cmdbuf*	parsecmd(char *a, int n);
 extern int	eipconv(va_list *arg, Fconv *f);
 
 #define	ipcmp(x, y) memcmp(x, y, IPaddrlen)
@@ -498,7 +490,6 @@ extern void	(*ipextprotoiput)(Block*);
 extern void	ipiput(Fs*, uchar*, Block*);
 extern void	ipoput(Fs*, Block*, int, int);
 extern int	ipstats(Fs*, char*, int);
-extern uchar*	logctl(uchar*);
 extern ushort	ptclbsum(uchar*, int);
 extern ushort	ptclcsum(Block*, int, int);
 extern void	ip_init(Fs*);

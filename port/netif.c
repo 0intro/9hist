@@ -59,17 +59,26 @@ netifgen(Chan *c, void *vp, int, int i, Dir *dp)
 	/* second level contains clone plus all the conversations */
 	t = NETTYPE(c->qid.path);
 	if(t == N2ndqid || t == Ncloneqid){
-		if(i == 0){
+		switch(i) {
+		case 0:
 			q.path = Ncloneqid;
 			devdir(c, q, "clone", 0, eve, 0666, dp);
-		}else if(i <= nif->nfile){
-			if(nif->f[i-1] == 0)
+			break;
+		case 1:
+			q.path = Naddrqid;
+			devdir(c, q, "addr", 0, eve, 0666, dp);
+			break;
+		default:
+			i -= 2;
+			if(i >= nif->nfile)
+				return -1;
+			if(nif->f[i] == 0)
 				return 0;
-			q.path = CHDIR|NETQID(i-1, N3rdqid);
-			sprint(buf, "%d", i-1);
+			q.path = CHDIR|NETQID(i, N3rdqid);
+			sprint(buf, "%d", i);
 			devdir(c, q, buf, 0, eve, 0555, dp);
-		}else
-			return -1;
+			break;
+		}
 		return 1;
 	}
 
@@ -189,6 +198,14 @@ netifread(Netif *nif, Chan *c, void *a, long n, ulong offset)
 		for(i = 0; i < nif->alen; i++)
 			j += snprint(p+j, READSTR-j, "%2.2ux", nif->addr[i]);
 		snprint(p+j, READSTR-j, "\n");
+		n = readstr(offset, a, n, p);
+		free(p);
+		return n;
+	case Naddrqid:
+		p = malloc(READSTR);
+		j = 0;
+		for(i = 0; i < nif->alen; i++)
+			j += snprint(p+j, READSTR-j, "%2.2ux", nif->addr[i]);
 		n = readstr(offset, a, n, p);
 		free(p);
 		return n;

@@ -1,6 +1,7 @@
 typedef struct Alarms	Alarms;
 typedef struct Block	Block;
 typedef struct Chan	Chan;
+typedef struct Cmdbuf	Cmdbuf;
 typedef struct Crypt	Crypt;
 typedef struct Dev	Dev;
 typedef struct Dirtab	Dirtab;
@@ -9,6 +10,8 @@ typedef struct Evalue	Evalue;
 typedef struct Fgrp	Fgrp;
 typedef struct Image	Image;
 typedef struct List	List;
+typedef struct Log	Log;
+typedef struct Logflag	Logflag;
 typedef struct Mntcache Mntcache;
 typedef struct Mount	Mount;
 typedef struct Mntrpc	Mntrpc;
@@ -38,6 +41,7 @@ typedef struct Talarm	Talarm;
 typedef struct Target	Target;
 typedef struct Waitq	Waitq;
 typedef int    Devgen(Chan*, Dirtab*, int, int, Dir*);
+
 
 #include <auth.h>
 #include <fcall.h>
@@ -714,6 +718,35 @@ enum
 enum
 {
 	LRESPROF	= 3,
+};
+
+/*
+ *  action log
+ */
+struct Log {
+	Lock;
+	int	opens;
+	char*	buf;
+	char	*end;
+	char	*rptr;
+	int	len;
+
+	int	logmask;	/* mask of things to debug */
+
+	QLock	readq;
+	Rendez	readr;
+};
+
+struct Logflag {
+	char*	name;
+	int	mask;
+};
+
+struct Cmdbuf
+{
+	char	buf[64];
+	char	*f[16];
+	int	nf;
 };
 
 extern int nsyscall;

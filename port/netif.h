@@ -9,6 +9,7 @@ enum
 	Nmhash=		31,
 
 	Ncloneqid=	1,
+	Naddrqid,
 	N2ndqid,
 	N3rdqid,
 	Ndataqid,

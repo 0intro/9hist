@@ -134,7 +134,7 @@ etheriq(Ether* ether, Block* bp, int freebp)
 {
 	Etherpkt *pkt;
 	ushort type;
-	int len;
+	int len, multi, forme;
 	Netfile **ep, *f, **fp, *fx;
 	Block *xbp;
 
@@ -146,8 +146,9 @@ etheriq(Ether* ether, Block* bp, int freebp)
 	fx = 0;
 	ep = &ether->f[Ntypes];
 
+	multi = pkt->d[0] & 1;
 	/* check for valid multcast addresses */
-	if((pkt->d[0] & 1) && memcmp(pkt->d, ether->bcast, sizeof(pkt->d)) && ether->prom == 0){
+	if(multi && memcmp(pkt->d, ether->bcast, sizeof(pkt->d)) && ether->prom == 0){
 		if(!activemulti(ether, pkt->d, sizeof(pkt->d))){
 			if(freebp){
 				freeb(bp);
@@ -157,6 +158,9 @@ etheriq(Ether* ether, Block* bp, int freebp)
 		}
 	}
 
+	// is it for me?
+	forme = memcmp(pkt->d, ether->ea, sizeof(pkt->d)) == 0;
+
 	/*
 	 * Multiplex the packet to all the connections which want it.
 	 * If the packet is not to be used subsequently (freebp != 0),
@@ -164,7 +168,7 @@ etheriq(Ether* ether, Block* bp, int freebp)
 	 * saving a copy of the data (usual case hopefully).
 	 */
 	for(fp = ether->f; fp < ep; fp++){
-		if((f = *fp) && (f->type == type || f->type < 0)){
+		if((f = *fp) && (f->type == type || f->type < 0) && (forme || multi || f->prom)){
 			if(f->type > -2){
 				if(freebp && fx == 0)
 					fx = f;
@@ -197,7 +201,7 @@ etheriq(Ether* ether, Block* bp, int freebp)
 static int
 etheroq(Ether* ether, Block* bp)
 {
-	int len, loopback, s;
+	int len, loopback, s, mine;
 	Etherpkt *pkt;
 
 	ether->outpackets++;
@@ -208,10 +212,14 @@ etheroq(Ether* ether, Block* bp)
 	 * in promiscuous mode.
 	 * If it's a loopback packet indicate to etheriq that the data isn't
 	 * needed and return, etheriq will pass-on or free the block.
+	 * To enable bridging to work, only packets that were originated
+	 * by this interface are feedback
 	 */
 	pkt = (Etherpkt*)bp->rp;
 	len = BLEN(bp);
 	loopback = (memcmp(pkt->d, ether->ea, sizeof(pkt->d)) == 0);
+	mine = memcmp(pkt->s, ether->ea, sizeof(pkt->s)) == 0;
+	if(mine)
 	if(loopback || memcmp(pkt->d, ether->bcast, sizeof(pkt->d)) == 0 || ether->prom){
 		s = splhi();
 		etheriq(ether, bp, loopback);

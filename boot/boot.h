@@ -9,6 +9,7 @@ struct Method
 };
 
 extern char*	bootdisk;
+extern char*	rootdir;
 extern int	(*cfs)(int);
 extern int	cpuflag;
 extern char	cputype[];

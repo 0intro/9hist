@@ -117,9 +117,13 @@ boot(int argc, char *argv[])
 	 */
 	if(bind("/", "/", MREPL) < 0)
 		fatal("bind /");
-	if(mount(fd, "/", MAFTER|MCREATE, "") < 0)
+	if(mount(fd, "/root", MREPL|MCREATE, "") < 0)
 		fatal("mount /");
+	if(bind(rootdir, "/", MAFTER|MCREATE) < 0)
+		fatal("bind /");
 	close(fd);
+
+	setenv("rootdir", rootdir);
 
 	/*
 	 *  if a local file server exists and it's not

@@ -14,6 +14,9 @@ enum{
 	Qnet,
 	Qnetalt,
 	Qrecover,
+	Qroot,		/* boot root */
+
+	// add new entries above this
 	Qboot,		/* readable files */
 
 	Nfiles=13,	/* max root files */
@@ -30,6 +33,7 @@ Dirtab rootdir[Nfiles]={
 	"net",		{Qnet|CHDIR},	0,	0777,
 	"net.alt",	{Qnetalt|CHDIR},	0,	0777,
 	"recover",	{Qrecover},	0,	0777,
+	"root",		{Qroot|CHDIR},	0,	0777,
 };
 
 static uchar	*rootdata[Nfiles];
