@@ -113,7 +113,7 @@ kprofwstat(Chan*, char*)
 }
 
 void
-kprofclose(Chan *c)
+kprofclose(Chan*)
 {
 }
 

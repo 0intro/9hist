@@ -371,9 +371,10 @@ scsireqsense(Target *t, char lun, void *data, int *nbytes, int quiet)
 		}
 
 		/*
-		 * Unit is becoming ready
+		 * Unit is becoming ready, rather than not ready
 		 */
-		if(sense[12] != 0x04 || sense[13] != 0x01)
+		if((sense[2] & 0x0F) != 0x02 &&
+		   (sense[12] != 0x04 || sense[13] != 0x01))
 			break;
 
 		delay(5000);
@@ -389,16 +390,17 @@ scsireqsense(Target *t, char lun, void *data, int *nbytes, int quiet)
 }
 
 int
-scsidiskinfo(Target *t, char lun, uchar *data)
+scsidiskinfo(Target *t, char lun, int track, uchar *data)
 {
 	int s, nbytes;
 	uchar cmd[10], *d;
 
-	nbytes = 4;
+	nbytes = 12;
 
 	memset(cmd, 0, sizeof(cmd));
 	cmd[0] = 0x43;
 	cmd[1] = lun<<5;
+	cmd[6] = track;
 	hnputs(cmd+7, nbytes);
 
 	d = scsialloc(nbytes);
@@ -407,7 +409,7 @@ scsidiskinfo(Target *t, char lun, uchar *data)
 
 	memset(d, 0, nbytes);
 	s = scsiexec(t, SCSIread, cmd, sizeof(cmd), d, &nbytes);
-	memmove(data, d, 4);
+	memmove(data, d, 12);
 	scsifree(d);
 	return s;
 }
@@ -466,7 +468,7 @@ scsibufsize(Target *t, char lun, int size)
 }
 
 int
-scsireadcdda(Target *t, char lun, int dir, void *b, long n, long bsize, long bno)
+scsireadcdda(Target *t, char lun, int, void *b, long n, long bsize, long bno)
 {
 	uchar cmd[10];
 	int s, nbytes;

@@ -89,7 +89,9 @@ load(Cursor *c)
 	}
 	memmove(&curcursor, c, sizeof(Cursor));
 
+#ifdef notdef
 	vgaxo(Seqx, 0x20, seq20 & ~0x08);
+#endif
 	/*
 	 * Is linear addressing turned on? This will determine
 	 * how we access the cursor storage.
@@ -120,8 +122,8 @@ load(Cursor *c)
 				*p++ = c->set[2*y + x];
 			}
 			else {
-				*p++ = 0xAA;
-				*p++ = 0x55;
+				*p++ = 0x00;
+				*p++ = 0x00;
 			}
 		}
 	}
@@ -130,7 +132,9 @@ load(Cursor *c)
 	 * Set the cursor hotpoint and enable the cursor.
 	 */
 	hotpoint = c->offset;
+#ifdef notdef
 	vgaxo(Seqx, 0x20, seq20|0x08);
+#endif
 
 	unlock(&ark2000pvlock);
 }
