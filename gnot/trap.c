@@ -148,6 +148,7 @@ notify(Ureg *ur)
 		unlock(&u->p->debug);
 		return;
 	}
+	u->p->notepending = 0;
 	if(u->note[0].flag!=NUser && (u->notified || u->notify==0)){
 		if(u->note[0].flag == NDebug)
 			pprint("suicide: %s\n", u->note[0].msg);

@@ -19,7 +19,6 @@ main(void)
 	screeninit();
 	printinit();
 	mmuinit();
-	vgainit();
 	trapinit();
 	kbdinit();
 	clockinit();

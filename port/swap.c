@@ -123,7 +123,8 @@ pager(void *junk)
 						executeio();
 					}
 			}
-			else {
+			else 
+			if(palloc.freecount < HIGHWATER) {
 				/* Emulate the old system if no swap channel */
 				print("no physical memory\n");
 				tsleep(&swapalloc.r, return0, 0, 1000);

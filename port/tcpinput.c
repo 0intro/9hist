@@ -9,7 +9,7 @@
 
 int tcpdbg = 0;
 #define DPRINT	if(tcpdbg) print
-#define LPRINT  print
+#define LPRINT  if(tcpdbg) print
 
 extern Queue *Tcpoutput;
 QLock	reseqlock;

@@ -70,7 +70,7 @@ struct Alarm
 
 struct Alarms
 {
-	QLock;
+	Lock;
 	Proc	*head;
 };
 
@@ -492,7 +492,7 @@ struct Proc
 	Lock	debug;			/* to access debugging elements of User */
 	Rendez	*r;			/* rendezvous point slept on */
 	Rendez	sleep;			/* place for tsleep and syssleep */
-	int	wokeup;			/* whether sleep was interrupted */
+	int	notepending;		/* note issued but not acted on */
 	ulong	pc;			/* DEBUG only */
 	int	kp;			/* true if a kernel process */
 	Proc	*palarm;		/* Next alarm time */

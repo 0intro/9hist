@@ -370,6 +370,14 @@ sccspecial(int port, IOQ *oq, IOQ *iq, int baud)
 	sp->iq = iq;
 	sccenable(sp);
 	sccsetbaud(sp, baud);
+
+	if(iq){
+		/*
+		 *  Stupid HACK to undo a stupid hack
+		 */ 
+		if(iq == &kbdq)
+			kbdq.putc = kbdcr2nl;
+	}
 }
 
 static void	scctimer(Alarm*);

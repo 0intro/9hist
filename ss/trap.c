@@ -218,6 +218,7 @@ notify(Ureg *ur)
 	ulong sp;
 
 	lock(&u->p->debug);
+	u->p->notepending = 0;
 	if(u->nnote==0){
 		unlock(&u->p->debug);
 		return;

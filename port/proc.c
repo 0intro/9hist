@@ -238,6 +238,7 @@ loop:
 		p->fpstate = FPinit;
 		p->kp = 0;
 		p->procctl = 0;
+		p->notepending = 0;
 		memset(p->seg, 0, sizeof p->seg);
 		lock(&pidalloc);
 		p->pid = ++pidalloc.pid;
@@ -282,12 +283,15 @@ sleep1(Rendez *r, int (*f)(void*), void *arg)
 	 * at interrupt time. lock is mutual exclusion
 	 */
 	s = splhi();
+	p = u->p;
+	p->r = r;	/* early so postnote knows */
 	lock(r);
 
 	/*
 	 * if condition happened, never mind
 	 */
-	if((*f)(arg)){	
+	if((*f)(arg)){
+		p->r = 0;
 		unlock(r);
 		splx(s);
 		return;
@@ -297,11 +301,8 @@ sleep1(Rendez *r, int (*f)(void*), void *arg)
 	 * now we are committed to
 	 * change state and call scheduler
 	 */
-	p = u->p;
 	if(r->p)
 		print("double sleep %d %d\n", r->p->pid, p->pid);
-	p->r = r;
-	p->wokeup = 0;
 	p->state = Wakeme;
 	r->p = p;
 	unlock(r);
@@ -310,10 +311,14 @@ sleep1(Rendez *r, int (*f)(void*), void *arg)
 void
 sleep(Rendez *r, int (*f)(void*), void *arg)
 {
+	Proc *p;
+
+	p = u->p;
 	sleep1(r, f, arg);
-	sched();
-	if(u->p->wokeup){
-		u->p->wokeup = 0;
+	if(p->notepending == 0)
+		sched();	/* notepending may go true while asleep */
+	if(p->notepending){
+		p->notepending = 0;
 		error(Eintr);
 	}
 }
@@ -322,13 +327,17 @@ void
 tsleep(Rendez *r, int (*f)(void*), void *arg, int ms)
 {
 	Alarm *a;
+	Proc *p;
 
+	p = u->p;
 	sleep1(r, f, arg);
-	a = alarm(ms, twakeme, r);
-	sched();
-	cancel(a);
-	if(u->p->wokeup){
-		u->p->wokeup = 0;
+	if(p->notepending == 0){
+		a = alarm(ms, twakeme, r);
+		sched();	/* notepending may go true while asleep */
+		cancel(a);
+	}
+	if(p->notepending){
+		p->notepending = 0;
 		error(Eintr);
 	}
 }
@@ -397,6 +406,7 @@ postnote(Proc *p, int dolock, char *n, int flag)
 			kunmap(k);
 		return 0;
 	}
+	p->notepending = 1;
 	strcpy(up->note[up->nnote].msg, n);
 	up->note[up->nnote++].flag = flag;
 	if(up != u)
@@ -404,15 +414,14 @@ postnote(Proc *p, int dolock, char *n, int flag)
 	if(dolock)
 		unlock(&p->debug);
 
-	if(r = p->r) {		/* assign = */
-		/* wake up */
+	if(r = p->r){		/* assign = */
+		/* wake up; can't call wakeup itself because we're racing with it */
 		s = splhi();
 		lock(r);
-		if(p->r==r && r->p==p){
+		if(p->r==r && r->p==p){	/* check we won the race */
 			r->p = 0;
 			if(p->state != Wakeme)
 				panic("postnote wakeup: not Wakeme");
-			p->wokeup = 1;
 			p->r = 0;
 			ready(p);
 		}

@@ -466,6 +466,7 @@ void
 duartspecial(int port, IOQ *oq, IOQ *iq, int baud)
 {
 	Duartport *dp = &duartport[port];
+	IOQ *zq;
 
 	dp->nostream = 1;
 	if(oq){
@@ -476,6 +477,13 @@ duartspecial(int port, IOQ *oq, IOQ *iq, int baud)
 	if(iq){
 		dp->iq = iq;
 		dp->iq->ptr = dp;
+
+		/*
+		 *  Stupid HACK to undo a stupid hack
+		 */ 
+		zq = &kbdq;
+		if(iq == zq)
+			kbdq.putc = kbdcr2nl;
 	}
 	duartenable(dp);
 	duartbaud(dp, baud);

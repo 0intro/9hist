@@ -26,7 +26,7 @@ ulong	testbuf[NTESTBUF];
 /*
  * If 1, ENABCKSUM causes data transfers to have checksums
  */
-#define	ENABCKSUM	0
+#define	ENABCKSUM	1
 
 typedef struct Hotrod	Hotrod;
 
@@ -72,11 +72,14 @@ hotsend(Hotrod *h, Hotmsg *m)
 
 	lock(h);
 	mp = (Hotmsg**)&h->addr->reqstq[h->wi];
+print("send 1 %lux\n", MP2VME(m)); delay(500);
 	*mp = (Hotmsg*)MP2VME(m);
+print("send 2\n"); delay(500);
 	h->wi++;
 	if(h->wi >= NRQ)
 		h->wi = 0;
 	unlock(h);
+print("send 3\n"); delay(500);
 	return mp;
 }
 
@@ -211,7 +214,6 @@ hotrodopen(Chan *c, int omode)
 		}
 			
 		for(;;){
-for(;;);
 			print("-");
 			mem(hp->addr, &hp->addr->ram[(mp->param[0]-0x40000)/sizeof(ulong)], mp->param[1]);
 		}

@@ -235,6 +235,17 @@ echo(int c)
 }
 
 /*
+ * turn '\r' into '\n' before putting it into the queue
+ */
+int
+kbdcr2nl(IOQ *q, int ch)
+{
+	if(ch == '\r')
+		ch = '\n';
+	return kbdputc(q, ch);
+}
+
+/*
  * Put character into read queue at interrupt time.
  * Always called splhi from proc 0.
  */

@@ -5,7 +5,6 @@
 #include	"fns.h"
 #include	"errno.h"
 
-
 struct{
 	Lock;
 	Chan	*free;
@@ -612,6 +611,7 @@ namec(char *name, int amode, int omode, ulong perm)
 			close(cc);
 			nexterror();
 		}
+		nameok(elem);
 		if((nc=walk(cc, elem, 1)) != 0){
 			poperror();
 			close(c);
@@ -664,6 +664,16 @@ char isfrog[]={
 	['/']	1,
 	[0x7f]	1,
 };
+
+void
+nameok(char *elem)
+{
+	while(*elem) {
+		if((*elem&0x80) || isfrog[*elem])
+			error(Ebadchar);
+		elem++;
+	}
+}
 
 /*
  * name[0] should not be a slash.

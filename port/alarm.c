@@ -73,8 +73,8 @@ alarminit(void)
 		lock(&alarmtab[i]);	/* allocate locks, as they are used at interrupt time */
 		unlock(&alarmtab[i]);
 	}
-	qlock(&alarms);
-	qunlock(&alarms);
+	lock(&alarms);
+	unlock(&alarms);
 }
 
 #define NA 10		/* alarms per clock tick */
@@ -111,7 +111,7 @@ checkalarms(void)
 			unlock(&m->alarmlock);
 	}
 
-	if(m == MACHP(0) && canqlock(&alarms)){
+	if(m == MACHP(0) && canlock(&alarms)){
 		now = MACHP(0)->ticks;
 		while((rp = alarms.head) && rp->alarm <= now){
 			if(rp->alarm != 0L){
@@ -124,7 +124,7 @@ checkalarms(void)
 			}
 			alarms.head = rp->palarm;
 		}
-		qunlock(&alarms);
+		unlock(&alarms);
 	}
 }
 
@@ -143,7 +143,7 @@ procalarm(ulong time)
 	else
 		when += MACHP(0)->ticks;
 
-	qlock(&alarms);
+	lock(&alarms);
 	l = &alarms.head;
 	for(f = *l; f; f = f->palarm){
 		if(u->p == f){
@@ -170,7 +170,7 @@ procalarm(ulong time)
 		alarms.head = u->p;
 done:
 	u->p->alarm = when;
-	qunlock(&alarms);
+	unlock(&alarms);
 
 	return TK2MS(old);			
 }
