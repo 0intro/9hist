@@ -18,6 +18,7 @@ enum
 	Qnote,
 	Qnotepg,
 	Qns,
+	Qproc,
 	Qregs,
 	Qsegment,
 	Qstatus,
@@ -35,6 +36,7 @@ Dirtab procdir[] =
 	"note",		{Qnote},	0,			0000,
 	"notepg",	{Qnotepg},	0,			0000,
 	"ns",		{Qns},		0,			0400,
+	"proc",		{Qproc},	0,			0400,
 	"regs",		{Qregs},	sizeof(Ureg),		0000,
 	"segment",	{Qsegment},	0,			0444,
 	"status",	{Qstatus},	STATSIZE,		0444,
@@ -177,6 +179,39 @@ procopen(Chan *c, int omode)
 		tc->offset = 0;
 		return tc;
 
+	case Qproc:
+{
+Segment *sg;
+int i, j;
+Page **src;
+Pte *old;
+		for(i = 0; i < MAXMACH; i++)
+			print("%d ", p->pidonmach[i]);
+		print("\n");
+		for(i = 0; i < NSEG; i++) {
+			sg = p->seg[i];
+			if(sg == 0)
+				continue;
+			print("%-6s %c %.8lux %.8lux %4d\n",
+				sname[sg->type&SG_TYPE],
+				sg->type&SG_RONLY ? 'R' : ' ',
+				sg->base, sg->top, sg->ref);
+
+			for(j = 0; j < SEGMAPSIZE; j++) {
+				old = sg->map[j];
+				if(old == 0)
+					continue;
+				print("\t%d: %lux\n", j, old);
+				for(src = old->first; src <= old->last; src++) {
+					if(*src == 0)
+						continue;
+
+					print("\t\t%lux %lux\n", (*src)->va, (*src)->pa);
+				}
+				prflush();
+			}
+		}
+}
 	case Qkregs:
 	case Qsegment:
 		if(omode != OREAD)
@@ -332,6 +367,10 @@ procread(Chan *c, void *va, long n, ulong offset)
 		poperror();
 		qunlock(&p->debug);
 		return n;
+
+	case Qproc:
+
+		return readnum(offset, va, n, (ulong)p, NUMSIZE);
 
 	case Qregs:
 		rptr = (uchar*)p->dbgreg;
