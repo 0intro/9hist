@@ -67,11 +67,11 @@ static RMap rmapumb = {
 	&mapumb[63],
 };
 
-static Map mapumbr[8];
-static RMap rmapumbr = {
+static Map mapumbrw[8];
+static RMap rmapumbrw = {
 	"UMB device memory",
-	mapumbr,
-	&mapumbr[7],
+	mapumbrw,
+	&mapumbrw[7],
 };
 
 #define notdef
@@ -85,14 +85,14 @@ dumpmembank(void)
 	maxpa = (nvramread(0x18)<<8)|nvramread(0x17);
 	maxpa1 = (nvramread(0x31)<<8)|nvramread(0x30);
 	maxpa2 = (nvramread(0x16)<<8)|nvramread(0x15);
-	print("maxpa = %uX -> %uX, maxpa1 = %uXm maxpa2 = %uX\n",
+	print("maxpa = %uX -> %uX, maxpa1 = %uX maxpa2 = %uX\n",
 		maxpa, MB+maxpa*KB, maxpa1, maxpa2);
 
 	for(mp = rmapram.map; mp->size; mp++)
 		print("%8.8uX %8.8uX %8.8uX\n", mp->addr, mp->size, mp->addr+mp->size);
 	for(mp = rmapumb.map; mp->size; mp++)
 		print("%8.8uX %8.8uX %8.8uX\n", mp->addr, mp->size, mp->addr+mp->size);
-	for(mp = rmapumbr.map; mp->size; mp++)
+	for(mp = rmapumbrw.map; mp->size; mp++)
 		print("%8.8uX %8.8uX %8.8uX\n", mp->addr, mp->size, mp->addr+mp->size);
 	for(mp = rmapupa.map; mp->size; mp++)
 		print("%8.8uX %8.8uX %8.8uX\n", mp->addr, mp->size, mp->addr+mp->size);
@@ -212,7 +212,7 @@ umbscan(void)
 	while(p < (uchar*)KADDR(0xE0000)){
 		p[0] = 0xCC;
 		p[2*KB-1] = 0xCC;
-		if(p[0] != 0xCC && p[2*KB-1] != 0xCC){
+		if(p[0] != 0xCC || p[2*KB-1] != 0xCC){
 			p[0] = 0x55;
 			p[1] = 0xAA;
 			p[2] = 4;
@@ -223,7 +223,7 @@ umbscan(void)
 			mapfree(&rmapumb, PADDR(p), 2*KB);
 		}
 		else
-			mapfree(&rmapumbr, PADDR(p), 2*KB);
+			mapfree(&rmapumbrw, PADDR(p), 2*KB);
 		p += 2*KB;
 	}
 
@@ -481,14 +481,34 @@ umbfree(ulong addr, int size)
 }
 
 ulong
-umbrmalloc(ulong addr, int size, int align)
+umbrwmalloc(ulong addr, int size, int align)
 {
 	ulong a;
+	uchar *p;
 
-	if(a = mapalloc(&rmapumbr, addr, size, align))
+	if(a = mapalloc(&rmapumbrw, addr, size, align))
 		return KZERO|a;
 
+	/*
+	 * Perhaps the memory wasn't visible before
+	 * the interface is initialised, so try again.
+	 */
+	if((a = umbmalloc(addr, size, align)) == 0)
+		return 0;
+	p = (uchar*)a;
+	p[0] = 0xCC;
+	p[size-1] = 0xCC;
+	if(p[0] == 0xCC && p[size-1] == 0xCC)
+		return a;
+	umbfree(a, size);
+
 	return 0;
+}
+
+void
+umbrwfree(ulong addr, int size)
+{
+	mapfree(&rmapumbrw, addr & ~KZERO, size);
 }
 
 ulong

@@ -205,11 +205,11 @@ reset(Ether* ether)
 		ether->size = 8*1024;
 
 	/*
-	 * Look for the interface. We read the LAN address ROM
+	 * Look for the interface. Read the LAN address ROM
 	 * and validate the checksum - the sum of all 8 bytes
 	 * should be 0xFF.
-	 * While we're at it, get the (possible) interface chip
-	 * registers, we'll use them to check for aliasing later.
+	 * At the same time, get the (possible) interface chip
+	 * registers, they'll be used later to check for aliasing.
 	 */
 	port = ether->port;
 	sum = 0;
@@ -253,8 +253,8 @@ reset(Ether* ether)
 	}
 	dp8390setea(ether);
 
-	if(umbrmalloc(PADDR(ether->mem), ether->size, 0) == 0)
-		panic("ether8003: 0x%luX unavailable", PADDR(ether->mem));
+	if(umbrwmalloc(PADDR(ether->mem), ether->size, 0) == 0)
+		print("ether8003: warning - 0x%luX unavailable", PADDR(ether->mem));
 
 	return 0;
 }
