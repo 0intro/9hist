@@ -18,11 +18,9 @@ qlock(QLock *q)
 {
 	Proc *p;
 
-	if(up == 0)
-		panic("qlock");
 	if(m->ilockdepth != 0)
 		print("qlock: %lux: ilockdepth %d", getcallerpc(&q), m->ilockdepth);
-	if(up->nlocks)
+	if(up != nil && up->nlocks)
 		print("qlock: %lux: nlocks %lud", getcallerpc(&q), up->nlocks);
 
 	lock(&q->use);
@@ -32,6 +30,8 @@ qlock(QLock *q)
 		unlock(&q->use);
 		return;
 	}
+	if(up == 0)
+		panic("qlock");
 	rwstats.qlockq++;
 	p = q->tail;
 	if(p == 0)

@@ -3,11 +3,10 @@
  *
  *	TODO
  *		- implement PNP card configuration (setting io bases etc)
- *		- implement PCI raw access to configuration space
+ *		- write user program to drive PNP configuration...
+ *		- extend PCI raw access to configuration space (writes, byte/short access?)
  *		- implement PCI access to memory/io space/BIOS ROM
- *		- use c->aux instead of performing lookup on each read/write
- *
- *	I also need to write the user program that'll drive the PNP configuration...
+ *		- use c->aux instead of performing lookup on each read/write?
  */
 #include	"u.h"
 #include	"../port/lib.h"
@@ -601,6 +600,7 @@ pnpwrite(Chan *c, void *a, long n, vlong)
 			if(!pnpscan(port, 0))
 				error("no cards found");
 			qunlock(&pnp);
+			poperror();
 		}
 		else if(strncmp(buf, "debug ", 6) == 0)
 			pnp.debug = strtoul(buf+6, 0, 0);
@@ -624,22 +624,8 @@ pnpwrite(Chan *c, void *a, long n, vlong)
 static int
 wrconfig(Card *c, char *cmd)
 {
-	for(;;) {
-		while(*cmd == ' ' || *cmd == '\t' || *cmd == '\n')
-			cmd++;
-		if(*cmd == '\0')
-			break;
-		if(strncmp(cmd, "foo ", 4) == 0) {
-			print("pnp%d: got foo\n", c->csn);
-			cmd += 4;
-		}
-		else if(strncmp(cmd, "bar ", 4) == 0) {
-			print("pnp%d: got bar\n", c->csn);
-			cmd += 4;
-		}
-		else
-			return 0;
-	}
+	/* This should implement setting of I/O bases, etc */
+	USED(c, cmd);
 	return 1;
 }
 
