@@ -9,26 +9,7 @@
 #include	"devtab.h"
 #include	"screen.h"
 
-/*
- * Some monochrome screens are reversed from what we like:
- * We want 0's bright and 1's dark.
- * Indexed by an Fcode, these compensate for the source bitmap being wrong
- * (exchange S rows) and destination (exchange D columns and invert result)
- */
-int flipS[] = {
-	0x0, 0x4, 0x8, 0xC, 0x1, 0x5, 0x9, 0xD,
-	0x2, 0x6, 0xA, 0xE, 0x3, 0x7, 0xB, 0xF
-};
-
-int flipD[] = {
-	0xF, 0xD, 0xE, 0xC, 0x7, 0x5, 0x6, 0x4,
-	0xB, 0x9, 0xA, 0x8, 0x3, 0x1, 0x2, 0x0, 
-};
-
-int flipping;	/* are flip tables being used to transform Fcodes? */
-
 typedef struct Mouseinfo	Mouseinfo;
-typedef struct Cursorinfo	Cursorinfo;
 
 struct Mouseinfo
 {
@@ -48,29 +29,12 @@ struct Mouseinfo
 	int	open;
 };
 
-struct Cursorinfo
-{
-	Cursor;
-	Lock;
-	int	visible;	/* on screen */
-	int	disable;	/* from being used */
-	int	frozen;	/* from being used */
-	Rectangle r;		/* location */
-
-	int	l;
-	int	tl;
-	int	setop;
-	int	clrop;
-	Rectangle clipr;
-};
-
 Mouseinfo	mouse;
 Cursorinfo	cursor;
 int		mouseshifted;
 int		mousetype;
 int		mouseswap;
-int		hwcurs;
-Cursor	curs;
+Cursor		curs;
 
 Cursor	arrow =
 {
@@ -88,44 +52,10 @@ Cursor	arrow =
 };
 
 ulong setbits[16];
-Bitmap	set =
-{
-	{0, 0, 16, 16},
-	{0, 0, 16, 16},
-	0,
-	setbits,
-	1,
-	0,
-};
-
 ulong clrbits[16];
-Bitmap	clr =
-{
-	{0, 0, 16, 16},
-	{0, 0, 16, 16},
-	0,
-	clrbits,
-	1,
-	0,
-};
-
-ulong backbits[16*5];
-ulong workbits[16*5];
-Bitmap cursorwork =
-{
-	{0, 0, 16+8, 16},
-	{0, 0, 16+8, 16},
-	0,
-	workbits,
-	1,
-	0,
-};
 
 void	Cursortocursor(Cursor*);
 int	mousechanged(void*);
-
-extern	void	screenload(Rectangle, uchar*, int, int, int);
-extern	void	screenunload(Rectangle, uchar*, int, int, int);
 
 enum{
 	Qdir,
@@ -147,34 +77,11 @@ extern	Bitmap	gscreen;
 void
 mousereset(void)
 {
-	ulong r;
-
 	if(!conf.monitor)
 		return;
 
-	getcolor(0, &r, &r, &r);
-	if(r == 0)
-		flipping = 1;
-	flipping = 0;	/* howard, why is this necessary to get a black arrow on carrera? */
 	curs = arrow;
 	Cursortocursor(&arrow);
-}
-
-void
-cursorinit(void)
-{
-	cursorwork.ldepth = gscreen.ldepth;
-	cursorwork.width = ((cursorwork.r.max.x << gscreen.ldepth) + 31) >> 5;
-
-	cursor.l = cursorwork.width*BY2WD;
-
-	if(flipping){
-		cursor.setop = flipD[S|D];
-		cursor.clrop = flipD[D&~S];
-	} else {
-		cursor.setop = S|D;
-		cursor.clrop = D&~S;
-	}
 }
 
 void
@@ -182,13 +89,6 @@ mouseinit(void)
 {
 	if(!conf.monitor)
 		return;
-
-	if(gscreen.ldepth > 3){
-		print("mouse can't work ldepth > 3");
-		cursor.disable = 1;
-	}
-
-	cursorinit();
 
 	cursoron(1);
 }
@@ -198,7 +98,6 @@ mouseattach(char *spec)
 {
 	if(!conf.monitor)
 		error(Egreg);
-	cursorinit();
 	return devattach('m', spec);
 }
 
@@ -408,7 +307,7 @@ Cursortocursor(Cursor *c)
 	uchar *p;
 
 	lock(&cursor);
-	memmove(&cursor, c, sizeof(Cursor));
+	memmove(&cursor.Cursor, c, sizeof(Cursor));
 	for(i=0; i<16; i++){
 		p = (uchar*)&setbits[i];
 		*p = c->set[2*i];
@@ -417,115 +316,10 @@ Cursortocursor(Cursor *c)
 		*p = c->clr[2*i];
 		*(p+1) = c->clr[2*i+1];
 	}
-	if(hwcurs)
-		hwcursset(set.base, clr.base, cursor.offset.x, cursor.offset.y);
+	setcursor(setbits, clrbits, cursor.offset.x, cursor.offset.y);
 	unlock(&cursor);
 }
 
-void
-cursorlock(Rectangle r)
-{
-	if(hwcurs)
-		return;
-	lock(&cursor);
-	if(rectXrect(cursor.r, r)){
-		cursoroff(0);
-		cursor.frozen = 1;
-	}
-	cursor.disable++;
-	unlock(&cursor);
-}
-
-void
-cursorunlock(void)
-{
-	if(hwcurs)
-		return;
-	lock(&cursor);
-	cursor.disable--;
-	if(cursor.frozen)
-		cursoron(0);
-	cursor.frozen = 0;
-	unlock(&cursor);
-}
-
-typedef struct
-{
-	Bitmap *dm;
-	Point p;
-	Bitmap *sm;
-	Rectangle r;
-	Fcode f;
-} XXX;
-
-void
-cursoron(int dolock)
-{
-	int off;
-	Rectangle r;
-	uchar *a;
-	XXX x;
-	extern int graphicssubtile(uchar*, int, int, Rectangle, Rectangle, uchar**);
-
-	if(cursor.disable)
-		return;
-	if(dolock)
-		lock(&cursor);
-	if(cursor.visible++ == 0){
-		if(hwcurs)
-			hwcursmove(mouse.xy.x, mouse.xy.y);
-		else {
-			cursor.r.min = mouse.xy;
-			cursor.r.max = add(mouse.xy, Pt(16, 16));
-			cursor.r = raddp(cursor.r, cursor.offset);
-
-			/* bit offset into backup area */
-			off = ((1<<gscreen.ldepth)*cursor.r.min.x) & 7;
-
-			/* clip the cursor rectangle */
-			x.dm = &cursorwork;
-			x.p = Pt(off, 0);
-			x.sm = &gscreen;
-			x.r = cursor.r;
-			bitbltclip(&x);
-
-			/* tile width */
-			cursor.tl = graphicssubtile(0, cursor.l, gscreen.ldepth,
-					gscreen.r, x.r, &a);
-			if(cursor.tl > 0){
-				/* get tile */
-				screenunload(x.r, (uchar*)workbits, cursor.tl, cursor.l, 0);
-
-				/* save for cursoroff */
-				memmove(backbits, workbits, cursor.l*16);
-
-				/* add mouse into work area */
-				r = Rect(0, 0, Dx(x.r), Dy(x.r));
-				bitblt(&cursorwork, x.p, &clr, r, cursor.clrop);
-				bitblt(&cursorwork, x.p, &set, r, cursor.setop);
-
-				/* put back tile */
-				cursor.clipr = x.r;
-				screenload(x.r, (uchar*)workbits, cursor.tl, cursor.l, 0);
-			}
-		}
-	}
-	if(dolock)
-		unlock(&cursor);
-}
-
-void
-cursoroff(int dolock)
-{
-	if(cursor.disable)
-		return;
-	if(dolock)
-		lock(&cursor);
-	if(--cursor.visible == 0 && !hwcurs && cursor.tl > 0)
-		screenload(cursor.clipr, (uchar*)backbits, cursor.tl, cursor.l, 0);
-	if(dolock)
-		unlock(&cursor);
-}
 
 /*
  *  called by the clock routine to redraw the cursor
@@ -651,4 +445,10 @@ mousechanged(void *m)
 {
 	USED(m);
 	return mouse.lastcounter - mouse.counter;
+}
+
+Point
+mousexy(void)
+{
+	return mouse.xy;
 }

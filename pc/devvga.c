@@ -7,6 +7,7 @@
 #include	"../port/error.h"
 
 #include	<libg.h>
+#include	"screen.h"
 
 enum
 {
@@ -209,6 +210,7 @@ void
 vgareset(void)
 {
 	vgacard = &vgachips[Generic];
+	cursor.disable++;
 }
 
 void
@@ -219,6 +221,7 @@ vgainit(void)
 Chan*
 vgaattach(char *upec)
 {
+	print("visible %d disable %d frozen %d\n", cursor.visible, cursor.disable, cursor.frozen);
 	return devattach('v', upec);
 }
 
@@ -456,6 +459,8 @@ setscreen(int maxx, int maxy, int ldepth)
 		error(Ebadarg);
 	}
 
+	lock(&screenlock);
+
 	/*
 	 *  setup a bitmap for the new size
 	 */
@@ -497,13 +502,18 @@ setscreen(int maxx, int maxy, int ldepth)
 
 	window.min = Pt(50, 50);
 	window.max = add(window.min, Pt(10+w*64, Footprint/(BY2WD*gscreen.width)));
+	if(window.max.y >= gscreen.r.max.y)
+		window.max.y = gscreen.r.max.y;
+	if(window.max.x >= gscreen.r.max.x)
+		window.max.x = gscreen.r.max.x;
 
 	vgacard->setpage(0);
 	bitblt(&gscreen, window.min, &gscreen, window, Zero);
 	window = inset(window, 5);
 	curpos = window.min;
 	window.max.y = window.min.y+((window.max.y-window.min.y)/h)*h;
-	hwcurs = 0;
+
+	cursorinit();
 }
 
 /*
@@ -1163,4 +1173,167 @@ setcolor(ulong p, ulong r, ulong g, ulong b)
 	outb(CM, b>>(32-6));
 	unlock(&screenlock);
 	return ~0;
+}
+
+
+/*
+ *  software cursor
+ */
+
+ulong backbits[16*5];
+ulong workbits[16*5];
+Bitmap cursorwork =
+{
+	{0, 0, 16+8, 16},
+	{0, 0, 16+8, 16},
+	0,
+	workbits,
+	0,
+	1,
+};
+
+Bitmap	clr =
+{
+	{0, 0, 16, 16},
+	{0, 0, 16, 16},
+	0,
+	0,
+	0,
+	1,
+};
+
+Bitmap	set =
+{
+	{0, 0, 16, 16},
+	{0, 0, 16, 16},
+	0,
+	0,
+	0,
+	1,
+};
+
+void
+cursorinit(void)
+{
+	static int already;
+
+	lock(&cursor);
+
+	cursorwork.ldepth = gscreen.ldepth;
+	cursorwork.width = ((cursorwork.r.max.x << gscreen.ldepth) + 31) >> 5;
+	cursor.l = cursorwork.width*BY2WD;
+
+	if(!already){
+		cursor.disable--;
+		already = 1;
+	}
+
+	unlock(&cursor);
+}
+
+void
+setcursor(ulong *setbits, ulong *clrbits, int offx, int offy)
+{
+	USED(offx, offy);
+	set.base = setbits;
+	clr.base = clrbits;
+}
+
+void
+cursoron(int dolock)
+{
+	int off;
+	Rectangle r;
+	uchar *a;
+	struct {
+		Bitmap *dm;
+		Point p;
+		Bitmap *sm;
+		Rectangle r;
+		Fcode f;
+	} xx;
+	extern int graphicssubtile(uchar*, int, int, Rectangle, Rectangle, uchar**);
+
+	if(cursor.disable)
+		return;
+	if(dolock)
+		lock(&cursor);
+
+	if(cursor.visible++ == 0){
+		cursor.r.min = mousexy();
+		cursor.r.max = add(cursor.r.min, Pt(16, 16));
+		cursor.r = raddp(cursor.r, cursor.offset);
+	
+		/* bit offset into backup area */
+		if(cursor.r.min.x < 0)
+			off = cursor.r.min.x;
+		else
+			off = ((1<<gscreen.ldepth)*cursor.r.min.x) & 7;
+	
+		/* clip the cursor rectangle */
+		xx.dm = &cursorwork;
+		xx.p = Pt(off, 0);
+		xx.sm = &gscreen;
+		xx.r = cursor.r;
+		bitbltclip(&xx);
+	
+		/* tile width */
+		cursor.tl = graphicssubtile(0, cursor.l, gscreen.ldepth,
+				gscreen.r, xx.r, &a);
+		if(cursor.tl > 0){
+			/* get tile */
+			screenunload(xx.r, (uchar*)workbits, cursor.tl, cursor.l, 0);
+	
+			/* save for cursoroff */
+			memmove(backbits, workbits, cursor.l*16);
+	
+			/* add mouse into work area */
+			r = Rect(0, 0, Dx(xx.r), Dy(xx.r));
+			bitblt(&cursorwork, xx.p, &clr, r, S|D);
+			bitblt(&cursorwork, xx.p, &set, r, D&~S);
+	
+			/* put back tile */
+			cursor.clipr = xx.r;
+			screenload(xx.r, (uchar*)workbits, cursor.tl, cursor.l, 0);
+		}
+	}
+
+	if(dolock)
+		unlock(&cursor);
+}
+
+void
+cursoroff(int dolock)
+{
+	if(cursor.disable)
+		return;
+	if(dolock)
+		lock(&cursor);
+	if(--cursor.visible == 0 && cursor.tl > 0)
+		screenload(cursor.clipr, (uchar*)backbits, cursor.tl, cursor.l, 0);
+	if(dolock)
+		unlock(&cursor);
+}
+
+void
+cursorlock(Rectangle r)
+{
+	lock(&cursor);
+	if(rectXrect(cursor.r, r)){
+		cursoroff(0);
+		cursor.frozen = 1;
+	}
+	cursor.disable++;
+	unlock(&cursor);
+}
+
+void
+cursorunlock(void)
+{
+	lock(&cursor);
+	cursor.disable--;
+	if(cursor.frozen)
+		cursoron(0);
+	cursor.frozen = 0;
+	unlock(&cursor);
 }

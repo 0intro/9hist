@@ -1,8 +1,16 @@
-extern void		mouseupdate(int);
+typedef struct Cursorinfo	Cursorinfo;
 
-#define	hwscreenwrite(a, b)
+struct Cursorinfo
+{
+	Cursor;
+	Lock;
+};
 
-#define mbbpt(x)
-#define mbbrect(x)
-#define mousescreenupdate()
-#define mousectl(s)
+extern Cursorinfo	cursor;
+
+extern void	mouseupdate(int);
+extern void	cursoron(int);
+#define		cursoroff(x)
+#define		mousectl(s)
+extern Point	mousexy(void);
+#define		hwscreenwrite(a, b)

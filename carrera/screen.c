@@ -93,7 +93,7 @@ Cursor fatarrow = {
 };
 
 static Rectangle window;
-static Point cursor;
+static Point curpos;
 static int h, w;
 extern Cursor arrow;
 
@@ -126,10 +126,9 @@ screenwin(void)
 	p = add(window.min, Pt(10, 2));
 	subfstring(&gscreen, p, &defont0, "Brazil Console ", S);
 	window.min.y += h+6;
-	cursor = window.min;
+	curpos = window.min;
 	window.max.y = window.min.y+((window.max.y-window.min.y)/h)*h;
 
-	hwcurs = 1;
 	d = DAC;
 	/* cursor color 1: white */
 	d->cr1 = 0x01;
@@ -151,7 +150,7 @@ screenwin(void)
 	d->cr2 = 0;
 	/* initialize with all-transparent cursor */
 	memset(zbuf, 0, sizeof zbuf);
-	hwcursset(zbuf, zbuf, 0, 0);
+	setcursor(zbuf, zbuf, 0, 0);
 	/* enable both planes of cursor */
 	d->cr1 = 0x03;
 	d->cr0 = 0x00;
@@ -252,7 +251,7 @@ scroll(void)
 	bitblt(&gscreen, window.min, &gscreen, r, S);
 	r = Rpt(Pt(window.min.x, window.max.y-o), window.max);
 	bitblt(&gscreen, r.min, &gscreen, r, Zero);
-	cursor.y -= o;
+	curpos.y -= o;
 }
 
 static void
@@ -263,33 +262,33 @@ screenputc(char *buf)
 
 	switch(buf[0]) {
 	case '\n':
-		if(cursor.y+h >= window.max.y)
+		if(curpos.y+h >= window.max.y)
 			scroll();
-		cursor.y += h;
+		curpos.y += h;
 		screenputc("\r");
 		break;
 	case '\r':
-		cursor.x = window.min.x;
+		curpos.x = window.min.x;
 		break;
 	case '\t':
-		pos = (cursor.x-window.min.x)/w;
+		pos = (curpos.x-window.min.x)/w;
 		pos = 8-(pos%8);
-		cursor.x += pos*w;
+		curpos.x += pos*w;
 		break;
 	case '\b':
-		if(cursor.x-w >= 0){
-			r.min.x = cursor.x-w;
-			r.max.x = cursor.x;
-			r.min.y = cursor.y;
-			r.max.y = cursor.y+defont0.height;
+		if(curpos.x-w >= 0){
+			r.min.x = curpos.x-w;
+			r.max.x = curpos.x;
+			r.min.y = curpos.y;
+			r.max.y = curpos.y+defont0.height;
 			bitblt(&gscreen, r.min, &gscreen, r, Zero);
-			cursor.x -= w;
+			curpos.x -= w;
 		}
 		break;
 	default:
-		if(cursor.x >= window.max.x-w)
+		if(curpos.x >= window.max.x-w)
 			screenputc("\n");
-		cursor = subfstring(&gscreen, cursor, &defont0, buf, S);
+		curpos = subfstring(&gscreen, curpos, &defont0, buf, S);
 	}
 }
 
@@ -408,7 +407,7 @@ rep(ulong v, int n)
 }
 
 void
-hwcursset(ulong *s, ulong *c, int offx, int offy)
+setcursor(ulong *s, ulong *c, int offx, int offy)
 {
 	Dac *d;
 	int x, y;
@@ -453,20 +452,29 @@ hwcursset(ulong *s, ulong *c, int offx, int offy)
 }
 
 void
-hwcursmove(int x, int y)
+cursoron(int dolock)
 {
 	Dac *d;
+	Point p;
+
+	p = mousexy();
 
 	d = DAC;
 
-	x += 380;		/* adjusted by experiment */
-	y += 11;		/* adjusted by experiment */
+	if(dolock)
+		lock(&cursor);
+
+	p.x += 380;		/* adjusted by experiment */
+	p.y += 11;		/* adjusted by experiment */
 	d->cr1 = 03;
 	d->cr0 = 01;
-	d->cr2 = x&0xFF;
-	d->cr2 = (x>>8)&0xF;
-	d->cr2 = y&0xFF;
-	d->cr2 = (y>>8)&0xF;
+	d->cr2 = p.x&0xFF;
+	d->cr2 = (p.x>>8)&0xF;
+	d->cr2 = p.y&0xFF;
+	d->cr2 = (p.y>>8)&0xF;
+
+	if(dolock)
+		unlock(&cursor);
 }
 
 int
