@@ -432,13 +432,21 @@ cmddone(void *a)
  *  wait for the controller to be ready to accept a command
  */
 static void
-cmdreadywait(Controller *cp)
+cmdreadywait(Drive *dp)
 {
 	long start;
+	int period;
+	Controller *cp = dp->cp;
+
+	/* give it 2 seconds to spin down and up */
+	if(dp->state == Sspinning)
+		period = 10;
+	else
+		period = 2000;
 
 	start = m->ticks;
 	while((inb(cp->pbase+Pstatus) & (Sready|Sbusy)) != Sready)
-		if(TK2MS(m->ticks - start) > 10){
+		if(TK2MS(m->ticks - start) > period){
 			DPRINT("cmdreadywait failed\n");
 			error(Eio);
 		}
@@ -502,7 +510,7 @@ hardxfer(Drive *dp, Partition *pp, int cmd, long start, long len, char *buf)
 		nexterror();
 	}
 
-	cmdreadywait(cp);
+	cmdreadywait(dp);
 
 	/*
 	 *  splhi to make command atomic
@@ -582,7 +590,7 @@ hardsetbuf(Drive *dp, int on)
 		nexterror();
 	}
 
-	cmdreadywait(cp);
+	cmdreadywait(dp);
 
 	cp->cmd = Csetbuf;
 	outb(cp->pbase+Pprecomp, on ? 0xAA : 0x55);
@@ -656,7 +664,7 @@ hardident(Drive *dp)
 		nexterror();
 	}
 
-	cmdreadywait(cp);
+	cmdreadywait(dp);
 
 	s = splhi();
 	cp->nsecs = 1;
@@ -716,7 +724,7 @@ hardprobe(Drive *dp, int cyl, int sec, int head)
 		nexterror();
 	}
 
-	cmdreadywait(cp);
+	cmdreadywait(dp);
 
 	cp->cmd = Cread;
 	cp->dp = dp;

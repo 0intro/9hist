@@ -65,9 +65,9 @@ enum
 	Promvirt	= 0xE1000000,	/* From ARCS chipset */
 	Promphys	= 0x1FC00000,	/* MIPs processors */
 
-	Ttbr		= 0x8000001C,	/* Translation table base address */
-	Tlrb		= 0x80000024,	/* Translation table limit address */
-	Tir		= 0x8000002c,	/* Translation invalidate register */
+	Ttbr		= 0xE000001C,	/* Translation table base address */
+	Tlrb		= 0xE0000024,	/* Translation table limit address */
+	Tir		= 0xE000002C,	/* Translation invalidate register */
 	Ntranslation	= 4096,		/* Number of translation registers */
 };
 
