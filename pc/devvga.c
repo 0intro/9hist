@@ -557,7 +557,7 @@ setmode(VGAmode *vga)
 	seq00 = vgaxi(Seqx, 0x00);
 	vgaxo(Seqx, 0x00, 0x00);
 
-	seq01 = vgaxi(Seqx, 0x01);
+	seq01 = vgaxi(Seqx, 0x01)|0x01;
 	vgaxo(Seqx, 0x01, seq01|0x20);
 
 	vgao(MiscW, vga->misc);
