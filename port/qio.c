@@ -337,7 +337,6 @@ qopen(int limit, int msg, void (*kick)(void*), void *arg)
 	if(q == 0)
 		return 0;
 
-	memset(q, 0, sizeof(Queue));
 	q->limit = limit;
 	q->kick = kick;
 	q->arg = arg;
@@ -494,7 +493,7 @@ qwrite(Queue *q, void *vp, int len, int nowait)
 	if(waserror()){
 		qunlock(&q->wlock);
 		nexterror();
-	};
+	}
 	qlock(&q->wlock);
 
 	sofar = 0;
@@ -522,6 +521,10 @@ qwrite(Queue *q, void *vp, int len, int nowait)
 			n = 128*1024;
 
 		b = allocb(n);
+		if(waserror()){
+			freeb(b);
+			nexterror();
+		}
 		memmove(b->wp, p+sofar, n);
 		b->wp += n;
 	
@@ -530,6 +533,7 @@ qwrite(Queue *q, void *vp, int len, int nowait)
 			if(nowait){
 				freeb(b);
 				qunlock(&q->wlock);
+				poperror();
 				poperror();
 				return len;
 			}
@@ -543,6 +547,7 @@ qwrite(Queue *q, void *vp, int len, int nowait)
 			iunlock(q);
 			error(Ehungup);
 		}
+		poperror();
 
 checkb(b, "qwrite");
 		if(q->syncbuf){

@@ -16,6 +16,7 @@
  */
 static Lock s3pagelock;
 static ulong storage;
+static Point hotpoint;
 
 extern Bitmap gscreen;
 
@@ -80,15 +81,16 @@ enable(void)
 	/*
 	 * Cursor colours. Set both the CR0[EF] and the colour
 	 * stack in case we are using a 16-bit RAMDAC.
+	 * Why are these colours reversed?
 	 */
-	vgaxo(Crtx, 0x0E, 0x00);
-	vgaxo(Crtx, 0x0F, 0xFF);
+	vgaxo(Crtx, 0x0E, 0xFF);
+	vgaxo(Crtx, 0x0F, 0x00);
 	vgaxi(Crtx, 0x45);
 	for(i = 0; i < 4; i++)
-		vgaxo(Crtx, 0x4A, 0x00);
+		vgaxo(Crtx, 0x4A, 0xFF);
 	vgaxi(Crtx, 0x45);
 	for(i = 0; i < 4; i++)
-		vgaxo(Crtx, 0x4B, 0xFF);
+		vgaxo(Crtx, 0x4B, 0x00);
 
 	/*
 	 * Find a place for the cursor data in display memory.
@@ -110,7 +112,7 @@ enable(void)
 static void
 load(Cursor *c)
 {
-	uchar *and, *xor;
+	uchar *p;
 	int x, y;
 
 	/*
@@ -118,14 +120,14 @@ load(Cursor *c)
 	 * memory so we can update the cursor bitmap.
 	 * Set the display page (do we need to restore
 	 * the current contents when done?) and the
-	 * pointers to the two planes.
+	 * pointer to the two planes. What if this crosses
+	 * into a new page?
 	 */
 	disable();
 	lock(&s3pagelock);
 
 	sets3page(storage>>16);
-	and = ((uchar*)gscreen.base) + (storage & 0xFFFF);
-	xor = and + 512;
+	p = ((uchar*)gscreen.base) + (storage & 0xFFFF);
 
 	/*
 	 * The cursor is set in X11 mode which gives the following
@@ -138,24 +140,27 @@ load(Cursor *c)
 	 * Put the cursor into the top-left of the 64x64 array.
 	 */
 	for(y = 0; y < 64; y++){
-		for(x = 0; x < 8; x++){
-			if(y < 16 && x < 2){
-				and[8*y + x] = c->clr[2*y + x]^c->set[2*y + x];
-				xor[8*y + x] = c->set[2*y + x];
+		for(x = 0; x < 64/8; x += 2){
+			if(x < 16/8 && y < 16){
+				*p++ = c->clr[2*y + x]|c->set[2*y + x];
+				*p++ = c->clr[2*y + x+1]|c->set[2*y + x+1];
+				*p++ = c->set[2*y + x];
+				*p++ = c->set[2*y + x+1];
 			}
 			else {
-				and[8*y + x] = 0;
-				xor[8*y + x] = 0;
+				*p++ = 0x00;
+				*p++ = 0x00;
+				*p++ = 0x00;
+				*p++ = 0x00;
 			}
 		}
 	}
 	unlock(&s3pagelock);
 
 	/*
-	 * Set the cursor offset and enable the cursor.
+	 * Set the cursor hotpoint and enable the cursor.
 	 */
-	vgaxo(Crtx, 0x4E, -c->offset.x);
-	vgaxo(Crtx, 0x4F, -c->offset.y);
+	hotpoint = c->offset;
 	vsyncactive();
 	vgaxo(Crtx, 0x45, 0x01);
 }
@@ -163,10 +168,33 @@ load(Cursor *c)
 static int
 move(Point p)
 {
-	vgaxo(Crtx, 0x46, (p.x>>8) & 0x07);
-	vgaxo(Crtx, 0x47, p.x & 0xFF);
-	vgaxo(Crtx, 0x49, p.y & 0xFF);
-	vgaxo(Crtx, 0x48, (p.y>>8) & 0x07);
+	int x, xo, y, yo;
+
+	/*
+	 * Mustn't position the cursor offscreen even partially,
+	 * or it disappears. Therefore, if x or y is -ve, adjust the
+	 * cursor offset instead.
+	 */
+	if((x = p.x+hotpoint.x) < 0){
+		xo = -x;
+		xo = ((xo+1)/2)*2;
+		x = 0;
+	}
+	else
+		xo = 0;
+	if((y = p.y+hotpoint.y) < 0){
+		yo = -y;
+		y = 0;
+	}
+	else
+		yo = 0;
+
+	vgaxo(Crtx, 0x46, (x>>8) & 0x07);
+	vgaxo(Crtx, 0x47, x & 0xFF);
+	vgaxo(Crtx, 0x49, y & 0xFF);
+	vgaxo(Crtx, 0x4E, xo);
+	vgaxo(Crtx, 0x4F, yo);
+	vgaxo(Crtx, 0x48, (y>>8) & 0x07);
 
 	return 0;
 }

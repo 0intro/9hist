@@ -22,7 +22,6 @@ struct Pipe
 struct
 {
 	Lock;
-	Pipe	*pipe;
 	ulong	path;
 } pipealloc;
 
@@ -85,8 +84,6 @@ pipeattach(char *spec)
 
 	lock(&pipealloc);
 	p->path = ++pipealloc.path;
-	p->next = pipealloc.pipe;
-	pipealloc.pipe = p;
 	unlock(&pipealloc);
 
 	c->qid = (Qid){CHDIR|NETQID(2*p->path, Qdir), 0};
@@ -223,7 +220,7 @@ pipewstat(Chan *c, char *db)
 void
 pipeclose(Chan *c)
 {
-	Pipe *p, *f, **l;
+	Pipe *p;
 
 	p = c->aux;
 	qlock(p);
@@ -236,15 +233,15 @@ pipeclose(Chan *c)
 		case Qdata0:
 			p->qref[0]--;
 			if(p->qref[0] == 0){
-				qclose(p->q[0]);
 				qhangup(p->q[1]);
+				qclose(p->q[0]);
 			}
 			break;
 		case Qdata1:
 			p->qref[1]--;
 			if(p->qref[1] == 0){
-				qclose(p->q[1]);
 				qhangup(p->q[0]);
+				qclose(p->q[1]);
 			}
 			break;
 		}
@@ -265,22 +262,11 @@ pipeclose(Chan *c)
 	p->ref--;
 	if(p->ref == 0){
 		qunlock(p);
-		lock(&pipealloc);
-		l = &pipealloc.pipe;
-		for(f = *l; f; f = f->next) {
-			if(f == p) {
-				*l = p->next;
-				break;
-			}
-			l = &f->next;
-		}
-		unlock(&pipealloc);
 		free(p->q[0]);
 		free(p->q[1]);
 		free(p);
-	}
-
-	qunlock(p);
+	} else
+		qunlock(p);
 }
 
 long
