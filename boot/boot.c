@@ -136,7 +136,13 @@ boot(int argc, char *argv[])
 		rp = rootbuf;
 		if(bind(rp, "/", MAFTER|MCREATE) < 0){
 			fprint(2, "boot: couldn't bind $rootdir=%s to root: %r\n", rp);
-			fatal("second bind /");
+			if(strcmp(rootbuf, "/root//plan9") == 0){
+				fprint(2, "**** warning: remove rootdir=/plan9 entry from plan9.ini\n");
+				rp = "/root";
+				if(bind(rp, "/", MAFTER|MCREATE) < 0)
+					fatal("second bind /");
+			}else
+				fatal("second bind /");
 		}
 	}
 	close(fd);
