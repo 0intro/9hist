@@ -70,6 +70,11 @@ TEXT	flushcpucache(SB), $0
 	MOVL	R0, CACR
 	RTS
 
+TEXT	cacrtrap(SB), $0	/* user entry point to control cache, e.g. flush */
+
+	MOVL	R0, CACR
+	RTE
+
 TEXT	setlabel(SB), $0
 
 	MOVL	sr+0(FP), A0

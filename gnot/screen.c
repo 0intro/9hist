@@ -7,13 +7,13 @@
 #include	"ureg.h"
 #include	"errno.h"
 
-#include	"gnot.h"
+#include	<gnot.h>
 
 #define	MINX	8
 
-extern	Font	defont0;
-extern	Font	defont1;
-Font		*defont;
+extern	GFont	defont0;
+extern	GFont	defont1;
+GFont		*defont;
 
 struct{
 	Point	pos;
@@ -24,7 +24,7 @@ void	duartinit(void);
 int	duartacr;
 int	duartimr;
 
-Bitmap	screen =
+GBitmap	screen =
 {
 	(ulong*)((4*1024*1024-256*1024)|KZERO),	/* BUG */
 	0,
@@ -46,7 +46,7 @@ screeninit(void)
 		defont = &defont1;
 	}else
 		defont = &defont0;
-	bitblt(&screen, Pt(0, 0), &screen, screen.r, 0);
+	gbitblt(&screen, Pt(0, 0), &screen, screen.r, 0);
 	out.pos.x = MINX;
 	out.pos.y = 0;
 	out.bwid = defont0.info[' '].width;
@@ -63,7 +63,7 @@ screenputc(int c)
 		out.pos.y += defont0.height;
 		if(out.pos.y > screen.r.max.y-defont0.height)
 			out.pos.y = screen.r.min.y;
-		bitblt(&screen, Pt(0, out.pos.y), &screen,
+		gbitblt(&screen, Pt(0, out.pos.y), &screen,
 		    Rect(0, out.pos.y, screen.r.max.x, out.pos.y+2*defont0.height), 0);
 	}else if(c == '\t'){
 		out.pos.x += (8-((out.pos.x-MINX)/out.bwid&7))*out.bwid;
@@ -80,7 +80,7 @@ screenputc(int c)
 			screenputc('\n');
 		buf[0] = c&0x7F;
 		buf[1] = 0;
-		out.pos = string(&screen, out.pos, defont, buf, S);
+		out.pos = gstring(&screen, out.pos, defont, buf, S);
 	}
 }
 

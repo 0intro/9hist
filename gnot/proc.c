@@ -5,6 +5,8 @@
 #include	"fns.h"
 #include	"errno.h"
 
+#include	<balu.h>
+
 struct
 {
 	Lock;
@@ -79,14 +81,22 @@ sched(void)
 	ulong tlbvirt, tlbphys;
 	void (*f)(ulong);
 	long fpnull = 0;
+	Balu balu;
 
 	if(u){
 		splhi();
+
 		fpsave(&u->fpsave);
 		if(u->fpsave.type){
 			fpregsave(u->fpsave.reg);
 			u->p->fpstate = FPactive;
 			m->fpstate = FPdirty;
+		}
+		if(BALU->cr0 != 0xFFFFFFFF)	/* balu busy */
+			memcpy(&balu, BALU, sizeof balu);
+		else{
+			balu.cr0 = 0xFFFFFFFF;
+			BALU->cr0 = 0xFFFFFFFF;
 		}
 		if(setlabel(&u->p->sched)){	/* woke up */
 if(u->p->mach)panic("mach non zero");
@@ -105,6 +115,8 @@ if(u->p->mach)panic("mach non zero");
 					m->fpstate = FPdirty;
 				}
 			}
+			if(balu.cr0 != 0xFFFFFFFF)	/* balu busy */
+				memcpy(BALU, &balu, sizeof balu);
 			spllo();
 			return;
 		}

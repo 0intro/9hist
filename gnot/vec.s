@@ -39,7 +39,7 @@ TEXT	vectors0<>(SB), $0
 	LONG	illegal(SB)		/* level 7 autovector */
 /* origin	0080, vector 32 */
 	LONG	systrap(SB)		/* trap #0 */
-	LONG	illegal(SB)		/* trap #1 */
+	LONG	cacrtrap(SB)		/* trap #1 */
 	LONG	illegal(SB)		/* trap #2 */
 	LONG	illegal(SB)		/* trap #3 */
 	LONG	illegal(SB)		/* trap #4 */

@@ -7,9 +7,9 @@
 
 #include	"devtab.h"
 
-#include	"gnot.h"
+#include	<gnot.h>
 
-extern Font	*defont;
+extern GFont	*defont;
 
 /*
  * Device (#b/bitblt) is exclusive use on open, so no locks are necessary
@@ -17,7 +17,7 @@ extern Font	*defont;
  */
 
 /*
- * Some fields in Bitmaps are overloaded:
+ * Some fields in GBitmaps are overloaded:
  *	ldepth = -1 means free.
  *	base is next pointer when free.
  * Arena is a word containing N, followed by a pointer to its bitmap,
@@ -27,12 +27,12 @@ extern Font	*defont;
 struct
 {
 	Ref;
-	Bitmap	*map;		/* arena */
-	Bitmap	*free;		/* free list */
+	GBitmap	*map;		/* arena */
+	GBitmap	*free;		/* free list */
 	ulong	*words;		/* storage */
 	ulong	nwords;		/* total in arena */
 	ulong	*wfree;		/* pointer to next free word */
-	Font	*font;		/* arena; looked up linearly BUG */
+	GFont	*font;		/* arena; looked up linearly BUG */
 	int	lastid;		/* last allocated bitmap id */
 	int	lastfid;	/* last allocated font id */
 	int	init;		/* freshly opened; init message pending */
@@ -43,8 +43,8 @@ struct
 
 #define	FREE	0x80000000
 void	bitcompact(void);
-void	bitfree(Bitmap*);
-extern	Bitmap	screen;
+void	bitfree(GBitmap*);
+extern	GBitmap	screen;
 
 struct{
 	/*
@@ -82,7 +82,7 @@ struct{
 }cursor;
 
 ulong setbits[16];
-Bitmap	set =
+GBitmap	set =
 {
 	setbits,
 	0,
@@ -92,7 +92,7 @@ Bitmap	set =
 };
 
 ulong clrbits[16];
-Bitmap	clr =
+GBitmap	clr =
 {
 	clrbits,
 	0,
@@ -102,7 +102,7 @@ Bitmap	clr =
 };
 
 ulong cursorbackbits[16];
-Bitmap cursorback =
+GBitmap cursorback =
 {
 	cursorbackbits,
 	0,
@@ -136,9 +136,9 @@ void
 bitreset(void)
 {
 	int i;
-	Bitmap *bp;
+	GBitmap *bp;
 
-	bit.map = ialloc(conf.nbitmap * sizeof(Bitmap), 0);
+	bit.map = ialloc(conf.nbitmap * sizeof(GBitmap), 0);
 	for(i=0,bp=bit.map; i<conf.nbitmap; i++,bp++){
 		bp->ldepth = -1;
 		bp->base = (ulong*)(bp+1);
@@ -152,7 +152,7 @@ bitreset(void)
 	bit.words = ialloc(conf.nbitbyte, 0);
 	bit.nwords = conf.nbitbyte/sizeof(ulong);
 	bit.wfree = bit.words;
-	bit.font = ialloc(conf.nfont * sizeof(Font), 0);
+	bit.font = ialloc(conf.nfont * sizeof(GFont), 0);
 	bit.font[0] = *defont;
 	for(i=1; i<conf.nfont; i++)
 		bit.font[i].info = ialloc((NINFO+1)*sizeof(Fontchar), 0);
@@ -245,8 +245,8 @@ void
 bitclose(Chan *c)
 {
 	int i;
-	Bitmap *bp;
-	Font *fp;
+	GBitmap *bp;
+	GFont *fp;
 
 	if(c->qid!=CHDIR && (c->flag&COPEN)){
 		lock(&bit);
@@ -281,7 +281,7 @@ bitread(Chan *c, void *va, long n)
 	ulong l, nw, ws;
 	int off, j;
 	Fontchar *i;
-	Bitmap *src;
+	GBitmap *src;
 
 	if(c->qid & CHDIR)
 		return devdirread(c, va, n, bitdir, NBIT, devgen);
@@ -476,8 +476,8 @@ bitwrite(Chan *c, void *va, long n)
 	Rectangle rect;
 	Cursor curs;
 	Fontchar *fcp;
-	Bitmap *bp, *src, *dst;
-	Font *f;
+	GBitmap *bp, *src, *dst;
+	GFont *f;
 
 	if(c->qid == CHDIR)
 		error(0, Eisdir);
@@ -533,7 +533,7 @@ bitwrite(Chan *c, void *va, long n)
 					error(0, Enobitstore);
 			}
 			bp = bit.free;
-			bit.free = (Bitmap*)(bp->base);
+			bit.free = (GBitmap*)(bp->base);
 			*bit.wfree++ = nw;
 			*bit.wfree++ = (ulong)bp;
 			bp->base = bit.wfree;
@@ -590,7 +590,7 @@ bitwrite(Chan *c, void *va, long n)
 				cursoroff(1);
 				isoff = 1;
 			}
-			bitblt(dst, pt, src, rect, v);
+			gbitblt(dst, pt, src, rect, v);
 			m -= 31;
 			p += 31;
 			break;
@@ -750,7 +750,7 @@ bitwrite(Chan *c, void *va, long n)
 				cursoroff(1);
 				isoff = 1;
 			}
-			segment(dst, pt1, pt2, t, v);
+			gsegment(dst, pt1, pt2, t, v);
 			m -= 22;
 			p += 22;
 			break;
@@ -782,7 +782,7 @@ bitwrite(Chan *c, void *va, long n)
 				cursoroff(1);
 				isoff = 1;
 			}
-			point(dst, pt1, t, v);
+			gpoint(dst, pt1, t, v);
 			m -= 14;
 			p += 14;
 			break;
@@ -847,7 +847,7 @@ bitwrite(Chan *c, void *va, long n)
 				cursoroff(1);
 				isoff = 1;
 			}
-			string(dst, pt, f, (char*)p, v);
+			gstring(dst, pt, f, (char*)p, v);
 			q++;
 			m -= q-p;
 			p = q;
@@ -884,7 +884,7 @@ bitwrite(Chan *c, void *va, long n)
 			v = GSHORT(p+21);
 			{
 				int i;
-				Texture t;
+				GTexture t;
 
 				for(i=0; i<16; i++)
 					t.bits[i] = src->base[i]>>16;
@@ -892,7 +892,7 @@ bitwrite(Chan *c, void *va, long n)
 					cursoroff(1);
 					isoff = 1;
 				}
-				texture(dst, rect, &t, v);
+				gtexture(dst, rect, &t, v);
 			}
 			m -= 23;
 			p += 23;
@@ -983,7 +983,7 @@ biterrstr(Error *e, char *buf)
 }
 
 void
-bitfree(Bitmap *bp)
+bitfree(GBitmap *bp)
 {
 	bp->base[-1] = 0;
 	bp->ldepth = -1;
@@ -993,10 +993,10 @@ bitfree(Bitmap *bp)
 
 QLock	bitlock;
 
-Bitmap *
+GBitmap *
 id2bit(int k)
 {
-	Bitmap *bp;
+	GBitmap *bp;
 	bp = &bit.map[k];
 	if(k<0 || k>=conf.nbitmap || bp->ldepth < 0)
 		error(0, Ebadbitmap);
@@ -1017,7 +1017,7 @@ bitcompact(void)
 		}
 		if(p1 != p2){
 			memcpy(p1, p2, (2+p2[0])*sizeof(ulong));
-			((Bitmap*)p1[1])->base = p1+2;
+			((GBitmap*)p1[1])->base = p1+2;
 		}
 		p2 += 2 + p1[0];
 		p1 += 2 + p1[0];
@@ -1049,10 +1049,10 @@ cursoron(int dolock)
 		cursor.r.min = mouse.xy;
 		cursor.r.max = add(mouse.xy, Pt(16, 16));
 		cursor.r = raddp(cursor.r, cursor.offset);
-		bitblt(&cursorback, Pt(0, 0), &screen, cursor.r, S);
-		bitblt(&screen, add(mouse.xy, cursor.offset),
+		gbitblt(&cursorback, Pt(0, 0), &screen, cursor.r, S);
+		gbitblt(&screen, add(mouse.xy, cursor.offset),
 			&clr, Rect(0, 0, 16, 16), D&~S);
-		bitblt(&screen, add(mouse.xy, cursor.offset),
+		gbitblt(&screen, add(mouse.xy, cursor.offset),
 			&set, Rect(0, 0, 16, 16), S|D);
 	}
 	if(dolock)
@@ -1065,7 +1065,7 @@ cursoroff(int dolock)
 	if(dolock)
 		lock(&cursor);
 	if(--cursor.visible == 0)
-		bitblt(&screen, cursor.r.min, &cursorback, Rect(0, 0, 16, 16), S);
+		gbitblt(&screen, cursor.r.min, &cursorback, Rect(0, 0, 16, 16), S);
 	if(dolock)
 		unlock(&cursor);
 }
