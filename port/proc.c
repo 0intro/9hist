@@ -527,7 +527,12 @@ tsleep(Rendez *r, int (*fn)(void*), void *arg, int ms)
 	ulong when;
 	Proc *f, **l;
 
-	when = MS2TK(ms)+MACHP(0)->ticks;
+	// avoid overflows at the cost of precision
+	if(ms >= 1000000)
+		when = ms/(1000/HZ);
+	else
+		when = MS2TK(ms);
+	when += MACHP(0)->ticks;
 
 	lock(&talarm);
 	/* take out of list if checkalarm didn't */

@@ -328,8 +328,8 @@ static Algorithm cipheralg[] =
 static Algorithm authalg[] =
 {
 	"null",			0,	nullauthinit,
-	"seanq_hmac_sha1_96",	16,	shaauthinit,
-	"seanq_hmac_md5_96",	16,	md5authinit,
+	"hmac_sha1_96",	16,	shaauthinit,
+	"hmac_md5_96",	16,	md5authinit,
 	nil,			0,	nil,
 };
 
@@ -993,7 +993,7 @@ print("convsetstate %s -> %s\n", convstatename[c->state], convstatename[state]);
 			hnputl(c->out.secret, c->acceptid);
 			hnputl(c->out.secret+4, c->dialid);
 		}
-		setalg(c, "seanq_hmac_md5_96", authalg, &c->auth);
+		setalg(c, "hmac_md5_96", authalg, &c->auth);
 		break;
 	case CLocalClose:
 		assert(c->state == CAccept || c->state == COpen);
