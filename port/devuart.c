@@ -40,7 +40,6 @@ uartenable(Uart *p)
 {
 	Uart **l;
 
-dbgputc('E');
 	if(p->iq == nil){
 		if((p->iq = qopen(4*1024, 0, uartflow, p)) == nil)
 			return nil;
@@ -180,7 +179,6 @@ uartreset(void)
 	dp->length = 0;
 	dp->perm = DMDIR|0555;
 	dp++;
-
 	p = uartlist;
 	for(i = 0; i < uartnuart; i++){
 		/* 3 directory entries per port */

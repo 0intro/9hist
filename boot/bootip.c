@@ -112,7 +112,6 @@ setauthaddr(char *proto, int port)
 void
 configtcp(Method*)
 {
-	sleep(100);
 	print("t");	
 	sleep(100);
 	configip();
