@@ -5,7 +5,7 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
-void	(*consdebug)(void) = rdb;
+void	(*consdebug)(void) = nil;
 
 Queue*	kbdq;			/* unprocessed console input */
 Queue*	lineq;			/* processed console input */
@@ -193,7 +193,8 @@ panic(char *fmt, ...)
 	va_end(arg);
 	buf[n] = '\n';
 	serialputs(buf, n+1);
-	rdb();
+	if(consdebug)
+		consdebug();
 	putstrn(buf, n+1);
 	spllo();
 	prflush();
@@ -273,8 +274,16 @@ echo(Rune r, char *buf, int n)
 			pagersummary();
 			break;
 		case 'd':
-			if(consdebug != nil)
-				consdebug();
+			if(consdebug == nil)
+				consdebug = rdb;
+			else
+				consdebug = nil;
+			print("consdebug now 0x%lx\n", consdebug);
+			return;
+		case 'D':
+			if(consdebug == nil)
+				consdebug = rdb;
+			consdebug();
 			return;
 		case 'p':
 			x = spllo();

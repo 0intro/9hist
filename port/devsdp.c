@@ -65,6 +65,7 @@ struct Stats
 	ulong	inMissing;
 	ulong	inDup;
 	ulong	inReorder;
+	ulong	inBadComp;
 	ulong	inBadAuth;
 	ulong	inBadSeq;
 };
@@ -94,7 +95,7 @@ struct OneWay
 	int		(*auth)(OneWay*, uchar *buf, int len);
 
 	void	*compstate;
-	int		(*comp)(OneWay*, int subtype, Block **);
+	int		(*comp)(Conv*, int subtype, ulong seq, Block **);
 };
 
 // conv states
@@ -170,6 +171,11 @@ enum {
 };
 
 enum {
+	ThwackU,
+	ThwackC,
+};
+
+enum {
 	ConOpenRequest,
 	ConOpenAck,
 	ConOpenAckAck,
@@ -191,6 +197,7 @@ struct AckPkt
 	uchar	inMissing[4];
 	uchar	inDup[4];
 	uchar	inReorder[4];
+	uchar	inBadComp[4];
 	uchar	inBadAuth[4];
 	uchar	inBadSeq[4];
 };
@@ -258,7 +265,7 @@ static int controlread();
 static Block *conviput(Conv *c, Block *b, int control);
 static void conviconnect(Conv *c, int op, Block *b);
 static void convicontrol(Conv *c, int op, Block *b);
-static Block *convicomp(Conv *c, int op, Block *b);
+static Block *convicomp(Conv *c, int op, ulong, Block *b);
 static void writecontrol(Conv *c, void *p, int n, int wait);
 static Block *readcontrol(Conv *c, int n);
 static Block *readdata(Conv *c, int n);
@@ -748,10 +755,6 @@ sdpclone(Sdp *sdp)
 	c->ref++;
 	c->state = CInit;
 	c->in.window = ~0;
-	c->in.compstate = malloc(sizeof(Unthwack));
-	unthwackinit(c->in.compstate);
-	c->out.compstate = malloc(sizeof(Thwack));
-	thwackinit(c->out.compstate);
 	strncpy(c->owner, up->user, sizeof(c->owner));
 	c->perm = 0660;
 	qunlock(c);
@@ -955,18 +958,9 @@ print("CClosed -> ref = %d\n", c->ref);
 			free(c->channame);
 			c->channame = nil;
 		}
-		if(c->ciphername) {
-			free(c->ciphername);
-			c->ciphername = nil;
-		}
-		if(c->authname) {
-			free(c->authname);
-			c->authname = nil;
-		}
-			if(c->compname) {
-			free(c->compname);
-			c->compname = nil;
-		}
+		c->ciphername = nil;
+		c->authname = nil;
+		c->compname = nil;
 	strcpy(c->owner, "network");
 		c->perm = 0660;
 		c->dialid = 0;
@@ -1049,6 +1043,7 @@ convstats(Conv *c, int local, char *buf, int n)
 	p += snprint(p, ep-p, "inMissing: %ld\n", stats->inMissing);
 	p += snprint(p, ep-p, "inDup: %ld\n", stats->inDup);
 	p += snprint(p, ep-p, "inReorder: %ld\n", stats->inReorder);
+	p += snprint(p, ep-p, "inBadComp: %ld\n", stats->inBadComp);
 	p += snprint(p, ep-p, "inBadAuth: %ld\n", stats->inBadAuth);
 	p += snprint(p, ep-p, "inBadSeq: %ld\n", stats->inBadSeq);
 	USED(p);
@@ -1079,6 +1074,7 @@ convack(Conv *c)
 	hnputl(ack->inMissing, s->inMissing);
 	hnputl(ack->inDup, s->inDup);
 	hnputl(ack->inReorder, s->inReorder);
+	hnputl(ack->inBadComp, s->inBadComp);
 	hnputl(ack->inBadAuth, s->inBadAuth);
 	hnputl(ack->inBadSeq, s->inBadSeq);
 	convoput(c, TControl, ControlAck, b);
@@ -1101,7 +1097,7 @@ conviput(Conv *c, Block *b, int control)
 	}
 	
 	type = b->rp[0] >> 4;
-	subtype = type & 0xf;
+	subtype = b->rp[0] & 0xf;
 	b->rp += 1;
 	if(type == TConnect) {
 		conviconnect(c, subtype, b);
@@ -1186,9 +1182,11 @@ print("missing packets: %ld-%ld\n", seq - SeqWindow - seqdiff+1, seq-SeqWindow);
 	case TCompData:
 		c->lstats.inDataPackets++;
 		c->lstats.inCompDataBytes += BLEN(b);
-		b = convicomp(c, subtype, b);
-		if(b == nil);
+		b = convicomp(c, subtype, seq, b);
+		if(b == nil) {
+			c->lstats.inBadComp++;
 			return nil;
+		}
 		c->lstats.inDataBytes += BLEN(b);
 		if(control)
 			break;
@@ -1362,6 +1360,7 @@ print("ControlAck expected %ulx got %ulx\n", c->out.controlseq, cseq);
 		c->rstats.inMissing = nhgetl(ack->inMissing);
 		c->rstats.inDup = nhgetl(ack->inDup);
 		c->rstats.inReorder = nhgetl(ack->inReorder);
+		c->rstats.inBadComp = nhgetl(ack->inBadComp);
 		c->rstats.inBadAuth = nhgetl(ack->inBadAuth);
 		c->rstats.inBadSeq = nhgetl(ack->inBadSeq);
 		freeb(b);
@@ -1374,13 +1373,13 @@ print("ControlAck expected %ulx got %ulx\n", c->out.controlseq, cseq);
 }
 
 static Block*
-convicomp(Conv *c, int subtype, Block *b)
+convicomp(Conv *c, int subtype, ulong seq, Block *b)
 {
 	if(c->in.comp == nil) {
 		freeb(b);
 		return nil;
 	}
-	if((*c->in.comp)(&c->in, subtype, &b) < 0)
+	if(!(*c->in.comp)(c, subtype, seq, &b))
 		return nil;
 	return b;
 }
@@ -1624,6 +1623,8 @@ static long
 writedata(Conv *c, Block *b)
 {
 	int n;
+	ulong seq;
+	int subtype;
 
 	qlock(c);
 	if(waserror()) {
@@ -1641,7 +1642,10 @@ writedata(Conv *c, Block *b)
 	c->lstats.outDataBytes += n;
 
 	if(c->out.comp != nil) {
-		int subtype = (*c->out.comp)(&c->out, 0, &b);
+		// must generate same value as convoput
+		seq = (c->out.seq + 1) & (SeqMax-1);
+
+		subtype = (*c->out.comp)(c, 0, seq, &b);
 		c->lstats.outCompDataBytes += BLEN(b);
 		convoput(c, TCompData, subtype, b);
 	} else
@@ -1751,14 +1755,10 @@ setkey(uchar *key, int n, OneWay *ow, char *prefix)
 	}
 }
 
-
 static void
 cipherfree(Conv *c)
 {
-	if(c->ciphername) {
-		free(c->ciphername);
-		c->ciphername = nil;
-	}
+	c->ciphername = nil;
 	if(c->in.cipherstate) {
 		free(c->in.cipherstate);
 		c->in.cipherstate = nil;
@@ -1773,10 +1773,7 @@ cipherfree(Conv *c)
 static void
 authfree(Conv *c)
 {
-	if(c->authname) {
-		free(c->authname);
-		c->authname = nil;
-	}
+	c->authname = nil;
 	if(c->in.authstate) {
 		free(c->in.authstate);
 		c->in.authstate = nil;
@@ -1791,10 +1788,7 @@ authfree(Conv *c)
 static void
 compfree(Conv *c)
 {
-	if(c->compname) {
-		free(c->compname);
-		c->compname = nil;
-	}
+	c->compname = nil;
 	if(c->in.compstate) {
 		free(c->in.compstate);
 		c->in.compstate = nil;
@@ -1805,7 +1799,6 @@ compfree(Conv *c)
 	}
 	c->in.comp = nil;
 }
-
 
 static void
 nullcipherinit(Conv *c, char *, int)
@@ -1863,8 +1856,7 @@ descipherinit(Conv *c, char *name, int n)
 	int i;
 
 	cipherfree(c);
-	c->ciphername = malloc(strlen(name)+1);
-	strcpy(c->ciphername, name);
+	c->ciphername = name;
 	
 	if(n > sizeof(key))
 		n = sizeof(key);
@@ -1894,6 +1886,7 @@ descipherinit(Conv *c, char *name, int n)
 static void
 rc4cipherinit(Conv *c, char *name, int keylen)
 {
+	cipherfree(c);
 }
 
 static void
@@ -1955,8 +1948,7 @@ md5authinit(Conv *c, char *name, int keylen)
 {
 	authfree(c);
 
-	c->authname = malloc(strlen(name)+1);
-	strcpy(c->authname, name);
+	c->authname = name;
 
 	if(keylen > 16)
 		keylen = 16;
@@ -1977,64 +1969,86 @@ md5authinit(Conv *c, char *name, int keylen)
 }
 
 static void
-nullcompinit(Conv *c, char *name, int keylen)
+nullcompinit(Conv *c, char*, int)
 {
+	compfree(c);
 }
 
-static void
-thwackcompinit(Conv *c, char *name, int keylen)
+static int
+thwackcomp(Conv *c, int, ulong seq, Block **bp)
 {
-}
+	Block *b, *bb;
+	int nn;
 
-
-#ifdef XXX
-	case TThwackU:
-		mask = b->rp[0];
-		mseq = (b->rp[1]<<16) | (b->rp[2]<<8) | b->rp[3];
-		b->rp += 4;
-		thwackack(c->out.compstate, mseq, mask);
-		c->lstats.inDataBytes += BLEN(b);
-		if(control)
-			break;
-		return b;
-	case TThwackC:
-		c->lstats.inDataPackets++;
-		c->lstats.inCompDataBytes += BLEN(b);
-		bb = b;
-		b = allocb(ThwMaxBlock);
-		n = unthwack(c->in.compstate, b->wp, ThwMaxBlock, bb->rp, BLEN(bb), seq);
-		freeb(bb);
-		if(n < 0)
-			break;
-		b->wp += n;
-		mask = b->rp[0];
-		mseq = (b->rp[1]<<16) | (b->rp[2]<<8) | b->rp[3];
-		thwackack(c->out.compstate, mseq, mask);
-		b->rp += 4;
-		c->lstats.inDataBytes += BLEN(b);
-		if(control)
-			break;
-		return b;
-	}
-	b = padblock(b, 4);
+	// add ack info
+	b = padblock(*bp, 4);
 	b->rp[0] = (c->in.window>>1) & 0xff;
 	b->rp[1] = c->in.seq>>16;
 	b->rp[2] = c->in.seq>>8;
 	b->rp[3] = c->in.seq;
 
-	// must generate same value as convoput
-	seq = (c->out.seq + 1) & (SeqMax-1);
-
 	bb = allocb(BLEN(b));
 	nn = thwack(c->out.compstate, bb->wp, b->rp, BLEN(b), seq);
 	if(nn < 0) {
-		c->lstats.outCompDataBytes += BLEN(b);
-		convoput(c, TThwackU, b);
 		freeb(bb);
+		*bp = b;
+		return ThwackU;
 	} else {
-		c->lstats.outCompDataBytes += nn;
 		bb->wp += nn;
-		convoput(c, TThwackC, bb);
 		freeb(b);
+		*bp = bb;
+		return ThwackC;
 	}
-#endif
+}
+
+static int
+thwackuncomp(Conv *c, int subtype, ulong seq, Block **bp)
+{
+	Block *b, *bb;
+	ulong mask;
+	ulong mseq;
+	int n;
+
+	switch(subtype) {
+	default:
+		return 0;
+	case ThwackU:
+		b = *bp;
+		mask = b->rp[0];
+		mseq = (b->rp[1]<<16) | (b->rp[2]<<8) | b->rp[3];
+		b->rp += 4;
+		thwackack(c->out.compstate, mseq, mask);
+		return 1;
+	case ThwackC:
+		bb = *bp;
+		b = allocb(ThwMaxBlock);
+		n = unthwack(c->in.compstate, b->wp, ThwMaxBlock, bb->rp, BLEN(bb), seq);
+		freeb(bb);
+		if(n < 0) {
+print("unthwack failed: %r!\n");
+			freeb(b);
+			return 0;
+		}
+		b->wp += n;
+		mask = b->rp[0];
+		mseq = (b->rp[1]<<16) | (b->rp[2]<<8) | b->rp[3];
+		thwackack(c->out.compstate, mseq, mask);
+		b->rp += 4;
+		*bp = b;
+		return 1;
+	}
+}
+
+static void
+thwackcompinit(Conv *c, char *name, int keylen)
+{
+	compfree(c);
+
+	c->compname = name;
+	c->in.compstate = malloc(sizeof(Unthwack));
+	unthwackinit(c->in.compstate);
+	c->out.compstate = malloc(sizeof(Thwack));
+	thwackinit(c->out.compstate);
+	c->in.comp = thwackuncomp;
+	c->out.comp = thwackcomp;
+}
