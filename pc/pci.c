@@ -505,7 +505,7 @@ pciscan(int bno, Pcidev **list)
 }
 
 static uchar 
-pIIx_link(Pcidev *router, uchar link)
+pIIx_get(Pcidev *router, uchar link)
 {
 	uchar pirq;
 
@@ -515,13 +515,13 @@ pIIx_link(Pcidev *router, uchar link)
 }
 
 static void 
-pIIx_init(Pcidev *router, uchar link, uchar irq)
+pIIx_set(Pcidev *router, uchar link, uchar irq)
 {
 	pcicfgw8(router, link, irq);
 }
 
 static uchar 
-via_link(Pcidev *router, uchar link)
+via_get(Pcidev *router, uchar link)
 {
 	uchar pirq;
 
@@ -532,7 +532,7 @@ via_link(Pcidev *router, uchar link)
 }
 
 static void 
-via_init(Pcidev *router, uchar link, uchar irq)
+via_set(Pcidev *router, uchar link, uchar irq)
 {
 	uchar pirq;
 
@@ -543,7 +543,7 @@ via_init(Pcidev *router, uchar link, uchar irq)
 }
 
 static uchar 
-opti_link(Pcidev *router, uchar link)
+opti_get(Pcidev *router, uchar link)
 {
 	uchar pirq = 0;
 
@@ -554,7 +554,7 @@ opti_link(Pcidev *router, uchar link)
 }
 
 static void 
-opti_init(Pcidev *router, uchar link, uchar irq)
+opti_set(Pcidev *router, uchar link, uchar irq)
 {
 	uchar pirq;
 
@@ -565,7 +565,7 @@ opti_init(Pcidev *router, uchar link, uchar irq)
 }
 
 static uchar 
-ali_link(Pcidev *router, uchar link)
+ali_get(Pcidev *router, uchar link)
 {
 	/* No, you're not dreaming */
 	static const uchar map[] = { 0, 9, 3, 10, 4, 5, 7, 6, 1, 11, 0, 12, 0, 14, 0, 15 };
@@ -577,9 +577,9 @@ ali_link(Pcidev *router, uchar link)
 }
 
 static void 
-ali_init(Pcidev *router, uchar link, uchar irq)
+ali_set(Pcidev *router, uchar link, uchar irq)
 {
-	/* Inverse of map in ali_link */
+	/* Inverse of map in ali_get */
 	static const uchar map[] = { 0, 8, 0, 2, 4, 5, 7, 6, 0, 1, 3, 9, 11, 0, 13, 15 };
 	uchar pirq;
 
@@ -590,7 +590,7 @@ ali_init(Pcidev *router, uchar link, uchar irq)
 }
 
 static uchar 
-cyrix_link(Pcidev *router, uchar link)
+cyrix_get(Pcidev *router, uchar link)
 {
 	uchar pirq;
 
@@ -600,7 +600,7 @@ cyrix_link(Pcidev *router, uchar link)
 }
 
 static void 
-cyrix_init(Pcidev *router, uchar link, uchar irq)
+cyrix_set(Pcidev *router, uchar link, uchar irq)
 {
 	uchar pirq;
 
@@ -610,56 +610,32 @@ cyrix_init(Pcidev *router, uchar link, uchar irq)
 	pcicfgw8(router, 0x5c + (link>>1), pirq);
 }
 
-enum {
-	Intel = 0x8086,		
-		Intel_82371FB_0 = 0x122e,
-		Intel_82371MX_0 = 0x1234,
-		Intel_82371SB_0 = 0x7000,
-		Intel_82371AB_0 = 0x7110,
-		Intel_82443MX_1 = 0x7198,
-		Intel_82801AA_0 = 0x2410,
-		Intel_82801AB_0 = 0x2420,
-		Intel_82801BA_0 = 0x2440,
-		Intel_82801BAM_0 = 0x244c,
-	Viatech = 0x1106,
-		Via_82C586_0 = 0x0586,
-		Via_82C596 = 0x0596,
-		Via_82C686 = 0x0686,
-	Opti = 0x1045,
-		Opti_82C700 = 0xc700,
-	Al = 0x10b9,
-		Al_M1533 = 0x1533,
-	SI = 0x1039,
-		SI_503 = 0x0008,
-		SI_496 = 0x0496,
-	Cyrix = 0x1078,
-		Cyrix_5530_Legacy = 0x0100,
-};
-
-typedef struct {
-	ushort	sb_vid, sb_did;
-	uchar	(*sb_translate)(Pcidev *, uchar);
-	void	(*sb_initialize)(Pcidev *, uchar, uchar);	
+typedef struct
+{
+	ushort	vid;
+	ushort	did;
+	uchar	(*get)(Pcidev *, uchar);
+	void	(*set)(Pcidev *, uchar, uchar);	
 } bridge_t;
 
 static bridge_t southbridges[] = {
-{	Intel, Intel_82371FB_0,		pIIx_link,	pIIx_init },
-{	Intel, Intel_82371MX_0,		pIIx_link,	pIIx_init },
-{	Intel, Intel_82371SB_0,		pIIx_link,	pIIx_init },
-{	Intel, Intel_82371AB_0,		pIIx_link,	pIIx_init },
-{	Intel, Intel_82443MX_1,		pIIx_link,	pIIx_init },
-{	Intel, Intel_82801AA_0,		pIIx_link,	pIIx_init },
-{	Intel, Intel_82801AB_0,		pIIx_link,	pIIx_init },
-{	Intel, Intel_82801BA_0,		pIIx_link,	pIIx_init },
-{	Intel, Intel_82801BAM_0,	pIIx_link,	pIIx_init },
-{	Viatech, Via_82C586_0,		via_link,	via_init },
-{	Viatech, Via_82C596,		via_link,	via_init },
-{	Viatech, Via_82C686,		via_link,	via_init },
-{	Opti, Opti_82C700,		opti_link,	opti_init },
-{	Al, Al_M1533,			ali_link,	ali_init },
-{	SI, SI_503,			pIIx_link,	pIIx_init },
-{	SI, SI_496,			pIIx_link,	pIIx_init },
-{	Cyrix, Cyrix_5530_Legacy,	cyrix_link,	cyrix_init }
+	{ 0x8086, 0x122e, pIIx_get, pIIx_set },	// Intel 82371FB
+	{ 0x8086, 0x1234, pIIx_get, pIIx_set },	// Intel 82371MX
+	{ 0x8086, 0x7000, pIIx_get, pIIx_set },	// Intel 82371SB
+	{ 0x8086, 0x7110, pIIx_get, pIIx_set },	// Intel 82371AB
+	{ 0x8086, 0x7198, pIIx_get, pIIx_set },	// Intel 82443MX (fn 1)
+	{ 0x8086, 0x2410, pIIx_get, pIIx_set },	// Intel 82801AA
+	{ 0x8086, 0x2420, pIIx_get, pIIx_set },	// Intel 82801AB
+	{ 0x8086, 0x2440, pIIx_get, pIIx_set },	// Intel 82801BA
+	{ 0x8086, 0x244c, pIIx_get, pIIx_set },	// Intel 82801BAM
+	{ 0x1106, 0x0586, via_get, via_set },	// Viatech 82C586
+	{ 0x1106, 0x0596, via_get, via_set },	// Viatech 82C596
+	{ 0x1106, 0x0686, via_get, via_set },	// Viatech 82C686
+	{ 0x1045, 0xc700, opti_get, opti_set },	// Opti 82C700
+	{ 0x10b9, 0x1533, ali_get, ali_set },	// Al M1533
+	{ 0x1039, 0x0008, pIIx_get, pIIx_set },	// SI 503
+	{ 0x1039, 0x0496, pIIx_get, pIIx_set },	// SI 496
+	{ 0x1078, 0x0100, cyrix_get, cyrix_set }	// Cyrix 5530 Legacy
 };
 
 typedef struct {
@@ -689,15 +665,13 @@ static bridge_t *southbridge;	// Which southbridge to use.
 static void
 pcirouting(void)
 {
-	uchar *p, pin, irq;
-	ulong tbdf, vdid;
-	ushort vid, did;
-	router_t *r;
 	slot_t *e;
-	int size, i, fn;
+	router_t *r;
+	int size, i, fn, tbdf;
 	Pcidev *sbpci, *pci;
+	uchar *p, *m, pin, irq;
 
-	// Peek in the BIOS
+	// Search for PCI interrupt routing table in BIOS
 	for (p = (uchar *)KADDR(0xf0000); p < (uchar *)KADDR(0xfffff); p += 16)
 		if (p[0] == '$' && p[1] == 'P' && p[2] == 'I' && p[3] == 'R')
 			break;
@@ -711,25 +685,21 @@ pcirouting(void)
 	// 	r->rt_version[0], r->rt_version[1], (ulong)r & 0xfffff);
 
 	tbdf = (BusPCI << 24)|(r->rt_bus << 16)|(r->rt_devfn << 8);
-	vdid = pcicfgrw32(tbdf, PciVID, 0, 1);
-	vid = vdid;
-	did = vdid >> 16;
+	sbpci = pcimatchtbdf(tbdf);
+	if(sbpci == nil) {
+		print("pcirouting: Cannot find south bridge %T\n", tbdf);
+		return;
+	}
 
 	for (i = 0; i != nelem(southbridges); i++)
-		if (vid == southbridges[i].sb_vid && did == southbridges[i].sb_did)
+		if (sbpci->vid == southbridges[i].vid && sbpci->did == southbridges[i].did)
 			break;
 
 	if (i == nelem(southbridges)) {
-		print("pcirouting: South bridge %.4uX, %.4uX not found\n", vid, did);
+		print("pcirouting: South bridge %.4uX/%.4uX unknown\n", sbpci->vid, sbpci->did);
 		return;
 	}
 	southbridge = &southbridges[i];
-
-	if ((sbpci = pcimatch(nil, vid, did)) == nil) {
-		print("pcirouting: Cannot match south bridge %.4uX, %.4uX\n",
-			  vid, did);
-		return;
-	}
 	
 	pciirqs = (r->rt_pciirqs[1] << 8)|r->rt_pciirqs[0];
 
@@ -744,37 +714,27 @@ pcirouting(void)
 		// print("\n");
 
 		for (fn = 0; fn != 8; fn++) {
-			uchar *m;
-
-			// Retrieve the did and vid through the devfn before
-			// obtaining the Pcidev structure.
 			tbdf = (BusPCI << 24)|(e->e_bus << 16)|((e->e_dev | fn) << 8);
-			vdid = pcicfgrw32(tbdf, PciVID, 0, 1);
-			if (vdid == 0xFFFFFFFF || vdid == 0) 
+			pci = pcimatchtbdf(tbdf);
+			if(pci == nil)
+				continue;
+			pin = pcicfgr8(pci, PciINTP);
+			if (pin == 0 || pin == 0xff) 
 				continue;
 
-			vid = vdid;
-			did = vdid >> 16;
-	
-			pci = nil;
-			while ((pci = pcimatch(pci, vid, did)) != nil) {
-
-				if (pci->intl != 0 && pci->intl != 0xFF)
-					continue;
-
-				pin = pcicfgr8(pci, PciINTP);
-				if (pin == 0 || pin == 0xff) 
-					continue;
-	
-				m = &e->e_maps[(pin - 1) * 3];
-				irq = southbridge->sb_translate(sbpci, m[0]);
-				if (irq) {
-					print("pcirouting: %.4uX/%.4uX at pin %d irq %d\n", 
-						  vid, did, pin, irq);
-					pcicfgw8(pci, PciINTL, irq);
-					pci->intl = irq;
-				}
+			m = &e->e_maps[(pin - 1) * 3];
+			irq = southbridge->get(sbpci, m[0]);
+			if(irq == 0 || irq == pci->intl)
+				continue;
+			if (pci->intl != 0 && pci->intl != 0xFF) {
+				print("pcirouting: BIOS workaround: %T at pin %d irq %d -> %d\n",
+					  tbdf, pin, irq, pci->intl);
+				southbridge->set(sbpci, m[0], pci->intl);
+				continue;
 			}
+			print("pcirouting: %T at pin %d irq %d\n", tbdf, pin, irq);
+			pcicfgw8(pci, PciINTL, irq);
+			pci->intl = irq;
 		}
 	}
 }

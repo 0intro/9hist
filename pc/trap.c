@@ -331,7 +331,7 @@ trap(Ureg* ureg)
 		/* clear the interrupt */
 		i8259isr(vno);
 			
-		print("cpu%d: spurious interrupt %d, last %d",
+		if(0)print("cpu%d: spurious interrupt %d, last %d",
 			m->machno, vno, m->lastintr);
 		for(i = 0; i < 32; i++){
 			if(!(active.machs & (1<<i)))
@@ -576,7 +576,7 @@ syscall(Ureg* ureg)
 		up->errstr = e;
 	}
 	if(up->nerrlab){
-		print("bad errstack [%d]: %d extra\n", scallnr, up->nerrlab);
+		print("bad errstack [%uld]: %d extra\n", scallnr, up->nerrlab);
 		for(i = 0; i < NERR; i++)
 			print("sp=%lux pc=%lux\n",
 				up->errlab[i].sp, up->errlab[i].pc);
