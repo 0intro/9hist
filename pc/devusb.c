@@ -206,7 +206,7 @@ struct Endpt {
 	int		data01;	/* 0=DATA0, 1=DATA1 */
 	uchar	eof;
 	ulong	csp;
-	uchar	isopen;	/* ep operations forbidden on open endpoints */
+/*	uchar	isopen;	 ep operations forbidden on open endpoints */
 	uchar	mode;	/* OREAD, OWRITE, ORDWR */
 	uchar	nbuf;	/* number of buffers allowed */
 	uchar	iso;
@@ -645,6 +645,7 @@ eptactivate(Endpt *e)
 {
 	ilock(&activends);
 	if(e->active == 0){
+		XPRINT("activate 0x%p\n", e);
 		e->active = 1;
 		e->activef = activends.f;
 		activends.f = e;
@@ -661,6 +662,7 @@ eptdeactivate(Endpt *e)
 	ilock(&activends);
 	if(e->active){
 		e->active = 0;
+		XPRINT("deactivate 0x%p\n", e);
 		for(l = &activends.f; *l != e; l = &(*l)->activef)
 			if(*l == nil){
 				iunlock(&activends);
@@ -808,7 +810,7 @@ schedendpt(Endpt *e)
 		return 0;
 	ub = &ubus;
 
-	if (e->isopen){
+	if (e->active){
 		return -1;
 	}
 	e->off = 0;
@@ -1445,7 +1447,7 @@ usbgen(Chan *c, char *, Dirtab*, int, int s, Dir *dp)
 	/*
 	 * Top level directory contains the name of the device.
 	 */
-	if(c->qid.path == Qtopdir){
+	if(QID(c->qid) == Qtopdir){
 		if(s == DEVDOTDOT){
 			mkqid(&q, Qtopdir, 0, QTDIR);
 			devdir(c, q, "#U", 0, eve, 0555, dp);
@@ -1544,6 +1546,7 @@ usbopen(Chan *c, int omode)
 	f = 0;
 	if(QID(c->qid) == Qnew){
 		d = usbnewdevice();
+		XPRINT("usbopen, new dev 0x%p\n", d);
 		if(d == nil) {
 			XPRINT("usbopen failed (usbnewdevice)\n");
 			error(Enodev);
@@ -1553,8 +1556,10 @@ usbopen(Chan *c, int omode)
 		f = 1;
 	}
 
-	if(c->qid.path < Q3rd)
+	if(QID(c->qid) < Q3rd){
+		XPRINT("usbopen, devopen < Q3rd\n");
 		return devopen(c, omode, nil, 0, usbgen);
+	}
 
 	qlock(&usbstate);
 	if(waserror()){
@@ -1570,24 +1575,26 @@ usbopen(Chan *c, int omode)
 		d->busy = 1;
 		if(!f)
 			incref(d);
+		XPRINT("usbopen, Qctl 0x%p\n", d);
 		break;
 
 	default:
 		d = usbdevice(c);
 		s = QID(c->qid) - Qep0;
+		XPRINT("usbopen, default 0x%p, %d\n", d, s);
 		if(s >= 0 && s < nelem(d->ep)){
 			Endpt *e;
 			if((e = d->ep[s]) == nil) {
 				XPRINT("usbopen failed (endpoint)\n");
 				error(Enodev);
 			}
+			XPRINT("usbopen: dev 0x%p, ept 0x%p\n", d, e);
 			if(schedendpt(e) < 0){
-				if (e->isopen)
-					error("can't schedule USB endpoint, isopen");
+				if (e->active)
+					error("can't schedule USB endpoint, active");
 				else
 					error("can't schedule USB endpoint");
 			}
-			e->isopen++;
 			eptactivate(e);
 		}
 		incref(d);
@@ -1625,27 +1632,17 @@ void
 usbclose(Chan *c)
 {
 	Udev *d;
-	int s;
 
-	if(c->qid.type == QTDIR || c->qid.path < Q3rd)
+	if(c->qid.type == QTDIR || QID(c->qid) < Q3rd)
 		return;
 	qlock(&usbstate);
 	d = usbdevice(c);
-	s = QID(c->qid) - Qep0;
-	if(s >= 0 && s < nelem(d->ep)){
-		Endpt *e;
-		if(e = d->ep[s]) {
-			if (e->isopen == 1){
-				e->isopen = 0;
-				eptdeactivate(e);
-				unschedendpt(e);
-			}
-		}
-	}
 	if(QID(c->qid) == Qctl)
 		d->busy = 0;
-	if(c->flag & COPEN)
+	if(c->flag & COPEN){
+		XPRINT("usbclose: freedev 0x%p\n", d);
 		freedev(d);
+	}
 	qunlock(&usbstate);
 }
 
@@ -1858,13 +1855,12 @@ epstatus(char *s, int n, Endpt *e, int i)
 	int l;
 
 	l = 0;
-	l += snprint(s+l, n-l, "%2d %#6.6lux %10lud bytes %10lud blocks",
+	l += snprint(s+l, n-l, "%2d %#6.6lux %10lud bytes %10lud blocks\n",
 		i, e->csp, e->nbytes, e->nblocks);
 	if (e->iso && e->toffset){
-		l += snprint(s+l, n-l, " %6d buffered %10lud offset %19lld time",
-			e->buffered, e->toffset, e->time);
+		l += snprint(s+l, n-l, "bufsize %6d buffered %6d offset  %10lud time %19lld\n",
+			e->maxpkt, e->buffered, e->toffset, e->time);
 	}
-	l += snprint(s+l, n-l, "\n");
 	return l;
 }
 
@@ -2103,7 +2099,7 @@ usbwrite(Chan *c, void *a, long n, vlong offset)
 				qunlock(&usbstate);
 				nexterror();
 			}
-			if (e->isopen)
+			if (e->active)
 				error(Eperm);
 			if(strcmp(fields[2], "bulk") == 0){
 				Ctlr *ub;

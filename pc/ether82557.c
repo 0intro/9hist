@@ -904,6 +904,7 @@ i82557pci(void)
 			continue;
 		case 0x1229:		/* Intel 8255[789] */
 		case 0x1031:		/* Intel 82562EM */
+		case 0x2449:		/* Intel ????? */
 			break;
 		}
 

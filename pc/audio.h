@@ -1,10 +1,10 @@
 enum
 {
-	Bufsize		= 16*1024,	/* 92 ms each */
-	Nbuf		= 16,		/* 1.5 seconds total */
+	Bufsize		= 4*1024,	/* 23.22 ms each */
+	Nbuf		= 32,		/* .74 seconds total */
 	Dma		= 6,
 	IrqAUDIO	= 7,
-	SBswab		= 0,
+	SBswab	= 0,
 };
 
 #define seteisadma(a, b)	dmainit(a, Bufsize);
