@@ -246,6 +246,7 @@ rootcreate(Chan *c, char *name, int mode, ulong perm)
 	perm &= 0777|CHDIR;
 	if((perm & CHDIR) == 0)
 		error(Eperm);
+	addrootdir(name);
 	c->flag |= COPEN;
 	c->mode = mode & ~OWRITE;
 }
