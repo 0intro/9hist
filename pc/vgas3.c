@@ -64,8 +64,9 @@ s3page(VGAscr* scr, int page)
 static ulong
 s3linear(VGAscr* scr, int* size, int* align)
 {
-	ulong aperture, oaperture;
-	int i, osize, oapsize, wasupamem;
+	char *mmioname;
+	ulong aperture, oaperture, mmiobase, mmiosize;
+	int i, id, j, osize, oapsize, wasupamem;
 	Pcidev *p;
 	Physseg seg;
 
@@ -74,6 +75,9 @@ s3linear(VGAscr* scr, int* size, int* align)
 	oapsize = scr->apsize;
 	wasupamem = scr->isupamem;
 
+	mmiosize = 0;
+	mmiobase = 0;
+	mmioname = nil;
 	if(p = pcimatch(nil, 0x5333, 0)){
 		for(i=0; i<nelem(p->mem); i++){
 			if(p->mem[i].size >= *size
@@ -86,6 +90,33 @@ s3linear(VGAscr* scr, int* size, int* align)
 		}
 		aperture = p->mem[i].bar & ~0x0F;
 		*size = p->mem[i].size;
+
+		id = (vgaxi(Crtx, 0x30)<<8)|vgaxi(Crtx, 0x2E);
+		if(id == 0xE122){		/* find Savage4 mmio */
+			/*
+			 * We could assume that the MMIO registers
+			 * will be in the screen segment and just use
+			 * that, but PCI software is allowed to move them
+			 * if it feels like it, so we look for an aperture of
+			 * the right size; only the first 512k actually means
+			 * anything.  The S3 engineers overestimated how
+			 * much space they would need in the first design.
+			 */
+			for(j=0; j<nelem(p->mem); j++){
+				if(i == j)
+					continue;
+				if(p->mem[j].size==512*1024 || p->mem[j].size==16*1024*1024){
+					mmiobase = p->mem[j].bar & ~0x0F;
+					mmiosize = 512*1024;
+					mmioname = "savage4mmio";
+					break;
+				}
+			}
+			if(mmiosize == 0){
+				print("savage4: mmio not found\n");
+				return 0;
+			}
+		}
 	}else
 		aperture = 0;
 
@@ -111,6 +142,15 @@ s3linear(VGAscr* scr, int* size, int* align)
 	seg.size = osize;
 	addphysseg(&seg);
 
+	if(mmiosize){
+		memset(&seg, 0, sizeof(seg));
+		seg.attr = SG_PHYSICAL;
+		seg.name = smalloc(NAMELEN);
+		snprint(seg.name, NAMELEN, mmioname);
+		seg.pa = mmiobase;
+		seg.size = mmiosize;
+		addphysseg(&seg);
+	}
 	return aperture;
 }
 
@@ -166,7 +206,7 @@ s3enable(VGAscr* scr)
 	 * Must be on a 1024-byte boundary.
 	 */
 	storage = (scr->gscreen->width*BY2WD*scr->gscreen->r.max.y+1023)/1024;
-	vgaxo(Crtx, 0x4C, (storage>>8) & 0x0F);
+	vgaxo(Crtx, 0x4C, storage>>8);
 	vgaxo(Crtx, 0x4D, storage & 0xFF);
 	storage *= 1024;
 	scr->storage = storage;
@@ -325,6 +365,9 @@ struct {
 	ulong linear;
 	ulong fifo;
 	ulong idle;
+	ulong lineartimeout;
+	ulong fifotimeout;
+	ulong idletimeout;
 } waitcount;
 
 static void
@@ -352,6 +395,8 @@ waitforlinearfifo(VGAscr *scr)
 	x = 0;
 	while((mmio[FifoStat]&mask) != val && x++ < Maxloop)
 		waitcount.linear++;
+	if(x >= Maxloop)
+		waitcount.lineartimeout++;
 }
 
 static void
@@ -365,6 +410,8 @@ waitforfifo(VGAscr *scr, int entries)
 	x = 0;
 	while((mmio[SubStat]&0x1F00) < ((entries+2)<<8) && x++ < Maxloop)
 		waitcount.fifo++;
+	if(x >= Maxloop)
+		waitcount.fifotimeout++;
 }
 
 static void
@@ -377,6 +424,8 @@ waitforidle(VGAscr *scr)
 	x = 0;
 	while((mmio[SubStat]&0x3F00) != 0x3000 && x++ < Maxloop)
 		waitcount.idle++;
+	if(x >= Maxloop)
+		waitcount.idletimeout++;
 }
 
 static int
