@@ -6,7 +6,7 @@
 #include "io.h"
 
 typedef struct Huff	Huff;
-
+typedef struct Mtf	Mtf;
 typedef struct Decode	Decode;
 
 enum
@@ -16,27 +16,35 @@ enum
 	MaxLit		= 256,
 
 	MaxLeaf		= MaxLit+LitBase,
-	MaxHuffBits	= 15,			/* max bits in a huffman code */
-	MaxFlatbits	= 4,			/* max bits decoded in flat table */
+	MaxHuffBits	= 16,			/* max bits in a huffman code */
+	MaxFlatbits	= 5,			/* max bits decoded in flat table */
 
-	Nhuffblock	= 16*1024,		/* symbols encoded before output */
-	Nhuffslop	= 64,			/* slop for stuffing zeros, etc. */
+	CombLog		= 4,
+	CombSpace	= 1 << CombLog,		/* mtf speedup indices spacing */
+	CombMask	= CombSpace - 1,
+};
+
+struct Mtf
+{
+	int	maxcomb;		/* index of last valid comb */
+	uchar	prev[MaxLit];
+	uchar	next[MaxLit];
+	uchar	comb[MaxLit / CombSpace + 1];
 };
 
 struct Huff
 {
-	int	minbits;
 	int	maxbits;
 	int	flatbits;
 	ulong	flat[1<<MaxFlatbits];
-	ulong	maxcode[MaxHuffBits+1];
-	ulong	last[MaxHuffBits+1];
+	ulong	maxcode[MaxHuffBits];
+	ulong	last[MaxHuffBits];
 	ulong	decode[MaxLeaf];
 };
 
 struct Decode{
 	Huff	tab;
-	int	ndec;
+	Mtf	mtf;
 	int	nbits;
 	ulong	bits;
 	int	nzero;
@@ -50,29 +58,194 @@ struct Decode{
 static	void	fatal(Decode *dec, char*);
 
 static	int	hdec(Decode*);
-static	void	hbflush(Decode*);
+static	void	recvtab(Decode*, Huff*, int, ushort*);
 static	ulong	bitget(Decode*, int);
 static	int	mtf(uchar*, int);
+
+#define FORWARD 0
+
+void
+mtflistinit(Mtf *m, uchar *front, int n)
+{
+	int last, me, f, i, comb;
+
+	if(n == 0)
+		return;
+
+	/*
+	 * add all entries to free list
+	 */
+	last = MaxLit - 1;
+	for(i = 0; i < MaxLit; i++){
+		m->prev[i] = last;
+		m->next[i] = i + 1;
+		last = i;
+	}
+	m->next[last] = 0;
+	f = 0;
+
+	/*
+	 * pull valid entries off free list and enter into mtf list
+	 */
+	comb = 0;
+	last = front[0];
+	for(i = 0; i < n; i++){
+		me = front[i];
+
+		f = m->next[me];
+		m->prev[f] = m->prev[me];
+		m->next[m->prev[f]] = f;
+
+		m->next[last] = me;
+		m->prev[me] = last;
+		last = me;
+		if((i & CombMask) == 0)
+			m->comb[comb++] = me;
+	}
+
+	/*
+	 * pad out the list with dummies to the next comb,
+	 * using free entries
+	 */
+	for(; i & CombMask; i++){
+		me = f;
+
+		f = m->next[me];
+		m->prev[f] = m->prev[me];
+		m->next[m->prev[f]] = f;
+
+		m->next[last] = me;
+		m->prev[me] = last;
+		last = me;
+	}
+	me = front[0];
+	m->next[last] = me;
+	m->prev[me] = last;
+	m->comb[comb] = me;
+	m->maxcomb = comb;
+}
+
+int
+mtflist(Mtf *m, int pos)
+{
+	uchar *next, *prev, *mycomb;
+	int c, c0, pc, nc, off;
+
+	if(pos == 0)
+		return m->comb[0];
+
+	next = m->next;
+	prev = m->prev;
+	mycomb = &m->comb[pos >> CombLog];
+	off = pos & CombMask;
+	if(off >= CombSpace / 2){
+		c = mycomb[1];
+		for(; off < CombSpace; off++)
+			c = prev[c];
+	}else{
+		c = *mycomb;
+		for(; off; off--)
+			c = next[c];
+	}
+
+	nc = next[c];
+	pc = prev[c];
+	prev[nc] = pc;
+	next[pc] = nc;
+
+	for(; mycomb > m->comb; mycomb--)
+		*mycomb = prev[*mycomb];
+	c0 = *mycomb;
+	*mycomb = c;
+	mycomb[m->maxcomb] = c;
+
+	next[c] = c0;
+	pc = prev[c0];
+	prev[c] = pc;
+	prev[c0] = c;
+	next[pc] = c;
+	return c;
+}
+
+static void
+hdecblock(Decode *dec, ulong n, ulong I, uchar *buf, ulong *sums, ulong *prev)
+{
+	ulong i, nn, sum;
+	int m, z, zz, c;
+
+	nn = I;
+	n--;
+	i = 0;
+again:
+	for(; i < nn; i++){
+		while((m = hdec(dec)) == 0 && i + dec->nzero < n)
+			;
+		if(z = dec->nzero){
+			dec->nzero = 0;
+			c = dec->mtf.comb[0];
+			sum = sums[c];
+			sums[c] = sum + z;
+
+			z += i;
+			zz = z;
+			if(i < I && z > I){
+				zz = I;
+				z++;
+			}
+
+		zagain:
+			for(; i < zz; i++){
+				buf[i] = c;
+				prev[i] = sum++;
+			}
+			if(i != z){
+				zz = z;
+				nn = ++n;
+				i++;
+				goto zagain;
+			}
+			if(i == nn){
+				if(i == n)
+					return;
+				nn = ++n;
+				i++;
+			}
+		}
+
+		c = mtflist(&dec->mtf, m);
+
+		buf[i] = c;
+		sum = sums[c];
+		prev[i] = sum++;
+		sums[c] = sum;
+
+	}
+	if(i == n)
+		return;
+	nn = ++n;
+	i++;
+	goto again;
+}
 
 int
 unsac(uchar *dst, uchar *src, int n, int nsrc)
 {
 	Decode *dec;
 	uchar *buf, *front;
-	ulong *suflink, *sums;
-	ulong sum;
-	int i, m, I, j, c;
+	ulong *prev, *sums;
+	ulong sum, i, I;
+	int m, j, c;
 
 	dec = malloc(sizeof *dec);
 	buf = malloc(n+2);
-	suflink = malloc((n+2) * sizeof *suflink);
-	front = malloc(256 * sizeof *front);
-	sums = malloc(256 * sizeof *sums);
+	prev = malloc((n+2) * sizeof *prev);
+	front = malloc(MaxLit * sizeof *front);
+	sums = malloc(MaxLit * sizeof *sums);
 
 	if(waserror()){
 		free(dec);
 		free(buf);
-		free(suflink);
+		free(prev);
 		free(front);
 		free(sums);
 		nexterror();
@@ -84,7 +257,7 @@ unsac(uchar *dst, uchar *src, int n, int nsrc)
 	dec->nbits = 0;
 	dec->bits = 0;
 	dec->nzero = 0;
-	for(i = 0; i < 256; i++)
+	for(i = 0; i < MaxLit; i++)
 		front[i] = i;
 
 	n++;
@@ -95,13 +268,13 @@ unsac(uchar *dst, uchar *src, int n, int nsrc)
 	/*
 	 * decode the character usage map
 	 */
-	for(i = 0; i < 256; i++)
+	for(i = 0; i < MaxLit; i++)
 		sums[i] = 0;
 	c = bitget(dec, 1);
-	for(i = 0; i < 256; ){
+	for(i = 0; i < MaxLit; ){
 		m = bitget(dec, 8) + 1;
 		while(m--){
-			if(i >= 256)
+			if(i >= MaxLit)
 				fatal(dec, "corrupted char map");
 			front[i++] = c;
 		}
@@ -112,73 +285,41 @@ unsac(uchar *dst, uchar *src, int n, int nsrc)
 	 * initialize mtf state
 	 */
 	c = 0;
-	for(i = 0; i < 256; i++)
+	for(i = 0; i < MaxLit; i++)
 		if(front[i])
 			front[c++] = i;
+	mtflistinit(&dec->mtf, front, c);
 	dec->maxblocksym = c + LitBase;
 
 	/*
 	 * huffman decoding, move to front decoding,
 	 * along with character counting
 	 */
-	hbflush(dec);
-	for(i = 0; i < n; i++){
-		if(i == I)
-			continue;
-		m = hdec(dec);
-
-		/*
-		 * move to front
-		 */
-		c = front[m];
-		for(; m > 0; m--)
-			front[m] = front[m-1];
-		front[0] = c;
-
-		buf[i] = c;
-		sums[c]++;
-	}
+	dec->base = 1;
+	recvtab(dec, &dec->tab, MaxLeaf, nil);
+	hdecblock(dec, n, I, buf, sums, prev);
 
 	sum = 1;
-	for(i = 0; i < 256; i++){
+	for(i = 0; i < MaxLit; i++){
 		c = sums[i];
 		sums[i] = sum;
 		sum += c;
 	}
 
-	/*
-	 * calculate the row step for column step array
-	 * by calculating it for backwards moves and inverting it
-	 */
-	suflink[0] = I;
-	for(j = 0; j < I; j++)
-		suflink[sums[buf[j]]++] = j;
-	for(j++; j < n; j++)
-		suflink[sums[buf[j]]++] = j;
-
-	/*
-	 * to recover the suffix array, aka suffix array for input
-	 * j = 0;
-	 * for(i = I; i != 0; i = suflink[i])
-	 *	sarray[i] = j++;
-	 * sarray[i] = j++;
-	 * note that suflink[i] = sarrayinv[sarray[i] + 1]
-	 */
-
-	/*
-	 * produce the decoded data forwards
-	 */
-	n--;
-	i = I;
-	for(j = 0; j < n; j++){
-		i = suflink[i];
-		dst[j] = buf[i];
+	i = 0;
+	for(j = n - 2; j >= 0; j--){
+		if(i > n || i < 0 || i == I)
+			fatal(dec, "corrupted data");
+		c = buf[i];
+		dst[j] = c;
+		i = prev[i] + sums[c];
 	}
 
 	poperror();
+
 	free(dec);
 	free(buf);
-	free(suflink);
+	free(prev);
 	free(front);
 	free(sums);
 	return n;
@@ -223,38 +364,35 @@ static int
 hdecsym(Decode *dec, Huff *h)
 {
 	long c;
-	int b;
+	ulong bits;
+	int b, nbits;
 
-	dec->bits &= (1 << dec->nbits) - 1;
-	for(b = h->flatbits; (c = dec->bits >> (dec->nbits - b)) > h->maxcode[b]; b++)
-		;
+	bits = dec->bits;
+	b = h->flatbits;
+	nbits = dec->nbits - b;
+	for(; (c = bits >> nbits) > h->maxcode[b]; b++)
+		nbits--;
 	if(b > h->maxbits)
 		fatal(dec, "too many bits consumed");
-	dec->nbits -= b;
-	c = h->decode[h->last[b] - c];
-
-	return c;
+	dec->nbits = nbits;
+	return h->decode[h->last[b] - c];
 }
 
 static int
 hdec(Decode *dec)
 {
 	ulong c;
-
-	dec->ndec++;
-	if(dec->nzero){
-		dec->nzero--;
-		return 0;
-	}
+	int nbits;
 
 	if(dec->nbits < dec->tab.maxbits)
 		fillbits(dec);
-	dec->bits &= (1 << dec->nbits) - 1;
-	c = dec->tab.flat[dec->bits >> (dec->nbits - dec->tab.flatbits)];
+	nbits = dec->nbits;
+	dec->bits &= (1 << nbits) - 1;
+	c = dec->tab.flat[dec->bits >> (nbits - dec->tab.flatbits)];
 	if(c == ~0)
 		c = hdecsym(dec, &dec->tab);
 	else{
-		dec->nbits -= c & 0xff;
+		dec->nbits = nbits - (c & 0xff);
 		c >>= 8;
 	}
 
@@ -262,9 +400,8 @@ hdec(Decode *dec)
 	 * reverse funny run-length coding
 	 */
 	if(c < ZBase){
-		dec->nzero = dec->base << c;
+		dec->nzero += dec->base << c;
 		dec->base <<= 1;
-		dec->nzero--;
 		return 0;
 	}
 
@@ -274,18 +411,19 @@ hdec(Decode *dec)
 }
 
 static void
-hufftab(Decode *dec, Huff *h, uchar *hb, ulong *bitcount, int maxleaf, int maxbits, int flatbits)
+hufftab(Decode *dec, Huff *h, char *hb, ulong *bitcount, int maxleaf, int maxbits, int flatbits)
 {
-	ulong c, code, nc[MaxHuffBits+1];
+	ulong c, code, nc[MaxHuffBits];
 	int i, b, ec;
+
+	h->maxbits = maxbits;
+	if(maxbits < 0)
+		return;
 
 	code = 0;
 	c = 0;
-	h->minbits = maxbits;
-	for(b = 1; b <= maxbits; b++){
+	for(b = 0; b <= maxbits; b++){
 		h->last[b] = c;
-		if(c == 0)
-			h->minbits = b;
 		c += bitcount[b];
 		nc[b] = code << 1;
 		code = (code << 1) + bitcount[b];
@@ -296,9 +434,8 @@ hufftab(Decode *dec, Huff *h, uchar *hb, ulong *bitcount, int maxleaf, int maxbi
 	}
 	if(code != (1 << maxbits))
 		fatal(dec, "huffman table not full");
-	h->maxbits = b;
-	if(flatbits > b)
-		flatbits = b;
+	if(flatbits > maxbits)
+		flatbits = maxbits;
 	h->flatbits = flatbits;
 
 	b = 1 << flatbits;
@@ -307,7 +444,7 @@ hufftab(Decode *dec, Huff *h, uchar *hb, ulong *bitcount, int maxleaf, int maxbi
 
 	for(i = 0; i < maxleaf; i++){
 		b = hb[i];
-		if(b == 0)
+		if(b == -1)
 			continue;
 		c = nc[b]++;
 		if(b <= flatbits){
@@ -327,14 +464,59 @@ hufftab(Decode *dec, Huff *h, uchar *hb, ulong *bitcount, int maxleaf, int maxbi
 }
 
 static void
-hbflush(Decode *dec)
+elimBit(int b, char *tmtf, int maxbits)
 {
-	ulong bitcount[MaxHuffBits+1];
-	uchar tmtf[MaxHuffBits+1], *hb;
-	int i, b, m, maxbits;
+	int bb;
 
-	dec->base = 1;
-	dec->ndec = 0;
+	for(bb = 0; bb < maxbits; bb++)
+		if(tmtf[bb] == b)
+			break;
+	while(++bb <= maxbits)
+		tmtf[bb - 1] = tmtf[bb];
+}
+
+static int
+elimBits(int b, ulong *bused, char *tmtf, int maxbits)
+{
+	int bb, elim;
+
+	if(b < 0)
+		return 0;
+
+	elim = 0;
+
+	/*
+	 * increase bits counts for all descendants
+	 */
+	for(bb = b + 1; bb < maxbits; bb++){
+		bused[bb] += 1 << (bb - b);
+		if(bused[bb] == (1 << bb)){
+			elim++;
+			elimBit(bb, tmtf, maxbits);
+		}
+	}
+
+	/*
+	 * steal bits from parent & check for fullness
+	 */
+	for(; b >= 0; b--){
+		bused[b]++;
+		if(bused[b] == (1 << b)){
+			elim++;
+			elimBit(b, tmtf, maxbits);
+		}
+		if((bused[b] & 1) == 0)
+			break;
+	}
+	return elim;
+}
+
+static void
+recvtab(Decode *dec, Huff *tab, int maxleaf, ushort *map)
+{
+	ulong bitcount[MaxHuffBits+1], bused[MaxHuffBits+1];
+	char tmtf[MaxHuffBits+1], *hb;
+	int i, b, ttb, m, maxbits, max, elim;
 
 	hb = malloc(MaxLeaf * sizeof *hb);
 	if(waserror()) {
@@ -345,29 +527,50 @@ hbflush(Decode *dec)
 	/*
 	 * read the tables for the tables
 	 */
-	for(i = 0; i <= MaxHuffBits; i++)
-		bitcount[i] = 0;
-	maxbits = 0;
+	max = 8;
 	for(i = 0; i <= MaxHuffBits; i++){
-		b = bitget(dec, 4);
+		bitcount[i] = 0;
+		tmtf[i] = i;
+		bused[i] = 0;
+	}
+	tmtf[0] = -1;
+	tmtf[max] = 0;
+	elim = 0;
+	maxbits = -1;
+	for(i = 0; i <= MaxHuffBits && elim != max; i++){
+		ttb = 4;
+		while(max - elim < (1 << (ttb-1)))
+			ttb--;
+		b = bitget(dec, ttb);
+		if(b > max - elim)
+			fatal(dec, "corrupted huffman table table");
+		b = tmtf[b];
 		hb[i] = b;
 		bitcount[b]++;
 		if(b > maxbits)
 			maxbits = b;
+
+		elim += elimBits(b, bused, tmtf, max);
 	}
-	hufftab(dec, &dec->tab, hb, bitcount, MaxHuffBits+1, maxbits, MaxFlatbits);
+	if(elim != max)
+		fatal(dec, "incomplete huffman table table");
+	hufftab(dec, tab, hb, bitcount, i, maxbits, MaxFlatbits);
 	for(i = 0; i <= MaxHuffBits; i++){
 		tmtf[i] = i;
 		bitcount[i] = 0;
+		bused[i] = 0;
 	}
-	maxbits = 0;
-	for(i = 0; i < dec->maxblocksym; i++){
-		if(dec->nbits <= dec->tab.maxbits)
+	tmtf[0] = -1;
+	tmtf[MaxHuffBits] = 0;
+	elim = 0;
+	maxbits = -1;
+	for(i = 0; i < maxleaf && elim != MaxHuffBits; i++){
+		if(dec->nbits <= tab->maxbits)
 			fillbits(dec);
 		dec->bits &= (1 << dec->nbits) - 1;
-		m = dec->tab.flat[dec->bits >> (dec->nbits - dec->tab.flatbits)];
+		m = tab->flat[dec->bits >> (dec->nbits - tab->flatbits)];
 		if(m == ~0)
-			m = hdecsym(dec, &dec->tab);
+			m = hdecsym(dec, tab);
 		else{
 			dec->nbits -= m & 0xff;
 			m >>= 8;
@@ -379,15 +582,22 @@ hbflush(Decode *dec)
 
 		if(b > MaxHuffBits)
 			fatal(dec, "bit length too big");
-		hb[i] = b;
+		m = i;
+		if(map != nil)
+			m = map[m];
+		hb[m] = b;
 		bitcount[b]++;
 		if(b > maxbits)
 			maxbits = b;
+		elim += elimBits(b, bused, tmtf, MaxHuffBits);
 	}
-	for(; i < MaxLeaf; i++)
-		hb[i] = 0;
+	if(elim != MaxHuffBits && elim != 0)
+		fatal(dec, "incomplete huffman table");
+	if(map != nil)
+		for(; i < maxleaf; i++)
+			hb[map[i]] = -1;
 
-	hufftab(dec, &dec->tab, hb, bitcount, MaxLeaf, maxbits, MaxFlatbits);
+	hufftab(dec, tab, hb, bitcount, i, maxbits, MaxFlatbits);
 
 	poperror();
 	free(hb);

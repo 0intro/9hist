@@ -3,46 +3,48 @@
 
 typedef long Syscall(ulong*);
 
-Syscall sysr1;
-Syscall syserrstr;
-Syscall sysbind;
-Syscall syschdir;
-Syscall sysclose;
-Syscall sysdup;
-Syscall sysalarm;
-Syscall sysexec;
-Syscall sysexits;
-Syscall sysfsession;
-Syscall sysfauth;
-Syscall sysfstat;
-Syscall syssegbrk;
-Syscall sysmount;
-Syscall sysopen;
-Syscall sysread;
-Syscall sysoseek;
-Syscall syssleep;
-Syscall sysstat;
-Syscall sysrfork;
-Syscall syswrite;
-Syscall syspipe;
-Syscall syscreate;
-Syscall sysfd2path;
-Syscall sysbrk_;
-Syscall sysremove;
-Syscall syswstat;
-Syscall sysfwstat;
-Syscall sysnotify;
-Syscall sysnoted;
-Syscall syssegattach;
-Syscall syssegdetach;
-Syscall syssegfree;
-Syscall syssegflush;
-Syscall sysrendezvous;
-Syscall sysunmount;
-Syscall syswait;
-Syscall syswrite9p;
-Syscall sysread9p;
-Syscall sysseek;
+Syscall sysr1;Syscall ;
+Syscall syserrstr;Syscall ;
+Syscall sysbind;Syscall ;
+Syscall syschdir;Syscall ;
+Syscall sysclose;Syscall ;
+Syscall sysdup;Syscall ;
+Syscall sysalarm;Syscall ;
+Syscall sysexec;Syscall ;
+Syscall sysexits;Syscall ;
+Syscall sysfsession;Syscall ;
+Syscall sysfauth;Syscall ;
+Syscall sysfstat;Syscall ;
+Syscall syssegbrk;Syscall ;
+Syscall sysmount;Syscall ;
+Syscall sysopen;Syscall ;
+Syscall sysread;Syscall ;
+Syscall sysoseek;Syscall ;
+Syscall syssleep;Syscall ;
+Syscall sysstat;Syscall ;
+Syscall sysrfork;Syscall ;
+Syscall syswrite;Syscall ;
+Syscall syspipe;Syscall ;
+Syscall syscreate;Syscall ;
+Syscall sysfd2path;Syscall ;
+Syscall sysbrk_;Syscall ;
+Syscall sysremove;Syscall ;
+Syscall syswstat;Syscall ;
+Syscall sysfwstat;Syscall ;
+Syscall sysnotify;Syscall ;
+Syscall sysnoted;Syscall ;
+Syscall syssegattach;Syscall ;
+Syscall syssegdetach;Syscall ;
+Syscall syssegfree;Syscall ;
+Syscall syssegflush;Syscall ;
+Syscall sysrendezvous;Syscall ;
+Syscall sysunmount;Syscall ;
+Syscall syswait;Syscall ;
+Syscall syswrite9p;Syscall ;
+Syscall sysread9p;Syscall ;
+Syscall sysseek;Syscall ;
+Syscall systunnel;Syscall ;
+Syscall sysexportfs;Syscall ;
 Syscall	sysdeath;
 
 Syscall *systab[]={
@@ -86,6 +88,8 @@ Syscall *systab[]={
 	[WRITE9P]	syswrite9p,
 	[READ9P]	sysread9p,
 	[SEEK]		sysseek,
+	[TUNNEL]	systunnel,
+	[EXPORTFS]	sysexportfs,
 };
 
 char *sysctab[]={
@@ -129,6 +133,8 @@ char *sysctab[]={
 	[WRITE9P]	"Write9p",
 	[READ9P]	"Read9p",
 	[SEEK]		"Seek",
+	[TUNNEL]	"Tunnel",
+	[EXPORTFS]	"Exportfs",
 };
 
 int nsyscall = (sizeof systab/sizeof systab[0]);
