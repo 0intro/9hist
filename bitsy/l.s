@@ -416,9 +416,9 @@ TEXT getcallerpc(SB), $-4
 
 TEXT tas(SB), $-4
 	MOVW	R0, R1
-	MOVW	$0xDEADDEAD, R2
-	MOVW	R2, R3
-	SWPW	R2, (R1), R0
+	MOVW	$0xDEADDEAD, R0
+	MOVW	R0, R3
+	SWPW	R0, (R1)
 	CMP.S	R0, R3
 	BEQ	_tasout
 	EOR	R3, R3
