@@ -193,7 +193,8 @@ TEXT	illegal(SB), $0
 	MOVL	((8+8)*BY2WD)(A7), A0
 	MOVL	A0, USP
 	MOVEM	(A7), $0x7FFF
-	ADDL	$((8+8+1)*BY2WD+BY2WD), A7
+	ADDL	$((8+8+1)*BY2WD), A7
+	MOVL	$0, (A7)+
 	RTE
 
 TEXT	systrap(SB), $0
@@ -210,7 +211,8 @@ TEXT	systrap(SB), $0
 	MOVL	((1+8+8)*BY2WD)(A7), A0
 	MOVL	A0, USP
 	MOVL	((1+8+6)*BY2WD)(A7), A6
-	ADDL	$((1+8+8+1)*BY2WD+BY2WD), A7
+	ADDL	$((1+8+8+1)*BY2WD), A7
+	MOVL	$0, (A7)+
 	RTE
 
 TEXT	buserror(SB), $0
@@ -228,7 +230,8 @@ TEXT	buserror(SB), $0
 	MOVL	((8+8)*BY2WD)(A7), A0
 	MOVL	A0, USP
 	MOVEM	(A7), $0x7FFF
-	ADDL	$((8+8+1)*BY2WD+BY2WD), A7
+	ADDL	$((8+8+1)*BY2WD), A7
+	MOVL	$0, (A7)+
 	RTE
 
 TEXT	tacintr(SB), $0			/* level 1 */
@@ -307,7 +310,8 @@ retintr:
 	MOVL	((8+8)*BY2WD)(A7), A0
 	MOVL	A0, USP
 	MOVEM	(A7), $0x7FFF
-	ADDL	$((8+8+1)*BY2WD+BY2WD), A7
+	ADDL	$((8+8+1)*BY2WD), A7
+	MOVL	$0, (A7)+
 	RTE
 
 GLOBL	duarttimer+0(SB),$4

@@ -33,9 +33,11 @@ struct Partition
 
 struct Drive
 {
+	QLock;
 	ulong		bytes;			/* bytes per block */
 	int		npart;			/* actual number of partitions */
 	int		drive;
+	int		ready;			/* true if ever ready */
 	Partition	p[Npart];
 };
 
@@ -263,31 +265,34 @@ wrenpart(int dev)
 	ulong n;
 	int i;
 
-	if(scsiready(dev)){
-		scsisense(dev, buf);
-		if(scsiready(dev))
-			print("scsi %d.%d not ready: sense 0x%2.2ux, code 0x%2.2ux\n",
-				dev>>3, dev&7, buf[2], buf[12]);
-	}
-	if(scsicap(dev, buf))
-		error(Eio);
 	dp = &wren[dev];
-	dp->drive = dev;
+	if(waserror()){
+		qunlock(dp);
+		nexterror();
+	}
+	qlock(dp);
+	if(!dp->ready){
+		scsiready(dev);
+		scsisense(dev, buf);
+		if (scsicap(dev, buf))
+			error(Eio);
+		dp->drive = dev;
+		dp->ready = 1;
 
-	/*
-	 *  we always have a partition for the whole disk
-	 *  and one for the partition table
-	 */
-	dp->bytes = (buf[4]<<24)+(buf[5]<<16)+(buf[6]<<8)+(buf[7]);
-	pp = &dp->p[0];
-	strcpy(pp->name, "disk");
-	pp->start = 0;
-	pp->end = (buf[0]<<24)+(buf[1]<<16)+(buf[2]<<8)+(buf[3]) + 1;
-	pp++;
-	strcpy(pp->name, "partition");
-	pp->start = dp->p[0].end - 1;
-	pp->end = dp->p[0].end;
-	dp->npart = 2;
+		/*
+		 *  we always have a partition for the whole disk
+		 *  and one for the partition table
+		 */
+		dp->bytes = (buf[4]<<24)+(buf[5]<<16)+(buf[6]<<8)+(buf[7]);
+		pp = &dp->p[0];
+		strcpy(pp->name, "disk");
+		pp->start = 0;
+		pp->end = (buf[0]<<24)+(buf[1]<<16)+(buf[2]<<8)+(buf[3]) + 1;
+		pp++;
+		strcpy(pp->name, "partition");
+		pp->start = dp->p[0].end - 1;
+		pp->end = dp->p[0].end;
+	}
 
 	/*
 	 *  read partition table from disk, null terminate
@@ -304,10 +309,10 @@ wrenpart(int dev)
 	/*
 	 *  parse partition table.
 	 */
+	pp = &dp->p[2];
 	n = getfields(rawpart, line, Npart+1, '\n');
 	if(strncmp(line[0], MAGIC, sizeof(MAGIC)-1) == 0){
 		for(i = 1; i < n; i++){
-			pp++;
 			if(getfields(line[i], field, 3, ' ') != 3)
 				break;
 			strncpy(pp->name, field[0], NAMELEN);
@@ -315,9 +320,11 @@ wrenpart(int dev)
 			pp->end = strtoul(field[2], 0, 0);
 			if(pp->start > pp->end || pp->start >= dp->p[0].end)
 				break;
-			dp->npart++;
+			pp++;
 		}
 	}
+	dp->npart = pp - dp->p;
 	poperror();
 	scsifree(b);
+	qunlock(dp);
 }

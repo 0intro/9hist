@@ -28,10 +28,12 @@ enum
 	Fasttime 	= 4*Iltickms,
 	Acktime		= 2*Iltickms,
 	Ackkeepalive	= 6000*Iltickms,
+	Querytime	= 60*Iltickms,		/* time between queries */
+	Keepalivetime	= 10*Querytime,		/* keep alive time */
 	Defaultwin	= 20,
 };
 
-#define Starttimer(s)	{(s)->timeout = 0; (s)->fasttime = Fasttime;}
+#define Starttimer(s)	{(s)->timeout = 0; (s)->fasttime = Fasttime; }
 /* Packet dropping putnext for testing */
 #define DPUTNEXT(q, b)	if((MACHP(0)->ticks&7) != 3)PUTNEXT(q, b);else{freeb(b);print(".");}
 
@@ -299,6 +301,8 @@ ilrcvmsg(Ipconv *ipc, Block *bp)
 			ic->recvd = 0;
 			ic->rstart = nhgetl(ih->ilid);
 			ic->slowtime = Slowtime;
+			ic->querytime = Keepalivetime;
+			ic->deathtime = Keepalivetime;
 			ic->window = Defaultwin;
 			ilprocess(new, ih, bp);
 
@@ -326,6 +330,8 @@ _ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 	ack = nhgetl(h->ilack);
 	ic = &s->ilctl;
 
+	ic->querytime = Keepalivetime;
+	ic->deathtime = Keepalivetime;
 	switch(ic->state) {
 	default:
 		panic("il unknown state");
@@ -711,6 +717,17 @@ ilackproc(void *a)
 				ic->acktime -= Iltickms;
 				if(ic->acktime <= 0)
 					ilsendctl(s, 0, Ilack, ic->next, ic->recvd);
+				ic->querytime -= Iltickms;
+				if(ic->querytime <= 0){
+					ic->deathtime -= Querytime;
+					if(ic->deathtime < 0){
+						ic->state = Ilclosed;
+						ilhangup(s, etime);
+						break;
+					}
+					ilsendctl(s, 0, Ilquerey, ic->next, ic->recvd);
+					ic->querytime = Querytime;
+				}
 				if(ic->unacked == 0) {
 					ic->timeout = 0;
 					break;

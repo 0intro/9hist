@@ -73,6 +73,8 @@ enum
 	Tagspace = 1,
 	Flushspace = 64,
 	Flushtag = 512,
+
+	ALIGN = 256,		/* Vme block mode alignment */
 };
 
 void
@@ -81,6 +83,8 @@ mntreset(void)
 	Mnt *me, *md;
 	Mntrpc *re, *rd;
 	ushort tag, ftag;
+	ulong p;
+	int i;
 
 	mntalloc.mntarena = ialloc(conf.nmntdev*sizeof(Mnt), 0);
 	mntalloc.mntfree = mntalloc.mntarena;
@@ -99,13 +103,22 @@ mntreset(void)
 	mntalloc.rpcfree = ialloc(conf.nmntbuf*sizeof(Mntrpc), 0);
 	mntalloc.rpcarena = mntalloc.rpcfree;
 	re = &mntalloc.rpcfree[conf.nmntbuf];
+
+	/* Align mount buffers to 256 byte boundaries so we can use burst mode vme transfers */
+	p = (ulong)ialloc(0, 0);
+	if(p&(ALIGN-1))
+		ialloc(ALIGN-(p&(ALIGN-1)), 0);
+
+	i = MAXRPC+(ALIGN-1);
+	i &= ~(ALIGN-1);
+
 	for(rd = mntalloc.rpcfree; rd < re; rd++) {
 		rd->list = rd+1;
 		rd->request.tag = tag++;
 		rd->flushbase = ftag;
 		rd->flushtag = ftag;
 		ftag += Flushspace;
-		rd->rpc = ialloc(MAXRPC, 0);
+		rd->rpc = ialloc(i, 0);
 	}
 	re[-1].list = 0;
 

@@ -65,9 +65,6 @@ schedinit(void)		/* never returns */
 		if(p->state == Running)
 			ready(p);
 		else if(p->state == Moribund) {
-			/*
-			 * The Grim Reaper lays waste the bodies of the dead
-			 */
 			p->pid = 0;
 			/* 
 			 * Holding locks from pexit:

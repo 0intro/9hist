@@ -15,7 +15,7 @@ int	canflush(Proc *p, Segment*);
 
 enum
 {
-	Maxpages = 500,		/* Max number of pageouts per segment pass */
+	Maxpages = 300,		/* Max number of pageouts per segment pass */
 };
 
 Image 	swapimage;
@@ -109,16 +109,14 @@ pager(void *junk)
 		if(waserror()) 
 			panic("pager: os error\n");
 
+		u->p->psstate = "Idle";
+		sleep(&swapalloc.r, needpages, 0);
+		u->p->psstate = "Pageout";
+
 		for(p = proctab(0); p < ep; p++) {
 			if(p->state == Dead || p->kp)
 				continue;
 
-			u->p->psstate = "Idle";
-			sleep(&swapalloc.r, needpages, 0);
-			u->p->psstate = "Pageout";
-
-			if(p->state == Dead || p->kp)
-				continue;
 			if(swapimage.c) {
 				for(i = 0; i < NSEG; i++)
 					if(s = p->seg[i]) {
@@ -235,17 +233,6 @@ pagepte(int type, Segment *s, Page **pg)
 		*pg = 0;
 		break;
 	case SG_DATA:
-		/* Unmodified data may be reverted to a demand load record if it
-		 * is not the last page in the DSEG
-		 */
-/*							BUG: needs to check the last page
-		if((outp->modref&PG_MOD) == 0) {
-			putpage(outp);
-			*pg = 0;
-			break;
-		}
-*/
-							/* NO break */	
 	case SG_BSS:
 	case SG_STACK:
 	case SG_SHARED:
@@ -284,15 +271,17 @@ executeio(void)
 
 	for(i = 0; i < ioptr; i++) {
 		out = iolist[i];
+#ifdef asdf
 		if(out->ref > 2) {
 			lockpage(out);
-			if(out->ref > 2) {		/* Page was reclaimed, abort io */
+			if(out->ref > 2) {	
 				out->ref -= 2;
 				unlockpage(out);
 				continue;
 			}
 			unlockpage(out);
 		}
+#endif
 		k = kmap(out);
 		kaddr = (char*)VA(k);
 		qlock(&c->wrl);

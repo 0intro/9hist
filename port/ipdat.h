@@ -115,6 +115,8 @@ struct Ilcb				/* Control block */
 	int	slowtime;		/* Slow time counter */
 	int	fasttime;		/* Retransmission timer */
 	int	acktime;		/* Acknowledge timer */
+	int	querytime;		/* Query timer */
+	int	deathtime;		/* Time to kill connection */
 
 	int	rtt;			/* Average round trip time */
 	ulong	rttack;			/* The ack we are waiting for */

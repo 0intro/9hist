@@ -181,40 +181,6 @@ hotrodopen(Chan *c, int omode)
 		hotwait(hmp);
 		delay(100);
 		print("reset\n");
-
-#ifdef ENABMEMTEST
-		/*
-		 * Issue test
-		 */
-		mp = &u->khot;
-		mp->cmd = Utest;
-		mp->param[0] = MP2VME(testbuf);
-		mp->param[1] = NTESTBUF;
-		hmp = hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->khot);
-		hotwait(hmp);
-		delay(100);
-		print("testing addr %lux size %ld\n", mp->param[0], mp->param[1]);
-		if(mp->param[0] == MP2VME(testbuf)){
-			print("no way jose\n");
-			unlock(&hp->busy);
-			error(Egreg);
-		}
-			
-		for(;;){
-			print("-");
-			mem(hp->addr, &hp->addr->ram[(mp->param[0]-0x40000)/sizeof(ulong)], mp->param[1]);
-		}
-#endif
-#ifdef ENABBUSTEST
-		/*
-		 * Issue test
-		 */
-		mp = &u->khot;
-		mp->cmd = Ubus;
-		hmp = hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->khot);
-		hotwait(hmp);
-for(;;) ;
-#endif
 	}
 	c->mode = openmode(omode);
 	c->flag |= COPEN;
