@@ -122,10 +122,13 @@ rtctime(void)
 {
 	uchar bcdclock[Nbcd];
 	Rtc rtc;
+	int i;
 
-	outb(Paddr, Status);
-	while(inb(Pdata) & 1)
-		;
+	for(i = 0; i < 10000; i++){
+		outb(Paddr, Status);
+		if((inb(Pdata) & 1) == 0)
+			break;
+	}
 	outb(Paddr, Seconds);	bcdclock[0] = inb(Pdata);
 	outb(Paddr, Minutes);	bcdclock[1] = inb(Pdata);
 	outb(Paddr, Hours);	bcdclock[2] = inb(Pdata);

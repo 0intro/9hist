@@ -495,14 +495,14 @@ unbreak(Proc *p)
 	int b;
 
 	qlock(&broken);
-	for(b=0; b < NBROKEN; b++) {
-		if(broken.p[b] != p)
-			continue;
-
-		broken.n--;
-		memmove(&broken.p[b], &broken.p[b+1], sizeof(Proc*)*(NBROKEN-(b+1)));
-		ready(p);
-	}
+	for(b=0; b < broken.n; b++)
+		if(broken.p[b] != p) {
+			broken.n--;
+			memmove(&broken.p[b], &broken.p[b+1],
+					sizeof(Proc*)*(NBROKEN-(b+1)));
+			ready(p);
+			break;
+		}
 	qunlock(&broken);
 }
 

@@ -258,9 +258,9 @@ intr(Ureg *ur)
 				if(v & (1<<2))
 					lanceintr();
 				if(v & (1<<1))
-					print("SCSI 1 interrupt\n");
+					scsiintr(1);
 				if(v & (1<<0))
-					print("SCSI 0 interrupt\n");
+					scsiintr(0);
 			}
 		}
 		/*
@@ -415,7 +415,7 @@ notify(Ureg *ur)
 	sp = ur->usp - sizeof(Ureg);
 
 	if(sp&0x3 || !okaddr((ulong)u->notify, BY2WD, 0)
-	|| !okaddr(sp-ERRLEN-3*BY2WD, sizeof(Ureg)+ERRLEN-3*BY2WD, 1)) {
+	|| !okaddr(sp-ERRLEN-3*BY2WD, sizeof(Ureg)+ERRLEN+3*BY2WD, 1)) {
 		pprint("suicide: bad address or sp in notify\n");
 		qunlock(&u->p->debug);
 		pexit("Suicide", 0);
