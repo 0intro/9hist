@@ -41,6 +41,8 @@ devdir(Chan *c, Qid qid, char *n, long length, char *user, long perm, Dir *db)
 		db->mode = CHDIR|perm;
 	else
 		db->mode = perm;
+	if(c->flag&CMSG)
+		db->mode |= CHMOUNT;
 	db->atime = seconds();
 	db->mtime = kerndate;
 	db->hlength = 0;
@@ -144,6 +146,8 @@ devstat(Chan *c, char *db, Dirtab *tab, int ntab, Devgen *gen)
 			error(Enonexist);
 		case 1:
 			if(eqqid(c->qid, dir.qid)) {
+				if(c->flag&CMSG)
+					dir.mode |= CHMOUNT;
 				convD2M(&dir, db);
 				return;
 			}

@@ -160,9 +160,10 @@ mntattach(char *muxattach)
 	c = mattach(m, bogus.spec, bogus.serv);
 
 	mc = m->c;
-	if(mc->type == devno('M', 0)) {
+	if(mc->type == devno('M', 0) && (c->qid.path&CHDIR) == 0) {
+		c->qid.path |= CHDIR;
 		c->mntptr = mc->mntptr;
-		c->mchan = c->mntptr->c;
+		c->mchan = mc->mntptr->c;
 		c->mqid = c->qid;
 		incref(c->mntptr);
 		mclose(m);

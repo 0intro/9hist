@@ -157,6 +157,8 @@ netstat(Chan *c, char *db, Network *np)
 			break;
 		case 1:
 			if(eqqid(c->qid, dir.qid)){
+				if(c->flag&CMSG)
+					dir.mode |= CHMOUNT;
 				convD2M(&dir, db);
 				return;
 			}
