@@ -215,7 +215,7 @@ cycletimerinit(void)
 }
 
 /*
- *  return the most precice clock we have
+ *  return the most precise clock we have
  */
 uvlong
 cycletimer(uvlong *hz)
