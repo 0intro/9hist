@@ -136,22 +136,35 @@ srvcreate(char *name, int fd)
 	close(f);
 }
 
+static int
+catchint(void *a, char *note)
+{
+	USED(a);
+	if(strcmp(note, "alarm") == 0)
+		return 1;
+	return 0;
+}
+
 int
 outin(char *prompt, char *def, int len)
 {
 	int n;
 	char buf[256];
 
+	atnotify(catchint, 1);
 	if(cpuflag)
-		alarm(60*1000);
+		alarm(15*1000);
 	do{
 		print("%s[%s]: ", prompt, *def ? def : "no default");
 		n = read(0, buf, len);
+		if(cpuflag)
+			alarm(15*1000);
 	}while(n==0);
 	if(cpuflag)
 		alarm(0);
+	atnotify(catchint, 0);
 	if(n < 0)
-		fatal("can't read #c/cons or timeout; please reboot");
+		return 1;
 	if(n != 1){
 		buf[n-1] = 0;
 		strcpy(def, buf);
