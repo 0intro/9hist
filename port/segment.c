@@ -87,6 +87,7 @@ putseg(Segment *s)
 void
 relocateseg(Segment *s, ulong offset)
 {
+	int i;
 	Pte **p, **endpte;
 	Page **pg, **endpages;
 
@@ -95,8 +96,11 @@ relocateseg(Segment *s, ulong offset)
 		if(*p) {
 			endpages = &((*p)->pages[PTEPERTAB]);
 			for(pg = (*p)->pages; pg < endpages; pg++)
-				if(*pg)
+				if(*pg){
 					(*pg)->va += offset;
+					for(i = 0; i < MAXMACH; i++)
+						(*pg)->cachectl[i] |= PG_DATINVALID;
+				}
 		}
 	}
 }
