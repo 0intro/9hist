@@ -475,15 +475,27 @@ ipifcrem(Ipifc *ifc, char **argv, int argc, int dolock)
 	if(dolock)
 		wlock(ifc);
 
-	/* find address on this interface and remove from chain */
-	lifc = nil;
-	for(l = &ifc->lifc; *l; l = &(*l)->next)
-		if(memcmp(ip, (*l)->local, IPaddrlen) == 0)
-		if(memcmp(mask, (*l)->mask, IPaddrlen) == 0){
-			lifc = *l;
+	/* Are we point to point */
+	type = 0;
+	if(ipcmp(mask, IPallbits) == 0)
+		type = Rptpt;
+
+	/*
+	 *  find address on this interface and remove from chain.
+	 *  for pt to pt we actually specify the remote address at the
+	 *  addresss to remove.
+	 */
+	l = &ifc->lifc;
+	for(lifc = *l; lifc != nil; lifc = lifc->next) {
+		addr = lifc->local;
+		if(type == Rptpt)
+			addr = lifc->remote;
+		if(memcmp(ip, addr, IPaddrlen) == 0 && memcmp(mask, lifc->mask, IPaddrlen) == 0) {
 			*l = lifc->next;
 			break;
 		}
+		l = &lifc->next;
+	}
 
 	if(lifc == nil){
 		if(dolock)
