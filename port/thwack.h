@@ -8,25 +8,20 @@ enum
 	ThwStats	= 8,
 	ThwMaxBlock	= 1600,		/* max size of compressible block */
 
-	MinMatch	= 3,		/* shortest match possible */
 	HashLog		= 12,
 	HashSize	= 1<<HashLog,
 	HashMask	= HashSize - 1,
 
-	MaxFastLen	= 9,
-	BigLenCode	= 0xf4,		/* minimum code for large lenth encoding */
-	BigLenBase	= 4,		/* starting items to encode for big lens */
-	BigLenBits	= 8,
+	MinMatch	= 3,		/* shortest match possible */
+
 	MaxOff		= 8,
 	OffBase		= 6,
 
 	MinDecode	= 8,		/* minimum bits to decode a match or lit; >= 8 */
-	MaxOffDecode	= 4 + MaxOff + OffBase - 1,
-	MaxLenDecode	= 16,
 
 	EWinBlocks	= 32,		/* blocks held in encoder window */
 	DWinBlocks	= 32,		/* blocks held in decoder window */
-	CompBlocks	= 5,		/* max blocks used to encode data */
+	CompBlocks	= 10,		/* max blocks used to encode data */
 
 	MaxSeqMask	= 8,		/* number of bits in coding block mask */
 	MaxSeqStart	= 256		/* max offset of initial coding block */
@@ -70,3 +65,4 @@ void	unthwackinit(Unthwack*);
 int	thwack(Thwack*, uchar *dst, uchar *src, int nsrc, ulong seq, ulong stats[ThwStats]);
 void	thwackack(Thwack*, ulong seq, ulong mask);
 int	unthwack(Unthwack*, uchar *dst, int ndst, uchar *src, int nsrc, ulong seq);
+int	unthwackadd(Unthwack*, uchar *src, int nsrc, ulong seq);

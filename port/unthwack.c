@@ -1,33 +1,57 @@
 #include "u.h"
-#include "../port/lib.h"
+#include "lib.h"
 #include "mem.h"
 #include "dat.h"
 #include "fns.h"
 
 #include "thwack.h"
 
-typedef struct HuffDec		HuffDec;
+/*
+ * don't include compressed blocks
+ */
+#define NOUNCOMP
 
-struct HuffDec
+enum
 {
-	ulong	maxcode[MaxFastLen];
-	ulong	last[MaxFastLen];
-	ulong	decode[MaxFastLen];
+	DMaxFastLen	= 7,
+	DBigLenCode	= 0x3c,		/* minimum code for large lenth encoding */
+	DBigLenBits	= 6,
+	DBigLenBase	= 1		/* starting items to encode for big lens */
 };
 
-static HuffDec lentab = 
+static uchar lenval[1 << (DBigLenBits - 1)] =
 {
-/*	0	1	2	3	4	5	6	7	*/
-	{0,	0,	0x2,	0,	0xd,	0x1c,	0x3b,	0x79},
-	{-1,	0+0,	0x2+1,	-1,	0xd+2,	0x1c+4,	0x3b+5,	0x79+7},
-	{
-		0,
-		1,
-		3, 2,
-		4,
-		6, 5,
-		8, 7,
-	},
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	3, 3, 3, 3, 3, 3, 3, 3,
+	4, 4, 4, 4,
+	5,
+	6,
+	255,
+	255
+};
+
+static uchar lenbits[] =
+{
+	0, 0, 0,
+	2, 3, 5, 5,
+};
+
+static uchar offbits[16] =
+{
+	5, 5, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 12, 13
+};
+
+static ushort offbase[16] =
+{
+	0, 0x20,
+	0x40, 0x60,
+	0x80, 0xc0,
+	0x100, 0x180,
+	0x200, 0x300,
+	0x400, 0x600,
+	0x800, 0xc00,
+	0x1000,
+	0x2000
 };
 
 void
@@ -36,25 +60,55 @@ unthwackinit(Unthwack *ut)
 	int i;
 
 	memset(ut, 0, sizeof *ut);
-	for(i = 0; i < EWinBlocks; i++)
+	for(i = 0; i < DWinBlocks; i++)
 		ut->blocks[i].data = ut->data[i];
+}
+
+int
+unthwackadd(Unthwack *ut, uchar *src, int nsrc, ulong seq)
+{
+	int slot, tslot;
+
+	if(nsrc > ThwMaxBlock)
+		return -1;
+
+#ifndef NOUNCOMP
+	tslot = ut->slot;
+	for(;;){
+		slot = tslot - 1;
+		if(slot < 0)
+			slot += DWinBlocks;
+		if(ut->blocks[slot].seq <= seq)
+			break;
+		ut->blocks[slot] = ut->blocks[tslot];
+		tslot = slot;
+	}
+	ut->blocks[tslot].seq = seq;
+	ut->blocks[tslot].maxoff = nsrc;
+	memmove(ut->blocks[tslot].data, src, nsrc);
+
+	ut->slot++;
+	if(ut->slot >= DWinBlocks)
+		ut->slot = 0;
+#endif
+	return nsrc;
 }
 
 int
 unthwack(Unthwack *ut, uchar *dst, int ndst, uchar *src, int nsrc, ulong seq)
 {
 	UnthwBlock blocks[CompBlocks], *b, *eblocks;
-	uchar *s, *es, *d, *dmax, *smax, lit;
+	uchar *s, *d, *dmax, *smax, lit;
 	ulong cmask, cseq, bseq, utbits, lithist;
-	int off, len, bits, slot, tslot, use, code, utnbits, overbits;
+	int i, off, len, bits, slot, tslot, use, code, utnbits, overbits;
 
 	if(nsrc < 4 || nsrc > ThwMaxBlock)
 		return -1;
 
 	/*
-	 * find the correct slot for this block,
-	 * the oldest block around.  the encoder
-	 * doesn't use a history at wraparound,
+	 * insert this block in it's correct sequence number order.
+	 * replace the oldest block, which is always pointed to by ut->slot.
+	 * the encoder doesn't use a history at wraparound,
 	 * so don't worry about that case.
 	 */
 	tslot = ut->slot;
@@ -64,7 +118,7 @@ unthwack(Unthwack *ut, uchar *dst, int ndst, uchar *src, int nsrc, ulong seq)
 			slot += DWinBlocks;
 		if(ut->blocks[slot].seq <= seq)
 			break;
-		ut->blocks[slot] = ut->blocks[slot];
+		ut->blocks[slot] = ut->blocks[tslot];
 		tslot = slot;
 	}
 	b = blocks;
@@ -104,7 +158,7 @@ unthwack(Unthwack *ut, uchar *dst, int ndst, uchar *src, int nsrc, ulong seq)
 	}
 	eblocks = b;
 	if(cseq != seq){
-		print("blocks not in decompression window: cseq=%ld seq=%ld cmask=%lux nb=%ld\n", cseq, seq, cmask, eblocks - blocks);
+		print("blocks not in decompression window: cseq=%ld seq=%ld cmask=%lx nb=%ld\n", cseq, seq, cmask, eblocks - blocks);
 		return -1;
 	}
 
@@ -127,7 +181,8 @@ unthwack(Unthwack *ut, uchar *dst, int ndst, uchar *src, int nsrc, ulong seq)
 		/*
 		 * literal
 		 */
-		if(((utbits >> (utnbits - 1)) & 1) == 0){
+		len = lenval[(utbits >> (utnbits - 5)) & 0x1f];
+		if(len == 0){
 			if(lithist & 0xf){
 				utnbits -= 9;
 				lit = (utbits >> utnbits) & 0xff;
@@ -153,33 +208,28 @@ unthwack(Unthwack *ut, uchar *dst, int ndst, uchar *src, int nsrc, ulong seq)
 		}
 
 		/*
-		 * match; next 3 bits decode offset range
+		 * length
 		 */
-		utnbits -= 4;
-		bits = (utbits >> utnbits) & ((1 << 3) - 1);
-		if(bits){
-			bits += OffBase - 1;
-			off = 1 << bits;
-		}else{
-			bits = OffBase;
-			off = 0;
-		}
-		utnbits -= bits;
-		off |= (utbits >> utnbits) & ((1 << bits) - 1);
-		off++;
-
-		bits = 0;
-		utbits &= (1 << utnbits) - 1;
-		do{
-			bits++;
-			len = utbits >> (utnbits - bits);
-		}while(bits < BigLenBits && len > lentab.maxcode[bits]);
-		utnbits -= bits;
-
-		if(bits < BigLenBits)
-			len = lentab.decode[lentab.last[bits] - len];
+		if(len < 255)
+			utnbits -= lenbits[len];
 		else{
-			while(utnbits < MaxLenDecode){
+			utnbits -= DBigLenBits;
+			code = ((utbits >> utnbits) & ((1 << DBigLenBits) - 1)) - DBigLenCode;
+			len = DMaxFastLen;
+			use = DBigLenBase;
+			bits = (DBigLenBits & 1) ^ 1;
+			while(code >= use){
+				len += use;
+				code -= use;
+				code <<= 1;
+				utnbits--;
+				code |= (utbits >> utnbits) & 1;
+				use <<= bits;
+				bits ^= 1;
+			}
+			len += code;
+
+			while(utnbits <= 24){
 				utbits <<= 8;
 				if(src < smax)
 					utbits |= *src++;
@@ -187,24 +237,19 @@ unthwack(Unthwack *ut, uchar *dst, int ndst, uchar *src, int nsrc, ulong seq)
 					overbits += 8;
 				utnbits += 8;
 			}
-
-			code = len - BigLenCode;
-			len = MaxFastLen;
-			bits = 8;
-			use = BigLenBase;
-			while(code >= use){
-				len += use;
-				code -= use;
-				code <<= 1;
-				utnbits--;
-				code |= (utbits >> utnbits) & 1;
-				use <<= bits & 1;
-				bits++;
-			}
-			len += code;
 		}
 
-		len += MinMatch;
+		/*
+		 * offset
+		 */
+		utnbits -= 4;
+		bits = (utbits >> utnbits) & 0xf;
+		off = offbase[bits];
+		bits = offbits[bits];
+
+		utnbits -= bits;
+		off |= (utbits >> utnbits) & ((1 << bits) - 1);
+		off++;
 
 		b = blocks;
 		while(off > b->maxoff){
@@ -217,10 +262,11 @@ unthwack(Unthwack *ut, uchar *dst, int ndst, uchar *src, int nsrc, ulong seq)
 		|| b != blocks && len > off)
 			return -1;
 		s = b->data + b->maxoff - off;
-		es = s + len;
-		while(s < es)
-			*d++ = *s++;
 		blocks->maxoff += len;
+
+		for(i = 0; i < len; i++)
+			d[i] = s[i];
+		d += len;
 	}
 	if(utnbits < overbits)
 		return -1;

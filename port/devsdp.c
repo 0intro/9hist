@@ -1737,7 +1737,7 @@ writedata(Conv *c, Block *b)
 	c->lstats.outDataPackets++;
 	c->lstats.outDataBytes += n;
 
-	if(0 && c->out.comp != nil) {
+	if(c->out.comp != nil) {
 		// must generate same value as convoput
 		seq = (c->out.seq + 1) & (SeqMax-1);
 

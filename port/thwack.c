@@ -1,12 +1,25 @@
 #include "u.h"
-#include "../port/lib.h"
+#include "lib.h"
 #include "mem.h"
 #include "dat.h"
 #include "fns.h"
 
 #include "thwack.h"
 
+/*
+ * don't include compressed blocks
+ */
+#define NOUNCOMP
+
 typedef struct Huff	Huff;
+
+enum
+{
+	MaxFastLen	= 9,
+	BigLenCode	= 0x1f4,	/* minimum code for large lenth encoding */
+	BigLenBits	= 9,
+	BigLenBase	= 4		/* starting items to encode for big lens */
+};
 
 enum
 {
@@ -32,15 +45,15 @@ struct Huff
 
 static	Huff	lentab[MaxFastLen] =
 {
-	{1,	0x0},		/* 0 */
 	{2,	0x2},		/* 10 */
-	{4,	0xc},		/* 1100 */
-	{4,	0xd},		/* 1101 */
+	{3,	0x6},		/* 110 */
 	{5,	0x1c},		/* 11100 */
-	{6,	0x3a},		/* 111010 */
-	{6,	0x3b},		/* 111011 */
-	{7,	0x78},		/* 1111000 */
-	{7,	0x79},		/* 1111001 */
+	{5,	0x1d},		/* 11101 */
+	{6,	0x3c},		/* 111100 */
+	{7,	0x7a},		/* 1111010 */
+	{7,	0x7b},		/* 1111011 */
+	{8,	0xf8},		/* 11111000 */
+	{8,	0xf9},		/* 11111001 */
 };
 
 void
@@ -215,6 +228,12 @@ thwack(Thwack *tw, uchar *dst, uchar *src, int n, ulong seq, ulong stats[ThwStat
 	*twdst++ = seq - cseq;
 	*twdst++ = cmask;
 
+#ifndef NOUNCOMP
+	tw->slot++;
+	if(tw->slot >= EWinBlocks)
+		tw->slot = 0;
+#endif
+
 	cont = (s[0] << 16) | (s[1] << 8) | s[2];
 
 	esrc = s + n;
@@ -261,6 +280,7 @@ thwack(Thwack *tw, uchar *dst, uchar *src, int n, ulong seq, ulong stats[ThwStat
 			lits++;
 			blocks->maxoff++;
 
+#ifdef NOUNCOMP
 			/*
 			 * speed hack
 			 * check for compression progress, bail if none achieved
@@ -270,6 +290,7 @@ thwack(Thwack *tw, uchar *dst, uchar *src, int n, ulong seq, ulong stats[ThwStat
 					return -1;
 				half = esrc;
 			}
+#endif
 
 			if(s + MinMatch <= esrc){
 				blocks->hash[(h ^ blocks->seq) & HashMask] = now;
@@ -284,18 +305,9 @@ thwack(Thwack *tw, uchar *dst, uchar *src, int n, ulong seq, ulong stats[ThwStat
 		blocks->maxoff += len;
 		matches++;
 
-		toff--;
-		for(bits = OffBase; toff >= (1 << bits); bits++)
-			;
-		if(bits >= MaxOff+OffBase)
-			panic("thwack offset");
-		twbits = (twbits << 4) | 0x8 | (bits - OffBase);
-		if(bits != OffBase)
-			bits--;
-		twbits = (twbits << bits) | toff & ((1 << bits) - 1);
-		twnbits += bits + 4;
-		offbits += bits + 4;
-
+		/*
+		 * length of match
+		 */
 		len -= MinMatch;
 		if(len < MaxFastLen){
 			bits = lentab[len].bits;
@@ -303,11 +315,6 @@ thwack(Thwack *tw, uchar *dst, uchar *src, int n, ulong seq, ulong stats[ThwStat
 			twnbits += bits;
 			lenbits += bits;
 		}else{
-			for(; twnbits >= 8; twnbits -= 8){
-				if(twdst >= twdmax)
-					return -1;
-				*twdst++ = twbits >> (twnbits - 8);
-			}
 			code = BigLenCode;
 			bits = BigLenBits;
 			use = BigLenBase;
@@ -315,15 +322,39 @@ thwack(Thwack *tw, uchar *dst, uchar *src, int n, ulong seq, ulong stats[ThwStat
 			while(len >= use){
 				len -= use;
 				code = (code + use) << 1;
-				use <<= bits & 1;
+				use <<= (bits & 1) ^ 1;
 				bits++;
 			}
-			if(bits > MaxLenDecode + BigLenBits)
-				panic("length too big");
 			twbits = (twbits << bits) | (code + len);
 			twnbits += bits;
 			lenbits += bits;
+
+			for(; twnbits >= 8; twnbits -= 8){
+				if(twdst >= twdmax)
+					return -1;
+				*twdst++ = twbits >> (twnbits - 8);
+			}
 		}
+
+		/*
+		 * offset in history
+		 */
+		toff--;
+		for(bits = OffBase; toff >= (1 << bits); bits++)
+			;
+		if(bits < MaxOff+OffBase-1){
+			twbits = (twbits << 3) | (bits - OffBase);
+			if(bits != OffBase)
+				bits--;
+			twnbits += bits + 3;
+			offbits += bits + 3;
+		}else{
+			twbits = (twbits << 4) | 0xe | (bits - (MaxOff+OffBase-1));
+			bits--;
+			twnbits += bits + 4;
+			offbits += bits + 4;
+		}
+		twbits = (twbits << bits) | toff & ((1 << bits) - 1);
 
 		for(; s != ss; s++){
 			if(s + MinMatch <= esrc){
@@ -353,9 +384,11 @@ thwack(Thwack *tw, uchar *dst, uchar *src, int n, ulong seq, ulong stats[ThwStat
 		*twdst++ = twbits >> (twnbits - 8);
 	}
 
+#ifdef NOUNCOMP
 	tw->slot++;
 	if(tw->slot >= EWinBlocks)
 		tw->slot = 0;
+#endif
 
 	stats[StatOutBytes] += twdst - dst;
 
