@@ -9,7 +9,7 @@ struct Ether {
 
 	void	(*attach)(Ether*);	/* filled in by reset routine */
 	long	(*write)(Ether*, void*, long);
-	void	(*interrupt)(Ether*);
+	void	(*interrupt)(Ureg*, void*);
 	void	*private;
 
 	Etherpkt tpkt;			/* transmit buffer */

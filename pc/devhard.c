@@ -121,7 +121,7 @@ struct Controller
 Controller	*hardc;
 Drive		*hard;
 
-static void	hardintr(Ureg*);
+static void	hardintr(Ureg*, void*);
 static long	hardxfer(Drive*, Partition*, int, long, long, char*);
 static void	hardident(Drive*);
 static void	hardsetbuf(Drive*, int);
@@ -194,7 +194,7 @@ hardreset(void)
 			cp->lastcmd = cp->cmd;
 			cp->cmd = 0;
 			cp->pbase = Pbase + (cp-hardc)*8;	/* BUG!! guessing */
-			setvec(Hardvec + (cp-hardc)*8, hardintr); /* BUG!! guessing */
+			setvec(Hardvec + (cp-hardc)*8, hardintr, 0); /* BUG!! guessing */
 		}
 	}
 }
@@ -909,18 +909,18 @@ hardpart(Drive *dp)
  *  we get an interrupt for every sector transferred
  */
 static void
-hardintr(Ureg *ur)
+hardintr(Ureg *ur, void *arg)
 {
 	Controller *cp;
 	Drive *dp;
 	long loop;
 	char *addr;
 
-	USED(ur);
+	USED(ur, arg);
 
 	/*
  	 *  BUG!! if there is ever more than one controller, we need a way to
-	 *	  distinguish which interrupted
+	 *	  distinguish which interrupted (use arg).
 	 */
 	cp = &hardc[0];
 	dp = cp->dp;

@@ -8,8 +8,8 @@
 
 int faulting;
 
-void
-fault386(Ureg *ur)
+static void
+fault386(Ureg *ur, void *arg)
 {
 	ulong addr;
 	int read;
@@ -17,6 +17,8 @@ fault386(Ureg *ur)
 	int n;
 	int insyscall;
 	char buf[ERRLEN];
+
+	USED(arg);
 
 	insyscall = up->insyscall;
 	up->insyscall = 1;
@@ -43,5 +45,5 @@ print("fault: 0x%lux", addr);
 void
 faultinit(void)
 {
-	setvec(Faultvec, fault386);
+	setvec(Faultvec, fault386, 0);
 }

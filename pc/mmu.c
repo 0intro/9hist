@@ -227,11 +227,9 @@ mmuswitch(Proc *p)
 		taskswitch(ktoppg.pa, (ulong)(p->kstack+KSTACK));
 }
 
-void
+static void
 simpleputpage(Page *pg)
 {
-	Rendez *r;
-
 	if(pg->ref != 1)
 		panic("simpleputpage");
 
@@ -247,10 +245,9 @@ simpleputpage(Page *pg)
 	palloc.head = pg;
 	pg->prev = 0;
 
-	palloc.freecol[pg->color]++;
-	r = &palloc.r[pg->color];
-	if(r->p != 0)
-		wakeup(r);
+	palloc.freecount++;
+	if(palloc.r.p != 0)
+		wakeup(&palloc.r);
 }
 
 /*

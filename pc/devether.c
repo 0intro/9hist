@@ -162,25 +162,6 @@ etherwrite(Chan *c, void *buf, long n, ulong offset)
 	return n;
 }
 
-static void
-etherintr(Ureg *ur)
-{
-	int i, irq;
-
-	/*
-	 * Call all ethernet interrupt routines on this IRQ.
-	 * Might be better if setvec() took an argument which
-	 * was passed down to the interrupt routine when
-	 * called. This would let us easily distinguish multiple
-	 * controllers. A hack by any other name...
-	 */
-	irq = ur->trap-Int0vec;
-	for(i = 0; i < MaxEther; i++){
-		if(ether[i] && ether[i]->irq == irq)
-			(*ether[i]->interrupt)(ether[i]);
-	}
-}
-
 static struct {
 	char	*type;
 	int	(*reset)(Ether*);
@@ -222,15 +203,11 @@ etherreset(void)
 			 * IRQ2 doesn't really exist, it's used to gang the interrupt
 			 * controllers together. A device set to IRQ2 will appear on
 			 * the second interrupt controller as IRQ9.
-			 * If there are multiple controllers on the same IRQ, only
-			 * call setvec() for one of them, etherintr() will scan through
-			 * all the controllers looking for those at the IRQ it was
-			 * called with. This is a hack, see the comments in etherintr().
 			 */
 			if(ctlr->irq == 2)
 				ctlr->irq = 9;
 			if((irqmask & (1<<ctlr->irq)) == 0){
-				setvec(Int0vec+ctlr->irq, etherintr);
+				setvec(Int0vec+ctlr->irq, ctlr->interrupt, ctlr);
 				irqmask |= 1<<ctlr->irq;
 			}
 

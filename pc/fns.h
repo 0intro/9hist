@@ -5,7 +5,6 @@ void	bbinit(void);
 void	bigcursor(void);
 void	bootargs(ulong);
 #define	clearmmucache()		/* 386 doesn't have one */
-void	clock(Ureg*);
 void	clockinit(void);
 void	config(int);
 int	cpuspeed(int);
@@ -14,7 +13,6 @@ void	dmaend(int);
 void	dmainit(void);
 long	dmasetup(int, void*, long, int);
 #define	evenaddr(x)		/* 386 doesn't care */
-void	fault386(Ureg*);
 void	faultinit(void);
 void	fclock(Ureg*);
 void	fclockinit(void);
@@ -77,15 +75,13 @@ void	puttr(ulong);
 void	screeninit(void);
 void	screenputs(char*, int);
 int	serial(int);
-void	setvec(int, void (*)(Ureg*));
+void	setvec(int, void (*)(Ureg*, void*), void*);
+void	syscall(Ureg*, void*);
 void	systrap(void);
 void	toscreen(void*);
 void	touser(void*);
 void	trapinit(void);
 int	tas(void*);
-void	uartclock(void);
-void	uartintr0(Ureg*);
-void	uartspecial(int, IOQ*, IOQ*, int);
 void	vgainit(void);
 #define	waserror()	(up->nerrlab++, setlabel(&up->errlab[up->nerrlab-1]))
 #define	kmapperm(x)	kmap(x)

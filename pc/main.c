@@ -413,12 +413,14 @@ char *mathmsg[] =
  *  math coprocessor error
  */
 void
-matherror(Ureg *ur)
+matherror(Ureg *ur, void *arg)
 {
 	ulong status;
 	int i;
 	char *msg;
 	char note[ERRLEN];
+
+	USED(arg);
 
 	/*
 	 *  a write cycle to port 0xF0 clears the interrupt latch attached
@@ -453,9 +455,9 @@ matherror(Ureg *ur)
  *  math coprocessor emulation fault
  */
 void
-mathemu(Ureg *ur)
+mathemu(Ureg *ur, void *arg)
 {
-	USED(ur);
+	USED(ur, arg);
 	switch(up->fpstate){
 	case FPinit:
 		fpinit();
@@ -475,9 +477,9 @@ mathemu(Ureg *ur)
  *  math coprocessor segment overrun
  */
 void
-mathover(Ureg *ur)
+mathover(Ureg *ur, void *arg)
 {
-	USED(ur);
+	USED(ur, arg);
 print("sys: fp: math overrun pc 0x%lux pid %d\n", ur->pc, up->pid);
 	pexit("math overrun", 0);
 }
@@ -485,10 +487,10 @@ print("sys: fp: math overrun pc 0x%lux pid %d\n", ur->pc, up->pid);
 void
 mathinit(void)
 {
-	setvec(Matherr1vec, matherror);
-	setvec(Matherr2vec, matherror);
-	setvec(Mathemuvec, mathemu);
-	setvec(Mathovervec, mathover);
+	setvec(Matherr1vec, matherror, 0);
+	setvec(Matherr2vec, matherror, 0);
+	setvec(Mathemuvec, mathemu, 0);
+	setvec(Mathovervec, mathover, 0);
 }
 
 /*

@@ -2,6 +2,7 @@
 
 void	arginit(void);
 void	clearmmucache(void);
+void	clock(Ureg*);
 void	clockinit(void);
 ulong	confeval(char*);
 void	confread(void);
@@ -64,6 +65,7 @@ void	setvmevec(int, void (*)(int));
 void	sinit(void);
 uchar*	smap(int, uchar*);
 void	sunmap(int, uchar*);
+long	syscall(Ureg*);
 void	sysloginit(void);
 void	syslog(char*, int);
 void	tlbinit(void);

@@ -189,7 +189,7 @@ Controller	fl;
  */
 static int	floppycmd(void);
 static void	floppyeject(Drive*);
-static void	floppyintr(Ureg*);
+static void	floppyintr(Ureg*, void*);
 static void	floppykproc(void*);
 static void	floppyon(Drive*);
 static void	floppyoff(Drive*);
@@ -304,7 +304,7 @@ floppyreset(void)
 	 *  first operation will recalibrate
 	 */
 	fl.confused = 1;
-	setvec(Floppyvec, floppyintr);
+	setvec(Floppyvec, floppyintr, 0);
 }
 
 void
@@ -791,7 +791,7 @@ floppywait(void)
 {
 	tsleep(&fl.r, cmddone, 0, 5000);
 	if(!cmddone(0)){
-		floppyintr(0);
+		floppyintr(0, 0);
 		fl.confused = 1;
 	}
 }
@@ -1119,9 +1119,9 @@ floppyformat(Drive *dp, char *params)
 }
 
 static void
-floppyintr(Ureg *ur)
+floppyintr(Ureg *ur, void *arg)
 {
-	USED(ur);
+	USED(ur, arg);
 	switch(fl.cmd[0]&~Fmulti){
 	case Fread:
 	case Fwrite:

@@ -9,7 +9,6 @@ typedef struct Evalue	Evalue;
 typedef struct Fgrp	Fgrp;
 typedef struct Image	Image;
 typedef struct IOQ	IOQ;
-typedef struct KIOQ	KIOQ;
 typedef struct List	List;
 typedef struct Mntcache Mntcache;
 typedef struct Mount	Mount;
@@ -33,9 +32,6 @@ typedef struct Ref	Ref;
 typedef struct Rendez	Rendez;
 typedef struct RWlock	RWlock;
 typedef struct Sargs	Sargs;
-typedef struct Scsi	Scsi;
-typedef struct Scsibuf	Scsibuf;
-typedef struct Scsidata	Scsidata;
 typedef struct Segment	Segment;
 typedef struct Session	Session;
 typedef struct Talarm	Talarm;
@@ -172,53 +168,6 @@ struct Dirtab
 	Qid	qid;
 	long	length;
 	long	perm;
-};
-
-/* SCSI devices. */
-enum
-{
-	ScsiTestunit	= 0x00,
-	ScsiExtsens	= 0x03,
-	ScsiInquiry	= 0x12,
-	ScsiModesense	= 0x1a,
-	ScsiStartunit	= 0x1B,
-	ScsiStopunit	= 0x1B,
-	ScsiGetcap	= 0x25,
-	ScsiRead	= 0x08,
-	ScsiWrite	= 0x0a,
-
-	/* data direction */
-	ScsiIn		= 1,
-	ScsiOut		= 0,
-};
-
-struct Scsibuf
-{
-	void*		virt;
-	void*		phys;
-	Scsibuf*	next;
-};
-
-struct Scsidata
-{
-	uchar*		base;
-	uchar*		lim;
-	uchar*		ptr;
-};
-
-struct Scsi
-{
-	QLock;
-	ulong		pid;
-	ushort		target;
-	ushort		lun;
-	ushort		rflag;
-	ushort		status;
-	Scsidata 	cmd;
-	Scsidata 	data;
-	Scsibuf*	b;
-	uchar*		save;
-	uchar		cmdblk[16];
 };
 
 enum

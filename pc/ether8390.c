@@ -554,12 +554,16 @@ overflow(Ether *ether)
 }
 
 static void
-interrupt(Ether *ether)
+interrupt(Ureg *ur, void *arg)
 {
+	Ether *ether;
 	Dp8390 *dp8390;
 	ulong port;
 	uchar isr, r;
 
+	USED(ur);
+
+	ether = arg;
 	dp8390 = ether->private;
 	port = dp8390->dp8390;
 

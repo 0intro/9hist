@@ -130,9 +130,6 @@ enum
 	Ckbdint=	(1<<0),		/* kbd interrupt enable */
 };
 
-static void	kbdintr(Ureg*);
-static void	ctps2intr(Ureg*);
-
 extern int m3mouseputc(IOQ*, int), mouseputc(IOQ*, int);
 
 /*
@@ -235,41 +232,6 @@ i8042reset(void)
 	outready();
 }
 
-
-void
-kbdinit(void)
-{
-	int c;
-
-	kbdq = qopen(4*1024, 0, 0, 0);
-
-	setvec(Kbdvec, kbdintr);
-
-	/* wait for a quiescent controller */
-	while((c = inb(Status)) & (Outbusy | Inready))
-		if(c & Inready)
-			inb(Data);
-
-	/* get current controller command byte */
-	outb(Cmd, 0x20);
-	if(inready() < 0){
-		print("kbdinit: can't read ccc\n");
-		ccc = 0;
-	} else
-		ccc = inb(Data);
-
-	/* enable kbd xfers and interrupts */
-	ccc &= ~Ckbddis;
-	ccc |= Csf | Ckbdint | Cscs1;
-	if(outready() < 0)
-		print("kbd init failed\n");
-	outb(Cmd, 0x60);
-	if(outready() < 0)
-		print("kbd init failed\n");
-	outb(Data, ccc);
-	outready();
-}
-
 /*
  *  setup a serial mouse
  */
@@ -290,93 +252,6 @@ serialmouse(int port, char *type, int setspeed)
 	else
 		NS16552special(port, setspeed, &mouseq, 0, mouseputc);
 	mousetype = Mouseserial;
-}
-
-static void nop(void){};
-
-/*
- *  look for a chips & technologies 82c710 ps2 mouse on a TI travelmate
- */
-static int
-ct82c710(void)
-{
-	int c;
-
-	/* on non-C&T 2fa and 3fa are input only ports */
-	/* get chips attention */
-	outb(0x2fa, 0x55); nop(); nop();
-	outb(0x3fa, ~0x55); nop(); nop();
-	outb(0x3fa, 0x36); nop(); nop();
-
-	/* tell it where its config register should be */
-	outb(0x3fa, 0x390>>2); nop(); nop();
-	outb(0x2fa, ~(0x390>>2)); nop(); nop();
-
-	/* see if this is really a 710 */
-	outb(0x390, 0xf); nop(); nop();
-	if(inb(0x391) != (0x390>>2))
-		return -1;
-
-	/* get data port address */
-	outb(0x390, 0xd); nop(); nop();
-	c = inb(0x391);
-	if(c == 0 || c == 0xff)
-		return -1;
-	ctport = c<<2;
-
-	/* turn off config mode */
-	outb(0x390, 0xf); nop(); nop();
-	outb(0x391, 0xf);
-
-	setvec(Mousevec, ctps2intr);
-
-	/* enable for interrupts */
-	c = inb(ctport + CTstatus);
-	c &= ~(Clear|Reset);
-	c |= Enable|Intenable;
-	outb(ctport + CTstatus, c);
-
-	mousetype = MousePS2;
-	return 0;
-}
-
-/*
- *  set up a ps2 mouse
- */
-static void
-ps2mouse(void)
-{
-	int x;
-
-	if(mousetype)
-		error(Emouseset);
-
-	if(ct82c710() == 0)
-		return;
-
-	/* enable kbd/mouse xfers and interrupts */
-	setvec(Mousevec, kbdintr);
-	x = splhi();
-	ccc &= ~Cmousedis;
-	ccc |= Cmouseint;
-	if(outready() < 0)
-		print("mouse init failed\n");
-	outb(Cmd, 0x60);
-	if(outready() < 0)
-		print("mouse init failed\n");
-	outb(Data, ccc);
-	if(outready() < 0)
-		print("mouse init failed\n");
-	outb(Cmd, 0xA8);
-	if(outready() < 0)
-		print("mouse init failed\n");
-
-	/* make mouse streaming, enabled */
-	mousecmd(0xEA);
-	mousecmd(0xF4);
-	splx(x);
-
-	mousetype = MousePS2;
 }
 
 /*
@@ -416,6 +291,254 @@ ps2mouseputc(int c)
 		mousetrack(buttons, dx, dy);
 	}
 	return 0;
+}
+
+static void
+ctps2intr(Ureg *ur, void *arg)
+{
+	uchar c;
+
+	USED(ur, arg);
+	c = inb(ctport + CTstatus);
+	if(c & Error)
+		return;
+	if((c & Rready) == 0)
+		return;
+	c = inb(ctport + CTdata);
+	ps2mouseputc(c);
+}
+
+static void nop(void){};
+
+/*
+ *  look for a chips & technologies 82c710 ps2 mouse on a TI travelmate
+ */
+static int
+ct82c710(void)
+{
+	int c;
+
+	/* on non-C&T 2fa and 3fa are input only ports */
+	/* get chips attention */
+	outb(0x2fa, 0x55); nop(); nop();
+	outb(0x3fa, ~0x55); nop(); nop();
+	outb(0x3fa, 0x36); nop(); nop();
+
+	/* tell it where its config register should be */
+	outb(0x3fa, 0x390>>2); nop(); nop();
+	outb(0x2fa, ~(0x390>>2)); nop(); nop();
+
+	/* see if this is really a 710 */
+	outb(0x390, 0xf); nop(); nop();
+	if(inb(0x391) != (0x390>>2))
+		return -1;
+
+	/* get data port address */
+	outb(0x390, 0xd); nop(); nop();
+	c = inb(0x391);
+	if(c == 0 || c == 0xff)
+		return -1;
+	ctport = c<<2;
+
+	/* turn off config mode */
+	outb(0x390, 0xf); nop(); nop();
+	outb(0x391, 0xf);
+
+	setvec(Mousevec, ctps2intr, 0);
+
+	/* enable for interrupts */
+	c = inb(ctport + CTstatus);
+	c &= ~(Clear|Reset);
+	c |= Enable|Intenable;
+	outb(ctport + CTstatus, c);
+
+	mousetype = MousePS2;
+	return 0;
+}
+
+/*
+ *  keyboard interrupt
+ */
+static void
+kbdintr(Ureg *ur, void *arg)
+{
+	int s, c, i, nk;
+	static int esc1, esc2;
+	static int caps;
+	static int ctl;
+	static int num;
+	static int lstate;
+	static uchar kc[5];
+	int keyup;
+
+	USED(ur, arg);
+
+	/*
+	 *  get status
+	 */
+	s = inb(Status);
+	if(!(s&Inready))
+		return;
+
+	/*
+	 *  get the character
+	 */
+	c = inb(Data);
+
+	/*
+	 *  if it's the mouse...
+	 */
+	if(s & Minready){
+		ps2mouseputc(c);
+		return;
+	}
+
+	/*
+	 *  e0's is the first of a 2 character sequence
+	 */
+	if(c == 0xe0){
+		esc1 = 1;
+		return;
+	} else if(c == 0xe1){
+		esc2 = 2;
+		return;
+	}
+
+	keyup = c&0x80;
+	c &= 0x7f;
+	if(c > sizeof kbtab){
+		print("unknown key %ux\n", c|keyup);
+		return;
+	}
+
+	if(esc1){
+		c = kbtabesc1[c];
+		esc1 = 0;
+	} else if(esc2){
+		esc2--;
+		return;
+	} else if(shift)
+		c = kbtabshift[c];
+	else
+		c = kbtab[c];
+
+	if(caps && c<='z' && c>='a')
+		c += 'A' - 'a';
+
+	/*
+	 *  keyup only important for shifts
+	 */
+	if(keyup){
+		switch(c){
+		case Shift:
+			mouseshifted = shift = 0;
+			break;
+		case Ctrl:
+			ctl = 0;
+			break;
+		}
+		return;
+	}
+
+	/*
+ 	 *  normal character
+	 */
+	if(!(c & Spec)){
+		if(ctl)
+			c &= 0x1f;
+		switch(lstate){
+		case 1:
+			kc[0] = c;
+			lstate = 2;
+			if(c == 'X')
+				lstate = 3;
+			break;
+		case 2:
+			kc[1] = c;
+			c = latin1(kc);
+			nk = 2;
+		putit:
+			lstate = 0;
+			if(c != -1)
+				kbdputc(kbdq, c);
+			else for(i=0; i<nk; i++)
+				kbdputc(kbdq, kc[i]);
+			break;
+		case 3:
+		case 4:
+		case 5:
+			kc[lstate-2] = c;
+			lstate++;
+			break;
+		case 6:
+			kc[4] = c;
+			c = unicode(kc);
+			nk = 5;
+			goto putit;
+		default:
+			kbdputc(kbdq, c);
+			break;
+		}
+		return;
+	} else {
+		switch(c){
+		case Caps:
+			caps ^= 1;
+			return;
+		case Num:
+			num ^= 1;
+			return;
+		case Shift:
+			mouseshifted = shift = 1;
+			return;
+		case Latin:
+			lstate = 1;
+			return;
+		case Ctrl:
+			ctl = 1;
+			return;
+		}
+	}
+	kbdputc(kbdq, c);
+}
+
+/*
+ *  set up a ps2 mouse
+ */
+static void
+ps2mouse(void)
+{
+	int x;
+
+	if(mousetype)
+		error(Emouseset);
+
+	if(ct82c710() == 0)
+		return;
+
+	/* enable kbd/mouse xfers and interrupts */
+	setvec(Mousevec, kbdintr, 0);
+	x = splhi();
+	ccc &= ~Cmousedis;
+	ccc |= Cmouseint;
+	if(outready() < 0)
+		print("mouse init failed\n");
+	outb(Cmd, 0x60);
+	if(outready() < 0)
+		print("mouse init failed\n");
+	outb(Data, ccc);
+	if(outready() < 0)
+		print("mouse init failed\n");
+	outb(Cmd, 0xA8);
+	if(outready() < 0)
+		print("mouse init failed\n");
+
+	/* make mouse streaming, enabled */
+	mousecmd(0xEA);
+	mousecmd(0xF4);
+	splx(x);
+
+	mousetype = MousePS2;
 }
 
 /*
@@ -475,169 +598,36 @@ mousectl(char *arg)
 	}
 }
 
-/*
- *  keyboard interrupt
- */
-int
-kbdintr0(void)
-{
-	int s, c, i, nk;
-	static int esc1, esc2;
-	static int caps;
-	static int ctl;
-	static int num;
-	static int lstate;
-	static uchar kc[5];
-	int keyup;
-
-	/*
-	 *  get status
-	 */
-	s = inb(Status);
-	if(!(s&Inready))
-		return -1;
-
-	/*
-	 *  get the character
-	 */
-	c = inb(Data);
-
-	/*
-	 *  if it's the mouse...
-	 */
-	if(s & Minready){
-		ps2mouseputc(c);
-		return 0;
-	}
-
-	/*
-	 *  e0's is the first of a 2 character sequence
-	 */
-	if(c == 0xe0){
-		esc1 = 1;
-		return 0;
-	} else if(c == 0xe1){
-		esc2 = 2;
-		return 0;
-	}
-
-	keyup = c&0x80;
-	c &= 0x7f;
-	if(c > sizeof kbtab){
-		print("unknown key %ux\n", c|keyup);
-		return 0;
-	}
-
-	if(esc1){
-		c = kbtabesc1[c];
-		esc1 = 0;
-	} else if(esc2){
-		esc2--;
-		return 0;
-	} else if(shift)
-		c = kbtabshift[c];
-	else
-		c = kbtab[c];
-
-	if(caps && c<='z' && c>='a')
-		c += 'A' - 'a';
-
-	/*
-	 *  keyup only important for shifts
-	 */
-	if(keyup){
-		switch(c){
-		case Shift:
-			mouseshifted = shift = 0;
-			break;
-		case Ctrl:
-			ctl = 0;
-			break;
-		}
-		return 0;
-	}
-
-	/*
- 	 *  normal character
-	 */
-	if(!(c & Spec)){
-		if(ctl)
-			c &= 0x1f;
-		switch(lstate){
-		case 1:
-			kc[0] = c;
-			lstate = 2;
-			if(c == 'X')
-				lstate = 3;
-			break;
-		case 2:
-			kc[1] = c;
-			c = latin1(kc);
-			nk = 2;
-		putit:
-			lstate = 0;
-			if(c != -1)
-				kbdputc(kbdq, c);
-			else for(i=0; i<nk; i++)
-				kbdputc(kbdq, kc[i]);
-			break;
-		case 3:
-		case 4:
-		case 5:
-			kc[lstate-2] = c;
-			lstate++;
-			break;
-		case 6:
-			kc[4] = c;
-			c = unicode(kc);
-			nk = 5;
-			goto putit;
-		default:
-			kbdputc(kbdq, c);
-			break;
-		}
-		return 0;
-	} else {
-		switch(c){
-		case Caps:
-			caps ^= 1;
-			return 0;
-		case Num:
-			num ^= 1;
-			return 0;
-		case Shift:
-			mouseshifted = shift = 1;
-			return 0;
-		case Latin:
-			lstate = 1;
-			return 0;
-		case Ctrl:
-			ctl = 1;
-			return 0;
-		}
-	}
-	kbdputc(kbdq, c);
-	return 0;
-}
-
 void
-kbdintr(Ureg *ur)
+kbdinit(void)
 {
-	USED(ur);
-	kbdintr0();
-}
+	int c;
 
-void
-ctps2intr(Ureg *ur)
-{
-	uchar c;
+	kbdq = qopen(4*1024, 0, 0, 0);
 
-	USED(ur);
-	c = inb(ctport + CTstatus);
-	if(c & Error)
-		return;
-	if((c & Rready) == 0)
-		return;
-	c = inb(ctport + CTdata);
-	ps2mouseputc(c);
+	setvec(Kbdvec, kbdintr, 0);
+
+	/* wait for a quiescent controller */
+	while((c = inb(Status)) & (Outbusy | Inready))
+		if(c & Inready)
+			inb(Data);
+
+	/* get current controller command byte */
+	outb(Cmd, 0x20);
+	if(inready() < 0){
+		print("kbdinit: can't read ccc\n");
+		ccc = 0;
+	} else
+		ccc = inb(Data);
+
+	/* enable kbd xfers and interrupts */
+	ccc &= ~Ckbddis;
+	ccc |= Csf | Ckbdint | Cscs1;
+	if(outready() < 0)
+		print("kbd init failed\n");
+	outb(Cmd, 0x60);
+	if(outready() < 0)
+		print("kbd init failed\n");
+	outb(Data, ccc);
+	outready();
 }

@@ -48,7 +48,8 @@ int badintr[16];
 typedef struct Handler	Handler;
 struct Handler
 {
-	void	(*r)(void*);
+	void	(*r)(Ureg*, void*);
+	void	*arg;
 	Handler	*next;
 };
 
@@ -68,7 +69,7 @@ sethvec(int v, void (*r)(void), int type, int pri)
 }
 
 void
-setvec(int v, void (*r)(Ureg*))
+setvec(int v, void (*r)(Ureg*, void*), void *arg)
 {
 	Handler *h;
 
@@ -78,6 +79,7 @@ setvec(int v, void (*r)(Ureg*))
 	h = &halloc.h[halloc.free++];
 	h->next = halloc.ivec[v];
 	h->r = r;
+	h->arg = arg;
 	halloc.ivec[v] = h;
 	unlock(&halloc);
 
@@ -94,9 +96,11 @@ setvec(int v, void (*r)(Ureg*))
 }
 
 void
-debugbpt(Ureg *ur)
+debugbpt(Ureg *ur, void *arg)
 {
 	char buf[ERRLEN];
+
+	USED(arg);
 
 	if(up == 0)
 		panic("kernel bpt");
@@ -164,9 +168,9 @@ trapinit(void)
 	 *  system calls and break points
 	 */
 	sethvec(Syscallvec, intr64, SEGIG, 3);
-	setvec(Syscallvec, (void (*)(Ureg*))syscall);
+	setvec(Syscallvec, syscall, 0);
 	sethvec(Bptvec, intr3, SEGIG, 3);
-	setvec(Bptvec, debugbpt);
+	setvec(Bptvec, debugbpt, 0);
 
 	/*
 	 *  tell the hardware where the table is (and how long)
@@ -223,7 +227,7 @@ Proc *lastup;
 
 
 /*
- *  All trapscome here.  It is slower to have all traps call trap() rather than
+ *  All traps come here.  It is slower to have all traps call trap() rather than
  *  directly vectoring the handler.  However, this avoids a lot of code duplication
  *  and possible bugs.
  */
@@ -295,7 +299,7 @@ lastup = up;
 
 	/* there may be multiple handlers on one interrupt level */
 	do {
-		(*h->r)(ur);
+		(*h->r)(ur, h->arg);
 		h = h->next;
 	} while(h);
 
@@ -387,12 +391,14 @@ dumpstack(void)
 /*
  *  syscall is called spllo()
  */
-long
-syscall(Ureg *ur)
+void
+syscall(Ureg *ur, void *arg)
 {
 	ulong	sp;
 	long	ret;
 	int	i;
+
+	USED(arg);
 
 	up->insyscall = 1;
 	up->pc = ur->pc;
@@ -455,8 +461,6 @@ syscall(Ureg *ur)
 	splhi(); /* avoid interrupts during the iret */
 	if(up->scallnr!=RFORK && (up->procctl || up->nnote))
 		notify(ur);
-
-	return ret;
 }
 
 /*

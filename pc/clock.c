@@ -42,48 +42,13 @@ delay(int l)
 			;
 }
 
-void
-clockinit(void)
-{
-	ulong x, y;	/* change in counter */
-
-	/*
-	 *  set vector for clock interrupts
-	 */
-	setvec(Clockvec, clock);
-
-	/*
-	 *  make clock output a square wave with a 1/HZ period
-	 */
-	outb(Tmode, Load0|Square);
-	outb(T0cntr, (Freq/HZ));	/* low byte */
-	outb(T0cntr, (Freq/HZ)>>8);	/* high byte */
-
-	/*
-	 *  measure time for delay(10) with current delayloop count
-	 */
-	outb(Tmode, Latch0);
-	x = inb(T0cntr);
-	x |= inb(T0cntr)<<8;
-	delay(10);
-	outb(Tmode, Latch0);
-	y = inb(T0cntr);
-	y |= inb(T0cntr)<<8;
-	x -= y;
-
-	/*
-	 *  fix count
-	 */
-	delayloop = (delayloop*1193*10)/x;
-	if(delayloop == 0)
-		delayloop = 1;
-}
-
-void
-clock(Ureg *ur)
+static void
+clock(Ureg *ur, void *arg)
 {
 	Proc *p;
 	int nrun = 0;
+
+	USED(arg);
 
 	m->ticks++;
 
@@ -113,4 +78,41 @@ clock(Ureg *ur)
 	spllo();		/* in case we fault */
 	(*(ulong*)(USTKTOP-BY2WD)) += TK2MS(1);
 	splhi();
+}
+
+void
+clockinit(void)
+{
+	ulong x, y;	/* change in counter */
+
+	/*
+	 *  set vector for clock interrupts
+	 */
+	setvec(Clockvec, clock, 0);
+
+	/*
+	 *  make clock output a square wave with a 1/HZ period
+	 */
+	outb(Tmode, Load0|Square);
+	outb(T0cntr, (Freq/HZ));	/* low byte */
+	outb(T0cntr, (Freq/HZ)>>8);	/* high byte */
+
+	/*
+	 *  measure time for delay(10) with current delayloop count
+	 */
+	outb(Tmode, Latch0);
+	x = inb(T0cntr);
+	x |= inb(T0cntr)<<8;
+	delay(10);
+	outb(Tmode, Latch0);
+	y = inb(T0cntr);
+	y |= inb(T0cntr)<<8;
+	x -= y;
+
+	/*
+	 *  fix count
+	 */
+	delayloop = (delayloop*1193*10)/x;
+	if(delayloop == 0)
+		delayloop = 1;
 }

@@ -260,13 +260,18 @@ getdiag(Ether *ether)
 }
 
 static void
-interrupt(Ether *ether)
+interrupt(Ureg *ur, void *arg)
 {
 	ushort status, diag;
 	uchar txstatus, x;
 	ulong port;
+	Ether *ether;
 
+	USED(ur);
+
+	ether = arg;
 	port = ether->port;
+
 	status = ins(port+Status);
 
 	if(status & Failure){
