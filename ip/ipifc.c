@@ -165,7 +165,8 @@ ipifcunbind(Ipifc *ifc)
 	ifc->ifcid++;
 
 	/* disassociate device */
-	(*ifc->m->unbind)(ifc);
+	if(ifc->m)
+		(*ifc->m->unbind)(ifc);
 	memset(ifc->dev, 0, sizeof(ifc->dev));
 	ifc->arg = nil;
 
@@ -293,7 +294,7 @@ ipifcclose(Conv *c)
 
 	ifc = (Ipifc*)c->ptcl;
 	m = ifc->m;
-	if(m != nil && m->unbindonclose)
+	if(m == nil || m->unbindonclose)
 		ipifcunbind(ifc);
 	unlock(c);
 }
