@@ -117,7 +117,7 @@ tss.sp2 = stack;
 /*
  *  Create a prototype page map that maps all of memory into
  *  kernel (KZERO) space.  This is the default map.  It is used
- *  whenever the processor not running a process or whenever running
+ *  whenever the processor is not running a process or whenever running
  *  a process which does not yet have its own map.
  */
 void
