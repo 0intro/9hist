@@ -797,3 +797,8 @@ TEXT	rdcount(SB), $0
 TEXT	wrcompare(SB), $0
 	MOVW	R1, M(COMPARE)
 	RET
+
+TEXT	rdcompare(SB), $0
+	MOVW	M(COMPARE), R1
+	NOP
+	RET

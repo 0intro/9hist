@@ -454,7 +454,7 @@ static void
 tcpcreate(Conv *c)
 {
 	c->rq = qopen(QMAX, 0, tcpacktimer, c);
-	c->wq = qopen(QMAX, 0, 0, 0);
+	c->wq = qopen(2*QMAX, 0, 0, 0);
 }
 
 void

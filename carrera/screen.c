@@ -586,7 +586,6 @@ cursoron(int dolock)
 {
 	Dac *d;
 	Point p;
-	int s;
 
 	p = mousexy();
 
@@ -594,7 +593,6 @@ cursoron(int dolock)
 
 	if(dolock)
 		lock(&cursor);
-	s = splhi();
 
 	p.x += 296;		/* adjusted by experiment */
 	p.y += 9;		/* adjusted by experiment */
@@ -605,7 +603,6 @@ cursoron(int dolock)
 	d->cr2 = p.y&0xFF;
 	d->cr2 = (p.y>>8)&0xF;
 
-	splx(s);
 	if(dolock)
 		unlock(&cursor);
 	return 0;

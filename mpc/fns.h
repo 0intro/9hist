@@ -41,6 +41,7 @@ ulong	gettbu(void);
 void	gotopc(ulong);
 void	icflush(void*, ulong);
 void	idle(void);
+#define	idlehands()			/* nothing to do in the runproc */
 int	iprint(char*, ...);
 void	intr(Ureg*);
 void	intrenable(int, void (*)(Ureg*, void*), void*, int);

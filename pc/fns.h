@@ -40,6 +40,7 @@ uvlong	i8253read(uvlong*);
 void	i8259init(void);
 int	i8259enable(Vctl*);
 void	idle(void);
+#define	idlehands()			/* nothing to do in the runproc */
 int	inb(int);
 void	insb(int, void*, int);
 ushort	ins(int);

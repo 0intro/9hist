@@ -51,6 +51,8 @@ delay(int l)
 			;
 }
 
+ulong lastcmp;
+
 void
 clockinit(void)
 {
@@ -72,18 +74,16 @@ clockinit(void)
 
 	incr = (m->speed*1000000)/HZ;
 	fasthz = m->speed*1000000;
-	wrcompare(rdcount()+incr);
+	wrcompare(lastcmp = rdcount()+incr);
 }
 
 uvlong
 updatefastclock(ulong count)
 {
-	vlong delta;
+	ulong delta;
 
 	/* keep track of higher precision time */
 	delta = count - m->lastcyclecount;
-	if(delta < 0)
-		delta += 0x100000000LL;
 	m->lastcyclecount = count;
 	m->fastclock += delta;
 
@@ -97,7 +97,7 @@ clock(Ureg *ur)
 	ulong count;
 
 	count = rdcount();
-	wrcompare(count+incr);
+	wrcompare(lastcmp = count+incr);
 	updatefastclock(count);
 
 	m->ticks++;
@@ -136,14 +136,14 @@ clock(Ureg *ur)
 	if(up == 0 || up->state != Running)
 		return;
 
-	if(anyready())
-		sched();
-
 	/* user profiling clock */
 	if(ur->status & KUSER) {
 		(*(ulong*)(USTKTOP-BY2WD)) += TK2MS(1);
 		segclock(ur->pc);
 	}
+
+	if(anyready())
+		sched();
 }
 
 vlong
@@ -160,4 +160,25 @@ fastticks(uvlong *hz)
 		*hz = fasthz;
 
 	return (vlong)cyclecount;
+}
+
+ulong timewarp;
+
+void
+idlehands(void)
+{
+	ulong cnt, cmp, d;
+	int x;
+
+	x = splhi();
+	cnt = rdcount();
+	cmp = rdcompare();
+	cnt -= 100;		/* to cover for time from splhi to rdcount */
+	d = cmp - cnt;
+	if(d > incr+100){
+		wrcompare(lastcmp = cnt+incr);
+		timewarp++;
+//		print("%lud %lud %d %lux\n", cnt, cmp, cnt-cmp, d);
+	}
+	splx(x);
 }
