@@ -63,7 +63,7 @@ kmapinit(void)
 
 	if(kmapalloc.init == 0){
 		k = &kmapalloc.arena[0];
-		k->va = KZERO|(3*1024*1024);
+		k->va = KZERO|(4*1024*1024-256*1024-BY2PG);
 		k->next = 0;
 		kmapalloc.free = k;
 		kmapalloc.init = 1;
@@ -71,6 +71,7 @@ kmapinit(void)
 	}
 	e = (4*1024*1024 - 256*1024)/BY2PG;	/* screen lives at top 256K */
 	i = (((ulong)ialloc(0, 0))&~KZERO)/BY2PG;
+	print("%lud free map registers\n", e-i);
 	kmapalloc.free = 0;
 	for(k=&kmapalloc.arena[i]; i<e; i++,k++){
 		k->va = i*BY2PG|KZERO;
@@ -85,8 +86,10 @@ kmap(Page *pg)
 
 	lock(&kmapalloc);
 	k = kmapalloc.free;
-	if(k == 0)
+	if(k == 0){
+		dumpstack();
 		panic("kmap");
+	}
 	kmapalloc.free = k->next;
 	unlock(&kmapalloc);
 	k->pa = pg->pa;

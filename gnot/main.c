@@ -290,7 +290,7 @@ confinit(void)
 	conf.npage = conf.npage0+conf.npage1;
 	mul = 1 + (conf.npage1>0);
 	conf.nproc = 40*mul;
-	conf.npgrp = 15*mul;
+	conf.npgrp = 12*mul;
 	conf.npte = 700*mul;
 	conf.nmod = 400*mul;
 	conf.nalarm = 1000;
@@ -300,15 +300,17 @@ confinit(void)
 	conf.nenvchar = 8000*mul;
 	conf.npgenv = 200*mul;
 	conf.nmtab = 50*mul;
-	conf.nmount = 100*mul;
+	conf.nmount = 80*mul;
 	conf.nmntdev = 10*mul;
 	conf.nmntbuf = 2*conf.nmntdev;
 	conf.nmnthdr = 2*conf.nmntdev;
-	conf.nstream = 64*mul;
+	conf.nstream = 64;
 	conf.nqueue = 5 * conf.nstream;
 	conf.nblock = 12 * conf.nstream;
 	conf.nsrv = 32*mul;
 	conf.nbitmap = 100*mul;
-	conf.nbitbyte = 300*1024*mul*mul;
+	conf.nbitbyte = 300*1024*mul;
+	if(*(uchar*)MOUSE & (1<<4))
+		conf.nbitbyte *= 2;	/* ldepth 1 */
 	conf.nfont = 10*mul;
 }

@@ -275,7 +275,7 @@ duartintr(Ureg *ur)
 	 * Is it 0?
 	 */
 	if(cause & IM_CRDY){
-		kproftimer(ur->pc);
+/*		kproftimer(ur->pc);/**/
 		c = duart[1].scc_ropbc;
 		duart[0].ctur = (Kptime)>>8;
 		duart[0].ctlr = (Kptime)&255;

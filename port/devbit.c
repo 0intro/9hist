@@ -120,11 +120,13 @@ enum{
 	Qdir,
 	Qbitblt,
 	Qmouse,
+	Qscreen,
 };
 
 Dirtab bitdir[]={
 	"bitblt",	Qbitblt,	0,			0600,
 	"mouse",	Qmouse,		0,			0600,
+	"screen",	Qscreen,	0,			0400,
 };
 
 #define	NBIT	(sizeof bitdir/sizeof(Dirtab))
@@ -424,6 +426,36 @@ bitread(Chan *c, void *va, long n)
 			break;
 		}
 		error(0, Ebadblt);
+
+	case Qscreen:
+		if(c->offset==0){
+			if(n < 5*12)
+				error(0, Eio);
+			sprint(va, "%11d %11d %11d %11d %11d ",
+				screen.ldepth, screen.r.min.x,
+				screen.r.min.y, screen.r.max.x,
+				screen.r.max.y);
+			n = 5*12;
+			break;
+		}
+		ws = 1<<(3-screen.ldepth);	/* pixels per byte */
+		l = (screen.r.max.x+ws-1)/ws - screen.r.min.x/ws;
+		t = c->offset-5*12;
+		miny = t/l;
+		maxy = (t+n)/l;
+		if(miny >= screen.r.max.y)
+			return 0;
+		if(maxy >= screen.r.max.y)
+			maxy = screen.r.max.y;
+		n = 0;
+		p = va;
+		for(y=miny; y<maxy; y++){
+			q = (uchar*)addr(&screen, Pt(0, y));
+			for(x=0; x<l; x++)
+				*p++ = K2U(*q++);
+			n += l;
+		}
+		break;
 
 	default:
 		error(0, Egreg);

@@ -71,6 +71,8 @@ ialloc(ulong n, int align)
 		palloc.addr += BY2PG-1;
 		palloc.addr &= ~(BY2PG-1);
 	}
+	if(palloc.addr >= (4*1024*1024-256*1024-BY2PG))
+		panic("keep bill joy away");
 	return (void*)(p|KZERO);
 }
 
