@@ -18,7 +18,9 @@ IOQ	printq;
 IOQ	mouseq;
 KIOQ	kbdq;
 
-Ref	raw;		/* whether kbd i/o is raw (rcons is open) */
+Ref	raw;			/* whether kbd i/o is raw (rcons is open) */
+
+char	eve[NAMELEN] = "bootes";
 
 /*
  *  init the queues and set the output routine
@@ -432,8 +434,7 @@ consopen(Chan *c, int omode)
 	switch(c->qid.path){
 	case Quser:
 		if(omode==(OWRITE|OTRUNC)){
-			/* truncate? */
-			if(strcmp(u->p->user, "bootes") == 0)	/* BUG */
+			if(strcmp(u->p->user, eve) == 0)
 				u->p->user[0] = 0;
 			else
 				error(Eperm);

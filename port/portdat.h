@@ -516,7 +516,10 @@ struct Proc
 	ulong	time[6];		/* User, Sys, Real; child U, S, R */
 	short	insyscall;
 	int	fpstate;
+
 	Lock	debug;			/* to access debugging elements of User */
+	ulong	procmode;		/* proc device file mode */
+
 	Rendez	*r;			/* rendezvous point slept on */
 	Rendez	sleep;			/* place for tsleep and syssleep */
 	int	notepending;		/* note issued but not acted on */
@@ -645,12 +648,12 @@ extern	Conf	conf;
 extern	ulong	initcode[];
 extern	Dev	devtab[];
 extern	char	devchar[];
-extern	char	user[NAMELEN];
 extern	char	*conffile;
 extern	char	*errstrtab[];
 extern	char	*statename[];
 extern	Palloc 	palloc;
 extern  Image	swapimage;
+extern  char	eve[];
 
 #define	CHDIR		0x80000000L
 #define	CHAPPEND 	0x40000000L

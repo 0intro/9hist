@@ -10,8 +10,6 @@
 #include	<libg.h>
 #include	<gnot.h>
 
-char user[NAMELEN];
-
 uchar *intrreg;
 
 void
@@ -135,7 +133,7 @@ userinit(void)
 	p->fgrp = newfgrp();
 
 	strcpy(p->text, "*init*");
-	strcpy(p->user, "bootes");
+	strcpy(p->user, eve);
 	savefpregs(&initfp);
 	p->fpstate = FPinit;
 

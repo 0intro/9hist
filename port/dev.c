@@ -24,7 +24,7 @@ devno(int c, int user)
 }
 
 void
-devdir(Chan *c, Qid qid, char *n, long length, long perm, Dir *db)
+devdir(Chan *c, Qid qid, char *n, long length, char *user, long perm, Dir *db)
 {
 	strcpy(db->name, n);
 	db->qid = qid;
@@ -48,7 +48,7 @@ devgen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
 	if(tab==0 || i>=ntab)
 		return -1;
 	tab += i;
-	devdir(c, tab->qid, tab->name, tab->length, tab->perm, dp);
+	devdir(c, tab->qid, tab->name, tab->length, eve, tab->perm, dp);
 	return 1;
 }
 
@@ -123,7 +123,7 @@ devstat(Chan *c, char *db, Dirtab *tab, int ntab, Devgen *gen)
 			 * here, which is good because we've lost the name by now.
 			 */
 			if(c->qid.path & CHDIR){
-				devdir(c, c->qid, ".", 0L, CHDIR|0700, &dir);
+				devdir(c, c->qid, ".", 0L, eve, CHDIR|0700, &dir);
 				convD2M(&dir, db);
 				return;
 			}

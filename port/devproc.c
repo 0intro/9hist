@@ -4,6 +4,7 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"errno.h"
+#include	"fcall.h"
 
 #include	"devtab.h"
 
@@ -21,24 +22,18 @@ enum{
 
 #define	STATSIZE	(2*NAMELEN+12+6*12)
 Dirtab procdir[]={
-	"ctl",		{Qctl},		0,			0600,
-	"mem",		{Qmem},		0,			0600,
-	"note",		{Qnote},	0,			0600,
+	"ctl",		{Qctl},		0,			0000,
+	"mem",		{Qmem},		0,			0000,
+	"note",		{Qnote},	0,			0000,
 	"notepg",	{Qnotepg},	0,			0200,
-	"proc",		{Qproc},	sizeof(Proc),		0600,
+	"proc",		{Qproc},	sizeof(Proc),		0000,
 	"segment",	{Qsegment},	0,			0400,
 	"status",	{Qstatus},	STATSIZE,		0400,
-	"text",		{Qtext},	0,			0600,
+	"text",		{Qtext},	0,			0000,
 };
 
-char *sname[]={ 			/* Segment type from portdat.h */
-	"Text", 
-	"Data", 
-	"Bss", 
-	"Stack", 
-	"Shared", 
-	"Phys",
-};
+/* Segment type from portdat.h */
+char *sname[]={ "Text", "Data", "Bss", "Stack", "Shared", "Phys" };
 
 /*
  * Qids are, in path:
@@ -54,12 +49,16 @@ char *sname[]={ 			/* Segment type from portdat.h */
 #define	SLOT(q)	((((q).path&0x07FFFFFF0)>>QSHIFT)-1)
 #define	PID(q)	((q).vers)
 
+void	procctlreq(Proc*, char*, int);
+int	procctlmemio(Proc*, ulong, int, void*, int);
+Chan   *procctlnotepg(Chan*, void *va, int n);
+
 int
 procgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 {
 	Proc *p;
 	char buf[NAMELEN];
-	ulong pid, path;
+	ulong pid, path, perm;
 
 	if(c->qid.path == CHDIR){
 		if(s >= conf.nproc)
@@ -69,7 +68,7 @@ procgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 		if(pid == 0)
 			return 0;
 		sprint(buf, "%d", pid);
-		devdir(c, (Qid){CHDIR|((s+1)<<QSHIFT), pid}, buf, 0, CHDIR|0500, dp);
+		devdir(c, (Qid){CHDIR|((s+1)<<QSHIFT), pid}, buf, 0, p->user, CHDIR|0500, dp);
 		return 1;
 	}
 	if(s >= NPROC)
@@ -78,8 +77,13 @@ procgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 		panic("procgen");
 	tab = &procdir[s];
 	path = c->qid.path&~(CHDIR|((1<<QSHIFT)-1));	/* slot component */
-	devdir(c, (Qid){path|tab->qid.path, c->qid.vers},
-		tab->name, tab->length, tab->perm, dp);
+
+	p = proctab(SLOT(c->qid));
+	perm = tab->perm;
+	if(perm == 0)
+		perm = p->procmode;
+
+	devdir(c, (Qid){path|tab->qid.path, c->qid.vers}, tab->name, tab->length, p->user, perm, dp);
 	return 1;
 }
 
@@ -218,7 +222,18 @@ procremove(Chan *c)
 void
 procwstat(Chan *c, char *db)
 {
-	error(Eperm);
+	Proc *p;
+	Dir d;
+
+	convM2D(db, &d);
+	p = proctab(SLOT(c->qid));
+	if(p->pid != PID(c->qid))
+		error(Eprocdied);
+
+	if(strcmp(u->p->user, p->user) != 0 && strcmp(u->p->user, eve) != 0)
+		error(Eperm);
+
+	p->procmode = d.mode&0777;
 }
 
 void
@@ -232,23 +247,17 @@ procread(Chan *c, void *va, long n, ulong offset)
 	char *a = va, *b;
 	char statbuf[NSEG*32];
 	Proc *p;
-	Pte *pte;
-	Segment *s;
 	Page *pg;
 	KMap *k;
 	int i, j;
 	long l;
 	long pid;
 	User *up;
-	ulong soff;
 	Segment *sg;
 
 	if(c->qid.path & CHDIR)
 		return devdirread(c, a, n, 0, 0, procgen);
 
-	/*
-	 * BUG: should lock(&p->debug)?
-	 */
 	p = proctab(SLOT(c->qid));
 	if(p->pid != PID(c->qid))
 		error(Eprocdied);
@@ -260,37 +269,8 @@ procread(Chan *c, void *va, long n, ulong offset)
 		 */
 		if(((offset+n)&~(BY2PG-1)) != (offset&~(BY2PG-1)))
 			n = BY2PG - (offset&(BY2PG-1));
-		s = seg(p, offset, 1);
-		if(s){
-			if(p->pid!=PID(c->qid)){
-				qunlock(&s->lk);
-				error(Eprocdied);
-			}
 
-			soff = offset-s->base;
-			pte = s->map[soff/PTEMAPMEM];
-			pg = 0;
-			if(pte)
-				pg = pte->pages[(soff&(PTEMAPMEM-1))/BY2PG];
-
-			s->steal++;
-			qunlock(&s->lk);
-			if(pagedout(pg)){
-				pprint("nonresident page addr %lux (complain to philw)\n", offset);
-				memset(a, 0, n);
-			}else{
-				k = kmap(pg);
-				b = (char*)VA(k);
-				memmove(a, b+(offset&(BY2PG-1)), n);
-				kunmap(k);
-			}
-			qlock(&s->lk);
-			s->steal--;
-			qunlock(&s->lk);
-			return n;
-		}
-		/* u area */
-		if(offset>=USERADDR && offset<USERADDR+BY2PG){
+		if(offset >= USERADDR && offset < USERADDR+BY2PG) {
 			if(offset+n > USERADDR+BY2PG)
 				n = USERADDR+BY2PG - offset;
 			pg = p->upage;
@@ -303,21 +283,21 @@ procread(Chan *c, void *va, long n, ulong offset)
 			return n;
 		}
 
-		/* kernel memory.  BUG: shouldn't be so easygoing. BUG: mem mapping? */
-		if(offset>=KZERO && offset<KZERO+conf.npage0*BY2PG){
+		if(offset >= KZERO && offset < KZERO+conf.npage0*BY2PG){
 			if(offset+n > KZERO+conf.npage0*BY2PG)
 				n = KZERO+conf.npage0*BY2PG - offset;
 			memmove(a, (char*)offset, n);
 			return n;
 		}
-		if(offset>=KZERO && offset<KZERO+conf.base1+conf.npage1*BY2PG){
+
+		if(offset >= KZERO && offset < KZERO+conf.base1+conf.npage1*BY2PG){
 			if(offset+n > KZERO+conf.base1+conf.npage1*BY2PG)
 				n = KZERO+conf.base1+conf.npage1*BY2PG - offset;
 			memmove(a, (char*)offset, n);
 			return n;
 		}
-		return 0;
-		break;
+
+		return procctlmemio(p, offset, n, va, 1);
 
 	case Qnote:
 		lock(&p->debug);
@@ -395,7 +375,6 @@ long
 procwrite(Chan *c, void *va, long n, ulong offset)
 {
 	Proc *p;
-	Pgrp *pg;
 	User *up;
 	KMap *k;
 	char buf[ERRLEN];
@@ -404,23 +383,10 @@ procwrite(Chan *c, void *va, long n, ulong offset)
 		error(Eisdir);
 
 	p = proctab(SLOT(c->qid));
-	/*
-	 * Special case: don't worry about process, just use remembered group
-	 */
+
+	/* Use the remembered pgrp id in the channel rather than the process pgrpid */
 	if(QID(c->qid) == Qnotepg){
-		pg = pgrptab(c->pgrpid.path-1);
-		qlock(&pg->debug);
-		if(waserror()){
-			qunlock(&pg->debug);
-			nexterror();
-		}
-		if(pg->pgrpid != c->pgrpid.vers){
-			qunlock(&pg->debug);
-  	  		goto Died;
-		}
-		pgrpnote(pg, va, n, NUser);
-		poperror();
-		qunlock(&pg->debug);
+		procctlnotepg(c, va, n);
 		return n;
 	}
 
@@ -430,37 +396,14 @@ procwrite(Chan *c, void *va, long n, ulong offset)
 		nexterror();
 	}
 	if(p->pid != PID(c->qid))
-    Died:
 		error(Eprocdied);
 
 	switch(QID(c->qid)){
+	case Qmem:
+		return procctlmemio(p, offset, n, va, 0);
 	case Qctl:
-		if(n >= 4 && strncmp(va, "exit", 4) == 0) {
-			if(p->state == Broken) {
-				ready(p);
-				break;
-			}
-		}
-		else
-		if(n >= 4 && strncmp(va, "stop", 4) == 0) {
-			p->procctl = Proc_stopme;
-			break;
-		}
-		else
-		if(n >= 5 && strncmp(va, "start", 5) == 0) {
-			if(p->state == Stopped) {
-				ready(p);
-				break;
-			}
-			errors("not stopped");
-		}
-		else
-		if(n >= 4 && strncmp(va, "kill", 4) == 0) {
-			postnote(p, 0, "sys: killed", NExit);
-			p->procctl = Proc_exitme;
-			break;
-		}
-		error(Ebadctl);
+		procctlreq(p, va, n);
+		return n;
 	case Qnote:
 		k = kmap(p->upage);
 		up = (User*)VA(k);
@@ -485,5 +428,139 @@ procwrite(Chan *c, void *va, long n, ulong offset)
 	}
 	poperror();
 	unlock(&p->debug);
+	return n;
+}
+
+Chan *
+procctlnotepg(Chan *c, void *va, int n)
+{
+	Pgrp *pg;
+
+	pg = pgrptab(c->pgrpid.path-1);
+	qlock(&pg->debug);
+	if(waserror()){
+		qunlock(&pg->debug);
+		nexterror();
+	}
+	if(pg->pgrpid != c->pgrpid.vers){
+		qunlock(&pg->debug);
+		error(Eprocdied);
+	}
+	pgrpnote(pg, va, n, NUser);
+	poperror();
+	qunlock(&pg->debug);
+}
+
+void
+procctlreq(Proc *p, char *va, int n)
+{
+	if(n >= 4) {
+		if(strncmp(va, "exit", 4) == 0) {
+			if(p->state == Broken)
+				ready(p);
+			return;
+		}
+		if(strncmp(va, "stop", 4) == 0) {
+			p->procctl = Proc_stopme;
+			return;
+		}
+		if(strncmp(va, "kill", 4) == 0) {
+			postnote(p, 0, "sys: killed", NExit);
+			p->procctl = Proc_exitme;
+			return;
+		}
+	}
+
+	if(n >= 5 && strncmp(va, "start", 5) == 0) {
+		if(p->state != Stopped)
+			errors("not stopped");
+		ready(p);
+		return;
+	}
+	error(Ebadctl);
+}
+
+int
+procctlmemio(Proc *p, ulong offset, int n, void *va, int read)
+{
+	Pte **pte;
+	Page *pg;
+	KMap *k;
+	Segment *ps, *s;
+	ulong soff;
+	int i;
+	char *a = va, *b;
+
+	s = seg(p, offset, 1);
+	if(s == 0)
+		errors("not in address space");
+
+	/* Revert a text segment to data */
+	if(read == 0 && (s->type&SG_TYPE) == SG_TEXT) {
+		ps = newseg(SG_DATA, s->base, s->size);
+		ps->image = s->image;
+		incref(ps->image);
+		ps->fstart = s->fstart;
+		ps->flen = s->flen;
+
+		for(i = 0; i < NSEG; i++)
+			if(p->seg[i] == s)
+				break;
+		if(p->seg[i] != s)
+			panic("segment gone");
+
+		qunlock(&s->lk);
+		putseg(s);
+		p->seg[i] = ps;
+	}
+	else
+		qunlock(&s->lk);
+
+Again:
+	s = seg(p, offset, 1);
+	if(s == 0)
+		errors("not in address space");
+
+	s->steal++;
+	soff = offset-s->base;
+	pte = &s->map[soff/PTEMAPMEM];
+	if(*pte == 0) {
+		if(waserror()) {
+			s->steal--;
+			nexterror();
+		}
+		if(fixfault(s, offset, read, 0) != 0) {
+			s->steal--;
+			poperror();
+			goto Again;
+		}
+		poperror();
+		if(*pte == 0)
+			panic("procctlmemio"); 
+	}
+	pg = (*pte)->pages[(soff&(PTEMAPMEM-1))/BY2PG];
+	if(pagedout(pg)) {
+		if(waserror()) {
+			s->steal--;
+			nexterror();
+		}
+		if(fixfault(s, offset, read, 0) != 0) {
+			s->steal--;
+			poperror();
+			goto Again;
+		}
+		poperror();
+		pg = (*pte)->pages[(soff&(PTEMAPMEM-1))/BY2PG];
+		if(pg == 0)
+			panic("procctlmemio1");
+	}
+
+	k = kmap(pg);
+	b = (char*)VA(k);
+	memmove(a, b+(offset&(BY2PG-1)), n);
+	kunmap(k);
+
+	s->steal--;
+	qunlock(&s->lk);
 	return n;
 }

@@ -787,8 +787,8 @@ streamgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 	else
 		return -1;
 
-	devdir(c, (Qid){STREAMQID(STREAMID(c->qid.path),tab->qid.path), 0}, tab->name, tab->length,
-		tab->perm, dp);
+	devdir(c, (Qid){STREAMQID(STREAMID(c->qid.path),tab->qid.path), 0}, 
+		tab->name, tab->length, eve, tab->perm, dp);
 	return 1;
 }
 
@@ -1407,7 +1407,7 @@ streamstat(Chan *c, char *db, char *name)
 		unlock(q);
 	}
 
-	devdir(c, c->qid, name, n, 0, &dir);
+	devdir(c, c->qid, name, n, eve, 0, &dir);
 	convD2M(&dir, db);
 }
 

@@ -228,6 +228,7 @@ loop:
 		p->pgrp = 0;
 		p->egrp = 0;
 		p->fgrp = 0;
+		p->procmode = 0644;
 		p->fpstate = FPinit;
 		p->kp = 0;
 		p->procctl = 0;
@@ -706,7 +707,7 @@ kproc(char *name, void (*func)(void *), void *arg)
 		pexit(0, 1);
 	}
 
-	user = "bootes";
+	user = eve;
 	strcpy(p->user, user);
 	if(kpgrp == 0){
 		kpgrp = newpgrp();

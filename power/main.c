@@ -44,9 +44,6 @@ char sysname[64];
  */
 int ioid;
 
-
-char	user[NAMELEN] = "bootes";
-
 void
 main(void)
 {
@@ -258,7 +255,7 @@ userinit(void)
 	p->fgrp = newfgrp();
 
 	strcpy(p->text, "*init*");
-	strcpy(p->user, "bootes");
+	strcpy(p->user, eve);
 	savefpregs(&initfp);
 	p->fpstate = FPinit;
 

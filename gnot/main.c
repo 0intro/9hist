@@ -23,7 +23,6 @@ struct Boot
 };
 #define BOOT ((Boot*)0)
 
-char	user[NAMELEN];
 char bootuser[NAMELEN];
 char bootline[64];
 char bootserver[64];
@@ -149,8 +148,7 @@ userinit(void)
 	p->fgrp = newfgrp();
 
 	strcpy(p->text, "*init*");
-	strcpy(p->user, "bootes");
-	strcpy(user, "bootes");
+	strcpy(p->user, eve);
 	p->fpstate = FPinit;
 
 	/*

@@ -21,7 +21,7 @@ srvgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 		return -1;
 	if(srv.chan[s] == 0)
 		return 0;
-	devdir(c, (Qid){s, 0}, &srv.name[s*NAMELEN], 0, 0666, dp);
+	devdir(c, (Qid){s, 0}, &srv.name[s*NAMELEN], 0, eve, 0666, dp);
 	return 1;
 }
 

@@ -13,29 +13,41 @@ void	faultexit(char*);
 int
 fault(ulong addr, int read)
 {
-	ulong mmuphys=0, soff;
 	Segment *s;
-	Pte **p;
-	Page **pg, *lkp, *new = 0;
-	int type;
 	char *sps;
 
 	sps = u->p->psstate;
 	u->p->psstate = "Fault";
 
 	m->pfault++;
-again:
-	s = seg(u->p, addr, 1);
-	if(s == 0) {
-		u->p->psstate = sps;
-		return -1;
+	for(;;) {
+		s = seg(u->p, addr, 1);
+		if(s == 0) {
+			u->p->psstate = sps;
+			return -1;
+		}
+
+		if(!read && (s->type&SG_RONLY)) {
+			qunlock(&s->lk);
+			u->p->psstate = sps;
+			return -1;
+		}
+
+		if(fixfault(s, addr, read, 1) == 0)
+			break;
 	}
 
-	if(!read && (s->type&SG_RONLY)) {
-		qunlock(&s->lk);
-		u->p->psstate = sps;
-		return -1;
-	}
+	u->p->psstate = sps;
+	return 0;
+}
+
+int
+fixfault(Segment *s, ulong addr, int read, int doputmmu)
+{
+	ulong mmuphys=0, soff;
+	Page **pg, *lkp, *new = 0;
+	Pte **p;
+	int type;
 
 	addr &= ~(BY2PG-1);
 	soff = addr-s->base;
@@ -60,7 +72,7 @@ again:
 			/* Zero fill on demand */
 		if(*pg == 0) {			
 			if(new == 0 && (new = newpage(1, &s, addr)) && s == 0)
-				goto again;
+				return -1;
 			*pg = new;
 			new = 0;
 		}
@@ -83,7 +95,7 @@ again:
 		if(lkp->ref > 1) {
 			unlockpage(lkp);
 			if(new == 0 && (new = newpage(0, &s, addr)) && s == 0)
-				goto again;
+				return -1;
 			*pg = new;
 			new = 0;
 			copypage(lkp, *pg);
@@ -120,8 +132,9 @@ again:
 	if(new)
 		putpage(new);
 
-	putmmu(addr, mmuphys, *pg);
-	u->p->psstate = sps;
+	if(doputmmu)
+		putmmu(addr, mmuphys, *pg);
+
 	return 0;
 }
 

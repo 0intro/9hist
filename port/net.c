@@ -34,7 +34,7 @@ netgen(Chan *c, void *vp, int ntab, int i, Dir *dp)
 		case 0:
 			q.path = CHDIR | Q2nd;
 			strcpy(buf, np->name);
-			devdir(c, q, buf, 0, 0666, dp);
+			devdir(c, q, buf, 0, eve, 0666, dp);
 			break;
 		default:
 			return -1;
@@ -46,11 +46,11 @@ netgen(Chan *c, void *vp, int ntab, int i, Dir *dp)
 	if(STREAMID(c->qid.path) == 0){
 		if(i == 0){
 			q.path = Qclone;
-			devdir(c, q, "clone", 0, 0666, dp);
+			devdir(c, q, "clone", 0, eve, 0666, dp);
 		}else if(i < np->nconv){
 			q.path = CHDIR|STREAMQID(i, Q3rd);
 			sprint(buf, "%d", i);
-			devdir(c, q, buf, 0, 0666, dp);
+			devdir(c, q, buf, 0, eve, 0666, dp);
 		}else
 			return -1;
 		return 1;
@@ -60,24 +60,24 @@ netgen(Chan *c, void *vp, int ntab, int i, Dir *dp)
 	switch(i){
 	case 0:
 		q.path = STREAMQID(STREAMID(c->qid.path), Sdataqid);
-		devdir(c, q, "data", 0, 0666, dp);
+		devdir(c, q, "data", 0, eve, 0666, dp);
 		break;
 	case 1:
 		q.path = STREAMQID(STREAMID(c->qid.path), Sctlqid);
-		devdir(c, q, "ctl", 0, 0666, dp);
+		devdir(c, q, "ctl", 0, eve, 0666, dp);
 		break;
 	case 2:
 		if(np->listen == 0)
 			return 0;
 		q.path = STREAMQID(STREAMID(c->qid.path), Qlisten);
-		devdir(c, q, "listen", 0, 0666, dp);
+		devdir(c, q, "listen", 0, eve, 0666, dp);
 		break;
 	default:
 		i -= 3;
 		if(i >= np->ninfo)
 			return -1;
 		q.path = STREAMQID(STREAMID(c->qid.path), Qinf+i);
-		devdir(c, q, np->info[i].name, 0, 0666, dp);
+		devdir(c, q, np->info[i].name, 0, eve, 0666, dp);
 		break;
 	}
 	return 1;
@@ -117,7 +117,7 @@ netstat(Chan *c, char *db, Network *np)
 			 * here, which is good because we've lost the name by now.
 			 */
 			if(c->qid.path & CHDIR){
-				devdir(c, c->qid, ".", 0L, CHDIR|0700, &dir);
+				devdir(c, c->qid, ".", 0L, eve, CHDIR|0700, &dir);
 				convD2M(&dir, db);
 				return;
 			}

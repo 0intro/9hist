@@ -24,6 +24,9 @@ struct{
  */
 #define MAXX	640
 #define MAXY	480
+#define XPERIOD	800	/* Hsync freq == 31.47 KHZ */
+#define YPERIOD	525	/* Vsync freq == 59.9 HZ */
+#define YBORDER 2
 
 #define SCREENMEM	(0xA0000 | KZERO)
 
@@ -52,9 +55,15 @@ enum
 	 Smmask=	 0x02,		/*  map mask */
 	CRX=		0x3D4,		/* index to crt registers */
 	CR=		0x3D5,		/* crt registers */
-	 Cvertend=	 0x12,		/*  vertical display end */
-	 Cmode=		 0x17,		/*  mode register */
+	 Cvt=		 0x06,		/*  vertical total */
+	 Cvover=	 0x07,		/*  bits that didn't fit elsewhere */
 	 Cmsl=		 0x09,		/*  max scan line */
+	 Cvrs=		 0x10,		/*  vertical retrace start */
+	 Cvre=		 0x11,		/*  vertical retrace end */
+	 Cvde=	 	 0x12,		/*  vertical display end */
+	 Cvbs=		 0x15,		/*  vertical blank start */
+	 Cvbe=		 0x16,		/*  vertical blank end */
+	 Cmode=		 0x17,		/*  mode register */
 	ARX=		0x3C0,		/* index to attribute registers */
 	AR=		0x3C1,		/* attribute registers */
 	 Amode=		 0x10,		/*  mode register */
@@ -89,17 +98,6 @@ crout(int reg, int val)
 	outb(CRX, reg);
 	outb(CR, val);
 }
-crdump(void)
-{
-	uchar x;
-	int i;
-
-	for(i = 0; i < 0x16; i++){
-		outb(CRX, i);
-		x = inb(CR);
-		print("cr[0x%lux] = %ux\n", i, x);
-	}
-}
 
 /*
  *  m is a bit mask of planes to be affected by CPU writes
@@ -118,47 +116,18 @@ vgardplane(int p)
 }
 
 /*
- *  2 bit deep display.  the bits are adjacent.  maybe this
- *  will work
- *	4 color
+ *  set up like vga mode 0x12
+ *	16 color (though we only use values 0x0 and 0xf)
  *	640x480
+ *
+ *  we assume the BIOS left the registers in a
+ *  CGA-like mode.  Thus we don't set all the registers.
  */
-vga2(void)
+vga12(void)
 {
-	int i;
-	arout(Acpe, 0x00);	/* disable planes for output */
+	int overflow;
+	int msl;
 
-	gscreen.ldepth = 1;
-	arout(Amode, 0x01);	/* color graphics mode */
-	grout(Gmisc, 0x01);	/* graphics mode */
-	grout(Gmode, 0x30);	/* 2 bits deep, even bytes are
-				 * planes 0 and 2, odd are planes
-				 * 1 and 3 */
-	grout(Grot, 0x00);	/* CPU writes bytes to video
-				 * mem without modifications */
-	crout(Cmode, 0xe3);	/* turn off address wrap &
-				 * word mode */
-	crout(Cmsl, 0x40);	/* 1 pixel per scan line */
-	crout(Cvertend, MAXY);	/* 480 lne display */
-	srout(Smode, 0x06);	/* extended memory, odd/even */
-	srout(Sclock, 0x01);	/* 8 bits/char */
-	srout(Smmask, 0x0f);	/* enable 2 planes for writing */
-
-	arout(Acpe, 0x0f);	/* enable 2 planes for output */
-	for(i = 0; i < 128*1024;){
-		((uchar*)SCREENMEM)[i++] = 0x1b;
-		((uchar*)SCREENMEM)[i++] = 0xe4;
-	}
-	for(;;);
-}
-
-/*
- *  set up like vga mode 0x11
- *	2 color
- *	640x480
- */
-vga1(void)
-{
 	arout(Acpe, 0x00);	/* disable planes for output */
 
 	gscreen.ldepth = 0;
@@ -167,10 +136,33 @@ vga1(void)
 	grout(Gmode, 0x00);	/* 1 bit deep */
 	grout(Grot, 0x00);	/* CPU writes bytes to video
 				 * mem without modifications */
+
+	msl = overflow = 0;
 	crout(Cmode, 0xe3);	/* turn off address wrap &
 				 * word mode */
-	crout(Cmsl, 0x40);	/* 1 pixel per scan line */
-	crout(Cvertend, MAXY-1);	/* 480 lne display */
+	/* last scan line displayed (first is 0) */
+	crout(Cvde, MAXY-1);
+	overflow |= ((MAXY-1)&0x200) ? 0x40 : 0;
+	overflow |= ((MAXY-1)&0x100) ? 0x2 : 0;
+	/* total scan lines (including retrace) - 2 */
+	crout(Cvt, (YPERIOD-2));
+	overflow |= ((YPERIOD-2)&0x200) ? 0x20 : 0;
+	overflow |= ((YPERIOD-2)&0x100) ? 0x1 : 0;
+	/* scan lines at which vertcal retrace starts & ends */
+	crout(Cvrs, (MAXY+10));
+	overflow |= ((MAXY+10)&0x200) ? 0x80 : 0;
+	overflow |= ((MAXY+10)&0x100) ? 0x4 : 0;
+	crout(Cvre, ((YPERIOD-1)&0xf)|0xa0);	/* also disable vertical interrupts */
+	/* scan lines at which vertical blanking starts & ends */
+	crout(Cvbs, (MAXY+YBORDER));
+	msl |= ((MAXY+YBORDER)&0x200) ? 0x20 : 0;
+	overflow |= ((MAXY+YBORDER)&0x100) ? 0x8 : 0;
+	crout(Cvbe, (YPERIOD-YBORDER)&0x7f);
+	/* pixels per scan line (always 0 for graphics) */
+	crout(Cmsl, 0x40|msl);	/* also 10th bit of line compare */
+	/* the overflow bits from the other registers */
+	crout(Cvover, 0x10|overflow);	/* also 9th bit of line compare */
+
 	srout(Smode, 0x06);	/* extended memory,
 				 * odd/even off */
 	srout(Sclock, 0x01);	/* 8 bits/char */
@@ -186,7 +178,7 @@ screeninit(void)
 	int c;
 	ulong *l;
 
-	vga1();
+	vga12();
 
 	/*
 	 *  swizzle the font longs.

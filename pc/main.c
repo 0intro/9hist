@@ -9,8 +9,6 @@
 
 extern long edata;
 
-char	user[NAMELEN] = "bootes";
-
 void
 main(void)
 {
@@ -19,7 +17,6 @@ main(void)
 	confinit();
 	screeninit();
 	printinit();
-crdump();
 	print("%ludK bytes of physical memory\n", (conf.base1 + conf.npage1*BY2PG)/1024);
 	mmuinit();
 	trapinit();
@@ -101,7 +98,7 @@ userinit(void)
 	p->fgrp = newfgrp();
 
 	strcpy(p->text, "*init*");
-	strcpy(p->user, user);
+	strcpy(p->user, eve);
 	p->fpstate = FPinit;
 	fpoff();
 

@@ -174,7 +174,7 @@ hardgen(Chan *c, Dirtab *tab, long ntab, long s, Dir *dirp)
 	name[NAMELEN] = 0;
 	qid.path = MKQID(drive, s);
 	l = (pp->end - pp->start) * dp->bytes;
-	devdir(c, qid, name, l, 0666, dirp);
+	devdir(c, qid, name, l, eve, 0666, dirp);
 	return 1;
 }
 

@@ -46,7 +46,7 @@ rootgen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
 		tab += i;
 	else
 		tab = rootmap[i - NROOT];
-	devdir(c, tab->qid, tab->name, tab->length, tab->perm, dp);
+	devdir(c, tab->qid, tab->name, tab->length, eve, tab->perm, dp);
 	return 1;
 }
 

@@ -106,6 +106,7 @@ putseg(Segment *s)
 	}
 
 	if(decref(s) == 0) {
+		qlock(&s->lk);
 		if(i)
 			putimage(i);
 
@@ -113,6 +114,8 @@ putseg(Segment *s)
 		for(pp = s->map; pp < emap; pp++)
 			if(*pp)
 				freepte(s, *pp);
+
+		qunlock(&s->lk);
 
 		lock(&segalloc);
 		s->next = segalloc.free;		

@@ -114,7 +114,7 @@ pipegen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
 	if(tab==0 || i>=ntab)
 		return -1;
 	tab += i;
-	devdir(c, (Qid){STREAMQID(id, tab->qid.path),0}, tab->name, tab->length, tab->perm, dp);
+	devdir(c, (Qid){STREAMQID(id, tab->qid.path),0}, tab->name, tab->length, eve, tab->perm, dp);
 	return 1;
 }
 
