@@ -50,8 +50,6 @@ void streaminit0(void){
 	newqinfo(&asyncinfo);
 	newqinfo(&fcallinfo);
 }
-	/*
-	 *  fake cryptfs
-	 */
+	long kfslen = 0; ulong kfscode[1];
 	long cryptfslen = 0; ulong cryptfscode[1];
 	#include "cfs.h"

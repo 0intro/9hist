@@ -322,6 +322,10 @@ TEXT	fprestore(SB),$0	/* turn on floating point and restore regs */
 	WAIT
 	RET
 
+TEXT	fpstatus(SB),$0		/* get floating point status */
+	FSTSW	AX
+	RET
+
 /*
  *  special traps
  */

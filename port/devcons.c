@@ -626,6 +626,8 @@ consread(Chan *c, void *buf, long n, ulong offset)
 				conf.nswap-swapalloc.free, conf.nswap);
 
 		return readstr(offset, buf, n, xbuf);
+	case Qlights:
+		errors("write only");
 	default:
 		panic("consread %lux\n", c->qid);
 		return 0;

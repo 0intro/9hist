@@ -420,8 +420,6 @@ floppykproc(void *a)
 			}
 		}
 		disp++;
-		if(owl(disp&1) < 0)
-			print("owl failed\n");
 		tsleep(&floppy.kr, return0, 0, 5*1000);
 		
 	}

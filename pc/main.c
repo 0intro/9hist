@@ -222,25 +222,44 @@ confinit(void)
 	conf.nhard = 1;
 }
 
-/*
- *  math coprocessor error
- */
-void
-matherror1(Ureg *ur)
+char *mathmsg[] =
 {
-print("matherror1\n");
-	pexit("Math error", 0);
-}
+	"invalid",
+	"denormalized",
+	"div-by-zero",
+	"overflow",
+	"underflow",
+	"precision",
+	"stack",
+	"error",
+};
 
 /*
  *  math coprocessor error
  */
 void
-matherror2(Ureg *ur)
+matherror(Ureg *ur)
 {
-	outb(0xF0, 0xFF);	/* bad craziness */
-print("matherror2\n");
-	pexit("Math error", 0);
+	ulong status;
+	int i;
+	char *msg;
+	char note[ERRLEN];
+
+	/*
+	 *  a write cycle to port 0xF0 clears the interrupt latch attached
+	 *  to the error# line from the 387
+	 */
+	outb(0xF0, 0xFF);
+
+	status = fpstatus() & 0xffff;
+	msg = "unknown";
+	for(i = 0; i < 8; i++)
+		if((1<<i) & status){
+			msg = mathmsg[i];
+			break;
+		}
+	sprint(note, "math: %s, status 0x%ux, pc 0x%lux", msg, status, ur->pc);
+	postnote(u->p, 1, note, NDebug);
 }
 
 /*
@@ -270,15 +289,14 @@ mathemu(Ureg *ur)
 void
 mathover(Ureg *ur)
 {
-print("mathover\n");
 	pexit("Math overrun", 0);
 }
 
 void
 mathinit(void)
 {
-	setvec(Matherr1vec, matherror1);
-	setvec(Matherr2vec, matherror2);
+	setvec(Matherr1vec, matherror);
+	setvec(Matherr2vec, matherror);
 	setvec(Mathemuvec, mathemu);
 	setvec(Mathovervec, mathover);
 }
@@ -317,19 +335,6 @@ void
 firmware(void)
 {
 	panic("firmware");
-}
-
-/*
- *  make noise, blink lights
- */
-void
-buzz(int f, int d)
-{
-}
-
-void
-lights(int val)
-{
 }
 
 /*
@@ -443,8 +448,8 @@ pmuwrbit(int index, int bit, int pos)
 }
 
 /*
- *  control power to the serial line
- *	onoff == 0 means turn power on
+ *  power to serial port
+ *	onoff == 0 means on
  *	onoff == 1 means off
  */
 int
@@ -453,14 +458,26 @@ serial(int onoff)
 	return pmuwrbit(1, onoff, 6);
 }
 
-int
-owl(int onoff)
+void
+buzz(int f, int d)
 {
-	return pmuwrbit(0, onoff, 4);
+	static Rendez br;
+	static QLock bl;
+
+	qlock(&bl);
+	pmuwrbit(0, 0, 6);
+	tsleep(&br, return0, 0, d);
+	pmuwrbit(0, 1, 6);
+	qunlock(&bl);
 }
 
-int
-mail(int onoff)
+void
+lights(int val)
 {
-	return pmuwrbit(0, onoff, 1);
+	static QLock ll;
+
+	qlock(&ll);
+	pmuwrbit(0, (val&1), 4);		/* owl */
+	pmuwrbit(0, ((val>>1)&1), 1);		/* mail */
+	qunlock(&ll);
 }
