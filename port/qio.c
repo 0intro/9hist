@@ -532,6 +532,11 @@ qpass(Queue *q, Block *b)
 		iunlock(q);
 		return -1;
 	}
+	if(q->state & Qclosed){
+		freeblist(b);
+		iunlock(q);
+		return BALLOC(b);
+	}
 
 	/* add buffer to queue */
 	if(q->bfirst)
@@ -574,6 +579,12 @@ qpassnolim(Queue *q, Block *b)
 	/* sync with qread */
 	dowakeup = 0;
 	ilock(q);
+
+	if(q->state & Qclosed){
+		freeblist(b);
+		iunlock(q);
+		return BALLOC(b);
+	}
 
 	/* add buffer to queue */
 	if(q->bfirst)

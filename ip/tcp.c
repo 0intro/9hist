@@ -377,6 +377,7 @@ tcpclose(Conv *c)
 	qhangup(c->rq, nil);
 	qhangup(c->wq, nil);
 	qhangup(c->eq, nil);
+	qflush(c->rq);
 
 	switch(tcb->state) {
 	case Listen:

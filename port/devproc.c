@@ -851,10 +851,18 @@ procstopwait(Proc *p, int ctl)
 }
 
 void
-procctlfgrp(Fgrp *f)
+procctlclosefiles(Proc *p)
 {
 	int i;
 	Chan *c;
+	Fgrp *f;
+
+	qlock(&p->debug);
+	f = p->fgrp;
+	if(f == nil){
+		qunlock(&p->debug);
+		error(Eprocdied);
+	}
 
 	lock(f);
 	f->ref++;
@@ -863,12 +871,16 @@ procctlfgrp(Fgrp *f)
 		if(c != 0) {
 			f->fd[i] = 0;
 			unlock(f);
+			qunlock(&p->debug);
 			cclose(c);
+			qlock(&p->debug);
 			lock(f);
 		}
 	}
 	unlock(f);
 	closefgrp(f);
+
+	qunlock(&p->debug);
 }
 
 void
@@ -924,18 +936,8 @@ procctlreq(Proc *p, char *va, int n)
 		ready(p);
 	}
 	else
-	if(strncmp(buf, "closefiles", 10) == 0){
-		qlock(&p->debug);
-		if(waserror()){
-			qunlock(&p->debug);
-			nexterror();
-		}
-		if(p->fgrp == nil)
-			error(Eprocdied);
-		procctlfgrp(p->fgrp);
-		qunlock(&p->debug);
-		poperror();
-	}
+	if(strncmp(buf, "closefiles", 10) == 0)
+		procctlclosefiles(p);
 	else
 	if(strncmp(buf, "pri", 3) == 0) {
 		if(n < 4)
