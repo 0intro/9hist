@@ -341,12 +341,35 @@ procoffset(long offset, char *va, int *np)
 }
 
 static int
+procqidwidth(Chan *c)
+{
+	char buf[32];
+
+	return sprint(buf, "%lud", c->qid.vers);
+}
+
+int
+procfdprint(Chan *c, int fd, int w, char *s, int ns)
+{
+	int n;
+
+	if(w == 0)
+		w = procqidwidth(c);
+	n = snprint(s, ns, "%3d %.2s %C %4ld (%.16llux %*lud %.2ux) %5ld %8lld %s\n",
+		fd,
+		&"r w rw"[(c->mode&3)<<1],
+		devtab[c->type]->dc, c->dev,
+		c->qid.path, w, c->qid.vers, c->qid.type,
+		c->iounit, c->offset, c->name->s);
+	return n;
+}
+
+static int
 procfds(Proc *p, char *va, int count, long offset)
 {
 	Fgrp *f;
 	Chan *c;
 	int n, i, w, ww;
-	char buf[32];
 
 	qlock(&p->debug);
 	f = p->fgrp;
@@ -370,7 +393,7 @@ procfds(Proc *p, char *va, int count, long offset)
 		c = f->fd[i];
 		if(c == nil)
 			continue;
-		ww = sprint(buf, "%lud", c->qid.vers);
+		ww = procqidwidth(c);
 		if(ww > w)
 			w = ww;
 	}
@@ -378,14 +401,7 @@ procfds(Proc *p, char *va, int count, long offset)
 		c = f->fd[i];
 		if(c == nil)
 			continue;
-		n += snprint(va+n, count-n, "%3d %.2s %C %4ld (%.16llux %*lud %.2ux) %8lld ",
-			i,
-			&"r w rw"[(c->mode&3)<<1],
-			devtab[c->type]->dc, c->dev,
-			c->qid.path, w, c->qid.vers, c->qid.type,
-			c->offset);
-		n += readstr(0, va+n, count-n, c->name->s);
-		n += snprint(va+n, count-n, "\n");
+		n += procfdprint(c, i, w, va+n, count-n);
 		offset = procoffset(offset, va, &n);
 	}
 	unlock(f);
@@ -945,11 +961,26 @@ procstopwait(Proc *p, int ctl)
 		error(Eprocdied);
 }
 
+static void
+procctlcloseone(Proc *p, Fgrp *f, int fd)
+{
+	Chan *c;
+
+	c = f->fd[fd];
+	if(c == nil)
+		return;
+	f->fd[fd] = nil;
+	unlock(f);
+	qunlock(&p->debug);
+	cclose(c);
+	qlock(&p->debug);
+	lock(f);
+}
+
 void
-procctlclosefiles(Proc *p)
+procctlclosefiles(Proc *p, int all, int fd)
 {
 	int i;
-	Chan *c;
 	Fgrp *f;
 
 	f = p->fgrp;
@@ -958,17 +989,11 @@ procctlclosefiles(Proc *p)
 
 	lock(f);
 	f->ref++;
-	for(i = 0; i < f->maxfd; i++) {
-		c = f->fd[i];
-		if(c != 0) {
-			f->fd[i] = 0;
-			unlock(f);
-			qunlock(&p->debug);
-			cclose(c);
-			qlock(&p->debug);
-			lock(f);
-		}
-	}
+	if(all)
+		for(i = 0; i < f->maxfd; i++)
+			procctlcloseone(p, f, i);
+	else
+		procctlcloseone(p, f, fd);
 	unlock(f);
 	closefgrp(f);
 }
@@ -1028,8 +1053,13 @@ procctlreq(Proc *p, char *va, int n)
 	}
 	else
 	if(strncmp(buf, "closefiles", 10) == 0)
-		procctlclosefiles(p);
+		procctlclosefiles(p, 1, 0);
 	else
+	if(strncmp(buf, "close", 5) == 0){
+		if(n < 6)
+			error(Ebadctl);
+		procctlclosefiles(p, 0, atoi(buf+6));
+	}else
 	if(strncmp(buf, "pri", 3) == 0) {
 		if(n < 4)
 			error(Ebadctl);

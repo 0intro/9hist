@@ -203,6 +203,7 @@ ulong		procalarm(ulong);
 int		proccounter(char *name);
 void		procctl(Proc*);
 void		procdump(void);
+int		procfdprint(Chan*, int, int, char*, int);
 void		procinit0(void);
 void		procflushseg(Segment*);
 Proc*		proctab(int);

@@ -28,7 +28,7 @@ dupgen(Chan *c, char *, Dirtab*, int, int s, Dir *dp)
 	if((f=fgrp->fd[s/2]) == nil)
 		return 0;
 	if(s & 1){
-		p = 0600;
+		p = 0400;
 		sprint(up->genbuf, "%dctl", s/2);
 	}else{
 		p = perm[f->mode&3];
@@ -101,7 +101,7 @@ dupread(Chan *c, void *va, long n, vlong offset)
 {
 	char *a = va;
 	char buf[256];
-	int fd, twicefd;
+	int fd, twicefd, m;
 	Fgrp *f;
 
 	if(c->qid.type == QTDIR)
@@ -113,7 +113,7 @@ dupread(Chan *c, void *va, long n, vlong offset)
 		if(fd<0 || f->nfd<=fd)
 			error(Ebadfd);
 		c = fdtochan(fd, -1, 0, 0);
-		snprint(buf, sizeof buf, "%d %ld", fd, c->iounit);
+		procfdprint(c, fd, 0, buf, sizeof buf);
 		return readstr((ulong)offset, va, n, buf);
 	}
 	panic("dupread");
@@ -121,17 +121,8 @@ dupread(Chan *c, void *va, long n, vlong offset)
 }
 
 static long
-dupwrite(Chan *c, void*, long, vlong)
+dupwrite(Chan*, void*, long, vlong)
 {
-	int fd, twicefd;
-
-	twicefd = c->qid.path - 1;
-	fd = twicefd/2;
-	if(twicefd & 1){
-print("writing ctl file\n");
-		print("do ctl write\n");
-		return -1;
-	}
 	panic("dupwrite");
 	return 0;		/* not reached */
 }

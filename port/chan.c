@@ -554,9 +554,9 @@ cunmount(Chan *mnt, Chan *mounted)
 	Mount *f, **p;
 
 if(mnt->umh)	/* should not happen */
-	print("cmount newp extra umh\n");
+	print("cunmount newp extra umh\n");
 if(mounted && mounted->umh)
-	print("cmount old extra umh\n");
+	print("cunmount old extra umh\n");
 
 	pg = up->pgrp;
 	wlock(&pg->ns);

@@ -1662,10 +1662,6 @@ atapnp(void)
 			 */
 			break;
 		case (0x0646<<16)|0x1095:	/* CMD 646 */
-			/*
-			 * Is this correct?
-			 */
-			pi |= 0x0f;
 //for(i = 0; i <= 4; i++) print("bar%d: addr %lux size %d\n", i, p->mem[i].bar, p->mem[i].size);
 			break;
 		case (0x0571<<16)|0x1106:	/* VIA 82C686 */

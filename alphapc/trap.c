@@ -157,7 +157,7 @@ smcheck(ulong code)
 }
 
 void
-mcheck(void *x)
+mcheck(Ureg *ur, void *x)
 {
 	Mcheck *m;
 	uvlong *data;
@@ -173,6 +173,11 @@ mcheck(void *x)
 		if (col++ == 2)
 			col = 0;
 	}
+	if(col != 2)
+		print("\n");
+	print("\n");
+	dumpregs(ur);
+	prflush();
 	firmware();
 }
 
@@ -280,7 +285,7 @@ trap(Ureg *ur)
 			clock(ur);
 			break;
 		case 2:	/* machine check */
-			mcheck((void*)(KZERO|(ulong)ur->a2));
+			mcheck(ur, (void*)(KZERO|(ulong)ur->a2));
 			break;
 		case 3:	/* device */
 			intr(ur);
