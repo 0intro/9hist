@@ -475,8 +475,8 @@ x6to32(uchar x)
 void
 setscreen(int maxx, int maxy, int ldepth)
 {
-	int len, vgamaxy, width, i, x;
-	uchar *p;
+	int len, vgamaxy, width, i, x, s;
+	uchar *p, *oldp;
 
 	if(ldepth == 3)
 		setmode(&mode13);
@@ -488,7 +488,7 @@ setscreen(int maxx, int maxy, int ldepth)
 	len = width * BY2WD * maxy;
 	p = xalloc(len);
 	if(p == 0)
-		panic("can't alloc screen bitmap");
+		error(Enobitstore);
 	mbb = NULLMBB;
 
 	/*
@@ -511,15 +511,17 @@ setscreen(int maxx, int maxy, int ldepth)
 	/*
 	 *  setup new soft screen, free memory for old screen
 	 */
-	if(gscreen.base)
-		xfree(gscreen.base);
+	oldp = gscreen.base;
+	s = splhi();
 	gscreen.ldepth = ldepth;
 	gscreen.width = width;
 	gscreen.r.min = Pt(0, 0);
 	gscreen.r.max = Pt(maxx, maxy);
 	gscreen.clipr = gscreen.r;
 	gscreen.base = (ulong*)p;
-	memset(gscreen.base, 0xff, len);
+	splx(s);
+	if(oldp)
+		xfree(oldp);
 
 	/*
 	 *  set depth of cursor backup area
