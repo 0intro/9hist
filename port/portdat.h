@@ -409,6 +409,7 @@ struct Stream {
 	Queue	*procq;		/* write queue at process end */
 	Queue	*devq;		/* read queue at device end */
 	Block	*err;		/* error message from down stream */
+	int	forcedelim;	/* force a delimiter before the next message */
 };
 
 /*

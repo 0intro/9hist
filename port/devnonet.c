@@ -540,6 +540,10 @@ noiput(Queue *q, Block *bp)
 /*
  *  queue a block
  */
+enum {
+	Window=	1,
+};
+
 static int
 windowopen(void *a)
 {
@@ -548,9 +552,9 @@ windowopen(void *a)
 
 	cp = (Noconv *)a;
 	i = cp->next - cp->first;
-	if(i>=0 && i<32)	
+	if(i>=0 && i<Window)	
 		return 1;
-	if(i<0 && Nnomsg+i<32)
+	if(i<0 && Nnomsg+i<Window)
 		return 1;
 	return 0;	
 }
@@ -1355,6 +1359,7 @@ nonetcksum(Block *bp, int offset)
 	int n;
 	ulong s;
 	Nohdr *hp;
+	Block *first;
 
 	s = 0;
 	p = bp->rptr + offset;
@@ -1390,7 +1395,20 @@ nonetcksum(Block *bp, int offset)
 	s = (s&0xffff) + (s>>16);
 	hp->sum[1] = s>>8;
 	hp->sum[0] = s;
-	return s & 0xffff;
+	s &= 0xffff;
+	switch(s){
+	case 0xac9f:
+	case 0xc1a4:
+	case 0xc41c:
+	case 0xc46d:
+		{ int i;
+		print("%lux s,", s);
+		for(bp = first; bp; bp = bp->next)
+			for(i = 0; i < BLEN(bp); i++)
+				print(" %ux", bp->rptr[i]);
+		}
+	}
+	return s;
 }
 
 /*

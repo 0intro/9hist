@@ -784,9 +784,12 @@ mntxmit(Mnt *m, Mnthdr *mh)
 			nexterror();
 		}
 		mh->mbr = mballoc();
-		n = (*devtab[q->msg->type].read)(q->msg, mh->mbr->buf, BUFSIZE, 0);
+		do{
+			n = (*devtab[q->msg->type].read)(q->msg, mh->mbr->buf, BUFSIZE, 0);
+		}while(n == 0);
 		poperror();		/* 3 */
 		if(convM2S(mh->mbr->buf, &mh->rhdr, n) == 0){
+print("POO bad len %d %ux!\n", n, mh->mbr->buf[0]);
 			mnterrdequeue(m, mh);
 			error(Ebadmsg);
 		}
@@ -868,6 +871,9 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		error(Eshutdown);
 	}else if(mh->rhdr.type != mh->thdr.type+1){
 		print("bad type %d not %d in mntxmit\n", mh->rhdr.type, mh->thdr.type+1);
+/*XXX*/		print("chan %c %d %lux %lux\n", devchar[m->q->msg->type],
+				m->q->msg->dev, m->q->msg->qid.path,
+				m->q->msg->stream);	
 		error(Ebadmsg);
 	}
 	/*

@@ -1010,6 +1010,9 @@ stputq(Queue *q, Block *bp)
 		wakeup(q->other->rp);
 		delim = 1;
 	} else {
+		if(BLEN(bp) == 1 && *(bp->rptr) == 1)
+			print("stputq u->p->pid %d %s\n", u->p->pid, u->p->text);
+
 		lock(q);
 		if(q->first)
 			q->last->next = bp;
@@ -1268,6 +1271,9 @@ streamwrite(Chan *c, void *a, long n, int docopy)
 
 	s = c->stream;
 
+	if(n == 1 && *((char*)a) == 1)
+		print("u->p->pid %d %s\n", u->p->pid, u->p->text);
+
 	/*
 	 *  decode the qid
 	 */
@@ -1285,7 +1291,24 @@ streamwrite(Chan *c, void *a, long n, int docopy)
 			error(Ehungup);
 	}
 
-	if(!docopy && isphys(a)){
+	/*
+	 *  if an error occurs during write n,
+	 *  force a delim before write n+1
+	 */
+	if(waserror()){
+		s->forcedelim = 1;
+		nexterror();
+	}
+	if(s->forcedelim){
+		FLOWCTL(q);
+		bp = allocb(0);
+		bp->flags |= S_DELIM;
+		bp->type = M_DATA;
+		PUTNEXT(q, bp);
+		s->forcedelim = 0;
+	}
+
+	if(0 && !docopy && isphys(a)){
 		/*
 		 *  `a' is global to the whole system, just create a
 		 *  pointer to it and pass it on.
@@ -1322,6 +1345,7 @@ streamwrite(Chan *c, void *a, long n, int docopy)
 			}
 		}
 	}
+	poperror();
 	return n;
 }
 
