@@ -219,6 +219,9 @@ struct Tcppriv
 	ulong		lenerr;			/* short packet */
 	ulong		order;			/* out of order */
 
+	/* for keeping track of tcpackproc */
+	int	ackprocstarted;
+	QLock	apl;
 };
 
 void	addreseq(Tcpctl*, Tcp*, Block*, ushort);
@@ -622,8 +625,19 @@ tcpstart(Conv *s, int mode, ushort window)
 {
 	Tcpctl *tcb;
 	Tcppriv *tpriv;
+	char kpname[NAMELEN];
 
 	tpriv = s->p->priv;
+
+	if(tpriv->ackprocstarted == 0){
+		qlock(&tpriv->apl);
+		if(tpriv->ackprocstarted == 0){
+			sprint(kpname, "#I%dtcpack", s->p->f->dev);
+			kproc(kpname, tcpackproc, s->p);
+			tpriv->ackprocstarted = 1;
+		}
+		qunlock(&tpriv->apl);
+	}
 
 	tcb = (Tcpctl*)s->ptcl;
 
@@ -2038,6 +2052,4 @@ tcpinit(Fs *fs)
 	tpriv->tstats.tcpMaxConn = Nchans;
 
 	Fsproto(fs, tcp);
-
-	kproc("tcpack", tcpackproc, tcp);
 }

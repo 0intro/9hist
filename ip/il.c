@@ -136,6 +136,10 @@ struct Ilpriv
 	ulong		dupb;
 
 	Rendez		ilr;
+
+	/* keeping track of the ack kproc */
+	int	ackprocstarted;
+	QLock	apl;
 };
 
 /* Always Acktime < Fasttime < Slowtime << Ackkeepalive */
@@ -385,8 +389,6 @@ ilinit(Fs *f)
 	il->nc = Nchans;
 	il->ptclsize = sizeof(Ilcb);
 	Fsproto(f, il);
-
-	kproc("ilack", ilackproc, il);
 }
 
 void
@@ -1083,6 +1085,20 @@ ilstart(Conv *c, int type, int window)
 {
 	char *e;
 	Ilcb *ic;
+	Ilpriv *ipriv;
+	char kpname[NAMELEN];
+
+	ipriv = c->p->priv;
+
+	if(ipriv->ackprocstarted == 0){
+		qlock(&ipriv->apl);
+		if(ipriv->ackprocstarted == 0){
+			sprint(kpname, "#I%dilack", c->p->f->dev);
+			kproc(kpname, ilackproc, c->p);
+			ipriv->ackprocstarted = 1;
+		}
+		qunlock(&ipriv->apl);
+	}
 
 	ic = (Ilcb*)c->ptcl;
 	ic->conv = c;

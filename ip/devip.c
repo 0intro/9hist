@@ -250,6 +250,7 @@ ipgetfs(int dev)
 		netloginit(f);
 		for(i = 0; ipprotoinit[i]; i++)
 			ipprotoinit[i](f);
+		f->dev = dev;
 		ipfs[dev] = f;
 	}
 	qunlock(&fslock);

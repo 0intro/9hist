@@ -503,17 +503,25 @@ umbrwfree(ulong addr, int size)
 }
 
 ulong
-upamalloc(ulong addr, int size, int align)
+upamalloc(ulong pa, int size, int align)
 {
 	ulong a, ae;
 
-	if(a = mapalloc(&xrmapupa, addr, size, align))
+	if(a = mapalloc(&xrmapupa, pa, size, align))
 		return a;
 
-	if((a = mapalloc(&rmapupa, addr, size, align)) == 0)
+	if((a = mapalloc(&rmapupa, pa, size, align)) == 0){
+		memdebug();
 		return 0;
+	}
 
-	ae = mmukmap(a, 0, size);
+	/*
+	 * Upamalloc is a request to map a range of physical addresses.
+	 * Therefore, if pa is 0 mapalloc will choose the base address.
+	 * Note, however, mmukmap is always asked to give a 1-to-1 mapping
+	 * of va to pa.
+	 */
+	ae = mmukmap(a, a, size);
 
 	/*
 	 * Should check here that it was all delivered
@@ -528,7 +536,7 @@ upamalloc(ulong addr, int size, int align)
 }
 
 void
-upafree(ulong addr, int size)
+upafree(ulong pa, int size)
 {
-	mapfree(&xrmapupa, addr, size);
+	mapfree(&xrmapupa, pa, size);
 }

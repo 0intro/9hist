@@ -240,6 +240,7 @@ struct IProuter {
 struct Fs
 {
 	RWlock;
+	int	dev;
 
 	int	np;
 	Proto*	p[Maxproto+1];		/* list of supported protocols */

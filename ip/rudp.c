@@ -152,6 +152,9 @@ struct Rudppriv
 	ulong	rxmits;			/* # of retransmissions */
 	ulong	orders;			/* # of out of order pkts */
 
+	/* keeping track of the ack kproc */
+	int	ackprocstarted;
+	QLock	apl;
 };
 
 
@@ -184,11 +187,30 @@ void	relackq(Reliable *, Block *);
 void	relhangup(Conv *, Reliable *);
 void	relrexmit(Conv *, Reliable *);
 
+static void
+rudpstartackproc(Proto *rudp)
+{
+	Rudppriv *rpriv;
+	char kpname[NAMELEN];
+
+	rpriv = rudp->priv;
+	if(rpriv->ackprocstarted == 0){
+		qlock(&rpriv->apl);
+		if(rpriv->ackprocstarted == 0){
+			sprint(kpname, "#I%drudpack", rudp->f->dev);
+			kproc(kpname, relackproc, rudp);
+			rpriv->ackprocstarted = 1;
+		}
+		qunlock(&rpriv->apl);
+	}
+}
+
 static char*
 rudpconnect(Conv *c, char **argv, int argc)
 {
 	char *e;
 
+	rudpstartackproc(c->p);
 	e = Fsstdconnect(c, argv, argc);
 	Fsconnected(c, e);
 
@@ -217,6 +239,7 @@ rudpannounce(Conv *c, char** argv, int argc)
 {
 	char *e;
 
+	rudpstartackproc(c->p);
 	e = Fsstdannounce(c, argv, argc);
 	if(e != nil)
 		return e;
@@ -644,9 +667,6 @@ rudpinit(Fs *fs)
 	rudp->ptclsize = sizeof(Rudpcb);
 
 	Fsproto(fs, rudp);
-
-	kproc("relackproc", relackproc, rudp);
-	
 }
 
 /*********************************************/
