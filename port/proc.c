@@ -119,13 +119,11 @@ ready(Proc *p)
 
 	s = splhi();
 
-	if(p->priority != 0){
-		if(p->state == Running){
-			if(p->priority < Nrq-1)
-				p->priority++;
-		} else
-			p->priority = 1;
-	}
+	if(p->state == Running){
+		if(p->priority < Nrq-1)
+			p->priority++;
+	} else
+		p->priority = p->basepri;
 	rq = &runq[p->priority];
 
 	lock(runq);

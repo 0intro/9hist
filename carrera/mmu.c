@@ -47,13 +47,11 @@ kmapinit(void)
 {
 	KMap *k, *klast;
 
-	lock(&kmaplock);
 	kmapfree = kpte;
 	klast = &kpte[KPTESIZE-1];
 	for(k=kpte; k<klast; k++)
 		k->next = k+1;
 	k->next = 0;
-	unlock(&kmaplock);
 
 	m->ktlbnext = TLBROFF;
 }

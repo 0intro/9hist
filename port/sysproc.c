@@ -166,6 +166,7 @@ sysrfork(ulong *arg)
 	 */
 	flushmmu();
 	p->priority = up->priority;
+	p->basepri = up->basepri;
 	p->mp = up->mp;
 	ready(p);
 	return pid;
@@ -386,9 +387,10 @@ sysexec(ulong *arg)
 	 *  '/' processes are high priority (hack to make /ip more responsive)
 	 */
 	if(devchar[tc->type] == L'/')
-		up->priority = 0;
+		up->basepri = 0;
 	else
-		up->priority = 1;
+		up->basepri = 1;
+	up->priority = up->basepri;
 	close(tc);
 
 	/*
