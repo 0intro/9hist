@@ -669,17 +669,25 @@ ether509reset(Ether *ether)
 		ea[eax] = (x>>8) & 0xFF;
 		ea[eax+1] = x & 0xFF;
 	}
-	if(pcicfg == 0)
-		acr = ins(port+AddressConfig);
-	else{
+	if(pcicfg){
 		ether->irq = pcicfg->irq;
-		acr = Xcvr10BaseT;
 		COMMAND(port, SelectWindow, 3);
+		acr = XcvrAUI;
 		l = inl(port+InternalCgf);
-		l &= ~0x700000;
-		outl(port+InternalCgf, l);
+		switch(l & 0x700000){
+
+		case 0x000000:
+			acr = Xcvr10BaseT;
+			break;
+
+		case 0x300000:
+			acr = XcvrBNC;
+			break;
+		}
 		free(pcicfg);
 	}
+	else
+		acr = ins(port+AddressConfig);
 
 	/*
 	 * Finished with window 0. Now set the ethernet address
