@@ -513,6 +513,11 @@ i82365probe(int x, int d, int dev)
 			cp->type = Tpd6710;
 			cp->nslot = 1;
 		}
+
+		/* low power mode */
+		outb(x, Rmisc2 + (dev<<7));
+		c = inb(d);
+		outb(d, c & ~Flowpow);
 		break;
 	}
 
@@ -536,11 +541,6 @@ i82365probe(int x, int d, int dev)
 		c = inb(d);
 		outb(d, c & ~0xC0);
 	}
-
-	/* low power mode */
-	outb(x, Rmisc2 + (dev<<7));
-	c = inb(d);
-	outb(d, c & ~Flowpow);
 
 	memset(&isa, 0, sizeof(ISAConf));
 	if(isaconfig("pcmcia", ncontroller, &isa) && isa.irq)

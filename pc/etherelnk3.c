@@ -1810,8 +1810,8 @@ etherelnk3reset(Ether* ether)
 			ether->irq = ap->irq;
 			ether->tbdf = ap->tbdf;
 			cbfns = ap->cbfns;
-			*bpp = bp->next;
-			freeb(bp);
+			// *bpp = bp->next;		// HIRO.
+			// freeb(bp);
 			break;
 		}
 		bpp = &bp->next;
