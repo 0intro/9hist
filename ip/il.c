@@ -417,7 +417,7 @@ ilkick(void *x)
 static void
 ilcreate(Conv *c)
 {
-	c->rq = qopen(64*1024, Qmsg, 0, c);
+	c->rq = qopen(64*1024, 0, 0, c);
 	c->wq = qopen(64*1024, Qkick, ilkick, c);
 }
 
