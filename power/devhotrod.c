@@ -13,7 +13,6 @@
 /*
  * If defined, ENABMEMTEST causes memory test to be run at device open
  */
-#define	ENABMEMTEST
 #ifdef	ENABMEMTEST
 void	mem(Hot*, ulong*, ulong);
 #define	NTESTBUF	256
@@ -22,6 +21,7 @@ ulong	testbuf[NTESTBUF];
 /*
  * If defined, ENABBUSTEST causes bus error diagnostic to be run at device open
  */
+#define	ENABBUSTEST
 
 /*
  * If 1, ENABCKSUM causes data transfers to have checksums
@@ -224,8 +224,9 @@ hotrodopen(Chan *c, int omode)
 		 */
 		mp = &u->khot;
 		mp->cmd = Ubus;
-		hmp = hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->khot, 0);
+		hmp = hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->khot);
 		hotwait(hmp);
+for(;;) ;
 #endif
 	}
 	c->mode = openmode(omode);

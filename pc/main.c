@@ -285,7 +285,12 @@ enum
 	Pmudata=	0x198,
 
 	Pmucsr=		0x199,
-	 Busy=	0x1,
+	 Busy=		0x1,
+
+	/*
+	 *  configuration port
+	 */
+	Pconfig=	0x3F3,
 };
 
 /*
@@ -368,6 +373,14 @@ pmuwrbit(int index, int bit, int pos)
 int
 serial(int onoff)
 {
+	int x;
+
+	/*
+	 *  set config (enable everything)
+	 */
+	x = splhi();
+	config(0x00);
+	splx(x);
 	return pmuwrbit(1, onoff, 6);
 }
 

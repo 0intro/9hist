@@ -562,3 +562,46 @@ sysbrk_(ulong *arg)
 {
 	return ibrk(arg[0], BSEG);
 }
+
+long
+sysrendezvous(ulong *arg)
+{
+	Proc *p, *d, **l;
+	int s, tag;
+	ulong val;
+
+	tag = arg[0];
+	l = &REND(u->p->pgrp, tag);
+
+	lock(u->p->pgrp);
+	for(p = *l; p; p = p->rendhash) {
+		if(p->rendtag == tag) {
+			*l = p->rendhash;
+			val = p->rendval;
+			p->rendval = arg[1];
+
+			if(p->state != Rendezvous)
+				panic("rendezvous");
+			ready(p);
+			unlock(u->p->pgrp);
+			return val;	
+		}
+		l = &p->rendhash;
+	}
+
+	/* Going to sleep here */
+	p = u->p;
+	p->rendtag = tag;
+	p->rendval = arg[1];
+	p->rendhash = *l;
+	*l = p;
+
+	unlock(p->pgrp);
+
+	s = splhi();
+	u->p->state = Rendezvous;
+	sched();
+	splx(s);
+
+	return u->p->rendval;
+}

@@ -754,6 +754,7 @@ print("new offset %d instead of %d\n", offset, off+dp->len);
 static void
 floppyintr(Ureg *ur)
 {
+print("floppy intr\n");
 	floppy.intr = 1;
 	wakeup(&floppy.r);
 }

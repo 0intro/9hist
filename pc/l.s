@@ -488,3 +488,13 @@ TEXT	fpsave(SB),$0
 TEXT	fprestore(SB),$0
 	RET
 
+
+/*
+ *  set configuration register
+ */
+TEXT	config(SB),$0
+	MOVL	l+0(FP),AX
+	MOVL	$0x3F3,DX
+	OUTB
+	OUTB
+	RET

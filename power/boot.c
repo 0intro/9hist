@@ -485,7 +485,6 @@ error(char *s)
  *  prompt and get input
  */
 int
-int
 outin(char *prompt, char *def, int len)
 {
 	int n;

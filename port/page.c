@@ -168,15 +168,25 @@ newpage(int clear, Segment **s, ulong va)
 	/* The kp test is a poor guard against the pager deadlocking */
 	while((palloc.freecount < HIGHWATER && u->p->kp == 0) || palloc.freecount == 0) {
 		palloc.wanted++;
-		unlock(&palloc);			
+		unlock(&palloc);
 		if(s && *s) {
 			qunlock(&((*s)->lk));
 			*s = 0;
 		}
 		qlock(&palloc.pwait);			/* Hold memory requesters here */
 
+		if(waserror()) {
+			qunlock(&palloc.pwait);
+			lock(&palloc);
+			palloc.wanted--;
+			unlock(&palloc);
+			nexterror();
+		}
+
 		kickpager();
 		tsleep(&palloc.r, ispages, 0, 1000);
+
+		poperror();
 
 		qunlock(&palloc.pwait);
 		lock(&palloc);

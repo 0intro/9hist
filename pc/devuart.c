@@ -206,44 +206,39 @@ uartintr(Uart *up)
 {
 	int ch;
 	IOQ *cq;
-	int s;
+	int s, l;
 
+	l = uartrdreg(up, Lstat);
 	s = uartrdreg(up, Istat);
-print("uartintr %lux\n", s);
-	switch(s){
-	case 3:
-		/*
-		 *  get any input characters
-		 */
-		cq = up->iq;
-		while(uartrdreg(up, Lstat) & Inready){
-			ch = uartrdreg(up, Data) & 0xff;
-			if(cq->putc)
-				(*cq->putc)(cq, ch);
-			else {
-				putc(cq, ch);
-				if(up->delim[ch/8] & (1<<(ch&7)) )
-					wakeup(&cq->r);
-			}
-		}
-		break;
-	case 5:
-		/*
-		 *  send next output character
-		 */
-		if(uartrdreg(up, Lstat)&Outready){
-			cq = up->oq;
-			lock(cq);
-			ch = getc(cq);
-print("<cont %2.2ux>", ch);/**/
-			if(ch < 0){
-				up->printing = 0;
+
+	cq = up->iq;
+	while(l & Inready){
+		ch = uartrdreg(up, Data) & 0xff;
+print("<get %2.2ux>", ch);
+		if(cq->putc)
+			(*cq->putc)(cq, ch);
+		else {
+			putc(cq, ch);
+			if(up->delim[ch/8] & (1<<(ch&7)) )
 				wakeup(&cq->r);
-			}else
-				outb(up->port + Data, ch);
-			unlock(cq);
 		}
-		break;
+		l = uartrdreg(up, Lstat);
+	}
+
+	/*
+	 *  send next output character
+	 */
+	if(up->printing && (l&Outready)){
+		cq = up->oq;
+		lock(cq);
+		ch = getc(cq);
+print("<put %2.2ux>", ch);/**/
+		if(ch < 0){
+			up->printing = 0;
+			wakeup(&cq->r);
+		}else
+			outb(up->port + Data, ch);
+		unlock(cq);
 	}
 }
 void
@@ -263,6 +258,8 @@ uartintr1(Ureg *ur)
 void
 uartenable(Uart *up)
 {
+	int x;
+
 	/*
 	 *  set up i/o routines
 	 */
@@ -287,6 +284,15 @@ uartenable(Uart *up)
 	 */
 	uartdtr(up, 1);
 	uartrts(up, 1);
+
+	/*
+	 *  read interrupt status till there aren't any pending
+	 */
+	while(uartrdreg(up, Istat) != 1){
+		x = splhi();
+		uartintr(up);
+		splx(x);
+	}
 }
 
 /*
@@ -303,6 +309,10 @@ uartspecial(int port, IOQ *oq, IOQ *iq, int baud)
 	up->iq = iq;
 	uartenable(up);
 	uartsetbaud(up, baud);
+	if(port == 0){
+		if(serial(0) < 0)
+			print("can't turn on serial port power\n");
+	}
 
 	if(iq){
 		/*
@@ -366,9 +376,14 @@ uartstopen(Queue *q, Stream *s)
 	Uart *up;
 	char name[NAMELEN];
 
-	kprint("uartstopen: q=0x%ux, inuse=%d, type=%d, dev=%d, id=%d\n",
+print("uartstopen: q=0x%ux, inuse=%d, type=%d, dev=%d, id=%d\n",
 		q, s->inuse, s->type, s->dev, s->id);
+
 	up = &uart[s->id];
+	uartenable(up);
+	if(s->id==0 && serial(0)<0)
+		print("can't turn on serial power\n");
+
 	qlock(up);
 	up->wq = WR(q);
 	WR(q)->ptr = up;
@@ -399,6 +414,9 @@ uartstclose(Queue *q)
 	WR(q)->ptr = 0;
 	RD(q)->ptr = 0;
 	qunlock(up);
+
+	if(serial(1) < 0)
+		print("can't turn off serial power\n");
 }
 
 static void
@@ -511,9 +529,6 @@ uartreset(void)
 {
 	Uart *up;
 
-	if(serial(0) < 0)
-		print("can't turn on power\n");
-
 	uartsetup();
 	for(up = uart; up < &uart[2]; up++){
 		if(up->nostream)
@@ -522,7 +537,6 @@ uartreset(void)
 		initq(up->iq);
 		up->oq = ialloc(sizeof(IOQ), 0);
 		initq(up->oq);
-		uartenable(up);
 	}
 }
 

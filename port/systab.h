@@ -8,6 +8,7 @@ Syscall	sysfstat, sysfwstat, sysgetpid, sysmount, sysnoted;
 Syscall	sysnotify, sysopen, syspipe, sysr1, sysread, sysremove, sysseek;
 Syscall syssleep, sysstat, syswait, syswrite, syswstat, sysalarm, syssegbrk;
 Syscall syssegattach, syssegdetach, syssegfree, syssegflush;
+Syscall sysrendezvous;
 
 Syscall *systab[]={
 	[SYSR1]		sysr1,
@@ -44,4 +45,5 @@ Syscall *systab[]={
 	[SEGDETACH]	syssegdetach,
 	[SEGFREE]	syssegfree,
 	[SEGFLUSH]	syssegflush,
+	[RENDEZVOUS]	sysrendezvous,
 };

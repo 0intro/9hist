@@ -176,6 +176,9 @@ trap(Ureg *ur)
 	if(v>=256 || ivec[v] == 0)
 		panic("bad trap type %d %lux\n", v, ur->pc);
 
+	if(v==19 || v==20)
+		print("trap = %d\n", v);
+
 	/*
 	 *  tell the 8259 that we're done with the
 	 *  highest level interrupt (interrupts are still
@@ -183,15 +186,36 @@ trap(Ureg *ur)
 	 */
 	c = v&~0x7;
 	if(c==Int0vec || c==Int1vec){
-		outb(Int0ctl, EOI);
 		if(c == Int1vec)
 			outb(Int1ctl, EOI);
+		outb(Int0ctl, EOI);
 	}
 
 	/*
 	 *  call the trap routine
 	 */
 	(*ivec[v])(ur);
+}
+
+/*
+ *  print 8259 status
+ */
+void
+dump8259(void)
+{
+	int c;
+
+	outb(Int0ctl, 0x0a);	/* read ir */
+	print("ir0 %lux\n", inb(Int0ctl));
+	outb(Int0ctl, 0x0b);	/* read is */
+	print("is0 %lux\n", inb(Int0ctl));
+	print("im0 %lux\n", inb(Int0aux));
+
+	outb(Int1ctl, 0x0a);	/* read ir */
+	print("ir1 %lux\n", inb(Int1ctl));
+	outb(Int1ctl, 0x0b);	/* read is */
+	print("is1 %lux\n", inb(Int1ctl));
+	print("im1 %lux\n", inb(Int1aux));
 }
 
 /*

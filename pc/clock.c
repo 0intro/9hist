@@ -62,6 +62,7 @@ clock(Ureg *ur)
 
 	checkalarms();
 	mouseclock();
+	uartintr0(ur);
 
 	p = m->proc;
 	if(p){

@@ -355,6 +355,9 @@ struct Segment
 	Pte	*map[SEGMAPSIZE];	/* segment pte map */
 };
 
+#define RENDHASH	32
+#define REND(p,s)	((p)->rendhash[(s)%RENDHASH])
+
 struct Pgrp
 {
 	Ref;				/* also used as a lock when mounting */
@@ -365,6 +368,7 @@ struct Pgrp
 	int	nmtab;			/* highest active mount table entry, +1 */
 	QLock	debug;			/* single access via devproc.c */
 	Mtab	*mtab;
+	Proc	*rendhash[RENDHASH];	/* Rendezvous tag hash */
 };
 
 struct Egrp
@@ -437,6 +441,7 @@ enum
 	Wakeme,
 	Broken,
 	Stopped,
+	Rendezvous,
 };
 
 /*
@@ -499,6 +504,10 @@ struct Proc
 	int 	hasspin;		/* I hold a spin lock */
 	int	newtlb;			/* Pager has touched my tables so I must flush */
 	int	procctl;		/* Control for /proc debugging */
+
+	ulong	rendtag;		/* Tag for rendezvous */ 
+	ulong	rendval;		/* Value for rendezvous */
+	Proc	*rendhash;		/* Hash list for tag values */
 	/*
 	 *  machine specific MMU goo
 	 */

@@ -120,6 +120,7 @@ newpgrp(void)
 			p->ref = 1;
 			p->pgrpid = ++pgrpalloc.pgrpid;
 			p->nmtab = 0;
+			memset(p->rendhash, 0, sizeof(p->rendhash));
 			unlock(&pgrpalloc);
 			return p;
 		}

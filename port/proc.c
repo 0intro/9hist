@@ -41,6 +41,7 @@ char *statename[]={	/* BUG: generate automatically */
 	"Wakeme",
 	"Broken",
 	"Stopped",
+	"Rendez",
 };
 
 /*
@@ -390,6 +391,7 @@ postnote(Proc *p, int dolock, char *n, int flag)
 	KMap *k;
 	int s;
 	Rendez *r;
+	Proc *d, **l;
 
 	SET(k);
 	USED(k);
@@ -436,6 +438,23 @@ postnote(Proc *p, int dolock, char *n, int flag)
 		unlock(r);
 		splx(s);
 	}
+	if(p->state == Rendezvous) {
+		lock(p->pgrp);
+		if(p->state == Rendezvous) {
+			p->rendval = 0;
+			l = &REND(p->pgrp, p->rendtag);
+			for(d = *l; d; d = d->rendhash) {
+				if(d == p) {
+					*l = p->rendhash;
+					break;
+				}
+				l = &d->rendhash;
+			}
+			ready(p);
+		}
+		unlock(p->pgrp);
+	}
+
 	return 1;
 }
 
