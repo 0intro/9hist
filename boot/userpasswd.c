@@ -24,7 +24,7 @@ userpasswd(int islocal, Method *mp)
 		outin("user", username, sizeof(username));
 	}
 	crfd = fd = -1;
-	while(strcmp(username, "none") != 0 && !islocal){
+	while(strcmp(username, "none") != 0){
 		getpasswd(password, sizeof password);
 		passtokey(key, password);
 		fd = open("#c/key", OWRITE);
@@ -38,6 +38,8 @@ userpasswd(int islocal, Method *mp)
 			fatal("can't open crypt file");
 		write(crfd, "E", 1);
 		fd = -1;
+		if(islocal)
+			break;
 		if(mp->auth)
 			fd = (*mp->auth)();
 		if(fd < 0){
