@@ -982,7 +982,7 @@ hardintr(Ureg *ur)
 		cp->cmd = 0;
 		break;
 	default:
-		print("weird disk interrupt, cmd=%02x, status=%02x\n",
+		print("weird disk interrupt, cmd=%.2ux, status=%.2ux\n",
 			cp->cmd, cp->status);
 		break;
 	}

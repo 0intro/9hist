@@ -669,7 +669,7 @@ procctlmemio(Proc *p, ulong offset, int n, void *va, int read)
 	return n;
 }
 
-Segment *
+Segment*
 txt2data(Proc *p, Segment *s)
 {
 	int i;
@@ -692,6 +692,21 @@ txt2data(Proc *p, Segment *s)
 	putseg(s);
 	qlock(&ps->lk);
 	p->seg[i] = ps;
+
+	return ps;
+}
+
+Segment*
+data2txt(Segment *s)
+{
+	Segment *ps;
+
+	ps = newseg(SG_TEXT, s->base, s->size);
+	ps->image = s->image;
+	incref(ps->image);
+	ps->fstart = s->fstart;
+	ps->flen = s->flen;
+	ps->flushme = 1;
 
 	return ps;
 }

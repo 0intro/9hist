@@ -102,8 +102,8 @@ sysrfork(ulong *arg)
 	n = flag & RFMEM;
 	for(i = 0; i < NSEG; i++)
 		if(parent->seg[i])
-			p->seg[i] = dupseg(parent->seg[i], n);
-
+			p->seg[i] = dupseg(parent->seg, i, n);
+	
 	/* Refs */
 	incref(u->dot);	
 

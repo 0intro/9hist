@@ -381,9 +381,3 @@ bigcursor(void)
 
 	memmove(&arrow, &fatarrow, sizeof(fatarrow));
 }
-
-void
-screenupdate(Rectangle r)
-{
-	USED(r);
-}

@@ -103,13 +103,15 @@ relocateseg(Segment *s, ulong offset)
 }
 
 Segment*
-dupseg(Segment *s, int share)
+dupseg(Segment **seg, int segno, int share)
 {
 	int i;
 	Pte *pte;
-	Segment *n;
+	Segment *n, *s;
 
 	SET(n);
+	s = seg[segno];
+
 	switch(s->type&SG_TYPE) {
 	case SG_TEXT:			/* New segment shares pte set */
 	case SG_SHARED:
@@ -135,6 +137,9 @@ dupseg(Segment *s, int share)
 		break;
 
 	case SG_DATA:			/* Copy on write plus demand load info */
+		if(segno == TSEG)
+			return data2txt(s);
+
 		qlock(&s->lk);
 		if(share && s->ref == 1) {
 			s->type = (s->type&~SG_TYPE)|SG_SHDATA;

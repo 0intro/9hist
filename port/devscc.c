@@ -284,7 +284,7 @@ sccsetup0(SCC *sp, int brsource)
 	 *  turn on baud rate generator and set rate to 9600 baud.
 	 *  use 1 stop bit.
 	 */
-	sp->sticky[14] = BRSource;
+	sp->sticky[14] = brsource ? BRSource : 0;
 	sccwrreg(sp, 14, 0);
 	sccsetbaud(sp, 9600);
 	sp->sticky[4] = Rx1stop | X16;

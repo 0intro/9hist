@@ -106,10 +106,8 @@ extern	GBitmap	gscreen;
 
 Mouseinfo	mouse;
 Cursorinfo	cursor;
-Rendez		lcdmouse;
 int		mouseshifted;
 int		mousetype;
-int		islcd;
 
 Cursor	arrow =
 {
@@ -164,8 +162,6 @@ void	cursoron(int);
 void	cursoroff(int);
 int	mousechanged(void*);
 
-static Rectangle mbb = {10000, 10000, -10000, -10000};
-
 enum{
 	Qdir,
 	Qbitblt,
@@ -184,6 +180,19 @@ Dirtab bitdir[]={
 #define	NBIT	(sizeof bitdir/sizeof(Dirtab))
 #define	NINFO	8192	/* max chars per subfont; sanity check only */
 #define	HDR	3
+
+void
+lockedupdate(void)
+{
+	qlock(&bit);
+	if(waserror()){
+		qunlock(&bit);
+		return;
+	}
+	screenupdate();
+	qunlock(&bit);
+	poperror();
+}
 
 void
 bitfreeup(void)
@@ -252,27 +261,6 @@ bitdebug(void)
 	print("%d subfonts\n", l);
 }
 
-/*
- * need a process to do scsi transactions to update mouse on LCD
- */
-void
-lcdmousep(void *a)
-{
-	USED(a);
-	for(;;){
-		sleep(&lcdmouse, return0, 0);
-		qlock(&bit);
-		if(waserror()){
-			qunlock(&bit);
-			continue;
-		}
-		screenupdate(mbb);
-		mbb = Rect(10000, 10000, -10000, -10000);
-		qunlock(&bit);
-		poperror();
-	}
-}
-
 void
 bitreset(void)
 {
@@ -332,8 +320,6 @@ bitinit(void)
 		cursorback.width = ((16 << gscreen.ldepth) + 31) >> 5;
 	}
 	cursoron(1);
-	if(islcd)
-		kproc("lcdmouse", lcdmousep, 0);
 }
 
 Chan*
@@ -777,32 +763,6 @@ bitread(Chan *c, void *va, long n, ulong offset)
 	return n;
 }
 
-static void
-mbbrect(Rectangle r)
-{
-	if (r.min.x < mbb.min.x)
-		mbb.min.x = r.min.x;
-	if (r.min.y < mbb.min.y)
-		mbb.min.y = r.min.y;
-	if (r.max.x > mbb.max.x)
-		mbb.max.x = r.max.x;
-	if (r.max.y > mbb.max.y)
-		mbb.max.y = r.max.y;
-}
-
-static void
-mbbpt(Point p)
-{
-	if (p.x < mbb.min.x)
-		mbb.min.x = p.x;
-	if (p.y < mbb.min.y)
-		mbb.min.y = p.y;
-	if (p.x >= mbb.max.x)
-		mbb.max.x = p.x+1;
-	if (p.y >= mbb.max.y)
-		mbb.max.y = p.y+1;
-}
-
 Point
 bitstrsize(GFont *f, uchar *p, int l)
 {
@@ -945,7 +905,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 				isoff = 1;
 			}
 			gbitblt(dst, pt, src, rect, fc);
-			if(islcd && dst->base < endscreen)
+			if(dst->base < endscreen)
 				mbbrect(Rpt(pt, add(pt, sub(rect.max, rect.min))));
 			m -= 31;
 			p += 31;
@@ -1180,7 +1140,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 				isoff = 1;
 			}
 			gsegment(dst, pt1, pt2, t, fc);
-			if(islcd && dst->base < endscreen) {
+			if(dst->base < endscreen) {
 				mbbpt(pt1);
 				mbbpt(pt2);
 			}
@@ -1283,7 +1243,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 				isoff = 1;
 			}
 			gpoint(dst, pt1, t, fc);
-			if(islcd && dst->base < endscreen)
+			if(dst->base < endscreen)
 				mbbpt(pt1);
 			m -= 14;
 			p += 14;
@@ -1375,7 +1335,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 				isoff = 1;
 			}
 			bitstring(dst, pt, ff, p, l, fc);
-			if(islcd && dst->base < endscreen)
+			if(dst->base < endscreen)
 				mbbrect(Rpt(pt, add(pt, bitstrsize(ff, p, l))));
 			m -= l;
 			p += l;
@@ -1414,7 +1374,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 				isoff = 1;
 			}
 			gtexture(dst, rect, src, fc);
-			if(islcd && dst->base < endscreen)
+			if(dst->base < endscreen)
 				mbbrect(rect);
 			m -= 23;
 			p += 23;
@@ -1494,7 +1454,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 				t = (t/ws)*ws;
 				l = (t+dst->r.max.x+ws-1)/ws;
 			}
-			if(islcd && dst->base < endscreen)
+			if(dst->base < endscreen)
 				mbbrect(Rect(dst->r.min.x, miny, dst->r.max.x, maxy));
 			p += 11;
 			m -= 11;
@@ -1607,10 +1567,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 	poperror();
 	if(isoff)
 		cursoron(1);
-	if(islcd) {
-		screenupdate(mbb);
-		mbb = Rect(10000, 10000, -10000, -10000);
-	}
+	screenupdate();
 	qunlock(&bit);
 	return n;
 }
@@ -1962,8 +1919,7 @@ cursoron(int dolock)
 			&clr, Rect(0, 0, 16, 16), flipping? flipD[D&~S] : D&~S);
 		gbitblt(&gscreen, cursor.r.min,
 			&set, Rect(0, 0, 16, 16), flipping? flipD[S|D] : S|D);
-		if(islcd)
-			mbbrect(cursor.r);
+		mbbrect(cursor.r);
 	}
 	if(dolock)
 		unlock(&cursor);
@@ -1976,8 +1932,7 @@ cursoroff(int dolock)
 		lock(&cursor);
 	if(--cursor.visible == 0) {
 		gbitblt(&gscreen, cursor.r.min, &cursorback, Rect(0, 0, 16, 16), S);
-		if(islcd)
-			mbbrect(cursor.r);
+		mbbrect(cursor.r);
 	}
 	if(dolock)
 		unlock(&cursor);
@@ -2026,8 +1981,7 @@ mouseupdate(int dolock)
 	cursoroff(0);
 	mouse.xy = Pt(x, y);
 	cursoron(0);
-	if(islcd)
-		wakeup(&lcdmouse);
+	mousescreenupdate();
 	mouse.dx = 0;
 	mouse.dy = 0;
 	mouse.clock = 0;

@@ -553,9 +553,3 @@ mousectl(char *arg)
 {
 	USED(arg);
 }
-
-void
-screenupdate(Rectangle r)
-{
-	USED(r);
-}
