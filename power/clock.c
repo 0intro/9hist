@@ -108,8 +108,7 @@ clock(Ureg *ur)
 			exit();
 		}
 		checkalarms();
-		p = m->proc;
-		if((ur->status&IEP) && p && p->state==Running){
+		if(u && (ur->status&IEP) && u->p && u->p->state==Running){
 			if(anyready())
 				sched();
 			if(u->nnote && (ur->status&KUP))

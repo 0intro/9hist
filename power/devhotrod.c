@@ -8,31 +8,19 @@
 #include	"fcall.h"
 
 #include	"io.h"
+#include	"hrod.h"
 
 typedef struct Hotrod	Hotrod;
 typedef struct HotQ	HotQ;
-typedef struct Device	Device;
 
 enum {
 	Vmevec=		0xd2,		/* vme vector for interrupts */
 	Intlevel=	5,		/* level to interrupt on */
 	Qdir=		0,		/* Qid's */
 	Qhotrod=	1,
-	NhotQ=		10,		/* size of communication queues */
+	NhotQ=		NRQ,		/* size of communication queues */
 	Nhotrod=	1,
 };
-
-/*
- *  The hotrod fiber interface responds to 1MB
- *  of either user or supervisor accesses at:
- *  	0x30000000 to 0x300FFFFF  in	A32 space
- *  and	  0xB00000 to   0xBFFFFF  in	A24 space.
- *  The second 0x40000 of this space is on-board SRAM.
- */
-struct Device {
-	ulong	mem[0x100000/sizeof(ulong)];
-};
-#define HOTROD		VMEA24SUP(Device, 0xB00000)
 
 struct HotQ{
 	ulong	i;			/* index into queue */
@@ -45,7 +33,7 @@ struct Hotrod{
 	QLock;
 	QLock		buflock;
 	Lock		busy;
-	Device		*addr;		/* address of the device */
+	Hot		*addr;		/* address of the device */
 	int		vec;		/* vme interrupt vector */
 	HotQ		*wq;		/* write this queue to send cmds */
 	int		wi;		/* where to write next cmd */
@@ -58,6 +46,8 @@ struct Hotrod{
 Hotrod hotrod[Nhotrod];
 
 void	hotrodintr(int);
+
+#define	HOTROD	VMEA24SUP(Hot, 0xB00000);
 
 /*
  * Commands
@@ -75,8 +65,9 @@ hotsend(Hotrod *h, Hotmsg *m)
 {
 print("hotsend send %d %lux %lux\n", m->cmd, m, m->param[0]);
 	h->wq->msg[h->wi] = (Hotmsg*)MP2VME(m);
-	while(h->wq->msg[h->wi])
-		;
+	do
+		delay(1);
+	while(h->wq->msg[h->wi]);
 print("hotsend done\n");
 	h->wi++;
 	if(h->wi >= NhotQ)
@@ -97,9 +88,10 @@ hotrodreset(void)
 		/*
 		 * Write queue is at end of hotrod memory
 		 */
-		hp->wq = (HotQ*)((ulong)hp->addr+2*0x40000-sizeof(HotQ));
+		hp->wq = (HotQ*)(&hp->addr->hostrp);
 		hp->vec = Vmevec+i;
 		setvmevec(hp->vec, hotrodintr);
+setvmevec(0xFF, hotrodintr);
 	}	
 	wbflush();
 	delay(20);
@@ -159,7 +151,6 @@ hotrodstat(Chan *c, char *dp)
 Chan*
 hotrodopen(Chan *c, int omode)
 {
-	Device *dp;
 	Hotrod *hp;
 	Hotmsg *mp;
 
@@ -186,16 +177,8 @@ hotrodopen(Chan *c, int omode)
 		mp->param[0] = MP2VME(&hp->rq);
 		mp->param[1] = NhotQ;
 		hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->khot);
-		delay(1000);
+		delay(100);
 		print("reset\n");
-		/*
-		 * Issue reset
-		 */
-		mp->cmd = TEST;
-		hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->khot);
-		print("ok1\n");
-		delay(1000);
-		print("ok2\n");
 	}
 	c->mode = openmode(omode);
 	c->flag |= COPEN;
@@ -233,6 +216,7 @@ hotrodread(Chan *c, void *buf, long n)
 {
 	Hotrod *hp;
 	Hotmsg *mp;
+	ulong l;
 
 	hp = &hotrod[c->dev];
 	switch(c->qid.path){
@@ -251,12 +235,17 @@ hotrodread(Chan *c, void *buf, long n)
 			mp->param[1] = n;
 			hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->khot);
 			qunlock(hp);
+			l = 100*1000*000;
 			do
 				n = mp->param[2];
-			while(n == 0);
+			while(n==0 && --l>0);
+			if(n == 0){
+				print("devhotrod: give up\n");
+				error(Egreg);
+			}
 		}else{
 			/*
-			 *  use hotrod buffer.  lock the buffer till the reply
+			 *  use hotrod buffer.  lock the buffer until the reply
 			 */
 			mp = &u->uhot;
 			mp->param[2] = 0;	/* reply count */
@@ -267,11 +256,16 @@ hotrodread(Chan *c, void *buf, long n)
 			mp->param[1] = n;
 			hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->uhot);
 			qunlock(hp);
+			l = 100*1000*1000;
 			do
 				n = mp->param[2];
-			while(n == 0);
+			while(n==0 && --l>0);
 			memcpy(buf, hp->buf, n);
 			qunlock(&hp->buflock);
+			if(n == 0){
+				print("devhotrod: give up\n");
+				error(Egreg);
+			}
 		}
 		return n;
 	}
@@ -344,8 +338,10 @@ hotrodintr(int vec)
 
 	print("hotrod%d interrupt\n", vec - Vmevec);
 	hp = &hotrod[vec - Vmevec];
+hp=&hotrod[0];
 	if(hp < hotrod || hp > &hotrod[Nhotrod]){
 		print("bad hotrod vec\n");
 		return;
 	}
+	hp->addr->csr3 &= ~INT_VME;
 }
