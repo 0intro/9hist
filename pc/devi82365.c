@@ -163,6 +163,9 @@ struct Slot
 	ulong	caddr;		/* relative address of config registers */
 	uchar	*cisbase;	/* base of mapped in attribute space */
 	uchar	*cispos;	/* current position scanning cis */
+	ulong	maxwait;
+	ulong	readywait;
+	ulong	otherwait;
 
 	/* memory maps */
 	int	time;
@@ -1043,13 +1046,13 @@ timing(Slot *pp)
 		return;
 	i = c&0x3;
 	if(i != 3)
-		ttiming(pp, i);		/* max wait */
+		pp->maxwait = ttiming(pp, i);		/* max wait */
 	i = (c>>2)&0x7;
 	if(i != 7)
-		ttiming(pp, i);		/* max ready/busy wait */
+		pp->readywait = ttiming(pp, i);		/* max ready/busy wait */
 	i = (c>>5)&0x7;
 	if(i != 7)
-		ttiming(pp, i);		/* reserved wait */
+		pp->otherwait = ttiming(pp, i);		/* reserved wait */
 }
 
 void

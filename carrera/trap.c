@@ -371,7 +371,7 @@ intr(Ureg *ur)
 		devint = IO(uchar, I386ack);
 		switch(devint) {
 		default:
-			iprint("i386ACK #%lux\n", devint);
+			print("i386ACK #%lux\n", devint);
 			break;
 		case 7:
 			audiosbintr();
@@ -392,7 +392,7 @@ intr(Ureg *ur)
 	}
 
 	if(cause) {
-		iprint("cause %lux\n", cause);
+		print("cause %lux\n", cause);
 		exit(1);
 	}
 
