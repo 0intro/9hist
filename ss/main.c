@@ -111,7 +111,7 @@ init0(void)
 	u->dot = clone(u->slash, 0);
 
 	if(!waserror()){
-		ksetenv("terminal", "sun slc");
+		ksetterm("sun %s");
 		ksetenv("cputype", "sparc");
 		poperror();
 	}

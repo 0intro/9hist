@@ -105,6 +105,7 @@ struct Ilcb				/* Control block */
 	ulong	recvd;
 	ulong	start;
 	ulong	lastack;
+	int	timeout;
 	int	window;
 };
 

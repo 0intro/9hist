@@ -788,3 +788,12 @@ conswstat(Chan *c, char *dp)
 {
 	error(Eperm);
 }
+
+void
+setterm(char *f)
+{
+	char buf[2*NAMELEN];
+
+	sprint(buf, f, conffile);
+	ksetenv("terminal", buf);
+}

@@ -68,6 +68,7 @@ ilclose(Queue *q)
 	qunlock(s);
 
 	switch(ic->state) {
+	case Ilclosing:
 	case Ilclosed:
 		break;
 	case Ilsyncer:
@@ -83,9 +84,6 @@ ilclose(Queue *q)
 		break;
 	Illistening:
 		ic->state = Ilclosed;
-		break;
-	Ilclosing:
-		/* ?? */
 		break;
 	}
 }
@@ -265,9 +263,11 @@ ilrcvmsg(Ipconv *ipc, Block *bp)
 			return;
 		}
 	}
+drop:
+	freeb(bp);
+	return;
 reset:
 	ilsendctl(0, ih, Ilclose, 0);
-drop:
 	freeb(bp);
 }
 
@@ -277,6 +277,7 @@ ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 	Block *nb;
 	Ilcb *ic;
 	Ilhdr *oh;
+	int sendack = 0;
 	ulong id, ack, oid, dlen;
 
 	id = nhgetl(h->ilid);
@@ -303,8 +304,11 @@ ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 			ic->state = Ilestablished;
 		}
 		break;
-	case Ilclosed:
 	case Ilclosing:
+		ilsendctl(s, 0, Ilclose, 0);
+		ic->state = Ilclosed;
+		/* No break */
+	case Ilclosed:
 		goto hungup;
 	}
 
@@ -323,7 +327,7 @@ ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 		break;
 	case Ildataquery:
 		ilsendctl(s, 0, Ilack, 1);
-		/* NO break */
+		/* No break */
 	case Ildata:
 		ilackto(&s->ilctl, ack);
 		switch(s->ilctl.state) {
@@ -343,7 +347,7 @@ ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 		}
 		break;
 	case Ilclose:
-		ic->state = Ilclosed;
+		ic->state = Ilclosing;
 	hungup:
 		if(s->readq) {
 			nb = allocb(0);
@@ -469,14 +473,7 @@ ilackproc(void *a)
 			switch(s->ilctl.state) {
 			case Ilclosed:
 			case Illistening:
-				break;
 			case Ilclosing:
-				bp = s->ilctl.unacked;
-				if(bp) {
-					np = copyb(bp, blen(bp));
-					PUTNEXT(Ipoutput, np);
-				}
-				break;
 			case Ilsyncer:
 			case Ilsyncee:
 			case Ilestablished:

@@ -621,6 +621,7 @@ extern	ulong	initcode[];
 extern	Dev	devtab[];
 extern	char	devchar[];
 extern	char	user[NAMELEN];
+extern	char	*conffile;
 extern	char	*errstrtab[];
 extern	char	*statename[];
 extern	Palloc 	palloc;

@@ -34,7 +34,7 @@ tcpinit(void)
 void
 tcp_input(Ipconv *ipc, Block *bp)
 {
-	Ipconv *s, *new;
+	Ipconv *s, *e, *new;
 	Tcpctl *tcb;		
 	Tcphdr *h;
 	Tcp seg;
@@ -85,52 +85,53 @@ tcp_input(Ipconv *ipc, Block *bp)
 	if(bp == 0)
 		return;
 
-	if (!(s = ip_conn(ipc, seg.dest, seg.source, source, IP_TCPPROTO))) {
+	s = ip_conn(ipc, seg.dest, seg.source, source, IP_TCPPROTO);
+	if (s == 0) {
 		LPRINT("tcpin: look for listen on %d\n", seg.dest);
 
-		if(!(seg.flags & SYN)) {
-			LPRINT("tcpin: No SYN\n");
-		clear:
-			LPRINT("tcpin: call cleared\n");
-			freeb(bp);   
-                        reset(source, dest, tos, length, &seg);
-                        return;
-		}		
-
-		if(!(s = ip_conn(ipc, seg.dest, 0, 0, IP_TCPPROTO))) {
-			LPRINT("tcpin: No socket dest on %d\n", seg.dest);
+		if((seg.flags & SYN) == 0)
 			goto clear;
+
+		e = &ipc[conf.ip];
+		for(s = ipc; s < e; s++) {
+			if(s->tcpctl.state == LISTEN)
+			if(s->pdst == 0)
+			if(s->dst == 0) {
+				if(s->curlog >= s->backlog)
+					goto clear;
+
+				new = ipincoming(ipc);
+				if(new == 0)
+					goto clear;
+
+				s->curlog++;
+				LPRINT("tcpin: cloning socket\n");
+				new->psrc = seg.dest;
+				new->pdst = seg.source;
+				new->dst = source;
+				memmove(&new->tcpctl, &s->tcpctl, sizeof(Tcpctl));
+				new->tcpctl.flags &= ~CLONE;
+				new->tcpctl.timer.arg = new;
+				new->tcpctl.timer.state = TIMER_STOP;
+				new->tcpctl.acktimer.arg = new;
+				new->tcpctl.acktimer.state = TIMER_STOP;
+
+				new->newcon = 1;
+				new->ipinterface = s->ipinterface;
+				s->ipinterface->ref++;
+				wakeup(&s->listenr);
+
+				s = new;
+				goto process;
+			}
 		}
-
-		if(s->curlog >= s->backlog) {
-			LPRINT("too many pending\n");
-			goto clear;
-		}
-
-		new = ipincoming(ipc);
-		if(new == 0)
-			goto clear;
-
-		s->curlog++;
-		LPRINT("tcpin: cloning socket\n");
-		new->psrc = s->psrc;
-		new->pdst = seg.source;
-		new->dst = source;
-		memmove(&new->tcpctl, &s->tcpctl, sizeof(Tcpctl));
-		new->tcpctl.flags &= ~CLONE;
-		new->tcpctl.timer.arg = new;
-		new->tcpctl.timer.state = TIMER_STOP;
-		new->tcpctl.acktimer.arg = new;
-		new->tcpctl.acktimer.state = TIMER_STOP;
-
-		new->newcon = 1;
-		new->ipinterface = s->ipinterface;
-		s->ipinterface->ref++;
-		wakeup(&s->listenr);
-
-		s = new;
+	clear:
+		LPRINT("tcpin: call cleared\n");
+		freeb(bp);   
+		reset(source, dest, tos, length, &seg);
+		return;
 	}
-	
+process:	
 	tcb = &s->tcpctl;
 	qlock(tcb);
 

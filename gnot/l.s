@@ -84,6 +84,13 @@ TEXT	spldone(SB), $0
 
 	RTS
 
+TEXT	spl1(SB), $0
+
+	MOVL	$0, R0
+	MOVW	SR, R0
+	MOVW	$(SUPER|SPL(1)), SR
+	RTS
+
 TEXT	flushcpucache(SB), $0
 
 	MOVL	$(CCLEAR|CENABLE), R0

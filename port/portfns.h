@@ -104,6 +104,7 @@ void	kickpager(void);
 int	kprint(char*, ...);
 void	kproc(char*, void(*)(void*), void*);
 void	ksetenv(char*, char*);
+void	ksetterm(char*);
 void	lights(int);
 void	lock(Lock*);
 void	lockinit(void);

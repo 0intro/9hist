@@ -231,7 +231,7 @@ init0(void)
 
 	if(!waserror()){
 		ksetenv("cputype", "mips");
-		ksetenv("terminal", "sgi power 4D");
+		ksetterm("sgi %s 4D");
 		ksetenv("sysname", sysname);
 		poperror();
 	}

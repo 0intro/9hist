@@ -467,3 +467,12 @@ ksetenv(char *ename, char *eval)
 	(*devtab[c->type].write)(c, eval, strlen(eval), 0);
 	close(c);
 }
+
+void
+ksetterm(char *f)
+{
+	char buf[2*NAMELEN];
+
+	sprint(buf, f, conffile);
+	ksetenv("terminal", buf);
+}

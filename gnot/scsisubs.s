@@ -1,12 +1,5 @@
 #include "mem.h"
 
-TEXT	spl1(SB), $0
-
-	MOVL	$0, R0
-	MOVW	SR, R0
-	MOVW	$(SUPER|SPL(1)), SR
-	RTS
-
 TEXT	spl2(SB), $0
 
 	MOVL	$0, R0

@@ -3,7 +3,7 @@
 
 #include <fcall.h>
 
-#define DEFFILE "/mips/9"
+#define DEFFILE "/mips/9power"
 #define DEFSYS "bit!bootes"
 
 Fcall	hdr;
@@ -283,7 +283,7 @@ boot(int ask, char *addr)
 
 	print("nop...");
 	hdr.type = Tnop;
-	hdr.tag = ~0;
+	hdr.tag = NOTAG;
 	n = convS2M(&hdr, buf);
 	if(write(fd, buf, n) != n){
 		print("n = %d\n", n);
@@ -308,14 +308,14 @@ boot(int ask, char *addr)
 		prerror("not Rnop");
 		return;
 	}
-	if(hdr.tag != ~0){
-		prerror("tag not ~0");
+	if(hdr.tag != NOTAG){
+		prerror("tag not NOTAG");
 		return;
 	}
 
 	print("session...");
 	hdr.type = Tsession;
-	hdr.tag = ~0;
+	hdr.tag = NOTAG;
 	n = convS2M(&hdr, buf);
 	if(write(fd, buf, n) != n){
 		prerror("write session");
@@ -330,8 +330,8 @@ boot(int ask, char *addr)
 		prerror("format session");
 		return;
 	}
-	if(hdr.tag != ~0){
-		prerror("tag not ~0");
+	if(hdr.tag != NOTAG){
+		prerror("tag not NOTAG");
 		return;
 	}
 	if(hdr.type == Rerror){
