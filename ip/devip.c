@@ -12,6 +12,7 @@ enum
 	Qtopbase,
 	Qarp=		Qtopbase,
 	Qbootp,
+	Qndb,
 	Qiproute,
 	Qiprouter,
 	Qipselftab,
@@ -54,8 +55,9 @@ QLock	fslock;
 Fs	*ipfs[Nfs];	/* attached fs's */
 Queue	*qlog;
 
-extern void nullmediumlink(void);
-extern void pktmediumlink(void);
+extern	void nullmediumlink(void);
+extern	void pktmediumlink(void);
+	long ndbwrite(Fs *f, char *a, ulong off, int n);
 
 static int
 ip3gen(Chan *c, int i, Dir *dp)
@@ -138,6 +140,10 @@ ip1gen(Chan *c, int i, Dir *dp)
 		p = "bootp";
 		q = (Qid){QID(0, 0, Qbootp), 0};
 		break;
+	case Qndb:
+		p = "ndb";
+		q = (Qid){QID(0, 0, Qndb), 0};
+		break;
 	case Qiproute:
 		p = "iproute";
 		q = (Qid){QID(0, 0, Qiproute), 0};
@@ -189,6 +195,7 @@ ipgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 		return ip1gen(c, s+Qtopbase, dp);
 	case Qarp:
 	case Qbootp:
+	case Qndb:
 	case Qlog:
 	case Qiproute:
 	case Qiprouter:
@@ -550,6 +557,8 @@ ipread(Chan *ch, void *a, long n, vlong off)
 		return arpread(f->arp, a, offset, n);
  	case Qbootp:
  		return bootpread(a, offset, n);
+ 	case Qndb:
+		return readstr(offset, a, n, f->ndb);
 	case Qiproute:
 		return routeread(f, a, offset, n);
 	case Qipselftab:
@@ -883,7 +892,7 @@ ttlctlmsg(Conv *c, Cmdbuf *cb)
 }
 
 static long
-ipwrite(Chan* ch, void *v, long n, vlong)
+ipwrite(Chan* ch, void *v, long n, vlong off)
 {
 	Conv *c;
 	Proto *x;
@@ -892,6 +901,7 @@ ipwrite(Chan* ch, void *v, long n, vlong)
 	uchar ia[IPaddrlen], ma[IPaddrlen];
 	Fs *f;
 	char *a;
+	ulong offset = off;
 
 	a = v;
 	f = ipfs[ch->dev];
@@ -918,6 +928,9 @@ ipwrite(Chan* ch, void *v, long n, vlong)
 		if(p != nil)
 			error(p);
 		return n;
+	case Qndb:
+		return ndbwrite(f, a, offset, n);
+		break;
 	case Qctl:
 		x = f->p[PROTO(ch->qid)];
 		c = x->conv[CONV(ch->qid)];
@@ -1202,4 +1215,16 @@ Fsnewcall(Conv *c, uchar *raddr, ushort rport, uchar *laddr, ushort lport)
 	wakeup(&c->listenr);
 
 	return nc;
+}
+
+long
+ndbwrite(Fs *f, char *a, ulong off, int n)
+{
+	if(off != 0)
+		error(Eio);
+	if(n >= sizeof(f->ndb))
+		error(Eio);
+	memmove(f->ndb, a, n);
+	f->ndb[n] = 0;
+	return n;
 }

@@ -265,6 +265,8 @@ struct Fs
 
 	Netlog	*alog;
 	Ifclog	*ilog;
+
+	char	ndb[1024];		/* an ndb entry for this interface */
 };
 
 int	Fsconnected(Conv*, char*);
