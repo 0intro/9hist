@@ -481,8 +481,9 @@ tcm509(Ether *ether)
 			continue;
 		}
 		outb(IDport, 0xC0);
+		delay(2);
 		if(activate(1) != port)
-			print("activate %d\n");
+			print("tcm509: activate\n");
 		
 		if(ether->port == 0 || ether->port == port)
 			return port;

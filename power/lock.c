@@ -53,6 +53,7 @@ lkpage(Segment *s, ulong va)
 	int i;
 	Page *pg;
 	uchar *p, *top;
+	ulong pa;
 
 	USED(s);
 	lock(&semalloc.lock);
@@ -70,7 +71,9 @@ lkpage(Segment *s, ulong va)
 	*p = 1;
 	i = p-semalloc.bmap;
 	pg = &lkpgheader[i];
-	pg->pa = (ulong)((i*WD2PG) + SBSEM) & ~UNCACHED;
+	pa = (ulong)(SBSEM+(i*WD2PG));
+	memset((void*)pa, 0, BY2PG);
+	pg->pa = pa & ~UNCACHED;
 	pg->va = va;
 	pg->ref = 1;
 
