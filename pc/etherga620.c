@@ -377,11 +377,13 @@ ga620ctl(Ether* edev, void* buf, long n)
 			control = ctlr->gib->srcb.control;
 			control &= ~CoalUpdateOnly;
 			ctlr->gib->srcb.control = control;
+			ctlr->coalupdateonly = 0;
 		}
 		else if(cistrcmp(cb->f[1], "on") == 0){
 			control = ctlr->gib->srcb.control;
 			control |= CoalUpdateOnly;
 			ctlr->gib->srcb.control = control;
+			ctlr->coalupdateonly = 1;
 		}
 		else
 			r = -1;
@@ -395,6 +397,8 @@ ga620ctl(Ether* edev, void* buf, long n)
 			control = ctlr->gib->rsrcb.control;
 			control &= ~(TcpUdpCksum|NoPseudoHdrCksum);
 			ctlr->gib->rsrcb.control = control;
+
+			ctlr->hardwarecksum = 0;
 		}
 		else if(cistrcmp(cb->f[1], "on") == 0){
 			control = ctlr->gib->srcb.control;
@@ -404,6 +408,8 @@ ga620ctl(Ether* edev, void* buf, long n)
 			control = ctlr->gib->rsrcb.control;
 			control |= (TcpUdpCksum|NoPseudoHdrCksum);
 			ctlr->gib->rsrcb.control = control;
+
+			ctlr->hardwarecksum = 1;
 		}
 		else
 			r = -1;
