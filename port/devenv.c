@@ -232,7 +232,9 @@ envread(Chan *c, void *a, long n, vlong off)
 		error(Enonexist);
 	}
 
-	if(offset + n > e->len)
+	if(offset > e->len)	/* protects against overflow converting vlong to ulong */
+		n = 0;
+	else if(offset + n > e->len)
 		n = e->len - offset;
 	if(n <= 0)
 		n = 0;

@@ -51,7 +51,13 @@ enum
 	C2speak=0x2,
 	C2out=	0x10,
 
+	/* T2ctl bits */
+	T2gate=	(1<<0),		/* enable T2 counting */
+	T2spkr=	(1<<1),		/* connect T2 out to speaker */
+	T2out=	(1<<5),		/* output of T2 */
+
 	Freq=	1193182,	/* Real clock frequency */
+	Tickshift= 8,		/* increase tick wriggle room */
 
 	Minusec=20,		/* minimum cycles for a clock interrupt */
 
@@ -68,9 +74,8 @@ static struct
 	long	fastperiod;	/* fastticks/hz */
 	long	fast2freq;	/* fastticks*FreqMul/Freq */
 
-	Lock	lock1;		/* mutex for the following */
-	ushort	last1;		/* last value of clock 1 */
-	uvlong	ticks1;		/* cumulative ticks of counter 1 */
+	ushort	last;		/* last value of clock 1 */
+	uvlong	ticks;		/* cumulative ticks of counter 1 */
 }i8253;
 
 void
@@ -90,12 +95,14 @@ i8253init(void)
 	outb(T0cntr, (Freq/HZ)>>8);	/* high byte */
 
 	/*
-	 *  set time clock
+	 *  enable a longer period counter to use as a clock
 	 */
-	outb(Tmode, Load1|Square);
-	i8253.mode = Square;
-	outb(T1cntr, 0xfe);	/* low byte */
-	outb(T1cntr, 0xff);	/* high byte */
+	outb(Tmode, Load2|Square);
+	outb(T2cntr, 0);		/* low byte */
+	outb(T2cntr, 0);		/* high byte */
+	x = inb(T2ctl);
+	x |= T2gate;
+	outb(T2ctl, x);
 
 	/*
 	 * Introduce a little delay to make sure the count is
@@ -241,8 +248,6 @@ clockintrsched(void)
 	iunlock(&i8253);
 }
 
-ulong i8253ding[2];
-
 static void
 clockintr0(Ureg* ureg, void *v)
 {
@@ -254,12 +259,6 @@ clockintr0(Ureg* ureg, void *v)
 
 	now = fastticks(nil);
 	when = i8253.when;
-
-if(i8253.last1 == 0 || i8253.last1 >= 0xffe0)
-	i8253ding[1]++;
-else
-	i8253ding[0]++;
-	
 
 	if(now >= i8253.when){
 		clockintr(ureg, v);
@@ -295,23 +294,23 @@ i8253read(uvlong *hz)
 	uvlong ticks;
 
 	if(hz)
-		*hz = Freq<<8;
+		*hz = Freq<<Tickshift;
 
-	ilock(&i8253.lock1);
-	outb(Tmode, Latch1);
-	y = inb(T1cntr);
-	y |= inb(T1cntr)<<8;
+	ilock(&i8253);
+	outb(Tmode, Latch2);
+	y = inb(T2cntr);
+	y |= inb(T2cntr)<<8;
 
-	if(y < i8253.last1)
-		x = i8253.last1 - y;
+	if(y < i8253.last)
+		x = i8253.last - y;
 	else
-		x = i8253.last1 + (0xfffe - y);
-	i8253.last1 = y;
-	i8253.ticks1 += x>>1;
-	ticks = i8253.ticks1;
-	iunlock(&i8253.lock1);
+		x = i8253.last + (0x1000 - y);
+	i8253.last = y;
+	i8253.ticks += x>>1;
+	ticks = i8253.ticks;
+	iunlock(&i8253);
 
-	return ticks<<8;
+	return ticks<<Tickshift;
 }
 
 /*

@@ -42,6 +42,7 @@ static ushort nvidiadid[] = {
 	0x0151,		/* GeForce2 GTS (rev 1) */
 	0x0152,		/* GeForce2 Ultra */
 	0x0153,		/* Quadro 2 Pro */
+	0x0200,		/* GeForce3 */
 	0,
 };
 

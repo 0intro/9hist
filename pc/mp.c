@@ -48,8 +48,6 @@ apicclkenable(void)
 {
 	Apic *apic;
 
-	i8259init();
-
 	/* Uniprocessor local apic init for apic clock */
 	apic = &mpapic[0];
 	apic->type = PcmpPROCESSOR;
