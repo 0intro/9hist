@@ -58,33 +58,23 @@ struct Vgacard
 	void	(*setpage)(int);	/* routine to page though display memory */
 };
 
-enum
-{
-	Ati,		/* ATI */
-	Pvga1a,		/* paradise */
-	Trident,	/* Trident 8900 */
-	Tseng,		/* tseng labs te4000 */
-	Cirrus,		/* Cirrus CLGD542X */
-	S3,
-	Generic,
-};
-
 static void	nopage(int), tsengpage(int), tridentpage(int);
 static void	atipage(int), cirruspage(int), s3page(int);
 
 Vgacard vgachips[] =
 {
-[Ati]		{ "ati", atipage, },
-[Pvga1a]	{ "pvga1a", cirruspage, },
-[Trident]	{ "trident", tridentpage, },
-[Tseng]		{ "tseng", tsengpage, },
-[Cirrus]	{ "cirrus", cirruspage, },
-[S3]		{ "s3", s3page, },
-[Generic]	{ "generic", nopage, },
-		{ 0, 0, },
+	{ "generic", nopage, },
+	{ "ati", atipage, },
+	{ "cirrus", cirruspage, },
+	{ "clgd542x", cirruspage, },
+	{ "pvga1a", cirruspage, },
+	{ "s3", s3page, },
+	{ "trident", tridentpage, },
+	{ "tseng", tsengpage, },
+	{ 0, 0, },
 };
 
-Vgacard	*vgacard;	/* current vga card */
+Vgacard	*vgacard = &vgachips[0];	/* current vga card */
 
 extern Hwgc tvp3020hwgc;
 extern Hwgc bt485hwgc;
@@ -142,7 +132,6 @@ Dirtab vgadir[]={
 void
 vgareset(void)
 {
-	vgacard = &vgachips[Generic];
 	cursor.disable++;
 }
 
