@@ -132,7 +132,7 @@ void	newqinfo(Qinfo*);
 char	*nextelem(char*, char*);
 int	nonetcksum(Block*, int);
 void	nonetfreeifc(Noifc*);
-Noifc*	nonetnewifc(Queue*, Stream*, int, int, int, void (*)(Noconv*, char*));
+Noifc	*nonetnewifc(Queue*, Stream*, int, int, int, void (*)(Noconv*, char*));
 void	nonetrcvmsg(Noconv*, Block*);
 void	nonettoggle(void);
 void	notify(Ureg*);

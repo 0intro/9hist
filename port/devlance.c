@@ -664,9 +664,10 @@ lanceread(Chan *c, void *a, long n)
 	case CHDIR:
 		return devdirread(c, a, n, lancedir, Ndir, devgen);
 	case Lstatsqid:
-		sprint(buf, "in: %d\nout: %d\ncrc errs %d\noverflows: %d\nframe errs %d\nbuff errs: %d\noerrs %d\n",
-			l.inpackets, l.outpackets, l.crcs, l.overflows, l.frames,
-			l.buffs, l.oerrs);
+		sprint(buf, "in: %d\nout: %d\ncrc errs %d\noverflows: %d\nframe errs %d\nbuff errs: %d\noerrs %d\naddr: %.02x:%.02x:%.02x:%.02x:%.02x:%.02x\n",
+		l.inpackets, l.outpackets, l.crcs,
+		l.overflows, l.frames, l.buffs, l.oerrs,
+		l.ea[0], l.ea[1], l.ea[2], l.ea[3], l.ea[4], l.ea[5]);
 		return stringread(c, a, n, buf);
 	case Ltraceqid:
 		return lancetraceread(c, a, n);
