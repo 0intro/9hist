@@ -326,7 +326,7 @@ etherreset(void)
 			i = sprint(buf, "#l%d: %s: %dMbps port 0x%luX",
 				ctlrno, ether->type, ether->mbps, ether->port);
 			if(ether->irq)
-				i += sprint(buf+i, " irq %d", ether->irq);
+				i += sprint(buf+i, " irq %ld", ether->irq);
 			if(ether->mem)
 				i += sprint(buf+i, " addr 0x%luX", PADDR(ether->mem));
 			if(ether->size)

@@ -824,8 +824,6 @@ drawattach(char *spec)
 int
 drawwalk(Chan *c, char *name)
 {
-	Path *op;
-
 	if(screendata.data == nil)
 		error("no frame buffer");
 	if(strcmp(name, "..") == 0){
@@ -841,9 +839,10 @@ drawwalk(Chan *c, char *name)
 		default:
 			panic("drawwalk %lux", c->qid.path);
 		}
-		op = c->path;
-		c->path = ptenter(&syspt, op, name);
-		decref(op);
+print("drawwalk: ..?\n");
+//		op = c->path;
+//		c->path = ptenter(&syspt, op, name);
+//		decref(op);
 		return 1;
 	}
 	return devwalk(c, name, 0, 0, drawgen);

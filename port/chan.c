@@ -5,6 +5,11 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
+enum
+{
+	CNAMESLOP	= 20
+};
+
 struct
 {
 	Lock;
@@ -12,6 +17,8 @@ struct
 	Chan	*free;
 	Chan	*list;
 }chanalloc;
+
+#define SEP(c) ((c) == 0 || (c) == '/')
 
 int
 incref(Ref *r)
@@ -100,10 +107,70 @@ newchan(void)
 	c->uri = 0;
 	c->aux = 0;
 	c->mchan = 0;
-	c->path = 0;
 	c->mcp = 0;
 	c->mqid = (Qid){0, 0};
+	c->name = 0;
 	return c;
+}
+
+static Ref ncname;
+
+Cname*
+newcname(char *s)
+{
+	Cname *n;
+	int i;
+
+	n = smalloc(sizeof(Cname));
+	i = strlen(s);
+	n->len = i;
+	n->alen = i+CNAMESLOP;
+	n->s = smalloc(n->alen);
+	memmove(n->s, s, i+1);
+	n->ref = 1;
+	incref(&ncname);
+	return n;
+}
+
+void
+cnameclose(Cname *n)
+{
+	if(n == 0)
+		return;
+	if(decref(n))
+		return;
+	decref(&ncname);
+	free(n->s);
+	free(n);
+}
+
+Cname*
+addelem(Cname *n, char *s)
+{
+	int i, a;
+	char *t;
+	Cname *new;
+
+	if(n->ref > 1){
+		/* copy on write */
+		new = newcname(n->s);
+		cnameclose(n);
+		n = new;
+	}
+
+	i = strlen(s);
+	if(n->len+1+i+1 < n->alen){
+		a = n->len+1+i+1 + CNAMESLOP;
+		t = smalloc(a);
+		memmove(t, n->s, n->len+1);
+		free(n->s);
+		n->s = t;
+		n->alen = a;
+	}
+	n->s[n->len++] = '/';
+	memmove(n->s+n->len, s, i+1);
+	n->len += i;
+	return n;
 }
 
 void
@@ -121,18 +188,7 @@ chanfree(Chan *c)
 		c->mh = nil;
 	}
 
-	/*
-	 * Channel can be closed before a path is created or the last
-	 * channel in a mount which has already cleared its pt names
-	 */
-	if(c->path) {
-		if (c->path->ref <= 0) {
-			char buf[100];
-			ptpath(c->path, buf, sizeof(buf));
-			print("decref %s\n", buf);
-		}
-		decref(c->path);
-	}
+	cnameclose(c->name);
 
 	lock(&chanalloc);
 	c->next = chanalloc.free;
@@ -333,7 +389,13 @@ cunmount(Chan *mnt, Chan *mounted)
 Chan*
 cclone(Chan *c, Chan *nc)
 {
-	return devtab[c->type]->clone(c, nc);
+	nc = devtab[c->type]->clone(c, nc);
+	if(nc != nil){
+		nc->name = c->name;
+		if(c->name)
+			incref(c->name);
+	}
+	return nc;
 }
 
 Chan*
@@ -408,6 +470,21 @@ undomount(Chan *c)
 	poperror();
 	runlock(&pg->ns);
 	return c;
+}
+
+int
+walkname(Chan **cp, char *name, int domnt)
+{
+	Chan *c;
+
+	if(walk(cp, name, domnt) < 0)
+		return -1;
+	c = *cp;
+	if(c->name == nil)
+		c->name = newcname(name);
+	else
+		c->name = addelem(c->name, name);
+	return 0;
 }
 
 int
@@ -563,6 +640,56 @@ saveregisters(void)
 }
 
 /*
+ * In place, rewrite name to compress multiple /, eliminate ., and process ..
+ */
+void
+cleanname(Cname *n, int offset)
+{
+	char *p, *q, *dotdot, *name;
+	int rooted;
+
+	name = n->s+offset;
+	rooted = name[0] == '/';
+
+	/*
+	 * invariants:
+	 *	p points at beginning of path element we're considering.
+	 *	q points just past the last path element we wrote (no slash).
+	 *	dotdot points just past the point where .. cannot backtrack
+	 *		any further (no slash).
+	 */
+	p = q = dotdot = name+rooted;
+	while(*p) {
+		if(p[0] == '/')	/* null element */
+			p++;
+		else if(p[0] == '.' && SEP(p[1]))
+			p += 1;	/* don't count the separator in case it is nul */
+		else if(p[0] == '.' && p[1] == '.' && SEP(p[2])) {
+			p += 2;
+			if(q > dotdot) {	/* can backtrack */
+				while(--q > dotdot && *q != '/')
+					;
+			} else if(!rooted) {	/* ``/..'' ≡ ``/'', but ``./../'' ≡ ``..'' */
+				if(q != name)
+					*q++ = '/';
+				*q++ = '.';
+				*q++ = '.';
+				dotdot = q;
+			}
+		} else {	/* real path element */
+			if(q != name+rooted)
+				*q++ = '/';
+			while((*q = *p) != '/' && *q != 0)
+				p++, q++;
+		}
+	}
+	if(q == name)	/* empty string is really ``.'' */
+		*q++ = '.';
+	*q = 0;
+	n->len = (q-name) + offset;
+}
+
+/*
  * Turn a name into a channel.
  * &name[0] is known to be a valid address.  It may be a kernel address.
  */
@@ -572,7 +699,8 @@ namec(char *name, int amode, int omode, ulong perm)
 	Rune r;
 	char *p;
 	char *elem;
-	int t, n;
+	Cname *cname;
+	int t, n, newname;
 	int mntok, isdot;
 	Chan *c, *cc;
 	char createerr[ERRLEN];
@@ -589,15 +717,24 @@ namec(char *name, int amode, int omode, ulong perm)
 		}
 	}
 
+	newname = 1;
+	cname = nil;
+	if(waserror()){
+		cnameclose(cname);
+		nexterror();
+	}
+
 	elem = up->elem;
 	mntok = 1;
 	isdot = 0;
 	switch(name[0]) {
 	case '/':
-		c = cclone(up->slash, 0);
+		cname = newcname(name);	/* save this before advancing */
 		name = skipslash(name);
+		c = cclone(up->slash, 0);
 		break;
 	case '#':
+		cname = newcname(name);	/* save this before advancing */
 		mntok = 0;
 		elem[0] = 0;
 		n = 0;
@@ -611,6 +748,8 @@ namec(char *name, int amode, int omode, ulong perm)
 				name = skipslash(name);
 				if(*name)
 					error(Efilename);
+				poperror();
+				cnameclose(cname);
 				return c;
 			}
 			else {
@@ -627,6 +766,8 @@ namec(char *name, int amode, int omode, ulong perm)
 		name = skipslash(name);
 		break;
 	default:
+		cname = newcname(up->dot->name->s);
+		cname = addelem(cname, name);
 		c = cclone(up->dot, 0);
 		name = skipslash(name);
 		if(*name == 0)
@@ -688,7 +829,10 @@ namec(char *name, int amode, int omode, ulong perm)
 		if(omode == OEXEC)
 			c->flag &= ~CCACHE;
 
+		cc = c;
 		c = devtab[c->type]->open(c, omode&~OCEXEC);
+		if(cc != c)
+			newname = 0;
 
 		if(omode & OCEXEC)
 			c->flag |= CCEXEC;
@@ -760,6 +904,20 @@ namec(char *name, int amode, int omode, ulong perm)
 	default:
 		panic("unknown namec access %d\n", amode);
 	}
+
+	poperror();
+
+	/* peculiar workaround for #/ */
+	if(newname){
+		if(cname->s[0]=='#' && cname->s[1]=='/')
+			cleanname(cname, 2);
+		else
+			cleanname(cname, 0);
+		cnameclose(c->name);
+		c->name = cname;
+	}else
+		cnameclose(cname);
+
 	poperror();
 	return c;
 }

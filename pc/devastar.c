@@ -307,8 +307,8 @@ enum
 
 static int	astarsetup(Astar*);
 static void	astarintr(Ureg*, void*);
-static void	astarkick(Astarchan*);
-static void	astarkickin(Astarchan*);
+static void	astarkick(void*);
+static void	astarkickin(void*);
 static void	enable(Astarchan*);
 static void	disable(Astarchan*);
 static void	astarctl(Astarchan*, char*);
@@ -1211,7 +1211,7 @@ astarctl(Astarchan *ac, char *cmd)
 
 	/* let output drain for a while */
 	for(i = 0; i < 16 && qlen(ac->oq); i++)
-		tsleep(&ac->r, qlen, ac->oq, 125);
+		tsleep(&ac->r, (int (*)(void*))qlen, ac->oq, 125);
 
 	if(strncmp(cmd, "break", 5) == 0)
 		cmd = "k";
@@ -1491,8 +1491,11 @@ astaroutput(Astarchan *ac)
 }
 
 static void
-astarkick(Astarchan *ac)
+astarkick(void *v)
 {
+	Astarchan *ac;
+
+	ac = v;
 	ilock(&ac->a->pagelock);
 	astaroutput(ac);
 	iunlock(&ac->a->pagelock);
@@ -1547,8 +1550,11 @@ astarinput(Astarchan *ac)
  *  get flow controlled input going again
  */
 static void
-astarkickin(Astarchan *ac)
+astarkickin(void *v)
 {
+	Astarchan *ac;
+
+	ac = v;
 	ilock(&ac->a->pagelock);
 	astarinput(ac);
 	iunlock(&ac->a->pagelock);

@@ -285,8 +285,6 @@ ipclone(Chan* c, Chan* nc)
 static int
 ipwalk(Chan* c, char* name)
 {
-	Path *op;
-
 	if(strcmp(name, "..") != 0)
 		return devwalk(c, name, nil, 0, ipgen);
 
@@ -301,9 +299,6 @@ ipwalk(Chan* c, char* name)
 	default:
 		panic("ipwalk %lux", c->qid.path);
 	}
-	op = c->path;
-	c->path = ptenter(&syspt, op, name);
-	decref(op);
 	return 1;
 }
 

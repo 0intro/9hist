@@ -73,6 +73,21 @@ srvlookup(char *name, ulong qidpath)
 	return nil;
 }
 
+char*
+srvname(Chan *c)
+{
+	Srv *sp;
+	char *s;
+
+	for(sp = srv; sp; sp = sp->link)
+		if(sp->chan == c){
+			s = smalloc(3+strlen(sp->name)+1);
+			sprint(s, "#s/%s", sp->name);
+			return s;
+		}
+	return nil;
+}
+
 static Chan*
 srvopen(Chan *c, int omode)
 {

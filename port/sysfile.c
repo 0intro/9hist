@@ -107,7 +107,7 @@ openmode(ulong o)
 long
 sysfd2path(ulong *arg)
 {
-	Chan *c, *oc;
+	Chan *c;
 
 	validaddr(arg[1], arg[2], 1);
 
@@ -121,18 +121,13 @@ sysfd2path(ulong *arg)
 		cclose(c);
 		nexterror();
 	}
-	/* If we used open the chan will be at the first element
-	 * of a union rather than the mhead of the union. undomount
-	 * will make it look like we used Atodir rather than Aopen.
-	 */
-	oc = c;
-	if(c->qid.path & CHDIR)
-		c = undomount(c);
-	poperror();
-	if(c == oc)
-		cclose(c);
 
-	ptpath(c->path, (char*)arg[1], arg[2]);
+	if(c->name == nil)
+		snprint((char*)arg[1], arg[2], "<null>");
+	else
+		snprint((char*)arg[1], arg[2], "%s", c->name->s);
+
+	poperror();
 	return 0;
 }
 
@@ -162,9 +157,9 @@ syspipe(ulong *arg)
 		nexterror();
 	}
 	c[1] = cclone(c[0], 0);
-	if(walk(&c[0], "data", 1) < 0)
+	if(walkname(&c[0], "data", 1) < 0)
 		error(Egreg);
-	if(walk(&c[1], "data1", 1) < 0)
+	if(walkname(&c[1], "data1", 1) < 0)
 		error(Egreg);
 	c[0] = d->open(c[0], ORDWR);
 	c[1] = d->open(c[1], ORDWR);

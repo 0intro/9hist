@@ -71,10 +71,9 @@ devattach(int tc, char *spec)
 	c = newchan();
 	c->qid = (Qid){CHDIR, 0};
 	c->type = devno(tc, 0);
-	if(tc != 'M') {
-		sprint(buf, "#%C%s", tc, spec);
-		c->path = ptenter(&syspt, 0, buf);
-	}
+	sprint(buf, "#%C%s", tc, spec==nil? "" : spec);
+	free(c->name);
+	c->name = newcname(buf);
 	return c;
 }
 
@@ -101,8 +100,8 @@ devclone(Chan *c, Chan *nc)
 	nc->mchan = c->mchan;
 	nc->mqid = c->mqid;
 	nc->mcp = c->mcp;
-	nc->path = c->path;
-	incref(nc->path);
+	if(c->name)
+		incref(c->name);
 	return nc;
 }
 
@@ -111,7 +110,6 @@ devwalk(Chan *c, char *name, Dirtab *tab, int ntab, Devgen *gen)
 {
 	long i;
 	Dir dir;
-	Path *op;
 
 	isdir(c);
 	if(name[0]=='.' && name[1]==0)
@@ -126,9 +124,6 @@ devwalk(Chan *c, char *name, Dirtab *tab, int ntab, Devgen *gen)
 		case 1:
 			if(strcmp(name, dir.name) == 0){
 				c->qid = dir.qid;
-				op = c->path;
-				c->path = ptenter(&syspt, op, name);
-				decref(op);
 				return 1;
 			}
 			continue;
@@ -142,12 +137,19 @@ devstat(Chan *c, char *db, Dirtab *tab, int ntab, Devgen *gen)
 {
 	int i;
 	Dir dir;
+	char *p, *elem;
 
 	for(i=0;; i++)
 		switch((*gen)(c, tab, ntab, i, &dir)){
 		case -1:
 			if(c->qid.path & CHDIR){
-				devdir(c, c->qid, c->path->elem, i*DIRLEN, eve, CHDIR|0555, &dir);
+				if(c->name == nil)
+					elem = "???";
+				else
+					for(elem=p=c->name->s; *p; p++)
+						if(*p = '/')
+							elem = p+1;
+				devdir(c, c->qid, elem, i*DIRLEN, eve, CHDIR|0555, &dir);
 				convD2M(&dir, db);
 				return;
 			}

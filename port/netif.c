@@ -146,7 +146,6 @@ netifopen(Netif *nif, Chan *c, int omode)
 		case Ncloneqid:
 			id = openfile(nif, -1);
 			c->qid.path = NETQID(id, Nctlqid);
-			ptclone(c, 0, id);
 			break;
 		default:
 			if(omode != OREAD)

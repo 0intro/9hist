@@ -239,16 +239,13 @@ Dev rootdevtab = {
 };
 
 void
-rootrecover(Path *p, char *mntname)
+rootrecover(Chan *c, char *mntname)
 {
-	int i;
 	Recover *r;
-	char buf[256];
 
 	r = malloc(sizeof(Recover));
-	i = ptpath(p, buf, sizeof(buf));
-	r->req = smalloc(i+strlen(mntname)+2);
-	sprint(r->req, "%s %s", buf, mntname);
+	r->req = smalloc(c->name->len+strlen(mntname)+2);
+	sprint(r->req, "%s %s", c->name->s, mntname);
 	lock(&reclist);
 	r->next = reclist.q;
 	reclist.q = r;

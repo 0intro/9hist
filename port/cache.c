@@ -128,9 +128,7 @@ cprint(Chan *c, Mntcache *m, char *s)
 	ulong o;
 	int nb, ct;
 	Extent *e;
-	char buf[128];
 
-	ptpath(c->path, buf, sizeof(buf));
 	nb = 0;
 	ct = 1;
 	o = 0;
@@ -143,7 +141,7 @@ cprint(Chan *c, Mntcache *m, char *s)
 		o = e->start+e->len;
 	}
 	pprint("%s: 0x%lux.0x%lux %d %d %s (%d %c)\n",
-	s, m->path, m->vers, m->type, m->dev, buf, nb, ct ? 'C' : 'N');
+	s, m->path, m->vers, m->type, m->dev, c->name, nb, ct ? 'C' : 'N');
 
 	for(e = m->list; e; e = e->next) {
 		pprint("\t%4d %5d %4d %lux\n",

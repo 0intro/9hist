@@ -153,7 +153,6 @@ mntattach(char *muxattach)
 	incref(m->c);
 
 	sprint(buf, "#M%lud", m->id);
-	m->tree.root = ptenter(&m->tree, 0, buf);
 
 	unlock(m);
 
@@ -184,8 +183,6 @@ mntattach(char *muxattach)
 		c->mntptr = mc->mntptr;
 		c->mchan = c->mntptr->c;
 		c->mqid = c->qid;
-		c->path = c->mntptr->tree.root;
-		incref(c->path);
 		incref(c->mntptr);
 	}
 
@@ -233,8 +230,6 @@ mattach(Mnt *m, Chan *c, char *spec)
 	c->qid = r->reply.qid;
 	c->mchan = m->c;
 	c->mqid = c->qid;
-	c->path = m->tree.root;
-	incref(c->path);
 
 	poperror();
 	mntfree(r);
@@ -279,7 +274,6 @@ static int
 mntwalk(Chan *c, char *name)
 {
 	Mnt *m;
-	Path *op;
 	Mntrpc *r;
 
 	m = mntchk(c);
@@ -294,10 +288,6 @@ mntwalk(Chan *c, char *name)
 	mountrpc(m, r);
 
 	c->qid = r->reply.qid;
-	op = c->path;
-	c->path = ptenter(&m->tree, op, name);
-
-	decref(op);
 
 	poperror();
 	mntfree(r);
@@ -414,9 +404,6 @@ mclose(Mnt *m, Chan *c)
 
 	if(decref(m) != 0)
 		return;
-
-	c->path = 0;
-	ptclose(&m->tree);
 
 	for(q = m->queue; q; q = r) {
 		r = q->list;
@@ -909,6 +896,9 @@ mntqrm(Mnt *m, Mntrpc *r)
 void
 recoverchan(Mnt *m, Chan *c)
 {
+panic("recoverchan");
+#ifdef asdf
+BUG: WON'T WORK WITH PATHS GONE?
 	int i, n, flg;
 	Path *safe, *p, **pav;
 
@@ -956,6 +946,7 @@ recoverchan(Mnt *m, Chan *c)
 	free(pav);
 	if(flg&COPEN)
 		mntopen(c, c->mode);
+#endif
 }
 
 Mnt*
@@ -1039,7 +1030,8 @@ mntrecover(Mnt *m, Mntrpc *r)
 		/*
 		 * Send a message to boot via #/recover
 		 */
-		rootrecover(m->c->path, m->tree.root->elem);
+panic("mntrecover\n");
+//		rootrecover(m->c->path, m->tree.root->elem);
 		lock(m);
 	}
 	r->list = m->recwait;
@@ -1070,6 +1062,8 @@ mntrecover(Mnt *m, Mntrpc *r)
 void
 mntrepl(char *buf)
 {
+panic("mntrepl");
+#ifdef asdf
 	int fd;
 	Mnt *m;
 	char *p;
@@ -1105,6 +1099,7 @@ mntrepl(char *buf)
 
 	unlock(m);
 	cclose(c2);
+#endif
 }
 
 Dev mntdevtab = {

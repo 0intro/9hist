@@ -10,6 +10,7 @@ enum
 {
 	Qctl,
 	Qdir,
+	Qfd,
 	Qfpregs,
 	Qkregs,
 	Qmem,
@@ -24,7 +25,6 @@ enum
 	Qtext,
 	Qwait,
 	Qprofile,
-	Qfd,
 };
 
 #define	STATSIZE	(2*NAMELEN+12+9*12)
@@ -263,17 +263,19 @@ procfds(Proc *p, char *va, int count, long offset)
 
 	qlock(&p->debug);
 	lock(f);
-	n = 0;
+	n = readstr(0, va, count, p->dot->name->s);
+	n += snprint(va+n, count-n, "\n");
 	for(i = 0; i <= f->maxfd; i++) {
 		c = f->fd[i];
 		if(c == nil)
 			continue;
-		n += snprint(va+n, count-n, "%3d %.2s %.8lux.%.8lud %8lld ",
+		n += snprint(va+n, count-n, "%3d %.2s %C %4ld %.8lux.%.8lud %8lld ",
 			i,
 			&"r w rw"[(c->mode&3)<<1],
+			devtab[c->type]->dc, c->dev,
 			c->qid.path, c->qid.vers,
 			c->offset);
-		n += ptpath(c->path, va+n, count-n);
+		n += readstr(0, va+n, count-n, c->name->s);
 		n += snprint(va+n, count-n, "\n");
 		if(offset > 0) {
 			offset -= n;
@@ -299,6 +301,27 @@ procclose(Chan * c)
 		free(c->aux);
 }
 
+static void
+int2flag(int flag, char *s)
+{
+	if(flag == 0){
+		*s = '\0';
+		return;
+	}
+	*s++ = '-';
+	if(flag & MAFTER)
+		*s++ = 'a';
+	if(flag & MBEFORE)
+		*s++ = 'b';
+	if(flag & MCREATE)
+		*s++ = 'c';
+	if(flag & MCACHE)
+		*s++ = 'C';
+	if(flag & MRECOV)
+		*s++ = 'r';
+	*s = '\0';
+}
+
 static long
 procread(Chan *c, void *va, long n, vlong off)
 {
@@ -311,7 +334,7 @@ procread(Chan *c, void *va, long n, vlong off)
 	Segment *sg, *s;
 	char *a = va, *sps;
 	int i, j, rsize, pid;
-	char statbuf[NSEG*32];
+	char statbuf[NSEG*32], *srv, flag[10];
 	ulong offset = off;
 
 	if(c->qid.path & CHDIR)
@@ -515,23 +538,26 @@ procread(Chan *c, void *va, long n, vlong off)
 
 	case Qns:
 		mw = c->aux;
-		mntscan(mw, p);
-		if(mw->mh == 0)
+		if(mw->cddone)
 			return 0;
-		if(n < NAMELEN+11)
-			error(Etoosmall);
-		i = sprint(a, "%.*s %d ", NAMELEN, mw->cm->spec, mw->cm->flag);
-		n -= i;
-		a += i;
-		i = ptpath(mw->mh->from->path, a, n);
-		n -= i;
-		a += i;
-		if(n > 0) {
-			*a++ = ' ';
-			n--;
+		mntscan(mw, p);
+		if(mw->mh == 0){
+			mw->cddone = 1;
+			i = snprint(a, n, "cd %s\n", p->dot->name->s);
+			return i;
 		}
-		a += ptpath(mw->cm->to->path, a, n);
-		return a - (char*)va;
+		int2flag(mw->cm->flag, flag);
+		if(strcmp(mw->cm->to->name->s, "#M") == 0){
+			srv = srvname(mw->cm->to->mchan);
+			i = snprint(a, n, "mount %s %s %s %.*s\n", flag,
+				srv==nil? mw->cm->to->mchan->name->s : srv,
+				mw->mh->from->name->s, NAMELEN, mw->cm->spec);
+			free(srv);
+		}else
+			i = snprint(a, n, "bind %s %s %s\n", flag,
+				mw->cm->to->name->s, mw->mh->from->name->s);
+		return i;
+
 	case Qnoteid:
 		return readnum(offset, va, n, p->noteid, NUMSIZE);
 	case Qfd:

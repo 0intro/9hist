@@ -2,6 +2,7 @@ typedef struct Alarms	Alarms;
 typedef struct Block	Block;
 typedef struct Chan	Chan;
 typedef struct Cmdbuf	Cmdbuf;
+typedef struct Cname	Cname;
 typedef struct Crypt	Crypt;
 typedef struct Dev	Dev;
 typedef struct Dirtab	Dirtab;
@@ -20,7 +21,6 @@ typedef struct Mnt	Mnt;
 typedef struct Mhead	Mhead;
 typedef struct Note	Note;
 typedef struct Page	Page;
-typedef struct Path	Path;
 typedef struct Palloc	Palloc;
 typedef struct Pgrps	Pgrps;
 typedef struct Pgrp	Pgrp;
@@ -113,15 +113,6 @@ enum
 	CCACHE	= 0x0080,		/* client cache */
 };
 
-struct Path
-{
-	Ref;
-	Path*	hash;
-	Path*	parent;
-	Pthash*	pthash;
-	char	elem[NAMELEN];
-};
-
 enum
 {
 	BINTR	=	(1<<0),
@@ -154,7 +145,6 @@ struct Chan
 	ushort	flag;
 	Qid	qid;
 	int	fid;			/* for devmnt */
-	Path*	path;
 	Mhead*	mh;			/* mount point that derived Chan */
 	Mhead*	xmh;			/* Last mount point crossed */
 	int	uri;			/* union read index */
@@ -170,6 +160,15 @@ struct Chan
 	Chan*	mchan;			/* channel to mounted server */
 	Qid	mqid;			/* qid of root of mount point */
 	Session*session;
+	Cname	*name;
+};
+
+struct Cname
+{
+	Ref;
+	int	alen;			/* allocated length */
+	int	len;			/* strlen(s) */
+	char	*s;
 };
 
 struct Dev
@@ -209,16 +208,9 @@ enum
 	NSCACHE	=	(1<<NSLOG),
 };
 
-struct Pthash
-{
-	QLock;
-	int	npt;
-	Path*	root;
-	Path*	hash[NSCACHE];
-};
-
 struct Mntwalk				/* state for /proc/#/ns */
 {
+	int		cddone;
 	ulong	id;
 	Mhead*	mh;
 	Mount*	cm;
@@ -259,7 +251,6 @@ struct Mnt
 	int	blocksize;	/* read/write block size */
 	ushort	flushtag;	/* Tag to send flush on */
 	ushort	flushbase;	/* Base tag of flush window for this buffer */
-	Pthash	tree;		/* Path names from this mount point */
 	char	*partial;	/* Outstanding read data */
 	int	npart;		/* Sizeof remains */
 };
@@ -744,7 +735,7 @@ struct Logflag {
 
 struct Cmdbuf
 {
-	char	buf[256];
+	char	buf[64];
 	char	*f[16];
 	int	nf;
 };

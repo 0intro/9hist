@@ -114,7 +114,7 @@ ptlb(ulong phys)
 
 	k = (k+1)&3;
 	p = buf[k];
-	p += sprint(p, "(0x%ux %d ", (phys<<6) & ~(BY2PG-1), (phys>>3)&7);
+	p += sprint(p, "(0x%lux %ld ", (phys<<6) & ~(BY2PG-1), (phys>>3)&7);
 	if(phys & 4)
 		*p++ = 'd';
 	if(phys & 2)
@@ -133,20 +133,20 @@ kpteprint(Ureg *ur)
 	KMap *k;
 
 	i = (ur->badvaddr & ~(2*BY2PG-1)) | TLBPID(tlbvirt());
-	print("tlbvirt=0x%ux\n", i);
+	print("tlbvirt=0x%lux\n", i);
 	i = gettlbp(i, tlbstuff);
-	print("i=%d v=0x%ux p0=%s p1=%s\n",
+	print("i=%ld v=0x%lux p0=%s p1=%s\n",
 		i, tlbstuff[0], ptlb(tlbstuff[1]), ptlb(tlbstuff[2]));
 
 	i = (ur->badvaddr & ~KMAPADDR)>>15;
 	if(i > KPTESIZE){
-		print("kpte index = 0x%ux ?\n", i);
+		print("kpte index = 0x%lux ?\n", i);
 		return;
 	}
 	k = &kpte[i];
-	print("i=%d, &k=0x%ux, k={v=0x%ux, p0=%s, p1=%s, pg=0x%ux}\n",
+	print("i=%ld, &k=0x%lux, k={v=0x%lux, p0=%s, p1=%s, pg=0x%lux}\n",
 		i, k, k->virt, ptlb(k->phys0), ptlb(k->phys1), k->pg);
-	print("pg={pa=0x%ux, va=0x%ux}\n", k->pg->pa, k->pg->va);
+	print("pg={pa=0x%lux, va=0x%lux}\n", k->pg->pa, k->pg->va);
 }
 
 void
@@ -161,7 +161,7 @@ kvce(Ureg *ur, int ecode)
 	c = 'D';
 	if(ecode == CVCEI)
 		c = 'I';
-	print("Trap: VCE%c: addr=0x%ux\n", c, ur->badvaddr);
+	print("Trap: VCE%c: addr=0x%lux\n", c, ur->badvaddr);
 	if((ur->badvaddr & KSEGM) == KSEG3) {
 		kpteprint(ur);
 		return;
@@ -179,7 +179,7 @@ kvce(Ureg *ur, int ecode)
 		if(*p){
 			pg = &(*p)->pages[(soff&(PTEMAPMEM-1))/BY2PG];
 			if(*pg) {
-				print("pa=0x%ux, va=0x%ux\n",
+				print("pa=0x%lux, va=0x%lux\n",
 					(*pg)->pa, (*pg)->va);
 			} else
 				print("no *pg\n");
@@ -313,7 +313,7 @@ seteisadma(int ch, void (*func)(void))
 	if(ch < 0 || ch > 7)
 		panic("seteisadma");
 	if(eisadma[ch] != 0)
-		print("EISA dma%d: intr used twice");
+		print("EISA dma%d: intr used twice", ch);
 
 	eisadma[ch] = func;
 }
@@ -396,7 +396,7 @@ intr(Ureg *ur)
 		devint = IO(uchar, I386ack);
 		switch(devint) {
 		default:
-			print("i386ACK #%lux\n", devint);
+			print("i386ACK #%ux\n", devint);
 			break;
 		case 7:
 			audiosbintr();
@@ -508,7 +508,7 @@ dumpregs(Ureg *ur)
 	int i;
 
 	if(up)
-		print("registers for %s %d\n", up->text, up->pid);
+		print("registers for %s %ld\n", up->text, up->pid);
 	else
 		print("registers for kernel\n");
 

@@ -57,7 +57,7 @@ main(void)
 	vecinit();
 	screeninit();
 /*	iprint("\n\nBrazil\n");		/**/
-	print("Brazil config reg %#lux\n", configreg);
+	print("Brazil config reg %#ux\n", configreg);
 	pageinit();
 	procinit0();
 	initseg();
@@ -337,6 +337,8 @@ init0(void)
 	 * Then early kproc's will have a root and dot.
 	 */
 	up->slash = namec("#/", Atodir, 0, 0);
+	cnameclose(up->slash->name);
+	up->slash->name = newcname("/");
 	up->dot = cclone(up->slash, 0);
 
 	chandevinit();
