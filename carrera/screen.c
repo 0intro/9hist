@@ -146,6 +146,20 @@ static Point cursor;
 static int h, w;
 extern Cursor arrow;
 
+#define IOPORT	((uchar*)0xE0010000)
+
+static uchar
+inb(int port)
+{
+	return IOPORT[port^7];
+}
+
+static void
+outb(int port, int val)
+{
+	IOPORT[port^7] = val;
+}
+
 void
 gborder(GBitmap *l, Rectangle r, int i, Fcode c)
 {
@@ -190,23 +204,6 @@ screeninit(void)
 	int i, j;
 	uchar *scr;
 
-EISAOUTB(0x3C3, 1);
-EISAOUTB(0x46e8, 8);
-EISAOUTB(0x3bf, 1);
-i = EISAINB(0x3b8);
-print("=%2.2ux\n", i);
-EISAOUTB(0x3bf, 3);
-i = EISAINB(0x3b8);
-print("=%2.2ux\n", i);
-EISAOUTB(0x3bf, 1);
-i = EISAINB(0x3d8);
-print("=%2.2ux\n", i);
-EISAOUTB(0x3bf, 3);
-i = EISAINB(0x3d8);
-print("=%2.2ux\n", i);
-EISAOUTB(0x3d8, 0xa0);
-
-	setmode(&dfltmode);
 	setmode(&dfltmode);
 	getvmode(&x);
 	writeregisters(&x);

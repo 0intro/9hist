@@ -37,6 +37,9 @@ enum
 	VideoMEM	= 0x40000000, 	
 	I386ack		= 0xE000023f,
 	EisaControl	= 0xE0010000,	/* Second 64K Page from Devicevirt */
+	  Eisanmi	= EisaControl+0x77,
+	Rtcindex	= Eisanmi,
+	Rtcdata		= 0xE0004007,
 	Eisamphys	= 0x91000000,
 	  Eisavgaphys	= Eisamphys+0xA0000,
 	Eisamvirt	= 0xE0300000,	/* Second 1M page entry from Intctl */
@@ -75,6 +78,6 @@ struct Tte
 
 #define EISA(v)			(Eisamvirt+(v))
 #define EISAINB(port)		(*(uchar*)((EisaControl+(port))^7))
-#define EISAINW(port)		(*(ushort*)((EisaControl+(port))^7))
+#define EISAINW(port)		(*(ushort*)((EisaControl+(port))^6))
 #define EISAOUTB(port, v)	EISAINB(port) = v
 #define EISAOUTW(port, v)	EISAINW(port) = v
