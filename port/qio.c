@@ -138,16 +138,19 @@ ixsummary(void)
 }
 
 /*
- *  allocate queues and blocks (round data base address to 64 bit boundary)
+ *  allocate blocks (round data base address to 64 bit boundary).
+ *  if mallocz gives us more than we asked for, leave room at the front
+ *  for header.
  */
 Block*
 allocb(int size)
 {
 	Block *b;
 	ulong addr;
+	int n;
 
-	size = sizeof(Block) + size + (BY2V-1);
-	b = mallocz(size, 0);
+	n = sizeof(Block) + size + (BY2V-1);
+	b = mallocz(n, 0);
 	if(b == 0)
 		exhausted("Blocks");
 	memset(b, 0, sizeof(Block));
@@ -155,11 +158,38 @@ allocb(int size)
 	addr = (ulong)b;
 	addr = ROUND(addr + sizeof(Block), BY2V);
 	b->base = (uchar*)addr;
+	b->lim = ((uchar*)b) + msize(b);
 	b->rp = b->base;
-	b->wp = b->base;
-	b->lim = ((uchar*)b) + size;
+	n = b->lim - b->base - size;
+	b->rp += n & ~(BY2V-1);
+	b->wp = b->rp;
 
 	return b;
+}
+
+ulong bpadoverhead;
+
+/*
+ *  pad a block to the front
+ */
+Block*
+bpad(Block *bp, int size)
+{
+	int n;
+	Block *nbp;
+
+	if(bp->rp - bp->base > size)
+		return bp;
+
+	n = bp->wp - bp->rp;
+	bpadoverhead += n;
+	nbp = allocb(size+n);
+	nbp->rp += size;
+	nbp->wp = nbp->rp;
+	memmove(nbp->wp, bp->rp, n);
+	nbp->wp += n;
+	freeb(bp);
+	return nbp;
 }
 
 /*
