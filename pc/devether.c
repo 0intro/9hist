@@ -212,9 +212,9 @@ etherreset(void)
 			print("ether%d: %s: port 0x%lux irq %d",
 				ctlrno, ctlr->type, ctlr->port, ctlr->irq);
 			if(ctlr->mem)
-				print(" addr 0x%lux", ctlr->mem);
+				print(" addr 0x%lux", ctlr->mem & ~KZERO);
 			if(ctlr->size)
-				print(" size %d", ctlr->size);
+				print(" size 0x%lux", ctlr->size);
 			print(":");
 			for(i = 0; i < sizeof(ctlr->ea); i++)
 				print(" %2.2ux", ctlr->ea[i]);
