@@ -199,6 +199,7 @@ confinit(void)
 {
 	long x, i, j, *l;
 	int mul;
+	ulong ktop;
 
 	/*
 	 *  the first 640k is the standard useful memory
@@ -237,6 +238,11 @@ confinit(void)
 	conf.npage1 = ((i-1)*MB - conf.base1)/BY2PG;
 	conf.npage = conf.npage0 + conf.npage1;
 	conf.upages = (conf.npage*70)/100;
+
+	ktop = PGROUND((ulong)end);
+	ktop = PADDR(ktop);
+	conf.npage0 -= ktop/BY2PG;
+	conf.base0 += ktop;
 
 	/* for meminit() */
 	conf.topofmem = i*MB;

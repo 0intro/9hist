@@ -190,6 +190,7 @@ void
 confinit(void)
 {
 	int mul;
+	ulong ktop;
 
 	conf.nmach = 1;
 	if(conf.nmach > MAXMACH)
@@ -202,6 +203,11 @@ confinit(void)
 	conf.npage = conf.npage0+conf.npage1;
 
 	conf.upages = 1400;
+
+	ktop = PGROUND((ulong)end);
+	ktop = PADDR(ktop);
+	conf.npage0 -= ktop/BY2PG;
+	conf.base0 += ktop;
 
 	mul = conf.upages/700;
 

@@ -303,6 +303,8 @@ void
 confinit(void)
 {
 	int mul;
+	ulong ktop;
+
 	conf.nmach = 1;
 	if(conf.nmach > MAXMACH)
 		panic("confinit");
@@ -314,6 +316,11 @@ confinit(void)
 	conf.base1 = 16*MB;
 	conf.npage = conf.npage0+conf.npage1;
 	conf.upages = (conf.npage*70)/100;
+
+	ktop = PGROUND((ulong)end);
+	ktop = PADDR(ktop);
+	conf.npage0 -= ktop/BY2PG;
+	conf.base0 += ktop;
 
 	mul = 1 + (conf.npage1>0);
 	conf.nproc = 50*mul;

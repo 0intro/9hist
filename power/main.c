@@ -490,6 +490,7 @@ void
 confinit(void)
 {
 	long x, i, *l;
+	ulong ktop;
 
 	/*
 	 *  copy configuration down from high memory
@@ -514,6 +515,11 @@ confinit(void)
 	conf.npage = conf.npage0;
 	conf.npage1 = 0;
 	conf.base1 = 0;
+
+	ktop = PGROUND((ulong)end);
+	ktop = PADDR(ktop);
+	conf.npage0 -= ktop/BY2PG;
+	conf.base0 += ktop;
 
 	conf.upages = (conf.npage*70)/100;
 	i = conf.npage-conf.upages;

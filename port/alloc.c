@@ -79,7 +79,6 @@ static Xalloc	xlists;
 void
 xinit(void)
 {
-	ulong ktop;
 	Hole *h, *eh;
 	int up, np0, np1;
 
@@ -88,11 +87,6 @@ xinit(void)
 		h->link = h+1;
 
 	xlists.flist = xlists.hole;
-
-	ktop = PGROUND((ulong)end);
-	ktop = PADDR(ktop);
-	conf.npage0 -= ktop/BY2PG;
-	conf.base0 += ktop;
 
 	up = conf.upages;
 	np1 = up;

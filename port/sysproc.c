@@ -169,13 +169,15 @@ sysrfork(ulong *arg)
 	p->parentpid = parent->pid;
 	if(flag&RFNOWAIT)
 		p->parentpid = 1;
+	else {
+		lock(&parent->exl);
+		parent->nchild++;
+		unlock(&parent->exl);
+	}
 	if((flag&RFNOTEG) == 0)
 		p->noteid = parent->noteid;
 
 	p->fpstate = parent->fpstate;
-	lock(&parent->exl);
-	parent->nchild++;
-	unlock(&parent->exl);
 	pid = p->pid;
 	memset(p->time, 0, sizeof(p->time));
 	p->time[TReal] = MACHP(0)->ticks;
