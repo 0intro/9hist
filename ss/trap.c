@@ -312,6 +312,7 @@ noted(Ureg **urp, ulong arg0)
 	}
 	u->notified = 0;
 	memmove(*urp, u->ureg, sizeof(Ureg));
+	(*urp)->r7 = u->svr7;
 	switch(arg0){
 	case NCONT:
 		if(waserror()){
@@ -406,8 +407,9 @@ syscall(Ureg *aur)
 
 	splhi();
 	if(r7!=FORK && (u->p->procctl || u->nnote)){
-		ur->r7 = ret;
+		u->svr7 = ret;
 		notify(ur);
+		return ur->r7;
 	}
 	return ret;
 }

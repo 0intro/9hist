@@ -177,6 +177,7 @@ struct User
 	int	(*notify)(void*, char*);
 	void	*ureg;
 	void	*dbgreg;		/* User registers for debugging in proc */
+	ulong	svr7;
 };
 
 /*

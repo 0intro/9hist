@@ -522,7 +522,8 @@ ipfragfree(Fragq *frag)
 {
 	Fragq *fl, **l;
 
-	freeb(frag->blist);
+	if(frag->blist)
+		freeb(frag->blist);
 
 	frag->src = 0;
 	frag->id = 0;

@@ -26,24 +26,24 @@ void	rfnote(Ureg**);
 
 char *excname[] =
 {
-	"external interrupt",
-	"TLB modification",
-	"TLB miss (load or fetch)",
-	"TLB miss (store)",
-	"address error (load or fetch)",
-	"address error (store)",
-	"bus error (fetch)",
-	"bus error (data load or store)",
-	"system call",
+	"trap: external interrupt",
+	"trap: TLB modification",
+	"trap: TLB miss (load or fetch)",
+	"trap: TLB miss (store)",
+	"trap: address error (load or fetch)",
+	"trap: address error (store)",
+	"trap: bus error (fetch)",
+	"trap: bus error (data load or store)",
+	"trap: system call",
 	"breakpoint",
-	"reserved instruction",
-	"coprocessor unusable",
-	"arithmetic overflow",
-	"undefined 13",
-	"undefined 14",
-	"undefined 15",				/* used as sys call for debugger */
+	"trap: reserved instruction",
+	"trap: coprocessor unusable",
+	"trap: arithmetic overflow",
+	"trap: undefined 13",
+	"trap: undefined 14",
+	"trap: undefined 15",				/* used as sys call for debugger */
 	/* the following is made up */
-	"floating point exception"		/* FPEXC */
+	"trap: floating point exception"		/* FPEXC */
 };
 char	*fpexcname(ulong);
 
@@ -152,7 +152,7 @@ trap(Ureg *ur)
 			if(ecode == FPEXC)
 				sprint(buf, "sys: fp: %s FCR31 %lux", fpexcname(x), x);
 			else
-				sprint(buf, "sys: trap: %s", excname[ecode]);
+				sprint(buf, "sys: %s", excname[ecode]);
 
 			postnote(u->p, 1, buf, NDebug);
 		}else{
@@ -413,7 +413,7 @@ notify(Ureg *ur)
 		memmove((char*)sp, u->note[0].msg, ERRLEN);
 		sp -= 3*BY2WD;
 		*(ulong*)(sp+2*BY2WD) = sp+3*BY2WD;	/* arg 2 is string */
-		*(ulong*)(sp+1*BY2WD) = (ulong)u->ureg;	/* arg 1 is ureg* */
+		ur->r1 = (ulong)u->ureg;		/* arg 1 is ureg* */
 		*(ulong*)(sp+0*BY2WD) = 0;		/* arg 0 is pc */
 		ur->usp = sp;
 		ur->pc = (ulong)u->notify;
@@ -448,6 +448,7 @@ noted(Ureg **urp, ulong arg0)
 	}
 	u->notified = 0;
 	memmove(*urp, u->ureg, sizeof(Ureg));
+	(*urp)->r1 = u->svr1;
 	switch(arg0){
 	case NCONT:
 		if(waserror()){
@@ -542,8 +543,9 @@ syscall(Ureg *aur)
 		noted(&aur, *(ulong*)(sp+BY2WD));	/* doesn't return */
 	splhi();
 	if(r1!=FORK && (u->p->procctl || u->nnote)){
-		ur->r1 = ret;
+		u->svr1 = ret;
 		notify(ur);
+		return ur->r1;
 	}
 
 	return ret;

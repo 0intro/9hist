@@ -232,6 +232,7 @@ struct User
 	void	*ureg;			/* User registers for notes */
 	void	*dbgreg;		/* User registers for debugging in proc */
 	ulong	svstatus;
+	ulong	svr1;
 	/*
 	 *  machine dependent User stuff
 	 */
