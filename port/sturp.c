@@ -33,7 +33,7 @@ struct urpstat {
 } urpstat;
 
 struct Urp {
-	QLock;
+	Lock;
 	short	state;		/* flags */
 	Rendez	r;		/* process waiting for close */
 
@@ -140,10 +140,10 @@ urpopen(Queue *q, Stream *s)
 	 *  find a free urp structure
 	 */
 	for(up = urp; up < &urp[conf.nurp]; up++){
-		qlock(up);
+		lock(up);
 		if(up->state == 0)
 			break;
-		qunlock(up);
+		unlock(up);
 	}
 	if(up == &urp[conf.nurp]){
 		q->ptr = 0;
@@ -155,7 +155,7 @@ urpopen(Queue *q, Stream *s)
 	up->rq = q;
 	up->wq = q->other;
 	up->state = OPEN;
-	qunlock(up);
+	unlock(up);
 	initinput(up, 0);
 	initoutput(up, 0);
 
@@ -236,7 +236,10 @@ urpclose(Queue *q)
 	while(up->kstarted)
 		sleep(&up->r, isdead, up);
 
+	lock(up);
 	up->state = 0;
+	up->rq = 0;
+	unlock(up);
 }
 
 /*
@@ -465,6 +468,7 @@ urpiput(Queue *q, Block *bp)
 	case ACK+4: case ACK+5: case ACK+6: case ACK+7:
 	case ECHO+0: case ECHO+1: case ECHO+2: case ECHO+3:
 	case ECHO+4: case ECHO+5: case ECHO+6: case ECHO+7:
+		DPRINT("rACK %ux\n", ctl);
 		rcvack(up, ctl);
 		break;
 
@@ -695,15 +699,18 @@ static void
 sendctl(Urp *up, int ctl)
 {
 	Block *bp;
+	Queue *q;
 
-	if(QFULL(up->wq->next))
+	q = up->wq;
+	if(QFULL(q->next))
 		return;
 	bp = allocb(1);
 	bp->wptr = bp->lim;
 	bp->rptr = bp->lim-1;
 	*bp->rptr = ctl;
 	bp->flags |= S_DELIM;
-	PUTNEXT(up->wq, bp);
+	PUTNEXT(q, bp);
+	DPRINT("sCTL %ulx\n", ctl);
 }
 
 /*
@@ -762,9 +769,11 @@ sendblock(Urp *up, int bn)
 {
 	Block *bp, *m, *nbp;
 	int n;
+	Queue *q;
 
+	q = up->wq;
 	up->timer = NOW + MSrexmit;
-	if(QFULL(up->wq->next))
+	if(QFULL(q->next))
 		return;
 
 	/*
@@ -781,7 +790,7 @@ sendblock(Urp *up, int bn)
 	nbp->rptr = bp->rptr;
 	nbp->wptr = bp->wptr;
 	nbp->flags |= S_DELIM;
-	PUTNEXT(up->wq, m);
+	PUTNEXT(q, m);
 
 	/*
 	 *  message 2, the block length and the SEQ
@@ -794,7 +803,8 @@ sendblock(Urp *up, int bn)
 	m->rptr[1] = n;
 	m->rptr[2] = n<<8;
 	m->flags |= S_DELIM;
-	PUTNEXT(up->wq, m);
+	PUTNEXT(q, m);
+	DPRINT("sb %d\n", bn);
 }
 
 /*
@@ -945,8 +955,8 @@ todo(void *arg)
 	return (up->state&INITING)
 	? NOW>up->timer					/* time to INIT1 */
 	: ((up->unechoed!=up->next && NOW>up->timer)	/* time to ENQ */
-	  || WINDOW(up)>0 && up->next!=up->nxb
-	  || (!QFULL(up->rq->next) && up->iseq!=(up->lastecho&7))); /* time to ECHO */
+	  || (WINDOW(up)>0 && (up->next!=up->nxb || up->wq->first)) /* open xmit window */
+	  || (up->iseq!=(up->lastecho&7) && !QFULL(up->rq->next))); /* time to ECHO */
 }
 static void
 urpkproc(void *arg)
@@ -983,15 +993,18 @@ urptimer(Alarm *a)
 {
 	Urp *up;
 	Urp *last;
-	Queue *q;
 
 	cancel(a);
 	alarm(500, urptimer, 0);
 	for(up = urp, last = &urp[conf.nurp]; up < last; up++){
 		if(up->state==0)
 			continue;
-		if(up->rq && todo(up))
-			wakeup(&up->rq->r);
+		if(up->rq && canlock(up)){
+			if(up->rq && NOW>up->timer
+			   && ((up->state&INITING) || up->unechoed!=up->next))
+				wakeup(&up->rq->r);
+			unlock(up);
+		}
 	}
 }
 

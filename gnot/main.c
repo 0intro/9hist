@@ -101,11 +101,7 @@ init0(void)
 {
 	Chan *c;
 
-	u->nerrlab = 0;
-	m->proc = u->p;
-	u->p->state = Running;
-	u->p->mach = m;
-	spllo();
+	restore();
 	chandevinit();
 	
 	u->slash = (*devtab[0].attach)(0);
@@ -139,14 +135,13 @@ userinit(void)
 	p->pgrp = newpgrp();
 	strcpy(p->text, "*init*");
 	strcpy(p->pgrp->user, protouser);
-	p->fpstate = FPinit;
 
 	/*
 	 * Kernel Stack
 	 */
 	p->sched.pc = (ulong)init0;
 	p->sched.sp = USERADDR+BY2PG-20;	/* BUG */
-	p->sched.sr = SUPER|SPL(7);
+	p->sched.sr = SUPER|SPL(0);
 	p->upage = newpage(0, 0, USERADDR|(p->pid&0xFFFF));
 
 	/*
@@ -180,6 +175,7 @@ userinit(void)
 	s->minva = UTZERO;
 	s->maxva = UTZERO+BY2PG;
 
+	m->proc = p;
 	ready(p);
 }
 

@@ -11,7 +11,7 @@ enum {
 	Nmask=		0x7,
 };
 
-#define DPRINT if(q->flag&QDEBUG)kprint
+#define DPRINT if(q->flag&QDEBUG)print
 
 typedef struct Urp	Urp;
 
@@ -33,7 +33,7 @@ struct urpstat {
 } urpstat;
 
 struct Urp {
-	QLock;
+	Lock;
 	short	state;		/* flags */
 	Rendez	r;		/* process waiting for close */
 
@@ -140,10 +140,10 @@ urpopen(Queue *q, Stream *s)
 	 *  find a free urp structure
 	 */
 	for(up = urp; up < &urp[conf.nurp]; up++){
-		qlock(up);
+		lock(up);
 		if(up->state == 0)
 			break;
-		qunlock(up);
+		unlock(up);
 	}
 	if(up == &urp[conf.nurp]){
 		q->ptr = 0;
@@ -155,7 +155,7 @@ urpopen(Queue *q, Stream *s)
 	up->rq = q;
 	up->wq = q->other;
 	up->state = OPEN;
-	qunlock(up);
+	unlock(up);
 	initinput(up, 0);
 	initoutput(up, 0);
 
@@ -236,7 +236,10 @@ urpclose(Queue *q)
 	while(up->kstarted)
 		sleep(&up->r, isdead, up);
 
+	lock(up);
 	up->state = 0;
+	up->rq = 0;
+	unlock(up);
 }
 
 /*
@@ -990,15 +993,18 @@ urptimer(Alarm *a)
 {
 	Urp *up;
 	Urp *last;
-	Queue *q;
 
 	cancel(a);
 	alarm(500, urptimer, 0);
 	for(up = urp, last = &urp[conf.nurp]; up < last; up++){
 		if(up->state==0)
 			continue;
-		if(up->rq && todo(up))
-			wakeup(&up->rq->r);
+		if(up->rq && canlock(up)){
+			if(up->rq && NOW>up->timer
+			   && ((up->state&INITING) || up->unechoed!=up->next))
+				wakeup(&up->rq->r);
+			unlock(up);
+		}
 	}
 }
 

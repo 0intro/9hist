@@ -24,6 +24,8 @@ void	duartinit(void);
 int	duartacr;
 int	duartimr;
 
+void	(*kprofp)(ulong);
+
 GBitmap	gscreen =
 {
 	(ulong*)((4*1024*1024-256*1024)|KZERO),	/* BUG */
@@ -287,7 +289,7 @@ duartbreak(int ms)
 }
 
 enum{
-	Kptime=200		/* about once per ms */
+	Kptime=200
 };
 void
 duartstarttimer(void)
@@ -349,7 +351,8 @@ duartintr(Ureg *ur)
 	 * Is it 0?
 	 */
 	if(cause & IM_CRDY){
-/*		kproftimer(ur->pc);/**/
+		if(kprofp)
+			(*kprofp)(ur->pc);
 		c = duart[1].scc_ropbc;
 		duart[0].ctur = (Kptime)>>8;
 		duart[0].ctlr = (Kptime)&255;

@@ -499,6 +499,14 @@ dkmuxconfig(Dk *dp, Block *bp)
 	dp->csc = c;
 
 	/*
+	 *  tell datakit we've rebooted. It should close all channels.
+	 */
+	if(dp->restart) {
+		DPRINT("dkmuxconfig: restart %s\n", dp->name);
+		dkmesg(dp, T_ALIVE, D_RESTART, 0, 0);
+	}
+
+	/*
 	 *  start a process to deal with it
 	 */
 	sprint(buf, "csc.%s.%d", dp->name, dp->ncsc);
@@ -1100,9 +1108,7 @@ dklisten(Chan *c)
 		n = streamread(dc, dialstr, sizeof(dialstr)-1);
 		DPRINT("returns %d\n", n);
 		if(n <= 0)
-{print("bad n\n");
 			error(0, Eio);
-}
 		dialstr[n] = 0;
 		DPRINT("dialstr = %s\n", dialstr);
 
@@ -1112,7 +1118,6 @@ dklisten(Chan *c)
 		n = getfields(dialstr, line, 12, '\n');
 		if (n < 2) {
 			DPRINT("bad dialstr from dk (1 line)\n");
-print("bad dialstr %d '%s'\n", n, dialstr);
 			error(0, Eio);
 		}
 
@@ -1317,16 +1322,6 @@ dkcsckproc(void *a)
 	int i;
 
 	dp = (Dk *)a;
-
-	/*
-	 *  tell datakit we've rebooted. It should close all channels.
-	 */
-	if(dp->restart) {
-		DPRINT("dkcsckproc: restart %s\n", dp->name);
-		dkmesg(dp, T_ALIVE, D_RESTART, 0, 0);
-	}
-	DPRINT("dkcsckproc: closeall %s\n", dp->name);
-	dkmesg(dp, T_CHG, D_CLOSEALL, 0, 0);
 
 	/*
 	 *  loop forever listening

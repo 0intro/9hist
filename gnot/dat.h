@@ -101,7 +101,7 @@ struct Chan
 	Mount	*mnt;			/* mount point that derived Chan */
 	ulong	mountid;
 	int	fid;			/* for devmnt */
-	union{
+	union {
 		Stream	*stream;	/* for stream channels */
 		void	*aux;
 	};
@@ -205,9 +205,11 @@ struct KMap
 struct Mach
 {
 	int	machno;			/* physical id of processor */
+	ulong	splpc;			/* pc of last caller to splhi */
 	int	mmask;			/* 1<<m->machno */
 	ulong	ticks;			/* of the clock since boot time */
 	Proc	*proc;			/* current process on this processor */
+	Proc	*lproc;			/* last process on this processor */
 	Label	sched;			/* scheduler wakeup */
 	Lock	alarmlock;		/* access to alarm list */
 	void	*alarm;			/* alarms bound to this clock */
@@ -316,6 +318,7 @@ struct Proc
 	Proc	*qnext;			/* next process on queue for a QLock */
 	QLock	*qlock;			/* address of qlock being queued for DEBUG */
 	int	state;
+	int	spin;			/* spinning instead of unscheduled */
 	Page	*upage;			/* BUG: should be unlinked from page list */
 	Seg	seg[NSEG];
 	ulong	bssend;			/* initial top of bss seg */
@@ -340,6 +343,20 @@ struct Proc
 	Rendez	sleep;			/* place for tsleep and syssleep */
 	int	wokeup;			/* whether sleep was interrupted */
 	ulong	pc;			/* DEBUG only */
+	int	kp;			/* true if a kernel process */
+};
+
+struct MMU
+{
+	ulong	va;
+	ulong	pa;
+};
+
+#define NMMU 16
+struct MMUCache
+{
+	ulong	next;
+	MMU	mmu[NMMU];
 };
 
 #define	NERR	15
@@ -365,6 +382,7 @@ struct User
 	short	nnote;
 	short	notified;		/* sysnoted is due */
 	int	(*notify)(void*, char*);
+	MMUCache mc;
 	void	*ureg;
 };
 
@@ -565,3 +583,5 @@ extern	Dev	devtab[];
 extern	char	devchar[];
 extern	FPsave	initfp;
 extern	Mach	mach0;
+
+extern  void	(*kprofp)(ulong);

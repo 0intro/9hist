@@ -43,91 +43,206 @@ char *statename[]={	/* BUG: generate automatically */
 	"Broken",
 };
 
+int page_alloc(int);	/* !ORIG */
+void page_free(int, int);
+
 /*
- * Always splhi()'ed.
+ * Called as the last routine in main().  Wait for a process on the run queue, grab it,
+ * and run it.  Note that in this routine the interrupts are enabled for the first time.
  */
 void
 schedinit(void)		/* never returns */
 {
 	Proc *p;
 
-	setlabel(&m->sched);
-	if(u){
-		m->proc = 0;
-		p = u->p;
-		putkmmu(USERADDR, INVALIDPTE);	/* safety first */
-		u = 0;
-		if(p->state == Running)
-			ready(p);
-		else if(p->state == Moribund){
-			p->pid = 0;
-			unlock(&p->debug);
-			p->upage->ref--;
-			/* procalloc already locked */
-			p->qnext = procalloc.free;
-			procalloc.free = p;
-			p->upage = 0;
-			unlock(&procalloc);
-			p->state = Dead;
-		}
-		p->mach = 0;
+	/*
+	 * At init time:  wait for a process on the run queue.
+	 */
+	for (;;) {
+		spllo();
+		while (runq.head == 0)
+			/* idle loop */;
+		splhi();
+		lock(&runq);
+		if (runq.head != 0)
+			break;
+		unlock(&runq);
 	}
-	sched();
+
+	/*
+	 * Set the u pointer and leave it there.  In fact, it might as well be a define.
+	 */
+	u = (User *) USERADDR;
+
+	/*
+	 * For later rescheduling.  Jumped to by sched() on stack switch.
+	 */
+	setlabel(&m->sched);
+
+	/*
+	 * Take a process from the run queue.  The run queue is locked here, and guaranteed
+	 * to have a process on it.
+	 */
+	p = runq.head;
+	if ((runq.head = p->rnext) == 0)
+		runq.tail = 0;
+	unlock(&runq);
+
+	/*
+	 * Ok, here we go.  We have a process and we can start running.
+	 */
+	mapstack(p);
+	gotolabel(&p->sched);
 }
 
+/*
+ * Complete the restoring of a process after mapstack().  The interrupt level here is low.
+ * However, since the process is not Running, it cannot be rescheduled at this point.  We
+ * set the process state to Running.  If the previous process was dead, clean it up.
+ */
+void
+restore(void)
+{
+	Proc *p = m->proc;	/* previous process */
+
+	u->p->mach = m;
+	m->proc = u->p;
+	u->p->state = Running;
+	if (p->state == Moribund) {
+		p->pid = 0;
+		unlock(&p->debug);		/* set in pexit */
+		p->upage->ref--;
+		p->upage = 0;
+		p->qnext = procalloc.free;
+		procalloc.free = p;
+		unlock(&procalloc);		/* set in pexit */
+		p->state = Dead;
+	}
+}
+
+/*
+ * Save part of the process state.  Note: this is not the counterpart of restore().
+ */
+void
+save(Balu *balu)
+{
+	fpsave(&u->fpsave);
+	if (u->fpsave.type) {
+		if(u->fpsave.size > sizeof u->fpsave.junk)
+			panic("fpsize %d max %d\n", u->fpsave.size, sizeof u->fpsave.junk);
+		fpregsave(u->fpsave.reg);
+		u->p->fpstate = FPactive;
+		m->fpstate = FPdirty;
+	}
+	if (BALU->cr0 != 0xFFFFFFFF)	/* balu busy */
+		memcpy(balu, BALU, sizeof *balu);
+	else {
+		balu->cr0 = 0xFFFFFFFF;
+		BALU->cr0 = 0xFFFFFFFF;
+	}
+}
+
+/*
+ * Reschedule the process.  We do not know whether the interrupt level is low or high
+ * here, but we set it to low in any case.  If there is no other process to run, and
+ * this process is Running, return immediately.  If this process is blocked, and there
+ * is no other process to run, keep spinning until either this process or another
+ * process becomes runnable.  If it was this process, we can return immediately.
+ */
 void
 sched(void)
 {
-	Proc *p;
-	ulong tlbvirt, tlbphys;
+	Proc *p = u->p;
+	long initfp;
 	Balu balu;
+	int saved = 0;
 
-	if(u){
+	/*
+	 * Record that the process is spinning instead of blocked.  Ready() uses this
+	 * information to decide what to do with the process.
+	 */
+	p->spin = 1;
+
+	/*
+	 * Look for a new process to be run.
+	 */
+	for (;;) {
+		spllo();
+
+		/*
+		 * Idle loop.  Return when this process becomes runnable.  If nothing else
+		 * to do, start saving some of the process state.
+		 */
+		while (runq.head == 0)
+			if (p->state == Running)
+				return;
+			else if (!saved) {
+				save(&balu);
+				saved = 1;
+			}
+	
+		/*
+		 * Disable clock interrupts so that there will be no rescheduling in this
+		 * section (on this machine).  If there is still a process on the run
+		 * queue, break out of this loop.
+		 */
 		splhi();
+		lock(&runq);
+		if (runq.head != 0)
+			break;
+		unlock(&runq);
+	}
+	p->spin = 0;
 
-		fpsave(&u->fpsave);
-		if(u->fpsave.type){
-			if(u->fpsave.size > sizeof u->fpsave.junk)
-				panic("fpsize %d max %d\n", u->fpsave.size, sizeof u->fpsave.junk);
-			fpregsave(u->fpsave.reg);
-			u->p->fpstate = FPactive;
+	/*
+	 * The first process on the run queue is the process we are going to run.  First
+	 * save our state before we jump to schedinit.  If this process was running, put
+	 * it on the run queue.
+	 */
+	if (p->state == Running) {
+		p->state = Ready;
+		p->rnext = 0;
+		runq.tail->rnext = p;
+		runq.tail = p;
+	}
+
+	/*
+	 * Save some process state (if we haven't done that already) and save/restore
+	 * pc and sp.  We have to jump to schedinit() because we are going to remap the
+	 * stack.
+	 */
+	if (!saved)
+		save(&balu);
+	if (setlabel(&p->sched) == 0)
+		gotolabel(&m->sched);
+
+	/*
+	 * Interrupts are ok now.  Note that the process state is still not Running,
+	 * so no rescheduling.
+	 */
+	spllo();
+
+	/*
+	 * Jumped to by schedinit.  Restore the process state.
+	 */
+	if (p->fpstate != m->fpstate)
+		if (p->fpstate == FPinit) {
+			initfp = 0;
+			fprestore((FPsave *) &initfp);
+			m->fpstate = FPinit;
+		}
+		else {
+			fpregrestore(u->fpsave.reg);
+			fprestore(&u->fpsave);
 			m->fpstate = FPdirty;
 		}
-		if(BALU->cr0 != 0xFFFFFFFF)	/* balu busy */
-			memcpy(&balu, BALU, sizeof balu);
-		else{
-			balu.cr0 = 0xFFFFFFFF;
-			BALU->cr0 = 0xFFFFFFFF;
-		}
-		if(setlabel(&u->p->sched)){	/* woke up */
-if(u->p->mach)panic("mach non zero");
-			p = u->p;
-			p->state = Running;
-			p->mach = m;
-			m->proc = p;
-			if(p->fpstate != m->fpstate){
-				if(p->fpstate == FPinit){
-					u->p->fpstate = FPinit;
-					fprestore(&initfp);
-					m->fpstate = FPinit;
-				}else{
-					fpregrestore(u->fpsave.reg);
-					fprestore(&u->fpsave);
-					m->fpstate = FPdirty;
-				}
-			}
-			if(balu.cr0 != 0xFFFFFFFF)	/* balu busy */
-				memcpy(BALU, &balu, sizeof balu);
-			spllo();
-			return;
-		}
-		gotolabel(&m->sched);
-	}
-	spllo();
-	p = runproc();
-	splhi();
-	mapstack(p);
-	gotolabel(&p->sched);
+	if (balu.cr0 != 0xFFFFFFFF)	/* balu busy */
+		memcpy(BALU, &balu, sizeof balu);
+
+	/*
+	 * Complete restoring the process.
+	 */
+	restore();
 }
 
 void
@@ -135,6 +250,10 @@ ready(Proc *p)
 {
 	int s;
 
+	if (p->spin) {
+		p->state = Running;
+		return;
+	}
 	s = splhi();
 	lock(&runq);
 	p->rnext = 0;
@@ -146,42 +265,6 @@ ready(Proc *p)
 	p->state = Ready;
 	unlock(&runq);
 	splx(s);
-}
-
-void
-checksched(void)		/* just for efficiency; don't sched if no need */
-{
-	if(runq.head)
-		sched();
-}
-
-/*
- * Always called spllo
- */
-Proc*
-runproc(void)
-{
-	Proc *p;
-
-loop:
-	do; while(runq.head == 0);
-	splhi();
-	lock(&runq);
-	p = runq.head;
-	if(p==0 || p->mach){	/* p->mach==0 only when process state is saved */
-		unlock(&runq);
-		spllo();
-		goto loop;
-	}
-	if(p->rnext == 0)
-		runq.tail = 0;
-	runq.head = p->rnext;
-	if(p->state != Ready)
-		print("runproc %s %d %s\n", p->text, p->pid, statename[p->state]);
-	unlock(&runq);
-	p->state = Scheding;
-	spllo();
-	return p;
 }
 
 Proc*
@@ -204,6 +287,7 @@ loop:
 		p->child = 0;
 		p->exiting = 0;
 		p->fpstate = FPinit;
+		p->kp = 0;
 		memset(p->seg, 0, sizeof p->seg);
 		lock(&pidalloc);
 		p->pid = ++pidalloc.pid;
@@ -530,6 +614,12 @@ pexit(char *s, int freemem)
 	lock(&procalloc);	/* sched() can't do this */
 	lock(&c->debug);	/* sched() can't do this */
 	c->state = Moribund;
+
+	/*
+	 * Call the scheduler.  This process gets cleaned up in restore() by the next
+	 * process that runs.  That means that if there is no other process, we'll
+	 * hang around for a little while.
+	 */
 	sched();	/* never returns */
 }
 
@@ -582,7 +672,8 @@ proctab(int i)
 }
 
 #include <ureg.h>
-DEBUG()
+void
+DEBUG(void)
 {
 	int i;
 	Proc *p;
@@ -612,15 +703,16 @@ kproc(char *name, void (*func)(void *), void *arg)
 	 * Kernel stack
 	 */
 	p = newproc();
+	p->kp = 1;
 	p->upage = newpage(1, 0, USERADDR|(p->pid&0xFFFF));
 	k = kmap(p->upage);
 	upa = VA(k);
 	up = (User*)upa;
-	up->p = p;
 
 	/*
 	 * Save time: only copy u-> data and useful stack
 	 */
+	clearmmucache();
 	memcpy(up, u, sizeof(User));
 	n = USERADDR+BY2PG - (ulong)&lastvar;
 	n = (n+32) & ~(BY2WD-1);	/* be safe & word align */
@@ -633,17 +725,14 @@ kproc(char *name, void (*func)(void *), void *arg)
 	for(n=0; n<=up->maxfd; n++)
 		up->fd[n] = 0;
 	up->maxfd = 0;
+	up->p = p;
 	kunmap(k);
 
 	/*
 	 * Sched
 	 */
 	if(setlabel(&p->sched)){
-		u->p = p;
-		p->state = Running;
-		p->mach = m;
-		m->proc = p;
-		spllo();
+		restore();
 		(*func)(arg);
 		pexit(0, 1);
 	}

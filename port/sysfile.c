@@ -181,7 +181,7 @@ sysread(ulong *arg)
 	long n;
 
 	c = fdtochan(arg[0], 0);
-	validaddr(arg[1], arg[2], 0);
+	validaddr(arg[1], arg[2], 1);
 	qlock(c);
 	if(waserror()){
 		qunlock(c);

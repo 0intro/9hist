@@ -121,7 +121,6 @@ ioboardinit(void)
 		maxlevel = 8;
 		noforce = 0;
 	}
-	print("IO %d\n", ioid);
 
 	/*
 	 *  reset VME bus (MODEREG is on the IO2)
@@ -590,7 +589,7 @@ confinit(void)
 	/*
 	 *  set minimal default values
 	 */
-	conf.nmach = 1;
+	conf.nmach = 2;
 	conf.nmod = 2000;
 	conf.nalarm = 10000;
 	conf.norig = 500;

@@ -19,15 +19,37 @@ void
 mapstack(Proc *p)
 {
 	ulong tlbvirt, tlbphys;
-	ulong i;
+	ulong next;
+	MMU *mm, *mn, *me;
 
 	if(p->upage->va != (USERADDR|(p->pid&0xFFFF)))
 		panic("mapstack %d 0x%lux 0x%lux", p->pid, p->upage->pa, p->upage->va);
 	tlbvirt = USERADDR;
 	tlbphys = PPN(p->upage->pa) | PTEVALID | PTEKERNEL;
 	putkmmu(tlbvirt, tlbphys);
-	flushmmu();
-	u = (User*)USERADDR;
+
+	/*
+	 *  if not a kernel process and this process was not the 
+	 *  last process on this machine, flush & preload mmu
+	 */
+	if(!p->kp && p!=m->lproc){
+		flushmmu();
+
+		/*
+		 *  preload the MMU with the last (up to) NMMU user entries
+		 *  previously faulted into it for this process.
+		 */
+		mn = &u->mc.mmu[u->mc.next&(NMMU-1)];
+		me = &u->mc.mmu[NMMU];
+		if(u->mc.next >= NMMU){
+			for(mm = mn; mm < me; mm++)
+				UMAP[mm->va] = mm->pa;
+		}
+		for(mm = u->mc.mmu; mm < mn; mm++)
+			UMAP[mm->va] = mm->pa;
+
+		m->lproc = p;
+	}
 }
 
 void
@@ -45,7 +67,19 @@ putmmu(ulong tlbvirt, ulong tlbphys)
 	if(tlbvirt&KZERO)
 		panic("putmmu");
 	tlbphys |= VTAG(tlbvirt)<<24;
-	UMAP[(tlbvirt&0x003FE000L)>>2] = tlbphys;
+	tlbvirt = (tlbvirt&0x003FE000L)>>2;
+	if(u){
+		MMU *mp;
+		int s;
+
+		s = splhi();
+		mp = &(u->mc.mmu[u->mc.next&(NMMU-1)]);
+		mp->pa = tlbphys;
+		mp->va = tlbvirt;
+		u->mc.next++;
+		splx(s);
+	}
+	UMAP[tlbvirt] = tlbphys;
 }
 
 void
@@ -54,6 +88,14 @@ flushmmu(void)
 	flushcpucache();
 	*PARAM &= ~TLBFLUSH_;
 	*PARAM |= TLBFLUSH_;
+}
+
+void
+clearmmucache(void)
+{
+	if(u == 0)
+		panic("flushmmucache");
+	u->mc.next = 0;
 }
 
 void

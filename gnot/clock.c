@@ -102,7 +102,8 @@ clock(Ureg *ur)
 	p = m->proc;
 	if(p){
 		p->pc = ur->pc;
-		p->time[p->insyscall]++;
+		if (p->state==Running)
+			p->time[p->insyscall]++;
 	}
 	if(canlock(&m->alarmlock)){
 		if(m->alarm){
@@ -127,12 +128,9 @@ clock(Ureg *ur)
 	}
 	kbdclock();
 	mouseclock();
-	if((ur->sr&SPL(7)) == 0){
-		spllo();
-		if(p && p->state==Running){
-			checksched();
-			if(u->nnote && (ur->sr&SUPER)==0)
-				notify(ur);
-		}
+	if((ur->sr&SPL(7)) == 0 && p && p->state==Running){
+		sched();
+		if(u->nnote && (ur->sr&SUPER)==0)
+			notify(ur);
 	}
 }

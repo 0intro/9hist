@@ -499,6 +499,14 @@ dkmuxconfig(Dk *dp, Block *bp)
 	dp->csc = c;
 
 	/*
+	 *  tell datakit we've rebooted. It should close all channels.
+	 */
+	if(dp->restart) {
+		DPRINT("dkmuxconfig: restart %s\n", dp->name);
+		dkmesg(dp, T_ALIVE, D_RESTART, 0, 0);
+	}
+
+	/*
 	 *  start a process to deal with it
 	 */
 	sprint(buf, "csc.%s.%d", dp->name, dp->ncsc);
@@ -1314,16 +1322,6 @@ dkcsckproc(void *a)
 	int i;
 
 	dp = (Dk *)a;
-
-	/*
-	 *  tell datakit we've rebooted. It should close all channels.
-	 */
-	if(dp->restart) {
-		DPRINT("dkcsckproc: restart %s\n", dp->name);
-		dkmesg(dp, T_ALIVE, D_RESTART, 0, 0);
-	}
-	DPRINT("dkcsckproc: closeall %s\n", dp->name);
-	dkmesg(dp, T_CHG, D_CLOSEALL, 0, 0);
 
 	/*
 	 *  loop forever listening

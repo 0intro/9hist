@@ -747,11 +747,8 @@ mntxmit(Mnt *m, Mnthdr *mh)
 	/*
 	 * Copy out on read
 	 */
-	if(mh->thdr.type == Tread){
-		if(mh->rhdr.count>497 && mh->rhdr.data[497]==011)
-			print("*497==11 %lux\n", &mh->rhdr.data[497]);
+	if(mh->thdr.type == Tread)
 		memcpy(mh->thdr.data, mh->rhdr.data, mh->rhdr.count);
-	}
 	mbfree(mh->mbr);
 	mbfree(mbw);
 	poperror();

@@ -30,9 +30,12 @@ Dirtab kproftab[Nkproftab]={
 	"kpstop",	Kprofstopqid,		0,		0600,
 };
 
+void kproftimer(ulong);
+
 void
 kprofreset(void)
 {
+	kprofp = kproftimer;
 }
 
 void
@@ -157,7 +160,12 @@ kprofwrite(Chan *c, char *a, long n)
 void
 kproftimer(ulong pc)
 {
-	extern ulong splpc;
+	/*
+	 *  if the pc is coming out of slplo pr splx, then use
+	 *  the pc saved when we went splhi.
+	 */
+	if(pc>=(ulong)spllo && pc<=(ulong)spldone)
+		pc = m->splpc;
 
 	timerbuf[0]++;
 	if(KTZERO<=pc && pc<KTZERO+MAXPC){

@@ -45,6 +45,8 @@ TEXT	touser(SB), $-4
 
 TEXT	splhi(SB), $0
 
+	MOVL	m(SB), A0
+	MOVL	(A7), 4(A0)
 	MOVL	$0, R0
 	MOVW	SR, R0
 	MOVW	$(SUPER|SPL(7)), SR
@@ -63,6 +65,9 @@ TEXT	splx(SB), $0
 	MOVW	R0, SR
 	RTS
 
+TEXT	spldone(SB), $0
+
+	RTS
 
 TEXT	flushcpucache(SB), $0
 
