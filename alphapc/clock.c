@@ -89,3 +89,16 @@ clock(Ureg *ureg)
 
 	portclock(ureg);
 }
+
+ulong
+TK2MS(ulong ticks)
+{
+	uvlong t, hz;
+
+	t = ticks;
+	hz = HZ;
+	t *= 1000L;
+	t = t/hz;
+	ticks = t;
+	return ticks;
+}

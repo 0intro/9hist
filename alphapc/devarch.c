@@ -51,6 +51,8 @@ static Dirtab archdir[] = {
 };
 Lock archwlock;	/* the lock is only for changing archdir */
 int narchdir = Qbase;
+int (*_pcmspecial)(char *, ISAConf *);
+void (*_pcmspecialclose)(int);
 
 /*
  * Add a file to the #P listing.  Once added, you can't delete it.
@@ -478,4 +480,17 @@ archinit(void)
 		arch = &archgeneric;
 
 	addarchfile("cputype", 0444, cputyperead, nil);
+}
+
+int
+pcmspecial(char *idstr, ISAConf *isa)
+{
+	return (_pcmspecial  != nil)? _pcmspecial(idstr, isa): -1;
+}
+
+void
+pcmspecialclose(int a)
+{
+	if (_pcmspecialclose != nil)
+		_pcmspecialclose(a);
 }

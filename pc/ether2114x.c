@@ -386,7 +386,7 @@ txstart(Ether* ether)
 		ctlr->tdr[PREV(ctlr->tdrh, ctlr->ntdr)].control &= ~Ic;
 		des = &ctlr->tdr[ctlr->tdrh];
 		des->bp = bp;
-		des->addr = PADDR(bp->rp);
+		des->addr = PCIWADDR(bp->rp);
 		des->control |= control;
 		ctlr->ntq++;
 		coherence();
@@ -471,7 +471,7 @@ interrupt(Ureg*, void* arg)
 					des->bp->wp = des->bp->rp+len;
 					etheriq(ether, des->bp, 1);
 					des->bp = bp;
-					des->addr = PADDR(bp->rp);
+					des->addr = PCIWADDR(bp->rp);
 				}
 
 				des->control &= Er;
@@ -575,24 +575,24 @@ ctlrinit(Ether* ether)
 	 * create and post a setup packet to initialise
 	 * the physical ethernet address.
 	 */
-	ctlr->rdr = malloc(ctlr->nrdr*sizeof(Des));
+	ctlr->rdr = xspanalloc(ctlr->nrdr*sizeof(Des), 8*sizeof(ulong), 0);
 	for(des = ctlr->rdr; des < &ctlr->rdr[ctlr->nrdr]; des++){
 		des->bp = iallocb(Rbsz);
 		if(des->bp == nil)
 			panic("can't allocate ethernet receive ring\n");
 		des->status = Own;
 		des->control = Rbsz;
-		des->addr = PADDR(des->bp->rp);
+		des->addr = PCIWADDR(des->bp->rp);
 	}
 	ctlr->rdr[ctlr->nrdr-1].control |= Er;
 	ctlr->rdrx = 0;
-	csr32w(ctlr, 3, PADDR(ctlr->rdr));
+	csr32w(ctlr, 3, PCIWADDR(ctlr->rdr));
 
 	ctlr->tdr = xspanalloc(ctlr->ntdr*sizeof(Des), 8*sizeof(ulong), 0);
 	ctlr->tdr[ctlr->ntdr-1].control |= Er;
 	ctlr->tdrh = 0;
 	ctlr->tdri = 0;
-	csr32w(ctlr, 4, PADDR(ctlr->tdr));
+	csr32w(ctlr, 4, PCIWADDR(ctlr->tdr));
 
 	/*
 	 * Clear any bits in the Status Register (CSR5) as
@@ -999,6 +999,26 @@ typephymode(Ctlr* ctlr, uchar* block, int wait)
 }
 
 static int
+typesymmode(Ctlr *ctlr, uchar *block, int wait)
+{
+	uint gpmode, gpdata, command;
+
+	USED(wait);
+	gpmode = block[3] | ((uint) block[4] << 8);
+	gpdata = block[5] | ((uint) block[6] << 8);
+	command = (block[7] | ((uint) block[8] << 8)) & 0x71;
+	if (command & 0x8000) {
+		print("ether2114x.c: FIXME: handle type 4 mode blocks where cmd.active_invalid != 0\n");
+		return -1;
+	}
+	csr32w(ctlr, 15, gpmode);
+	csr32w(ctlr, 15, gpdata);
+	ctlr->csr6 = (command & 0x71) << 18;
+	csr32w(ctlr, 6, ctlr->csr6);
+	return 0;
+}
+
+static int
 type0link(Ctlr* ctlr, uchar* block)
 {
 	int m, polarity, sense;
@@ -1091,6 +1111,10 @@ mediaxx(Ether* ether, int wait)
 			break;
 		case 3:
 			if(typephymode(ctlr, block, wait))
+				return 0;
+			break;
+		case 4:
+			if(typesymmode(ctlr, block, wait))
 				return 0;
 			break;
 		}

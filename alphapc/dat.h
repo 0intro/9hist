@@ -189,6 +189,8 @@ struct PCArch
 	void	*(*pcicfg)(int, int);		/* map and point to PCI cfg space */
 	void	*(*pcimem)(int, int);		/* map and point to PCI memory space */
 	int	(*intrenable)(Vctl*);
+	int	(*intrvecno)(int);
+	int	(*intrdisable)(int);
 
 	int		(*_inb)(int);
 	ushort	(*_ins)(int);
@@ -229,3 +231,19 @@ extern Mach		mach0;
 
 extern register Mach	*m;
 extern register Proc	*up;
+
+/*
+ *  hardware info about a device
+ */
+typedef struct {
+	ulong	port;	
+	int		size;
+} port_t;
+
+struct DevConf
+{
+	ulong	interrupt;	/* interrupt number */
+	char		*type;	/* card type, malloced */
+	int		nports;	/* Number of ports */
+	port_t	*ports;	/* The ports themselves */
+};

@@ -16,6 +16,16 @@ enum {
 	MaxUBN		= 255,
 };
 
+enum
+{					/* command register */
+	IOen		= (1<<0),
+	MEMen		= (1<<1),
+	MASen		= (1<<2),
+	MemWrInv	= (1<<4),
+	PErrEn		= (1<<6),
+	SErrEn		= (1<<8),
+};
+
 static Lock pcicfglock;
 static Lock pcicfginitlock;
 static int pcicfgmode = -1;
@@ -388,6 +398,16 @@ pcisetbme(Pcidev* p)
 	int pcr;
 
 	pcr = pcicfgr16(p, PciPCR);
-	pcr |= 0x0004;
+	pcr |= MASen;
+	pcicfgw16(p, PciPCR, pcr);
+}
+
+void
+pciclrbme(Pcidev* p)
+{
+	int pcr;
+
+	pcr = pcicfgr16(p, PciPCR);
+	pcr &= ~MASen;
 	pcicfgw16(p, PciPCR, pcr);
 }
