@@ -522,19 +522,19 @@ pexit(char *exitstr, int freemem)
 	if(c->fgrp)
 		closefgrp(c->fgrp);
 
-	wq = newwaitq();
-	wq->w.pid = c->pid;
-	wq->w.time[TUser] = TK2MS(c->time[TUser]);
-	wq->w.time[TCUser] = TK2MS(c->time[TCUser]);
-	wq->w.time[TSys] = TK2MS(c->time[TSys]);
-	wq->w.time[TCSys] = TK2MS(c->time[TCSys]);
-	wq->w.time[TReal] = TK2MS(MACHP(0)->ticks - c->time[TReal]);
-	if(exitstr)
-		strncpy(wq->w.msg, exitstr, ERRLEN);
-	else
-		wq->w.msg[0] = '\0';
-
 	if(c->kp == 0) {
+		wq = newwaitq();
+		wq->w.pid = c->pid;
+		wq->w.time[TUser] = TK2MS(c->time[TUser]);
+		wq->w.time[TCUser] = TK2MS(c->time[TCUser]);
+		wq->w.time[TSys] = TK2MS(c->time[TSys]);
+		wq->w.time[TCSys] = TK2MS(c->time[TCSys]);
+		wq->w.time[TReal] = TK2MS(MACHP(0)->ticks - c->time[TReal]);
+		if(exitstr)
+			strncpy(wq->w.msg, exitstr, ERRLEN);
+		else
+			wq->w.msg[0] = '\0';
+
 		/* Find my parent */
 		p = c->parent;
 		lock(&p->exl);
@@ -568,7 +568,8 @@ pexit(char *exitstr, int freemem)
 			putseg(os);
 		}
 	closepgrp(c->pgrp);
-	closeegrp(c->egrp);
+	if(c->egrp)
+		closeegrp(c->egrp);
 	close(u->dot);
 
 	lock(&c->exl);		/* Prevent my children from leaving waits */

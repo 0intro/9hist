@@ -98,6 +98,7 @@ TEXT	spllo(SB), $0
 
 TEXT	splhi(SB), $0
 
+	MOVW	R15, 4(R(MACH))	/* save PC in m->splpc */
 	MOVW	PSR, R7
 	MOVW	R7, R10
 	AND	$~PSRET, R10	/* BUG: book says this is buggy */
@@ -109,11 +110,16 @@ TEXT	splhi(SB), $0
 
 TEXT	splx(SB), $0
 
+	MOVW	R15, 4(R(MACH))	/* save PC in m->splpc */
 	MOVW	psr+0(FP), R7
 	MOVW	R7, PSR		/* BUG: book says this is buggy */
 	OR	R0, R0
 	OR	R0, R0
 	OR	R0, R0
+	RETURN
+
+TEXT	spldone(SB), $0
+
 	RETURN
 
 TEXT	touser(SB), $-4

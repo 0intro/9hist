@@ -7,27 +7,26 @@
 
 #include	"devtab.h"
 
-#define	MAXPC	(100*1024L)
-#define	RES	8
-#define	LRES	3
-#define	NBUF	(MAXPC>>LRES)
+#define	LRES	3		/* log of PC resolution */
 
-long		timerbuf[NBUF];
+struct{
+	int	minpc;
+	int	maxpc;
+	int	nbuf;
+	int	time;
+	ulong	*buf;
+}kprof;
 
 enum{
 	Kprofdirqid,
 	Kprofdataqid,
-	Kprofstartqid,
-	Kprofstartclrqid,
-	Kprofstopqid,
-	Nkproftab=Kprofstopqid,
+	Kprofctlqid,
+	Nkproftab=Kprofctlqid,
 	Kprofmaxqid,
 };
 Dirtab kproftab[Nkproftab]={
-	"kpdata",	{Kprofdataqid},		NBUF*sizeof timerbuf[0],	0600,
-	"kpstart",	{Kprofstartqid},	0,		0600,
-	"kpstartclr",	{Kprofstartclrqid},	0,		0600,
-	"kpstop",	{Kprofstopqid},		0,		0600,
+	"kpdata",	{Kprofdataqid},		0,	0600,
+	"kpctl",	{Kprofctlqid},		0,	0600,
 };
 
 void kproftimer(ulong);
@@ -35,21 +34,22 @@ void kproftimer(ulong);
 void
 kprofreset(void)
 {
-	kprofp = kproftimer;
+	kprof.minpc = KTZERO;
+	kprof.maxpc = (ulong)&etext;
+	kprof.nbuf = (kprof.maxpc-kprof.minpc) >> LRES;
+	kprof.buf = ialloc(kprof.nbuf*sizeof kprof.buf[0], 0);
+	kproftab[0].length = kprof.nbuf*sizeof kprof.buf[0];
 }
 
 void
 kprofinit(void)
 {
-	extern void *etext;
-	if((((unsigned long)&etext)-KTZERO)>MAXPC)
-		print("kernel profiling limited to %lud\n", MAXPC);
 }
 
 Chan *
 kprofattach(char *spec)
 {
-	return devattach('t', spec);
+	return devattach('T', spec);
 }
 Chan *
 kprofclone(Chan *c, Chan *nc)
@@ -72,9 +72,9 @@ kprofstat(Chan *c, char *db)
 Chan *
 kprofopen(Chan *c, int omode)
 {
-	if(c->qid == CHDIR){
+	if(c->qid.path == CHDIR){
 		if(omode != OREAD)
-			error(0, Eperm);
+			error(Eperm);
 	}
 	c->mode = openmode(omode);
 	c->flag |= COPEN;
@@ -85,19 +85,19 @@ kprofopen(Chan *c, int omode)
 void
 kprofcreate(Chan *c, char *name, int omode, ulong perm)
 {
-	error(0, Eperm);
+	error(Eperm);
 }
 
 void
 kprofremove(Chan *c)
 {
-	error(0, Eperm);
+	error(Eperm);
 }
 
 void
 kprofwstat(Chan *c, char *dp)
 {
-	error(0, Eperm);
+	error(Eperm);
 }
 
 void
@@ -105,32 +105,22 @@ kprofclose(Chan *c)
 {
 }
 
-void
-kprofuserstr(Error *e, char *buf)
-{
-	consuserstr(e, buf);
-}
-
-void	 
-kproferrstr(Error *e, char *buf)
-{
-	rooterrstr(e, buf);
-}
-
 long
 kprofread(Chan *c, void *a, long n, ulong offset)
 {
-	switch((int)(c->qid&~CHDIR)){
+	ulong end;
+	switch((int)(c->qid.path&~CHDIR)){
 	case Kprofdirqid:
 		return devdirread(c, a, n, kproftab, Nkproftab, devgen);
 	case Kprofdataqid:
-		if(offset >= NBUF*sizeof timerbuf[0]){
+		end = kprof.nbuf*sizeof kprof.buf[0];
+		if(offset >= end){
 			n = 0;
 			break;
 		}
-		if(offset+n > NBUF*sizeof timerbuf[0])
-			n = NBUF*sizeof timerbuf[0]-offset;
-		memmove(a, ((char *)timerbuf)+offset, n);
+		if(offset+n > end)
+			n = end-offset;
+		memmove(a, ((char *)kprof.buf)+offset, n);
 		break;
 	default:
 		n=0;
@@ -142,17 +132,18 @@ kprofread(Chan *c, void *a, long n, ulong offset)
 long
 kprofwrite(Chan *c, char *a, long n, ulong offset)
 {
-	switch((int)(c->qid&~CHDIR)){
-	case Kprofstartclrqid:
-		memset((char *)timerbuf, 0, NBUF*sizeof timerbuf[0]);
-	case Kprofstartqid:
-		duartstarttimer();
-		break;
-	case Kprofstopqid:
-		duartstoptimer();
+	switch((int)(c->qid.path&~CHDIR)){
+	case Kprofctlqid:
+		if(strncmp(a, "startclr", 8) == 0){
+			memset((char *)kprof.buf, 0, kprof.nbuf*sizeof kprof.buf[0]);
+			kprof.time = 1;
+		}else if(strncmp(a, "start", 5) == 0)
+			kprof.time = 1;
+		else if(strncmp(a, "stop", 4) == 0)
+			kprof.time = 0;
 		break;
 	default:
-		error(0, Ebadusefd);
+		error(Ebadusefd);
 	}
 	return n;
 }
@@ -160,6 +151,8 @@ kprofwrite(Chan *c, char *a, long n, ulong offset)
 void
 kproftimer(ulong pc)
 {
+	if(kprof.time == 0)
+		return;
 	/*
 	 *  if the pc is coming out of slplo pr splx, then use
 	 *  the pc saved when we went splhi.
@@ -167,11 +160,11 @@ kproftimer(ulong pc)
 	if(pc>=(ulong)spllo && pc<=(ulong)spldone)
 		pc = m->splpc;
 
-	timerbuf[0]++;
-	if(KTZERO<=pc && pc<KTZERO+MAXPC){
-		pc -= KTZERO;
+	kprof.buf[0]++;
+	if(kprof.minpc<=pc && pc<kprof.maxpc){
+		pc -= kprof.minpc;
 		pc >>= LRES;
-		timerbuf[pc]++;
+		kprof.buf[pc]++;
 	} else
-		timerbuf[1]++;
+		kprof.buf[1]++;
 }

@@ -175,6 +175,7 @@ static long	floppyseek(Drive*, long);
 static int	floppysense(void);
 static void	floppywait(void);
 static long	floppyxfer(Drive*, int, void*, long, long);
+static long	floppythrice(Drive*, int, void*, long, long);
 static int	cmddone(void*);
 void Xdelay(int);
 
@@ -387,7 +388,7 @@ floppyread(Chan *c, void *a, long n)
 			 */
 			if(dp->ccyl!=cyl || dp->chead!=head){
 				dp->ccyl = -1;
-				i = floppyxfer(dp, Fread, dp->cache,
+				i = floppythrice(dp, Fread, dp->cache,
 					(cyl*dp->t->heads+head)*nn, nn);
 				if(i != nn){
 					if(i == 0)
@@ -420,7 +421,6 @@ floppywrite(Chan *c, void *a, long n)
 	long rv, i;
 	char *aa = a;
 	int dev;
-extern void vgaset(char*);
 
 	rv = 0;
 	dp = &fl.d[c->qid.path & ~Qmask];
@@ -438,10 +438,12 @@ extern void vgaset(char*);
 			floppypos(dp, c->offset+rv);
 			if(dp->tcyl == dp->ccyl)
 				dp->ccyl = -1;
-			i = floppyxfer(dp, Fwrite, aa+rv, c->offset+rv,
+			i = floppythrice(dp, Fwrite, aa+rv, c->offset+rv,
 				n-rv);
-			if(i <= 0)
+			if(i < 0)
 				break;
+			if(i == 0)
+				error(Eio);
 		}
 		qunlock(&fl);
 		poperror();
@@ -453,8 +455,6 @@ extern void vgaset(char*);
 		} else if(SNCMP(aa, "reset") == 0){
 			fl.confused = 1;
 			floppyon(dp);
-		} else if(SNCMP(aa, "v") == 0){
-			vgaset(aa+1);
 		}
 		qunlock(&fl);
 		break;
@@ -755,6 +755,27 @@ floppyseek(Drive *dp, long off)
 	return dp->cyl;
 }
 
+/*
+ *  since floppies are so flakey, try 3 times before giving up
+ */
+static long
+floppythrice(Drive *dp, int cmd, void *a, long off, long n)
+{
+	int tries;
+	long rv;
+
+	for(tries = 0; ; tries++){
+		if(waserror()){
+			if(strcmp(u->error, errstrtab[Eintr])==0 || tries > 3)
+				nexterror();
+		} else {
+			rv = floppyxfer(dp, cmd, a, off, n);
+			poperror();
+			return rv;
+		}
+	}
+}
+
 static long
 floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 {
@@ -830,8 +851,6 @@ floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 	offset = offset*dp->t->sectors + fl.stat[5] - 1;
 	offset = offset * c2b[fl.stat[6]];
 	if(offset != off+dp->len){
-		print("new offset %d instead of %d\n", offset, off+dp->len);
-		print("	%d %d %d\n", fl.stat[3], fl.stat[4], fl.stat[5]);
 		dp->confused = 1;
 		errors("floppy drive lost");
 	}
