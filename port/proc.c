@@ -355,6 +355,7 @@ newproc(void)
 	p->wired = 0;
 	p->ureg = 0;
 	p->privatemem = 0;
+	p->noswap = 0;
 	p->lockwait = nil;
 	p->errstr = p->errbuf0;
 	p->syserrstr = p->errbuf1;
@@ -1056,6 +1057,7 @@ kproc(char *name, void (*func)(void *), void *arg)
 	p->psstate = 0;
 	p->procmode = 0640;
 	p->kp = 1;
+	p->noswap = 1;
 
 	p->fpsave = up->fpsave;
 	p->scallnr = up->scallnr;
