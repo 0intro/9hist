@@ -1,5 +1,6 @@
 #include "../port/portfns.h"
 
+void	aamloop(int);
 void	addconf(char*, char*);
 #define	affinity(x) m
 void	bbinit(void);

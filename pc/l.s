@@ -579,8 +579,16 @@ TEXT	x86(SB),$0
 	MOVL	AX, BX
 	ANDL	$0x40000,BX	/* on 386 we can't change this bit */
 	JZ	is386
-	ANDL	$0x200000,AX	/* on 486 we can't change this bit */
+	ANDL	$0x200000,AX	/* if we can't change this, there's no CPUID */
 	JZ	is486
+	MOVL	$1,AX
+	/* CPUID */
+	 BYTE $0x0F
+	 BYTE $0xA2
+	SHLL	$20,AX
+	SHRL	$28,AX
+	CMPL	AX, $4
+	JEQ	is486
 	MOVL	$586,AX
 	JMP	done
 is486:
@@ -591,6 +599,17 @@ is386:
 done:
 	POPL	BX
 	POPFL
+	RET
+
+/*
+ *  basic timing loop to determine CPU frequency
+ */
+TEXT	aamloop(SB),$0
+
+	MOVL	c+0(FP),CX
+aaml1:
+	AAM
+	LOOP	aaml1
 	RET
 
 /*

@@ -27,21 +27,9 @@ enum
 	Freq=	1193182,	/* Real clock frequency */
 };
 
-static ulong delayloop = 1000;
-
-/*
- *  delay for l milliseconds more or less.  delayloop is set by
- *  clockinit() to match the actual CPU speed.
- */
-void
-delay(int l)
-{
-	ulong i;
-
-	while(l-- > 0)
-		for(i=0; i < delayloop; i++)
-			;
-}
+static int cpufreq = 66;
+static int cputype = 486;
+static int loopconst = 100;
 
 static void
 clock(Ureg *ur, void *arg)
@@ -95,43 +83,28 @@ clock(Ureg *ur, void *arg)
 		splhi();
 }
 
+
 /*
- *  experimentally determined
+ *  delay for l milliseconds more or less.  delayloop is set by
+ *  clockinit() to match the actual CPU speed.
  */
-enum
+void
+delay(int l)
 {
-	mul386=	380,
-	mul486=	121,
-	mul586=	121,
-};
+	aamloop(l*loopconst);
+}
 
 void
 printcpufreq(void)
 {
-	ulong freq;
-	int cpu;
-
-	switch(cpu = x86()){
-	default:
-	case 586:
-		freq = mul586;
-		break;
-	case 486:
-		freq = mul486;
-		break;
-	case 386:
-		freq = mul386;
-		break;
-	}
-	freq *= delayloop;
-	freq /= 10000;
-	print("CPU is a %ud MHz %d\n", freq, cpu);
+	print("CPU is a %ud Hz %d\n", cpufreq, cputype);
 }
 
 void
 clockinit(void)
 {
 	ulong x, y;	/* change in counter */
+	ulong cycles, loops;
 
 	/*
 	 *  set vector for clock interrupts
@@ -146,21 +119,47 @@ clockinit(void)
 	outb(T0cntr, (Freq/HZ)>>8);	/* high byte */
 
 	/*
-	 *  measure time for delay(10) with current delayloop count
+	 *  measure time for the loop
+	 *
+	 *			MOVL	loops,CX
+	 *	aaml1:	 	AAM
+	 *			LOOP	aaml1
+	 *
+	 *  the time for the loop should be independent from external
+	 *  cache's and memory system since it fits in the execution
+	 *  prefetch buffer.
+	 *
 	 */
+	loops = 10000;
 	outb(Tmode, Latch0);
 	x = inb(T0cntr);
 	x |= inb(T0cntr)<<8;
-	delay(10);
+	aamloop(loops);
 	outb(Tmode, Latch0);
 	y = inb(T0cntr);
 	y |= inb(T0cntr)<<8;
 	x -= y;
 
 	/*
-	 *  fix count
+	 *  counter  goes at twice the frequency, once per transition,
+	 *  i.e., twice per the square wave
 	 */
-	delayloop = (delayloop*1193*10)/x;
-	if(delayloop == 0)
-		delayloop = 1;
+	x >>= 1;
+
+	/*
+ 	 *  figure out clock frequency and a loop multiplier for delay().
+	 */
+	switch(cputype = x86()){
+	case 386:
+		cycles = 30;
+		break;
+	case 486:
+		cycles = 24;
+		break;
+	default:
+		cycles = 23;
+		break;
+	}
+	cpufreq = (cycles*loops) * (Freq/x);
+	loopconst = (cpufreq/1000)/cycles;	/* AAM+LOOP's for 1 ms */
 }
