@@ -45,7 +45,6 @@ _mntstats(int type, Chan *c, uvlong start, ulong bytes)
 	uint h;
 	Mntstats **l, *m;
 	uvlong elapsed;
-	ulong x;
 
 	elapsed = fastticks(nil) - start;
 	type -= Tnop;
@@ -82,7 +81,6 @@ _mntstats(int type, Chan *c, uvlong start, ulong bytes)
 		m->hi[type] = elapsed;
 	m->tot[type] += elapsed;
 	m->n[type]++;
-	x = elapsed;
 	m->bytes[type] += bytes;
 
 	if(bytes >= 8*1024){
