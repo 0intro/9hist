@@ -306,15 +306,18 @@ reattach(int rec, Method *amp, char *buf)
 	p = strrchr(buf, '/');
 	if(p == 0)
 		goto fail;
+
 	*p = '\0';
 
 	sprint(tmp, "%s/remote", buf);
 	fd = open(tmp, OREAD);
 	if(fd < 0)
 		goto fail;
+
 	n = read(fd, tmp, sizeof(tmp));
 	if(n < 0)
 		goto fail;
+
 	close(fd);
 	tmp[n-1] = '\0';
 

@@ -221,7 +221,7 @@ mattach(Mnt *m, Chan *c, char *spec)
 	r = mntralloc(0);
 	c->mntptr = m;
 
-	if(waserror()){
+	if(waserror()) {
 		mntfree(r);
 		nexterror();
 	}
@@ -991,7 +991,8 @@ mntrecover(Mnt *m, Mntrpc *r)
 
 	r->done = 0;
 	mntrecdel(m, r);
-	recoverchan(m, r->c);
+	if(r->c != 0)
+		recoverchan(m, r->c);
 
 	up->psstate = ps;
 }

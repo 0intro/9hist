@@ -500,8 +500,7 @@ mchan(char *id)
 			for(t = f->mount; t; t = t->next) {
 				c = t->to;
 				if(c->type == mdev && c->mntptr->id == mountid) {
-					c = c->mntptr->c;
-					incref(c);
+					c = clone(c, 0);
 					runlock(&pg->ns);
 					poperror();
 					return c;
@@ -562,10 +561,9 @@ namec(char *name, int amode, int omode, ulong perm)
 		elem[n] = '\0';
 		n = chartorune(&r, elem+1)+1;
 		if(r == 'M') {
-			if(amode != Aopen || omode != ORDWR)
-				error(Eperm);
-			skipslash(name);
-			return mchan(elem+n);
+			c = mchan(elem+n);
+			name = skipslash(name);
+			break;
 		}
 		t = devno(r, 1);
 		if(t == -1)
