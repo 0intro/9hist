@@ -362,6 +362,9 @@ attach(Ether* ether)
 	ctlr = ether->ctlr;
 	lock(&ctlr->slock);
 	if(ctlr->state == 0){
+		ilock(&ctlr->rlock);
+		csr8w(ctlr, Interrupt, 0);
+		iunlock(&ctlr->rlock);
 		command(ctlr, RUstart, PADDR(ctlr->rfdhead->rp));
 		ctlr->state = 1;
 
@@ -970,6 +973,7 @@ reset(Ether* ether)
 	ilock(&ctlr->rlock);
 	csr32w(ctlr, Port, 0);
 	delay(1);
+	csr8w(ctlr, Interrupt, InterruptM);
 	iunlock(&ctlr->rlock);
 
 	command(ctlr, LoadRUB, 0);
