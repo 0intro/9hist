@@ -8,9 +8,10 @@
 
 #include	<libcrypt.h>
 
-typedef struct Sdp		Sdp;
-typedef struct Conv 	Conv;
-typedef struct OneWay OneWay;
+typedef struct Sdp Sdp;
+typedef struct Conv Conv;
+typedef struct Out Out;
+typedef struct In In;
 
 enum
 {
@@ -23,8 +24,8 @@ enum
 
 	Qconvdir,			/* directory per conversation */
 	Qctl,
-	Qdata,				/* reliable control channel */
-	Qpacket,			/* unreliable packet channel */
+	Qdata,				/* unreliable packet channel */
+	Qcontrol,			/* reliable control channel */
 	Qstatus,
 
 	MaxQ,
@@ -37,46 +38,79 @@ enum
 #define CONV(x) 	(((x).path >> 8)&(Maxconv-1))
 #define QID(x, y) 	(((x)<<8) | (y))
 
-struct OneWay
+struct Out
 {
 	ulong	seqwrap;	// number of wraps of the sequence number
 	ulong	seq;
-	ulong	window;		// for replay attacks
 
-	char	*calg;
-	void	*cstate;	// state cipher
-	int		civlen;		// in bytes
-	int		(*cipher)(OneWay*, uchar *buf, int len);
+	Block	*controlpkt;		// control channel
+	ulong	*controlseq;
+	ulong	controltimeout;		// timeout when it will be resent
+	int		controlretries;
 
-	char	*aalg;
-	void	*astate;	// auth state
-	int		alen;		// auth data length in bytes
-	int		(*auth)(OneWay*, uchar *buf, int len, uchar *hash);
+	void	*cipherstate;	// state cipher
+	int		ivlen;			// in bytes
+	int		(*encrypt)(Out*, uchar *buf, int len);
+
+	void	*authstate;		// auth state
+	int		authlen;		// auth data length in bytes
+	int		(*auth)(Out*, uchar *buf, int len);
+
+	void	*compstate;
+	int		(*comp)(Out*, uchar *dst, uchar *src, int n);
+};
+
+struct In
+{
+	ulong	seqwrap;	// number of wraps of the sequence number
+	ulong	seq;
+	ulong	window;
+
+	Block	*controlpkt;
+	ulong	controlseq;
+
+	void	*cipherstate;	// state cipher
+	int		ivlen;			// in bytes
+	int		(*decrypt)(In*, uchar *buf, int len);
+
+	void	*authstate;		// auth state
+	int		authlen;		// auth data length in bytes
+	int		(*auth)(In*, uchar *buf, int len);
+
+	void	*uncompstate;
+	int		(*uncomp)(In*, uchar *dst, uchar *src, int n);
+};
+
+enum {
+	CClosed,
+	COpening,
+	COpen,
+	CClosing,
 };
 
 struct Conv {
 	QLock;
-
 	int	id;
+	int ref;
 	Sdp	*sdp;
 
-	Chan chan;	// packet channel
+	int state;
+	ulong session;
+
+	Chan *chan;	// packet channel
 
 	char	user[NAMELEN];		/* protections */
 	int	perm;
-	int	inuse;
-	int	length;
-	int	state;
 
-	OneWay	in;
-	OneWay	out;
+	In	in;
+	Out	out;
 };
 
 struct Sdp {
 	QLock;
 	Log;
 	int	nconv;
-	Conv	*conv[Maxconv];
+	Conv *conv[Maxconv];
 };
 
 static Dirtab sdpdirtab[]={
@@ -88,7 +122,7 @@ static Dirtab sdpdirtab[]={
 static Dirtab convdirtab[]={
 	"ctl",		{Qctl},	0,	0666,
 	"data",		{Qdata},	0,	0666,
-	"packet",	{Qpacket},	0,	0666,
+	"control",	{Qcontrol},	0,	0666,
 	"status",	{Qstatus},	0,	0444,
 };
 
@@ -199,7 +233,6 @@ sdpopen(Chan* ch, int omode)
 	case Qtopdir:
 	case Qsdpdir:
 	case Qconvdir:
-	case Qstatus:
 	case Qstats:
 		if(omode != OREAD)
 			error(Eperm);
@@ -213,6 +246,23 @@ sdpopen(Chan* ch, int omode)
 			error(Enodev);
 		ch->qid.path = QID(c->id, Qctl);
 		break;
+	case Qdata:
+	case Qctl:
+	case Qstatus:
+	case Qcontrol:
+		c = sdp->conv[CONV(ch->qid)];
+		qlock(c);
+		if(waserror()) {
+			qunlock(c);
+			nexterror();
+		}
+		if((perm & (c->perm>>6)) != perm)
+		if(strcmp(up->user, c->user) != 0 || (perm & c->perm) != perm)
+				error(Eperm);
+		c->ref++;
+		qunlock(c);
+		poperror();
+		break;
 	}
 	ch->mode = openmode(omode);
 	ch->flag |= COPEN;
@@ -221,13 +271,13 @@ sdpopen(Chan* ch, int omode)
 }
 
 static void
-sdpclose(Chan* c)
+sdpclose(Chan* ch)
 {
-	Sdp *sdp  = sdptab + c->dev;
+	Sdp *sdp  = sdptab + ch->dev;
 
-	switch(TYPE(c->qid)) {
+	switch(TYPE(ch->qid)) {
 	case Qlog:
-		if(c->flag & COPEN)
+		if(ch->flag & COPEN)
 			logclose(sdp);
 		break;
 	}
@@ -238,6 +288,7 @@ sdpread(Chan *ch, void *a, long n, vlong off)
 {
 	char buf[256];
 	Sdp *sdp = sdptab + ch->dev;
+	char *s;
 	Conv *c;
 
 	USED(off);
@@ -251,14 +302,26 @@ sdpread(Chan *ch, void *a, long n, vlong off)
 	case Qlog:
 		return logread(sdp, a, off, n);
 	case Qstatus:
-		qlock(sdp);
 		c = sdp->conv[CONV(ch->qid)];
-		if(c == 0)
-			strcpy(buf, "unbound\n");
-		else {
+		qlock(c);
+		switch(c->state) {
+		default:
+			panic("unknown state");
+		case CClosed:
+			s = "closed";
+			break;
+		case COpening:
+			s = "opening";
+			break;
+		case COpen:
+			s = "open";
+			break;
+		case CClosing:
+			s = "closing";
+			break;
 		}
-		n = readstr(off, a, n, buf);
-		qunlock(sdp);
+		n = readstr(off, a, n, s);
+		qunlock(c);
 		return n;
 	case Qctl:
 		sprint(buf, "%lud", CONV(ch->qid));
@@ -364,6 +427,11 @@ sdpclone(Sdp *sdp)
 
 	c = nil;
 	ep = sdp->conv + nelem(sdp->conv);
+	qlock(sdp);
+	if(waserror()) {
+		qunlock(sdp);
+		nexterror();
+	}
 	for(pp = sdp->conv; pp < ep; pp++) {
 		c = *pp;
 		if(c == nil){
@@ -378,26 +446,48 @@ sdpclone(Sdp *sdp)
 			break;
 		}
 		if(canqlock(c)){
-			if(c->inuse == 0)
+			if(c->state == CClosed)
 				break;
-
 			qunlock(c);
 		}
 	}
+	poperror();
+	qunlock(sdp);
 
-	if(pp >= ep) {
+	if(pp >= ep)
 		return nil;
-	}
 
-	c->inuse = 1;
+	c->ref++;
+	c->state = COpening;
+
 	strncpy(c->user, up->user, sizeof(c->user));
 	c->perm = 0660;
-	c->state = 0;
-
 	qunlock(c);
+
 	return c;
 }
 
+static void
+sdpconvfree(Conv *c)
+{
+	qlock(c);
+	c->ref--;
+	if(c->ref < 0)
+		panic("convfree: bad ref");
+	if(c->ref > 0) {
+		qunlock(c);
+		return;
+	}
+
+	memset(&c->in, 0, sizeof(c->in));
+	memset(&c->out, 0, sizeof(c->out));
+
+	if(c->chan) {
+		cclose(c->chan);
+		c->chan = 0;
+	}
+	qunlock(c);
+}
 
 Dev sdpdevtab = {
 	'T',
