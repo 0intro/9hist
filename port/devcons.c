@@ -393,7 +393,6 @@ enum{
 	Qkey,
 	Qhostdomain,
 	Qhostowner,
-	Qnewkernel,
 	Qnull,
 	Qpgrpid,
 	Qpid,
@@ -425,7 +424,6 @@ static Dirtab consdir[]={
 	"hostdomain",	{Qhostdomain},	DOMLEN,		0664,
 	"hostowner",	{Qhostowner},	NAMELEN,	0664,
 	"key",		{Qkey},		DESKEYLEN,	0622,
-	"newkernel",	{Qnewkernel},	0,	0000,	/* stupid hack -rsc */
 	"null",		{Qnull},	0,		0666,
 	"pgrpid",	{Qpgrpid},	NUMSIZE,	0444,
 	"pid",		{Qpid},		NUMSIZE,	0444,
