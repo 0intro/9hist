@@ -38,7 +38,6 @@ struct Rtc
 	int	year;
 };
 
-QLock rtclock;	/* mutex on clock operations */
 
 enum{
 	Qrtc = 1,
@@ -140,7 +139,7 @@ _rtctime(void)
 	return rtc2sec(&rtc);
 }
 
-static Lock rtlock;
+static Lock nvrtlock;
 
 long
 rtctime(void)
@@ -148,7 +147,7 @@ rtctime(void)
 	int i;
 	long t, ot;
 
-	ilock(&rtlock);
+	ilock(&nvrtlock);
 
 	/* loop till we get two reads in a row the same */
 	t = _rtctime();
@@ -160,7 +159,7 @@ rtctime(void)
 	}
 	if(i == 100) print("we are boofheads\n");
 
-	iunlock(&rtlock);
+	iunlock(&nvrtlock);
 
 	return t;
 }
@@ -169,7 +168,7 @@ static long
 rtcread(Chan* c, void* buf, long n, vlong off)
 {
 	ulong t;
-	char *a;
+	char *a, *start;
 	ulong offset = off;
 
 	if(c->qid.path & CHDIR)
@@ -177,26 +176,33 @@ rtcread(Chan* c, void* buf, long n, vlong off)
 
 	switch(c->qid.path){
 	case Qrtc:
-		qlock(&rtclock);
 		t = rtctime();
-		qunlock(&rtclock);
 		n = readnum(offset, buf, n, t, 12);
 		return n;
 	case Qnvram:
-		a = buf;
-		if(waserror()){
-			qunlock(&rtclock);
-			nexterror();
-		}
-		qlock(&rtclock);
+		if(n == 0)
+			return 0;
+		if(n > Nvsize)
+			n = Nvsize;
+		a = start = smalloc(n);
+
+		ilock(&nvrtlock);
 		for(t = offset; t < offset + n; t++){
 			if(t >= Nvsize)
 				break;
 			outb(Paddr, Nvoff+t);
 			*a++ = inb(Pdata);
 		}
-		qunlock(&rtclock);
+		iunlock(&nvrtlock);
+
+		if(waserror()){
+			free(start);
+			nexterror();
+		}
+		memmove(buf, start, t - offset);
 		poperror();
+
+		free(start);
 		return t - offset;
 	}
 	error(Ebadarg);
@@ -209,7 +215,7 @@ static long
 rtcwrite(Chan* c, void* buf, long n, vlong off)
 {
 	int t;
-	char *a;
+	char *a, *start;
 	Rtc rtc;
 	ulong secs;
 	uchar bcdclock[Nbcd];
@@ -248,30 +254,39 @@ rtcwrite(Chan* c, void* buf, long n, vlong off)
 		/*
 		 *  write the clock
 		 */
-		qlock(&rtclock);
+		ilock(&nvrtlock);
 		outb(Paddr, Seconds);	outb(Pdata, bcdclock[0]);
 		outb(Paddr, Minutes);	outb(Pdata, bcdclock[1]);
 		outb(Paddr, Hours);	outb(Pdata, bcdclock[2]);
 		outb(Paddr, Mday);	outb(Pdata, bcdclock[3]);
 		outb(Paddr, Month);	outb(Pdata, bcdclock[4]);
 		outb(Paddr, Year);	outb(Pdata, bcdclock[5]);
-		qunlock(&rtclock);
+		iunlock(&nvrtlock);
 		return n;
 	case Qnvram:
-		a = buf;
+		if(n == 0)
+			return 0;
+		if(n > Nvsize)
+			n = Nvsize;
+	
+		start = a = smalloc(n);
 		if(waserror()){
-			qunlock(&rtclock);
+			free(start);
 			nexterror();
 		}
-		qlock(&rtclock);
+		memmove(a, buf, n);
+		poperror();
+
+		ilock(&nvrtlock);
 		for(t = offset; t < offset + n; t++){
 			if(t >= Nvsize)
 				break;
 			outb(Paddr, Nvoff+t);
 			outb(Pdata, *a++);
 		}
-		qunlock(&rtclock);
-		poperror();
+		iunlock(&nvrtlock);
+
+		free(start);
 		return t - offset;
 	}
 	error(Ebadarg);
@@ -414,17 +429,15 @@ sec2rtc(ulong secs, Rtc *rtc)
 	return;
 }
 
-static Lock nvramlock;
-
 uchar
 nvramread(int addr)
 {
 	uchar data;
 
-	lock(&nvramlock);
+	ilock(&nvrtlock);
 	outb(Paddr, addr);
 	data = inb(Pdata);
-	unlock(&nvramlock);
+	iunlock(&nvrtlock);
 
 	return data;
 }
@@ -432,8 +445,8 @@ nvramread(int addr)
 void
 nvramwrite(int addr, uchar data)
 {
-	lock(&nvramlock);
+	ilock(&nvrtlock);
 	outb(Paddr, addr);
 	outb(Pdata, data);
-	unlock(&nvramlock);
+	iunlock(&nvrtlock);
 }
