@@ -208,19 +208,21 @@ void lancekproc(void *);
 /*
  *  print a packet preceded by a message
  */
+int
 sprintpacket(char *buf, Trace *t)
 {
 	Dpkt *p = &t->p;
-	int i;
+	int i, n;
 
-	sprint(buf, "%c: %.8ud %.4d d(%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux)s(%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux)t(%.2ux %.2ux)d(",
+	n = sprint(buf, "%c: %.8ud %.4d d(%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux)s(%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux)t(%.2ux %.2ux)d(",
 		t->tag, t->ticks, t->len,
 		p->d[0], p->d[1], p->d[2], p->d[3], p->d[4], p->d[5],
 		p->s[0], p->s[1], p->s[2], p->s[3], p->s[4], p->s[5],
 		p->type[0], p->type[1]);
 	for(i=0; i<sizeof(p->data); i++)
-		sprint(buf+strlen(buf), "%.2ux", p->data[i]);
-	sprint(buf+strlen(buf), ")\n");
+		n += sprint(buf+n, "%.2ux", p->data[i]);
+	n += sprint(buf+n, ")\n");
+	return n;
 }
 
 /*
@@ -642,8 +644,7 @@ lancetraceread(Chan *c, void *a, long n, ulong offset)
 	int plen;
 
 	rv = 0;
-	sprintpacket(buf, l.dq.t);
-	plen = strlen(buf);
+	plen = sprintpacket(buf, l.dq.t);
 	off = offset % plen;
 	for(t = &l.dq.t[offset/plen]; n && t < &l.dq.t[Ndpkt]; t++){
 		if(t->tag == 0)

@@ -37,8 +37,7 @@ struct Disk
 
 static Disk	wren[Ndisk];
 
-static Scsi	staticcmd;		/* BUG */
-static uchar	datablk[BY2PG];		/* BUG */
+#define	DATASIZE	(8*1024)	/* BUG */
 
 #define	BGLONG(p)	(((((((p)[0]<<8)|(p)[1])<<8)|(p)[2])<<8)|(p)[3])
 
@@ -125,11 +124,7 @@ wrenreset(void)
 
 void
 wreninit(void)
-{
-	Scsi *cmd = &staticcmd;
-	cmd->cmd.base = cmd->cmdblk;
-	cmd->data.base = datablk;
-}
+{}
 
 /*
  *  param is #r<target>.<lun>
@@ -210,8 +205,8 @@ wrenclose(Chan *c)
 long
 wrenread(Chan *c, char *a, long n, ulong offset)
 {
-	Scsi *cmd = &staticcmd;
-	unsigned long lbn;
+	Scsi *cmd;
+	ulong lbn;
 	Part *p;
 	Disk *d;
 
@@ -230,26 +225,17 @@ wrenread(Chan *c, char *a, long n, ulong offset)
 		lbn = (offset/d->blocksize) + p->firstblock;
 		if (lbn >= p->maxblock)
 			error(Ebadarg);
-		if (n > sizeof datablk)
-			n = sizeof datablk;
-		qlock(cmd);
+		if (n > DATASIZE)
+			n = DATASIZE;
+		cmd = scsicmd(c->dev, 0x08, n);
 		if (waserror()) {
 			qunlock(cmd);
 			nexterror();
 		}
-		cmd->target = c->dev>>3;
-		cmd->lun = c->dev&7;
-		cmd->cmd.ptr = cmd->cmd.base;
-		cmd->cmdblk[0] = 0x08;
 		cmd->cmdblk[1] = lbn>>16;
 		cmd->cmdblk[2] = lbn>>8;
 		cmd->cmdblk[3] = lbn;
 		cmd->cmdblk[4] = n/d->blocksize;
-		cmd->cmdblk[5] = 0x00;
-		cmd->cmd.lim = &cmd->cmdblk[6];
-		cmd->data.lim = cmd->data.base + n;
-		cmd->data.ptr = cmd->data.base;
-		cmd->save = cmd->data.base;
 		scsiexec(cmd, 1);
 		n = cmd->data.ptr - cmd->data.base;
 		memmove(a, cmd->data.base, n);
@@ -273,8 +259,8 @@ wrenread(Chan *c, char *a, long n, ulong offset)
 long
 wrenwrite(Chan *c, char *a, long n, ulong offset)
 {
-	Scsi *cmd = &staticcmd;
-	unsigned long lbn;
+	Scsi *cmd;
+	ulong lbn;
 	Part *p;
 	Disk *d;
 
@@ -290,26 +276,17 @@ wrenwrite(Chan *c, char *a, long n, ulong offset)
 		lbn = offset/d->blocksize + p->firstblock;
 		if (lbn >= p->maxblock)
 			error(Ebadarg);
-		if (n > sizeof datablk)
-			n = sizeof datablk;
-		qlock(cmd);
+		if (n > DATASIZE)
+			n = DATASIZE;
+		cmd = scsicmd(c->dev, 0x0a, n);
 		if (waserror()) {
 			qunlock(cmd);
 			nexterror();
 		}
-		cmd->target = c->dev>>3;
-		cmd->lun = c->dev&7;
-		cmd->cmd.ptr = cmd->cmd.base;
-		cmd->cmdblk[0] = 0x0a;
 		cmd->cmdblk[1] = lbn>>16;
 		cmd->cmdblk[2] = lbn>>8;
 		cmd->cmdblk[3] = lbn;
 		cmd->cmdblk[4] = n/d->blocksize;
-		cmd->cmdblk[5] = 0x00;
-		cmd->cmd.lim = &cmd->cmdblk[6];
-		cmd->data.lim = cmd->data.base + n;
-		cmd->data.ptr = cmd->data.base;
-		cmd->save = cmd->data.base;
 		memmove(cmd->data.base, a, n);
 		scsiexec(cmd, 0);
 		n = cmd->data.ptr - cmd->data.base;

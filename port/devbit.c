@@ -6,6 +6,7 @@
 #include	"errno.h"
 
 #include	"devtab.h"
+#include	"ureg.h"
 
 #include	<libg.h>
 #include	<gnot.h>
@@ -45,6 +46,7 @@ struct
 #define	FREE	0x80000000
 void	bitcompact(void);
 void	bitfree(GBitmap*);
+void	mouseupdate(int);
 extern	GBitmap	gscreen;
 
 struct{
@@ -54,6 +56,7 @@ struct{
 	int	dx;		/* interrupt-time delta */
 	int	dy;
 	int	track;		/* update cursor on screen */
+	int	clock;		/* check mouse.track on RTE */
 	Mouse;
 	int	changed;	/* mouse structure changed since last read */
 	int	newbuttons;	/* interrupt time access only */
@@ -526,6 +529,8 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			rect.min.y = GLONG(p+6);
 			rect.max.x = GLONG(p+10);
 			rect.max.y = GLONG(p+14);
+			if(Dx(rect) < 0 || Dy(rect) < 0)
+				error(Ebadblt);
 			if(rect.min.x >= 0)
 				l = (rect.max.x+ws-1)/ws - rect.min.x/ws;
 			else{	/* make positive before divide */
@@ -1129,26 +1134,52 @@ mousebuttons(int b)	/* called spl5 */
 void
 mouseclock(void)	/* called spl6 */
 {
+	++mouse.clock;
+}
+
+void
+mousetry(Ureg *ur)
+{
+	int s;
+
+	if(mouse.clock && mouse.track && (ur->sr&SPL(7)) == 0 && canlock(&cursor)){
+		s = spl1();
+		mouseupdate(0);
+		splx(s);
+		unlock(&cursor);
+		wakeup(&mouse.r);
+	}
+}
+
+void
+mouseupdate(int dolock)
+{
 	int x, y;
-	if(mouse.track && canlock(&cursor)){
-		x = mouse.xy.x + mouse.dx;
-		if(x < gscreen.r.min.x)
-			x = gscreen.r.min.x;
-		if(x >= gscreen.r.max.x)
-			x = gscreen.r.max.x;
-		y = mouse.xy.y + mouse.dy;
-		if(y < gscreen.r.min.y)
-			y = gscreen.r.min.y;
-		if(y >= gscreen.r.max.y)
-			y = gscreen.r.max.y;
-		cursoroff(0);
-		mouse.xy = Pt(x, y);
-		cursoron(0);
-		mouse.dx = 0;
-		mouse.dy = 0;
-		mouse.track = 0;
-		mouse.buttons = mouse.newbuttons;
-		mouse.changed = 1;
+
+	if(dolock && !canlock(&cursor))
+		return;
+
+	x = mouse.xy.x + mouse.dx;
+	if(x < gscreen.r.min.x)
+		x = gscreen.r.min.x;
+	if(x >= gscreen.r.max.x)
+		x = gscreen.r.max.x;
+	y = mouse.xy.y + mouse.dy;
+	if(y < gscreen.r.min.y)
+		y = gscreen.r.min.y;
+	if(y >= gscreen.r.max.y)
+		y = gscreen.r.max.y;
+	cursoroff(0);
+	mouse.xy = Pt(x, y);
+	cursoron(0);
+	mouse.dx = 0;
+	mouse.dy = 0;
+	mouse.clock = 0;
+	mouse.track = 0;
+	mouse.buttons = mouse.newbuttons;
+	mouse.changed = 1;
+
+	if(dolock){
 		unlock(&cursor);
 		wakeup(&mouse.r);
 	}

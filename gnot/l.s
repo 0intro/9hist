@@ -54,6 +54,13 @@ TEXT	splhi(SB), $0
 	MOVW	$(SUPER|SPL(7)), SR
 	RTS
 
+TEXT	splduart(SB), $0
+
+	MOVL	$0, R0
+	MOVW	SR, R0
+	MOVW	$(SUPER|SPL(5)), SR
+	RTS
+
 TEXT	spllo(SB), $0
 
 	MOVL	$0, R0
@@ -230,14 +237,9 @@ TEXT	portintr(SB), $0		/* level 2 */
 	MOVL	A0, ((8+8)*BY2WD)(A7)
 	MOVL	A7, -(A7)
 	BSR	devportintr(SB)
-	ADDL	$4, A7
-	MOVL	((8+8)*BY2WD)(A7), A0
-	MOVL	A0, USP
-	MOVEM	(A7), $0x7FFF
-	ADDL	$((8+8+1)*BY2WD+BY2WD), A7
-	RTE
+	BRA	retintr
 
-TEXT	dkintr(SB), $0			/* level 2 */
+TEXT	dkintr(SB), $0			/* level 3 */
 
 	MOVL	$DBMAGIC, -(A7)
 	SUBL	$((8+8+1)*BY2WD), A7
@@ -247,12 +249,7 @@ TEXT	dkintr(SB), $0			/* level 2 */
 	MOVL	A0, ((8+8)*BY2WD)(A7)
 	MOVL	A7, -(A7)
 	BSR	inconintr(SB)
-	ADDL	$4, A7
-	MOVL	((8+8)*BY2WD)(A7), A0
-	MOVL	A0, USP
-	MOVEM	(A7), $0x77FFF
-	ADDL	$((8+8+1)*BY2WD+BY2WD), A7
-	RTE
+	BRA	retintr
 
 TEXT	mouseintr(SB), $0		/* level 4 */
 
@@ -280,12 +277,7 @@ TEXT	uartintr(SB), $0		/* level 5 */
 	MOVL	A0, ((8+8)*BY2WD)(A7)
 	MOVL	A7, -(A7)
 	BSR	duartintr(SB)
-	ADDL	$4, A7
-	MOVL	((8+8)*BY2WD)(A7), A0
-	MOVL	A0, USP
-	MOVEM	(A7), $0x7FFF
-	ADDL	$((8+8+1)*BY2WD+BY2WD), A7
-	RTE
+	BRA	retintr
 
 TEXT	syncintr(SB), $0		/* level 6 */
 
@@ -297,12 +289,31 @@ TEXT	syncintr(SB), $0		/* level 6 */
 	MOVL	A0, ((8+8)*BY2WD)(A7)
 	MOVL	A7, -(A7)
 	BSR	clock(SB)
+	/* fall through */
+retintr:
+	BSR	mousetry(SB)
 	ADDL	$4, A7
 	MOVL	((8+8)*BY2WD)(A7), A0
 	MOVL	A0, USP
 	MOVEM	(A7), $0x7FFF
 	ADDL	$((8+8+1)*BY2WD+BY2WD), A7
 	RTE
+
+GLOBL	duarttimer+0(SB),$4
+
+TEXT	duartreadtimer+0(SB), $0
+	MOVW	SR, R1		/* spl7() */
+	MOVW	$0x2700, SR
+	MOVL	$0x40100000, A0
+	CLRL	R0
+	TSTB	15(A0)		/* stop timer */
+	MOVW	6(A0), R0	/* read hi,lo */
+	TSTB	14(A0)		/* restart timer */
+	NOTW	R0		/* timer counts down from 0xffff */
+	ADDL	duarttimer(SB), R0
+	MOVL	R0, duarttimer(SB)
+	MOVW	R1, SR
+	RTS
 
 GLOBL	mousetab(SB), $128
 DATA	mousetab+  0(SB)/4, -1		/* x down,        */

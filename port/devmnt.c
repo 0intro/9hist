@@ -199,6 +199,8 @@ mntdev(Chan *c, int noerr)
 		return m;
 	if(noerr)
 		return 0;
+	print("mntdev shutdown %d %d %d %lux\n", c->dev, c->mntindex,
+			m->mntid, m->q);
 	error(Eshutdown);
 }
 
@@ -395,24 +397,34 @@ mntclwalk(Chan *c, char *name)
 	Mnthdr *mh;
 	Chan *nc;
 
+	if(waserror()){	/* BUG: can check type of error? */
+		freechan(nc);
+		nc = 0;
+		goto Out;
+	}
 	nc = newchan();
+	nc->type = c->type;
+	nc->dev = c->dev;
+	nc->qid = c->qid;
+	nc->mode = c->mode;
+	nc->flag = c->flag;
+	nc->offset = c->offset;
+	nc->mnt = c->mnt;
+	nc->aux = c->aux;
+	nc->mchan = c->mchan;
+	nc->mqid = c->qid;
 	m = mntdev(c, 0);
 	mh = mhalloc();
 	mh->thdr.type = Tclwalk;
 	mh->thdr.fid = c->fid;
 	mh->thdr.newfid = nc->fid;
 	strcpy(mh->thdr.name, name);
-	if(waserror()){	/* BUG: can check type of error? */
-		print("mntclwalk(%d %lux) failed\n", c->type, c->qid.path);
-		freechan(nc);
-		nc = 0;
-		goto Out;
-	}
 	mntxmit(m, mh);
-	nc->qid = mh->rhdr.qid;
-	print("mntclwalk(%d %lux)->%d %lux\n", c->type, c->qid.path,
-		nc->type, nc->qid.path);
+	if(mh->rhdr.fid == mh->thdr.fid)
+		errors("directory entry not found");
 	poperror();
+	nc->qid = mh->rhdr.qid;
+	incref(m);
     Out:
 	mhfree(mh);
 	return nc;

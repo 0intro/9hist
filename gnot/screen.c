@@ -227,10 +227,9 @@ duartinputport(void)
 void
 duartbaud(int b)
 {
-	int x;
+	int x = 0;
 	Duart *duart = DUARTREG;
 
-	x = 0;		/* set */
 	switch(b){
 	case 38400:
 		x = BD38400;
@@ -333,8 +332,15 @@ duartrs232intr(void)
 void
 duartstartrs232o(void)
 {
-	DUARTREG[1].cmnd = ENB_TX;
-	duartrs232intr();
+	int s;
+	Duart *duart;
+
+	duart = DUARTREG;
+	s = splduart();
+	duart[1].cmnd = ENB_TX;
+	if(duart[1].sr_csr & (XMT_RDY|XMT_EMT))
+		duartrs232intr();
+	splx(s);
 }
 
 struct latin
@@ -542,13 +548,14 @@ duartintr(Ureg *ur)
 	/*
 	 * Is it 2?
 	 */
-	if(cause & IM_RRDYB){		/* rs232 input */
+	while(cause & IM_RRDYB){	/* rs232 input */
 		status = duart[1].sr_csr;
 		c = duart[1].data;
 		if(status & (FRM_ERR|OVR_ERR|PAR_ERR))
 			duart[1].cmnd = RESET_ERR;
 		else
 			rs232ichar(c);
+		cause = duart->is_imr;
 	}
 	/*
 	 * Is it 3?

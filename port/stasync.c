@@ -69,6 +69,7 @@ Qinfo asyncinfo =
 	asyncreset
 };
 
+static int	debugcount = 6;
 int asyncdebug = 3;
 int asyncerror;
 
@@ -280,6 +281,10 @@ asyncoput(Queue *q, Block *bp)
 		asputf(ap);
 	ap->chan = chan;
 
+	if(asyncdebug > 1)
+		kprint("a%d->(%d)%3.3uo %d\n",
+			ap-async, chan, ctl, bp->wptr-bp->rptr);
+
 	/*
 	 *  send the 8 bit data
 	 */
@@ -321,6 +326,8 @@ asyncoput(Queue *q, Block *bp)
 			asputf(ap);
 		}
 	}
+	if(debugcount > 0 && --debugcount == 0)
+		asyncdebug = 1;
 
 	qunlock(&ap->xmit);
 	return;
@@ -432,9 +439,13 @@ asynciput(Queue *q, Block *bp)
 					showframe("in", ap, ap->buf, ap->icount);
 				if(ap->icount < 5) {
 					DPRINT("a%d pkt too short\n", ap-async);
+					if(asyncdebug && asyncdebug<=2)
+						showframe("shortin", ap, ap->buf, ap->icount);
 					ap->tooshort++;
 				} else if(ap->icrc != 0) {
 					DPRINT("a%d bad crc\n", ap-async);
+					if(asyncdebug && asyncdebug<=2)
+						showframe("badin", ap, ap->buf, ap->icount);
 					ap->badcrc++;
 				} else {
 					asdeliver(q, ap);

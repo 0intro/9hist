@@ -21,7 +21,6 @@ long	clrfpintr(void);
 int	compactpte(Orig*, ulong);
 void	confinit(void);
 Env	*copyenv(Env*, int);
-Chan	*createdir(Chan*);
 int	decref(Ref*);
 void	delay(int);
 void	delete(List**, List*, List*);
@@ -162,7 +161,7 @@ void	schedinit(void);
 void	screeninit(void);
 void	screenputc(int);
 int	scsicap(int, uchar *);
-void	scsicmd(Scsi *, int, int, uchar *, long);
+Scsi	*scsicmd(int, int, long);
 void	scsictrlintr(void);
 void	scsidmaintr(void);
 int	scsiexec(Scsi *, int);
@@ -182,6 +181,7 @@ int	setlabel(Label*);
 char	*skipslash(char*);
 void	sleep(Rendez*, int(*)(void*), void*);
 int	spl1(void);
+int	splduart(void);
 int	splhi(void);
 int	spllo(void);
 void	splx(int);
@@ -214,7 +214,6 @@ void	validaddr(ulong, ulong, int);
 void	*vmemchr(void*, int, int);
 void	wakeme(Alarm*);
 void	wakeup(Rendez*);
-Chan	*walk(Chan*, char*, int);
 
 #define	waserror()	(u->nerrlab++, setlabel(&u->errlab[u->nerrlab-1]))
 #define	poperror()	u->nerrlab--

@@ -24,7 +24,8 @@ static Dirtab scsidir[]={
 #define	NSCSI	(sizeof scsidir/sizeof(Dirtab))
 
 static Scsi	staticcmd;	/* BUG */
-static uchar	datablk[8192];	/* BUG */
+#define	DATASIZE	(8*1024)
+static uchar	datablk[DATASIZE];	/* BUG */
 
 static int	debugs[8];
 static int	isscsi;
@@ -120,7 +121,18 @@ scsicreate(Chan *c, char *name, int omode, ulong perm)
 
 void
 scsiclose(Chan *c)
-{}
+{
+	Scsi *cmd = &staticcmd;
+	
+	if((c->qid.path & CHDIR) || c->qid.path==1)
+		return;
+	if((c->qid.path & 0xf) == Qcmd){
+		if(canqlock(cmd) || cmd->pid == u->p->pid){
+			cmd->pid = 0;
+			qunlock(cmd);
+		}
+	}
+}
 
 long
 scsiread(Chan *c, char *a, long n, ulong offset)
@@ -132,6 +144,7 @@ scsiread(Chan *c, char *a, long n, ulong offset)
 		return devdirread(c, a, n, 0, 0, scsigen);
 	if(c->qid.path==1){
 		if(offset == 0){
+			/*void scsidump(void); scsidump();*/
 			*a = ownid;
 			n = 1;
 		}else
@@ -140,17 +153,26 @@ scsiread(Chan *c, char *a, long n, ulong offset)
 	case Qcmd:
 		if (n < 4)
 			error(Ebadarg);
-		/*if(canqlock(cmd)){
+		if(canqlock(cmd)){
 			qunlock(cmd);
 			error(Egreg);
-		}*/
+		}
+		if(cmd->pid != u->p->pid)
+			error(Egreg);
 		n = 4;
-		*a++ = cmd->state>>8; *a++ = cmd->state;
+		*a++ = 0; *a++ = 0;
 		*a++ = cmd->status>>8; *a = cmd->status;
-		/*qunlock(cmd);*/
+		cmd->pid = 0;
+		qunlock(cmd);
 		break;
 	case Qdata:
-		if (n > sizeof datablk)
+		if(canqlock(cmd)){
+			qunlock(cmd);
+			error(Egreg);
+		}
+		if(cmd->pid != u->p->pid)
+			error(Egreg);
+		if (n > DATASIZE)
 			error(Ebadarg);
 		cmd->data.base = datablk;
 		cmd->data.lim = cmd->data.base + n;
@@ -181,25 +203,31 @@ scsiwrite(Chan *c, char *a, long n, ulong offset)
 		if(offset == 0){
 			n = 1;
 			ownid=*a;
-			scsiinit();
+			scsireset();
 		}else
 			n = 0;
 	}else switch ((int)c->qid.path & 0xf){
 	case Qcmd:
 		if (n < 6 || n > sizeof cmd->cmdblk)
 			error(Ebadarg);
-		/*qlock(cmd);*/
+		qlock(cmd);
+		cmd->pid = u->p->pid;
 		cmd->cmd.base = cmd->cmdblk;
 		memmove(cmd->cmd.base, a, n);
 		cmd->cmd.lim = cmd->cmd.base + n;
 		cmd->cmd.ptr = cmd->cmd.base;
 		cmd->target = (c->qid.path>>4)&7;
 		cmd->lun = (a[1]>>5)&7;
-		cmd->state = 0;
 		cmd->status = 0xFFFF;
 		break;
 	case Qdata:
-		if (n > sizeof datablk)
+		if(canqlock(cmd)){
+			qunlock(cmd);
+			error(Egreg);
+		}
+		if(cmd->pid != u->p->pid)
+			error(Egreg);
+		if (n > DATASIZE)
 			error(Ebadarg);
 		cmd->data.base = datablk;
 		cmd->data.lim = cmd->data.base + n;
@@ -234,18 +262,21 @@ scsiwstat(Chan *c, char *dp)
 	error(Eperm);
 }
 
-void
-scsicmd(Scsi *cmd, int dev, int cmdbyte, uchar *buf, long size)
+Scsi *
+scsicmd(int dev, int cmdbyte, long size)
 {
+	Scsi *cmd = &staticcmd;
+
+	if(size > DATASIZE)
+		panic("scsicmd %d", size);
 	qlock(cmd);
 	cmd->target = dev>>3;
 	cmd->lun = dev&7;
 	cmd->cmd.base = cmd->cmdblk;
-	cmd->data.base = buf;
 	cmd->cmd.ptr = cmd->cmd.base;
 	memset(cmd->cmdblk, 0, sizeof cmd->cmdblk);
 	cmd->cmdblk[0] = cmdbyte;
-	switch (cmdbyte>>5) {
+	switch(cmdbyte>>5){
 	case 0:
 		cmd->cmd.lim = &cmd->cmdblk[6]; break;
 	case 1:
@@ -253,7 +284,7 @@ scsicmd(Scsi *cmd, int dev, int cmdbyte, uchar *buf, long size)
 	default:
 		cmd->cmd.lim = &cmd->cmdblk[12]; break;
 	}
-	switch (cmdbyte) {
+	switch(cmdbyte){
 	case 0x00:	/* test unit ready */
 		break;
 	case 0x03:	/* read sense data */
@@ -262,49 +293,49 @@ scsicmd(Scsi *cmd, int dev, int cmdbyte, uchar *buf, long size)
 	case 0x25:	/* read capacity */
 		break;
 	}
+	cmd->data.base = datablk;
 	cmd->data.lim = cmd->data.base + size;
 	cmd->data.ptr = cmd->data.base;
 	cmd->save = cmd->data.base;
+	return cmd;
 }
 
 int
 scsiready(int dev)
 {
-	static Scsi cmd;
+	Scsi *cmd = scsicmd(dev, 0x00, 0);
 	int status;
-	scsicmd(&cmd, dev, 0x00, 0, 0);
-	status = scsiexec(&cmd, 0);
-	qunlock(&cmd);
+
+	status = scsiexec(cmd, 0);
+	qunlock(cmd);
 	if ((status&0xff00) != 0x6000)
 		error(Eio);
 	return status&0xff;
 }
 
 int
-scsisense(int dev, uchar *p)
+scsisense(int dev, void *p)
 {
-	static Scsi cmd;
-	static uchar buf[18];
+	Scsi *cmd = scsicmd(dev, 0x03, 18);
 	int status;
-	scsicmd(&cmd, dev, 0x03, buf, sizeof buf);
-	status = scsiexec(&cmd, 1);
-	memmove(p, buf, sizeof buf);
-	qunlock(&cmd);
+
+	status = scsiexec(cmd, 1);
+	memmove(p, cmd->data.base, 18);
+	qunlock(cmd);
 	if ((status&0xff00) != 0x6000)
 		error(Eio);
 	return status&0xff;
 }
 
 int
-scsicap(int dev, uchar *p)
+scsicap(int dev, void *p)
 {
-	static Scsi cmd;
-	static uchar buf[8];
+	Scsi *cmd = scsicmd(dev, 0x25, 8);
 	int status;
-	scsicmd(&cmd, dev, 0x25, buf, sizeof buf);
-	status = scsiexec(&cmd, 1);
-	memmove(p, buf, sizeof buf);
-	qunlock(&cmd);
+
+	status = scsiexec(cmd, 1);
+	memmove(p, cmd->data.base, 8);
+	qunlock(cmd);
 	if ((status&0xff00) != 0x6000)
 		error(Eio);
 	return status&0xff;
@@ -381,6 +412,7 @@ scsiexec(Scsi *p, int rflag)
 		nexterror();
 	}
 	scsirflag = rflag;
+	p->rflag = rflag;
 	datap = p->data.base;
 	if ((ownid & 0x08) && rflag)
 		PUT(Dest_id, 0x40|p->target);

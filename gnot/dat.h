@@ -628,8 +628,9 @@ struct Scsidata
 struct Scsi
 {
 	QLock;
+	ulong	pid;
 	ushort	target, lun;
-	ushort	state;
+	ushort	rflag;
 	ushort	status;
 	Scsidata cmd;
 	Scsidata data;

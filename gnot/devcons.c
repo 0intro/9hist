@@ -69,9 +69,10 @@ struct Rs232{
 	int	kstarted;	/* true if kproc started */
 	Queue	*wq;
 	Alarm	*a;		/* alarm for waking the rs232 kernel process */
-	int	started;
+	int	started;	/* true if output interrupt pending */
 	int	delay;		/* time between character input and waking kproc */
 	Rendez	r;
+	Rendez	rempty;
 };
 
 Rs232 rs232;
@@ -108,6 +109,7 @@ printinit(void)
 	lineq.out = lineq.buf;
 	rs232.in.in = rs232.in.buf;
 	rs232.in.out = rs232.in.buf;
+	rs232.delay = 64;	/* msec */
 	qlock(&kbdq);		/* allocate qlock */
 	qunlock(&kbdq);
 	lock(&lineq);		/* allocate lock */
@@ -293,6 +295,7 @@ echo(int c)
 {
 	char ch;
 	static int ctrlt;
+	extern void DEBUG(void), dumpqueues(void), mntdump(void);
 
 	/*
 	 * ^t hack BUG
@@ -337,6 +340,7 @@ echo(int c)
  * Put character into read queue at interrupt time.
  * Always called splhi from proc 0.
  */
+
 void
 kbdchar(int c)
 {
@@ -699,7 +703,7 @@ consread(Chan *c, void *buf, long n, ulong offset)
 		return i;
 
 	default:
-		panic("consread %lux\n", c->qid);
+		panic("consread %lux\n", c->qid.path);
 		return 0;
 	}
 }
@@ -820,6 +824,12 @@ rs232output(Rs232 *r)
 	}
 	r->out.f = next;
 
+	if(q==0){
+		kprint("rs232output: null q\n");
+		qunlock(&r->outlock);
+		return;
+	}
+
 	/*
 	 *  stage new blocks
 	 *
@@ -831,8 +841,13 @@ rs232output(Rs232 *r)
 		if(bp == 0)
 			break;
 		if(bp->type == M_CTL){
+			if(waserror()){
+				freeb(bp);
+				qunlock(&r->outlock);
+				nexterror();
+			}
 			while(!rs232empty(r))
-				sleep(&r->r, rs232empty, r);
+				sleep(&r->rempty, rs232empty, r);
 			l = strtoul((char *)(bp->rptr+1), 0, 0);
 			switch(*bp->rptr){
 			case 'B':
@@ -853,6 +868,7 @@ rs232output(Rs232 *r)
 					r->delay = l;
 				break;
 			}
+			poperror();
 			freeb(bp);
 			break;
 		}
@@ -864,12 +880,8 @@ rs232output(Rs232 *r)
 	 *  start output, the spl's sync with interrupt level
 	 *  this wouldn't work on a multi-processor
 	 */
-	splhi();
-	if(r->started == 0){
-		r->started = 1;
+	if(r->started == 0)
 		duartstartrs232o();
-	}
-	spllo();
 	qunlock(&r->outlock);
 }
 
@@ -942,11 +954,14 @@ rs232open(Queue *q, Stream *c)
 	WR(q)->ptr = r;
 	r->wq = WR(q);
 
+	kprint("rs232open: q=0x%ux, inuse=%d, type=%d, dev=%d, id=%d\n",
+		q, c->inuse, c->type, c->dev, c->id);
 	if(r->kstarted == 0){
 		r->in.in = r->in.out = r->in.buf;
 		kproc("rs232", rs232kproc, r);
 		r->kstarted = 1;
-	}
+	}else
+		wakeup(&r->r);	/* pick up any input characters */
 }
 
 static void
@@ -954,7 +969,14 @@ rs232close(Queue *q)
 {
 	Rs232 *r;
 
+	kprint("rs232close: q=0x%ux\n", q);
 	r = q->ptr;
+	qlock(&r->outlock);
+	while(!rs232empty(r))
+		sleep(&r->rempty, rs232empty, r);
+	qunlock(&r->outlock);
+	kprint("rs232close: emptied\n");
+	rs232output(r);	/* reclaim blocks written */
 	qlock(r);
 	r->wq = 0;
 	qunlock(r);
@@ -994,7 +1016,7 @@ rs232ichar(int c)
 		screenputc('^');
 
 	/*
-	 *  pass upstream within 1/16 second
+	 *  pass upstream within r->delay milliseconds
 	 */
 	if(r->a==0){
 		if(r->delay == 0)
@@ -1005,7 +1027,7 @@ rs232ichar(int c)
 }
 
 /*
- *  called by output interrupt.  runs splhi
+ *  called by output interrupt.  runs spl5
  */
 int
 getrs232o(void)
@@ -1016,6 +1038,7 @@ getrs232o(void)
 
 	r = &rs232;
 	if(r->out.r == r->out.w){
+		wakeup(&r->rempty);
 		r->started = 0;
 		return -1;
 	}
@@ -1026,5 +1049,6 @@ getrs232o(void)
 		if(r->out.r==r->out.w || NEXT(r->out.r)==r->out.w)
 			wakeup(&r->r);
 	}
+	r->started = 1;
 	return c;
 }
