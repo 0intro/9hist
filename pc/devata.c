@@ -401,7 +401,7 @@ atactlrprobe(int ctlrno, int irq)
 		outb(port+Pctrl, Srst|nIEN);
 		delay(10);
 		outb(port+Pctrl, 0);
-		if(atactlrwait(ctlr, DHmagic, 0, MS2TK(20)){
+		if(atactlrwait(ctlr, DHmagic, 0, MS2TK(20))){
 			DPRINT("ata%d: Srst status %ux/%ux/%ux\n", ctlrno,
 				inb(port+Pstatus), inb(port+Pcylmsb), inb(port+Pcyllsb));
 			xfree(ctlr);

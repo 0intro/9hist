@@ -145,7 +145,6 @@ dacinit(void)
 {
 	Dac *d;
 	int i;
-	ulong r, g, b;
 
 	d = DAC;
 
@@ -168,14 +167,7 @@ dacinit(void)
 	for(i = 0; i < 0x400; i++)
 		d->cr2 = 0xff;
 
-	for(i = 0; i<256; i++) {
-		r = rep((i>>5) & 7, 3);
-		g = rep((i>>2) & 7, 3);
-		b = rep(i & 3, 2);
-		setcolor(i, r, g, b);
-	}
-	setcolor(170, 0xAAAAAAAA, 0xAAAAAAAA, 0xAAAAAAAA);
-	setcolor(85, 0x55555555, 0x55555555, 0x55555555);
+	graphicscmap(0);
 
 	/* Overlay Palette Ram */
 	d->cr0 = 0x00;

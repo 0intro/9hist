@@ -94,6 +94,7 @@ void		getcolor(ulong, ulong*, ulong*, ulong*);
 int		getfields(char*, char**, int, char*);
 void		gotolabel(Label*);
 void		graphicsactive(int);
+void		graphicscmap(int);
 int		haswaitq(void*);
 long		hostdomainwrite(char*, int);
 long		hostownerwrite(char*, int);

@@ -39,12 +39,12 @@ enable(void)
 
 	/*
 	 * Disable the cursor then configure for X-Windows style,
-	 * 64x64 and 4/8-bit colour depth.
+	 * 32x32 and 4/8-bit colour depth.
 	 * Set cursor colours for 4/8-bit.
 	 */
 	seq20 = vgaxi(Seqx, 0x20) & ~0x1F;
 	vgaxo(Seqx, 0x20, seq20);
-	seq20 |= 0x1C;
+	seq20 |= 0x18;
 
 	vgaxo(Seqx, 0x26, Pwhite);
 	vgaxo(Seqx, 0x27, Pwhite);
@@ -54,13 +54,13 @@ enable(void)
 	vgaxo(Seqx, 0x2B, Pblack);
 
 	/*
-	 * Cursor storage is a 1Kb block located in the last 16Kb
-	 * of video memory. Crt25 is the index of which 1Kb block.
+	 * Cursor storage is a 256 byte or 1Kb block located in the last
+	 * 16Kb of video memory. Crt25 is the index of which block.
 	 */
 	storage = (vgaxi(Seqx, 0x10)>>6) & 0x03;
 	storage = (1024*1024)<<storage;
-	storage -= 1024;
-	vgaxo(Seqx, 0x25, 0x3C);
+	storage -= 256;
+	vgaxo(Seqx, 0x25, 0x3F);
 
 	/*
 	 * Enable the cursor.
@@ -71,7 +71,7 @@ enable(void)
 static void
 load(Cursor *c)
 {
-	uchar *p, seq20;
+	uchar *p;
 	int x, y;
 
 	/*
@@ -81,17 +81,13 @@ load(Cursor *c)
 	 * just make sure it's enabled.
 	 */
 	lock(&ark2000pvlock);
-	seq20 = vgaxi(Seqx, 0x20);
 	if(memcmp(c, &curcursor, sizeof(Cursor)) == 0){
-		vgaxo(Seqx, 0x20, seq20|0x08);
+		vgaxo(Seqx, 0x20, vgaxi(Seqx, 0x20)|0x08);
 		unlock(&ark2000pvlock);
 		return;
 	}
 	memmove(&curcursor, c, sizeof(Cursor));
 
-#ifdef notdef
-	vgaxo(Seqx, 0x20, seq20 & ~0x08);
-#endif
 	/*
 	 * Is linear addressing turned on? This will determine
 	 * how we access the cursor storage.
@@ -111,12 +107,12 @@ load(Cursor *c)
 	 *	 0   1	underlying pixel colour
 	 *	 1   0	background colour
 	 *	 1   1	foreground colour
-	 * Put the cursor into the top-left of the 64x64 array.
+	 * Put the cursor into the top-left of the 32x32 array.
 	 * The manual doesn't say what the data layout in memory is -
 	 * this worked out by trial and error.
 	 */
-	for(y = 0; y < 64; y++){
-		for(x = 0; x < 64/8; x++){
+	for(y = 0; y < 32; y++){
+		for(x = 0; x < 32/8; x++){
 			if(x < 16/8 && y < 16){
 				*p++ = c->clr[2*y + x]|c->set[2*y + x];
 				*p++ = c->set[2*y + x];
@@ -132,9 +128,6 @@ load(Cursor *c)
 	 * Set the cursor hotpoint and enable the cursor.
 	 */
 	hotpoint = c->offset;
-#ifdef notdef
-	vgaxo(Seqx, 0x20, seq20|0x08);
-#endif
 
 	unlock(&ark2000pvlock);
 }

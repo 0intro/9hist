@@ -626,11 +626,7 @@ setscreen(int maxx, int maxy, int ldepth)
 	/* default color map (has to be outside the lock) */
 	switch(ldepth){
 	case 3:
-		for(i = 0; i < Pcolours; i++)
-			setcolor(i, xnto32(i>>5, 3), xnto32(i>>2, 3), xnto32(i, 2));
-		setcolor(0x55, xnto32(0x15, 6), xnto32(0x15, 6), xnto32(0x15, 6));
-		setcolor(0xaa, xnto32(0x2a, 6), xnto32(0x2a, 6), xnto32(0x2a, 6));
-		setcolor(0xff, xnto32(0x3f, 6), xnto32(0x3f, 6), xnto32(0x3f, 6));
+		graphicscmap(0);
 		break;
 	case 2:
 	case 1:
