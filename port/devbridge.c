@@ -59,7 +59,7 @@ enum {
 enum
 {
 	Tether,
-	Ttunnel,
+	Ttun,
 };
 
 static Logflag logflags[] =
@@ -290,7 +290,7 @@ bridgeread(Chan *c, void *a, long n, vlong off)
 			case Tether:
 				i += snprint(buf+i, sizeof(buf)-i, "ether %E: ", port->addr);
 				break;
-			case Ttunnel:
+			case Ttun:
 				i += snprint(buf+i, sizeof(buf)-i, "tunnel %I: ", port->addr);
 				break;
 			}
@@ -455,7 +455,7 @@ portbind(Bridge *b, int argc, char *argv[])
 	} else if(strcmp(argv[0], "tunnel") == 0) {
 		if(argc != 5)
 			error(usage);
-		type = Ttunnel;
+		type = Ttun;
 		parseip(addr, argv[1]);
 		dev2 = argv[4];
 	} else
@@ -521,7 +521,7 @@ portbind(Bridge *b, int argc, char *argv[])
 		cclose(ctl);		
 
 		break;
-	case Ttunnel:
+	case Ttun:
 		port->data[0] = namec(dev, Aopen, OREAD, 0);
 		port->data[1] = namec(dev2, Aopen, OWRITE, 0);
 		break;
@@ -557,7 +557,7 @@ portunbind(Bridge *b, int argc, char *argv[])
 		type = Tether;
 		parseaddr(addr, argv[1], Eaddrlen);
 	} else if(strcmp(argv[0], "tunnel") == 0) {
-		type = Ttunnel;
+		type = Ttun;
 		parseip(addr, argv[1]);
 	} else
 		error(usage);
@@ -841,7 +841,7 @@ static uchar tribble[Eaddrlen] = {0x00, 0xd1, 0x80, 0xaa, 0xbb, 0x07};
 			if(ce == nil) {
 				b->miss++;
 				port->inunknown++;
-				if(port->type != Tether || memcmp(ep->s, tribble, Eaddrlen) == 0) {
+				if(1 || port->type != Tether || memcmp(ep->s, tribble, Eaddrlen) == 0) {
 					bp2 = bp; bp = nil;
 					ethermultiwrite(b, bp2, port);
 				}	

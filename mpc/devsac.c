@@ -18,6 +18,7 @@ enum
 	OPERM	= 0x3,		/* mask of all permission types in open mode */
 	Nram	= 512,
 	CacheSize = 20,
+	OffsetSize = 4,		/* size in bytes of an offset */
 };
 
 typedef struct SacPath SacPath;
@@ -62,8 +63,9 @@ struct SacPath
 {
 	Ref;
 	SacPath *up;
-	vlong blocks;
+	long blocks;
 	int entry;
+	int nentry;
 };
 
 struct Cache
@@ -91,7 +93,6 @@ static ulong cacheage;
 
 static void	sacdir(Chan *, SacDir*, char*);
 static ulong	getl(void *p);
-static vlong	getv(void *p);
 static Sac	*saccpy(Sac *s);
 static Sac *saclookup(Sac *s, char *name);
 static int sacdirread(Chan *, char *p, long off, long cnt);
@@ -199,13 +200,14 @@ sacopen(Chan *c, int omode)
 
 
 static long
-sacread(Chan *c, void *a, long n, vlong off)
+sacread(Chan *c, void *a, long n, vlong voff)
 {
 	Sac *sac;
 	char *buf, *buf2;
 	int nn, cnt, i, j;
 	uchar *blocks;
-	vlong length;
+	long length;
+	long off = voff;
 
 	buf = a;
 	cnt = n;
@@ -216,8 +218,7 @@ sacread(Chan *c, void *a, long n, vlong off)
 		return sacdirread(c, buf, off, cnt);
 	}
 	sac = c->aux;
-//print("sacread: %s %llx %d\n", sac->name, off, n);
-	length = getv(sac->length);
+	length = getl(sac->length);
 	if(off >= length)
 		return 0;
 	if(cnt > length-off)
@@ -225,13 +226,16 @@ sacread(Chan *c, void *a, long n, vlong off)
 	if(cnt == 0)
 		return 0;
 	n = cnt;
-	blocks = data + getv(sac->blocks);
+	blocks = data + getl(sac->blocks);
 	buf2 = malloc(blocksize);
 	while(cnt > 0) {
 		i = off/blocksize;
-		loadblock(buf2, blocks+i*8, blocksize);
+		nn = blocksize;
+		if(nn > length-i*blocksize)
+			nn = length-i*blocksize;
+		loadblock(buf2, blocks+i*OffsetSize, nn);
 		j = off-i*blocksize;
-		nn = blocksize-j;
+		nn -= j;
 		if(nn > cnt)
 			nn = cnt;
 		memmove(buf, buf2+j, nn);
@@ -278,12 +282,13 @@ saccpy(Sac *s)
 }
 
 static SacPath *
-sacpathalloc(SacPath *p, vlong blocks, int entry)
+sacpathalloc(SacPath *p, long blocks, int entry, int nentry)
 {
 	SacPath *pp = malloc(sizeof(SacPath));
 	pp->ref = 1;
 	pp->blocks = blocks;
 	pp->entry = entry;
+	pp->nentry = nentry;
 	pp->up = p;
 	return pp;
 }
@@ -315,11 +320,11 @@ sacdir(Chan *c, SacDir *s, char *buf)
 	memmove(dir.name, s->name, NAMELEN);
 	dir.qid = (Qid){getl(s->qid), 0};
 	dir.mode = getl(s->mode);
-	dir.length = getv(s->length);
+	dir.length = getl(s->length);
 	if(dir.mode &CHDIR)
 		dir.length *= DIRLEN;
-	strcpy(dir.uid, s->uid);
-	strcpy(dir.gid, s->gid);
+	memmove(dir.uid, s->uid, NAMELEN);
+	memmove(dir.gid, s->gid, NAMELEN);
 	dir.atime = getl(s->atime);
 	dir.mtime = getl(s->mtime);
 	dir.type = devtab[c->type]->dc;
@@ -330,11 +335,11 @@ sacdir(Chan *c, SacDir *s, char *buf)
 static void
 loadblock(void *buf, uchar *offset, int blocksize)
 {
-	vlong block, n;
+	long block, n;
 	ulong age;
 	int i, j;
 
-	block = getv(offset);
+	block = getl(offset);
 	if(block < 0) {
 		block = -block;
 		cacheage++;
@@ -357,7 +362,7 @@ loadblock(void *buf, uchar *offset, int blocksize)
 			return;
 		}
 
-		n = getv(offset+8);
+		n = getl(offset+OffsetSize);
 		if(n < 0)
 			n = -n;
 		n -= block;
@@ -376,7 +381,7 @@ sacparent(Sac *s)
 {
 	uchar *blocks;
 	SacDir *buf;
-	int per, i;
+	int per, i, n;
 	SacPath *p;
 
 	p = s->path;
@@ -390,8 +395,11 @@ sacparent(Sac *s)
 	blocks = data + p->blocks;
 	per = blocksize/sizeof(SacDir);
 	i = p->entry/per;
+	n = per;
+	if(n > p->nentry-i*per)
+		n = p->nentry-i*per;
 	buf = malloc(per*sizeof(SacDir));
-	loadblock(buf, blocks + i*8, per*sizeof(SacDir));
+	loadblock(buf, blocks + i*OffsetSize, n*sizeof(SacDir));
 	s->SacDir = buf[p->entry-i*per];
 	free(buf);
 	incref(p);
@@ -405,13 +413,13 @@ sacdirread(Chan *c, char *p, long off, long cnt)
 {
 	uchar *blocks;
 	SacDir *buf;
-	int iblock, per, i, j, ndir;
+	int iblock, per, i, j, n, ndir;
 	Sac *s;
 
 	s = c->aux;
-	blocks = data + getv(s->blocks);
+	blocks = data + getl(s->blocks);
 	per = blocksize/sizeof(SacDir);
-	ndir = getv(s->length);
+	ndir = getl(s->length);
 	off /= DIRLEN;
 	cnt /= DIRLEN;
 	if(off >= ndir)
@@ -423,7 +431,10 @@ sacdirread(Chan *c, char *p, long off, long cnt)
 	for(i=off; i<off+cnt; i++) {
 		j = i/per;
 		if(j != iblock) {
-			loadblock(buf, blocks + j*8, per*sizeof(SacDir));
+			n = per;
+			if(n > ndir-j*per)
+				n = ndir-j*per;
+			loadblock(buf, blocks + j*OffsetSize, n*sizeof(SacDir));
 			iblock = j;
 		}
 		j *= per;
@@ -438,7 +449,7 @@ static Sac*
 saclookup(Sac *s, char *name)
 {
 	int ndir;
-	int i, j, k, per;
+	int i, j, k, n, per;
 	uchar *blocks;
 	SacDir *buf;
 	int iblock;
@@ -446,9 +457,9 @@ saclookup(Sac *s, char *name)
 	
 	if(strcmp(name, "..") == 0)
 		return sacparent(s);
-	blocks = data + getv(s->blocks);
+	blocks = data + getl(s->blocks);
 	per = blocksize/sizeof(SacDir);
-	ndir = getv(s->length);
+	ndir = getl(s->length);
 	buf = malloc(per*sizeof(SacDir));
 	iblock = -1;
 
@@ -456,14 +467,17 @@ saclookup(Sac *s, char *name)
 	for(i=0; i<ndir; i++) {
 		j = i/per;
 		if(j != iblock) {
-			loadblock(buf, blocks + j*8, per*sizeof(SacDir));
+			n = per;
+			if(n > ndir-j*per)
+				n = ndir-j*per;
+			loadblock(buf, blocks + j*OffsetSize, n*sizeof(SacDir));
 			iblock = j;
 		}
 		j *= per;
 		sd = buf+i-j;
 		k = strcmp(name, sd->name);
 		if(k == 0) {
-		s->path = sacpathalloc(s->path, getv(s->blocks), i);
+		s->path = sacpathalloc(s->path, getl(s->blocks), i, ndir);
 			s->SacDir = *sd;
 			free(buf);
 			return s;
@@ -479,23 +493,6 @@ getl(void *p)
 	uchar *a = p;
 
 	return (a[0]<<24) | (a[1]<<16) | (a[2]<<8) | a[3];
-}
-
-static vlong
-getv(void *p)
-{
-	uchar *a = p;
-	ulong l0, l1;
-	vlong v;
-
-	l0 = (a[0]<<24) | (a[1]<<16) | (a[2]<<8) | a[3];
-	a += 4;
-	l1 = (a[0]<<24) | (a[1]<<16) | (a[2]<<8) | a[3];
-	
-	v = l0;
-	v <<= 32;
-	v |= l1;
-	return v;
 }
 
 Dev sacdevtab = {
