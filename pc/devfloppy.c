@@ -60,7 +60,7 @@ enum
 };
 
 /*
- *  floppy types
+ *  floppy types (all MFM encoding)
  */
 struct Type
 {
@@ -72,7 +72,7 @@ struct Type
 	int	tracks;		/* tracks/disk */
 	int	gpl;		/* intersector gap length for read/write */	
 	int	fgpl;		/* intersector gap length for format */
-	int	ring;		/* ring of compatible floppy types */
+	int	rate;		/* rate code */
 
 	/*
 	 *  these depend on previous entries and are set filled in
@@ -84,12 +84,12 @@ struct Type
 };
 Type floppytype[] =
 {
-[0]	{ "MF2HD",	512,	18,	2,	1,	80,	0x1B,	0x54,	1, },
-[1]	{ "MF1DD",	512,	9,	2,	1,	80,	0x1B,	0x54,	2, },
-[2]	{ "MF4HD",	1024,	18,	2,	1,	80,	0x1B,	0x54,	0, },
-[3]	{ "F2HD",	512,	15,	2,	1,	80,	0x2A,	0x50,	4, },
-[4]	{ "F2DD",	512,	8,	2,	2,	40,	0x2A,	0x50,	5, },
-[5]	{ "F1DD",	512,	8,	1,	2,	40,	0x2A,	0x50,	3, },
+ { "3½HD",	512,	18,	2,	1,	80,	0x1B,	0x54,	0, },
+ { "3½DD",	512,	9,	2,	1,	80,	0x1B,	0x54,	2, },
+ { "5¼HD",	512,	15,	2,	1,	80,	0x2A,	0x50,	0, },
+ { "5¼DD2",	512,	9,	2,	2,	40,	0x2A,	0x50,	2, },
+ { "5¼DD1",	512,	9,	2,	2,	40,	0x2A,	0x50,	1, },
+ { "3½ED",	1024,	18,	2,	1,	80,	0x1B,	0x54,	3, },
 };
 #define NTYPES (sizeof(floppytype)/sizeof(Type))
 
@@ -122,7 +122,7 @@ struct Drive
 	int	dev;
 
 	ulong	lasttouched;	/* time last touched */
-	int	cyl;		/* current cylinder */
+	int	arm;		/* current arm position */
 	int	confused;	/* needs to be recalibrated */
 	int	vers;
 
@@ -147,6 +147,7 @@ struct Controller
 
 	Drive	*d;		/* the floppy drives */
 	Drive	*selected;
+	int	rate;		/* current rate selected */
 	uchar	cmd[14];	/* command */
 	int	ncmd;		  /* # command bytes */
 	uchar	stat[14];	/* command status */
@@ -230,7 +231,7 @@ floppyreset(void)
 		dp->dev = dp - fl.d;
 		dp->t = &floppytype[0];		/* default type */
 		floppydir[NFDIR*dp->dev].length = dp->t->cap;
-		dp->cyl = -1;		/* because we don't know */
+		dp->arm = -1;		/* because we don't know */
 		dp->cache = (uchar*)xspanalloc(dp->t->tsize, BY2PG, 0);
 		dp->ccyl = -1;
 		dp->vers = 1;
@@ -337,15 +338,17 @@ changed(Chan *c, Drive *dp)
 	if(inb(Pdir)&Fchange){
 		dp->vers++;
 		dp->ccyl = -1;
-		if(dp->cyl)
+		if(dp->arm)
 			floppythrice(dp, Fread, dp->cache, 0, dp->t->tsize);
 		else
-			floppythrice(dp, Fread, dp->cache, dp->t->heads*dp->t->tsize, dp->t->tsize);
+			floppythrice(dp, Fread, dp->cache, dp->t->heads*dp->t->tsize,
+					dp->t->tsize);
 	}
 	old = c->qid.vers;
 	c->qid.vers = dp->vers;
-	if(old && old!=dp->vers)
+	if(old && old!=dp->vers){
 		error(Eio);
+	}
 }
 
 long
@@ -366,7 +369,6 @@ floppyread(Chan *c, void *a, long n)
 	case Qdata:
 		islegal(c, n, dp);
 		aa = a;
-		nn = dp->t->tsize;
 
 		qlock(&fl);
 		if(waserror()){
@@ -385,6 +387,7 @@ floppyread(Chan *c, void *a, long n)
 			head = dp->thead;
 			len = dp->len;
 			sec = dp->tsec;
+			nn = dp->t->tsize;
 
 			/*
 			 *  read the track
@@ -396,7 +399,8 @@ floppyread(Chan *c, void *a, long n)
 				if(i != nn){
 					if(i == 0)
 						break;
-					error(Eio);
+					len = 0;
+					continue;
 				}
 				dp->ccyl = cyl;
 				dp->chead = head;
@@ -511,6 +515,12 @@ floppyon(Drive *dp)
 	outb(Pdor, fl.motor | Fintena | Fena | dp->dev);
 	if(!alreadyon)
 		tsleep(&dp->r, return0, 0, 750);
+
+	/* set transfer rate */
+	if(fl.rate != dp->t->rate){
+		fl.rate = dp->t->rate;
+		outb(Pdsr, fl.rate);
+	}
 
 	/* get drive to a known cylinder */
 	if(dp->confused)
@@ -683,9 +693,9 @@ floppyrecal(Drive *dp)
 		dp->confused = 1;
 		return -1;
 	}
-	dp->cyl = fl.stat[1]/dp->t->steps;
-	if(dp->cyl != 0){
-		DPRINT("recalibrate went to wrong cylinder %d\n", dp->cyl);
+	dp->arm = fl.stat[1];
+	if(dp->arm != 0){
+		DPRINT("recalibrate went to wrong cylinder %d\n", dp->arm);
 		dp->confused = 1;
 		return -1;
 	}
@@ -720,6 +730,7 @@ floppyrevive(void)
 		floppywait();
 		fl.confused = 0;
 		outb(Pdsr, 0);
+		fl.rate = 0;
 	}
 }
 
@@ -732,8 +743,8 @@ static long
 floppyseek(Drive *dp, long off)
 {
 	floppypos(dp, off);
-	if(dp->cyl == dp->tcyl)
-		return dp->cyl;
+	if(dp->arm*dp->t->steps == dp->tcyl)
+		return dp->tcyl;
 
 	DPRINT("seeking tcyl %d, thead %d\n", dp->tcyl, dp->thead);
 	fl.ncmd = 0;
@@ -746,6 +757,7 @@ floppyseek(Drive *dp, long off)
 	}
 	floppywait();
 	if(fl.nstat < 2){
+		DPRINT("seek cmd confused\n");
 		fl.confused = 1;
 		return -1;
 	}
@@ -755,8 +767,8 @@ floppyseek(Drive *dp, long off)
 		return -1;
 	}
 
-	dp->cyl = dp->tcyl;
-	return dp->cyl;
+	dp->arm = dp->tcyl*dp->t->steps;
+	return dp->tcyl;
 }
 
 /*
@@ -768,11 +780,24 @@ floppythrice(Drive *dp, int cmd, void *a, long off, long n)
 {
 	int tries;
 	long rv;
+	Type *start;
 
+	start = dp->t;
 	for(tries = 0; ; tries++){
 		if(waserror()){
-			if(strcmp(u->error, Eintr)==0 || tries > 3)
+			if(cmd != Fread || strcmp(u->error, Eintr)==0)
 				nexterror();
+
+			/* walk through the compatible types */
+			if(tries == 3){
+				if(++dp->t == &floppytype[NTYPES])
+					dp->t = floppytype;
+				floppydir[NFDIR*dp->dev].length = dp->t->cap;
+				if(dp->t == start)
+					nexterror();
+				tries = 0;
+				floppyon(dp);
+			}
 		} else {
 			rv = floppyxfer(dp, cmd, a, off, n);
 			poperror();
@@ -851,10 +876,11 @@ floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 	/*
 	 *  check for correct cylinder
 	 */
-	offset = (fl.stat[3]/dp->t->steps) * dp->t->heads + fl.stat[4];
+	offset = ((fl.stat[3]+dp->t->steps-1)/dp->t->steps) * dp->t->heads + fl.stat[4];
 	offset = offset*dp->t->sectors + fl.stat[5] - 1;
 	offset = offset * c2b[fl.stat[6]];
 	if(offset != off+dp->len){
+		DPRINT("xfer ends on wrong cyl\n");
 		dp->confused = 1;
 		error(Eio);
 	}
