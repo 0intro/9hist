@@ -18,6 +18,8 @@ enum {
 	Nhsvme=		1,
 };
 
+#define NOW (MACHP(0)->ticks*MS2HZ)
+
 /*
  *  hsvme datakit board
  */
@@ -44,6 +46,7 @@ struct Hsvme {
 	Queue	*rq;		/* read queue */
 	uchar	buf[1024];	/* bytes being collected */
 	uchar	*wptr;		/* pointer into buf */
+	ulong	time;		/* time byte in buf[0] arrived */
 	int	kstarted;	/* true if kernel process started */
 	int	started;
 
@@ -458,6 +461,7 @@ upstream(Hsvme *hp, unsigned int ctl)
 	bp->flags |= S_DELIM;
 	PUTNEXT(hp->rq, bp);
 	hp->wptr = hp->buf;
+	hp->time = 0;
 }
 
 /*
@@ -526,20 +530,29 @@ hsvmekproc(void *arg)
 				/*
 				 *  data byte, put in local buffer
 				 */
+				if(hp->time == 0)
+					hp->time = NOW + 100;
 				*hp->wptr++ = c;
 				if(hp->wptr == &hp->buf[sizeof hp->buf])
 					upstream(hp, 0);
 			}
 		}
+		if(hp->time && NOW >= hp->time)
+			upstream(hp, 0);
 		USED(locked);
 		qunlock(hp);
 		locked = 0;
 
 		/*
-		 *  sleep if input fifo empty
+		 *  Sleep if input fifo empty. Make sure we don't hold onto
+		 *  any byte for more tha 1/10 second.
 		 */
-		if(!notempty(addr))
-			sleep(&hp->kr, notempty, addr);
+		if(!(addr->csr & REF)){
+			if(hp->wptr == hp->buf)
+				sleep(&hp->kr, notempty, addr);
+			else
+				tsleep(&hp->kr, notempty, addr, 100);
+		}
 	}
 }
 

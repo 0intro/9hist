@@ -195,6 +195,6 @@ kproftimer(ulong pc)
 		pc -= kprof.minpc;
 		pc >>= LRES;
 		kprof.buf[pc] += TK2MS(1);
-	} else
+	}else
 		kprof.buf[1] += TK2MS(1);
 }
