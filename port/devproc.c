@@ -233,7 +233,7 @@ procclose(Chan * c)
 long
 procread(Chan *c, void *va, long n, ulong offset)
 {
-	char *a = va, *b;
+	char *a = va, *b, *sps;
 	char statbuf[NSEG*32];
 	Proc *p;
 	Page *pg;
@@ -341,9 +341,12 @@ procread(Chan *c, void *va, long n, ulong offset)
 		if(offset+n > STATSIZE)
 			n = STATSIZE - offset;
 
-		j = sprint(statbuf, "%-27s %-27s %-11s ",
-			p->text, p->user, p->psstate ? p->psstate : statename[p->state]);
-		for(i=0; i<6; i++){
+		sps = p->psstate;
+		if(sps == 0)
+			sps = statename[p->state];
+		j = sprint(statbuf, "%-27s %-27s %-11s ", p->text, p->user, sps);
+
+		for(i = 0; i < 6; i++) {
 			l = p->time[i];
 			if(i == TReal)
 				l = MACHP(0)->ticks - l;

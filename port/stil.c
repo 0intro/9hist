@@ -18,11 +18,23 @@ static	Rendez	ilackr;
 
 char	*ilstate[] = 
 { 
-	"Closed", "Syncer", "Syncee", "Established", "Listening", "Closing" 
+	"Closed",
+	"Syncer",
+	"Syncee",
+	"Established",
+	"Listening",
+	"Closing" 
 };
+
 char	*iltype[] = 
 {	
-	"sync", "data", "dataquerey", "ack", "querey", "state", "close" 
+	"sync",
+	"data",
+	"dataquerey",
+	"ack",
+	"querey",
+	"state",
+	"close" 
 };
 static char *etime = "connection timed out";
 
@@ -579,8 +591,8 @@ ilpullup(Ipconv *s)
 {
 	Ilcb *ic;
 	Ilhdr *oh;
-	ulong oid, dlen;
 	Block *bp;
+	ulong oid, dlen;
 
 	if(s->readq == 0)
 		return;
@@ -793,6 +805,7 @@ notsyncer(void *ic)
 	i = ic;
 	return i->state != Ilsyncer;
 }
+
 void
 ilstart(Ipconv *ipc, int type, int window)
 {

@@ -271,6 +271,12 @@ TEXT	vector80(SB), $-4
 
 TEXT	vector0(SB), $-4
 
+	MOVW	$((MACHADDR+368) & 0xffff0000), R26	/* get m->tlbfault BUG */	
+	OR	$((MACHADDR+368) & 0xffff), R26
+	MOVW	(R26), R27
+	ADD	$1, R27
+	MOVW	R27, (R26)
+
 	MOVW	$utlbmiss(SB), R26
 	MOVW	M(TLBVIRT), R27
 	JMP	(R26)
