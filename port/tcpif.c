@@ -64,6 +64,7 @@ notsyner(void *ic)
 {
 	return ((Tcpctl*)ic)->state != Syn_sent;
 }
+
 void
 tcpstart(Ipconv *s, int mode, ushort window, char tos)
 {
@@ -82,6 +83,7 @@ tcpstart(Ipconv *s, int mode, ushort window, char tos)
 		tcb->flags |= CLONE;
 		setstate(s, Listen);
 		break;
+
 	case TCP_ACTIVE:
 		/* Send SYN, go into SYN_SENT state */
 		tcb->flags |= ACTIVE;

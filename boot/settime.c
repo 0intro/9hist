@@ -34,7 +34,7 @@ settime(int islocal)
 		f = open("#s/boot", ORDWR);
 		if(f < 0)
 			return;
-		if(mount(f, "/n/boot", MREPL, "", "") < 0){
+		if(mount(f, "/n/boot", MREPL, "", sauth) < 0){
 			close(f);
 			return;
 		}

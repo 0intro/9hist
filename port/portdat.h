@@ -697,6 +697,7 @@ extern  Image	swapimage;
 extern  char	eve[];
 extern	int	nrdy;
 extern	char	sysname[NAMELEN];
+extern	int	cpuserver;
 
 #define	CHDIR		0x80000000L
 #define	CHAPPEND 	0x40000000L

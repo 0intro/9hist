@@ -428,7 +428,7 @@ struct Ipfrag
 #define PRIVPORTALLOC	600		/* First priveleged port allocated */
 #define PORTMAX		30000		/* Last port to allocte */
 
-/* Stuff to go in funs.h someday */
+/* IP function declarations */
 Ipifc   *newipifc(uchar, void (*)(Ipconv *, Block*), Ipconv *, int, int, int, char*);
 void	closeipifc(Ipifc*);
 ushort	ip_csum(uchar*);
@@ -467,9 +467,8 @@ int	inb_window(Tcpctl *, int);
 Block	*htontcp(Tcp *, Block *, Tcphdr *);
 void	start_timer(Timer *);
 void	stop_timer(Timer *);
-int	copyupb(Block **, uchar *, int);
+int	pullb(Block **, int);
 void	init_tcpctl(Ipconv *);
-int	iss(void);
 int	seq_within(int, int, int);
 int	seq_lt(int, int);
 int	seq_le(int, int);

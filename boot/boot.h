@@ -20,6 +20,7 @@ extern void	(*pword)(int, Method*);
 extern char	sys[2*NAMELEN];
 extern char	terminal[NAMELEN];
 extern char	username[NAMELEN];
+extern char	*sauth;
 
 /* libc equivalent */
 extern int	cache(int);

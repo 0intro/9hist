@@ -178,7 +178,8 @@ mntattach(char *muxattach)
 
 	if(waserror()) {
 		close(m->c);
-		mntpntfree(m);
+		if(decref(m) == 0)
+			mntpntfree(m);
 		nexterror();
 	}
 

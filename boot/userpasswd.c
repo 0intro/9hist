@@ -4,7 +4,9 @@
 #include <../boot/boot.h>
 
 char	password[NAMELEN];
+#ifdef asdf
 extern	char *sauth;
+#endif asdf
 
 /*
  *  get/set user name and password.  verify password with auth server.
@@ -20,12 +22,6 @@ userpasswd(int islocal, Method *mp)
 	if(*username == 0 || strcmp(username, "none") == 0){
 		strcpy(username, "none");
 		outin("user", username, sizeof(username));
-		/* Hack to do authentication testing */
-		p = utfrrune(username, '!');
-		if(p && p > username) {
-			*p = '\0';
-			sauth = "any";
-		}
 	}
 	crfd = fd = -1;
 	while(strcmp(username, "none") != 0 && !islocal){
@@ -41,7 +37,9 @@ userpasswd(int islocal, Method *mp)
 		if(crfd < 0)
 			fatal("can't open crypt file");
 		write(crfd, "E", 1);
-		fd = (*mp->auth)();
+		fd = -1;
+		if(mp->auth)
+			fd = (*mp->auth)();
 		if(fd < 0){
 			warning("password not checked!");
 			break;

@@ -67,9 +67,12 @@ unloadboot(void)
 {
 	char s[64];
 
-	strncpy(bootuser, BOOT->user, NAMELEN);
-	memmove(bootline, BOOT->line, 64);
-	memmove(s, BOOT->server, 64);
+	memmove(bootuser, BOOT->user, sizeof(bootuser)-1);
+	bootuser[sizeof(bootuser)-1] = 0;
+	memmove(bootline, BOOT->line, sizeof(bootline)-1);
+	bootline[sizeof(bootline)-1] = 0;
+	memmove(s, BOOT->server, sizeof(s) - 1);
+	s[sizeof(s)-1] = 0;
 	switch(BOOT->device){
 	case 'a':
 		sprint(bootserver, "19200!%s", s);
@@ -81,6 +84,8 @@ unloadboot(void)
 		sprint(bootserver, "incon!%s", s);
 		break;
 	default:
+		/* older boot ROM's don't zero out BOOT->user if it isn't set. */
+		memset(bootuser, 0, sizeof(bootuser));
 		sprint(bootserver, "scsi!%s", s);
 		break;
 	}

@@ -298,7 +298,9 @@ intr(Ureg *ur)
 		 *  if nothing else, what the hell?
 		 */
 		if(!any && bogies++<10){
-			print("bogus intr lvl 5 pend %lux on %d\n", npend, m->machno);/**/
+			if(0)
+			print("bogus intr lvl 5 pend %lux on %d\n", npend, m->machno);
+			USED(npend);
 			delay(100);
 		}
 		/*

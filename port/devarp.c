@@ -382,9 +382,10 @@ arplookup(uchar *ip, uchar *et)
 void
 arpflush(void)
 {
-	Arpcache *ap;
+	Arpcache *ap, *ep;
 
-	for(ap = arplruhead; ap; ap = ap->frwd)
+	ep = &arp[conf.arp];
+	for(ap = arp; ap < ep; ap++)
 		ap->status = ARP_FREE;
 }
 
@@ -444,22 +445,14 @@ int
 arpdelete(char *addr)
 {
 	Arpcache *ap;
-	char enetaddr[6], buf[20], *ptr;
-	int i;
+	uchar ip[4];
+	Ipaddr i;
 
-	ptr = buf + 2;
-	strncpy(ptr, addr, (sizeof buf) - 2);
-
-	for(i = 0; i < 6 && addr != (char *)1; i++) {
-		ptr[-2] = '0';
-		ptr[-1] = 'x';
-		enetaddr[i] = atoi(ptr-2);
-		ptr = strchr(ptr, ':')+1;
-	}
-
+	i = ipparse(addr);
+	hnputl(ip, i);	
 	lock(&larphash);
 	for(ap = arplruhead; ap; ap = ap->frwd) {
-		if(memcmp(ap->et, ptr, sizeof(ap->et)) == 0) {
+		if(memcmp(ap->eip, ip, sizeof(ap->eip)) == 0) {
 			ap->status = ARP_FREE;
 			break;
 		}
@@ -483,7 +476,6 @@ arplinkhead(Arpcache *ap)
 		
 		ap->frwd = arplruhead;
 		ap->prev = 0;
-
 		arplruhead = ap;
 	}
 }

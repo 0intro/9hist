@@ -17,7 +17,7 @@ main(void)
 	int a;
 
 	u = 0;
-	memset(&edata, 0, (char*)&end-(char*)&edata);
+	memset(edata, 0, (char*)end-(char*)edata);
 
 	machinit();
 	active.exiting = 0;

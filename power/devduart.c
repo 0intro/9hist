@@ -335,7 +335,7 @@ duartxintr(Duartport *dp)
 {
 	Duart *duart;
 	IOQ *cq;
-	char ch;
+	int ch;
 
 	cq = dp->oq;
 	lock(cq);

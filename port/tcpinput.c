@@ -32,6 +32,54 @@ tcpinit(void)
 }
 
 void
+reset(Ipaddr source, Ipaddr dest, char tos, ushort length, Tcp *seg)
+{
+	Block *hbp;
+	Port tmp;
+	char rflags;
+	Tcphdr ph;
+
+	if(seg->flags & RST)
+		return;
+
+	hnputl(ph.tcpsrc, dest);
+	hnputl(ph.tcpdst, source);
+	ph.proto = IP_TCPPROTO;
+	hnputs(ph.tcplen, TCP_HDRSIZE);
+
+	/* Swap port numbers */
+	tmp = seg->dest;
+	seg->dest = seg->source;
+	seg->source = tmp;
+
+	rflags = RST;
+
+	/* convince the other end that this reset is in band */
+	if(seg->flags & ACK) {
+		seg->seq = seg->ack;
+		seg->ack = 0;
+	}
+	else {
+		rflags |= ACK;
+		seg->ack = seg->seq;
+		seg->seq = 0;
+		if(seg->flags & SYN)
+			seg->ack++;
+		seg->ack += length;
+		if(seg->flags & FIN)
+			seg->ack++;
+	}
+	seg->flags = rflags;
+	seg->wnd = 0;
+	seg->up = 0;
+	seg->mss = 0;
+	if((hbp = htontcp(seg, 0, &ph)) == 0)
+		return;
+
+	PUTNEXT(Ipoutput, hbp);
+}
+
+void
 tcp_input(Ipconv *ipc, Block *bp)
 {
 	Ipconv *s, *e, *new;
@@ -65,7 +113,8 @@ tcp_input(Ipconv *ipc, Block *bp)
 	bp = btrim(bp, hdrlen+TCP_PKT, length);
 	if(bp == 0)
 		return;
-
+	
+	/* Look for a connection, failing that attempt to establish a listen */
 	s = ip_conn(ipc, seg.dest, seg.source, source, IP_TCPPROTO);
 	if (s == 0) {
 		if((seg.flags & SYN) == 0)
@@ -109,7 +158,10 @@ tcp_input(Ipconv *ipc, Block *bp)
 		reset(source, dest, tos, length, &seg);
 		return;
 	}
-process:	
+process:
+	/* The rest of the input state machine is run with the control block
+	 * locked
+	 */
 	tcb = &s->tcpctl;
 	qlock(tcb);
 
@@ -190,9 +242,7 @@ process:
 		goto done;
 	}
 
-	/* If we have no opens and the other end is sending data then
-	 * reply with a reset
-	 */
+	/* If we dont understand answer with a rst */
 	if(length)
 	if(s->readq == 0) {
 		freeb(bp);
@@ -276,7 +326,7 @@ process:
 		if((seg.flags&URG) && seg.up) {
 			if(seq_gt(seg.up + seg.seq, tcb->rcv.up)) {
 				tcb->rcv.up = seg.up + seg.seq;
-				copyupb(&bp, 0, seg.up);
+				pullb(&bp, seg.up);
 			}
 		} 
 		else if(seq_gt(tcb->rcv.nxt, tcb->rcv.up))
@@ -363,54 +413,6 @@ done:
 }
 
 void
-reset(Ipaddr source, Ipaddr dest, char tos, ushort length, Tcp *seg)
-{
-	Block *hbp;
-	Port tmp;
-	char rflags;
-	Tcphdr ph;
-
-	if(seg->flags & RST)
-		return;
-
-	hnputl(ph.tcpsrc, dest);
-	hnputl(ph.tcpdst, source);
-	ph.proto = IP_TCPPROTO;
-	hnputs(ph.tcplen, TCP_HDRSIZE);
-
-	/* Swap port numbers */
-	tmp = seg->dest;
-	seg->dest = seg->source;
-	seg->source = tmp;
-
-	rflags = RST;
-
-	/* convince the other end that this reset is in band */
-	if(seg->flags & ACK) {
-		seg->seq = seg->ack;
-		seg->ack = 0;
-	}
-	else {
-		rflags |= ACK;
-		seg->ack = seg->seq;
-		seg->seq = 0;
-		if(seg->flags & SYN)
-			seg->ack++;
-		seg->ack += length;
-		if(seg->flags & FIN)
-			seg->ack++;
-	}
-	seg->flags = rflags;
-	seg->wnd = 0;
-	seg->up = 0;
-	seg->mss = 0;
-	if((hbp = htontcp(seg, 0, &ph)) == 0)
-		return;
-
-	PUTNEXT(Ipoutput, hbp);
-}
-
-void
 update(Ipconv *s, Tcp *seg)
 {
 	ushort acked;
@@ -484,7 +486,7 @@ update(Ipconv *s, Tcp *seg)
 		tcb->sndcnt--;
 	}
 
-	copyupb(&tcb->sndq, 0, acked);
+	pullb(&tcb->sndq, acked);
 
 	tcb->sndcnt -= acked;
 	tcb->snd.una = seg->ack;
@@ -542,8 +544,13 @@ proc_syn(Ipconv *s, char tos, Tcp *seg)
 void
 send_syn(Tcpctl *tcb)
 {
-	tcb->iss = iss();
-	tcb->rttseq = tcb->snd.wl2 = tcb->snd.una = tcb->iss;
+	static int start;
+
+	start += 250000;
+	tcb->iss = start;
+	tcb->rttseq = tcb->iss;
+	tcb->snd.wl2 = tcb->iss;
+	tcb->snd.una = tcb->iss;
 	tcb->snd.ptr = tcb->snd.nxt = tcb->rttseq;
 	tcb->sndcnt++;
 	tcb->flags |= FORCE;
@@ -660,7 +667,7 @@ trim(Tcpctl *tcb, Tcp *seg, Block **bp, ushort *length)
 			dupcnt--;
 		}
 		if(dupcnt > 0){
-			copyupb(bp, 0, (ushort)dupcnt);
+			pullb(bp, (ushort)dupcnt);
 			seg->seq += dupcnt;
 			*length -= dupcnt;
 
@@ -685,7 +692,7 @@ trim(Tcpctl *tcb, Tcp *seg, Block **bp, ushort *length)
 }
 
 int
-copyupb(Block **bph, uchar *data, int count)
+pullb(Block **bph, int count)
 {
 	int n, bytes;
 	Block *bp;
@@ -697,10 +704,6 @@ copyupb(Block **bph, uchar *data, int count)
 	while(*bph && count != 0) {
 		bp = *bph;
 		n = MIN(count, BLEN(bp));
-		if(data && n) {
-			memmove(data, bp->rptr, n);
-			data += n;
-		}
 		bytes += n;
 		count -= n;
 		bp->rptr += n;
@@ -807,15 +810,6 @@ close_self(Ipconv *s, char reason[])
 	tcb->reseq = 0;
 	s->err = reason;
 	setstate(s, Closed);
-}
-
-int
-iss(void)
-{
-	static int seq;
-
-	seq += 250000;
-	return seq;
 }
 
 int

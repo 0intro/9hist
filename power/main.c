@@ -570,7 +570,7 @@ confinit(void)
 	conf.nmntbuf = conf.nproc;
 	conf.nmnthdr = conf.nproc;
 	conf.nstream = 2 * conf.nproc;
-	conf.nalarm = 500;
+	conf.nalarm = 2500;
 	conf.nmount = 500;
 	conf.nsrv = 20;
 	conf.nurp = 25;
@@ -589,7 +589,7 @@ confinit(void)
 		panic("confinit");
 
 	conf.copymode = 1;		/* copy on reference */
-	conf.cntrlp = 1;
+	conf.cntrlp = cpuserver;
 }
 
 /*

@@ -12,7 +12,7 @@ char	cputype[NAMELEN];
 char	terminal[NAMELEN];
 char	sys[2*NAMELEN];
 char	username[NAMELEN];
-char 	*sauth = "";
+char	*sauth;
 
 int mflag;
 int fflag;
@@ -95,8 +95,12 @@ main(int argc, char *argv[])
 	 */
 	if(bind("/", "/", MREPL) < 0)
 		fatal("bind");
-	if(mount(fd, "/", MAFTER|MCREATE, "", sauth) < 0)
-		fatal("mount");
+	sauth = "";
+	if(mount(fd, "/", MAFTER|MCREATE, "", sauth) < 0){
+		sauth = "any";
+		if(mount(fd, "/", MAFTER|MCREATE, "", sauth) < 0)
+			fatal("mount");
+	}
 	close(fd);
 	newkernel();
 
