@@ -70,6 +70,8 @@ ialloc(ulong n, int align)
 		palloc.addr += BY2PG-1;
 		palloc.addr &= ~(BY2PG-1);
 	}
+	if(palloc.addr >= conf.maxialloc)
+		panic("keep bill joy away");
 	return (void*)(p|KZERO);
 }
 
@@ -151,7 +153,10 @@ pageinit(void)
 	for(p=palloc.head; p<=palloc.tail; p++,ppn++){
 		p->next = p+1;
 		p->prev = p-1;
-		p->pa = ppn<<PGSHIFT;
+		if(ppn < conf.npage0)
+			p->pa = conf.base0+(ppn<<PGSHIFT);
+		else
+			p->pa = conf.base1+((ppn-conf.npage0)<<PGSHIFT);
 	}
 	palloc.head->prev = 0;
 	palloc.tail->next = 0;

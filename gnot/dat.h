@@ -152,6 +152,7 @@ struct Conf
 	int	npipe;		/* number of pipes */
 	int	nservice;	/* number of services */
 	int	nfsyschan;	/* number of filsys open channels */
+	ulong	maxialloc;	/* maximum bytes used by ialloc */
 };
 
 struct Dev
@@ -214,6 +215,9 @@ struct Mach
 	Lock	alarmlock;		/* access to alarm list */
 	void	*alarm;			/* alarms bound to this clock */
 	int	fpstate;		/* state of fp registers on machine */
+	void	(*intr)(ulong, ulong);	/* !!Compatability with mips!! */
+	ulong	cause;			/*	... */
+	ulong	pc;			/*	... */
 	int	stack[1];
 };
 
@@ -342,6 +346,7 @@ struct Proc
 	int	wokeup;			/* whether sleep was interrupted */
 	ulong	pc;			/* DEBUG only */
 	int	kp;			/* true if a kernel process */
+	int	pidonmach[1];		/* !!Compatability with mips!! */
 };
 
 struct MMU
@@ -598,3 +603,9 @@ extern	char	user[NAMELEN];
 extern	char	*errstrtab[];
 
 extern  void	(*kprofp)(ulong);
+
+/*
+ *  parameters for sysproc.c
+ */
+#define AOUT_MAGIC	A_MAGIC
+#define ENTRYOFFSET	0

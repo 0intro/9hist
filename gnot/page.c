@@ -258,6 +258,14 @@ usepage(Page *p, int dolock)
 		unlock(&palloc);
 }
 
+/*
+ * Move page to tail of list
+ */
+void
+unusepage(Page *p, int dolock)
+{
+}
+
 Orig*
 lookorig(ulong va, ulong npte, int flag, Chan *c)
 {

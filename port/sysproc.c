@@ -41,6 +41,7 @@ sysfork(ulong *arg)
 	/*
 	 * Save time: only copy u-> data and useful stack
 	 */
+	clearmmucache();
 	memcpy((void*)upa, u, sizeof(User));
 	n = USERADDR+BY2PG - (ulong)&lastvar;
 	n = (n+32) & ~(BY2WD-1);	/* be safe & word align */
@@ -114,6 +115,7 @@ sysfork(ulong *arg)
 	 * Sched
 	 */
 	if(setlabel(&p->sched)){
+		clearmmucache();
 		u->p = p;
 		p->state = Running;
 		p->mach = m;
@@ -132,6 +134,7 @@ sysfork(ulong *arg)
 	memcpy(p->text, u->p->text, NAMELEN);
 	ready(p);
 	flushmmu();
+	clearmmucache();
 	return pid;
 }
 
@@ -147,7 +150,7 @@ sysexec(ulong *arg)
 	char **argv, **argp;
 	char *a, *charp, *file;
 	char *progarg[sizeof(Exec)/2+1], elem[NAMELEN];
-	ulong ssize, spage, nargs, nbytes, n;
+	ulong ssize, spage, nargs, nbytes, n, bssend;
 	ulong *sp;
 	int indir;
 	Exec exec;
@@ -169,7 +172,7 @@ sysexec(ulong *arg)
 	if(n < 2)
     Err:
 		error(Ebadexec);
-	if(n==sizeof(Exec) && exec.magic==V_MAGIC){
+	if(n==sizeof(Exec) && exec.magic==AOUT_MAGIC){
 		if((exec.text&KZERO)
 		|| (ulong)exec.entry < UTZERO+sizeof(Exec)
 		|| (ulong)exec.entry >= UTZERO+sizeof(Exec)+exec.text)
@@ -206,7 +209,8 @@ sysexec(ulong *arg)
 	 * Last partial page of data goes into BSS.
 	 */
 	d = (t + exec.data) & ~(BY2PG-1);
-	b = (t + exec.data + exec.bss + (BY2PG-1)) & ~(BY2PG-1);
+	bssend = t + exec.data + exec.bss;
+	b = (bssend + (BY2PG-1)) & ~(BY2PG-1);
 	if((t|d|b) & KZERO)
 		error(Ebadexec);
 
@@ -331,6 +335,8 @@ sysexec(ulong *arg)
 
 	close(tc);
 
+	p->bssend = bssend;
+
 	/*
 	 * Move the stack
 	 */
@@ -347,7 +353,8 @@ sysexec(ulong *arg)
 	unlock(o);
 
 	flushmmu();
-	((Ureg*)UREGADDR)->pc = exec.entry - 4;
+ 	clearmmucache();
+	((Ureg*)UREGADDR)->pc = exec.entry + ENTRYOFFSET;
 	sp = (ulong*)(USTKTOP - ssize);
 	*--sp = nargs;
 	((Ureg*)UREGADDR)->usp = (ulong)sp;
@@ -355,6 +362,7 @@ sysexec(ulong *arg)
 	u->nnote = 0;
 	u->notify = 0;
 	u->notified = 0;
+	setup(p);
 	unlock(&p->debug);
 	return 0;
 }
@@ -488,7 +496,25 @@ sysnoted(ulong *arg)
 long
 sysbrk_(ulong *arg)
 {
-	if(segaddr(&u->p->seg[BSEG], u->p->seg[BSEG].minva, arg[0]) == 0)
+	ulong addr;
+	Seg *s;
+
+	addr = arg[0];
+#ifdef WHYROB
+	if(addr < u->p->bssend){
+		pprint("addr below bss\n");
+		pexit("Suicide", 0);
 		error(Esegaddr);
+	}
+#endif WHYROB
+	if(addr <= ((u->p->bssend+(BY2PG-1))&~(BY2PG-1)))	/* still in DSEG */
+		goto Return;
+	if(segaddr(&u->p->seg[BSEG], u->p->seg[BSEG].minva, arg[0]) == 0){
+		pprint("bad segaddr in brk\n");
+		pexit("Suicide", 0);
+		error(Esegaddr);
+	}
+    Return:
+	u->p->bssend = addr;
 	return 0;
 }

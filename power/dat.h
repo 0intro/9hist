@@ -149,6 +149,9 @@ struct Conf
 	ulong	nurp;		/* max urp conversations */
 	ulong	nasync;		/* number of async protocol modules */
 	ulong	npipe;		/* number of pipes */
+	ulong	maxialloc;	/* maximum bytes used by ialloc */
+	ulong	base0;		/* base of bank 0 */
+	ulong	base1;		/* base of bank 1 */
 };
 
 struct Dev
@@ -315,6 +318,7 @@ struct Proc
 	short	pidonmach[MAXMACH];	/* TLB pid on each mmu */
 	Page	*upage;			/* BUG: should be unlinked from page list */
 	Seg	seg[NSEG];
+	ulong	bssend;			/* initial top of bss seg */
 	ulong	pid;
 	int	nchild;
 	QLock	wait;			/* exiting children to be waited for */
@@ -698,3 +702,8 @@ extern	Dev	devtab[];
 extern	char	devchar[];
 extern	FPsave	initfp;
 
+/*
+ *  parameters for sysproc.c
+ */
+#define AOUT_MAGIC	V_MAGIC
+#define ENTRYOFFSET	(-4)

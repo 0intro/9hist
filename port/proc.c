@@ -52,7 +52,7 @@ schedinit(void)		/* never returns */
 	if(u){
 		m->proc = 0;
 		p = u->p;
-		puttlbx(0, KZERO | PTEPID(0), 0);	/* safety first */
+		invalidateu();	/* safety first */
 		u = 0;
 		if(p->state == Running)
 			ready(p);
@@ -76,17 +76,20 @@ schedinit(void)		/* never returns */
 void
 sched(void)
 {
+	uchar procstate[64];		/* sleeze for portability */
 	Proc *p;
 	ulong tlbvirt, tlbphys;
 	void (*f)(ulong, ulong);
 
 	if(u){
 		splhi();
+		save(procstate, sizeof(procstate));
 		if(setlabel(&u->p->sched)){	/* woke up */
 			p = u->p;
 			p->state = Running;
 			p->mach = m;
 			m->proc = p;
+			restore(p, procstate);
 			spllo();
 			return;
 		}
@@ -132,7 +135,7 @@ runproc(void)
 
 loop:
 	while(runq.head == 0)
-		for(i=0; i<10; i++)
+		for(i=0; i<10; i++)	/* keep out of shared memory for a while */
 			;
 	splhi();
 	lock(&runq);
@@ -573,6 +576,7 @@ kproc(char *name, void (*func)(void *), void *arg)
 	/*
 	 * Save time: only copy u-> data and useful stack
 	 */
+	clearmmucache();
 	memcpy(up, u, sizeof(User));
 	n = USERADDR+BY2PG - (ulong)&lastvar;
 	n = (n+32) & ~(BY2WD-1);	/* be safe & word align */

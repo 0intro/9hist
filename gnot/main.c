@@ -7,6 +7,9 @@
 #include	"ureg.h"
 #include	"init.h"
 
+#include	<libg.h>
+#include	<gnot.h>
+
 typedef struct Boot Boot;
 
 struct Boot
@@ -103,7 +106,12 @@ init0(void)
 {
 	Chan *c;
 
-	restore();
+	u->nerrlab = 0;
+	m->proc = u->p;
+	u->p->state = Running;
+	u->p->mach = m;
+	spllo();
+
 	chandevinit();
 	
 	u->slash = (*devtab[0].attach)(0);
@@ -137,6 +145,7 @@ userinit(void)
 	p->pgrp = newpgrp();
 	strcpy(p->text, "*init*");
 	strcpy(p->pgrp->user, user);
+	p->fpstate = FPinit;
 
 	/*
 	 * Kernel Stack
@@ -177,7 +186,6 @@ userinit(void)
 	s->minva = UTZERO;
 	s->maxva = UTZERO+BY2PG;
 
-	m->proc = p;
 	ready(p);
 }
 
@@ -300,6 +308,7 @@ confinit(void)
 	conf.npage1 = (bank[1]*1024*1024)/BY2PG;
 	conf.base1 = 16*1024*1024;
 	conf.npage = conf.npage0+conf.npage1;
+	conf.maxialloc = (4*1024*1024-256*1024-BY2PG);
 	mul = 1 + (conf.npage1>0);
 	conf.nproc = 50*mul;
 	conf.npgrp = 12*mul;
@@ -330,4 +339,73 @@ confinit(void)
 	conf.npipe = conf.nstream/2;
 	conf.nservice = 3*mul;			/* was conf.nproc/5 */
 	conf.nfsyschan = 31 + conf.nchan/20;
+}
+
+/*
+ *  set up floating point for a new process
+ */
+void
+setup(Proc *p)
+{
+	long fpnull;
+
+	fpnull = 0;
+	splhi();
+	m->fpstate = FPinit;
+	p->fpstate = FPinit;
+	fprestore((FPsave*)&fpnull);
+	spllo();
+}
+
+/*
+ * Save the part of the process state.
+ */
+void
+save(uchar *state, int len)
+{
+	Balu *balu;
+
+	if(len < sizeof(Balu))
+		panic("save state too small");
+	balu = (Balu *)state;
+	fpsave(&u->fpsave);
+	if(u->fpsave.type){
+		if(u->fpsave.size > sizeof u->fpsave.junk)
+			panic("fpsize %d max %d\n", u->fpsave.size, sizeof u->fpsave.junk);
+		fpregsave(u->fpsave.reg);
+		u->p->fpstate = FPactive;
+		m->fpstate = FPdirty;
+	}
+	if(BALU->cr0 != 0xFFFFFFFF)	/* balu busy */
+		memcpy(balu, BALU, sizeof(Balu));
+	else{
+		balu->cr0 = 0xFFFFFFFF;
+		BALU->cr0 = 0xFFFFFFFF;
+	}
+}
+
+/*
+ *  Restore what save() saves
+ *
+ *  Save() makes sure that what state points to is long enough
+ */
+void
+restore(Proc *p, uchar *state)
+{
+	Balu *balu;
+
+	balu = (Balu *)state;
+	if(p->fpstate != m->fpstate){
+		if(p->fpstate == FPinit){
+			u->p->fpstate = FPinit;
+			fprestore(&initfp);
+			m->fpstate = FPinit;
+		}else{
+			fpregrestore(u->fpsave.reg);
+			fprestore(&u->fpsave);
+			m->fpstate = FPdirty;
+		}
+	}
+	if(balu->cr0 != 0xFFFFFFFF)	/* balu busy */
+		memcpy(BALU, balu, sizeof balu);
 }

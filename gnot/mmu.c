@@ -27,6 +27,7 @@ mapstack(Proc *p)
 	tlbvirt = USERADDR;
 	tlbphys = PPN(p->upage->pa) | PTEVALID | PTEKERNEL;
 	putkmmu(tlbvirt, tlbphys);
+	u = (User*)USERADDR;
 
 	/*
 	 *  if not a kernel process and this process was not the 
@@ -149,4 +150,10 @@ kunmap(KMap *k)
 	kmapalloc.free = k;
 	putkmmu(k->va, INVALIDPTE);
 	unlock(&kmapalloc);
+}
+
+void
+invalidateu(void)
+{
+	putkmmu(USERADDR, INVALIDPTE);
 }

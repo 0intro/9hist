@@ -26,6 +26,9 @@ Conftab conftab[] = {
 	{"nurp", &conf.nurp },
 	{"nasync", &conf.nasync },
 	{"npipe", &conf.npipe },
+	{"maxialloc", &conf.maxialloc },
+	{"base0", &conf.base0 },
+	{"base1", &conf.base1 },
 	{ 0, 0 },
 };
 

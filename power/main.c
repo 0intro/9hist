@@ -590,7 +590,9 @@ confinit(void)
 		x += 0x3141526;
 	}
 	conf.npage0 = i*1024/4;
+	conf.base0 = 0;
 	conf.npage = conf.npage0;
+	conf.maxialloc = (128*1024*1024-256*1024-BY2PG);
 
 	/*
  	 *  clear MP bus error caused by sizing memory
@@ -692,4 +694,28 @@ arginit(void)
 	}
 	_argv = argv;
 	argsize = ssize;
+}
+
+/*
+ *  set up machine dependent process state for a new process
+ */
+void
+setup(Proc *p)
+{
+}
+
+/*
+ *  Save machine dependent process state
+ */
+void
+save(uchar *state, int len)
+{
+}
+
+/*
+ *  Restore what save() saves
+ */
+void
+restore(Proc *p, uchar *state)
+{
 }

@@ -101,3 +101,14 @@ flushmmu(void)
 	mapstack(u->p);
 	spllo();
 }
+
+void
+clearmmucache(void)
+{
+}
+
+void
+invalidateu(void)
+{
+	puttlbx(0, KZERO | PTEPID(0), 0);
+}
