@@ -154,7 +154,7 @@ xspanalloc(ulong size, int align, ulong span)
 }
 
 void*
-xalloc(ulong size)
+xallocz(ulong size, int zero)
 {
 	Xhdr *p;
 	Hole *h, **l;
@@ -176,7 +176,8 @@ xalloc(ulong size)
 			}
 			unlock(&xlists);
 			p = KADDR(p);
-			memset(p, 0, size);
+			if(zero)
+				memset(p, 0, size);
 			p->magix = Magichole;
 			p->size = size;
 			return p->data;
@@ -187,14 +188,26 @@ xalloc(ulong size)
 	return nil;
 }
 
+void*
+xalloc(ulong size)
+{
+	return xallocz(size, 1);
+}
+
 void
 xfree(void *p)
 {
 	Xhdr *x;
 
 	x = (Xhdr*)((ulong)p - datoff);
-	if(x->magix != Magichole)
-		panic("xfree");
+	if(x->magix != Magichole) {
+		uchar *a;
+		int i;
+		a = (uchar*)x;
+		for(i = 0; i < 32; i++)
+			print("#%lux ", *a++);
+		panic("xfree(0x%lux) 0x%lux!=0x%lux", p, Magichole, x->magix);
+	}
 
 	xhole(PADDR(x), x->size);
 }
