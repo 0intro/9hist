@@ -290,7 +290,7 @@ rudpclose(Conv *c)
 			relsendack(c, r, 0);
 		nr = r->next;
 		relhangup(c, r);
-		free(r);
+		relput(r);
 	}
 	ucb->r = 0;
 
@@ -453,6 +453,7 @@ rudpkick(Conv *c, int)
 		r->blocked = 0;
 	}
 	qunlock(&r->lock);
+
 	relput(r);
 }
 
@@ -811,8 +812,8 @@ relstate(Rudpcb *ucb, uchar *addr, ushort port, char *from)
 			generation = rand();
 		DPRINT("from %s new state %lud for %I!%ud\n", 
 		        from, generation, addr, port);
+
 		r = smalloc(sizeof(Reliable));
-		*l = r;
 		memmove(r->addr, addr, IPaddrlen);
 		r->port = port;
 		r->unacked = 0;
@@ -828,6 +829,8 @@ relstate(Rudpcb *ucb, uchar *addr, ushort port, char *from)
 		r->timeout = 0;
 		r->ref = 0;
 		incref(r);	/* one reference for being in the list */
+
+		*l = r;
 	}
 	incref(r);
 	return r;
@@ -840,6 +843,9 @@ relput(Reliable *r)
 		free(r);
 }
 
+/*
+ *  forget a Reliable state
+ */
 void
 relforget(Conv *c, uchar *ip, int port, int originator)
 {
@@ -865,6 +871,8 @@ relforget(Conv *c, uchar *ip, int port, int originator)
 /* 
  *  process a rcvd reliable packet. return -1 if not to be passed to user process,
  *  0 therwise.
+ *
+ *  called with ucb locked.
  */
 int
 reliput(Conv *c, Block *bp, uchar *addr, ushort port)
@@ -888,7 +896,6 @@ reliput(Conv *c, Block *bp, uchar *addr, ushort port)
 
 	upriv = c->p->priv;
 	ucb = (Rudpcb*)c->ptcl;
-	qlock(ucb);
 	r = relstate(ucb, addr, port, "input");
 
 	DPRINT("rcvd %lud/%lud, %lud/%lud, r->sndgen = %lud\n", 
@@ -965,7 +972,6 @@ reliput(Conv *c, Block *bp, uchar *addr, ushort port)
 	rv = 0;
 out:
 	relput(r);
-	qunlock(ucb);
 	return rv;
 }
 
