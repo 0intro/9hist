@@ -28,6 +28,7 @@ static char* modems[] = {
 	"REM10",
 	"GSM/GPRS",
 	"AirCard 555",
+	"Gold Card Global",		/* Psion V90 Gold card */
 	0,
 };
 

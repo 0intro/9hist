@@ -463,6 +463,7 @@ struct Fgrp
 	Chan	**fd;
 	int	nfd;			/* number allocated */
 	int	maxfd;			/* highest fd in use */
+	int	exceed;			/* debugging */
 };
 
 enum

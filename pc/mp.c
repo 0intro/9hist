@@ -581,14 +581,9 @@ mpinit(void)
 	 *
 	 *  set conf.copymode here if nmach > 1.
 	 *  Should look for an ExtINT line and enable it.
-	 *
-	 *  also need to flush write buffer to make things
-	 *  visible to other processors.
 	 */
 	if(X86FAMILY(m->cpuidax) == 3 || conf.nmach > 1)
 		conf.copymode = 1;
-	if(X86FAMILY(m->cpuidax) >= 5 && conf.nmach > 1)
-		coherence = wbflush;
 }
 
 static int
@@ -631,7 +626,7 @@ mpintrenablex(Vctl* v, int tbdf)
 			irq = (dno<<2)|(n-1);
 		else
 			irq = -1;
-		//print("pcidev %uX: irq %d v->irq %uX\n", tbdf, irq, v->irq);
+		//print("pcidev %uX: irq %uX v->irq %uX\n", tbdf, irq, v->irq);
 	}
 	else
 		irq = v->irq;
