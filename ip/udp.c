@@ -200,7 +200,7 @@ udpkick(Conv *c, int l)
 }
 
 void
-udpiput(Block *bp)
+udpiput(Media *m, Block *bp)
 {
 	int len;
 	Udphdr *uh;
@@ -209,6 +209,7 @@ udpiput(Block *bp)
 	Udpcb *ucb;
 	ushort dport, sport;
 
+	USED(m);
 	uh = (Udphdr*)(bp->rp);
 
 	/* Put back pseudo header for checksum */

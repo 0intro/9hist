@@ -3,8 +3,10 @@ typedef uchar	byte;
 typedef struct	Conv	Conv;
 typedef struct	Fs	Fs;
 typedef union	Hwaddr	Hwaddr;
+typedef struct	Ifcconv	Ifcconv;
 typedef struct	Iproute	Iproute;
 typedef struct	Media	Media;
+typedef struct	Multicast	Multicast;
 typedef struct	Proto	Proto;
 typedef struct	Pstate	Pstate;
 typedef struct	Tcpc	Tcpc;
@@ -19,8 +21,11 @@ enum
 
 	MAXTTL=		255,
 
+	Ipaddrlen=	4,
 	Ipbcast=	0xffffffff,	/* ip broadcast address */
 	Ipbcastobs=	0,		/* obsolete (but still used) ip broadcast addr */
+	Ipallsys=	0xe0000001,	/* multicast for all systems */
+	Ipallrouter=	0xe0000002,	/* multicast for all routers */
 };
 
 enum
@@ -87,11 +92,21 @@ enum
 	MPACKET,
 };
 
+/* one per multicast address per medium */
+struct Multicast
+{
+	Ipaddr	addr;
+	int	ref;
+	int	timeout;
+	Multicast *next;
+};
+
 struct Media
 {
 	int	type;		/* Media type */
 	Chan*	mchan;		/* Data channel */
 	Chan*	achan;		/* Arp channel */
+	Chan*	cchan;		/* Control channel */
 	char*	dev;		/* device mfd points to */
 	Ipaddr	myip[5];
 	Ipaddr	mymask;
@@ -108,6 +123,10 @@ struct Media
 	int	inuse;
 	Conv	*c;		/* for packet interface */
 
+	QLock	mlock;		/* lock for changing *multi */
+	Multicast *multi;	/* list of multicast addresses we're listening to */
+	int	mactive;	/* number of active multicast addresses */
+
 	Media*	link;
 };
 int	Mediaforme(byte*);
@@ -122,11 +141,14 @@ Ipaddr	Mediagetaddr(Media*);
 Ipaddr	Mediagetraddr(Media*);
 void	Mediawrite(Media*, Block*, byte*);
 int	Mediaifcread(char*, ulong, int);
-char*	Mediaifcwrite(char*, int);
+char*	Mediaifcwrite(Ifcconv*, char*, int);
 void	Mediaresolver(Media*);
 void	Mediaread(Media*);
 int	Mediaarp(Media*, Block*, byte*, Hwaddr*);
 Media*	Mediafind(Iproute*);
+Multicast*	Mediacopymulti(Media*);
+void	Mediamulticastadd(Media*, Ifcconv*, Ipaddr);
+void	Mediamulticastrem(Media*, Ipaddr);
 
 /*
  *  one per multiplexed protocol
@@ -144,7 +166,7 @@ struct Proto
 	int		(*state)(char**, Conv*);
 	void		(*create)(Conv*);
 	void		(*close)(Conv*);
-	void		(*rcv)(Block*);
+	void		(*rcv)(Media*, Block*);
 	char*		(*ctl)(Conv*, char**, int);
 	void		(*advise)(Block*, char*);
 
@@ -195,6 +217,7 @@ enum
 	Loggre=		1<<9,
 	Logppp=		1<<10,
 	Logtcpmsg=	1<<11,
+	Logigmp=	1<<12,
 };
 
 extern int	logmask;	/* mask of things to debug */
@@ -213,9 +236,11 @@ extern int	debug;
 extern Fs	fs;
 extern Media*	media;
 extern int	iprouting;	/* true if routing turned on */
+extern void	(*igmpreportfn)(Media*, byte*);
 
 int	arpread(byte*, ulong, int);
 char*	arpwrite(char*, int);
+void	closeifcconv(Ifcconv*);
 Ipaddr	defmask(Ipaddr);
 int	eipconv(va_list*, Fconv*);
 int	equivip(byte*, byte*);
@@ -226,19 +251,22 @@ void	initfrag(int);
 ushort	ipcsum(byte*);
 void	(*ipextprotoiput)(Block*);
 Ipaddr	ipgetsrc(byte*);
-void	ipiput(Block*);
+void	ipiput(Media*, Block*);
 void	ipoput(Block*, int, int);
 int	ipstats(char*, int);
+int	ismcast(byte*);
+int	isbmcast(byte*);
 byte*	logctl(byte*);
 void	maskip(byte*, byte*, byte*);
+Ifcconv* newifcconv(void);
 ulong	nhgetl(byte*);
 ushort	nhgets(byte*);
 void	(*pktifcrcv)(Conv*, Block*);
 ushort	ptclcsum(Block*, int, int);
 int	pullblock(Block**, int);
 Block*	pullupblock(Block*, int);
-char*	routeadd(Ipaddr, Ipaddr, Ipaddr);
-void	routedelete(ulong, ulong);
+char*	routeadd(Ipaddr, Ipaddr, Ipaddr, Media *m);
+void	routedelete(ulong, ulong, Media *m);
 int	routeread(byte*, ulong, int);
 char*	routewrite(char*, int);
 
@@ -246,4 +274,4 @@ char*	routewrite(char*, int);
  * ipaux.c
  */
 int	myetheraddr(uchar*, char*);
-ulong	parseip(char*, char*);
+ulong	parseip(uchar*, char*);

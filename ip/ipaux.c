@@ -212,7 +212,7 @@ eipconv(va_list *arg, Fconv *f)
 #define CLASS(p) ((*(uchar*)(p))>>6)
 
 ulong
-parseip(char *to, char *from)
+parseip(uchar *to, char *from)
 {
 	int i;
 	char *p;
@@ -243,5 +243,5 @@ parseip(char *to, char *from)
 		}
 		break;
 	}
-	return nhgetl((uchar*)to);
+	return nhgetl(to);
 }

@@ -173,7 +173,7 @@ static char *unreachcode[] =
 };
 
 static void
-icmpiput(Block *bp)
+icmpiput(Media *m, Block *bp)
 {
 	int	n, iplen;
 	Icmp	*p;
@@ -182,6 +182,7 @@ icmpiput(Block *bp)
 	char	*msg;
 	char	m2[128];
 
+	USED(m);
 	p = (Icmp *)bp->rp;
 	netlog(Logicmp, "icmpiput %d %d\n", p->type, p->code);
 	n = blocklen(bp);

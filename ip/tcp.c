@@ -190,7 +190,7 @@ void	addreseq(Tcpctl*, Tcp*, Block*, ushort);
 void	getreseq(Tcpctl*, Tcp*, Block**, ushort*);
 void	localclose(Conv*, char*);
 void	procsyn(Conv*, Tcp*);
-void	tcpiput(Block*);
+void	tcpiput(Media*, Block*);
 void	tcpoutput(Conv*);
 int	tcptrim(Tcpctl*, Tcp*, Block**, ushort*);
 void	tcpstart(Conv*, int, ushort);
@@ -1052,7 +1052,7 @@ update(Conv *s, Tcp *seg)
 }
 
 void
-tcpiput(Block *bp)
+tcpiput(Media *m, Block *bp)
 {
 	Tcp seg;
 	Tcphdr *h;
@@ -1062,6 +1062,7 @@ tcpiput(Block *bp)
 	Ipaddr source, dest;
 	Conv *spec, *gen, *s, **p;
 
+	USED(m);
 	h = (Tcphdr*)(bp->rp);
 
 	dest = nhgetl(h->tcpdst);

@@ -140,7 +140,7 @@ void	iltimers(Ilcb*);
 char*	ilstart(Conv*, int, int);
 void	ilackproc();
 void	iloutoforder(Conv*, Ilhdr*, Block*);
-void	iliput(Block*);
+void	iliput(Media*, Block*);
 void	iladvise(Block*, char*);
 
 #define DBG(x)	if((logmask & Logilmsg) && (iponly == 0 || x == iponly))netlog
@@ -379,7 +379,7 @@ ilackto(Ilcb *ic, ulong ackto)
 }
 
 void
-iliput(Block *bp)
+iliput(Media *m, Block *bp)
 {
 	char *st;
 	Ilcb *ic;
@@ -389,6 +389,7 @@ iliput(Block *bp)
 	int plen, illen;
 	Conv *s, **p, *new, *spec, *gen;
 
+	USED(m);
 	ih = (Ilhdr *)bp->rp;
 	plen = blocklen(bp);
 	if(plen < IL_IPSIZE+IL_HDRSIZE){

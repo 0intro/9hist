@@ -163,7 +163,7 @@ grekick(Conv *c, int l)
 }
 
 static void
-greiput(Block *bp)
+greiput(Media *m, Block *bp)
 {
 	int len;
 	GREhdr *ghp;
@@ -171,6 +171,7 @@ greiput(Block *bp)
 	Conv *c, **p;
 	ushort eproto;
 
+	USED(m);
 	ghp = (GREhdr*)(bp->rp);
 
 	eproto = nhgets(ghp->eproto);

@@ -137,6 +137,8 @@ ipgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 	switch(TYPE(c->qid)) {
 	case Qtopdir:
 		if(s < fs.np) {
+			if(fs.p[s]->connect == nil)
+				return 0;	/* protocol with no user interface */
 			q = (Qid){QID(s, 0, Qprotodir)|CHDIR, 0};
 			devdir(c, q, fs.p[s]->name, 0, network, CHDIR|0555, dp);
 			return 1;
@@ -270,6 +272,9 @@ ipopen(Chan* c, int omode)
 	switch(TYPE(c->qid)) {
 	default:
 		break;
+	case Qipifc:
+		c->aux = newifcconv();
+		break;
 	case Qlog:
 		netlogopen();
 		break;
@@ -402,6 +407,10 @@ ipclose(Chan* c)
 	switch(TYPE(c->qid)) {
 	default:
 		break;
+	case Qipifc:
+		closeifcconv(c->aux);
+		c->aux = nil;
+		break;
 	case Qlog:
 		netlogclose();
 		break;
@@ -530,7 +539,8 @@ setlport(Conv* c)
 static void
 setladdrport(Conv* c, char* str)
 {
-	char *p, addr[4];
+	char *p;
+	uchar addr[Ipaddrlen];
 
 	p = strchr(str, '!');
 	if(p == nil) {
@@ -540,7 +550,7 @@ setladdrport(Conv* c, char* str)
 	else {
 		*p++ = 0;
 		parseip(addr, str);
-		c->laddr = nhgetl((byte*)addr);
+		c->laddr = nhgetl(addr);
 	}
 	if(*p == '*')
 		c->lport = 0;
@@ -554,14 +564,15 @@ setladdrport(Conv* c, char* str)
 static char*
 setraddrport(Conv* c, char* str)
 {
-	char *p, addr[4];
+	char *p;
+	uchar addr[Ipaddrlen];
 
 	p = strchr(str, '!');
 	if(p == nil)
 		return "malformed address";
 	*p++ = 0;
 	parseip(addr, str);
-	c->raddr = nhgetl((byte*)addr);
+	c->raddr = nhgetl(addr);
 	c->rport = atoi(p);
 	p = strchr(p, '!');
 	if(p){
@@ -600,7 +611,7 @@ ipwrite(Chan* ch, char* a, long n, ulong)
 			error(p);
 		return n;
 	case Qipifc:
-		p = Mediaifcwrite(a, n);
+		p = Mediaifcwrite(ch->aux, a, n);
 		if(p != nil)
 			error(p);
 		return n;

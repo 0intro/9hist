@@ -148,7 +148,8 @@ netlogctl(char* s, int len)
 {
 	int i, n, set;
 	Logflag *f;
-	char *fields[10], *p, addr[4], buf[256];
+	char *fields[10], *p, buf[256];
+	uchar addr[Ipaddrlen];
 
 	if(len == 0)
 		return Ebadnetctl;

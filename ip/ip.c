@@ -104,7 +104,11 @@ ipoput(Block *bp, int gating, int ttl)
 		goto raise;
 	}
 
-	m = Mediaroute(eh->dst, gate);
+	if(isbmcast(eh->dst)){
+		m = Mediaroute(eh->src, nil);
+		memmove(gate, eh->dst, Ipaddrlen);
+	} else
+		m = Mediaroute(eh->dst, gate);
 	if(m == nil){
 		netlog(Logip, "no interface %I\n", eh->dst);
 		goto raise;
@@ -222,7 +226,7 @@ initfrag(int size)
 void (*ipextprotoiput)(Block*);
 
 void
-ipiput(Block *bp)
+ipiput(Media *m, Block *bp)
 {
 	Iphdr *h;
 	Proto *p;
@@ -288,7 +292,7 @@ ipiput(Block *bp)
 
 	p = Fsrcvpcol(&fs, h->proto);
 	if(p != nil && p->rcv != nil)
-		(*p->rcv)(bp);
+		(*p->rcv)(m, bp);
 	else if(ipextprotoiput != nil)
 		ipextprotoiput(bp);
 	else
