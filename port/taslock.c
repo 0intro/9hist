@@ -13,41 +13,60 @@ lockloop(Lock *l, ulong pc)
 	dumpaproc(up);
 }
 
+#define LOCKLOOP 100000000	/* to detect a lock loop */
+#define SPINLOOP 10000000	/* to keep tas's off the bus */
+
 void
 lock(Lock *l)
 {
-	int pri, i;
-	ulong pc;
+	int i, pri, spins;
+	ulong pc, pid;
 
 	pc = getcallerpc(l);
+	if(up){
+		pid = up->pid;
+		pri = up->priority;
+	} else {
+		pid = 0;
+		pri = 0;
+	}
 
-	if(up == 0) {
-		for(i=0; i<1000000; i++)
-			if(tas(&l->key) == 0){
-				l->pc = pc;
-				l->pri = 0;
-				return;
-			}
-		lockloop(l, pc);
+	/* quick try, it might work */
+	if(tas(&l->key) == 0){
+		l->pc = pc;
+		l->pid = pid;
+		l->pri = pri;
 		return;
 	}
 
-	/* priority interacts with code in ready() in proc.c */
-	pri = up->priority;
+	spins = 0;
+	for(;;){
+		i = 0;
+		while(l->key)
+			if(i++ > SPINLOOP){
+				/* look for lock loops */
+				if(spins++ > LOCKLOOP/SPINLOOP){
+					spins = 0;
+					lockloop(l, pc);
+				}
 
-	for(i=0; i<1000000; i++){
-		up->lockpri = l->pri;		/* assume priority of process holding lock */
+				/* possible priority inversion, try switching priority */
+				if(up && up->state == Running)
+				if(getstatus()&IE) {
+print("priority inversion\n");
+					up->lockpri = l->pri;
+					sched();
+				}
+			}
+
 		if(tas(&l->key) == 0){
-			l->pri = pri;
-			up->lockpri = 0;	/* back to normal priority */
 			l->pc = pc;
+			l->pid = pid;
+			l->pri = pri;
+			up->lockpri = 0;
 			return;
 		}
-		if(conf.nmach == 1 && up->state == Running && (getstatus()&IE))
-			sched();
 	}
-	lockloop(l, pc);
-	up->lockpri = 0;	/* back to normal priority */
 }
 
 void
@@ -64,6 +83,7 @@ ilock(Lock *l)
 		l->sr = x;
 		l->pc = pc;
 		l->pid = pid;
+		l->pri = 0;
 		return;
 	}
 
@@ -74,6 +94,7 @@ ilock(Lock *l)
 			l->sr = x;
 			l->pc = pc;
 			l->pid = pid;
+			l->pri = 0;
 			return;
 		}
 	}
@@ -82,25 +103,25 @@ ilock(Lock *l)
 int
 canlock(Lock *l)
 {
-	int pri;
-
-	if(up)
-		pri = up->priority;
-	else
-		pri = 0;
-	if(tas(&l->key)) {
-		l->pc = getcallerpc(l);
+	if(tas(&l->key))
 		return 0;
+
+	l->pc = getcallerpc(l);
+	if(up){
+		l->pid = up->pid;
+		l->pri = up->priority;
+	} else {
+		l->pid = 0;
+		l->pri = 0;
 	}
-	l->pri = pri;
 	return 1;
 }
 
 void
 unlock(Lock *l)
 {
-	l->pc = 0;
 	l->key = 0;
+	l->pc = 0;
 	l->pri = 0;
 }
 
@@ -112,5 +133,6 @@ iunlock(Lock *l)
 	sr = l->sr;
 	l->key = 0;
 	l->pc = 0;
+	l->pri = 0;
 	splx(sr);
 }
