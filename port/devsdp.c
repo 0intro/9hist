@@ -41,8 +41,8 @@ enum
 
 	Maxconv= 256,		// power of 2
 	Nfs= 4,				// number of file systems
-	MaxRetries=	8,
-	KeepAlive = 60,		// keep alive in seconds
+	MaxRetries=	4,
+	KeepAlive = 10,		// keep alive in seconds
 	SecretLength= 32,	// a secret per direction
 	SeqMax = (1<<24),
 	SeqWindow = 32,
@@ -104,6 +104,7 @@ struct OneWay
 
 // conv states
 enum {
+	CFree,
 	CInit,
 	CDial,
 	CAccept,
@@ -115,12 +116,15 @@ enum {
 
 struct Conv {
 	QLock;
-	int	id;
-	int ref;	// number of times the conv is opened
 	Sdp	*sdp;
+	int	id;
+
+	int ref;	// holds conv up
 
 	int state;
-	int dataopen;
+
+	int dataopen;	// ref count of opens on Qdata
+	int controlopen;	// ref count of opens on Qcontrol
 	int reader;		// reader proc has been started
 
 	Stats	lstats;
@@ -137,7 +141,7 @@ struct Conv {
 	QLock readlk;		// protects readproc
 	Proc *readproc;
 
-	Chan *chan;	// packet channel
+	Chan *chan;		// packet channel
 	char *channame;
 
 	char owner[NAMELEN];		/* protections */
@@ -268,35 +272,37 @@ static Logflag logflags[] =
 static Dirtab	*dirtab[MaxQ];
 static Sdp sdptab[Nfs];
 static char *convstatename[] = {
-	[CInit] "Init",
-	[CDial] "Dial",
-	[CAccept] "Accept",
-	[COpen] "Open",
+	[CFree]		"Free",
+	[CInit]		"Init",
+	[CDial]		"Dial",
+	[CAccept]	"Accept",
+	[COpen]		"Open",
 	[CLocalClose] "LocalClose",
 	[CRemoteClose] "RemoteClose",
-	[CClosed] "Closed",
+	[CClosed]	"Closed",
 };
 
 static int sdpgen(Chan *c, Dirtab*, int, int s, Dir *dp);
 static Conv *sdpclone(Sdp *sdp);
-static void convsetstate(Conv *c, int state);
 static void sdpackproc(void *a);
 static void onewaycleanup(OneWay *ow);
 static int readready(void *a);
 static int controlread();
+static void convsetstate(Conv *c, int state);
+static Block *readcontrol(Conv *c, int n);
+static void writecontrol(Conv *c, void *p, int n, int wait);
+static Block *readdata(Conv *c, int n);
+static long writedata(Conv *c, Block *b);
+static void convderef(Conv *c);
 static Block *conviput(Conv *c, Block *b, int control);
 static void conviconnect(Conv *c, int op, Block *b);
 static void convicontrol(Conv *c, int op, Block *b);
 static Block *convicomp(Conv *c, int op, ulong, Block *b);
-static void writecontrol(Conv *c, void *p, int n, int wait);
-static Block *readcontrol(Conv *c, int n);
-static Block *readdata(Conv *c, int n);
-static long writedata(Conv *c, Block *b);
 static void convoput(Conv *c, int type, int subtype, Block *b);
 static void convoconnect(Conv *c, int op, ulong dialid, ulong acceptid);
-static void convreader(void *a);
 static void convopenchan(Conv *c, char *path);
 static void convstats(Conv *c, int local, char *buf, int n);
+static void convreader(void *a);
 
 static void setalg(Conv *c, char *name, Algorithm *tab, Algorithm **);
 static void setsecret(OneWay *cc, char *secret);
@@ -412,6 +418,7 @@ sdpstat(Chan* c, char* db)
 	devstat(c, db, nil, 0, sdpgen);
 }
 
+
 static Chan*
 sdpopen(Chan* ch, int omode)
 {
@@ -450,6 +457,7 @@ sdpopen(Chan* ch, int omode)
 	case Qstats:
 	case Qrstats:
 		c = sdp->conv[CONV(ch->qid)];
+print("open %d:%d: ref=%d\n", c->id, TYPE(ch->qid), c->ref);
 		qlock(c);
 		if(waserror()) {
 			qunlock(c);
@@ -458,12 +466,16 @@ sdpopen(Chan* ch, int omode)
 		if((perm & (c->perm>>6)) != perm)
 		if(strcmp(up->user, c->owner) != 0 || (perm & c->perm) != perm)
 				error(Eperm);
+
 		c->ref++;
 		if(TYPE(ch->qid) == Qdata) {
-			if(c->dataopen == 0)
+			c->dataopen++;
+			// kill reader if Qdata is opened for the first time
+			if(c->dataopen == 1)
 			if(c->readproc != nil)
 				postnote(c->readproc, 1, "interrupt", 0);
-			c->dataopen++;
+		} else if(TYPE(ch->qid) == Qcontrol) {	
+			c->controlopen++;
 		}
 		qunlock(c);
 		poperror();
@@ -481,32 +493,45 @@ sdpclose(Chan* ch)
 	Sdp *sdp  = sdptab + ch->dev;
 	Conv *c;
 
+	if(!(ch->flag & COPEN))
+		return;
 	switch(TYPE(ch->qid)) {
 	case Qlog:
-		if(ch->flag & COPEN)
-			logclose(sdp);
+		logclose(sdp);
 		break;
-	case Qdata:
 	case Qctl:
 	case Qstatus:
-	case Qcontrol:
-		if(!(ch->flag & COPEN))
-			break;
+	case Qstats:
+	case Qrstats:
 		c = sdp->conv[CONV(ch->qid)];
 		qlock(c);
-		if(waserror()) {
-			qunlock(c);
-			nexterror();
+		convderef(c);
+		qunlock(c);
+		break;
+
+	case Qdata:
+		c = sdp->conv[CONV(ch->qid)];
+		qlock(c);
+		c->dataopen--;
+		convderef(c);
+		if(c->dataopen == 0)
+		if(c->reader == 0)
+		if(c->chan != nil)
+		if(!waserror()) {
+			kproc("convreader", convreader, c);
+			c->reader = 1;
+			c->ref++;
+			poperror();
 		}
-		c->ref--;
-		if(TYPE(ch->qid) == Qdata) {
-			c->dataopen--;
-			if(c->dataopen == 0 && c->reader == 0) {
-				kproc("convreader", convreader, c);
-				c->reader = 1;
-			}
-		}
-		if(c->ref == 0) {
+		qunlock(c);
+		break;
+
+	case Qcontrol:
+		c = sdp->conv[CONV(ch->qid)];
+		qlock(c);
+		c->controlopen--;
+		convderef(c);
+		if(c->controlopen == 0 && c->ref != 0) {
 			switch(c->state) {
 			default:
 				convsetstate(c, CClosed);
@@ -515,8 +540,6 @@ sdpclose(Chan* ch)
 			case COpen:
 				convsetstate(c, CLocalClose);
 				break;
-			case CLocalClose:
-				panic("local close already happened");
 			}
 		}
 		qunlock(c);
@@ -771,8 +794,9 @@ sdpclone(Sdp *sdp)
 			sdp->nconv++;
 			break;
 		}
-		if(canqlock(c)){
-			if(c->state == CClosed && c->reader == 0 && c->ref == 0)
+		if(c->ref == 0 && canqlock(c)){
+print("%d: state=%d reader=%d ref=%d\n", c->id, c->state, c->reader, c->ref);
+			if(c->ref == 0)
 				break;
 			qunlock(c);
 		}
@@ -783,7 +807,9 @@ sdpclone(Sdp *sdp)
 	if(pp >= ep)
 		return nil;
 
-	c->ref++;
+	assert(c->state == CFree);
+	// set ref to 2 - 1 ref for open - 1 ref for channel state
+	c->ref = 2;
 	c->state = CInit;
 	c->in.window = ~0;
 	strncpy(c->owner, up->user, sizeof(c->owner));
@@ -819,6 +845,7 @@ print("convretry: giving up\n");
 	return 1;
 }
 
+// assumes c is locked
 static void
 convtimer(Conv *c, ulong sec)
 {
@@ -826,12 +853,10 @@ convtimer(Conv *c, ulong sec)
 
 	if(c->timeout > sec)
 		return;
-	qlock(c);
-	if(waserror()) {
-		qunlock(c);
-		nexterror();
-	}
+
 	switch(c->state) {
+	case CInit:
+		break;
 	case CDial:
 		if(convretry(c, 1))
 			convoconnect(c, ConOpenRequest, c->dialid, 0);
@@ -873,11 +898,8 @@ print("sending keep alive: %ld\n", sec - c->lastrecv);
 		break;
 	case CRemoteClose:
 	case CClosed:
-		c->timeout = ~0;
 		break;
 	}
-	poperror();
-	qunlock(c);
 }
 
 
@@ -895,10 +917,16 @@ sdpackproc(void *a)
 		qlock(sdp);
 		for(i=0; i<sdp->nconv; i++) {
 			c = sdp->conv[i];
-			if(!waserror()) {
+			if(c->ref == 0)
+				continue;
+			qunlock(sdp);
+			qlock(c);
+			if(c->ref > 0 && !waserror()) {
 				convtimer(c, sec);
 				poperror();
 			}
+			qunlock(c);
+			qlock(sdp);
 		}
 		qunlock(sdp);
 	}
@@ -949,6 +977,7 @@ print("convsetstate %s -> %s\n", convstatename[c->state], convstatename[state]);
 		break;
 	case COpen:
 		assert(c->state == CDial || c->state == CAccept);
+		c->lastrecv = TK2SEC(m->ticks);
 		if(c->state == CDial) {
 			convretryinit(c);
 			convoconnect(c, ConOpenAckAck, c->dialid, c->acceptid);
@@ -971,41 +1000,56 @@ print("convsetstate %s -> %s\n", convstatename[c->state], convstatename[state]);
 		break;
 	case CRemoteClose:
 		wakeup(&c->in.controlready);
-// convoconnect(c, ConReset, c->dialid, c->acceptid);
+		wakeup(&c->out.controlready);
 		break;
 	case CClosed:
 		wakeup(&c->in.controlready);
 		wakeup(&c->out.controlready);
 		if(c->readproc)
 			postnote(c->readproc, 1, "interrupt", 0);
-print("CClosed -> ref = %d\n", c->ref);
-		if(c->chan) {	
-			cclose(c->chan);
-			c->chan = nil;
-		}
-		if(c->ref)
-			break;
-		if(c->channame) {
-			free(c->channame);
-			c->channame = nil;
-		}
-		c->cipher = nil;
-		c->auth = nil;
-		c->comp = nil;
-	strcpy(c->owner, "network");
-		c->perm = 0660;
-		c->dialid = 0;
-		c->acceptid = 0;
-		c->timeout = ~0;
-		c->retries = 0;
-		c->drop = 0;
-		onewaycleanup(&c->in);
-		onewaycleanup(&c->out);
-		memset(&c->lstats, 0, sizeof(Stats));
-		memset(&c->rstats, 0, sizeof(Stats));
+		if(c->state != CClosed)
+			convderef(c);
 		break;
 	}
 	c->state = state;
+}
+
+
+//assumes c is locked
+static void
+convderef(Conv *c)
+{
+	c->ref--;
+print("convderef: %d: ref == %d\n", c->id, c->ref);
+	if(c->ref > 0)
+		return;
+	assert(c->ref == 0);
+	assert(c->dataopen == 0);
+	assert(c->controlopen == 0);
+//print("convderef: %d: ref == 0!\n", c->id);
+	c->state = CFree;
+	if(c->chan) {	
+		cclose(c->chan);
+		c->chan = nil;
+	}
+	if(c->channame) {
+		free(c->channame);
+		c->channame = nil;
+	}
+	c->cipher = nil;
+	c->auth = nil;
+	c->comp = nil;
+	strcpy(c->owner, "network");
+	c->perm = 0660;
+	c->dialid = 0;
+	c->acceptid = 0;
+	c->timeout = 0;
+	c->retries = 0;
+	c->drop = 0;
+	onewaycleanup(&c->in);
+	onewaycleanup(&c->out);
+	memset(&c->lstats, 0, sizeof(Stats));
+	memset(&c->rstats, 0, sizeof(Stats));
 }
 
 static void
@@ -1040,7 +1084,12 @@ convopenchan(Conv *c, char *path)
 		nexterror();
 	}
 	kproc("convreader", convreader, c);
+
+	assert(c->reader == 0 && c->ref > 0);
+	// after kproc in case it fails
 	c->reader = 1;
+	c->ref++;
+
 	poperror();
 }
 
@@ -1215,14 +1264,14 @@ print("pad too big\n");
 	if(seqdiff > 0) {
 		while(seqdiff > 0 && c->in.window != 0) {
 			if((c->in.window & (1<<(SeqWindow-1))) == 0) {
-print("missing packet: %ld\n", seq - seqdiff);
+//print("missing packet: %ld\n", seq - seqdiff);
 				c->lstats.inMissing++;
 			}
 			c->in.window <<= 1;
 			seqdiff--;
 		}
 		if(seqdiff > 0) {
-print("missing packets: %ld-%ld\n", seq - SeqWindow - seqdiff+1, seq-SeqWindow);
+//print("missing packets: %ld-%ld\n", seq - SeqWindow - seqdiff+1, seq-SeqWindow);
 			c->lstats.inMissing += seqdiff;
 		}
 		c->in.seq = seq;
@@ -1520,30 +1569,28 @@ convoconnect(Conv *c, int op, ulong dialid, ulong acceptid)
 	Block *b;
 
 	c->lstats.outPackets++;
-	if(c->chan == nil) {
-print("chan = nil\n");
-		error("no channel attached");
-	}
+	assert(c->chan != nil);
 	b = allocb(9);
 	b->wp[0] = (TConnect << 4) | op;
 	hnputl(b->wp+1, dialid);
 	hnputl(b->wp+5, acceptid);
 	b->wp += 9;
 
-	convwriteblock(c, b);
+	if(!waserror()) {
+		convwriteblock(c, b);
+		poperror();
+	}
 }
 
 static Block *
 convreadblock(Conv *c, int n)
 {
 	Block *b;
-	Chan *ch = nil;
+	Chan *ch;
 
 	qlock(&c->readlk);
 	if(waserror()) {
 		c->readproc = nil;
-		if(ch)
-			cclose(ch);
 		qunlock(&c->readlk);
 		nexterror();
 	}
@@ -1554,12 +1601,11 @@ convreadblock(Conv *c, int n)
 	}
 	c->readproc = up;
 	ch = c->chan;
-	incref(ch);
+	assert(c->ref > 0);
 	qunlock(c);
 
 	b = devtab[ch->type]->bread(ch, n, 0);
 	c->readproc = nil;
-	cclose(ch);
 	poperror();
 	qunlock(&c->readlk);
 
@@ -1770,10 +1816,7 @@ print("convreader\n");
 		if(b == nil) {
 print("up->error = %s\n", up->error);
 			if(strcmp(up->error, Eintr) != 0) {
-				if(!waserror()) {
-					convsetstate(c, CClosed);
-					poperror();
-				}
+				convsetstate(c, CClosed);
 				break;
 			}
 		} else if(!waserror()) {
@@ -1783,6 +1826,7 @@ print("up->error = %s\n", up->error);
 	}
 print("convreader exiting\n");
 	c->reader = 0;
+	convderef(c);
 	qunlock(c);
 	pexit("hangup", 1);
 }
@@ -2025,7 +2069,7 @@ rc4decrypt(OneWay *ow, uchar *p, int n)
 				cr->ovalid = 0;
 		}
 	} else if(d > 0) {
-print("missing packet: %uld %ld\n", seq, d);
+//print("missing packet: %uld %ld\n", seq, d);
 		// this link is hosed 
 		if(d > RC4forward)
 			return 0;
@@ -2039,7 +2083,7 @@ print("missing packet: %uld %ld\n", seq, d);
 		rc4(&cr->current, p, n);
 		cr->cseq = seq+n;
 	} else {
-print("reordered packet: %uld %ld\n", seq, d);
+//print("reordered packet: %uld %ld\n", seq, d);
 		dd = seq - cr->oseq;
 		if(!cr->ovalid || -d > RC4back || dd < 0)
 			return 0;
