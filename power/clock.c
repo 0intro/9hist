@@ -103,7 +103,7 @@ clock(Ureg *ur)
 	if(up == 0 || (ur->status&IEP) == 0 || up->state != Running)
 		return;
 
-	if(anyready())
+	if(anyready() && !up->inlock)
 		sched();
 
 	/* user profiling clock */

@@ -45,7 +45,7 @@ clock(Ureg *ur, void *arg)
 	uartclock();
 
 	if(up && up->state == Running){
-		if(anyready())
+		if(anyready() && !up->inlock)
 			sched();
 	
 		/* user profiling clock */

@@ -38,33 +38,23 @@ lock(Lock *l)
 	}
 }
 
-void
-ilock(Lock *l)
-{
-	ulong x;
-
-	x = splhi();
-	if(tas(&l->key) == 0){
-		l->sr = x;
-		return;
-	}
-
-	for(;;){
-		while(l->key)
-			;
-		if(tas(&l->key) == 0){
-			l->sr = x;
-			return;
-		}
-	}
-}
-
 int
 canlock(Lock *l)
 {
+	int n;
+
+	if(up) {
+		n = up->inlock;
+		up->inlock = n+2;
+		if(tas(&l->key)) {
+			up->inlock = n;
+			return 0;
+		}
+		return 1;
+	}
+
 	if(tas(&l->key))
 		return 0;
-
 	return 1;
 }
 
@@ -73,13 +63,23 @@ unlock(Lock *l)
 {
 	int n;
 
-	l->key = 0;
 	if(up) {
 		n = up->inlock-2;
 		if(n < 0)
 			n = 0;
 		up->inlock = n;
 	}
+	l->key = 0;
+}
+
+void
+ilock(Lock *l)
+{
+	ulong sr;
+
+	sr = splhi();
+	lock(l);
+	l->sr = sr;
 }
 
 void
@@ -88,6 +88,6 @@ iunlock(Lock *l)
 	ulong sr;
 
 	sr = l->sr;
-	l->key = 0;
+	unlock(l);
 	splx(sr);
 }

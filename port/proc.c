@@ -115,7 +115,6 @@ anyhigher(void)
 	Proc *p;
 	int pri;
 
-	return runq.n;
 	pri = up->pri;
 	for(p=runq.head; p; p=p->rnext)
 		if(p->pri <= pri)
@@ -961,6 +960,13 @@ accounttime(void)
 		p->pri += priconst[p->nice];
 	}
 
+	if(up) {
+		i = up->inlock-1;
+		if(i < 0)
+			i = 0;
+		up->inlock = i;
+	}
+
 	/* only one processor gets to compute system load averages */
 	if(m->machno != 0)
 		return;
@@ -974,8 +980,8 @@ accounttime(void)
 
 	/*
 	 * decay per-process cpu usage
-	 *	pri = (7/8)*pri twice per second
-	 *	tc = (7/8)^2/(1-(7/8)^2) = 3.27 sec
+	 *	pri = (3/4)*pri twice per second
+	 *	tc = (3/4)^2/(1-(3/4)^2) = 1.286 sec
 	 */
 	m0ticks--;
 	if(m0ticks <= 0) {
@@ -984,7 +990,7 @@ accounttime(void)
 		for(i=conf.nproc-1; i!=0; i--,p++)
 			if(p->state != Dead) {
 				pri = p->pri;
-				pri -= pri >> 3;
+				pri -= pri >> 2;
 				p->pri = pri;
 			}
 	}

@@ -78,13 +78,8 @@ clock(Ureg *ur)
 	if(up == 0 || up->state != Running)
 		return;
 
-	if(anyready()) {
-		n = up->inlock;
-		if(n == 0)
-			sched();
-		else
-			up->inlock = n-1;
-	}
+	if(anyready() && !up->inlock)
+		sched();
 
 	/* user profiling clock */
 	if(ur->status & KUSER)
