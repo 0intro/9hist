@@ -185,8 +185,31 @@ srvremove(Chan *c)
 void
 srvwstat(Chan *c, char *dp)
 {
-	USED(c, dp);
-	error(Egreg);
+	Dir d;
+	Srv *sp;
+
+	if(!iseve())
+		error(Eperm);
+	if(CHDIR & c->qid.path)
+		error(Eperm);
+
+	qlock(&srvlk);
+	if(waserror()){
+		qunlock(&srvlk);
+		nexterror();
+	}
+
+	for(sp = srv; sp; sp = sp->link)
+		if(sp->path == c->qid.path)
+			break;
+	if(sp == 0 || sp->chan == 0)
+		error(Eshutdown);
+	convM2D(dp, &d);
+	d.mode &= 0777;
+	sp->perm = d.mode;
+
+	qunlock(&srvlk);
+	poperror();
 }
 
 void

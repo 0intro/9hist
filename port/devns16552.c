@@ -942,6 +942,6 @@ ns16552wstat(Chan *c, char *dp)
 
 	dt = &ns16552dir[3 * NETID(c->qid.path)];
 	convM2D(dp, &d);
-	d.mode &= 0x666;
+	d.mode &= 0666;
 	dt[0].perm = dt[1].perm = d.mode;
 }
