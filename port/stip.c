@@ -26,19 +26,17 @@ QLock		fraglock;
 
 Queue 		*Etherq;
 
-Ipaddr		Myip[4];
+Ipaddr		Myip[7];
 Ipaddr		Mymask;
 Ipaddr		Mynetmask;
 uchar		Netmyip[4];	/* In Network byte order */
 uchar		bcast[4] = { 0xff, 0xff, 0xff, 0xff };
-Ipaddr		Me[7];		/* possible addresses for me */
 
 /* Predeclaration */
 static void	ipetherclose(Queue*);
 static void	ipetheriput(Queue*, Block*);
 static void	ipetheropen(Queue*, Stream*);
 static void	ipetheroput(Queue*, Block*);
-static void	ipsetaddrs(void);
 
 /*
  *  the ethernet multiplexor stream module definition
@@ -361,7 +359,7 @@ drop:
 void
 ipsetaddrs(void)
 {
-	Myip[1] = ~0;					/* local broadcast */
+	Myip[Mybcast] = ~0;				/* local broadcast */
 	Myip[2] = 0;					/* local broadcast - old */
 	Myip[Mysubnet] = Myip[Myself] | ~Mynetmask;	/* subnet broadcast */
 	Myip[Mysubnet+1] = Myip[Myself] & Mynetmask;	/* subnet broadcast - old */

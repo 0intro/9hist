@@ -493,6 +493,7 @@ void	iplocalfill(Chan*, char*, int);
 void	ipremotefill(Chan*, char*, int);
 void	ipstatusfill(Chan*, char*, int);
 int	ipforme(uchar*);
+void	ipsetaddrs(void);
 
 #define	fmtaddr(xx)	(xx>>24)&0xff,(xx>>16)&0xff,(xx>>8)&0xff,xx&0xff
 #define	MIN(a, b)	((a) < (b) ? (a) : (b))
@@ -503,7 +504,7 @@ int	ipforme(uchar*);
 
 #define WORKBUF		64
 
-extern Ipaddr Myip[4];
+extern Ipaddr Myip[7];
 extern Ipaddr Mymask;
 extern Ipaddr classmask[4];
 extern Ipconv *ipconv[];

@@ -1336,8 +1336,8 @@ bitloadchar(GFont *f, int ci, GSubfont *subf, int si)
 	rect.min.y = 0;
 	rect.max.y = f->height;
 	rect.min.x = c->x;
-	rect.max.x = c->xright;
-	gbitblt(f->b, Pt(c->x, 0), subf->bits, rect, 0);
+	rect.max.x = c->x+f->width;
+	gbitblt(f->b, rect.min, f->b, rect, 0);
 	rect.min.x = fi->x;
 	rect.max.x = (fi+1)->x;
 	gbitblt(f->b, Pt(c->x, f->ascent-subf->ascent), subf->bits, rect, S);

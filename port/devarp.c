@@ -320,24 +320,9 @@ arpoput(Queue *q, Block *bp)
 		return;
 	}
 
-	if(!Servq) {
-		if((dropped++ % 1000) == 0)
-			print("arp: No server, packet dropped\n");
-		freeb(bp);
-		return;
-	}
-
 	eh = (Etherhdr *)bp->rptr;
 	if(nhgets(eh->type) != ET_IP) {
 		PUTNEXT(q, bp);	
-		return;
-	}
-
-	iproute(eh->dst, ip);
-
-	/* if a known ip addr, send downstream to the ethernet */
-	if(arplookup(ip, eh->d)) {
-		PUTNEXT(q, bp);
 		return;
 	}
 
@@ -349,7 +334,22 @@ arpoput(Queue *q, Block *bp)
 		return;
 	}
 
+	iproute(eh->dst, ip);
+
+	/* if a known ip addr, send downstream to the ethernet */
+	if(arplookup(ip, eh->d)) {
+		PUTNEXT(q, bp);
+		return;
+	}
+
 	/* Push the packet up to the arp server for address resolution */
+	if(!Servq) {
+		if((dropped++ % 1000) == 0)
+			print("arp: No server, packet dropped %d.%d.%d.%d\n",
+				eh->dst[0], eh->dst[1], eh->dst[2], eh->dst[3]);
+		freeb(bp);
+		return;
+	}
 	memmove(eh->d, ip, sizeof(ip));
 	PUTNEXT(Servq, bp);
 }
