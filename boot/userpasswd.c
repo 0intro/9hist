@@ -34,6 +34,14 @@ userpasswd(int islocal, Method *mp)
 		msg = checkkey(mp, username, hostkey);
 		if(msg == 0)
 			break;
+		/* try the old key algorithm till everyone has switched */
+		opasstokey(hostkey, password);
+		msg = checkkey(mp, username, hostkey);
+		if(msg == 0){
+			print("You have an old style key.  Once you are up, please run 'aux/passwd'\n");
+			print("and retype your key to convert.\n");
+			break;
+		}
 		fprint(2, "?%s\n", msg);
 		outin("user", username, sizeof(username));
 	}
