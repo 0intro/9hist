@@ -137,8 +137,9 @@ struct Controller
 	int	tsec;		/* target sector */
 	int	tbyte;		/* target byte */
 	int	len;		/* length of transfer (bytes) */
-	int	secs;		/* sectors to be xferred */
+	int	toxfer;		/* bytes to be xferred */
 	int	sofar;		/* bytes transferred so far */
+	int	toskip;		/* bytes to skip over */
 	int	status;
 	int	error;
 	Drive	*dp;		/* drive being accessed */
@@ -390,13 +391,8 @@ hardxfer(Drive *dp, Partition *pp, int cmd, void *va, long off, long len)
 
 	if(dp->online == 0)
 		errors("disk offline");
-	if(len % dp->bytes)
-		errors("bad length");	/* BUG - this shouldn't be a problem */
-	if(off % dp->bytes)
-		errors("bad offset");	/* BUG - this shouldn't be a problem */
-
-print("hardxfer %ld %ld\n", off, len);
-print("hardxfer part %s %ld %ld\n", pp->name, pp->start, pp->end);
+	if(len > Maxxfer)
+		len = Maxxfer;
 
 	cp = dp->cp;
 	qlock(cp);
@@ -417,9 +413,9 @@ print("hardxfer part %s %ld %ld\n", pp->name, pp->start, pp->end);
 	cp->thead = (lsec/dp->sectors) % dp->heads;
 
 	/*
-	 *  can't xfer across cylinder boundaries.
+	 *  can't xfer across cylinder boundaries or end of disk
 	 */
-	lsec = (off+len)/dp->bytes;
+	lsec = (off+len+dp->bytes-1)/dp->bytes;
 	lsec += pp->start;
 	if(lsec > pp->end)
 		errors("xfer past end of partition\n");
@@ -434,7 +430,7 @@ print("hardxfer part %s %ld %ld\n", pp->name, pp->start, pp->end);
 	/*
 	 *  start the transfer
 	 */
-	cp->secs = cp->len/dp->bytes;
+	cp->toskip = off % dp->bytes;
 	cp->sofar = 0;
 	cp->cmd = cmd;
 	cp->dp = dp;
@@ -510,7 +506,7 @@ print("waserror in hardident\n");
 	cmdreadywait(cp);
 
 	cp->len = 512;
-	cp->secs = 1;
+	cp->toskip = 0;
 	cp->sofar = 0;
 	cp->cmd = Cident;
 	cp->dp = dp;
@@ -643,8 +639,8 @@ hardintr(Ureg *ur)
 				panic("hardintr 2");
 		inss(cp->pbase+Pdata, &cp->buf[cp->sofar*cp->dp->bytes],
 			cp->dp->bytes/2);
-		cp->sofar++;
-		if(cp->sofar == cp->secs){
+		cp->sofar += cp->dp->bytes;
+		if(cp->sofar >= cp->len){
 			cp->cmd = 0;
 			wakeup(&cp->r);
 		}
