@@ -1094,7 +1094,7 @@ void
 procctlreq(Proc *p, char *va, int n)
 {
 	Segment *s;
-	int i, npc;
+	int npc, pri;
 	Cmdbuf *cb;
 	Cmdtab *ct;
 
@@ -1115,17 +1115,6 @@ procctlreq(Proc *p, char *va, int n)
 		break;
 	case CMclosefiles:
 		procctlclosefiles(p, 1, 0);
-		break;
-	case CMfixedpri:
-		i = atoi(cb->f[1]);
-		if(i < 0)
-			i = 0;
-		if(i >= Nrq)
-			i = Nrq - 1;
-		if(i > p->basepri && !iseve())
-			error(Eperm);
-		p->basepri = i;
-		p->fixedpri = 1;
 		break;
 	case CMhang:
 		p->hang = 1;
@@ -1152,15 +1141,15 @@ procctlreq(Proc *p, char *va, int n)
 		p->noswap = 1;
 		break;
 	case CMpri:
-		i = atoi(cb->f[1]);
-		if(i < 0)
-			i = 0;
-		if(i >= Nrq)
-			i = Nrq - 1;
-		if(i > p->basepri && !iseve())
+		pri = atoi(cb->f[1]);
+		if(pri > PriNormal && !iseve())
 			error(Eperm);
-		p->basepri = i;
-		p->fixedpri = 0;
+		procpriority(p, pri, 0);
+		break;
+	case CMfixedpri:
+		if(!iseve())
+			error(Eperm);
+		procpriority(p, atoi(cb->f[1]), 1);
 		break;
 	case CMprivate:
 		p->privatemem = 1;

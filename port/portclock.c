@@ -95,8 +95,6 @@ timerdel(Timer *dt)
 void
 hzclock(Ureg *ur)
 {
-	int callsched;
-
 	m->ticks++;
 	if(m->proc)
 		m->proc->pc = ur->pc;
@@ -126,29 +124,13 @@ hzclock(Ureg *ur)
 	if(up == 0 || up->state != Running)
 		return;
 
-	if(up->fixedpri){
-		/*  fixed priority processes are only preempted by
-		 *  higher piority processes.
-		 */
-		if(anyhigher())
-			callsched = 1;
-	} else {
-		/*  floating priority processes are are preempted
-		 *  by all sorts of things.
-		 */
-		if(anyready() && !edf->isedf(up))
-			callsched = 1;
-	}
-	if(callsched){
-		sched();
-		splhi();
-	}
-
 	/* user profiling clock */
-	if(userureg(ur)) {
+	if(userureg(ur)){
 		(*(ulong*)(USTKTOP-BY2WD)) += TK2MS(1);
 		segclock(ur->pc);
 	}
+
+	hzsched();	/* in proc.c */
 }
 
 void
