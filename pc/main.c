@@ -639,6 +639,7 @@ void
 exit(int ispanic)
 {
 	up = 0;
+	active.machs = 0;
 	print("exiting\n");
 	spllo();
 	if(ispanic){

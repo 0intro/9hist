@@ -39,6 +39,9 @@ clock(Ureg *ur, void *arg)
 
 	m->ticks++;
 
+	if(active.exiting && (active.machs & (1<<m->machno)))
+		exit(0);
+
 	accounttime();
 	checkalarms();
 	hardclock();

@@ -1,5 +1,5 @@
 /*
- *  template for making a new device
+ *  a pity the code isn't also tiny...
  */
 
 #include	"u.h"
@@ -26,10 +26,11 @@ enum{
 	Tagend=		'e',
 	Tagfree=	'f',
 
-	Nopin=		0xffff;
+	Notapin=		0xffff,
+	Notabno=		0xffff,
 };
 
-/* medium representation of a Tdir */
+/* representation of a Tdir on medium */
 typedef struct Mdir Mdir;
 struct Mdir {
 	uchar	type;
@@ -40,7 +41,7 @@ struct Mdir {
 	uchar	sum;
 };
 
-/* medium representation of a Tdata/Tend */
+/* representation of a Tdata/Tend on medium */
 typedef struct Mdata Mdata;
 struct Mdata {
 	uchar	type;
@@ -51,16 +52,18 @@ struct Mdata {
 
 typedef struct Tfile Tfile;
 struct Tfile {
+	int	r;
 	char	name[NAMELEN];
 	ushort	bno;
 	ushort	dbno;
 	ushort	pin;
+	char	creating;
 	ulong	length;
 };
 
 typedef struct Tfs Tfs;
 struct Tfs {
-	Lock;
+	QLock;
 	int	r;
 	Chan	*c;
 	uchar	*map;
@@ -91,6 +94,7 @@ checksum(uchar *p)
 	s = 0;
 	for(e = p + Blen; p < e; p++)
 		s += *p;
+	return s;
 }
 
 static void
@@ -175,6 +179,27 @@ validdata(Tfs *fs, uchar *p)
 	return md;
 }
 
+static int
+writedir(Tfs *fs, Tfile *f)
+{
+	Mdir *md;
+	int n;
+	uchar buf[Blen];
+
+	if(f->bno == Notabno)
+		return Blen;
+
+	md = (Mdir*)buf;
+	memset(buf, 0, Blen);
+	md->type = Tagdir;
+	strncpy(md->name, f->name, sizeof(md->name)-1);
+	PUTS(md->bno, f->dbno);
+	PUTS(md->pin, f->pin);
+	f->sum = 0 - checksum(buf);
+
+	return devtab[fs->c->type].write(fs->c, buf, Blen, Blen*f->bno);
+}
+
 static void
 freefile(Tfs *fs, Tfile *f, ulong bend)
 {
@@ -185,7 +210,7 @@ freefile(Tfs *fs, Tfile *f, ulong bend)
 
 	/* remove blocks from map */
 	bno = f->dbno;
-	while(bend != bno){
+	while(bno != bend && bno != Notabno){
 		mapclr(fs, bno);
 		n = devtab[fs->c->type].read(fs->c, buf, Blen, Blen*bno);
 		if(n != Blen)
@@ -199,11 +224,13 @@ freefile(Tfs *fs, Tfile *f, ulong bend)
 	}
 
 	/* change file type to free on medium */
-	n = devtab[fs->c->type].read(fs->c, buf, Blen, Blen*f->bno);
-	if(n != Blen)
-		return;
-	buf[0] = Tagfree;
-	devtab[fs->c->type].write(fs->c, buf, Blen, Blen*f->bno);
+	if(f->bno != Notabno){
+		n = devtab[fs->c->type].read(fs->c, buf, Blen, Blen*f->bno);
+		if(n != Blen)
+			return;
+		buf[0] = Tagfree;
+		devtab[fs->c->type].write(fs->c, buf, Blen, Blen*f->bno);
+	}
 
 	/* forget we ever knew about it */
 	memset(f, 0, sizeof(*f));
@@ -217,15 +244,53 @@ expand(Tfs *fs)
 	fs->fsize += 8;
 	f = smalloc(fs->fsize*sizeof(*f));
 
-	lock(fs);
 	memmove(f, fs->f, fs->nf*sizoef(f));
 	free(fs->f);
 	fs->f = f;
-	unlock(fs);
+}
+
+static Tfile*
+newfile(Tfs *fs, char *name)
+{
+	int i;
+	Tfile *f;
+
+	/* find free entry in file table */
+	for(;;) {
+		for(i = 0; i < fs->fsize; i++){
+			f = &fs->f[i];
+			if(f->name[0] == 0){
+				strncpy(f->name, name, sizeof(f->name)-1);
+				break;
+			}
+		}
+
+		if(i < fs->fsize)
+			break;
+
+		expand(fs);
+	}
+
+	f->creating = 1;
+	f->dbno = Notabno;
+	f->bno = mapalloc(fs);
+
+	/* write directory block */
+	if(waserror()){
+		filefree(fs, f, Notabno);
+		nexterror();
+	}
+	if(b->bno == Notabno)
+		error("out of space");
+	writedir(fs, f);
+	poperror();
+	
+	return f;
 }
 
 /*
- *  see if we have a reasonable fat/root directory
+ *  Read the whole medium and build a file table and used
+ *  block bitmap.  Inconsistent files are purged.
  */
 static void
 fsinit(Tfs *fs)
@@ -263,6 +328,7 @@ fsinit(Tfs *fs)
 
 		if(fs->nfs <= fs->fsize)
 			expand(fs);
+
 		f = &fs->f[fs->nf++];
 
 		x = GETS(mdir->bno);
@@ -305,6 +371,9 @@ fsinit(Tfs *fs)
 	}
 }
 
+/*
+ *  single directory
+ */
 static int
 tinyfsgen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
 {
@@ -318,7 +387,7 @@ tinyfsgen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
 	f = &fs->f[i];
 	qid.path = i;
 	qid.vers = 0;
-	devdir(c, qid, f->name, f->length, eve, f->pin==Nopin?0444:0666, dp);
+	devdir(c, qid, f->name, f->length, eve, 0664, dp);
 	return 1;
 }
 
@@ -355,9 +424,9 @@ tinyfsattach(char *spec)
 			break;
 	}
 	if(i < tinyfs.nfs){
-		lock(fs);
+		qlock(fs);
 		fs->r++;
-		unlock(fs);
+		qunlock(fs);
 		close(cc);
 	} else {
 		if(tinyfs.nfs >= Maxfs)
@@ -383,13 +452,26 @@ tinyfsattach(char *spec)
 Chan *
 tinyfsclone(Chan *c, Chan *nc)
 {
+	qlock(fs);
+	fs->r++;
+	qunlock(fs);
+
 	return devclone(c, nc);
 }
 
 int
 tinyfswalk(Chan *c, char *name)
 {
-	return devwalk(c, name, 0, 0, tinyfsgen);
+	int n;
+
+	qlock(fs);
+	n = devwalk(c, name, 0, 0, tinyfsgen);
+	if(n != 0 && c->qid.path != CHDIR){
+		fs = &tinyfs.fs[c->dev];
+		fs->f[c->qid.path].r++;
+	}
+	qunlock(fs);
+	return n;
 }
 
 void
@@ -410,17 +492,15 @@ tinyfsopen(Chan *c, int omode)
 		if(omode != OREAD)
 			error(Eperm);
 	} else {
-		lock(fs);
-		f = fs->f[c->path];
-		unlock(fs);
-
-		if(f->pin == Nopin){
-			if(omode != OREAD)
-				error(Eperm);
-		} else {
-			if(omode != ORDWR)
-				error(Eperm);
+		qlock(fs);
+		if(omode == (OTRUNC|ORDWR)){
+			f = newfile(fs, fs->f[c->qid.path]);
+			c->qid.path = f - fs->f;
+		} else if(omode != OREAD){
+			qunlock(fs);
+			error(Eperm);
 		}
+		qunlock(fs);
 	}
 
 	return devopen(c, omode, 0, 0, tinyfsgen);
@@ -435,28 +515,13 @@ tinyfscreate(Chan *c, char *name, int omode, ulong perm)
 	if(perm & CHDIR)
 		error("directory creation illegal");
 
-	fs = &tinyfs.fs[c->dev];
-	for(;;) {
-		lock(fs);
-		for(i = 0; i < fs->fsize; i++){
-			f = &fs->f[i];
-			if(f->name[0] == 0){
-				strncpy(f->name, name, sizeof(f->name)-1);
-				break;
-			}
-		}
-		if(i < fs->fsize)
-			break;
-
-		unlock(fs);
-		expand(fs);
-	}
-	unlock(fs);
+	qlock(fs);
+	f = newfile(fs, name);
+	qunlock(fs);
 
 	c->qid.path = f - fs->f;
-	c->qid.vers = 1;		/* creating */
+	c->qid.vers = 0;
 	c->mode = openmode(omode);
-	c->flag |= COPEN;
 }
 
 void
@@ -478,17 +543,30 @@ tinyfsclose(Chan *c)
 {
 	Tfs *fs, **l;
 	Tfile *f, *nf;
+	int i;
 
 	fs = c->aux;
-	lock(fs);
-	fs->ref--;
-	unlock(fs);
 
-	if(fs->ref)
-		return;
+	qlock(fs);
 
-	qlock(&tinyfs);
-	lock(fs);
+	/* dereference file and remove old versions */
+	if(c->qid.path != CHDIR){
+		f = &fs->f[c->qid.path];
+		f->r--;
+		if(f->r == 0 && f->creating){
+			/* remove all other files with this name */
+			for(i = 0; i < fs->fsize; i++){
+				nf = &fs->f[i];
+				if(f == nf)
+					continue;
+				if(strcmp(nf->name, f->name) == 0)
+					freefile(fs, nf, Notabno);
+			}
+		}
+	}
+
+	/* dereference fs and remove on zero refs */
+	fs->r--;
 	if(fs->ref == 0){
 		for(l = &fs->l; *l;){
 			if(*l == fs){

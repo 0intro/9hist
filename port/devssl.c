@@ -323,7 +323,7 @@ sslwrite(Chan *c, void *a, long n, ulong offset)
 	case Algwait:
 		/* get algorithm */
 		if(n >= sizeof(buf))
-			Ebadarg;
+			error(Ebadarg);
 		strncpy(buf, a, n);
 		buf[n] = 0;
 		s->blocklen = 1;
