@@ -67,8 +67,7 @@ clock(Ureg *ur)
 		}
 		if((ur->psr&PSRPSUPER) == 0){
 /*			*(ulong*)(USTKTOP-BY2WD) += TK2MS(1); /**/
-			if(u->nnote)
-				notify(ur);
+			notify(ur);
 		}
 	}
 }

@@ -203,6 +203,7 @@ ulong	segattach(Proc*, ulong, char *, ulong, ulong);
 void	segpage(Segment*, Page*);
 int	setcolor(ulong, ulong, ulong, ulong);
 int	setlabel(Label*);
+void	setregisters(Ureg*, char*, char*, int);
 void	setswapchan(Chan*);
 void	simpleputpage(Page*);
 char*	skipslash(char*);

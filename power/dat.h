@@ -213,10 +213,10 @@ struct
 struct User
 {
 	Proc	*p;
+	FPsave	fpsave;			/* address of this is known by db */
 	int	nerrlab;
 	Label	errlab[NERR];
 	char	error[ERRLEN];
-	FPsave	fpsave;			/* address of this is known by db */
 	char	elem[NAMELEN];		/* last name element from namec */
 	Chan	*slash;
 	Chan	*dot;

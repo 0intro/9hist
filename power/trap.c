@@ -566,8 +566,8 @@ setvmevec(int v, void (*f)(int))
 	vmevec[v] = f;
 }
 
-/* This routine must save the values of registers the user is not permitted to write from devproc 
- * and the restore them before returning
+/* This routine must save the values of registers the user is not permitted to write
+ * from devproc and the restore the saved values before returning
  */
 void
 setregisters(Ureg *xp, char *pureg, char *uva, int n)

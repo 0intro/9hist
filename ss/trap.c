@@ -121,6 +121,7 @@ trap(Ureg *ur)
 		default:
 			break;
 		}
+    Error:
 		if(user){
 			spllo();
 			sprint(buf, "sys: trap: pc=0x%lux %s", ur->pc, excname(tbr));
@@ -128,7 +129,6 @@ trap(Ureg *ur)
 				sprint(buf+strlen(buf), " FSR %lux", u->fpsave.fsr);
 			postnote(u->p, 1, buf, NDebug);
 		}else{
-    Error:
 			print("kernel trap: %s pc=0x%lux\n", excname(tbr), ur->pc);
 			dumpregs(ur);
 			for(;;);
@@ -136,10 +136,7 @@ trap(Ureg *ur)
 	}
     Return:
 	if(user) {
-		if(u->p->procctl)
-			procctl(u->p);
-		if(u->nnote)
-			notify(ur);
+		notify(ur);
 		if(u->p->fpstate == FPinactive) {
 			restfpregs(&u->fpsave);
 			u->p->fpstate = FPactive;
@@ -219,6 +216,10 @@ notify(Ureg *ur)
 {
 	ulong sp;
 
+	if(u->p->procctl)
+		procctl(u->p);
+	if(u->nnote == 0)
+		return;
 	lock(&u->p->debug);
 	u->p->notepending = 0;
 	if(u->nnote==0){
@@ -345,9 +346,6 @@ syscall(Ureg *aur)
 	}
 	spllo();
 
-	if(u->p->procctl)
-		procctl(u->p);
-
 	r7 = ur->r7;
 	sp = ur->usp;
 
@@ -382,7 +380,7 @@ syscall(Ureg *aur)
 	u->p->psstate = 0;
 	if(r7 == NOTED)	/* ugly hack */
 		noted(&aur, *(ulong*)(sp+1*BY2WD));	/* doesn't return */
-	if(u->nnote && r7!=FORK){
+	if(u->p->procctl || (u->nnote && r7!=FORK)){
 		ur->r7 = ret;
 		notify(ur);
 	}
@@ -393,4 +391,13 @@ void
 execpc(ulong entry)
 {
 	((Ureg*)UREGADDR)->pc = entry - 4;		/* syscall advances it */
+}
+
+/* This routine must save the values of registers the user is not permitted
+ * to write from devproc and restore them before returning
+ */
+void
+setregisters(Ureg *xp, char *pureg, char *uva, int n)
+{
+	print("setregisters: no idea\n");
 }

@@ -174,6 +174,7 @@ struct User
 	Note	lastnote;
 	int	(*notify)(void*, char*);
 	void	*ureg;
+	void	*dbgreg;		/* User registers for debugging in proc */
 };
 
 /*

@@ -306,6 +306,8 @@ procread(Chan *c, void *va, long n, ulong offset)
 			memmove(&up->note[0], &up->note[1], up->nnote*sizeof(Note));
 			n = ERRLEN;
 		}
+		if(up->nnote == 0)
+			p->notepending = 0;
 		kunmap(k);
 		poperror();
 		unlock(&p->debug);
@@ -365,6 +367,7 @@ procwrite(Chan *c, void *va, long n, ulong offset)
 	User *pxu;
 	Page *pg;
 	char *a = va, *b;
+	ulong hi;
 
 	if(c->qid.path & CHDIR)
 		error(Eisdir);
@@ -397,15 +400,23 @@ procwrite(Chan *c, void *va, long n, ulong offset)
 			k = kmap(pg);
 			b = (char*)VA(k);
 			pxu = (User*)b;
-			if(offset < (ulong)pxu->dbgreg || offset+n >= (ulong)pxu->dbgreg+sizeof(Ureg)) {
+			hi = offset+n;
+			/* Check for floating point registers */
+			if(offset >= (ulong)&u->fpsave && hi <= (ulong)&u->fpsave+sizeof(FPsave)){
+				memmove(b+(offset-USERADDR), a, n);
+				break;
+			}
+			/* Check user register set for process at kernel entry */
+			ur = pxu->dbgreg;
+			if(offset < (ulong)ur || hi > (ulong)ur+sizeof(Ureg)) {
 				kunmap(k);
 				errors("bad u-area address");
 			}
-			ur = (Ureg*)(b+((ulong)pxu->dbgreg-USERADDR));
-			setregisters(ur, (char*)pxu+(offset-USERADDR), a, n);
+			ur = (Ureg*)(b+((ulong)ur-USERADDR));
+			setregisters(ur, b+(offset-USERADDR), a, n);
 			kunmap(k);
 		}
-		else
+		else	/* Try user memory segments */
 			n = procctlmemio(p, offset, n, va, 0);
 		break;
 
