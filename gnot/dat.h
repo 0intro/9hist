@@ -137,6 +137,7 @@ struct Conf
 	int	nsrv;		/* public servers (devsrv.c) */
 	int	nbitmap;	/* bitmap structs (devbit.c) */
 	int	nbitbyte;	/* bytes of bitmap data (devbit.c) */
+	int	nfont;		/* font structs (devbit.c) */
 };
 
 struct Dev

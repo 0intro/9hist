@@ -32,7 +32,9 @@ struct
 	ulong	*words;		/* storage */
 	ulong	nwords;		/* total in arena */
 	ulong	*wfree;		/* pointer to next free word */
+	Font	*font;		/* arena; looked up linearly BUG */
 	int	lastid;		/* last allocated bitmap id */
+	int	lastfid;	/* last allocated font id */
 	int	init;		/* freshly opened; init message pending */
 	int	rid;		/* read bitmap id */
 	int	rminy;		/* read miny */
@@ -126,6 +128,7 @@ Dirtab bitdir[]={
 };
 
 #define	NBIT	(sizeof bitdir/sizeof(Dirtab))
+#define	NINFO	150
 
 void
 bitreset(void)
@@ -143,9 +146,14 @@ bitreset(void)
 	bit.map[0] = screen;	/* bitmap 0 is screen */
 	bit.free = bit.map+1;
 	bit.lastid = -1;
+	bit.lastfid = -1;
 	bit.words = ialloc(conf.nbitbyte, 0);
 	bit.nwords = conf.nbitbyte/sizeof(ulong);
 	bit.wfree = bit.words;
+	bit.font = ialloc(conf.nfont * sizeof(Font), 0);
+	bit.font[0] = *defont;
+	for(i=1; i<conf.nfont; i++)
+		bit.font[i].info = ialloc((NINFO+1)*sizeof(Fontchar), 0);
 	Cursortocursor(&arrow);
 }
 
@@ -199,6 +207,7 @@ bitopen(Chan *c, int omode)
 			error(0, Einuse);
 		}
 		bit.lastid = -1;
+		bit.lastfid = -1;
 		bit.rid = -1;
 		bit.init = 0;
 		bit.ref = 1;
@@ -235,6 +244,7 @@ bitclose(Chan *c)
 {
 	int i;
 	Bitmap *bp;
+	Font *fp;
 
 	if(c->qid!=CHDIR && (c->flag&COPEN)){
 		lock(&bit);
@@ -242,6 +252,8 @@ bitclose(Chan *c)
 			for(i=1,bp=&bit.map[1]; i<conf.nbitmap; i++,bp++)
 				if(bp->ldepth >= 0)
 					bitfree(bp);
+			for(i=1,fp=&bit.font[1]; i<conf.nfont; i++,fp++)
+				fp->bits = 0;
 		}
 		unlock(&bit);
 	}
@@ -337,6 +349,20 @@ bitread(Chan *c, void *va, long n)
 			n = 3;
 			break;
 		}
+		if(bit.lastfid > 0){
+			/*
+			 * allocate font:
+			 *	'K'		1
+			 *	font id		2
+			 */
+			if(n < 3)
+				error(0, Ebadblt);
+			p[0] = 'K';
+			PSHORT(p+1, bit.lastfid);
+			bit.lastfid = -1;
+			n = 3;
+			break;
+		}
 		if(bit.rid >= 0){
 			/*
 			 * read
@@ -395,11 +421,13 @@ bitwrite(Chan *c, void *va, long n)
 	uchar *p, *q;
 	long m, v, miny, maxy, t, x, y;
 	ulong l, nw, ws;
-	int off;
+	int off, i;
 	Point pt, pt1, pt2;
 	Rectangle rect;
 	Cursor curs;
+	Fontchar *fcp;
 	Bitmap *bp, *src, *dst;
+	Font *f;
 
 	if(c->qid == CHDIR)
 		error(0, Eisdir);
@@ -551,9 +579,26 @@ bitwrite(Chan *c, void *va, long n)
 				error(0, Ebadblt);
 			v = GSHORT(p+1);
 			dst = &bit.map[v];
-			if(v>=conf.nbitmap || dst->ldepth<0)
+			if(v<0 || v>=conf.nbitmap || dst->ldepth<0)
 				error(0, Ebadbitmap);
 			bitfree(dst);
+			m -= 3;
+			p += 3;
+			break;
+
+		case 'g':
+			/*
+			 * free font (free bitmap separately)
+			 *	'g'		1
+			 *	id		2
+			 */
+			if(m < 3)
+				error(0, Ebadblt);
+			v = GSHORT(p+1);
+			f = &bit.font[v];
+			if(v<0 || v>=conf.nfont || f->bits==0)
+				error(0, Ebadbitmap);
+			f->bits = 0;
 			m -= 3;
 			p += 3;
 			break;
@@ -567,6 +612,52 @@ bitwrite(Chan *c, void *va, long n)
 			bit.init = 1;
 			m -= 1;
 			p += 1;
+			break;
+
+		case 'k':
+			/*
+			 * allocate font
+			 *	'k'		1
+			 *	n		2
+			 *	height		1
+			 *	ascent		1
+			 *	bitmap id	2
+			 *	fontchars	6*n
+			 * next read returns allocated font id
+			 */
+			if(m < 7)
+				error(0, Ebadblt);
+			v = GSHORT(p+1);
+			if(v<0 || v>NINFO || m<7+6*(v+1))	/* BUG */
+				error(0, Ebadblt);
+			for(i=1; i<conf.nfont; i++)
+				if(bit.font[i].bits == 0)
+					goto fontfound;
+			error(0, Enofont);
+		fontfound:
+			f = &bit.font[i];
+			f->n = v;
+			f->height = p[3];
+			f->ascent = p[4];
+			v = GSHORT(p+5);
+			dst = &bit.map[v];
+			if(v<0 || v>=conf.nbitmap || dst->ldepth<0)
+				error(0, Ebadbitmap);
+			m -= 7;
+			p += 7;
+			fcp = f->info;
+			for(i=0; i<=f->n; i++,fcp++){
+				fcp->x = GSHORT(p);
+				fcp->top = p[2];
+				fcp->bottom = p[3];
+				fcp->left = p[4];
+				fcp->width = p[5];
+				fcp->top = p[2];
+				p += 6;
+				m -= 6;
+			}
+			bit.lastfid = f - bit.font;
+			f->bits = dst;
 			break;
 
 		case 'l':
@@ -584,7 +675,7 @@ bitwrite(Chan *c, void *va, long n)
 				error(0, Ebadblt);
 			v = GSHORT(p+1);
 			dst = &bit.map[v];
-			if(v>=conf.nbitmap || dst->ldepth<0)
+			if(v<0 || v>=conf.nbitmap || dst->ldepth<0)
 				error(0, Ebadbitmap);
 			off = 0;
 			if(v == 0)
@@ -616,7 +707,7 @@ bitwrite(Chan *c, void *va, long n)
 				error(0, Ebadblt);
 			v = GSHORT(p+1);
 			src = &bit.map[v];
-			if(v>=conf.nbitmap || src->ldepth<0)
+			if(v<0 || v>=conf.nbitmap || src->ldepth<0)
 				error(0, Ebadbitmap);
 			miny = GLONG(p+3);
 			maxy = GLONG(p+7);
@@ -643,7 +734,7 @@ bitwrite(Chan *c, void *va, long n)
 				error(0, Ebadblt);
 			v = GSHORT(p+1);
 			dst = &bit.map[v];
-			if(v>=conf.nbitmap || dst->ldepth<0)
+			if(v<0 || v>=conf.nbitmap || dst->ldepth<0)
 				error(0, Ebadbitmap);
 			off = 0;
 			if(v == 0)
@@ -651,7 +742,8 @@ bitwrite(Chan *c, void *va, long n)
 			pt.x = GLONG(p+3);
 			pt.y = GLONG(p+7);
 			v = GSHORT(p+11);
-			if(v != 0)	/* BUG */
+			f = &bit.font[v];
+			if(v<0 || v>=conf.nfont || f->bits==0 || f->bits->ldepth<0)
 				error(0, Ebadblt);
 			v = GSHORT(p+13);
 			p += 15;
@@ -661,7 +753,7 @@ bitwrite(Chan *c, void *va, long n)
 				error(0, Ebadblt);
 			if(off)
 				cursoroff(1);
-			string(dst, pt, defont/*BUG*/, (char*)p, v);
+			string(dst, pt, f, (char*)p, v);
 			if(off)
 				cursoron(1);
 			q++;
@@ -682,7 +774,7 @@ bitwrite(Chan *c, void *va, long n)
 				error(0, Ebadblt);
 			v = GSHORT(p+1);
 			dst = &bit.map[v];
-			if(v>=conf.nbitmap || dst->ldepth<0)
+			if(v<0 || v>=conf.nbitmap || dst->ldepth<0)
 				error(0, Ebadbitmap);
 			off = 0;
 			if(v == 0)
@@ -693,7 +785,7 @@ bitwrite(Chan *c, void *va, long n)
 			rect.max.y = GLONG(p+15);
 			v = GSHORT(p+19);
 			src = &bit.map[v];
-			if(v>=conf.nbitmap || src->ldepth<0)
+			if(v<0 || v>=conf.nbitmap || src->ldepth<0)
 				error(0, Ebadbitmap);
 			if(src->r.min.x!=0 || src->r.min.y!=0 || src->r.max.x!=16 || src->r.max.y!=16)
 				error(0, Ebadblt);
@@ -727,7 +819,7 @@ bitwrite(Chan *c, void *va, long n)
 				error(0, Ebadblt);
 			v = GSHORT(p+1);
 			dst = &bit.map[v];
-			if(v>=conf.nbitmap || dst->ldepth<0)
+			if(v<0 || v>=conf.nbitmap || dst->ldepth<0)
 				error(0, Ebadbitmap);
 			off = 0;
 			if(v == 0)

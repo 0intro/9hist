@@ -229,6 +229,8 @@ inconrestart(Incon *ip)
 	if(!canqlock(&ip->reslock))
 		return;
 
+	print("inconrestart\n");
+
 	/*
 	 *  poll for incon station numbers
 	 */

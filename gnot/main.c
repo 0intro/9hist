@@ -310,4 +310,5 @@ confinit(void)
 	conf.nsrv = 32*mul;
 	conf.nbitmap = 100*mul;
 	conf.nbitbyte = 300*1024*mul*mul;
+	conf.nfont = 10*mul;
 }

@@ -94,6 +94,7 @@ qunlock(QLock *q)
 	Proc *p;
 
 	lock(&q->queue);
+	u->p->qlock = 0;
 	if(q->head){
 		p = q->head;
 		q->head = p->qnext;
