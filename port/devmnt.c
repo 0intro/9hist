@@ -67,6 +67,7 @@ void	mntdirfix(uchar*, Chan*);
 void	mntgate(Mnt*);
 void	mntrpcread(Mnt*, Mntrpc*);
 void	mntdoclunk(Mnt *, Mntrpc *);
+void	mntauth(Mnt *, Mntrpc *, char *, ushort);
 
 enum
 {
@@ -123,6 +124,8 @@ Chan*
 mntattach(char *muxattach)
 {
 	Mnt *m, *e;
+	Stream *s;
+	Qinfo *qi;
 	struct bogus{
 		Chan	*chan;
 		char	*spec;
@@ -159,9 +162,23 @@ mntattach(char *muxattach)
 	m->c->flag |= CMSG;
 	m->blocksize = MAXFDATA;
 
+	/* If we have a stream based protocol (TCP/IP) we push fcall to block
+	 * up P9 protocol messages into single deliminted blocks
+	 */
+	s = m->c->stream;
+	qi = qinfofind("fcall");
+	if(s)
+	if(s->procq->next)
+	if(s->procq->next->info->nodelim) {
+		if(qi == 0)
+			error(Ebadctl);
+		pushq(s, qi);
+	}
+
 	switch(devchar[m->c->type]) {
 	default:
 		m->mux = 0;
+		break;
 	case 'H':			/* Cyclone */
 		m->mux = 1;
 		break;
@@ -177,8 +194,6 @@ mattach(Mnt *m, char *spec, char *serv)
 {
 	Chan *c;
 	Mntrpc *r;
-	char chal[8];
-	int i;
 
 	r = mntralloc();
 	c = devattach('M', spec);
@@ -193,31 +208,10 @@ mattach(Mnt *m, char *spec, char *serv)
 		nexterror();
 	}
 
-	if(*serv){
-		r->request.type = Tauth;
-		r->request.fid = c->fid;
-		memmove(r->request.uname, u->p->user, NAMELEN);
-		chal[0] = 1;
-		for(i = 1; i < sizeof chal; i++)
-			chal[i++] = nrand(256);
-		memmove(r->request.chal, chal, 8);
-		strncpy(r->request.chal+8, serv, NAMELEN);
-		encrypt(u->p->pgrp->crypt->key, r->request.chal, 8+NAMELEN);
-		if(waserror())
-			memset(r->request.auth, 0, sizeof r->request.auth);
-		else{
-			mountrpc(m, r);
-			poperror();
-			decrypt(u->p->pgrp->crypt->key, r->reply.chal, 2*8+2*DESKEYLEN);
-			chal[0] = 4;
-			if(memcmp(chal, r->reply.chal, 8) != 0)
-				error(Eperm);
-			memmove(r->request.auth, r->reply.chal+8+DESKEYLEN, 8+DESKEYLEN);
-		}
-		r->done = 0;
-		r->flushed = 0;
-	}else
-		memset(r->request.auth, 0, sizeof r->request.auth);
+	memset(r->request.auth, 0, sizeof r->request.auth);
+	if(*serv)
+		mntauth(m, r, serv, c->fid);
+
 
 	r->request.type = Tattach;
 	r->request.fid = c->fid;
@@ -231,6 +225,42 @@ mattach(Mnt *m, char *spec, char *serv)
 	poperror();
 	mntfree(r);
 	return c;
+}
+
+void
+mntauth(Mnt *m, Mntrpc *f, char *serv, ushort fid)
+{
+	Mntrpc *r;
+	uchar chal[CHLEN];
+	int i;
+
+	r = mntralloc();
+	if(waserror()) {
+		mntfree(r);
+		return;
+	}
+
+	r->request.type = Tauth;
+	r->request.fid = fid;
+	memmove(r->request.uname, u->p->user, NAMELEN);
+	chal[0] = FScchal;
+	for(i = 1; i < CHLEN; i++)
+		chal[i++] = nrand(256);
+
+	memmove(r->request.chal, chal, CHLEN);
+	strncpy(r->request.chal+CHLEN, serv, NAMELEN);
+	encrypt(u->p->pgrp->crypt->key, r->request.chal, CHLEN+NAMELEN);
+
+	mountrpc(m, r);
+	decrypt(u->p->pgrp->crypt->key, r->reply.chal, 2*CHLEN+2*DESKEYLEN);
+	chal[0] = FSctick;
+	poperror();
+	if(memcmp(chal, r->reply.chal, CHLEN) != 0) {
+		mntfree(r);
+		error(Eperm);
+	}
+	memmove(f->request.auth, r->reply.chal+CHLEN+DESKEYLEN, CHLEN+DESKEYLEN);
+	mntfree(r);
 }
 
 Chan*
@@ -790,8 +820,8 @@ mntdump(void)
 	for(m = mntalloc.mntarena; m < me; m++) {
 		if(m->ref == 0)
 			continue;
-		print("mount %d: mux %d queue %lux rip 0x%lux %d %s\n", m->id, m->mux, m->queue,
-			m->rip,
+		print("mount %d: mux %d queue %lux rip 0x%lux %d %s\n", 
+			m->id, m->mux, m->queue, m->rip,
 			m->rip ? m->rip->pid : 0, m->rip ? m->rip->text : "no");
 	}
 	print("rpcfree 0x%lux\n", mntalloc.rpcfree);

@@ -29,17 +29,18 @@ dead:
 	BRA	dead
 
 /*
- * Take first processor into user mode.  Leave enough room on the stack
+ * Take first processor into user mode.  Leave enough room on the kernel stack
  * for a full-sized Ureg (including long bus error format) to fit
+ * 	- argument is stack pointer to user
  */
 
-TEXT	touser(SB), $-4
+TEXT	touser(SB), $0
 
+	MOVL	usp+0(FP), A0
 	MOVL	$(USERADDR+BY2PG-UREGVARSZ), A7
 	MOVW	$0, -(A7)
 	MOVL	$(UTZERO+32), -(A7)	/* header is in text */
 	MOVW	$0, -(A7)
-	MOVL	$(USTKTOP-6*BY2WD), A0	/* MAXSYSARG=6 */
 	MOVL	A0, USP
 	MOVW	$(SUPER|SPL(0)), SR
 	MOVL	$8, R0

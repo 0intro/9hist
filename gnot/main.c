@@ -11,7 +11,6 @@
 #include	<gnot.h>
 
 typedef struct Boot Boot;
-
 struct Boot
 {
 	long station;
@@ -23,11 +22,11 @@ struct Boot
 };
 #define BOOT ((Boot*)0)
 
-char bootuser[NAMELEN];
-char bootline[64];
-char bootserver[64];
-char bootdevice[2];
-int bank[2];
+char	bootuser[NAMELEN];
+char	bootline[64];
+char	bootserver[72];
+int	bank[2];
+uchar	*sp;
 
 void unloadboot(void);
 
@@ -66,10 +65,25 @@ main(void)
 void
 unloadboot(void)
 {
+	char s[64];
+
 	strncpy(bootuser, BOOT->user, NAMELEN);
 	memmove(bootline, BOOT->line, 64);
-	memmove(bootserver, BOOT->server, 64);
-	bootdevice[0] = BOOT->device;
+	memmove(s, BOOT->server, 64);
+	switch(BOOT->device){
+	case 'a':
+		sprint(bootserver, "19200!%s", s);
+		break;
+	case 'A':
+		sprint(bootserver, "9600!%s", s);
+		break;
+	case 'i':
+		sprint(bootserver, "incon!%s", s);
+		break;
+	default:
+		sprint(bootserver, "scsi!%s", s);
+		break;
+	}
 }
 
 void
@@ -124,14 +138,10 @@ init0(void)
 	if(!waserror()){
 		ksetterm("at&t %s");
 		ksetenv("cputype", "68020");
-		ksetenv("bootuser", bootuser);
-		ksetenv("bootline", bootline);
-		ksetenv("bootserver", bootserver);
-		ksetenv("bootdevice", bootdevice);
 		poperror();
 	}
 
-	touser();
+	touser(sp);
 }
 
 FPsave	initfp;
@@ -143,6 +153,7 @@ userinit(void)
 	Segment *s;
 	User *up;
 	KMap *k;
+	Page *pg;
 
 	p = newproc();
 	p->pgrp = newpgrp();
@@ -171,10 +182,15 @@ userinit(void)
 	kunmap(k);
 
 	/*
-	 * User Stack
+	 * User Stack, copy in boot arguments
 	 */
 	s = newseg(SG_STACK, USTKTOP-BY2PG, 1);
 	p->seg[SSEG] = s;
+	pg = newpage(1, 0, USTKTOP-BY2PG);
+	segpage(s, pg);
+	k = kmap(pg);
+	bootargs(VA(k));
+	kunmap(k);
 
 	/*
 	 * Text
@@ -187,6 +203,52 @@ userinit(void)
 	kunmap(k);
 
 	ready(p);
+}
+
+uchar *
+pusharg(char *p)
+{
+	int n;
+
+	n = strlen(p)+1;
+	sp -= n;
+	memmove(sp, p, n);
+	return sp;
+}
+
+void
+bootargs(ulong base)
+{
+ 	int i, ac;
+	uchar *av[32];
+	char *p, *pp;
+	uchar **lsp;
+
+	sp = (uchar*)base + BY2PG - MAXSYSARG*BY2WD;
+
+	ac = 0;
+	for(p = bootline; p && *p; p = pp){
+		pp = strchr(p, ' ');
+		if(pp)
+			*pp++ = 0;
+		av[ac++] = pusharg(p);
+	}
+	if(bootuser[0]){
+		av[ac++] = pusharg("-u");
+		av[ac++] = pusharg(bootuser);
+	}
+	av[ac++] = pusharg(bootserver);
+
+	/* 4 byte word align stack */
+	sp = (uchar*)((ulong)sp & ~3);
+
+	/* build argc, argv on stack */
+	sp -= (ac+1)*sizeof(sp);
+	lsp = (uchar**)sp;
+	for(i = 0; i < ac; i++)
+		*lsp++ = av[i] + ((USTKTOP - BY2PG) - base);
+	*lsp = 0;
+	sp += (USTKTOP - BY2PG) - base - sizeof(sp);
 }
 
 void

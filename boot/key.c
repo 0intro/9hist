@@ -3,11 +3,12 @@
 #include <../boot/boot.h>
 
 void
-key(Method *mp)
+key(int islocal, Method *mp)
 {
 	char password[20], key[7];
 	int prompt, fd;
 
+	USED(islocal);
 	USED(mp);
 
 	prompt = kflag;
@@ -18,16 +19,13 @@ key(Method *mp)
 	}
 	if(prompt){
 		do
-			if(getpasswd(password, sizeof password) < 0){
-				warning("can't read cons");
-				return;
-			}
+			getpasswd(password, sizeof password);
 		while(!passtokey(key, password, strlen(password)));
 	}else if(seek(fd, 1024+900, 0) < 0 || read(fd, key, 7) != 7){
 		close(fd);
 		warning("can't read key from nvram");
 	}
-	if(kflag && seek(fd, 1024+900, 0) < 0 || write(fd, key, 7) != 7){
+	if(kflag && (seek(fd, 1024+900, 0) < 0 || write(fd, key, 7) != 7)){
 		close(fd);
 		warning("can't write key to nvram");
 	}

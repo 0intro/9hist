@@ -156,8 +156,8 @@ struct Chan
 	Mount	*mnt;			/* mount point that derived Chan */
 	ulong	mountid;
 	int	fid;			/* for devmnt */
+	Stream	*stream;		/* for stream channels */
 	union {
-		Stream	*stream;	/* for stream channels */
 		void	*aux;
 		Qid	pgrpid;		/* for #p/notepg */
 		int	mntindex;	/* for devmnt */
@@ -579,6 +579,7 @@ struct Qinfo
 	void (*close)(Queue*);
 	char *name;
 	void (*reset)(void);		/* initialization */
+	char nodelim;			/* True if stream does not preserve delimiters */
 	Qinfo *next;
 };
 
@@ -590,7 +591,8 @@ struct Qinfo
 #define QHIWAT	0x4			/* queue has gone past the high water mark */	
 #define QDEBUG	0x8
 
-struct Queue {
+struct Queue
+{
 	Blist;
 	int	flag;
 	Qinfo	*info;			/* line discipline definition */
@@ -603,7 +605,8 @@ struct Queue {
 	void	*ptr;			/* private info for the queue */
 };
 
-struct Stream {
+struct Stream
+{
 	QLock;				/* structure lock */
 	short	inuse;			/* number of processes in stream */
 	short	opens;			/* number of processes with stream open */
@@ -623,7 +626,6 @@ struct Stream {
  */
 #define	RD(q)		((q)->other < (q) ? (q->other) : q)
 #define	WR(q)		((q)->other > (q) ? (q->other) : q)
-#define GLOBAL(a)	(((ulong)(a)) & 0x80000000)
 #define STREAMTYPE(x)	((x)&0x1f)
 #define STREAMID(x)	(((x)&~CHDIR)>>5)
 #define STREAMQID(i,t)	(((i)<<5)|(t))
@@ -684,7 +686,7 @@ extern	FPsave	initfp;
 extern	Conf	conf;
 extern	ulong	initcode[];
 extern	Dev	devtab[];
-extern	char	devchar[];
+extern	char	*devchar;
 extern	char	*conffile;
 extern	char	*statename[];
 extern	Palloc 	palloc;
@@ -696,3 +698,15 @@ extern	int	nrdy;
 #define	CHDIR		0x80000000L
 #define	CHAPPEND 	0x40000000L
 #define	CHEXCL		0x20000000L
+
+/*
+ * auth messages
+ */
+#define CHLEN		8
+enum{
+	FScchal	= 1,
+	FSctick,
+
+	RXschal	= 0,
+	RXstick	= 1,
+};

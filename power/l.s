@@ -63,7 +63,7 @@ clrbss:
 
 TEXT	touser(SB), $-4
 
-	MOVW	R1, SP
+	MOVW	R1, SP			/* user stack pointer */
 	MOVW	M(STATUS), R1
 	OR	$(KUP|IEP), R1
 	MOVW	R1, M(STATUS)

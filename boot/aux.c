@@ -107,6 +107,7 @@ srvcreate(char *name, int fd)
 {
 	char *srvname;
 	int f;
+	char buf[2*NAMELEN];
 
 	srvname = strrchr(name, '/');
 	if(srvname)

@@ -7,6 +7,7 @@
 #define	P_write(sel, addr, val, type)	P_oper(sel, *(type *)(PORT+addr) = val)
 
 void	addportintr(int (*)(void));
+void	bootargs(ulong);
 void	clearmmucache(void);
 void	duartclock(void);
 void	duartinit(void);
@@ -58,7 +59,7 @@ int	spl1(void);
 void	spldone(void);
 int	splduart(void);
 int	tas(char*);
-void	touser(void);
+void	touser(void*);
 #define	waserror()	(u->nerrlab++, setlabel(&u->errlab[u->nerrlab-1]))
 #define	kmapperm(x)	kmap(x)
 #define getcallerpc(x)	(*(ulong*)(x))

@@ -396,7 +396,7 @@ key(void)
 		close(fd);
 		prerror("can't read key from nvram");
 	}
-	if(setkey && seek(fd, 1024+900, 0) < 0 || write(fd, key, 7) != 7){
+	if(setkey && (seek(fd, 1024+900, 0) < 0 || write(fd, key, 7) != 7)){
 		close(fd);
 		prerror("can't write key to nvram");
 	}

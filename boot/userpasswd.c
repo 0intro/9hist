@@ -4,36 +4,11 @@
 
 char	password[NAMELEN];
 
-static int
-passtokey(char *key, char *p, int n)
-{
-	uchar t[10];
-	int c;
-
-	memset(t, ' ', sizeof t);
-	if(n < 5)
-		return 0;
-	if(n > 10)
-		n = 10;
-	strncpy((char*)t, p, n);
-	if(n >= 9){
-		c = p[8] & 0xf;
-		if(n == 10)
-			c += p[9] << 4;
-		for(n = 0; n < 8; n++)
-			if(c & (1 << n))
-				t[n] -= ' ';
-	}
-	for(n = 0; n < 7; n++)
-		key[n] = (t[n] >> n) + (t[n+1] << (8 - (n+1)));
-	return 1;
-}
-
 /*
  *  get/set user name and password.  verify password with auth server.
  */
 void
-userpasswd(Method *mp)
+userpasswd(int islocal, Method *mp)
 {
 	char key[7];
 	char buf[8 + NAMELEN];
@@ -44,7 +19,7 @@ userpasswd(Method *mp)
 		outin("user", username, sizeof(username));
 	}
 	crfd = fd = -1;
-	while(strcmp(username, "none") != 0 && strcmp(mp->name, "local") != 0){
+	while(strcmp(username, "none") != 0 && !islocal){
 		getpasswd(password, sizeof password);
 		if(!passtokey(key, password, strlen(password))){
 			print("bad password; try again\n");

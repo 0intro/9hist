@@ -11,8 +11,8 @@
 
 enum
 {
-	Nrprotocol	= 3,		/* Number of protocols supported by this driver */
-	Nipsubdir	= 4,		/* Number of subdirectory entries per connection */
+	Nrprotocol	= 3,	/* Number of protocols supported by this driver */
+	Nipsubdir	= 4,	/* Number of subdirectory entries per connection */
 };
 
 int 	udpsum = 1;
@@ -38,7 +38,7 @@ void	iloput(Queue *, Block *);
 void	ilopen(Queue *, Stream *);
 void	ilclose(Queue *);
 
-Qinfo tcpinfo = { tcpstiput, tcpstoput, tcpstopen, tcpstclose, "tcp" };
+Qinfo tcpinfo = { tcpstiput, tcpstoput, tcpstopen, tcpstclose, "tcp", 0, 1 };
 Qinfo udpinfo = { udpstiput, udpstoput, udpstopen, udpstclose, "udp" };
 Qinfo ilinfo  = { iliput,    iloput,    ilopen,    ilclose,    "il"  };
 
@@ -164,12 +164,10 @@ ipincoming(Ipconv *base, Ipconv *from)
 				qunlock(new);
 				continue;
 			}
-			if(from)
-				/* copy ownership from listening channel */
+			if(from)	/* copy ownership from listening channel */
 				netown(new->net, new->index,
 				       new->net->prot[from->index].owner, 0);
-			else
-				/* current user becomes owner */
+			else		/* current user becomes owner */
 				netown(new->net, new->index, u->p->user, 0);
 
 			new->ref = 1;

@@ -195,7 +195,6 @@ pageinit(void)
 	ulong i, vmem, pmem, hw, hr;
 	Page *p;
 
-print("addr0 %lux addr1 %lux\n", palloc.addr0, palloc.addr1);
 	/*
 	 *  calculate an upper bound to the number of pages structures
 	 *  we'll need (np).

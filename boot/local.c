@@ -30,7 +30,7 @@ connectlocal(void)
 
 	if(stat("/kfs", d) < 0)
 		return -1;
-	sprint(partition, "%sfs", mp->arg ? mp->arg : bootdisk);
+	sprint(partition, "%sfs", disk ? disk : bootdisk);
 	if(stat(partition, d) < 0)
 		return -1;
 

@@ -708,17 +708,17 @@ nullput(Queue *q, Block *bp)
 /*
  *  find the info structure for line discipline 'name'
  */
-static Qinfo *
+Qinfo *
 qinfofind(char *name)
 {
 	Qinfo *qi;
 
 	if(name == 0)
-		error(Ebadld);
+		return 0;
 	for(qi = lds; qi; qi = qi->next)
 		if(strcmp(qi->name, name)==0)
 			return qi;
-	error(Ebadld);
+	return 0;
 }
 
 /*
@@ -1260,6 +1260,8 @@ streamctlwrite(Chan *c, void *a, long n)
 		freeb(bp);
 	} else if(streamparse("push", bp)){
 		qi = qinfofind((char *)bp->rptr);
+		if(qi == 0)
+			error(Ebadld);
 		pushq(s, qi);
 		freeb(bp);
 	} else if(streamparse("pop", bp)){
@@ -1413,6 +1415,46 @@ streamstat(Chan *c, char *db, char *name)
 
 	devdir(c, c->qid, name, n, eve, 0, &dir);
 	convD2M(&dir, db);
+}
+
+Block *
+copyb(Block *bp, int count)
+{
+	Block *nb, *head, **p;
+	int l;
+
+	p = &head;
+	while(count) {
+		l = BLEN(bp);
+		if(count < l)
+			l = count;
+		nb = allocb(l);
+		if(nb == 0)
+			panic("copyb.1");
+		memmove(nb->wptr, bp->rptr, l);
+		nb->wptr += l;
+		count -= l;
+		if(bp->flags & S_DELIM)
+			nb->flags |= S_DELIM;
+		*p = nb;
+		p = &nb->next;
+		bp = bp->next;
+		if(bp == 0)
+			break;
+	}
+	if(count) {
+		nb = allocb(count);
+		if(nb == 0)
+			panic("copyb.2");
+		memset(nb->wptr, 0, count);
+		nb->wptr += count;
+		nb->flags |= S_DELIM;
+		*p = nb;
+	}
+	if(blen(head) == 0)
+		print("copyb: zero length\n");
+
+	return head;
 }
 
 /*

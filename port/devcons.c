@@ -379,7 +379,7 @@ int
 readnum(ulong off, char *buf, ulong n, ulong val, int size)
 {
 	char tmp[64];
-	Op op = { tmp, tmp+sizeof(tmp), &val, size-1, 0, FUNSIGN|FLONG };
+	Op op = (Op){ tmp, tmp+sizeof(tmp), &val, size-1, 0, FUNSIGN|FLONG };
 
 	numbconv(&op, 10);
 	tmp[size-1] = ' ';
@@ -597,12 +597,12 @@ consread(Chan *c, void *buf, long n, ulong offset)
 		if(offset != 0 || n != 8)
 			error(Ebadarg);
 		chal = u->p->pgrp->crypt->chal;
-		chal[0] = 0;
+		chal[0] = RXschal;
 		for(i=1; i<8; i++)
 			chal[i] = nrand(256);
 		memmove(buf, chal, 8);
 		encrypt(evekey, buf, 8);
-		chal[0] = 1;
+		chal[0] = RXstick;
 		return n;
 
 	case Quser:

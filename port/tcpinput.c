@@ -748,46 +748,6 @@ dupb(Block **hp, Block *bp, int offset, int count)
 	return bytes;
 }
 
-Block *
-copyb(Block *bp, int count)
-{
-	Block *nb, *head, **p;
-	int l;
-
-	p = &head;
-	while(count) {
-		l = BLEN(bp);
-		if(count < l)
-			l = count;
-		nb = allocb(l);
-		if(nb == 0)
-			panic("copyb.1");
-		memmove(nb->wptr, bp->rptr, l);
-		nb->wptr += l;
-		count -= l;
-		if(bp->flags & S_DELIM)
-			nb->flags |= S_DELIM;
-		*p = nb;
-		p = &nb->next;
-		bp = bp->next;
-		if(bp == 0)
-			break;
-	}
-	if(count) {
-		nb = allocb(count);
-		if(nb == 0)
-			panic("copyb.2");
-		memset(nb->wptr, 0, count);
-		nb->wptr += count;
-		nb->flags |= S_DELIM;
-		*p = nb;
-	}
-	if(blen(head) == 0)
-		print("copyb: zero length\n");
-
-	return head;
-}
-
 ushort tcp_mss = DEF_MSS;	/* Maximum segment size to be sent with SYN */
 int tcp_irtt = DEF_RTT;		/* Initial guess at round trip time */
 
