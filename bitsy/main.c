@@ -24,6 +24,8 @@ main(void)
 	iprint("after xinit\n");
 	mmuinit();
 	iprint("after mmuinit\n");
+	trapinit();
+	iprint("after trapinit\n");
 	delay(100000);
 	exit(1);
 }
@@ -39,6 +41,7 @@ exit(int ispanic)
 	USED(ispanic);
 	delay(1000);
 
+	mmudisable();
 	f = nil;
 	(*f)();
 }

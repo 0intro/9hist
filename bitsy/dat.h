@@ -167,10 +167,10 @@ struct
 }active;
 
 /*
- * Each processor sees its own Mach structure at address MACHADDR.
- * However, the Mach structures must also be available via the per-processor
- * MMU information array machp, mainly for disambiguation and access to
- * the clock which is only maintained by the bootstrap processor (0).
+ *  Each processor sees its own Mach structure at address MACHADDR.
+ *  However, the Mach structures must also be available via the per-processor
+ *  MMU information array machp, mainly for disambiguation and access to
+ *  the clock which is only maintained by the bootstrap processor (0).
  */
 Mach* machp[MAXMACH];
 	
@@ -183,3 +183,4 @@ enum
 {
 	OneMeg=	1024*1024,
 };
+

@@ -62,6 +62,7 @@ void
 mmuinit(void)
 {
 	ulong a, e;
+	ulong *t;
 
 	/* get a prototype level 1 page */
 	l1table = xspanalloc(BY2PG, 16*1024, 0);
@@ -70,33 +71,39 @@ mmuinit(void)
 	/* direct map DRAM */
 	e = conf.base1 + BY2PG*conf.npage1;
 	for(a = PHYSDRAM0; a < e; a += OneMeg)
-		l1table[a>>20] = L1Section | L1KernelRW |
-				L1Cached | L1Buffered | (a&L1SectBaseMask);
-
-	/* direct map devs */
-	for(a = REGZERO; a < REGTOP; a += OneMeg)
-		l1table[a>>20] = L1Section | L1KernelRW | (a&L1SectBaseMask);
+		l1table[a>>20] = L1Section | L1KernelRW | (a&L1SectBaseMask) |
+				L1Cached | L1Buffered;
 
 	/* direct map zeros area */
 	for(a = PHYSNULL0; a < PHYSNULL0 + 128 * OneMeg; a += OneMeg)
-		l1table[a>>20] = L1Section | L1KernelRW |
-				L1Cached | L1Buffered | (a&L1SectBaseMask);
+		l1table[a>>20] = L1Section | L1KernelRW | (a&L1SectBaseMask);
 
 	/* direct map flash */
 	for(a = PHYSFLASH0; a < PHYSFLASH0 + 128 * OneMeg; a += OneMeg)
-		l1table[a>>20] = L1Section | L1KernelRW |
-				L1Cached | L1Buffered | (a&L1SectBaseMask);
+		l1table[a>>20] = L1Section | L1KernelRW | (a&L1SectBaseMask) |
+				L1Cached | L1Buffered;
 
-	/* map the uart so that we can continue using iprint */
-//	uart3regs = mapspecial(UART3REGS, 64);
+	/* map first page of DRAM also into 0xFFFF0000 for the interrupt vectors */
+	t = xspanalloc(BY2PG, 16*1024, 0);
+	memset(t, 0, BY2PG);
+	l1table[0xFFFF0000>>20] = L1PageTable | L1Domain0 | (((ulong)t) & L1PTBaseMask);
+	t[0xF0000>>PGSHIFT] = L2SmallPage | L2KernelRW | PHYSDRAM0;
 
 	/* set up the domain register to cause all domains to obey pte access bits */
 	iprint("setting up domain access\n");
-	putdac(0x55555555);
+	putdac(0xFFFFFFFF);
 
 	/* point to map */
 	iprint("setting tlb map %lux\n", (ulong)l1table);
 	putttb((ulong)l1table);
+
+	/* map the uart so that we can continue using iprint */
+	uart3regs = (Uartregs*)mapspecial(UART3REGS, 64);
+
+	/* enable mmu, and make 0xFFFF0000 the virtual address of the exception vecs */
+	mmuenable();
+
+	iprint("uart3regs now at %lux\n", uart3regs);
 }
 
 /*
@@ -121,26 +128,35 @@ mapspecial(ulong pa, int len)
 	}
 	off = pa - base;
 
-	for(va = REGZERO; va < REGTOP && base >= end; va += OneMeg){
-		if((l1table[va>>20] & L1TypeMask) != L1PageTable){
-
+	for(va = REGZERO; va < REGTOP && base <= end; va += OneMeg){
+		switch(l1table[va>>20] & L1TypeMask){
+		default:
 			/* found unused entry on level 1 table */
 			if(livelarge){
 				if(rv == nil)
-					rv = (ulong*)(va+i*BY2PG+off);
+					rv = (ulong*)(va+off);
 				l1table[va>>20] = L1Section | L1KernelRW |
-							(base&L1SectBaseMask);
+							(base & L1SectBaseMask);
 				base += OneMeg;
 				continue;
-			}
+			} else {
 
-			/* create a page table and keep going */
-			t = xspanalloc(BY2PG, 1024, 0);
-			memset(t, 0, BY2PG);
-			l1table[va>>20] = L1PageTable | L1Domain0 |
-						(((ulong)t) & L1PTBaseMask);
+				/* create an L2 page table and keep going */
+				t = xspanalloc(BY2PG, 1024, 0);
+				memset(t, 0, BY2PG);
+				l1table[va>>20] = L1PageTable | L1Domain0 |
+							(((ulong)t) & L1PTBaseMask);
+			}
+			break;
+		case L1Section:
+			continue;
+		case L1PageTable:
+			if(livelarge)
+				continue;
+			break;
 		}
 
+		/* here if we're using page maps instead of sections */
 		t = (ulong*)(l1table[va>>20] & L1PTBaseMask);
 		for(i = 0; i < OneMeg; i += BY2PG){
 			entry = t[i>>PGSHIFT];
@@ -148,7 +164,7 @@ mapspecial(ulong pa, int len)
 			/* found unused entry on level 2 table */
 			if((entry & L2TypeMask) != L2SmallPage){
 				if(rv == nil)
-					rv = (ulong*)(va+i*BY2PG+off);
+					rv = (ulong*)(va+i+off);
 				t[i>>PGSHIFT] = L2SmallPage | L2KernelRW | 
 						(base & L2PageBaseMask);
 				base += BY2PG;

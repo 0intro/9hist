@@ -53,6 +53,7 @@
 #define	TSTKTOP		(USTKTOP-USTKSIZE)	/* end of new stack in sysexec */
 #define TSTKSIZ 	100
 #define MACHADDR	(KZERO+0x00001000)
+#define	EVECTORS	0xFFFF0000		/* base of exception vectors (also mapped to KZERO) */
 
 #define KSTACK		(16*1024)		/* Size of kernel stack */
 
@@ -134,7 +135,7 @@
 /*
  *  CpControl
  */
-#define CpCmmu		0x00000001	/* M: MMU enable */
+#define CpCmmuena	0x00000001	/* M: MMU enable */
 #define CpCalign	0x00000002	/* A: alignment fault enable */
 #define CpCdcache	0x00000004	/* C: data cache on */
 #define CpCwb		0x00000008	/* W: write buffer turned on */

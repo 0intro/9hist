@@ -65,13 +65,13 @@ TEXT flushcache(SB), $-4
 	RET
 
 /* drain write buffer */
-TEXT drainwb(SB), $-4
+TEXT wbflush(SB), $-4
 	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0x0), 4
 	RET
 
 /* return cpu id */
 TEXT getcpuid(SB), $-4
-	MRC	CpMMU, 0, R0, C(CpControl), C(0x0)
+	MRC	CpMMU, 0, R0, C(CpCPUID), C(0x0)
 	RET
 
 /* return fault status */
@@ -87,14 +87,32 @@ TEXT getfar(SB), $-4
 /* set the translation table base */
 TEXT putttb(SB), $-4
 	MCR	CpMMU, 0, R0, C(CpTTB), C(0x0)
+	RET
+
+/*
+ *  enable mmu, i and d caches, and exception vectors at 0xffff0000
+ */
+TEXT mmuenable(SB), $-4
+	MRC	CpMMU, 0, R0, C(CpControl), C(0x0)
+	ORR	$(CpCmmuena|CpCdcache|CpCicache|CpCvivec), R0
+	MCR     CpMMU, 0, R0, C(CpControl), C(0x0)
+	RET
+
+TEXT mmudisable(SB), $-4
+	MRC	CpMMU, 0, R0, C(CpControl), C(0x0)
+	BIC	$(CpCmmuena|CpCdcache|CpCicache|CpCvivec), R0
+	MCR     CpMMU, 0, R0, C(CpControl), C(0x0)
+	RET
 
 /* set the translation table base */
 TEXT putdac(SB), $-4
 	MCR	CpMMU, 0, R0, C(CpDAC), C(0x0)
+	RET
 
-/* set the translation table base */
+/* set address translation pid */
 TEXT putpid(SB), $-4
 	MCR	CpMMU, 0, R0, C(CpPID), C(0x0)
+	RET
 
 /*
  *  set the stack value for the mode passed in R0
@@ -116,7 +134,7 @@ TEXT setr13(SB), $-4
 /*
  *  exception vectors, copied by trapinit() to somewhere useful
  */
-TEXT vectors(SB), $-4
+TEXT exceptionvectors(SB), $-4
 	MOVW	0x18(R15), R15		/* reset */
 	MOVW	0x18(R15), R15		/* undefined */
 	MOVW	0x18(R15), R15		/* SWI */
@@ -206,7 +224,7 @@ _vexcep:
 	MOVW	$setR12(SB), R12	/* Make sure we've got the kernel's SB loaded */
 	MOVW	R13, R0			/* first arg is pointer to ureg */
 	SUB	$8, R13			/* space for argument+link */
-	BL	exception(SB)
+	BL	trap(SB)
 
 _vrfe: 
 	ADD	$(8+4*15), R13		/* make r13 point to ureg->type */

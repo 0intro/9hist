@@ -19,8 +19,29 @@ evenaddr(ulong addr)
 	}
 }
 
+/*
+ *  set up for exceptioons
+ */
 void
-exception(void)
+trapinit(void)
+{
+	/*
+	 *  exceptionvectors points to a prototype in l.s of the
+	 *  exception vectors that save the regs and then call
+	 *  trap().  The actual vectorrs are double mapped
+	 *  to 0xffff0000 and to KZERO.  We write them via
+	 *  KZERO since a data access to them will cause an
+	 *  exception.
+	 */
+	memmove((void*)KZERO, exceptionvectors, 2*4*8);
+	wbflush();
+}
+
+/*
+ *  here on all exceptions with registers saved
+ */
+void
+trap(Ureg *ureg)
 {
 }
 
