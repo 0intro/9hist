@@ -21,7 +21,7 @@ enum
 	Load0=	0x30,		/* load counter 0 with 2 bytes */
 
 	/* modes */
-	Square=	0x36,		/* perioic square wave */
+	Square=	0x36,		/* periodic square wave */
 	Trigger= 0x30,		/* interrupt on terminal count */
 
 	Freq=	1193182,	/* Real clock frequency */
