@@ -53,6 +53,7 @@ int	rpcattn(Mntrpc*);
 void	mclose(Mnt*, Chan*);
 void	mntrecover(Mnt*, Mntrpc*);
 Chan*	mntchan(void);
+int	mntrpclen(char*, int);
 
 enum
 {
@@ -680,7 +681,7 @@ mntrpcread(Mnt *m, Mntrpc *r)
 		}
 		r->reply.type = 0;
 		r->reply.tag = 0;
-		n = (*devtab[m->c->type].read)(m->c, r->rpc, MAXRPC, 0);
+		n = devtab[m->c->type].read(m->c, r->rpc, MAXRPC, 0);
 		poperror();
 		if(n == 0)
 			continue;
@@ -1012,4 +1013,85 @@ mntrepl(char *buf)
 		wakeup(&r->r);
 
 	unlock(m);
+}
+
+static uchar
+msglen[256] =
+{
+	[Tnop]		3,
+	[Rnop]		3,
+	[Tsession]	3+CHALLEN,
+	[Rsession]	3+NAMELEN+DOMLEN+CHALLEN,
+	[Terror]	0,
+	[Rerror]	67,
+	[Tflush]	5,
+	[Rflush]	3,
+	[Tattach]	5+2*NAMELEN+TICKETLEN+AUTHENTLEN,
+	[Rattach]	13+AUTHENTLEN,
+	[Tclone]	7,
+	[Rclone]	5,
+	[Twalk]		33,
+	[Rwalk]		13,
+	[Topen]		6,
+	[Ropen]		13,
+	[Tcreate]	38,
+	[Rcreate]	13,
+	[Tread]		15,
+	[Rread]		8,
+	[Twrite]	16,
+	[Rwrite]	7,
+	[Tclunk]	5,
+	[Rclunk]	5,
+	[Tremove]	5,
+	[Rremove]	5,
+	[Tstat]		5,
+	[Rstat]		121,
+	[Twstat]	121,
+	[Rwstat]	5,
+	[Tclwalk]	35,
+	[Rclwalk]	13,
+};
+
+enum
+{
+	Twritehdr	= 16,	/* Min bytes for Twrite */
+	Rreadhdr	= 8,	/* Min bytes for Rread */
+	Twritecnt	= 13,	/* Offset in byte stream of write count */
+	Rreadcnt	= 5,	/* Offset for Readcnt */
+};
+
+int
+mntrpclen(char *d, int n)
+{
+	char t;
+	int len, off;
+
+	if(n < 1)
+		return 0;
+
+	t = d[0];
+	switch(t) {			/* This is the type */
+	default:
+		len = msglen[t];
+		if(len == 0)		/* Illegal type so consume */
+			return n;
+		if(n < len)
+			return 0;
+		return len;
+	case Twrite:			/* Fmt: TGGFFOOOOOOOOCC */
+		len = Twritehdr;	/* T = type, G = tag, F = fid */
+		off = Twritecnt;	/* O = offset, C = count */
+		break;
+	case Rread:			/* Fmt: TGGFFCC */
+		len = Rreadhdr;
+		off = Rreadcnt;
+		break;
+	}
+	if(n < off+2)
+		return 0;
+
+	len += d[off]+(d[off+1]<<8);
+	if(n < len)
+		return 0;
+	return len;
 }
