@@ -731,11 +731,7 @@ setlport(Conv* c)
 
 /*
  *  set a local address and port from a string of the form
- *	address!port
- *  if address is missing and not announcing, pick one
- *  if address is missing and announcing, leave address as zero (i.e. matches anything)
- *  if port is 0, pick a free one
- *  if port is '*', leave port as zero (i.e. matches anything)
+ *	[address!]port[!r]
  */
 static char*
 setladdrport(Conv* c, char* str, int announcing)
@@ -751,25 +747,41 @@ setladdrport(Conv* c, char* str, int announcing)
 	 *  meaningless on local ports.
 	 */
 	p = strchr(str, '!');
-	if(p == nil || strcmp(p, "!r") == 0) {
-		p = str;
-		memset(c->laddr, 0, sizeof(c->laddr));
-		if(!announcing)
-			setladdr(c);
-	} else {
+	if(p != nil){
 		*p++ = 0;
-		parseip(c->laddr, str);
+		if(strcmp(p, "r") == 0)
+			p = nil;
 	}
 
 	c->lport = 0;
-	if(*p != '*'){
-		lport = atoi(p);
-		if(lport > 0)
-			rv = setluniqueport(c, lport);
-		else
+	if(announcing){
+		if(p == nil){
+			ipmove(c->laddr, IPnoaddr);
+			lport = atoi(str);
+		} else {
+			if(strcmp(str, "*") == 0)
+				ipmove(c->laddr, IPnoaddr);
+			else
+				parseip(c->laddr, str);
+			lport = atoi(p);
+		}
+		rv = setluniqueport(c, lport);
+	} else {
+		if(p == nil){
+			setladdr(c);
+			lport = atoi(str);
+		} else {
+			if(strcmp(str, "*") == 0)
+				setladdr(c);
+			else
+				parseip(c->laddr, str);
+			lport = atoi(p);
+		}
+		if(lport <= 0)
 			setlport(c);
-	} else
-		rv = setluniqueport(c, 0);
+		else
+			rv = setluniqueport(c, lport);
+	}
 	return rv;
 }
 

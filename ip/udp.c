@@ -45,35 +45,25 @@ struct Udphdr
 	uchar	udpcksum[2];	/* Checksum */
 };
 
-enum
+/* MIB II counters */
+typedef struct Udpstats Udpstats;
+struct Udpstats
 {
-	/* MIB II counters */
-	InDatagrams,
-	NoPorts,
-	InErrors,
-	OutDatagrams,
-
-	/* non-MIB counters */
-	CsumErrs,
-	LenErrs,
-
-	Nstats,
+	ulong	udpInDatagrams;
+	ulong	udpNoPorts;
+	ulong	udpInErrors;
+	ulong	udpOutDatagrams;
 };
-
-static char *statnames[] = {
-[InDatagrams]	"InDatagrams",
-[NoPorts]	"NoPorts",
-[InErrors]	"InErrors",
-[OutDatagrams]	"OutDatagrams",
-[CsumErrs]	"CsumErrs",
-[LenErrs]	"LenErrs",
-};
-
 
 typedef struct Udppriv Udppriv;
 struct Udppriv
 {
-	ulong	stats[Nstats];
+	/* MIB counters */
+	Udpstats	ustats;
+
+	/* non-MIB stats */
+	ulong		csumerr;		/* checksum errors */
+	ulong		lenerr;			/* short packet */
 };
 
 /*
@@ -120,8 +110,8 @@ udpannounce(Conv *c, char** argv, int argc)
 static void
 udpcreate(Conv *c)
 {
-	c->rq = qopen(256*1024, 1, 0, 0);
-	c->wq = qopen(128*1024, 0, 0, 0);
+	c->rq = qopen(64*1024, 1, 0, 0);
+	c->wq = qopen(64*1024, 0, 0, 0);
 }
 
 static void
@@ -140,6 +130,8 @@ udpclose(Conv *c)
 
 	ucb = (Udpcb*)c->ptcl;
 	ucb->headers = 0;
+
+	qunlock(c);
 }
 
 void
@@ -234,8 +226,18 @@ udpkick(Conv *c, int)
 
 	hnputs(uh->udpcksum, ptclcsum(bp, UDP_IPHDR, dlen+UDP_HDRSIZE));
 
-	upriv->stats[OutDatagrams]++;
+	upriv->ustats.udpOutDatagrams++;
 	ipoput(f, bp, 0, c->ttl, c->tos);
+}
+
+Conv*
+udpincoming(Conv *c, uchar *raddr, ushort rport, uchar *laddr, ushort lport)
+{
+	Conv *new;
+
+	new = Fsnewcall(c, raddr, rport, laddr, lport);
+	if(new == nil)
+		return nil;
 }
 
 void
@@ -243,7 +245,7 @@ udpiput(Proto *udp, uchar *ia, Block *bp)
 {
 	int len, olen, ottl;
 	Udphdr *uh;
-	Conv *c, **p, *spec, *gen;
+	Conv *c, **p, *gen;
 	Udpcb *ucb;
 	uchar raddr[IPaddrlen], laddr[IPaddrlen];
 	ushort rport, lport;
@@ -253,7 +255,7 @@ udpiput(Proto *udp, uchar *ia, Block *bp)
 	upriv = udp->priv;
 	f = udp->f;
 
-	upriv->stats[InDatagrams]++;
+	upriv->ustats.udpInDatagrams++;
 
 	uh = (Udphdr*)(bp->rp);
 
@@ -271,8 +273,7 @@ udpiput(Proto *udp, uchar *ia, Block *bp)
 
 	if(nhgets(uh->udpcksum)) {
 		if(ptclcsum(bp, UDP_IPHDR, len+UDP_PHDRSIZE)) {
-			upriv->stats[InErrors]++;
-			upriv->stats[CsumErrs]++;
+			upriv->ustats.udpInErrors++;
 			netlog(f, Logudp, "udp: checksum error %I\n", raddr);
 			DPRINT("udp: checksum error %I\n", raddr);
 			freeblist(bp);
@@ -282,64 +283,84 @@ udpiput(Proto *udp, uchar *ia, Block *bp)
 
 	qlock(udp);
 
-	/*
-	 *  Look for a conversation structure for this packet
-	 */
-	spec = gen = c = nil;
-	for(p = udp->conv; *p; p++) {
+	gen = nil;
+
+	/* look for an announced port with headers (most likely) */
+	for(p = udp->conv; *p; p++){
 		c = *p;
-		if(c->inuse == 0)
+		ucb = (Udpcb*)c->ptcl;
+		if(c->inuse == 0 || c->state != Announced || ucb->headers == 0)
 			continue;
-		if(c->lport == lport){
-			ucb = (Udpcb*)c->ptcl;
+		
+		if(c->lport != lport)
+			continue;
 
-			switch(c->state){
-			case Announced:
-				/* headers + Announced is special behaviour */
-				if(ucb->headers)
-					goto found;
-				spec = c;
-				break;
-				
-			case Connected:
-				/* exact match */
-				if(c->rport == rport)
-				if(ipcmp(c->raddr, raddr) == 0 || ipisbm(c->raddr))
-					goto found;
-			}
+		if(ipcmp(c->laddr, laddr) == 0)
+			goto found;
 
-		} else if(c->lport == 0) {
-			/* generic listen for all udp ports */
-			if(c->state == Announced)
-				gen = c;
-		}
+		if(ipcmp(c->laddr, IPnoaddr) == 0 || ipcmp(c->laddr, v4prefix) == 0)
+			gen = c;
 	}
-found:
-	if(*p == nil){
-		if(spec != nil)
-			gen = spec;
-		if(gen != nil){
-			if(ipforme(f, laddr) != Runi)
-				v4tov6(laddr, ia);
-			c = Fsnewcall(gen, raddr, rport, laddr, lport);
-			if(c == nil){
-				freeblist(bp);
-				return;
-			}
-			c->state = Connected;
-		} else {
-			upriv->stats[NoPorts]++;
-			qunlock(udp);
-			netlog(f, Logudp, "udp: no conv %I!%d -> %I!%d\n", raddr, rport,
-				laddr, lport);
-			uh->Unused = ottl;
-			hnputs(uh->udpplen, olen);
-			icmpnoconv(f, bp);
+	if(gen != nil){
+		c = gen;
+		goto found;
+	}
+
+	/* look for a connected port */
+	for(p = udp->conv; *p; p++){
+		c = *p;
+		if(c->inuse == 0 || c->state != Connected)
+			continue;
+		if(c->lport == lport
+		&& c->rport == rport
+		&& (ipcmp(c->laddr, laddr) == 0)
+		&& ipcmp(c->raddr, raddr) == 0 || ipisbm(c->raddr))
+			goto found;
+	}
+
+	/* finally, look for a listener */
+	for(p = udp->conv; *p; p++){
+		c = *p;
+		ucb = (Udpcb*)c->ptcl;
+		if(c->inuse == 0 || c->state != Announced || ucb->headers != 0)
+			continue;
+		
+		if(c->lport != lport)
+			continue;
+
+		if(ipcmp(c->laddr, laddr) == 0)
+			break;
+
+		if(ipcmp(c->laddr, IPnoaddr) == 0)
+			gen = c;
+	}
+	c = *p;
+	if(c == nil)
+		c = gen;
+	if(c != nil){
+		if(ipforme(f, laddr) != Runi)
+			v4tov6(laddr, ia);
+		c = Fsnewcall(gen, raddr, rport, laddr, lport);
+		if(c == nil){
 			freeblist(bp);
 			return;
 		}
+		c->state = Connected;
+		goto found;
 	}
 
+	/* no converstation found */
+	upriv->ustats.udpNoPorts++;
+	qunlock(udp);
+	netlog(f, Logudp, "udp: no conv %I!%d -> %I!%d\n", raddr, rport,
+		laddr, lport);
+	uh->Unused = ottl;
+	hnputs(uh->udpplen, olen);
+	icmpnoconv(f, bp);
+	freeblist(bp);
+	return;
+
+found:
 	ucb = (Udpcb*)c->ptcl;
 	qlock(c);
 	qunlock(udp);
@@ -353,8 +374,7 @@ found:
 		qunlock(c);
 		netlog(f, Logudp, "udp: len err %I.%d -> %I.%d\n", raddr, rport,
 			laddr, lport);
-		upriv->stats[LenErrs]++;
-		upriv->stats[InErrors]++;
+		upriv->lenerr++;
 		return;
 	}
 
@@ -402,22 +422,6 @@ found:
 
 }
 
-/*
- *  close any incoming calls waiting on this conversation
- *  	called with c locked
- */
-void
-udpcloseincalls(Conv *c)
-{
-	Conv *nc;
-
-	for(nc = c->incall; nc; nc = c->incall){
-		c->incall = nc->next;
-		closeconv(nc);
-	}
-}
-
-/* called with c locked */
 char*
 udpctl(Conv *c, char **f, int n)
 {
@@ -427,13 +431,9 @@ udpctl(Conv *c, char **f, int n)
 	if(n == 1){
 		if(strcmp(f[0], "headers4") == 0){
 			ucb->headers = 4;
-			/* close any calls that got in twixt announce and headers */
-			udpcloseincalls(c);
 			return nil;
 		} else if(strcmp(f[0], "headers") == 0){
 			ucb->headers = 6;
-			/* close any calls that got in twixt announce and headers */
-			udpcloseincalls(c);
 			return nil;
 		}
 	}
@@ -479,16 +479,14 @@ udpadvise(Proto *udp, Block *bp, char *msg)
 int
 udpstats(Proto *udp, char *buf, int len)
 {
-	Udppriv *priv;
-	char *p, *e;
-	int i;
+	Udppriv *upriv;
 
-	priv = udp->priv;
-	p = buf;
-	e = p+len;
-	for(i = 0; i < Nstats; i++)
-		p = seprint(p, e, "%s: %lud\n", statnames[i], priv->stats[i]);
-	return p - buf;
+	upriv = udp->priv;
+	return snprint(buf, len, "%lud %lud %lud %lud",
+		upriv->ustats.udpInDatagrams,
+		upriv->ustats.udpNoPorts,
+		upriv->ustats.udpInErrors,
+		upriv->ustats.udpOutDatagrams);
 }
 
 void
@@ -509,7 +507,6 @@ udpinit(Fs *fs)
 	udp->rcv = udpiput;
 	udp->advise = udpadvise;
 	udp->stats = udpstats;
-	udp->gc = nil;
 	udp->ipproto = IP_UDPPROTO;
 	udp->nc = Nchans;
 	udp->ptclsize = sizeof(Udpcb);
