@@ -1,10 +1,11 @@
 /*
  * Intel 82557 Fast Ethernet PCI Bus LAN Controller
  * as found on the Intel EtherExpress PRO/100B. This chip is full
- * of smarts, unfortunately none of them are in the right place.
+ * of smarts, unfortunately they're not all in the right place.
  * To do:
  *	the PCI scanning code could be made common to other adapters;
  *	auto-negotiation;
+ *	full-duplex;
  *	optionally use memory-mapped registers.
  */
 #include "u.h"
