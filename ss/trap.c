@@ -9,6 +9,7 @@
 
 void	noted(Ureg**, ulong);
 void	rfnote(Ureg**);
+int	domuldiv(ulong, Ureg*);
 
 extern	void traplink(void);
 extern	void syslink(void);
@@ -27,6 +28,7 @@ char *trapname[]={
 	"fp: exception",
 	"data access exception",
 	"tag overflow",
+	"watchpoint detected",
 };
 
 char*
@@ -37,17 +39,23 @@ excname(ulong tbr)
 	char *t;
 
 	switch(tbr){
+	case 36:
 		return "trap: cp disabled";
+	case 37:
+		return "trap: unimplemented instruction";
 	case 40:
 		return "trap: cp exception";
+	case 42:
+		return "trap: divide by zero";
 	case 128:
 		return "syscall";
 	case 129:
 		return "breakpoint";
 	}
+	t = 0;
 	if(tbr < sizeof trapname/sizeof(char*))
 		t = trapname[tbr];
-	else{
+	if(t == 0){
 		if(tbr >= 130)
 			sprint(xx, "trap instruction %d", tbr-128);
 		else if(17<=tbr && tbr<=31)
@@ -68,7 +76,7 @@ trap(Ureg *ur)
 {
 	int user, x;
 	char buf[64];
-	ulong tbr;
+	ulong tbr, iw;
 
 	if(u) {
 		u->p->pc = ur->pc;		/* BUG */
@@ -118,6 +126,14 @@ trap(Ureg *ur)
 			}else
 				faultsparc(ur);
 			goto Return;
+		case 2:				/* illegal instr, maybe mul */
+			iw = *(ulong*)ur->pc;
+			if((iw&0xC1500000) == 0x80500000){
+				if(domuldiv(iw, ur))
+					goto Return;
+				tbr = ur->tbr;
+			}
+			break;
 		case 4:				/* floating point disabled */
 			if(u && u->p){
 				if(u->p->fpstate == FPinit)
@@ -186,6 +202,118 @@ trapinit(void)
 	*(ulong*)(t+4) = 0xa7480000;	/* MOVW PSR, R19 */
 
 	puttbr(TRAPS);
+}
+
+void
+mulu(ulong u1, ulong u2, ulong *lop, ulong *hip)
+{
+	ulong lo1, lo2, hi1, hi2, lo, hi, t1, t2, t;
+
+	lo1 = u1 & 0xffff;
+	lo2 = u2 & 0xffff;
+	hi1 = u1 >> 16;
+	hi2 = u2 >> 16;
+
+	lo = lo1 * lo2;
+	t1 = lo1 * hi2;
+	t2 = lo2 * hi1;
+	hi = hi1 * hi2;
+	t = lo;
+	lo += t1 << 16;
+	if(lo < t)
+		hi++;
+	t = lo;
+	lo += t2 << 16;
+	if(lo < t)
+		hi++;
+	hi += (t1 >> 16) + (t2 >> 16);
+	*lop = lo;
+	*hip = hi;
+}
+
+void
+muls(long l1, long l2, long *lop, long *hip)
+{
+	ulong t, lo, hi;
+	ulong mlo, mhi;
+	int sign;
+
+	sign = 0;
+	if(l1 < 0){
+		sign ^= 1;
+		l1 = -l1;
+	}
+	if(l2 < 0){
+		sign ^= 1;
+		l2 = -l2;
+	}
+	mulu(l1, l2, &mlo, &mhi);
+	lo = mlo;
+	hi = mhi;
+	if(sign){
+		t = lo = ~lo;
+		hi = ~hi;
+		lo++;
+		if(lo < t)
+			hi++;
+	}
+	*lop = lo;
+	*hip = hi;
+}
+
+int
+domuldiv(ulong iw, Ureg *ur)
+{
+	long op1, op2;
+	long *regp;
+	long *regs;
+
+	regs = (long*)ur;
+	if(iw & (1<<13)){	/* signed immediate */
+		op2 = iw & 0x1FFF;
+		if(op2 & 0x1000)
+			op2 |= ~0x1FFF;
+	}else
+		op2 = regs[iw&0x1F];
+	op1 = regs[(iw>>14)&0x1F];
+	regp = &regs[(iw>>25)&0x1F];
+
+	if(iw & (4<<19)){	/* divide */
+		if(ur->y!=0 && ur->y!=~0){
+	unimp:
+			ur->tbr = 37;	/* "unimplemented instruction" */
+			return 0;	/* complex Y is too hard */
+		}
+		if(op2 == 0){
+			ur->tbr = 42;	/* "zero divide" */
+			return 0;
+		}
+		if(iw & (1<<19)){
+			if(ur->y && (op1&(1<<31))==0)
+				goto unimp;	/* Y not sign extension */
+			*regp = op1 / op2;
+		}else{
+			if(ur->y)
+				goto unimp;
+			*regp = (ulong)op1 / (ulong)op2;
+		}
+	}else{
+		if(iw & (1<<19))
+			muls(op1, op2, regp, (long*)&ur->y);
+		else
+			mulu(op1, op2, (ulong*)regp, &ur->y);
+	}
+	if(iw & (16<<19)){	/* set CC */
+		ur->psr &= ~(0xF << 20);
+		if(*regp & (1<<31))
+			ur->psr |= 8 << 20;	/* N */
+		if(*regp == 0)
+			ur->psr |= 4 << 20;	/* Z */
+		/* BUG: don't get overflow right on divide */
+	}
+	ur->pc += 4;
+	ur->npc = ur->pc+4;
+	return 1;
 }
 
 void

@@ -402,7 +402,7 @@ segattach(Proc *p, ulong attr, char *name, ulong va, ulong len)
 	int i, sno;
 
 	USED(p);
-	if(va&KZERO)					/* BUG: Only ok for now */
+	if((va&KZERO) == KZERO)				/* BUG: Only ok for now */
 		error(Ebadarg);
 
 	validaddr((ulong)name, 1, 0);
