@@ -16,15 +16,26 @@ extern Cursor curcursor;
 static Lock clgd542xlock;
 static ulong storage;
 
-static void
+static int
 setclgd542xpage(int page)
 {
+	uchar gr9, grB;
+	int opage;
+
 	if(vgaxi(Seqx, 0x07) & 0xF0)
 		page = 0;
-	if(vgaxi(Seqx, 0x0B) & 0x20)
+	gr9 = vgaxi(Grx, 0x09);
+	grB = vgaxi(Grx, 0x0B);
+	if(grB & 0x20){
 		vgaxo(Grx, 0x09, page<<2);
-	else
+		opage = gr9>>2;
+	}
+	else{
 		vgaxo(Grx, 0x09, page<<4);
+		opage = gr9>>4;
+	}
+
+	return opage;
 }
 
 static void
@@ -162,22 +173,52 @@ enable(void)
 	unlock(&clgd542xlock);
 }
 
+static uchar*
+buggery(int on)
+{
+	static uchar gr9, grA, grB;
+	uchar *p;
+
+	p = 0;
+	if(on){
+		gr9 = vgaxi(Grx, 0x09);
+		grA = vgaxi(Grx, 0x0A);
+		grB = vgaxi(Grx, 0x0B);
+
+		vgaxo(Grx, 0x0B, 0x21|grB);
+		vgaxo(Grx, 0x09, storage>>14);
+		p = ((uchar*)gscreen.base) + (storage & 0x3FFF);
+	}
+	else{
+		vgaxo(Grx, 0x09, gr9);
+		vgaxo(Grx, 0x0A, grA);
+		vgaxo(Grx, 0x0B, grB);
+	}
+
+	return p;
+}
+
 static void
 initcursor(Cursor* c, int xo, int yo, int index)
 {
 	uchar *p;
 	uint p0, p1;
-	int x, y;
+	int opage, x, y;
 
 	/*
 	 * Is linear addressing turned on? This will determine
 	 * how we access the cursor storage.
 	 */
+	opage = 0;
 	if(vgaxi(Seqx, 0x07) & 0xF0)
 		p = ((uchar*)gscreen.base) + storage;
-	else {
-		setclgd542xpage(storage>>16);
+	else{
+#ifdef notdef
+		p = buggery(1);
+#else
+		opage = setclgd542xpage(storage>>16);
 		p = ((uchar*)gscreen.base) + (storage & 0xFFFF);
+#endif /* notdef */
 	}
 	p += index*1024;
 
@@ -213,6 +254,13 @@ initcursor(Cursor* c, int xo, int yo, int index)
 		}
 		y++;
 	}
+
+#ifdef notdef
+	buggery(0);
+#endif /* notdef */
+
+	if(!(vgaxi(Seqx, 0x07) & 0xF0))
+		setclgd542xpage(opage);
 }
 
 static void
@@ -245,10 +293,6 @@ load(Cursor* c)
 	 */
 	vgaxo(Seqx, 0x13, 0);
 	vgaxo(Seqx, 0x12, sr12|0x05);
-{
-for(storage = 0; storage < (2048-32)*1024; storage += 16*1024)
-    initcursor(c, 0, 0, 0);
-}
 
 	unlock(&clgd542xlock);
 }
