@@ -240,7 +240,7 @@ int		scsicap(Target*, char, ulong*, ulong*);
 int		scsiexec(Target*, int, uchar*, int, void*, int*);
 #define		scsifree(p)	free(p)
 int		scsiinquiry(Target*, char, void*, int*);
-int		scsiinv(int, int, Target**, uchar**, char*);
+int		scsiinv(int, int*, Target**, uchar**, char*);
 int		scsireqsense(Target*, char, int);
 int		scsistart(Target*, char, int);
 Target*		scsiunit(int, int);

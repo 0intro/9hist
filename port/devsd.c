@@ -9,6 +9,13 @@
 #include	"../port/error.h"
 #include	"devtab.h"
 
+enum {
+	TypeDA		= 0x00,		/* Direct Access */
+	TypeWO		= 0x04,		/* Worm */
+	TypeCD		= 0x05,		/* CD-ROM */
+	TypeMO		= 0x07,		/* rewriteable Magneto-Optical */
+};
+
 enum
 {
 	LogNpart	= 4,
@@ -50,6 +57,11 @@ Disk	disk[Ndisk];
 
 static	void	sdrdpart(Disk*);
 static	long	sdio(Chan*, int, char*, ulong, ulong);
+
+static int types[] = {
+	TypeDA, TypeWO, TypeCD, TypeMO,
+	-1,
+};
 
 static int
 sdgen(Chan *c, Dirtab*, long, long s, Dir *dirp)
@@ -93,7 +105,7 @@ sdinit(void)
 	dev = 0;
 	for(;;) {
 		d = &disk[ndisk];
-		dev = scsiinv(dev, 0, &d->t, &d->inquire, d->id);
+		dev = scsiinv(dev, types, &d->t, &d->inquire, d->id);
 		if(dev < 0)
 			break;
 
@@ -140,7 +152,21 @@ sdinit(void)
 
 			d->size = s;
 			d->bsize = b;
-			sprint(d->vol, "sd%d", ndisk);
+			switch(d->inquire[0] & 0x1F){
+
+			case TypeDA:
+			case TypeWO:
+			case TypeMO:
+				sprint(d->vol, "sd%d", ndisk);
+				break;
+
+			case TypeCD:
+				sprint(d->vol, "cd%d", ndisk);
+				break;
+
+			default:
+				continue;
+			}
 
 			if(++ndisk >= Ndisk)
 				break;
@@ -278,6 +304,12 @@ sdrdpart(Disk *d)
 	p++;
 	d->npart = 2;
 
+	if((d->inquire[0] & 0x1F) == TypeCD){
+		scsifree(b);
+		qunlock(d);
+		return;
+	}
+
 	scsibio(d->t, d->lun, SCSIread, b, 1, d->bsize, d->table[0].end-1);
 	b[d->bsize-1] = '\0';
 
@@ -319,6 +351,9 @@ sdio(Chan *c, int write, char *a, ulong len, ulong offset)
 
 	d = &disk[DRIVE(c->qid)];
 	p = &d->table[PART(c->qid)];
+
+	if(write && (d->inquire[0] & 0x1F) == TypeCD)
+		error(Eperm);
 
 	block = (offset / d->bsize) + p->beg;
 	n = (offset + len + d->bsize - 1) / d->bsize + p->beg - block;

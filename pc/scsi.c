@@ -158,7 +158,7 @@ scsiprobe(Ctlr *ctlr)
 			print("scsi%d: unit %d inquire failed, status %d\n", t->ctlrno, i, s);
 			continue;
 		}
-		print("scsi%d: unit %d %s\n", t->ctlrno, i, t->inq+8);
+		print("scsi%d: unit %d:%2.2ux: %s\n", t->ctlrno, i, t->inq[0], t->inq+8);
 		t->ok = 1;
 	}
 }
@@ -185,10 +185,10 @@ inventory(void)
 }
 
 int
-scsiinv(int devno, int type, Target **rt, uchar **inq, char *id)
+scsiinv(int devno, int *type, Target **rt, uchar **inq, char *id)
 {
 	Target *t;
-	int ctlr, unit;
+	int ctlr, *i, unit;
 
 	inventory();
 
@@ -200,11 +200,16 @@ scsiinv(int devno, int type, Target **rt, uchar **inq, char *id)
 
 		t = &scsi[ctlr]->target[unit];
 		devno++;
-		if(t->ok && (t->inq[0]&0x1F) == type){
-			*rt = t;
-			*inq = t->inq;
-			sprint(id, "scsi%d: unit %d", ctlr, unit);
-			return devno;
+		if(t->ok){
+			for(i = type; *i >= 0; i++){
+				if((t->inq[0]&0x1F) != *i)
+					continue;
+				*rt = t;
+				*inq = t->inq;
+				sprint(id, "scsi%d: unit %d", ctlr, unit);
+print("devno %d = %s\n", devno, id);
+				return devno;
+			}
 		}
 	}
 	return -1;
