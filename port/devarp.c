@@ -17,7 +17,6 @@ Queue		*Servq;
 #define ARP_ENTRYLEN	50
 char *padstr = "                                           ";
 
-
 extern Arpcache *arplruhead;
 extern Arpcache *arplrutail;
 

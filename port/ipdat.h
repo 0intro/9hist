@@ -104,6 +104,7 @@ struct Ilcb				/* Control block */
 	Block	*outoforder;
 	ulong	sent;
 	ulong	recvd;
+	ulong	start;
 	ulong	lastack;
 	int	window;
 };

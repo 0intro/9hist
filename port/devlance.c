@@ -679,18 +679,20 @@ lanceup(Ethertype *e, Etherpkt *p, int len)
 	/*
 	 *  only a trace channel gets packets destined for other machines
 	 */
-	if(e->type != -1){
-		if(p->d[0]!=0xff && memcmp(p->d, l.ea, sizeof(p->d))!=0)
-			return;
-	}
-	if(e->q && e->q->next->len<=Streamhi && !waserror()){
+	if(e->type != -1 && p->d[0]!=0xff && memcmp(p->d, l.ea, sizeof(p->d))!=0)
+		return;
+
+	if(waserror())
+		return;
+
+	if(e->q && e->q->next->len<=Streamhi){
 		bp = allocb(len);
 		memmove(bp->rptr, (uchar *)p, len);
 		bp->wptr += len;
 		bp->flags |= S_DELIM;
 		PUTNEXT(e->q, bp);
-		poperror();
 	}
+	poperror();
 }
 
 /*
@@ -738,6 +740,7 @@ lancekproc(void *arg)
 			len = MPus(m->cntflags) - 4;
 			for(e = &l.e[0]; e < &l.e[Ntypes]; e++){
 				if(e->q!=0 && (t==e->type||e->type==-1) && canqlock(e)){
+if(p->type[0] == 0x80 || p->type[0] == 0x8) print("*");
 					if(t==e->type||e->type==-1)
 						lanceup(e, p, len);
 					qunlock(e);
@@ -758,6 +761,7 @@ stage:
 		}
 		qunlock(&l.rlock);
 		sleep(&l.rr, isinput, 0);
+print("!");
 	}
 }
 

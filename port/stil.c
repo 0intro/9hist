@@ -220,6 +220,8 @@ print("got packet from %d.%d.%d.%d %d %d\n", fmtaddr(dst), sp, dp);
 			new->psrc = sp;
 			new->pdst = dp;
 			new->ilctl.state = Ilsyncee;
+			initseq += TK2MS(MACHP(0)->ticks);
+			new->ilctl.sent = initseq;
 			new->dst = nhgetl(ih->src);
 			ilprocess(new, ih, bp);
 
@@ -239,18 +241,32 @@ void
 ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 {
 	Block *nb;
-	ulong id, ack;
+	Ilcb *ic;
+	Ilhdr *oh;
+	ulong id, ack, oid;
+
+	id = nhgetl(h->ilid);
+	ack = nhgetl(h->ilack);
+	ic = &s->ilctl;
 
 	/* Active transition machine - this tracks connection state */
-	switch(s->ilctl.state) {
+	switch(ic->state) {
 	case Ilsyncee:	
 		switch(h->iltype) {
 		case Ilsync:
+			ic->recvd = id;
 			ilsendctl(s, 0, Ilsync, 0);
 			break;
 		case Ilack:
-			s->ilctl.state = Ilestablished;
+			ic->state = Ilestablished;
 			break;
+		}
+		break;
+	case Ilsyncer:
+		if(h->iltype == Ilsync && ic->start == ack) {
+			ic->recvd = id;
+			ilsendctl(s, 0, Ilack, 0);
+			ic->state = Ilestablished;
 		}
 		break;
 	case Ilclosed:
@@ -260,10 +276,10 @@ ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 
 	/* Passive actions based on packet type */
 	switch(h->iltype) {
+	default:
+		freeb(bp);
+		break;
 	case Ilack:
-		ack = nhgetl(h->ilack);
-		if(s->ilctl.recvd+1 == ack)
-			s->ilctl.recvd = ack;
 		ilackto(&s->ilctl, ack);
 		freeb(bp);
 		break;
@@ -273,18 +289,18 @@ ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 		break;
 	case Ildataquery:
 	case Ildata:
-		ilackto(&s->ilctl, nhgetl(h->ilack));
+		ilackto(&s->ilctl, ack);
 		switch(s->ilctl.state) {
 		default:
 			iloutoforder(s, h, bp);
 			break;
 		case Ilestablished:
-			id = nhgetl(h->ilid);
 			if(id < s->ilctl.recvd)
 				freeb(bp);
 			else if(id > s->ilctl.recvd)
 				iloutoforder(s, h, bp);
 			else {
+				s->ilctl.recvd++;
 				bp->rptr += IL_EHSIZE+IL_HDRSIZE;
 				PUTNEXT(s->readq, bp);
 			}
@@ -296,11 +312,34 @@ ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 		if(s->readq) {
 			nb = allocb(0);
 			nb->type = M_HANGUP;
+			nb->flags |= S_DELIM;
 			PUTNEXT(s->readq, nb);
 		}
 		freeb(bp);
 	}
+
+	/* Process out of order packets */
+	if(ic->state == Ilestablished) {
+		while(ic->outoforder) {
+			bp = ic->outoforder;
+			oh = (Ilhdr*)bp->rptr;
+			oid = nhgetl(oh->ilid);
+print("recvd = %d outoforder = %d\n", ic->recvd, oid);
+			if(oid < ic->recvd) {
+				ic->outoforder = bp->next;
+				freeb(bp);
+			}
+			if(oid == ic->recvd) {
+print("outoforder %d\n", oid);
+				ic->recvd++;
+				ic->outoforder = bp->next;
+				bp->rptr += IL_EHSIZE+IL_HDRSIZE;
+				PUTNEXT(s->readq, bp);
+			}
+		}
+	}
 }
+
 
 void
 iloutoforder(Ipconv *s, Ilhdr *h, Block *bp)
@@ -339,6 +378,7 @@ ilsendctl(Ipconv *ipc, Ilhdr *inih, int type, int ack)
 
 	bp = allocb(IL_EHSIZE+IL_HDRSIZE);
 	bp->wptr += IL_EHSIZE+IL_HDRSIZE;
+	bp->flags |= S_DELIM;
 
 	ih = (Ilhdr *)(bp->rptr);
 	ic = &ipc->ilctl;
@@ -360,6 +400,7 @@ ilsendctl(Ipconv *ipc, Ilhdr *inih, int type, int ack)
 		hnputs(ih->ildst, ipc->pdst);
 		hnputl(ih->ilid, ic->sent);
 		hnputl(ih->ilack, ic->recvd);
+		print("sendctl: id %d ack %d\n", ic->sent, ic->recvd);
 	}
 	ih->iltype = type;
 	ih->ilspec = 0;
@@ -393,7 +434,8 @@ ilstart(Ipconv *ipc, int type, int window)
 	ic->outoforder = 0;
 	initseq += TK2MS(MACHP(0)->ticks);
 	ic->sent = initseq;
-	ic->recvd = ic->sent;
+	ic->start = ic->sent;
+	ic->recvd = 0;
 	ic->lastack = ic->sent;
 	ic->window = window;
 
