@@ -27,7 +27,6 @@ static QLock ireclaim;
 void
 initseg(void)
 {
-	Segment *s, *se;
 	Image *i, *ie;
 
 	imagealloc.free = xalloc(conf.nimage*sizeof(Image));
@@ -360,7 +359,6 @@ ibrk(ulong addr, int seg)
 
 	s->top = newtop;
 	s->size = newsize;
-
 	qunlock(&s->lk);
 	return 0;
 }

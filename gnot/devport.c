@@ -11,7 +11,15 @@
 #define	ROMADDR	0x40000000
 #define	ROMSIZE	((256*1024)/8)
 
-enum {
+#define	P_oper(sel, inst)	(P_qlock(sel), inst, P_qunlock(sel))
+#define	P_qlock(sel)		(sel >= 0 ? (qlock(&portpage), \
+				PORTSELECT = portpage.select = sel) : -1)
+#define	P_qunlock(sel)		(sel >= 0 ? (qunlock(&portpage),0) : -1)
+#define	P_read(sel, addr, val, type)	P_oper(sel, val = *(type *)(PORT+addr))
+#define	P_write(sel, addr, val, type)	P_oper(sel, *(type *)(PORT+addr) = val)
+
+enum
+{
 	Qdir,
 	Qdata,
 	Qrom
@@ -24,6 +32,11 @@ Dirtab portdir[]={
 
 #define	NPORT	(sizeof portdir/sizeof(Dirtab))
 
+#define	Nportservice	8
+static	int (*portservice[Nportservice])(void);
+static	Portpage portpage;
+static	Lock intrlock;
+
 int
 portprobe(char *what, int select, int addr, int rw, long val)
 {
@@ -33,17 +46,23 @@ portprobe(char *what, int select, int addr, int rw, long val)
 	P_qlock(select);
 	switch (rw) {
 	case -1:
-		val = *(uchar *)(PORT+addr); break;
+		val = *(uchar *)(PORT+addr);
+		break;
 	case -2:
-		val = *(ushort *)(PORT+addr); break;
+		val = *(ushort *)(PORT+addr);
+		break;
 	case -4:
-		val = *(long *)(PORT+addr); break;
+		val = *(long *)(PORT+addr);
+		break;
 	case 1:
-		*(uchar *)(PORT+addr) = val; break;
+		*(uchar *)(PORT+addr) = val;
+		break;
 	case 2:
-		*(ushort *)(PORT+addr) = val; break;
+		*(ushort *)(PORT+addr) = val;
+		break;
 	case 4:
-		*(long *)(PORT+addr) = val; break;
+		*(long *)(PORT+addr) = val;
+		break;
 	default:
 		panic("portprobe");
 	}
@@ -68,7 +87,8 @@ portreset(void)
 
 void
 portinit(void)
-{}
+{
+}
 
 Chan *
 portattach(char *param)
@@ -108,7 +128,8 @@ portcreate(Chan *c, char *name, int omode, ulong perm)
 
 void
 portclose(Chan *c)
-{}
+{
+}
 
 long
 portread(Chan *c, char *a, long n, ulong offset)
@@ -167,9 +188,11 @@ portwrite(Chan *c, char *a, long n, ulong offset)
 		case 1:
 			PORT[k] = *a; break;
 		case 2:
-			*(short *)(PORT+k) = *(short *)a; break;
+			*(short *)(PORT+k) = *(short *)a;
+			break;
 		case 4:
-			*(long *)(PORT+k) = *(long *)a; break;
+			*(long *)(PORT+k) = *(long *)a;
+			break;
 		default:
 			P_qunlock(s);
 			error(Ebadarg);
@@ -185,27 +208,23 @@ portwrite(Chan *c, char *a, long n, ulong offset)
 void
 portremove(Chan *c)
 {
+	USED(c);
 	error(Eperm);
 }
 
 void
 portwstat(Chan *c, char *dp)
 {
+	USED(c, dp);
 	error(Eperm);
 }
-
-#define	Nportservice	8
-int	(*portservice[Nportservice])(void);
-
-Portpage portpage;
-
-Lock	intrlock;
 
 void
 addportintr(int (*f)(void))
 {
 	int s = splhi();
 	int (**p)(void);
+
 	lock(&intrlock);
 	for (p=portservice; *p; p++)
 		if (*p == f)
@@ -221,13 +240,15 @@ out:
 void
 devportintr(void)
 {
-	int (**p)(void); int i = 0;
+	int (**p)(void);
+	int i = 0;
+
 	for (p=portservice; *p; p++)
 		i |= (**p)();
+
 	if (!i)
 		/*putstring("spurious portintr\n");*/
 		panic("portintr");
 	if (portpage.select >= 0)
 		PORTSELECT = portpage.select;
-
 }

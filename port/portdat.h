@@ -41,11 +41,6 @@ typedef int    Devgen(Chan*, Dirtab*, int, int, Dir*);
 
 #include "fcall.h"
 
-struct List
-{
-	void	*next;
-};
-
 struct Ref
 {
 	Lock;
@@ -108,7 +103,8 @@ struct Block
 	ulong	pc;			/* pc of caller */
 };
 
-struct Blist {
+struct Blist
+{
 	Lock;
 	Block	*first;			/* first data block */
 	Block	*last;			/* last data block */
@@ -205,7 +201,8 @@ struct Env
 /*
  *  Ethernet packet buffers.
  */
-struct Etherpkt {
+struct Etherpkt
+{
 	uchar d[6];
 	uchar s[6];
 	uchar type[2];
@@ -639,7 +636,8 @@ struct Stream
 /*
  *  stream file qid's & high water mark
  */
-enum {
+enum
+{
 	Shighqid = STREAMQID(1,0) - 1,
 	Sdataqid = Shighqid,
 	Sctlqid = Sdataqid-1,

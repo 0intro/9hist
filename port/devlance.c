@@ -14,10 +14,6 @@ enum {
 #define RSUCC(x) (((x)+1)%l.nrrb)
 #define TSUCC(x) (((x)+1)%l.ntrb)
 
-#define NOW (MACHP(0)->ticks*MS2HZ)
-
-static int netlight;
-
 /*
  *  Communication with the lance is via a transmit and receive ring of
  *  message descriptors.  The Initblock contains pointers to and sizes of
@@ -238,6 +234,7 @@ isclosed(void *x)
 {
 	return ((Ethertype *)x)->q == 0;
 }
+
 static void
 lancestclose(Queue *q)
 {
@@ -286,6 +283,7 @@ isobuf(void *x)
 	m = x;
 	return (MPus(m->flags)&LANCEOWNER) == 0;
 }
+
 static void
 lanceoput(Queue *q, Block *bp)
 {
@@ -549,9 +547,6 @@ lancestart(int mode)
 	*l.rdp = INEA|INIT|STRT; /**/
 }
 
-/*
- *  set up lance directory.
- */
 void
 lanceinit(void)
 {
@@ -561,12 +556,11 @@ Chan*
 lanceattach(char *spec)
 {
 	if(l.kstarted == 0){
-		kproc("lancekproc", lancekproc, 0);/**/
+		kproc("lancekproc", lancekproc, 0);
 		l.kstarted = 1;
 		lancestart(0);
 		print("lance ether: %.2x%.2x%.2x%.2x%.2x%.2x\n",
 			l.ea[0], l.ea[1], l.ea[2], l.ea[3], l.ea[4], l.ea[5]);
-
 	}
 	return devattach('l', spec);
 }
@@ -643,7 +637,7 @@ lancewstat(Chan *c, char *dp)
 static void
 lancestatsfill(Chan *c, char* p, int n)
 {
-	char buf[256];
+	char buf[512];
 
 	USED(c);
 	sprint(buf, "in: %d\nout: %d\ncrc errs %d\noverflows: %d\nframe errs %d\nbuff errs: %d\noerrs %d\naddr: %.02x:%.02x:%.02x:%.02x:%.02x:%.02x\n",

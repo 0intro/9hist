@@ -8,24 +8,26 @@
 #include	"devtab.h"
 
 typedef struct Pipe	Pipe;
-
 struct Pipe
 {
 	Ref;
 	QLock;
 	Pipe	*next;
+	ulong	path;
 };
 
-struct Pipealloc
+struct
 {
 	Lock;
-	Pipe *pipe;
-	Pipe *free;
+	Pipe	*pipe;
+	ulong	path;
 } pipealloc;
 
+static Pipe *getpipe(ulong);
 static void pipeiput(Queue*, Block*);
 static void pipeoput(Queue*, Block*);
 static void pipestclose(Queue *);
+
 Qinfo pipeinfo =
 {
 	pipeiput,
@@ -35,7 +37,8 @@ Qinfo pipeinfo =
 	"pipe"
 };
 
-Dirtab pipedir[]={
+Dirtab pipedir[] =
+{
 	"data",		{Sdataqid},	0,			0600,
 	"ctl",		{Sctlqid},	0,			0600,
 	"data1",	{Sdataqid},	0,			0600,
@@ -48,19 +51,9 @@ pipeinit(void)
 {
 }
 
-/*
- *  allocate structures for conf.npipe pipes
- */
 void
 pipereset(void)
 {
-	Pipe *p, *ep;
-
-	pipealloc.pipe = ialloc(conf.npipe * sizeof(Pipe), 0);
-	ep = &pipealloc.pipe[conf.npipe-1];
-	for(p = pipealloc.pipe; p < ep; p++)
-		p->next = p+1;
-	pipealloc.free = pipealloc.pipe;
 }
 
 /*
@@ -73,20 +66,16 @@ pipeattach(char *spec)
 	Chan *c;
 
 	c = devattach('|', spec);
+	p = smalloc(sizeof(Pipe));
+	p->ref = 1;
 
 	lock(&pipealloc);
-	if(pipealloc.free == 0){
-		unlock(&pipealloc);
-		close(c);
-		exhausted("pipes");
-	}
-	p = pipealloc.free;
-	pipealloc.free = p->next;
-	if(incref(p) != 1)
-		panic("pipeattach");
+	p->path = ++pipealloc.path;
+	p->next = pipealloc.pipe;
+	pipealloc.pipe = p;
 	unlock(&pipealloc);
 
-	c->qid = (Qid){CHDIR|STREAMQID(2*(p - pipealloc.pipe), 0), 0};
+	c->qid = (Qid){CHDIR|STREAMQID(2*p->path, 0), 0};
 	c->dev = 0;
 	return c;
 }
@@ -96,7 +85,7 @@ pipeclone(Chan *c, Chan *nc)
 {
 	Pipe *p;
 
-	p = &pipealloc.pipe[STREAMID(c->qid.path)/2];
+	p = getpipe(STREAMID(c->qid.path)/2);
 	nc = devclone(c, nc);
 	if(incref(p) <= 1)
 		panic("pipeclone");
@@ -138,6 +127,7 @@ Chan *
 pipeopen(Chan *c, int omode)
 {
 	Pipe *p;
+	int other;
 	Stream *local, *remote;
 
 	if(c->qid.path & CHDIR){
@@ -149,7 +139,7 @@ pipeopen(Chan *c, int omode)
 		return c;
 	}
 
-	p = &pipealloc.pipe[STREAMID(c->qid.path)/2];
+	p = getpipe(STREAMID(c->qid.path)/2);
 	if(waserror()){
 		qunlock(p);
 		nexterror();
@@ -161,7 +151,8 @@ pipeopen(Chan *c, int omode)
 		/*
 		 *  first open, create the other end also
 		 */
-		remote = streamnew(c->type, c->dev, STREAMID(c->qid.path)^1, &pipeinfo,1);
+		other = STREAMID(c->qid.path)^1;
+		remote = streamnew(c->type, c->dev, other, &pipeinfo,1);
 
 		/*
 		 *  connect the device ends of both streams
@@ -170,7 +161,9 @@ pipeopen(Chan *c, int omode)
 		remote->devq->ptr = local;
 		local->devq->other->next = remote->devq;
 		remote->devq->other->next = local->devq;
-	} else if(local->opens == 1){
+	}
+	else
+	if(local->opens == 1){
 		/*
 		 *  keep other side around till last close of this side
 		 */
@@ -209,10 +202,10 @@ pipewstat(Chan *c, char *db)
 void
 pipeclose(Chan *c)
 {
-	Pipe *p;
+	Pipe *p, *f, **l;
 	Stream *remote;
 
-	p = &pipealloc.pipe[STREAMID(c->qid.path)/2];
+	p = getpipe(STREAMID(c->qid.path)/2);
 
 	/*
 	 *  take care of local and remote streams
@@ -232,12 +225,17 @@ pipeclose(Chan *c)
 	 */
 	if(decref(p) == 0){
 		lock(&pipealloc);
-		p->next = pipealloc.free;
-		pipealloc.free = p;
+		l = &pipealloc.pipe;
+		for(f = *l; f; f = f->next) {
+			if(f == p) {
+				*l = p->next;
+				break;
+			}
+			l = &p->next;
+		}
 		unlock(&pipealloc);
+		free(p);
 	}
-	if(p->ref < 0)
-		panic("pipeexit");
 }
 
 long
@@ -245,8 +243,8 @@ piperead(Chan *c, void *va, long n, ulong offset)
 {
 	if(c->qid.path & CHDIR)
 		return devdirread(c, va, n, pipedir, NPIPEDIR, pipegen);
-	else
-		return streamread(c, va, n);
+
+	return streamread(c, va, n);
 }
 
 /*
@@ -256,7 +254,7 @@ piperead(Chan *c, void *va, long n, ulong offset)
 long
 pipewrite(Chan *c, void *va, long n, ulong offset)
 {
-	if(waserror()){
+	if(waserror()) {
 		postnote(u->p, 1, "sys: write on closed pipe", NExit);
 		error(Egreg);
 	}
@@ -265,9 +263,6 @@ pipewrite(Chan *c, void *va, long n, ulong offset)
 	return n;
 }
 
-/*
- *  stream stuff
- */
 /*
  *  send a block up stream to the process.
  *  sleep untill there's room upstream.
@@ -311,4 +306,21 @@ pipestclose(Queue *q)
 	bp = allocb(0);
 	bp->type = M_HANGUP;
 	PUTNEXT(q, bp);
+}
+
+Pipe*
+getpipe(ulong path)
+{
+	Pipe *p;
+
+	lock(&pipealloc);
+	for(p = pipealloc.pipe; p; p = p->next) {
+		if(path == p->path) {
+			unlock(&pipealloc);
+			return p;
+		}
+	}
+	unlock(&pipealloc);
+	panic("getpipe");
+	return 0;
 }

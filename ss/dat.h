@@ -79,7 +79,6 @@ struct Conf
 	int	nsubfont;	/* Gsubfont structs (devbit.c) */
 	int	nurp;		/* max urp conversations */
 	int	nasync;		/* number of async protocol modules */
-	int	npipe;		/* number of pipes */
 	int	copymode;	/* 0 is copy on write, 1 is copy on reference */
 	ulong	ipif;		/* Ip protocol interfaces */
 	ulong	ip;		/* Ip conversations per interface */

@@ -222,7 +222,6 @@ confinit(void)
 	conf.nsubfont = 10*mul;
 	conf.nurp = 32;
 	conf.nasync = 1;
-	conf.npipe = conf.nstream/2;
 	conf.copymode = 0;		/* copy on write */
 	conf.ipif = 8;
 	conf.ip = 64;
@@ -263,7 +262,8 @@ lancesetup(Lance *lp)
 	/*
 	 * Allocate area for lance init block and descriptor rings
 	 */
-	pa = (ulong)ialloc(BY2PG, 1)&~KZERO;	/* one whole page */
+	pa = (ulong)xspanalloc(BY2PG, BY2PG, 0);
+
 	/* map at LANCESEGM */
 	k = kmappa(pa, PTEMAINMEM|PTENOCACHE);
 	lp->lanceram = (ushort*)k->va;

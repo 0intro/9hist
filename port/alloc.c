@@ -4,9 +4,18 @@
 #include	"dat.h"
 #include	"fns.h"
 
+/*
+ * Plan 9 has two kernel allocators, the x... routines provide a first
+ * fit hole allocator which should be used for permanent or large structures.
+ * Routines are provided to allocate aligned memory which does not cross
+ * arbitrary 2^n boundaries. A second allocator malloc, smalloc, free is
+ * a 2n bucket allocator which steals from the x routines. This should
+ * be used for small frequently used structures.
+ */
+
 #define	nil		((void*)0)
-#define datoff		((ulong)&((Xhdr*)0)->data)
-#define bdatoff		((ulong)&((Bucket*)0)->data)
+#define datoff		((ulong)((Xhdr*)0)->data)
+#define bdatoff		((ulong)((Bucket*)0)->data)
 
 enum
 {
@@ -14,6 +23,7 @@ enum
 	Nhole		= 128,
 	Magichole	= 0xDeadBabe,
 	Magic2n		= 0xFeedBeef,
+	Spanlist	= 64,
 };
 
 typedef struct Hole Hole;
@@ -75,14 +85,7 @@ ialloc(ulong size, int align)
 		p &= ~(BY2PG-1);
 		return (void*)p;
 	}
-
-	return xalloc(size);
-}
-
-void*
-iallocspan(ulong size, int quanta, ulong span)
-{
-	return ialloc(size, quanta);
+	return xalloc(size);;
 }
 
 void
@@ -125,6 +128,36 @@ xinit(void)
 
 	palloc.np0 = np0;
 	palloc.np1 = np1;
+}
+
+/*
+ * NB. spanalloc memory will cause a panic if free'd
+ */
+void*
+xspanalloc(ulong size, int align, ulong span)
+{
+	int i, j;
+	ulong a, p;
+	ulong ptr[Spanlist];
+
+	span = ~(span-1);
+	for(i = 0; i < Spanlist; i++) {
+		p = (ulong)xalloc(size+align);
+		if(p == 0)
+			panic("xspanalloc: size %d align %d span %d", size, align, span);
+
+		a = p+align;
+		a &= ~(align-1);
+		if((a&span) == ((a+size)&span)) {
+			for(j = 0; j < i; j++)
+				xfree((void*)ptr[j]);
+
+			return (void*)a;
+		}
+		ptr[i] = p;
+	}
+	panic("xspanalloc: spanlist");		
+	return 0;
 }
 
 void*

@@ -312,27 +312,17 @@ confinit(void)
 	conf.npage1 = (bank[1]*1024*1024)/BY2PG;
 	conf.base1 = 16*1024*1024;
 	conf.npage = conf.npage0+conf.npage1;
-	conf.maxialloc = (4*1024*1024-256*1024-BY2PG);
+	conf.upages = (conf.npage*70)/100;
+
 	mul = 1 + (conf.npage1>0);
 	conf.nproc = 50*mul;
-	conf.nseg = conf.nproc*4;
-	conf.npagetab = conf.nseg*2;
 	conf.nswap = 4096;
 	conf.nimage = 50;
-	conf.npgrp = 20*mul;
-	conf.nalarm = 1000;
-	conf.nchan = 200*mul;
 	conf.nenv = 100*mul;
 	conf.nenvchar = 8000*mul;
 	conf.npgenv = 200*mul;
-	conf.nmtab = 50*mul;
-	conf.nmount = 80*mul;
-	conf.nmntdev = 10*mul;
-	conf.nmntbuf = conf.nmntdev+5;
-	conf.nmnthdr = 2*conf.nmntdev;
 	conf.nstream = 40 + 32*mul;
 	conf.nqueue = 5 * conf.nstream;
-	conf.nblock = 24 * conf.nstream;
 	conf.nsrv = 16*mul;			/* was 32 */
 	conf.nbitmap = 300*mul;
 	conf.nbitbyte = 300*1024*mul;
@@ -343,13 +333,11 @@ confinit(void)
 	conf.nfont = 10*mul;
 	conf.nurp = 32;
 	conf.nasync = 1;
-	conf.npipe = conf.nstream/2;
-	conf.nservice = 3*mul;			/* was conf.nproc/5 */
-	conf.nfsyschan = 31 + conf.nchan/20;
 	conf.copymode = 0;		/* copy on write */
 	conf.portispaged = 0;
 	conf.cntrlp = 0;
 	conf.dkif = 2;
+
 	confinit1(mul);
 }
 
