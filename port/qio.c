@@ -1043,6 +1043,7 @@ qclose(Queue *q)
 	/* mark it */
 	ilock(q);
 	q->state |= Qclosed;
+	q->state &= ~(Qflow|Qstarve);
 	strcpy(q->err, Ehungup);
 	bfirst = q->bfirst;
 	q->bfirst = 0;

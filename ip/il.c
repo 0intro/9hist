@@ -128,7 +128,7 @@ enum
 	Seconds		= 1000,
 	Iltickms 	= 100,		/* time base */
 
-	Ackkeepalive	= 6000*Iltickms,
+	Ackkeepalive	= 600*Seconds,
 	Acktime		= 2*Iltickms,	/* max time twixt message rcvd & ack sent */
 
 	Slowtime 	= 90*Seconds,	/* max time waiting for an ack before hangup */
@@ -1015,7 +1015,7 @@ loop:
 void
 ilbackoff(Ilcb *ic)
 {
-	ic->fasttime += ic->fasttime<<1;
+	ic->fasttime += ic->fasttime>>1;
 }
 
 char*

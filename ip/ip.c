@@ -224,6 +224,8 @@ initfrag(int size)
 
 void (*ipextprotoiput)(Block*);
 
+//#define DBG(x)	if((logmask & Logipmsg) && (iponly == 0 || x == iponly))netlog
+
 void
 ipiput(Media *m, Block *bp)
 {
@@ -232,8 +234,8 @@ ipiput(Media *m, Block *bp)
 	ushort frag;
 	int notforme;
 
-/*	h = (Iphdr *)(bp->rp);
-	netlog(Logip, "ipiput %I %I len %d proto %d\n", h->src, h->dst, BLEN(bp), h->proto);*/
+//	h = (Iphdr *)(bp->rp);
+//	DBG(nhgetl(h->src))(Logipmsg, "ipiput %I %I len %d proto %d\n", h->src, h->dst, BLEN(bp), h->proto);
 
 	/* Ensure we have enough data to process */
 	if(BLEN(bp) < IPHDR) {

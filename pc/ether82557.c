@@ -1,10 +1,11 @@
 /*
  * Intel 82557 Fast Ethernet PCI Bus LAN Controller
  * as found on the Intel EtherExpress PRO/100B. This chip is full
- * of smarts, unfortunately none of them are in the right place.
+ * of smarts, unfortunately they're not all in the right place.
  * To do:
  *	the PCI scanning code could be made common to other adapters;
  *	auto-negotiation;
+ *	full-duplex;
  *	optionally use memory-mapped registers.
  */
 #include "u.h"
@@ -27,7 +28,7 @@ enum {
 enum {					/* CSR */
 	Status		= 0x00,		/* byte or word (word includes Ack) */
 	Ack		= 0x01,		/* byte */
-	Command		= 0x02,		/* byte or word (word includes Interrupt) */
+	CommandR	= 0x02,		/* byte or word (word includes Interrupt) */
 	Interrupt	= 0x03,		/* byte */
 	General		= 0x04,		/* dword */
 	Port		= 0x08,		/* dword */
@@ -298,10 +299,10 @@ custart(Ctlr* ctlr)
 	ctlr->cbqbusy = 1;
 
 	ilock(&ctlr->rlock);
-	while(csr8r(ctlr, Command))
+	while(csr8r(ctlr, CommandR))
 		;
 	csr32w(ctlr, General, PADDR(&ctlr->cbqhead->command));
-	csr8w(ctlr, Command, CUstart);
+	csr8w(ctlr, CommandR, CUstart);
 	iunlock(&ctlr->rlock);
 }
 
@@ -338,10 +339,10 @@ attach(Ether* ether)
 	ilock(&ctlr->rlock);
 	status = csr16r(ctlr, Status);
 	if((status & RUstatus) == RUidle){
-		while(csr8r(ctlr, Command))
+		while(csr8r(ctlr, CommandR))
 			;
 		csr32w(ctlr, General, PADDR(ctlr->rfdhead->rp));
-		csr8w(ctlr, Command, RUstart);
+		csr8w(ctlr, CommandR, RUstart);
 	}
 	iunlock(&ctlr->rlock);
 }
@@ -378,9 +379,9 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 	ctlr->dump[16] = 0;
 
 	ilock(&ctlr->rlock);
-	while(csr8r(ctlr, Command))
+	while(csr8r(ctlr, CommandR))
 		;
-	csr8w(ctlr, Command, DumpSC);
+	csr8w(ctlr, CommandR, DumpSC);
 	iunlock(&ctlr->rlock);
 
 	/*
@@ -535,9 +536,9 @@ interrupt(Ureg*, void* arg)
 
 		if(status & StatRNR){
 			lock(&ctlr->rlock);
-			while(csr8r(ctlr, Command))
+			while(csr8r(ctlr, CommandR))
 				;
-			csr8w(ctlr, Command, RUresume);
+			csr8w(ctlr, CommandR, RUresume);
 			unlock(&ctlr->rlock);
 
 			status &= ~StatRNR;
@@ -726,9 +727,8 @@ reset(Ether* ether)
 	}
 
 	/*
-	 * Any adapter matches if no ether->port is supplied, otherwise the
-	 * ports must match. First see if an adapter that fits the bill has
-	 * already been found. If not, scan for another.
+	 * Any adapter matches if no port is supplied,
+	 * otherwise the ports must match.
 	 */
 	port = 0;
 	bpp = &adapter;
@@ -763,19 +763,19 @@ reset(Ether* ether)
 	csr32w(ctlr, Port, 0);
 	delay(1);
 
-	while(csr8r(ctlr, Command))
+	while(csr8r(ctlr, CommandR))
 		;
 	csr32w(ctlr, General, 0);
-	csr8w(ctlr, Command, LoadRUB);
+	csr8w(ctlr, CommandR, LoadRUB);
 
-	while(csr8r(ctlr, Command))
+	while(csr8r(ctlr, CommandR))
 		;
-	csr8w(ctlr, Command, LoadCUB);
+	csr8w(ctlr, CommandR, LoadCUB);
 
-	while(csr8r(ctlr, Command))
+	while(csr8r(ctlr, CommandR))
 		;
 	csr32w(ctlr, General, PADDR(ctlr->dump));
-	csr8w(ctlr, Command, LoadDCA);
+	csr8w(ctlr, CommandR, LoadDCA);
 	iunlock(&ctlr->rlock);
 
 	/*
@@ -827,7 +827,7 @@ reset(Ether* ether)
 	 * the station address with the Individual Address Setup command.
 	 */
 	memset(ea, 0, Eaddrlen);
-	if(!memcmp(ea, ether->ea, Eaddrlen)){
+	if(memcmp(ea, ether->ea, Eaddrlen) == 0){
 		for(i = 0; i < Eaddrlen/2; i++){
 			x = hy93c46r(ctlr, i);
 			ether->ea[2*i] = x;

@@ -918,9 +918,9 @@ Fspcolstats(char *buf, int len)
 	n = 0;
 	for(p = fs.p; *p; p++)
 		n += snprint(buf + n, len - n,
-			"%s: csum %d hlen %d len %d order %d rexmit %d\n",
+			"%s: csum %d hlen %d len %d order %d rexmit %d wc %d\n",
 			(*p)->name, (*p)->csumerr, (*p)->hlenerr, (*p)->lenerr,
-			(*p)->order, (*p)->rexmit);
+			(*p)->order, (*p)->rexmit, (*p)->wclosed);
 	return n;
 }
 

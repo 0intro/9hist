@@ -6,7 +6,7 @@
  *	autoSelect;
  *	PCI latency timer and master enable;
  *	errata list;
- *	3C90x full busmastering;
+ *	limit 3C90x transmit queue;
  *	rewrite all initialisation.
  *
  * Product ID:

@@ -46,6 +46,8 @@ static Logflag flags[] =
 	{ "ilmsg",	Logil|Logilmsg, },
 	{ "gre",	Loggre, },
 	{ "tcpmsg",	Logtcp|Logtcpmsg, },
+	{ "udpmsg",	Logudp|Logudpmsg, },
+	{ "ipmsg",	Logip|Logipmsg, },
 	{ nil,		0, },
 };
 

@@ -1469,6 +1469,7 @@ tcpoutput(Conv *s)
 		 * window probes to one
 		 */
 		if(tcb->snd.wnd == 0){
+			tcp.wclosed++;
 			if(sent != 0) {
 				if ((tcb->flags&FORCE) == 0)
 					break;

@@ -95,8 +95,8 @@ udpannounce(Conv *c, char** argv, int argc)
 static void
 udpcreate(Conv *c)
 {
-	c->rq = qopen(16*1024, 1, 0, 0);
-	c->wq = qopen(16*1024, 0, 0, 0);
+	c->rq = qopen(64*1024, 1, 0, 0);
+	c->wq = qopen(64*1024, 0, 0, 0);
 }
 
 static void
@@ -124,7 +124,7 @@ udpkick(Conv *c, int l)
 	Udphdr *uh;
 	ushort rport;
 	Ipaddr laddr, raddr;
-	Block *bp, *f;
+	Block *bp;
 	Udpcb *ucb;
 	int dlen, ptcllen;
 
@@ -158,18 +158,7 @@ udpkick(Conv *c, int l)
 		laddr = 0;
 	}
 
-	/* Round packet up to even number of bytes */
 	dlen = blocklen(bp);
-	if(dlen & 1) {
-		for(f = bp; f->next; f = f->next)
-			;
-		if(f->wp >= f->lim) {
-			f->next = allocb(1);
-			f = f->next;
-		}
-		*f->wp++ = 0;
-		dlen++;	
-	}
 
 	/* Make space to fit udp & ip header */
 	bp = padblock(bp, UDP_IPHDR+UDP_HDRSIZE);
@@ -266,6 +255,9 @@ udpiput(Media *m, Block *bp)
 		udp.lenerr++;
 		return;
 	}
+
+	netlog(Logudpmsg, "udp: %I.%d -> %I.%d l %d\n", uh->udpsrc, rport,
+		uh->udpdst, lport, len);
 
 	ucb = (Udpcb*)c->ptcl;
 

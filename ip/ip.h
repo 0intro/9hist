@@ -183,6 +183,7 @@ struct Proto
 	ulong		lenerr;			/* short packet */
 	ulong		order;			/* out of order */
 	ulong		rexmit;			/* retransmissions */
+	ulong		wclosed;		/* window closed */
 };
 
 struct Fs
@@ -218,6 +219,8 @@ enum
 	Logppp=		1<<10,
 	Logtcpmsg=	1<<11,
 	Logigmp=	1<<12,
+	Logudpmsg=	1<<13,
+	Logipmsg=	1<<14,
 };
 
 extern int	logmask;	/* mask of things to debug */
