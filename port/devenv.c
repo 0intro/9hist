@@ -90,6 +90,7 @@ envopen(Chan *c, int omode)
 {
 	Egrp *eg;
 	Evalue *e;
+	int trunc;
 
 	eg = envgrp(c);
 	if(c->qid.type & QTDIR) {
@@ -97,21 +98,31 @@ envopen(Chan *c, int omode)
 			error(Eperm);
 	}
 	else {
+		trunc = omode & OTRUNC;
 		if(omode != OREAD && !envwriteable(c))
 			error(Eperm);
-		rlock(eg);
+		if(trunc)
+			wlock(eg);
+		else
+			rlock(eg);
 		e = envlookup(eg, nil, c->qid.path);
 		if(e == 0) {
-			runlock(eg);
+			if(trunc)
+				wunlock(eg);
+			else
+				runlock(eg);
 			error(Enonexist);
 		}
-		if((omode & OTRUNC) && e->value) {
+		if(trunc && e->value) {
 			e->qid.vers++;
 			free(e->value);
 			e->value = 0;
 			e->len = 0;
 		}
-		runlock(eg);
+		if(trunc)
+			wunlock(eg);
+		else
+			runlock(eg);
 	}
 	c->mode = openmode(omode);
 	c->flag |= COPEN;

@@ -50,6 +50,7 @@ void	i8253init(void);
 void	i8253enable(void);
 uvlong	i8253read(uvlong*);
 void	i8259init(void);
+int	i8259isr(int);
 int	i8259enable(Vctl*);
 int	i8259vecno(int);
 int	i8259disable(int);
