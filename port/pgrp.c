@@ -27,12 +27,12 @@ pgrpinit(void)
 	pgrpalloc.free = ialloc(conf.npgrp*sizeof(Pgrp), 0);
 
 	p = pgrpalloc.free;
-	for(i=0; i<conf.npgrp-1; i++,p++){
+	for(i=0; i<conf.npgrp; i++,p++){
 		p->next = p+1;
 		p->mtab = ialloc(conf.nmtab*sizeof(Mtab), 0);
 		p->etab = ialloc(conf.npgenv*sizeof(Envp*), 0);
 	}
-	p->next = 0;
+	p[-1].next = 0;
 
 	mountalloc.free = ialloc(conf.nmount*sizeof(Mount), 0);
 
@@ -111,7 +111,6 @@ loop:
 	print("no mounts\n");
 	if(u == 0)
 		panic("newmount");
-	print("%s %s\n", u->p->pgrp->user, u->p->text);
 	u->p->state = Wakeme;
 	alarm(1000, wakeme, u->p);
 	sched();

@@ -47,6 +47,10 @@ struct SBCC
 #define LANCERDP	IO2(ushort, 0xFC0002)
 #define LANCERAP	IO2(ushort, 0xFC000a)
 #define LANCEID		IO2(ushort, 0xFF0002)
+#define IOID		IO2(uchar, 0xFFFFF0)
+#define IO2R1		1	/* IO2 revision level 1 */
+#define IO2R2		2	/* IO2 revision level 2 */
+#define IO3R1		3	/* IO3 revision level 1 */
 
 typedef struct MODE	MODE;
 typedef struct INTVEC	INTVEC;
@@ -78,3 +82,4 @@ struct INTVEC {
 #define	MPBERR0		IO2(ulong, 0xF48000)
 #define	MPBERR1		IO2(ulong, 0xF4C000)
 #define SBEADDR		((ulong *)(UNCACHED|0x1F080000))
+

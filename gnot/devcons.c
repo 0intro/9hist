@@ -287,8 +287,6 @@ kbdchar(int c)
 		kbdq.count = 0;
 		kbdq.repeat = 2;
 	}
-	if(c == '\r')
-		c = '\n';
 	echo(c);
 	*kbdq.in++ = c;
 	if(kbdq.in == kbdq.buf+sizeof(kbdq.buf))
