@@ -333,7 +333,7 @@ init0(void)
 	chandevinit();
 
 	if(!waserror()){
-		ksetenv("cputype", "mips2");
+		ksetenv("cputype", "mips");
 		sprint(buf, "carrera %s R4400PC", conffile);
 		ksetenv("terminal", buf);
 		ksetenv("sysname", sysname);

@@ -1,6 +1,6 @@
 #include	"u.h"
 #include	"../port/lib.h"
-#include	<libgb.h>
+#include	<libg.h>
 #include	"mem.h"
 #include	"dat.h"
 #include	"fns.h"
