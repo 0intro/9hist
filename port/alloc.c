@@ -201,14 +201,9 @@ xfree(void *p)
 
 	x = (Xhdr*)((ulong)p - datoff);
 	if(x->magix != Magichole) {
-		uchar *a;
-		int i;
-		a = (uchar*)x;
-		for(i = 0; i < 32; i++)
-			print("#%lux ", *a++);
+		xsummary();
 		panic("xfree(0x%lux) 0x%lux!=0x%lux", p, Magichole, x->magix);
 	}
-
 	xhole(PADDR(x), x->size);
 }
 

@@ -140,6 +140,7 @@ panic(char *fmt, ...)
 	n = doprint(buf+strlen(buf), buf+sizeof(buf), fmt, (&fmt+1)) - buf;
 	buf[n] = '\n';
 	putstrn(buf, n+1);
+	spllo();
 	prflush();
 	dumpstack();
 
