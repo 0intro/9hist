@@ -367,8 +367,10 @@ scsiio(int bus, Scsi *p, int rw)
 int
 scsiexec(Scsi *p, int rw)
 {
-	USED(rw);
+	Ctlr *ctlr = &softctlr[0];
 
+	if(ctlr->port == 0)
+		error(Enodev);
 	if(p->target == CtlrID)
 		return 0x6002;
 
