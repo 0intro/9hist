@@ -53,7 +53,7 @@ Tss tss;
 #define	D16SEGM(p) 	{ 0xFFFF, (0x0<<16)|SEGP|SEGPL(p)|SEGDATA|SEGW }
 #define	E16SEGM(p) 	{ 0xFFFF, (0x0<<16)|SEGP|SEGPL(p)|SEGEXEC|SEGR }
 #define	TSSSEGM(b,p)	{ ((b)<<16)|sizeof(Tss),\
-			  ((b)&0xFF000000)|(((b)<<16)&0xFF)|SEGTSS|SEGPL(p)|SEGP }
+			  ((b)&0xFF000000)|(((b)>>16)&0xFF)|SEGTSS|SEGPL(p)|SEGP }
 
 /*
  *  global descriptor table describing all segments
