@@ -405,22 +405,22 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 	unlock(&ctlr->dlock);
 
 	p = malloc(READSTR);
-	len = snprint(p, READSTR, "transmit good frames: %ld\n", dump[0]);
-	len += snprint(p+len, READSTR-len, "transmit maximum collisions errors: %ld\n", dump[1]);
-	len += snprint(p+len, READSTR-len, "transmit late collisions errors: %ld\n", dump[2]);
-	len += snprint(p+len, READSTR-len, "transmit underrun errors: %ld\n", dump[3]);
-	len += snprint(p+len, READSTR-len, "transmit lost carrier sense: %ld\n", dump[4]);
-	len += snprint(p+len, READSTR-len, "transmit deferred: %ld\n", dump[5]);
-	len += snprint(p+len, READSTR-len, "transmit single collisions: %ld\n", dump[6]);
-	len += snprint(p+len, READSTR-len, "transmit multiple collisions: %ld\n", dump[7]);
-	len += snprint(p+len, READSTR-len, "transmit total collisions: %ld\n", dump[8]);
-	len += snprint(p+len, READSTR-len, "receive good frames: %ld\n", dump[9]);
-	len += snprint(p+len, READSTR-len, "receive CRC errors: %ld\n", dump[10]);
-	len += snprint(p+len, READSTR-len, "receive alignment errors: %ld\n", dump[11]);
-	len += snprint(p+len, READSTR-len, "receive resource errors: %ld\n", dump[12]);
-	len += snprint(p+len, READSTR-len, "receive overrun errors: %ld\n", dump[13]);
-	len += snprint(p+len, READSTR-len, "receive collision detect errors: %ld\n", dump[14]);
-	snprint(p+len, READSTR-len, "receive short frame errors: %ld\n", dump[15]);
+	len = snprint(p, READSTR, "transmit good frames: %lud\n", dump[0]);
+	len += snprint(p+len, READSTR-len, "transmit maximum collisions errors: %lud\n", dump[1]);
+	len += snprint(p+len, READSTR-len, "transmit late collisions errors: %lud\n", dump[2]);
+	len += snprint(p+len, READSTR-len, "transmit underrun errors: %lud\n", dump[3]);
+	len += snprint(p+len, READSTR-len, "transmit lost carrier sense: %lud\n", dump[4]);
+	len += snprint(p+len, READSTR-len, "transmit deferred: %lud\n", dump[5]);
+	len += snprint(p+len, READSTR-len, "transmit single collisions: %lud\n", dump[6]);
+	len += snprint(p+len, READSTR-len, "transmit multiple collisions: %lud\n", dump[7]);
+	len += snprint(p+len, READSTR-len, "transmit total collisions: %lud\n", dump[8]);
+	len += snprint(p+len, READSTR-len, "receive good frames: %lud\n", dump[9]);
+	len += snprint(p+len, READSTR-len, "receive CRC errors: %lud\n", dump[10]);
+	len += snprint(p+len, READSTR-len, "receive alignment errors: %lud\n", dump[11]);
+	len += snprint(p+len, READSTR-len, "receive resource errors: %lud\n", dump[12]);
+	len += snprint(p+len, READSTR-len, "receive overrun errors: %lud\n", dump[13]);
+	len += snprint(p+len, READSTR-len, "receive collision detect errors: %lud\n", dump[14]);
+	snprint(p+len, READSTR-len, "receive short frame errors: %lud\n", dump[15]);
 
 	n = readstr(offset, a, n, p);
 	free(p);
