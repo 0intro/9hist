@@ -130,20 +130,10 @@ enum
 void
 ready(Proc *p)
 {
-	int s, pri, base;
+	int s, pri;
 	Schedq *rq;
 
 	s = splhi();
-
-	/*
-	 *  This interacts with code in taslock().  The intent is to keep the
-	 *  priority of a process trying for a lock lower than the process holding
-	 *  the lock.
-	 */
-	if(p->lockpri)
-		base = p->lockpri;
-	else
-		base = p->basepri;
 
 	/* history counts */
 	if(p->state == Running){
@@ -154,15 +144,19 @@ ready(Proc *p)
 		p->rt = 0;
 		pri = p->art/Squantum;
 	}
-	pri = base - pri;
+	pri = p->basepri - pri;
 	if(pri < 0)
 		pri = 0;
 
 	/* the only intersection between the classes is at PriNormal */
-	if(pri < PriNormal && base > PriNormal)
+	if(pri < PriNormal && p->basepri > PriNormal)
 		pri = PriNormal;
-	p->priority = pri;
 
+	/* hack for livelocks due to priority */
+	if(p->lockpri)
+		pri = 0;
+
+	p->priority = pri;
 	rq = &runq[p->priority];
 
 	lock(runq);

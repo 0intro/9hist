@@ -26,7 +26,6 @@ struct Lock
 	ulong	pc;
 	ulong	sr;
 	ulong	pid;
-	int	pri;
 };
 
 struct Label
