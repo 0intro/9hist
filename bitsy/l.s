@@ -688,8 +688,8 @@ TEXT power_down(SB), $-4
 	MOVW	R2,0x10(R3)
 	MOVW	$0,R2
 	MOVW	R2,0x18(R3)
-/*	MOVW	$power_resume+0(SB),R2	*/
-	MOVW	$0,R2
+	MOVW	$power_resume+0(SB),R2
+/*	MOVW	$0,R2	*/
 	MOVW	R2,0x8(R3)
 	MOVW	$0,R2
 	MOVW	R2,0x4(R6)
@@ -726,9 +726,9 @@ l14:	SUB		$1,R0
 
 	MOVW	$1,R2
 	MOVW	R4,0x1c(R3)
-//	MOVW	R6,0x1c(R3)
+	MOVW	R6,0x1c(R3)
 	MOVW	R12,0x0(R3)
-//	MOVW	R11,0x1c(R3)
+	MOVW	R11,0x1c(R3)
 	MOVW	R2,0x0(R5)
 
 slloop:

@@ -173,7 +173,7 @@ deepsleep(void) {
 	screenpower(0);
 	µcpower(0);
 	iprint("entering suspend mode, sp = 0x%lux, pc = 0x%lux, psw = 0x%ux\n", &xsp, xlink, power_pl);
-//	dumpitall();
+	dumpitall();
 	delay(1000);
 	uartpower(0);
 	rs232power(0);
@@ -206,10 +206,10 @@ deepsleep(void) {
 		delay(100);
 		xlink = getcallerpc(&xlink);
 		iprint("\nresuming execution, sp = 0x%lux, pc = 0x%lux, psw = 0x%ux\n", &xsp, xlink, splhi());
-//		dumpitall();
+		dumpitall();
 		delay(1000);
 //		irpower(1);
-//		audiopower(1);
+		audiopower(1);
 		µcpower(1);
 		screenpower(1);
 		splx(power_pl);
