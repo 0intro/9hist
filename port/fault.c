@@ -7,6 +7,35 @@
 
 void	faulterror(char*);
 
+ulong
+getpte(ulong addr)
+{
+	Pte **p, *etp;
+	Segment *s;
+	Page **pg;
+	ulong soff;
+
+	s = seg(up, addr, 1);
+	if(s == 0)
+		return -1;
+
+	addr &= ~(BY2PG-1);
+	soff = addr-s->base;
+	p = &s->map[soff/PTEMAPMEM];
+	if(*p == 0) {
+		qunlock(&s->lk);
+		return -1;
+	}
+	etp = *p;
+	pg = &etp->pages[(soff&(PTEMAPMEM-1))/BY2PG];
+	if(*pg == 0) {
+		qunlock(&s->lk);
+		return -1;
+	}
+	qunlock(&s->lk);
+	return (*pg)->pa;
+}
+
 int
 fault(ulong addr, int read)
 {

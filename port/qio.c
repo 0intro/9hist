@@ -407,7 +407,6 @@ qread(Queue *q, void *vp, int len)
 		if(q->state & Qclosed){
 			unlock(q);
 			splx(x);
-print("Qclosed %lux\n", q);
 			return 0;
 		}
 

@@ -294,7 +294,7 @@ sysexec(ulong *arg)
 	if((ssize+4) & 7)
 		ssize += 4;
 	spage = (ssize+(BY2PG-1)) >> PGSHIFT;
-print("ssize %d spage %lux\n", ssize, spage);
+
 	/*
 	 * Build the stack segment, putting it in kernel virtual for the moment
 	 */
@@ -319,7 +319,6 @@ print("ssize %d spage %lux\n", ssize, spage);
 			argp = (char**)arg[1];
 		}
 		*argv++ = charp + (USTKTOP-TSTKTOP);
-print("arg[%d] %s\n", i, *argp);
 		n = strlen(*argp) + 1;
 		memmove(charp, *argp++, n);
 		charp += n;
