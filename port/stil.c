@@ -294,7 +294,7 @@ ilrcvmsg(Ipconv *ipc, Block *bp)
 			if(new == 0)
 				goto reset;
 
-			new->newcon = 1;
+			new->newcon = s;
 			new->ipinterface = s->ipinterface;
 			new->psrc = sp;
 			new->pdst = dp;

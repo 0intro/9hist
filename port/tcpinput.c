@@ -103,7 +103,7 @@ tcpincoming(Ipconv *ipc, Ipconv *s, Tcp *segp, Ipaddr source)
 	new->tcpctl.timer.state = TIMER_STOP;
 	new->tcpctl.acktimer.arg = new;
 	new->tcpctl.acktimer.state = TIMER_STOP;
-	new->newcon = 1;
+	new->newcon = s;
 	new->ipinterface = s->ipinterface;
 
 	s->ipinterface->ref++;

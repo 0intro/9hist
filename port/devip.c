@@ -654,18 +654,17 @@ iplisten(Chan *c)
 	if(s->ilctl.state != Illistening)
 		error(Enolisten);
 
-	qlock(&s->listenq);
-	if(waserror()) {
-		qunlock(&s->listenq);
-		nexterror();
-	}
-
 	for(;;) {
+		qlock(&s->listenq);	/* single thread for the sleep */
+		if(waserror()) {
+			qunlock(&s->listenq);
+			nexterror();
+		}
 		sleep(&s->listenr, iphavecon, s);
 		poperror();
 		new = base;
  		for(etab = &base[conf.ip]; new < etab; new++) {
-			if(new->newcon) {
+			if(new->newcon == s) {
 				qlock(s);
 				s->curlog--;
 				qunlock(s);
@@ -674,6 +673,7 @@ iplisten(Chan *c)
 				return new - base;
 			}
 		}
+		qunlock(&s->listenq);
 		print("iplisten: no newcon\n");
 	}
 }

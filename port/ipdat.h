@@ -294,7 +294,7 @@ struct Ipconv
 	char	*err;			/* Async protocol error */
 	int	backlog;		/* Maximum number of waiting connections */
 	int	curlog;			/* Number of waiting connections */
-	int 	newcon;			/* Flags that this is the start of a connection */
+	Ipconv 	*newcon;		/* Flags that this is the start of a connection */
 
 	union {
 		Tcpctl	tcpctl;			/* Tcp control block */
