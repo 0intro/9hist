@@ -137,11 +137,22 @@ ready(Proc *p)
 
 	s = splhi();
 
-	if(p->state == Running)
+	/* history counts */
+	if(p->state == Running){
 		p->rt++;
-	pri = p->basepri - (((p->art + p->rt)>>1)/Squantum);
+		pri = ((p->art + (p->rt<<1))>>2)/Squantum;
+	} else {
+		p->art = (p->art + (p->rt<<1))>>2;
+		p->rt = 0;
+		pri = p->art/Squantum;
+	}
+	pri = p->basepri - pri;
 	if(pri < 0)
 		pri = 0;
+
+	/* the only intersection between the classes is at PriNormal */
+	if(pri < PriNormal && p->basepri > PriNormal)
+		pri = PriNormal;
 	p->priority = pri;
 	rq = &runq[p->priority];
 
@@ -364,8 +375,6 @@ sleep1(Rendez *r, int (*f)(void*), void *arg)
 		dumpstack();
 	}
 	up->state = Wakeme;
-	up->art = (up->art + up->rt)>>1;
-	up->rt = 0;
 	r->p = up;
 	unlock(r);
 }
@@ -811,6 +820,9 @@ kproc(char *name, void (*func)(void *), void *arg)
 	p->notify = up->notify;
 	p->ureg = 0;
 	p->dbgreg = 0;
+
+	p->basepri = PriKproc;
+	p->priority = p->basepri;
 
 	kprocchild(p, func, arg);
 

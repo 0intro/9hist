@@ -502,6 +502,7 @@ enum
 
 	Nrq		= 20,	/* number of scheduler priority levels */
 	PriNormal	= 10,	/* base priority for normal processes */
+	PriKproc	= 13,	/* base priority for kernel processes */
 	PriRoot		= 13,	/* base priority for root processes */
 };
 
