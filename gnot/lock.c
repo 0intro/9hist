@@ -4,7 +4,7 @@
 #include "dat.h"
 #include "fns.h"
 
-#define PCOFF -2
+#define PCOFF -1
 
 /*
  *  N.B.  Ken's compiler generates a TAS instruction for the sequence:
@@ -25,13 +25,13 @@ lock(Lock *l)
 	 */
     	if(l->key >= 0){
 		l->key |= 0x80;
-		l->pc = ((ulong*)&i)[PCOFF];
+		l->pc = ((ulong*)&l)[PCOFF];
 		return;
 	}
 	for(i=0; i<10000000; i++)
     		if(l->key >= 0){
 			l->key |= 0x80;
-			l->pc = ((ulong*)&i)[PCOFF];
+			l->pc = ((ulong*)&l)[PCOFF];
 			return;
 		}
 	l->key = 0;
@@ -41,11 +41,9 @@ lock(Lock *l)
 int
 canlock(Lock *l)
 {
-	int i;
-
 	if(l->key >= 0){
 		l->key |= 0x80;
-		l->pc = ((ulong*)&i)[PCOFF];
+		l->pc = ((ulong*)&l)[PCOFF];
 		return 1;
 	}
 	return 0;

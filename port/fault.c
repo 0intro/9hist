@@ -208,16 +208,24 @@ o->nmod++;
 void
 validaddr(ulong addr, ulong len, int write)
 {
-	Seg *s;
+	Seg *s, *ns;
 
-	if((long)len < 0)
-		goto Err;
-	s = seg(u->p, addr);
-	if(s==0 || addr+len>s->maxva || (write && (s->o->flag&OWRPERM)==0)){
+	if((long)len < 0){
     Err:
 		pprint("invalid address in sys call pc %lux sp %lux\n", ((Ureg*)UREGADDR)->pc, ((Ureg*)UREGADDR)->sp);
 		postnote(u->p, 1, "bad address", NDebug);
 		error(0, Ebadarg);
+	}
+    Again:
+	s = seg(u->p, addr);
+	if(s==0)
+		goto Err;
+	if(write && (s->o->flag&OWRPERM)==0)
+		goto Err;
+	if(addr+len > s->maxva){
+		len -= s->maxva - addr;
+		addr = s->maxva;
+		goto Again;
 	}
 }
 

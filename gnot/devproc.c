@@ -263,7 +263,7 @@ procread(Chan *c, void *va, long n)
 		}
 
 		/* u area */
-		if(c->offset>=USERADDR && c->offset<=USERADDR+BY2PG){
+		if(c->offset>=USERADDR && c->offset<USERADDR+BY2PG){
 			if(c->offset+n > USERADDR+BY2PG)
 				n = USERADDR+BY2PG - c->offset;
 			pg = p->upage;

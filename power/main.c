@@ -199,6 +199,7 @@ userinit(void)
 	Proc *p;
 	Seg *s;
 	User *up;
+	KMap *k;
 	int i;
 	char **av;
 
@@ -219,8 +220,10 @@ userinit(void)
 	/*
 	 * User
 	 */
-	up = (User*)(p->upage->pa|KZERO);
+	k = kmap(p->upage);
+	up = (User*)VA(k);
 	up->p = p;
+	kunmap(k);
 
 	/*
 	 * User Stack, pass input arguments to boot process
@@ -244,7 +247,9 @@ userinit(void)
 	s->proc = p;
 	s->o = neworig(UTZERO, 1, 0, 0);
 	s->o->pte[0].page = newpage(0, 0, UTZERO);
-	memcpy((ulong*)(s->o->pte[0].page->pa|KZERO), initcode, sizeof initcode);
+	k = kmap(s->o->pte[0].page);
+	memcpy((ulong*)VA(k), initcode, sizeof initcode);
+	kunmap(k);
 	s->minva = 0x1000;
 	s->maxva = 0x2000;
 

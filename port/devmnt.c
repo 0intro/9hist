@@ -141,22 +141,21 @@ mhfree(Mnthdr *mh)
 }
 
 MntQ*
-mqalloc(void)
+mqalloc(Chan *msg)	/* mntqalloc is locked */
 {
 	MntQ *q;
 
-	lock(&mntqalloc);
 	if(q = mntqalloc.free){		/* assign = */
 		mntqalloc.free = q->next;
-		unlock(&mntqalloc);
 		lock(q);
 		q->ref = 1;
+		q->msg = msg;
+		unlock(q);
+		incref(msg);
 		q->writer = 0;
 		q->reader = 0;
-		unlock(q);
 		return q;
 	}
-	unlock(&mntqalloc);
 	panic("no mntqs\n");			/* there MUST be enough */
 }
 
@@ -167,6 +166,7 @@ mqfree(MntQ *mq)
 
 	lock(mq);
 	if(--mq->ref == 0){
+print("mqfree %lux %lux\n", mq->reader, mq->writer);
 		msg = mq->msg;
 		mq->msg = 0;
 		lock(&mntqalloc);
@@ -271,6 +271,7 @@ mntattach(char *spec)
 	 * Look for queue to same msg channel
 	 */
 	q = mntqalloc.arena;
+	lock(&mntqalloc);
 	for(i=0; i<conf.nmntdev; i++,q++)
 		if(q->msg==cm){
 			lock(q);
@@ -282,11 +283,10 @@ mntattach(char *spec)
 			}
 			unlock(q);
 		}
-	m->q = mqalloc();
-	m->q->msg = cm;
-	incref(cm);
+	m->q = mqalloc(cm);
 
     out:
+	unlock(&mntqalloc);
 	mh = mhalloc();
 	if(waserror()){
 		mhfree(mh);
@@ -771,7 +771,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		qlocked = 0;
 		n = (*devtab[q->msg->type].read)(q->msg, mbr->buf, BUFSIZE);
 		if(convM2S(mbr->buf, &mh->rhdr, n) == 0){
-			print("format error in mntxmit\n");
+			print("%lux %lux %lux %d format error in mntxmit %s\n", u->p, q->reader, q->writer, n, u->p->text);
 			mnterrdequeue(q, mh);
 			error(0, Ebadmsg);
 		}
@@ -795,7 +795,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		/*
 		 * Hand response to correct recipient
 		 */
-if(q->writer == 0) print("response with empty queue\n");
+if(q->writer == 0) print("response with empty queue %d %d %d: %d %d\n", mh->rhdr.type, mh->rhdr.err, mh->rhdr.fid, mh->thdr.type, mh->thdr.fid);
 		for(ow=0,w=q->writer; w; ow=w,w=w->next)
 			if(mh->rhdr.fid == w->thdr.fid
 			&& mh->rhdr.type == w->thdr.type+1){
@@ -822,7 +822,7 @@ if(q->writer == 0) print("response with empty queue\n");
 		qunlock(q);
 		qlocked = 0;
 		if(waserror()){		/* interrupted sleep */
-			print("interrupted i/o\n");
+			print("%lux interrupted i/o %d %d\n", u->p, mh->thdr.type, mh->thdr.fid);
 			mnterrdequeue(q, mh);
 			nexterror();
 		}

@@ -10,7 +10,7 @@ struct
 	Lock;
 	ulong	addr;
 	int	active;
-	Page	*page;		/* base of Page structures, indexed by phys addr */
+	Page	*page;		/* base of Page structures, indexed by phys page number */
 	ulong	minppn;		/* index of first usable page */
 	Page	*head;		/* most recently used */
 	Page	*tail;		/* least recently used */
@@ -161,6 +161,7 @@ newpage(int noclear, Orig *o, ulong va)
 {
 	Page *p;
 	Orig *o1;
+	KMap *k;
 
 	if(palloc.active == 0)
 		print("newpage inactive\n");
@@ -206,8 +207,11 @@ loop:
 	p->ref = 1;
 	usepage(p, 0);
 	unlock(&palloc);
-	if(!noclear)
-		memset((void*)(p->pa|KZERO), 0, BY2PG);
+	if(!noclear){
+		k = kmap(p);
+		memset((void*)VA(k), 0, BY2PG);
+		kunmap(k);
+	}
 	p->o = o;
 	p->va = va;
 

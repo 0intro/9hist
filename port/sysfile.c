@@ -283,7 +283,6 @@ sysstat(ulong *arg)
 	validaddr(arg[0], 1, 0);
 	c = namec((char*)arg[0], Aaccess, 0, 0);
 	if(waserror()){
-print("stat error\n");
 		close(c);
 		nexterror();
 	}

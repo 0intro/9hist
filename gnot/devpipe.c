@@ -92,22 +92,19 @@ pipeopen(Chan *c, int omode)
 void
 pipecreate(Chan *c, char *name, int omode, ulong perm)
 {
-	print("pipecreate\n");
 	error(0, Egreg);
 }
 
 void
 piperemove(Chan *c)
 {
-	print("piperemove\n");
 	error(0, Egreg);
 }
 
 void
 pipewstat(Chan *c, char *db)
 {
-	print("pipewstat\n");
-	error(0, Egreg);
+	error(0, Eperm);
 }
 
 void

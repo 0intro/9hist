@@ -425,6 +425,10 @@ consread(Chan *c, void *buf, long n)
 
 	case Qcons:
 		qlock(&kbdq);
+		if(waserror()){
+			qunlock(&kbdq);
+			nexterror();
+		}
 		while(!cangetc(&lineq)){
 			sleep(&kbdq.r, (int(*)(void*))isbrkc, &kbdq);
 			do{
@@ -486,7 +490,7 @@ consread(Chan *c, void *buf, long n)
 		return readnum(c->offset, buf, n, u->p->parentpid, NUMSIZE);
 
 	case Qtime:
-		return readnum(c->offset, buf, n, boottime+TK2MS(MACHP(0)->ticks), 12);
+		return readnum(c->offset, buf, n, boottime+TK2SEC(MACHP(0)->ticks), 12);
 
 	case Quser:
 		return readstr(c->offset, buf, n, u->p->pgrp->user);

@@ -310,7 +310,7 @@ struct Proc
 	Proc	*sib;			/* non-ascendant relatives (circular list) */
 	int	nchild;
 	QLock	wait;			/* exiting children to be waited for */
-	Waitmsg	*waitmsg;
+	ulong	waitmsg;
 	Proc	*child;
 	Proc	*parent;
 	Pgrp	*pgrp;

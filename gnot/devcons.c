@@ -188,6 +188,8 @@ echo(int c)
 		return;
 	if(c == 0x15)
 		putstrn("^U\n", 3);
+	if(c == 0x16)
+		dumpqueues();
 	else{
 		ch = c;
 		putstrn(&ch, 1);
@@ -399,6 +401,10 @@ consread(Chan *c, void *buf, long n)
 	case Qrcons:
 	case Qcons:
 		qlock(&kbdq);
+		if(waserror()){
+			qunlock(&kbdq);
+			nexterror();
+		}
 		while(!cangetc(&lineq)){
 			sleep(&kbdq.r, (int(*)(void*))isbrkc, &kbdq);
 			do{

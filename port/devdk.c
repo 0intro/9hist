@@ -66,7 +66,7 @@ struct Dkmsg {
 #define	  D_OK		1		/* not used */
 #define	  D_OPEN	2		/* (dkmux to host) connection established */
 #define	  D_FAIL	3		/* (dkmux to host) connection failed */
-#define	T_CHG	3		/* linege the status of a connection */
+#define	T_CHG	3		/* change the status of a connection */
 #define	  D_CLOSE	1		/* close the connection */
 #define	  D_ISCLOSED	2		/* (dkmux to host) confirm a close */
 #define	  D_CLOSEALL	3		/* (dkmux to host) close all connections */
@@ -1003,7 +1003,7 @@ dkcall(int type, Chan *c, char *addr, char *nuser, char *machine)
 	}
 
 	/*
-	 *  linege state if serving
+	 *  change state if serving
 	 */
 	if(type == D_SERV){
 		lp->state = Llistening;
@@ -1075,7 +1075,9 @@ dklisten(Chan *c)
 		n = streamread(dc, dialstr, sizeof(dialstr)-1);
 		DPRINT("returns %d\n", n);
 		if(n <= 0)
+{print("bad n\n");
 			error(0, Eio);
+}
 		dialstr[n] = 0;
 		DPRINT("dialstr = %s\n", dialstr);
 
@@ -1085,6 +1087,7 @@ dklisten(Chan *c)
 		n = getfields(dialstr, line, 12, '\n');
 		if (n < 2) {
 			DPRINT("bad dialstr from dk (1 line)\n");
+print("bad dialstr %d '%s'\n", n, dialstr);
 			error(0, Eio);
 		}
 
@@ -1289,6 +1292,12 @@ dkcsckproc(void *a)
 	int i;
 
 	dp = (Dk *)a;
+
+	/*
+	 *  tell datakit we've rebooted. It should close all channels.
+	 */
+	dkmesg(dp, T_ALIVE, D_RESTART, 0, 0);	/* do this on mips but not 68020 */
+	dkmesg(dp, T_CHG, D_CLOSEALL, 0, 0);
 
 	/*
 	 *  loop forever listening
