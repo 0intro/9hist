@@ -27,7 +27,6 @@
 #endif
 */
 
-#define Pprint
 #define Chatty	1
 #define DPRINT if(Chatty)print
 #define XPRINT if(debug)print
@@ -377,8 +376,8 @@ dumptd(TD *t, int follow)
 		XPRINT("l=%8.8lux s=%8.8lux d=%8.8lux b=%8.8lux %8.8lux f=%8.8lux\n",
 			t->link, t->status, t->dev, t->buffer, t->bp?(ulong)t->bp->rp:0, t->flags);
 		XPRINT("\ts=%s,ep=%ld,d=%ld,D=%ld\n", buf, (t->dev>>15)&0xF, (t->dev>>8)&0xFF, (t->dev>>19)&1);
-	//	if(t->bp && (t->flags & CancelTD) == 0 && (t->status & Active) == 0)
-	//		dumpdata(t->bp, n);
+		if(debug && t->bp && (t->flags & CancelTD) == 0)
+			dumpdata(t->bp, n);
 		if(!follow || t->link & Terminate || t->link & IsQH)
 			break;
 		t = TFOL(t->link);
@@ -692,7 +691,6 @@ qxmit(Endpt *e, Block *b, int pid)
 	Ctlr *ub;
 	QH *qh;
 
-XPRINT("qxmit\n");
 	if(b != nil){
 		n = BLEN(b);
 		t = alloctde(e, pid, n);
@@ -704,14 +702,12 @@ XPRINT("qxmit\n");
 	ilock(ub);
 	e->ntd++;
 	iunlock(ub);
-if(e->debug)pprint("QTD: %8.8lux n=%ld\n", t, b?BLEN(b): 0);
+	if(e->debug) pprint("QTD: %8.8lux n=%ld\n", t, b?BLEN(b): 0);
 	vf = 0;
 	if(e->x == 0){
-XPRINT("enq\n");
 		qh = ub->ctlq;
 		vf = 0;
 	}else if((qh = e->epq) == nil || e->mode != OWRITE){
-XPRINT("bulkenq\n");
 		qh = ub->bulkq;
 		vf = Vf;
 	}
@@ -728,7 +724,6 @@ qrcv(Endpt *e)
 	QH *qh;
 	int vf;
 
-XPRINT("qrcv\n");
 	t = alloctde(e, TokIN, e->maxpkt);
 	b = allocb(e->maxpkt);
 	t->bp = b;
@@ -736,10 +731,8 @@ XPRINT("qrcv\n");
 	ub = &ubus;
 	vf = 0;
 	if(e->x == 0){
-XPRINT("enq\n");
 		qh = ub->ctlq;
 	}else if((qh = e->epq) == nil || e->mode != OREAD){
-XPRINT("bulkenq\n");
 		qh = ub->bulkq;
 		vf = Vf;
 	}
@@ -1179,13 +1172,13 @@ enum
 #define	DEVPATH(q)	(((q)&~CHDIR)>>QSHIFT)
 
 static Dirtab usbdir2[] = {
-	"new",	{Qnew},	0,	0666,
+	"new",		{Qnew},		0,	0666,
 	"ctl",		{Qbusctl},	0,	0666,
-	"port",	{Qport},	0,	0444,
+	"port",		{Qport},	0,	0444,
 };
 
 static Dirtab usbdir3[]={
-	"ctl",		{Qctl},	0,	0666,
+	"ctl",		{Qctl},		0,	0666,
 	"setup",	{Qsetup},	0,	0666,
 	"status",	{Qstatus},	0,	0444,
 	"debug",	{Qdebug},	1,	0666,
@@ -1276,7 +1269,7 @@ usbreset(void)
 		return;
 	}
 
-	print("USB: %x/%x port 0x%lux size 0x%x irq %d\n",
+	DPRINT("USB: %x/%x port 0x%lux size 0x%x irq %d\n",
 		cfg->vid, cfg->did, port, cfg->mem[4].size, cfg->intl);
 
 	i = inb(port+SOFMod);
@@ -1314,10 +1307,6 @@ usbreset(void)
 	ub->bwsop = allocqh(ub);
 	ub->bulkq = allocqh(ub);
 	ub->recvq = allocqh(ub);
-XPRINT("bulkq: 0x%8.8lux\n", ub->bulkq);
-XPRINT("recvq: 0x%8.8lux\n", ub->recvq);
-XPRINT("bwsop: 0x%8.8lux\n", ub->bwsop);
-XPRINT("ctlq: 0x%8.8lux\n", ub->ctlq);
 	t = alloctd(ub);	/* inactive TD, looped */
 	t->link = PADDR(t);
 	ub->bwsop->entries = PADDR(t);
@@ -1325,9 +1314,9 @@ XPRINT("ctlq: 0x%8.8lux\n", ub->ctlq);
 	ub->bwsop->head = PADDR(ub->bulkq) | IsQH;
 	ub->bulkq->head = PADDR(ub->recvq) | IsQH;
 	ub->recvq->head = PADDR(ub->bwsop) | IsQH;	/* loop back */
-	print("usbcmd\t0x%.4x\nusbsts\t0x%.4x\nusbintr\t0x%.4x\nfrnum\t0x%.2x\n",
+	XPRINT("usbcmd\t0x%.4x\nusbsts\t0x%.4x\nusbintr\t0x%.4x\nfrnum\t0x%.2x\n",
 		IN(Cmd), IN(Status), IN(Usbintr), inb(port+Frnum));
-	print("frbaseadd\t0x%.4x\nsofmod\t0x%x\nportsc1\t0x%.4x\nportsc2\t0x%.4x\n",
+	XPRINT("frbaseadd\t0x%.4x\nsofmod\t0x%x\nportsc1\t0x%.4x\nportsc2\t0x%.4x\n",
 		IN(Flbaseadd), inb(port+SOFMod), IN(Portsc0), IN(Portsc1));
 	OUT(Cmd, 0);	/* stop */
 	ub->frames = xspanalloc(FRAMESIZE, FRAMESIZE, 0);
@@ -1339,13 +1328,13 @@ XPRINT("ctlq: 0x%8.8lux\n", ub->ctlq);
 	}
 	qt->root->head = PADDR(ub->ctlq) | IsQH;
 	ub->tree = qt;
-	print("usb tree: nel=%d depth=%d\n", qt->nel, qt->depth);
+	XPRINT("usb tree: nel=%d depth=%d\n", qt->nel, qt->depth);
 
 	outl(port+Flbaseadd, PADDR(ub->frames));
 	OUT(Frnum, 0);
 	OUT(Usbintr, 0xF);	/* enable all interrupts */
-	print("cmd 0x%x sofmod 0x%x\n", IN(Cmd), inb(port+SOFMod));
-	print("sc0 0x%x sc1 0x%x\n", IN(Portsc0), IN(Portsc1));
+	XPRINT("cmd 0x%x sofmod 0x%x\n", IN(Cmd), inb(port+SOFMod));
+	XPRINT("sc0 0x%x sc1 0x%x\n", IN(Portsc0), IN(Portsc1));
 }
 
 void
