@@ -349,3 +349,13 @@ pcireset(void)
 		pcicfgw16(p, PciPSR, pcr & ~0x04);
 	}
 }
+
+void
+pcisetbme(Pcidev* p)
+{
+	int pcr;
+
+	pcr = pcicfgr16(p, PciPCR);
+	pcr |= 0x0004;
+	pcicfgw16(p, PciPCR, pcr);
+}

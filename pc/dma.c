@@ -107,7 +107,11 @@ dmainit(int chan, int maxtransfer)
 		return 1;
 	xp->bpa = PADDR(xp->bva);
 	if(xp->bpa >= 16*MB){
-		xfree(xp->bva);		/* doesn't work... */
+		/*
+		 * This will panic with the current
+		 * implementation of xspanalloc().
+		xfree(xp->bva);
+		 */
 		xp->bva = nil;
 		return 1;
 	}

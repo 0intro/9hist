@@ -144,7 +144,6 @@ main(void)
 	cpuidprint();
 	if(isoldbcom)
 		print("    ****OLD B.COM - UPGRADE****\n");
-	pageinit();
 	mmuinit();
 	if(arch->intrinit)
 		arch->intrinit();
@@ -158,6 +157,7 @@ main(void)
 	links();
 conf.monitor = 1;
 	chandevreset();
+	pageinit();
 	swapinit();
 	userinit();
 	schedinit();
