@@ -809,6 +809,10 @@ rdpackets(Incon *ip)
 			if(p - bp->rptr > 3){
 				bp->wptr = p;
 				bp = nextin(ip, 0);
+				if(bp==0){
+					flushfifo(ip->dev);
+					return;
+				}
 				p = bp->wptr;
 			}
 			ip->chan = c;
@@ -829,6 +833,10 @@ rdpackets(Incon *ip)
 				 */
 				bp->wptr = p;
 				bp = nextin(ip, c);
+				if(bp==0){
+					flushfifo(ip->dev);
+					return;
+				}
 				p = bp->wptr;
 			} else {
 				/* end of packet */

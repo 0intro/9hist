@@ -82,6 +82,7 @@ bit3walk(Chan *c, char *name)
 void	 
 bit3stat(Chan *c, char *dp)
 {
+	USED(c, dp);
 	print("bit3stat\n");
 	error(Egreg);
 }
@@ -111,12 +112,14 @@ bit3open(Chan *c, int omode)
 void	 
 bit3create(Chan *c, char *name, int omode, ulong perm)
 {
+	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
 void	 
 bit3close(Chan *c)
 {
+	USED(c);
 	qlock(&bit3);
 	bit3.open = 0;
 	qunlock(&bit3);
@@ -135,6 +138,7 @@ bit3read(Chan *c, void *buf, long n, ulong offset)
 {
 	Bit3msg *bp;
 	int docpy;
+	long i;
 
 	switch(c->qid.path){
 	case 1:
@@ -149,9 +153,19 @@ bit3read(Chan *c, void *buf, long n, ulong offset)
 			qlock(&bit3);
 			bit3send(bp, READ, buf, n);
 			qunlock(&bit3);
-			do
+			for(i=0; i<10*1000*1000; i++){
 				n = bp->rcount;
-			while(n == 0);
+				if(n != 0)
+					return n;
+				if(i > 5*1000*1000){
+					u->p->psstate = "Bit3wait";
+					while(waserror())
+						;
+					tsleep(&u->p->sleep, return0, 0, 1000);
+					poperror();
+				}
+			}
+			pexit("Suicide", 0);
 		}else{
 			/*
 			 *  use bit3 buffer.  lock the buffer till the reply
@@ -162,13 +176,24 @@ bit3read(Chan *c, void *buf, long n, ulong offset)
 			qlock(&bit3);
 			bit3send(bp, READ, bit3.buf, n);
 			qunlock(&bit3);
-			do
+			for(i=0; i<10*1000*1000; i++){
 				n = bp->rcount;
-			while(n == 0);
-			memmove(buf, bit3.buf, n);
+				if(n != 0){
+					memmove(buf, bit3.buf, n);
+					qunlock(&bit3.buflock);
+					return n;
+				}
+				if(i > 5*1000*1000){
+					u->p->psstate = "Bit3wait";
+					while(waserror())
+						;
+					tsleep(&u->p->sleep, return0, 0, 1000);
+					poperror();
+				}
+			}
 			qunlock(&bit3.buflock);
+			pexit("Suicide", 0);
 		}
-		return n;
 	}
 	error(Egreg);
 	return 0;
@@ -191,13 +216,11 @@ bit3write(Chan *c, void *buf, long n, ulong offset)
 		}else{
 			bp = &((User*)(u->p->upage->pa|KZERO))->ubit3;
 			qlock(&bit3.buflock);
-
 			qlock(&bit3);
 			memmove(bit3.buf, buf, n);
 			bit3send(bp, WRITE, bit3.buf, n);
 			do; while(*BIT3ADDR);
 			qunlock(&bit3);
-
 			qunlock(&bit3.buflock);
 		}
 		return n;
@@ -209,11 +232,13 @@ bit3write(Chan *c, void *buf, long n, ulong offset)
 void	 
 bit3remove(Chan *c)
 {
+	USED(c);
 	error(Eperm);
 }
 
 void	 
 bit3wstat(Chan *c, char *dp)
 {
+	USED(c, dp);
 	error(Eperm);
 }
