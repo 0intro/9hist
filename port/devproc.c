@@ -1197,16 +1197,6 @@ procctlreq(Proc *p, char *va, int n)
 	case CMwired:
 		procwired(p, atoi(cb->f[1]));
 		break;
-	case CMfair:
-		if(!iseve())
-			error(Eperm);
-		unfair = 0;
-		break;
-	case CMunfair:
-		if(!iseve())
-			error(Eperm);
-		unfair = 1;
-		break;
 	}
 
 	poperror();

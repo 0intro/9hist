@@ -95,6 +95,8 @@ timerdel(Timer *dt)
 void
 hzclock(Ureg *ur)
 {
+	int callsched;
+
 	m->ticks++;
 	if(m->proc)
 		m->proc->pc = ur->pc;
@@ -124,8 +126,20 @@ hzclock(Ureg *ur)
 	if(up == 0 || up->state != Running)
 		return;
 
-	/* i.e. don't deschedule an EDF process here! */
-	if(anyready() && !edf->isedf(up)){
+	if(up->fixedpri){
+		/*  fixed priority processes are only preempted by
+		 *  higher piority processes.
+		 */
+		if(anyhigher())
+			callsched = 1;
+	} else {
+		/*  floating priority processes are are preempted
+		 *  by all sorts of things.
+		 */
+		if(anyready() && !edf->isedf(up))
+			callsched = 1;
+	}
+	if(callsched){
 		sched();
 		splhi();
 	}

@@ -9,7 +9,6 @@ int	nrdy;
 Ref	noteidalloc;
 
 long	delayedscheds;	/* statistics */
-int unfair;			/* unfair scheduling */
 
 static Ref	pidalloc;
 
@@ -229,7 +228,7 @@ loop:
 	 */
 	spllo();
 	for(;;){
-		if(!unfair && (++(m->fairness) & 0x3) == 0){
+		if((++(m->fairness) & 0x3) == 0){
 			/*
 			 *  once in a while, run process that's been waiting longest
 			 *  regardless of movetime
