@@ -501,10 +501,10 @@ enum
 	NERR = 15,
 	NNOTE = 5,
 
-	Nrq		= 20,	/* number of scheduler priority levels */
-	PriNormal	= 10,	/* base priority for normal processes */
-	PriKproc	= 13,	/* base priority for kernel processes */
-	PriRoot		= 13,	/* base priority for root processes */
+	NiceMax		= 10,		/* max nice */
+	NiceNormal	= 5,		/* base nice for normal processes */
+	NiceKproc	= NiceNormal-2,	/* nice for kernel processes */
+	NiceRoot	= NiceNormal-2,	/* nice for root processes */
 };
 
 struct Proc
@@ -584,13 +584,9 @@ struct Proc
 	Note	lastnote;
 	int	(*notify)(void*, char*);
 
-	Mach	*mp;		/* machine this process last ran on */
-	ulong	priority;	/* priority level */
-	ulong	basepri;	/* base priority level */
-	ulong	rt;		/* # ticks used since last blocked */
-	ulong	art;		/* avg # ticks used since last blocked */
-	ulong	movetime;	/* last time process switched processors */
-	ulong	readytime;	/* time process went ready */
+	Mach	*wired;		/* machine this process must run on */
+	int	pri;		/* scheduling priority - low is high priority */
+	int	nice;		/* time-passing algorithm - low is high priority */
 
 	void	*ureg;		/* User registers for notes */
 	void	*dbgreg;	/* User registers for devproc */

@@ -30,8 +30,7 @@ typedef struct
 } Schedq;
 
 int	nrdy;
-int	lastreadied;
-Schedq	runq[Nrq];
+Schedq	runq;
 
 char *statename[] =
 {			/* BUG: generate automatically */
@@ -117,151 +116,101 @@ anyready(void)
 int
 anyhigher(void)
 {
-	int x;
 
-	x = lastreadied;
-	lastreadied = 0;
-	return nrdy && x >= up->priority;
+	return nrdy;
 }
-
-enum
-{
-	Squantum = (HZ+Nrq-1)/Nrq,
-};
 
 void
 ready(Proc *p)
 {
-	int s, pri;
-	Schedq *rq;
+	int s;
 
 	s = splhi();
 
-	/* history counts */
-	if(p->state == Running){
-		p->rt++;
-		pri = ((p->art + (p->rt<<1))>>2)/Squantum;
-	} else {
-		p->art = (p->art + (p->rt<<1))>>2;
-		p->rt = 0;
-		pri = p->art/Squantum;
-	}
-	pri = p->basepri - pri;
-	if(pri < 0)
-		pri = 0;
-
-	/* the only intersection between the classes is at PriNormal */
-	if(pri < PriNormal && p->basepri > PriNormal)
-		pri = PriNormal;
-	p->priority = pri;
-	rq = &runq[p->priority];
-
-	lock(runq);
+	lock(&runq);
 	p->rnext = 0;
-	if(rq->tail)
-		rq->tail->rnext = p;
+	if(runq.tail)
+		runq.tail->rnext = p;
 	else
-		rq->head = p;
-	rq->tail = p;
-	rq->n++;
+		runq.head = p;
+	runq.tail = p;
+	runq.n++;
 	nrdy++;
-	p->readytime = m->ticks;
 	p->state = Ready;
-	if(p->priority > lastreadied)
-		lastreadied = p->priority;
-	unlock(runq);
+	unlock(&runq);
 	splx(s);
 }
 
 Proc*
 runproc(void)
 {
-	int i;
-	Schedq *rq;
-	Proc *p, *l;
-	static ulong lastfair;
+	Proc *p, *bp, *op;
 
 loop:
-
-	/*
-	 *  find a process that last ran on this processor (affinity),
-	 *  or one that hasn't moved in a while (load balancing).
-	 */
 	spllo();
-	for(;;){
-		/*
-		 *  Once a second we look for a long waiting process
-		 *  in the lowest priority queue to make sure nothing
-		 *  gets starved out by a malfunctioning high priority
-		 *  process.
-		 */
-		if(m->machno == 0 && m->ticks - lastfair > HZ){
-			lastfair = m->ticks;
-			for(rq = runq; rq < &runq[Nrq]; rq++){
-				p = rq->head;
-				if(p){
-					i = m->ticks - p->readytime;
-					if(i > HZ){
-						p->art = 0;
-						p->movetime = 0;
-						goto found;
-					}
-					break;
-				}
-			}
-		}
 
+	/* look for potential proc while not locked */
+	for(p=runq.head; p; p=p->rnext) {
 		/*
-		 *  get highest priority process that this
-		 *  processor can run given affinity constraints
+		 *  state is not saved
 		 */
-		for(rq = &runq[Nrq-1]; rq >= runq; rq--){
-			p = rq->head;
-			if(p == 0)
-				continue;
-			for(; p; p = p->rnext){
-				if(p->mp == m || m->ticks - p->movetime > HZ/2)
-					goto found;
-			}
-		}
+		if(p->mach)
+			continue;
+		/*
+		 *  wired to another machine
+		 */
+		if(p->wired && p->wired != m)
+			continue;
+		break;
 	}
+	if(p == 0)
+		goto loop;
 
-
-found:
 	splhi();
-	lock(runq);
+	lock(&runq);
 
-	l = 0;
-	for(p = rq->head; p; p = p->rnext){
-		if(p->mp == m || m->ticks - p->movetime > HZ/2)
-			break;
-		l = p;
+	/* find best proc while locked */
+	bp = 0;
+	for(p=runq.head; p; p=p->rnext) {
+		if(p->mach)
+			continue;
+		if(p->wired && p->wired != m)
+			continue;
+		if(bp == 0 || p->pri < bp->pri)
+			bp = p;
 	}
-
-	/*
-	 *  p->mach==0 only when process state is saved
-	 */
-	if(p == 0 || p->mach){	
-		unlock(runq);
+	if(bp == 0) {
+		unlock(&runq);
 		goto loop;
 	}
-	if(p->rnext == 0)
-		rq->tail = l;
-	if(l)
-		l->rnext = p->rnext;
-	else
-		rq->head = p->rnext;
-	rq->n--;
-	nrdy--;
-	if(p->state != Ready)
-		print("runproc %s %d %s\n", p->text, p->pid, statename[p->state]);
-	unlock(runq);
 
-	p->state = Scheding;
-	if(p->mp != m)
-		p->movetime = m->ticks;
-	p->mp = m;
-	return p;
+found:
+	/* unlink found proc from runq */
+	op = 0;
+	for(p=runq.head; p; p=p->rnext) {
+		if(p == bp)
+			break;
+		op = p;
+	}
+	if(op == 0)
+		runq.head = bp->rnext;
+	else
+		op->rnext = bp->rnext;
+	if(bp == runq.tail)
+		runq.tail = op;
+
+	/* clear next so that unlocked runq will not loop */
+	bp->rnext = 0;
+
+	runq.n--;
+	nrdy--;
+
+	if(bp->state != Ready)
+		print("runproc %s %d %s\n", bp->text, bp->pid, statename[bp->state]);
+	unlock(&runq);
+
+	bp->state = Scheding;
+	return bp;
 }
 
 int
@@ -270,13 +219,13 @@ canpage(Proc *p)
 	int ok = 0;
 
 	splhi();
-	lock(runq);
+	lock(&runq);
 	/* Only reliable way to see if we are Running */
 	if(p->mach == 0) {
 		p->newtlb = 1;
 		ok = 1;
 	}
-	unlock(runq);
+	unlock(&runq);
 	spllo();
 
 	return ok;
@@ -316,8 +265,9 @@ newproc(void)
 	p->kp = 0;
 	p->procctl = 0;
 	p->notepending = 0;
-	p->mp = 0;
-	p->movetime = 0;
+	p->nice = NiceNormal;
+	p->pri = 0;
+	p->wired = 0;
 	memset(p->seg, 0, sizeof p->seg);
 	p->pid = incref(&pidalloc);
 	p->noteid = incref(&noteidalloc);
@@ -327,6 +277,30 @@ newproc(void)
 		p->kstack = smalloc(KSTACK);
 
 	return p;
+}
+
+/*
+ * wire this proc to a machine
+ */
+void
+procwired(Proc *p)
+{
+	Proc *pp;
+	int i, bm;
+	char nwired[MAXMACH];
+
+	memset(nwired, 0, sizeof(nwired));
+	p->wired = 0;
+	pp = proctab(0);
+	for(i=0; i<conf.nproc; i++, pp++)
+		if(pp->wired && pp->pid)
+			nwired[pp->wired->machno]++;
+	bm = 0;
+	for(i=0; i<conf.nmach; i++)
+		if(nwired[i] < nwired[bm])
+			bm = i;
+	p->wired = MACHP(bm);
+print("pid %d wired to machine %d\n", p->pid, p->wired->machno);
 }
 
 void
@@ -767,7 +741,6 @@ procdump(void)
 	char *s;
 	Proc *p;
 	ulong bss;
-	Schedq *rq;
 
 	for(i=0; i<conf.nproc; i++) {
 		p = &procalloc.arena[i];
@@ -784,12 +757,10 @@ procdump(void)
 			p->pid, p->text, p->pc,  s, statename[p->state],
 			p->time[0], p->time[1], bss);
 	}
-	for(rq = &runq[Nrq-1]; rq >= runq; rq--){
-		if(rq->head == 0)
-			continue;
-		print("rq%d:", rq-runq);
-		for(p = rq->head; p; p = p->rnext)
-			print(" %d(%d)", p->pid, m->ticks - p->readytime);
+	if(runq.head != 0) {
+		print("rq:");
+		for(p = runq.head; p; p = p->rnext)
+			print(" %d(%d)", p->pid, p->pri);
 		print("\n");
 	}
 	print("nrdy %d\n", nrdy);
@@ -822,8 +793,8 @@ kproc(char *name, void (*func)(void *), void *arg)
 	p->ureg = 0;
 	p->dbgreg = 0;
 
-	p->basepri = PriKproc;
-	p->priority = p->basepri;
+	p->nice = NiceKproc;
+	p->pri = 0;
 
 	kprocchild(p, func, arg);
 

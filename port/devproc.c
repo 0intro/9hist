@@ -396,8 +396,8 @@ procread(Chan *c, void *va, long n, ulong offset)
 				l += s->top - s->base;
 		}
 		readnum(0, statbuf+j+NUMSIZE*6, NUMSIZE, l>>10, NUMSIZE);
-		readnum(0, statbuf+j+NUMSIZE*7, NUMSIZE, p->basepri, NUMSIZE);
-		readnum(0, statbuf+j+NUMSIZE*8, NUMSIZE, p->priority, NUMSIZE);
+		readnum(0, statbuf+j+NUMSIZE*7, NUMSIZE, p->nice, NUMSIZE);
+		readnum(0, statbuf+j+NUMSIZE*8, NUMSIZE, p->pri, NUMSIZE);
 		memmove(a, statbuf+offset, n);
 		return n;
 
@@ -740,14 +740,20 @@ procctlreq(Proc *p, char *va, int n)
 	if(strncmp(buf, "pri", 3) == 0){
 		if(n < 4)
 			error(Ebadctl);
-		i = atoi(buf+4);
+		i = NiceNormal+atoi(buf+4);
 		if(i < 0)
 			i = 0;
-		if(i >= Nrq)
-			i = Nrq - 1;
-		if(i < p->basepri && !iseve())
-			error(Eperm);
-		p->basepri = i;
+		if(i >= NiceMax)
+			i = NiceMax - 1;
+		p->nice = i;
+	}
+	else
+	if(strncmp(buf, "wired", 5) == 0){
+		if(n < 6)
+			error(Ebadctl);
+		i = atoi(buf+6);
+		if(i)
+			procwired(p);
 	}
 	else
 		error(Ebadctl);

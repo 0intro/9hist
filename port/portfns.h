@@ -174,6 +174,7 @@ void		procctl(Proc*);
 void		procdump(void);
 void		procinit0(void);
 Proc*		proctab(int);
+void		procwired(Proc*);
 void		ptclone(Chan*, int, int);
 void		ptclose(Pthash*);
 Pte*		ptealloc(void);
