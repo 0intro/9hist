@@ -810,7 +810,10 @@ dkwrite(Chan *c, void *a, long n, ulong offset)
 	 *  easier to do here than in dkoput
 	 */
 	if(t == Sctlqid){
-		strncpy(buf, a, sizeof buf);
+		if(n > sizeof buf - 1)
+			n = sizeof buf - 1;
+		strncpy(buf, a, n);
+		buf[n] = '\0';
 		m = getfields(buf, field, 5, ' ');
 		if(strcmp(field[0], "connect")==0){
 			if(m < 2)

@@ -498,7 +498,7 @@ int	ipforme(uchar*);
 #define	MIN(a, b)	((a) < (b) ? (a) : (b))
 #define MAX(a, b)	((a) > (b) ? (a) : (b))
 #define BLKIP(xp)	((Etherhdr *)((xp)->rptr))
-#define BLKFRAG(xp)	((Ipfrag *)((xp)->rptr))
+#define BLKFRAG(xp)	((Ipfrag *)((xp)->base))
 #define PREC(x)		((x)>>5 & 7)
 
 #define WORKBUF		64

@@ -128,6 +128,10 @@ pager(void *junk)
 			}
 			else 
 			if(palloc.freecount < HIGHWATER) {
+				/* Rob made me do it ! */
+				if(conf.cntrlp == 0)
+					freebroken();
+
 				/* Emulate the old system if no swap channel */
 				print("no physical memory\n");
 				tsleep(&swapalloc.r, return0, 0, 1000);
