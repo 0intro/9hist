@@ -258,7 +258,8 @@ edfdeadline(Proc *p, SEvent why)
 	SET(nt);
 	if (p){
 		nt = p->task;
-		assert(nt);
+		if (nt == nil || nt->state != EdfRunning)
+			return;
 	}
 	t = edfpop();
 
