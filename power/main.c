@@ -35,17 +35,13 @@ char confbuf[4*1024];
 char sysname[64];
 
 /*
- *  IO board type, number of interrupt levels, and interrupt enable mask
+ *  IO board type
  */
 int ioid;
-int iolevels;
-int iomask;
 
 void
 main(void)
 {
-	int i;
-
 	machinit();
 	active.exiting = 0;
 	active.machs = 1;
@@ -61,12 +57,12 @@ main(void)
 	clockinit();
 	alarminit();
 	ioboardinit();
+	ioboardid();
 	chandevreset();
 	streaminit();
 	sysloginit();
 	pageinit();
 	userinit();
-	ioboardid();
 	launchinit();
 	schedinit();
 }
@@ -113,16 +109,16 @@ ioboardid(void)
 {
 	switch(ioid){
 	case IO2R1:
-		print("IO2 revision 1\n");
+		iprint("IO2 revision 1\n");
 		break;
 	case IO2R2:
-		print("IO2 revision 2\n");
+		iprint("IO2 revision 2\n");
 		break;
 	case IO3R1:
-		print("IO3 revision 1\n");
+		iprint("IO3 revision 1\n");
 		break;
 	default:
-		print("unknown IO board\n");
+		iprint("unknown IO board\n");
 		break;
 	}
 }
@@ -135,31 +131,16 @@ void
 ioboardinit(void)
 {
 	long i;
-	int intrs;
 
-	/*
-	 *  set up interrupts based on IO board type
-	 */
 	ioid = *IOID;
-	switch(ioid){
-	case IO2R1:
-	case IO2R2:
-		iolevels = 8;
-		iomask = 0xff;
-		break;
-	case IO3R1:
-		iolevels = 11;
-		iomask = 0x7fe;
-		break;
-	}
 
 	/*
 	 *  reset VME bus (MODEREG is on the IO2)
 	 */
-	MODEREG->resetforce = (1<<1);
+	MODEREG->resetforce = (1<<1) | (1<<0);
 	for(i=0; i<1000000; i++)
 		;
-	MODEREG->resetforce = 0;
+	MODEREG->resetforce = (1<<0);
 	MODEREG->masterslave = (SLAVE<<4) | MASTER;
 
 	/*
@@ -169,9 +150,9 @@ ioboardinit(void)
 		setvmevec(i, novme);
 
 	/*
-	 *  tell IO2 to send all interrupts to CPU 0's SBCC
+	 *  tell IO2 to sent all interrupts to CPU 0's SBCC
 	 */
-	for(i=0; i<iolevels; i++)
+	for(i=0; i<8; i++)
 		INTVECREG->i[i].vec = 0<<8;
 
 	/*
@@ -191,13 +172,13 @@ ioboardinit(void)
 	 *  The SBCC 16 bit registers are read/written as ulong, but only
 	 *  bits 23-16 and 7-0 are meaningful.
 	 */
-	SBCCREG->fintenable |= iomask;	/* turn on all interrupts */
+	SBCCREG->fintenable |= 0xff;	  /* allow all interrupts on the IO2 */
 	SBCCREG->idintenable |= 0x800000; /* allow interrupts from the IO2 */
 
 	/*
 	 *  enable all interrupts on the IO2
 	 */
-	*IO2SETMASK = iomask;
+	*IO2SETMASK = 0xff;
 }
 
 void
@@ -606,6 +587,11 @@ confinit(void)
 	conf.npage = conf.npage0;
 
 	/*
+ 	 *  clear MP bus error caused by sizing memory
+	 */
+	i = *SBEADDR;
+
+	/*
 	 *  set minimal default values
 	 */
 	conf.nmach = 1;
@@ -628,6 +614,9 @@ confinit(void)
 	conf.npte = 4 * conf.npage;
 	conf.nqueue = 5 * conf.nstream;
 	conf.nblock = 16 * conf.nstream;
+	conf.nnoifc = 1;
+	conf.nnoconv = 32;
+	conf.nurp = 256;
 
 	confread();
 

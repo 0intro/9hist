@@ -96,11 +96,14 @@ loop:
 void
 close(Chan *c)
 {
+	if(c->flag & CFREE)
+		panic("close");
 	if(decref(c) == 0){
 		if(!waserror()){
 			(*devtab[c->type].close)(c);
 			poperror();
 		}
+		c->flag = CFREE;
 		lock(&chanalloc);
 		c->next = chanalloc.free;
 		chanalloc.free = c;

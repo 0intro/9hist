@@ -109,7 +109,7 @@
 #define	USTKTOP	KZERO			/* byte just beyond user stack */
 #define	TSTKTOP	(USERADDR+100*BY2PG)	/* top of temporary stack */
 #define	KZERO	KSEG0			/* base of kernel address space */
-#define	KTZERO	(KSEG0+0x20000)		/* first address in kernel text */
+#define	KTZERO	(KZERO+0x20000)		/* first address in kernel text */
 #define	USTACKSIZE	(4*1024*1024)	/* size of user stack */
 /*
  * Exception codes

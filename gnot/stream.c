@@ -246,7 +246,7 @@ padb(Block *bp, int n)
 		nbp = allocb(n);
 		nbp->wptr = nbp->lim;
 		nbp->rptr = nbp->wptr - n;
-		nbp->next = nbp;
+		nbp->next = bp;
 		return nbp;
 	}
 } 

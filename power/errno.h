@@ -51,5 +51,5 @@ enum{
 	Ebadcnt,	/* read count greater than requested */
 	Enoannounce,	/* listening on an unannounced network connection */
 	Enovmem,	/* virtual memory allocation failed */
-	Egreg,		/* rob made me do it */
+	Egreg,		/* ken hasn't implemented datakit */
 };

@@ -44,8 +44,8 @@ struct SBCC
 
 #define LANCERAM	IO2(uchar, 0xE00000)
 #define LANCEEND	IO2(uchar, 0xF00000)
-#define LANCE3RAM	IO2(uchar, 0xFF4000)
-#define LANCE3END	IO2(uchar, 0xFF8000)
+#define LANCE3RAM	IO2(ushort, 0xFF4000)
+#define LANCE3END	IO2(ushort, 0xFF8000)
 #define LANCERDP	IO2(ushort, 0xFC0002)
 #define LANCERAP	IO2(ushort, 0xFC000a)
 #define LANCEID		IO2(ushort, 0xFF0002)
@@ -102,4 +102,4 @@ enum {
 	Scsi0map,	/* SCSI bus 0 address space */
 	Nomap,
 };
-#define	WRITEMAP	IO2(ulong, 0xFA0000);
+#define	WRITEMAP	IO2(ulong, 0xFA0000)

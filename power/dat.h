@@ -635,6 +635,7 @@ extern	char	*statename[];
 #define	CMOUNT	2	/* is result of a mount/bind */
 #define	CCREATE	4	/* permits creation if CMOUNT */
 #define	CCEXEC	8	/* close on exec */
+#define	CFREE	16	/* not in use */
 
 /*
  * Proc.time

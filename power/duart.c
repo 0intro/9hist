@@ -202,3 +202,23 @@ duartxmit(int c)
 	duart->cmnd = ENB_TX;
 	duart->data = c;
 }
+
+void
+duartputs(char *s)
+{
+	int i;
+	while(*s){
+		duartputc(*s++);
+	}
+	for(i=0; i < 1000000; i++)
+		;
+}
+
+void
+iprint(char *s, void *a, void *b, void *c, void *d)
+{
+	char buf[1024];
+
+	sprint(buf, s, a, b, c, d);
+	duartputs(buf);
+}

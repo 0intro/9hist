@@ -24,6 +24,19 @@ Qinfo procinfo = { stputq, nullput, 0, 0, "process" };
  */
 static Qinfo *lds[Nlds+1];
 
+void
+newqinfo(Qinfo *qi)
+{
+	int i;
+
+	for(i=0; i<Nlds && lds[i]; i++)
+		if(lds[i] == qi)
+			return;
+	if(i == Nlds)
+		panic("pushable");
+	lds[i] = qi;
+}
+
 /*
  *  All stream structures are ialloc'd at boot time
  */
@@ -52,14 +65,6 @@ Bclass bclass[Nclass]={
 	{ 64 },
 	{ 256 },
 	{ 4096 },
-};
-
-/*
- *  the per stream directory structure
- */
-Dirtab streamdir[]={
-	"data",		Sdataqid,	0,			0600,
-	"ctl",		Sctlqid,	0,			0600,
 };
 
 /*
@@ -115,26 +120,19 @@ dumpqueues(void)
  *  Allocate streams, queues, and blocks.  Allocate n block classes with
  *	1/2(m+1) to class m < n-1
  *	1/2(n-1) to class n-1
- *
- *  All data areas are alligned to their size.
- *
- *  No data area crosses a 4k boundary.  This allows us to use the
- *  VME/SCSI/LANCE to MP bus maps on the SGI power series machines.
  */
 void
 streaminit(void)
 {
-	int class, i, n, left;
+	int class, i, n;
 	Block *bp;
 	Bclass *bcp;
-	uchar *ptr;
 
 	slist = (Stream *)ialloc(conf.nstream * sizeof(Stream), 0);
 	qlist = (Queue *)ialloc(conf.nqueue * sizeof(Queue), 0);
 	blist = (Block *)ialloc(conf.nblock * sizeof(Block), 0);
 	bp = blist;
 	n = conf.nblock;
-	left = 0;
 	for(class = 0; class < Nclass; class++){
 		if(class < Nclass-1)
 			n = n/2;
@@ -145,15 +143,8 @@ streaminit(void)
 			 *  starts on a page boundary.  This makes sure
 			 *  no block crosses a page boundary.
 			 */
-			if(bcp->size){
-				if(bcp->size > left){
-					left = bcp->size>4096 ? bcp->size : 4096;
-					ptr = (uchar *)ialloc(left, 1);
-				}
-				bp->base = ptr;
-				ptr += bcp->size;
-				left -= bcp->size;
-			}
+			if(bcp->size)
+				bp->base = (uchar *)ialloc(bcp->size, i == 0);
 			bp->lim = bp->base + bcp->size;
 			bp->flags = class;
 			freeb(bp);
@@ -488,6 +479,54 @@ getb(Blist *q)
 }
 
 /*
+ *  make sure the first block has n bytes
+ */
+Block *
+pullup(Block *bp, int n)
+{
+	Block *nbp;
+	int i;
+
+	/*
+	 *  this should almost always be true, the rest it
+	 *  just for to avoid every caller checking.
+	 */
+	if(BLEN(bp) >= n)
+		return bp;
+
+	/*
+	 *  if not enough room in the first block,
+	 *  add another to the front of the list.
+	if(bp->lim - bp->rptr < n){
+		nbp = allocb(n);
+		nbp->next = bp;
+		bp = nbp;
+	}
+
+	/*
+	 *  copy bytes from the trailing blocks into the first
+	 */
+	n -= BLEN(bp);
+	while(nbp = bp->next){
+		i = BLEN(nbp);
+		if(i > n) {
+			memcpy(bp->wptr, nbp->rptr, n);
+			bp->wptr += n;
+			nbp->rptr += n;
+			return bp;
+		} else {
+			memcpy(bp->wptr, nbp->rptr, i);
+			bp->wptr += i;
+			bp->next = nbp->next;
+			nbp->next = 0;
+			freeb(nbp);
+		}
+	}
+	freeb(bp);
+	return 0;
+}
+
+/*
  *  grow the front of a list of blocks by n bytes
  */
 Block *
@@ -585,6 +624,14 @@ streamparse(char *name, Block *bp)
 	}
 	return 0;
 }
+
+/*
+ *  the per stream directory structure
+ */
+Dirtab streamdir[]={
+	"data",		Sdataqid,	0,			0600,
+	"ctl",		Sctlqid,	0,			0600,
+};
 
 /*
  *  A stream device consists of the contents of streamdir plus
@@ -1150,20 +1197,3 @@ streamstat(Chan *c, char *db, char *name)
 	devdir(c, c->qid, name, n, 0, &dir);
 	convD2M(&dir, db);
 }
-
-/*
- *  announce a line discipline that can be pushed
- */
-void
-newqinfo(Qinfo *qi)
-{
-	int i;
-
-	for(i=0; i<Nlds && lds[i]; i++)
-		if(lds[i] == qi)
-			return;
-	if(i == Nlds)
-		panic("pushable");
-	lds[i] = qi;
-}
-

@@ -56,5 +56,5 @@ enum{
 	Ebadcnt,	/* read count greater than requested */
 	Enofont,	/* out of font descriptors */
 	Enovmem,	/* virtual memory allocation failed */
-	Egreg,		/* rob made me do it */
+	Egreg,		/* ken hasn't implemented datakit */
 };
