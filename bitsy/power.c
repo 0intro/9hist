@@ -15,15 +15,14 @@
  */
 ulong power_resume[200/4];
 
-extern void sa1100_power_resume(void);
-extern int setpowerlabel(void);
-
+extern void	sa1100_power_resume(void);
+extern int		setpowerlabel(void);
+extern Uart	sa1110uart[];
 
 GPIOregs savedgpioregs;
-Uartregs saveduart3regs;
-Uartregs saveduart1regs;
 Intrregs savedintrregs;
 
+#define R(p) ((Uartregs*)((p)->regs))
 
 static void
 dumpitall(void)
@@ -36,8 +35,8 @@ dumpitall(void)
 		gpioregs->direction, gpioregs->rising, gpioregs->falling,
 		gpioregs->edgestatus, gpioregs->altfunc);
 	iprint("uart1: %lux %lux %lux \nuart3: %lux %lux %lux\n", 
-		uart1regs->ctl[0], uart1regs->status[0], uart1regs->status[1], 
-		uart3regs->ctl[0], uart3regs->status[0], uart3regs->status[1]); 
+		R(&sa1110uart[0])->ctl[0], R(&sa1110uart[0])->status[0], R(&sa1110uart[0])->status[1], 
+		R(&sa1110uart[1])->ctl[0], R(&sa1110uart[1])->status[0], R(&sa1110uart[1])->status[1]); 
 	iprint("tmr: osmr %lux %lux %lux %lux oscr %lux ossr %lux oier %lux\n",
 		timerregs->osmr[0], timerregs->osmr[1],
 		timerregs->osmr[2], timerregs->osmr[3],
@@ -61,16 +60,6 @@ intrcpy(Intrregs *to, Intrregs *from)
 	to->icmr = from->icmr;	// interrupts enabled
 }
 
-static  void
-uartcpy(Uartregs *to, Uartregs *from)
-{
-	to->ctl[0] = from->ctl[0];
-//	to->ctl[1] = from->ctl[1];
-//	to->ctl[2] = from->ctl[2];
-	to->ctl[3] = from->ctl[3];
-
-}
-
 static void
 gpiocpy(GPIOregs *to, GPIOregs *from)
 {
@@ -83,8 +72,10 @@ gpiocpy(GPIOregs *to, GPIOregs *from)
 static void
 sa1100_power_off(void)
 {
+	iprint("11..");
 	/* enable wakeup by µcontroller, on/off switch or real-time clock alarm */
 	powerregs->pwer =  1 << IRQrtc | 1 << IRQgpio0 | 1 << IRQgpio1;
+	iprint("12..");
 
 	/* clear previous reset status */
 	resetregs->rcsr =  RCSR_all;
@@ -126,8 +117,6 @@ onoffintr(Ureg* , void*)
 		cacheflush();
 		trapresume();
 		rs232power(1);
-		irpower(1);
-		audiopower(1);
 		clockpower(1);
 		gpclkregs->r0 = 1<<0;
 		gpiocpy(gpioregs, &savedgpioregs);
@@ -137,12 +126,11 @@ onoffintr(Ureg* , void*)
 			gpioregs->edgestatus = (1<<IRQgpio0);
 			intrregs->icip = (1<<IRQgpio0);
 		}
-		uartcpy(uart3regs,&saveduart3regs);
-		uart3regs->status[0] = uart3regs->status[0];
-		uartcpy(uart1regs,&saveduart1regs);
-		uart1regs->status[0] = uart1regs->status[0];
+		uartpower(1);
 		µcpower(1);
 		screenpower(1);
+		irpower(1);
+		audiopower(1);
 		iprint("\nresuming execution\n");
 //		dumpitall();
 		delay(800);
@@ -153,15 +141,16 @@ onoffintr(Ureg* , void*)
 	iprint("\nentering suspend mode\n");
 	gpiocpy(&savedgpioregs, gpioregs);
 	intrcpy(&savedintrregs, intrregs);
-	uartcpy(&saveduart3regs, uart3regs);
-	uartcpy(&saveduart1regs, uart1regs);
 	delay(400);
 	clockpower(0);
 	irpower(0);
 	audiopower(0);
 	screenpower(0);
 	µcpower(0);
+	uartpower(0);
+	iprint("rs\n");
 	rs232power(0);
+	iprint("10..");
 	sa1100_power_off();
 	/* no return */
 }

@@ -490,6 +490,17 @@ uartwstat(Chan *c, uchar *dp, int n)
 	return n;
 }
 
+void
+uartpower(int on)
+{
+	Uart *p;
+
+	for(p = uartlist; p != nil; p = p->next) {
+		if (p->phys->power)
+			(*p->phys->power)(p, on);
+	}
+}
+
 Dev uartdevtab = {
 	't',
 	"uart",
@@ -508,6 +519,7 @@ Dev uartdevtab = {
 	devbwrite,
 	devremove,
 	uartwstat,
+	uartpower,
 };
 
 /*

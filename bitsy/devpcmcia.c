@@ -44,7 +44,7 @@ static void slotinfo(Ureg*, void*);
 #define PATH(s,t)	(((s)<<8)|(t))
 
 static PCMslot*
-slotno(Chan *c)
+slotof(Chan *c)
 {
 	ulong x;
 
@@ -89,6 +89,7 @@ pcmgen(Chan *c, char *, Dirtab * , int, int i, Dir *dp)
 		break;
 	}
 	qid.vers = 0;
+	qid.type = QTFILE;
 	devdir(c, qid, up->genbuf, len, eve, 0660, dp);
 	return 1;
 }
@@ -148,12 +149,15 @@ pcmciastat(Chan *c, uchar *db, int n)
 static Chan*
 pcmciaopen(Chan *c, int omode)
 {
-	print("pcmciaopen\n");
+	PCMslot *slotp;
+
 	if(c->qid.type & QTDIR){
 		if(omode != OREAD)
 			error(Eperm);
-	} else
-		increfp(slotno(c));
+	} else {
+		slotp = slotof(c);
+		increfp(slotp);
+	}
 	c->mode = openmode(omode);
 	c->flag |= COPEN;
 	c->offset = 0;
@@ -165,7 +169,7 @@ pcmciaclose(Chan *c)
 {
 	if(c->flag & COPEN)
 		if((c->qid.type & QTDIR) == 0)
-			decrefp(slotno(c));
+			decrefp(slotof(c));
 }
 
 /* a memmove using only bytes */
@@ -244,7 +248,7 @@ pcmciaread(Chan *c, void *a, long n, vlong off)
 	PCMslot *sp;
 	ulong offset = off;
 
-	sp = slotno(c);
+	sp = slotof(c);
 
 	switch(TYPE(c)){
 	case Qdir:
@@ -356,7 +360,7 @@ pcmciawrite(Chan *c, void *a, long n, vlong off)
 	PCMslot *sp;
 	ulong offset = off;
 
-	sp = slotno(c);
+	sp = slotof(c);
 
 	switch(TYPE(c)){
 	case Qmem:
@@ -430,7 +434,6 @@ slotinfo(Ureg*, void*)
 static void
 increfp(PCMslot *sp)
 {
-	print("increfp\n");
 	wlock(sp);
 	if(waserror()){
 		wunlock(sp);

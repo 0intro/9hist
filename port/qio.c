@@ -865,6 +865,68 @@ qremove(Queue *q)
 }
 
 /*
+ *  copy the contents of a string of blocks into
+ *  memory.  emptied blocks are freed.  return
+ *  pointer to first unconsumed block.
+ */
+Block*
+bl2mem(uchar *p, Block *b, int n)
+{
+	int i;
+	Block *next;
+
+	for(; b != nil; b = next){
+		i = BLEN(b);
+		if(i > n){
+			memmove(p, b->rp, n);
+			b->rp += n;
+			return b;
+		}
+		memmove(p, b->rp, i);
+		n -= i;
+		p += i;
+		b->rp += i;
+		next = b->next;
+		freeb(b);
+	}
+	return nil;
+}
+
+/*
+ *  copy the contents of memory into a string of blocks.
+ *  return nil on error.
+ */
+Block*
+mem2bl(uchar *p, int len)
+{
+	int n;
+	Block *b, *first, **l;
+
+	first = nil;
+	l = &first;
+	if(waserror()){
+		freeblist(first);
+		nexterror();
+	}
+	do {
+		n = len;
+		if(n > Maxatomic)
+			n = Maxatomic;
+
+		*l = b = allocb(n);
+		setmalloctag(b, (up->text[0]<<24)|(up->text[1]<<16)|(up->text[2]<<8)|up->text[3]);
+		memmove(b->wp, p, n);
+		b->wp += n;
+		p += n;
+		len -= n;
+		l = &b->next;
+	} while(len > 0);
+	poperror();
+
+	return first;
+}
+
+/*
  *  put a block back to the front of the queue
  *  called with q ilocked
  */
@@ -965,12 +1027,8 @@ qbread(Queue *q, int len)
 long
 qread(Queue *q, void *vp, int len)
 {
-	Block *b, *first, *next, **l;
-	int m;
-	uchar *s, *e, *p;
-
-	s = p = vp;
-	e = s+len;
+	Block *b, *first, **l;
+	int m, n;
 
 	qlock(&q->rlock);
 	if(waserror()){
@@ -1006,46 +1064,34 @@ again:
 		 *  following blocks as will completely
 		 *  fit in the read.
 		 */
+		n = 0;
 		l = &first;
 		m = BLEN(b);
 		for(;;) {
 			*l = qremove(q);
 			l = &b->next;
-			p += m;
+			n += m;
 
 			b = q->bfirst;
 			if(b == nil)
 				break;
 			m = BLEN(b);
-			if(p+m > e)
+			if(n+m > len)
 				break;
 		}
 	} else {
 		first = qremove(q);
+		n = BLEN(first);
 	}
 
 	/* copy to user space outside of the ilock */
 	iunlock(q);
-	p = s;
-	for(b = first; b != nil; b = next){
-		m = BLEN(b);
-		if(m > e - p){
-			m = e - p;
-			memmove(p, b->rp, m);
-			p += m;
-			b->rp += m;
-			break;
-		}
-		memmove(p, b->rp, m);
-		p += m;
-		next = b->next;
-		b->next = nil;
-		freeb(b);
-	}
+	b = bl2mem(vp, first, len);
 	ilock(q);
 
 	/* take care of any left over partial block */
 	if(b != nil){
+		n -= BLEN(b);
 		if(q->state & Qmsg)
 			freeb(b);
 		else
@@ -1057,7 +1103,7 @@ again:
 
 	poperror();
 	qunlock(&q->rlock);
-	return p-s;
+	return n;
 }
 
 static int
@@ -1169,33 +1215,22 @@ qbwrite(Queue *q, Block *b)
 int
 qwrite(Queue *q, void *vp, int len)
 {
-	int n, sofar;
-	Block *b;
-	uchar *p = vp;
+	Block *b, *next;
 
-	QDEBUG if(islo() == 0)
+	QDEBUG if(!islo())
 		print("qwrite hi %lux\n", getcallerpc(&q));
 
-	sofar = 0;
-	do {
-		n = len-sofar;
-		if(n > Maxatomic)
-			n = Maxatomic;
-
-		b = allocb(n);
-		setmalloctag(b, (up->text[0]<<24)|(up->text[1]<<16)|(up->text[2]<<8)|up->text[3]);
-		if(waserror()){
-			freeb(b);
-			nexterror();
-		}
-		memmove(b->wp, p+sofar, n);
-		poperror();
-		b->wp += n;
-
+	b = mem2bl(vp, len);
+	if(waserror()){
+		freeblist(b);
+		nexterror();
+	}
+	for(; b != nil; b = next){
+		next = b->next;
+		b->next = nil;
 		qbwrite(q, b);
-
-		sofar += n;
-	} while(sofar < len && (q->state & Qmsg) == 0);
+	}
+	poperror();
 
 	return len;
 }

@@ -624,8 +624,6 @@ TEXT sa1100_power_resume(SB), $-4
 loop:
 	B	loop
 
-
-
 /* The first MCR instruction of this function needs to be on a cache-line
  * boundary; to make this happen, it will be copied (in trap.c).
  *

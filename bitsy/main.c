@@ -364,7 +364,6 @@ PPCregs *ppcregs;
 MemConfRegs *memconfregs;
 PowerRegs *powerregs;
 ResetRegs *resetregs;
-OSTimerRegs *timerregs = (OSTimerRegs*)OSTIMERREGS;
 
 /*
  *  configure the machine

@@ -91,6 +91,7 @@ void	trapdump(char *tag);
 void	trapinit(void);
 void	trapresume(void);
 int	tas(void*);
+void	uartpower(int);
 int	uartstageoutput(Uart*);
 void	uartkick(void*);
 void	uartrecv(Uart*, char);

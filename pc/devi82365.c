@@ -975,7 +975,10 @@ pcmio(int slotno, ISAConf *isa)
 		x |= x<<4;
 	wrreg(pp, Rio, x);
 
-	/* enable io port map 0 */
+	/*
+	 * enable io port map 0
+	 * the 'top' register value includes the last valid address
+	 */
 	if(isa->port == 0)
 		isa->port = ct->io[0].start;
 	we = rdreg(pp, Rwe);

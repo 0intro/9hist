@@ -12,10 +12,11 @@ struct Mntrpc
 	Chan*	c;		/* Channel for whom we are working */
 	Mntrpc*	list;		/* Free/pending list */
 	Fcall	request;	/* Outgoing file system protocol message */
-	Fcall reply;		/* Incoming reply */
+	Fcall 	reply;		/* Incoming reply */
 	Mnt*	m;		/* Mount device during rpc */
 	Rendez	r;		/* Place to hang out */
 	uchar*	rpc;		/* I/O Data buffer */
+	Block	*b;		/* reply blocks */
 	char	done;		/* Rpc completed */
 	uvlong	stime;		/* start time for mnt statistics */
 	ulong	reqlen;		/* request length for mnt statistics */
@@ -126,6 +127,7 @@ mntattach(char *muxattach)
 	m->list = mntalloc.list;
 	mntalloc.list = m;
 	m->id = mntalloc.id++;
+	m->q = qopen(10*MAXRPC, 0, nil, nil);
 	unlock(&mntalloc);
 
 	lock(m);
@@ -210,13 +212,6 @@ mntwalk(Chan *c, Chan *nc, char **name, int nname)
 	Mnt *m;
 	Mntrpc *r;
 	Walkqid *wq;
-
-if(0){
-	print("mntwalk ");
-	for(i=0; i<nname; i++)
-		print("%s/", name[i]);
-	print("\n");
-}
 
 	if(nname > MAXWELEM)
 		error("devmnt: too many name elements");
@@ -415,6 +410,7 @@ void
 mntpntfree(Mnt *m)
 {
 	Mnt *f, **l;
+	Queue *q;
 
 	lock(&mntalloc);
 	l = &mntalloc.list;
@@ -425,10 +421,12 @@ mntpntfree(Mnt *m)
 		}
 		l = &f->list;
 	}
-
 	m->list = mntalloc.mntfree;
 	mntalloc.mntfree = m;
+	q = m->q;
 	unlock(&mntalloc);
+
+	qfree(q);
 }
 
 static void
@@ -553,7 +551,7 @@ mntrdwr(int type, Chan *c, void *buf, long n, vlong off)
 			nr = nreq;
 
 		if(type == Tread)
-			memmove(uba, r->reply.data, nr);
+			r->b = bl2mem((uchar*)uba, r->b, nr);
 		else if(cache)
 			cwrite(c, (uchar*)uba, nr, off);
 
@@ -661,67 +659,78 @@ mountio(Mnt *m, Mntrpc *r)
 }
 
 int
-mntreadn(Chan *c, uchar *buf, int n, int uninterruptable)
-{
-	int m, dm;
-
-	for(m=0; m<n; m+=dm){
-		if(uninterruptable)
-			if(waserror()){
-				/* user DEL may stop assembly; wait for full 9P msg. */
-				if(strstr(up->error, "interrupt") == nil)
-					nexterror();
-				dm = 0;
-				continue;
-			}
-		dm = devtab[c->type]->read(c, buf, n-m, 0);
-		if(uninterruptable)
-			poperror();
-		if(dm <= 0)
-			return 0;
-		buf += dm;
-	}
-	return n;
-}
-
-int
 mntrpcread(Mnt *m, Mntrpc *r)
 {
-	int n, len;
-	ulong chunk;
+	int i, t, len, hlen;
+	Block *b, **l, *nb;
 
-	chunk = m->c->iounit;
-	if(chunk == 0 || chunk > m->c->iounit)
-		chunk = m->c->iounit;
 	r->reply.type = 0;
 	r->reply.tag = 0;
-	/* read size, then read exactly the right number of bytes */
-	n = mntreadn(m->c, r->rpc, BIT32SZ, 0);
-	if(n != BIT32SZ){
-		if(n > 0)
-			print("devmnt expected BIT32SZ got %d\n", n);
-		return -1;
+
+	/* read at least length, type, and tag and pullup to a single block */
+	while(qlen(m->q) < BIT32SZ+BIT8SZ+BIT16SZ){
+		b = devtab[m->c->type]->bread(m->c, 2*MAXRPC, 0);
+		if(b == nil)
+			return -1;
+		qadd(m->q, b);
 	}
-	len = GBIT32((uchar*)r->rpc);
-	if(len <= BIT32SZ || len > chunk){
-		print("devmnt: len %d max messagesize %ld\n", len, m->c->iounit);
-		return -1;
+	nb = pullupqueue(m->q, BIT32SZ+BIT8SZ+BIT16SZ);
+	len = GBIT32(nb->rp);
+
+	/* read in the rest of the message */
+	while(qlen(m->q) < len){
+		b = devtab[m->c->type]->bread(m->c, 2*MAXRPC, 0);
+		if(b == nil)
+			return -1;
+		qadd(m->q, b);
 	}
-	n += mntreadn(m->c, r->rpc+BIT32SZ, len-BIT32SZ, 1);
-	if(n != len){
-		print("devmnt: length %d expected %d\n", n, len);
+
+	/* pullup the header (i.e. everything except data) */
+	t = nb->rp[BIT32SZ];
+	switch(t){
+	case Rread:
+		hlen = BIT32SZ+BIT8SZ+BIT16SZ+BIT32SZ;
+		break;
+	default:
+		hlen = len;
+		break;
+	}
+	nb = pullupqueue(m->q, hlen);
+
+	if(convM2S(nb->rp, len, &r->reply) <= 0){
+		/* bad message, dump it */
+		print("mntrpcread: convM2S failed\n");
+		qdiscard(m->q, len);
 		return -1;
 	}
 
-	r->replen = n;
-	if(convM2S(r->rpc, n, &r->reply) == 0){
-		int i;
-		print("bad conversion of received message; %d bytes iounit %ld\n", n, m->c->iounit);
-		for(i=0; i<n; i++)
-			print("%.2ux ", (uchar)r->rpc[i]);
-		print("\n");
-		return -1;
-	}
+	/* hang the data off of the fcall struct */
+	l = &r->b;
+	*l = nil;
+	do {
+		b = qremove(m->q);
+		if(hlen > 0){
+			b->rp += hlen;
+			len -= hlen;
+			hlen = 0;
+		}
+		i = BLEN(b);
+		if(i <= len){
+			len -= i;
+			*l = b;
+			l = &(b->next);
+		} else {
+			/* split block and put unused bit back */
+			nb = allocb(i-len);
+			memmove(nb->wp, b->rp+len, i-len);
+			b->wp = b->rp+len;
+			nb->wp += i-len;
+			qputback(m->q, nb);
+			*l = b;
+			return 0;
+		}
+	}while(len > 0);
+
 	return 0;
 }
 
@@ -743,7 +752,6 @@ mntgate(Mnt *m)
 void
 mountmux(Mnt *m, Mntrpc *r)
 {
-	uchar *dp;
 	Mntrpc **l, *q;
 
 	lock(m);
@@ -757,10 +765,9 @@ mountmux(Mnt *m, Mntrpc *r)
 				 * Completed someone else.
 				 * Trade pointers to receive buffer.
 				 */
-				dp = q->rpc;
-				q->rpc = r->rpc;
-				r->rpc = dp;
 				q->reply = r->reply;
+				q->b = r->b;
+				r->b = nil;
 			}
 			q->done = 1;
 			unlock(m);
@@ -857,12 +864,15 @@ mntralloc(Chan *c, ulong iounit)
 	new->c = c;
 	new->done = 0;
 	new->flushed = nil;
+	new->b = nil;
 	return new;
 }
 
 void
 mntfree(Mntrpc *r)
 {
+	if(r->b != nil)
+		freeblist(r->b);
 	lock(&mntalloc);
 	if(mntalloc.nrpcfree >= 10){
 		free(r->rpc);

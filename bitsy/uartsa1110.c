@@ -10,6 +10,8 @@
 
 /* this isn't strictly an sa1110 driver.  The rts/cts stuff is h3650 specific */
 
+static void sa1110_uartpower(Uart *, int);
+
 enum
 {
 	/* ctl[0] bits */
@@ -53,7 +55,8 @@ enum
 
 extern PhysUart sa1110physuart;
 
-static Uart sa1110uart[2] = {
+//static
+Uart sa1110uart[2] = {
 {	.regs		= UART3REGS,
 	.name	= "serialport3",
 	.freq		= ClockFreq,
@@ -80,7 +83,8 @@ static Uart sa1110uart[2] = {
 static Uart* consuart;
 static Uart* µcuart;
 
-#define R(p) ((Uartregs*)(p->regs))
+#define R(p) ((Uartregs*)((p)->regs))
+#define SR(p) ((Uartregs*)((p)->saveregs))
 
 /*
  *  enable a port's interrupts.  set DTR and RTS
@@ -392,6 +396,7 @@ PhysUart sa1110physuart = {
 	.rts=			sa1110_uartrts,
 	.dtr=			sa1110_uartdtr,
 	.status=		sa1110_uartstatus,
+	.power=		sa1110_uartpower,
 };
 
 /*
@@ -456,7 +461,7 @@ sa1110_uartsetup(int console)
 	/* external serial port (eia0) */
 	p = &sa1110uart[0];
 	p->regs = mapspecial(UART3REGS, 64);
-
+	p->saveregs = xalloc(sizeof(Uartregs));
 	/* set eia0 up as a console */
 	if(console){
 		uartctl(p, "b115200 l8 pn s1");
@@ -473,9 +478,33 @@ sa1110_uartsetup(int console)
 
 	p = &sa1110uart[1];
 	p->regs = mapspecial(UART1REGS, 64);
+	p->saveregs = xalloc(sizeof(Uartregs));
 	uartctl(p, "b115200 l8 pn s1");
 	µcuart = p;
 	p->special = 1;
 	(*p->phys->enable)(p, 0);
 	intrenable(IRQ, IRQuart1b, sa1110_uartintr, p, p->name);
+}
+
+static  void
+uartcpy(Uartregs *to, Uartregs *from)
+{
+	to->ctl[0] = from->ctl[0];
+//	to->ctl[1] = from->ctl[1];
+//	to->ctl[2] = from->ctl[2];
+	to->ctl[3] = from->ctl[3];
+
+}
+
+static void
+sa1110_uartpower(Uart *p, int powerup)
+{
+	if (powerup) {
+		/* power up, restore the registers */
+		uartcpy(R(p), SR(p));
+		R(p)->status[0] = R(p)->status[0];
+	} else {
+		/* power down, save the registers */
+		uartcpy(SR(p), R(p));
+	}
 }

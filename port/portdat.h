@@ -730,6 +730,7 @@ struct PhysUart
 	void	(*dtr)(Uart*, int);
 	long	(*status)(Uart*, void*, long, long);
 	void	(*fifo)(Uart*, int);
+	void	(*power)(Uart*, int);
 };
 
 enum {
@@ -742,6 +743,7 @@ enum {
 struct Uart
 {
 	void*	regs;			/* hardware stuff */
+	void*	saveregs;		/* place to put registers on power down */
 	char*	name;			/* internal name */
 	ulong	freq;			/* clock frequency */
 	int	bits;			/* bits per character */

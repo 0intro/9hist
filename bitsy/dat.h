@@ -227,17 +227,6 @@ struct PCMconftab
 };
 
 /*
- *  For walking a PCMCIA card's information structure
- */
-struct Cisdat
-{
-	uchar	*cisbase;
-	int	cispos;
-	int	cisskip;
-	int	cislen;
-};
-
-/*
  *  PCMCIA card slot
  */
 struct PCMslot
@@ -264,9 +253,6 @@ struct PCMslot
 	int	nctab;		/* number of config table entries */
 	PCMconftab	ctab[8];
 	PCMconftab	*def;		/* default conftab */
-
-	/* for walking through cis */
-	Cisdat;
 
 	/* maps are fixed */
 	PCMmap memmap;
