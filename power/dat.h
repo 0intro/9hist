@@ -533,7 +533,6 @@ struct Nohdr {
  */
 struct Nomsg {
 	Blist;
-	Rendez	r;
 	int	mid;		/* sequence number */
 	int	rem;		/* remaining */
 	ulong	time;
@@ -561,7 +560,7 @@ struct Noconv {
 
 	QLock	xlock;		/* one trasmitter at a time */
 	Rendez	r;		/* process waiting for an output mid */
-	QLock	mlock;		/* lock for out */
+	QLock	mlock;		/* lock for allocating out messages */
 	Nomsg	out[Nnomsg];	/* messages being sent */
 	int	first;		/* first unacknowledged message */
 	int	next;		/* next message buffer to use */

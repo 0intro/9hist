@@ -547,7 +547,6 @@ struct Nohdr {
  */
 struct Nomsg {
 	Blist;
-	Rendez	r;
 	int	mid;		/* sequence number */
 	int	rem;		/* remaining */
 	ulong	time;

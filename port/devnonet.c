@@ -8,6 +8,7 @@
 
 #define DPRINT if(pnonet)print
 #define NOW (MACHP(0)->ticks*MS2HZ)
+#define MSUCC(x) (((x)+1)%Nnomsg)
 
 static Noifc *noifc;
 int pnonet;
@@ -501,9 +502,15 @@ noclose(Queue *q)
 	}
 
 	qlock(cp);
+	/*
+	 *  we give up, ack any unacked messages
+	 */
+	for(i = cp->first; i != cp->next; i = MSUCC(i))
+		norack(cp, cp->out[i].mid);
 	cp->rcvcircuit = -1;
 	cp->state = Cclosed;
 	qunlock(cp);
+
 	poperror();
 }
 
@@ -533,15 +540,7 @@ windowopen(void *a)
 	Noconv *cp;
 
 	cp = (Noconv *)a;
-	return cp->out[cp->next].inuse == 0;	
-}
-static int
-acked(void *a)
-{
-	Nomsg *mp;
-
-	mp = (Nomsg *)a;
-	return mp->inuse;
+	return MSUCC(cp->next) != cp->first;	
 }
 static void
 nooput(Queue *q, Block *bp)
@@ -570,35 +569,26 @@ nooput(Queue *q, Block *bp)
 		return;
 	}
 
-	mp = 0;
+	/*
+	 *  block till we get an output buffer
+	 */
 	if(waserror()){
-		if(mp){
-			q->len = 0;
-			q->first = q->last = 0;
-			if(mp->first){
-				freeb(mp->first);
-				mp->first = 0;
-			}
-			mp->inuse = 0;
-			mp->acked = 0;
-			if(((cp->first+1)%Nnomsg) == cp->next)
-				cp->first = cp->next;
-		}
+		/* throw out the message */
+		while(bp = getb(q))
+			freeb(bp);
 		qunlock(&cp->mlock);
 		nexterror();
 	}
-
-	/*
-	 *  block till we get a buffer
-	 */
-	while(cp->out[cp->next].inuse)
+	while(!windowopen(cp))
 		sleep(&cp->r, windowopen, cp);
 	mp = &cp->out[cp->next];
-	mp->inuse = 1;
-	cp->next = (cp->next+1)%Nnomsg;
+	cp->next = MSUCC(cp->next);
+	qlock(cp);
+	qunlock(&cp->mlock);
+	poperror();
 
 	/*
-	 *  stick the message in a Nomsg structure
+	 *  point the output buffer to the message
 	 */
 	mp->time = NOW + MSrexmit;
 	mp->first = q->first;
@@ -608,17 +598,27 @@ nooput(Queue *q, Block *bp)
 	mp->acked = 0;
 
 	/*
-	 *  init the queue for new messages
+	 *  take the message out of the queue
 	 */
-	q->len = 0;
+	q->len = q->nb = 0;
 	q->first = q->last = 0;
 	cp->sent++;
 
 	/*
 	 *  send the message, the kproc will retry
 	 */
+	if(waserror()){
+		/* throw out the message */
+		freeb(mp->first);
+		mp->first = 0;
+		mp->acked = 0;
+		if(MSUCC(cp->first) == cp->next)
+			cp->first = cp->next;
+		qunlock(cp);
+		nexterror();
+	}
 	nosend(cp, mp);
-	qunlock(&cp->mlock);
+	qunlock(cp);
 	poperror();
 }
 
@@ -661,7 +661,6 @@ nostartconv(Noconv *cp, int circuit, char *raddr, int state)
 		cp->out[i].mid = i | Nnomsg;
 		cp->out[i].acked = 1;
 		cp->out[i].rem = 0;
-		cp->out[i].inuse = 0;
 	}
 	cp->in[0].mid = Nnomsg;
 	cp->in[0].acked = 0;
@@ -927,11 +926,10 @@ norack(Noconv *cp, int mid)
  	 *  free it
 	 */
 	cp->rexmit = 0;
-	mp->acked = 1;
 	cp->lastacked = mid;
+	mp->acked = 1;
 	freeb(mp->first);
 	mp->first = 0;
-	mp->inuse = 0;
 
 	/*
 	 *  advance first if this is the first
@@ -940,8 +938,9 @@ norack(Noconv *cp, int mid)
 		while(cp->first != cp->next){
 			if(cp->out[cp->first].acked == 0)
 				break;
-			cp->first = (cp->first+1) % Nnomsg;
+			cp->first = MSUCC(cp->first);
 		}
+		wakeup(&cp->r);
 	}
 }
 
@@ -1403,19 +1402,18 @@ loop:
 			 *  resend the first message
 			 */
 			if(cp->first!=cp->next && NOW>=cp->out[cp->first].time){
+				mp = &(cp->out[cp->first]);
 				if(cp->rexmit++ > 60){
-					print("hanging up\n");
+					norack(cp, mp->mid);
 					nohangup(cp);
-				} else {
-					mp = &(cp->out[cp->first]);
+				} else
 					nosend(cp, mp);
-				}
 			}
 
 			/*
-			 *  resend an acknowledge
+			 *  get the acknowledges out
 			 */
-			if(cp->afirst != cp->anext){
+			while(cp->afirst != cp->anext){
 				DPRINT("sending ack %d\n", cp->ack[cp->afirst]);
 				nosendctl(cp, 0, 0);
 			}

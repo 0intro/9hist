@@ -125,7 +125,9 @@ noetherbad(Noifc *ifc, Block *bp)
 	 *  crack the packet header
 	 */
 	eh = (Etherhdr *)bp->rptr;
-	print("bad c %d m %d f %d\n", eh->circuit[0], eh->mid, eh->flag);
+	print("bad %.2ux%.2ux%.2ux%.2ux%.2ux%.2ux c %d m %d f %d\n",
+		eh->s[0], eh->s[1], eh->s[2], eh->s[3], eh->s[4],
+		eh->s[5], eh->circuit[0], eh->mid, eh->flag);
 	if(eh->flag & NO_RESET)
 		goto out;
 
@@ -192,7 +194,8 @@ noetheriput(Queue *q, Block *bp)
 	 */
 	ep = &ifc->conv[conf.nnoconv];
 	for(cp = &ifc->conv[0]; cp < ep; cp++){
-		if(circuit==cp->rcvcircuit && canqlock(cp)){
+		if(circuit==cp->rcvcircuit){
+			qlock(cp);
 			ph = (Etherhdr *)(cp->media->rptr);
 			if(circuit == cp->rcvcircuit
 			&& memcmp(ph->d, h->s, sizeof(h->s)) == 0){
