@@ -6,8 +6,6 @@
 #include	"ureg.h"
 #include	"errno.h"
 
-#define DPRINT
-
 Page *lkpage(ulong addr);
 Page *snewpage(ulong addr);
 void lkpgfree(Page*);

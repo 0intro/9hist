@@ -397,7 +397,11 @@ return0(void *a)
 long
 syssleep(ulong *arg)
 {
-	tsleep(&u->p->sleep, return0, 0, arg[0]);
+	if(arg[0] == 0)
+		sched();
+	else
+		tsleep(&u->p->sleep, return0, 0, arg[0]);
+
 	return 0;
 }
 

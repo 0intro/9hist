@@ -65,7 +65,7 @@ ilopen(Queue *q, Stream *s)
 
 	ipc = &ipconv[s->dev][s->id];
 	ipc->ipinterface = newipifc(IP_ILPROTO, ilrcvmsg, ipconv[s->dev],
-			            1500, 512, ETHER_HDR, "IL");
+			            1500, 60, ETHER_HDR, "IL");
 
 	ipc->readq = RD(q);	
 	RD(q)->ptr = (void *)ipc;

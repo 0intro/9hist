@@ -228,7 +228,7 @@ ipetheroput(Queue *q, Block *bp)
 	if(eh->frag[0] & (IP_DF>>8))
 		goto drop;
 
-	seglen = (ifp->minmtu - (ETHER_HDR+ETHER_IPHDR)) & ~7;
+	seglen = (ifp->maxmtu - (ETHER_HDR+ETHER_IPHDR)) & ~7;
 	if(seglen < 8)
 		goto drop;
 

@@ -9,19 +9,27 @@
 
 typedef struct	Srv Srv;
 struct Srv{
-	Lock;
-	char	*name;
-	Chan	**chan;
-}srv;
+	char	name[NAMELEN];
+	char	owner[NAMELEN];
+	ulong	perm;
+	Chan	*chan;
+};
+
+Lock	srvlk;
+Srv	*srv;
 
 int
 srvgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 {
+	Srv *sp;
+
 	if(s >= conf.nsrv)
 		return -1;
-	if(srv.chan[s] == 0)
+
+	sp = &srv[s];
+	if(sp->chan == 0)
 		return 0;
-	devdir(c, (Qid){s, 0}, &srv.name[s*NAMELEN], 0, eve, 0666, dp);
+	devdir(c, (Qid){s, 0}, sp->name, 0, sp->owner, sp->perm, dp);
 	return 1;
 }
 
@@ -33,8 +41,7 @@ srvinit(void)
 void
 srvreset(void)
 {
-	srv.chan = ialloc(conf.nsrv*sizeof(Chan*), 0);
-	srv.name = ialloc(conf.nsrv*NAMELEN, 0);
+	srv = ialloc(conf.nsrv*sizeof(Srv), 0);
 }
 
 Chan *
@@ -74,12 +81,12 @@ srvopen(Chan *c, int omode)
 		c->offset = 0;
 		return c;
 	}
-	lock(&srv);
+	lock(&srvlk);
 	if(waserror()){
-		unlock(&srv);
+		unlock(&srvlk);
 		nexterror();
 	}
-	f = srv.chan[c->qid.path];
+	f = srv[c->qid.path].chan;
 	if(f == 0)
 		error(Eshutdown);
 	if(omode&OTRUNC)
@@ -88,7 +95,7 @@ srvopen(Chan *c, int omode)
 		error(Eperm);
 	close(c);
 	incref(f);
-	unlock(&srv);
+	unlock(&srvlk);
 	poperror();
 	return f;
 }
@@ -97,28 +104,35 @@ void
 srvcreate(Chan *c, char *name, int omode, ulong perm)
 {
 	int j, i;
+	Srv *sp;
 
 	if(omode != OWRITE)
 		error(Eperm);
-	lock(&srv);
+
+	lock(&srvlk);
 	if(waserror()){
-		unlock(&srv);
+		unlock(&srvlk);
 		nexterror();
 	}
 	j = -1;
 	for(i=0; i<conf.nsrv; i++){
-		if(srv.chan[i] == 0){
+		if(srv[i].chan == 0){
 			if(j == -1)
 				j = i;
-		}else if(strcmp(name, &srv.name[i*NAMELEN]) == 0)
+		}
+		else if(strcmp(name, srv[i].name) == 0)
 			error(Einuse);
 	}
 	if(j == -1)
 		error(Enosrv);
-	srv.chan[j] = c;
-	unlock(&srv);
+	sp = &srv[j];
+	sp->chan = c;
+	unlock(&srvlk);
 	poperror();
-	strcpy(&srv.name[j*NAMELEN], name);
+	strncpy(sp->name, name, NAMELEN);
+	strncpy(sp->owner, u->p->user, NAMELEN);
+	sp->perm = perm&0777;
+
 	c->qid.path = j;
 	c->flag |= COPEN;
 	c->mode = OWRITE;
@@ -131,18 +145,19 @@ srvremove(Chan *c)
 
 	if(c->qid.path == CHDIR)
 		error(Eperm);
-	lock(&srv);
+
+	lock(&srvlk);
 	if(waserror()){
-		unlock(&srv);
+		unlock(&srvlk);
 		nexterror();
 	}
-	f = srv.chan[c->qid.path];
+	f = srv[c->qid.path].chan;
 	if(f == 0)
 		error(Eshutdown);
-	if(strcmp(&srv.name[c->qid.path*NAMELEN], "boot") == 0)
+	if(strcmp(srv[c->qid.path].name, "boot") == 0)
 		error(Eperm);
-	srv.chan[c->qid.path] = 0;
-	unlock(&srv);
+	srv[c->qid.path].chan = 0;
+	unlock(&srvlk);
 	poperror();
 	close(f);
 }
@@ -175,7 +190,7 @@ srvwrite(Chan *c, void *va, long n, ulong offset)
 	char buf[32];
 
 	i = c->qid.path;
-	if(srv.chan[i] != c)	/* already been written to */
+	if(srv[i].chan != c)	/* already been written to */
 		error(Egreg);
 	if(n >= sizeof buf)
 		error(Egreg);
@@ -185,8 +200,8 @@ srvwrite(Chan *c, void *va, long n, ulong offset)
 	f = u->p->fgrp;
 	lock(f);
 	fdtochan(fd, -1, 0);	/* error check only */
-	srv.chan[i] = f->fd[fd];
-	incref(srv.chan[i]);
+	srv[i].chan = f->fd[fd];
+	incref(srv[i].chan);
 	unlock(f);
 	return n;
 }

@@ -437,7 +437,20 @@ inconwstat(Chan *c, char *dp)
  */
 
 /*
+ * for sleeping while kproc dies
+ */
+static int
+kNotliving(void *arg)
+{
+	Incon *ip;
+
+	ip = (Incon *)arg;
+	return ip->kstarted == 0;
+}
+
+/*
  *  create the kernel process for input
+ *  first wait for any old ones to die
  */
 static void
 inconstopen(Queue *q, Stream *s)
@@ -448,6 +461,8 @@ inconstopen(Queue *q, Stream *s)
 	ip = &incon[s->dev];
 	sprint(name, "incon%d", s->dev);
 	q->ptr = q->other->ptr = ip;
+	wakeup(&ip->kr);
+	sleep(&ip->r, kNotliving, ip);
 	ip->rq = q;
 	kproc(name, inconkproc, ip);
 }
@@ -455,14 +470,6 @@ inconstopen(Queue *q, Stream *s)
 /*
  *  kill off the kernel process
  */
-static int
-kNotliving(void *arg)
-{
-	Incon *ip;
-
-	ip = (Incon *)arg;
-	return ip->kstarted == 0;
-}
 static void
 inconstclose(Queue * q)
 {
