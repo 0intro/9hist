@@ -101,7 +101,7 @@ struct Ilcb				/* Control block */
 	Block	*unacked;
 	Block	*unackedtail;
 	Block	*outoforder;
-	ulong	sent;
+	ulong	next;
 	ulong	recvd;
 	ulong	start;
 	ulong	rstart;

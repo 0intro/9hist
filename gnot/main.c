@@ -278,6 +278,7 @@ confinit(void)
 	conf.copymode = 0;		/* copy on write */
 	conf.portispaged = 0;
 	conf.cntrlp = 0;
+	conf.dkif = 2;
 }
 
 /*

@@ -595,6 +595,7 @@ confinit(void)
 
 	conf.copymode = 1;		/* copy on reference */
 	conf.cntrlp = 1;
+	conf.dkif = 2;
 }
 
 /*

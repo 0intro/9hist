@@ -99,6 +99,7 @@ struct Conf
 	ulong	arp;		/* Arp table size */
 	ulong	frag;		/* Ip fragment assemble queue size */
 	int	cntrlp;		/* panic on ^P */
+	int	dkif;		/* number of datakit interfaces */
 };
 
 /*

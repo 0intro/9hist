@@ -31,6 +31,7 @@ void	ilackq(Ilcb*, Block*);
 void	ilprocess(Ipconv*, Ilhdr*, Block*);
 void	ilpullup(Ipconv*);
 void	ilhangup(Ipconv*);
+void	ilfreeq(Ilcb*);
 
 void
 ilopen(Queue *q, Stream *s)
@@ -83,18 +84,8 @@ ilclose(Queue *q)
 	case Ilsyncer:
 	case Ilsyncee:
 	case Ilestablished:
-		for(bp = ic->unacked; bp; bp = next) {
-			next = bp->list;
-			freeb(bp);
-		}
-		for(bp = ic->outoforder; bp; bp = next) {
-			next = bp->list;
-			freeb(bp);
-		}
-		ic->unacked = 0;
-		ic->outoforder = 0;
+		ilfreeq(ic);
 		ic->state = Ilclosing;
-		ic->sent++;
 		ilsendctl(s, 0, Ilclose);
 		break;
 	Illistening:
@@ -156,7 +147,7 @@ iloput(Queue *q, Block *bp)
 	hnputs(ih->illen, dlen+IL_HDRSIZE);
 	hnputs(ih->ilsrc, ipc->psrc);
 	hnputs(ih->ildst, ipc->pdst);
-	hnputl(ih->ilid, ic->sent++);
+	hnputl(ih->ilid, ic->next++);
 	hnputl(ih->ilack, ic->recvd);
 	ih->iltype = Ildata;
 	ih->ilspec = 0;
@@ -275,8 +266,8 @@ ilrcvmsg(Ipconv *ipc, Block *bp)
 			ic = &new->ilctl;
 			ic->state = Ilsyncee;
 			initseq += TK2MS(MACHP(0)->ticks);
-			ic->sent = initseq;
-			ic->start = ic->sent;
+			ic->next = initseq;
+			ic->start = ic->next;
 			ic->recvd = 0;
 			ic->rstart = nhgetl(ih->ilid);
 			ilprocess(new, ih, bp);
@@ -413,22 +404,11 @@ _ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 			break;
 		case Ilclose:
 			freeb(bp);
-			if(ic->start >= ack || ack < ic->sent)
+			if(id != ic->recvd)
 				break;
-			ic->sent++;
-			ic->recvd = ack;
 			ilsendctl(s, 0, Ilclose);
 			ic->state = Ilclosing;
-			for(nb = ic->unacked; nb; nb = next) {
-				next = nb->list;
-				freeb(nb);
-			}
-			for(nb = ic->outoforder; nb; nb = next) {
-				next = nb->list;
-				freeb(nb);
-			}
-			ic->unacked = 0;
-			ic->outoforder = 0;
+			ilfreeq(ic);
 			break;
 		}
 		break;
@@ -438,15 +418,16 @@ _ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 	case Ilclosing:
 		switch(h->iltype) {
 		case Ilclose:
-			if(ack == ic->sent) {
+			if(ack == ic->next) {
 				ic->state = Ilclosed;
 				ilhangup(s);
 			}
-			ic->recvd = id;
-			ilsendctl(s, 0, Ilclose);
+			else {
+				ic->recvd = id;
+				ilsendctl(s, 0, Ilclose);
+			}
 			break;
 		default:
-			ic->state = Ilclosed;
 			ilsendctl(s, 0, Ilclose);
 			ilhangup(s);
 			break;
@@ -462,14 +443,14 @@ ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 {
 	Ilcb *ic = &s->ilctl;
 
-	print("%s start %d rstart %d recvd %d sent %d\n",
-		ilstate[ic->state], ic->start, ic->rstart, ic->recvd, ic->sent);
-	print("pkt(%s id %d ack %d)\n", iltype[h->iltype], nhgetl(h->ilid), nhgetl(h->ilack));
+	print("%s rcv %d/%d snt %d/%d pkt(%s id %d ack %d %d->%d) ",
+		ilstate[ic->state],  ic->rstart, ic->recvd, ic->start, ic->next,
+		iltype[h->iltype], nhgetl(h->ilid), nhgetl(h->ilack), 
+		nhgets(h->ilsrc), nhgets(h->ildst));
 
 	_ilprocess(s, h, bp);
 
-	print("%s start %d rstart %d recvd %d sent %d\n",
-		ilstate[ic->state], ic->start, ic->rstart, ic->recvd, ic->sent);
+	print("%s rcv %d snt %d\n", ilstate[ic->state], ic->recvd, ic->next);
 }
 
 void
@@ -578,7 +559,7 @@ ilsendctl(Ipconv *ipc, Ilhdr *inih, int type)
 		hnputl(ih->dst, ipc->dst);
 		hnputs(ih->ilsrc, ipc->psrc);
 		hnputs(ih->ildst, ipc->pdst);
-		id = ic->sent;
+		id = ic->next;
 		if(type == Ilsync)
 			id = ic->start;
 		hnputl(ih->ilid, id);
@@ -591,6 +572,10 @@ ilsendctl(Ipconv *ipc, Ilhdr *inih, int type)
 
 	if(ilcksum)
 		hnputs(ih->ilsum, ptcl_csum(bp, IL_EHSIZE, IL_HDRSIZE));
+
+	print("ctl(%s id %d ack %d %d->%d) ",
+		iltype[ih->iltype], nhgetl(ih->ilid), nhgetl(ih->ilack), 
+		nhgets(ih->ilsrc), nhgets(ih->ildst));
 
 	PUTNEXT(Ipoutput, bp);
 }
@@ -638,10 +623,10 @@ ilstart(Ipconv *ipc, int type, int window)
 	ic->unacked = 0;
 	ic->outoforder = 0;
 	initseq += TK2MS(MACHP(0)->ticks);
-	ic->sent = initseq;
-	ic->start = ic->sent;
+	ic->next = initseq;
+	ic->start = ic->next;
 	ic->recvd = 0;
-	ic->lastack = ic->sent;
+	ic->lastack = ic->next;
 	ic->window = window;
 
 	switch(type) {
@@ -653,4 +638,21 @@ ilstart(Ipconv *ipc, int type, int window)
 		ilsendctl(ipc, 0, Ilsync);
 		break;
 	}
+}
+
+void
+ilfreeq(Ilcb *ic)
+{
+	Block *bp, *next;
+
+	for(bp = ic->unacked; bp; bp = next) {
+		next = bp->list;
+		freeb(bp);
+	}
+	for(bp = ic->outoforder; bp; bp = next) {
+		next = bp->list;
+		freeb(bp);
+	}
+	ic->unacked = 0;
+	ic->outoforder = 0;
 }

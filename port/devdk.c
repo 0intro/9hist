@@ -12,11 +12,6 @@
 
 enum {
 	/*
-	 *  configuration parameters
-	 */
-	Ndk = 2,		/* max dks */
-
-	/*
 	 *  relative or immutable
 	 */
 	Nline = 256,		/* max lines per dk */
@@ -97,6 +92,7 @@ struct Dkmsg {
  */
 struct Line {
 	QLock;
+	int	lineno;
 	Rendez	r;		/* wait here for dial */
 	int	state;		/* dial state */
 	int	err;		/* dialing error (if non zero) */
@@ -107,7 +103,6 @@ struct Line {
 	char	addr[64];
 	char	raddr[64];
 	char	ruser[32];
-	char	other[64];
 	Dk *dp;			/* interface contianing this line */
 };
 
@@ -124,14 +119,16 @@ struct Dk {
 	int	lines;		/* number of lines */
 	int	ncsc;		/* csc line number */
 	Chan	*csc;
-	Line	line[Nline];
+	Line	**linep;
 	int	restart;
 	int	urpwindow;
 	Rendez	timer;
 	int	closeall;	/* set when we receive a closeall message */
 	Rendez	closeallr;	/* wait here for a closeall */
+
+	Block	*alloc;
 };
-static Dk dk[Ndk];
+static Dk *dk;
 static Lock dklock;
 
 /*
@@ -217,14 +214,16 @@ Qinfo dkmuxinfo =
  *  Look for a dk struct with a name.  If none exists,  create one.
  */ 
 static Dk *
-dkalloc(char *name)
+dkalloc(char *name, int ncsc, int lines)
 {
 	Dk *dp;
 	Dk *freep;
+	Block *bp;
+	int i, n;
 
 	lock(&dklock);
 	freep = 0;
-	for(dp = dk; dp < &dk[Ndk]; dp++){
+	for(dp = dk; dp < &dk[conf.dkif]; dp++){
 		if(strcmp(name, dp->name) == 0){
 			unlock(&dklock);
 			return dp;
@@ -236,11 +235,42 @@ dkalloc(char *name)
 		unlock(&dklock);
 		error(Enoifc);
 	}
+	if(lines == 0)
+		errors("unknown dk interface");
+
+	/*
+ 	 *  init the structures
+	 */
 	dp = freep;
 	dp->opened = 0;
 	dp->s = 0;
-	dp->ncsc = 1;
+	dp->ncsc = ncsc;
+	dp->lines = lines;
 	strncpy(dp->name, name, sizeof(freep->name));
+
+	/*
+	 *  allocate memory for line structures
+	 */
+	n = sizeof(Line*)*dp->lines;
+	bp = allocb(n);
+	if(bp->lim - bp->base < n){
+		unlock(&dklock);
+		errors("too many lines");
+	}
+	dp->linep = (Line **)bp->base;
+	bp->wptr += n;
+	dp->alloc = bp;
+	for(i = 0; i < n; i++){
+		if(bp->lim - bp->wptr < sizeof(Line)){
+			bp = allocb(sizeof(Line)*n);
+			bp->next = dp->alloc;
+			dp->alloc = bp;
+		}
+		dp->linep[i] = (Line*)bp->wptr;
+		dp->linep[i]->lineno = i;
+		bp->wptr += sizeof(Line);
+	}
+		
 	unlock(&dklock);
 	return dp;
 }
@@ -281,7 +311,7 @@ dkmuxclose(Queue *q)
 	 *  hang up all datakit connections
 	 */
 	for(i=dp->ncsc; i < dp->lines; i++)
-		dkhangup(&dp->line[i]);
+		dkhangup(dp->linep[i]);
 
 	/*
 	 *  wakeup the timer so it can die
@@ -344,7 +374,7 @@ dkmuxiput(Queue *q, Block *bp)
 		return;
 	}
 
-	lp = &dp->line[line];
+	lp = dp->linep[line];
 	if(canqlock(lp)){
 		if(lp->rq)
 			PUTNEXT(lp->rq, bp);
@@ -385,7 +415,7 @@ dkstopen(Queue *q, Stream *s)
 	Line *lp;
 
 	dp = &dk[s->dev];
-	q->other->ptr = q->ptr = lp = &dp->line[s->id];
+	q->other->ptr = q->ptr = lp = dp->linep[s->id];
 	lp->dp = dp;
 	lock(dp);
 	if(dp->opened==0 || streamenter(dp->s)<0){
@@ -449,22 +479,22 @@ dkstclose(Queue *q)
 	 */
 	switch(lp->state){
 	case Lrclose:
-		dkmesg(c, T_CHG, D_CLOSE, lp - dp->line, 0);
+		dkmesg(c, T_CHG, D_CLOSE, lp->lineno, 0);
 		lp->state = Lclosed;
 		break;
 
 	case Lackwait:
-		dkmesg(c, T_CHG, D_CLOSE, lp - dp->line, 0);
+		dkmesg(c, T_CHG, D_CLOSE, lp->lineno, 0);
 		lp->state = Llclose;
 		break;
 
 	case Llistening:
-		dkmesg(c, T_CHG, D_CLOSE, lp - dp->line, 0);
+		dkmesg(c, T_CHG, D_CLOSE, lp->lineno, 0);
 		lp->state = Llclose;
 		break;
 
 	case Lconnected:
-		dkmesg(c, T_CHG, D_CLOSE, lp - dp->line, 0);
+		dkmesg(c, T_CHG, D_CLOSE, lp->lineno, 0);
 		lp->state = Llclose;
 		break;
 	}
@@ -506,7 +536,7 @@ dkoput(Queue *q, Block *bp)
 
 	lp = (Line *)q->ptr;
 	dp = lp->dp;
-	line = lp - dp->line;
+	line = lp->lineno;
 
 	bp = padb(bp, 2);
 	bp->rptr[0] = line;
@@ -590,14 +620,12 @@ dkmuxconfig(Queue *q, Block *bp)
 	/*
 	 *  set up
 	 */
-	dp = dkalloc(name);
+	dp = dkalloc(name, ncsc, lines);
 	lock(dp);
 	if(dp->opened){
 		unlock(dp);
 		error(Ebadarg);
 	}
-	dp->ncsc = ncsc;
-	dp->lines = lines;
 	dp->restart = restart;
 	dp->urpwindow = window;
 	dp->s = RD(q)->ptr;
@@ -649,7 +677,6 @@ enum {
 	Dlistenqid,
 	Draddrqid,
 	Duserqid,
-	Dotherqid,
 	Dlineqid,
 
 	/*
@@ -669,7 +696,6 @@ Dirtab dkdir[Ndir];
 Dirtab dksubdir[]={
 	"addr",		{Daddrqid},	0,	0600,
 	"listen",	{Dlistenqid},	0,	0600,
-	"other",	{Dotherqid},	0,	0600,
 	"raddr",	{Draddrqid},	0, 	0600,
 	"ruser",	{Duserqid},	0, 	0600,
 };
@@ -681,6 +707,7 @@ Dirtab dksubdir[]={
 void
 dkreset(void)
 {
+	dk = (Dk*)ialloc(conf.dkif*sizeof(Dk), 0);
 	newqinfo(&dkmuxinfo);
 }
 
@@ -728,7 +755,7 @@ dkattach(char *spec)
 	 */
 	if(*spec == 0)
 		spec = "dk";
-	dp = dkalloc(spec);
+	dp = dkalloc(spec, 0, 0);
 
 	/*
 	 *  return the new channel
@@ -778,7 +805,7 @@ dkopen(Chan *c, int omode)
 {
 	extern Qinfo dkinfo;
 	Stream *s;
-	Line *lp, *end;
+	Line *lp;
 	Dk *dp;
 	int line;
 
@@ -794,21 +821,21 @@ dkopen(Chan *c, int omode)
 		/*
 		 *  get an unused device and open its control file
 		 */
-		end = &dp->line[dp->lines];
-		for(lp = &dp->line[dp->ncsc+1]; lp < end; lp++){
+		for(line = dp->ncsc+1; line < dp->lines; line++){
+			lp = dp->linep[line];
 			if(lp->state == Lclosed && canqlock(lp)){
 				if(lp->state != Lclosed){
 					qunlock(lp);
 					continue;
 				}
-				c->qid.path = STREAMQID(lp-dp->line, Sctlqid);
+				c->qid.path = STREAMQID(line, Sctlqid);
+				lp->state = Lopened;
+				qunlock(lp);
 				break;
 			}
 		}
-		if(lp == end)
+		if(line == dp->lines)
 			error(Enodev);
-		lp->state = Lopened;
-		qunlock(lp);
 		streamopen(c, &dkinfo);
 		pushq(c->stream, &urpinfo);
 		break;
@@ -826,7 +853,6 @@ dkopen(Chan *c, int omode)
 	case Daddrqid:
 	case Draddrqid:
 	case Duserqid:
-	case Dotherqid:
 		/*
 		 *  read only files
 		 */
@@ -877,7 +903,7 @@ dkread(Chan *c, void *a, long n, ulong offset)
 			return devdirread(c, a, n, dksubdir, Nsubdir, streamgen);
 	}
 
-	lp = &dk[c->dev].line[STREAMID(c->qid.path)];
+	lp = dk[c->dev].linep[STREAMID(c->qid.path)];
 	switch(STREAMTYPE(c->qid.path)){
 	case Daddrqid:
 		return stringread(c, a, n, lp->addr, offset);
@@ -1028,7 +1054,7 @@ dkcall(int type, Chan *c, char *addr, char *nuser, char *machine)
 	
 	line = STREAMID(c->qid.path);
 	dp = &dk[c->dev];
-	lp = &dp->line[line];
+	lp = dp->linep[line];
 
 	/*
 	 *  only dial on virgin lines
@@ -1272,7 +1298,7 @@ dklisten(Chan *c)
 			print("dklisten: illegal line %d\n", lineno);
 			continue;
 		}
-		lp = &dp->line[lineno];
+		lp = dp->linep[lineno];
 		ts = strtoul(field[1], 0, 0);
 
 		/*
@@ -1338,9 +1364,8 @@ dklisten(Chan *c)
 			error(Ebadarg);
 		}
 
-		sprint(lp->other, "w(%d)", W_TRAF(lp->window));
-		DPRINT("src(%s)user(%s)dest(%s)other(%s)\n", lp->raddr, lp->ruser,
-			lp->addr, lp->other);
+		DPRINT("src(%s)user(%s)dest(%s)w(%d)\n", lp->raddr, lp->ruser,
+			lp->addr, W_TRAF(lp->window));
 
 		lp->timestamp = ts;
 		lp->state = Lconnected;
@@ -1365,7 +1390,7 @@ dkanswer(Chan *c, int line, int code)
 	Line *lp;
 
 	dp = &dk[c->dev];
-	lp = &dp->line[line];
+	lp = dp->linep[line];
 
 	/*
 	 *  open the data file (c is a control file)
@@ -1398,7 +1423,7 @@ dkwindow(Chan *c)
 	long wins;
 	Line *lp;
 
-	lp = &dk[c->dev].line[STREAMID(c->qid.path)];
+	lp = dk[c->dev].linep[STREAMID(c->qid.path)];
 	if(lp->window == 0)
 		lp->window = 64;
 	sprint(buf, "init %d %d", lp->window, Streamhi);
@@ -1496,7 +1521,7 @@ dkchgmesg(Chan *c, Dk *dp, Dkmsg *dialp, int line)
 			dkmesg(c, T_CHG, D_CLOSE, line, 0);
 			return;
 		}
-		lp = &dp->line[line];
+		lp = dp->linep[line];
 		switch (lp->state) {
 
 		case Ldialing:
@@ -1532,7 +1557,7 @@ dkchgmesg(Chan *c, Dk *dp, Dkmsg *dialp, int line)
 			dkmesg(c, T_CHG, D_CLOSE, line, 0);
 			return;
 		}
-		lp = &dp->line[line];
+		lp = dp->linep[line];
 		switch (lp->state) {
 		case Llclose:
 		case Lclosed:
@@ -1552,7 +1577,7 @@ dkchgmesg(Chan *c, Dk *dp, Dkmsg *dialp, int line)
 		 *  datakit wants us to close all lines
 		 */
 		for(line = dp->ncsc+1; line < dp->lines; line++){
-			lp = &dp->line[line];
+			lp = dp->linep[line];
 			switch (lp->state) {
 	
 			case Ldialing:
@@ -1601,7 +1626,7 @@ dkreplymesg(Dk *dp, Dkmsg *dialp, int line)
 	if(line < 0 || line >= dp->lines)
 		return;
 
-	lp=&dp->line[line];
+	lp = dp->linep[line];
 	if(lp->state != Ldialing)
 		return;
 
@@ -1646,7 +1671,7 @@ dktimer(void *a)
 		 *  hang up any calls waiting for the dk
 		 */
 		for (i=dp->ncsc+1; i<dp->lines; i++){
-			lp = &dp->line[i];
+			lp = dp->linep[i];
 			switch(lp->state){
 			case Llclose:
 				lp->state = Lclosed;
@@ -1659,6 +1684,7 @@ dktimer(void *a)
 		}
 		if(c)
 			close(c);
+		freeb(dp->alloc);
 		return;
 	}
 
@@ -1682,7 +1708,7 @@ dktimer(void *a)
 		 *  timeout calls that take to long
 		 */
 		for (i=dp->ncsc+1; i<dp->lines; i++){
-			lp = &dp->line[i];
+			lp = dp->linep[i];
 			switch(lp->state){
 			case Llclose:
 				dkmesg(c, T_CHG, D_CLOSE, i, 0);

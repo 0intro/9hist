@@ -196,11 +196,18 @@ noetheriput(Queue *q, Block *bp)
 	 */
 	ep = &ifc->conv[conf.nnoconv];
 	for(cp = &ifc->conv[0]; cp < ep; cp++){
-		if(circuit==cp->rcvcircuit){
-			qlock(cp);
-			peh = (Etherpkt*)cp->media->rptr;
-			if(circuit == cp->rcvcircuit
-			&& memcmp(peh->d, eh->s, sizeof(eh->s)) == 0){
+		nbp = cp->media;
+		if(nbp == 0)
+			continue;
+		peh = (Etherpkt*)nbp->rptr;
+		if(circuit==cp->rcvcircuit && memcmp(peh->d, eh->s, sizeof(eh->s))==0){
+			if(!canqlock(cp)){
+				freeb(bp);
+				return;
+			}
+			peh = (Etherpkt*)nbp->rptr;
+			if(circuit==cp->rcvcircuit
+			&& memcmp(peh->d, eh->s, sizeof(eh->s))==0){
 				bp->rptr += ifc->hsize;
 				nonetrcvmsg(cp, bp);
 				qunlock(cp);

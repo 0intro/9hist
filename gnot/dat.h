@@ -105,6 +105,7 @@ struct Conf
 	int	copymode;	/* 0 is copy on write, 1 is copy on reference */
 	int	portispaged;	/* ??? */
 	int	cntrlp;		/* panic on ^P */
+	int	dkif;		/* number of datakit interfaces */
 };
 
 #include "../port/portdat.h"

@@ -535,7 +535,7 @@ syswstat(ulong *arg)
 	long n;
 
 	validaddr(arg[1], DIRLEN, 0);
-	evenaddr(arg[1]);
+	nameok((char*)arg[1]);
 	validaddr(arg[0], 1, 0);
 	c = namec((char*)arg[0], Aaccess, 0, 0);
 	if(waserror()){
@@ -555,7 +555,7 @@ sysfwstat(ulong *arg)
 	long n;
 
 	validaddr(arg[1], DIRLEN, 0);
-	evenaddr(arg[1]);
+	nameok((char*)arg[1]);
 	c = fdtochan(arg[0], -1, 1);
 	(*devtab[c->type].wstat)(c, (char*)arg[1]);
 	return 0;

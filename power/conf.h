@@ -37,6 +37,7 @@ Conftab conftab[] = {
 	{"arp", &conf.arp },
 	{"frag", &conf.frag },
 	{"cntrlp", &conf.cntrlp },
+	{"dkif", &conf.dkif },
 	{ 0, 0 },
 };
 

@@ -624,14 +624,11 @@ struct Ifile
 struct Network
 {
 	char	*name;
-	int	nif;			/* max # of interfaces */
 	int	nconv;			/* max # of conversations */
 	Qinfo	*devp;			/* device end line disc */
 	Qinfo	*protop;		/* protocol line disc */
 	int	(*listen)(Chan*);
 	int	(*clone)(Chan*);
-	void	(*connect)(Chan*, char*);
-	void	(*announce)(Chan*, char*);
 	int	ninfo;
 	Ifile	info[5];
 };

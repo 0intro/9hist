@@ -93,6 +93,7 @@ struct Conf
 	ulong	cntrlp;		/* panic on ^P */
 	ulong	nfloppy;	/* number of floppy drives */
 	ulong	nhard;		/* number of hard drives */
+	int	dkif;		/* number of datakit interfaces */
 };
 
 /*

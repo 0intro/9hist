@@ -186,7 +186,6 @@ static SoftLance l;
  */
 static void lancekproc(void *);
 static void lancestart(int, int);
-static void lancedump(void);
 static void lanceup(Etherpkt*, int);
 
 /*
@@ -244,45 +243,6 @@ lancestclose(Queue *q)
 }
 
 /*
- *  expand a block list to be one byte, len bytes long
- */
-static Block*
-expandb(Block *bp, int len)
-{
-	Block *nbp, *new;
-	int i;
-
-	new = allocb(len);
-	if(new == 0){
-		freeb(bp);
-		return 0;
-	}
-
-	/*
-	 *  copy bytes into new block
-	 */
-	for(nbp = bp; len>0 && nbp; nbp = nbp->next){
-		i = BLEN(bp);
-		if(i > len) {
-			memmove(new->wptr, nbp->rptr, len);
-			new->wptr += len;
-			break;
-		} else {
-			memmove(new->wptr, nbp->rptr, i);
-			new->wptr += i;
-			len -= i;
-		}
-	}
-	if(len){
-		memset(new->wptr, 0, len);
-		new->wptr += len;
-	}
-	freeb(bp);
-	return new;
-
-}
-
-/*
  *  the ``connect'' control message specifyies the type
  */
 Proc *lanceout;
@@ -329,7 +289,7 @@ lanceoput(Queue *q, Block *bp )
 	memmove(p->s, l.ea, sizeof(l.ea));
 	if(memcmp(l.ea, p->d, sizeof(l.ea)) == 0){
 		len = blen(bp);
-		bp = expandb(bp, len >= 60 ? len : 60);
+		bp = expandb(bp, len >= ETHERMINTU ? len : ETHERMINTU);
 		if(bp){
 			putq(&l.self, bp);
 			wakeup(&l.rr);
@@ -370,9 +330,9 @@ lanceoput(Queue *q, Block *bp )
 	/*
 	 *  pad the packet (zero the pad)
 	 */
-	if(len < 60){
-		memset(((char*)p)+len, 0, 60-len);
-		len = 60;
+	if(len < ETHERMINTU){
+		memset(((char*)p)+len, 0, ETHERMINTU-len);
+		len = ETHERMINTU;
 	}
 
 	/*
@@ -695,9 +655,8 @@ lanceintr(void)
 	 *  see if an error occurred
 	 */
 	if(csr & (BABL|MISS|MERR)){
-		print("lance err %ux\n", csr);
-		if(csr & MISS)
-			lancedump();
+		if(misses++ < 4)
+			print("lance err %ux\n", csr);
 	}
 
 	if(csr & IDON){
@@ -837,10 +796,4 @@ stage:
 		qunlock(&l.rlock);
 		sleep(&l.rr, isinput, 0);
 	}
-}
-
-static void
-lancedump(void)
-{
-	print("l.rl %d l.rc %d l.tl %d l.tc %d\n", l.rl, l.rc, l.tl, l.tc);
 }

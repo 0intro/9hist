@@ -44,6 +44,7 @@ static Lock garbagelock;
 typedef struct {
 	int	size;
 	int	made;
+	QLock;
 	Blist;
 } Bclass;
 Bclass bclass[Nclass]={
@@ -145,11 +146,11 @@ newblock(Bclass *bcp)
 			 *  upgrade a level 0 block
 			 */
 			bp = allocb(0);
-			lock(bclass);
+			qlock(bclass);
 			bclass->made--;
 			bcp->made++;
 			bp->flags = bcp - bclass;
-			unlock(bclass);
+			qunlock(bclass);
 
 			/*
 			 *  tack on the data area
@@ -193,10 +194,10 @@ allocb(ulong size)
 	/*
 	 *  look for a free block
 	 */
-	lock(bcp);
+	qlock(bcp);
 	while(bcp->first == 0){
 		if(waserror()){
-			unlock(bcp);
+			qunlock(bcp);
 			nexterror();
 		}
 		newblock(bcp);
@@ -206,7 +207,7 @@ allocb(ulong size)
 	bcp->first = bp->next;
 	if(bcp->first == 0)
 		bcp->last = 0;
-	unlock(bcp);
+	qunlock(bcp);
 
 	/*
 	 *  return an empty block
@@ -240,7 +241,7 @@ freeb(Block *bp)
 	for(; bp; bp = nbp){
 		bcp = &bclass[bp->flags & S_CLASS];
 		bp->flags = bp->flags|S_CLASS;		/* Check for double free */
-		lock(bcp);
+		qlock(bcp);
 		bp->rptr = bp->wptr = 0;
 		if(bcp->first)
 			bcp->last->next = bp;
@@ -249,7 +250,7 @@ freeb(Block *bp)
 		bcp->last = bp;
 		nbp = bp->next;
 		bp->next = 0;
-		unlock(bcp);
+		qunlock(bcp);
 	}
 }
 
@@ -614,6 +615,45 @@ pullup(Block *bp, int n)
 	}
 	freeb(bp);
 	return 0;
+}
+
+/*
+ *  expand a block list to be one byte, len bytes long
+ */
+Block*
+expandb(Block *bp, int len)
+{
+	Block *nbp, *new;
+	int i;
+
+	new = allocb(len);
+	if(new == 0){
+		freeb(bp);
+		return 0;
+	}
+
+	/*
+	 *  copy bytes into new block
+	 */
+	for(nbp = bp; len>0 && nbp; nbp = nbp->next){
+		i = BLEN(bp);
+		if(i > len) {
+			memmove(new->wptr, nbp->rptr, len);
+			new->wptr += len;
+			break;
+		} else {
+			memmove(new->wptr, nbp->rptr, i);
+			new->wptr += i;
+			len -= i;
+		}
+	}
+	if(len){
+		memset(new->wptr, 0, len);
+		new->wptr += len;
+	}
+	freeb(bp);
+	return new;
+
 }
 
 /*
@@ -1414,10 +1454,10 @@ dumpqueues(void)
 	}
 	print("%d queues\n", qcount);
 	for(bcp=bclass; bcp<&bclass[Nclass]; bcp++){
-		lock(bcp);
+		qlock(bcp);
 		for(count = 0, bp = bcp->first; bp; count++, bp = bp->next)
 			;
-		unlock(bcp);
+		qunlock(bcp);
 		print("%d byte blocks: %d made %d free\n", bcp->size,
 			bcp->made, count);
 	}

@@ -166,9 +166,7 @@ procopen(Chan *c, int omode)
 		if(p->pid != PID(c->qid))
 			goto Close;
 
-		qlock(&tc->rdl);
 		tc->offset = 0;
-		qunlock(&tc->rdl);
 		return tc;
 	case Qctl:
 	case Qnote:

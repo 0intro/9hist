@@ -19,6 +19,7 @@ main(void)
 	confinit();
 	screeninit();
 	printinit();
+crdump();
 	print("%ludK bytes of physical memory\n", (conf.base1 + conf.npage1*BY2PG)/1024);
 	mmuinit();
 	trapinit();
@@ -225,6 +226,7 @@ confinit(void)
 	conf.cntrlp = 0;
 	conf.nfloppy = 1;
 	conf.nhard = 1;
+	conf.dkif = 1;
 }
 
 char *mathmsg[] =

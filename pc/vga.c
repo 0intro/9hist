@@ -89,6 +89,17 @@ crout(int reg, int val)
 	outb(CRX, reg);
 	outb(CR, val);
 }
+crdump(void)
+{
+	uchar x;
+	int i;
+
+	for(i = 0; i < 0x16; i++){
+		outb(CRX, i);
+		x = inb(CR);
+		print("cr[0x%lux] = %ux\n", i, x);
+	}
+}
 
 /*
  *  m is a bit mask of planes to be affected by CPU writes

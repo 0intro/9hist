@@ -647,10 +647,15 @@ char isfrog[]={
 void
 nameok(char *elem)
 {
+	char *eelem;
+
+	eelem = elem+NAMELEN;
 	while(*elem) {
 		if((*elem&0x80) || isfrog[*elem])
 			error(Ebadchar);
 		elem++;
+		if(elem >= eelem)
+			error(Efilename);
 	}
 }
 
