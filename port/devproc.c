@@ -269,7 +269,7 @@ procread(Chan *c, void *va, long n, ulong offset)
 
 		if(offset >= KZERO) {
 			/* Protect crypt key memory */
-			if(offset >= palloc.cmembase && offset < palloc.cmemtop)
+			if(offset < palloc.cmemtop && offset+n > palloc.cmembase)
 				error(Eperm);
 
 			/* validate physical kernel addresses */

@@ -115,6 +115,7 @@ char *lapderrors[] = {
 	"Badmanage",
 	"Tooshort",
 	"Unimpmanage",
+	"Unkdlci",
 	"Egates",
 };
 
@@ -123,20 +124,21 @@ Lapd	*lapd;
 /*
  *  predeclared
  */
-static void	assigntei(Lapd *);
-static void	dl_establish(Lapd *);
-static void	dl_release(Lapd *);
+static void	assigntei(Lapd*);
+static void	dl_establish(Lapd*);
+static void	dl_release(Lapd*);
 static void	lapdreset(void);
-static void	lapdclose(Queue *);
+static void	lapdclose(Queue*);
+static void	lapdhangup(Lapd*);
 static void	lapdiput(Queue*, Block*);
-static void	lapdkproc(void *);
+static void	lapdkproc(void*);
 static void	lapdopen(Queue*, Stream*);
 static void	lapdoput(Queue*, Block*);
-static int	lapdxmit(Lapd *);
-static void	mdl_assign(Lapd *);
-static void	mdl_iput(Queue *, Block *);
-static int	recvack(Lapd *, int);
-static void	sendctl(Lapd *, int, int, int);
+static int	lapdxmit(Lapd*);
+static void	mdl_assign(Lapd*);
+static void	mdl_iput(Queue*, Block*);
+static int	recvack(Lapd*, int);
+static void	sendctl(Lapd*, int, int, int);
 
 Qinfo lapdinfo = { lapdiput, lapdoput, lapdopen, lapdclose, "lapd", lapdreset };
 
@@ -230,8 +232,14 @@ assigntei(Lapd *lp)
 	Queue *q = lp->rq;
 	Block *b = allocb(16);
 	uchar *p = b->wptr;
+	static ulong then;
+	ulong now;
 
-	lp->refnum = NOW;
+	now = NOW;
+	if(now <= then)
+		now = then+1;
+	lp->refnum = now;
+	then = now;
 	*p++ = SAPI(63, UCmd);
 	*p++ = TEI(127);
 	*p++ = UI;
@@ -510,9 +518,15 @@ lapdiput(Queue *q, Block *bp)
 		} else
 			lapderror(lp, BadUA);
 		break;
+	case DISC:
+		lp->state = TEIassigned;
+		lp->flags = 0;
+		lp->t200 = 0;
+		sendctl(lp, UResp, UA, pf);
+		lapdhangup(lp);
+		break;
 	case SABME:
 	case UI:
-	case DISC:
 	case FRMR:
 	case XID:
 		lapderror(lp, Egates);
@@ -537,19 +551,18 @@ mdl_iput(Queue *q, Block *bp)
 		lapderror(lp, Badmanage);
 	refnum = (p[1]<<8)|p[2];
 	ai = p[4]>>1;
-	switch (p[3]) {
+	switch(p[3]){
 	case 2:		/* identity assigned */
-		if (lp->state == WaitTEI && lp->refnum == refnum) {
+		if(lp->state == WaitTEI && lp->refnum == refnum){
 			lp->state = TEIassigned;
 			lp->tei = ai;
 			lp->t200 = 0;
 			DPRINT("assigned tei = %d\n", lp->tei);
 			wakeup(lp);
-		} else
-			lapderror(lp, Badassign);
+		}
 		break;
 	case 3:		/* identity denied */
-		if (lp->state == WaitTEI && lp->refnum == refnum) {
+		if(lp->state == WaitTEI && lp->refnum == refnum){
 			lp->t200 = 0;
 			DPRINT("denied tei = %d\n", ai);
 			wakeup(lp);
@@ -557,7 +570,7 @@ mdl_iput(Queue *q, Block *bp)
 			lapderror(lp, Badassign);
 		break;
 	case 4:		/* identity check request */
-		if (lp->state >= TEIassigned && (ai==127||ai==lp->tei)) {
+		if(lp->state >= TEIassigned && (ai==127||ai==lp->tei)){
 			Block *b = allocb(16);
 			uchar *p = b->wptr;
 		
@@ -573,29 +586,33 @@ mdl_iput(Queue *q, Block *bp)
 			b->flags |= S_DELIM;
 			DPRINT("id check response: tei=%d\n", lp->tei);
 			PUTNEXT(lp->wq, b);
-		} else
-			lapderror(lp, Badassign);
+		}
 		break;
 	case 6:		/* identity removal */
 		DPRINT("id removal: ai=%d\n", ai);
 		if(lp->state >= TEIassigned && (ai == lp->tei || ai == 127)){
-			Block *b = allocb(0);
 			lp->state = NoTEI;
-			DPRINT("lapd hangup\n");
-			b->type = M_HANGUP;
-			PUTNEXT(lp->rq, b);
+			lapdhangup(lp);
 		}
 		break;
 	default:
-		{
-			Block *b = allocb(0);
-			b->type = M_HANGUP;
-			PUTNEXT(lp->rq, b);
-		}
+		lapdhangup(lp);
 		lapderror(lp, Unimpmanage);
 		break;
 	}
 	freeb(bp);
+}
+
+static void
+lapdhangup(Lapd *lp)
+{
+	Queue *q = lp->rq;
+	Block *bp;
+
+	DPRINT("lapd hangup\n");
+	bp = allocb(0);
+	bp->type = M_HANGUP;
+	PUTNEXT(q, bp);
 }
 
 static int
