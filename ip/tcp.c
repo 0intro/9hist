@@ -1585,6 +1585,7 @@ tcpoutput(Conv *s)
 			if(tcb->snd.ptr == tcb->iss){
 				seg.flags |= SYN;
 				dsize = 0;
+				ssize = 1;
 				seg.mss = tcpmtu(s);
 			}
 			break;

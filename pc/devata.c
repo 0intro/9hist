@@ -22,6 +22,7 @@ typedef	struct Ident		Ident;
 typedef	struct Controller	Controller;
 typedef struct Partition	Partition;
 typedef struct Repl		Repl;
+typedef struct Atapicmd		Atapicmd;
 
 enum
 {
@@ -84,9 +85,15 @@ enum
 	Nrepl=		64,		/* maximum replacement blocks */
 
 	Hardtimeout=	6000,		/* disk access timeout (ms) */
-
+	Atapitimeout=	10000,		/* disk access timeout (ms) */
 	NCtlr=		4,
 	NDrive=		NCtlr*2,
+
+	/* cd files */
+	CDdisk = 0,
+	CDcmd,
+	CDdata,
+	CDmax,
 };
 
 #define PART(x)		((x)&0xF)
@@ -109,6 +116,18 @@ struct Repl
 
 #define PARTMAGIC	"plan9 partitions"
 #define REPLMAGIC	"block replacements"
+
+/*
+ * the result of the last user-invoked atapi cmd
+ */
+struct Atapicmd
+{
+	QLock;
+	int	pid;
+	ushort	status;
+	ushort	error;
+	uchar	cmdblk[12];
+};
 
 /*
  *  an ata drive
@@ -144,6 +163,7 @@ struct Drive
 	ulong	vers;		/* ATAPI */
 
 	int	spindown;
+	Atapicmd atapicmd;
 };
 
 /*
@@ -204,6 +224,7 @@ static int	isatapi(Drive*);
 static long	atapirwio(Chan*, uchar*, ulong, vlong, int);
 static void	atapipart(Drive*);
 static void	atapiintr(Controller*);
+static void	atapiexec(Drive*);
 
 static int
 atagen(Chan* c, Dirtab*, int, int s, Dir* dirp)
@@ -621,6 +642,7 @@ ataclose(Chan* c)
 {
 	Drive *dp;
 	Partition *p;
+	Atapicmd *acmd;
 
 	if(c->mode != OWRITE && c->mode != ORDWR)
 		return;
@@ -629,6 +651,16 @@ ataclose(Chan* c)
 	if(dp == 0)
 		return;
 	p = &dp->p[PART(c->qid.path)];
+	if(dp->atapi == 1 && strcmp(p->name, "cmd") == 0) {
+		acmd = &dp->atapicmd;
+		if(canqlock(acmd)) {
+			qunlock(acmd);
+			return;
+		}
+		if(acmd->pid == up->pid)
+			qunlock(acmd);
+		return;
+	}
 	if(strcmp(p->name, "partition") != 0)
 		return;
 
@@ -652,23 +684,86 @@ ataread(Chan* c, void* a, long n, vlong off)
 	uchar *aa = a;
 	Partition *pp;
 	uchar *buf;
+	Atapicmd *acmd;
+	Controller *cp;
 
 	if(c->qid.path == CHDIR)
 		return devdirread(c, a, n, 0, 0, atagen);
 
 	dp = atadrive[DRIVE(c->qid.path)];
 	if(dp->atapi){
-		if(dp->online == 0)
-			error(Eio);
-		if(waserror()){
+		switch(PART(c->qid.path)){
+		case CDdisk:
+			if(dp->online == 0)
+				error(Eio);
+			if(waserror()){
+				qunlock(dp);
+				nexterror();
+			}
+			qlock(dp);
+			if(dp->partok == 0)
+				atapipart(dp);
 			qunlock(dp);
-			nexterror();
+			poperror();
+			break;
+		case CDcmd:
+			acmd = &dp->atapicmd;
+			if(n < 4)
+				error(Ebadarg);
+			if(canqlock(acmd)) {
+				qunlock(acmd);
+				error(Egreg);
+			}
+			if(acmd->pid != up->pid)
+				error(Egreg);
+			n = 4;
+			*aa++ = 0;
+			*aa++ = 0;
+			*aa++ = acmd->error;
+			*aa   = acmd->status;
+			qunlock(acmd);
+			return n;
+		case CDdata:
+			acmd = &dp->atapicmd;
+			if(canqlock(acmd)) {
+				qunlock(acmd);
+				error(Egreg);
+			}
+			if(acmd->pid != up->pid)
+				error(Egreg);
+			if(n > Maxxfer)
+				error(Ebadarg);
+
+			cp = dp->cp;
+			qlock(cp->ctlrlock);
+			cp->len = 0;
+			cp->buf = 0;
+			cp->dp = dp;
+			if(waserror()) {
+				if(cp->buf)
+					free(cp->buf);
+				cp->buf = 0;
+				cp->dp = 0;
+				acmd->status = cp->status;
+				acmd->error = cp->error;
+				qunlock(cp->ctlrlock);
+				nexterror();
+			}
+			if(n)
+				cp->buf = smalloc(Maxxfer);
+			cp->len = n;
+			memmove(cp->cmdblk, acmd->cmdblk, sizeof cp->cmdblk);
+			atapiexec(dp);
+			memmove(a, cp->buf, cp->count);
+			poperror();
+			if(cp->buf)
+				free(cp->buf);
+			acmd->status = cp->status;
+			acmd->error = cp->error;
+			n = cp->count;
+			qunlock(cp->ctlrlock);
+			return n;
 		}
-		qlock(dp);
-		if(dp->partok == 0)
-			atapipart(dp);
-		qunlock(dp);
-		poperror();
 	}
 	pp = &dp->p[PART(c->qid.path)];
 
@@ -707,23 +802,38 @@ atawrite(Chan *c, void *a, long n, vlong off)
 	uchar *aa = a;
 	Partition *pp;
 	uchar *buf;
+	Atapicmd *acmd;
 
 	if(c->qid.path == CHDIR)
 		error(Eisdir);
 
 	dp = atadrive[DRIVE(c->qid.path)];
 	if(dp->atapi){
-		if(dp->online == 0 || dp->atapi == 1)
-			error(Eio);
-		if(waserror()){
+		switch(PART(c->qid.path)) {
+		case CDdisk:
+			if(dp->online == 0 || dp->atapi == 1)
+				error(Eio);
+			if(waserror()){
+				qunlock(dp);
+				nexterror();
+			}
+			qlock(dp);
+			if(dp->partok == 0)
+				atapipart(dp);
 			qunlock(dp);
-			nexterror();
+			poperror();
+			break;
+		case CDcmd:
+			if(n != 12)
+				error(Ebadarg);
+			acmd = &dp->atapicmd;
+			qlock(acmd);
+			acmd->pid = up->pid;
+			memmove(acmd->cmdblk, a, n);
+			return n;
+		case CDdata:
+			error(Egreg);
 		}
-		qlock(dp);
-		if(dp->partok == 0)
-			atapipart(dp);
-		qunlock(dp);
-		poperror();
 	}
 	pp = &dp->p[PART(c->qid.path)];
 
@@ -1586,7 +1696,7 @@ ataintr(Ureg*, void* arg)
 		atapiintr(cp);
 		break;
 	default:
-		if(cp->cmd == 0 && cp->lastcmd == Cpktcmd && cp->cmdblk[0] == Ccapacity)
+		if(cp->cmd == 0 && cp->lastcmd == Cpktcmd)
 			break;
 		if(cp->status & Serr)
 			cp->error = inb(cp->pbase+Perror);
@@ -1672,6 +1782,7 @@ atapiexec(Drive *dp)
 	cp = dp->cp;
 
 	if(cmdreadywait(dp)){
+		print("cmdreadywait fails");
 		error(Eio);
 	}
 	
@@ -1708,7 +1819,7 @@ atapiexec(Drive *dp)
 			nexterror();
 		}
 	}
-	atasleep(cp, Hardtimeout);
+	atasleep(cp, Atapitimeout);
 	poperror();
 	if(loop)
 		nexterror();
@@ -1858,6 +1969,16 @@ atapipart(Drive *dp)
 	pp->start = 0;
 	pp->end = 0;
 	dp->npart = 1;
+
+	if(dp->atapi == 1) { /* cd-rom */ 
+		dp->npart = CDmax;
+		pp = &dp->p[CDcmd];
+		strcpy(pp->name, "cmd");
+		pp->start = pp->end = 0;
+		pp = &dp->p[CDdata];
+		strcpy(pp->name, "data");
+		pp->start = pp->end = 0;
+	}
 
 	buf = smalloc(Maxxfer);
 	qlock(cp->ctlrlock);
