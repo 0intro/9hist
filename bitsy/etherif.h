@@ -21,6 +21,7 @@ struct Ether {
 	void	(*interrupt)(Ureg*, void*);
 	long	(*ifstat)(Ether*, void*, long, ulong);
 	long 	(*ctl)(Ether*, void*, long); /* custom ctl messages */
+	long	(*power)(Ether*, int);	/* power on/off */
 	void	*ctlr;
 
 	Queue*	oq;

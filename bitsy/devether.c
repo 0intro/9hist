@@ -30,6 +30,42 @@ addethercard(char* t, int (*r)(Ether*))
 	ncard++;
 }
 
+void
+etherpower(int on)
+{
+	/* Power all ether cards on or off */
+
+	for (i = 0; i < MaxEther; i++){
+		ether = etherxx[i];
+		if (ether == nil)
+			continue;
+		if(on){
+			if (ether->write == 0){
+				print("etherpower: already powered up\n");
+				continue;
+			}
+			if (ether->power)
+				ether->power(ether, on);
+			wunlock(ether);
+			/* Unlock when power restored */
+		}else{
+			if (ether->write != 0){
+				print("etherpower: already powered down\n");
+				continue;
+			}
+			/* Keep locked until power goes back on */
+			wlock(ether);
+			if (ether == &noether){
+				/* Locked an unconfigured card, undo */
+				wunlock(ether);
+				continue;
+			}
+			if (ether->power)
+				ether->power(ether, on);
+		}
+	}
+}
+
 int
 etherconfig(int on, char *spec, DevConf *cf)
 {
@@ -167,14 +203,12 @@ etherwalk(Chan* chan, Chan* nchan, char** name, int nname)
 	Ether *ether;
 
 	ether = etherxx[chan->dev];
-	if(ether == &noether)
-		error(Enodev);
 	rlock(ether);
 	if(waserror()) {
 		runlock(ether);
 		nexterror();
 	}
-	if(etherxx[chan->dev] == &noether)
+	if(ether == &noether)
 		error(Enodev);
 	q = netifwalk(ether, chan, nchan, name, nname);
 	poperror();
@@ -189,14 +223,12 @@ etherstat(Chan* chan, uchar* dp, int n)
 	Ether *ether;
 
 	ether = etherxx[chan->dev];
-	if(ether == &noether)
-		error(Enodev);
 	rlock(ether);
 	if(waserror()) {
 		runlock(ether);
 		nexterror();
 	}
-	if(etherxx[chan->dev] == &noether)
+	if(ether == &noether)
 		error(Enodev);
 	s = netifstat(ether, chan, dp, n);
 	poperror();
@@ -211,14 +243,12 @@ etheropen(Chan* chan, int omode)
 	Ether *ether;
 
 	ether = etherxx[chan->dev];
-	if(ether == &noether)
-		error(Enodev);
 	rlock(ether);
 	if(waserror()) {
 		runlock(ether);
 		nexterror();
 	}
-	if(etherxx[chan->dev] == &noether)
+	if(ether == &noether)
 		error(Enodev);
 	c = netifopen(ether, chan, omode);
 	poperror();
@@ -237,14 +267,12 @@ etherclose(Chan* chan)
 	Ether *ether;
 
 	ether = etherxx[chan->dev];
-	if(ether == &noether)
-		error(Enodev);
 	rlock(ether);
 	if(waserror()) {
 		runlock(ether);
 		nexterror();
 	}
-	if(etherxx[chan->dev] == &noether)
+	if(ether == &noether)
 		error(Enodev);
 	netifclose(ether, chan);
 	poperror();
@@ -258,14 +286,12 @@ etherread(Chan* chan, void* buf, long n, vlong off)
 	ulong offset = off;
 
 	ether = etherxx[chan->dev];
-	if(ether == &noether)
-		error(Enodev);
 	rlock(ether);
 	if(waserror()) {
 		runlock(ether);
 		nexterror();
 	}
-	if(etherxx[chan->dev] == &noether)
+	if(ether == &noether)
 		error(Enodev);
 	if((chan->qid.type & QTDIR) == 0 && ether->ifstat){
 		/*
@@ -292,14 +318,13 @@ etherbread(Chan* chan, long n, ulong offset)
 	Ether *ether;
 
 	ether = etherxx[chan->dev];
-	if(ether == &noether)
 		error(Enodev);
 	rlock(ether);
 	if(waserror()) {
 		runlock(ether);
 		nexterror();
 	}
-	if(etherxx[chan->dev] == &noether)
+	if(ether == &noether)
 		error(Enodev);
 	b = netifbread(ether, chan, n, offset);
 	poperror();
@@ -313,14 +338,12 @@ etherwstat(Chan* chan, uchar* dp, int n)
 	Ether *ether;
 
 	ether = etherxx[chan->dev];
-	if(ether == &noether)
-		error(Enodev);
 	rlock(ether);
 	if(waserror()) {
 		runlock(ether);
 		nexterror();
 	}
-	if(etherxx[chan->dev] == &noether)
+	if(ether == &noether)
 		error(Enodev);
 	n = netifwstat(ether, chan, dp, n);
 	poperror();
@@ -473,14 +496,12 @@ etherwrite(Chan* chan, void* buf, long n, vlong)
 	long l;
 
 	ether = etherxx[chan->dev];
-	if(ether == &noether)
-		error(Enodev);
 	rlock(ether);
 	if(waserror()) {
 		runlock(ether);
 		nexterror();
 	}
-	if(etherxx[chan->dev] == &noether)
+	if(ether == &noether)
 		error(Enodev);
 	if(NETTYPE(chan->qid.path) != Ndataqid) {
 		l = netifwrite(ether, chan, buf, n);
@@ -527,14 +548,12 @@ etherbwrite(Chan* chan, Block* bp, ulong)
 		return n;
 	}
 	ether = etherxx[chan->dev];
-	if(ether == &noether)
-		error(Enodev);
 	rlock(ether);
 	if(waserror()) {
 		runlock(ether);
 		nexterror();
 	}
-	if(etherxx[chan->dev] == &noether){
+	if(ether == &noether){
 		freeb(bp);
 		error(Enodev);
 	}
@@ -619,6 +638,6 @@ Dev etherdevtab = {
 	etherbwrite,
 	devremove,
 	etherwstat,
-	nil,		/* no power management */
+	etherpower,
 	etherconfig,
 };
