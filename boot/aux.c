@@ -120,6 +120,7 @@ srvcreate(char *name, int fd)
 	int f;
 	char buf[2*NAMELEN];
 
+	print("post(%s)...", name);
 	srvname = strrchr(name, '/');
 	if(srvname)
 		srvname++;
