@@ -115,12 +115,12 @@ loop:
 		if(p >= ep)
 			p = proctab(0);
 
+		if(p->state == Dead || p->kp)
+			continue;
+
 		/* don't swap out programs from devroot.c */
 		img = p->seg[SG_TEXT]->image;
 		if(img && devchar[img->c->type] == '/')
-			continue;
-
-		if(p->state == Dead || p->kp)
 			continue;
 
 		if(swapimage.c) {

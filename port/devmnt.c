@@ -604,7 +604,7 @@ mountrpc(Mnt *m, Mntrpc *r)
 		if(t == r->request.type+1)
 			break;
 		print("mnt: mismatch rep 0x%lux T%d R%d rq %d fls %d rp %d\n",
-			r, t, r->reply.type, r->request.tag, 
+			r, r->request.type, r->reply.type, r->request.tag, 
 			r->flushtag, r->reply.tag);
 		error(Emountrpc);
 	}
