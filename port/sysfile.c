@@ -548,7 +548,8 @@ bindmount(ulong *arg, int ismount)
 			error(Ebadarg);
 
 		bogus.spec = (char*)arg[3];
-		nameok(bogus.spec);
+		if(strchr(bogus.spec, ' '))
+			error(Ebadspec);
 
 		ret = devno('M', 0);
 		c0 = (*devtab[ret].attach)((char*)&bogus);

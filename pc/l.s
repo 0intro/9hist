@@ -289,6 +289,10 @@ TEXT	getcr2(SB),$0		/* fault address */
 	MOVL	CR2,AX
 	RET
 
+TEXT	getcr3(SB),$0		/* page directory base */
+	MOVL	CR3,AX
+	RET
+
 #define	FPOFF\
 	WAIT;\
 	MOVL	CR0,AX;\

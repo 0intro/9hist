@@ -25,6 +25,7 @@ void	fpsave(FPsave*);
 ulong	fpstatus(void);
 ulong	getcr0(void);
 ulong	getcr2(void);
+ulong	getcr3(void);
 char*	getconf(char*);
 ulong	getstatus(void);
 void	hardclock(void);
