@@ -483,22 +483,22 @@ mntscan(Mntwalk *mw)
 {
 	Pgrp *pg;
 	Mount *t;
-	int nxt;
+	Mhead *f;
+	int nxt, i;
 	ulong last, bestmid;
-	Mhead **h, **he, *f;
 
 	pg = up->pgrp;
 	rlock(&pg->ns);
 
 	nxt = 0;
-	last = 0;
 	bestmid = ~0;
+
+	last = 0;
 	if(mw->mh)
 		last = mw->cm->mountid;
 
-	he = &pg->mnthash[MNTHASH];
-	for(h = pg->mnthash; h < he; h++) {
-		for(f = *h; f; f = f->hash) {
+	for(i = 0; i < MNTHASH; i++) {
+		for(f = pg->mnthash[i]; f; f = f->hash) {
 			for(t = f->mount; t; t = t->next) {
 				if(mw->mh == 0 ||
 				  (t->mountid > last && t->mountid < bestmid)) {

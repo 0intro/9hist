@@ -403,6 +403,10 @@ sysrestore:
 	MOVW	R26, M(EPC)
 	ERET
 
+TEXT	forkret(SB), $0
+	MOVW	R0, R1			/* Fake out system call return */
+	JMP	sysrestore
+
 notsys:
 	JAL	trap(SB)
 restore:
@@ -431,10 +435,6 @@ waskernel:
 	MOVW	Ureg_sp(SP), SP
 	MOVW	R26, M(EPC)
 	ERET
-
-TEXT	forkret(SB), $0
-	MOVW	R0, R1			/* Fake out system call return */
-	JMP	sysrestore
 
 TEXT	saveregs(SB), $-4
 	MOVV	R1, Ureg_r1(SP)

@@ -74,18 +74,42 @@ closepgrp(Pgrp *p)
 }
 
 void
+pgrpinsert(Mount **order, Mount *m)
+{
+	Mount *f;
+
+	m->order = 0;
+	if(*order == 0) {
+		*order = m;
+		return;
+	}
+	for(f = *order; f; f = f->order) {
+		if(m->mountid < f->mountid) {
+			m->order = f;
+			*order = m;
+			return;
+		}
+		order = &f->order;
+	}
+	*order = m;
+}
+
+/*
+ * pgrpcpy MUST preserve the mountid allocation order of the parent group
+ */
+void
 pgrpcpy(Pgrp *to, Pgrp *from)
 {
-	Mhead **h, **e, *f, **tom, **l, *mh;
-	Mount *n, *m, **link;
+	int i;
+	Mount *n, *m, **link, *order;
+	Mhead *f, **tom, **l, *mh;
 
 	rlock(&from->ns);
-
-	e = &from->mnthash[MNTHASH];
+	order = 0;
 	tom = to->mnthash;
-	for(h = from->mnthash; h < e; h++) {
+	for(i = 0; i < MNTHASH; i++) {
 		l = tom++;
-		for(f = *h; f; f = f->hash) {
+		for(f = from->mnthash[i]; f; f = f->hash) {
 			mh = smalloc(sizeof(Mhead));
 			mh->from = f->from;
 			incref(mh->from);
@@ -93,12 +117,27 @@ pgrpcpy(Pgrp *to, Pgrp *from)
 			l = &mh->hash;
 			link = &mh->mount;
 			for(m = f->mount; m; m = m->next) {
-				n = newmount(mh, m->to, m->flag, m->spec);
+				n = smalloc(sizeof(Mount));
+				n->to = m->to;
+				incref(n->to);
+				n->head = mh;
+				n->flag = m->flag;
+				if(m->spec != 0)
+					strcpy(n->spec, m->spec);
+				m->copy = n;
+				pgrpinsert(&order, m);
 				*link = n;
 				link = &n->next;	
 			}
 		}
 	}
+	/*
+	 * Allocate mount ids in the same sequence as the parent group
+	 */
+	lock(&mountid);
+	for(m = order; m; m = m->order)
+		m->copy->mountid = mountid.ref++;
+	unlock(&mountid);
 	runlock(&from->ns);
 }
 
