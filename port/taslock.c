@@ -5,12 +5,23 @@
 #include "fns.h"
 #include "../port/error.h"
 
+struct {
+	ulong	locks;
+	ulong	glare;
+	ulong	inglare;
+} lockstats;
+
 void
 lockloop(Lock *l, ulong pc)
 {
+	Proc *p;
+
+	p = l->p;
 	print("lock loop key 0x%lux pc 0x%lux held by pc 0x%lux proc %d\n",
-		l->key, pc, l->pc, l->p ? l->p->pid : 0);
+		l->key, pc, l->pc, p ? p->pid : 0);
 	dumpaproc(up);
+	if(p != nil)
+		dumpaproc(p);
 
 	if(up && up->state == Running && islo())
 		sched();
@@ -19,27 +30,33 @@ lockloop(Lock *l, ulong pc)
 void
 lock(Lock *l)
 {
-	int i;
-	ulong pc;
+	int i, cansched;
+	ulong pc, oldpri;
 
 	pc = getcallerpc(l);
 
+lockstats.locks++;
 	if(tas(&l->key) == 0){
 		l->pc = pc;
 		l->p = up;
 		l->isilock = 0;
-		if(up){
-			up->nlocks++;
-			l->pri = up->priority;
-			up->priority = PriLock;
-		}
 		return;
 	}
 
+lockstats.glare++;
+	cansched = up != nil && up->state == Running;
+	if(cansched){
+		oldpri = up->priority;
+		up->lockwait = 1;
+		up->priority = PriLock;
+	} else
+		oldpri = 0;
+
 	for(;;){
+lockstats.inglare++;
 		i = 0;
 		while(l->key){
-			if(conf.nmach < 2){
+			if(conf.nmach < 2 && cansched){
 				if(i++ > 1000){
 					i = 0;
 					lockloop(l, pc);
@@ -56,10 +73,9 @@ lock(Lock *l)
 			l->pc = pc;
 			l->p = up;
 			l->isilock = 0;
-			if(up){
-				up->nlocks++;
-				l->pri = up->priority;
-				up->priority = PriLock;
+			if(cansched){
+				up->lockwait = 0;
+				up->priority = oldpri;
 			}
 			return;
 		}
@@ -70,14 +86,14 @@ void
 ilock(Lock *l)
 {
 	ulong x;
-	ulong pc;
+	ulong pc, oldpri;
+	int cansched;
 
 	pc = getcallerpc(l);
+lockstats.locks++;
 
 	x = splhi();
 	if(tas(&l->key) == 0){
-		if (up)
-			up->nlocks++;
 		l->sr = x;
 		l->pc = pc;
 		l->p = up;
@@ -85,21 +101,32 @@ ilock(Lock *l)
 		return;
 	}
 
+lockstats.glare++;
+	cansched = up != nil && up->state == Running;
+	if(cansched){
+		oldpri = up->priority;
+		up->lockwait = 1;
+		up->priority = PriLock;
+	} else
+		oldpri = 0;
 	if(conf.nmach < 2)
 		panic("ilock: no way out: pc %uX\n", pc);
 
 	for(;;){
+lockstats.inglare++;
 		splx(x);
 		while(l->key)
 			;
 		x = splhi();
 		if(tas(&l->key) == 0){
-			if (up)
-			 up->nlocks++;
 			l->sr = x;
 			l->pc = pc;
 			l->p = up;
 			l->isilock = 1;
+			if(cansched){
+				up->lockwait = 0;
+				up->priority = oldpri;
+			}
 			return;
 		}
 	}
@@ -114,41 +141,19 @@ canlock(Lock *l)
 	l->pc = getcallerpc(l);
 	l->p = up;
 	l->isilock = 0;
-	if(up){
-		up->nlocks++;
-		l->pri = up->priority;
-		up->priority = PriLock;
-	}
 	return 1;
 }
 
 void
 unlock(Lock *l)
 {
-	int p;
-	ulong pc;
 
-	pc = getcallerpc(l);
-
-	p = l->pri;
 	if(l->key == 0)
 		print("unlock: not locked: pc %uX\n", getcallerpc(l));
 	if(l->isilock)
 		print("iunlock of lock: pc %lux, held by %lux\n", getcallerpc(l), l->pc);
 	l->pc = 0;
 	l->key = 0;
-	if(up) {
-		if (up != l->p) {
-			print("different unlocker 0x%lux pc 0x%lux held by pc 0x%lux proc %d\n",
-				l->key, pc, l->pc, l->p ? l->p->pid : 0);
-			dumpaproc(up);
-		}
-		if (--up->nlocks < 0)
-			print("number of locks < 0: pc %lux, held by %lux\n",
-				getcallerpc(l), l->pc);
-		if (p < up->priority)
-			up->priority = p;
-	}
 	coherence();
 }
 
@@ -165,11 +170,8 @@ iunlock(Lock *l)
 	sr = l->sr;
 	l->pc = 0;
 	l->key = 0;
-	if(up) {
-		if (--up->nlocks < 0)
-			print("number of locks < 0: pc %lux, held by %lux\n",
-				getcallerpc(l), l->pc);
-	}
-	splx(sr);
 	coherence();
+
+	m->splpc = getcallerpc(l);
+	splxpc(sr);
 }

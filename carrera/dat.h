@@ -28,7 +28,6 @@ struct Lock
 	ulong	sr;
 	ulong	pc;
 	Proc	*p;
-	ushort	pri;
 	ushort	isilock;
 };
 
@@ -114,6 +113,7 @@ struct Mach
 	int	speed;			/* cpu speed */
 	ulong	delayloop;		/* for the delay() routine */
 	int	nrdy;
+	ulong	fairness;		/* for runproc */
 
 	int	pfault;
 	int	cs;

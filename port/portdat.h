@@ -518,7 +518,7 @@ enum
 	NNOTE = 5,
 
 	Nrq		= 20,	/* number of scheduler priority levels */
-	PriLock		= 19,	/* priority for processes holding locks */
+	PriLock		= 0,	/* priority for processes waiting on a lock */
 	PriNormal	= 10,	/* base priority for normal processes */
 	PriKproc	= 13,	/* base priority for kernel processes */
 	PriRoot		= 13,	/* base priority for root processes */
@@ -601,7 +601,7 @@ struct Proc
 	Note	lastnote;
 	int	(*notify)(void*, char*);
 
-	int	nlocks;		/* Number of locks held */
+	int	lockwait;	/* waiting for lock to be released */
 
 	Mach	*wired;
 	Mach	*mp;		/* machine this process last ran on */

@@ -441,7 +441,7 @@ TEXT splx(SB), $0
 	MOVL	(SP), BX
 	MOVL	BX, (AX)
 
-TEXT _splx(SB), $0				/* for iunlock */
+TEXT splxpc(SB), $0				/* for iunlock */
 	MOVL	s+0(FP), AX
 	PUSHL	AX
 	POPFL

@@ -158,6 +158,10 @@ ready(Proc *p)
 	if(pri < PriNormal && p->basepri > PriNormal)
 		pri = PriNormal;
 
+	/* stick at low priority any process waiting for a lock */
+	if(p->lockwait)
+		pri = PriLock;
+
 	p->priority = pri;
 	rq = &runq[p->priority];
 
@@ -198,7 +202,7 @@ loop:
 		 *  processor can run given affinity constraints
 		 *  and that hasn't run in a while
 		 */
-		if((m->ticks & 3) == 0){
+		if((m->fairness++ & 3) == 0){
 			for(rq = runq; rq < &runq[Nrq]; rq++){
 				p = rq->head;
 				if(p == 0)
@@ -331,7 +335,6 @@ newproc(void)
 		panic("pidalloc");
 	if(p->kstack == 0)
 		p->kstack = smalloc(KSTACK);
-	p->nlocks = 0;
 
 	return p;
 }
@@ -893,7 +896,7 @@ dumpaproc(Proc *p)
 	s = p->psstate;
 	if(s == 0)
 		s = "kproc";
-	print("%3d:%10s pc %8lux dbgpc %8lux  %8s (%s) ut %ld st %ld bss %lux\n",
+	print("%3d:%10s pc %8lux dbgpc %8lux  %8s (%s) ut %ld st %ld bss %lux pri %d\n",
 		p->pid, p->text, p->pc, dbgpc(p),  s, statename[p->state],
 		p->time[0], p->time[1], bss, p->priority);
 }

@@ -419,10 +419,6 @@ syscall(Ureg* ureg)
 		splhi();
 		notify(ureg);
 	}
-	if (up->nlocks != 0) {
-		print("nlock = %d\n", up->nlocks);
-		up->nlocks = 0;
-	}
 }
 
 /*

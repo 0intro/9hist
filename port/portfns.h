@@ -284,6 +284,7 @@ void*		smalloc(ulong);
 int		splhi(void);
 int		spllo(void);
 void		splx(int);
+void		splxpc(int);
 void		srvrecover(Chan*, Chan*);
 void		swapinit(void);
 Block*		trimblock(Block*, int, int);

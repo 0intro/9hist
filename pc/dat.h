@@ -28,7 +28,6 @@ struct Lock
 	ulong	sr;
 	ulong	pc;
 	Proc	*p;
-	ushort	pri;
 	ushort	isilock;
 };
 
@@ -161,6 +160,8 @@ struct Mach
 	Label	sched;			/* scheduler wakeup */
 	Lock	alarmlock;		/* access to alarm list */
 	void*	alarm;			/* alarms bound to this clock */
+
+	ulong	fairness;		/* for runproc */
 
 	int	tlbfault;
 	int	tlbpurge;

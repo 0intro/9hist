@@ -1763,6 +1763,8 @@ else
 		for(i = 0; i < ether->nopt; i++){
 			if(cistrcmp(ether->opt[i], "fullduplex") == 0)
 				an |= 0x0100;
+			else if(cistrcmp(ether->opt[i], "100BASE-TXFD") == 0)
+				an |= 0x0100;
 			else if(cistrcmp(ether->opt[i], "force100") == 0)
 				an |= 0x0080;
 		}
