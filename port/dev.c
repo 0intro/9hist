@@ -160,7 +160,7 @@ devstat(Chan *c, char *db, Dirtab *tab, int ntab, Devgen *gen)
 					for(elem=p=c->name->s; *p; p++)
 						if(*p == '/')
 							elem = p+1;
-				devdir(c, c->qid, elem, i*DIRLEN, eve, CHDIR|0555, &dir);
+				devdir(c, c->qid, elem, 0, eve, CHDIR|0555, &dir);
 				convD2M(&dir, db);
 				return;
 			}

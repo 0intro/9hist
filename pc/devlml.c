@@ -17,7 +17,7 @@ static Pcidev *		pcidev;
 #define DBGINTR	0x04
 #define DBGINTS	0x08
 
-int debug = 0;
+int debug = -1;
 
 // Lml 22 driver
 
@@ -328,14 +328,14 @@ lmlintr(Ureg *, void *) {
 	ulong fstart, fno;
 	ulong flags = readl(pciBaseAddr+INTR_STAT);
 	
-	if(debug&(DBGINTR))
-		print("MjpgDrv_intrHandler stat=0x%.8lux\n", flags);
-
 	// Reset all interrupts from 067
 	writel(0xff000000, pciBaseAddr + INTR_STAT);
 
 	if(flags & INTR_JPEGREP) {
 		vlong thetime;
+
+		if(debug&(DBGINTR))
+			print("MjpgDrv_intrHandler stat=0x%.8lux\n", flags);
 
 		fstart = jpgframeno & 0x00000003;
 		for (;;) {

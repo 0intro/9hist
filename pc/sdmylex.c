@@ -288,7 +288,7 @@ mylex24rio(SDreq* r)
 	ulong p;
 	Ctlr *ctlr;
 	Ccb24 *ccb;
-	Mbox32 *mb;
+	Mbox24 *mb;
 	uchar *data, lun, *sense;
 	int d, n, btstat, sdstat, target;
 
@@ -306,7 +306,7 @@ mylex24rio(SDreq* r)
 	if(ccb = ctlr->cache[target]){
 		ctlr->cache[target] = nil;
 		if(r->cmd[0] == 0x03
-		  && ccb->sdstat == SDcheck && lun == ((ccb->cs[1]>>5) & 0x07)){
+		&& ccb->sdstat == SDcheck && lun == ((ccb->cs[1]>>5) & 0x07)){
 			unlock(&ctlr->cachelock);
 			if(r->dlen){
 				sense = &ccb->cs[ccb->cdblen];
@@ -331,7 +331,6 @@ mylex24rio(SDreq* r)
 	 */
 	n = r->dlen;
 	if(n && !PADDR24(r->data, n)){
-		ccb->data = r->data;
 		data = mallocz(n, 0);
 		if(data == nil || !PADDR24(data, n)){
 			if(data != nil){
@@ -342,7 +341,8 @@ mylex24rio(SDreq* r)
 			return SDmalloc;
 		}
 		if(r->write)
-			memmove(data, ccb->data, n);
+			memmove(data, r->data, n);
+		ccb->data = r->data;
 	}
 	else
 		data = r->data;

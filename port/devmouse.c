@@ -142,7 +142,7 @@ mouseopen(Chan *c, int omode)
 		unlock(&mouse);
 		break;
 	case Qmousein:
-		error("disabled");
+	/*	error("disabled");	*/
 		lock(&mouse);
 		if(mouse.inopen){
 			unlock(&mouse);
@@ -546,7 +546,7 @@ m3mouseputc(Queue*, int c)
 	static uchar msg[3];
 	static int nb;
 	static int middle;
-	static uchar b[] = { 0, 4, 1, 5, 0, 2, 1, 5 };
+	static uchar b[] = { 0, 4, 1, 5, 0, 2, 1, 3 };
 	short x;
 	int dx, dy, newbuttons;
 
@@ -586,7 +586,7 @@ mouseputc(Queue*, int c)
 {
 	static short msg[5];
 	static int nb;
-	static uchar b[] = {0, 4, 2, 6, 1, 5, 3, 7, 0, 2, 2, 6, 1, 5, 3, 7};
+	static uchar b[] = {0, 4, 2, 6, 1, 5, 3, 7, 0, 2, 2, 6, 1, 3, 3, 7};
 	int dx, dy, newbuttons;
 
 	if((c&0xF0) == 0x80)
