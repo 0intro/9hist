@@ -79,10 +79,43 @@ reset(Ipaddr source, Ipaddr dest, char tos, ushort length, Tcp *seg)
 	PUTNEXT(Ipoutput, hbp);
 }
 
+Ipconv*
+tcpincoming(Ipconv *ipc, Ipconv *s, Tcp *segp, Ipaddr source)
+{
+	Ipconv *new;
+
+	if(s->curlog >= s->backlog)
+		return 0;
+
+	new = ipincoming(ipc, s);
+	if(new == 0)
+		return 0;
+
+	qlock(s);
+	s->curlog++;
+	qunlock(s);
+	new->psrc = segp->dest;
+	new->pdst = segp->source;
+	new->dst = source;
+	memmove(&new->tcpctl, &s->tcpctl, sizeof(Tcpctl));
+	new->tcpctl.flags &= ~CLONE;
+	new->tcpctl.timer.arg = new;
+	new->tcpctl.timer.state = TIMER_STOP;
+	new->tcpctl.acktimer.arg = new;
+	new->tcpctl.acktimer.state = TIMER_STOP;
+	new->newcon = 1;
+	new->ipinterface = s->ipinterface;
+
+	s->ipinterface->ref++;
+	wakeup(&s->listenr);
+	return new;
+}
+
 void
 tcp_input(Ipconv *ipc, Block *bp)
 {
-	Ipconv *s, *e, *new;
+	Ipconv *s, *e;
+	Ipconv *spec, *gen;
 	Tcpctl *tcb;		
 	Tcphdr *h;
 	Tcp seg;
@@ -117,48 +150,40 @@ tcp_input(Ipconv *ipc, Block *bp)
 	/* Look for a connection, failing that attempt to establish a listen */
 	s = ip_conn(ipc, seg.dest, seg.source, source, IP_TCPPROTO);
 	if (s == 0) {
-		if((seg.flags & SYN) == 0)
-			goto clear;
-
-		e = &ipc[conf.ip];
-		for(s = ipc; s < e; s++) {
-			if(s->tcpctl.state == Listen)
-			if(s->pdst == 0)
-			if(s->dst == 0) {
-				if(s->curlog >= s->backlog)
-					goto clear;
-
-				new = ipincoming(ipc, s);
-				if(new == 0)
-					goto clear;
-
-				qlock(s);
-				s->curlog++;
-				qunlock(s);
-				new->psrc = seg.dest;
-				new->pdst = seg.source;
-				new->dst = source;
-				memmove(&new->tcpctl, &s->tcpctl, sizeof(Tcpctl));
-				new->tcpctl.flags &= ~CLONE;
-				new->tcpctl.timer.arg = new;
-				new->tcpctl.timer.state = TIMER_STOP;
-				new->tcpctl.acktimer.arg = new;
-				new->tcpctl.acktimer.state = TIMER_STOP;
-				new->newcon = 1;
-				new->ipinterface = s->ipinterface;
-
-				s->ipinterface->ref++;
-				wakeup(&s->listenr);
-				s = new;
-				goto process;
+		if(seg.flags & SYN){
+			/*
+			 *  find a listener specific to this port (spec) or,
+			 *  failing that, a general one (gen)
+			 */
+			spec = 0;
+			gen = 0;
+			e = &ipc[conf.ip];
+			for(s = ipc; s < e; s++) {
+				if(s->tcpctl.state == Listen)
+				if(s->pdst == 0)
+				if(s->dst == 0) {
+					if(s->psrc == seg.dest){
+						spec = s;
+						break;
+					}
+					if(s->psrc == 0)
+						gen = s;
+				}
 			}
+			if(spec)
+				s = tcpincoming(ipc, spec, &seg, source);
+			else if(gen)
+				s = tcpincoming(ipc, gen, &seg, source);
+			else
+				s = 0;
 		}
-	clear:
-		freeb(bp);   
-		reset(source, dest, tos, length, &seg);
-		return;
+		if(s == 0){
+			freeb(bp);   
+			reset(source, dest, tos, length, &seg);
+			return;
+		}
 	}
-process:
+
 	/* The rest of the input state machine is run with the control block
 	 * locked
 	 */

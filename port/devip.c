@@ -883,6 +883,9 @@ portused(Ipconv *ic, Port port)
 {
 	Ipconv *ifc, *etab;
 
+	if(port == 0)
+		return 0;
+
 	etab = &ic[conf.ip];
 	for(ifc = ic; ifc < etab; ifc++)
 		if(ifc->psrc == port) 

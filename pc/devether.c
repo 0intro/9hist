@@ -2,7 +2,11 @@
  * Western Digital ethernet adapter
  * BUGS:
  *	no more than one controller
+ * TODO:
  *	fix for different controller types
+ *	output
+ *	deal with stalling and restarting output on input overflow
+ *	fix magic ring constants
  */
 #include "u.h"
 #include "../port/lib.h"
@@ -131,26 +135,24 @@ static Ctlr ctlr[Nctlr];
 static void
 etheroput(Queue *q, Block *bp)
 {
-	Ctlr *c;
+	Ctlr *cp;
 	int len, n;
-	Pktype *t;
+	Pktype *pp;
 	Etherpkt *p;
 	Block *nbp;
 
-panic("etheroput\n");
-#ifdef notdef
-	c = ((Pktype *)q->ptr)->ctlr;
+	cp = ((Pktype *)q->ptr)->ctlr;
 	if(bp->type == M_CTL){
-		t = q->ptr;
+		pp = q->ptr;
 		if(streamparse("connect", bp))
-			t->type = strtol((char *)bp->rptr, 0, 0);
+			pp->type = strtol((char *)bp->rptr, 0, 0);
 		else if(streamparse("promiscuous", bp)) {
-			t->prom = 1;
-			qlock(c);
-			c->prom++;
-			if(c->prom == 1)
-				outb(c->iobase+Rcr, 0x14);	/* PRO|AB */
-			qunlock(c);
+			pp->prom = 1;
+			qlock(cp);
+			cp->prom++;
+			if(cp->prom == 1)
+				outb(cp->iobase+Rcr, 0x14);	/* PRO|AB */
+			qunlock(cp);
 		}
 		freeb(bp);
 		return;
@@ -160,33 +162,30 @@ panic("etheroput\n");
 	 * give packet a local address, return upstream if destined for
 	 * this machine.
 	 */
-	if(BLEN(bp) < ETHERHDRSIZE){
-		bp = pullup(bp, ETHERHDRSIZE);
-		if(bp == 0)
-			return;
-	}
+	if(BLEN(bp) < ETHERHDRSIZE && (bp = pullup(bp, ETHERHDRSIZE)) == 0)
+		return;
 	p = (Etherpkt *)bp->rptr;
-	memmove(p->s, c->ea, sizeof(c->ea));
-	if(memcmp(c->ea, p->d, sizeof(c->ea)) == 0){
+	memmove(p->s, cp->ea, sizeof(cp->ea));
+	if(memcmp(cp->ea, p->d, sizeof(cp->ea)) == 0){
 		len = blen(bp);
-		bp = expandb(bp, len >= ETHERMINTU ? len: ETHERMINTU);
-		if(bp){
-			putq(&c->rq, bp);
-			wakeup(&c->rr);
+		if (bp = expandb(bp, len >= ETHERMINTU ? len: ETHERMINTU)){
+			putq(&cp->rq, bp);
+			wakeup(&cp->rr);
 		}
 		return;
 	}
-	if(memcmp(c->ba, p->d, sizeof(c->ba)) == 0){
+	if(memcmp(cp->ba, p->d, sizeof(cp->ba)) == 0){
 		len = blen(bp);
 		nbp = copyb(bp, len);
-		nbp = expandb(nbp, len >= ETHERMINTU ? len: ETHERMINTU);
-		if(nbp){
+		if(nbp = expandb(nbp, len >= ETHERMINTU ? len: ETHERMINTU)){
 			nbp->wptr = nbp->rptr+len;
-			putq(&c->rq, nbp);
-			wakeup(&c->rr);
+			putq(&cp->rq, nbp);
+			wakeup(&cp->rr);
 		}
 	}
 
+panic("etheroput\n");
+#ifdef notdef
 	/*
 	 * only one transmitter at a time
 	 */
@@ -509,6 +508,18 @@ etherup(Ctlr *cp, Etherpkt *p, int len)
 	}
 }
 
+static void
+printpkt(uchar bnry, ushort len, Etherpkt *p)
+{
+	int i;
+
+	print("%.2ux: %.4d d(%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux)s(%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux)t(%.2ux %.2ux)\n",
+		bnry, len,
+		p->d[0], p->d[1], p->d[2], p->d[3], p->d[4], p->d[5],
+		p->s[0], p->s[1], p->s[2], p->s[3], p->s[4], p->s[5],
+		p->type[0], p->type[1]);
+}
+
 static int
 isinput(void *arg)
 {
@@ -534,17 +545,34 @@ etherkproc(void *arg)
 	cp->kproc = 1;
 	for(;;){
 		sleep(&cp->rr, isinput, cp);
+		/*
+		 * process any internal loopback packets
+		 */
 		while(bp = getq(&cp->rq)){
 			cp->inpackets++;
 			etherup(cp, (Etherpkt*)bp->rptr, BLEN(bp));
 			freeb(bp);
 		}
-#ifdef foo
-			bnry = inb(cp->iobase+Bnry);
-			while(bnry != cp->curr){
-				rp = &((Ring *)RAMbase)[bnry];
-			}
-#endif
+		/*
+		 * process any received packets
+		 */
+		bnry = inb(cp->iobase+Bnry);
+		while(bnry != cp->curr){
+			rp = &((Ring*)RAMbase)[bnry];
+printpkt(bnry, rp->len, (Etherpkt*)rp->data);
+			cp->inpackets++;
+			etherup(cp, (Etherpkt*)rp->data, rp->len-4);
+			bnry = rp->next;
+			outb(cp->iobase+Bnry, bnry);
+		}
+		/*
+		 * if we idled input because of overflow,
+		 * restart
+		 */
+		if(cp->ovw){
+			cp->ovw = 0;
+			outb(cp->iobase+Tcr, 0);
+		}
 	}
 }
 
