@@ -159,7 +159,7 @@ m->ur = ur;
 
 	notify(ur);
 	if(u->p->fpstate == FPinactive) {
-		restfpregs(&u->fpsave, u->fpsave.fpstatus&~FPEXPMASK);
+		restfpregs(&u->fpsave, u->fpsave.fpstatus);
 		u->p->fpstate = FPactive;
 		ur->status |= CU1;
 	}
