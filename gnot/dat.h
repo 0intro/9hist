@@ -106,8 +106,11 @@ struct Chan
 
 struct	FPsave
 {
-	long	fpreg[32];
-	long	fpstatus;
+	char	type;
+	char	size;
+	short	reserved;
+	char	junk[180];
+	char	reg[3*4+8*12];
 };
 
 struct Conf
@@ -202,6 +205,7 @@ struct Mach
 	Label	sched;			/* scheduler wakeup */
 	Lock	alarmlock;		/* access to alarm list */
 	void	*alarm;			/* alarms bound to this clock */
+	int	fpstate;		/* state of fp registers on machine */
 	int	stack[1];
 };
 
@@ -513,7 +517,7 @@ enum
 {
 	FPinit,
 	FPactive,
-	FPinactive,
+	FPdirty,
 };
 
 /*

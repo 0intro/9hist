@@ -104,6 +104,40 @@ TEXT	tas(SB), $0
 tas_1:
 	RTS
 
+/*
+ * Floating point
+ */
+
+TEXT	fpsave(SB), $0
+
+	FSAVE	(fp+0(FP))
+	RTS
+
+TEXT	fprestore(SB), $0
+
+	FRESTORE	(fp+0(FP))
+	RTS
+
+TEXT	fpregsave(SB), $0
+
+	FMOVEM	$0xFF, (3*4)(fr+0(FP))
+	FMOVEMC	$0x7, (fr+0(FP))
+	RTS
+
+TEXT	fpregrestore(SB), $0
+
+	FMOVEMC	(fr+0(FP)), $0x7
+	FMOVEM	(3*4)(fr+0(FP)), $0xFF
+	RTS
+
+TEXT	fpcr(SB), $0
+
+	MOVL	new+0(FP), R1
+	MOVL	FPCR, R0
+	MOVL	R1, FPCR
+	RTS
+
+
 TEXT	rfnote(SB), $0
 
 	MOVL	uregpp+0(FP), A0

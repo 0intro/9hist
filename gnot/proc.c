@@ -78,15 +78,33 @@ sched(void)
 	Proc *p;
 	ulong tlbvirt, tlbphys;
 	void (*f)(ulong);
+	long fpnull = 0;
 
 	if(u){
 		splhi();
+		fpsave(&u->fpsave);
+		if(u->fpsave.type){
+			fpregsave(u->fpsave.reg);
+			u->p->fpstate = FPactive;
+			m->fpstate = FPdirty;
+		}
 		if(setlabel(&u->p->sched)){	/* woke up */
 if(u->p->mach)panic("mach non zero");
 			p = u->p;
 			p->state = Running;
 			p->mach = m;
 			m->proc = p;
+			if(p->fpstate != m->fpstate){
+				if(p->fpstate == FPinit){
+					u->p->fpstate = FPinit;
+					fprestore((FPsave*)&fpnull);
+					m->fpstate = FPinit;
+				}else{
+					fpregrestore(u->fpsave.reg);
+					fprestore(&u->fpsave);
+					m->fpstate = FPdirty;
+				}
+			}
 			spllo();
 			return;
 		}

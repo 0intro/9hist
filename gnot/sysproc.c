@@ -161,6 +161,7 @@ sysexec(ulong *arg)
 	Orig *o;
 	char **argv, **argp;
 	char *a, *charp, *file;
+	long fpnull = 0;
 	char *progarg[sizeof(Exec)/2+1], elem[NAMELEN];
 	ulong ssize, spage, nargs, nbytes, n;
 	ulong *sp;
@@ -370,6 +371,11 @@ sysexec(ulong *arg)
 	u->nnote = 0;
 	u->notify = 0;
 	u->notified = 0;
+	splhi();
+	m->fpstate = FPinit;
+	p->fpstate = FPinit;
+	fprestore((FPsave*)&fpnull);
+	spllo();
 	unlock(&p->debug);
 	return 0;
 }

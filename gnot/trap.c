@@ -243,22 +243,26 @@ syscall(Ureg *aur)
 	ulong r0;
 	Ureg *ur;
 	char *msg;
+	long fpnull = 0;
 
 	u->p->insyscall = 1;
 	ur = aur;
 	u->p->pc = ur->pc;
 	if(ur->sr & SUPER)
 		panic("recursive system call");
-#ifdef asdf
 	/*
 	 * since the system call interface does not
-	 * guarantee anything about registers
+	 * guarantee anything about registers, but the fpcr is more than
+	 * just a register...  BUG
 	 */
-	if(u->p->fpstate == FPactive) {
-		u->p->fpstate = FPinit;		/* BUG */
-		ur->status &= ~CU1;
+	splhi();
+	fpsave(&u->fpsave);
+	if(u->p->fpstate==FPactive || u->fpsave.type){
+		fprestore((FPsave*)&fpnull);
+		u->p->fpstate = FPinit;
+		m->fpstate = FPinit;
 	}
-#endif
+	spllo();
 	r0 = ur->r0;
 	sp = ur->usp;
 

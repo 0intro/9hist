@@ -125,6 +125,7 @@ struct Dk {
 	Chan	*csc;		/* common signalling line */
 	Line	line[Nline];
 	int	restart;
+	int	urpwindow;
 };
 static Dk dk[Ndk];
 
@@ -429,12 +430,13 @@ dkoput(Queue *q, Block *bp)
 }
 
 /*
- *  configure a datakit multiplexor.  this takes 4 arguments separated
+ *  configure a datakit multiplexor.  this takes 5 arguments separated
  *  by spaces:
  *	the line number of the common signalling channel (must be > 0)
  *	the number of lines in the device (optional)
  *	the word `restart' or `norestart' (optional/default==restart)
- *	the name of the dk (optional)
+ *	the name of the dk (default==dk)
+ *	the urp window size (default==WS_2K)
  *
  *  we can configure only once
  */
@@ -442,7 +444,7 @@ static void
 dkmuxconfig(Dk *dp, Block *bp)
 {
 	Chan *c;
-	char *fields[4];
+	char *fields[5];
 	int n;
 	char buf[64];
 	static int dktimeron;
@@ -456,9 +458,12 @@ dkmuxconfig(Dk *dp, Block *bp)
 	 *  parse
 	 */
 	dp->restart = 1;
-	n = getfields((char *)bp->rptr, fields, 4, ' ');
+	n = getfields((char *)bp->rptr, fields, 5, ' ');
 	strcpy(dp->name, "dk");
+	dp->urpwindow = WS_2K;
 	switch(n){
+	case 5:
+		dp->urpwindow = strtoul(fields[4], 0, 0);
 	case 4:
 		strncpy(dp->name, fields[3], sizeof(dp->name));
 	case 3:
@@ -978,7 +983,7 @@ dkcall(int type, Chan *c, char *addr, char *nuser, char *machine)
 	 *  tell the controller we want to make a call
 	 */
 	DPRINT("dialout\n");
-	dkmesg(dp, t_val, d_val, line, W_WINDOW(WS_2K,WS_2K,2));
+	dkmesg(dp, t_val, d_val, line, W_WINDOW(dp->urpwindow,dp->urpwindow,2));
 
 	/*
 	 *  if redial, wait for a dial tone (otherwise we might send

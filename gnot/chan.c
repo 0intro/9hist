@@ -340,7 +340,7 @@ walk(Chan *ac, char *name, int domnt)
 			goto Notfound;
 		}
 		if(c->mountid != mnt->mountid){
-			pprint("walk: changed underfoot?\n");
+			pprint("walk: changed underfoot? '%s'\n", name);
 			unlock(pg);
 			goto Notfound;
 		}
@@ -431,12 +431,13 @@ namec(char *name, int amode, int omode, ulong perm)
 {
 	Chan *c, *nc;
 	int t;
-	int mntok;
+	int mntok, isdot;
 	char *elem = u->elem;
 
 	if(name[0] == 0)
 		error(0, Enonexist);
 	mntok = 1;
+	isdot = 0;
 	if(name[0] == '/'){
 		c = clone(u->slash, 0);
 		/*
@@ -459,8 +460,12 @@ namec(char *name, int amode, int omode, ulong perm)
 		}else
 			name = nextelem(name, elem);
 		c = (*devtab[t].attach)(elem);
-	}else
+	}else{
 		c = clone(u->dot, 0);
+		name = skipslash(name);	/* eat leading ./ */
+		if(*name == 0)
+			isdot = 1;
+	}
 
 	if(waserror()){
 		close(c);
@@ -468,8 +473,9 @@ namec(char *name, int amode, int omode, ulong perm)
 	}
 
 	name = nextelem(name, elem);
-	if(mntok)
-	if(!(amode==Amount && elem[0]==0))	/* don't domount on dot or slash */
+
+	if(mntok && !isdot)
+	if(!(amode==Amount && elem[0]==0))	/* don't domount on slash */
 		c = domount(c);			/* see case Atodir below */
 
 	/*
@@ -482,15 +488,20 @@ namec(char *name, int amode, int omode, ulong perm)
 		c = nc;
 		name = nextelem(name, elem);
 	}
+
 	/*
 	 * Last element; act according to type of access.
 	 */
 
 	switch(amode){
 	case Aaccess:
-		if((nc=walk(c, elem, mntok)) == 0)
-			error(0, Enonexist);
-		c = nc;
+		if(isdot)
+			c = domount(c);
+		else{
+			if((nc=walk(c, elem, mntok)) == 0)
+				error(0, Enonexist);
+			c = nc;
+		}
 		break;
 
 	case Atodir:
@@ -506,9 +517,13 @@ namec(char *name, int amode, int omode, ulong perm)
 		break;
 
 	case Aopen:
-		if((nc=walk(c, elem, mntok)) == 0)
-			error(0, Enonexist);
-		c = nc;
+		if(isdot)
+			c = domount(c);
+		else{
+			if((nc=walk(c, elem, mntok)) == 0)
+				error(0, Enonexist);
+			c = nc;
+		}
 	Open:
 		c = (*devtab[c->type].open)(c, omode);
 		if(omode & OCEXEC)
@@ -527,6 +542,8 @@ namec(char *name, int amode, int omode, ulong perm)
 		break;
 
 	case Acreate:
+		if(isdot)
+			error(0, Eisdir);
 		if((nc=walk(c, elem, 1)) != 0){
 			c = nc;
 			omode |= OTRUNC;
@@ -552,10 +569,19 @@ namec(char *name, int amode, int omode, ulong perm)
 char*
 skipslash(char *name)
 {
+    Again:
 	while(*name == '/'){
 		if(((ulong)name&KZERO)==0 && (((ulong)name+1)&(BY2PG-1))==0)
 			validaddr((ulong)name+1, 1, 0);
 		name++;
+	}
+	if(*name == '.'){
+		if(((ulong)name&KZERO)==0 && (((ulong)name+1)&(BY2PG-1))==0)
+			validaddr((ulong)name+1, 1, 0);
+		if(name[1]==0 || name[1]=='/'){
+			name++;
+			goto Again;
+		}
 	}
 	return name;
 }
