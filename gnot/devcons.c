@@ -52,7 +52,7 @@ Ref	raw;		/* whether kbd i/o is raw (rcons is open) */
 typedef struct Rs232	Rs232;
 typedef struct IOBQ	IOBQ;
 
-#define NBQ 4
+#define NBQ 6
 struct IOBQ{
 	Block	*bp[NBQ];
 	int	w;
@@ -69,7 +69,7 @@ struct Rs232{
 	int	kstarted;	/* true if kproc started */
 	Queue	*wq;
 	Alarm	*a;		/* alarm for waking the rs232 kernel process */
-	int	txenabled;
+	int	started;
 	Rendez	r;
 };
 
@@ -798,20 +798,24 @@ rs232output(Rs232 *r)
 	/*
 	 *  stage new blocks
 	 */
-	bp = getq(q);
-	for(next = NEXT(r->out.w); bp && next!=r->out.r; next = NEXT(next)){
-		r->out.bp[r->out.w] = bp;
+	for(next = NEXT(r->out.w); next!=r->out.r; next = NEXT(next)){
 		bp = getq(q);
+		if(bp == 0)
+			break;
+		r->out.bp[r->out.w] = bp;
 		r->out.w = next;
 	}
 
 	/*
-	 *  start output
+	 *  start output, the spl's sync with interrupt level
+	 *  this wouldn't work on a multi-processor
 	 */
-	if(r->txenabled == 0){
-		r->txenabled = 1;
+	splhi();
+	if(r->started == 0){
+		r->started = 1;
 		duartstartrs232o();
 	}
+	spllo();
 	qunlock(&r->outlock);
 }
 
@@ -819,15 +823,15 @@ static void
 rs232input(Rs232 *r)
 {
 	Queue *q;
-	char c;
+	int c;
 	Block *bp;
 
 	q = RD(r->wq);
 	bp = 0;
 	while((c = getc(&r->in)) >= 0){
 		if(bp == 0){
-			bp->flags |= S_DELIM;
 			bp = allocb(64);
+			bp->flags |= S_DELIM;
 		}
 		*bp->wptr++ = c;
 		if(bp->wptr == bp->lim){
@@ -923,27 +927,38 @@ rs232timer(Alarm *a)
 	wakeup(&r->r);
 }
 
+/*
+ *  called by input interrupt.  runs splhi
+ */
 void
 rs232ichar(int c)
 {
 	Rs232 *r;
 
 	r = &rs232;
-	putc(&r->in, c);
-	if(r->a == 0)
-		alarm(125, rs232timer, r);
+	if(putc(&r->in, c) < 0)
+		screenputc('^');
+
+	/*
+	 *  pass upstream within 1/16 second
+	 */
+	if(r->a==0)
+		r->a = alarm(64, rs232timer, r);
 }
 
+/*
+ *  called by output interrupt.  runs splhi
+ */
 int
 getrs232o(void)
 {
-	int c;
+	uchar c;
 	Rs232 *r;
 	Block *bp;
 
 	r = &rs232;
 	if(r->out.r == r->out.w){
-		r->txenabled = 0;
+		r->started = 0;
 		return -1;
 	}
 	bp = r->out.bp[r->out.r];

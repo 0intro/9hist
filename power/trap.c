@@ -42,7 +42,7 @@ char *excname[] =
 	"arithmetic overflow",
 	"undefined 13",
 	"undefined 14",
-	"undefined 15",
+	"undefined 15",				/* used as sys call for debugger */
 	/* the following is made up */
 	"floating point exception"		/* FPEXC */
 };
@@ -450,6 +450,7 @@ syscall(Ureg *aur)
 	u->p->insyscall = 1;
 	ur = aur;
 	u->p->pc = ur->pc;		/* BUG */
+	ur->cause = 15<<2;		/* for debugging: system call is undef 15;
 	/*
 	 * since the system call interface does not
 	 * guarantee anything about registers,
