@@ -115,7 +115,7 @@ enum
 	Nvol,
 
 	Bufsize		= 4* 1024,	/* 46 ms each */
-	Nbuf		= 32,		/* 1.5 seconds total */
+	Nbuf		= 10,		/* 1.5 seconds total */
 
 	Speed		= 44100,
 	Ncmd		= 50,		/* max volume command words */
