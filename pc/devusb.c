@@ -204,6 +204,7 @@ struct Endpt {
 	int		data01;	/* 0=DATA0, 1=DATA1 */
 	byte		eof;
 	ulong	csp;
+	byte		isopen;	/* ep operations forbidde on open endpoints */
 	byte		mode;	/* OREAD, OWRITE, ORDWR */
 	byte		nbuf;	/* number of buffers allowed */
 	byte		iso;
@@ -724,7 +725,7 @@ isorecv(Endpt *e, Block *b, int pid)
 
 	td = e->etd;
 	if (td == nil)
-		panic("usb: isoxmit");
+		panic("usb: isorecv");
 	while(td->status & Active){
 		XPRINT("isorecv: sleep %lux\n", &e->wr);
 		sleep(&e->wr, tdisready, e->etd);
@@ -741,13 +742,9 @@ isorecv(Endpt *e, Block *b, int pid)
 	ob->wp = ob->rp + n;
 	td->buffer = PADDR(b->rp);
 	td->bp = b;
-	n = BLEN(b);
 	id = (e->x<<7)|(e->dev->x&0x7F);
-	td->dev = ((n-1)<<21) | ((id&0x7FF)<<8) | pid;
-	if ((ioc++ & 0xff) == 0)
-		td->status = ErrLimit3 | Active | IsoSelect | IOC;
-	else
-		td->status = ErrLimit3 | Active | IsoSelect;
+	td->dev = ((e->maxpkt-1)<<21) | ((id&0x7FF)<<8) | pid;
+	td->status = ErrLimit3 | Active | IsoSelect | IOC;
 	e->etd = td->next;
 	return ob;
 }
@@ -876,15 +873,20 @@ schedendpt(Endpt *e)
 	if(!e->iso || e->sched >= 0)
 		return 0;
 	ub = &ubus;
-	
+
+	if (e->isopen){
+		return -1;
+	}
+		
 	e->curblock = allocb(e->maxpkt);
 	if (e->curblock == nil)
 		panic("schedept: allocb");
 	e->curbytes = 0;
-	ilock(ub);
 	e->sched = usbsched(ub, e->pollms, e->maxpkt);
-	if(e->sched < 0)
+	if(e->sched < 0){
+		qunlock(&usbstate);
 		return -1;
+	}
 
 	/* Allocate TDs from the NISOTD entries on each of the
 	 * frames.  Link them circularly so they can be walked easily
@@ -902,12 +904,20 @@ schedendpt(Endpt *e)
 		if(j == NISOTD)
 			panic("usb: no td entries despite schedulability test");
 		td->ep = e;
-		if (td->bp)
+		if(td->bp)
 			panic("usb: schedendpt: block not empty");
 		td->bp = allocb(e->maxpkt);
-		if (td->bp == nil)
+		if(td->bp == nil)
 			panic("schedept: allocb");
-		if (i == e->sched){
+		if (e->mode == OREAD){
+			int id;
+			/* enable receive on this entry */
+			td->buffer = PADDR(td->bp->rp);
+			id = (e->x<<7)|(e->dev->x&0x7F);
+			td->dev = ((e->maxpkt-1)<<21) | ((id&0x7FF)<<8) | TokIN;
+			td->status = ErrLimit3 | Active | IsoSelect | IOC;
+		}
+		if(i == e->sched){
 			first = td;
 			e->etd = td;
 		}else{
@@ -917,7 +927,6 @@ schedendpt(Endpt *e)
 		ub->frameld[i] += e->maxpkt;
 	}
 	*prev = first;		/* complete circular link */
-	iunlock(ub);
 	return 0;
 }
 
@@ -931,8 +940,7 @@ unschedendpt(Endpt *e)
 	ub = &ubus;
 	if(!e->iso || (q = e->sched) < 0)
 		return;
-	ilock(ub);
-	
+
 	for (td = e->etd; q < NFRAME; q += e->pollms){
 		ub->frameld[q] -= e->maxpkt;
 		next = td->next;
@@ -944,8 +952,6 @@ unschedendpt(Endpt *e)
 	}
 	freeb(e->curblock);
 	e->sched = -1;
-
-	iunlock(ub);
 }
 
 static Endpt *
@@ -999,6 +1005,7 @@ freept(Endpt *e)
 {
 	if(e != nil && decref(e) == 0){
 		XPRINT("freept(%d,%d)\n", e->dev->x, e->x);
+		e->isopen = 0;
 		unschedendpt(e);
 		e->dev->ep[e->x] = nil;
 		eptdeactivate(e);
@@ -1555,6 +1562,7 @@ usbopen(Chan *c, int omode)
 			if(schedendpt(e) < 0)
 				error("can't schedule USB endpoint");
 			eptactivate(e);
+			e->isopen = 1;
 		}
 		incref(d);
 		break;
@@ -1643,12 +1651,6 @@ readusb(Endpt *e, void *a, long n)
 		if (e->iso){
 			if (e->curbytes == 0){
 				/* calculate size of next receive buffer */
-				e->psize = (e->hz + e->remain)*e->pollms/1000;
-				e->remain = (e->hz + e->remain)*e->pollms%1000;
-				e->psize *= e->samplesz;
-				if (e->psize > e->maxpkt)
-					panic("packet size > maximum");
-				e->curblock->wp = e->curblock->rp + e->psize;
 				/* put empty buffer on receive queue and get next full one */
 				b = isorecv(e, e->curblock, TokIN);
 				/* bytes to consume in b: */
@@ -1965,17 +1967,18 @@ usbwrite(Chan *c, void *a, long n, vlong)
 			}
 			if((e = d->ep[i]) == nil)
 				e = devendpt(d, i, 1);
+			qlock(&usbstate);
 			if(waserror()){
 				freept(e);
+				qunlock(&usbstate);
 				nexterror();
 			}
-			if (e->iso && e->sched >= 0){
-				unschedendpt(e);
-			}
-			e->iso = 0;
+			if (e->isopen)
+				error(Eperm);
 			if(strcmp(fields[2], "bulk") == 0){
 				Ctlr *ub;
 
+				e->iso = 0;
 				/* ep n `bulk' mode maxpkt nbuf */
 				ub = &ubus;
 				/* Each bulk device gets a queue head hanging off the
@@ -2018,7 +2021,8 @@ usbwrite(Chan *c, void *a, long n, vlong)
 				if(i >= 1 && i <= 100000){
 					/* Hz */
 					e->hz = i;
-					e->remain = 999/e->pollms;
+		//			e->remain = 999/e->pollms;
+					e->remain = 0;
 				}else {
 					XPRINT("field 5: 1 < %d <= 100000 Hz\n", i);
 					error(Ebadarg);
@@ -2027,6 +2031,7 @@ usbwrite(Chan *c, void *a, long n, vlong)
 				e->iso = 1;
 			}
 			poperror();
+			qunlock(&usbstate);
 		}else {
 			XPRINT("command %s, fields %d\n", fields[0], nf);
 			error(Ebadarg);

@@ -49,8 +49,8 @@ enum
 	NCompStats = 8,
 };
 
-#define TYPE(x) 	((x).path & 0xff)
-#define CONV(x) 	(((x).path >> 8)&(Maxconv-1))
+#define TYPE(x) 	(((ulong)(x).path) & 0xff)
+#define CONV(x) 	((((ulong)(x).path) >> 8)&(Maxconv-1))
 #define QID(x, y) 	(((x)<<8) | (y))
 
 struct Stats
@@ -144,7 +144,7 @@ struct Conv {
 	Chan *chan;		// packet channel
 	char *channame;
 
-	char owner[NAMELEN];		/* protections */
+	char owner[KNAMELEN];		/* protections */
 	int	perm;
 
 	Algorithm *auth;
@@ -283,7 +283,7 @@ static char *convstatename[] = {
 	[CClosed]	"Closed",
 };
 
-static int sdpgen(Chan *c, Dirtab*, int, int s, Dir *dp);
+static int sdpgen(Chan *c, char*, Dirtab*, int, int s, Dir *dp);
 static Conv *sdpclone(Sdp *sdp);
 static void sdpackproc(void *a);
 static void onewaycleanup(OneWay *ow);
@@ -375,7 +375,7 @@ sdpattach(char* spec)
 		error("bad specification");
 
 	c = devattach('E', spec);
-	c->qid = (Qid){QID(0, Qtopdir)|CHDIR, 0};
+	c->qid = (Qid){QID(0, Qtopdir), 0, QTDIR};
 	c->dev = dev;
 
 	sdp = sdptab + dev;
@@ -392,18 +392,17 @@ sdpattach(char* spec)
 	return c;
 }
 
+static Walkqid*
+sdpwalk(Chan *c, Chan *nc, char **name, int nname)
+{
+	return devwalk(c, nc, name, nname, 0, 0, sdpgen);
+}
+
 static int
-sdpwalk(Chan *c, char *name)
+sdpstat(Chan* c, uchar* db, int n)
 {
-	return devwalk(c, name, 0, 0, sdpgen);
+	return devstat(c, db, n, nil, 0, sdpgen);
 }
-
-static void
-sdpstat(Chan* c, char* db)
-{
-	devstat(c, db, nil, 0, sdpgen);
-}
-
 
 static Chan*
 sdpopen(Chan* ch, int omode)
@@ -703,11 +702,10 @@ sdpbwrite(Chan *ch, Block *bp, ulong offset)
 }
 
 static int
-sdpgen(Chan *c, Dirtab*, int, int s, Dir *dp)
+sdpgen(Chan *c, char*, Dirtab*, int, int s, Dir *dp)
 {
 	Sdp *sdp = sdptab + c->dev;
 	int type = TYPE(c->qid);
-	char buf[32];
 	Dirtab *dt;
 	Qid qid;
 
@@ -715,12 +713,14 @@ sdpgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 		switch(TYPE(c->qid)){
 		case Qtopdir:
 		case Qsdpdir:
-			snprint(buf, sizeof(buf), "#E%ld", c->dev);
-			devdir(c, (Qid){CHDIR|Qtopdir, 0}, buf, 0, eve, 0555, dp);
+			snprint(up->genbuf, sizeof(up->genbuf), "#E%ld", c->dev);
+			mkqid(&qid, Qtopdir, 0, QTDIR);
+			devdir(c, qid, up->genbuf, 0, eve, 0555, dp);
 			break;
 		case Qconvdir:
-			snprint(buf, sizeof(buf), "%d", s);
-			devdir(c, (Qid){CHDIR|Qsdpdir, 0}, buf, 0, eve, 0555, dp);
+			snprint(up->genbuf, sizeof(up->genbuf), "%d", s);
+			mkqid(&qid, Qsdpdir, 0, QTDIR);
+			devdir(c, qid, up->genbuf, 0, eve, 0555, dp);
 			break;
 		default:
 			panic("sdpwalk %lux", c->qid.path);
@@ -731,7 +731,7 @@ sdpgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 	switch(type) {
 	default:
 		// non directory entries end up here
-		if(c->qid.path & CHDIR)
+		if(c->qid.type & QTDIR)
 			panic("sdpgen: unexpected directory");	
 		if(s != 0)
 			return -1;
@@ -743,7 +743,8 @@ sdpgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 	case Qtopdir:
 		if(s != 0)
 			return -1;
-		devdir(c, (Qid){QID(0,Qsdpdir)|CHDIR,0}, "sdp", 0, eve, 0555, dp);
+		mkqid(&qid, QID(0, Qsdpdir), 0, QTDIR);
+		devdir(c, qid, "sdp", 0, eve, 0555, dp);
 		return 1;
 	case Qsdpdir:
 		if(s<nelem(sdpdirtab)) {
@@ -754,15 +755,15 @@ sdpgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 		s -= nelem(sdpdirtab);
 		if(s >= sdp->nconv)
 			return -1;
-		qid = (Qid){QID(s,Qconvdir)|CHDIR, 0};
-		snprint(buf, sizeof(buf), "%d", s);
-		devdir(c, qid, buf, 0, eve, 0555, dp);
+		mkqid(&qid, QID(s, Qconvdir), 0, QTDIR);
+		snprint(up->genbuf, sizeof(up->genbuf), "%d", s);
+		devdir(c, qid, up->genbuf, 0, eve, 0555, dp);
 		return 1;
 	case Qconvdir:
 		if(s>=nelem(convdirtab))
 			return -1;
 		dt = convdirtab+s;
-		qid = (Qid){QID(CONV(c->qid),TYPE(dt->qid)),0};
+		mkqid(&qid, QID(CONV(c->qid),TYPE(dt->qid)), 0, QTFILE);
 		devdir(c, qid, dt->name, dt->length, eve, dt->perm, dp);
 		return 1;
 	}
@@ -935,7 +936,6 @@ Dev sdpdevtab = {
 	devreset,
 	sdpinit,
 	sdpattach,
-	devclone,
 	sdpwalk,
 	sdpstat,
 	sdpopen,

@@ -197,7 +197,7 @@ static void
 rudpstartackproc(Proto *rudp)
 {
 	Rudppriv *rpriv;
-	char kpname[NAMELEN];
+	char kpname[KNAMELEN];
 
 	rpriv = rudp->priv;
 	if(rpriv->ackprocstarted == 0){
@@ -1032,7 +1032,7 @@ relhangup(Conv *c, Reliable *r)
 {
 	int n;
 	Block *bp;
-	char hup[ERRLEN];
+	char hup[ERRMAX];
 
 	n = snprint(hup, sizeof(hup), "hangup %I!%d", r->addr, r->port);
 	qproduce(c->eq, hup, n);

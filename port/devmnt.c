@@ -184,8 +184,11 @@ mntversion(Chan *c, char *version, int msize, int returnlen)
 	l = convM2S(msg, k, &f);
 	if(l != k)
 		error("bad fversion conversion on reply");
-	if(f.type != Rversion)
+	if(f.type != Rversion){
+		if(f.type == Rerror)
+			error(f.ename);
 		error("unexpected reply type in fversion");
+	}
 	if(f.msize > msize)
 		error("server tries to increase msize in fversion");
 	if(f.msize<256 || f.msize>1024*1024)
