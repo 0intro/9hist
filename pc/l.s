@@ -1,212 +1,177 @@
 #include "mem.h"
 
-TEXT	start(SB),$0
-	JMP	start16
-
 /*
  *  gdt to get us to 32-bit/segmented/unpaged mode
  */
-TEXT	tgdt(SB),$0
+GLOBL	tgdt(SB),$(6*4)
 
 	/* null descriptor */
-	LONG	$0
-	LONG	$0
+	DATA tgdt+0(SB)/4, $0
+	DATA tgdt+4(SB)/4, $0
 
 	/* data segment descriptor for 4 gigabytes (PL 0) */
-	LONG	$(SEGG|SEGB|(0xF<<16)|SEGP|SEGPL(0)|SEGDATA|SEGW)
-	LONG	$(0xFFFF)
+	DATA tgdt+8(SB)/4, $(0xFFFF)
+	DATA tgdt+12(SB)/4, $(SEGG|SEGB|(0xF<<16)|SEGP|SEGPL(0)|SEGDATA|SEGW)
 
 	/* exec segment descriptor for 4 gigabytes (PL 0) */
-	LONG	$(SEGG|SEGD|(0xF<<16)|SEGP|SEGPL(0)|SEGEXEC|SEGR)
-	LONG	$(0xFFFF)
+	DATA tgdt+16(SB)/4, $(0xFFFF)
+	DATA tgdt+20(SB)/4, $(SEGG|SEGD|(0xF<<16)|SEGP|SEGPL(0)|SEGEXEC|SEGR)
 
 /*
  *  pointer to initial gdt
  */
-TEXT	tgdtptr(SB),$0
+GLOBL	tgdtptr(SB),$6
 
-	WORD	$(3*8)
-	LONG	tgdt(SB)
+	DATA tgdtptr+0(SB)/2, $(3*8)
+	DATA tgdtptr+2(SB)/4, $tgdt(SB)
+
+TEXT	start(SB),$0
 
 /*
- *  come here in (16bit) real-address mode
+ *	about to walk all over ms/dos - turn off interrupts
  */
-start16:
-	CLI			/* disable interrupts */
+	CLI
 
-	/* point data segment at low memory */
-	XORL	AX,AX
-	MOVW	AX,DS
+/*
+ *	move the first 1k bytes down to low core and jump to them
+ *	- looks wierd because it is being assembled by a 32 bit
+ *	  assembler for a 16 bit world
+ */
+	MOVL	$0,BX
+	INCL	BX
+	SHLL	$(10-1),BX
+	MOVL	BX,CX
+	MOVL	$0,SI
+	MOVW	SI,ES
+	MOVL	SI,DI
+	CLD
+	REP
+	MOVSL
+/*	JMPFAR*	00:$lowcore(SB) /**/
+	 BYTE	$0xEA
+	 WORD	$lowcore(SB)
+	 WORD	$0
 
-	/* point CPU at the interrupt descriptor table */
-	MOVL	tgdt(SB),IDTR
+TEXT	lowcore(SB),$0
 
-	/* point CPU at the global descriptor table */
-	MOVL	gdtptr(SB),GDTR
+/*
+ *	move the next 63K down
+ */
+	MOVL	$0,CX
+	INCL	CX
+	SHLL	$(15-1),CX
+	SUBL	BX,CX
+	SHLL	$1,BX
+	MOVL	BX,SI
+	MOVL	BX,DI
+	REP
+	MOVSL
 
-	/* switch to protected mode */
+/*
+ *	now that we're in low core, update the DS
+ */
+
+	MOVL	$0,BX
+	MOVW	BX,DS
+
+/*
+ * 	goto protected mode
+ */
+/*	MOVL	tgdtptr(SB),GDTR /**/
+	 BYTE	$0x0f
+	 BYTE	$0x01
+	 BYTE	$0x16
+	 WORD	$tgdtptr(SB)
 	MOVL	CR0,AX
 	ORL	$1,AX
 	MOVL	AX,CR0
 
-	/* clear prefetch buffer */
-	JMP	flush
-
 /*
- *  come here in USE16 protected mode
+ *	clear prefetch queue (wierd code to avoid optimizations)
  */
+	CLC
+	JCC	flush
+	MOVL	AX,AX
 flush:
-	/* map data and stack address to physical memory */
-	MOVW	$SELECTOR(1, SELGDT, 0),AX
-	MOVW	AX,DS
-	MOVW	AX,ES
-	MOVW	AX,SS
-
-	/* switch to 32 bit code */
-/*	JMPFAR	SELECTOR(2, SELGDT, 0):start32 /**/
 
 /*
- *  come here in USE32 protected mode
+ *	set all segs
  */
-TEXT	start32(SB),$0
+/*	MOVW	$SELECTOR(1, SELGDT, 0),AX	/**/
+	 BYTE	$0xc7
+	 BYTE	$0xc0
+	 WORD	$SELECTOR(1, SELGDT, 0)
+	MOVW	AX,DS
+	MOVW	AX,SS
+	MOVW	AX,ES
 
-	/* clear bss (should use REP) */
-	MOVL	$edata(SB),SI
-	MOVL	$edata+4(SB),DI
-	MOVL	$end(SB),CX
+/*	JMPFAR*	SELECTOR(2, SELGDT, 0):$protected(SB) /**/
+	 BYTE	$0xEA
+	 WORD	$mode32bit(SB)
+	 WORD	$SELECTOR(2, SELGDT, 0)
+
+TEXT	mode32bit(SB),$0
+
+/*
+ *	print a blue 3 on a red background
+ */
+	MOVL	$0xb8100,BX
+	MOVB	$0x33,AL
+	MOVB	AL,(BX)
+	INCW	BX
+	MOVB	$0x43,AL
+	MOVB	AL,(BX)
+
+	/*
+	 * Clear BSS
+	 */
+	LEAL	edata(SB),SI
+	LEAL	edata+4(SB),DI
+	MOVL	$0,AX
+	MOVL	AX,(SI)
+	LEAL	end(SB),CX
 	SUBL	DI,CX
 	SHRL	$2,CX
-	XORL	AX,AX
-	MOVL	AX,edata(SB)
-	CLD
 	REP
-	MOVSL	(SI),(DI)
+	MOVSL
 
-	/* set up stack */
-	MOVL	$mach0(SB),AX
-	MOVL	AX, m(SB)
-	MOVL	$0, 0(AX)
-	MOVL	AX, SP
-	ADDL	$(MACHSIZE-4), AX	/* start stack under machine struct */
+
+/*
+ *	print a blue 4 on a red background
+ */
+	MOVL	$0xb8100,BX
+	MOVB	$0x34,AL
+	MOVB	AL,(BX)
+	INCW	BX
+	MOVB	$0x43,AL
+	MOVB	AL,(BX)
+here:
+	JMP	here
+
+
+	/*
+	 *  stack and mach
+	 */
+	MOVL	$mach0(SB),SP
+	MOVL	SP,m(SB)
+	MOVL	$0,0(SP)
+	ADDL	$(MACHSIZE-4),SP	/* start stack under machine struct */
 	MOVL	$0, u(SB)
 
-	CALL	main(SB),$0
-	/* never returns */
-
+	CALL	main(SB)
 /*
- *  first 16 ``standard'' traps
+ *	print a blue 4 on a red background
  */
-TEXT	trap0(SB),$0
+	MOVL	$0xb8100,BX
+	MOVB	$0x34,AL
+	MOVB	AL,(BX)
+	INCW	BX
+	MOVB	$0x43,AL
+	MOVB	AL,(BX)
 
-	PUSHL	$0	/* put on an error code */
-	PUSHL	$0
-	JMP	alltrap
+loop:
+	JMP	loop
 
-TEXT	trap1(SB),$0
-
-	PUSHL	$0	/* put on an error code */
-	PUSHL	$1
-	JMP	alltrap
-
-TEXT	trap2(SB),$0
-
-	PUSHL	$0	/* put on an error code */
-	PUSHL	$2
-	JMP	alltrap
-
-TEXT	trap3(SB),$0
-
-	PUSHL	$0	/* put on an error code */
-	PUSHL	$3
-	JMP	alltrap
-
-TEXT	trap4(SB),$0
-
-	PUSHL	$0	/* put on an error code */
-	PUSHL	$4
-	JMP	alltrap
-
-TEXT	trap5(SB),$0
-
-	PUSHL	$0	/* put on an error code */
-	PUSHL	$5
-	JMP	alltrap
-
-TEXT	trap6(SB),$0
-
-	PUSHL	$0	/* put on an error code */
-	PUSHL	$6
-	JMP	alltrap
-
-TEXT	trap7(SB),$0
-
-	PUSHL	$0	/* put on an error code */
-	PUSHL	$7
-	JMP	alltrap
-
-TEXT	trap8(SB),$0
-
-	PUSHL	$8
-	JMP	alltrap
-
-TEXT	trap9(SB),$0
-
-	PUSHL	$0	/* put on an error code */
-	PUSHL	$9
-	JMP	alltrap
-
-TEXT	trap10(SB),$0
-
-	PUSHL	$0	/* put on an error code */
-	PUSHL	$10
-	JMP	alltrap
-
-TEXT	trap11(SB),$0
-
-	PUSHL	$11
-	JMP	alltrap
-
-TEXT	trap12(SB),$0
-
-	PUSHL	$12
-	JMP	alltrap
-
-TEXT	trap13(SB),$0
-
-	PUSHL	$13
-	JMP	alltrap
-
-TEXT	trap14(SB),$0
-
-	PUSHL	$14
-	JMP	alltrap
-
-TEXT	trap15(SB),$0
-
-	PUSHL	$0	/* put on an error code */
-	PUSHL	$15
-	JMP	alltrap
-
-/*
- *  invalid trap
- */
-TEXT	invtrap(SB),$0
-
-	PUSHL	$0	/* put on an error code */
-	PUSHL	$16
-	JMP	alltrap
-
-/*
- *  common trap code
- */
-alltrap:
-
-/*	PUSHL	DS	/**/
-	PUSHAL
-	MOVL	$KDSEL, AX
-/*	MOVW	AX, DS /**/
-	CALL	trap(SB)
-	POPAL
-/*	POPL	DS	/**/
-	ADDL	$8,SP		/* pop the trap and error codes */
-	IRETL
+GLOBL	mach0+0(SB), $MACHSIZE
+GLOBL	u(SB), $4
+GLOBL	m(SB), $4

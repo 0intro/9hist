@@ -68,7 +68,7 @@
 #define SELGDT	(0<<3)	/* selector is in gdt */
 #define	SELLDT	(1<<3)	/* selector is in ldt */
 
-#define SELECTOR(i, t, p)	(((i)<<4) | (t) | (p))
+#define SELECTOR(i, t, p)	(((i)<<3) | (t) | (p))
 
 #define NULLSEL	SELECTOR(NULLSEG, SELGDT, 0)
 #define KESEL	SELECTOR(KESEG, SELGDT, 0)
