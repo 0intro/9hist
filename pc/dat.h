@@ -179,6 +179,7 @@ struct Mach
 	int	loopconst;
 
 	int	cpumhz;
+	int	cpuhz;
 	int	cpuidax;
 	int	cpuiddx;
 	char	cpuidid[16];

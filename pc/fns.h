@@ -34,7 +34,7 @@ char*	getconf(char*);
 int	i8042auxcmd(int);
 void	i8042auxenable(void (*)(int, int));
 void	i8042reset(void);
-void	i8253init(int);
+void	i8253init(int, int);
 void	i8253enable(void);
 uvlong	i8253read(uvlong*);
 void	i8259init(void);

@@ -138,7 +138,7 @@ cpuidentify(void)
 		t++;
 	}
 	m->cpuidtype = t->name;
-	i8253init(t->aalcycles);
+	i8253init(t->aalcycles, t->family >= 5);
 
 	/*
 	 * If machine check exception or page size extensions are supported

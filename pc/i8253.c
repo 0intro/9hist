@@ -27,9 +27,10 @@ enum
 };
 
 void
-i8253init(int aalcycles)
+i8253init(int aalcycles, int havecycleclock)
 {
 	int cpufreq, loops, incr, x, y;
+	vlong a, b;
 	static int initialised;
 
 	if(initialised == 0){
@@ -75,10 +76,14 @@ i8253init(int aalcycles)
 		 *
 		 */
 		outb(Tmode, Latch0);
+		if(havecycleclock)
+			rdmsr(0x10, &a);
 		x = inb(T0cntr);
 		x |= inb(T0cntr)<<8;
 		aamloop(loops);
 		outb(Tmode, Latch0);
+		if(havecycleclock)
+			rdmsr(0x10, &b);
 		y = inb(T0cntr);
 		y |= inb(T0cntr)<<8;
 		x -= y;
@@ -91,21 +96,31 @@ i8253init(int aalcycles)
 	}
 
 	/*
-	 *  counter  goes at twice the frequency, once per transition,
-	 *  i.e., twice per square wave
-	 */
-	x >>= 1;
-
-	/*
  	 *  figure out clock frequency and a loop multiplier for delay().
+	 *  n.b. counter goes up by 2*Freq
 	 */
-	cpufreq = loops*((aalcycles*Freq)/x);
+	cpufreq = loops*((aalcycles*2*Freq)/x);
 	m->loopconst = (cpufreq/1000)/aalcycles;	/* AAM+LOOP's for 1 ms */
 
-	/*
-	 *  add in possible 0.5% error and convert to MHz
-	 */
-	m->cpumhz = (cpufreq + cpufreq/200)/1000000;
+	if(havecycleclock){
+
+		/* counter goes up by 2*Freq */
+		b = (b-a)<<1;
+		b *= Freq;
+		b /= x;
+
+		/*
+		 *  round to the nearest megahz
+		 */
+		m->cpumhz = (b+500000)/1000000L;
+		m->cpuhz = b;
+	} else {
+		/*
+		 *  add in possible 0.5% error and convert to MHz
+		 */
+		m->cpumhz = (cpufreq + cpufreq/200)/1000000;
+		m->cpuhz = cpufreq;
+	}
 }
 
 void
