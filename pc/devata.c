@@ -1384,25 +1384,31 @@ atapart(Drive *dp)
 	sprint(namebuf, "%spartition", dp->vol);
 	if((p = getconf(namebuf)) == 0){	
 		/*
-		 *  read last sector from disk, null terminate.  This used
-		 *  to be the sector we used for the partition tables.
+		 *  Read second last sector from disk, null terminate.
+		 *  The last sector used to hold the partition tables.
 		 *  However, this sector is special on some PC's so we've
 		 *  started to use the second last sector as the partition
 		 *  table instead.  To avoid reconfiguring all our old systems
-		 *  we first look to see if there is a valid partition
-		 *  table in the last sector.  If so, we use it.  Otherwise
-		 *  we switch to the second last.
+		 *  we still check if there is a valid partition table in
+		 *  the last sector if none is found in the second last.
 		 */
-		ataxfer(dp, &dp->p[1], Cread, 0, dp->bytes, buf);
+		ataxfer(dp, &dp->p[0], Cread, dp->p[0].end-1, dp->bytes, buf);
 		buf[dp->bytes-1] = 0;
 		n = getfields((char*)buf, line, Npart+1, "\n");
-		if(n == 0 || strncmp(line[0], PARTMAGIC, sizeof(PARTMAGIC)-1)){
+		if(n > 0 && strncmp(line[0], PARTMAGIC, sizeof(PARTMAGIC)-1) == 0){
 			dp->p[0].end--;
 			dp->p[1].start--;
 			dp->p[1].end--;
+		}
+		else{
 			ataxfer(dp, &dp->p[1], Cread, 0, dp->bytes, buf);
 			buf[dp->bytes-1] = 0;
 			n = getfields((char*)buf, line, Npart+1, "\n");
+			if(n == 0 || strncmp(line[0], PARTMAGIC, sizeof(PARTMAGIC)-1)){
+				dp->p[0].end--;
+				dp->p[1].start--;
+				dp->p[1].end--;
+			}
 		}
 	}
 	else{
