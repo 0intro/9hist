@@ -80,14 +80,14 @@ static struct
 }
 portstatus[] =
 {
-	{ Suspend,		"Suspend", },
-	{ PortReset,		"PortReset", },
-	{ SlowDevice,		"SlowDevice", },
-	{ ResumeDetect,	"ResumeDetect", },
-	{ PortChange,		"PortChange", },
-	{ PortEnable,		"PortEnable", },
-	{ StatusChange,	"StatusChange", },
-	{ DevicePresent,	"DevicePresent", },
+	{ Suspend,		"suspend", },
+	{ PortReset,		"reset", },
+	{ SlowDevice,		"lowspeed", },
+	{ ResumeDetect,	"resume", },
+	{ PortChange,		"portchange", },
+	{ PortEnable,		"enable", },
+	{ StatusChange,	"statuschange", },
+	{ DevicePresent,	"present", },
 };
 
 typedef struct Ctlr Ctlr;
@@ -396,9 +396,8 @@ cleantd(Ctlr *ctlr, TD *t, int discard)
 	err = t->status & (AnyError&~NAKed);
 	/* TO DO: on t->status&AnyError, q->entries will not have advanced */
 	if (err) {
-//		XPRINT("cleanTD: Error %8.8lux %8.8lux %8.8lux %8.8lux\n", t->link, t->status, t->dev, t->buffer);
-		print("cleanTD: Error %8.8lux %8.8lux %8.8lux %8.8lux\n", t->link, t->status, t->dev, t->buffer);
-print("real maxlen %d\n", t->ep->maxpkt);
+		XPRINT("cleanTD: Error %8.8lux %8.8lux %8.8lux %8.8lux\n", t->link, t->status, t->dev, t->buffer);
+//		print("cleanTD: Error %8.8lux %8.8lux %8.8lux %8.8lux\n", t->link, t->status, t->dev, t->buffer);
 	}
 	switch(t->dev&0xFF){
 	case TokIN:
@@ -1527,5 +1526,5 @@ reset(Usbhost *uh)
 void
 usbuhcilink(void)
 {
-	addusbhost("uhci", reset);
+	addusbtype("uhci", reset);
 }

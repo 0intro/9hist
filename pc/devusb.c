@@ -1827,21 +1827,24 @@ isoio(Endpt *e, void *a, long n, ulong offset, int w)
 			if (e->psize > e->maxpkt)
 				panic("packet size > maximum");
 		}
+		if((i = n) >= e->psize)
+			i = e->psize;
+		if (w)
+			e->buffered += i;
+		else{
+			e->buffered -= i;
+			if (e->buffered < 0)
+				e->buffered = 0;
+		}
+		isolock = 0;
+		iunlock(&activends);
 		td->flags &= ~IsoClean;
 		bp = e->bp0 + (td - e->td0) * e->maxpkt / e->pollms;
 		q = bp + e->off;
-		if((i = n) >= e->psize)
-			i = e->psize;
 		if (w){
 			memmove(q, p, i);
-			e->buffered += i;
 		}else{
 			memmove(p, q, i);
-			e->buffered -= i;
-			if (e->buffered < 0){
-				XPRINT("e->buffered %d?\n", e->buffered);
-				e->buffered = 0;
-			}
 		}
 		p += i;
 		n -= i;
@@ -1860,11 +1863,9 @@ isoio(Endpt *e, void *a, long n, ulong offset, int w)
 	} while(n > 0);
 	n = p-(uchar*)a;
 	e->foffset += n;
-	if (isolock){
-		isolock = 0;
-		iunlock(&activends);
-	}
 	poperror();
+	if (isolock)
+		iunlock(&activends);
 	qunlock(&e->rlock);
 	return n;
 }

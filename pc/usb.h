@@ -116,7 +116,6 @@ struct Udev
 	int		state;
 	int		id;
 	uchar	port;		/* port number on connecting hub */
-	uchar	root;
 	ulong	csp;
 	int		ls;
 	int		npt;
@@ -125,14 +124,19 @@ struct Udev
 	Udev*	next;		/* next device on this hub */
 };
 
+/*
+ * One of these per active Host Controller Interface (HCI)
+ */
 struct Usbhost
 {
-	ISAConf;			/* hardware info */
+	ISAConf;					/* hardware info */
+	int	tbdf;					/* type+busno+devno+funcno */
 
-	int	ctlrno;
-	int	tbdf;			/* type+busno+devno+funcno */
+	QLock;					/* protects namespace state */
+	int		idgen;			/* version number to distinguish new connections */
+	Udev*	dev[MaxUsbDev];	/* device endpoints managed by this HCI */
 
-	void	(*init)(Usbhost*);	/* filled in by reset routine */
+	void	(*init)(Usbhost*);
 	void	(*interrupt)(Ureg*, void*);
 
 	void	(*portinfo)(Usbhost*, char*, char*);
@@ -151,4 +155,4 @@ struct Usbhost
 	void	*ctlr;
 };
 
-extern void addusbhost(char*, int(*)(Usbhost*));
+extern void addusbtype(char*, int(*)(Usbhost*));
