@@ -703,10 +703,32 @@ procstopwait(Proc *p, int ctl)
 }
 
 void
+procctlfgrp(Fgrp *f)
+{
+	int i;
+	Chan *c;
+
+	lock(f);
+	f->ref++;
+	for(i = 0; i < f->maxfd; i++) {
+		c = f->fd[i];
+		if(c != 0) {
+			f->fd[i] = 0;
+			unlock(f);
+			close(c);
+			lock(f);
+		}
+	}
+	unlock(f);
+	closefgrp(f);
+}
+
+
+void
 procctlreq(Proc *p, char *va, int n)
 {
-	char buf[NAMELEN];
 	int i;
+	char buf[NAMELEN];
 
 	if(n > NAMELEN)
 		n = NAMELEN;
@@ -753,6 +775,9 @@ procctlreq(Proc *p, char *va, int n)
 			error(Ebadctl);
 		ready(p);
 	}
+	else
+	if(strncmp(buf, "closefgrp", 9) == 0)
+		procctlfgrp(p->fgrp);
 	else
 	if(strncmp(buf, "pri", 3) == 0){
 		if(n < 4)

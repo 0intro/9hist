@@ -97,7 +97,6 @@ void
 pager(void *junk)
 {
 	int i;
-	Image *img;
 	Segment *s;
 	Proc *p, *ep;
 
@@ -118,13 +117,6 @@ loop:
 			p = proctab(0);
 
 		if(p->state == Dead || p->kp)
-			continue;
-
-		/* don't swap out programs from devroot.c - they
-		 * supply important system services
-		 */
-		img = p->seg[TSEG]->image;
-		if(img && devchar[img->c->type] == '/')
 			continue;
 
 		if(swapimage.c) {
@@ -161,7 +153,7 @@ loop:
 
 			/* Emulate the old system if no swap channel */
 			print("no physical memory\n");
-			tsleep(&swapalloc.r, return0, 0, 5000);
+			tsleep(&swapalloc.pause, return0, 0, 5000);
 			wakeup(&palloc.r);
 		}
 	}
