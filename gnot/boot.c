@@ -5,6 +5,7 @@
 
 Fcall	hdr;
 char	buf[100];
+char	bootline[64];
 
 void	error(char*);
 void	sendmsg(int, char*);
@@ -18,6 +19,12 @@ main(int argc, char *argv[])
 	open("#c/cons", OREAD);
 	open("#c/cons", OWRITE);
 	open("#c/cons", OWRITE);
+
+	fd = open("#e/bootline", OREAD);
+	if(fd >= 0){
+		read(fd, bootline, sizeof bootline);
+		close(fd);
+	}
 
 	/*
 	 *  grab the incon,
@@ -120,7 +127,10 @@ main(int argc, char *argv[])
 	if(mount(fd, "/", MAFTER|MCREATE, "") < 0)
 		error("mount");
 	print("success\n");
-	execl("/68020/init", "init", 0);
+	if(strchr(bootline, ' '))
+		execl("/68020/init", "init", "-m", 0);
+	else
+		execl("/68020/init", "init", 0);
 	error("/68020/init");
 }
 

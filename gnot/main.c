@@ -7,16 +7,20 @@
 #include	"ureg.h"
 #include	"init.h"
 
-typedef struct Boot{
+typedef struct Boot Boot;
+
+struct Boot
+{
 	long station;
 	long traffic;
 	char user[NAMELEN];
 	char server[64];
 	char line[64];
-}Boot;
+};
 #define BOOT ((Boot*)0)
 
 char protouser[NAMELEN];
+char bootline[64];
 int bank[2];
 
 void unloadboot(void);
@@ -48,6 +52,7 @@ void
 unloadboot(void)
 {
 	strncpy(protouser, BOOT->user, NAMELEN);
+	memcpy(bootline, BOOT->line, 64);
 }
 
 void
@@ -86,6 +91,9 @@ mmuinit(void)
 void
 init0(void)
 {
+	Chan *c;
+
+	u->nerrlab = 0;
 	m->proc = u->p;
 	u->p->state = Running;
 	u->p->mach = m;
@@ -94,7 +102,12 @@ init0(void)
 	
 	u->slash = (*devtab[0].attach)(0);
 	u->dot = clone(u->slash, 0);
-
+	if(!waserror()){
+		c = namec("#e/bootline", Acreate, OWRITE, 0600);
+		(*devtab[c->type].write)(c, bootline, 64);
+		close(c);
+	}
+	poperror();
 	touser();
 }
 
@@ -242,19 +255,19 @@ banksize(int base)
 		return 0;
 	va = UZERO;	/* user page 1 is free to play with */
 	putmmu(va, PTEVALID|(base+0)*1024L*1024L/BY2PG);
-	*(ulong*)va=0;	/* 0 at 0M */
+	*(ulong*)va = 0;	/* 0 at 0M */
 	putmmu(va, PTEVALID|(base+1)*1024L*1024L/BY2PG);
-	*(ulong*)va=1;	/* 1 at 1M */
+	*(ulong*)va = 1;	/* 1 at 1M */
 	putmmu(va, PTEVALID|(base+4)*1024L*1024L/BY2PG);
-	*(ulong*)va=4;	/* 4 at 4M */
+	*(ulong*)va = 4;	/* 4 at 4M */
 	putmmu(va, PTEVALID|(base+0)*1024L*1024L/BY2PG);
-	if(*(ulong*)va==0)
+	if(*(ulong*)va == 0)
 		return 16;
 	putmmu(va, PTEVALID|(base+1)*1024L*1024L/BY2PG);
-	if(*(ulong*)va==1)
+	if(*(ulong*)va == 1)
 		return 4;
-	putmmu(va, PTEVALID|(base+4)*1024L*1024L/BY2PG);
-	if(*(ulong*)va==2)
+	putmmu(va, PTEVALID|(base+0)*1024L*1024L/BY2PG);
+	if(*(ulong*)va == 4)
 		return 1;
 	return 0;
 }

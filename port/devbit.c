@@ -34,6 +34,9 @@ struct
 	ulong	*wfree;		/* pointer to next free word */
 	int	lastid;		/* last allocated bitmap id */
 	int	init;		/* freshly opened; init message pending */
+	int	rid;		/* read bitmap id */
+	int	rminy;		/* read miny */
+	int	rmaxy;		/* read maxy */
 }bit;
 
 #define	FREE	0x80000000
@@ -196,6 +199,7 @@ bitopen(Chan *c, int omode)
 			error(0, Einuse);
 		}
 		bit.lastid = -1;
+		bit.rid = -1;
 		bit.init = 0;
 		bit.ref = 1;
 		Cursortocursor(&arrow);
@@ -258,7 +262,11 @@ bitclose(Chan *c)
 long
 bitread(Chan *c, void *va, long n)
 {
-	uchar *p;
+	uchar *p, *q;
+	long miny, maxy, t, x, y;
+	ulong l, nw, ws;
+	int off;
+	Bitmap *src;
 
 	if(c->qid & CHDIR)
 		return devdirread(c, va, n, bitdir, NBIT, devgen);
@@ -327,6 +335,48 @@ bitread(Chan *c, void *va, long n)
 			PSHORT(p+1, bit.lastid);
 			bit.lastid = -1;
 			n = 3;
+			break;
+		}
+		if(bit.rid >= 0){
+			/*
+			 * read
+			 *	data		bytewidth*(maxy-miny)
+			 */
+			src = &bit.map[bit.rid];
+			if(src->ldepth<0)
+				error(0, Ebadbitmap);
+			off = 0;
+			if(bit.rid == 0)
+				off = 1;
+			miny = bit.rminy;
+			maxy = bit.rmaxy;
+			if(miny>maxy || miny<src->r.min.y || maxy>src->r.max.y)
+				error(0, Ebadblt);
+			ws = 1<<(3-src->ldepth);	/* pixels per byte */
+			/* set l to number of bytes of incoming data per scan line */
+			if(src->r.min.x >= 0)
+				l = (src->r.max.x+ws-1)/ws - src->r.min.x/ws;
+			else{	/* make positive before divide */
+				t = (-src->r.min.x)+ws-1;
+				t = (t/ws)*ws;
+				l = (t+src->r.max.x+ws-1)/ws;
+			}
+			if(n < l*(maxy-miny))
+				error(0, Ebadblt);
+			if(off)
+				cursoroff(1);
+			n = 0;
+			p = va;
+			for(y=miny; y<maxy; y++){
+				q = (uchar*)addr(src, Pt(src->r.min.x, y));
+				q += (src->r.min.x&((sizeof(ulong))*ws-1))/8;
+				for(x=0; x<l; x++)
+					*p++ = K2U(*q++);
+				n += l;
+			}
+			if(off)
+				cursoron(1);
+			bit.rid = -1;
 			break;
 		}
 		error(0, Ebadblt);
@@ -552,6 +602,31 @@ bitwrite(Chan *c, void *va, long n)
 				cursoron(1);
 			m -= 22;
 			p += 22;
+			break;
+
+		case 'r':
+			/*
+			 * read
+			 *	'r'		1
+			 *	src id		2
+			 *	miny		4
+			 *	maxy		4
+			 */
+			if(m < 11)
+				error(0, Ebadblt);
+			v = GSHORT(p+1);
+			src = &bit.map[v];
+			if(v>=conf.nbitmap || src->ldepth<0)
+				error(0, Ebadbitmap);
+			miny = GLONG(p+3);
+			maxy = GLONG(p+7);
+			if(miny>maxy || miny<src->r.min.y || maxy>src->r.max.y)
+				error(0, Ebadblt);
+			bit.rid = v;
+			bit.rminy = miny;
+			bit.rmaxy = maxy;
+			p += 11;
+			m -= 11;
 			break;
 
 		case 's':
