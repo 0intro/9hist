@@ -194,7 +194,7 @@ int	later(ulong, ulong, char*);
 
 	int 	ilcksum = 1;
 static 	int 	initseq = 25001;
-static	int	timeshift, timeround;
+static	ulong	scalediv, scalemul;
 static	char	*etime = "connection timed out";
 
 static char*
@@ -402,21 +402,15 @@ static
 void
 ilrttcalc(Ilcb *ic, Block *bp)
 {
-	uvlong fastrtt;
 	int rtt, tt, pt, delay, rate;
 
-	fastrtt = fastticks(nil) - ic->rttstart;
-	if(timeshift >= 0)
-		rtt = fastrtt >> timeshift;
-	else {
-		rtt = fastrtt;
-		rtt = (rtt<<-timeshift)+timeround;
-	}
+	rtt = fastticks(nil) - ic->rttstart;
+	rtt = (rtt*scalemul)/scalediv;
 	delay = ic->delay;
 	rate = ic->rate;
 
 	/* Guard against zero wrap */
-	if(rtt > 120000)
+	if(rtt > 120000 || rtt < 0)
 		return;
 
 	/* this block had to be transmitted after the one acked so count its size */
@@ -999,7 +993,7 @@ ilsettimeout(Ilcb *ic)
 
 	pt = (ic->delay>>LogAGain)
 		+ ic->unackedbytes/(ic->rate>>LogAGain)
-		+ (ic->mdev>>(LogDGain-2))
+		+ (ic->mdev>>(LogDGain-1))
 		+ AckDelay;
 	if(pt > MaxTimeout)
 		pt = MaxTimeout;
@@ -1014,7 +1008,7 @@ ilbackoff(Ilcb *ic)
 
 	pt = (ic->delay>>LogAGain)
 		+ ic->unackedbytes/(ic->rate>>LogAGain)
-		+ (ic->mdev>>(LogDGain-2))
+		+ (ic->mdev>>(LogDGain-1))
 		+ AckDelay;
 	for(i = 0; i < ic->rexmit; i++)
 		pt = pt + (pt>>1);
@@ -1266,25 +1260,20 @@ ilnextqt(Ilcb *ic)
 	return x;
 }
 
-/* calculate shift that converts fast ticks to ms (more or less) */
+/* calculate scale constants that converts fast ticks to ms (more or less) */
 static void
-inittimeshift(void)
+inittimescale(void)
 {
-	int i;
-	uvlong x, hz;
+	uvlong hz;
 
 	fastticks(&hz);
-	x = 3;
-	for(i = 1; i < 45; i++){
-		if(x >= hz)
-			break;
-		x <<= 1;
+	if(hz > 1000){
+		scalediv = hz/1000;
+		scalemul = 1;
+	} else {
+		scalediv = 1;
+		scalemul = 1000/hz;
 	}
-	timeshift = i - 10;
-	if(i < 0)
-		timeround = (1<<-i)-1;
-	else
-		timeround = 0;
 }
 
 void
@@ -1292,7 +1281,7 @@ ilinit(Fs *f)
 {
 	Proto *il;
 
-	inittimeshift();
+	inittimescale();
 
 	il = smalloc(sizeof(Proto));
 	il->priv = smalloc(sizeof(Ilpriv));
