@@ -545,8 +545,12 @@ setladdrport(Conv* c, char* str, int nodefault)
 	char *p;
 	uchar addr[IPaddrlen];
 
+	/*
+	 *  ignore restricted part if it exists.  it's
+	 *  meaningless on local ports.
+	 */
 	p = strchr(str, '!');
-	if(p == nil) {
+	if(p == nil || strcmp(p, "!r") == 0) {
 		p = str;
 		if(nodefault)
 			setladdr(c);
