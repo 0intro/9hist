@@ -203,6 +203,7 @@ int		screenbits(void);
 Scsibuf*	scsialloc(ulong);
 int		scsibread(int, Scsibuf*, long, long, long);
 Scsibuf*	scsibuf(void);
+void		scsibufreset(ulong);
 int		scsibwrite(int, Scsibuf*, long, long, long);
 int		scsicap(int, void*);
 Scsi*		scsicmd(int, int, Scsibuf*, long);

@@ -8,15 +8,10 @@
 
 #define	DPRINT	if(debug)kprint
 
-#define Nbuf	2
 #define DATASIZE	(32*512)
 #undef DATASIZE
 #define	DATASIZE	(64*1024)
 
-struct{
-	Lock;
-	Scsibuf	*free;
-}scsibufalloc;
 
 static Scsi	staticcmd;	/* BUG: should be one per scsi device */
 
@@ -83,12 +78,7 @@ scsigen(Chan *c, Dirtab *tab, long ntab, long s, Dir *dp)
 void
 scsireset(void)
 {
-	int i;
-
-	for(i = 0; i < Nbuf; i++)
-		scsifree(scsialloc(DATASIZE));
-	lock(&scsibufalloc);
-	unlock(&scsibufalloc);
+	scsibufreset(DATASIZE);
 	resetscsi();
 }
 
@@ -542,35 +532,4 @@ scsibwrite(int dev, Scsibuf *b, long n, long blocksize, long blockno)
 	poperror();
 	qunlock(cmd);
 	return n;
-}
-
-/*
- * get a scsi io buffer of DATASIZE size
- */
-Scsibuf *
-scsibuf(void)
-{
-	Scsibuf *b;
-
-	for(;;) {
-		lock(&scsibufalloc);
-		b = scsibufalloc.free;
-		if(b != 0) {
-			scsibufalloc.free = b->next;
-			unlock(&scsibufalloc);
-			return b;
-		}
-		unlock(&scsibufalloc);
-		resrcwait(0);
-	}
-	return 0;		/* not reached */
-}
-
-void
-scsifree(Scsibuf *b)
-{
-	lock(&scsibufalloc);
-	b->next = scsibufalloc.free;
-	scsibufalloc.free = b;
-	unlock(&scsibufalloc);
 }

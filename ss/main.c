@@ -420,7 +420,7 @@ confinit(void)
 			v = mempres[i];
 			for(j=i+1; j<sparam->memscan && mempres[j]>v; j++)
 				v = mempres[j];
-			npg = ((v+1)-mempres[i])*MB/BY2PG;
+			npg = (j-i)*MB/BY2PG;
 			if(conf.npage0 == 0){
 				conf.base0 = i*MB;
 				conf.npage0 = npg;
