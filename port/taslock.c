@@ -170,7 +170,7 @@ unlock(Lock *l)
 		print("unlock of ilock: pc %lux, held by %lux\n", getcallerpc(&l), l->pc);
 	l->pc = 0;
 	l->key = 0;
-	//coherence();
+	coherence();
 }
 
 void
@@ -186,7 +186,7 @@ iunlock(Lock *l)
 	sr = l->sr;
 	l->pc = 0;
 	l->key = 0;
-	//coherence();
+	coherence();
 
 	m->splpc = getcallerpc(&l);
 	splxpc(sr);
