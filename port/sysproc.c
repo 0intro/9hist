@@ -545,3 +545,38 @@ sysbrk_(ulong *arg)
 	u->p->bssend = addr;
 	return 0;
 }
+/*
+long
+syslkbrk(ulong *arg)
+{
+	ulong addr;
+	Orig *o;
+	Seg *s;
+
+	addr = arg[0];
+	s = &u->p->seg[LSEG];
+	if(addr < LKSEGBASE)
+		error(Esegaddr);
+
+	/* If we have never seen a lock segment create one */
+	if(s->o == 0) {
+		s->proc = u->p;
+		s->minva = LKSEGBASE;
+		s->maxva = addr;
+		o = neworig(s->minva, (addr-LKSEGBASE)>>PGSHIFT, OWRPERM, 0);
+		o->minca = 0;
+		o->maxca = 0;
+		s->o = o;
+		s->mod = 0;
+	}
+	if(addr < s->maxva)
+		return 0;
+	if(segaddr(&u->p->seg[LSEG], s->minva, addr) == 0) {
+		pprint("bad segaddr in brk\n");
+		pexit("Suicide", 0);
+		error(Esegaddr);
+
+	}
+	return 0;
+}
+*/

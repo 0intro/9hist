@@ -13,29 +13,58 @@
  */
 
 #define	SEMPERPG	64		/* hardware semaphores per page */
-#define	NONSEMPERPG	(WD2PG-64)	/* words of non-semaphore per page */
+#define NSEMPG		1024
 
 struct
 {
 	Lock	lock;			/* lock to allocate */
 	ulong	*nextsem;		/* next one to allocate */
 	int	nsem;			/* at SEMPERPG, jump to next page */
+	uchar	bmap[NSEMPG];		/* allocation map */
 }semalloc;
 
 void
 lockinit(void)
 {
+	memset(semalloc.bmap, 0, sizeof(semalloc.bmap));
+	semalloc.bmap[0] = 1;
 	semalloc.lock.sbsem = SBSEM;
 	semalloc.nextsem = SBSEM+1;
 	semalloc.nsem = 1;
 	unlock(&semalloc.lock);
 }
 
+/* return the address of the next free page of locks */
+ulong*
+lkpgalloc(void)
+{
+	uchar *p, *top;
+
+	top = &semalloc.bmap[NSEMPG];
+	for(p = semalloc.bmap; *p && p < top; p++)
+		;
+	if(p == top)
+		panic("lkpgalloc");
+
+	*p = 1;
+	return (p-semalloc.bmap)*WD2PG + SBSEM;
+}
+
+void
+lkpgfree(ulong *lpa)
+{
+	uchar *p;
+
+	p = &semalloc.bmap[(lpa-SBSEM)/WD2PG];
+	if(!*p)
+		panic("lkpgfree");
+	*p = 0;
+}
+
 #define PCOFF -9
 
 /*
  * If l->sbsem is zero, allocate a hardware semaphore first.
- * There is no way to free a semaphore.
  */
 void
 lock(Lock *ll)
@@ -49,9 +78,7 @@ lock(Lock *ll)
 		lock(&semalloc.lock);
 		if(semalloc.nsem == SEMPERPG){
 			semalloc.nsem = 0;
-			semalloc.nextsem += NONSEMPERPG;
-			if(semalloc.nextsem == SBSEMTOP)
-				panic("sem");
+			semalloc.nextsem = lkpgalloc();
 		}
 		l->sbsem = semalloc.nextsem;
 		semalloc.nextsem++;
@@ -74,7 +101,7 @@ lock(Lock *ll)
 	}
 	*sbsem = 0;
 	print("lock loop %lux pc %lux held by pc %lux\n", l, ((ulong*)&ll)[PCOFF], l->pc);
-dumpstack();
+	dumpstack();
 }
 
 int
@@ -87,9 +114,7 @@ canlock(Lock *l)
 		lock(&semalloc.lock);
 		if(semalloc.nsem == SEMPERPG){
 			semalloc.nsem = 0;
-			semalloc.nextsem += NONSEMPERPG;
-			if(semalloc.nextsem == SBSEMTOP)
-				panic("sem");
+			semalloc.nextsem = lkpgalloc();
 		}
 		l->sbsem = semalloc.nextsem;
 		semalloc.nextsem++;

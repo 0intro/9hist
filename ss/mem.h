@@ -128,9 +128,8 @@
 #define	USTKTOP	(TSTKTOP-TSTKSIZ*BY2PG)	/* byte just beyond user stack */
 #define	KZERO	0xE0000000		/* base of kernel address space */
 #define	KTZERO	(KZERO+4*BY2PG)		/* first address in kernel text */
-#define	USTACKSIZE	(4*1024*1024)	/* size of user stack */
+#define	USTKSIZE	(4*1024*1024)	/* size of user stack */
 
-#define	NSEG		5
 #define	MACHSIZE	4096
 
 #define isphys(x) (((ulong)(x)&0xF0000000) == KZERO)

@@ -40,6 +40,8 @@ main(void)
 	mmuinit();
 	confinit();
 	kmapinit();
+	duartinit();
+	screeninit();
 	printinit();
 	print("bank 0: %dM  bank 1: %dM\n", bank[0], bank[1]);
 	flushmmu();
@@ -409,4 +411,20 @@ procrestore(Proc *p, uchar *state)
 	}
 	if(balu->cr0 != 0xFFFFFFFF)	/* balu busy */
 		memmove(BALU, balu, sizeof balu);
+}
+
+void
+buzz(int f, int d)
+{
+}
+
+void
+lights(int val)
+{
+}
+
+void
+firmware(void)
+{
+	panic("you asked for it");
 }

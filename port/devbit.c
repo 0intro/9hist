@@ -1145,6 +1145,14 @@ mousetry(Ureg *ur)
 	}
 }
 
+int
+mouseputc(IOQ *q, int c)
+{
+	/*
+	 *  put your favorite serial mouse code here
+	 */
+}
+
 void
 mouseupdate(int dolock)
 {

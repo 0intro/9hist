@@ -130,11 +130,13 @@ procopen(Chan *c, int omode)
 	switch(QID(c->qid)){
 	case Qtext:
 		o = p->seg[TSEG].o;
-		if(o==0 || p->state==Dead)
+		if(o==0 || p->state==Dead) 
 			goto Died;
+
 		tc = o->chan;
 		if(tc == 0)
 			goto Died;
+
 		if(incref(tc) == 0){
     Close:
 			close(tc);
@@ -142,8 +144,10 @@ procopen(Chan *c, int omode)
 		}
 		if(!(tc->flag&COPEN) || tc->mode!=OREAD)
 			goto Close;
+
 		if(p->pid != PID(c->qid))
 			goto Close;
+
 		qlock(&tc->rdl);
 		tc->offset = 0;
 		qunlock(&tc->rdl);

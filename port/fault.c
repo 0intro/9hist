@@ -25,7 +25,7 @@ fault(ulong addr, int read)
 		if(addr > USTKTOP)
 			return -1;
 		s = &u->p->seg[SSEG];
-		if(s->o==0 || addr<s->maxva-USTACKSIZE || addr>=s->maxva)
+		if(s->o==0 || addr<s->maxva-USTKSIZE || addr>=s->maxva)
 			return -1;
 		/* grow stack */
 		o = s->o;
@@ -220,7 +220,7 @@ validaddr(ulong addr, ulong len, int write)
 	s = seg(u->p, addr);
 	if(s==0){
 		s = &u->p->seg[SSEG];
-		if(s->o==0 || addr<s->maxva-USTACKSIZE || addr>=s->maxva)
+		if(s->o==0 || addr<s->maxva-USTKSIZE || addr>=s->maxva)
 			goto Err;
 	}
 	if(write && (s->o->flag&OWRPERM)==0)

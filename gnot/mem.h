@@ -97,9 +97,8 @@
 #define	USTKTOP	(TSTKTOP-TSTKSIZ*BY2PG) /* byte just beyond user stack */
 #define	KZERO	KSEG			/* base of kernel address space */
 #define	KTZERO	(KZERO+BY2PG)		/* first address in kernel text */
-#define	USTACKSIZE	(4*1024*1024)	/* size of user stack */
+#define	USTKSIZE	(4*1024*1024)	/* size of user stack */
 
-#define	NSEG		5
 #define	MACHSIZE	4096
 
 

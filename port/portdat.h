@@ -283,13 +283,12 @@ enum					/* Argument to forkpgrp call */
 };
 
 /*
- *  process memory segments
+ *  process memory segments - NSEG always last !
  */
-#define	SSEG	0
-#define	TSEG	1
-#define	DSEG	2
-#define	BSEG	3
-#define	ESEG	4	/* used by exec to build new stack */
+enum
+{
+	SSEG, TSEG, DSEG, BSEG, ESEG, LSEG, NSEG
+};
 
 struct Seg
 {

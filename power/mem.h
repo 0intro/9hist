@@ -98,7 +98,6 @@
 #define	PTEPID(n)	((n)<<6)
 #define TLBPID(n)	(((n)>>6)&0x3F)
 
-/* N.B. MUST CHANGE l.s utlbmiss if you want to change this */
 #define STLBLOG		11
 #define STLBSIZE	(1<<STLBLOG)
 
@@ -110,14 +109,16 @@
  * Address spaces
  */
 
-#define	UZERO	KUSEG			/* base of user address space */
-#define	UTZERO	(UZERO+BY2PG)		/* first address in user text */
-#define	USTKTOP	KZERO			/* byte just beyond user stack */
-#define	TSTKTOP	(USERADDR+TSTKSIZ*BY2PG)/* top of temporary stack */
-#define TSTKSIZ 100
-#define	KZERO	KSEG0			/* base of kernel address space */
-#define	KTZERO	(KZERO+0x20000)		/* first address in kernel text */
-#define	USTACKSIZE	(4*1024*1024)	/* size of user stack */
+#define	UZERO		KUSEG			/* base of user address space */
+#define	UTZERO		(UZERO+BY2PG)		/* first address in user text */
+#define	USTKTOP		KZERO			/* byte just beyond user stack */
+#define	TSTKTOP		(USERADDR+TSTKSIZ*BY2PG)/* top of temporary stack */
+#define TSTKSIZ 	100
+#define	KZERO		KSEG0			/* base of kernel address space */
+#define	KTZERO		(KZERO+0x20000)		/* first address in kernel text */
+#define	USTKSIZE	(4*1024*1024)		/* size of user stack */
+#define LKSEGSIZE	(25*BY2PG)
+#define LKSEGBASE	(USTKTOP-USTKSIZE-LKSEGSIZE)	
 /*
  * Exception codes
  */
@@ -137,7 +138,5 @@
 #define	CUNK13	13		/* undefined 13 */
 #define	CUNK14	14		/* undefined 14 */
 #define	CUNK15	15		/* undefined 15 */
-
-#define	NSEG	5
 
 #define isphys(x) ((ulong)(x) & KZERO)

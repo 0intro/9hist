@@ -1,6 +1,8 @@
 typedef struct Conf	Conf;
 typedef struct FFrame	FFrame;
 typedef struct FPsave	FPsave;
+typedef struct IOQ	IOQ;
+typedef struct KIOQ	KIOQ;
 typedef struct KMap	KMap;
 typedef struct Label	Label;
 typedef struct Lock	Lock;
@@ -118,6 +120,38 @@ struct KMap
 };
 #define	VA(k)	((k)->va)
 
+/*
+ *  character based IO (mouse, keyboard, console screen)
+ */
+#define NQ	4096
+struct IOQ
+{
+	Lock;
+	uchar	buf[NQ];
+	uchar	*in;
+	uchar	*out;
+	int	state;
+	Rendez	r;
+	union{
+		void	(*puts)(IOQ*, void*, int);	/* output */
+		int	(*putc)(IOQ*, int);		/* input */
+	};
+	void	*ptr;
+};
+struct KIOQ
+{
+	QLock;
+	IOQ;
+	int	repeat;
+	int	c;
+	int	count;
+};
+
+extern IOQ	lineq;
+extern IOQ	printq;
+extern IOQ	mouseq;
+extern KIOQ	kbdq;
+
 struct Mach
 {
 	int	machno;			/* physical id of processor */
@@ -130,6 +164,7 @@ struct Mach
 	void	*alarm;			/* alarms bound to this clock */
 	int	fpstate;		/* state of fp registers on machine */
 
+	int	tlbpurge;
 	int	tlbfault;
 	int	pfault;
 	int	cs;
@@ -228,6 +263,13 @@ struct User
 	 */
 	MMUCache mc;
 };
+
+struct
+{
+	Lock;
+	short	machs;
+	short	exiting;
+}active;
 
 extern Mach	*m;
 extern User	*u;

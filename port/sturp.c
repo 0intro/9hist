@@ -157,10 +157,12 @@ urpopen(Queue *q, Stream *s)
 	 *  find a free urp structure
 	 */
 	for(up = urp; up < &urp[conf.nurp]; up++){
-		qlock(up);
-		if(up->state == 0)
-			break;
-		qunlock(up);
+		if(up->state == 0){
+			qlock(up);
+			if(up->state == 0)
+				break;
+			qunlock(up);
+		}
 	}
 	if(up == &urp[conf.nurp]){
 		q->ptr = 0;
@@ -265,6 +267,8 @@ urpciput(Queue *q, Block *bp)
 	int ctl;
 
 	up = (Urp *)q->ptr;
+	if(up == 0)
+		return;
 	if(bp->type != M_DATA){
 		urpctliput(up, q, bp);
 		return;
@@ -364,6 +368,8 @@ urpiput(Queue *q, Block *bp)
 	int ctl;
 
 	up = (Urp *)q->ptr;
+	if(up == 0)
+		return;
 	if(bp->type != M_DATA){
 		urpctliput(up, q, bp);
 		return;

@@ -8,157 +8,89 @@
 
 #include	"devtab.h"
 
-typedef struct IOQ	IOQ;
+struct {
+	IOQ;			/* lock to klogputs */
+	QLock;			/* qlock to getc */
+}	klogq;
 
-static struct
-{
-	Lock;
-	int	printing;
-	int	c;
-}printq;
-
-#define	NQ	2048
-struct IOQ{
-	union{
-		Lock;
-		QLock;
-	};
-	uchar	buf[NQ];
-	uchar	*in;
-	uchar	*out;
-	int	state;
-	Rendez	r;
-};
-
-IOQ	lineq;
-
-struct{
-	IOQ;
-	Lock	put;
-}klogq;
-
-struct{
-	IOQ;		/* qlock to getc; interrupt putc's */
-	int	c;
-	int	repeat;
-	int	count;
-}kbdq;
+IOQ	lineq;			/* lock to getc; interrupt putc's */
+IOQ	printq;
+IOQ	mouseq;
+KIOQ	kbdq;
 
 Ref	raw;		/* whether kbd i/o is raw (rcons is open) */
 
 /*
- *  rs232 stream module
+ *  init the queues and set the output routine
  */
-typedef struct Rs232	Rs232;
-typedef struct IOBQ	IOBQ;
-
-#define NBQ 6
-struct IOBQ{
-	Block	*bp[NBQ];
-	int	w;
-	int	r;
-	int	f;
-};
-#define NEXT(x) ((x+1)%NBQ)
-
-struct Rs232{
-	QLock;
-	QLock	outlock;
-	IOQ	in;
-	IOBQ	out;
-	int	kstarted;	/* true if kproc started */
-	Queue	*wq;
-	Alarm	*a;		/* alarm for waking the rs232 kernel process */
-	int	started;	/* true if output interrupt pending */
-	int	delay;		/* between character input and waking kproc */
-	Rendez	r;
-	Rendez	rempty;
-};
-
-Rs232 rs232;
-
-static void	rs232output(Rs232*);
-static void	rs232input(Rs232*);
-static void	rs232timer(Alarm*);
-static void	rs232kproc(void*);
-static void	rs232open(Queue*, Stream*);
-static void	rs232close(Queue*);
-static void	rs232oput(Queue*, Block*);
-Qinfo rs232info =
-{
-	nullput,
-	rs232oput,
-	rs232open,
-	rs232close,
-	"rs232"
-};
-
 void
 printinit(void)
 {
-	screeninit();
-
-	lock(&printq);		/* allocate lock */
-	unlock(&printq);
-
-	kbdq.in = kbdq.buf;
-	kbdq.out = kbdq.buf;
-	klogq.in = klogq.buf;
-	klogq.out = klogq.buf;
-	lineq.in = lineq.buf;
-	lineq.out = lineq.buf;
-	rs232.in.in = rs232.in.buf;
-	rs232.in.out = rs232.in.buf;
-	rs232.delay = 64;	/* msec */
-	qlock(&kbdq);		/* allocate qlock */
-	qunlock(&kbdq);
-	lock(&lineq);		/* allocate lock */
-	unlock(&lineq);
-	lock(&klogq);		/* allocate lock */
-	unlock(&klogq);
-	lock(&klogq.put);	/* allocate lock */
-	unlock(&klogq.put);
+	initq(&printq);
+	initq(&lineq);
+	initq(&kbdq);
+	initq(&klogq);
+	initq(&mouseq);
+	mouseq.putc = mouseputc;
 }
 
 /*
- * Print a string on the console.
+ *   Print a string on the console.  Convert \n to \r\n
  */
 void
-putstrn(char *str, long n)
+putstrn(char *str, int n)
 {
-	int s;
+	int s, c, m;
+	char *t;
+
+	while(n > 0){
+		if(printq.puts && *str=='\n')
+			(*printq.puts)(&printq, "\r", 1);
+		m = n;
+		t = memchr(str+1, '\n', m-1);
+		if(t)
+			if(t-str < m)
+				m = t - str;
+		if(printq.puts)
+			(*printq.puts)(&printq, str, m);
+		screenputs(str, m);
+		n -= m;
+		str += m;
+	}
+}
+
+/*
+ *   Print a string in the kernel log.  Ignore overflow.
+ */
+void
+klogputs(char *str, long n)
+{
+	int s, m;
+	uchar *nextin;
 
 	s = splhi();
-	lock(&printq);
-	printq.printing = 1;
-	while(--n >= 0)
-		screenputc(*str++);
-	printq.printing = 0;
-	unlock(&printq);
+	lock(&klogq);
+	while(n){
+		m = &klogq.buf[NQ] - klogq.in;
+		if(m > n)
+			m = n;
+		memmove(klogq.in, str, m);
+		n -= m;
+		str += m;
+		nextin = klogq.in + m;
+		if(nextin >= &klogq.buf[NQ])
+			klogq.in = klogq.buf;
+		else
+			klogq.in = nextin;
+	}
+	unlock(&klogq);
 	splx(s);
+	wakeup(&klogq.r);
 }
 
 int
-cangetc(void *arg)
+isbrkc(KIOQ *q)
 {
-	IOQ *q = (IOQ *)arg;
-	int n = q->in - q->out;
-	if (n < 0)
-		n += sizeof(q->buf);
-	return n;
-}
-
-int
-canputc(void *arg)
-{
-	IOQ *q = (IOQ *)arg;
-	return sizeof(q->buf)-cangetc(q)-1;
-}
-
-int
-isbrkc(void *arg)
-{
-	IOQ *q = (IOQ *)arg;
 	uchar *p;
 
 	for(p=q->out; p!=q->in; ){
@@ -171,51 +103,6 @@ isbrkc(void *arg)
 			p = q->buf;
 	}
 	return 0;
-}
-
-int
-getc(IOQ *q)
-{
-	int c;
-
-	if(q->in == q->out)
-		return -1;
-	c = *q->out++;
-	if(q->out == q->buf+sizeof(q->buf))
-		q->out = q->buf;
-	return c;
-}
-
-int
-putc(IOQ *q, int c)
-{
-	uchar *nextin;
-	if(q->in >= &q->buf[sizeof(q->buf)-1])
-		nextin = q->buf;
-	else
-		nextin = q->in+1;
-	if(nextin == q->out)
-		return -1;
-	*q->in = c;
-	q->in = nextin;
-	return 0;
-}
-
-void
-putstrk(char *str, long n)
-{
-	int s;
-
-	s = splhi();
-	lock(&klogq.put);
-	while(--n >= 0){
-		*klogq.in++ = *str++;
-		if(klogq.in == klogq.buf+sizeof(klogq.buf))
-			klogq.in = klogq.buf;
-	}
-	unlock(&klogq.put);
-	splx(s);
-	wakeup(&klogq.r);
 }
 
 int
@@ -242,7 +129,7 @@ kprint(char *fmt, ...)
 	int n;
 
 	n = doprint(buf, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
-	putstrk(buf, n);
+	klogputs(buf, n);
 	return n;
 }
 
@@ -257,8 +144,9 @@ panic(char *fmt, ...)
 	buf[n] = '\n';
 	putstrn(buf, n+1);
 	dumpstack();
-	exit();
+	for(;;);
 }
+
 int
 pprint(char *fmt, ...)
 {
@@ -286,8 +174,7 @@ pprint(char *fmt, ...)
 void
 prflush(void)
 {
-	while(printq.printing)
-		delay(100);
+	while(printq.in != printq.out) ;
 }
 
 void
@@ -295,7 +182,6 @@ echo(int c)
 {
 	char ch;
 	static int ctrlt;
-	extern void DEBUG(void), dumpqueues(void), mntdump(void);
 
 	/*
 	 * ^t hack BUG
@@ -305,6 +191,9 @@ echo(int c)
 		switch(c){
 		case 0x14:
 			break;	/* pass it on */
+		case 'm':
+			mntdump();
+			return;
 		case 'p':
 			DEBUG();
 			return;
@@ -312,14 +201,8 @@ echo(int c)
 			dumpqueues();
 			return;
 		case 'r':
-			panic("you asked for it");
+			firmware();
 			break;
-		case 'm':
-			mntdump();
-			return;
-		case 'i':
-			incontoggle();
-			return;
 		}
 	}else if(c == 0x14){
 		ctrlt++;
@@ -340,43 +223,44 @@ echo(int c)
  * Put character into read queue at interrupt time.
  * Always called splhi from proc 0.
  */
-
-void
-kbdchar(int c)
+int
+kbdputc(IOQ *q, int ch)
 {
-	if(kbdq.repeat == 1){
-		kbdq.c = c;
-		kbdq.count = 0;
-		kbdq.repeat = 2;
-	}
-	echo(c);
-	*kbdq.in++ = c;
+	echo(ch);
+	kbdq.c = ch;
+	*kbdq.in++ = ch;
 	if(kbdq.in == kbdq.buf+sizeof(kbdq.buf))
 		kbdq.in = kbdq.buf;
-	if(raw.ref || c=='\n' || c==0x04)
+	if(raw.ref || ch=='\n' || ch==0x04)
 		wakeup(&kbdq.r);
+	return 0;
 }
 
 void
 kbdrepeat(int rep)
 {
-	if(rep)
-		kbdq.repeat = 1;
-	else
-		kbdq.repeat = 0;
+	kbdq.repeat = rep;
+	kbdq.count = 0;
 }
 
 void
 kbdclock(void)
 {
-	if(kbdq.repeat==2 && (++kbdq.count&1))
-		kbdchar(kbdq.c);
+	if(kbdq.repeat == 0)
+		return;
+	if(kbdq.repeat==1 && ++kbdq.count>HZ){
+		kbdq.repeat = 2;
+		kbdq.count = 0;
+		return;
+	}
+	if(++kbdq.count&1)
+		kbdputc(&kbdq, kbdq.c);
 }
 
 int
 consactive(void)
 {
-	return printq.printing;
+	return printq.in != printq.out;
 }
 
 /*
@@ -386,6 +270,8 @@ enum{
 	Qdir,
 	Qcons,
 	Qcputime,
+	Qlights,
+	Qnoise,
 	Qnull,
 	Qpgrpid,
 	Qpid,
@@ -396,38 +282,28 @@ enum{
 	Qklog,
 	Qmsec,
 	Qclock,
-	Qrs232ctl = STREAMQID(1, Sctlqid),
-	Qrs232 = STREAMQID(1, Sdataqid),
+	Qsysstat,
 };
 
 Dirtab consdir[]={
 	"cons",		{Qcons},	0,		0600,
 	"cputime",	{Qcputime},	6*NUMSIZE,	0600,
+	"lights",	{Qlights},	0,		0600,
+	"noise",	{Qnoise},	0,		0600,
 	"null",		{Qnull},	0,		0600,
 	"pgrpid",	{Qpgrpid},	NUMSIZE,	0600,
 	"pid",		{Qpid},		NUMSIZE,	0600,
 	"ppid",		{Qppid},	NUMSIZE,	0600,
 	"rcons",	{Qrcons},	0,		0600,
-	"rs232",	{Qrs232},	0,		0600,
-	"rs232ctl",	{Qrs232ctl},	0,		0600,
 	"time",		{Qtime},	NUMSIZE,	0600,
 	"user",		{Quser},	0,		0600,
 	"klog",		{Qklog},	0,		0400,
 	"msec",		{Qmsec},	NUMSIZE,	0400,
 	"clock",	{Qclock},	2*NUMSIZE,	0400,
+	"sysstat",	{Qsysstat},	0,		0600,
 };
 
 #define	NCONS	(sizeof consdir/sizeof(Dirtab))
-
-static int
-consgen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
-{
-	if(tab==0 || i>=ntab)
-		return -1;
-	tab += i;
-	devdir(c, tab->qid, tab->name, tab->length, tab->perm, dp);
-	return 1;
-}
 
 ulong	boottime;		/* seconds since epoch at boot */
 
@@ -492,20 +368,13 @@ consclone(Chan *c, Chan *nc)
 int
 conswalk(Chan *c, char *name)
 {
-	return devwalk(c, name, consdir, NCONS, consgen);
+	return devwalk(c, name, consdir, NCONS, devgen);
 }
 
 void
 consstat(Chan *c, char *dp)
 {
-	switch(c->qid.path){
-	case Qrs232:
-		streamstat(c, dp, "rs232");
-		break;
-	default:
-		devstat(c, dp, consdir, NCONS, consgen);
-		break;
-	}
+	devstat(c, dp, consdir, NCONS, devgen);
 }
 
 Chan*
@@ -534,12 +403,8 @@ consopen(Chan *c, int omode)
 			unlock(&lineq);
 		}
 		break;
-	case Qrs232:
-	case Qrs232ctl:
-		streamopen(c, &rs232info);
-		break;
 	}
-	return devopen(c, omode, consdir, NCONS, consgen);
+	return devopen(c, omode, consdir, NCONS, devgen);
 }
 
 void
@@ -553,26 +418,26 @@ consclose(Chan *c)
 {
 	if(c->qid.path==Qrcons && (c->flag&COPEN))
 		decref(&raw);
-	if(c->stream)
-		streamclose(c);
 }
+
 
 long
 consread(Chan *c, void *buf, long n, ulong offset)
 {
-	int ch, i, j, k;
+	int ch, i, j, k, id;
 	ulong l;
 	uchar *out;
 	char *cbuf = buf;
 	char *user;
 	int userlen;
-	char tmp[6*NUMSIZE];
+	char tmp[6*NUMSIZE], xbuf[1024];
+	Mach *mp;
 
 	if(n <= 0)
 		return n;
-	switch(c->qid.path&~CHDIR){
+	switch(c->qid.path & ~CHDIR){
 	case Qdir:
-		return devdirread(c, buf, n, consdir, NCONS, consgen);
+		return devdirread(c, buf, n, consdir, NCONS, devgen);
 
 	case Qrcons:
 	case Qcons:
@@ -603,9 +468,11 @@ consread(Chan *c, void *buf, long n, ulong offset)
 					break;
 				Default:
 				default:
-					*lineq.in++ = ch;
-					if(lineq.in == lineq.buf+sizeof(lineq.buf))
+					*lineq.in = ch;
+					if(lineq.in >= lineq.buf+sizeof(lineq.buf)-1)
 						lineq.in = lineq.buf;
+					else
+						lineq.in++;
 				}
 				unlock(&lineq);
 			}while(raw.ref==0 && ch!='\n' && ch!=0x04);
@@ -621,15 +488,6 @@ consread(Chan *c, void *buf, long n, ulong offset)
 		}
 		qunlock(&kbdq);
 		return i;
-
-	case Qrs232:
-		return streamread(c, buf, n);
-
-	case Qrs232ctl:
-		if(offset)
-			return 0;
-		*(char *)buf = duartinputport();
-		return 1;
 
 	case Qcputime:
 		k = offset;
@@ -658,10 +516,8 @@ consread(Chan *c, void *buf, long n, ulong offset)
 		return readnum(offset, buf, n, u->p->parentpid, NUMSIZE);
 
 	case Qtime:
-		return readnum(offset, buf, n, boottime+TK2SEC(MACHP(0)->ticks), NUMSIZE);
+		return readnum(offset, buf, n, boottime+TK2SEC(MACHP(0)->ticks), 12);
 
-	case Qmsec:
-		return readnum(offset, buf, n, TK2MS(MACHP(0)->ticks), NUMSIZE);
 	case Qclock:
 		k = offset;
 		if(k >= 2*NUMSIZE)
@@ -696,9 +552,66 @@ consread(Chan *c, void *buf, long n, ulong offset)
 		qunlock(&klogq);
 		return i;
 
+	case Qmsec:
+		return readnum(offset, buf, n, TK2MS(MACHP(0)->ticks), NUMSIZE);
+
+	case Qsysstat:
+		j = 0;
+		for(id = 0; id < 32; id++) {
+			if(active.machs & (1<<id)) {
+				mp = MACHP(id);
+				j += sprint(&xbuf[j], "%d %d %d %d %d %d %d %d\n",
+					id, mp->cs, mp->intr, mp->syscall, mp->pfault,
+					    mp->tlbfault, mp->tlbpurge, m->spinlock);
+			}
+		}
+		return readstr(offset, buf, n, xbuf);
+
 	default:
-		panic("consread %lux\n", c->qid.path);
+		panic("consread %lux\n", c->qid);
 		return 0;
+	}
+}
+
+void
+conslights(char *a, int n)
+{
+	int l;
+	char line[128];
+	char *lp;
+	int c;
+
+	lp = line;
+	while(n--){
+		*lp++ = c = *a++;
+		if(c=='\n' || n==0 || lp==&line[sizeof(line)-1])
+			break;
+	}
+	*lp = 0;
+	lights(strtoul(line, 0, 0));
+}
+
+void
+consnoise(char *a, int n)
+{
+	int freq;
+	int duration;
+	char line[128];
+	char *lp;
+	int c;
+
+	lp = line;
+	while(n--){
+		*lp++ = c = *a++;
+		if(c=='\n' || n==0 || lp==&line[sizeof(line)-1]){
+			*lp = 0;
+			freq = strtoul(line, &lp, 0);
+			while(*lp==' ' || *lp=='\t')
+				lp++;
+			duration = strtoul(lp, &lp, 0);
+			buzz(freq, duration);
+			lp = line;
+		}
 	}
 }
 
@@ -709,10 +622,12 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 	char buf[256];
 	long l, m;
 	char *a = va;
+	Mach *mp;
+	int id;
 
 	switch(c->qid.path){
-	case Qcons:
 	case Qrcons:
+	case Qcons:
 		/*
 		 * Damn. Can't page fault in putstrn, so copy the data locally.
 		 */
@@ -726,11 +641,6 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 			a += m;
 			l -= m;
 		}
-		break;
-
-	case Qrs232:
-	case Qrs232ctl:
-		n = streamwrite(c, va, n, 1);
 		break;
 
 	case Qtime:
@@ -762,6 +672,30 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 
 	case Qnull:
 		break;
+
+	case Qnoise:
+		consnoise(a, n);
+		break;
+
+	case Qlights:
+		conslights(a, n);
+		break;
+
+	case Qsysstat:
+		for(id = 0; id < 32; id++) {
+			if(active.machs & (1<<id)) {
+				mp = MACHP(id);
+				mp->cs = 0;
+				mp->intr = 0;
+				mp->syscall = 0;
+				mp->pfault = 0;
+				mp->tlbfault = 0;
+				mp->tlbpurge = 0;
+				mp->spinlock = 0;
+			}
+		}
+		break;
+
 	default:
 		error(Egreg);
 	}
@@ -778,271 +712,4 @@ void
 conswstat(Chan *c, char *dp)
 {
 	error(Eperm);
-}
-
-/*
- *  rs232 stream routines
- *
- *  A kernel process, rs232kproc, stages blocks to be output and
- *  packages input bytes into stream blocks to send upstream.
- *  The process is awakened whenever the interrupt side is almost
- *  out of bytes to xmit or 1/16 second has elapsed since a byte
- *  was input.
- */
-static int
-rs232empty(void *a)
-{
-	Rs232 *r;
-
-	r = a;
-	return r->out.w == r->out.r;
-}
-
-static void
-rs232output(Rs232 *r)
-{
-	int next;
-	Queue *q;
-	Block *bp;
-	long l;
-
-	qlock(&r->outlock);
-	q = r->wq;
-
-	/*
-	 *  free old blocks
-	 */
-	for(next = r->out.f; next != r->out.r; next = NEXT(next)){
-		freeb(r->out.bp[next]);
-		r->out.bp[next] = 0;
-	}
-	r->out.f = next;
-
-	if(q==0){
-		kprint("rs232output: null q\n");
-		qunlock(&r->outlock);
-		return;
-	}
-
-	/*
-	 *  stage new blocks
-	 *
-	 *  if we run into a control block, wait till the queue
-	 *  is empty before doing the control.
-	 */
-	for(next = NEXT(r->out.w); next != r->out.f; next = NEXT(next)){
-		bp = getq(q);
-		if(bp == 0)
-			break;
-		if(bp->type == M_CTL){
-			if(waserror()){
-				freeb(bp);
-				qunlock(&r->outlock);
-				nexterror();
-			}
-			while(!rs232empty(r))
-				sleep(&r->rempty, rs232empty, r);
-			l = strtoul((char *)(bp->rptr+1), 0, 0);
-			switch(*bp->rptr){
-			case 'B':
-			case 'b':
-				duartbaud(l);
-				break;
-			case 'D':
-			case 'd':
-				duartdtr(l);
-				break;
-			case 'K':
-			case 'k':
-				duartbreak(l);
-				break;
-			case 'W':
-			case 'w':
-				if(l>=0 && l<1000)
-					r->delay = l;
-				break;
-			}
-			poperror();
-			freeb(bp);
-			break;
-		}
-		r->out.bp[r->out.w] = bp;
-		r->out.w = next;
-	}
-
-	/*
-	 *  start output, the spl's sync with interrupt level
-	 *  this wouldn't work on a multi-processor
-	 */
-	if(r->started == 0)
-		duartstartrs232o();
-	qunlock(&r->outlock);
-}
-
-static void
-rs232input(Rs232 *r)
-{
-	Queue *q;
-	int c;
-	Block *bp;
-
-	q = RD(r->wq);
-	bp = 0;
-	while((c = getc(&r->in)) >= 0){
-		if(bp == 0){
-			bp = allocb(64);
-			bp->flags |= S_DELIM;
-		}
-		*bp->wptr++ = c;
-		if(bp->wptr == bp->lim){
-			if(QFULL(q->next))
-				freeb(bp);
-			else
-				PUTNEXT(q, bp);
-			bp = 0;
-		}
-	}
-	if(bp){
-		if(QFULL(q->next))
-			freeb(bp);
-		else
-			PUTNEXT(q, bp);
-	}
-}
-
-static int
-rs232stuff(void *arg)
-{
-	Rs232 *r;
-
-	r = arg;
-	return (r->in.in != r->in.out) || (r->out.r != r->out.w)
-		|| (r->out.f != r->out.r);
-}
-
-static void
-rs232kproc(void *a)
-{
-	Rs232 *r;
-
-	r = a;
-	for(;;){
-		qlock(r);
-		if(r->wq != 0){
-			rs232output(r);
-			rs232input(r);
-		}
-		qunlock(r);
-		sleep(&r->r, rs232stuff, r);
-	}
-}
-
-static void
-rs232open(Queue *q, Stream *c)
-{
-	Rs232 *r;
-
-	r = &rs232;
-
-	RD(q)->ptr = r;
-	WR(q)->ptr = r;
-	r->wq = WR(q);
-
-	kprint("rs232open: q=0x%ux, inuse=%d, type=%d, dev=%d, id=%d\n",
-		q, c->inuse, c->type, c->dev, c->id);
-	if(r->kstarted == 0){
-		r->in.in = r->in.out = r->in.buf;
-		kproc("rs232", rs232kproc, r);
-		r->kstarted = 1;
-	}else
-		wakeup(&r->r);	/* pick up any input characters */
-}
-
-static void
-rs232close(Queue *q)
-{
-	Rs232 *r;
-
-	kprint("rs232close: q=0x%ux\n", q);
-	r = q->ptr;
-	qlock(&r->outlock);
-	while(!rs232empty(r))
-		sleep(&r->rempty, rs232empty, r);
-	qunlock(&r->outlock);
-	kprint("rs232close: emptied\n");
-	rs232output(r);	/* reclaim blocks written */
-	qlock(r);
-	r->wq = 0;
-	qunlock(r);
-}
-
-static void
-rs232oput(Queue *q, Block *bp)
-{
-	if(bp->rptr >= bp->wptr)
-		freeb(bp);
-	else
-		putq(q, bp);
-	rs232output(q->ptr);
-}
-
-static void
-rs232timer(Alarm *a)
-{
-	Rs232 *r;
-
-	r = a->arg;
-	cancel(a);
-	r->a = 0;
-	wakeup(&r->r);
-}
-
-/*
- *  called by input interrupt.  runs splhi
- */
-void
-rs232ichar(int c)
-{
-	Rs232 *r;
-
-	r = &rs232;
-	if(putc(&r->in, c) < 0)
-		/*screenputc('^')*/;
-
-	/*
-	 *  pass upstream within r->delay milliseconds
-	 */
-	if(r->a==0){
-		if(r->delay == 0)
-			wakeup(&r->r);
-		else
-			r->a = alarm(r->delay, rs232timer, r);
-	}
-}
-
-/*
- *  called by output interrupt.  runs spl5
- */
-int
-getrs232o(void)
-{
-	uchar c;
-	Rs232 *r;
-	Block *bp;
-
-	r = &rs232;
-	if(r->out.r == r->out.w){
-		wakeup(&r->rempty);
-		r->started = 0;
-		return -1;
-	}
-	bp = r->out.bp[r->out.r];
-	c = *bp->rptr++;
-	if(bp->rptr >= bp->wptr){
-		r->out.r = NEXT(r->out.r);
-		if(r->out.r==r->out.w || NEXT(r->out.r)==r->out.w)
-			wakeup(&r->r);
-	}
-	r->started = 1;
-	return c;
 }
