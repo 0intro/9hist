@@ -140,8 +140,6 @@ udpclose(Conv *c)
 
 	ucb = (Udpcb*)c->ptcl;
 	ucb->headers = 0;
-
-	qunlock(c);
 }
 
 void
@@ -404,22 +402,22 @@ found:
 
 }
 
-/* close any incoming calls waiting on this conversation */
+/*
+ *  close any incoming calls waiting on this conversation
+ *  	called with c locked
+ */
 void
 udpcloseincalls(Conv *c)
 {
 	Conv *nc;
 
-	qlock(c);
-
 	for(nc = c->incall; nc; nc = c->incall){
 		c->incall = nc->next;
 		closeconv(nc);
 	}
-
-	qunlock(c);
 }
 
+/* called with c locked */
 char*
 udpctl(Conv *c, char **f, int n)
 {

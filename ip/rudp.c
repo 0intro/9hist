@@ -296,7 +296,6 @@ rudpclose(Conv *c)
 	ucb->r = 0;
 
 	qunlock(ucb);
-	qunlock(c);
 }
 
 /*

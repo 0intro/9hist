@@ -114,8 +114,6 @@ greclose(Conv *c)
 	ipmove(c->raddr, IPnoaddr);
 	c->lport = 0;
 	c->rport = 0;
-
-	qunlock(c);
 }
 
 int drop;

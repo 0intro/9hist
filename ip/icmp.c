@@ -145,7 +145,6 @@ icmpclose(Conv *c)
 	ipmove(c->laddr, IPnoaddr);
 	ipmove(c->raddr, IPnoaddr);
 	c->lport = 0;
-	qunlock(c);
 }
 
 static void

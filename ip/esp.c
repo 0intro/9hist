@@ -219,8 +219,6 @@ espclose(Conv *c)
 	free(ecb->espstate);
 	free(ecb->ahstate);
 	memset(ecb, 0, sizeof(Espcb));
-	
-	qunlock(c);
 }
 
 void

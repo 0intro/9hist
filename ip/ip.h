@@ -48,6 +48,7 @@ enum
 
 enum
 {
+	Idle=		0,
 	Announcing=	1,
 	Announced=	2,
 	Connecting=	3,

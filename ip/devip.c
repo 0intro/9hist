@@ -501,8 +501,9 @@ closeconv(Conv *cv)
 	while((mp = cv->multi) != nil)
 		ipifcremmulti(cv, mp->ma, mp->ia);
 
-	/* The close routine will unlock the conv */
 	cv->p->close(cv);
+	cv->state = Idle;
+	qunlock(cv);
 }
 
 static void
@@ -789,6 +790,8 @@ connectctlmsg(Proto *x, Conv *c, Cmdbuf *cb)
 {
 	char *p;
 
+	if(c->state != 0)
+		error(Econinuse);
 	c->state = Connecting;
 	c->cerr[0] = '\0';
 	if(x->connect == nil)
@@ -796,7 +799,11 @@ connectctlmsg(Proto *x, Conv *c, Cmdbuf *cb)
 	p = x->connect(c, cb->f, cb->nf);
 	if(p != nil)
 		error(p);
+	qunlock(c);
+
 	sleep(&c->cr, connected, c);
+
+	qlock(c);
 	if(c->cerr[0] != '\0')
 		error(c->cerr);
 }
@@ -830,6 +837,8 @@ announcectlmsg(Proto *x, Conv *c, Cmdbuf *cb)
 {
 	char *p;
 
+	if(c->state != 0)
+		error(Econinuse);
 	c->state = Announcing;
 	c->cerr[0] = '\0';
 	if(x->announce == nil)
@@ -837,7 +846,11 @@ announcectlmsg(Proto *x, Conv *c, Cmdbuf *cb)
 	p = x->announce(c, cb->f, cb->nf);
 	if(p != nil)
 		error(p);
+	qunlock(c);
+
 	sleep(&c->cr, announced, c);
+
+	qlock(c);
 	if(c->cerr[0] != '\0')
 		error(c->cerr);
 }
@@ -934,12 +947,9 @@ ipwrite(Chan* ch, void *v, long n, vlong off)
 		c = x->conv[CONV(ch->qid)];
 		cb = parsecmd(a, n);
 
-		if(canqlock(&c->car) == 0){
-			free(cb);
-			error("connect/announce in progress");
-		}
+		qlock(c);
 		if(waserror()) {
-			qunlock(&c->car);
+			qunlock(c);
 			free(cb);
 			nexterror();
 		}
@@ -983,7 +993,7 @@ ipwrite(Chan* ch, void *v, long n, vlong off)
 				error(p);
 		} else
 			error("unknown control request");
-		qunlock(&c->car);
+		qunlock(c);
 		free(cb);
 		poperror();
 	}
@@ -1129,7 +1139,7 @@ retry:
 	c->inuse = 1;
 	strcpy(c->owner, user);
 	c->perm = 0660;
-	c->state = 0;
+	c->state = Idle;
 	ipmove(c->laddr, IPnoaddr);
 	ipmove(c->raddr, IPnoaddr);
 	c->lport = 0;
@@ -1211,6 +1221,7 @@ Fsnewcall(Conv *c, uchar *raddr, ushort rport, uchar *laddr, ushort lport)
 	nc->lport = lport;
 	nc->next = nil;
 	*l = nc;
+	c->state = Connected;
 	qunlock(c);
 
 	wakeup(&c->listenr);

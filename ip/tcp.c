@@ -402,7 +402,6 @@ tcpclose(Conv *c)
 		tcpoutput(c);
 		break;
 	}
-	qunlock(c);
 }
 
 void
@@ -412,6 +411,11 @@ tcpkick(Conv *s, int len)
 
 	tcb = (Tcpctl*)s->ptcl;
 
+	if(waserror()){
+		qunlock(s);
+		nexterror();
+	}
+	qlock(s);
 
 	switch(tcb->state) {
 	case Listen:
@@ -426,22 +430,17 @@ tcpkick(Conv *s, int len)
 		/*
 		 * Push data
 		 */
-		if(waserror()){
-			qunlock(s);
-			nexterror();
-		}
-		qlock(s);
 		tcb->sndcnt += len;
 		tcprcvwin(s);
 		tcpoutput(s);
-		qunlock(s);
-		poperror();
 		break;
 	default:
-		qlock(s);
 		localclose(s, "Hangup");
-		qunlock(s);
+		break;
 	}
+
+	qunlock(s);
+	poperror();
 }
 
 void
@@ -682,6 +681,9 @@ inittcpctl(Conv *s)
 	tcb->mss = tcb->cwind = tcpmtu(s);
 }
 
+/*
+ *  called with s qlocked
+ */
 void
 tcpstart(Conv *s, int mode, ushort window)
 {
@@ -703,13 +705,7 @@ tcpstart(Conv *s, int mode, ushort window)
 
 	tcb = (Tcpctl*)s->ptcl;
 
-	qlock(s);
 	/* Send SYN, go into SYN_SENT state */
-	if(waserror()){
-		qunlock(s);
-		nexterror();
-	}
-
 	inittcpctl(s);
 	tcb->window = window;
 	tcb->rcv.wnd = window;
@@ -729,8 +725,6 @@ tcpstart(Conv *s, int mode, ushort window)
 		tcpoutput(s);
 		break;
 	}
-	qunlock(s);
-	poperror();
 }
 
 static char*

@@ -304,7 +304,6 @@ ilclose(Conv *c)
 		break;
 	}
 	ilfreeq(ic);
-	qunlock(c);
 }
 
 void
