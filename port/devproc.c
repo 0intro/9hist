@@ -159,6 +159,24 @@ procstat(Chan *c, char *db)
 	devstat(c, db, 0, 0, procgen);
 }
 
+/*
+ *  none can't read or write state on other
+ *  processes.  This is to contain access of
+ *  servers running as none should they be
+ *  subverted by, for example, a stack attack.
+ */
+static void
+nonone(Proc *p)
+{
+	if(p == up)
+		return;
+	if(strcmp(up->user, "none") != 0)
+		return;
+	if(iseve())
+		return;
+	error(Eperm);
+}
+
 static Chan*
 procopen(Chan *c, int omode)
 {
@@ -209,6 +227,7 @@ procopen(Chan *c, int omode)
 	case Qwait:
 	case Qregs:
 	case Qfpregs:
+		nonone(p);
 		break;
 
 	case Qns:
@@ -218,6 +237,7 @@ procopen(Chan *c, int omode)
 		break;
 
 	case Qnotepg:
+		nonone(p);
 		pg = p->pgrp;
 		if(pg == nil)
 			error(Eprocdied);
@@ -258,6 +278,7 @@ procwstat(Chan *c, char *db)
 		error(Eperm);
 
 	p = proctab(SLOT(c->qid));
+	nonone(p);
 	if(waserror()){
 		qunlock(&p->debug);
 		nexterror();
