@@ -58,6 +58,16 @@ fastticks(uvlong* hz)
 	return ticks;
 }
 
+/*  
+ *  performance measurement ticks.  must be low overhead.
+ *  doesn't have to count over a second.
+ */
+ulong
+perfticks(void)
+{
+	return rpcc(nil);
+}
+
 void
 timerset(uvlong)
 {

@@ -202,6 +202,7 @@ void		pageinit(void);
 void		pagersummary(void);
 void		panic(char*, ...);
 Cmdbuf*		parsecmd(char *a, int n);
+ulong		perfticks(void);
 void		pexit(char*, int);
 void		printinit(void);
 int		procindex(ulong);

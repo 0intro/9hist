@@ -211,9 +211,9 @@ runproc(void)
 	Schedq *rq, *xrq;
 	Proc *p, *l;
 	ulong rt;
-	uvlong start;
+	ulong start, now;
 
-	start = 0;
+	start = perfticks();
 
 	if ((p = edf->edfrunproc()) != nil)
 		return p;
@@ -265,9 +265,12 @@ loop:
 				}
 			}
 		}
-		if(start == 0)
-			start = fastticks(nil);
+
+		/* remember how much time we're here */
 		idlehands();
+		now = perfticks();
+		m->perf.inidle += now-start;
+		start = now;
 	}
 
 found:
@@ -306,8 +309,6 @@ found:
 		p->movetime = MACHP(0)->ticks + HZ/10;
 	p->mp = MACHP(m->machno);
 
-	if(start)
-		m->inidle += fastticks(nil)-start;
 	return p;
 }
 
@@ -1235,7 +1236,7 @@ void
 accounttime(void)
 {
 	Proc *p;
-	ulong n;
+	ulong n, per;
 	static ulong nrun;
 
 	p = m->proc;
@@ -1243,6 +1244,20 @@ accounttime(void)
 		nrun++;
 		p->time[p->insyscall]++;
 	}
+
+	/* calculate decaying duty cycles */
+	n = perfticks();
+	per = n - m->perf.last;
+	m->perf.last = n;
+	if(per == 0)
+		per = 1;
+	m->perf.period = (m->perf.period*(HZ-1)+per)/HZ;
+
+	m->perf.avg_inidle = (m->perf.avg_inidle*(HZ-1)+m->perf.inidle)/HZ;
+	m->perf.inidle = 0;
+
+	m->perf.avg_inintr = (m->perf.avg_inintr*(HZ-1)+m->perf.inintr)/HZ;
+	m->perf.inintr = 0;
 
 	/* only one processor gets to compute system load averages */
 	if(m->machno != 0)
@@ -1253,10 +1268,6 @@ accounttime(void)
 	nrun = 0;
 	n = (nrdy+n)*1000;
 	m->load = (m->load*19+n)/20;
-
-	/* calculate decaying duty cycle average */
-	m->avginidle = (m->avginidle*(HZ-1)+m->inidle)/HZ;
-	m->inidle = 0;
 }
 
 static void

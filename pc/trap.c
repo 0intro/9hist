@@ -249,19 +249,24 @@ static char* excname[32] = {
 };
 
 /*
- *  keep histogram of interrupt service times (tops off at 1/100 second)
+ *  keep histogram of interrupt service times
  */
 void
-intrtime(Mach *m, int vno)
+intrtime(Mach*, int vno)
 {
-	uvlong now;
 	ulong diff;
+	ulong x = perfticks();
 
-	rdtsc(&now);
-	diff = now - m->intrts;
+	diff = x - m->perf.intrts;
+	m->perf.intrts = x;
+
+	m->perf.inintr += diff;
+	if(up == nil && m->perf.inidle > diff)
+		m->perf.inidle -= diff;
+
 	diff /= m->cpumhz;
-	if(diff >= 1000)
-		diff = 999;
+	if(diff >= Ntimevec)
+		diff = Ntimevec-1;
 	intrtimes[vno][diff]++;
 }
 
@@ -280,8 +285,7 @@ trap(Ureg* ureg)
 	Vctl *ctl, *v;
 	Mach *mach;
 
-	if(m->havetsc)
-		 rdtsc(&m->intrts);
+	m->perf.intrts = perfticks();
 	user = 0;
 	if((ureg->cs & 0xFFFF) == UESEL){
 		user = 1;
@@ -304,8 +308,6 @@ trap(Ureg* ureg)
 		}
 		if(ctl->eoi)
 			ctl->eoi(vno);
-		if(ctl->isintr && m->havetsc)
-			intrtime(m, vno);
 
 		/* 
 		 *  preemptive scheduling.  to limit stack depth,
@@ -319,11 +321,14 @@ trap(Ureg* ureg)
 		if(up->preempted == 0)
 		if(!active.exiting){
 			up->preempted = 1;
+			intrtime(m, vno);
 			sched();
 			splhi();
 			up->preempted = 0;
 			return;
 		}
+		if(ctl->isintr)
+			intrtime(m, vno);
 	}
 	else if(vno <= nelem(excname) && user){
 		spllo();

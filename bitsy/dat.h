@@ -133,13 +133,11 @@ struct Mach
 	int	load;
 	int	intr;
 	vlong	fastclock;		/* last sampled value */
-	vlong	intrts;			/* time stamp of last interrupt */
 	uvlong	inidle;			/* time spent in idlehands() */
 	ulong	spuriousintr;
 	int	lastintr;
 	int	ilockdepth;
-	ulong	inidle;			/* fastticks in idlehands() since last slowtick */
-	ulong	avginidle;		/* avg fastticks in idlehands() per slowtick */
+	Perf	perf;			/* performance counters */
 
 	int	flushmmu;		/* make current proc flush it's mmu state */
 	Proc	*pid2proc[31];		/* what proc holds what pid */

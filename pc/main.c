@@ -104,11 +104,6 @@ main(void)
 	initseg();
 	links();
 conf.monitor = 1;
-{int x; uvlong start, end;
-rdtsc(&start);
-for(x = 0; x < 10000; x++) rdtsc(&end);
-print("%lld\n", end-start);
-}
 	chandevreset();
 	i8253link();
 	pageinit();

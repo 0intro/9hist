@@ -24,6 +24,7 @@ typedef struct Mhead	Mhead;
 typedef struct Note	Note;
 typedef struct Page	Page;
 typedef struct Palloc	Palloc;
+typedef struct Perf	Perf;
 typedef struct Pgrps	Pgrps;
 typedef struct PhysUart	PhysUart;
 typedef struct Pgrp	Pgrp;
@@ -859,6 +860,20 @@ struct Edfinterface {
 	void		(*edfexpel)(Task *t);
 	char *	(*edfadmit)(Task *t);
 	void		(*edfdeadline)(Proc *p);
+};
+
+/*
+ *  performance timers, all units in perfticks
+ */
+struct Perf
+{
+	ulong	intrts;		/* time of last interrupt */
+	ulong	inintr;		/* time since last clock tick in interrupt handlers */
+	ulong	avg_inintr;	/* avg time per clock tick in interrupt handlers */
+	ulong	inidle;		/* time since last clock tick in idle loop */
+	ulong	avg_inidle;	/* avg time per clock tick in idle loop */
+	ulong	last;		/* value of perfticks() at last clock tick */
+	ulong	period;		/* perfticks() per clock tick */
 };
 
 /* queue state bits,  Qmsg, Qcoalesce, and Qkick can be set in qopen */

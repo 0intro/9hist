@@ -162,3 +162,13 @@ microdelay(int µs)
 		}
 	}
 }
+
+/*  
+ *  performance measurement ticks.  must be low overhead.
+ *  doesn't have to count over a second.
+ */
+ulong
+perfticks(void)
+{
+	return timerregs->oscr;
+}

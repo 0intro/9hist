@@ -322,3 +322,18 @@ microdelay(int microsecs)
 		microsecs = 1;
 	aamloop(microsecs);
 }
+
+/*  
+ *  performance measurement ticks.  must be low overhead.
+ *  doesn't have to count over a second.
+ */
+ulong
+perfticks(void)
+{
+	uvlong x;
+
+	if(!m->havetsc)
+		return m->ticks;
+	rdtsc(&x);
+	return x;
+}
