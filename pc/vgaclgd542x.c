@@ -3,6 +3,7 @@
 #include "mem.h"
 #include "dat.h"
 #include "fns.h"
+#include "io.h"
 #include "../port/error.h"
 
 #include <libg.h>
@@ -23,6 +24,44 @@ clgd542xpage(int page)
 	unlock(&clgd542xlock);
 }
 
+static int
+clgd542xlinear(ulong* mem, ulong* size, ulong* align)
+{
+	ulong baseaddr;
+	static Pcidev *p;
+
+	if((*size && *size < 16*MB) || (*align && (*align & (16*MB-1))))
+		return 0;
+
+	*mem = 0;
+
+	/*
+	 * This obviously isn't good enough on a system with
+	 * more than one PCI card from Cirrus.
+	 */
+	if(p == 0 && (p = pcimatch(p, 0x1013, 0)) == 0)
+		return 0;
+
+	switch(p->did){
+
+	case 0xA0:
+	case 0xA8:
+	case 0xAC:
+		break;
+
+	default:
+		return 0;
+	}
+
+	if((baseaddr = upamalloc(0, *size, *align)) == 0)
+		return 0;
+	*mem = baseaddr;
+	baseaddr = PADDR(baseaddr);
+	pcicfgw32(p, PciBAR0, baseaddr);
+
+	return *mem;
+}
+
 static void
 disable(void)
 {
@@ -38,6 +77,7 @@ static void
 enable(void)
 {
 	uchar sr12;
+	int mem, x;
  
 	/*
 	 * Disable the cursor.
@@ -54,32 +94,45 @@ enable(void)
 	setcolor(0x0F, Pblack<<(32-6), Pblack<<(32-6), Pblack<<(32-6));
 	vgaxo(Seqx, 0x12, sr12);
 
-	/*
-	 * Memory size. The BIOS leaves this in Seq0A, bits 4 and 3.
-	 * See Technical Reference Manual Appendix E1, Section 1.3.2.
-	 *
-	 * The storage area for the 64x64 cursors is the last 16Kb of
-	 * display memory.
-	 */
-	switch((vgaxi(Seqx, 0x0A)>>3) & 0x03){
+	mem = 0;
+	switch(vgaxi(Crtx, 0x27) & ~0x03){
 
-	case 0:
-		storage = (256-16)*1024;
+	case 0x88:				/* CL-GD5420 */
+	case 0x8C:				/* CL-GD5422 */
+	case 0x94:				/* CL-GD5424 */
+	case 0x80:				/* CL-GD5425 */
+	case 0x90:				/* CL-GD5426 */
+	case 0x98:				/* CL-GD5427 */
+	case 0x9C:				/* CL-GD5429 */
+		/*
+		 * The BIOS leaves the memory size in Seq0A, bits 4 and 3.
+		 * See Technical Reference Manual Appendix E1, Section 1.3.2.
+		 *
+		 * The storage area for the 64x64 cursors is the last 16Kb of
+		 * display memory.
+		 */
+		mem = (vgaxi(Seqx, 0x0A)>>3) & 0x03;
 		break;
 
-	case 1:
-		storage = (512-16)*1024;
+	case 0xA0:				/* CL-GD5430 */
+	case 0xA8:				/* CL-GD5434 */
+	case 0xAC:				/* CL-GD5436 */
+		/*
+		 * Attempt to intuit the memory size from the DRAM control
+		 * register. Minimum is 512KB.
+		 * If DRAM bank switching is on then there's double.
+		 */
+		x = vgaxi(Seqx, 0x0F);
+		mem = (x>>3) & 0x03;
+		if(x & 0x80)
+			mem++;
 		break;
 
-	case 2:
-		storage = (1024-16)*1024;
-		break;
-
-	case 3:
-		storage = (2048-16)*1024;
+	default:				/* uh, ah dunno */
 		break;
 	}
- 
+	storage = ((256<<mem)-16)*1024;
+
 	/*
 	 * Set the current cursor to index 0
 	 * and turn the 64x64 cursor on.
@@ -107,7 +160,9 @@ initcursor(Cursor* c, int xo, int yo, int index)
 		vgaxo(Grx, 0x09, (storage>>16)<<4);
 		p = ((uchar*)gscreen.base) + (storage & 0xFFFF);
 	}
-	p += index*1024;
+//	p += index*1024;
+memset(p, 0xFF, 16*1024);
+return;
 
 	for(y = yo; y < 16; y++){
 		p0 = c->clr[2*y];
@@ -225,6 +280,7 @@ static Hwgc clgd542xhwgc = {
 static Vgac clgd542x = {
 	"clgd542x",
 	clgd542xpage,
+	clgd542xlinear,
 
 	0,
 };
