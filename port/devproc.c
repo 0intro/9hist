@@ -671,7 +671,7 @@ procctlmemio(Proc *p, ulong offset, int n, void *va, int read)
 		if(offset+n >= s->top)
 			n = s->top-offset;
 
-		if((s->type&SG_TYPE) == SG_TEXT)
+		if(read == 0 && (s->type&SG_TYPE) == SG_TEXT)
 			s = txt2data(p, s);
 
 		s->steal++;

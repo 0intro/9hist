@@ -371,7 +371,7 @@ Dirtab consdir[]={
 	"sysname",	{Qsysname},	0,		0664,
 	"sysstat",	{Qsysstat},	0,		0666,
 	"time",		{Qtime},	NUMSIZE,	0664,
- 	"user",		{Quser},	NAMELEN,	0664,
+ 	"user",		{Quser},	NAMELEN,	0666,
 };
 
 #define	NCONS	(sizeof consdir/sizeof(Dirtab))
