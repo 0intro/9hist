@@ -434,7 +434,7 @@ atasetrwmode(Drive* drive, int cmdport, int ctlport, int dev)
 	if(ataready(cmdport, ctlport, dev, Bsy|Drq, Drdy, 100*1000) < 0)
 		return 0;
 	outb(cmdport+Sector, block);
-	outb(cmdport+Command, Csf);
+	outb(cmdport+Command, Csm);
 	microdelay(1);
 	as = ataready(cmdport, ctlport, dev, Bsy, Drdy|Df|Err, 1000);
 	if(as < 0 || (as & (Df|Err)))
