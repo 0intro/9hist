@@ -798,3 +798,33 @@ exhausted(char *resource)
 	sprint(buf, "no free %s", resource);
 	error(buf);
 }
+
+void
+killbig(void)
+{
+	int i;
+	Segment *s;
+	ulong l, max;
+	Proc *p, *ep, *kp;
+
+	max = 0;
+	kp = 0;
+	ep = procalloc.arena+conf.nproc;
+	for(p = procalloc.arena; p < ep; p++) {
+		if(p->state == Dead || p->kp)
+			continue;
+		l = 0;
+		for(i=1; i<NSEG; i++){
+			s = p->seg[i];
+			if(s)
+				l += s->top - s->base;
+		}
+		if(l > max) {
+			kp = p;
+			max = l;
+		}
+	}
+	print("%d: %s killed because no swap configured", kp->pid, kp->text);
+	kp->procctl = Proc_exitme;
+	postnote(kp, 1, "killed: proc too big", NExit);
+}

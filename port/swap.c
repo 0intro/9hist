@@ -154,6 +154,8 @@ loop:
 		else {
 			if(!cpuserver)
 				freebroken();	/* can use the memory */
+			else
+				killbig();
 
 			/* Emulate the old system if no swap channel */
 			print("no physical memory\n");

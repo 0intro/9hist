@@ -107,6 +107,7 @@ void		kbdrepeat(int);
 long		keyread(char*, int, long);
 long		keywrite(char*, int);
 void		kickpager(void);
+void		killbig(void);
 int		kprint(char*, ...);
 void		kproc(char*, void(*)(void*), void*);
 void		kprocchild(Proc*, void (*)(void*), void*);
