@@ -666,6 +666,7 @@ pexit(char *exitstr, int freemem)
 		if(exitstr && exitstr[0]){
 			n = sprint(wq->w.msg, "%s %d:", up->text, up->pid);
 			strncpy(wq->w.msg+n, exitstr, ERRLEN-n);
+			wq->w.msg[ERRLEN-1] = 0;
 		}
 		else
 			wq->w.msg[0] = '\0';

@@ -486,6 +486,7 @@ sysexits(ulong *arg)
 {
 	char *status;
 	char *inval = "invalid exit string";
+	char buf[ERRLEN];
 
 	status = (char*)arg[0];
 	if(status){
@@ -493,8 +494,11 @@ sysexits(ulong *arg)
 			status = inval;
 		else{
 			validaddr((ulong)status, 1, 0);
-			if(vmemchr(status, 0, ERRLEN) == 0)
-				status = inval;
+			if(vmemchr(status, 0, ERRLEN) == 0){
+				memmove(buf, status, ERRLEN);
+				buf[ERRLEN-1] = 0;
+				status = buf;
+			}
 		}
 		poperror();
 

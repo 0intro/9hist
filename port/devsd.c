@@ -87,7 +87,8 @@ sdinit(void)
 {
 	Disk *d;
 	ulong s, b;
-	int dev, i;
+	uchar inq[255];
+	int dev, i, nbytes;
 
 	dev = 0;
 	for(;;) {
@@ -102,7 +103,18 @@ sdinit(void)
 		/* Search for other lun's */
 		for(i = 0; i < Nlun; i++) {
 			d->lun = i;
+
 			scsireqsense(d->t, d->lun, 1);
+
+			/*
+			 * A SCSI target does not support a lun if the
+			 * the peripheral device type and qualifier fields
+			 * in the response to an inquiry command are 0x7F.
+			 */
+			memset(inq, 0, sizeof(inq));
+			nbytes = sizeof(inq);
+			if(scsiinquiry(d->t, d->lun, inq, &nbytes) != STok || inq[0] == 0x7F)
+				continue;
 
 			/* NCR Raid only seems to answer second capacity
 			 * command if lun != 0

@@ -59,8 +59,8 @@ main(void)
 	kbdinit();
 	procinit0();
 	initseg();
-	links();
 	printcpufreq();
+	links();
 	chandevreset();
 	swapinit();
 	userinit();

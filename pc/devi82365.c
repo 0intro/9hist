@@ -41,6 +41,9 @@ enum
 	Rwe= 		0x6,		/* address window enable */
 	 Fmem16=	 (1<<5),	/*  use A23-A12 to decode address */
 	Rio= 		0x7,		/* I/O control */
+	 Fwidth16=	 (1<<0),	/*  16 bit data width */
+	 Fiocs16=	 (1<<1),	/*  IOCS16 determines data width */
+	 Ftiming=	 (1<<3),	/*  timing register to use */
 	Riobtm0lo=	0x8,		/* I/O address 0 start low byte */
 	Riobtm0hi=	0x9,		/* I/O address 0 start high byte */
 	Riotop0lo=	0xa,		/* I/O address 0 stop low byte */
@@ -126,6 +129,7 @@ struct Conftab
 	int	index;
 	ushort	irqs;		/* legal irqs */
 	ushort	port;		/* port address */
+	uchar	irqtype;
 	uchar	nioregs;	/* number of io registers */
 	uchar	bit16;		/* true for 16 bit access */
 	uchar	vpp1;
@@ -239,11 +243,17 @@ slotena(Slot *pp)
 	if(pp->enabled)
 		return;
 
-	/* power up and reset, wait's are empirical (???) */
+	/* power up and unreset, wait's are empirical (???) */
 	wrreg(pp, Rpc, Fautopower|Foutena|Fcardena);
 	delay(300);
-	wrreg(pp, Rigc, 0);
-	delay(100);
+	wrreg(pp, Rigc, Fnotreset);
+	delay(500);
+
+	wrreg(pp, Rpc, 0);
+	delay(500);
+
+	wrreg(pp, Rpc, Fautopower|Foutena|Fcardena);
+	delay(300);
 	wrreg(pp, Rigc, Fnotreset);
 	delay(500);
 
@@ -253,7 +263,7 @@ slotena(Slot *pp)
 		cisread(pp);
 		pp->enabled = 1;
 	} else
-		wrreg(pp, Rpc, Fautopower);
+		wrreg(pp, Rpc, 0);
 }
 
 /*
@@ -262,8 +272,8 @@ slotena(Slot *pp)
 static void
 slotdis(Slot *pp)
 {
-	wrreg(pp, Rpc, Fautopower);		/* turn off card */
-	wrreg(pp, Rwe, 0);			/* no windows */
+	wrreg(pp, Rwe, 0);		/* no windows */
+	wrreg(pp, Rpc, 0);		/* turn off card power */
 	pp->enabled = 0;
 }
 
@@ -606,10 +616,7 @@ i82365reset(void)
 			pp->memlen = 64*MB;
 			pp->base = (cp->dev<<7) | (j<<6);
 			pp->cp = cp;
-if(pp == slot)i82365dump(pp);
-/*
 			slotdis(pp);
-*/
 
 			/* interrupt on status change */
 			wrreg(pp, Rcscic, ((PCMCIAvec-Int0vec)<<4) | Fchangeena);
@@ -796,6 +803,16 @@ i82365read(Chan *c, void *a, long n, ulong offset)
 		if(pp->busy)
 			cp += sprint(cp, "busy\n");
 		cp += sprint(cp, "battery lvl %d\n", pp->battery);
+{
+	int i;
+
+	for(i = 0; i < 0x40; i++){
+		if((i&0x7) == 0)
+			cp += sprint(cp, "\n%ux:	", i);
+		cp += sprint(cp, "%ux ", rdreg(pp, i));
+	}
+	cp += sprint(cp, "\n");
+}
 		*cp = 0;
 		return readstr(offset, a, n, buf);
 	default:
@@ -915,13 +932,16 @@ pcmio(int slotno, ISAConf *isa)
 		isa->irq = 9;
 	wrreg(pp, Rigc, isa->irq | Fnotreset | Fiocard);
 	
-	/* set power and enable slotnoice */
+	/* set power and enable device */
 	x = vcode(ct->vpp1);
 	wrreg(pp, Rpc, x|Fautopower|Foutena|Fcardena);
 
 	/* 16-bit data path */
 	if(ct->bit16)
-		wrreg(pp, Rio, (1<<0)|(1<<1));
+		x = Fiocs16|Fwidth16;
+	else
+		x = 0;
+	wrreg(pp, Rio, Ftiming|x);
 
 	/* enable io port map 0 */
 	if(isa->port == 0)
@@ -929,8 +949,8 @@ pcmio(int slotno, ISAConf *isa)
 	we = rdreg(pp, Rwe);
 	wrreg(pp, Riobtm0lo, isa->port);
 	wrreg(pp, Riobtm0hi, isa->port>>8);
-	wrreg(pp, Riotop0lo, (isa->port+ct->nioregs));
-	wrreg(pp, Riotop0hi, (isa->port+ct->nioregs)>>8);
+	wrreg(pp, Riotop0lo, (isa->port+ct->nioregs-1));
+	wrreg(pp, Riotop0hi, (isa->port+ct->nioregs-1)>>8);
 	wrreg(pp, Rwe, we | (1<<6));
 
 	/* only touch Rconfig if it is present */
@@ -938,21 +958,14 @@ pcmio(int slotno, ISAConf *isa)
 		/*  Reset adapter */
 		m = pcmmap(slotno, pp->caddr + Rconfig, 1, 1);
 		p = (uchar*)(KZERO|(m->isa + pp->caddr + Rconfig - m->ca));
-if(strstr(pp->verstr, "KeepInTouch") == 0){
-		*p = Creset;
-		delay(5);
-		*p = 0;
-		delay(5);
-}
 
-		/* set configuration */
-if(strstr(pp->verstr, "KeepInTouch") == 0){
-		if(isa->irq > 7)
-			*p = Clevel | ct->index;
-		else
-			*p = ct->index;
+		/* set configuration and interrupt type */
+		x = ct->index;
+		if((ct->irqtype & 0x20) && ((ct->irqtype & 0x40)==0 || isa->irq>7))
+			x |= Clevel;
+		*p = x|ct->index;
 		delay(5);
-} else i82365dump(pp);
+
 		pcmunmap(slotno, m);
 	}
 	return 0;
@@ -1066,15 +1079,26 @@ microvolt(Slot *pp)
 {
 	uchar c;
 	ulong microvolts;
+	ulong exp;
 
 	if(readc(pp, &c) != 1)
 		return 0;
-	microvolts = vexp[c&0x7]*vmant[(c>>3)&0xf];
+	exp = vexp[c&0x7];
+	microvolts = vmant[(c>>3)&0xf]*exp;
 	while(c & 0x80){
 		if(readc(pp, &c) != 1)
 			return 0;
-		if(c == 0x7d || c == 0x7e || c == 0x7f)
-			microvolts = 0;
+		switch(c){
+		case 0x7d:
+			break;		/* high impedence when sleeping */
+		case 0x7e:
+		case 0x7f:
+			microvolts = 0;	/* no connection */
+			break;
+		default:
+			exp /= 10;
+			microvolts += exp*(c&0x7f);
+		}
 	}
 	return microvolts;
 }
@@ -1121,7 +1145,7 @@ power(Slot *pp)
 		nanoamps(pp);
 	if(feature & 0x20)
 		nanoamps(pp);
-	if(feature & 0x20)
+	if(feature & 0x40)
 		nanoamps(pp);
 	return mv/1000000;
 }
@@ -1195,6 +1219,7 @@ irq(Slot *pp, Conftab *ct)
 
 	if(readc(pp, &c) != 1)
 		return;
+	ct->irqtype = c & 0xe0;
 	if(c & 0x10)
 		ct->irqs = getlong(pp, 2);
 	else
@@ -1271,7 +1296,7 @@ tentry(Slot *pp, int ttype)
 		iospaces(pp, ct);
 	if(feature&0x10)
 		irq(pp, ct);
-	switch(feature&0x3){
+	switch((feature>>5)&0x3){
 	case 1:
 		memspace(pp, 0, 2, 0);
 		break;

@@ -414,7 +414,8 @@ ns16552kick(Uart *p)
 	x = splhi();
 	lock(&p->plock);
 	if(p->printing == 0 || (uartrdreg(p, Lstat) & Outready))
-	if(p->cts && p->blocked == 0){
+	if(p->cts && p->blocked == 0)
+	if(p->op < p->oe || stageoutput(p)){
 		n = 0;
 		while((uartrdreg(p, Lstat) & Outready) == 0){
 			if(++n > 100000){
@@ -423,9 +424,9 @@ ns16552kick(Uart *p)
 			}
 		}
 		do{
+			outb(p->port + Data, *(p->op++));
 			if(p->op >= p->oe && stageoutput(p) == 0)
 				break;
-			outb(p->port + Data, *(p->op++));
 		}while(uartrdreg(p, Lstat) & Outready);
 	}
 	unlock(&p->plock);
@@ -813,6 +814,12 @@ uartstatus(Chan *c, Uart *p, void *buf, long n, long offset)
 		strcat(str, " dtr");
 	if(tstat & Rts)
 		strcat(str, " rts");
+{
+int i, j;
+
+i = strlen(str);
+for(j = 0; j < 8; j++) i+=sprint(str+i, " %ux", uartrdreg(p, j));
+}
 	strcat(str, "\n");
 	return readstr(offset, buf, n, str);
 }

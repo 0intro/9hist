@@ -12,8 +12,14 @@ enum {
 	Ninq		= 255,
 	Nscratch	= 255,
 
+	CMDtest		= 0x00,
 	CMDreqsense	= 0x03,
+	CMDread6	= 0x08,
+	CMDwrite6	= 0x0A,
 	CMDinquire	= 0x12,
+	CMDstart	= 0x1B,
+	CMDread10	= 0x28,
+	CMDwrite10	= 0x2A,
 };
 
 typedef struct {
@@ -142,14 +148,12 @@ scsiprobe(Ctlr *ctlr)
 		}
 
 		/*
-		 * Inquire to find out what the device is
+		 * Inquire to find out what the device is.
 		 * Drivers then use the result to attach to targets
 		 */
 		memset(t->inq, 0, Ninq);
-		cmd[0] = CMDinquire;
-		cmd[4] = Ninq;
 		nbytes = Ninq;
-		s = scsiexec(t, SCSIread, cmd, sizeof(cmd), t->inq, &nbytes);
+		s = scsiinquiry(t, 0, t->inq, &nbytes);
 		if(s < 0) {
 			print("scsi%d: unit %d inquire failed, status %d\n", t->ctlrno, i, s);
 			continue;
@@ -196,7 +200,7 @@ scsiinv(int devno, int type, Target **rt, uchar **inq, char *id)
 
 		t = &scsi[ctlr]->target[unit];
 		devno++;
-		if(t->ok && (t->inq[0]&0x0F) == type){
+		if(t->ok && (t->inq[0]&0x1F) == type){
 			*rt = t;
 			*inq = t->inq;
 			sprint(id, "scsi%d: unit %d", ctlr, unit);
@@ -212,10 +216,22 @@ scsistart(Target *t, char lun, int s)
 	uchar cmd[6];
 
 	memset(cmd, 0, sizeof cmd);
-	cmd[0] = 0x1b;
+	cmd[0] = CMDstart;
 	cmd[1] = lun<<5;
 	cmd[4] = s ? 1 : 0;
 	return scsiexec(t, SCSIread, cmd, sizeof(cmd), 0, 0);
+}
+
+int
+scsiinquiry(Target *t, char lun, void *data, int *datalen)
+{
+	uchar cmd[6];
+
+	memset(cmd, 0, sizeof cmd);
+	cmd[0] = CMDinquire;
+	cmd[1] = lun<<5;
+	cmd[4] = *datalen;
+	return scsiexec(t, SCSIread, cmd, sizeof(cmd), data, datalen);
 }
 
 int
