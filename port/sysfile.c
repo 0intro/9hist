@@ -26,7 +26,7 @@ newfd(Chan *c)
 		}
 	unlock(f);
 	exhausted("file descriptors");
-	return 0;		/* not reached */
+	return 0;
 }
 
 Chan*
@@ -194,10 +194,11 @@ sysclose(ulong *arg)
 long
 unionread(Chan *c, void *va, long n)
 {
-	Chan *nc;
-	Pgrp *pg = u->p->pgrp;
 	long nr;
+	Chan *nc;
+	Pgrp *pg;
 
+	pg = u->p->pgrp;
 	rlock(&pg->ns);
 
 	for(;;) {
@@ -208,17 +209,17 @@ unionread(Chan *c, void *va, long n)
 		nc = clone(c->mnt->to, 0);
 		poperror();
 
-		if(c->mountid != c->mnt->mountid){
+		if(c->mountid != c->mnt->mountid) {
 			pprint("unionread: changed underfoot?\n");
 			runlock(&pg->ns);
 			close(nc);
 			return 0;
 		}
 
-		if(waserror()){
-			runlock(&pg->ns);
+		/* Error causes component of union to be skipped */
+		if(waserror()) {	
 			close(nc);
-			nexterror();
+			goto next;
 		}
 
 		nc = (*devtab[nc->type].open)(nc, OREAD);
@@ -233,9 +234,8 @@ unionread(Chan *c, void *va, long n)
 			runlock(&pg->ns);
 			return nr;
 		}
-		/*
-		 * Advance to next element
-		 */
+		/* Advance to next element */
+	next:
 		c->mnt = c->mnt->next;
 		if(c->mnt == 0)
 			break;

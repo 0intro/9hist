@@ -12,8 +12,8 @@ Syscall sysdup;
 Syscall sysalarm;
 Syscall sysexec;
 Syscall sysexits;
-Syscall sysdeath;
-Syscall sysdeath;
+Syscall sys_x1;
+Syscall sys_x2;
 Syscall sysfstat;
 Syscall syssegbrk;
 Syscall sysmount;
@@ -26,7 +26,7 @@ Syscall sysrfork;
 Syscall syswrite;
 Syscall syspipe;
 Syscall syscreate;
-Syscall sysdeath;
+Syscall sys_x3;
 Syscall sysbrk_;
 Syscall sysremove;
 Syscall syswstat;
@@ -40,6 +40,7 @@ Syscall syssegflush;
 Syscall sysrendezvous;
 Syscall sysunmount;
 Syscall syswait;
+Syscall	sysdeath;
 
 Syscall *systab[]={
 	[SYSR1]		sysr1,
@@ -51,8 +52,8 @@ Syscall *systab[]={
 	[ALARM]		sysalarm,
 	[EXEC]		sysexec,
 	[EXITS]		sysexits,
-	[__FORK__]	sysdeath,
-	[__FORKPGRP__]	sysdeath,
+	[_X1]		sysdeath,
+	[_X2]		sysdeath,
 	[FSTAT]		sysfstat,
 	[SEGBRK]	syssegbrk,
 	[MOUNT]		sysmount,
@@ -65,7 +66,7 @@ Syscall *systab[]={
 	[WRITE]		syswrite,
 	[PIPE]		syspipe,
 	[CREATE]	syscreate,
-	[__RFORK__]	sysdeath,
+	[_X3]		sysdeath,
 	[BRK_]		sysbrk_,
 	[REMOVE]	sysremove,
 	[WSTAT]		syswstat,
@@ -91,8 +92,8 @@ char *sysctab[]={
 	[ALARM]		"Alarm",
 	[EXEC]		"Exec",
 	[EXITS]		"Exits",
-	[__FORK__]	"__fork_",
-	[__FORKPGRP__]	"__forkpgrp_",
+	[_X1]		"_x1",
+	[_X2]		"_x2",
 	[FSTAT]		"Fstat",
 	[SEGBRK]	"Segbrk",
 	[MOUNT]		"Mount",
@@ -105,7 +106,7 @@ char *sysctab[]={
 	[WRITE]		"Write",
 	[PIPE]		"Pipe",
 	[CREATE]	"Create",
-	[__RFORK__]	"__rfork_",
+	[_X3]		"_x3",
 	[BRK_]		"Brk",
 	[REMOVE]	"Remove",
 	[WSTAT]		"Wstat",

@@ -21,6 +21,7 @@
 enum
 {
 	Maxpow		= 18,
+	CUTOFF		= 12,
 	Nhole		= 128,
 	Magichole	= 0xDeadBabe,
 	Magic2n		= 0xFeedBeef,
@@ -134,7 +135,7 @@ xspanalloc(ulong size, int align, ulong span)
 	for(i = 0; i < Spanlist; i++) {
 		p = (ulong)xalloc(size+align);
 		if(p == 0)
-			panic("xspanalloc: size %d align %d span %lux", size, align, span);
+			panic("xspanalloc: %d %d %lux", size, align, span);
 
 		a = p+align;
 		a &= ~(align-1);
@@ -256,8 +257,9 @@ xhole(ulong addr, ulong size)
 void*
 malloc(ulong size)
 {
-	int pow;
-	Bucket *bp;
+	ulong next;
+	int pow, n;
+	Bucket *bp, *nbp;
 
 	for(pow = 3; pow <= Maxpow; pow++)
 		if(size <= (1<<pow))
@@ -280,12 +282,37 @@ good:
 		memset(bp->data, 0,  size);
 		return  bp->data;
 	}
-	arena.nbuck[pow]++;
 	unlock(&arena);
+
 	size = sizeof(Bucket)+(1<<pow);
-	bp = xalloc(size);
-	if(bp == nil)
-		return nil;
+	size += 3;
+	size &= ~3;
+
+	if(pow < CUTOFF) {
+		n = (CUTOFF-pow)+2;
+		bp = xalloc(size*n);
+		if(bp == nil)
+			return nil;
+
+		next = (ulong)bp+size;
+		nbp = (Bucket*)next;
+		lock(&arena);
+		arena.btab[pow] = nbp;
+		arena.nbuck[pow] += n;
+		for(n -= 2; n; n--) {
+			next = (ulong)nbp+size;
+			nbp->next = (Bucket*)next;
+			nbp->size = pow;
+			nbp = nbp->next;
+		}
+		nbp->size = pow;
+		unlock(&arena);
+	}
+	else {
+		bp = xalloc(size);
+		if(bp == nil)
+			return nil;
+	}
 
 	bp->size = pow;
 	bp->magic = Magic2n;

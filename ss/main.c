@@ -133,6 +133,7 @@ userinit(void)
 	strcpy(p->text, "*init*");
 	strcpy(p->user, eve);
 	savefpregs(&initfp);
+/*	initfp.fsr |= 0x1E << 23;	/* trap on all but INEXACT */
 	p->fpstate = FPinit;
 
 	/*

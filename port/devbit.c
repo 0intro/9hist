@@ -75,6 +75,7 @@ struct
 	int	nsubfont;	/* number allocated */
 	Arena	*arena;		/* array */
 	int	narena;		/* number allocated */
+	int	mouseopen;	/* flag: mouse open */
 	int	bid;		/* last allocated bitmap id */
 	int	subfid;		/* last allocated subfont id */
 	int	cacheid;	/* last cached subfont id */
@@ -326,10 +327,22 @@ bitopen(Chan *c, int omode)
 {
 	GBitmap *b;
 
-	if(c->qid.path == CHDIR){
+	switch(c->qid.path){
+	case CHDIR:
 		if(omode != OREAD)
 			error(Eperm);
-	}else if(c->qid.path == Qbitblt){
+		break;
+	case Qmouse:
+		lock(&bit);
+		if(bit.mouseopen){
+			unlock(&bit);
+			error(Einuse);
+		}
+		bit.mouseopen = 1;
+		bit.ref++;
+		unlock(&bit);
+		break;
+	case Qbitblt:
 		lock(&bit);
 		if(bit.ref){
 			unlock(&bit);
@@ -352,8 +365,10 @@ bitopen(Chan *c, int omode)
 		bit.ref = 1;
 		Cursortocursor(&arrow);
 		unlock(&bit);
-	}else
+		break;
+	default:
 		incref(&bit);
+	}
 	c->mode = openmode(omode);
 	c->flag |= COPEN;
 	c->offset = 0;
@@ -390,6 +405,8 @@ bitclose(Chan *c)
 
 	if(c->qid.path!=CHDIR && (c->flag&COPEN)){
 		lock(&bit);
+		if(c->qid.path == Qmouse)
+			bit.mouseopen = 0;
 		if(--bit.ref == 0){
 			ebp = &bit.map[bit.nmap];
 			for(bp = bit.map; bp<ebp; bp++){
@@ -1628,7 +1645,10 @@ bitstring(GBitmap *bp, Point pt, GFont *f, uchar *p, long l, Fcode fc)
 		if(!full){
 			rect.min.y = c->top;
 			rect.max.y = c->bottom;
-		}
+		}else if(c->left > 0)
+			gbitblt(bp, pt, f->b,
+				Rect(pt.x, pt.y, pt.x+c->left, pt.y+f->height),
+				fc==S? 0 : F);
 		rect.min.x = c->x;
 		rect.max.x = c->xright;
 		gbitblt(bp, Pt(pt.x+c->left, pt.y+rect.min.y), f->b, rect, fc);

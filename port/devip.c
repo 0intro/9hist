@@ -745,7 +745,8 @@ ipstatusfill(Chan *c, char *buf, int len)
 			ilstate[cp->ilctl.state], cp->ilctl.rtt,
 			cp->ifc ? cp->ifc->chkerrs : 0);
 	else
-		sprint(buf, "%s/%d %d\n", cp->ifc->protop->name, connection, cp->ref);
+		sprint(buf, "%s/%d %d Datagram\n",
+				cp->ifc->protop->name, connection, cp->ref);
 }
 
 int

@@ -302,7 +302,7 @@ Conf	conf;
 void
 confinit(void)
 {
-	int mul;
+	int mul, pcnt;
 	ulong ktop;
 
 	conf.nmach = 1;
@@ -315,7 +315,10 @@ confinit(void)
 	conf.npage1 = (bank[1]*MB)/BY2PG;
 	conf.base1 = 16*MB;
 	conf.npage = conf.npage0+conf.npage1;
-	conf.upages = (conf.npage*70)/100;
+
+	pcnt = screenbits()-1;		/* Calculate % of memory for page pool */
+	pcnt = 70 - (pcnt*10);
+	conf.upages = (conf.npage*pcnt)/100;
 
 	ktop = PGROUND((ulong)end);
 	ktop = PADDR(ktop);
