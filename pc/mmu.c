@@ -69,6 +69,9 @@ Segdesc gdt[] =
 [TSSSEG]	TSSSEGM(0,0),		/* tss segment */
 };
 
+static ulong	*ktoppt;	/* prototype top level page table
+				 * containing kernel mappings
+				 */
 static ulong	*toppt;		/* top level page table */	
 static ulong	*kpt;		/* kernel level page tables */
 static ulong	*upt;		/* page table for struct User */
