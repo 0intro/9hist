@@ -216,6 +216,8 @@ ipifcstate(Conv *c, char *state, int n)
 			" %-20.20I %-20.20M %-20.20I %-7lud %-7lud %-7lud %-7lud\n",
 				lifc->local, lifc->mask, lifc->remote,
 				ifc->in, ifc->out, ifc->inerr, ifc->outerr);
+	if(ifc->lifc == nil)
+		m += snprint(state+m, n - m, "\n");
 	runlock(ifc);
 	return m;
 }
@@ -394,14 +396,21 @@ ipifcadd(Ipifc *ifc, char **argv, int argc)
 
 	/* add a route for the local network */
 	type = Rifc;
-	if(ipcmp(mask, IPallbits) == 0)
+	if(ipcmp(mask, IPallbits) == 0){
+		/* point to point networks are a hack */
+		if(ipcmp(ip, rem) == 0)
+			findprimaryip(f, lifc->local);
 		type |= Rptpt;
+	}
 	if(isv4(ip))
 		v4addroute(f, tifc, rem+IPv4off, mask+IPv4off, ip+IPv4off, type);
 	else
 		v6addroute(f, tifc, rem, mask, ip, type);
 
 	addselfcache(f, ifc, lifc, ip, Runi);
+
+	if(type & Rptpt)
+		goto out;
 
 	/* add subnet directed broadcast addresses to the self cache */
 	for(i = 0; i < IPaddrlen; i++)
@@ -948,6 +957,29 @@ findipifc(Fs *f, uchar *remote, int type)
 }
 
 /*
+ *  returns first ip address configured
+ */
+void
+findprimaryip(Fs *f, uchar *local)
+{
+	Conv **cp, **e;
+	Ipifc *ifc;
+	Iplifc *lifc;
+
+	/* find first ifc local address */
+	e = &f->ipifc->conv[f->ipifc->nc];
+	for(cp = f->ipifc->conv; cp < e; cp++){
+		if(*cp == 0)
+			continue;
+		ifc = (Ipifc*)(*cp)->ptcl;
+		for(lifc = ifc->lifc; lifc; lifc = lifc->next){
+			ipmove(local, lifc->local);
+			return;
+		}
+	}
+}
+
+/*
  *  find the local address 'closest' to the remote system, copy it to
  *  local and return the ifc for that address
  */
@@ -956,7 +988,6 @@ findlocalip(Fs *f, uchar *local, uchar *remote)
 {
 	Ipifc *ifc;
 	Iplifc *lifc;
-	Conv **cp, **e;
 	Route *r;
 	uchar gate[IPaddrlen];
 	uchar gnet[IPaddrlen];
@@ -971,11 +1002,6 @@ findlocalip(Fs *f, uchar *local, uchar *remote)
 		else
 			ipmove(gate, r->v6.gate);
 
-		if(r->type & Rifc){
-			ipmove(local, gate);
-			goto out;
-		}
-
 		/* find ifc address closest to the gateway to use */
 		for(lifc = ifc->lifc; lifc; lifc = lifc->next){
 			maskip(gate, lifc->mask, gnet);
@@ -985,18 +1011,8 @@ findlocalip(Fs *f, uchar *local, uchar *remote)
 			}
 		}
 	}
-		
-	/* no match, choose first ifc local address */
-	e = &f->ipifc->conv[f->ipifc->nc];
-	for(cp = f->ipifc->conv; cp < e; cp++){
-		if(*cp == 0)
-			continue;
-		ifc = (Ipifc*)(*cp)->ptcl;
-		for(lifc = ifc->lifc; lifc; lifc = lifc->next){
-			ipmove(local, lifc->local);
-			goto out;
-		}
-	}
+
+	findprimaryip(f, local);
 
 out:
 	qunlock(f->ipifc);
