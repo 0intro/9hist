@@ -120,6 +120,7 @@ ulong	umbrwmalloc(ulong, int, int);
 void	umbrwfree(ulong, int);
 ulong	upamalloc(ulong, int, int);
 void	upafree(ulong, int);
+#define	userureg(ur) (((ur)->cs & 0xFFFF) == UESEL)
 void	vectortable(void);
 void	wrmsr(int, vlong);
 void	wbflush(void);

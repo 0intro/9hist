@@ -51,7 +51,7 @@ TEXT cacheflush(SB), $-4
 	ADD	$(8*1024),R0,R1
 _cfloop:
 	MOVW.P	32(R0),R2
-	CMP	R0,R1
+	CMP.S	R0,R1
 	BNE	_cfloop
 	
 	/* drain write buffer and invalidate i&d cache contents */
@@ -68,12 +68,13 @@ _cfloop:
 /* write back d cache */
 TEXT cachewb(SB), $-4
 	/* write back any dirty data */
+_cachewb:
 	MOVW	$0xe0000000,R0
 	ADD	$(8*1024),R0,R1
 _cwbloop:
 	MOVW.P	32(R0),R2
-	CMP	R0,R1
-	BNE	_cfloop
+	CMP.S	R0,R1
+	BNE	_cwbloop
 	
 	/* drain write buffer */
 	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0xa), 4
@@ -88,14 +89,15 @@ TEXT cachewbaddr(SB), $-4
 /* write back a region of cache lines */
 TEXT cachewbregion(SB), $-4
 	MOVW	4(FP),R1
-	BIC	$31,R0
+	CMP.S	$(4*1024),R1
+	BGT	_cachewb
 	ADD	R0,R1
-	ADD	$32,R1
-_cfrloop:
+	BIC	$31,R0
+_cwbrloop:
 	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0xa), 1
 	ADD	$32,R0
 	CMP.S	R0,R1
-	BNE	_cfrloop
+	BGT	_cwbrloop
 	B	_wbflush
 
 /* invalidate the dcache */
@@ -407,16 +409,6 @@ TEXT cpsrr(SB), $-4
 TEXT spsrr(SB), $-4
 	MOVW	SPSR, R0
 	RET
-
-TEXT aamloop(SB), $-4				/* 3 */
-_aamloop:
-	MOVW	R0, R0				/* 1 */
-	MOVW	R0, R0				/* 1 */
-	MOVW	R0, R0				/* 1 */
-	SUB	$1, R0				/* 1 */
-	CMP	$0, R0				/* 1 */
-	BNE	_aamloop			/* 3 */
-	RET					/* 3 */
 
 TEXT getcallerpc(SB), $-4
 	MOVW	0(R13), R0

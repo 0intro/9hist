@@ -108,6 +108,7 @@ struct Mach
 	Label	sched;			/* scheduler wakeup */
 	Lock	alarmlock;		/* access to alarm list */
 	void*	alarm;			/* alarms bound to this clock */
+	int	inclockintr;
 
 	ulong	fairness;		/* for runproc */
 

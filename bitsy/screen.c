@@ -15,7 +15,7 @@
 
 #define	MINX	8
 
-int landscape;	/* orientation of the screen, default is 0: portait */
+int landscape = 0;	/* orientation of the screen, default is 0: portait */
 
 enum {
 	Wid		= 240,
@@ -164,6 +164,7 @@ lcdstop(void) {
 static void
 lcdinit(void)
 {
+	/* the following line works because main memory is direct mapped */
 	lcd->dbar1 = framebuf->palette;
 	lcd->lccr3 = pcd<<PCD | 0<<ACB | 0<<API | 1<<VSP | 1<<HSP | 0<<PCP | 0<<OEP;
 	lcd->lccr2 = (Wid-1)<<LPP | vsw<<VSW | efw<<EFW | bfw<<BFW;
@@ -213,7 +214,6 @@ screeninit(void)
 	lcd = (struct sa1110regs*)mapspecial(LCDREGS, sizeof(struct sa1110regs));;
 
 	framebuf = xspanalloc(sizeof *framebuf, 0x100, 0);
-	/* the following works because main memory is direct mapped */
 
 	vscreen = xalloc(sizeof(ushort)*Wid*Ht);
 
@@ -251,12 +251,23 @@ void
 flushmemscreen(Rectangle r)
 {
 	int x, y;
+	ulong start, end;
 
-	if (landscape == 0)
+	if (landscape == 0) {
+		if (r.min.x <   0) r.min.x = 0;
+		if (r.max.x > Wid) r.max.x = Wid;
+		if (r.min.y <   0) r.min.y = 0;
+		if (r.max.y >  Ht) r.max.y = Ht;
 		for (x = r.min.x; x < r.max.x; x++)
 			for (y = r.min.y; y < r.max.y; y++)
-				framebuf->pixel[(x+1)*Ht-y-1] = vscreen[y*Wid+x];
-	cachewb();
+				framebuf->pixel[(x+1)*Ht-1-y] = vscreen[y*Wid+x];
+		start = (ulong)&framebuf->pixel[(r.min.x+1)*Ht-1-(r.max.y-1)];
+		end = (ulong)&framebuf->pixel[(r.max.x-1+1)*Ht-1-(r.min.y)];
+	} else {
+		start = (ulong)&framebuf->pixel[r.min.y*Ht + r.min.x];
+		end = (ulong)&framebuf->pixel[(r.max.y-1)*Ht + r.max.x - 1];
+	}
+	cachewbregion(start, end-start);
 }
 
 /*
@@ -269,7 +280,7 @@ attachscreen(Rectangle *r, ulong *chan, int* d, int *width, int *softscreen)
 	*d = gscreen->depth;
 	*chan = gscreen->chan;
 	*width = gscreen->width;
-	*softscreen = landscape == 0;
+	*softscreen = (landscape == 0);
 
 	return (uchar*)gscreen->data->bdata;
 }
@@ -337,7 +348,6 @@ screenwin(void)
 	back = memwhite;
 	conscol = memblack;
 
-	/* a lot of work to get a orange color */
 	orange = allocmemimage(Rect(0,0,1,1), RGB16);
 	orange->flags |= Frepl;
 	orange->clipr = gscreen->r;

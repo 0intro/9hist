@@ -200,8 +200,10 @@ void		pgrpnote(ulong, char*, long, int);
 Pgrp*		pgrptab(int);
 void		pio(Segment *, ulong, ulong, Page **);
 #define		poperror()		up->nerrlab--
+void		portclock(Ureg*);
 int		postnote(Proc*, int, char*, int);
 int		pprint(char*, ...);
+void		prflush(void);
 void		printinit(void);
 ulong		procalarm(ulong);
 int		proccounter(char *name);

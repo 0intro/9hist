@@ -3,7 +3,7 @@
 void	cacheflush(void);
 void	cachewb(void);
 void	cachewbaddr(void*);
-void	cachewbregion(void*, int);
+void	cachewbregion(ulong, int);
 void	dcacheinvalidate(void);
 int	cistrcmp(char*, char*);
 int	cistrncmp(char*, char*, int);
@@ -71,6 +71,7 @@ int	uartstageoutput(Uart*);
 void	uartkick(void*);
 void	uartrecv(Uart*, char);
 int	unsac(uchar*, uchar*, int, int);
+#define	userureg(ur)	(((ur)->psr & PsrMask) == PsrMusr)
 void	vectors(void);
 void	vtable(void);
 void	wbflush(void);

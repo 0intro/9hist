@@ -11,22 +11,25 @@ struct {
 	ulong	inglare;
 } lockstats;
 
+static void
+dumplockmem(char *tag, Lock *l)
+{
+	uchar *cp;
+	int i;
+
+	iprint("%s: ", tag);
+	cp = (uchar*)l;
+	for(i = 0; i < 64; i++)
+		iprint("%2.2ux ", cp[i]);
+	iprint("\n");
+}
+
 void
 lockloop(Lock *l, ulong pc)
 {
 	Proc *p;
 
 	p = l->p;
-{
-ulong x = (ulong)p;
-uchar *cp;
-int i;
-if(x < KTZERO) {
-	cp = (uchar*)l;
-	for(i = 0; i < 64; i++) print("%2.2ux ", cp[i]);
-	print("\n");
-}
-}
 	print("lock loop key 0x%lux pc 0x%lux held by pc 0x%lux proc %lud\n",
 		l->key, pc, l->pc, p ? p->pid : 0);
 	dumpaproc(up);
@@ -120,7 +123,10 @@ ilock(Lock *l)
 	} else
 		oldpri = 0;
 	if(conf.nmach < 2)
+{
+dumplockmem("ilock:", l);
 		panic("ilock: no way out: pc %uX\n", pc);
+}
 
 	for(;;){
 		lockstats.inglare++;

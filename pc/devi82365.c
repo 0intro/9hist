@@ -441,21 +441,25 @@ pcmspecial(char *idstr, ISAConf *isa)
 	static int resetdone;
 
 	i82365reset();
+print("pcmcia: looking for %s: ", idstr);
 	for(pp = slot; pp < lastslot; pp++){
 		if(pp->special)
 			continue;	/* already taken */
 		increfp(pp);
 
 		if(pp->occupied) {
+print("[%8.8s]", pp->verstr);
 			if(strstr(pp->verstr, idstr))
 			if(isa == 0 || pcmio(pp->slotno, isa) == 0){
 				pp->special = 1;
+print(" - found\n");
 				return pp->slotno;
 			}
 		} else
 			pp->special = 1;
 		decrefp(pp);
 	}
+print("\n");
 	return -1;
 }
 

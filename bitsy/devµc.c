@@ -346,7 +346,7 @@ static long
 		sendmsgwithack(BLbacklight, data, cmd->nf);
 		break;
 	case Qcruft:
-		lcdtweak(cmd);
+//		lcdtweak(cmd);
 		break;
 	default:
 		error(Ebadarg);

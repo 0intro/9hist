@@ -316,13 +316,7 @@ sa1100_uartkick(Uart *p)
 	if(p->cts == 0 || p->blocked)
 		return;
 
-	/*
-	 *  128 here is an arbitrary limit to make sure
-	 *  we don't stay in this loop too long.  If the
-	 *  chips output queue is longer than 128, too
-	 *  bad -- presotto
-	 */
-	for(i = 0; i < 128; i++){
+	for(i = 0; i < 1024; i++){
 		if(!(R(p)->status[1] & Tnotfull)){
 			R(p)->ctl[3] |= Tintena;
 			break;

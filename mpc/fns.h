@@ -103,6 +103,7 @@ void	tlbflushall(void);
 void	uartinstall(void);
 void	uartwait(void);	/* debugging */
 int unsac(uchar *dst, uchar *src, int n, int nsrc);
+#define	userureg(ur) ((ur)->status & KUSER)
 void	wbflush(void);
 
 #define	waserror()	(up->nerrlab++, setlabel(&up->errlab[up->nerrlab-1]))

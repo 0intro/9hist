@@ -365,10 +365,9 @@ echo(char *buf, int n)
 			consdebug();
 			return;
 		case 'p':
-			//x = spllo();
-			//procdump();
-			//splx(x);
-print("procdump temporarily disabled\n");
+			x = spllo();
+			procdump();
+			splx(x);
 			return;
 		case 'q':
 			scheddump();

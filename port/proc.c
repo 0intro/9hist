@@ -938,7 +938,7 @@ procdump(void)
 			continue;
 
 		dumpaproc(p);
-		delay(150);
+		prflush();
 	}
 }
 

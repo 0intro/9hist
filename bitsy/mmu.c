@@ -318,7 +318,7 @@ mmurelease(Proc* p)
 	p->mmufree = nil;
 
 	memset(l1table, 0, sizeof(p->l1table));
-	cachewbregion(l1table, sizeof(p->l1table));
+	cachewbregion((ulong)l1table, sizeof(p->l1table));
 }
 
 void
@@ -340,7 +340,7 @@ mmuswitch(Proc *p)
 	memmove(l1table, p->l1table, sizeof(p->l1table));
 
 	/* make sure map is in memory */
-	cachewbregion(l1table, sizeof(p->l1table));
+	cachewbregion((ulong)l1table, sizeof(p->l1table));
 
 	/* lose any possible stale tlb entries */
 	mmuinvalidate();
