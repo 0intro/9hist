@@ -590,7 +590,7 @@ pexit(char *exitstr, int freemem)
 			p->waitq = wq;
 			p->nwait++;
 			unlock(&p->exl);
-	
+
 			wakeup(&p->waitr);
 		}
 		else {
@@ -652,6 +652,14 @@ pwait(Waitmsg *w)
 
 	p = u->p;
 
+	if(!canqlock(&p->qwaitr))
+		error(Einuse);
+
+	if(waserror()) {
+		qunlock(&p->qwaitr);
+		nexterror();
+	}
+
 	lock(&p->exl);
 	if(p->nchild == 0 && p->waitq == 0) {
 		unlock(&p->exl);
@@ -666,6 +674,9 @@ pwait(Waitmsg *w)
 	p->waitq = wq->next;
 	p->nwait--;
 	unlock(&p->exl);
+
+	qunlock(&p->qwaitr);
+	poperror();
 
 	if(w)
 		memmove(w, &wq->w, sizeof(Waitmsg));

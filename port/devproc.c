@@ -18,6 +18,7 @@ enum{
 	Qsegment,
 	Qstatus,
 	Qtext,
+	Qwait,
 };
 
 #define	STATSIZE	(2*NAMELEN+12+7*12)
@@ -31,6 +32,7 @@ Dirtab procdir[] =
 	"segment",	{Qsegment},	0,			0444,
 	"status",	{Qstatus},	STATSIZE,		0444,
 	"text",		{Qtext},	0,			0000,
+	"wait",		{Qwait},	0,			0400,
 };
 
 /* Segment type from portdat.h */
@@ -157,8 +159,6 @@ procopen(Chan *c, int omode)
 
 	switch(QID(c->qid)){
 	case Qtext:
-		if(omode != OREAD)
-			error(Eperm);
 		tc = proctext(c, p);
 		tc->offset = 0;
 		return tc;
@@ -169,6 +169,7 @@ procopen(Chan *c, int omode)
 	case Qsegment:
 	case Qproc:
 	case Qstatus:
+	case Qwait:
 		break;
 
 	case Qnotepg:
@@ -243,6 +244,7 @@ procread(Chan *c, void *va, long n, ulong offset)
 	long l;
 	User *up;
 	Segment *sg;
+	Waitq *wq;
 
 	if(c->qid.path & CHDIR)
 		return devdirread(c, a, n, 0, 0, procgen);
@@ -383,6 +385,35 @@ procread(Chan *c, void *va, long n, ulong offset)
 			exhausted("segments");
 		memmove(a, &statbuf[offset], n);
 		return n;
+
+	case Qwait:
+		if(n < sizeof(Waitmsg))
+			error(Etoosmall);
+
+		if(!canqlock(&p->qwaitr))
+			error(Einuse);
+
+		if(waserror()) {
+			qunlock(&p->qwaitr);
+			nexterror();
+		}
+
+		lock(&p->exl);
+		while(p->waitq == 0) {
+			unlock(&p->exl);
+			sleep(&p->waitr, haswaitq, p);
+			lock(&p->exl);
+		}
+		wq = p->waitq;
+		p->waitq = wq->next;
+		p->nwait--;
+		unlock(&p->exl);
+
+		qunlock(&p->qwaitr);
+		poperror();
+		memmove(a, &wq->w, sizeof(Waitmsg));
+		free(wq);
+		return sizeof(Waitmsg);
 	}
 	error(Egreg);
 	return 0;		/* not reached */

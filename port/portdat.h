@@ -576,6 +576,7 @@ struct Proc
 	Waitq	*waitq;			/* Exited processes wait children */
 	int	nchild;			/* Number of living children */
 	int	nwait;			/* Number of uncollected wait records */
+	QLock	qwaitr;
 	Rendez	waitr;			/* Place to hang out in wait */
 	Proc	*parent;
 

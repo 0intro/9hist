@@ -83,6 +83,7 @@ Block*		getq(Queue*);
 int		gets(IOQ*, void*, int);
 void		gotolabel(Label*);
 Block*		grabq(Queue*);
+int		haswaitq(void*);
 int		hwcursmove(int, int);
 int		hwcursset(uchar*, uchar*, int, int);
 long		ibrk(ulong, int);
