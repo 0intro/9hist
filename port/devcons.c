@@ -553,10 +553,10 @@ consread(Chan *c, void *buf, long n, ulong offset)
 
 	case Qcputime:
 		k = offset;
-		if(k >= sizeof tmp)
+		if(k >= 6*NUMSIZE)
 			return 0;
-		if(k+n > sizeof tmp)
-			n = sizeof tmp - k;
+		if(k+n > 6*NUMSIZE)
+			n = 6*NUMSIZE - k;
 		/* easiest to format in a separate buffer and copy out */
 		for(i=0; i<6 && NUMSIZE*i<k+n; i++){
 			l = u->p->time[i];

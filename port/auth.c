@@ -19,12 +19,14 @@ typedef struct Session	Session;
 struct Session
 {
 	Lock;
+	Lock	send;
 	Crypt	*cache;			/* cache of tickets */
 	char	cchal[CHALLEN];		/* client challenge */
 	char	schal[CHALLEN];		/* server challenge */
 	char	authid[NAMELEN];	/* server encryption uid */
 	char	authdom[DOMLEN];	/* server encryption domain */
 	ulong	cid;			/* challenge id */
+	int	valid;
 };
 
 struct
@@ -109,21 +111,24 @@ sysfsession(ulong *arg)
 		nexterror();
 	}
 
-	/*
-	 *  if two processes get here at the same
-	 *  time with no session exchanged, we have
-	 *  a race.
-	 */
+	/* add a session structure to the channel if it has none */
+	lock(c);
 	s = c->session;
 	if(s == 0){
-		/*
-		 *  no session exchanged yet
-		 */
 		s = malloc(sizeof(Session));
-		if(s == 0)
+		if(s == 0){
+			unlock(c);
 			error(Enomem);
-		memset(s, 0, sizeof(Session));
+		}
+		c->session = s;
+	}
+	unlock(c);
 
+	/* back off if someone else is doing an fsession */
+	while(!canlock(&s->send))
+		sched();
+
+	if(s->valid == 0){
 		/*
 		 *  Exchange a session message with the server.
 		 *  If an error occurs reading or writing,
@@ -144,7 +149,7 @@ sysfsession(ulong *arg)
 				n = (*devtab[c->type].read)(c, buf, sizeof buf, 0);
 			poperror();
 			if(convM2S(buf, &f, n) == 0){
-				free(s);
+				unlock(s);
 				error(Emountrpc);
 			}
 			switch(f.type){
@@ -154,33 +159,38 @@ sysfsession(ulong *arg)
 				memmove(s->authdom, f.authdom, DOMLEN);
 				break;
 			case Rerror:
-				free(s);
+				unlock(s);
 				error(f.ename);
 			default:
-				free(s);
+				unlock(s);
 				error(Emountrpc);
 			}
 		}
-		c->session = s;
+		s->valid = 1;
 	}
+	unlock(&s->send);
 
 	/* 
 	 *  If server requires no ticket, or user is "none", or a ticket
 	 *  is already cached, zero the request type
 	 */
 	tr.type = AuthTreq;
-	if(strcmp(u->p->user, "none") == 0 || c->session->authid[0] == 0)
+	if(strcmp(u->p->user, "none") == 0 || s->authid[0] == 0)
 		tr.type = 0;
-	else for(cp = s->cache; cp; cp = cp->next)
-		if(strcmp(cp->t.cuid, u->p->user) == 0){
-			tr.type = 0;
-			break;
-		}
+	else{
+		lock(s);
+		for(cp = s->cache; cp; cp = cp->next)
+			if(strcmp(cp->t.cuid, u->p->user) == 0){
+				tr.type = 0;
+				break;
+			}
+		unlock(s);
+	}
 
 	/*  create ticket request */
-	memmove(tr.chal, c->session->schal, CHALLEN);
-	memmove(tr.authid, c->session->authid, NAMELEN);
-	memmove(tr.authdom, c->session->authdom, DOMLEN);
+	memmove(tr.chal, s->schal, CHALLEN);
+	memmove(tr.authid, s->authid, NAMELEN);
+	memmove(tr.authdom, s->authdom, DOMLEN);
 	memmove(tr.uid, u->p->user, NAMELEN);
 	memmove(tr.hostid, eve, NAMELEN);
 	convTR2M(&tr, (char*)arg[1]);
