@@ -21,9 +21,9 @@ char	*iltype[] =
 {	
 	"sync",
 	"data",
-	"dataquerey",
+	"dataquery",
 	"ack",
-	"querey",
+	"query",
 	"state",
 	"close" 
 };
@@ -35,7 +35,7 @@ enum				/* Packet types */
 	Ildata,
 	Ildataquery,
 	Ilack,
-	Ilquerey,
+	Ilquery,
 	Ilstate,
 	Ilclose,
 };
@@ -48,6 +48,11 @@ enum				/* Connection state */
 	Ilestablished,
 	Illistening,
 	Ilclosing,
+};
+
+enum
+{
+	Nqt=	8,
 };
 
 typedef struct Ilcb Ilcb;
@@ -79,7 +84,9 @@ struct Ilcb			/* Control block */
 	int	rttlen;		/* Length of rttack packet */
 	ulong	rttms;		/* Time we issued rttack packet */
 	int	window;		/* Maximum receive window */
-	int	rexmit;
+	int	rexmit;		/* number of retransmits */
+	ulong	qt[Nqt+1];	/* state table for query messages */
+	int	qtx;		/* ... index into qt */
 	char	buf[128];
 };
 
@@ -138,8 +145,11 @@ enum
 	DefByteRate	= 1000,		/* 10 meg ether */
 };
 
+/* state for query/dataquery messages */
+
+
 void	ilrcvmsg(Conv*, Block*);
-void	ilsendctl(Conv*, Ilhdr*, int, ulong, ulong);
+void	ilsendctl(Conv*, Ilhdr*, int, ulong, ulong, int);
 void	ilackq(Ilcb*, Block*);
 void	ilprocess(Conv*, Ilhdr*, Block*);
 void	ilpullup(Conv*);
@@ -153,6 +163,7 @@ void	ilackproc();
 void	iloutoforder(Conv*, Ilhdr*, Block*);
 void	iliput(Media*, Block*);
 void	iladvise(Block*, char*);
+int	ilnextqt(Ilcb*);
 
 #define DBG(x)	if((logmask & Logilmsg) && (iponly == 0 || x == iponly))netlog
 
@@ -228,7 +239,7 @@ ilclose(Conv *c)
 	case Ilestablished:
 		ilfreeq(ic);
 		ic->state = Ilclosing;
-		ilsendctl(c, nil, Ilclose, ic->next, ic->recvd);
+		ilsendctl(c, nil, Ilclose, ic->next, ic->recvd, 0);
 		break;
 	case Illistening:
 		ic->state = Ilclosed;
@@ -528,7 +539,7 @@ iliput(Media *m, Block *bp)
 	new = Fsnewcall(&fs, s, nhgetl(ih->src), dp, nhgetl(ih->dst), sp);
 	if(new == nil){
 		netlog(Logil, "il: bad newcall %i/%ud->%ud\n", dst, sp, dp);
-		ilsendctl(nil, ih, Ilclose, 0, nhgetl(ih->ilid));
+		ilsendctl(nil, ih, Ilclose, 0, nhgetl(ih->ilid), 0);
 		goto raise;
 	}
 
@@ -584,7 +595,7 @@ _ilprocess(Conv *s, Ilhdr *h, Block *bp)
 			else {
 				ic->recvd = id;
 				ic->rstart = id;
-				ilsendctl(s, nil, Ilack, ic->next, ic->recvd);
+				ilsendctl(s, nil, Ilack, ic->next, ic->recvd, 0);
 				ic->state = Ilestablished;
 				Fsconnected(&fs, s, nil);
 				ilpullup(s);
@@ -607,7 +618,7 @@ _ilprocess(Conv *s, Ilhdr *h, Block *bp)
 				ic->state = Ilclosed;
 			else {
 				ic->recvd = id;
-				ilsendctl(s, nil, Ilsync, ic->start, ic->recvd);
+				ilsendctl(s, nil, Ilsync, ic->start, ic->recvd, 0);
 				iltimers(ic);
 			}
 			break;
@@ -631,7 +642,7 @@ _ilprocess(Conv *s, Ilhdr *h, Block *bp)
 			if(id != ic->rstart)
 				ilhangup(s, "remote close");
 			else {
-				ilsendctl(s, nil, Ilack, ic->next, ic->rstart);
+				ilsendctl(s, nil, Ilack, ic->next, ic->rstart, 0);
 				iltimers(ic);
 			}
 			freeblist(bp);	
@@ -649,22 +660,25 @@ _ilprocess(Conv *s, Ilhdr *h, Block *bp)
 			ic->acktime = Acktime;
 			iloutoforder(s, h, bp);
 			ilpullup(s);
-			ilsendctl(s, nil, Ilstate, ic->next, ic->recvd);
+			ilsendctl(s, nil, Ilstate, ic->next, ic->recvd, h->ilspec);
 			break;
 		case Ilack:
 			ilackto(ic, ack);
 			iltimers(ic);
 			freeblist(bp);
 			break;
-		case Ilquerey:
+		case Ilquery:
 			ilackto(ic, ack);
-			ilsendctl(s, nil, Ilstate, ic->next, ic->recvd);
+			ilsendctl(s, nil, Ilstate, ic->next, ic->recvd, h->ilspec);
 			iltimers(ic);
 			freeblist(bp);
 			break;
 		case Ilstate:
 			ilackto(ic, ack);
-			ilrexmit(ic);
+			if(h->ilspec > Nqt)
+				h->ilspec = 0;
+			if(ic->qt[h->ilspec] > ack)
+				ilrexmit(ic);
 			iltimers(ic);
 			freeblist(bp);
 			break;
@@ -672,7 +686,7 @@ _ilprocess(Conv *s, Ilhdr *h, Block *bp)
 			freeblist(bp);
 			if(ack < ic->start || ack > ic->next) 
 				break;
-			ilsendctl(s, nil, Ilclose, ic->next, ic->recvd);
+			ilsendctl(s, nil, Ilclose, ic->next, ic->recvd, 0);
 			ic->state = Ilclosing;
 			ilfreeq(ic);
 			iltimers(ic);
@@ -686,7 +700,7 @@ _ilprocess(Conv *s, Ilhdr *h, Block *bp)
 		switch(h->iltype) {
 		case Ilclose:
 			ic->recvd = id;
-			ilsendctl(s, nil, Ilclose, ic->next, ic->recvd);
+			ilsendctl(s, nil, Ilclose, ic->next, ic->recvd, 0);
 			if(ack == ic->next)
 				ilhangup(s, nil);
 			iltimers(ic);
@@ -705,8 +719,8 @@ ilrexmit(Ilcb *ic)
 	Ilhdr *h;
 	Block *nb;
 	Conv *c;
-	int x;
 	ulong id;
+	int x;
 
 	nb = nil;
 	qlock(&ic->ackq);
@@ -721,6 +735,7 @@ ilrexmit(Ilcb *ic)
 
 	h->iltype = Ildataquery;
 	hnputl(h->ilack, ic->recvd);
+	h->ilspec = ilnextqt(ic);
 	h->ilsum[0] = 0;
 	h->ilsum[1] = 0;
 	if(ilcksum)
@@ -878,7 +893,7 @@ iloutoforder(Conv *s, Ilhdr *h, Block *bp)
 }
 
 void
-ilsendctl(Conv *ipc, Ilhdr *inih, int type, ulong id, ulong ack)
+ilsendctl(Conv *ipc, Ilhdr *inih, int type, ulong id, ulong ack, int ilspec)
 {
 	Ilhdr *ih;
 	Ilcb *ic;
@@ -916,7 +931,7 @@ ilsendctl(Conv *ipc, Ilhdr *inih, int type, ulong id, ulong ack)
 		ttl = ipc->ttl;
 	}
 	ih->iltype = type;
-	ih->ilspec = 0;
+	ih->ilspec = ilspec;
 	ih->ilsum[0] = 0;
 	ih->ilsum[1] = 0;
 
@@ -952,7 +967,7 @@ loop:
 			break;
 		case Ilclosing:
 			if(ic->timeout >= ic->fasttime) {
-				ilsendctl(p, nil, Ilclose, ic->next, ic->recvd);
+				ilsendctl(p, nil, Ilclose, ic->next, ic->recvd, 0);
 				ilbackoff(ic);
 			}
 			if(ic->timeout >= ic->slowtime)
@@ -961,7 +976,7 @@ loop:
 		case Ilsyncee:
 		case Ilsyncer:
 			if(ic->timeout >= ic->fasttime) {
-				ilsendctl(p, nil, Ilsync, ic->start, ic->recvd);
+				ilsendctl(p, nil, Ilsync, ic->start, ic->recvd, 0);
 				ilbackoff(ic);
 			}
 			if(ic->timeout >= ic->slowtime)
@@ -970,7 +985,7 @@ loop:
 		case Ilestablished:
 			ic->acktime -= Iltickms;
 			if(ic->acktime <= 0)
-				ilsendctl(p, nil, Ilack, ic->next, ic->recvd);
+				ilsendctl(p, nil, Ilack, ic->next, ic->recvd, 0);
 
 			ic->querytime -= Iltickms;
 			if(ic->querytime <= 0){
@@ -980,7 +995,7 @@ loop:
 					ilhangup(p, etime);
 					break;
 				}
-				ilsendctl(p, nil, Ilquerey, ic->next, ic->recvd);
+				ilsendctl(p, nil, Ilquery, ic->next, ic->recvd, ilnextqt(ic));
 				ic->querytime = Querytime;
 			}
 			if(ic->unacked == nil) {
@@ -1034,6 +1049,7 @@ ilstart(Conv *c, int type, int window)
 	ic->recvd = 0;
 	ic->window = window;
 	ic->rexmit = 0;
+	ic->qtx = 1;
 
 	switch(type) {
 	default:
@@ -1044,7 +1060,7 @@ ilstart(Conv *c, int type, int window)
 		break;
 	case IL_CONNECT:
 		ic->state = Ilsyncer;
-		ilsendctl(c, nil, Ilsync, ic->start, ic->recvd);
+		ilsendctl(c, nil, Ilsync, ic->start, ic->recvd, 0);
 		break;
 	}
 
@@ -1080,7 +1096,7 @@ iltimers(Ilcb *ic)
 
 	ic->timeout = 0;
 	pt = (ic->delay>>LogAGain) + ic->unackedbytes/(ic->rate>>LogAGain) + ic->mdev;
-	ic->fasttime = (Fasttime/Seconds)*pt;
+	ic->fasttime = Acktime + pt + Iltickms - 1;
 	if(ic->fasttime > Fasttime)
 		ic->fasttime = Fasttime;
 	ic->slowtime = (Slowtime/Seconds)*pt;
@@ -1119,4 +1135,21 @@ iladvise(Block *bp, char *msg)
 		}
 	}
 	freeblist(bp);
+}
+
+int
+ilnextqt(Ilcb *ic)
+{
+	int x;
+
+	qlock(&ic->ackq);
+	x = ic->qtx;
+	ic->qt[x] = ic->next-1;	/* highest xmitted packet */
+	ic->qt[0] = ic->qt[x];	/* compatibility with old implementations */
+	if(++x > Nqt)
+		x = 1;
+	ic->qtx = x;
+	qunlock(&ic->ackq);
+
+	return x;
 }
