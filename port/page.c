@@ -97,7 +97,7 @@ addsplit(Region *r, ulong start, ulong end)
  *  Called to allocate permanent data structures, before calling pageinit().
  *  We assume all of text+data+bss is in the first memory bank.
  *
- *  alignment is in number of bytes.  It pretains both to the start and
+ *  alignment is in number of bytes.  It pertains both to the start and
  *  end of the allocated memory.
  *
  *  If crevasse is specified, no allocation can span an address that is
@@ -195,6 +195,7 @@ pageinit(void)
 	ulong i, vmem, pmem, hw, hr;
 	Page *p;
 
+print("addr0 %lux addr1 %lux\n", palloc.addr0, palloc.addr1);
 	/*
 	 *  calculate an upper bound to the number of pages structures
 	 *  we'll need (np).

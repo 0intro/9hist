@@ -160,12 +160,11 @@ mntattach(char *muxattach)
 	m->blocksize = MAXFDATA;
 
 	switch(devchar[m->c->type]) {
-	case 'H':			/* Hotrod */
-	case '3':			/* BIT3 */
-		m->mux = 1;
-		break;
 	default:
 		m->mux = 0;
+	case 'H':			/* Cyclone */
+		m->mux = 1;
+		break;
 	}
 	incref(m->c);
 	unlock(m);

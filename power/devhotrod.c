@@ -423,9 +423,7 @@ hotrodintr(int vec)
 		if(h->ri >= NRQ)
 			h->ri = 0;
 		hm->intr = 1;
-		if(hm->abort)
-			print("abort wakeup\n");
-		else
+		if(!hm->abort)
 			wakeup(&hm->r);
 	}
 }
