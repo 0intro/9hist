@@ -33,7 +33,7 @@ static struct
 
 	/* a place to save up characters at interrupt time before dumping them in the queue */
 	Lock	lockputc;
-	char	istage[512];
+	char	istage[1024];
 	char	*iw;
 	char	*ir;
 	char	*ie;
@@ -564,7 +564,11 @@ consinit(void)
 {
 	todinit();
 	randominit();
-	addclock0link(kbdputcclock);
+	/*
+	 * at 115200 baud, the 1024 char buffer takes 56 ms to process,
+	 * processing it every 22 ms should be fine
+	 */
+	addclock0link(kbdputcclock, 22);
 }
 
 static Chan*
