@@ -267,7 +267,7 @@ produce(Queue *q, uchar *p, int len, int append)
  *  called by non-interrupt code
  */
 Queue*
-qopen(int limit)
+qopen(int limit, void (*kick)(void*), void *arg)
 {
 	Queue *q;
 
@@ -275,6 +275,8 @@ qopen(int limit)
 	if(q == 0)
 		exhausted("Queues");
 	q->limit = limit;
+	q->kick = kick;
+	q->arg = arg;
 }
 
 static int
@@ -365,6 +367,10 @@ qwrite(Queue *q, char *p, int len)
 		q->bfirst = b;
 	q->blast = b;
 	q->len += len;
+	if((q->state & Qstarve) && q->kick){
+		q->stat &= ~Qstarve;
+		(*q->kick)(q->arg);
+	}
 	unlock(q);
 	splx(x);
 

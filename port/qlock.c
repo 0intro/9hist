@@ -32,7 +32,8 @@ qlock(QLock *q)
 int
 canqlock(QLock *q)
 {
-	lock(&q->use);
+	if(!canlock(&q->use))
+		return 0;
 	if(q->locked){
 		unlock(&q->use);
 		return 0;

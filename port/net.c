@@ -60,7 +60,7 @@ netgen(Chan *c, void *vp, int ntab, int i, Dir *dp)
 	}
 
 	/* second level contains clone plus all the conversations */
-	t = STREAMTYPE(c->qid.path);
+	t = NETTYPE(c->qid.path);
 	if(t == Q2nd || t == Qclone){
 		if(i == 0){
 			q.path = Qclone;
@@ -68,7 +68,7 @@ netgen(Chan *c, void *vp, int ntab, int i, Dir *dp)
 		}else if(i <= np->nconv){
 			if(findprot(np, i-1) == 0)
 				return 0;
-			q.path = CHDIR|STREAMQID(i-1, Q3rd);
+			q.path = CHDIR|NETQID(i-1, Q3rd);
 			sprint(buf, "%d", i-1);
 			devdir(c, q, buf, 0, eve, 0555, dp);
 		}else
@@ -77,7 +77,7 @@ netgen(Chan *c, void *vp, int ntab, int i, Dir *dp)
 	}
 
 	/* third level depends on the number of info files */
-	p = findprot(np, STREAMID(c->qid.path));
+	p = findprot(np, NETID(c->qid.path));
 	if(p == 0)
 		return 0;
 	if(*p->owner){
@@ -89,24 +89,24 @@ netgen(Chan *c, void *vp, int ntab, int i, Dir *dp)
 	}
 	switch(i){
 	case 0:
-		q.path = STREAMQID(STREAMID(c->qid.path), Sdataqid);
+		q.path = NETQID(NETID(c->qid.path), Ndataqid);
 		devdir(c, q, "data", 0, o, perm, dp);
 		break;
 	case 1:
-		q.path = STREAMQID(STREAMID(c->qid.path), Sctlqid);
+		q.path = NETQID(NETID(c->qid.path), Nctlqid);
 		devdir(c, q, "ctl", 0, o, perm, dp);
 		break;
 	case 2:
 		if(np->listen == 0)
 			return 0;
-		q.path = STREAMQID(STREAMID(c->qid.path), Qlisten);
+		q.path = NETQID(NETID(c->qid.path), Qlisten);
 		devdir(c, q, "listen", 0, o, perm, dp);
 		break;
 	default:
 		i -= 3;
 		if(i >= np->ninfo)
 			return -1;
-		q.path = STREAMQID(STREAMID(c->qid.path), Qinf+i);
+		q.path = NETQID(NETID(c->qid.path), Qinf+i);
 		devdir(c, q, np->info[i].name, 0, eve, 0444, dp);
 		break;
 	}
@@ -117,7 +117,7 @@ int
 netwalk(Chan *c, char *name, Network *np)
 {
 	if(strcmp(name, "..") == 0) {
-		switch(STREAMTYPE(c->qid.path)){
+		switch(NETTYPE(c->qid.path)){
 		case Q2nd:
 			c->qid.path = CHDIR;
 			break;
@@ -176,29 +176,29 @@ netopen(Chan *c, int omode, Network *np)
 		if(omode != OREAD)
 			error(Eperm);
 	} else {
-		switch(STREAMTYPE(c->qid.path)){
-		case Sdataqid:
-		case Sctlqid:
-			id = STREAMID(c->qid.path);
+		switch(NETTYPE(c->qid.path)){
+		case Ndataqid:
+		case Nctlqid:
+			id = NETID(c->qid.path);
 			id = (*np->open)(c, id);
 			break;
 		case Qlisten:
 			id = (*np->listen)(c);
-			c->qid.path = STREAMQID(id, Sctlqid);
+			c->qid.path = NETQID(id, Nctlqid);
 			ptclone(c, 1, id);
 			break;
 		case Qclone:
 			id = (*np->open)(c, -1);
-			c->qid.path = STREAMQID(id, Sctlqid);
+			c->qid.path = NETQID(id, Nctlqid);
 			ptclone(c, 0, id);
 			break;
 		default:
 			if(omode != OREAD)
 				error(Ebadarg);
 		}
-		switch(STREAMTYPE(c->qid.path)){
-		case Sdataqid:
-		case Sctlqid:
+		switch(NETTYPE(c->qid.path)){
+		case Ndataqid:
+		case Nctlqid:
 			p = findprot(np, id);
 			if(netown(p, up->user, omode&7) < 0)
 				error(Eperm);
@@ -220,7 +220,10 @@ netread(Chan *c, void *a, long n, ulong offset, Network *np)
 	if(c->qid.path&CHDIR)
 		return devdirread(c, a, n, (Dirtab*)np, 0, netgen);
 
-	t = STREAMTYPE(c->qid.path);
+	t = NETTYPE(c->qid.path);
+	if(t == Nctlqid)
+		readnum(offset, a, n, NETID(c->qid.path), NUMSIZE);
+
 	if(t < Qinf || t >= Qinf + np->ninfo)
 		error(Ebadusefd);
 
@@ -294,7 +297,7 @@ netwstat(Chan *c, char *db, Network *np)
 	Dir dir;
 	Netprot *p;
 
-	p = findprot(np, STREAMID(c->qid.path));
+	p = findprot(np, NETID(c->qid.path));
 	if(p == 0)
 		error(Enonexist);
 	lock(np);

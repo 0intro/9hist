@@ -668,6 +668,9 @@ struct Queue
 	int	limit;		/* max bytes in queue */
 	int	state;
 
+	void	(*kick)(void*);	/* restart output */
+	void	*arg;		/* argument to kick */
+
 	QLock	wlock;		/* mutex for r */
 	Rendez	r;
 };
@@ -676,22 +679,21 @@ enum
 {
 	Qstarve=1,	/* consumer starved */
 };
+#define BLEN(b)		((b)->wp - (b)->rp)
 
 /*
  *  Macros to manage Qid's used for multiplexed devices
  */
-#define STREAMTYPE(x)	((x)&0x1f)
-#define STREAMID(x)	(((x)&~CHDIR)>>5)
-#define STREAMQID(i,t)	(((i)<<5)|(t))
-#define BLEN(b)		((b)->wp - (b)->rp)
+#define NETTYPE(x)	((x)&0x1f)
+#define NETID(x)	(((x)&~CHDIR)>>5)
+#define NETQID(i,t)	(((i)<<5)|(t))
 enum
 {
-	Shighqid	= STREAMQID(1,0) - 1,
-	Sdataqid	= Shighqid,
-	Sctlqid		= Sdataqid-1,
-	Slowqid		= Sctlqid,
+	Nhighqid	= NETQID(1,0) - 1,
+	Ndataqid	= Nhighqid,
+	Nctlqid		= Ndataqid-1,
+	Nlowqid		= Nctlqid,
 };
-
 
 /*
  *  a multiplexed network
