@@ -640,6 +640,8 @@ ataclose(Chan *c)
 		return;
 
 	dp = atadrive[DRIVE(c->qid.path)];
+	if(dp == 0)
+		return;
 	p = &dp->p[PART(c->qid.path)];
 	if(strcmp(p->name, "partition") != 0)
 		return;
