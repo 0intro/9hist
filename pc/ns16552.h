@@ -14,7 +14,7 @@ enum
 #define uartwrreg(u,r,v)	outb((u)->port + r, (u)->sticky[r] | (v))
 #define uartrdreg(u,r)		inb((u)->port + r)
 
-void	ns16552setup(ulong, ulong);
+void	ns16552setup(ulong, ulong, char*);
 
 /*
  *  definition of an optional serial card
@@ -87,6 +87,7 @@ ns16552install(void)
 	int i, j, port;
 	char *p;
 	Scard *sc;
+	char name[NAMELEN];
 	static int already;
 
 	if(already)
@@ -94,9 +95,9 @@ ns16552install(void)
 	already = 1;
 
 	/* first two ports are always there and always the normal frequency */
-	ns16552setup(0x3F8, UartFREQ);
+	ns16552setup(0x3F8, UartFREQ, "eia0");
 	setvec(Uart0vec, ns16552intrx, (void*)0);
-	ns16552setup(0x2F8, UartFREQ);
+	ns16552setup(0x2F8, UartFREQ, "eia1");
 	setvec(Uart1vec, ns16552intrx, (void*)1);
 
 	/* set up a serial console */
@@ -128,7 +129,8 @@ ns16552install(void)
 			setvec(Int0vec+sc->irq, mp008intr, sc);
 			port = sc->port;
 			for(j=0; j < sc->size; j++){
-				ns16552setup(port, sc->freq);
+				sprint(name, "eia%d%2.2d", i, j);
+				ns16552setup(port, sc->freq, name);
 				port += 8;
 			}
 		} else if(strcmp(sc->type, "com") == 0 || strcmp(sc->type, "COM") == 0){
@@ -139,7 +141,8 @@ ns16552install(void)
 			 */
 			if(sc->freq == 0)
 				sc->freq = UartFREQ;
-			ns16552setup(sc->port, sc->freq);
+			sprint(name, "eia%d00", i);
+			ns16552setup(sc->port, sc->freq, name);
 			setvec(Int0vec+sc->irq, ns16552intrx, (void*)(nuart-1));
 		}
 	}

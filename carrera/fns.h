@@ -107,7 +107,7 @@ void		Xdelay(int);
 
 void		serialinit(void);
 void		ns16552special(int, int, Queue**, Queue**, int (*)(Queue*, int));
-void		ns16552setup(ulong, ulong);
+void		ns16552setup(ulong, ulong, char*);
 void		ns16552intr(int);
 void		etherintr(void);
 void		iomapinit(void);

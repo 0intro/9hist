@@ -228,7 +228,6 @@ struct Astarchan
 	CCB	*ccb;	/* control block */
 
 	/* buffers */
-
 	Queue	*iq;
 	Queue	*oq;
 
@@ -268,8 +267,9 @@ astarreset(void)
 			a->ramsize = 256*1024;
 		else
 			continue;
+
 		if(a->mem == 0)
-			a->mem = 0xD0000;
+			a->mem = 0xD4000;
 		if(a->irq == 0)
 			a->irq = 15;
 		a->id = i;

@@ -75,6 +75,7 @@ struct Uart
 	QLock;
 
 	Uart	*elist;		/* next enabled interface */
+	char	name[NAMELEN];
 
 	uchar	sticky[8];	/* sticky write register values */
 	ulong	port;
@@ -449,7 +450,7 @@ ns16552setup0(Uart *p)
  *  called by main() to create a new duart
  */
 void
-ns16552setup(ulong port, ulong freq)
+ns16552setup(ulong port, ulong freq, char *name)
 {
 	Uart *p;
 
@@ -458,6 +459,7 @@ ns16552setup(ulong port, ulong freq)
 
 	p = xalloc(sizeof(Uart));
 	uart[nuart] = p;
+	strcpy(p->name, name);
 	p->dev = nuart;
 	nuart++;
 	p->port = port;
@@ -659,15 +661,15 @@ ns16552reset(void)
 	dp = ns16552dir;
 	for(i = 0; i < nuart; i++){
 		/* 3 directory entries per port */
-		sprint(dp->name, "eia%d", i);
+		strcpy(dp->name, uart[i]->name);
 		dp->qid.path = NETQID(i, Ndataqid);
 		dp->perm = 0660;
 		dp++;
-		sprint(dp->name, "eia%dctl", i);
+		sprint(dp->name, "%sctl", uart[i]->name);
 		dp->qid.path = NETQID(i, Nctlqid);
 		dp->perm = 0660;
 		dp++;
-		sprint(dp->name, "eia%dstat", i);
+		sprint(dp->name, "%sstat", uart[i]->name);
 		dp->qid.path = NETQID(i, Nstatqid);
 		dp->perm = 0444;
 		dp++;
