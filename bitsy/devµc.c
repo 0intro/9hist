@@ -83,9 +83,10 @@ static struct µcontroller
 } ctlr;
 
 /* button map */
-Rune bmap[4] = 
+Rune bmap[2][4] = 
 {
-	Kup, Kright, Kleft, Kdown
+	{Kup, Kright, Kleft, Kdown},	/* portrait mode */
+	{Kright, Kdown, Kup, Kleft},	/* landscape mode */
 };
 
 extern int landscape;
@@ -150,7 +151,7 @@ int
 			if(b > 5) {
 				/* rocker panel acts like arrow keys */
 				if(b < 10 && !up)
-					kbdputc(kbdq, bmap[b-6]);
+					kbdputc(kbdq, bmap[landscape][b-6]);
 			} else {
 				/* the rest like mouse buttons */
 				if(--b == 0)

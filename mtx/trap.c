@@ -207,34 +207,36 @@ char *regname[]={
 };
 
 void
-trap(Ureg *ur)
+trap(Ureg *ureg)
 {
 	ulong dsisr;
-	int ecode,user;
+	int ecode, user;
 	char buf[ERRMAX], *s;
 
 	m->intrts = fastticks(nil);
-	ecode = (ur->cause >> 8) & 0xff;
-	user = (ur->srr1 & MSR_PR) != 0;
+	ecode = (ureg->cause >> 8) & 0xff;
+	user = (ureg->srr1 & MSR_PR) != 0;
+	if(user)
+		up->dbgreg = ureg;
 
-	if(ur->status & MSR_RI == 0)
+	if(ureg->status & MSR_RI == 0)
 		print("double fault?: ecode = %d\n", ecode);
 
 	switch(ecode) {
 	case CEI:
-		intr(ur);
+		intr(ureg);
 		break;
 	case CDEC:
-		clockintr(ur);
+		clockintr(ureg);
 		break;
 	case CSYSCALL:
 		if(!user)
-			panic("syscall in kernel: srr1 0x%4.4luX\n", ur->srr1);
-		syscall(ur);
+			panic("syscall in kernel: srr1 0x%4.4luX\n", ureg->srr1);
+		syscall(ureg);
 		return;		/* syscall() calls notify itself, don't do it again */
 	case CFPU:
 		if(!user || up == nil) {
-			dumpregs(ur);
+			dumpregs(ureg);
 			panic("floating point in kernel");
 		}
 		switch(up->fpstate){
@@ -249,24 +251,24 @@ trap(Ureg *ur)
 		default:
 			panic("fpstate");
 		}
-		ur->srr1 |= MSR_FP;
+		ureg->srr1 |= MSR_FP;
 		break;
 	case CISI:
-		faultpower(ur, ur->pc, 1);
+		faultpower(ureg, ureg->pc, 1);
 		break;
 	case CDSI:
 		dsisr = getdsisr();
 		if(dsisr & BIT(6))
-			faultpower(ur, getdar(), 0);
+			faultpower(ureg, getdar(), 0);
 		else
-			faultpower(ur, getdar(), 1);
+			faultpower(ureg, getdar(), 1);
 		break;
 	case CPROG:
-		if(ur->status & (1<<19))
+		if(ureg->status & (1<<19))
 			s = "floating point exception";
-		else if(ur->status & (1<<18))
+		else if(ureg->status & (1<<18))
 			s = "illegal instruction";
-		else if(ur->status & (1<<17))
+		else if(ureg->status & (1<<17))
 			s = "privileged instruction";
 		else
 			s = "undefined program exception";
@@ -276,7 +278,7 @@ trap(Ureg *ur)
 			postnote(up, 1, buf, NDebug);
 			break;
 		}
-		dumpregs(ur);
+		dumpregs(ureg);
 		panic(s);
 		break;
 	default:
@@ -286,7 +288,7 @@ trap(Ureg *ur)
 			postnote(up, 1, buf, NDebug);
 			break;
 		}
-		dumpregs(ur);
+		dumpregs(ureg);
 		if(ecode < nelem(excname))
 			panic("%s", excname[ecode]);
 		panic("unknown trap/intr: %d\n", ecode);
@@ -294,8 +296,11 @@ trap(Ureg *ur)
 
 	/* restoreureg must execute at high IPL */
 	splhi();
-	if(user)
-		notify(ur);
+	if(user) {
+		notify(ureg);
+		if(up->fpstate == FPinactive)
+			ureg->srr1 &= ~MSR_FP;
+	}
 }
 
 void
@@ -427,7 +432,8 @@ fpoff(Proc *p)
 	Ureg *ur;
 
 	ur = p->dbgreg;
-	ur->srr1 &= ~MSR_FP;
+	if(ur != nil)
+		ur->srr1 &= ~MSR_FP;
 }
 
 /*
@@ -675,6 +681,8 @@ syscall(Ureg* ureg)
 	splhi();
 	if(scallnr!=RFORK)
 		notify(ureg);
+	if(up->fpstate == FPinactive)
+		ureg->srr1 &= ~MSR_FP;
 }
 
 /*
@@ -765,6 +773,7 @@ noted(Ureg* ureg, ulong arg0)
 	Ureg *nureg;
 	ulong oureg, sp;
 
+print("noted %d\n", arg0);
 	qlock(&up->debug);
 	if(arg0!=NRSTR && !up->notified) {
 		qunlock(&up->debug);
