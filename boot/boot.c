@@ -77,7 +77,6 @@ main(int argc, char *argv[])
 		session(fd);
 		if(cfs)
 			fd = (*cfs)(fd);
-		srvcreate(sys, fd);
 	}
 	srvcreate("boot", fd);
 

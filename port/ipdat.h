@@ -232,10 +232,10 @@ struct Tctl
 	char	tos;
 
 	Block	*rcvq;
-	ushort	rcvcnt;
+	ulong	rcvcnt;
 
 	Block	*sndq;			/* List of data going out */
-	ushort	sndcnt;			/* Amount of data in send queue */
+	ulong	sndcnt;			/* Amount of data in send queue */
 
 	Reseq	*reseq;			/* Resequencing queue */
 	Timer	timer;			 

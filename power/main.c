@@ -1,5 +1,5 @@
 #include	"u.h"
-#include	"lib.h"
+#include	"../port/lib.h"
 #include	"mem.h"
 #include	"dat.h"
 #include	"fns.h"
@@ -32,11 +32,6 @@ char *env[2];
  *  configuration file read by boot program
  */
 char confbuf[4*1024];
-
-/*
- *  system name
- */
-char sysname[64];
 
 /*
  *  IO board type

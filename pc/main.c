@@ -1,5 +1,5 @@
 #include	"u.h"
-#include	"lib.h"
+#include	"../port/lib.h"
 #include	"mem.h"
 #include	"dat.h"
 #include	"fns.h"
@@ -7,7 +7,6 @@
 #include	"ureg.h"
 #include	"init.h"
 
-extern long edata;
 int machtype;
 
 void
@@ -34,12 +33,10 @@ main(void)
 	chaninit();
 	alarminit();
 	bigcursor();
-print("chandevreset\n");
 	chandevreset();
 	streaminit();
 	swapinit();
 	pageinit();
-print("userinit\n");
 	userinit();
 
 	schedinit();
@@ -200,7 +197,6 @@ confinit(void)
 	conf.npage1 = ((i-1)*1024*1024 - conf.base1)/BY2PG;
 
 	conf.npage = conf.npage0 + conf.npage1;
-	conf.maxialloc = 2*1024*1024;
 
 	mul = 1;
 	conf.nproc = 30 + i*5;

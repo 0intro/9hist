@@ -1,5 +1,5 @@
 #include	"u.h"
-#include	"lib.h"
+#include	"../port/lib.h"
 #include	"mem.h"
 #include	"dat.h"
 #include	"fns.h"
@@ -78,13 +78,13 @@ static ulong	*upt;		/* 2nd level page table for struct User */
  *  offset of virtual address into
  *  top level page table
  */
-#define TOPOFF(v)	((v)>>(2*PGSHIFT-2))
+#define TOPOFF(v)	(((ulong)(v))>>(2*PGSHIFT-2))
 
 /*
  *  offset of virtual address into
  *  bottom level page table
  */
-#define BTMOFF(v)	(((v)>>(PGSHIFT))&(WD2PG-1))
+#define BTMOFF(v)	((((ulong)(v))>>(PGSHIFT))&(WD2PG-1))
 
 /*
  *  Create a prototype page map that maps all of memory into

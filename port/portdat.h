@@ -696,6 +696,7 @@ extern	Pgrps 	pgrpalloc;
 extern  Image	swapimage;
 extern  char	eve[];
 extern	int	nrdy;
+extern	char	sysname[NAMELEN];
 
 #define	CHDIR		0x80000000L
 #define	CHAPPEND 	0x40000000L
@@ -707,7 +708,11 @@ extern	int	nrdy;
 #define CHLEN		8
 enum{
 	FScchal	= 1,
+	FSschal,
+	FSok,
 	FSctick,
+	FSstick,
+	FSerr,
 
 	RXschal	= 0,
 	RXstick	= 1,

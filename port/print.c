@@ -1,5 +1,5 @@
 #include	"u.h"
-#include	"lib.h"
+#include	"../port/lib.h"
 
 #define	PTR	sizeof(char*)
 #define	SHORT	sizeof(int)

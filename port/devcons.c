@@ -1,5 +1,5 @@
 #include	"u.h"
-#include	"lib.h"
+#include	"../port/lib.h"
 #include	"mem.h"
 #include	"dat.h"
 #include	"fns.h"
@@ -23,6 +23,7 @@ static int	raw;			/* true if raw has been requested on a ctl file */
 
 char	eve[NAMELEN] = "bootes";
 char	evekey[DESKEYLEN];
+char	sysname[NAMELEN];
 
 /*
  *  init the queues and set the output routine
@@ -341,6 +342,7 @@ enum{
 	Qcrypt,
 	Qkey,
 	Qchal,
+	Qsysname,
 };
 
 Dirtab consdir[]={
@@ -362,6 +364,7 @@ Dirtab consdir[]={
 	"key",		{Qkey},		DESKEYLEN,	0222,
 	"klog",		{Qklog},	0,		0444,
 	"sysstat",	{Qsysstat},	0,		0666,
+	"sysname",	{Qsysname},	0,		0664,
 	"swap",		{Qswap},	0,		0664,
 };
 
@@ -650,6 +653,10 @@ consread(Chan *c, void *buf, long n, ulong offset)
 				conf.nswap-swapalloc.free, conf.nswap);
 
 		return readstr(offset, buf, n, xbuf);
+
+	case Qsysname:
+		return readstr(offset, buf, n, sysname);
+
 	default:
 		print("consread %lux\n", c->qid);
 		error(Egreg);
@@ -862,6 +869,17 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 		fd = strtoul(buf, 0, 0);
 		swc = fdtochan(fd, -1, 1);
 		setswapchan(swc);
+		break;
+
+	case Qsysname:
+		if(offset != 0)
+			error(Ebadarg);
+		if(n <= 0 || n >= NAMELEN)
+			error(Ebadarg);
+		strncpy(sysname, a, n);
+		sysname[n] = 0;
+		if(sysname[n-1] == '\n')
+			sysname[n-1] = 0;
 		break;
 
 	default:

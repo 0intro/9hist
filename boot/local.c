@@ -33,7 +33,7 @@ connectlocal(void)
 	sprint(partition, "%sfs", disk ? disk : bootdisk);
 	if(stat(partition, d) < 0)
 		return -1;
-
+	print("kfs...");
 	if(bind("#c", "/dev", MREPL) < 0)
 		fatal("bind #c");
 	if(bind("#p", "/proc", MREPL) < 0)

@@ -1,6 +1,6 @@
 #define	BITBOTCH	256	/* remove with BIT3 */
 #include	"u.h"
-#include	"lib.h"
+#include	"../port/lib.h"
 #include	"mem.h"
 #include	"dat.h"
 #include	"fns.h"

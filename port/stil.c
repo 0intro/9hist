@@ -2,7 +2,7 @@
  * stil - Internet link protocol
  */
 #include	"u.h"
-#include	"lib.h"
+#include	"../port/lib.h"
 #include	"mem.h"
 #include	"dat.h"
 #include	"fns.h"
@@ -16,8 +16,14 @@ int 		ilcksum = 1;
 static 	int 	initseq = 25000;
 static	Rendez	ilackr;
 
-char	*ilstate[] = { "Closed", "Syncer", "Syncee", "Established", "Listening", "Closing" };
-char	*iltype[] =  { "sync", "data", "dataquerey", "ack", "querey", "state", "close" };
+char	*ilstate[] = 
+{ 
+	"Closed", "Syncer", "Syncee", "Established", "Listening", "Closing" 
+};
+char	*iltype[] = 
+{	
+	"sync", "data", "dataquerey", "ack", "querey", "state", "close" 
+};
 static char *etime = "connection timed out";
 
 /* Always Acktime < Fasttime < Slowtime << Ackkeepalive */
