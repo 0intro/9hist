@@ -78,14 +78,8 @@ void*	pxspanalloc(ulong, int, ulong);
 ulong	rdcount(void);
 int	readlog(ulong, char*, ulong);
 void	restfpregs(FPsave*, ulong);
-void	screeninit(int);
+void	screeninit(void);
 #define	screenputs 
-void	sethandler(int, void(*)(void));
-void	setled(int);
-void	setleveldest(int, int, uvlong*);
-void	sinit(void);
-uchar*	smap(int, uchar*);
-void	sunmap(int, uchar*);
 void	syslog(char*, int);
 void	sysloginit(void);
 int	tas(ulong*);

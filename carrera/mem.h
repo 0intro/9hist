@@ -78,9 +78,8 @@
 #define CU1		0x20000000
 
 /*
- * Traps
+ * Trap vectors
  */
-
 #define	UTLBMISS	(KSEG0+0x000)
 #define	XEXCEPTION	(KSEG0+0x80)
 #define	CACHETRAP	(KSEG0+0x100)
@@ -89,7 +88,6 @@
 /*
  * Magic registers
  */
-
 #define	USER		24		/* R24 is up-> */
 #define	MACH		25		/* R25 is m-> */
 
@@ -97,17 +95,12 @@
  * Fundamental addresses
  */
 #define	MACHADDR	0x80005000	/* Mach structures */
-/* Leave space below kmap for IO */
-#define	KMAPADDR	0xE0040000
-/* Sizeof(Ureg)+space for retpc & ur */
-#define UREGSIZE	0xA0
+#define UREGSIZE	0xA0		/* Sizeof(Ureg)+retpc & ur */
 #define	MACHP(n)	((Mach *)(MACHADDR+(n)*BY2PG))
-
 
 /*
  * MMU
  */
-
 #define PGSZ4K		(0x00<<13)
 #define PGSZ64K		(0x0F<<13)
 #define PGSZ256K	(0x3F<<13)
@@ -121,9 +114,11 @@
 
 #define PIDXSHFT	12
 #define PIDX		(0x7<<PIDXSHFT)
+#define	KMAPADDR	0xE1000000
+#define KMAPMASK	0xFF000000
 #define KMAPSHIFT	15
 #define NCOLOR		8
-#define getcolor(a)	(((ulong)(a)>>PIDXSHFT)&7)
+#define getpgcolor(a)	(((ulong)(a)>>PIDXSHFT)&7)
 
 #define	PTEGLOBL	(1<<0)
 #define	PTEVALID	(1<<1)

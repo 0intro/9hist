@@ -71,7 +71,7 @@ newpage(int clear, Segment **s, ulong va)
 retry:
 	lock(&palloc);
 
-	color = getcolor(va);
+	color = getpgcolor(va);
 	hw = swapalloc.highwater;
 	for(;;) {
 		if(palloc.freecol[color] > hw)
@@ -233,7 +233,7 @@ duppage(Page *p)				/* Always call with p locked */
 		return;
 	}
 
-	color = getcolor(p->va);
+	color = getpgcolor(p->va);
 	for(np = palloc.head; np; np = np->next)
 		if(np->color == color)
 			break;

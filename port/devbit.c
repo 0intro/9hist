@@ -9,8 +9,6 @@
 
 #include	"devtab.h"
 
-#include	"screen.h"
-
 /*
  * Some monochrome screens are reversed from what we like:
  * We want 0's bright and 1's dark.
@@ -104,11 +102,37 @@ void	bitstring(GBitmap*, Point, GFont*, uchar*, long, Fcode);
 void	bitloadchar(GFont*, int, GSubfont*, int);
 extern	GBitmap	gscreen;
 
+typedef struct Mouseinfo	Mouseinfo;
+typedef struct Cursorinfo	Cursorinfo;
+
+struct Mouseinfo{
+	/*
+	 * First three fields are known in some l.s's
+	 */
+	int	dx;
+	int	dy;
+	int	track;		/* l.s has updated dx & dy */
+	Mouse;
+	int	redraw;		/* update cursor on screen */
+	ulong	counter;	/* increments every update */
+	ulong	lastcounter;	/* value when /dev/mouse read */
+	Rendez	r;
+};
+
+struct Cursorinfo{
+	Cursor;
+	Lock;
+	int	visible;	/* on screen */
+	int	disable;	/* from being used */
+	Rectangle r;		/* location */
+};
+
 Mouseinfo	mouse;
 Cursorinfo	cursor;
 int		mouseshifted;
 int		mousetype;
 int		islittle;
+int		hwcurs;
 
 Cursor	arrow =
 {
@@ -269,6 +293,7 @@ bitreset(void)
 
 	if(!conf.monitor)
 		return;
+
 	memmove(&bdefont0, defont, sizeof(*defont));
 	bdefont = &bdefont0;
 	bit.map = smalloc(DMAP*sizeof(GBitmap*));
@@ -291,6 +316,7 @@ bitreset(void)
 	 * Somewhat of a heuristic: start with three screensful and
 	 * allocate single screensful dynamically if needed.
 	 */
+
 	ws = BI2WD>>gscreen.ldepth;	/* pixels per word */
 	a->nwords = 3*(HDR + gscreen.r.max.y*gscreen.r.max.x/ws);
 	a->words = xalloc(a->nwords*sizeof(ulong));
@@ -524,21 +550,16 @@ bitread(Chan *c, void *va, long n, ulong offset)
 		 */
 		if(n < 14)
 			error(Ebadblt);
-	    Again:
-		while(mouse.changed == 0)
+		while(mousechanged(0) == 0)
 			sleep(&mouse.r, mousechanged, 0);
 		lock(&cursor);
-		if(mouse.changed == 0){
-			unlock(&cursor);
-			goto Again;
-		}
 		p = va;
 		p[0] = 'm';
 		p[1] = mouse.buttons;
 		BPLONG(p+2, mouse.xy.x);
 		BPLONG(p+6, mouse.xy.y);
 		BPLONG(p+10, TK2MS(MACHP(0)->ticks));
-		mouse.changed = 0;
+		mouse.lastcounter = mouse.counter;
 		unlock(&cursor);
 		return 14;
 	}
@@ -546,7 +567,7 @@ bitread(Chan *c, void *va, long n, ulong offset)
 		if(offset==0){
 			if(n < 5*12)
 				error(Eio);
-			sprint(va, "%11d %11d %11d %11d %11d ",
+			sprint(va, "%11d %11d %11d %11d %11d",
 				gscreen.ldepth, gscreen.r.min.x,
 				gscreen.r.min.y, gscreen.r.max.x,
 				gscreen.r.max.y);
@@ -712,7 +733,7 @@ bitread(Chan *c, void *va, long n, ulong offset)
 			error(Ebadblt);
 		for(j = 0; j < nw; j++){
 			if(bit.mid == 0){
-				getcolor(flipping? ~j : j, &rv, &gv, &bv);
+				getcolor(flipping? nw-j-1 : j, &rv, &gv, &bv);
 			}else{
 				rv = j;
 				for(off = 32-l; off > 0; off -= l)
@@ -1566,8 +1587,6 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 				p += l;
 				m -= l;
 			}
-			if(v == 0)
-				hwscreenwrite(miny, maxy);
 			break;
 
 		case 'x':
@@ -1583,6 +1602,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			pt1.y = BGLONG(p+5);
 			if(ptinrect(pt1, gscreen.r)){
 				mouse.xy = pt1;
+				mouse.redraw = 1;
 				mouse.track = 1;
 				mouseclock();
 			}
@@ -1991,6 +2011,8 @@ Cursortocursor(Cursor *c)
 		*p = c->clr[2*i];
 		*(p+1) = c->clr[2*i+1];
 	}
+	if(hwcurs)
+		hwcursset(set.base, clr.base, cursor.offset.x, cursor.offset.y);
 	unlock(&cursor);
 }
 
@@ -2002,15 +2024,19 @@ cursoron(int dolock)
 	if(dolock)
 		lock(&cursor);
 	if(cursor.visible++ == 0){
-		cursor.r.min = mouse.xy;
-		cursor.r.max = add(mouse.xy, Pt(16, 16));
-		cursor.r = raddp(cursor.r, cursor.offset);
-		gbitblt(&cursorback, Pt(0, 0), &gscreen, cursor.r, S);
-		gbitblt(&gscreen, cursor.r.min,
-			&clr, Rect(0, 0, 16, 16), flipping? flipD[D&~S] : D&~S);
-		gbitblt(&gscreen, cursor.r.min,
-			&set, Rect(0, 0, 16, 16), flipping? flipD[S|D] : S|D);
-		mbbrect(cursor.r);
+		if(hwcurs)
+			hwcursmove(mouse.xy.x, mouse.xy.y);
+		else {
+			cursor.r.min = mouse.xy;
+			cursor.r.max = add(mouse.xy, Pt(16, 16));
+			cursor.r = raddp(cursor.r, cursor.offset);
+			gbitblt(&cursorback, Pt(0, 0), &gscreen, cursor.r, S);
+			gbitblt(&gscreen, cursor.r.min,
+				&clr, Rect(0, 0, 16, 16), flipping? flipD[D&~S] : D&~S);
+			gbitblt(&gscreen, cursor.r.min,
+				&set, Rect(0, 0, 16, 16), flipping? flipD[S|D] : S|D);
+			mbbrect(cursor.r);
+		}
 	}
 	if(dolock)
 		unlock(&cursor);
@@ -2024,69 +2050,61 @@ cursoroff(int dolock)
 	if(dolock)
 		lock(&cursor);
 	if(--cursor.visible == 0) {
-		gbitblt(&gscreen, cursor.r.min, &cursorback, Rect(0, 0, 16, 16), S);
-		mbbrect(cursor.r);
-		mousescreenupdate();
+		if(!hwcurs) {
+			gbitblt(&gscreen, cursor.r.min, &cursorback, Rect(0, 0, 16, 16), S);
+			mbbrect(cursor.r);
+			mousescreenupdate();
+		}
 	}
 	if(dolock)
 		unlock(&cursor);
 }
 
+/*
+ *  called by the clock routine to redraw the cursor
+ */
 void
-mousedelta(int b, int dx, int dy)	/* called at higher priority */
+mouseclock(void)
 {
-	mouse.dx += dx;
-	mouse.dy += dy;
-	mouse.newbuttons = b;
-	mouse.track = 1;
+	if(mouse.track){
+		mousetrack(mouse.buttons, mouse.dx, mouse.dy);
+		mouse.track = 0;
+		mouse.dx = 0;
+		mouse.dy = 0;
+	}
+	if(mouse.redraw && canlock(&cursor)){
+		mouse.redraw = 0;
+		cursoroff(0);
+		cursoron(0);
+		mousescreenupdate();
+		unlock(&cursor);
+	}
 }
 
+/*
+ *  called at interrupt level to update the structure and
+ *  awaken any waiting procs.
+ */
 void
-mousebuttons(int b)	/* called at higher priority */
-{
-	/*
-	 * It is possible if you click very fast and get bad luck
-	 * you could miss a button click (down up).  Doesn't seem
-	 * likely or important enough to worry about.
-	 */
-	mouse.newbuttons = b;
-	mouse.track = 1;		/* aggressive but o.k. */
-	mouseclock();
-}
-
-void
-mouseupdate(int dolock)
+mousetrack(int b, int dx, int dy)
 {
 	int x, y;
 
-	if(!mouse.track || (dolock && !canlock(&cursor)))
-		return;
-
-	x = mouse.xy.x + mouse.dx;
+	x = mouse.xy.x + dx;
 	if(x < gscreen.r.min.x)
 		x = gscreen.r.min.x;
 	if(x >= gscreen.r.max.x)
 		x = gscreen.r.max.x;
-	y = mouse.xy.y + mouse.dy;
+	y = mouse.xy.y + dy;
 	if(y < gscreen.r.min.y)
 		y = gscreen.r.min.y;
 	if(y >= gscreen.r.max.y)
 		y = gscreen.r.max.y;
-	cursoroff(0);
+	mouse.counter++;
 	mouse.xy = Pt(x, y);
-	cursoron(0);
-	mousescreenupdate();
-	mouse.dx = 0;
-	mouse.dy = 0;
-	mouse.clock = 0;
-	mouse.track = 0;
-	mouse.buttons = mouse.newbuttons;
-	mouse.changed = 1;
-
-	if(dolock){
-		unlock(&cursor);
-		wakeup(&mouse.r);
-	}
+	mouse.buttons = b;
+	mouse.redraw = 1;
+	wakeup(&mouse.r);
 }
 
 /*
@@ -2107,6 +2125,7 @@ m3mouseputc(IOQ *q, int c)
 	static int middle;
 	static uchar b[] = { 0, 4, 1, 5, 0, 2, 1, 5 };
 	short x;
+	int dx, dy, newbuttons;
 
 	USED(q);
 	/* 
@@ -2116,20 +2135,20 @@ m3mouseputc(IOQ *q, int c)
 		if((c&0x40) == 0){
 			/* an extra byte gets sent for the middle button */
 			middle = (c&0x20) ? 2 : 0;
-			mousebuttons((mouse.buttons & ~2) | middle);
+			newbuttons = (mouse.buttons & ~2) | middle;
+			mousetrack(newbuttons, 0, 0);
 			return 0;
 		}
 	}
 	msg[nb] = c;
 	if(++nb == 3){
 		nb = 0;
-		mouse.newbuttons = middle | b[(msg[0]>>4)&3 | (mouseshifted ? 4 : 0)];
+		newbuttons = middle | b[(msg[0]>>4)&3 | (mouseshifted ? 4 : 0)];
 		x = (msg[0]&0x3)<<14;
-		mouse.dx = (x>>8) | msg[1];
+		dx = (x>>8) | msg[1];
 		x = (msg[0]&0xc)<<12;
-		mouse.dy = (x>>8) | msg[2];
-		mouse.track = 1;
-		mouseclock();
+		dy = (x>>8) | msg[2];
+		mousetrack(newbuttons, dx, dy);
 	}
 	return 0;
 }
@@ -2145,6 +2164,7 @@ mouseputc(IOQ *q, int c)
 	static short msg[5];
 	static int nb;
 	static uchar b[] = {0, 4, 2, 6, 1, 5, 3, 7, 0, 2, 2, 6, 1, 5, 3, 7};
+	int dx, dy, newbuttons;
 
 	USED(q);
 	if((c&0xF0) == 0x80)
@@ -2153,11 +2173,10 @@ mouseputc(IOQ *q, int c)
 	if(c & 0x80)
 		msg[nb] |= ~0xFF;	/* sign extend */
 	if(++nb == 5){
-		mouse.newbuttons = b[((msg[0]&7)^7) | (mouseshifted ? 8 : 0)];
-		mouse.dx = msg[1]+msg[3];
-		mouse.dy = -(msg[2]+msg[4]);
-		mouse.track = 1;
-		mouseclock();
+		newbuttons = b[((msg[0]&7)^7) | (mouseshifted ? 8 : 0)];
+		dx = msg[1]+msg[3];
+		dy = -(msg[2]+msg[4]);
+		mousetrack(newbuttons, dx, dy);
 		nb = 0;
 	}
 	return 0;
@@ -2167,7 +2186,7 @@ int
 mousechanged(void *m)
 {
 	USED(m);
-	return mouse.changed;
+	return mouse.lastcounter != mouse.counter;
 }
 
 /*

@@ -4,6 +4,7 @@
 enum
 {
 	Devicephys	= 0x80000000,
+	Eisaphys	= 0x90000000,
 	Devicevirt	= 0xE0000000,
 	Dmabase		= 0xE0000000,	
 	Sonicbase	= 0xE0001000,    	
@@ -17,11 +18,13 @@ enum
 	Nvram		= 0xE0009000, 	
 	NvramRW		= 0xE000A000,
 	NvramRO		= 0xE000B000,
+	 Enetoffset	= 0,
 	KeyboardIO	= 0xE0005000,	
 	MouseIO		= 0xE0005000,  	
 	SoundIO		= 0xE000C000,
 	EisaLatch	= 0xE000E000,
 	Diag		= 0xE000F000,
+	EisaControl	= 0xE0010000,	/* Second 64K Page from Devicevirt */
 	VideoCTL	= 0x60000000,	
 	VideoMEM	= 0x40000000, 	
 	I386ack		= 0xE000023f,
@@ -46,11 +49,18 @@ enum
 	Ntranslation	= 4096,		/* Number of translation registers */
 };
 
-#define IO(type, reg)	(*(type*)reg)
-
 typedef struct Tte Tte;
 struct Tte
 {
 	ulong	hi;
 	ulong	lo;
 };
+
+#define IO(type, reg)		(*(type*)reg)
+#define QUAD(type, v)		(type*)(((ulong)(v)+7)&~7)
+#define CACHELINE(type, v)	(type*)(((ulong)(v)+127)&~127)
+#define UNCACHED(type, v)	(type*)((ulong)(v)|0xA0000000)
+
+#define EISAUNCACHED(v)		(0xA0000000|0x10000000|(v))
+#define EISAOUTB(port, v)	*(uchar*)((EisaControl+(port))^7) = v
+#define EISAINB(port)		(*(uchar*)((EisaControl+(port))^7))

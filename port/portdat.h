@@ -623,6 +623,7 @@ extern	Rune*	devchar;
 extern	Dev	devtab[];
 extern  char	eve[];
 extern	char	hostdomain[];
+extern	int	hwcurs;
 extern	uchar	initcode[];
 extern	FPsave	initfp;
 extern  Queue	*kbdq;

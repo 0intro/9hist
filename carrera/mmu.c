@@ -143,9 +143,9 @@ void
 kfault(ulong addr)
 {
 	KMap *k, *f;
-	ulong x, index;
+	ulong x, index, virt;
 
-	index = (addr & ~KSEGM) >> KMAPSHIFT;
+	index = (addr & ~KMAPADDR) >> KMAPSHIFT;
 	if(index >= KPTESIZE)
 		panic("kmapfault: %lux", addr);
 
@@ -163,7 +163,9 @@ kfault(ulong addr)
 	}
 
 	x = m->ktlbnext;
-	puttlbx(x, (k->virt & ~BY2PG)|TLBPID(tlbvirt()), k->phys0, k->phys1, PGSZ4K);
+	virt = (k->virt&~BY2PG)|TLBPID(tlbvirt());
+	puttlbx(x, virt, k->phys0, k->phys1, PGSZ4K);
+
 	m->ktlbx[x] = 1;
 	if(++x >= NTLB)
 		m->ktlbnext = TLBROFF;

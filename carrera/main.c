@@ -54,10 +54,7 @@ main(void)
 	rootfiles();
 	swapinit();
 	userinit();
-enab();
-spllo();
-for(;;)
-  ;
+screeninit();
 	schedinit();
 }
 
@@ -166,31 +163,44 @@ serialinit(void)
 void
 ioinit(void)
 {
-	ulong phys;
+	ulong devphys, isaphys, intphys;
 
 	/*
-	 * Map devices
+	 * Map devices and the Eisa control space
 	 */
-	phys = PPN(Devicephys)|PTEGLOBL|PTEVALID|PTEWRITE|PTEUNCACHED;
-	puttlbx(1, Devicevirt, phys, PTEGLOBL, PGSZ64K);
+	devphys = PPN(Devicephys)|PTEGLOBL|PTEVALID|PTEWRITE|PTEUNCACHED;
+	isaphys = PPN(Eisaphys)|PTEGLOBL|PTEVALID|PTEWRITE|PTEUNCACHED;
+
+	puttlbx(1, Devicevirt, devphys, isaphys, PGSZ64K);
 
 	/*
 	 * Map Interrupt control
 	 */
-	phys = PPN(Intctlphys)|PTEGLOBL|PTEVALID|PTEWRITE|PTEUNCACHED;
-	puttlbx(2, Intctlvirt, phys, PTEGLOBL, PGSZ4K);
+	intphys = PPN(Intctlphys)|PTEGLOBL|PTEVALID|PTEWRITE|PTEUNCACHED;
+	puttlbx(2, Intctlvirt, intphys, PTEGLOBL, PGSZ4K);
 
 	/* Enable all devce interrupt */
 	IO(ushort, Intenareg) = 0xffff;
 }
 
+/*
+ * Pull the ethernet address out of NVRAM
+ */
 void
 enetaddr(uchar *ea)
 {
-	/** BUG get from PROM */
-	static uchar tea[] = { 0x00, 0x00, 0x77, 0x01, 0xD2, 0xba };
+	int i;
+	uchar tbuf[8];
 
-	memmove(ea, tea, sizeof(tea));
+	for(i = 0; i < 8; i++)
+		tbuf[i] = ((uchar*)(NvramRO+Enetoffset))[i];
+
+	print("ether:");
+	for(i = 0; i < 6; i++) {
+		ea[i] = tbuf[7-i];
+		print("%2.2ux", ea[i]);
+	}
+	print("\n");
 }
 
 /*
@@ -360,6 +370,8 @@ confinit(void)
 	conf.arp = 32;
 	conf.frag = 32;
 
+	conf.monitor = 1;
+
 	conf.copymode = 0;		/* copy on write */
 }
 
@@ -379,12 +391,3 @@ buzz(int f, int d)
 	USED(f);
 	USED(d);
 }
-
-int
-mouseputc(IOQ *q, int c)
-{
-	USED(q);
-	USED(c);
-	return 0;
-}
-

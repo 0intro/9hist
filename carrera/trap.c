@@ -204,8 +204,7 @@ trap(Ureg *ur)
 		if(up == 0)
 			kernfault(ur, ecode);
 
-		if(!user && (ur->badvaddr & KSEGM) == KSEG3) {
-iprint("kf %lux %lux\n", ur->pc, ur->r31);
+		if(!user && (ur->badvaddr & KMAPMASK) == KMAPADDR) {
 			kfault(ur->badvaddr);
 			break;
 		}
@@ -392,7 +391,7 @@ dumpregs(Ureg *ur)
 
 	l = &ur->status;
 	for(i=0; i<sizeof regname/sizeof(char*); i+=2, l+=2)
-		print("%s\t%.8lux\t%s\t%.8lux\n", regname[i], l[0], regname[i+1], l[1]);
+		print("%s\t0x%.8lux\t%s\t0x%.8lux\n", regname[i], l[0], regname[i+1], l[1]);
 }
 
 int
