@@ -307,6 +307,8 @@ pipestclose(Queue *q)
 	 *  send a hangup
 	 */
 	q = q->other;
+	if(q->next == 0)
+		return;
 	bp = allocb(0);
 	bp->type = M_HANGUP;
 	PUTNEXT(q, bp);
