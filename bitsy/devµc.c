@@ -10,6 +10,7 @@ enum{
 	Qbacklight = 1,
 	Qbattery,
 	Qbuttons,
+	Qcruft,
 	Qkbdin,
 	Qled,
 	Qversion,
@@ -35,6 +36,7 @@ Dirtab µcdir[]={
 	"backlight",	{ Qbacklight, 0 },	0,	0664,
 	"battery",	{ Qbattery, 0 },	0,	0664,
 	"buttons",	{ Qbuttons, 0 },	0,	0664,
+	"cruft",	{ Qcruft, 0 },		0,	0664,
 	"kbdin",	{ Qkbdin, 0 },		0,	0664,
 	"led",		{ Qled, 0 },		0,	0664,
 	"version",	{ Qversion, 0 },	0,	0664,
@@ -157,7 +159,7 @@ int
 			wakeup(&ctlr.r);
 			break;
 		default:
-			print("unknown µc message: %ux");
+			print("unknown µc message: %ux", ctlr.buf[1] >> 4);
 			for(i = 0; i < len; i++)
 				print(" %ux", p[i]);
 			print("\n");
@@ -310,7 +312,7 @@ static long
 #define PUTBCD(n,o) bcdclock[o] = (n % 10) | (((n / 10) % 10)<<4)
 
 static long	 
-µcwrite(Chan* c, void* a, long n, vlong off)
+µcwrite(Chan* c, void* a, long n, vlong)
 {
 	Cmdbuf *cmd;
 	uchar data[16];
@@ -342,6 +344,9 @@ static long
 		break;
 	case Qbacklight:
 		sendmsgwithack(BLbacklight, data, cmd->nf);
+		break;
+	case Qcruft:
+		lcdtweak(cmd);
 		break;
 	default:
 		error(Ebadarg);

@@ -18,13 +18,13 @@
 enum {
 	Wid		= 320,
 	Ht		= 240,
-	Pal0	= 0x2000,	/* 16-bit pixel data in active mode (12 in passive) */
+	Pal0		= 0x2000,	/* 16-bit pixel data in active mode (12 in passive) */
 
-	hsw		= 0x04,
-	elw		= 0x11,
-	blw		= 0x0c,
+	hsw		= 0x00,
+	elw		= 0x0e,
+	blw		= 0x0d,
 
-	vsw		= 0x03,
+	vsw		= 0x02,
 	efw		= 0x01,
 	bfw		= 0x0a,
 
@@ -109,14 +109,7 @@ struct sa1110regs {
 
 Point	ZP = {0, 0};
 
-static Memdata xgdata =
-{
-	nil,				/* *base */
-	nil,				/* *bdata */
-	1,					/* ref */
-	nil,				/* *imref */
-	0,					/* allocd */
-};
+static Memdata xgdata;
 
 static Memimage xgscreen =
 {
@@ -177,17 +170,34 @@ lcdinit(void)
 }
 
 void
+lcdtweak(Cmdbuf *cmd)
+{
+	if(cmd->nf < 4)
+		return;
+	if(*cmd->f[0] == 'h')
+		lcd->lccr1 = ((Wid-16)<<PPL)
+			| (atoi(cmd->f[1])<<HSW)
+			| (atoi(cmd->f[2])<<ELW)
+			| (atoi(cmd->f[3])<<BLW);
+	if(*cmd->f[0] == 'v')
+		lcd->lccr2 = ((Ht-1)<<LPP)
+			| (atoi(cmd->f[1])<<VSW)
+			| (atoi(cmd->f[2])<<EFW)
+			| (atoi(cmd->f[3])<<BFW);
+}
+
+void
 screeninit(void)
 {
 	int i;
 
-iprint("%lux %lux\n", (ulong)framebuf, (ulong)framebuf->pixel);
-
 	/* map the lcd regs into the kernel's virtual space */
 	lcd = (struct sa1110regs*)mapspecial(LCDREGS, sizeof(struct sa1110regs));;
 
-	framebuf = xspanalloc(sizeof *framebuf, 0x20, 0);
+	framebuf = xspanalloc(sizeof *framebuf, 0x100, 0);
 	/* the following works because main memory is direct mapped */
+
+iprint("framebuf %lux\n", framebuf);
 
 	framebuf->palette[0] = Pal0;
 
@@ -196,11 +206,16 @@ iprint("%lux %lux\n", (ulong)framebuf, (ulong)framebuf->pixel);
 
 	gscreen = &xgscreen;
 	xgdata.bdata = (uchar *)framebuf->pixel;
+	xgdata.ref = 1;
 
 	i = 0;
 	while (i < Wid*Ht*1/3)	framebuf->pixel[i++] = 0xf800;	/* red */
 	while (i < Wid*Ht*2/3)	framebuf->pixel[i++] = 0xffff;	/* white */
 	while (i < Wid*Ht*3/3)	framebuf->pixel[i++] = 0x001f;	/* blue */
+	for(i = 0; i < Wid*Ht; i += Wid)
+		framebuf->pixel[i] = 0xffff;	/* white */
+	for(i = Wid-1; i < Wid*Ht; i += Wid)
+		framebuf->pixel[i] = 0x001f;	/* blue */
 
 	memimageinit();
 	memdefont = getmemdefont();
