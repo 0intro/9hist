@@ -213,9 +213,9 @@ etherreset(void)
 				ctlrno, ctlr->type, ctlr->port, ctlr->irq);
 			if(ctlr->mem)
 				print(" addr 0x%lux", ctlr->mem);
-			if(ctlr->mem)
+			if(ctlr->size)
 				print(" size %d", ctlr->size);
-			print(": ea");
+			print(":");
 			for(i = 0; i < sizeof(ctlr->ea); i++)
 				print(" %2.2ux", ctlr->ea[i]);
 			print("\n");

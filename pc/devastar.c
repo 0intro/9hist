@@ -762,7 +762,7 @@ memwrite(Astar *a, uchar *from, long n, ulong offset)
 }
 
 /*
- *  start control progarm
+ *  start control program
  */
 static void
 startcp(Astar *a)
