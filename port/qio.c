@@ -243,7 +243,7 @@ qpass(Queue *q, Block *b)
 	q->len += len;
 checkb(b, "qpass");
 
-	if(q->len >= q->limit)
+	if(q->len >= q->limit/2)
 		q->state |= Qflow;
 
 	if(q->state & Qstarve){

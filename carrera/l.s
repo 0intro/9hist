@@ -814,43 +814,43 @@ TEXT	uvst(SB), $-4		/* uvst(address, src) */
 
 TEXT	fwblock(SB), $-4	/* fwblock(void*port, void *block, csum) */
 	MOVW	4(FP), R2
-	MOVW	8(FP), R3
+	MOVW	8(FP), R6
 
 	MOVW	$64, R4
 fwloop:
 	MOVV	0(R2), R5
 	MOVV	R5, 0(R1)
-	XOR	R5, R3
-	SRLV	$32, R5
-	XOR	R5, R3
+	XOR	R5, R6
+	MOVV	8(R2), R5
+	MOVV	R5, 0(R1)
+	XOR	R5, R6
 
-	ADD	$8, R2
-	SUB	$1, R4
+	ADD	$16, R2
+	SUB	$2, R4
 	BNE	R4, fwloop
 
-	MOVW	R3, R1
+	MOVW	R6, R1
+	SRLV	$32, R6
+	XOR	R6, R1
 	RET
 
 TEXT	frblock(SB), $-4	/* frblock(void*port, void *block, csum) */
 	MOVW	4(FP), R2
-	MOVW	8(FP), R3
+	MOVW	8(FP), R6
 
 	MOVW	$64, R4
 frloop:
-
-	MOVW	$50, R10
-xx:	SUB	$1, R10
-	BNE	R10, xx
-
 	MOVV	0(R1), R5
 	MOVV	R5, 0(R2)
-	XOR	R5, R3
-	SRLV	$32, R5
-	XOR	R5, R3
-
-	ADD	$8, R2
-	SUB	$1, R4
+	XOR	R5, R6
+	MOVV	0(R1), R5
+	MOVV	R5, 8(R2)
+	XOR	R5, R6
+	ADD	$16, R2
+	SUB	$2, R4
 	BNE	R4, frloop
 
-	MOVW	R3, R1
+	MOVW	R6, R1
+	SRLV	$32, R6
+	XOR	R6, R1
 	RET
