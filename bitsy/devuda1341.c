@@ -44,13 +44,13 @@ static int debug = 0;
  * L3 setup and hold times (expressed in µs)
  */
 enum {
-	L3_DataSetupTime =	10,	/* 190 ns */
-	L3_DataHoldTime =		10,	/*  30 ns */
-	L3_ModeSetupTime =	10,	/* 190 ns */
-	L3_ModeHoldTime =		10,	/* 190 ns */
-	L3_ClockHighTime =		100,	/* 250 ns (min is 64*fs, 35µs @ 44.1 Khz) */
-	L3_ClockLowTime =		100,	/* 250 ns (min is 64*fs, 35µs @ 44.1 Khz) */
-	L3_HaltTime =			10,	/* 190 ns */
+	L3_DataSetupTime =	1,	/* 190 ns */
+	L3_DataHoldTime =		1,	/*  30 ns */
+	L3_ModeSetupTime =	1,	/* 190 ns */
+	L3_ModeHoldTime =	1,	/* 190 ns */
+	L3_ClockHighTime =	1,	/* 100 ns */
+	L3_ClockLowTime =		1,	/* 100 ns */
+	L3_HaltTime =			1,	/* 190 ns */
 };
 
 /* UDA 1341 Registers */
@@ -59,13 +59,13 @@ enum {
 	UdaStatusDC		= 0,	/* 1 bit */
 	UdaStatusIF		= 1,	/* 3 bits */
 	UdaStatusSC		= 4,	/* 2 bits */
-	UdaStatusRST	= 6,	/* 1 bit */
+	UdaStatusRST		= 6,	/* 1 bit */
 };
 
 enum {
 	/* Status1 register */
-	UdaStatusPC		= 0,	/* 2 bits */
-	UdaStatusDS		= 2,	/* 1 bit */
+	UdaStatusPC	= 0,	/* 2 bits */
+	UdaStatusDS	= 2,	/* 1 bit */
 	UdaStatusPDA	= 3,	/* 1 bit */
 	UdaStatusPAD	= 4,	/* 1 bit */
 	UdaStatusIGS	= 5,	/* 1 bit */
@@ -191,6 +191,8 @@ static	struct
 [Nvol]		{0}
 };
 
+static void	setreg(char *name, int val, int n);
+
 /*
  * Grab control of the IIC/L3 shared pins
  */
@@ -199,6 +201,7 @@ L3_acquirepins(void)
 {
 	gpioregs->set = (GPIO_L3_SCLK_o | GPIO_L3_SDA_io);
 	gpioregs->direction |=  (GPIO_L3_SCLK_o | GPIO_L3_SDA_io);
+	µdelay(2);
 }
 
 /*
@@ -208,7 +211,6 @@ static void
 L3_releasepins(void)
 {
 	gpioregs->direction &= ~(GPIO_L3_SCLK_o | GPIO_L3_SDA_io);
-	gpioregs->clear = (GPIO_L3_SCLK_o | GPIO_L3_SDA_io);
 }
 
 /*
@@ -274,7 +276,7 @@ L3_sendbyte(char data, int mode)
 {
 	int i;
 
-	L3_acquirepins();
+//suspect	L3_acquirepins();
 
 	switch(mode) {
 	case 0: /* Address mode */
@@ -294,12 +296,14 @@ L3_sendbyte(char data, int mode)
 	for (i = 0; i < 8; i++)
 		L3_sendbit(data >> i);
 
+	µdelay(L3_ModeHoldTime);
+
 	if (mode == 0)  /* Address mode */
 		gpioregs->set = GPIO_L3_MODE_o;
 
 	µdelay(L3_ModeHoldTime);
 
-	L3_releasepins();
+//suspect		L3_releasepins();
 }
 
 /*
@@ -315,8 +319,7 @@ L3_getbyte(int mode)
 	char data = 0;
 	int i;
 
-	L3_acquirepins();
-	gpioregs->direction &= ~(GPIO_L3_SDA_io);
+//suspect		L3_acquirepins();
 
 	switch(mode) {
 	case 0: /* Address mode - never valid */
@@ -354,10 +357,11 @@ L3_write(uchar addr, uchar *data, int len)
 	int mode = 0;
 	int bytes = len;
 
+	L3_acquirepins();
 	L3_sendbyte(addr, mode++);
 	while(len--)
 		L3_sendbyte(*data++, mode++);
-
+	L3_releasepins();
 	return bytes;
 }
 
@@ -366,19 +370,23 @@ L3_write(uchar addr, uchar *data, int len)
  * the data and length. The length read is returned. The register space
  * is encoded in the address (low two bits are set and device address is
  * in the upper 6 bits).
- */
+
+ * Commented out, not used
 static int
 L3_read(uchar addr, uchar *data, int len)
 {
 	int mode = 0;
 	int bytes = len;
 
+	L3_acquirepins();
 	L3_sendbyte(addr, mode++);
+	gpioregs->direction &= ~(GPIO_L3_SDA_io);
 	while(len--)
 		*data++ = L3_getbyte(mode++);
-
+	L3_releasepins();
 	return bytes;
 }
+ */
 
 void
 audiomute(int on)
@@ -445,23 +453,23 @@ audioinit(void)
 	sspregs = mapspecial(SSPREGS, 32);
 }
 
-uchar	status0	= 0x22;
-uchar	status1	= 0x80;
-uchar	data00	= 0x00;		/* volume control, bits 0 – 5 */
-uchar	data01	= 0x40;
-uchar	data02	= 0x80;
-ushort	data0e0	= 0xe0c0;
-ushort	data0e1	= 0xe0c1;
-ushort	data0e2	= 0xf2c2;
+uchar	status0[1]		= {0x22};
+uchar	status1[1]		= {0x80};
+uchar	data00[1]		= {0x00};		/* volume control, bits 0 – 5 */
+uchar	data01[1]		= {0x40};
+uchar	data02[1]		= {0x80};
+uchar	data0e0[2]	= {0xc0, 0xe0};
+uchar	data0e1[2]	= {0xc1, 0xe0};
+uchar	data0e2[2]	= {0xc2, 0xf2};
 /* there is no data0e3 */
-ushort	data0e4	= 0xe0c4;
-ushort	data0e5	= 0xe0c5;
-ushort	data0e6	= 0xe3c6;
+uchar	data0e4[2]	= {0xc4, 0xe0};
+uchar	data0e5[2]	= {0xc5, 0xe0};
+uchar	data0e6[2]	= {0xc6, 0xe3};
 
 static void
 enable(void)
 {
-	ushort	data;
+	uchar	data[1];
 
 	L3_init();
 
@@ -484,24 +492,24 @@ enable(void)
 	delay(100);
 
 	/* Reset the chip */
-	data = status0 | 1<<UdaStatusRST;
-	L3_write(UDA1341_L3Addr | UDA1341_STATUS, (uchar*)&data, 1 );
+	data[0] = status0[0] | 1<<UdaStatusRST;
+	L3_write(UDA1341_L3Addr | UDA1341_STATUS, data, 1 );
 	gpioregs->clear = EGPIO_codec_reset;
 	gpioregs->set = EGPIO_codec_reset;
 	/* write uda 1341 status[0] */
-	L3_write(UDA1341_L3Addr | UDA1341_STATUS, (uchar*)&status0, 1 );
-	L3_write(UDA1341_L3Addr | UDA1341_STATUS, (uchar*)&status1, 1);
-	L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data02, 1);
-	L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data0e2, 2);
-	L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data0e6, 2 );
+	L3_write(UDA1341_L3Addr | UDA1341_STATUS, status0, 1 );
+	L3_write(UDA1341_L3Addr | UDA1341_STATUS, status1, 1);
+	L3_write(UDA1341_L3Addr | UDA1341_DATA0, data02, 1);
+	L3_write(UDA1341_L3Addr | UDA1341_DATA0, data0e2, 2);
+	L3_write(UDA1341_L3Addr | UDA1341_DATA0, data0e6, 2 );
 
 	if (debug) {
-		print("enable:	status0	= 0x%2.2ux\n", status0);
-		print("enable:	status1	= 0x%2.2ux\n", status1);
-		print("enable:	data02	= 0x%2.2ux\n", data02);
-		print("enable:	data0e2	= 0x%4.4ux\n", data0e2);
-		print("enable:	data0e4	= 0x%4.4ux\n", data0e4);
-		print("enable:	data0e6	= 0x%4.4ux\n", data0e6);
+		print("enable:	status0	= 0x%2.2ux\n", status0[0]);
+		print("enable:	status1	= 0x%2.2ux\n", status1[0]);
+		print("enable:	data02	= 0x%2.2ux\n", data02[0]);
+		print("enable:	data0e2	= 0x%4.4ux\n", data0e2[0] | data0e2[1]<<8);
+		print("enable:	data0e4	= 0x%4.4ux\n", data0e4[0] | data0e4[1]<<8);
+		print("enable:	data0e6	= 0x%4.4ux\n", data0e6[0] | data0e6[1]<<8);
 		print("enable:	sspregs->control0 = 0x%lux\n", sspregs->control0);
 		print("enable:	sspregs->control1 = 0x%lux\n", sspregs->control1);
 	}
@@ -529,64 +537,98 @@ mxvolume(void) {
 		right = audio.rivol;
 		if (left[Vmic]+right[Vmic] == 0) {
 			/* Turn on automatic gain control (AGC) */
-			data0e4 |= 0x1000;
-			L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data0e4, 2 );
+			data0e4[1] |= 0x10;
+			L3_write(UDA1341_L3Addr | UDA1341_DATA0, data0e4, 2 );
 		} else {
 			int v;
 			/* Turn on manual gain control */
 			v = ((left[Vmic]+right[Vmic])*0x7f/200)&0x7f;
-			data0e4 &= ~0x1300;
-			data0e5 &= ~0x1f00;
-			data0e4 |= (v & 0x3)<<8;
-			data0e5 |= (v & 0x7c)<<6;
-			L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data0e4, 2 );
-			L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data0e5, 2 );
+			data0e4[1] &= ~0x13;
+			data0e5[1] &= ~0x1f;
+			data0e4[1] |= v & 0x3;
+			data0e5[0] |= (v & 0x7c)<<6;
+			data0e5[1] |= (v & 0x7c)>>2;
+			L3_write(UDA1341_L3Addr | UDA1341_DATA0, data0e4, 2 );
+			L3_write(UDA1341_L3Addr | UDA1341_DATA0, data0e5, 2 );
 		}
 		if (left[Vinvert]+right[Vinvert] == 0)
-			status1 &= ~0x04;
+			status1[0] &= ~0x04;
 		else
-			status1 |= 0x04;
-		L3_write(UDA1341_L3Addr | UDA1341_STATUS, (uchar*)&status1, 1);
+			status1[0] |= 0x04;
+		L3_write(UDA1341_L3Addr | UDA1341_STATUS, status1, 1);
 		if (debug) {
-			print("mxvolume:	status1	= 0x%2.2ux\n", status1);
-			print("mxvolume:	data0e4	= 0x%4.4ux\n", data0e4);
-			print("mxvolume:	data0e5	= 0x%4.4ux\n", data0e5);
+			print("mxvolume:	status1	= 0x%2.2ux\n", status1[0]);
+			print("mxvolume:	data0e4	= 0x%4.4ux\n", data0e4[0]|data0e4[0]<<8);
+			print("mxvolume:	data0e5	= 0x%4.4ux\n", data0e5[0]|data0e5[0]<<8);
 		}
 	}
 	if(audio.amode & Awrite){
 		left = audio.lovol;
 		right = audio.rovol;
-		data00 &= ~0x3f;
-		data00 |= ((200-left[Vaudio]-right[Vaudio])*0x3f/200)&0x3f;
+		data00[0] &= ~0x3f;
+		data00[0] |= ((200-left[Vaudio]-right[Vaudio])*0x3f/200)&0x3f;
 		if (left[Vtreb]+right[Vtreb] <= 100
 		 && left[Vbass]+right[Vbass] <= 100)
 			/* settings neutral */
-			data02 &= ~0x03;
+			data02[0] &= ~0x03;
 		else {
-			data02 |= 0x03;
-			data01 &= ~0x3f;
-			data01 |= ((left[Vtreb]+right[Vtreb]-100)*0x3/100)&0x03;
-			data01 |= (((left[Vbass]+right[Vbass]-100)*0xf/100)&0xf)<<2;
+			data02[0] |= 0x03;
+			data01[0] &= ~0x3f;
+			data01[0] |= ((left[Vtreb]+right[Vtreb]-100)*0x3/100)&0x03;
+			data01[0] |= (((left[Vbass]+right[Vbass]-100)*0xf/100)&0xf)<<2;
 		}
 		if (left[Vfilter]+right[Vfilter] == 0)
-			data02 &= ~0x10;
+			data02[0] &= ~0x10;
 		else
-			data02 |= 0x10;
+			data02[0]|= 0x10;
 		if (left[Vinvert]+right[Vinvert] == 0)
-			status1 &= ~0x10;
+			status1[0] &= ~0x10;
 		else
-			status1 |= 0x10;
-		L3_write(UDA1341_L3Addr | UDA1341_STATUS, (uchar*)&status1, 1);
-		L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data00, 1);
-		L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data01, 1);
-		L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data02, 1);
+			status1[0] |= 0x10;
+		L3_write(UDA1341_L3Addr | UDA1341_STATUS, status1, 1);
+		L3_write(UDA1341_L3Addr | UDA1341_DATA0, data00, 1);
+		L3_write(UDA1341_L3Addr | UDA1341_DATA0, data01, 1);
+		L3_write(UDA1341_L3Addr | UDA1341_DATA0, data02, 1);
 		if (debug) {
-			print("mxvolume:	status1	= 0x%2.2ux\n", status1);
-			print("mxvolume:	data00	= 0x%2.2ux\n", data00);
-			print("mxvolume:	data01	= 0x%2.2ux\n", data01);
-			print("mxvolume:	data02	= 0x%2.2ux\n", data02);
+			print("mxvolume:	status1	= 0x%2.2ux\n", status1[0]);
+			print("mxvolume:	data00	= 0x%2.2ux\n", data00[0]);
+			print("mxvolume:	data01	= 0x%2.2ux\n", data01[0]);
+			print("mxvolume:	data02	= 0x%2.2ux\n", data02[0]);
 		}
 	}
+}
+
+static void
+setreg(char *name, int val, int n)
+{
+	uchar x[2];
+	int i;
+
+	x[0] = val;
+	x[1] = val>>8;
+
+	if(strcmp(name, "pause") == 0){
+		for(i = 0; i < n; i++)
+			µdelay(val);
+		return;
+	}
+
+	switch(n){
+	case 1:
+	case 2:
+		break;
+	default:
+		error("setreg");
+	}
+
+	if(strcmp(name, "status") == 0){
+		L3_write(UDA1341_L3Addr | UDA1341_STATUS, x, n);
+	} else if(strcmp(name, "data0") == 0){
+		L3_write(UDA1341_L3Addr | UDA1341_DATA0, x, n);
+	} else if(strcmp(name, "data1") == 0){
+		L3_write(UDA1341_L3Addr | UDA1341_DATA1, x, n);
+	} else
+		error("setreg");
 }
 
 static void
@@ -594,14 +636,14 @@ outenable(void) {
 	/* turn on DAC, set output gain switch */
 	egpiobits(EGPIO_audio_power, 1);
 	audiomute(0);
-	status1 |= 0x41;
-	L3_write(UDA1341_L3Addr | UDA1341_STATUS, (uchar*)&status1, 1);
+	status1[0] |= 0x41;
+	L3_write(UDA1341_L3Addr | UDA1341_STATUS, status1, 1);
 	/* set volume */
-	data00 |= 0xf;
-	L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data00, 1);
+	data00[0] |= 0xf;
+	L3_write(UDA1341_L3Addr | UDA1341_DATA0, data00, 1);
 	if (debug) {
-		print("outenable:	status1	= 0x%2.2ux\n", status1);
-		print("outenable:	data00	= 0x%2.2ux\n", data00);
+		print("outenable:	status1	= 0x%2.2ux\n", status1[0]);
+		print("outenable:	data00	= 0x%2.2ux\n", data00[0]);
 	}
 }
 
@@ -611,10 +653,10 @@ outdisable(void) {
 	/* turn off DAC, clear output gain switch */
 	audiomute(1);
 	egpiobits(EGPIO_audio_power, 0);
-	status1 &= ~0x41;
-	L3_write(UDA1341_L3Addr | UDA1341_STATUS, (uchar*)&status1, 1);
+	status1[0] &= ~0x41;
+	L3_write(UDA1341_L3Addr | UDA1341_STATUS, status1, 1);
 	if (debug) {
-		print("outdisable:	status1	= 0x%2.2ux\n", status1);
+		print("outdisable:	status1	= 0x%2.2ux\n", status1[0]);
 	}
 	egpiobits(EGPIO_audio_power, 0);
 }
@@ -622,10 +664,10 @@ outdisable(void) {
 static void
 inenable(void) {
 	/* turn on ADC, set input gain switch */
-	status1 |= 0x22;
-	L3_write(UDA1341_L3Addr | UDA1341_STATUS, (uchar*)&status1, 1);
+	status1[0] |= 0x22;
+	L3_write(UDA1341_L3Addr | UDA1341_STATUS, status1, 1);
 	if (debug) {
-		print("inenable:	status1	= 0x%2.2ux\n", status1);
+		print("inenable:	status1	= 0x%2.2ux\n", status1[0]);
 	}
 }
 
@@ -633,10 +675,10 @@ static void
 indisable(void) {
 	dmastop(audio.i.dma);
 	/* turn off ADC, clear input gain switch */
-	status1 &= ~0x22;
-	L3_write(UDA1341_L3Addr | UDA1341_STATUS, (uchar*)&status1, 1);
+	status1[0] &= ~0x22;
+	L3_write(UDA1341_L3Addr | UDA1341_STATUS, status1, 1);
 	if (debug) {
-		print("indisable:	status1	= 0x%2.2ux\n", status1);
+		print("indisable:	status1	= 0x%2.2ux\n", status1[0]);
 	}
 }
 
@@ -940,7 +982,6 @@ audioread(Chan *c, void *v, long n, vlong off)
 	ulong offset = off;
 	char *p;
 	IOstate *s;
-	uchar voldata;
 
 	n0 = n;
 	p = v;
@@ -1125,6 +1166,12 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 				left = 0;
 				right = 1;
 				goto cont0;
+			}
+			if(strcmp(field[i], "reg") == 0) {
+				if(nf < 3)
+					error(Evolume);
+				setreg(field[1], atoi(field[2]), nf == 4 ? atoi(field[3]):1);
+				return n0;
 			}
 			error(Evolume);
 			break;

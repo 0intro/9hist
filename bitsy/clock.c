@@ -106,14 +106,15 @@ delay(int ms)
 }
 
 void
-µdelay(int µs)
+µdelay(ulong µs)
 {
 	ulong start;
 	int i;
 
+	µs++;
 	if(clockinited){
 		start = timerregs->oscr;
-		while(timerregs->oscr - start < (µs*ClockFreq)/1000000)
+		while(timerregs->oscr - start < 1UL+(µs*ClockFreq)/1000000UL)
 			;
 	} else {
 		while(µs-- > 0){

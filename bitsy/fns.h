@@ -12,7 +12,7 @@ void	clockinit(void);
 #define	coherence()
 #define	dcflush(a, b)
 void	delay(int);
-void	µdelay(int);
+void	µdelay(ulong);
 void	dmainit(void);
 void	_doze(void);
 void	(*doze)(void);
