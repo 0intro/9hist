@@ -238,9 +238,10 @@ envwrite(Chan *c, void *a, long n, vlong off)
 
 	if(vend > e->len) {
 		s = smalloc(offset+n);
-		memmove(s, e->value, e->len);
-		if(e->value)
+		if(e->value){
+			memmove(s, e->value, e->len);
 			free(e->value);
+		}
 		e->value = s;
 		e->len = vend;
 	}
