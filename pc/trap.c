@@ -43,7 +43,7 @@ int	int1mask = 0xff;	/* interrupts enabled for second 8259 */
  *  trap/interrupt gates
  */
 Segdesc ilt[256];
-int	badtrap[256];
+int badintr[16];
 
 typedef struct Handler	Handler;
 struct Handler
@@ -245,13 +245,14 @@ trap(Ureg *ur)
 		if(c == Int1vec)
 			outb(Int1ctl, EOI);
 		outb(Int0ctl, EOI);
-		if(v != Uart0vec)
-			uartintr0(ur);
 	}
 
 	if(v>=256 || (h = halloc.ivec[v]) == 0){
+		/* an old 386 generates these fairly often, no idea why */
 		if(v == 13)
 			return;
+
+		/* a processor or coprocessor error */
 		if(v <= 16){
 			if(user){
 				sprint(buf, "sys: trap: %s", excname[v]);
@@ -262,20 +263,27 @@ trap(Ureg *ur)
 				panic("%s pc=0x%lux", excname[v], ur->pc);
 			}
 		}
-		if(badtrap[v]++ < 10 || (badtrap[v]%1000) == 0)
-			print("bad trap type %d pc=0x%lux: total %d\n", v, ur->pc,
-				badtrap[v]);
+
+		if(v >= Int0vec || v < Int0vec+16){
+			/* an unknown interrupts */
+			v -= Int0vec;
+			if(badintr[v]++ == 0 || (badintr[v]%1000) == 0)
+				print("unknown interrupt %d pc=0x%lux: total %d\n", v,
+					ur->pc, badintr[v]);
+		} else {
+			/* unimplemented traps */
+			print("illegal trap %d pc=0x%lux\n", v, ur->pc);
+		}
 		return;
 	}
 
+	/* there may be multiple handlers on one interrupt level */
 	do {
 		(*h->r)(ur);
 		h = h->next;
 	} while(h);
 
-	/*
-	 *  check user since syscall does its own notifying
-	 */
+	/* check user since syscall does its own notifying */
 	if(user && (u->p->procctl || u->nnote))
 		notify(ur);
 }

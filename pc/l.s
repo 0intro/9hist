@@ -500,7 +500,7 @@ TEXT	intr31(SB),$0
 	JMP	intrcommon
 TEXT	intr32(SB),$0
 	PUSHL	$0
-	PUSHL	$16
+	PUSHL	$32
 	JMP	intrcommon
 TEXT	intr33(SB),$0
 	PUSHL	$0

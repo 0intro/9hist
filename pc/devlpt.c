@@ -74,7 +74,6 @@ lptgen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
 void
 lptreset(void)
 {
-	setvec(Parallelvec, lptintr);
 }
 
 void
@@ -86,7 +85,12 @@ lptattach(char *spec)
 {
 	Chan *c;
 	int i  = (spec && *spec) ? strtol(spec, 0, 0) : 1;
+	static int set;
 
+	if(!set){
+		set = 1;
+		setvec(Parallelvec, lptintr);
+	}
 	if(i < 1 || i > NDEV)
 		error(Ebadarg);
 	c = devattach('L', spec);
