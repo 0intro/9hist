@@ -630,8 +630,6 @@ ipifcctl(Conv* c, char**argv, int argc)
 	ifc = (Ipifc*)c->ptcl;
 	if(strcmp(argv[0], "add") == 0)
 		return ipifcadd(ifc, argv, argc);
- 	else if(strcmp(argv[0], "bootp") == 0)
-		return bootp(ifc);
 	else if(strcmp(argv[0], "remove") == 0)
 		return ipifcrem(ifc, argv, argc, 1);
 	else if(strcmp(argv[0], "unbind") == 0)

@@ -1,5 +1,8 @@
 #include "../port/portfns.h"
 
+void	amplifierpower(int);
+void	audiopower(int);
+void	audiomute(int);
 void	cacheflush(void);
 void	cachewb(void);
 void	cachewbaddr(void*);
@@ -11,6 +14,7 @@ void	clockinit(void);
 #define	coherence()
 void	delay(int);
 void	µdelay(int);
+void	dmainit(void);
 void	evenaddr(ulong);
 void	flushmmu(void);
 int		fpiarm(Ureg *ur);

@@ -14,6 +14,8 @@ Conf	conf;
 int 	noprint;
 
 static void	gpioinit(void);
+static void ppcinit(void);
+static void sspinit(void);
 
 void
 main(void)
@@ -41,6 +43,7 @@ main(void)
 	trapinit();
 	sa1100_uartsetup(1);
 	rs232power(1);
+	dmainit();
 	screeninit();
 	printinit();	/* from here on, print works, before this we need iprint */
 	clockinit();

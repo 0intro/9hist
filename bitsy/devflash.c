@@ -30,13 +30,6 @@ static ulong *flash = (ulong*)FLASHZERO;
 /*
  *  common flash memory interface
  */
-enum
-{
-	CFIidoff=	0x10,
-	CFIsysoff=	0x1B,
-	CFIgeomoff=	0x27,
-};
-
 struct CFIid
 {
 	ulong	q;
@@ -70,5 +63,123 @@ struct CFIsys
 struct CFIgeom
 {
 	ulong	size;		/* 2**n bytes */
-	ulong	
+	ulong	dev_code;	/* ??? */
+	ulong	max_multi;	/* max bytes in a multibyte write */
+	ulong	nregion;	/* number of erase regions */
+	ulong	region[1];	/* erase region info */
+};
+
+#define mirror(x) (((x)<<16)|(x))
+
+void
+cfiquery(void)
+{
+	struct CFIid *id;
+
+	flash[0x55] = mirror(0x98);
+	id = (struct CFIid*)&flash[0x10];
+	if(id.q != 'q' || id.r != 'r' || id.y != 'y')
+		print("CFI not supported by flash\n");
+	
+	flash[0x55] = mirror(0xFF);
+}
+
+void
+cfigeom(void)
+{
+}
+
+/*
+ *  flash device interface
+ */
+
+enum
+{
+	Qf0=1,
+	Qf1,
+	Qf2,
+	Qf3,
+};
+
+Dirtab flashdir[]={
+	"f0",		{ Qf0, 0 },	0,	0664,
+	"f1",		{ Qf1, 0 },	0,	0664,
+	"f2",		{ Qf2, 0 },	0,	0664,
+	"f3",		{ Qf3, 0 },	0,	0664,
+};
+
+void
+flashinit(void)
+{
+	cfiquery();
+	cfigeom();
+}
+
+static Chan*
+flashattach(char* spec)
+{
+	return devattach('r', spec);
+}
+
+static int	 
+flashwalk(Chan* c, char* name)
+{
+	return devwalk(c, name, flashdir, nelem(flashdir), devgen);
+}
+
+static void	 
+flashstat(Chan* c, char* dp)
+{
+	devstat(c, dp, flashdir, nelem(flashdir), devgen);
+}
+
+static Chan*
+flashopen(Chan* c, int omode)
+{
+	omode = openmode(omode);
+	if(strcmp(up->user, eve)!=0)
+		error(Eperm);
+	return devopen(c, omode, flashdir, nelem(flashdir), devgen);
+}
+
+static void	 
+flashclose(Chan*)
+{
+}
+
+static long	 
+flashread(Chan* c, void* a, long n, vlong off)
+{
+	USED(c, a, off);
+	error("UUO");
+	return n;
+}
+
+static long	 
+flashwrite(Chan* c, void* a, long n, vlong)
+{
+	USED(c, a, off);
+	error("UUO");
+	return n;
+}
+
+Dev flashdevtab = {
+	'F',
+	"flash",
+
+	devreset,
+	flashinit,
+	flashattach,
+	devclone,
+	flashwalk,
+	flashstat,
+	flashopen,
+	devcreate,
+	flashclose,
+	flashread,
+	devbread,
+	flashwrite,
+	devbwrite,
+	devremove,
+	devwstat,
 };

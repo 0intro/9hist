@@ -71,10 +71,10 @@ enum {
 /*
  * UDA1341 L3 address and command types
  */
-#define UDA1341_L3Addr	5
 #define UDA1341_DATA0	0
 #define UDA1341_DATA1	1
 #define UDA1341_STATUS	2
+#define UDA1341_L3Addr	5
 
 typedef struct	AQueue	AQueue;
 typedef struct	Buf	Buf;
@@ -135,7 +135,7 @@ struct	IOstate
 	int				dma;			/* dma chan, alloc on open, free on close */
 	int				bufinit;		/* boolean, if buffers allocated */
 	Buf				buf[Nbuf];		/* buffers and queues */
-	int				active;			/* # of dmas in progress */
+	Ref				active;			/* # of dmas in progress */
 	volatile Buf	*current;		/* next dma to finish */
 	volatile Buf	*next;			/* next candidate for dma */
 	volatile Buf	*filling;		/* buffer being filled */
@@ -336,7 +336,7 @@ L3_getbyte(int mode)
  * in the upper 6 bits).
  */
 static int
-L3_write(char addr, char *data, int len)
+L3_write(uchar addr, uchar *data, int len)
 {
 	int mode = 0;
 	int bytes = len;
@@ -355,7 +355,7 @@ L3_write(char addr, char *data, int len)
  * in the upper 6 bits).
  */
 static int
-L3_read(char addr, char * data, int len)
+L3_read(uchar addr, uchar *data, int len)
 {
 	int mode = 0;
 	int bytes = len;
@@ -387,7 +387,6 @@ setempty(IOstate *b)
 
 	for (i = 0; i < Nbuf; i++) {
 		b->buf[i].nbytes = 0;
-		b->buf[i].active = 0;
 	}
 	b->filling = b->buf;
 	b->current = b->buf;
@@ -395,10 +394,12 @@ setempty(IOstate *b)
 }
 
 static int
-audioqnotfull(IOstate *s)
+audioqnotfull(void *x)
 {
+	IOstate *s = x;
+
 	/* called with lock */
-	return s->active == 0 || s->filling != s->current;
+	return s->active.ref == 0 || s->filling != s->current;
 }
 
 static int
@@ -409,10 +410,11 @@ audioqnotempty(IOstate *s)
 }
 
 static int
-audioidle(IOstate *s)
+audioidle(void *x)
 {
+	IOstate *s = x;
 	/* called with lock */
-	return s->active == 0;
+	return s->active.ref == 0;
 }
 
 static void
@@ -424,61 +426,77 @@ audioinit(void)
 static void
 audioenable(void)
 {
-	int err;
+	uchar	data[2];
 
 	L3_init();
 
 	/* Setup the uarts */
     ppcregs->assignment &= ~(1<<18);	/* Could be the other way round! */
 
-    gpioregs->altfunc &= ~(GPIO_SSP_TXD | GPIO_SSP_RXD | GPIO_SSP_SCLK | GPIO_SSP_SFRM);
-	gpioregs->altfunc |= (GPIO_SSP_CLK);
-	gpioregs->direction &= ~(GPIO_SSP_CLK);
+    gpioregs->altfunc &= ~(GPIO_SSP_TXD_o | GPIO_SSP_RXD_i | GPIO_SSP_SCLK_o | GPIO_SSP_SFRM_o);
+	gpioregs->altfunc |= (GPIO_SSP_CLK_i);
+	gpioregs->direction &= ~(GPIO_SSP_CLK_i);
 
 	sspregs->control0 = 0x10<<0 | 0x1<<4 | 1<<7 | 0x8<<8;
 	sspregs->control1 = 0<<3 + 0<<4 + 1<<5;
 
 	/* Enable the audio power */
-          set_bitsy_egpio(EGPIO_BITSY_CODEC_NRESET|EGPIO_BITSY_AUD_AMP_ON|EGPIO_BITSY_AUD_PWR_ON);
-          clr_bitsy_egpio(EGPIO_BITSY_QMUTE);
-	  gpioregs->direction |=  (GPIO_BITSY_CLK_SET0|GPIO_BITSY_CLK_SET1);
+	audiopower(1);
+	amplifierpower(1);
+	audiomute(0);
+
+	gpioregs->direction |=  (GPIO_CLK_SET0_o|GPIO_CLK_SET1_o);
 	  /* external clock configured for 44100 samples/sec */
-          GPSR =   GPIO_BITSY_CLK_SET0;
-          GPCR =   GPIO_BITSY_CLK_SET1;
-
+    gpioregs->set = GPIO_CLK_SET0_o;
+    gpioregs->clear = GPIO_CLK_SET1_o;
  
-        printk("gpioregs->altfunc=%08x gpioregs->direction=%08x GPLR=%08x\n", gpioregs->altfunc, gpioregs->direction, GPLR);
-        printk("PPDR=%08x PPSR=%08x PPAR=%08x PPFR=%08x\n", PPDR, PPSR, PPAR, PPFR);
-
 	/* Wait for the UDA1341 to wake up */
-	mdelay(100);
-        printk("Ser4SSSR=%08x\n", Ser4SSSR);
+	delay(100);
+    print("Ser4SSSR=0x%lux\n", sspregs->status);
 
-    audio_uda1341_reset();
+	/* Reset the chip */
+	data[0] = 2<<4 /* system clock */ | 1<<1 /* lsb16 */ | 1<<6 /* reset */;
+	L3_write(UDA1341_L3Addr<<2 | UDA1341_STATUS, data, 1 );
 
-	/* Set some default mixer values... */
-	STATUS_1.DAC_gain = 1;
-	STATUS_1.ADC_gain = 1;
-	L3_write( (UDA1341_L3Addr<<2)|UDA1341_STATUS, (char*)&STATUS_1, 1 );
-	DATA0_0.volume = 15;
-	L3_write( (UDA1341_L3Addr<<2)|UDA1341_DATA0, (char*)&DATA0_0, 1 );
-	DATA0_2.mode = 3;
-	L3_write( (UDA1341_L3Addr<<2)|UDA1341_DATA0, (char*)&DATA0_2, 1 );
-	DATA0_ext2.mixer_mode = 2;
-	DATA0_ext2.mic_level = 4;
-	L3_write( (UDA1341_L3Addr<<2)|UDA1341_DATA0, (char*)&DATA0_ext2, 2 );
-	DATA0_ext4.AGC_ctrl = 1;
-	L3_write( (UDA1341_L3Addr<<2)|UDA1341_DATA0, (char*)&DATA0_ext4, 2 );
-	DATA0_ext6.AGC_level = 3;
-	L3_write( (UDA1341_L3Addr<<2)|UDA1341_DATA0, (char*)&DATA0_ext6, 2 );
+    gpioregs->clear = EGPIO_codec_reset;
+    gpioregs->set = EGPIO_codec_reset;
+
+	data[0] = 2<<4 /* system clock */ | 1<<1 /* lsb16 */;
+	L3_write( (UDA1341_L3Addr<<2)|UDA1341_STATUS, data, 1 );
+	/* Reset done */
+
+	/* write uda 1341 status[1] */
+	data[0] = 0x80 | 0x3<<UdaStatusPC | 1<<UdaStatusIGS | 1<<UdaStatusOGS;
+	L3_write(UDA1341_L3Addr<<2 | UDA1341_STATUS, data, 1);
+
+	/* write uda 1341 data0[0] (volume) */
+	data[0] = 0x00 | /* volume */ 15 & 0x3f;	/* 6 bits, others must be 0 */
+	L3_write(UDA1341_L3Addr<<2 | UDA1341_DATA0, data, 1);
+
+	/* write uda 1341 data0[2] (mode switch) */
+	data[0] = 0x80 | 3;	/* mode = 3 */
+	L3_write(UDA1341_L3Addr<<2 | UDA1341_DATA0, data, 1);
+
+	/* set mixer mode and level */
+	data[0] = 0xc0 | 2 /* ext address */;
+	data[1] = 0xe0 | 2 | 4 << 2;	/* mixer mode and mic level */
+	L3_write(UDA1341_L3Addr<<2 | UDA1341_DATA0, data, 2);
+
+	/* set agc control and input amplifier gain */
+	data[0] = 0xc0 | 4 /* ext address */;
+	data[1] = 0xe0 | 1<<4 | 3;	/* AGC control and input ampl gain */
+	L3_write(UDA1341_L3Addr<<2 | UDA1341_DATA0, data, 2 );
+
+	/* set agc time constant and output level */
+	data[0] = 0xc0 | 6 /* ext address */;
+	data[1] = 0xe0 | 0<<2 | 3;	/* agc time constant and output level */
+	L3_write(UDA1341_L3Addr<<2 | UDA1341_DATA0, data, 2 );
 
 	print("audio enabled\n");
-
-	return 0;
 }
 
 static void
-sendaudio(IOstat *b) {
+sendaudio(IOstate *b) {
 	/* call this with lock held */
 	while (b->next != b->filling) {
 		assert(b->next->nbytes);
@@ -487,12 +505,12 @@ sendaudio(IOstat *b) {
 		incref(&b->active);
 		b->next++;
 		if (b->next == &b->buf[Nbuf])
-			b->next == &b->buf[0];
+			b->next = &b->buf[0];
 	}
 }
 
 static void
-audiointr(void *x, ulong state) {
+audiointr(void *x, ulong) {
 	IOstate *s = x;
 
 	if (s == &audio.o) {
@@ -500,14 +518,14 @@ audiointr(void *x, ulong state) {
 		/* Only interrupt routine touches s->current */
 		s->current->nbytes = 0;
 		s->current++;
-		if (b->current == &b->buf[Nbuf])
-			b->current == &b->buf[0];
-		if (canlock(s)) {
+		if (s->current == &s->buf[Nbuf])
+			s->current = &s->buf[0];
+		if (canlock((Lock*)s)) {
 			sendaudio(s);
-			unlock(s);
+			unlock((Lock*)s);
 		}
 	}
-	wakeup(s->vous);
+	wakeup(&s->vous);
 }
 
 static Chan*
@@ -554,7 +572,7 @@ audioopen(Chan *c, int omode)
 			qunlock(&audio);
 			error(Einuse);
 		}
-		audiopower(1);
+		audioenable();
 		if (omode & Aread) {
 			/* read */
 			audio.amode |= Aread;
@@ -565,14 +583,14 @@ audioopen(Chan *c, int omode)
 		}
 		if (omode & 0x2) {
 			/* write */
-			amplifierpower(1);
-			audiomute(0);
+//			amplifierpower(1);
+//			audiomute(0);
 			audio.amode |= Awrite;
 			if(audio.o.bufinit == 0)
 				bufinit(&audio.o);
 			setempty(&audio.o);
 			audio.o.chan = c;
-			&audio.o.dma = dmaalloc(0, 0, 8, 2, AudioDMA, void *port, void (*f)(int, ulong))
+			audio.o.dma = dmaalloc(0, 0, 8, 2, AudioDMA, Port4MCP, audiointr, (void*)&audio.o);
 		}
 		qunlock(&audio);
 //		mxvolume();
@@ -589,7 +607,6 @@ audioopen(Chan *c, int omode)
 static void
 audioclose(Chan *c)
 {
-	IOstate *b;
 
 	switch(c->qid.path & ~CHDIR) {
 	default:
@@ -622,7 +639,7 @@ audioclose(Chan *c)
 				}
 				while(!audioidle(&audio.o))
 					sleep(&audio.o.vous, audioidle, &audio.o);
-				audioamplifier(0);
+				amplifierpower(0);
 				setempty(&audio.o);
 			}
 			if (audio.i.chan == c) {
@@ -648,7 +665,6 @@ audioread(Chan *c, void *v, long n, vlong off)
 	int liv, riv, lov, rov;
 	long m, n0;
 	char buf[300];
-	Buf *b;
 	int j;
 	ulong offset = off;
 	char *a;
@@ -722,7 +738,6 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 	long m, n0;
 	int i, nf, v, left, right, in, out;
 	char buf[255], *field[Ncmd];
-	Buf *b;
 	char *p;
 	IOstate *a;
 
@@ -759,7 +774,6 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 					audio.rovol[v] = m;
 				if(right && in)
 					audio.rivol[v] = m;
-				mxvolume();
 				goto cont0;
 			}
 
@@ -775,8 +789,8 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 			}
 
 			if(strcmp(field[i], "reset") == 0) {
-				resetlevel();
-				mxvolume();
+//				resetlevel();
+//				mxvolume();
 				goto cont0;
 			}
 			if(strcmp(field[i], "in") == 0) {
@@ -816,13 +830,13 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 		}
 		while(n > 0) {
 			/* wait if dma in progress */
-			while (a->active && a->filling == a->current)
+			while (a->active.ref && a->filling == a->current)
 				sleep(&a->vous, audioqnotfull, a);
 
 			m = Bufsize - a->filling->nbytes;
 			if(m > n)
 				m = n;
-			memmove(a->filling->buf + a->filling->nbytes, p, m);
+			memmove(a->filling->virt + a->filling->nbytes, p, m);
 
 			a->filling->nbytes += m;
 			n -= m;
@@ -841,7 +855,7 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 	return n0 - n;
 }
 
-Dev audiodevtab = {
+Dev uda1341devtab = {
 	'A',
 	"audio",
 

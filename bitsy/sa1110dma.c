@@ -38,16 +38,16 @@ enum {
 	BIU		=	7
 };
 
-typedef struct Chan {
+typedef struct DMAchan {
 	int		inuse;
 	Rendez	r;
-	void	(*intr)(int, ulong);
+	void	(*intr)(void*, ulong);
 	void	*param;
-} Chan;
+} DMAchan;
 
 struct {
 	Lock;
-	Chan	chan[6];
+	DMAchan	chan[6];
 } dma;
 
 struct dmaregs {
@@ -61,14 +61,21 @@ struct dmaregs {
 	ulong	dxcntB;
 } *dmaregs;
 
+static void	dmaintr(Ureg*, void *);
+
 void
 dmainit(void) {
+	int i;
+
 	/* map the lcd regs into the kernel's virtual space */
 	dmaregs = (struct dmaregs*)mapspecial(DMAREGS, NDMA*sizeof(struct dmaregs));;
+	for (i = 0; i < NDMA; i++) {
+		intrenable(IRQdma0+i, dmaintr, &dmaregs[i], "DMA");
+	}
 }
 
 int
-dmaalloc(int rd, int bigendian, int burstsize, int datumsize, int device, void *port, void (*intr)(int, ulong), void *param) {
+dmaalloc(int rd, int bigendian, int burstsize, int datumsize, int device, ulong port, void (*intr)(void*, ulong), void *param) {
 	int i;
 
 	lock(&dma);
@@ -110,7 +117,7 @@ dmastart(int chan, void *addr, int count) {
 	if (((status = dmaregs[chan].dcsr_rd) & ((1<<DONEA)|(1<<DONEB))) == 0)
 		return 0;
 
-	cachewbregion(addr, count);
+	cachewbregion((ulong)addr, count);
 	if ((status & (1<<BIU | 1<<STRTB)) == (1<<BIU | 1<<STRTB) ||
 				(status & (1<<BIU | 1<<STRTA)) == (1<<STRTA)) {
 		dmaregs[chan].dcsr_clr |= 1<<DONEA | 1<<STRTA;
@@ -164,12 +171,14 @@ static void
 dmaintr(Ureg*, void *x)
 {
 	int i;
+	struct dmaregs *regs = x;
 	ulong dcsr;
 
-	for (i = 0; i < NDMA; i++) {
-		if ((dcsr = dmaregs[i].dcsr_rd) & (1<<DONEA | 1<<DONEB | 1<<ERROR))
-			wakeup(&dma.chan[i].r);
-			if (dma.chan[i].intr)
-				(*dma.chan[i].intr)(dma.chan[i].param, dcsr);
-	}
+	i = regs - dmaregs;
+	if ((dcsr = regs->dcsr_rd) & (1<<DONEA | 1<<DONEB | 1<<ERROR)) {
+		wakeup(&dma.chan[i].r);
+		if (dma.chan[i].intr)
+			(*dma.chan[i].intr)(dma.chan[i].param, dcsr);
+	} else
+		print("spurious DMA interrupt, channel %d, status 0x%lux\n", i, dcsr);
 }

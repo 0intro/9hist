@@ -76,6 +76,32 @@ enum
 	GPIO_COM_CTS_i=		1<<25,	/* CTS from UART3 */
 	GPIO_COM_RTS_o=		1<<26,	/* RTS to UART3 */
 	GPIO_OPT_IND_i=		1<<27,	/* expansion pack inserted */
+/* Peripheral Unit GPIO pin assignments: */
+	GPIO_SSP_TXD_o=		1<<10,	/* SSP Transmit Data */
+	GPIO_SSP_RXD_i=		1<<11,	/* SSP Receive Data */
+	GPIO_SSP_SCLK_o=	1<<12,	/* SSP Sample CLocK */
+	GPIO_SSP_SFRM_o=	1<<13,	/* SSP Sample FRaMe */
+	/* ser. port 1: */
+	GPIO_UART_TXD_o=	1<<14,	/* UART Transmit Data */
+	GPIO_UART_RXD_i=	1<<15,	/* UART Receive Data */
+	GPIO_SDLC_SCLK_io=	1<<16,	/* SDLC Sample CLocK (I/O) */
+	GPIO_SDLC_AAF_o=	1<<17,	/* SDLC Abort After Frame */
+	GPIO_UART_SCLK1_i=	1<<18,	/* UART Sample CLocK 1 */
+	/* ser. port 4: */
+	GPIO_SSP_CLK_i=		1<<19,	/* SSP external CLocK */
+	/* ser. port 3: */
+	GPIO_UART_SCLK3_i=	1<<20,	/* UART Sample CLocK 3 */
+	/* ser. port 4: */
+	GPIO_MCP_CLK_i=		1<<21,	/* MCP CLocK */
+	/* test controller: */
+	GPIO_TIC_ACK_o=		1<<21,	/* TIC ACKnowledge */
+	GPIO_MBGNT_o=		1<<21,	/* Memory Bus GraNT */
+	GPIO_TREQA_i=		1<<22,	/* TIC REQuest A */
+	GPIO_MBREQ_i=		1<<22,	/* Memory Bus REQuest */
+	GPIO_TREQB_i=		1<<23,	/* TIC REQuest B */
+	GPIO_1Hz_o=			1<<25,	/* 1 Hz clock */
+	GPIO_RCLK_o=		1<<26,	/* internal (R) CLocK (O, fcpu/2) */
+	GPIO_32_768kHz_o=	1<<27,	/* 32.768 kHz clock (O, RTC) */
 };
 
 enum

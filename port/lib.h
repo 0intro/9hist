@@ -23,6 +23,7 @@ extern	char	*strncat(char*, char*, long);
 extern	char	*strncpy(char*, char*, long);
 extern	int	strncmp(char*, char*, long);
 extern	long	strlen(char*);
+extern	char*	strstr(char*, char*);
 extern	int	atoi(char*);
 
 enum

@@ -4,10 +4,9 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"../port/error.h"
-#include	"kernel.h"
 
 typedef struct DS DS;
-static int	call(char*, char*, DS*);
+static Chan*	call(char*, char*, DS*);
 static void	_dial_string_parse(char*, DS*);
 
 enum
@@ -24,21 +23,21 @@ struct DS
 	char	*rem;
 	char	*local;				/* other args */
 	char	*dir;
-	int	*cfdp;
+	Chan	**ctlp;
 };
 
 /*
  *  the dialstring is of the form '[/net/]proto!dest'
  */
-int
-kdial(char *dest, char *local, char *dir, int *cfdp)
+Chan*
+chandial(char *dest, char *local, char *dir, Chan **ctlp)
 {
 	DS ds;
 	char clone[Maxpath];
 
 	ds.local = local;
 	ds.dir = dir;
-	ds.cfdp = cfdp;
+	ds.ctlp = ctlp;
 
 	_dial_string_parse(dest, &ds);
 	if(ds.netdir == 0)
@@ -49,24 +48,21 @@ kdial(char *dest, char *local, char *dir, int *cfdp)
 	return call(clone, ds.rem, &ds);
 }
 
-static int
+static Chan*
 call(char *clone, char *dest, DS *ds)
 {
-	int fd, cfd, n;
+	int n;
+	Chan *dchan, *cchan;
 	char name[3*NAMELEN+5], data[3*NAMELEN+10], *p;
 
-	cfd = kopen(clone, ORDWR);
-	if(cfd < 0){
-		kwerrstr("%s: %r", clone);
-		return -1;
-	}
+	cchan = namec(clone, Aopen, ORDWR, 0);
 
 	/* get directory name */
-	n = kread(cfd, name, sizeof(name)-1);
-	if(n < 0){
-		kclose(cfd);
-		return -1;
+	if(waserror()){
+		cclose(cchan);
+		nexterror();
 	}
+	n = devtab[cchan->type]->read(cchan, name, sizeof(name)-1, 0);
 	name[n] = 0;
 	for(p = name; *p == ' '; p++)
 		;
@@ -82,24 +78,16 @@ call(char *clone, char *dest, DS *ds)
 		snprint(name, sizeof(name), "connect %s %s", dest, ds->local);
 	else
 		snprint(name, sizeof(name), "connect %s", dest);
-	if(kwrite(cfd, name, strlen(name)) < 0){
-		kwerrstr("%s failed: %r", name);
-		kclose(cfd);
-		return -1;
-	}
+	devtab[cchan->type]->write(cchan, name, strlen(name), 0);
 
 	/* open data connection */
-	fd = kopen(data, ORDWR);
-	if(fd < 0){
-		kwerrstr("can't open %s: %r", data);
-		kclose(cfd);
-		return -1;
-	}
-	if(ds->cfdp)
-		*ds->cfdp = cfd;
+	dchan = namec(data, Aopen, ORDWR, 0);
+	if(ds->ctlp)
+		*ds->ctlp = cchan;
 	else
-		kclose(cfd);
-	return fd;
+		cclose(cchan);
+	poperror();
+	return dchan;
 
 }
 

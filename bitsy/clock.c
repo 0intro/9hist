@@ -7,6 +7,19 @@
 #include	"ureg.h"
 #include	"../port/error.h"
 
+typedef struct OSTimer
+{
+	ulong	osmr[4];	/* match registers */
+	ulong	oscr;		/* counter register */
+	ulong	ossr;		/* status register */
+	ulong	ower;		/* watchdog enable register */
+	ulong	oier;		/* timer interrupt enable register */
+} OSTimer;
+
+static OSTimer *timerregs = (OSTimer*)OSTIMERREGS;
+static int clockinited;
+
+static void	clockintr(Ureg*, void*);
 
 void
 clockinit(void)
@@ -36,16 +49,13 @@ fastticks(uvlong *hz)
 static void
 clockintr(Ureg *ureg, void*)
 {
-	Clock0link *lp;
-	static int inclockintr;
-
 	/* reset previous interrupt */
 	timerregs->ossr |= 1<<0;
 
 	/* post interrupt 1/HZ secs from now */
 	timerregs->osmr[0] = timerregs->oscr + ClockFreq/HZ;
 
-	portclock();
+	portclock(ureg);
 }
 
 void
@@ -57,7 +67,8 @@ delay(int ms)
 	if(clockinited){
 		while(ms-- > 0){
 			start = timerregs->oscr;
-			while(timerregs->oscr-start < ClockFreq/1000);
+			while(timerregs->oscr-start < ClockFreq/1000)
+				;
 		}
 	} else {
 		while(ms-- > 0){
@@ -75,7 +86,8 @@ void
 
 	if(clockinited){
 		start = timerregs->oscr;
-		while(timerregs->oscr - start < µs∗ClockFreq/1000000);
+		while(timerregs->oscr - start < (µs*ClockFreq)/1000000)
+			;
 	} else {
 		while(µs-- > 0){
 			for(i = 0; i < 10; i++)

@@ -1027,7 +1027,7 @@ pcmio(int slotno, ISAConf *isa)
 	/* route interrupts */
 	isa->irq = irq;
 	wrreg(pp, Rigc, irq | Fnotreset | Fiocard);
-	
+
 	/* set power and enable device */
 	x = vcode(ct->vpp1);
 	wrreg(pp, Rpc, x|Fautopower|Foutena|Fcardena);
