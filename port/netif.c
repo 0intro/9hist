@@ -213,6 +213,8 @@ netifwrite(Netif *nif, Chan *c, void *a, long n)
 	f = nif->f[NETID(c->qid.path)];
 	if(p = matchtoken(buf, "connect")){
 		f->type = atoi(p);
+		if(f->type < 0)
+			nif->all++;
 	} else if(matchtoken(buf, "promiscuous")){
 		f->prom = 1;
 		nif->prom++;
@@ -264,6 +266,11 @@ netifclose(Netif *nif, Chan *c)
 			qlock(nif);
 			if(--(nif->prom) == 0)
 				(*nif->promiscuous)(nif->arg, 0);
+			qunlock(nif);
+		}
+		if(f->type < 0){
+			qlock(nif);
+			--(nif->all);
 			qunlock(nif);
 		}
 		f->owner[0] = 0;

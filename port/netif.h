@@ -57,7 +57,8 @@ struct Netif
 	int	alen;			/* address length */
 	uchar	addr[Nmaxaddr];
 	uchar	bcast[Nmaxaddr];
-	int	prom;
+	int	prom;			/* number of promiscuous opens */
+	int	all;			/* number of -1 multiplexors */
 
 	/* statistics */
 	int	misses;

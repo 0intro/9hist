@@ -114,7 +114,8 @@ etherwloop(Ether *ctlr, Etherpkt *pkt, long len)
 	int s, different;
 
 	different = memcmp(pkt->d, pkt->s, sizeof(pkt->s));
-	if(different && memcmp(pkt->d, ctlr->bcast, sizeof(pkt->d)))
+	if(different && memcmp(pkt->d, ctlr->bcast, sizeof(pkt->d))
+	&& ctlr->prom==0 && ctlr->all==0)
 		return 0;
 
 	s = splhi();
