@@ -28,6 +28,8 @@ char	bootserver[72];
 int	bank[2];
 uchar	*sp;
 
+extern	GBitmap	gscreen;
+
 void unloadboot(void);
 
 void
@@ -102,7 +104,7 @@ machinit(void)
 void
 mmuinit(void)
 {
-	ulong l, d, i;
+	ulong l, d, i, scr;
 
 	/*
 	 * Invalidate user addresses
@@ -112,11 +114,13 @@ mmuinit(void)
 	/*
 	 * Four meg of usable memory, with top 256K for screen
 	 */
-	for(i=1,l=KTZERO; i<(4*1024*1024-256*1024)/BY2PG; l+=BY2PG,i++)
+	for(i=1,l=KTZERO; i<MB4/BY2PG; l+=BY2PG,i++)
 		putkmmu(l, PPN(l)|PTEVALID|PTEKERNEL);
 	/*
-	 * Screen at top of memory
+	 * Screen after end
 	 */
+	l = PGROUND((ulong)end);
+	gscreen.base = (ulong*)l;
 	for(i=0,d=DISPLAYRAM; i<256*1024/BY2PG; d+=BY2PG,l+=BY2PG,i++)
 		putkmmu(l, PPN(d)|PTEVALID|PTEKERNEL);
 }

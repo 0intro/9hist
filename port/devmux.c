@@ -4,7 +4,6 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"../port/error.h"
-#include	"fcall.h"
 
 #include	"devtab.h"
 
@@ -18,10 +17,8 @@ enum
 	Qhead	= 0,
 	Qclone,
 	Qoffset,
-};
 
-enum
-{
+	Nmuxchan=	64,
 	Nmux	=	32,
 	Maxmsg	=	(32*1024),
 	Flowctl	=	Maxmsg/2,
@@ -81,7 +78,7 @@ muxgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 	int nq;
 
 	if(c->qid.path == CHDIR) {
-		if(s >= conf.nmux)
+		if(s >= Nmuxchan)
 			return -1;
 
 		m = &muxes[s];
@@ -127,7 +124,7 @@ muxinit(void)
 void
 muxreset(void)
 {
-	muxes = xalloc(conf.nmux*sizeof(Mux));
+	muxes = xalloc(Nmuxchan*sizeof(Mux));
 }
 
 Chan *
@@ -264,7 +261,7 @@ muxcreate(Chan *c, char *name, int omode, ulong perm)
 	omode = openmode(omode);
 
 	m = muxes;
-	for(e = &m[conf.nmux]; m < e; m++) {
+	for(e = &m[Nmuxchan]; m < e; m++) {
 		if(m->name[0] == '\0' && m->ref == 0 && canlock(m)) {
 			if(m->ref != 0) {
 				unlock(m);

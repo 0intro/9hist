@@ -75,10 +75,10 @@ struct
 	int	nsubfont;	/* number allocated */
 	Arena	*arena;		/* array */
 	int	narena;		/* number allocated */
-	int	lastid;		/* last allocated bitmap id */
-	int	lastsubfid;	/* last allocated subfont id */
-	int	lastcachesf;	/* last cached subfont id */
-	int	lastfid;	/* last allocated font id */
+	int	bid;		/* last allocated bitmap id */
+	int	subfid;		/* last allocated subfont id */
+	int	cacheid;	/* last cached subfont id */
+	int	fid;		/* last allocated font id */
 	int	init;		/* freshly opened; init message pending */
 	int	rid;		/* read bitmap id */
 	int	rminy;		/* read miny */
@@ -185,9 +185,10 @@ bitreset(void)
 	getcolor(0, &r, &r, &r);
 	if(r == 0)
 		flipping = 1;
-	bit.lastid = -1;
-	bit.lastsubfid = -1;
-	bit.lastfid = -1;
+	bit.bid = -1;
+	bit.subfid = -1;
+	bit.fid = -1;
+	bit.cacheid = -1;
 	bit.font = smalloc(DMAP*sizeof(GFont*));
 	bit.nfont = DMAP;
 	bit.subfont = smalloc(DMAP*sizeof(BSubfont*));
@@ -211,8 +212,6 @@ bitreset(void)
 void
 bitinit(void)
 {
-	lock(&bit);
-	unlock(&bit);
 	if(gscreen.ldepth > 3)
 		cursorback.ldepth = 0;
 	else{
@@ -270,10 +269,10 @@ bitopen(Chan *c, int omode)
 		bit.subfont[0]->ref = 1;
 		bit.subfont[0]->qid[0] = 0;
 		bit.subfont[0]->qid[1] = 0;
-		bit.lastid = -1;
-		bit.lastfid = -1;
-		bit.lastsubfid = -1;
-		bit.lastcachesf = -1;
+		bit.bid = -1;
+		bit.fid = -1;
+		bit.subfid = -1;
+		bit.cacheid = -1;
 		bit.rid = -1;
 		bit.mid = -1;
 		bit.init = 0;
@@ -319,26 +318,20 @@ bitclose(Chan *c)
 	if(c->qid.path!=CHDIR && (c->flag&COPEN)){
 		lock(&bit);
 		if(--bit.ref == 0){
-			/* 0th bitmap, screen, has no special storage */
-			bp = bit.map;
-			if(*bp)
-				free(*bp);
-			*bp = 0;
 			ebp = &bit.map[bit.nmap];
-			bp++;
-			for(; bp<ebp; bp++){
+			for(bp = bit.map; bp<ebp; bp++){
 				b = *bp;
 				if(b){
 					bitfree(b);
 					*bp = 0;
 				}
 			}
-			/* 0th subfont, defont, points to real storage */
 			esp = &bit.subfont[bit.nsubfont];
-			for(sp=&bit.subfont[1]; sp<esp; sp++){
+			for(sp=bit.subfont; sp<esp; sp++){
 				s = *sp;
 				if(s)
 					subfontfree(s);
+				/* don't clear *sp: cached */
 			}
 			efp = &bit.font[bit.nfont];
 			for(fp=bit.font; fp<efp; fp++){
@@ -353,17 +346,12 @@ bitclose(Chan *c)
 	}
 }
 
-#define	GSHORT(p)		(((p)[0]<<0) | ((p)[1]<<8))
-#define	GLONG(p)		((GSHORT(p)<<0) | (GSHORT(p+2)<<16))
-#define	PSHORT(p, v)		((p)[0]=(v), (p)[1]=((v)>>8))
-#define	PLONG(p, v)		(PSHORT(p, (v)), PSHORT(p+2, (v)>>16))
-
 long
 bitread(Chan *c, void *va, long n, ulong offset)
 {
 	uchar *p, *q;
 	long miny, maxy, t, x, y;
-	ulong l, nw, ws, rv, gv, bv;
+	ulong l, v, nw, ws, rv, gv, bv;
 	int off, j;
 	Fontchar *i;
 	GBitmap *src;
@@ -393,9 +381,9 @@ bitread(Chan *c, void *va, long n, ulong offset)
 		p = va;
 		p[0] = 'm';
 		p[1] = mouse.buttons;
-		PLONG(p+2, mouse.xy.x);
-		PLONG(p+6, mouse.xy.y);
-		PLONG(p+10, TK2MS(MACHP(0)->ticks));
+		BPLONG(p+2, mouse.xy.x);
+		BPLONG(p+6, mouse.xy.y);
+		BPLONG(p+10, TK2MS(MACHP(0)->ticks));
 		mouse.changed = 0;
 		unlock(&cursor);
 		return 14;
@@ -423,12 +411,12 @@ bitread(Chan *c, void *va, long n, ulong offset)
 		p = va;
 		for(y=miny; y<maxy; y++){
 			q = (uchar*)gaddr(&gscreen, Pt(0, y));
-			if(flipping)
-				for(x=0; x<l; x++)
-					*p++ = ~(*q++);
-			else
-				for(x=0; x<l; x++)
-					*p++ = *q++;
+			for(x=0; x<l; x++,p++,q++){
+				v = *q;
+				if(flipping)
+					v = ~v;
+				BPLONG(p, v);
+			}
 			n += l;
 		}
 		return n;
@@ -459,21 +447,21 @@ bitread(Chan *c, void *va, long n, ulong offset)
 			error(Ebadblt);
 		p[0] = 'I';
 		p[1] = gscreen.ldepth;
-		PLONG(p+2, gscreen.r.min.x);
-		PLONG(p+6, gscreen.r.min.y);
-		PLONG(p+10, gscreen.r.max.x);
-		PLONG(p+14, gscreen.r.max.y);
-		PLONG(p+18, gscreen.clipr.min.x);
-		PLONG(p+22, gscreen.clipr.min.y);
-		PLONG(p+26, gscreen.clipr.max.x);
-		PLONG(p+30, gscreen.clipr.max.y);
+		BPLONG(p+2, gscreen.r.min.x);
+		BPLONG(p+6, gscreen.r.min.y);
+		BPLONG(p+10, gscreen.r.max.x);
+		BPLONG(p+14, gscreen.r.max.y);
+		BPLONG(p+18, gscreen.clipr.min.x);
+		BPLONG(p+22, gscreen.clipr.min.y);
+		BPLONG(p+26, gscreen.clipr.max.x);
+		BPLONG(p+30, gscreen.clipr.max.y);
 		if(n >= 34+3*12+6*(defont->n+1)){
 			p += 34;
 			sprint((char*)p, "%11d %11d %11d ", defont->n,
 				defont->height, defont->ascent);
 			p += 3*12;
 			for(i=defont->info,j=0; j<=defont->n; j++,i++,p+=6){
-				PSHORT(p, i->x);
+				BPSHORT(p, i->x);
 				p[2] = i->top;
 				p[3] = i->bottom;
 				p[4] = i->left;
@@ -483,7 +471,7 @@ bitread(Chan *c, void *va, long n, ulong offset)
 		}else
 			n = 34;
 		bit.init = 0;
-	}else if(bit.lastid > 0){
+	}else if(bit.bid > 0){
 		/*
 		 * allocate:
 		 *	'A'		1
@@ -491,23 +479,28 @@ bitread(Chan *c, void *va, long n, ulong offset)
 		 */
 		if(n < 3)
 			error(Ebadblt);
+		if(bit.bid<0 || bit.map[bit.bid]==0)
+			error(Ebadbitmap);
 		p[0] = 'A';
-		PSHORT(p+1, bit.lastid);
-		bit.lastid = -1;
+		BPSHORT(p+1, bit.bid);
+		bit.bid = -1;
 		n = 3;
-	}else if(bit.lastsubfid > 0){
+	}else if(bit.subfid > 0){
 		/*
 		 * allocate subfont:
 		 *	'K'		1
 		 *	subfont id	2
 		 */
-		if(n < 3)
+		if(n<3 || bit.subfid<0)
 			error(Ebadblt);
+		s = bit.subfont[bit.subfid];
+		if(s==0 || s->ref==0)
+			error(Ebadfont);
 		p[0] = 'K';
-		PSHORT(p+1, bit.lastsubfid);
-		bit.lastsubfid = -1;
+		BPSHORT(p+1, bit.subfid);
+		bit.subfid = -1;
 		n = 3;
-	}else if(bit.lastcachesf > 0){
+	}else if(bit.cacheid >= 0){
 		/*
 		 * allocate subfont:
 		 *	'J'		1
@@ -516,24 +509,27 @@ bitread(Chan *c, void *va, long n, ulong offset)
 		 *	fontchars	6*(subfont->n+1)
 		 */
 		p[0] = 'J';
-		PSHORT(p+1, bit.lastcachesf);
-		s = bit.subfont[bit.lastcachesf];
-		if(s==0 || n<3+3*12+6*(s->n+1))
+		if(bit.cacheid<0)
+			error(Ebadfont);
+		s = bit.subfont[bit.cacheid];
+		if(s==0 || s->ref==0)
+			error(Ebadfont);
+		if(n < 3+3*12+6*(s->n+1))
 			error(Ebadblt);
+		BPSHORT(p+1, bit.cacheid);
 		p += 3;
-		sprint((char*)p, "%11d %11d %11d ", s->n,
-			s->height, s->ascent);
+		sprint((char*)p, "%11d %11d %11d ", s->n, s->height, s->ascent);
 		p += 3*12;
 		for(i=s->info,j=0; j<=s->n; j++,i++,p+=6){
-			PSHORT(p, i->x);
+			BPSHORT(p, i->x);
 			p[2] = i->top;
 			p[3] = i->bottom;
 			p[4] = i->left;
 			p[5] = i->width;
 		}
 		n = 3+3*12+6*(s->n+1);
-		bit.lastcachesf = -1;
-	}else if(bit.lastfid >= 0){
+		bit.cacheid = -1;
+	}else if(bit.fid >= 0){
 		/*
 		 * allocate font:
 		 *	'N'		1
@@ -541,9 +537,11 @@ bitread(Chan *c, void *va, long n, ulong offset)
 		 */
 		if(n < 3)
 			error(Ebadblt);
+		if(bit.fid<0 || bit.font[bit.fid]==0)
+			error(Ebadfont);
 		p[0] = 'N';
-		PSHORT(p+1, bit.lastfid);
-		bit.lastfid = -1;
+		BPSHORT(p+1, bit.fid);
+		bit.fid = -1;
 		n = 3;
 	}else if(bit.mid >= 0){
 		/*
@@ -566,9 +564,9 @@ bitread(Chan *c, void *va, long n, ulong offset)
 					rv = (rv << l) | j;
 				gv = bv = rv;
 			}
-			PLONG(p, rv);
-			PLONG(p+4, gv);
-			PLONG(p+8, bv);
+			BPLONG(p, rv);
+			BPLONG(p+4, gv);
+			BPLONG(p+8, bv);
 			p += 12;
 		}
 		bit.mid = -1;
@@ -606,9 +604,9 @@ bitread(Chan *c, void *va, long n, ulong offset)
 		for(y=miny; y<maxy; y++){
 			q = (uchar*)gaddr(src, Pt(src->r.min.x, y));
 			q += (src->r.min.x&((sizeof(ulong))*ws-1))/ws;
-			if(bit.rid == 0 && flipping)	/* flip bits */
-				for(x=0; x<l; x++)
-					*p++ = ~(*q++);
+			if(bit.rid == 0)
+				for(x=0; x<l; x++,p++,q++)
+					BPLONG(p, ~*q);
 			else
 				for(x=0; x<l; x++)
 					*p++ = *q++;
@@ -623,7 +621,6 @@ bitread(Chan *c, void *va, long n, ulong offset)
 	qunlock(&bit);
 	return n;
 }
-
 
 long
 bitwrite(Chan *c, void *va, long n, ulong offset)
@@ -677,13 +674,13 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			v = *(p+1);
 			if(v > 3)	/* BUG */
 				error(Ebadblt);
-			rect.min.x = GLONG(p+2);
-			rect.min.y = GLONG(p+6);
-			rect.max.x = GLONG(p+10);
-			rect.max.y = GLONG(p+14);
+			rect.min.x = BGLONG(p+2);
+			rect.min.y = BGLONG(p+6);
+			rect.max.x = BGLONG(p+10);
+			rect.max.y = BGLONG(p+14);
 			if(Dx(rect) < 0 || Dy(rect) < 0)
 				error(Ebadblt);
-			bit.lastid = bitalloc(rect, v);
+			bit.bid = bitalloc(rect, v);
 			m -= 18;
 			p += 18;
 			break;
@@ -700,8 +697,8 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			 */
 			if(m < 31)
 				error(Ebadblt);
-			fc = GSHORT(p+29) & 0xF;
-			v = GSHORT(p+11);
+			fc = BGSHORT(p+29) & 0xF;
+			v = BGSHORT(p+11);
 			if(v<0 || v>=bit.nmap || (src=bit.map[v])==0)
 				error(Ebadbitmap);
 			off = 0;
@@ -710,7 +707,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 					fc = flipS[fc];
 				off = 1;
 			}
-			v = GSHORT(p+1);
+			v = BGSHORT(p+1);
 			if(v<0 || v>=bit.nmap || (dst=bit.map[v])==0)
 				error(Ebadbitmap);
 			if(v == 0){
@@ -718,12 +715,12 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 					fc = flipD[fc];
 				off = 1;
 			}
-			pt.x = GLONG(p+3);
-			pt.y = GLONG(p+7);
-			rect.min.x = GLONG(p+13);
-			rect.min.y = GLONG(p+17);
-			rect.max.x = GLONG(p+21);
-			rect.max.y = GLONG(p+25);
+			pt.x = BGLONG(p+3);
+			pt.y = BGLONG(p+7);
+			rect.min.x = BGLONG(p+13);
+			rect.min.y = BGLONG(p+17);
+			rect.max.x = BGLONG(p+21);
+			rect.max.y = BGLONG(p+25);
 			if(off && !isoff){
 				cursoroff(1);
 				isoff = 1;
@@ -754,8 +751,8 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			}
 			if(m < 73)
 				error(Ebadblt);
-			curs.offset.x = GLONG(p+1);
-			curs.offset.y = GLONG(p+5);
+			curs.offset.x = BGLONG(p+1);
+			curs.offset.y = BGLONG(p+5);
 			memmove(curs.clr, p+9, 2*16);
 			memmove(curs.set, p+41, 2*16);
 			if(!isoff){
@@ -775,7 +772,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			 */
 			if(m < 3)
 				error(Ebadblt);
-			v = GSHORT(p+1);
+			v = BGSHORT(p+1);
 			if(v<0 || v>=bit.nmap || (dst=bit.map[v])==0)
 				error(Ebadbitmap);
 			bitfree(dst);
@@ -792,7 +789,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			 */
 			if(m < 3)
 				error(Ebadblt);
-			v = GSHORT(p+1);
+			v = BGSHORT(p+1);
 			if(v<0 || v>=bit.nsubfont || (f=bit.subfont[v])==0 || f->ref==0)
 				error(Ebadfont);
 			subfontfree(f);
@@ -808,7 +805,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			 */
 			if(m < 3)
 				error(Ebadblt);
-			v = GSHORT(p+1);
+			v = BGSHORT(p+1);
 			if(v<0 || v>=bit.nfont || (ff=bit.font[v])==0)
 				error(Ebadfont);
 			fontfree(ff);
@@ -837,8 +834,8 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			 */
 			if(m < 9)
 				error(Ebadblt);
-			q0 = GLONG(p+1);
-			q1 = GLONG(p+5);
+			q0 = BGLONG(p+1);
+			q1 = BGLONG(p+5);
 			i = 0;
 			if(q0 != ~0)
 				for(; i<bit.nsubfont; i++){
@@ -850,7 +847,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 
 		sfcachefound:
 			f->ref++;
-			bit.lastcachesf = i;
+			bit.cacheid = i;
 			m -= 9;
 			p += 9;
 			break;
@@ -869,7 +866,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			 */
 			if(m < 15)
 				error(Ebadblt);
-			v = GSHORT(p+1);
+			v = BGSHORT(p+1);
 			if(v<0 || v>NINFO || m<15+6*(v+1))
 				error(Ebadblt);
 			for(i=1; i<bit.nsubfont; i++)
@@ -887,10 +884,10 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			f->n = v;
 			f->height = p[3];
 			f->ascent = p[4];
-			f->qid[0] = GLONG(p+7);
-			f->qid[1] = GLONG(p+11);
+			f->qid[0] = BGLONG(p+7);
+			f->qid[1] = BGLONG(p+11);
 			f->ref = 1;
-			v = GSHORT(p+5);
+			v = BGSHORT(p+5);
 			if(v<0 || v>=bit.nmap || (dst=bit.map[v])==0)
 				error(Ebadbitmap);
 			f->bits = dst;
@@ -899,7 +896,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			p += 15;
 			fcp = f->info;
 			for(j=0; j<=f->n; j++,fcp++){
-				fcp->x = GSHORT(p);
+				fcp->x = BGSHORT(p);
 				fcp->top = p[2];
 				fcp->bottom = p[3];
 				fcp->left = p[4];
@@ -908,7 +905,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 				p += 6;
 				m -= 6;
 			}
-			bit.lastsubfid = i;
+			bit.subfid = i;
 			break;
 
 		case 'l':
@@ -924,20 +921,20 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			 */
 			if(m < 22)
 				error(Ebadblt);
-			v = GSHORT(p+1);
+			v = BGSHORT(p+1);
 			if(v<0 || v>=bit.nmap || (dst=bit.map[v])==0)
 				error(Ebadbitmap);
 			off = 0;
-			fc = GSHORT(p+20) & 0xF;
+			fc = BGSHORT(p+20) & 0xF;
 			if(v == 0){
 				if(flipping)
 					fc = flipD[fc];
 				off = 1;
 			}
-			pt1.x = GLONG(p+3);
-			pt1.y = GLONG(p+7);
-			pt2.x = GLONG(p+11);
-			pt2.y = GLONG(p+15);
+			pt1.x = BGLONG(p+3);
+			pt1.y = BGLONG(p+7);
+			pt2.x = BGLONG(p+11);
+			pt2.y = BGLONG(p+15);
 			t = p[19];
 			if(off && !isoff){
 				cursoroff(1);
@@ -957,7 +954,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			 */
 			if(m < 3)
 				error(Ebadblt);
-			v = GSHORT(p+1);
+			v = BGSHORT(p+1);
 			if(v<0 || v>=bit.nmap || (dst=bit.map[v])==0)
 				error(Ebadbitmap);
 			bit.mid = v;
@@ -977,8 +974,8 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			 */
 			if(m < 7)
 				error(Ebadblt);
-			v = GSHORT(p+3);
-			t = GSHORT(p+5);
+			v = BGSHORT(p+3);
+			t = BGSHORT(p+5);
 			if(v<0 || t<0)
 				error(Ebadblt);
 			for(i=0; i<bit.nfont; i++)
@@ -1002,7 +999,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			ff->b = 0;
 			m -= 7;
 			p += 7;
-			bit.lastfid = i;
+			bit.fid = i;
 			break;
 
 		case 'p':
@@ -1017,18 +1014,18 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			 */
 			if(m < 14)
 				error(Ebadblt);
-			v = GSHORT(p+1);
+			v = BGSHORT(p+1);
 			if(v<0 || v>=bit.nmap || (dst=bit.map[v])==0)
 				error(Ebadbitmap);
 			off = 0;
-			fc = GSHORT(p+12) & 0xF;
+			fc = BGSHORT(p+12) & 0xF;
 			if(v == 0){
 				if(flipping)
 					fc = flipD[fc];
 				off = 1;
 			}
-			pt1.x = GLONG(p+3);
-			pt1.y = GLONG(p+7);
+			pt1.x = BGLONG(p+3);
+			pt1.y = BGLONG(p+7);
 			t = p[11];
 			if(off && !isoff){
 				cursoroff(1);
@@ -1048,13 +1045,13 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			 */
 			if(m < 19)
 				error(Ebadblt);
-			v = GSHORT(p+1);
+			v = BGSHORT(p+1);
 			if(v<0 || v>=bit.nmap || (dst=bit.map[v])==0)
 				error(Ebadbitmap);
-			rect.min.x = GLONG(p+3);
-			rect.min.y = GLONG(p+7);
-			rect.max.x = GLONG(p+11);
-			rect.max.y = GLONG(p+15);
+			rect.min.x = BGLONG(p+3);
+			rect.min.y = BGLONG(p+7);
+			rect.max.x = BGLONG(p+11);
+			rect.max.y = BGLONG(p+15);
 			if(rectclip(&rect, dst->r))
 				dst->clipr = rect;
 			else
@@ -1073,11 +1070,11 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			 */
 			if(m < 11)
 				error(Ebadblt);
-			v = GSHORT(p+1);
+			v = BGSHORT(p+1);
 			if(v<0 || v>=bit.nmap || (src=bit.map[v])==0)
 				error(Ebadbitmap);
-			miny = GLONG(p+3);
-			maxy = GLONG(p+7);
+			miny = BGLONG(p+3);
+			maxy = BGLONG(p+7);
 			if(miny>maxy || miny<src->r.min.y || maxy>src->r.max.y)
 				error(Ebadblt);
 			bit.rid = v;
@@ -1100,22 +1097,22 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			 */
 			if(m < 17)
 				error(Ebadblt);
-			v = GSHORT(p+1);
+			v = BGSHORT(p+1);
 			if(v<0 || v>=bit.nmap || (dst=bit.map[v])==0)
 				error(Ebadbitmap);
 			off = 0;
-			fc = GSHORT(p+13) & 0xF;
+			fc = BGSHORT(p+13) & 0xF;
 			if(v == 0){
 				if(flipping)
 					fc = flipD[fc];
 				off = 1;
 			}
-			pt.x = GLONG(p+3);
-			pt.y = GLONG(p+7);
-			v = GSHORT(p+11);
+			pt.x = BGLONG(p+3);
+			pt.y = BGLONG(p+7);
+			v = BGSHORT(p+11);
 			if(v<0 || v>=bit.nfont || (ff=bit.font[v])==0)
 				error(Ebadblt);
-			l = GSHORT(p+15)*2;
+			l = BGSHORT(p+15)*2;
 			p += 17;
 			m -= 17;
 			if(l > m)
@@ -1140,21 +1137,21 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			 */
 			if(m < 23)
 				error(Ebadblt);
-			v = GSHORT(p+1);
+			v = BGSHORT(p+1);
 			if(v<0 || v>=bit.nmap || (dst=bit.map[v])==0)
 				error(Ebadbitmap);
 			off = 0;
-			fc = GSHORT(p+21) & 0xF;
+			fc = BGSHORT(p+21) & 0xF;
 			if(v == 0){
 				if(flipping)
 					fc = flipD[fc];
 				off = 1;
 			}
-			rect.min.x = GLONG(p+3);
-			rect.min.y = GLONG(p+7);
-			rect.max.x = GLONG(p+11);
-			rect.max.y = GLONG(p+15);
-			v = GSHORT(p+19);
+			rect.min.x = BGLONG(p+3);
+			rect.min.y = BGLONG(p+7);
+			rect.max.x = BGLONG(p+11);
+			rect.max.y = BGLONG(p+15);
+			v = BGSHORT(p+19);
 			if(v<0 || v>=bit.nmap || (src=bit.map[v])==0)
 				error(Ebadbitmap);
 			if(off && !isoff){
@@ -1176,8 +1173,8 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			 */
 			if(m < 7)
 				error(Ebadblt);
-			v = GSHORT(p+1);
-			t = GSHORT(p+3);
+			v = BGSHORT(p+1);
+			t = BGSHORT(p+3);
 			if(t<0 || v<0 || v>=bit.nfont || (ff=bit.font[v])==0)
 				error(Ebadblt);
 			/*
@@ -1194,7 +1191,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			}
 			if(ff->b)
 				bitfree(ff->b);
-			ff->width = GSHORT(p+5);
+			ff->width = BGSHORT(p+5);
 			ff->b = 0;
 			i = bitalloc(Rect(0, 0, t*ff->width, ff->height), ff->ldepth);
 			ff->b = bit.map[i];
@@ -1214,14 +1211,14 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			 */
 			if(m < 11)
 				error(Ebadblt);
-			v = GSHORT(p+1);
+			v = BGSHORT(p+1);
 			if(v<0 || v>=bit.nmap || (dst=bit.map[v])==0)
 				error(Ebadbitmap);
 			off = 0;
 			if(v == 0)
 				off = 1;
-			miny = GLONG(p+3);
-			maxy = GLONG(p+7);
+			miny = BGLONG(p+3);
+			maxy = BGLONG(p+7);
 			if(miny>maxy || miny<dst->r.min.y || maxy>dst->r.max.y)
 				error(Ebadblt);
 			ws = 1<<(3-dst->ldepth);	/* pixels per byte */
@@ -1263,8 +1260,8 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			 */
 			if(m < 9)
 				error(Ebadblt);
-			pt1.x = GLONG(p+1);
-			pt1.y = GLONG(p+5);
+			pt1.x = BGLONG(p+1);
+			pt1.y = BGLONG(p+5);
 /*			if(!eqpt(mouse.xy, pt1))*/{
 				mouse.xy = pt1;
 				mouse.track = 1;
@@ -1285,16 +1282,16 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			 */
 			if(m < 9)
 				error(Ebadblt);
-			v = GSHORT(p+1);
+			v = BGSHORT(p+1);
 			if(v<0 || v>=bit.nfont || (ff=bit.font[v])==0)
 				error(Ebadblt);
-			l = GSHORT(p+3);
-			if(l >= NFCACHE+NFLOOK)
+			l = BGSHORT(p+3);
+			if(l >= ff->ncache)
 				error(Ebadblt);
-			v = GSHORT(p+5);
+			v = BGSHORT(p+5);
 			if(v<0 || v>=bit.nsubfont || (f=bit.subfont[v])==0 || f->ref==0)
 				error(Ebadfont);
-			nw = GSHORT(p+7);
+			nw = BGSHORT(p+7);
 			if(nw >= f->n)
 				error(Ebadblt);
 			bitloadchar(ff, l, f, nw);
@@ -1312,7 +1309,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			 */
 			if(m < 3)
 				error(Ebadblt);
-			v = GSHORT(p+1);
+			v = BGSHORT(p+1);
 			if(v != 0)
 				error(Ebadbitmap);
 			m -= 3;
@@ -1322,13 +1319,13 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 				error(Ebadblt);
 			ok = 1;
 			for(i = 0; i < nw; i++){
-				ok &= setcolor(i, GLONG(p), GLONG(p+4), GLONG(p+8));
+				ok &= setcolor(i, BGLONG(p), BGLONG(p+4), BGLONG(p+8));
 				p += 12;
 				m -= 12;
 			}
 			if(!ok){
 				/* assume monochrome: possibly change flipping */
-				l = GLONG(p-12);
+				l = BGLONG(p-12);
 				getcolor(nw-1, &rv, &rv, &rv);
 				flipping = (l != rv);
 			}
@@ -1386,30 +1383,24 @@ bitalloc(Rectangle rect, int ld)
 	}
 
 	/* need new arena */
-	if(aa)
+	if(aa){
 		a = aa;
-	else{
-		na = bit.arena;
-		bit.arena = smalloc((bit.narena+DMAP)*sizeof(Arena));
-		memmove(bit.arena, na, bit.narena*sizeof(Arena));
-		free(na);
-		a = bit.arena+bit.narena;
-		bit.narena += DMAP;
+		a->nwords = gscreen.width*gscreen.r.max.y+HDR;
+		if(a->nwords < HDR+nw)
+			a->nwords = HDR+nw;
+		a->words = xalloc(a->nwords*sizeof(ulong));
+		if(a->words){
+			a->wfree = a->words;
+			a->nbusy = 0;
+			goto found;
+		}
 	}
-	a->nwords = gscreen.width*gscreen.r.max.y+HDR;
-	if(a->nwords < HDR+nw)
-		a->nwords = HDR+nw;
-	a->words = xalloc(a->nwords*sizeof(ulong));
-	if(a->words){
-		a->wfree = a->words;
-		a->nbusy = 0;
-		goto found;
-	}
+	/* else can't grow list: bitmaps have backpointers */
 
 	/* free unused subfonts, compact, and try again */
 	for(i=0; i<bit.nsubfont; i++){
 		s = bit.subfont[i];
-		if(s && s->ref==0){
+		if(s && s!=defont && s->ref==0){
 			bitfree(s->bits);
 			free(s->info);
 			free(s);
@@ -1432,7 +1423,6 @@ bitalloc(Rectangle rect, int ld)
 	*a->wfree++ = (ulong)a;
 	*a->wfree++ = (ulong)b;
 	b->base = a->wfree;
-	memset(b->base, 0, nw*sizeof(ulong));
 	a->wfree += nw;
 	a->nbusy++;
 	b->zero = l*rect.min.y;
@@ -1468,11 +1458,14 @@ bitfree(GBitmap *b)
 {
 	Arena *a;
 
-	a = (Arena*)(b->base[-2]);
-	a->nbusy--;
-	if(a->nbusy == 0)
-		arenafree(a);
-	b->base[-1] = 0;
+	if(b->base != gscreen.base){	/* can't free screen memory */
+		a = (Arena*)(b->base[-2]);
+if(a<bit.arena || a>=bit.arena+bit.narena) panic("bitfree");
+		a->nbusy--;
+		if(a->nbusy == 0)
+			arenafree(a);
+		b->base[-1] = 0;
+	}
 	free(b);
 }
 
@@ -1488,7 +1481,8 @@ fontfree(GFont *f)
 void
 subfontfree(BSubfont *s)
 {
-	s->ref--;
+	if(s != defont)	/* don't free subfont 0, defont */
+		s->ref--;
 	return;
 }
 
@@ -1514,10 +1508,10 @@ bitstring(GBitmap *bp, Point pt, GFont *f, uchar *p, long l, Fcode fc)
 	}
 
 	while(l > 0){
-		r = GSHORT(p);
+		r = BGSHORT(p);
 		p += 2;
 		l -= 2;
-		if(r >= NFCACHE+NFLOOK)
+		if(r >= f->ncache)
 			continue;
 		c = &f->cache[r];
 		if(!full){
@@ -1620,9 +1614,10 @@ bitcompact(void)
 			na++;
 		}
 		a->wfree = p1;
+		memset(p1, 0, ((a->words+a->nwords)-p1)*sizeof(ulong));
 	}
-	for(a=bit.arena; a<ea && a->words; a++)
-		if(a->nbusy == 0)
+	for(a=bit.arena; a<ea; a++)
+		if(a->words && a->nbusy==0)
 			arenafree(a);
 }
 
@@ -1697,7 +1692,6 @@ mousebuttons(int b)	/* called at higher priority */
 	mouseclock();
 }
 
-
 void
 mouseupdate(int dolock)
 {
@@ -1744,7 +1738,7 @@ mouseputc(IOQ *q, int c)
 		nb=0;
 	msg[nb] = c;
 	if(c & 0x80)
-		msg[nb] |= 0xFF00;	/* sign extend */
+		msg[nb] |= ~0xFF;	/* sign extend */
 	if(++nb == 5){
 		mouse.newbuttons = b[(msg[0]&7)^7];
 		mouse.dx = msg[1]+msg[3];

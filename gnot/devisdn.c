@@ -657,11 +657,13 @@ Loop:
 				ip->badcount++;
 		}
 		bp->wptr = bp->base;
+		bp->rptr = bp->base;
 	} else
 		bp->wptr = p;
 	goto Loop;
 Reset:
 	bp->wptr = bp->base;
+	bp->rptr = bp->base;
 	SET(unite->reset, Rres);
 	return wake;
 }

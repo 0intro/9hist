@@ -25,7 +25,7 @@ Lock	screenlock;
 
 GBitmap	gscreen =
 {
-	(ulong*)((4*1024*1024-256*1024)|KZERO),	/* BUG */
+	(ulong*)((1*1024*1024)|KZERO),	/* bootrom puts it here; changed by mmuinit */
 	0,
 	64,
 	0,

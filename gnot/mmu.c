@@ -82,12 +82,13 @@ void
 kmapinit(void)
 {
 	int i;
+	ulong endscreen;
 	Page *p;
 	KMap *k;
 
 	if(kmapalloc.init == 0){
 		k = &kmapalloc.arena[0];
-		k->va = KZERO|(MB4-256*1024-BY2PG);
+		k->va = KZERO|(MB4-BY2PG);
 		k->next = 0;
 		kmapalloc.free = k;
 		kmapalloc.init = 1;
@@ -95,9 +96,13 @@ kmapinit(void)
 	}
 
 	i = 0;
-	/* Reclaim map register for pages in bank0 */
+	/*
+	 * Reclaim map register for pages in bank0;
+	 * screen is in virtual space overlaying physical pages; be careful
+	 */
+	endscreen = (PGROUND((ulong)end)&~KZERO) + 256*1024;
 	for(p = palloc.head; p; p = p->next) {
-		if(p->pa < MB4) {
+		if(p->pa >= endscreen && p->pa < MB4) {
 			k = &kmapalloc.arena[p->pa/BY2PG];
 			k->va = p->pa|KZERO;
 			kunmap(k);
