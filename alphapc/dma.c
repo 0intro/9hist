@@ -119,7 +119,7 @@ dmainit(int chan, int maxtransfer)
 			return 1;
 		return 0;
 	}
-dmastatus(dp, chan, 'I');
+//dmastatus(dp, chan, 'I');
 
 	xp->bva = xspanalloc(maxtransfer, BY2PG, 64*1024);
 	if(xp->bva == nil)
@@ -241,7 +241,7 @@ dmasetup(int chan, void *va, long len, int isread)
 	outb(dp->count[chan], ((len>>dp->shift)-1)>>8);
 	outb(dp->sbm, chan);		/* enable the channel */
 	iunlock(dp);
-dmastatus(dp, chan, 'S');
+//dmastatus(dp, chan, 'S');
 
 	return len;
 }
@@ -273,7 +273,7 @@ dmaend(int chan)
 	dp = &dma[(chan>>2)&1];
 	chan = chan & 3;
 
-dmastatus(dp, chan, 'E');
+//dmastatus(dp, chan, 'E');
 	/*
 	 *  disable the channel
 	 */
