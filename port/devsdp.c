@@ -99,6 +99,8 @@ struct OneWay
 	int		(*auth)(OneWay*, uchar *buf, int len);
 
 	void	*compstate;
+	ulong	compseq;
+	ulong	compwindow;
 	int		(*comp)(Conv*, int subtype, ulong seq, Block **);
 };
 
@@ -1275,20 +1277,19 @@ print("pad too big\n");
 	if(seqdiff > 0) {
 		while(seqdiff > 0 && c->in.window != 0) {
 			if((c->in.window & (1<<(SeqWindow-1))) == 0) {
-//print("missing packet: %ld\n", seq - seqdiff);
 				c->lstats.inMissing++;
 			}
 			c->in.window <<= 1;
 			seqdiff--;
 		}
 		if(seqdiff > 0) {
-//print("missing packets: %ld-%ld\n", seq - SeqWindow - seqdiff+1, seq-SeqWindow);
 			c->lstats.inMissing += seqdiff;
+			seqdiff = 0;
 		}
 		c->in.seq = seq;
 		c->in.seqwrap = seqwrap;
-		c->in.window |= 1;
 	}
+	c->in.window |= 1<<-seqdiff;
 	c->lastrecv = TK2SEC(m->ticks);
 
 	switch(type) {
@@ -1309,12 +1310,14 @@ print("pad too big\n");
 			c->lstats.inBadComp++;
 			return nil;
 		}
+		c->in.compseq = c->in.seq;
+		c->in.compwindow = c->in.window;
 		c->lstats.inDataBytes += BLEN(b);
 		if(control)
 			break;
 		return b;
 	}
-print("droping packet %d n=%ld\n", type, BLEN(b));
+print("dropping packet id=%d: type=%d n=%ld control=%d\n", c->id, type, BLEN(b), control);
 	c->lstats.inBadOther++;
 	freeb(b);
 	return nil;
@@ -1686,7 +1689,8 @@ static void
 writewait(Conv *c)
 {
 	for(;;) {
-		if(c->state == CInit || c->state == CClosed || c->state == CRemoteClose)
+		if(c->state == CFree || c->state == CInit ||
+		   c->state == CClosed || c->state == CRemoteClose)
 			error("conversation closed");
 
 		if(c->state == COpen && c->out.controlpkt == nil)
@@ -2237,10 +2241,10 @@ thwackcomp(Conv *c, int, ulong seq, Block **bp)
 
 	// add ack info
 	b = padblock(*bp, 4);
-	b->rp[0] = (c->in.window>>1) & 0xff;
-	b->rp[1] = c->in.seq>>16;
-	b->rp[2] = c->in.seq>>8;
-	b->rp[3] = c->in.seq;
+	b->rp[0] = (c->in.compwindow>>1) & 0xff;
+	b->rp[1] = c->in.compseq>>16;
+	b->rp[2] = c->in.compseq>>8;
+	b->rp[3] = c->in.compseq;
 
 	bb = allocb(BLEN(b));
 	nn = thwack(c->out.compstate, bb->wp, b->rp, BLEN(b), seq, c->lstats.outCompStats);
@@ -2280,7 +2284,7 @@ thwackuncomp(Conv *c, int subtype, ulong seq, Block **bp)
 		n = unthwack(c->in.compstate, b->wp, ThwMaxBlock, bb->rp, BLEN(bb), seq);
 		freeb(bb);
 		if(n < 0) {
-print("unthwack failed: %r!\n");
+print("unthwack failed: %d\n", n);
 			freeb(b);
 			return 0;
 		}

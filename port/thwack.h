@@ -19,7 +19,7 @@ enum
 
 	MinDecode	= 8,		/* minimum bits to decode a match or lit; >= 8 */
 
-	EWinBlocks	= 32,		/* blocks held in encoder window */
+	EWinBlocks	= 22,		/* blocks held in encoder window */
 	DWinBlocks	= 32,		/* blocks held in decoder window */
 	CompBlocks	= 10,		/* max blocks used to encode data */
 

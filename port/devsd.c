@@ -123,8 +123,6 @@ sddelpart(SDunit* unit,  char* name)
 	}
 	if(i >= unit->npart)
 		error(Ebadctl);
-	if(strncmp(up->user, pp->user, NAMELEN) && !iseve())
-		error(Eperm);
 	pp->valid = 0;
 	pp->vers++;
 }
