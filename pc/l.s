@@ -210,6 +210,17 @@ TEXT	inb(SB),$0
 	RET
 
 /*
+ *  input a string of bytes from a port
+ */
+TEXT	insb(SB),$0
+
+	MOVL	p+0(FP),DX
+	MOVL	a+4(FP),DI
+	MOVL	c+8(FP),CX
+	CLD; REP; INSB
+	RET
+
+/*
  *  output a byte
  */
 TEXT	outb(SB),$0
@@ -217,6 +228,17 @@ TEXT	outb(SB),$0
 	MOVL	p+0(FP),DX
 	MOVL	b+4(FP),AX
 	OUTB
+	RET
+
+/*
+ *  output a string of bytes to a port
+ */
+TEXT	outsb(SB),$0
+
+	MOVL	p+0(FP),DX
+	MOVL	a+4(FP),SI
+	MOVL	c+8(FP),CX
+	CLD; REP; OUTSB
 	RET
 
 /*
