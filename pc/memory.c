@@ -336,7 +336,7 @@ ramscan(ulong maxmem)
 				pa += BY2PG;
 			}while(pa % MB);
 			mmuflushtlb(PADDR(m->pdb));
-			//memset(va, 0, MB);
+//			memset(va, 0, MB);
 		}
 		else if(pa < 16*MB){
 			nvalid[MemUMB] += MB/BY2PG;
