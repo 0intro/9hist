@@ -85,7 +85,7 @@ openmode(ulong o)
 }
 
 long
-syspath(ulong *arg)
+sysfd2path(ulong *arg)
 {
 	Chan *c;
 

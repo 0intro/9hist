@@ -105,18 +105,18 @@ sched(void)
 	gotolabel(&up->sched);
 }
 
+int
+anyready(void)
+{
+	return m->hiq.head != 0 || m->loq.head != 0;
+}
+
 void
 newcallback(void (*func)(void))
 {
 	*m->cbin = func;
 	if(++m->cbin >= m->cbend)
 		m->cbin = m->calls;
-}
-
-int
-anyready(void)
-{
-	return m->hiq.head != 0 || m->loq.head != 0;
 }
 
 void

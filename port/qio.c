@@ -5,42 +5,23 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
-/*
- *  interrupt level memory allocation
- */
-typedef struct Chunk	Chunk;
-typedef	struct Chunkl	Chunkl;
-typedef	struct Arena	Arena;
 
 enum
 {
-	Minpow= 7,
-	Maxpow=	16,
+	Minpow	= 7,
+	Maxpow	= 16,
 };
 
-struct Chunk
-{
-	Chunk	*next;
-};
-
-struct Chunkl
+struct Pool
 {
 	Lock;
-	Chunk	*first;
+	Block*	list;
+	int	had;
 	int	have;
+	int	want;
 	int	goal;
-	int	hist;
-	int	wanted;
 };
-
-struct Arena
-{
-	Chunkl	alloc[Maxpow+1];
-	Chunkl	freed;
-	Rendez r;
-};
-
-static Arena arena;
+Pool	pool[Maxpow];
 
 /*
  *  IO queues
@@ -51,8 +32,8 @@ struct Queue
 {
 	Lock;
 
-	Block	*bfirst;	/* buffer */
-	Block	*blast;
+	Block*	bfirst;	/* buffer */
+	Block*	blast;
 
 	int	len;		/* bytes in queue */
 	int	limit;		/* max bytes in queue */
@@ -60,14 +41,14 @@ struct Queue
 	int	eof;		/* number of eofs read by user */
 
 	void	(*kick)(void*);	/* restart output */
-	void	*arg;		/* argument to kick */
+	void*	arg;		/* argument to kick */
 
 	QLock	rlock;		/* mutex for reading processes */
 	Rendez	rr;		/* process waiting to read */
 	QLock	wlock;		/* mutex for writing processes */
 	Rendez	wr;		/* process waiting to write */
 
-	uchar	*syncbuf;	/* synchronous IO buffer */
+	uchar*	syncbuf;	/* synchronous IO buffer */
 	int	synclen;	/* syncbuf length */
 };
 
@@ -112,190 +93,129 @@ poison(Block *b)
  *  Manage interrupt level memory allocation.
  */
 static void
-iallockproc(void *arg)
+iallocmgr(void)
 {
-	Chunk *p, *first, **l;
-	Chunkl *cl;
-	int pow, x, i;
+	int pow;
 
-	USED(arg);
-	for(;;){
-		tsleep(&arena.r, return0, 0, 500);
+	attention = 0;
+	spllo();
+	for(pow = Minpow; pow <= Maxpow; pow++) {
+		p = &pool[pow];
 
-		/* really free what was freed at interrupt level */
-		cl = &arena.freed;
-		if(cl->first){
-			x = splhi();
-			lock(cl);
-			first = cl->first;
-			cl->first = 0;
-			unlock(cl);
-			splx(x);
-	
-			while(first != 0) {
-				p = first->next;
-				free(first);
-				first = p;
+		/* Low pass filter */
+		delta = 3 * (p->had - p->have);
+		delta = (delta/2) + p->want;
+
+		if(delta < 0) {
+			lock(p);
+			p->have -= delta;
+			bp = p->list;
+			while(delta--)
+				p->list = p->list->next;
+			unlock(p);
+			spllo();
+			while(bp) {
+				next = bp->next;
+				free(bp);
+				bp = next;
 			}
+			splhi();
 		}
-
-		/* make sure we have blocks available for interrupt level */
-		for(pow = Minpow; pow <= Maxpow; pow++){
-			cl = &arena.alloc[pow];
-
-			/*
-			 *  if we've been ahead of the game for a while
-			 *  start giving blocks back to the general pool
-			 */
-			if(cl->have >= cl->goal){
-				cl->hist = ((cl->hist<<1) | 1) & 0xffff;
-				if(cl->hist == 0xffff && cl->goal > 32)
-					cl->goal--;
-				continue;
-			} else
-				cl->hist <<= 1;
-
-			/*
-			 *  increase goal if we've been drained.
-			 */
-			if(cl->have == 0){
-				i = cl->goal>>1;
-				if(cl->wanted > i)
-					cl->goal += 2*cl->wanted;
-				else
-					cl->goal += i;
-				cl->wanted = 0;
-				if(cl->goal > 5000)
-					cl->goal = 5000;
-			}
-
-			first = 0;
-			l = &first;
-			i = cl->goal - cl->have;
-			for(x = i; x > 0; x--){
-				p = malloc(1<<pow);
-				if(p == 0)
+		else {
+			spllo();
+			n = 0;
+			s = sizeof(Block)+(1<<pow)+(BY2V-1);
+			while(delta--) {
+				b = malloc(s);
+				if(b == 0)
 					break;
-
-				*l = p;
-				l = &p->next;
+				addr = (ulong)b;
+				addr = (addr+sizeof(Block)+(BY2V-1)) & ~(BY2V-1);
+				b->base = (uchar*)addr;
+				b->rp = b->base;
+				b->wp = b->base;
+				b->lim = ((uchar*)b)+size;
+				b->size = pow;
+				n++;
 			}
-			i -= x;
-			if(first){
-				x = splhi();
-				lock(cl);
-				*l = cl->first;
-				cl->first = first;
-				cl->have += i;
-				unlock(cl);
-				splx(x);
-			}
+			spllo();
+			lock(p);
+			unlock(p);
+			splhi();
 		}
+		p->had = p->have;
+		p->want = 0;		
 	}
 }
 
 void
 qinit(void)
 {
-	int pow;
-	Chunk *p;
-	Chunkl *cl;
-
-	/* start with a bunch of initial blocks */
-	for(pow = Minpow; pow <= Maxpow; pow++){
-		cl = &arena.alloc[pow];
-		cl->goal = 4;
-		if(pow < 12)
-			cl->goal = Maxpow-pow + 32;
-		cl->first = 0;
-		for(; cl->have < cl->goal; cl->have++){
-			p = malloc(1<<pow);
-			if(p == 0)
-				panic("qinit");
-			p->next = cl->first;
-			cl->first = p;
-		}
-	}
-
-}
-
-void
-iallocinit(void)
-{
-	/* start garbage collector/creator */
-	kproc("ialloc", iallockproc, 0);
 }
 
 void
 ixsummary(void)
 {
 	int pow;
-	Chunkl *cl;
+	Pool *p;
 
 	print("size	have/goal\n");
 	for(pow = Minpow; pow <= Maxpow; pow++){
-		cl = &arena.alloc[pow];
-		print("%d	%d/%d\n", 1<<pow, cl->have, cl->goal);
+		cl = &pool[pow];
+		print("%d	%d/%d\n", 1<<pow, p->have, p->goal);
 	}
 	print("\n");
 }
 
 /*
- *  interrupt time allocation (round data base address to 64 bit boundary)
+ *  interrupt time allocation
  */
 Block*
 iallocb(int size)
 {
 	int pow;
-	ulong addr;
-	Chunkl *cl;
-	Chunk *p;
-	Block *b;
+	Block *bp;
 
-	size += sizeof(Block) + 7;
-	for(pow = Minpow; pow <= Maxpow; pow++){
-		if(size <= (1<<pow)){
-			cl = &arena.alloc[pow];
-			lock(cl);
-			p = cl->first;
-			if(p == 0){
-				cl->wanted++;
-				unlock(cl);
-				wakeup(&arena.r);
-				return 0;
-			}
-			cl->have--;
-			cl->first = p->next;
-			unlock(cl);
+	for(pow = Minpow; pow < Maxpow; pow++)
+		if(size >= (1<<pow))
+			break;
 
-			b = (Block *)p;
-			memset(b, 0, sizeof(Block));
-			addr = (ulong)b;
-			addr = (addr + sizeof(Block) + 7) & ~7;
-			b->base = (uchar*)addr;
-			b->wp = b->base;
-			b->rp = b->base;
-			b->lim = ((uchar*)b) + (1<<pow);
-			return b;
+	if(pow == Maxpow)
+		return 0;
+
+	p = &pool[pow];
+	lock(p);
+	bp = p->list;
+	if(p == 0) {
+		p->want++;
+		unlock(p);
+		if(attention == 0) {
+			attention++;
+			newcallback(iallocmgr);
 		}
+		return 0;
 	}
-
-	panic("iallocb %d\n", size);
-	return 0;			/* not reached */
+	p->have--;
+	p->list = bp->next;
+	unlock(p);
+	bp->wp = b->base;
+	bp->rp = b->base;
+	bp->list = 0;
+	bp->next = 0;
+	return bp;
 }
 
 void
-ifree(void *a)
+ifreeb(Block *bp)
 {
-	Chunk *p;
-	Chunkl *cl;
+	Pool *p;
 
-	cl = &arena.freed;
-	p = a;
-	lock(cl);
-	p->next = cl->first;
-	cl->first = p;
-	unlock(cl);
+	p = &pool[bp->size];
+	lock(p);
+	bp->next = p->list;
+	p->list = bp;
+	p->have++;
+	unlock(p);
 }
 
 /*
