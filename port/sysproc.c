@@ -21,53 +21,13 @@ sysrfork(ulong *arg)
 {
 	Proc *p;
 	int n, i;
-	Pgrp *opg;
-	Egrp *oeg;
 	Fgrp *ofg;
+	Pgrp *opg;
+	Rgrp *org;
+	Egrp *oeg;
 	ulong pid, flag;
 
 	flag = arg[0];
-	if((flag&RFPROC) == 0) {
-		if(flag & (RFNAMEG|RFCNAMEG)) {
-			if((flag & (RFNAMEG|RFCNAMEG)) == (RFNAMEG|RFCNAMEG))
-				error(Ebadarg);
-			opg = up->pgrp;
-			up->pgrp = newpgrp();
-			if(flag & RFNAMEG)
-				pgrpcpy(up->pgrp, opg);
-			closepgrp(opg);
-		}
-		if(flag & (RFENVG|RFCENVG)) {
-			if((flag & (RFENVG|RFCENVG)) == (RFENVG|RFCENVG))
-				error(Ebadarg);
-			oeg = up->egrp;
-			up->egrp = smalloc(sizeof(Egrp));
-			up->egrp->ref = 1;
-			if(flag & RFENVG)
-				envcpy(up->egrp, oeg);
-			closeegrp(oeg);
-		}
-		if(flag & RFFDG) {
-			ofg = up->fgrp;
-			up->fgrp = dupfgrp(ofg);
-			closefgrp(ofg);
-		}
-		else
-		if(flag & RFCFDG) {
-			ofg = up->fgrp;
-			up->fgrp = dupfgrp(nil);
-			closefgrp(ofg);
-		}
-		if(flag & RFNOTEG)
-			up->noteid = incref(&noteidalloc);
-		if(flag & (RFMEM|RFNOWAIT))
-			error(Ebadarg);
-		if(flag & RFREND) {
-			closergrp(up->rgrp);
-			up->rgrp = newrgrp();
-		}
-		return 0;
-	}
 	/* Check flags before we commit */
 	if((flag & (RFFDG|RFCFDG)) == (RFFDG|RFCFDG))
 		error(Ebadarg);
@@ -75,6 +35,42 @@ sysrfork(ulong *arg)
 		error(Ebadarg);
 	if((flag & (RFENVG|RFCENVG)) == (RFENVG|RFCENVG))
 		error(Ebadarg);
+
+	if((flag&RFPROC) == 0) {
+		if(flag & (RFMEM|RFNOWAIT))
+			error(Ebadarg);
+		if(flag & (RFFDG|RFCFDG)) {
+			ofg = up->fgrp;
+			if(flag & RFFDG)
+				up->fgrp = dupfgrp(ofg);
+			else
+				up->fgrp = dupfgrp(nil);
+			closefgrp(ofg);
+		}
+		if(flag & (RFNAMEG|RFCNAMEG)) {
+			opg = up->pgrp;
+			up->pgrp = newpgrp();
+			if(flag & RFNAMEG)
+				pgrpcpy(up->pgrp, opg);
+			closepgrp(opg);
+		}
+		if(flag & RFREND) {
+			org = up->rgrp;
+			up->rgrp = newrgrp();
+			closergrp(org);
+		}
+		if(flag & (RFENVG|RFCENVG)) {
+			oeg = up->egrp;
+			up->egrp = smalloc(sizeof(Egrp));
+			up->egrp->ref = 1;
+			if(flag & RFENVG)
+				envcpy(up->egrp, oeg);
+			closeegrp(oeg);
+		}
+		if(flag & RFNOTEG)
+			up->noteid = incref(&noteidalloc);
+		return 0;
+	}
 
 	p = newproc();
 

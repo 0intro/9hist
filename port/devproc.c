@@ -467,7 +467,7 @@ procread(Chan *c, void *va, long n, ulong offset)
 			return 0;
 		if(n < NAMELEN+11)
 			error(Etoosmall);
-		i = sprint(a, "%s %d ", mw->cm->spec, mw->cm->flag);
+		i = sprint(a, "%.*s %d ", NAMELEN, mw->cm->spec, mw->cm->flag);
 		n -= i;
 		a += i;
 		i = ptpath(mw->mh->from->path, a, n);

@@ -177,11 +177,12 @@ sysdup(ulong *arg)
 	c = fdtochan(arg[0], -1, 0, 1);
 	fd = arg[1];
 	if(fd != -1){
+		lock(f);
 		if(fd<0 || f->nfd<=fd) {
+			unlock(f);
 			cclose(c);
 			error(Ebadfd);
 		}
-		lock(f);
 		if(fd > f->maxfd)
 			f->maxfd = fd;
 

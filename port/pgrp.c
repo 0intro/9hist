@@ -122,7 +122,7 @@ pgrpcpy(Pgrp *to, Pgrp *from)
 	Mount *n, *m, **link, *order;
 	Mhead *f, **tom, **l, *mh;
 
-	rlock(&from->ns);
+	wlock(&from->ns);
 	order = 0;
 	tom = to->mnthash;
 	for(i = 0; i < MNTHASH; i++) {
@@ -140,8 +140,8 @@ pgrpcpy(Pgrp *to, Pgrp *from)
 				incref(n->to);
 				n->head = mh;
 				n->flag = m->flag;
-				if(m->spec != 0)
-					strcpy(n->spec, m->spec);
+				if(m->spec[0] != 0)
+					strncpy(n->spec, m->spec, NAMELEN);
 				m->copy = n;
 				pgrpinsert(&order, m);
 				*link = n;
@@ -156,7 +156,7 @@ pgrpcpy(Pgrp *to, Pgrp *from)
 	for(m = order; m; m = m->order)
 		m->copy->mountid = mountid.ref++;
 	unlock(&mountid);
-	runlock(&from->ns);
+	wunlock(&from->ns);
 }
 
 Fgrp*
@@ -231,7 +231,7 @@ newmount(Mhead *mh, Chan *to, int flag, char *spec)
 	m->mountid = incref(&mountid);
 	m->flag = flag;
 	if(spec != 0)
-		strcpy(m->spec, spec);
+		strncpy(m->spec, spec, NAMELEN);
 
 	return m;
 }

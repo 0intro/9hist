@@ -413,6 +413,8 @@ typedef struct {
 	long	stats[BytesRcvdOk+3];
 
 	int	upqmax;
+	long	upinterrupts;
+	long	upqueued;
 	int	upstalls;
 	int	dnqmax;
 	long	dninterrupts;
@@ -816,6 +818,7 @@ receive905(Ether* ether)
 	}
 	ctlr->uphead = pd;
 
+	ctlr->upqueued += q;
 	if(q > ctlr->upqmax)
 		ctlr->upqmax = q;
 }
@@ -982,9 +985,10 @@ interrupt(Ureg*, void* arg)
 		}
 
 		if(status & (upComplete)){
-			receive905(ether);
 			COMMAND(port, AcknowledgeInterrupt, upComplete);
+			receive905(ether);
 			status &= ~upComplete;
+			ctlr->upinterrupts++;
 		}
 
 		if(status & txComplete){
@@ -1041,8 +1045,8 @@ interrupt(Ureg*, void* arg)
 		}
 
 		if(status & dnComplete){
-			txstart905(ether);
 			COMMAND(port, AcknowledgeInterrupt, dnComplete);
+			txstart905(ether);
 			status &= ~dnComplete;
 			ctlr->dninterrupts++;
 		}
@@ -1103,12 +1107,18 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 	len += snprint(p+len, READSTR-len, "framesdeferred: %lud\n", ctlr->stats[FramesDeferred]);
 	len += snprint(p+len, READSTR-len, "bytesrcvdok: %lud\n", ctlr->stats[BytesRcvdOk]);
 	len += snprint(p+len, READSTR-len, "bytesxmittedok: %lud\n", ctlr->stats[BytesRcvdOk+1]);
-len += snprint(p+len, READSTR-len, "up: q %lud s %lud\n",
-    ctlr->upqmax, ctlr->upstalls);
-ctlr->upqmax = 0;
-len += snprint(p+len, READSTR-len, "dn: q %lud i %lud m %d\n",
-    ctlr->dnqueued, ctlr->dninterrupts, ctlr->dnqmax);
-ctlr->dnqmax = 0;
+
+	if(ctlr->upenabled){
+		len += snprint(p+len, READSTR-len, "up: q %lud i %lud m %d s %lud\n",
+			ctlr->upqueued, ctlr->upinterrupts, ctlr->dnqmax, ctlr->upstalls);
+		ctlr->upqmax = 0;
+	}
+	if(ctlr->dnenabled){
+		len += snprint(p+len, READSTR-len, "dn: q %lud i %lud m %d\n",
+			ctlr->dnqueued, ctlr->dninterrupts, ctlr->dnqmax);
+		ctlr->dnqmax = 0;
+	}
+
 	snprint(p+len, READSTR-len, "badssd: %lud\n", ctlr->stats[BytesRcvdOk+2]);
 
 	n = readstr(offset, a, n, p);
@@ -1729,6 +1739,8 @@ etherelnk3reset(Ether* ether)
 	ctlr->txthreshold = ETHERMAXTU/2;
 	COMMAND(port, SetTxStartThresh, ctlr->txthreshold>>ctlr->ts);
 	COMMAND(port, SetRxEarlyThresh, rxearly>>ctlr->ts);
+
+COMMAND(port, AcknowledgeInterrupt, interruptLatch);
 
 	iunlock(&ctlr->wlock);
 
