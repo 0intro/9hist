@@ -76,6 +76,7 @@ typedef struct Ethertype	Ethertype;
 struct Ethertype
 {
 	QLock;
+	Netprot;			/* stat info */
 	int		type;		/* ethernet type */
 	int		prom;		/* promiscuous mode */
 	Queue		*q;
@@ -96,7 +97,6 @@ typedef struct {
 	int	all;		/* number of channels listening to all packets */
 	int	wedged;		/* the lance is wedged */
 	Network	net;
-	Netprot	prot[Ntypes];
 
 	int	inited;
 	uchar	*lmp;		/* location of parity test */
@@ -268,7 +268,7 @@ lancestclose(Queue *q)
 	et->q = 0;
 	et->prom = 0;
 	et->inuse = 0;
-	netdisown(&l.net, et - l.e);
+	netdisown(et);
 }
 
 /*
@@ -416,6 +416,7 @@ void
 lancereset(void)
 {
 	static int already;
+	int i;
 
 	if(already == 0){
 		already = 1;
@@ -428,11 +429,12 @@ lancereset(void)
 		l.net.listen = 0;
 		l.net.clone = lanceclonecon;
 		l.net.ninfo = 2;
-		l.net.prot = l.prot;
 		l.net.info[0].name = "stats";
 		l.net.info[0].fill = lancestatsfill;
 		l.net.info[1].name = "type";
 		l.net.info[1].fill = lancetypefill;
+		for(i = 0; i < Ntypes; i++)
+			netadd(&l.net, &l.e[i], i);
 
 		memset(l.bcast, 0xff, sizeof l.bcast);
 	}
@@ -671,7 +673,7 @@ lanceclonecon(Chan *c)
 			continue;
 		}
 		e->inuse = 1;
-		netown(&l.net, e - l.e, u->p->user, 0);
+		netown(e, u->p->user, 0);
 		qunlock(e);
 		return e - l.e;
 	}

@@ -161,8 +161,10 @@ userinit(void)
 
 	p = newproc();
 	p->pgrp = newpgrp();
-	p->egrp = newegrp();
-	p->fgrp = newfgrp();
+	p->egrp = smalloc(sizeof(Egrp));
+	p->egrp->ref = 1;
+	p->fgrp = smalloc(sizeof(Fgrp));
+	p->fgrp->ref = 1;
 	p->procmode = 0640;
 
 	strcpy(p->text, "*init*");

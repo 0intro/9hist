@@ -7,85 +7,28 @@
 #include	"../port/error.h"
 #include	"devtab.h"
 
-enum {
-	Nclass=4,	/* number of block classes */
-};
-
 /*
- *  process end line discipline
+ *  Part 1) Blocks
  */
-static void stputq(Queue*, Block*);
-Qinfo procinfo =
-{
-	stputq,
-	nullput,
-	0,
-	0,
-	"process"
-};
 
 /*
- *  line disciplines that can be pushed
- */
-static Qinfo *lds;
-
-Stream *slist;
-Queue *qlist;
-static Lock garbagelock;
-
-/*
- *  Allocate streams, queues, and blocks.  Allocate n block classes with
- *	1/2(m+1) to class m < n-1
- *	1/2(n-1) to class n-1
- */
-void
-streaminit(void)
-{
-
-	/*
-	 *  allocate queues, streams
-	 */
-	slist = (Stream *)xalloc(conf.nstream * sizeof(Stream));
-	qlist = (Queue *)xalloc(conf.nqueue * sizeof(Queue));
-
-	/*
-	 *  make stream modules available
-	 */
-	streaminit0();
-}
-
-/*
- *  make known a stream module and call its initialization routine, if
- *  it has one.
- */
-void
-newqinfo(Qinfo *qi)
-{
-	if(qi->next)
-		panic("newqinfo: already configured");
-
-	qi->next = lds;
-	lds = qi;
-	if(qi->reset)
-		(*qi->reset)();
-}
-
-/*
- *  allocate a block
+ *  Allocate a block.  Put the data portion at the end of the smalloc'd
+ *  chunk so that it can easily grow from the front to add protocol
+ *  headers.  Thank Larry Peterson for the suggestion.
  */
 Block *
 allocb(ulong size)
 {
 	Block *bp;
-	uchar *data;
+	uchar *base, *lim;
 
 	bp = smalloc(sizeof(Block)+size);
 
-	data = (uchar*)bp + sizeof(Block);
-	bp->rptr = data;
-	bp->wptr = data;
-	bp->base = data;
-	bp->lim = data+size;
+	base = (uchar*)bp + sizeof(Block);
+	lim = (uchar*)bp + msize(bp);
+	bp->wptr = bp->rptr = lim - size;
+	bp->base = base;
+	bp->lim = lim;
 	bp->flags = 0;
 	bp->next = 0;
 	bp->list = 0;
@@ -95,7 +38,7 @@ allocb(ulong size)
 
 /*
  *  Free a block (or list of blocks).  Poison its pointers so that
- *  someone trying to access it after freeing will cause a dump.
+ *  someone trying to access it after freeing will cause a panic.
  */
 void
 freeb(Block *bp)
@@ -112,7 +55,8 @@ freeb(Block *bp)
 }
 
 /*
- *  pad a block to the front with n bytes
+ *  Pad a block to the front with n bytes.  This is used to add protocol
+ *  headers to the front of blocks.
  */
 Block *
 padb(Block *bp, int n)
@@ -132,6 +76,253 @@ padb(Block *bp, int n)
 } 
 
 /*
+ *  make sure the first block has n bytes
+ */
+Block *
+pullup(Block *bp, int n)
+{
+	Block *nbp;
+	int i;
+
+	/*
+	 *  this should almost always be true, the rest it
+	 *  just for to avoid every caller checking.
+	 */
+	if(BLEN(bp) >= n)
+		return bp;
+
+	/*
+	 *  if not enough room in the first block,
+	 *  add another to the front of the list.
+	 */
+	if(bp->lim - bp->rptr < n){
+		nbp = allocb(n);
+		nbp->next = bp;
+		bp = nbp;
+	}
+
+	/*
+	 *  copy bytes from the trailing blocks into the first
+	 */
+	n -= BLEN(bp);
+	while(nbp = bp->next){
+		i = BLEN(nbp);
+		if(i >= n) {
+			memmove(bp->wptr, nbp->rptr, n);
+			bp->wptr += n;
+			nbp->rptr += n;
+			return bp;
+		} else {
+			memmove(bp->wptr, nbp->rptr, i);
+			bp->wptr += i;
+			bp->next = nbp->next;
+			nbp->next = 0;
+			freeb(nbp);
+			n -= i;
+		}
+	}
+	freeb(bp);
+	return 0;
+}
+
+/*
+ *  return the number of data bytes of a list of blocks
+ */
+int
+blen(Block *bp)
+{
+	int len;
+
+	len = 0;
+	while(bp) {
+		len += BLEN(bp);
+		bp = bp->next;
+	}
+
+	return len;
+}
+
+/*
+ *  round a block chain to some even number of bytes.  Used
+ *  by devip.c becuase all IP packets must have an even number
+ *  of bytes.
+ *
+ *  The last block in the returned chain will have S_DELIM set.
+ */
+int
+bround(Block *bp, int amount)
+{
+	Block *last;
+	int len, pad;
+
+	len = 0;
+	SET(last);	/* Ken's magic */
+
+	while(bp) {
+		len += BLEN(bp);
+		last = bp;
+		bp = bp->next;
+	}
+
+	pad = ((len + amount) & ~amount) - len;
+	if(pad) {
+		if(last->lim - last->wptr >= pad){
+			memset(last->wptr, 0, pad);
+			last->wptr += pad;
+		} else {
+			last->next = allocb(pad);
+			last->flags &= ~S_DELIM;
+			last = last->next;
+			last->wptr += pad;
+			last->flags |= S_DELIM;
+		}
+	}
+
+	return len + pad;
+}
+
+/*
+ *  expand a block list to be one block, len bytes long.  used by
+ *  ethernet routines.
+ */
+Block*
+expandb(Block *bp, int len)
+{
+	Block *nbp, *new;
+	int i;
+	ulong delim = 0;
+
+	new = allocb(len);
+	if(new == 0){
+		freeb(bp);
+		return 0;
+	}
+
+	/*
+	 *  copy bytes into new block
+	 */
+	for(nbp = bp; len>0 && nbp; nbp = nbp->next){
+		delim = nbp->flags & S_DELIM;
+		i = BLEN(nbp);
+		if(i > len) {
+			memmove(new->wptr, nbp->rptr, len);
+			new->wptr += len;
+			break;
+		} else {
+			memmove(new->wptr, nbp->rptr, i);
+			new->wptr += i;
+			len -= i;
+		}
+	}
+	if(len){
+		memset(new->wptr, 0, len);
+		new->wptr += len;
+	}
+	new->flags |= delim;
+	freeb(bp);
+	return new;
+
+}
+
+/*
+ *  make a copy of the first 'count' bytes of a block chain.  Use
+ *  by transport protocols.
+ */
+Block *
+copyb(Block *bp, int count)
+{
+	Block *nb, *head, **p;
+	int l;
+
+	p = &head;
+	while(count) {
+		l = BLEN(bp);
+		if(count < l)
+			l = count;
+		nb = allocb(l);
+		if(nb == 0)
+			panic("copyb.1");
+		memmove(nb->wptr, bp->rptr, l);
+		nb->wptr += l;
+		count -= l;
+		if(bp->flags & S_DELIM)
+			nb->flags |= S_DELIM;
+		*p = nb;
+		p = &nb->next;
+		bp = bp->next;
+		if(bp == 0)
+			break;
+	}
+	if(count) {
+		nb = allocb(count);
+		if(nb == 0)
+			panic("copyb.2");
+		memset(nb->wptr, 0, count);
+		nb->wptr += count;
+		nb->flags |= S_DELIM;
+		*p = nb;
+	}
+	if(blen(head) == 0)
+		print("copyb: zero length\n");
+
+	return head;
+}
+
+/*
+ *  Part 2) Queues
+ */
+
+/*
+ *  process end line discipline
+ */
+static void stputq(Queue*, Block*);
+Qinfo procinfo =
+{
+	stputq,
+	nullput,
+	0,
+	0,
+	"process"
+};
+
+/*
+ *  line disciplines that can be pushed
+ */
+static Qinfo *lds;
+
+/*
+ *  make known a stream module and call its initialization routine, if
+ *  it has one.
+ */
+void
+newqinfo(Qinfo *qi)
+{
+	if(qi->next)
+		panic("newqinfo: already configured");
+
+	qi->next = lds;
+	lds = qi;
+	if(qi->reset)
+		(*qi->reset)();
+}
+
+/*
+ *  find the info structure for line discipline 'name'
+ */
+Qinfo *
+qinfofind(char *name)
+{
+	Qinfo *qi;
+
+	if(name == 0)
+		return 0;
+	for(qi = lds; qi; qi = qi->next)
+		if(strcmp(qi->name, name)==0)
+			return qi;
+	return 0;
+}
+
+/*
  *  allocate a pair of queues.  flavor them with the requested put routines.
  *  the `QINUSE' flag on the read side is the only one used.
  */
@@ -140,20 +331,7 @@ allocq(Qinfo *qi)
 {
 	Queue *q, *wq;
 
-	for(q=qlist; q<&qlist[conf.nqueue]; q++, q++) {
-		if(q->flag == 0){
-			if(canlock(q)){
-				if(q->flag == 0)
-					break;
-				unlock(q);
-			}
-		}
-	}
-
-	if(q == &qlist[conf.nqueue]){
-		print("no more queues\n");
-		exhausted("queues");
-	}
+	q = smalloc(2*sizeof(Queue));
 
 	q->flag = QINUSE;
 	q->r.p = 0;
@@ -173,25 +351,7 @@ allocq(Qinfo *qi)
 	wq->len = wq->nb = 0;
 	wq->rp = &wq->r;
 
-	unlock(q);
-
 	return q;
-}
-
-/*
- *  flush a queue
- */
-static void
-flushq(Queue *q)
-{
-	Block *bp;
-
-	q = RD(q);
-	while(bp = getq(q))
-		freeb(bp);
-	q = WR(q);
-	while(bp = getq(q))
-		freeb(bp);
 }
 
 /*
@@ -208,7 +368,23 @@ freeq(Queue *q)
 	q = WR(q);
 	while(bp = getq(q))
 		freeb(bp);
-	RD(q)->flag = 0;
+	free(RD(q));
+}
+
+/*
+ *  flush a queue
+ */
+static void
+flushq(Queue *q)
+{
+	Block *bp;
+
+	q = RD(q);
+	while(bp = getq(q))
+		freeb(bp);
+	q = WR(q);
+	while(bp = getq(q))
+		freeb(bp);
 }
 
 /*
@@ -295,52 +471,6 @@ putq(Queue *q, Block *bp)
 		q->flag |= QHIWAT;
 	unlock(q);
 	return delim;
-}
-
-int
-blen(Block *bp)
-{
-	int len;
-
-	len = 0;
-	while(bp) {
-		len += BLEN(bp);
-		bp = bp->next;
-	}
-
-	return len;
-}
-
-/*
- * bround - round a block chain to some 2^n number of bytes
- */
-int
-bround(Block *bp, int amount)
-{
-	Block *last;
-	int len, pad;
-
-	len = 0;
-	SET(last);	/* Ken's magic */
-
-	while(bp) {
-		len += BLEN(bp);
-		last = bp;
-		bp = bp->next;
-	}
-
-	pad = ((len + amount) & ~amount) - len;
-	if(pad) {
-		last->next = allocb(pad);
-		last->flags &= ~S_DELIM;
-		last = last->next;
-		memset(last->wptr, 0, pad);
-		last->wptr += pad;
-		last->flags |= S_DELIM;
-		
-	}
-
-	return len + pad;
 }
 
 int
@@ -449,123 +579,6 @@ getb(Blist *q)
 	return bp;
 }
 
-/*
- *  make sure the first block has n bytes
- */
-Block *
-pullup(Block *bp, int n)
-{
-	Block *nbp;
-	int i;
-
-	/*
-	 *  this should almost always be true, the rest it
-	 *  just for to avoid every caller checking.
-	 */
-	if(BLEN(bp) >= n)
-		return bp;
-
-	/*
-	 *  if not enough room in the first block,
-	 *  add another to the front of the list.
-	 */
-	if(bp->lim - bp->rptr < n){
-		nbp = allocb(n);
-		nbp->next = bp;
-		bp = nbp;
-	}
-
-	/*
-	 *  copy bytes from the trailing blocks into the first
-	 */
-	n -= BLEN(bp);
-	while(nbp = bp->next){
-		i = BLEN(nbp);
-		if(i >= n) {
-			memmove(bp->wptr, nbp->rptr, n);
-			bp->wptr += n;
-			nbp->rptr += n;
-			return bp;
-		} else {
-			memmove(bp->wptr, nbp->rptr, i);
-			bp->wptr += i;
-			bp->next = nbp->next;
-			nbp->next = 0;
-			freeb(nbp);
-		}
-	}
-	freeb(bp);
-	return 0;
-}
-
-/*
- *  expand a block list to be one block, len bytes long
- */
-Block*
-expandb(Block *bp, int len)
-{
-	Block *nbp, *new;
-	int i;
-	ulong delim = 0;
-
-	new = allocb(len);
-	if(new == 0){
-		freeb(bp);
-		return 0;
-	}
-
-	/*
-	 *  copy bytes into new block
-	 */
-	for(nbp = bp; len>0 && nbp; nbp = nbp->next){
-		delim = nbp->flags & S_DELIM;
-		i = BLEN(nbp);
-		if(i > len) {
-			memmove(new->wptr, nbp->rptr, len);
-			new->wptr += len;
-			break;
-		} else {
-			memmove(new->wptr, nbp->rptr, i);
-			new->wptr += i;
-			len -= i;
-		}
-	}
-	if(len){
-		memset(new->wptr, 0, len);
-		new->wptr += len;
-	}
-	new->flags |= delim;
-	freeb(bp);
-	return new;
-
-}
-
-/*
- *  grow the front of a list of blocks by n bytes
- */
-Block *
-prepend(Block *bp, int n)
-{
-	Block *nbp;
-
-	if(bp->base && (bp->rptr - bp->base)>=n){
-		/*
-		 *  room for channel number in first block of message
-		 */
-		bp->rptr -= n;
-		return bp;
-	} else {
-		/*
-		 *  make new block, put message number at end
-		 */
-		nbp = allocb(2);
-		nbp->next = bp;
-		nbp->wptr = nbp->lim;
-		nbp->rptr = nbp->wptr - n;
-		return nbp;
-	}
-}
-
 
 /*
  *  put a block into the bit bucket
@@ -583,65 +596,8 @@ nullput(Queue *q, Block *bp)
 }
 
 /*
- *  find the info structure for line discipline 'name'
+ *  Part 3) Streams
  */
-Qinfo *
-qinfofind(char *name)
-{
-	Qinfo *qi;
-
-	if(name == 0)
-		return 0;
-	for(qi = lds; qi; qi = qi->next)
-		if(strcmp(qi->name, name)==0)
-			return qi;
-	return 0;
-}
-
-/*
- *  send a hangup up a stream
- */
-static void
-hangup(Stream *s)
-{
-	Block *bp;
-
-	bp = allocb(0);
-	bp->type = M_HANGUP;
-	(*s->devq->put)(s->devq, bp);
-}
-
-/*
- *  parse a string and return a pointer to the second element if the 
- *  first matches name.  bp->rptr will be updated to point to the
- *  second element.
- *
- *  return 0 if no match.
- *
- *  it is assumed that the block data is null terminated.  streamwrite
- *  guarantees this.
- */
-int
-streamparse(char *name, Block *bp)
-{
-	int len;
-
-	len = strlen(name);
-	if(BLEN(bp) < len)
-		return 0;
-	if(strncmp(name, (char *)bp->rptr, len)==0){
-		if(bp->rptr[len] == ' ')
-			bp->rptr += len+1;
-		else if(bp->rptr[len])
-			return 0;
-		else
-			bp->rptr += len;
-		while(*bp->rptr==' ' && bp->wptr>bp->rptr)
-			bp->rptr++;
-		return 1;
-	}
-	return 0;
-}
 
 /*
  *  the per stream directory structure
@@ -650,6 +606,34 @@ Dirtab streamdir[]={
 	"data",		{Sdataqid},	0,			0600,
 	"ctl",		{Sctlqid},	0,			0600,
 };
+
+/*
+ *  hash buckets containing all streams
+ */
+enum
+{
+	Nbits=	5,
+	Nhash=	1<<Nbits,
+	Nmask=	Nhash-1,
+};
+typedef struct Sthash Sthash;
+struct Sthash
+{
+	QLock;
+	Stream	*s;
+};
+static Sthash ht[Nhash];
+
+static void	hangup(Stream*);
+
+void
+streaminit(void)
+{
+	/*
+	 *  make stream modules available
+	 */
+	streaminit0();
+}
 
 /*
  *  A stream device consists of the contents of streamdir plus
@@ -678,6 +662,15 @@ streamgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 }
 
 /*
+ *  return a hash bucket for a stream
+ */
+static Sthash*
+hash(int type, int dev, int id)
+{
+	return &ht[(type*7*7 + dev*7 + id) & Nmask];
+}
+
+/*
  *  create a new stream, if noopen is non-zero, don't increment the open count
  */
 Stream *
@@ -685,23 +678,48 @@ streamnew(ushort type, ushort dev, ushort id, Qinfo *qi, int noopen)
 {
 	Stream *s;
 	Queue *q;
+	Sthash *hb;
+
+	hb = hash(type, dev, id);
 
 	/*
-	 *  find a free stream struct
+	 *  if the stream already exists, just increment the reference counts.
 	 */
-	for(s = slist; s < &slist[conf.nstream]; s++) {
-		if(s->inuse == 0){
-			if(canqlock(s)){
-				if(s->inuse == 0)
-					break;
+	qlock(hb);
+	for(s = hb->s; s; s = s->next) {
+		if(s->type == type && s->dev == dev && s->id == id){
+			s->inuse++;
+			qunlock(hb);
+			if(noopen == 0){
+				qlock(s);
+				s->opens++;
 				qunlock(s);
 			}
+			return s;
 		}
 	}
-	if(s == &slist[conf.nstream]){
-		print("no more streams\n");
-		exhausted("streams");
-	}
+
+	/*
+	 *  create and init a new stream
+	 */
+	s = smalloc(sizeof(Stream));
+	s->inuse = 1;
+	s->type = type;
+	s->dev = dev;
+	s->id = id;
+	s->err = 0;
+	s->hread = 0;
+	s->next = hb->s;
+	hb->s = s;
+
+	/*
+	 *  The ordering of these 2 instructions is very important.
+	 *  It makes sure we finish the stream initialization before
+	 *  anyone else can access it.
+	 */
+	qlock(s);
+	qunlock(hb);
+
 	if(waserror()){
 		qunlock(s);
 		streamclose1(s);
@@ -709,22 +727,12 @@ streamnew(ushort type, ushort dev, ushort id, Qinfo *qi, int noopen)
 	}
 
 	/*
-	 *  identify the stream
-	 */
-	s->type = type;
-	s->dev = dev;
-	s->id = id;
-	s->err = 0;
-
-	/*
  	 *  hang a device and process q off the stream
 	 */
-	s->inuse = 1;
 	if(noopen)
 		s->opens = 0;
 	else
 		s->opens = 1;
-	s->hread = 0;
 	q = allocq(&procinfo);
 	WR(q)->ptr = s;
 	RD(q)->ptr = s;
@@ -745,72 +753,58 @@ streamnew(ushort type, ushort dev, ushort id, Qinfo *qi, int noopen)
 }
 
 /*
- *  (Re)open a stream.  If this is the first open, create a stream.
+ *  Associate a stream with a channel
  */
 void
 streamopen(Chan *c, Qinfo *qi)
 {
-	Stream *s;
-	Queue *q;
-
-	/*
-	 *  if the stream already exists, just increment the reference counts.
-	 */
-	for(s = slist; s < &slist[conf.nstream]; s++) {
-		if(s->inuse && s->type == c->type && s->dev == c->dev
-		   && s->id == STREAMID(c->qid.path)){
-			qlock(s);
-			if(s->inuse && s->type == c->type
-			&& s->dev == c->dev
-		 	&& s->id == STREAMID(c->qid.path)){
-				s->inuse++;
-				s->opens++;
-				c->stream = s;
-				qunlock(s);
-				return;
-			}
-			qunlock(s);
-		}
-	}
-
-	/*
-	 *  create a new stream
-	 */
 	c->stream = streamnew(c->type, c->dev, STREAMID(c->qid.path), qi, 0);
 }
 
 /*
- *  Enter a stream.  Increment the reference count so it can't disappear
- *  under foot.
+ *  Enter a stream only if the stream exists and is open.  Increment the
+ *  reference count so it can't disappear under foot.
+ *
+ *  Return -1 if the stream no longer exists or is not opened.
  */
 int
 streamenter(Stream *s)
 {
-	qlock(s);
-	if(s->opens == 0){
-		qunlock(s);
-		return -1;
-	}
-	s->inuse++;
-	qunlock(s);
-	return 0;
+	Sthash *hb;
+	Stream *ns;
+
+	hb = hash(s->type, s->dev, s->id);
+	qlock(hb);
+	for(ns = hb->s; ns; ns = ns->next)
+		if(s->type == ns->type && s->dev == ns->dev && s->id == ns->id){
+			s->inuse++;
+			qunlock(hb);
+			if(s->opens == 0){
+				streamexit(s, 1);
+				return -1;
+			}
+			return 0;
+		}
+	qunlock(hb);
+	return -1;
 }
 
 /*
  *  Decrement the reference count on a stream.  If the count is
  *  zero, free the stream.
  */
-int
+void
 streamexit(Stream *s, int locked)
 {
 	Queue *q;
 	Queue *nq;
-	int rv;
 	char *name;
+	Sthash *hb;
+	Stream **l, *ns;
 
-	if(!locked)
-		qlock(s);
-	if(s->inuse == 1){
+	hb = hash(s->type, s->dev, s->id);
+	qlock(hb);
+	if(s->inuse-- == 1){
 		if(s->opens != 0)
 			panic("streamexit %d %s\n", s->opens, s->devq->info->name);
 
@@ -821,20 +815,28 @@ streamexit(Stream *s, int locked)
 			nq = q->next;
 			freeq(q);
 		}
-		s->id = s->dev = s->type = 0;
 		if(s->err)
 			freeb(s->err);
+
+		/*
+		 *  unchain it from the hash bucket and free
+		 */
+		l = &hb->s;
+		for(ns = hb->s; ns; ns = ns->next){
+			if(s == ns){
+				*l = s->next;
+				break;
+			}
+			l = &ns->next;
+		}
+		free(s);
 	}
-	s->inuse--;
-	rv = s->inuse;
-	if(!locked)
-		qunlock(s);
-	return rv;
+	qunlock(hb);
 }
 
 /*
- *  On the last close of a stream, for each queue on the
- *  stream release its blocks and call its close routine.
+ *  Decrement the open count.  When it goes to zero, call the close
+ *  routines for each queue in the stream.
  */
 int
 streamclose1(Stream *s)
@@ -844,10 +846,10 @@ streamclose1(Stream *s)
 	int rv;
 
 	/*
-	 *  decrement the reference count
+	 *  decrement the open count
 	 */
 	qlock(s);
-	if(s->opens == 1){
+	if(s->opens-- == 1){
 		/*
 		 *  descend the stream closing the queues
 		 */
@@ -874,13 +876,13 @@ streamclose1(Stream *s)
 			flushq(q);
 		}
 	}
-	rv = --(s->opens);
+	rv = s->opens;
+	qunlock(s);
 
 	/*
 	 *  leave it and free it
 	 */
 	streamexit(s, 1);
-	qunlock(s);
 	return rv;
 }
 int
@@ -940,37 +942,19 @@ stputq(Queue *q, Block *bp)
 }
 
 /*
- *  read a string.  update the offset accordingly.
- */
-long
-stringread(uchar *buf, long n, char *str, ulong offset)
-{
-	long i;
-
-	i = strlen(str);
-	i -= offset;
-	if(i<n)
-		n = i;
-	if(n<0)
-		return 0;
-	memmove(buf, str + offset, n);
-	return n;
-}
-
-/*
  *  return the stream id
  */
 long
 streamctlread(Chan *c, void *vbuf, long n)
 {
-	uchar *buf = vbuf;
+	char *buf = vbuf;
 	char num[32];
 	Stream *s;
 
 	s = c->stream;
 	if(STREAMTYPE(c->qid.path) == Sctlqid){
 		sprint(num, "%d", s->id);
-		return stringread(buf, n, num, c->offset);
+		return readstr(c->offset, buf, n, num);
 	} else {
 		if(CHDIR & c->qid.path)
 			return devdirread(c, vbuf, n, 0, 0, streamgen);
@@ -1245,26 +1229,6 @@ streamwrite(Chan *c, void *a, long n, int docopy)
 }
 
 /*
- *  like andrew's getmfields but no hidden state
- */
-int
-getfields(char *lp, char **fields, int n, char sep)
-{
-	int i;
-
-	for(i=0; lp && *lp && i<n; i++){
-		while(*lp == sep)
-			*lp++=0;
-		if(*lp == 0)
-			break;
-		fields[i]=lp;
-		while(*lp && *lp != sep)
-			lp++;
-	}
-	return i;
-}
-
-/*
  *  stat a stream.  the length is the number of bytes up to the
  *  first delimiter.
  */
@@ -1295,88 +1259,72 @@ streamstat(Chan *c, char *db, char *name)
 	convD2M(&dir, db);
 }
 
-Block *
-copyb(Block *bp, int count)
+/*
+ *  send a hangup up a stream
+ */
+static void
+hangup(Stream *s)
 {
-	Block *nb, *head, **p;
-	int l;
+	Block *bp;
 
-	p = &head;
-	while(count) {
-		l = BLEN(bp);
-		if(count < l)
-			l = count;
-		nb = allocb(l);
-		if(nb == 0)
-			panic("copyb.1");
-		memmove(nb->wptr, bp->rptr, l);
-		nb->wptr += l;
-		count -= l;
-		if(bp->flags & S_DELIM)
-			nb->flags |= S_DELIM;
-		*p = nb;
-		p = &nb->next;
-		bp = bp->next;
-		if(bp == 0)
-			break;
-	}
-	if(count) {
-		nb = allocb(count);
-		if(nb == 0)
-			panic("copyb.2");
-		memset(nb->wptr, 0, count);
-		nb->wptr += count;
-		nb->flags |= S_DELIM;
-		*p = nb;
-	}
-	if(blen(head) == 0)
-		print("copyb: zero length\n");
-
-	return head;
+	bp = allocb(0);
+	bp->type = M_HANGUP;
+	(*s->devq->put)(s->devq, bp);
 }
 
 /*
- *  Dump all block information of how many blocks are in which queues
+ *  parse a string and return a pointer to the second element if the 
+ *  first matches name.  bp->rptr will be updated to point to the
+ *  second element.
+ *
+ *  return 0 if no match.
+ *
+ *  it is assumed that the block data is null terminated.  streamwrite
+ *  guarantees this.
  */
-void
-dumpblocks(Queue *q, char c)
+int
+streamparse(char *name, Block *bp)
 {
-	Block *bp;
-	uchar *cp;
+	int len;
 
-	lock(q);
-	for(bp = q->first; bp; bp = bp->next){
-		print("%c %c%d%c", c, bp->type == M_DATA ? 'd' : 'c',
-			bp->wptr-bp->rptr, (bp->flags&S_DELIM)?'D':' ');
-		for(cp = bp->rptr; cp<bp->wptr && cp<bp->rptr+30; cp++)
-			print(" %.2x", *cp);
-		print("\n");
+	len = strlen(name);
+	if(BLEN(bp) < len)
+		return 0;
+	if(strncmp(name, (char *)bp->rptr, len)==0){
+		if(bp->rptr[len] == ' ')
+			bp->rptr += len+1;
+		else if(bp->rptr[len])
+			return 0;
+		else
+			bp->rptr += len;
+		while(*bp->rptr==' ' && bp->wptr>bp->rptr)
+			bp->rptr++;
+		return 1;
 	}
-	unlock(q);
+	return 0;
+}
+
+/*
+ *  like andrew's getmfields but no hidden state
+ */
+int
+getfields(char *lp, char **fields, int n, char sep)
+{
+	int i;
+
+	for(i=0; lp && *lp && i<n; i++){
+		while(*lp == sep)
+			*lp++=0;
+		if(*lp == 0)
+			break;
+		fields[i]=lp;
+		while(*lp && *lp != sep)
+			lp++;
+	}
+	return i;
 }
 
 void
 dumpqueues(void)
 {
-	Queue *q;
-	int count, qcount;
-	Block *bp;
-
-	print("\n");
-	qcount = 0;
-	for(q = qlist; q < qlist + conf.nqueue; q++, q++){
-		if(!(q->flag & QINUSE))
-			continue;
-		qcount++;
-		print("%10s %ux  R n %d l %d f %ux r %ux ",
-			q->info->name, q,
-			q->nb, q->len, q->flag, &(q->r));
-		print("  W n %d l %d f %ux r %ux next %lux put %lux Rz %lux", 
-			WR(q)->nb, WR(q)->len,
-			WR(q)->flag, &(WR(q)->r), q->next, q->put, q->rp);
-		print("\n");
-		dumpblocks(q, 'R');
-		dumpblocks(WR(q), 'W');
-	}
-	print("%d queues\n", qcount);
 }

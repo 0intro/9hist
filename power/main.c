@@ -30,7 +30,6 @@ main(void)
 	printinit();
 	duartspecial(0, &printq, &kbdq, 9600);
 	pageinit();
-xsummary();
 	tlbinit();
 	vecinit();
 	procinit0();
@@ -536,15 +535,9 @@ confinit(void)
 	 */
 	conf.nmach = 1;
 	conf.nproc = 100;
-	conf.npgenv = 4 * conf.nproc;
-	conf.nenv = 4 * conf.nproc;
-	conf.nenvchar = 20 * conf.nenv;
 	conf.nswap = 262144;
 	conf.nimage = 200;
-	conf.nstream = 2 * conf.nproc;
-	conf.nurp = 25;
 	conf.dkif = 1;
-	conf.nqueue = 5 * conf.nstream;
 	conf.ipif = 8;
 	conf.ip = 64;
 	conf.arp = 32;

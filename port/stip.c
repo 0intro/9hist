@@ -145,7 +145,7 @@ ipetherclose(Queue *q)
 
 	ipc = (Ipconv *)(q->ptr);
 	if(ipc){
-		netdisown(ipc->net, ipc->index);
+		netdisown(ipc);
 		ipc->ref = 0;
 	}
 }

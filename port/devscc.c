@@ -754,7 +754,7 @@ sccread(Chan *c, void *buf, long n, ulong offset)
 		return streamread(c, buf, n);
 	case Sctlqid:
 		sprint(b, "%d", STREAMID(c->qid.path));
-		return stringread(buf, n, b, offset);
+		return readstr(offset, buf, n, b);
 	}
 	error(Egreg);
 	return 0;	/* not reached */

@@ -51,7 +51,8 @@ sysrfork(ulong *arg)
 			if((flag & (RFENVG|RFCENVG)) == (RFENVG|RFCENVG))
 				error(Ebadarg);
 			oeg = p->egrp;
-			p->egrp = newegrp();
+			p->egrp = smalloc(sizeof(Egrp));
+			p->egrp->ref = 1;
 			if(flag & RFENVG)
 				envcpy(p->egrp, oeg);
 			closeegrp(oeg);
@@ -64,7 +65,8 @@ sysrfork(ulong *arg)
 		else
 		if(flag & RFCFDG) {
 			ofg = p->fgrp;
-			p->fgrp = newfgrp();
+			p->fgrp = smalloc(sizeof(Fgrp));
+			p->fgrp->ref = 1;
 			closefgrp(ofg);
 		}
 		if(flag & RFNOTEG)
@@ -110,8 +112,10 @@ sysrfork(ulong *arg)
 	if(flag & (RFFDG|RFCFDG)) {
 		if(flag & RFFDG)
 			p->fgrp = dupfgrp(parent->fgrp);
-		else
-			p->fgrp = newfgrp();
+		else {
+			p->fgrp = smalloc(sizeof(Fgrp));
+			p->fgrp->ref = 1;
+		}
 	}
 	else {
 		p->fgrp = parent->fgrp;
@@ -136,12 +140,10 @@ sysrfork(ulong *arg)
 
 	/* Environment group */
 	if(flag & (RFENVG|RFCENVG)) {
-		if(flag & RFENVG) {
-			p->egrp = newegrp();
+		p->egrp = smalloc(sizeof(Egrp));
+		p->egrp->ref = 1;
+		if(flag & RFENVG)
 			envcpy(p->egrp, parent->egrp);
-		}
-		else
-			p->egrp = newegrp();
 	}
 	else {
 		p->egrp = parent->egrp;

@@ -57,9 +57,9 @@ ipinitnet(Network *np, Qinfo *stproto, Ipconv *cp)
 	int j;
 
 	for(j = 0; j < conf.ip; j++, cp++){
-		cp->index = j;
 		cp->stproto = stproto;
 		cp->net = np;
+		netadd(np, cp, j);
 	}
 	np->name = stproto->name;
 	np->nconv = conf.ip;
@@ -68,7 +68,6 @@ ipinitnet(Network *np, Qinfo *stproto, Ipconv *cp)
 	if(stproto != &udpinfo)
 		np->listen = iplisten;
 	np->clone = ipclonecon;
-	np->prot = (Netprot *)xalloc(sizeof(Netprot) * conf.ip);
 	np->ninfo = 3;
 	np->info[0].name = "remote";
 	np->info[0].fill = ipremotefill;
@@ -172,10 +171,9 @@ ipincoming(Ipconv *base, Ipconv *from)
 				continue;
 			}
 			if(from)	/* copy ownership from listening channel */
-				netown(new->net, new->index,
-				       new->net->prot[from->index].owner, 0);
+				netown(new, from->owner, 0);
 			else		/* current user becomes owner */
-				netown(new->net, new->index, u->p->user, 0);
+				netown(new, u->p->user, 0);
 
 			new->ref = 1;
 			qunlock(new);

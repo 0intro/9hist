@@ -166,11 +166,11 @@ xalloc(ulong size)
 				h->link = xlists.flist;
 				xlists.flist = h;
 			}
+			unlock(&xlists);
 			p = KADDR(p);
 			memset(p, 0, size);
 			p->magix = Magichole;
 			p->size = size;
-			unlock(&xlists);
 			return p->data;
 		}
 		l = &h->link;
@@ -296,6 +296,17 @@ smalloc(ulong size)
 		panic("smalloc should sleep");
 	}
 	return p;
+}
+
+int
+msize(void *ptr)
+{
+	Bucket *bp;
+
+	bp = (Bucket*)((ulong)ptr - bdatoff);
+	if(bp->magic != Magic2n)
+		panic("msize");
+	return 1<<bp->size;
 }
 
 void

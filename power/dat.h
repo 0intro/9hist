@@ -43,14 +43,6 @@ struct Conf
 	ulong	upages;		/* user page pool */
 	ulong	nimage;		/* number of page cache image headers */
 	ulong	nswap;		/* number of swap pages */
-	ulong	nenv;		/* distinct environment values */
-	ulong	nenvchar;	/* environment text storage */
-	ulong	npgenv;		/* environment files per process group */
-	ulong	nstream;	/* streams */
-	ulong	nqueue;		/* stream queues */
-	ulong	nsrv;		/* public servers (devsrv.c) */
-	ulong	nurp;		/* max urp conversations */
-	ulong	nasync;		/* number of async protocol modules */
 	ulong	base0;		/* base of bank 0 */
 	ulong	base1;		/* base of bank 1 */
 	ulong	copymode;	/* 0 is copy on write, 1 is copy on reference */

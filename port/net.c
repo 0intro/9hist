@@ -15,6 +15,20 @@ enum
 };
 
 /*
+ *  find protection structure
+ */
+static Netprot*
+findprot(Network *np, int id)
+{
+	Netprot *p;
+
+	for(p = np->prot; p; p = p->next)
+		if(p->id == id)
+			break;
+	return p;
+}
+
+/*
  *  generate a 3 level directory
  */
 int
@@ -24,7 +38,6 @@ netgen(Chan *c, void *vp, int ntab, int i, Dir *dp)
 	char buf[32];
 	Network *np = vp;
 	int t;
-	int id;
 	Netprot *p;
 	int perm;
 	char *o;
@@ -61,9 +74,8 @@ netgen(Chan *c, void *vp, int ntab, int i, Dir *dp)
 	}
 
 	/* third level depends on the number of info files */
-	id = STREAMID(c->qid.path);
-	p = &np->prot[id];
-	if(*p->owner){
+	p = findprot(np, STREAMID(c->qid.path));
+	if(p && *p->owner){
 		o = p->owner;
 		perm = p->mode;
 	} else {
@@ -153,7 +165,9 @@ netwstat(Chan *c, char *db, Network *np)
 	Dir dir;
 	Netprot *p;
 
-	p = &np->prot[STREAMID(c->qid.path)];
+	p = findprot(np, STREAMID(c->qid.path));
+	if(p == 0)
+		error(Enonexist);
 	lock(np);
 	if(strncmp(p->owner, u->p->user, NAMELEN)){
 		unlock(np);
@@ -169,6 +183,7 @@ Chan *
 netopen(Chan *c, int omode, Network *np)
 {
 	int id = 0;
+	Netprot *p;
 
 	if(c->qid.path & CHDIR){
 		if(omode != OREAD)
@@ -199,7 +214,9 @@ netopen(Chan *c, int omode, Network *np)
 			streamopen(c, np->devp);
 			if(np->protop && c->stream->devq->next->info != np->protop)
 				pushq(c->stream, np->protop);
-			if(netown(np, id, u->p->user, omode&7) < 0)
+			p = findprot(np, id);
+if(p == 0) print("netopen: can't find %d\n", id);
+			if(netown(p, u->p->user, omode&7) < 0)
 				error(Eperm);
 			break;
 		}
@@ -227,19 +244,36 @@ netread(Chan *c, void *a, long n, ulong offset, Network *np)
 		error(Ebadusefd);
 
 	(*np->info[t-Qinf].fill)(c, buf, sizeof(buf));
-	return stringread(a, n, buf, offset);
+	return readstr(offset, a, n, buf);
 }
 
+void
+netadd(Network *np, Netprot *p, int id)
+{
+	Netprot **l, *pp;
+
+	memset(p, 0, sizeof(Netprot));
+	p->id = id;
+
+	l = &np->prot;
+	for(pp = np->prot; pp; pp = pp->next){
+		if(pp->id == id)
+			panic("netadd");
+		l = &pp->next;
+	}
+	*l = p;
+}
+
+Lock netlock;
+
 int
-netown(Network *np, int id, char *o, int omode)
+netown(Netprot *p, char *o, int omode)
 {
 	static int access[] = { 0400, 0200, 0600, 0100 };
-	Netprot *p;
 	int mode;
 	int t;
 
-	p = &np->prot[id];
-	lock(np);
+	lock(&netlock);
 	if(*p->owner){
 		if(strncmp(o, p->owner, NAMELEN) == 0)	/* User */
 			mode = p->mode;
@@ -250,22 +284,21 @@ netown(Network *np, int id, char *o, int omode)
 
 		t = access[omode&3];
 		if((t & mode) == t){
-			unlock(np);
+			unlock(&netlock);
 			return 0;
 		} else {
-			unlock(np);
+			unlock(&netlock);
 			return -1;
 		}
 	}
 	strncpy(p->owner, o, NAMELEN);
-	np->prot[id].mode = 0660;
-	unlock(np);
+	p->mode = 0660;
+	unlock(&netlock);
 	return 0;
 }
 
 void
-netdisown(Network *np, int id)
+netdisown(Netprot *p)
 {
-if(np == 0) panic("np == 0");
-	*np->prot[id].owner = 0;
+	p->owner[0] = 0;
 }

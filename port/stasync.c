@@ -24,8 +24,12 @@ enum
 	Escape
 };
 
-typedef struct Async {
+typedef struct Async Async;
+struct Async
+{
 	QLock;
+	Async	*list;
+	int	id;
 
 	int	inuse;
 	Queue	*wq;
@@ -51,9 +55,16 @@ typedef struct Async {
 	ulong	badescape;
 	ulong	in;		/* bytes in */
 	ulong	out;		/* bytes out */
-} Async;
+};
 
-Async *async;
+int nasync;
+
+/* list of allocated async structures (never freed) */
+struct
+{
+	Lock;
+	Async *async;
+} asyncalloc;
 
 /*
  *  async stream module definition
@@ -97,7 +108,6 @@ static ushort crc_table[256] = {
 static void
 asyncreset(void)
 {
-	async = (Async *)xalloc(conf.nasync*sizeof(Async));
 }
 
 /*
@@ -110,14 +120,21 @@ asyncopen(Queue *q, Stream *s)
 
 	DPRINT("asyncopen %d\n", s->dev);
 
-	for(ap = async; ap < &async[conf.nasync]; ap++){
+	for(ap = asyncalloc.async; ap; ap = ap->list){
 		qlock(ap);
 		if(ap->inuse == 0)
 			break;
 		qunlock(ap);
 	}
-	if(ap == &async[conf.nasync])
-		exhausted("async stream modules");
+	if(ap == 0){
+		ap = smalloc(sizeof(Async));
+		qlock(ap);
+		lock(&asyncalloc);
+		ap->list = asyncalloc.async;
+		asyncalloc.async = ap;
+		ap->id = nasync++;
+		unlock(&asyncalloc);
+	}
 	q->ptr = q->other->ptr = ap;
 
 	ap->inuse = 1;
@@ -141,7 +158,7 @@ asyncclose(Queue * q)
 {
 	Async *ap = (Async *)q->ptr;
 
-	DPRINT("asyncstclose %d\n", ap-async);
+	DPRINT("asyncstclose %d\n", ap->id);
 	qlock(ap);
 	ap->inuse = 0;
 	qunlock(ap);
@@ -166,7 +183,7 @@ freemsg(Queue *q, Block *bp)
 static void
 showframe(char *t, Async *ap, uchar *buf, int n)
 {
-	kprint("a%d %s [", ap-async, t);
+	kprint("a%d %s [", ap->id, t);
 	while (--n >= 0)
 		kprint(" %2.2ux", *buf++);
 	kprint(" ]\n");
@@ -284,7 +301,7 @@ asyncoput(Queue *q, Block *bp)
 
 	if(asyncdebug > 1)
 		kprint("a%d->(%d)%3.3uo %d\n",
-			ap-async, chan, ctl, bp->wptr-bp->rptr);
+			ap->id, chan, ctl, bp->wptr-bp->rptr);
 
 	/*
 	 *  send the 8 bit data
@@ -336,7 +353,7 @@ asdeliver(Queue *q, Async *ap)
 	chan = *p++ & 0x7e;
 	chan = (chan<<5)|((*p++ & 0x7e)>>1);
 	if(chan==0) {
-		DPRINT("a%d deliver chan 0\n", ap-async);
+		DPRINT("a%d deliver chan 0\n", ap->id);
 		ap->chan0++;
 		return;
 	}
@@ -355,7 +372,7 @@ asdeliver(Queue *q, Async *ap)
 				bp->rptr[2] = c;
 				if(asyncdebug > 1)
 					kprint("a%d<-(%d)%3.3uo %d\n",
-						ap-async, chan, bp->rptr[2],
+						ap->id, chan, bp->rptr[2],
 						bp->wptr - bp->rptr - 3);
 				PUTNEXT(q, bp);
 				bp = 0;
@@ -368,7 +385,7 @@ asdeliver(Queue *q, Async *ap)
 	if(bp) {
 		if(asyncdebug > 1)
 			kprint("a%d<-(%d)%3.3uo %d\n",
-				ap-async, chan, bp->rptr[2],
+				ap->id, chan, bp->rptr[2],
 				bp->wptr - bp->rptr - 3);
 		PUTNEXT(q, bp);
 	}
@@ -411,7 +428,7 @@ asynciput(Queue *q, Block *bp)
 			}
 		Datachar:
 			if(ap->icount >= MAXFRAME) {
-				DPRINT("a%d pkt too long\n", ap-async);
+				DPRINT("a%d pkt too long\n", ap->id);
 				ap->toolong++;
 				state = Hunt;
 				break;
@@ -426,12 +443,12 @@ asynciput(Queue *q, Block *bp)
 				if(asyncdebug > 2)
 					showframe("in", ap, ap->buf, ap->icount);
 				if(ap->icount < 5) {
-					DPRINT("a%d pkt too short\n", ap-async);
+					DPRINT("a%d pkt too short\n", ap->id);
 					if(asyncdebug && asyncdebug<=2)
 						showframe("shortin", ap, ap->buf, ap->icount);
 					ap->tooshort++;
 				} else if(ap->icrc != 0) {
-					DPRINT("a%d bad crc\n", ap-async);
+					DPRINT("a%d bad crc\n", ap->id);
 					if(asyncdebug && asyncdebug<=2)
 						showframe("badin", ap, ap->buf, ap->icount);
 					ap->badcrc++;
@@ -445,7 +462,7 @@ asynciput(Queue *q, Block *bp)
 				state = Data;
 				goto Datachar;
 			default:
-				DPRINT("a%d bad escape\n", ap-async);
+				DPRINT("a%d bad escape\n", ap->id);
 				ap->badescape++;
 				state = Hunt;
 				break;

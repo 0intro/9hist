@@ -67,16 +67,6 @@ struct Conf
 	ulong	nimage;		/* number of page cache image headers */
 	ulong	nswap;		/* number of swap blocks */
 	ulong	upages;		/* number of user pages */
-	int	nenv;		/* distinct environment values */
-	int	nenvchar;	/* environment text storage */
-	int	npgenv;		/* environment files per process group */
-	int	nstream;	/* streams */
-	int	nqueue;		/* stream queues */
-	int	nsrv;		/* public servers (devsrv.c) */
-	int	nbitmap;	/* bitmap structs (devbit.c) */
-	int	nbitbyte;	/* bytes of bitmap data (devbit.c) */
-	int	nfont;		/* GFont structs (devbit.c) */
-	int	nsubfont;	/* Gsubfont structs (devbit.c) */
 	int	nurp;		/* max urp conversations */
 	int	nasync;		/* number of async protocol modules */
 	int	copymode;	/* 0 is copy on write, 1 is copy on reference */

@@ -34,6 +34,7 @@ struct urpstat {
 
 struct Urp {
 	QLock;
+	Urp	*list;		/* list of all urp structures */
 	short	state;		/* flags */
 	Rendez	r;		/* process waiting for output to finish */
 
@@ -60,7 +61,13 @@ struct Urp {
 	ulong	timer;		/* timeout for xmit */
 	int	rexmit;
 };
-Urp	*urp;
+
+/* list of allocated urp structures (never freed) */
+struct
+{
+	Lock;
+	Urp	*urp;
+} urpalloc;
 
 Rendez	urpkr;
 QLock	urpkl;
@@ -135,7 +142,6 @@ Qinfo urpinfo =
 static void
 urpreset(void)
 {
-	urp = (Urp *)xalloc(conf.nurp*sizeof(Urp));
 }
 
 static void
@@ -155,9 +161,9 @@ urpopen(Queue *q, Stream *s)
 	}
 
 	/*
-	 *  find a free urp structure
+	 *  find an unused urp structure
 	 */
-	for(up = urp; up < &urp[conf.nurp]; up++){
+	for(up = urpalloc.urp; up; up = up->list){
 		if(up->state == 0){
 			qlock(up);
 			if(up->state == 0)
@@ -165,15 +171,17 @@ urpopen(Queue *q, Stream *s)
 			qunlock(up);
 		}
 	}
-	if(up == &urp[conf.nurp]){
-		q->ptr = 0;
-		WR(q)->ptr = 0;
-		exhausted("urp structures");
+	if(up == 0){
+		/*
+		 *  none available, create a new one, they are never freed
+		 */
+		up = smalloc(sizeof(Urp));
+		qlock(up);
+		lock(&urpalloc);
+		up->list = urpalloc.urp;
+		urpalloc.urp = up;
+		unlock(&urpalloc);
 	}
-/*
-	q->flag |= QDEBUG;
-	q->other->flag |= QDEBUG;
-*/
 	q->ptr = q->other->ptr = up;
 	q->rp = &urpkr;
 	up->rq = q;
@@ -993,16 +1001,15 @@ initinput(Urp *up, int window)
 static void
 urpkproc(void *arg)
 {
-	Urp *up, *eup;
+	Urp *up;
 
 	USED(arg);
 
 	if(waserror())
 		;
 
-	eup = urp + conf.nurp;
 	for(;;){
-		for(up = urp; up < eup; up++){
+		for(up = urpalloc.urp; up; up = up->list){
 			if(up->state==0 || (up->state&HUNGUP))
 				continue;
 			if(!canqlock(up))
@@ -1042,17 +1049,6 @@ urpvomit(char *msg, Urp* up)
 		up->trbuf[2]);
 	print("\tupq: %ux %d %d\n", &up->rq->next->r,  up->rq->next->nb,
 		up->rq->next->len);
-}
-
-int
-urpdump(void)
-{
-	Urp *up;
-
-	for(up = urp; up < &urp[conf.nurp]; up++)
-		if(up->rq)
-			urpvomit("", up);
-	return 0;
 }
 
 void

@@ -52,29 +52,6 @@ newpgrp(void)
 	return p;
 }
 
-Egrp*
-newegrp(void)
-{
-	Egrp *e;
-
-	e = smalloc(sizeof(Egrp)+sizeof(Env)*conf.npgenv);
-
-	/* This is a sleazy hack to make malloc work .. devenv need rewriting. */
-	e->etab = (Env*)((uchar*)e+sizeof(Egrp));
-	e->ref = 1;
-	return e;
-}
-
-Fgrp*
-newfgrp(void)
-{
-	Fgrp *f;
-
-	f = smalloc(sizeof(Fgrp));
-	f->ref = 1;
-	return f;
-}
-
 Fgrp*
 dupfgrp(Fgrp *f)
 {
@@ -82,7 +59,8 @@ dupfgrp(Fgrp *f)
 	Chan *c;
 	int i;
 
-	new = newfgrp();
+	new = smalloc(sizeof(Fgrp));
+	new->ref = 1;
 
 	lock(f);
 	new->maxfd = f->maxfd;
@@ -139,14 +117,16 @@ closepgrp(Pgrp *p)
 void
 closeegrp(Egrp *eg)
 {
-	Env *e;
-	int i;
+	Evalue *e, *next;
 
 	if(decref(eg) == 0) {
-		e = eg->etab;
-		for(i=0; i<eg->nenv; i++, e++)
-			envpgclose(e);
-
+		for(e = eg->entries; e; e = next) {
+			next = e->link;
+			free(e->name);
+			if(e->value)
+				free(e->value);
+			free(e);
+		}
 		free(eg);
 	}
 }
@@ -183,17 +163,24 @@ newmount(Mhead *mh, Chan *to)
 void
 envcpy(Egrp *to, Egrp *from)
 {
-	Env *te, *fe;
-	int i, nenv;
+	Evalue **l, *ne, *e;
 
-	qlock(&from->ev);
-	nenv = from->nenv;
-	to->nenv = nenv;
-	te = to->etab;
-	fe = from->etab;
-	for(i=0; i < nenv; i++, te++, fe++)
-		envpgcopy(te, fe);
-	qunlock(&from->ev);
+	l = &to->entries;
+	qlock(from);
+	for(e = from->entries; e; e = e->link) {
+		ne = smalloc(sizeof(Evalue));
+		ne->name = smalloc(strlen(e->name)+1);
+		strcpy(ne->name, e->name);
+		if(e->value) {
+			ne->value = smalloc(e->len);
+			memmove(ne->value, e->value, e->len);
+			ne->len = e->len;
+		}
+		ne->path = ++to->path;
+		*l = ne;
+		l = &ne->link;
+	}
+	qunlock(from);
 }
 
 void

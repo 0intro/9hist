@@ -240,7 +240,7 @@ arpread(Chan *c, void *a, long n, ulong offset)
 		sprint(buf, "hits: %d miss: %d failed: %d\n",
 			arpstats.hit, arpstats.miss, arpstats.failed);
 
-		return stringread(a, n, buf, offset);
+		return readstr(offset, a, n, buf);
 	default:
 		n=0;
 		break;

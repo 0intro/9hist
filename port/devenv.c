@@ -7,42 +7,14 @@
 
 #include	"devtab.h"
 
-struct Envval
+enum
 {
-	Envval	*next;		/* for hashing & easy deletion from hash list */
-	Envval	*prev;
-	ulong	len;		/* length of val that is valid */
-	int	ref;
-	char	*val;
+	Maxenvsize = 16300,
 };
-
-enum{
-	MAXENV	= (BY2PG - sizeof(Envval)),
-	EVHASH	= 64,
-	EVFREE	= 16,
-	ALIGN	= 16,
-};
-
-struct
-{
-	Envval	*free[EVFREE+1];
-	char	*block;			/* the free page we are allocating from */
-	char	*lim;			/* end of block */
-	int	npage;			/* total pages gotten from newpage() */
-}envalloc;
-
-QLock	evlock;
-Envval	evhash[EVHASH];
-char	*evscratch;		/* for constructing the contents of a file */
-
-Envval	*newev(char*, ulong);
-Envval	*evalloc(ulong);
-void	evfree(Envval*);
 
 void
 envreset(void)
 {
-	evscratch = xalloc(BY2PG);
 }
 
 void
@@ -54,24 +26,22 @@ int
 envgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 {
 	Egrp *eg;
-	Env *e;
-	int ans;
+	Evalue *e;
 
 	eg = u->p->egrp;
-	qlock(&eg->ev);
-	if(s >= eg->nenv)
-		ans = -1;
-	else{
-		e = &eg->etab[s];
-		if(!e->name)
-			ans = 0;
-		else{
-			devdir(c, (Qid){s+1, (ulong)e->name}, e->name->val, e->val? e->val->len : 0, eve, 0666, dp);
-			ans = 1;
-		}
+	qlock(eg);
+
+	for(e = eg->entries; e && s; e = e->link)
+		s--;
+
+	if(e == 0) {
+		qunlock(eg);
+		return -1;
 	}
-	qunlock(&eg->ev);
-	return ans;
+
+	devdir(c, (Qid){e->path, 0}, e->name, e->len, eve, 0666, dp);
+	qunlock(eg);
+	return 1;
 }
 
 Chan*
@@ -103,30 +73,31 @@ Chan *
 envopen(Chan *c, int omode)
 {
 	Egrp *eg;
-	Env *e;
-	int mode;
-
-	mode = openmode(omode);
+	Evalue *e;
+	
+	eg = u->p->egrp;
 	if(c->qid.path & CHDIR){
 		if(omode != OREAD)
 			error(Eperm);
-	}else{
-		eg = u->p->egrp;
-		qlock(&eg->ev);
-		e = &eg->etab[c->qid.path-1];
-		if(!e->name){
-			qunlock(&eg->ev);
+	}
+	else {
+		qlock(eg);
+		for(e = eg->entries; e; e = e->link)
+			if(e->path == c->qid.path)
+				break;
+
+		if(e == 0) {
+			qunlock(eg);
 			error(Enonexist);
 		}
-		if(omode == (OWRITE|OTRUNC) && e->val){
-			qlock(&evlock);
-			evfree(e->val);
-			qunlock(&evlock);
-			e->val = 0;
+		if(omode == (OWRITE|OTRUNC) && e->value) {
+			free(e->value);
+			e->value = 0;
+			e->len = 0;
 		}
-		qunlock(&eg->ev);
+		qunlock(eg);
 	}
-	c->mode = mode;
+	c->mode = openmode(omode);
 	c->flag |= COPEN;
 	c->offset = 0;
 	return c;
@@ -136,39 +107,36 @@ void
 envcreate(Chan *c, char *name, int omode, ulong perm)
 {
 	Egrp *eg;
-	Env *e, *ne;
-	int i;
+	Evalue *e;
 
 	if(c->qid.path != CHDIR)
 		error(Eperm);
+
 	omode = openmode(omode);
 	eg = u->p->egrp;
-	qlock(&eg->ev);
-	e = eg->etab;
-	ne = 0;
-	for(i = 0; i < eg->nenv; i++, e++)
-		if(e->name == 0)
-			ne = e;
-		else if(strcmp(e->name->val, name) == 0){
-			qunlock(&eg->ev);
-			error(Einuse);
-		}
-	if(ne)
-		e = ne;
-	else if(eg->nenv == conf.npgenv){
-		qunlock(&eg->ev);
-		print("out of egroup envs\n");
-		error(Enoenv);
+
+	qlock(eg);
+	if(waserror()) {
+		qunlock(eg);
+		nexterror();
 	}
-	i = e - eg->etab + 1;
-	e->val = 0;
-	qlock(&evlock);
-	e->name = newev(name, strlen(name)+1);
-	qunlock(&evlock);
-	if(i > eg->nenv)
-		eg->nenv = i;
-	qunlock(&eg->ev);
-	c->qid = (Qid){i, 0};
+
+	for(e = eg->entries; e; e = e->link)
+		if(strcmp(e->name, name) == 0)
+			error(Einuse);
+
+	e = smalloc(sizeof(Evalue));
+	e->name = smalloc(strlen(name)+1);
+	strcpy(e->name, name);
+
+	e->path = ++eg->path;
+	e->link = eg->entries;
+	eg->entries = e;
+	c->qid = (Qid){e->path, 0};
+	
+	qunlock(eg);
+	poperror();
+
 	c->offset = 0;
 	c->mode = omode;
 	c->flag |= COPEN;
@@ -178,19 +146,32 @@ void
 envremove(Chan *c)
 {
 	Egrp *eg;
-	Env *e;
+	Evalue *e, **l;
 
 	if(c->qid.path & CHDIR)
 		error(Eperm);
+
 	eg = u->p->egrp;
-	qlock(&eg->ev);
-	e = &eg->etab[c->qid.path-1];
-	if(!e->name){
-		qunlock(&eg->ev);
+	qlock(eg);
+
+	l = &eg->entries;
+	for(e = *l; e; e = e->link) {
+		if(e->path == c->qid.path)
+			break;
+		l = &e->link;
+	}
+
+	if(e == 0) {
+		qunlock(eg);
 		error(Enonexist);
 	}
-	envpgclose(e);
-	qunlock(&eg->ev);
+
+	*l = e->link;
+	qunlock(eg);
+	free(e->name);
+	if(e->value)
+		free(e->value);
+	free(e);
 }
 
 void
@@ -206,206 +187,73 @@ envclose(Chan * c)
 	USED(c);
 }
 
-void
-envpgcopy(Env *t, Env *f)
-{
-	qlock(&evlock);
-	if(t->name = f->name)
-		t->name->ref++;
-	if(t->val = f->val)
-		t->val->ref++;
-	qunlock(&evlock);
-}
-
-void
-envpgclose(Env *e)
-{
-	qlock(&evlock);
-	if(e->name)
-		evfree(e->name);
-	if(e->val)
-		evfree(e->val);
-	e->name = e->val = 0;
-	qunlock(&evlock);
-}
-
 long
 envread(Chan *c, void *a, long n, ulong offset)
 {
 	Egrp *eg;
-	Env *e;
-	Envval *ev;
-	long vn;
+	Evalue *e;
 
 	if(c->qid.path & CHDIR)
 		return devdirread(c, a, n, 0, 0, envgen);
+
 	eg = u->p->egrp;
-	qlock(&eg->ev);
-	e = &eg->etab[c->qid.path-1];
-	if(!e->name){
-		qunlock(&eg->ev);
+	qlock(eg);
+	for(e = eg->entries; e; e = e->link)
+		if(e->path == c->qid.path)
+			break;
+
+	if(e == 0) {
+		qunlock(eg);
 		error(Enonexist);
 	}
-	ev = e->val;
-	vn = ev ? ev->len : 0;
-	if(offset + n > vn)
-		n = vn - offset;
+
+	if(offset + n > e->len)
+		n = e->len - offset;
 	if(n <= 0)
 		n = 0;
 	else
-		memmove(a, ev->val + offset, n);
-	qunlock(&eg->ev);
+		memmove(a, e->value+offset, n);
+	qunlock(eg);
 	return n;
 }
 
 long
 envwrite(Chan *c, void *a, long n, ulong offset)
 {
+	char *s;
+	int vend;
 	Egrp *eg;
-	Env *e;
-	Envval *ev;
-	ulong olen;
+	Evalue *e;
 
 	if(n <= 0)
 		return 0;
-	olen = (offset + n + ALIGN - 1) & ~(ALIGN - 1);
-	if(olen > MAXENV)
+
+	vend = offset+n;
+	if(vend > Maxenvsize)
 		error(Etoobig);
+
 	eg = u->p->egrp;
-	qlock(&eg->ev);
-	e = &eg->etab[c->qid.path-1];
-	if(!e->name){
-		qunlock(&eg->ev);
+	qlock(eg);
+	for(e = eg->entries; e; e = e->link)
+		if(e->path == c->qid.path)
+			break;
+
+	if(e == 0) {
+		qunlock(eg);
 		error(Enonexist);
 	}
-	ev = e->val;
-	olen = ev ? ev->len : 0;
-	qlock(&evlock);
-	if(offset == 0 && n >= olen)
-		e->val = newev(a, n);
-	else{
-		if(olen > offset)
-			olen = offset;
-		if(ev)
-			memmove(evscratch, ev->val, olen);
-		if(olen < offset)
-			memset(evscratch + olen, '\0', offset - olen);
-		memmove(evscratch + offset, a, n);
-		e->val = newev(evscratch, offset + n);
+
+	if(vend > e->len) {
+		s = smalloc(offset+n);
+		memmove(s, e->value, e->len);
+		if(e->value)
+			free(e->value);
+		e->value = s;
+		e->len = vend;
 	}
-	if(ev)
-		evfree(ev);
-	qunlock(&evlock);
-	qunlock(&eg->ev);
+	memmove(e->value+offset, a, n);
+	qunlock(eg);
 	return n;
-}
-
-/*
- * called with evlock qlocked
- */
-Envval *
-newev(char *s, ulong n)
-{
-	Envval *ev;
-	uchar *t;
-	int h;
-
-	h = 0;
-	for(t = (uchar*)s; t - (uchar*)s < n; t++)
-		h = (h << 1) ^ *t;
-	h &= EVHASH - 1;
-	for(ev = evhash[h].next; ev; ev = ev->next)
-		if(ev->len == n && memcmp(ev->val, s, n) == 0){
-			ev->ref++;
-			return ev;
-		}
-	ev = evalloc(n);
-	ev->len = n;
-	memmove(ev->val, s, n);
-	if(ev->next = evhash[h].next)
-		ev->next->prev = ev;
-	evhash[h].next = ev;
-	ev->prev = &evhash[h];
-	return ev;
-}
-
-/*
- * called only from newev
- */
-Envval *
-evalloc(ulong n)
-{
-	Envval *ev, **p;
-	char *b, *lim;
-	ulong size;
-
-	size = (n + ALIGN - 1) & ~(ALIGN - 1);
-	n = (size - 1) / ALIGN;
-	p = &envalloc.free[n < EVFREE ? n : EVFREE];
-	for(ev = *p; ev; ev = *p){
-		if(ev->len == size){
-			*p = ev->next;
-			ev->ref = 1;
-			return ev;
-		}
-		p = &ev->next;
-	}
-
-	/*
-	 * make sure we have enough space to allocate the buffer.
-	 * if not, use the remaining space for the smallest buffers
-	 */
-	if(size > MAXENV)
-		panic("evalloc");
-	b = envalloc.block;
-	lim = envalloc.lim;
-	if(!b || lim < b + size + sizeof *ev){
-		p = &envalloc.free[0];
-		while(lim >= b + ALIGN + sizeof *ev){
-			ev = (Envval*)b;
-			ev->len = ALIGN;
-			ev->val = b + sizeof *ev;
-			ev->next = *p;
-			*p = ev;
-			b += ALIGN + sizeof *ev;
-		}
-		b = (char*)VA(kmap(newpage(0, 0, 0)));
-		envalloc.npage++;
-		envalloc.lim = b + BY2PG;
-	}
-	
-	ev = (Envval*)b;
-	ev->val = b + sizeof *ev;
-	ev->ref = 1;
-	envalloc.block = b + size + sizeof *ev;
-	return ev;
-}
-
-/*
- * called with evlock qlocked
- */
-void
-evfree(Envval *ev)
-{
-	int n;
-
-	if(--ev->ref > 0)
-		return;
-
-	if(ev->prev)
-		ev->prev->next = ev->next;
-	else
-		panic("evfree");
-	if(ev->next)
-		ev->next->prev = ev->prev;
-	n = (ev->len + ALIGN - 1) & ~(ALIGN - 1);
-	ev->len = n;
-	n = (n - 1) / ALIGN;
-	if(n > EVFREE)
-		n = EVFREE;
-	ev->next = envalloc.free[n];
-	ev->prev = 0;
-	envalloc.free[n] = ev;
 }
 
 /*

@@ -161,9 +161,7 @@ pipeopen(Chan *c, int omode)
 		remote->devq->ptr = local;
 		local->devq->other->next = remote->devq;
 		remote->devq->other->next = local->devq;
-	}
-	else
-	if(local->opens == 1){
+	} else if(local->opens == 1){
 		/*
 		 *  keep other side around till last close of this side
 		 */
@@ -321,6 +319,6 @@ getpipe(ulong path)
 		}
 	}
 	unlock(&pipealloc);
-	panic("getpipe");
+	error(Enonexist);
 	return 0;
 }

@@ -6,8 +6,7 @@ typedef struct Crypt	Crypt;
 typedef struct Dev	Dev;
 typedef struct Dirtab	Dirtab;
 typedef struct Egrp	Egrp;
-typedef struct Env	Env;
-typedef struct Envval	Envval;
+typedef struct Evalue	Evalue;
 typedef struct Etherpkt	Etherpkt;
 typedef struct Fgrp	Fgrp;
 typedef struct Image	Image;
@@ -190,12 +189,6 @@ struct Dirtab
 	Qid	qid;
 	long	length;
 	long	perm;
-};
-
-struct Env
-{
-	Envval	*name;
-	Envval	*val;
 };
 
 /*
@@ -394,9 +387,18 @@ struct Pgrp
 struct Egrp
 {
 	Ref;
-	int	nenv;			/* highest active env table entry, +1 */
-	QLock	ev;			/* for all of etab */
-	Env	*etab;
+	QLock;
+	Evalue	*entries;
+	ulong	path;
+};
+
+struct Evalue
+{
+	char	*name;
+	char	*value;
+	int	len;
+	ulong	path;
+	Evalue	*link;
 };
 
 #define	NFD	100
@@ -651,6 +653,8 @@ enum
  */
 struct Netprot
 {
+	int	id;
+	Netprot	*next;		/* linked list of protections */
 	ulong	mode;
 	char	owner[NAMELEN];
 };
@@ -672,7 +676,7 @@ struct Network
 	int	(*clone)(Chan*);
 	int	ninfo;
 	Netinf	info[5];
-	Netprot	*prot;			/* protections */
+	Netprot	*prot;			/* linked list of protections */
 };
 #define MAJOR(q) ((q) >> 8)
 #define MINOR(q) ((q) & 0xff)

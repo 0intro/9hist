@@ -128,8 +128,10 @@ userinit(void)
 
 	p = newproc();
 	p->pgrp = newpgrp();
-	p->egrp = newegrp();
-	p->fgrp = newfgrp();
+	p->egrp = smalloc(sizeof(Egrp));
+	p->egrp->ref = 1;
+	p->fgrp = smalloc(sizeof(Fgrp));
+	p->fgrp->ref = 1;
 	p->procmode = 0640;
 
 	strcpy(p->text, "*init*");
@@ -210,13 +212,6 @@ confinit(void)
 	conf.nproc = 50*mul;
 	conf.nswap = 4096;
 	conf.nimage = 50;
-	conf.nenv = 100*mul;
-	conf.nenvchar = 8000*mul;
-	conf.npgenv = 200*mul;
-	conf.nstream = 40 + 32*mul;
-	conf.nqueue = 5 * conf.nstream;
-	conf.nurp = 32;
-	conf.nasync = 1;
 	conf.copymode = 0;		/* copy on write */
 	conf.ipif = 8;
 	conf.ip = 64;

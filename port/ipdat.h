@@ -278,8 +278,8 @@ struct Reseq
 struct Ipconv
 {
 	QLock;				/* Ref count lock */
+	Netprot;			/* stat info */
 	int 	ref;
-	int	index;
 	Qinfo	*stproto;		/* Stream protocol for this device */
 	Network	*net;			/* user level network interface */
 	Ipaddr	dst;			/* Destination from connect */

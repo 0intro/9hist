@@ -409,7 +409,7 @@ inconread(Chan *c, void *buf, long n, ulong offset)
 		i = &incon[c->dev];
 		sprint(b, "in: %d\nout: %d\noverflow: %d\ncrc: %d\nwait: %d\n", i->in,
 			i->out, i->overflow, i->crc, i->wait);
-		return stringread(buf, n, b, offset);
+		return readstr(offset, buf, n, b);
 	} else
 		return streamread(c, buf, n);
 }
@@ -525,6 +525,13 @@ inconoput(Queue *q, Block *bp)
 			freeb(bp);
 		return;
 	}
+	if(BLEN(bp) < 3){
+		bp = pullup(bp, 3);
+		if(bp == 0){
+			print("inconoput pullup failed\n");
+			return;
+		}
+	}
 
 	/*
 	 *  get a whole message before handing bytes to the device
@@ -542,11 +549,6 @@ inconoput(Queue *q, Block *bp)
 	 *  parse message
 	 */
 	bp = getq(q);
-	if(bp->wptr - bp->rptr < 3){
-		freemsg(q, bp);
-		qunlock(&ip->xmit);
-		return;
-	}
 	chan = bp->rptr[0] | (bp->rptr[1]<<8);
 	ctl = bp->rptr[2];
 	bp->rptr += 3;
@@ -767,15 +769,15 @@ nextin(Incon *ip, unsigned int c)
 	int next;
 
 	bp = ip->inb[ip->wi];
-	bp->base[0] = ip->chan;
-	bp->base[1] = ip->chan>>8;
-	bp->base[2] = c;
+	bp->rptr[0] = ip->chan;
+	bp->rptr[1] = ip->chan>>8;
+	bp->rptr[2] = c;
 	if(incondebug)
 		print("<-(%d)%uo %d\n", ip->chan, c, bp->wptr-bp->rptr);
 
 	next = (ip->wi+1)%Nin;
 	if(next == ip->ri){
-		bp->wptr = bp->base+3;
+		bp->wptr = bp->rptr+3;
 		return bp;
 	}
 	ip->wi = next;
@@ -862,7 +864,7 @@ rdpackets(Incon *ip)
 		}
 	}	
 	bp->wptr = p;
-	if(bp->wptr != bp->base+3)
+	if(bp->wptr != bp->rptr+3)
 		nextin(ip, 0);
 
 	if(first != ip->wi)/**/

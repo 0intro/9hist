@@ -341,6 +341,13 @@ hsoput(Queue *q, Block *bp)
 		freeb(bp);
 		return;
 	}
+	if(BLEN(bp) < 3){
+		bp = pullup(bp, 3);
+		if(bp == 0){
+			print("hsoput pullup failed\n");
+			return;
+		}
+	}
 
 	/*
 	 *  get a whole message before handing bytes to the device
@@ -363,12 +370,6 @@ hsoput(Queue *q, Block *bp)
 	 *  parse message
 	 */
 	bp = getq(q);
-	if(bp->wptr - bp->rptr < 3){
-		freemsg(q, bp);
-		qunlock(&hp->xmit);
-		poperror();
-		return;
-	}
 	chan = CHNO | bp->rptr[0] | (bp->rptr[1]<<8);
 	ctl = bp->rptr[2];
 	bp->rptr += 3;
