@@ -7,7 +7,6 @@
 #include	"../port/error.h"
 
 #include	"devtab.h"
-#include	"../port/netif.h"
 
 /*
  *  Stargate's Avanstar serial board.  There are ISA, EISA, microchannel
@@ -215,9 +214,10 @@ struct Astar
 {
 	ISAConf;
 	int		id;		/* from plan9.ini */
+	int		nchan;		/* number of channels */
+	Astarchan	*c;		/* channels */
 	int		ramsize;	/* 16k or 256k */
 	GCB		*gbc;		/* board comm area */
-	Astarchan	*c;		/* channels */
 };
 
 /* host per channel info */
@@ -227,26 +227,88 @@ struct Astarchan
 
 	Astar	*a;	/* controller */
 	CCB	*ccb;	/* control block */
+	int	perm;
 
 	/* buffers */
 	Queue	*iq;
 	Queue	*oq;
-
-
-	/* staging areas to avoid some of the per character costs */
-	uchar	istage[Stagesize];
-	uchar	*ip;
-	uchar	*ie;
-
-	uchar	ostage[Stagesize];
-	uchar	*op;
-	uchar	*oe;
 };
 
 Astar *astar[Maxcard];
-int nastar;
+static int nastar;
+
+enum
+{
+	Qmem=	0,
+	Qdata,
+	Qctl,
+	Qstat,
+};
+#define TYPE(x)		((x)&0xff)
+#define BOARD(x)	((((x)&~CHDIR)>>16)&0xff)
+#define CHAN(x)		((((x)&~CHDIR)>>8)&0xff)
+#define QID(b,c,t)	(((b)<<16)|((c)<<8)|(t))
 
 static int astarsetup(Astar*);
+
+int
+devgen(Chan *c, Dirtab *tab, int ntab, int i, Dir *db)
+{
+	int dev, sofar, ch, t;
+
+	USED(tab, ntab);
+	sofar = 0;
+
+	for(dev = 0; dev < nstar; dev++){
+		if(sofar == i){
+			sprint(db->name, "atar%dmem", astar[dev].id);
+			db->qid = QID(dev, 0, Qmem);
+			db->mode = 0660;
+			break;
+		}
+
+		if(i < sofar + 3*astar[dev].nchan){
+			i -= sofar;
+			ch = i/3;
+			t = i%3;
+			switch(t){
+			case 0:
+				sprint(db->name, "eia%d%2.2d", dev, ch);
+				db->mode = astar[dev]->c[ch].perm;
+				db->qid = QID(dev, 0, Qdata);
+				break;
+			case 1:
+				sprint(db->name, "eia%d%2.2dctl", dev, ch);
+				db->mode = astar[dev]->c[ch].perm;
+				db->qid = QID(dev, 0, Qctl);
+				break;
+			case 2:
+				sprint(db->name, "eia%d%2.2dstat", dev, ch);
+				db->mode = 0444;
+				db->qid = QID(dev, 0, Qstat);
+				break;
+			break;
+		}
+
+		sofar += 1 + 3*astar[dev].nchan;
+	}
+
+	if(j == nstar)
+		return -1;
+
+	db->atime = seconds();
+	db->mtime = kerndate;
+	db->hlength = 0;
+	db->length = length;
+	memmove(db->uid, eve, NAMELEN);
+	memmove(db->gid, eve, NAMELEN);
+	db->type = devchar[c->type];
+	db->dev = c->dev;
+	if(c->flag&CMSG)
+		db->mode |= CHMOUNT;
+
+	return 1;
+}
 
 void
 astarreset(void)
@@ -283,30 +345,6 @@ astarreset(void)
 		}
 		nastar++;
 	}
-
-	ndir = 3*nuart;
-	ns16552dir = xalloc(ndir * sizeof(Dirtab));
-	dp = ns16552dir;
-	for(i = 0; i < nuart; i++){
-		/* 3 directory entries per port */
-		sprint(dp->name, "eia%d", i);
-		dp->qid.path = NETQID(i, Ndataqid);
-		dp->perm = 0660;
-		dp++;
-		sprint(dp->name, "eia%dctl", i);
-		dp->qid.path = NETQID(i, Nctlqid);
-		dp->perm = 0660;
-		dp++;
-		sprint(dp->name, "eia%dstat", i);
-		dp->qid.path = NETQID(i, Nstatqid);
-		dp->perm = 0444;
-		dp++;
-	}
-}
-
-void
-astarinit(void)
-{
 }
 
 /* isa ports an ax00i can appear at */
@@ -360,6 +398,91 @@ astarsetup(Astar *a)
 	}
 	c = inb(a->port + ISActl1) & ~ISAirq;
 	outb(a->port + ISActl1, c | isairqcode(a->irq));
+
+	return 0;
+}
+
+void
+astarinit(void)
+{
+}
+
+Chan*
+astarattach(char *spec)
+{
+	return devattach('g', spec);
+}
+
+Chan*
+astarclone(Chan *c, Chan *nc)
+{
+	return devclone(c, nc);
+}
+
+int
+astarwalk(Chan *c, char *name)
+{
+	return devwalk(c, name, 0, 0, astargen);
+}
+
+void
+astarstat(Chan *c, char *dp)
+{
+	devstat(c, dp, 0, 0, astargen);
+}
+
+Chan*
+astaropen(Chan *c, int omode)
+{
+	Uart *p;
+
+	c = devopen(c, omode, 0, 0, astargen);
+
+	return c;
+}
+
+void
+astarcreate(Chan *c, char *name, int omode, ulong perm)
+{
+	USED(c, name, omode, perm);
+	error(Eperm);
+}
+
+void
+astarclose(Chan *c)
+{
+	USED(c);
+}
+
+long
+astarread(Chan *c, void *buf, long n, ulong offset)
+{
+	Astar *a;
+
+	if(c->qid.path & CHDIR)
+		return devdirread(c, buf, n, 0, 0, astargen);
+
+	switch(TYPE(c->qid.path)){
+	case Qmem:
+		a = astar[
+		return qread(p->iq, buf, n);
+	}
+
+	return 0;
+}
+
+long
+astarwrite(Chan *c, void *buf, long n, ulong offset)
+{
+	Uart *p;
+
+	if(c->qid.path & CHDIR)
+		error(Eperm);
+
+	switch(TYPE(c->qid.path)){
+	case Qmem:
+		return qread(p->iq, buf, n);
+	}
 
 	return 0;
 }

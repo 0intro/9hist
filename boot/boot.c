@@ -19,6 +19,7 @@ int	mflag;
 int	fflag;
 int	kflag;
 int	aflag;
+int	nflag;
 int	pflag;
 int	afd = -1;
 
@@ -64,6 +65,9 @@ boot(int argc, char *argv[])
 		break;
 	case 'k':
 		kflag = 1;
+		break;
+	case 'n':
+		nflag = 1;
 		break;
 	case 'm':
 		pflag = 1;
@@ -125,7 +129,7 @@ boot(int argc, char *argv[])
 	if(mount(fd, "/", MAFTER|MCREATE, "") < 0)
 		fatal("mount");
 	close(fd);
-	if(cpuflag == 0)
+	if(cpuflag == 0 && nflag == 0)
 		newkernel();
 
 	/*

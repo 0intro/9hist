@@ -237,7 +237,8 @@ bootargs(ulong base)
 	} else if(strncmp(cp, "sd!", 3) == 0){
 		sprint(buf, "local!#w/sd%ddisk", atoi(cp+3));
 		av[ac++] = pusharg(buf);
-	}
+	} else if(strncmp(cp, "e!", 2) == 0)
+		av[ac++] = pusharg("-n");
 	if(buf[0]){
 		cp = strchr(buf, '!');
 		if(cp){
