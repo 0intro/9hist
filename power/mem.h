@@ -130,6 +130,7 @@
 #define	USTKSIZE	(4*1024*1024)		/* size of user stack */
 #define LKSEGSIZE	(25*BY2PG)
 #define LKSEGBASE	(USTKTOP-USTKSIZE-LKSEGSIZE)	
+#define globalmem(x)	(((ulong)x)&KZERO)	/* addresses valid in all contexts */
 /*
  * Exception codes
  */

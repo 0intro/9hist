@@ -44,10 +44,10 @@ printinit(void)
  *   or uart code.  Multi-line messages to serial consoles may get
  *   interspersed with other messages.
  */
-void
-putstrn(char *str, int n)
+static void
+putstrn0(char *str, int n, int usewrite)
 {
-	int m;
+	int m, x;
 	char *t;
 	char buf[PRINTSIZE+2];
 
@@ -73,15 +73,32 @@ putstrn(char *str, int n)
 			memmove(buf, str, m);
 			buf[m] = '\r';
 			buf[m+1] = '\n';
-			qwrite(printq, buf, m+2, 1);
+			if(usewrite)
+				qwrite(printq, buf, m+2, 0);
+			else {
+				x = splhi();
+				qproduce(printq, buf, m+2);
+				splx(x);
+			}
 			str = t + 1;
 			n -= m + 1;
-		}
-		else {
-			qwrite(printq, str, n, 1);
+		} else {
+			if(usewrite)
+				qwrite(printq, str, n, 0);
+			else {
+				x = splhi();
+				qproduce(printq, str, n);
+				splx(x);
+			}
 			break;
 		}
 	}
+}
+
+void
+putstrn(char *str, int n)
+{
+	putstrn0(str, n, 0);
 }
 
 int
@@ -734,7 +751,7 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 			if(bp > sizeof buf)
 				bp = sizeof buf;
 			memmove(buf, a, bp);
-			putstrn(a, bp);
+			putstrn0(a, bp, 1);
 			a += bp;
 			l -= bp;
 		}

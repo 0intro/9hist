@@ -118,6 +118,9 @@ xinit(void)
 	conf.base1 = (ulong)KADDR(conf.base1);
 	conf.npage0 = (ulong)KADDR(conf.npage0);
 	conf.npage1 = (ulong)KADDR(conf.npage1);
+
+	/* setup initial memory allocations for interrupt time */
+	qinit();
 }
 
 /*

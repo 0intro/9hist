@@ -183,6 +183,7 @@ int		qcanread(Queue*);
 void		qclose(Queue*);
 int		qconsume(Queue*, void*, int);
 void		qhangup(Queue*);
+void		qinit(void);
 int		qlen(Queue*);
 void		qlock(QLock*);
 Queue*		qopen(int, int, void (*)(void*), void*);

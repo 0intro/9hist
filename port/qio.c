@@ -79,6 +79,9 @@ struct Queue
 	Rendez	rr;		/* process waiting to read */
 	QLock	wlock;		/* mutex for writing processes */
 	Rendez	wr;		/* process waiting to write */
+
+	uchar	*syncbuf;	/* synchronous IO buffer */
+	int	synclen;	/* syncbuf length */
 };
 
 enum
@@ -188,17 +191,30 @@ iallockproc(void *arg)
 }
 
 void
-iallocinit(void)
+qinit(void)
 {
 	int pow;
 	Chunkl *cl;
+	Chunk *p;
 
+	/* start with a bunch of initial blocks */
 	for(pow = Minpow; pow <= Maxpow; pow++){
 		cl = &arena.alloc[pow];
-		cl->goal = Maxpow-pow + 16;
+		cl->goal = Maxpow-pow + 32;
+		cl->first = 0;
+		for(; cl->have < cl->goal; cl->have++){
+			p = malloc(1<<pow);
+			p->next = cl->first;
+			cl->first = p;
+		}
 	}
 
-	/* start garbage collector */
+}
+
+void
+iallocinit(void)
+{
+	/* start garbage collector/creator */
 	kproc("ialloc", iallockproc, 0);
 }
 
@@ -216,15 +232,19 @@ ixsummary(void)
 	print("\n");
 }
 
+/*
+ *  interrupt time allocation (round data base address to 64 bit boundary)
+ */
 Block*
 iallocb(int size)
 {
 	int pow;
+	ulong addr;
 	Chunkl *cl;
 	Chunk *p;
 	Block *b;
 
-	size += sizeof(Block);
+	size += sizeof(Block) + 7;
 	for(pow = Minpow; pow <= Maxpow; pow++){
 		if(size <= (1<<pow)){
 			cl = &arena.alloc[pow];
@@ -239,12 +259,15 @@ iallocb(int size)
 			cl->have--;
 			cl->first = p->next;
 			unlock(cl);
+
 			b = (Block *)p;
 			memset(b, 0, sizeof(Block));
-			b->base = (uchar*)(b+1);
+			addr = (ulong)b;
+			addr = (addr + sizeof(Block) + 7) & ~7;
+			b->base = (uchar*)addr;
 			b->wp = b->base;
 			b->rp = b->base;
-			b->lim = b->base + (1<<pow) - sizeof(Block);
+			b->lim = ((uchar*)b) + (1<<pow);
 			return b;
 		}
 	}
@@ -268,21 +291,25 @@ ifree(void *a)
 }
 
 /*
- *  allocate queues and blocks
+ *  allocate queues and blocks (round data base address to 64 bit boundary)
  */
 Block*
 allocb(int size)
 {
 	Block *b;
+	ulong addr;
 
-	b = malloc(sizeof(Block) + size);
+	size += sizeof(Block) + 7;
+	b = malloc(size);
 	if(b == 0)
 		exhausted("Blocks");
 
-	b->base = (uchar*)(b+1);
+	addr = (ulong)b;
+	addr = (addr + sizeof(Block) + 7) & ~7;
+	b->base = (uchar*)addr;
 	b->rp = b->base;
 	b->wp = b->base;
-	b->lim = b->base + size;
+	b->lim = ((uchar*)b) + size;
 	b->flag = 0;
 
 	return b;
@@ -343,11 +370,31 @@ int
 qproduce(Queue *q, void *vp, int len)
 {
 	Block *b;
-	int dowakeup;
+	int i, dowakeup;
 	uchar *p = vp;
 
 	/* sync with qread */
+	dowakeup = 0;
 	lock(q);
+
+	if(q->syncbuf){
+		/* synchronous communications, just copy into buffer */
+		if(len < q->synclen)
+			q->synclen = len;
+		i = q->synclen;
+		memmove(q->syncbuf, p, i);
+		q->syncbuf = 0;		/* tell reader buffer is full */
+		len -= i;
+		if(len <= 0 || (q->state & Qmsg)){
+			unlock(q);
+			wakeup(&q->rr);
+			return i;
+		}
+
+		/* queue anything that's left */
+		dowakeup = 1;
+		p += i;
+	}
 
 	/* no waiting receivers, room in buffer? */
 	if(q->len >= q->limit){
@@ -379,8 +426,7 @@ qproduce(Queue *q, void *vp, int len)
 	if(q->state & Qstarve){
 		q->state &= ~Qstarve;
 		dowakeup = 1;
-	} else
-		dowakeup = 0;
+	}
 	unlock(q);
 
 	if(dowakeup){
@@ -416,6 +462,14 @@ qopen(int limit, int msg, void (*kick)(void*), void *arg)
 }
 
 static int
+filled(void *a)
+{
+	Queue *q = a;
+
+	return q->syncbuf == 0;
+}
+
+static int
 notempty(void *a)
 {
 	Queue *q = a;
@@ -436,6 +490,16 @@ qread(Queue *q, void *vp, int len)
 
 	qlock(&q->rlock);
 	if(waserror()){
+		/* can't let go if the buffer is in use */
+		if(q->syncbuf){
+			qlock(&q->wlock);
+			x = splhi();
+			lock(q);
+			q->syncbuf = 0;
+			unlock(q);
+			splx(x);
+			qunlock(&q->wlock);
+		}
 		qunlock(&q->rlock);
 		nexterror();
 	}
@@ -460,10 +524,23 @@ qread(Queue *q, void *vp, int len)
 			return 0;
 		}
 
-		q->state |= Qstarve;
-		unlock(q);
-		splx(x);
-		sleep(&q->rr, notempty, q);
+		if(globalmem(vp)){
+			/* just let the writer fill the buffer directly */
+			q->synclen = len;
+			q->syncbuf = vp;
+			unlock(q);
+			splx(x);
+			sleep(&q->rr, filled, q);
+			len = q->synclen;
+			poperror();
+			qunlock(&q->rlock);
+			return len;
+		} else {
+			q->state |= Qstarve;
+			unlock(q);
+			splx(x);
+			sleep(&q->rr, notempty, q);
+		}
 	}
 
 	/* remove a buffered block */
@@ -490,8 +567,7 @@ qread(Queue *q, void *vp, int len)
 	if(b->rp >= b->wp || (q->state&Qmsg)) {
 		poison(b);
 		free(b);
-	}
-	else {
+	} else {
 		x = splhi();
 		lock(q);
 		b->next = q->bfirst;
@@ -521,64 +597,111 @@ qnotfull(void *a)
 /*
  *  write to a queue.  if no reader blocks are posted
  *  queue the data.
+ *
+ *  all copies should be outside of spl since they can fault.
  */
 long
 qwrite(Queue *q, void *vp, int len, int nowait)
 {
-	int x, dowakeup;
+	int n, sofar, x, dowakeup;
 	Block *b;
 	uchar *p = vp;
 
-	b = allocb(len);
-	memmove(b->wp, p, len);
-	b->wp += len;
+	dowakeup = 0;
 
-	/* flow control */
-	while(!qnotfull(q)){
-		if(nowait)
-			return len;
-		qlock(&q->wlock);
-		if(waserror()) {
-			qunlock(&q->wlock);
-			nexterror();
-		}
-		q->state |= Qflow;
-		sleep(&q->wr, qnotfull, q);
+	if(waserror()){
 		qunlock(&q->wlock);
-		poperror();
+		nexterror();
+	};
+	qlock(&q->wlock);
+
+	sofar = 0;
+	if(q->syncbuf){
+		if(len < q->synclen)
+			sofar = len;
+		else
+			sofar = q->synclen;
+
+		memmove(q->syncbuf, p, sofar);
+		q->synclen = sofar;
+		q->syncbuf = 0;
+		wakeup(&q->rr);
+
+		if(len == sofar || (q->state & Qmsg)){
+			qunlock(&q->wlock);
+			poperror();
+			return len;
+		}
 	}
 
-	x = splhi();
-	lock(q);
+	do {
+		n = len-sofar;
+		if(n > 128*1024)
+			n = 128*1024;
 
-	if(q->state & Qclosed){
+		b = allocb(n);
+		memmove(b->wp, p+sofar, n);
+		b->wp += n;
+	
+		/* flow control */
+		while(!qnotfull(q)){
+			if(nowait){
+				free(b);
+				qunlock(&q->wlock);
+				poperror();
+				return len;
+			}
+			q->state |= Qflow;
+			sleep(&q->wr, qnotfull, q);
+		}
+	
+		x = splhi();
+		lock(q);
+	
+		if(q->state & Qclosed){
+			unlock(q);
+			splx(x);
+			error(Ehungup);
+		}
+	
+		if(q->syncbuf){
+			/* we guessed wrong and did an extra copy */
+			if(n > q->synclen)
+				n = q->synclen;
+			memmove(q->syncbuf, b->rp, n);
+			q->synclen = n;
+			q->syncbuf = 0;
+			dowakeup = 1;
+			free(b);
+		} else {
+			/* we guessed right, queue it */
+			if(q->bfirst)
+				q->blast->next = b;
+			else
+				q->bfirst = b;
+			q->blast = b;
+			q->len += n;
+	
+			if(q->state & Qstarve){
+				q->state &= ~Qstarve;
+				dowakeup = 1;
+			}
+		}
+
 		unlock(q);
 		splx(x);
-		error(Ehungup);
-	}
 
-	if(q->bfirst)
-		q->blast->next = b;
-	else
-		q->bfirst = b;
-	q->blast = b;
-	q->len += len;
+		if(dowakeup){
+			if(q->kick)
+				(*q->kick)(q->arg);
+			wakeup(&q->rr);
+		}
 
-	if(q->state & Qstarve){
-		q->state &= ~Qstarve;
-		dowakeup = 1;
-	} else
-		dowakeup = 0;
+		sofar += n;
+	} while(sofar < len && (q->state & Qmsg) == 0);
 
-	unlock(q);
-	splx(x);
-
-	if(dowakeup){
-		if(q->kick)
-			(*q->kick)(q->arg);
-		wakeup(&q->rr);
-	}
-
+	qunlock(&q->wlock);
+	poperror();
 	return len;
 }
 
