@@ -299,11 +299,7 @@ sysaccess(ulong *arg)
 	Chan *c;
 	long mode;
 
-	validaddr(arg[0], 1, 0);
-	c = namec((char*)arg[0], Aaccess, 0, 0);
-	mode = c->mode;
-	close(c);
-	/* BUG: check modes */
+	postnote(u->p, 1, "access is deprecated", NDebug);
 	return 0;
 }
 
