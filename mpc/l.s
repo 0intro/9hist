@@ -112,7 +112,7 @@
 	ISYNC
 
 	MOVW	$7, R4
-	MOVW	R4, SPR(158)		/* cancel `show cycle' for normal instruction execution */
+	MOVW	R4, SPR(158)	/* cancel `show cycle' for normal instruction execution */
 	ISYNC
 
 /*

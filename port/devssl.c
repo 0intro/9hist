@@ -840,6 +840,7 @@ Hashalg hashtab[] =
 	{ "md4", MD4dlen, md4, },
 	{ "md5", MD5dlen, md5, },
 	{ "sha1", SHA1dlen, sha1, },
+	{ "sha", SHA1dlen, sha1, },
 	{ 0 }
 };
 
