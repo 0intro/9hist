@@ -179,6 +179,7 @@ intr(Ureg *ur)
 	uchar pend, npend;
 	long v;
 	ulong cause;
+	static int bogies;
 
 	cause = ur->cause&(INTR5|INTR4|INTR3|INTR2|INTR1);
 	if(cause & (INTR2|INTR4)){
@@ -273,7 +274,7 @@ intr(Ureg *ur)
 		/*
 		 *  if nothing else, assume bus error
 		 */
-		if(!any){
+		if(!any && bogies++<100){
 			print("bogus intr lvl 5 pend %lux on %d\n", npend, m->machno);
 			delay(100);
 		}

@@ -91,7 +91,6 @@ hotrodreset(void)
 		hp->wq = (HotQ*)(&hp->addr->hostrp);
 		hp->vec = Vmevec+i;
 		setvmevec(hp->vec, hotrodintr);
-setvmevec(0xFF, hotrodintr);
 	}	
 	wbflush();
 	delay(20);
@@ -179,6 +178,15 @@ hotrodopen(Chan *c, int omode)
 		hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->khot);
 		delay(100);
 		print("reset\n");
+
+		/*
+		 * Issue test
+		 */
+		mp = &u->khot;
+		mp->cmd = TEST;
+		hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->khot);
+		delay(100);
+		print("tested\n");
 	}
 	c->mode = openmode(omode);
 	c->flag |= COPEN;
@@ -338,10 +346,9 @@ hotrodintr(int vec)
 
 	print("hotrod%d interrupt\n", vec - Vmevec);
 	hp = &hotrod[vec - Vmevec];
-hp=&hotrod[0];
 	if(hp < hotrod || hp > &hotrod[Nhotrod]){
 		print("bad hotrod vec\n");
 		return;
 	}
-	hp->addr->csr3 &= ~INT_VME;
+	hp->addr->lcsr3 &= ~INT_VME;
 }
