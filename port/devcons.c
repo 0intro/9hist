@@ -1,6 +1,7 @@
 #include	"u.h"
 #include	"../port/lib.h"
 #include	"mem.h"
+#include	"pool.h"
 #include	"dat.h"
 #include	"fns.h"
 #include	"../port/error.h"
@@ -149,21 +150,6 @@ print(char *fmt, ...)
 	return n;
 }
 
-int
-fprint(int, char *fmt, ...)	/* needed so we can use user-level libg */
-{
-	int n;
-	va_list arg;
-	char buf[PRINTSIZE];
-
-	va_start(arg, fmt);
-	n = doprint(buf, buf+sizeof(buf), fmt, arg) - buf;
-	va_end(arg);
-	putstrn(buf, n);
-
-	return n;
-}
-
 void
 panic(char *fmt, ...)
 {
@@ -244,6 +230,7 @@ echo(Rune r, char *buf, int n)
 		case 'x':
 			xsummary();
 			ixsummary();
+			poolsummary();
 			break;
 		case 'd':
 			if(consdebug != nil)

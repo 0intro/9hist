@@ -29,6 +29,7 @@ static int pcicfgmode = -1;
 static int pcimaxdno;
 static Pcidev* pciroot;
 static Pcidev* pcilist;
+static Pcidev* pcitail;
 
 static int pcicfgrw8(int, int, int, int);
 static int pcicfgrw16(int, int, int, int);
@@ -62,8 +63,12 @@ pciscan(int bno, Pcidev** list)
 			p->tbdf = tbdf;
 			p->vid = l;
 			p->did = l>>16;
-			p->list = pcilist;
-			pcilist = p;
+
+			if(pcilist != nil)
+				pcitail->list = p;
+			else
+				pcilist = p;
+			pcitail = p;
 
 			p->intl = pcicfgrw8(tbdf, PciINTL, 0, 1);
 			p->ccru = pcicfgrw16(tbdf, PciCCRu, 0, 1);

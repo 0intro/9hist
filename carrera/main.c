@@ -5,6 +5,7 @@
 #include	"fns.h"
 #include	"io.h"
 #include	"init.h"
+#include	"pool.h"
 
 /*
  *  args passed by boot process
@@ -58,7 +59,6 @@ main(void)
 	pageinit();
 	procinit0();
 	initseg();
-	links();
 	chandevreset();
 	swapinit();
 	userinit();
@@ -456,7 +456,11 @@ confinit(void)
 	conf.npage1 = 0;
 	conf.base1 = 0;
 
-	conf.upages = (conf.npage*70)/100;
+	if(top > 16*MB){
+		conf.upages = (conf.npage*60)/100;
+		poolsetparam("Image", 0, 0, 4*1024*1024);
+	}else
+		conf.upages = (conf.npage*40)/100;
 	conf.ialloc = ((conf.npage-conf.upages)/2)*BY2PG;
 
 	conf.nmach = 1;

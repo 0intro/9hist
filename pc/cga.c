@@ -3,7 +3,6 @@
 #include "mem.h"
 #include "dat.h"
 #include "fns.h"
-#include "io.h"
 #include "../port/error.h"
 
 enum {
@@ -15,10 +14,9 @@ enum {
 
 #define CGASCREENBASE	((uchar*)KADDR(0xB8000))
 
-static int pos;
+static int cgapos;
 static int screeninitdone;
-QLock screenlock;
-void (*vgascreenputc)(char*);
+static Lock cgascreenlock;
 
 static uchar
 cgaregr(int index)
@@ -37,9 +35,9 @@ cgaregw(int index, int data)
 static void
 movecursor(void)
 {
-	cgaregw(0x0E, (pos/2>>8) & 0xFF);
-	cgaregw(0x0F, pos/2 & 0xFF);
-	CGASCREENBASE[pos+1] = Attr;
+	cgaregw(0x0E, (cgapos/2>>8) & 0xFF);
+	cgaregw(0x0F, cgapos/2 & 0xFF);
+	CGASCREENBASE[cgapos+1] = Attr;
 }
 
 static void
@@ -48,28 +46,28 @@ cgascreenputc(int c)
 	int i;
 
 	if(c == '\n'){
-		pos = pos/Width;
-		pos = (pos+1)*Width;
+		cgapos = cgapos/Width;
+		cgapos = (cgapos+1)*Width;
 	}
 	else if(c == '\t'){
-		i = 8 - ((pos/2)&7);
+		i = 8 - ((cgapos/2)&7);
 		while(i-->0)
 			cgascreenputc(' ');
 	}
 	else if(c == '\b'){
-		if(pos >= 2)
-			pos -= 2;
+		if(cgapos >= 2)
+			cgapos -= 2;
 		cgascreenputc(' ');
-		pos -= 2;
+		cgapos -= 2;
 	}
 	else{
-		CGASCREENBASE[pos++] = c;
-		CGASCREENBASE[pos++] = Attr;
+		CGASCREENBASE[cgapos++] = c;
+		CGASCREENBASE[cgapos++] = Attr;
 	}
-	if(pos >= Width*Height){
+	if(cgapos >= Width*Height){
 		memmove(CGASCREENBASE, &CGASCREENBASE[Width], Width*(Height-1));
 		memset(&CGASCREENBASE[Width*(Height-1)], 0, Width);
-		pos = Width*(Height-1);
+		cgapos = Width*(Height-1);
 	}
 	movecursor();
 }
@@ -77,46 +75,30 @@ cgascreenputc(int c)
 void
 screeninit(void)
 {
-	pos = cgaregr(0x0E)<<8;
-	pos |= cgaregr(0x0F);
-	pos *= 2;
+	cgapos = cgaregr(0x0E)<<8;
+	cgapos |= cgaregr(0x0F);
+	cgapos *= 2;
 	screeninitdone = 1;
 }
 
-void
-screenputs(char* s, int n)
+static void
+cgascreenputs(char* s, int n)
 {
-	int i;
-	Rune r;
-	char buf[4];
-
 	if(!islo()){
-		if(!canqlock(&screenlock))
+		/*
+		 * Don't deadlock trying to
+		 * print in an interrupt.
+		 */
+		if(!canlock(&cgascreenlock))
 			return;
 	}
 	else
-		qlock(&screenlock);
+		lock(&cgascreenlock);
 
-	if(vgascreenputc == nil){
-		while(n-- > 0)
-			cgascreenputc(*s++);
-		qunlock(&screenlock);
-		return;
-	}
+	while(n-- > 0)
+		cgascreenputc(*s++);
 
-	while(n > 0) {
-		i = chartorune(&r, s);
-		if(i == 0){
-			s++;
-			--n;
-			continue;
-		}
-		memmove(buf, s, i);
-		buf[i] = 0;
-		n -= i;
-		s += i;
-		vgascreenputc(buf);
-	}
-
-	qunlock(&screenlock);
+	unlock(&cgascreenlock);
 }
+
+void (*screenputs)(char*, int) = cgascreenputs;

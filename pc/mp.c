@@ -124,27 +124,20 @@ static Apic*
 mkioapic(PCMPioapic* p)
 {
 	Apic *apic;
-	ulong addr, *pte;
 
 	if(!(p->flags & PcmpEN) || p->apicno > MaxAPICNO)
 		return 0;
 
 	/*
-	 * Map the I/O APIC. This should be in the same 4MB segment
-	 * as MACHADDR so no new 2nd level table will be allocated.
+	 * Map the I/O APIC.
 	 */
-	addr = p->addr;
-	if((pte = mmuwalk(m->pdb, addr, 1)) == 0)
+	if(mmukmap(p->addr, 0, 1024) == 0)
 		return 0;
-	if(!(*pte & PTEVALID)){
-		*pte = addr|PTEWRITE|PTEUNCACHED|PTEVALID;
-		mmuflushtlb(PADDR(m->pdb));
-	}
 
 	apic = &mpapic[p->apicno];
 	apic->type = PcmpIOAPIC;
 	apic->apicno = p->apicno;
-	apic->addr = KADDR(addr);
+	apic->addr = KADDR(p->addr);
 	apic->flags = p->flags;
 
 	return apic;
@@ -290,8 +283,7 @@ squidboy(Apic* apic)
 {
 	int clkin;
 
-	/*iprint("Hello Squidboy\n");*/
-
+//	iprint("Hello Squidboy\n");
 	machinit();
 	mmuinit();
 
@@ -322,25 +314,31 @@ static void
 mpstartap(Apic* apic)
 {
 	ulong *apbootp, *pdb, *pte;
-	Mach *mach;
+	Mach *mach, *mach0;
 	int i, machno;
 	uchar *p;
 
+	mach0 = MACHP(0);
+
 	/*
-	 * Initialise the AP page-tables and Mach structure. These are
-	 * the same as for the bootstrap processor with the exception of
+	 * Initialise the AP page-tables and Mach structure. The page-tables
+	 * are the same as for the bootstrap processor with the exception of
 	 * the PTE for the Mach structure.
 	 * Xspanalloc will panic if an allocation can't be made.
 	 */
-	pdb = xspanalloc(3*BY2PG, BY2PG, 0);
-	memmove(pdb, (void*)CPU0PDB, BY2PG);
+	p = xspanalloc(3*BY2PG, BY2PG, 0);
+	pdb = (ulong*)p;
+	memmove(pdb, mach0->pdb, BY2PG);
+	p += BY2PG;
 
-	pte = (ulong*)(((uchar*)pdb)+BY2PG);
-	memmove(pte, (void*)CPU0MACHPTE, BY2PG);
-	pdb[PDX(MACHADDR)] = PADDR(pte)|PTEWRITE|PTEVALID;
+	if((pte = mmuwalk(pdb, MACHADDR, 1, 0)) == nil)
+		return;
+	memmove(p, KADDR(PPN(*pte)), BY2PG);
+	*pte = PADDR(p)|PTEWRITE|PTEVALID;
+	p += BY2PG;
 
-	mach = (Mach*)(((uchar*)pdb)+2*BY2PG);
-	if((pte = mmuwalk(pdb, MACHADDR, 0)) == 0)
+	mach = (Mach*)p;
+	if((pte = mmuwalk(pdb, MACHADDR, 2, 0)) == nil)
 		return;
 	*pte = PADDR(mach)|PTEWRITE|PTEVALID;
 
@@ -386,7 +384,6 @@ void
 mpinit(void)
 {
 	PCMP *pcmp;
-	ulong *pte;
 	uchar *e, *p;
 	Apic *apic, *bpapic;
 	int clkin;
@@ -398,15 +395,10 @@ mpinit(void)
 	pcmp = KADDR(_mp_->physaddr);
 
 	/*
-	 * Map the local APIC. This should be in the same 4MB segment
-	 * as MACHADDR so no new 2nd level table will be allocated.
+	 * Map the local APIC.
 	 */
-	if((pte = mmuwalk(m->pdb, pcmp->lapicbase, 1)) == 0)
+	if(mmukmap(pcmp->lapicbase, 0, 1024) == 0)
 		return;
-	if(!(*pte & PTEVALID)){
-		*pte = pcmp->lapicbase|PTEWRITE|PTEUNCACHED|PTEVALID;
-		mmuflushtlb(PADDR(m->pdb));
-	}
 
 	bpapic = 0;
 
@@ -633,7 +625,7 @@ mpshutdown(void)
 	 * warm-boot sequence is tried. The following is Intel specific and
 	 * seems to perform a cold-boot, but at least it comes back.
 	 */
-	*(ushort*)(KZERO|0x472) = 0x1234;		/* BIOS warm-boot flag */
+	*(ushort*)KADDR(0x472) = 0x1234;		/* BIOS warm-boot flag */
 	outb(0xCF9, 0x02);
 	outb(0xCF9, 0x06);
 #else

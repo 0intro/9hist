@@ -5,11 +5,10 @@
 #include "fns.h"
 #include "../port/error.h"
 
-#include <libg.h>
+#define	Image	IMAGE
+#include <draw.h>
+#include <memdraw.h>
 #include "screen.h"
-#include "vga.h"
-
-extern Cursor curcursor;
 
 /*
  * IBM RGB524.
@@ -55,7 +54,7 @@ static ushort dacxreg[4] = {
 };
 
 static uchar
-setrs2(void)
+rgb524setrs2(void)
 {
 	uchar rs2;
 
@@ -70,37 +69,54 @@ rgb524xo(int index, uchar data)
 {
 	vgao(dacxreg[IndexLo], index & 0xFF);
 	vgao(dacxreg[IndexHi], (index>>8) & 0xFF);
-
 	vgao(dacxreg[Data], data);
 }
 
 static void
-restorers2(uchar rs2)
+rgb524disable(VGAscr*)
 {
+	uchar rs2;
+
+	rs2 = rgb524setrs2();
+	rgb524xo(CursorCtl, 0x00);
 	vgaxo(Crtx, 0x55, rs2);
 }
 
 static void
-load(Cursor *c)
+rgb524enable(VGAscr*)
+{
+	uchar rs2;
+
+	rs2 = rgb524setrs2();
+
+	/*
+	 * Make sure cursor is off by initialising the cursor
+	 * control to defaults.
+	 */
+	rgb524xo(CursorCtl, 0x00);
+
+	/*
+	 * Cursor colour 1 (white),
+	 * cursor colour 2 (black).
+	 */
+	rgb524xo(CursorR1, Pwhite); rgb524xo(CursorG1, Pwhite); rgb524xo(CursorB1, Pwhite);
+	rgb524xo(CursorR2, Pblack); rgb524xo(CursorG2, Pblack); rgb524xo(CursorB2, Pblack);
+
+	/*
+	 * Enable the cursor, 32x32, mode 2.
+	 */
+	rgb524xo(CursorCtl, 0x23);
+
+	vgaxo(Crtx, 0x55, rs2);
+}
+
+static void
+rgb524load(VGAscr*, Cursor* curs)
 {
 	uchar p, p0, p1, rs2;
 	int x, y;
 
-	/*
-	 * Lock the DAC registers so we can update the
-	 * cursor bitmap if necessary.
-	 * If it's the same as the last cursor we loaded,
-	 * just make sure it's enabled.
-	 */
-	lock(&palettelock);
-	rs2 = setrs2();
-	if(memcmp(c, &curcursor, sizeof(Cursor)) == 0){
-		rgb524xo(CursorCtl, 0x23);
-		restorers2(rs2);
-		unlock(&palettelock);
-		return;
-	}
-	memmove(&curcursor, c, sizeof(Cursor));
+	rs2 = rgb524setrs2();
 
 	/*
 	 * Make sure cursor is off by initialising the cursor
@@ -132,8 +148,8 @@ load(Cursor *c)
 	for(y = 0; y < 32; y++){
 		for(x = 0; x < 32/8; x++){
 			if(x < 16/8 && y < 16){
-				p0 = c->clr[x+y*2];
-				p1 = c->set[x+y*2];
+				p0 = curs->clr[x+y*2];
+				p1 = curs->set[x+y*2];
 
 				p = 0x00;
 				if(p1 & 0x80)
@@ -181,94 +197,39 @@ load(Cursor *c)
 	}
 
 	/*
-	 * Initialise the cursor hot-point,
+	 * Initialise the cursor hotpoint,
 	 * enable the cursor and restore state.
 	 */
-	rgb524xo(CursorHotX, -c->offset.x);
-	rgb524xo(CursorHotY, -c->offset.y);
+	rgb524xo(CursorHotX, -curs->offset.x);
+	rgb524xo(CursorHotY, -curs->offset.y);
 
 	rgb524xo(CursorCtl, 0x23);
 
-	restorers2(rs2);
-	unlock(&palettelock);
-}
-
-static void
-enable(void)
-{
-	uchar rs2;
-
-	lock(&palettelock);
-	rs2 = setrs2();
-
-	/*
-	 * Make sure cursor is off by initialising the cursor
-	 * control to defaults.
-	 */
-	rgb524xo(CursorCtl, 0x00);
-
-	/*
-	 * Cursor colour 1 (white),
-	 * cursor colour 2 (black).
-	 */
-	rgb524xo(CursorR1, Pwhite); rgb524xo(CursorG1, Pwhite); rgb524xo(CursorB1, Pwhite);
-	rgb524xo(CursorR2, Pblack); rgb524xo(CursorG2, Pblack); rgb524xo(CursorB2, Pblack);
-
-	/*
-	 * Enable the cursor, 32x32, mode 2.
-	 */
-	rgb524xo(CursorCtl, 0x23);
-
-	restorers2(rs2);
-	unlock(&palettelock);
+	vgaxo(Crtx, 0x55, rs2);
 }
 
 static int
-move(Point p)
+rgb524move(VGAscr*, Point p)
 {
 	uchar rs2;
 
-	if(canlock(&palettelock) == 0)
-		return 1;
-	rs2 = setrs2();
+	rs2 = rgb524setrs2();
 
 	rgb524xo(CursorXLo, p.x & 0xFF);
 	rgb524xo(CursorXHi, (p.x>>8) & 0x0F);
 	rgb524xo(CursorYLo, p.y & 0xFF);
 	rgb524xo(CursorYHi, (p.y>>8) & 0x0F);
 
-	restorers2(rs2);
-	unlock(&palettelock);
+	vgaxo(Crtx, 0x55, rs2);
 
 	return 0;
 }
 
-static void
-disable(void)
-{
-	uchar rs2;
-
-	lock(&palettelock);
-	rs2 = setrs2();
-
-	rgb524xo(CursorCtl, 0x00);
-
-	restorers2(rs2);
-	unlock(&palettelock);
-}
-
-Hwgc rgb524hwgc = {
+VGAcur vgargb524cur = {
 	"rgb524hwgc",
-	enable,
-	load,
-	move,
-	disable,
 
-	0,
+	rgb524enable,
+	rgb524disable,
+	rgb524load,
+	rgb524move,
 };
-
-void
-vgargb524link(void)
-{
-	addhwgclink(&rgb524hwgc);
-}

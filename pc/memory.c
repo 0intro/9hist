@@ -74,6 +74,7 @@ static RMap rmapumbrw = {
 	&mapumbrw[7],
 };
 
+#define notdef
 #ifdef notdef
 void
 dumpmembank(void)
@@ -302,7 +303,7 @@ ramscan(ulong maxmem)
 		 * pool later if it isn't needed.
 		 */
 		va = KADDR(pa);
-		table = &((ulong*)m->pdb)[PDX(va)];
+		table = &m->pdb[PDX(va)];
 		if(*table == 0){
 			if(map == 0 && (map = mapalloc(&rmapram, 0, BY2PG, BY2PG)) == 0)
 				break;
@@ -365,7 +366,7 @@ ramscan(ulong maxmem)
 		 *    initialised space for the page table.
 		 */
 		if((pa % (4*MB)) == 0){
-			table = &((ulong*)m->pdb)[PDX(va)];
+			table = &m->pdb[PDX(va)];
 			if(nvalid[MemUPA] == (4*MB)/BY2PG)
 				*table = 0;
 			else if(nvalid[MemRAM] == (4*MB)/BY2PG && (m->cpuiddx & 0x08))
@@ -383,8 +384,9 @@ ramscan(ulong maxmem)
 		mapfree(&rmapram, map, BY2PG);
 	if(pa < maxmem)
 		mapfree(&rmapupa, pa, maxmem-pa);
-	if(maxmem < 0xFEC00000)
-		mapfree(&rmapupa, maxmem, 0xFEC00000-maxmem);
+	if(maxmem < 0xFFE00000)
+		mapfree(&rmapupa, maxmem, 0xFFE00000-maxmem);
+print("maxmem %uX %uX\n", maxmem, 0xFFE00000-maxmem);
 	*k0 = kzero;
 }
 
@@ -401,11 +403,11 @@ meminit(ulong maxmem)
 	 * then scan for useful memory.
 	 */
 	for(pa = 0xA0000; pa < 0xC0000; pa += BY2PG){
-		pte = mmuwalk(m->pdb, (ulong)KADDR(pa), 0);
+		pte = mmuwalk(m->pdb, (ulong)KADDR(pa), 2, 0);
 		*pte |= PTEWT;
 	}
 	for(pa = 0xC0000; pa < 0x100000; pa += BY2PG){
-		pte = mmuwalk(m->pdb, (ulong)KADDR(pa), 0);
+		pte = mmuwalk(m->pdb, (ulong)KADDR(pa), 2, 0);
 		*pte |= PTEUNCACHED;
 	}
 	mmuflushtlb(PADDR(m->pdb));
@@ -432,6 +434,7 @@ meminit(ulong maxmem)
 		conf.base1 = xmp->addr;
 		conf.npage1 = xmp->size/BY2PG;
 	}
+dumpmembank();
 }
 
 ulong

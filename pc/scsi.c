@@ -82,7 +82,7 @@ scsireset(void)
 				ctlrno, ctlr->type, ctlr->port,
 				ctlr->irq, ctlr->mem, ctlr->size);
 			if(ctlr->mem)
-				print(" addr 0x%luX", ctlr->mem & ~KZERO);
+				print(" addr 0x%luX", PADDR(ctlr->mem));
 			if(ctlr->size)
 				print(" size 0x%luX", ctlr->size);
 			print("\n");

@@ -5,19 +5,20 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
-#include	<libg.h>
+#define	Image	IMAGE
+#define	mouse	moose
+#include	<draw.h>
+#undef	mouse
+#include	<memdraw.h>
 #include	"screen.h"
 
 typedef struct Mouseinfo	Mouseinfo;
 
 struct Mouseinfo
 {
-	/*
-	 * First three fields are known in some l.s's
-	 */
 	int	dx;
 	int	dy;
-	int	track;		/* l.s has updated dx & dy */
+	int	track;		/* dx & dy updated */
 	Mouse;
 	int	redraw;		/* update cursor on screen */
 	ulong	counter;	/* increments every update */
@@ -33,7 +34,6 @@ struct Mouseinfo
 Mouseinfo	mouse;
 Cursorinfo	cursor;
 int		mouseshifted;
-int		mousetype;
 int		mouseswap;
 Cursor		curs;
 
@@ -68,7 +68,7 @@ Dirtab mousedir[]={
 	"mousectl",	{Qmousectl},	0,			0220,
 };
 
-extern	Bitmap	gscreen;
+extern	Memimage	gscreen;
 
 static void
 mousereset(void)
@@ -336,7 +336,7 @@ mouseclock(void)
 		mouse.redraw = cursoron(0);
 		unlock(&cursor);
 	}
-	graphicsactive(0);
+	drawactive(0);
 }
 
 static int
@@ -395,7 +395,7 @@ mousetrack(int b, int dx, int dy)
 	mouse.buttons = b;
 	mouse.redraw = 1;
 	wakeup(&mouse.r);
-	graphicsactive(1);
+	drawactive(1);
 }
 
 /*

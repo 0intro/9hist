@@ -6,6 +6,7 @@
 #include	"io.h"
 #include	"ureg.h"
 #include	"init.h"
+#include	"pool.h"
 
 Mach *m;
 
@@ -128,7 +129,7 @@ main(void)
 	 */
 	conf.nmach = 1;
 	MACHP(0) = (Mach*)CPU0MACH;
-	m->pdb = (void*)CPU0PDB;
+	m->pdb = (ulong*)CPU0PDB;
 	machinit();
 	active.machs = 1;
 	active.exiting = 0;
@@ -155,6 +156,7 @@ main(void)
 	procinit0();
 	initseg();
 	links();
+conf.monitor = 1;
 	chandevreset();
 	swapinit();
 	userinit();
@@ -165,7 +167,7 @@ void
 machinit(void)
 {
 	int machno;
-	void *pdb;
+	ulong *pdb;
 
 	machno = m->machno;
 	pdb = m->pdb;
@@ -388,8 +390,19 @@ confinit(void)
 	meminit(maxmem);
 
 	conf.npage = conf.npage0 + conf.npage1;
-	if(pcnt < 10)
-		pcnt = 70;
+	if(cpuserver) {
+		if(pcnt < 10)
+			pcnt = 70;
+	} else {
+		if(pcnt < 10) {
+			if(conf.npage*BY2PG < 16*MB)
+				pcnt = 40;
+			else
+				pcnt = 60;
+		}
+		if(conf.npage*BY2PG < 16*MB)
+			poolsetparam("Image", 0, 0, 4*1024*1024);
+	}
 	conf.upages = (conf.npage*pcnt)/100;
 	conf.ialloc = ((conf.npage-conf.upages)/2)*BY2PG;
 

@@ -149,7 +149,7 @@ inready(void)
 void
 i8042reset(void)
 {
-	ushort *s = (ushort*)(KZERO|0x472);
+	ushort *s = KADDR(0x472);
 	int i, x;
 
 	*s = 0x1234;		/* BIOS warm-boot flag */

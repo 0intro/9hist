@@ -5,9 +5,10 @@
 #include "fns.h"
 #include "../port/error.h"
 
-#include <libg.h>
+#define	Image	IMAGE
+#include <draw.h>
+#include <memdraw.h>
 #include "screen.h"
-#include "vga.h"
 
 /*
  * Hardware graphics cursor support for
@@ -103,16 +104,71 @@ bt485o(uchar reg, uchar data)
 	vgaxo(Crtx, 0x55, crt55);
 }
 
-static Point hotpoint;
+static void
+bt485disable(VGAscr*)
+{
+	uchar r;
+
+	/*
+	 * Disable 
+	 *	cursor mode 3;
+	 *	cursor control enable for Bt485 DAC;
+	 *	the hardware cursor external operation mode.
+	 */
+	r = bt485i(Cmd2) & ~0x03;
+	bt485o(Cmd2, r);
+
+	r = vgaxi(Crtx, 0x45) & ~0x20;
+	vgaxo(Crtx, 0x45, r);
+
+	r = vgaxi(Crtx, 0x55) & ~0x20;
+	vgaxo(Crtx, 0x55, r);
+}
 
 static void
-load(Cursor *c)
+bt485enable(VGAscr*)
+{
+	uchar r;
+
+	/*
+	 * Turn cursor off.
+	 */
+	r = bt485i(Cmd2) & 0xFC;
+	bt485o(Cmd2, r);
+
+	/*
+	 * Overscan colour,
+	 * cursor colour 1 (white),
+	 * cursor colour 2, 3 (black).
+	 */
+	bt485o(ColorW, 0x00);
+	bt485o(Color, Pwhite); bt485o(Color, Pwhite); bt485o(Color, Pwhite);
+
+	bt485o(Color, Pwhite); bt485o(Color, Pwhite); bt485o(Color, Pwhite);
+
+	bt485o(Color, Pblack); bt485o(Color, Pblack); bt485o(Color, Pblack);
+	bt485o(Color, Pblack); bt485o(Color, Pblack); bt485o(Color, Pblack);
+
+	/*
+	 * Finally, enable
+	 *	the hardware cursor external operation mode;
+	 *	cursor control enable for Bt485 DAC.
+	 * The #9GXE cards seem to need the 86C928 Bt485 support
+	 * enabled in order to work at all in enhanced mode.
+	 */
+
+	r = vgaxi(Crtx, 0x55)|0x20;
+	vgaxo(Crtx, 0x55, r);
+
+	r = vgaxi(Crtx, 0x45)|0x20;
+	vgaxo(Crtx, 0x45, r);
+}
+
+static void
+bt485load(VGAscr* scr, Cursor* curs)
 {
 	uchar r;
 	int x, y;
-
-
-	lock(&palettelock);
 
 	/*
 	 * Turn cursor off;
@@ -137,7 +193,7 @@ load(Cursor *c)
 	for(y = 0; y < 64; y++){
 		for(x = 0; x < 64/8; x++){
 			if(x < 16/8 && y < 16)
-				bt485o(Cram, c->clr[x+y*2]);
+				bt485o(Cram, curs->clr[x+y*2]);
 			else
 				bt485o(Cram, 0x00);
 		}
@@ -145,7 +201,7 @@ load(Cursor *c)
 	for(y = 0; y < 64; y++){
 		for(x = 0; x < 64/8; x++){
 			if(x < 16/8 && y < 16)
-				bt485o(Cram, c->set[x+y*2]);
+				bt485o(Cram, curs->set[x+y*2]);
 			else
 				bt485o(Cram, 0x00);
 		}
@@ -155,113 +211,34 @@ load(Cursor *c)
 	 * Initialise the cursor hot-point
 	 * and enable the cursor.
 	 */
-	hotpoint.x = 64+c->offset.x;
-	hotpoint.y = 64+c->offset.y;
+	scr->offset.x = 64+curs->offset.x;
+	scr->offset.y = 64+curs->offset.y;
 
 	r = (bt485i(Cmd2) & 0xFC)|0x01;
 	bt485o(Cmd2, r);
-
-	unlock(&palettelock);
-}
-
-static void
-enable(void)
-{
-	uchar r;
-
-	lock(&palettelock);
-
-	/*
-	 * Turn cursor off.
-	 */
-	r = bt485i(Cmd2) & 0xFC;
-	bt485o(Cmd2, r);
-
-	/*
-	 * Overscan colour,
-	 * cursor colour 1 (white),
-	 * cursor colour 2, 3 (black).
-	 */
-	bt485o(ColorW, 0x00);
-	bt485o(Color, Pwhite); bt485o(Color, Pwhite); bt485o(Color, Pwhite);
-
-	bt485o(Color, Pwhite); bt485o(Color, Pwhite); bt485o(Color, Pwhite);
-
-	bt485o(Color, Pblack); bt485o(Color, Pblack); bt485o(Color, Pblack);
-	bt485o(Color, Pblack); bt485o(Color, Pblack); bt485o(Color, Pblack);
-
-	unlock(&palettelock);
-
-	/*
-	 * Finally, enable
-	 *	the hardware cursor external operation mode;
-	 *	cursor control enable for Bt485 DAC.
-	 * The #9GXE cards seem to need the 86C928 Bt485 support
-	 * enabled in order to work at all in enhanced mode.
-	 */
-
-	r = vgaxi(Crtx, 0x55)|0x20;
-	vgaxo(Crtx, 0x55, r);
-
-	r = vgaxi(Crtx, 0x45)|0x20;
-	vgaxo(Crtx, 0x45, r);
 }
 
 static int
-move(Point p)
+bt485move(VGAscr* scr, Point p)
 {
 	int x, y;
 
-	if(canlock(&palettelock) == 0)
-		return 1;
-
-	x = p.x+hotpoint.x;
-	y = p.y+hotpoint.y;
+	x = p.x+scr->offset.x;
+	y = p.y+scr->offset.y;
 
 	bt485o(Cxlr, x & 0xFF);
 	bt485o(Cxhr, (x>>8) & 0x0F);
 	bt485o(Cylr, y & 0xFF);
 	bt485o(Cyhr, (y>>8) & 0x0F);
 
-	unlock(&palettelock);
 	return 0;
 }
 
-static void
-disable(void)
-{
-	uchar r;
-
-	/*
-	 * Disable 
-	 *	cursor mode 3;
-	 *	cursor control enable for Bt485 DAC;
-	 *	the hardware cursor external operation mode.
-	 */
-	lock(&palettelock);
-	r = bt485i(Cmd2) & ~0x03;
-	bt485o(Cmd2, r);
-	unlock(&palettelock);
-
-	r = vgaxi(Crtx, 0x45) & ~0x20;
-	vgaxo(Crtx, 0x45, r);
-
-	r = vgaxi(Crtx, 0x55) & ~0x20;
-	vgaxo(Crtx, 0x55, r);
-}
-
-Hwgc bt485hwgc = {
+VGAcur vgabt485cur = {
 	"bt485hwgc",
-	enable,
-	load,
-	move,
-	disable,
 
-	0,
+	bt485enable,
+	bt485disable,
+	bt485load,
+	bt485move,
 };
-
-void
-vgabt485link(void)
-{
-	addhwgclink(&bt485hwgc);
-}

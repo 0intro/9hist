@@ -5,11 +5,10 @@
 #include "fns.h"
 #include "../port/error.h"
 
-#include <libg.h>
+#define	Image	IMAGE
+#include <draw.h>
+#include <memdraw.h>
 #include "screen.h"
-#include "vga.h"
-
-extern Cursor curcursor;
 
 /*
  * TVP3026 Viewpoint Video Interface Pallette.
@@ -39,8 +38,6 @@ enum {
 static ushort dacxreg[4] = {
 	PaddrW, Pdata, Pixmask, PaddrR
 };
-
-static Point hotpoint;
 
 static uchar
 tvp3026io(uchar reg, uchar data)
@@ -75,23 +72,42 @@ tvp3026xo(uchar index, uchar data)
 }
 
 static void
-load(Cursor *c)
+tvp3026disable(VGAscr*)
 {
-	int x, y;
+	tvp3026xo(Icctl, 0x90);
+	tvp3026o(Cctl, 0x00);
+}
+
+static void
+tvp3026enable(VGAscr*)
+{
+	/*
+	 * Make sure cursor is off and direct control enabled.
+	 */
+	tvp3026xo(Icctl, 0x90);
+	tvp3026o(Cctl, 0x00);
 
 	/*
-	 * Lock the DAC registers so we can update the
-	 * cursor bitmap if necessary.
-	 * If it's the same as the last cursor we loaded,
-	 * just make sure it's enabled.
+	 * Overscan colour,
+	 * cursor colour 1 (white),
+	 * cursor colour 2, 3 (black).
 	 */
-	lock(&palettelock);
-	if(memcmp(c, &curcursor, sizeof(Cursor)) == 0){
-		tvp3026o(Cctl, 0x01);
-		unlock(&palettelock);
-		return;
-	}
-	memmove(&curcursor, c, sizeof(Cursor));
+	tvp3026o(CaddrW, 0x00);
+	tvp3026o(Cdata, Pwhite); tvp3026o(Cdata, Pwhite); tvp3026o(Cdata, Pwhite);
+	tvp3026o(Cdata, Pwhite); tvp3026o(Cdata, Pwhite); tvp3026o(Cdata, Pwhite);
+	tvp3026o(Cdata, Pblack); tvp3026o(Cdata, Pblack); tvp3026o(Cdata, Pblack);
+	tvp3026o(Cdata, Pblack); tvp3026o(Cdata, Pblack); tvp3026o(Cdata, Pblack);
+
+	/*
+	 * Enable the cursor in 3-colour mode.
+	 */
+	tvp3026o(Cctl, 0x01);
+}
+
+static void
+tvp3026load(VGAscr* scr, Cursor* curs)
+{
+	int x, y;
 
 	/*
 	 * Make sure cursor is off by initialising the cursor
@@ -123,7 +139,7 @@ load(Cursor *c)
 	for(y = 0; y < 64; y++){
 		for(x = 0; x < 64/8; x++){
 			if(x < 16/8 && y < 16)
-				tvp3026o(Cram, c->clr[x+y*2]);
+				tvp3026o(Cram, curs->clr[x+y*2]);
 			else
 				tvp3026o(Cram, 0x00);
 		}
@@ -131,96 +147,42 @@ load(Cursor *c)
 	for(y = 0; y < 64; y++){
 		for(x = 0; x < 64/8; x++){
 			if(x < 16/8 && y < 16)
-				tvp3026o(Cram, c->set[x+y*2]);
+				tvp3026o(Cram, curs->set[x+y*2]);
 			else
 				tvp3026o(Cram, 0x00);
 		}
 	}
 
 	/*
-	 * Initialise the cursor hot-point
+	 * Initialise the cursor hotpoint
 	 * and enable the cursor in 3-colour mode.
 	 */
-	hotpoint.x = 64+c->offset.x;
-	hotpoint.y = 64+c->offset.y;
-
+	scr->offset.x = 64+curs->offset.x;
+	scr->offset.y = 64+curs->offset.y;
 	tvp3026o(Cctl, 0x01);
-
-	unlock(&palettelock);
-}
-
-static void
-enable(void)
-{
-	lock(&palettelock);
-
-	/*
-	 * Make sure cursor is off and direct control enabled.
-	 */
-	tvp3026xo(Icctl, 0x90);
-	tvp3026o(Cctl, 0x00);
-
-	/*
-	 * Overscan colour,
-	 * cursor colour 1 (white),
-	 * cursor colour 2, 3 (black).
-	 */
-	tvp3026o(CaddrW, 0x00);
-	tvp3026o(Cdata, Pwhite); tvp3026o(Cdata, Pwhite); tvp3026o(Cdata, Pwhite);
-	tvp3026o(Cdata, Pwhite); tvp3026o(Cdata, Pwhite); tvp3026o(Cdata, Pwhite);
-	tvp3026o(Cdata, Pblack); tvp3026o(Cdata, Pblack); tvp3026o(Cdata, Pblack);
-	tvp3026o(Cdata, Pblack); tvp3026o(Cdata, Pblack); tvp3026o(Cdata, Pblack);
-
-	/*
-	 * Enable the cursor in 3-colour mode.
-	 */
-	tvp3026o(Cctl, 0x01);
-
-	unlock(&palettelock);
 }
 
 static int
-move(Point p)
+tvp3026move(VGAscr* scr, Point p)
 {
 	int x, y;
 
-	if(canlock(&palettelock) == 0)
-		return 1;
-
-	x = p.x+hotpoint.x;
-	y = p.y+hotpoint.y;
+	x = p.x+scr->offset.x;
+	y = p.y+scr->offset.y;
 
 	tvp3026o(Cxlsb, x & 0xFF);
 	tvp3026o(Cxmsb, (x>>8) & 0x0F);
 	tvp3026o(Cylsb, y & 0xFF);
 	tvp3026o(Cymsb, (y>>8) & 0x0F);
 
-	unlock(&palettelock);
-
 	return 0;
 }
 
-static void
-disable(void)
-{
-	lock(&palettelock);
-	tvp3026xo(Icctl, 0x90);
-	tvp3026o(Cctl, 0x00);
-	unlock(&palettelock);
-}
-
-Hwgc tvp3026hwgc = {
+VGAcur vgatvp3026cur = {
 	"tvp3026hwgc",
-	enable,
-	load,
-	move,
-	disable,
 
-	0,
+	tvp3026enable,
+	tvp3026disable,
+	tvp3026load,
+	tvp3026move,
 };
-
-void
-vgatvp3026link(void)
-{
-	addhwgclink(&tvp3026hwgc);
-}

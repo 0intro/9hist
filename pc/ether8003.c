@@ -122,7 +122,7 @@ reset8003(Ether* ether, uchar ea[Eaddrlen], uchar ic[8])
 			ctlr->width = 1;
 	}
 
-	ether->mem = KZERO|((ic[Msr] & 0x3F)<<13);
+	ether->mem = (ulong)KADDR((ic[Msr] & 0x3F)<<13);
 	if(ctlr->width == 2)
 		ether->mem |= (ic[Laar] & 0x1F)<<19;
 	else
@@ -163,7 +163,7 @@ reset8216(Ether* ether, uchar[8])
 	irq = inb(port+0x0D);
 	outb(port+Hcr, hcr);
 
-	ether->mem = KZERO|(0xC0000+((((addr>>2) & 0x30)|(addr & 0x0F))<<13));
+	ether->mem = (ulong)KADDR(0xC0000+((((addr>>2) & 0x30)|(addr & 0x0F))<<13));
 	ether->size = 8192*(1<<((addr>>4) & 0x03));
 	ether->irq = irq8216[((irq>>4) & 0x04)|((irq>>2) & 0x03)];
 

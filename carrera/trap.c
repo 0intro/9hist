@@ -60,26 +60,49 @@ char	*fpexcname(Ureg*, ulong, char*);
 void (*eisadma[8])(void);			/* Eisa dma chain vectors */
 
 
-char *regname[]={
-	"STATUS",	"PC",
-	"SP",		"CAUSE",
-	"BADADDR",	"TLBVIRT",
-	"HI",		"LO",
-	"R31",		"R30",
-	"R28",		"R27",
-	"R26",		"R25",
-	"R24",		"R23",
-	"R22",		"R21",
-	"R20",		"R19",
-	"R18",		"R17",
-	"R16",		"R15",
-	"R14",		"R13",
-	"R12",		"R11",
-	"R10",		"R9",
-	"R8",		"R7",
-	"R6",		"R5",
-	"R4",		"R3",
-	"R2",		"R1",
+struct
+{
+	char	*name;
+	int	off;
+} regname[]={
+	"STATUS",	Ureg_status,
+	"PC",		Ureg_pc,
+	"SP",		Ureg_sp,
+	"CAUSE",	Ureg_cause,
+	"BADADDR",	Ureg_badvaddr,
+	"TLBVIRT",	Ureg_tlbvirt,
+	"HI",		Ureg_hi,
+	"LO",		Ureg_lo,
+	"R31",		Ureg_r31,
+	"R30",		Ureg_r30,
+	"R28",		Ureg_r28,
+	"R27",		Ureg_r27,
+	"R26",		Ureg_r26,
+	"R25",		Ureg_r25,
+	"R24",		Ureg_r24,
+	"R23",		Ureg_r23,
+	"R22",		Ureg_r22,
+	"R21",		Ureg_r21,
+	"R20",		Ureg_r20,
+	"R19",		Ureg_r19,
+	"R18",		Ureg_r18,
+	"R17",		Ureg_r17,
+	"R16",		Ureg_r16,
+	"R15",		Ureg_r15,
+	"R14",		Ureg_r14,
+	"R13",		Ureg_r13,
+	"R12",		Ureg_r12,
+	"R11",		Ureg_r11,
+	"R10",		Ureg_r10,	
+	"R9",		Ureg_r9,
+	"R8",		Ureg_r8,
+	"R7",		Ureg_r7,
+	"R6",		Ureg_r6,
+	"R5",		Ureg_r5,
+	"R4",		Ureg_r4,
+	"R3",		Ureg_r3,
+	"R2",		Ureg_r2,
+	"R1",		Ureg_r1,
 };
 
 static char *
@@ -470,21 +493,29 @@ dumpstack(void)
 	print("\n");
 }
 
+ulong
+R(Ureg *ur, int i)
+{
+	uchar *s;
+
+	s = (uchar*)ur;
+	return *(ulong*)(s+regname[i].off-Uoffset);
+}
+
 void
 dumpregs(Ureg *ur)
 {
 	int i;
-	ulong *l;
 
 	if(up)
 		print("registers for %s %d\n", up->text, up->pid);
 	else
 		print("registers for kernel\n");
 
-	l = &ur->status;
-	for(i=0; i<nelem(regname); i+=2, l+=2)
+	for(i=0; i<nelem(regname); i+=2)
 		print("%s\t0x%.8lux\t%s\t0x%.8lux\n",
-				regname[i], l[0], regname[i+1], l[1]);
+				regname[i].name, R(ur, i),
+				regname[i+1].name, R(ur, i+1));
 }
 
 int

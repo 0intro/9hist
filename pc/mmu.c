@@ -111,7 +111,7 @@ mmuswitch(Proc* p)
 
 	if(p->mmupdb){
 		top = (ulong*)p->mmupdb->va;
-		top[PDX(MACHADDR)] = ((ulong*)m->pdb)[PDX(MACHADDR)];
+		top[PDX(MACHADDR)] = m->pdb[PDX(MACHADDR)];
 		taskswitch(p->mmupdb->pa, (ulong)(p->kstack+KSTACK));
 	}
 	else
@@ -224,34 +224,50 @@ putmmu(ulong va, ulong pa, Page* pg)
 		up->mmuused = pg;
 	}
 
-	pt = (ulong*)(PPN(pdb[pdbx])|KZERO);
+	pt = KADDR(PPN(pdb[pdbx]));
 	pt[PTX(va)] = pa|PTEUSER;
 
 	s = splhi();
-	pdb[PDX(MACHADDR)] = ((ulong*)m->pdb)[PDX(MACHADDR)];
+	pdb[PDX(MACHADDR)] = m->pdb[PDX(MACHADDR)];
 	mmuflushtlb(up->mmupdb->pa);
 	splx(s);
 }
 
 ulong*
-mmuwalk(ulong* pdb, ulong va, int create)
+mmuwalk(ulong* pdb, ulong va, int level, int create)
 {
 	ulong pa, *table;
 
+	/*
+	 * Walk the page-table pointed to by pdb and return a pointer
+	 * to the entry for virtual address va at the requested level.
+	 * If the entry is invalid and create isn't requested then bail
+	 * out early. Otherwise, for the 2nd level walk, allocate a new
+	 * page-table page and register it in the 1st level.
+	 */
 	table = &pdb[PDX(va)];
-	if(*table == 0){
-		if(create == 0)
-			return 0;
-		pa = PADDR((ulong)xspanalloc(BY2PG, BY2PG, 0));
-		*table = pa|PTEWRITE|PTEVALID;
-	}
-	if(*table & PTESIZE)
+	if(!(*table & PTEVALID) && create == 0)
+		return 0;
+
+	switch(level){
+
+	default:
+		return 0;
+
+	case 1:
 		return table;
 
-	table = (ulong*)(KZERO|PPN(*table));
-	va = PTX(va);
+	case 2:
+		if(*table & PTESIZE)
+			panic("mmuwalk2: va %uX entry %uX\n", va, *table);
+		if(!(*table & PTEVALID)){
+			pa = PADDR(xspanalloc(BY2PG, BY2PG, 0));
+			*table = pa|PTEWRITE|PTEVALID;
+		}
+		table = KADDR(PPN(*table));
 
-	return &table[va];
+		return &table[PTX(va)];
+	}
 }
 
 static Lock mmukmaplock;
@@ -260,20 +276,24 @@ int
 mmukmapsync(ulong va)
 {
 	Mach *mach0;
-	ulong entry;
+	ulong entry, *pte;
 
 	mach0 = MACHP(0);
 
 	lock(&mmukmaplock);
 
-	if(mmuwalk(mach0->pdb, va, 0) == nil){
+	if((pte = mmuwalk(mach0->pdb, va, 1, 0)) == nil){
 		unlock(&mmukmaplock);
 		return 0;
 	}
-	entry = ((ulong*)mach0->pdb)[PDX(va)];
+	if(!(*pte & PTESIZE) && mmuwalk(mach0->pdb, va, 2, 0) == nil){
+		unlock(&mmukmaplock);
+		return 0;
+	}
+	entry = *pte;
 
-	if(!(((ulong*)m->pdb)[PDX(va)] & PTEVALID))
-		((ulong*)m->pdb)[PDX(va)] = entry;
+	if(!(m->pdb[PDX(va)] & PTEVALID))
+		m->pdb[PDX(va)] = entry;
 
 	if(up && up->mmupdb){
 		((ulong*)up->mmupdb->va)[PDX(va)] = entry;
@@ -291,34 +311,103 @@ ulong
 mmukmap(ulong pa, ulong va, int size)
 {
 	Mach *mach0;
-	ulong ova, pae, *table, pgsz, *pte;
+	ulong ova, pae, *table, pgsz, *pte, x;
+	int pse, sync;
 
-	pa &= ~(BY2PG-1);
+	mach0 = MACHP(0);
+	if((mach0->cpuiddx & 0x08) && (getcr4() & 0x10))
+		pse = 1;
+	else
+		pse = 0;
+	sync = 0;
+
+	pa = PPN(pa);
 	if(va == 0)
 		va = (ulong)KADDR(pa);
-	va &= ~(BY2PG-1);
+	else
+		va = PPN(va);
 	ova = va;
 
 	pae = pa + size;
-	mach0 = MACHP(0);
 	lock(&mmukmaplock);
 	while(pa < pae){
-		table = &((ulong*)mach0->pdb)[PDX(va)];
-		if((pa % (4*MB)) == 0 && (mach0->cpuiddx & 0x08)){
+		table = &mach0->pdb[PDX(va)];
+		/*
+		 * Possibly already mapped.
+		 */
+		if(*table & PTEVALID){
+			if(*table & PTESIZE){
+				/*
+				 * Big page. Does it fit within?
+				 * If it does, adjust pgsz so the correct end can be
+				 * returned and get out.
+				 * If not, adjust pgsz up to the next 4MB boundary
+				 * and continue.
+				 */
+				x = PPN(*table);
+				if(x != pa)
+					panic("mmukmap1: pa %ux  entry %uX\n",
+						pa, *table);
+				x += 4*MB;
+				if(pae <= x){
+					pa = pae;
+					break;
+				}
+				pgsz = x - pa;
+				pa += pgsz;
+				va += pgsz;
+
+				continue;
+			}
+			else{
+				/*
+				 * Little page. Walk to the entry.
+				 * If the entry is valid, set pgsz and continue.
+				 * If not, make it so, set pgsz, sync and continue.
+				 */
+				pte = mmuwalk(mach0->pdb, va, 2, 0);
+				if(pte && *pte & PTEVALID){
+					x = PPN(*pte);
+					if(x != pa)
+						panic("mmukmap2: pa %ux entry %uX\n",
+							pa, *pte);
+					pgsz = BY2PG;
+					pa += pgsz;
+					va += pgsz;
+					sync++;
+
+					continue;
+				}
+			}
+		}
+
+		/*
+		 * Not mapped. Check if it can be mapped using a big page -
+		 * starts on a 4MB boundary, size >= 4MB and processor can do it.
+		 * If not a big page, walk the walk, talk the talk.
+		 * Sync is set.
+		 */
+		if(pse && (pa % (4*MB)) == 0 && (pae >= pa+4*MB)){
 			*table = pa|PTESIZE|PTEWRITE|PTEUNCACHED|PTEVALID;
 			pgsz = 4*MB;
 		}
 		else{
-			pte = mmuwalk(mach0->pdb, va, 1);
+			pte = mmuwalk(mach0->pdb, va, 2, 1);
 			*pte = pa|PTEWRITE|PTEUNCACHED|PTEVALID;
 			pgsz = BY2PG;
 		}
 		pa += pgsz;
 		va += pgsz;
+		sync++;
 	}
 	unlock(&mmukmaplock);
 
-	mmukmapsync(ova);
+	/*
+	 * If something was added
+	 * then need to sync up.
+	 */
+	if(sync)
+		mmukmapsync(ova);
 
 	return pa;
 }

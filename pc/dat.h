@@ -144,7 +144,7 @@ struct Mach
 	int	machno;			/* physical id of processor */
 	ulong	splpc;			/* pc of last caller to splhi */
 
-	void*	pdb;			/* page directory base for this processor (va) */
+	ulong*	pdb;			/* page directory base for this processor (va) */
 	Tss*	tss;			/* tss for this processor */
 	Segdesc	gdt[6];			/* gdt for this processor */
 

@@ -16,8 +16,7 @@
 #define PGROUND(s)	ROUND(s, BY2PG)
 
 #define	MAXMACH		8			/* max # cpus system can run */
-#define KSTACK		4096-16			/* Size of kernel stack */
-						/* the -16 is room for the 2n allocator header */
+#define KSTACK		4096			/* Size of kernel stack */
 
 /*
  * Time
@@ -35,12 +34,10 @@
 #define APBOOTSTRAP	0x80001000		/* AP bootstrap code */
 #define CONFADDR	0x80001200		/* info passed from boot loader */
 #define CPU0PDB		0x80002000		/* bootstrap processor PDB */
-#define CPU0PTE		0x80003000		/* bootstrap processor PTE's for 0-2MB */
-#define CPU0MACHPTE	0x80004000		/* bootstrap processor PTE for MACHADDR */
+#define CPU0PTE		0x80003000		/* bootstrap processor PTE's for 0-4MB */
+#define MACHADDR	0x80004000		/* as seen by current processor */
 #define CPU0MACH	0x80005000		/* Mach for bootstrap processor */
-
-#define MACHADDR	0xFEF00000		/* as seen by current processor */
-#define	MACHSIZE	4096
+#define	MACHSIZE	BY2PG
 
 /*
  *  Address spaces

@@ -66,13 +66,7 @@ _setpte:
 	ADDL	$4, AX
 	LOOP	_setpte
 
-	MOVL	$CPU0PDB, AX
-	ADDL	$PDO(MACHADDR), AX		/* page directory offset for MACHADDR */
-	MOVL	$PADDR(CPU0MACHPTE), (AX)	/* PTE's for 4MB containing MACHADDR */
-	MOVL	$(PTEWRITE|PTEVALID), BX	/* page permissions */
-	ORL	BX, (AX)
-
-	MOVL	$CPU0MACHPTE, AX
+	MOVL	$CPU0PTE, AX
 	ADDL	$PTO(MACHADDR), AX		/* page table entry offset for MACHADDR */
 	MOVL	$PADDR(CPU0MACH), (AX)		/* PTE for Mach */
 	MOVL	$(PTEWRITE|PTEVALID), BX	/* page permissions */
@@ -436,20 +430,21 @@ TEXT splhi(SB), $0
 	CLI
 	RET
 
+TEXT spllo(SB), $0
+	PUSHFL
+	POPL	AX
+	STI
+	RET
+
 TEXT splx(SB), $0
 	MOVL	$(MACHADDR+0x04), AX 		/* save PC in m->splpc */
 	MOVL	(SP), BX
 	MOVL	BX, (AX)
 
+TEXT _splx(SB), $0				/* for iunlock */
 	MOVL	s+0(FP), AX
 	PUSHL	AX
 	POPFL
-	RET
-
-TEXT spllo(SB), $0
-	PUSHFL
-	POPL	AX
-	STI
 	RET
 
 TEXT spldone(SB), $0
@@ -509,21 +504,21 @@ TEXT setlabel(SB), $0
 
 /*
  * Interrupt/exception handling.
- * Each entry in the vector table calls either strayintr or strayintrx depending
+ * Each entry in the vector table calls either _strayintr or _strayintrx depending
  * on whether an error code has beemn automatically pushed onto the stack
- * (strayintrx) or not, in which case a dummy entry must be pushed before retrieving
+ * (_strayintrx) or not, in which case a dummy entry must be pushed before retrieving
  * the trap type from the vector table entry and placing it on the stack as part
  * of the Ureg structure.
  * The size of each entry in the vector table (6 bytes) is known in trapinit().
  */
-TEXT strayintr(SB), $0
+TEXT _strayintr(SB), $0
 	PUSHL	AX				/* save AX */
 	MOVL	4(SP), AX			/* return PC from vectortable(SB) */
 	MOVBLZX	(AX), AX			/* trap type */
 	XCHGL	AX, (SP)			/* restore AX and put the type on the stack */
 	JMP	intrcommon
 
-TEXT strayintrx(SB), $0
+TEXT _strayintrx(SB), $0
 	XCHGL	AX, (SP)			/* exchange AX with pointer to trap type */
 	MOVBLZX	(AX), AX			/* trap type -> AX */
 	XCHGL	AX, (SP)			/* exchange trap type with AX */
@@ -534,7 +529,7 @@ intrcommon:
 	PUSHL	FS
 	PUSHL	GS
 	PUSHAL
-	MOVL	$(KDSEL),AX
+	MOVL	$(KDSEL), AX
 	MOVW	AX, DS
 	MOVW	AX, ES
 	PUSHL	SP
@@ -551,259 +546,259 @@ TEXT forkret(SB), $0
 	IRETL
 
 TEXT vectortable(SB), $0
-	CALL strayintr(SB); BYTE $0x00		/* divide error */
-	CALL strayintr(SB); BYTE $0x01		/* debug exception */
-	CALL strayintr(SB); BYTE $0x02		/* NMI interrupt */
-	CALL strayintr(SB); BYTE $0x03		/* breakpoint */
-	CALL strayintr(SB); BYTE $0x04		/* overflow */
-	CALL strayintr(SB); BYTE $0x05		/* bound */
-	CALL strayintr(SB); BYTE $0x06		/* invalid opcode */
-	CALL strayintr(SB); BYTE $0x07		/* no coprocessor available */
-	CALL strayintrx(SB); BYTE $0x08		/* double fault */
-	CALL strayintr(SB); BYTE $0x09		/* coprocessor segment overflow */
-	CALL strayintrx(SB); BYTE $0x0A		/* invalid TSS */
-	CALL strayintrx(SB); BYTE $0x0B		/* segment not available */
-	CALL strayintrx(SB); BYTE $0x0C		/* stack exception */
-	CALL strayintrx(SB); BYTE $0x0D		/* general protection error */
-	CALL strayintrx(SB); BYTE $0x0E		/* page fault */
-	CALL strayintr(SB); BYTE $0x0F		/*  */
-	CALL strayintr(SB); BYTE $0x10		/* coprocessor error */
-	CALL strayintrx(SB); BYTE $0x11		/* alignment check */
-	CALL strayintr(SB); BYTE $0x12		/* machine check */
-	CALL strayintr(SB); BYTE $0x13
-	CALL strayintr(SB); BYTE $0x14
-	CALL strayintr(SB); BYTE $0x15
-	CALL strayintr(SB); BYTE $0x16
-	CALL strayintr(SB); BYTE $0x17
-	CALL strayintr(SB); BYTE $0x18
-	CALL strayintr(SB); BYTE $0x19
-	CALL strayintr(SB); BYTE $0x1A
-	CALL strayintr(SB); BYTE $0x1B
-	CALL strayintr(SB); BYTE $0x1C
-	CALL strayintr(SB); BYTE $0x1D
-	CALL strayintr(SB); BYTE $0x1E
-	CALL strayintr(SB); BYTE $0x1F
-	CALL strayintr(SB); BYTE $0x20		/* VectorLAPIC */
-	CALL strayintr(SB); BYTE $0x21
-	CALL strayintr(SB); BYTE $0x22
-	CALL strayintr(SB); BYTE $0x23
-	CALL strayintr(SB); BYTE $0x24
-	CALL strayintr(SB); BYTE $0x25
-	CALL strayintr(SB); BYTE $0x26
-	CALL strayintr(SB); BYTE $0x27
-	CALL strayintr(SB); BYTE $0x28
-	CALL strayintr(SB); BYTE $0x29
-	CALL strayintr(SB); BYTE $0x2A
-	CALL strayintr(SB); BYTE $0x2B
-	CALL strayintr(SB); BYTE $0x2C
-	CALL strayintr(SB); BYTE $0x2D
-	CALL strayintr(SB); BYTE $0x2E
-	CALL strayintr(SB); BYTE $0x2F
-	CALL strayintr(SB); BYTE $0x30
-	CALL strayintr(SB); BYTE $0x31
-	CALL strayintr(SB); BYTE $0x32
-	CALL strayintr(SB); BYTE $0x33
-	CALL strayintr(SB); BYTE $0x34
-	CALL strayintr(SB); BYTE $0x35
-	CALL strayintr(SB); BYTE $0x36
-	CALL strayintr(SB); BYTE $0x37
-	CALL strayintr(SB); BYTE $0x38
-	CALL strayintr(SB); BYTE $0x39
-	CALL strayintr(SB); BYTE $0x3A
-	CALL strayintr(SB); BYTE $0x3B
-	CALL strayintr(SB); BYTE $0x3C
-	CALL strayintr(SB); BYTE $0x3D
-	CALL strayintr(SB); BYTE $0x3E
-	CALL strayintr(SB); BYTE $0x3F
-	CALL strayintr(SB); BYTE $0x40		/* VectorSYSCALL */
-	CALL strayintr(SB); BYTE $0x41
-	CALL strayintr(SB); BYTE $0x42
-	CALL strayintr(SB); BYTE $0x43
-	CALL strayintr(SB); BYTE $0x44
-	CALL strayintr(SB); BYTE $0x45
-	CALL strayintr(SB); BYTE $0x46
-	CALL strayintr(SB); BYTE $0x47
-	CALL strayintr(SB); BYTE $0x48
-	CALL strayintr(SB); BYTE $0x49
-	CALL strayintr(SB); BYTE $0x4A
-	CALL strayintr(SB); BYTE $0x4B
-	CALL strayintr(SB); BYTE $0x4C
-	CALL strayintr(SB); BYTE $0x4D
-	CALL strayintr(SB); BYTE $0x4E
-	CALL strayintr(SB); BYTE $0x4F
-	CALL strayintr(SB); BYTE $0x50
-	CALL strayintr(SB); BYTE $0x51
-	CALL strayintr(SB); BYTE $0x52
-	CALL strayintr(SB); BYTE $0x53
-	CALL strayintr(SB); BYTE $0x54
-	CALL strayintr(SB); BYTE $0x55
-	CALL strayintr(SB); BYTE $0x56
-	CALL strayintr(SB); BYTE $0x57
-	CALL strayintr(SB); BYTE $0x58
-	CALL strayintr(SB); BYTE $0x59
-	CALL strayintr(SB); BYTE $0x5A
-	CALL strayintr(SB); BYTE $0x5B
-	CALL strayintr(SB); BYTE $0x5C
-	CALL strayintr(SB); BYTE $0x5D
-	CALL strayintr(SB); BYTE $0x5E
-	CALL strayintr(SB); BYTE $0x5F
-	CALL strayintr(SB); BYTE $0x60
-	CALL strayintr(SB); BYTE $0x61
-	CALL strayintr(SB); BYTE $0x62
-	CALL strayintr(SB); BYTE $0x63
-	CALL strayintr(SB); BYTE $0x64
-	CALL strayintr(SB); BYTE $0x65
-	CALL strayintr(SB); BYTE $0x66
-	CALL strayintr(SB); BYTE $0x67
-	CALL strayintr(SB); BYTE $0x68
-	CALL strayintr(SB); BYTE $0x69
-	CALL strayintr(SB); BYTE $0x6A
-	CALL strayintr(SB); BYTE $0x6B
-	CALL strayintr(SB); BYTE $0x6C
-	CALL strayintr(SB); BYTE $0x6D
-	CALL strayintr(SB); BYTE $0x6E
-	CALL strayintr(SB); BYTE $0x6F
-	CALL strayintr(SB); BYTE $0x70
-	CALL strayintr(SB); BYTE $0x71
-	CALL strayintr(SB); BYTE $0x72
-	CALL strayintr(SB); BYTE $0x73
-	CALL strayintr(SB); BYTE $0x74
-	CALL strayintr(SB); BYTE $0x75
-	CALL strayintr(SB); BYTE $0x76
-	CALL strayintr(SB); BYTE $0x77
-	CALL strayintr(SB); BYTE $0x78
-	CALL strayintr(SB); BYTE $0x79
-	CALL strayintr(SB); BYTE $0x7A
-	CALL strayintr(SB); BYTE $0x7B
-	CALL strayintr(SB); BYTE $0x7C
-	CALL strayintr(SB); BYTE $0x7D
-	CALL strayintr(SB); BYTE $0x7E
-	CALL strayintr(SB); BYTE $0x7F
-	CALL strayintr(SB); BYTE $0x80		/* Vector[A]PIC */
-	CALL strayintr(SB); BYTE $0x81
-	CALL strayintr(SB); BYTE $0x82
-	CALL strayintr(SB); BYTE $0x83
-	CALL strayintr(SB); BYTE $0x84
-	CALL strayintr(SB); BYTE $0x85
-	CALL strayintr(SB); BYTE $0x86
-	CALL strayintr(SB); BYTE $0x87
-	CALL strayintr(SB); BYTE $0x88
-	CALL strayintr(SB); BYTE $0x89
-	CALL strayintr(SB); BYTE $0x8A
-	CALL strayintr(SB); BYTE $0x8B
-	CALL strayintr(SB); BYTE $0x8C
-	CALL strayintr(SB); BYTE $0x8D
-	CALL strayintr(SB); BYTE $0x8E
-	CALL strayintr(SB); BYTE $0x8F
-	CALL strayintr(SB); BYTE $0x90
-	CALL strayintr(SB); BYTE $0x91
-	CALL strayintr(SB); BYTE $0x92
-	CALL strayintr(SB); BYTE $0x93
-	CALL strayintr(SB); BYTE $0x94
-	CALL strayintr(SB); BYTE $0x95
-	CALL strayintr(SB); BYTE $0x96
-	CALL strayintr(SB); BYTE $0x97
-	CALL strayintr(SB); BYTE $0x98
-	CALL strayintr(SB); BYTE $0x99
-	CALL strayintr(SB); BYTE $0x9A
-	CALL strayintr(SB); BYTE $0x9B
-	CALL strayintr(SB); BYTE $0x9C
-	CALL strayintr(SB); BYTE $0x9D
-	CALL strayintr(SB); BYTE $0x9E
-	CALL strayintr(SB); BYTE $0x9F
-	CALL strayintr(SB); BYTE $0xA0
-	CALL strayintr(SB); BYTE $0xA1
-	CALL strayintr(SB); BYTE $0xA2
-	CALL strayintr(SB); BYTE $0xA3
-	CALL strayintr(SB); BYTE $0xA4
-	CALL strayintr(SB); BYTE $0xA5
-	CALL strayintr(SB); BYTE $0xA6
-	CALL strayintr(SB); BYTE $0xA7
-	CALL strayintr(SB); BYTE $0xA8
-	CALL strayintr(SB); BYTE $0xA9
-	CALL strayintr(SB); BYTE $0xAA
-	CALL strayintr(SB); BYTE $0xAB
-	CALL strayintr(SB); BYTE $0xAC
-	CALL strayintr(SB); BYTE $0xAD
-	CALL strayintr(SB); BYTE $0xAE
-	CALL strayintr(SB); BYTE $0xAF
-	CALL strayintr(SB); BYTE $0xB0
-	CALL strayintr(SB); BYTE $0xB1
-	CALL strayintr(SB); BYTE $0xB2
-	CALL strayintr(SB); BYTE $0xB3
-	CALL strayintr(SB); BYTE $0xB4
-	CALL strayintr(SB); BYTE $0xB5
-	CALL strayintr(SB); BYTE $0xB6
-	CALL strayintr(SB); BYTE $0xB7
-	CALL strayintr(SB); BYTE $0xB8
-	CALL strayintr(SB); BYTE $0xB9
-	CALL strayintr(SB); BYTE $0xBA
-	CALL strayintr(SB); BYTE $0xBB
-	CALL strayintr(SB); BYTE $0xBC
-	CALL strayintr(SB); BYTE $0xBD
-	CALL strayintr(SB); BYTE $0xBE
-	CALL strayintr(SB); BYTE $0xBF
-	CALL strayintr(SB); BYTE $0xC0
-	CALL strayintr(SB); BYTE $0xC1
-	CALL strayintr(SB); BYTE $0xC2
-	CALL strayintr(SB); BYTE $0xC3
-	CALL strayintr(SB); BYTE $0xC4
-	CALL strayintr(SB); BYTE $0xC5
-	CALL strayintr(SB); BYTE $0xC6
-	CALL strayintr(SB); BYTE $0xC7
-	CALL strayintr(SB); BYTE $0xC8
-	CALL strayintr(SB); BYTE $0xC9
-	CALL strayintr(SB); BYTE $0xCA
-	CALL strayintr(SB); BYTE $0xCB
-	CALL strayintr(SB); BYTE $0xCC
-	CALL strayintr(SB); BYTE $0xCD
-	CALL strayintr(SB); BYTE $0xCE
-	CALL strayintr(SB); BYTE $0xCF
-	CALL strayintr(SB); BYTE $0xD0
-	CALL strayintr(SB); BYTE $0xD1
-	CALL strayintr(SB); BYTE $0xD2
-	CALL strayintr(SB); BYTE $0xD3
-	CALL strayintr(SB); BYTE $0xD4
-	CALL strayintr(SB); BYTE $0xD5
-	CALL strayintr(SB); BYTE $0xD6
-	CALL strayintr(SB); BYTE $0xD7
-	CALL strayintr(SB); BYTE $0xD8
-	CALL strayintr(SB); BYTE $0xD9
-	CALL strayintr(SB); BYTE $0xDA
-	CALL strayintr(SB); BYTE $0xDB
-	CALL strayintr(SB); BYTE $0xDC
-	CALL strayintr(SB); BYTE $0xDD
-	CALL strayintr(SB); BYTE $0xDE
-	CALL strayintr(SB); BYTE $0xDF
-	CALL strayintr(SB); BYTE $0xE0
-	CALL strayintr(SB); BYTE $0xE1
-	CALL strayintr(SB); BYTE $0xE2
-	CALL strayintr(SB); BYTE $0xE3
-	CALL strayintr(SB); BYTE $0xE4
-	CALL strayintr(SB); BYTE $0xE5
-	CALL strayintr(SB); BYTE $0xE6
-	CALL strayintr(SB); BYTE $0xE7
-	CALL strayintr(SB); BYTE $0xE8
-	CALL strayintr(SB); BYTE $0xE9
-	CALL strayintr(SB); BYTE $0xEA
-	CALL strayintr(SB); BYTE $0xEB
-	CALL strayintr(SB); BYTE $0xEC
-	CALL strayintr(SB); BYTE $0xED
-	CALL strayintr(SB); BYTE $0xEE
-	CALL strayintr(SB); BYTE $0xEF
-	CALL strayintr(SB); BYTE $0xF0
-	CALL strayintr(SB); BYTE $0xF1
-	CALL strayintr(SB); BYTE $0xF2
-	CALL strayintr(SB); BYTE $0xF3
-	CALL strayintr(SB); BYTE $0xF4
-	CALL strayintr(SB); BYTE $0xF5
-	CALL strayintr(SB); BYTE $0xF6
-	CALL strayintr(SB); BYTE $0xF7
-	CALL strayintr(SB); BYTE $0xF8
-	CALL strayintr(SB); BYTE $0xF9
-	CALL strayintr(SB); BYTE $0xFA
-	CALL strayintr(SB); BYTE $0xFB
-	CALL strayintr(SB); BYTE $0xFC
-	CALL strayintr(SB); BYTE $0xFD
-	CALL strayintr(SB); BYTE $0xFE
-	CALL strayintr(SB); BYTE $0xFF
+	CALL _strayintr(SB); BYTE $0x00		/* divide error */
+	CALL _strayintr(SB); BYTE $0x01		/* debug exception */
+	CALL _strayintr(SB); BYTE $0x02		/* NMI interrupt */
+	CALL _strayintr(SB); BYTE $0x03		/* breakpoint */
+	CALL _strayintr(SB); BYTE $0x04		/* overflow */
+	CALL _strayintr(SB); BYTE $0x05		/* bound */
+	CALL _strayintr(SB); BYTE $0x06		/* invalid opcode */
+	CALL _strayintr(SB); BYTE $0x07		/* no coprocessor available */
+	CALL _strayintrx(SB); BYTE $0x08	/* double fault */
+	CALL _strayintr(SB); BYTE $0x09		/* coprocessor segment overflow */
+	CALL _strayintrx(SB); BYTE $0x0A	/* invalid TSS */
+	CALL _strayintrx(SB); BYTE $0x0B	/* segment not available */
+	CALL _strayintrx(SB); BYTE $0x0C	/* stack exception */
+	CALL _strayintrx(SB); BYTE $0x0D	/* general protection error */
+	CALL _strayintrx(SB); BYTE $0x0E	/* page fault */
+	CALL _strayintr(SB); BYTE $0x0F		/*  */
+	CALL _strayintr(SB); BYTE $0x10		/* coprocessor error */
+	CALL _strayintrx(SB); BYTE $0x11	/* alignment check */
+	CALL _strayintr(SB); BYTE $0x12		/* machine check */
+	CALL _strayintr(SB); BYTE $0x13
+	CALL _strayintr(SB); BYTE $0x14
+	CALL _strayintr(SB); BYTE $0x15
+	CALL _strayintr(SB); BYTE $0x16
+	CALL _strayintr(SB); BYTE $0x17
+	CALL _strayintr(SB); BYTE $0x18
+	CALL _strayintr(SB); BYTE $0x19
+	CALL _strayintr(SB); BYTE $0x1A
+	CALL _strayintr(SB); BYTE $0x1B
+	CALL _strayintr(SB); BYTE $0x1C
+	CALL _strayintr(SB); BYTE $0x1D
+	CALL _strayintr(SB); BYTE $0x1E
+	CALL _strayintr(SB); BYTE $0x1F
+	CALL _strayintr(SB); BYTE $0x20		/* VectorLAPIC */
+	CALL _strayintr(SB); BYTE $0x21
+	CALL _strayintr(SB); BYTE $0x22
+	CALL _strayintr(SB); BYTE $0x23
+	CALL _strayintr(SB); BYTE $0x24
+	CALL _strayintr(SB); BYTE $0x25
+	CALL _strayintr(SB); BYTE $0x26
+	CALL _strayintr(SB); BYTE $0x27
+	CALL _strayintr(SB); BYTE $0x28
+	CALL _strayintr(SB); BYTE $0x29
+	CALL _strayintr(SB); BYTE $0x2A
+	CALL _strayintr(SB); BYTE $0x2B
+	CALL _strayintr(SB); BYTE $0x2C
+	CALL _strayintr(SB); BYTE $0x2D
+	CALL _strayintr(SB); BYTE $0x2E
+	CALL _strayintr(SB); BYTE $0x2F
+	CALL _strayintr(SB); BYTE $0x30
+	CALL _strayintr(SB); BYTE $0x31
+	CALL _strayintr(SB); BYTE $0x32
+	CALL _strayintr(SB); BYTE $0x33
+	CALL _strayintr(SB); BYTE $0x34
+	CALL _strayintr(SB); BYTE $0x35
+	CALL _strayintr(SB); BYTE $0x36
+	CALL _strayintr(SB); BYTE $0x37
+	CALL _strayintr(SB); BYTE $0x38
+	CALL _strayintr(SB); BYTE $0x39
+	CALL _strayintr(SB); BYTE $0x3A
+	CALL _strayintr(SB); BYTE $0x3B
+	CALL _strayintr(SB); BYTE $0x3C
+	CALL _strayintr(SB); BYTE $0x3D
+	CALL _strayintr(SB); BYTE $0x3E
+	CALL _strayintr(SB); BYTE $0x3F
+	CALL _syscallintr(SB); BYTE $0x40	/* VectorSYSCALL */
+	CALL _strayintr(SB); BYTE $0x41
+	CALL _strayintr(SB); BYTE $0x42
+	CALL _strayintr(SB); BYTE $0x43
+	CALL _strayintr(SB); BYTE $0x44
+	CALL _strayintr(SB); BYTE $0x45
+	CALL _strayintr(SB); BYTE $0x46
+	CALL _strayintr(SB); BYTE $0x47
+	CALL _strayintr(SB); BYTE $0x48
+	CALL _strayintr(SB); BYTE $0x49
+	CALL _strayintr(SB); BYTE $0x4A
+	CALL _strayintr(SB); BYTE $0x4B
+	CALL _strayintr(SB); BYTE $0x4C
+	CALL _strayintr(SB); BYTE $0x4D
+	CALL _strayintr(SB); BYTE $0x4E
+	CALL _strayintr(SB); BYTE $0x4F
+	CALL _strayintr(SB); BYTE $0x50
+	CALL _strayintr(SB); BYTE $0x51
+	CALL _strayintr(SB); BYTE $0x52
+	CALL _strayintr(SB); BYTE $0x53
+	CALL _strayintr(SB); BYTE $0x54
+	CALL _strayintr(SB); BYTE $0x55
+	CALL _strayintr(SB); BYTE $0x56
+	CALL _strayintr(SB); BYTE $0x57
+	CALL _strayintr(SB); BYTE $0x58
+	CALL _strayintr(SB); BYTE $0x59
+	CALL _strayintr(SB); BYTE $0x5A
+	CALL _strayintr(SB); BYTE $0x5B
+	CALL _strayintr(SB); BYTE $0x5C
+	CALL _strayintr(SB); BYTE $0x5D
+	CALL _strayintr(SB); BYTE $0x5E
+	CALL _strayintr(SB); BYTE $0x5F
+	CALL _strayintr(SB); BYTE $0x60
+	CALL _strayintr(SB); BYTE $0x61
+	CALL _strayintr(SB); BYTE $0x62
+	CALL _strayintr(SB); BYTE $0x63
+	CALL _strayintr(SB); BYTE $0x64
+	CALL _strayintr(SB); BYTE $0x65
+	CALL _strayintr(SB); BYTE $0x66
+	CALL _strayintr(SB); BYTE $0x67
+	CALL _strayintr(SB); BYTE $0x68
+	CALL _strayintr(SB); BYTE $0x69
+	CALL _strayintr(SB); BYTE $0x6A
+	CALL _strayintr(SB); BYTE $0x6B
+	CALL _strayintr(SB); BYTE $0x6C
+	CALL _strayintr(SB); BYTE $0x6D
+	CALL _strayintr(SB); BYTE $0x6E
+	CALL _strayintr(SB); BYTE $0x6F
+	CALL _strayintr(SB); BYTE $0x70
+	CALL _strayintr(SB); BYTE $0x71
+	CALL _strayintr(SB); BYTE $0x72
+	CALL _strayintr(SB); BYTE $0x73
+	CALL _strayintr(SB); BYTE $0x74
+	CALL _strayintr(SB); BYTE $0x75
+	CALL _strayintr(SB); BYTE $0x76
+	CALL _strayintr(SB); BYTE $0x77
+	CALL _strayintr(SB); BYTE $0x78
+	CALL _strayintr(SB); BYTE $0x79
+	CALL _strayintr(SB); BYTE $0x7A
+	CALL _strayintr(SB); BYTE $0x7B
+	CALL _strayintr(SB); BYTE $0x7C
+	CALL _strayintr(SB); BYTE $0x7D
+	CALL _strayintr(SB); BYTE $0x7E
+	CALL _strayintr(SB); BYTE $0x7F
+	CALL _strayintr(SB); BYTE $0x80		/* Vector[A]PIC */
+	CALL _strayintr(SB); BYTE $0x81
+	CALL _strayintr(SB); BYTE $0x82
+	CALL _strayintr(SB); BYTE $0x83
+	CALL _strayintr(SB); BYTE $0x84
+	CALL _strayintr(SB); BYTE $0x85
+	CALL _strayintr(SB); BYTE $0x86
+	CALL _strayintr(SB); BYTE $0x87
+	CALL _strayintr(SB); BYTE $0x88
+	CALL _strayintr(SB); BYTE $0x89
+	CALL _strayintr(SB); BYTE $0x8A
+	CALL _strayintr(SB); BYTE $0x8B
+	CALL _strayintr(SB); BYTE $0x8C
+	CALL _strayintr(SB); BYTE $0x8D
+	CALL _strayintr(SB); BYTE $0x8E
+	CALL _strayintr(SB); BYTE $0x8F
+	CALL _strayintr(SB); BYTE $0x90
+	CALL _strayintr(SB); BYTE $0x91
+	CALL _strayintr(SB); BYTE $0x92
+	CALL _strayintr(SB); BYTE $0x93
+	CALL _strayintr(SB); BYTE $0x94
+	CALL _strayintr(SB); BYTE $0x95
+	CALL _strayintr(SB); BYTE $0x96
+	CALL _strayintr(SB); BYTE $0x97
+	CALL _strayintr(SB); BYTE $0x98
+	CALL _strayintr(SB); BYTE $0x99
+	CALL _strayintr(SB); BYTE $0x9A
+	CALL _strayintr(SB); BYTE $0x9B
+	CALL _strayintr(SB); BYTE $0x9C
+	CALL _strayintr(SB); BYTE $0x9D
+	CALL _strayintr(SB); BYTE $0x9E
+	CALL _strayintr(SB); BYTE $0x9F
+	CALL _strayintr(SB); BYTE $0xA0
+	CALL _strayintr(SB); BYTE $0xA1
+	CALL _strayintr(SB); BYTE $0xA2
+	CALL _strayintr(SB); BYTE $0xA3
+	CALL _strayintr(SB); BYTE $0xA4
+	CALL _strayintr(SB); BYTE $0xA5
+	CALL _strayintr(SB); BYTE $0xA6
+	CALL _strayintr(SB); BYTE $0xA7
+	CALL _strayintr(SB); BYTE $0xA8
+	CALL _strayintr(SB); BYTE $0xA9
+	CALL _strayintr(SB); BYTE $0xAA
+	CALL _strayintr(SB); BYTE $0xAB
+	CALL _strayintr(SB); BYTE $0xAC
+	CALL _strayintr(SB); BYTE $0xAD
+	CALL _strayintr(SB); BYTE $0xAE
+	CALL _strayintr(SB); BYTE $0xAF
+	CALL _strayintr(SB); BYTE $0xB0
+	CALL _strayintr(SB); BYTE $0xB1
+	CALL _strayintr(SB); BYTE $0xB2
+	CALL _strayintr(SB); BYTE $0xB3
+	CALL _strayintr(SB); BYTE $0xB4
+	CALL _strayintr(SB); BYTE $0xB5
+	CALL _strayintr(SB); BYTE $0xB6
+	CALL _strayintr(SB); BYTE $0xB7
+	CALL _strayintr(SB); BYTE $0xB8
+	CALL _strayintr(SB); BYTE $0xB9
+	CALL _strayintr(SB); BYTE $0xBA
+	CALL _strayintr(SB); BYTE $0xBB
+	CALL _strayintr(SB); BYTE $0xBC
+	CALL _strayintr(SB); BYTE $0xBD
+	CALL _strayintr(SB); BYTE $0xBE
+	CALL _strayintr(SB); BYTE $0xBF
+	CALL _strayintr(SB); BYTE $0xC0
+	CALL _strayintr(SB); BYTE $0xC1
+	CALL _strayintr(SB); BYTE $0xC2
+	CALL _strayintr(SB); BYTE $0xC3
+	CALL _strayintr(SB); BYTE $0xC4
+	CALL _strayintr(SB); BYTE $0xC5
+	CALL _strayintr(SB); BYTE $0xC6
+	CALL _strayintr(SB); BYTE $0xC7
+	CALL _strayintr(SB); BYTE $0xC8
+	CALL _strayintr(SB); BYTE $0xC9
+	CALL _strayintr(SB); BYTE $0xCA
+	CALL _strayintr(SB); BYTE $0xCB
+	CALL _strayintr(SB); BYTE $0xCC
+	CALL _strayintr(SB); BYTE $0xCD
+	CALL _strayintr(SB); BYTE $0xCE
+	CALL _strayintr(SB); BYTE $0xCF
+	CALL _strayintr(SB); BYTE $0xD0
+	CALL _strayintr(SB); BYTE $0xD1
+	CALL _strayintr(SB); BYTE $0xD2
+	CALL _strayintr(SB); BYTE $0xD3
+	CALL _strayintr(SB); BYTE $0xD4
+	CALL _strayintr(SB); BYTE $0xD5
+	CALL _strayintr(SB); BYTE $0xD6
+	CALL _strayintr(SB); BYTE $0xD7
+	CALL _strayintr(SB); BYTE $0xD8
+	CALL _strayintr(SB); BYTE $0xD9
+	CALL _strayintr(SB); BYTE $0xDA
+	CALL _strayintr(SB); BYTE $0xDB
+	CALL _strayintr(SB); BYTE $0xDC
+	CALL _strayintr(SB); BYTE $0xDD
+	CALL _strayintr(SB); BYTE $0xDE
+	CALL _strayintr(SB); BYTE $0xDF
+	CALL _strayintr(SB); BYTE $0xE0
+	CALL _strayintr(SB); BYTE $0xE1
+	CALL _strayintr(SB); BYTE $0xE2
+	CALL _strayintr(SB); BYTE $0xE3
+	CALL _strayintr(SB); BYTE $0xE4
+	CALL _strayintr(SB); BYTE $0xE5
+	CALL _strayintr(SB); BYTE $0xE6
+	CALL _strayintr(SB); BYTE $0xE7
+	CALL _strayintr(SB); BYTE $0xE8
+	CALL _strayintr(SB); BYTE $0xE9
+	CALL _strayintr(SB); BYTE $0xEA
+	CALL _strayintr(SB); BYTE $0xEB
+	CALL _strayintr(SB); BYTE $0xEC
+	CALL _strayintr(SB); BYTE $0xED
+	CALL _strayintr(SB); BYTE $0xEE
+	CALL _strayintr(SB); BYTE $0xEF
+	CALL _strayintr(SB); BYTE $0xF0
+	CALL _strayintr(SB); BYTE $0xF1
+	CALL _strayintr(SB); BYTE $0xF2
+	CALL _strayintr(SB); BYTE $0xF3
+	CALL _strayintr(SB); BYTE $0xF4
+	CALL _strayintr(SB); BYTE $0xF5
+	CALL _strayintr(SB); BYTE $0xF6
+	CALL _strayintr(SB); BYTE $0xF7
+	CALL _strayintr(SB); BYTE $0xF8
+	CALL _strayintr(SB); BYTE $0xF9
+	CALL _strayintr(SB); BYTE $0xFA
+	CALL _strayintr(SB); BYTE $0xFB
+	CALL _strayintr(SB); BYTE $0xFC
+	CALL _strayintr(SB); BYTE $0xFD
+	CALL _strayintr(SB); BYTE $0xFE
+	CALL _strayintr(SB); BYTE $0xFF

@@ -230,12 +230,14 @@ etherwrite(Chan* chan, void* buf, long n, ulong)
 	Ether *ether;
 	Block *bp;
 
-	if(n > ETHERMAXTU)
-		error(Ebadarg);
-
 	ether = etherxx[chan->dev];
 	if(NETTYPE(chan->qid.path) != Ndataqid)
 		return netifwrite(ether, chan, buf, n);
+
+	if(n > ETHERMAXTU)
+		error(Etoobig);
+	if(n < ETHERMINTU)
+		error(Etoosmall);
 
 	bp = allocb(n);
 	if(waserror()){
@@ -257,16 +259,20 @@ etherbwrite(Chan* chan, Block* bp, ulong)
 	long n;
 
 	n = BLEN(bp);
-	if(n > ETHERMAXTU){
-		freeb(bp);
-		error(Ebadarg);
-	}
-
 	ether = etherxx[chan->dev];
 	if(NETTYPE(chan->qid.path) != Ndataqid){
 		n = netifwrite(ether, chan, bp->rp, n);
 		freeb(bp);
 		return n;
+	}
+
+	if(n > ETHERMAXTU){
+		freeb(bp);
+		error(Ebadarg);
+	}
+	if(n < ETHERMINTU){
+		freeb(bp);
+		error(Etoosmall);
 	}
 
 	return etheroq(ether, bp);
@@ -352,7 +358,7 @@ etherreset(void)
 			i = sprint(buf, "#l%d: %s: %dMbps port 0x%luX irq %d",
 				ctlrno, ether->type, ether->mbps, ether->port, ether->irq);
 			if(ether->mem)
-				i += sprint(buf+i, " addr 0x%luX", ether->mem & ~KZERO);
+				i += sprint(buf+i, " addr 0x%luX", PADDR(ether->mem));
 			if(ether->size)
 				i += sprint(buf+i, " size 0x%luX", ether->size);
 			i += sprint(buf+i, ": %2.2uX%2.2uX%2.2uX%2.2uX%2.2uX%2.2uX",

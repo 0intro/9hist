@@ -3,30 +3,22 @@
 #include "mem.h"
 #include "dat.h"
 #include "fns.h"
+#include "io.h"
 #include "../port/error.h"
 
-#include <libg.h>
+#define	Image	IMAGE
+#include <draw.h>
+#include <memdraw.h>
 #include "screen.h"
-#include "vga.h"
 
-/*
- * Hardware graphics cursor support for
- * generic S3 chipset.
- * Assume we're in enhanced mode.
- */
-static Lock s3lock;
-static ulong storage;
-static Point hotpoint;
-
-extern Bitmap gscreen;
-extern Cursor curcursor;
-
-static void
-sets3page(int page)
+static int
+s3pageset(VGAscr* scr, int page)
 {
-	uchar crt51;
+	uchar crt35, crt51;
+	int opage;
 
-	if(gscreen.ldepth == 3){
+	crt35 = vgaxi(Crtx, 0x35);
+	if(scr->gscreen->ldepth == 3){
 		/*
 		 * The S3 registers need to be unlocked for this.
 		 * Let's hope they are already:
@@ -37,15 +29,60 @@ sets3page(int page)
 		 * the upper 2 in Crt51<3:2>.
 		 */
 		vgaxo(Crtx, 0x35, page & 0x0F);
-		crt51 = vgaxi(Crtx, 0x51) & 0xF3;
-		vgaxo(Crtx, 0x51, crt51|((page & 0x30)>>2));
+		crt51 = vgaxi(Crtx, 0x51);
+		vgaxo(Crtx, 0x51, (crt51 & ~0x0C)|((page & 0x30)>>2));
+		opage = ((crt51 & 0x0C)<<2)|(crt35 & 0x0F);
 	}
-	else
+	else{
 		vgaxo(Crtx, 0x35, (page<<2) & 0x0C);
+		opage = (crt35>>2) & 0x03;
+	}
+
+	return opage;
 }
 
 static void
-vsyncactive(void)
+s3page(VGAscr* scr, int page)
+{
+	lock(&scr->devlock);
+	s3pageset(scr, page);
+	unlock(&scr->devlock);
+}
+
+static ulong
+s3linear(VGAscr* scr, int* size, int* align)
+{
+	ulong aperture, oaperture;
+	int oapsize, wasupamem;
+	Pcidev *p;
+
+	oaperture = scr->aperture;
+	oapsize = scr->apsize;
+	wasupamem = scr->isupamem;
+	if(wasupamem)
+		upafree(oaperture, oapsize);
+	scr->isupamem = 0;
+
+	if(p = pcimatch(nil, 0x5333, 0)){
+		aperture = p->mem[0].bar & ~0x0F;
+		*size = p->mem[0].size;
+	}
+	else
+		aperture = 0;
+
+	aperture = upamalloc(aperture, *size, *align);
+	if(aperture == 0){
+		if(wasupamem && upamalloc(oaperture, oapsize, 0))
+			scr->isupamem = 1;
+	}
+	else
+		scr->isupamem = 1;
+
+	return aperture;
+}
+
+static void
+s3vsyncactive(void)
 {
 	/*
 	 * Hardware cursor information is fetched from display memory
@@ -57,7 +94,7 @@ vsyncactive(void)
 }
 
 static void
-_disable(void)
+s3disable(VGAscr*)
 {
 	uchar crt45;
 
@@ -65,26 +102,17 @@ _disable(void)
 	 * Turn cursor off.
 	 */
 	crt45 = vgaxi(Crtx, 0x45) & 0xFE;
-	vsyncactive();
+	s3vsyncactive();
 	vgaxo(Crtx, 0x45, crt45);
 }
 
 static void
-disable(void)
-{
-	lock(&s3lock);
-	_disable();
-	unlock(&s3lock);
-}
-
-static void
-enable(void)
+s3enable(VGAscr* scr)
 {
 	int i;
+	ulong storage;
 
-	lock(&s3lock);
-
-	_disable();
+	s3disable(scr);
 
 	/*
 	 * Cursor colours. Set both the CR0[EF] and the colour
@@ -104,53 +132,38 @@ enable(void)
 	 * Find a place for the cursor data in display memory.
 	 * Must be on a 1024-byte boundary.
 	 */
-	storage = (gscreen.width*BY2WD*gscreen.r.max.y+1023)/1024;
+	storage = (scr->gscreen->width*BY2WD*scr->gscreen->r.max.y+1023)/1024;
 	vgaxo(Crtx, 0x4C, (storage>>8) & 0x0F);
 	vgaxo(Crtx, 0x4D, storage & 0xFF);
 	storage *= 1024;
+	scr->storage = storage;
 
 	/*
 	 * Enable the cursor in X11 mode.
 	 */
 	vgaxo(Crtx, 0x55, vgaxi(Crtx, 0x55)|0x10);
-	vsyncactive();
+	s3vsyncactive();
 	vgaxo(Crtx, 0x45, 0x01);
-
-	unlock(&s3lock);
 }
 
 static void
-load(Cursor *c)
+s3load(VGAscr* scr, Cursor* curs)
 {
 	uchar *p;
-	int x, y;
+	int opage, x, y;
 
 	/*
-	 * Lock the display memory so we can update the
-	 * cursor bitmap if necessary.
-	 * If it's the same as the last cursor we loaded,
-	 * just make sure it's enabled.
+	 * Disable the cursor and
+	 * set the pointer to the two planes.
+	 * Is linear addressing turned on? This will determine
+	 * how we access the cursor storage.
 	 */
-	lock(&s3lock);
-	if(memcmp(c, &curcursor, sizeof(Cursor)) == 0){
-		vsyncactive();
-		vgaxo(Crtx, 0x45, 0x01);
-		unlock(&s3lock);
-		return;
-	}
-	memmove(&curcursor, c, sizeof(Cursor));
+	s3disable(scr);
 
-	/*
-	 * Disable the cursor.
-	 * Set the display page (do we need to restore
-	 * the current contents when done?) and the
-	 * pointer to the two planes. What if this crosses
-	 * into a new page?
-	 */
-	_disable();
-
-	sets3page(storage>>16);
-	p = ((uchar*)gscreen.base) + (storage & 0xFFFF);
+	p = KADDR(scr->aperture);
+	lock(&scr->devlock);
+	opage = s3pageset(scr, scr->storage>>16);
+	p += (scr->storage & 0xFFFF);
 
 	/*
 	 * The cursor is set in X11 mode which gives the following
@@ -168,10 +181,10 @@ load(Cursor *c)
 	for(y = 0; y < 64; y++){
 		for(x = 0; x < 64/8; x += 2){
 			if(x < 16/8 && y < 16){
-				*p++ = c->clr[2*y + x]|c->set[2*y + x];
-				*p++ = c->clr[2*y + x+1]|c->set[2*y + x+1];
-				*p++ = c->set[2*y + x];
-				*p++ = c->set[2*y + x+1];
+				*p++ = curs->clr[2*y + x]|curs->set[2*y + x];
+				*p++ = curs->clr[2*y + x+1]|curs->set[2*y + x+1];
+				*p++ = curs->set[2*y + x];
+				*p++ = curs->set[2*y + x+1];
 			}
 			else {
 				*p++ = 0x00;
@@ -182,23 +195,21 @@ load(Cursor *c)
 		}
 	}
 
-	/*
-	 * Set the cursor hotpoint and enable the cursor.
-	 */
-	hotpoint = c->offset;
-	vsyncactive();
-	vgaxo(Crtx, 0x45, 0x01);
+	s3pageset(scr, opage);
+	unlock(&scr->devlock);
 
-	unlock(&s3lock);
+	/*
+	 * Save the cursor hotpoint and enable the cursor.
+	 */
+	scr->offset = curs->offset;
+	s3vsyncactive();
+	vgaxo(Crtx, 0x45, 0x01);
 }
 
 static int
-move(Point p)
+s3move(VGAscr* scr, Point p)
 {
 	int x, xo, y, yo;
-
-	if(canlock(&s3lock) == 0)
-		return 1;
 
 	/*
 	 * Mustn't position the cursor offscreen even partially,
@@ -208,14 +219,14 @@ move(Point p)
 	 * cursor doesn't disappear off the left edge properly, so
 	 * round it up to be even.
 	 */
-	if((x = p.x+hotpoint.x) < 0){
+	if((x = p.x+scr->offset.x) < 0){
 		xo = -x;
 		xo = ((xo+1)/2)*2;
 		x = 0;
 	}
 	else
 		xo = 0;
-	if((y = p.y+hotpoint.y) < 0){
+	if((y = p.y+scr->offset.y) < 0){
 		yo = -y;
 		y = 0;
 	}
@@ -229,38 +240,23 @@ move(Point p)
 	vgaxo(Crtx, 0x4F, yo);
 	vgaxo(Crtx, 0x48, (y>>8) & 0x07);
 
-	unlock(&s3lock);
 	return 0;
 }
 
-Hwgc s3hwgc = {
-	"s3hwgc",
-	enable,
-	load,
-	move,
-	disable,
-
-	0,
-};
-
-static void
-s3page(int page)
-{
-	lock(&s3lock);
-	sets3page(page);
-	unlock(&s3lock);
-}
-
-static Vgac s3 = {
+VGAdev vgas3dev = {
 	"s3",
-	s3page,
 
 	0,
+	0,
+	s3page,
+	s3linear,
 };
 
-void
-vgas3link(void)
-{
-	addvgaclink(&s3);
-	addhwgclink(&s3hwgc);
-}
+VGAcur vgas3cur = {
+	"s3hwgc",
+
+	s3enable,
+	s3disable,
+	s3load,
+	s3move,
+};

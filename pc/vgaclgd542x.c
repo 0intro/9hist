@@ -6,58 +6,51 @@
 #include "io.h"
 #include "../port/error.h"
 
-#include <libg.h>
+#define	Image	IMAGE
+#include <draw.h>
+#include <memdraw.h>
 #include "screen.h"
-#include "vga.h"
-
-extern Bitmap gscreen;
-extern Cursor curcursor;
-
-static Lock clgd542xlock;
-static ulong storage;
 
 static int
-setclgd542xpage(int page)
+clgd542xpageset(VGAscr*, int page)
 {
-	uchar gr9;
+	uchar gr09;
 	int opage;
-
+	
 	if(vgaxi(Seqx, 0x07) & 0xF0)
 		page = 0;
-	gr9 = vgaxi(Grx, 0x09);
+	gr09 = vgaxi(Grx, 0x09);
 	if(vgaxi(Grx, 0x0B) & 0x20){
 		vgaxo(Grx, 0x09, page<<2);
-		opage = gr9>>2;
+		opage = gr09>>2;
 	}
 	else{
 		vgaxo(Grx, 0x09, page<<4);
-		opage = gr9>>4;
+		opage = gr09>>4;
 	}
 
 	return opage;
 }
 
 static void
-clgd542xpage(int page)
+clgd542xpage(VGAscr* scr, int page)
 {
-	lock(&clgd542xlock);
-	setclgd542xpage(page);
-	unlock(&clgd542xlock);
+	lock(&scr->devlock);
+	clgd542xpageset(scr, page);
+	unlock(&scr->devlock);
 }
 
 static void
-disable(void)
+clgd542xdisable(VGAscr*)
 {
 	uchar sr12;
 
-	lock(&clgd542xlock);
 	sr12 = vgaxi(Seqx, 0x12);
 	vgaxo(Seqx, 0x12, sr12 & ~0x01);
-	unlock(&clgd542xlock);
 }
 
 static void
-enable(void)
+clgd542xenable(VGAscr* scr)
 {
 	uchar sr12;
 	int mem, x;
@@ -65,16 +58,22 @@ enable(void)
 	/*
 	 * Disable the cursor.
 	 */
-	lock(&clgd542xlock);
 	sr12 = vgaxi(Seqx, 0x12);
 	vgaxo(Seqx, 0x12, sr12 & ~0x01);
 
 	/*
-	 * Cursor colours.  
+	 * Cursor colours.
+	 * Can't call setcolor here as cursor is already locked.
 	 */
 	vgaxo(Seqx, 0x12, sr12|0x02);
-	setcolor(0x00, Pblack<<(32-6), Pblack<<(32-6), Pblack<<(32-6));
-	setcolor(0x0F, Pwhite<<(32-6), Pwhite<<(32-6), Pwhite<<(32-6));
+	vgao(PaddrW, 0x00);
+	vgao(Pdata, Pwhite);
+	vgao(Pdata, Pwhite);
+	vgao(Pdata, Pwhite);
+	vgao(PaddrW, 0x0F);
+	vgao(Pdata, Pblack);
+	vgao(Pdata, Pblack);
+	vgao(Pdata, Pblack);
 	vgaxo(Seqx, 0x12, sr12);
 
 	mem = 0;
@@ -114,7 +113,7 @@ enable(void)
 	default:				/* uh, ah dunno */
 		break;
 	}
-	storage = ((256<<mem)-16)*1024;
+	scr->storage = ((256<<mem)-16)*1024;
 
 	/*
 	 * Set the current cursor to index 0
@@ -122,12 +121,10 @@ enable(void)
 	 */
 	vgaxo(Seqx, 0x13, 0);
 	vgaxo(Seqx, 0x12, sr12|0x05);
-
-	unlock(&clgd542xlock);
 }
 
 static void
-initcursor(Cursor* c, int xo, int yo, int index)
+clgd542xinitcursor(VGAscr* scr, int xo, int yo, int index)
 {
 	uchar *p, seq07;
 	uint p0, p1;
@@ -139,18 +136,19 @@ initcursor(Cursor* c, int xo, int yo, int index)
 	 */
 	seq07 = vgaxi(Seqx, 0x07);
 	opage = 0;
-	p = ((uchar*)gscreen.base);
+	p = KADDR(scr->aperture);
 	if(!(seq07 & 0xF0)){
-		opage = setclgd542xpage(storage>>16);
-		p += (storage & 0xFFFF);
+		lock(&scr->devlock);
+		opage = clgd542xpageset(scr, scr->storage>>16);
+		p += (scr->storage & 0xFFFF);
 	}
 	else
-		p += storage;
+		p += scr->storage;
 	p += index*1024;
 
 	for(y = yo; y < 16; y++){
-		p0 = c->set[2*y];
-		p1 = c->set[2*y+1];
+		p0 = scr->set[2*y];
+		p1 = scr->set[2*y+1];
 		if(xo){
 			p0 = (p0<<xo)|(p1>>(8-xo));
 			p1 <<= xo;
@@ -161,8 +159,8 @@ initcursor(Cursor* c, int xo, int yo, int index)
 		for(x = 16; x < 64; x += 8)
 			*p++ = 0x00;
 
-		p0 = c->clr[2*y]|c->set[2*y];
-		p1 = c->clr[2*y+1]|c->set[2*y+1];
+		p0 = scr->clr[2*y]|scr->set[2*y];
+		p1 = scr->clr[2*y+1]|scr->set[2*y+1];
 		if(xo){
 			p0 = (p0<<xo)|(p1>>(8-xo));
 			p1 <<= xo;
@@ -181,60 +179,46 @@ initcursor(Cursor* c, int xo, int yo, int index)
 		y++;
 	}
 
-	if(!(seq07 & 0xF0))
-		setclgd542xpage(opage);
+	if(!(seq07 & 0xF0)){
+		clgd542xpageset(scr, opage);
+		unlock(&scr->devlock);
+	}
 }
 
 static void
-load(Cursor* c)
+clgd542xload(VGAscr* scr, Cursor* curs)
 {
 	uchar sr12;
 
 	/*
-	 * Lock the display memory so we can update the
-	 * cursor bitmap if necessary.
 	 * Disable the cursor.
-	 * If it's the same as the last cursor loaded,
-	 * just make sure it's enabled and index 0.
 	 */
-	lock(&clgd542xlock);
 	sr12 = vgaxi(Seqx, 0x12);
 	vgaxo(Seqx, 0x12, sr12 & ~0x01);
 
-	if(memcmp(c, &curcursor, sizeof(Cursor)) == 0){
-		vgaxo(Seqx, 0x13, 0);
-		vgaxo(Seqx, 0x12, sr12|0x05);
-		unlock(&clgd542xlock);
-		return;
-	}
-	memmove(&curcursor, c, sizeof(Cursor));
-	initcursor(c, 0, 0, 0);
+	memmove(&scr->Cursor, curs, sizeof(Cursor));
+	clgd542xinitcursor(scr, 0, 0, 0);
 
 	/*
 	 * Enable the cursor.
 	 */
 	vgaxo(Seqx, 0x13, 0);
 	vgaxo(Seqx, 0x12, sr12|0x05);
-
-	unlock(&clgd542xlock);
 }
 
 static int
-move(Point p)
+clgd542xmove(VGAscr* scr, Point p)
 {
 	int index, x, xo, y, yo;
 
-	if(canlock(&clgd542xlock) == 0)
-		return 1;
-
 	index = 0;
-	if((x = p.x+curcursor.offset.x) < 0){
+	if((x = p.x+scr->offset.x) < 0){
 		xo = -x;
 		x = 0;
 	}
 	else
 		xo = 0;
-	if((y = p.y+curcursor.offset.y) < 0){
+	if((y = p.y+scr->offset.y) < 0){
 		yo = -y;
 		y = 0;
 	}
@@ -242,7 +226,7 @@ move(Point p)
 		yo = 0;
 
 	if(xo || yo){
-		initcursor(&curcursor, xo, yo, 1);
+		clgd542xinitcursor(scr, xo, yo, 1);
 		index = 1;
 	}
 	vgaxo(Seqx, 0x13, index<<2);
@@ -250,31 +234,23 @@ move(Point p)
 	vgaxo(Seqx, 0x10|((x & 0x07)<<5), (x>>3) & 0xFF);
 	vgaxo(Seqx, 0x11|((y & 0x07)<<5), (y>>3) & 0xFF);
 
-	unlock(&clgd542xlock);
 	return 0;
 }
 
-static Hwgc clgd542xhwgc = {
-	"clgd542xhwgc",
-	enable,
-	load,
-	move,
-	disable,
+VGAdev vgaclgd542xdev = {
+	"clgd542x",
 
 	0,
-};
-
-static Vgac clgd542x = {
-	"clgd542x",
+	0,
 	clgd542xpage,
 	0,
-
-	0,
 };
 
-void
-vgaclgd542xlink(void)
-{
-	addvgaclink(&clgd542x);
-	addhwgclink(&clgd542xhwgc);
-}
+VGAcur vgaclgd542xcur = {
+	"clgd542xhwgc",
+
+	clgd542xenable,
+	clgd542xdisable,
+	clgd542xload,
+	clgd542xmove,
+};

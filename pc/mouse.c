@@ -6,8 +6,21 @@
 #include "../port/error.h"
 #include "io.h"
 
-#include <libg.h>
+#define	Image	IMAGE
+#include <draw.h>
+#include <memdraw.h>
 #include "screen.h"
+
+/*
+ *  mouse types
+ */
+enum
+{
+	Mouseother=	0,
+	Mouseserial=	1,
+	MousePS2=	2,
+};
+static int mousetype;
 
 /*
  *  setup a serial mouse

@@ -60,7 +60,7 @@ void	mmuinit(void);
 ulong	mmukmap(ulong, ulong, int);
 int	mmukmapsync(ulong);
 #define	mmunewpage(x)
-ulong*	mmuwalk(ulong*, ulong, int);
+ulong*	mmuwalk(ulong*, ulong, int, int);
 void	ns16552install(void);
 void	ns16552special(int, int, Queue**, Queue**, int (*)(Queue*, int));
 uchar	nvramread(int);
@@ -94,7 +94,7 @@ void	putcr4(ulong);
 void	rdmsr(int, ulong*, ulong*);
 void	screeninit(void);
 int	screenprint(char*, ...);			/* debugging */
-void	screenputs(char*, int);
+void	(*screenputs)(char*, int);
 void	touser(void*);
 void	trapinit(void);
 int	tas(void*);

@@ -11,7 +11,6 @@ void	noted(Ureg*, ulong);
 
 static void debugbpt(Ureg*, void*);
 static void fault386(Ureg*, void*);
-static void syscall(Ureg*, void*);
 
 static Lock irqctllock;
 static Irqctl *irqctl[256];
@@ -63,25 +62,39 @@ nmienable(void)
 void
 trapinit(void)
 {
-	int v, pri;
+	int d1, v;
 	ulong vaddr;
 	Segdesc *idt;
 
 	idt = (Segdesc*)IDTADDR;
 	vaddr = (ulong)vectortable;
 	for(v = 0; v < 256; v++){
-		if(v == VectorBPT || v == VectorSYSCALL)
-			pri = 3;
-		else
-			pri = 0;
+		d1 = (vaddr & 0xFFFF0000)|SEGP;
+		switch(v){
+
+		case VectorBPT:
+			d1 |= SEGPL(3)|SEGIG;
+			break;
+
+		case VectorSYSCALL:
+			d1 |= SEGPL(3)|SEGTG;
+			break;
+
+		default:
+			d1 |= SEGPL(0)|SEGIG;
+			break;
+		}
 		idt[v].d0 = (vaddr & 0xFFFF)|(KESEL<<16);
-		idt[v].d1 = (vaddr & 0xFFFF0000)|SEGP|SEGPL(pri)|SEGIG;
+		idt[v].d1 = d1;
 		vaddr += 6;
 	}
 
+	/*
+	 * Special traps.
+	 * Syscall() is called directly without going through trap().
+	 */
 	intrenable(VectorBPT, debugbpt, 0, BUSUNKNOWN);
 	intrenable(VectorPF, fault386, 0, BUSUNKNOWN);
-	intrenable(VectorSYSCALL, syscall, 0, BUSUNKNOWN);
 
 	nmienable();
 }
@@ -113,7 +126,8 @@ static int nspuriousintr;
 /*
  *  All traps come here.  It is slower to have all traps call trap() rather than
  *  directly vectoring the handler.  However, this avoids a lot of code duplication
- *  and possible bugs.  trap is called splhi().
+ *  and possible bugs.  The only exception is VectorSYSCALL.
+ *  Trap is called with interrupts disabled via interrupt-gates.
  */
 void
 trap(Ureg* ureg)
@@ -123,16 +137,19 @@ trap(Ureg* ureg)
 	Irqctl *ctl;
 	Irq *irq;
 
-	user = (ureg->cs & 0xFFFF) == UESEL;
-	if(user)
+	user = 0;
+	if((ureg->cs & 0xFFFF) == UESEL){
+		user = 1;
 		up->dbgreg = ureg;
+	}
 
 	v = ureg->trap;
 	if(ctl = irqctl[v]){
-		if(ctl->isintr)
+		if(ctl->isintr){
 			m->intr++;
-		if(ctl->isr)
-			ctl->isr(v);
+			if(ctl->isr)
+				ctl->isr(v);
+		}
 
 		for(irq = ctl->irq; irq; irq = irq->next)
 			irq->f(ureg, irq->a);
@@ -171,12 +188,10 @@ trap(Ureg* ureg)
 		panic("unknown trap/intr: %d\n", v);
 	}
 
-	/*
-	 *  check user since syscall does its own notifying
-	 */
-	splhi();
-	if(v != VectorSYSCALL && user && (up->procctl || up->nnote))
+	if(user && (up->procctl || up->nnote)){
+		splhi();
 		notify(ureg);
+	}
 }
 
 /*
@@ -185,12 +200,6 @@ trap(Ureg* ureg)
 void
 dumpregs2(Ureg* ureg)
 {
-	ureg->cs &= 0xFFFF;
-	ureg->ds &= 0xFFFF;
-	ureg->es &= 0xFFFF;
-	ureg->fs &= 0xFFFF;
-	ureg->gs &= 0xFFFF;
-
 	if(up)
 		print("cpu%d: registers for %s %d\n", m->machno, up->text, up->pid);
 	else
@@ -203,7 +212,8 @@ dumpregs2(Ureg* ureg)
 	print("  SI %8.8luX  DI %8.8luX  BP %8.8luX\n",
 		ureg->si, ureg->di, ureg->bp);
 	print("  CS %4.4uX  DS %4.4uX  ES %4.4uX  FS %4.4uX  GS %4.4uX\n",
-		ureg->cs, ureg->ds, ureg->es, ureg->fs, ureg->gs);
+		ureg->cs & 0xFFFF, ureg->ds & 0xFFFF, ureg->es & 0xFFFF,
+		ureg->fs & 0xFFFF, ureg->gs & 0xFFFF);
 }
 
 void
@@ -248,8 +258,12 @@ dumpstack(void)
 	for(l=(ulong)&l; l<(ulong)(up->kstack+KSTACK); l+=4){
 		v = *(ulong*)l;
 		if(KTZERO < v && v < (ulong)&etext){
+			/*
+			 * Pick off general CALL (0xE8) and CALL indirect
+			 * through AX (0xFFD0).
+			 */
 			p = (uchar*)v;
-			if(*(p-5) == 0xE8){
+			if(*(p-5) == 0xE8 || (*(p-2) == 0xFF && *(p-1) == 0xD0)){
 				print("%lux ", p-5);
 				i++;
 			}
@@ -309,59 +323,53 @@ fault386(Ureg* ureg, void*)
 #include "../port/systab.h"
 
 /*
- *  syscall is called splhi()
+ *  Syscall is called directly from assembler without going through trap().
  */
-static void
-syscall(Ureg* ureg, void*)
+void
+syscall(Ureg* ureg)
 {
 	ulong	sp;
 	long	ret;
-	int	i;
+	int	i, scallnr;
+
+	if((ureg->cs & 0xFFFF) != UESEL)
+		panic("syscall: cs 0x%4.4uX\n", ureg->cs);
 
 	m->syscall++;
 	up->insyscall = 1;
 	up->pc = ureg->pc;
 	up->dbgreg = ureg;
 
-	if((ureg->cs)&0xffff == KESEL)
-		panic("recursive system call");
-
-	up->scallnr = ureg->ax;
-	if(up->scallnr == RFORK && up->fpstate == FPactive){
-		/*
-		 *  so that the child starts out with the
-		 *  same registers as the parent.
-		 *  this must be atomic relative to this CPU, hence
-		 *  the spl's.
-		 */
-		if(up->fpstate == FPactive){
-			fpsave(&up->fpsave);
-			up->fpstate = FPinactive;
-		}
+	scallnr = ureg->ax;
+	up->scallnr = scallnr;
+	if(scallnr == RFORK && up->fpstate == FPactive){
+		splhi();
+		fpsave(&up->fpsave);
+		up->fpstate = FPinactive;
+		spllo();
 	}
-	spllo();
 
 	sp = ureg->usp;
 	up->nerrlab = 0;
 	ret = -1;
 	if(!waserror()){
-		if(up->scallnr >= nsyscall){
-			pprint("bad sys call number %d pc %lux\n", up->scallnr, ureg->pc);
+		if(scallnr >= nsyscall){
+			pprint("bad sys call number %d pc %lux\n", scallnr, ureg->pc);
 			postnote(up, 1, "sys: bad sys call", NDebug);
 			error(Ebadarg);
 		}
 
-		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-(1+MAXSYSARG)*BY2WD))
-			validaddr(sp, (1+MAXSYSARG)*BY2WD, 0);
+		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-sizeof(Sargs)-BY2WD))
+			validaddr(sp, sizeof(Sargs)+BY2WD, 0);
 
-		up->s = *((Sargs*)(sp+1*BY2WD));
-		up->psstate = sysctab[up->scallnr];
+		up->s = *((Sargs*)(sp+BY2WD));
+		up->psstate = sysctab[scallnr];
 
-		ret = systab[up->scallnr](up->s.args);
+		ret = systab[scallnr](up->s.args);
 		poperror();
 	}
 	if(up->nerrlab){
-		print("bad errstack [%d]: %d extra\n", up->scallnr, up->nerrlab);
+		print("bad errstack [%d]: %d extra\n", scallnr, up->nerrlab);
 		for(i = 0; i < NERR; i++)
 			print("sp=%lux pc=%lux\n", up->errlab[i].sp, up->errlab[i].pc);
 		panic("error stack");
@@ -371,20 +379,20 @@ syscall(Ureg* ureg, void*)
 	up->psstate = 0;
 
 	/*
-	 *  Put return value in frame.  On the safari the syscall is
+	 *  Put return value in frame.  On the x86 the syscall is
 	 *  just another trap and the return value from syscall is
 	 *  ignored.  On other machines the return value is put into
 	 *  the results register by caller of syscall.
 	 */
 	ureg->ax = ret;
 
-	if(up->scallnr == NOTED)
+	if(scallnr == NOTED)
 		noted(ureg, *(ulong*)(sp+BY2WD));
-	splhi();
 
-	if(up->scallnr!=RFORK && (up->procctl || up->nnote))
+	if(scallnr!=RFORK && (up->procctl || up->nnote)){
+		splhi();
 		notify(ureg);
-
+	}
 }
 
 /*

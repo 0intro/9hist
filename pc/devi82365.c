@@ -357,6 +357,7 @@ pcmmap(int slotno, ulong offset, int len, int attr)
 			m->len = 0;
 		}
 		m->isa = umbmalloc(0, len, Mgran)&~KZERO;
+print("m->isa = 0x%uX, %d\n", m->isa, len);
 		if(m->isa == 0){
 			print("pcmmap: out of isa space\n");
 			unlock(&pp->mlock);
