@@ -361,6 +361,7 @@ enum{
 	Qpid,
 	Qppid,
 	Qrandom,
+	Qreboot,
 	Qswap,
 	Qsysname,
 	Qsysstat,
@@ -388,6 +389,7 @@ Dirtab consdir[]={
 	"pid",		{Qpid},		NUMSIZE,	0444,
 	"ppid",		{Qppid},	NUMSIZE,	0444,
 	"random",	{Qrandom},	0,		0664,
+	"reboot",	{Qreboot},	0,		0664,
 	"swap",		{Qswap},	0,		0664,
 	"sysname",	{Qsysname},	0,		0664,
 	"sysstat",	{Qsysstat},	0,		0666,
@@ -826,6 +828,13 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 
 	case Qlights:
 		conslights(a, n);
+		break;
+
+	case Qreboot:
+		if(!iseve())
+			error(Eperm);
+		if(strncmp(a, "reboot", 6) == 0)
+			exit(0);
 		break;
 
 	case Qsysstat:

@@ -822,7 +822,7 @@ audiowrite(Chan *c, char *a, long n, ulong)
 		memmove(buf, a, n);
 		buf[n] = '\0';
 
-		nf = getfields(buf, field, Ncmd, " \t\n");
+		nf = parsefields(buf, field, Ncmd, " \t\n");
 		for(i = 0; i < nf; i++){
 			/*
 			 * a number is volume

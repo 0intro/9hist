@@ -551,7 +551,7 @@ mousectl(char *arg)
 	int n, x;
 	char *field[3];
 
-	n = getfields(arg, field, 3, " ");
+	n = parsefields(arg, field, 3, " ");
 	if(strncmp(field[0], "serial", 6) == 0){
 		switch(n){
 		case 1:

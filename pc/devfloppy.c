@@ -1048,7 +1048,7 @@ floppyformat(Drive *dp, char *params)
 	/*
 	 *  set the type
 	 */
-	if(getfields(params, f, 3, " ") > 1){
+	if(parsefields(params, f, 3, " ") > 1){
 		for(t = floppytype; t < &floppytype[NTYPES]; t++){
 			if(strcmp(f[1], t->name)==0 && t->dt==dp->dt){
 				dp->t = t;

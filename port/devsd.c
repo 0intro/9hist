@@ -328,10 +328,10 @@ sdrdpart(Disk *d)
 	/*
 	 *  parse partition table.
 	 */
-	n = getfields(b, line, Npart+2, "\n");
+	n = parsefields(b, line, Npart+2, "\n");
 	if(n > 0 && strncmp(line[0], MAGIC, sizeof(MAGIC)-1) == 0) {
 		for(i = 1; i < n; i++) {
-			switch(getfields(line[i], field, 3, " ")) {
+			switch(parsefields(line[i], field, 3, " ")) {
 			case 2:
 				if(strcmp(field[0], "unit") == 0)
 					strncpy(d->vol, field[1], NAMELEN);

@@ -242,7 +242,7 @@ vgactl(char *arg)
 	Hwgc *hwgcp;
 	Vgac *vgacp;
 
-	n = getfields(arg, field, 4, " ");
+	n = parsefields(arg, field, 4, " ");
 	if(n < 2)
 		error(Ebadarg);
 

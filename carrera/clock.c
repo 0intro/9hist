@@ -47,9 +47,6 @@ clockinit(void)
 void
 clock(Ureg *ur)
 {
-	int l;
-	Segment *s;
-
 	wrcompare(rdcount()+(m->speed*1000000)/HZ);
 
 	m->ticks++;

@@ -187,23 +187,23 @@ loop:
 	spllo();
 	for(;;){
 		/*
-		 *  Once a second we look for a long waiting process
-		 *  in the lowest priority queue to make sure nothing
-		 *  gets starved out by a malfunctioning high priority
-		 *  process.
+		 *  get lowest priority process that this
+		 *  processor can run given affinity constraints
+		 *  and that hasn't run in a while
 		 */
-		if((m->ticks % HZ) == 0){
+		if((m->ticks & 3) == 0){
 			for(rq = runq; rq < &runq[Nrq]; rq++){
 				p = rq->head;
-				if(p == 0 || p->mp != MACHP(m->machno))
+				if(p == 0)
 					continue;
-
-				i = m->ticks - p->readytime;
-				if(i < HZ)
-					break;
-
-				p->art = 0;
-				goto found;
+				for(; p; p = p->rnext){
+					if(p->mp != MACHP(m->machno))
+					if(p->movetime >= m->ticks)
+						continue;
+					i = m->ticks - p->readytime;
+					if(i >= 2*nrdy*p->art)
+						goto found;
+				}
 			}
 		}
 
@@ -216,12 +216,12 @@ loop:
 			if(p == 0)
 				continue;
 			for(; p; p = p->rnext){
-				if(p->mp == MACHP(m->machno) || p->movetime < m->ticks)
+				if(p->mp == MACHP(m->machno)
+				|| p->movetime < m->ticks)
 					goto found;
 			}
 		}
 	}
-
 
 found:
 	splhi();
