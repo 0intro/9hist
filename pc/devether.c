@@ -214,6 +214,8 @@ etherreset(void)
 		if(ctlr == 0)
 			ctlr = malloc(sizeof(Ether));
 		memset(ctlr, 0, sizeof(Ether));
+		ctlr->ctlrno = ctlrno;
+		ctlr->mbps = 10;
 		if(isaconfig("ether", ctlrno, ctlr) == 0)
 			continue;
 		for(n = 0; cards[n].type; n++){
@@ -231,23 +233,25 @@ etherreset(void)
 				ctlr->irq = 9;
 			setvec(Int0vec+ctlr->irq, ctlr->interrupt, ctlr);
 
-			print("ether%d: %s: port 0x%luX irq %d",
-				ctlrno, ctlr->type, ctlr->port, ctlr->irq);
+			print("ether%d: %s: %dMbps port 0x%luX irq %d",
+				ctlrno, ctlr->type, ctlr->mbps, ctlr->port, ctlr->irq);
 			if(ctlr->mem)
 				print(" addr 0x%luX", ctlr->mem & ~KZERO);
 			if(ctlr->size)
 				print(" size 0x%luX", ctlr->size);
-			print(":");
+			print(": ");
 			for(i = 0; i < sizeof(ctlr->ea); i++)
-				print(" %2.2uX", ctlr->ea[i]);
+				print("%2.2uX", ctlr->ea[i]);
 			print("\n");
 
-			netifinit(ctlr, "ether", Ntypes, 32*1024);
+			if(ctlr->mbps == 100)
+				netifinit(ctlr, "ether", Ntypes, 100*1024);
+			else
+				netifinit(ctlr, "ether", Ntypes, 32*1024);
 			ctlr->alen = Eaddrlen;
 			memmove(ctlr->addr, ctlr->ea, sizeof(ctlr->ea));
 			memmove(ctlr->bcast, etherbcast, sizeof(etherbcast));
 
-			ctlr->ctlrno = ctlrno;
 			ether[ctlrno] = ctlr;
 			ctlr = 0;
 			break;

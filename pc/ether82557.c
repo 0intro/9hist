@@ -214,7 +214,7 @@ static uchar configdata[24] = {
 	0x60,				/* inter-frame spacing */
 	0x00,	
 	0xF2,	
-	0x48,				/* promiscuous mode off */
+	0xC8,				/* promiscuous mode off */
 	0x00,	
 	0x40,	
 	0xF2,				/* transmit padding enable */
@@ -652,7 +652,8 @@ reset(Ether* ether)
 		x = dp83840r(ctlr, i, 0x1B);
 		if((x & 0x0200) == 0){
 			ctlr->configdata[8] = 1;
-			ctlr->configdata[15] |= 0x80;
+			ctlr->configdata[15] &= ~0x80;
+			ether->mbps = 100;
 		}
 		break;
 	}

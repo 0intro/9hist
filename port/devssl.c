@@ -184,7 +184,7 @@ sslclose(Chan *c)
 		s = c->aux;
 		dighangup(s);
 		if(s->c)
-			cclose(s->c);
+			close(s->c);
 		if(s->in.secret)
 			free(s->in.secret);
 		if(s->out.secret)

@@ -7,6 +7,7 @@ typedef struct Ether Ether;
 struct Ether {
 	ISAConf;			/* hardware info */
 	int	ctlrno;
+	int	mbps;			/* Mbps */
 
 	void	(*attach)(Ether*);	/* filled in by reset routine */
 	long	(*write)(Ether*, void*, long);
