@@ -20,6 +20,7 @@ extern void	(*pword)(int, Method*);
 extern char	sys[2*NAMELEN];
 extern char	terminal[NAMELEN];
 extern char	username[NAMELEN];
+extern char	bootfile[3*NAMELEN];
 extern char	*sauth;
 
 /* libc equivalent */
@@ -41,6 +42,8 @@ extern void	settime(int);
 extern void	srvcreate(char*, int);
 extern void	userpasswd(int, Method*);
 extern void	warning(char*);
+extern void	boot(int, char **);
+extern void	bboot(int, char **);
 
 /* methods */
 extern void	config9600(Method*);

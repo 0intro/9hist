@@ -13,6 +13,7 @@ char	terminal[NAMELEN];
 char	sys[2*NAMELEN];
 char	username[NAMELEN];
 char	*sauth;
+char	bootfile[3*NAMELEN];
 
 int mflag;
 int fflag;
@@ -25,7 +26,7 @@ void	swapproc(void);
 Method	*rootserver(char*);
 
 void
-main(int argc, char *argv[])
+boot(int argc, char *argv[])
 {
 	int fd;
 	Method *mp;

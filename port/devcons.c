@@ -785,7 +785,7 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 			n = sizeof cbuf - 1;
 		memmove(cbuf, a, n);
 		cbuf[n-1] = 0;
-		boottime = strtoul(a, 0, 0);
+		boottime = strtoul(a, 0, 0)-TK2SEC(MACHP(0)->ticks);
 		break;
 
 	case Qcrypt:

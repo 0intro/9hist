@@ -32,7 +32,7 @@ bootinit(void)
 Chan*
 bootattach(char *spec)
 {
-	return devattach('b', spec);
+	return devattach('B', spec);
 }
 
 Chan*
@@ -81,6 +81,7 @@ bootread(Chan *c, void *buf, long n, ulong offset)
 	}
 
 	error(Egreg);
+	return 0;	/* not reached */
 }
 
 long	 
@@ -108,6 +109,7 @@ bootwrite(Chan *c, void *buf, long n, ulong offset)
 	}
 	print("bootwrite: bad path %d\n", c->qid.path);
 	error(Ebadarg);
+	return 0;	/* not reached */
 }
 
 void	 

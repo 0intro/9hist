@@ -716,6 +716,7 @@ sccread(Chan *c, void *buf, long n, ulong offset)
 		return stringread(buf, n, b, offset);
 	}
 	error(Egreg);
+	return 0;	/* not reached */
 }
 
 long

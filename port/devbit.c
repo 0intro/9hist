@@ -1520,6 +1520,7 @@ mouseputc(IOQ *q, int c)
 		mouseclock();
 		nb = 0;
 	}
+	return 0;
 }
 
 int
