@@ -78,7 +78,9 @@ static void
 sa1100_power_off(void)
 {
 
-	/* enable wakeup by µcontroller, on/off switch or real-time clock alarm */
+	/* enable wakeup by µcontroller, on/off switch
+	 * or real-time clock alarm
+	 */
 	powerregs->pwer =  1 << IRQrtc | 1 << IRQgpio0 | 1 << IRQgpio1;
 
 	/* clear previous reset status */
@@ -88,7 +90,8 @@ sa1100_power_off(void)
 	powerregs->pcfr = PCFR_opde | PCFR_fp | PCFR_fs;
 	powerregs->pgsr = 0;
 	/* set resume address. The loader jumps to it */
-	powerregs->pspr = (ulong)sa1100_power_resume;
+//	powerregs->pspr = (ulong)sa1100_power_resume;
+	powerregs->pspr = 0;
 	/* set lowest clock; delay to avoid resume hangs on fast sa1110 */
 
 	delay(90);

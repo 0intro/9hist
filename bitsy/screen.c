@@ -212,13 +212,7 @@ lcdtweak(Cmdbuf *cmd)
 void
 screenpower(int on)
 {
-	if (on == 0){
-		memmove(savedpalette, framebuf->palette, sizeof framebuf->palette);
-		blankscreen(1);
-	} else {
-		memmove(framebuf->palette, savedpalette, sizeof framebuf->palette);
-		blankscreen(0);
-	}
+	blankscreen(on == 0);
 }
 
 void

@@ -37,6 +37,7 @@ struct Mntalloc
 }mntalloc;
 
 void	mattach(Mnt*, Chan*, char*);
+void	mntauth(Mnt*, Mntrpc*, char*, ushort);
 Mnt*	mntchk(Chan*);
 void	mntdirfix(uchar*, Chan*);
 Mntrpc*	mntflushalloc(Mntrpc*, ulong);
@@ -192,6 +193,8 @@ mattach(Mnt *m, Chan *c, char *spec)
 	r->request.fid = c->fid;
 	r->request.uname = up->user;
 	r->request.aname = spec;
+	r->request.nauth = 0;
+	r->request.auth = (uchar*)"";
 	mountrpc(m, r);
 
 	c->qid = r->reply.qid;
@@ -455,33 +458,6 @@ mntwstat(Chan *c, uchar *dp, int n)
 	r->request.nstat = n;
 	r->request.stat = dp;
 	mountrpc(m, r);
-	poperror();
-	mntfree(r);
-	return n;
-}
-
-int
-mntauth(Chan *c, uchar *auth, int nauth, uchar *rauth, int nrauth)
-{
-	int n;
-	Mnt *m;
-	Mntrpc *r;
-
-	m = mntchk(c);
-	r = mntralloc(c, m->c->iounit);
-	if(waserror()) {
-		mntfree(r);
-		nexterror();
-	}
-	r->request.type = Tauth;
-	r->request.fid = c->fid;
-	r->request.nauth = nauth;
-	r->request.auth = auth;
-	mountrpc(m, r);
-	n = r->reply.nrauth;
-	if(nrauth < n)
-		error(Eshort);
-	memmove(rauth, r->reply.rauth, n);
 	poperror();
 	mntfree(r);
 	return n;

@@ -303,14 +303,13 @@ drawrefreshscreen(DImage *l, Client *client)
 
 static
 void
-drawrefresh(Memimage *l, Rectangle r, void *v)
+drawrefresh(Memimage*, Rectangle r, void *v)
 {
 	Refx *x;
 	DImage *d;
 	Client *c;
 	Refresh *ref;
 
-	USED(l);
 	if(v == 0)
 		return;
 	x = v;
@@ -1014,7 +1013,6 @@ drawread(Chan *c, void *a, long n, vlong off)
 	ulong offset = off;
 	char buf[16];
 
-	USED(offset);
 	if(c->qid.type & QTDIR)
 		return devdirread(c, a, n, 0, 0, drawgen);
 	cl = drawclient(c);
@@ -1121,14 +1119,12 @@ drawwakeall(void)
 }
 
 static long
-drawwrite(Chan *c, void *a, long n, vlong off)
+drawwrite(Chan *c, void *a, long n, vlong)
 {
 	char buf[128], *fields[4], *q;
 	Client *cl;
 	int i, m, red, green, blue, x;
-	ulong offset = off;
 
-	USED(offset);
 	if(c->qid.type & QTDIR)
 		error(Eisdir);
 	cl = drawclient(c);

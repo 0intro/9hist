@@ -73,21 +73,28 @@ void
 doauthenticate(int fd, Method *mp)
 {
 	char *msg;
-	char authlist[1024];
+	char trbuf[TICKREQLEN];
+	char tbuf[2*TICKETLEN];
 
 	print("session...");
-	if(fsession(fd, authlist, sizeof authlist) < 0)
-{print("boot failed in session: %r\n");
+	if(fsession(fd, trbuf, sizeof trbuf) < 0)
 		fatal("session command failed");
-}
-
-print("boot says session done\n");
 
 	/* no authentication required? */
-	if(authlist[0] == 0)
+	memset(tbuf, 0, 2*TICKETLEN);
+	if(trbuf[0] == 0)
 		return;
 
-	print("not authenticated!!!\n");
+	/* try getting to an auth server */
+	print("getting ticket...");
+	msg = fromauth(mp, trbuf, tbuf);
+	print("authenticating...");
+	if(msg == 0)
+		if(fauth(fd, tbuf) >= 0)
+			return;
+
+	/* didn't work, go for the security hole */
+	fprint(2, "no authentication server (%s), using your key as server key\n", msg);
 }
 
 char*
