@@ -6,6 +6,20 @@
 #include "io.h"
 #include "../port/error.h"
 
+/*
+ *  definitions from the old 9P.  we need these because sac files
+ *  are encoded using the old definitions.
+ */
+#define NAMELEN		28
+
+#define CHDIR		0x80000000	/* mode bit for directories */
+#define CHAPPEND	0x40000000	/* mode bit for append only files */
+#define CHEXCL		0x20000000	/* mode bit for exclusive use files */
+#define CHMOUNT		0x10000000	/* mode bit for mounted channel */
+#define CHREAD		0x4		/* mode bit for read permission */
+#define CHWRITE		0x2		/* mode bit for write permission */
+#define CHEXEC		0x1		/* mode bit for execute permission */
+
 enum
 {
 	OPERM	= 0x3,		/* mask of all permission types in open mode */
@@ -26,9 +40,9 @@ enum {
 
 struct SacDir
 {
-	char	name[KNAMELEN];
-	char	uid[KNAMELEN];
-	char	gid[KNAMELEN];
+	char	name[NAMELEN];
+	char	uid[NAMELEN];
+	char	gid[NAMELEN];
 	uchar	qid[4];
 	uchar	mode[4];
 	uchar	atime[4];
@@ -94,6 +108,17 @@ static void loadblock(void *buf, uchar *offset, int blocksize);
 static void sacfree(Sac*);
 
 static void
+pathtoqid(ulong path, Qid *q)
+{
+	if(path & CHDIR)
+		q->type = QTDIR;
+	else
+		q->type = QTFILE;
+	q->path = path & ~(CHDIR|CHAPPEND|CHEXCL|CHMOUNT);
+	q->vers = 0;
+}
+
+static void
 sacinit(void)
 {
 	SacHeader *hdr;
@@ -139,12 +164,7 @@ sacattach(char* spec)
 
 	c = devattach('C', spec);
 	path = getl(root.qid);
-	if(path & CHDIR)
-		c->qid.type = QTDIR;
-	else
-		c->qid.type = QTFILE;
-	c->qid.path = path & ~CHDIR;
-	c->qid.vers = 0;
+	pathtoqid(path, &c->qid;
 	c->dev = dev;
 	c->aux = saccpy(&root);
 	return c;
@@ -158,24 +178,47 @@ sacclone(Chan *c, Chan *nc)
 	return nc;
 }
 
-static int
-sacwalk(Chan *c, char *name)
+static Walkqid*
+sacwalk(Chan *c, Chan *nc, char **name, int nname)
 {
 	Sac *sac;
+	int i, j, alloc;
+	Walkqid *wq;
+	char *n;
+	Dir dir;
 
-//print("walk %s\n", name);
+	if(nname > 0)
+		isdir(c);
 
-	isdir(c);
-	if(name[0]=='.' && name[1]==0)
-		return 1;
-	sac = c->aux;
-	sac = saclookup(sac, name);
-	if(sac == nil) {
-		strncpy(up->error, Enonexist, NAMELEN);
-		return 0;
+	alloc = 0;
+	wq = smalloc(sizeof(Walkqid)+(nname-1)*sizeof(Qid));
+	if(waserror()){
+		if(alloc && wq->clone!=nil)
+			cclose(wq->clone);
+		free(wq);
+		return nil;
 	}
-	c->aux = sac;
-	c->qid = (Qid){getl(sac->qid), 0};
+	if(nc == nil){
+		nc = devclone(c);
+		nc->type = 0;	/* device doesn't know about this channel yet */
+		alloc = 1;
+	}
+	wq->clone = nc;
+
+	for(j=0; j<nname; j++){
+		isdir(nc);
+
+		if(name[0]=='.' && name[1]==0)
+			return 1;
+		sac = nc->aux;
+		sac = saclookup(sac, name);
+		if(sac == nil) {
+			strncpy(up->error, Enonexist, NAMELEN);
+			return 0;
+		}
+		nc->aux = sac;
+		pathtoqid(getl(sac->qid), &nc->qid);
+	}
 	return 1;
 }
 

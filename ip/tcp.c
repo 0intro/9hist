@@ -1102,8 +1102,10 @@ update(Conv *s, Tcp *seg)
 	}
 
 	/* added by Dong for fast retransmission */
-	if( seg->ack == tcb->snd.una &&
-	    seg->len == 0 && seg->wnd == tcb->snd.wnd ) {
+	if(seg->ack == tcb->snd.una
+	&& tcb->snd.una != tcb->snd.nxt
+	&& seg->len == 0
+	&& seg->wnd == tcb->snd.wnd) {
 
 		/* this is a pure ack w/o window update */
 		netlog(s->p->f, Logtcpmsg, "dupack %lud ack %lud sndwnd %d advwin %d\n",
@@ -1766,6 +1768,8 @@ tcpoutput(Conv *s)
 			if(ssize < n)
 				n = ssize;
 			tcb->resent += n;
+			netlog(f, Logtcp, "rexmit: %I.%d -> %I.%d ptr %lux nxt %lux\n",
+				s->raddr, s->rport, s->laddr, s->lport, tcb->snd.ptr, tcb->snd.nxt);
 			tpriv->stats[RetransSegs]++;
 		}
 
