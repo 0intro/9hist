@@ -48,6 +48,11 @@ static Lock garbagelock;
 /*
  *  The block classes.  There are Nclass block sizes, each with its own free list.
  *  All are ialloced at qinit() time.
+ *
+ *  NOTE: to help the mappings on the IO2 and IO3 boards, the data pointed
+ *	  to by a block must not cross a 4k boundary.  Therefore:
+ *	  1) all the following block sizes divide evenly into 4k
+ *	  2) all the blocks are ialloc'd to not cross 4k boundaries
  */
 typedef struct {
 	int	size;
@@ -57,8 +62,8 @@ typedef struct {
 } Bclass;
 Bclass bclass[Nclass]={
 	{ 0 },
-	{ 68 },
-	{ 260 },
+	{ 64 },
+	{ 256 },
 	{ 4096 },
 };
 
@@ -133,8 +138,13 @@ streaminit(void)
 			n = n/2;
 		bcp = &bclass[class];
 		for(i = 0; i < n; i++) {
+			/*
+			 *  The i == 0 means that each allocation range
+			 *  starts on a page boundary.  This makes sure
+			 *  no block crosses a page boundary.
+			 */
 			if(bcp->size)
-				bp->base = (uchar *)ialloc(bcp->size, 0);
+				bp->base = (uchar *)ialloc(bcp->size, i == 0);
 			bp->lim = bp->base + bcp->size;
 			bp->flags = class;
 			freeb(bp);

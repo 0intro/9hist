@@ -583,7 +583,10 @@ consread(Chan *c, void *buf, long n)
 		return i;
 
 	case Qrs232ctl:
-		return 0;
+		if(c->offset)
+			return 0;
+		*(char *)buf = duartinputport();
+		return 1;
 
 	case Qcputime:
 		k = c->offset;
@@ -712,12 +715,21 @@ conswrite(Chan *c, void *va, long n)
 			qunlock(&rs232oq);
 			nexterror();
 		}
-		if(n>2 && n<sizeof buf && *a=='B'){
-			strncpy(buf, a, n);
-			buf[n] = 0;
-			duartbaud(strtoul(buf+1, 0, 0));
-		}else
+		if(n<=2 || n>=sizeof buf)
 			error(0, Ebadarg);
+		strncpy(buf, a, n);
+		buf[n] = 0;
+		l = strtoul(buf+1, 0, 0);
+		switch(buf[0]){
+		case 'B':
+			duartbaud(l); break;
+		case 'D':
+			duartdtr(l); break;
+		case 'K':
+			duartbreak(l); break;
+		default:
+			error(0, Ebadarg);
+		}
 		qunlock(&rs232oq);
 		break;
 

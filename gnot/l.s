@@ -142,17 +142,16 @@ TEXT	rfnote(SB), $0
 
 	MOVL	uregpp+0(FP), A0
 	MOVL	(A0), A7
-	MOVL	A7, -(A7)
-	MOVL	((1+8+8)*BY2WD)(A7), A0
+	MOVL	((8+8)*BY2WD)(A7), A0
 	MOVL	A0, USP
-	MOVL	((1+8+6)*BY2WD)(A7), A6
-	ADDL	$((1+8+8+1)*4), A7
+	MOVEM	(A7), $0x7FFF
+	ADDL	$((8+8+1)*BY2WD), A7
 	RTE
 
 TEXT	illegal(SB), $0
 
 	SUBL	$((8+8+1)*BY2WD), A7
-	MOVEM	$0xFFFF, (A7)
+	MOVEM	$0x7FFF, (A7)
 	MOVL	$a6base(SB), A6
 	MOVL	USP, A0
 	MOVL	A0, ((8+8)*BY2WD)(A7)
@@ -161,8 +160,8 @@ TEXT	illegal(SB), $0
 	ADDL	$4, A7
 	MOVL	((8+8)*BY2WD)(A7), A0
 	MOVL	A0, USP
-	MOVEM	(A7), $0xFFFF
-	ADDL	$((8+8+1)*4), A7
+	MOVEM	(A7), $0x7FFF
+	ADDL	$((8+8+1)*BY2WD), A7
 	RTE
 
 TEXT	systrap(SB), $0
@@ -184,7 +183,7 @@ TEXT	systrap(SB), $0
 TEXT	buserror(SB), $0
 
 	SUBL	$((8+8+1)*BY2WD), A7
-	MOVEM	$0xFFFF, (A7)
+	MOVEM	$0x7FFF, (A7)
 	MOVL	$a6base(SB), A6
 	MOVL	USP, A0
 	MOVL	A0, ((8+8)*BY2WD)(A7)
@@ -194,7 +193,7 @@ TEXT	buserror(SB), $0
 	ADDL	$8, A7
 	MOVL	((8+8)*BY2WD)(A7), A0
 	MOVL	A0, USP
-	MOVEM	(A7), $0xFFFF
+	MOVEM	(A7), $0x7FFF
 	ADDL	$((8+8+1)*4), A7
 	RTE
 
@@ -208,7 +207,7 @@ TEXT	tacintr(SB), $0			/* level 1 */
 TEXT	dkintr(SB), $0			/* level 2 */
 
 	SUBL	$((8+8+1)*BY2WD), A7
-	MOVEM	$0xFFFF, (A7)
+	MOVEM	$0x7FFF, (A7)
 	MOVL	$a6base(SB), A6
 	MOVL	USP, A0
 	MOVL	A0, ((8+8)*BY2WD)(A7)
@@ -217,7 +216,7 @@ TEXT	dkintr(SB), $0			/* level 2 */
 	ADDL	$4, A7
 	MOVL	((8+8)*BY2WD)(A7), A0
 	MOVL	A0, USP
-	MOVEM	(A7), $0xFFFF
+	MOVEM	(A7), $0x77FFF
 	ADDL	$((8+8+1)*4), A7
 	RTE
 
@@ -240,7 +239,7 @@ TEXT	mouseintr(SB), $0		/* level 4 */
 TEXT	uartintr(SB), $0		/* level 5 */
 
 	SUBL	$((8+8+1)*BY2WD), A7
-	MOVEM	$0xFFFF, (A7)
+	MOVEM	$0x7FFF, (A7)
 	MOVL	$a6base(SB), A6
 	MOVL	USP, A0
 	MOVL	A0, ((8+8)*BY2WD)(A7)
@@ -249,14 +248,14 @@ TEXT	uartintr(SB), $0		/* level 5 */
 	ADDL	$4, A7
 	MOVL	((8+8)*BY2WD)(A7), A0
 	MOVL	A0, USP
-	MOVEM	(A7), $0xFFFF
+	MOVEM	(A7), $0x7FFF
 	ADDL	$((8+8+1)*4), A7
 	RTE
 
 TEXT	syncintr(SB), $0		/* level 6 */
 
 	SUBL	$((8+8+1)*BY2WD), A7
-	MOVEM	$0xFFFF, (A7)
+	MOVEM	$0x7FFF, (A7)
 	MOVL	$a6base(SB), A6
 	MOVL	USP, A0
 	MOVL	A0, ((8+8)*BY2WD)(A7)
@@ -265,7 +264,7 @@ TEXT	syncintr(SB), $0		/* level 6 */
 	ADDL	$4, A7
 	MOVL	((8+8)*BY2WD)(A7), A0
 	MOVL	A0, USP
-	MOVEM	(A7), $0xFFFF
+	MOVEM	(A7), $0x7FFF
 	ADDL	$((8+8+1)*4), A7
 	RTE
 

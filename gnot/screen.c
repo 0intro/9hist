@@ -22,6 +22,7 @@ struct{
 
 void	duartinit(void);
 int	duartacr;
+int	duartimr;
 
 Bitmap	screen =
 {
@@ -205,7 +206,7 @@ duartinit(void)
 	duart[1].ip_opcr = 0x00;
 	duart[1].scc_ropbc = 0xFF;	/* make sure the port is reset first */
 	duart[1].scc_sopbc = 0x04;	/* dtr = 1, pp = 01 */
-	duart[0].is_imr = IM_IPC|IM_RRDYB|IM_XRDYB|IM_RRDYA|IM_XRDYA;
+	duart[0].is_imr = duartimr = IM_IPC|IM_RRDYB|IM_XRDYB|IM_RRDYA|IM_XRDYA;
 	duart[0].cmnd = ENB_TX|ENB_RX;	/* enable TX and RX last */
 	duart[1].cmnd = ENB_TX|ENB_RX;
 
@@ -217,13 +218,17 @@ duartinit(void)
 	duart[0].data = 0x02;
 }
 
+int
+duartinputport(void)
+{
+	Duart *duart = DUARTREG;
+	return duart[1].ip_opcr;
+}
 void
 duartbaud(int b)
 {
 	int x;
-	Duart *duart;
-
-	duart = DUARTREG;
+	Duart *duart = DUARTREG;
 
 	switch(b){
 	case 38400:
@@ -257,6 +262,32 @@ duartbaud(int b)
 	duart[1].sr_csr = x;
 }
 
+void
+duartdtr(int val)
+{
+	Duart *duart = DUARTREG;
+	if (val)
+		duart[1].scc_ropbc=0x01;
+	else
+		duart[1].scc_sopbc=0x01;
+}
+
+void
+duartbreak(int ms)
+{
+	static QLock brk;
+	Duart *duart = DUARTREG;
+	if (ms<=0 || ms >20000)
+		error(0, Ebadarg);
+	qlock(&brk);
+	duart[0].is_imr = duartimr &= ~IM_XRDYB;
+	duart[1].cmnd = STRT_BRK|ENB_TX;
+	tsleep(&u->p->sleep, return0, 0, ms);
+	duart[1].cmnd = STOP_BRK|ENB_TX;
+	duart[0].is_imr = duartimr |= IM_XRDYB;
+	qunlock(&brk);
+}
+
 enum{
 	Kptime=200		/* about once per ms */
 };
@@ -269,7 +300,7 @@ duartstarttimer(void)
 	duart = DUARTREG;
 	duart[0].ctur = (Kptime)>>8;
 	duart[0].ctlr = (Kptime)&255;
-	duart[0].is_imr = IM_IPC|IM_RRDYB|IM_XRDYB|IM_RRDYA|IM_CRDY;
+	duart[0].is_imr = duartimr |= IM_CRDY;
 	x = duart[1].scc_sopbc;
 }
 
@@ -281,7 +312,7 @@ duartstoptimer(void)
 
 	duart = DUARTREG;
 	x = duart[1].scc_ropbc;
-	duart[0].is_imr = IM_IPC|IM_RRDYB|IM_XRDYB|IM_RRDYA;
+	duart[0].is_imr = duartimr &= ~IM_CRDY;
 }
 
 void

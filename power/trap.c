@@ -197,7 +197,7 @@ intr(ulong cause, ulong pc)
 	if(cause & INTR5){
 
 		if(!(*MPBERR1 & (1<<8))){
-/*			print("MP bus error %lux\n", *MPBERR0); /**/
+			print("MP bus error %lux %lux\n", *MPBERR0, *MPBERR1); /**/
 			*MPBERR0 = 0;
 			i = *SBEADDR;
 		}
@@ -230,8 +230,11 @@ intr(ulong cause, ulong pc)
 	loop:
 		if(pend & 1) {
 			v = INTVECREG->i[0].vec;
-			if(!(v & (1<<12)))
-				print("io2 mp bus error %d\n", 0);
+			if(!(v & (1<<12))){
+				print("io2 mp bus error %d %lux %lux\n", 0,
+					*MPBERR0, *MPBERR1);
+				*MPBERR0 = 0;
+			}
 			switch(ioid){
 			case IO2R1:
 			case IO2R2:
@@ -260,8 +263,11 @@ intr(ulong cause, ulong pc)
 		for(i=1; pend; i++) {
 			if(pend & 1) {
 				v = INTVECREG->i[i].vec;
-				if(!(v & (1<<12)))
-					print("io2 mp bus error %d\n", i);
+				if(!(v & (1<<12))){
+					print("io2 mp bus error %d %lux %lux\n", i,
+						*MPBERR0, *MPBERR1);
+					*MPBERR0 = 0;
+				}
 				v &= 0xff;
 				(*vmevec[v])(v);
 			}

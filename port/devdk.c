@@ -415,8 +415,12 @@ dkoput(Queue *q, Block *bp)
 
 	if(bp->base && bp->rptr - bp->base >= 2)
 		bp->rptr -= 2;
-	else
-		panic("dkoput");
+	else {
+		print("dkoput l %d b %ux r %ux w %ux\n", line, bp->base, bp->rptr,
+			bp->wptr);
+		freeb(bp);
+		return;
+	}
 	bp->rptr[0] = line;
 	bp->rptr[1] = line>>8;
 

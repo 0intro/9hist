@@ -986,6 +986,10 @@ streamread(Chan *c, void *vbuf, long n)
 
 	qunlock(&s->rdlock);
 	poperror();
+	if(left<0 || left>n){
+		print("streamread returns %d for a %d read\n", n-left, n);
+		panic("streamread");
+	}
 	return n - left;	
 }
 

@@ -87,3 +87,17 @@ struct INTVEC {
  *  IO board type
  */
 extern int ioid;
+
+/*
+ *  The IO2/IO3 slave maps.  These maps are used to map
+ *  external addresses to MP bus addresses.
+ */
+enum {
+	a24map,		/* VME A24 non-priv address space */
+	a32map,		/* VME A32 non-priv address space */
+	lancemap,	/* Lance chip address space */
+	scsi1map,	/* SCSI bus 1 address space */
+	scsi0map,	/* SCSI bus 0 address space */
+	nomap,
+};
+#define	WRITEMAP	IO2(ulong, 0xFA0000);
