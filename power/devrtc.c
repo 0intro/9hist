@@ -9,9 +9,25 @@
 #include	"io.h"
 
 typedef struct Rtc	Rtc;
+typedef struct Nvram	Nvram;
 
-enum {
-	Nbcd = 8	/* number of bcd bytes in the clock */
+/*
+ * length of nvram is 2048
+ * the last addresses are reserved by convention for
+ * a checksum and setting the real time clock
+ */
+enum{
+	NVLEN	= 2046,
+	NVCKSUM = 2046,
+	NVRTC	= 2047,
+	Nbcd = 8,	/* number of bcd bytes in the clock */
+	Qrtc = 1,
+	Qnvram,
+};
+
+struct Nvram{
+	uchar	val;
+	uchar	pad[7];
 };
 
 struct Rtc
@@ -24,52 +40,25 @@ struct Rtc
 	int	year;
 };
 
-QLock rtclock;	/* mutex on clock operations */
+QLock	rtclock;		/* mutex on nvram operations */
 
-#define	NRTC	1
 static Dirtab rtcdir[]={
-	"rtc",		{1, 0},	0,	0600,
+	"rtc",		{Qrtc, 0},	0,	0644,
+/*	"nvram",	{Qnvram, 0},	0,	0644,/**/
 };
+#define	NRTC	(sizeof(rtcdir)/sizeof(rtcdir[0]))
 
 static uchar pattern[] =
 {
 	0xc5, 0x3a, 0xa3, 0x5c, 0xc5, 0x3a, 0xa3, 0x5c
 };
 
-ulong rtc2sec(Rtc*);
-void sec2rtc(ulong, Rtc*);
-int *yrsize(int);
-
-/*
- *  issue pattern recognition bits to nv ram to address the
- *  real time clock
- */
-rtcpattern(void)
-{
-	uchar *nv;
-	uchar ch;
-	int i, j;
-
-	nv = RTC;
-
-	/*
-	 *  read the pattern sequence pointer to reset it
-	 */
-	ch = *nv;
-	USED(ch);
-
-	/*
-	 *  stuff the pattern recognition codes one bit at
-	 *  a time into *nv.
-	 */
-	for(i = 0; i < Nbcd; i++){
-		ch = pattern[i];
-		for (j = 0; j < 8; j++){
-			*nv = ch & 0x1;
-			ch >>= 1;
-		}
-	}
-}
+ulong	rtc2sec(Rtc*);
+void	sec2rtc(ulong, Rtc*);
+int	*yrsize(int);
+void	setrtc(Rtc*);
+long	rtctime(void);
+void	nvcksum(void);
 
 void
 rtcreset(void)
@@ -126,6 +115,159 @@ rtcclose(Chan *c)
 {
 }
 
+long	 
+rtcread(Chan *c, void *buf, long n, ulong offset)
+{
+	Nvram *nv;
+	char *p;
+	ulong t, ot;
+	int i;
+
+	if(c->qid.path & CHDIR)
+		return devdirread(c, buf, n, rtcdir, NRTC, devgen);
+
+	switch(c->qid.path){
+	case Qrtc:
+		qlock(&rtclock);
+		t = rtctime();
+		do{
+			ot = t;
+			t = rtctime();	/* make sure there's no skew */
+		}while(t != ot);
+		qunlock(&rtclock);
+		n = readnum(offset, buf, n, t, 12);
+		return n;
+	case Qnvram:
+		if(offset > NVLEN)
+			return 0;
+		if(n > NVLEN - offset)
+			n = NVLEN - offset;
+		nv = (Nvram *)NVRAM;
+		p = buf;
+		qlock(&rtclock);
+		for(i = 0; i < n; i++)
+			p[i] = nv[i+offset].val;
+		qunlock(&rtclock);
+		return n;
+	}
+	error(Egreg);
+}
+
+long	 
+rtcwrite(Chan *c, void *buf, long n, ulong offset)
+{
+	Nvram *nv;
+	Rtc rtc;
+	ulong secs;
+	char *cp, *ep;
+	int i;
+
+	switch(c->qid.path){
+	case Qrtc:
+		if(offset!=0)
+			error(Ebadarg);
+		/*
+		 *  read the time
+		 */
+		cp = ep = buf;
+		ep += n;
+		while(cp < ep){
+			if(*cp>='0' && *cp<='9')
+				break;
+			cp++;
+		}
+		secs = strtoul(cp, 0, 0);
+		/*
+		 *  convert to bcd
+		 */
+		sec2rtc(secs, &rtc);
+		/*
+		 * write it
+		 */
+		qlock(&rtclock);
+		setrtc(&rtc);
+		qunlock(&rtclock);
+		return n;
+	case Qnvram:
+		if(offset > NVLEN)
+			return 0;
+		if(n > NVLEN - offset)
+			n = NVLEN - offset;
+		nv = (Nvram *)NVRAM;
+		qlock(&rtclock);
+		for(i = 0; i < n; i++)
+			nv[i+offset].val = ((char*)buf)[i];
+		nvcksum();
+		qunlock(&rtclock);
+		return n;
+	}
+	error(Egreg);
+}
+
+void	 
+rtcremove(Chan *c)
+{
+	error(Eperm);
+}
+
+void	 
+rtcwstat(Chan *c, char *dp)
+{
+	error(Eperm);
+}
+
+void
+nvcksum(void)
+{
+	Nvram *nv;
+	uchar cksum;
+	int i;
+
+	/*
+	 * Seed the checksum so all-zeroes (all-ones) nvram doesn't have a zero
+	 * (all-ones) checksum.
+	 */
+	cksum = 0xa5;
+	nv = (Nvram *)NVRAM;
+	for(i = 0; i < NVLEN; i++){
+		cksum ^= nv[i].val;
+		cksum = (cksum << 1) | ((cksum >> 7) & 1);
+	}
+	nv[NVCKSUM].val = cksum;
+}
+
+/*
+ *  issue pattern recognition bits to nv ram to address the
+ *  real time clock
+ */
+void
+rtcpattern(void)
+{
+	uchar *nv;
+	uchar ch;
+	int i, j;
+
+	nv = &((Nvram*)NVRAM)[NVRTC].val;
+
+	/*
+	 *  read the pattern sequence pointer to reset it
+	 */
+	ch = *nv;
+	USED(ch);
+
+	/*
+	 *  stuff the pattern recognition codes one bit at
+	 *  a time into *nv.
+	 */
+	for(i = 0; i < Nbcd; i++){
+		ch = pattern[i];
+		for (j = 0; j < 8; j++){
+			*nv = ch & 0x1;
+			ch >>= 1;
+		}
+	}
+}
+
 #define GETBCD(o) ((bcdclock[o]&0xf) + 10*(bcdclock[o]>>4))
 
 long	 
@@ -138,7 +280,7 @@ rtctime(void)
 	char atime[64];
 	Rtc rtc;
 
-	nv = RTC;
+	nv = &((Nvram*)NVRAM)[NVRTC].val;
 
 	/*
 	 *  set up the pattern for the clock
@@ -154,7 +296,6 @@ rtctime(void)
 			ch |= ((*nv & 0x1) << j);
 		bcdclock[i] = ch;
 	}
-	qunlock(&rtclock);
 
 	/*
 	 *  see if the clock oscillator is on
@@ -182,76 +323,33 @@ rtctime(void)
 	return rtc2sec(&rtc);
 }
 
-long	 
-rtcread(Chan *c, void *buf, long n, ulong offset)
-{
-	ulong t, ot;
-
-	if(c->qid.path & CHDIR)
-		return devdirread(c, buf, n, rtcdir, NRTC, devgen);
-
-	qlock(&rtclock);
-	t = rtctime();
-	do{
-		ot = t;
-		t = rtctime();	/* make sure there's no skew */
-	}while(t != ot);
-	qunlock(&rtclock);
-	n = readnum(offset, buf, n, t, 12);
-	return n;
-
-}
-
 #define PUTBCD(n,o) bcdclock[o] = (n % 10) | (((n / 10) % 10)<<4)
 
-long	 
-rtcwrite(Chan *c, void *buf, long n, ulong offset)
+void
+setrtc(Rtc *rtc)
 {
-	Rtc rtc;
-	ulong secs;
-	int i,j;
+	int i, j;
 	uchar ch;
 	uchar bcdclock[Nbcd];
 	uchar *nv;
-	char *cp, *ep;
 
-	if(offset!=0)
-		error(Ebadarg);
-
-	/*
-	 *  read the time
-	 */
-	cp = ep = buf;
-	ep += n;
-	while(cp < ep){
-		if(*cp>='0' && *cp<='9')
-			break;
-		cp++;
-	}
-	secs = strtoul(cp, 0, 0);
-
-	/*
-	 *  convert to bcd
-	 */
-	sec2rtc(secs, &rtc);
 	bcdclock[0] = bcdclock[4] = 0;
-	PUTBCD(rtc.sec, 1);
-	PUTBCD(rtc.min, 2);
-	PUTBCD(rtc.hour, 3);
-	PUTBCD(rtc.mday, 5);
-	PUTBCD(rtc.mon, 6);
-	PUTBCD(rtc.year, 7);
+	PUTBCD(rtc->sec, 1);
+	PUTBCD(rtc->min, 2);
+	PUTBCD(rtc->hour, 3);
+	PUTBCD(rtc->mday, 5);
+	PUTBCD(rtc->mon, 6);
+	PUTBCD(rtc->year, 7);
 
 	/*
 	 *  set up the pattern for the clock
 	 */
-	qlock(&rtclock);
 	rtcpattern();
 
 	/*
 	 *  write the clock one bit at a time
 	 */
-	nv = RTC;
+	nv = &((Nvram*)NVRAM)[NVRTC].val;
 	for (i = 0; i < Nbcd; i++){
 		ch = bcdclock[i];
 		for (j = 0; j < 8; j++){
@@ -259,21 +357,6 @@ rtcwrite(Chan *c, void *buf, long n, ulong offset)
 			ch >>= 1;
 		}
 	}
-	qunlock(&rtclock);
-
-	return n;
-}
-
-void	 
-rtcremove(Chan *c)
-{
-	error(Eperm);
-}
-
-void	 
-rtcwstat(Chan *c, char *dp)
-{
-	error(Eperm);
 }
 
 #define SEC2MIN 60L

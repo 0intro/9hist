@@ -351,7 +351,6 @@ mntclunk(Chan *c, int t)
 	m = mntchk(c);
 	r = mntralloc();
 	if(waserror()){
-		mntfree(r);
 		if(decref(m) == 0) {
 			for(q = m->queue; q; q = r) {
 				r = q->list;
@@ -365,6 +364,7 @@ mntclunk(Chan *c, int t)
 			mntalloc.mntfree = m;
 			unlock(&mntalloc);
 		}
+		mntfree(r);
 		return;
 	}
 
