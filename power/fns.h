@@ -9,6 +9,7 @@ void	confprint(void);
 void	confset(char*);
 int	conschar(void);
 void	dcflush(void*, ulong);
+void	debugger(void*);
 int	duartactive(void);
 void	duartenable0(void);
 void	duartinit(void);
@@ -56,7 +57,7 @@ void	puttlb(ulong, ulong);
 void	puttlbx(int, ulong, ulong);
 int	readlog(ulong, char*, ulong);
 void	restfpregs(FPsave*, ulong);
-#define	screenputs
+#define	screenputs syslog
 void	setvmevec(int, void (*)(int));
 void	sinit(void);
 uchar*	smap(int, uchar*);

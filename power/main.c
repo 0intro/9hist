@@ -198,6 +198,7 @@ init0(void)
 		poperror();
 	}
 
+	kproc("kdebug", debugger, 0);
 	kproc("alarm", alarmkproc, 0);
 	touser((uchar*)(USTKTOP - sizeof(argbuf)));
 }
@@ -743,4 +744,3 @@ mouseputc(IOQ *q, int c)
 	USED(c);
 	return 0;
 }
-
