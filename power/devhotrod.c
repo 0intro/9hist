@@ -13,7 +13,6 @@
 /*
  * If defined, ENABMEMTEST causes memory test to be run at device open
  */
-#define	ENABMEMTEST
 #ifdef	ENABMEMTEST
 void	mem(Hot*, ulong*, ulong);
 #define	NTESTBUF	256
@@ -26,7 +25,7 @@ ulong	testbuf[NTESTBUF];
 /*
  * If 1, ENABCKSUM causes data transfers to have checksums
  */
-#define	ENABCKSUM	1
+#define	ENABCKSUM	0
 
 typedef struct Hotrod	Hotrod;
 
