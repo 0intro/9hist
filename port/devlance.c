@@ -93,6 +93,7 @@ typedef struct {
 
 	Lance;			/* host dependent lance params */
 	int	prom;		/* number of promiscuous channels */
+	int	all;		/* number of channels listening to all packets */
 	Network	net;
 	Netprot	prot[Ntypes];
 
@@ -245,6 +246,11 @@ lancestclose(Queue *q)
 			lancestart(0, 1);
 		qunlock(&l);
 	}
+	if(et->type == -1){
+		qlock(&l);
+		l.all--;
+		qunlock(&l);
+	}
 	qlock(et);
 	et->type = 0;
 	et->q = 0;
@@ -277,6 +283,11 @@ lanceoput(Queue *q, Block *bp )
 		e = q->ptr;
 		if(streamparse("connect", bp)){
 			e->type = strtol((char *)bp->rptr, 0, 0);
+			if(e->type == -1){
+				qlock(&l);
+				l.all++;
+				qunlock(&l);
+			}
 		} else if(streamparse("promiscuous", bp)) {
 			e->prom = 1;
 			qlock(&l);
@@ -309,7 +320,7 @@ lanceoput(Queue *q, Block *bp )
 		}
 		return;
 	}
-	if(memcmp(l.bcast, p->d, sizeof(l.bcast)) == 0 || l.prom){
+	if(memcmp(l.bcast, p->d, sizeof(l.bcast)) == 0 || l.prom || l.all){
 		len = blen(bp);
 		nbp = copyb(bp, len);
 		nbp = expandb(nbp, len >= ETHERMINTU ? len : ETHERMINTU);

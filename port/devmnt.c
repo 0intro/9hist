@@ -93,19 +93,15 @@ mntreset(void)
 	mntalloc.rpcarena = mntalloc.rpcfree;
 	re = &mntalloc.rpcfree[conf.nmntbuf];
 
-	/* Align mount buffers to 256 byte boundaries so we can use burst mode vme transfers */
-	p = (ulong)ialloc(0, 0);
-	if(p&(ALIGN-1))
-		ialloc(ALIGN-(p&(ALIGN-1)), 0);
-
-	i = MAXRPC+(ALIGN-1);
-	i &= ~(ALIGN-1);
-
+	/*
+	 *  Align mount buffers to 256 byte boundaries
+	 *  so we can use burst mode vme transfers
+	 */
 	tag = Tagspace;
 	for(rd = mntalloc.rpcfree; rd < re; rd++) {
 		rd->list = rd+1;
 		rd->request.tag = tag++;
-		rd->rpc = ialloc(i, 0);
+		rd->rpc = iallocspan(MAXRPC, ALIGN, 0);
 	}
 	re[-1].list = 0;
 	for(md = mntalloc.mntfree; md < me; md++){

@@ -94,7 +94,7 @@ kmapinit(void)
 	}
 
 	e = (MB4 - 256*1024)/BY2PG;	/* screen lives at top 256K */
-	i = PGROUND(((ulong)ialloc(0, 0))&~KZERO)/BY2PG;
+	i = PGROUND(palloc.addr0)/BY2PG;
 
 	print("%lud free map registers\n", e-i);
 

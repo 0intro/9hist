@@ -17,7 +17,8 @@ struct Ptealloc
 	int	pages;
 }ptealloclk;
 
-extern long end;
+extern	long end;
+ulong	hiaddr;
 static Lock pglock;
 
 /* Multiplex a hardware lock for per page manipulations */
@@ -63,14 +64,6 @@ enum
 Region region[Nregion];
 
 
-/*
- *  Called to allocate permanent data structures, before calling pageinit().
- *  We assume all of text+data+bss is in the first memory bank.
- *
- *  alignment is in number of bytes
- *
- *  WARNING: You can't cross a crevasse!
- */
 void
 addsplit(Region *r, ulong start, ulong end)
 {
@@ -99,6 +92,17 @@ addsplit(Region *r, ulong start, ulong end)
 		}
 	}
 }
+
+/*
+ *  Called to allocate permanent data structures, before calling pageinit().
+ *  We assume all of text+data+bss is in the first memory bank.
+ *
+ *  alignment is in number of bytes.  It pretains both to the start and
+ *  end of the allocated memory.
+ *
+ *  If crevasse is specified, no allocation can span an address that is
+ *  a multiple of crevasse.
+ */
 void*
 iallocspan(ulong n, int align, ulong crevasse)
 {
@@ -131,7 +135,7 @@ iallocspan(ulong n, int align, ulong crevasse)
 
 	p = 0;
 	for(r = region; r < &region[Nregion]; r++){
-		/* allign region */
+		/* align region */
 		p = r->start;
 		if(align){
 			m = p % align;
