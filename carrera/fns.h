@@ -137,4 +137,3 @@ Block*	iallocb(int);
 void*	ifroute(ulong);
 ulong	ifunroute(ulong);
 void	parseip(char*, char*);
-

@@ -435,7 +435,7 @@ checkb(b, "qread 1");
 	q->len -= n;
 
 	/* if writer flow controlled, restart */
-	if((q->state & Qflow) && q->len < q->limit){
+	if((q->state & Qflow) && q->len < q->limit/2){
 		q->state &= ~Qflow;
 		dowakeup = 1;
 	} else
