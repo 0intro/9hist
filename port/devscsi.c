@@ -530,14 +530,14 @@ scsibuf(void)
 
 	for(;;) {
 		lock(&scsibufalloc);
-		if(b = scsibufalloc.free) {
+		b = scsibufalloc.free;
+		if(b != 0) {
 			scsibufalloc.free = b->next;
 			unlock(&scsibufalloc);
 			return b;
 		}
-
 		unlock(&scsibufalloc);
-		resrcwait("no scsi buffers");
+		resrcwait(0);
 	}
 	return 0;		/* not reached */
 }
