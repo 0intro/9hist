@@ -27,6 +27,11 @@ enum
 #define TYPE(c)		(c->qid.path&0xff)
 #define QID(s,t)	(((s)<<8)|(t))
 
+static void increfp(PCMslot*);
+static void decrefp(PCMslot*);
+static void slotmap(int, ulong, ulong, ulong);
+static void slottiming(int, int, int, int, int);
+
 static int
 pcmgen(Chan *c, Dirtab *, int , int i, Dir *dp)
 {
@@ -68,94 +73,19 @@ pcmgen(Chan *c, Dirtab *, int , int i, Dir *dp)
 	return 1;
 }
 
-static void
-slotinfo(void)
-{
-	ulong x = gpioregs->level;
-
-	if(x & GPIO_OPT_IND_i){
-		/* no expansion pack */
-		slot[0].occupied = 0;
-		slot[1].occupied = 0;
-	} else {
-		slot[0].occupied = (x & GPIO_CARD_IND0_i) == 0;
-		slot[1].occupied = (x & GPIO_CARD_IND1_i) == 0;
-	}
-}
-
-static void
-increfp(PCMslot *pp)
-{
-	if(incref(&pcmcia) == 1)
-		exppackpower(1);
-	lock(pp);
-	if(pp->ref++ == 0)
-		;
-	unlock(pp);
-	slotinfo();
-}
-static void
-decrefp(PCMslot *pp)
-{
-	slotinfo();
-	lock(pp);
-	if(pp->ref-- == 1)
-		;
-	unlock(pp);
-	if(decref(&pcmcia) == 0)
-		exppackpower(0);
-}
-
 /*
- *  get a map for pc card region, return corrected len
- */
-PCMmap*
-pcmmap(int slotno, ulong, int, int attr)
-{
-	if(slotno > nslot)
-		panic("pcmmap");
-	if(attr)
-		return &slot[slotno].attrmap;
-	else
-		return &slot[slotno].memmap;
-}
-void
-pcmunmap(int, PCMmap*)
-{
-}
-
-/*
- *  map in the space for the cards
+ *  set up the cards, default timing is 300 ns
  */
 static void
 pcmciareset(void)
 {
-	int j;
-	PCMslot *pp;
+	/* staticly map the whole area */
+	slotmap(0, PHYSPCM0REGS, PYHSPCM0ATTR, PYHSPCM0MEM);
+	slotmap(1, PHYSPCM1REGS, PYHSPCM1ATTR, PYHSPCM1MEM);
 
-	for(j = 0; j < nslot; j++){
-		pp = &slot[j];
-		pp->slotno = j;
-		pp->memlen = 64*OneMeg;
-		pp->msec = ~0;
-		pp->verstr[0] = 0;
-
-		pp->mem = mapmem(j == 0 ? PYHSPCM0MEM : PYHSPCM1MEM, 64*OneMeg);
-		pp->memmap.ca = 0;
-		pp->memmap.cea = 64*MB;
-		pp->memmap.isa = (ulong)pp->mem;
-		pp->memmap.len = 64*OneMeg;
-		pp->memmap.attr = 0;
-
-		pp->attr = mapmem(j == 0 ? PYHSPCM0ATTR : PYHSPCM1ATTR, OneMeg);
-		pp->attrmap.ca = 0;
-		pp->attrmap.cea = 64*MB;
-		pp->attrmap.isa = (ulong)pp->attr;
-		pp->attrmap.len = OneMeg;
-		pp->attrmap.attr = 1;
-
-		pp->regs = mapspecial(j == 0 ? PHYSPCM0REGS : PHYSPCM1REGS, 32*1024);
-	}
+	/* set timing to the default, 300 */
+	slottiming(0, 300, 300, 300, 0);
+	slottiming(1, 300, 300, 300, 0);
 }
 
 static Chan*
@@ -231,7 +161,7 @@ pcmread(void *a, long n, ulong off, uchar *start, ulong len)
 		return 0;
 	if(off + n > len)
 		n = len - off;
-	memmoves(a, start+off, n);
+	memmoveb(a, start+off, n);
 	return n;
 }
 
@@ -353,3 +283,132 @@ Dev pcmciadevtab = {
 	devremove,
 	devwstat,
 };
+
+/* see what's there */
+static void
+slotinfo(void)
+{
+	ulong x = gpioregs->level;
+
+	if(x & GPIO_OPT_IND_i){
+		/* no expansion pack */
+		slot[0].occupied = 0;
+		slot[1].occupied = 0;
+	} else {
+		slot[0].occupied = (x & GPIO_CARD_IND0_i) == 0;
+		slot[1].occupied = (x & GPIO_CARD_IND1_i) == 0;
+	}
+}
+
+/* use reference card to turn cards on and off */
+static void
+increfp(PCMslot *pp)
+{
+	if(incref(&pcmcia) == 1){
+		egpiobits(EGPIO_exp_nvram_power|EGPIO_exp_full_power, 1);
+		egpiobits(EGPIO_pcmcia_reset, 0);
+		delay(100);	/* time to power up */
+	}
+
+	incref(pp);
+
+	slotinfo();
+}
+
+static void
+decrefp(PCMslot *pp)
+{
+	slotinfo();
+	decref(pp);
+	if(decref(&pcmcia) == 0)
+		egpiobits(EGPIO_exp_nvram_power|EGPIO_exp_full_power, 0);
+}
+
+/*
+ *  the regions are staticly mapped
+ */
+static void
+slotmap(int slotno, ulong regs, ulong attr, ulong mem)
+{
+	PCMslot *pp;
+
+	pp = &slot[slotno];
+	pp->slotno = slotno;
+	pp->memlen = 64*OneMeg;
+	pp->msec = ~0;
+	pp->verstr[0] = 0;
+
+	pp->mem = mapmem(mem, 64*OneMeg, 0);
+	pp->memmap.ca = 0;
+	pp->memmap.cea = 64*MB;
+	pp->memmap.isa = (ulong)pp->mem;
+	pp->memmap.len = 64*OneMeg;
+	pp->memmap.attr = 0;
+
+	pp->attr = mapmem(attr, OneMeg, 0);
+	pp->attrmap.ca = 0;
+	pp->attrmap.cea = MB;
+	pp->attrmap.isa = (ulong)pp->attr;
+	pp->attrmap.len = OneMeg;
+	pp->attrmap.attr = 1;
+
+	pp->regs = mapspecial(regs, 32*1024);
+}
+PCMmap*
+pcmmap(int slotno, ulong, int, int attr)
+{
+	if(slotno > nslot)
+		panic("pcmmap");
+	if(attr)
+		return &slot[slotno].attrmap;
+	else
+		return &slot[slotno].memmap;
+}
+void
+pcmunmap(int, PCMmap*)
+{
+}
+
+/*
+ *  setup card timings
+ *    times are in ns
+ *    count = ceiling[access-time/(2*3*T)] - 1, where T is a processor cycle
+ *
+ */
+static int
+ns2count(int ns)
+{
+	ulong y;
+
+	/* get 100 times cycle time */
+	y = 100000000/(conf.hz/1000);
+
+	/* get 10 times ns/(cycle*6) */
+	y = (1000*ns)/(6*y);
+
+	/* round up */
+	y += 9;
+	y /= 10;
+
+	/* subtract 1 */
+	return y-1;
+}
+static void
+slottiming(int slotno, int tio, int tattr, int tmem, int fast)
+{
+	ulong x;
+
+	x = 0;
+	if(fast)
+		x |= 1<<MECR_fast0;
+	x |= ns2count(tio) << MECR_io0;
+	x |= ns2count(tattr) << MECR_attr0;
+	x |= ns2count(tmem) << MECR_mem0;
+	if(slotno == 0){
+		x |= memconfregs->mecr & 0xffff0000;
+	} else {
+		x <<= 16;
+		x |= memconfregs->mecr & 0xffff;
+	}
+	memconfregs->mecr = x;
+}

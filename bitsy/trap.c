@@ -179,7 +179,7 @@ trap(Ureg *ureg)
 	int found;
 	Vctl *v;
 	int user, x, rv;
-	ulong va;
+	ulong va, fsr;
 	char buf[ERRLEN];
 
 	user = (ureg->psr & PsrMask) == PsrMusr;
@@ -217,7 +217,8 @@ trap(Ureg *ureg)
 	case PsrMabt+1:	/* data fault */
 		va = getfar();
 		inst = *(ulong*)(ureg->pc);
-		switch(getfsr() & 0xf){
+		fsr = getfsr() & 0xf;
+		switch(fsr){
 		case 0x0:
 			panic("vector exception at %lux\n", ureg->pc);
 			break;
@@ -239,7 +240,7 @@ trap(Ureg *ureg)
 		case 0xa:
 		case 0xc:
 		case 0xe:
-			panic("external abort at %lux\n", ureg->pc);
+			panic("external abort 0x%ux pc 0x%lux addr 0x%lux\n", fsr, ureg->pc, va);
 			break;
 		case 0x5:
 		case 0x7:

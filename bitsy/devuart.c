@@ -8,6 +8,14 @@
 
 #include	"../port/netif.h"
 
+enum
+{
+	Nuart = 4,
+
+	/* soft flow control chars */
+	CTLS= 023,
+	CTLQ= 021,
+};
 
 static	Uart*	uart[Nuart];
 static	int	nuart;

@@ -24,6 +24,8 @@ static void	clockintr(Ureg*, void*);
 void
 clockinit(void)
 {
+	ulong x;
+
 	/* map the clock registers */
 	timerregs = mapspecial(OSTIMERREGS, 32);
 
@@ -31,6 +33,13 @@ clockinit(void)
 	timerregs->ossr |= 1<<0;
 	intrenable(IRQtimer0, clockintr, nil, "clock");
 	timerregs->oier = 1<<0;
+
+	/* figure out processor frequency */
+	x = powerregs->ppcr & 0x1f;
+	conf.hz = ClockFreq*(x*4+16);
+	conf.mhz = (conf.hz+499999)/1000000;
+
+	print("%lud MHZ WeakARM\n", conf.mhz);
 
 	/* post interrupt 1/HZ secs from now */
 	timerregs->osmr[0] = timerregs->oscr + ClockFreq/HZ;

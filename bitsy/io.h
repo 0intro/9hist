@@ -1,8 +1,12 @@
 /*
  *  Definitions for IO devices.  Used only in C.
  */
-typedef struct Uartregs Uartregs;
-Uartregs *uart3regs;
+
+enum
+{
+	/* hardware counter frequency */
+	ClockFreq=	3686400,
+};
 
 /*
  *  IRQ's defined by SA1100
@@ -105,89 +109,17 @@ enum
 	GPIO_32_768kHz_o=	1<<27,	/* 32.768 kHz clock (O, RTC) */
 };
 
-enum
+/* hardware registers */
+typedef struct Uartregs Uartregs;
+struct Uartregs
 {
-	/* hardware counter frequency */
-	ClockFreq=	3686400,
-	Stagesize=	1024,
-	Nuart = 4,
-
-	/* soft flow control chars */
-	CTLS= 023,
-	CTLQ= 021,
+	ulong	ctl[4];
+	ulong	dummya;
+	ulong	data;
+	ulong	dummyb;
+	ulong	status[2];
 };
-
-typedef struct PhysUart PhysUart;
-typedef struct Uart Uart;
-
-/* link twixt hardware and software */
-struct PhysUart
-{
-	void	(*enable)(Uart*, int);
-	void	(*disable)(Uart*);
-	void	(*kick)(Uart*);
-	void	(*intr)(Ureg*, void*);
-	void	(*dobreak)(Uart*, int);
-	void	(*baud)(Uart*, int);
-	void	(*bits)(Uart*, int);
-	void	(*stop)(Uart*, int);
-	void	(*parity)(Uart*, int);
-	void	(*modemctl)(Uart*, int);
-	void	(*rts)(Uart*, int);
-	void	(*dtr)(Uart*, int);
-	long	(*status)(Uart*, void*, long, long);
-};
-
-/* software representation */
-struct Uart
-{
-	QLock;
-	int	type;
-	int	dev;
-	int	opens;
-	void	*regs;
-	PhysUart	*phys;
-
-	int	enabled;
-	Uart	*elist;			/* next enabled interface */
-	char	name[NAMELEN];
-
-	uchar	sticky[4];		/* sticky write register values */
-	ulong	freq;			/* clock frequency */
-	uchar	mask;			/* bits/char */
-	int	baud;			/* baud rate */
-
-	int	parity;			/* parity errors */
-	int	frame;			/* framing errors */
-	int	overrun;		/* rcvr overruns */
-
-	/* buffers */
-	int	(*putc)(Queue*, int);
-	Queue	*iq;
-	Queue	*oq;
-
-	uchar	istage[Stagesize];
-	uchar	*iw;
-	uchar	*ir;
-	uchar	*ie;
-
-	Lock	tlock;			/* transmit */
-	uchar	ostage[Stagesize];
-	uchar	*op;
-	uchar	*oe;
-
-	int	modem;			/* hardware flow control on */
-	int	xonoff;			/* software flow control on */
-	int	blocked;
-	int	cts, dsr, dcd, dcdts;		/* keep track of modem status */ 
-	int	ctsbackoff;
-	int	hup_dsr, hup_dcd;	/* send hangup upstream? */
-	int	dohup;
-
-	int	kinuse;		/* device in use by kernel */
-
-	Rendez	r;
-};
+Uartregs *uart3regs;
 
 /* general purpose I/O lines control registers */
 typedef struct GPIOregs GPIOregs;
@@ -266,90 +198,53 @@ struct MCPregs {
 extern MCPregs *mcpregs;
 
 /*
- * PCMCIA support code.
+ *  memory configuration
  */
+enum
+{
+	/* bit shifts for pcmcia access time counters */
+	MECR_io0=	0,
+	MECR_attr0=	5,
+	MECR_mem0=	10,
+	MECR_fast0=	11,
+	MECR_io1=	MECR_io0+16,
+	MECR_attr1=	MECR_attr0+16,
+	MECR_mem1=	MECR_mem0+16,
+	MECR_fast1=	MECR_fast0+16,
+};
 
-typedef struct PCMmap		PCMmap;
-typedef struct PCMslot		PCMslot;
-typedef struct PCMconftab	PCMconftab;
-typedef struct Cisdat 		Cisdat;
+typedef struct MemConfRegs MemConfRegs;
+struct MemConfRegs
+{
+	ulong	mdcnfg;		/* dram */
+	ulong	mdcas00;	/* dram banks 0/1 */
+	ulong	mdcas01;
+	ulong	mdcas02;
+	ulong	msc0;		/* static */
+	ulong	msc1;
+	ulong	mecr;		/* pcmcia */
+	ulong	mdrefr;		/* dram refresh */
+	ulong	mdcas20;	/* dram banks 2/3 */
+	ulong	mdcas21;
+	ulong	mdcas22;
+	ulong	msc2;		/* static */
+	ulong	smcnfg;		/* SMROM config */
+};
+extern MemConfRegs *memconfregs;
 
 /*
- * Map between ISA memory space and PCMCIA card memory space.
+ *  power management
  */
-struct PCMmap {
-	ulong	ca;			/* card address */
-	ulong	cea;			/* card end address */
-	ulong	isa;			/* local virtual address */
-	int	len;			/* length of the ISA area */
-	int	attr;			/* attribute memory */
-};
-
-/* configuration table entry */
-struct PCMconftab
+typedef struct PowerRegs PowerRegs;
+struct PowerRegs
 {
-	int	index;
-	ushort	irqs;		/* legal irqs */
-	uchar	irqtype;
-	uchar	bit16;		/* true for 16 bit access */
-	struct {
-		ulong	start;
-		ulong	len;
-	} io[16];
-	int	nio;
-	uchar	vpp1;
-	uchar	vpp2;
-	uchar	memwait;
-	ulong	maxwait;
-	ulong	readywait;
-	ulong	otherwait;
+	ulong	pmcr;
+	ulong	pssr;
+	ulong	pspr;
+	ulong	pwer;
+	ulong	pcfr;
+	ulong	ppcr;
+	ulong	pgsr;
+	ulong	posr;
 };
-
-/* cis memory walking */
-struct Cisdat
-{
-	uchar	*cisbase;
-	int	cispos;
-	int	cisskip;
-	int	cislen;
-};
-
-/* a card slot */
-struct PCMslot
-{
-	Lock;
-	int	ref;
-
-	long	memlen;		/* memory length */
-	uchar	slotno;		/* slot number */
-	void	*regs;		/* i/o registers */
-	void	*mem;		/* memory */
-	void	*attr;		/* attribute memory */
-
-	/* status */
-	uchar	special;	/* in use for a special device */
-	uchar	already;	/* already inited */
-	uchar	occupied;
-	uchar	battery;
-	uchar	wrprot;
-	uchar	powered;
-	uchar	configed;
-	uchar	enabled;
-	uchar	busy;
-
-	/* cis info */
-	ulong	msec;		/* time of last slotinfo call */
-	char	verstr[512];	/* version string */
-	uchar	cpresent;	/* config registers present */
-	ulong	caddr;		/* relative address of config registers */
-	int	nctab;		/* number of config table entries */
-	PCMconftab	ctab[8];
-	PCMconftab	*def;		/* default conftab */
-
-	/* for walking through cis */
-	Cisdat;
-
-	/* maps are fixed */
-	PCMmap memmap;
-	PCMmap attrmap;
-};
+extern PowerRegs *powerregs;

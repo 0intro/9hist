@@ -10,17 +10,6 @@
 
 /* this isn't strictly a sa1100 driver.  The rts/cts stuff is h3650 specific */
 
-/* hardware registers */
-typedef struct Uartregs Uartregs;
-struct Uartregs
-{
-	ulong	ctl[4];
-	ulong	dummya;
-	ulong	data;
-	ulong	dummyb;
-	ulong	status[2];
-};
-
 enum
 {
 	/* ctl[0] bits */

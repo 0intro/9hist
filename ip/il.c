@@ -58,7 +58,7 @@ enum
 	AckDelay	= 2*Iltickms,	/* max time twixt message rcvd & ack sent */
 	MaxTimeout 	= 30*Seconds,	/* max time between rexmit */
 	QueryTime	= 10*Seconds,	/* time between subsequent queries */
-	DeathTime	= 5*QueryTime,
+	DeathTime	= 30*QueryTime,
 
 	MaxRexmit 	= 16,		/* max retransmissions before hangup */
 	Defaultwin	= 20,

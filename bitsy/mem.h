@@ -94,7 +94,6 @@
 /*
  *  peripheral control module physical addresses
  */
-#define LCDREGS		0xB0100000	/* display */
 #define USBREGS		0x80000000	/* serial port 0 - USB */
 #define UART1REGS	0x80010000	/* serial port 1 - UART */
 #define GPCLKREGS	0x80020060	/* serial port 1 - general purpose clock */
@@ -103,10 +102,13 @@
 #define UART3REGS	0x80050000	/* serial port 3 - RS232 UART */
 #define MCPREGS		0x80060000	/* serial port 4 - multimedia comm port */
 #define SSPREGS		0x80070060	/* serial port 4 - synchronous serial port */
-#define PPCREGS		0x90060000	/* peripheral pin controller */
+#define OSTIMERREGS	0x90000000	/* operating system timer registers */
+#define POWERREGS	0x90020000	/* power management */
 #define GPIOREGS	0x90040000	/* 28 general purpose IO pins */
 #define INTRREGS	0x90050000	/* interrupt registers */
-#define OSTIMERREGS	0x90000000	/* operating system timer registers */
+#define PPCREGS		0x90060000	/* peripheral pin controller */
+#define MEMCONFREGS	0xA0000000	/* memory configuration */
+#define LCDREGS		0xB0100000	/* display */
 
 /*
  *  PCMCIA addresses

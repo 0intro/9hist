@@ -33,7 +33,7 @@ void	intrenable(int, void (*)(Ureg*, void*), void*, char*);
 int	iprint(char*, ...);
 void	irpower(int);
 void	lcdpower(int);
-void*	mapmem(ulong, int);
+void*	mapmem(ulong, int, int);
 void	mappedIvecEnable(void);
 void	mappedIvecDisable(void);
 void*	mapspecial(ulong, int);

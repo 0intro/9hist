@@ -211,10 +211,18 @@ mapspecial(ulong pa, int len)
 
 /* map add on memory */
 void*
-mapmem(ulong pa, int len)
+mapmem(ulong pa, int len, int cached)
 {
-	return _map(pa, len, EMEMZERO, EMEMTOP, L1KernelRW|L1Cached|L1Buffered,
-			L2KernelRW|L2Cached|L2Buffered);
+	ulong l1, l2;
+
+	if(cached){
+		l1 = L1KernelRW|L1Cached|L1Buffered;
+		l2 = L2KernelRW|L2Cached|L2Buffered;
+	} else {
+		l1 = L1KernelRW;
+		l2 = L2KernelRW;
+	}
+	return _map(pa, len, EMEMZERO, EMEMTOP, l1, l2);
 }
 
 /* map a virtual address to a physical one */

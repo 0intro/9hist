@@ -13,11 +13,6 @@ Proc	*up;
 Conf	conf;
 int 	noprint;
 
-static void	gpioinit(void);
-static void ppcinit(void);
-static void sspinit(void);
-static void mcpinit(void);
-
 void
 main(void)
 {
@@ -38,10 +33,7 @@ main(void)
 	confinit();
 	xinit();
 	mmuinit();
-	gpioinit();
-	ppcinit();
-	mcpinit();
-	sspinit();
+	machinit();
 	trapinit();
 	sa1100_uartsetup(1);
 	rs232power(1);
@@ -361,10 +353,17 @@ confinit(void)
 
 GPIOregs *gpioregs;
 ulong *egpioreg = (ulong*)EGPIOREGS;
+PPCregs *ppcregs;
+MemConfRegs *memconfregs;
+PowerRegs *powerregs;
 
-static void
-gpioinit(void)
+/*
+ *  configure the machine
+ */
+void
+machinit(void)
 {
+	/* set direction of SA1110 io pins and select alternate functions for some */
 	gpioregs = mapspecial(GPIOREGS, 32);
 	gpioregs->direction = 
 		GPIO_LDD8_o|GPIO_LDD9_o|GPIO_LDD10_o|GPIO_LDD11_o
@@ -379,32 +378,23 @@ gpioinit(void)
 		|GPIO_LDD12_o|GPIO_LDD13_o|GPIO_LDD14_o|GPIO_LDD15_o
 		|GPIO_SSP_CLK_i;
 
+	/* map in special H3650 io pins */
 	egpioreg = mapspecial(EGPIOREGS, 4);
-}
 
-PPCregs *ppcregs;
-
-static void
-ppcinit(void) {
+	/* map in peripheral pin controller (ssp will need it) */
 	ppcregs = mapspecial(PPCREGS, 32);
+
+	/* SA1110 power management */
+	powerregs = mapspecial(POWERREGS, 32);
+
+	/* memory configuraton */
+	memconfregs = mapspecial(MEMCONFREGS, 32);
 }
 
-MCPregs *mcpregs;
 
-static void
-mcpinit(void) {
-	mcpregs = mapspecial(MCPREGS, 0x34);
-	mcpregs->status &= ~(1<<16);
-	/* Turn MCP operations off */
-}
-
-SSPregs *sspregs;
-
-static void
-sspinit(void) {
-	sspregs = mapspecial(SSPREGS, 32);
-}
-
+/*
+ *  manage egpio bits
+ */
 static ulong egpiosticky;
 
 void
@@ -457,12 +447,4 @@ void
 flashprogpower(int on)
 {
 	egpiobits(EGPIO_prog_flash, on);
-}
-
-void
-exppackpower(int on)
-{
-	egpiobits(EGPIO_exp_full_power|EGPIO_exp_nvram_power, on);
-	if(on)
-		delay(100);
 }

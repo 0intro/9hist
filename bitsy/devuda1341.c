@@ -19,7 +19,7 @@
 #include	"io.h"
 #include	"sa1110dma.h"
 
-static int debug = 0;
+static int debug = 2;
 
 /*
  * GPIO based L3 bus support.
@@ -417,7 +417,7 @@ audioqnotempty(void *x)
 {
 	IOstate *s = x;
 
-	return dmaidle(s->dma) || s->emptying != s->next;
+	return dmaidle(s->dma) || s->emptying != s->current;
 }
 
 static int
@@ -428,10 +428,17 @@ audioqnotfull(void *x)
 	return dmaidle(s->dma) || s->filling != s->current;
 }
 
+SSPregs *sspregs;
+MCPregs	*mcpregs;
+
 static void
 audioinit(void)
 {
-	/* do nothing */
+	/* Turn MCP operations off */
+	mcpregs = mapspecial(MCPREGS, 0x34);
+	mcpregs->status &= ~(1<<16);
+
+	sspregs = mapspecial(SSPREGS, 32);
 }
 
 uchar	status0	= 0x22;
@@ -464,8 +471,6 @@ enable(void)
 
 	/* Enable the audio power */
 	audiopower(1);
-	amplifierpower(1);
-	audiomute(0);
 
 	/* external clock configured for 44100 samples/sec */
 	gpioregs->set	= GPIO_CLK_SET0_o;
@@ -577,6 +582,8 @@ mxvolume(void) {
 static void
 outenable(void) {
 	/* turn on DAC, set output gain switch */
+	amplifierpower(1);
+	audiomute(0);
 	status1 |= 0x41;
 	L3_write(UDA1341_L3Addr | UDA1341_STATUS, (uchar*)&status1, 1);
 	/* set volume */
@@ -591,6 +598,8 @@ outenable(void) {
 static void
 outdisable(void) {
 	/* turn off DAC, clear output gain switch */
+	audiomute(1);
+	amplifierpower(0);
 	status1 &= ~0x41;
 	L3_write(UDA1341_L3Addr | UDA1341_STATUS, (uchar*)&status1, 1);
 	if (debug) {
@@ -683,22 +692,15 @@ static void
 audiointr(void *x, ulong ndma) {
 	IOstate *s = x;
 
-	if (s == &audio.o) {
-		/* Only interrupt routine touches s->current */
-		if (debug > 1) iprint("#A: audio interrupt @%p\n", s->current);
-		s->current++;
-		if (s->current == &s->buf[Nbuf])
-			s->current = &s->buf[0];
-		if (ndma > 0)
+	if (debug > 1) iprint("#A: audio interrupt @%p\n", s->current);
+	/* Only interrupt routine touches s->current */
+	s->current++;
+	if (s->current == &s->buf[Nbuf])
+		s->current = &s->buf[0];
+	if (ndma > 0) {
+		if (s == &audio.o)
 			sendaudio(s);
-	} else if (s == &audio.i) {
-		/* Only interrupt routine touches s->current */
-		if (debug > 1) iprint("#A: audio interrupt @%p\n", s->current);
-		s->current->nbytes = Bufsize;
-		s->current++;
-		if (s->current == &s->buf[Nbuf])
-			s->current = &s->buf[0];
-		if (ndma > 0)
+		else if (s == &audio.i)
 			recvaudio(s);
 	}
 	wakeup(&s->vous);
@@ -723,9 +725,10 @@ audiostat(Chan *c, char *db)
 }
 
 static Chan*
-audioopen(Chan *c, int omode)
+audioopen(Chan *c, int mode)
 {
 	IOstate *s;
+	int omode = mode;
 
 	switch(c->qid.path & ~CHDIR) {
 	default:
@@ -741,8 +744,7 @@ audioopen(Chan *c, int omode)
 
 	case Qaudio:
 		omode = (omode & 0x7) + 1;
-//		if (omode & ~(Aread | Awrite))
-		if (omode & ~(Awrite))
+		if (omode & ~(Aread | Awrite))
 			error(Ebadarg);
 		qlock(&audio);
 		if(audio.amode & omode){
@@ -754,20 +756,17 @@ audioopen(Chan *c, int omode)
 		if (omode & Aread) {
 			inenable();
 			s = &audio.i;
-			/* read */
 			audio.amode |= Aread;
-			if(audio.i.bufinit == 0)
+			if(s->bufinit == 0)
 				bufinit(s);
 			setempty(s);
+			s->emptying = &s->buf[Nbuf-1];
 			s->chan = c;
 			s->dma = dmaalloc(0, 0, 4, 2, SSPRecvDMA, Port4SSP, audiointr, (void*)s);
 		}
-		if (omode & 0x2) {
+		if (omode & Awrite) {
 			outenable();
 			s = &audio.o;
-			/* write */
-//			amplifierpower(1);
-//			audiomute(0);
 			audio.amode |= Awrite;
 			if(s->bufinit == 0)
 				bufinit(s);
@@ -781,8 +780,8 @@ audioopen(Chan *c, int omode)
 		if (debug) print("#A: open done\n");
 		break;
 	}
-	c = devopen(c, omode, audiodir, nelem(audiodir), devgen);
-	c->mode = openmode(omode);
+	c = devopen(c, mode, audiodir, nelem(audiodir), devgen);
+	c->mode = openmode(mode);
 	c->flag |= COPEN;
 	c->offset = 0;
 
@@ -892,15 +891,22 @@ audioread(Chan *c, void *v, long n, vlong off)
 		if (debug > 1) print("#A: read %ld\n", n);
 		if((audio.amode & Aread) == 0)
 			error(Emode);
-		s = &audio.o;
+		s = &audio.i;
 		qlock(s);
 		if(waserror()){
 			qunlock(s);
 			nexterror();
 		}
 		while(n > 0) {
+			if(s->emptying->nbytes == 0) {
+				if (debug > 1) print("#A: emptied @%p\n", s->emptying);
+				recvaudio(s);
+				s->emptying++;
+				if (s->emptying == &s->buf[Nbuf])
+					s->emptying = s->buf;
+			}
 			/* wait if dma in progress */
-			while (!dmaidle(s->dma) && s->emptying == s->next) {
+			while (!dmaidle(s->dma) && s->emptying == s->current) {
 				if (debug > 1) print("#A: sleep\n");
 				sleep(&s->vous, audioqnotempty, s);
 			}
@@ -913,13 +919,6 @@ audioread(Chan *c, void *v, long n, vlong off)
 			s->emptying->nbytes -= m;
 			n -= m;
 			p += m;
-			if(s->emptying->nbytes == 0) {
-				if (debug > 1) print("#A: emptied @%p\n", s->emptying);
-				s->emptying++;
-				if (s->emptying == &s->buf[Nbuf])
-					s->emptying = s->buf;
-				recvaudio(s);
-			}
 		}
 		poperror();
 		qunlock(s);
