@@ -50,6 +50,7 @@ struct Conf
 	ulong	ip;		/* Ip conversations per interface */
 	ulong	arp;		/* Arp table size */
 	ulong	frag;		/* Ip fragment assemble queue size */
+	ulong	debugger;	/* use processor 1 as a kernel debugger */
 };
 
 /*

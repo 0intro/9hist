@@ -14,6 +14,7 @@ Conftab conftab[] = {
 	{"ip", &conf.ip },
 	{"arp", &conf.arp },
 	{"frag", &conf.frag },
+	{"debugger", &conf.debugger },
 	{ 0, 0 },
 };
 
