@@ -510,6 +510,7 @@ sslbread(Chan *c, long n, ulong)
 				error("ssl message too short");
 			checkdigestb(s.s, s.s->processed);
 			s.s->processed->rp += s.s->diglen;
+			len -= s.s->diglen;
 			break;
 		}
 		s.s->in.mid++;
@@ -630,7 +631,7 @@ sslbwrite(Chan *c, Block *b, ulong offset)
 		if(m > s.s->max){
 			m = s.s->max;
 		} else if(s.s->blocklen != 1){
-			pad = m%s.s->blocklen;
+			pad = (m + s.s->diglen)%s.s->blocklen;
 			if(pad){
 				if(m > s.s->maxpad){
 					pad = 0;
@@ -1066,13 +1067,13 @@ decryptb(Dstate *s, Block *inb)
 		case DESECB:
 			ds = s->in.state;
 			ep = b->rp + BLEN(b);
-			for(p = b->rp + s->diglen; p < ep; p += 8)
+			for(p = b->rp; p < ep; p += 8)
 				block_cipher(ds->expanded, p, 1);
 			break;
 		case DESCBC:
 			ds = s->in.state;
 			ep = b->rp + BLEN(b);
-			for(p = b->rp + s->diglen; p < ep;){
+			for(p = b->rp; p < ep;){
 				memmove(tmp, p, 8);
 				block_cipher(ds->expanded, p, 1);
 				tp = tmp;

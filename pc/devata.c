@@ -1779,7 +1779,10 @@ retry:
 			print("short read\n");
 			break;
 		}
-		memmove(a, cp->buf + o, m);
+		if(cmd == Cread2)
+			memmove(a, cp->buf + o, m);
+		else
+			cp->buf += m;
 		n -= m;
 		off += m;
 		a += m;
