@@ -48,7 +48,6 @@ struct Urp {
 	int	blocks;
 
 	/* output */
-
 	QLock	xmit;		/* output lock, only one process at a time */
 	Queue	*wq;		/* output queue */
 	int	maxout;		/* maximum outstanding unacked blocks */
@@ -60,6 +59,7 @@ struct Urp {
 	Block	*xb[8];		/* the xmit window buffer */
 	QLock	xl[8];
 	ulong	timer;		/* timeout for xmit */
+	int	rexmit;
 
 	int	kstarted;
 };
@@ -168,14 +168,6 @@ isflushed(void *a)
 	up = (Urp *)a;
 	return (up->state&HUNGUP) || (up->unechoed==up->nxb && up->wq->len==0);
 }
-static int
-isdead(void *a)
-{
-	Urp *up;
-
-	up = (Urp *)a;
-	return up->kstarted == 0;
-}
 static void
 urpclose(Queue *q)
 {
@@ -219,8 +211,10 @@ urpclose(Queue *q)
 		}
 	qunlock(&up->xmit);
 
-	if(up->kstarted == 0)
+	if(up->kstarted == 0){
+		DPRINT("urpclose %ux\n", up);
 		up->state = 0;
+	}
 }
 
 /*
@@ -471,6 +465,10 @@ urpiput(Queue *q, Block *bp)
 			urpstat.rjseq++;
 			sendrej(up);
 			break;
+		} else if(q->next->len > (3*Streamhi)/2
+			|| q->next->nb > (3*Streambhi)/2) {
+			flushinput(up);
+			break;
 		}
 
 		/*
@@ -559,6 +557,7 @@ output(Urp *up)
 	ulong now;
 	Queue *q;
 	int n;
+	int i;
 
 	if(!canqlock(&up->xmit))
 		return;
@@ -607,8 +606,7 @@ output(Urp *up)
 	/*
 	 *  if a retransmit time has elapsed since a transmit, send an ENQ
 	 */
-	if(up->unechoed != up->next && NOW > up->timer){
-		DPRINT("sENQ\n");
+	if(up->unechoed!=up->next && NOW>up->timer){
 		up->timer = NOW + MSrexmit;
 		up->state &= ~REJECTING;
 		sendctl(up, ENQ);
@@ -620,11 +618,21 @@ output(Urp *up)
 	/*
 	 *  if there's a window open, push some blocks out
 	 */
-	while(WINDOW(up)>0 && up->xb[up->next]!=0 && canqlock(&up->xl[up->next])){
-		if(up->xb[up->next])
-			sendblock(up, up->next);
-		qunlock(&up->xl[up->next]);
+	if(up->rexmit){
+		up->rexmit = 0;
+		up->next = up->unechoed;
+	}
+	while(WINDOW(up)>0 && up->xb[up->next]!=0){
+		i = up->next;
+		qlock(&up->xl[i]);
+		if(waserror()){
+			qunlock(&up->xl[i]);
+			nexterror();
+		}
+		sendblock(up, i);
+		qunlock(&up->xl[i]);
 		up->next = NEXT(up->next);
+		poperror();
 	}
 	qunlock(&up->xmit);
 	poperror();
@@ -745,6 +753,7 @@ rcvack(Urp *up, int msg)
 {
 	int seqno;
 	int next;
+	int i;
 
 	seqno = msg&Nmask;
 	next = NEXT(seqno);
@@ -754,11 +763,12 @@ rcvack(Urp *up, int msg)
 	 */
 	if(IN(seqno, up->unacked, up->next)){
 		for(; up->unacked != next; up->unacked = NEXT(up->unacked)){
-			qlock(&up->xl[up->unacked]);
-			if(up->xb[up->unacked])
-				freeb(up->xb[up->unacked]);
-			up->xb[up->unacked] = 0;
-			qunlock(&up->xl[up->unacked]);
+			i = up->unacked;
+			qlock(&up->xl[i]);
+			if(up->xb[i])
+				freeb(up->xb[i]);
+			up->xb[i] = 0;
+			qunlock(&up->xl[i]);
 		}
 	}
 
@@ -786,7 +796,7 @@ rcvack(Urp *up, int msg)
 		 */
 		if(up->unechoed==next && !(up->state & REJECTING)){
 			up->state |= REJECTING;
-			up->next = next;
+			up->rexmit = 1;
 		}
 		break;
 	}
@@ -831,6 +841,7 @@ initoutput(Urp *up, int window)
 	up->unacked = 1;
 	up->next = 1;
 	up->nxb = 1;
+	up->rexmit = 0;
 
 	/*
 	 *  free any outstanding blocks
@@ -886,6 +897,7 @@ urpkproc(void *arg)
 	up = (Urp *)arg;
 
 	if(waserror()){
+		print("urpkproc error %ux\n", up);
 		up->state = 0;
 		up->kstarted = 0;
 		wakeup(&up->r);
@@ -898,10 +910,16 @@ urpkproc(void *arg)
 			if(up->state & HUNGUP)
 				break;
 		}
-		sendack(up);
+		if(up->state == 0){
+			DPRINT("urpkproc: %ux->state == 0\n", up);
+			break;
+		}
+		if(!QFULL(up->rq->next))
+			sendack(up);
 		output(up);
 		tsleep(&up->rq->r, todo, up, MSrexmit/2);
 	}
 	up->state = 0;
 	up->kstarted = 0;
+	DPRINT("urpkproc %ux\n", up);
 }

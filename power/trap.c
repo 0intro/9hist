@@ -5,6 +5,7 @@
 #include	"fns.h"
 #include	"ureg.h"
 #include	"io.h"
+#include	"errno.h"
 
 /*
  *  vme interrupt routines
@@ -418,6 +419,7 @@ syscall(Ureg *aur)
 	ulong sp;
 	ulong r1;
 	Ureg *ur;
+	char *msg;
 
 	u->p->insyscall = 1;
 	ur = aur;
@@ -433,17 +435,25 @@ syscall(Ureg *aur)
 	spllo();
 	r1 = ur->r1;
 	sp = ur->sp;
-	if(r1 >= sizeof systab/BY2WD)
-		panic("syscall %d\n", r1);
-	if(sp & (BY2WD-1))
-		panic("syscall odd sp");
-	if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-4*BY2WD))
-		validaddr(ur->sp, 4*BY2WD, 0);
-
 	u->nerrlab = 0;
 	ret = -1;
-	if(!waserror())
+	if(!waserror()){
+		if(r1 >= sizeof systab/BY2WD){
+			pprint("bad sys call number %d pc %lux\n", r1, ((Ureg*)UREGADDR)->pc);
+			msg = "bad sys call";
+	    Bad:
+			postnote(u->p, 1, msg, NDebug);
+			error(0, Ebadarg);
+		}
+		if(sp & (BY2WD-1)){
+			pprint("odd sp in sys call pc %lux sp %lux\n", ((Ureg*)UREGADDR)->pc, ((Ureg*)UREGADDR)->sp);
+			msg = "odd stack";
+			goto Bad;
+		}
+		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-4*BY2WD))
+			validaddr(ur->sp, 4*BY2WD, 0);
 		ret = (*systab[r1])((ulong*)(sp+2*BY2WD));
+	}
 	ur->pc += 4;
 	u->nerrlab = 0;
 	splhi();

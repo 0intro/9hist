@@ -259,18 +259,26 @@ syscall(Ureg *aur)
 #endif
 	r0 = ur->r0;
 	sp = ur->usp;
-	if(r0 >= sizeof systab/BY2WD)
-		panic("syscall %d\n", r0);
-	if(sp & (BY2WD-1))
-		panic("syscall odd sp");
-	if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-4*BY2WD))
-		validaddr(sp, 4*BY2WD, 0);
 
 	u->nerrlab = 0;
 	ret = -1;
-	if(!waserror())
-		ret = (*systab[r0])((ulong*)(sp+BY2WD));
-/* else print("syscall %d err %d %d\n", r0, u->error.type, u->error.code); /**/
+	if(!waserror()){
+		if(r1 >= sizeof systab/BY2WD){
+			pprint("bad sys call number %d pc %lux\n", r1, ((Ureg*)UREGADDR)->pc);
+			msg = "bad sys call";
+	    Bad:
+			postnote(u->p, 1, msg, NDebug);
+			error(0, Ebadarg);
+		}
+		if(sp & (BY2WD-1)){
+			pprint("odd sp in sys call pc %lux sp %lux\n", ((Ureg*)UREGADDR)->pc, ((Ureg*)UREGADDR)->sp);
+			msg = "odd stack";
+			goto Bad;
+		}
+		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-4*BY2WD))
+			validaddr(ur->sp, 4*BY2WD, 0);
+		ret = (*systab[r1])((ulong*)(sp+2*BY2WD));
+	}
 	u->nerrlab = 0;
 	u->p->insyscall = 0;
 	if(r0 == NOTED)	/* ugly hack */

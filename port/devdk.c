@@ -329,6 +329,8 @@ dkstopen(Queue *q, Stream *s)
 	q->other->ptr = q->ptr = lp = &dp->line[s->id];
 	lp->dp = dp;
 	lp->rq = q;
+	if(lp->state == Lclosed)
+		lp->state = Lopened;
 }
 
 /*
@@ -670,7 +672,6 @@ dkopen(Chan *c, int omode)
 					continue;
 				}
 				c->qid = STREAMQID(lp-dp->line, Sctlqid);
-				qunlock(lp);
 				break;
 			}
 		}
@@ -678,6 +679,7 @@ dkopen(Chan *c, int omode)
 			error(0, Enodev);
 		streamopen(c, &dkinfo);
 		pushq(c->stream, &urpinfo);
+		qunlock(lp);
 		break;
 	case Dlistenqid:
 		/*
@@ -727,7 +729,7 @@ dkclose(Chan *c)
 {
 	Dk *dp;
 
-	/* real closing happens in lancestclose */
+	/* real closing happens in dkstclose */
 	if(c->stream)
 		streamclose(c);
 
@@ -899,7 +901,7 @@ dkcall(int type, Chan *c, char *addr, char *nuser, char *machine)
 	/*
 	 *  only dial on virgin lines
 	 */
-	if(lp->state != Lclosed)
+	if(lp->state != Lopened)
 		error(0, Ebadarg);
 
 	DPRINT("dkcall(line=%d, type=%d, dest=%s)\n", line, type, addr);
@@ -1202,6 +1204,7 @@ dklisten(Chan *c)
 		DPRINT("dklisten returns %d\n", lineno);
 		return lineno;
 	}
+	panic("dklisten terminates strangely\n");
 }
 
 /*

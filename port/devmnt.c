@@ -555,7 +555,6 @@ mntxmit(Mnt *m, Mnthdr *mh)
 	ulong n;
 	Mntbuf *mbr, *mbw;
 	Chan *mntpt, *msg;
-	int isbit;
 
 	mbr = mballoc();
 	mbw = mballoc();
@@ -565,35 +564,21 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		nexterror();
 	}
 	n = convS2M(&mh->thdr, mbw->buf);
-	isbit = 0;
-	if(devchar[m->msg->type] == '3')
-		isbit = 1;
 	/*
-	 * Avoid qlock for bit, to maximize parallelism
+	 * Bit3 does its own multiplexing.  (Well, the file server does.)
+	 * The code is different enough that it's broken out separately here.
 	 */
-	if(isbit){
-		lock(&m->use);		/* spin rather than sleep */
-		if((msg = m->msg) == 0){
-			unlock(&m->use);
-			error(0, Eshutdown);
-		}
-		incref(msg);
+	if(devchar[m->msg->type] != '3')
+		goto Normal;
+	lock(&m->use);		/* spin rather than sleep */
+	if((msg = m->msg) == 0){
 		unlock(&m->use);
-	}else{
-		qlock(m);
-		if((msg = m->msg) == 0){
-			qunlock(m);
-			error(0, Eshutdown);
-		}
-		qlock(msg);
+		error(0, Eshutdown);
 	}
+	incref(msg);
+	unlock(&m->use);
 	if(waserror()){
-		if(isbit)
-			close(msg);
-		else{
-			qunlock(m);
-			qunlock(msg);
-		}
+		close(msg);
 		nexterror();
 	}
 	if((*devtab[msg->type].write)(msg, mbw->buf, n) != n){
@@ -605,12 +590,65 @@ mntxmit(Mnt *m, Mnthdr *mh)
 	 * Read response
 	 */
 	n = (*devtab[msg->type].read)(msg, mbr->buf, BUFSIZE);
-	if(isbit)
-		close(msg);
-	else{
+	close(msg);
+	poperror();
+
+	if(convM2S(mbr->buf, &mh->rhdr, n) == 0){
+		pprint("format error in mntxmit\n");
+		error(0, Egreg);
+	}
+
+	/*
+	 * Various checks
+	 */
+	if(mh->rhdr.type != mh->thdr.type+1){
+		pprint("type mismatch %d %d\n", mh->rhdr.type, mh->thdr.type+1);
+		error(0, Egreg);
+	}
+	if(mh->rhdr.fid != mh->thdr.fid){
+		pprint("fid mismatch %d %d type %d\n", mh->rhdr.fid, mh->thdr.fid, mh->rhdr.type);
+		error(0, Egreg);
+	}
+	if(mh->rhdr.err){
+		mntpt = m->mntpt;	/* unsafe, but Errors are unsafe anyway */
+		if(mntpt)
+			error(mntpt, mh->rhdr.err);
+		error(0, Eshutdown);
+	}
+
+	/*
+	 * Copy out on read
+	 */
+	if(mh->thdr.type == Tread)
+		memcpy(mh->thdr.data, mh->rhdr.data, mh->rhdr.count);
+	mbfree(mbr);
+	mbfree(mbw);
+	poperror();
+	return;
+
+    Normal:
+	qlock(m);
+	if((msg = m->msg) == 0){
+		qunlock(m);
+		error(0, Eshutdown);
+	}
+	qlock(msg);
+	if(waserror()){
 		qunlock(m);
 		qunlock(msg);
+		nexterror();
 	}
+	if((*devtab[msg->type].write)(msg, mbw->buf, n) != n){
+		pprint("short write in mntxmit\n");
+		error(0, Egreg);
+	}
+
+	/*
+	 * Read response
+	 */
+	n = (*devtab[msg->type].read)(msg, mbr->buf, BUFSIZE);
+	qunlock(m);
+	qunlock(msg);
 	poperror();
 
 	if(convM2S(mbr->buf, &mh->rhdr, n) == 0){
