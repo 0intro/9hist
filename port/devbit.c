@@ -795,7 +795,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 	ulong l, nw, ws, rv, q0, q1;
 	ulong *lp;
 	int off, isoff, i, j, ok;
-	ulong *endscreen = gaddr(&gscreen, Pt(0, gscreen.r.max.y));
+ 	ulong *endscreen = gaddr(&gscreen, Pt(0, gscreen.r.max.y));
 	Point pt, pt1, pt2;
 	Rectangle rect;
 	Cursor curs;
@@ -931,6 +931,18 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 				Cursortocursor(&arrow);
 				m -= 1;
 				p += 1;
+				break;
+			}
+			if(m == 2){
+				if(p[1]){	/* make damn sure */
+					cursor.disable = 0;
+					isoff = 1;
+				}else{
+					cursoroff(1);
+					cursor.disable = 1;
+				}
+				m -= 2;
+				p += 2;
 				break;
 			}
 			if(m < 73)
@@ -1147,7 +1159,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 				isoff = 1;
 			}
 			gsegment(dst, pt1, pt2, t, fc);
-			if(dst->base < endscreen) {
+			if(dst->base < endscreen){
 				mbbpt(pt1);
 				mbbpt(pt2);
 			}
@@ -1574,9 +1586,9 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 		}
 
 	poperror();
+	screenupdate();
 	if(isoff)
 		cursoron(1);
-	screenupdate();
 	qunlock(&bit);
 	return n;
 }
@@ -1917,6 +1929,8 @@ Cursortocursor(Cursor *c)
 void
 cursoron(int dolock)
 {
+	if(cursor.disable)
+		return;
 	if(dolock)
 		lock(&cursor);
 	if(cursor.visible++ == 0){
@@ -1929,6 +1943,7 @@ cursoron(int dolock)
 		gbitblt(&gscreen, cursor.r.min,
 			&set, Rect(0, 0, 16, 16), flipping? flipD[S|D] : S|D);
 		mbbrect(cursor.r);
+		screenupdate();
 	}
 	if(dolock)
 		unlock(&cursor);
@@ -1937,11 +1952,14 @@ cursoron(int dolock)
 void
 cursoroff(int dolock)
 {
+	if(cursor.disable)
+		return;
 	if(dolock)
 		lock(&cursor);
 	if(--cursor.visible == 0) {
 		gbitblt(&gscreen, cursor.r.min, &cursorback, Rect(0, 0, 16, 16), S);
 		mbbrect(cursor.r);
+		screenupdate();
 	}
 	if(dolock)
 		unlock(&cursor);
@@ -2068,7 +2086,7 @@ mouseputc(IOQ *q, int c)
 	if(c & 0x80)
 		msg[nb] |= ~0xFF;	/* sign extend */
 	if(++nb == 5){
-		mouse.newbuttons = b[((msg[0]&7)^7) | (mouseshifted ? 2 : 0)];
+		mouse.newbuttons = b[((msg[0]&7)^7) | (mouseshifted ? 8 : 0)];
 		mouse.dx = msg[1]+msg[3];
 		mouse.dy = -(msg[2]+msg[4]);
 		mouse.track = 1;

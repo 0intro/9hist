@@ -250,8 +250,8 @@ setscreen(int maxx, int maxy, int ldepth)
 	gscreen.r.max = Pt(maxx, maxy);
 	gscreen.clipr.max = gscreen.r.max;
 	len = gscreen.width * 4 * maxy;
-	gscreen.base = malloc(len);
-	memset((void*)gscreen.base, 0xff, len);
+	gscreen.base = ((ulong*)malloc(len+2*1024))+256;
+	memset((char*)gscreen.base, 0xff, len);
 
 	/*
 	 *  set string pointer to upper left
@@ -325,7 +325,6 @@ mbbpt(Point p)
 		mbb.max.x = p.x+1;
 	if (p.y >= mbb.max.y)
 		mbb.max.y = p.y+1;
-	screenupdate();
 }
 
 void
@@ -403,10 +402,22 @@ screenupdate(void)
 {
 	uchar *sp, *hp, *se;
 	int y, len, inc;
-	Rectangle r=mbb;
+	Rectangle r;
+
+	r = mbb;
+	mbb = NULLMBB;
 
 	if(Dy(r) < 0)
 		return;
+
+	if(r.min.x < 0)
+		r.min.x = 0;
+	if(r.min.y < 0)
+		r.min.y = 0;
+	if(r.max.x > gscreen.r.max.x)
+		r.max.x = gscreen.r.max.x;
+	if(r.max.y > gscreen.r.max.y)
+		r.max.y = gscreen.r.max.y;
 
 	sp = (uchar*)gaddr(&gscreen, r.min);
 	hp = (uchar*)gaddr(&vgascreen, r.min);
@@ -414,16 +425,16 @@ screenupdate(void)
 	len = (r.max.x * (1<<gscreen.ldepth) + 31)/32
 		- (r.min.x * (1<<gscreen.ldepth))/32;
 	len *= BY2WD;
+	if(len <= 0)
+		return;
 
 	inc = gscreen.width * BY2WD - len;
 
 	for (y = r.min.y; y < r.max.y; y++){
-		for(se = sp + len; sp < se;)
-			*hp++ = cswizzle[*sp++];
-		sp += inc;
-		hp += inc;
+		l0update(sp, hp, len);
+		sp += inc+len;
+		hp += inc+len;
 	}
-	mbb = NULLMBB;
 }
 
 void

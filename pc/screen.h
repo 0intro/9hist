@@ -19,6 +19,7 @@ struct Cursorinfo{
 	Cursor;
 	Lock;
 	int	visible;	/* on screen */
+	int	disable;	/* from being used */
 	Rectangle r;		/* location */
 };
 

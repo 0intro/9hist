@@ -633,3 +633,18 @@ TEXT	config(SB),$0
 	OUTB
 	OUTB
 	RET
+
+/*
+ *  copy bytes to screen memory for ldepth 0 screen
+ */
+TEXT	l0update(SB),$0
+	XORL	AX,AX
+	MOVL	len+8(FP),CX
+	MOVL	from+0(FP),BX
+	MOVL	to+4(FP),DX
+l00:
+	MOVB	-1(BX)(CX*1),AL
+	MOVB	cswizzle(SB)(AX*1),AL
+	MOVB	AL,-1(DX)(CX*1)
+	LOOP	l00
+	RET
