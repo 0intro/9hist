@@ -21,9 +21,9 @@ struct Link
 	long	droprate;	/* drop 1/droprate packets in tq */
 	long	drops;		/* packets deliberately dropped */
 
-	long	delay0ns;	/* nanosec of delay in the link */
+	vlong	delay0ns;	/* nanosec of delay in the link */
 	long	delaynns;	/* nanosec of delay per byte */
-	long	delay0;		/* fastticks of delay */
+	vlong	delay0;		/* fastticks of delay */
 	long	delayn;
 
 	Block	*tq;		/* transmission queue */
@@ -68,7 +68,7 @@ enum
 
 	MaxQ,
 
-	Nloopbacks	= 1,
+	Nloopbacks	= 5,
 
 	Statelen	= 23*1024,	/* status buffer size */
 
@@ -423,7 +423,7 @@ loopbackread(Chan *c, void *va, long n, vlong offset)
 	case Qstatus:
 		link = &lb->link[ID(c->qid.path)];
 		buf = smalloc(Statelen);
-		rv = snprint(buf, Statelen, "delay %ld %ld\n", link->delay0ns, link->delaynns);
+		rv = snprint(buf, Statelen, "delay %lld %ld\n", link->delay0ns, link->delaynns);
 		rv += snprint(buf+rv, Statelen-rv, "limit %ld\n", link->limit);
 		rv += snprint(buf+rv, Statelen-rv, "indrop %d\n", link->indrop);
 		snprint(buf+rv, Statelen-rv, "droprate %ld\n", link->droprate);
@@ -474,7 +474,8 @@ loopbackwrite(Chan *c, void *va, long n, vlong off)
 	Link *link;
 	Cmdbuf *cb;
 	Block *bp;
-	long d0, dn, d0ns, dnns;
+	vlong d0, d0ns;
+	long dn, dnns;
 
 	switch(TYPE(c->qid.path)){
 	case Qdata:
@@ -496,7 +497,7 @@ loopbackwrite(Chan *c, void *va, long n, vlong off)
 		if(strcmp(cb->f[0], "delay") == 0){
 			if(cb->nf != 3)
 				error("usage: delay latency bytedelay");
-			d0ns = strtol(cb->f[1], nil, 10);
+			d0ns = strtoll(cb->f[1], nil, 10);
 			dnns = strtol(cb->f[2], nil, 10);
 
 			/*
