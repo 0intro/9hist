@@ -49,7 +49,6 @@ clock(Ureg *ur, void *arg)
 	Proc *p;
 	int nrun = 0;
 	int islow = 0;
-	extern int hwcursor;
 
 	USED(arg);
 
@@ -92,17 +91,12 @@ clock(Ureg *ur, void *arg)
 	/*
 	 *  anything from here down can be running spllo()
 	 */
-
-	/* last because it could spllo() */
-	if(hwcursor)
-		mouseclock();
-	else {
-		if(!islow){
-			islow = 1;
-			spllo();
-		}
-		mouseclock();
+	if(!islow){
+		islow = 1;
+		spllo();
 	}
+
+	mouseclock();
 
 	if(islow)
 		splhi();

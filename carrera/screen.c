@@ -40,10 +40,10 @@ Lock	screenlock;
 
 Bitmap	gscreen =
 {
-	{ 0, 0, 1600, 1240 },
-	{ 0, 0, 1600, 1240 },
+	{ 0, 0, 1597, 1234 },
+	{ 0, 0, 1597, 1234 },
 	3,
-	Screenvirt+0x00017924,
+	Screenvirt+0x000178D0,
 	0,
 	512,
 	0
@@ -454,7 +454,7 @@ cursoron(int dolock)
 	if(dolock)
 		lock(&cursor);
 
-	p.x += 380;		/* adjusted by experiment */
+	p.x += 296;		/* adjusted by experiment */
 	p.y += 11;		/* adjusted by experiment */
 	d->cr1 = 03;
 	d->cr0 = 01;
