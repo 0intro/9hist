@@ -11,10 +11,12 @@ int tcpdbg = 0;
 #define DPRINT	if(tcpdbg) print
 #define LPRINT  if(tcpdbg) print
 
-char *tcpstate[] = {
+char *tcpstate[] =
+{
 	"Closed", 	"Listen", 	"Syn_sent", "Syn_received",
 	"Established", 	"Finwait1",	"Finwait2", "Close_wait",
-	"Closing", 	"Last_ack", 	"Time_wait" };
+	"Closing", 	"Last_ack", 	"Time_wait"
+};
 
 void
 reset(Ipaddr source, Ipaddr dest, char tos, ushort length, Tcp *seg)
@@ -379,7 +381,8 @@ tcp_input(Ipifc *ifc, Block *bp)
 		if(length == 0){
 			if(bp)
 				freeb(bp);
-		} else {
+		}
+		else {
 			switch(tcb->state){
 			default:
 				/* Ignore segment text */

@@ -115,6 +115,7 @@ tcpflow(void *x)
 
 	ifc = x;
 	etab = &ifc->conv[Nipconv];
+
 	for(;;) {
 		sleep(&tcpflowr, return0, 0);
 
@@ -122,9 +123,7 @@ tcpflow(void *x)
 			cp = *p;
 			if(cp == 0)
 				break;
-			if(cp->readq)
-			if(cp->ref != 0)
-			if(!QFULL(cp->readq->next)) {
+			if(cp->readq && cp->ref != 0 && !QFULL(cp->readq->next)) {
 				tcprcvwin(cp);
 				tcp_acktimer(cp);
 			}

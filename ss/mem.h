@@ -56,20 +56,19 @@
  */
 
 #define	VAMASK		0x3FFFFFFF
-#define	NPMEG		(1<<12)
 #define	BY2SEGM		(1<<18)
 #define	PG2SEGM		(1<<6)
-#define	NTLBPID		(1+NCONTEXT)	/* TLBPID 0 is unallocated */
-#define	NCONTEXT	8
+#define	NTLBPID		(1+MAXCONTEXT)	/* TLBPID 0 is unallocated */
+#define	MAXCONTEXT	16
 #define	CONTEXT		0x30000000	/* in ASI 2 */
 
 /*
  * MMU regions
  */
 #define	INVALIDSEGM	0xFFFC0000	/* highest seg of VA reserved as invalid */
-#define	INVALIDPMEG	0x7F
+#define	INVALIDPMEG	(conf.npmeg-1)
 #define	SCREENSEGM	0xFFF80000
-#define	SCREENPMEG	0x7E
+#define	SCREENPMEG	(conf.npmeg-2)
 #define	ROMSEGM		0xFFE80000
 #define	ROMEND		0xFFEC0000
 #define	PG2ROM		((ROMEND-ROMSEGM)/BY2PG)
@@ -110,10 +109,9 @@
 #define	ASER		0x60000008		/* ASI 2 */
 #define	ASEVAR		0x6000000C		/* ASI 2 */
 #define	ENAB		0x40000000		/* ASI 2 */
-#define	ENABCACHE	0x10
 #define	ENABRESET	0x04
-#define	VACLINESZ	16			/* cache line size */
-#define	VACSIZE		(1<<16)			/* total cache size */
+#define	ENABCACHE	0x10
+#define ENABDMA		0x20
 
 /*
  * Virtual addresses
@@ -122,14 +120,8 @@
 #define	VPN(va)		((va>>13)&0x1FF)
 
 /*
- * Rom addresses
- */
-#define	PUTCXSEGM	0xFFE80118
-
-/*
  * Address spaces
  */
-
 #define	UZERO	0x00000000		/* base of user address space */
 #define	UTZERO	(UZERO+BY2PG)		/* first address in user text */
 #define	TSTKTOP	0x10000000		/* end of new stack in sysexec */
@@ -140,5 +132,3 @@
 #define	USTKSIZE	(4*1024*1024)	/* size of user stack */
 
 #define	MACHSIZE	4096
-
-#define isphys(x) (((ulong)(x)&0xF0000000) == KZERO)

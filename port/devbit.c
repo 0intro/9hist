@@ -247,6 +247,8 @@ bitreset(void)
 	ulong r;
 	Arena *a;
 
+	if(!conf.monitor)
+		return;
 	bit.map = smalloc(DMAP*sizeof(GBitmap*));
 	bit.nmap = DMAP;
 	getcolor(0, &r, &r, &r);
@@ -286,6 +288,8 @@ bitreset(void)
 void
 bitinit(void)
 {
+	if(!conf.monitor)
+		return;
 	if(gscreen.ldepth > 3)
 		cursorback.ldepth = 0;
 	else{
@@ -298,12 +302,16 @@ bitinit(void)
 Chan*
 bitattach(char *spec)
 {
+	if(!conf.monitor)
+		error(Egreg);
 	return devattach('b', spec);
 }
 
 Chan*
 bitclone(Chan *c, Chan *nc)
 {
+	if(!conf.monitor)
+		error(Egreg);
 	nc = devclone(c, nc);
 	if(c->qid.path != CHDIR)
 		incref(&bit);
@@ -313,12 +321,16 @@ bitclone(Chan *c, Chan *nc)
 int
 bitwalk(Chan *c, char *name)
 {
+	if(!conf.monitor)
+		error(Egreg);
 	return devwalk(c, name, bitdir, NBIT, devgen);
 }
 
 void
 bitstat(Chan *c, char *db)
 {
+	if(!conf.monitor)
+		error(Egreg);
 	devstat(c, db, bitdir, NBIT, devgen);
 }
 
@@ -327,6 +339,8 @@ bitopen(Chan *c, int omode)
 {
 	GBitmap *b;
 
+	if(!conf.monitor)
+		error(Egreg);
 	switch(c->qid.path){
 	case CHDIR:
 		if(omode != OREAD)
@@ -378,6 +392,8 @@ bitopen(Chan *c, int omode)
 void
 bitcreate(Chan *c, char *name, int omode, ulong perm)
 {
+	if(!conf.monitor)
+		error(Egreg);
 	USED(c, name, omode, perm);
 	error(Eperm);
 }
@@ -385,6 +401,8 @@ bitcreate(Chan *c, char *name, int omode, ulong perm)
 void
 bitremove(Chan *c)
 {
+	if(!conf.monitor)
+		error(Egreg);
 	USED(c);
 	error(Eperm);
 }
@@ -392,6 +410,8 @@ bitremove(Chan *c)
 void
 bitwstat(Chan *c, char *db)
 {
+	if(!conf.monitor)
+		error(Egreg);
 	USED(c, db);
 	error(Eperm);
 }
@@ -403,6 +423,8 @@ bitclose(Chan *c)
 	BSubfont *s, **sp, **esp;
 	GFont *f, **fp, **efp;
 
+	if(!conf.monitor)
+		error(Egreg);
 	if(c->qid.path!=CHDIR && (c->flag&COPEN)){
 		lock(&bit);
 		if(c->qid.path == Qmouse)
@@ -447,6 +469,8 @@ bitread(Chan *c, void *va, long n, ulong offset)
 	GBitmap *src;
 	BSubfont *s;
 
+	if(!conf.monitor)
+		error(Egreg);
 	if(c->qid.path & CHDIR)
 		return devdirread(c, va, n, bitdir, NBIT, devgen);
 
@@ -729,6 +753,8 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 	GFont *ff, **ffp;
 	GCacheinfo *gc;
 
+	if(!conf.monitor)
+		error(Egreg);
 	USED(offset);
 
 	if(c->qid.path == CHDIR)

@@ -109,8 +109,8 @@ trap(Ureg *ur)
 	user = !(ur->psr&PSRPSUPER);
 	tbr = (ur->tbr&0xFFF)>>4;
 	/* SS2 bug: flush cache line holding trap entry in table */
-	if(conf.ss2)
-		putsysspace(CACHETAGS+((TRAPS+16*tbr)&(VACSIZE-1)), 0);
+	if(conf.ss2cachebug)
+		putsysspace(CACHETAGS+((TRAPS+16*tbr)&(conf.vacsize-1)), 0);
 	if(tbr > 16){			/* interrupt */
 		if(u && u->p->state==Running){
 			/* if active, FPop at head of Q is probably an excep */
@@ -132,6 +132,9 @@ trap(Ureg *ur)
 			break;
 		case 5:				/* lance */
 			lanceintr();
+			break;
+		case 3:				/* lance */
+			scsiintr();
 			break;
 		default:
 			goto Error;
@@ -521,7 +524,7 @@ syscall(Ureg *aur)
 
 	/* SS2 bug: flush cache line holding trap entry in table */
 	if(conf.ss2)
-		putsysspace(CACHETAGS+((TRAPS+16*128)&(VACSIZE-1)), 0);
+		putsysspace(CACHETAGS+((TRAPS+16*128)&(conf.vacsize-1)), 0);
 
 	if(u->p->fpstate == FPactive) {
 		fpquiet();

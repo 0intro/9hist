@@ -9,7 +9,13 @@
 #include	<libg.h>
 #include	<gnot.h>
 
-uchar *intrreg;
+uchar	*intrreg;
+int	model;
+uchar	idprom[32];
+ulong	romvec;		/* open boot rom vector */
+int	cpuserver;
+ulong	romputcxsegm;
+ulong	bank[2];
 
 void
 main(void)
@@ -23,12 +29,15 @@ main(void)
 	confinit();
 	xinit();
 	mmuinit();
-	screeninit();
+	if(conf.monitor)
+		screeninit();
 	printinit();
-	pageinit();
 	trapinit();
 	kmapinit();
 	ioinit();
+	if(!conf.monitor)
+		sccspecial(2, &printq, &kbdq, 9600);
+	pageinit();
 	cacheinit();
 	intrinit();
 	procinit0();
@@ -54,7 +63,7 @@ void
 systemreset(void)
 {
 	delay(100);
-	putb2(ENAB, ENABRESET);
+	putenab(ENABRESET);
 }
 
 
@@ -98,6 +107,7 @@ init0(void)
 	u->p->mach = m;
 	spllo();
 
+	print("bank 0: %dM  1: %dM\n", bank[0], bank[1]);
 	u->slash = (*devtab[0].attach)(0);
 	u->dot = clone(u->slash, 0);
 
@@ -194,42 +204,123 @@ exit(void)
 	systemreset();
 }
 
+int
+banksize(ulong addr, ulong nbytes)
+{
+	int i;
+	ulong min, max, t;
+	ulong va, pa;
+	ulong nmeg;
+
+	nmeg = nbytes/MB;
+	va = 1*MB-2*BY2PG;
+	for(i=0; i<nmeg; i++){
+		pa = addr+i*MB;
+		putw4(va, PPN(pa)|PTEVALID|PTEKERNEL|PTENOCACHE|PTEWRITE|PTEMAINMEM);
+		*(ulong*)va = pa;
+	}
+	min = ~0;
+	max = 0;
+	for(i=0; i<nmeg; i++){
+		pa = addr+i*MB;
+		putw4(va, PPN(pa)|PTEVALID|PTEKERNEL|PTENOCACHE|PTEWRITE|PTEMAINMEM);
+		t = *(ulong*)va;
+		if(min > t)
+			min = t;
+		if(max < t)
+			max = t;
+	}
+	putw4(va, INVALIDPTE);
+	return (max-min)/MB+1;
+}
+
 Conf	conf;
 
 void
 confinit(void)
 {
 	int mul;
-	ulong ktop;
+	ulong i;
+	ulong ktop, va, mbytes;
 
 	conf.nmach = 1;
 	if(conf.nmach > MAXMACH)
 		panic("confinit");
 
-	conf.ss2 = 0;
-	conf.npage0 = (4*1024*1024)/BY2PG;	/* BUG */
-	conf.npage1 = (4*1024*1024)/BY2PG;	/* BUG */
-	conf.base0 = 0;
-	conf.base1 = 32*1024*1024;
-	conf.npage = conf.npage0+conf.npage1;
+	/* map id prom */
+	va = 1*MB-BY2PG;
+	putw4(va, PPN(EEPROM)|PTEVALID|PTEKERNEL|PTENOCACHE|PTEIO);
+	memmove(idprom, (char*)(va+0x7d8), 32);
+	if(idprom[0]!=1 || (idprom[1]&0xF0)!=0x50)
+		*(ulong*)va = 0;
+	putw4(va, INVALIDPTE);
 
-	conf.upages = 1400;
+	switch(idprom[1]){
+	case 0x51:		/* sparcstation 1 */
+	case 0x54:		/* slc */
+	default:
+		conf.ss2 = 0;
+		conf.vacsize = 65536;
+		conf.vaclinesize = 16;
+		conf.ncontext = 8;
+		conf.npmeg = 128;
+		conf.ss2cachebug = 0;
+		conf.monitor = 1;		/* BUG */
+		conf.base0 = 0;
+		conf.base1 = 32*MB;
+		break;
+
+	case 0x55:		/* sparcstation 2 */
+		conf.ss2 = 1;
+		conf.vacsize = 65536;
+		conf.vaclinesize = 32;
+		conf.ncontext = 16;
+		conf.npmeg = 256;
+		conf.ss2cachebug = 1;
+		conf.monitor = 0;		/* BUG */
+		conf.base0 = 0;
+		conf.base1 = 16*MB;
+		break;
+	}
+
+	bank[0] = banksize(conf.base0, 16*MB);
+	bank[1] = banksize(conf.base1, 16*MB);
+	conf.npage0 = (bank[0]*MB)/BY2PG;
+	conf.npage1 = (bank[1]*MB)/BY2PG;
+
+	romputcxsegm = *(ulong*)(romvec+260);
+
+	conf.npage = conf.npage0+conf.npage1;
+	conf.upages = (conf.npage*70)/100;
+	if(cpuserver){
+		i = conf.npage-conf.upages;
+		if(i > (6*MB)/BY2PG)
+			conf.upages +=  i - ((6*MB)/BY2PG);
+	}
 
 	ktop = PGROUND((ulong)end);
 	ktop = PADDR(ktop);
 	conf.npage0 -= ktop/BY2PG;
 	conf.base0 += ktop;
 
-	mul = conf.upages/700;
+	mbytes = (conf.npage*BY2PG)>>20;
+	mul = 1 + (mbytes+11)/12;
+	if(mul > 2)
+		mul = 2;
 
 	conf.nproc = 50*mul;
-	conf.nswap = 4096;
+	if(cpuserver)
+		conf.nswap = conf.npage*2;
+	else
+		conf.nswap = 4096;
 	conf.nimage = 50;
 	conf.copymode = 0;		/* copy on write */
 	conf.ipif = 8;
 	conf.ip = 64;
 	conf.arp = 32;
 	conf.frag = 32;
+	if(cpuserver)
+		conf.nproc = 500;
 }
 
 /*

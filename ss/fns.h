@@ -21,7 +21,6 @@ void	fpsave(FPsave*);
 int	fptrap(void);
 int	getfpq(ulong*);
 ulong	getfsr(void);
-ulong	(*getsysspace)(ulong);
 void	intrinit(void);
 void	ioinit(void);
 int	kbdstate(IOQ*, int);
@@ -46,18 +45,26 @@ void	printinit(void);
 #define	procsave(p)
 #define	procsetup(x)	((p)->fpstate = FPinit)
 void	putcxsegm(int, ulong, int);
-void	(*putenab)(ulong);
 void	putpmeg(ulong, ulong);
 void	putsegm(ulong, int);
-void	(*putsysspace)(ulong, ulong);
 void	putstr(char*);
 void	putstrn(char*, long);
 void	puttbr(ulong);
+void	putw4(ulong, ulong);	/* needed only at boot time */
 void	systemreset(void);
 void	restfpregs(FPsave*, ulong);
 void	screeninit(void);
 void	screenputc(int);
 void	screenputs(char*, int);
+Scsibuf	*scsialloc(ulong);
+int	scsibread(int, Scsibuf*, long, long, long);
+int	scsibwrite(int, Scsibuf*, long, long, long);
+Scsibuf	*scsibuf(void);
+int	scsicap(int, void*);
+void	scsifree(Scsibuf*);
+void	scsiintr(void);
+int	scsiready(int);
+int	scsisense(int, void *);
 void	spldone(void);
 ulong	tas(ulong*);
 void	touser(ulong);
@@ -66,3 +73,15 @@ void	trapinit(void);
 #define	wbflush()	/* mips compatibility */
 #define	waserror()	(u->nerrlab++, setlabel(&u->errlab[u->nerrlab-1]))
 #define getcallerpc(x)	(*(ulong*)(x))
+
+/*
+ * compiled entry points
+ */
+extern	void	(*putcontext)(ulong);
+extern	void	(*putenab)(ulong);
+extern	ulong	(*getenab)(void);
+extern	void	(*putpmegspace)(ulong, ulong);
+extern	void	(*putsysspace)(ulong, ulong);
+extern	ulong	(*getsysspace)(ulong);
+extern	ulong	(*flushcx)(ulong);
+extern	ulong	(*flushpg)(ulong);

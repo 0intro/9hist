@@ -308,6 +308,7 @@ confinit(void)
 	conf.nmach = 1;
 	if(conf.nmach > MAXMACH)
 		panic("confinit");
+	conf.monitor = 1;
 	bank[0] = banksize(0);
 	bank[1] = banksize(16);
 	conf.npage0 = (bank[0]*MB)/BY2PG;

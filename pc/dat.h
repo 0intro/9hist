@@ -64,6 +64,7 @@ struct Conf
 {
 	ulong	nmach;		/* processors */
 	ulong	nproc;		/* processes */
+	ulong	monitor;	/* has monitor? */
 	ulong	npage0;		/* total physical pages of memory */
 	ulong	npage1;		/* total physical pages of memory */
 	ulong	topofmem;	/* highest physical address + 1 */

@@ -89,13 +89,15 @@ mmurelease(Proc *p)
 int
 newpid(Proc *p)
 {
-	int i, j;
+	int i, j, nc;
 	ulong t;
 	Proc *sp;
 
 	t = ~0;
-	i = 1+((m->ticks)&(NCONTEXT-1));	/* random guess */
-	for(j=1; t && j<NTLBPID; j++)
+	nc = conf.ncontext;
+	i = 1+((m->ticks)&(nc-1));	/* random guess */
+	nc++;
+	for(j=1; t && j<nc; j++)
 		if(pidtime[j] < t){
 			i = j;
 			t = pidtime[j];
@@ -132,7 +134,7 @@ flushcontext(void)
 	a = 0;
 	do
 		a = flushcx(a);
-	while(a < VACSIZE);
+	while(a < conf.vacsize);
 }
 
 void
@@ -156,7 +158,7 @@ mmuinit(void)
 	 * First map lots of memory as kernel addressable in all contexts
 	 */
 	i = 0;		/* used */
-	for(c=0; c<NCONTEXT; c++)
+	for(c=0; c<conf.ncontext; c++)
 		for(i=0; i < ktop/BY2SEGM; i++)
 			putcxsegm(c, KZERO+i*BY2SEGM, i);
 
@@ -177,7 +179,7 @@ mmuinit(void)
 	for(i=0; i<PG2SEGM; i++)
 		putpmeg(INVALIDSEGM+i*BY2PG, INVALIDPTE);
 
-	for(c=0; c<NCONTEXT; c++){
+	for(c=0; c<conf.ncontext; c++){
 		putcontext(c);
 		putsegm(INVALIDSEGM, INVALIDPMEG);
 		/*
@@ -274,13 +276,6 @@ putpmeg(ulong virt, ulong phys)
 
 	virt &= VAMASK;
 	virt &= ~(BY2PG-1);
-#ifdef asdf
-	if(conf.ss2)
-		putw6(virt, 0);
-	else
-		for(i=0; i<BY2PG; i+=16*VACLINESZ)
-			putwD16(virt+i, 0);
-#endif
 	/*
 	 * Flush old entries from cache
 	 */
@@ -319,7 +314,7 @@ cacheinit(void)
 	 * Initialize cache by clearing the valid bit
 	 * (along with the others) in all cache entries
 	 */
-	for(i=0; i<VACSIZE; i+=VACLINESZ)
+	for(i=0; i<conf.vacsize; i+=conf.vaclinesize)
 		putsysspace(CACHETAGS+i, 0);
 
 	/*
@@ -438,10 +433,10 @@ compile(void)
 	getsysspace = compileldaddr(LDA, 2);
 	if(conf.ss2){
 		flushpg = compile1(BY2PG, 6);
-		flushcx = compile16(VACLINESZ, 7);
+		flushcx = compile16(conf.vaclinesize, 7);
 	}else{
-		flushpg = compile16(VACLINESZ, 0xD);
-		flushcx = compile16(VACLINESZ, 0xE);
+		flushpg = compile16(conf.vaclinesize, 0xD);
+		flushcx = compile16(conf.vaclinesize, 0xE);
 	}
 }
 

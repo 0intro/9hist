@@ -1,0 +1,297 @@
+#include	"u.h"
+#include	"../port/lib.h"
+#include	"mem.h"
+#include	"dat.h"
+#include	"fns.h"
+#include	"../port/error.h"
+#include	"devtab.h"
+#include	"io.h"
+
+static int	ownid = 7;
+
+Scsibuf *
+scsialloc(ulong n)
+{
+	Scsibuf *b;
+	KMap *k;
+	ulong pa, va;
+	int i, j;
+
+	b = xalloc(sizeof(Scsibuf));
+
+	/*
+	 * Allocate space in host memory for the io buffer.
+	 * Allocate a block and kmap it page by page.  kmap's are initially
+	 * in reverse order so rearrange them.
+	 * NOTE: dma mustn't cross a 16Mb boundary.
+	 */
+	i = (n+(BY2PG-1))/BY2PG;
+	pa = (ulong)xspanalloc(i*BY2PG, BY2PG, 16*1024*1024) & ~KZERO;
+	va = 0;
+	k = 0;
+	for(j=i-1; j>=0; j--){
+		k = kmappa(pa+j*BY2PG, PTEMAINMEM|PTENOCACHE);
+		if(va && va != k->va+BY2PG)
+			panic("scsialloc va unordered\n");
+		va = k->va;
+	}
+	/*
+	 * k->va is the base of the region
+	 */
+	b->virt = (void*)k->va;
+	b->phys = (void*)k->pa;
+
+	return b;
+}
+
+/*
+ *	NCR 53C90 commands
+ */
+
+enum
+{
+	Dma		= 0x80,
+	Nop		= 0x00,
+	Flush		= 0x01,
+	Reset		= 0x02,
+	Busreset	= 0x03,
+	Select		= 0x41,
+	Transfer	= 0x10,
+	Cmdcomplete	= 0x11,
+	Msgaccept	= 0x12
+};
+
+static QLock	scsilock;	/* access to device */
+static Rendez	scsirendez;	/* sleep/wakeup for requesting process */
+static Scsi *	curcmd;		/* currently executing command */
+
+struct {
+	DMAdev *dma;
+	SCSIdev *scsi;
+} ioaddr;
+
+void
+resetscsi(void)
+{
+	SCSIdev *dev;
+	DMAdev *dma;
+	KMap *k;
+
+	k = kmappa(DMA, PTENOCACHE|PTEIO);
+	ioaddr.dma = (DMAdev*)k->va;
+	k = kmappa(SCSI, PTENOCACHE|PTEIO);
+	ioaddr.scsi = (SCSIdev*)k->va;
+
+	dev = ioaddr.scsi;
+	dma = ioaddr.dma;
+
+	dev->cmd = Reset;
+	dev->cmd = Nop;
+	dev->countlo = 0;
+	dev->counthi = 0;
+	dev->timeout = 146;
+	dev->syncperiod = 0;
+	dev->syncoffset = 0;
+	dev->config = 0x10|(ownid&7);
+	dev->cmd = Dma|Nop;
+
+	dma->csr = Dma_Reset;
+	delay(1);
+	dma->csr = Int_en;
+	dma->count = 0;
+
+	putenab(getenab()|ENABDMA); /**/
+}
+
+void
+initscsi(void)
+{
+}
+
+static int
+scsidone(void *arg)
+{
+	USED(arg);
+	return (curcmd == 0);
+}
+
+int
+scsiexec(Scsi *p, int rflag)
+{
+	SCSIdev *dev = ioaddr.scsi;
+	DMAdev *dma = ioaddr.dma;
+	long n;
+
+	qlock(&scsilock);
+
+	if(waserror()){
+		qunlock(&scsilock);
+		nexterror();
+	}
+	p->rflag = rflag;
+	p->status = 0;
+
+	dma->csr = Dma_Flush|Int_en;
+	dma->addr = (ulong)p->data.ptr;
+
+	dev->counthi = 0;
+	dev->countlo = 0;
+	dev->cmd = Dma|Nop;
+	dev->cmd = Flush;			/* clear scsi fifo */
+
+	while (p->cmd.ptr < p->cmd.lim)
+		dev->fifo = *(p->cmd.ptr)++;
+
+	dev->destid = p->target&7;
+	n = p->data.lim - p->data.ptr;
+	dev->counthi = n>>8;
+	dev->countlo = n;
+	dev->cmd = Dma|Nop;
+
+	dma->csr = Int_en;
+
+	curcmd = p;
+	dev->cmd = Select;
+
+	sleep(&scsirendez, scsidone, 0);
+	poperror();
+	qunlock(&scsilock);
+	return p->status;
+}
+
+
+void
+scsibusreset(void)
+{
+	SCSIdev *dev = ioaddr.scsi;
+	int s;
+
+	s = splhi();
+	dev->cmd = Nop;
+	dev->cmd = Busreset;
+	dev->cmd = Nop;
+	splx(s);
+}
+
+static void
+scsimoan(char *msg, int status, int intr, int dmastat)
+{
+	print("scsiintr: %s:", msg);
+	print(" status=%2.2ux step/intr=%3.3ux", status, intr);
+	print(" dma=%8.8ux cmd status=%4.4ux\n",
+		dmastat, curcmd ? curcmd->status : 0xffff);
+}
+
+void
+scsiintr(void)
+{
+	SCSIdev *dev = ioaddr.scsi;
+	DMAdev *dma = ioaddr.dma;
+	Scsi *p = curcmd;
+	int status, step, intr, n;
+	ulong m, csr;
+
+	csr = dma->csr;
+
+	status = dev->status;
+	step = dev->step;
+	intr = dev->intr;
+
+	intr |= ((step&7)<<8);
+
+	if(p == 0 || (intr & 0x80)) {	/* SCSI bus reset */
+		dev->cmd = Nop;
+		goto Done;
+	}
+
+	switch(p->status>>8){
+	case 0x00:		/* Select was issued */
+		switch(intr){
+		default:
+			scsimoan("bad case", status, intr, csr);
+			print("cmd = #%2.2ux\n", dev->cmd);
+			resetscsi();
+			scsibusreset();
+			goto Done;
+		case 0x020:	/* arbitration complete, selection timed out */
+			goto Done;
+		case 0x218:	/* selection complete, no command phase */
+			p->status = 0x1000;
+			scsimoan("no cmd phase", status, intr, csr);
+			resetscsi();
+			scsibusreset();
+			goto Done;
+		case 0x318:	/* command phase ended prematurely */
+			n = (p->cmd.lim - p->cmd.base) - (dev->fflags & 0x1f);
+			p->status = (0x30+n)<<8;
+			scsimoan("short cmd phase", status, intr, csr);
+			resetscsi();
+			scsibusreset();
+			goto Done;
+		case 0x418:	/* select sequence complete */
+			p->status = 0x4100;
+			if((status & 0x07) == p->rflag){
+				dma->csr = p->rflag ? En_dma|Write|Int_en : En_dma|Int_en;
+				dev->cmd = Dma|Transfer;
+				return;
+			}else if((status & 0x07) != 3){
+				scsimoan("weird phase after cmd",
+					status, intr, csr);
+				goto Done;
+			}
+			/* else fall through */
+		}
+
+	case 0x41:	/* data transfer, if any, is finished */
+		p->status = 0x4600;
+		p->data.ptr = p->data.lim - ((dev->counthi<<8)|dev->countlo);
+		if((status & 0x07) != 3){
+			scsimoan("weird phase after xfr",
+				status, intr, csr);
+			goto Done;
+		}
+
+		if(p->rflag)
+			while(dma->csr & Pack_cnt)
+				;
+
+		dev->cmd = Cmdcomplete;
+		return;
+
+	case 0x46:	/* Cmdcomplete was issued */
+		p->status = 0x6000|dev->fifo;
+		m = dev->fifo;
+		dev->cmd = Msgaccept;
+		return;
+
+	case 0x60:	/* Msgaccept was issued */
+		goto Done;
+	}
+Done:
+	curcmd = 0;
+	wakeup(&scsirendez);
+}
+
+#ifdef notdef
+void
+scsidump(void)
+{
+	SCSIdev *dev = ioaddr.scsi;
+	DMAdev *dma = ioaddr.dma;
+
+	print("\nscsi:\n");
+	print("	countlo=0x%2.2ux\n", dev->countlo);
+	print("	counthi=0x%2.2ux\n", dev->counthi);
+	print("	cmd    =0x%2.2ux\n", dev->cmd);
+	print("	status =0x%2.2ux\n", dev->status);
+	print("	intr   =0x%2.2ux\n", dev->intr);
+	print("	step   =0x%2.2ux\n", dev->step);
+	print("	fflags =0x%2.2ux\n", dev->countlo);
+	print("	config =0x%2.2ux\n", dev->config);
+	print("dma:\n");
+	print("	csr    =0x%8.8ux\n", dma->csr);
+	print("	addr   =0x%8.8ux\n", dma->addr);
+	print("	count  =0x%4.4ux\n", dma->count);
+	print("	diag   =0x%8.8ux\n", dma->diag);
+}
+#endif

@@ -22,6 +22,9 @@ TEXT	start(SB), $-4
 
 TEXT	startvirt(SB), $-4
 
+	MOVW	$romvec(SB), R7
+	MOVW	R8, (R7)	/* romvec passed in %i0==R8 */
+
 	MOVW	$BOOTSTACK, R1
 
 	MOVW	$(SPL(0xF)|PSREF|PSRSUPER), R7
@@ -324,8 +327,14 @@ TEXT	putcxsegm(SB), $0
 	MOVW	R7, R8			/* context */
 	MOVW	4(FP), R9		/* segment addr */
 	MOVW	8(FP), R10		/* segment value */
-	MOVW	$PUTCXSEGM, R7
+	MOVW	$romputcxsegm(SB), R7
+	MOVW	(R7), R7
 	JMPL	(R7)
+	RETURN
+
+TEXT	putw4(SB), $0
+	MOVW	4(FP), R8
+	MOVW	R8, (R7, 4)
 	RETURN
 
 TEXT	getpsr(SB), $0

@@ -68,6 +68,7 @@ struct Conf
 {
 	int	nmach;		/* processors */
 	int	nproc;		/* processes */
+	int	monitor;	/* has display */
 	ulong	npage0;		/* total physical pages of memory, bank 0 */
 	ulong	npage1;		/* total physical pages of memory, bank 1 */
 	ulong	npage;

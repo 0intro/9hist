@@ -7,6 +7,9 @@ typedef struct Lancemem	Lancemem;
 typedef struct Label	Label;
 typedef struct Lock	Lock;
 typedef struct PMMU	PMMU;
+typedef struct Scsi	Scsi;
+typedef struct Scsibuf	Scsibuf;
+typedef struct Scsidata	Scsidata;
 typedef struct Mach	Mach;
 typedef struct Ureg	Ureg;
 typedef struct User	User;
@@ -65,7 +68,13 @@ struct Conf
 {
 	int	nmach;		/* processors */
 	int	nproc;		/* processes */
-	int	ss2;		/* is a sparcstation 2 */
+	char	ss2;		/* is a sparcstation 2 */
+	char	ss2cachebug;	/* has sparcstation2 cache bug */
+	char	monitor;	/* has graphics monitor */
+	int	ncontext;	/* in mmu */
+	int	npmeg;
+	int	vacsize;	/* size of virtual address cache, in bytes */
+	int	vaclinesize;	/* size of cache line */
 	ulong	npage0;		/* total physical pages of memory, bank 0 */
 	ulong	npage1;		/* total physical pages of memory, bank 1 */
 	ulong	base0;		/* base of bank 0 */
@@ -205,3 +214,48 @@ struct
 	short	machs;
 	short	exiting;
 }active;
+
+enum
+{
+	ScsiTestunit	= 0x00,
+	ScsiExtsens	= 0x03,
+	ScsiModesense	= 0x1a,
+	ScsiGetcap	= 0x25,
+	ScsiRead	= 0x08,
+	ScsiWrite	= 0x0a,
+
+	/*
+	 * data direction
+	 */
+	ScsiIn		= 1,
+	ScsiOut		= 0,
+};
+
+struct Scsibuf
+{
+	void	*virt;
+	void	*phys;
+	Scsibuf	*next;
+};
+
+struct Scsidata
+{
+	uchar	*base;
+	uchar	*lim;
+	uchar	*ptr;
+};
+
+struct Scsi
+{
+	QLock;
+	ulong	pid;
+	ushort	target;
+	ushort	lun;
+	ushort	rflag;
+	ushort	status;
+	Scsidata cmd;
+	Scsidata data;
+	Scsibuf	*b;
+	uchar	*save;
+	uchar	cmdblk[16];
+};

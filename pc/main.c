@@ -246,6 +246,7 @@ confinit(void)
 	/* for meminit() */
 	conf.topofmem = i*MB;
 
+	conf.monitor = 1;
 	conf.nproc = 30 + i*5;
 	conf.nswap = conf.nproc*80;
 	conf.nimage = 50;

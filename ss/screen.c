@@ -38,6 +38,8 @@ Lock screenlock;
 void
 screeninit(void)
 {
+	if(!conf.monitor)
+		return;
 	defont = &defont0;
 	gbitblt(&gscreen, Pt(0, 0), &gscreen, gscreen.r, 0);
 	out.pos.x = MINX;
@@ -48,6 +50,8 @@ screeninit(void)
 void
 screenputnl(void)
 {
+	if(!conf.monitor)
+		return;
 	out.pos.x = MINX;
 	out.pos.y += defont0.height;
 	if(out.pos.y > gscreen.r.max.y-defont0.height)
@@ -63,6 +67,8 @@ screenputs(char *s, int n)
 	int i;
 	char buf[4];
 
+	if(!conf.monitor)
+		return;
 	lock(&screenlock);
 	while(n > 0){
 		i = chartorune(&r, s);
