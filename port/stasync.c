@@ -69,7 +69,7 @@ Qinfo asyncinfo =
 	asyncreset
 };
 
-int asyncdebug = 0;
+int asyncdebug = 3;
 int asyncerror;
 
 static ushort crc_table[256] = {
@@ -247,6 +247,8 @@ asyncoput(Queue *q, Block *bp)
 	int c, chan, ctl;
 
 	if(bp->type != M_DATA){
+		if(streamparse("debug", bp))
+			asyncdebug = 3;
 		freeb(bp);
 		return;
 	}
