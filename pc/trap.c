@@ -31,6 +31,10 @@ enum
 	Int1ctl=	0xA0,		/* control port */
 	Int1aux=	0xA1,		/* everything else (ICW2, ICW3, ICW4, OCW1) */
 
+	Icw1=		0x10,		/* select bit in ctl register */
+	Ocw2=		0x00,
+	Ocw3=		0x08,
+
 	EOI=		0x20,		/* non-specific end of interrupt */
 
 	Maxhandler=	128,		/* max number of interrupt handlers */
@@ -209,6 +213,12 @@ trapinit(void)
 	 */
 	int0mask &= ~0x04;
 	outb(Int0aux, int0mask);
+
+	/*
+	 * Set Ocw3 to return the ISR when ctl read.
+	 */
+	outb(Int0ctl, Ocw3|0x03);
+	outb(Int1ctl, Ocw3|0x03);
 }
 
 char *excname[] = {
@@ -249,6 +259,7 @@ trap(Ureg *ur)
 	char buf[ERRLEN];
 	Handler *h;
 	static int iret_traps;
+	uchar isr0, isr1;
 
 	v = ur->trap;
 
@@ -268,10 +279,14 @@ trap(Ureg *ur)
 	 *  off at this point)
 	 */
 	c = v&~0x7;
+	isr0 = isr1 = 0x00;
 	if(c==Int0vec || c==Int1vec){
+		isr0 = inb(Int0ctl);
 		outb(Int0ctl, EOI);
-		if(c == Int1vec)
+		if(c == Int1vec){
+			isr1 = inb(Int1ctl);
 			outb(Int1ctl, EOI);
+		}
 	}
 
 	if(v>=256 || (h = halloc.ivec[v]) == 0){
@@ -296,9 +311,19 @@ for(;;);
 		if(v >= Int0vec || v < Int0vec+16){
 			/* an unknown interrupt */
 			v -= Int0vec;
-			if(badintr[v]++ == 0 || (badintr[v]%100000) == 0)
+			/*
+			 * Check for a default IRQ7. This can happen when
+			 * the IRQ input goes away before the acknowledge.
+			 * In this case, a 'default IRQ7' is generated, but
+			 * the corresponding bit in the ISR isn't set.
+			 */
+			if(v == 7 && (isr0 & 0x80) == 0)
+				goto out;
+			if(badintr[v]++ == 0 || (badintr[v]%100000) == 0){
 				print("unknown interrupt %d pc=0x%lux: total %d\n", v,
 					ur->pc, badintr[v]);
+				print("isr0 = 0x%2.2ux, isr1 = 0x%2.2ux\n", isr0, isr1);
+			}
 		} else {
 			/* unimplemented traps */
 			print("illegal trap %d pc=0x%lux\n", v, ur->pc);

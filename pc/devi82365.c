@@ -15,7 +15,7 @@
  */
 
 /*
- *  Intel 82365SL PCIC controller for the Slot or
+ *  Intel 82365SL PCIC controller for the PCMCIA or
  *  Cirrus Logic PD6710/PD6720 which is mostly register compatible
  */
 enum
@@ -64,6 +64,7 @@ enum
 	Rfifo=		0x17,		/* fifo control */
 	 Fflush=	 (1<<7),	/*  flush fifo */
 	Rmisc2=		0x1E,		/* misc control 2 */
+	 Flowpow=	 (1<<1),	/*  low power mode */
 	Rchipinfo=	0x1F,		/* chip information */
 	Ratactl=	0x26,		/* ATA control */
 
@@ -72,12 +73,13 @@ enum
 	 */
 	Mbtmlo=		0x0,		/* System mem addr mapping start low byte */
 	Mbtmhi=		0x1,		/* System mem addr mapping start high byte */
+	 F16bit=	 (1<<7),	/*  16-bit wide data path */
 	Mtoplo=		0x2,		/* System mem addr mapping stop low byte */
 	Mtophi=		0x3,		/* System mem addr mapping stop high byte */
-	 F16bit=	 (1<<7),	/*  16-bit wide data path */
+	 Ftimer1=	 (1<<6),	/*  timer set 1 */
 	Mofflo=		0x4,		/* Card memory offset address low byte */
 	Moffhi=		0x5,		/* Card memory offset address high byte */
-	 Fregactive=	 (1<<6),	/*  attribute meory */
+	 Fregactive=	 (1<<6),	/*  attribute memory */
 
 	Mbits=		13,		/* msb of Mchunk */
 	Mchunk=		1<<Mbits,	/* logical mapping granularity */
@@ -135,7 +137,7 @@ struct Slot
 	I82365	*cp;		/* controller for this slot */
 	long	memlen;		/* memory length */
 	uchar	base;		/* index register base */
-	uchar	dev;		/* slot number */
+	uchar	slotno;		/* slot number */
 
 	/* status */
 	uchar	special;	/* in use for a special device */
@@ -147,7 +149,6 @@ struct Slot
 	uchar	powered;
 	uchar	configed;
 	uchar	enabled;
-	uchar	iocard;
 	uchar	busy;
 
 	/* cis info */
@@ -161,8 +162,8 @@ struct Slot
 	uchar	def;		/* default configuration */
 	ushort	irqs;		/* valid interrupt levels */
 	ulong	caddr;		/* relative address of config registers */
-	uchar	*cisbase;	/* base of mapped in attribute space */
-	uchar	*cispos;	/* current position scanning cis */
+	int	cispos;		/* current position scanning cis */
+	uchar	*cisbase;
 	ulong	maxwait;
 	ulong	readywait;
 	ulong	otherwait;
@@ -177,6 +178,7 @@ static Slot	*lastslot;
 static nslot;
 
 static void cisread(Slot*);
+static void i82365intr(Ureg*, void*);
 
 /*
  *  reading and writing card registers
@@ -184,17 +186,13 @@ static void cisread(Slot*);
 static uchar
 rdreg(Slot *pp, int index)
 {
-	microdelay(10);
 	outb(pp->cp->xreg, pp->base + index);
-	microdelay(10);
 	return inb(pp->cp->dreg);
 }
 static void
 wrreg(Slot *pp, int index, uchar val)
 {
-	microdelay(10);
 	outb(pp->cp->xreg, pp->base + index);
-	microdelay(10);
 	outb(pp->cp->dreg, val);
 }
 
@@ -212,9 +210,6 @@ slotinfo(Slot *pp)
 	pp->battery = (isr & 3) == 3;
 	pp->wrprot = isr & (1<<4);
 	pp->busy = isr & (1<<5);
-
-	isr = rdreg(pp, Rigc);
-	pp->iocard = isr & Fiocard;
 }
 
 static int
@@ -236,35 +231,30 @@ vcode(int volt)
 static void
 slotena(Slot *pp)
 {
-	int x;
-
 	if(pp->enabled)
 		return;
 
-	if(pp->already == 0){
-		pp->already = 1;
-
-		/* interrupt on card status change */
-		wrreg(pp, Rigc, Fnotreset);
-		wrreg(pp, Rcscic, ((PCMCIAvec-Int0vec)<<4) | Fchangeena
-			| Fbwarnena | Fbdeadena);
-	}
+	/* enable the card */
+	wrreg(pp, Rpc, vcode(5)|Fautopower|Foutena|Fcardena);
+	delay(300);	/* give the card time to sit up and take notice */
+	wrreg(pp, Rigc, 0);
+	delay(100);
+	wrreg(pp, Rigc, Fnotreset);
+	delay(100);
+	wrreg(pp, Rcscic, ((PCMCIAvec-Int0vec)<<4) | Fchangeena);
 
 	/* display status */
 	slotinfo(pp);
 	if(pp->occupied){
-		/* enable the card */
-		wrreg(pp, Rpc, vcode(5)|Fautopower|Foutena|Fcardena);
-		pp->enabled = 1;
 		cisread(pp);
 
 		/* set real power values if we configured successfully */
-		if(pp->configed){
-			x = vcode(pp->vpp1) | (vcode(pp->vpp2)<<2);
-			wrreg(pp, Rpc, x|Fautopower|Foutena|Fcardena);
-		}
+		if(pp->configed)
+			wrreg(pp, Rpc, vcode(pp->vpp1)|Fautopower|Foutena|Fcardena);
 
-	}
+	} else
+		wrreg(pp, Rpc, vcode(5)|Fautopower);
+	pp->enabled = 1;
 }
 
 /*
@@ -273,14 +263,9 @@ slotena(Slot *pp)
 static void
 slotdis(Slot *pp)
 {
-	int x;
-
-	/* disable the windows into the card */
-	wrreg(pp, Rwe, 0);
-
-	/* disable the card */
-	x = vcode(5) | (vcode(5)<<2);
-	wrreg(pp, Rpc, x|Fautopower);
+	wrreg(pp, Rmisc2, Flowpow);	 	/* low power mode */
+	wrreg(pp, Rpc, vcode(5)|Fautopower);			/* turn off card */
+	wrreg(pp, Rwe, 0);			/* no windows */
 	pp->enabled = 0;
 }
 
@@ -288,25 +273,24 @@ slotdis(Slot *pp)
  *  status change interrupt
  */
 static void
-i82365intr(Ureg *ur)
+i82365intr(Ureg *ur, void *a)
 {
-	uchar csc;
+	uchar csc, was;
 	Slot *pp;
 
-	USED(ur);
+	USED(ur,a);
+	if(slot == 0)
+		return;
+
 	for(pp = slot; pp < lastslot; pp++){
 		csc = rdreg(pp, Rcsc);
+		was = pp->occupied;
 		slotinfo(pp);
-		if(csc & 1)
-			print("slot card %d battery dead\n", pp->dev);
-		if(csc & (1<<1))
-			print("slot card %d battery warning\n", pp->dev);
-		if(csc & (1<<3)){
-			if(pp->occupied && pp->ref){
-				print("slot card %d inserted\n", pp->dev);
-				slotena(pp);
-			} else {
-				print("slot card %d removed\n", pp->dev);
+		if(csc & (1<<3) && was != pp->occupied){
+			if(pp->occupied)
+				print("slot%d card inserted\n", pp->slotno);
+			else {
+				print("slot%d card removed\n", pp->slotno);
 				slotdis(pp);
 			}
 		}
@@ -361,7 +345,7 @@ getmap(Slot *pp, ulong offset, int attr)
 	wrreg(pp, MAP(i, Mbtmlo), m->isa>>12);
 	wrreg(pp, MAP(i, Mbtmhi), (m->isa>>(12+8)) | F16bit);
 	wrreg(pp, MAP(i, Mtoplo), (m->isa+Mchunk-1)>>12);
-	wrreg(pp, MAP(i, Mtophi), (m->isa+Mchunk-1)>>(12+8));
+	wrreg(pp, MAP(i, Mtophi), ((m->isa+Mchunk-1)>>(12+8)) | Ftimer1);
 	offset -= m->isa;
 	offset &= (1<<25)-1;
 	offset >>= 12;
@@ -389,34 +373,41 @@ decrefp(Slot *pp)
 	unlock(pp);
 }
 
-char*
-pcmspecial(int dev)
+/*
+ *  look for a card whose version contains 'idstr'
+ */
+int
+pcmspecial(char *idstr, ISAConf *isa)
 {
 	Slot *pp;
+	extern char *strstr(char*, char*);
 
 	i82365reset();
-	if(dev >= nslot)
-		return 0;
-	pp = slot + dev;
-	if(pp->special)
-		return 0;
-	increfp(pp);
-	if(!pp->occupied){
+	for(pp = slot; pp < lastslot; pp++){
+		if(pp->special)
+			continue;	/* already taken */
+		increfp(pp);
+
+		if(pp->occupied)
+		if(strstr(pp->verstr, idstr))
+		if(isa == 0 || pcmio(pp->slotno, isa) == 0){
+			pp->special = 1;
+			return pp->slotno;
+		}
+
 		decrefp(pp);
-		return 0;
 	}
-	pp->special = 1;
-	return pp->verstr;
+	return -1;
 }
 
 void
-pcmspecialclose(int dev)
+pcmspecialclose(int slotno)
 {
 	Slot *pp;
 
-	if(dev >= nslot)
+	if(slotno >= nslot)
 		panic("pcmspecialclose");
-	pp = slot + dev;
+	pp = slot + slotno;
 	pp->special = 0;
 	decrefp(pp);
 }
@@ -429,13 +420,14 @@ enum
 	Qctl,
 };
 
-#define DEV(c)	(c->qid.path>>8)
-#define TYPE(c)	(c->qid.path&0xff)
+#define SLOTNO(c)	((c->qid.path>>8)&0xff)
+#define TYPE(c)		(c->qid.path&0xff)
+#define QID(s,t)	(((s)<<8)|(t))
 
 static int
 pcmgen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
 {
-	int dev;
+	int slotno;
 	Qid qid;
 	long len;
 	Slot *pp;
@@ -444,23 +436,23 @@ pcmgen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
 	USED(tab, ntab);
 	if(i>=3*nslot)
 		return -1;
-	dev = i/3;
-	pp = slot + dev;
+	slotno = i/3;
+	pp = slot + slotno;
 	len = 0;
 	switch(i%3){
 	case 0:
-		qid.path = (dev<<8) | Qmem;
-		sprint(name, "pcm%dmem", dev);
+		qid.path = QID(slotno, Qmem);
+		sprint(name, "pcm%dmem", slotno);
 		len = pp->memlen;
 		break;
 	case 1:
-		qid.path = (dev<<8) | Qattr;
-		sprint(name, "pcm%dattr", dev);
+		qid.path = QID(slotno, Qattr);
+		sprint(name, "pcm%dattr", slotno);
 		len = pp->memlen;
 		break;
 	case 2:
-		qid.path = (dev<<8) | Qctl;
-		sprint(name, "pcm%dctl", dev);
+		qid.path = QID(slotno, Qctl);
+		sprint(name, "pcm%dctl", slotno);
 		break;
 	}
 	qid.vers = 0;
@@ -538,6 +530,8 @@ i82365reset(void)
 	/* look for controllers */
 	i82386probe(0x3E0, 0x3E1, 0);
 	i82386probe(0x3E0, 0x3E1, 1);
+	i82386probe(0x3E2, 0x3E3, 0);
+	i82386probe(0x3E2, 0x3E3, 1);
 	for(i = 0; i < ncontroller; i++)
 		nslot += controller[i]->nslot;
 	slot = xalloc(nslot * sizeof(Slot));
@@ -547,14 +541,17 @@ i82365reset(void)
 	for(i = 0; i < ncontroller; i++){
 		cp = controller[i];
 		for(j = 0; j < cp->nslot; j++){
-			lastslot->dev = lastslot - slot;
+			lastslot->slotno = lastslot - slot;
 			lastslot->memlen = 64*MB;
 			lastslot->base = (cp->dev<<7) | (j<<6);
 			lastslot->cp = cp;
-			wrreg(lastslot, Rpc, 5|Fautopower);
+			slotdis(lastslot);
 			lastslot++;
 		}
 	}
+
+	/* for card management interrupts */
+	setvec(PCMCIAvec, i82365intr, 0);
 }
 
 void
@@ -593,7 +590,7 @@ i82365open(Chan *c, int omode)
 		if(omode != OREAD)
 			error(Eperm);
 	} else
-		increfp(slot + DEV(c));
+		increfp(slot + SLOTNO(c));
 	c->mode = openmode(omode);
 	c->flag |= COPEN;
 	c->offset = 0;
@@ -624,9 +621,17 @@ i82365wstat(Chan *c, char *dp)
 void
 i82365close(Chan *c)
 {
-	USED(c);
-	if(c->qid.path != CHDIR)
-		decrefp(slot+DEV(c));
+	if(c->flag & COPEN)
+		if(c->qid.path != CHDIR)
+			decrefp(slot+SLOTNO(c));
+}
+
+/* a memmove using only bytes */
+static void
+memmoveb(uchar *to, uchar *from, int n)
+{
+	while(n-- > 0)
+		*to++ = *from++;
 }
 
 /* a memmove using only shorts & bytes */
@@ -648,7 +653,7 @@ memmoves(uchar *to, uchar *from, int n)
 }
 
 long
-pcmread(int dev, int attr, void *a, long n, ulong offset)
+pcmread(int slotno, int attr, void *a, long n, ulong offset)
 {
 	int i, len;
 	PCMmap *m;
@@ -656,7 +661,7 @@ pcmread(int dev, int attr, void *a, long n, ulong offset)
 	uchar *ac;
 	Slot *pp;
 
-	pp = slot + dev;
+	pp = slot + slotno;
 	if(pp->memlen < offset)
 		return 0;
 	ac = a;
@@ -671,17 +676,23 @@ pcmread(int dev, int attr, void *a, long n, ulong offset)
 		else
 			i = len;
 		ka = KZERO|(m->isa + (offset&(Mchunk-1)));
-		memmoves(ac, (void*)ka, i);
+		memmoveb(ac, (void*)ka, i);
 		offset += i;
 		ac += i;
 	}
 	return n;
 }
 
+Block*
+i82365bread(Chan *c, long n, ulong offset)
+{
+	return devbread(c, n, offset);
+}
+
 long
 i82365read(Chan *c, void *a, long n, ulong offset)
 {
-	char *cp, buf[128];
+	char *cp, buf[2048];
 	ulong p;
 	Slot *pp;
 
@@ -691,24 +702,22 @@ i82365read(Chan *c, void *a, long n, ulong offset)
 		return devdirread(c, a, n, 0, 0, pcmgen);
 	case Qmem:
 	case Qattr:
-		pp = slot + DEV(c);
+		pp = slot + SLOTNO(c);
 		qlock(&pp->mlock);
-		n = pcmread(DEV(c), p==Qattr, a, n, offset);
+		n = pcmread(SLOTNO(c), p==Qattr, a, n, offset);
 		qunlock(&pp->mlock);
 		if(n < 0)
 			error(Eio);
 		break;
 	case Qctl:
 		cp = buf;
-		pp = slot + DEV(c);
+		pp = slot + SLOTNO(c);
 		if(pp->occupied)
 			cp += sprint(cp, "occupied\n");
 		if(pp->enabled)
 			cp += sprint(cp, "enabled\n");
 		if(pp->powered)
 			cp += sprint(cp, "powered\n");
-		if(pp->iocard)
-			cp += sprint(cp, "iocard\n");
 		if(pp->configed)
 			cp += sprint(cp, "configed\n");
 		if(pp->wrprot)
@@ -716,6 +725,18 @@ i82365read(Chan *c, void *a, long n, ulong offset)
 		if(pp->busy)
 			cp += sprint(cp, "busy\n");
 		cp += sprint(cp, "battery lvl %d\n", pp->battery);
+{
+	int i;
+
+	cp += sprint(cp, "x %x d %x b %x\n", pp->cp->xreg, pp->cp->dreg, pp->base);
+	for(i = 0; i < 0x40; i++){
+		cp += sprint(cp, "%2.2ux ", rdreg(pp, i));
+		if((i%8) == 7)
+			cp += sprint(cp, "\n");
+	}
+	if(i%8)
+		cp += sprint(cp, "\n");
+}
 		*cp = 0;
 		return readstr(offset, a, n, buf);
 	default:
@@ -725,10 +746,10 @@ i82365read(Chan *c, void *a, long n, ulong offset)
 	return n;
 }
 
-Block*
-i82365bread(Chan *c, long n, ulong offset)
+long
+i82365bwrite(Chan *c, Block *bp, ulong offset)
 {
-	return devbread(c, n, offset);
+	return devbwrite(c, bp, offset);
 }
 
 long
@@ -753,7 +774,7 @@ pcmwrite(int dev, int attr, void *a, long n, ulong offset)
 		else
 			i = len;
 		ka = KZERO|(m->isa + (offset&(Mchunk-1)));
-		memmoves((void*)ka, ac, i);
+		memmoveb((void*)ka, ac, i);
 		offset += i;
 		ac += i;
 	}
@@ -770,11 +791,11 @@ i82365write(Chan *c, void *a, long n, ulong offset)
 	switch(p){
 	case Qmem:
 	case Qattr:
-		pp = slot + DEV(c);
+		pp = slot + SLOTNO(c);
 		if(pp->occupied == 0 || pp->enabled == 0)
 			error(Eio);
 		qlock(&pp->mlock);
-		n = pcmwrite(pp->dev, p == Qattr, a, n, offset);
+		n = pcmwrite(pp->slotno, p == Qattr, a, n, offset);
 		qunlock(&pp->mlock);
 		if(n < 0)
 			error(Eio);
@@ -783,12 +804,6 @@ i82365write(Chan *c, void *a, long n, ulong offset)
 		error(Ebadusefd);
 	}
 	return n;
-}
-
-long
-i82365bwrite(Chan *c, Block *bp, ulong offset)
-{
-	return devbwrite(c, bp, offset);
 }
 
 /*
@@ -820,7 +835,7 @@ pcmio(int dev, ISAConf *isa)
 	wrreg(pp, Rigc, isa->irq | Fnotreset | Fiocard);
 	
 	/* set power and enable device */
-	x = vcode(pp->vpp1) | (vcode(pp->vpp2)<<2);
+	x = vcode(pp->vpp1);
 	wrreg(pp, Rpc, x|Fautopower|Foutena|Fcardena);
 
 	/* 16-bit data path */
@@ -842,10 +857,10 @@ pcmio(int dev, ISAConf *isa)
 		/*  Reset adapter */
 		x = Creset;
 		pcmwrite(dev, 1, &x, 1, pp->caddr + Rconfig);
-		delay(2);
+		delay(5);
 		x = 0;
 		pcmwrite(dev, 1, &x, 1, pp->caddr + Rconfig);
-		delay(2);
+		delay(5);
 	
 		/*
 		 *  Set level sensitive (not pulsed) interrupts and
@@ -854,7 +869,7 @@ pcmio(int dev, ISAConf *isa)
 		 */
 		x = Clevel | 1;
 		pcmwrite(dev, 1, &x, 1, pp->caddr + Rconfig);
-		delay(2);
+		delay(5);
 	}
 	return 0;
 }
@@ -877,22 +892,20 @@ static void (*parse[256])(Slot*, int) =
 static int
 readc(Slot *pp, uchar *x)
 {
-	if(pp->cispos > pp->cisbase + Mchunk)
+	if(pp->cispos >= Mchunk)
 		return 0;
-
-	*x = *(pp->cispos);
-	pp->cispos += 2;
+	*x = pp->cisbase[2*pp->cispos];
+	pp->cispos++;
 	return 1;
 }
 
 static void
 cisread(Slot *pp)
 {
-	PCMmap *m;
 	uchar link;
 	uchar type;
-	uchar *this;
-	int i;
+	int this, i;
+	PCMmap *m;
 
 	pp->vpp1 = pp->vpp2 = 5;
 	pp->bit16 = 0;
@@ -901,9 +914,11 @@ cisread(Slot *pp)
 	pp->def = 0;
 	pp->irqs = 0xffff;
 
-	/* map in the attribute memory cis should be in */
 	m = getmap(pp, 0, 1);
-	pp->cispos = pp->cisbase = (uchar*)(KZERO|m->isa);
+	if(m == 0)
+		return;
+	pp->cisbase = (uchar*)(KZERO|m->isa);
+	pp->cispos = 0;
 
 	/* loop through all the tuples */
 	for(i = 0; i < 1000; i++){
@@ -916,9 +931,7 @@ cisread(Slot *pp)
 			(*parse[type])(pp, type);
 		if(link == 0xff)
 			break;
-		pp->cispos = this + 2*(2+link);
-		if(this > pp->cisbase + Mchunk)
-			break;
+		pp->cispos = this + (2+link);
 	}
 }
 

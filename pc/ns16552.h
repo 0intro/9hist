@@ -115,7 +115,7 @@ ns16552install(void)
 			continue;
 		}
 
-		if(strcmp(sc->type, "MP008") == 0 || strcmp(sc->type, "mp008") == 0){
+		if(cistrcmp(sc->type, "MP008") == 0){
 			/*
 			 *  port gives base port address for uarts
 			 *  irq is interrupt
@@ -135,7 +135,7 @@ ns16552install(void)
 				ns16552setup(port, sc->freq, name);
 				port += 8;
 			}
-		} else if(strcmp(sc->type, "com") == 0 || strcmp(sc->type, "COM") == 0){
+		} else if(cistrcmp(sc->type, "com") == 0){
 			/*
 			 *  port gives base port address for the uart
 			 *  irq is interrupt
@@ -147,19 +147,6 @@ ns16552install(void)
 			ns16552setup(sc->port, sc->freq, name);
 			setvec(Int0vec+sc->irq, ns16552intrx, (void*)(nuart-1));
 		}
-
 		nscard++;
 	}
-}
-
-int
-iprint(char *fmt, ...)
-{
-	char buf[PRINTSIZE];
-	int n;
-
-	n = doprint(buf, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
-	screenputs(buf, n);
-
-	return n;
 }

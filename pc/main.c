@@ -775,3 +775,37 @@ isaconfig(char *class, int ctlrno, ISAConf *isa)
 	}
 	return 0;
 }
+
+int
+iprint(char *fmt, ...)
+{
+	char buf[PRINTSIZE];
+	int n;
+
+	n = doprint(buf, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
+	screenputs(buf, n);
+
+	return n;
+}
+
+int
+cistrcmp(char *a, char *b)
+{
+	int ac, bc;
+
+	for(;;){
+		ac = *a++;
+		bc = *b++;
+	
+		if(ac >= 'A' && ac <= 'Z')
+			ac = 'a' + (ac - 'A');
+		if(bc >= 'A' && bc <= 'Z')
+			bc = 'a' + (bc - 'A');
+		ac -= bc;
+		if(ac)
+			return ac;
+		if(bc == 0)
+			break;
+	}
+	return 0;
+}

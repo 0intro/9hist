@@ -759,7 +759,7 @@ ataident(Drive *dp)
 		dp->lba = 1;
 		dp->sectors = (ip->lbasecs[0]) | (ip->lbasecs[1]<<16);
 		dp->cap = dp->bytes * dp->sectors;
-print("\nata%d model %s with %d lba sectors\n", dp->drive, id, dp->sectors);
+/*print("\nata%d model %s with %d lba sectors\n", dp->drive, id, dp->sectors);/**/
 	} else {
 		dp->lba = 0;
 

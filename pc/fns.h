@@ -6,6 +6,7 @@ void	addscsicard(char*, Scsiio (*)(int, ISAConf*));
 void	bbinit(void);
 void	bigcursor(void);
 void	bootargs(ulong);
+int	cistrcmp(char*, char*);
 #define	clearmmucache()		/* 386 doesn't have one */
 void	clockinit(void);
 void	config(int);
@@ -62,7 +63,7 @@ void	outsl(int, void*, int);
 void	pcicreset(void);
 int	pcmio(int, ISAConf*);
 long	pcmread(int, int, void*, long, ulong);
-char*	pcmspecial(int);
+int	pcmspecial(char*, ISAConf*);
 void	pcmspecialclose(int);
 long	pcmwrite(int, int, void*, long, ulong);
 void	prflush(void);
