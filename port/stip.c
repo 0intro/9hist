@@ -389,19 +389,23 @@ ip_reassemble(int offset, Block *bp, Etherhdr *ip)
 	Ipaddr src, dst;
 	ushort id;
 	Block *bl, **l, *last, *prev;
-	int ovlap, len, fragsize;
+	int ovlap, len, fragsize, pktposn;
 
 	src = nhgetl(ip->src);
 	dst = nhgetl(ip->dst);
 	id = nhgets(ip->id);
 
+	qlock(&fraglock);
 	for(f = flisthead; f; f = f->next) {
-		if(f->src == src && f->dst == dst && f->id == id)
+		if(f->src == src)
+		if(f->dst == dst)
+		if(f->id == id)
 			break;
 	}
+	qunlock(&fraglock);
 
 	if(!ip->tos && (offset & ~(IP_MF|IP_DF)) == 0) {
-		if(f) {
+		if(f != 0) {
 			qlock(f);
 			ipfragfree(f);
 		}
@@ -415,10 +419,6 @@ ip_reassemble(int offset, Block *bp, Etherhdr *ip)
 	/* First fragment allocates a reassembly queue */
 	if(f == 0) {
 		f = ipfragallo();
-		if(f == 0) {
-			freeb(bp);
-			return 0;
-		}
 		qlock(f);
 		f->id = id;
 		f->src = src;
@@ -475,17 +475,18 @@ ip_reassemble(int offset, Block *bp, Etherhdr *ip)
 		}
 	}
 
-	/* Now look for a completed queue */
+	pktposn = 0;
 	for(bl = f->blist; bl; bl = bl->next) {
+		if(BLKFRAG(bl)->foff != pktposn)
+			break;
 		if((BLKIP(bl)->frag[0]&(IP_MF>>8)) == 0)
 			goto complete;
-		if(bl->next == 0 ||
-		   BLKFRAG(bl)->foff+BLKFRAG(bl)->flen != BLKFRAG(bl->next)->foff)
-			break;
+
+		pktposn += BLKFRAG(bl)->flen;
 	}
 	qunlock(f);
 	return 0;
-	
+
 complete:
 	bl = f->blist;
 	last = bl;
@@ -519,16 +520,13 @@ complete:
 void
 ipfragfree(Fragq *frag)
 {
-	Block *f, *next;
 	Fragq *fl, **l;
 
-	for(f = frag->blist; f; f = next) {
-		next = f->next;
-		freeb(f);
-	}
+	freeb(frag->blist);
 
 	frag->src = 0;
 	frag->id = 0;
+	frag->blist = 0;
 	qunlock(frag);
 
 	qlock(&fraglock);
@@ -546,8 +544,6 @@ ipfragfree(Fragq *frag)
 	fragfree = frag;
 
 	qunlock(&fraglock);
-
-
 }
 
 /*
@@ -559,20 +555,23 @@ ipfragallo(void)
 	Fragq *f;
 
 	qlock(&fraglock);
-	if(!fragfree) {
-		qunlock(&fraglock);
-		print("ipfragallo: no queue\n");
-		return 0;
+	while(fragfree == 0) {
+		for(f = flisthead; f; f = f->next)
+			if(canqlock(f)) {
+				qunlock(&fraglock);
+				ipfragfree(f);
+				break;
+			}
+		qlock(&fraglock);
 	}
 	f = fragfree;
 	fragfree = f->next;
 	f->next = flisthead;
 	flisthead = f;
-	f->age = TK2MS(MACHP(0)->ticks)/1000 + 600;
+	f->age = TK2MS(MACHP(0)->ticks) + 30000;
 
 	qunlock(&fraglock);
 	return f;
-
 }
 
 /*

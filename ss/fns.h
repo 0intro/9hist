@@ -25,6 +25,7 @@ void	kbdrepeat(int);
 KMap*	kmap(Page*);
 void	kmapinit(void);
 KMap*	kmappa(ulong, ulong);
+KMap*	kmapperm(Page*);
 int	kprint(char*, ...);
 void	kproftimer(ulong);
 void	kunmap(KMap*);

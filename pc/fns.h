@@ -62,3 +62,4 @@ void	uartclock(void);
 void	uartintr0(Ureg*);
 void	vgainit(void);
 #define	waserror()	(u->nerrlab++, setlabel(&u->errlab[u->nerrlab-1]))
+#define	kmapperm(x)	kmap(x)

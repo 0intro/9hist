@@ -116,7 +116,7 @@ newblock(Bclass *bcp)
 	uchar *cp;
 
 	page = newpage(1, 0, 0);
-	page->va = VA(kmap(page));
+	page->va = VA(kmapperm(page));
 	if(bcp == bclass){
 		/*
 		 *  create some level zero blocks and return

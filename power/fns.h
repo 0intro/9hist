@@ -69,3 +69,4 @@ void	vector80(void);
 void	vmereset(void);
 void	wbflush(void);
 #define	waserror()	setlabel(&u->errlab[u->nerrlab++])
+#define	kmapperm(x)	kmap(x)

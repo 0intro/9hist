@@ -465,12 +465,14 @@ ilrexmit(Ilcb *ic)
 	Block *nb;
 	Ilhdr *h;
 
-	if(ic->unacked == 0)
-		return;
-
+	nb = 0;
 	qlock(&ic->ackq);
-	nb = copyb(ic->unacked, blen(ic->unacked));
+	if(ic->unacked)
+		nb = copyb(ic->unacked, blen(ic->unacked));
 	qunlock(&ic->ackq);
+
+	if(nb == 0)
+		return;
 
 	h = (Ilhdr*)nb->rptr;
 	DBG("rxmit %d.", nhgetl(h->ilid));

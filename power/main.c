@@ -561,7 +561,7 @@ confinit(void)
 	 *  set minimal default values
 	 */
 	conf.nmach = 1;
-	conf.nproc = 32;
+	conf.nproc = 100;
 	conf.npgrp = conf.nproc / 4;
 	conf.npgenv = 4 * conf.npgrp;
 	conf.nenv = 4 * conf.nproc;
@@ -578,7 +578,7 @@ confinit(void)
 	conf.nstream = 2 * conf.nproc;
 	conf.nalarm = 500;
 	conf.nmount = 500;
-	conf.nsrv = 3;
+	conf.nsrv = 20;
 	conf.nnoifc = 1;
 	conf.nnoconv = 32;
 	conf.nurp = 25;

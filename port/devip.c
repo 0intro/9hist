@@ -683,14 +683,76 @@ tcpstclose(Queue *q)
 }
 
 
-/* 
- * ptcl_csum - protcol checksum routine
- */
+static	short	endian	= 1;
+static	char*	aendian	= (char*)&endian;
+#define	LITTLE	*aendian
+
+ushort
+ptcl_bsum(uchar *addr, int len)
+{
+	ulong losum, hisum, mdsum, x;
+	ulong t1, t2;
+
+	losum = 0;
+	hisum = 0;
+	mdsum = 0;
+
+	x = 0;
+	if((ulong)addr & 1) {
+		if(len) {
+			hisum += addr[0];
+			len--;
+			addr++;
+		}
+		x = 1;
+	}
+	while(len >= 16) {
+		t1 = *(ushort*)(addr+0);
+		t2 = *(ushort*)(addr+2);	mdsum += t1;
+		t1 = *(ushort*)(addr+4);	mdsum += t2;
+		t2 = *(ushort*)(addr+6);	mdsum += t1;
+		t1 = *(ushort*)(addr+8);	mdsum += t2;
+		t2 = *(ushort*)(addr+10);	mdsum += t1;
+		t1 = *(ushort*)(addr+12);	mdsum += t2;
+		t2 = *(ushort*)(addr+14);	mdsum += t1;
+		mdsum += t2;
+		len -= 16;
+		addr += 16;
+	}
+	while(len >= 2) {
+		mdsum += *(ushort*)addr;
+		len -= 2;
+		addr += 2;
+	}
+	if(x) {
+		if(len)
+			losum += addr[0];
+		if(LITTLE)
+			losum += mdsum;
+		else
+			hisum += mdsum;
+	} else {
+		if(len)
+			hisum += addr[0];
+		if(LITTLE)
+			hisum += mdsum;
+		else
+			losum += mdsum;
+	}
+
+	losum += hisum >> 8;
+	losum += (hisum & 0xff) << 8;
+	while(hisum = losum>>16)
+		losum = hisum + (losum & 0xffff);
+
+	return losum & 0xffff;
+}
+
 ushort
 ptcl_csum(Block *bp, int offset, int len)
 {
 	uchar *addr;
-	ulong losum = 0, hisum = 0;
+	ulong losum, hisum;
 	ushort csum;
 	int odd, blen, x;
 
@@ -704,26 +766,24 @@ ptcl_csum(Block *bp, int offset, int len)
 
 	addr = bp->rptr + offset;
 	blen = BLEN(bp) - offset;
+
+	if(bp->next == 0)
+		return ~ptcl_bsum(addr, MIN(len, blen)) & 0xffff;
+
+	losum = 0;
+	hisum = 0;
+
 	odd = 0;
 	while(len) {
-		if(odd) {
-			losum += *addr++;
-			blen--;
-			len--;
-			odd = 0;
-		}
-		for(x = MIN(len, blen); x > 1; x -= 2) {
-			hisum += addr[0];
-			losum += addr[1];
-			len -= 2;
-			blen -= 2;
-			addr += 2;
-		}
-		if(blen && x) {
-			odd = 1;
-			hisum += addr[0];
-			len--;
-		}
+		x = MIN(len, blen);
+		csum = ptcl_bsum(addr, x);
+		if(odd)
+			hisum += csum;
+		else
+			losum += csum;
+		odd = (odd+x) & 1;
+		len -= x;
+
 		bp = bp->next;
 		if(bp == 0)
 			break;
@@ -735,8 +795,6 @@ ptcl_csum(Block *bp, int offset, int len)
 	losum += (hisum&0xff)<<8;
 	while((csum = losum>>16) != 0)
 		losum = csum + (losum & 0xffff);
-
-	losum &= 0xffff;
 
 	return ~losum & 0xffff;
 }

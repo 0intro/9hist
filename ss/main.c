@@ -51,7 +51,7 @@ intrinit(void)
 {
 	KMap *k;
 
-	k = kmappa(INTRREG, PTEIO);
+	k = kmappa(INTRREG, PTEIO|PTENOCACHE);
 	intrreg = (uchar*)k->va;
 }
 
@@ -259,10 +259,10 @@ lancesetup(Lance *lp)
 	ulong pa, pte, va;
 	int i, j;
 
-	k = kmappa(ETHER, PTEIO);
+	k = kmappa(ETHER, PTEIO|PTENOCACHE);
 	lp->rdp = (void*)(k->va+0);
 	lp->rap = (void*)(k->va+2);
-	k = kmappa(EEPROM, PTEIO);
+	k = kmappa(EEPROM, PTEIO|PTENOCACHE);
 	cp = (uchar*)(k->va+0x7da);
 	for(i=0; i<6; i++)
 		lp->ea[i] = *cp++;
@@ -280,7 +280,7 @@ lancesetup(Lance *lp)
 	 */
 	pa = (ulong)ialloc(BY2PG, 1)&~KZERO;	/* one whole page */
 	/* map at LANCESEGM */
-	k = kmappa(pa, PTEMAINMEM);
+	k = kmappa(pa, PTEMAINMEM|PTENOCACHE);
 	lp->lanceram = (ushort*)k->va;
 	lp->lm = (Lancemem*)k->va;
 
@@ -294,7 +294,7 @@ lancesetup(Lance *lp)
 	pa = (ulong)ialloc(i*BY2PG, 1)&~KZERO;
 	va = 0;
 	for(j=i-1; j>=0; j--){
-		k = kmappa(pa+j*BY2PG, PTEMAINMEM);
+		k = kmappa(pa+j*BY2PG, PTEMAINMEM|PTENOCACHE);
 		if(va){
 			if(va != k->va+BY2PG)
 				panic("lancesetup va unordered");

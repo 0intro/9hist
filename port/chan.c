@@ -634,7 +634,7 @@ skipslash(char *name)
 	return name;
 }
 
-char isfrog[]={
+char isfrog[256]={
 	/*NUL*/	1, 1, 1, 1, 1, 1, 1, 1,
 	/*BKS*/	1, 1, 1, 1, 1, 1, 1, 1,
 	/*DLE*/	1, 1, 1, 1, 1, 1, 1, 1,
@@ -642,6 +642,10 @@ char isfrog[]={
 	[' ']	1,
 	['/']	1,
 	[0x7f]	1,
+/*0x80+	  NUL*/	1, 1, 1, 1, 1, 1, 1, 1,
+	/*BKS*/	1, 1, 1, 1, 1, 1, 1, 1,
+	/*DLE*/	1, 1, 1, 1, 1, 1, 1, 1,
+	/*CAN*/	1, 1, 1, 1, 1, 1, 1, 1,
 };
 
 void
@@ -651,7 +655,7 @@ nameok(char *elem)
 
 	eelem = elem+NAMELEN;
 	while(*elem) {
-		if((*elem&0x80) || isfrog[*elem])
+		if(isfrog[*(uchar*)elem])
 			error(Ebadchar);
 		elem++;
 		if(elem >= eelem)
@@ -681,8 +685,8 @@ nextelem(char *name, char *elem)
 			end = e;
 	}
 	while(name < end){
-		c = *name++;
-		if((c&0x80) || isfrog[c])
+		c = *(uchar*)name++;
+		if(isfrog[c])
 			error(Ebadchar);
 		*elem++ = c;
 	}

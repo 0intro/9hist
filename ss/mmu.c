@@ -341,13 +341,8 @@ kmappa(ulong pa, ulong flag)
 	kmapalloc.free = k->next;
 	unlock(&kmapalloc);
 	k->pa = pa;
-	/*
-	 * Cache is virtual and a pain to deal with.
-	 * Must avoid having the same entry in the cache twice, so
-	 * must use NOCACHE or else extreme cleverness elsewhere.
-	 */
 	s = splhi();
-	putpmeg(k->va, PPN(pa)|PTEVALID|PTEKERNEL|PTEWRITE|PTENOCACHE|flag);
+	putpmeg(k->va, PPN(pa)|PTEVALID|PTEKERNEL|PTEWRITE|flag);
 	splx(s);
 	return k;
 }
@@ -355,6 +350,20 @@ kmappa(ulong pa, ulong flag)
 KMap*
 kmap(Page *pg)
 {
+	/*
+	 * Cache is virtual and a pain to deal with.
+	 * Must avoid having the same entry in the cache twice, so
+	 * must use NOCACHE or else extreme cleverness elsewhere.
+	 */
+	return kmappa(pg->pa, PTEMAINMEM|PTENOCACHE);
+}
+
+KMap*
+kmapperm(Page *pg)
+{
+	/*
+	 * Here we know it's a permanent entry and can be cached.
+	 */
 	return kmappa(pg->pa, PTEMAINMEM);
 }
 

@@ -140,6 +140,8 @@ uartrts(Uart *up, int n)
 void
 uartbreak(Uart *up, int ms)
 {
+	if(ms == 0)
+		ms = 200;
 	uartwrreg(up, Format, Break);
 	tsleep(&u->p->sleep, return0, 0, ms);
 	uartwrreg(up, Format, 0);
