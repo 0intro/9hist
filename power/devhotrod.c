@@ -1,3 +1,4 @@
+#define	BITBOTCH	256	/* remove with BIT3 */
 #include	"u.h"
 #include	"lib.h"
 #include	"mem.h"
@@ -51,7 +52,7 @@ struct Hotrod{
 	int		vec;		/* vme interrupt vector */
 	int		wi;		/* where to write next cmd */
 	int		ri;		/* where to read next reply */
-	uchar		buf[MAXFDATA+MAXMSG];
+	uchar		buf[MAXFDATA+MAXMSG+BITBOTCH];
 };
 
 Hotrod hotrod[Nhotrod];
@@ -292,7 +293,7 @@ hotrodread(Chan *c, void *buf, long n, ulong offset)
 
 	case Qhotrod:
 		if(n > sizeof hp->buf){
-			print("hotrod bufsize\n");
+			print("hotrod bufsize %d %d\n", n, sizeof hp->buf);
 			error(Egreg);
 		}
 		if((((ulong)buf)&(KSEGM|3)) == KSEG0){

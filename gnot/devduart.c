@@ -98,9 +98,7 @@ struct Duartport
 	Queue	*wq;		/* write queue */
 	Rendez	r;		/* kproc waiting for input */
 	Alarm	*a;		/* alarm for waking the kernel process */
-	int	delay;		/* between character input and waking kproc */
  	int	kstarted;	/* kproc started */
-	uchar	delim[256/8];	/* characters that act as delimiters */
 };
 Duartport	duartport[1];
 
@@ -424,9 +422,17 @@ duartrintr(char ch)
 		(*cq->putc)(cq, ch);
 	else {
 		putc(cq, ch);
-		if(dp->delim[ch/8] & (1<<(ch&7)) )
-			wakeup(&cq->r);
 	}
+}
+void
+duartclock(void)
+{
+	Duartport *dp = duartport;
+	IOQ *cq;
+
+	cq = dp->iq;
+	if(cangetc(cq))
+		wakeup(&cq->r);
 }
 
 /*
@@ -606,7 +612,6 @@ duartspecial(int port, IOQ *oq, IOQ *iq, int baud)
 	duartbaud(baud);
 }
 
-static void	duarttimer(Alarm*);
 static int	duartputc(IOQ *, int);
 static void	duartstopen(Queue*, Stream*);
 static void	duartstclose(Queue*);
@@ -620,38 +625,6 @@ Qinfo duartinfo =
 	duartstclose,
 	"duart"
 };
-
-/*
- *  wakeup the helper process to do input
- */
-static void
-duarttimer(Alarm *a)
-{
-	Duartport *dp = a->arg;
-
-	cancel(a);
-	dp->a = 0;
-	wakeup(&dp->iq->r);
-}
-
-static int
-duartputc(IOQ *cq, int ch)
-{
-	Duartport *dp = cq->ptr; int r;
-
-	r = putc(cq, ch);
-
-	/*
-	 *  pass upstream within dp->delay milliseconds
-	 */
-	if(dp->a==0){
-		if(dp->delay == 0)
-			wakeup(&cq->r);
-		else
-			dp->a = alarm(dp->delay, duarttimer, dp);
-	}
-	return r;
-}
 
 static void
 duartstopen(Queue *q, Stream *s)
@@ -667,13 +640,8 @@ duartstopen(Queue *q, Stream *s)
 	dp->wq = WR(q);
 	WR(q)->ptr = dp;
 	RD(q)->ptr = dp;
-	dp->delay = 64;
-	dp->iq->putc = duartputc;
 	qunlock(dp);
 
-	/* start with all characters as delimiters */
-	memset(dp->delim, 1, sizeof(dp->delim));
-	
 	if(dp->kstarted == 0){
 		dp->kstarted = 1;
 		sprint(name, "duart%d", s->id);
@@ -733,8 +701,7 @@ duartoput(Queue *q, Block *bp)
 			break;
 		case 'W':
 		case 'w':
-			if(n>=0 && n<1000)
-				dp->delay = n;
+			/* obsolete */
 			break;
 		}
 	}else while((m = BLEN(bp)) > 0){

@@ -274,6 +274,23 @@ putpage(Page *p)
 }
 
 void
+simpleputpage(Page *pg)			/* Always call with palloc locked */
+{
+	pg->ref = 0;
+	palloc.freecount++;
+	if(palloc.head) {
+		pg->next = palloc.head;
+		palloc.head->prev = pg;
+		pg->prev = 0;
+		palloc.head = pg;
+	}
+	else {
+		palloc.head = palloc.tail = pg;
+		pg->prev = pg->next = 0;
+	}
+}
+
+void
 duppage(Page *p)				/* Always call with p locked */
 {
 	Page *np;

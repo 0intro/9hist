@@ -8,6 +8,7 @@
 
 void	addportintr(int (*)(void));
 void	clearmmucache(void);
+void	duartclock(void);
 void	duartinit(void);
 void	duartstarttimer(void);
 void	duartstoptimer(void);

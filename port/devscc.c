@@ -99,9 +99,7 @@ struct SCC
 	Queue	*wq;		/* write queue */
 	Rendez	r;		/* kproc waiting for input */
 	Alarm	*a;		/* alarm for waking the kernel process */
-	int	delay;		/* between character input and waking kproc */
  	int	kstarted;	/* kproc started */
-	uchar	delim[256/8];	/* characters that act as delimiters */
 };
 SCC	scc[2];
 
@@ -293,11 +291,8 @@ sccintr0(SCC *sp, uchar x)
 			ch = *sp->data;
 			if(cq->putc)
 				(*cq->putc)(cq, ch);
-			else {
+			else
 				putc(cq, ch);
-				if(sp->delim[ch/8] & (1<<(ch&7)) )
-					wakeup(&cq->r);
-			}
 		}
 	}
 	if(x & TxPendB){
@@ -322,6 +317,19 @@ sccintr(void)
 	x = sccrdreg(&scc[0], 3);
 	sccintr0(&scc[1], x);
 	sccintr0(&scc[0], x>>3);
+}
+
+void
+sccclock(void)
+{
+	SCC *sp;
+	IOQ *cq;
+
+	for(sp = scc; sp < &scc[2]; sp++){
+		cq = sp->iq;
+		if(sp->wq && cangetc(cq))
+			wakeup(&cq->r);
+	}
 }
 
 /*
@@ -380,7 +388,6 @@ sccspecial(int port, IOQ *oq, IOQ *iq, int baud)
 	}
 }
 
-static void	scctimer(Alarm*);
 static int	sccputc(IOQ *, int);
 static void	sccstopen(Queue*, Stream*);
 static void	sccstclose(Queue*);
@@ -395,38 +402,6 @@ Qinfo sccinfo =
 	"scc"
 };
 
-/*
- *  create a helper process per port
- */
-static void
-scctimer(Alarm *a)
-{
-	SCC *sp = a->arg;
-
-	cancel(a);
-	sp->a = 0;
-	wakeup(&sp->iq->r);
-}
-
-static int
-sccputc(IOQ *cq, int ch)
-{
-	SCC *sp = cq->ptr; int r;
-
-	r = putc(cq, ch);
-
-	/*
-	 *  pass upstream within sp->delay milliseconds
-	 */
-	if(sp->a==0){
-		if(sp->delay == 0)
-			wakeup(&cq->r);
-		else
-			sp->a = alarm(sp->delay, scctimer, sp);
-	}
-	return r;
-}
-
 static void
 sccstopen(Queue *q, Stream *s)
 {
@@ -440,13 +415,8 @@ sccstopen(Queue *q, Stream *s)
 	sp->wq = WR(q);
 	WR(q)->ptr = sp;
 	RD(q)->ptr = sp;
-	sp->delay = 64;
-	sp->iq->putc = sccputc;
 	qunlock(sp);
 
-	/* start with all characters as delimiters */
-	memset(sp->delim, 1, sizeof(sp->delim));
-	
 	if(sp->kstarted == 0){
 		sp->kstarted = 1;
 		sprint(name, "scc%d", s->id);
@@ -507,8 +477,7 @@ sccoput(Queue *q, Block *bp)
 			break;
 		case 'W':
 		case 'w':
-			if(n>=0 && n<1000)
-				sp->delay = n;
+			/* obsolete */
 			break;
 		}
 	}else while((m = BLEN(bp)) > 0){

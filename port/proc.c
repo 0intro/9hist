@@ -68,25 +68,13 @@ schedinit(void)		/* never returns */
 			 * The Grim Reaper lays waste the bodies of the dead
 			 */
 			p->pid = 0;
-			mmurelease(p);
 			/* 
 			 * Holding locks from pexit:
 			 * 	procalloc, debug, palloc
 			 */
-			pg = p->upage;
-			pg->ref = 0;
+			mmurelease(p);
+			simpleputpage(p->upage);
 			p->upage = 0;
-			palloc.freecount++;
-			if(palloc.head) {
-				pg->next = palloc.head;
-				palloc.head->prev = pg;
-				pg->prev = 0;
-				palloc.head = pg;
-			}
-			else {
-				palloc.head = palloc.tail = pg;
-				pg->prev = pg->next = 0;
-			}
 
 			p->qnext = procalloc.free;
 			procalloc.free = p;

@@ -159,6 +159,7 @@ print("%d low level pte's, %d high level pte's\n", npage, nkpt);
 	puttr(TSSSEL);
 }
 
+
 void
 mapstack(Proc *p)
 {

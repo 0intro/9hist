@@ -329,18 +329,18 @@ changed(Chan *c, Drive *dp)
 {
 	ulong old;
 
-	if(inb(Pdir)&Fchange)
+	if(inb(Pdir)&Fchange){
 		dp->vers++;
-	old = c->qid.vers;
-	c->qid.vers = dp->vers;
-	if(old && old!=dp->vers){
 		dp->ccyl = -1;
 		if(dp->cyl)
 			floppyxfer(dp, Fread, dp->cache, 0, dp->t->tsize);
 		else
 			floppyxfer(dp, Fread, dp->cache, dp->t->heads*dp->t->tsize, dp->t->tsize);
-		errors("disk changed");
 	}
+	old = c->qid.vers;
+	c->qid.vers = dp->vers;
+	if(old && old!=dp->vers)
+		errors("disk changed");
 }
 
 long
