@@ -33,6 +33,10 @@ enum
 	Rx8bits=	3<<6,
 
 	/* wr 4 */
+	ParEven=	3<<0,
+	ParOdd=		1<<0,
+	ParOff=		0<<0,
+	ParMask=	3<<0,
 	SyncMode=	0<<2,
 	Rx1stop=	1<<2,
 	Rx1hstop=	2<<2,
@@ -161,6 +165,26 @@ sccsetbaud(SCC *sp, int rate)
 
 	sccwrreg(sp, 12, brconst & 0xff);
 	sccwrreg(sp, 13, (brconst>>8) & 0xff);
+}
+
+void
+sccparity(SCC *sp, char type)
+{
+	int val;
+
+	switch(type){
+	case 'e':
+		val = ParEven;
+		break;
+	case 'o':
+		val = ParOdd;
+		break;
+	default:
+		val = ParOff;
+		break;
+	}
+	sp->sticky[4] = (sp->sticky[4] & ~ParMask) | val;
+	sccwrreg(sp, 4, 0);
 }
 
 /*
@@ -507,6 +531,10 @@ sccoput(Queue *q, Block *bp)
 		case 'D':
 		case 'd':
 			sccdtr(sp, n);
+			break;
+		case 'P':
+		case 'p':
+			sccparity(sp, *(bp->rptr+1));
 			break;
 		case 'K':
 		case 'k':

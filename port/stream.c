@@ -8,8 +8,6 @@
 #include	"devtab.h"
 #include	"fcall.h"
 
-ulong fpcs[100], refsa[100], refsf[100], apcs[100];
-
 enum {
 	Nclass=4,	/* number of block classes */
 };
@@ -186,9 +184,6 @@ allocb(ulong size)
 {
 	Block *bp;
 	Bclass *bcp;
-	ulong pc;
-
-	pc = getcallerpc(((uchar*)&size) - sizeof(size));
 
 	/*
 	 *  map size to class
@@ -212,25 +207,6 @@ allocb(ulong size)
 	bcp->first = bp->next;
 	if(bcp->first == 0)
 		bcp->last = 0;
-
-	if(bcp->size == 68) {
-		int i, hole, fnd;
-		fnd = 0;
-		hole = -1;
-		for(i = 0; i < 100; i++) {
-			if(apcs[i] == pc) {
-				refsa[i]++;
-				fnd = 1;
-				break;
-			}
-			if(refsa[i] == 0 && hole<0)
-				hole = i;
-		}
-		if(fnd == 0 && hole>=0) {
-			refsa[hole] = 1;
-			apcs[hole] = pc;
-		}
-	}
 	qunlock(bcp);
 
 	/*
@@ -245,7 +221,6 @@ allocb(ulong size)
 	if(bp->lim-bp->rptr<size && size<4096)
 		panic("allocb %lux %lux %d %ux %d", bp->lim, bp->rptr,
 			size, bp->flags, bcp-bclass);
-	bp->pc = pc;
 	return bp;
 }
 
@@ -261,21 +236,10 @@ freeb(Block *bp)
 	Bclass *bcp;
 	int x;
 	ulong pc;
-int i;
 
 	pc = getcallerpc(((uchar*)&bp) - sizeof(bp));
 	if((bp->flags&S_CLASS) >= Nclass)		/* Check for double free */
 		panic("freeb class last(%lux) this(%lux)", bp->pc, pc);
-
-	bcp = &bclass[bp->flags & S_CLASS];
-	if(bcp->size == 68) {
-		for(i = 0; i < 100; i++)
-			if(apcs[i] == bp->pc) {
-				refsf[i]++;
-				fpcs[i] = pc;
-			}
-	}
-
 	bp->pc = pc;
 
 	for(; bp; bp = nbp){
@@ -460,7 +424,6 @@ putq(Queue *q, Block *bp)
 	int delim;
 
 	lock(q);
-	q->pp = u->p;
 	if(q->first)
 		q->last->next = bp;
 	else
@@ -573,7 +536,6 @@ getq(Queue *q)
 	Block *bp;
 
 	lock(q);
-	q->pg = u->p;
 	bp = q->first;
 	if(bp) {
 		q->first = bp->next;
@@ -1076,7 +1038,6 @@ stputq(Queue *q, Block *bp)
 		delim = 1;
 	} else {
 		lock(q);
-		q->pp = u->p;
 		if(q->first)
 			q->last->next = bp;
 		else
@@ -1523,7 +1484,7 @@ dumpqueues(void)
 	int count, qcount;
 	Block *bp;
 	Bclass *bcp;
-int i;
+
 	print("\n");
 	qcount = 0;
 	for(q = qlist; q < qlist + conf.nqueue; q++, q++){
@@ -1533,17 +1494,9 @@ int i;
 		print("%10s %ux  R n %d l %d f %ux r %ux ",
 			q->info->name, q,
 			q->nb, q->len, q->flag, &(q->r));
-			if(q->pg)
-				print("get %d %s ", q->pg->pid, q->pg->text);
-			if(q->pp)
-				print("put %d %s ", q->pp->pid, q->pp->text);
 		print("  W n %d l %d f %ux r %ux next %lux put %lux Rz %lux", 
 			WR(q)->nb, WR(q)->len,
 			WR(q)->flag, &(WR(q)->r), q->next, q->put, q->rp);
-			if(q->pg)
-				print("get %d %s ", q->pg->pid, q->pg->text);
-			if(q->pp)
-				print("put %d %s ", q->pp->pid, q->pp->text);
 		print("\n");
 		dumpblocks(q, 'R');
 		dumpblocks(WR(q), 'W');
@@ -1558,8 +1511,4 @@ int i;
 			bcp->made, count);
 	}
 	print("\n");
-	for(i = 0; i < 100; i++) {
-		if(refsa[i] != refsf[i])
-			print("%d alloc %lux %d free %lux\n", refsa[i], apcs[i], refsf[i], fpcs[i]);
-	}
 }

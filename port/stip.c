@@ -415,6 +415,9 @@ ip_reassemble(int offset, Block *bp, Etherhdr *ip)
 	dst = nhgetl(ip->dst);
 	id = nhgets(ip->id);
 
+	/*
+	 *  find a reassembly queue for this fragment
+	 */
 	qlock(&fraglock);
 	for(f = flisthead; f; f = f->next) {
 		if(f->src == src)
@@ -424,6 +427,11 @@ ip_reassemble(int offset, Block *bp, Etherhdr *ip)
 	}
 	qunlock(&fraglock);
 
+	/*
+	 *  if this isn't a fragmented packet, accept it
+	 *  and get rid of any fragments that might go
+	 *  with it.
+	 */
 	if(!ip->tos && (offset & ~(IP_MF|IP_DF)) == 0) {
 		if(f != 0) {
 			qlock(f);
@@ -451,6 +459,9 @@ ip_reassemble(int offset, Block *bp, Etherhdr *ip)
 	}
 	qlock(f);
 
+	/*
+	 *  find the new fragment's position in the queue
+	 */
 	prev = 0;
 	l = &f->blist;
 	for(bl = f->blist; bl && BLKFRAG(bp)->foff > BLKFRAG(bl)->foff; bl = bl->next) {
@@ -469,7 +480,7 @@ ip_reassemble(int offset, Block *bp, Etherhdr *ip)
 				qunlock(f);
 				return 0;
 			}
-			BLKFRAG(bp)->flen -= ovlap;
+			BLKFRAG(prev)->flen -= ovlap;
 		}
 	}
 
@@ -490,15 +501,21 @@ ip_reassemble(int offset, Block *bp, Etherhdr *ip)
 			if(ovlap < BLKFRAG(*l)->flen) {
 				fragstat.succall++;
 				BLKFRAG(*l)->flen -= ovlap;
+				BLKFRAG(*l)->foff += ovlap;
 				(*l)->rptr += ovlap;
 				break;
 			}
 			last = (*l)->next;
+			(*l)->next = 0;
 			freeb(*l);
 			*l = last;
 		}
 	}
 
+	/*
+	 *  look for a complete packet.  if we get to a fragment
+	 *  without IP_MF set, we're done.
+	 */
 	pktposn = 0;
 	for(bl = f->blist; bl; bl = bl->next) {
 		if(BLKFRAG(bl)->foff != pktposn)
