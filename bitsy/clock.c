@@ -17,6 +17,7 @@ typedef struct OSTimer
 } OSTimer;
 
 static OSTimer *timerregs = (OSTimer*)OSTIMERREGS;
+static int clockinited;
 
 static void	clockintr(Ureg*, void*);
 
@@ -58,6 +59,8 @@ clockinit(void)
 
 	/* post interrupt 1/HZ secs from now */
 	timerregs->osmr[0] = timerregs->oscr + ClockFreq/HZ;
+
+	clockinited = 1;
 }
 
 vlong
@@ -110,9 +113,17 @@ void
 delay(int ms)
 {
 	ulong start;
+	int i;
 
-	while(ms-- > 0){
-		start = timerregs->oscr;
-		while(timerregs->oscr-start < ClockFreq/1000);
+	if(clockinited){
+		while(ms-- > 0){
+			start = timerregs->oscr;
+			while(timerregs->oscr-start < ClockFreq/1000);
+		}
+	} else {
+		while(ms-- > 0){
+			for(i = 0; i < 1000; i++)
+				;
+		}
 	}
 }

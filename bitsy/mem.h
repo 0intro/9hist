@@ -144,7 +144,7 @@
 #define CpRBFlush	9		/* W: Read Buffer ops */
 #define CpPID		13		/* RW: PID for virtual mapping */
 #define	CpBpt		14		/* W: Breakpoint register */
-#define CpTest		15		/* W: Test, CLock and Idle Control */
+#define CpTest		15		/* W: Test, Clock and Idle Control */
 
 /*
  *  CpControl

@@ -127,12 +127,12 @@ mapspecial(ulong pa, int len)
 {
 	ulong *t;
 	ulong va, i, base, end, off, entry;
-	int livelarge;
+	int large;
 	ulong* rv;
 
 	rv = nil;
-	livelarge = len >= 128*1024;
-	if(livelarge){
+	large = len >= 128*1024;
+	if(large){
 		base = pa & ~(OneMeg-1);
 		end = (pa+len-1) & ~(OneMeg-1);
 	} else {
@@ -145,7 +145,7 @@ mapspecial(ulong pa, int len)
 		switch(l1table[va>>20] & L1TypeMask){
 		default:
 			/* found unused entry on level 1 table */
-			if(livelarge){
+			if(large){
 				if(rv == nil)
 					rv = (ulong*)(va+off);
 				l1table[va>>20] = L1Section | L1KernelRW | L1Domain0 |
@@ -171,14 +171,14 @@ mapspecial(ulong pa, int len)
 				
 			continue;
 		case L1PageTable:
-			if(livelarge)
+			if(large)
 				continue;
 			break;
 		}
 
 		/* here if we're using page maps instead of sections */
 		t = (ulong*)(l1table[va>>20] & L1PTBaseMask);
-		for(i = 0; i < OneMeg; i += BY2PG){
+		for(i = 0; i < OneMeg && base <= end; i += BY2PG){
 			entry = t[i>>PGSHIFT];
 
 			/* found unused entry on level 2 table */
@@ -196,6 +196,7 @@ mapspecial(ulong pa, int len)
 	/* didn't fit */
 	if(base <= end)
 		return nil;
+	cacheflush();
 
 	return rv;
 }
@@ -359,23 +360,23 @@ flushmmu(void)
 void
 peekmmu(ulong va)
 {
-	ulong e;
+	ulong e, d;
 
 	e = l1table[va>>20];
 	switch(e & L1TypeMask){
 	default:
-		iprint("l1: %lux invalid\n", e);
+		iprint("l1: %lux[%lux] = %lux invalid\n", l1table, va>>20, e);
 		break;
 	case L1PageTable:
-		iprint("l1: %lux pt\n", e);
+		iprint("l1: %lux[%lux] = %lux pt\n", l1table, va>>20, e);
 		va &= OneMeg-1;
 		va >>= PGSHIFT;
 		e &= L1PTBaseMask;
-		e = ((ulong*)e)[va];
-		iprint("l2: %lux\n", e);
+		d = ((ulong*)e)[va];
+		iprint("l2: %lux[%lux] = %lux\n", e, va, d);
 		break;
 	case L1Section:
-		iprint("l1: %lux section\n", e);
+		iprint("l1: %lux[%lux] = %lux section\n", l1table, va>>20, e);
 		break;
 	}
 }

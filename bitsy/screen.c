@@ -13,6 +13,8 @@
 #include <cursor.h>
 #include "screen.h"
 
+#define	MINX	8
+
 enum {
 	Wid		= 320,
 	Ht		= 240,
@@ -78,7 +80,7 @@ enum {
 
 enum {
 /* LCD Status Register, lcd->lcsr */
-	LFD	=  0,	/*  1 bit */
+	LDD	=  0,	/*  1 bit */
 	BAU	=  1,	/*  1 bit */
 	BER	=  2,	/*  1 bit */
 	ABC	=  3,	/*  1 bit */
@@ -107,6 +109,15 @@ struct sa1110regs {
 
 Point	ZP = {0, 0};
 
+static Memdata xgdata =
+{
+	nil,				/* *base */
+	nil,				/* *bdata */
+	1,					/* ref */
+	nil,				/* *imref */
+	0,					/* allocd */
+};
+
 static Memimage xgscreen =
 {
 	{ 0, 0, Wid, Ht },	/* r */
@@ -115,7 +126,7 @@ static Memimage xgscreen =
 	1,					/* nchan */
 	RGB16,				/* chan */
 	nil,				/* cmap */
-	nil,				/* data */
+	&xgdata,			/* data */
 	0,					/* zero */
 	Wid/2,				/* width */
 	0,					/* layer */
@@ -125,29 +136,39 @@ static Memimage xgscreen =
 Memimage *gscreen;
 Memimage *conscol;
 Memimage *back;
-Memimage *hwcursor;
+
+Memsubfont	*memdefont;
+
+struct{
+	Point	pos;
+	int	bwid;
+}out;
+
+Lock	screenlock;
+
+Point	ZP = {0, 0};
+
+static Rectangle window;
+static Point curpos;
+static int h, w;
+int drawdebug;
+
+static	ulong	rep(ulong, int);
+static	void	screenwin(void);
+static	void	screenputc(char *buf);
+static	void	scroll(void);
 
 static void
 lcdstop(void) {
-	ulong	lccr0;
-
 	lcd->lccr0 &= ~(0<<LEN);	/* disable the LCD */
 	while((lcd->lcsr & LDD) == 0)
-		sleep(1);
+		delay(10);
 	lcdpower(0);
 }
 
 static void
 lcdinit(void)
 {
-	/* map the lcd regs into the kernel's virtual space */
-	lcd = (struct sa1110regs*)mapspecial(LCDREGS, sizeof(struct sa1110regs));;
-
-	/* the following works because main memory is direct mapped */
-	lcd->lccr0 &= ~(0<<LEN);	/* disable the LCD */
-	while((lcd->lcsr & LDD) == 0)
-		sleep(1);
-
 	lcd->dbar1 = framebuf->palette;
 	lcd->lccr3 = pcd<<PCD | 0<<ACB | 0<<API | 1<<VSP | 1<<HSP | 0<<PCP | 0<<OEP;
 	lcd->lccr2 = (Ht-1)<<LPP | vsw<<VSW | efw<<EFW | bfw<<BFW;
@@ -159,24 +180,37 @@ lcdinit(void)
 void
 screeninit(void)
 {
+
+	/* map the lcd regs into the kernel's virtual space */
+	lcd = (struct sa1110regs*)mapspecial(LCDREGS, sizeof(struct sa1110regs));;
+
 	framebuf = xspanalloc(sizeof *framebuf, 0x10, 0);
-	memset(framebuf->palette, 0, sizeof framebuf->palette);
-	memset(framebuf->pixel, 0xf8, sizeof framebuf->pixel);
+	/* the following works because main memory is direct mapped */
+
 	framebuf->palette[0] = Pal0;
 
-	print("LCD status before power up: 0x%lux\n", lcd->lcsr);
+	iprint("LCD power up\n");
 	lcdpower(1);
-	print("LCD status after power up: 0x%lux\n", lcd->lcsr);
+
 	lcdinit();
-	print("LCD status after lcdinit: 0x%lux\n", lcd->lcsr);
 
 	gscreen = &xgscreen;
-	gscreen->data = (struct Memdata *)framebuf->pixel;
+	xgdata.bdata = (uchar *)framebuf->pixel;
+
+	memimageinit();
+	memdefont = getmemdefont();
+
+	out.pos.x = MINX;
+	out.pos.y = 0;
+	out.bwid = memdefont->info[' '].width;
+
+	screenwin();
 }
 
 void
 flushmemscreen(Rectangle)
 {
+	/* no-op, screen is direct mapped */
 }
 
 /* 
@@ -216,5 +250,147 @@ blankscreen(int blank)
 void
 screenputs(char *s, int n)
 {
-	USED(s, n);
+	int i;
+	Rune r;
+	char buf[4];
+
+	if(!islo()) {
+		/* don't deadlock trying to print in interrupt */
+		if(!canlock(&screenlock))
+			return;	
+	}
+	else
+		lock(&screenlock);
+
+	while(n > 0){
+		i = chartorune(&r, s);
+		if(i == 0){
+			s++;
+			--n;
+			continue;
+		}
+		memmove(buf, s, i);
+		buf[i] = 0;
+		n -= i;
+		s += i;
+		screenputc(buf);
+	}
+	unlock(&screenlock);
+}
+
+static void
+screenwin(void)
+{
+	Point p, q;
+	char *greet;
+	Memimage *grey;
+
+	memsetchan(gscreen, RGB16);
+
+	back = memwhite;
+	conscol = memblack;
+
+	memfillcolor(gscreen, 0x444488FF);
+
+	w = memdefont->info[' '].width;
+	h = memdefont->height;
+
+	window.min = Pt(8, 8);
+	window.max = addpt(window.min, Pt(8+w*32, 8+h*14));
+
+	memimagedraw(gscreen, window, memblack, ZP, memopaque, ZP);
+	window = insetrect(window, 4);
+	memimagedraw(gscreen, window, memwhite, ZP, memopaque, ZP);
+
+	/* a lot of work to get a grey color */
+	grey = allocmemimage(Rect(0,0,1,1), RGB16);
+	grey->flags |= Frepl;
+	grey->clipr = gscreen->r;
+	grey->data->bdata[0] = 0x77;
+	grey->data->bdata[1] = 0x77;
+	memimagedraw(gscreen, Rect(window.min.x, window.min.y,
+			window.max.x, window.min.y+h+5+6), grey, ZP, nil, ZP);
+	freememimage(grey);
+	window = insetrect(window, 5);
+
+	greet = " Plan 9 Console ";
+	p = addpt(window.min, Pt(10, 0));
+	q = memsubfontwidth(memdefont, greet);
+	memimagestring(gscreen, p, conscol, ZP, memdefont, greet);
+	window.min.y += h+6;
+	curpos = window.min;
+	window.max.y = window.min.y+((window.max.y-window.min.y)/h)*h;
+}
+
+static void
+screenputc(char *buf)
+{
+	Point p;
+	int w, pos;
+	Rectangle r;
+	static int *xp;
+	static int xbuf[256];
+
+	if(xp < xbuf || xp >= &xbuf[sizeof(xbuf)])
+		xp = xbuf;
+
+	switch(buf[0]) {
+	case '\n':
+		if(curpos.y+h >= window.max.y)
+			scroll();
+		curpos.y += h;
+		screenputc("\r");
+		break;
+	case '\r':
+		xp = xbuf;
+		curpos.x = window.min.x;
+		break;
+	case '\t':
+		p = memsubfontwidth(memdefont, " ");
+		w = p.x;
+		*xp++ = curpos.x;
+		pos = (curpos.x-window.min.x)/w;
+		pos = 8-(pos%8);
+		r = Rect(curpos.x, curpos.y, curpos.x+pos*w, curpos.y + h);
+		memimagedraw(gscreen, r, back, back->r.min, nil, back->r.min);
+		curpos.x += pos*w;
+		break;
+	case '\b':
+		if(xp <= xbuf)
+			break;
+		xp--;
+		r = Rect(*xp, curpos.y, curpos.x, curpos.y + h);
+		memimagedraw(gscreen, r, back, back->r.min, nil, back->r.min);
+		curpos.x = *xp;
+		break;
+	default:
+		p = memsubfontwidth(memdefont, buf);
+		w = p.x;
+
+		if(curpos.x >= window.max.x-w)
+			screenputc("\n");
+
+		*xp++ = curpos.x;
+		r = Rect(curpos.x, curpos.y, curpos.x+w, curpos.y + h);
+		memimagedraw(gscreen, r, back, back->r.min, nil, back->r.min);
+		memimagestring(gscreen, curpos, conscol, ZP, memdefont, buf);
+		curpos.x += w;
+	}
+}
+
+static void
+scroll(void)
+{
+	int o;
+	Point p;
+	Rectangle r;
+
+	o = 8*h;
+	r = Rpt(window.min, Pt(window.max.x, window.max.y-o));
+	p = Pt(window.min.x, window.min.y+o);
+	memimagedraw(gscreen, r, gscreen, p, nil, p);
+	r = Rpt(Pt(window.min.x, window.max.y-o), window.max);
+	memimagedraw(gscreen, r, back, ZP, nil, ZP);
+
+	curpos.y -= o;
 }

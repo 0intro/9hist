@@ -63,6 +63,7 @@ enum
 };
 
 Uartregs *uart3regs = UART3REGS;
+Uartregs *uart1regs = UART1REGS ;
 
 static void	sa1100_uartbaud(Uart *p, int rate);
 static void	sa1100_uartkick(Uart *p);
@@ -160,14 +161,21 @@ static void
 sa1100_uartbaud(Uart *p, int rate)
 {
 	ulong brconst;
+	ulong ctl3;
 
 	if(rate <= 0)
 		return;
 
+	/* disable */
+	ctl3 = R(p)->ctl[3];
+	R(p)->ctl[3] = 0;
+
 	brconst = p->freq/(16*rate) - 1;
 	R(p)->ctl[1] = (brconst>>8) & 0xf;
-	R(p)->ctl[2] = brconst;
+	R(p)->ctl[2] = brconst & 0xff;
 
+	/* reenable */
+	R(p)->ctl[3] = ctl3;
 	p->baud = rate;
 }
 
@@ -191,6 +199,12 @@ sa1100_uartbreak(Uart *p, int ms)
 static void
 sa1100_uartbits(Uart *p, int n)
 {
+	ulong ctl3;
+
+	/* disable */
+	ctl3 = R(p)->ctl[3];
+	R(p)->ctl[3] = 0;
+
 	switch(n){
 	case 7:
 		R(p)->ctl[0] &= ~Bits8;
@@ -201,6 +215,9 @@ sa1100_uartbits(Uart *p, int n)
 	default:
 		error(Ebadarg);
 	}
+
+	/* reenable */
+	R(p)->ctl[3] = ctl3;
 }
 
 /*
@@ -209,6 +226,12 @@ sa1100_uartbits(Uart *p, int n)
 static void
 sa1100_uartstop(Uart *p, int n)
 {
+	ulong ctl3;
+
+	/* disable */
+	ctl3 = R(p)->ctl[3];
+	R(p)->ctl[3] = 0;
+
 	switch(n){
 	case 1:
 		R(p)->ctl[0] &= ~Stop2;
@@ -219,6 +242,9 @@ sa1100_uartstop(Uart *p, int n)
 	default:
 		error(Ebadarg);
 	}
+
+	/* reenable */
+	R(p)->ctl[3] = ctl3;
 }
 
 /*
@@ -255,6 +281,12 @@ sa1100_uartmodemctl(Uart *p, int on)
 static void
 sa1100_uartparity(Uart *p, int type)
 {
+	ulong ctl3;
+
+	/* disable */
+	ctl3 = R(p)->ctl[3];
+	R(p)->ctl[3] = 0;
+
 	switch(type){
 	case 'e':
 		R(p)->ctl[0] |= Parity|Even;
@@ -266,6 +298,9 @@ sa1100_uartparity(Uart *p, int type)
 		R(p)->ctl[0] &= ~(Parity|Even);
 		break;
 	}
+
+	/* reenable */
+	R(p)->ctl[3] = ctl3;
 }
 
 /*
@@ -330,6 +365,10 @@ sa1100_uartintr(Ureg*, void *x)
 	p = x;
 	regs = p->regs;
 
+	/* receiver interrupt, snarf bytes */
+	while(regs->status[1] & Rnotempty)
+		uartrecv(p, regs->data);
+
 	/* remember and reset interrupt causes */
 	s = regs->status[0];
 	regs->status[0] |= s;
@@ -339,10 +378,6 @@ sa1100_uartintr(Ureg*, void *x)
 		uartkick(p);
 	}
 
-	/* receiver interrupt, snarf bytes */
-	while(regs->status[1] & Rnotempty)
-		uartrecv(p, regs->data);
-
 	if(s & (ParityError|FrameError|Overrun)){
 		if(s & ParityError)
 			p->parity++;
@@ -351,6 +386,10 @@ sa1100_uartintr(Ureg*, void *x)
 		if(s & Overrun)
 			p->overrun++;
 	}
+
+	/* receiver interrupt, snarf bytes */
+	while(regs->status[1] & Rnotempty)
+		uartrecv(p, regs->data);
 }
 
 typedef struct Gpclkregs Gpclkregs;
@@ -379,7 +418,6 @@ void
 sa1100_uartsetup(int console)
 {
 	Uart *p;
-	Uartregs *uartregs;
 
 	/* external serial port (eia0) */
 	uart3regs = mapspecial(UART3REGS, 64);
@@ -393,8 +431,8 @@ sa1100_uartsetup(int console)
 	/* port for talking to microcontroller (eia1) */
 	gpclkregs = mapspecial(GPCLKREGS, 64);
 	gpclkregs->r0 = Gpclk_sus;	/* set uart mode */
-	uartregs = mapspecial(UART1REGS, 64);
-	p = uartsetup(&sa1100_uart, uartregs, ClockFreq, "serialport1");
+	uart1regs = mapspecial(UART1REGS, 64);
+	p = uartsetup(&sa1100_uart, uart1regs, ClockFreq, "serialport1");
 	sa1100_uartbaud(p, 115200);
 	intrenable(IRQuart1b, sa1100_uartintr, p, p->name);
 }

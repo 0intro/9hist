@@ -139,12 +139,10 @@ struct Uart
 	Queue	*iq;
 	Queue	*oq;
 
-	Lock	rlock;			/* receive */
 	uchar	istage[Stagesize];
-	uchar	*ip;
+	uchar	*iw;
+	uchar	*ir;
 	uchar	*ie;
-
-	int	haveinput;
 
 	Lock	tlock;			/* transmit */
 	uchar	ostage[Stagesize];

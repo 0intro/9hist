@@ -156,6 +156,7 @@ boot(int argc, char *argv[])
 		for(mp = method; mp->name; mp++){
 			if(strcmp(mp->name, "local") != 0)
 				continue;
+			bargc = 1;
 			(*mp->config)(mp);
 			fd = (*mp->connect)();
 			if(fd < 0)

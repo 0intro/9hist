@@ -1,5 +1,12 @@
 /*
- * Advanced Power Management 1.2 driver
+ * Interface to Advanced Power Management 1.2 BIOS
+ *
+ * This is, in many ways, a giant hack, and when things settle down 
+ * a bit and standardize, hopefully we can write a driver that deals
+ * more directly with the hardware and thus might be a bit cleaner.
+ * 
+ * ACPI might be the answer, but at the moment this is simpler
+ * and more widespread.
  */
 
 #include	"u.h"
@@ -39,6 +46,9 @@ getreg(ulong *reg, ISAConf *isa, char *name)
  * type is 0 for system segment, 1 for code/data.
  *
  * clearly we know way too much about the memory unit.
+ * however, knowing this much about the memory unit
+ * means that the memory unit need not know anything
+ * about us.
  *
  * what a crock.
  */
@@ -67,13 +77,6 @@ loadgdt(void)
 	lgdt(ptr);
 }
 
-/*
- * Must run before mmuinit, since we modify the GDT that
- * we want the processor to inherit.  I think (but am not sure)
- * that we could run after mmuinit on processor 0 and just
- * modify m->gdt and then call lgdt() as mmuinit() does,
- * but this is a bit simpler and safer.
- */
 static	ulong ax, cx, dx, di, ebx, esi;
 static Ureg apmu;
 static long
@@ -139,6 +142,13 @@ apmlink(void)
 		print("apm: missing register %s\n", s);
 		return;
 	}
+
+	/*
+	 * The NEC Versa SX bios does not report the correct 16-bit code
+	 * segment length when loaded directly from mbr -> 9load (as compared
+	 * with going through ld.com).  We'll make both code segments 64k-1 bytes.
+	 */
+	esi = 0xFFFFFFFF;
 
 	/*
 	 * We are required by the BIOS to set up three consecutive segments,

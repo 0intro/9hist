@@ -45,6 +45,7 @@ uartsetup(PhysUart *phys, void *regs, ulong freq, char *name)
 		return nil;
 
 	p = xalloc(sizeof(Uart));
+	memset(p, 0, sizeof(*p));
 	uart[nuart] = p;
 	strcpy(p->name, name);
 	p->dev = nuart++;
@@ -68,7 +69,8 @@ uartsetup(PhysUart *phys, void *regs, ulong freq, char *name)
 	if(p->iq == nil || p->oq == nil)
 		panic("uartsetup");
 
-	p->ip = p->istage;
+	p->ir = p->istage;
+	p->iw = p->istage;
 	p->ie = &p->istage[Stagesize];
 	p->op = p->ostage;
 	p->oe = p->ostage;
@@ -235,7 +237,7 @@ uartclose(Chan *c)
 			uartdisable(p);
 			qclose(p->iq);
 			qclose(p->oq);
-			p->ip = p->istage;
+			p->ir = p->iw = p->istage;
 			p->dcd = p->dsr = p->dohup = 0;
 		}
 		qunlock(p);
@@ -465,12 +467,8 @@ uartflow(void *v)
 	Uart *p;
 
 	p = v;
-	if(p->modem){
+	if(p->modem)
 		(*p->phys->rts)(p, 1);
-		ilock(&p->rlock);
-		p->haveinput = 1;
-		iunlock(&p->rlock);
-	}
 }
 
 /*
@@ -509,6 +507,8 @@ uartkick(void *v)
 void
 uartrecv(Uart *p,  char ch)
 {
+	uchar *next;
+
 	/* software flow control */
 	if(p->xonoff){
 		if(ch == CTLS){
@@ -523,59 +523,52 @@ uartrecv(Uart *p,  char ch)
 	if(p->putc)
 		p->putc(p->iq, ch);
 	else {
-		ilock(&p->rlock);
-		if(p->ip < p->ie)
-			*p->ip++ = ch;
-		p->haveinput = 1;
-		iunlock(&p->rlock);
+		next = p->iw + 1;
+		if(next == p->ie)
+			next = p->istage;
+		if(next != p->ir){
+			*p->iw = ch;
+			p->iw = next;
+		}
 	}
 }
 
 /*
  *  we save up input characters till clock time to reduce
  *  per character interrupt overhead.
- *
- *  There's also a bit of code to get a stalled print going.
- *  It shouldn't happen, but it does.  Obviously I don't
- *  understand something.  Since it was there, I bundled a
- *  restart after flow control with it to give some hysteresis
- *  to the hardware flow control.  This makes compressing
- *  modems happier but will probably bother something else.
- *	 -- presotto
  */
 static void
 uartclock(void)
 {
-	int n;
 	Uart *p;
+	uchar *iw;
 
 	for(p = uartalloc.elist; p; p = p->elist){
 
 		/* this amortizes cost of qproduce to many chars */
-		if(p->haveinput){
-			ilock(&p->rlock);
-			if(p->haveinput){
-				n = p->ip - p->istage;
-				if(n > 0 && p->iq){
-					if(n > Stagesize)
-						panic("uartclock");
-					if(qproduce(p->iq, p->istage, n) < 0)
+		if(p->iw != p->ir){
+			iw = p->iw;
+			if(iw < p->ir){
+				if(qproduce(p->iq, p->ir, p->ie-p->ir) < 0){
+					(*p->phys->rts)(p, 0);
+					p->ir = p->istage;
+				} else {
+					if(qproduce(p->iq, p->istage, iw-p->istage) < 0)
 						(*p->phys->rts)(p, 0);
-					else
-						p->ip = p->istage;
+					p->ir = iw;
 				}
-				p->haveinput = 0;
+			} else {
+				if(qproduce(p->iq, p->ir, iw-p->ir) < 0)
+					(*p->phys->rts)(p, 0);
+				p->ir = iw;
 			}
-			iunlock(&p->rlock);
 		}
+
+		/* hang up if requested */
 		if(p->dohup){
-			ilock(&p->rlock);
-			if(p->dohup){
-				qhangup(p->iq, 0);
-				qhangup(p->oq, 0);
-			}
+			qhangup(p->iq, 0);
+			qhangup(p->oq, 0);
 			p->dohup = 0;
-			iunlock(&p->rlock);
 		}
 
 		/* this adds hysteresis to hardware/software flow control */

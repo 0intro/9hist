@@ -26,13 +26,14 @@ typedef struct Vctl {
 
 	char	name[NAMELEN];		/* of driver */
 	int	irq;
+	ulong	irqbit;
 
 	void	(*f)(Ureg*, void*);	/* handler to call */
 	void*	a;			/* argument to call it with */
 } Vctl;
 
 static Lock vctllock;
-static Vctl *vctl[32];
+static Vctl *vctl;
 
 
 /*
@@ -115,15 +116,16 @@ intrenable(int irq, void (*f)(Ureg*, void*), void* a, char *name)
 
 	v = xalloc(sizeof(Vctl));
 	v->irq = irq;
+	v->irqbit = 1<<irq;
 	v->f = f;
 	v->a = a;
 	strncpy(v->name, name, NAMELEN-1);
 	v->name[NAMELEN-1] = 0;
 
 	lock(&vctllock);
-	v->next = vctl[irq];
-	vctl[irq] = v;
-	intrregs->icmr |= 1<<irq;
+	v->next = vctl;
+	vctl = v;
+	intrregs->icmr |= v->irqbit;
 	unlock(&vctllock);
 }
 
@@ -176,7 +178,7 @@ void
 trap(Ureg *ureg)
 {
 	ulong inst;
-	int i, found;
+	int found;
 	Vctl *v;
 	int user;
 	ulong va;
@@ -193,9 +195,18 @@ trap(Ureg *ureg)
 	else
 		ureg->pc -= 4;
 
-	if((user && (ureg->r13 & 0xf0000000)) || (ureg->psr & 0x10) != 0x10){
-		warnregs(ureg, "wierd ureg");
-		panic("bad ureg\n");
+	if(ureg->type == PsrMirq){
+		found = 0;
+		va = intrregs->icip;
+		for(v = vctl; v != nil; v = v->next){
+			if(v->irqbit & va){
+				v->f(ureg, v->a);
+				found = 1;
+			}
+		}
+		if(!found)
+			print("unknown interrupt: %lux\n", intrregs->icip);
+		goto out;
 	}
 
 	switch(ureg->type){
@@ -258,21 +269,9 @@ trap(Ureg *ureg)
 	case PsrMund:	/* undefined instruction */
 		panic("undefined instruction");
 		break;
-	case PsrMirq:	/* device interrupt */
-		for(i = 0; i < 32; i++){
-			found = 0;
-			if((1<<i) & intrregs->icip){
-				for(v = vctl[i]; v != nil; v = v->next){
-					found = 1;
-					v->f(ureg, v->a);
-				}
-				if(!found)
-					iprint("interrupt %d with no handler\n", i);
-			}
-		}
-		break;
 	}
 
+out:
 	if(user && (up->procctl || up->nnote)){
 		splhi();
 		notify(ureg);

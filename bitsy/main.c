@@ -35,8 +35,9 @@ main(void)
 	mmuinit();
 	gpioinit();
 	trapinit();
-	screeninit();
 	sa1100_uartsetup(1);
+	rs232power(1);
+	screeninit();
 	printinit();	/* from here on, print works, before this we need iprint */
 	clockinit();
 	procinit0();
@@ -216,7 +217,6 @@ userinit(void)
 	k = kmap(s->map[0]->pages[0]);
 	memmove((ulong*)VA(k), initcode, sizeof initcode);
 	kunmap(k);
-//iprint("userinit %lux[0x20] = %lux\n", VA(k), *((ulong*)(VA(k)+0x20)));
 
 	ready(p);
 }
@@ -351,7 +351,7 @@ confinit(void)
 }
 
 GPIOregs *gpioregs;
-ulong *egpioreg;
+ulong *egpioreg = (ulong*)EGPIOREGS;
 
 static void
 gpioinit(void)
