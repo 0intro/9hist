@@ -63,6 +63,7 @@ main(void)
 	chandevreset();
 	swapinit();
 	userinit();
+print("CR0 %lux\n", getcr0());
 	schedinit();
 }
 

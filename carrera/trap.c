@@ -253,7 +253,7 @@ trap(Ureg *ur)
 			postnote(up, 1, buf, NDebug);
 			break;
 		}
-		print("kernel %s pc=%lux\n", excname[ecode], ur->pc);
+		print("kernel %s pc=%llux\n", excname[ecode], ur->pc);
 		dumpregs(ur);
 		dumpstack();
 		if(m->machno == 0)
@@ -373,7 +373,7 @@ fpexcname(Ureg *ur, ulong fcr31, char *buf)
 {
 	int i;
 	char *s;
-	ulong fppc;
+	uvlong fppc;
 
 	fppc = ur->pc;
 	if(ur->cause & (1<<31))	/* branch delay */
@@ -392,7 +392,7 @@ fpexcname(Ureg *ur, ulong fcr31, char *buf)
 	if(s == 0)
 		return "no floating point exception";
 
-	sprint(buf, "%s fppc=0x%lux", s, fppc);
+	sprint(buf, "%s fppc=0x%llux", s, fppc);
 	return buf;
 }
 
@@ -402,7 +402,7 @@ void
 kernfault(Ureg *ur, int code)
 {
 	print("kfault %s badvaddr=0x%lux\n", excname[code], ur->badvaddr);
-	print("UP=0x%lux SR=0x%lux PC=0x%lux R31=%lux SP=0x%lux\n",
+	print("UP=0x%lux SR=0x%lux PC=0x%llux R31=%llux SP=0x%llux\n",
 				up, ur->status, ur->pc, ur->r31, ur->sp);
 
 	dumpregs(ur);
@@ -465,10 +465,10 @@ notify(Ureg *ur)
 	n = &up->note[0];
 	if(strncmp(n->msg, "sys:", 4) == 0) {
 		l = strlen(n->msg);
-		if(l > ERRLEN-15)	/* " pc=0x12345678\0" */
-			l = ERRLEN-15;
+		if(l > ERRLEN-23)	/* " pc=0x12345678\0" */
+			l = ERRLEN-23;
 
-		sprint(n->msg+l, " pc=0x%lux", ur->pc);
+		sprint(n->msg+l, " pc=0x%llux", ur->pc);
 	}
 
 	if(n->flag != NUser && (up->notified || up->notify==0)) {
@@ -490,10 +490,11 @@ notify(Ureg *ur)
 		pexit(n->msg, n->flag!=NDebug);
 	}
 	up->svstatus = ur->status;
-	sp = ur->usp - sizeof(Ureg);
+	sp = ur->usp & ~(BY2V-1);
+	sp -= sizeof(Ureg);
 
-	if(sp&0x3 || !okaddr((ulong)up->notify, BY2WD, 0)
-	|| !okaddr(sp-ERRLEN-3*BY2WD, sizeof(Ureg)+ERRLEN-3*BY2WD, 1)) {
+	if(!okaddr((ulong)up->notify, BY2WD, 0) ||
+	   !okaddr(sp-ERRLEN-3*BY2WD, sizeof(Ureg)+ERRLEN-3*BY2WD, 1)) {
 		pprint("suicide: bad address or sp in notify\n");
 		qunlock(&up->debug);
 		pexit("Suicide", 0);
@@ -507,8 +508,8 @@ notify(Ureg *ur)
 	*(ulong*)(sp+2*BY2WD) = sp+3*BY2WD;	/* arg 2 is string */
 	up->svr1 = ur->r1;			/* save away r1 */
 	ur->r1 = (ulong)up->ureg;		/* arg 1 is ureg* */
-	*(ulong*)(sp+1*BY2WD) = (ulong)up->ureg;	/* arg 1 0(FP) is ureg* */
-	*(ulong*)(sp+0*BY2WD) = 0;		/* arg 0 is pc */
+	((ulong*)sp)[1] = (ulong)up->ureg;	/* arg 1 0(FP) is ureg* */
+	((ulong*)sp)[0] = 0;			/* arg 0 is pc */
 	ur->usp = sp;
 	ur->pc = (ulong)up->notify;
 	up->notified = 1;
@@ -607,13 +608,13 @@ syscall(Ureg *aur)
 		goto error;
 
 	if(up->scallnr >= nsyscall){
-		pprint("bad sys call %d pc %lux\n", up->scallnr, ur->pc);
+		pprint("bad sys call %d pc %llux\n", up->scallnr, ur->pc);
 		postnote(up, 1, "sys: bad sys call", NDebug);
 		error(Ebadarg);
 	}
 
 	if(sp & (BY2WD-1)){
-		pprint("odd sp in sys call pc %lux sp %lux\n", ur->pc, ur->sp);
+		pprint("odd sp in sys call pc %llux sp %llux\n", ur->pc, ur->sp);
 		postnote(up, 1, "sys: odd stack", NDebug);
 		error(Ebadarg);
 	}
