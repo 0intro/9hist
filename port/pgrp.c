@@ -32,15 +32,15 @@ newcrypt(void)
 		return c;
 	}
 
-	cryptalloc.free = malloc(sizeof(Crypt)*conf.nproc);
+	cryptalloc.free = xalloc(sizeof(Crypt)*conf.nproc);
 	if(cryptalloc.free == 0)
 		panic("newcrypt");
 
-	for(c = cryptalloc.free+1; c < cryptalloc.free+conf.nproc-1; c++)
+	for(c = cryptalloc.free; c < cryptalloc.free+conf.nproc-1; c++)
 		c->next = c+1;
 
 	palloc.cmembase = (ulong)cryptalloc.free;
-	palloc.cmembase = palloc.cmembase+(sizeof(Crypt)*conf.nproc);
+	palloc.cmemtop = palloc.cmembase+(sizeof(Crypt)*conf.nproc);
 	unlock(&cryptalloc);
 	return newcrypt();
 }
