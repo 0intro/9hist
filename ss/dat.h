@@ -64,6 +64,7 @@ struct Conf
 {
 	int	nmach;		/* processors */
 	int	nproc;		/* processes */
+	int	ss2;		/* is a sparcstation 2 */
 	ulong	npage0;		/* total physical pages of memory, bank 0 */
 	ulong	npage1;		/* total physical pages of memory, bank 1 */
 	ulong	base0;		/* base of bank 0 */

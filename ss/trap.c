@@ -132,6 +132,9 @@ trap(Ureg *ur)
 
 	user = !(ur->psr&PSRPSUPER);
 	tbr = (ur->tbr&0xFFF)>>4;
+	/* SS2 bug: flush cache line holding trap entry in table */
+	if(conf.ss2)
+		putw2(CACHETAGS+((TRAPS+16*tbr)&(VACSIZE-1)), 0);
 	if(tbr > 16){			/* interrupt */
 		if(u && u->p->state==Running){
 			if(u->p->fpstate == FPactive){
@@ -237,7 +240,8 @@ trapinit(void)
 	a += 0x40000000;			/* CALL traplink(SB) */
 	t = TRAPS;
 	for(i=0; i<256; i++){
-		*(ulong*)t = a;			/* CALL traplink(SB) */
+		/* ss2: must flush cache line for table */
+		*(ulong*)(t+0) = a;		/* CALL traplink(SB) */
 		*(ulong*)(t+4) = 0xa7480000;	/* MOVW PSR, R19 */
 		a -= 16/4;
 		t += 16;
@@ -250,7 +254,6 @@ trapinit(void)
 	a += 0x40000000;
 	*(ulong*)t = a;			/* CALL syscall(SB) */
 	*(ulong*)(t+4) = 0xa7480000;	/* MOVW PSR, R19 */
-
 	puttbr(TRAPS);
 }
 
@@ -533,6 +536,10 @@ syscall(Ureg *aur)
 		panic("recursive system call");
 	u->p->insyscall = 1;
 	u->p->pc = ur->pc;
+
+	/* SS2 bug: flush cache line holding trap entry in table */
+	if(conf.ss2)
+		putw2(CACHETAGS+((TRAPS+16*128)&(VACSIZE-1)), 0);
 
 	/*
 	 * since the system call interface does not

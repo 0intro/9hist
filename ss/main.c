@@ -205,6 +205,7 @@ confinit(void)
 	if(conf.nmach > MAXMACH)
 		panic("confinit");
 
+	conf.ss2 = 0;
 	conf.npage0 = (4*1024*1024)/BY2PG;	/* BUG */
 	conf.npage1 = (4*1024*1024)/BY2PG;	/* BUG */
 	conf.base0 = 0;

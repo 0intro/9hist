@@ -367,6 +367,18 @@ TEXT	putw4(SB), $0
 	MOVW	R8, (R7, 4)
 	RETURN
 
+TEXT	putw6(SB), $0
+
+	MOVW	4(FP), R8
+	MOVW	R8, (R7, 6)
+	RETURN
+
+TEXT	putw8(SB), $0
+
+	MOVW	4(FP), R8
+	MOVW	R8, (R7, 8)
+	RETURN
+
 TEXT	getw4(SB), $0
 
 	MOVW	(R7, 4), R7
@@ -382,6 +394,42 @@ TEXT	putwD(SB), $0
 
 	MOVW	4(FP), R8
 	MOVW	R8, (R7, 0xD)
+	RETURN
+
+TEXT	putw716(SB), $0
+
+	MOVW	4(FP), R8
+	MOVW	R8, (R7, 0x7)
+	ADD	$BY2PG, R7
+	MOVW	R8, (R7, 0x7)
+	ADD	$BY2PG, R7
+	MOVW	R8, (R7, 0x7)
+	ADD	$BY2PG, R7
+	MOVW	R8, (R7, 0x7)
+	ADD	$BY2PG, R7
+	MOVW	R8, (R7, 0x7)
+	ADD	$BY2PG, R7
+	MOVW	R8, (R7, 0x7)
+	ADD	$BY2PG, R7
+	MOVW	R8, (R7, 0x7)
+	ADD	$BY2PG, R7
+	MOVW	R8, (R7, 0x7)
+	ADD	$BY2PG, R7
+	MOVW	R8, (R7, 0x7)
+	ADD	$BY2PG, R7
+	MOVW	R8, (R7, 0x7)
+	ADD	$BY2PG, R7
+	MOVW	R8, (R7, 0x7)
+	ADD	$BY2PG, R7
+	MOVW	R8, (R7, 0x7)
+	ADD	$BY2PG, R7
+	MOVW	R8, (R7, 0x7)
+	ADD	$BY2PG, R7
+	MOVW	R8, (R7, 0x7)
+	ADD	$BY2PG, R7
+	MOVW	R8, (R7, 0x7)
+	ADD	$BY2PG, R7
+	MOVW	R8, (R7, 0x7)
 	RETURN
 
 TEXT	putwD16(SB), $0
