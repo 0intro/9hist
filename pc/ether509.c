@@ -89,6 +89,7 @@ enum {
 	RxEmpty		= 0x8000,	/* Incomplete or FIFO empty */
 
 	FIFOdiag	= 0x04,		/* window 4 */
+	MediaStatus	= 0x0A,
 
 					/* FIFOdiag bits */
 	TxOverrun	= 0x0400,	/* TX Overrrun */
@@ -96,6 +97,10 @@ enum {
 	RxStatusOverrun	= 0x1000,	/* RX Status Overrun */
 	RxUnderrun	= 0x2000,	/* RX Underrun */
 	RxReceiving	= 0x8000,	/* RX Receiving */
+
+					/* MediaStatus bits */
+	JabberEna	= 0x0040,	/* Jabber Enabled (writeable) */
+	LinkBeatEna	= 0x0080,	/* Link Beat Enabled (writeable) */
 };
 
 #define COMMAND(port, cmd, a)	outs(port+Command, ((cmd)<<11)|(a))
@@ -626,22 +631,36 @@ reset(Ether *ether)
 		outb(port+i, ether->ea[i]);
 
 	/*
-	 * Finished with window 2.
+	 * Enable the transceiver if necessary.
+	 */
+	switch(acr & XcvrTypeMask){
+
+	case Xcvr10BaseT:
+		/*
+		 * Enable Link Beat and Jabber to start the
+		 * transceiver.
+		 */
+		COMMAND(port, SelectWindow, 4);
+		outb(port+MediaStatus, LinkBeatEna|JabberEna);
+		break;
+
+	case XcvrBNC:
+		/*
+		 * Start the DC-DC converter.
+		 * Wait > 800 microseconds.
+		 */
+		COMMAND(port, StartCoax, 0);
+		delay(1);
+		break;
+	}
+
+	/*
 	 * Set window 1 for normal operation.
 	 * Clear out any lingering Tx status.
 	 */
 	COMMAND(port, SelectWindow, 1);
 	while(inb(port+TxStatus))
 		outb(port+TxStatus, 0);
-
-	/*
-	 * If we have a 10BASE2 transceiver, start the DC-DC
-	 * converter. Wait > 800 microseconds.
-	 */
-	if((acr & XcvrTypeMask) == XcvrBNC){
-		COMMAND(port, StartCoax, 0);
-		delay(1);
-	}
 
 	ether->port = port;
 
