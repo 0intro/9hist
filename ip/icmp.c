@@ -44,6 +44,11 @@ enum {			/* Packet Types */
 	Maxtype		= 18,
 };
 
+enum
+{
+	MinAdvise	= 24,	/* minimum needed for us to advise another protocol */ 
+};
+
 char *icmpnames[Maxtype+1] =
 {
 [EchoReply]		"EchoReply",
@@ -345,7 +350,7 @@ icmpiput(Proto *icmp, Ipifc*, Block *bp)
 			msg = unreachcode[p->code];
 
 		bp->rp += ICMP_IPSIZE+ICMP_HDRSIZE;
-		if(blocklen(bp) < 8){
+		if(blocklen(bp) < MinAdvise){
 			ipriv->stats[LenErrs]++;
 			goto raise;
 		}
@@ -364,7 +369,7 @@ icmpiput(Proto *icmp, Ipifc*, Block *bp)
 			sprint(m2, "ttl exceeded at %V", p->src);
 
 			bp->rp += ICMP_IPSIZE+ICMP_HDRSIZE;
-			if(blocklen(bp) < 8){
+			if(blocklen(bp) < MinAdvise){
 				ipriv->stats[LenErrs]++;
 				goto raise;
 			}
