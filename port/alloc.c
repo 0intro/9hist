@@ -20,7 +20,7 @@
 
 enum
 {
-	Maxpow		= 18,
+	Maxpow		= 19,
 	CUTOFF		= 12,
 	Nhole		= 128,
 	Magichole	= 0xDeadBabe,
