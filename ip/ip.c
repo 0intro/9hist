@@ -21,7 +21,7 @@ enum
 	IP_DF		= 0x4000,	/* Don't fragment */
 	IP_MF		= 0x2000,	/* More fragments */
 	IP6FHDR		= 8, 		/* sizeof(Fraghdr6) */
-	IP_MAX		= (32*1024),	/* Maximum Internet packet size */
+	IP_MAX		= 64*1024,	/* Maximum Internet packet size */
 };
 
 #define BLKIPVER(xp)	(((Ip4hdr*)((xp)->rp))->vihl&0xF0)

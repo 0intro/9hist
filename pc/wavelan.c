@@ -609,6 +609,11 @@ w_timer(void* arg)
 	Ether* ether = (Ether*) arg;
 	Ctlr* ctlr = (Ctlr*)ether->ctlr;
 
+	if (waserror()){
+		print("timerporc dying\n");
+		pexit("aaargh!", 0);
+	}
+	ctlr->timerproc = up;
 	for(;;){
 		tsleep(&ctlr->timer, return0, 0, 50);
 		ctlr = (Ctlr*)ether->ctlr;
@@ -655,7 +660,8 @@ w_timer(void* arg)
 		}
 		iunlock(ctlr);
 	}
-	pexit("terminated",0);
+	poperror();
+	pexit("terminated", 0);
 }
 
 void
@@ -685,6 +691,30 @@ w_attach(Ether* ether)
 			kproc(name, w_timer, ether);
 		} else
 			print("#l%d: enable failed\n",ether->ctlrno);
+	}
+}
+
+void
+w_detach(Ether* ether)
+{
+	Ctlr* ctlr;
+	char name[64];
+
+	if (ether->ctlr == 0)
+		return;
+
+	snprint(name, sizeof(name), "#l%dtimer", ether->ctlrno);
+	ctlr = (Ctlr*) ether->ctlr;
+	if (ctlr->attached){
+		ilock(ctlr);
+		w_intdis(ctlr);
+		if (ctlr->timerproc){
+			if (!postnote(ctlr->timerproc, 1, "kill", NExit))
+				print("timerproc note not posted\n");
+			print("w_detach, killing 0x%p\n", ctlr->timerproc);
+		}
+		ctlr->attached = 0;
+		iunlock(ctlr);
 	}
 }
 
@@ -1049,6 +1079,7 @@ wavelanreset(Ether* ether, Ctlr *ctlr)
 	ether->ctlr = ctlr;
 	ether->mbps = 10;
 	ether->attach = w_attach;
+	ether->detach = w_detach;
 	ether->interrupt = w_interrupt;
 	ether->transmit = w_transmit;
 	ether->ifstat = w_ifstat;

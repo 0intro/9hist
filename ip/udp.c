@@ -146,8 +146,8 @@ udpannounce(Conv *c, char** argv, int argc)
 static void
 udpcreate(Conv *c)
 {
-	c->rq = qopen(64*1024, 1, 0, 0);
-	c->wq = qopen(64*1024, 0, 0, 0);
+	c->rq = qopen(128*1024, 1, 0, 0);
+	c->wq = qopen(128*1024, 0, 0, 0);
 }
 
 static void

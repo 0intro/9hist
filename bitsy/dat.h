@@ -260,6 +260,6 @@ struct DevConf
 	ulong	port;		/* mapped i/o regs */
 	int		size;		/* access size */
 	int		itype;	/* type of interrupt */
-	ulong	interrupt;	/* interrupt number */
+	ulong	intnum;	/* interrupt number */
 	char		*type;	/* card type, mallocated */
 };

@@ -39,6 +39,7 @@ etherconfig(int on, char *spec, DevConf *cf)
 	char *p, *e;
 
 	ctlrno = atoi(spec);
+	sprint(name, "ether%d", ctlrno);
 
 	if(on == 0){
 		ether = etherxx[ctlrno];
@@ -52,6 +53,13 @@ print("unconfigure\n");
 		}
 		if(ether == &noether)
 			error(Enodev);
+
+		if(ether->detach)
+			ether->detach(ether);
+
+		if(ether->interrupt != nil)
+			intrdisable(ether->itype, ether->intnum, ether->interrupt, ether, name);
+
 		etherxx[ctlrno] = &noether;
 		wunlock(ether);
 		poperror();
@@ -65,7 +73,6 @@ print("unconfigure: done\n");
 	ether = malloc(sizeof(Ether));
 	if(ether == nil)
 		panic("etherconfig");
-	memset(ether, 0, sizeof(Ether));
 	*(DevConf*)ether = *cf;
 
 	for(n = 0; cards[n].type; n++){
@@ -73,7 +80,6 @@ print("unconfigure: done\n");
 			continue;
 		if(cards[n].reset(ether))
 			break;
-		sprint(name, "ether%d", ctlrno);
 
 		if(ether->mbps >= 100){
 			netifinit(ether, name, Ntypes, 256*1024);
@@ -95,7 +101,7 @@ print("unconfigure: done\n");
 		ether->maxmtu = ETHERMAXTU;
 
 		if(ether->interrupt != nil)
-			intrenable(cf->itype, cf->interrupt, ether->interrupt, ether, name);
+			intrenable(cf->itype, cf->intnum, ether->interrupt, ether, name);
 
 		p = buf;
 		e = buf+sizeof(buf);

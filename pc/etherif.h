@@ -15,6 +15,7 @@ struct Ether {
 	uchar	ea[Eaddrlen];
 
 	void	(*attach)(Ether*);	/* filled in by reset routine */
+	void	(*detach)(Ether*);
 	void	(*transmit)(Ether*);
 	void	(*interrupt)(Ureg*, void*);
 	long	(*ifstat)(Ether*, void*, long, ulong);

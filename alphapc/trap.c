@@ -782,6 +782,7 @@ linkproc(void)
 {
 	spllo();
 	up->kpfun(up->kparg);
+	pexit("kproc exiting", 0);
 }
 
 void

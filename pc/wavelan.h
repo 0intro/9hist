@@ -260,6 +260,8 @@ struct Ctlr
 	int	pmena;
 	int	pmwait;
 
+	Proc	*timerproc;
+
 	char	netname[WNameLen];
 	char	wantname[WNameLen];
 	char	nodename[WNameLen];

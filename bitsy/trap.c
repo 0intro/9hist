@@ -119,7 +119,7 @@ warnregs(Ureg *ur, char *tag)
 /*
  *  enable an irq interrupt
  */
-void
+static void
 irqenable(int irq, IntrHandler *f, void* a, char *name)
 {
 	Vctl *v;
@@ -127,7 +127,9 @@ irqenable(int irq, IntrHandler *f, void* a, char *name)
 	if(irq >= nelem(vctl) || irq < 0)
 		panic("intrenable");
 
-	v = xalloc(sizeof(Vctl));
+	print("irqenable %s, handler 0x%p\n", name, f);
+
+	v = malloc(sizeof(Vctl));
 	v->f = f;
 	v->a = a;
 	v->name = xalloc(strlen(name)+1);
@@ -137,6 +139,34 @@ irqenable(int irq, IntrHandler *f, void* a, char *name)
 	v->next = vctl[irq];
 	vctl[irq] = v;
 	intrregs->icmr |= 1<<irq;
+	unlock(&vctllock);
+}
+
+/*
+ *  disable an irq interrupt
+ */
+static void
+irqdisable(int irq, IntrHandler *f, void* a, char *name)
+{
+	Vctl **vp, *v;
+
+	if(irq >= nelem(vctl) || irq < 0)
+		panic("intrdisable");
+
+	lock(&vctllock);
+	for(vp = &vctl[irq]; v = *vp; vp = &v->next)
+		if (v->f == f && v->a == a && strcmp(v->name, name) == 0){
+			print("irqdisable: remove %s\n", name);
+			*vp = v->next;
+			free(v);
+			break;
+		}
+	if (v == nil)
+		print("irqdisable: irq %d, name %s not enabled\n", irq, name);
+	if (vctl[irq] == nil){
+		print("irqdisable: clear icmr bit %d\n", irq);
+		intrregs->icmr &= ~(1<<irq);
+	}
 	unlock(&vctllock);
 }
 
@@ -154,19 +184,21 @@ intrenable(int type, int which, IntrHandler *f, void* a, char *name)
 		return;
 	}
 
+	print("intrenable %s, handler 0x%p\n", name, f);
+
 	/* from here down, it must be a GPIO edge interrupt */
 	irq = which;
 	if(which >= nelem(gpiovctl) || which < 0)
-		panic("gpiointrenable");
+		panic("intrenable");
 	if(which > 11)
 		irq = 11;
 
 	/* the pin had better be configured as input */
 	if((1<<which) & gpioregs->direction)
-		panic("gpiointrenable of output pin %d", which);
+		panic("intrenable of output pin %d", which);
 
 	/* create a second level vctl for the gpio edge interrupt */
-	v = xalloc(sizeof(Vctl));
+	v = malloc(sizeof(Vctl));
 	v->f = f;
 	v->a = a;
 	v->name = xalloc(strlen(name)+1);
@@ -175,7 +207,6 @@ intrenable(int type, int which, IntrHandler *f, void* a, char *name)
 	lock(&vctllock);
 	v->next = gpiovctl[which];
 	gpiovctl[which] = v;
-	unlock(&vctllock);
 
 	/* set edge register to enable interrupt */
 	switch(type){
@@ -190,10 +221,70 @@ intrenable(int type, int which, IntrHandler *f, void* a, char *name)
 		gpioregs->rising |= 1<<which;
 		break;
 	}
-
+	unlock(&vctllock);
 	/* point the irq to the gpio interrupt handler */
 	if(gpioirqref[irq]++ == 0)
 		irqenable(irq, gpiointr, nil, "gpio edge");
+}
+
+/*
+ *  disable an interrupt
+ */
+void
+intrdisable(int type, int which, IntrHandler *f, void* a, char *name)
+{
+	int irq;
+	Vctl **vp, *v;
+
+
+	if(type == IRQ){
+		irqdisable(which, f, a, name);
+		return;
+	}
+
+	/* from here down, it must be a GPIO edge interrupt */
+	irq = which;
+	if(which >= nelem(gpiovctl) || which < 0)
+		panic("intrdisable");
+	if(which > 11)
+		irq = 11;
+
+	lock(&vctllock);
+	for(vp = &gpiovctl[which]; v = *vp; vp = &v->next)
+		if (v->f == f && v->a == a && strcmp(v->name, name) == 0){
+			break;
+		}
+	if (gpiovctl[which] == nil){
+		/* set edge register to enable interrupt */
+		switch(type){
+		case GPIOboth:
+			print("intrdisable: gpio-rising+falling clear bit %d\n", which);
+			gpioregs->rising &= ~(1<<which);
+			gpioregs->falling &= ~(1<<which);
+			break;
+		case GPIOfalling:
+			print("intrdisable: gpio-falling clear bit %d\n", which);
+			gpioregs->falling &= ~(1<<which);
+			break;
+		case GPIOrising:
+			print("intrdisable: gpio-rising clear bit %d\n", which);
+			gpioregs->rising &= ~(1<<which);
+			break;
+		}
+	
+	}
+	if (v) {
+		print("intrdisable: removing %s\n", name);
+		*vp = v->next;
+	}else
+		print("intrdisable: which %d, name %s not enabled\n", which, name);
+	unlock(&vctllock);
+	/* disable the gpio interrupt handler if necessary */
+	if(--gpioirqref[irq] == 0){
+		print("intrdisable: inrqdisable gpiointr\n");
+		irqdisable(irq, gpiointr, nil, "gpio edge");
+	}
+	free(v);
 }
 
 /*
@@ -679,6 +770,7 @@ linkproc(void)
 {
 	spllo();
 	up->kpfun(up->kparg);
+	pexit("kproc exiting", 0);
 }
 
 /*

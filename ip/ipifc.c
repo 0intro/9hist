@@ -168,6 +168,7 @@ ipifcunbind(Ipifc *ifc)
 	char *av[4];
 	char ip[32];
 	char mask[32];
+	char *err;
 
 	if(waserror()){
 		wunlock(ifc);
@@ -202,7 +203,8 @@ ipifcunbind(Ipifc *ifc)
 		else
 			sprint(ip, "%I", ifc->lifc->local);
 		sprint(mask, "%M", ifc->lifc->mask);
-		ipifcrem(ifc, av, 3, 0);
+		if (err = ipifcrem(ifc, av, 3, 0))
+			print("ipifcunbind, addr %s, mask %s: %s\n", ip, mask, err);
 	}
 
 	ifc->m = nil;
@@ -573,8 +575,8 @@ ipifcrem(Ipifc *ifc, char **argv, int argc, int dolock)
 		addr = lifc->local;
 		if(type == Rptpt)
 			addr = lifc->remote;
-		if(memcmp(ip, addr, IPaddrlen) == 0)
-		if(memcmp(mask, lifc->mask, IPaddrlen) == 0) {
+		if (memcmp(ip, addr, IPaddrlen) == 0
+		&& memcmp(mask, lifc->mask, IPaddrlen) == 0) {
 			*l = lifc->next;
 			break;
 		}
@@ -584,6 +586,7 @@ ipifcrem(Ipifc *ifc, char **argv, int argc, int dolock)
 	if(lifc == nil){
 		if(dolock)
 			wunlock(ifc);
+		print("ipifcrem: wrong address\n");
 		return "address not on this interface";
 	}
 

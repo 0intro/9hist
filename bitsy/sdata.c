@@ -2054,10 +2054,10 @@ ataconfig(int on, char *, void *pf)
 	rc = nil;
 	for (try = &tries[0]; try->p != 0 || try->c != 0; try++){
 		ataitype = cf->itype;
-		atairq  = cf->interrupt;
+		atairq  = cf->intnum;
 		cmdport = cf->port + try->p;
 		ctlport = cmdport + try->c;
-		irq = cf->interrupt;
+		irq = cf->intnum;
 		rc = ataprobe(cmdport, ctlport, irq);
 		if (rc)
 			break;

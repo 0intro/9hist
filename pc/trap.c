@@ -819,6 +819,7 @@ linkproc(void)
 {
 	spllo();
 	up->kpfun(up->kparg);
+	pexit("kproc dying", 0);
 }
 
 void

@@ -39,7 +39,6 @@ ulong	getttb(void);
 void*	getlink(void);
 #define	getpgcolor(a)	0
 ulong	getsp(void);
-void	gpiointrenable(ulong, int, void (*)(Ureg*, void*), void*, char*);
 void	h3650uartsetup(void);
 int	havetimer(void);
 void	_hibernate(void);
@@ -51,6 +50,7 @@ uchar	inb(ulong);
 ushort	ins(ulong);
 void	inss(ulong, void*, int);
 ulong	inl(ulong);
+void	intrdisable(int, int, void (*)(Ureg*, void*), void*, char*);
 void	intrenable(int, int, void (*)(Ureg*, void*), void*, char*);
 void	irpower(int);
 #define	kmapinval()
