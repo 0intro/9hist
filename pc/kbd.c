@@ -35,6 +35,7 @@ enum {
 	Latin=	Spec|0x63,
 	Caps=	Spec|0x64,
 	Num=	Spec|0x65,
+	Middle=	Spec|0x66,
 	No=	Spec|0x7F,	/* no mapping */
 
 	Home=	KF|13,
@@ -59,7 +60,7 @@ uchar kbtab[] =
 [0x20]	'd',	'f',	'g',	'h',	'j',	'k',	'l',	';',
 [0x28]	'\'',	'`',	Shift,	'\\',	'z',	'x',	'c',	'v',
 [0x30]	'b',	'n',	'm',	',',	'.',	'/',	Shift,	No,
-[0x38]	Latin,	' ',	Caps,	KF|1,	KF|2,	KF|3,	KF|4,	KF|5,
+[0x38]	Latin,	' ',	Ctrl,	KF|1,	KF|2,	KF|3,	KF|4,	KF|5,
 [0x40]	KF|6,	KF|7,	KF|8,	KF|9,	KF|10,	Num,	KF|12,	Home,
 [0x48]	No,	No,	No,	No,	No,	No,	No,	No,
 [0x50]	No,	No,	No,	No,	No,	No,	No,	KF|11,
@@ -75,7 +76,7 @@ uchar kbtabshift[] =
 [0x20]	'D',	'F',	'G',	'H',	'J',	'K',	'L',	':',
 [0x28]	'"',	'~',	Shift,	'|',	'Z',	'X',	'C',	'V',
 [0x30]	'B',	'N',	'M',	'<',	'>',	'?',	Shift,	No,
-[0x38]	Latin,	' ',	Caps,	KF|1,	KF|2,	KF|3,	KF|4,	KF|5,
+[0x38]	Latin,	' ',	Ctrl,	KF|1,	KF|2,	KF|3,	KF|4,	KF|5,
 [0x40]	KF|6,	KF|7,	KF|8,	KF|9,	KF|10,	Num,	KF|12,	Home,
 [0x48]	No,	No,	No,	No,	No,	No,	No,	No,
 [0x50]	No,	No,	No,	No,	No,	No,	No,	KF|11,
@@ -231,6 +232,9 @@ struct latin
  */
 KIOQ	kbdq;
 
+static int mousebuttons;
+static int middlebutton;
+
 /*
  *  predeclared
  */
@@ -367,13 +371,29 @@ mymouseputc(int c)
 		if(msg[0] & 0x20)
 			msg[2] |= 0xFF00;
 
-		mouse.newbuttons = b[msg[0]&7];
+		mousebuttons = b[msg[0]&7];
+		mouse.newbuttons = mousebuttons | middlebutton;
 		mouse.dx = msg[1];
 		mouse.dy = -msg[2];
 		mouse.track = 1;
 		spllo();		/* mouse tracking kills uart0 */
 		mouseclock();
 	}
+}
+
+/*
+ *  Ctrl key used as middle button pressed
+ */
+static void
+middle(int newval)
+{
+	middlebutton = newval;
+	mouse.newbuttons = mousebuttons | middlebutton;
+	mouse.dx = 0;
+	mouse.dy = 0;
+	mouse.track = 1;
+	spllo();		/* mouse tracking kills uart0 */
+	mouseclock();
 }
 
 /*
@@ -458,6 +478,9 @@ kbdintr0(void)
 		case Ctrl:
 			ctl = 0;
 			break;
+		case Middle:
+			middle(0);
+			break;
 		}
 		return 0;
 	}
@@ -501,6 +524,9 @@ kbdintr0(void)
 			return 0;
 		case Ctrl:
 			ctl = 1;
+			return 0;
+		case Middle:
+			middle(2);
 			return 0;
 		}
 	}

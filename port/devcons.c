@@ -161,7 +161,7 @@ panic(char *fmt, ...)
 	char buf[PRINTSIZE];
 	int n;
 
-	strcpy(buf, "panic: ");
+	strcpy(buf, "inconceivable: ");
 	n = doprint(buf+7, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
 	buf[n] = '\n';
 	putstrn(buf, n+1);
