@@ -22,11 +22,6 @@ struct
 }waitqalloc;
 
 
-enum
-{
-	Nrq = 5,	/* number of run queues */
-};
-
 int	nrdy;
 Schedq	runq[Nrq];
 

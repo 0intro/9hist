@@ -697,7 +697,6 @@ void
 procctlreq(Proc *p, char *va, int n)
 {
 	char buf[NAMELEN];
-	extern int pfthreshold;
 
 	if(n > NAMELEN)
 		n = NAMELEN;

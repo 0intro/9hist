@@ -376,15 +376,13 @@ dumpstack(void)
 {
 	ulong l, v, i;
 	extern ulong etext;
-	int lim;
 	Crashstate *cs;
 
 	if(up == 0)
 		return;
 
 	i = 0;
-	lim = 6;
-	for(l=(ulong)&l; l<(ulong)(up->kstack+KSTACK) && lim; l+=4){
+	for(l=(ulong)&l; l<(ulong)(up->kstack+KSTACK); l+=4){
 		v = *(ulong*)l;
 		if(KTZERO < v && v < (ulong)&etext){
 			print("%lux ", v);
@@ -393,7 +391,6 @@ dumpstack(void)
 		if(i == 8){
 			i = 0;
 			print("\n");
-			lim--;
 		}
 	}
 

@@ -500,10 +500,7 @@ enum
 	NERR = 15,
 	NNOTE = 5,
 
-	Pcounter = 6,		/* per process counters */
-	 CSCNTR = 0,		/*  sched counter */
-	 FAULTCNTR = 1,		/*  fault counter */
-	 TLBCNTR = 2,		/*  utlbmiss */
+	Nrq	= 5,
 };
 
 struct Proc
