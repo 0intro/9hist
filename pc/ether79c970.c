@@ -430,7 +430,9 @@ amd79c970adapter(Block** bpp, int port, int irq, int tbdf)
 	Block *bp;
 	Adapter *ap;
 
-	bp = allocb(sizeof(Adapter));
+	bp = iallocb(sizeof(Adapter));
+	if(bp == nil)
+		return;
 	ap = (Adapter*)bp->rp;
 	ap->port = port;
 	ap->irq = irq;

@@ -1185,7 +1185,9 @@ qiwrite(Queue *q, void *vp, int len)
 		if(n > Maxatomic)
 			n = Maxatomic;
 
-		b = allocb(n);
+		b = iallocb(n);
+		if(b == nil)
+			break;
 		memmove(b->wp, p+sofar, n);
 		b->wp += n;
 
@@ -1216,7 +1218,7 @@ qiwrite(Queue *q, void *vp, int len)
 		sofar += n;
 	} while(sofar < len && (q->state & Qmsg) == 0);
 
-	return len;
+	return sofar;
 }
 
 /*

@@ -18,21 +18,19 @@ struct
 	ulong	bytes;
 } ialloc;
 
-/*
- *  allocate blocks, round the data base up to a multiple of BLOCKALIGN.
- */
-Block*
-allocb(int size)
+static Block*
+_allocb(int size)
 {
 	Block *b;
 	ulong addr;
-	int n;
 
-	n = sizeof(Block) + size;
-	b = malloc(n+Hdrspc);
-	if(b == 0)
-		exhausted("Blocks");
-	memset(b, 0, sizeof(Block));
+	if((b = mallocz(sizeof(Block)+size+Hdrspc, 0)) == nil)
+		return nil;
+
+	b->next = nil;
+	b->list = nil;
+	b->free = 0;
+	b->flag = 0;
 
 	/* align start of data portion by rounding up */
 	addr = (ulong)b;
@@ -48,22 +46,34 @@ allocb(int size)
 	/* leave sluff at beginning for added headers */
 	b->rp = b->lim - ROUND(size, BLOCKALIGN);
 	if(b->rp < b->base)
-		panic("allocb");
+		panic("_allocb");
 	b->wp = b->rp;
+
+	return b;
+}
+
+Block*
+allocb(int size)
+{
+	Block *b;
+
+	/*
+	 * Check in a process and wait until successful.
+	 * Can still error out of here, though.
+	 */
+	if(up == nil)
+		panic("allocb without up: %uX\n", getcallerpc(&size));
+	if((b = _allocb(size)) == nil)
+		panic("allocb: no memory\n");
 	setmalloctag(b, getcallerpc(&size));
 
 	return b;
 }
 
-/*
- *  interrupt time allocation
- */
 Block*
 iallocb(int size)
 {
 	Block *b;
-	ulong addr;
-	int n;
 
 	if(ialloc.bytes > conf.ialloc){
 		print("iallocb: limited %lud/%lud\n",
@@ -71,38 +81,17 @@ iallocb(int size)
 		return 0;
 	}
 
-	n = sizeof(Block) + size;
-	b = malloc(n+Hdrspc);
-	if(b == 0){
+	if((b = _allocb(size)) == nil){
 		print("iallocb: no memory %lud/%lud\n",
 			ialloc.bytes, conf.ialloc);
 		return nil;
 	}
-	memset(b, 0, sizeof(Block));
-
-	/* align start of data portion by rounding up */
-	addr = (ulong)b;
-	addr = ROUND(addr + sizeof(Block), BLOCKALIGN);
-	b->base = (uchar*)addr;
-
-	/* align end of data portion by rounding down */
-	b->lim = ((uchar*)b) + msize(b);
-	addr = (ulong)(b->lim);
-	addr = addr & ~(BLOCKALIGN-1);
-	b->lim = (uchar*)addr;
-
-	/* leave sluff at beginning for added headers */
-	b->rp = b->lim - ROUND(size, BLOCKALIGN);
-	if(b->rp < b->base)
-		panic("allocb");
-	b->wp = b->rp;
-
+	setmalloctag(b, getcallerpc(&size));
 	b->flag = BINTR;
 
 	ilock(&ialloc);
 	ialloc.bytes += b->lim - b->base;
 	iunlock(&ialloc);
-	setmalloctag(b, getcallerpc(&size));
 
 	return b;
 }

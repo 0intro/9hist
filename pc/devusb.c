@@ -718,8 +718,8 @@ qrcv(Endpt *e)
 	QH *qh;
 	int vf;
 
-	t = alloctde(e, TokIN, e->maxpkt);
 	b = allocb(e->maxpkt);
+	t = alloctde(e, TokIN, e->maxpkt);
 	t->bp = b;
 	t->buffer = PADDR(b->wp);
 	ub = &ubus;
@@ -732,21 +732,6 @@ qrcv(Endpt *e)
 	}
 	queuetd(ub, qh, t, vf);
 	return qh;
-}
-
-static Block *
-usbreq(int type, int req, int value, int offset, int count)
-{
-	Block *b;
-
-	b = allocb(8);
-	b->wp[0] = type;
-	b->wp[1] = req;
-	PUT2(b->wp+2, value);
-	PUT2(b->wp+4, offset);
-	PUT2(b->wp+6, count);
-	b->wp += 8;
-	return b;
 }
 
 /*

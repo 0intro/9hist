@@ -867,7 +867,9 @@ reset(Ether* ether)
 	print("#l%dWaveLAN: slot %d, port 0x%ulX irq %ld type %s\n", ether->ctlrno, slot, ether->port, ether->irq, ether->type);
 
 	/* create a receive buffer */
-	ctlr->rbp = rbpalloc(allocb);
+	ctlr->rbp = rbpalloc(iallocb);
+	if(ctlr->rbp == nil)
+		panic("can't reset ethernet: out of memory");
 
 /* map a piece of memory (Attribute memory) first */
 	m = pcmmap(slot, 0, 0x5000, 1);

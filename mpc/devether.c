@@ -243,7 +243,7 @@ static long
 etherwrite(Chan* chan, void* buf, long n, vlong)
 {
 	Ether *ether;
-	Block *bp;
+	Block *volatile bp;
 
 	ether = etherxx[chan->dev];
 	if(NETTYPE(chan->qid.path) != Ndataqid)

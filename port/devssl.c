@@ -502,11 +502,11 @@ qremove(Block **l, int n, int discard)
 }
 
 /*
- *  We can't let Eintr's lose data since the program
- *  doing the read may be able to handle it.  The only
- *  places Eintr is possible is during the read's in consume.
- *  Therefore, we make sure we can always put back the bytes
- *  consumed before the last ensure.
+ *  We can't let Eintrs lose data, since doing so will get
+ *  us out of sync with the sender and break the reliablity
+ *  of the channel.  Eintr only happens during the reads in
+ *  consume.  Therefore we put back any bytes consumed before
+ *  the last call to ensure.
  */
 static Block*
 sslbread(Chan *c, long n, ulong)
@@ -525,8 +525,10 @@ sslbread(Chan *c, long n, ulong)
 
 	nconsumed = 0;
 	if(waserror()){
-		if(strcmp(up->error, Eintr) == 0)
+		if(strcmp(up->error, Eintr) == 0 && !waserror()){
 			regurgitate(s.s, consumed, nconsumed);
+			poperror();
+		}
 		qunlock(&s.s->in.q);
 		nexterror();
 	}

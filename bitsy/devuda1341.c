@@ -902,7 +902,7 @@ audioopen(Chan *c, int mode)
 		}
 		mxvolume();
 		qunlock(&audio);
-		if (audio.amode == Aread)
+		if (audio.amode & Aread)
 			sendaudio(&audio.o);
 			
 		if (debug) print("open done\n");

@@ -671,51 +671,32 @@ regurgitate(TlsRec *s, uchar *p, int n)
 }
 
 /*
- *  remove at most n bytes from the queue, if discard is set
+ *  remove at most n bytes from the queue in a single block, if discard is set
  *  dump the remainder
  */
 static Block*
-qremove(Block **l, int n, int discard)
+qgrab(Block **l, int n)
 {
-	Block *nb, *b, *first;
+	Block *bb, *b;
 	int i;
 
-	first = *l;
-	for(b = first; b; b = b->next){
-		i = BLEN(b);
-		if(i == n){
-			if(discard){
-				freeblist(b->next);
-				*l = 0;
-			} else
-				*l = b->next;
-			b->next = 0;
-			return first;
-		} else if(i > n){
-			i -= n;
-			if(discard){
-				freeblist(b->next);
-				b->wp -= i;
-				*l = 0;
-			} else {
-				nb = allocb(i);
-				memmove(nb->wp, b->rp+n, i);
-				nb->wp += i;
-				b->wp -= i;
-				nb->next = b->next;
-				*l = nb;
-			}
-			b->next = 0;
-			if(BLEN(b) < 0)
-				panic("qremove");
-			return first;
-		} else
-			n -= i;
-		if(BLEN(b) < 0)
-			panic("qremove");
+	b = *l;
+	if(BLEN(b) == n){
+		*l = b->next;
+		b->next = nil;
+		return b;
 	}
-	*l = 0;
-	return first;
+
+	i = 0;
+	for(bb = b; bb != nil && i < n; bb = bb->next)
+		i += BLEN(bb);
+	if(i > n)
+		i = n;
+
+	bb = allocb(i);
+	consume(l, bb->wp, i);
+	bb->wp += i;
+	return bb;
 }
 
 static void
@@ -731,8 +712,13 @@ tlsclosed(TlsRec *tr, int new)
 }
 
 /*
- * read and process one tls record layer message
- * must be called with tr->in.io held
+ *  read and process one tls record layer message
+ *  must be called with tr->in.io held
+ *  We can't let Eintrs lose data, since doing so will get
+ *  us out of sync with the sender and break the reliablity
+ *  of the channel.  Eintr only happens during the reads in
+ *  consume.  Therefore we put back any bytes consumed before
+ *  the last call to ensure.
  */
 static void
 tlsrecread(TlsRec *tr)
@@ -745,9 +731,10 @@ tlsrecread(TlsRec *tr)
 
 	nconsumed = 0;
 	if(waserror()){
-		if(strcmp(up->error, Eintr) == 0)
+		if(strcmp(up->error, Eintr) == 0 && !waserror()){
 			regurgitate(tr, header, nconsumed);
-		else
+			poperror();
+		}else
 			tlsError(tr, "channel error");
 		nexterror();
 	}
@@ -778,7 +765,7 @@ tlsrecread(TlsRec *tr)
 		tlsError(tr, "channel error");
 		nexterror();
 	}
-	b = qremove(&tr->unprocessed, len, 0);
+	b = qgrab(&tr->unprocessed, len);
 
 	in = &tr->in;
 	if(waserror()){
@@ -786,7 +773,6 @@ tlsrecread(TlsRec *tr)
 		nexterror();
 	}
 	qlock(&in->seclock);
-	b = pullupblock(b, len);
 	p = b->rp;
 	if(in->sec != nil) {
 		len = (*in->sec->dec)(in->sec, p, len);
@@ -874,8 +860,10 @@ tlsrecread(TlsRec *tr)
 			b = nil;
 			poperror();
 			dechandq(tr);
-		}else if(tr->verset && tr->version != SSL3Version)
+		}else if(tr->verset && tr->version != SSL3Version && !waserror()){
 			sendAlert(tr, ENoRenegotiation);
+			poperror();
+		}
 		break;
 	case RApplication:
 		if(!tr->opened)
@@ -938,7 +926,7 @@ rcvError(TlsRec *tr, int err, char *fmt, ...)
 static void
 alertHand(TlsRec *tr, char *msg)
 {
-	Block *volatile b;
+	Block *b;
 	int n;
 
 	lock(&tr->hqlock);
@@ -950,10 +938,7 @@ alertHand(TlsRec *tr, char *msg)
 	unlock(&tr->hqlock);
 
 	n = strlen(msg);
-	b = nil;
 	if(waserror()){
-		if(b != nil)
-			freeb(b);
 		dechandq(tr);
 		nexterror();
 	}
@@ -995,13 +980,6 @@ checkstate(TlsRec *tr, int ishand, int ok)
 	error("tls improperly configured");
 }
 
-/*
- *  We can't let Eintr's lose data since the program
- *  doing the read may be able to handle it.  The only
- *  places Eintr is possible is during the read's in consume.
- *  Therefore, we make sure we can always put back the bytes
- *  consumed before the last ensure.
- */
 static Block*
 tlsbread(Chan *c, long n, ulong offset)
 {
@@ -1031,7 +1009,7 @@ tlsbread(Chan *c, long n, ulong offset)
 			tlsrecread(tr);
 
 		/* return at most what was asked for */
-		b = qremove(&tr->processed, n, 0);
+		b = qgrab(&tr->processed, n);
 		qunlock(&tr->in.io);
 		poperror();
 		tr->datain += BLEN(b);
@@ -1064,7 +1042,7 @@ tlsbread(Chan *c, long n, ulong offset)
 			}
 			tr->hprocessed = b;
 		}
-		b = qremove(&tr->hprocessed, n, 0);
+		b = qgrab(&tr->hprocessed, n);
 		poperror();
 		qunlock(&tr->hqread);
 		tr->handin += BLEN(b);
@@ -1729,12 +1707,15 @@ sendAlert(TlsRec *tr, int err)
 		}
 	}
 
-	b = allocb(2);
-	*b->wp++ = fatal + 1;
-	*b->wp++ = err;
-	if(fatal)
-		tlsSetState(tr, SAlert, SOpen|SHandshake|SRClose);
-	tlsrecwrite(tr, RAlert, b);
+	if(!waserror()){
+		b = allocb(2);
+		*b->wp++ = fatal + 1;
+		*b->wp++ = err;
+		if(fatal)
+			tlsSetState(tr, SAlert, SOpen|SHandshake|SRClose);
+		tlsrecwrite(tr, RAlert, b);
+		poperror();
+	}
 	if(fatal)
 		tlsError(tr, msg);
 }

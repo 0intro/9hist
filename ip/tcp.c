@@ -559,8 +559,10 @@ tcpackproc(void *a)
 		for(t = timeo; t != nil; t = t->readynext) {
 			if(loop++ > 10000)
 				panic("tcpackproc2");
-			if(t->state == TimerDONE && t->func != nil)
+			if(t->state == TimerDONE && t->func != nil && !waserror()){
 				(*t->func)(t->arg);
+				poperror();
+			}
 		}
 	}
 }

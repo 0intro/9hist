@@ -248,7 +248,7 @@ static long
 etherwrite(Chan* chan, void* buf, long n, vlong)
 {
 	Ether *ether;
-	Block *bp;
+	Block *volatile bp;
 	int nn;
 
 	ether = etherxx[chan->dev];
@@ -269,8 +269,13 @@ etherwrite(Chan* chan, void* buf, long n, vlong)
 		error(Etoosmall);
 
 	bp = allocb(n);
+	if(waserror()){
+		freeb(bp);
+		nexterror();
+	}
 	memmove(bp->rp, buf, n);
 	memmove(bp->rp+Eaddrlen, ether->ea, Eaddrlen);
+	poperror();
 	bp->wp += n;
 
 	return etheroq(ether, bp);

@@ -465,7 +465,9 @@ init905(Ctlr* ctlr)
 	for(pd = &ctlr->upr[ctlr->nup-1]; pd >= ctlr->upr; pd--){
 		pd->np = PADDR(&prev->np);
 		pd->control = 0;
-		bp = allocb(sizeof(Etherpkt));
+		bp = iallocb(sizeof(Etherpkt));
+		if(bp == nil)
+			panic("can't allocate ethernet receive ring");
 		pd->addr = PADDR(bp->rp);
 		pd->len = updnLastFrag|sizeof(Etherpkt);
 
@@ -1194,7 +1196,9 @@ tcmadapter(int port, int irq, int tbdf)
 	Block *bp;
 	Adapter *ap;
 
-	bp = allocb(sizeof(Adapter));
+	bp = iallocb(sizeof(Adapter));
+	if(bp == nil)
+		return;
 	ap = (Adapter*)bp->rp;
 	ap->port = port;
 	ap->irq = irq;
@@ -1809,13 +1813,18 @@ XCVRDEBUG("\n");
 			ctlr->ndn = Ndn;
 			init905(ctlr);
 		}
-		else
-			ctlr->rbp = rbpalloc(allocb);
+		else{
+			ctlr->rbp = rbpalloc(iallocb);
+			if(ctlr->rbp == nil)
+				panic("can't reset ethernet: out of memory");
+		}
 		outl(port+TxFreeThresh, HOWMANY(ETHERMAXTU, 256));
 		break;
 
 	default:
-		ctlr->rbp = rbpalloc(allocb);
+		ctlr->rbp = rbpalloc(iallocb);
+		if(ctlr->rbp == nil)
+			panic("can't reset ethernet: out of memory");
 		break;
 	}
 
