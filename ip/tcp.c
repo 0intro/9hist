@@ -409,14 +409,11 @@ tcpkick(Conv *s, int len)
 	}
 }
 
-/*
- *  get remote sender going if it was flow controlled due to a closed window
- */
 static void
-deltimer(Tcppriv *tpriv, Timer *t)
+deltimer(Tcppriv *priv, Timer *t)
 {
-	if(tpriv->timers == t)
-		tpriv->timers = t->next;
+	if(priv->timers == t)
+		priv->timers = t->next;
 	if(t->next)
 		t->next->prev = t->prev;
 	if(t->prev)
@@ -465,33 +462,33 @@ tcpackproc(void *a)
 {
 	Timer *t, *tp, *timeo;
 	Proto *tcp;
-	Tcppriv *tpriv;
+	Tcppriv *priv;
 	int loop;
 
 	tcp = a;
-	tpriv = tcp->priv;
+	priv = tcp->priv;
 
 	for(;;) {
-		tsleep(&tpriv->tcpr, return0, 0, MSPTICK);
+		tsleep(&priv->tcpr, return0, 0, MSPTICK);
 
-		qlock(&tpriv->tl);
+		qlock(&priv->tl);
 		timeo = nil;
 		loop = 0;
-		for(t = tpriv->timers; t != nil; t = tp) {
+		for(t = priv->timers; t != nil; t = tp) {
 			if(loop++ > 10000)
 				panic("tcpackproc1");
 			tp = t->next;
  			if(t->state == TimerON) {
 				t->count--;
 				if(t->count == 0) {
-					deltimer(tpriv, t);
+					deltimer(priv, t);
 					t->state = TimerDONE;
 					t->readynext = timeo;
 					timeo = t;
 				}
 			}
 		}
-		qunlock(&tpriv->tl);
+		qunlock(&priv->tl);
 
 		loop = 0;
 		for(t = timeo; t != nil; t = t->readynext) {
@@ -504,35 +501,35 @@ tcpackproc(void *a)
 }
 
 void
-tcpgo(Tcppriv *tpriv, Timer *t)
+tcpgo(Tcppriv *priv, Timer *t)
 {
 	if(t == nil || t->start == 0)
 		return;
 
-	qlock(&tpriv->tl);
+	qlock(&priv->tl);
 	t->count = t->start;
 	if(t->state != TimerON) {
 		t->state = TimerON;
 		t->prev = nil;
-		t->next = tpriv->timers;
+		t->next = priv->timers;
 		if(t->next)
 			t->next->prev = t;
-		tpriv->timers = t;
+		priv->timers = t;
 	}
-	qunlock(&tpriv->tl);
+	qunlock(&priv->tl);
 }
 
 void
-tcphalt(Tcppriv *tpriv, Timer *t)
+tcphalt(Tcppriv *priv, Timer *t)
 {
 	if(t == nil)
 		return;
 
-	qlock(&tpriv->tl);
+	qlock(&priv->tl);
 	if(t->state == TimerON)
-		deltimer(tpriv, t);
+		deltimer(priv, t);
 	t->state = TimerOFF;
-	qunlock(&tpriv->tl);
+	qunlock(&priv->tl);
 }
 
 int
