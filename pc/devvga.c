@@ -59,7 +59,7 @@ static Vgac vga = {
 };
 
 static Vgac *vgactlr = &vga;			/* available VGA ctlrs */
-static Vgac *vgac;				/* current VGA ctlr */
+static Vgac *vgac = &vga;			/* current VGA ctlr */
 static Hwgc *hwgctlr;				/* available HWGC's */
 Hwgc *hwgc;					/* current HWGC */
 
@@ -183,10 +183,9 @@ vgaread(Chan *c, void *buf, long n, ulong offset)
 	case Qdir:
 		return devdirread(c, buf, n, vgadir, Nvga, devgen);
 	case Qvgactl:
-		if(vgac == 0)
-			vgacp = &vga;
-		else
-			vgacp = vgac;
+		if(cga)
+			return readstr(offset, buf, n, "type: cga\n");
+		vgacp = vgac;
 		port = sprint(cbuf, "type: %s\n", vgacp->name);
 		port += sprint(cbuf+port, "size: %dx%dx%d%s\n",
 			gscreen.r.max.x, gscreen.r.max.y,
@@ -291,7 +290,8 @@ vgactl(char *arg)
 			error(Ebadarg);
 		interlaced[0] = *cp;
 
-		cursoroff(1);
+		if(cga == 0)
+			cursoroff(1);
 		setscreen(x, y, z);
 		cursoron(1);
 		return;

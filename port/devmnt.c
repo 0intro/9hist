@@ -494,11 +494,18 @@ mntread9p(Chan *c, void *buf, long n, ulong offset)
 long	 
 mntread(Chan *c, void *buf, long n, ulong offset)
 {
-	int nc;
 	uchar *p, *e;
+	int nc, cache, isdir;
+
+	isdir = 0;
+	cache = c->flag & CCACHE;
+	if(c->qid.path & CHDIR) {
+		cache = 0;
+		isdir = 1;
+	}
 
 	p = buf;
-	if(c->flag & CCACHE) {
+	if(cache) {
 		nc = cread(c, buf, n, offset);
 		if(nc > 0) {
 			n -= nc;
@@ -513,11 +520,10 @@ mntread(Chan *c, void *buf, long n, ulong offset)
 	}
 
 	n = mntrdwr(Tread, c, buf, n, offset);
-	if((c->qid.path & CHDIR) == 0)
-		return n;
-
-	for(e = &p[n]; p < e; p += DIRLEN)
-		mntdirfix(p, c);
+	if(isdir) {
+		for(e = &p[n]; p < e; p += DIRLEN)
+			mntdirfix(p, c);
+	}
 
 	return n;
 }
@@ -596,6 +602,8 @@ mntrdwr(int type, Chan *c, void *buf, long n, ulong offset)
 	uba = buf;
 	cnt = 0;
 	cache = c->flag & CCACHE;
+	if(c->path & CHDIR)
+		cache = 0;
 	for(;;) {
 		r = mntralloc(c);
 		if(waserror()) {
