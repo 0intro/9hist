@@ -7,7 +7,8 @@
 
 #include	"ip.h"
 
-#include	"libcrypt.h"
+#include	"mp.h"
+#include	"libsec.h"
 
 typedef struct Esphdr Esphdr;
 typedef struct Esptail Esptail;
@@ -132,8 +133,8 @@ static Algorithm espalg[] =
 static Algorithm ahalg[] =
 {
 	"null",			0,	nullahinit,
-	"hmac_sha_96",		128,	shaahinit,
-	"hmac_md5_96",		128,	md5ahinit,
+	"seanq_hmac_sha1_96",		128,	shaahinit,
+	"seanq_hmac_md5_96",		128,	md5ahinit,
 	nil,			0,	nil,
 };
 
@@ -593,12 +594,12 @@ nullahinit(Espcb *ecb, char *name, uchar*, int)
 }
 
 void
-hmac_sha(uchar hash[SHAdlen], uchar *t, long tlen, uchar *key, long klen)
+seanq_hmac_sha1(uchar hash[SHA1dlen], uchar *t, long tlen, uchar *key, long klen)
 {
 	uchar ipad[65], opad[65];
 	int i;
 	DigestState *digest;
-	uchar innerhash[SHAdlen];
+	uchar innerhash[SHA1dlen];
 
 	for(i=0; i<64; i++){
 		ipad[i] = 0x36;
@@ -609,20 +610,20 @@ hmac_sha(uchar hash[SHAdlen], uchar *t, long tlen, uchar *key, long klen)
 		ipad[i] ^= key[i];
 		opad[i] ^= key[i];
 	}
-	digest = sha(ipad, 64, nil, nil);
-	sha(t, tlen, innerhash, digest);
-	digest = sha(opad, 64, nil, nil);
-	sha(innerhash, SHAdlen, hash, digest);
+	digest = sha1(ipad, 64, nil, nil);
+	sha1(t, tlen, innerhash, digest);
+	digest = sha1(opad, 64, nil, nil);
+	sha1(innerhash, SHA1dlen, hash, digest);
 }
 
 static int
 shaauth(Espcb *ecb, uchar *t, int tlen, uchar *auth)
 {
-	uchar hash[SHAdlen];
+	uchar hash[SHA1dlen];
 	int r;
 
-	memset(hash, 0, SHAdlen);
-	hmac_sha(hash, t, tlen, (uchar*)ecb->ahstate, 16);
+	memset(hash, 0, SHA1dlen);
+	seanq_hmac_sha1(hash, t, tlen, (uchar*)ecb->ahstate, 16);
 	r = memcmp(auth, hash, ecb->ahlen) == 0;
 	memmove(auth, hash, ecb->ahlen);
 	return r;
@@ -644,7 +645,7 @@ shaahinit(Espcb *ecb, char *name, uchar *key, int klen)
 }
 
 void
-hmac_md5(uchar hash[MD5dlen], uchar *t, long tlen, uchar *key, long klen)
+seanq_hmac_md5(uchar hash[MD5dlen], uchar *t, long tlen, uchar *key, long klen)
 {
 	uchar ipad[65], opad[65];
 	int i;
@@ -673,7 +674,7 @@ md5auth(Espcb *ecb, uchar *t, int tlen, uchar *auth)
 	int r;
 
 	memset(hash, 0, MD5dlen);
-	hmac_md5(hash, t, tlen, (uchar*)ecb->ahstate, 16);
+	seanq_hmac_md5(hash, t, tlen, (uchar*)ecb->ahstate, 16);
 	r = memcmp(auth, hash, ecb->ahlen) == 0;
 	memmove(auth, hash, ecb->ahlen);
 	return r;

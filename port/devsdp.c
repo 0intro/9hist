@@ -6,7 +6,7 @@
 #include "../port/netif.h"
 #include "../port/error.h"
 
-#include	<libcrypt.h>
+#include	<libsec.h>
 #include "../port/thwack.h"
 
 /*
@@ -328,8 +328,8 @@ static Algorithm cipheralg[] =
 static Algorithm authalg[] =
 {
 	"null",			0,	nullauthinit,
-	"hmac_sha_96",	16,	shaauthinit,
-	"hmac_md5_96",	16,	md5authinit,
+	"seanq_hmac_sha1_96",	16,	shaauthinit,
+	"seanq_hmac_md5_96",	16,	md5authinit,
 	nil,			0,	nil,
 };
 
@@ -993,7 +993,7 @@ print("convsetstate %s -> %s\n", convstatename[c->state], convstatename[state]);
 			hnputl(c->out.secret, c->acceptid);
 			hnputl(c->out.secret+4, c->dialid);
 		}
-		setalg(c, "hmac_md5_96", authalg, &c->auth);
+		setalg(c, "seanq_hmac_md5_96", authalg, &c->auth);
 		break;
 	case CLocalClose:
 		assert(c->state == CAccept || c->state == COpen);
@@ -1879,14 +1879,14 @@ setsecret(OneWay *ow, char *secret)
 static void
 setkey(uchar *key, int n, OneWay *ow, char *prefix)
 {
-	uchar ibuf[SHAdlen], obuf[MD5dlen], salt[10];
+	uchar ibuf[SHA1dlen], obuf[MD5dlen], salt[10];
 	int i, round = 0;
 
 	while(n > 0){
 		for(i=0; i<round+1; i++)
 			salt[i] = 'A'+round;
-		sha((uchar*)prefix, strlen(prefix), ibuf, sha(salt, round+1, nil, nil));
-		md5(ibuf, SHAdlen, obuf, md5(ow->secret, sizeof(ow->secret), nil, nil));
+		sha1((uchar*)prefix, strlen(prefix), ibuf, sha1(salt, round+1, nil, nil));
+		md5(ibuf, SHA1dlen, obuf, md5(ow->secret, sizeof(ow->secret), nil, nil));
 		i = (n<MD5dlen) ? n : MD5dlen;
 		memmove(key, obuf, i);
 		key += i;
@@ -2156,7 +2156,7 @@ shaauthinit(Conv *c)
 }
 
 static void
-hmac_md5(uchar hash[MD5dlen], ulong wrap, uchar *t, long tlen, uchar *key, long klen)
+seanq_hmac_md5(uchar hash[MD5dlen], ulong wrap, uchar *t, long tlen, uchar *key, long klen)
 {
 	uchar ipad[65], opad[65], wbuf[4];
 	int i;
@@ -2191,7 +2191,7 @@ md5auth(OneWay *ow, uchar *t, int tlen)
 	tlen -= ow->authlen;
 
 	memset(hash, 0, MD5dlen);
-	hmac_md5(hash, ow->seqwrap, t, tlen, (uchar*)ow->authstate, 16);
+	seanq_hmac_md5(hash, ow->seqwrap, t, tlen, (uchar*)ow->authstate, 16);
 	r = memcmp(t+tlen, hash, ow->authlen) == 0;
 	memmove(t+tlen, hash, ow->authlen);
 	return r;

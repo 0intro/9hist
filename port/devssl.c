@@ -8,7 +8,8 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
-#include	<libcrypt.h>
+#include	<mp.h>
+#include	<libsec.h>
 
 #define NOSPOOKS 1
 
@@ -839,7 +840,7 @@ Hashalg hashtab[] =
 {
 	{ "md4", MD4dlen, md4, },
 	{ "md5", MD5dlen, md5, },
-	{ "sha", SHAdlen, sha, },
+	{ "sha1", SHA1dlen, sha1, },
 	{ 0 }
 };
 
@@ -1320,36 +1321,6 @@ sslhangup(Dstate *s)
 	s->state = Sincomplete;
 	qunlock(&s->in.q);
 }
-
-/*
- *  crypt's interface to system, included here to override the
- *  library version
- */
-void
-handle_exception(int type, char *exception)
-{
-	if(type == CRITICAL)
-		panic("crypt library: %s: %r", exception);
-	else
-		print("crypt library: %s: %r\n", exception);
-}
-
-extern void rbcheck(char*);
-
-void*
-crypt_malloc(int size)
-{
-	return smalloc(size);
-}
-
-void
-crypt_free(void *x)
-{
-	if(x == 0)
-		return;
-	free(x);
-}
-
 
 static Dstate*
 dsclone(Chan *ch)

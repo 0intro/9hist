@@ -47,7 +47,7 @@ enum {						/* index registers */
 
 	CursorMode32x32	= 0x23,
 	CursorMode64x64	= 0x27,
-	CursorMode	= CursorMode64x64,
+	CursorMode	= CursorMode32x32,
 };
 
 static ulong
@@ -186,7 +186,7 @@ static void
 t2r4curload(VGAscr* scr, Cursor* curs)
 {
 	uchar *data;
-	int x, y, zoom;
+	int size, x, y, zoom;
 	ulong clr, *mmio, pixels, set;
 
 	mmio = scr->mmio;
@@ -249,17 +249,25 @@ t2r4curload(VGAscr* scr, Cursor* curs)
 		*data = 0x00;
 		*data = 0x00;
 		*data = 0x00;
-		*data = 0x00;
-		*data = 0x00;
-		*data = 0x00;
-		*data = 0x00;
+
+		if(CursorMode == CursorMode32x32 && zoom == 16)
+			continue;
+		*data = pixels>>24;
+		*data = pixels>>16;
+		*data = pixels>>8;
+		*data = pixels;
+
 		*data = 0x00;
 		*data = 0x00;
 		*data = 0x00;
 		*data = 0x00;
 	}
-	while(y < 64){
-		for(x = 0; x < 64/8; x++){
+	if(CursorMode == CursorMode32x32)
+		size = 32;
+	else
+		size = 64;
+	while(y < size){
+		for(x = 0; x < size/8; x++){
 			*data = 0x00;
 			*data = 0x00;
 		}
@@ -271,7 +279,8 @@ t2r4curload(VGAscr* scr, Cursor* curs)
 	 * Initialise the hotpoint and enable the cursor.
 	 */
 	t2r4xo(scr, CursorHotX, -curs->offset.x);
-	t2r4xo(scr, CursorHotY, -curs->offset.y);
+	zoom = (scr->mmio[Zoom] & 0x0F)+1;
+	t2r4xo(scr, CursorHotY, -curs->offset.y*zoom);
 
 	t2r4xo(scr, CursorCtl, CursorMode);
 }
