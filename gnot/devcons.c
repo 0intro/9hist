@@ -8,14 +8,14 @@
 
 #include	"devtab.h"
 
+typedef struct IOQ	IOQ;
+
 static struct
 {
 	Lock;
 	int	printing;
 	int	c;
 }printq;
-
-typedef struct IOQ	IOQ;
 
 #define	NQ	2048
 struct IOQ{
@@ -31,8 +31,6 @@ struct IOQ{
 };
 
 IOQ	lineq;
-IOQ	rs232iq;
-IOQ	rs232oq;
 
 struct{
 	IOQ;
@@ -48,6 +46,44 @@ struct{
 
 Ref	raw;		/* whether kbd i/o is raw (rcons is open) */
 
+/*
+ *  rs232 stream module
+ */
+typedef struct Rs232	Rs232;
+typedef struct IOBQ	IOBQ;
+
+#define NBQ 4
+struct IOBQ{
+	Block	*bp[NBQ];
+	int	w;
+	int	r;
+	int	f;
+};
+#define NEXT(x) ((x+1)%NBQ)
+
+struct Rs232{
+	QLock;
+	QLock	outlock;
+	IOQ	in;
+	IOBQ	out;
+	int	kstarted;	/* true if kproc started */
+	Queue	*wq;
+	Alarm	*a;		/* alarm for waking the rs232 kernel process */
+	int	txenabled;
+	Rendez	r;
+};
+
+Rs232 rs232;
+
+static void	rs232output(Rs232*);
+static void	rs232input(Rs232*);
+static void	rs232timer(Alarm*);
+static void	rs232kproc(void*);
+static void	rs232open(Queue*, Stream*);
+static void	rs232close(Queue*);
+static void	rs232oput(Queue*, Block*);
+Qinfo rs232info = { nullput, rs232oput, rs232open, rs232close, "rs232" };
+
 void
 printinit(void)
 {
@@ -57,10 +93,6 @@ printinit(void)
 
 	kbdq.in = kbdq.buf;
 	kbdq.out = kbdq.buf;
-	rs232iq.in = rs232iq.buf;
-	rs232iq.out = rs232iq.buf;
-	rs232oq.in = rs232oq.buf;
-	rs232oq.out = rs232oq.buf;
 	klogq.in = klogq.buf;
 	klogq.out = klogq.buf;
 	lineq.in = lineq.buf;
@@ -69,10 +101,6 @@ printinit(void)
 	qunlock(&kbdq);
 	lock(&lineq);		/* allocate lock */
 	unlock(&lineq);
-	lock(&rs232iq);		/* allocate lock */
-	unlock(&rs232iq);
-	lock(&rs232oq);		/* allocate lock */
-	unlock(&rs232oq);
 	lock(&klogq);		/* allocate lock */
 	unlock(&klogq);
 	lock(&klogq.put);		/* allocate lock */
@@ -311,25 +339,6 @@ kbdclock(void)
 		kbdchar(kbdq.c);
 }
 
-void
-rs232ichar(int c)
-{
-	putc(&rs232iq, c);
-	wakeup(&rs232iq.r);
-}
-
-int
-getrs232o(void)
-{
-	int c;
-
-	c = getc(&rs232oq);
-	if(c == -1)
-		rs232oq.state = 0;
-	wakeup(&rs232oq.r);
-	return c;
-}
-
 int
 consactive(void)
 {
@@ -348,13 +357,13 @@ enum{
 	Qpid,
 	Qppid,
 	Qrcons,
-	Qrs232,
 	Qrs232ctl,
 	Qtime,
 	Quser,
 	Qklog,
 	Qmsec,
 	Qclock,
+	Qrs232 = STREAMQID(1, Sdataqid),
 };
 
 Dirtab consdir[]={
@@ -383,10 +392,6 @@ consgen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
 		return -1;
 	tab += i;
 	devdir(c, tab->qid, tab->name, tab->length, tab->perm, dp);
-	switch(dp->qid){
-	case Qrs232:
-		dp->length = cangetc(&rs232iq); break;
-	}
 	return 1;
 }
 
@@ -459,7 +464,14 @@ conswalk(Chan *c, char *name)
 void
 consstat(Chan *c, char *dp)
 {
-	devstat(c, dp, consdir, NCONS, consgen);
+	switch(c->qid){
+	case Qrs232:
+		streamstat(c, dp, "rs232");
+		break;
+	default:
+		devstat(c, dp, consdir, NCONS, consgen);
+		break;
+	}
 }
 
 Chan*
@@ -484,6 +496,8 @@ consopen(Chan *c, int omode)
 			}
 			unlock(&lineq);
 		}
+	if(c->qid == Qrs232)
+		streamopen(c, &rs232info);
 	return devopen(c, omode, consdir, NCONS, consgen);
 }
 
@@ -498,6 +512,8 @@ consclose(Chan *c)
 {
 	if(c->qid==Qrcons && (c->flag&COPEN))
 		decref(&raw);
+	if(c->qid == Qrs232)
+		streamclose(c);
 }
 
 long
@@ -566,21 +582,7 @@ consread(Chan *c, void *buf, long n)
 		return i;
 
 	case Qrs232:
-		qlock(&rs232iq);
-		if(waserror()){
-			qunlock(&rs232iq);
-			nexterror();
-		}
-		while(!cangetc(&rs232iq))
-			sleep(&rs232iq.r, cangetc, &rs232iq);
-		for(i=0; i<n; i++){
-			if((ch=getc(&rs232iq)) == -1)
-				break;
-			*cbuf++ = ch;
-		}
-		poperror();
-		qunlock(&rs232iq);
-		return i;
+		return streamread(c, buf, n);
 
 	case Qrs232ctl:
 		if(c->offset)
@@ -686,33 +688,13 @@ conswrite(Chan *c, void *va, long n)
 		break;
 
 	case Qrs232:
-		qlock(&rs232oq);
-		if(waserror()){
-			qunlock(&rs232oq);
-			nexterror();
-		}
-		l = n;
-		while(--l >= 0) {
-			while (putc(&rs232oq, *a) < 0)
-				sleep(&rs232oq.r, canputc, &rs232oq);
-			a++;
-			if(rs232oq.state == 0){
-				splhi();
-				if(rs232oq.state == 0){
-					rs232oq.state = 1;
-					duartstartrs232o();
-				}
-				spllo();
-			}
-		}
-		poperror();
-		qunlock(&rs232oq);
+		n = streamwrite(c, va, n, 1);
 		break;
 
 	case Qrs232ctl:
-		qlock(&rs232oq);
+		qlock(&rs232);
 		if(waserror()){
-			qunlock(&rs232oq);
+			qunlock(&rs232);
 			nexterror();
 		}
 		if(n<=2 || n>=sizeof buf)
@@ -730,7 +712,7 @@ conswrite(Chan *c, void *va, long n)
 		default:
 			error(0, Ebadarg);
 		}
-		qunlock(&rs232oq);
+		qunlock(&rs232);
 		break;
 
 	case Qtime:
@@ -790,4 +772,186 @@ void
 consuserstr(Error *e, char *buf)
 {
 	strcpy(buf, u->p->pgrp->user);
+}
+
+/*
+ *  rs232 stream routines
+ */
+static void
+rs232output(Rs232 *r)
+{
+	int next;
+	Queue *q;
+	Block *bp;
+
+	qlock(&r->outlock);
+	q = r->wq;
+
+	/*
+ 	 *  free emptied blocks
+	 */
+	for(; r->out.f != r->out.r; r->out.f = NEXT(r->out.f)){
+		freeb(r->out.bp[r->out.f]);
+		r->out.bp[r->out.f] = 0;
+	}
+
+	/*
+	 *  stage new blocks
+	 */
+	bp = getq(q);
+	for(next = NEXT(r->out.w); bp && next!=r->out.r; next = NEXT(next)){
+		r->out.bp[r->out.w] = bp;
+		bp = getq(q);
+		r->out.w = next;
+	}
+
+	/*
+	 *  start output
+	 */
+	if(r->txenabled == 0){
+		r->txenabled = 1;
+		duartstartrs232o();
+	}
+	qunlock(&r->outlock);
+}
+
+static void
+rs232input(Rs232 *r)
+{
+	Queue *q;
+	char c;
+	Block *bp;
+
+	q = RD(r->wq);
+	bp = 0;
+	while((c = getc(&r->in)) >= 0){
+		if(bp == 0){
+			bp->flags |= S_DELIM;
+			bp = allocb(64);
+		}
+		*bp->wptr++ = c;
+		if(bp->wptr == bp->lim){
+			if(QFULL(q->next))
+				freeb(bp);
+			else
+				PUTNEXT(q, bp);
+			bp = 0;
+		}
+	}
+	if(bp){
+		if(QFULL(q->next))
+			freeb(bp);
+		else
+			PUTNEXT(q, bp);
+	}
+}
+
+static int
+rs232stuff(void *arg)
+{
+	Rs232 *r;
+
+	r = arg;
+	return (r->in.in != r->in.out) || (r->out.r != r->out.w)
+		|| (r->out.f != r->out.r);
+}
+
+static void
+rs232kproc(void *a)
+{
+	Rs232 *r;
+
+	r = a;
+	for(;;){
+		qlock(r);
+		if(r->wq != 0){
+			rs232output(r);
+			rs232input(r);
+		}
+		qunlock(r);
+		sleep(&r->r, rs232stuff, r);
+	}
+}
+
+static void
+rs232open(Queue *q, Stream *c)
+{
+	Rs232 *r;
+
+	r = &rs232;
+
+	RD(q)->ptr = r;
+	WR(q)->ptr = r;
+	r->wq = WR(q);
+
+	if(r->kstarted == 0){
+		r->in.in = r->in.out = r->in.buf;
+		kproc("rs232", rs232kproc, r);
+		r->kstarted = 1;
+	}
+}
+
+static void
+rs232close(Queue *q)
+{
+	Rs232 *r;
+
+	r = q->ptr;
+	qlock(r);
+	r->wq = 0;
+	qunlock(r);
+}
+
+static void
+rs232oput(Queue *q, Block *bp)
+{
+	if(bp->rptr == bp->wptr)
+		freeb(bp);
+	else
+		putq(q, bp);
+	rs232output(q->ptr);
+}
+
+static void
+rs232timer(Alarm *a)
+{
+	Rs232 *r;
+
+	r = a->arg;
+	cancel(a);
+	r->a = 0;
+	wakeup(&r->r);
+}
+
+void
+rs232ichar(int c)
+{
+	Rs232 *r;
+
+	r = &rs232;
+	putc(&r->in, c);
+	if(r->a == 0)
+		alarm(125, rs232timer, r);
+}
+
+int
+getrs232o(void)
+{
+	int c;
+	Rs232 *r;
+	Block *bp;
+
+	r = &rs232;
+	if(r->out.r == r->out.w){
+		r->txenabled = 0;
+		return -1;
+	}
+	bp = r->out.bp[r->out.r];
+	c = *bp->rptr++;
+	if(bp->rptr >= bp->wptr){
+		r->out.r = NEXT(r->out.r);
+		if(r->out.r==r->out.w || NEXT(r->out.r)==r->out.w)
+			wakeup(&r->r);
+	}
+	return c;
 }
