@@ -89,6 +89,11 @@ static ulong	*upt;		/* 2nd level page table for struct User */
 #define MAXUMEG 64	/* maximum memory per user process in megabytes */
 #define ONEMEG (1024*1024)
 
+struct
+{
+	ulong addr; 	/* next available address for isa bus memory */
+	ulong end;	/* one past available isa bus memory */
+} isamemalloc;
 
 /*
  *  Create a prototype page map that maps all of memory into
@@ -125,8 +130,16 @@ mmuinit(void)
 	ktoppg.va = (ulong)top;
 	ktoppg.pa = ktoppg.va & ~KZERO;
 
-	/*  map all memory to KZERO */
+	/*  map all memory to KZERO (plus 1 meg for PCMCIA window) */
 	npage = conf.topofmem/BY2PG;
+	if(conf.topofmem < 64*MB){
+		/* for ISA bus memory */
+		isamemalloc.addr = conf.topofmem;
+		isamemalloc.end = conf.topofmem + 2*MB;
+		if(isamemalloc.end > 64*MB)
+			isamemalloc.end = 64*MB;
+		npage += (isamemalloc.end - isamemalloc.addr)/BY2PG;
+	}
 	nbytes = PGROUND(npage*BY2WD);		/* words of page map */
 	nkpt = nbytes/BY2PG;			/* pages of page map */
 	kpt = xspanalloc(nbytes, BY2PG, 0);
@@ -320,4 +333,24 @@ invalidateu(void)
 
 	/* flush cached mmu entries */
 	putcr3(ktoppg.pa);
+}
+
+/*
+ *  allocate some address space (already mapped into the kernel)
+ *  for ISA bus memory.
+ */
+ulong
+isamem(int len)
+{
+	ulong a, x;
+
+	lock(&isamemalloc);
+	len = PGROUND(len);
+	x = isamemalloc.addr + len;
+	if(x > isamemalloc.end)
+		panic("isamem");
+	a = isamemalloc.addr;
+	isamemalloc.addr = x;
+	unlock(&isamemalloc);
+	return a;
 }
