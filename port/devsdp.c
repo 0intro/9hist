@@ -179,6 +179,13 @@ static Logflag logflags[] =
 
 static Dirtab	*dirtab[MaxQ];
 static Sdp sdptab[Nfs];
+static char *convstatename[] = {
+	[CInit] "Init",
+	[COpening] "Opening",
+	[COpen] "Open",
+	[CClosing] "Closing",
+	[CClosed] "Closed",
+};
 
 static int sdpgen(Chan *c, Dirtab*, int, int s, Dir *dp);
 static Conv *sdpclone(Sdp *sdp);
@@ -318,6 +325,7 @@ sdpopen(Chan* ch, int omode)
 		if(strcmp(up->user, c->owner) != 0 || (perm & c->perm) != perm)
 				error(Eperm);
 		c->ref++;
+print(c->ref = %d\n", c->ref);
 		if(TYPE(ch->qid) == Qdata)
 			c->dataopen++;
 		qunlock(c);
@@ -359,7 +367,7 @@ sdpclose(Chan* ch)
 			if(c->dataopen == 0)
 				wakeup(&c->in.controlready);
 		}
-
+print("close c->ref = %d\n", c->ref);
 		if(c->ref == 0) {
 			switch(c->state) {
 			default:
@@ -703,7 +711,7 @@ static void
 convsetstate(Conv *c, int state)
 {
 
-print("convsetstate %d -> %d\n", c->state, state);
+print("convsetstate %s -> %s\n", convstatename[c->state], convstatename[state]);
 
 	switch(state) {
 	default:

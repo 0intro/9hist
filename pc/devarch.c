@@ -91,7 +91,7 @@ ioalloc(int port, int size, int align, char *tag)
 			return -1;
 		}
 	} else {
-		// see if the space clashes with previously alllocated ports
+		// see if the space clashes with previously allocated ports
 		for(l = &iomap.m; *l; l = &(*l)->next){
 			m = *l;
 			if(m->end <= port)
