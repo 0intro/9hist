@@ -92,6 +92,8 @@ key(int islocal, Method *mp)
 		fatal("#c/hostowner");
 
 	/* set host's domain */
+	if(*safe->authdom == 0)
+		strcpy(safe->authdom, "plan9");
 	if(writefile("#c/hostdomain", safe->authdom, strlen(safe->authdom)) < 0)
 		fatal("#c/hostdomain");
 }

@@ -180,46 +180,6 @@ s3disable(VGAscr*)
 }
 
 static void
-s3enable(VGAscr* scr)
-{
-	int i;
-	ulong storage;
-
-	s3disable(scr);
-
-	/*
-	 * Cursor colours. Set both the CR0[EF] and the colour
-	 * stack in case we are using a 16-bit RAMDAC.
-	 */
-	vgaxo(Crtx, 0x0E, Pwhite);
-	vgaxo(Crtx, 0x0F, Pblack);
-	vgaxi(Crtx, 0x45);
-
-	for(i = 0; i < 3; i++)
-		vgaxo(Crtx, 0x4A, Pblack);
-	vgaxi(Crtx, 0x45);
-	for(i = 0; i < 3; i++)
-		vgaxo(Crtx, 0x4B, Pwhite);
-
-	/*
-	 * Find a place for the cursor data in display memory.
-	 * Must be on a 1024-byte boundary.
-	 */
-	storage = (scr->gscreen->width*BY2WD*scr->gscreen->r.max.y+1023)/1024;
-	vgaxo(Crtx, 0x4C, storage>>8);
-	vgaxo(Crtx, 0x4D, storage & 0xFF);
-	storage *= 1024;
-	scr->storage = storage;
-
-	/*
-	 * Enable the cursor in Microsoft Windows format.
-	 */
-	vgaxo(Crtx, 0x55, vgaxi(Crtx, 0x55) & ~0x10);
-	s3vsyncactive();
-	vgaxo(Crtx, 0x45, 0x01);
-}
-
-static void
 s3load(VGAscr* scr, Cursor* curs)
 {
 	uchar *p;
@@ -240,7 +200,7 @@ s3load(VGAscr* scr, Cursor* curs)
 	case 0xE18A:				/* ViRGE/[DG]X */
 	case 0xE110:				/* ViRGE/GX2 */
 	case 0xE13D:				/* ViRGE/VX */
-	case 0xE112:				/* Savage4/MX */
+	case 0xE112:				/* Savage4/IX-MV */
 	case 0xE122:				/* Savage4 */
 		p += scr->storage;
 		break;
@@ -288,7 +248,7 @@ s3load(VGAscr* scr, Cursor* curs)
 	case 0xE18A:				/* ViRGE/[DG]X */
 	case 0xE110:				/* ViRGE/GX2 */
 	case 0xE13D:				/* ViRGE/VX */
-	case 0xE112:				/* Savage4/MX */
+	case 0xE112:				/* Savage4/IX-MV */
 	case 0xE122:				/* Savage4 */
 		break;
 
@@ -341,6 +301,49 @@ s3move(VGAscr* scr, Point p)
 	vgaxo(Crtx, 0x48, (y>>8) & 0x07);
 
 	return 0;
+}
+
+static void
+s3enable(VGAscr* scr)
+{
+	int i;
+	ulong storage;
+
+	s3disable(scr);
+
+	/*
+	 * Cursor colours. Set both the CR0[EF] and the colour
+	 * stack in case we are using a 16-bit RAMDAC.
+	 */
+	vgaxo(Crtx, 0x0E, Pwhite);
+	vgaxo(Crtx, 0x0F, Pblack);
+	vgaxi(Crtx, 0x45);
+
+	for(i = 0; i < 3; i++)
+		vgaxo(Crtx, 0x4A, Pblack);
+	vgaxi(Crtx, 0x45);
+	for(i = 0; i < 3; i++)
+		vgaxo(Crtx, 0x4B, Pwhite);
+
+	/*
+	 * Find a place for the cursor data in display memory.
+	 * Must be on a 1024-byte boundary.
+	 */
+	storage = (scr->gscreen->width*BY2WD*scr->gscreen->r.max.y+1023)/1024;
+	vgaxo(Crtx, 0x4C, storage>>8);
+	vgaxo(Crtx, 0x4D, storage & 0xFF);
+	storage *= 1024;
+	scr->storage = storage;
+
+	/*
+	 * Load, locate and enable the cursor
+	 * in Microsoft Windows format.
+	 */
+	s3load(scr, &arrow);
+	s3move(scr, ZP);
+	vgaxo(Crtx, 0x55, vgaxi(Crtx, 0x55) & ~0x10);
+	s3vsyncactive();
+	vgaxo(Crtx, 0x45, 0x01);
 }
 
 /*

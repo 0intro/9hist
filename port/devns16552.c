@@ -284,15 +284,27 @@ ns16552break(Uart *p, int ms)
 	uartwrreg(p, Format, 0);
 }
 
+/*
+ *  always called under lock(&p->flock)
+ */
 static void
-ns16552fifoon(Uart *p)
+ns16552fifo(Uart *p, int n)
 {
-	ulong i, x;
+	ulong i;
+	int x;
 
 	if(p->type < Ns550)
 		return;
 
 	x = splhi();
+
+	if(n == 0){
+		/* turn off fifo's */
+		p->fifoon = 0;
+		uartwrreg(p, Fifoctl, 0);
+		splx(x);
+		return;
+	}
 
 	/* reset fifos */
 	uartwrreg(p, Fifoctl, Fclear);
@@ -318,7 +330,6 @@ ns16552fifoon(Uart *p)
 		/* didn't work, must be an earlier chip type */
 		p->type = Ns450;
 	}
-
 	splx(x);
 }
 
@@ -356,16 +367,10 @@ ns16552mflow(Uart *p, int n)
 	}
 	iunlock(&p->tlock);
 
-	ilock(&p->flock);
-	if(n)
-		/* turn on fifo's */
-		ns16552fifoon(p);
-	else {
-		/* turn off fifo's */
-		p->fifoon = 0;
-		uartwrreg(p, Fifoctl, 0);
-	}
-	iunlock(&p->flock);
+	/* modem needs fifo */
+	lock(&p->flock);
+	ns16552fifo(p, n);
+	unlock(&p->flock);
 }
 
 /*
@@ -985,6 +990,12 @@ ns16552ctl(Uart *p, char *cmd)
 		qhangup(p->iq, 0);
 		qhangup(p->oq, 0);
 		break;
+	case 'i':
+	case 'I':
+		lock(&p->flock);
+		ns16552fifo(p, n);
+		unlock(&p->flock);
+		break;
 	case 'L':
 	case 'l':
 		ns16552bits(p, n);
@@ -1048,10 +1059,12 @@ ns16552write(Chan *c, void *buf, long n, vlong)
 	 *  The fifo's turn themselves off sometimes.
 	 *  It must be something I don't understand. -- presotto
 	 */
-	lock(&p->flock);
-	if((p->istat & Fenabd) == 0 && p->fifoon && p->type < Ns550)
-		ns16552fifoon(p);
-	unlock(&p->flock);
+	if((p->istat & Fenabd) == 0 && p->fifoon && p->type < Ns550){
+		lock(&p->flock);
+		if((p->istat & Fenabd) == 0 && p->fifoon && p->type < Ns550)
+			ns16552fifo(p, 1);
+		unlock(&p->flock);
+	}
 
 	switch(NETTYPE(c->qid.path)){
 	case Ndataqid:
