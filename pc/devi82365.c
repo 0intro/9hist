@@ -289,12 +289,8 @@ i82365intr(Ureg *ur, void *a)
 		was = pp->occupied;
 		slotinfo(pp);
 		if(csc & (1<<3) && was != pp->occupied){
-			if(pp->occupied)
-				print("slot%d card inserted\n", pp->slotno);
-			else {
-				print("slot%d card removed\n", pp->slotno);
+			if(!pp->occupied)
 				slotdis(pp);
-			}
 		}
 	}
 }
