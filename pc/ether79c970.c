@@ -132,6 +132,10 @@ typedef struct Ctlr {
 	ulong	lcol;
 	ulong	uflo;
 	ulong	txbuff;
+
+	ulong	merr;			/* bobf is such a whiner */
+	ulong	miss;
+	ulong	babl;
 } Ctlr;
 
 #define csr32r(c, r)	(inl((c)->port+(r)))
@@ -179,7 +183,10 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 	len += snprint(p+len, READSTR-len, "Lcar: %ld\n", ctlr->lcar);
 	len += snprint(p+len, READSTR-len, "Lcol: %ld\n", ctlr->lcol);
 	len += snprint(p+len, READSTR-len, "Uflo: %ld\n", ctlr->uflo);
-	snprint(p+len, READSTR-len, "Txbuff: %ld\n", ctlr->txbuff);
+	len += snprint(p+len, READSTR-len, "Txbuff: %ld\n", ctlr->txbuff);
+	len += snprint(p+len, READSTR-len, "Merr: %ld\n", ctlr->merr);
+	len += snprint(p+len, READSTR-len, "Miss: %ld\n", ctlr->miss);
+	snprint(p+len, READSTR-len, "Babl: %ld\n", ctlr->babl);
 
 	n = readstr(offset, a, n, p);
 	free(p);
@@ -326,8 +333,14 @@ interrupt(Ureg*, void* arg)
 intrloop:
 	csr0 = csr32r(ctlr, Rdp) & 0xFFFF;
 	csr32w(ctlr, Rdp, Babl|Cerr|Miss|Merr|Rint|Tint|Iena);
-	if(csr0 & (Babl|Miss|Merr))
-		print("#l%d: csr0 = 0x%uX\n", ether->ctlrno, csr0);
+	if(csr0 & Merr)
+		ctlr->merr++;
+	if(csr0 & Miss)
+		ctlr->miss++;
+	if(csr0 & Babl)
+		ctlr->babl++;
+	//if(csr0 & (Babl|Miss|Merr))
+	//	print("#l%d: csr0 = 0x%uX\n", ether->ctlrno, csr0);
 	if(!(csr0 & (Rint|Tint)))
 		return;
 

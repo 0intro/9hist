@@ -201,7 +201,7 @@ archinit(void)
 	if(X86FAMILY(m->cpuidax) == 3 || conf.nmach > 1)
 		conf.copymode = 1;
 
-	if(X86FAMILY(m->cpuidax) == 6 /*&& conf.nmach > 1*/)
+	if(X86FAMILY(m->cpuidax) >= 5)
 		coherence = wbflush;
 }
 

@@ -87,21 +87,6 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 		(*pg)->modref = PG_REF;
 		break;
 
-	case SG_SHDATA:			/* Shared data */
-	shared:
-		if(pagedout(*pg))
-			pio(s, addr, soff, pg);
-
-		lkp = *pg;
-		lock(lkp);
-
-		/* save a copy of the original for the image cache */
-		if(lkp->image)
-			duppage(lkp);
-
-		unlock(lkp);
-		goto done;
-
 	case SG_BSS:
 	case SG_SHARED:			/* Zero fill on demand */
 	case SG_STACK:
@@ -117,13 +102,11 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 
 			*pg = new;
 		}
-		if(type == SG_SHARED)
-			goto shared;
-
-		goto notshared;
+		goto common;
 
 	case SG_DATA:
-	notshared:			/* Demand load/pagein/copy on write */
+	case SG_SHDATA:
+	common:			/* Demand load/pagein/copy on write */
 		if(pagedout(*pg))
 			pio(s, addr, soff, pg);
 
@@ -135,6 +118,7 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 
 		lkp = *pg;
 		lock(lkp);
+
 		if(lkp->image == &swapimage)
 			ref = lkp->ref + swapcount(lkp->daddr);
 		else
@@ -155,7 +139,6 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 
 			unlock(lkp);
 		}
-	done:
 		mmuphys = PPN((*pg)->pa) | PTEWRITE|PTEVALID;
 		(*pg)->modref = PG_MOD|PG_REF;
 		break;
@@ -289,7 +272,6 @@ retry:
 				putpage(new);
 				goto done;
 			} else {
-print("!");
 				/* another process and the pager got in */
 				putpage(new);
 				goto retry;

@@ -338,14 +338,12 @@ executeio(void)
 		if(ioptr > conf.nswppo)
 			panic("executeio: ioptr %d > %d\n", ioptr, conf.nswppo);
 		out = iolist[i];
-		up->psstate = "I/Okm";
 		k = kmap(out);
 		kaddr = (char*)VA(k);
 
 		if(waserror())
 			panic("executeio: page out I/O error");
 
-		up->psstate = "I/Owr";
 		n = devtab[c->type]->write(c, kaddr, BY2PG, out->daddr);
 		if(n != BY2PG)
 			nexterror();
@@ -354,11 +352,9 @@ executeio(void)
 		poperror();
 
 		/* Free up the page after I/O */
-		up->psstate = "I/Odec";
 		lock(out);
 		out->ref--;
 		unlock(out);
-		up->psstate = "I/Oput";
 		putpage(out);
 	}
 	ioptr = 0;
