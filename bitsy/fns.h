@@ -1,15 +1,13 @@
 #include "../port/portfns.h"
 
+void	cacheflush(void);
+void	cacheflushaddr(ulong);
 int	cistrcmp(char*, char*);
 int	cistrncmp(char*, char*, int);
-void	cleancache(void);
-void	cleanaddr(ulong);
-#define	clearmmucache()				/* x86 doesn't have one */
 void	clockinit(void);
 #define	coherence()
 void	delay(int);
 void	evenaddr(ulong);
-void	flushcache(void);
 void	flushmmu(void);
 ulong	getfar(void);
 ulong	getfsr(void);
@@ -28,6 +26,7 @@ void	meminit(void);
 void	mmuinit(void);
 void	mmuenable(void);
 void	mmudisable(void);
+void	mmuinvalidate(void);
 void	noted(Ureg*, ulong);
 int	notify(Ureg*);
 #define	procrestore(p)
@@ -40,16 +39,19 @@ void	qpanic(char *, ...);
 void	reset(void);
 void	rs232power(int);
 Uart*	uartsetup(PhysUart*, void*, ulong, char*);
-void	sa1100_uartsetup(void);
+void	uartspecial(Uart*, int, Queue**, Queue**, int (*)(Queue*, int));
+void	sa1100_uartsetup(int);
 void	screeninit(void);
 int	screenprint(char*, ...);			/* debugging */
-void	(*screenputs)(char*, int);
+void	screenputs(char*, int);
 void	setr13(int, ulong*);
 void	touser(void*);
 void	trapdump(char *tag);
 void	trapinit(void);
 int	tas(void*);
 int	uartstageoutput(Uart*);
+void	uartkick(void*);
+void	uartrecv(Uart*, char);
 void	vectors(void);
 void	vtable(void);
 void	wbflush(void);

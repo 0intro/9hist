@@ -20,9 +20,18 @@ static int uartndir;
  */
 static char	Ekinuse[] = "device in use by kernel";
 
+struct Uartalloc {
+	Lock;
+	Uart *elist;	/* list of enabled interfaces */
+} uartalloc;
+
 static void	uartdcdhup(Uart*, int);
 static void	uartdcdts(Uart*, int);
 static void	uartdsrhup(Uart*, int);
+static void	uartenable(Uart*);
+static void	uartdisable(Uart*);
+static void	uartclock(void);
+static void	uartflow(void*);
 
 /*
  *  define a Uart
@@ -54,8 +63,8 @@ uartsetup(PhysUart *phys, void *regs, ulong freq, char *name)
 	(*p->phys->baud)(p, 115200);
 	(*p->phys->enable)(p, 0);
 
-	p->iq = qopen(4*1024, 0, p->phys->flow, p);
-	p->oq = qopen(4*1024, 0, p->phys->kick, p);
+	p->iq = qopen(4*1024, 0, uartflow, p);
+	p->oq = qopen(4*1024, 0, uartkick, p);
 	if(p->iq == nil || p->oq == nil)
 		panic("uartsetup");
 
@@ -64,6 +73,52 @@ uartsetup(PhysUart *phys, void *regs, ulong freq, char *name)
 	p->op = p->ostage;
 	p->oe = p->ostage;
 	return p;
+}
+
+/*
+ *  enable/diable uart and add/remove to list of enabled uarts
+ */
+static void
+uartenable(Uart *p)
+{
+	Uart **l;
+
+	p->hup_dsr = p->hup_dcd = 0;
+	p->dsr = p->dcd = 0;
+
+	/* assume we can send */
+	p->cts = 1;
+
+	(*p->phys->enable)(p, 1);
+
+	lock(&uartalloc);
+	for(l = &uartalloc.elist; *l; l = &(*l)->elist){
+		if(*l == p)
+			break;
+	}
+	if(*l == 0){
+		p->elist = uartalloc.elist;
+		uartalloc.elist = p;
+	}
+	p->enabled = 1;
+	unlock(&uartalloc);
+}
+static void
+uartdisable(Uart *p)
+{
+	Uart **l;
+
+	(*p->phys->disable)(p);
+
+	lock(&uartalloc);
+	for(l = &uartalloc.elist; *l; l = &(*l)->elist){
+		if(*l == p){
+			*l = p->elist;
+			break;
+		}
+	}
+	p->enabled = 0;
+	unlock(&uartalloc);
 }
 
 static void
@@ -109,6 +164,8 @@ uartreset(void)
 		dp->perm = 0444;
 		dp++;
 	}
+
+	addclock0link(uartclock);
 }
 
 
@@ -147,7 +204,7 @@ uartopen(Chan *c, int omode)
 			error(Ekinuse);
 		qlock(p);
 		if(p->opens++ == 0){
-			(*p->phys->enable)(p, 1);
+			uartenable(p);
 			qreopen(p->iq);
 			qreopen(p->oq);
 		}
@@ -175,7 +232,7 @@ uartclose(Chan *c)
 			error(Ekinuse);
 		qlock(p);
 		if(--(p->opens) == 0){
-			(*p->phys->disable)(p);
+			uartdisable(p);
 			qclose(p->iq);
 			qclose(p->oq);
 			p->ip = p->istage;
@@ -400,6 +457,23 @@ uartdcdts(Uart *p, int n)
 }
 
 /*
+ *  restart input if it's off
+ */
+static void
+uartflow(void *v)
+{
+	Uart *p;
+
+	p = v;
+	if(p->modem){
+		(*p->phys->rts)(p, 1);
+		ilock(&p->rlock);
+		p->haveinput = 1;
+		iunlock(&p->rlock);
+	}
+}
+
+/*
  *  put some bytes into the local queue to avoid calling
  *  qconsume for every character
  */
@@ -414,4 +488,121 @@ uartstageoutput(Uart *p)
 	p->op = p->ostage;
 	p->oe = p->ostage + n;
 	return n;
+}
+
+/*
+ *  restart output
+ */
+void
+uartkick(void *v)
+{
+	Uart *p = v;
+
+	ilock(&p->tlock);
+	(*p->phys->kick)(p);
+	iunlock(&p->tlock);
+}
+
+/*
+ *  streceiveage a character at interrupt time
+ */
+void
+uartrecv(Uart *p,  char ch)
+{
+	/* software flow control */
+	if(p->xonoff){
+		if(ch == CTLS){
+			p->blocked = 1;
+		}else if (ch == CTLQ){
+			p->blocked = 0;
+			p->ctsbackoff = 2; /* clock gets output going again */
+		}
+	}
+
+	/* receive the character */
+	if(p->putc)
+		p->putc(p->iq, ch);
+	else {
+		ilock(&p->rlock);
+		if(p->ip < p->ie)
+			*p->ip++ = ch;
+		p->haveinput = 1;
+		iunlock(&p->rlock);
+	}
+}
+
+/*
+ *  we save up input characters till clock time to reduce
+ *  per character interrupt overhead.
+ *
+ *  There's also a bit of code to get a stalled print going.
+ *  It shouldn't happen, but it does.  Obviously I don't
+ *  understand something.  Since it was there, I bundled a
+ *  restart after flow control with it to give some hysteresis
+ *  to the hardware flow control.  This makes compressing
+ *  modems happier but will probably bother something else.
+ *	 -- presotto
+ */
+static void
+uartclock(void)
+{
+	int n;
+	Uart *p;
+
+	for(p = uartalloc.elist; p; p = p->elist){
+
+		/* this amortizes cost of qproduce to many chars */
+		if(p->haveinput){
+			ilock(&p->rlock);
+			if(p->haveinput){
+				n = p->ip - p->istage;
+				if(n > 0 && p->iq){
+					if(n > Stagesize)
+						panic("uartclock");
+					if(qproduce(p->iq, p->istage, n) < 0)
+						(*p->phys->rts)(p, 0);
+					else
+						p->ip = p->istage;
+				}
+				p->haveinput = 0;
+			}
+			iunlock(&p->rlock);
+		}
+		if(p->dohup){
+			ilock(&p->rlock);
+			if(p->dohup){
+				qhangup(p->iq, 0);
+				qhangup(p->oq, 0);
+			}
+			p->dohup = 0;
+			iunlock(&p->rlock);
+		}
+
+		/* this adds hysteresis to hardware/software flow control */
+		if(p->ctsbackoff){
+			ilock(&p->tlock);
+			if(p->ctsbackoff){
+				if(--(p->ctsbackoff) == 0)
+					(*p->phys->kick)(p);
+			}
+			iunlock(&p->tlock);
+		}
+	}
+}
+
+/*
+ *  configure a uart port as a console or a mouse
+ */
+void
+uartspecial(Uart *p, int baud, Queue **in, Queue **out, int (*putc)(Queue*, int))
+{
+	uartenable(p);
+	if(baud)
+		(*p->phys->baud)(p, baud);
+	p->putc = putc;
+	if(in)
+		*in = p->iq;
+	if(out)
+		*out = p->oq;
+	p->opens++;
 }

@@ -82,6 +82,7 @@ mmuinit(void)
 	/* map zeros area */
 	for(o = 0; o < 128 * OneMeg; o += OneMeg)
 		l1table[(NULLZERO+o)>>20] = L1Section | L1KernelRW | L1Domain0
+			| L1Cached | L1Buffered
 			| ((PHYSNULL0+o)&L1SectBaseMask);
 
 	/* map flash */
@@ -113,9 +114,9 @@ mmuinit(void)
 
 	/* enable mmu */
 	wbflush();
-	flushcache();
-	flushmmu();
+	mmuinvalidate();
 	mmuenable();
+	cacheflush();
 }
 
 /*
@@ -224,7 +225,7 @@ putmmu(ulong va, ulong pa, Page*)
 	Page *p;
 	ulong *t;
 
-iprint("putmmu(0x%.8lux, 0x%.8lux)\n", va, pa);
+//iprint("putmmu(0x%.8lux, 0x%.8lux)\n", va, pa);
 	/* always point L1 entry to L2 page, can't hurt */
 	p = up->l1page[va>>20];
 	if(p == nil){
@@ -236,18 +237,38 @@ iprint("putmmu(0x%.8lux, 0x%.8lux)\n", va, pa);
 		memset((uchar*)(p->va), 0, BY2PG);
 	}
 	l1table[va>>20] = L1PageTable | L1Domain0 | (p->pa & L1PTBaseMask);
-	cleanaddr((ulong)&l1table[va>>20]);
-iprint("%lux[%lux] = %lux\n", l1table, va>>20, l1table[va>>20]);
+	cacheflushaddr((ulong)&l1table[va>>20]);
+//iprint("%lux[%lux] = %lux\n", l1table, va>>20, l1table[va>>20]);
 	up->l1table[va>>20] = l1table[va>>20];
 	t = (ulong*)p->va;
 
 	/* set L2 entry */
 	t[(va & (OneMeg-1))>>PGSHIFT] = mmubits[pa & (PTEKERNEL|PTEVALID|PTEUNCACHED|PTEWRITE)]
 		| (pa & ~(PTEKERNEL|PTEVALID|PTEUNCACHED|PTEWRITE));
-iprint("%lux[%lux] = %lux\n", (ulong)t, (va & (OneMeg-1))>>PGSHIFT, t[(va & (OneMeg-1))>>PGSHIFT]);
-	cleanaddr((ulong)&t[(va & (OneMeg-1))>>PGSHIFT]);
+//iprint("%lux[%lux] = %lux\n", (ulong)t, (va & (OneMeg-1))>>PGSHIFT, t[(va & (OneMeg-1))>>PGSHIFT]);
+	cacheflushaddr((ulong)&t[(va & (OneMeg-1))>>PGSHIFT]);
 
 	wbflush();
+}
+
+/*
+ *  free up all page tables for this proc
+ */
+void
+mmuptefree(Proc *p)
+{
+	Page *pg;
+	int i;
+
+	for(i = 0; i < Nmeg; i++){
+		pg = p->l1page[i];
+		if(pg == nil)
+			continue;
+		p->l1page[i] = nil;
+		pg->next = p->mmufree;
+		p->mmufree = pg;
+	}
+	memset(p->l1table, 0, sizeof(p->l1table));
 }
 
 /*
@@ -256,27 +277,57 @@ iprint("%lux[%lux] = %lux\n", (ulong)t, (va & (OneMeg-1))>>PGSHIFT, t[(va & (One
 void
 mmurelease(Proc* p)
 {
-	Page *pg;
-	int i;
+	Page *pg, *next;
 
-	for(i = 0; i < nelem(p->l1page); i++){
-		pg = p->l1page[i];
-		if(pg == nil)
-			continue;
+	/* write back dirty cache entries before changing map */
+	cacheflush();
+
+	mmuptefree(p);
+
+	for(pg = p->mmufree; pg; pg = next){
+		next = pg->next;
 		if(--pg->ref)
 			panic("mmurelease: pg->ref %d\n", pg->ref);
 		pagechainhead(pg);
-		p->l1page[i] = nil;
 	}
+	if(p->mmufree && palloc.r.p)
+		wakeup(&palloc.r);
+	p->mmufree = nil;
+
+	memset(l1table, 0, sizeof(p->l1table));
 }
 
 void
 mmuswitch(Proc* p)
 {
-iprint("switching to proc %d\n", p->pid);
+	if(p->newtlb){
+		mmuptefree(p);
+		p->newtlb = 0;
+	}
+
+	/* write back dirty cache entries before changing map */
+	cacheflush();
+
+	/* move in new map */
 	memmove(l1table, p->l1table, sizeof(p->l1table));
-	cleanaddr((ulong)l1table);
+
+	/* make sure map is in memory and drain write buffer */
+	cacheflushaddr((ulong)l1table);
 	wbflush();
+
+	/* lose any possible stale tlb entries */
+	mmuinvalidate();
+}
+
+void
+flushmmu(void)
+{
+	int s;
+
+	s = splhi();
+	up->newtlb = 1;
+	mmuswitch(up);
+	splx(s);
 }
 
 void

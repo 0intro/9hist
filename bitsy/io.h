@@ -98,8 +98,7 @@ struct PhysUart
 {
 	void	(*enable)(Uart*, int);
 	void	(*disable)(Uart*);
-	void	(*kick)(void*);
-	void	(*flow)(void*);
+	void	(*kick)(Uart*);
 	void	(*intr)(Ureg*, void*);
 	void	(*dobreak)(Uart*, int);
 	void	(*baud)(Uart*, int);

@@ -18,7 +18,7 @@ int  noprint;
 void
 main(void)
 {
-	cleancache();
+	mmuinvalidate();
 
 	/* zero out bss */
 	memset(edata, 0, end-edata);
@@ -31,22 +31,20 @@ main(void)
 	rs232power(1);
 	iprint("bitsy kernel\n");
 	confinit();
-	iprint("%d pages %lux(%lud) %lux(%lud)\n", conf.npage, conf.base0, conf.npage0, conf.base1, conf.npage1);
 	xinit();
 	mmuinit();
-	sa1100_uartsetup();
 	gpioinit();
 	trapinit();
-	printinit();
+	sa1100_uartsetup(1);
+	printinit();	/* from here on, print works, before this we need iprint */
 	clockinit();
 	procinit0();
 	initseg();
 	chandevreset();
-noprint = 1;
 	pageinit();
 	swapinit();
 	userinit();
-iprint("schedinit(), death soon\n");
+//iprint("schedinit(), death soon\n");
 	schedinit();
 }
 
@@ -62,6 +60,7 @@ exit(int ispanic)
 	delay(1000);
 
 	iprint("it's a wonderful day to die\n");
+	mmuinvalidate();
 	mmudisable();
 	f = nil;
 	(*f)();
@@ -210,7 +209,6 @@ userinit(void)
 	strcpy(p->text, "*init*");
 	strcpy(p->user, eve);
 
-
 	/*
 	 * Kernel Stack
 	 */
@@ -239,9 +237,7 @@ userinit(void)
 	k = kmap(s->map[0]->pages[0]);
 	memmove((ulong*)VA(k), initcode, sizeof initcode);
 	kunmap(k);
-	cleancache();
-	wbflush();
-iprint("userinit %lux[0x20] = %lux\n", VA(k), *((ulong*)(VA(k)+0x20)));
+//iprint("userinit %lux[0x20] = %lux\n", VA(k), *((ulong*)(VA(k)+0x20)));
 
 	ready(p);
 }
@@ -361,6 +357,7 @@ confinit(void)
 		conf.upages = (conf.npage*40)/100;
 	conf.ialloc = ((conf.npage-conf.upages)/2)*BY2PG;
 
+	/* only one processor */
 	conf.nmach = 1;
 
 	/* set up other configuration parameters */

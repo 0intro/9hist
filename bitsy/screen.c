@@ -42,3 +42,9 @@ blankscreen(int blank)
 {
 	USED(blank);
 }
+
+void
+screenputs(char *s, int n)
+{
+	USED(s, n);
+}

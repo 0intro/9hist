@@ -16,7 +16,7 @@ typedef struct Uart	Uart;
 /*
  *  parameters for sysproc.c
  */
-#define AOUT_MAGIC	(I_MAGIC)
+#define AOUT_MAGIC	(E_MAGIC)
 
 struct Lock
 {
@@ -82,6 +82,7 @@ struct PMMU
 {
 	Page	*l1page[Nmeg];	/* this's process' level 1 entries */
 	ulong	l1table[Nmeg];	/* ... */
+	Page	*mmufree;	/* free mmu pages */
 };
 
 /*
@@ -167,7 +168,7 @@ struct
 	int	ispanic;		/* shutdown in response to a panic */
 }active;
 
-#define	MACHP(n)	((Mach*)MACHADDR)
+#define	MACHP(n)	((Mach *)(MACHADDR+(n)*BY2PG))
 
 extern Mach	*m;
 #define up	(((Mach*)MACHADDR)->externup)

@@ -69,8 +69,10 @@ fastticks(uvlong *hz)
 }
 
 static void
-clockintr(Ureg*, void*)
+clockintr(Ureg *ureg, void*)
 {
+	Clock0link *lp;
+
 	/* reset previous interrupt */
 	timerregs->ossr |= 1<<0;
 
@@ -78,6 +80,30 @@ clockintr(Ureg*, void*)
 	timerregs->osmr[0] = timerregs->oscr + ClockFreq/HZ;
 
 	m->ticks++;
+
+	if(m->proc)
+		m->proc->pc = ureg->pc;
+
+	accounttime();
+	if(kproftimer != nil)
+		kproftimer(ureg->pc);
+
+	checkalarms();
+	ilock(&clock0lock);
+	for(lp = clock0link; lp; lp = lp->link)
+		lp->clock();
+	iunlock(&clock0lock);
+
+	if(up == 0 || up->state != Running)
+		return;
+
+	if(anyready())
+		sched();
+	
+	if((ureg->psr & PsrMask) == PsrMusr) {
+		(*(ulong*)(USTKTOP-BY2WD)) += TK2MS(1);
+		segclock(ureg->pc);
+	}
 }
 
 void

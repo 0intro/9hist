@@ -35,12 +35,12 @@ _mainloop:
 	BL	_div(SB)			/* hack to get _div etc loaded */
 
 /* flush tlb's */
-TEXT flushmmu(SB), $-4
+TEXT mmuinvalidate(SB), $-4
 	MCR	CpMMU, 0, R0, C(CpTLBFlush), C(0x7)
 	RET
 
-/* clean and flush i and d caches */
-TEXT cleancache(SB), $-4
+/* write back and invalidate i and d caches */
+TEXT cacheflush(SB), $-4
 	/* write back any dirty data */
 	MOVW	$0xe0000000,R0
 	ADD	$(8*1024),R0,R1
@@ -49,7 +49,8 @@ _wbloop:
 	CMP	R0,R1
 	BNE	_wbloop
 	
-	/* flush cache contents */
+	/* drain write buffer and flush i&d cache contents */
+	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0xa), 4
 	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0x7), 0
 
 	/* drain prefetch */
@@ -60,20 +61,8 @@ _wbloop:
 	RET
 
 /* clean a single virtual address */
-TEXT cleanaddr(SB), $-4
+TEXT cacheflushaddr(SB), $-4
 	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0xa), 1
-	RET
-
-/* flush i and d caches */
-TEXT flushcache(SB), $-4
-	/* flush cache contents */
-	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0x7), 0
-
-	/* drain prefetch */
-	MOVW	R0,R0						
-	MOVW	R0,R0
-	MOVW	R0,R0
-	MOVW	R0,R0
 	RET
 
 /* drain write buffer */
@@ -111,13 +100,13 @@ TEXT putttb(SB), $-4
  */
 TEXT mmuenable(SB), $-4
 	MRC	CpMMU, 0, R0, C(CpControl), C(0x0)
-	ORR	$(CpCmmuena), R0
+	ORR	$(CpCmmuena|CpCwb|CpCdcache), R0
 	MCR     CpMMU, 0, R0, C(CpControl), C(0x0)
 	RET
 
 TEXT mmudisable(SB), $-4
 	MRC	CpMMU, 0, R0, C(CpControl), C(0x0)
-	BIC	$(CpCmmuena|CpCvivec), R0
+	BIC	$(CpCmmuena|CpCdcache|CpCwb|CpCvivec), R0
 	MCR     CpMMU, 0, R0, C(CpControl), C(0x0)
 	RET
 
