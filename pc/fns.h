@@ -6,7 +6,6 @@ Dirtab*	addarchfile(char*, int, long(*)(Chan*,void*,long,vlong), long(*)(Chan*,v
 //void	addscsilink(char*, Scsiio (*)(int, ISAConf*));
 void	archinit(void);
 void	bootargs(ulong);
-void cbinit(void);
 vlong	checkcycintr(Ureg*, void*);
 int	cistrcmp(char*, char*);
 int	cistrncmp(char*, char*, int);

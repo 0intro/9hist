@@ -589,7 +589,6 @@ pcicfginit(void)
 	}
 out:
 	qunlock(&pcicfginitlock);
-	cbinit();
 }
 
 static int

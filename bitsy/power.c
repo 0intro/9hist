@@ -78,9 +78,6 @@ static void
 sa1100_power_off(void)
 {
 
-iprint("calling resume\n");
-sa1100_power_resume();
-
 	/* enable wakeup by µcontroller, on/off switch or real-time clock alarm */
 	powerregs->pwer =  1 << IRQrtc | 1 << IRQgpio0 | 1 << IRQgpio1;
 

@@ -225,6 +225,7 @@ typedef struct Ctlr {
 } Ctlr;
 
 static Ctlr* ctlrhead;
+static Ctlr* ctlrtail;
 
 static uchar configdata[24] = {
 	0x16,				/* byte count */
@@ -913,13 +914,11 @@ i82557pci(void)
 		ctlr->port = port;
 		ctlr->pcidev = p;
 
-		/*
-		 *  this is backwards from what we really wanted to do
-		 *  but this keeps the numbering of ethernet cards
-		 *  consistent with 9load.
-		 */
-		ctlr->next = ctlrhead;
-		ctlrhead = ctlr;
+		if(ctlrhead != nil)
+			ctlrtail->next = ctlr;
+		else
+			ctlrhead = ctlr;
+		ctlrtail = ctlr;
 
 		pcisetbme(p);
 	}

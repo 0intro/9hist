@@ -354,7 +354,6 @@ etherreset(void)
 	int i, n, ctlrno;
 	char name[32], buf[128];
 
-	print("Searching for ethernet devices\n"); 
 	for(ether = 0, ctlrno = 0; ctlrno < MaxEther; ctlrno++){
 		if(ether == 0)
 			ether = malloc(sizeof(Ether));
