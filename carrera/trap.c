@@ -382,13 +382,9 @@ intr(Ureg *ur)
 			eisadmaintr();
 			break;
 		}
-		/* reenable the 8259 interrupt */
-		vec = devint&~0x7;
-		if(vec == Int0vec || vec == Int1vec){
-			EISAOUTB(Int0ctl, EOI);
-			if(vec == Int1vec)
-				EISAOUTB(Int1ctl, EOI);
-		}
+		EISAOUTB(Int0ctl, EOI);
+		if(devint > 7)
+			EISAOUTB(Int1ctl, EOI);
 		cause &= ~INTR4;
 	}
 
