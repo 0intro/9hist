@@ -183,8 +183,8 @@ trapinit(void)
 	 *  Set the 8259 as master with edge triggered
 	 *  input with fully nested interrupts.
 	 */
-	outb(Int0ctl, 0x11);		/* ICW1 - edge triggered, master,
-					   ICW4 will be sent */
+	outb(Int0ctl, (1<<4)|(1<<3)|(1<<0));	/* ICW1 - master, level triggered,
+					  	 ICW4 will be sent */
 	outb(Int0aux, Int0vec);		/* ICW2 - interrupt vector offset */
 	outb(Int0aux, 0x04);		/* ICW3 - have slave on level 2 */
 	outb(Int0aux, 0x01);		/* ICW4 - 8086 mode, not buffered */
@@ -195,8 +195,8 @@ trapinit(void)
 	 *  Set the 8259 as master with edge triggered
 	 *  input with fully nested interrupts.
 	 */
-	outb(Int1ctl, 0x11);		/* ICW1 - edge triggered, master,
-					   ICW4 will be sent */
+	outb(Int1ctl, (1<<4)|(1<<3)|(1<<0));	/* ICW1 - master, level triggered,
+					  	 ICW4 will be sent */
 	outb(Int1aux, Int1vec);		/* ICW2 - interrupt vector offset */
 	outb(Int1aux, 0x02);		/* ICW3 - I am a slave on level 2 */
 	outb(Int1aux, 0x01);		/* ICW4 - 8086 mode, not buffered */
@@ -221,9 +221,6 @@ char *excname[] =
 [12]	"stack exception",
 [13]	"general protection violation",
 };
-
-Ureg lasttrap, *lastur;
-Proc *lastup;
 
 
 /*
@@ -265,9 +262,6 @@ trap(Ureg *ur)
 	}
 
 	if(v>=256 || (h = halloc.ivec[v]) == 0){
-lasttrap = *ur;
-lastur = ur;
-lastup = up;
 		/* an old 386 generates these fairly often, no idea why */
 		if(v == 13)
 			return;
@@ -307,10 +301,6 @@ lastup = up;
 	splhi();
 	if(user && (up->procctl || up->nnote))
 		notify(ur);
-
-lastup = up;
-lasttrap = *ur;
-lastur = ur;
 }
 
 /*
@@ -349,11 +339,6 @@ dumpregs(Ureg *ur)
 	dumpregs2(ur);
 	print("  magic %lux %lux %lux\n", x[0], x[1], x[2]);
 	print("  ur %lux up %lux\n", ur, up);
-	dumpregs2(&lasttrap);
-	print("  lastur %lux lastup %lux\n", lastur);
-splhi();
-dumpstack();
-for(;;);
 }
 
 void

@@ -22,6 +22,7 @@ enum
 
 	/* modes */
 	Square=	0x36,		/* perioic square wave */
+	Trigger= 0x30,		/* interrupt on terminal count */
 
 	Freq=	1193182,	/* Real clock frequency */
 };
@@ -47,9 +48,17 @@ clock(Ureg *ur, void *arg)
 {
 	Proc *p;
 	int nrun = 0;
+	int islow = 0;
 	extern int hwcursor;
 
 	USED(arg);
+
+	/*
+	 *  set clock for 1/HZ seconds
+	 */
+	outb(Tmode, Load0|Trigger);
+	outb(T0cntr, (Freq/HZ));	/* low byte */
+	outb(T0cntr, (Freq/HZ)>>8);	/* high byte */
 
 	m->ticks++;
 
@@ -75,19 +84,28 @@ clock(Ureg *ur, void *arg)
 			sched();
 	
 		/* user profiling clock */
+		islow = 1;
 		spllo();		/* in case we fault */
 		(*(ulong*)(USTKTOP-BY2WD)) += TK2MS(1);
-		splhi();
 	}
+
+	/*
+	 *  anything from here down can be running spllo()
+	 */
 
 	/* last because it could spllo() */
 	if(hwcursor)
 		mouseclock();
 	else {
-		spllo();
+		if(!islow){
+			islow = 1;
+			spllo();
+		}
 		mouseclock();
-		splhi();
 	}
+
+	if(islow)
+		splhi();
 }
 
 /*
@@ -131,9 +149,9 @@ clockinit(void)
 	setvec(Clockvec, clock, 0);
 
 	/*
-	 *  make clock output a square wave with a 1/HZ period
+	 *  set clock for 1/HZ seconds
 	 */
-	outb(Tmode, Load0|Square);
+	outb(Tmode, Load0|Trigger);
 	outb(T0cntr, (Freq/HZ));	/* low byte */
 	outb(T0cntr, (Freq/HZ)>>8);	/* high byte */
 
