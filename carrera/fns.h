@@ -142,3 +142,4 @@ void*	ifroute(ulong);
 ulong	ifunroute(ulong);
 void	parseip(char*, char*);
 void	mpegintr(void);
+#define coherence()

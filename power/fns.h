@@ -84,3 +84,4 @@ void	wbflush(void);
 Page*	lkpage(Segment*, ulong);
 void	lkpgfree(Page*);
 #define vcacheinval(s)
+#define coherence()

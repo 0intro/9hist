@@ -286,7 +286,7 @@ long		userwrite(char*, int);
 void		validaddr(ulong, ulong, int);
 void		vcacheinval(Page*, ulong);
 void*		vmemchr(void*, int, int);
-void		wakeup(Rendez*);
+int		wakeup(Rendez*);
 Chan*		walk(Chan*, char*, int);
 void		wlock(RWlock*);
 void		wunlock(RWlock*);

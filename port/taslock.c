@@ -96,6 +96,7 @@ unlock(Lock *l)
 {
 	l->key = 0;
 	l->pc = 0;
+	coherence();
 }
 
 void
@@ -107,4 +108,5 @@ iunlock(Lock *l)
 	l->key = 0;
 	l->pc = 0;
 	splx(sr);
+	coherence();
 }

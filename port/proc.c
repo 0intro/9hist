@@ -390,6 +390,8 @@ sleep1(Rendez *r, int (*f)(void*), void *arg)
 	}
 	r->p = up;
 
+	coherence();	/* force memory state to reflect processor state */
+
 	/*
 	 * if condition happened, never mind
 	 */
@@ -477,15 +479,18 @@ tsleep(Rendez *r, int (*fn)(void*), void *arg, int ms)
 /*
  * Expects that only one process can call wakeup for any given Rendez
  */
-void
+int
 wakeup(Rendez *r)
 {
 	Proc *p;
-	int s;
+	int s, rv;
 
+	coherence();	/* force memory state to reflect processor state */
+
+	rv = 0;
 	p = r->p;
 	if(p == 0)
-		return;
+		return rv;
 
 	s = splhi();
 	lock(&p->rlock);
@@ -496,10 +501,13 @@ wakeup(Rendez *r)
 			panic("wakeup: state");
 		p->r = 0;
 		ready(p);
+		rv = 1;
 	}
 
 	unlock(&p->rlock);
 	splx(s);
+
+	return rv;
 }
 
 int

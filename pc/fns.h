@@ -129,3 +129,4 @@ ulong	ifunroute(ulong);
 void	parseip(char*, char*);
 
 #define	dcflush(a, b)
+#define coherence()
