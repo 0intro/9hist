@@ -326,6 +326,10 @@ mousewrite(Chan *c, void *va, long n, ulong offset)
 			memmove(curs.set, p+40, 2*16);
 			Cursortocursor(&curs);
 		}
+		qlock(&mouse);
+		mouse.redraw = 1;
+		mouseclock();
+		qunlock(&mouse);
 		cursoron(1);
 		return n;
 
