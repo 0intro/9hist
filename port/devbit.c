@@ -591,7 +591,7 @@ bitwrite(Chan *c, void *va, long n)
 				cursoroff(1);
 				isoff = 1;
 			}
-			gbitblt(dst, pt, src, rect, v);
+			balubitblt(dst, pt, src, rect, v);
 			m -= 31;
 			p += 31;
 			break;

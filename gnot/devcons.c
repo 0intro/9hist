@@ -334,7 +334,6 @@ echo(int c)
  * Put character into read queue at interrupt time.
  * Always called splhi from proc 0.
  */
-
 void
 kbdchar(int c)
 {
