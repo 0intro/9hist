@@ -392,10 +392,10 @@ upainit(void)
 	ulong addr, pa, pae, *table, *va, x;
 
 	/*
-	 * Allocate an 64MB chunk aligned to 64MB. Later can
+	 * Allocate an 8MB chunk aligned to 16MB. Later can
 	 * make the region selectable via conf if necessary.
 	 */
-	if((addr = mapalloc(&rmapupa, 0, 64*MB, 64*MB)) == 0)
+	if((addr = mapalloc(&rmapupa, 0, 8*MB, 16*MB)) == 0)
 		return;
 
 	pa = addr;

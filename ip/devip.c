@@ -512,7 +512,7 @@ setlport(Conv* c)
 		 * ports (p->nextrport) to 600.
 		 * Restricted ports must lie between 600 and 1024.
 		 * For the initial condition or if the unrestricted port number
-		 * has wrapped round, select a random port between 5000 and 1<<16
+		 * has wrapped round, select a random port between 5000 and 1<<15
 		 * to start at.
 		 */
 		if(c->restricted){
@@ -520,7 +520,7 @@ setlport(Conv* c)
 				*pp = 600;
 		}
 		else while(*pp < 5000)
-			*pp = nrand(1<<16);
+			*pp = nrand(1<<15);
 
 		found = 0;
 		for(x = 0; x < p->nc; x++){
