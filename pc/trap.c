@@ -75,11 +75,11 @@ trapinit(void)
 	 *	 IBM technical reference manual.  I just
 	 *	 changed the vector.
 	 */
-	outb(I8259ctl, 0x11);		/* ICW1 - edge, master, ICW4 */
-	outb(I8259aux, I8259vec);	/* ICW2 - interrupt vector */
-	outb(I8259aux, 0x04);		/* ICW3 - master level 2 */
-	outb(I8259aux, 0x01);		/* ICW4 - master, 8086 mode */
-	outb(I8259aux, 0x00);		/* mask - all enabled */
+	outb(Int0ctl, 0x11);		/* ICW1 - edge, master, ICW4 */
+	outb(Int0aux, Int0vec);		/* ICW2 - interrupt vector */
+	outb(Int0aux, 0x04);		/* ICW3 - master level 2 */
+	outb(Int0aux, 0x01);		/* ICW4 - master, 8086 mode */
+	outb(Int0aux, 0x00);		/* mask - all enabled */
 }
 
 

@@ -41,9 +41,10 @@ struct Conf
 	ulong	npgrp;		/* process groups */
 	ulong	npage0;		/* total physical pages of memory */
 	ulong	npage;		/* total physical pages of memory */
-	ulong	norig;		/* origins */
-	ulong	npte;		/* contiguous page table entries */
-	ulong	nmod;		/* single (modifying) page table entries */
+	ulong	nseg;		/* number of segments */
+	ulong	nimage;		/* number of page cache image headers */
+	ulong 	npagetab;	/* number of pte tables */
+	ulong	nswap;		/* number of swap pages */
 	ulong	nalarm;		/* alarms */
 	ulong	nchan;		/* channels */
 	ulong	nenv;		/* distinct environment values */
@@ -133,6 +134,7 @@ struct Mach
 	char	pidhere[NTLBPID];	/* is this pid possibly in this mmu? */
 	int	lastpid;		/* last pid allocated on this machine */
 	Proc	*pidproc[NTLBPID];	/* process that owns this tlbpid on this mach */
+	Page	*ufreeme;		/* address of upage of exited process */
 
 	int	tlbfault;
 	int	tlbpurge;
@@ -159,7 +161,7 @@ struct Softtlb
  */
 typedef void		KMap;
 #define	VA(k)		((ulong)(k))
-#define	kmap(p)		(KMap*)(p->pa|KZERO)
+#define	kmap(p)		(KMap*)((p)->pa|KZERO)
 #define	kunmap(k)
 #define PPN(x)		x
 
@@ -205,7 +207,6 @@ struct
 
 #define	NERR	15
 #define	NNOTE	5
-#define	NFD	100
 struct User
 {
 	Proc	*p;
@@ -216,8 +217,6 @@ struct User
 	char	elem[NAMELEN];		/* last name element from namec */
 	Chan	*slash;
 	Chan	*dot;
-	Chan	*fd[NFD];
-	int	maxfd;			/* highest fd in use */
 	/*
 	 * Rest of structure controlled by devproc.c and friends.
 	 * lock(&p->debug) to modify.

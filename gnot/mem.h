@@ -13,6 +13,7 @@
 #define	WD2PG		(BY2PG/BY2WD)		/* words per page */
 #define	PGSHIFT		13			/* log(BY2PG) */
 #define PGROUND(s)	(((s)+(BY2PG-1))&~(BY2PG-1))
+#define ICACHESIZE	0
 
 #define	MAXMACH		1			/* max # cpus system can run */
 
@@ -74,6 +75,10 @@
 #define	PTEKERNEL	(1<<15)
 #define PTEUNCACHED	0
 #define	INVALIDPTE	0
+#define PTEMAPMEM	(1024*1024)	
+#define	PTEPERTAB	(PTEMAPMEM/BY2PG)
+#define SEGMAPSIZE	16
+
 #define	PPN(pa)		((pa>>13)&0x1FFF)
 
 #define	KMAP	((unsigned long *)0xD0000000)

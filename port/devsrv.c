@@ -275,8 +275,7 @@ srvwrite(Chan *c, void *va, long n, ulong offset)
 	memmove(buf, va, n);	/* so we can NUL-terminate */
 	buf[n] = 0;
 	fd = strtoul(buf, 0, 0);
-	fdtochan(fd, -1);	/* error check only */
-	e->chan = u->fd[fd];
+	e->chan = fdtochan(fd, -1);
 	incref(e->chan);
 	unlock(e);
 	poperror();

@@ -91,13 +91,14 @@ trap(Ureg *ur)
 	if(u)
 		u->p->pc = ur->pc;		/* BUG */
 	if(user){
-		sprint(buf, "sys: trap: pc=0x%lux %s", ur->pc, excname(ur->vo));
+		sprint(buf, "sys: %s pc=0x%lux", excname(ur->vo), ur->pc);
 		postnote(u->p, 1, buf, NDebug);
 	}else{
 		print("kernel trap vo=0x%ux pc=0x%lux\n", ur->vo, ur->pc);
 		dumpregs(ur);
 		exit();
 	}
+
 	if(user && u->nnote)
 		notify(ur);
 }
@@ -130,6 +131,7 @@ dumpregs(Ureg *ur)
 	l = &ur->r0;
 	for(i=0; i<sizeof regname/sizeof(char*); i+=2, l+=2)
 		print("%s\t%.8lux\t%s\t%.8lux\n", regname[i], l[0], regname[i+1], l[1]);
+	for(;;);
 	dumpstack();
 }
 
@@ -212,6 +214,7 @@ Syscall	sysr1, sysfork, sysexec, sysgetpid, syssleep, sysexits, sysdeath, syswai
 Syscall	sysopen, sysclose, sysread, syswrite, sysseek, syserrstr, sysaccess, sysstat, sysfstat;
 Syscall sysdup, syschdir, sysforkpgrp, sysbind, sysmount, syspipe, syscreate;
 Syscall	sysbrk_, sysremove, syswstat, sysfwstat, sysnotify, sysnoted, sysalarm;
+Syscall syssegattach, syssegdetach, syssegfree, syssegflush, syssegbrk;
 
 Syscall *systab[]={
 	sysr1,
@@ -226,7 +229,7 @@ Syscall *systab[]={
 	sysfork,
 	sysforkpgrp,
 	sysfstat,
-	sysdeath,
+	syssegbrk,
 	sysmount,
 	sysopen,
 	sysread,
@@ -244,7 +247,10 @@ Syscall *systab[]={
 	sysfwstat,
 	sysnotify,
 	sysnoted,
-	sysdeath,	/* sysfilsys */
+	syssegattach,
+	syssegdetach,
+	syssegfree,
+	syssegflush,
 };
 
 long
@@ -289,7 +295,8 @@ syscall(Ureg *aur)
 			error(Ebadarg);
 		}
 		if(sp & (BY2WD-1)){
-			pprint("odd sp in sys call pc %lux sp %lux\n", ((Ureg*)UREGADDR)->pc, ((Ureg*)UREGADDR)->sp);
+			pprint("odd sp in sys call pc %lux sp %lux\n", 
+				((Ureg*)UREGADDR)->pc, ((Ureg*)UREGADDR)->sp);
 			msg = "sys: odd stack";
 			goto Bad;
 		}
@@ -298,14 +305,19 @@ syscall(Ureg *aur)
 		ret = (*systab[r0])((ulong*)(sp+BY2WD));
 		poperror();
 	}
+
+#ifdef Check
 	if(u->nerrlab){
-		print("unbalanced error stack: %d extra\n", u->nerrlab);
+		print("bad errstack [%d]: %d extra\n", r0, u->nerrlab);
 		for(i = 0; i < NERR; i++)
 			print("sp=%lux pc=%lux\n", u->errlab[i].sp, u->errlab[i].pc);
 		panic("bad rob");
 	}
+#endif
+
 	u->p->insyscall = 0;
-	if(r0 == NOTED)	/* ugly hack */
+
+	if(r0 == NOTED)		/* ugly hack */
 		noted(aur);	/* doesn't return */
 	if(u->nnote){
 		ur->r0 = ret;

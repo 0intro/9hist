@@ -21,6 +21,18 @@ char *tcpstate[] = {
 	"Closing", 	"Last_ack", 	"Time_wait" };
 
 void
+tcpinit(void)
+{
+	Reseq *r;
+
+	reseqfree = ialloc(sizeof(Reseq)*Nreseq, 0);
+	for(r = reseqfree; r < &reseqfree[Nreseq-1]; r++)
+		r->next = r+1;
+
+	r->next = 0;
+}
+
+void
 tcp_input(Ipconv *ipc, Block *bp)
 {
 	Ipconv *s, *new, *etab;
@@ -657,6 +669,7 @@ add_reseq(Tcpctl *tcb, char tos, Tcp *seg, Block *bp, ushort length)
 	qlock(&reseqlock);
 	if(!reseqfree) {
 		qunlock(&reseqlock);
+		print("tcp: no resequence descriptors\n");
 		freeb(bp);
 		return;
 	}

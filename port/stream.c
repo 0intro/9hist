@@ -118,12 +118,12 @@ newblock(Bclass *bcp)
 	if(bcp->made > bcp->lim)
 		return -1;
 
+	page = newpage(1, 0, 0);
+	page->va = VA(kmap(page));
 	if(bcp == bclass){
 		/*
 		 *  create some level zero blocks and return
 		 */
-		page = newpage(1, 0, 0);
-		page->va = VA(kmap(page));
 		n = BY2PG/sizeof(Block);
 		bp = (Block *)(page->va);
 		while(n-- > 0){
@@ -141,8 +141,6 @@ newblock(Bclass *bcp)
 		/*
 		 *  create a page worth of new blocks
 		 */
-		page = newpage(1, 0, 0);
-		page->va = VA(kmap(page));
 		n = BY2PG/bcp->size;
 		cp = (uchar *)(page->va);
 		
@@ -419,7 +417,6 @@ popq(Stream *s)
 		(*q->info->close)(RD(q));
 	s->procq->next = q->next;
 	RD(q->next)->next = RD(s->procq);
-	poperror();
 	qunlock(s);
 	freeq(q);
 }

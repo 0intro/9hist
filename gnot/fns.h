@@ -22,6 +22,7 @@ void	fpregrestore(char*);
 void	fpregsave(char*);
 void	fprestore(FPsave*);
 void	fpsave(FPsave*);
+#define icflush(a, b)
 void	incontoggle(void);
 KMap*	kmap(Page*);
 void	kmapinit(void);

@@ -22,12 +22,19 @@ mapstack(Proc *p)
 	ulong next;
 	MMU *mm, *mn, *me;
 
+
 	if(p->upage->va != (USERADDR|(p->pid&0xFFFF)))
 		panic("mapstack %d 0x%lux 0x%lux", p->pid, p->upage->pa, p->upage->va);
 	tlbvirt = USERADDR;
 	tlbphys = PPN(p->upage->pa) | PTEVALID | PTEKERNEL;
 	putkmmu(tlbvirt, tlbphys);
 	u = (User*)USERADDR;
+
+	if(p->newtlb) {
+		flushmmu();
+		clearmmucache();
+		p->newtlb = 0;
+	}
 
 	/*
 	 *  if not a kernel process and this process was not the 
@@ -69,7 +76,7 @@ putkmmu(ulong tlbvirt, ulong tlbphys)
 }
 
 void
-putmmu(ulong tlbvirt, ulong tlbphys)
+putmmu(ulong tlbvirt, ulong tlbphys, Page *p)
 {
 	if(tlbvirt&KZERO)
 		panic("putmmu");
@@ -101,7 +108,7 @@ void
 clearmmucache(void)
 {
 	if(u == 0)
-		panic("flushmmucache");
+		panic("clearmmucache");
 	u->mc.next = 0;
 }
 

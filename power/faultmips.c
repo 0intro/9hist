@@ -15,6 +15,7 @@ faultmips(Ureg *ur, int user, int code)
 {
 	ulong addr;
 	extern char *excname[];
+	char buf[ERRLEN];
 	int read;
 
 	addr = ur->badvaddr;
@@ -22,9 +23,11 @@ faultmips(Ureg *ur, int user, int code)
 	read = !(code==CTLBM || code==CTLBS);
 	if(fault(addr, read) < 0){
 		if(user){
-			pprint("user %s badvaddr=0x%lux\n", excname[code], ur->badvaddr);
-			pprint("status=0x%lux pc=0x%lux sp=0x%lux\n", ur->status, ur->pc, ur->sp);
-			pexit("Suicide", 0);
+			sprint(buf, "sys: fault %s pc=0x%lux addr=0x%lux",
+				read? "read" : "write", ur->pc, ur->badvaddr);
+			postnote(u->p, 1, buf, NDebug);
+			notify(ur);
+			return;
 		}
 		print("kernel %s badvaddr=0x%lux\n", excname[code], ur->badvaddr);
 		print("status=0x%lux pc=0x%lux sp=0x%lux\n", ur->status, ur->pc, ur->sp);

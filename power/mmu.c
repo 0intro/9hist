@@ -13,6 +13,12 @@ mapstack(Proc *p)
 	short tp;
 	ulong tlbvirt, tlbphys;
 
+	if(p->newtlb) {
+		/* see flushmmu. */
+		memset(p->pidonmach, 0, sizeof p->pidonmach);
+		p->newtlb = 0;
+	}
+
 	tp = p->pidonmach[m->machno];
 	if(tp == 0)
 		tp = newtlbpid(p);
@@ -70,12 +76,21 @@ newtlbpid(Proc *p)
 }
 
 void
-putmmu(ulong tlbvirt, ulong tlbphys)
+putmmu(ulong tlbvirt, ulong tlbphys, Page *pg)
 {
 	short tp;
 	Proc *p;
+	char *ctl;
 
 	splhi();
+
+	ctl = &pg->cachectl[m->machno]; 
+	if(*ctl == PG_TXTFLUSH) {
+		dcflush((void*)pg->pa, BY2PG);
+		icflush((void*)pg->pa, BY2PG);
+		*ctl = PG_NOFLUSH;
+	}
+
 	p = u->p;
 /*	if(p->state != Running)
 		panic("putmmu state %lux %lux %s\n", u, p, statename[p->state]);

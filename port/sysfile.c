@@ -11,16 +11,21 @@
  */
 
 int
-newfd(void)
+newfd(Chan *c)
 {
+	Fgrp *f = u->p->fgrp;
 	int i;
 
+	lock(f);
 	for(i=0; i<NFD; i++)
-		if(u->fd[i] == 0){
-			if(i > u->maxfd)
-				u->maxfd = i;
+		if(f->fd[i] == 0){
+			if(i > f->maxfd)
+				f->maxfd = i;
+			f->fd[i] = c;
+			unlock(f);
 			return i;
 		}
+	unlock(f);
 	error(Enofd);
 }
 
@@ -29,8 +34,8 @@ fdtochan(int fd, int mode)
 {
 	Chan *c;
 
-	c = 0;		/* set */
-	if(fd<0 || NFD<=fd || (c=u->fd[fd])==0)
+	USED(c);
+	if(fd<0 || NFD<=fd || (c = u->p->fgrp->fd[fd])==0)
 		error(Ebadfd);
 	if(mode<0 || c->mode==ORDWR)
 		return c;
@@ -62,6 +67,7 @@ syspipe(ulong *arg)
 	int fd[2];
 	Chan *c[2];
 	Dev *d;
+	Fgrp *f = u->p->fgrp;
 
 	validaddr(arg[0], 2*BY2WD, 1);
 	evenaddr(arg[0]);
@@ -75,9 +81,9 @@ syspipe(ulong *arg)
 		if(c[1])
 			close(c[1]);
 		if(fd[0] >= 0)
-			u->fd[fd[0]]=0;
+			f->fd[fd[0]]=0;
 		if(fd[1] >= 0)
-			u->fd[fd[1]]=0;
+			f->fd[fd[1]]=0;
 		nexterror();
 	}
 	c[1] = (*d->clone)(c[0], 0);
@@ -85,10 +91,8 @@ syspipe(ulong *arg)
 	(*d->walk)(c[1], "data1");
 	c[0] = (*d->open)(c[0], ORDWR);
 	c[1] = (*d->open)(c[1], ORDWR);
-	fd[0] = newfd();
-	u->fd[fd[0]] = c[0];
-	fd[1] = newfd();
-	u->fd[fd[1]] = c[1];
+	fd[0] = newfd(c[0]);
+	fd[1] = newfd(c[1]);
 	((long*)arg[0])[0] = fd[0];
 	((long*)arg[0])[1] = fd[1];
 	poperror();
@@ -100,6 +104,7 @@ sysdup(ulong *arg)
 {
 	int fd;
 	Chan *c, *oc;
+	Fgrp *f = u->p->fgrp;
 
 	/*
 	 * Close after dup'ing, so date > #d/1 works
@@ -109,17 +114,26 @@ sysdup(ulong *arg)
 	if(fd != -1){
 		if(fd<0 || NFD<=fd)
 			error(Ebadfd);
-		if(fd > u->maxfd)
-			u->maxfd = fd;
-		oc = u->fd[fd];
-	}else{
-		oc = 0;
-		fd = newfd();
+
+		lock(f);
+		if(fd > f->maxfd)
+			f->maxfd = fd;
+		incref(c);
+		oc = f->fd[fd];
+		f->fd[fd] = c;
+		unlock(f);
+		if(oc)
+			close(oc);
+	}else {
+		if(waserror()) {
+			close(c);
+			nexterror();
+		}
+		incref(c);
+		fd = newfd(c);
+		poperror();
 	}
-	u->fd[fd] = c;
-	incref(c);
-	if(oc)
-		close(oc);
+
 	return fd;
 }
 
@@ -127,25 +141,43 @@ long
 sysopen(ulong *arg)
 {
 	int fd;
-	Chan *c;
+	Chan *c = 0;
 
 	openmode(arg[1]);	/* error check only */
-	fd = newfd();
+	if(waserror()) {
+		if(c)
+			close(c);
+		nexterror();
+	}
 	validaddr(arg[0], 1, 0);
 	c = namec((char*)arg[0], Aopen, arg[1], 0);
-	u->fd[fd] = c;
+	fd = newfd(c);
+	poperror();
 	return fd;
 }
 
 void
-fdclose(int fd)
+fdclose(int fd, int flag)
 {
 	int i;
+	Chan *c;
+	Fgrp *f = u->p->fgrp;
 
-	u->fd[fd] = 0;
-	if(fd == u->maxfd)
-		for(i=fd; --i>=0 && u->fd[i]==0; )
-			u->maxfd = i;
+	lock(f);
+	c = f->fd[fd];
+	if(flag){
+		if(c==0 || !(c->flag&flag)){
+			unlock(f);
+			return;
+		}
+	}
+	f->fd[fd] = 0;
+	if(fd == f->maxfd)
+		for(i=fd; --i>=0 && f->fd[i]==0; )
+			f->maxfd = i;
+
+	unlock(f);
+	close(c);
 }
 
 long
@@ -154,8 +186,8 @@ sysclose(ulong *arg)
 	Chan *c;
 
 	c = fdtochan(arg[0], -1);
-	close(c);
-	fdclose(arg[0]);
+	fdclose(arg[0], 0);
+
 	return 0;
 }
 
@@ -183,8 +215,8 @@ unionread(Chan *c, void *va, long n)
 		nexterror();
 	}
 	nc = clone(mc, 0);
-	close(mc);
 	poperror();
+	close(mc);
 	if(waserror()){
 		close(nc);
 		nexterror();
@@ -193,8 +225,8 @@ unionread(Chan *c, void *va, long n)
 	nc->offset = c->offset;
 	nr = (*devtab[nc->type].read)(nc, va, n, nc->offset);
 	c->offset = nc->offset;		/* devdirread e.g. changes it */
-	close(nc);
 	poperror();
+	close(nc);
 	if(nr > 0)
 		return nr;
 	/*
@@ -364,6 +396,8 @@ bindmount(ulong *arg, int ismount)
 	Chan *c0, *c1;
 	ulong flag;
 	long ret;
+	char *p;
+	int t;
 	struct{
 		Chan	*chan;
 		char	*spec;
@@ -408,10 +442,9 @@ bindmount(ulong *arg, int ismount)
 	close(c1);
 	poperror();
 	close(c0);
-	if(ismount){
-		close(bogus.chan);
-		fdclose(arg[0]);
-	}
+	if(ismount)
+		fdclose(arg[0], 0);
+
 	return ret;
 }
 
@@ -431,13 +464,18 @@ long
 syscreate(ulong *arg)
 {
 	int fd;
-	Chan *c;
+	Chan *c = 0;
 
 	openmode(arg[1]);	/* error check only */
-	fd = newfd();
+	if(waserror()) {
+		if(c)
+			close(c);
+		nexterror();
+	}
 	validaddr(arg[0], 1, 0);
 	c = namec((char*)arg[0], Acreate, arg[1], arg[2]);
-	u->fd[fd] = c;
+	fd = newfd(c);
+	poperror();
 	return fd;
 }
 

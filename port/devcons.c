@@ -159,7 +159,7 @@ pprint(char *fmt, ...)
 	Chan *c;
 	int n;
 
-	c = u->fd[2];
+	c = u->p->fgrp->fd[2];
 	if(c==0 || (c->mode!=OWRITE && c->mode!=ORDWR))
 		return 0;
 	n = sprint(buf, "%s %d: ", u->p->text, u->p->pid);
@@ -294,6 +294,7 @@ enum{
 	Qmsec,
 	Qclock,
 	Qsysstat,
+	Qswap,
 };
 
 Dirtab consdir[]={
@@ -312,6 +313,7 @@ Dirtab consdir[]={
 	"msec",		{Qmsec},	NUMSIZE,	0400,
 	"clock",	{Qclock},	2*NUMSIZE,	0400,
 	"sysstat",	{Qsysstat},	0,		0600,
+	"swap",		{Qswap},	0,		0666,
 };
 
 #define	NCONS	(sizeof consdir/sizeof(Dirtab))
@@ -581,6 +583,12 @@ consread(Chan *c, void *buf, long n, ulong offset)
 		}
 		return readstr(offset, buf, n, xbuf);
 
+	case Qswap:
+		sprint(xbuf, "%d/%d memory %d/%d swap\n",
+				palloc.user-palloc.freecount, palloc.user, 
+				conf.nswap-swapalloc.free, conf.nswap);
+
+		return readstr(offset, buf, n, xbuf);
 	default:
 		panic("consread %lux\n", c->qid);
 		return 0;
@@ -637,7 +645,8 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 	long l, m;
 	char *a = va;
 	Mach *mp;
-	int id;
+	int id, fd;
+	Chan *swc;
 
 	switch(c->qid.path){
 	case Qrcons:
@@ -709,6 +718,16 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 			}
 		}
 		break;
+
+	case Qswap:
+		if(n >= sizeof buf)
+			error(Egreg);
+		memmove(buf, va, n);	/* so we can NUL-terminate */
+		buf[n] = 0;
+		fd = strtoul(buf, 0, 0);
+		swc = fdtochan(fd, -1);
+		setswapchan(swc);
+		return n;
 
 	default:
 		error(Egreg);

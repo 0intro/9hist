@@ -378,6 +378,6 @@ kbdintr(void *a)
 	}
 	kbdputc(&kbdq, c);
 out:
-	INTENABLE;			/* reenable interrupt */
+	INT0ENABLE;			/* reenable interrupt */
 	return;
 }

@@ -14,6 +14,7 @@ enum{
 	Qnote,
 	Qnotepg,
 	Qproc,
+	Qsegment,
 	Qstatus,
 	Qtext,
 };
@@ -24,8 +25,18 @@ Dirtab procdir[]={
 	"note",		{Qnote},	0,			0600,
 	"notepg",	{Qnotepg},	0,			0200,
 	"proc",		{Qproc},	sizeof(Proc),		0600,
+	"segment",	{Qsegment},	0,			0400,
 	"status",	{Qstatus},	NAMELEN+12+6*12,	0600,
 	"text",		{Qtext},	0,			0600,
+};
+
+char *sname[]={ 			/* Segment type from portdat.h */
+	"Text", 
+	"Data", 
+	"Bss", 
+	"Stack", 
+	"Shared", 
+	"Phys",
 };
 
 /*
@@ -47,7 +58,7 @@ procgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 {
 	Proc *p;
 	char buf[NAMELEN];
-	ulong pid;
+	ulong pid, path;
 
 	if(c->qid.path == CHDIR){
 		if(s >= conf.nproc)
@@ -65,7 +76,8 @@ procgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 	if(tab)
 		panic("procgen");
 	tab = &procdir[s];
-	devdir(c, (Qid){(~CHDIR)&(c->qid.path|tab->qid.path), c->qid.vers},
+	path = c->qid.path&~(CHDIR|((1<<QSHIFT)-1));	/* slot component */
+	devdir(c, (Qid){path|tab->qid.path, c->qid.vers},
 		tab->name, tab->length, tab->perm, dp);
 	return 1;
 }
@@ -112,7 +124,7 @@ procopen(Chan *c, int omode)
 {
 	Proc *p;
 	Pgrp *pg;
-	Orig *o;
+	Segment *s;
 	Chan *tc;
 
 	if(c->qid.path == CHDIR){
@@ -129,11 +141,11 @@ procopen(Chan *c, int omode)
 
 	switch(QID(c->qid)){
 	case Qtext:
-		o = p->seg[TSEG].o;
-		if(o==0 || p->state==Dead) 
+		s = p->seg[TSEG];
+		if(s==0 || p->state==Dead || s->image==0) 
 			goto Died;
 
-		tc = o->chan;
+		tc = s->image->c;
 		if(tc == 0)
 			goto Died;
 
@@ -154,6 +166,7 @@ procopen(Chan *c, int omode)
 		return tc;
 	case Qctl:
 	case Qnote:
+	case Qsegment:
 		break;
 
 	case Qnotepg:
@@ -213,17 +226,18 @@ long
 procread(Chan *c, void *va, long n, ulong offset)
 {
 	char *a = va, *b;
-	char statbuf[2*NAMELEN+12+6*12];
+	char statbuf[NSEG*32];
 	Proc *p;
-	Seg *s;
-	Orig *o;
+	Pte *pte;
+	Segment *s;
 	Page *pg;
 	KMap *k;
-	PTE *pte, *opte;
-	int i;
+	int i, j;
 	long l;
 	long pid;
 	User *up;
+	ulong soff;
+	Segment *sg;
 
 	if(c->qid.path & CHDIR)
 		return devdirread(c, a, n, 0, 0, procgen);
@@ -242,32 +256,22 @@ procread(Chan *c, void *va, long n, ulong offset)
 		 */
 		if(((offset+n)&~(BY2PG-1)) != (offset&~(BY2PG-1)))
 			n = BY2PG - (offset&(BY2PG-1));
-		s = seg(p, offset);
+		s = seg(p, offset, 1);
 		if(s){
-			o = s->o;
-			if(o == 0)
-				error(Eprocdied);
-			lock(o);
-			if(s->o!=o || p->pid!=PID(c->qid)){
-				unlock(o);
+			if(p->pid!=PID(c->qid)){
+				qunlock(&s->lk);
 				error(Eprocdied);
 			}
-			if(seg(p, offset) != s){
-				unlock(o);
-				error(Egreg);
-			}
-			pte = &o->pte[(offset-o->va)>>PGSHIFT];
-			if(s->mod){
-				opte = pte;
-				while(pte = pte->nextmod)	/* assign = */
-					if(pte->proc == p)
-						break;
-				if(pte == 0)
-					pte = opte;
-			}
-			pg = pte->page;
-			unlock(o);
-			if(pg == 0){
+
+			soff = offset-s->base;
+			pte = s->map[soff/PTEMAPMEM];
+			pg = 0;
+			if(pte)
+				pg = pte->pages[(soff&(PTEMAPMEM-1))/BY2PG];
+
+			s->steal++;
+			qunlock(&s->lk);
+			if(pagedout(pg)){
 				pprint("nonresident page addr %lux (complain to rob)\n", offset);
 				memset(a, 0, n);
 			}else{
@@ -276,6 +280,9 @@ procread(Chan *c, void *va, long n, ulong offset)
 				memmove(a, b+(offset&(BY2PG-1)), n);
 				kunmap(k);
 			}
+			qlock(&s->lk);
+			s->steal--;
+			qunlock(&s->lk);
 			return n;
 		}
 		/* u area */
@@ -355,6 +362,19 @@ procread(Chan *c, void *va, long n, ulong offset)
 		}
 		memmove(a, statbuf+offset, n);
 		return n;
+	case Qsegment:
+		j = 0;
+		for(i = 0; i < NSEG; i++)
+			if(sg = p->seg[i])
+				j += sprint(&statbuf[j], "%-6s %c %.8lux %.8lux %4d\n",
+				sname[sg->type&SG_TYPE], sg->type&SG_RONLY ? 'R' : ' ',
+				sg->base, sg->top, sg->ref);
+		if(offset >= j)
+			return 0;
+		if(offset+n > j)
+			n = j-offset;
+		memmove(a, &statbuf[offset], n);
+		return n;
 	}
 	error(Egreg);
 }
@@ -404,11 +424,31 @@ procwrite(Chan *c, void *va, long n, ulong offset)
 
 	switch(QID(c->qid)){
 	case Qctl:
-		if(p->state==Broken && n>=4 && strncmp(va, "exit", 4)==0)
-			ready(p);
+		if(n >= 4 && strncmp(va, "exit", 4) == 0) {
+			if(p->state == Broken) {
+				ready(p);
+				break;
+			}
+		}
 		else
-			error(Ebadctl);
-		break;
+		if(n >= 4 && strncmp(va, "stop", 4) == 0) {
+			p->procctl = Proc_stopme;
+			break;
+		}
+		else
+		if(n >= 5 && strncmp(va, "start", 5) == 0) {
+			if(p->state == Stopped) {
+				ready(p);
+				break;
+			}
+			errors("not stopped");
+		}
+		else
+		if(n >= 4 && strncmp(va, "kill", 4) == 0) {
+			p->procctl = Proc_exitme;
+			break;
+		}
+		error(Ebadctl);
 	case Qnote:
 		k = kmap(p->upage);
 		up = (User*)VA(k);

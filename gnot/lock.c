@@ -66,14 +66,3 @@ unlock(Lock *l)
 	if(u && u->p)
 		u->p->hasspin = 0;
 }
-
-void
-mklockseg(Seg *s)
-{
-	error(Esegaddr);
-}
-
-Page*
-lkpage(Orig* o, ulong va)
-{
-}

@@ -248,6 +248,8 @@ struct Ipconv {
 #define TIMER_RUN	1
 #define TIMER_EXPIRE	2
 
+#define Nreseq		64
+
 #define	set_timer(t,x)	(((t)->start) = (x)/MSPTICK)
 #define	dur_timer(t)	((t)->start)
 #define	read_timer(t)	((t)->count)

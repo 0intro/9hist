@@ -30,6 +30,8 @@ decref(Ref *r)
 	lock(r);
 	x = --r->ref;
 	unlock(r);
+	if(x < 0)
+		panic("decref");
 	return x;
 }
 

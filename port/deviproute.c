@@ -190,7 +190,7 @@ enum{
 	Qdata,
 };
 Dirtab iproutetab[]={
-	"iproute",		{Qdata},		0,	0666,
+	"iproute",		{Qdata},		0,	0600,
 };
 #define Niproutetab (sizeof(iproutetab)/sizeof(Dirtab))
 

@@ -13,6 +13,7 @@
 #define	WD2PG		(BY2PG/BY2WD)		/* words per page */
 #define	PGSHIFT		12			/* log(BY2PG) */
 #define PGROUND(s)	(((s)+(BY2PG-1))&~(BY2PG-1))
+#define ICACHESIZE	(64*1024)		/* Power series */
 
 #define	MAXMACH		4			/* max # cpus system can run */
 
@@ -100,9 +101,12 @@
 #define PTERONLY	0
 #define	PTEPID(n)	((n)<<6)
 #define TLBPID(n)	(((n)>>6)&0x3F)
-
+#define PTEMAPMEM	(1024*1024)	
+#define	PTEPERTAB	(PTEMAPMEM/BY2PG)
 #define STLBLOG		11
 #define STLBSIZE	(1<<STLBLOG)
+
+#define SEGMAPSIZE	64
 
 #define	NTLBPID	64	/* number of pids */
 #define	NTLB	64	/* number of entries */
@@ -115,7 +119,7 @@
 #define	UZERO		KUSEG			/* base of user address space */
 #define	UTZERO		(UZERO+BY2PG)		/* first address in user text */
 #define	USTKTOP		KZERO			/* byte just beyond user stack */
-#define	TSTKTOP		(USERADDR+TSTKSIZ*BY2PG)/* top of temporary stack */
+#define	TSTKTOP		(USERADDR+USTKSIZE)	/* top of temporary stack */
 #define TSTKSIZ 	100
 #define	KZERO		KSEG0			/* base of kernel address space */
 #define	KTZERO		(KZERO+0x20000)		/* first address in kernel text */

@@ -21,19 +21,19 @@ long
 sysfork(ulong *arg)
 {
 	Proc *p;
-	Seg *s;
+	Segment *s;
 	Page *np, *op;
 	ulong usp, upa, pid;
 	Chan *c;
-	Orig *o;
 	KMap *k;
 	int n, on, i;
 	int lastvar;	/* used to compute stack address */
-
 	/*
 	 * Kernel stack
 	 */
 	p = newproc();
+
+	/* Page va of upage used as check in mapstack */
 	p->upage = newpage(1, 0, USERADDR|(p->pid&0xFFFF));
 	k = kmap(p->upage);
 	upa = VA(k);
@@ -49,68 +49,23 @@ sysfork(ulong *arg)
 	((User *)upa)->p = p;
 	kunmap(k);
 
-	/*
-	 * User stack
-	 */
-	p->seg[SSEG] = u->p->seg[SSEG];
-	s = &p->seg[SSEG];
-	s->proc = p;
-	on = (s->maxva-s->minva)>>PGSHIFT;
-	usp = ((Ureg*)UREGADDR)->usp;
-	if(usp >= USTKTOP)
-		panic("fork bad usp %lux", usp);
-	if(usp < u->p->seg[SSEG].minva)
-		s->minva = u->p->seg[SSEG].minva;
-	else
-		s->minva = usp & ~(BY2PG-1);
-	usp = s->minva & (BY2PG-1);	/* just low bits */
-	s->maxva = USTKTOP;
-	n = (s->maxva-s->minva)>>PGSHIFT;
-	s->o = neworig(s->minva, n, OWRPERM|OISMEM, 0);
-	lock(s->o);
-	/*
-	 * Only part of last stack page
-	 */
-	for(i=0; i<n; i++){
-		op = u->p->seg[SSEG].o->pte[i+(on-n)].page;
-		if(op){
-			np = newpage(1, s->o, op->va);
-			k = kmap(np);
-			p->seg[SSEG].o->pte[i].page = np;
-			if(i == 0){	/* only part of last stack page */
-				memset((void*)VA(k), 0, usp);
-				memmove((void*)(VA(k)+usp),
-					(void*)(op->va+usp), BY2PG-usp);
-			}else		/* all of higher pages */
-				memmove((void*)VA(k), (void*)op->va, BY2PG);
-			kunmap(k);
-		}
-	}
-	unlock(s->o);
-	/*
-	 * Duplicate segments
-	 */
-	for(s=&u->p->seg[0], n=0; n<NSEG; n++, s++){
-		if(n == SSEG)		/* already done */
-			continue;
-		if(s->o == 0)
-			continue;
-		p->seg[n] = *s;
-		p->seg[n].proc = p;
-		o = s->o;
-		lock(o);
-		o->nproc++;
-		if(s->mod)
-			forkmod(s, &p->seg[n], p);
-		unlock(o);
-	}
+	/* Make a new set of memory segments */
+	for(i = 0; i < NSEG; i++)
+		if(u->p->seg[i])
+			p->seg[i] = dupseg(u->p->seg[i]);
+
 	/*
 	 * Refs
 	 */
-	incref(u->dot);
-	for(n=0; n<=u->maxfd; n++)
-		if(c = u->fd[n])	/* assign = */
-			incref(c);
+	incref(u->dot);				/* File descriptors etc. */
+	p->fgrp = dupfgrp(u->p->fgrp);
+
+	p->pgrp = u->p->pgrp;			/* Process groups */
+	incref(p->pgrp);
+
+	p->egrp = u->p->egrp;			/* Environment group */
+	incref(p->egrp);
+
 	/*
 	 * Sched
 	 */
@@ -122,11 +77,11 @@ sysfork(ulong *arg)
 		spllo();
 		return 0;
 	}
+
 	p->parent = u->p;
 	p->parentpid = u->p->pid;
-	p->pgrp = u->p->pgrp;
+
 	p->fpstate = u->p->fpstate;
-	incref(p->pgrp);
 	u->p->nchild++;
 	pid = p->pid;
 	memset(p->time, 0, sizeof(p->time));
@@ -147,11 +102,10 @@ long
 sysexec(ulong *arg)
 {
 	Proc *p;
-	Seg *s;
+	Segment *s, *ts;
 	ulong l, t, d, b, v;
 	int i;
 	Chan *tc, *c;
-	Orig *o;
 	char **argv, **argp;
 	char *a, *charp, *file;
 	char *progarg[sizeof(Exec)/2+1], elem[NAMELEN];
@@ -160,6 +114,8 @@ sysexec(ulong *arg)
 	int indir;
 	Exec exec;
 	char line[sizeof(Exec)];
+	Fgrp *f;
+	Image *img;
 
 	p = u->p;
 	validaddr(arg[0], 1, 0);
@@ -209,6 +165,7 @@ sysexec(ulong *arg)
 	goto Header;
 
     Binary:
+	poperror();
 	t = (UTZERO+sizeof(Exec)+exec.text+(BY2PG-1)) & ~(BY2PG-1);
 	d = (t + exec.data + (BY2PG-1)) & ~(BY2PG-1);
 	bssend = t + exec.data + exec.bss;
@@ -237,7 +194,7 @@ sysexec(ulong *arg)
 		if(((ulong)argp&(BY2PG-1)) < BY2WD)
 			validaddr((ulong)argp, BY2WD, 0);
 		validaddr((ulong)a, 1, 0);
-		nbytes += (vmemchr(a, 0, ~0) - a) + 1;
+		nbytes += (vmemchr(a, 0, 0xFFFFFFFF) - a) + 1;
 		nargs++;
 	}
 	ssize = BY2WD*(nargs+1) + ((nbytes+(BY2WD-1)) & ~(BY2WD-1));
@@ -248,11 +205,8 @@ sysexec(ulong *arg)
 	if(spage > TSTKSIZ)
 		errors("not enough argument stack space");
 
-	s = &p->seg[ESEG];
-	s->proc = p;
-	s->o = neworig(TSTKTOP-(spage<<PGSHIFT), spage, OWRPERM|OISMEM, 0);
-	s->minva = s->o->va;
-	s->maxva = TSTKTOP;
+	 
+	p->seg[ESEG] = newseg(SG_STACK, TSTKTOP-USTKSIZE, USTKSIZE/BY2PG);
 
 	/*
 	 * Args: pass 2: assemble; the pages will be faulted in
@@ -263,8 +217,9 @@ sysexec(ulong *arg)
 		argp = progarg;
 	else
 		argp = (char**)arg[1];
+
 	for(i=0; i<nargs; i++){
-		if(indir && *argp==0){
+		if(indir && *argp==0) {
 			indir = 0;
 			argp = (char**)arg[1];
 		}
@@ -276,87 +231,65 @@ sysexec(ulong *arg)
 
 	memmove(p->text, elem, NAMELEN);
 
+	if(waserror())
+		pexit("fatal exec error", 0);
+
 	/*
-	 * Committed.  Free old memory
+	 * Committed.  Free old memory. Special segments are maintained accross exec
 	 */
-	freesegs(ESEG);
+	putseg(p->seg[TSEG]);
+	p->seg[TSEG] = 0;	/* prevent a second free if we have an error */
+	putseg(p->seg[DSEG]);
+	p->seg[DSEG] = 0;
+	putseg(p->seg[BSEG]);
+	p->seg[BSEG] = 0;
+	putseg(p->seg[SSEG]);
+	p->seg[SSEG] = 0;
 
 	/*
 	 * Close on exec
 	 */
-	for(i=0; i<=u->maxfd; i++)
-		if((c=u->fd[i]) && c->flag&CCEXEC){
-			close(c);
-			fdclose(i);
-		}
+	f = u->p->fgrp;
+	for(i=0; i<=f->maxfd; i++)
+		fdclose(i, CCEXEC);
 
-	/*
-	 * Text.  Shared.
-	 */
-	s = &p->seg[TSEG];
-	s->proc = p;
-	o = lookorig(UTZERO, (t-UTZERO)>>PGSHIFT, OCACHED|OISMEM, tc);
-	if(o == 0){
-		o = neworig(UTZERO, (t-UTZERO)>>PGSHIFT, OCACHED|OISMEM, tc);
-		o->minca = 0;
-		o->maxca = sizeof(Exec)+exec.text;
-	}
-	s->o = o;
-	s->minva = UTZERO;
-	s->maxva = t;
-	s->mod = 0;
+	/* Text.  Shared. Attaches to cache image if possible */
+	img = attachimage(SG_TEXT|SG_RONLY, tc, UTZERO, (t-UTZERO)>>PGSHIFT);
+	ts = img->s;
+	p->seg[TSEG] = ts;
+	ts->fstart = 0;
+	ts->flen = sizeof(Exec)+exec.text;
 
-	/*
-	 * Data.  Shared.
-	 */
-	s = &p->seg[DSEG];
-	s->proc = p;
-	o = lookorig(t, (d-t)>>PGSHIFT, OWRPERM|OPURE|OCACHED|OISMEM, tc);
-	if(o == 0){
-		o = neworig(t, (d-t)>>PGSHIFT, OWRPERM|OPURE|OCACHED|OISMEM, tc);
-		o->minca = p->seg[TSEG].o->maxca;
-		o->maxca = o->minca + exec.data;
-	}
-	s->o = o;
-	s->minva = t;
-	s->maxva = d;
-	s->mod = 0;
+	/* Data. Shared. */
+	s = newseg(SG_DATA, t, (d-t)>>PGSHIFT);
+	p->seg[DSEG] = s;
 
-	/*
-	 * BSS.  Created afresh.
-	 */
-	s = &p->seg[BSEG];
-	s->proc = p;
-	o = neworig(d, (b-d)>>PGSHIFT, OWRPERM|OISMEM, 0);
-	o->minca = 0;
-	o->maxca = 0;
-	s->o = o;
-	s->minva = d;
-	s->maxva = b;
-	s->mod = 0;
+	/* Attached by hand */
+	incref(img);
+	s->image = img;
+	s->fstart = ts->fstart+ts->flen;
+	s->flen = exec.data;
 
-	poperror();
+
+	/* BSS. Zero fill on demand */
+	p->seg[BSEG] = newseg(SG_BSS, d, (b-d)>>PGSHIFT);
+
 	close(tc);
-
-	p->seg[BSEG].endseg = bssend;
 
 	/*
 	 * Move the stack
 	 */
-	s = &p->seg[SSEG];
-	*s = p->seg[ESEG];
-	p->seg[ESEG].o = 0;
-	o = s->o;
-	o->va += (USTKTOP-TSTKTOP);
-	s->minva = o->va;
-	s->maxva = USTKTOP;
-	lock(o);
-	for(i=0; i<o->npte; i++)
-		o->pte[i].page->va += (USTKTOP-TSTKTOP);
-	unlock(o);
+	s = p->seg[ESEG];
+	p->seg[SSEG] = s;
+	s->base = USTKTOP-USTKSIZE;
+	s->top = USTKTOP;
+	relocateseg(s, TSTKTOP-USTKTOP);
+	p->seg[ESEG] = 0;
+
+	poperror();
 
 	/*
-	 *  at this point, the mmu contains info about the old address
+	 *  At this point, the mmu contains info about the old address
 	 *  space and needs to be flushed
 	 */
 	flushmmu();
@@ -437,6 +370,7 @@ sysexits(ulong *arg)
 			vmemchr(status, 0, ERRLEN);
 		}
 		poperror();
+
 	}
 	pexit(status, 1);
 }
@@ -473,10 +407,13 @@ sysforkpgrp(ulong *arg)
 {
 	int mask;
 	Pgrp *pg;
+	Egrp *eg;
 
 	pg = newpgrp();
+	eg = newegrp();
 	if(waserror()){
 		closepgrp(pg);
+		closeegrp(eg);
 		nexterror();
 	}
 
@@ -490,7 +427,7 @@ sysforkpgrp(ulong *arg)
 		pgrpcpy(pg, u->p->pgrp);
 
 	if(mask & FPenv)
-		envcpy(pg, u->p->pgrp);
+		envcpy(eg, u->p->egrp);
 
 	if((mask & FPnote) == 0) {
 		u->nnote = 0;
@@ -500,7 +437,9 @@ sysforkpgrp(ulong *arg)
 
 	poperror();
 	closepgrp(u->p->pgrp);
+	closeegrp(u->p->egrp);
 	u->p->pgrp = pg;
+	u->p->egrp = eg;
 	return pg->pgrpid;
 }
 
@@ -521,17 +460,92 @@ sysnoted(ulong *arg)
 	return 0;
 }
 
-/*
- * Temporary; should be replaced by a generalized segment control operator
- */
+long
+syssegbrk(ulong *arg)
+{
+	Segment *s;
+	int i;
+
+	for(i = 0; i < NSEG; i++)
+		if(s = u->p->seg[i]) {
+			if(arg[0] >= s->base && arg[0] < s->top) {
+				switch(s->type&SG_TYPE) {
+				case SG_TEXT:
+				case SG_DATA:
+					errors("bad segment type");
+				default:
+					return ibrk(arg[1], i);
+				}
+			}
+		}
+
+	errors("not in address space");
+}
+
+long
+syssegattach(ulong *arg)
+{
+	return segattach(u->p, arg[0], (char*)arg[1], arg[2], arg[3]);
+}
+
+long
+syssegdetach(ulong *arg)
+{
+	int i;
+	Segment *s;
+
+	for(i = 0; i < NSEG; i++)
+		if(s = u->p->seg[i]) {
+			qlock(&s->lk);
+			if((arg[0] >= s->base && arg[0] < s->top) || 
+			   (s->top == s->base && arg[0] == s->base))
+				goto found;
+			qunlock(&s->lk);
+		}
+
+	errors("not in address space");
+
+found:
+	if((ulong)arg >= s->base && (ulong)arg < s->top) {
+		qunlock(&s->lk);
+		errors("illegal address");
+	}
+	u->p->seg[i] = 0;
+	qunlock(&s->lk);
+	putseg(s);
+
+	/* Ensure we flush any entries from the lost segment */
+	flushmmu();
+	return 0;
+}
+
+long
+syssegfree(ulong *arg)
+{
+	Segment *s;
+	ulong from, len;
+
+	s = seg(u->p, arg[0], 1);
+	if(s == 0)
+		errors("not in address space");
+
+	from = PGROUND(arg[1]);
+	len = arg[2];
+
+	if(from+len > s->top) {
+		qunlock(&s->lk);
+		errors("segment too short");
+	}
+
+	mfreeseg(s, from, len);
+	qunlock(&s->lk);
+
+	return 0;
+}
+
+/* For binary compatability */
 long
 sysbrk_(ulong *arg)
 {
 	return ibrk(arg[0], BSEG);
-}
-
-long
-syslkbrk_(ulong *arg)
-{
-	return ibrk(arg[0], LSEG);
 }

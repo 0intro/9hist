@@ -59,7 +59,7 @@ lkpgalloc(void)
 
 /* Moral equivalent of newpage for pages of hardware lock */
 Page*
-lkpage(Orig *o, ulong va)
+lkpage(ulong va)
 {
 	uchar *p, *top;
 	Page *pg;
@@ -82,7 +82,6 @@ lkpage(Orig *o, ulong va)
 	pg = &lkpgheader[i];
 	pg->pa = (ulong)((i*WD2PG) + SBSEM) & ~UNCACHED;
 	pg->va = va;
-	pg->o = o;
 	pg->ref = 1;
 
 	unlock(&semalloc.lock);
@@ -90,7 +89,7 @@ lkpage(Orig *o, ulong va)
 }
 
 void
-lkpgfree(Page *pg, int dolock)
+lkpgfree(Page *pg)
 {
 	uchar *p;
 
@@ -135,15 +134,11 @@ lock(Lock *ll)
 	 */
 	if((*sbsem&1) == 0){
 		l->pc = ((ulong*)&ll)[PCOFF];
-		if(u && u->p)
-			u->p->hasspin = 1;
 		return;
 	}
 	for(i=0; i<10000000; i++)
     		if((*sbsem&1) == 0){
 			l->pc = ((ulong*)&ll)[PCOFF];
-			if(u && u->p)
-				u->p->hasspin = 1;
 			return;
 	}
 	*sbsem = 0;
@@ -172,8 +167,6 @@ canlock(Lock *l)
 	}
 	if(*sbsem & 1)
 		return 0;
-	if(u && u->p)
-		u->p->hasspin = 1;
 	return 1;
 }
 
@@ -182,22 +175,4 @@ unlock(Lock *l)
 {
 	l->pc = 0;
 	*l->sbsem = 0;
-	if(u && u->p)
-		u->p->hasspin = 0;
-}
-
-void
-mklockseg(Seg *s)
-{
-	Orig *o;
-
-	s->proc = u->p;
-	o = neworig(LKSEGBASE, 0, OWRPERM|OSHARED, 0);
-	o->minca = 0;
-	o->maxca = 0;
-	o->freepg = lkpgfree;
-	s->o = o;
-	s->minva = LKSEGBASE;
-	s->maxva = LKSEGBASE;
-	s->mod = 0;
 }

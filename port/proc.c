@@ -40,6 +40,7 @@ char *statename[]={	/* BUG: generate automatically */
 	"Inwait",
 	"Wakeme",
 	"Broken",
+	"Stopped",
 };
 
 /*
@@ -49,6 +50,7 @@ void
 schedinit(void)		/* never returns */
 {
 	Proc *p;
+	Page *pg;
 
 	setlabel(&m->sched);
 	if(u){
@@ -58,16 +60,38 @@ schedinit(void)		/* never returns */
 		u = 0;
 		if(p->state == Running)
 			ready(p);
-		else if(p->state == Moribund){
+		else if(p->state == Moribund) {
+			/*
+			 * The Grim Reaper lays waste the bodies of the dead
+			 */
 			p->pid = 0;
 			mmurelease(p);
-			/* procalloc already locked */
+			/* 
+			 * Holding locks:
+			 * 	procalloc, debug, palloc
+			 */
+			pg = p->upage;
+			pg->ref = 0;
+			p->upage = 0;
+			palloc.freecount++;
+			if(palloc.head) {
+				pg->next = palloc.head;
+				palloc.head->prev = pg;
+				pg->prev = 0;
+				palloc.head = pg;
+			}
+			else {
+				palloc.head = palloc.tail = pg;
+				pg->prev = pg->next = 0;
+			}
+
 			p->qnext = procalloc.free;
 			procalloc.free = p;
-			p->upage->ref--;
-			p->upage = 0;
+		
+			unlock(&palloc);
 			unlock(&p->debug);
 			unlock(&procalloc);
+
 			p->state = Dead;
 		}
 		p->mach = 0;
@@ -78,7 +102,7 @@ schedinit(void)		/* never returns */
 void
 sched(void)
 {
-	uchar procstate[64];		/* sleaze for portability */
+	uchar procstate[64];
 	Proc *p;
 	ulong tlbvirt, tlbphys;
 	void (*f)(ulong, ulong);
@@ -175,6 +199,23 @@ loop:
 	return p;
 }
 
+int
+canpage(Proc *p)
+{
+	int ok = 0;
+
+	splhi();
+	lock(&runhiq);
+	if(p->state != Running) {
+		p->newtlb = 1;
+		ok = 1;
+	}
+	unlock(&runhiq);
+	spllo();
+
+	return ok;
+}
+
 Proc*
 newproc(void)
 {
@@ -192,8 +233,11 @@ loop:
 		p->child = 0;
 		p->exiting = 0;
 		p->pgrp = 0;
+		p->egrp = 0;
+		p->fgrp = 0;
 		p->fpstate = FPinit;
 		p->kp = 0;
+		p->procctl = 0;
 		memset(p->seg, 0, sizeof p->seg);
 		lock(&pidalloc);
 		p->pid = ++pidalloc.pid;
@@ -300,8 +344,8 @@ wakeup(Rendez *r)
 	p = r->p;
 	if(p){
 		r->p = 0;
-		if(p->state != Wakeme)
-			panic("wakeup: not Wakeme");
+		if(p->state != Wakeme) 
+			panic("wakeup: state");
 		p->r = 0;
 		ready(p);
 	}
@@ -359,7 +403,8 @@ postnote(Proc *p, int dolock, char *n, int flag)
 		kunmap(k);
 	if(dolock)
 		unlock(&p->debug);
-	if(r = p->r){	/* assign = */
+
+	if(r = p->r) {		/* assign = */
 		/* wake up */
 		s = splhi();
 		lock(r);
@@ -432,27 +477,29 @@ pexit(char *s, int freemem)
 {
 	ulong mypid;
 	Proc *p, *c, *k, *l;
-	int n;
+	int n, i;
 	Chan *ch;
 	char msg[ERRLEN];
 	ulong *up, *ucp, *wp;
 
-	if(s)	/* squirrel away; we'll lose our address space */
+	if(s) 	/* squirrel away; we'll lose our address space */
 		strcpy(msg, s);
 	else
 		msg[0] = 0;
+	
 	c = u->p;
 	c->alarm = 0;
 	mypid = c->pid;
 
-	for(n=0; n<=u->maxfd; n++)
-		if(ch = u->fd[n])	/* assign = */
-			close(ch);
-
+	closefgrp(c->fgrp);
 
 	if(freemem){
-		freesegs(-1);
+		flushvirt();
+		for(i = 0; i < NSEG; i++)
+			if(c->seg[i])
+				putseg(c->seg[i]);
 		closepgrp(c->pgrp);
+		closeegrp(c->egrp);
 		close(u->dot);
 	}
 	/*
@@ -502,18 +549,27 @@ pexit(char *s, int freemem)
    out:
 	if(!freemem){
 		addbroken(c);
-		freesegs(-1);
+		flushvirt();
+		for(i = 0; i < NSEG; i++)
+			if(c->seg[i])
+				putseg(c->seg[i]);
 		closepgrp(c->pgrp);
+		closeegrp(c->egrp);
 		close(u->dot);
 	}
 
     done:
 
-	lock(&procalloc);	/* sched() can't do this */
-	lock(&c->debug);	/* sched() can't do this */
-	unusepage(c->upage, 1);	/* sched() can't do this (it locks) */
+	/*
+	 * sched() cannot wait on these locks
+	 */
+	lock(&procalloc);
+	lock(&c->debug);
+	lock(&palloc);
+
 	c->state = Moribund;
-	sched();	/* never returns */
+	sched();
+	panic("pexit");
 }
 
 ulong
@@ -568,15 +624,14 @@ procdump(void)
 {
 	int i;
 	Proc *p;
-	Orig *o;
 
-	print("DEBUG\n");
+	print("process table:\n");
 	for(i=0; i<conf.nproc; i++){
 		p = procalloc.arena+i;
 		if(p->state != Dead){
 			print("%d:%s %s upc %lux %s ut %ld st %ld r %lux\n",
-				p->pid, p->text, p->pgrp->user, p->pc, statename[p->state],
-				p->time[0], p->time[1], p->r);
+				p->pid, p->text, p->pgrp->user, p->pc, 
+				statename[p->state], p->time[0], p->time[1], p->r);
 		}
 	}
 }
@@ -591,6 +646,7 @@ kproc(char *name, void (*func)(void *), void *arg)
 	User *up;
 	KMap *k;
 	static Pgrp *kpgrp;
+	char *user;
 
 	/*
 	 * Kernel stack
@@ -616,9 +672,7 @@ kproc(char *name, void (*func)(void *), void *arg)
 	 * Refs
 	 */
 	incref(up->dot);
-	for(n=0; n<=up->maxfd; n++)
-		up->fd[n] = 0;
-	up->maxfd = 0;
+	p->fgrp = newfgrp();
 	kunmap(k);
 
 	/*
@@ -633,13 +687,19 @@ kproc(char *name, void (*func)(void *), void *arg)
 		(*func)(arg);
 		pexit(0, 1);
 	}
+
+	user = "bootes";
 	if(kpgrp == 0){
 		kpgrp = newpgrp();
-		strcpy(kpgrp->user, "bootes");
+		strcpy(kpgrp->user, user);
 	}
 	p->pgrp = kpgrp;
 	incref(kpgrp);
-	sprint(p->text, "%s.%.6s", name, u->p->pgrp->user);
+
+	if(u->p->pgrp->user[0] != '\0')
+		user = u->p->pgrp->user;
+	sprint(p->text, "%s.%.6s", name, user);
+
 	p->nchild = 0;
 	p->parent = 0;
 	memset(p->time, 0, sizeof(p->time));
@@ -651,4 +711,18 @@ kproc(char *name, void (*func)(void *), void *arg)
 	 *  and has to be discarded.
 	 */
 	flushmmu();
+}
+
+void
+procctl(Proc *p)
+{
+	switch(p->procctl) {
+	case Proc_exitme:
+		pexit("Killed", 1);
+	case Proc_stopme:
+		p->procctl = 0;
+		p->state = Stopped;
+		sched();
+		return;
+	}
 }

@@ -11,7 +11,7 @@ enum {
 	Nmask=		0x7,
 };
 
-#define DPRINT if(q->flag&QDEBUG)kprint
+#define DPRINT if(q->flag&QDEBUG)print
 
 typedef struct Urp	Urp;
 

@@ -72,12 +72,13 @@ struct Conf
 	int	npgrp;		/* process groups */
 	ulong	npage0;		/* total physical pages of memory, bank 0 */
 	ulong	npage1;		/* total physical pages of memory, bank 1 */
+	ulong	npage;
 	ulong	base0;		/* base of bank 0 */
 	ulong	base1;		/* base of bank 1 */
-	ulong	npage;		/* total physical pages of memory */
-	ulong	norig;		/* origins */
-	ulong	npte;		/* contiguous page table entries */
-	ulong	nmod;		/* single (modifying) page table entries */
+	ulong	nseg;		/* number of segments */
+	ulong	nimage;		/* number of page cache image headers */
+	ulong 	npagetab;	/* number of pte tables */
+	ulong	nswap;		/* number of swap blocks */
 	int	nalarm;		/* alarms */
 	int	nchan;		/* channels */
 	int	nenv;		/* distinct environment values */
@@ -200,7 +201,6 @@ struct Scsi
 
 #define	NERR	15
 #define	NNOTE	5
-#define	NFD	100
 struct User
 {
 	Proc	*p;
@@ -211,8 +211,6 @@ struct User
 	char	elem[NAMELEN];		/* last name element from namec */
 	Chan	*slash;
 	Chan	*dot;
-	Chan	*fd[NFD];
-	int	maxfd;			/* highest fd in use */
 	/*
 	 * Rest of structure controlled by devproc.c and friends.
 	 * lock(&p->debug) to modify.

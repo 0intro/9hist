@@ -5,27 +5,30 @@ typedef struct Blist	Blist;
 typedef struct Chan	Chan;
 typedef struct Dev	Dev;
 typedef struct Dirtab	Dirtab;
+typedef struct Egrp	Egrp;
 typedef struct Env	Env;
 typedef struct Envp	Envp;
 typedef struct Envval	Envval;
 typedef struct Etherpkt	Etherpkt;
+typedef struct Fgrp	Fgrp;
+typedef struct Image	Image;
 typedef struct IOQ	IOQ;
 typedef struct KIOQ	KIOQ;
 typedef struct List	List;
 typedef struct Mount	Mount;
 typedef struct Mtab	Mtab;
 typedef struct Note	Note;
-typedef struct Orig	Orig;
-typedef struct PTE	PTE;
 typedef struct Page	Page;
+typedef struct Palloc	Palloc;
 typedef struct Pgrp	Pgrp;
 typedef struct Proc	Proc;
+typedef struct Pte	Pte;
 typedef struct Qinfo	Qinfo;
 typedef struct QLock	QLock;
 typedef struct Queue	Queue;
 typedef struct Ref	Ref;
 typedef struct Rendez	Rendez;
-typedef struct Seg	Seg;
+typedef struct Segment	Segment;
 typedef struct Stream	Stream;
 
 typedef int Devgen(Chan*, Dirtab*, int, int, Dir*);
@@ -177,7 +180,7 @@ struct Env
 	Lock;
 	Envval	*val;
 	char	name[NAMELEN];
-	Env	*next;			/* in chain of Envs for a pgrp */
+	Env	*next;			/* in chain of Envs for a egrp */
 	int	pgref;			/* # pgrps pointing here */
 };
 
@@ -259,55 +262,144 @@ struct Note
 	int	flag;			/* whether system posted it */
 };
 
-#define	OWRPERM	0x01	/* write permission */
-#define	OPURE	0x02	/* original data mustn't be written */
-#define	OCACHED	0x04	/* cached; don't discard on exit */
-#define OISMEM	0x08	/* origin contains real memory */
-#define OSHARED	0x10	/* origin does not copy on ref/wr */
-
-struct Orig
-{
-	Lock;
-	Orig	*next;			/* for allocation */
-	ushort	nproc;			/* processes using it */
-	ushort	npage;			/* sum of refs of pages in it */
-	ushort	flag;
-	ulong	va;			/* va of 0th pte */
-	ulong	npte;			/* #pte's in list */
-	PTE	*pte;
-	Chan	*chan;			/* channel deriving segment (if open) */
-	ushort	type;			/* of channel (which could be non-open) */
-	Qid	qid;
-	Chan	*mchan;
-	Qid	mqid;
-	ulong	minca;			/* base of region in chan */
-	ulong	maxca;			/* end of region in chan */
-	void	(*freepg)(Page*, int);	/* how to free pages for this origin */
-	Page	(*allocpg)(int, Orig*, ulong);
-};
+/* Fields for cache control of pages */
+#define	PG_NOFLUSH	0
+#define PG_TXTFLUSH	1
+#define PG_DATFLUSH	2
+/* Simulated modified and referenced bits */
+#define PG_MOD		0x01
+#define PG_REF		0x02
 
 struct Page
 {
-	Orig	*o;			/* origin of segment owning page */
-	ulong	va;			/* virtual address */
-	ulong	pa;			/* physical address */
-	ushort	ref;
-	Page	*next;
+	ulong	pa;			/* Physical address in memory */
+	ulong	va;			/* Virtual address for user */
+	ulong	daddr;			/* Disc address on swap */
+	ushort	ref;			/* Reference count */
+	char	lock;			/* Software lock */
+	char	modref;			/* Simulated modify/reference bits */
+	char	cachectl[MAXMACH];	/* Cache flushing control for putmmu */
+	Image	*image;			/* Associated text or swap image */
+	Page	*next;			/* Lru free list */
 	Page	*prev;
+	Page	*hash;			/* Image hash chains */
+};
+
+struct Swapalloc
+{
+	Lock;			/* Free map lock */
+	int	free;		/* Number of currently free swap pages */
+	char	*swmap;		/* Base of swap map in memory */
+	char	*alloc;		/* Round robin allocator */
+	char	*top;		/* Top of swap map */
+	Rendez	r;		/* Pager kproc idle sleep */
+}swapalloc;
+
+struct Image
+{
+	Ref;
+	Chan	*c;			/* Channel associated with running image */
+	Qid 	qid;			/* Qid for page cache coherence checks */
+	Qid	mqid;
+	Chan	*mchan;
+	ushort	type;			/* Device type of owning channel */
+	Segment *s;			/* TEXT segment for image if running, may be null */
+	Image	*hash;			/* Qid hash chains */
+	Image	*next;			/* Free list */
+};
+
+struct Pte
+{
+	union {
+		Pte	*next;			/* Free list */
+		Page	*pages[PTEPERTAB];	/* Page map for this chunk of pte */
+	};
+};
+
+/* Segment types */
+#define SG_TYPE		007		/* Mask type of segment */
+#define SG_TEXT		000
+#define SG_DATA		001
+#define SG_BSS		002
+#define SG_STACK	003
+#define SG_SHARED	004
+#define SG_PHYSICAL	005
+/* Segment flags */
+#define SG_RONLY	040		/* Segment is read only */
+
+#define HIGHWATER	((conf.npage*5)/100)
+#define MAXHEADROOM	HIGHWATER*2	/* Silly but OK for debug */
+#define PG_ONSWAP	1
+#define pagedout(s)	(((ulong)s)==0 || (((ulong)s)&PG_ONSWAP))
+#define swapaddr(s)	(((ulong)s)&~PG_ONSWAP)
+#define onswap(s)	(((ulong)s)&PG_ONSWAP)
+
+#define SEGMAXSIZE	(SEGMAPSIZE*PTEMAPMEM)
+
+struct Segment
+{
+	Ref;
+	QLock	lk;
+	ushort	steal;			/* Page stealer lock */
+	Segment	*next;			/* free list pointers */
+	ushort	type;			/* segment type */
+	ulong	base;			/* virtual base */
+	ulong	top;			/* virtual top */
+	ulong	size;			/* size in pages */
+	ulong	fstart;			/* start address in file for demand load */
+	ulong	flen;			/* length of segment in file */
+	Image	*image;			/* image in file system attached to this segment */
+	Page	*(*pgalloc)(ulong addr);/* SG_PHYSICAL page allocator */
+	void	(*pgfree)(Page *);	/* SG_PHYSICAL page free */
+	Pte	*map[SEGMAPSIZE];	/* segment pte map */
 };
 
 struct Pgrp
 {
 	Ref;				/* also used as a lock when mounting */
-	Pgrp	*next;
+	Pgrp	*next;			/* free list */
 	int	index;			/* index in pgrp table */
 	ulong	pgrpid;
 	char	user[NAMELEN];
 	int	nmtab;			/* highest active mount table entry, +1 */
-	int	nenv;			/* highest active env table entry, +1 */
 	QLock	debug;			/* single access via devproc.c */
 	Mtab	*mtab;
+};
+
+struct Egrp
+{
+	Ref;
+	Egrp	*next;
+	int	nenv;			/* highest active env table entry, +1 */
 	Envp	*etab;
+};
+
+#define	NFD	100
+struct Fgrp
+{
+	Ref;
+	Fgrp	*next;
+	Chan	*fd[NFD];
+	int	maxfd;			/* highest fd in use */
+};
+
+#define PGHSIZE	512
+struct Palloc
+{
+	Lock;
+	ulong	addr;
+	int	active;
+	Page	*page;		/* base of Page structures, indexed by phys page number */
+	ulong	minppn;		/* index of first usable page */
+	Page	*head;		/* most recently used */
+	Page	*tail;		/* least recently used */
+	ulong	freecount;	/* how many pages on free list now */
+	ulong	user;		/* how many user pages */
+	Page	*hash[PGHSIZE];
+	Lock	hashlock;
+	Rendez	r;		/* Sleep for free mem */
+	QLock	pwait;		/* Queue of procs waiting for memory */
+	int	wanted;		/* Do the wakeup at free */
 };
 
 enum					/* Argument to forkpgrp call */
@@ -324,17 +416,7 @@ enum					/* Argument to forkpgrp call */
  */
 enum
 {
-	SSEG, TSEG, DSEG, BSEG, ESEG, LSEG, NSEG
-};
-
-struct Seg
-{
-	Proc	*proc;			/* process owning this segment */
-	Orig	*o;			/* root list of pte's */
-	ulong	minva;			/* va of 0th pte (not necessarily Seg->o->va) */
-	ulong	maxva;			/* va of last pte */
-	PTE	*mod;			/* list of modified pte's */
-	ulong	endseg;			/* segments end */
+	SSEG, TSEG, DSEG, BSEG, ESEG, LSEG, SEG1, SEG2, NSEG
 };
 
 /*
@@ -354,6 +436,16 @@ enum
 	Inwait,
 	Wakeme,
 	Broken,
+	Stopped,
+};
+
+/*
+ * devproc requests
+ */
+enum
+{
+	Proc_stopme = 1,
+	Proc_exitme = 2,
 };
 
 /*
@@ -379,14 +471,18 @@ struct Proc
 	QLock	*qlock;			/* address of qlock being queued for DEBUG */
 	int	state;
 	Page	*upage;			/* BUG: should be unlinked from page list */
-	Seg	seg[NSEG];
+	Segment	*seg[NSEG];
 	ulong	pid;
 	int	nchild;
 	QLock	wait;			/* exiting children to be waited for */
 	Waitmsg	waitmsg;		/* this is large but must be addressable */
 	Proc	*child;
 	Proc	*parent;
-	Pgrp	*pgrp;
+
+	Pgrp	*pgrp;			/* Process group for notes and namespace */
+	Egrp 	*egrp;			/* Environment group */
+	Fgrp	*fgrp;			/* File descriptor group */
+
 	ulong	parentpid;
 	ulong	time[6];		/* User, Sys, Real; child U, S, R */
 	short	exiting;
@@ -400,20 +496,13 @@ struct Proc
 	int	kp;			/* true if a kernel process */
 	Proc	*palarm;		/* Next alarm time */
 	ulong	alarm;			/* Time of call */
-	int	hasspin;
-
+	int 	hasspin;		/* I hold a spin lock */
+	int	newtlb;			/* Pager has touched my tables so I must flush */
+	int	procctl;		/* Control for /proc debugging */
 	/*
 	 *  machine specific MMU goo
 	 */
 	PMMU;
-};
-
-struct PTE
-{
-	Proc	*proc;			/* process owning this PTE (0 in Orig) */
-	PTE	*nextmod;		/* next at this va */
-	PTE	*nextva;		/* next in this proc at higher va */
-	Page	*page;
 };
 
 /*
@@ -504,10 +593,12 @@ extern	char	devchar[];
 extern	char	user[NAMELEN];
 extern	char	*errstrtab[];
 extern	char	*statename[];
+extern	Palloc 	palloc;
+extern  Image	swapimage;
 
-#define	CHDIR	0x80000000L
-#define	CHAPPEND 0x40000000L
-#define	CHEXCL	0x20000000L
+#define	CHDIR		0x80000000L
+#define	CHAPPEND 	0x40000000L
+#define	CHEXCL		0x20000000L
 
 
 

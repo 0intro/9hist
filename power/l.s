@@ -148,14 +148,14 @@ TEXT	gotolabel(SB), $-4
 
 TEXT	gotopc(SB), $8
 
+	MOVW	$(64*1024), R1
+	MOVW	R1, 8(SP)
+	JAL	icflush(SB)
 	MOVW	0(FP), R7		/* save arguments for later */
 	MOVW	_argc(SB), R4
 	MOVW	_argv(SB), R5
 	MOVW	_env(SB), R6
 	MOVW	R0, 4(SP)
-	MOVW	$(64*1024), R1
-	MOVW	R1, 8(SP)
-	JAL	icflush(SB)
 	JMP	(R7)
 
 TEXT	puttlb(SB), $4
@@ -515,99 +515,212 @@ TEXT	fcr31(SB), $0
 	MOVW	FCR31, R1
 	RET
 
-/*
- *  we avoid using R4, R5, R6, and R7 so gotopc can call us without saving them
- */
-TEXT icflush(SB), $-4			/* icflush(physaddr, nbytes) */
+#define NOP	WORD	$0x0
 
-	MOVW	M(STATUS), R10
-	MOVW	0(FP), R8
-	MOVW	4(FP), R9
-	MOVW	$KSEG0, R3
-	OR	R3, R8
-	MOVW	$0, M(STATUS)
-	MOVW	$WBFLUSH, R1		/* wbflush */
-	MOVW	0(R1), R1
-	NOOP
-	MOVW	$KSEG1, R3
-	MOVW	$icflush0(SB), R2	/* make sure PC is in uncached address space */
-	MOVW	$(SWC|ISC), R1
-	OR	R3, R2
+TEXT icflush(SB), $-4
+	MOVW	0(FP), R4
+	MOVW	4(FP), R5
+	MOVW	$icflush0(SB), R2	/* Jump to uncache space */
+	MOVW	$0xA0000000, R1
+	OR	R1, R2
 	JMP	(R2)
+	NOP
 
 TEXT icflush0(SB), $-4
 
-	MOVW	R1, M(STATUS)		/* swap and isolate cache, splhi */
+	MOVW	$833, R12		/* cache_pass magic */
+	MOVW	$0x10000, R9		/* icache size */
+
+	MOVW	$0, R13
+	MOVW	M(STATUS), R11
+
+	BEQ	R9, R0, _icflush3
+	MOVW	$0x30000, R2		/* swap and isolate */
+
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	MOVW	R2, M(STATUS)
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	
+	MOVW	R4, R8
+	MOVW	R5, R9
+	AND	$0xFFFC, R8
+	MOVW	$0x9F200000, R1
+	OR	R1, R8
+
 	MOVW	$icflush1(SB), R2
 	JMP	(R2)
+	NOP
 
 TEXT icflush1(SB), $-4
-
 _icflush1:
-	MOVBU	R0, 0x00(R8)
-	MOVBU	R0, 0x04(R8)
-	MOVBU	R0, 0x08(R8)
-	MOVBU	R0, 0x0C(R8)
-	MOVBU	R0, 0x10(R8)
-	MOVBU	R0, 0x14(R8)
-	MOVBU	R0, 0x18(R8)
-	MOVBU	R0, 0x1C(R8)
-	MOVBU	R0, 0x20(R8)
-	MOVBU	R0, 0x24(R8)
-	MOVBU	R0, 0x28(R8)
-	MOVBU	R0, 0x2C(R8)
-	MOVBU	R0, 0x30(R8)
-	MOVBU	R0, 0x34(R8)
-	MOVBU	R0, 0x38(R8)
-	MOVBU	R0, 0x3C(R8)
-	SUB	$0x40, R9
-	ADD	$0x40, R8
+	SGT	R12, R13, R1
+	BNE	R1, _icflush2
+
+	MOVW	$0, R13
+	MOVW	R11, M(STATUS)
+	MOVW	$0x30000, R2		/* swap and isolate */
+
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	MOVW	R2, M(STATUS)
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+
+_icflush2:
+	MOVW	R0, 0(R8)
+	MOVW	R0, 4(R8)
+	MOVW	R0, 8(R8)
+	MOVW	R0, 12(R8)
+	MOVW	R0, 16(R8)
+	MOVW	R0, 20(R8)
+	MOVW	R0, 24(R8)
+	MOVW	R0, 28(R8)
+	ADDU	$-32, R9
+	ADDU	$1, R13
+	ADDU	$32, R8
 	BGTZ	R9, _icflush1
-	MOVW	$icflush2(SB), R2	/* make sure PC is in uncached address space */
-	OR	R3, R2
+
+	MOVW	$icflush3(SB), R2	/* Jump to uncache space */
+	MOVW	$0xA0000000, R1
+	OR	R1, R2
 	JMP	(R2)
+	NOP
 
-TEXT icflush2(SB), $-4
+TEXT icflush3(SB), $-4
+_icflush3:
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	MOVW	R11, M(STATUS)
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
 
-	MOVW	$0, M(STATUS)		/* swap back caches, de-isolate them, and stay splhi */
-	NOOP				/* +++ */
-	MOVW	R10, M(STATUS)
+	MOVW	$icflush4(SB), R2
+	JMP	(R2)
+	NOP
+
+TEXT icflush4(SB), $-4
 	RET
 
-TEXT dcflush(SB), $-4			/* dcflush(physaddr, nbytes) */
-
-	MOVW	M(STATUS), R6
+TEXT dcflush(SB), $-4
 	MOVW	0(FP), R4
 	MOVW	4(FP), R5
-	MOVW	$KSEG0, R3
-	OR	R3, R4
-	MOVW	$0, M(STATUS)
-	MOVW	$WBFLUSH, R1
-	MOVW	0(R1), R1
-	NOOP
-	MOVW	$ISC, R1
-	MOVW	R1, M(STATUS)
-_dcflush0:
-	MOVBU	R0, 0x00(R4)
-	MOVBU	R0, 0x04(R4)
-	MOVBU	R0, 0x08(R4)
-	MOVBU	R0, 0x0C(R4)
-	MOVBU	R0, 0x10(R4)
-	MOVBU	R0, 0x14(R4)
-	MOVBU	R0, 0x18(R4)
-	MOVBU	R0, 0x1C(R4)
-	MOVBU	R0, 0x20(R4)
-	MOVBU	R0, 0x24(R4)
-	MOVBU	R0, 0x28(R4)
-	MOVBU	R0, 0x2C(R4)
-	MOVBU	R0, 0x30(R4)
-	MOVBU	R0, 0x34(R4)
-	MOVBU	R0, 0x38(R4)
-	MOVBU	R0, 0x3C(R4)
-	SUB	$0x40, R5
-	ADD	$0x40, R4
-	BGTZ	R5, _dcflush0
-	MOVW	$0, M(STATUS)
-	NOOP				/* +++ */
-	MOVW	R6, M(STATUS)
+	MOVW	$dcflush0(SB), R2	/* Jump to uncache space */
+	MOVW	$0xA0000000, R1
+	OR	R1, R2
+	JMP	(R2)
+	NOP
+
+TEXT dcflush0(SB), $-4
+
+	MOVW	$833, R12		/* cache_pass magdc */
+	MOVW	$0x10000, R9		/* dcache size */
+
+	MOVW	$0, R13
+	MOVW	M(STATUS), R11
+
+	BEQ	R9, R0, _dcflush3
+	MOVW	$0x10000, R2		/* isolate data cache */
+
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	MOVW	R2, M(STATUS)
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	
+	MOVW	R4, R8
+	MOVW	R5, R9
+	AND	$0xFFFC, R8
+	MOVW	$0x9F200000, R1
+	OR	R1, R8
+
+	MOVW	$dcflush1(SB), R2
+	JMP	(R2)
+	NOP
+
+TEXT dcflush1(SB), $-4
+_dcflush1:
+	SGT	R12, R13, R1
+	BNE	R1, _dcflush2
+
+	MOVW	$0, R13
+	MOVW	R11, M(STATUS)
+	MOVW	$0x10000, R2		/* isolate data cache */
+
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	MOVW	R2, M(STATUS)
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+
+_dcflush2:
+	MOVW	R0, 0(R8)
+	MOVW	R0, 4(R8)
+	MOVW	R0, 8(R8)
+	MOVW	R0, 12(R8)
+	MOVW	R0, 16(R8)
+	MOVW	R0, 20(R8)
+	MOVW	R0, 24(R8)
+	MOVW	R0, 28(R8)
+	ADDU	$-32, R9
+	ADDU	$1, R13
+	ADDU	$32, R8
+	BGTZ	R9, _dcflush1
+
+	MOVW	$dcflush3(SB), R2	/* Jump to uncache space */
+	MOVW	$0xA0000000, R1
+	OR	R1, R2
+	JMP	(R2)
+	NOP
+
+TEXT dcflush3(SB), $-4
+_dcflush3:
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	MOVW	R11, M(STATUS)
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+
+	MOVW	$dcflush4(SB), R2
+	JMP	(R2)
+	NOP
+
+TEXT dcflush4(SB), $-4
 	RET

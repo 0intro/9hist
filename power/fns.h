@@ -7,24 +7,29 @@ ulong	confeval(char*);
 void	confread(void);
 void	confprint(void);
 void	confset(char*);
-void	duartspecial(int, IOQ*, IOQ*, int);
+int	conschar(void);
+void	dcflush(void*, ulong);
 int	duartactive(void);
 void	duartenable0(void);
 void	duartinit(void);
 void	duartintr(void);
+void	duartreset(void);
 void	duartslave(void);
+void	duartspecial(int, IOQ*, IOQ*, int);
+void	duartxmit(int);
 void	evenaddr(ulong);
 void	faultmips(Ureg*, int, int);
 ulong	fcr31(void);
 void	flushmmu(void);
-#define	flushpage(x)
+#define	flushpage(s)	icflush((void*)(s), BY2PG)
 #define	flushvirt()
 void	gettlb(int, ulong*);
 ulong	gettlbvirt(int);
 void	gotopc(ulong);
-void	icflush(void *, int);
+void	icflush(void *, ulong);
 void	ioboardinit(void);
 void	intr(Ureg*);
+void	kbdchar(int);
 void	lanceintr(void);
 void	lanceparity(void);
 void	lancesetup(Lance*);
@@ -36,6 +41,7 @@ void	novme(int);
 void	online(void);
 Block*	prepend(Block*, int);
 void	prflush(void);
+void	printslave(void);
 #define procsetup(p)	((p)->fpstate = FPinit)
 #define procsave(x,y)
 #define procrestore(x,y)
@@ -51,6 +57,8 @@ void	setvmevec(int, void (*)(int));
 void	sinit(void);
 uchar*	smap(int, uchar*);
 void	sunmap(int, uchar*);
+void	sysloginit(void);
+void	syslog(char*, int);
 void	tlbinit(void);
 Block*	tolance(Block*, int);
 void	touser(void*);

@@ -11,7 +11,7 @@ main(void)
 	print("traps inited\n");
 	kbdinit();
 	print("kbd inited\n");
-	sti();
+	spllo();
 	for(;;);
 }
 
@@ -53,4 +53,9 @@ panic(char *fmt, ...)
 	n = doprint(buf, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
 	screenputs(buf, n);
 	for(;;);
+}
+
+void
+sched(void)
+{
 }

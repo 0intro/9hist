@@ -104,7 +104,7 @@ scsiwalk(Chan *c, char *name)
 void
 scsistat(Chan *c, char *db)
 {
-	devstat(c, db, 0, 0, scsigeno);
+	devstat(c, db, 0, 0, scsigen);
 }
 
 Chan *
@@ -579,9 +579,5 @@ scsictrlintr(void)
 		default:
 			panic("scsi status 0x%2.2ux", status);
 		}
-		kprint("resetting...");
-		PUT(Own_id, ownid);
-		PUT(Cmd, Reset);
-		break;
 	}
 }

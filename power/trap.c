@@ -84,6 +84,7 @@ trap(Ureg *ur)
 	user = ur->status&KUP;
 	if(u)
 		u->p->pc = ur->pc;		/* BUG */
+
 	switch(ecode){
 	case CINT:
 		if(u && u->p->state==Running){
@@ -142,15 +143,15 @@ trap(Ureg *ur)
 		}
 	Default:
 		/*
-		 * This isn't good enough; can still deadlock because we may hold print's locks
-		 * in this processor.
+		 * This isn't good enough; can still deadlock because we may 
+		 * hold print's locks in this processor.
 		 */
 		if(user){
 			spllo();
 			if(ecode == FPEXC)
 				sprint(buf, "sys: fp: %s FCR31 %lux", fpexcname(x), x);
 			else
-				sprint(buf, "sys: trap: %s[%d]", excname[ecode], m->machno);
+				sprint(buf, "sys: %s pc=0x%lux", excname[ecode], ur->pc);
 
 			postnote(u->p, 1, buf, NDebug);
 		}else{
@@ -163,8 +164,14 @@ trap(Ureg *ur)
 			exit();
 		}
 	}
-	if(user && u->nnote)
-		notify(ur);
+
+	if(user) {
+		if(u->p->procctl)
+			procctl(u->p);
+		if(u->nnote)
+			notify(ur);
+	}
+
 	splhi();
 	if(user && u && u->p->fpstate == FPinactive) {
 		restfpregs(&u->fpsave, u->fpsave.fpstatus);
@@ -383,6 +390,13 @@ notify(Ureg *ur)
 		u->svstatus = ur->status;
 		sp = ur->usp;
 		sp -= sizeof(Ureg);
+		if(waserror()){
+			pprint("suicide: trap in notify\n");
+			pexit("Suicide", 0);
+		}
+		validaddr((ulong)u->notify, 1, 0);
+		validaddr(sp-ERRLEN-3*BY2WD, sizeof(Ureg)+ERRLEN-3*BY2WD, 0);
+		poperror();
 		u->ureg = (void*)sp;
 		memmove((Ureg*)sp, ur, sizeof(Ureg));
 		sp -= ERRLEN;
@@ -442,8 +456,9 @@ Syscall sysbind, sysbrk_, syschdir, sysclose, syscreate, sysdeath;
 Syscall	sysdup, syserrstr, sysexec, sysexits, sysfork, sysforkpgrp;
 Syscall	sysfstat, sysfwstat, sysgetpid, sysmount, sysnoted;
 Syscall	sysnotify, sysopen, syspipe, sysr1, sysread, sysremove, sysseek;
-Syscall syssleep, sysstat, syswait, syswrite, syswstat, sysalarm, syslkbrk_;
-#define LKBRK_ 12
+Syscall syssleep, sysstat, syswait, syswrite, syswstat, sysalarm, syssegbrk;
+Syscall syssegattach, syssegdetach, syssegfree, syssegflush;
+
 Syscall *systab[]={
 	[SYSR1]		sysr1,
 	[ERRSTR]	syserrstr,
@@ -457,7 +472,7 @@ Syscall *systab[]={
 	[FORK]		sysfork,
 	[FORKPGRP]	sysforkpgrp,
 	[FSTAT]		sysfstat,
-	[LKBRK_]	syslkbrk_,
+	[SEGBRK]	syssegbrk,
 	[MOUNT]		sysmount,
 	[OPEN]		sysopen,
 	[READ]		sysread,
@@ -475,6 +490,10 @@ Syscall *systab[]={
 	[FWSTAT]	sysfwstat,
 	[NOTIFY]	sysnotify,
 	[NOTED]		sysnoted,
+	[SEGATTACH]	syssegattach,
+	[SEGDETACH]	syssegdetach,
+	[SEGFREE]	syssegfree,
+	[SEGFLUSH]	syssegflush,
 };
 
 long
@@ -502,6 +521,10 @@ syscall(Ureg *aur)
 		ur->status &= ~CU1;
 	}
 	spllo();
+
+	if(u->p->procctl)
+		procctl(u->p);
+
 	r1 = ur->r1;
 	sp = ur->sp;
 	u->nerrlab = 0;
@@ -527,6 +550,10 @@ syscall(Ureg *aur)
 	}
 	ur->pc += 4;
 	u->nerrlab = 0;
+	
+	if(u->p->procctl)
+		procctl(u->p);
+
 	splhi();
 	u->p->insyscall = 0;
 	if(r1 == NOTED)	/* ugly hack */
@@ -535,6 +562,7 @@ syscall(Ureg *aur)
 		ur->r1 = ret;
 		notify(ur);
 	}
+
 	return ret;
 }
 

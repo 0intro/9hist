@@ -211,15 +211,15 @@ int
 envgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 {
 	Env *e;
-	Pgrp *pg;
+	Egrp *eg;
 	int ans;
 
-	pg = u->p->pgrp;
-	lock(pg);
-	if(s >= pg->nenv)
+	eg = u->p->egrp;
+	lock(eg);
+	if(s >= eg->nenv)
 		ans = -1;
 	else{
-		e = pg->etab[s].env;
+		e = eg->etab[s].env;
 		if(e == 0)
 			ans = 0;
 		else{
@@ -229,7 +229,7 @@ envgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 			ans = 1;
 		}
 	}
-	unlock(pg);
+	unlock(eg);
 	return ans;
 }
 
@@ -242,13 +242,13 @@ envattach(char *spec)
 Chan*
 envclone(Chan *c, Chan *nc)
 {
-	Pgrp *pg;
+	Egrp *eg;
 
 	if(!(c->qid.path&CHDIR)){
-		pg = u->p->pgrp;
-		lock(pg);
-		pg->etab[c->qid.path-1].chref++;
-		unlock(pg);
+		eg = u->p->egrp;
+		lock(eg);
+		eg->etab[c->qid.path-1].chref++;
+		unlock(eg);
 	}
 	return devclone(c, nc);
 }
@@ -256,14 +256,14 @@ envclone(Chan *c, Chan *nc)
 int
 envwalk(Chan *c, char *name)
 {
-	Pgrp *pg;
+	Egrp *eg;
 
 	if(devwalk(c, name, 0, 0, envgen)){
 		if(!(c->qid.path&CHDIR)){
-			pg = u->p->pgrp;
-			lock(pg);
-			pg->etab[c->qid.path-1].chref++;
-			unlock(pg);
+			eg = u->p->egrp;
+			lock(eg);
+			eg->etab[c->qid.path-1].chref++;
+			unlock(eg);
 			return 1;
 		}
 	}
@@ -281,17 +281,17 @@ envopen(Chan *c, int omode)
 {
 	Env *e, *ne;
 	Envp *ep;
-	Pgrp *pg;
+	Egrp *eg;
 
 	if(omode & (OWRITE|OTRUNC)){
 		if(c->qid.path & CHDIR)
 			error(Eperm);
-		pg = u->p->pgrp;
-		lock(pg);
-		ep = &pg->etab[c->qid.path-1];
+		eg = u->p->egrp;
+		lock(eg);
+		ep = &eg->etab[c->qid.path-1];
 		e = ep->env;
 		if(!e){
-			unlock(pg);
+			unlock(eg);
 			error(Egreg);
 		}
 		lock(&envalloc);
@@ -299,7 +299,7 @@ envopen(Chan *c, int omode)
 		if(waserror()){
 			unlock(e);
 			unlock(&envalloc);
-			unlock(pg);
+			unlock(eg);
 			nexterror();
 		}
 		if(e->pgref == 0)
@@ -318,7 +318,7 @@ envopen(Chan *c, int omode)
 		poperror();
 		unlock(e);
 		unlock(&envalloc);
-		unlock(pg);
+		unlock(eg);
 	}
 	c->mode = openmode(omode);
 	c->flag |= COPEN;
@@ -330,17 +330,17 @@ void
 envcreate(Chan *c, char *name, int omode, ulong perm)
 {
 	Env *e;
-	Pgrp *pg;
+	Egrp *eg;
 	int i;
 
 	if(c->qid.path != CHDIR)
 		error(Eperm);
-	pg = u->p->pgrp;
-	lock(pg);
+	eg = u->p->egrp;
+	lock(eg);
 	lock(&envalloc);
 	if(waserror()){
 		unlock(&envalloc);
-		unlock(pg);
+		unlock(eg);
 		nexterror();
 	}
 	e = envalloc.efree;
@@ -352,21 +352,21 @@ envcreate(Chan *c, char *name, int omode, ulong perm)
 	e->next = 0;
 	e->pgref = 1;
 	strncpy(e->name, name, NAMELEN);
-	if(pg->nenv == conf.npgenv){
-		for(i = 0; i<pg->nenv; i++)
-			if(pg->etab[i].chref == 0)
+	if(eg->nenv == conf.npgenv){
+		for(i = 0; i<eg->nenv; i++)
+			if(eg->etab[i].chref == 0)
 				break;
-		if(i == pg->nenv){
-			print("out of pgroup envs\n");
+		if(i == eg->nenv){
+			print("out of egroup envs\n");
 			error(Enoenv);
 		}
 	}else
-		i = pg->nenv++;
+		i = eg->nenv++;
 	c->qid.path = i+1;
-	pg->etab[i].env = e;
-	pg->etab[i].chref = 1;
+	eg->etab[i].env = e;
+	eg->etab[i].chref = 1;
 	unlock(&envalloc);
-	unlock(pg);
+	unlock(eg);
 	c->offset = 0;
 	c->mode = openmode(omode);
 	poperror();
@@ -378,22 +378,22 @@ envremove(Chan *c)
 {
 	Env *e;
 	Envp *ep;
-	Pgrp *pg;
+	Egrp *eg;
 
 	if(c->qid.path & CHDIR)
 		error(Eperm);
-	pg = u->p->pgrp;
-	lock(pg);
-	ep = &pg->etab[c->qid.path-1];
+	eg = u->p->egrp;
+	lock(eg);
+	ep = &eg->etab[c->qid.path-1];
 	e = ep->env;
 	if(!e){
-		unlock(pg);
+		unlock(eg);
 		error(Enonexist);
 	}
 	ep->env = 0;
 	ep->chref--;
 	envpgclose(e);
-	unlock(pg);
+	unlock(eg);
 }
 
 void
@@ -407,14 +407,14 @@ envwstat(Chan *c, char *db)
 void
 envclose(Chan * c)
 {
-	Pgrp *pg;
+	Egrp *eg;
 
 	if(c->qid.path & CHDIR)
 		return;
-	pg = u->p->pgrp;
-	lock(pg);
-	pg->etab[c->qid.path-1].chref--;
-	unlock(pg);
+	eg = u->p->egrp;
+	lock(eg);
+	eg->etab[c->qid.path-1].chref--;
+	unlock(eg);
 }
 
 void
@@ -441,16 +441,16 @@ envread(Chan *c, void *va, long n, ulong offset)
 	Envval *ev;
 	char *p;
 	long vn;
-	Pgrp *pg;
+	Egrp *eg;
 	char *a = va;
 
 	if(c->qid.path & CHDIR)
 		return devdirread(c, a, n, 0, 0, envgen);
-	pg = u->p->pgrp;
-	lock(pg);
-	e = pg->etab[c->qid.path-1].env;
+	eg = u->p->egrp;
+	lock(eg);
+	e = eg->etab[c->qid.path-1].env;
 	if(!e){
-		unlock(pg);
+		unlock(eg);
 		error(Eio);
 	}
 	lock(e);
@@ -463,7 +463,7 @@ envread(Chan *c, void *va, long n, ulong offset)
 	else
 		memmove(a, ev->dat+offset, n);
 	unlock(e);
-	unlock(pg);
+	unlock(eg);
 	return n;
 }
 
@@ -474,16 +474,16 @@ envwrite(Chan *c, void *va, long n, ulong offset)
 	char *p;
 	Envval *ev;
 	long vn;
-	Pgrp *pg;
+	Egrp *eg;
 	char *a = va;
 
 	if(n <= 0)
 		return 0;
-	pg = u->p->pgrp;
-	lock(pg);
-	e = pg->etab[c->qid.path-1].env; /* caller checks for CHDIR */
+	eg = u->p->egrp;
+	lock(eg);
+	e = eg->etab[c->qid.path-1].env; /* caller checks for CHDIR */
 	if(!e){
-		unlock(pg);
+		unlock(eg);
 		error(Eio);
 	}
 	lock(&envalloc);
@@ -491,7 +491,7 @@ envwrite(Chan *c, void *va, long n, ulong offset)
 	if(waserror()){
 		unlock(e);
 		unlock(&envalloc);
-		unlock(pg);
+		unlock(eg);
 		nexterror();
 	}
 	if(e->pgref>1)
@@ -506,7 +506,7 @@ envwrite(Chan *c, void *va, long n, ulong offset)
 	poperror();
 	unlock(e);
 	unlock(&envalloc);
-	unlock(pg);
+	unlock(eg);
 	return n;
 }
 
@@ -516,12 +516,12 @@ dumpenv(void)
 	Env *e;
 	Envp *ep;
 	Envval *ev;
-	Pgrp *pg;
+	Egrp *eg;
 	int i;
 	char hold;
 
-	pg = u->p->pgrp;
-	for(ep=pg->etab, i=0; i<pg->nenv; i++, ep++)
+	eg = u->p->egrp;
+	for(ep=eg->etab, i=0; i<eg->nenv; i++, ep++)
 		print("P%d(%lux %d)",i, ep->env, ep->chref);
 	for(e=envalloc.earena; e<&envalloc.earena[conf.nenv]; e++)
 		if(e->pgref){

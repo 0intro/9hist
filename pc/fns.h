@@ -1,5 +1,7 @@
 #include "../port/portfns.h"
 
+void	clock(void*);
+void	clockinit(void);
 void	delay(int);
 int	inb(int);
 void	intr0(void);
@@ -31,8 +33,6 @@ void	screeninit(void);
 void	screenputc(int);
 void	screenputs(char*, int);
 void	setvec(int, void (*)(void*), int);
-void	spllo(void);
-void	splhi(void);
 void	systrap(void);
 void	trapinit(void);
 int	tas(Lock*);

@@ -61,13 +61,15 @@ main(void)
 	tlbinit();
 	vecinit();
 	procinit0();
-	pgrpinit();
+	initseg();
+	grpinit();
 	chaninit();
 	clockinit();
 	alarminit();
 	ioboardinit();
 	chandevreset();
 	streaminit();
+	swapinit();
 	pageinit();
 	userinit();
 	launchinit();
@@ -228,6 +230,7 @@ init0(void)
 
 	sp = (ulong*)(USTKTOP - argsize);
 
+	kickpager();
 	touser(sp);
 }
 
@@ -237,14 +240,18 @@ void
 userinit(void)
 {
 	Proc *p;
-	Seg *s;
+	Segment *s;
 	User *up;
 	KMap *k;
 	int i;
 	char **av;
+	Page *pg;
 
 	p = newproc();
 	p->pgrp = newpgrp();
+	p->egrp = newegrp();
+	p->fgrp = newfgrp();
+
 	strcpy(p->text, "*init*");
 	strcpy(p->pgrp->user, "bootes");
 	savefpregs(&initfp);
@@ -269,35 +276,27 @@ userinit(void)
 	/*
 	 * User Stack, pass input arguments to boot process
 	 */
-	s = &p->seg[SSEG];
-	s->proc = p;
-	s->o = neworig(USTKTOP-BY2PG, 1, OWRPERM|OISMEM, 0);
-	s->o->pte[0].page = newpage(0, 0, USTKTOP-BY2PG);
-	memmove((ulong*)(s->o->pte[0].page->pa|KZERO|(BY2PG-argsize)), 
+	s = newseg(SG_STACK, USTKTOP-USTKSIZE, USTKSIZE/BY2PG);
+	p->seg[SSEG] = s;
+	pg = newpage(1, 0, USTKTOP-BY2PG);
+	segpage(s, pg);
+
+	memmove((ulong*)(pg->pa|KZERO|(BY2PG-argsize)), 
 		argbuf + sizeof(argbuf) - argsize, argsize);
-	av = (char **)(s->o->pte[0].page->pa|KZERO|(BY2PG-argsize));
+
+	av = (char **)(pg->pa|KZERO|(BY2PG-argsize));
 	for(i = 0; i < _argc; i++)
 		av[i] += (char *)USTKTOP - (argbuf + sizeof(argbuf));
-	s->minva = USTKTOP-BY2PG;
-	s->maxva = USTKTOP;
 
 	/*
 	 * Text
 	 */
-	s = &p->seg[TSEG];
-	s->proc = p;
-	/*
-	 * On the mips, init text must be OCACHED to avoid reusing page
-	 * and getting in trouble with the hardware instruction cache.
-	 */
-	s->o = neworig(UTZERO, 1, OCACHED|OISMEM, 0);
-	s->o->pte[0].page = newpage(0, 0, UTZERO);
-	s->o->npage = 1;
-	k = kmap(s->o->pte[0].page);
+	s = newseg(SG_TEXT, UTZERO, 1);
+	p->seg[TSEG] = s;
+	segpage(s, newpage(1, 0, UTZERO));
+	k = kmap(s->map[0]->pages[0]);
 	memmove((ulong*)VA(k), initcode, sizeof initcode);
 	kunmap(k);
-	s->minva = 0x1000;
-	s->maxva = 0x2000;
 
 	ready(p);
 }
@@ -372,13 +371,13 @@ exit(void)
 	unlock(&active);
 	spllo();
 	print("cpu %d exiting\n", m->machno);
-	while(active.machs || duartactive())
+	while(active.machs || consactive())
 		for(i=0; i<1000; i++)
 			;
 	splhi();
 	for(i=0; i<2000000; i++)
 		;
-	duartenable0();
+	duartreset();
 	firmware();
 }
 
@@ -625,14 +624,15 @@ confinit(void)
 	conf.nenv = 4 * conf.nproc;
 	conf.nenvchar = 20 * conf.nenv;
 	conf.nmtab = conf.nproc;
-	conf.norig = 4 * conf.nproc;
-	conf.nmod = 10 * conf.norig;
+	conf.nseg = 4 * conf.nproc;
+	conf.npagetab = conf.nseg*3;
+	conf.nswap = 20000;
+	conf.nimage = 200;
 	conf.nchan = 20 * conf.nproc;
 	conf.nmntdev = conf.nproc;
 	conf.nmntbuf = conf.nproc;
 	conf.nmnthdr = conf.nproc;
 	conf.nstream = 2 * conf.nproc;
-	conf.npte = 4 * conf.npage;
 	conf.nalarm = 500;
 	conf.nmount = 500;
 	conf.nsrv = 3;
@@ -645,15 +645,15 @@ confinit(void)
 	conf.ip = 64;
 	conf.arp = 32;
 	conf.frag = 32;
-	conf.cntrlp = 1;
 
 	confread();
 
 	conf.npipe = conf.nstream/2;	/* must be after confread */
 	if(conf.nmach > MAXMACH)
 		panic("confinit");
-	conf.copymode = 1;		/* copy on reference */
 
+	conf.copymode = 1;		/* copy on reference */
+	conf.cntrlp = 1;
 }
 
 /*
@@ -830,6 +830,7 @@ void
 buzz(int f, int d)
 {
 }
+
 int
 mouseputc(IOQ *q, int c)
 {

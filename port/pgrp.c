@@ -5,12 +5,25 @@
 #include	"fns.h"
 #include	"errno.h"
 
-struct{
+struct
+{
 	Lock;
 	Pgrp	*arena;
 	Pgrp	*free;
 	ulong	pgrpid;
 }pgrpalloc;
+
+struct
+{
+	Lock;
+	Egrp	*free;
+}egrpalloc;
+
+struct
+{
+	Lock;
+	Fgrp	*free;
+}fgrpalloc;
 
 struct{
 	Lock;
@@ -19,11 +32,13 @@ struct{
 }mountalloc;
 
 void
-pgrpinit(void)
+grpinit(void)
 {
 	int i;
 	Pgrp *p;
-	Mount *m;
+	Egrp *e, *ee;
+	Fgrp *f, *fe;
+	Mount *m, *em;
 
 	pgrpalloc.arena = ialloc(conf.npgrp*sizeof(Pgrp), 0);
 	pgrpalloc.free = pgrpalloc.arena;
@@ -33,14 +48,26 @@ pgrpinit(void)
 		p->index = i;
 		p->next = p+1;
 		p->mtab = ialloc(conf.nmtab*sizeof(Mtab), 0);
-		p->etab = ialloc(conf.npgenv*sizeof(Envp*), 0);
 	}
 	p[-1].next = 0;
 
-	mountalloc.free = ialloc(conf.nmount*sizeof(Mount), 0);
+	egrpalloc.free = ialloc(conf.npgrp*sizeof(Egrp), 0);
+	ee = &egrpalloc.free[conf.npgrp];
+	for(e = egrpalloc.free; e < ee; e++) {
+		e->next = e+1;
+		e->etab = ialloc(conf.npgenv*sizeof(Envp*), 0);
+	}
+	e[-1].next = 0;
 
-	m = mountalloc.free;
-	for(i=0; i<conf.nmount-1; i++,m++)
+	fgrpalloc.free = ialloc(conf.nproc*sizeof(Fgrp), 0);
+	fe = &fgrpalloc.free[conf.nproc-1];
+	for(f = fgrpalloc.free; f < fe; f++)
+		f->next = f+1;
+	f->next = 0;
+
+	mountalloc.free = ialloc(conf.nmount*sizeof(Mount), 0);
+	em = &mountalloc.free[conf.nmount-1];
+	for(m = mountalloc.free; m < em; m++)
 		m->next = m+1;
 	m->next = 0;
 }
@@ -86,25 +113,88 @@ newpgrp(void)
 {
 	Pgrp *p;
 
-loop:
-	lock(&pgrpalloc);
-	if(p = pgrpalloc.free){		/* assign = */
-		pgrpalloc.free = p->next;
-		p->ref = 1;
-		p->pgrpid = ++pgrpalloc.pgrpid;
-		p->nmtab = 0;
-		p->nenv = 0;
+	for(;;) {
+		lock(&pgrpalloc);
+		if(p = pgrpalloc.free){
+			pgrpalloc.free = p->next;
+			p->ref = 1;
+			p->pgrpid = ++pgrpalloc.pgrpid;
+			p->nmtab = 0;
+			unlock(&pgrpalloc);
+			return p;
+		}
 		unlock(&pgrpalloc);
-		return p;
+		resrcwait("no pgrps");
 	}
-	unlock(&pgrpalloc);
-	print("no pgrps\n");
+}
+
+Egrp*
+newegrp(void)
+{
+	Egrp *e;
+
+	for(;;) {
+		lock(&egrpalloc);
+		if(e = egrpalloc.free) {
+			egrpalloc.free = e->next;
+			e->ref = 1;
+			e->nenv = 0;
+			unlock(&egrpalloc);
+			return e;
+		}
+		unlock(&egrpalloc);
+		resrcwait("no envgrps");
+	}
+}
+
+Fgrp*
+newfgrp(void)
+{
+	Fgrp *f;
+
+	for(;;) {
+		lock(&fgrpalloc);
+		if(f = fgrpalloc.free) {
+			fgrpalloc.free = f->next;
+			f->ref = 1;
+			f->maxfd = 0;
+			memset(f->fd, 0, sizeof(f->fd));
+			unlock(&fgrpalloc);
+			return f;
+		}
+		unlock(&fgrpalloc);
+		resrcwait("no filegrps");
+	}
+}
+
+Fgrp*
+dupfgrp(Fgrp *f)
+{
+	Fgrp *new;
+	Chan *c;
+	int i;
+
+	new = newfgrp();
+
+	new->maxfd = f->maxfd;
+	for(i = 0; i <= f->maxfd; i++)
+		if(c = f->fd[i]){
+			incref(c);
+			new->fd[i] = c;
+		}
+
+	return new;
+}
+
+void
+resrcwait(char *reason)
+{
+	print("%s\n", reason);
 	if(u == 0)
-		panic("newpgrp");
+		panic("resched");
 	u->p->state = Wakeme;
 	alarm(1000, wakeme, u->p);
 	sched();
-	goto loop;
 }
 
 void
@@ -112,7 +202,6 @@ closepgrp(Pgrp *p)
 {
 	int i;
 	Mtab *m;
-	Envp *ep;
 
 	if(decref(p) == 0){
 		qlock(&p->debug);
@@ -123,10 +212,6 @@ closepgrp(Pgrp *p)
 				close(m->c);
 				closemount(m->mnt);
 			}
-		ep = p->etab;
-		for(i=0; i<p->nenv; i++,ep++)
-			if(ep->env)
-				envpgclose(ep->env);
 		lock(&pgrpalloc);
 		p->next = pgrpalloc.free;
 		pgrpalloc.free = p;
@@ -134,6 +219,43 @@ closepgrp(Pgrp *p)
 		unlock(&pgrpalloc);
 	}
 }
+
+void
+closeegrp(Egrp *e)
+{
+	Envp *ep;
+	int i;
+
+	if(decref(e) == 0) {
+		ep = e->etab;
+		for(i=0; i<e->nenv; i++,ep++)
+			if(ep->env)
+				envpgclose(ep->env);
+		lock(&egrpalloc);
+		e->next = egrpalloc.free;
+		egrpalloc.free = e;
+		unlock(&egrpalloc);
+	}
+}
+
+void
+closefgrp(Fgrp *f)
+{
+	int i;
+	Chan *c;
+
+	if(decref(f) == 0) {
+		for(i = 0; i <= f->maxfd; i++)
+			if(c = f->fd[i])
+				close(c);
+
+		lock(&fgrpalloc);
+		f->next = fgrpalloc.free;
+		fgrpalloc.free = f;
+		unlock(&fgrpalloc);
+	}
+}
+
 
 Mount*
 newmount(void)
@@ -182,7 +304,7 @@ closemount(Mount *m)
 }
 
 void
-envcpy(Pgrp *to, Pgrp *from)
+envcpy(Egrp *to, Egrp *from)
 {
 	Envp *ep;
 	Env *e;

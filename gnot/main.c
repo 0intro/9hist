@@ -46,13 +46,15 @@ main(void)
 	print("bank 0: %dM  bank 1: %dM\n", bank[0], bank[1]);
 	flushmmu();
 	procinit0();
-	pgrpinit();
+	initseg();
+	grpinit();
 	chaninit();
 	alarminit();
 	chandevreset();
 	streaminit();
 /*	serviceinit(); /**/
 /*	filsysinit(); /**/
+	swapinit();
 	pageinit();
 	kmapinit();
 	userinit();
@@ -89,7 +91,7 @@ mmuinit(void)
 	 * Invalidate user addresses
 	 */
 	for(l=0; l<4*1024*1024; l+=BY2PG)
-		putmmu(l, INVALIDPTE);
+		putmmu(l, INVALIDPTE, 0);
 	/*
 	 * Four meg of usable memory, with top 256K for screen
 	 */
@@ -129,6 +131,8 @@ init0(void)
 		close(c);
 	}
 	poperror();
+
+	kickpager();
 	touser();
 }
 
@@ -138,23 +142,25 @@ void
 userinit(void)
 {
 	Proc *p;
-	Seg *s;
+	Segment *s;
 	User *up;
 	KMap *k;
 
 	p = newproc();
 	p->pgrp = newpgrp();
+	p->egrp = newegrp();
+	p->fgrp = newfgrp();
+
 	strcpy(p->text, "*init*");
 	strcpy(p->pgrp->user, user);
 	p->fpstate = FPinit;
-
 	/*
 	 * Kernel Stack
 	 */
 	p->sched.pc = (ulong)init0;
 	p->sched.sp = USERADDR+BY2PG-20;	/* BUG */
 	p->sched.sr = SUPER|SPL(0);
-	p->upage = newpage(0, 0, USERADDR|(p->pid&0xFFFF));
+	p->upage = newpage(1, 0, USERADDR|(p->pid&0xFFFF));
 
 	/*
 	 * User
@@ -167,25 +173,18 @@ userinit(void)
 	/*
 	 * User Stack
 	 */
-	s = &p->seg[SSEG];
-	s->proc = p;
-	s->o = neworig(USTKTOP-BY2PG, 1, OWRPERM, 0);
-	s->minva = USTKTOP-BY2PG;
-	s->maxva = USTKTOP;
+	s = newseg(SG_STACK, USTKTOP-BY2PG, 1);
+	p->seg[SSEG] = s;
 
 	/*
 	 * Text
 	 */
-	s = &p->seg[TSEG];
-	s->proc = p;
-	s->o = neworig(UTZERO, 1, 0, 0);
-	s->o->pte[0].page = newpage(0, 0, UTZERO);
-	s->o->npage = 1;
-	k = kmap(s->o->pte[0].page);
+	s = newseg(SG_TEXT, UTZERO, 1);
+	p->seg[TSEG] = s;
+	segpage(s, newpage(1, 0, UTZERO));
+	k = kmap(s->map[0]->pages[0]);
 	memmove((ulong*)VA(k), initcode, sizeof initcode);
 	kunmap(k);
-	s->minva = UTZERO;
-	s->maxva = UTZERO+BY2PG;
 
 	ready(p);
 }
@@ -277,19 +276,19 @@ banksize(int base)
 	if(&end > (int *)((KZERO|1024L*1024L)-BY2PG))
 		return 0;
 	va = UZERO;	/* user page 1 is free to play with */
-	putmmu(va, PTEVALID|(base+0)*1024L*1024L/BY2PG);
+	putmmu(va, PTEVALID|(base+0)*1024L*1024L/BY2PG, 0);
 	*(ulong*)va = 0;	/* 0 at 0M */
-	putmmu(va, PTEVALID|(base+1)*1024L*1024L/BY2PG);
+	putmmu(va, PTEVALID|(base+1)*1024L*1024L/BY2PG, 0);
 	*(ulong*)va = 1;	/* 1 at 1M */
-	putmmu(va, PTEVALID|(base+4)*1024L*1024L/BY2PG);
+	putmmu(va, PTEVALID|(base+4)*1024L*1024L/BY2PG, 0);
 	*(ulong*)va = 4;	/* 4 at 4M */
-	putmmu(va, PTEVALID|(base+0)*1024L*1024L/BY2PG);
+	putmmu(va, PTEVALID|(base+0)*1024L*1024L/BY2PG, 0);
 	if(*(ulong*)va == 0)
 		return 16;
-	putmmu(va, PTEVALID|(base+1)*1024L*1024L/BY2PG);
+	putmmu(va, PTEVALID|(base+1)*1024L*1024L/BY2PG, 0);
 	if(*(ulong*)va == 1)
 		return 4;
-	putmmu(va, PTEVALID|(base+0)*1024L*1024L/BY2PG);
+	putmmu(va, PTEVALID|(base+0)*1024L*1024L/BY2PG, 0);
 	if(*(ulong*)va == 4)
 		return 1;
 	return 0;
@@ -314,11 +313,12 @@ confinit(void)
 	conf.maxialloc = (4*1024*1024-256*1024-BY2PG);
 	mul = 1 + (conf.npage1>0);
 	conf.nproc = 50*mul;
+	conf.nseg = conf.nproc*4;
+	conf.npagetab = conf.nseg*2;
+	conf.nswap = 4096;
+	conf.nimage = 50;
 	conf.npgrp = 20*mul;
-	conf.npte = 700*mul;
-	conf.nmod = 400*mul;
 	conf.nalarm = 1000;
-	conf.norig = 150*mul;
 	conf.nchan = 200*mul;
 	conf.nenv = 100*mul;
 	conf.nenvchar = 8000*mul;

@@ -18,18 +18,6 @@ enum
 #define	INT1ENABLE	outb(Int1ctl, Intena)
 
 /*
- *  8253 timer
- */
-enum
-{
-	Timerctl=	0x43,		/* control port */
-	Timercnt=	0x40,		/* timer count port (outb count-1) */
-	Timericnt=	0x41,		/* timer count input port */
-
-	Timerlatch=	0x40,		/* latch count into Timericnt */
-};
-
-/*
  *  8237 dma controllers
  */
 enum
@@ -46,5 +34,5 @@ enum
 	 */
 	Dma1=		0xC0,
 	Dma1status=	Dma1+2*0x8,	/* status port */
-	Dma0reset=	Dma1+2*0xD,	/* reset port */
+	Dma1reset=	Dma1+2*0xD,	/* reset port */
 };

@@ -6,227 +6,211 @@
 #include	"ureg.h"
 #include	"errno.h"
 
+#define DPRINT
+
 int
 fault(ulong addr, int read)
 {
-	ulong mmuvirt, mmuphys, n;
-	Seg *s;
-	PTE *opte, *pte, *npte;
-	Orig *o;
-	char *l;
-	Page *pg;
-	int zeroed = 0, head = 1;
-	int i, touched = 0;
-	KMap *k, *k1;
+	ulong mmuphys=0, soff;
+	Segment *s;
+	Pte **p;
+	Page **pg, *lkp, *new = 0;
+	int type;
 
 	m->pfault++;
-	s = seg(u->p, addr);
-	if(s == 0){
-		if(addr > USTKTOP)
-			return -1;
-		s = &u->p->seg[SSEG];
-		if(s->o==0 || addr<s->maxva-USTKSIZE || addr>=s->maxva)
-			return -1;
-		/* grow stack */
-		o = s->o;
-		n = o->npte;
-		if(waserror()){
-			pprint("can't allocate stack page\n");
-			return -1;
-		}
-		growpte(o, (s->maxva-addr)>>PGSHIFT);
-		poperror();
-		/* stacks grown down, sigh */
-		lock(o);
-		memmove(o->pte+(o->npte-n), o->pte, n*sizeof(PTE));
-		memset(o->pte, 0, (o->npte-n)*sizeof(PTE));
-		unlock(o);
-		s->minva = addr;
-		o->va = addr;
-	}else
-		o = s->o;
-	if(!read && (o->flag&OWRPERM)==0)
+again:
+	s = seg(u->p, addr, 1);
+	if(s == 0)
 		return -1;
-	lock(o);
-	opte = &o->pte[(addr-o->va)>>PGSHIFT];
-	pte = opte;
-	if(s->mod){
-		while(pte = pte->nextmod)	/* assign = */
-			if(pte->proc == u->p){
-				if(pte->page==0 || pte->page->va!=addr)
-					panic("bad page %lux", pte->page);
-				head = 0;
-				break;
-			}
-		if(pte == 0)
-			pte = opte;
-	}
-	if(pte->page == 0){
-		touched = 1;
-		if(o->chan==0 || addr>(o->va+(o->maxca-o->minca))){
-			/* Make a new bss or lock segment page */
-			if(s - u->p->seg == LSEG) {
-				pte->page = lkpage(o, addr);
-				if(pte->page == 0) {
-					unlock(o);
-					return -1;
-				}
-			}
-			else
-				pte->page = newpage(0, o, addr);
-			zeroed = 1;
-			o->npage++;
-		}else{
-			/*
-			 * Demand load.  Release o because it could take a while.
-			 */
-			unlock(o);
-			n = (o->va+(o->maxca-o->minca)) - addr;
-			if(n > BY2PG)
-				n = BY2PG;
-			pg = newpage(1, o, addr);
-			k = kmap(pg);
-			qlock(&o->chan->rdl);
-			if(waserror()){
-				kunmap(k);
-				qunlock(&o->chan->rdl);
-				pg->o = 0;
-				pg->ref--;
-				pexit("demand load i/o error", 0);
-			}
-			l = (char*)VA(k);
-			if((*devtab[o->chan->type].read)(o->chan, l, n, (addr-o->va) + o->minca) != n)
-				error(Eioload);
-			flushpage(pg->pa);
-			qunlock(&o->chan->rdl);
-			if(n<BY2PG)
-				memset(l+n, 0, BY2PG-n);
-			lock(o);
-			kunmap(k);
-			poperror();
-			opte = &o->pte[(addr-s->minva)>>PGSHIFT];	/* could move */
-			pte = opte;
-			if(pte->page == 0){
-				pte->page = pg;
-				o->npage++;
-			}else{		/* someone beat us to it */
-				pg->o = 0;
-				pg->ref--;
-			}
-		}
+
+	if(!read && (s->type&SG_RONLY)) {
+		qunlock(&s->lk);
+		return -1;
 	}
 
-	if(o->flag&OSHARED) {
-		/* BUG: Does not cover enough flag options to shared data */
-		mmuphys = PTERONLY;
-		if(o->flag & OWRPERM)
-			mmuphys = PTEWRITE;
-	}
-	else if((o->flag&OWRPERM) && (conf.copymode || !read)
-	&& ((head && ((o->flag&OPURE) || o->nproc>1))
-	    || (!head && pte->page->ref>1))){
-		/*
-		 * Copy on reference (conf.copymode==1) or write (conf.copymode==0)
-		 */
+	addr &= ~(BY2PG-1);
+	soff = addr-s->base;
+	p = &s->map[soff/PTEMAPMEM];
+	if(*p == 0) 
+		*p = ptealloc();
 
-		if(!(o->flag&OISMEM))
-			panic("copy on ref/wr to non memory");
-		touched = 1;
-		/*
-		 * Look for the easy way out: are we the last non-modified?
-		 */
-		if(head && !(o->flag&OPURE)){
-			npte = opte;
-			for(i=0; npte; i++)
-				npte = npte->nextmod;
-			if(i == o->nproc)
-				goto easy;
+	pg = &(*p)->pages[(soff&(PTEMAPMEM-1))/BY2PG];
+	type = s->type&SG_TYPE;
+
+	switch(type) {
+	case SG_TEXT:
+		if(pagedout(*pg)) 		/* No data - must demand load */
+			pio(s, addr, soff, pg);
+		
+		mmuphys = PPN((*pg)->pa) | PTERONLY|PTEVALID;
+		(*pg)->modref = PG_REF;
+		break;
+	case SG_SHARED:
+	case SG_BSS:
+	case SG_STACK:	
+			/* Zero fill on demand */
+		if(*pg == 0) {			
+			if(new == 0 && (new = newpage(1, &s, addr)) && s == 0)
+				goto again;
+			*pg = new;
+			new = 0;
 		}
-		if(head){
-			/*
-			 * Add to mod list
-			 */
-			pte = newmod(o);
-			pte->proc = u->p;
-			pte->page = opte->page;
-			pte->page->ref++;
-			o->npage++;
-			/*
-			 * Link into opte mod list (same va)
-			 */
-			pte->nextmod = opte->nextmod;
-			opte->nextmod = pte;
-			/*
-			 * Link into proc mod list (increasing va)
-			 */
-			npte = s->mod;
-			if(npte == 0){
-				s->mod = pte;
-				pte->nextva = 0;
-			}else{
-				while(npte->nextva && npte->nextva->page->va<addr)
-					npte = npte->nextva;
-				pte->nextva = npte->nextva;
-				npte->nextva = pte;
-			}
-			head = 0;
-		}
-		pg = pte->page;
-		/* when creating pages in the bss which are zfod we create a double
-		 * increment on the mod list which must be removed
-		 */
-		if(zeroed){
-			pg->ref--;
-			o->npage--;
-			opte->page = 0;
-		}else{		/* copy page */
-			pte->page = newpage(1, o, addr);
-			k = kmap(pte->page);
-			k1 = kmap(pg);
-			memmove((void*)VA(k), (void*)VA(k1), BY2PG);
-			kunmap(k);
-			kunmap(k1);
-			if(pg->ref <= 1)
-				panic("pg->ref <= 1");
-			pg->ref--;
+						/* NO break */
+	case SG_DATA:
+		if(pagedout(*pg))
+			pio(s, addr, soff, pg);
+
+		if(type == SG_SHARED)
+			goto done;
+
+		if(read && conf.copymode == 0) {
+			mmuphys = PPN((*pg)->pa) | PTERONLY|PTEVALID;
+			(*pg)->modref |= PG_REF;
+			break;
 		}
 
-    easy:
-		mmuphys = PTEWRITE;
-	}else{
-		mmuphys = PTERONLY;
-		if(o->flag & OWRPERM)
-			if(o->flag & OPURE){
-				if(!head && pte->page->ref==1)
-					mmuphys = PTEWRITE;
-			}else
-				if((head && o->nproc==1)
-	  			  || (!head && pte->page->ref==1))
-					mmuphys = PTEWRITE;
+		lkp = *pg;
+		lockpage(lkp);
+		if(lkp->ref > 1) {
+			unlockpage(lkp);
+			if(new == 0 && (new = newpage(0, &s, addr)) && s == 0)
+				goto again;
+			*pg = new;
+			new = 0;
+			copypage(lkp, *pg);
+			putpage(lkp);
+		}
+		else {
+			/* put a duplicate of a text page back onto the free list */
+			if(lkp->image)     
+				duppage(lkp);	
+		
+			unlockpage(lkp);
+		}
+	done:
+		mmuphys = PPN((*pg)->pa) | PTEWRITE|PTEVALID;
+		(*pg)->modref = PG_MOD|PG_REF;
+		break;
+	case SG_PHYSICAL:
+		if(*pg == 0)
+			*pg = (*s->pgalloc)(addr);
+
+		mmuphys = PPN((*pg)->pa) | PTEWRITE|PTEUNCACHED|PTEVALID;
+		(*pg)->modref = PG_MOD|PG_REF;
+		break;
+	default:
+		panic("fault");
 	}
-	mmuvirt = addr;
 
-	/* Non memory is always uncached */
-	if(o->flag&OISMEM) {
-		mmuphys |= PPN(pte->page->pa) | PTEVALID;
-		usepage(pte->page, 1);
-	}else
-		mmuphys |= PPN(pte->page->pa) | PTEVALID | PTEUNCACHED;
+	qunlock(&s->lk);
+	if(new)
+		putpage(new);
 
-	if(pte->page->va != addr)
-		panic("wrong addr in tail %lux %lux", pte->page->va, addr);
-	if(pte->proc && pte->proc != u->p){
-		print("wrong proc in tail %d %s\n", head, u->p->text);
-		print("u->p %lux pte->proc %lux\n", u->p, pte->proc);
-		panic("addr %lux seg %d wrong proc in tail", addr, s-u->p->seg);
-	}
-
-	unlock(o);
-	if(touched == 0)
-		m->tlbfault++;
-
-	putmmu(mmuvirt, mmuphys);
+	putmmu(addr, mmuphys, *pg);
 	return 0;
+}
+
+void
+pio(Segment *s, ulong addr, ulong soff, Page **p)
+{
+	Page *new;
+	KMap *k;
+	Chan *c;
+	int n, ask;
+	char *kaddr;
+	ulong daddr;
+	Page *loadrec;
+
+	loadrec = *p;
+	if(loadrec == 0) {
+		daddr = s->fstart+soff;			/* Compute disc address */
+		new = lookpage(s->image, daddr);
+	}
+	else {
+		daddr = swapaddr(loadrec);
+		new = lookpage(&swapimage, daddr);
+		if(new)
+			putswap(loadrec);
+	}
+
+	if(new) {			/* Page found from cache */
+		*p = new;
+		return;
+	}
+
+	qunlock(&s->lk);
+
+	new = newpage(0, 0, addr);
+	k = kmap(new);
+	kaddr = (char*)VA(k);
+	
+	if(loadrec == 0) {			/* This is demand load */
+		c = s->image->c;
+		qlock(&c->rdl);
+		if(waserror()) {
+			qunlock(&c->rdl);
+			kunmap(k);
+			putpage(new);
+			qlock(&s->lk);
+			qunlock(&s->lk);
+			pexit("demand load I/O error", 0);
+		}
+
+		ask = s->flen-soff;
+		if(ask > BY2PG)
+			ask = BY2PG;
+		n = (*devtab[c->type].read)(c, kaddr, ask, daddr);
+		if(n != ask)
+			error(Eioload);
+		if(ask < BY2PG)
+			memset(kaddr+ask, 0, BY2PG-ask);
+
+		if((s->type&SG_TYPE) == SG_TEXT)
+			memset(new->cachectl, PG_TXTFLUSH, sizeof(new->cachectl));
+
+		poperror();
+		kunmap(k);
+		qunlock(&c->rdl);
+		qlock(&s->lk);
+		if(*p == 0) { 			/* Someone may have got there first */
+			new->daddr = daddr;
+			cachepage(new, s->image);
+			*p = new;
+		}
+		else 
+			putpage(new);
+	}
+	else {					/* This is paged out */
+		c = swapimage.c;
+		qlock(&c->rdl);
+
+		if(waserror()) {
+			qunlock(&c->rdl);
+			kunmap(k);
+			putpage(new);
+			qlock(&s->lk);
+			qunlock(&s->lk);
+			pexit("page in I/O error", 0);
+		}
+
+		n = (*devtab[c->type].read)(c, kaddr, BY2PG, daddr);
+		if(n != BY2PG)
+			error(Eioload);
+
+		poperror();
+		kunmap(k);
+		qunlock(&c->rdl);
+		qlock(&s->lk);
+
+		if(pagedout(*p)) {
+			new->daddr = daddr;
+			cachepage(new, &swapimage);
+			putswap(*p);
+			*p = new;
+		}
+		else
+			putpage(new);
+	}
 }
 
 /*
@@ -235,36 +219,35 @@ fault(ulong addr, int read)
 void
 validaddr(ulong addr, ulong len, int write)
 {
-	Seg *s, *ns;
+	Segment *s;
 
-	if((long)len < 0){
-    Err:
-		pprint("invalid address %lux in sys call pc %lux sp %lux\n", 
+	if((long)len >= 0) {
+		for(;;) {
+			s = seg(u->p, addr, 0);
+			if(s == 0 || (write && (s->type&SG_RONLY)))
+				break;
+
+			if(addr+len > s->top) {
+				len -= s->top - addr;
+				addr = s->top;
+				continue;
+			}
+			return;
+		}
+	}
+
+	pprint("invalid address %lux in sys call pc %lux sp %lux\n", 
 			addr, ((Ureg*)UREGADDR)->pc, ((Ureg*)UREGADDR)->sp);
-		postnote(u->p, 1, "sys: bad address", NDebug);
-		error(Ebadarg);
-	}
-    Again:
-	s = seg(u->p, addr);
-	if(s==0){
-		s = &u->p->seg[SSEG];
-		if(s->o==0 || addr<s->maxva-USTKSIZE || addr>=s->maxva)
-			goto Err;
-	}
-	if(write && (s->o->flag&OWRPERM)==0)
-		goto Err;
-	if(addr+len > s->maxva){
-		len -= s->maxva - addr;
-		addr = s->maxva;
-		goto Again;
-	}
-}
 
+	postnote(u->p, 1, "sys: bad address", NDebug);
+	error(Ebadarg);
+}
+  
 /*
  * &s[0] is known to be a valid address.
  */
 void*
-vmemchr(void *s, int c, ulong n)
+vmemchr(void *s, int c, int n)
 {
 	int m;
 	char *t;
@@ -272,32 +255,37 @@ vmemchr(void *s, int c, ulong n)
 
 	a = (ulong)s;
 	m = BY2PG - (a & (BY2PG-1));
-	while(n){
-		if(n < m)
-			m = n;
-		t = memchr(s, c, m);
+	if(m < n){
+		t = vmemchr(s, c, m);
 		if(t)
 			return t;
-		if(n == m)
-			return 0;
 		if(!(a & KZERO))
 			validaddr(a+m, 1, 0);
-		n -= m;
-		a += m;
-		m = BY2PG;
+		return vmemchr((void*)(a+m), c, n-m);
 	}
-	return 0;
+	/*
+	 * All in one page
+	 */
+	return memchr(s, c, n);
 }
 
-Seg*
-seg(Proc *p, ulong addr)
+Segment*
+seg(Proc *p, ulong addr, int dolock)
 {
-	Seg *s, *et;
+	Segment **s, **et, *n;
 
 	et = &p->seg[NSEG];
-	for(s=p->seg; s < et; s++)
-		if(s->o && s->minva<=addr && addr<s->maxva)
-			return s;
+	for(s = p->seg; s < et; s++)
+		if(n = *s)
+		if(addr >= n->base && addr < n->top) {
+			if(dolock == 0)
+				return n;
+
+			qlock(&n->lk);
+			if(addr >= n->base && addr < n->top)
+				return n;
+			qunlock(&n->lk);
+		}
 
 	return 0;
 }

@@ -12,12 +12,13 @@ int
 dupgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 {
 	char buf[8];
+	Fgrp *fgrp = u->p->fgrp;
 	Chan *f;
 	static int perm[] = { 0400, 0200, 0600, 0 };
 
 	if(s >= NFD)
 		return -1;
-	if((f=u->fd[s]) == 0)
+	if((f=fgrp->fd[s]) == 0)
 		return 0;
 	sprint(buf, "%ld", s);
 	devdir(c, (Qid){s, 0}, buf, 0, perm[f->mode&3], dp);
@@ -72,7 +73,7 @@ dupopen(Chan *c, int omode)
 		return c;
 	}
 	fdtochan(c->qid.path, openmode(omode));	/* error check only */
-	f = u->fd[c->qid.path];
+	f = u->p->fgrp->fd[c->qid.path];
 	close(c);
 	incref(f);
 	if(omode & OCEXEC)

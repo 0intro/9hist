@@ -73,14 +73,17 @@ fault68020(Ureg *ur, FFrame *f)
 			panic("prefetch pagefault");
 	}else
 		panic("prefetch format");
+
 	addr &= VAMASK;
 	badvaddr = addr;
 	addr &= ~(BY2PG-1);
 	user = !(ur->sr&SUPER);
+
 	if(f->ssw & DF)
 		read = (f->ssw&READ) && !(f->ssw&RM);
 	else
 		read = f->ssw&(FB|FC);
+
 /* print("fault pc=%lux addr=%lux read %d\n", ur->pc, badvaddr, read); /**/
 
 	if(fault(addr, read) < 0){

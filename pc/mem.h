@@ -17,15 +17,15 @@
 #define	MAXMACH		1			/* max # cpus system can run */
 
 /*
- * Time (???)
- * Clock frequency is 68.3900 HZ
+ * Time
+ * Clock frequency is ??? HZ
  */
 
-#define	HZ		(68)			/* clock frequency */
-#define	MS2HZ		(1000/HZ)		/* millisec per clock tick */
-#define	TK2SEC(t)	((t)*100/6839)		/* ticks to seconds */
-#define	TK2MS(t)	((((ulong)(t))*100000)/6839)	/* ticks to milliseconds */
-#define	MS2TK(t)	((((ulong)(t))*6839)/100000)	/* milliseconds to ticks */
+#define	HZ		(18)			/* clock frequency */
+#define	MS2HZ		(54)			/* millisec per clock tick */
+#define	TK2SEC(t)	((t)*10/185)		/* ticks to seconds */
+#define	TK2MS(t)	((((ulong)(t))*10000)/185)	/* ticks to milliseconds */
+#define	MS2TK(t)	((((ulong)(t))*185)/10000)	/* milliseconds to ticks */
 
 /*
  * Fundamental addresses

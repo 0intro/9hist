@@ -305,3 +305,9 @@ TEXT	spllo(SB),$0
 TEXT	splhi(SB),$0
 	CLI
 	RET
+
+/*
+ *  set interrupt level
+ */
+TEXT	splx(SB),$0
+	RET
