@@ -366,7 +366,7 @@ enum {						/* 3C90x extended register set */
 	updnLastFrag		= 0x80000000,	/* (dpd->len) */
 
 	Nup			= 32,
-	Ndn			= 32,
+	Ndn			= 64,
 };
 
 /*
@@ -694,24 +694,19 @@ static void
 txstart905(Ether* ether)
 {
 	Ctlr *ctlr;
-	int dnlistptr, port;
+	int port, stalled, timeo;
 	Block *bp;
 	Pd *pd;
 
 	ctlr = ether->ctlr;
 	port = ether->port;
 
-	COMMAND(port, Stall, dnStall);
-	while(STATUS(port) & commandInProgress)
-		;
-
 	/*
 	 * Free any completed packets.
 	 */
-	dnlistptr = inl(port+DnListPtr);
 	pd = ctlr->dntail;
 	while(ctlr->dnq){
-		if(PADDR(&pd->np) == dnlistptr)
+		if(PADDR(&pd->np) == inl(port+DnListPtr))
 			break;
 		if(pd->bp){
 			freeb(pd->bp);
@@ -722,6 +717,7 @@ txstart905(Ether* ether)
 	}
 	ctlr->dntail = pd;
 
+	stalled = 0;
 	while(ctlr->dnq < (ctlr->ndn-1)){
 		bp = qget(ether->oq);
 		if(bp == nil)
@@ -734,11 +730,20 @@ txstart905(Ether* ether)
 		pd->len = updnLastFrag|BLEN(bp);
 		pd->bp = bp;
 
-		if(ctlr->dnq == 0)
-			ctlr->dntail = pd;
+		if(stalled == 0 && ctlr->dnq && inl(port+DnListPtr)){
+			COMMAND(port, Stall, dnStall);
+			for(timeo = 100; (STATUS(port) & commandInProgress) && timeo; timeo--)
+				;
+			if(timeo == 0)
+				print("#l%d: dnstall %d\n", ether->ctlrno, timeo);
+			stalled = 1;
+		}
+
 		ctlr->dnhead->np = PADDR(&pd->np);
 		ctlr->dnhead->control &= ~dnIndicate;
 		ctlr->dnhead = pd;
+		if(ctlr->dnq == 0)
+			ctlr->dntail = pd;
 		ctlr->dnq++;
 
 		ctlr->dnqueued++;
@@ -751,10 +756,10 @@ txstart905(Ether* ether)
 	 * If the adapter is not currently processing anything
 	 * and there is something on the queue, start it processing.
 	 */
-	if(dnlistptr == 0 && ctlr->dnq)
+	if(inl(port+DnListPtr) == 0 && ctlr->dnq)
 		outl(port+DnListPtr, PADDR(&ctlr->dnhead->np));
-
-	COMMAND(port, Stall, dnUnStall);
+	if(stalled)
+		COMMAND(port, Stall, dnUnStall);
 }
 
 static void
@@ -1030,7 +1035,12 @@ interrupt(Ureg*, void* arg)
 				COMMAND(port, SetTxStartThresh, ctlr->txthreshold>>ctlr->ts);
 				if(ctlr->busmaster == 2)
 					outl(port+TxFreeThresh, HOWMANY(ETHERMAXTU, 256));
+				if(ctlr->dnenabled)
+					status |= dnComplete;
 			}
+
+			print("#l%d: txstatus 0x%uX, threshold %d\n",
+			    	ether->ctlrno, s, ctlr->txthreshold);
 			COMMAND(port, TxEnable, 0);
 			ether->oerrs++;
 			status &= ~txComplete;
@@ -1739,8 +1749,6 @@ etherelnk3reset(Ether* ether)
 	ctlr->txthreshold = ETHERMAXTU/2;
 	COMMAND(port, SetTxStartThresh, ctlr->txthreshold>>ctlr->ts);
 	COMMAND(port, SetRxEarlyThresh, rxearly>>ctlr->ts);
-
-COMMAND(port, AcknowledgeInterrupt, interruptLatch);
 
 	iunlock(&ctlr->wlock);
 
