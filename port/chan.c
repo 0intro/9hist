@@ -799,7 +799,7 @@ walk(Chan **cp, char **names, int nnames, int nomount)
 		} else {
 			nc = nil;
 			if(!nomount)
-				for(i=0; i<wq->nqid && i<nnames-1; i++)
+				for(i=0; i<wq->nqid && i<ntry-1; i++)
 					if(findmount(&nc, &nmh, type, dev, wq->qid[i]))
 						break;
 			if(nc == nil){	/* no mount points along path */
