@@ -37,14 +37,14 @@ enum
 	Addrlen=	16,		// must be long enough of IP addr and ether addr
 };
 
-Dirtab bridgedirtab[]={
+static Dirtab bridgedirtab[]={
 	"ctl",		{Qbctl},	0,	0666,
 	"stats",	{Qstats},	0,	0444,
 	"cache",	{Qcache},	0,	0444,
 	"log",		{Qlog},		0,	0666,
 };
 
-Dirtab portdirtab[]={
+static Dirtab portdirtab[]={
 	"ctl",		{Qpctl},	0,	0666,
 	"local",	{Qlocal},	0,	0444,
 	"status",	{Qstatus},	0,	0444,

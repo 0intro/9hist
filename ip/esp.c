@@ -301,7 +301,7 @@ espkick(Conv *c, int)
 
 	qunlock(c);
 //print("esp: pass down: %uld\n", BLEN(bp));
-	ipoput(c->p->f, bp, 0, c->ttl);
+	ipoput(c->p->f, bp, 0, c->ttl, c->tos);
 }
 
 void
