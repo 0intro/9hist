@@ -1,12 +1,12 @@
 typedef struct	Duart	Duart;
 
-#define	SYNCREG		((char*)0x40400000)
 #define	DISPLAYRAM	0x1E800000
 #define	EPROM		0xF6000000
 #define	CLOCK		0xF3000000
 #define	CLOCKFREQ	1000000		/* one microsecond increments */
-#define	DUARTREG	((Duart*)0x40100000)
-#define	PORT		((uchar *)0x40300000)
+#define	KMDUART		0xF0000000	/* keyboard A, mouse B */
+#define	ETHER		0xF8C00000	/* RDP, RAP */
+#define	EEPROM		0xF2000000
 
 #define	ENAB		0x40000000	/* ASI 2, System Enable Register */
 #define	ENABCACHE	0x10

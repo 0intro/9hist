@@ -40,6 +40,8 @@ Chan	*domount(Chan*);
 void	duartbaud(int);
 void	duartbreak(int);
 void	duartdtr(int);
+void	duartinit(void);
+void	duartintr(void);
 int	duartinputport(void);
 void	duartstartrs232o(void);
 void	duartstarttimer(void);
@@ -100,6 +102,8 @@ KMap	*kmappa(ulong, ulong);
 int	kprint(char*, ...);
 void	kproc(char*, void(*)(void*), void*);
 void	kunmap(KMap*);
+void	lanceintr(void);
+void	lancesetup(Lance*);
 void	lock(Lock*);
 void	lockinit(void);
 Orig	*lookorig(ulong, ulong, int, Chan*);
@@ -108,6 +112,7 @@ void	mapstack(Proc*);
 void	mmuinit(void);
 int	mount(Chan*, Chan*, int);
 void	mousebuttons(int);
+void	mousechar(int);
 void	mouseclock(void);
 Chan	*namec(char*, int, int, ulong);
 void	nexterror(void);
@@ -121,6 +126,10 @@ Pgrp	*newpgrp(void);
 Proc	*newproc(void);
 void	newqinfo(Qinfo*);
 char	*nextelem(char*, char*);
+int	nonetcksum(Block*, int);
+void	nonetfreeifc(Noifc*);
+Noifc*	nonetnewifc(Queue*, Stream*, int, int, int, void (*)(Noconv*, char*));
+void	nonetrcvmsg(Noconv*, Block*);
 void	notify(Ureg*);
 void	nullput(Queue*, Block*);
 int	openmode(ulong);
@@ -142,9 +151,11 @@ void	procsave(uchar*, int);
 void	procsetup(Proc*);
 Proc	*proctab(int);
 Queue	*pushq(Stream*, Qinfo*);
+int	putb(Blist*, Block*);
 void	putb2(ulong, int);
 void	putbq(Blist*, Block*);
 void	putcontext(int);
+void	putcxreg(int);
 void	putcxsegm(int, ulong, int);
 void	putmmu(ulong, ulong);
 void	putpmeg(ulong, ulong);
@@ -222,3 +233,5 @@ Chan	*walk(Chan*, char*, int);
 #define	poperror()	u->nerrlab--
 
 #define USED(x) if(x)
+#define SET(x) x = 0
+#define	wbflush()	/* mips compatibility */

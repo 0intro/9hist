@@ -37,6 +37,7 @@ static void	sendctlmsg(Noconv*, int, int);
 static void	sendmsg(Noconv*, Nomsg*);
 static void	startconv(Noconv*, int, char*, int);
 static void	queueack(Noconv*, int);
+static void	sendack(Noconv*, int);
 
 static void	nonetiput(Queue*, Block*);
 static void	nonetoput(Queue*, Block*);
@@ -704,7 +705,9 @@ connect(Chan *c, char *addr)
 		cp->hdr->flag |= NO_SERVICE;
 		sprint(buf, "%s %s", service, u->p->pgrp->user);
 		c->qid.path = STREAMQID(STREAMID(c->qid.path), Sdataqid);
+		print("sending request\n");
 		streamwrite(c, buf, strlen(buf), 1);
+		print("request sent\n");
 		c->qid.path = STREAMQID(STREAMID(c->qid.path), Sctlqid);
 	}
 }
@@ -781,6 +784,7 @@ listen(Chan *c, Noifc *ifc)
 		 *  stuff the connect message into it
 		 */
 		f = ((Nohdr *)(call.msg->rptr))->flag;
+		print("call from %d %s\n", call.circuit, call.raddr);
 		startconv(cp, call.circuit, call.raddr, Cconnecting);
 		print("rcving %d byte message\n", call.msg->wptr - call.msg->rptr);
 		nonetrcvmsg(cp, call.msg);
@@ -1013,6 +1017,19 @@ sendctlmsg(Noconv *cp, int flag, int new)
 }
 
 /*
+ *  send an acknowledgement
+ */
+static void
+sendack(Noconv *cp, int ack)
+{
+	cp->ackmsg.len = 0;
+	cp->ackmsg.first = 0;
+	cp->ackmsg.acked = ack;
+	cp->ackmsg.mid = cp->lastacked;
+	sendmsg(cp, &cp->ctl);
+}
+
+/*
  *  receive a message (called by the multiplexor; noetheriput, nofddiiput, ...)
  */
 void
@@ -1058,7 +1075,7 @@ nonetrcvmsg(Noconv *cp, Block *bp)
 				hangup(cp);
 		} else {
 			if(r>0)
-				queueack(cp, h->mid);
+				sendack(cp, h->mid);
 			cp->bad++;
 		}
 		freeb(bp);

@@ -51,13 +51,14 @@ enum{
 	Enobitstore,	/* out of bitmap storage */
 	Ebadbitmap,	/* unallocated bitmap */
 	Ebadfont,	/* unallocated font */
+	Enofont,	/* out of font descriptors */
 	Eshortmsg,	/* short message */
 	Ebadmsg,	/* format error or mismatch in message */
 	Ebadcnt,	/* read count greater than requested */
-	Enofont,	/* out of font descriptors */
 	Enovmem,	/* virtual memory allocation failed */
 	Enoasync,	/* out of async stream modules */
 	Enopipe,	/* out of pipes */
 	Enofilsys,	/* out of filsys resources */
+	Enoannounce,	/* listening on an unannounced network connection */
 	Egreg,		/* ken has implemented datakit */
 };

@@ -151,7 +151,6 @@ noetheriput(Queue *q, Block *bp)
 	 */
 	ep = &ifc->conv[conf.nnoconv];
 	for(cp = &ifc->conv[0]; cp < ep; cp++){
-		DPRINT("checking %d %.2ux %.2ux %.2ux %.2ux %.2ux %.2ux\n", cp->rcvcircuit, ph->d[0], ph->d[1], ph->d[2], ph->d[3], ph->d[4], ph->d[5]);
 		if(circuit==cp->rcvcircuit && canqlock(cp)){
 			ph = (Etherhdr *)(cp->media->rptr);
 			if(circuit == cp->rcvcircuit

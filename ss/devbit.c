@@ -49,15 +49,15 @@ extern	GBitmap	gscreen;
 
 struct{
 	/*
-	 * First three fields are known in l.s
+	 * First four fields are known in screen.c
 	 */
 	int	dx;		/* interrupt-time delta */
 	int	dy;
 	int	track;		/* update cursor on screen */
 	Mouse;
 	int	changed;	/* mouse structure changed since last read */
-	int	newbuttons;	/* interrupt time access only */
 	Rendez	r;
+	int	newbuttons;	/* interrupt time access only */
 }mouse;
 
 Cursor	arrow =
@@ -139,9 +139,6 @@ bitreset(void)
 	int i;
 	GBitmap *bp;
 
-print("warning: mouse set\n");
-mouse.xy.x = 50;
-mouse.xy.y = 50;
 	bit.map = ialloc(conf.nbitmap * sizeof(GBitmap), 0);
 	for(i=0,bp=bit.map; i<conf.nbitmap; i++,bp++){
 		bp->ldepth = -1;
@@ -186,6 +183,7 @@ bitclone(Chan *c, Chan *nc)
 	nc = devclone(c, nc);
 	if(c->qid.path != CHDIR)
 		incref(&bit);
+	return nc;
 }
 
 int
@@ -912,7 +910,7 @@ bitwrite(Chan *c, void *va, long n)
 				d = *dst;
 				rect = rcanon(rect);
 				if(rectclip(&d.r, rect)==0)
-					return;
+					break;
 				/*
 				 * Find x, maxx such that
 				 * x <= rect.min.x < x+tw,
@@ -1084,13 +1082,9 @@ cursoron(int dolock)
 	if(dolock)
 		lock(&cursor);
 	if(cursor.visible++ == 0){
-print("mouse %d %d\n", mouse.xy.x, mouse.xy.y);
 		cursor.r.min = mouse.xy;
-print("cursor.r %d %d\n", mouse.xy.x, mouse.xy.y);
 		cursor.r.max = add(mouse.xy, Pt(16, 16));
-print("cursor.r %d %d %d %d\n", cursor.r.min.x, cursor.r.min.y, cursor.r.max.x, cursor.r.max.y);
 		cursor.r = raddp(cursor.r, cursor.offset);
-print("cursor.r %d %d %d %d\n", cursor.r.min.x, cursor.r.min.y, cursor.r.max.x, cursor.r.max.y);
 		gbitblt(&cursorback, Pt(0, 0), &gscreen, cursor.r, S);
 		gbitblt(&gscreen, add(mouse.xy, cursor.offset),
 			&clr, Rect(0, 0, 16, 16), D&~S);
@@ -1126,7 +1120,7 @@ mousebuttons(int b)	/* called spl5 */
 }
 
 void
-mouseclock(void)	/* called spl6 */
+mouseclock(void)	/* called splhi */
 {
 	int x, y;
 	if(mouse.track && canlock(&cursor)){
@@ -1150,6 +1144,27 @@ mouseclock(void)	/* called spl6 */
 		mouse.changed = 1;
 		unlock(&cursor);
 		wakeup(&mouse.r);
+	}
+}
+
+void
+mousechar(int c)
+{
+	static short msg[5];
+	static int nb;
+
+	if((c&0xF0) == 0x80)
+		nb=0;
+	msg[nb] = c;
+	if(c & 0x80)
+		msg[nb] |= 0xFF00;	/* sign extend */
+	if(++nb == 5){
+		mouse.newbuttons = (msg[0]&7)^7;
+		mouse.dx = msg[1]+msg[3];
+		mouse.dy = -(msg[2]+msg[4]);
+		mouse.track = 1;
+		mouseclock();
+		nb = 0;
 	}
 }
 

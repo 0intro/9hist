@@ -20,11 +20,11 @@ struct{
 	int	bwid;
 }out;
 
-void	duartinit(void);
 int	duartacr;
 int	duartimr;
 
 void	(*kprofp)(ulong);
+void	kbdstate(int);
 
 GBitmap	gscreen =
 {
@@ -39,7 +39,6 @@ GBitmap	gscreen =
 void
 screeninit(void)
 {
-/*	duartinit(); /**/
 	defont = &defont0;
 	gbitblt(&gscreen, Pt(0, 0), &gscreen, gscreen.r, 0);
 	out.pos.x = MINX;
@@ -80,323 +79,433 @@ screenputc(int c)
 }
 
 /*
- * Register set for half the duart.  There are really two sets.
+ *  Driver for the Z8530.
  */
-struct Duart{
-	uchar	mr1_2;		/* Mode Register Channels 1 & 2 */
-	uchar	sr_csr;		/* Status Register/Clock Select Register */
-	uchar	cmnd;		/* Command Register */
-	uchar	data;		/* RX Holding / TX Holding Register */
-	uchar	ipc_acr;	/* Input Port Change/Aux. Control Register */
-#define	ivr	ivr		/* Interrupt Vector Register */
-	uchar	is_imr;		/* Interrupt Status/Interrupt Mask Register */
-#define	ip_opcr	is_imr		/* Input Port/Output Port Configuration Register */
-	uchar	ctur;		/* Counter/Timer Upper Register */
-#define	scc_sopbc ctur		/* Start Counter Command/Set Output Port Bits Command */
-	uchar	ctlr;		/* Counter/Timer Lower Register */
-#define	scc_ropbc ctlr		/* Stop Counter Command/Reset Output Port Bits Command */
+enum
+{
+	/* wr 0 */
+	ResExtPend=	2<<3,
+	ResTxPend=	5<<3,
+	ResErr=		6<<3,
+
+	/* wr 1 */
+	TxIntEna=	1<<1,
+	RxIntDis=	0<<3,
+	RxIntFirstEna=	1<<3,
+	RxIntAllEna=	2<<3,
+
+	/* wr 3 */
+	RxEna=		1,
+	Rx5bits=	0<<6,
+	Rx7bits=	1<<6,
+	Rx6bits=	2<<6,
+	Rx8bits=	3<<6,
+
+	/* wr 4 */
+	SyncMode=	0<<2,
+	Rx1stop=	1<<2,
+	Rx1hstop=	2<<2,
+	Rx2stop=	3<<2,
+	X16=		1<<6,
+
+	/* wr 5 */
+	TxRTS=		1<<1,
+	TxEna=		1<<3,
+	TxBreak=	1<<4,
+	TxDTR=		1<<7,
+	Tx5bits=	0<<5,
+	Tx7bits=	1<<5,
+	Tx6bits=	2<<5,
+	Tx8bits=	3<<5,
+
+	/* wr 9 */
+	IntEna=		1<<3,
+	ResetB=		1<<6,
+	ResetA=		2<<6,
+	HardReset=	3<<6,
+
+	/* wr 11 */
+	TRxCOutBR=	2,
+	TxClockBR=	2<<3,
+	RxClockBR=	2<<5,
+	TRxCOI=		1<<2,
+
+	/* wr 14 */
+	BREna=		1,
+	BRSource=	2,
+
+	/* rr 0 */
+	RxReady=	1,
+	TxReady=	1<<2,
+	RxDCD=		1<<3,
+	RxCTS=		1<<5,
+	RxBreak=	1<<7,
+
+	/* rr 3 */
+	ExtPendB=	1,	
+	TxPendB=	1<<1,
+	RxPendB=	1<<2,
+	ExtPendA=	1<<3,	
+	TxPendA=	1<<4,
+	RxPendA=	1<<5,
 };
 
-enum{
-	CHAR_ERR	=0x00,	/* MR1x - Mode Register 1 */
-	PAR_ENB		=0x00,
-	EVEN_PAR	=0x00,
-	ODD_PAR		=0x04,
-	NO_PAR		=0x10,
-	CBITS8		=0x03,
-	CBITS7		=0x02,
-	CBITS6		=0x01,
-	CBITS5		=0x00,
-	NORM_OP		=0x00,	/* MR2x - Mode Register 2 */
-	TWOSTOPB	=0x0F,
-	ONESTOPB	=0x07,
-	ENB_RX		=0x01,	/* CRx - Command Register */
-	DIS_RX		=0x02,
-	ENB_TX		=0x04,
-	DIS_TX		=0x08,
-	RESET_MR 	=0x10,
-	RESET_RCV  	=0x20,
-	RESET_TRANS  	=0x30,
-	RESET_ERR  	=0x40,
-	RESET_BCH	=0x50,
-	STRT_BRK	=0x60,
-	STOP_BRK	=0x70,
-	RCV_RDY		=0x01,	/* SRx - Channel Status Register */
-	FIFOFULL	=0x02,
-	XMT_RDY		=0x04,
-	XMT_EMT		=0x08,
-	OVR_ERR		=0x10,
-	PAR_ERR		=0x20,
-	FRM_ERR		=0x40,
-	RCVD_BRK	=0x80,
-	BD38400		=0xCC|0x0000,
-	BD19200		=0xCC|0x0100,
-	BD9600		=0xBB|0x0000,
-	BD4800		=0x99|0x0000,
-	BD2400		=0x88|0x0000,
-	BD1200		=0x66|0x0000,
-	BD300		=0x44|0x0000,
-	IM_IPC		=0x80,	/* IMRx/ISRx - Interrupt Mask/Interrupt Status */
-	IM_DBB		=0x40,
-	IM_RRDYB	=0x20,
-	IM_XRDYB	=0x10,
-	IM_CRDY		=0x08,
-	IM_DBA		=0x04,
-	IM_RRDYA	=0x02,
-	IM_XRDYA	=0x01,
+typedef struct Z8530	Z8530;
+struct Z8530
+{
+	uchar	ptrb;
+	uchar	dummy1;
+	uchar	datab;
+	uchar	dummy2;
+	uchar	ptra;
+	uchar	dummy3;
+	uchar	dataa;
+	uchar	dummy4;
 };
 
-uchar keymap[]={
-/*80*/	0x58,	0x58,	0x58,	0x58,	0x58,	0x58,	0x58,	0x58,
-	0x58,	0x58,	0x58,	0x58,	0x58,	0x58,	0x8e,	0x58,
-/*90*/	0x90,	0x91,	0x92,	0x93,	0x94,	0x95,	0x96,	0x97,
-	0x98,	0x99,	0x9a,	0x9b,	0x58,	0x58,	0x58,	0x58,
-/*A0*/	0x58,	0xa1,	0xa2,	0xa3,	0xa4,	0xa5,	0xa6,	0xa7,
-	0x58,	0x58,	0x58,	0x58,	0x58,	0x58,	0xae,	0xaf,
-/*B0*/	0xb0,	0xb1,	0xb2,	0xb3,	0xb4,	0xb5,	0x80,	0xb7,
-	0xb8,	0xb9,	0x00,	0xbb,	0x1e,	0xbd,	0x60,	0x1f,
-/*C0*/	0xc0,	0xc1,	0xc2,	0xc3,	0xc4,	0x58,	0xc6,	0x0a,
-	0xc8,	0xc9,	0xca,	0xcb,	0xcc,	0xcd,	0xce,	0xcf,
-/*D0*/	0x09,	0x08,	0xd2,	0xd3,	0xd4,	0xd5,	0xd6,	0xd7,
-	0x58,	0x58,	0x58,	0x58,	0x58,	0x58,	0x7f,	0x58,
-/*E0*/	0x58,	0x58,	0xe2,	0x1b,	0x0d,	0xe5,	0x58,	0x0a,
-	0xe8,	0xe9,	0xea,	0xeb,	0xec,	0xed,	0xee,	0xef,
-/*F0*/	0x09,	0x08,	0xb2,	0x1b,	0x0d,	0xf5,	0x81,	0x58,
-	0x58,	0x58,	0x58,	0x58,	0x58,	0x58,	0x7f,	0xb2,
+#define NDELIM 5
+typedef struct Duart	Duart;
+struct Duart
+{
+	QLock;
+	ushort	sticky[16];	/* sticky write register values */
+	uchar	*ptr;		/* command/pointer register in Z8530 */
+	uchar	*data;		/* data register in Z8530 */
 };
+Duart	duart[2];
 
+#define PRINTING	0x4
+#define MASK		0x1
+
+/*
+ *  Access registers using the pointer in register 0.
+ */
+void
+duartwrreg(Duart *dp, int addr, int value)
+{
+	*dp->ptr = addr;
+	*dp->ptr = dp->sticky[addr] | value;
+}
+
+ushort
+duartrdreg(Duart *dp, int addr)
+{
+	*dp->ptr = addr;
+	return *dp->ptr;
+}
+
+/*
+ *  set the baud rate by calculating and setting the baudrate
+ *  generator constant.  This will work with fairly non-standard
+ *  baud rates.
+ */
+void
+duartsetbaud(Duart *dp, int rate)
+{
+	int brconst;
+
+	brconst = 10000000/(16*2*rate) - 2;
+	duartwrreg(dp, 12, brconst & 0xff);
+	duartwrreg(dp, 13, (brconst>>8) & 0xff);
+}
+
+/*
+ * Initialize just keyboard and mouse for now
+ */
 void
 duartinit(void)
 {
-	Duart *duart;
+	Duart *dp;
+	Z8530 *zp;
+	KMap *k;
 
-	duart  =  DUARTREG;
+	k = kmappa(KMDUART, PTEIO|PTENOCACHE);
+	zp = (Z8530*)k->va;
 
+	/*
+	 *  get port addresses
+	 */
+	duart[0].ptr = &zp->ptra;
+	duart[0].data = &zp->dataa;
+	duart[1].ptr = &zp->ptrb;
+	duart[1].data = &zp->datab;
+
+	for(dp=duart; dp < &duart[2]; dp++){
+		memset(dp->sticky, 0, sizeof(dp->sticky));
+
+		/*
+		 *  enable I/O, 8 bits/character
+		 */
+		dp->sticky[3] = RxEna | Rx8bits;
+		duartwrreg(dp, 3, 0);
+		dp->sticky[5] = TxEna | Tx8bits;
+		duartwrreg(dp, 5, 0);
+
+		/*
+	 	 *  turn on interrupts
+		 */
+		dp->sticky[1] |= TxIntEna | RxIntAllEna;
+		duartwrreg(dp, 1, 0);
+		dp->sticky[9] |= IntEna;
+		duartwrreg(dp, 9, 0);
+	}
+
+	/*
+	 *  turn on DTR and RTS
+	 */
+	dp = &duart[1];
+	dp->sticky[5] |= TxRTS | TxDTR;
+	duartwrreg(dp, 5, 0);
+}
+
+void
+duartintr(void)
+{
+	char ch;
+	int cause;
+	Duart *dp;
+
+	cause = duartrdreg(&duart[0], 3);
 	/*
 	 * Keyboard
 	 */
-	duart[0].cmnd = RESET_RCV|DIS_TX|DIS_RX;
-	duart[0].cmnd = RESET_TRANS;
-	duart[0].cmnd = RESET_ERR;
-	duart[0].cmnd = RESET_MR;
-	duart[0].mr1_2 = CHAR_ERR|PAR_ENB|EVEN_PAR|CBITS8;
-	duart[0].mr1_2 = NORM_OP|ONESTOPB;
-	duart[0].sr_csr = BD4800;
-
-	/*
-	 * RS232
-	 */
-	duart[1].cmnd = RESET_RCV|DIS_TX|DIS_RX;
-	duart[1].cmnd = RESET_TRANS;
-	duart[1].cmnd = RESET_ERR;
-	duart[1].cmnd = RESET_MR;
-	duart[1].mr1_2 = CHAR_ERR|NO_PAR|CBITS8;
-	duart[1].mr1_2 = NORM_OP|ONESTOPB;
-	duart[1].sr_csr = BD9600;
-
-	/*
-	 * Output port
-	 */
-	duart[0].ipc_acr = duartacr = 0xB7;	/* allow change	of state interrupt */
-	duart[1].ip_opcr = 0x00;
-	duart[1].scc_ropbc = 0xFF;	/* make sure the port is reset first */
-	duart[1].scc_sopbc = 0x04;	/* dtr = 1, pp = 01 */
-	duart[0].is_imr = duartimr = IM_IPC|IM_RRDYB|IM_XRDYB|IM_RRDYA|IM_XRDYA;
-	duart[0].cmnd = ENB_TX|ENB_RX;	/* enable TX and RX last */
-	duart[1].cmnd = ENB_TX|ENB_RX;
-
-	/*
-	 * Initialize keyboard
-	 */
-	while (!(duart[0].sr_csr & (XMT_EMT|XMT_RDY)))
-		;
-	duart[0].data = 0x02;
-}
-
-int
-duartinputport(void)
-{
-	Duart *duart = DUARTREG;
-	return duart[1].ip_opcr;
-}
-void
-duartbaud(int b)
-{
-	int x;
-	Duart *duart = DUARTREG;
-
-	x = 0;		/* set */
-	switch(b){
-	case 38400:
-		x = BD38400;
-		break;
-	case 19200:
-		x = BD19200;
-		break;
-	case 9600:
-		x = BD9600;
-		break;
-	case 4800:
-		x = BD4800;
-		break;
-	case 2400:
-		x = BD2400;
-		break;
-	case 1200:
-		x = BD1200;
-		break;
-	case 300:
-		x = BD300;
-		break;
-	default:
-		error(Ebadarg);
+	dp = &duart[0];
+	if(cause & ExtPendA)
+		duartwrreg(dp, 0, ResExtPend);
+	if(cause & RxPendA){
+		ch = *dp->data;
+		kbdstate(ch);
 	}
-	if(x & 0x0100)
-		duart[0].ipc_acr = duartacr |= 0x80;
-	else
-		duart[0].ipc_acr = duartacr &= ~0x80;
-	duart[1].sr_csr = x;
+	if(cause & TxPendA)
+		duartwrreg(dp, 0, ResTxPend);
+	/*
+	 * Mouse
+	 */
+	dp = &duart[1];
+	if(cause & ExtPendB)
+		duartwrreg(dp, 0, ResExtPend);
+	if(cause & RxPendB){
+		ch = *dp->data;
+		mousechar(ch);
+	}
+	if(cause & TxPendB)
+		duartwrreg(dp, 0, ResTxPend);
 }
 
-void
-duartdtr(int val)
-{
-	Duart *duart = DUARTREG;
-	if (val)
-		duart[1].scc_ropbc=0x01;
-	else
-		duart[1].scc_sopbc=0x01;
-}
-
-void
-duartbreak(int ms)
-{
-	static QLock brk;
-	Duart *duart = DUARTREG;
-	if (ms<=0 || ms >20000)
-		error(Ebadarg);
-	qlock(&brk);
-	duart[0].is_imr = duartimr &= ~IM_XRDYB;
-	duart[1].cmnd = STRT_BRK|ENB_TX;
-	tsleep(&u->p->sleep, return0, 0, ms);
-	duart[1].cmnd = STOP_BRK|ENB_TX;
-	duart[0].is_imr = duartimr |= IM_XRDYB;
-	qunlock(&brk);
-}
-
-enum{
-	Kptime=200
+/*
+ * Map is indexed by keyboard char, output is ASCII
+ */
+uchar keymap[128] = {
+/*	00    L1    02    L2    04    F1    F2    07	*/
+	0xFF, 0x80, 0xFF, 0x81, 0xFF, 0x82, 0x83, 0xFF,
+/*	F3    09    F4    0b    F5    0d    F6    0f  	*/
+	0x84, 0xFF, 0x85, 0xFF, 0x86, 0xFF, 0x87, 0xFF,
+/*	F7    F8    F9    Alt   14    R1    R2    R3	*/
+	0x88, 0x89, 0x8a, 0x8b, 0xFF, 0x8c, 0x8d, 0x8e,
+/*	18    L3    L4    1b    1c    Esc   1     2	*/
+	0xFF, 0x8f, 0x90, 0xFF, 0xFF, 0x1b, '1',  '2',
+/*	3     4     5     6     7     8     9     0	*/
+	'3',  '4',  '5',  '6',  '7',  '8',  '9',  '0',
+/*	-     =     `     bs    2c    R4    R5    R6	*/
+	'-',  '=',  '`',  '\b', 0xFF, 0x91, 0x92, 0x93,
+/*	30    L5    L6    33    34    tab   q     w  	*/
+	0xFF, 0x94, 0x95, 0xFF, 0xFF, '\t', 'q',  'w',
+/*	e     r     t     y     u     i     o     p    	*/
+	'e',  'r',  't',  'y',  'u',  'i',  'o',  'p',
+/*	[     ]     del   43    R7    R8    R9    47   	*/
+	'[',  ']',  0x7F, 0xFF, 0x96, 0x97, 0x98, 0xFF,
+/*	L7    L8    4a    4b    ctrl  a     s     d	*/
+	0x99, 0x9a, 0xFF, 0xFF, 0xF0, 'a',  's',  'd',
+/*	f     g     h     j     k     l     ;     '   	*/
+	'f',  'g',  'h',  'j',  'k',  'l',  ';',  '\'',
+/*	\     ret   5a    R10   R11   R12   5e    L9	*/
+	'\\', '\n', 0xFF, 0x9b, 0x9c, 0x9d, 0xFF, 0x9e, 
+/*	60    L10   62    shift z     x     c     v	*/
+	0xFF, 0x9f, 0xFF, 0xF1, 'z',  'x',  'c', 'v',
+/*	b     n     m     ,     .     /     shift lf	*/
+	'b',  'n',  'm',  ',',  '.',  '/',  0xF1, '\r',
+/*	R13   R14   R15   73    74    75    76    caps	*/
+	0xA0, 0xA1, 0xA2, 0xFF, 0xFF, 0xFF, 0xFF, 0xF2,
+/*	left  79    right 7b    7c    7d    7e    7f	*/
+	0xA3, ' ',  0xA4, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 };
+
+uchar keymapshift[128] = {
+/*	00    L1    02    L2    04    F1    F2    07	*/
+	0xFF, 0x80, 0xFF, 0x81, 0xFF, 0x82, 0x83, 0xFF,
+/*	F3    09    F4    0b    F5    0d    F6    0f  	*/
+	0x84, 0xFF, 0x85, 0xFF, 0x86, 0xFF, 0x87, 0xFF,
+/*	F7    F8    F9    Alt   14    R1    R2    R3	*/
+	0x88, 0x89, 0x8a, 0x8b, 0xFF, 0x8c, 0x8d, 0x8e,
+/*	18    L3    L4    1b    1c    Esc   1     2	*/
+	0xFF, 0x8f, 0x90, 0xFF, 0xFF, 0x1b, '!',  '@',
+/*	3     4     5     6     7     8     9     0	*/
+	'#',  '$',  '%',  '^',  '&',  '*',  '(',  ')',
+/*	-     =     `     bs    2c    R4    R5    R6	*/
+	'_',  '+',  '~',  '\b', 0xFF, 0x91, 0x92, 0x93,
+/*	30    L5    L6    33    34    tab   q     w  	*/
+	0xFF, 0x94, 0x95, 0xFF, 0xFF, '\t', 'Q',  'W',
+/*	e     r     t     y     u     i     o     p    	*/
+	'E',  'R',  'T',  'Y',  'U',  'I',  'O',  'P',
+/*	[     ]     del   43    R7    R8    R9    47   	*/
+	'{',  '}',  0x7F, 0xFF, 0x96, 0x97, 0x98, 0xFF,
+/*	L7    L8    4a    4b    ctrl  a     s     d	*/
+	0x99, 0x9a, 0xFF, 0xFF, 0xF0, 'A',  'S',  'D',
+/*	f     g     h     j     k     l     ;     '   	*/
+	'F',  'G',  'H',  'J',  'K',  'L',  ':',  '"',
+/*	\     ret   5a    R10   R11   R12   5e    L9	*/
+	'|', '\n',  0xFF, 0x9b, 0x9c, 0x9d, 0xFF, 0x9e, 
+/*	60    L10   62    shift z     x     c     v	*/
+	0xFF, 0x9f, 0xFF, 0xF1, 'Z',  'X',  'C', 'V',
+/*	b     n     m     ,     .     /     shift lf	*/
+	'B',  'N',  'M',  '<',  '>',  '?',  0xF1, '\r',
+/*	R13   R14   R15   73    74    75    76    caps	*/
+	0xA0, 0xA1, 0xA2, 0xFF, 0xFF, 0xFF, 0xFF, 0xF2,
+/*	left  79    right 7b    7c    7d    7e    7f	*/
+	0xA3, ' ',  0xA4, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+};
+
+uchar keymapctrl[128] = {
+/*	00    L1    02    L2    04    F1    F2    07	*/
+	0xFF, 0x80, 0xFF, 0x81, 0xFF, 0x82, 0x83, 0xFF,
+/*	F3    09    F4    0b    F5    0d    F6    0f  	*/
+	0x84, 0xFF, 0x85, 0xFF, 0x86, 0xFF, 0x87, 0xFF,
+/*	F7    F8    F9    Alt   14    R1    R2    R3	*/
+	0x88, 0x89, 0x8a, 0x8b, 0xFF, 0x8c, 0x8d, 0x8e,
+/*	18    L3    L4    1b    1c    Esc   1     2	*/
+	0xFF, 0x8f, 0x90, 0xFF, 0xFF, 0x1b, '!',  '@',
+/*	3     4     5     6     7     8     9     0	*/
+	'#',  '$',  '%',  '^',  '&',  '*',  '(',  ')',
+/*	-     =     `     bs    2c    R4    R5    R6	*/
+	'_',  '+',  '~', '\b', 0xFF, 0x91, 0x92, 0x93,
+/*	30    L5    L6    33    34    tab   q     w  	*/
+	0xFF, 0x94, 0x95, 0xFF, 0xFF, '\t', 0x11, 0x17,
+/*	e     r     t     y     u     i     o     p    	*/
+	0x05, 0x12, 0x14, 0x19, 0x15, 0x09, 0x0F, 0x10,
+/*	[     ]     del   43    R7    R8    R9    47   	*/
+	0x1B, 0x1D, 0x7F, 0xFF, 0x96, 0x97, 0x98, 0xFF,
+/*	L7    L8    4a    4b    ctrl  a     s     d	*/
+	0x99, 0x9a, 0xFF, 0xFF, 0xF0, 0x01, 0x13, 0x04,
+/*	f     g     h     j     k     l     ;     '   	*/
+	0x06, 0x07, 0x08, 0x0A, 0x0B, 0x0C,':',  '"',
+/*	\     ret   5a    R10   R11   R12   5e    L9	*/
+	0x1C, '\n',  0xFF, 0x9b, 0x9c, 0x9d, 0xFF, 0x9e, 
+/*	60    L10   62    shift z     x     c     v	*/
+	0xFF, 0x9f, 0xFF, 0xF1, 0x1A, 0x18, 0x03, 0x16,
+/*	b     n     m     ,     .     /     shift lf	*/
+	0x02, 0x0E, 0x0D, '<',  '>',  '?',  0xF1, '\r',
+/*	R13   R14   R15   73    74    75    76    caps	*/
+	0xA0, 0xA1, 0xA2, 0xFF, 0xFF, 0xFF, 0xFF, 0xF2,
+/*	left  79    right 7b    7c    7d    7e    7f	*/
+	0xA3, ' ',  0xA4, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+};
+
+uchar keymapshiftctrl[128] = {
+/*	00    L1    02    L2    04    F1    F2    07	*/
+	0xFF, 0x80, 0xFF, 0x81, 0xFF, 0x82, 0x83, 0xFF,
+/*	F3    09    F4    0b    F5    0d    F6    0f  	*/
+	0x84, 0xFF, 0x85, 0xFF, 0x86, 0xFF, 0x87, 0xFF,
+/*	F7    F8    F9    Alt   14    R1    R2    R3	*/
+	0x88, 0x89, 0x8a, 0x8b, 0xFF, 0x8c, 0x8d, 0x8e,
+/*	18    L3    L4    1b    1c    Esc   1     2	*/
+	0xFF, 0x8f, 0x90, 0xFF, 0xFF, 0x1b, '!',  0x00,
+/*	3     4     5     6     7     8     9     0	*/
+	'#',  '$',  '%',  0x1E, '&',  '*',  '(',  ')',
+/*	-     =     `     bs    2c    R4    R5    R6	*/
+	0x1F, '+',  '~', '\b', 0xFF, 0x91, 0x92, 0x93,
+/*	30    L5    L6    33    34    tab   q     w  	*/
+	0xFF, 0x94, 0x95, 0xFF, 0xFF, '\t', 0x11, 0x17,
+/*	e     r     t     y     u     i     o     p    	*/
+	0x05, 0x12, 0x14, 0x19, 0x15, 0x09, 0x0F, 0x10,
+/*	[     ]     del   43    R7    R8    R9    47   	*/
+	0x1B, 0x1D, 0x7F, 0xFF, 0x96, 0x97, 0x98, 0xFF,
+/*	L7    L8    4a    4b    ctrl  a     s     d	*/
+	0x99, 0x9a, 0xFF, 0xFF, 0xF0, 0x01, 0x13, 0x04,
+/*	f     g     h     j     k     l     ;     '   	*/
+	0x06, 0x07, 0x08, 0x0A, 0x0B, 0x0C,':',  '"',
+/*	\     ret   5a    R10   R11   R12   5e    L9	*/
+	0x1C, '\n',  0xFF, 0x9b, 0x9c, 0x9d, 0xFF, 0x9e, 
+/*	60    L10   62    shift z     x     c     v	*/
+	0xFF, 0x9f, 0xFF, 0xF1, 0x1A, 0x18, 0x03, 0x16,
+/*	b     n     m     ,     .     /     shift lf	*/
+	0x02, 0x0E, 0x0D, '<',  '>',  '?',  0xF1, '\r',
+/*	R13   R14   R15   73    74    75    76    caps	*/
+	0xA0, 0xA1, 0xA2, 0xFF, 0xFF, 0xFF, 0xFF, 0xF2,
+/*	left  79    right 7b    7c    7d    7e    7f	*/
+	0xA3, ' ',  0xA4, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+};
+
+static uchar *kbdmap[4] = {
+	keymap,
+	keymapshift,
+	keymapctrl,
+	keymapshiftctrl
+};
+
 void
-duartstarttimer(void)
+kbdstate(int c)
 {
-	Duart *duart;
-	char x;
+	static shift = 0x00;
+	static caps = 0;
+	static repeatc = -1;
+	static long startclick;
+	int tc;
 
-	duart = DUARTREG;
-	duart[0].ctur = (Kptime)>>8;
-	duart[0].ctlr = (Kptime)&255;
-	duart[0].is_imr = duartimr |= IM_CRDY;
-	x = duart[1].scc_sopbc;
-}
+	tc = kbdmap[shift][c&0x7F];
 
-void
-duartstoptimer(void)
-{
-	Duart *duart;
-	char x;
-
-	duart = DUARTREG;
-	x = duart[1].scc_ropbc;
-	duart[0].is_imr = duartimr &= ~IM_CRDY;
-}
-
-void
-duartrs232intr(void)
-{
-	int c;
-	Duart *duart;
-
-	duart = DUARTREG;
-	c = getrs232o();
-	if(c == -1)
-		duart[1].cmnd = DIS_TX;
-	else
-		duart[1].data = c;
-}
-
-void
-duartstartrs232o(void)
-{
-	DUARTREG[1].cmnd = ENB_TX;
-	duartrs232intr();
-}
-
-void
-duartintr(Ureg *ur)
-{
-	int cause, status, c;
-	Duart *duart;
-
-	duart = DUARTREG;
-	cause = duart->is_imr;
-	/*
-	 * I can guess your interrupt.
-	 */
-	/*
-	 * Is it 0?
-	 */
-	if(cause & IM_CRDY){
-		if(kprofp)
-			(*kprofp)(ur->pc);
-		c = duart[1].scc_ropbc;
-		duart[0].ctur = (Kptime)>>8;
-		duart[0].ctlr = (Kptime)&255;
-		c = duart[1].scc_sopbc;
+/*
+	if(c==0xFFFF && repeatc!=-1 && clicks>startclick+40 && (clicks-startclick)%3==0){
+		kbdc = repeatc;
 		return;
 	}
-	/*
-	 * Is it 1?
-	 */
-	if(cause & IM_RRDYA){		/* keyboard input */
-		status = duart->sr_csr;
-		c = duart->data;
-		if(status & (FRM_ERR|OVR_ERR|PAR_ERR))
-			duart->cmnd = RESET_ERR;
-		if(status & PAR_ERR) /* control word: caps lock (0x4) or repeat (0x10) */
-			kbdrepeat((c&0x10) == 0);
-		else{
-			if(c == 0x7F)
-				c = 0xFF;	/* VIEW key (bizarre) */
-			if(c & 0x80)
-				c = keymap[c&0x7F];
-			kbdchar(c);
+*/
+	if(c==0x7F){	/* all keys up */
+		repeatc = -1;
+		return;
+	}
+	if(tc == 0xFF)	/* shouldn't happen; ignore */
+		return;
+	if(c & 0x80){	/* key went up */
+		if(tc == 0xF0){		/* control */
+			shift &= ~2;
+			repeatc =- 1;
+			return;
 		}
+		if(tc == 0xF1){	/* shift */
+			shift &= ~1;
+			repeatc = -1;
+			return;
+		}
+		if(tc == 0xF2){	/* caps */
+			repeatc = -1;
+			return;
+		}
+		if(tc == repeatc)
+			repeatc = -1;
+		return;
 	}
-	/*
-	 * Is it 2?
-	 */
-	if(cause & IM_RRDYB){		/* rs232 input */
-		status = duart[1].sr_csr;
-		c = duart[1].data;
-		if(status & (FRM_ERR|OVR_ERR|PAR_ERR))
-			duart[1].cmnd = RESET_ERR;
-		else
-			rs232ichar(c);
+	if(tc == 0xF0){		/* control */
+		shift |= 2;
+		repeatc = -1;
+		return;
 	}
-	/*
-	 * Is it 3?
-	 */
-	if(cause & IM_XRDYB)		/* rs232 output */
-		duartrs232intr();
-	/*
-	 * Is it 4?
-	 */
-	if(cause & IM_XRDYA)
-		duart[0].cmnd = DIS_TX;
-	/*
-	 * Is it 5?
-	 */
-	if(cause & IM_IPC)
-		mousebuttons((~duart[0].ipc_acr) & 7);
+	if(tc==0xF1){	/* shift */
+		shift |= 1;
+		repeatc = -1;
+		return;
+	}
+	if(tc==0xF2){	/* caps */
+		caps ^= 1;
+		repeatc =- 1;
+		return;
+	}
+	if(caps && 'a'<=tc && tc<='z')
+		tc |= ' ';
+	repeatc = tc;
+/*
+	startclick = clicks;
+*/
+	if(tc == 0x10)		/* ctrl-p */
+		reset();
+	kbdchar(tc);
 }

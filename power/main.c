@@ -39,17 +39,6 @@ char sysname[64];
  */
 int ioid;
 
-/*
- *  lance memory allocation
- */
-ushort	*lancelmem;	/* next free lance mem as seen by lance */
-ushort	*lancehmem;	/* next free lance mem as seen by host */
-ushort	*lancehend;
-
-/*
- *  next free lance memory map
- */
-int	lancemap;
 
 char	user[NAMELEN] = "bootes";
 
@@ -192,27 +181,6 @@ ioboardinit(void)
 	 */
 	*IO2SETMASK = 0xff;
 
-	/*
-	 *  reset the lance.
-	 *  run through all lance memory to set parity.
-	 */
-	if(ioid >= IO3R1){
-		MODEREG->promenet |= 1;
-		MODEREG->promenet &= ~1;
-		for(sp = LANCE3RAM; sp < LANCE3END; sp += 2)
-			*sp = 0;
-		lancehmem = LANCE3RAM;
-		lancehend = LANCE3END;
-		lancelmem = (ushort*)0x800000;
-	} else {
-		MODEREG->promenet &= ~1;
-		MODEREG->promenet |= 1;
-		for(sp = LANCERAM; sp < LANCEEND; sp += 1)
-			*sp = 0;
-		lancehmem = LANCERAM;
-		lancehend = LANCEEND;
-		lancelmem = (ushort*)0;
-	}
 }
 
 void
@@ -734,80 +702,99 @@ arginit(void)
 }
 
 /*
- *  get our ether addr out of the non-volatile ram
+ *  setup the IO2 lance, io buffers are in lance memory
  */
 void
-lanceeaddr(uchar *ea)
+lanceIO2setup(Lance *lp)
 {
-	ea[0] = LANCEID[20]>>8;
-	ea[1] = LANCEID[16]>>8;
-	ea[2] = LANCEID[12]>>8;
-	ea[3] = LANCEID[8]>>8;
-	ea[4] = LANCEID[4]>>8;
-	ea[5] = LANCEID[0]>>8;
+	ushort *sp;
+
+	/*
+	 *  reset lance and set parity on its memory
+	 */
+	MODEREG->promenet &= ~1;
+	MODEREG->promenet |= 1;
+	for(sp = LANCERAM; sp < LANCEEND; sp += 1)
+		*sp = 0;
+
+	lp->sep = 1;
+	lp->lanceram = LANCERAM;
+	lp->lm = (Lancemem*)0;
+
+	/*
+	 *  Allocate space in lance memory for the io buffers.
+	 *  Start at 4k to avoid the initialization block and
+	 *  descriptor rings.
+	 */
+	lp->lrp = (Etherpkt*)(4*1024);
+	lp->ltp = lp->lrp + lp->nrrb;
+	lp->rp = (Etherpkt*)(((ulong)LANCERAM) + (ulong)lp->lrp);
+	lp->tp = lp->rp + lp->nrrb;
 }
 
 /*
- *  allocate command memory for the initialization block
- *  and descriptor rings.
- *
- *  pass back the host's address of the memory, the lance's address
- *  of the memory, and the span (in shorts) of each short as seen
- *  by the host.  The latter is only for a peculiarity of the SGI IO3.
- *  It is normally 1.
+ *  setup the IO3 lance, io buffers are in host memory mapped to
+ *  lance address space
  */
 void
-lancectlmem(ushort **hostaddr, ushort **lanceaddr, int *sep, int len)
+lanceIO3setup(Lance *lp)
 {
-	len = (len + sizeof(ushort) - 1)/sizeof(ushort);
-	if(ioid >= IO3R1)
-		*sep = 4;
-	else
-		*sep = 1;
-	if(len+lancehmem > lancehend)
-		panic("lancecmdmem");
-	*lanceaddr = lancelmem;
-	*hostaddr = lancehmem;
-	lancelmem += len;
-	lancehmem += len;
-}
+	ulong x, y;
+	int index;
+	ushort *sp;
+	int len;
 
-/*
- *  allocate packet buffer memory for the lance.
- *
- *  pass back the host's address of the memory and the lance's address
- *  of the memory.
- */
-void
-lancepktmem(ushort **hostaddr, ushort **lanceaddr, int len)
-{
-	ulong x;
-	ulong y;
+	/*
+	 *  reset lance and set parity on its memory
+	 */
+	MODEREG->promenet |= 1;
+	MODEREG->promenet &= ~1;
+	for(sp = LANCE3RAM; sp < LANCE3END; sp += 2)
+		*sp = 0;
 
-	if(ioid >= IO3R1){
-		/*
-		 *  allocate some host mempry and map it into lance
-		 *  space
-		 */
-		*hostaddr = (ushort*)ialloc(len, 1);
-		x = (ulong)*hostaddr;
-		*lanceaddr = (ushort*)((lancemap<<12) | (x & 0xFFF));
-		for(y = x; y < x+len; y += 0x1000){
-			*WRITEMAP = ((0x1E00+lancemap)<<16) | (y>>12)&0xFFFF;
-			lancemap++;
-		}
-	} else {
-		/*
-		 *  allocate lance memory
-		 */
-		len = (len + sizeof(ushort) - 1)/sizeof(ushort);
-		if(len+lancehmem > lancehend)
-			panic("lancecmdmem");
-		*lanceaddr = lancelmem;
-		*hostaddr = lancehmem;
-		lancelmem += len;
-		lancehmem += len;
+	lp->sep = 4;
+	lp->lanceram = LANCE3RAM;
+	lp->lm = (Lancemem*)0x800000;
+
+	/*
+	 *  allocate some host memory for buffers and map it into lance
+	 *  space
+	 */
+	len = (lp->nrrb + lp->ntrb)*sizeof(Etherpkt);
+	lp->rp = (Etherpkt*)ialloc(len , 1);
+	lp->tp = lp->rp + lp->nrrb;
+	x = (ulong)lp->rp;
+	lp->lrp = (Etherpkt*)(x & 0xFFF);
+	lp->ltp = lp->lrp + lp->nrrb;
+	index = LANCEINDEX;
+	for(y = x+len; x < y; x += 0x1000){
+		*WRITEMAP = (index<<16) | (x>>12)&0xFFFF;
+		index++;
 	}
+}
+
+/*
+ *  set up the lance
+ */
+void
+lancesetup(Lance *lp)
+{
+	lp->rap = LANCERAP;
+	lp->rdp = LANCERDP;
+	lp->ea[0] = LANCEID[20]>>8;
+	lp->ea[1] = LANCEID[16]>>8;
+	lp->ea[2] = LANCEID[12]>>8;
+	lp->ea[3] = LANCEID[8]>>8;
+	lp->ea[4] = LANCEID[4]>>8;
+	lp->ea[5] = LANCEID[0]>>8;
+	lp->lognrrb = 7;
+	lp->logntrb = 7;
+	lp->nrrb = 1<<lp->lognrrb;
+	lp->ntrb = 1<<lp->logntrb;
+	if(ioid >= IO3R1)
+		lanceIO3setup(lp);
+	else
+		lanceIO2setup(lp);
 }
 
 void

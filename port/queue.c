@@ -36,9 +36,11 @@ getc(IOQ *q)
 
 	if(q->in == q->out)
 		return -1;
-	c = *q->out++;
-	if(q->out == q->buf+sizeof(q->buf))
+	c = *q->out;
+	if(q->out == q->buf+sizeof(q->buf)-1)
 		q->out = q->buf;
+	else
+		q->out++;
 	return c;
 }
 
@@ -66,15 +68,17 @@ int
 cangetc(void *arg)
 {
 	IOQ *q = (IOQ *)arg;
-	int n = q->in - q->out;
-	if (n < 0)
-		n += sizeof(q->buf);
-	return n;
+	return q->in != q->out;
 }
 
 int
 canputc(void *arg)
 {
 	IOQ *q = (IOQ *)arg;
-	return sizeof(q->buf)-cangetc(q)-1;
+	uchar *next;
+
+	next = q->in+1;
+	if(next >= &q->buf[sizeof(q->buf)])
+		next = q->buf;
+	return next != q->out;
 }

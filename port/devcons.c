@@ -255,6 +255,10 @@ echo(int c)
 		putstrn("^U\n", 3);
 	if(c == 0x16)
 		dumpqueues();
+	if(c == 0xe)
+		nonettoggle();
+	if(c == 0xc)
+		lancetoggle();
 	else{
 		ch = c;
 		putstrn(&ch, 1);

@@ -6,9 +6,12 @@ TEXT	start(SB), $-4
 
 	/* get virtual, fast */
 	/* we are executing in segment 0, mapped to pmeg 0. stack is there too */
-	/* get virtual by mapping segment(KZERO) to pmeg 0. */
+	/* get virtual by mapping segment(KZERO) to pmeg 0., and next to 1 */
 	MOVW	$KZERO, R7
 	MOVB	R0, (R7, 3)
+	MOVW	$(KZERO+BY2SEGM), R7
+	MOVW	$1, R8
+	MOVB	R8, (R7, 3)
 	/* now mapped correctly.  jmpl to where we want to be */
 	MOVW	$setSB(SB), R2
 	MOVW	$startvirt(SB), R7
@@ -335,7 +338,7 @@ TEXT	putcxsegm(SB), $0
 	JMPL	(R7)
 	RETURN
 
-TEXT	putcontext(SB), $0
+TEXT	putcxreg(SB), $0
 
 	MOVW	$CONTEXT, R7
 	MOVW	0(FP), R8

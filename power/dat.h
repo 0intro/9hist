@@ -11,6 +11,8 @@ typedef struct Envp	Envp;
 typedef struct Envval	Envval;
 typedef struct Etherpkt	Etherpkt;
 typedef struct FPsave	FPsave;
+typedef struct Lance	Lance;
+typedef struct Lancemem	Lancemem;
 typedef struct Label	Label;
 typedef struct List	List;
 typedef struct Lock	Lock;
@@ -560,6 +562,7 @@ struct Noconv {
 	QLock	xlock;		/* one trasmitter at a time */
 	Rendez	r;		/* process waiting for an output mid */
 	Nomsg	ctl;		/* for control messages */
+	Nomsg	ackmsg;		/* for acknowledge messages */
 	QLock	mlock;		/* lock for out */
 	Nomsg	out[Nnomsg];	/* messages being sent */
 	int	first;		/* first unacknowledged message */
@@ -616,6 +619,29 @@ struct Noifc {
 	Nocall	call[Nnocalls];
 	int	rptr;
 	int	wptr;
+};
+
+/*
+ *  system dependent lance stuff
+ *  filled by lancesetup() 
+ */
+struct Lance
+{
+	ushort	lognrrb;	/* log2 number of receive ring buffers */
+	ushort	logntrb;	/* log2 number of xmit ring buffers */
+	ushort	nrrb;		/* number of receive ring buffers */
+	ushort	ntrb;		/* number of xmit ring buffers */
+	ushort	*rap;		/* lance address register */
+	ushort	*rdp;		/* lance data register */
+	uchar	ea[6];		/* our ether addr */
+	int	sep;		/* separation between shorts in lance ram
+				    as seen by host */
+	ushort	*lanceram;	/* start of lance ram as seen by host */
+	Lancemem *lm;		/* start of lance ram as seen by lance */
+	Etherpkt *rp;		/* receive buffers (host address) */
+	Etherpkt *tp;		/* transmit buffers (host address) */
+	Etherpkt *lrp;		/* receive buffers (lance address) */
+	Etherpkt *ltp;		/* transmit buffers (lance address) */
 };
 
 #define	PRINTSIZE	256

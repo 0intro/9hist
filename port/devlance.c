@@ -6,20 +6,15 @@
 #include	"io.h"
 #include	"errno.h"
 #include	"devtab.h"
-/*
- *  configuration parameters
- */
+
 enum {
 	Ntypes=		8,		/* max number of ethernet packet types */
 	Ndir=		Ntypes+2,	/* entries in top level directory */
-	LogNrrb=	7,		/* log of number of receive buffers */
-	Nrrb=		(1<<LogNrrb),	/* number of recieve buffers */
-	LogNtrb=	7,		/* log of number of transmit buffers */
-	Ntrb=		(1<<LogNtrb),	/* number of transmit buffers */
 	Ndpkt=		200,		/* number of debug packets */
+	Maxrb=		128,		/* max buffers in a ring */
 };
-#define RSUCC(x) (((x)+1)%Nrrb)
-#define TSUCC(x) (((x)+1)%Ntrb)
+#define RSUCC(x) (((x)+1)%l.nrrb)
+#define TSUCC(x) (((x)+1)%l.ntrb)
 
 #define NOW (MACHP(0)->ticks*MS2HZ)
 
@@ -40,7 +35,7 @@ typedef struct {
 /*
  *  lance memory map
  */
-typedef struct Lancemem
+struct Lancemem
 {
 	/*
 	 *  initialization block
@@ -57,9 +52,9 @@ typedef struct Lancemem
 	 *  ring buffers
 	 *  first receive, then transmit
 	 */
-	Msg	rmr[Nrrb];		/* recieve message ring */
-	Msg	tmr[Ntrb];		/* transmit message ring */
-} Lancemem;
+	Msg	rmr[Maxrb];		/* recieve message ring */
+	Msg	tmr[Maxrb];		/* transmit message ring */
+};
 
 /*
  *  Some macros for dealing with lance memory addresses.  The lance splits
@@ -116,15 +111,10 @@ typedef struct {
 typedef struct {
 	QLock;
 
+	Lance;			/* host dependent lance params */
+
 	int	inited;
-	uchar	ea[6];		/* our ether addr */
 	uchar	*lmp;		/* location of parity test */
-	ushort	*rap;		/* lance address register */
-	ushort	*rdp;		/* lance data register */
-	int	sep;		/* separaqtion between shorts in lance ram
-				    as seen by host */
-	ushort	*lanceram;	/* start of lance ram as seen by host */
-	Lancemem *lm;		/* start of lance memory as seen by lance */
 
 	Rendez	rr;		/* rendezvous for an input buffer */
 	ushort	rl;		/* first rcv Message belonging to Lance */	
@@ -140,11 +130,6 @@ typedef struct {
 	int	kstarted;
 	Debqueue dq;
 
-	Etherpkt	*rp;	/* receive buffers (host address) */
-	Etherpkt	*tp;	/* transmit buffers (host address) */
-	Etherpkt	*lrp;	/* receive buffers (lance address) */
-	Etherpkt	*ltp;	/* transmit buffers (lance address) */
-
 	/* sadistics */
 
 	int	inpackets;
@@ -154,8 +139,8 @@ typedef struct {
 	int	frames;		/* framing errors */
 	int	overflows;	/* packet overflows */
 	int	buffs;		/* buffering errors */
-} Lance;
-static Lance l;
+} SoftLance;
+static SoftLance l;
 
 /*
  *  mode bits in the lance initialization block
@@ -431,45 +416,16 @@ lancereset(void)
 	ushort *lanceaddr;
 	ushort *hostaddr;
 
-	l.rap = LANCERAP;
-	l.rdp = LANCERDP;
+	if(already == 0){
+		already = 1;
+		lancesetup(&l);
+	}
 
 	/*
 	 *  stop the lance
 	 */
 	*l.rap = 0;
 	*l.rdp = STOP;
-
-	if(already == 0){
-		already = 1;
-
-		/*
-		 *  lance ethernet address
-		 */
-		lanceeaddr(l.ea);
-
-		/*
-		 *  lance init block and descriptor rings
-		 */
-		lancectlmem(&hostaddr, &lanceaddr, &l.sep, sizeof(Lancemem));
-		l.lanceram = hostaddr;
-		l.lm = (Lancemem*)lanceaddr;
-
-		/*
-		 *  lance receive buffers
-		 */
-		lancepktmem(&hostaddr, &lanceaddr, Nrrb*sizeof(Etherpkt));
-		l.rp = (Etherpkt*)hostaddr;
-		l.lrp = (Etherpkt*)lanceaddr;
-
-		/*
-		 *  lance xmt buffers
-		 */
-		lancepktmem(&hostaddr, &lanceaddr, Ntrb*sizeof(Etherpkt));
-		l.tp = (Etherpkt*)hostaddr;
-		l.ltp = (Etherpkt*)lanceaddr;
-	}
-
 }
 
 /*
@@ -512,20 +468,20 @@ lancestart(void)
 	 *  set up rcv message ring
 	 */
 	m = lm->rmr;
-	for(i = 0; i < Nrrb; i++, m++){
+	for(i = 0; i < l.nrrb; i++, m++){
 		MPs(m->size) = -sizeof(Etherpkt);
 		MPus(m->cntflags) = 0;
 		MPus(m->laddr) = LADDR(&l.lrp[i]);
 		MPus(m->flags) = HADDR(&l.lrp[i]);
 	}
 	MPus(lm->rdralow) = LADDR(l.lm->rmr);
-	MPus(lm->rdrahigh) = (LogNrrb<<13)|HADDR(l.lm->rmr);
+	MPus(lm->rdrahigh) = (l.lognrrb<<13)|HADDR(l.lm->rmr);
 
 
 	/*
 	 *  give the lance all the rcv buffers except one (as a sentinel)
 	 */
-	l.rc = Nrrb - 1;
+	l.rc = l.nrrb - 1;
 	m = lm->rmr;
 	for(i = 0; i < l.rc; i++, m++)
 		MPus(m->flags) |= OWN;
@@ -534,14 +490,14 @@ lancestart(void)
 	 *  set up xmit message ring
 	 */
 	m = lm->tmr;
-	for(i = 0; i < Ntrb; i++, m++){
+	for(i = 0; i < l.ntrb; i++, m++){
 		MPs(m->size) = 0;
 		MPus(m->cntflags) = 0;
 		MPus(m->laddr) = LADDR(&l.ltp[i]);
 		MPus(m->flags) = HADDR(&l.ltp[i]);
 	}
 	MPus(lm->tdralow) = LADDR(l.lm->tmr);
-	MPus(lm->tdrahigh) = (LogNtrb<<13)|HADDR(l.lm->tmr);
+	MPus(lm->tdrahigh) = (l.logntrb<<13)|HADDR(l.lm->tmr);
 
 	/*
 	 *  point lance to the initialization block
@@ -563,8 +519,10 @@ lancestart(void)
 	 *  initialize lance, turn on interrupts, turn on transmit and rcv.
 	 */
 	wbflush();
+	print("starting lance\n");
 	*l.rap = 0;
 	*l.rdp = INEA|INIT|STRT; /**/
+	print("lance started\n");
 }
 
 /*
@@ -781,8 +739,10 @@ lanceintr(void)
 	if(csr & (BABL|MISS|MERR))
 		print("lance err %ux\n", csr);
 
-	if(csr & IDON)
+	if(csr & IDON){
+		print("lance inited\n");
 		l.inited = 1;
+	}
 
 	/*
 	 *  look for rcv'd packets, just wakeup the input process

@@ -306,6 +306,9 @@ echo(int c)
 		case 'q':
 			dumpqueues();
 			return;
+		case 'l':
+			lancetoggle();
+			return;
 		case 'm':
 			mntdump();
 			return;
@@ -458,6 +461,7 @@ readstr(ulong off, char *buf, ulong n, char *str)
 void
 consreset(void)
 {
+	duartinit();
 }
 
 void
@@ -614,10 +618,12 @@ consread(Chan *c, void *buf, long n)
 		return streamread(c, buf, n);
 
 	case Qrs232ctl:
+#ifdef asdf
 		if(c->offset)
 			return 0;
 		*(char *)buf = duartinputport();
-		return 1;
+#endif
+		return 0;
 
 	case Qcputime:
 		k = c->offset;
@@ -820,6 +826,7 @@ rs232output(Rs232 *r)
 			while(!rs232empty(r))
 				sleep(&r->r, rs232empty, r);
 			l = strtoul((char *)(bp->rptr+1), 0, 0);
+#ifdef asdf
 			switch(*bp->rptr){
 			case 'B':
 			case 'b':
@@ -839,6 +846,8 @@ rs232output(Rs232 *r)
 					r->delay = l;
 				break;
 			}
+#endif
+return;
 			freeb(bp);
 			break;
 		}
@@ -853,7 +862,10 @@ rs232output(Rs232 *r)
 	splhi();
 	if(r->started == 0){
 		r->started = 1;
+panic("rs232o");
+#ifdef asdf
 		duartstartrs232o();
+#endif
 	}
 	spllo();
 	qunlock(&r->outlock);

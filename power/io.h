@@ -51,6 +51,7 @@ struct SBCC
 #define LANCERAP	IO2(ushort, 0xFC000a)
 #define LANCEID		IO2(ushort, 0xFF0002)
 #define	WRITEMAP	IO2(ulong, 0xFA0000)
+#define LANCEINDEX	0x1E00			/* index of lancemap */
 
 #define IOID		IO2(uchar, 0xFFFFF0)
 #define IO2R1		1	/* IO2 revision level 1 */

@@ -68,7 +68,6 @@ newpid(Proc *p)
 	}
 	m->pidproc[i] = p;
 	m->lastpid = i;
-print("new context %d\n", i);
 	putcontext(i-1);
 	/*
 	 * kludge: each context is allowed 2 pmegs, one for text and one for stack
@@ -80,6 +79,13 @@ print("new context %d\n", i);
 		putpmeg((TSTKTOP-BY2SEGM)+j*BY2PG, INVALIDPTE);
 	}
 	return i;
+}
+
+void
+putcontext(int c)
+{
+	m->pidhere[c] = 1;
+	putcxreg(c);
 }
 
 void
@@ -181,10 +187,6 @@ putmmu(ulong tlbvirt, ulong tlbphys)
 
 	splhi();
 	p = u->p;
-/*	if(p->state != Running)
-		panic("putmmu state %lux %lux %s\n", u, p, statename[p->state]);
-*/
-	p->state = MMUing;
 	tp = p->pidonmach[m->machno];
 	if(tp == 0){
 		tp = newpid(p);
@@ -196,8 +198,6 @@ putmmu(ulong tlbvirt, ulong tlbphys)
 	if(tlbvirt>=TSTKTOP || (UZERO+BY2SEGM<=tlbvirt && tlbvirt<(TSTKTOP-BY2SEGM)))
 		panic("putmmu %lux", tlbvirt);
 	putpmeg(tlbvirt, tlbphys);
-	m->pidhere[tp] = 1;
-	p->state = Running;
 	spllo();
 }
 
@@ -205,6 +205,7 @@ void
 putpmeg(ulong virt, ulong phys)
 {
 	int i;
+	int tp;
 
 	virt &= VAMASK;
 	virt &= ~(BY2PG-1);
@@ -213,6 +214,8 @@ putpmeg(ulong virt, ulong phys)
 	 */
 	for(i=0; i<0x100; i++)
 		putwD(virt+(i<<4), 0);
+	if(u && u->p)
+		m->pidhere[u->p->pidonmach[m->machno]] = 1;	/* UGH! */
 	putw4(virt, phys);
 }
 

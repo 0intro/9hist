@@ -78,11 +78,6 @@ main(void)
 /*	filsysinit(); /**/
 	pageinit();
 	userinit();
-{KMap *k;
-k = kmappa(0xF5000000, PTENOCACHE|PTEIO);
-print("interrupt %ux\n", *(uchar*)k->va);
-kunmap(k);
-}
 	clockinit();
 	schedinit();
 }
@@ -323,12 +318,72 @@ confinit(void)
 	conf.nbitmap = 300*mul;
 	conf.nbitbyte = 300*1024*mul;
 	conf.nfont = 10*mul;
+	conf.nnoifc = 1;
+	conf.nnoconv = 32;
 	conf.nurp = 32;
 	conf.nasync = 1;
 	conf.npipe = conf.nstream/2;
 	conf.nservice = 3*mul;			/* was conf.nproc/5 */
 	conf.nfsyschan = 31 + conf.nchan/20;
 	conf.copymode = 0;		/* copy on write */
+}
+
+/*
+ *  set up the lance
+ */
+void
+lancesetup(Lance *lp)
+{
+	KMap *k;
+	ushort *sp;
+	uchar *cp;
+	ulong pa;
+	int i;
+
+k = kmappa(0xF8400000, PTEIO|PTENOCACHE);
+print("dma reg %lux\n", *(ulong*)k->va);
+kunmap(k);
+
+	k = kmappa(ETHER, PTEIO|PTENOCACHE);
+	lp->rdp = (void*)(k->va+0);
+	lp->rap = (void*)(k->va+2);
+	k = kmappa(EEPROM, PTEIO|PTENOCACHE);
+	cp = (uchar*)(k->va+0x7da);
+	for(i=0; i<6; i++)
+		lp->ea[i] = *cp++;
+	kunmap(k);
+
+	lp->lognrrb = 1;	/* should be larger */
+	lp->logntrb = 1;	/* should be larger */
+	lp->nrrb = 1<<lp->lognrrb;
+	lp->ntrb = 1<<lp->logntrb;
+
+	lp->sep = 1;
+
+	/*
+	 *  allocate area for lance init block and descriptor rings
+	 */
+	pa = (ulong)ialloc(BY2PG, 1)&~KZERO;	/* one whole page */
+	k = kmappa(pa, PTEMAINMEM|PTENOCACHE);
+	lp->lanceram = (ushort*)k->va;
+	lp->lm = (Lancemem*)k->va;
+	print("lm %lux %lux\n", k->va, k->pa);
+
+	/*
+	 *  Allocate space in host memory for the io buffers.
+	 */
+	i = lp->nrrb*sizeof(Etherpkt);
+	i = (i+(BY2PG-1))/BY2PG;
+	if(i != 1)
+		panic("lancesetup");
+	pa = (ulong)ialloc(i*BY2PG, 1)&~KZERO;
+	k = kmappa(pa, PTEMAINMEM|PTENOCACHE);
+	lp->lrp = (Etherpkt*)k->va;
+	lp->rp = (Etherpkt*)k->va;
+	pa = (ulong)ialloc(i*BY2PG, 1)&~KZERO;
+	k = kmappa(pa, PTEMAINMEM|PTENOCACHE);
+	lp->ltp = (Etherpkt*)k->va;
+	lp->tp = (Etherpkt*)k->va;
 }
 
 /*

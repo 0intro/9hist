@@ -8,9 +8,12 @@ typedef struct Dirtab	Dirtab;
 typedef struct Env	Env;
 typedef struct Envp	Envp;
 typedef struct Envval	Envval;
+typedef struct Etherpkt	Etherpkt;
 typedef struct FFrame	FFrame;
 typedef struct FPsave	FPsave;
 typedef struct KMap	KMap;
+typedef struct Lance	Lance;
+typedef struct Lancemem	Lancemem;
 typedef struct Label	Label;
 typedef struct List	List;
 typedef struct Lock	Lock;
@@ -19,7 +22,12 @@ typedef struct MMUCache	MMUCache;
 typedef struct Mach	Mach;
 typedef struct Mount	Mount;
 typedef struct Mtab	Mtab;
+typedef struct Noconv	Noconv;
+typedef struct Nohdr	Nohdr;
+typedef struct Noifc	Noifc;
 typedef struct Note	Note;
+typedef struct Nomsg	Nomsg;
+typedef struct Nocall	Nocall;
 typedef struct Orig	Orig;
 typedef struct PTE	PTE;
 typedef struct Page	Page;
@@ -146,6 +154,8 @@ struct Conf
 	int	nbitmap;	/* bitmap structs (devbit.c) */
 	int	nbitbyte;	/* bytes of bitmap data (devbit.c) */
 	int	nfont;		/* font structs (devbit.c) */
+	ulong	nnoifc;		/* number of nonet interfaces */
+	ulong	nnoconv;	/* number of nonet conversations/ifc */
 	int	nurp;		/* max urp conversations */
 	int	nasync;		/* number of async protocol modules */
 	int	npipe;		/* number of pipes */
@@ -497,6 +507,135 @@ enum {
 	Streambhi= 32,		/* block count high water mark */
 };
 
+/*
+ *  Ethernet packet buffers.
+ */
+struct Etherpkt {
+	uchar d[6];
+	uchar s[6];
+	uchar type[2];
+	uchar data[1500];
+	uchar crc[4];
+};
+
+/*
+ *  nonet constants
+ */
+enum {
+	Nnomsg = 128,		/* max number of outstanding messages */
+	Nnocalls = 5,		/* maximum queued incoming calls */
+};
+
+/*
+ *  generic nonet header
+ */
+struct Nohdr {
+	uchar	circuit[3];	/* circuit number */
+	uchar	flag;
+	uchar	mid;		/* message id */
+	uchar	ack;		/* piggy back ack */
+	uchar	remain[2];	/* count of remaing bytes of data */
+	uchar	sum[2];		/* checksum (0 means none) */
+};
+#define NO_HDRSIZE 10
+#define NO_NEWCALL	0x1	/* flag bit marking a new circuit */
+#define NO_HANGUP	0x2	/* flag bit requesting hangup */
+#define NO_ACKME	0x4	/* acknowledge this message */
+#define NO_SERVICE	0x8	/* message includes a service name */
+
+/*
+ *  a buffer describing a nonet message
+ */
+struct Nomsg {
+	Blist;
+	Rendez	r;
+	int	mid;		/* sequence number */
+	int	rem;		/* remaining */
+	long	time;
+	int	acked;
+	int	inuse;
+};
+
+/*
+ *  one exists for each Nonet conversation.
+ */
+struct Noconv {
+	QLock;
+
+	Stream	*s;
+	Queue	*rq;		/* input queue */
+	int	version;	/* incremented each time struct is changed */
+	int	state;		/* true if listening */
+
+	Nomsg	in[Nnomsg];	/* messages being received */
+	int	rcvcircuit;	/* circuit number of incoming packets */
+
+	uchar	ack[Nnomsg];	/* acknowledgements waiting to be sent */
+	int	afirst;
+	int	anext;
+
+	QLock	xlock;		/* one trasmitter at a time */
+	Rendez	r;		/* process waiting for an output mid */
+	Nomsg	ctl;		/* for control messages */
+	Nomsg	ackmsg;		/* for acknowledge messages */
+	QLock	mlock;		/* lock for out */
+	Nomsg	out[Nnomsg];	/* messages being sent */
+	int	first;		/* first unacknowledged message */
+	int	next;		/* next message buffer to use */
+	int	lastacked;	/* last message acked */		
+	Block	*media;		/* prototype media output header */
+	Nohdr	*hdr;		/* nonet header inside of media header */
+
+	Noifc	*ifc;
+	char	raddr[NAMELEN];	/* remote address */
+	char	ruser[NAMELEN];	/* remote user */
+	char	addr[NAMELEN];	/* local address */
+	int	rexmit;		/* statistics */
+	int	retry;
+	int	bad;
+	int	sent;
+	int	rcvd;
+};
+
+/*
+ *  an incoming call
+ */
+struct Nocall {
+	Block	*msg;
+	char	raddr[NAMELEN];
+	long	circuit;
+};
+
+/*
+ *  a nonet interface.  one exists for every stream that a 
+ *  nonet multiplexor is pushed onto.
+ */
+struct Noifc {
+	Lock;
+	int	ref;
+	char	name[NAMELEN];	/* interface name */		
+	Queue	*wq;		/* interface output queue */
+	Noconv	*conv;
+
+	/*
+	 *  media dependent
+	 */
+	int	maxtu;		/* maximum transfer unit */
+	int	mintu;		/* minimum transfer unit */
+	int	hsize;		/* media header size */
+	void	(*connect)(Noconv *, char *);
+
+	/*
+	 *  calls and listeners
+	 */
+	QLock	listenl;
+	Rendez	listenr;
+	Lock	lock;
+	Nocall	call[Nnocalls];
+	int	rptr;
+	int	wptr;
+};
+
 #define NSTUB 32
 struct Service
 {
@@ -509,6 +648,29 @@ struct Service
 	char	name[NAMELEN];
 };
 
+
+/*
+ *  system dependent lance stuff
+ *  filled by lancesetup() 
+ */
+struct Lance
+{
+	ushort	lognrrb;	/* log2 number of receive ring buffers */
+	ushort	logntrb;	/* log2 number of xmit ring buffers */
+	ushort	nrrb;		/* number of receive ring buffers */
+	ushort	ntrb;		/* number of xmit ring buffers */
+	ushort	*rap;		/* lance address register */
+	ushort	*rdp;		/* lance data register */
+	uchar	ea[6];		/* our ether addr */
+	int	sep;		/* separation between shorts in lance ram
+				    as seen by host */
+	ushort	*lanceram;	/* start of lance ram as seen by host */
+	Lancemem *lm;		/* start of lance ram as seen by lance */
+	Etherpkt *rp;		/* receive buffers (host address) */
+	Etherpkt *tp;		/* transmit buffers (host address) */
+	Etherpkt *lrp;		/* receive buffers (lance address) */
+	Etherpkt *ltp;		/* transmit buffers (lance address) */
+};
 
 #define	PRINTSIZE	256
 

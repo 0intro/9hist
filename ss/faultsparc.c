@@ -6,7 +6,6 @@
 #include	"ureg.h"
 #include	"errno.h"
 
-
 void
 faultsparc(Ureg *ur)
 {
@@ -16,28 +15,30 @@ faultsparc(Ureg *ur)
 
 	tbr = (ur->tbr&0xFFF)>>4;
 	addr = ur->pc;			/* assume instr. exception */
-	if(tbr == 9)			/* data access exception */
+	read = 1;
+	if(tbr == 9){			/* data access exception */
+		/*
+		 * According to the book, this isn't good enough.  We'll see.
+		 */
 		addr = getw2(SEVAR);
-	else if(tbr != 1){		/* should be instruction access exception */
+		if(getw2(SER) & 0x8000)
+			read = 0;
+	}else if(tbr != 1){		/* should be instr. access exception */
 		trap(ur);
 		return;
 	}
 	spllo();
-print("fault: %s pc=0x%lux addr %lux\n", excname(tbr), ur->pc, addr);
+/* print("fault: %s pc=0x%lux addr %lux %d\n", excname(tbr), ur->pc, addr, read); /**/
 	if(u == 0){
 		dumpregs(ur);
 		panic("fault u==0 pc=%lux", ur->pc);
 	}
-	if(getw2(SER) & 0x8000)
-		read = 0;
-	else
-		read = 1;
 	insyscall = u->p->insyscall;
 	u->p->insyscall = 1;
 /*	addr &= VAMASK; /**/
 	badvaddr = addr;
 	addr &= ~(BY2PG-1);
-	user = !(ur->psr&PSRSUPER);
+	user = !(ur->psr&PSRPSUPER);
 
 	if(fault(addr, read) < 0){
 		if(user){

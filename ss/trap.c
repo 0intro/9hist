@@ -58,8 +58,16 @@ trap(Ureg *ur)
 	ulong tbr;
 
 	tbr = (ur->tbr&0xFFF)>>4;
-	if(tbr == 30){				/* interrupt 14: counter 1 */
+	if(tbr == 16+14){			/* interrupt 14: counter 1 */
 		clock(ur);
+		return;
+	}
+	if(tbr == 16+12){			/* interrupt 12: keyboard and mouse */
+		duartintr();
+		return;
+	}
+	if(tbr == 16+5){			/* interrupt 5: lance */
+		lanceintr();
 		return;
 	}
 
