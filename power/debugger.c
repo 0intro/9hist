@@ -84,12 +84,10 @@ printlog(char *cpu)
 		p = s->buf;
 	while(p != end){
 		c = *p & 0xff;
-		if(c >= ' ' && c <= '~'){
-			if(c == '\r' || c == '\n')
-				dprintq.puts(&dprintq, "\r\n", 2);
-			else
-				dprintq.puts(&dprintq, p, 1);
-		}
+		if(c == '\r' || c == '\n')
+			dprintq.puts(&dprintq, "\r\n", 2);
+		else if(c >= ' ' && c <= '~')
+			dprintq.puts(&dprintq, p, 1);
 		p++;
 		if(p >= &s->buf[sizeof(s->buf)])
 			p = s->buf;
@@ -107,7 +105,7 @@ printhex(char *start, char *len)
 		dprint("!	h <location> <howmany> - hex display\r\n");
 		return;
 	}
-	n = strtoul(start, 0, 0);
+	n = strtoul(start, 0, 16);
 	if((n & KZERO) == 0)
 		return;
 	p = (ulong *)n;
@@ -120,8 +118,9 @@ printhex(char *start, char *len)
 	while(n > 0){
 		dprint("%lux/", p);
 		for(i = 0; i < 8 && n > 0; i++, n--)
-			dprint("	%lux", p[i]);
+			dprint(" %8.8lux", p[i]);
 		dprint("\r\n");
+		p += 8;
 	}
 }
 
@@ -137,15 +136,14 @@ printinfo(void)
 	for(i = 0; i < 4; i++){
 		if((active.machs&(1<<i)) == 0)
 			continue;
-		mp = (void*)MACHADDR;
-		mp += i;
+		mp = (void*)(MACHADDR+i*BY2PG);
 		l = (ulong)(mp->proc);
 		dprint("mach[%d]->proc/	%lux\r\n", i, l);
 		dprint("mach[%d]->splpc/	%lux\r\n", i, mp->splpc);
-		if((l & 0xf0000000) == KZERO){
+		if(l & KZERO){
 			p = (Proc*)l;
 			l = (ulong)(p->upage);
-			if((l & 0xf0000000) == KZERO){
+			if(l & KZERO){
 				pg = (Page*)l;
 				l = pg->pa;
 				dprint("mach[%d]->proc->upage->pa/	%lux\r\n", i, l);
@@ -164,11 +162,6 @@ debugger(void *arg)
 	USED(arg);
 
 	/*
- 	 *  grab a port for a console
-	 */
-	duartspecial(3, &dprintq, &dkbdq, 9600);
-
-	/*
 	 *  sched() until we are on processor 1
 	 */
 	for(;;){
@@ -178,6 +171,13 @@ debugger(void *arg)
 		splx(level);
 		sched();
 	}
+
+	/*
+ 	 *  grab a port for a console
+	 */
+	initq(&dprintq);
+	initq(&dkbdq);
+	duartspecial(3, &dprintq, &dkbdq, 9600);
 
 	/*
 	 *  take processor and process out of active groups
