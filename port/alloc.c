@@ -54,9 +54,6 @@ malloc(ulong size)
 	ulong *l;
 	void *v;
 
-	if(size == 0)
-		return nil;
-
 	v = poolalloc(mainmem, size+8);
 	if(v != nil) {
 		l = v;
@@ -72,9 +69,6 @@ mallocz(ulong size, int clr)
 {
 	void *v;
 	ulong *l;
-
-	if(size == 0)
-		return nil;
 
 	v = poolalloc(mainmem, size+8);
 	if(v != nil) {

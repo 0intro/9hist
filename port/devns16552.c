@@ -632,16 +632,14 @@ ns16552intr(int dev)
 		case 4:	/* received data available */
 		case 12:
 			ch = uartrdreg(p, Data) & 0xff;
-			ilock(&p->tlock);
 			if(p->xonoff){
 				if(ch == CTLS){
 					p->blocked = 1;
 				}else if (ch == CTLQ){
 					p->blocked = 0;
-					 /* clock gets output going again */
+					p->ctsbackoff = 2; /* clock gets output going again */
 				}
 			}
-			iunlock(&p->tlock);
 			if(p->putc)
 				p->putc(p->iq, ch);
 			else {
@@ -660,31 +658,23 @@ ns16552intr(int dev)
 		case 0:	/* modem status */
 			ch = uartrdreg(p, Mstat);
 			if(ch & Ctsc){
-				ilock(&p->tlock);
 				l = p->cts;
 				p->cts = ch & Cts;
 				if(l == 0 && p->cts)
 					p->ctsbackoff = 2; /* clock gets output going again */
-				iunlock(&p->tlock);
 			}
 	 		if (ch & Dsrc) {
 				l = ch & Dsr;
-				if(p->hup_dsr && p->dsr && !l){
-					ilock(&p->rlock);
-					p->dohup = 1;
-					iunlock(&p->rlock);
-				}
+				if(p->hup_dsr && p->dsr && !l)
+					p->dohup = 1;	 /* clock peforms hangup */
 				p->dsr = l;
 			}
 	 		if (ch & Dcdc) {
 				l = ch & Dcd;
 				if(l == 0 && p->dcd != 0 && p->dcdts && saveintrts != nil)
 					(*saveintrts)();
-				if(p->hup_dcd && p->dcd && !l){
-					ilock(&p->rlock);
-					p->dohup = 1;
-					iunlock(&p->rlock);
-				}
+				if(p->hup_dcd && p->dcd && !l)
+					p->dohup = 1;	 /* clock peforms hangup */
 				p->dcd = l;
 			}
 			break;
@@ -744,7 +734,7 @@ uartclock(void)
 			iunlock(&p->rlock);
 		}
 
-		/* this adds hysteresis to hardware flow control */
+		/* this adds hysteresis to hardware/software flow control */
 		if(p->ctsbackoff){
 			ilock(&p->tlock);
 			if(p->ctsbackoff){

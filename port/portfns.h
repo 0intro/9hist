@@ -206,7 +206,7 @@ void		procdump(void);
 void		procinit0(void);
 void		procflushseg(Segment*);
 Proc*		proctab(int);
-void		procwired(Proc*);
+void		procwired(Proc*, int);
 Pte*		ptealloc(void);
 Pte*		ptecpy(Pte*);
 int		pullblock(Block**, int);

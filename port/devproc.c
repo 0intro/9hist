@@ -907,8 +907,7 @@ procctlreq(Proc *p, char *va, int n)
 		if(n < 6)
 			error(Ebadctl);
 		i = atoi(buf+6);
-		if(i)
-			procwired(p);
+		procwired(p, i);
 	}
 	else
 	if(strncmp(buf, "profile", 7) == 0) {

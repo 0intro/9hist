@@ -815,8 +815,17 @@ typephylink(Ctlr* ctlr, uchar*)
 	}
 	else if((bmcr & 0x2100) == 0x2100)
 		x = 0x4000;
-	else if(bmcr & 0x2000)
-		x = 0x2000;
+	else if(bmcr & 0x2000){
+		/*
+		 * If FD capable, force it if necessary.
+		 */
+		if((bmsr & 0x4000) && ctlr->fd){
+			miiw(ctlr, ctlr->curphyad, Bmcr, 0x2100);
+			x = 0x4000;
+		}
+		else
+			x = 0x2000;
+	}
 	else if(bmcr & 0x0100)
 		x = 0x1000;
 	else

@@ -31,10 +31,10 @@ static	struct {
 void
 _saveintrts(void)
 {
-	lock(&tsalloc);
+	ilock(&tsalloc);
 	if(tsalloc.n < nelem(tsalloc.ts))
 		tsalloc.ts[tsalloc.n++] = m->intrts;
-	unlock(&tsalloc);
+	iunlock(&tsalloc);
 }
 
 /* read interrupt timestamps */

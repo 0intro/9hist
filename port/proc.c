@@ -220,7 +220,7 @@ loop:
 			if(xrq != nil){
 				rq = xrq;
 				p = rq->head;
-				if(p != nil)
+				if(p != nil && p->wired == nil)
 					p->movetime = 0;
 				goto found;
 			}
@@ -351,22 +351,32 @@ newproc(void)
  * wire this proc to a machine
  */
 void
-procwired(Proc *p)
+procwired(Proc *p, int bm)
 {
 	Proc *pp;
-	int i, bm;
+	int i;
 	char nwired[MAXMACH];
+	Mach *wm;
 
-	memset(nwired, 0, sizeof(nwired));
-	p->wired = 0;
-	pp = proctab(0);
-	for(i=0; i<conf.nproc; i++, pp++)
-		if(pp->wired && pp->pid)
-			nwired[pp->wired->machno]++;
-	bm = 0;
-	for(i=0; i<conf.nmach; i++)
-		if(nwired[i] < nwired[bm])
-			bm = i;
+	if(bm < 0){
+		/* pick a machine to wire to */
+		memset(nwired, 0, sizeof(nwired));
+		p->wired = 0;
+		pp = proctab(0);
+		for(i=0; i<conf.nproc; i++, pp++){
+			wm = pp->wired;
+			if(wm && pp->pid)
+				nwired[wm->machno]++;
+		}
+		bm = 0;
+		for(i=0; i<conf.nmach; i++)
+			if(nwired[i] < nwired[bm])
+				bm = i;
+	} else {
+		/* use the virtual machine requested */
+		bm = bm % conf.nmach;
+	}
+
 	p->wired = MACHP(bm);
 	p->movetime = 0xffffffff;
 	p->mp = p->wired;

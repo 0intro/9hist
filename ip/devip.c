@@ -1035,10 +1035,12 @@ Fsprotoclone(Proto *p, char *user)
 			qlock(c);
 			c->p = p;
 			c->x = pp - p->conv;
-			c->ptcl = malloc(p->ptclsize);
-			if(c->ptcl == nil) {
-				free(c);
-				error(Enomem);
+			if(p->ptclsize != 0){
+				c->ptcl = malloc(p->ptclsize);
+				if(c->ptcl == nil) {
+					free(c);
+					error(Enomem);
+				}
 			}
 			*pp = c;
 			p->ac++;

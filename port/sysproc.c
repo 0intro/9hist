@@ -26,6 +26,7 @@ sysrfork(ulong *arg)
 	Rgrp *org;
 	Egrp *oeg;
 	ulong pid, flag;
+	Mach *wm;
 
 	flag = arg[0];
 	/* Check flags before we commit */
@@ -179,8 +180,9 @@ sysrfork(ulong *arg)
 	p->priority = up->priority;
 	p->basepri = up->basepri;
 	p->mp = up->mp;
-	if(up->wired)
-		procwired(p);
+	wm = up->wired;
+	if(wm)
+		procwired(p, wm->machno);
 	ready(p);
 	sched();
 	return pid;

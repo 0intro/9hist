@@ -32,6 +32,10 @@ vlong	fasthz;
 static ulong	randomread(void*, ulong);
 static void	randominit(void);
 static void	seedrand(void);
+static int	readtime(ulong, char*, int);
+static int	readbintime(char*, int);
+static int	writetime(char*, int);
+static int	writebintime(char*, int);
 
 void
 printinit(void)
@@ -340,19 +344,14 @@ enum{
 	Qauth,
 	Qauthcheck,
 	Qauthent,
-	Qtiming,
-	Qclock,
+	Qbintime,
 	Qcons,
 	Qconsctl,
 	Qcputime,
 	Qdrivers,
-	Qfastclock,
-	Qhz,
 	Qkey,
 	Qhostdomain,
 	Qhostowner,
-	Qmsec,
-	Qnsec,
 	Qnull,
 	Qpgrpid,
 	Qpid,
@@ -371,18 +370,14 @@ static Dirtab consdir[]={
 	"authenticate",	{Qauth},	0,		0666,
 	"authcheck",	{Qauthcheck},	0,		0666,
 	"authenticator", {Qauthent},	0,		0666,
-	"clock",	{Qclock},	2*NUMSIZE,	0444,
+	"bintime",	{Qbintime},	24,		0664,
 	"cons",		{Qcons},	0,		0660,
 	"consctl",	{Qconsctl},	0,		0220,
 	"cputime",	{Qcputime},	6*NUMSIZE,	0444,
 	"drivers",	{Qdrivers},	0,		0644,
-	"fastclock",	{Qfastclock},	4*NUMSIZE,	0664,
 	"hostdomain",	{Qhostdomain},	DOMLEN,		0664,
 	"hostowner",	{Qhostowner},	NAMELEN,	0664,
-	"hz",		{Qhz},		NUMSIZE,	0666,
 	"key",		{Qkey},		DESKEYLEN,	0622,
-	"msec",		{Qmsec},	NUMSIZE,	0444,
-	"nsec",		{Qnsec},	NUMSIZE,	0664,
 	"null",		{Qnull},	0,		0666,
 	"pgrpid",	{Qpgrpid},	NUMSIZE,	0444,
 	"pid",		{Qpid},		NUMSIZE,	0444,
@@ -392,55 +387,10 @@ static Dirtab consdir[]={
 	"swap",		{Qswap},	0,		0664,
 	"sysname",	{Qsysname},	0,		0664,
 	"sysstat",	{Qsysstat},	0,		0666,
-	"time",		{Qtime},	NUMSIZE,	0664,
-	"timing",	{Qtiming},	3*8,		0664,
+	"time",		{Qtime},	7*NUMSIZE,	0664,
 	"user",		{Quser},	NAMELEN,	0666,
-	"zero",	{Qzero},	0,	0666,
+	"zero",		{Qzero},	0,		0666,
 };
-
-uvlong billion = 1000000000ULL;
-uvlong bilbil = 1000000000ULL*1000000000ULL;
-
-//
-//  this routine is a hack till we get 64 bit ops faster
-//
-int
-readvlnum(ulong off, char *buf, ulong n, uvlong val, int size)
-{
-	char tmp[64];
-	char num[64];
-	ulong y;
-	int i;
-
-	i = 0;
-	if(val > bilbil){
-		y = val/bilbil;
-		i += sprint(num+i, "%lud", y);
-		val -= y*bilbil;
-		y = val/billion;
-		i += sprint(num+i, "%9.9lud", y);
-		val -= y*billion;
-		y = val;
-		sprint(num+i,  "%9.9lud", y);
-	} else if(val > billion){
-		y = val/billion;
-		i += sprint(num+i, "%lud", y);
-		val -= y*billion;
-		y = val;
-		sprint(num+i, "%9.9lud", y);
-	} else {
-		y = val;
-		sprint(num+i, "%lud", y);
-	}
-	snprint(tmp, sizeof(tmp), "%*s", size-1, num);
-	tmp[size-1] = ' ';
-	if(off >= size)
-		return 0;
-	if(off+n > size)
-		n = size-off;
-	memmove(buf, tmp+off, n);
-	return n;
-}
 
 int
 readnum(ulong off, char *buf, ulong n, ulong val, int size)
@@ -532,21 +482,6 @@ consclose(Chan *c)
 	}
 }
 
-
-uvlong order = 0x0001020304050607ULL;
-
-void
-vlong2le(char *t, vlong from)
-{
-	uchar *f, *o;
-	int i;
-
-	f = (uchar*)&from;
-	o = (uchar*)&order;
-	for(i = 0; i < 8; i++)
-		t[i] = f[o[i]];
-}
-
 static long
 consread(Chan *c, void *buf, long n, vlong off)
 {
@@ -556,8 +491,7 @@ consread(Chan *c, void *buf, long n, vlong off)
 	char tmp[128];		/* must be >= 6*NUMSIZE */
 	char *cbuf = buf;
 	int ch, i, k, id, eol;
-	vlong offset = off, x;
-	vlong ticks, nsec;
+	vlong offset = off;
 
 	if(n <= 0)
 		return n;
@@ -647,50 +581,11 @@ consread(Chan *c, void *buf, long n, vlong off)
 	case Qppid:
 		return readnum((ulong)offset, buf, n, up->parentpid, NUMSIZE);
 
-	case Qclock:
-		k = offset;
-		if(k >= 2*NUMSIZE)
-			return 0;
-		if(k+n > 2*NUMSIZE)
-			n = 2*NUMSIZE - k;
-		readnum(0, tmp, NUMSIZE, MACHP(0)->ticks, NUMSIZE);
-		readnum(0, tmp+NUMSIZE, NUMSIZE, HZ, NUMSIZE);
-		memmove(buf, tmp+k, n);
-		return n;
+	case Qtime:
+		return readtime((ulong)offset, buf, n);
 
-	case Qfastclock:
-		if(fasthz == 0L)
-			ticks = fastticks((uvlong*)&fasthz);
-		else
-			ticks = fastticks(nil);
-
-		k = offset;
-		if(k >= 4*NUMSIZE)
-			return 0;
-		if(k+n > 4*NUMSIZE)
-			n = 4*NUMSIZE - k;
-		readvlnum(0, tmp, 2*NUMSIZE, ticks, 2*NUMSIZE);
-		readvlnum(0, tmp+2*NUMSIZE, 2*NUMSIZE, fasthz, 2*NUMSIZE);
-		memmove(buf, tmp+k, n);
-		return n;
-
-	case Qtiming:
-		k = 0;
-		nsec = todget(&ticks);
-		if(n >= 3*8){
-			vlong2le(cbuf+16, fasthz);
-			k += 8;
-		}
-		if(n >= 2*8){
-			vlong2le(cbuf+8, ticks);
-			k += 8;
-		}
-		if(n >= 8){
-			vlong2le(cbuf, nsec);
-			k += 8;
-		}
-		return k;
-			
+	case Qbintime:
+		return readbintime(buf, n);
 
 	case Qkey:
 		return keyread(buf, n, offset);
@@ -715,25 +610,6 @@ consread(Chan *c, void *buf, long n, vlong off)
 
 	case Qnull:
 		return 0;
-
-	case Qnsec:
-		x = todget(nil);
-		return readvlnum((ulong)offset, buf, n, x, 2*NUMSIZE);
-
-	case Qmsec:
-		x = todget(nil);
-		x /= 1000000LL;
-		i = x;
-		return readnum((ulong)offset, buf, n, i, NUMSIZE);
-
-	case Qtime:
-		x = todget(nil);
-		x /= 1000000000LL;
-		i = x;
-		return readnum((ulong)offset, buf, n, i, NUMSIZE);
-
-	case Qhz:
-		return readnum((ulong)offset, buf, n, HZ, NUMSIZE);
 
 	case Qsysstat:
 		b = smalloc(conf.nmach*(NUMSIZE*8+1) + 1);	/* +1 for NUL */
@@ -802,7 +678,6 @@ consread(Chan *c, void *buf, long n, vlong off)
 static long
 conswrite(Chan *c, void *va, long n, vlong off)
 {
-	char cbuf[64];
 	char buf[256];
 	long l, bp;
 	char *a = va;
@@ -810,7 +685,6 @@ conswrite(Chan *c, void *va, long n, vlong off)
 	int id, fd;
 	Chan *swc;
 	ulong offset = off;
-	vlong f, nsec, delta;
 
 	switch(c->qid.path){
 	case Qcons:
@@ -857,43 +731,14 @@ conswrite(Chan *c, void *va, long n, vlong off)
 		break;
 
 	case Qtime:
-		if(n<=0 || !iseve())
-			return 0;
-		if(n >= sizeof cbuf)
-			n = sizeof cbuf - 1;
-		strncpy(cbuf, a, n);
-		cbuf[n] = 0;
-		nsec = strtol(cbuf, 0, 0);
-		nsec *= 1000000000LL;
-		todset(nsec, 0, 0);
-		break;
+		if(!iseve())
+			error(Eperm);
+		return writetime(a, n);
 
-	case Qfastclock:
-		if(n<=0 || !iseve())
-			return 0;
-		if(n >= sizeof(cbuf))
-			n = sizeof(cbuf)-1;
-		strncpy(cbuf, a, n);
-		cbuf[n] = 0;
-		f = strtoll(cbuf, 0, 0);
-		if(f <= 0L)
-			error(Ebadarg);
-		fasthz = f;
-		todsetfreq(f);
-		break;
-
-	case Qnsec:
-		if(n<=0 || !iseve())
-			return 0;
-		if(n >= sizeof cbuf)
-			n = sizeof cbuf - 1;
-		strncpy(cbuf, a, n);
-		cbuf[n] = 0;
-		nsec = strtoll(cbuf, &a, 0);
-		delta = strtoll(a, &a, 0);
-		n = strtol(a, &a, 0);
-		todset(nsec, delta, n);
-		break;
+	case Qbintime:
+		if(!iseve())
+			error(Eperm);
+		return writebintime(a, n);
 
 	case Qkey:
 		return keywrite(a, n);
@@ -1163,5 +1008,180 @@ randomread(void *xp, ulong n)
 
 	wakeup(&rb.producer);
 
+	return n;
+}
+
+static uvlong uvorder = 0x0001020304050607ULL;
+
+static uchar*
+le2vlong(vlong *to, uchar *f)
+{
+	uchar *t, *o;
+	int i;
+
+	t = (uchar*)to;
+	o = (uchar*)&uvorder;
+	for(i = 0; i < sizeof(vlong); i++)
+		t[o[i]] = f[i];
+	return f+sizeof(vlong);
+}
+
+static uchar*
+vlong2le(uchar *t, vlong from)
+{
+	uchar *f, *o;
+	int i;
+
+	f = (uchar*)&from;
+	o = (uchar*)&uvorder;
+	for(i = 0; i < sizeof(vlong); i++)
+		t[i] = f[o[i]];
+	return t+sizeof(vlong);
+}
+
+static long order = 0x00010203;
+
+static uchar*
+le2long(long *to, uchar *f)
+{
+	uchar *t, *o;
+	int i;
+
+	t = (uchar*)to;
+	o = (uchar*)&order;
+	for(i = 0; i < sizeof(long); i++)
+		t[o[i]] = f[i];
+	return f+sizeof(long);
+}
+
+static uchar*
+long2le(uchar *t, long from)
+{
+	uchar *f, *o;
+	int i;
+
+	f = (uchar*)&from;
+	o = (uchar*)&order;
+	for(i = 0; i < sizeof(long); i++)
+		t[i] = f[o[i]];
+	return t+sizeof(long);
+}
+
+char *Ebadtimectl = "bad time control";
+
+/*
+ *  like the old #c/time but with added info.  Return
+ *
+ *	secs	nanosecs	fastticks	fasthz
+ */
+static int
+readtime(ulong off, char *buf, int n)
+{
+	vlong	nsec, ticks;
+	long sec;
+	char str[7*NUMSIZE+4];	// extra 4 bytes are null plus doprint
+				// reserving space for a frigging UTF
+				// char
+
+	nsec = todget(&ticks);
+	if(fasthz == 0LL)
+		fastticks((uvlong*)&fasthz);
+	sec = nsec/1000000000ULL;
+	snprint(str, sizeof(str), "%*.0lud %*.0llud %*.0llud %*.0llud ",
+		NUMSIZE-1, sec,
+		2*NUMSIZE-1, nsec,
+		2*NUMSIZE-1, ticks,
+		2*NUMSIZE-1, fasthz);
+	return readstr(off, buf, n, str);
+}
+
+/*
+ *  set the time in seconds
+ */
+static int
+writetime(char *buf, int n)
+{
+	char b[13];
+	long i;
+	vlong now;
+
+	if(n >= sizeof(b))
+		error(Ebadtimectl);
+	strncpy(b, buf, n);
+	b[n] = 0;
+	i = strtol(b, 0, 0);
+	if(i <= 0)
+		error(Ebadtimectl);
+	now = i*1000000000LL;
+	todset(now, 0, 0);
+	return n;
+}
+
+/*
+ *  read binary time info.  all numbers are little endian.
+ *  ticks and nsec are syncronized.
+ */
+static int
+readbintime(char *buf, int n)
+{
+	int i;
+	vlong nsec, ticks;
+	uchar *b = (uchar*)buf;
+
+	i = 0;
+	if(fasthz == 0LL)
+		fastticks((uvlong*)&fasthz);
+	nsec = todget(&ticks);
+	if(n >= 3*sizeof(uvlong)){
+		vlong2le(b+2*sizeof(uvlong), fasthz);
+		i += sizeof(uvlong);
+	}
+	if(n >= 2*sizeof(uvlong)){
+		vlong2le(b+sizeof(uvlong), ticks);
+		i += sizeof(uvlong);
+	}
+	if(n >= 8){
+		vlong2le(b, nsec);
+		i += sizeof(vlong);
+	}
+	return i;
+}
+
+/*
+ *  set any of the following
+ *	- time in nsec
+ *	- nsec trim applied over some seconds
+ *	- clock frequency
+ */
+static int
+writebintime(char *buf, int n)
+{
+	uchar *p;
+	vlong delta;
+	long period;
+
+	n--;
+	p = (uchar*)buf + 1;
+	switch(*buf){
+	case 'n':
+		if(n < sizeof(vlong))
+			error(Ebadtimectl);
+		le2vlong(&delta, p);
+		todset(delta, 0, 0);
+		break;
+	case 'd':
+		if(n < sizeof(vlong)+sizeof(long))
+			error(Ebadtimectl);
+		p = le2vlong(&delta, p);
+		le2long(&period, p);
+		todset(-1, delta, period);
+		break;
+	case 'f':
+		if(n < sizeof(uvlong))
+			error(Ebadtimectl);
+		le2vlong(&fasthz, p);
+		todsetfreq(fasthz);
+		break;
+	}
 	return n;
 }
