@@ -43,8 +43,6 @@ struct Decode{
 	int	base;
 	ulong	maxblocksym;
 
-	jmp_buf	errjmp;
-
 	uchar	*src;				/* input buffer */
 	uchar	*smax;				/* limit */
 };

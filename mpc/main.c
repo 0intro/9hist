@@ -44,6 +44,9 @@ if(0) {
 //print("sr1=%ux sr2=%ux\n", *(uchar*)(NVRAMMEM+0x100000), *(uchar*)(NVRAMMEM+0x100001));
 
 //print("sccr=%ulx\n", m->iomem->sccr);
+print("%ux %ux\n", m->iomem->memc[0].base, m->iomem->memc[7].base);
+print("%ux %ux\n", m->iomem->memc[0].option, m->iomem->memc[7].option);
+print("%ux\n", *(uchar*)(0xff000000));
 	pageinit();
 	procinit0();
 	initseg();
@@ -76,6 +79,8 @@ machinit(void)
 	m->clockgen = osc*MHz;		/* clock generator frequency (cycles) */
 
 	*(ushort*)&(io->memc[4].base) = 0x8060;
+//	*(ushort*)&(io->memc[7].option) = 0xffe0;
+	*(ushort*)&(io->memc[7].base) = 0xff00;
 }
 
 void

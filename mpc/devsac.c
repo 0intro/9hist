@@ -4,6 +4,7 @@
 #include "dat.h"
 #include "fns.h"
 #include "io.h"
+#include "../port/error.h"
 
 /*
  * Rather than reading /adm/users, which is a lot of work for
@@ -73,32 +74,31 @@ enum
 	Powner =	64,
 };
 
-uchar *data = SACMEM;
-int blocksize;
-Sac root;
+static uchar *data = SACMEM;
+static int blocksize;
+static Sac root;
 
-void	sacstat(SacDir*, char*);
-void	io(void);
-void	usage(void);
-ulong	getl(void *p);
-vlong	getv(void *p);
-void	init(char*);
-Sac	*saccpy(Sac *s);
-Sac *saclookup(Sac *s, char *name);
-int sacdirread(Sac *s, char *p, long off, long cnt);
-void loadblock(void *buf, uchar *offset, int blocksize);
-void sacfree(Sac*);
+static void	sacdir(Chan *, SacDir*, char*);
+static ulong	getl(void *p);
+static vlong	getv(void *p);
+static Sac	*saccpy(Sac *s);
+static Sac *saclookup(Sac *s, char *name);
+static int sacdirread(Chan *, char *p, long off, long cnt);
+static void loadblock(void *buf, uchar *offset, int blocksize);
+static void sacfree(Sac*);
 
-void
-devinit(void)
+static void
+sacinit(void)
 {
 	SacHeader *hdr;
+print("sacinit\n");
 	hdr = (SacHeader*)data;
 	if(getl(hdr->magic) != Magic) {
-print("devsac: bad magic");
+print("devsac: bad magic\n");
 		return;
 	}
 	blocksize = getl(hdr->blocksize);
+print("blocksize = %d\n", blocksize);
 	root.SacDir = *(SacDir*)(data + sizeof(SacHeader));
 }
 
@@ -123,7 +123,7 @@ sacattach(char* spec)
 	return c;
 }
 
-Chan*
+static Chan*
 sacclone(Chan *c, Chan *nc)
 {
 	nc = devclone(c, nc);
@@ -131,15 +131,17 @@ sacclone(Chan *c, Chan *nc)
 	return nc;
 }
 
-int
-devwalk(Chan *c, char *name, Dirtab *tab, int ntab, Devgen *gen)
+static int
+sacwalk(Chan *c, char *name)
 {
 	Sac *sac;
+	Path *op;
 
+print("sacwalk\n");
 	isdir(c);
-	sac = c->aux;
-	if(strcmp(name, ".") == 0)
+	if(name[0]=='.' && name[1]==0)
 		return 1;
+	sac = c->aux;
 	sac = saclookup(sac, name);
 	if(sac == nil) {
 		strncpy(up->error, Enonexist, NAMELEN);
@@ -148,163 +150,119 @@ devwalk(Chan *c, char *name, Dirtab *tab, int ntab, Devgen *gen)
 	c->aux = sac;
 	c->qid = (Qid){getl(sac->qid), 0};
 	op = c->path;
+print("op=%ux name = %s\n", op, name);
 	c->path = ptenter(&syspt, op, name);
 	decref(op);
 	return 1;
 }
 
-char *
-ropen(Fid *f)
+static Chan*
+sacopen(Chan *c, int omode)
 {
-	int mode, trunc;
+	ulong t, mode;
+	Sac *sac;
+	static int access[] = { 0400, 0200, 0600, 0100 };
 
-	if(f->open)
-		return Eisopen;
-	if(f->busy == 0)
-		return Enotexist;
-	mode = rhdr.mode;
-	if(f->qid.path & CHDIR){
-		if(mode != OREAD)
-			return Eperm;
-		thdr.qid = f->qid;
-		return 0;
-	}
-	if(mode & ORCLOSE)
-		return Erdonly;
-	trunc = mode & OTRUNC;
-	mode &= OPERM;
-	if(mode==OWRITE || mode==ORDWR || trunc)
-		return Erdonly;
-	if(mode==OREAD)
-		if(!perm(f, f->sac, Pread))
-			return Eperm;
-	if(mode==OEXEC)
-		if(!perm(f, f->sac, Pexec))
-			return Eperm;
-	thdr.qid = f->qid;
-	f->open = 1;
-	return 0;
+	sac = c->aux;
+	mode = getl(sac->mode);
+	if(strcmp(up->user, sac->uid) == 0)
+		mode = mode;
+	else if(strcmp(up->user, sac->gid) == 0)
+		mode = mode<<3;
+	else
+		mode = mode<<6;
+
+	t = access[omode&3];
+	if((t & mode) != t)
+			error(Eperm);
+	c->offset = 0;
+	c->mode = openmode(omode);
+	c->flag |= COPEN;
+	return c;
 }
 
-char *
-rcreate(Fid *f)
-{
-	if(f->open)
-		return Eisopen;
-	if(f->busy == 0)
-		return Enotexist;
-	return Erdonly;
-}
 
-char*
-rread(Fid *f)
+static long
+sacread(Chan *c, void *a, long n, vlong off)
 {
 	Sac *sac;
 	char *buf, *buf2;
-	long off;
-	int n, cnt, i, j;
+	int nn, cnt, i, j;
 	uchar *blocks;
 	vlong length;
 
-	if(f->busy == 0)
-		return Enotexist;
-	sac = f->sac;
-	thdr.count = 0;
-	off = rhdr.offset;
-	buf = thdr.data;
-	cnt = rhdr.count;
-	if(f->qid.path & CHDIR){
-		cnt = (rhdr.count/DIRLEN)*DIRLEN;
+	buf = a;
+	cnt = n;
+	if(c->qid.path & CHDIR){
+		cnt = (cnt/DIRLEN)*DIRLEN;
 		if(off%DIRLEN)
-			return "i/o error";
-		thdr.count = sacdirread(sac, buf, off, cnt);
-		return 0;
+			error("i/o error");
+		return sacdirread(c, buf, off, cnt);
 	}
+print("data read\n");
+	sac = c->aux;
 	length = getv(sac->length);
-	if(off >= length) {
-		rhdr.count = 0;
+	if(off >= length)
 		return 0;
-	}
 	if(cnt > length-off)
 		cnt = length-off;
-	thdr.count = cnt;
 	if(cnt == 0)
 		return 0;
+	n = cnt;
 	blocks = data + getv(sac->blocks);
 	buf2 = malloc(blocksize);
 	while(cnt > 0) {
 		i = off/blocksize;
 		loadblock(buf2, blocks+i*8, blocksize);
 		j = off-i*blocksize;
-		n = blocksize-j;
-		if(n > cnt)
-			n = cnt;
-		memmove(buf, buf2+j, n);
-		cnt -= n;
-		off += n;
+		nn = blocksize-j;
+		if(nn > cnt)
+			nn = cnt;
+		memmove(buf, buf2+j, nn);
+		cnt -= nn;
+		off += nn;
 	}
 	free(buf2);
+	return n;
+}
+
+static long
+sacwrite(Chan *, void *, long, vlong)
+{
+	error(Eperm);
 	return 0;
 }
 
-char*
-sacwrite(Fid *f)
+static void
+sacclose(Chan* c)
 {
-	if(f->busy == 0)
-		return Enotexist;
-	return Erdonly;
+	Sac *sac = c->aux;
+print("close %ux\n", sac);
+	c->aux = nil;
+	sacfree(sac);
 }
 
-char *
-rclunk(Fid *f)
+
+static void
+sacstat(Chan *c, char *db)
 {
-	f->busy = 0;
-	f->open = 0;
-	free(f->user);
-	sacfree(f->sac);
-	return 0;
+	sacdir(c, c->aux, db);
 }
 
-char *
-rremove(Fid *f)
-{
-	f->busy = 0;
-	f->open = 0;
-	free(f->user);
-	sacfree(f->sac);
-	return Erdonly;
-}
-
-char *
-rstat(Fid *f)
-{
-	if(f->busy == 0)
-		return Enotexist;
-	sacstat(f->sac, thdr.stat);
-	return 0;
-}
-
-char *
-rwstat(Fid *f)
-{
-	if(f->busy == 0)
-		return Enotexist;
-	return Erdonly;
-}
-
-Sac*
+static Sac*
 saccpy(Sac *s)
 {
 	Sac *ss;
 	
 	ss = malloc(sizeof(Sac));
+print("saccpy = %ux\n", ss);
 	*ss = *s;
 	if(ss->path)
 		incref(ss->path);
 	return ss;
 }
 
-SacPath *
+static SacPath *
 sacpathalloc(SacPath *p, vlong blocks, int entry)
 {
 	SacPath *pp = malloc(sizeof(SacPath));
@@ -327,15 +285,15 @@ sacpathfree(SacPath *p)
 }
 
 
-void
+static void
 sacfree(Sac *s)
 {
 	sacpathfree(s->path);
 	free(s);
 }
 
-void
-sacstat(SacDir *s, char *buf)
+static void
+sacdir(Chan *c, SacDir *s, char *buf)
 {
 	Dir dir;
 
@@ -349,10 +307,12 @@ sacstat(SacDir *s, char *buf)
 	strcpy(dir.gid, s->gid);
 	dir.atime = getl(s->atime);
 	dir.mtime = getl(s->mtime);
+	dir.type = devtab[c->type]->dc;
+	dir.dev = c->dev;
 	convD2M(&dir, buf);
 }
 
-void
+static void
 loadblock(void *buf, uchar *offset, int blocksize)
 {
 	vlong block, n;
@@ -364,15 +324,16 @@ loadblock(void *buf, uchar *offset, int blocksize)
 		if(n < 0)
 			n = -n;
 		n -= block;
-//fprint(2, "blocksize = %d, block = %lld n = %lld\n", blocksize, block, n);
+print("blocksize = %d, block = %lld n = %lld\n", blocksize, block, n);
 		if(unsac(buf, data+block, blocksize, n)<0)
 			panic("unsac failed!");
 	} else {
+print("memmove: blocksize = %d\n", blocksize);
 		memmove(buf, data+block, blocksize);
 	}
 }
 
-Sac*
+static Sac*
 sacparent(Sac *s)
 {
 	uchar *blocks;
@@ -382,34 +343,37 @@ sacparent(Sac *s)
 
 	p = s->path;
 	if(p == nil || p->up == nil) {
-		pathfree(p);
+		sacpathfree(p);
 		*s = root;
 		return s;
 	}
 	p = p->up;
 
-//fprint(2, "sacparent = %lld %d\n", p->blocks, p->entry);
+print("sacparent = %lld %d\n", p->blocks, p->entry);
 	blocks = data + p->blocks;
 	per = blocksize/sizeof(SacDir);
 	i = p->entry/per;
 	buf = malloc(per*sizeof(SacDir));
 	loadblock(buf, blocks + i*8, per*sizeof(SacDir));
 	s->SacDir = buf[p->entry-i*per];
-//fprint(2, "sacparent = %s\n", s->name);
+print("sacparent = %s\n", s->name);
 	free(buf);
 	incref(p);
-	pathfree(s->path);
+	sacpathfree(s->path);
 	s->path = p;
 	return s;
 }
 
-int
-sacdirread(Sac *s, char *p, long off, long cnt)
+static int
+sacdirread(Chan *c, char *p, long off, long cnt)
 {
 	uchar *blocks;
 	SacDir *buf;
 	int iblock, per, i, j, ndir;
+	Sac *s;
 
+print("sacdirread %d %d\n", off, cnt);
+	s = c->aux;
 	blocks = data + getv(s->blocks);
 	per = blocksize/sizeof(SacDir);
 	ndir = getv(s->length);
@@ -428,18 +392,18 @@ sacdirread(Sac *s, char *p, long off, long cnt)
 			iblock = j;
 		}
 		j *= per;
-		sacstat(buf+i-j, p);
+		sacdir(c, buf+i-j, p);
 		p += DIRLEN;
 	}
 	free(buf);
 	return cnt*DIRLEN;
 }
 
-Sac*
+static Sac*
 saclookup(Sac *s, char *name)
 {
 	int ndir;
-	int top, bot, i, j, k, per;
+	int i, j, k, per;
 	uchar *blocks;
 	SacDir *buf;
 	int iblock;
@@ -453,36 +417,8 @@ saclookup(Sac *s, char *name)
 	buf = malloc(per*sizeof(SacDir));
 	iblock = -1;
 
-	if(1) {
-		// linear search
-		for(i=0; i<ndir; i++) {
-			j = i/per;
-			if(j != iblock) {
-				loadblock(buf, blocks + j*8, per*sizeof(SacDir));
-				iblock = j;
-			}
-			j *= per;
-			sd = buf+i-j;
-			k = strcmp(name, sd->name);
-			if(k == 0) {
-//print("walk %s %lld %d\n", name, getv(s->blocks), i);
-				s->path = sacpathalloc(s->path, getv(s->blocks), i);
-				s->SacDir = *sd;
-				free(buf);
-				return s;
-			}
-		}
-		free(buf);
-		return 0;
-	}
-
-	// binary search
-	top = ndir;
-	bot = 0;
-	while(bot != top){
-if(bot>top)
-sysfatal("binary serach failed: %d %d\n", bot, top);
-		i = (bot+top)>>1;
+	// linear search
+	for(i=0; i<ndir; i++) {
 		j = i/per;
 		if(j != iblock) {
 			loadblock(buf, blocks + j*8, per*sizeof(SacDir));
@@ -492,115 +428,18 @@ sysfatal("binary serach failed: %d %d\n", bot, top);
 		sd = buf+i-j;
 		k = strcmp(name, sd->name);
 		if(k == 0) {
-			s->path = sacpathalloc(s->path, getv(s->blocks), i);
+print("walk %s %lld %d\n", name, getv(s->blocks), i);
+		s->path = sacpathalloc(s->path, getv(s->blocks), i);
 			s->SacDir = *sd;
 			free(buf);
-		}
-		if(k < 0) {
-			top = i;
-			sd = buf;
-			if(strcmp(name, sd->name) < 0)
-				top = j;
-		} else {
-			bot = i+1;
-			if(ndir-j < per)
-				i = ndir-j;
-			else
-				i = per;
-			sd = buf+i-1;
-			if(strcmp(name, sd->name) > 0)
-				bot = j+i;
+			return s;
 		}
 	}
+	free(buf);
 	return 0;
 }
 
-Fid *
-newfid(int fid)
-{
-	Fid *f, *ff;
-
-	ff = 0;
-	for(f = fids; f; f = f->next)
-		if(f->fid == fid)
-			return f;
-		else if(!ff && !f->busy)
-			ff = f;
-	if(ff){
-		ff->fid = fid;
-		return ff;
-	}
-	f = malloc(sizeof *f);
-//fprint(2, "newfid\n");
-	memset(f, 0 , sizeof(Fid));
-	f->fid = fid;
-	f->next = fids;
-	fids = f;
-	return f;
-}
-
-void
-io(void)
-{
-	char *err;
-	int n;
-
-	for(;;){
-		/*
-		 * reading from a pipe or a network device
-		 * will give an error after a few eof reads
-		 * however, we cannot tell the difference
-		 * between a zero-length read and an interrupt
-		 * on the processes writing to us,
-		 * so we wait for the error
-		 */
-		n = read(mfd[0], mdata, sizeof mdata);
-		if(n == 0)
-			continue;
-		if(n < 0)
-			error("mount read");
-		if(convM2S(mdata, &rhdr, n) == 0)
-			continue;
-
-		if(debug)
-			fprint(2, "sacfs:<-%F\n", &rhdr);
-
-		thdr.data = mdata + MAXMSG;
-		if(!fcalls[rhdr.type])
-			err = "bad fcall type";
-		else
-			err = (*fcalls[rhdr.type])(newfid(rhdr.fid));
-		if(err){
-			thdr.type = Rerror;
-			strncpy(thdr.ename, err, ERRLEN);
-		}else{
-			thdr.type = rhdr.type + 1;
-			thdr.fid = rhdr.fid;
-		}
-		thdr.tag = rhdr.tag;
-		if(debug)
-			fprint(2, "ramfs:->%F\n", &thdr);/**/
-		n = convS2M(&thdr, mdata);
-		if(write(mfd[1], mdata, n) != n)
-			error("mount write");
-	}
-}
-
-int
-perm(Fid *f, Sac *s, int p)
-{
-	ulong perm = getl(s->mode);
-	if((p*Pother) & perm)
-		return 1;
-	if(strcmp(f->user, s->gid)==0 && ((p*Pgroup) & perm))
-		return 1;
-	if(strcmp(f->user, s->uid)==0 && ((p*Powner) & perm))
-		return 1;
-	return 0;
-}
-
-
-ulong
+static ulong
 getl(void *p)
 {
 	uchar *a = p;
@@ -608,7 +447,7 @@ getl(void *p)
 	return (a[0]<<24) | (a[1]<<16) | (a[2]<<8) | a[3];
 }
 
-vlong
+static vlong
 getv(void *p)
 {
 	uchar *a = p;

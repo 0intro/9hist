@@ -511,37 +511,13 @@ TEXT setlabel(SB), $0
  * The size of each entry in the vector table (6 bytes) is known in trapinit().
  */
 TEXT _strayintr(SB), $0
-
-	/* time stamp for interrupt */
 	PUSHL	AX				/* save AX */
-	PUSHL	DX
-	PUSHL	CX
-	MOVL	$0x10, CX
-	RDMSR
-	MOVL	AX, intrts(SB)
-	MOVL	DX, intrts+4(SB)
-	POPL	CX
-	POPL	DX
-
 	MOVL	4(SP), AX			/* return PC from vectortable(SB) */
 	MOVBLZX	(AX), AX			/* trap type */
 	XCHGL	AX, (SP)			/* restore AX and put the type on the stack */
 	JMP	intrcommon
 
 TEXT _strayintrx(SB), $0
-
-	/* time stamp for interrupt */
-	PUSHL	AX
-	PUSHL	DX
-	PUSHL	CX
-	MOVL	$0x10, CX
-	RDMSR
-	MOVL	AX, intrts(SB)
-	MOVL	DX, intrts+4(SB)
-	POPL	CX
-	POPL	DX
-	POPL	AX
-
 	XCHGL	AX, (SP)			/* exchange AX with pointer to trap type */
 	MOVBLZX	(AX), AX			/* trap type -> AX */
 	XCHGL	AX, (SP)			/* exchange trap type with AX */

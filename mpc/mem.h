@@ -173,15 +173,12 @@
 #define	TSTKTOP		(USTKTOP-USTKSIZE)	/* end of new stack in sysexec */
 #define TSTKSIZ 	100
 
-/*
- * atlas board registers
- */
 #define	INTMEM		0x80000000
-#define	ISAMEM	0x80100000
-#define	FLASH0MEM	0x80200000
-#define	FLASH1MEM	0x80400000
+#define	ISAMEM		0x80100000
+#define	FLASHMEM	0xff000000
+#define	SACMEM		FLASHMEM + 0x40000
 #define	NVRAMMEM	0x80600000
-#define DRAMMEM		0xff000000		/* to 0xffffffff: 16 Meg */
+#define DRAMMEM		0xff800000		/* to 0xffffffff: 8 Meg */
 
 #define	SIRAM	(INTMEM+0xC00)
 #define	LCDCOLR	(INTMEM+0xE00)
