@@ -283,79 +283,88 @@ interrupt(Ureg *ur, void *arg)
 	ether = arg;
 	port = ether->port;
 
-	status = ins(port+Status);
-
-	if(status & Failure){
+	for(;;){
 		/*
-		 * Adapter failure, try to find out why.
-		 * Reset if necessary.
-		 * What happens if Tx is active and we reset,
-		 * need to retransmit?
-		 * This probably isn't right.
+		 * Clear the interrupt latch.
+		 * It's possible to receive a packet and for another
+		 * to become complete before we exit the interrupt
+		 * handler so this must be done first to ensure another
+		 * interrupt will occur.
 		 */
-		diag = getdiag(ether);
-		print("ether509: status #%ux, diag #%ux\n", status, diag);
-
-		if(diag & TxOverrun){
-			COMMAND(port, TxReset, 0);
+		COMMAND(port, AckIntr, Latch);
+		status = ins(port+Status);
+		if((status & AllIntr) == 0)
+			break;
+	
+		if(status & Failure){
+			/*
+			 * Adapter failure, try to find out why.
+			 * Reset if necessary.
+			 * What happens if Tx is active and we reset,
+			 * need to retransmit?
+			 * This probably isn't right.
+			 */
+			diag = getdiag(ether);
+			print("ether509: status #%ux, diag #%ux\n", status, diag);
+	
+			if(diag & TxOverrun){
+				COMMAND(port, TxReset, 0);
+				COMMAND(port, TxEnable, 0);
+				wakeup(&ether->tr);
+			}
+	
+			if(diag & RxUnderrun){
+				COMMAND(port, RxReset, 0);
+				attach(ether);
+			}
+	
+			return;
+		}
+	
+		if(status & RxComplete){
+			receive(ether);
+			status &= ~RxComplete;
+		}
+	
+		if(status & TxComplete){
+			/*
+			 * Pop the TX Status stack, accumulating errors.
+			 * If there was a Jabber or Underrun error, reset
+			 * the transmitter. For all conditions enable
+			 * the transmitter.
+			 */
+			txstatus = 0;
+			do{
+				if(x = inb(port+TxStatus))
+					outb(port+TxStatus, 0);
+				txstatus |= x;
+			}while(ins(port+Status) & TxComplete);
+	
+			if(txstatus & (TxJabber|TxUnderrun))
+				COMMAND(port, TxReset, 0);
 			COMMAND(port, TxEnable, 0);
-			wakeup(&ether->tr);
+			ether->oerrs++;
 		}
-
-		if(diag & RxUnderrun){
-			COMMAND(port, RxReset, 0);
-			attach(ether);
+	
+		if(status & (TxAvailable|TxComplete)){
+			/*
+			 * Reset the Tx FIFO threshold.
+			 */
+			if(status & TxAvailable){
+				COMMAND(port, AckIntr, TxAvailable);
+				wakeup(&ether->tr);
+			}
+			status &= ~(TxAvailable|TxComplete);
 		}
-
-		return;
-	}
-
-	if(status & RxComplete){
-		receive(ether);
-		status &= ~RxComplete;
-	}
-
-	if(status & TxComplete){
+	
 		/*
-		 * Pop the TX Status stack, accumulating errors.
-		 * If there was a Jabber or Underrun error, reset
-		 * the transmitter. For all conditions enable
-		 * the transmitter.
+		 * Panic if there are any interrupt bits on we haven't
+		 * dealt with. Should deal with UP (Update Statistics)
+		 * for happier coexistence with Windows drivers.
 		 */
-		txstatus = 0;
-		do{
-			if(x = inb(port+TxStatus))
-				outb(port+TxStatus, 0);
-			txstatus |= x;
-		}while(ins(port+Status) & TxComplete);
-
-		if(txstatus & (TxJabber|TxUnderrun))
-			COMMAND(port, TxReset, 0);
-		COMMAND(port, TxEnable, 0);
-		ether->oerrs++;
-	}
-
-	if(status & (TxAvailable|TxComplete)){
-		/*
-		 * Reset the Tx FIFO threshold.
-		 */
-		if(status & TxAvailable){
-			COMMAND(port, AckIntr, TxAvailable);
-			wakeup(&ether->tr);
+		if(status & AllIntr)
+			panic("ether509 interrupt: #%lux, #%ux\n", status, getdiag(ether));
 		}
-		status &= ~(TxAvailable|TxComplete);
-	}
-
-	/*
-	 * Panic if there are any interrupt bits on we haven't
-	 * dealt with other than Latch. Should deal with UP (Update
-	 * Statistics) for happier coexistence with Windows drivers.
-	 * Otherwise, acknowledge the interrupt.
-	 */
-	if(status & AllIntr)
-		panic("ether509 interrupt: #%lux, #%ux\n", status, getdiag(ether));
-
-	COMMAND(port, AckIntr, Latch);
 }
 
 typedef struct Adapter Adapter;
