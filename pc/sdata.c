@@ -604,8 +604,9 @@ retry:
 	atadmamode(drive);	
 
 	if(DEBUG & DbgCONFIG){
-		print("dev %2.2uX config %4.4uX capabilities %4.4uX",
-			dev, drive->info[Iconfig], drive->info[Icapabilities]);
+		print("dev %2.2uX port %uX config %4.4uX capabilities %4.4uX",
+			dev, cmdport,
+			drive->info[Iconfig], drive->info[Icapabilities]);
 		print(" mwdma %4.4uX", drive->info[Imwdma]);
 		if(drive->info[Ivalid] & 0x04)
 			print(" udma %4.4uX", drive->info[Iudma]);
