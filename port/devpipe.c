@@ -75,8 +75,10 @@ pipeattach(char *spec)
 	}
 	p = pipealloc.free;
 	pipealloc.free = p->next;
-	if(incref(p) != 1)
+	if(++(p->ref) != 1){
+		print("pipattach pipe half %d ref %d\n", p - pipealloc.pipe, p->ref);
 		panic("pipeattach");
+	}
 	unlock(&pipealloc);
 
 	c->qid = CHDIR|STREAMQID(2*(p - pipealloc.pipe), 0);
@@ -201,19 +203,6 @@ pipewstat(Chan *c, char *db)
 }
 
 void
-pipeexit(Pipe *p)
-{
-	if(decref(p) < 0)
-		panic("pipeexit");
-	if(p->ref == 0){
-		lock(&pipealloc);
-		p->next = pipealloc.free;
-		pipealloc.free = p;
-		unlock(&pipealloc);
-	}
-}
-
-void
 pipeclose(Chan *c)
 {
 	Stream *remote;
@@ -230,7 +219,17 @@ pipeclose(Chan *c)
 		streamclose(c);		/* close this stream */
 		streamexit(remote, 0);	/* release stream for other half of pipe */
 	}
-	pipeexit(p);
+
+	lock(p);
+	if(--(p->ref) < 0)
+		panic("pipeexit");
+	if(p->ref == 0){
+		lock(&pipealloc);
+		p->next = pipealloc.free;
+		pipealloc.free = p;
+		unlock(&pipealloc);
+	}
+	unlock(p);
 }
 
 long

@@ -46,6 +46,7 @@ main(void)
 	alarminit();
 	chandevreset();
 	streaminit();
+	serviceinit();
 	pageinit();
 	kmapinit();
 	userinit();
@@ -326,4 +327,5 @@ confinit(void)
 	conf.nurp = 32;
 	conf.nasync = 1;
 	conf.npipe = conf.nstream/2;
+	conf.nservice = conf.nproc/5;
 }

@@ -377,9 +377,9 @@ dkstopen(Queue *q, Stream *s)
 		error(0, Ehungup);
 	}
 	unlock(dp);
+	lp->rq = q;
 	if(lp->state==Lclosed)
 		lp->state = Lopened;
-	lp->rq = q;
 }
 
 /*

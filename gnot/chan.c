@@ -14,19 +14,23 @@ struct{
 int
 incref(Ref *r)
 {
+	int x;
+
 	lock(r);
-	r->ref++;
+	x = ++r->ref;
 	unlock(r);
-	return r->ref;
+	return x;
 }
 
 int
 decref(Ref *r)
 {
+	int x;
+
 	lock(r);
-	r->ref--;
+	x = --r->ref;
 	unlock(r);
-	return r->ref;
+	return x;
 }
 
 void

@@ -688,7 +688,13 @@ DEBUG(void)
 	}
 }
 
-void
+/*
+ *  create a kernel process.  if func is nonzero put the process in the kernel
+ *  process group, have it call func, and exit.
+ *
+ *  otherwise, the new process stays in the same process group and returns.
+ */
+Proc *
 kproc(char *name, void (*func)(void *), void *arg)
 {
 	Proc *p;
@@ -733,15 +739,21 @@ kproc(char *name, void (*func)(void *), void *arg)
 	 */
 	if(setlabel(&p->sched)){
 		restore();
-		(*func)(arg);
-		pexit(0, 1);
+		if(func){
+			(*func)(arg);
+			pexit(0, 1);
+		} else
+			return 0;
 	}
-	if(kpgrp == 0){
-		kpgrp = newpgrp();
-		strcpy(kpgrp->user, "bootes");
-	}
-	p->pgrp = kpgrp;
-	incref(kpgrp);
+	if(func){
+		if(kpgrp == 0){
+			kpgrp = newpgrp();
+			strcpy(kpgrp->user, "bootes");
+		}
+		p->pgrp = kpgrp;
+	} else
+		p->pgrp = u->p->pgrp;
+	incref(p->pgrp);
 	sprint(p->text, "%s.%.6s", name, u->p->pgrp->user);
 	p->nchild = 0;
 	p->parent = 0;
@@ -749,4 +761,5 @@ kproc(char *name, void (*func)(void *), void *arg)
 	p->time[TReal] = MACHP(0)->ticks;
 	ready(p);
 	flushmmu();
+	return p;
 }

@@ -752,10 +752,14 @@ streamexit(Stream *s, int locked)
 	Queue *q;
 	Queue *nq;
 	int rv;
+	char *name;
 
 	if(!locked)
 		lock(s);
 	if(s->inuse == 1){
+		if(s->opens != 0)
+			print("streamexit %d %s\n", s->opens, s->devq->info->name);
+
 		/*
 		 *  ascend the stream freeing the queues
 		 */

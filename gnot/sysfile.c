@@ -508,3 +508,16 @@ sysfwstat(ulong *arg)
 	(*devtab[c->type].wstat)(c, (char*)arg[1]);
 	return 0;
 }
+
+long
+sysfilsys(ulong *arg)
+{
+	Chan *c;
+
+	c = fdtochan(arg[0], -1);
+	validaddr(arg[1], 1, 0);
+	if((c->qid&CHDIR) || (c->mode&ORDWR)!=ORDWR)
+		error(0, Ebadarg);
+	service((char *)arg[1], c, filsys);
+	return 0;
+}

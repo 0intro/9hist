@@ -31,6 +31,7 @@ typedef struct Queue	Queue;
 typedef struct Ref	Ref;
 typedef struct Rendez	Rendez;
 typedef struct Seg	Seg;
+typedef struct Service	Service;
 typedef struct Stream	Stream;
 typedef struct Ureg	Ureg;
 typedef struct User	User;
@@ -149,6 +150,7 @@ struct Conf
 	int	nurp;		/* max urp conversations */
 	int	nasync;		/* number of async protocol modules */
 	int	npipe;		/* number of pipes */
+	int	nservice;	/* number of services */
 };
 
 struct Dev
@@ -489,6 +491,18 @@ enum {
 	Streamhi= (9*1024),	/* byte count high water mark */
 	Streambhi= 32,		/* block count high water mark */
 };
+
+#define NSTUB 32
+struct Service
+{
+	Ref;
+	Service *next;
+	QLock	alock;
+	int	die;
+	Chan	*c;
+	char	name[NAMELEN];
+};
+
 
 #define	PRINTSIZE	256
 
