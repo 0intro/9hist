@@ -206,6 +206,11 @@ static SoftLance l;
 void lancekproc(void *);
 
 /*
+ *  mode used by restart
+ */
+int	lancemode;
+
+/*
  *  print a packet preceded by a message
  */
 int
@@ -443,7 +448,7 @@ lancestart(void)
 	/*
 	 *  create the initialization block
 	 */
-	MPus(lm->mode) = 0;
+	MPus(lm->mode) = lancemode;
 
 	/*
 	 *  set ether addr from the value in the id prom.

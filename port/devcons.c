@@ -404,6 +404,8 @@ consopen(Chan *c, int omode)
 		}
 		break;
 	case Qrcons:
+		if(conf.cntrlp)
+			error(Eperm);
 		if(incref(&raw) == 1){
 			lock(&lineq);
 			while((ch=getc(&kbdq)) != -1){
