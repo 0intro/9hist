@@ -155,7 +155,7 @@ boot(int argc, char *argv[])
 
 	cmd = getenv("init");
 	if(cmd == nil){
-		sprint(cmdbuf, "/%s/ninit -%s%s", cputype,
+		sprint(cmdbuf, "/%s/init -%s%s", cputype,
 			cpuflag ? "c" : "t", mflag ? "m" : "");
 		cmd = cmdbuf;
 	}
