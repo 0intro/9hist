@@ -5,7 +5,6 @@
 #include "fns.h"
 #include "../port/error.h"
 #include "io.h"
-#include "devtab.h"
 
 /*
  *  Support for up to 4 Slot card slots.  Generalizing above that is hard
@@ -188,6 +187,8 @@ static void	i82365intr(Ureg*, void*);
 static int	pcmio(int, ISAConf*);
 static long	pcmread(int, int, void*, long, ulong);
 static long	pcmwrite(int, int, void*, long, ulong);
+
+void i82365reset(void);
 
 /*
  *  reading and writing card registers

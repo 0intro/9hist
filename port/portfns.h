@@ -257,6 +257,7 @@ int		scsitest(Target*, char);
 Target*		scsiunit(int, int);
 long		seconds(void);
 ulong		segattach(Proc*, ulong, char *, ulong, ulong);
+void		segclock(ulong);
 void		segpage(Segment*, Page*);
 int		setcolor(ulong, ulong, ulong, ulong);
 void		setkernur(Ureg*, Proc*);

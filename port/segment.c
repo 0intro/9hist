@@ -88,6 +88,8 @@ putseg(Segment *s)
 			freepte(s, *pp);
 
 	qunlock(&s->lk);
+	if(s->profile != 0)
+		free(s->profile);
 	free(s);
 }
 
@@ -541,4 +543,20 @@ syssegflush(ulong *arg)
 	}
 	flushmmu();
 	return 0;
+}
+
+void
+segclock(ulong pc)
+{
+	Segment *s;
+
+	s = up->seg[TSEG];
+	if(s == 0 || s->profile == 0)
+		return;
+
+	s->profile[0] += TK2MS(1);
+	if(pc >= s->base && pc < s->top) {
+		pc -= s->base;
+		s->profile[pc>>LRESPROF] += TK2MS(1);
+	}
 }

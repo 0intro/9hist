@@ -6,7 +6,6 @@
 #include	"../port/error.h"
 #include	"ureg.h"
 
-
 enum
 {
 	Qctl,
@@ -24,6 +23,7 @@ enum
 	Qstatus,
 	Qtext,
 	Qwait,
+	Qprofile,
 };
 
 #define	STATSIZE	(2*NAMELEN+12+9*12)
@@ -43,6 +43,7 @@ Dirtab procdir[] =
 	"status",	{Qstatus},	STATSIZE,		0444,
 	"text",		{Qtext},	0,			0000,
 	"wait",		{Qwait},	0,			0400,
+	"profile",	{Qprofile},	0,			0400,
 };
 
 /* Segment type from portdat.h */
@@ -76,6 +77,7 @@ procgen(Chan *c, Dirtab *tab, int, int s, Dir *dp)
 {
 	Qid qid;
 	Proc *p;
+	Segment *q;
 	char buf[NAMELEN];
 	ulong pid, path, perm, len;
 
@@ -105,8 +107,18 @@ procgen(Chan *c, Dirtab *tab, int, int s, Dir *dp)
 		perm = p->procmode;
 
 	len = tab->length;
-	if(QID(c->qid) == Qwait)
+	switch(QID(c->qid)) {
+	case Qwait:
 		len = p->nwait * sizeof(Waitmsg);
+		break;
+	case Qprofile:
+		q = p->seg[TSEG];
+		if(q && q->profile) {
+			len = (q->top-q->base)>>LRESPROF;
+			len *= sizeof(*q->profile);
+		}
+		break;
+	}
 
 	qid = (Qid){path|tab->qid.path, c->qid.vers};
 	devdir(c, qid, tab->name, len, p->user, perm, dp);
@@ -182,6 +194,7 @@ procopen(Chan *c, int omode)
 	case Qproc:
 	case Qkregs:
 	case Qsegment:
+	case Qprofile:
 		if(omode != OREAD)
 			error(Eperm);
 		break;
@@ -311,6 +324,18 @@ procread(Chan *c, void *va, long n, ulong offset)
 			return n;
 		}
 		error(Ebadarg);
+	case Qprofile:
+		s = p->seg[TSEG];
+		if(s == 0 || s->profile == 0)
+			error("profile is off");
+		i = (s->top-s->base)>>LRESPROF;
+		i *= sizeof(*s->profile);
+		if(offset >= i)
+			return 0;
+		if(offset+n > i)
+			n = i - offset;
+		memmove(a, ((char*)s->profile)+offset, n);
+		return n;
 
 	case Qnote:
 		qlock(&p->debug);
@@ -408,9 +433,10 @@ procread(Chan *c, void *va, long n, ulong offset)
 			sg = p->seg[i];
 			if(sg == 0)
 				continue;
-			j += sprint(&statbuf[j], "%-6s %c %.8lux %.8lux %4d\n",
+			j += sprint(statbuf+j, "%-6s %c%c %.8lux %.8lux %4d\n",
 				sname[sg->type&SG_TYPE],
 				sg->type&SG_RONLY ? 'R' : ' ',
+				sg->profile ? 'P' : ' ',
 				sg->base, sg->top, sg->ref);
 		}
 		if(offset >= j)
@@ -726,7 +752,8 @@ procctlfgrp(Fgrp *f)
 void
 procctlreq(Proc *p, char *va, int n)
 {
-	int i;
+	Segment *s;
+	int i, npc;
 	char buf[NAMELEN];
 
 	if(n > NAMELEN)
@@ -778,7 +805,7 @@ procctlreq(Proc *p, char *va, int n)
 	if(strncmp(buf, "closefgrp", 9) == 0)
 		procctlfgrp(p->fgrp);
 	else
-	if(strncmp(buf, "pri", 3) == 0){
+	if(strncmp(buf, "pri", 3) == 0) {
 		if(n < 4)
 			error(Ebadctl);
 		i = atoi(buf+4);
@@ -791,12 +818,24 @@ procctlreq(Proc *p, char *va, int n)
 		p->basepri = i;
 	}
 	else
-	if(strncmp(buf, "wired", 5) == 0){
+	if(strncmp(buf, "wired", 5) == 0) {
 		if(n < 6)
 			error(Ebadctl);
 		i = atoi(buf+6);
 		if(i)
 			procwired(p);
+	}
+	else
+	if(strncmp(buf, "profile", 7) == 0) {
+		s = p->seg[TSEG];
+		if(s == 0 || (s->type&SG_TYPE) != SG_TEXT)
+			error(Ebadctl);
+		if(s->profile != 0)
+			free(s->profile);
+		npc = (s->top-s->base)>>LRESPROF;
+		s->profile = malloc(npc*sizeof(*s->profile));
+		if(s->profile == 0)
+			error(Enomem);
 	}
 	else
 		error(Ebadctl);

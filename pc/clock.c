@@ -54,8 +54,10 @@ clock(Ureg *ur, void *arg)
 			sched();
 	
 		/* user profiling clock */
-		if((ur->cs&0xffff) == UESEL)
+		if((ur->cs&0xffff) == UESEL) {
 			(*(ulong*)(USTKTOP-BY2WD)) += TK2MS(1);
+			segclock(ur->pc);
+		}
 	}
 }
 

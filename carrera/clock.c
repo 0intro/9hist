@@ -47,6 +47,8 @@ clockinit(void)
 void
 clock(Ureg *ur)
 {
+	int l;
+	Segment *s;
 
 	wrcompare(rdcount()+(m->speed*1000000)/HZ);
 
@@ -82,6 +84,8 @@ clock(Ureg *ur)
 		sched();
 
 	/* user profiling clock */
-	if(ur->status & KUSER)
-		(*(ulong*)(USTKTOP-BY2WD)) += TK2MS(1);	
+	if(ur->status & KUSER) {
+		(*(ulong*)(USTKTOP-BY2WD)) += TK2MS(1);
+		segclock(ur->pc);
+	}
 }
