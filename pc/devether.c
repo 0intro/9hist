@@ -1,14 +1,3 @@
-/*
- * Western Digital ethernet adapter
- * BUGS:
- *	no more than one controller
- * TODO:
- *	fix for different controller types
- *	output
- *	deal with stalling and restarting output on input overflow
- *	fix magic ring constants
- *	rewrite per SMC doc
- */
 #include "u.h"
 #include "../port/lib.h"
 #include "mem.h"
@@ -18,78 +7,48 @@
 #include "io.h"
 #include "devtab.h"
 
-static int debug;
-
-typedef struct Ctlr Ctlr;
+typedef struct Hw Hw;
+typedef struct Buffer Buffer;
 typedef struct Type Type;
-typedef struct Ring Ring;
+typedef struct Ctlr Ctlr;
+
+struct Hw {
+	int	addr;			/* interface address */
+	void	*ram;			/* interface shared memory address */
+	int	ramsz;			/* interface shared memory size */
+	void	(*reset)(Ctlr*);
+	void	(*init)(Ctlr*);
+	void	(*mode)(Ctlr*, int);
+	void	(*online)(Ctlr*, int);
+	void	(*receive)(Ctlr*);
+	void	(*transmit)(Ctlr*);
+	void	(*intr)(Ureg*);
+};
+static Hw wd8013;
 
 enum {
-	IObase		= 0x360,
-	RAMbase		= 0xC8000,
-	RAMsize		= 8*1024,
-	BUFsize		= 256,
-
-	RINGbase	= 6,		/* gak */
-	RINGsize	= 32,		/* gak */
-
-	Nctlr		= 1,
+	Nctlr		= 1,		/* even one of these is too many */
 	NType		= 9,		/* types/interface */
+
+	Nrb		= 16,		/* software receive buffers */
+	Ntb		= 4,		/* software transmit buffers */
 };
 
-#define NEXT(x, l)	((((x)+1)%(l)) == 0 ? RINGbase: (((x)+1)%(l)))
-#define PREV(x, l)	(((x)-1) < RINGbase ? (l-1): ((x)-1))
+#define NEXT(x, l)	(((x)+1)%(l))
+#define OFFSETOF(t, m)	((unsigned)&(((t*)0)->m))
+#define	HOWMANY(x, y)	(((x)+((y)-1))/(y))
+#define ROUNDUP(x, y)	(HOWMANY((x), (y))*(y))
 
-/*
- * register offsets from IObase
- */
+struct Buffer {
+	uchar	owner;
+	uchar	busy;
+	ushort	len;
+	Etherpkt pkt;
+};
+
 enum {
-	EA		= 0x08,		/* Ethernet Address in ROM */
-	ID		= 0x0E,		/* interface type */
-
-	NIC		= 0x10,		/* National DP8390 Chip */
-	Cr		= NIC+0x00,	/* Page [01] */
-
-	Pstart		= NIC+0x01,	/* write */
-	Pstop		= NIC+0x02,	/* write */
-	Bnry		= NIC+0x03,
-	Tsr		= NIC+0x04,	/* read */
-	Tpsr		= Tsr,		/* write */
-	Tbcr0		= NIC+0x05,	/* write */
-	Tbcr1		= NIC+0x06,	/* write */
-	Isr		= NIC+0x07,
-	Rbcr0		= NIC+0x0A,
-	Rbcr1		= NIC+0x0B,
-	Rsr		= NIC+0x0C,	/* read */
-	Rcr		= Rsr,		/* write */
-	Cntr0		= NIC+0x0D,	/* read */
-	Tcr		= Cntr0,	/* write */
-	Cntr1		= NIC+0x0E,	/* read */
-	Dcr		= Cntr1,	/* write */
-	Cntr2		= NIC+0x0F,	/* read */
-	Imr		= Cntr2,	/* write */
-
-	Par0		= NIC+0x01,	/* Page 1 */
-	Curr		= NIC+0x07,
-};
-
-/*
- * some register bits
- */
-enum {
-	Prx		= 0x01,		/* Isr:	packet received */
-	Ptx		= 0x02,		/*	packet transmitted */
-	Rxe		= 0x04,		/*	receive error */
-	Txe		= 0x08,		/*	transmit error */
-	Ovw		= 0x10,		/*	overwrite warning */
-};
-
-struct Ring {
-	uchar	status;
-	uchar	next;
-	uchar	len0;
-	uchar	len1;
-	uchar	data[BUFsize-4];
+	Host		= 0,		/* buffer owned by host */
+	Interface	= 1,		/* buffer owned by interface */
 };
 
 /*
@@ -105,74 +64,122 @@ struct Type {
 };
 
 /*
- *  per ethernet
+ * per ethernet
  */
 struct Ctlr {
 	QLock;
 
-	Ring	*ring;
-	Rendez	rr;			/* rendezvous for an input buffer */
-	Queue	rq;
-	uchar	bnry;
-	uchar	curr;
+	Hw	*hw;
 
-	Etherpkt *xpkt;
-	QLock	xl;
-	Rendez	xr;
-	uchar	xbusy;
+	ushort	nrb;		/* number of software receive buffers */
+	ushort	ntb;		/* number of software transmit buffers */
+	Buffer	*rb;		/* software receive buffers */
+	Buffer	*tb;		/* software transmit buffers */
 
-	int	iobase;			/* I/O base address */
+	uchar	ea[6];		/* ethernet address */
+	uchar	ba[6];		/* broadcast address */
+
+	Rendez	rr;		/* rendezvous for a receive buffer */
+	QLock	rlock;		/* semaphore on rc */
+	ushort	rh;		/* first receive buffer belonging to host */
+	ushort	ri;		/* first receive buffer belonging to interface */	
+
+	Rendez	tr;		/* rendezvous for a transmit buffer */
+	QLock	tlock;		/* semaphore on tc */
+	ushort	th;		/* first transmit buffer belonging to host */	
+	ushort	ti;		/* first transmit buffer belonging to interface */	
 
 	Type	type[NType];
-	uchar	ea[6];
-	uchar	ba[6];
-
-	uchar	prom;			/* true if promiscuous mode */
-	uchar	kproc;			/* true if kproc started */
-	char	name[NAMELEN];		/* name of kproc */
+	uchar	prom;		/* true if promiscuous mode */
+	uchar	kproc;		/* true if kproc started */
+	char	name[NAMELEN];	/* name of kproc */
 	Network	net;
 	Netprot	prot[NType];
 
+	Queue	lbq;		/* software loopback packet queue */
+
 	int	inpackets;
 	int	outpackets;
-	int	crcs;			/* input crc errors */
-	int	oerrs;			/* output errors */
-	int	frames;			/* framing errors */
-	int	overflows;		/* packet overflows */
-	int	buffs;			/* buffering errors */
+	int	crcs;		/* input crc errors */
+	int	oerrs;		/* output errors */
+	int	frames;		/* framing errors */
+	int	overflows;	/* packet overflows */
+	int	buffs;		/* buffering errors */
 };
 static Ctlr ctlr[Nctlr];
 
-static Etherpkt txpkt;
-
-static void
-xmemmove(void *to, void *from, long len)
+void
+etherinit(void)
 {
-	ushort *t, *f;
-	int s;
-	Ctlr *cp = &ctlr[0];
-	uchar reg;
+}
 
-	t = to;
-	f = from;
-	len = (len+1)/2;
-	s = splhi();
-	reg = inb(cp->iobase+0x05);
-	outb(cp->iobase+Imr, 0);
-	outb(cp->iobase+0x05, 0x80|reg);
-	while(len--)
-		*t++ = *f++;
-	outb(cp->iobase+0x05, reg);
-	outb(cp->iobase+Imr, 0x1F);
-	splx(s);
+Chan*
+etherclone(Chan *c, Chan *nc)
+{
+	return devclone(c, nc);
+}
+
+int
+etherwalk(Chan *c, char *name)
+{
+	return netwalk(c, name, &ctlr[0].net);
+}
+
+void
+etherstat(Chan *c, char *dp)
+{
+	netstat(c, dp, &ctlr[0].net);
+}
+
+Chan*
+etheropen(Chan *c, int omode)
+{
+	return netopen(c, omode, &ctlr[0].net);
+}
+
+void
+ethercreate(Chan *c, char *name, int omode, ulong perm)
+{
+	error(Eperm);
+}
+
+void
+etherclose(Chan *c)
+{
+	if(c->stream)
+		streamclose(c);
+}
+
+long
+etherread(Chan *c, void *a, long n, ulong offset)
+{
+	return netread(c, a, n, offset, &ctlr[0].net);
+}
+
+long
+etherwrite(Chan *c, char *a, long n, ulong offset)
+{
+	return streamwrite(c, a, n, 0);
+}
+
+void
+etherremove(Chan *c)
+{
+	error(Eperm);
+}
+
+void
+etherwstat(Chan *c, char *dp)
+{
+	netwstat(c, dp, &ctlr[0].net);
 }
 
 static int
-isxfree(void *arg)
+isobuf(void *arg)
 {
 	Ctlr *cp = arg;
 
-	return cp->xbusy == 0;
+	cp->tb[cp->th].owner == Host;
 }
 
 static void
@@ -182,24 +189,22 @@ etheroput(Queue *q, Block *bp)
 	int len, n;
 	Type *tp;
 	Etherpkt *p;
+	Buffer *tb;
 	Block *nbp;
 
-	cp = ((Type *)q->ptr)->ctlr;
 	if(bp->type == M_CTL){
 		tp = q->ptr;
 		if(streamparse("connect", bp))
 			tp->type = strtol((char *)bp->rptr, 0, 0);
 		else if(streamparse("promiscuous", bp)) {
 			tp->prom = 1;
-			qlock(cp);
-			cp->prom++;
-			if(cp->prom == 1)
-				outb(cp->iobase+Rcr, 0x14);	/* PRO|AB */
-			qunlock(cp);
+			(*tp->ctlr->hw->mode)(tp->ctlr, 1);
 		}
 		freeb(bp);
 		return;
 	}
+
+	cp = ((Type *)q->ptr)->ctlr;
 
 	/*
 	 * give packet a local address, return upstream if destined for
@@ -212,7 +217,7 @@ etheroput(Queue *q, Block *bp)
 	if(memcmp(cp->ea, p->d, sizeof(cp->ea)) == 0){
 		len = blen(bp);
 		if (bp = expandb(bp, len >= ETHERMINTU ? len: ETHERMINTU)){
-			putq(&cp->rq, bp);
+			putq(&cp->lbq, bp);
 			wakeup(&cp->rr);
 		}
 		return;
@@ -222,7 +227,7 @@ etheroput(Queue *q, Block *bp)
 		nbp = copyb(bp, len);
 		if(nbp = expandb(nbp, len >= ETHERMINTU ? len: ETHERMINTU)){
 			nbp->wptr = nbp->rptr+len;
-			putq(&cp->rq, nbp);
+			putq(&cp->lbq, nbp);
 			wakeup(&cp->rr);
 		}
 	}
@@ -230,20 +235,22 @@ etheroput(Queue *q, Block *bp)
 	/*
 	 * only one transmitter at a time
 	 */
-	qlock(&cp->xl);
+	qlock(&cp->tlock);
 	if(waserror()){
 		freeb(bp);
-		qunlock(&cp->xl);
+		qunlock(&cp->tlock);
 		nexterror();
 	}
 
 	/*
-	 * Wait till we get an output buffer
+	 * wait till we get an output buffer.
+	 * should try to restart.
 	 */
-	tsleep(&cp->xr, isxfree, cp, 1000);
-	if(isxfree(cp) == 0)
-		print("Tx wedged\n");
-	p = &txpkt;
+print("oput sleep\n");
+	sleep(&cp->tr, isobuf, cp);
+
+	tb = &cp->tb[cp->th];
+	p = &tb->pkt;
 
 	/*
 	 * copy message into buffer
@@ -271,18 +278,20 @@ etheroput(Queue *q, Block *bp)
 	 * give packet a local address
 	 */
 	memmove(p->s, cp->ea, sizeof(cp->ea));
-	xmemmove(cp->xpkt, p, len);
 
 	/*
+	 * set up the transmit buffer and 
 	 * start the transmission
 	 */
-	outb(cp->iobase+Tbcr0, len & 0xFF);
-	outb(cp->iobase+Tbcr1, (len>>8) & 0xFF);
-	outb(cp->iobase+Cr, 0x26);			/* Page0|TXP|STA */
-	cp->xbusy = 1;
+	cp->outpackets++;
+	tb->len = len;
+	tb->owner = Interface;
+	cp->th = NEXT(cp->th, cp->ntb);
+	(*cp->hw->transmit)(cp);
 
 	freeb(bp);
-	qunlock(&cp->xl);
+	qunlock(&cp->tlock);
+print("oput done\n");
 	poperror();
 }
 
@@ -320,13 +329,8 @@ etherstclose(Queue *q)
 	Type *tp;
 
 	tp = (Type *)(q->ptr);
-	if(tp->prom){
-		qlock(tp->ctlr);
-		tp->ctlr->prom--;
-		if(tp->ctlr->prom == 0)
-			outb(tp->ctlr->iobase+Rcr, 0x04);/* AB */
-		qunlock(tp->ctlr);
-	}
+	if(tp->prom)
+		(*tp->ctlr->hw->mode)(tp->ctlr, 0);
 	qlock(tp);
 	tp->type = 0;
 	tp->q = 0;
@@ -389,129 +393,12 @@ typefill(Chan *c, char *p, int n)
 }
 
 static void
-intr(Ureg *ur)
+etherup(Ctlr *cp, Etherpkt *p, int len)
 {
-	Ctlr *cp = &ctlr[0];
-	uchar isr, bnry, curr;
-
-	while(isr = inb(cp->iobase+Isr)){
-		outb(cp->iobase+Isr, isr);
-		if(isr & Txe)
-			cp->oerrs++;
-		if(isr & Rxe){
-			cp->frames += inb(cp->iobase+Cntr0);
-			cp->crcs += inb(cp->iobase+Cntr1);
-			cp->overflows += inb(cp->iobase+Cntr2);
-		}
-		if(isr & Ptx)
-			cp->outpackets++;
-		if(isr & (Txe|Ptx)){
-			cp->xbusy = 0;
-			wakeup(&cp->xr);
-		}
-		if(isr & Ovw){
-			bnry = inb(cp->iobase+Bnry);
-			outb(cp->iobase+bnry, bnry);
-			cp->buffs++;
-		}
-		/*
-		 * we have received packets.
-		 * this is the only place, other than the init code,
-		 * where we set the controller to Page1.
-		 * we must be sure to reset it back to Page0 in case
-		 * we interrupted some other part of this driver.
-		 */
-		if(isr & (Rxe|Prx)){
-			outb(cp->iobase+Cr, 0x62);	/* Page1, RD2|STA */
-			cp->curr = inb(cp->iobase+Curr);
-			outb(cp->iobase+Cr, 0x22);	/* Page0, RD2|STA */
-if(debug)
-    print("I%d/%d/%d|", isr, cp->curr, cp->bnry);
-			wakeup(&cp->rr);
-		}
-	}
-}
-
-/*
- * the following initialisation procedure
- * is mandatory.
- * we leave the chip idling on internal loopback
- * and pointing to Page0.
- */
-static void
-init(Ctlr *cp)
-{
-	int i;
-
-	outb(cp->iobase+Cr, 0x21);		/* Page0, RD2|STP */
-	outb(cp->iobase+Dcr, 0x48);		/* FT1|LS */
-	outb(cp->iobase+Rbcr0, 0);
-	outb(cp->iobase+Rbcr1, 0);
-	outb(cp->iobase+Rcr, 0x04);		/* AB */
-	outb(cp->iobase+Tcr, 0x20);		/* LB0 */
-	cp->bnry = RINGbase;
-	outb(cp->iobase+Bnry, cp->bnry);
-	cp->ring = (Ring*)(KZERO|RAMbase);
-	outb(cp->iobase+Pstart, RINGbase);
-	outb(cp->iobase+Pstop, RINGsize);
-	outb(cp->iobase+Isr, 0xFF);
-	outb(cp->iobase+Imr, 0x1F);		/* OVWE|TXEE|RXEE|PTXE|PRXE */
-
-	outb(cp->iobase+Cr, 0x61);		/* Page1, RD2|STP */
-	for(i = 0; i < sizeof(cp->ea); i++)
-		outb(cp->iobase+Par0+i, cp->ea[i]);
-	cp->curr = cp->bnry+1;
-	outb(cp->iobase+Curr, cp->curr);
-
-	outb(cp->iobase+Cr, 0x22);		/* Page0, RD2|STA */
-	outb(cp->iobase+Tpsr, 0);
-	cp->xpkt = (Etherpkt*)(KZERO|RAMbase);
-}
-
-void
-etherreset(void)
-{
-	Ctlr *cp = &ctlr[0];
-	int i;
-	uchar reg;
-
-	cp->iobase = IObase;
-	reg = 0x40|inb(cp->iobase);
-	outb(cp->iobase, reg);
-	reg = 0x40|inb(cp->iobase+0x05);
-	outb(cp->iobase+0x05, reg);
-for(i = 0; i < 0x10; i++)
-    print("#%2.2ux ", inb(cp->iobase+i));
-print("\n");
-	for(i = 0; i < sizeof(cp->ea); i++)
-		cp->ea[i] = inb(cp->iobase+EA+i);
-	init(cp);
-	setvec(Ethervec, intr);
-	memset(cp->ba, 0xFF, sizeof(cp->ba));
-
-	cp->net.name = "ether";
-	cp->net.nconv = NType;
-	cp->net.devp = &info;
-	cp->net.protop = 0;
-	cp->net.listen = 0;
-	cp->net.clone = clonecon;
-	cp->net.ninfo = 2;
-	cp->net.prot = cp->prot;
-	cp->net.info[0].name = "stats";
-	cp->net.info[0].fill = statsfill;
-	cp->net.info[1].name = "type";
-	cp->net.info[1].fill = typefill;
-}
-
-static void
-etherup(Ctlr *cp, uchar *d0, int len0, uchar *d1, int len1)
-{
-	Etherpkt *p;
 	Block *bp;
 	Type *tp;
 	int t;
 
-	p = (Etherpkt*)d0;
 	t = (p->type[0]<<8)|p->type[1];
 	for(tp = &cp->type[0]; tp < &cp->type[NType]; tp++){
 		/*
@@ -537,11 +424,9 @@ etherup(Ctlr *cp, uchar *d0, int len0, uchar *d1, int len1)
 			continue;
 		}
 		if(waserror() == 0){
-			bp = allocb(len0+len1);
-			xmemmove(bp->rptr, d0, len0);
-			if(len1)
-				xmemmove(bp->rptr+len0, d1, len1);
-			bp->wptr += len0+len1;
+			bp = allocb(len);
+			memmove(bp->rptr, p, len);
+			bp->wptr += len;
 			bp->flags |= S_DELIM;
 			PUTNEXT(tp->q, bp);
 		}
@@ -550,181 +435,389 @@ etherup(Ctlr *cp, uchar *d0, int len0, uchar *d1, int len1)
 	}
 }
 
-static void
-printpkt(uchar bnry, ushort len, Etherpkt *p)
-{
-	int i;
-
-	print("%.2ux: %.4d d(%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux)s(%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux)t(%.2ux %.2ux)\n",
-		bnry, len,
-		p->d[0], p->d[1], p->d[2], p->d[3], p->d[4], p->d[5],
-		p->s[0], p->s[1], p->s[2], p->s[3], p->s[4], p->s[5],
-		p->type[0], p->type[1]);
-}
-
 static int
 isinput(void *arg)
 {
 	Ctlr *cp = arg;
 
-	return NEXT(cp->bnry, RINGsize) != cp->curr;
+	return cp->lbq.first || cp->rb[cp->ri].owner == Host;
 }
 
 static void
 etherkproc(void *arg)
 {
 	Ctlr *cp = arg;
+	Buffer *rb;
 	Block *bp;
-	uchar bnry, curr;
-	Ring *rp;
-	int len0, len1;
 
 	if(waserror()){
 		print("%s noted\n", cp->name);
-		init(cp);
+		(*cp->hw->init)(cp);
 		cp->kproc = 0;
 		nexterror();
 	}
 	cp->kproc = 1;
 	for(;;){
-		sleep(&cp->rr, isinput, cp);
+		qlock(&cp->rlock);
+
 		/*
 		 * process any internal loopback packets
 		 */
-		while(bp = getq(&cp->rq)){
+		while(bp = getq(&cp->lbq)){
 			cp->inpackets++;
-			etherup(cp, bp->rptr, BLEN(bp), 0, 0);
+			etherup(cp, (Etherpkt*)bp->rptr, BLEN(bp));
 			freeb(bp);
 		}
 
 		/*
 		 * process any received packets
 		 */
-		bnry = NEXT(cp->bnry, RINGsize);
-		while(bnry != cp->curr){
-			rp = &cp->ring[bnry];
+		while(cp->rb[cp->rh].owner == Host){
 			cp->inpackets++;
-			len0 = ((rp->len1<<8)+rp->len0)-4;
-			len1 = 0;
-
-			if(rp->data+len0 >= (uchar*)&cp->ring[RINGsize]){
-				len1 = rp->data+len0 - (uchar*)&cp->ring[RINGsize];
-				len0 = (uchar*)&cp->ring[RINGsize] - rp->data;
-			}
-
-			etherup(cp, rp->data, len0, (uchar*)&cp->ring[RINGbase], len1);
-
-
-
-if(debug)
-    print("K%d/%d/%d|", bnry, rp->next, PREV(rp->next, RINGsize));
-			bnry = rp->next;
-			cp->bnry = PREV(bnry, RINGsize);
-			outb(cp->iobase+Bnry, cp->bnry);
+			rb = &cp->rb[cp->rh];
+			etherup(cp, &rb->pkt, rb->len);
+			rb->owner = Interface;
+			cp->rh = NEXT(cp->rh, Nrb);
 		}
+
+		qunlock(&cp->rlock);
+		sleep(&cp->rr, isinput, cp);
 	}
 }
 
 void
-etherinit(void)
+etherreset(void)
+{
+	Ctlr *cp = &ctlr[0];
+
+	cp->hw = &wd8013;
+	(*cp->hw->reset)(cp);
+
+	memset(cp->ba, 0xFF, sizeof(cp->ba));
+
+	cp->net.name = "ether";
+	cp->net.nconv = NType;
+	cp->net.devp = &info;
+	cp->net.protop = 0;
+	cp->net.listen = 0;
+	cp->net.clone = clonecon;
+	cp->net.ninfo = 2;
+	cp->net.prot = cp->prot;
+	cp->net.info[0].name = "stats";
+	cp->net.info[0].fill = statsfill;
+	cp->net.info[1].name = "type";
+	cp->net.info[1].fill = typefill;
+}
+
+Chan*
+etherattach(char *spec)
 {
 	int ctlrno = 0;
+	Ctlr *cp = &ctlr[ctlrno];
+	int i;
+
+	cp->rh = 0;
+	cp->ri = 0;
+	for(i = 0; i < cp->nrb; i++)
+		cp->rb[i].owner = Interface;
+
+	cp->th = 0;
+	cp->ti = 0;
+	for(i = 0; i < cp->ntb; i++)
+		cp->tb[i].owner = Host;
 
 	/*
 	 * put the receiver online
 	 * and start the kproc
 	 */
-	outb(ctlr[ctlrno].iobase+Tcr, 0);
-	if(ctlr[ctlrno].kproc == 0){
-		sprint(ctlr[ctlrno].name, "ether%dkproc", ctlrno);
-		kproc(ctlr[ctlrno].name, etherkproc, &ctlr[ctlrno]);
+	
+	(*cp->hw->online)(cp, 1);
+	if(cp->kproc == 0){
+		sprint(cp->name, "ether%dkproc", ctlrno);
+		kproc(cp->name, etherkproc, cp);
 	}
-}
-
-Chan *
-etherattach(char *spec)
-{
 	return devattach('l', spec);
 }
 
-Chan *
-etherclone(Chan *c, Chan *nc)
+typedef struct {
+	uchar	msr;			/* 83C584 bus interface */
+	uchar	icr;
+	uchar	iar;
+	uchar	bio;
+	uchar	irr;
+	uchar	laar;
+	uchar	ijr;
+	uchar	gp2;
+	uchar	lan[6];
+	uchar	id;
+	uchar	cksum;
+
+	union {				/* DP8390/83C690 LAN controller */
+		struct {			/* Page0, read */
+			uchar	cr;
+			uchar	clda0;
+			uchar	clda1;
+			uchar	bnry;
+			uchar	tsr;
+			uchar	ncr;
+			uchar	fifo;
+			uchar	isr;
+			uchar	crda0;
+			uchar	crda1;
+			uchar	pad0x0A;
+			uchar	pad0x0B;
+			uchar	rsr;
+			uchar	cntr0;
+			uchar	cntr1;
+			uchar	cntr2;
+		} r;
+		struct {			/* Page0, write */
+			uchar	cr;
+			uchar	pstart;
+			uchar	pstop;
+			uchar	bnry;
+			uchar	tpsr;
+			uchar	tbcr0;
+			uchar	tbcr1;
+			uchar	isr;
+			uchar	rsar0;
+			uchar	rsar1;
+			uchar	rbcr0;
+			uchar	rbcr1;
+			uchar	rcr;
+			uchar	tcr;
+			uchar	dcr;
+			uchar	imr;
+		} w;
+		struct {			/* Page1, read/write */
+			uchar	cr;
+			uchar	par[6];
+			uchar	curr;
+			uchar	mar[8];
+		};
+	};
+} Wd8013;
+
+#define IN(hw, m)	inb((hw)->addr+OFFSETOF(Wd8013, m))
+#define OUT(hw, m, x)	outb((hw)->addr+OFFSETOF(Wd8013, m), (x))
+
+/*
+ */
+static void
+wd8013reset(Ctlr *cp)
 {
-	return devclone(c, nc);
+	Hw *hw = cp->hw;
+	int i;
+	uchar msr;
+
+print("reset\n");
+	cp->rb = ialloc(sizeof(Buffer)*Nrb, 0);
+	cp->nrb = Nrb;
+	cp->tb = ialloc(sizeof(Buffer)*Ntb, 0);
+	cp->ntb = Ntb;
+
+	msr = IN(hw, msr);
+	OUT(hw, msr, 0x40|msr);
+{
+int addr = hw->addr;
+
+for(i = 0; i < 16; i++){
+    print("#%2.2ux ", inb(addr));
+    addr++;
+}
+print("\n");
+}
+	for(i = 0; i < sizeof(cp->ea); i++)
+		cp->ea[i] = IN(hw, lan[i]);
+	(*hw->init)(cp);
+	setvec(Ethervec, hw->intr);
 }
 
-int
-etherwalk(Chan *c, char *name)
+/*
+ * we leave the chip idling on internal loopback
+ * and pointing to Page0.
+ */
+static void
+wd8013init(Ctlr *cp)
 {
-	return netwalk(c, name, &ctlr[0].net);
+	Hw *hw = cp->hw;
+	int i;
+	uchar bnry;
+
+print("init %d %d\n", HOWMANY(sizeof(Etherpkt), 256), HOWMANY(hw->ramsz, 256));
+	OUT(hw, w.cr, 0x21);			/* Page0|RD2|STP */
+	OUT(hw, w.dcr, 0x48);			/* FT1|LS */
+	OUT(hw, w.rbcr0, 0);
+	OUT(hw, w.rbcr1, 0);
+	OUT(hw, w.rcr, 0x04);			/* AB */
+	OUT(hw, w.tcr, 0x20);			/* LB0 */
+
+	bnry = HOWMANY(sizeof(Etherpkt), 256);
+	OUT(hw, w.bnry, bnry);
+	OUT(hw, w.pstart, bnry);
+	OUT(hw, w.pstop, HOWMANY(hw->ramsz, 256));
+	OUT(hw, w.isr, 0xFF);
+	OUT(hw, w.imr, 0x1F);			/* OVWE|TXEE|RXEE|PTXE|PRXE */
+
+	OUT(hw, w.cr, 0x61);			/* Page1|RD2|STP */
+	for(i = 0; i < sizeof(cp->ea); i++)
+		OUT(hw, par[i], cp->ea[i]);
+	OUT(hw, curr, bnry+1);
+
+	OUT(hw, w.cr, 0x22);			/* Page0|RD2|STA */
+	OUT(hw, w.tpsr, 0);
 }
 
 void
-etherstat(Chan *c, char *dp)
+wd8013mode(Ctlr *cp, int on)
 {
-	netstat(c, dp, &ctlr[0].net);
+	qlock(cp);
+	if(on){
+		cp->prom++;
+		if(cp->prom == 1)
+			OUT(cp->hw, w.rcr, 0x14);/* PRO|AB */
+	}
+	else {
+		cp->prom--;
+		if(cp->prom == 0)
+			OUT(cp->hw, w.rcr, 0x04);/* AB */
+	}
+	qunlock(cp);
 }
 
-Chan *
-etheropen(Chan *c, int omode)
+static void
+wd8013online(Ctlr *cp, int on)
 {
-	return netopen(c, omode, &ctlr[0].net);
+	OUT(cp->hw, w.tcr, 0);
 }
 
-void
-ethercreate(Chan *c, char *name, int omode, ulong perm)
+static void
+wd8013receive(Ctlr *cp)
 {
-	error(Eperm);
+	Hw *hw = cp->hw;
+	Buffer *rb;
+	uchar bnry, curr, next;
+	typedef struct Ring {
+		uchar	status;
+		uchar	next;
+		uchar	len0;
+		uchar	len1;
+		uchar	data[256-4];
+	} Ring;
+	Ring *p;
+	int len;
+
+	bnry = IN(hw, r.bnry);
+	next = NEXT(bnry, HOWMANY(hw->ramsz, 256));
+	if(next == 0)
+		next = HOWMANY(sizeof(Etherpkt), 256);
+	for(;;){
+		OUT(hw, w.cr, 0x62);		/* Page1|RD2|STA */
+		curr = IN(hw, curr);
+		OUT(hw, w.cr, 0x22);		/* Page0|RD2|STA */
+		if(next == curr)
+			break;
+		cp->inpackets++;
+		p = &((Ring*)hw->ram)[next];
+		len = (p->len1<<8)|p->len0;
+
+		rb = &cp->rb[cp->ri];
+		if(rb->owner == Interface){
+			rb->len = len;
+			/*copy in packet*/
+			rb->owner = Host;
+			cp->ri = NEXT(cp->ri, Nrb);
+		}
+
+		next = p->next;
+		bnry = next-1;
+		if(bnry < HOWMANY(sizeof(Etherpkt), 256))
+			bnry = HOWMANY(hw->ramsz, 256)-1;
+		OUT(hw, w.bnry, bnry);
+	}
 }
 
-void
-etherremove(Chan *c)
+static void
+wd8013transmit(Ctlr *cp)
 {
-	error(Eperm);
+	Hw *hw;
+	Buffer *tb;
+	int s;
+
+print("transmit\n");
+	s = splhi();
+	tb = &cp->tb[cp->ti];
+	if(tb->busy == 0 && tb->owner == Interface){
+		hw = cp->hw;
+print("transmit memove %lux %lux, %d\n", hw->ram, &tb->pkt, tb->len);
+		memmove(hw->ram, &tb->pkt, tb->len);
+		OUT(hw, w.tbcr0, tb->len & 0xFF);
+		OUT(hw, w.tbcr1, (tb->len>>8) & 0xFF);
+		OUT(hw, w.cr, 0x26);		/* Page0|RD2|TXP|STA */
+		tb->busy = 1;
+	}
+	splx(s);
+print("transmit done\n");
 }
 
-void
-etherwstat(Chan *c, char *dp)
+static void
+wd8013intr(Ureg *ur)
 {
-	netwstat(c, dp, &ctlr[0].net);
+	Ctlr *cp = &ctlr[0];
+	Hw *hw = cp->hw;
+	Buffer *tb;
+	uchar isr;
+
+	while(isr = IN(hw, r.isr)){
+		OUT(hw, w.isr, isr);
+		if(isr & 0x08)			/* Txe - transmit error */
+			cp->oerrs++;
+		if(isr & 0x04){			/* Rxe - receive error */
+			cp->frames += IN(hw, r.cntr0);
+			cp->crcs += IN(hw, r.cntr1);
+			cp->buffs += IN(hw, r.cntr2);
+		}
+		if(isr & 0x02)			/* Ptx - packet transmitted */
+			cp->outpackets++;
+		/*
+		 * a packet completed transmission, successfully or
+		 * not. start transmission on the next buffered packet,
+		 * and wake the output routine.
+		 */
+		if(isr & (0x08|0x02)){
+			tb = &cp->tb[cp->ti];
+			tb->owner = Host;
+			tb->busy = 0;
+			cp->ti = NEXT(cp->ti, Ntb);
+			(*cp->hw->transmit)(cp);
+			wakeup(&cp->tr);
+		}
+		if(isr & 0x10)			/* Ovw - overwrite warning */
+			cp->overflows++;
+		/*
+		 * we have received packets.
+		 */
+		if(isr & (0x04|0x01)){		/* Rxe|Prx - packet received */
+			(*cp->hw->receive)(cp);
+			wakeup(&cp->rr);
+		}
+	}
 }
 
-void
-etherclose(Chan *c)
-{
-	if(c->stream)
-		streamclose(c);
-}
-
-long
-etherread(Chan *c, void *a, long n, ulong offset)
-{
-	return netread(c, a, n, offset, &ctlr[0].net);
-}
-
-long
-etherwrite(Chan *c, char *a, long n, ulong offset)
-{
-	return streamwrite(c, a, n, 0);
-}
+static Hw wd8013 = {
+	0x360,					/* I/O base address */
+	KZERO|0xC8000,				/* shared memory address */
+	8*1024,					/* shared memory size */
+	wd8013reset,
+	wd8013init,
+	wd8013mode,
+	wd8013online,
+	wd8013receive,
+	wd8013transmit,
+	wd8013intr,
+};
 
 void
 consdebug(void)
 {
-	Ctlr *cp = &ctlr[0];
-	uchar bnry, curr, isr;
-	int s;
-
-	s = splhi();
-debug++;
-	bnry = inb(cp->iobase+Bnry);
-	outb(cp->iobase+Cr, 0x62);			/* Page1, RD2|STA */
-	curr = inb(cp->iobase+Curr);
-	outb(cp->iobase+Cr, 0x22);			/* Page0, RD2|STA */
-	isr = inb(cp->iobase+Isr);
-	print("b%d c%d x%d B%d C%d I%ux",
-	    cp->bnry, cp->curr, cp->xbusy, bnry, curr, isr);
-	print("\t%d %d %d %d %d %d %d\n", cp->inpackets, cp->outpackets,
-	    cp->crcs, cp->oerrs, cp->frames, cp->overflows, cp->buffs);
-	splx(s);
 }

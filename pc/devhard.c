@@ -242,13 +242,10 @@ hardattach(char *spec)
 				break;
 			default:	/* others: we hope this works */
 				if (drivecomment) {
-					print("unknown hard disk type, magic=%04x\n",
+					print("unknown hard disk type, magic=%04x",
 						dp->id.magic);
-					print(" lcyls=%d lheads=%d sectors=%d\n",
+					print("  cyl=%d h=%d sec=%d\n",
 						dp->id.lcyls, dp->id.lheads, dp->id.ls2t);
-					print(" ncyls=%d nheads=%d dlcyls=%d dlheads=%d\n",
-						dp->id.ncyls, dp->id.nheads, dp->id.dlcyls,
-						dp->id.dlheads);
 				}
 				dp->cyl = dp->id.lcyls;
 				dp->heads = dp->id.lheads;
@@ -724,9 +721,13 @@ hardintr(Ureg *ur)
 		cp->cmd = 0;
 		wakeup(&cp->r);
 		break;
+	case 0:	/*
+		 * These don't seem to mean anything.  Should we wakeup?
+		 */
+		break;
 	default:
-		print("weird disk interrupt, cmd=%02x\n",
-			cp->cmd);
+		print("weird disk interrupt, cmd=%02x, status=%02x\n",
+			cp->cmd, cp->status);
 		break;
 	}
 }
