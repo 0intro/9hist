@@ -254,6 +254,11 @@ long
 pipewrite(Chan *c, void *va, long n, ulong offset)
 {
 	USED(offset);
+
+	/* avoid notes when pipe is a mounted stream */
+	if(c->flag & CMSG)
+		return streamwrite(c, va, n, 0);
+
 	if(waserror()) {
 		postnote(u->p, 1, "sys: write on closed pipe", NUser);
 		error(Egreg);
@@ -264,8 +269,8 @@ pipewrite(Chan *c, void *va, long n, ulong offset)
 }
 
 /*
- *  send a block up stream to the process.
- *  sleep untill there's room upstream.
+ *  send a block upstream to the process.
+ *  sleep until there's room upstream.
  */
 static void
 pipeiput(Queue *q, Block *bp)
