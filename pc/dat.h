@@ -186,6 +186,7 @@ struct ISAConf {
 	char	type[NAMELEN];
 	ulong	port;
 	ulong	irq;
+	int	dma;
 	ulong	mem;
 	ulong	size;
 	ulong	freq;
