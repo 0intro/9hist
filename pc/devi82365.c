@@ -459,6 +459,7 @@ pcmgen(Chan *c, char*, Dirtab *, int , int i, Dir *dp)
 		break;
 	}
 	qid.vers = 0;
+	qid.type = QTFILE;
 	devdir(c, qid, up->genbuf, len, eve, 0660, dp);
 	return 1;
 }
