@@ -365,7 +365,7 @@ qproduce(Queue *q, void *vp, int len)
 		b = iallocb(len);
 		if(b == 0){
 			unlock(q);
-			return -1;
+			return -2;
 		}
 		memmove(b->wp, p, len);
 		b->wp += len;

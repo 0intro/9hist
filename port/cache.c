@@ -80,6 +80,7 @@ cprint(Chan *c, Mntcache *m, char *s)
 	ptpath(c->path, buf, sizeof(buf));
 	nb = 0;
 	ct = 1;
+	o = 0;
 	if(m->list)
 		o = m->list->start;
 	for(e = m->list; e; e = e->next) {
@@ -92,7 +93,7 @@ cprint(Chan *c, Mntcache *m, char *s)
 	s, m->path, m->vers, m->type, m->dev, buf, nb, ct ? 'C' : 'N');
 
 	for(e = m->list; e; e = e->next) {
-		if(0) pprint("\t%4d %5d %4d %lux\n",
+		pprint("\t%4d %5d %4d %lux\n",
 			e->bid, e->start, e->len, e->cache);
 	}
 }
