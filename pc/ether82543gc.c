@@ -344,8 +344,6 @@ gc82543attach(Ether* edev)
 	csr32w(ctlr, Rctl, ctl);
 	ctl = csr32r(ctlr, Tctl)|Ten;
 	csr32w(ctlr, Tctl, ctl);
-print("ctrl %8.8uX rctl %8.8uX tclt %8.8uX\n",
-    csr32r(ctlr, Ctrl), csr32r(ctlr, Rctl), csr32r(ctlr, Tctl));
 }
 
 static char* statistics[Nstatistics] = {
@@ -894,65 +892,6 @@ gc82543reset(Ctlr* ctlr)
 	return 0;
 }
 
-static int
-mdir(Ctlr* ctlr, int p, int r)
-{
-	int mdic, timeo;
-
-print("mdir %uX\n", csr32r(ctlr, Mdic));
-	if(!(csr32r(ctlr, Mdic) & MDIready))
-		return -1;
-	csr32w(ctlr, Mdic, MDIrop|(p<<MDIpSHIFT)|(r<<MDIrSHIFT));
-	for(timeo = 0; timeo < 1000; timeo++){
-		microdelay(10);
-		mdic = csr32r(ctlr, Mdic);
-		if(mdic & MDIready)
-{
-print("%d/%d: t %d data %8.8uX\n", p, r, timeo, mdic);
-			return mdic & MDIdMASK;
-}
-	}
-	return -1;
-}
-
-static int
-mdiw(Ctlr* ctlr, int p, int r, int d)
-{
-	int timeo;
-
-	if(!(csr32r(ctlr, Mdic) & MDIready))
-{
-print("mdiw not ready\n");
-		return -1;
-}
-	csr32w(ctlr, Mdic, MDIrop|(p<<MDIpSHIFT)|(r<<MDIrSHIFT)|(d & MDIdMASK));
-	microdelay(1);
-	for(timeo = 0; timeo < 1000; timeo++){
-		if(csr32r(ctlr, Mdic) & MDIready)
-			break;
-		microdelay(1);
-	}
-print("%d/%d: t %d data %8.8uX\n", p, r, timeo, csr32r(ctlr, Mdic));
-	return csr32r(ctlr, Mdic) & MDIready;
-}
-
-static int
-scanphy(Ctlr* ctlr)
-{
-	int oui, p, x;
-
-	for(p = 0; p < 32; p++){
-		if((oui = mdir(ctlr, p, 2)) == -1 || oui == 0 || oui == 0xFFFF)
-			continue;
-		oui <<= 6;
-		x = mdir(ctlr, p, 3);
-		oui |= x>>10;
-		print("phy%d: oui %uX reg1 %uX\n", p, oui, mdir(ctlr, p, 1));
-		return p;
-	}
-	return -1;
-}
-
 static void
 gc82543pci(void)
 {
@@ -987,12 +926,10 @@ gc82543pci(void)
 		ctlr->id = (p->did<<16)|p->vid;
 
 		ctlr->nic = KADDR(ctlr->port);
-print("status0 %8.8uX\n", csr32r(ctlr, Status));
 		if(gc82543reset(ctlr)){
 			free(ctlr);
 			continue;
 		}
-print("status1 %8.8uX\n", csr32r(ctlr, Status));
 
 		if(ctlrhead != nil)
 			ctlrtail->next = ctlr;
@@ -1045,8 +982,6 @@ gc82543pnp(Ether* edev)
 			edev->ea[2*i+1] = ctlr->eeprom[i]>>8;
 		}
 	}
-if(ctlr->pcidev->did == 0x1004)
-    scanphy(ctlr);
 	gc82543init(edev);
 
 	/*

@@ -6,8 +6,7 @@
  *	autoSelect;
  *	PCI latency timer and master enable;
  *	errata list;
- *	rewrite all initialisation;
- *	handle the cyclone adapter.
+ *	rewrite all initialisation.
  *
  * Product ID:
  *	9150 ISA	3C509[B]
@@ -1716,7 +1715,8 @@ eepromdata(int port, int offset)
 int
 etherelnk3reset(Ether* ether)
 {
-	int anar, anlpar, busmaster, did, i, j, phyaddr, port, rxearly, rxstatus9, x, xcvr;
+	int anar, anlpar, phyaddr, phystat, timeo, xcvr;
+	int busmaster, did, i, j, port, rxearly, rxstatus9, x;
 	Block *bp, **bpp;
 	Adapter *ap;
 	uchar ea[Eaddrlen];
@@ -1805,8 +1805,9 @@ etherelnk3reset(Ether* ether)
 
 	/*
 	 * Check if the adapter's station address is to be overridden.
-	 * If not, read it from the EEPROM and set in ether->ea prior to loading the
-	 * station address in Wstation. The EEPROM returns 16-bits at a time.
+	 * If not, read it from the EEPROM and set in ether->ea prior to
+	 * loading the station address in Wstation.
+	 * The EEPROM returns 16-bits at a time.
 	 */
 	memset(ea, 0, Eaddrlen);
 	if(memcmp(ea, ether->ea, Eaddrlen) == 0){
@@ -1840,18 +1841,18 @@ etherelnk3reset(Ether* ether)
 				xcvr = media[j].xcvr;
 	}
 	
-/*
- * forgive me, but i am weak
- */
-if(did == 0x9055 || did == 0x9200){
-   xcvr = xcvrMii;
-   XCVRDEBUG("905[BC] reset ops 0x%uX\n",
-	ins(port+ResetOp905B));
-}
-else
-	if(xcvr & autoSelect)
+	/*
+	 * forgive me, but i am weak
+	 */
+	if(did == 0x9055 || did == 0x9200){
+		xcvr = xcvrMii;
+		txrxreset(port);
+		XCVRDEBUG("905[BC] reset ops 0x%uX\n", ins(port+ResetOp905B));
+	}
+	else if(xcvr & autoSelect)
 		xcvr = autoselect(port, xcvr, rxstatus9);
 	XCVRDEBUG("autoselect returns: xcvr %uX, did 0x%uX\n", xcvr, did);
+
 	switch(xcvr){
 
 	case xcvrMii:
@@ -1860,21 +1861,19 @@ else
 		scanphy(port);
 		 */
 		phyaddr = 24;
-for(i = 0; i < 7; i++)
-    XCVRDEBUG(" %2.2uX", miir(port, phyaddr, i));
-XCVRDEBUG("\n");
+		for(i = 0; i < 7; i++)
+			XCVRDEBUG(" %2.2uX", miir(port, phyaddr, i));
+			XCVRDEBUG("\n");
 
-{	int phystat, timeo;
-	for(timeo = 0; timeo < 30; timeo++){
-		phystat = miir(port, phyaddr, 0x01);
-		if(phystat & 0x20)
-			break;
-		XCVRDEBUG(" %2.2uX", phystat);
-		delay(100);
-	}
-	XCVRDEBUG(" %2.2uX", miir(port, phyaddr, 0x01));
-	XCVRDEBUG("\n");
-}
+		for(timeo = 0; timeo < 30; timeo++){
+			phystat = miir(port, phyaddr, 0x01);
+			if(phystat & 0x20)
+				break;
+			XCVRDEBUG(" %2.2uX", phystat);
+			delay(100);
+		}
+		XCVRDEBUG(" %2.2uX", miir(port, phyaddr, 0x01));
+		XCVRDEBUG("\n");
 
 		anar = miir(port, phyaddr, 0x04);
 		anlpar = miir(port, phyaddr, 0x05) & 0x03E0;
