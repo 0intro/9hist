@@ -72,6 +72,7 @@ struct Type
 	int	tracks;		/* tracks/disk */
 	int	gpl;		/* intersector gap length for read/write */	
 	int	fgpl;		/* intersector gap length for format */
+	int	ring;		/* ring of compatible floppy types */
 
 	/*
 	 *  these depend on previous entries and are set filled in
@@ -83,12 +84,12 @@ struct Type
 };
 Type floppytype[] =
 {
-	{ "MF2HD",	512,	18,	2,	1,	80,	0x1B,	0x54, },
-	{ "MF1DD",	512,	9,	2,	1,	80,	0x1B,	0x54, },
-	{ "MF4HD",	1024,	18,	2,	1,	80,	0x1B,	0x54, },
-	{ "F2HD",	512,	15,	2,	1,	80,	0x2A,	0x50, },
-	{ "F2DD",	512,	8,	2,	2,	40,	0x2A,	0x50, },
-	{ "F1DD",	512,	8,	1,	2,	40,	0x2A,	0x50, },
+[0]	{ "MF2HD",	512,	18,	2,	1,	80,	0x1B,	0x54,	1, },
+[1]	{ "MF1DD",	512,	9,	2,	1,	80,	0x1B,	0x54,	2, },
+[2]	{ "MF4HD",	1024,	18,	2,	1,	80,	0x1B,	0x54,	0, },
+[3]	{ "F2HD",	512,	15,	2,	1,	80,	0x2A,	0x50,	4, },
+[4]	{ "F2DD",	512,	8,	2,	2,	40,	0x2A,	0x50,	5, },
+[5]	{ "F1DD",	512,	8,	1,	2,	40,	0x2A,	0x50,	3, },
 };
 #define NTYPES (sizeof(floppytype)/sizeof(Type))
 
@@ -323,7 +324,7 @@ islegal(Chan *c, long n, Drive *dp)
 }
 
 /*
- *  check if the floppy has been replaced under foot
+ *  check if the floppy has been replaced under foot.  cause a read error if it has.
  *
  *  a seek and a read clears the condition.  this was determined experimentally,
  *  there has to be a better way.
@@ -337,9 +338,9 @@ changed(Chan *c, Drive *dp)
 		dp->vers++;
 		dp->ccyl = -1;
 		if(dp->cyl)
-			floppyxfer(dp, Fread, dp->cache, 0, dp->t->tsize);
+			floppythrice(dp, Fread, dp->cache, 0, dp->t->tsize);
 		else
-			floppyxfer(dp, Fread, dp->cache, dp->t->heads*dp->t->tsize, dp->t->tsize);
+			floppythrice(dp, Fread, dp->cache, dp->t->heads*dp->t->tsize, dp->t->tsize);
 	}
 	old = c->qid.vers;
 	c->qid.vers = dp->vers;
@@ -759,7 +760,8 @@ floppyseek(Drive *dp, long off)
 }
 
 /*
- *  since floppies are so flakey, try 3 times before giving up
+ *  since floppies are so flakey, automaticly retry failed attempts.
+ *  every 3 tries switch to a different density
  */
 static long
 floppythrice(Drive *dp, int cmd, void *a, long off, long n)

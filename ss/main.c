@@ -300,7 +300,6 @@ confinit(void)
 	 * keyboard, too.
 	 */
 	switch(idprom[1]){
-	case 0x52:	/* IPC */
 	case 0x54:	/* SLC */
 		conf.monitor = 1;
 		fbslot = 3;

@@ -6,6 +6,8 @@
 #include	"io.h"
 #include	"../port/error.h"
 
+#include	"devtab.h"
+
 #define DPRINT if(1)print
 
 typedef	struct Drive		Drive;
@@ -271,7 +273,7 @@ hardwstat(Chan *c, char *dp)
 }
 
 long
-hardread(Chan *c, void *a, long n)
+hardread(Chan *c, void *a, long n, ulong offset)
 {
 	Drive *dp;
 	long rv, i;
@@ -285,19 +287,16 @@ hardread(Chan *c, void *a, long n)
 
 	buf = smalloc(Maxxfer);
 	if(waserror()){
-		print("hard read error\n");
 		free(buf);
 		nexterror();
 	}
 
-if(a&KZERO)print("rd k 0x%lux d 0x%lux\n", a, n);
-
 	dp = &hard[DRIVE(c->qid.path)];
 	pp = &dp->p[PART(c->qid.path)];
 
-	skip = c->offset % dp->bytes;
+	skip = offset % dp->bytes;
 	for(rv = 0; rv < n; rv += i){
-		i = hardxfer(dp, pp, Cread, c->offset+rv-skip, n-rv+skip, buf);
+		i = hardxfer(dp, pp, Cread, offset+rv-skip, n-rv+skip, buf);
 		if(i == 0)
 			break;
 		i -= skip;
@@ -314,7 +313,7 @@ if(a&KZERO)print("rd k 0x%lux d 0x%lux\n", a, n);
 }
 
 long
-hardwrite(Chan *c, void *a, long n)
+hardwrite(Chan *c, void *a, long n, ulong offset)
 {
 	Drive *dp;
 	long rv, i, partial;
@@ -329,27 +328,24 @@ hardwrite(Chan *c, void *a, long n)
 	pp = &dp->p[PART(c->qid.path)];
 	buf = smalloc(Maxxfer);
 	if(waserror()){
-		print("hard write error\n");
 		free(buf);
 		nexterror();
 	}
-
-if(a&KZERO)print("wr k 0x%lux d 0x%lux\n", a, n);
 
 	/*
 	 *  if not starting on a sector boundary,
 	 *  read in the first sector before writing
 	 *  it out.
 	 */
-	partial = c->offset % dp->bytes;
+	partial = offset % dp->bytes;
 	if(partial){
-		hardxfer(dp, pp, Cread, c->offset-partial, dp->bytes, buf);
+		hardxfer(dp, pp, Cread, offset-partial, dp->bytes, buf);
 		if(partial+n > dp->bytes)
 			rv = dp->bytes - partial;
 		else
 			rv = n;
 		memmove(buf+partial, aa, rv);
-		hardxfer(dp, pp, Cwrite, c->offset-partial, dp->bytes, buf);
+		hardxfer(dp, pp, Cwrite, offset-partial, dp->bytes, buf);
 	} else
 		rv = 0;
 
@@ -363,7 +359,7 @@ if(a&KZERO)print("wr k 0x%lux d 0x%lux\n", a, n);
 		if(i > Maxxfer)
 			i = Maxxfer;
 		memmove(buf, aa+rv, i);
-		i = hardxfer(dp, pp, Cwrite, c->offset+rv, i, buf);
+		i = hardxfer(dp, pp, Cwrite, offset+rv, i, buf);
 		if(i == 0)
 			break;
 	}
@@ -374,9 +370,9 @@ if(a&KZERO)print("wr k 0x%lux d 0x%lux\n", a, n);
 	 *  it out.
 	 */
 	if(partial){
-		hardxfer(dp, pp, Cread, c->offset+rv, dp->bytes, buf);
+		hardxfer(dp, pp, Cread, offset+rv, dp->bytes, buf);
 		memmove(buf, aa+rv, partial);
-		hardxfer(dp, pp, Cwrite, c->offset+rv, dp->bytes, buf);
+		hardxfer(dp, pp, Cwrite, offset+rv, dp->bytes, buf);
 		rv += partial;
 	}
 
