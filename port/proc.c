@@ -82,6 +82,10 @@ schedinit(void)		/* never returns */
 	sched();
 }
 
+/*
+ *  If changing this routine, look also at sleep().  It
+ *  contains a copy of the guts of sched().
+ */
 void
 sched(void)
 {
@@ -377,6 +381,57 @@ procinit0(void)		/* bad planning - clashes with devproc.c */
 	p->qnext = 0;
 }
 
+
+/*
+ *  Sleep, postnote, and wakeup are complicated by the
+ *  fact that they at least one of them must indirect
+ *  through an unlocked structure to find the synchronizing
+ *  lock structure.  This is because sleep()
+ *  and wakeup() share direct knowledge only of r while
+ *  sleep() and postnote() share knowledge only of p.  We've
+ *  chosen to put the synchronization lock in p, i.e.,
+ *  p->rlock.  Therefore the interaction between sleep()
+ *  and postnote() is completely synchronized by keeping
+ *  p->rlock locked in sleep until the process has
+ *  saved all the information it needs to become dormant.
+ *
+ *  However, wakeup() can only find what process is sleeping
+ *  by looking at r->p.  A wakeup looks like:
+ *
+ *	1) set condition that sleep checks with (*f)()
+ *	2) is p = r->p non zero
+ *	3) lock(p->rlock)
+ *	4) check r->p == p
+ *	5) ...
+ *
+ *  A sleep looks like
+ *
+ *	a) lock(p->rlock)
+ *	b) r->p = up
+ *	c) check condition
+ *	d) ...
+ *
+ *  On a multiprocessor, two processors
+ *  may not see writes occur in the same order.  The coherence()
+ *  instruction ensures that a processor has flushed all its
+ *  writes to memory so that those writes will be seen by other
+ *  processors and that the processor will see all writes flushed
+ *  by other processors.
+ *
+ *  To make the above sequence work on a multiprocessor, we need
+ *  to put a coherence() call between (1) and (2) and between
+ *  (b) and (c).  That way we're guaranteed that if (1) and
+ *  (2) occur after (c), the wakeup process will know
+ *  which process is about to sleep and will enter its
+ *  critical section.  If it doesn't, the sleep could proceed
+ *  while the waker returns without doing anything.
+ *  Similarly, if (b) and (c) occur after (2),
+ *  the sleeper needs coherence to see that the condition was
+ *  set.  Otherwise it could sleep even though the wakeup
+ *  had already decided there was nothing to do.
+ *
+ *	jmk & presotto
+ */
 void
 sleep(Rendez *r, int (*f)(void*), void *arg)
 {
@@ -391,10 +446,10 @@ sleep(Rendez *r, int (*f)(void*), void *arg)
 	}
 
 	/*
-	 * Wakeup only knows there may be something to do by testing
-	 * r->p in order to get something to lock on.
-	 * Flush that information out to memory in case the sleep is
-	 * committed.
+	 *  Wakeup only knows there may be something to do by testing
+	 *  r->p in order to get something to lock on.
+	 *  Flush that information out to memory in case the sleep is
+	 *  committed.
 	 */
 	r->p = up;
 	coherence();
@@ -495,7 +550,11 @@ wakeup(Rendez *r)
 	Proc *p;
 	int s, rv;
 
-	coherence();	/* force memory state to reflect processor state */
+	/*
+	 *  this makes sure that the condition sleep checks
+	 *  with its (*f)(void) is visible to it
+	 */
+	coherence();
 
 	rv = 0;
 	p = r->p;

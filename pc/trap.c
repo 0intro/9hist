@@ -143,9 +143,12 @@ trap(Ureg* ureg)
 {
 ulong x, y;
 
-x = (ulong)&(m->stack[512]);
+if(up)
+  x = (ulong)(up->kstack);
+else
+  x = (ulong)(m->stack);
 y = (ulong)&mach;
-if(y < x) panic("trap: kstack %lux %lux", m->stack, y);
+if(y < x+512) panic("cpu%d: trap: kstack %lux %lux", m->machno, x, y);
 }
 
 	v = ureg->trap;
