@@ -101,7 +101,7 @@ sysfauth(ulong *arg)
 long
 userwrite(char *a, int n)
 {
-	if(!iseve() || strcmp(a, "none") != 0)
+	if(strcmp(a, "none") != 0)
 		error(Eperm);
 	kstrdup(&up->user, "none");
 	up->basepri = PriNormal;
