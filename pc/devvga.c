@@ -102,7 +102,7 @@ VGAmode mode13 =
 
 static	Rectangle mbb;
 static	Rectangle NULLMBB = {10000, 10000, -10000, -10000};
-static	void nopage(int), tsengpage(int);;
+static	void nopage(int), tsengpage(int), parapage(int);
 
 /*
  *  definitions of known cards
@@ -117,11 +117,13 @@ struct Vgacard
 enum
 {
 	Tseng,		/* tseng labs te4000 */
+	Pvga1a,		/* paradise */
 	Generic,
 };
 
 Vgacard vgacards[] =
 {
+[Pvga1a]	{ "pvga1a", parapage, },
 [Tseng]		{ "tseng", tsengpage, },
 [Generic]	{ "generic", nopage, },
 		{ 0, 0, },
@@ -614,6 +616,11 @@ static void
 tsengpage(int page)
 {
 	outb(0x3cd, (page<<4)|page);
+}
+static void
+parapage(int page)
+{
+	grout(9, page<<4);
 }
 
 /*

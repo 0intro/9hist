@@ -21,8 +21,12 @@ faultmips(Ureg *ur, int user, int code)
 
 	LEDON(LEDfault);
 	addr = ur->badvaddr;
-	if(addr & KZERO)
+	if(addr & KZERO){
 		LEDON(LEDkfault);
+		print("KZERO %s badvaddr=0x%lux r31=0x%lux\n", excname[code],
+			ur->badvaddr, ur->r31);
+		print("status=0x%lux pc=0x%lux sp=0x%lux\n", ur->status, ur->pc, ur->sp);
+	}
 	addr &= ~(BY2PG-1);
 	read = !(code==CTLBM || code==CTLBS);
 
@@ -34,8 +38,8 @@ faultmips(Ureg *ur, int user, int code)
 			LEDOFF(LEDfault);
 			return;
 		}
-		iprint("kernel %s badvaddr=0x%lux\n", excname[code], ur->badvaddr);
-		iprint("status=0x%lux pc=0x%lux sp=0x%lux\n", ur->status, ur->pc, ur->sp);
+		print("kernel %s badvaddr=0x%lux\n", excname[code], ur->badvaddr);
+		print("status=0x%lux pc=0x%lux sp=0x%lux\n", ur->status, ur->pc, ur->sp);
 		dumpregs(ur);
 		panic("fault");
 	}

@@ -375,13 +375,13 @@ dumpregs(Ureg *ur)
 	ulong *l;
 
 	if(u)
-		iprint("registers for %s %d\n", u->p->text, u->p->pid);
+		print("registers for %s %d\n", u->p->text, u->p->pid);
 	else
-		iprint("registers for kernel\n");
+		print("registers for kernel\n");
 	l = &ur->status;
 	for(i=0; i<sizeof regname/sizeof(char*); i+=2, l+=2){
-		iprint("%s\t%.8lux\t%s\t%.8lux\n", regname[i], l[0], regname[i+1], l[1]);
-/*		prflush();/**/
+		print("%s\t%.8lux\t%s\t%.8lux\n", regname[i], l[0], regname[i+1], l[1]);
+		prflush();
 	}
 }
 
