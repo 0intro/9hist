@@ -1284,7 +1284,7 @@ usbreset(void)
 	 * Interrupt handler.
 	 * Bail out if no IRQ assigned by the BIOS.
 	 */
-	if(cfg->intl == 0xFF)
+	if(cfg->intl == 0xFF || cfg->intl == 0)
 		return;
 	intrenable(cfg->intl, interrupt, ub, cfg->tbdf, "usb");
 

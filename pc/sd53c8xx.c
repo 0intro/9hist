@@ -88,7 +88,7 @@ extern SDifc sd53c8xxifc;
 
 #define KPRINT	if(0)print
 #define IPRINT	if(0)print
-#define DEBUG(n)	0
+#define DEBUG(n)	(0)
 #define IFLUSH()
 
 #endif /* BOOTDEBUG */
@@ -173,13 +173,8 @@ typedef struct Ncr {
 	uchar ctest5;
 	uchar ctest6;
 
-	union {		/* 24 */
-		ulong dbc;	/* only 24 bits usable LONG */
-		struct {
-			uchar dcmdpad[3];
-			uchar dcmd;
-		};
-	};
+	uchar dbc[3];	/* 24 */
+	uchar dcmd;	/* 27 */
 
 	uchar dnad[4];	/* 28 */
 	uchar dsp[4];	/* 2c */
@@ -223,10 +218,7 @@ typedef struct Ncr {
 	uchar sbdl;	/* 58 */
 	uchar sbdlpad[3];
 
-	union {		/* 5c */
-		uchar scratchb[4];
-		ulong scratchbncr;
-	};
+	uchar scratchb[4];	/* 5c */
 } Ncr;
 
 typedef struct Movedata {
@@ -1052,9 +1044,11 @@ calcblockdma(Dsa *d, ulong base, ulong count)
 static ulong
 read_mismatch_recover(Controller *c, Ncr *n, Dsa *dsa)
 {
-	ulong dbc = n->dbc & 0xffffff;
+	ulong dbc;
 	uchar dfifo = n->dfifo;
 	int inchip;
+
+	dbc = (n->dbc[2]<<16)|(n->dbc[1]<<8)|n->dbc[0];
 	if (n->ctest5 & (1 << 5))
 		inchip = ((dfifo | ((n->ctest5 & 3) << 8)) - (dbc & 0x3ff)) & 0x3ff;
 	else
@@ -1093,10 +1087,11 @@ read_mismatch_recover(Controller *c, Ncr *n, Dsa *dsa)
 static ulong
 write_mismatch_recover(Ncr *n, Dsa *dsa)
 {
-	ulong dbc = n->dbc & 0xffffff;
+	ulong dbc;
 	uchar dfifo = n->dfifo;
 	int inchip;
 
+	dbc = (n->dbc[2]<<16)|(n->dbc[1]<<8)|n->dbc[0];
 	USED(dsa);
 	if (n->ctest5 & (1 << 5))
 		inchip = ((dfifo | ((n->ctest5 & 3) << 8)) - (dbc & 0x3ff)) & 0x3ff;
@@ -1239,7 +1234,7 @@ interrupt(Ureg *ur, void *a)
 				    dsa->dmablks, legetl(dsa->dmaaddr),
 				    legetl(dsa->data_buf.pa), legetl(dsa->data_buf.dbc));
 				n->scratcha[2] = dsa->dmablks;
-				n->scratchbncr = dsa->dmancr;
+				lesetl(n->scratchb, dsa->dmancr);
 				cont = E_data_block_mismatch_recover;
 			}
 			else if (sa == E_data_out_mismatch) {
@@ -1266,7 +1261,7 @@ interrupt(Ureg *ur, void *a)
 				    dmablks * A_BSIZE - tbc + legetl(dsa->data_buf.dbc));
 				/* copy changes into scratch registers */
 				n->scratcha[2] = dsa->dmablks;
-				n->scratchbncr = dsa->dmancr;
+				lesetl(n->scratchb, dsa->dmancr);
 				cont = E_data_block_mismatch_recover;
 			}
 			else if (sa == E_id_out_mismatch) {
@@ -1486,13 +1481,14 @@ interrupt(Ureg *ur, void *a)
 		}
 		/*else*/ if (dstat & Iid) {
 			ulong addr = legetl(n->dsp);
+			ulong dbc = (n->dbc[2]<<16)|(n->dbc[1]<<8)|n->dbc[0];
 			IPRINT("sd53c8xx: %d/%d: Iid pa=%.8lux sa=%.8lux dbc=%lux\n",
 			    dsa->target, dsa->lun,
-			    addr, addr - c->scriptpa, n->dbc);
+			    addr, addr - c->scriptpa, dbc);
 			addr = (ulong)DMASEG_TO_KADDR(addr);
 			IPRINT("%.8lux %.8lux %.8lux\n",
 			    *(ulong *)(addr - 12), *(ulong *)(addr - 8), *(ulong *)(addr - 4));
-			USED(addr);
+			USED(addr, dbc);
 			dsa->p9status = SDeio;
 			wakeme = 1;
 		}
@@ -1733,7 +1729,7 @@ docheck:
 	poperror();
 
 	if (!done(d)) {
-		KPRINT("sd53c8xx: %d/%d: exec: Timed out", target, r->lun);
+		KPRINT("sd53c8xx: %d/%d: exec: Timed out\n", target, r->lun);
 		dumpncrregs(c, 0);
 		dsafree(c, d);
 		reset(c);
@@ -1911,9 +1907,9 @@ na_fixup(Controller *c, ulong pa_reg,
 static SDev*
 sympnp(void)
 {
+	int ba;
 	Pcidev *p;
 	Variant *v;
-	int scriptba;
 	void *scriptma;
 	Controller *ctlr;
 	SDev *sdev, *head, *tail;
@@ -1932,11 +1928,11 @@ sympnp(void)
 			v->name, p->rid, p->intl, p->pcr);
 
 		regpa = p->mem[1].bar;
-		scriptba = 2;
+		ba = 2;
 		if(regpa & 0x04){
 			if(p->mem[2].bar)
 				continue;
-			scriptba++;
+			ba++;
 		}
 		regpa = upamalloc(regpa & ~0x0F, p->mem[1].size, 0);
 		if(regpa == 0)
@@ -1946,13 +1942,13 @@ sympnp(void)
 		scriptpa = 0;
 		scriptma = nil;
 		if((v->feature & LocalRAM) && sizeof(na_script) <= 4096){
-			scriptpa = p->mem[scriptba].bar;
-			if((scriptpa & 0x04) && p->mem[scriptba+1].bar){
+			scriptpa = p->mem[ba].bar;
+			if((scriptpa & 0x04) && p->mem[ba+1].bar){
 				upafree(regpa, p->mem[1].size);
 				continue;
 			}
 			scriptpa = upamalloc(scriptpa & ~0x0F,
-					p->mem[scriptba].size, 0);
+					p->mem[ba].size, 0);
 			if(scriptpa)
 				script = KADDR(scriptpa);
 		}
@@ -1981,7 +1977,7 @@ buggery:
 			if(scriptma)
 				free(scriptma);
 			else
-				upafree(scriptpa, p->mem[scriptba].size);
+				upafree(scriptpa, p->mem[ba].size);
 			upafree(regpa, p->mem[1].size);
 			continue;
 		}

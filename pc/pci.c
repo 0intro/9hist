@@ -202,8 +202,7 @@ pcibusmap(Pcidev *root, ulong *pmema, ulong *pioa, int wrreg)
 	 */
 	for(p = root; p != nil; p = p->link) {
 		if(p->ccrb == 0x06) {
-			if((p->ccru != 0x04 && p->ccru != 0x07)
-			|| p->bridge == nil) {
+			if(p->ccru != 0x04 || p->bridge == nil) {
 //				DBG("pci: ignored bridge %T\n", p->tbdf);
 				continue;
 			}
@@ -455,7 +454,7 @@ pciscan(int bno, Pcidev** list)
 		/*
 		 * Find PCI-PCI bridges and recursively descend the tree.
 		 */
-		if(p->ccrb != 0x06 || (p->ccru != 0x04 && p->ccru != 0x07))
+		if(p->ccrb != 0x06 || p->ccru != 0x04)
 			continue;
 
 		/*

@@ -238,7 +238,7 @@ upamalloc(ulong pa, int size, int align)
 	void *va;
 
 	/*
-	 * Viability hack. Only for PCI frambuffers.
+	 * Viability hack. Only for PCI framebuffers.
 	 */
 	if(pa == 0)
 		return 0;
