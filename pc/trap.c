@@ -242,9 +242,9 @@ trap(Ureg *ur)
 	(*ivec[v])(ur);
 
 	/*
-	 *  syscall does it's own notifying
+	 *  check user since syscall does it's own notifying
 	 */
-	if(user)
+	if(user && (u->p->procctl || u->nnote))
 		notify(ur);
 }
 

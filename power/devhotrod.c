@@ -336,6 +336,30 @@ hotrodread(Chan *c, void *buf, long n, ulong offset)
 			}
 			if(mp->param[2] != hotsum(buf, m, mp->param[2])){
 				hp->addr->lcsr7 = 0xBEEF;
+{
+	ulong *i, j, posn, nerr, val;
+
+	i = buf;
+	posn = -1;
+	nerr = 0;
+	for(j = 0; j < n/4; j++) {
+		val = *i & 0xffff;
+		if(posn == -1)
+			posn = val+1;
+		else if(posn != val) {
+			print("error at offset %d %8lux != %8lux word=%8lux\n", 
+						j, posn, val, *i);
+			posn = -1;
+			if(++nerr > 10) {
+				print("too many\n");
+				break;
+			}
+		}
+		else
+			posn++;
+		i++;
+	}
+}
 				print("hotrod cksum err is %lux sb %lux\n",
 					hotsum(buf, m, 1), mp->param[2]);
 /*
