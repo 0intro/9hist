@@ -106,6 +106,31 @@ bitno(ulong x)
 }
 
 /*
+ * power up/down pcmcia
+ */
+static void
+pcmciapower(int up)
+{
+	/* if there's no pcmcia sleave, no interrupts */
+	if(gpioregs->level & GPIO_OPT_IND_i)
+		return;
+	if (up){
+		/* set timing to the default, 300 */
+		slottiming(0, 300, 300, 300, 0);
+		slottiming(1, 300, 300, 300, 0);
+
+		/* if there's no pcmcia sleave, no interrupts */
+		if(gpioregs->level & GPIO_OPT_IND_i)
+			return;
+
+		/* sleave there, interrupt on card removal */
+		intrenable(GPIOrising, bitno(GPIO_CARD_IND1_i), slotinfo, nil, "pcmcia slot1 status");
+		intrenable(GPIOrising, bitno(GPIO_CARD_IND0_i), slotinfo, nil, "pcmcia slot0 status");
+	}else{
+	}
+}
+
+/*
  *  set up the cards, default timing is 300 ns
  */
 static void
@@ -115,17 +140,7 @@ pcmciareset(void)
 	slotmap(0, PHYSPCM0REGS, PYHSPCM0ATTR, PYHSPCM0MEM);
 	slotmap(1, PHYSPCM1REGS, PYHSPCM1ATTR, PYHSPCM1MEM);
 
-	/* set timing to the default, 300 */
-	slottiming(0, 300, 300, 300, 0);
-	slottiming(1, 300, 300, 300, 0);
-
-	/* if there's no pcmcia sleave, no interrupts */
-	if(gpioregs->level & GPIO_OPT_IND_i)
-		return;
-
-	/* sleave there, interrupt on card removal */
-	intrenable(GPIOrising, bitno(GPIO_CARD_IND1_i), slotinfo, nil, "pcmcia slot1 status");
-	intrenable(GPIOrising, bitno(GPIO_CARD_IND0_i), slotinfo, nil, "pcmcia slot0 status");
+	pcmciapower(1);
 }
 
 static Chan*
@@ -348,6 +363,16 @@ pcmctlwrite(char *p, long n, ulong, PCMslot *sp)
 
 		/* don't let the power turn off */
 		increfp(sp);
+	}else if(strcmp(cmd->f[0], "remove") == 0){
+		wlock(sp);
+		if(waserror()){
+			wunlock(sp);
+			nexterror();
+		}
+
+
+		wunlock(sp);
+		poperror();
 	}
 	free(cmd);
 
