@@ -371,8 +371,7 @@ checkb(b, "qconsume 2");
 int
 qpass(Queue *q, Block *b)
 {
-	int s, i, len;
-	int dowakeup;
+	int s, i, len, dowakeup;
 
 	s = splhi();
 
@@ -417,7 +416,7 @@ qpass(Queue *q, Block *b)
 		q->bfirst = b;
 	q->blast = b;
 	q->len += len;
-checkb(b, "qproduce");
+checkb(b, "qpass");
 
 	if(q->state & Qstarve){
 		q->state &= ~Qstarve;
