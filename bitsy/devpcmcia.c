@@ -139,10 +139,8 @@ pcmciapower(int on)
 			if(sp->cisread == 0)
 				pcmcisread(sp);
 			if (sp->dev){
-print("pcmciapower: dev 0x%p", sp->dev);
-print(", power 0x%p\n", sp->dev->power);
-				if (sp->dev->power)
-					sp->dev->power(on);
+//				if (sp->dev->power)
+//					sp->dev->power(on);
 			}
 		}
 	}else{
@@ -150,8 +148,6 @@ print(", power 0x%p\n", sp->dev->power);
 			if (sp->occupied == 0)
 				continue;
 			if (sp->dev){
-print("pcmciapower: dev 0x%p", sp->dev);
-print(", power 0x%p\n", sp->dev->power);
 				if (sp->dev->power)
 					sp->dev->power(on);
 			}
@@ -397,8 +393,6 @@ pcmctlwrite(char *p, long n, ulong, PCMslot *sp)
 		if(devtab[dtx]->config(1, p, &cf) < 0)
 			error("couldn't configure device");
 		sp->dev = devtab[dtx];
-print("pcmctlwrite: configure %s: 0x%p\n", cmd->f[1], sp->dev);
-
 		wunlock(sp);
 		poperror();
 

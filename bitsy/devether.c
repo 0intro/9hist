@@ -38,8 +38,7 @@ etherpower(int on)
 
 print("etherpower %d\n", on);
 	for (i = 0; i < MaxEther; i++){
-		ether = etherxx[i];
-		if (ether == nil)
+		if ((ether = etherxx[i]) == nil)
 			continue;
 		if(on){
 			if (ether->writer == 0){
@@ -151,8 +150,7 @@ etherattach(char* spec)
 		if((ctlrno == 0 && p == spec) || *p || (ctlrno >= MaxEther))
 			error(Ebadarg);
 	}
-	ether = etherxx[ctlrno];
-	if(ether == 0)
+	if((ether = etherxx[ctlrno]) == 0)
 		error(Enodev);
 	rlock(ether);
 	if(waserror()) {
@@ -297,6 +295,7 @@ static int
 etherwstat(Chan* chan, uchar* dp, int n)
 {
 	Ether *ether;
+	int r;
 
 	ether = etherxx[chan->dev];
 	rlock(ether);
@@ -304,10 +303,10 @@ etherwstat(Chan* chan, uchar* dp, int n)
 		runlock(ether);
 		nexterror();
 	}
-	n = netifwstat(ether, chan, dp, n);
+	r = netifwstat(ether, chan, dp, n);
 	poperror();
 	runlock(ether);
-	return n;
+	return r;
 }
 
 static void

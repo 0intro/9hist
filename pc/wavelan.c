@@ -163,13 +163,13 @@ w_seek(Ctlr* ctlr, ushort id, ushort offset, int chan)
 	static ushort sel[] = { WR_Sel0, WR_Sel1 };
 	static ushort off[] = { WR_Off0, WR_Off1 };
 
-	if (chan != 0 && chan != 1)
+	if(chan != 0 && chan != 1)
 		panic("wavelan: bad chan\n");
 	csr_outs(ctlr, sel[chan], id);
 	csr_outs(ctlr, off[chan], offset);
 	for (i=0; i<WTmOut; i++){
 		rc = csr_ins(ctlr, off[chan]);
-		if ((rc & (WBusyOff|WErrOff)) == 0)
+		if((rc & (WBusyOff|WErrOff)) == 0)
 			return 0;
 	}
 	return -1;
@@ -181,19 +181,19 @@ w_inltv(Ctlr* ctlr, Wltv* ltv)
 	int len;
 	ushort code;
 
-	if (w_cmd(ctlr, WCmdAccRd, ltv->type)){
+	if(w_cmd(ctlr, WCmdAccRd, ltv->type)){
 		DEBUG("wavelan: access read failed\n");
 		return -1;
 	}
-	if (w_seek(ctlr,ltv->type,0,1)){
+	if(w_seek(ctlr,ltv->type,0,1)){
 		DEBUG("wavelan: seek failed\n");
 		return -1;
 	}
 	len = csr_ins(ctlr, WR_Data1);
-	if (len > ltv->len)
+	if(len > ltv->len)
 		return -1;
 	ltv->len = len;
-	if ((code=csr_ins(ctlr, WR_Data1)) != ltv->type){
+	if((code=csr_ins(ctlr, WR_Data1)) != ltv->type){
 		USED(code);
 		DEBUG("wavelan: type %x != code %x\n",ltv->type,code);
 		return -1;
@@ -269,7 +269,7 @@ ltv_inname(Ctlr* ctlr, int type)
 	memset(&ltv,0,sizeof(ltv));
 	ltv.len = WNameLen/2+2;
 	ltv.type = type;
-	if (w_inltv(ctlr, &ltv))
+	if(w_inltv(ctlr, &ltv))
 		return Unkname;
 	len = ltv.slen;
 	if(len == 0 || ltv.s[0] == 0)
@@ -283,7 +283,7 @@ ltv_inname(Ctlr* ctlr, int type)
 static int
 w_read(Ctlr* ctlr, int type, int off, void* buf, ulong len)
 {
-	if (w_seek(ctlr, type, off, 1)){
+	if(w_seek(ctlr, type, off, 1)){
 		DEBUG("wavelan: w_read: seek failed");
 		return 0;
 	}
@@ -298,7 +298,7 @@ w_write(Ctlr* ctlr, int type, int off, void* buf, ulong len)
 	int tries;
 
 	for (tries=0; tries < WTmOut; tries++){
-		if (w_seek(ctlr, type, off, 0)){
+		if(w_seek(ctlr, type, off, 0)){
 			DEBUG("wavelan: w_write: seek failed\n");
 			return 0;
 		}
@@ -307,12 +307,12 @@ w_write(Ctlr* ctlr, int type, int off, void* buf, ulong len)
 
 		csr_outs(ctlr, WR_Data0, 0xdead);
 		csr_outs(ctlr, WR_Data0, 0xbeef);
-		if (w_seek(ctlr, type, off + len, 0)){
+		if(w_seek(ctlr, type, off + len, 0)){
 			DEBUG("wavelan: write seek failed\n");
 			return 0;
 		}
-		if (csr_ins(ctlr, WR_Data0) == 0xdead)
-		if (csr_ins(ctlr, WR_Data0) == 0xbeef)
+		if(csr_ins(ctlr, WR_Data0) == 0xdead)
+		if(csr_ins(ctlr, WR_Data0) == 0xbeef)
 			return len;
 		DEBUG("wavelan: Hermes bug byte.\n");
 		return 0;
@@ -327,12 +327,12 @@ w_alloc(Ctlr* ctlr, int len)
 	int rc;
 	int i,j;
 
-	if (w_cmd(ctlr, WCmdMalloc, len)==0)
+	if(w_cmd(ctlr, WCmdMalloc, len)==0)
 		for (i = 0; i<WTmOut; i++)
-			if (csr_ins(ctlr, WR_EvSts) & WAllocEv){
+			if(csr_ins(ctlr, WR_EvSts) & WAllocEv){
 				csr_ack(ctlr, WAllocEv);
 				rc=csr_ins(ctlr, WR_Alloc);
-				if (w_seek(ctlr, rc, 0, 0))
+				if(w_seek(ctlr, rc, 0, 0))
 					return -1;
 				len = len/2;
 				for (j=0; j<len; j++)
@@ -348,7 +348,7 @@ w_enable(Ether* ether)
 	Wltv ltv;
 	Ctlr* ctlr = (Ctlr*) ether->ctlr;
 
-	if (!ctlr)
+	if(!ctlr)
 		return -1;
 
 	w_intdis(ctlr);
@@ -367,12 +367,12 @@ w_enable(Ether* ether)
 	ltv_outs(ctlr, WTyp_ApDens, ctlr->apdensity);
 	ltv_outs(ctlr, WTyp_PMWait, ctlr->pmwait);
 	ltv_outs(ctlr, WTyp_PM, ctlr->pmena);
-	if (*ctlr->netname)
+	if(*ctlr->netname)
 		ltv_outstr(ctlr, WTyp_NetName, ctlr->netname);
-	if (*ctlr->wantname)
+	if(*ctlr->wantname)
 		ltv_outstr(ctlr, WTyp_WantName, ctlr->wantname);
 	ltv_outs(ctlr, WTyp_Chan, ctlr->chan);
-	if (*ctlr->nodename)
+	if(*ctlr->nodename)
 		ltv_outstr(ctlr, WTyp_NodeName, ctlr->nodename);
 	ltv.len = 4;
 	ltv.type = WTyp_Mac;
@@ -381,7 +381,7 @@ w_enable(Ether* ether)
 
 	ltv_outs(ctlr, WTyp_Prom, (ether->prom?1:0));
 
-	if (ctlr->hascrypt){
+	if(ctlr->hascrypt){
 		ltv_outs(ctlr, WTyp_Crypt, ctlr->crypt);
 		ltv_outs(ctlr, WTyp_TxKey, ctlr->txkey);
 		w_outltv(ctlr, &ctlr->keys);
@@ -390,13 +390,13 @@ w_enable(Ether* ether)
 
 	// BUG: set multicast addresses
 
-	if (w_cmd(ctlr, WCmdEna, 0)){
+	if(w_cmd(ctlr, WCmdEna, 0)){
 		DEBUG("wavelan: Enable failed");
 		return -1;
 	}
 	ctlr->txdid = w_alloc(ctlr, 1518 + sizeof(WFrame) + 8);
 	ctlr->txmid = w_alloc(ctlr, 1518 + sizeof(WFrame) + 8);
-	if (ctlr->txdid == -1 || ctlr->txmid == -1)
+	if(ctlr->txdid == -1 || ctlr->txmid == -1)
 		DEBUG("wavelan: alloc failed");
 	ctlr->txbusy = 0;
 	w_intena(ctlr);
@@ -414,11 +414,11 @@ w_rxdone(Ether* ether)
 
 	sp = csr_ins(ctlr, WR_RXId);
 	len = w_read(ctlr, sp, 0, &f, sizeof(f));
-	if (len == 0){
+	if(len == 0){
 		DEBUG("wavelan: read frame error\n");
 		goto rxerror;
 	}
-	if (f.sts&WF_Err){
+	if(f.sts&WF_Err){
 		goto rxerror;
 	}
 	switch(f.sts){
@@ -427,14 +427,14 @@ w_rxdone(Ether* ether)
 	case WF_WMP:
 		len = f.dlen + WSnapHdrLen;
 		bp = iallocb(ETHERHDRSIZE + len + 2);
-		if (!bp)
+		if(!bp)
 			goto rxerror;
 		ep = (Etherpkt*) bp->wp;
 		memmove(ep->d, f.addr1, Eaddrlen);
 		memmove(ep->s, f.addr2, Eaddrlen);
 		memmove(ep->type,&f.type,2);
 		bp->wp += ETHERHDRSIZE;
-		if (w_read(ctlr, sp, WF_802_11_Off, bp->wp, len+2) == 0){
+		if(w_read(ctlr, sp, WF_802_11_Off, bp->wp, len+2) == 0){
 			DEBUG("wavelan: read 802.11 error\n");
 			goto rxerror;
 		}
@@ -443,9 +443,9 @@ w_rxdone(Ether* ether)
 	default:
 		len = ETHERHDRSIZE + f.dlen + 2;
 		bp = iallocb(len);
-		if (!bp)
+		if(!bp)
 			goto rxerror;
-		if (w_read(ctlr, sp, WF_802_3_Off, bp->wp, len) == 0){
+		if(w_read(ctlr, sp, WF_802_3_Off, bp->wp, len) == 0){
 			DEBUG("wavelan: read 800.3 error\n");
 			goto rxerror;
 		}
@@ -522,7 +522,7 @@ w_txdone(Ctlr* ctlr, int sts)
 {
 	ctlr->txbusy = 0;
 	ctlr->txtmout = 0;
-	if (sts & WTxErrEv)
+	if(sts & WTxErrEv)
 		ctlr->ntxerr++;
 	else
 		ctlr->ntx++;
@@ -539,11 +539,11 @@ w_stats(Ctlr* ctlr)
 	sp = csr_ins(ctlr, WR_InfoId);
 	ltv.len = ltv.type = 0;
 	w_read(ctlr, sp, 0, &ltv, 4);
-	if (ltv.type == WTyp_Stats){
+	if(ltv.type == WTyp_Stats){
 		ltv.len--;
 		for (i = 0; i < ltv.len && p < pend; i++){
 			rc = csr_ins(ctlr, WR_Data1);
-			if (rc > 0xf000)
+			if(rc > 0xf000)
 				rc = ~rc & 0xffff;
 			p[i] += rc;
 		}
@@ -558,10 +558,10 @@ w_intr(Ether *ether)
 	int rc, txid;
 	Ctlr* ctlr = (Ctlr*) ether->ctlr;
 
-	if ((ctlr->state & Power) == 0)
+	if((ctlr->state & Power) == 0)
 		return;
 
-	if ((ctlr->state & Attached) == 0){
+	if((ctlr->state & Attached) == 0){
 		csr_ack(ctlr, 0xffff);
 		csr_outs(ctlr, WR_IntEna, 0);
 		return;
@@ -569,33 +569,33 @@ w_intr(Ether *ether)
 
 	rc = csr_ins(ctlr, WR_EvSts);
 	csr_ack(ctlr, ~WEvs);	// Not interested in them
-	if (rc & WRXEv){
+	if(rc & WRXEv){
 		w_rxdone(ether);
 		csr_ack(ctlr, WRXEv);
 	}
-	if (rc & WTXEv){
+	if(rc & WTXEv){
 		w_txdone(ctlr, rc);
 		csr_ack(ctlr, WTXEv);
 	}
-	if (rc & WAllocEv){
+	if(rc & WAllocEv){
 		ctlr->nalloc++;
 		txid = csr_ins(ctlr, WR_Alloc);
 		csr_ack(ctlr, WAllocEv);
-		if (txid == ctlr->txdid){
-			if ((rc & WTXEv) == 0)
+		if(txid == ctlr->txdid){
+			if((rc & WTXEv) == 0)
 				w_txdone(ctlr, rc);
 		}
 	}
-	if (rc & WInfoEv){
+	if(rc & WInfoEv){
 		ctlr->ninfo++;
 		w_stats(ctlr);
 		csr_ack(ctlr, WInfoEv);
 	}
-	if (rc & WTxErrEv){
+	if(rc & WTxErrEv){
 		w_txdone(ctlr, rc);
 		csr_ack(ctlr, WTxErrEv);
 	}
-	if (rc & WIDropEv){
+	if(rc & WIDropEv){
 		ctlr->nidrop++;
 		csr_ack(ctlr, WIDropEv);
 	}
@@ -616,9 +616,9 @@ w_timer(void* arg)
 	for(;;){
 		tsleep(&ctlr->timer, return0, 0, 50);
 		ctlr = (Ctlr*)ether->ctlr;
-		if (ctlr == 0)
+		if(ctlr == 0)
 			break;
-		if ((ctlr->state & Attached) == 0)
+		if((ctlr->state & Attached) == 0)
 			continue;
 		ctlr->ticks++;
 
@@ -639,22 +639,22 @@ w_timer(void* arg)
 		// the card frames in the wrong way; due to the
 		// lack of documentation I cannot know.
 
-		if (csr_ins(ctlr, WR_EvSts)&WEvs){
+		if(csr_ins(ctlr, WR_EvSts)&WEvs){
 			ctlr->tickintr++;
 			w_intr(ether);
 		}
 
-		if ((ctlr->ticks % 10) == 0) {
-			if (ctlr->txtmout && --ctlr->txtmout == 0){
+		if((ctlr->ticks % 10) == 0) {
+			if(ctlr->txtmout && --ctlr->txtmout == 0){
 				ctlr->nwatchdogs++;
 				w_txdone(ctlr, WTxErrEv);
-				if (w_enable(ether)){
+				if(w_enable(ether)){
 					DEBUG("wavelan: wdog enable failed\n");
 				}
 				w_txstart(ether);
 			}
-			if ((ctlr->ticks % 120) == 0)
-			if (ctlr->txbusy == 0)
+			if((ctlr->ticks % 120) == 0)
+			if(ctlr->txbusy == 0)
 				w_cmd(ctlr, WCmdAskStats, WTyp_Stats);
 		}
 		iunlock(ctlr);
@@ -675,12 +675,12 @@ w_attach(Ether* ether)
 	char name[64];
 	int rc;
 
-	if (ether->ctlr == 0)
+	if(ether->ctlr == 0)
 		return;
 
 	snprint(name, sizeof(name), "#l%dtimer", ether->ctlrno);
 	ctlr = (Ctlr*) ether->ctlr;
-	if ((ctlr->state & Attached) == 0){
+	if((ctlr->state & Attached) == 0){
 		ilock(ctlr);
 		rc = w_enable(ether);
 		iunlock(ctlr);
@@ -698,16 +698,16 @@ w_detach(Ether* ether)
 	Ctlr* ctlr;
 	char name[64];
 
-	if (ether->ctlr == 0)
+	if(ether->ctlr == 0)
 		return;
 
 	snprint(name, sizeof(name), "#l%dtimer", ether->ctlrno);
 	ctlr = (Ctlr*) ether->ctlr;
-	if (ctlr->state & Attached){
+	if(ctlr->state & Attached){
 		ilock(ctlr);
 		w_intdis(ctlr);
-		if (ctlr->timerproc){
-			if (!postnote(ctlr->timerproc, 1, "kill", NExit))
+		if(ctlr->timerproc){
+			if(!postnote(ctlr->timerproc, 1, "kill", NExit))
 				print("timerproc note not posted\n");
 			print("w_detach, killing 0x%p\n", ctlr->timerproc);
 		}
@@ -723,15 +723,15 @@ w_power(Ether* ether, int on)
 
 	ctlr = (Ctlr*) ether->ctlr;
 	ilock(ctlr);
-	if (on){
-		if ((ctlr->state & Power) == 0){
-			if (ctlr->state & Attached)
+	if(on){
+		if((ctlr->state & Power) == 0){
+			if(ctlr->state & Attached)
 				w_enable(ether);
 			ctlr->state |= Power;
 		}
 	}else{
-		if (ctlr->state & Power){
-			if (ctlr->state & Attached)
+		if(ctlr->state & Power){
+			if(ctlr->state & Attached)
 				w_intdis(ctlr);
 			ctlr->state &= ~Power;
 		}
@@ -788,12 +788,12 @@ w_ifstat(Ether* ether, void* a, long n, ulong offset)
 	k = ((ctlr->txbusy)? ", txbusy" : "");
 	PRINTSTAT("%s\n", k);
 
-	if (ctlr->hascrypt){
+	if(ctlr->hascrypt){
 		PRINTSTR("Keys: ");
 		for (i = 0; i < WNKeys; i++){
-			if (ctlr->keys.keys[i].len == 0)
+			if(ctlr->keys.keys[i].len == 0)
 				PRINTSTR("none ");
-			else if (SEEKEYS == 0)
+			else if(SEEKEYS == 0)
 				PRINTSTR("set ");
 			else
 				PRINTSTAT("%s ", ctlr->keys.keys[i].dat);
@@ -821,17 +821,17 @@ w_ifstat(Ether* ether, void* a, long n, ulong offset)
 		PRINTSTAT("Current name: %s\n", ltv_inname(ctlr, WTyp_CurName));
 		ltv.type = WTyp_BaseID;
 		ltv.len = 4;
-		if (w_inltv(ctlr, &ltv))
+		if(w_inltv(ctlr, &ltv))
 			print("#l%d: unable to read base station mac addr\n", ether->ctlrno);
 		l += snprint(p+l, READSTR-l, "Base station: %2.2x%2.2x%2.2x%2.2x%2.2x%2.2x\n",
 			ltv.addr[0], ltv.addr[1], ltv.addr[2], ltv.addr[3], ltv.addr[4], ltv.addr[5]);
 	}
 	PRINTSTAT("Net name: %s\n", ltv_inname(ctlr, WTyp_WantName));
 	PRINTSTAT("Node name: %s\n", ltv_inname(ctlr, WTyp_NodeName));
-	if (ltv_ins(ctlr, WTyp_HasCrypt) == 0)
+	if(ltv_ins(ctlr, WTyp_HasCrypt) == 0)
 		PRINTSTR("WEP: not supported\n");
 	else {
-		if (ltv_ins(ctlr, WTyp_Crypt) == 0)
+		if(ltv_ins(ctlr, WTyp_Crypt) == 0)
 			PRINTSTR("WEP: disabled\n");
 		else{
 			PRINTSTR("WEP: enabled\n");
@@ -886,7 +886,7 @@ w_option(Ctlr* ctlr, char* buf, long n)
 	if(cb->nf < 2)
 		r = -1;
 	else if(cistrcmp(cb->f[0], "essid") == 0){
-		if (cistrcmp(cb->f[1],"default") == 0)
+		if(cistrcmp(cb->f[1],"default") == 0)
 			p = "";
 		else
 			p = cb->f[1];
@@ -948,7 +948,7 @@ w_option(Ctlr* ctlr, char* buf, long n)
 			ctlr->txkey = i-1;
 			key = &ctlr->keys.keys[ctlr->txkey];
 			key->len = strlen(cb->f[1]);
-			if (key->len > WKeyLen)
+			if(key->len > WKeyLen)
 				key->len = WKeyLen;
 			memset(key->dat, 0, sizeof(key->dat));
 			memmove(key->dat, cb->f[1], key->len);
@@ -1012,7 +1012,7 @@ w_transmit(Ether* ether)
 {
 	Ctlr* ctlr = ether->ctlr;
 
-	if (ctlr == 0)
+	if(ctlr == 0)
 		return;
 
 	ilock(ctlr);
@@ -1027,9 +1027,9 @@ w_promiscuous(void* arg, int on)
 	Ether* ether = (Ether*)arg;
 	Ctlr* ctlr = ether->ctlr;
 
-	if (ctlr == nil)
+	if(ctlr == nil)
 		error("card not found");
-	if ((ctlr->state & Attached) == 0)
+	if((ctlr->state & Attached) == 0)
 		error("card not attached");
 	ilock(ctlr);
 	ltv_outs(ctlr, WTyp_Prom, (on?1:0));
@@ -1042,7 +1042,7 @@ w_interrupt(Ureg* ,void* arg)
 	Ether* ether = (Ether*) arg;
 	Ctlr* ctlr = (Ctlr*) ether->ctlr;
 
-	if (ctlr == 0)
+	if(ctlr == 0)
 		return;
 	ilock(ctlr);
 	ctlr->nints++;
@@ -1056,7 +1056,7 @@ wavelanreset(Ether* ether, Ctlr *ctlr)
 	Wltv ltv;
 
 	w_intdis(ctlr);
-	if (w_cmd(ctlr,WCmdIni,0)){
+	if(w_cmd(ctlr,WCmdIni,0)){
 		print("#l%d: init failed\n", ether->ctlrno);
 		return -1;
 	}
@@ -1080,14 +1080,14 @@ wavelanreset(Ether* ether, Ctlr *ctlr)
 
 	ltv.type = WTyp_Mac;
 	ltv.len	= 4;
-	if (w_inltv(ctlr, &ltv)){
+	if(w_inltv(ctlr, &ltv)){
 		print("#l%d: unable to read mac addr\n",
 			ether->ctlrno);
 		return -1;
 	}
 	memmove(ether->ea, ltv.addr, Eaddrlen);
 
-	if (ctlr->chan == 0)
+	if(ctlr->chan == 0)
 		ctlr->chan = ltv_ins(ctlr, WTyp_Chan);
 	ctlr->apdensity = WDfltApDens;
 	ctlr->rtsthres = WDfltRtsThres;
@@ -1097,9 +1097,10 @@ wavelanreset(Ether* ether, Ctlr *ctlr)
 	ctlr->pmwait = 100;
 	ctlr->signal = 1;
 	ctlr->noise = 1;
+	ctlr->state |= Power;
 
 	// free old Ctlr struct if resetting after suspend
-	if (ether->ctlr)
+	if(ether->ctlr)
 		free(ether->ctlr);
 
 	// link to ether
