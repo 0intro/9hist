@@ -847,19 +847,22 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 		break;
 
 	case Qswap:
-		kickpager();		/* start a pager if not already started */
-		if(conf.cntrlp && strcmp(u->p->user, eve) != 0)
-			error(Eperm);
 		if(n >= sizeof buf)
 			error(Egreg);
 		memmove(buf, va, n);	/* so we can NUL-terminate */
 		buf[n] = 0;
-		if(buf[0]<'0' && '9'<buf[0])
+		if(strncmp(buf, "start", 5) == 0){
+			kickpager();		/* start a pager if not already started */
+			break;
+		}
+		if(conf.cntrlp && strcmp(u->p->user, eve) != 0)
+			error(Eperm);
+		if(buf[0]<'0' || '9'<buf[0])
 			error(Ebadarg);
 		fd = strtoul(buf, 0, 0);
 		swc = fdtochan(fd, -1, 1);
 		setswapchan(swc);
-		return n;
+		break;
 
 	default:
 		print("conswrite: %d\n", c->qid.path);

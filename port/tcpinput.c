@@ -199,7 +199,8 @@ process:
 		goto done;
 	}
 
-	if(seg.seq != tcb->rcv.nxt && (length != 0 || (seg.flags & (SYN|FIN)) )) {
+	if(seg.seq != tcb->rcv.nxt)
+	if(length != 0 || (seg.flags & (SYN|FIN))) {
 		add_reseq(tcb, tos, &seg, bp, length);
 		tcb->flags |= FORCE;
 		goto output;
@@ -254,7 +255,7 @@ process:
 			break;
 		case Closing:
 			update(s, &seg);
-			if(tcb->sndcnt == 0){
+			if(tcb->sndcnt == 0) {
 				setstate(s, Time_wait);
 				tcb->timer.start = MSL2 * (1000 / MSPTICK);
 				start_timer(&tcb->timer);
@@ -271,17 +272,21 @@ process:
 			start_timer(&tcb->timer);
 		}
 
-		if ((seg.flags&URG) && seg.up) {
-			if (seq_gt(seg.up + seg.seq, tcb->rcv.up)) {
+		if((seg.flags&URG) && seg.up) {
+			if(seq_gt(seg.up + seg.seq, tcb->rcv.up)) {
 				tcb->rcv.up = seg.up + seg.seq;
 				copyupb(&bp, 0, seg.up);
 			}
 		} 
-		else if (seq_gt(tcb->rcv.nxt, tcb->rcv.up))
+		else if(seq_gt(tcb->rcv.nxt, tcb->rcv.up))
 			tcb->rcv.up = tcb->rcv.nxt;
 
-		if(length != 0){
+		if(length != 0) {
 			switch(tcb->state){
+			default:
+				/* Ignore segment text */
+				freeb(bp);
+				break;
 			case Syn_received:
 			case Established:
 			case Finwait1:
@@ -298,12 +303,8 @@ process:
 	
 				start_timer(&tcb->acktimer);
 
-				if (tcb->max_snd <= tcb->rcv.nxt-tcb->last_ack)
+				if(tcb->max_snd <= tcb->rcv.nxt-tcb->last_ack)
 					tcb->flags |= FORCE;
-				break;
-			default:
-				/* Ignore segment text */
-				freeb(bp);
 				break;
 			}
 		}
@@ -414,18 +415,13 @@ reset(Ipaddr source, Ipaddr dest, char tos, ushort length, Tcp *seg)
 	seg->source = tmp;
 
 	rflags = RST;
+
+	/* convince the other end that this reset is in band */
 	if(seg->flags & ACK) {
-		/* This reset is being sent to clear a half-open connection.
-		 * Set the sequence number of the RST to the incoming ACK
-		 * so it will be acceptable.
-		 */
 		seg->seq = seg->ack;
 		seg->ack = 0;
 	}
 	else {
-		/* We're rejecting a connect request (SYN) from LISTEN state
-		 * so we have to "acknowledge" their SYN.
-		 */
 		rflags |= ACK;
 		seg->ack = seg->seq;
 		seg->seq = 0;
@@ -532,10 +528,7 @@ update(Ipconv *s, Tcp *seg)
 	if(seq_lt(tcb->snd.ptr, tcb->snd.una))
 		tcb->snd.ptr = tcb->snd.una;
 
-	/* Clear the retransmission flag since the oldest
-	 * unacknowledged segment (the only one that is ever retransmitted)
-	 * has now been acked.
-	 */
+	/* All data is acked now */
 	tcb->flags &= ~RETRAN;
 	tcb->backoff = 0;
 }
@@ -558,7 +551,7 @@ proc_syn(Ipconv *s, char tos, Tcp *seg)
 	if(PREC(tos) > PREC(tcb->tos))
 		tcb->tos = tos;
 
-	tcb->rcv.up = tcb->rcv.nxt = seg->seq + 1;	/* p 68 */
+	tcb->rcv.up = tcb->rcv.nxt = seg->seq + 1;
 	tcb->snd.wl1 = tcb->irs = seg->seq;
 	tcb->snd.wnd = seg->wnd;
 
@@ -648,8 +641,9 @@ int
 trim(Tcpctl *tcb, Tcp *seg, Block **bp, ushort *length)
 {
 	Block *nbp;
-	long dupcnt,excess;
-	ushort len;		/* Segment length including flags */
+	long dupcnt;
+	long excess;
+	ushort len;
 	char accept;
 
 	accept = 0;
@@ -659,7 +653,6 @@ trim(Tcpctl *tcb, Tcp *seg, Block **bp, ushort *length)
 	if(seg->flags & FIN)
 		len++;
 
-	/* Acceptability tests */
 	if(tcb->rcv.wnd == 0) {
 		if(seg->seq == tcb->rcv.nxt && len == 0)
 			return 0;

@@ -272,6 +272,9 @@ imagereclaim(void)
 	if(!canqlock(&ireclaim))	/* Somebody is already cleaning the page cache */
 		return;
 
+	if(conf.cntrlp)
+	print("ireclaim %lud\n", TK2MS(MACHP(0)->ticks));
+
 	for(;;) {
 		lock(&palloc);
 		for(p = palloc.head; p; p = p->next)
@@ -289,6 +292,9 @@ imagereclaim(void)
 			uncachepage(p);
 		unlockpage(p);
 	}
+
+	if(conf.cntrlp)
+	print("ireclaim done %lud\n", TK2MS(MACHP(0)->ticks));
 
 	qunlock(&ireclaim);
 }

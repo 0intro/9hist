@@ -764,7 +764,7 @@ ilstart(Ipconv *ipc, int type, int window)
 	if(ic->state != Ilclosed)
 		return;
 
-	ic->timeout = 0;
+	Starttimer(ic);
 	ic->unacked = 0;
 	ic->outoforder = 0;
 	ic->slowtime = Slowtime;

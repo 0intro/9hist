@@ -245,6 +245,7 @@ struct Tctl
 	int	srtt;			/* Shortened round trip */
 	int	mdev;			/* Mean deviation of round trip */
 };
+
 struct Tcpctl
 {
 	QLock;
@@ -342,8 +343,6 @@ struct Ipconv
 #define Nreseq		64
 
 #define	set_timer(t,x)	(((t)->start) = (x)/MSPTICK)
-#define	dur_timer(t)	((t)->start)
-#define	read_timer(t)	((t)->count)
 #define	run_timer(t)	((t)->state == TIMER_RUN)
 
 enum					/* Tcp connection states */
@@ -376,8 +375,6 @@ struct Ipifc
 	int		minmtu;			/* Minumum tranfer unit */
 	int		hsize;			/* Media header size */	
 	ulong		chkerrs;		/* checksum errors */
-	ulong		tx;
-	ulong		rx;
 	Lock;	
 };
 
