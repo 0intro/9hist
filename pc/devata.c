@@ -11,8 +11,8 @@
 #include	"../port/error.h"
 
 
-#define DPRINT if(0)print
-#define XPRINT if(0)print
+#define DPRINT if(1)print
+#define XPRINT if(1)print
 #define ILOCK(x)
 #define IUNLOCK(x)
 
@@ -1818,6 +1818,11 @@ retry:
 			cp->count, cp->status, cp->error);
 		error(Eio);
 	}
+{ int i;
+  for(i = 0; i < 18; i++)
+    print("%2.2uX ", buf[i]);
+  print("\n");
+}
 
 	cp->len = 8;
 	cp->count = 0;
@@ -1831,7 +1836,10 @@ retry:
 		error(Eio);
 	}
 	dp->lbasecs = (cp->buf[0]<<24)|(cp->buf[1]<<16)|(cp->buf[2]<<8)|cp->buf[3];
+	dp->bytes = (cp->buf[4]<<24)|(cp->buf[5]<<16)|(cp->buf[6]<<8)|cp->buf[7];
 	dp->cap = dp->lbasecs*dp->bytes;
+	DPRINT("%s: atapipart secs %ud, bytes %ud, cap %ud\n",
+		dp->vol, dp->lbasecs, dp->bytes, dp->cap);
 	cp->dp = 0;
 	free(cp->buf);
 	poperror();
