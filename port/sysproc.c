@@ -330,7 +330,15 @@ sysexec(ulong *arg)
 	 */
 	for(i = SSEG; i <= BSEG; i++) {
 		putseg(up->seg[i]);
-		up->seg[i] = 0;	    /* prevent a second free if we have an error */
+		/* prevent a second free if we have an error */
+		up->seg[i] = 0;
+	}
+	for(i = BSEG+1; i < NSEG; i++) {
+		s = up->seg[i];
+		if(s != 0 && (s->type&SG_CEXEC)) {
+			putseg(s);
+			up->seg[i] = 0;
+		}
 	}
 
 	/*
