@@ -39,9 +39,13 @@ typedef struct GREhdr
 	uchar	eproto[2];	/* encapsulation protocol */
 } GREhdr;
 
-	Proto	gre;
-extern	Fs	fs;
-	int	gredebug;
+typedef struct GREpriv GREpriv;
+struct GREpriv
+{
+	/* non-MIB stats */
+	ulong		csumerr;		/* checksum errors */
+	ulong		lenerr;			/* short packet */
+};
 
 static char*
 greconnect(Conv *c, char **argv, int argc)
@@ -75,7 +79,7 @@ greconnect(Conv *c, char **argv, int argc)
 
 	if(err != nil)
 		return err;
-	Fsconnected(&fs, c, nil);
+	Fsconnected(c, nil);
 
 	return nil;
 }
@@ -147,7 +151,7 @@ grekick(Conv *c, int l)
 	v4tov6(laddr, ghp->src);
 	if(ipcmp(laddr, v4prefix) == 0){
 		if(ipcmp(c->laddr, IPnoaddr) == 0)
-			findlocalip(c->laddr, raddr); /* pick interface closest to dest */
+			findlocalip(c->p->f, c->laddr, raddr); /* pick interface closest to dest */
 		memmove(ghp->src, c->laddr + IPv4off, IPv4addrlen);
 	}
 
@@ -156,18 +160,20 @@ grekick(Conv *c, int l)
 	ghp->frag[0] = 0;
 	ghp->frag[1] = 0;
 
-	ipoput(bp, 0, c->ttl);
+	ipoput(c->p->f, bp, 0, c->ttl);
 }
 
 static void
-greiput(uchar*, Block *bp)
+greiput(Proto *gre, uchar*, Block *bp)
 {
 	int len;
 	GREhdr *ghp;
 	Conv *c, **p;
 	ushort eproto;
 	uchar raddr[IPaddrlen];
+	GREpriv *gpriv;
 
+	gpriv = gre->priv;
 	ghp = (GREhdr*)(bp->rp);
 
 	v4tov6(raddr, ghp->src);
@@ -175,7 +181,7 @@ greiput(uchar*, Block *bp)
 
 	/* Look for a conversation structure for this port and address */
 	c = nil;
-	for(p = gre.conv; *p; p++) {
+	for(p = gre->conv; *p; p++) {
 		c = *p;
 		if(c->inuse == 0)
 			continue;
@@ -198,7 +204,7 @@ greiput(uchar*, Block *bp)
 	}
 	bp = trimblock(bp, GRE_IPONLY, len);
 	if(bp == nil){
-		gre.lenerr++;
+		gpriv->lenerr++;
 		return;
 	}
 
@@ -216,30 +222,36 @@ greiput(uchar*, Block *bp)
 }
 
 int
-grestats(char *buf, int len)
+grestats(Proto *gre, char *buf, int len)
 {
-	return snprint(buf, len,
-		"gre: csum %d hlen %d len %d order %d rexmit %d\n",
-		gre.csumerr, gre.hlenerr, gre.lenerr, gre.order, gre.rexmit);
+	GREpriv *gpriv;
+
+	gpriv = gre->priv;
+
+	return snprint(buf, len, "gre: len %d\n", gpriv->lenerr);
 }
 
 void
 greinit(Fs *fs)
 {
-	gre.name = "gre";
-	gre.kick = grekick;
-	gre.connect = greconnect;
-	gre.announce = greannounce;
-	gre.state = grestate;
-	gre.create = grecreate;
-	gre.close = greclose;
-	gre.rcv = greiput;
-	gre.ctl = nil;
-	gre.advise = nil;
-	gre.stats = grestats;
-	gre.ipproto = IP_GREPROTO;
-	gre.nc = 64;
-	gre.ptclsize = 0;
+	Proto *gre;
 
-	Fsproto(fs, &gre);
+	gre = smalloc(sizeof(Proto));
+	gre->priv = smalloc(sizeof(GREpriv));
+	gre->name = "gre";
+	gre->kick = grekick;
+	gre->connect = greconnect;
+	gre->announce = greannounce;
+	gre->state = grestate;
+	gre->create = grecreate;
+	gre->close = greclose;
+	gre->rcv = greiput;
+	gre->ctl = nil;
+	gre->advise = nil;
+	gre->stats = grestats;
+	gre->ipproto = IP_GREPROTO;
+	gre->nc = 64;
+	gre->ptclsize = 0;
+
+	Fsproto(fs, gre);
 }

@@ -6,10 +6,6 @@
 #include	"../port/error.h"
 #include	"../ip/ip.h"
 
-int logmask;				/* mask of things to debug */
-uchar iponly[IPaddrlen];		/* ip address to print debugging for */
-int iponlyset;
-
 enum {
 	Nlog		= 4*1024,
 };
@@ -17,7 +13,7 @@ enum {
 /*
  *  action log
  */
-typedef struct Log {
+struct Log {
 	Lock;
 	int	opens;
 	char*	buf;
@@ -25,15 +21,19 @@ typedef struct Log {
 	char	*rptr;
 	int	len;
 
+	int	logmask;			/* mask of things to debug */
+	uchar	iponly[IPaddrlen];		/* ip address to print debugging for */
+	int	iponlyset;
+
 	QLock;
 	Rendez;
-} Log;
-static Log alog;
+};
 
 typedef struct Logflag {
 	char*	name;
 	int	mask;
 } Logflag;
+
 static Logflag flags[] =
 {
 	{ "ppp",	Logppp, },
@@ -55,73 +55,81 @@ static Logflag flags[] =
 static char Ebadnetctl[] = "unknown netlog ctl message";
 
 void
-netlogopen(void)
+netloginit(Fs *f)
 {
-	lock(&alog);
+	f->alog = smalloc(sizeof(Log));
+}
+
+void
+netlogopen(Fs *f)
+{
+	lock(f->alog);
 	if(waserror()){
-		unlock(&alog);
+		unlock(f->alog);
 		nexterror();
 	}
-	if(alog.opens == 0){
-		if(alog.buf == nil)
-			alog.buf = malloc(Nlog);
-		alog.rptr = alog.buf;
-		alog.end = alog.buf + Nlog;
+	if(f->alog->opens == 0){
+		if(f->alog->buf == nil)
+			f->alog->buf = malloc(Nlog);
+		f->alog->rptr = f->alog->buf;
+		f->alog->end = f->alog->buf + Nlog;
 	}
-	alog.opens++;
-	unlock(&alog);
+	f->alog->opens++;
+	unlock(f->alog);
 	poperror();
 }
 
 void
-netlogclose(void)
+netlogclose(Fs *f)
 {
-	lock(&alog);
+	lock(f->alog);
 	if(waserror()){
-		unlock(&alog);
+		unlock(f->alog);
 		nexterror();
 	}
-	alog.opens--;
-	if(alog.opens == 0){
-		free(alog.buf);
-		alog.buf = nil;
+	f->alog->opens--;
+	if(f->alog->opens == 0){
+		free(f->alog->buf);
+		f->alog->buf = nil;
 	}
-	unlock(&alog);
+	unlock(f->alog);
 	poperror();
 }
 
 static int
-netlogready(void*)
+netlogready(void *a)
 {
-	return alog.len;
+	Fs *f = a;
+
+	return f->alog->len;
 }
 
 long
-netlogread(void* a, ulong, long n)
+netlogread(Fs *f, void *a, ulong, long n)
 {
 	int i, d;
 	char *p, *rptr;
 
-	qlock(&alog);
+	qlock(f->alog);
 	if(waserror()){
-		qunlock(&alog);
+		qunlock(f->alog);
 		nexterror();
 	}
 
 	for(;;){
-		lock(&alog);
-		if(alog.len){
-			if(n > alog.len)
-				n = alog.len;
+		lock(f->alog);
+		if(f->alog->len){
+			if(n > f->alog->len)
+				n = f->alog->len;
 			d = 0;
-			rptr = alog.rptr;
-			alog.rptr += n;
-			if(alog.rptr >= alog.end){
-				d = alog.rptr - alog.end;
-				alog.rptr = alog.buf + d;
+			rptr = f->alog->rptr;
+			f->alog->rptr += n;
+			if(f->alog->rptr >= f->alog->end){
+				d = f->alog->rptr - f->alog->end;
+				f->alog->rptr = f->alog->buf + d;
 			}
-			alog.len -= n;
-			unlock(&alog);
+			f->alog->len -= n;
+			unlock(f->alog);
 
 			i = n;
 			p = a;
@@ -129,28 +137,28 @@ netlogread(void* a, ulong, long n)
 				memmove(p, rptr, d);
 				i -= d;
 				p += d;
-				rptr = alog.buf;
+				rptr = f->alog->buf;
 			}
 			memmove(p, rptr, i);
 			break;
 		}
 		else
-			unlock(&alog);
+			unlock(f->alog);
 
-		sleep(&alog, netlogready, 0);
+		sleep(f->alog, netlogready, 0);
 	}
 
-	qunlock(&alog);
+	qunlock(f->alog);
 	poperror();
 
 	return n;
 }
 
 char*
-netlogctl(char* s, int len)
+netlogctl(Fs *f, char* s, int len)
 {
 	int i, n, set;
-	Logflag *f;
+	Logflag *fp;
 	char *fields[10], *p, buf[256];
 
 	if(len == 0)
@@ -172,11 +180,11 @@ netlogctl(char* s, int len)
 	else if(strcmp("clear", fields[0]) == 0)
 		set = 0;
 	else if(strcmp("only", fields[0]) == 0){
-		parseip(iponly, fields[1]);
-		if(ipcmp(iponly, IPnoaddr) == 0)
-			iponlyset = 0;
+		parseip(f->alog->iponly, fields[1]);
+		if(ipcmp(f->alog->iponly, IPnoaddr) == 0)
+			f->alog->iponlyset = 0;
 		else
-			iponlyset = 1;
+			f->alog->iponlyset = 1;
 		return nil;
 	} else
 		return Ebadnetctl;
@@ -186,56 +194,54 @@ netlogctl(char* s, int len)
 		*p = 0;
 
 	for(i = 1; i < n; i++){
-		for(f = flags; f->name; f++)
-			if(strcmp(f->name, fields[i]) == 0)
+		for(fp = flags; fp->name; fp++)
+			if(strcmp(fp->name, fields[i]) == 0)
 				break;
-		if(f->name == nil)
+		if(fp->name == nil)
 			continue;
 		if(set)
-			logmask |= f->mask;
+			f->alog->logmask |= fp->mask;
 		else
-			logmask &= ~f->mask;
+			f->alog->logmask &= ~fp->mask;
 	}
 
 	return nil;
 }
 
 void
-netlog(int mask, char *fmt, ...)
+netlog(Fs *f, int mask, char *fmt, ...)
 {
-	char buf[128], *t, *f;
+	char buf[128], *t, *fp;
 	int i, n;
 	va_list arg;
 
-	if(!(logmask & mask))
+	if(!(f->alog->logmask & mask))
 		return;
 
 	va_start(arg, fmt);
 	n = doprint(buf, buf+sizeof(buf), fmt, arg) - buf;
 	va_end(arg);
 
-print("%s", buf);
-
-	if(alog.opens == 0)
+	if(f->alog->opens == 0)
 		return;
 
-	lock(&alog);
-	i = alog.len + n - Nlog;
+	lock(f->alog);
+	i = f->alog->len + n - Nlog;
 	if(i > 0){
-		alog.len -= i;
-		alog.rptr += i;
-		if(alog.rptr >= alog.end)
-			alog.rptr = alog.buf + (alog.rptr - alog.end);
+		f->alog->len -= i;
+		f->alog->rptr += i;
+		if(f->alog->rptr >= f->alog->end)
+			f->alog->rptr = f->alog->buf + (f->alog->rptr - f->alog->end);
 	}
-	t = alog.rptr + alog.len;
-	f = buf;
-	alog.len += n;
+	t = f->alog->rptr + f->alog->len;
+	fp = buf;
+	f->alog->len += n;
 	while(n-- > 0){
-		if(t >= alog.end)
-			t = alog.buf + (t - alog.end);
-		*t++ = *f++;
+		if(t >= f->alog->end)
+			t = f->alog->buf + (t - f->alog->end);
+		*t++ = *fp++;
 	}
-	unlock(&alog);
+	unlock(f->alog);
 
-	wakeup(&alog);
+	wakeup(f->alog);
 }

@@ -180,25 +180,52 @@ struct Tcpctl
 	Tcphdr	protohdr;		/* prototype header */
 };
 
-#define DBG(x)	if((logmask & Logtcpmsg) && (iponlyset == 0 || memcmp(x, iponly+12, 4) == 0))netlog
-
-Proto	tcp;
 int	tcp_irtt = DEF_RTT;	/* Initial guess at round trip time */
 ushort	tcp_mss  = DEF_MSS;	/* Maximum segment size to be sent */
-Timer 	*timers;		/* List of active timers */
-QLock 	tl;			/* Protect timer list */
 
-static struct Tcpstats
+/* MIB II counters */
+typedef struct Tcpstats Tcpstats;
+struct Tcpstats
 {
-	ulong	dup;		/* (partially) duplicated packets */
-	ulong	dupb;		/* duplicated uchars */
-} tstats;
+	ulong	tcpRtoAlgorithm;
+	ulong	tcpRtoMin;
+	ulong	tcpRtoMax;
+	ulong	tcpMaxConn;
+	ulong	tcpActiveOpens;
+	ulong	tcpPassiveOpens;
+	ulong	tcpAttemptFails;
+	ulong	tcpEstabResets;
+	ulong	tcpCurrEstab;
+	ulong	tcpInSegs;
+	ulong	tcpOutSegs;
+	ulong	tcpRetransSegs;
+	ulong	InErrs;
+	ulong	OutRsts;
+};
+
+typedef struct Tcppriv Tcppriv;
+struct Tcppriv
+{
+	Timer 	*timers;		/* List of active timers */
+	QLock 	tl;			/* Protect timer list */
+	Rendez	tcpr;			/* used by tcpackproc */
+
+	/* MIB stats */
+	Tcpstats tstats;
+
+	/* non-MIB stats */
+	ulong		csumerr;		/* checksum errors */
+	ulong		hlenerr;		/* header length error */
+	ulong		lenerr;			/* short packet */
+	ulong		order;			/* out of order */
+
+};
 
 void	addreseq(Tcpctl*, Tcp*, Block*, ushort);
 void	getreseq(Tcpctl*, Tcp*, Block**, ushort*);
 void	localclose(Conv*, char*);
 void	procsyn(Conv*, Tcp*);
-void	tcpiput(uchar*, Block*);
+void	tcpiput(Proto*, uchar*, Block*);
 void	tcpoutput(Conv*);
 int	tcptrim(Tcpctl*, Tcp*, Block**, ushort*);
 void	tcpstart(Conv*, int, ushort);
@@ -212,12 +239,20 @@ tcpsetstate(Conv *s, uchar newstate)
 {
 	Tcpctl *tcb;
 	uchar oldstate;
+	Tcppriv *tpriv;
+
+	tpriv = s->p->priv;
 
 	tcb = (Tcpctl*)s->ptcl;
 
 	oldstate = tcb->state;
 	if(oldstate == newstate)
 		return;
+
+	if(oldstate == Established)
+		tpriv->tstats.tcpCurrEstab--;
+	if(newstate == Established)
+		tpriv->tstats.tcpCurrEstab++;
 
 	/*
 	  print("%d/%d %s->%s\n", s->lport, s->rport,
@@ -241,7 +276,7 @@ tcpsetstate(Conv *s, uchar newstate)
 	}
 
 	if(oldstate == Syn_sent && newstate != Closed)
-		Fsconnected(&fs, s, nil);
+		Fsconnected(s, nil);
 }
 
 static char*
@@ -288,7 +323,7 @@ tcpannounce(Conv *c, char **argv, int argc)
 	if(e != nil)
 		return e;
 	tcpstart(c, TCP_LISTEN, QMAX);
-	Fsconnected(&fs, c, nil);
+	Fsconnected(c, nil);
 
 	return nil;
 }
@@ -311,7 +346,7 @@ tcpclose(Conv *c)
 		/*
 		 *  reset any incoming calls to this listener
 		 */
-		Fsconnected(&fs, c, "Hangup");
+		Fsconnected(c, "Hangup");
 
 		qlock(tcb);
 		localclose(c, nil);
@@ -376,10 +411,10 @@ tcpkick(Conv *s, int len)
  *  get remote sender going if it was flow controlled due to a closed window
  */
 static void
-deltimer(Timer *t)
+deltimer(Tcppriv *tpriv, Timer *t)
 {
-	if(timers == t)
-		timers = t->next;
+	if(tpriv->timers == t)
+		tpriv->timers = t->next;
 	if(t->next)
 		t->next->prev = t->prev;
 	if(t->prev)
@@ -423,29 +458,33 @@ tcpcreate(Conv *c)
 }
 
 void
-tcpackproc(void*)
+tcpackproc(void *a)
 {
 	Timer *t, *tp, *timeo;
-	static Rendez tcpr;
+	Proto *tcp;
+	Tcppriv *tpriv;
+
+	tcp = a;
+	tpriv = tcp->priv;
 
 	for(;;) {
-		tsleep(&tcpr, return0, 0, MSPTICK);
+		tsleep(&tpriv->tcpr, return0, 0, MSPTICK);
 
-		qlock(&tl);
+		qlock(&tpriv->tl);
 		timeo = nil;
-		for(t = timers; t != nil; t = tp) {
+		for(t = tpriv->timers; t != nil; t = tp) {
 			tp = t->next;
  			if(t->state == TimerON) {
 				t->count--;
 				if(t->count == 0) {
-					deltimer(t);
+					deltimer(tpriv, t);
 					t->state = TimerDONE;
 					t->next = timeo;
 					timeo = t;
 				}
 			}
 		}
-		qunlock(&tl);
+		qunlock(&tpriv->tl);
 
 		for(;;) {
 			t = timeo;
@@ -460,35 +499,35 @@ tcpackproc(void*)
 }
 
 void
-tcpgo(Timer *t)
+tcpgo(Tcppriv *tpriv, Timer *t)
 {
 	if(t == nil || t->start == 0)
 		return;
 
-	qlock(&tl);
+	qlock(&tpriv->tl);
 	t->count = t->start;
 	if(t->state != TimerON) {
 		t->state = TimerON;
 		t->prev = nil;
-		t->next = timers;
+		t->next = tpriv->timers;
 		if(t->next)
 			t->next->prev = t;
-		timers = t;
+		tpriv->timers = t;
 	}
-	qunlock(&tl);
+	qunlock(&tpriv->tl);
 }
 
 void
-tcphalt(Timer *t)
+tcphalt(Tcppriv *tpriv, Timer *t)
 {
 	if(t == nil)
 		return;
 
-	qlock(&tl);
+	qlock(&tpriv->tl);
 	if(t->state == TimerON)
-		deltimer(t);
+		deltimer(tpriv, t);
 	t->state = TimerOFF;
-	qunlock(&tl);
+	qunlock(&tpriv->tl);
 }
 
 int
@@ -505,11 +544,13 @@ localclose(Conv *s, char *reason)	 /*  called with tcb locked */
 {
 	Tcpctl *tcb;
 	Reseq *rp,*rp1;
+	Tcppriv *tpriv;
 
+	tpriv = s->p->priv;
 	tcb = (Tcpctl*)s->ptcl;
 
-	tcphalt(&tcb->timer);
-	tcphalt(&tcb->rtt_timer);
+	tcphalt(tpriv, &tcb->timer);
+	tcphalt(tpriv, &tcb->rtt_timer);
 
 	/* Flush reassembly queue; nothing more can arrive */
 	for(rp = tcb->reseq; rp != nil; rp = rp1) {
@@ -519,7 +560,7 @@ localclose(Conv *s, char *reason)	 /*  called with tcb locked */
 	}
 
 	if(tcb->state == Syn_sent)
-		Fsconnected(&fs, s, reason);
+		Fsconnected(s, reason);
 
 	qhangup(s->rq, reason);
 	qhangup(s->wq, reason);
@@ -553,7 +594,7 @@ inittcpctl(Conv *s)
 
 	/* create a prototype(pseudo) header */
 	if(ipcmp(s->laddr, IPnoaddr) == 0)
-		findlocalip(s->laddr, s->raddr);
+		findlocalip(s->p->f, s->laddr, s->raddr);
 	h = &tcb->protohdr;
 	memset(h, 0, sizeof(*h));
 	h->proto = IP_TCPPROTO;
@@ -571,7 +612,7 @@ tcpmtu(Conv *s)
 	int mtu;
 
 	mtu = 0;
-	ifc = findipifc(s->raddr, 0);
+	ifc = findipifc(s->p->f, s->raddr, 0);
 	if(ifc != nil)
 		mtu = ifc->maxmtu - ifc->m->hsize - (TCP_PKT + TCP_HDRSIZE);
 	if(mtu < 4)
@@ -583,6 +624,9 @@ void
 tcpstart(Conv *s, int mode, ushort window)
 {
 	Tcpctl *tcb;
+	Tcppriv *tpriv;
+
+	tpriv = s->p->priv;
 
 	tcb = (Tcpctl*)s->ptcl;
 
@@ -592,11 +636,13 @@ tcpstart(Conv *s, int mode, ushort window)
 
 	switch(mode) {
 	case TCP_LISTEN:
+		tpriv->tstats.tcpPassiveOpens++;
 		tcb->flags |= CLONE;
 		tcpsetstate(s, Listen);
 		break;
 
 	case TCP_CONNECT:
+		tpriv->tstats.tcpActiveOpens++;
 		/* Send SYN, go into SYN_SENT state */
 		qlock(tcb);
 		tcb->flags |= ACTIVE;
@@ -676,10 +722,10 @@ htontcp(Tcp *tcph, Block *data, Tcphdr *ph)
 	csum = ptclcsum(data, TCP_IPLEN, hdrlen+dlen+TCP_PHDRSIZE);
 	hnputs(h->tcpcksum, csum);
 
-	DBG(h->tcpdst)(Logtcpmsg, "%d > %d s %l8.8ux a %8.8lux %s w %.4ux l %d\n",
+/*	netlog(f, Logtcpmsg, "%d > %d s %l8.8ux a %8.8lux %s w %.4ux l %d\n",
 		tcph->source, tcph->dest,
 		tcph->seq, tcph->ack, tcpflag((hdrlen<<10)|tcph->flags),
-		tcph->wnd, dlen);
+		tcph->wnd, dlen); */
 
 	return data;
 }
@@ -717,10 +763,10 @@ ntohtcp(Tcp *tcph, Block **bpp)
 	if(*bpp == nil)
 		return -1;
 
-	DBG(h->tcpsrc)(Logtcpmsg, "%d > %d s %l8.8ux a %8.8lux %s w %.4ux l %d\n",
+/*	netlog(Logtcpmsg, "%d > %d s %l8.8ux a %8.8lux %s w %.4ux l %d\n",
 		tcph->source, tcph->dest,
 		tcph->seq, tcph->ack, tcpflag((hdrlen<<10)|tcph->flags),
-		tcph->wnd, nhgets(h->length)-hdrlen-TCP_PKT);
+		tcph->wnd, nhgets(h->length)-hdrlen-TCP_PKT); */
 
 	optr = h->tcpopt;
 	for(i = TCP_HDRSIZE; i < hdrlen;) {
@@ -761,11 +807,14 @@ tcpsndsyn(Tcpctl *tcb)
  *  called with v4 (4 byte) addresses
  */
 void
-sndrst(uchar *source, uchar *dest, ushort length, Tcp *seg)
+sndrst(Proto *tcp, uchar *source, uchar *dest, ushort length, Tcp *seg)
 {
 	Tcphdr ph;
 	Block *hbp;
 	uchar rflags;
+	Tcppriv *tpriv;
+
+	tpriv = tcp->priv;
 
 	if(seg->flags & RST)
 		return;
@@ -779,6 +828,7 @@ sndrst(uchar *source, uchar *dest, ushort length, Tcp *seg)
 	hnputs(ph.tcpsport, seg->dest);
 	hnputs(ph.tcpdport, seg->source);
 
+	tpriv->tstats.OutRsts++;
 	rflags = RST;
 
 	/* convince the other end that this reset is in band */
@@ -804,7 +854,7 @@ sndrst(uchar *source, uchar *dest, ushort length, Tcp *seg)
 	if(hbp == nil)
 		return;
 
-	ipoput(hbp, 0, MAXTTL);
+	ipoput(tcp->f, hbp, 0, MAXTTL);
 }
 
 /*
@@ -821,7 +871,7 @@ tcphangup(Conv *s)
 	tcb = (Tcpctl*)s->ptcl;
 	if(waserror()){
 		qunlock(tcb);
-		return up->error;
+		return commonerror();
 	}
 	qlock(tcb);
 	if(s->raddr != 0) {
@@ -834,7 +884,7 @@ tcphangup(Conv *s)
 		tcb->last_ack = tcb->rcv.nxt;
 		hnputs(ph.tcplen, TCP_HDRSIZE);
 		hbp = htontcp(&seg, nil, &tcb->protohdr);
-		ipoput(hbp, 0, s->ttl);
+		ipoput(s->p->f, hbp, 0, s->ttl);
 	}
 	localclose(s, nil);
 	poperror();
@@ -849,7 +899,7 @@ tcpincoming(Conv *s, Tcp *segp, uchar *src, uchar *dst)
 	Tcpctl *tcb;
 	Tcphdr *h;
 
-	new = Fsnewcall(&fs, s, src, segp->source, dst, segp->dest);
+	new = Fsnewcall(s, src, segp->source, dst, segp->dest);
 	if(new == nil)
 		return nil;
 
@@ -919,15 +969,17 @@ tcpsynackrtt(Conv *s)
 {
 	Tcpctl *tcb;
 	int delta;
+	Tcppriv *tpriv;
 
 	tcb = (Tcpctl*)s->ptcl;
+	tpriv = s->p->priv;
 
 	delta = msec - tcb->sndsyntime;
 	tcb->srtt = delta<<LOGAGAIN;
 	tcb->mdev = delta<<LOGDGAIN;
 
 	/* halt round trip timer */
-	tcphalt(&tcb->rtt_timer);
+	tcphalt(tpriv, &tcb->rtt_timer);
 }
 
 void
@@ -936,7 +988,9 @@ update(Conv *s, Tcp *seg)
 	int rtt, delta;
 	Tcpctl *tcb;
 	ushort acked, expand;
+	Tcppriv *tpriv;
 
+	tpriv = s->p->priv;
 	tcb = (Tcpctl*)s->ptcl;
 
 	tcb->kacounter = MAXBACKOFF;	/* keep alive count down */
@@ -983,7 +1037,7 @@ update(Conv *s, Tcp *seg)
 
 	/* Adjust the timers according to the round trip time */
 	if(tcb->rtt_timer.state == TimerON && seq_ge(seg->ack, tcb->rttseq)) {
-		tcphalt(&tcb->rtt_timer);
+		tcphalt(tpriv, &tcb->rtt_timer);
 		if((tcb->flags&RETRAN) == 0) {
 			tcb->backoff = 0;
 			rtt = tcb->rtt_timer.start - tcb->rtt_timer.count;
@@ -1020,9 +1074,9 @@ update(Conv *s, Tcp *seg)
 	if(seq_gt(seg->ack, tcb->snd.urg))
 		tcb->snd.urg = seg->ack;
 
-	tcphalt(&tcb->timer);
+	tcphalt(tpriv, &tcb->timer);
 	if(tcb->snd.una != tcb->snd.nxt)
-		tcpgo(&tcb->timer);
+		tcpgo(tpriv, &tcb->timer);
 
 	if(seq_lt(tcb->snd.ptr, tcb->snd.una))
 		tcb->snd.ptr = tcb->snd.una;
@@ -1032,7 +1086,7 @@ update(Conv *s, Tcp *seg)
 }
 
 void
-tcpiput(uchar*, Block *bp)
+tcpiput(Proto *tcp, uchar*, Block *bp)
 {
 	Tcp seg;
 	Tcphdr *h;
@@ -1041,6 +1095,13 @@ tcpiput(uchar*, Block *bp)
 	ushort length;
 	uchar source[IPaddrlen], dest[IPaddrlen];
 	Conv *spec, *gen, *s, **p;
+	Fs *f;
+	Tcppriv *tpriv;
+
+	f = tcp->f;
+	tpriv = tcp->priv;
+	
+	tpriv->tstats.tcpInSegs++;
 
 	h = (Tcphdr*)(bp->rp);
 
@@ -1051,16 +1112,16 @@ tcpiput(uchar*, Block *bp)
 	h->Unused = 0;
 	hnputs(h->tcplen, length-TCP_PKT);
 	if(ptclcsum(bp, TCP_IPLEN, length-TCP_IPLEN)) {
-		tcp.csumerr++;
-		netlog(Logtcp, "bad tcp proto cksum\n");
+		tpriv->csumerr++;
+		netlog(f, Logtcp, "bad tcp proto cksum\n");
 		freeblist(bp);
 		return;
 	}
 
 	hdrlen = ntohtcp(&seg, &bp);
 	if(hdrlen < 0){
-		tcp.hlenerr++;
-		netlog(Logtcp, "bad tcp hdr len\n");
+		tpriv->hlenerr++;
+		netlog(f, Logtcp, "bad tcp hdr len\n");
 		return;
 	}
 
@@ -1068,14 +1129,14 @@ tcpiput(uchar*, Block *bp)
 	length -= hdrlen+TCP_PKT;
 	bp = trimblock(bp, hdrlen+TCP_PKT, length);
 	if(bp == nil){
-		tcp.lenerr++;
-		netlog(Logtcp, "tcp len < 0 after trim\n");
+		tpriv->lenerr++;
+		netlog(f, Logtcp, "tcp len < 0 after trim\n");
 		return;
 	}
 
 
 	/* Look for a connection. failing that look for a listener. */
-	for(p = tcp.conv; *p; p++) {
+	for(p = tcp->conv; *p; p++) {
 		s = *p;
 		if(s->rport == seg.source)
 		if(s->lport == seg.dest)
@@ -1100,7 +1161,7 @@ tcpiput(uchar*, Block *bp)
 			return;
 		}
 		if(seg.flags & ACK) {
-			sndrst(source, dest, length, &seg);
+			sndrst(tcp, source, dest, length, &seg);
 			freeblist(bp);
 			return;
 		}
@@ -1111,7 +1172,7 @@ tcpiput(uchar*, Block *bp)
 		 */
 		gen = nil;
 		spec = nil;
-		for(p = tcp.conv; *p; p++) {
+		for(p = tcp->conv; *p; p++) {
 			s = *p;
 			tcb = (Tcpctl*)s->ptcl;
 			if((tcb->flags & CLONE) == 0)
@@ -1136,7 +1197,7 @@ tcpiput(uchar*, Block *bp)
 	}
 	if(s == nil) {
 		freeblist(bp);
-		sndrst(source, dest, length, &seg);
+		sndrst(tcp, source, dest, length, &seg);
 		return;
 	}
 
@@ -1149,7 +1210,7 @@ tcpiput(uchar*, Block *bp)
 
 	switch(tcb->state) {
 	case Closed:
-		sndrst(source, dest, length, &seg);
+		sndrst(tcp, source, dest, length, &seg);
 		goto raise;
 	case Listen:
 		if(seg.flags & SYN) {
@@ -1163,7 +1224,7 @@ tcpiput(uchar*, Block *bp)
 	case Syn_sent:
 		if(seg.flags & ACK) {
 			if(!seq_within(seg.ack, tcb->iss+1, tcb->snd.nxt)) {
-				sndrst(source, dest, length, &seg);
+				sndrst(tcp, source, dest, length, &seg);
 				goto raise;
 			}
 		}
@@ -1203,12 +1264,12 @@ tcpiput(uchar*, Block *bp)
 
 	/* Cut the data to fit the receive window */
 	if(tcptrim(tcb, &seg, &bp, &length) == -1) {
-		netlog(Logtcp, "tcp len < 0, %lux\n", seg.seq);
+		netlog(f, Logtcp, "tcp len < 0, %lux\n", seg.seq);
 		update(s, &seg);
 		if(tcb->sndcnt == 0 && tcb->state == Closing) {
 			tcpsetstate(s, Time_wait);
 			tcb->timer.start = MSL2*(1000 / MSPTICK);
-			tcpgo(&tcb->timer);
+			tcpgo(tpriv, &tcb->timer);
 		}
 		if(!(seg.flags & RST)) {
 			tcb->flags |= FORCE;
@@ -1220,7 +1281,7 @@ tcpiput(uchar*, Block *bp)
 
 	/* Cannot accept so answer with a rst */
 	if(length && tcb->state == Closed) {
-		sndrst(source, dest, length, &seg);
+		sndrst(tcp, source, dest, length, &seg);
 		goto raise;
 	}
 
@@ -1230,7 +1291,7 @@ tcpiput(uchar*, Block *bp)
 	if(seg.seq != tcb->rcv.nxt)
 	if(length != 0 || (seg.flags & (SYN|FIN))) {
 		update(s, &seg);
-		tcp.order++;
+		tpriv->order++;
 		addreseq(tcb, &seg, bp, length);
 		tcb->flags |= FORCE;
 		goto output;
@@ -1242,6 +1303,8 @@ tcpiput(uchar*, Block *bp)
 	 */
 	for(;;) {
 		if(seg.flags & RST) {
+			if(tcb->state == Established)
+				tpriv->tstats.tcpEstabResets++;
 			localclose(s, Econrefused);
 			goto raise;
 		}
@@ -1252,7 +1315,7 @@ tcpiput(uchar*, Block *bp)
 		switch(tcb->state) {
 		case Syn_received:
 			if(!seq_within(seg.ack, tcb->snd.una+1, tcb->snd.nxt)){
-				sndrst(source, dest, length, &seg);
+				sndrst(tcp, source, dest, length, &seg);
 				goto raise;
 			}
 			update(s, &seg);
@@ -1267,7 +1330,7 @@ tcpiput(uchar*, Block *bp)
 				tcb->f2counter = MAXBACKOFF;
 				tcpsetstate(s, Finwait2);
 				tcb->timer.start = MSL2 * (1000 / MSPTICK);
-				tcpgo(&tcb->timer);
+				tcpgo(tpriv, &tcb->timer);
 			}
 			break;
 		case Finwait2:
@@ -1278,7 +1341,7 @@ tcpiput(uchar*, Block *bp)
 			if(tcb->sndcnt == 0) {
 				tcpsetstate(s, Time_wait);
 				tcb->timer.start = MSL2*(1000 / MSPTICK);
-				tcpgo(&tcb->timer);
+				tcpgo(tpriv, &tcb->timer);
 			}
 			break;
 		case Last_ack:
@@ -1290,7 +1353,7 @@ tcpiput(uchar*, Block *bp)
 		case Time_wait:
 			tcb->flags |= FORCE;
 			if(tcb->timer.state != TimerON)
-				tcpgo(&tcb->timer);
+				tcpgo(tpriv, &tcb->timer);
 		}
 
 		if((seg.flags&URG) && seg.urg) {
@@ -1328,7 +1391,7 @@ tcpiput(uchar*, Block *bp)
 				tcb->rcv.nxt += length;
 				tcprcvwin(s);
 				if(tcb->acktimer.state != TimerON)
-					tcpgo(&tcb->acktimer);
+					tcpgo(tpriv, &tcb->acktimer);
 
 				/* force an ack if there's a lot of unacked data */
 				if(tcb->rcv.nxt-tcb->last_ack > (QMAX>>4))
@@ -1339,7 +1402,7 @@ tcpiput(uchar*, Block *bp)
 				/* no process to read the data, send a reset */
 				if(bp != nil)
 					freeblist(bp);
-				sndrst(source, dest, length, &seg);
+				sndrst(tcp, source, dest, length, &seg);
 				qunlock(tcb);
 				return;
 			}
@@ -1359,7 +1422,7 @@ tcpiput(uchar*, Block *bp)
 				if(tcb->sndcnt == 0) {
 					tcpsetstate(s, Time_wait);
 					tcb->timer.start = MSL2*(1000/MSPTICK);
-					tcpgo(&tcb->timer);
+					tcpgo(tpriv, &tcb->timer);
 				}
 				else
 					tcpsetstate(s, Closing);
@@ -1368,14 +1431,14 @@ tcpiput(uchar*, Block *bp)
 				tcb->rcv.nxt++;
 				tcpsetstate(s, Time_wait);
 				tcb->timer.start = MSL2 * (1000/MSPTICK);
-				tcpgo(&tcb->timer);
+				tcpgo(tpriv, &tcb->timer);
 				break;
 			case Close_wait:
 			case Closing:
 			case Last_ack:
 				break;
 			case Time_wait:
-				tcpgo(&tcb->timer);
+				tcpgo(tpriv, &tcb->timer);
 				break;
 			}
 		}
@@ -1420,6 +1483,11 @@ tcpoutput(Conv *s)
 	Block *hbp, *bp;
 	int sndcnt, n, first;
 	ulong ssize, dsize, usable, sent;
+	Fs *f;
+	Tcppriv *tpriv;
+
+	f = s->p->f;
+	tpriv = s->p->priv;
 
 	tcb = (Tcpctl*)s->ptcl;
 
@@ -1489,7 +1557,7 @@ tcpoutput(Conv *s)
 		if((tcb->flags&FORCE) == 0)
 			break;
 
-		tcphalt(&tcb->acktimer);
+		tcphalt(tpriv, &tcb->acktimer);
 
 		tcb->flags &= ~FORCE;
 		tcprcvwin(s);
@@ -1525,7 +1593,7 @@ tcpoutput(Conv *s)
 				seg.flags |= FIN;
 				dsize--;
 			}
-			netlog(Logtcp, "qcopy: dlen %d blen %d sndcnt %d qlen %d sent %d rp[0] %d\n",
+			netlog(f, Logtcp, "qcopy: dlen %d blen %d sndcnt %d qlen %d sent %d rp[0] %d\n",
 				dsize, BLEN(bp), sndcnt, qlen(s->wq), sent, bp->rp[0]);
 		}
 
@@ -1566,16 +1634,17 @@ tcpoutput(Conv *s)
 			tcb->timer.start = x;
 
 			if(tcb->timer.state != TimerON)
-				tcpgo(&tcb->timer);
+				tcpgo(tpriv, &tcb->timer);
 
 			/* If round trip timer isn't running, start it */
 			if(tcb->rtt_timer.state != TimerON) {
-				tcpgo(&tcb->rtt_timer);
+				tcpgo(tpriv, &tcb->rtt_timer);
 				tcb->rttseq = tcb->snd.ptr;
 			}
 		}
 
-		ipoput(hbp, 0, s->ttl);
+		tpriv->tstats.tcpOutSegs++;
+		ipoput(f, hbp, 0, s->ttl);
 	}
 }
 
@@ -1616,16 +1685,17 @@ tcpkeepalive(Conv *s)
 		return;
 	}
 
-	ipoput(hbp, 0, s->ttl);
+	ipoput(s->p->f, hbp, 0, s->ttl);
 }
 
 void
 tcprxmit(Conv *s)
 {
 	Tcpctl *tcb;
+	Tcppriv *tpriv;
 
+	tpriv = s->p->priv;
 	tcb = (Tcpctl*)s->ptcl;
-
 
 	qlock(tcb);
 	tcb->flags |= RETRAN|FORCE;
@@ -1642,8 +1712,7 @@ tcprxmit(Conv *s)
 	tcb->cwind = tcb->mss;
 	tcpoutput(s);
 
-	tcp.rexmit++;
-
+	tpriv->tstats.tcpRetransSegs++;
 	qunlock(tcb);
 }
 
@@ -1678,7 +1747,7 @@ tcptimeout(void *arg)
 			qlock(tcb);
 			tcpkeepalive(s);
 			qunlock(tcb);
-			tcpgo(&tcb->timer);
+			tcpgo(s->p->priv, &tcb->timer);
 		}
 		break;
 	case Time_wait:
@@ -1807,8 +1876,6 @@ tcptrim(Tcpctl *tcb, Tcp *seg, Block **bp, ushort *length)
 	dupcnt = tcb->rcv.nxt - seg->seq;
 	if(dupcnt > 0){
 		tcb->rerecv += dupcnt;
-		tstats.dup++;
-		tstats.dupb += dupcnt;
 		if(seg->flags & SYN){
 			seg->flags &= ~SYN;
 			seg->seq++;
@@ -1845,7 +1912,7 @@ tcptrim(Tcpctl *tcb, Tcp *seg, Block **bp, ushort *length)
 }
 
 void
-tcpadvise(Block *bp, char *msg)
+tcpadvise(Proto *tcp, Block *bp, char *msg)
 {
 	Tcphdr *h;
 	Tcpctl *tcb;
@@ -1862,7 +1929,7 @@ tcpadvise(Block *bp, char *msg)
 	pdest = nhgets(h->tcpdport);
 
 	/* Look for a connection */
-	for(p = tcp.conv; *p; p++) {
+	for(p = tcp->conv; *p; p++) {
 		s = *p;
 		if(s->rport == pdest)
 		if(s->lport == psource)
@@ -1892,39 +1959,54 @@ tcpctl(Conv* c, char** f, int n)
 }
 
 int
-tcpstats(char *buf, int len)
+tcpstats(Proto *tcp, char *buf, int len)
 {
-	int n;
+	Tcpstats *tstats;
 
-	n = snprint(buf, len,
-		"tcp: csum %d hlen %d len %d order %d rexmit %d",
-		tcp.csumerr, tcp.hlenerr, tcp.lenerr, tcp.order, tcp.rexmit);
-	n += snprint(buf+n, len-n, " dupp %d dupb %d\n",
-		tstats.dup, tstats.dupb);
-	return n;
+	tstats = tcp->priv;
+	return snprint(buf, len, "%d %d %d %d %d %d %d %d %d %d %d %d %d %d",
+		tstats->tcpRtoAlgorithm,
+		tstats->tcpRtoMin,
+		tstats->tcpRtoMax,
+		tstats->tcpMaxConn,
+		tstats->tcpActiveOpens,
+		tstats->tcpPassiveOpens,
+		tstats->tcpAttemptFails,
+		tstats->tcpEstabResets,
+		tstats->tcpCurrEstab,
+		tstats->tcpInSegs,
+		tstats->tcpOutSegs,
+		tstats->tcpRetransSegs,
+		tstats->InErrs,
+		tstats->OutRsts);
 }
 
 void
 tcpinit(Fs *fs)
 {
-	tcp.name = "tcp";
-	tcp.kick = tcpkick;
-	tcp.connect = tcpconnect;
-	tcp.announce = tcpannounce;
-	tcp.ctl = tcpctl;
-	tcp.state = tcpstate;
-	tcp.create = tcpcreate;
-	tcp.close = tcpclose;
-	tcp.rcv = tcpiput;
-	tcp.advise = tcpadvise;
-	tcp.stats = tcpstats;
-	tcp.inuse = tcpinuse;
-	tcp.ipproto = IP_TCPPROTO;
-	tcp.nc = Nchans;
-	tcp.ptclsize = sizeof(Tcpctl);
+	Proto *tcp;
+	Tcppriv *tpriv;
 
-	kproc("tcpack", tcpackproc, 0);
+	tcp = smalloc(sizeof(Proto));
+	tpriv = tcp->priv = smalloc(sizeof(Tcppriv));
+	tcp->name = "tcp";
+	tcp->kick = tcpkick;
+	tcp->connect = tcpconnect;
+	tcp->announce = tcpannounce;
+	tcp->ctl = tcpctl;
+	tcp->state = tcpstate;
+	tcp->create = tcpcreate;
+	tcp->close = tcpclose;
+	tcp->rcv = tcpiput;
+	tcp->advise = tcpadvise;
+	tcp->stats = tcpstats;
+	tcp->inuse = tcpinuse;
+	tcp->ipproto = IP_TCPPROTO;
+	tcp->nc = Nchans;
+	tcp->ptclsize = sizeof(Tcpctl);
+	tpriv->tstats.tcpMaxConn = Nchans;
 
-	Fsproto(fs, &tcp);
+	Fsproto(fs, tcp);
+
+	kproc("tcpack", tcpackproc, tcp);
 }
-

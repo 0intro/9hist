@@ -6,14 +6,12 @@
 #include	"../port/error.h"
 #include	"../ip/ip.h"
 
-Fs fs;
-Queue* qlog;
-
 enum
 {
 	Qtopdir=	1,		/* top level directory */
 	Qtopbase,
 	Qarp=		Qtopbase,
+	Qbootp,
 	Qiproute,
 	Qiprouter,
 	Qipselftab,
@@ -33,13 +31,28 @@ enum
 	Qlocal,
 	Qremote,
 	Qstatus,
+
+	Logtype=	5,
+	Masktype=	(1<<Logtype)-1,
+	Logconv=	12,
+	Maskconv=	(1<<Logconv)-1,
+	Shiftconv=	Logtype,
+	Logproto=	8,
+	Maskproto=	(1<<Logproto)-1,
+	Shiftproto=	Logtype + Logconv,
+
+	Nfs=		16,
 };
-#define TYPE(x) 	((x).path & 0x1f)
-#define CONV(x) 	(((x).path >> 5)&0xfff)
-#define PROTO(x) 	(((x).path >> 17)&0xff)
-#define QID(p, c, y) 	(((p)<<17) | ((c)<<5) | (y))
+#define TYPE(x) 	( (x).path & Masktype )
+#define CONV(x) 	( ((x).path >> Shiftconv) & Maskconv )
+#define PROTO(x) 	( ((x).path >> Shiftproto) & Maskproto )
+#define QID(p, c, y) 	( ((p)<<(Shiftproto)) | ((c)<<Shiftconv) | (y) )
 
 static char network[] = "network";
+
+QLock	fslock;
+Fs	*ipfs[Nfs];	/* attached fs's */
+Queue	*qlog;
 
 static int
 ip3gen(Chan *c, int i, Dir *dp)
@@ -48,7 +61,7 @@ ip3gen(Chan *c, int i, Dir *dp)
 	Conv *cv;
 	char *p;
 
-	cv = fs.p[PROTO(c->qid)]->conv[CONV(c->qid)];
+	cv = ipfs[c->dev]->p[PROTO(c->qid)]->conv[CONV(c->qid)];
 	switch(i) {
 	default:
 		return -1;
@@ -118,6 +131,10 @@ ip1gen(Chan *c, int i, Dir *dp)
 		p = "arp";
 		q = (Qid){QID(0, 0, Qarp), 0};
 		break;
+	case Qbootp:
+		p = "bootp";
+		q = (Qid){QID(0, 0, Qbootp), 0};
+		break;
 	case Qiproute:
 		p = "iproute";
 		q = (Qid){QID(0, 0, Qiproute), 0};
@@ -146,33 +163,37 @@ ipgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 	Qid q;
 	Conv *cv;
 	char name[16];
+	Fs *f;
+
+	f = ipfs[c->dev];
 
 	switch(TYPE(c->qid)) {
 	case Qtopdir:
-		if(s < fs.np) {
-			if(fs.p[s]->connect == nil)
+		if(s < f->np) {
+			if(f->p[s]->connect == nil)
 				return 0;	/* protocol with no user interface */
 			q = (Qid){QID(s, 0, Qprotodir)|CHDIR, 0};
-			devdir(c, q, fs.p[s]->name, 0, network, CHDIR|0555, dp);
+			devdir(c, q, f->p[s]->name, 0, network, CHDIR|0555, dp);
 			return 1;
 		}
-		s -= fs.np;
+		s -= f->np;
 		return ip1gen(c, s+Qtopbase, dp);
 	case Qarp:
+	case Qbootp:
 	case Qlog:
 	case Qiproute:
 	case Qiprouter:
 	case Qipselftab:
 		return ip1gen(c, TYPE(c->qid), dp);
 	case Qprotodir:
-		if(s < fs.p[PROTO(c->qid)]->ac) {
-			cv = fs.p[PROTO(c->qid)]->conv[s];
+		if(s < f->p[PROTO(c->qid)]->ac) {
+			cv = f->p[PROTO(c->qid)]->conv[s];
 			sprint(name, "%d", s);
 			q = (Qid){QID(PROTO(c->qid), s, Qconvdir)|CHDIR, 0};
 			devdir(c, q, name, 0, cv->owner, CHDIR|0555, dp);
 			return 1;
 		}
-		s -= fs.p[PROTO(c->qid)]->ac;
+		s -= f->p[PROTO(c->qid)]->ac;
 		return ip2gen(c, s+Qprotobase, dp);
 	case Qclone:
 	case Qstats:
@@ -199,12 +220,6 @@ ipreset(void)
 static void
 ipinit(void)
 {
-	int i;
-	extern void (*ipprotoinit[])(Fs*);
-
-	initfrag(100);
-	for(i = 0; ipprotoinit[i]; i++)
-		ipprotoinit[i](&fs);
 	fmtinstall('i', eipconv);
 	fmtinstall('I', eipconv);
 	fmtinstall('E', eipconv);
@@ -212,13 +227,45 @@ ipinit(void)
 	fmtinstall('M', eipconv);
 }
 
+static Fs*
+ipgetfs(int dev)
+{
+	extern void (*ipprotoinit[])(Fs*);
+	Fs *f;
+	int i;
+
+	if(dev >= Nfs)
+		return nil;
+
+	qlock(&fslock);
+	if(ipfs[dev] == nil){
+		f = smalloc(sizeof(Fs));
+		ip_init(f);
+		arpinit(f);
+		netloginit(f);
+		for(i = 0; ipprotoinit[i]; i++)
+			ipprotoinit[i](f);
+		ipfs[dev] = f;
+	}
+	qunlock(&fslock);
+
+	return ipfs[dev];
+}
+
 static Chan*
 ipattach(char* spec)
 {
 	Chan *c;
+	int dev;
 
+	dev = atoi(spec);
+	if(dev >= 16)
+		error("bad specification");
+
+	ipgetfs(dev);
 	c = devattach('I', spec);
 	c->qid = (Qid){QID(0, 0, Qtopdir)|CHDIR, 0};
+	c->dev = dev;
 
 	return c;
 }
@@ -281,18 +328,21 @@ ipopen(Chan* c, int omode)
 	Conv *cv, *nc;
 	Proto *p;
 	int perm;
+	Fs *f;
 
 	omode &= 3;
 	perm = m2p[omode];
+
+	f = ipfs[c->dev];
 
 	switch(TYPE(c->qid)) {
 	default:
 		break;
 	case Qlog:
-		netlogopen();
+		netlogopen(f);
 		break;
 	case Qiprouter:
-		iprouteropen();
+		iprouteropen(f);
 		break;
 	case Qiproute:
 		memmove(c->tag, "none", sizeof(c->tag));
@@ -304,13 +354,14 @@ ipopen(Chan* c, int omode)
 	case Qremote:
 	case Qlocal:
 	case Qstats:
+	case Qbootp:
 	case Qipselftab:
 		if(omode != OREAD)
 			error(Eperm);
 		break;
 	case Qclone:
-		p = fs.p[PROTO(c->qid)];
-		cv = Fsprotoclone(p, up->user);
+		p = f->p[PROTO(c->qid)];
+		cv = Fsprotoclone(p, commonuser());
 		if(cv == nil) {
 			error(Enodev);
 			break;
@@ -320,7 +371,7 @@ ipopen(Chan* c, int omode)
 	case Qdata:
 	case Qctl:
 	case Qerr:
-		p = fs.p[PROTO(c->qid)];
+		p = f->p[PROTO(c->qid)];
 		qlock(p);
 		cv = p->conv[CONV(c->qid)];
 		lock(cv);
@@ -330,7 +381,7 @@ ipopen(Chan* c, int omode)
 			nexterror();
 		}
 		if((perm & (cv->perm>>6)) != perm) {
-			if(strcmp(up->user, cv->owner) != 0)
+			if(strcmp(commonuser(), cv->owner) != 0)
 				error(Eperm);
 		 	if((perm & cv->perm) != perm)
 				error(Eperm); 
@@ -338,7 +389,7 @@ ipopen(Chan* c, int omode)
 		}
 		cv->inuse++;
 		if(cv->inuse == 1){
-			memmove(cv->owner, up->user, NAMELEN);
+			memmove(cv->owner, commonuser(), NAMELEN);
 			cv->perm = 0660;
 		}
 		unlock(cv);
@@ -346,7 +397,7 @@ ipopen(Chan* c, int omode)
 		poperror();
 		break;
 	case Qlisten:
-		cv = fs.p[PROTO(c->qid)]->conv[CONV(c->qid)];
+		cv = f->p[PROTO(c->qid)]->conv[CONV(c->qid)];
 		if(cv->state != Announced)
 			error("not announced");
 
@@ -365,7 +416,7 @@ ipopen(Chan* c, int omode)
 			if(nc != nil){
 				cv->incall = nc->next;
 				c->qid = (Qid){QID(PROTO(c->qid), nc->x, Qctl), 0};
-				memmove(cv->owner, up->user, NAMELEN);
+				memmove(cv->owner, commonuser(), NAMELEN);
 			}
 			unlock(cv);
 
@@ -430,22 +481,25 @@ closeconv(Conv *cv)
 static void
 ipclose(Chan* c)
 {
+	Fs *f;
+
+	f = ipfs[c->dev];
 	switch(TYPE(c->qid)) {
 	default:
 		break;
 	case Qlog:
 		if(c->flag & COPEN)
-			netlogclose();
+			netlogclose(f);
 		break;
 	case Qiprouter:
 		if(c->flag & COPEN)
-			iprouterclose();
+			iprouterclose(f);
 		break;
 	case Qdata:
 	case Qctl:
 	case Qerr:
 		if(c->flag & COPEN)
-			closeconv(fs.p[PROTO(c->qid)]->conv[CONV(c->qid)]);
+			closeconv(f->p[PROTO(c->qid)]->conv[CONV(c->qid)]);
 	}
 }
 
@@ -461,6 +515,9 @@ ipread(Chan *ch, void *a, long n, ulong offset)
 	Proto *x;
 	char *buf, *p;
 	long m, rv;
+	Fs *f;
+
+	f = ipfs[ch->dev];
 
 	p = a;
 	switch(TYPE(ch->qid)) {
@@ -471,13 +528,15 @@ ipread(Chan *ch, void *a, long n, ulong offset)
 	case Qconvdir:
 		return devdirread(ch, a, n, 0, 0, ipgen);
 	case Qarp:
-		return arpread(a, offset, n);
+		return arpread(f->arp, a, offset, n);
+ 	case Qbootp:
+ 		return bootpread(a, offset, n);
 	case Qiproute:
-		return routeread(a, offset, n);
+		return routeread(f, a, offset, n);
 	case Qipselftab:
-		return ipselftabread(a, offset, n);
+		return ipselftabread(f, a, offset, n);
 	case Qlog:
-		return netlogread(a, offset, n);
+		return netlogread(f, a, offset, n);
 	case Qctl:
 		buf = smalloc(16);
 		sprint(buf, "%d", CONV(ch->qid));
@@ -486,14 +545,14 @@ ipread(Chan *ch, void *a, long n, ulong offset)
 		return rv;
 	case Qremote:
 		buf = smalloc(Statelen);
-		c = fs.p[PROTO(ch->qid)]->conv[CONV(ch->qid)];
+		c = f->p[PROTO(ch->qid)]->conv[CONV(ch->qid)];
 		sprint(buf, "%I!%d\n", c->raddr, c->rport);
 		rv = readstr(offset, p, n, buf);
 		free(buf);
 		return rv;
 	case Qlocal:
 		buf = smalloc(Statelen);
-		x = fs.p[PROTO(ch->qid)];
+		x = f->p[PROTO(ch->qid)];
 		c = x->conv[CONV(ch->qid)];
 		if(x->local == nil) {
 			sprint(buf, "%I!%d\n", c->laddr, c->lport);
@@ -505,7 +564,7 @@ ipread(Chan *ch, void *a, long n, ulong offset)
 		return rv;
 	case Qstatus:
 		buf = smalloc(Statelen);
-		x = fs.p[PROTO(ch->qid)];
+		x = f->p[PROTO(ch->qid)];
 		c = x->conv[CONV(ch->qid)];
 		m = sprint(buf, "%s/%d %d ", c->p->name, c->x, c->inuse);
 		(*x->state)(c, buf, Statelen-m-2);
@@ -513,17 +572,17 @@ ipread(Chan *ch, void *a, long n, ulong offset)
 		free(buf);
 		return rv;
 	case Qdata:
-		c = fs.p[PROTO(ch->qid)]->conv[CONV(ch->qid)];
+		c = f->p[PROTO(ch->qid)]->conv[CONV(ch->qid)];
 		return qread(c->rq, a, n);
 	case Qerr:
-		c = fs.p[PROTO(ch->qid)]->conv[CONV(ch->qid)];
+		c = f->p[PROTO(ch->qid)]->conv[CONV(ch->qid)];
 		return qread(c->eq, a, n);
 	case Qstats:
-		x = fs.p[PROTO(ch->qid)];
+		x = f->p[PROTO(ch->qid)];
 		if(x->stats == nil)
 			error("stats not implemented");
 		buf = smalloc(Statelen);
-		(*x->stats)(buf, Statelen);
+		(*x->stats)(x, buf, Statelen);
 		rv = readstr(offset, p, n, buf);
 		free(buf);
 		return rv;
@@ -542,7 +601,7 @@ ipbread(Chan* c, long n, ulong offset)
 static void
 setladdr(Conv* c)
 {
-	findlocalip(c->laddr, c->raddr);
+	findlocalip(c->p->f, c->laddr, c->raddr);
 }
 
 /*
@@ -787,12 +846,15 @@ ipwrite(Chan* ch, char* a, long n, ulong)
 	char *p;
 	Cmdbuf *cb;
 	uchar ia[IPaddrlen];
+	Fs *f;
+
+	f = ipfs[ch->dev];
 
 	switch(TYPE(ch->qid)){
 	default:
 		error(Eperm);
 	case Qdata:
-		x = fs.p[PROTO(ch->qid)];
+		x = f->p[PROTO(ch->qid)];
 		c = x->conv[CONV(ch->qid)];
 
 		if(c->wq == nil)
@@ -802,16 +864,16 @@ ipwrite(Chan* ch, char* a, long n, ulong)
 		x->kick(c, n);
 		break;
 	case Qarp:
-		return arpwrite(a, n);
+		return arpwrite(f->arp, a, n);
 	case Qiproute:
-		return routewrite(ch, a, n);
+		return routewrite(f, ch, a, n);
 	case Qlog:
-		p = netlogctl(a, n);
+		p = netlogctl(f, a, n);
 		if(p != nil)
 			error(p);
 		return n;
 	case Qctl:
-		x = fs.p[PROTO(ch->qid)];
+		x = f->p[PROTO(ch->qid)];
 		c = x->conv[CONV(ch->qid)];
 		cb = parsecmd(a, n);
 
@@ -887,26 +949,29 @@ Dev ipdevtab = {
 };
 
 int
-Fsproto(Fs *fs, Proto *p)
+Fsproto(Fs *f, Proto *p)
 {
-	if(fs->np >= Maxproto)
+	if(f->np >= Maxproto)
 		return -1;
 
+	p->f = f;
+
 	if(p->ipproto > 0){
-		if(fs->t2p[p->ipproto] != nil)
+		if(f->t2p[p->ipproto] != nil)
 			return -1;
-		fs->t2p[p->ipproto] = p;
+		f->t2p[p->ipproto] = p;
 	}
 
-	p->qid.path = CHDIR|QID(fs->np, 0, Qprotodir);
+	p->qid.path = CHDIR|QID(f->np, 0, Qprotodir);
 	p->conv = malloc(sizeof(Conv*)*(p->nc+1));
 	if(p->conv == nil)
 		panic("Fsproto");
 
-	p->x = fs->np;
+	p->x = f->np;
 	p->nextport = 0;
 	p->nextrport = 600;
-	fs->p[fs->np++] = p;
+	f->p[f->np++] = p;
+
 	return 0;
 }
 
@@ -915,9 +980,9 @@ Fsproto(Fs *fs, Proto *p)
  *  built in
  */
 int
-Fsbuiltinproto(Fs* fs, uchar proto)
+Fsbuiltinproto(Fs* f, uchar proto)
 {
-	return fs->t2p[proto] != nil;
+	return f->t2p[proto] != nil;
 }
 
 Conv*
@@ -990,7 +1055,7 @@ Fsprotoclone(Proto *p, char *user)
 }
 
 int
-Fsconnected(Fs*, Conv* c, char* msg)
+Fsconnected(Conv* c, char* msg)
 {
 	if(msg != nil && *msg != '\0')
 		strncpy(c->cerr, msg, ERRLEN-1);
@@ -1011,13 +1076,13 @@ Fsconnected(Fs*, Conv* c, char* msg)
 }
 
 Proto*
-Fsrcvpcol(Fs* fs, uchar proto)
+Fsrcvpcol(Fs* f, uchar proto)
 {
-	return fs->t2p[proto];
+	return f->t2p[proto];
 }
 
 Conv*
-Fsnewcall(Fs*, Conv *c, uchar *raddr, ushort rport, uchar *laddr, ushort lport)
+Fsnewcall(Conv *c, uchar *raddr, ushort rport, uchar *laddr, ushort lport)
 {
 	Conv *nc;
 	Conv **l;

@@ -22,7 +22,7 @@ static void	etherunbind(Ipifc *ifc);
 static void	etherbwrite(Ipifc *ifc, Block *bp, int version, uchar *ip);
 static void	etheraddmulti(Ipifc *ifc, uchar *a, uchar *ia);
 static void	etherremmulti(Ipifc *ifc, uchar *a, uchar *ia);
-static Block*	multicastarp(Arpent *a, uchar *mac);
+static Block*	multicastarp(Fs *f, Arpent *a, uchar *mac);
 static void	sendarp(Ipifc *ifc, Arpent *a);
 static int	multicastea(uchar *ea, uchar *ip);
 static void	recvarpproc(Ipifc *ifc);
@@ -51,6 +51,7 @@ Medium ethermedium =
 typedef struct	Etherrock Etherrock;
 struct Etherrock
 {
+	Fs	*f;		/* file system we belong to */
 	Proc	*arpp;		/* arp process */
 	Proc	*readp;		/* reading process */
 	Chan	*mchan;		/* Data channel */
@@ -128,8 +129,8 @@ etherbind(Ipifc *ifc, int argc, char **argv)
 	fd = kdial(addr, nil, dir, &cfd);
 	if(fd < 0)
 		error("dial 0x800 failed");
-	mchan = fdtochan(fd, ORDWR, 0, 1);
-	cchan = fdtochan(cfd, ORDWR, 0, 1);
+	mchan = commonfdtochan(fd, ORDWR, 0, 1);
+	cchan = commonfdtochan(cfd, ORDWR, 0, 1);
 	kclose(fd);
 	kclose(cfd);
 
@@ -162,13 +163,14 @@ etherbind(Ipifc *ifc, int argc, char **argv)
 	fd = kdial(addr, nil, nil, nil);
 	if(fd < 0)
 		error("dial 0x806 failed");
-	achan = fdtochan(fd, ORDWR, 0, 1);
+	achan = commonfdtochan(fd, ORDWR, 0, 1);
 	kclose(fd);
 
 	er = smalloc(sizeof(*er));
 	er->mchan = mchan;
 	er->cchan = cchan;
 	er->achan = achan;
+	er->f = ifc->conv->p->f;
 	ifc->arg = er;
 
 	free(buf);
@@ -217,10 +219,10 @@ etherbwrite(Ipifc *ifc, Block *bp, int version, uchar *ip)
 	Etherrock *er = ifc->arg;
 
 	/* get mac address of destination */
-	a = arpget(bp, version, &ethermedium, ip, mac);
+	a = arpget(er->f->arp, bp, version, &ethermedium, ip, mac);
 	if(a){
 		/* check for broadcast or multicast */
-		bp = multicastarp(a, mac);
+		bp = multicastarp(er->f, a, mac);
 		if(bp == nil){
 			sendarp(ifc, a);
 			return;
@@ -281,7 +283,7 @@ etherread(void *a)
 		if(ifc->lifc == nil)
 			freeb(bp);
 		else
-			ipiput(ifc->lifc->local, bp);
+			ipiput(er->f, ifc->lifc->local, bp);
 		runlock(ifc);	locked = 0;	USED(locked);
 
 	}
@@ -325,7 +327,7 @@ sendarp(Ipifc *ifc, Arpent *a)
 
 	/* don't do anything if it's been less than a second since the last */
 	if(msec - a->time < 1000){
-		arprelease(a);
+		arprelease(er->f->arp, a);
 		return;
 	}
 
@@ -339,7 +341,7 @@ sendarp(Ipifc *ifc, Arpent *a)
 
 	/* try to keep it around for a second more */
 	a->time = msec;
-	arprelease(a);
+	arprelease(er->f->arp, a);
 
 	n = sizeof(Etherarp);
 	if(n < a->type->minmtu)
@@ -387,7 +389,7 @@ recvarp(Ipifc *ifc)
 		break;
 
 	case ARPREPLY:
-		arpenter(ifc, V4, e->spa, e->sha, &ethermedium, 0);
+		arpenter(er->f->arp, ifc, V4, e->spa, e->sha, &ethermedium, 0);
 		break;
 
 	case ARPREQUEST:
@@ -408,12 +410,12 @@ recvarp(Ipifc *ifc)
 		}
 
 		/* refresh what we know about sender */
-		arpenter(ifc, V4, e->spa, e->sha, &ethermedium, 1);
+		arpenter(er->f->arp, ifc, V4, e->spa, e->sha, &ethermedium, 1);
 
 		/* answer only requests for our address or systems we're proxying for */
 		v4tov6(ip, e->tpa);
 		if(!iplocalonifc(ifc, ip))
-		if(ipproxyifc(ifc, ip) == 0)
+		if(ipproxyifc(er->f, ifc, ip) == 0)
 			break;
 
 /* print("arp: rem %I %E (for %I)\n", e->spa, e->sha, e->tpa); /**/
@@ -490,15 +492,15 @@ multicastea(uchar *ea, uchar *ip)
  *  addresses
  */
 static Block*
-multicastarp(Arpent *a, uchar *mac)
+multicastarp(Fs *f, Arpent *a, uchar *mac)
 {
 	/* is it broadcast? */
-	switch(ipforme(a->ip)){
+	switch(ipforme(f, a->ip)){
 	case Runi:
 		return nil;
 	case Rbcast:
 		memset(mac, 0xff, 6);
-		return arpresolve(a, &ethermedium, mac);
+		return arpresolve(f->arp, a, &ethermedium, mac);
 	default:
 		break;
 	}
@@ -507,7 +509,7 @@ multicastarp(Arpent *a, uchar *mac)
 	switch(multicastea(mac, a->ip)){
 	case V4:
 	case V6:
-		return arpresolve(a, &ethermedium, mac);
+		return arpresolve(f->arp, a, &ethermedium, mac);
 	}
 
 	/* let arp take care of it */

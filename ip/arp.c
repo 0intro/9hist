@@ -27,30 +27,38 @@ char *arpstate[] =
 	"WAIT",
 };
 
-typedef struct Arpcache Arpcache;
-struct Arpcache
+/*
+ *  one per Fs
+ */
+struct Arp
 {
 	QLock;
-	Arpent*	hash[NHASH];
+	Fs	*f;
+	Arpent	*hash[NHASH];
 	Arpent	cache[NCACHE];
 };
-
-Arpcache	arp;
 
 char *Ebadarp = "bad arp";
 
 #define haship(s) ((s)[IPaddrlen-1]%NHASH)
 
+void
+arpinit(Fs *f)
+{
+	f->arp = smalloc(sizeof(Arp));
+	f->arp->f = f;
+}
+
 static Arpent*
-newarp(uchar *ip, Medium *m)
+newarp(Arp *arp, uchar *ip, Medium *m)
 {
 	uint t;
 	Block *next, *xp;
 	Arpent *a, *e, *f, **l;
 
 	/* find oldest entry */
-	e = &arp.cache[NCACHE];
-	a = arp.cache;
+	e = &arp->cache[NCACHE];
+	a = arp->cache;
 	t = a->used;
 	for(f = a; f < e; f++){
 		if(f->used < t){
@@ -69,7 +77,7 @@ newarp(uchar *ip, Medium *m)
 	}
 
 	/* take out of current chain */
-	l = &arp.hash[haship(a->ip)];
+	l = &arp->hash[haship(a->ip)];
 	for(f = *l; f; f = f->hash){
 		if(f == a) {
 			*l = a->hash;
@@ -79,7 +87,7 @@ newarp(uchar *ip, Medium *m)
 	}
 
 	/* insert into new chain */
-	l = &arp.hash[haship(ip)];
+	l = &arp->hash[haship(ip)];
 	a->hash = *l;
 	*l = a;
 	memmove(a->ip, ip, sizeof(a->ip));
@@ -91,7 +99,7 @@ newarp(uchar *ip, Medium *m)
 }
 
 Arpent*
-arpget(Block *bp, int version, Medium *type, uchar *ip, uchar *mac)
+arpget(Arp *arp, Block *bp, int version, Medium *type, uchar *ip, uchar *mac)
 {
 	int hash;
 	Arpent *a;
@@ -102,16 +110,16 @@ arpget(Block *bp, int version, Medium *type, uchar *ip, uchar *mac)
 		ip = v6ip;
 	}
 
-	qlock(&arp);
+	qlock(arp);
 	hash = haship(ip);
-	for(a = arp.hash[hash]; a; a = a->hash) {
+	for(a = arp->hash[hash]; a; a = a->hash) {
 		if(memcmp(ip, a->ip, sizeof(a->ip)) == 0)
 		if(type == a->type)
 			break;
 	}
 
 	if(a == nil){
-		a = newarp(ip, type);
+		a = newarp(arp, ip, type);
 		a->state = AWAIT;
 	}
 	a->used = msec;
@@ -126,7 +134,7 @@ arpget(Block *bp, int version, Medium *type, uchar *ip, uchar *mac)
 	}
 
 	memmove(mac, a->mac, a->type->maclen);
-	qunlock(&arp);
+	qunlock(arp);
 	return nil;
 }
 
@@ -134,16 +142,16 @@ arpget(Block *bp, int version, Medium *type, uchar *ip, uchar *mac)
  * called with arp locked
  */
 void
-arprelease(Arpent*)
+arprelease(Arp *arp, Arpent*)
 {
-	qunlock(&arp);
+	qunlock(arp);
 }
 
 /*
  * called with arp locked
  */
 Block*
-arpresolve(Arpent *a, Medium *type, uchar *mac)
+arpresolve(Arp *arp, Arpent *a, Medium *type, uchar *mac)
 {
 	Block *bp;
 
@@ -153,13 +161,13 @@ arpresolve(Arpent *a, Medium *type, uchar *mac)
 	a->used = msec;
 	bp = a->hold;
 	a->hold = nil;
-	qunlock(&arp);
+	qunlock(arp);
 
 	return bp;
 }
 
 void
-arpenter(Ipifc *ifc, int version, uchar *ip, uchar *mac, Medium *type, int refresh)
+arpenter(Arp *arp, Ipifc *ifc, int version, uchar *ip, uchar *mac, Medium *type, int refresh)
 {
 	Arpent *a;
 	Block *bp, *next;
@@ -170,8 +178,8 @@ arpenter(Ipifc *ifc, int version, uchar *ip, uchar *mac, Medium *type, int refre
 		ip = v6ip;
 	}
 
-	qlock(&arp);
-	for(a = arp.hash[haship(ip)]; a; a = a->hash) {
+	qlock(arp);
+	for(a = arp->hash[haship(ip)]; a; a = a->hash) {
 		if(a->type != type || (a->state != AWAIT && a->state != AOK))
 			continue;
 
@@ -182,7 +190,7 @@ arpenter(Ipifc *ifc, int version, uchar *ip, uchar *mac, Medium *type, int refre
 			a->hold = nil;
 			if(version == V4)
 				ip += IPv4off;
-			qunlock(&arp);
+			qunlock(arp);
 			while(bp) {
 				next = bp->list;
 				if(ifc != nil){
@@ -206,19 +214,18 @@ arpenter(Ipifc *ifc, int version, uchar *ip, uchar *mac, Medium *type, int refre
 		}
 	}
 
-	/* if nil, we're adding a new entry */
 	if(refresh == 0){
-		a = newarp(ip, type);
+		a = newarp(arp, ip, type);
 		a->state = AOK;
 		a->type = type;
 		memmove(a->mac, mac, type->maclen);
 	}
 
-	qunlock(&arp);
+	qunlock(arp);
 }
 
 int
-arpwrite(char *s, int len)
+arpwrite(Arp *arp, char *s, int len)
 {
 	int n;
 	Block *bp;
@@ -238,8 +245,8 @@ arpwrite(char *s, int len)
 
 	n = parsefields(buf, f, 4, " ");
 	if(strcmp(f[0], "flush") == 0){
-		qlock(&arp);
-		for(a = arp.cache; a < &arp.cache[NCACHE]; a++){
+		qlock(arp);
+		for(a = arp->cache; a < &arp->cache[NCACHE]; a++){
 			memset(a->ip, 0, sizeof(a->ip));
 			memset(a->mac, 0, sizeof(a->mac));
 			a->hash = nil;
@@ -251,8 +258,8 @@ arpwrite(char *s, int len)
 				a->hold = bp;
 			}
 		}
-		memset(arp.hash, 0, sizeof(arp.hash));
-		qunlock(&arp);
+		memset(arp->hash, 0, sizeof(arp->hash));
+		qunlock(arp);
 	} else if(strcmp(f[0], "add") == 0){
 		if(n != 4)
 			error(Ebadarp);
@@ -261,7 +268,7 @@ arpwrite(char *s, int len)
 			error(Ebadarp);
 		parseip(ip, f[2]);
 		parsemac(mac, f[3], m->maclen);
-		arpenter(nil, V6, ip, mac, m, 0);
+		arpenter(arp, nil, V6, ip, mac, m, 0);
 	} else
 		error(Ebadarp);
 
@@ -283,7 +290,7 @@ convmac(char *p, uchar *mac, int n)
 }
 
 int
-arpread(char *p, ulong offset, int len)
+arpread(Arp *arp, char *p, ulong offset, int len)
 {
 	Arpent *a;
 	int n;
@@ -296,7 +303,7 @@ arpread(char *p, ulong offset, int len)
 	len = len/Alinelen;
 
 	n = 0;
-	for(a = arp.cache; len > 0 && a < &arp.cache[NCACHE]; a++){
+	for(a = arp->cache; len > 0 && a < &arp->cache[NCACHE]; a++){
 		if(a->state == 0)
 			continue;
 		if(offset > 0){
@@ -304,10 +311,10 @@ arpread(char *p, ulong offset, int len)
 			continue;
 		}
 		len--;
-		qlock(&arp);
+		qlock(arp);
 		convmac(mac, a->mac, a->type->maclen);
 		n += sprint(p+n, aformat, a->type->name, arpstate[a->state], a->ip, mac);
-		qunlock(&arp);
+		qunlock(arp);
 	}
 
 	return n;

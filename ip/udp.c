@@ -15,7 +15,8 @@ enum
 	UDP_HDRSIZE	= 20,
 	UDP_IPHDR	= 8,
 	IP_UDPPROTO	= 17,
-	UDP_USEAD	= 12,
+	UDP_USEAD6	= 36,
+	UDP_USEAD4	= 12,
 
 	Udprxms		= 200,
 	Udptickms	= 100,
@@ -44,6 +45,27 @@ struct Udphdr
 	uchar	udpcksum[2];	/* Checksum */
 };
 
+/* MIB II counters */
+typedef struct Udpstats Udpstats;
+struct Udpstats
+{
+	ulong	udpInDatagrams;
+	ulong	udpNoPorts;
+	ulong	udpInErrors;
+	ulong	udpOutDatagrams;
+};
+
+typedef struct Udppriv Udppriv;
+struct Udppriv
+{
+	/* MIB counters */
+	Udpstats	ustats;
+
+	/* non-MIB stats */
+	ulong		csumerr;		/* checksum errors */
+	ulong		lenerr;			/* short packet */
+};
+
 /*
  *  protocol specific part of Conv
  */
@@ -54,22 +76,17 @@ struct Udpcb
 	uchar	headers;
 };
 
-	Proto	udp;
-	int	udpsum;
-	uint	generation;
-extern	Fs	fs;
-	int	udpdebug;
-
 static char*
 udpconnect(Conv *c, char **argv, int argc)
 {
 	char *e;
 
 	e = Fsstdconnect(c, argv, argc);
-	Fsconnected(&fs, c, e);
+	Fsconnected(c, e);
 
 	return e;
 }
+
 
 static int
 udpstate(Conv *c, char *state, int n)
@@ -86,7 +103,7 @@ udpannounce(Conv *c, char** argv, int argc)
 	e = Fsstdannounce(c, argv, argc);
 	if(e != nil)
 		return e;
-	Fsconnected(&fs, c, nil);
+	Fsconnected(c, nil);
 
 	return nil;
 }
@@ -126,30 +143,54 @@ udpkick(Conv *c, int)
 	Block *bp;
 	Udpcb *ucb;
 	int dlen, ptcllen;
+	Udppriv *upriv;
+	Fs *f;
 
-	netlog(Logudp, "udp: kick\n");
+	upriv = c->p->priv;
+	f = c->p->f;
+
+	netlog(c->p->f, Logudp, "udp: kick\n");
 	bp = qget(c->wq);
 	if(bp == nil)
 		return;
 
 	ucb = (Udpcb*)c->ptcl;
-	if(ucb->headers) {
+	switch(ucb->headers) {
+	case 6:
 		/* get user specified addresses */
-		bp = pullupblock(bp, UDP_USEAD);
+		bp = pullupblock(bp, UDP_USEAD6);
 		if(bp == nil)
 			return;
 		ipmove(raddr, bp->rp);
 		bp->rp += IPaddrlen;
 		ipmove(laddr, bp->rp);
 		bp->rp += IPaddrlen;
-		if(ipforme(laddr) != Runi)
-			findlocalip(laddr, raddr);	/* pick interface closest to dest */
+		if(ipforme(f, laddr) != Runi)
+			findlocalip(f, laddr, raddr);	/* pick interface closest to dest */
 		rport = nhgets(bp->rp);
 		bp->rp += 2;
 		/* ignore local port number */
 		bp->rp += 2;
-	} else {
+		break;
+	case 4:
+		/* get user specified addresses */
+		bp = pullupblock(bp, UDP_USEAD4);
+		if(bp == nil)
+			return;
+		v4tov6(raddr, bp->rp);
+		bp->rp += IPv4addrlen;
+		v4tov6(laddr, bp->rp);
+		bp->rp += IPv4addrlen;
+		if(ipforme(f, laddr) != Runi)
+			findlocalip(f, laddr, raddr);	/* pick interface closest to dest */
+		rport = nhgets(bp->rp);
+		bp->rp += 2;
+		/* ignore local port number */
+		bp->rp += 2;
+		break;
+	default:
 		rport = 0;
+		break;
 	}
 
 	dlen = blocklen(bp);
@@ -167,16 +208,24 @@ udpkick(Conv *c, int)
 	uh->frag[0] = 0;
 	uh->frag[1] = 0;
 	hnputs(uh->udpplen, ptcllen);
-	if(ucb->headers) {
+	switch(ucb->headers){
+	case 6:
 		v6tov4(uh->udpdst, raddr);
 		hnputs(uh->udpdport, rport);
 		v6tov4(uh->udpsrc, laddr);
-	} else {
+		break;
+	case 4:
+		memmove(uh->udpdst, raddr, IPv4addrlen);
+		hnputs(uh->udpdport, rport);
+		memmove(uh->udpsrc, laddr, IPv4addrlen);
+		break;
+	default:
 		v6tov4(uh->udpdst, c->raddr);
 		hnputs(uh->udpdport, c->rport);
 		if(ipcmp(c->laddr, IPnoaddr) == 0)
-			findlocalip(c->laddr, c->raddr);	/* pick interface closest to dest */
+			findlocalip(f, c->laddr, c->raddr);	/* pick interface closest to dest */
 		v6tov4(uh->udpsrc, c->laddr);
+		break;
 	}
 	hnputs(uh->udpsport, c->lport);
 	hnputs(uh->udplen, ptcllen);
@@ -185,11 +234,12 @@ udpkick(Conv *c, int)
 
 	hnputs(uh->udpcksum, ptclcsum(bp, UDP_IPHDR, dlen+UDP_HDRSIZE));
 
-	ipoput(bp, 0, c->ttl);
+	upriv->ustats.udpOutDatagrams++;
+	ipoput(f, bp, 0, c->ttl);
 }
 
 void
-udpiput(uchar *ia, Block *bp)
+udpiput(Proto *udp, uchar *ia, Block *bp)
 {
 	int len, olen, ottl;
 	Udphdr *uh;
@@ -197,6 +247,13 @@ udpiput(uchar *ia, Block *bp)
 	Udpcb *ucb;
 	uchar raddr[IPaddrlen], laddr[IPaddrlen];
 	ushort rport, lport;
+	Udppriv *upriv;
+	Fs *f;
+
+	upriv = udp->priv;
+	f = udp->f;
+
+	upriv->ustats.udpInDatagrams++;
 
 	uh = (Udphdr*)(bp->rp);
 
@@ -212,10 +269,10 @@ udpiput(uchar *ia, Block *bp)
 	lport = nhgets(uh->udpdport);
 	rport = nhgets(uh->udpsport);
 
-	if(udpsum && nhgets(uh->udpcksum)) {
+	if(nhgets(uh->udpcksum)) {
 		if(ptclcsum(bp, UDP_IPHDR, len+UDP_PHDRSIZE)) {
-			udp.csumerr++;
-			netlog(Logudp, "udp: checksum error %I\n", raddr);
+			upriv->ustats.udpInErrors++;
+			netlog(f, Logudp, "udp: checksum error %I\n", raddr);
 			freeblist(bp);
 			return;
 		}
@@ -223,7 +280,7 @@ udpiput(uchar *ia, Block *bp)
 
 	/* Look for a conversation structure for this port */
 	c = nil;
-	for(p = udp.conv; *p; p++) {
+	for(p = udp->conv; *p; p++) {
 		c = *p;
 		if(c->inuse == 0)
 			continue;
@@ -232,13 +289,14 @@ udpiput(uchar *ia, Block *bp)
 	}
 
 	if(*p == nil) {
-		netlog(Logudp, "udp: no conv %I.%d -> %I.%d\n", raddr, rport,
+		upriv->ustats.udpNoPorts++;
+		netlog(f, Logudp, "udp: no conv %I.%d -> %I.%d\n", raddr, rport,
 			laddr, lport);
 		/* don't complain about broadcasts... */
-		if(ipforme(raddr) == 0){
+		if(ipforme(f, raddr) == 0){
 			uh->Unused = ottl;
 			hnputs(uh->udpplen, olen);
-			icmpnoconv(bp);
+			icmpnoconv(f, bp);
 		}
 		freeblist(bp);
 		return;
@@ -250,28 +308,41 @@ udpiput(uchar *ia, Block *bp)
 	len -= (UDP_HDRSIZE-UDP_PHDRSIZE);
 	bp = trimblock(bp, UDP_IPHDR+UDP_HDRSIZE, len);
 	if(bp == nil){
-		netlog(Logudp, "udp: len err %I.%d -> %I.%d\n", raddr, rport,
+		netlog(f, Logudp, "udp: len err %I.%d -> %I.%d\n", raddr, rport,
 			laddr, lport);
-		udp.lenerr++;
+		upriv->lenerr++;
 		return;
 	}
 
-	netlog(Logudpmsg, "udp: %I.%d -> %I.%d l %d\n", raddr, rport,
+	netlog(f, Logudpmsg, "udp: %I.%d -> %I.%d l %d\n", raddr, rport,
 		laddr, lport, len);
 
 	ucb = (Udpcb*)c->ptcl;
 
-	if(ucb->headers) {
+	switch(ucb->headers){
+	case 6:
 		/* pass the src address */
-		bp = padblock(bp, UDP_USEAD);
+		bp = padblock(bp, UDP_USEAD6);
 		ipmove(bp->rp, raddr);
-		if(ipforme(laddr) == Runi)
+		if(ipforme(f, laddr) == Runi)
 			ipmove(bp->rp+IPaddrlen, laddr);
 		else
 			ipmove(bp->rp+IPaddrlen, ia);
 		hnputs(bp->rp+2*IPaddrlen, rport);
 		hnputs(bp->rp+2*IPaddrlen+2, lport);
-	} else {
+		break;
+	case 4:
+		/* pass the src address */
+		bp = padblock(bp, UDP_USEAD4);
+		memmove(bp->rp, raddr, IPv4addrlen);
+		if(ipforme(f, laddr) == Runi)
+			memmove(bp->rp+IPv4addrlen, laddr, IPv4addrlen);
+		else
+			memmove(bp->rp+IPv4addrlen, ia, IPv4addrlen);
+		hnputs(bp->rp + 2*IPv4addrlen, rport);
+		hnputs(bp->rp + 2*IPv4addrlen + 2, lport);
+		break;
+	default:
 		/* connection oriented udp */
 		if(c->raddr == 0){
 			/* save the src address in the conversation */
@@ -279,17 +350,18 @@ udpiput(uchar *ia, Block *bp)
 			c->rport = rport;
 
 			/* reply with the same ip address (if not broadcast) */
-			if(ipforme(laddr) == Runi)
+			if(ipforme(f, laddr) == Runi)
 				ipmove(c->laddr, laddr);
 			else
-				ipmove(c->laddr, ia);
+				v4tov6(c->laddr, ia);
 		}
+		break;
 	}
 	if(bp->next)
 		bp = concatblock(bp);
 
 	if(qfull(c->rq)){
-		netlog(Logudp, "udp: qfull %I.%d -> %I.%d\n", raddr, rport,
+		netlog(f, Logudp, "udp: qfull %I.%d -> %I.%d\n", raddr, rport,
 			laddr, lport);
 		freeblist(bp);
 	}else
@@ -302,19 +374,20 @@ udpctl(Conv *c, char **f, int n)
 	Udpcb *ucb;
 
 	ucb = (Udpcb*)c->ptcl;
-	if(n == 1 && strcmp(f[0], "headers") == 0){
-		ucb->headers = 1;
-		return nil;
-	}
-	if(n == 1 && strcmp(f[0], "debug") == 0){
-		udpdebug = 1;
-		return nil;
+	if(n == 1){
+		if(strcmp(f[0], "headers4") == 0){
+			ucb->headers = 4;
+			return nil;
+		} else if(strcmp(f[0], "headers") == 0){
+			ucb->headers = 6;
+			return nil;
+		}
 	}
 	return "unknown control request";
 }
 
 void
-udpadvise(Block *bp, char *msg)
+udpadvise(Proto *udp, Block *bp, char *msg)
 {
 	Udphdr *h;
 	uchar source[IPaddrlen], dest[IPaddrlen];
@@ -329,7 +402,7 @@ udpadvise(Block *bp, char *msg)
 	pdest = nhgets(h->udpdport);
 
 	/* Look for a connection */
-	for(p = udp.conv; *p; p++) {
+	for(p = udp->conv; *p; p++) {
 		s = *p;
 		if(s->rport == pdest)
 		if(s->lport == psource)
@@ -344,30 +417,39 @@ udpadvise(Block *bp, char *msg)
 }
 
 int
-udpstats(char *buf, int len)
+udpstats(Proto *udp, char *buf, int len)
 {
-	return snprint(buf, len,
-		"udp: csum %d hlen %d len %d order %d rexmit %d\n",
-		udp.csumerr, udp.hlenerr, udp.lenerr, udp.order, udp.rexmit);
+	Udppriv *upriv;
+
+	upriv = udp->priv;
+	return snprint(buf, len, "%d %d %d %d",
+		upriv->ustats.udpInDatagrams,
+		upriv->ustats.udpNoPorts,
+		upriv->ustats.udpInErrors,
+		upriv->ustats.udpOutDatagrams);
 }
 
 void
 udpinit(Fs *fs)
 {
-	udp.name = "udp";
-	udp.kick = udpkick;
-	udp.connect = udpconnect;
-	udp.announce = udpannounce;
-	udp.ctl = udpctl;
-	udp.state = udpstate;
-	udp.create = udpcreate;
-	udp.close = udpclose;
-	udp.rcv = udpiput;
-	udp.advise = udpadvise;
-	udp.stats = udpstats;
-	udp.ipproto = IP_UDPPROTO;
-	udp.nc = 16;
-	udp.ptclsize = sizeof(Udpcb);
+	Proto *udp;
 
-	Fsproto(fs, &udp);
+	udp = smalloc(sizeof(Proto));
+	udp->priv = smalloc(sizeof(Udppriv));
+	udp->name = "udp";
+	udp->kick = udpkick;
+	udp->connect = udpconnect;
+	udp->announce = udpannounce;
+	udp->ctl = udpctl;
+	udp->state = udpstate;
+	udp->create = udpcreate;
+	udp->close = udpclose;
+	udp->rcv = udpiput;
+	udp->advise = udpadvise;
+	udp->stats = udpstats;
+	udp->ipproto = IP_UDPPROTO;
+	udp->nc = 16;
+	udp->ptclsize = sizeof(Udpcb);
+
+	Fsproto(fs, udp);
 }

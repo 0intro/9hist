@@ -46,14 +46,16 @@ enum {
 	ICMP_HDRSIZE	= 8,
 };
 
-	Proto	icmp;
-extern	Fs	fs;
-
-static struct Icmpstats
+typedef struct Icmppriv Icmppriv;
+struct Icmppriv
 {
+	/* non-MIB stats */
+	ulong	csumerr;		/* checksum errors */
+	ulong	lenerr;			/* short packet */
+	ulong	hlenerr;		/* short header */
 	ulong	in[Maxtype+1];
 	ulong	out[Maxtype+1];
-} stats;
+};
 
 static char*
 icmpconnect(Conv *c, char **argv, int argc)
@@ -61,7 +63,7 @@ icmpconnect(Conv *c, char **argv, int argc)
 	char *e;
 
 	e = Fsstdconnect(c, argv, argc);
-	Fsconnected(&fs, c, e);
+	Fsconnected(c, e);
 
 	return e;
 }
@@ -88,7 +90,7 @@ icmpannounce(Conv *c, char **argv, int argc)
 	e = Fsstdannounce(c, argv, argc);
 	if(e != nil);
 		return e;
-	Fsconnected(&fs, c, nil);
+	Fsconnected(c, nil);
 
 	return nil;
 }
@@ -109,6 +111,7 @@ icmpkick(Conv *c, int l)
 {
 	Icmp *p;
 	Block *bp;
+	Icmppriv *ipriv;
 
 	USED(l);
 	bp = qget(c->wq);
@@ -120,25 +123,27 @@ icmpkick(Conv *c, int l)
 		return;
 	}
 	p = (Icmp *)(bp->rp);
-	if(p->type <= Maxtype)
-		stats.out[p->type]++;
+	if(p->type <= Maxtype){
+		ipriv = c->p->priv;
+		ipriv->out[p->type]++;
+	}
 	v6tov4(p->dst, c->raddr);
 	v6tov4(p->src, c->laddr);
 	p->proto = IP_ICMPPROTO;
 	hnputs(p->icmpid, c->lport);
 	memset(p->cksum, 0, sizeof(p->cksum));
 	hnputs(p->cksum, ptclcsum(bp, ICMP_IPSIZE, blocklen(bp) - ICMP_IPSIZE));
-	ipoput(bp, 0, c->ttl);
+	ipoput(c->p->f, bp, 0, c->ttl);
 }
 
 extern void
-icmpnoconv(Block *bp)
+icmpnoconv(Fs *f, Block *bp)
 {
 	Block	*nbp;
 	Icmp	*p, *np;
 
 	p = (Icmp *)bp->rp;
-	netlog(Logicmp, "sending icmpnoconv -> %V\n", p->src);
+	netlog(f, Logicmp, "sending icmpnoconv -> %V\n", p->src);
 	nbp = allocb(ICMP_IPSIZE + ICMP_HDRSIZE + ICMP_IPSIZE + 8);
 	nbp->wp += ICMP_IPSIZE + ICMP_HDRSIZE + ICMP_IPSIZE + 8;
 	np = (Icmp *)nbp->rp;
@@ -152,12 +157,12 @@ icmpnoconv(Block *bp)
 	hnputs(np->seq, 0);
 	memset(np->cksum, 0, sizeof(np->cksum));
 	hnputs(np->cksum, ptclcsum(nbp, ICMP_IPSIZE, blocklen(nbp) - ICMP_IPSIZE));
-	stats.out[Unreachable]++;
-	ipoput(nbp, 0, MAXTTL);
+/*	stats.out[Unreachable]++; */
+	ipoput(f, nbp, 0, MAXTTL);
 }
 
 static void
-goticmpkt(Block *bp)
+goticmpkt(Proto *icmp, Block *bp)
 {
 	Conv	**c, *s;
 	Icmp	*p;
@@ -168,7 +173,7 @@ goticmpkt(Block *bp)
 	v4tov6(dst, p->src);
 	recid = nhgets(p->icmpid);
 
-	for(c = icmp.conv; *c; c++) {
+	for(c = icmp->conv; *c; c++) {
 		s = *c;
 		if(s->lport == recid)
 		if(ipcmp(s->raddr, dst) == 0){
@@ -207,7 +212,7 @@ static char *unreachcode[] =
 };
 
 static void
-icmpiput(uchar*, Block *bp)
+icmpiput(Proto *icmp, uchar*, Block *bp)
 {
 	int	n, iplen;
 	Icmp	*p;
@@ -215,33 +220,36 @@ icmpiput(uchar*, Block *bp)
 	Proto	*pr;
 	char	*msg;
 	char	m2[128];
+	Icmppriv *ipriv;
+
+	ipriv = icmp->priv;
 
 	p = (Icmp *)bp->rp;
-	netlog(Logicmp, "icmpiput %d %d\n", p->type, p->code);
+	netlog(icmp->f, Logicmp, "icmpiput %d %d\n", p->type, p->code);
 	n = blocklen(bp);
 	if(n < ICMP_IPSIZE+ICMP_HDRSIZE){
-		icmp.hlenerr++;
-		netlog(Logicmp, "icmp hlen %d\n", n);
+		ipriv->hlenerr++;
+		netlog(icmp->f, Logicmp, "icmp hlen %d\n", n);
 		goto raise;
 	}
 	iplen = nhgets(p->length);
 	if(iplen > n || (iplen % 1)){
-		icmp.lenerr++;
-		netlog(Logicmp, "icmp length %d\n", iplen);
+		ipriv->lenerr++;
+		netlog(icmp->f, Logicmp, "icmp length %d\n", iplen);
 		goto raise;
 	}
 	if(ptclcsum(bp, ICMP_IPSIZE, iplen - ICMP_IPSIZE)){
-		icmp.csumerr++;
-		netlog(Logicmp, "icmp checksum error\n");
+		ipriv->csumerr++;
+		netlog(icmp->f, Logicmp, "icmp checksum error\n");
 		goto raise;
 	}
 	if(p->type <= Maxtype)
-		stats.in[p->type]++;
+		ipriv->in[p->type]++;
 	switch(p->type) {
 	case EchoRequest:
 		r = mkechoreply(bp);
-		stats.out[EchoReply]++;
-		ipoput(r, 0, MAXTTL);
+		ipriv->out[EchoReply]++;
+		ipoput(icmp->f, r, 0, MAXTTL);
 		break;
 	case Unreachable:
 		if(p->code > 5 || p->code < 0)
@@ -251,18 +259,18 @@ icmpiput(uchar*, Block *bp)
 
 		bp->rp += ICMP_IPSIZE+ICMP_HDRSIZE;
 		if(blocklen(bp) < 8){
-			icmp.lenerr++;
+			ipriv->lenerr++;
 			goto raise;
 		}
 		p = (Icmp *)bp->rp;
-		pr = Fsrcvpcol(&fs, p->proto);
+		pr = Fsrcvpcol(icmp->f, p->proto);
 		if(pr != nil && pr->advise != nil) {
-			(*pr->advise)(bp, msg);
+			(*pr->advise)(pr, bp, msg);
 			return;
 		}
 
 		bp->rp -= ICMP_IPSIZE+ICMP_HDRSIZE;
-		goticmpkt(bp);
+		goticmpkt(icmp, bp);
 		break;
 	case TimeExceed:
 		if(p->code == 0){
@@ -270,21 +278,21 @@ icmpiput(uchar*, Block *bp)
 
 			bp->rp += ICMP_IPSIZE+ICMP_HDRSIZE;
 			if(blocklen(bp) < 8){
-				icmp.lenerr++;
+				ipriv->lenerr++;
 				goto raise;
 			}
 			p = (Icmp *)bp->rp;
-			pr = Fsrcvpcol(&fs, p->proto);
+			pr = Fsrcvpcol(icmp->f, p->proto);
 			if(pr != nil && pr->advise != nil) {
-				(*pr->advise)(bp, m2);
+				(*pr->advise)(pr, bp, m2);
 				return;
 			}
 		}
 
-		goticmpkt(bp);
+		goticmpkt(icmp, bp);
 		break;
 	default:
-		goticmpkt(bp);
+		goticmpkt(icmp, bp);
 		break;
 	}
 	return;
@@ -294,7 +302,7 @@ raise:
 }
 
 void
-icmpadvise(Block *bp, char *msg)
+icmpadvise(Proto *icmp, Block *bp, char *msg)
 {
 	Conv	**c, *s;
 	Icmp	*p;
@@ -305,7 +313,7 @@ icmpadvise(Block *bp, char *msg)
 	v4tov6(dst, p->dst);
 	recid = nhgets(p->icmpid);
 
-	for(c = icmp.conv; *c; c++) {
+	for(c = icmp->conv; *c; c++) {
 		s = *c;
 		if(s->lport == recid)
 		if(ipcmp(s->raddr, dst) == 0){
@@ -318,20 +326,22 @@ icmpadvise(Block *bp, char *msg)
 }
 
 int
-icmpstats(char *buf, int len)
+icmpstats(Proto *icmp, char *buf, int len)
 {
 	int i, n;
+	Icmppriv *ipriv;
 
+	ipriv = icmp->priv;
 
 	n = snprint(buf, len,
-		"icmp: csum %d hlen %d len %d order %d rexmit %d\n",
-		icmp.csumerr, icmp.hlenerr, icmp.lenerr, icmp.order, icmp.rexmit);
+		"icmp: csum %d hlen %d len %d\n",
+		ipriv->csumerr, ipriv->hlenerr, ipriv->lenerr);
 	n += snprint(buf+n, len-n, "\trcvd ");
 	for(i = 0; i < Maxtype && len > n; i++)
-		n += snprint(buf+n, len-n, " %d", stats.in[i]);	
+		n += snprint(buf+n, len-n, " %d", ipriv->in[i]);	
 	n += snprint(buf+n, len-n, "\n\tsent ");
 	for(i = 0; i < Maxtype && len > n; i++)
-		n += snprint(buf+n, len-n, " %d", stats.out[i]);
+		n += snprint(buf+n, len-n, " %d", ipriv->out[i]);
 	if(n < len)
 		n += snprint(buf+n, len-n, "\n");
 	return n;	
@@ -340,20 +350,24 @@ icmpstats(char *buf, int len)
 void
 icmpinit(Fs *fs)
 {
-	icmp.name = "icmp";
-	icmp.kick = icmpkick;
-	icmp.connect = icmpconnect;
-	icmp.announce = icmpannounce;
-	icmp.state = icmpstate;
-	icmp.create = icmpcreate;
-	icmp.close = icmpclose;
-	icmp.rcv = icmpiput;
-	icmp.stats = icmpstats;
-	icmp.ctl = nil;
-	icmp.advise = icmpadvise;
-	icmp.ipproto = IP_ICMPPROTO;
-	icmp.nc = 16;
-	icmp.ptclsize = 0;
+	Proto *icmp;
 
-	Fsproto(fs, &icmp);
+	icmp = smalloc(sizeof(Proto));
+	icmp->priv = smalloc(sizeof(Icmppriv));
+	icmp->name = "icmp";
+	icmp->kick = icmpkick;
+	icmp->connect = icmpconnect;
+	icmp->announce = icmpannounce;
+	icmp->state = icmpstate;
+	icmp->create = icmpcreate;
+	icmp->close = icmpclose;
+	icmp->rcv = icmpiput;
+	icmp->stats = icmpstats;
+	icmp->ctl = nil;
+	icmp->advise = icmpadvise;
+	icmp->ipproto = IP_ICMPPROTO;
+	icmp->nc = 16;
+	icmp->ptclsize = 0;
+
+	Fsproto(fs, icmp);
 }

@@ -12,7 +12,7 @@
 static void	pktbind(Ipifc *ifc, int argc, char **argv);
 static void	pktunbind(Ipifc *ifc);
 static void	pktbwrite(Ipifc *ifc, Block *bp, int version, uchar *ip);
-static void	pktin(Ipifc *ifc, Block *bp);
+static void	pktin(Fs*, Ipifc *ifc, Block *bp);
 
 Medium pktmedium =
 {
@@ -64,13 +64,13 @@ pktbwrite(Ipifc *ifc, Block *bp, int, uchar*)
 }
 
 /*
- *  called when someone write's to 'data' with ifc rlocked
+ *  called with ifc rlocked when someone write's to 'data'
  */
 static void
-pktin(Ipifc *ifc, Block *bp)
+pktin(Fs *f, Ipifc *ifc, Block *bp)
 {
 	if(ifc->lifc == nil)
 		freeb(bp);
 	else
-		ipiput(ifc->lifc->local, bp);
+		ipiput(f, ifc->lifc->local, bp);
 }

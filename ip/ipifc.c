@@ -17,14 +17,12 @@ enum {
 	QMAX		= 64*1024-1,
 };
 
-	Proto	ipifc;
-extern	Fs	fs;
-
 Medium *media[] =
 {
 	&ethermedium,
 	&pktmedium,
 	&nullmedium,
+	&tripmedium,
 	0
 };
 
@@ -43,7 +41,6 @@ struct Ipself
 	Ipself	*next;		/* free list */
 };
 
-typedef struct Ipselftab Ipselftab;
 struct Ipselftab
 {
 	QLock;
@@ -51,7 +48,6 @@ struct Ipselftab
 	int	acceptall;	/* true if an interface has the null address */
 	Ipself	*hash[NHASH];	/* hash chains */
 };
-Ipselftab	selftab;
 
 /*
  *  Multicast addresses are chained onto a Chan so that
@@ -70,8 +66,8 @@ struct Ipmcast
 
 static char tifc[] = "ifc ";
 
-static void	addselfcache(Ipifc *ifc, Iplifc *lifc, uchar *a, int type);
-static void	remselfcache(Ipifc *ifc, Iplifc *lifc, uchar *a);
+static void	addselfcache(Fs *f, Ipifc *ifc, Iplifc *lifc, uchar *a, int type);
+static void	remselfcache(Fs *f, Ipifc *ifc, Iplifc *lifc, uchar *a);
 static char*	ipifcjoinmulti(Ipifc *ifc, char **argv, int argc);
 static char*	ipifcleavemulti(Ipifc *ifc, char **argv, int argc);
 
@@ -252,7 +248,7 @@ ipifckick(Conv *c, int)
 	if(ifc->m == nil || ifc->m->pktin == nil)
 		freeb(bp);
 	else
-		(*ifc->m->pktin)(ifc, bp);
+		(*ifc->m->pktin)(c->p->f, ifc, bp);
 }
 
 /*
@@ -299,6 +295,9 @@ ipifcadd(Ipifc *ifc, char **argv, int argc)
 	uchar bcast[IPaddrlen], net[IPaddrlen];
 	Iplifc *lifc, **l;
 	int i, type, mtu;
+	Fs *f;
+
+	f = ifc->conv->p->f;
 
 	memset(ip, 0, IPaddrlen);
 	memset(mask, 0, IPaddrlen);
@@ -359,24 +358,24 @@ ipifcadd(Ipifc *ifc, char **argv, int argc)
 	if(ipcmp(mask, IPallbits) == 0)
 		type |= Rptpt;
 	if(isv4(ip))
-		v4addroute(tifc, rem+IPv4off, mask+IPv4off, ip+IPv4off, type);
+		v4addroute(f, tifc, rem+IPv4off, mask+IPv4off, ip+IPv4off, type);
 	else
-		v6addroute(tifc, ip, mask, rem, type);
+		v6addroute(f, tifc, ip, mask, rem, type);
 
-	addselfcache(ifc, lifc, ip, Runi);
+	addselfcache(f, ifc, lifc, ip, Runi);
 
 	/* add subnet directed broadcast addresses to the self cache */
 	for(i = 0; i < IPaddrlen; i++)
 		bcast[i] = (ip[i] & mask[i]) | ~mask[i];
-	addselfcache(ifc, lifc, bcast, Rbcast);
+	addselfcache(f, ifc, lifc, bcast, Rbcast);
 
 	/* add network directed broadcast addresses to the self cache */
 	memmove(mask, defmask(ip), IPaddrlen);
 	for(i = 0; i < IPaddrlen; i++)
 		bcast[i] = (ip[i] & mask[i]) | ~mask[i];
-	addselfcache(ifc, lifc, bcast, Rbcast);
+	addselfcache(f, ifc, lifc, bcast, Rbcast);
 
-	addselfcache(ifc, lifc, IPv4bcast, Rbcast);
+	addselfcache(f, ifc, lifc, IPv4bcast, Rbcast);
 
 out:
 	wunlock(ifc);
@@ -394,9 +393,12 @@ ipifcrem(Ipifc *ifc, char **argv, int argc, int dolock)
 	uchar ip[IPaddrlen];
 	uchar mask[IPaddrlen];
 	Iplifc *lifc, **l;
+	Fs *f;
 
 	if(argc < 3)
 		return Ebadarg;
+
+	f = ifc->conv->p->f;
 
 	parseip(ip, argv[1]);
 	parseipmask(mask, argv[2]);
@@ -424,13 +426,13 @@ ipifcrem(Ipifc *ifc, char **argv, int argc, int dolock)
 
 	/* disassociate any addresses */
 	while(lifc->link)
-		remselfcache(ifc, lifc, lifc->link->self->a);
+		remselfcache(f, ifc, lifc, lifc->link->self->a);
 
 	/* remove the route for this logical interface */
 	if(isv4(ip))
-		v4delroute(lifc->remote+IPv4off, lifc->mask+IPv4off);
+		v4delroute(f, lifc->remote+IPv4off, lifc->mask+IPv4off);
 	else
-		v6delroute(lifc->remote, lifc->mask);
+		v6delroute(f, lifc->remote, lifc->mask);
 
 	free(lifc);
 
@@ -447,13 +449,14 @@ out:
  * TRIP linecards
  */
 void
-ipifcaddroute(int vers, uchar *addr, uchar *mask, uchar *gate, int type)
+ipifcaddroute(Fs *f, int vers, uchar *addr, uchar *mask, uchar *gate, int type)
 {
 	Medium *m;
-	Conv **cp;
+	Conv **cp, **e;
 	Ipifc *ifc;
 
-	for(cp = ipifc.conv; cp < &ipifc.conv[ipifc.nc]; cp++){
+	e = &f->ipifc->conv[f->ipifc->nc];
+	for(cp = f->ipifc->conv; cp < e; cp++){
 		if(*cp != nil) {
 			ifc = (Ipifc*)(*cp)->ptcl;
 			m = ifc->m;
@@ -466,13 +469,14 @@ ipifcaddroute(int vers, uchar *addr, uchar *mask, uchar *gate, int type)
 }
 
 void
-ipifcremroute(int vers, uchar *addr, uchar *mask)
+ipifcremroute(Fs *f, int vers, uchar *addr, uchar *mask)
 {
 	Medium *m;
-	Conv **cp;
+	Conv **cp, **e;
 	Ipifc *ifc;
 
-	for(cp = ipifc.conv; cp < &ipifc.conv[ipifc.nc]; cp++){
+	e = &f->ipifc->conv[f->ipifc->nc];
+	for(cp = f->ipifc->conv; cp < e; cp++){
 		if(*cp != nil) {
 			ifc = (Ipifc*)(*cp)->ptcl;
 			m = ifc->m;
@@ -523,7 +527,7 @@ ipifcconnect(Conv* c, char **argv, int argc)
 	if(err)
 		return err;
 
-	Fsconnected(&fs, c, nil);
+	Fsconnected(c, nil);
 
 	return nil;
 }
@@ -540,6 +544,8 @@ ipifcctl(Conv* c, char**argv, int argc)
 	ifc = (Ipifc*)c->ptcl;
 	if(strcmp(argv[0], "add") == 0)
 		return ipifcadd(ifc, argv, argc);
+ 	else if(strcmp(argv[0], "bootp") == 0)
+		return bootp(ifc);
 	else if(strcmp(argv[0], "remove") == 0)
 		return ipifcrem(ifc, argv, argc, 1);
 	else if(strcmp(argv[0], "unbind") == 0)
@@ -551,28 +557,39 @@ ipifcctl(Conv* c, char**argv, int argc)
 	return "unsupported ctl";
 }
 
-void
-ipifcinit(Fs *fs)
+ipifcstats(Proto *ipifc, char *buf, int len)
 {
-	ipifc.name = "ipifc";
-	ipifc.kick = ipifckick;
-	ipifc.connect = ipifcconnect;
-	ipifc.announce = nil;
-	ipifc.bind = ipifcbind;
-	ipifc.state = ipifcstate;
-	ipifc.create = ipifccreate;
-	ipifc.close = ipifcclose;
-	ipifc.rcv = nil;
-	ipifc.ctl = ipifcctl;
-	ipifc.advise = nil;
-	ipifc.stats = ipstats;
-	ipifc.inuse = ipifcinuse;
-	ipifc.local = ipifclocal;
-	ipifc.ipproto = -1;
-	ipifc.nc = Maxmedia;
-	ipifc.ptclsize = sizeof(Ipifc);
+	return ipstats(ipifc->f, buf, len);
+}
 
-	Fsproto(fs, &ipifc);
+void
+ipifcinit(Fs *f)
+{
+	Proto *ipifc;
+
+	ipifc = smalloc(sizeof(Ipifc));
+	ipifc->name = "ipifc";
+	ipifc->kick = ipifckick;
+	ipifc->connect = ipifcconnect;
+	ipifc->announce = nil;
+	ipifc->bind = ipifcbind;
+	ipifc->state = ipifcstate;
+	ipifc->create = ipifccreate;
+	ipifc->close = ipifcclose;
+	ipifc->rcv = nil;
+	ipifc->ctl = ipifcctl;
+	ipifc->advise = nil;
+	ipifc->stats = ipifcstats;
+	ipifc->inuse = ipifcinuse;
+	ipifc->local = ipifclocal;
+	ipifc->ipproto = -1;
+	ipifc->nc = Maxmedia;
+	ipifc->ptclsize = sizeof(Ipifc);
+
+	f->ipifc = ipifc;			/* hack for ipifcremroute, findipifc, ... */
+	f->self = smalloc(sizeof(Ipselftab));	/* hack for ipforme */
+
+	Fsproto(f, ipifc);
 }
 
 /*
@@ -580,17 +597,17 @@ ipifcinit(Fs *fs)
  *	called with c->car locked
  */
 static void
-addselfcache(Ipifc *ifc, Iplifc *lifc, uchar *a, int type)
+addselfcache(Fs *f, Ipifc *ifc, Iplifc *lifc, uchar *a, int type)
 {
 	Ipself *p;
 	Iplink *lp;
 	int h;
 
-	qlock(&selftab);
+	qlock(f->self);
 
 	/* see if the address already exists */
 	h = hashipa(a);
-	for(p = selftab.hash[h]; p; p = p->next)
+	for(p = f->self->hash[h]; p; p = p->next)
 		if(memcmp(a, p->a, IPaddrlen) == 0)
 			break;
 
@@ -599,12 +616,12 @@ addselfcache(Ipifc *ifc, Iplifc *lifc, uchar *a, int type)
 		p = smalloc(sizeof(*p));
 		ipmove(p->a, a);
 		p->type = type;
-		p->next = selftab.hash[h];
-		selftab.hash[h] = p;
+		p->next = f->self->hash[h];
+		f->self->hash[h] = p;
 
 		/* if the null address, accept all packets */
 		if(ipcmp(a, v4prefix) == 0 || ipcmp(a, IPnoaddr) == 0)
-			selftab.acceptall = 1;
+			f->self->acceptall = 1;
 	}
 
 	/* look for a link for this lifc */
@@ -625,9 +642,9 @@ addselfcache(Ipifc *ifc, Iplifc *lifc, uchar *a, int type)
 
 		/* add to routing table */
 		if(isv4(a))
-			v4addroute(tifc, a+IPv4off, IPallbits+IPv4off, a+IPv4off, type);
+			v4addroute(f, tifc, a+IPv4off, IPallbits+IPv4off, a+IPv4off, type);
 		else
-			v6addroute(tifc, a, IPallbits, a, type);
+			v6addroute(f, tifc, a, IPallbits, a, type);
 
 		if((type & Rmulti) && ifc->m->addmulti != nil)
 			(*ifc->m->addmulti)(ifc, a, lifc->local);
@@ -635,14 +652,14 @@ addselfcache(Ipifc *ifc, Iplifc *lifc, uchar *a, int type)
 		lp->ref++;
 	}
 
-	qunlock(&selftab);
+	qunlock(f->self);
 }
 
 /*
  *  These structures are unlinked from their chains while
  *  other threads may be using them.  To avoid excessive locking,
  *  just put them aside for a while before freeing them.
- *	called with &selftab locked
+ *	called with f->self locked
  */
 static Iplink *freeiplink;
 static Ipself *freeipself;
@@ -692,15 +709,15 @@ ipselffree(Ipself *p)
  *	called with c->car locked
  */
 static void
-remselfcache(Ipifc *ifc, Iplifc *lifc, uchar *a)
+remselfcache(Fs *f, Ipifc *ifc, Iplifc *lifc, uchar *a)
 {
 	Ipself *p, **l;
 	Iplink *link, **l_self, **l_lifc;
 
-	qlock(&selftab);
+	qlock(f->self);
 
 	/* find the unique selftab entry */
-	l = &selftab.hash[hashipa(a)];
+	l = &f->self->hash[hashipa(a)];
 	for(p = *l; p; p = *l){
 		if(ipcmp(p->a, a) == 0)
 			break;
@@ -754,9 +771,9 @@ remselfcache(Ipifc *ifc, Iplifc *lifc, uchar *a)
 
 	/* remove from routing table */
 	if(isv4(a))
-		v4delroute(a+IPv4off, IPallbits+IPv4off);
+		v4delroute(f, a+IPv4off, IPallbits+IPv4off);
 	else
-		v6delroute(a, IPallbits);
+		v6delroute(f, a, IPallbits);
 	
 	/* no more links, remove from hash and free */
 	*l = p->next;
@@ -764,29 +781,10 @@ remselfcache(Ipifc *ifc, Iplifc *lifc, uchar *a)
 
 	/* if IPnoaddr, forget */
 	if(ipcmp(a, v4prefix) == 0 || ipcmp(a, IPnoaddr) == 0)
-		selftab.acceptall = 0;
+		f->self->acceptall = 0;
 
 out:
-	qunlock(&selftab);
-}
-
-static void
-dumpselftab(void)
-{
-	int i, count;
-	Ipself *p;
-
-	qlock(&selftab);
-	for(i = 0; i < NHASH; i++){
-		p = selftab.hash[i];
-		if(p == nil)
-			continue;
-		count = 0;
-		for(; p != nil && count++ < 6; p = p->next)
-			print("(%I %d %lux)", p->a, p->type, p);
-		print("\n");
-	}
-	qunlock(&selftab);
+	qunlock(f->self);
 }
 
 static char *stformat = "%-32.32I %2.2d %4.4s\n";
@@ -796,7 +794,7 @@ enum
 };
 
 long
-ipselftabread(char *cp, ulong offset, int n)
+ipselftabread(Fs *f, char *cp, ulong offset, int n)
 {
 	int i, m, nifc;
 	Ipself *p;
@@ -804,9 +802,9 @@ ipselftabread(char *cp, ulong offset, int n)
 	char state[8];
 
 	m = 0;
-	qlock(&selftab);
+	qlock(f->self);
 	for(i = 0; i < NHASH && m < n; i++){
-		for(p = selftab.hash[i]; p != nil && m < n; p = p->next){
+		for(p = f->self->hash[i]; p != nil && m < n; p = p->next){
 			if(offset == 0){
 				nifc = 0;
 				for(link = p->link; link; link = link->selflink)
@@ -817,7 +815,7 @@ ipselftabread(char *cp, ulong offset, int n)
 			offset -= Nstformat;
 		}
 	}
-	qunlock(&selftab);
+	qunlock(f->self);
 	return m;
 }
 
@@ -830,24 +828,18 @@ ipselftabread(char *cp, ulong offset, int n)
  *	Rmcast
  */
 int
-ipforme(uchar *addr)
+ipforme(Fs *f, uchar *addr)
 {
 	Ipself *p;
-	int count;
 
-	p = selftab.hash[hashipa(addr)];
-	count = 0;
+	p = f->self->hash[hashipa(addr)];
 	for(; p; p = p->next){
-		if(count++ > 1000){	/* check for loops */
-			dumpselftab();
-			break;
-		}
 		if(ipcmp(addr, p->a) == 0)
 			return p->type;
 	}
 
 	/* hack to say accept anything */
-	if(selftab.acceptall)
+	if(f->self->acceptall)
 		return Runi;
 
 	return 0;
@@ -858,29 +850,28 @@ ipforme(uchar *addr)
  *  return nil.
  */
 Ipifc*
-findipifc(uchar *remote, int type)
+findipifc(Fs *f, uchar *remote, int type)
 {
 	Ipifc *ifc;
 	Iplifc *lifc;
-	Conv **cp;
+	Conv **cp, **e;
 	uchar gnet[IPaddrlen];
 
-	for(cp = ipifc.conv; cp < &ipifc.conv[ipifc.nc]; cp++){
+	e = &f->ipifc->conv[f->ipifc->nc];
+	for(cp = f->ipifc->conv; cp < e; cp++){
 		if(*cp == 0)
 			continue;
 		ifc = (Ipifc*)(*cp)->ptcl;
 		for(lifc = ifc->lifc; lifc; lifc = lifc->next){
 			maskip(remote, lifc->mask, gnet);
-			if(ipcmp(gnet, lifc->net) == 0){
-				qunlock(&ipifc);
+			if(ipcmp(gnet, lifc->net) == 0)
 				return ifc;
-			}
 		}
 	}
 
 	/* for now for broadcast and mutlicast, just use first interface */
 	if(type & (Rbcast|Rmulti)){
-		for(cp = ipifc.conv; cp < &ipifc.conv[ipifc.nc]; cp++){
+		for(cp = f->ipifc->conv; cp < e; cp++){
 			if(*cp == 0)
 				continue;
 			ifc = (Ipifc*)(*cp)->ptcl;
@@ -897,17 +888,17 @@ findipifc(uchar *remote, int type)
  *  local and return the ifc for that address
  */
 void
-findlocalip(uchar *local, uchar *remote)
+findlocalip(Fs *f, uchar *local, uchar *remote)
 {
 	Ipifc *ifc;
 	Iplifc *lifc;
-	Conv **cp;
+	Conv **cp, **e;
 	Route *r;
 	uchar gate[IPaddrlen];
 	uchar gnet[IPaddrlen];
 
-	qlock(&ipifc);
-	r = v6lookup(remote);
+	qlock(f->ipifc);
+	r = v6lookup(f, remote);
 	
 	if(r != nil){
 		ifc = r->ifc;
@@ -932,7 +923,8 @@ findlocalip(uchar *local, uchar *remote)
 	}
 		
 	/* no match, choose first ifc local address */
-	for(cp = ipifc.conv; cp < &ipifc.conv[ipifc.nc]; cp++){
+	e = &f->ipifc->conv[f->ipifc->nc];
+	for(cp = f->ipifc->conv; cp < e; cp++){
 		if(*cp == 0)
 			continue;
 		ifc = (Ipifc*)(*cp)->ptcl;
@@ -943,7 +935,7 @@ findlocalip(uchar *local, uchar *remote)
 	}
 
 out:
-	qunlock(&ipifc);
+	qunlock(f->ipifc);
 }
 
 /*
@@ -999,14 +991,14 @@ iplocalonifc(Ipifc *ifc, uchar *ip)
  *  See if we're proxying for this address on this interface
  */
 int
-ipproxyifc(Ipifc *ifc, uchar *ip)
+ipproxyifc(Fs *f, Ipifc *ifc, uchar *ip)
 {
 	Route *r;
 	uchar net[IPaddrlen];
 	Iplifc *lifc;
 
 	/* see if this is a direct connected pt to pt address */
-	r = v6lookup(ip);
+	r = v6lookup(f, ip);
 	if(r == nil)
 		return 0;
 	if((r->type & Rifc) == 0)
@@ -1050,6 +1042,9 @@ ipifcaddmulti(Conv *c, uchar *ma, uchar *ia)
 	Iplifc *lifc;
 	Conv **p;
 	Ipmulti *multi, **l;
+	Fs *f;
+
+	f = c->p->f;
 	
 	for(l = &c->multi; *l; l = &(*l)->next)
 		if(ipcmp(ma, (*l)->ma) == 0)
@@ -1061,7 +1056,7 @@ ipifcaddmulti(Conv *c, uchar *ma, uchar *ia)
 	ipmove(multi->ia, ia);
 	multi->next = nil;
 
-	for(p = ipifc.conv; *p; p++){
+	for(p = f->ipifc->conv; *p; p++){
 		if((*p)->inuse == 0)
 			continue;
 		ifc = (Ipifc*)(*p)->ptcl;
@@ -1072,7 +1067,7 @@ ipifcaddmulti(Conv *c, uchar *ma, uchar *ia)
 		wlock(ifc);
 		for(lifc = ifc->lifc; lifc; lifc = lifc->next)
 			if(ipcmp(ia, lifc->local) == 0)
-				addselfcache(ifc, lifc, ma, Rmulti);
+				addselfcache(f, ifc, lifc, ma, Rmulti);
 		wunlock(ifc);
 		poperror();
 	}
@@ -1089,6 +1084,9 @@ ipifcremmulti(Conv *c, uchar *ma, uchar *ia)
 	Iplifc *lifc;
 	Conv **p;
 	Ipifc *ifc;
+	Fs *f;
+
+	f = c->p->f;
 	
 	for(l = &c->multi; *l; l = &(*l)->next)
 		if(ipcmp(ma, (*l)->ma) == 0)
@@ -1101,7 +1099,7 @@ ipifcremmulti(Conv *c, uchar *ma, uchar *ia)
 
 	*l = multi->next;
 
-	for(p = ipifc.conv; *p; p++){
+	for(p = f->ipifc->conv; *p; p++){
 		if((*p)->inuse == 0)
 			continue;
 
@@ -1113,7 +1111,7 @@ ipifcremmulti(Conv *c, uchar *ma, uchar *ia)
 		wlock(ifc);
 		for(lifc = ifc->lifc; lifc; lifc = lifc->next)
 			if(ipcmp(ia, lifc->local) == 0)
-				remselfcache(ifc, lifc, ma);
+				remselfcache(f, ifc, lifc, ma);
 		wunlock(ifc);
 		poperror();
 	}
