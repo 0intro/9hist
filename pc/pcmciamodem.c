@@ -53,8 +53,11 @@ pcmciamodemlink(void)
 		slot = -1;
 		for(j = 0; modems[j]; j++){
 			slot = pcmspecial(modems[j], &isa);
-			if(slot >= 0)
+			if(slot >= 0){
+				print("%s in pcmcia slot %d port %0xlx irq %d\n",
+					modems[j], slot, isa.port, isa.irq);
 				break;
+			}
 		}
 		if(slot < 0)
 			break;
