@@ -3,6 +3,7 @@
 #include	"mem.h"
 #include	"dat.h"
 #include	"fns.h"
+#include	"io.h"
 
 IOQ dkbdq;
 IOQ dprintq;
@@ -78,9 +79,11 @@ printlog(char *cpu)
 		return;
 	s = &syslogbuf[i];
 
+	if(s->next < s->buf || s->next >= &s->buf[sizeof(s->buf)])
+		s->next = s->buf;
 	end = s->next;
 	p = end + 1;
-	if(p >= &s->buf[sizeof(s->buf)])
+	if(p >= &s->buf[sizeof(s->buf)] || p < s->buf)
 		p = s->buf;
 	while(p != end){
 		c = *p & 0xff;
@@ -202,11 +205,15 @@ debugger(void *arg)
 		case 'i':
 			printinfo();
 			break;
+		case 'q':
+			firmware(cpuserver ? PROM_AUTOBOOT : PROM_REINIT);
+			break;
 		default:
 			dprint("!commands are:\r\n");
 			dprint("!	l <cpu#> - print cpu log\r\n");
 			dprint("!	h <location> <howmany> - hex display\r\n");
 			dprint("!	i - display some addresses\r\n");
+			dprint("!	q - quit/rebooot\r\n");
 			break;
 		}
 	}

@@ -75,109 +75,116 @@ void
 trap(Ureg *ur)
 {
 	int ecode;
-	int user, x;
+	int user, cop, x;
 	ulong fcr31;
-	char buf[2*ERRLEN], buf1[ERRLEN];
-
-	SET(fcr31);
+	char buf[2*ERRLEN], buf1[ERRLEN], *fpexcep;
+*LED=~1;
 	ecode = EXCCODE(ur->cause);
 	LEDON(ecode);
 	user = ur->status&KUP;
 	if(u)
 		u->dbgreg = ur;
+*LED=~2;
+
+	if(u && u->p->fpstate == FPactive) {
+		savefpregs(&u->fpsave);
+		u->p->fpstate = FPinactive;
+		ur->status &= ~CU1;
+	}
+*LED=~3;
 
 	switch(ecode){
 	case CINT:
-		if(u && u->p->state==Running){
-			if(u->p->fpstate == FPactive) {
-				if(ur->cause & INTR3){	/* FP trap */
-					fcr31 = clrfpintr();
-					if(user && fptrap(ur, fcr31))
-						goto Return;
-					ecode = FPEXC;
-					goto Default;
-				}
-				savefpregs(&u->fpsave);
-				u->p->fpstate = FPinactive;
-				ur->status &= ~CU1;
+*LED=~4;
+		if(ur->cause&INTR3) {			/* FP trap */
+*LED=~5;
+			if(u == 0 || u->p->fpstate != FPinactive)
+				panic("fp intr3 no u or not inactive pc=%lux", ur->pc);
+
+			fcr31 = clrfpintr();
+			if(user == 0)
+				panic("kernel floating point trap pc=%lux", ur->pc);
+*LED=~6;
+
+			ur->cause &= ~INTR3;
+			if(!fptrap(ur, fcr31)) {
+				intr(ur);
+				spllo();
+				fpexcep	= fpexcname(ur, fcr31, buf1);
+				sprint(buf, "sys: fp: %s", fpexcep);
+				postnote(u->p, 1, buf, NDebug);
+				break;
 			}
+*LED=~7;
 		}
 		intr(ur);
+*LED=~8;
 		break;
 
 	case CTLBM:
 	case CTLBL:
 	case CTLBS:
+*LED=~9;
 		if(u == 0)
 			panic("fault u==0 pc %lux addr %lux", ur->pc, ur->badvaddr);
-		if(u->p->fpstate == FPactive) {
-			savefpregs(&u->fpsave);
-			u->p->fpstate = FPinactive;
-			ur->status &= ~CU1;
-		}
+*LED=~10;
 		spllo();
 		x = u->p->insyscall;
 		u->p->insyscall = 1;
 		faultmips(ur, user, ecode);
 		u->p->insyscall = x;
+*LED=~11;
 		break;
 
 	case CCPU:
-		if(u && u->p && u->p->fpstate == FPinit) {
-			restfpregs(&initfp, u->fpsave.fpstatus);
-			u->p->fpstate = FPactive;
-			ur->status |= CU1;
-			break;
+*LED=~12;
+		cop = (ur->cause>>28)&3;
+		if(u && cop == 1) {
+			if(u->p->fpstate == FPinit) {
+				restfpregs(&initfp, u->fpsave.fpstatus);
+				u->p->fpstate = FPactive;
+				ur->status |= CU1;
+				break;
+			}
+			if(u->p->fpstate == FPinactive) {
+				restfpregs(&u->fpsave, u->fpsave.fpstatus);
+				u->p->fpstate = FPactive;
+				ur->status |= CU1;
+				break;
+			}
 		}
-		if(u && u->p && u->p->fpstate == FPinactive) {
-			restfpregs(&u->fpsave, u->fpsave.fpstatus);
-			u->p->fpstate = FPactive;
-			ur->status |= CU1;
-			break;
-		}
-		goto Default;
+*LED=~13;
+		/* Fallthrough */
 
 	default:
-		if(u && u->p && u->p->fpstate == FPactive){
-			savefpregs(&u->fpsave);
-			u->p->fpstate = FPinactive;
-			ur->status &= ~CU1;
-		}
-	Default:
-		/*
-		 * This isn't good enough; can still deadlock because we may
-		 * hold print's locks in this processor.
-		 */
-		if(user){
+		if(user) {
 			spllo();
-			if(ecode == FPEXC)
-				sprint(buf, "sys: fp: %s", fpexcname(ur, fcr31, buf1));
-			else
-				sprint(buf, "sys: %s", excname[ecode]);
-
+			sprint(buf, "sys: %s", excname[ecode]);
 			postnote(u->p, 1, buf, NDebug);
-		}else{
-			print("%s %s pc=%lux\n", user? "user": "kernel", excname[ecode], ur->pc);
-			if(ecode == FPEXC)
-				print("fp: %s\n", fpexcname(ur, fcr31, buf1));
-			dumpregs(ur);
-			dumpstack();
-			if(m->machno == 0)
-				spllo();
-			exit(1);
+			break;
 		}
+		print("kernel %s pc=%lux\n", excname[ecode], ur->pc);
+		dumpregs(ur);
+		dumpstack();
+		if(m->machno == 0)
+			spllo();
+		exit(1);
 	}
+*LED=~14;
 
 	splhi();
-    Return:
 	if(user) {
+*LED=~15;
 		notify(ur);
+*LED=~16;
 		if(u->p->fpstate == FPinactive) {
 			restfpregs(&u->fpsave, u->fpsave.fpstatus);
 			u->p->fpstate = FPactive;
 			ur->status |= CU1;
 		}
+*LED=~17;
 	}
+*LED=~0;
 	LEDOFF(ecode);
 }
 
@@ -193,20 +200,17 @@ intr(Ureg *ur)
 
 	m->intr++;
 	cause = ur->cause&(INTR5|INTR4|INTR3|INTR2|INTR1);
-	if(cause & (INTR2|INTR4)){
-		LEDON(LEDclock);
-		clock(ur);
-		LEDOFF(LEDclock);
-		cause &= ~(INTR2|INTR4);
-	}
+
 	if(cause & INTR1){
 		duartintr();
 		cause &= ~INTR1;
 	}
+
 	if(cause & INTR5){
 		any = 0;
 		if(!(*MPBERR1 & (1<<8))){
 			print("MP bus error %lux %lux\n", *MPBERR0, *MPBERR1);
+			print("PC %lux R31 %lux\n", ur->pc, ur->r31);
 			*MPBERR0 = 0;
 			i = *SBEADDR;
 			USED(i);
@@ -258,8 +262,8 @@ intr(Ureg *ur)
 		if(pend & 1) {
 			v = INTVECREG->i[0].vec;
 			if(!(v & (1<<12))){
-				print("io2 mp bus error %d %lux %lux\n", 0,
-					*MPBERR0, *MPBERR1);
+				print("ioberr %lux %lux\n", *MPBERR0, *MPBERR1);
+				print("PC %lux R31 %lux\n", ur->pc, ur->r31);
 				*MPBERR0 = 0;
 				any = 1;
 			}
@@ -315,6 +319,14 @@ intr(Ureg *ur)
 		*IO2SETMASK = 0xff000000;
 		cause &= ~INTR5;
 	}
+
+	if(cause & (INTR2|INTR4)){
+		LEDON(LEDclock);
+		clock(ur);
+		LEDOFF(LEDclock);
+		cause &= ~(INTR2|INTR4);
+	}
+
 	if(cause)
 		panic("cause %lux %lux\n", u, cause);
 }
@@ -408,48 +420,57 @@ notify(Ureg *ur)
 		l = strlen(n->msg);
 		if(l > ERRLEN-15)	/* " pc=0x12345678\0" */
 			l = ERRLEN-15;
+
 		sprint(n->msg+l, " pc=0x%lux", ur->pc);
 	}
+
 	if(n->flag!=NUser && (u->notified || u->notify==0)){
 		if(n->flag == NDebug)
 			pprint("suicide: %s\n", n->msg);
-    Die:
+
 		qunlock(&u->p->debug);
 		pexit(n->msg, n->flag!=NDebug);
 	}
-	sent = 0;
-	if(!u->notified){
-		if(!u->notify)
-			goto Die;
-		sent = 1;
-		u->svstatus = ur->status;
-		sp = ur->usp;
-		sp -= sizeof(Ureg);
-		if(!okaddr((ulong)u->notify, 1, 0)
-		|| !okaddr(sp-ERRLEN-3*BY2WD, sizeof(Ureg)+ERRLEN-3*BY2WD, 0)){
-			pprint("suicide: bad address in notify\n");
-			qunlock(&u->p->debug);
-			pexit("Suicide", 0);
-		}
-		u->ureg = (void*)sp;
-		memmove((Ureg*)sp, ur, sizeof(Ureg));
-		sp -= ERRLEN;
-		memmove((char*)sp, u->note[0].msg, ERRLEN);
-		sp -= 3*BY2WD;
-		*(ulong*)(sp+2*BY2WD) = sp+3*BY2WD;	/* arg 2 is string */
-		u->svr1 = ur->r1;			/* save away r1 */
-		ur->r1 = (ulong)u->ureg;		/* arg 1 is ureg* */
-		*(ulong*)(sp+0*BY2WD) = 0;		/* arg 0 is pc */
-		ur->usp = sp;
-		ur->pc = (ulong)u->notify;
-		u->notified = 1;
-		u->nnote--;
-		memmove(&u->lastnote, &u->note[0], sizeof(Note));
-		memmove(&u->note[0], &u->note[1], u->nnote*sizeof(Note));
+
+	if(u->notified) {
+		qunlock(&u->p->debug);
+		splx(s);
+		return 0;
 	}
+		
+	if(!u->notify) {
+		qunlock(&u->p->debug);
+		pexit(n->msg, n->flag!=NDebug);
+	}
+	u->svstatus = ur->status;
+	sp = ur->usp;
+	sp -= sizeof(Ureg);
+
+	if(sp&0x3 || !okaddr((ulong)u->notify, 1, 0)
+	|| !okaddr(sp-ERRLEN-3*BY2WD, sizeof(Ureg)+ERRLEN-3*BY2WD, 0)){
+		pprint("suicide: bad address or sp in notify\n");
+		qunlock(&u->p->debug);
+		pexit("Suicide", 0);
+	}
+	u->ureg = (void*)sp;
+	memmove((Ureg*)sp, ur, sizeof(Ureg));
+	sp -= ERRLEN;
+	memmove((char*)sp, u->note[0].msg, ERRLEN);
+	sp -= 3*BY2WD;
+	*(ulong*)(sp+2*BY2WD) = sp+3*BY2WD;	/* arg 2 is string */
+	u->svr1 = ur->r1;			/* save away r1 */
+	ur->r1 = (ulong)u->ureg;		/* arg 1 is ureg* */
+	*(ulong*)(sp+0*BY2WD) = 0;		/* arg 0 is pc */
+	ur->usp = sp;
+	ur->pc = (ulong)u->notify;
+	u->notified = 1;
+	u->nnote--;
+	memmove(&u->lastnote, &u->note[0], sizeof(Note));
+	memmove(&u->note[0], &u->note[1], u->nnote*sizeof(Note));
+
 	qunlock(&u->p->debug);
 	splx(s);
-	return sent;
+	return 1;
 }
 
 /*
@@ -568,7 +589,7 @@ syscall(Ureg *aur)
 		noted(&aur, *(ulong*)(sp+BY2WD));	/* doesn't return */
 	splhi();
 	if(u->scallnr!=RFORK && (p->procctl || u->nnote)){
-		ur->r1 = ret;				/* load up for noted() */
+		ur->r1 = ret;			/* load up for noted() */
 		if(notify(ur))
 			return ur->r1;
 	}
