@@ -47,8 +47,8 @@ devdir(Chan *c, Qid qid, char *n, long length, char *user, long perm, Dir *db)
 	db->mtime = kerndate;
 	db->hlength = 0;
 	db->length = length;
-	strncpy(db->uid, user, NAMELEN);
-	strncpy(db->gid, eve, NAMELEN);
+	memmove(db->uid, user, NAMELEN);
+	memmove(db->gid, eve, NAMELEN);
 }
 
 int

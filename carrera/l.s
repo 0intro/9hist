@@ -212,7 +212,7 @@ TEXT	getrandom(SB),$0
 	WAIT
 	RET
 
-TEXT	puttlbxx(SB), $0
+TEXT	puttlbx(SB), $0
 
 	MOVW	4(FP), R2
 	MOVW	8(FP), R3
@@ -750,6 +750,9 @@ tas1:
  *  we avoid using R4, R5, R6, and R7 so gotopc can call us without saving them
  */
 TEXT	icflush(SB), $-4			/* icflush(virtaddr, count) */
+MOVW $0xA0090008, R10
+MOVW $2001, R9
+MOVW R9, (R10)
 	MOVW	M(STATUS), R10
 	WAIT
 	MOVW	4(FP), R9
@@ -779,6 +782,9 @@ icflush1:			/* primary cache line size is 16 bytes */
 	WAIT
 	WAIT
 	WAIT
+MOVW $0xA0090008, R10
+MOVW $2002, R9
+MOVW R9, (R10)
 	RET
 
 TEXT	dcflush(SB), $-4			/* dcflush(virtaddr, count) */

@@ -6,8 +6,6 @@
 #include	"io.h"
 #include	"init.h"
 
-int	junk[32];
-
 /*
  *  args passed by boot process
  */
@@ -33,6 +31,9 @@ Softtlb stlb[MAXMACH][STLBSIZE];
 Conf	conf;
 FPsave	initfp;
 
+extern	uchar rdbgcode[];
+extern	ulong	rdbglen;
+
 void
 main(void)
 {
@@ -57,6 +58,7 @@ main(void)
 	chandevreset();
 	swapinit();
 	userinit();
+	rdbginit();
 	schedinit();
 }
 
@@ -204,18 +206,6 @@ ioinit(int mapeisa)
 
 	/* Look at the first 16M of Eisa memory */
 /*	IO(uchar, EisaLatch) = 0; /**/
-}
-
-void	puttlbxx(int, ulong, ulong, ulong, int);
-void	puttlbx(int a, ulong b, ulong c, ulong d, int e)
-{
-	static int done[4];
-
-	if(((c|d)&PTEVALID) && a < 4){
-		if(done[a]++)
-			puttlbx(a, b, c, d, e);
-	}
-	puttlbxx(a, b, c, d, e);
 }
 
 /*
@@ -418,4 +408,10 @@ buzz(int f, int d)
 {
 	USED(f);
 	USED(d);
+}
+
+void
+rdbginit(void)
+{
+	memmove((void*)0xA001C000, rdbgcode, rdbglen);
 }

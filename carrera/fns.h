@@ -76,6 +76,7 @@ int	puttlb(ulong, ulong, ulong);
 void	puttlbx(int, ulong, ulong, ulong, int);
 void*	pxalloc(ulong);
 void*	pxspanalloc(ulong, int, ulong);
+void	rdbginit(void);
 ulong	rdcount(void);
 int	readlog(ulong, char*, ulong);
 void	restfpregs(FPsave*, ulong);

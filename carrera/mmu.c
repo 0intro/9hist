@@ -130,7 +130,6 @@ kunmap(KMap *k)
 
 	s = splhi();
 	if(decref(k) == 0) {
-puttlb((k->virt & ~BY2PG) | TLBPID(tlbvirt()), k->phys0 & ~PTEVALID, k->phys1 & ~PTEVALID);
 		k->virt = 0;
 		k->phys0 = 0;
 		k->phys1 = 0;
@@ -306,7 +305,7 @@ extern ulong tlbvirt(void);
 			print("entry->virt %lux pg->va %lux\n", entry->virt, pg->va);
 			panic("icflush not in TLB");
 		}
-if(pg->va == 0x19000) {
+if(0 && pg->va == 0x19000) {
 print("xx>> virt %lux phys0 %lux phys1 %lux\n", tlb[0],tlb[1],tlb[2]);
 }
 		icflush((void*)pg->va, BY2PG);
