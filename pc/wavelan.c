@@ -528,27 +528,51 @@ w_txdone(Ctlr* ctlr, int sts)
 		ctlr->ntx++;
 }
 
-static int
-w_stats(Ctlr* ctlr)
+static void
+w_stats(Ctlr* ctlr, int len)
 {
-	int i, rc, sp;
-	Wltv ltv;
+	int i, rc;
 	ulong* p = (ulong*)&ctlr->WStats;
 	ulong* pend = (ulong*)&ctlr->end;
+
+	for (i = 0; i < len && p < pend; i++){
+		rc = csr_ins(ctlr, WR_Data1);
+		if(rc > 0xf000)
+			rc = ~rc & 0xffff;
+		p[i] += rc;
+	}
+}
+
+static void
+w_scan(Ctlr* ctlr, int len)
+{
+	int i;
+
+	for (i = 0; i < len && i < nelem(ctlr->wscan); i++)
+		ctlr->wscan[i] = csr_ins(ctlr, WR_Data1);
+	ctlr->nwscan = i;
+}
+
+static int
+w_info(Ctlr* ctlr)
+{
+	int sp;
+	Wltv ltv;
 
 	sp = csr_ins(ctlr, WR_InfoId);
 	ltv.len = ltv.type = 0;
 	w_read(ctlr, sp, 0, &ltv, 4);
-	if(ltv.type == WTyp_Stats){
-		ltv.len--;
-		for (i = 0; i < ltv.len && p < pend; i++){
-			rc = csr_ins(ctlr, WR_Data1);
-			if(rc > 0xf000)
-				rc = ~rc & 0xffff;
-			p[i] += rc;
-		}
+	ltv.len--;
+	switch(ltv.type){
+	case WTyp_Stats:
+		w_stats(ctlr, ltv.len);
+		return 0;
+	case WTyp_Scan:
+		print("calling w_scan %d\n", ltv.len);
+		w_scan(ctlr, ltv.len);
 		return 0;
 	}
+	print("got type %d\n", ltv.len);
 	return -1;
 }
 
@@ -588,7 +612,7 @@ w_intr(Ether *ether)
 	}
 	if(rc & WInfoEv){
 		ctlr->ninfo++;
-		w_stats(ctlr);
+		w_info(ctlr);
 		csr_ack(ctlr, WInfoEv);
 	}
 	if(rc & WTxErrEv){
@@ -655,7 +679,7 @@ w_timer(void* arg)
 			}
 			if((ctlr->ticks % 120) == 0)
 			if(ctlr->txbusy == 0)
-				w_cmd(ctlr, WCmdAskStats, WTyp_Stats);
+				w_cmd(ctlr, WCmdEnquire, WTyp_Stats);
 		}
 		iunlock(ctlr);
 	}
@@ -771,7 +795,7 @@ w_ifstat(Ether* ether, void* a, long n, ulong offset)
 	if(n == 0 || offset != 0)
 		return 0;
 
-	p = malloc(READSTR);
+	p = malloc(2*READSTR);
 	l = 0;
 
 	PRINTSTAT("Signal: %d\n", ctlr->signal-149);
@@ -823,7 +847,7 @@ w_ifstat(Ether* ether, void* a, long n, ulong offset)
 	PRINTSTAT("Channel: %d\n", ltv_ins(ctlr, WTyp_Chan));
 	PRINTSTAT("AP density: %d\n", ltv_ins(ctlr, WTyp_ApDens));
 	PRINTSTAT("Promiscuous mode: %d\n", ltv_ins(ctlr, WTyp_Prom));
-	if(i == 3)
+	if(i == WPTypeAdHoc)
 		PRINTSTAT("SSID name: %s\n", ltv_inname(ctlr, WTyp_NetName));
 	else {
 		Wltv ltv;
@@ -849,6 +873,11 @@ w_ifstat(Ether* ether, void* a, long n, ulong offset)
 			txid = ltv_ins(ctlr, WTyp_TxKey);
 			PRINTSTAT("Transmit key id: %d\n", txid);
 		}
+	}
+	if(ctlr->nwscan){
+		for(i = 0; i < ctlr->nwscan; i++)
+			PRINTSTAT("ws: %4.4ux\n", ctlr->wscan[i]);
+		ctlr->nwscan = 0;
 	}
 	iunlock(ctlr);
 
@@ -892,14 +921,17 @@ w_option(Ctlr* ctlr, char* buf, long n)
 	r = 0;
 
 	cb = parsecmd(buf, n);
-	if(cb->nf < 2)
+	if(cistrcmp(cb->f[0], "scan") == 0){
+		w_cmd(ctlr, WCmdEnquire, WTyp_Scan);
+	}
+	else if(cb->nf < 2)
 		r = -1;
 	else if(cistrcmp(cb->f[0], "essid") == 0){
 		if(cistrcmp(cb->f[1],"default") == 0)
 			p = "";
 		else
 			p = cb->f[1];
-		if(ctlr->ptype == 3){
+		if(ctlr->ptype == WPTypeAdHoc){
 			memset(ctlr->netname, 0, sizeof(ctlr->netname));
 			strncpy(ctlr->netname, p, WNameLen);
 		}
