@@ -1250,7 +1250,7 @@ sys_stat(ulong *arg)
 	Chan *c;
 	uint l;
 	uchar buf[128];	/* old DIRLEN plus a little should be plenty */
-	char strs[128];
+	char strs[128], *name;
 	Dir d;
 	char old[] = "old stat system call - recompile";
 
@@ -1265,6 +1265,9 @@ sys_stat(ulong *arg)
 	/* buf contains a new stat buf; convert to old. yuck. */
 	if(l <= BIT16SZ)	/* buffer too small; time to face reality */
 		error(old);
+	name = cnamelast(c->name);
+	if(name)
+		l = dirsetname(name, strlen(name), buf, l, sizeof buf);
 	l = convM2D(buf, l, &d, strs);
 	if(l == 0)
 		error(old);
@@ -1298,7 +1301,7 @@ sys_fstat(ulong *arg)
 		error(old);
 	name = cnamelast(c->name);
 	if(name)
-		l = dirsetname(name, strlen(name), (uchar*)arg[1], l, arg[2]);
+		l = dirsetname(name, strlen(name), buf, l, sizeof buf);
 	l = convM2D(buf, l, &d, strs);
 	if(l == 0)
 		error(old);
