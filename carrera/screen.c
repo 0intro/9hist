@@ -112,22 +112,6 @@ GBitmap	vgascreen =
 	0
 };
 
-uchar bdata[] =
-{
-	0xC0,
-};
-
-GBitmap bgrnd =
-{
-	(ulong*)bdata,
-	0,
-	4,
-	3,
-	{ 0, 0, 1, 1 },
-	{ 0, 0, 1, 1 },
-	0
-};
-
 static Rectangle window;
 static Point cursor;
 static int h, w;
@@ -140,7 +124,7 @@ static int isscroll;
 void
 screenwin(void)
 {
-	gtexture(&gscreen, gscreen.r, &bgrnd, S);
+	memset(gscreen.base, 0xC0, gscreen.width*sizeof(ulong)*Dy(gscreen.r));
 	w = defont0.info[' '].width;
 	h = defont0.height;
 	defont = &defont0;	

@@ -1,6 +1,5 @@
 typedef struct Conf	Conf;
 typedef struct FPsave	FPsave;
-typedef struct Cycmsg	Cycmsg;
 typedef struct KMap	KMap;
 typedef struct Lance	Lance;
 typedef struct Lancemem	Lancemem;
@@ -77,25 +76,9 @@ struct	FPsave
 struct PMMU
 {
 	int	pidonmach[MAXMACH];
-	/*
-	 * I/O point for hotrod interfaces.
-	 * This is the easiest way to allocate
-	 * them, but not the prettiest or most general.
-	 */
-	Cycmsg	*kcyc;
-	Cycmsg	*ucyc;
-	Cycmsg	*fcyc;
 };
 
 #include "../port/portdat.h"
-
-struct Cycmsg
-{
-	ulong	cmd;
-	ulong	param[5];
-	Rendez	r;
-	uchar	intr;			/* flag: interrupt has occurred */
-};
 
 /* First FOUR members offsets known by l.s */
 struct Mach

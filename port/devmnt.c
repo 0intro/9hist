@@ -635,8 +635,9 @@ mountio(Mnt *m, Mntrpc *r)
 void
 mntrpcread(Mnt *m, Mntrpc *r)
 {
-	int n;
+	int n, zrd;
 
+	zrd = 0;
 	for(;;) {
 		if(waserror()) {
 			if(mntflush(m, r) == 0) {
@@ -650,8 +651,11 @@ mntrpcread(Mnt *m, Mntrpc *r)
 		r->reply.tag = 0;
 		n = (*devtab[m->c->type].read)(m->c, r->rpc, MAXRPC, 0);
 		poperror();
-		if(n == 0)
+		if(n == 0) {
+			if(++zrd > 3)
+				error(Ehungup);
 			continue;
+		}
 
 		if(convM2S(r->rpc, &r->reply, n) != 0)
 			return;

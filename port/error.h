@@ -18,11 +18,6 @@ extern char Einuse[];		/* device or object already in use */
 extern char Eio[];		/* i/o error */
 extern char Etoobig[];		/* read or write too large */
 extern char Etoosmall[];	/* read or write too small */
-extern char Ebadblt[];		/* bad bitblt or bitmap request */
-extern char Ebadbitmap[];	/* unallocated bitmap */
-extern char Enobitmap[];	/* out of bitmap descriptors */
-extern char Enobitstore[];	/* out of bitmap storage */
-extern char Ebadfont[];		/* unallocated font */
 extern char Enetaddr[];		/* bad network address */
 extern char Emsgsize[];		/* message is too big for protocol */
 extern char Enetbusy[];		/* network device is busy or allocated */
@@ -55,4 +50,5 @@ extern char Esfnotcached[];	/* subfont not cached */
 extern char Esoverlap[];	/* segments overlap */
 extern char Emouseset[];	/* mouse type already set */
 extern char Erecover[];		/* failed to recover fd */
+extern char Eshort[];		/* i/o count too small */
 extern char Egreg[];		/* coherency problem */
