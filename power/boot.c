@@ -44,6 +44,7 @@ void	boot(int);
 int	dkdial(char *);
 int	nonetdial(char *);
 int	bitdial(char *);
+int	preamble(int);
 
 /*
  *  usage: 9b [-a] [server] [file]
@@ -237,6 +238,122 @@ dkdial(char *arg)
 	return fd;
 }
 
+int
+hotdial(char *arg)
+{
+	int fd;
+	char srvdir[100];
+	Waitmsg m;
+
+	/*
+	 * The killer: gotta get a hotrodboot running, so dial up
+	 * on datakit and load it.
+	 */
+	fd = dkdial(arg);
+	if(fd < 0)
+		return -1;
+	if(!preamble(fd)){
+		close(fd);
+		return -1;
+	}
+	/*
+	 * use /dev; it's local
+	 */
+	if(mount(fd, "/dev", MREPL, "", "") < 0)
+		error("mount");
+	switch(fork()){
+	case 0:
+		/*
+		 * child: get hotrodboot running
+		 */
+		execl("/dev/mips/bin/hotrodboot", "hotrodboot", "/dev/hobbit/hot", 0);
+		error("execl hotrodboot");
+	case -1:
+		error("fork");
+	}
+	/*
+	 * parent: wait, then sleep a while
+	 */
+	wait(&m);
+	if(m.msg[0])
+		error(m.msg);
+	fprint(2, "sleep 3 seconds\n");
+	sleep(3*1000);
+	fprint(2, "go for it....\n");
+	return open("#H/hotrod", ORDWR);
+}
+
+
+
+int
+preamble(int fd)
+{
+	int n;
+
+	print("nop...");
+	hdr.type = Tnop;
+	hdr.tag = ~0;
+	n = convS2M(&hdr, buf);
+	if(write(fd, buf, n) != n){
+		print("n = %d\n", n);
+		prerror("write nop");
+		return 0;
+	}
+  reread:
+	n = read(fd, buf, sizeof buf);
+	if(n <= 0){
+		prerror("read nop");
+		return 0;
+	}
+	if(n == 2)
+		goto reread;
+	if(convM2S(buf, &hdr, n) == 0) {
+		print("n = %d; buf = %.2x %.2x %.2x %.2x\n",
+			n, buf[0], buf[1], buf[2], buf[3]);
+		prerror("format nop");
+		return 0;
+	}
+	if(hdr.type != Rnop){
+		prerror("not Rnop");
+		return 0;
+	}
+	if(hdr.tag != ~0){
+		prerror("tag not ~0");
+		return 0;
+	}
+
+	print("session...");
+	hdr.type = Tsession;
+	hdr.tag = ~0;
+	n = convS2M(&hdr, buf);
+	if(write(fd, buf, n) != n){
+		prerror("write session");
+		return 0;
+	}
+	n = read(fd, buf, sizeof buf);
+	if(n <= 0){
+		prerror("read session");
+		return 0;
+	}
+	if(convM2S(buf, &hdr, n) == 0){
+		prerror("format session");
+		return 0;
+	}
+	if(hdr.tag != ~0){
+		prerror("tag not ~0");
+		return 0;
+	}
+	if(hdr.type == Rerror){
+		fprint(2, "boot: error %s\n", hdr.ename);
+		return 0;
+	}
+	if(hdr.type != Rsession){
+		prerror("not Rsession");
+		return 0;
+	}
+	return 1;
+}
+
 void
 boot(int ask)
 {
@@ -253,6 +370,8 @@ boot(int ask)
 		fd = -1;
 		if(strncmp(sys, "bit!", 4) == 0)
 			fd = bitdial(srvname = &sys[4]);
+		if(strncmp(sys, "hot!", 4) == 0)
+			fd = hotdial(srvname = &sys[4]);
 		else if(strncmp(sys, "dk!", 3) == 0)
 			fd = dkdial(srvname = &sys[3]);
 		else if(strncmp(sys, "nonet!", 6) == 0)
@@ -269,67 +388,8 @@ boot(int ask)
 		return;
 	}
 
-	print("nop...");
-	hdr.type = Tnop;
-	hdr.tag = ~0;
-	n = convS2M(&hdr, buf);
-	if(write(fd, buf, n) != n){
-		print("n = %d\n", n);
-		prerror("write nop");
+	if(!preamble(fd))
 		return;
-	}
-  reread:
-	n = read(fd, buf, sizeof buf);
-	if(n <= 0){
-		prerror("read nop");
-		return;
-	}
-	if(n == 2)
-		goto reread;
-	if(convM2S(buf, &hdr, n) == 0) {
-		print("n = %d; buf = %.2x %.2x %.2x %.2x\n",
-			n, buf[0], buf[1], buf[2], buf[3]);
-		prerror("format nop");
-		return;
-	}
-	if(hdr.type != Rnop){
-		prerror("not Rnop");
-		return;
-	}
-	if(hdr.tag != ~0){
-		prerror("tag not ~0");
-		return;
-	}
-
-	print("session...");
-	hdr.type = Tsession;
-	hdr.tag = ~0;
-	n = convS2M(&hdr, buf);
-	if(write(fd, buf, n) != n){
-		prerror("write session");
-		return;
-	}
-	n = read(fd, buf, sizeof buf);
-	if(n <= 0){
-		prerror("read session");
-		return;
-	}
-	if(convM2S(buf, &hdr, n) == 0){
-		prerror("format session");
-		return;
-	}
-	if(hdr.tag != ~0){
-		prerror("tag not ~0");
-		return;
-	}
-	if(hdr.type == Rerror){
-		fprint(2, "boot: error %s\n", hdr.ename);
-		return;
-	}
-	if(hdr.type != Rsession){
-		prerror("not Rsession");
-		return;
-	}
 
 	print("post...");
 	sprint(buf, "#s/%s", srvname);

@@ -15,7 +15,7 @@ void	mem(Hot*, ulong*, ulong);
 /*
  * If set, causes data transfers to have checksums
  */
-#define	ENABCKSUM	1
+#define	ENABCKSUM	0
 
 typedef struct Hotrod	Hotrod;
 typedef struct HotQ	HotQ;
@@ -70,15 +70,23 @@ enum{
 void
 hotsend(Hotrod *h, Hotmsg *m)
 {
+	Hotmsg **mp;
+	long l;
+
 /* print("hotsend send %d %d %lux %lux\n", h->wi, m->cmd, m, m->param[0]); /**/
-	h->wq->msg[h->wi] = (Hotmsg*)MP2VME(m);
-	do
-		delay(1);
-	while(h->wq->msg[h->wi]);
-/* print("hotsend done\n"); /**/
+	mp = &h->wq->msg[h->wi];
+	*mp = (Hotmsg*)MP2VME(m);
 	h->wi++;
 	if(h->wi >= NhotQ)
 		h->wi = 0;
+	l = 0;
+	while(*mp){
+		delay(0);	/* just a subroutine call; stay off VME */
+		if(++l > 1000*1000){
+			l = 0;
+			print("hotsend blocked\n");
+		}
+	}
 }
 
 /*
@@ -360,7 +368,7 @@ hotrodwrite(Chan *c, void *buf, long n)
 			qunlock(hp);
 		}else{
 			/*
-			 *  use hotrod buffer.  lock the buffer till the reply
+			 *  use hotrod buffer.  lock the buffer until the reply
 			 */
 			mp = &u->uhot;
 			qlock(&hp->buflock);
