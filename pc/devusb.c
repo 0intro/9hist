@@ -1197,7 +1197,7 @@ usbdevice(Chan *c)
 
 	d = usbdeviceofpath(c->qid.path);
 	if(d == nil || d->id != c->qid.vers || d->state == Disabled)
-		error(Ehungup);
+		return nil;
 	return d;
 }
 
@@ -1515,6 +1515,8 @@ usbopen(Chan *c, int omode)
 	switch(QID(c->qid)){
 	case Qctl:
 		d = usbdevice(c);
+		if (d == nil)
+			error(Ehungup);
 		if(0&&d->busy)
 			error(Einuse);
 		d->busy = 1;
@@ -1524,6 +1526,8 @@ usbopen(Chan *c, int omode)
 
 	default:
 		d = usbdevice(c);
+		if (d == nil)
+			error(Ehungup);
 		s = QID(c->qid) - Qep0;
 		if(s >= 0 && s < nelem(d->ep)){
 			Endpt *e;
@@ -1572,16 +1576,13 @@ usbclose(Chan *c)
 	if(c->qid.path & CHDIR || c->qid.path < Q3rd)
 		return;
 	qlock(&usbstate);
-	if(waserror()){
-		qunlock(&usbstate);
-		nexterror();
+	d = usbdeviceofpath(c->qid.path);
+	if (d && d->id == c->qid.vers) {
+		if(QID(c->qid) == Qctl)
+			d->busy = 0;
+		if(c->flag & COPEN)
+			freedev(d);
 	}
-	d = usbdevice(c);
-	if(QID(c->qid) == Qctl)
-		d->busy = 0;
-	if(c->flag & COPEN)
-		freedev(d);
-	poperror();
 	qunlock(&usbstate);
 }
 
@@ -1672,11 +1673,15 @@ usbread(Chan *c, void *a, long n, vlong offset)
 
 	case Qctl:
 		d = usbdevice(c);
+		if (d == nil)
+			error(Ehungup);
 		sprint(buf, "%11d %11d ", d->x, d->id);
 		return readstr(offset, a, n, buf);
 
 	case Qsetup:	/* endpoint 0 */
 		d = usbdevice(c);
+		if (d == nil)
+			error(Ehungup);
 		if((e = d->ep[0]) == nil)
 			error(Eio);	/* can't happen */
 		e->data01 = 1;
@@ -1694,6 +1699,8 @@ usbread(Chan *c, void *a, long n, vlong offset)
 
 	case Qstatus:
 		d = usbdevice(c);
+		if (d == nil)
+			error(Ehungup);
 		s = smalloc(READSTR);
 		if(waserror()){
 			free(s);
@@ -1710,6 +1717,8 @@ usbread(Chan *c, void *a, long n, vlong offset)
 
 	default:
 		d = usbdevice(c);
+		if (d == nil)
+			error(Ehungup);
 		if((t -= Qep0) < 0 || t >= nelem(d->ep))
 			error(Eio);
 		if((e = d->ep[t]) == nil || e->mode == OWRITE)
@@ -1813,6 +1822,8 @@ usbwrite(Chan *c, void *a, long n, vlong)
 		return n;
 	}
 	d = usbdevice(c);
+	if (d == nil)
+		error(Ehungup);
 	t = QID(c->qid);
 	switch(t){
 	case Qctl:

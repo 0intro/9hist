@@ -238,13 +238,16 @@ static void
 srvclose(Chan *c)
 {
 	/*
-	 * errors from srvremove will be caught by cclose and ignored.
 	 * in theory we need to override any changes in removability
 	 * since open, but since all that's checked is the owner,
 	 * which is immutable, all is well.
 	 */
-	if(c->flag & CRCLOSE)
+	if(c->flag & CRCLOSE){
+		if(waserror())
+			return;
 		srvremove(c);
+		poperror();
+	}
 }
 
 static long

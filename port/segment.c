@@ -8,9 +8,16 @@
 static void	imagereclaim(void);
 static void	imagechanreclaim(void);
 
-/* System specific segattach devices */
 #include "io.h"
-#include "segment.h"
+
+/*
+ * Attachable segment types
+ */
+static Physseg physseg[10] = {
+	{ SG_SHARED,	"shared",	0,	SEGMAXSIZE,	0, 	0 },
+	{ SG_BSS,	"memory",	0,	SEGMAXSIZE,	0,	0 },
+	{ 0,		0,		0,	0,		0,	0 },
+};
 
 static Lock physseglock;
 

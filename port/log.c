@@ -35,17 +35,12 @@ void
 logclose(Log *alog)
 {
 	lock(alog);
-	if(waserror()){
-		unlock(alog);
-		nexterror();
-	}
 	alog->opens--;
 	if(alog->opens == 0){
 		free(alog->buf);
 		alog->buf = nil;
 	}
 	unlock(alog);
-	poperror();
 }
 
 static int

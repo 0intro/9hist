@@ -947,11 +947,10 @@ audioclose(Chan *c)
 				if ((audio.amode & Awrite) == 0) {
 					s = &audio.o;
 					qlock(s);
-					while(waserror()) {
-						dmawait(s->dma);
-						if (dmaidle(s->dma))
-							break;
-					}
+					while(waserror())
+						;
+					dmawait(s->dma);
+					poperror();
 					outdisable();
 					setempty(s);
 					dmafree(s->dma);
@@ -970,11 +969,10 @@ audioclose(Chan *c)
 						s->filling = &s->buf[0];
 					sendaudio(s);
 				}
-				while(waserror()) {
-					dmawait(s->dma);
-					if (dmaidle(s->dma))
-						break;
-				}
+				while(waserror())
+					;
+				dmawait(s->dma);
+				poperror();
 				outdisable();
 				setempty(s);
 				if ((audio.amode & Aread) == 0)

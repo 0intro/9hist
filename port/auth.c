@@ -278,6 +278,7 @@ freesession(Session *s)
 ulong
 authrequest(Session *s, Fcall *f)
 {
+	Authenticator a;
 	Crypt *cp;
 	ulong id, dofree;
 
@@ -315,10 +316,10 @@ authrequest(Session *s, Fcall *f)
 		memmove(f->ticket, cp->tbuf, TICKETLEN);
 
 	/* create an authenticator */
-	memmove(cp->a.chal, s->schal, CHALLEN);
-	cp->a.num = AuthAc;
-	cp->a.id = id;
-	convA2M(&cp->a, f->auth, cp->t.key);
+	memmove(a.chal, s->schal, CHALLEN);
+	a.num = AuthAc;
+	a.id = id;
+	convA2M(&a, f->auth, cp->t.key);
 	if(dofree)
 		freecrypt(cp);
 	return id;
@@ -330,6 +331,7 @@ authrequest(Session *s, Fcall *f)
 void
 authreply(Session *s, ulong id, Fcall *f)
 {
+	Authenticator a;
 	Crypt *cp;
 
 	if(s == 0)
@@ -345,16 +347,16 @@ authreply(Session *s, ulong id, Fcall *f)
 	if(s == 0 || cp == 0 || s->authid[0] == 0 || strcmp(up->user, "none") == 0)
 		return;
 
-	convM2A(f->rauth, &cp->a, cp->t.key);
-	if(cp->a.num != AuthAs){
+	convM2A(f->rauth, &a, cp->t.key);
+	if(a.num != AuthAs){
 		print("bad encryption type\n");
 		error("server lies");
 	}
-	if(memcmp(cp->a.chal, s->cchal, sizeof(cp->a.chal))){
+	if(memcmp(a.chal, s->cchal, sizeof(a.chal))){
 		print("bad returned challenge\n");
 		error("server lies");
 	}
-	if(cp->a.id != id){
+	if(a.id != id){
 		print("bad returned id\n");
 		error("server lies");
 	}

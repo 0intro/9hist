@@ -936,6 +936,10 @@ ga620pci(void)
 			continue;
 		case (0x620A<<16)|0x1385:	/* Netgear GA620 */
 		case (0x630A<<16)|0x1385:	/* Netgear GA620T */
+		case (0x0001<<16)|0x12AE:	/* Alteon Acenic fiber
+						 * and DEC DEGPA-SA */
+		case (0x0002<<16)|0x12AE:	/* Alteon Acenic copper */
+		case (0x0009<<16)|0x10A9:	/* SGI Acenic */
 			break;
 		}
 

@@ -908,7 +908,7 @@ audioclose(Chan *c)
 
 	switch(c->qid.path & ~CHDIR) {
 	default:
-		error(Eperm);
+		error(Eperm);		/* can't happen */
 		break;
 
 	case Qdir:
@@ -932,10 +932,8 @@ audioclose(Chan *c)
 					pokeaudio();
 			}
 			audio.amode = Aclosed;
-			if(waserror()){
-				qunlock(&audio);
-				nexterror();
-			}
+			while(waserror())
+				;
 			while(audio.active)
 				waitaudio();
 			setempty();

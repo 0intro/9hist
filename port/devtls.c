@@ -571,7 +571,7 @@ tlsclose(Chan *c)
 		unlock(&tdlock);
 
 		if(tr->c != nil && !waserror()){
-			checkstate(tr, t != Qdata, SOpen|SHandshake|SRClose);
+			checkstate(tr, 0, SOpen|SHandshake|SRClose);
 			sendAlert(tr, ECloseNotify);
 			poperror();
 		}
@@ -1781,8 +1781,6 @@ tlshangup(TlsRec *tr)
 		tr->unprocessed = nil;
 	}
 	qunlock(&tr->in.io);
-
-	tlsrecwrite(tr, RAlert, ECloseNotify);
 
 	tlsSetState(tr, SClosed, ~0);
 }

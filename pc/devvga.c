@@ -82,10 +82,12 @@ vgaclose(Chan* c)
 
 	scr = &vgascreen[0];
 	if ((c->qid.path & ~CHDIR) == Qvgaovlctl) {
-		if (scr->dev->ovlctl)
+		if (scr->dev->ovlctl){
+			if(waserror())
+				return;
 			scr->dev->ovlctl(scr, c, closectl, strlen(closectl));
-		else 
-			error(Enonexist);
+			poperror();
+		}
 	}
 }
 

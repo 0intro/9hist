@@ -49,7 +49,7 @@ Dirtab procdir[] =
 };
 
 /* Segment type from portdat.h */
-char *sname[]={ "Text", "Data", "Bss", "Stack", "Shared", "Phys" };
+static char *sname[]={ "Text", "Data", "Bss", "Stack", "Shared", "Phys" };
 
 /*
  * Qids are, in path:

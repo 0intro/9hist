@@ -128,12 +128,8 @@ rootopen(Chan *c, int omode)
  * sysremove() knows this is a nop
  */
 static void
-rootclose(Chan *c)
+rootclose(Chan*)
 {
-	switch(c->qid.path) {
-	default:
-		break;
-	}
 }
 
 static int

@@ -679,17 +679,12 @@ astarclose(Chan *c)
 	case Qctl:
 		ac = a->c + CHAN(c->qid.path);
 		qlock(ac);
-		if(waserror()){
-			qunlock(ac);
-			nexterror();
-		}
 		if(--(ac->opens) == 0){
 			disable(ac);
 			qclose(ac->iq);
 			qclose(ac->oq);
 		}
 		qunlock(ac);
-		poperror();
 		break;
 	}
 }

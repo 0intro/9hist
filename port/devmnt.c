@@ -33,26 +33,26 @@ struct Mntalloc
 	int	rpctag;
 }mntalloc;
 
-void	mattach(Mnt*, Chan*, char*);
-void	mntauth(Mnt*, Mntrpc*, char*, ushort);
-Mnt*	mntchk(Chan*);
-void	mntdirfix(uchar*, Chan*);
-Mntrpc*	mntflushalloc(Mntrpc*);
-void	mntflushfree(Mnt*, Mntrpc*);
-void	mntfree(Mntrpc*);
-void	mntgate(Mnt*);
-void	mntpntfree(Mnt*);
-void	mntqrm(Mnt*, Mntrpc*);
-Mntrpc*	mntralloc(Chan*);
-long	mntrdwr(int, Chan*, void*, long, vlong);
-long	mnt9prdwr(int, Chan*, void*, long, vlong);
-void	mntrpcread(Mnt*, Mntrpc*);
-void	mountio(Mnt*, Mntrpc*);
-void	mountmux(Mnt*, Mntrpc*);
-void	mountrpc(Mnt*, Mntrpc*);
-int	rpcattn(void*);
-void	mclose(Mnt*, Chan*);
-Chan*	mntchan(void);
+static void	mattach(Mnt*, Chan*, char*);
+static void	mntauth(Mnt*, Mntrpc*, char*, ushort);
+static Mnt*	mntchk(Chan*);
+static void	mntdirfix(uchar*, Chan*);
+static Mntrpc*	mntflushalloc(Mntrpc*);
+static void	mntflushfree(Mnt*, Mntrpc*);
+static void	mntfree(Mntrpc*);
+static void	mntgate(Mnt*);
+static void	mntpntfree(Mnt*);
+static void	mntqrm(Mnt*, Mntrpc*);
+static Mntrpc*	mntralloc(Chan*);
+static long	mntrdwr(int, Chan*, void*, long, vlong);
+static long	mnt9prdwr(int, Chan*, void*, long, vlong);
+static void	mntrpcread(Mnt*, Mntrpc*);
+static void	mountio(Mnt*, Mntrpc*);
+static void	mountmux(Mnt*, Mntrpc*);
+static void	mountrpc(Mnt*, Mntrpc*);
+static int	rpcattn(void*);
+static void	mclose(Mnt*, Chan*);
+static Chan*	mntchan(void);
 
 void (*mntstats)(int, Chan*, uvlong, ulong);
 
@@ -95,7 +95,7 @@ mntattach(char *muxattach)
 				unlock(&mntalloc);
 				c = mntchan();
 				if(waserror()) {
-					chanfree(c);
+					cclose(c);
 					nexterror();
 				}
 				mattach(m, c, bogus.spec);
@@ -149,10 +149,7 @@ mntattach(char *muxattach)
 	c = mntchan();
 	if(waserror()) {
 		mclose(m, c);
-		/* Close must not be called since it will
-		 * call mnt recursively
-		 */
-		chanfree(c);
+		cclose(c);
 		nexterror();
 	}
 
@@ -182,12 +179,17 @@ mntattach(char *muxattach)
 	return c;
 }
 
-Chan*
+/*
+ * start off the channel as a root device
+ * until we've really gotten it started so
+ * an early close won't run through devmnt again
+ */
+static Chan*
 mntchan(void)
 {
 	Chan *c;
 
-	c = devattach('M', 0);
+	c = devattach('/', 0);
 	lock(&mntalloc);
 	c->dev = mntalloc.id++;
 	unlock(&mntalloc);
@@ -195,7 +197,7 @@ mntchan(void)
 	return c;
 }
 
-void
+static void
 mattach(Mnt *m, Chan *c, char *spec)
 {
 	ulong id;
@@ -215,11 +217,13 @@ mattach(Mnt *m, Chan *c, char *spec)
 	strncpy(r->request.aname, spec, NAMELEN);
 	id = authrequest(m->c->session, &r->request);
 	mountrpc(m, r);
-	authreply(m->c->session, id, &r->reply);
 
+	c->type = devno('M', 0);
 	c->qid = r->reply.qid;
 	c->mchan = m->c;
 	c->mqid = c->qid;
+
+	authreply(m->c->session, id, &r->reply);
 
 	poperror();
 	mntfree(r);
@@ -387,7 +391,7 @@ mntclunk(Chan *c, int t)
 	poperror();
 }
 
-void
+static void
 mclose(Mnt *m, Chan*)
 {
 	Mntrpc *q, *r;
@@ -404,7 +408,7 @@ mclose(Mnt *m, Chan*)
 	mntpntfree(m);
 }
 
-void
+static void
 mntpntfree(Mnt *m)
 {
 	Mnt *f, **l;
@@ -511,7 +515,7 @@ mntwrite(Chan *c, void *buf, long n, vlong off)
 	return mntrdwr(Twrite, c, buf, n, off);
 }
 
-long
+static long
 mnt9prdwr(int type, Chan *c, void *buf, long n, vlong off)
 {
 	Mnt *m;
@@ -548,7 +552,7 @@ mnt9prdwr(int type, Chan *c, void *buf, long n, vlong off)
 	return nr;
 }
 
-long
+static long
 mntrdwr(int type, Chan *c, void *buf, long n, vlong off)
 {
 	Mnt *m;
@@ -603,9 +607,10 @@ mntrdwr(int type, Chan *c, void *buf, long n, vlong off)
 	return cnt;
 }
 
-void
+static void
 mountrpc(Mnt *m, Mntrpc *r)
 {
+	char *sn, *cn;
 	int t;
 
 	r->reply.tag = 0;
@@ -622,15 +627,21 @@ mountrpc(Mnt *m, Mntrpc *r)
 	default:
 		if(t == r->request.type+1)
 			break;
-		print("mnt: proc %s %lud: mismatch rep 0x%lux tag %d fid %d T%d R%d rp %d\n",
-			up->text, up->pid,
-			r, r->request.tag, r->request.fid, r->request.type, r->reply.type,
-			r->reply.tag);
+		sn = "?";
+		if(m->c->name != nil)
+			sn = m->c->name->s;
+		cn = "?";
+		if(r->c != nil && r->c->name != nil)
+			cn = r->c->name->s;
+		print("mnt: proc %s %lud: mismatch from %s %s rep 0x%lux tag %d fid %d T%d R%d rp %d\n",
+			up->text, up->pid, sn, cn,
+			r, r->request.tag, r->request.fid, r->request.type,
+			r->reply.type, r->reply.tag);
 		error(Emountrpc);
 	}
 }
 
-void
+static void
 mountio(Mnt *m, Mntrpc *r)
 {
 	int n;
@@ -689,7 +700,7 @@ mountio(Mnt *m, Mntrpc *r)
 	mntflushfree(m, r);
 }
 
-void
+static void
 mntrpcread(Mnt *m, Mntrpc *r)
 {
 	int n;
@@ -710,7 +721,7 @@ mntrpcread(Mnt *m, Mntrpc *r)
 	}
 }
 
-void
+static void
 mntgate(Mnt *m)
 {
 	Mntrpc *q;
@@ -725,7 +736,7 @@ mntgate(Mnt *m)
 	unlock(m);
 }
 
-void
+static void
 mountmux(Mnt *m, Mntrpc *r)
 {
 	char *dp;
@@ -766,7 +777,7 @@ mountmux(Mnt *m, Mntrpc *r)
  * Create a new flush request and chain the previous
  * requests from it
  */
-Mntrpc*
+static Mntrpc*
 mntflushalloc(Mntrpc *r)
 {
 	Mntrpc *fr;
@@ -790,7 +801,7 @@ mntflushalloc(Mntrpc *r)
  *  and if it hasn't been answered set the reply to to
  *  Rflush.
  */
-void
+static void
 mntflushfree(Mnt *m, Mntrpc *r)
 {
 	Mntrpc *fr;
@@ -807,7 +818,7 @@ mntflushfree(Mnt *m, Mntrpc *r)
 	}
 }
 
-Mntrpc*
+static Mntrpc*
 mntralloc(Chan *c)
 {
 	Mntrpc *new;
@@ -844,7 +855,7 @@ mntralloc(Chan *c)
 	return new;
 }
 
-void
+static void
 mntfree(Mntrpc *r)
 {
 	lock(&mntalloc);
@@ -861,7 +872,7 @@ mntfree(Mntrpc *r)
 	unlock(&mntalloc);
 }
 
-void
+static void
 mntqrm(Mnt *m, Mntrpc *r)
 {
 	Mntrpc **l, *f;
@@ -880,7 +891,7 @@ mntqrm(Mnt *m, Mntrpc *r)
 	unlock(m);
 }
 
-Mnt*
+static Mnt*
 mntchk(Chan *c)
 {
 	Mnt *m;
@@ -896,7 +907,7 @@ mntchk(Chan *c)
 	return m;
 }
 
-void
+static void
 mntdirfix(uchar *dirbuf, Chan *c)
 {
 	int r;
@@ -908,7 +919,7 @@ mntdirfix(uchar *dirbuf, Chan *c)
 	dirbuf[DIRLEN-1] = c->dev>>8;
 }
 
-int
+static int
 rpcattn(void *v)
 {
 	Mntrpc *r;
