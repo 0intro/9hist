@@ -791,7 +791,6 @@ mkqhtree(ulong *frame, int framesize, int maxms)
 		return nil;
 	}
 	qt->root = tree;
-print("tree root %8.8lux\n", tree);
 	tree->head = Terminate;	/* root */
 	tree->entries = Terminate;
 	for(i=1; i<n; i++){
@@ -799,7 +798,6 @@ print("tree root %8.8lux\n", tree);
 		qh->head = PADDR(&tree[(i-1)/2]) | IsQH;
 		qh->entries = Terminate;
 	}
-print("after loop tree root %8.8lux head %8.8lux entries %8.8lux\n", tree, tree->head, tree->entries);
 	/* distribute leaves evenly round the frame list */
 	leaf0 = n/2;
 	for(i=0; i<framesize; i++){

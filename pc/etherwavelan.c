@@ -1168,11 +1168,6 @@ reset(Ether* ether)
 	Ctlr* ctlr;
 	char buf[ISAOPTLEN], *p;
 
-	if (ether->ctlr){
-		print("#l%d: only one card supported\n", ether->ctlrno);
-		return -1;
-	}
-
 	if((ctlr = malloc(sizeof(Ctlr))) == nil)
 		return -1;
 
