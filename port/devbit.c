@@ -275,7 +275,7 @@ bitclose(Chan *c)
 #define	K2U(x)	(x)
 
 long
-bitread(Chan *c, void *va, long n)
+bitread(Chan *c, void *va, long n, ulong offset)
 {
 	uchar *p, *q;
 	long miny, maxy, t, x, y;
@@ -429,7 +429,7 @@ bitread(Chan *c, void *va, long n)
 		error(Ebadblt);
 
 	case Qscreen:
-		if(c->offset==0){
+		if(offset==0){
 			if(n < 5*12)
 				error(Eio);
 			sprint(va, "%11d %11d %11d %11d %11d ",
@@ -441,7 +441,7 @@ bitread(Chan *c, void *va, long n)
 		}
 		ws = 1<<(3-gscreen.ldepth);	/* pixels per byte */
 		l = (gscreen.r.max.x+ws-1)/ws - gscreen.r.min.x/ws;
-		t = c->offset-5*12;
+		t = offset-5*12;
 		miny = t/l;
 		maxy = (t+n)/l;
 		if(miny >= gscreen.r.max.y)
@@ -467,7 +467,7 @@ bitread(Chan *c, void *va, long n)
 
 
 long
-bitwrite(Chan *c, void *va, long n)
+bitwrite(Chan *c, void *va, long n, ulong offset)
 {
 	uchar *p, *q;
 	long m, v, miny, maxy, minx, maxx, t, x, y, tw, th;

@@ -90,7 +90,7 @@ rootclose(Chan *c)
 #include	"boot.h"
 
 long	 
-rootread(Chan *c, void *buf, long n)
+rootread(Chan *c, void *buf, long n, ulong offset)
 {
 
 	switch(c->qid.path & ~CHDIR){
@@ -98,19 +98,19 @@ rootread(Chan *c, void *buf, long n)
 		return devdirread(c, buf, n, rootdir, nroot, devgen);
 
 	case Qboot:		/* boot */
-		if(c->offset >= sizeof bootcode)
+		if(offset >= sizeof bootcode)
 			return 0;
-		if(c->offset+n > sizeof bootcode)
-			n = sizeof bootcode - c->offset;
-		memmove(buf, ((char*)bootcode)+c->offset, n);
+		if(offset+n > sizeof bootcode)
+			n = sizeof bootcode - offset;
+		memmove(buf, ((char*)bootcode)+offset, n);
 		return n;
 
 	case Qcfs:		/* cfs */
-		if(c->offset >= cfslen)
+		if(offset >= cfslen)
 			return 0;
-		if(c->offset+n > cfslen)
-			n = cfslen - c->offset;
-		memmove(buf, ((char*)cfscode)+c->offset, n);
+		if(offset+n > cfslen)
+			n = cfslen - offset;
+		memmove(buf, ((char*)cfscode)+offset, n);
 		return n;
 
 	case Qdev:
@@ -121,7 +121,7 @@ rootread(Chan *c, void *buf, long n)
 }
 
 long	 
-rootwrite(Chan *c, void *buf, long n)
+rootwrite(Chan *c, void *buf, long n, ulong offset)
 {
 	error(Egreg);
 }

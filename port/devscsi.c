@@ -117,7 +117,7 @@ scsiclose(Chan *c)
 {}
 
 long
-scsiread(Chan *c, char *a, long n)
+scsiread(Chan *c, char *a, long n, ulong offset)
 {
 	Scsi *cmd = &staticcmd;
 	if (n == 0)
@@ -125,7 +125,7 @@ scsiread(Chan *c, char *a, long n)
 	if(c->qid.path & CHDIR)
 		return devdirread(c, a, n, 0, 0, scsigen);
 	if(c->qid.path==1){
-		if(c->offset == 0){
+		if(offset == 0){
 			*a = ownid;
 			n = 1;
 		}else
@@ -155,7 +155,7 @@ scsiread(Chan *c, char *a, long n)
 		memmove(a, cmd->data.base, n);
 		break;
 	case Qdebug:
-		if (c->offset == 0) {
+		if (offset == 0) {
 			n=1;
 			*a="01"[debugs[(c->qid.path>>4)&7]!=0];
 		} else
@@ -168,11 +168,11 @@ scsiread(Chan *c, char *a, long n)
 }
 
 long
-scsiwrite(Chan *c, char *a, long n)
+scsiwrite(Chan *c, char *a, long n, ulong offset)
 {
 	Scsi *cmd = &staticcmd;
 	if(c->qid.path==1 && n>0){
-		if(c->offset == 0){
+		if(offset == 0){
 			n = 1;
 			ownid=*a;
 			scsiinit();
@@ -204,7 +204,7 @@ scsiwrite(Chan *c, char *a, long n)
 		n = cmd->data.ptr - cmd->data.base;
 		break;
 	case Qdebug:
-		if (c->offset == 0) {
+		if (offset == 0) {
 			debugs[(c->qid.path>>4)&7] = (*a=='1');
 			n = 1;
 		} else

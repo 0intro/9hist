@@ -218,13 +218,13 @@ hsvmeclose(Chan *c)
 }
 
 long	 
-hsvmeread(Chan *c, void *buf, long n)
+hsvmeread(Chan *c, void *buf, long n, ulong offset)
 {
 	return streamread(c, buf, n);
 }
 
 long	 
-hsvmewrite(Chan *c, void *buf, long n)
+hsvmewrite(Chan *c, void *buf, long n, ulong offset)
 {
 	return streamwrite(c, buf, n, 0);
 }

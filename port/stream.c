@@ -790,6 +790,7 @@ streamnew(ushort type, ushort dev, ushort id, Qinfo *qi, int noopen)
 	s->type = type;
 	s->dev = dev;
 	s->id = id;
+	s->err = 0;
 
 	/*
  	 *  hang a device and process q off the stream
@@ -801,6 +802,8 @@ streamnew(ushort type, ushort dev, ushort id, Qinfo *qi, int noopen)
 		s->opens = 1;
 	s->hread = 0;
 	q = allocq(&procinfo);
+	WR(q)->ptr = s;
+	RD(q)->ptr = s;
 	s->procq = WR(q);
 	q = allocq(qi);
 	s->devq = RD(q);
@@ -895,6 +898,8 @@ streamexit(Stream *s, int locked)
 			freeq(q);
 		}
 		s->id = s->dev = s->type = 0;
+		if(s->err)
+			freeb(s->err);
 	}
 	s->inuse--;
 	rv = s->inuse;
@@ -972,9 +977,14 @@ void
 stputq(Queue *q, Block *bp)
 {
 	int delim;
+	Stream *s;
 
 	if(bp->type == M_HANGUP){
-		freeb(bp);
+		s = q->ptr;
+		if(bp->rptr<bp->wptr && s->err==0)
+			s->err = bp;
+		else
+			freeb(bp);
 		q->flag |= QHUNGUP;
 		q->other->flag |= QHUNGUP;
 		wakeup(q->other->rp);
@@ -1009,17 +1019,17 @@ stputq(Queue *q, Block *bp)
  *  read a string.  update the offset accordingly.
  */
 long
-stringread(Chan *c, uchar *buf, long n, char *str)
+stringread(Chan *c, uchar *buf, long n, char *str, ulong offset)
 {
 	long i;
 
 	i = strlen(str);
-	i -= c->offset;
+	i -= offset;
 	if(i<n)
 		n = i;
 	if(n<0)
 		return 0;
-	memmove(buf, str + c->offset, n);
+	memmove(buf, str + offset, n);
 	return n;
 }
 
@@ -1036,7 +1046,7 @@ streamctlread(Chan *c, void *vbuf, long n)
 	s = c->stream;
 	if(STREAMTYPE(c->qid.path) == Sctlqid){
 		sprint(num, "%d", s->id);
-		return stringread(c, buf, n, num);
+		return stringread(c, buf, n, num, c->offset);
 	} else {
 		if(CHDIR & c->qid.path)
 			return devdirread(c, vbuf, n, 0, 0, streamgen);
@@ -1091,7 +1101,9 @@ streamread(Chan *c, void *vbuf, long n)
 		bp = getq(q);
 		if(bp == 0){
 			if(q->flag & QHUNGUP){
-				if(s->hread++ < 3)
+				if(s->err)
+					errors((char*)s->err->rptr);
+				else if(s->hread++<3)
 					break;
 				else
 					error(Ehungup);
@@ -1246,8 +1258,12 @@ streamwrite(Chan *c, void *a, long n, int docopy)
 	 *  No writes allowed on hungup channels
 	 */
 	q = s->procq;
-	if(q->other->flag & QHUNGUP)
-		error(Ehungup);
+	if(q->other->flag & QHUNGUP){
+		if(s->err)
+			errors((char*)(s->err->rptr));
+		else
+			error(Ehungup);
+	}
 
 	if(!docopy && isphys(a)){
 		/*

@@ -137,7 +137,7 @@ rtcclose(Chan *c)
 #define GETBCD(o) ((bcdclock[o]&0xf) + 10*(bcdclock[o]>>4))
 
 long	 
-rtcread(Chan *c, void *buf, long n)
+rtcread(Chan *c, void *buf, long n, ulong offset)
 {
 	int i,j;
 	uchar ch;
@@ -192,13 +192,13 @@ rtcread(Chan *c, void *buf, long n)
 	else
 		rtc.year += 1900;
 
-	return readnum(c->offset, buf, n, rtc2sec(&rtc), 12);
+	return readnum(offset, buf, n, rtc2sec(&rtc), 12);
 }
 
 #define PUTBCD(n,o) bcdclock[o] = (n % 10) | (((n / 10) % 10)<<4)
 
 long	 
-rtcwrite(Chan *c, void *buf, long n)
+rtcwrite(Chan *c, void *buf, long n, ulong offset)
 {
 	Rtc rtc;
 	ulong secs;
@@ -208,7 +208,7 @@ rtcwrite(Chan *c, void *buf, long n)
 	uchar *nv;
 	char *cp, *ep;
 
-	if(c->offset!=0)
+	if(offset!=0)
 		error(Ebadarg);
 
 	/*

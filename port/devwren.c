@@ -202,7 +202,7 @@ wrenclose(Chan *c)
 #define	PSHORT(p, v)		((p)[0]=(v), (p)[1]=((v)>>8))
 #define	PLONG(p, v)		(PSHORT(p, (v)), PSHORT(p+2, (v)>>16))
 long
-wrenread(Chan *c, char *a, long n)
+wrenread(Chan *c, char *a, long n, ulong offset)
 {
 	Scsi *cmd = &staticcmd;
 	unsigned long lbn;
@@ -219,9 +219,9 @@ wrenread(Chan *c, char *a, long n)
 	p = &(d->p[Mask&c->qid.path]);
 	switch ((int)(c->qid.path & ~Mask)) {
 	case Qdata:
-		if (n % d->blocksize || c->offset % d->blocksize)
+		if (n % d->blocksize || offset % d->blocksize)
 			error(Ebadarg);
-		lbn = (c->offset/d->blocksize) + p->firstblock;
+		lbn = (offset/d->blocksize) + p->firstblock;
 		if (lbn >= p->maxblock)
 			error(Ebadarg);
 		if (n > sizeof datablk)
@@ -252,7 +252,7 @@ wrenread(Chan *c, char *a, long n)
 	case Qstruct:
 		if (n < 8)
 			error(Ebadarg);
-		if (c->offset >= 8)
+		if (offset >= 8)
 			return 0;
 		n = 8;
 		PLONG((uchar *)&a[0], p->maxblock - p->firstblock);
@@ -265,7 +265,7 @@ wrenread(Chan *c, char *a, long n)
 }
 
 long
-wrenwrite(Chan *c, char *a, long n)
+wrenwrite(Chan *c, char *a, long n, ulong offset)
 {
 	Scsi *cmd = &staticcmd;
 	unsigned long lbn;
@@ -279,9 +279,9 @@ wrenwrite(Chan *c, char *a, long n)
 	p = &(d->p[Mask&c->qid.path]);
 	switch ((int)(c->qid.path & ~Mask)) {
 	case Qdata:
-		if (n % d->blocksize || c->offset % d->blocksize)
+		if (n % d->blocksize || offset % d->blocksize)
 			error(Ebadarg);
-		lbn = c->offset/d->blocksize + p->firstblock;
+		lbn = offset/d->blocksize + p->firstblock;
 		if (lbn >= p->maxblock)
 			error(Ebadarg);
 		if (n > sizeof datablk)

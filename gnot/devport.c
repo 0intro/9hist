@@ -106,7 +106,7 @@ portclose(Chan *c)
 {}
 
 long
-portread(Chan *c, char *a, long n)
+portread(Chan *c, char *a, long n, ulong offset)
 {
 	long s, k;
 	if (n == 0)
@@ -115,9 +115,9 @@ portread(Chan *c, char *a, long n)
 	case Qdir:
 		return devdirread(c, a, n, portdir, NPORT, devgen);
 	case Qdata:
-		if (!conf.portispaged || (s = c->offset >> PORTSHIFT) > 0xff)
+		if (!conf.portispaged || (s = offset >> PORTSHIFT) > 0xff)
 			s = -1;
-		k = c->offset % PORTSIZE;
+		k = offset % PORTSIZE;
 		P_qlock(s);
 		switch ((int)n) {
 		case 1:
@@ -139,16 +139,16 @@ portread(Chan *c, char *a, long n)
 }
 
 long
-portwrite(Chan *c, char *a, long n)
+portwrite(Chan *c, char *a, long n, ulong offset)
 {
 	long s, k;
 	if (n == 0)
 		return 0;
 	switch ((int)c->qid.path) {
 	case Qdata:
-		if (!conf.portispaged || (s = c->offset >> PORTSHIFT) > 0xff)
+		if (!conf.portispaged || (s = offset >> PORTSHIFT) > 0xff)
 			s = -1;
-		k = c->offset % PORTSIZE;
+		k = offset % PORTSIZE;
 		P_qlock(s);
 		switch ((int)n) {
 		case 1:

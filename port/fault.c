@@ -79,20 +79,19 @@ fault(ulong addr, int read)
 				n = BY2PG;
 			pg = newpage(1, o, addr);
 			k = kmap(pg);
-			qlock(o->chan);
+			qlock(&o->chan->rdl);
 			if(waserror()){
 				kunmap(k);
-				qunlock(o->chan);
+				qunlock(&o->chan->rdl);
 				pg->o = 0;
 				pg->ref--;
 				pexit("load i/o error", 0);
 			}
-			o->chan->offset = (addr-o->va) + o->minca;
 			l = (char*)VA(k);
-			if((*devtab[o->chan->type].read)(o->chan, l, n) != n)
+			if((*devtab[o->chan->type].read)(o->chan, l, n, (addr-o->va) + o->minca) != n)
 				error(Eioload);
 			flushpage(pg->pa);
-			qunlock(o->chan);
+			qunlock(&o->chan->rdl);
 			if(n<BY2PG)
 				memset(l+n, 0, BY2PG-n);
 			lock(o);

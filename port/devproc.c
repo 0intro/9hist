@@ -144,9 +144,9 @@ procopen(Chan *c, int omode)
 			goto Close;
 		if(p->pid != PID(c->qid))
 			goto Close;
-		qlock(tc);
+		qlock(&tc->rdl);
 		tc->offset = 0;
-		qunlock(tc);
+		qunlock(&tc->rdl);
 		return tc;
 	case Qctl:
 	case Qnote:
@@ -206,7 +206,7 @@ procclose(Chan * c)
 }
 
 long
-procread(Chan *c, void *va, long n)
+procread(Chan *c, void *va, long n, ulong offset)
 {
 	char *a = va, *b;
 	char statbuf[2*NAMELEN+12+6*12];
@@ -236,9 +236,9 @@ procread(Chan *c, void *va, long n)
 		/*
 		 * One page at a time
 		 */
-		if(((c->offset+n)&~(BY2PG-1)) != (c->offset&~(BY2PG-1)))
-			n = BY2PG - (c->offset&(BY2PG-1));
-		s = seg(p, c->offset);
+		if(((offset+n)&~(BY2PG-1)) != (offset&~(BY2PG-1)))
+			n = BY2PG - (offset&(BY2PG-1));
+		s = seg(p, offset);
 		if(s){
 			o = s->o;
 			if(o == 0)
@@ -248,11 +248,11 @@ procread(Chan *c, void *va, long n)
 				unlock(o);
 				error(Eprocdied);
 			}
-			if(seg(p, c->offset) != s){
+			if(seg(p, offset) != s){
 				unlock(o);
 				error(Egreg);
 			}
-			pte = &o->pte[(c->offset-o->va)>>PGSHIFT];
+			pte = &o->pte[(offset-o->va)>>PGSHIFT];
 			if(s->mod){
 				opte = pte;
 				while(pte = pte->nextmod)	/* assign = */
@@ -264,35 +264,35 @@ procread(Chan *c, void *va, long n)
 			pg = pte->page;
 			unlock(o);
 			if(pg == 0){
-				pprint("nonresident page addr %lux (complain to rob)\n", c->offset);
+				pprint("nonresident page addr %lux (complain to rob)\n", offset);
 				memset(a, 0, n);
 			}else{
 				k = kmap(pg);
 				b = (char*)VA(k);
-				memmove(a, b+(c->offset&(BY2PG-1)), n);
+				memmove(a, b+(offset&(BY2PG-1)), n);
 				kunmap(k);
 			}
 			return n;
 		}
 		/* u area */
-		if(c->offset>=USERADDR && c->offset<USERADDR+BY2PG){
-			if(c->offset+n > USERADDR+BY2PG)
-				n = USERADDR+BY2PG - c->offset;
+		if(offset>=USERADDR && offset<USERADDR+BY2PG){
+			if(offset+n > USERADDR+BY2PG)
+				n = USERADDR+BY2PG - offset;
 			pg = p->upage;
 			if(pg==0 || p->pid!=PID(c->qid))
 				error(Eprocdied);
 			k = kmap(pg);
 			b = (char*)VA(k);
-			memmove(a, b+(c->offset-USERADDR), n);
+			memmove(a, b+(offset-USERADDR), n);
 			kunmap(k);
 			return n;
 		}
 
 		/* kernel memory.  BUG: shouldn't be so easygoing. BUG: mem mapping? */
-		if(c->offset>=KZERO && c->offset<KZERO+conf.npage0*BY2PG){
-			if(c->offset+n > KZERO+conf.npage0*BY2PG)
-				n = KZERO+conf.npage0*BY2PG - c->offset;
-			memmove(a, (char*)c->offset, n);
+		if(offset>=KZERO && offset<KZERO+conf.npage0*BY2PG){
+			if(offset+n > KZERO+conf.npage0*BY2PG)
+				n = KZERO+conf.npage0*BY2PG - offset;
+			memmove(a, (char*)offset, n);
 			return n;
 		}
 		return 0;
@@ -328,18 +328,18 @@ procread(Chan *c, void *va, long n)
 		return n;
 
 	case Qproc:
-		if(c->offset >= sizeof(Proc))
+		if(offset >= sizeof(Proc))
 			return 0;
-		if(c->offset+n > sizeof(Proc))
-			n = sizeof(Proc) - c->offset;
-		memmove(a, ((char*)p)+c->offset, n);
+		if(offset+n > sizeof(Proc))
+			n = sizeof(Proc) - offset;
+		memmove(a, ((char*)p)+offset, n);
 		return n;
 
 	case Qstatus:
-		if(c->offset >= sizeof statbuf)
+		if(offset >= sizeof statbuf)
 			return 0;
-		if(c->offset+n > sizeof statbuf)
-			n = sizeof statbuf - c->offset;
+		if(offset+n > sizeof statbuf)
+			n = sizeof statbuf - offset;
 		sprint(statbuf, "%-27s %-27s %-11s ", p->text, p->pgrp->user, statename[p->state]);
 		for(i=0; i<6; i++){
 			l = p->time[i];
@@ -348,7 +348,7 @@ procread(Chan *c, void *va, long n)
 			l = TK2MS(l);
 			readnum(0, statbuf+2*NAMELEN+12+NUMSIZE*i, NUMSIZE, l, NUMSIZE);
 		}
-		memmove(a, statbuf+c->offset, n);
+		memmove(a, statbuf+offset, n);
 		return n;
 	}
 	error(Egreg);
@@ -356,7 +356,7 @@ procread(Chan *c, void *va, long n)
 
 
 long
-procwrite(Chan *c, void *va, long n)
+procwrite(Chan *c, void *va, long n, ulong offset)
 {
 	Proc *p;
 	Pgrp *pg;

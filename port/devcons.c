@@ -197,14 +197,14 @@ pprint(char *fmt, ...)
 		return 0;
 	n = sprint(buf, "%s %d: ", u->p->text, u->p->pid);
 	n = doprint(buf+n, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
-	qlock(c);
+	qlock(&c->wrl);
 	if(waserror()){
-		qunlock(c);
+		qunlock(&c->wrl);
 		return 0;
 	}
-	(*devtab[c->type].write)(c, buf, n);
+	(*devtab[c->type].write)(c, buf, n, c->offset);
 	c->offset += n;
-	qunlock(c);
+	qunlock(&c->wrl);
 	poperror();
 	return n;
 }
@@ -435,7 +435,7 @@ consclose(Chan *c)
 }
 
 long
-consread(Chan *c, void *buf, long n)
+consread(Chan *c, void *buf, long n, ulong offset)
 {
 	int ch, i, j, k;
 	ulong l;
@@ -492,7 +492,7 @@ consread(Chan *c, void *buf, long n)
 		return i;
 
 	case Qcputime:
-		k = c->offset;
+		k = offset;
 		if(k >= sizeof tmp)
 			return 0;
 		if(k+n > sizeof tmp)
@@ -509,22 +509,22 @@ consread(Chan *c, void *buf, long n)
 		return n;
 
 	case Qpgrpid:
-		return readnum(c->offset, buf, n, u->p->pgrp->pgrpid, NUMSIZE);
+		return readnum(offset, buf, n, u->p->pgrp->pgrpid, NUMSIZE);
 
 	case Qpid:
-		return readnum(c->offset, buf, n, u->p->pid, NUMSIZE);
+		return readnum(offset, buf, n, u->p->pid, NUMSIZE);
 
 	case Qppid:
-		return readnum(c->offset, buf, n, u->p->parentpid, NUMSIZE);
+		return readnum(offset, buf, n, u->p->parentpid, NUMSIZE);
 
 	case Qtime:
-		return readnum(c->offset, buf, n, boottime+TK2SEC(MACHP(0)->ticks), 12);
+		return readnum(offset, buf, n, boottime+TK2SEC(MACHP(0)->ticks), 12);
 
 	case Quser:
-		return readstr(c->offset, buf, n, u->p->pgrp->user);
+		return readstr(offset, buf, n, u->p->pgrp->user);
 
 	case Qlog:
-		return readlog(c->offset, buf, n);
+		return readlog(offset, buf, n);
 
 	case Qnull:
 		return 0;
@@ -536,7 +536,7 @@ consread(Chan *c, void *buf, long n)
 }
 
 long
-conswrite(Chan *c, void *va, long n)
+conswrite(Chan *c, void *va, long n, ulong offset)
 {
 	char cbuf[64];
 	char buf[256];
@@ -573,12 +573,12 @@ conswrite(Chan *c, void *va, long n)
 	case Quser:
 		if(u->p->pgrp->user[0])		/* trying to overwrite /dev/user */
 			error(Eperm);
-		if(c->offset >= NAMELEN-1)
+		if(offset >= NAMELEN-1)
 			return 0;
-		if(c->offset+n >= NAMELEN-1)
-			n = NAMELEN-1 - c->offset;
-		memmove(u->p->pgrp->user+c->offset, a, n);
-		u->p->pgrp->user[c->offset+n] = 0;
+		if(offset+n >= NAMELEN-1)
+			n = NAMELEN-1 - offset;
+		memmove(u->p->pgrp->user+offset, a, n);
+		u->p->pgrp->user[offset+n] = 0;
 		break;
 
 	case Qcputime:

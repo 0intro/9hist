@@ -100,3 +100,6 @@
 
 #define	NSEG		5
 #define	MACHSIZE	4096
+
+
+#define isphys(p) ((((ulong)(p))&0xF0000000) == KSEG)

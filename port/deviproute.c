@@ -268,7 +268,7 @@ iprouteclose(Chan *c)
 #define PAD "                                                                  "
 
 long
-iprouteread(Chan *c, void *a, long n)
+iprouteread(Chan *c, void *a, long n, ulong offset)
 {
 	char	buf[IPR_ENTRYLEN*3];
 	Iproute	*r;
@@ -280,10 +280,10 @@ iprouteread(Chan *c, void *a, long n)
 		return devdirread(c, a, n, iproutetab, Niproutetab, devgen);
 	case Qdata:
 		lock(&iprtab);
-		part = c->offset/IPR_ENTRYLEN;
+		part = offset/IPR_ENTRYLEN;
 		for(r = iprtab.first; part && r; r = r->next)
 			part--;
-		bytes = c->offset;
+		bytes = offset;
 		while(r && bytes < iprtab.n*IPR_ENTRYLEN && n){
 			part = bytes%IPR_ENTRYLEN;
 
@@ -309,7 +309,7 @@ iprouteread(Chan *c, void *a, long n)
 			r = r->next;
 		}
 		unlock(&iprtab);
-		return bytes - c->offset;
+		return bytes - offset;
 		break;
 	default:
 		n=0;
@@ -319,7 +319,7 @@ iprouteread(Chan *c, void *a, long n)
 }
 
 long
-iproutewrite(Chan *c, char *a, long n)
+iproutewrite(Chan *c, char *a, long n, ulong offset)
 {
 	char buf[IPR_ENTRYLEN];
 	char *field[4];

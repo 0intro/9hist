@@ -170,7 +170,7 @@ sysexec(ulong *arg)
 	}
 	if(!indir)
 		strcpy(elem, u->elem);
-	n = (*devtab[tc->type].read)(tc, &exec, sizeof(Exec));
+	n = (*devtab[tc->type].read)(tc, &exec, sizeof(Exec), 0);
 	if(n < 2)
     Err:
 		error(Ebadexec);

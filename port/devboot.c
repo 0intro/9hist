@@ -74,7 +74,7 @@ bootclose(Chan *c)
 }
 
 long	 
-bootread(Chan *c, void *buf, long n)
+bootread(Chan *c, void *buf, long n, ulong offset)
 {
 	switch(c->qid.path & ~CHDIR){
 	case Qdir:
@@ -85,21 +85,21 @@ bootread(Chan *c, void *buf, long n)
 }
 
 long	 
-bootwrite(Chan *c, void *buf, long n)
+bootwrite(Chan *c, void *buf, long n, ulong offset)
 {
 	ulong pc;
 
 	switch(c->qid.path & ~CHDIR){
 	case Qmem:
 		/* kernel memory.  BUG: shouldn't be so easygoing. BUG: mem mapping? */
-		if(c->offset>=KZERO && c->offset<KZERO+conf.npage*BY2PG){
+		if(offset>=KZERO && offset<KZERO+conf.npage*BY2PG){
 /*			print("%ux, %d\n", c->offset, n);/**/
-			if(c->offset+n > KZERO+conf.npage*BY2PG)
-				n = KZERO+conf.npage*BY2PG - c->offset;
-			memmove((char*)c->offset, buf, n);
+			if(offset+n > KZERO+conf.npage*BY2PG)
+				n = KZERO+conf.npage*BY2PG - offset;
+			memmove((char*)offset, buf, n);
 			return n;
 		}
-		print("bootwrite: bad addr %lux\n", c->offset);
+		print("bootwrite: bad addr %lux\n", offset);
 		error(Ebadarg);
 
 	case Qboot:

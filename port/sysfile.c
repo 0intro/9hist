@@ -191,7 +191,7 @@ unionread(Chan *c, void *va, long n)
 	}
 	nc = (*devtab[nc->type].open)(nc, OREAD);
 	nc->offset = c->offset;
-	nr = (*devtab[nc->type].read)(nc, va, n);
+	nr = (*devtab[nc->type].read)(nc, va, n, nc->offset);
 	c->offset = nc->offset;		/* devdirread e.g. changes it */
 	close(nc);
 	poperror();
@@ -226,9 +226,9 @@ sysread(ulong *arg)
 
 	c = fdtochan(arg[0], OREAD);
 	validaddr(arg[1], arg[2], 1);
-	qlock(c);
+	qlock(&c->rdl);
 	if(waserror()){
-		qunlock(c);
+		qunlock(&c->rdl);
 		nexterror();
 	}
 	n = arg[2];
@@ -240,9 +240,9 @@ sysread(ulong *arg)
 	if((c->qid.path&CHDIR) && (c->flag&CMOUNT))
 		n = unionread(c, (void*)arg[1], n);
 	else
-		n = (*devtab[c->type].read)(c, (void*)arg[1], n);
+		n = (*devtab[c->type].read)(c, (void*)arg[1], n, c->offset);
 	c->offset += n;
-	qunlock(c);
+	qunlock(&c->rdl);
 	return n;
 }
 
@@ -254,16 +254,16 @@ syswrite(ulong *arg)
 
 	c = fdtochan(arg[0], OWRITE);
 	validaddr(arg[1], arg[2], 0);
-	qlock(c);
+	qlock(&c->wrl);
 	if(waserror()){
-		qunlock(c);
+		qunlock(&c->wrl);
 		nexterror();
 	}
 	if(c->qid.path & CHDIR)
 		error(Eisdir);
-	n = (*devtab[c->type].write)(c, (void*)arg[1], arg[2]);
+	n = (*devtab[c->type].write)(c, (void*)arg[1], arg[2], c->offset);
 	c->offset += n;
-	qunlock(c);
+	qunlock(&c->wrl);
 	return n;
 }
 
@@ -280,9 +280,11 @@ sysseek(ulong *arg)
 		error(Eisdir);
 	if(devchar[c->type] == '|')
 		error(Eisstream);
-	qlock(c);
+	qlock(&c->rdl);
+	qlock(&c->wrl);
 	if(waserror()){
-		qunlock(c);
+		qunlock(&c->rdl);
+		qunlock(&c->wrl);
 		nexterror();
 	}
 	switch(arg[2]){
@@ -301,7 +303,8 @@ sysseek(ulong *arg)
 		break;
 	}
 	off = c->offset;
-	qunlock(c);
+	qunlock(&c->rdl);
+	qunlock(&c->wrl);
 	poperror();
 	return off;
 }

@@ -435,7 +435,7 @@ envpgclose(Env *e)
 }
 
 long
-envread(Chan *c, void *va, long n)
+envread(Chan *c, void *va, long n, ulong offset)
 {
 	Env *e;
 	Envval *ev;
@@ -456,19 +456,19 @@ envread(Chan *c, void *va, long n)
 	lock(e);
 	ev = e->val;
 	vn = ev? e->val->len : 0;
-	if(c->offset+n > vn)
-		n = vn - c->offset;
+	if(offset+n > vn)
+		n = vn - offset;
 	if(n <= 0)
 		n = 0;
 	else
-		memmove(a, ev->dat+c->offset, n);
+		memmove(a, ev->dat+offset, n);
 	unlock(e);
 	unlock(pg);
 	return n;
 }
 
 long
-envwrite(Chan *c, void *va, long n)
+envwrite(Chan *c, void *va, long n, ulong offset)
 {
 	Env *e;
 	char *p;
@@ -496,13 +496,13 @@ envwrite(Chan *c, void *va, long n)
 	}
 	if(e->pgref>1)
 		panic("envwrite to non-duped env");
-	growenval(e, c->offset+n);
+	growenval(e, offset+n);
 	ev = e->val;
 	vn = ev? ev->len : 0;
-	if(c->offset > vn)
+	if(offset > vn)
 		error(Egreg); /* perhaps should zero fill */
-	memmove(ev->dat+c->offset, a, n);
-	e->val->len = c->offset+n;
+	memmove(ev->dat+offset, a, n);
+	e->val->len = offset+n;
 	poperror();
 	unlock(e);
 	unlock(&envalloc);

@@ -504,16 +504,15 @@ mntclose(Chan *c)
 }
 
 long
-mntreadwrite(Chan *c, void *vbuf, long n, int type)
+mntreadwrite(Chan *c, void *vbuf, long n, int type, ulong offset)
 {
 	Mnt *m;
 	Mnthdr *mh;
-	long nt, nr, count, offset;
+	long nt, nr, count;
 	char *buf;
 
 	buf = vbuf;
 	count = 0;
-	offset = c->offset;
 	m = mntdev(c->dev, 0);
 	mh = mhalloc();
 	if(waserror()){
@@ -543,12 +542,12 @@ mntreadwrite(Chan *c, void *vbuf, long n, int type)
 }
 
 long	 
-mntread(Chan *c, void *buf, long n)
+mntread(Chan *c, void *buf, long n, ulong offset)
 {
 	long i;
 	uchar *b;
 
-	n = mntreadwrite(c, buf, n, Tread);
+	n = mntreadwrite(c, buf, n, Tread, offset);
 	if(c->qid.path & CHDIR){
 		b = (uchar*)buf;
 		for(i=n-DIRLEN; i>=0; i-=DIRLEN){
@@ -563,9 +562,9 @@ mntread(Chan *c, void *buf, long n)
 }
 
 long	 
-mntwrite(Chan *c, void *buf, long n)
+mntwrite(Chan *c, void *buf, long n, ulong offset)
 {
-	return mntreadwrite(c, buf, n, Twrite);
+	return mntreadwrite(c, buf, n, Twrite, offset);
 }
 
 void	 
@@ -700,7 +699,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		mqfree(q);
 		nexterror();
 	}
-	if((*devtab[q->msg->type].write)(q->msg, mbw->buf, n) != n){
+	if((*devtab[q->msg->type].write)(q->msg, mbw->buf, n, 0) != n){
 		print("short write in mntxmit\n");
 		error(Eshortmsg);
 	}
@@ -713,7 +712,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		nexterror();
 	}
 	mh->mbr = mballoc();
-	n = (*devtab[q->msg->type].read)(q->msg, mh->mbr->buf, BUFSIZE);
+	n = (*devtab[q->msg->type].read)(q->msg, mh->mbr->buf, BUFSIZE, 0);
 	poperror();		/* 3 */
 	mqfree(q);
 	poperror();		/* 2 */
@@ -767,7 +766,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 	}
 	mh->readreply = 0;
 	mh->active = 1;
-	if((*devtab[q->msg->type].write)(q->msg, mbw->buf, n) != n){
+	if((*devtab[q->msg->type].write)(q->msg, mbw->buf, n, 0) != n){
 		print("short write in mntxmit\n");
 		error(Eshortmsg);
 	}
@@ -782,7 +781,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 			nexterror();
 		}
 		mh->mbr = mballoc();
-		n = (*devtab[q->msg->type].read)(q->msg, mh->mbr->buf, BUFSIZE);
+		n = (*devtab[q->msg->type].read)(q->msg, mh->mbr->buf, BUFSIZE, 0);
 		poperror();		/* 3 */
 		if(convM2S(mh->mbr->buf, &mh->rhdr, n) == 0){
 			mnterrdequeue(m, mh);

@@ -107,6 +107,12 @@ devwalk(Chan *c, char *name, Dirtab *tab, int ntab, Devgen *gen)
 		}
 }
 
+int devclwalk(Chan *c, Chan *nc, char *name, Dirtab *tab, int ntab, Devgen *gen)
+{
+	c = devclone(c, nc);
+	return devwalk(c, name, tab, ntab, gen);
+}
+
 void
 devstat(Chan *c, char *db, Dirtab *tab, int ntab, Devgen *gen)
 {

@@ -325,7 +325,7 @@ nonetclose(Chan *c)
 }
 
 long	 
-nonetread(Chan *c, void *a, long n)
+nonetread(Chan *c, void *a, long n, ulong offset)
 {
 	int t;
 	Noconv *cp;
@@ -346,21 +346,21 @@ nonetread(Chan *c, void *a, long n)
 	cp = &noifc[c->dev].conv[STREAMID(c->qid.path)];
 	switch(t){
 	case Nraddrqid:
-		return stringread(c, a, n, cp->raddr);
+		return stringread(c, a, n, cp->raddr, offset);
 	case Naddrqid:
-		return stringread(c, a, n, cp->addr);
+		return stringread(c, a, n, cp->addr, offset);
 	case Nruserqid:
-		return stringread(c, a, n, cp->ruser);
+		return stringread(c, a, n, cp->ruser, offset);
 	case Nstatsqid:
 		sprint(stats, "sent: %d\nrcved: %d\nrexmit: %d\nbad: %d\n",
 			cp->sent, cp->rcvd, cp->rexmit, cp->bad);
-		return stringread(c, a, n, stats);
+		return stringread(c, a, n, stats, offset);
 	}
 	error(Eperm);
 }
 
 long	 
-nonetwrite(Chan *c, void *a, long n)
+nonetwrite(Chan *c, void *a, long n, ulong offset)
 {
 	int t;
 	int m;

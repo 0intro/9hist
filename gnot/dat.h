@@ -88,7 +88,8 @@ struct Alarm
 #define	CHEXCL	0x20000000L
 struct Chan
 {
-	QLock;				/* general access */
+	QLock	rdl;			/* read access */
+	QLock	wrl;			/* write access */
 	Ref;
 	union{
 		Chan	*next;		/* allocation */
@@ -171,8 +172,8 @@ struct Dev
 	Chan	*(*open)(Chan*, int);
 	void	 (*create)(Chan*, char*, int, ulong);
 	void	 (*close)(Chan*);
-	long	 (*read)(Chan*, void*, long);
-	long	 (*write)(Chan*, void*, long);
+	long	 (*read)(Chan*, void*, long, ulong);
+	long	 (*write)(Chan*, void*, long, ulong);
 	void	 (*remove)(Chan*);
 	void	 (*wstat)(Chan*, char*);
 };
@@ -473,6 +474,7 @@ struct Stream {
 	QLock	rdlock;		/* read lock */
 	Queue	*procq;		/* write queue at process end */
 	Queue	*devq;		/* read queue at device end */
+	Block	*err;		/* error message from down stream */
 };
 #define	RD(q)		((q)->other < (q) ? (q->other) : q)
 #define	WR(q)		((q)->other > (q) ? (q->other) : q)

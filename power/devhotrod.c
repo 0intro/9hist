@@ -272,7 +272,7 @@ hotmsgintr(Hotmsg *hm)
  */
 
 long	 
-hotrodread(Chan *c, void *buf, long n)
+hotrodread(Chan *c, void *buf, long n, ulong offset)
 {
 	Hotrod *hp;
 	Hotmsg *mp, **hmp;
@@ -389,7 +389,7 @@ hotrodread(Chan *c, void *buf, long n)
 }
 
 long	 
-hotrodwrite(Chan *c, void *buf, long n)
+hotrodwrite(Chan *c, void *buf, long n, ulong offset)
 {
 	Hotrod *hp;
 	Hotmsg *mp, **hmp;

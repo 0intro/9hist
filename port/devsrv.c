@@ -231,13 +231,11 @@ srvdirentry(Entry *e, char *a, long count){
 }
 
 long
-srvread(Chan *c, void *va, long n)
+srvread(Chan *c, void *va, long n, ulong offset)
 {
 	Entry *dir, *e;
-	int offset;
 
 	dir = c->aux;
-	offset = c->offset;
 	isdir(c);
 	if(n <= 0)
 		return 0;
@@ -257,7 +255,7 @@ srvread(Chan *c, void *va, long n)
 }
 
 long
-srvwrite(Chan *c, void *va, long n)
+srvwrite(Chan *c, void *va, long n, ulong offset)
 {
 	Entry *e;
 	int i, fd;

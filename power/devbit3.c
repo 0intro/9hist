@@ -130,7 +130,7 @@ bit3close(Chan *c)
  */
 
 long	 
-bit3read(Chan *c, void *buf, long n)
+bit3read(Chan *c, void *buf, long n, ulong offset)
 {
 	Bit3msg *bp;
 	int docpy;
@@ -174,7 +174,7 @@ bit3read(Chan *c, void *buf, long n)
 }
 
 long	 
-bit3write(Chan *c, void *buf, long n)
+bit3write(Chan *c, void *buf, long n, ulong offset)
 {
 	Bit3msg *bp;
 

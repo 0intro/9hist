@@ -104,7 +104,7 @@ dupclose(Chan *c)
 }
 
 long
-dupread(Chan *c, void *va, long n)
+dupread(Chan *c, void *va, long n, ulong offset)
 {
 	char *a = va;
 
@@ -114,7 +114,7 @@ dupread(Chan *c, void *va, long n)
 }
 
 long
-dupwrite(Chan *c, void *va, long n)
+dupwrite(Chan *c, void *va, long n, ulong offset)
 {
 	panic("dupwrite");
 }

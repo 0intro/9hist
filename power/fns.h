@@ -186,7 +186,7 @@ Stream	*streamnew(ushort, ushort, ushort, Qinfo*, int);
 void	streamopen(Chan*, Qinfo*);
 int	streamparse(char*, Block*);
 void	streamstat(Chan*, char*, char*);
-long	stringread(Chan*, void*, long, char*);
+long	stringread(Chan*, void*, long, char*, ulong);
 long	syscall(Ureg*);
 void	sysloginit(void);
 void	syslog(char*, int);

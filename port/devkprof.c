@@ -118,19 +118,19 @@ kproferrstr(Error *e, char *buf)
 }
 
 long
-kprofread(Chan *c, void *a, long n)
+kprofread(Chan *c, void *a, long n, ulong offset)
 {
 	switch((int)(c->qid&~CHDIR)){
 	case Kprofdirqid:
 		return devdirread(c, a, n, kproftab, Nkproftab, devgen);
 	case Kprofdataqid:
-		if(c->offset >= NBUF*sizeof timerbuf[0]){
+		if(offset >= NBUF*sizeof timerbuf[0]){
 			n = 0;
 			break;
 		}
-		if(c->offset+n > NBUF*sizeof timerbuf[0])
-			n = NBUF*sizeof timerbuf[0]-c->offset;
-		memmove(a, ((char *)timerbuf)+c->offset, n);
+		if(offset+n > NBUF*sizeof timerbuf[0])
+			n = NBUF*sizeof timerbuf[0]-offset;
+		memmove(a, ((char *)timerbuf)+offset, n);
 		break;
 	default:
 		n=0;
@@ -140,7 +140,7 @@ kprofread(Chan *c, void *a, long n)
 }
 
 long
-kprofwrite(Chan *c, char *a, long n)
+kprofwrite(Chan *c, char *a, long n, ulong offset)
 {
 	switch((int)(c->qid&~CHDIR)){
 	case Kprofstartclrqid:

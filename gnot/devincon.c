@@ -393,13 +393,13 @@ inconclose(Chan *c)
 }
 
 long	 
-inconread(Chan *c, void *buf, long n)
+inconread(Chan *c, void *buf, long n, ulong offset)
 {
 	return streamread(c, buf, n);
 }
 
 long	 
-inconwrite(Chan *c, void *buf, long n)
+inconwrite(Chan *c, void *buf, long n, ulong offset)
 {
 	return streamwrite(c, buf, n, 0);
 }

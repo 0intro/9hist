@@ -623,40 +623,40 @@ lanceclose(Chan *c)
 }
 
 static long
-lancetraceread(Chan *c, void *a, long n)
+lancetraceread(Chan *c, void *a, long n, ulong offset)
 {
 	char buf[1024];
 	long rv;
 	int i;
 	char *ca = a;
-	int offset;
+	int off;
 	Trace *t;
 	int plen;
 
 	rv = 0;
 	sprintpacket(buf, l.dq.t);
 	plen = strlen(buf);
-	offset = c->offset % plen;
-	for(t = &l.dq.t[c->offset/plen]; n && t < &l.dq.t[Ndpkt]; t++){
+	off = offset % plen;
+	for(t = &l.dq.t[offset/plen]; n && t < &l.dq.t[Ndpkt]; t++){
 		if(t->tag == 0)
 			break;
 		lock(&l.dq);
 		sprintpacket(buf, t);
 		unlock(&l.dq);
-		i = plen - offset;
+		i = plen - off;
 		if(i > n)
 			i = n;
-		memmove(ca, buf + offset, i);
+		memmove(ca, buf + off, i);
 		n -= i;
 		ca += i;
 		rv += i;
-		offset = 0;
+		off = 0;
 	}
 	return rv;
 }
 
 long	 
-lanceread(Chan *c, void *a, long n)
+lanceread(Chan *c, void *a, long n, ulong offset)
 {
 	char buf[256];
 
@@ -668,16 +668,16 @@ lanceread(Chan *c, void *a, long n)
 		l.inpackets, l.outpackets, l.crcs,
 		l.overflows, l.frames, l.buffs, l.oerrs,
 		l.ea[0], l.ea[1], l.ea[2], l.ea[3], l.ea[4], l.ea[5]);
-		return stringread(c, a, n, buf);
+		return stringread(c, a, n, buf, offset);
 	case Ltraceqid:
-		return lancetraceread(c, a, n);
+		return lancetraceread(c, a, n, offset);
 	default:
 		return streamread(c, a, n);
 	}
 }
 
 long	 
-lancewrite(Chan *c, void *a, long n)
+lancewrite(Chan *c, void *a, long n, ulong offset)
 {
 	return streamwrite(c, a, n, 0);
 }

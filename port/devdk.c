@@ -863,7 +863,7 @@ dkclose(Chan *c)
 }
 
 long	 
-dkread(Chan *c, void *a, long n)
+dkread(Chan *c, void *a, long n, ulong offset)
 {
 	Line *lp;
 
@@ -880,17 +880,17 @@ dkread(Chan *c, void *a, long n)
 	lp = &dk[c->dev].line[STREAMID(c->qid.path)];
 	switch(STREAMTYPE(c->qid.path)){
 	case Daddrqid:
-		return stringread(c, a, n, lp->addr);
+		return stringread(c, a, n, lp->addr, offset);
 	case Draddrqid:
-		return stringread(c, a, n, lp->raddr);
+		return stringread(c, a, n, lp->raddr, offset);
 	case Duserqid:
-		return stringread(c, a, n, lp->ruser);
+		return stringread(c, a, n, lp->ruser, offset);
 	}
 	error(Eperm);
 }
 
 long	 
-dkwrite(Chan *c, void *a, long n)
+dkwrite(Chan *c, void *a, long n, ulong offset)
 {
 	int t;
 	char buf[256];
