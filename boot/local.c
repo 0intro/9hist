@@ -57,6 +57,7 @@ int
 connectlocal(void)
 {
 	int p[2];
+	Dir dir;
 	char d[DIRLEN];
 	char partition[2*NAMELEN];
 	char *dev;
@@ -67,11 +68,13 @@ connectlocal(void)
 
 	dev = disk ? disk : bootdisk;
 	sprint(partition, "%sfs", dev);
-	if(stat(partition, d) < 0){
+	if(dirstat(partition, &dir) < 0){
 		strcpy(partition, dev);
-		if(stat(partition, d) < 0)
+		if(dirstat(partition, &dir) < 0)
 			return -1;
 	}
+	if(dir.mode & CHDIR)
+		return -1;
 
 	print("kfs...");
 	if(bind("#c", "/dev", MREPL) < 0)

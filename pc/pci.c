@@ -142,13 +142,13 @@ pcibarsize(Pcidev *p, int rno)
 }
 
 static int
-pcisizcmp(void* va, void* vb)
+pcisizcmp(void *a, void *b)
 {
-	Pcisiz *a, *b;
+	Pcisiz *aa, *bb;
 
-	a = va;
-	b = vb;
-	return a->siz - b->siz;
+	aa = a;
+	bb = b;
+	return aa->siz - bb->siz;
 }
 
 static ulong
@@ -185,7 +185,7 @@ pcibusmap(Pcidev *root, ulong *pmema, ulong *pioa, int wrreg)
 	ioa = *pioa;
 	mema = *pmema;
 
-	DBG("pcibusmap wr=%d %T mem=%lux io=%lux\n", 
+	DBG("pcibusmap wr=%d %T mem=%luX io=%luX\n", 
 		wrreg, root->tbdf, mema, ioa);
 
 	ntb = 0;
@@ -202,7 +202,8 @@ pcibusmap(Pcidev *root, ulong *pmema, ulong *pioa, int wrreg)
 	 */
 	for(p = root; p != nil; p = p->link) {
 		if(p->ccrb == 0x06) {
-			if(p->ccru != 0x04 || p->bridge == nil) {
+			if((p->ccru != 0x04 && p->ccru != 0x07)
+			|| p->bridge == nil) {
 //				DBG("pci: ignored bridge %T\n", p->tbdf);
 				continue;
 			}
@@ -393,11 +394,13 @@ pciscan(int bno, Pcidev** list)
 				pcilist = p;
 			pcitail = p;
 
-			p->intl = pcicfgr8(p, PciINTL);
+			p->rid = pcicfgr8(p, PciRID);
 			p->ccrp = pcicfgr8(p, PciCCRp);
 			p->ccru = pcicfgr8(p, PciCCRu);
 			p->ccrb = pcicfgr8(p, PciCCRb);
 			p->pcr = pcicfgr32(p, PciPCR);
+
+			p->intl = pcicfgr8(p, PciINTL);
 
 			/*
 			 * If the device is a multi-function device adjust the
@@ -452,7 +455,7 @@ pciscan(int bno, Pcidev** list)
 		/*
 		 * Find PCI-PCI bridges and recursively descend the tree.
 		 */
-		if(p->ccrb != 0x06 || p->ccru != 0x04)
+		if(p->ccrb != 0x06 || (p->ccru != 0x04 && p->ccru != 0x07))
 			continue;
 
 		/*
@@ -553,7 +556,8 @@ pcicfginit(void)
 		ioa = 0;
 		pcibusmap(pciroot, &mema, &ioa, 0);
 
-DBG("Sizes: mem=%8.8lux size=%8.8lux io=%8.8lux\n", mema, pcimask(mema), ioa);
+		DBG("Sizes: mem=%8.8lux size=%8.8lux io=%8.8lux\n",
+			mema, pcimask(mema), ioa);
 	
 		/*
 		 * Align the windows and map it
@@ -564,7 +568,7 @@ DBG("Sizes: mem=%8.8lux size=%8.8lux io=%8.8lux\n", mema, pcimask(mema), ioa);
 		pcilog("Mask sizes: mem=%lux io=%lux\n", mema, ioa);
 
 		pcibusmap(pciroot, &mema, &ioa, 1);
-DBG("Sizes2: mem=%lux io=%lux\n", mema, ioa);
+		DBG("Sizes2: mem=%lux io=%lux\n", mema, ioa);
 	
 		unlock(&pcicfginitlock);
 		return;
@@ -785,7 +789,7 @@ pcihinv(Pcidev* p)
 	Pcidev *t;
 
 	if(p == nil) {
-putstrn(PCICONS.output, PCICONS.ptr);
+		putstrn(PCICONS.output, PCICONS.ptr);
 		p = pciroot;
 		print("bus dev type vid  did intl memory\n");
 	}
@@ -808,16 +812,11 @@ putstrn(PCICONS.output, PCICONS.ptr);
 			print("->%d", BUSBNO(t->bridge->tbdf));
 		print("\n");
 	}
-#define notdef
-#ifdef notdef
 	while(p != nil) {
 		if(p->bridge != nil)
 			pcihinv(p->bridge);
 		p = p->link;
 	}
-#else
-print("more...\n");
-#endif /* notdef */
 }
 
 void

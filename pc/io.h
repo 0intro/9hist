@@ -86,7 +86,7 @@ enum {
 
 enum {
 	MaxEISA		= 16,
-	EISAconfig	= 0xC80,
+	CfgEISA		= 0xC80,
 };
 
 /*
@@ -146,6 +146,26 @@ enum {					/* type 1 pre-defined header */
 	PciBCR		= 0x3E,		/* bridge control register */
 };
 
+enum {					/* type 2 pre-defined header */
+	PciCBExCA	= 0x10,
+	PciCBSPSR	= 0x16,
+	PciCBPBN	= 0x18,		/* primary bus number */
+	PciCBSBN	= 0x19,		/* secondary bus number */
+	PciCBUBN	= 0x1A,		/* subordinate bus number */
+	PciCBSLTR	= 0x1B,		/* secondary latency timer */
+	PciCBMBR0	= 0x1C,
+	PciCBMLR0	= 0x20,
+	PciCBMBR1	= 0x24,
+	PciCBMLR1	= 0x28,
+	PciCBIBR0	= 0x2C,		/* I/O base */
+	PciCBILR0	= 0x30,		/* I/O limit */
+	PciCBIBR1	= 0x34,		/* I/O base */
+	PciCBILR1	= 0x38,		/* I/O limit */
+	PciCBSVID	= 0x40,		/* subsystem vendor ID */
+	PciCBSID	= 0x42,		/* subsystem ID */
+	PciCBLMBAR	= 0x44,		/* legacy mode base address */
+};
+
 typedef struct Pcisiz Pcisiz;
 struct Pcisiz
 {
@@ -161,16 +181,17 @@ struct Pcidev
 	ushort	vid;			/* vendor ID */
 	ushort	did;			/* device ID */
 
+	uchar	rid;
+	uchar	ccrp;
+	uchar	ccru;
+	uchar	ccrb;
+
 	struct {
 		ulong	bar;		/* base address */
 		int	size;
 	} mem[6];
 
-	ulong	pcr;
 	uchar	intl;			/* interrupt line */
-	uchar	ccrp;
-	uchar	ccru;
-	uchar	ccrb;
 
 	Pcidev*	list;
 	Pcidev*	link;			/* next device on this bno */
@@ -180,7 +201,13 @@ struct Pcidev
 		ulong	bar;
 		int	size;
 	} ioa, mema;
+	ulong	pcr;
 };
+
+#define PCIWINDOW	0
+#define PCIWADDR(va)	(PADDR(va)+PCIWINDOW)
+#define ISAWINDOW	0
+#define ISAWADDR(va)	(PADDR(va)+ISAWINDOW)
 
 /*
  * PCMCIA support code.
@@ -196,31 +223,6 @@ struct PCMmap {
 	int	attr;			/* attribute memory */
 	int	ref;
 };
-
-/*
- *  SCSI bus
- */
-enum {
-	MaxScsi		= 8,
-	NTarget		= 8,		/* should be 16... */
-};
-struct Target {
-	int	ctlrno;
-	int	target;
-	uchar*	inq;
-	uchar*	scratch;
-
-	Rendez	rendez;
-
-	int	ok;
-};
-
-typedef int (*Scsiio)(Target*, int, uchar*, int, void*, int*);
-
-typedef struct SCSIdev {
-	char*	type;
-	Scsiio	(*reset)(int, ISAConf*);
-} SCSIdev;
 
 /* SMBus transactions */
 enum
