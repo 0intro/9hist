@@ -3,13 +3,13 @@
 #include	"mem.h"
 #include	"dat.h"
 #include	"fns.h"
+#include 	"io.h"
 
 /*
  *  headland chip set for the safari.
  */
 typedef struct DMAport	DMAport;
 typedef struct DMA	DMA;
-typedef struct DMAxfer	DMAxfer;
 
 enum
 {
@@ -26,17 +26,6 @@ enum
 	Dma1=		0xC0,
 	Dma1status=	Dma1+2*0x8,	/* status port */
 	Dma1reset=	Dma1+2*0xD,	/* reset port */
-};
-
-/*
- *  state of a dma transfer
- */
-struct DMAxfer
-{
-	Page	pg;		/* page used by dma */
-	void	*va;		/* virtual address destination/src */
-	long	len;		/* bytes to be transferred */
-	int	isread;
 };
 
 /*
@@ -63,7 +52,6 @@ struct DMA
 	DMAport;
 	int	shift;
 	Lock;
-	DMAxfer	x[4];
 };
 
 DMA dma[2] = {
@@ -81,82 +69,37 @@ DMA dma[2] = {
 };
 
 /*
- *  DMA must be in the first 16 meg.  This gets called early by main() to
- *  ensure that.
- */
-void
-dmainit(void)
-{
-	int i, chan;
-	DMA *dp;
-	DMAxfer *xp;
-
-	for(i = 0; i < 2; i++){
-		dp = &dma[i];
-		for(chan = 0; chan < 4; chan++){
-			xp = &dp->x[chan];
-			xp->pg.pa = (ulong)xspanalloc(BY2PG, BY2PG, 0);
-			xp->pg.va = KZERO|xp->pg.pa;
-			xp->len = 0;
-			xp->isread = 0;
-		}
-	}
-}
-
-/*
- *  setup a dma transfer.  if the destination is not in kernel
- *  memory, allocate a page for the transfer.
+ * setup a dma transfer.
+ * needs to change if the address is over 16meg
  *
  *  we assume BIOS has set up the command register before we
  *  are booted.
- *
- *  return the updated transfer length (we can't transfer across 64k
- *  boundaries)
  */
 long
 dmasetup(int chan, void *va, long len, int isread)
 {
 	DMA *dp;
-	DMAxfer *xp;
 	ulong pa;
 	uchar mode;
 
 	dp = &dma[(chan>>2)&1];
 	chan = chan & 3;
-	xp = &dp->x[chan];
 
-	/*
-	 *  if this isn't kernel memory or crossing 64k boundary or above 16 meg
-	 *  use the allocated low memory page.
-	 */
 	pa = PADDR(va);
-	if((((ulong)va)&0xF0000000) != KZERO
-	|| (pa&0xFFFF0000) != ((pa+len)&0xFFFF0000)
-	|| pa > 16*MB){
-		if(len > BY2PG)
-			len = BY2PG;
-		if(!isread)
-			memmove((void*)(xp->pg.va), va, len);
-		xp->va = va;
-		xp->len = len;
-		xp->isread = isread;
-		pa = xp->pg.pa;
-	} else
-		xp->len = 0;
 
 	/*
 	 * this setup must be atomic
 	 */
 	ilock(dp);
 	mode = (isread ? 0x44 : 0x48) | chan;
-	outb(dp->mode, mode);		/* single mode dma (give CPU a chance at mem) */
-	outb(dp->page[chan], pa>>16);
-	outb(dp->cbp, 0);		/* set count & address to their first byte */
-	outb(dp->addr[chan], pa>>dp->shift);		/* set address */
-	outb(dp->addr[chan], pa>>(8+dp->shift));
-	outb(dp->count[chan], (len>>dp->shift)-1);		/* set count */
-	outb(dp->count[chan], ((len>>dp->shift)-1)>>8);
-	outb(dp->sbm, chan);		/* enable the channel */
+	EISAOUTB(dp->mode, mode);		/* single mode dma (give CPU a chance at mem) */
+	EISAOUTB(dp->page[chan], pa>>16);
+	EISAOUTB(dp->cbp, 0);		/* set count & address to their first byte */
+	EISAOUTB(dp->addr[chan], pa>>dp->shift);		/* set address */
+	EISAOUTB(dp->addr[chan], pa>>(8+dp->shift));
+	EISAOUTB(dp->count[chan], (len>>dp->shift)-1);		/* set count */
+	EISAOUTB(dp->count[chan], ((len>>dp->shift)-1)>>8);
+	EISAOUTB(dp->sbm, chan);		/* enable the channel */
 	iunlock(dp);
 
 	return len;
@@ -164,16 +107,11 @@ dmasetup(int chan, void *va, long len, int isread)
 
 /*
  *  this must be called after a dma has been completed.
- *
- *  if a page has been allocated for the dma,
- *  copy the data into the actual destination
- *  and free the page.
  */
 void
 dmaend(int chan)
 {
 	DMA *dp;
-	DMAxfer *xp;
 
 	dp = &dma[(chan>>2)&1];
 	chan = chan & 3;
@@ -182,16 +120,6 @@ dmaend(int chan)
 	 *  disable the channel
 	 */
 	ilock(dp);
-	outb(dp->sbm, 4|chan);
+	EISAOUTB(dp->sbm, 4|chan);
 	iunlock(dp);
-
-	xp = &dp->x[chan];
-	if(xp->len == 0 || !xp->isread)
-		return;
-
-	/*
-	 *  copy out of temporary page
-	 */
-	memmove(xp->va, (void*)(xp->pg.va), xp->len);
-	xp->len = 0;
 }

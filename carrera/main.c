@@ -480,6 +480,21 @@ buzz(int f, int d)
 }
 
 /*
+ * dummy routine for interoperability with pc's
+ */
+int
+isaconfig(char *class, int ctlrno, ISAConf *isa)
+{
+	if(strcmp(class, "audio") == 0 && ctlrno == 0){
+		strcpy(isa->type, "sb16");
+		isa->port = 0x220;
+		isa->irq = 7;
+		return 1;
+	}
+	return 0;
+}
+
+/*
 	register offsets of ARCS prom jmpbuf
 		JB_PC		0
 		JB_SP		1

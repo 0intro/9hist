@@ -5,6 +5,8 @@ enum
 	Dma		= 6,
 	Irq		= 7,
 
+	SBswab		= 1,
+
 	DMA2_WRMASK	= 0xd4,
 	DMA2_WRMODE	= 0xd6,
 	DMA2_CLRBP	= 0xd8,

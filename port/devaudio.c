@@ -11,8 +11,6 @@
 #include	"io.h"
 #include	"audio.h"
 
-
-#define	nelem(x)	(sizeof (x)/sizeof(x[0]))
 #define	NPORT		(sizeof audiodir/sizeof(Dirtab))
 
 typedef struct	Buf	Buf;
@@ -26,7 +24,8 @@ enum
 
 	Fmono		= 1,
 
-	Aread		= 0,
+	Aclosed		= 0,
+	Aread,
 	Awrite,
 
 	Speed		= 44100,
@@ -67,12 +66,13 @@ struct	Queue
 };
 static	struct
 {
+	QLock;
 	Rendez	vous;
 	int	bufinit;	/* boolean if buffers allocated */
 	int	curcount;	/* how much data in current buffer */
 	int	active;		/* boolean dma running */
 	int	intr;		/* boolean an interrupt has happened */
-	int	amode;		/* Aread/Awrite for /audio */
+	int	amode;		/* Aclosed/Aread/Awrite for /audio */
 	Level	left;		/* all of left volumes */
 	Level	right;		/* all of right volumes */
 	int	mic;		/* mono level */
@@ -121,9 +121,24 @@ static	struct
 	0
 };
 
+static struct
+{
+	Lock;
+	int	reset;		/* io ports to the sound blaster */
+	int	read;
+	int	write;
+	int	wstatus;
+	int	rstatus;
+	int	mixaddr;
+	int	mixdata;
+	int	clri8;
+	int	clri16;
+	int	clri401;
+} blaster;
+
 static	void	swab(uchar*);
 
-static	char	Emajor[]	= "SB16 version too old";
+static	char	Emajor[]	= "SoundBlaster version too old";
 static	char	Emode[]		= "illegal open mode";
 static	char	Evolume[]	= "illegal volume specifier";
 
@@ -133,9 +148,9 @@ sbcmd(int val)
 	int i, s;
 
 	for(i=1<<16; i!=0; i--) {
-		s = inb(PORT_WSTATUS);
+		s = inb(blaster.wstatus);
 		if((s & 0x80) == 0) {
-			outb(PORT_WRITE, val);
+			outb(blaster.write, val);
 			return 0;
 		}
 	}
@@ -149,9 +164,9 @@ sbread(void)
 	int i, s;
 
 	for(i=1<<16; i!=0; i--) {
-		s = inb(PORT_RSTATUS);
+		s = inb(blaster.rstatus);
 		if((s & 0x80) != 0) {
-			return inb(PORT_READ);
+			return inb(blaster.read);
 		}
 	}
 /*	print("SB16 sbread did not respond\n");	/**/
@@ -162,8 +177,8 @@ static	int
 mxcmd(int addr, int val)
 {
 
-	outb(PORT_MIXER_ADDR, addr);
-	outb(PORT_MIXER_DATA, val);
+	outb(blaster.mixaddr, addr);
+	outb(blaster.mixdata, val);
 	return 1;
 }
 
@@ -172,8 +187,8 @@ mxread(int addr)
 {
 	int s;
 
-	outb(PORT_MIXER_ADDR, addr);
-	s = inb(PORT_MIXER_DATA);
+	outb(blaster.mixaddr, addr);
+	s = inb(blaster.mixdata);
 	return s;
 }
 
@@ -214,9 +229,7 @@ mxcmdu(int s, int v)
 static	void
 mxvolume(void)
 {
-	ulong sp;
-
-	sp = splhi();
+	ilock(&blaster);
 	mxcmds(0x30, audio.left.master);
 	mxcmds(0x31, audio.right.master);
 
@@ -249,7 +262,7 @@ mxvolume(void)
 	mxcmd(0x3c, audio.oswitch);
 	mxcmd(0x3d, audio.left.iswitch);
 	mxcmd(0x3e, audio.right.iswitch);
-	splx(sp);
+	iunlock(&blaster);
 }
 
 static	Buf*
@@ -287,7 +300,6 @@ static	void
 contindma(void)
 {
 	Buf *b;
-	ulong count, addr;
 
 	if(!audio.active)
 		goto shutdown;
@@ -306,24 +318,11 @@ contindma(void)
 	if(b == 0)
 		goto shutdown;
 
-	addr = b->phys;
-	count = ((Bufsize) >> 1) - 1;
-
-/*	outb(DMA2_WRMASK, 4|(Dma&3));	/* disable dma */
-	outb(DMA6_LPAGE, (addr>>16) & 0xfe);
-	outb(DMA2_CLRBP, 0);		/* clear ff */
-	outb(DMA6_ADDRESS, addr>>1);
-	outb(DMA6_ADDRESS, addr>>9);
-
-	outb(DMA2_CLRBP, 0);		/* clear ff */
-	outb(DMA6_COUNT, count);
-	outb(DMA6_COUNT, count>>8);
-	outb(DMA2_WRMASK, (Dma&3));		/* enable dma */
-
+	dmasetup(Dma, b->virt, Bufsize, audio.amode == Aread);
 	return;
 
 shutdown:
-	outb(DMA2_WRMASK, 4|(Dma&3));	/* disable dma */
+	dmaend(Dma);
 	sbcmd(0xd9);				/* exit at end of count */
 	sbcmd(0xd5);				/* pause */
 	audio.curcount = 0;
@@ -339,14 +338,12 @@ startdma(void)
 {
 	ulong count;
 
-	outb(DMA2_WRMASK, 4|(Dma&3));	/* disable dma */
-	if(audio.amode == Aread) {
-		outb(DMA2_WRMODE, 0x44 | (Dma&3));	/* set mode */
+	ilock(&blaster);
+	dmaend(Dma);
+	if(audio.amode == Aread)
 		sbcmd(0x42);			/* input sampling rate */
-	} else {
-		outb(DMA2_WRMODE, 0x48 | (Dma&3));	/* set mode */
+	else
 		sbcmd(0x41);			/* output sampling rate */
-	}
 	sbcmd(audio.speed>>8);
 	sbcmd(audio.speed);
 
@@ -361,6 +358,7 @@ startdma(void)
 
 	audio.active = 1;
 	contindma();
+	iunlock(&blaster);
 }
 
 /*
@@ -370,12 +368,8 @@ startdma(void)
 static	void
 pokeaudio(void)
 {
-	ulong sp;
-
-	sp = splhi();
 	if(!audio.active)
 		startdma();
-	splx(sp);
 }
 
 void
@@ -387,19 +381,29 @@ audiosbintr(void)
 	if(stat) {
 		dummy = 0;
 		if(stat & 2) {
-			dummy = inb(PORT_CLRI16);
+			ilock(&blaster);
+			dummy = inb(blaster.clri16);
 			contindma();
+			iunlock(&blaster);
 			audio.intr = 1;
 			wakeup(&audio.vous);
 		}
 		if(stat & 1) {
-			dummy = inb(PORT_CLRI8);
+			dummy = inb(blaster.clri8);
 		}
 		if(stat & 4) {
-			dummy = inb(PORT_CLRI401);
+			dummy = inb(blaster.clri401);
 		}
 		USED(dummy);
 	}
+}
+
+void
+pcaudiosbintr(Ureg *ureg, void *rock)
+{
+	USED(ureg, rock);
+/*	print("sb16 audio interrupt\n");	/**/
+	audiosbintr();
 }
 
 void
@@ -427,7 +431,7 @@ waitaudio(void)
 	pokeaudio();
 	tsleep(&audio.vous, anybuf, 0, 10*1000);
 	if(audio.intr == 0) {
-/*		print("audio timeout\n");	/**/
+		print("audio timeout\n");	/**/
 		audio.active = 0;
 		pokeaudio();
 	}
@@ -452,6 +456,7 @@ setempty(void)
 {
 	int i;
 
+	ilock(&blaster);
 	audio.empty.first = 0;
 	audio.empty.last = 0;
 	audio.full.first = 0;
@@ -460,6 +465,7 @@ setempty(void)
 	audio.filling = 0;
 	for(i=0; i<Nbuf; i++)
 		putbuf(&audio.empty, &audio.buf[i]);
+	iunlock(&blaster);
 }
 
 void
@@ -481,15 +487,56 @@ resetlevel(void)
 void
 audioinit(void)
 {
+	ISAConf sbconf;
 	int i;
 
-	seteisadma(Dma, audiodmaintr);
+	sbconf.port = 0x220;
+	sbconf.irq = 7;
+	if(isaconfig("audio", 0, &sbconf) == 0)
+		return;
+	if(strcmp(sbconf.type, "sb16") != 0)
+		return;
+	switch(sbconf.port){
+	case 0x220:
+	case 0x240:
+	case 0x260:
+	case 0x280:
+		break;
+	default:
+		print("bad sb16 port 0x%x\n", sbconf.port);
+		return;
+	}
+	switch(sbconf.irq){
+	case 2:
+	case 5:
+	case 7:
+	case 10:
+		break;
+	default:
+		print("bad sb16 irq %d\n", sbconf.irq);
+		return;
+	}
 
+	blaster.reset = sbconf.port + 0x6;
+	blaster.read = sbconf.port + 0xa;
+	blaster.write = sbconf.port + 0xc;
+	blaster.wstatus = sbconf.port + 0xc;
+	blaster.rstatus = sbconf.port + 0xe;
+	blaster.mixaddr = sbconf.port + 0x4;
+	blaster.mixdata = sbconf.port + 0x5;
+	blaster.clri8 = sbconf.port + 0xe;
+	blaster.clri16 = sbconf.port + 0xf;
+	blaster.clri401 = sbconf.port + 0x100;
+
+	seteisadma(Dma, audiodmaintr);
+	setvec(Int0vec+sbconf.irq, pcaudiosbintr, 0);
+
+	audio.amode = Aclosed;
 	resetlevel();
 
-	outb(PORT_RESET, 1);
+	outb(blaster.reset, 1);
 	delay(1);			/* >3 υs */
-	outb(PORT_RESET, 0);
+	outb(blaster.reset, 0);
 	delay(1);
 
 	i = sbread();
@@ -516,10 +563,10 @@ audioinit(void)
 	 * set up irq/dma chans
 	 */
 	mxcmd(0x80,			/* irq */
-		(Irq==2)? 1:
-		(Irq==5)? 2:
-		(Irq==7)? 4:
-		(Irq==10)? 8:
+		(sbconf.irq==2)? 1:
+		(sbconf.irq==5)? 2:
+		(sbconf.irq==7)? 4:
+		(sbconf.irq==10)? 8:
 		0);
 	mxcmd(0x81, 1<<Dma);	/* dma */
 }
@@ -551,6 +598,7 @@ audiostat(Chan *c, char *db)
 Chan*
 audioopen(Chan *c, int omode)
 {
+	int amode;
 
 	if(audio.major != 4)
 		error(Emajor);
@@ -565,17 +613,22 @@ audioopen(Chan *c, int omode)
 		break;
 
 	case Qaudio:
+		amode = Awrite;
+		if((omode&7) == OREAD)
+			amode = Aread;
+		qlock(&audio);
+		if(audio.amode != Aclosed){
+			qunlock(&audio);
+			error(Einuse);
+		}
 		if(audio.bufinit == 0) {
 			audio.bufinit = 1;
 			sbbufinit();
 		}
-
-		audio.amode = Awrite;
-		if((omode&7) == OREAD)
-			audio.amode = Aread;
-
+		audio.amode = amode;
 		setempty();
 		audio.curcount = 0;
+		qunlock(&audio);
 		break;
 	}
 	c = devopen(c, omode, audiodir, NPORT, devgen);
@@ -612,9 +665,17 @@ audioclose(Chan *c)
 
 	case Qaudio:
 		if(c->flag & COPEN) {
+			qlock(&audio);
+			audio.amode = Aclosed;
+			if(waserror()){
+				qunlock(&audio);
+				nexterror();
+			}
 			while(audio.active)
 				waitaudio();
 			setempty();
+			poperror();
+			qunlock(&audio);
 		}
 		break;
 	}
@@ -640,6 +701,11 @@ audioread(Chan *c, char *a, long n, ulong offset)
 	case Qaudio:
 		if(audio.amode != Aread)
 			error(Emode);
+		qlock(&audio);
+		if(waserror()){
+			qunlock(&audio);
+			nexterror();
+		}
 		while(n > 0) {
 			b = audio.filling;
 			if(b == 0) {
@@ -665,6 +731,8 @@ audioread(Chan *c, char *a, long n, ulong offset)
 				putbuf(&audio.empty, b);
 			}
 		}
+		poperror();
+		qunlock(&audio);
 		break;
 
 	case Qvolume:
@@ -770,6 +838,11 @@ audiowrite(Chan *c, char *a, long n, ulong offset)
 	case Qaudio:
 		if(audio.amode != Awrite)
 			error(Emode);
+		qlock(&audio);
+		if(waserror()){
+			qunlock(&audio);
+			nexterror();
+		}
 		while(n > 0) {
 			b = audio.filling;
 			if(b == 0) {
@@ -796,6 +869,8 @@ audiowrite(Chan *c, char *a, long n, ulong offset)
 				putbuf(&audio.full, b);
 			}
 		}
+		poperror();
+		qunlock(&audio);
 		break;
 	}
 	return n0 - n;
@@ -829,6 +904,8 @@ swab(uchar *a)
 {
 	ulong *p, *ep, b;
 
+	if(!SBswab)
+		return;
 	p = (ulong*)a;
 	ep = p + (Bufsize>>2);
 	while(p < ep) {

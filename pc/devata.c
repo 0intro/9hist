@@ -118,7 +118,7 @@ struct Controller
 {
 	QLock;			/* exclusive access to the controller */
 
-	Lock;			/* exclusive access to the registers */
+	Lock	reglock;	/* exclusive access to the registers */
 
 	int	confused;	/* needs to be recalibrated (or worse) */
 	int	pbase;		/* base port */
@@ -566,7 +566,7 @@ ataxfer(Drive *dp, Partition *pp, int cmd, long start, long len, char *buf)
 	dp->usetime = m->ticks;
 	cmdreadywait(dp);
 
-	ilock(cp);
+	ilock(&cp->reglock);
 	cp->sofar = 0;
 	cp->buf = buf;
 	cp->nsecs = len;
@@ -589,7 +589,7 @@ ataxfer(Drive *dp, Partition *pp, int cmd, long start, long len, char *buf)
 		outss(cp->pbase+Pdata, cp->buf, dp->bytes/2);
 	} else
 		stat = 0;
-	iunlock(cp);
+	iunlock(&cp->reglock);
 
 	if(stat & Serr)
 		error(Eio);
@@ -646,12 +646,12 @@ atasetbuf(Drive *dp, int on)
 
 	cmdreadywait(dp);
 
-	ilock(cp);
+	ilock(&cp->reglock);
 	cp->cmd = Csetbuf;
 	outb(cp->pbase+Pprecomp, on ? 0xAA : 0x55);	/* read look ahead */
 	outb(cp->pbase+Pdh, 0x20 | (dp->drive<<4));
 	outb(cp->pbase+Pcmd, Csetbuf);
-	iunlock(cp);
+	iunlock(&cp->reglock);
 
 	sleep(&cp->r, cmddone, cp);
 
@@ -727,7 +727,7 @@ ataident(Drive *dp)
 
 	cmdreadywait(dp);
 
-	ilock(cp);
+	ilock(&cp->reglock);
 	cp->nsecs = 1;
 	cp->sofar = 0;
 	cp->cmd = Cident;
@@ -735,7 +735,7 @@ ataident(Drive *dp)
 	cp->buf = buf;
 	outb(cp->pbase+Pdh, 0x20 | (dp->drive<<4));
 	outb(cp->pbase+Pcmd, Cident);
-	iunlock(cp);
+	iunlock(&cp->reglock);
 
 	sleep(&cp->r, cmddone, cp);
 	if(cp->status & Serr){
@@ -812,7 +812,7 @@ ataprobe(Drive *dp, int cyl, int sec, int head)
 
 	cmdreadywait(dp);
 
-	ilock(cp);
+	ilock(&cp->reglock);
 	cp->cmd = Cread;
 	cp->dp = dp;
 	cp->status = 0;
@@ -825,7 +825,7 @@ ataprobe(Drive *dp, int cyl, int sec, int head)
 	outb(cp->pbase+Pcyllsb, cyl);
 	outb(cp->pbase+Pcylmsb, cyl>>8);
 	outb(cp->pbase+Pcmd, Cread);
-	iunlock(cp);
+	iunlock(&cp->reglock);
 
 	sleep(&cp->r, cmddone, cp);
 
@@ -1058,7 +1058,7 @@ ataintr(Ureg *ur, void *arg)
 	cp = &atac[0];
 	dp = cp->dp;
 
-	ilock(cp);
+	ilock(&cp->reglock);
 
 	loop = 0;
 	while((cp->status = inb(cp->pbase+Pstatus)) & Sbusy){
@@ -1152,7 +1152,7 @@ ataintr(Ureg *ur, void *arg)
 		break;
 	}
 
-	iunlock(cp);
+	iunlock(&cp->reglock);
 }
 
 void
@@ -1172,12 +1172,12 @@ hardclock(void)
 
 		diff = TK2SEC(m->ticks - dp->usetime);
 		if((dp->state == Sspinning) && (diff >= spindowntime)){
-			ilock(cp);
+			ilock(&cp->reglock);
 			cp->cmd = Cstandby;
 			outb(cp->pbase+Pcount, 0);
 			outb(cp->pbase+Pdh, 0x20 | (dp->drive<<4) | 0);
 			outb(cp->pbase+Pcmd, cp->cmd);
-			iunlock(cp);
+			iunlock(&cp->reglock);
 			dp->state = Sstandby;
 		}
 	}

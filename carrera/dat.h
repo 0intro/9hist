@@ -1,5 +1,6 @@
 typedef struct Conf	Conf;
 typedef struct FPsave	FPsave;
+typedef struct ISAConf	ISAConf;
 typedef struct KMap	KMap;
 typedef struct Lance	Lance;
 typedef struct Lancemem	Lancemem;
@@ -149,6 +150,12 @@ struct
 	short	machs;
 	short	exiting;
 }active;
+
+struct ISAConf {
+	char	type[NAMELEN];
+	ulong	port;
+	ulong	irq;
+};
 
 extern KMap kpte[];
 extern register Mach	*m;
