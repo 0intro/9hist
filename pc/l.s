@@ -1,6 +1,6 @@
 
 /*
- * Boot first processor
+ *  boot first processor
  */
 TEXT	start(SB),$0
 
@@ -9,6 +9,9 @@ TEXT	start(SB),$0
 	/* never returns */
 
 
+/*
+ *  trap vector, each instruction is 4 bytes long
+ */
 TEXT	traptab(SB),$0
 
 	CALL	noerrcode(SB)	/* divide */
@@ -270,23 +273,45 @@ TEXT	traptab(SB),$0
 	CALL	noerrcode(SB)
 
 TEXT	noerrcode(SB),$0
-	PUSH	EAX
-	/* drop through */
+
+	PUSHL	EAX
+	MOVL	4(ESP),EAX
+/*	JMP	george /**/
+
 TEXT	errcode(SB),$0
-	PUSH	EAX
-	PUSH	EBX
-	PUSH	ECX
-	PUSH	EDX
-	PUSH	EBP
-	PUSH	ESI
-	PUSH	EDI
+
+	XCHGL	(ESP),EAX
+	/* fall through */
+
+TEXT	saveregs(SB),$0
+
+george:
+	PUSHL	EBX
+	MOVL	$noerrcode(SB),EBX	/* calculate trap number */
+	SUBL	EAX,EBX			/* ... */
+	SHRL	$1,EBX			/* ... */
+	PUSHL	ECX
+	PUSHL	EDX
+	PUSHL	EBP
+	PUSHL	ESI
+	PUSHL	EDI
+	PUSHL	EBX			/* save trap number */
 	CALL	trap(SB)
-	POP	EDI
-	POP	ESI
-	POP	EBP
-	POP	EDX
-	POP	ECX
-	POP	EBX
-	POP	EAX
-	ADD	$8,ESP	/* jump over error code + return addr */
+	ADDL	$4,ESP			/* drop trap number */
+	POPL	EDI
+	POPL	ESI
+	POPL	EBP
+	POPL	EDX
+	POPL	ECX
+	POPL	EBX
+	POPL	EAX
+	ADDL	$4,ESP			/* drop error code */
 	IRET
+
+TEXT	trap(SB),$0
+
+	RET
+
+TEXT	main(SB),$0
+
+	RET

@@ -264,7 +264,7 @@ validaddr(ulong addr, ulong len, int write)
  * &s[0] is known to be a valid address.
  */
 void*
-vmemchr(void *s, int c, int n)
+vmemchr(void *s, int c, ulong n)
 {
 	int m;
 	char *t;
@@ -272,18 +272,21 @@ vmemchr(void *s, int c, int n)
 
 	a = (ulong)s;
 	m = BY2PG - (a & (BY2PG-1));
-	if(m < n){
-		t = vmemchr(s, c, m);
+	while(n){
+		if(n < m)
+			m = n;
+		t = memchr(s, c, m);
 		if(t)
 			return t;
+		if(n == m)
+			return 0;
 		if(!(a & KZERO))
 			validaddr(a+m, 1, 0);
-		return vmemchr((void*)(a+m), c, n-m);
+		n -= m;
+		a += m;
+		m = BY2PG;
 	}
-	/*
-	 * All in one page
-	 */
-	return memchr(s, c, n);
+	return 0;
 }
 
 Seg*

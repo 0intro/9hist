@@ -187,6 +187,6 @@ void	unusepage(Page*, int);
 void	usepage(Page*, int);
 void	userinit(void);
 void	validaddr(ulong, ulong, int);
-void*	vmemchr(void*, int, int);
+void*	vmemchr(void*, int, ulong);
 void	wakeme(Alarm*);
 void	wakeup(Rendez*);

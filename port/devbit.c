@@ -1009,9 +1009,11 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 				error(Ebadblt);
 			pt1.x = GLONG(p+1);
 			pt1.y = GLONG(p+5);
-			mouse.xy = pt1;
-			mouse.track = 1;
-			mouseclock();
+			if(!eqpt(mouse.xy, pt1)){
+				mouse.xy = pt1;
+				mouse.track = 1;
+				mouseclock();
+			}
 			m -= 9;
 			p += 9;
 			break;
