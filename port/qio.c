@@ -489,7 +489,7 @@ qdiscard(Queue *q, int len)
 	Block *b;
 	int dowakeup, n, sofar;
 
-	lock(q);
+	ilock(q);
 	for(sofar = 0; sofar < len; sofar += n){
 		b = q->bfirst;
 		if(b == nil)
@@ -513,7 +513,7 @@ qdiscard(Queue *q, int len)
 	} else
 		dowakeup = 0;
 
-	unlock(q);
+	iunlock(q);
 
 	if(dowakeup)
 		wakeup(&q->wr);
@@ -530,13 +530,13 @@ qconsume(Queue *q, void *vp, int len)
 	uchar *p = vp;
 
 	/* sync with qwrite */
-	lock(q);
+	ilock(q);
 
 	for(;;) {
 		b = q->bfirst;
 		if(b == 0){
 			q->state |= Qstarve;
-			unlock(q);
+			iunlock(q);
 			return -1;
 		}
 		QDEBUG checkb(b, "qconsume 1");
@@ -564,7 +564,7 @@ qconsume(Queue *q, void *vp, int len)
 	} else
 		dowakeup = 0;
 
-	unlock(q);
+	iunlock(q);
 
 	if(dowakeup)
 		wakeup(&q->wr);
@@ -631,19 +631,19 @@ qproduce(Queue *q, void *vp, int len)
 
 	/* sync with qread */
 	dowakeup = 0;
-	lock(q);
+	ilock(q);
 
 	/* no waiting receivers, room in buffer? */
 	if(q->len >= q->limit){
 		q->state |= Qflow;
-		unlock(q);
+		iunlock(q);
 		return -1;
 	}
 
 	/* save in buffer */
 	b = iallocb(len);
 	if(b == 0){
-		unlock(q);
+		iunlock(q);
 		return 0;
 	}
 	memmove(b->wp, p, len);
@@ -662,7 +662,7 @@ qproduce(Queue *q, void *vp, int len)
 		q->state &= ~Qstarve;
 		dowakeup = 1;
 	}
-	unlock(q);
+	iunlock(q);
 
 	if(dowakeup)
 		wakeup(&q->rr);
@@ -683,13 +683,13 @@ qcopy(Queue *q, int len, ulong offset)
 
 	nb = allocb(len);
 
-	lock(q);
+	ilock(q);
 
 	/* go to offset */
 	b = q->bfirst;
 	for(sofar = 0; ; sofar += n){
 		if(b == nil){
-			unlock(q);
+			iunlock(q);
 			return nb;
 		}
 		n = BLEN(b);
@@ -715,7 +715,7 @@ qcopy(Queue *q, int len, ulong offset)
 		n = BLEN(b);
 		p = b->rp;
 	}
-	unlock(q);
+	iunlock(q);
 
 	return nb;
 }

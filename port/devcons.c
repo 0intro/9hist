@@ -351,6 +351,7 @@ enum{
 	Qcons,
 	Qconsctl,
 	Qcputime,
+	Qdrivers,
 	Qhz,
 	Qkey,
 	Qhostdomain,
@@ -369,7 +370,7 @@ enum{
 	Quser,
 };
 
-Dirtab consdir[]={
+static Dirtab consdir[]={
 	"authenticate",	{Qauth},	0,		0666,
 	"authcheck",	{Qauthcheck},	0,		0666,
 	"authenticator", {Qauthent},	0,		0666,
@@ -377,6 +378,7 @@ Dirtab consdir[]={
 	"cons",		{Qcons},	0,		0660,
 	"consctl",	{Qconsctl},	0,		0220,
 	"cputime",	{Qcputime},	6*NUMSIZE,	0444,
+	"drivers",	{Qdrivers},	0,		0644,
 	"hostdomain",	{Qhostdomain},	DOMLEN,		0664,
 	"hostowner",	{Qhostowner},	NAMELEN,	0664,
 	"hz",		{Qhz},		NUMSIZE,	0666,
@@ -393,6 +395,11 @@ Dirtab consdir[]={
 	"sysstat",	{Qsysstat},	0,		0666,
 	"time",		{Qtime},	NUMSIZE,	0664,
  	"user",		{Quser},	NAMELEN,	0666,
+};
+
+enum
+{
+	MBS	=	1024,
 };
 
 ulong	boottime;		/* seconds since epoch at boot */
@@ -663,6 +670,17 @@ consread(Chan *c, void *buf, long n, ulong offset)
 
 	case Qrandom:
 		return randomread(buf, n);
+
+	case Qdrivers:
+		b = malloc(MBS);
+		if(b == nil)
+			error(Enomem);
+		n = 0;
+		for(i = 0; devtab[i] != nil; i++)
+			n += snprint(b+n, MBS-n, "#%C %s\n", devtab[i]->dc,  devtab[i]->name);
+		n = readstr(offset, buf, n, b);
+		free(b);
+		return n;
 
 	default:
 		print("consread %lux\n", c->qid);
