@@ -1,7 +1,37 @@
+#include "../port/portfns.h"
+
 void	delay(int);
 int	inb(int);
+void	intr0(void);
+void	intr1(void);
+void	intr2(void);
+void	intr3(void);
+void	intr4(void);
+void	intr5(void);
+void	intr6(void);
+void	intr7(void);
+void	intr8(void);
+void	intr9(void);
+void	intr10(void);
+void	intr11(void);
+void	intr12(void);
+void	intr13(void);
+void	intr14(void);
+void	intr15(void);
+void	intr16(void);
+void	intrbad(void);
 int	kbdc(void);
+void	kbdinit(void);
+void	kbdintr(void*);
+void	lgdt(Segdesc*, int);
+void	lidt(Segdesc*, int);
 void	outb(int, int);
 void	prhex(ulong);
+void	screeninit(void);
 void	screenputc(int);
 void	screenputs(char*, int);
+void	setvec(int, void (*)(void*), int);
+void	sti(void);
+void	systrap(void);
+void	trapinit(void);
+int	tas(Lock*);

@@ -5,6 +5,7 @@ typedef struct Lock	Lock;
 typedef struct MMU	MMU;
 typedef struct Mach	Mach;
 typedef struct PMMU	PMMU;
+typedef struct Segdesc	Segdesc;
 typedef struct Ureg	Ureg;
 typedef struct User	User;
 
@@ -20,7 +21,7 @@ extern  void	(*kprofp)(ulong);
 
 struct Lock
 {
-	char	key;
+	ulong	key;
 	ulong	pc;
 };
 
@@ -150,6 +151,16 @@ struct User
 	ushort	svvo;
 	ushort	svsr;
 };
+
+/*
+ *  segment descriptor/gate
+ */
+struct Segdesc
+{
+	ulong	d0;
+	ulong	d1;
+};
+
 
 struct
 {

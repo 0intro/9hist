@@ -5,9 +5,14 @@
 
 main(void)
 {
-	for(;;){
-		print("%x ", kbdc());
-	}
+	screeninit();
+	print("screen inited\n");
+	trapinit();
+	print("traps inited\n");
+	kbdinit();
+	print("kbd inited\n");
+	sti();
+	for(;;);
 }
 
 void
@@ -36,4 +41,16 @@ print(char *fmt, ...)
 	n = doprint(buf, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
 	screenputs(buf, n);
 	return n;
+}
+
+void
+panic(char *fmt, ...)
+{
+	char buf[PRINTSIZE];
+	int n;
+
+	screenputs("panic: ", 7);
+	n = doprint(buf, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
+	screenputs(buf, n);
+	for(;;);
 }

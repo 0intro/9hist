@@ -59,10 +59,10 @@
  */
 
 #define	NULLSEG	0	/* null segment */
-#define	KESEG	1	/* kernel executable */	
-#define	KDSEG	2	/* kernel data/stack */
-#define	UESEG	3	/* user executable */
-#define	UDSEG	4	/* user data/stack */
+#define	KDSEG	1	/* kernel data/stack */
+#define	KESEG	2	/* kernel executable */	
+#define	UDSEG	3	/* user data/stack */
+#define	UESEG	4	/* user executable */
 #define	SYSGATE	5	/* system call gate */
 
 #define SELGDT	(0<<3)	/* selector is in gdt */
@@ -86,6 +86,7 @@
 #define SEGCG	(0x0C<<8)	/* call gate */
 #define	SEGIG	(0x0E<<8)	/* interrupt gate */
 #define SEGTG	(0x0F<<8)	/* task gate */
+#define SEGTYPE	(0x1F<<8)
 
 #define SEGP	(1<<15)		/* segment present */
 #define SEGPL(x) ((x)<<13)	/* priority level */

@@ -6,29 +6,6 @@
 #include	"io.h"
 
 /*
- *  segment descriptor/gate
- */
-typedef struct Segdesc	Segdesc;
-struct Segdesc
-{
-	ulong	d0;
-	ulong	d1;
-};
-
-/*
- *  gate initializers
- */
-#define TRAPGATE(s,o,p)	{ (o)&0xFFFF0000|SEGP|SEGPL(p)|SEGTG, (o)&0xFFFF|((s)<<16) }
-#define INTRGATE(s,o,p)	{ (o)&0xFFFF0000|SEGP|SEGPL(p)|SEGIG, (o)&0xFFFF|((s)<<16) }
-#define CALLGATE(s,o,p)	{ (o)&0xFFFF0000|SEGP|SEGPL(p)|SEGCG, (o)&0xFFFF|((s)<<16) }
-
-/*
- *  segment descriptor initializers
- */
-#define	DATASEG(p) 	{ SEGG|SEGB|(0xF<<16)|SEGP|SEGPL(p)|SEGDATA|SEGW, 0xFFFF }
-#define	EXECSEG(p) 	{ SEGG|SEGD|(0xF<<16)|SEGP|SEGPL(p)|SEGEXEC|SEGR, 0xFFFF }
-
-/*
  *  task state segment.  Plan 9 ignores all the task switching goo and just
  *  uses the tss for esp0 and ss0 on gate's into the kernel, interrupts,
  *  and exceptions.  The rest is completely ignored.
@@ -67,14 +44,35 @@ struct Tss
 };
 
 /*
+ *  segment descriptor initializers
+ */
+#define	DATASEG(p) 	{ 0xFFFF, SEGG|SEGB|(0xF<<16)|SEGP|SEGPL(p)|SEGDATA|SEGW }
+#define	EXECSEG(p) 	{ 0xFFFF, SEGG|SEGD|(0xF<<16)|SEGP|SEGPL(p)|SEGEXEC|SEGR }
+#define CALLGATE(s,o,p)	{ (o)&0xFFFF|((s)<<16), (o)&0xFFFF0000|SEGP|SEGPL(p)|SEGCG }
+
+/*
  *  global descriptor table describing all segments
  */
-Segdesc gdt[1024] =
+Segdesc gdt[6] =
 {
 [NULLSEG]	{ 0, 0},		/* null descriptor */
-[KESEG]		EXECSEG(0),		/* kernel code */
 [KDSEG]		DATASEG(0),		/* kernel data/stack */
-[UESEG]		EXECSEG(3),		/* user code */
+[KESEG]		EXECSEG(0),		/* kernel code */
 [UDSEG]		DATASEG(3),		/* user data/stack */
-[SYSGATE]	CALLGATE(KESEG, syscall, 3),	/* call gate for system calls */
+[UESEG]		EXECSEG(3),		/* user code */
+[SYSGATE]	CALLGATE(KESEL,0,3),	/* call gate for system calls */
 };
+
+void
+mmuinit(void)
+{
+	gdt[SYSGATE].d0 = ((ulong)systrap)&0xFFFF|(KESEL<<16);
+	gdt[SYSGATE].d1 = ((ulong)systrap)&0xFFFF0000|SEGP|SEGPL(3)|SEGCG;
+	lgdt(gdt, sizeof gdt);
+}
+
+void
+systrap(void)
+{
+	panic("system trap from user");
+}

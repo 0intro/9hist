@@ -4,76 +4,96 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"io.h"
-
-void	ediv(void);
-void	edebug(void);
-void	enmi(void);
-void	ebp(void);
-void	eover(void);
-void	ebound(void);
-void	ebadop(void);
-void	enoco(void);
-void	edfault(void);
-void	enoway(void);
-void	etss(void);
-void	enoseg(void);
-void	estack(void);
-void	eprot(void);
-void	efault(void);
-
-/*
- *  exception types
- */
-enum {
-	Ediv=	0,	/* divide error */
-	Edebug=	1,	/* debug exceptions */
-	Enmi=	2,	/* non-maskable interrupt */
-	Ebp=	3,	/* INT 3 */
-	Eover=	4,	/* overflow */
-	Ebound=	5,	/* bounds check */
-	Ebadop=	6,	/* invalid opcode */
-	Enoco=	7,	/* coprocessor not available */
-	Edfault=8,	/* double fault */
-	Etss=	10,	/* invalid tss */
-	Enoseg=	11,	/* segment not present */
-	Estack=	12,	/* stack exception */
-	Eprot=	13,	/* general protection */
-	Efault=	14,	/* page fault */
-	Eco=	16,	/* coprocessor error */
-};
+#include	"ureg.h"
 
 /*
  *  trap/interrupt gates
  */
-Segdesc ilt[256] =
+Segdesc ilt[256];
+void	(*ivec[256])(void*);
+
+void
+sethvec(int v, void (*r)(void), int type)
 {
-[Ediv]		TRAPGATE(KESEL, ediv, 3),
-[Edebug]	TRAPGATE(KESEL, edebug, 3),
-[Enmi]		INTRGATE(KESEL, enmi, 3),
-[Ebp]		TRAPGATE(KESEL, ebp, 3),
-[Eover]		TRAPGATE(KESEL, eover, 3),
-[Ebound]	TRAPGATE(KESEL, ebound, 3),
-[Ebadop]	TRAPGATE(KESEL, ebadop, 3),
-[Enoco]		TRAPGATE(KESEL, enoco, 3),
-[Edfault]	TRAPGATE(KESEL, edfault, 3),
-[Etss]		TRAPGATE(KESEL, etss, 3),
-[Enoseg]	TRAPGATE(KESEL, enoseg, 3),
-[Estack]	TRAPGATE(KESEL, estack, 3),
-[Eprot]		TRAPGATE(KESEL, eprot, 3),
-[Efault]	TRAPGATE(KESEL, efault, 3),
-[Eco]		TRAPGATE(KESEL, eco, 3),
-};
+	ilt[v].d0 = ((ulong)r)&0xFFFF|(KESEL<<16);
+	ilt[v].d1 = ((ulong)r)&0xFFFF0000|SEGP|SEGPL(3)|type;
+}
+
+void
+setvec(int v, void (*r)(void*), int type)
+{
+	ilt[v].d1 &= ~SEGTYPE;
+	ilt[v].d1 |= type;
+	ivec[v] = r;
+}
 
 /*
- *  trap table
- */
-uchar	traptab[4096];
-
-/*
- *  j-random uncaught trap or interrupt
+ *  set up the interrupt/trap gates
  */
 void
-trap(void)
+trapinit(void)
 {
-	panic("unknown trap");
+	int i;
+
+	/*
+	 *  set the standard traps
+	 */
+	sethvec(0, intr0, SEGTG);
+	sethvec(1, intr1, SEGTG);
+	sethvec(2, intr2, SEGTG);
+	sethvec(3, intr3, SEGTG);
+	sethvec(4, intr4, SEGTG);
+	sethvec(5, intr5, SEGTG);
+	sethvec(6, intr6, SEGTG);
+	sethvec(7, intr7, SEGTG);
+	sethvec(8, intr8, SEGTG);
+	sethvec(9, intr9, SEGTG);
+	sethvec(10, intr10, SEGTG);
+	sethvec(11, intr11, SEGTG);
+	sethvec(12, intr12, SEGTG);
+	sethvec(13, intr13, SEGTG);
+	sethvec(14, intr14, SEGTG);
+	sethvec(15, intr15, SEGTG);
+	sethvec(16, intr16, SEGTG);
+
+	/*
+	 *  set all others to unknown
+	 */
+	for(i = 17; i < 256; i++)
+		sethvec(i, intrbad, SEGIG);
+
+	/*
+	 *  tell the hardware where the table is (and how long)
+	 */
+	lidt(ilt, sizeof(ilt));
+}
+
+
+/*
+ *  All traps
+ */
+trap(Ureg *ur)
+{
+	print("trap %lux\n", ur->trap);
+	print(" edi %lux\n", ur->edi);
+	print(" esi %lux\n", ur->esi);
+	print(" ebp %lux\n", ur->ebp);
+	print(" esp %lux\n", ur->esp);
+	print(" ebx %lux\n", ur->ebx);
+	print(" edx %lux\n", ur->edx);
+	print(" ecx %lux\n", ur->ecx);
+	print(" eax %lux\n", ur->eax);
+	print(" ds %lux\n", ur->ds);
+	print(" trap %lux\n", ur->trap);
+	print(" ecode %lux\n", ur->ecode);
+	print(" eip %lux\n", ur->eip);
+	print(" cs %lux\n", ur->cs);
+	print(" eflags %lux\n", ur->eflags);
+	print(" oesp %lux\n", ur->oesp);
+	print(" ss %lux\n", ur->ss);
+	delay(500);
+	if(ur->trap>=256 || ivec[ur->trap] == 0)
+		panic("bad trap type %d\n", ur->trap);
+
+	(*ivec[ur->trap])(ur);
 }

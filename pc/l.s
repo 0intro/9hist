@@ -162,3 +162,139 @@ TEXT	outb(SB),$0
 	MOVL	b+4(FP),AX
 	OUTB
 	RET
+
+/*
+ *  test and set
+ */
+TEXT	tas(SB),$0
+	MOVL	$0xdeadead,AX
+	MOVL	l+0(FP),BX
+	XCHGL	AX,(BX)
+	RET
+
+/*
+ *  load the idt
+ */
+GLOBL	idtptr(SB),$6
+TEXT	lidt(SB),$0
+	MOVL	t+0(FP),AX
+	MOVL	AX,idtptr+2(SB)
+	MOVL	l+4(FP),AX
+	MOVW	AX,idtptr(SB)
+	MOVL	idtptr(SB),IDTR
+	RET
+
+/*
+ *  load the gdt
+ */
+GLOBL	gdtptr(SB),$6
+TEXT	lgdt(SB),$0
+	MOVL	t+0(FP),AX
+	MOVL	AX,gdtptr+2(SB)
+	MOVL	l+4(FP),AX
+	MOVW	AX,gdtptr(SB)
+	MOVL	gdtptr(SB),GDTR
+	RET
+
+/*
+ *  special traps
+ */
+TEXT	intr0(SB),$0
+	PUSHL	$0
+	PUSHL	$0
+	JMP	intrcommon
+TEXT	intr1(SB),$0
+	PUSHL	$0
+	PUSHL	$1
+	JMP	intrcommon
+TEXT	intr2(SB),$0
+	PUSHL	$0
+	PUSHL	$2
+	JMP	intrcommon
+TEXT	intr3(SB),$0
+	PUSHL	$0
+	PUSHL	$3
+	JMP	intrcommon
+TEXT	intr4(SB),$0
+	PUSHL	$0
+	PUSHL	$4
+	JMP	intrcommon
+TEXT	intr5(SB),$0
+	PUSHL	$0
+	PUSHL	$5
+	JMP	intrcommon
+TEXT	intr6(SB),$0
+	PUSHL	$0
+	PUSHL	$6
+	JMP	intrcommon
+TEXT	intr7(SB),$0
+	PUSHL	$0
+	PUSHL	$7
+	JMP	intrcommon
+TEXT	intr8(SB),$0
+	PUSHL	$8
+	JMP	intrscommon
+TEXT	intr9(SB),$0
+	PUSHL	$0
+	PUSHL	$9
+	JMP	intrcommon
+TEXT	intr10(SB),$0
+	PUSHL	$10
+	JMP	intrscommon
+TEXT	intr11(SB),$0
+	PUSHL	$11
+	JMP	intrscommon
+TEXT	intr12(SB),$0
+	PUSHL	$12
+	JMP	intrscommon
+TEXT	intr13(SB),$0
+	PUSHL	$13
+	JMP	intrscommon
+TEXT	intr14(SB),$0
+	PUSHL	$14
+	JMP	intrscommon
+TEXT	intr15(SB),$0
+	PUSHL	$0
+	PUSHL	$15
+	JMP	intrcommon
+TEXT	intr16(SB),$0
+	PUSHL	$0
+	PUSHL	$16
+	JMP	intrcommon
+TEXT	intrbad(SB),$0
+	PUSHL	$0
+	PUSHL	$0x1ff
+	JMP	intrcommon
+
+intrcommon:
+	PUSHL	DS
+	PUSHAL
+	LEAL	0(SP),AX
+	PUSHL	AX
+	CALL	trap(SB)
+	POPL	AX
+	POPAL
+	POPL	DS
+	ADDL	$8,SP	/* error code and trap type */
+	IRETL
+	RET
+
+intrscommon:
+	PUSHL	DS
+	PUSHAL
+	LEAL	0(SP),AX
+	PUSHL	AX
+	CALL	trap(SB)
+	POPL	AX
+	POPAL
+	POPL	DS
+	ADDL	$8,SP	/* error code and trap type */
+	IRETL
+	RET
+
+/*
+ *  turn on interrupts
+ */
+TEXT	sti(SB),$0
+	STI
+	RET
