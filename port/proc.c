@@ -606,7 +606,7 @@ kproc(char *name, void (*func)(void *), void *arg)
 	/*
 	 * Save time: only copy u-> data and useful stack
 	 */
-	clearmmucache();
+	clearmmucache();	/* so child doesn't inherit any of your mappings */
 	memmove(up, u, sizeof(User));
 	n = USERADDR+BY2PG - (ulong)&lastvar;
 	n = (n+32) & ~(BY2WD-1);	/* be safe & word align */
@@ -645,5 +645,10 @@ kproc(char *name, void (*func)(void *), void *arg)
 	memset(p->time, 0, sizeof(p->time));
 	p->time[TReal] = MACHP(0)->ticks;
 	ready(p);
+	/*
+	 *  since the bss/data segments are now shareable,
+	 *  any mmu info about this process is now stale
+	 *  and has to be discarded.
+	 */
 	flushmmu();
 }

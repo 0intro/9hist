@@ -41,7 +41,7 @@ sysfork(ulong *arg)
 	/*
 	 * Save time: only copy u-> data and useful stack
 	 */
-	clearmmucache();
+	clearmmucache();	/* so child doesn't inherit any of your mappings */
 	memmove((void*)upa, u, sizeof(User));
 	n = USERADDR+BY2PG - (ulong)&lastvar;
 	n = (n+32) & ~(BY2WD-1);	/* be safe & word align */
@@ -115,7 +115,6 @@ sysfork(ulong *arg)
 	 * Sched
 	 */
 	if(setlabel(&p->sched)){
-		clearmmucache();
 		u->p = p;
 		p->state = Running;
 		p->mach = m;
@@ -134,6 +133,11 @@ sysfork(ulong *arg)
 	memset(p->time, 0, sizeof(p->time));
 	p->time[TReal] = MACHP(0)->ticks;
 	memmove(p->text, u->p->text, NAMELEN);
+	/*
+	 *  since the bss/data segments are now shareable,
+	 *  any mmu info about this process is now stale
+	 *  (i.e. has bad properties) and has to be discarded.
+	 */
 	flushmmu();
 	clearmmucache();
 	ready(p);
@@ -351,6 +355,10 @@ sysexec(ulong *arg)
 		o->pte[i].page->va += (USTKTOP-TSTKTOP);
 	unlock(o);
 
+	/*
+	 *  at this point, the mmu contains info about the old address
+	 *  space and needs to be flushed
+	 */
 	flushmmu();
 	clearmmucache();
 	execpc(exec.entry);
