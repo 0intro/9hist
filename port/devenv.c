@@ -228,7 +228,7 @@ envread(Chan *c, void *a, long n, vlong off)
 	rlock(eg);
 	e = envlookup(eg, nil, c->qid.path);
 	if(e == 0) {
-		rlock(eg);
+		runlock(eg);
 		error(Enonexist);
 	}
 

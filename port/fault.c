@@ -341,15 +341,18 @@ vmemchr(void *s, int c, int n)
 	char *t;
 	ulong a;
 
+    loop:
 	a = (ulong)s;
 	m = BY2PG - (a & (BY2PG-1));
 	if(m < n){
-		t = vmemchr(s, c, m);
+		t = memchr(s, c, m);
 		if(t)
 			return t;
 		if((a & KZERO) != KZERO)
 			validaddr(a+m, 1, 0);
-		return vmemchr((void*)(a+m), c, n-m);
+		s = (void*)(a+m);
+		n -= m;
+		goto loop;
 	}
 	/*
 	 * All in one page
