@@ -62,6 +62,7 @@ i8259init(void)
 	outb(Int1aux, VectorPIC+8);		/* ICW2 - interrupt vector offset */
 	outb(Int1aux, 0x02);			/* ICW3 - I am a slave on level 2 */
 	outb(Int1aux, 0x01);			/* ICW4 - 8086 mode, not buffered */
+	outb(Int1aux, int1mask);
 
 	/*
 	 *  pass #2 8259 interrupts to #1
