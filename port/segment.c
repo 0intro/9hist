@@ -62,6 +62,9 @@ newseg(int type, ulong base, ulong size)
 
 	mapsize = ROUND(size, PTEPERTAB)/PTEPERTAB;
 	if(mapsize > nelem(s->ssegmap)){
+		mapsize *= 2;
+		if(mapsize > (SEGMAPSIZE*PTEPERTAB))
+			mapsize = (SEGMAPSIZE*PTEPERTAB);
 		s->map = smalloc(mapsize*sizeof(Pte*));
 		s->mapsize = mapsize;
 	}
@@ -436,7 +439,7 @@ ibrk(ulong addr, int seg)
 	mapsize = ROUND(newsize, PTEPERTAB)/PTEPERTAB;
 	if(mapsize > s->mapsize){
 		map = smalloc(mapsize*sizeof(Pte*));
-		memmove(map, s->map, s->mapsize);
+		memmove(map, s->map, s->mapsize*sizeof(Pte*));
 		if(s->map != s->ssegmap)
 			free(s->map);
 		s->map = map;
