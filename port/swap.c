@@ -21,7 +21,7 @@ enum
 Image 	swapimage;
 static 	int swopen;
 Page	*iolist[Maxpages];
-int	ioptr;
+int	ioptr, npage;
 
 void
 swapinit(void)
@@ -101,6 +101,7 @@ loop:
 	sleep(&swapalloc.r, needpages, 0);
 	u->p->psstate = "Pageout";
 
+	npage = 0;
 	for(;;) {
 		p++;
 		if(p >= ep)
@@ -141,6 +142,8 @@ loop:
 			wakeup(&palloc.r);
 		}
 	}
+	if(npage == 0)
+		print("swap: pass took no pages\n");
 	goto loop;
 }
 
@@ -269,6 +272,7 @@ pagepte(int type, Page **pg)
 		/* Add me to IO transaction list */
 		iolist[ioptr++] = outp;
 	}
+	npage++;
 }
 
 void

@@ -20,7 +20,11 @@ fptrap(void)
 	n = getfpq(&u->fpsave.q[0].a);
 	if(n > NFPQ)
 		panic("FPQ %d\n", n);
-    again:
+	/*
+	 * If faulted during restart, recover PC for debugging
+	 */
+	if(u->fpsave.fppc)
+		u->fpsave.q[0].a = u->fpsave.fppc;
 	fsr = getfsr();
 	savefpregs(&u->fpsave);
 	u->fpsave.fsr = fsr;
@@ -33,7 +37,7 @@ fptrap(void)
 	if(ret){
 		enabfp();	/* savefpregs disables it */
 		clearftt(fsr & ~0x1F);	/* clear ftt and cexc */
-		restfpregs(&u->fpsave);
+		restfpregs(&u->fpsave, fsr);
 		enabfp();	/* restfpregs disables it */
 		fixq(&u->fpsave, n);
 	}
@@ -202,7 +206,9 @@ fixq(FPsave *f, int n)
 		 * the trap by examining the non-zero members of the FPQ.
 		 * Tough.
 		 */
+		f->fppc = f->q[0].a;
 		(*(void(*)(void))ip)();
+		f->fppc = 0;
 		if(!fpquiet())
 			break;
 	}

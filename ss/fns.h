@@ -63,7 +63,7 @@ void	putwD(ulong, ulong);
 void	putwE16(ulong, ulong);
 void	putwE(ulong, ulong);
 void	systemreset(void);
-void	restfpregs(FPsave*);
+void	restfpregs(FPsave*, ulong);
 void	screeninit(void);
 void	screenputc(int);
 void	screenputs(char*, int);

@@ -274,6 +274,25 @@ dumpregs(Ureg *ur)
 void
 dumpstack(void)
 {
+	ulong l, v, i;
+	extern ulong etext;
+
+	if(u == 0)
+		return;
+
+	i = 0;
+	for(l=(ulong)&l; l<USERADDR+BY2PG; l+=4){
+		v = *(ulong*)l;
+		if(KTZERO < v && v < (ulong)&etext){
+			print("%lux ", v);
+			i++;
+		}
+		if(i == 4){
+			i = 0;
+			print("\n");
+		}
+	}
+
 }
 
 long
@@ -334,8 +353,10 @@ syscall(Ureg *ur)
 		u->s = *((Sargs*)(sp+1*BY2WD));
 		u->p->psstate = sysctab[u->scallnr];
 
+if(u->p->fgrp->ref <= 0) print("before syscall %s\n", u->p->psstate);
 		ret = (*systab[u->scallnr])(u->s.args);
 		poperror();
+if(u->p->fgrp->ref <= 0) print("after syscall %s\n", u->p->psstate);
 	}
 	if(u->nerrlab){
 		print("bad errstack [%d]: %d extra\n", u->scallnr, u->nerrlab);
@@ -361,6 +382,7 @@ syscall(Ureg *ur)
 	splhi(); /* avoid interrupts during the iret */
 	if(u->scallnr!=RFORK && (u->p->procctl || u->nnote))
 		notify(ur);
+
 	return ret;
 }
 

@@ -356,6 +356,8 @@ void
 procsave(Proc *p)
 {
 	USED(p);
+	if(u->p->state == Moribund)
+		return;
 	if(u->p->fpstate == FPactive){
 		fpsave(&u->fpsave);
 		u->p->fpstate = FPinactive;

@@ -58,6 +58,7 @@ struct	FPsave
 		ulong	a;	/* address */
 		ulong	i;	/* instruction */
 	}q[NFPQ];
+	long	fppc;		/* for recursive traps only */
 };
 
 struct Conf

@@ -564,7 +564,7 @@ TEXT	restfpregs(SB), $0
 	MOVW	R8, PSR
 
 	NOOP			/* wait for PSR to quiesce */
-	MOVW	0(R7), FSR
+	MOVW	fsr+4(FP), FSR
 	ADD	$4, R7
 
 	MOVD	(0*4)(R7), F0

@@ -166,9 +166,9 @@ trap(Ureg *ur)
 		case 4:				/* floating point disabled */
 			if(u && u->p){
 				if(u->p->fpstate == FPinit)
-					restfpregs(initfpp);
+					restfpregs(initfpp, initfpp->fsr);
 				else if(u->p->fpstate == FPinactive)
-					restfpregs(&u->fpsave);
+					restfpregs(&u->fpsave, u->fpsave.fsr);
 				else
 					break;
 				u->p->fpstate = FPactive;
@@ -205,7 +205,7 @@ trap(Ureg *ur)
 	if(user){
 		notify(ur);
 		if(u->p->fpstate == FPinactive) {
-			restfpregs(&u->fpsave);
+			restfpregs(&u->fpsave, u->fpsave.fsr);
 			u->p->fpstate = FPactive;
 			ur->psr |= PSREF;
 		}
@@ -525,19 +525,13 @@ syscall(Ureg *aur)
 	if(conf.ss2)
 		putw2(CACHETAGS+((TRAPS+16*128)&(VACSIZE-1)), 0);
 
-	/*
-	 * since the system call interface does not
-	 * guarantee anything about registers,
-	 */
 	if(u->p->fpstate == FPactive) {
 		fpquiet();
 		u->p->fpstate = FPinit;
+		u->fpsave.fsr = getfsr();
 		ur->psr &= ~PSREF;
 	}
 	spllo();
-
-	if(u->p->procctl)
-		procctl(u->p);
 
 	u->scallnr = ur->r7;
 	sp = ur->usp;
@@ -570,6 +564,9 @@ syscall(Ureg *aur)
 	ur->pc += 4;
 	ur->npc = ur->pc+4;
 	u->nerrlab = 0;
+	if(u->p->procctl)
+		procctl(u->p);
+
 	u->p->insyscall = 0;
 	u->p->psstate = 0;
 	if(u->scallnr == NOTED)	/* ugly hack */

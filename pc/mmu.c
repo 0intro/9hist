@@ -86,6 +86,10 @@ static ulong	*upt;		/* 2nd level page table for struct User */
  */
 #define BTMOFF(v)	((((ulong)(v))>>(PGSHIFT))&(WD2PG-1))
 
+#define MAXUMEG 64	/* maximum memory per user process in megabytes */
+#define ONEMEG (1024*1024)
+
+
 /*
  *  Create a prototype page map that maps all of memory into
  *  kernel (KZERO) space.  This is the default map.  It is used
@@ -152,56 +156,19 @@ mmuinit(void)
 }
 
 /*
- *  Get a page for a process's page map.
- *
- *  Each process maintains its own free list of page
- *  table pages.  All page table pages are put on
- *  this list in flushmmu().  flushmmu() doesn't
- *  putpage() the pages since the process will soon need
- *  them back.  Also, this avoids worrying about deadlocks
- *  twixt flushmmu() and putpage().
- *
- *  mmurelease() will give back the pages when the process
- *  exits.
- */
-static Page*
-mmugetpage(int clear)
-{
-	Proc *p = u->p;
-	Page *pg;
-
-	if(p->mmufree){
-		pg = p->mmufree;
-		p->mmufree = pg->next;
-		if(clear)
-			memset((void*)pg->va, 0, BY2PG);
-	} else {
-		pg = newpage(clear, 0, 0);
-		pg->va = VA(kmap(pg));
-	}
-	return pg;
-}
-
-/*
- *  Put all bottom level page map pages on the process's free list and
- *  call mapstack to set up the prototype page map.  This
- *  effectively forgets all of the process's mappings.
- *
- *  Don't free the top level page.  Just zero the used entries.  This
- *  avoids a 4k copy each flushmmu.
+ *  Mark the mmu and tlb as inconsistent and call mapstack to fix it up.
  */
 void
 flushmmu(void)
 {
 	int s;
-	Proc *p;
 
-	if(u == 0)
-		return;
-	p = u->p;
-	p->newtlb = 1;
 	s = splhi();
-	mapstack(p);
+	if(u){
+		u->p->newtlb = 1;
+		mapstack(u->p);
+	} else
+		putcr3(ktoppg.pa);
 	splx(s);
 }
 
@@ -213,27 +180,24 @@ flushmmu(void)
 void
 mapstack(Proc *p)
 {
-	Page *pg;
-	ulong *top;
+	Page *pg, **l;
 
 	if(p->upage->va != (USERADDR|(p->pid&0xFFFF)) && p->pid != 0)
 		panic("mapstack %d 0x%lux 0x%lux", p->pid, p->upage->pa, p->upage->va);
 
 	if(p->newtlb){
 		/*
-		 *  bin the current second level page tables.  newtlb
-		 *  set means that they are inconsistent with the segment.c
-		 *  data structures.
+		 *  bin the current second level page tables.
+		 *  newtlb set means that they are inconsistent
+		 *  with the segment.c data structures.
 		 */
-		if(p->mmutop && p->mmuused){
-			top = (ulong*)p->mmutop->va;
-			for(pg = p->mmuused; pg->next; pg = pg->next)
-				top[pg->daddr] = 0;
-			top[pg->daddr] = 0;
-			pg->next = p->mmufree;
-			p->mmufree = p->mmuused;
-			p->mmuused = 0;
-		}
+		if(p->mmutop)
+			memmove((void*)p->mmutop->va, (void*)ktoppg.va, BY2PG);
+		l = &p->mmufree;
+		for(pg = p->mmufree; pg; pg = pg->next)
+			l = &pg->next;
+		*l = p->mmuused;
+		p->mmuused = 0;
 		p->newtlb = 0;
 	}
 
@@ -282,7 +246,6 @@ mmurelease(Proc *p)
 /*
  *  Add an entry into the mmu.
  */
-#define FOURMEG (4*1024*1024)
 void
 putmmu(ulong va, ulong pa, Page *pg)
 {
@@ -290,46 +253,44 @@ putmmu(ulong va, ulong pa, Page *pg)
 	ulong *top;
 	ulong *pt;
 	Proc *p;
+	int s;
 
 	if(u==0)
 		panic("putmmu");
-
 	p = u->p;
 
-	if(va >= USERADDR && va < USERADDR + FOURMEG)
-		print("putmmu in USERADDR page table 0x%lux\n", va);
-	if((va & 0xF0000000) == KZERO)
-		print("putmmu in kernel page table 0x%lux\n", va);
-
 	/*
-	 *  if no top level page, allocate one and copy the prototype
-	 *  into it.
+	 *  create a top level page if we don't already have one.
+	 *  copy the kernel top level page into it for kernel mappings.
 	 */
 	if(p->mmutop == 0){
-		/*
-		 *  N.B. The assignment to pg is neccessary.
-		 *  We can't assign to p->mmutop until after
-		 *  copying ktoppg into the new page since we might
-		 *  get scheded in this code and p->mmutop will be
-		 *  pointing to a bad map.
-		 */
-		pg = mmugetpage(0);
+		pg = newpage(0, 0, 0);
+		pg->va = VA(kmap(pg));
 		memmove((void*)pg->va, (void*)ktoppg.va, BY2PG);
 		p->mmutop = pg;
 	}
 	top = (ulong*)p->mmutop->va;
+	topoff = TOPOFF(va);
 
 	/*
-	 *  if bottom level page table missing, allocate one and point
-	 *  the top level page at it.
+	 *  if bottom level page table missing, allocate one 
+	 *  and point the top level page at it.
 	 */
-	topoff = TOPOFF(va);
-	if(top[topoff] == 0){
-		pg = mmugetpage(1);
+	s = splhi();
+	if(PPN(top[topoff]) == 0){
+		if(p->mmufree == 0){
+			spllo();
+			pg = newpage(1, 0, 0);
+			pg->va = VA(kmap(pg));
+			splhi();
+		} else {
+			pg = p->mmufree;
+			p->mmufree = pg->next;
+			memset((void*)pg->va, 0, BY2PG);
+		}
 		top[topoff] = PPN(pg->pa) | PTEVALID | PTEUSER | PTEWRITE;
 		pg->next = p->mmuused;
 		p->mmuused = pg;
-		pg->daddr = topoff;
 	}
 
 	/*
@@ -340,6 +301,7 @@ putmmu(ulong va, ulong pa, Page *pg)
 
 	/* flush cached mmu entries */
 	putcr3(p->mmutop->pa);
+	splx(s);
 }
 
 void

@@ -108,7 +108,7 @@
  *  physical MMU
  */
 #define	PTEVALID	(1<<0)
-#define	PTEUNCACHED	0		/* everything is uncached */
+#define	PTEUNCACHED	(1<<4)	
 #define PTEWRITE	(1<<1)
 #define	PTERONLY	(0<<1)
 #define	PTEKERNEL	(0<<2)
