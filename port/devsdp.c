@@ -42,7 +42,7 @@ enum
 	Maxconv= 256,		// power of 2
 	Nfs= 4,			// number of file systems
 	MaxRetries=	12,
-	KeepAlive = 60,		// keep alive in seconds
+	KeepAlive = 300,	// keep alive in seconds - should probably be about 60 but is higher to avoid linksys bug
 	SecretLength= 32,	// a secret per direction
 	SeqMax = (1<<24),
 	SeqWindow = 32,

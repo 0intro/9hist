@@ -587,6 +587,8 @@ udpadvise(Proto *udp, Block *bp, char *msg)
 		if(s->lport == psource)
 		if(ipcmp(s->raddr, dest) == 0)
 		if(ipcmp(s->laddr, source) == 0){
+			if(s->ignoreadvice)
+				break;
 			qlock(s);
 			qunlock(udp);
 			qhangup(s->rq, msg);

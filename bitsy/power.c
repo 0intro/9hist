@@ -187,14 +187,9 @@ deepsleep(void) {
 	intrcpy(&savedintrregs, intrregs);
 	cacheflush();
 	delay(50);
-//	mecr = memconfregs->mecr;
 	if(setpowerlabel()){
 		/* return here with mmu back on */
 		trapresume();
-
-		/* Turn off memory auto power */
-//		memconfregs->mdrefr &= ~0x30000000;
-//		memconfregs->mecr = mecr;
 
 		gpiorestore(gpioregs, &savedgpioregs);
 		delay(50);
@@ -214,10 +209,10 @@ deepsleep(void) {
 //		dumpitall();
 		delay(1000);
 //		irpower(1);
-//		audiopower(1);
+		audiopower(1);
 		µcpower(1);
 		screenpower(1);
-		pcmciapower(1);
+	//	pcmciapower(1);
 		splx(power_pl);
 		return;
 	}

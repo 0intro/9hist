@@ -1088,6 +1088,8 @@ ipwrite(Chan* ch, void *v, long n, vlong off)
 			ttlctlmsg(c, cb);
 		else if(strcmp(cb->f[0], "tos") == 0)
 			tosctlmsg(c, cb);
+		else if(strcmp(cb->f[0], "ignoreadvice") == 0)
+			c->ignoreadvice = 1;
 		else if(strcmp(cb->f[0], "addmulti") == 0){
 			if(cb->nf < 2)
 				error("addmulti needs interface address");

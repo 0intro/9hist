@@ -85,6 +85,7 @@ struct Conv
 	uint	ttl;			/* max time to live */
 	uint	tos;			/* type of service */
 	uchar	ipversion;		/* IPv4 or IPv6 */
+	int	ignoreadvice;		/* don't terminate connection on icmp errors */
 
 	char	*owner;			/* protections */
 	int	perm;
