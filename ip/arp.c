@@ -182,7 +182,7 @@ arpenter(Fs *fs, int version, uchar *ip, uchar *mac, int n, int refresh)
 	arp = fs->arp;
 
 	if(n != 6) {
-print("arp: len = %d\n", n);
+//		print("arp: len = %d\n", n);
 		return;
 	}
 
