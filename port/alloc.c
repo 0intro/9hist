@@ -83,7 +83,7 @@ void
 xinit(void)
 {
 	Hole *h, *eh;
-	int up, np0, np1;
+	int upages, np0, np1;
 
 	eh = &xlists.hole[Nhole-1];
 	for(h = xlists.hole; h < eh; h++)
@@ -91,8 +91,8 @@ xinit(void)
 
 	xlists.flist = xlists.hole;
 
-	up = conf.upages;
-	np1 = up;
+	upages = conf.upages;
+	np1 = upages;
 	if(np1 > conf.npage1)
 		np1 = conf.npage1;
 
@@ -100,9 +100,9 @@ xinit(void)
 	conf.npage1 -= np1;
 	xhole(conf.base1, conf.npage1*BY2PG);
 	conf.npage1 = conf.base1+(conf.npage1*BY2PG);
-	up -= np1;
+	upages -= np1;
 
-	np0 = up;
+	np0 = upages;
 	if(np0 > conf.npage0)
 		np0 = conf.npage0;
 
