@@ -47,6 +47,7 @@ enum {
 	Pwhite		= 0xFF,
 };
 
+#define VGAMEM()	0xA0000
 #define vgai(port)		inb(port)
 #define vgao(port, data)	outb(port, data)
 

@@ -322,7 +322,7 @@ vgactl(Cmdbuf *cb)
 		return;
 
 	case CMdrawinit:
-		memimagedraw(scr->gscreen, scr->gscreen->r, memblack, ZP, nil, ZP);
+		memimagedraw(scr->gscreen, scr->gscreen->r, memblack, ZP, nil, ZP, S);
 		if(scr && scr->dev && scr->dev->drawinit)
 			scr->dev->drawinit(scr);
 		return;
