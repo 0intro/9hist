@@ -59,7 +59,7 @@ newpage(int clear, Segment **s, ulong va)
 {
 	Page *p;
 	KMap *k;
-	int hw, dontalloc, fc;
+	int i, hw, dontalloc, fc;
 
 retry:
 	lock(&palloc);
@@ -118,7 +118,8 @@ retry:
 	p->ref++;
 	p->va = va;
 	p->modref = 0;
-	memset(p->cachectl, PG_DATINVALID, sizeof(p->cachectl));
+	for(i = 0; i < MAXMACH; i++)
+		p->cachectl[i] = PG_NOFLUSH;
 	unlock(p);
 
 	if(clear) {
@@ -150,6 +151,7 @@ putpage(Page *p)
 		unlock(p);
 		return;
 	}
+
 	vcacheinval(p);
 	lock(&palloc);
 	if(p->image && p->image != &swapimage) {
@@ -186,7 +188,6 @@ void
 duppage(Page *p)				/* Always call with p locked */
 {
 	Page *np;
-	int i;
 
 	/* No dup for swap pages */
 	if(p->image == &swapimage) {
@@ -231,8 +232,6 @@ duppage(Page *p)				/* Always call with p locked */
 	uncachepage(np);
 	np->va = p->va;
 	np->daddr = p->daddr;
-	for(i = 0; i < MAXMACH; i++)
-		np->cachectl[i] |= PG_DATINVALID;
 	copypage(p, np);
 	cachepage(np, p->image);
 	unlock(np);

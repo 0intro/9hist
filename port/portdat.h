@@ -290,9 +290,9 @@ struct Note
 
 enum
 {
-	PG_TXTFLUSH	= 1<<1,		/* flush icache */
-	PG_DATFLUSH	= 1<<2,		/* flush both i & d caches */
-	PG_DATINVALID	= 1<<3,		/* invalidate d cache */
+	PG_NOFLUSH	= 0,
+	PG_TXTFLUSH	= 1,		/* flush icache */
+	PG_DATFLUSH	= 2,		/* flush both i & d caches */
 
 	PG_MOD		= 0x01,		/* software modified bit */
 	PG_REF		= 0x02,		/* software referenced bit */

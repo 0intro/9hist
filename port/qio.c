@@ -91,6 +91,16 @@ enum
 	Qflow=		(1<<3),
 };
 
+void
+poison(Block *b)
+{
+	b->next = (void*)0xdeadbabe;
+	b->rp = (void*)0xdeadbabe;
+	b->wp = (void*)0xdeadbabe;
+	b->lim = (void*)0xdeadbabe;
+	b->base = (void*)0xdeadbabe;
+}
+
 /*
  *  Manage interrupt level memory allocation.
  */
@@ -298,9 +308,10 @@ qconsume(Queue *q, void *vp, int len)
 		wakeup(&q->wr);
 
 	/* discard the block if we're done with it */
-	if((q->state & Qmsg) || len == n)
+	if((q->state & Qmsg) || len == n) {
+		poison(b);
 		ifree(b);
-
+	}
 	return len;
 }
 
@@ -447,8 +458,10 @@ qread(Queue *q, void *vp, int len)
 	b->rp += n;
 
 	/* free it or put what's left on the queue */
-	if(b->rp >= b->wp || (q->state&Qmsg))
+	if(b->rp >= b->wp || (q->state&Qmsg)) {
+		poison(b);
 		free(b);
+	}
 	else {
 		x = splhi();
 		lock(q);
@@ -557,6 +570,7 @@ qclose(Queue *q)
 	/* free queued blocks */
 	while(bfirst){
 		b = bfirst->next;
+		poison(bfirst);
 		free(bfirst);
 		bfirst = b;
 	}

@@ -150,9 +150,9 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 		break;
 	}
 
-	if(s->flushme){
+	if(s->flushme) {
 		for(i = 0; i < MAXMACH; i++)
-			(*pg)->cachectl[i] |= PG_TXTFLUSH;
+			(*pg)->cachectl[i] = PG_TXTFLUSH;
 	}
 
 	qunlock(&s->lk);
