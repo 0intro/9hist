@@ -324,6 +324,7 @@ newproc(void)
 	p->nchild = 0;
 	p->nwait = 0;
 	p->waitq = 0;
+	p->parent = 0;
 	p->pgrp = 0;
 	p->egrp = 0;
 	p->fgrp = 0;
@@ -1053,8 +1054,6 @@ kproc(char *name, void (*func)(void *), void *arg)
 	p->pgrp = kpgrp;
 	incref(kpgrp);
 
-	p->nchild = 0;
-	p->parent = 0;
 	memset(p->time, 0, sizeof(p->time));
 	p->time[TReal] = MACHP(0)->ticks;
 	ready(p);

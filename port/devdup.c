@@ -76,6 +76,9 @@ dupopen(Chan *c, int omode)
 	if((twicefd & 1)){
 		/* ctl file */
 		f = c;
+		f->mode = openmode(omode);
+		f->flag |= COPEN;
+		f->offset = 0;
 	}else{
 		/* fd file */
 		fdtochan(fd, openmode(omode), 0, 0);	/* error check only */
@@ -120,7 +123,12 @@ dupread(Chan *c, void *va, long n, vlong offset)
 static long
 dupwrite(Chan *c, void*, long, vlong)
 {
-	if(c->qid.path & 1){
+	int fd, twicefd;
+
+	twicefd = c->qid.path - 1;
+	fd = twicefd/2;
+	if(twicefd & 1){
+print("writing ctl file\n");
 		print("do ctl write\n");
 		return -1;
 	}

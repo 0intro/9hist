@@ -1590,12 +1590,14 @@ atapnp(void)
 	Pcidev *p;
 	int channel, ispc87415, pi, r;
 	SDev *legacy[2], *sdev, *head, *tail;
+//int i;
 
 	legacy[0] = legacy[1] = head = tail = nil;
 	if(sdev = ataprobe(0x1F0, 0x3F4, IrqATA0)){
 		head = tail = sdev;
 		legacy[0] = sdev;
 	}
+//print("probe 1, sdev %p\n", sdev);
 	if(sdev = ataprobe(0x170, 0x374, IrqATA1)){
 		if(head != nil)
 			tail->next = sdev;
@@ -1604,6 +1606,7 @@ atapnp(void)
 		tail = sdev;
 		legacy[1] = sdev;
 	}
+//print("probe 2, sdev %p\n", sdev);
 
 	p = nil;
 	while(p = pcimatch(p, 0, 0)){
@@ -1663,6 +1666,7 @@ atapnp(void)
 			 * Is this correct?
 			 */
 			pi |= 0x0f;
+//for(i = 0; i <= 4; i++) print("bar%d: addr %lux size %d\n", i, p->mem[i].bar, p->mem[i].size);
 			break;
 		case (0x0571<<16)|0x1106:	/* VIA 82C686 */
 		case (0x0211<<16)|0x1166:	/* ServerWorks IB6566 */
