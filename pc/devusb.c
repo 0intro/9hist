@@ -685,7 +685,7 @@ static Block *
 isoxmit(Endpt *e, Block *b, int pid)
 {
 	Block *ob;
-	static int ioc;
+	static int ioc, n, id;
 	TD *td;
 
 	td = e->etd;

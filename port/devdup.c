@@ -83,10 +83,8 @@ dupopen(Chan *c, int omode)
 		f->offset = 0;
 	}else{
 		/* fd file */
-		fdtochan(fd, openmode(omode), 0, 0);	/* error check only */
-		f = up->fgrp->fd[fd];
+		f = fdtochan(fd, openmode(omode), 0, 1);
 		cclose(c);
-		incref(f);
 	}
 	if(omode & OCEXEC)
 		f->flag |= CCEXEC;
@@ -104,18 +102,15 @@ dupread(Chan *c, void *va, long n, vlong offset)
 	char *a = va;
 	char buf[256];
 	int fd, twicefd;
-	Fgrp *f;
 
 	if(c->qid.type == QTDIR)
 		return devdirread(c, a, n, (Dirtab *)0, 0L, dupgen);
 	twicefd = c->qid.path - 1;
 	fd = twicefd/2;
-	f = up->fgrp;
 	if(twicefd & 1){
-		if(fd<0 || f->nfd<=fd)
-			error(Ebadfd);
-		c = fdtochan(fd, -1, 0, 0);
+		c = fdtochan(fd, -1, 0, 1);
 		procfdprint(c, fd, 0, buf, sizeof buf);
+		cclose(c);
 		return readstr((ulong)offset, va, n, buf);
 	}
 	panic("dupread");
