@@ -68,12 +68,12 @@ static	struct
 {
 	QLock;
 	Rendez	vous;
-	int	bufinit;	/* boolean if buffers allocated */
-	int	curcount;	/* how much data in current buffer */
+	int	bufinit;		/* boolean if buffers allocated */
+	int	curcount;		/* how much data in current buffer */
 	int	active;		/* boolean dma running */
-	int	intr;		/* boolean an interrupt has happened */
+	int	intr;			/* boolean an interrupt has happened */
 	int	amode;		/* Aclosed/Aread/Awrite for /audio */
-	int	rivol[Nvol];		/* right/left input/output volumes */
+	int	rivol[Nvol];	/* right/left input/output volumes */
 	int	livol[Nvol];
 	int	rovol[Nvol];
 	int	lovol[Nvol];
@@ -81,8 +81,9 @@ static	struct
 	int	minor;		/* SB16 minor version number */
 	ulong	totcount;	/* how many bytes processed since open */
 	vlong	tottime;	/* time at which totcount bytes were processed */
+	int	buffered;		/* number of bytes en route */
 
-	Buf	buf[Nbuf];	/* buffers and queues */
+	Buf	buf[Nbuf];		/* buffers and queues */
 	AQueue	empty;
 	AQueue	full;
 	Buf*	current;
@@ -97,11 +98,11 @@ static	struct
 	int	irval;
 } volumes[] =
 {
-[Vaudio]	"audio",	Fout, 		50,	50,
-[Vsynth]	"synth",	Fin|Fout,	0,	0,
+[Vaudio]		"audio",	Fout, 		50,	50,
+[Vsynth]		"synth",	Fin|Fout,	0,	0,
 [Vcd]		"cd",		Fin|Fout,	0,	0,
-[Vline]		"line",		Fin|Fout,	0,	0,
-[Vmic]		"mic",		Fin|Fout|Fmono,	0,	0,
+[Vline]		"line",	Fin|Fout,	0,	0,
+[Vmic]		"mic",	Fin|Fout|Fmono,	0,	0,
 [Vspeaker]	"speaker",	Fout|Fmono,	0,	0,
 
 [Vtreb]		"treb",		Fout, 		50,	50,
@@ -347,12 +348,16 @@ contindma(void)
 
 	b = audio.current;
 	if(audio.amode == Aread) {
-		if(b)	/* shouldn't happen */
+		if(b){
 			putbuf(&audio.full, b);
+			audio.buffered += Bufsize;
+		}
 		b = getbuf(&audio.empty);
 	} else {
-		if(b)	/* shouldn't happen */
+		if(b){
 			putbuf(&audio.empty, b);
+			audio.buffered -= Bufsize;
+		}
 		b = getbuf(&audio.full);
 	}
 	audio.current = b;
@@ -634,6 +639,7 @@ setempty(void)
 	audio.full.last = 0;
 	audio.current = 0;
 	audio.filling = 0;
+	audio.buffered = 0;
 	for(i=0; i<Nbuf; i++)
 		putbuf(&audio.empty, &audio.buf[i]);
 	audio.totcount = 0;
@@ -851,6 +857,7 @@ audiowalk(Chan *c, Chan *nc, char **name, int nname)
 static int
 audiostat(Chan *c, uchar *db, int n)
 {
+	audiodir[Qaudio].length = audio.buffered;
 	return devstat(c, db, n, audiodir, nelem(audiodir), devgen);
 }
 
@@ -926,6 +933,7 @@ audioclose(Chan *c)
 				if(b) {
 					audio.filling = 0;
 					memset(b->virt+audio.curcount, 0, Bufsize-audio.curcount);
+					audio.buffered += Bufsize-audio.curcount;
 					swab(b->virt);
 					putbuf(&audio.full, b);
 				}
@@ -996,6 +1004,7 @@ audioread(Chan *c, void *v, long n, vlong off)
 			audio.curcount += m;
 			n -= m;
 			a += m;
+			audio.buffered -= m;
 			if(audio.curcount >= Bufsize) {
 				audio.filling = 0;
 				putbuf(&audio.empty, b);
@@ -1171,6 +1180,7 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 			audio.curcount += m;
 			n -= m;
 			a += m;
+			audio.buffered += m;
 			if(audio.curcount >= Bufsize) {
 				audio.filling = 0;
 				swab(b->virt);

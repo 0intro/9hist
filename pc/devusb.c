@@ -1440,6 +1440,7 @@ usbgen(Chan *c, char *, Dirtab*, int, int s, Dir *dp)
 	Udev *d;
 	Dirtab *tab;
 	Endpt *e;
+	vlong len;
 
 	/*
 	 * Top level directory contains the name of the device.
@@ -1489,6 +1490,7 @@ usbgen(Chan *c, char *, Dirtab*, int, int s, Dir *dp)
 	/*
 	 * Third level.
 	 */
+	len = 0;
 	path = c->qid.path & ~QMASK;	/* slot component */
 	if(s == DEVDOTDOT){
 		mkqid(&q, Q2nd, c->qid.vers, QTDIR);
@@ -1513,7 +1515,8 @@ usbgen(Chan *c, char *, Dirtab*, int, int s, Dir *dp)
 		return 0;
 	sprint(up->genbuf, "ep%ddata", s);
 	mkqid(&q, path | (Qep0+s), c->qid.vers, QTFILE);
-	devdir(c, q, up->genbuf, 0, eve, e->mode==OREAD? 0444: e->mode==OWRITE? 0222: 0666, dp);
+	len = e->buffered;
+	devdir(c, q, up->genbuf, len, eve, e->mode==OREAD? 0444: e->mode==OWRITE? 0222: 0666, dp);
 	return 1;
 }
 
