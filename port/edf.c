@@ -64,12 +64,13 @@ static Task *qschedulability;
 
 void (*devrt)(Task*, Ticks, int);
 
-static void		edfresched(Task *t);
+static void		edfresched(Task*);
 static void		setdelta(void);
-static void		testdelta(Task *thetask);
-static void		edfreleaseintr(Ureg *, Timer *cy);
+static void		testdelta(Task*);
+static void		edfreleaseintr(Ureg*, Timer*);
 static void		edfdeadlineintr(Ureg*, Timer*);
-static char *	edftestschedulability(Task *thetask);
+static char *	edftestschedulability(Task*);
+static void		resrelease(Task*);
 
 static void
 edfinit(void)
@@ -449,7 +450,7 @@ edfreleaseintr(Ureg*, Timer*)
 }
 
 static void
-edfdeadlineintr(Ureg*, Timer*)
+edfdeadlineintr(Ureg*, Timer *timer)
 {
 	/* Task reached deadline */
 
@@ -462,8 +463,8 @@ edfdeadlineintr(Ureg*, Timer*)
 
 	DPRINT("%d edfdeadlineintr\n", m->machno);
 
-	timerdel(&deadlinetimer[m->machno]);
-	deadlinetimer[m->machno].when = 0;
+	if (timer)
+		timer->when = 0;
 
 	if(panicking || active.exiting)
 		return;
@@ -486,6 +487,7 @@ edfdeadlineintr(Ureg*, Timer*)
 			if (t->curcsn){
 				if (t->curcsn->S <= used){
 					t->curcsn->S = 0LL;
+					resrelease(t);
 					r = t->curcsn->i;
 					noted++;
 					snprint(buf, sizeof buf, "sys: deadline miss: resource %s", r->name);
@@ -1083,6 +1085,7 @@ resacquire(Task *t, CSN *c)
 	}
 	t->Delta = c->Delta;
 	t->curcsn = c;
+	if(devrt) devrt(t, now, SResacq);
 	/* priority is going up, no need to reschedule */
 }
 
@@ -1113,6 +1116,7 @@ resrelease(Task *t)
 	}else
 		t->Delta = Infinity;
 	c->S = 0LL;	/* don't allow reuse */
+	if(devrt) devrt(t, now, SResrel);
 	if (deadlinetimer[m->machno].when)
 		timerdel(&deadlinetimer[m->machno]);
 	deadlinetimer[m->machno].when = when;
