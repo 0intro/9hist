@@ -54,7 +54,7 @@ state_upcall(Ipconv *s, char oldstate, char newstate)
 }
 
 void
-open_tcp(Ipconv *s, int mode, ushort window, char tos)
+tcpstart(Ipconv *s, int mode, ushort window, char tos)
 {
 	Tcpctl *tcb = &s->tcpctl;
 

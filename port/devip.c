@@ -187,8 +187,10 @@ ipopen(Chan *c, int omode)
 			pushq(c->stream, cp->stproto);
 
 		if(cp->stproto == &tcpinfo)
-			open_tcp(cp, TCP_PASSIVE, Streamhi, 0);
-	
+			tcpstart(cp, TCP_PASSIVE, Streamhi, 0);
+		else if(cp->stproto == &ilinfo)
+			ilstart(cp, IL_PASSIVE, 10);
+
 		iplisten(c, cp, ipconv[c->dev]);
 		break;
 	case Sdataqid:
@@ -197,7 +199,10 @@ ipopen(Chan *c, int omode)
 			pushq(c->stream, cp->stproto);
 
 		if(cp->stproto == &tcpinfo)
-			open_tcp(cp, TCP_ACTIVE, Streamhi, 0);
+			tcpstart(cp, TCP_ACTIVE, Streamhi, 0);
+		else if(cp->stproto == &ilinfo)
+			ilstart(cp, IL_ACTIVE, 10);
+
 		break;
 	case Sctlqid:
 		streamopen(c, &ipinfo);

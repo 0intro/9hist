@@ -14,9 +14,11 @@
 #define DPRINT if(pip)print
 int ilcksum = 1;
 Queue	*Iloutput;		/* Il to lance output channel */
+static int initseq = 25000;
 
 void	ilrcvmsg(Ipconv*, Block*);
 void	ilackproc(void*);
+void	ilsendctl(Ipconv *, Ilhdr *, int);
 
 void
 ilopen(Queue *q, Stream *s)
@@ -126,6 +128,8 @@ void
 ilrcvmsg(Ipconv *ipc, Block *bp)
 {
 	Ilhdr *ih;
+	int plen;
+	Ipconv *s;
 
 	ih = (Ilhdr *)bp;
 
@@ -138,21 +142,12 @@ ilrcvmsg(Ipconv *ipc, Block *bp)
 		goto drop;
 	}
 
-	s = ip_conn(ipc, hngets(ih->ildst), hngets(ih->ilsrc), hngetl(), IP_ILPROTO);
+	s = ip_conn(ipc, nhgets(ih->ildst), nhgets(ih->ilsrc), nhgetl(ih->src), IP_ILPROTO);
 	if(s == 0) {
-		ilsentctl(0, ih, Ilreset);
+		ilsendctl(0, ih, Ilreset);
 		goto drop;
 	}
 
-	switch(s->state) {
-	case Closed:
-		ilsentctl(0, ih, Ilreset);
-		goto drop;
-	case Syncee:
-	case Syncer:
-	case Established:
-	case Closing:
-	}	
 	
 drop:
 	freeb(bp);
@@ -171,10 +166,10 @@ ilsendctl(Ipconv *ipc, Ilhdr *inih, int type)
 
 	hnputs(ih->illen, IL_EHSIZE+IL_HDRSIZE);
 	if(inih) {
-		hnputs(ih->ilsrc, inih->ildst);
-		hnputs(ih->ildst, inih->ilsrc);
-		hnputl(ih->ilid, inih->recvd);
-		hnputl(ih->ilack, inih->sent);
+		hnputs(ih->ilsrc, nhgets(inih->ildst));
+		hnputs(ih->ildst, nhgets(inih->ilsrc));
+		hnputl(ih->ilid, nhgetl(inih->ilack));
+		hnputl(ih->ilack, nhgetl(inih->ilid));
 	}
 	else {
 		hnputs(ih->ilsrc, ipc->psrc);
@@ -196,4 +191,32 @@ ilsendctl(Ipconv *ipc, Ilhdr *inih, int type)
 void
 ilackproc(void *junk)
 {
+}
+
+void
+ilstart(Ipconv *ipc, int type, int window)
+{
+	Ilcb *ic = &ipc->ilctl;
+
+	if(ic->state != Ilclosed)
+		return;
+
+	ic->unacked = 0;
+	ic->outoforder = 0;
+	initseq += TK2MS(MACHP(0)->ticks);
+	ic->sent = initseq;
+	ic->recvd = ic->sent;
+	ic->lastack = ic->sent;
+	ic->window = window;
+
+	switch(type) {
+	case IL_PASSIVE:
+		ic->state = Illistening;
+		break;
+	case IL_ACTIVE:
+		ic->state = Ilsyncer;
+		ilsendctl(ipc, 0, Ilsync);
+		break;
+	}
+
 }

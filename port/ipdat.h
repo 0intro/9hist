@@ -68,7 +68,7 @@ struct Udphdr
 
 struct Ilhdr
 {
-#define IL_EHSIZE	22
+#define IL_EHSIZE	34
 	uchar	d[6];		/* Ethernet destination */
 	uchar	s[6];		/* Ethernet source */
 	uchar	type[2];	/* Ethernet packet type */
@@ -77,6 +77,11 @@ struct Ilhdr
 	uchar	length[2];	/* packet length */
 	uchar	id[2];		/* Identification */
 	uchar	frag[2];	/* Fragment information */
+	uchar	ttl;		/* Time to live */
+	uchar	proto;		/* Protocol */
+	uchar	cksum[2];	/* Header checksum */
+	uchar	src[4];		/* Ip source */
+	uchar	dst[4];		/* Ip destination */
 #define IL_HDRSIZE	16	
 	uchar	ilsum[2];	/* Checksum including header */
 	uchar	illen[2];	/* Packet length */
@@ -88,7 +93,7 @@ struct Ilhdr
 	uchar	ilack[4];	/* Acked sequence */
 };
 
-struct Ilcb
+struct Ilcb				/* Control block */
 {
 	int	state;
 	Block	*unacked;
@@ -98,9 +103,10 @@ struct Ilcb
 	ulong	sent;
 	ulong	recvd;
 	ulong	lastack;
+	int	window;
 };
 
-enum
+enum					/* Packet types */
 {
 	Ilsync,
 	Ildata,
@@ -109,6 +115,16 @@ enum
 	Ilquerey,
 	Ilstate,
 	Ilreset,
+};
+
+enum					/* Connection state */
+{
+	Ilclosed,
+	Ilsyncer,
+	Ilsyncee,
+	Ilestablished,
+	Illistening,
+	Ilclosing,
 };
 
 #define TCP_PKT	(TCP_EHSIZE+TCP_IPLEN+TCP_PHDRSIZE)
@@ -292,6 +308,8 @@ struct Ipconv
 
 #define TCP_PASSIVE	0
 #define TCP_ACTIVE	1
+#define IL_PASSIVE	0
+#define IL_ACTIVE	1
 
 #define MAXBACKOFF	5
 #define FORCE		1
@@ -481,7 +499,7 @@ int	backoff(int);
 int	dupb(Block **, Block *, int, int);
 void	tcp_input(Ipconv *, Block *);
 void 	tcprcvwin(Ipconv *);
-void	open_tcp(Ipconv *, int, ushort, char);
+void	tcpstart(Ipconv *, int, ushort, char);
 void	tcpflow(void*);
 void 	tcp_timeout(void *);
 void	tcp_acktimer(void *);
