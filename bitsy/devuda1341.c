@@ -41,14 +41,14 @@ static int debug = 1;
  */
 
 /* 
- * L3 setup and hold times (expressed in us)
+ * L3 setup and hold times (expressed in µs)
  */
 #define L3_DataSetupTime	1		/* 190 ns */
 #define L3_DataHoldTime		1		/*  30 ns */
 #define L3_ModeSetupTime	1		/* 190 ns */
 #define L3_ModeHoldTime		1		/* 190 ns */
-#define L3_ClockHighTime	100		/* 250 ns (min is 64*fs, 35us @ 44.1 Khz) */
-#define L3_ClockLowTime		100		/* 250 ns (min is 64*fs, 35us @ 44.1 Khz) */
+#define L3_ClockHighTime	10		/* 250 ns (min is 64*fs, 35µs @ 44.1 Khz) */
+#define L3_ClockLowTime		10		/* 250 ns (min is 64*fs, 35µs @ 44.1 Khz) */
 #define L3_HaltTime			1		/* 190 ns */
 
 /* UDA 1341 Registers */
@@ -76,7 +76,7 @@ enum {
 #define UDA1341_DATA0	0
 #define UDA1341_DATA1	1
 #define UDA1341_STATUS	2
-#define UDA1341_L3Addr	5
+#define UDA1341_L3Addr	0x14
 
 typedef struct	AQueue	AQueue;
 typedef struct	Buf	Buf;
@@ -90,7 +90,7 @@ enum
 	Qstatus,
 
 	Fmono		= 1,
-	Fin		= 2,
+	Fin			= 2,
 	Fout		= 4,
 
 	Aclosed		= 0,
@@ -98,11 +98,7 @@ enum
 	Awrite,
 
 	Vaudio		= 0,
-	Vsynth,
-	Vcd,
-	Vline,
 	Vmic,
-	Vspeaker,
 	Vtreb,
 	Vbass,
 	Vspeed,
@@ -164,6 +160,7 @@ static struct
 	ulong	totaldma;
 	ulong	idledma;
 	ulong	faildma;
+	ulong	samedma;
 } iostats;
 
 static	struct
@@ -174,15 +171,11 @@ static	struct
 	int	irval;
 } volumes[] =
 {
-[Vaudio]	"audio",	Fout, 		50,	50,
-[Vsynth]	"synth",	Fin|Fout,	0,	0,
-[Vcd]		"cd",		Fin|Fout,	0,	0,
-[Vline]		"line",		Fin|Fout,	0,	0,
-[Vmic]		"mic",		Fin|Fout|Fmono,	0,	0,
-[Vspeaker]	"speaker",	Fout|Fmono,	0,	0,
+[Vaudio]	"audio",	Fout|Fmono,		50,	50,
+[Vmic]		"mic",		Fin,			 0,	 0,
 
-[Vtreb]		"treb",		Fout, 		50,	50,
-[Vbass]		"bass",		Fout, 		50,	50,
+[Vtreb]		"treb",		Fout|Fmono,		50,	50,
+[Vbass]		"bass",		Fout|Fmono, 	50,	50,
 
 [Vspeed]	"speed",	Fin|Fout|Fmono,	Speed,	Speed,
 		0
@@ -420,19 +413,24 @@ audioinit(void)
 	/* do nothing */
 }
 
+uchar	status0	= 0x22;
+uchar	status1	= 0x80;
+uchar	data00	= 0x00;		/* volume control, bits 0 – 5 */
+uchar	data01	= 0x40;
+uchar	data02	= 0x90;
+ushort	data0e2	= 0xf2c2;
+ushort	data0e4	= 0xf3c4;
+ushort	data0e6	= 0xe3c6;
+
 static void
-audioenable(void)
+enable(void)
 {
-	uchar	data[2];
+	ushort	data;
 
 	L3_init();
 
 	/* Setup the uarts */
-    ppcregs->assignment &= ~(1<<18);
-
-    gpioregs->altfunc &= ~(GPIO_SSP_TXD_o | GPIO_SSP_RXD_i | GPIO_SSP_SCLK_o | GPIO_SSP_SFRM_o);
-	gpioregs->altfunc |= (GPIO_SSP_CLK_i);
-	gpioregs->direction &= ~(GPIO_SSP_CLK_i);
+	ppcregs->assignment &= ~(1<<18);
 
 	sspregs->control0 = 0;
 	sspregs->control0 = 0x031f; /* 16 bits, TI frames, serial clock rate 3 */
@@ -445,79 +443,159 @@ audioenable(void)
 	audiomute(0);
 
 	/* external clock configured for 44100 samples/sec */
-	gpioregs->direction |=  (GPIO_CLK_SET0_o|GPIO_CLK_SET1_o);
-/* This is purportedly the wrong way round: 0 should be set, 1 cleared */
-    gpioregs->set	= GPIO_CLK_SET0_o|GPIO_CLK_SET1_o;
-//    gpioregs->clear	= GPIO_CLK_SET1_o;
+	gpioregs->set	= GPIO_CLK_SET0_o;
+	gpioregs->clear	= GPIO_CLK_SET1_o;
 
 	/* Wait for the UDA1341 to wake up */
 	delay(100);
 
 	/* Reset the chip */
-	data[0] = 2<<UdaStatusSC | 1<<UdaStatusIF | 1<<UdaStatusRST;
-	L3_write(UDA1341_L3Addr<<2 | UDA1341_STATUS, data, 1 );
-	gpioregs->set = EGPIO_codec_reset;
+	data = status0 | 1<<UdaStatusRST;
+	L3_write(UDA1341_L3Addr | UDA1341_STATUS, (uchar*)&data, 1 );
 	gpioregs->clear = EGPIO_codec_reset;
+	gpioregs->set = EGPIO_codec_reset;
 	/* write uda 1341 status[0] */
-	data[0] &= ~(1<<UdaStatusRST); /* clear reset */
-	L3_write(UDA1341_L3Addr<<2 | UDA1341_STATUS, data, 1 );
-
-	/* write uda 1341 status[1] */
-	data[0] = 0x80 | 0x3<<UdaStatusPC | 1<<UdaStatusIGS | 1<<UdaStatusOGS;
-	L3_write(UDA1341_L3Addr<<2 | UDA1341_STATUS, data, 1);
-
-	/* write uda 1341 data0[0] (volume) */
-	data[0] = 15 & 0x3f;	/* 6 bits, others must be 0 */
-	L3_write(UDA1341_L3Addr<<2 | UDA1341_DATA0, data, 1);
-
-	/* write uda 1341 data0[2] (mode switch) */
-	data[0] = 0x80 | 3;	/* mode = 3 */
-	L3_write(UDA1341_L3Addr<<2 | UDA1341_DATA0, data, 1);
-
-	/* set mixer mode and level */
-	data[0] = 0xc0 | 2 /* ext address */;
-	data[1] = 0xe0 | 2 | 4 << 2;	/* mixer mode and mic level */
-	L3_write(UDA1341_L3Addr<<2 | UDA1341_DATA0, data, 2);
-
-	/* set agc control and input amplifier gain */
-	data[0] = 0xc0 | 4 /* ext address */;
-	data[1] = 0xe0 | 1<<4 | 3;	/* AGC control and input ampl gain */
-	L3_write(UDA1341_L3Addr<<2 | UDA1341_DATA0, data, 2 );
-
-	/* set agc time constant and output level */
-	data[0] = 0xc0 | 6 /* ext address */;
-	data[1] = 0xe0 | 0<<2 | 3;	/* agc time constant and output level */
-	L3_write(UDA1341_L3Addr<<2 | UDA1341_DATA0, data, 2 );
+	L3_write(UDA1341_L3Addr | UDA1341_STATUS, (uchar*)&status0, 1 );
+	L3_write(UDA1341_L3Addr | UDA1341_STATUS, (uchar*)&status1, 1);
+	L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data02, 1);
+	L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data0e2, 2);
+	L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data0e4, 2 );
+	L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data0e6, 2 );
 
 	if (debug) {
+		print("uchar	status0	= 0x%2.2ux\n", status0);
+		print("uchar	status1	= 0x%2.2ux\n", status1);
+		print("uchar	data02	= 0x%2.2ux\n", data02);
+		print("ushort	data0e2	= 0x%4.4ux\n", data0e2);
+		print("ushort	data0e4	= 0x%4.4ux\n", data0e4);
+		print("ushort	data0e6	= 0x%4.4ux\n", data0e6);
 		print("#A: audio enabled\n");
 		print("\tsspregs->control0 = 0x%lux\n", sspregs->control0);
 		print("\tsspregs->control1 = 0x%lux\n", sspregs->control1);
 	}
 }
 
+static	void
+resetlevel(void)
+{
+	int i;
+
+	for(i=0; volumes[i].name; i++) {
+		audio.lovol[i] = volumes[i].ilval;
+		audio.rovol[i] = volumes[i].irval;
+		audio.livol[i] = volumes[i].ilval;
+		audio.rivol[i] = volumes[i].irval;
+	}
+}
+
 static void
-sendaudio(IOstate *b) {
+mxvolume(void) {
+	int *left, *right;
+
+	if(audio.amode & Aread){
+		left = audio.livol;
+		right = audio.rivol;
+	}
+	if(audio.amode & Awrite){
+		left = audio.lovol;
+		right = audio.rovol;
+		data00 &= ~0x3f;
+		data00 |= ((200-left[Vaudio]-right[Vaudio])*0x3f/200)&0x3f;
+		L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data00, 1);
+		if (debug) print("uchar	data00	= 0x%2.2ux (audio out)\n", data00);
+		if (left[Vtreb]+right[Vtreb] <= 100
+		 && left[Vbass]+right[Vbass] <= 100) {
+			/* settings neutral */
+			data02 &= ~0x03;
+			L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data02, 1);
+			if (debug) print("uchar	data02	= 0x%2.2ux (mode flat)\n", data02);
+		} else {
+			data02 |= 0x03;
+			L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data02, 1);
+			if (debug) print("uchar	data02	= 0x%2.2ux (mode boost)\n", data02);
+			data01 |= ~0x3f;
+			data01 |= ((left[Vtreb]+right[Vtreb]-100)*0x3/100)&0x03;
+			data01 |= (((left[Vbass]+right[Vbass]-100)*0xf/100)&0xf)<<2;
+			L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data01, 1);
+			if (debug) print("uchar	data01	= 0x%2.2ux (bass&treb)\n", data01);
+		}
+	}
+
+}
+
+static void
+outenable(void) {
+	/* turn on DAC, set output gain switch */
+	status1 |= 0x41;
+	L3_write(UDA1341_L3Addr | UDA1341_STATUS, (uchar*)&status1, 1);
+	/* set volume */
+	data00 |= 0xf;
+	L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data00, 1);
+	if (debug) {
+		print("uchar	status1	= 0x%2.2ux\n", status1);
+		print("uchar	data00	= 0x%2.2ux\n", data00);
+	}
+}
+
+static void
+outdisable(void) {
+	/* turn off DAC, clear output gain switch */
+	status1 &= ~0x41;
+	L3_write(UDA1341_L3Addr | UDA1341_STATUS, (uchar*)&status1, 1);
+	if (debug) {
+		print("uchar	status1	= 0x%2.2ux\n", status1);
+	}
+}
+
+static void
+inenable(void) {
+	/* turn on ADC, set input gain switch */
+	status1 |= 0x22;
+	L3_write(UDA1341_L3Addr | UDA1341_STATUS, (uchar*)&status1, 1);
+	if (debug) {
+		print("uchar	status1	= 0x%2.2ux\n", status1);
+	}
+}
+
+static void
+indisable(void) {
+	/* turn off ADC, clear input gain switch */
+	status1 &= ~0x22;
+	L3_write(UDA1341_L3Addr | UDA1341_STATUS, (uchar*)&status1, 1);
+	if (debug) {
+		print("uchar	status1	= 0x%2.2ux\n", status1);
+	}
+}
+
+static void
+sendaudio(IOstate *s) {
 	/* interrupt routine calls this too */
 	int n;
 
 	if (debug > 1) print("#A: sendaudio\n");
-	ilock(&b->ilock);
-	while (b->next != b->filling) {
-		assert(b->next->nbytes);
-		if ((n = dmastart(b->dma, b->next->virt, b->next->nbytes)) == 0) {
+	ilock(&s->ilock);
+	while (s->next != s->filling) {
+		assert(s->next->nbytes);
+		if ((n = dmastart(s->dma, s->next->virt, s->next->nbytes)) == 0) {
 			iostats.faildma++;
 			break;
 		}
 		iostats.totaldma++;
-		if (n == 1) iostats.idledma++;
-		if (debug > 1) print("#A: dmastart @%p\n", b->next);
-		b->next->nbytes = 0;
-		b->next++;
-		if (b->next == &b->buf[Nbuf])
-			b->next = &b->buf[0];
+		switch (n) {
+		case 1:
+			iostats.idledma++;
+			break;
+		case 3:
+			iostats.faildma++;
+			break;
+		}
+		if (debug > 1) print("#A: dmastart @%p\n", s->next);
+		s->next->nbytes = 0;
+		s->next++;
+		if (s->next == &s->buf[Nbuf])
+			s->next = &s->buf[0];
 	}
-	iunlock(&b->ilock);
+	iunlock(&s->ilock);
 }
 
 static void
@@ -557,6 +635,7 @@ audiostat(Chan *c, char *db)
 static Chan*
 audioopen(Chan *c, int omode)
 {
+	IOstate *s;
 
 	switch(c->qid.path & ~CHDIR) {
 	default:
@@ -580,29 +659,33 @@ audioopen(Chan *c, int omode)
 			qunlock(&audio);
 			error(Einuse);
 		}
-		audioenable();
+		enable();
 		memset(&iostats, 0, sizeof(iostats));
 		if (omode & Aread) {
+			inenable();
+			s = &audio.i;
 			/* read */
 			audio.amode |= Aread;
 			if(audio.i.bufinit == 0)
 				bufinit(&audio.i);
 			setempty(&audio.i);
-			audio.i.chan = c;
-			audio.i.dma = dmaalloc(0, 0, 8, 2, SSPRecvDMA, Port4SSP, audiointr, (void*)&audio.o);
+			s->chan = c;
+			s->dma = dmaalloc(0, 0, 4, 2, SSPRecvDMA, Port4SSP, audiointr, (void*)&audio.o);
 		}
 		if (omode & 0x2) {
+			outenable();
+			s = &audio.o;
 			/* write */
 //			amplifierpower(1);
 //			audiomute(0);
 			audio.amode |= Awrite;
-			if(audio.o.bufinit == 0)
-				bufinit(&audio.o);
-			setempty(&audio.o);
-			audio.o.chan = c;
-			audio.o.dma = dmaalloc(0, 0, 8, 2, SSPXmitDMA, Port4SSP, audiointr, (void*)&audio.o);
+			if(s->bufinit == 0)
+				bufinit(s);
+			setempty(s);
+			s->chan = c;
+			s->dma = dmaalloc(0, 0, 4, 2, SSPXmitDMA, Port4SSP, audiointr, (void*)s);
 		}
-//		mxvolume();
+		mxvolume();
 		qunlock(&audio);
 		if (debug) print("#A: open done\n");
 		break;
@@ -618,6 +701,7 @@ audioopen(Chan *c, int omode)
 static void
 audioclose(Chan *c)
 {
+	IOstate *s;
 
 	switch(c->qid.path & ~CHDIR) {
 	default:
@@ -633,45 +717,51 @@ audioclose(Chan *c)
 		if (debug > 1) print("#A: close\n");
 		if(c->flag & COPEN) {
 			qlock(&audio);
-			qlock(&audio.o);
 			if(waserror()){
-				qunlock(&audio.o);
 				qunlock(&audio);
 				nexterror();
 			}
 			if (audio.o.chan == c) {
+				s = &audio.o;
+				qlock(s);
+				if(waserror()){
+					qunlock(s);
+					nexterror();
+				}
 				/* closing the write end */
 				audio.amode &= ~Awrite;
 
-				if (audio.o.filling->nbytes) {
-					audio.o.filling++;
-					if (audio.o.filling == &audio.o.buf[Nbuf])
-						audio.o.filling = &audio.o.buf[0];
-					sendaudio(&audio.o);
+				if (s->filling->nbytes) {
+					/* send remaining partial buffer */
+					s->filling++;
+					if (s->filling == &s->buf[Nbuf])
+						s->filling = &s->buf[0];
+					sendaudio(s);
 				}
-				delay(2000);
-		//		dmawait(audio.o.dma);
-				if (!dmaidle(audio.o.dma))
-					print("dma still busy\n");
+				dmawait(s->dma);
+				outdisable();
 				amplifierpower(0);
-				setempty(&audio.o);
-				dmafree(audio.o.dma);
+				setempty(s);
+				dmafree(s->dma);
+				qunlock(s);
+				poperror();
 			}
 			if (audio.i.chan == c) {
 				/* closing the read end */
 				audio.amode &= ~Aread;
+				indisable();
 				setempty(&audio.i);
 			}
 			if (audio.amode == 0) {
 				/* turn audio off */
 				audiopower(0);
 			}
-			poperror();
-			qunlock(&audio.o);
 			qunlock(&audio);
+			poperror();
 			print("total dmas: %lud\n", iostats.totaldma);
 			print("dmas while idle: %lud\n", iostats.idledma);
 			print("dmas while busy: %lud\n", iostats.faildma);
+			print("out of order dma: %lud\n", iostats.samedma);
 		}
 		break;
 	}
@@ -807,8 +897,8 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 			}
 
 			if(strcmp(field[i], "reset") == 0) {
-//				resetlevel();
-//				mxvolume();
+				resetlevel();
+				mxvolume();
 				goto cont0;
 			}
 			if(strcmp(field[i], "in") == 0) {

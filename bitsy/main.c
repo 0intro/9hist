@@ -376,7 +376,8 @@ gpioinit(void)
 	gpioregs->falling = 0;
 	gpioregs->altfunc |= 
 		GPIO_LDD8_o|GPIO_LDD9_o|GPIO_LDD10_o|GPIO_LDD11_o
-		|GPIO_LDD12_o|GPIO_LDD13_o|GPIO_LDD14_o|GPIO_LDD15_o;
+		|GPIO_LDD12_o|GPIO_LDD13_o|GPIO_LDD14_o|GPIO_LDD15_o
+		|GPIO_SSP_CLK_i;
 
 	egpioreg = mapspecial(EGPIOREGS, 4);
 }

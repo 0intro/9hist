@@ -41,7 +41,6 @@ enum {
 };
 
 typedef struct DMAchan {
-	Lock;
 	int		allocated;
 	Rendez	r;
 	void	(*intr)(void*, ulong);
@@ -71,7 +70,7 @@ dmainit(void) {
 	int i;
 
 	/* map the lcd regs into the kernel's virtual space */
-	dmaregs = (struct dmaregs*)mapspecial(DMAREGS, NDMA*sizeof(struct dmaregs));;
+	dmaregs = (struct dmaregs*)mapspecial(DMAREGS, NDMA*sizeof(struct dmaregs));
 	if (debug) print("dma: dmaalloc registers 0x%ux mapped at 0x%p\n",
 		DMAREGS, dmaregs);
 	for (i = 0; i < NDMA; i++) {
@@ -110,6 +109,8 @@ dmaalloc(int rd, int bigendian, int burstsize, int datumsize, int device, ulong 
 
 void
 dmafree(int i) {
+	dmaregs[i].dcsr_clr = 0xff;
+	dmaregs[i].ddar = 0;
 	dma.chan[i].allocated = 0;
 	dma.chan[i].intr = nil;
 }
@@ -117,35 +118,38 @@ dmafree(int i) {
 ulong
 dmastart(int chan, void *addr, int count) {
 	ulong status, n;
+	static int last;
 
-	ilock(&dma.chan[chan]);
+	/* If this gets called from interrupt routines, make sure ilocks are used */
 	status = dmaregs[chan].dcsr_rd;
 	if (debug > 1)
 		iprint("dma: dmastart 0x%lux\n", status);
 
 	if ((status & (1<<STRTA|1<<STRTB|1<<RUN)) == (1<<STRTA|1<<STRTB|1<<RUN)) {
-		iunlock(&dma.chan[chan]);
 		return 0;
 	}
 	cachewbregion((ulong)addr, count);
 	n = 1;
 	if ((status & (1<<BIU | 1<<STRTB)) == (1<<BIU | 1<<STRTB) ||
 		(status & (1<<BIU | 1<<STRTA)) == 0) {
-		assert((status & 1<<STRTA) == 0);
-		if (status & 1<<RUN)
-			n = 2;
+		if (status & 1<<STRTA)
+			iprint("writing busy dma entry 0x%lux\n", status);
+		if (status & 1<<STRTB)
+			n = (last == 1)?2:3;
+		last = 2;
 		dmaregs[chan].dstrtA = addr;
 		dmaregs[chan].dxcntA = count-1;
 		dmaregs[chan].dcsr_set = 1<<RUN | 1<<IE | 1<<STRTA;
 	} else {
-		assert((status & 1<<STRTB) == 0);
-		if (status & 1<<RUN)
-			n = 2;
+		if (status & 1<<STRTB)
+			iprint("writing busy dma entry 0x%lux\n", status);
+		if (status & 1<<STRTA)
+			n = (last == 2)?2:3;
+		last = 1;
 		dmaregs[chan].dstrtB = addr;
 		dmaregs[chan].dxcntB = count-1;
 		dmaregs[chan].dcsr_set = 1<<RUN | 1<<IE | 1<<STRTB;
 	}
-	iunlock(&dma.chan[chan]);
 	return n;
 }
 
@@ -154,7 +158,8 @@ dmaidle(int chan) {
 	ulong status;
 
 	status = dmaregs[chan].dcsr_rd;
-	return (status & (1<<STRTA|1<<STRTB|1<<RUN)) == 0;
+	if (debug > 1) print("dmaidle: 0x%lux\n", status);
+	return (status & (1<<STRTA|1<<STRTB)) == 0;
 }
 
 static int
@@ -162,7 +167,7 @@ _dmaidle(void* chan) {
 	ulong status;
 
 	status = dmaregs[(int)chan].dcsr_rd;
-	return (status & (1<<STRTA|1<<STRTB|1<<RUN)) == 0;
+	return (status & (1<<STRTA|1<<STRTB)) == 0;
 }
 
 void
@@ -182,7 +187,6 @@ dmaintr(Ureg*, void *x)
 	ulong dcsr, donebit;
 
 	i = regs - dmaregs;
-	ilock(&dma.chan[i]);
 	dcsr = regs->dcsr_rd;
 	if (debug > 1)
 		iprint("dma: interrupt channel %d, status 0x%lux\n", i, dcsr);
@@ -191,19 +195,11 @@ dmaintr(Ureg*, void *x)
 	donebit = 1<<((dcsr&1<<BIU)?DONEA:DONEB);
 	if (dcsr & donebit) {
 		regs->dcsr_clr = donebit;
-		/* try the other bit as well */
-		donebit ^= 1<<DONEA|1<<DONEB;
-		if (dcsr & donebit) {
-			regs->dcsr_clr = donebit;
-		}
-		iunlock(&dma.chan[i]);
 		if (dma.chan[i].intr) {
-			dcsr &= 1<<STRTA | 1<<STRTB | 1<<RUN;
-			(*dma.chan[i].intr)(dma.chan[i].param, dcsr == 0);
+			(*dma.chan[i].intr)(dma.chan[i].param, dcsr & (1<<DONEA|1<<DONEB));
 		}
 		wakeup(&dma.chan[i].r);
 		return;
 	}
 	iprint("spurious DMA interrupt, channel %d, status 0x%lux\n", i, dcsr);
-	iunlock(&dma.chan[i]);
 }
