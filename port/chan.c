@@ -204,22 +204,25 @@ mount(Chan *new, Chan *old, int flag, char *spec)
 			m->mount = newmount(m, old, 0, 0);
 	}
 
-	if(m->mount && order == MREPL) {
-		mountfree(m->mount);
-		m->mount = 0;
-	}
-
 	nm = newmount(m, new, flag, spec);
 	if(new->mnt != 0) {
+		/*
+		 *  copy a union when binding it onto a directory
+		 */
+		flg = order;
+		if(order == MREPL)
+			flg = MAFTER;
 		h = &nm->next;
 		for(um = new->mnt->next; um; um = um->next) {
-			flg = um->flag;
-			if(flg == 0)
-				flg = MAFTER;
 			f = newmount(m, um->to, flg, um->spec);
 			*h = f;
 			h = &f->next;
 		}
+	}
+
+	if(m->mount && order == MREPL) {
+		mountfree(m->mount);
+		m->mount = 0;
 	}
 
 	if(flag & MCREATE)

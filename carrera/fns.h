@@ -68,7 +68,7 @@ void	prflush(void);
 ulong	prid(void);
 void	printinit(void);
 #define	procrestore(p)
-void	procsave(Proc*)
+void	procsave(Proc*);
 #define	procsetup(p)	((p)->fpstate = FPinit)
 void	purgetlb(int);
 int	putnvram(ulong, void*, int);

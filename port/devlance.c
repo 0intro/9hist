@@ -475,7 +475,7 @@ lancewrite(Chan *c, void *buf, long n, ulong offset)
 
 	qlock(&l.tlock);
 	if(waserror()) {
-		qunlock(&ctlr->tlock);
+		qunlock(&l.tlock);
 		nexterror();
 	}
 

@@ -1,5 +1,6 @@
 #include "../port/portfns.h"
 
+#define affinity(x) m
 void	arginit(void);
 void	clearmmucache(void);
 void	clock(Ureg*);

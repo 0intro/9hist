@@ -419,6 +419,8 @@ rdbginit(void)
 void
 procsave(Proc *p)
 {
+	USED(p);
+
 	/* keep track of tlbfaults */
 	up->counter[TLBCNTR] += m->tlbfault - m->otlbfault;
 	m->otlbfault = m->tlbfault;
