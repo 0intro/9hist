@@ -8,7 +8,8 @@
 
 #include	"ip.h"
 
-#define DPRINT if(1)print
+#define DEBUG	0
+#define DPRINT if(DEBUG)print
 
 enum
 {
@@ -22,7 +23,7 @@ enum
 
 	Rudprxms	= 200,
 	Rudptickms	= 100,
-	Rudpmaxxmit	= 1,
+	Rudpmaxxmit	= 10,
 
 };
 
@@ -105,20 +106,27 @@ struct Rudpstats
 typedef struct Rudppriv Rudppriv;
 struct Rudppriv
 {
-
+	Rendez	vous;
 
 	/* MIB counters */
 	Rudpstats	ustats;
 
 	/* non-MIB stats */
-	ulong		csumerr;		/* checksum errors */
-	ulong		lenerr;			/* short packet */
+	ulong	csumerr;		/* checksum errors */
+	ulong	lenerr;			/* short packet */
+	ulong	rxmits;			/* # of retransmissions */
+	ulong	orders;			/* # of out of order pkts */
 
 };
 
 
 static ulong generation = 0;
 static Rendez rend;
+
+/* Used only for debugging */
+static ushort drop = 0;
+static ushort drop_rate = 10;
+
 /*
  *  protocol specific part of Conv
  */
@@ -135,7 +143,7 @@ struct Rudpcb
  */
 void	relsendack( Conv *, Reliable * );
 int	reliput( Conv *, Block *, uchar *, ushort );
-Reliable *relstate( Rudpcb *, uchar *, ushort );
+Reliable *relstate( Rudpcb *, uchar *, ushort, char *from );
 void	relackproc( void * );
 void	relackq( Reliable *, Block * );
 void	relhangup( Conv *, Reliable * );
@@ -157,7 +165,7 @@ static int
 rudpstate(Conv *c, char *state, int n)
 {
 	USED(c);
-	return snprint(state, n, "%s", "Reliable UDP");
+	return snprint(state, n, "%s", "Reliable UDP V0.1");
 }
 
 static char*
@@ -264,7 +272,9 @@ rudpkick(Conv *c, int)
 		bp->rp += 4;			/* Igonore local port */
 		break;
 	default:
-		rport = 0;
+		ipmove( raddr, c->raddr );
+		ipmove( laddr, c->laddr );
+		rport = c->rport;
 
 		break;
 	}
@@ -279,6 +289,7 @@ rudpkick(Conv *c, int)
 	uh = (Rudphdr *)(bp->rp);
 
 	rh = &(uh->rhdr);
+
 
 	ptcllen = dlen + (RUDP_HDRSIZE-RUDP_PHDRSIZE);
 	uh->Unused = 0;
@@ -308,7 +319,7 @@ rudpkick(Conv *c, int)
 
 
 	qlock( ucb );
-	r = relstate( ucb, raddr, rport );
+	r = relstate( ucb, raddr, rport, "kick" );
 	r->sndseq++;
 	hnputl( rh->relseq, r->sndseq );
 	hnputl( rh->relsgen, r->sndgen );
@@ -328,8 +339,8 @@ rudpkick(Conv *c, int)
 
 
 
-	DPRINT( "sent: %d/%d, %d/%d\n", 
-		r->sndseq, r->sndgen, r->rcvseq, r->rcvgen );
+	DPRINT( "sent: %d/%d, %d/%d, r->sndgen = %d\n", 
+		r->sndseq, r->sndgen, r->rcvseq, r->rcvgen, r->sndgen );
 
 	ipoput(f, bp, 0, c->ttl);
 }
@@ -372,6 +383,7 @@ rudpiput(Proto *rudp, uchar *ia, Block *bp)
 	if(nhgets(uh->rudpcksum)) {
 		if(ptclcsum(bp, RUDP_IPHDR, len+RUDP_PHDRSIZE)) {
 			upriv->ustats.rudpInErrors++;
+			upriv->csumerr++;
 			netlog(f, Logrudp, "rudp: checksum error %I\n", raddr);
 			DPRINT("rudp: checksum error %I\n", raddr);
 			freeblist(bp);
@@ -537,11 +549,13 @@ rudpstats(Proto *rudp, char *buf, int len)
 	Rudppriv *upriv;
 
 	upriv = rudp->priv;
-	return snprint(buf, len, "%d %d %d %d\n",
+	return snprint(buf, len, "%d %d %d %d %d %d\n",
 		upriv->ustats.rudpInDatagrams,
 		upriv->ustats.rudpNoPorts,
 		upriv->ustats.rudpInErrors,
-		upriv->ustats.rudpOutDatagrams);
+		upriv->ustats.rudpOutDatagrams,
+		upriv->rxmits,
+		upriv->orders);
 }
 
 void
@@ -569,7 +583,7 @@ rudpinit(Fs *fs)
 
 	Fsproto(fs, rudp);
 
-	kproc( "relackproc", relackproc, rudp );
+	kproc("relackproc", relackproc, rudp);
 	
 }
 
@@ -607,18 +621,20 @@ relackproc(void *a)
 	Proto *rudp;
 	Reliable *r;
 	Conv **s, *c;
+	Rudppriv *upriv;
 
 	rudp = (Proto *)a;
+	upriv = rudp->priv;
+
 loop:
-	tsleep(&rend, return0, 0, Rudptickms);
+	tsleep(&upriv->vous, return0, 0, Rudptickms);
 
 	for(s = rudp->conv; *s; s++) {
 		c = *s;
 		ucb = (Rudpcb*)c->ptcl;
-		qlock( ucb );
+		qlock(ucb);
 
-		for(r = ucb->r; r; r = r->next){
-
+		for(r = ucb->r; r; r = r->next) {
 			if(r->unacked != nil){
 				r->timeout += Rudptickms;
 				if(r->timeout > Rudprxms*r->xmits)
@@ -627,7 +643,7 @@ loop:
 			if(r->acksent < r->rcvseq)
 				relsendack(c, r);
 		}
-		qunlock( ucb );
+		qunlock(ucb);
 	}
 	goto loop;
 }
@@ -636,9 +652,10 @@ loop:
  *  get the state record for a conversation
  */
 Reliable*
-relstate(Rudpcb *ucb, uchar *addr, ushort port)
+relstate(Rudpcb *ucb, uchar *addr, ushort port, char *from )
 {
 	Reliable *r, **l;
+
 
 
 	l = &ucb->r;
@@ -651,9 +668,10 @@ relstate(Rudpcb *ucb, uchar *addr, ushort port)
 
 	/* no state for this addr/port, create some */
 	if(r == nil){
-		DPRINT( "new state %d\n", generation );
 		if(generation == 0)
 			generation = TK2SEC(MACHP(0)->ticks);
+		DPRINT( "from %s new state %d for %I!%d\n", 
+		        from, generation, addr, port );
 		r = smalloc( sizeof( Reliable ) );
 		*l = r;
 		memmove( r->addr, addr, IPaddrlen);
@@ -682,6 +700,7 @@ reliput(Conv *c, Block *bp, uchar *addr, ushort port)
 {
 	Block *nbp;
 	Rudpcb *ucb;
+	Rudppriv *upriv;
 	Rudphdr *uh;
 	Reliable *r;
 	Relhdr *rh;
@@ -698,22 +717,22 @@ reliput(Conv *c, Block *bp, uchar *addr, ushort port)
 	agen = nhgetl(rh->relagen);
 
 
-
+	upriv = c->p->priv;
 	ucb = (Rudpcb*)c->ptcl;
-	r = relstate(ucb, addr, port);
+	r = relstate(ucb, addr, port, "input" );
 	
 
-	DPRINT("rcvd %d/%d, %d/%d, r->sndgen = %d, r->ackrcvd = %d\n", 
-		seq, sgen, ack, agen, r->sndgen, r->ackrcvd);
+	DPRINT("rcvd %d/%d, %d/%d, r->sndgen = %d\n", 
+		seq, sgen, ack, agen, r->sndgen);
 
 	/* dequeue acked packets */
 	if(ack && agen == r->sndgen){
-		DPRINT( "Here\n" );
 		ackreal = 0;
 		while(r->unacked != nil && ack > r->ackrcvd){
 			nbp = r->unacked;
 			r->unacked = nbp->list;
-			DPRINT("%d/%d acked\n", ack, agen);
+			DPRINT("%d/%d acked, r->sndgen = %d\n", 
+			       ack, agen, r->sndgen);
 			freeb(nbp);
 			r->ackrcvd++;
 			ackreal = 1;
@@ -751,8 +770,15 @@ reliput(Conv *c, Block *bp, uchar *addr, ushort port)
 	if(seq == 0)
 		return -1;
 
+	if( DEBUG && ++drop == drop_rate ){
+		DPRINT( "drop pkt on purpose\n" );
+		drop = 0;
+		return -1;
+	}
+
 	/* refuse out of order delivery */
 	if(seq != r->rcvseq + 1){
+		upriv->orders++;
 		DPRINT("out of sequence %d not %d\n", seq, r->rcvseq + 1);
 		return -1;
 	}
@@ -846,8 +872,11 @@ relhangup( Conv *, Reliable *r )
 void
 relrexmit(Conv *c, Reliable *r)
 {
+	Rudppriv *upriv;
 	Block *np;
 	Fs *f;
+
+	upriv = c->p->priv;
 	f = c->p->f;
 	r->timeout = 0;
 	if(r->xmits++ > Rudpmaxxmit){
@@ -855,7 +884,8 @@ relrexmit(Conv *c, Reliable *r)
 		return;
 	}
 
+	upriv->rxmits++;
 	np = copyblock(r->unacked, blocklen(r->unacked));
-	//DPRINT("rxmit r->ackrvcd+1 = %d\n", r->ackrcvd+1);
+	DPRINT("rxmit r->ackrvcd+1 = %d\n", r->ackrcvd+1);
 	ipoput(f, np, 0, c->ttl);
 }
