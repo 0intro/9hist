@@ -83,7 +83,14 @@ static void	rs232kproc(void*);
 static void	rs232open(Queue*, Stream*);
 static void	rs232close(Queue*);
 static void	rs232oput(Queue*, Block*);
-Qinfo rs232info = { nullput, rs232oput, rs232open, rs232close, "rs232" };
+Qinfo rs232info =
+{
+	nullput,
+	rs232oput,
+	rs232open,
+	rs232close,
+	"rs232"
+};
 
 void
 printinit(void)

@@ -120,7 +120,15 @@ static void	urpkproc(void *arg);
 static void	urptimer(Alarm*);
 static void	urpvomit(char*, Urp*);
 
-Qinfo urpinfo = { urpciput, urpoput, urpopen, urpclose, "urp", urpreset };
+Qinfo urpinfo =
+{
+	urpciput,
+	urpoput,
+	urpopen,
+	urpclose,
+	"urp",
+	urpreset
+};
 
 static void
 urpreset(void)

@@ -131,7 +131,14 @@ static void inconkproc(void*);
 static void inconoput(Queue*, Block*);
 static void inconstopen(Queue*, Stream*);
 static void inconstclose(Queue*);
-Qinfo inconinfo = { nullput, inconoput, inconstopen, inconstclose, "incon" };
+Qinfo inconinfo =
+{
+	nullput,
+	inconoput,
+	inconstopen,
+	inconstclose,
+	"incon"
+};
 
 int incondebug;
 

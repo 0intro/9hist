@@ -178,7 +178,7 @@ pipeopen(Chan *c, int omode)
 		 *  pointer from the other stream.
 		 */
 		if(streamenter(local)<0)
-			panic("pipeopen");
+			panic("pipeattach");
 	}
 	unlock(p);
 	poperror();

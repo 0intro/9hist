@@ -59,7 +59,15 @@ static void asyncoput(Queue*, Block*);
 static void asyncopen(Queue*, Stream*);
 static void asyncclose(Queue*);
 static void asyncreset(void);
-Qinfo asyncinfo = { asynciput, asyncoput, asyncopen, asyncclose, "async", asyncreset };
+Qinfo asyncinfo =
+{
+	asynciput,
+	asyncoput,
+	asyncopen,
+	asyncclose,
+	"async",
+	asyncreset
+};
 
 int asyncdebug = 0;
 int asyncerror;

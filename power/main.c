@@ -610,7 +610,7 @@ confinit(void)
 	conf.nenv = 15*conf.nproc;
 	conf.nenvchar = 20 * conf.nenv;
 	conf.npte = 4 * conf.npage;
-	conf.nqueue = 3 * conf.nstream;
+	conf.nqueue = 5 * conf.nstream;
 	conf.nblock = 10 * conf.nstream;
 	conf.npipe = conf.nstream/2;
 

@@ -317,7 +317,7 @@ confinit(void)
 	conf.nmntbuf = 2*conf.nmntdev;
 	conf.nmnthdr = 2*conf.nmntdev;
 	conf.nstream = 40 + 16*mul;		/* was 64 */
-	conf.nqueue = 4 * conf.nstream;		/* was 5 */
+	conf.nqueue = 5 * conf.nstream;
 	conf.nblock = 24 * conf.nstream;	/* was 32 */
 	conf.nsrv = 16*mul;			/* was 32 */
 	conf.nbitmap = 300*mul;

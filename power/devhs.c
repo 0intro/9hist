@@ -88,7 +88,14 @@ static void hsvmekproc(void*);
 static void hsvmeoput(Queue*, Block*);
 static void hsvmestopen(Queue*, Stream*);
 static void hsvmestclose(Queue*);
-Qinfo hsvmeinfo = { nullput, hsvmeoput, hsvmestopen, hsvmestclose, "hsvme" };
+Qinfo hsvmeinfo =
+{
+	nullput,
+	hsvmeoput,
+	hsvmestopen,
+	hsvmestclose,
+	"hsvme"
+};
 
 /*
  *  restart a VME board

@@ -16,7 +16,14 @@ enum {
  *  process end line discipline
  */
 static void stputq(Queue*, Block*);
-Qinfo procinfo = { stputq, nullput, 0, 0, "process" };
+Qinfo procinfo =
+{
+	stputq,
+	nullput,
+	0,
+	0,
+	"process"
+};
 
 /*
  *  line disciplines that can be pushed
@@ -763,7 +770,7 @@ streamexit(Stream *s, int locked)
 		lock(s);
 	if(s->inuse == 1){
 		if(s->opens != 0)
-			print("streamexit %d %s\n", s->opens, s->devq->info->name);
+			panic("streamexit %d %s\n", s->opens, s->devq->info->name);
 
 		/*
 		 *  ascend the stream freeing the queues
