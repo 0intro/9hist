@@ -126,8 +126,8 @@ trapinit(void)
 	/*
 	 *  system calls
 	 */
-	sethvec(64, intr64, SEGTG, 3);
-	setvec(64, (void (*)(Ureg*))syscall);
+	sethvec(Syscallvec, intr64, SEGTG, 3);
+	setvec(Syscallvec, (void (*)(Ureg*))syscall);
 
 	/*
 	 *  tell the hardware where the table is (and how long)
@@ -194,10 +194,10 @@ trap(Ureg *ur)
 			uartintr0(ur);
 	}
 
-	/*
-	 *  call the trap routine
-	 */
 	(*ivec[v])(ur);
+
+	if(((ur->cs)&0xffff)!=KESEL && u->nnote && v!=Syscallvec)
+		notify(ur);
 }
 
 /*

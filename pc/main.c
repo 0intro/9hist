@@ -95,6 +95,7 @@ userinit(void)
 	p->fgrp = newfgrp();
 
 	strcpy(p->text, "*init*");
+	strcpy(p->pgrp->user, user);
 	p->fpstate = FPinit;
 	fpoff();
 

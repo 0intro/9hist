@@ -17,4 +17,6 @@ enum
 	Int1vec=	Int0vec+8,	/* second 8259 */
 	 Mousevec=	Int1vec+4,	/*  mouse interrupt */
 	 Hardvec=	Int1vec+6,	/*  hard disk */
+
+	Syscallvec=	64,
 };

@@ -14,11 +14,14 @@ enum{
 	Qcryptfs,
 	Qdev,
 	Qenv,
+	Qkfs,
 	Qproc,
 };
 
 extern long	cfslen;
 extern ulong	cfscode[];
+extern long	kfslen;
+extern ulong	kfscode[];
 extern long	cryptfslen;
 extern ulong	cryptfscode[];
 
@@ -33,6 +36,7 @@ Dirtab rootdir[]={
 Dirtab rootpdir[]={
 	"cfs",		{Qcfs},		0,			0700,
 	"cryptfs",	{Qcryptfs},	0,			0700,
+	"kfs",		{Qkfs},		0,			0700,
 };
 Dirtab *rootmap[sizeof rootpdir/sizeof(Dirtab)];
 int	nroot;
@@ -60,6 +64,8 @@ rootreset(void)
 		rootmap[i++] = &rootpdir[0];
 	if(cryptfslen)
 		rootmap[i++] = &rootpdir[1];
+	if(kfslen)
+		rootmap[i++] = &rootpdir[2];
 	nroot = NROOT + i;
 }
 
@@ -136,6 +142,14 @@ rootread(Chan *c, void *buf, long n, ulong offset)
 		if(offset+n > cfslen)
 			n = cfslen - offset;
 		memmove(buf, ((char*)cfscode)+offset, n);
+		return n;
+
+	case Qkfs:		/* kfs */
+		if(offset >= kfslen)
+			return 0;
+		if(offset+n > kfslen)
+			n = kfslen - offset;
+		memmove(buf, ((char*)kfscode)+offset, n);
 		return n;
 
 	case Qcryptfs:		/* cryptfs */
