@@ -142,6 +142,7 @@ init0(void)
 		poperror();
 	}
 	kproc("alarm", alarmkproc, 0);
+	kproc("mmusweep", mmusweep, 0);
 	touser((void*)(USTKTOP-8));
 }
 

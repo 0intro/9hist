@@ -616,6 +616,7 @@ cyrix_init(Pcidev *router, uchar link, uchar irq)
 enum {
 	Intel = 0x8086,		
 		Intel_82371FB_0 = 0x122e,
+		Intel_82371MX_0 = 0x1234,
 		Intel_82371SB_0 = 0x7000,
 		Intel_82371AB_0 = 0x7110,
 		Intel_82443MX_1 = 0x7198,
@@ -641,25 +642,26 @@ enum {
 typedef struct {
 	ushort	sb_vid, sb_did;
 	uchar	(*sb_translate)(Pcidev *, uchar);
-	void		(*sb_initialize)(Pcidev *, uchar, uchar);	
+	void	(*sb_initialize)(Pcidev *, uchar, uchar);	
 } bridge_t;
 
 static bridge_t southbridges[] = {
-{	Intel, Intel_82371FB_0,		pIIx_link,		pIIx_init },
-{	Intel, Intel_82371SB_0,		pIIx_link,		pIIx_init },
-{	Intel, Intel_82371AB_0,		pIIx_link,		pIIx_init },
-{	Intel, Intel_82443MX_1,		pIIx_link,		pIIx_init },
-{	Intel, Intel_82801AA_0,		pIIx_link,		pIIx_init },
-{	Intel, Intel_82801AB_0,		pIIx_link,		pIIx_init },
-{	Intel, Intel_82801BA_0,		pIIx_link,		pIIx_init },
-{	Intel, Intel_82801BAM_0,		pIIx_link,		pIIx_init },
-{	Viatech, Via_82C586_0,		via_link,		via_init },
-{	Viatech, Via_82C596,		via_link,		via_init },
-{	Viatech, Via_82C686,		via_link,		via_init },
-{	Opti, Opti_82C700,			opti_link,		opti_init },
-{	Al, Al_M1533,				ali_link,		ali_init },
-{	SI, SI_503,				pIIx_link,		pIIx_init },
-{	SI, SI_496,				pIIx_link,		pIIx_init },
+{	Intel, Intel_82371FB_0,		pIIx_link,	pIIx_init },
+{	Intel, Intel_82371MX_0,		pIIx_link,	pIIx_init },
+{	Intel, Intel_82371SB_0,		pIIx_link,	pIIx_init },
+{	Intel, Intel_82371AB_0,		pIIx_link,	pIIx_init },
+{	Intel, Intel_82443MX_1,		pIIx_link,	pIIx_init },
+{	Intel, Intel_82801AA_0,		pIIx_link,	pIIx_init },
+{	Intel, Intel_82801AB_0,		pIIx_link,	pIIx_init },
+{	Intel, Intel_82801BA_0,		pIIx_link,	pIIx_init },
+{	Intel, Intel_82801BAM_0,	pIIx_link,	pIIx_init },
+{	Viatech, Via_82C586_0,		via_link,	via_init },
+{	Viatech, Via_82C596,		via_link,	via_init },
+{	Viatech, Via_82C686,		via_link,	via_init },
+{	Opti, Opti_82C700,		opti_link,	opti_init },
+{	Al, Al_M1533,			ali_link,	ali_init },
+{	SI, SI_503,			pIIx_link,	pIIx_init },
+{	SI, SI_496,			pIIx_link,	pIIx_init },
 {	Cyrix, Cyrix_5530_Legacy,	cyrix_link,	cyrix_init }
 };
 

@@ -307,6 +307,7 @@ enum
 	CMdebug,
 	CMep,
 	CMmaxpkt,
+	CMadjust,
 	CMspeed,
 	CMunstall,
 };
@@ -325,6 +326,7 @@ static Cmdtab usbctlmsg[] =
 	CMdebug,		"debug",	3,
 	CMep,		"ep",		6,
 	CMmaxpkt,	"maxpkt",	3,
+	CMadjust,		"adjust",	3,
 	CMspeed,		"speed",	2,
 	CMunstall,	"unstall",	2,
 };
@@ -1825,8 +1827,6 @@ isoio(Endpt *e, void *a, long n, ulong offset, int w)
 			if (e->psize > e->maxpkt)
 				panic("packet size > maximum");
 		}
-		isolock = 0;
-		iunlock(&activends);
 		td->flags &= ~IsoClean;
 		bp = e->bp0 + (td - e->td0) * e->maxpkt / e->pollms;
 		q = bp + e->off;
@@ -1860,9 +1860,11 @@ isoio(Endpt *e, void *a, long n, ulong offset, int w)
 	} while(n > 0);
 	n = p-(uchar*)a;
 	e->foffset += n;
-	poperror();
-	if (isolock)
+	if (isolock){
+		isolock = 0;
 		iunlock(&activends);
+	}
+	poperror();
 	qunlock(&e->rlock);
 	return n;
 }
@@ -2163,6 +2165,25 @@ usbwrite(Chan *c, void *a, long n, vlong offset)
 			if(e->maxpkt > 1500)
 				e->maxpkt = 1500;
 			break;
+		case CMadjust:
+			i = strtoul(cb->f[1], nil, 0);
+			if(i < 0 || i >= nelem(d->ep) || d->ep[i] == nil)
+				error(Ebadusbmsg);
+			e = d->ep[i];
+			if (e->iso == 0)
+				error(Eperm);
+			i = strtoul(cb->f[2], nil, 0);
+			/* speed may not result in change of maxpkt */
+			if (i < (e->maxpkt-1)/e->samplesz * 1000/e->pollms
+			  || i > e->maxpkt/e->samplesz * 1000/e->pollms){
+				snprint(cmd, sizeof(cmd), "%d < %d < %d?",
+					(e->maxpkt-1)/e->samplesz * 1000/e->pollms,
+					i,
+					e->maxpkt/e->samplesz * 1000/e->pollms);
+				error(cmd);
+			}
+			e->hz = i;
+			break;
 		case CMdebug:
 			i = strtoul(cb->f[1], nil, 0);
 			if(i < -1 || i >= nelem(d->ep) || d->ep[i] == nil)
@@ -2184,7 +2205,7 @@ usbwrite(Chan *c, void *a, long n, vlong offset)
 			break;
 		case CMep:
 			/* ep n `bulk' mode maxpkt nbuf     OR
-			 * ep n period mode samplesize KHz
+			 * ep n period mode samplesize Hz
 			 */
 			i = strtoul(cb->f[1], nil, 0);
 			if(i < 0 || i >= nelem(d->ep)) {
@@ -2249,7 +2270,6 @@ usbwrite(Chan *c, void *a, long n, vlong offset)
 				if(i >= 1 && i <= 100000){
 					/* Hz */
 					e->hz = i;
-		//			e->remain = 999/e->pollms;
 					e->remain = 0;
 				}else {
 					XPRINT("field 5: 1 < %d <= 100000 Hz\n", i);

@@ -63,7 +63,7 @@ void	kernelmmu(void);
 void	links(void);
 void	mathinit(void);
 void	mmuinit(void);
-ulong*	mmuwalk(ulong*, ulong, int);
+void	mmusweep(void*);
 void	mpicdisable(int);
 void	mpicenable(int, Vctl*);
 int	mpiceoi(int);

@@ -155,8 +155,9 @@ struct Mach
 	ulong	ptabbase;		/* start of page table in kernel virtual space */
 	int		slotgen;		/* next pte (byte offset) when pteg is full */
 	int		mmupid;		/* next mmu pid to use */
-	int		minpid;
-	int		maxpid;
+	int		sweepcolor;
+	int		trigcolor;
+	Rendez	sweepr;
 
 	ulong	spuriousintr;
 	int	lastintr;

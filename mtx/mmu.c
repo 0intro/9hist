@@ -19,15 +19,22 @@ static ulong	ptabmask;		/* hash mask */
 
 /*
  *	VSID is 24 bits.  3 are required to distinguish segments in user
- *	space (kernel space only uses the BATs).
+ *	space (kernel space only uses the BATs).  pid 0 is reserved.
+ *	The top 2 bits of the pid are used as a `color' for the background
+ *	pid reclaimation algorithm.
  */
-
-#define	VSID(pid, i)	(((pid)<<3)|i)
 
 enum {
 	PIDBASE = 1,
-	PIDMAX = ((1<<21)-1),
+	PIDBITS = 21,
+	COLBITS = 2,
+	PIDMAX = ((1<<PIDBITS)-1),
+	COLMASK = ((1<<COLBITS)-1),
 };
+
+#define	VSID(pid, i)	(((pid)<<3)|i)
+#define	PIDCOLOR(pid)	((pid)>>(PIDBITS-COLBITS))
+#define	PTECOL(color)	PTE0(1, VSID(((color)<<(PIDBITS-COLBITS)), 0), 0, 0)
 
 void
 mmuinit(void)
@@ -50,6 +57,68 @@ mmuinit(void)
 	m->ptabbase = (ulong)xspanalloc(ptabsize, 0, ptabsize);
 	putsdr1(PADDR(m->ptabbase) | (ptabmask>>10));
 	m->mmupid = PIDBASE;
+	m->sweepcolor = 0;
+	m->trigcolor = 2;
+}
+
+static int
+work(void*)
+{
+	return PIDCOLOR(m->mmupid) == m->trigcolor;
+}
+
+void
+mmusweep(void*)
+{
+	Proc *p;
+	int i, x, sweepcolor;
+	ulong *ptab, *ptabend, ptecol;
+
+	for(;;) {
+		if(PIDCOLOR(m->mmupid) != m->trigcolor)
+			sleep(&m->sweepr, work, nil);
+
+		sweepcolor = m->sweepcolor;
+//print("sweep %d trig %d\n", sweepcolor, m->trigcolor);
+		x = splhi();
+		p = proctab(0);
+		for(i = 0; i < conf.nproc; i++, p++)
+			if(PIDCOLOR(p->mmupid) == sweepcolor)
+				p->mmupid = 0;
+		splx(x);
+
+		ptab = (ulong*)m->ptabbase;
+		ptabend = (ulong*)(m->ptabbase+ptabsize);
+		ptecol = PTECOL(sweepcolor);
+		while(ptab < ptabend) {
+			if((*ptab & PTECOL(3)) == ptecol)
+				*ptab = 0;
+			ptab += 2;
+		}
+//print("swept %d\n", sweepcolor);
+
+		m->sweepcolor = (sweepcolor+1) & COLMASK;
+		m->trigcolor = (m->trigcolor+1) & COLMASK;
+	}
+}
+
+int
+newmmupid(void)
+{
+	int pid, newcolor;
+
+	pid = m->mmupid++;
+	if(m->mmupid > PIDMAX)
+		m->mmupid = PIDBASE;
+	newcolor = PIDCOLOR(m->mmupid);
+	if(newcolor != PIDCOLOR(pid)) {
+		if(newcolor == m->sweepcolor)
+			panic("ran out of pids");
+		else if(newcolor == m->trigcolor)
+			wakeup(&m->sweepr);
+	}
+	up->mmupid = pid;
+	return pid;
 }
 
 void
@@ -149,17 +218,4 @@ if(q[1] == pa) print("putmmu already set pte\n");
 		*ctl = PG_NOFLUSH;
 		break;
 	}
-}
-
-int
-newmmupid(void)
-{
-	int pid;
-
-	pid = m->mmupid++;
-	if(m->mmupid > PIDMAX)
-		panic("ran out of mmu pids");
-//		m->mmupid = PIDBASE;
-	up->mmupid = pid;
-	return pid;
 }
