@@ -869,9 +869,23 @@ i82365write(Chan *c, void *a, long n, ulong offset)
 {
 	ulong p;
 	Slot *pp;
+	char buf[32];
 
 	p = TYPE(c);
 	switch(p){
+	case Qctl:
+		if(n >= sizeof(buf))
+			n = sizeof(buf) - 1;
+		strncpy(buf, a, n);
+		buf[n] = 0;
+		pp = slot + SLOTNO(c);
+		if(!pp->occupied)
+			error(Eio);
+
+		/* set vpp on card */
+		if(strncmp(buf, "vpp", 3) == 0)
+			wrreg(pp, Rpc, vcode(atoi(buf+3))|Fautopower|Foutena|Fcardena);
+		break;
 	case Qmem:
 	case Qattr:
 		pp = slot + SLOTNO(c);

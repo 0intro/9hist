@@ -89,6 +89,8 @@ enum {
 	RxError		= 0x4000,	/* Error */
 	RxEmpty		= 0x8000,	/* Incomplete or FIFO empty */
 
+	InternalCgf	= 0x00,		/* window 3 */
+
 	FIFOdiag	= 0x04,		/* window 4 */
 	MediaStatus	= 0x0A,
 
@@ -536,7 +538,7 @@ tcm579(Ether *ether)
 	 * Trying to do a GlobalReset here to re-init the card (as in the
 	 * 509 code) doesn't seem to work.
 	 */
-	while(slot < 16){
+	while(slot < MaxEISA){
 		port = slot++*0x1000;
 		if(ins(port+0xC80+ManufacturerID) != 0x6D50)
 			continue;
@@ -588,10 +590,11 @@ tcm590(Ether *ether)
 
 		ap = malloc(sizeof(Adapter));
 		ap->pcicfg = pcicfg;
-		pcicfg = malloc(sizeof(PCIcfg));
 		ap->port = port;
 		ap->next = adapter;
 		adapter = ap;
+
+		pcicfg = malloc(sizeof(PCIcfg));
 	}
 	free(pcicfg);
 
@@ -607,7 +610,7 @@ ether509reset(Ether *ether)
 	int i, eax;
 	uchar ea[Eaddrlen];
 	ushort x, acr;
-	ulong port;
+	ulong l, port;
 	Adapter *ap, **app;
 	PCIcfg *pcicfg;
 
@@ -647,6 +650,7 @@ ether509reset(Ether *ether)
 	 * The EEPROM command is 8 bits, the lower 6 bits being
 	 * the address offset.
 	 */
+	COMMAND(port, SelectWindow, 0);
 	if(strcmp(ether->type, "3C589") != 0 && pcicfg == 0)
 		ether->irq = (ins(port+ResourceConfig)>>12) & 0x0F;
 	for(eax = 0, i = 0; i < 3; i++, eax += 2){
@@ -665,7 +669,9 @@ ether509reset(Ether *ether)
 		ether->irq = pcicfg->irq;
 		acr = Xcvr10BaseT;
 		COMMAND(port, SelectWindow, 3);
-		print("internal config = 0x%8.8luX\n", inl(port+0x00));
+		l = inl(port+InternalCgf);
+		l &= ~0x700000;
+		outl(port+InternalCgf, l);
 		free(pcicfg);
 	}
 
@@ -675,17 +681,20 @@ ether509reset(Ether *ether)
 	 * Commands have the format 'CCCCCAAAAAAAAAAA' where C
 	 * is a bit in the command and A is a bit in the argument.
 	 */
+	COMMAND(port, SelectWindow, 2);
 	if((ether->ea[0]|ether->ea[1]|ether->ea[2]|ether->ea[3]|ether->ea[4]|ether->ea[5]) == 0){
 		for(i = 0; i < sizeof(ether->ea); i++)
 			ether->ea[i] = ea[i];
 	}
-	COMMAND(port, SelectWindow, 2);
 	for(i = 0; i < Eaddrlen; i++)
 		outb(port+i, ether->ea[i]);
 
 	/*
 	 * Enable the transceiver if necessary.
 	 */
+	COMMAND(port, SelectWindow, 4);
+	x = ins(port+MediaStatus) & ~(LinkBeatEna|JabberEna);
+	outs(port+MediaStatus, x);
 	switch(acr & XcvrTypeMask){
 
 	case Xcvr10BaseT:
@@ -693,8 +702,7 @@ ether509reset(Ether *ether)
 		 * Enable Link Beat and Jabber to start the
 		 * transceiver.
 		 */
-		COMMAND(port, SelectWindow, 4);
-		outb(port+MediaStatus, LinkBeatEna|JabberEna);
+		outs(port+MediaStatus, x|LinkBeatEna|JabberEna);
 		break;
 
 	case XcvrBNC:

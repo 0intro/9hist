@@ -46,6 +46,8 @@ enum {					/* configuration mechanism #1 */
 					/* configuration mechanism #2 */
 	PCIcse		= 0xCF8,	/* configuration space enable */
 	PCIforward	= 0xCFA,	/* which bus */
+
+	MaxPCI		= 16,
 };
 
 typedef struct PCIcfg {
