@@ -232,24 +232,26 @@ unionread(Chan *c, void *va, long n)
 	Pgrp *pg;
 
 	pg = u->p->pgrp;
-	rlock(&pg->ns);
+	qlock(&pg->nsh);
 
 	for(;;) {
 		if(waserror()) {
-			runlock(&pg->ns);
+			qunlock(&pg->nsh);
 			nexterror();
 		}
-		nc = clone(c->mnt->to, 0);
+		nc = clone(c->mnt->cmnt, 0);
 		poperror();
 
 		if(c->mountid != c->mnt->mountid) {
-			pprint("unionread: changed underfoot?\n");
-			runlock(&pg->ns);
+			pprint("unionread: changed underfoot\n");
+			qunlock(&pg->nsh);
 			close(nc);
 			return 0;
 		}
 
-		/* Error causes component of union to be skipped */
+		/*
+		 * Error causes component of union to be skipped
+		 */
 		if(waserror()) {	
 			close(nc);
 			goto next;
@@ -258,24 +260,26 @@ unionread(Chan *c, void *va, long n)
 		nc = (*devtab[nc->type].open)(nc, OREAD);
 		nc->offset = c->offset;
 		nr = (*devtab[nc->type].read)(nc, va, n, nc->offset);
-		/* devdirread e.g. changes it */
+		/*
+		 * devdirread e.g. changes it
+		 */
 		c->offset = nc->offset;	
 		poperror();
 
 		close(nc);
 		if(nr > 0) {
-			runlock(&pg->ns);
+			qunlock(&pg->nsh);
 			return nr;
 		}
 		/* Advance to next element */
 	next:
-		c->mnt = c->mnt->next;
+		c->mnt = c->mnt->mount;
 		if(c->mnt == 0)
 			break;
 		c->mountid = c->mnt->mountid;
 		c->offset = 0;
 	}
-	runlock(&pg->ns);
+	qunlock(&pg->nsh);
 	return 0;
 }
 
