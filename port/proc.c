@@ -70,6 +70,8 @@ schedinit(void)		/* never returns */
 
 			up->qnext = procalloc.free;
 			procalloc.free = up;
+
+			unlock(&palloc);
 			unlock(&procalloc);
 			break;
 		}
@@ -723,6 +725,7 @@ pexit(char *exitstr, int freemem)
 
 	/* Sched must not loop for this lock */
 	lock(&procalloc);
+	lock(&palloc);
 
 	up->state = Moribund;
 	sched();
