@@ -45,6 +45,7 @@ Medium ethermedium =
 	nil,			/* flushroute */
 	nil,			/* joinmulti */
 	nil,			/* leavemulti */
+	0,			/* don't unbind on last close */
 };
 
 typedef struct	Etherrock Etherrock;
@@ -205,7 +206,7 @@ etherunbind(Ipifc *ifc)
 }
 
 /*
- *  called by ipoput with a single block to write
+ *  called by ipoput with a single block to write with ifc rlock'd
  */
 static void
 etherbwrite(Ipifc *ifc, Block *bp, int version, uchar *ip)
@@ -215,17 +216,6 @@ etherbwrite(Ipifc *ifc, Block *bp, int version, uchar *ip)
 	uchar mac[6];
 	Etherrock *er = ifc->arg;
 
-	if(waserror()) {
-		print("etherbwrite failed\n");
-		ipifccheckout(ifc);
-		return;
-	}
-	if(ipifccheckin(ifc, &ethermedium) < 0){
-		freeb(bp);
-		poperror();
-		return;
-	}
-
 	/* get mac address of destination */
 	a = arpget(bp, version, &ethermedium, ip, mac);
 	if(a){
@@ -233,7 +223,7 @@ etherbwrite(Ipifc *ifc, Block *bp, int version, uchar *ip)
 		bp = multicastarp(a, mac);
 		if(bp == nil){
 			sendarp(ifc, a);
-			goto out;
+			return;
 		}
 	}
 
@@ -261,10 +251,6 @@ etherbwrite(Ipifc *ifc, Block *bp, int version, uchar *ip)
 
 	devtab[er->mchan->type]->bwrite(er->mchan, bp, 0);
 	ifc->out++;
-
-out:
-	ipifccheckout(ifc);
-	poperror();
 }
 
 /*
@@ -276,22 +262,28 @@ etherread(void *a)
 	Ipifc *ifc;
 	Block *bp;
 	Etherrock *er;
+	int locked = 0;
 
 	ifc = a;
 	er = ifc->arg;
 	er->readp = up;	/* hide identity under a rock for unbind */
 	if(waserror()){
+		if(locked)
+			runlock(ifc);
 		er->readp = 0;
 		pexit("hangup", 1);
 	}
 	for(;;){
 		bp = devtab[er->mchan->type]->bread(er->mchan, ifc->maxmtu, 0);
+		rlock(ifc);	locked = 1;	USED(locked);
 		ifc->in++;
 		bp->rp += ifc->m->hsize;
 		if(ifc->lifc == nil)
 			freeb(bp);
 		else
 			ipiput(ifc->lifc->local, bp);
+		runlock(ifc);	locked = 0;	USED(locked);
+
 	}
 }
 

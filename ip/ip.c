@@ -127,6 +127,14 @@ ipoput(Block *bp, int gating, int ttl)
 	}
 	ifc = r->ifc;
 
+	if(waserror()){
+		runlock(ifc);
+		nexterror();
+	}
+	rlock(ifc);
+	if(ifc->m == nil)
+		goto raise;
+
 	/* If we dont need to fragment just send it */
 	medialen = ifc->m->maxmtu - ifc->m->hsize;
 	if(len <= medialen) {
@@ -141,6 +149,8 @@ ipoput(Block *bp, int gating, int ttl)
 
 /*print("ipoput %V->%V via %V\n", eh->src, eh->dst, gate);*/
 		ifc->m->bwrite(ifc, bp, V4, gate);
+		runlock(ifc);
+		poperror();
 		return;
 	}
 
@@ -203,7 +213,7 @@ ipoput(Block *bp, int gating, int ttl)
 			chunk -= blklen;
 			if(xp->rp == xp->wp)
 				xp = xp->next;
-		} 
+		}
 
 		feh->cksum[0] = 0;
 		feh->cksum[1] = 0;
@@ -212,6 +222,8 @@ ipoput(Block *bp, int gating, int ttl)
 	}
 
 raise:
+	runlock(ifc);
+	poperror();
 	freeblist(bp);	
 }
 

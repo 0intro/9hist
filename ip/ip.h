@@ -116,6 +116,8 @@ struct Medium
 	/* for routing multicast groups */
 	void	(*joinmulti)(Ipifc *ifc, uchar *a, uchar *ia, uchar **iap);
 	void	(*leavemulti)(Ipifc *ifc, uchar *a, uchar *ia);
+
+	int	unbindonclose;	/* if non-zero, unbind on last close */
 };
 
 /* logical interface associated with a physical one */
@@ -132,9 +134,9 @@ struct Iplifc
 /* binding twixt Ipself and Ipifc */
 struct Iplink
 {
-	Ipself	*local;
+	Ipself	*self;
 	Iplifc	*lifc;
-	Iplink	*locallink;	/* next link for this local address */
+	Iplink	*selflink;	/* next link for this local address */
 	Iplink	*lifclink;	/* next link for this ifc */
 	ulong	expire;
 	Iplink	*next;		/* free list */

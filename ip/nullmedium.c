@@ -43,4 +43,5 @@ Medium nullmedium =
 	nil,		/* flushroute */
 	nil,		/* joinmulti */
 	nil,		/* leave multi */
+	0,		/* don't unbind on last close */
 };

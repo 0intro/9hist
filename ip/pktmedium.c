@@ -32,6 +32,7 @@ Medium pktmedium =
 	nil,		/* flushroute */
 	nil,		/* joinmulti */
 	nil,		/* leave multi */
+	1,		/* unbind on last close */
 };
 
 /*

@@ -23,6 +23,7 @@ extern	Fs	fs;
 Medium *media[] =
 {
 	&ethermedium,
+	&pktmedium,
 	&nullmedium,
 	0
 };
@@ -151,15 +152,17 @@ ipifcunbind(Ipifc *ifc)
 	}
 	wlock(ifc);
 
-	if(ipifcgrab(ifc) == 0);
-		goto out;
+	/* dissociate routes */
+	ifc->ifcid++;
+
+	/* disassociate device */
+	(*ifc->m->unbind)(ifc);
+	memset(ifc->dev, 0, sizeof(ifc->dev));
+	ifc->arg = nil;
 
 	/* hangup queues to stop queuing of packets */
 	qhangup(ifc->conv->rq, "unbind");
 	qhangup(ifc->conv->wq, "unbind");
-
-	/* dissociate routes */
-	ifc->ifcid++;
 
 	/* disassociate logical interfaces */
 	av[0] = "remove";
@@ -172,14 +175,7 @@ ipifcunbind(Ipifc *ifc)
 		ipifcrem(ifc, av, 3, 0);
 	}
 
-	/* disassociate device */
-	(*ifc->m->unbind)(ifc);
-	memset(ifc->dev, 0, sizeof(ifc->dev));
-	ifc->arg = nil;
-	ifc->m = &nullmedium;
-	ifc->unbinding = 0;
-
-out:
+	ifc->m = nil;
 	wunlock(ifc);
 	poperror();
 	return nil;
@@ -223,7 +219,7 @@ ipifclocal(Conv *c, char *state, int n)
 	for(lifc = ifc->lifc; lifc; lifc = lifc->next){
 		m += snprint(state+m, n - m, "%-20.20I ->", lifc->local);
 		for(link = lifc->link; link; link = link->lifclink)
-			m += snprint(state+m, n - m, " %-20.20I", link->local->a);
+			m += snprint(state+m, n - m, " %-20.20I", link->self->a);
 		m += snprint(state+m, n - m, "\n");
 	}
 	runlock(ifc);
@@ -272,6 +268,8 @@ ipifccreate(Conv *c)
 	c->wq = qopen(QMAX, 0, 0, 0);
 	ifc = (Ipifc*)c->ptcl;
 	ifc->conv = c;
+	ifc->unbinding = 0;
+	ifc->m = nil;
 }
 
 /* 
@@ -281,10 +279,13 @@ ipifccreate(Conv *c)
 static void
 ipifcclose(Conv *c)
 {
-	/*
-	 *  nothing to do since conversation stays open
-	 *  till the device is unbound.
-	 */
+	Ipifc *ifc;
+	Medium *m;
+
+	ifc = (Ipifc*)c->ptcl;
+	m = ifc->m;
+	if(m != nil && m->unbindonclose)
+		ipifcunbind(ifc);
 	unlock(c);
 }
 
@@ -423,7 +424,7 @@ ipifcrem(Ipifc *ifc, char **argv, int argc, int dolock)
 
 	/* disassociate any addresses */
 	while(lifc->link)
-		remselfcache(ifc, lifc, lifc->link->local->a);
+		remselfcache(ifc, lifc, lifc->link->self->a);
 
 	/* remove the route for this logical interface */
 	if(isv4(ip))
@@ -456,6 +457,8 @@ ipifcaddroute(int vers, uchar *addr, uchar *mask, uchar *gate, int type)
 		if(*cp != nil) {
 			ifc = (Ipifc*)(*cp)->ptcl;
 			m = ifc->m;
+			if(m == nil)
+				continue;
 			if(m->addroute != nil)
 				m->addroute(ifc, vers, addr, mask, gate, type);
 		}
@@ -473,6 +476,8 @@ ipifcremroute(int vers, uchar *addr, uchar *mask)
 		if(*cp != nil) {
 			ifc = (Ipifc*)(*cp)->ptcl;
 			m = ifc->m;
+			if(m == nil)
+				continue;
 			if(m->remroute != nil)
 				m->remroute(ifc, vers, addr, mask);
 		}
@@ -603,7 +608,7 @@ addselfcache(Ipifc *ifc, Iplifc *lifc, uchar *a, int type)
 	}
 
 	/* look for a link for this lifc */
-	for(lp = p->link; lp; lp = lp->locallink)
+	for(lp = p->link; lp; lp = lp->selflink)
 		if(lp->lifc == lifc)
 			break;
 
@@ -612,8 +617,8 @@ addselfcache(Ipifc *ifc, Iplifc *lifc, uchar *a, int type)
 		lp = smalloc(sizeof(*lp));
 		lp->ref = 1;
 		lp->lifc = lifc;
-		lp->local = p;
-		lp->locallink = p->link;
+		lp->self = p;
+		lp->selflink = p->link;
 		p->link = lp;
 		lp->lifclink = lifc->link;
 		lifc->link = lp;
@@ -690,7 +695,7 @@ static void
 remselfcache(Ipifc *ifc, Iplifc *lifc, uchar *a)
 {
 	Ipself *p, **l;
-	Iplink *lp, *llp, **ill, **lll;
+	Iplink *link, **l_self, **l_lifc;
 
 	qlock(&selftab);
 
@@ -709,40 +714,40 @@ remselfcache(Ipifc *ifc, Iplifc *lifc, uchar *a)
 	 *  walk down links from an ifc looking for one
 	 *  that matches the selftab entry
 	 */
-	ill = &lifc->link;
-	for(lp = *ill; lp; lp = *ill){
-		if(lp->local == p)
+	l_lifc = &lifc->link;
+	for(link = *l_lifc; link; link = *l_lifc){
+		if(link->self == p)
 			break;
-		ill = &lp->lifclink;
+		l_lifc = &link->lifclink;
 	}
 
-	if(lp == nil)
+	if(link == nil)
 		goto out;
 
 	/*
 	 *  walk down the links from the selftab looking for
 	 *  the one we just found
 	 */
-	lll = &p->link;
-	for(llp = *lll; llp; llp = *lll){
-		if(llp == lp)
+	l_self = &p->link;
+	for(link = *l_self; link; link = *l_self){
+		if(link == *(l_lifc))
 			break;
-		lll = &lp->locallink;
+		l_self = &link->selflink;
 	}
 
-	if(llp == nil)
+	if(link == nil)
 		panic("remselfcache");
 
-	if(--(llp->ref) != 0)
+	if(--(link->ref) != 0)
 		goto out;
 
 	if((p->type & Rmulti) && ifc->m->remmulti != nil)
 		(*ifc->m->remmulti)(ifc, a, lifc->local);
 
 	/* ref == 0, remove from both chains and free the link */
-	*ill = lp->lifclink;
-	*lll = llp->locallink;
-	iplinkfree(lp);
+	*l_lifc = link->lifclink;
+	*l_self = link->selflink;
+	iplinkfree(link);
 
 	/* remove from routing table */
 	if(isv4(a))
@@ -1001,59 +1006,6 @@ ipismulticast(uchar *ip)
 			return V6;
 	}
 	return 0;
-}
-
-/*
- *  used to allow on the fly unbinds, return -1 if interface unusable
- */
-int
-ipifccheckin(Ipifc *ifc, Medium *med)
-{
-	int rv;
-
-	lock(&ifc->idlock);
-	if(ifc->unbinding || ifc->m != med)
-		rv = -1;
-	else
-		rv = ++(ifc->ref);
-	if(ifc->ref < 0) panic("ipifccheckin");
-	unlock(&ifc->idlock);
-	return rv;
-}
-
-void
-ipifccheckout(Ipifc *ifc)
-{
-	lock(&ifc->idlock);
-	if(--(ifc->ref) == 0)
-	if(ifc->unbinding)
-		wakeup(&ifc->wait);
-	if(ifc->ref < 0) panic("ipifccheckin");
-	unlock(&ifc->idlock);
-}
-
-static int
-allout(void *x)
-{
-	Ipifc *ifc = x;
-
-	return ifc->ref == 0;
-}
-
-int
-ipifcgrab(Ipifc *ifc)
-{
-	lock(&ifc->idlock);
-	if(ifc->unbinding){
-		unlock(&ifc->idlock);
-		return 0;
-	}
-	ifc->unbinding = 1;		/* after this ref can only go down */
-	unlock(&ifc->idlock);
-
-	sleep(&ifc->wait, allout, ifc);
-
-	return 1;
 }
 
 /*

@@ -347,6 +347,7 @@ ilxstats(char *buf, int len)
 		il.csumerr, il.hlenerr, il.lenerr, il.order, il.rexmit);
 	n += snprint(buf+n, len-n, " dupp %d dupb %d\n",
 		ilstats.dup, ilstats.dupb);
+	return n;
 }
 
 void
