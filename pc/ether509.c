@@ -13,6 +13,7 @@ enum {
 	IDport		= 0x0100,	/* anywhere between 0x0100 and 0x01F0 */
 
 					/* Commands */
+	GlobalReset	= 0x00,		/* Global Reset */
 	SelectWindow	= 0x01,		/* SelectWindow command */
 	StartCoax	= 0x02,		/* Start Coaxial Transceiver */
 	RxDisable	= 0x03,		/* RX Disable */
@@ -348,6 +349,13 @@ interrupt(Ureg *ur, void *arg)
 	COMMAND(port, AckIntr, Latch);
 }
 
+typedef struct Adapter Adapter;
+struct Adapter {
+	Adapter	*next;
+	ulong	port;
+};
+static Adapter *adapter;
+
 /*
  * Write two 0 bytes to identify the IDport and then reset the
  * ID sequence. Then send the ID sequence to the card to get
@@ -396,7 +404,7 @@ activate(Ether *ether)
 	 *    The data comes back 1 bit at a time.
 	 *    We seem to need a delay here between reading the bits.
 	 *
-	 * If the ID doesn't match the 3C509 ID code, the adapter
+	 * If the ID doesn't match, the adapter
 	 * probably isn't there, so barf.
 	 */
 	outb(IDport, 0x87);
@@ -434,6 +442,42 @@ activate(Ether *ether)
 	return ether->port;
 }
 
+static ulong
+tcm509(Ether *ether)
+{
+	USED(ether);
+	return 0;
+}
+
+static ulong
+tcm579(Ether *ether)
+{
+	static int slot = 1;
+	ulong port;
+	Adapter *ap;
+
+	if(slot == 1 && strncmp((char*)(KZERO|0xFFFD9), "EISA", 4))
+		return 0;
+	while(slot < 8){
+		port = slot++*0x1000;
+		if(ins(port+0xC80+ManufacturerID) != 0x6D50)
+			continue;
+		COMMAND(port+0xC80, GlobalReset, 0);
+		delay(1000);
+		outb(port+0xC80+ConfigControl, 0x01);
+		COMMAND(port+0xC80, SelectWindow, 0);
+		if(ether->port == 0 || ether->port == port)
+			return port;
+
+		ap = malloc(sizeof(Adapter));
+		ap->port = port;
+		ap->next = adapter;
+		adapter = ap;
+	}
+
+	return 0;
+}
+
 /*
  * Get configuration parameters.
  */
@@ -444,20 +488,30 @@ reset(Ether *ether)
 	uchar ea[Eaddrlen];
 	ushort x, acr;
 	ulong port;
+	Adapter *ap, **app;
 
 	/*
-	 * Switch out to 509 activation code if a port is supplied and is
-	 * not in the EISA slot space, otherwise check the EISA card is there.
-	 * Port is set to either the newly activated ISA card address or
-	 * the EISA slot configuration info where Window0 is always mapped.
+	 * Any adapter matches if no ether->port is supplied,
+	 * otherwise the ports must match.
+	 * See if we've already found an adapter that fits
+	 * the bill.
+	 * If no match then try for an EISA card and finally
+	 * for an ISA card.
 	 */
-	if(ether->port < 0x1000){
-		if((port = activate(ether)) < 0)
-			return -1;
+	port = 0;
+	for(app = &adapter, ap = *app; ap; app = &ap->next, ap = ap->next){
+		if(ether->port == 0 || ether->port == ap->port){
+			port = ap->port;
+			*app = ap->next;
+			free(ap);
+			break;
+		}
 	}
-	else if(ins(ether->port+ManufacturerID) == 0x6D50)
-		port = ether->port+0xC80;
-	else
+	if(port == 0)
+		port = tcm579(ether);
+	if(port == 0)
+		port = tcm509(ether);
+	if(port == 0)
 		return -1;
 
 	/*
@@ -478,8 +532,6 @@ reset(Ether *ether)
 		ea[eax+1] = x & 0xFF;
 	}
 	acr = ins(port+AddressConfig);
-
-	port = ether->port;
 
 	/*
 	 * Finished with window 0. Now set the ethernet address
@@ -509,6 +561,8 @@ reset(Ether *ether)
 		COMMAND(port, StartCoax, 0);
 		delay(1);
 	}
+
+	ether->port = port;
 
 	/*
 	 * Set up the software configuration.
