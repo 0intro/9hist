@@ -467,7 +467,6 @@ multicast(void* arg, uchar *addr, int on)
 	ether = (Ether*)arg;
 	port = ether->port;
 
-print("multicast nmaddr == %d\n", ether->nmaddr);
 	filter = receiveBroadcast|receiveIndividual;
 	if(ether->nmaddr)
 		filter |= receiveMulticast;

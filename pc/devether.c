@@ -398,9 +398,7 @@ ethercrc(uchar *p, int len)
 	for(i = 0; i < len; i++){
 		b = *p++;
 		for(j = 0; j < 8; j++){
-			crc = (crc>>1);
-			if((crc^b) & 1)
-				crc ^= POLY;
+			crc = (crc>>1) ^ (((crc^b) & 1) ? POLY : 0);
 			b >>= 1;
 		}
 	}

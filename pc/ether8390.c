@@ -604,77 +604,95 @@ interrupt(Ureg*, void* arg)
 	unlock(ctlr);
 }
 
+static uchar allmar[8] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
+
+static void
+setfilter(Ether *ether, Dp8390 *ctlr)
+{
+	uchar r, cr;
+	int i;
+	uchar *mar;
+
+	r = Ab;
+	mar = 0;
+	if(ether->prom){
+		r |= Pro|Am;
+		mar = allmar;
+	} else if(ether->nmaddr){
+		r |= Am;
+		mar = ctlr->mar;
+	}
+	if(mar){
+		cr = regr(ctlr, Cr) & ~Txp;
+		regw(ctlr, Cr, Page1|(~(Ps1|Ps0) & cr));
+		for(i = 0; i < 8; i++)
+			regw(ctlr, Mar0+i, *(mar++));
+		regw(ctlr, Cr, cr);
+	}
+	regw(ctlr, Rcr, r);
+}
+
 static void
 promiscuous(void *arg, int on)
 {
 	Ether *ether;
 	Dp8390 *ctlr;
-	uchar r;
+
+	USED(on);
 
 	ether = arg;
 	ctlr = ether->ctlr;
 
-	/*
-	 * Set/reset promiscuous mode.
-	 */
-	r = Ab;
-	if(on)
-		r |= Pro;
-	if(ether->nmaddr)
-		r |= Am;
 	ilock(ctlr);
-	regw(ctlr, Rcr, r);
+	setfilter(ether, ctlr);
 	iunlock(ctlr);
 }
+
+static void
+setbit(Dp8390 *ctlr, int bit, int on)
+{
+	int i, h;
+
+	i = bit/8;
+	h = bit%8;
+	if(on){
+		if(++(ctlr->mref[bit]) == 1)
+			ctlr->mar[i] |= 1<<h;
+	} else {
+		if(--(ctlr->mref[bit]) <= 0){
+			ctlr->mref[bit] = 0;
+			ctlr->mar[i] &= ~(1<<h);
+		}
+	}
+}
+
+static uchar reverse[64];
 
 static void
 multicast(void* arg, uchar *addr, int on)
 {
 	Ether *ether;
 	Dp8390 *ctlr;
-	uchar r, cr;
 	int i;
 	ulong h;
 
-	USED(addr, on);
+	USED(on);
 
 	ether = arg;
 	ctlr = ether->ctlr;
+	if(reverse[1] == 0){
+		for(i = 0; i < 64; i++)
+			reverse[i] = ((i&1)<<5) | ((i&2)<<3) | ((i&4)<<1)
+					| ((i&8)>>1) | ((i&16)>>3) | ((i&32)>>5);
+	}
 
 	/*
 	 *  change filter bits
 	 */
 	h = ethercrc(addr, 6);
-	h = h>>(32-6);
-	i = h/8;
-	h = h%8;
 	ilock(ctlr);
-	cr = regr(ctlr, Cr) & ~Txp;
-	regw(ctlr, Cr, Page1|(~(Ps1|Ps0) & cr));
-	r = regr(ctlr, Mar0+i);
-	if(on){
-		if(++(ctlr->mref[h]) == 1)
-			r |= 1<<h;
-	} else {
-		if(--(ctlr->mref[h]) <= 0){
-			ctlr->mref[h] = 0;
-			r &= ~(1<<h);
-		}
-	}	
-	regw(ctlr, Mar0+i, r);
-	regw(ctlr, Cr, cr);
-	iunlock(ctlr);
-
-	/*
-	 * Set/reset promiscuous mode.
-	 */
-	r = Ab;
-	if(ether->nmaddr)
-		r |= Am;
-	if(ether->prom)
-		r |= Pro;
-	ilock(ctlr);
-	regw(ctlr, Rcr, r);
+	setbit(ctlr, reverse[h&0x3f], on);
+	setfilter(ether, ctlr);
 	iunlock(ctlr);
 }
 
