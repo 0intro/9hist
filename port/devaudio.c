@@ -743,6 +743,7 @@ audioinit(void)
 	case 2:
 	case 5:
 	case 7:
+	case 9:
 	case 10:
 		break;
 	default:

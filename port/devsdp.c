@@ -17,7 +17,6 @@ typedef struct Sdp Sdp;
 typedef struct Conv Conv;
 typedef struct OneWay OneWay;
 typedef struct Stats Stats;
-typedef struct ConnectPkt ConnectPkt;
 typedef struct AckPkt AckPkt;
 typedef struct Algorithm Algorithm;
 
@@ -43,7 +42,7 @@ enum
 	Nfs= 4,				// number of file systems
 	MaxRetries=	8,
 	KeepAlive = 60,		// keep alive in seconds
-	KeyLength= 32,
+	SecretLength= 32,	// a secret per direction
 	SeqMax = (1<<24),
 	SeqWindow = 32,
 };
@@ -78,6 +77,8 @@ struct OneWay
 	ulong	seq;
 	ulong	window;
 
+	uchar	secret[SecretLength];
+
 	QLock	controllk;
 	Rendez	controlready;
 	Block	*controlpkt;		// control channel
@@ -93,7 +94,7 @@ struct OneWay
 	int		(*auth)(OneWay*, uchar *buf, int len);
 
 	void	*compstate;
-	int		(*comp)(OneWay*, uchar *dst, uchar *src, int n);
+	int		(*comp)(OneWay*, int subtype, Block **);
 };
 
 // conv states
@@ -137,7 +138,6 @@ struct Conv {
 	char owner[NAMELEN];		/* protections */
 	int	perm;
 
-	uchar	masterkey[KeyLength];
 	char *authname;
 	char *ciphername;
 	char *compname;
@@ -160,10 +160,13 @@ struct Sdp {
 enum {
 	TConnect,
 	TControl,
-	TControlAck,
 	TData,
-	TThwackC,
-	TThwackU,
+	TCompData,
+};
+
+enum {
+	ControlMesg,
+	ControlAck,
 };
 
 enum {
@@ -172,15 +175,6 @@ enum {
 	ConOpenAckAck,
 	ConClose,
 	ConReset,
-};
-
-struct ConnectPkt
-{
-	uchar type;		// always zero = connection packet
-	uchar op;
-	uchar pad[2];
-	uchar dialid[4];
-	uchar acceptid[4];
 };
 
 struct AckPkt
@@ -222,31 +216,6 @@ static Dirtab convdirtab[]={
 	"rstats",	{Qrstats},	0,	0444,
 };
 
-#ifdef XXX
-static Algorithm cipheralg[] =
-{
-	"null",			0,	nullcipherinit,
-	"des_56_cbc",	7,	descipherinit,
-	"rc4_128",		16,	rc4cipherinit,
-	nil,			0,	nil,
-};
-
-static Algorithm authalg[] =
-{
-	"null",			0,	nullauthinit,
-	"hmac_sha_96",	16,	shaauthinit,
-	"hmac_md5_96",	16,	md5authinit,
-	nil,			0,	nil,
-};
-
-static Algorithm compalg[] =
-{
-	"null",			0,	nullcompinit,
-	"thwack",		0,	thwackcompinit,
-	nil,			0,	nil,
-};
-#endif
-
 static int m2p[] = {
 	[OREAD]		4,
 	[OWRITE]	2,
@@ -287,16 +256,54 @@ static void onewaycleanup(OneWay *ow);
 static int readready(void *a);
 static int controlread();
 static Block *conviput(Conv *c, Block *b, int control);
-static void conviput2(Conv *c, Block *b);
+static void conviconnect(Conv *c, int op, Block *b);
+static void convicontrol(Conv *c, int op, Block *b);
+static Block *convicomp(Conv *c, int op, Block *b);
 static void writecontrol(Conv *c, void *p, int n, int wait);
 static Block *readcontrol(Conv *c, int n);
 static Block *readdata(Conv *c, int n);
 static long writedata(Conv *c, Block *b);
-static void convoput(Conv *c, int type, Block *b);
-static void convoput2(Conv *c, int op, ulong dialid, ulong acceptid);
+static void convoput(Conv *c, int type, int subtype, Block *b);
+static void convoconnect(Conv *c, int op, ulong dialid, ulong acceptid);
 static void convreader(void *a);
 static void convopenchan(Conv *c, char *path);
 static void convstats(Conv *c, int local, char *buf, int n);
+
+static void setalg(Conv *c, char *name, Algorithm *tab);
+static void setsecret(OneWay *cc, char *secret);
+
+static void nullcipherinit(Conv*c, char *name, int keylen);
+static void descipherinit(Conv*c, char *name, int keylen);
+static void rc4cipherinit(Conv*c, char *name, int keylen);
+static void nullauthinit(Conv*c, char *name, int keylen);
+static void shaauthinit(Conv*c, char *name, int keylen);
+static void md5authinit(Conv*c, char *name, int keylen);
+static void nullcompinit(Conv*c, char *name, int keylen);
+static void thwackcompinit(Conv*c, char *name, int keylen);
+
+static Algorithm cipheralg[] =
+{
+	"null",			0,	nullcipherinit,
+	"des_56_cbc",	7,	descipherinit,
+	"rc4_128",		16,	rc4cipherinit,
+	nil,			0,	nil,
+};
+
+static Algorithm authalg[] =
+{
+	"null",			0,	nullauthinit,
+	"hmac_sha_96",	16,	shaauthinit,
+	"hmac_md5_96",	16,	md5authinit,
+	nil,			0,	nil,
+};
+
+static Algorithm compalg[] =
+{
+	"null",			0,	nullcompinit,
+	"thwack",		0,	thwackcompinit,
+	nil,			0,	nil,
+};
+
 
 static void
 sdpinit(void)
@@ -597,6 +604,26 @@ sdpwrite(Chan *ch, void *a, long n, vlong off)
 			if(cb->nf != 2)
 				error("usage: drop permil");
 			c->drop = atoi(cb->f[1]);
+		} else if(strcmp(arg0, "cipher") == 0) {
+			if(cb->nf != 2)
+				error("usage: cipher alg");
+			setalg(c, cb->f[1], cipheralg);
+		} else if(strcmp(arg0, "auth") == 0) {
+			if(cb->nf != 2)
+				error("usage: auth alg");
+			setalg(c, cb->f[1], authalg);
+		} else if(strcmp(arg0, "comp") == 0) {
+			if(cb->nf != 2)
+				error("usage: comp alg");
+			setalg(c, cb->f[1], compalg);
+		} else if(strcmp(arg0, "insecret") == 0) {
+			if(cb->nf != 2)
+				error("usage: insecret secret");
+			setsecret(&c->in, cb->f[1]);
+		} else if(strcmp(arg0, "outsecret") == 0) {
+			if(cb->nf != 2)
+				error("usage: outsecret secret");
+			setsecret(&c->out, cb->f[1]);
 		} else
 			error("unknown control request");
 		poperror();
@@ -739,7 +766,7 @@ convretryinit(Conv *c)
 	c->retries = 0;
 	// +2 to avoid rounding effects.
 	c->timeout = TK2SEC(m->ticks) + 2;
-};
+}
 
 // assume c is locked
 static int
@@ -750,7 +777,7 @@ print("convretry: %s: %d\n", convstatename[c->state], c->retries);
 	if(c->retries > MaxRetries) {
 print("convretry: giving up\n");
 		if(reset)
-			convoput2(c, ConReset, c->dialid, c->acceptid);
+			convoconnect(c, ConReset, c->dialid, c->acceptid);
 		convsetstate(c, CClosed);
 		return 0;
 	}
@@ -773,17 +800,17 @@ convtimer(Conv *c, ulong sec)
 	switch(c->state) {
 	case CDial:
 		if(convretry(c, 1))
-			convoput2(c, ConOpenRequest, c->dialid, 0);
+			convoconnect(c, ConOpenRequest, c->dialid, 0);
 		break;
 	case CAccept:
 		if(convretry(c, 1))
-			convoput2(c, ConOpenAck, c->dialid, c->acceptid);
+			convoconnect(c, ConOpenAck, c->dialid, c->acceptid);
 		break;
 	case COpen:
 		b = c->out.controlpkt;
 		if(b != nil) {
 			if(convretry(c, 1))
-				convoput(c, TControl, copyblock(b, blocklen(b)));
+				convoput(c, TControl, ControlMesg, copyblock(b, blocklen(b)));
 			break;
 		}
 
@@ -802,13 +829,13 @@ print("sending keep alive: %ld\n", sec - c->lastrecv);
 		c->out.controlpkt = b;
 		convretryinit(c);
 		if(!waserror()) {
-			convoput(c, TControl, copyblock(b, blocklen(b)));
+			convoput(c, TControl, ControlMesg, copyblock(b, blocklen(b)));
 			poperror();
 		}
 		break;
 	case CLocalClose:
 		if(convretry(c, 0))
-			convoput2(c, ConClose, c->dialid, c->acceptid);
+			convoconnect(c, ConClose, c->dialid, c->acceptid);
 		break;
 	case CRemoteClose:
 	case CClosed:
@@ -878,30 +905,39 @@ print("convsetstate %s -> %s\n", convstatename[c->state], convstatename[state]);
 		assert(c->state == CInit);
 		c->dialid = (rand()<<16) + rand();
 		convretryinit(c);
-		convoput2(c, ConOpenRequest, c->dialid, 0);
+		convoconnect(c, ConOpenRequest, c->dialid, 0);
 		break;
 	case CAccept:
 		assert(c->state == CInit);
 		c->acceptid = (rand()<<16) + rand();
 		convretryinit(c);
-		convoput2(c, ConOpenAck, c->dialid, c->acceptid);
+		convoconnect(c, ConOpenAck, c->dialid, c->acceptid);
 		break;
 	case COpen:
 		assert(c->state == CDial || c->state == CAccept);
 		if(c->state == CDial) {
 			convretryinit(c);
-			convoput2(c, ConOpenAckAck, c->dialid, c->acceptid);
+			convoconnect(c, ConOpenAckAck, c->dialid, c->acceptid);
+			hnputl(c->in.secret, c->acceptid);
+			hnputl(c->in.secret+4, c->dialid);
+			hnputl(c->out.secret, c->dialid);
+			hnputl(c->out.secret+4, c->acceptid);
+		} else {
+			hnputl(c->in.secret, c->dialid);
+			hnputl(c->in.secret+4, c->acceptid);
+			hnputl(c->out.secret, c->acceptid);
+			hnputl(c->out.secret+4, c->dialid);
 		}
-		// setup initial key and auth method
+		md5authinit(c, "hmac_md5_96", 16);
 		break;
 	case CLocalClose:
 		assert(c->state == CAccept || c->state == COpen);
 		convretryinit(c);
-		convoput2(c, ConClose, c->dialid, c->acceptid);
+		convoconnect(c, ConClose, c->dialid, c->acceptid);
 		break;
 	case CRemoteClose:
 		wakeup(&c->in.controlready);
-		convoput2(c, ConReset, c->dialid, c->acceptid);
+		convoconnect(c, ConReset, c->dialid, c->acceptid);
 		break;
 	case CClosed:
 		wakeup(&c->in.controlready);
@@ -938,7 +974,6 @@ print("CClosed -> ref = %d\n", c->ref);
 		c->timeout = ~0;
 		c->retries = 0;
 		c->drop = 0;
-		memset(c->masterkey, 0, sizeof(c->masterkey));
 		onewaycleanup(&c->in);
 		onewaycleanup(&c->out);
 		memset(&c->lstats, 0, sizeof(Stats));
@@ -1046,7 +1081,7 @@ convack(Conv *c)
 	hnputl(ack->inReorder, s->inReorder);
 	hnputl(ack->inBadAuth, s->inBadAuth);
 	hnputl(ack->inBadSeq, s->inBadSeq);
-	convoput(c, TControlAck, b);
+	convoput(c, TControl, ControlAck, b);
 }
 
 
@@ -1054,12 +1089,9 @@ convack(Conv *c)
 static Block *
 conviput(Conv *c, Block *b, int control)
 {
-	int type, n;
-	ulong seq, seqwrap, cseq;
+	int type, subtype;
+	ulong seq, seqwrap;
 	long seqdiff;
-	AckPkt *ack;
-	ulong mseq, mask;
-	Block *bb;
 
 	c->lstats.inPackets++;
 
@@ -1068,14 +1100,16 @@ conviput(Conv *c, Block *b, int control)
 		return nil;
 	}
 	
-	type = b->rp[0];
+	type = b->rp[0] >> 4;
+	subtype = type & 0xf;
+	b->rp += 1;
 	if(type == TConnect) {
-		conviput2(c, b);
+		conviconnect(c, subtype, b);
 		return nil;
 	}
 
-	seq = (b->rp[1]<<16) + (b->rp[2]<<8) + b->rp[3];
-	b->rp += 4;
+	seq = (b->rp[0]<<16) + (b->rp[1]<<8) + b->rp[2];
+	b->rp += 3;
 
 	seqwrap = c->in.seqwrap;
 	seqdiff = seq - c->in.seq;
@@ -1107,7 +1141,16 @@ print("dup sequence number: %ld (%ld %ld)\n", seq, c->in.seqwrap, seqdiff);
 
 	// ok the sequence number looks ok
 if(0) print("coniput seq=%ulx\n", seq);
-	// auth
+	if(c->in.auth != 0) {
+		if(!(*c->in.auth)(&c->in, b->rp-4, BLEN(b)+4)) {
+print("bad auth\n");
+			c->lstats.inBadAuth++;
+			freeb(b);
+			return nil;
+		}
+		b->wp -= c->in.authlen;
+	}
+
 	// decrypt
 
 	// ok the packet is good
@@ -1132,92 +1175,20 @@ print("missing packets: %ld-%ld\n", seq - SeqWindow - seqdiff+1, seq-SeqWindow);
 
 	switch(type) {
 	case TControl:
-		if(BLEN(b) < 4)
-			break;
-		cseq = nhgetl(b->rp);
-		if(cseq == c->in.controlseq) {
-print("duplicate control packet: %ulx\n", cseq);
-			// duplicate control packet
-			freeb(b);
-			if(c->in.controlpkt == nil)
-				convack(c);
-			return nil;
-		}
-
-		if(cseq != c->in.controlseq+1)
-			break;
-		c->in.controlseq = cseq;
-		b->rp += 4;
-		if(BLEN(b) == 0) {
-			// just a ping
-			freeb(b);
-			convack(c);
-		} else {
-			c->in.controlpkt = b;
-if(0) print("recv %ld size=%ld\n", cseq, BLEN(b));
-			wakeup(&c->in.controlready);
-		}
-		return nil;
-	case TControlAck:
-		if(BLEN(b) != sizeof(AckPkt))
-			break;
-		ack = (AckPkt*)(b->rp);
-		cseq = nhgetl(ack->cseq);
-		if(cseq != c->out.controlseq) {
-print("ControlAck expected %ulx got %ulx\n", c->out.controlseq, cseq);
-			break;
-		}
-		c->rstats.outPackets = nhgetl(ack->outPackets);
-		c->rstats.outDataPackets = nhgetl(ack->outDataPackets);
-		c->rstats.outDataBytes = nhgetl(ack->outDataBytes);
-		c->rstats.outCompDataBytes = nhgetl(ack->outCompDataBytes);
-		c->rstats.inPackets = nhgetl(ack->inPackets);
-		c->rstats.inDataPackets = nhgetl(ack->inDataPackets);
-		c->rstats.inDataBytes = nhgetl(ack->inDataBytes);
-		c->rstats.inCompDataBytes = nhgetl(ack->inCompDataBytes);
-		c->rstats.inMissing = nhgetl(ack->inMissing);
-		c->rstats.inDup = nhgetl(ack->inDup);
-		c->rstats.inReorder = nhgetl(ack->inReorder);
-		c->rstats.inBadAuth = nhgetl(ack->inBadAuth);
-		c->rstats.inBadSeq = nhgetl(ack->inBadSeq);
-		freeb(b);
-		freeb(c->out.controlpkt);
-		c->out.controlpkt = nil;
-		c->timeout = c->lastrecv + KeepAlive;
-		wakeup(&c->out.controlready);
+		convicontrol(c, subtype, b);
 		return nil;
 	case TData:
 		c->lstats.inDataPackets++;
 		c->lstats.inDataBytes += BLEN(b);
-		c->lstats.inCompDataBytes += BLEN(b);
 		if(control)
 			break;
 		return b;
-	case TThwackU:
+	case TCompData:
 		c->lstats.inDataPackets++;
 		c->lstats.inCompDataBytes += BLEN(b);
-		mask = b->rp[0];
-		mseq = (b->rp[1]<<16) | (b->rp[2]<<8) | b->rp[3];
-		b->rp += 4;
-		thwackack(c->out.compstate, mseq, mask);
-		c->lstats.inDataBytes += BLEN(b);
-		if(control)
-			break;
-		return b;
-	case TThwackC:
-		c->lstats.inDataPackets++;
-		c->lstats.inCompDataBytes += BLEN(b);
-		bb = b;
-		b = allocb(ThwMaxBlock);
-		n = unthwack(c->in.compstate, b->wp, ThwMaxBlock, bb->rp, BLEN(bb), seq);
-		freeb(bb);
-		if(n < 0)
-			break;
-		b->wp += n;
-		mask = b->rp[0];
-		mseq = (b->rp[1]<<16) | (b->rp[2]<<8) | b->rp[3];
-		thwackack(c->out.compstate, mseq, mask);
-		b->rp += 4;
+		b = convicomp(c, subtype, b);
+		if(b == nil);
+			return nil;
 		c->lstats.inDataBytes += BLEN(b);
 		if(control)
 			break;
@@ -1230,21 +1201,20 @@ print("droping packet %d n=%ld\n", type, BLEN(b));
 
 // assume hold conv lock
 static void
-conviput2(Conv *c, Block *b)
+conviconnect(Conv *c, int subtype, Block *b)
 {
-	ConnectPkt *con;
 	ulong dialid;
 	ulong acceptid;
 
-	if(BLEN(b) != sizeof(ConnectPkt)) {
+	if(BLEN(b) != 8) {
 		freeb(b);
 		return;
 	}
-	con = (ConnectPkt*)b->rp;
-	dialid = nhgetl(con->dialid);
-	acceptid = nhgetl(con->acceptid);
+	dialid = nhgetl(b->rp);
+	acceptid = nhgetl(b->rp + 4);
+	freeb(b);
 
-print("conviput2: %s: %d %uld %uld\n", convstatename[c->state], con->op, dialid, acceptid);
+print("conviconnect: %s: %d %uld %uld\n", convstatename[c->state], subtype, dialid, acceptid);
 
 	switch(c->state) {
 	default:
@@ -1259,14 +1229,15 @@ print("conviput2: %s: %d %uld %uld\n", convstatename[c->state], con->op, dialid,
 	case COpen:
 	case CLocalClose:
 	case CRemoteClose:
-		if(dialid != c->dialid || acceptid != c->acceptid)
+		if(dialid != c->dialid
+		|| subtype != ConOpenRequest && acceptid != c->acceptid)
 			goto Reset;
 		break;
 	case CClosed:
 		goto Reset;
 	}
 
-	switch(con->op) {
+	switch(subtype) {
 	case ConOpenRequest:
 		switch(c->state) {
 		case CInit:
@@ -1287,7 +1258,7 @@ print("conviput2: %s: %d %uld %uld\n", convstatename[c->state], con->op, dialid,
 			return;
 		case COpen:
 			// duplicate that we have to ack
-			convoput2(c, ConOpenAckAck, acceptid, dialid);
+			convoconnect(c, ConOpenAckAck, acceptid, dialid);
 			return;
 		}
 		break;
@@ -1302,7 +1273,7 @@ print("conviput2: %s: %d %uld %uld\n", convstatename[c->state], con->op, dialid,
 		}
 		break;
 	case ConClose:
-		convoput2(c, ConReset, dialid, acceptid);
+		convoconnect(c, ConReset, dialid, acceptid);
 		switch(c->state) {
 		case CInit:
 		case CDial:
@@ -1316,7 +1287,7 @@ print("conviput2: %s: %d %uld %uld\n", convstatename[c->state], con->op, dialid,
 		case CRemoteClose:
 			return;
 		}
-		return;
+		break;
 	case ConReset:
 		switch(c->state) {
 		case CInit:
@@ -1329,12 +1300,89 @@ print("conviput2: %s: %d %uld %uld\n", convstatename[c->state], con->op, dialid,
 		case CRemoteClose:
 			return;
 		}
-		return;
+		break;
 	}
 Reset:
 	// invalid connection message - reset to sender
-print("invalid conviput2 - sending reset\n");
-	convoput2(c, ConReset, dialid, acceptid);
+print("invalid conviconnect - sending reset\n");
+	convoconnect(c, ConReset, dialid, acceptid);
+}
+
+static void
+convicontrol(Conv *c, int subtype, Block *b)
+{
+	ulong cseq;
+	AckPkt *ack;
+
+	if(BLEN(b) < 4)
+		return;
+	cseq = nhgetl(b->rp);
+	
+	switch(subtype){
+	case ControlMesg:
+		if(cseq == c->in.controlseq) {
+print("duplicate control packet: %ulx\n", cseq);
+			// duplicate control packet
+			freeb(b);
+			if(c->in.controlpkt == nil)
+				convack(c);
+			return;
+		}
+
+		if(cseq != c->in.controlseq+1)
+			return;
+		c->in.controlseq = cseq;
+		b->rp += 4;
+		if(BLEN(b) == 0) {
+			// just a ping
+			freeb(b);
+			convack(c);
+		} else {
+			c->in.controlpkt = b;
+if(0) print("recv %ld size=%ld\n", cseq, BLEN(b));
+			wakeup(&c->in.controlready);
+		}
+		return;
+	case ControlAck:
+		if(cseq != c->out.controlseq) {
+print("ControlAck expected %ulx got %ulx\n", c->out.controlseq, cseq);
+			return;
+		}
+		if(BLEN(b) < sizeof(AckPkt))
+			return;
+		ack = (AckPkt*)(b->rp);
+		c->rstats.outPackets = nhgetl(ack->outPackets);
+		c->rstats.outDataPackets = nhgetl(ack->outDataPackets);
+		c->rstats.outDataBytes = nhgetl(ack->outDataBytes);
+		c->rstats.outCompDataBytes = nhgetl(ack->outCompDataBytes);
+		c->rstats.inPackets = nhgetl(ack->inPackets);
+		c->rstats.inDataPackets = nhgetl(ack->inDataPackets);
+		c->rstats.inDataBytes = nhgetl(ack->inDataBytes);
+		c->rstats.inCompDataBytes = nhgetl(ack->inCompDataBytes);
+		c->rstats.inMissing = nhgetl(ack->inMissing);
+		c->rstats.inDup = nhgetl(ack->inDup);
+		c->rstats.inReorder = nhgetl(ack->inReorder);
+		c->rstats.inBadAuth = nhgetl(ack->inBadAuth);
+		c->rstats.inBadSeq = nhgetl(ack->inBadSeq);
+		freeb(b);
+		freeb(c->out.controlpkt);
+		c->out.controlpkt = nil;
+		c->timeout = c->lastrecv + KeepAlive;
+		wakeup(&c->out.controlready);
+		return;
+	}
+}
+
+static Block*
+convicomp(Conv *c, int subtype, Block *b)
+{
+	if(c->in.comp == nil) {
+		freeb(b);
+		return nil;
+	}
+	if((*c->in.comp)(&c->in, subtype, &b) < 0)
+		return nil;
+	return b;
 }
 
 // c is locked
@@ -1356,13 +1404,13 @@ convwriteblock(Conv *c, Block *b)
 
 // assume hold conv lock
 static void
-convoput(Conv *c, int type, Block *b)
+convoput(Conv *c, int type, int subtype, Block *b)
 {
 	// try and compress
 	c->lstats.outPackets++;
 	/* Make space to fit sdp header */
 	b = padblock(b, 4 + c->out.cipherivlen);
-	b->rp[0] = type;
+	b->rp[0] = (type << 4) | subtype;
 	c->out.seq++;
 	if(c->out.seq == (1<<24)) {
 		c->out.seq = 0;
@@ -1374,29 +1422,31 @@ convoput(Conv *c, int type, Block *b)
 	
 	// encrypt
 	// auth
+	if(c->out.auth) {
+		b = padblock(b, -c->out.authlen);
+		b->wp += c->out.authlen;
+		(*c->out.auth)(&c->out, b->rp, BLEN(b));
+	}
 	
 	convwriteblock(c, b);
 }
 
 // assume hold conv lock
 static void
-convoput2(Conv *c, int op, ulong dialid, ulong acceptid)
+convoconnect(Conv *c, int op, ulong dialid, ulong acceptid)
 {
 	Block *b;
-	ConnectPkt *con;
 
 	c->lstats.outPackets++;
 	if(c->chan == nil) {
 print("chan = nil\n");
 		error("no channel attached");
 	}
-	b = allocb(sizeof(ConnectPkt));
-	con = (ConnectPkt*)b->wp;
-	b->wp += sizeof(ConnectPkt);
-	con->type = TConnect;
-	con->op = op;
-	hnputl(con->dialid, dialid);
-	hnputl(con->acceptid, acceptid);
+	b = allocb(9);
+	b->wp[0] = (TConnect << 4) | op;
+	hnputl(b->wp+1, dialid);
+	hnputl(b->wp+5, acceptid);
+	b->wp += 9;
 
 	convwriteblock(c, b);
 }
@@ -1525,7 +1575,6 @@ writecontrol(Conv *c, void *p, int n, int wait)
 {
 	Block *b;
 
-
 	qlock(&c->out.controllk);
 	qlock(c);
 	if(waserror()) {
@@ -1541,7 +1590,7 @@ writecontrol(Conv *c, void *p, int n, int wait)
 	b->wp += 4+n;
 	c->out.controlpkt = b;
 	convretryinit(c);
-	convoput(c, TControl, copyblock(b, blocklen(b)));
+	convoput(c, TControl, ControlMesg, copyblock(b, blocklen(b)));
 	if(wait)
 		writewait(c);
 	poperror();
@@ -1574,9 +1623,7 @@ readdata(Conv *c, int n)
 static long
 writedata(Conv *c, Block *b)
 {
-	int n, nn;
-	ulong seq;
-	Block *bb;
+	int n;
 
 	qlock(c);
 	if(waserror()) {
@@ -1593,34 +1640,12 @@ writedata(Conv *c, Block *b)
 	c->lstats.outDataPackets++;
 	c->lstats.outDataBytes += n;
 
-	if(0) {
-		c->lstats.outCompDataBytes += n;
-		convoput(c, TData, b);
-		poperror();
-		qunlock(c);
-		return n;
-	}
-	b = padblock(b, 4);
-	b->rp[0] = (c->in.window>>1) & 0xff;
-	b->rp[1] = c->in.seq>>16;
-	b->rp[2] = c->in.seq>>8;
-	b->rp[3] = c->in.seq;
-
-	// must generate same value as convoput
-	seq = (c->out.seq + 1) & (SeqMax-1);
-
-	bb = allocb(BLEN(b));
-	nn = thwack(c->out.compstate, bb->wp, b->rp, BLEN(b), seq);
-	if(nn < 0) {
+	if(c->out.comp != nil) {
+		int subtype = (*c->out.comp)(&c->out, 0, &b);
 		c->lstats.outCompDataBytes += BLEN(b);
-		convoput(c, TThwackU, b);
-		freeb(bb);
-	} else {
-		c->lstats.outCompDataBytes += nn;
-		bb->wp += nn;
-		convoput(c, TThwackC, bb);
-		freeb(b);
-	}
+		convoput(c, TCompData, subtype, b);
+	} else
+		convoput(c, TData, 0, b);
 
 	poperror();
 	qunlock(c);
@@ -1663,3 +1688,353 @@ print("convreader exiting\n");
 	qunlock(c);
 	pexit("hangup", 1);
 }
+
+
+/* ciphers, authenticators, and compressors  */
+
+static void
+setalg(Conv *c, char *name, Algorithm *alg)
+{
+	for(; alg->name; alg++)
+		if(strcmp(name, alg->name) == 0)
+			break;
+	if(alg->name == nil)
+		error("unknown algorithm");
+
+	alg->init(c, alg->name, alg->keylen);
+}
+
+static void
+setsecret(OneWay *ow, char *secret)
+{
+	char *p;
+	int i, c;
+	
+	i = 0;
+	memset(ow->secret, 0, sizeof(ow->secret));
+	for(p=secret; *p; p++) {
+		if(i >= sizeof(ow->secret)*2)
+			break;
+		c = *p;
+		if(c >= '0' && c <= '9')
+			c -= '0';
+		else if(c >= 'a' && c <= 'f')
+			c -= 'a'-10;
+		else if(c >= 'A' && c <= 'F')
+			c -= 'A'-10;
+		else
+			error("bad character in secret");
+		if((i&1) == 0)
+			c <<= 4;
+		ow->secret[i>>1] |= c;
+		i++;
+	}
+}
+
+static void
+setkey(uchar *key, int n, OneWay *ow, char *prefix)
+{
+	uchar ibuf[SHAdlen], obuf[MD5dlen], salt[10];
+	int i, round = 0;
+
+	while(n > 0){
+		for(i=0; i<round+1; i++)
+			salt[i] = 'A'+round;
+		sha((uchar*)prefix, strlen(prefix), ibuf, sha(salt, round+1, nil, nil));
+		md5(ibuf, SHAdlen, obuf, md5(ow->secret, sizeof(ow->secret), nil, nil));
+		i = (n<MD5dlen) ? n : MD5dlen;
+		memmove(key, obuf, i);
+		key += i;
+		n -= i;
+		if(++round > sizeof salt)
+			panic("setkey: you ask too much");
+	}
+}
+
+
+static void
+cipherfree(Conv *c)
+{
+	if(c->ciphername) {
+		free(c->ciphername);
+		c->ciphername = nil;
+	}
+	if(c->in.cipherstate) {
+		free(c->in.cipherstate);
+		c->in.cipherstate = nil;
+	}
+	if(c->out.cipherstate) {
+		free(c->out.cipherstate);
+		c->out.cipherstate = nil;
+	}
+	c->in.cipher = nil;
+}
+
+static void
+authfree(Conv *c)
+{
+	if(c->authname) {
+		free(c->authname);
+		c->authname = nil;
+	}
+	if(c->in.authstate) {
+		free(c->in.authstate);
+		c->in.authstate = nil;
+	}
+	if(c->out.authstate) {
+		free(c->out.authstate);
+		c->out.authstate = nil;
+	}
+	c->in.auth = nil;
+}
+
+static void
+compfree(Conv *c)
+{
+	if(c->compname) {
+		free(c->compname);
+		c->compname = nil;
+	}
+	if(c->in.compstate) {
+		free(c->in.compstate);
+		c->in.compstate = nil;
+	}
+	if(c->out.compstate) {
+		free(c->out.compstate);
+		c->out.compstate = nil;
+	}
+	c->in.comp = nil;
+}
+
+
+static void
+nullcipherinit(Conv *c, char *, int)
+{
+	cipherfree(c);
+}
+
+static int
+desencrypt(OneWay *ow, uchar *p, int n)
+{
+	uchar *pp, *ip, *eip, *ep;
+	DESstate *ds = ow->cipherstate;
+
+	ep = p + n;
+	memmove(p, ds->ivec, 8);
+	for(p += 8; p < ep; p += 8){
+		pp = p;
+		ip = ds->ivec;
+		for(eip = ip+8; ip < eip; )
+			*pp++ ^= *ip++;
+		block_cipher(ds->expanded, p, 0);
+		memmove(ds->ivec, p, 8);
+	}
+	return 1;
+}
+
+static int
+desdecrypt(OneWay *ow, uchar *p, int n)
+{
+	uchar tmp[8];
+	uchar *tp, *ip, *eip, *ep;
+	DESstate *ds = ow->cipherstate;
+
+	ep = p + n;
+	memmove(ds->ivec, p, 8);
+	p += 8;
+	while(p < ep){
+		memmove(tmp, p, 8);
+		block_cipher(ds->expanded, p, 1);
+		tp = tmp;
+		ip = ds->ivec;
+		for(eip = ip+8; ip < eip; ){
+			*p++ ^= *ip;
+			*ip++ = *tp++;
+		}
+	}
+	return 1;
+}
+
+static void
+descipherinit(Conv *c, char *name, int n)
+{
+	uchar key[8];
+	uchar ivec[8];
+	int i;
+
+	cipherfree(c);
+	c->ciphername = malloc(strlen(name)+1);
+	strcpy(c->ciphername, name);
+	
+	if(n > sizeof(key))
+		n = sizeof(key);
+
+	/* in */
+	memset(key, 0, sizeof(key));
+	setkey(key, n, &c->in, "cipher");
+	memset(ivec, 0, sizeof(ivec));
+	c->in.cipherblklen = 8;
+	c->in.cipherivlen = 8;
+	c->in.cipher = desdecrypt;
+	c->in.cipherstate = smalloc(sizeof(DESstate));
+	setupDESstate(c->in.cipherstate, key, ivec);
+	
+	/* out */
+	memset(key, 0, sizeof(key));
+	setkey(key, n, &c->out, "cipher");
+	for(i=0; i<8; i++)
+		ivec[i] = nrand(256);
+	c->out.cipherblklen = 8;
+	c->out.cipherivlen = 8;
+	c->out.cipher = desencrypt;
+	c->out.cipherstate = smalloc(sizeof(DESstate));
+	setupDESstate(c->out.cipherstate, key, ivec);
+}
+
+static void
+rc4cipherinit(Conv *c, char *name, int keylen)
+{
+}
+
+static void
+nullauthinit(Conv *c, char *name, int keylen)
+{
+	authfree(c);
+}
+
+static void
+shaauthinit(Conv *c, char *name, int keylen)
+{
+	authfree(c);
+}
+
+static void
+hmac_md5(uchar hash[MD5dlen], ulong wrap, uchar *t, long tlen, uchar *key, long klen)
+{
+	uchar ipad[65], opad[65], wbuf[4];
+	int i;
+	DigestState *digest;
+	uchar innerhash[MD5dlen];
+
+	for(i=0; i<64; i++){
+		ipad[i] = 0x36;
+		opad[i] = 0x5c;
+	}
+	ipad[64] = opad[64] = 0;
+	for(i=0; i<klen; i++){
+		ipad[i] ^= key[i];
+		opad[i] ^= key[i];
+	}
+	hnputl(wbuf, wrap);
+	digest = md5(ipad, 64, nil, nil);
+	digest = md5(wbuf, sizeof(wbuf), nil, digest);
+	md5(t, tlen, innerhash, digest);
+	digest = md5(opad, 64, nil, nil);
+	md5(innerhash, MD5dlen, hash, digest);
+}
+
+static int
+md5auth(OneWay *ow, uchar *t, int tlen)
+{
+	uchar hash[MD5dlen];
+	int r;
+
+	if(tlen < ow->authlen)
+		return 0;
+	tlen -= ow->authlen;
+
+	memset(hash, 0, MD5dlen);
+	hmac_md5(hash, ow->seqwrap, t, tlen, (uchar*)ow->authstate, 16);
+	r = memcmp(t+tlen, hash, ow->authlen) == 0;
+	memmove(t+tlen, hash, ow->authlen);
+	return r;
+}
+
+static void
+md5authinit(Conv *c, char *name, int keylen)
+{
+	authfree(c);
+
+	c->authname = malloc(strlen(name)+1);
+	strcpy(c->authname, name);
+
+	if(keylen > 16)
+		keylen = 16;
+
+	/* in */
+	c->in.authstate = smalloc(16);
+	memset(c->in.authstate, 0, 16);
+	setkey(c->in.authstate, keylen, &c->in, "auth");
+	c->in.authlen = 12;
+	c->in.auth = md5auth;
+	
+	/* out */
+	c->out.authstate = smalloc(16);
+	memset(c->out.authstate, 0, 16);
+	setkey(c->out.authstate, keylen, &c->out, "auth");
+	c->out.authlen = 12;
+	c->out.auth = md5auth;
+}
+
+static void
+nullcompinit(Conv *c, char *name, int keylen)
+{
+}
+
+static void
+thwackcompinit(Conv *c, char *name, int keylen)
+{
+}
+
+
+#ifdef XXX
+	case TThwackU:
+		mask = b->rp[0];
+		mseq = (b->rp[1]<<16) | (b->rp[2]<<8) | b->rp[3];
+		b->rp += 4;
+		thwackack(c->out.compstate, mseq, mask);
+		c->lstats.inDataBytes += BLEN(b);
+		if(control)
+			break;
+		return b;
+	case TThwackC:
+		c->lstats.inDataPackets++;
+		c->lstats.inCompDataBytes += BLEN(b);
+		bb = b;
+		b = allocb(ThwMaxBlock);
+		n = unthwack(c->in.compstate, b->wp, ThwMaxBlock, bb->rp, BLEN(bb), seq);
+		freeb(bb);
+		if(n < 0)
+			break;
+		b->wp += n;
+		mask = b->rp[0];
+		mseq = (b->rp[1]<<16) | (b->rp[2]<<8) | b->rp[3];
+		thwackack(c->out.compstate, mseq, mask);
+		b->rp += 4;
+		c->lstats.inDataBytes += BLEN(b);
+		if(control)
+			break;
+		return b;
+	}
+	b = padblock(b, 4);
+	b->rp[0] = (c->in.window>>1) & 0xff;
+	b->rp[1] = c->in.seq>>16;
+	b->rp[2] = c->in.seq>>8;
+	b->rp[3] = c->in.seq;
+
+	// must generate same value as convoput
+	seq = (c->out.seq + 1) & (SeqMax-1);
+
+	bb = allocb(BLEN(b));
+	nn = thwack(c->out.compstate, bb->wp, b->rp, BLEN(b), seq);
+	if(nn < 0) {
+		c->lstats.outCompDataBytes += BLEN(b);
+		convoput(c, TThwackU, b);
+		freeb(bb);
+	} else {
+		c->lstats.outCompDataBytes += nn;
+		bb->wp += nn;
+		convoput(c, TThwackC, bb);
+		freeb(b);
+	}
+#endif
