@@ -30,6 +30,9 @@ char*	getconf(char*);
 ulong	getcpuid(void);
 ulong	getfar(void);
 ulong	getfsr(void);
+ulong	getcontrol(void);
+ulong	getdac(void);
+ulong	getttb(void);
 void*	getlink(void);
 #define	getpgcolor(a)	0
 ulong	getsp(void);

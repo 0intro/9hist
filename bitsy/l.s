@@ -134,6 +134,24 @@ TEXT getfsr(SB), $-4
 	MRC	CpMMU, 0, R0, C(CpFSR), C(0x0)
 	RET
 
+/* return mmu control register */
+TEXT getcontrol(SB), $-4
+	SUB R0, R0
+	MRC	CpMMU, 0, R0, C(CpControl), C(0x0)
+	RET
+
+/* return mmu dac register */
+TEXT getdac(SB), $-4
+	SUB R0, R0
+	MRC	CpMMU, 0, R0, C(CpDAC), C(0x0)
+	RET
+
+/* return mmu ttb register */
+TEXT getttb(SB), $-4
+	SUB R0, R0
+	MRC	CpMMU, 0, R0, C(CpTTB), C(0x0)
+	RET
+
 /* return fault address */
 TEXT getfar(SB), $-4
 	MRC	CpMMU, 0, R0, C(CpFAR), C(0x0)
@@ -151,6 +169,10 @@ TEXT mmuenable(SB), $-4
 	MRC	CpMMU, 0, R0, C(CpControl), C(0x0)
 	ORR	$(CpCmmuena|CpCdcache|CpCicache|CpCwb), R0
 	MCR     CpMMU, 0, R0, C(CpControl), C(0x0)
+	MOVW R0, R0
+	MOVW R0, R0
+	MOVW R0, R0
+	MOVW R0, R0
 	RET
 
 TEXT mmudisable(SB), $-4
@@ -564,7 +586,11 @@ TEXT sa1100_power_resume(SB), $-4
 	MOVW	144(R0), R3
 	MCR		CpMMU, 0, R3, C(CpDAC), C(0x0)
 	MOVW	152(R0), R3
-	MCR		CpMMU, 0, R3, C(CpControl), C(0x0)
+	MCR		CpMMU, 0, R3, C(CpControl), C(0x0)	/* Enable cache */
+	MOVW	R0, R0
+	MOVW	R0, R0
+	MOVW	R0, R0
+	MOVW	R0, R0
 	MOVW	156(R0), R3
 	MCR		CpMMU, 0, R3, C(CpFSR), C(0x0)
 	MOVW	160(R0), R3

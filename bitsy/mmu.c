@@ -118,6 +118,7 @@ mmuinit(void)
 void
 mmurestart(void) {
 	/* set up the domain register to cause all domains to obey pte access bits */
+
 	putdac(Dclient);
 
 	/* point to map */
@@ -125,7 +126,6 @@ mmurestart(void) {
 
 	/* enable mmu */
 	wbflush();
-	icacheinvalidate();	/* you never know ... (sape) */
 	mmuinvalidate();
 	mmuenable();
 	cacheflush();

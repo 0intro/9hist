@@ -51,6 +51,8 @@ dumpitall(void)
 	iprint("dram: mdcnfg msc %lux %lux %lux mecr %lux\n",
 		memconfregs->msc0, memconfregs->msc1,memconfregs->msc2,
 		memconfregs->mecr);
+	iprint("mmu: CpControl %lux CpTTB %lux CpDAC %lux\n",
+		getcontrol(), getttb(), getdac());
 	iprint("powerregs: pmcr %lux pssr %lux pcfr %lux ppcr %lux pwer %lux pspr %lux pgsr %lux posr %lux\n",
 		powerregs->pmcr, powerregs->pssr, powerregs->pcfr, powerregs->ppcr,
 		powerregs->pwer, powerregs->pspr, powerregs->pgsr, powerregs->posr);
@@ -143,15 +145,23 @@ void
 deepsleep(void) {
 	static int power_pl;
 	ulong xsp, xlink;
+	int i;
+	extern ulong l1table;
 
 	xlink = getcallerpc(&xlink);
+	iprint("l1table at 0x%8.8lux\n", l1table);
+	setpowerlabel();
+	for (i = 0; i < 168/4; i++){
+		if (i % 4 == 0) iprint("\n");
+		iprint("%3d: 0x%8.8lux	", i*4, power_resume[i]);
+	}
 	/* Power down */
 	irpower(0);
 	audiopower(0);
 	screenpower(0);
 	µcpower(0);
 	power_pl = splhi();
-	iprint("entering suspend mode, sp = 0x%lux, pc = 0x%lux, psw = 0x%lux\n", &xsp, xlink, power_pl);
+	iprint("entering suspend mode, sp = 0x%lux, pc = 0x%lux, psw = 0x%lux\n\n", &xsp, xlink, power_pl);
 	dumpitall();
 	delay(100);
 	uartpower(0);
@@ -161,19 +171,19 @@ deepsleep(void) {
 	intrcpy(&savedintrregs, intrregs);
 	cacheflush();
 	delay(50);
-	if (setpowerlabel()) {
+	if(setpowerlabel()){
 		/* Turn off memory auto power */
 		memconfregs->mdrefr &= ~0x30000000;
-		mmurestart();
 		gpiorestore(gpioregs, &savedgpioregs);
 		delay(50);
 		intrcpy(intrregs, &savedintrregs);
-		if (intrregs->icip & (1<<IRQgpio0)){
+		if(intrregs->icip & (1<<IRQgpio0)){
 			// don't want to sleep now. clear on/off irq.
 			gpioregs->edgestatus = (1<<IRQgpio0);
 			intrregs->icip = (1<<IRQgpio0);
 		}
 		trapresume();
+//		mmurestart();
 		clockpower(1);
 		gpclkregs->r0 = 1<<0;
 		rs232power(1);
@@ -191,6 +201,8 @@ deepsleep(void) {
 	}
 	wbflush();
 	delay(50);
+	mmuinvalidate();
+	delay(10);
 	sa1100_power_off();
 	/* no return */
 }
@@ -198,14 +210,19 @@ deepsleep(void) {
 void
 powerkproc(void*)
 {
+	ulong xlink, xlink1;
 
 	for(;;){
 		while(powerflag == 0)
 			sleep(&powerr, powerdown, 0);
 
-		iprint("call deepsleep\n");
+		xlink = getcallerpc(&xlink);
+
+		iprint("call deepsleep, pc = 0x%lux, sp = 0x%lux\n", xlink, &xlink);
 		deepsleep();
-		iprint("deepsleep returned\n");
+		xlink1 = getcallerpc(&xlink1);
+
+		iprint("deepsleep returned, pc = 0x%lux, sp = 0x%lux\n", xlink1, &xlink);
 
 		delay(2000);
 
