@@ -41,7 +41,8 @@ struct Mntcache
 typedef struct Cache Cache;
 struct Cache
 {
-	Ref;
+	Lock;
+	int		pgno;
 	Mntcache	*head;
 	Mntcache	*tail;
 	Mntcache	*hash[NHASH];
@@ -54,7 +55,6 @@ cinit(void)
 	int i;
 	Mntcache *m;
 
-	cache.ref = 1;
 	cache.head = xalloc(sizeof(Mntcache)*NFILE);
 	m = cache.head;
 	
@@ -70,15 +70,17 @@ cinit(void)
 }
 
 void
-cprint(Mntcache *m, char *s)
+cprint(Chan *c, Mntcache *m, char *s)
 {
 	Extent *e;
+	char buf[128];
 
-	print("%s: 0x%lux.0x%lux %d %d\n",
-			s, m->path, m->vers, m->type, m->dev);
+	ptpath(c->path, buf, sizeof(buf));
+	pprint("%s: 0x%lux.0x%lux %d %d %s\n",
+			s, m->path, m->vers, m->type, m->dev, buf);
 
 	for(e = m->list; e; e = e->next)
-		print("\t%4d %5d %4d %lux\n",
+		pprint("\t%4d %5d %4d %lux\n",
 			e->bid, e->start, e->len, e->cache);
 }
 
@@ -138,7 +140,7 @@ copen(Chan *c)
 {
 	Mntcache *m, *f, **l;
 
-	if(c->qid.path & CHDIR)
+	if((c->qid.path&CHDIR) || (c->flag&CTEXT))
 		return;
 
 	lock(&cache);
@@ -207,7 +209,7 @@ cread(Chan *c, uchar *buf, int len, ulong offset)
 	Page *p;
 	Mntcache *m;
 	Extent *e, **t;
-	int o, l, total, end;
+	int o, l, total;
 
 	if(c->qid.path & CHDIR)
 		return 0;
@@ -222,15 +224,10 @@ cread(Chan *c, uchar *buf, int len, ulong offset)
 		return 0;
 	}
 
-	end = offset+len;
 	t = &m->list;
 	for(e = *t; e; e = e->next) {
 		if(offset > e->start && offset < e->start+e->len)
 			break;
-		if(offset < e->start) {
-			qunlock(m);
-			return 0;
-		}	
 		t = &e->next;
 	}
 
@@ -277,6 +274,7 @@ cread(Chan *c, uchar *buf, int len, ulong offset)
 		if(e == 0 || e->start != offset)
 			break;
 	}
+if(len) print("P"); else print("F");
 	qunlock(m);
 	return total;
 }
@@ -309,7 +307,10 @@ cchain(uchar *buf, ulong offset, int len, Extent **tail)
 		e->cache = p;
 		e->start = offset;
 		e->len = l;
-		e->bid = incref(&cache);
+		lock(&cache);
+		e->bid = cache.pgno;
+		cache.pgno += BY2PG;
+		unlock(&cache);
 		p->daddr = e->bid;
 		k = kmap(p);
 		memmove((void*)VA(k), buf, l);
@@ -460,7 +461,6 @@ void
 cupdate(Chan *c, uchar *buf, int len, ulong offset)
 {
 	cxupdate(c, buf, len, offset);
-	cprint(c->mcp, "cupdate");
 }
 
 void
@@ -485,10 +485,11 @@ cwrite(Chan* c, uchar *buf, int len, ulong offset)
 	}
 
 	m->vers++;
+	c->qid.vers++;
 
 	p = 0;
 	for(f = m->list; f; f = f->next) {
-		if(offset >= f->start)
+		if(f->start >= offset)
 			break;
 		p = f;		
 	}
@@ -500,6 +501,21 @@ cwrite(Chan* c, uchar *buf, int len, ulong offset)
 			p->len -= o;
 			if(p->len == 0)
 				panic("del empty extent");
+		}
+		if(ee == offset && p->len < BY2PG) {
+			o = len;
+			if(o > BY2PG - p->len)
+				o = BY2PG - p->len;
+			if(cpgmove(p, buf, p->len, o)) {
+				p->len += o;
+				buf += o;
+				len -= o;
+				offset += o;
+				if(len <= 0) {
+					qunlock(m);
+					return;
+				}
+			}
 		}
 	}
 
@@ -521,5 +537,4 @@ cwrite(Chan* c, uchar *buf, int len, ulong offset)
 			tail->next = f;
 	}
 	qunlock(m);
-cprint(m, "cwrite");
 }

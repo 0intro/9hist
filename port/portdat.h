@@ -110,6 +110,7 @@ enum
 	CRCLOSE	= 0x0020,		/* remove on close */
 	CRECOV	= 0x0040,		/* requires recovery */
 	CCACHE	= 0x0080,		/* client cache */
+	CTEXT	= 0x0100,		/* text file */
 };
 
 struct Path
