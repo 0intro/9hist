@@ -18,9 +18,9 @@
 #include "etherif.h"
 
 enum {
-	Lognrdre	= 6,
+	Lognrdre	= 7,
 	Nrdre		= (1<<Lognrdre),	/* receive descriptor ring entries */
-	Logntdre	= 4,
+	Logntdre	= 5,
 	Ntdre		= (1<<Logntdre),	/* transmit descriptor ring entries */
 
 	Rbsize		= ETHERMAXTU+4,		/* ring buffer size (+4 for CRC) */
