@@ -147,7 +147,7 @@ struct Iplifc
 	Iplifc	*next;
 };
 
-/* binding twixt Ipself and Ipifc */
+/* binding twixt Ipself and Iplifc */
 struct Iplink
 {
 	Ipself	*self;

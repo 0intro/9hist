@@ -1136,7 +1136,7 @@ ctl(Ether* ether, void* buf, long n)
 			error("port type not in [1-3]");
 		ctlr->ptype = i;
 	}
-	else if(strcmp(cb->f[0], "key") == 0){
+	else if(strncmp(cb->f[0], "key", 3) == 0){
 		strncpy(k,cb->f[0],64);
 		if (strcmp(cb->f[1], "off") == 0)
 			ctlr->keyid = 0;
