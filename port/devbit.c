@@ -893,7 +893,7 @@ bitwrite(Chan *c, void *va, long n)
 						t.bits[y] = src->base[y]>>16;
 				else
 					for(y=0; y<16; y++){
-						l = src->base[y%(16/th)] >> (32-tw);
+						l = src->base[y%th] >> (32-tw);
 						for(i=16/tw, ws=l; i > 1; i--)
 							ws = (ws<<tw) | l;
 						t.bits[y] = ws;

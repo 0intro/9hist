@@ -14,10 +14,10 @@ alarm(int ms, void (*f)(Alarm*), void *arg)
 {
 	Alarm *a, *w, *pw;
 	ulong s;
-	if(ms < 0)
-		ms = 0;
 	a = newalarm();
 	a->dt = MS2TK(ms);
+	if(a->dt < 0)
+		a->dt = 0;
 	a->f = f;
 	a->arg = arg;
 	s = splhi();
