@@ -818,8 +818,6 @@ procctlmemio(Proc *p, ulong offset, int n, void *va, int read)
 	if(read == 0)
 		p->newtlb = 1;
 
-	qunlock(&s->lk);
-
 	return n;
 }
 
