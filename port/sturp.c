@@ -68,6 +68,12 @@ struct Urp {
 #define NEXT(x) (((x)+1)&Nmask)
 
 /*
+ *  Alarm for urptiming
+ */
+Alarm	*urptiming;
+Lock	urptlock;
+
+/*
  *  Protocol control bytes
  */
 #define	SEQ	0010		/* sequence number, ends trailers */
@@ -116,6 +122,7 @@ static void	sendrej(Urp*);
 static void	initoutput(Urp*, int);
 static void	initinput(Urp*, int);
 static void	urpkproc(void *arg);
+static void	urptimer(Alarm*);
 static void	urpvomit(char*, Urp*);
 
 Qinfo urpinfo = { urpciput, urpoput, urpopen, urpclose, "urp" };
@@ -164,6 +171,17 @@ urpopen(Queue *q, Stream *s)
 		up->kstarted = 1;
 		sprint(name, "urp%d", up - urp);
 		kproc(name, urpkproc, up);
+	}
+
+	/*
+	 *  start the urptimer if it isn't already
+	 */
+	if(urptiming==0){
+		if(canlock(&urptlock)){
+			if(urptiming == 0)
+				urptiming = alarm(500, urptimer, 0);
+			unlock(&urptlock);
+		}
 	}
 }
 
@@ -589,6 +607,17 @@ output(Urp *up)
 	int n;
 	int i;
 
+	/*
+	 *  start the urptimer if it isn't already
+	 */
+	if(urptiming==0){
+		if(canlock(&urptlock)){
+			if(urptiming == 0)
+				urptiming = alarm(500, urptimer, 0);
+			unlock(&urptlock);
+		}
+	}
+
 	if(!canqlock(&up->xmit))
 		return;
 
@@ -967,11 +996,33 @@ urpkproc(void *arg)
 		if(!QFULL(up->rq->next))
 			sendack(up);
 		output(up);
-		tsleep(&up->rq->r, todo, up, MSrexmit/2);
+		sleep(&up->rq->r, todo, up);
 	}
 	up->state = 0;
 	up->kstarted = 0;
 	DPRINT("urpkproc %ux\n", up);
+}
+
+/*
+ *  timer to wakeup urpkproc's for retransmissions
+ */
+static void
+urptimer(Alarm *a)
+{
+	Urp *up;
+	Urp *last;
+	Queue *q;
+
+	urptiming = 0;
+	for(up = urp, last = &urp[conf.nurp]; up < last; up++){
+		if(up->state==0)
+			continue;
+		if(up->unacked!=up->next && NOW>up->timer){
+			q = up->rq;
+			if(q)
+				wakeup(&q->r);
+		}
+	}
 }
 
 /*

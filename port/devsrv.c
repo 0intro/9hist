@@ -83,7 +83,7 @@ srvopen(Chan *c, int omode)
 	f = srv.chan[c->qid];
 	if(f == 0)
 		error(0, Eshutdown);
-	if(omode&OTRUNC)
+	if(omode & OTRUNC)
 		error(0, Eperm);
 	if(omode!=f->mode && f->mode!=ORDWR)
 		error(0, Eperm);

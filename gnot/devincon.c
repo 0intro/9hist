@@ -89,7 +89,7 @@ Incon incon[Nincon];
 enum {
 	Selecting,
 	Selected,
-	Dead,
+	Notliving,
 };
 
 /*
@@ -177,7 +177,7 @@ inconpoll(Incon *ip, int station)
 	/*
 	 *  get us to a known state
 	 */
-	ip->state = Dead;
+	ip->state = Notliving;
 	dev->cmd = INCON_STOP;
 
 	/*
@@ -271,7 +271,7 @@ inconreset(void)
 /*	inconset(&incon[0], 3, 15); /**/
 	for(i=1; i<Nincon; i++){
 		incon[i].dev = INCON+i;
-		incon[i].state = Dead;
+		incon[i].state = Notliving;
 		incon[i].dev->cmd = INCON_STOP;
 		incon[i].ri = incon[i].wi = 0;
 	}
@@ -400,7 +400,7 @@ inconstopen(Queue *q, Stream *s)
 	char name[32];
 
 	ip = &incon[s->dev];
-	sprint(name, "**incon%d**", s->dev);
+	sprint(name, "incon%d", s->dev);
 	q->ptr = q->other->ptr = ip;
 	ip->rq = q;
 	kproc(name, inconkproc, ip);
@@ -410,7 +410,7 @@ inconstopen(Queue *q, Stream *s)
  *  kill off the kernel process
  */
 static int
-kDead(void *arg)
+kNotliving(void *arg)
 {
 	Incon *ip;
 
@@ -427,7 +427,7 @@ inconstclose(Queue * q)
 	ip->rq = 0;
 	qunlock(ip);
 	wakeup(&ip->kr);
-	sleep(&ip->r, kDead, ip);
+	sleep(&ip->r, kNotliving, ip);
 }
 
 /*
@@ -500,7 +500,7 @@ inconoput(Queue *q, Block *bp)
 	/*
 	 *  make sure there's an incon out there
 	 */
-	if(!(dev->status&INCON_ALIVE) || ip->state==Dead){
+	if(!(dev->status&INCON_ALIVE) || ip->state==Notliving){
 		inconrestart(ip);
 		freemsg(q, bp);
 		qunlock(&ip->xmit);
@@ -812,7 +812,7 @@ inconintr(Ureg *ur)
 			ip->dev->cmd = INCON_STOP;
 			break;
 		}
-		ip->state = Dead;
+		ip->state = Notliving;
 	}
 }
 
