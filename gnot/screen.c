@@ -74,7 +74,7 @@ screenputc(int c)
 			screenputc('\n');
 		buf[0] = c&0x7F;
 		buf[1] = 0;
-		out.pos = gbitbltstring(&gscreen, out.pos, defont, buf, S);
+		out.pos = gstring(&gscreen, out.pos, defont, buf, S);
 	}
 }
 

@@ -32,4 +32,4 @@ extern void		mouseupdate(int);
  * kernel mustn't use balu; user (/dev/bitblt) can
  */
 #define kbitblt 	gbitblt
-#define	ubitblt		balubitblt
+#define	ubitblt		gbitblt

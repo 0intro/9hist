@@ -143,7 +143,7 @@ userinit(void)
 	 */
 	p->sched.pc = (((ulong)init0) - 8);	/* 8 because of RETURN in gotolabel */
 	p->sched.sp = USERADDR+BY2PG-(1+MAXSYSARG)*BY2WD;
-	p->upage = newpage(0, 0, USERADDR|(p->pid&0xFFFF));
+	p->upage = newpage(1, 0, USERADDR|(p->pid&0xFFFF));
 
 	/*
 	 * User

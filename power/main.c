@@ -222,7 +222,6 @@ init0(void)
 	 */
 	u->slash = (*devtab[0].attach)(0);
 	u->dot = clone(u->slash, 0);
-
 	chandevinit();
 
 	if(!waserror()){
@@ -265,7 +264,7 @@ userinit(void)
 	 */
 	p->sched.pc = (ulong)init0;
 	p->sched.sp = USERADDR+BY2PG-(1+MAXSYSARG)*BY2WD;
-	p->upage = newpage(0, 0, USERADDR|(p->pid&0xFFFF));
+	p->upage = newpage(1, 0, USERADDR|(p->pid&0xFFFF));
 
 	/*
 	 * User
