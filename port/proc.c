@@ -521,7 +521,11 @@ pexit(char *exitstr, int freemem)
 	if(c->egrp)
 		closeegrp(c->egrp);
 
-	if(c->kp == 0) {
+	/*
+	 * if not a kernel process and have a parent,
+	 * do some housekeeping.
+	 */
+	if(c->kp == 0 && (p = c->parent)) {
 		wq = newwaitq();
 		wq->w.pid = c->pid;
 		wq->w.time[TUser] = TK2MS(c->time[TUser]);
@@ -533,8 +537,6 @@ pexit(char *exitstr, int freemem)
 		}else
 			wq->w.msg[0] = '\0';
 
-		/* Find my parent */
-		p = c->parent;
 		lock(&p->exl);
 		/* My parent still alive */
 		if(p->pid == c->parentpid && p->state != Broken && p->nwait < 128) {	
