@@ -225,6 +225,7 @@ struct Astarchan
 {
 	QLock;
 
+	Astar	*a;	/* controller */
 	CCB	*ccb;	/* control block */
 
 	/* buffers */
@@ -242,9 +243,10 @@ struct Astarchan
 	uchar	*oe;
 };
 
-Astar *a[Maxcard];
+Astar *astar[Maxcard];
+int nastar;
 
-int astarsetup(Astar*);
+static int astarsetup(Astar*);
 
 void
 astarreset(void)
@@ -254,10 +256,10 @@ astarreset(void)
 	Dirtab *dp;
 
 	for(i = 0; i < Maxcard; i++){
-		a = astar[i] = xalloc(sizeof(Astar));
+		a = astar[nastar] = xalloc(sizeof(Astar));
 		if(isaconfig("serial", i, &a) == 0){
 			xfree(a);
-			astar[i] = 0;
+			astar[nastar] = 0;
 			break;
 		}
 
@@ -276,9 +278,10 @@ astarreset(void)
 
 		if(astarsetup(a) < 0){
 			xfree(a);
-			astar[i] = 0;
+			astar[nastar] = 0;
 			continue;
 		}
+		nastar++;
 	}
 
 	ndir = 3*nuart;
@@ -306,11 +309,11 @@ astarinit(void)
 {
 }
 
-int isaport[] =
-	{ 0x200, 0x208, 0x300, 0x308, 0x600, 0x608, 0x700, 0x708, 0 };
+/* isa ports an ax00i can appear at */
+int isaport[] = { 0x200, 0x208, 0x300, 0x308, 0x600, 0x608, 0x700, 0x708, 0 };
 
-int
-isax00i(int port)
+static int
+astarprobe(int port)
 {
 	uchar c, c1;
 
@@ -323,7 +326,7 @@ isax00i(int port)
 		|| (c == ISAid1 && c1 == ISAid0));
 }
 
-int
+static int
 astarsetup(Astar *a)
 {
 	int i, j, found;
@@ -333,7 +336,7 @@ astarsetup(Astar *a)
 	if(a->port == 0)
 		for(i = 0; isaport[i]; i++){
 			a->port = isaport[i];
-			found = isax00i(isaport[i]);
+			found = astarprobe(isaport[i]);
 			if(found){
 				isaport[i] = -1;
 				break;
@@ -357,4 +360,6 @@ astarsetup(Astar *a)
 	}
 	c = inb(a->port + ISActl1) & ~ISAirq;
 	outb(a->port + ISActl1, c | isairqcode(a->irq));
+
+	return 0;
 }
