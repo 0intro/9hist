@@ -433,6 +433,17 @@ envdump(void)
 	for(i = 0; i < EVHASH; i++){
 		j = 0;
 		for(ev = evhash[i].next; ev; ev = ev->next){
+			uchar *t, *s;
+			int h, n;
+
+			s = (uchar*)ev->val;
+			n = ev->len;
+			h = 0;
+			for(t = s; t - s < n; t++)
+				h = (h << 1) ^ *t;
+			h &= EVHASH - 1;
+			if(h != i)
+				print("hash conflict: %d %d\n", i, h);
 			if(j++ == 1000){
 				print("hash bucket %d circular\n", i);
 				break;

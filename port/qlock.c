@@ -33,7 +33,7 @@ int
 canqlock(QLock *q)
 {
 	lock(&q->use);
-	if(q->locked) {
+	if(q->locked){
 		unlock(&q->use);
 		return 0;
 	}

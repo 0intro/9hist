@@ -15,8 +15,7 @@ enum
 	Nipsubdir	= 4,		/* Number of subdirectory entries per connection */
 };
 
-int udpsum = 1;
-
+int 	udpsum = 1;
 Queue	*Ipoutput;		/* Control message stream for tcp/il */
 Ipifc	*ipifc;			/* IP protocol interfaces for stip */
 Ipconv	*ipconv[Nrprotocol];	/* Connections for each protocol */
@@ -389,8 +388,7 @@ ipwrite(Chan *c, char *a, long n, ulong offset)
 		qunlock(&ipalloc);
 
 	}
-	else if(strcmp(field[0], "announce") == 0 ||
-		strcmp(field[0], "reserve") == 0) {
+	else if(strcmp(field[0], "announce") == 0 || strcmp(field[0], "reserve") == 0) {
 		if((cp->stproto == &tcpinfo && cp->tcpctl.state != CLOSED) ||
 		   (cp->stproto == &ilinfo && cp->ilctl.state != Ilclosed))
 				error(Edevbusy);
@@ -682,11 +680,10 @@ iplisten(Chan *c, Ipconv *s, Ipconv *base)
 		qunlock(&s->listenq);
 		nexterror();
 	}
-print("listener on %lux R 0x%lux\n", s, &s->listenr);
+
 	for(;;) {
 		sleep(&s->listenr, iphavecon, s);
 		poperror();
-print("listen awoke\n");
 		new = base;
  		for(etab = &base[conf.ip]; new < etab; new++) {
 			if(new->newcon) {
@@ -704,7 +701,6 @@ print("listen awoke\n");
 				pushq(c->stream, new->stproto);
 				new->ref--;
 				qunlock(&s->listenq);
-print("ip listener!\n");
 				return;
 			}
 		}

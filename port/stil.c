@@ -28,10 +28,8 @@ ilopen(Queue *q, Stream *s)
 	Ipconv *ipc;
 	static int ilkproc;
 
-	/* Start il service processes */
 	if(!Ipoutput) {
 		Ipoutput = WR(q);
-		/* This never goes away - we use this queue to send acks/rejects */
 		s->opens++;
 		s->inuse++;
 	}
@@ -57,6 +55,13 @@ ilopen(Queue *q, Stream *s)
 void
 ilclose(Queue *q)
 {
+	Ipconv *s;
+
+	s = (Ipconv *)(q->ptr);
+	qlock(s);
+	s->ref--;
+	qunlock(s);
+	s->readq = 0;
 }
 
 void
@@ -74,7 +79,6 @@ iloput(Queue *q, Block *bp)
 
 	switch(ipc->ilctl.state) {
 	case Ilclosed:
-	case Ilsyncee:
 	case Illistening:
 	case Ilclosing:
 		error(Ehungup);
@@ -123,7 +127,6 @@ iloput(Queue *q, Block *bp)
 		hnputs(ih->ilsum, ptcl_csum(bp, IL_EHSIZE, dlen+IL_HDRSIZE));
 
 	ilackq(ic, bp);
-
 	PUTNEXT(q, bp);
 }
 
@@ -135,14 +138,11 @@ ilackq(Ilcb *ic, Block *bp)
 	/* Enqueue a copy on the unacked queue in case this one gets lost */
 	np = copyb(bp, blen(bp));
 
-	if(ic->unacked) {
+	if(ic->unacked)
 		ic->unackedtail->next = np;
-		ic->unackedtail = np;
-	}
-	else {
+	else 
 		ic->unacked = np;
-		ic->unackedtail = np;
-	}
+	ic->unackedtail = np;
 	np->next = 0;
 }
 
@@ -158,6 +158,7 @@ ilackto(Ilcb *ic, ulong ackto)
 			break;	
 		bp = ic->unacked;
 		ic->unacked = bp->next;
+		bp->next = 0;
 		freeb(bp);
 	}
 }
@@ -172,7 +173,7 @@ void
 ilrcvmsg(Ipconv *ipc, Block *bp)
 {
 	Ilhdr *ih;
-	int plen;
+	int plen, illen;
 	Ipconv *s, *etab, *new;
 	short sp, dp;
 	Ipaddr dst;
@@ -183,7 +184,11 @@ ilrcvmsg(Ipconv *ipc, Block *bp)
 	if(plen < IL_EHSIZE+IL_HDRSIZE)
 		goto drop;
 
-	if(ilcksum && ptcl_csum(bp, IL_EHSIZE, plen) != 0) {
+	illen = nhgets(ih->illen);
+	if(illen+IL_EHSIZE > plen)
+		goto drop;
+
+	if(ilcksum && ptcl_csum(bp, IL_EHSIZE, illen) != 0) {
 		print("il: cksum error\n");
 		goto drop;
 	}
@@ -192,27 +197,25 @@ ilrcvmsg(Ipconv *ipc, Block *bp)
 	dp = nhgets(ih->ilsrc);
 	dst = nhgetl(ih->src);
 
-print("got packet from %d.%d.%d.%d %d %d\n", fmtaddr(dst), sp, dp);
-
 	etab = &ipc[conf.ip];
 	for(s = ipc; s < etab; s++) {
 		if(s->psrc == sp && s->pdst == dp && s->dst == dst) {
 			ilprocess(s, ih, bp);
 			return;
 		}
-			
 	}
+
+	if(ih->iltype != Ilsync)
+		goto drop;
 
 	if(s->curlog > s->backlog)
 		goto reset;
 
+	/* Look for a listener */
 	for(s = ipc; s < etab; s++) {
 		if(s->ilctl.state == Illistening && s->pdst == 0 && s->dst == 0) {
-			/* Do the listener stuff */
 			new = ipincoming(ipc);
 			if(new == 0)
-				goto reset;
-			if(ih->iltype != Ilsync)
 				goto reset;
 
 			new->newcon = 1;
@@ -243,7 +246,8 @@ ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 	Block *nb;
 	Ilcb *ic;
 	Ilhdr *oh;
-	ulong id, ack, oid;
+	ulong id, ack, oid, dlen;
+	int sendack = 0;
 
 	id = nhgetl(h->ilid);
 	ack = nhgetl(h->ilack);
@@ -264,8 +268,8 @@ ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 		break;
 	case Ilsyncer:
 		if(h->iltype == Ilsync && ic->start == ack) {
-			ic->recvd = id;
-			ilsendctl(s, 0, Ilack, 0);
+			ic->recvd = id+1;
+			sendack = 1;
 			ic->state = Ilestablished;
 		}
 		break;
@@ -288,6 +292,7 @@ ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 		freeb(bp);
 		break;
 	case Ildataquery:
+		sendack = 1;
 	case Ildata:
 		ilackto(&s->ilctl, ack);
 		switch(s->ilctl.state) {
@@ -301,7 +306,8 @@ ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 				iloutoforder(s, h, bp);
 			else {
 				s->ilctl.recvd++;
-				bp->rptr += IL_EHSIZE+IL_HDRSIZE;
+				dlen = nhgets(h->illen)-IL_HDRSIZE;
+				bp = btrim(bp, IL_EHSIZE+IL_HDRSIZE, dlen);
 				PUTNEXT(s->readq, bp);
 			}
 		}
@@ -319,7 +325,7 @@ ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 	}
 
 	/* Process out of order packets */
-	if(ic->state == Ilestablished) {
+	if(ic->state == Ilestablished && s->readq) {
 		while(ic->outoforder) {
 			bp = ic->outoforder;
 			oh = (Ilhdr*)bp->rptr;
@@ -335,11 +341,18 @@ print("recvd = %d outoforder = %d\n", ic->recvd, oid);
 print("outoforder %d\n", oid);
 				ic->recvd++;
 				ic->outoforder = bp->next;
-				bp->rptr += IL_EHSIZE+IL_HDRSIZE;
+				bp->next = 0;
+				dlen = nhgets(oh->illen)-IL_HDRSIZE;
+				bp = btrim(bp, IL_EHSIZE+IL_HDRSIZE, dlen);
 				PUTNEXT(s->readq, bp);
 			}
 		}
 	}
+
+	if(sendack)
+		ilsendctl(s, 0, Ilack, 1);
+
+	print("revd = %d sent = %d\n", ic->recvd, ic->sent);
 }
 
 
@@ -352,23 +365,22 @@ iloutoforder(Ipconv *s, Ilhdr *h, Block *bp)
 	uchar *lid;
 
 	ic = &s->ilctl;
-
 	if(ic->outoforder == 0) {
 		ic->outoforder = bp;
 		bp->next = 0;
-		return;
 	}
-
-	id = nhgetl(h->id);
-	l = &ic->outoforder;
-	for(f = *l; f; f = f->next) {
-		lid = ((Ilhdr*)(bp->rptr))->ilid;
-		if(id < nhgetl(lid))
-			break;
-		l = &f->next;
+	else {
+		id = nhgetl(h->id);
+		l = &ic->outoforder;
+		for(f = *l; f; f = f->next) {
+			lid = ((Ilhdr*)(bp->rptr))->ilid;
+			if(id > nhgetl(lid))
+				break;
+			l = &f->next;
+		}
+		bp->next = *l;
+		*l = bp;
 	}
-	bp->next = *l;
-	*l = bp;
 }
 
 void

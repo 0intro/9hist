@@ -39,7 +39,6 @@ tcp_input(Ipconv *ipc, Block *bp)
 	Tcphdr *h;
 	Tcp seg;
 	int hdrlen;	
-	Block *oobbp;
 	Ipaddr source, dest;
 	char tos;
 	ushort length;
@@ -293,22 +292,9 @@ tcp_input(Ipconv *ipc, Block *bp)
 		}
 
 		if ((seg.flags&URG) && seg.up) {
-			DPRINT("tcpin: oob: up = %u seq = %u rcv.up = %u\n",
-			       seg.up, seg.seq, tcb->rcv.up);
 			if (seq_gt(seg.up + seg.seq, tcb->rcv.up)) {
 				tcb->rcv.up = seg.up + seg.seq;
-				tcb->oobflags &= ~(TCPOOB_HAVEDATA|TCPOOB_HADDATA);
-				extract_oob(&bp, &oobbp, &seg);
-				if (oobbp) {
-					DPRINT("tcpin: oob delivered\n");
-					appendb(&tcb->rcvoobq, oobbp);
-					tcb->rcvoobcnt += blen(oobbp);
-					tcb->oobmark = tcb->rcvcnt;
-					tcb->oobflags |= TCPOOB_HAVEDATA;
-#ifdef NOTIFY
-					urg_signal(s);
-#endif
-				}
+				copyupb(&bp, 0, seg.up);
 			}
 		} 
 		else if (seq_gt(tcb->rcv.nxt, tcb->rcv.up))
@@ -386,7 +372,7 @@ tcp_input(Ipconv *ipc, Block *bp)
 				goto gotone;
 		}
 		break;
-gotone:;
+		gotone:;
 	}
 output:
 	tcp_output(s);
@@ -490,9 +476,10 @@ void
 update(Ipconv *s, Tcp *seg)
 {
 	ushort acked;
-	ushort oobacked;
 	ushort expand;
 	Tcpctl *tcb = &s->tcpctl;
+	int rtt;
+	int abserr;
 
 	if(seq_gt(seg->ack, tcb->snd.nxt)) {
 		tcb->flags |= FORCE;
@@ -512,7 +499,6 @@ update(Ipconv *s, Tcp *seg)
 		return;	
 
 	acked = seg->ack - tcb->snd.una;
-
 	if(tcb->cwind < tcb->snd.wnd) {
 		if(tcb->cwind < tcb->ssthresh)
 			expand = MIN(acked,tcb->mss);
@@ -521,25 +507,19 @@ update(Ipconv *s, Tcp *seg)
 
 		if(tcb->cwind + expand < tcb->cwind)
 			expand = 65535 - tcb->cwind;
-
 		if(tcb->cwind + expand > tcb->snd.wnd)
 			expand = tcb->snd.wnd - tcb->cwind;
-
 		if(expand != 0)
 			tcb->cwind += expand;
-
 	}
 
 	/* Round trip time estimation */
 	if(run_timer(&tcb->rtt_timer) && seq_ge(seg->ack, tcb->rttseq)) {
 		stop_timer(&tcb->rtt_timer);
 		if(!(tcb->flags & RETRAN)) {
-			int rtt;	/* measured round trip time */
-			int abserr;	/* abs(rtt - srtt) */
 
 			rtt = tcb->rtt_timer.start - tcb->rtt_timer.count;
 			rtt *= MSPTICK;	
-
 			if(rtt > tcb->srtt &&
 			  (tcb->state == SYN_SENT || tcb->state == SYN_RECEIVED))
 				tcb->srtt = rtt;
@@ -556,28 +536,16 @@ update(Ipconv *s, Tcp *seg)
 	}
 
 	/* If we're waiting for an ack of our SYN, note it and adjust count */
-	if(!(tcb->flags & SYNACK)){
+	if((tcb->flags & SYNACK) == 0){
 		tcb->flags |= SYNACK;
 		acked--;
 		tcb->sndcnt--;
 	}
 
-	/* Acking some oob data if relevant */
-	if(tcb->sndoobq && seq_ge(tcb->snd.up,tcb->snd.una) &&
-	   seq_gt(seg->ack, tcb->snd.up)) {
-		oobacked = seg->ack - tcb->snd.up;
-		acked -= oobacked;
-		copyupb(&tcb->sndoobq, 0, oobacked);
-		tcb->sndoobcnt -= oobacked;
-		DPRINT("update: oobacked = %d\n", oobacked);
-	}
-
 	copyupb(&tcb->sndq, 0, acked);
 
-	/* This will include the FIN if there is one */
 	tcb->sndcnt -= acked;
 	tcb->snd.una = seg->ack;
-	/* If ack includes some out-of-band data then update urgent pointer */
 	if (seq_gt(seg->ack, tcb->snd.up))
 		tcb->snd.up = seg->ack;
 
@@ -588,9 +556,6 @@ update(Ipconv *s, Tcp *seg)
 	if(tcb->snd.una != tcb->snd.nxt)
 		start_timer(&tcb->timer);
 
-	/* If retransmissions have been occurring, make sure the
-	 * send pointer doesn't repeat ancient history
-	 */
 	if(seq_lt(tcb->snd.ptr, tcb->snd.una))
 		tcb->snd.ptr = tcb->snd.una;
 
@@ -605,8 +570,7 @@ update(Ipconv *s, Tcp *seg)
 int
 in_window(Tcpctl *tcb, int seq)
 {
-	return seq_within(seq, tcb->rcv.nxt, 
-			 (int)(tcb->rcv.nxt+tcb->rcv.wnd-1));
+	return seq_within(seq, tcb->rcv.nxt, (int)(tcb->rcv.nxt+tcb->rcv.wnd-1));
 }
 
 void
@@ -629,7 +593,6 @@ proc_syn(Ipconv *s, char tos, Tcp *seg)
 		tcb->mss = seg->mss;
 
 	tcb->max_snd = seg->wnd;
-
 	if((mtu = s->ipinterface->maxmtu) != 0) {
 		mtu -= TCP_HDRSIZE + TCP_EHSIZE + TCP_PHDRSIZE; 
 		tcb->cwind = tcb->mss = MIN(mtu, tcb->mss);
@@ -677,8 +640,7 @@ add_reseq(Tcpctl *tcb, char tos, Tcp *seg, Block *bp, ushort length)
 	} 
 	else {
 		for(;;){
-			if(rp1->next == 0 ||
-			   seq_lt(seg->seq, rp1->next->seg.seq)) {
+			if(rp1->next == 0 || seq_lt(seg->seq, rp1->next->seg.seq)) {
 				rp->next = rp1->next;
 				rp1->next = rp;
 				break;
@@ -687,7 +649,6 @@ add_reseq(Tcpctl *tcb, char tos, Tcp *seg, Block *bp, ushort length)
 		}
 	}
 }
-
 
 void
 get_reseq(Tcpctl *tcb, char *tos, Tcp *seg, Block **bp, ushort *length)
@@ -729,7 +690,8 @@ trim(Tcpctl *tcb, Tcp *seg, Block **bp, ushort *length)
 	if(tcb->rcv.wnd == 0) {
 		if(seg->seq == tcb->rcv.nxt && len == 0)
 			return 0;
-	} else {
+	}
+	else {
 		/* Some part of the segment must be in the window */
 		if(in_window(tcb,seg->seq)) {
 			accept++;
@@ -771,7 +733,7 @@ trim(Tcpctl *tcb, Tcp *seg, Block **bp, ushort *length)
 		}
 	}
 	excess = seg->seq + *length - (tcb->rcv.nxt + tcb->rcv.wnd);
-	if(excess > 0){
+	if(excess > 0) {
 		tcb->rerecv += excess;
 		*length -= excess;
 		nbp = copyb(*bp, *length);
@@ -780,19 +742,6 @@ trim(Tcpctl *tcb, Tcp *seg, Block **bp, ushort *length)
 		seg->flags &= ~FIN;
 	}
 	return 0;
-}
-
-void
-extract_oob(Block **bp, Block **oobbp, Tcp *seg)
-
-{
-	DPRINT("extract_oob: size = %u\n", seg->up);
-
-	if (*oobbp = allocb(seg->up))
-		(*oobbp)->wptr = (*oobbp)->wptr +
-			         copyupb(bp, (*oobbp)->rptr, seg->up);
-	else
-		copyupb(bp, 0, seg->up);
 }
 
 int
@@ -821,7 +770,6 @@ copyupb(Block **bph, uchar *data, int count)
 			freeb(bp);
 		}
 	}
-
 	return bytes;
 }
 
@@ -949,7 +897,6 @@ close_self(Ipconv *s, int reason)
 
 	tcb->reseq = 0;
 	s->err = reason;
-
 	setstate(s, CLOSED);
 }
 
@@ -968,7 +915,8 @@ seq_within(int x, int low, int high)
 	if(low <= high){
 		if(low <= x && x <= high)
 			return 1;
-	} else {
+	}
+	else {
 		if(low >= x && x >= high)
 			return 1;
 	}
@@ -1007,7 +955,6 @@ setstate(Ipconv *s, char newstate)
 
 	oldstate = tcb->state;
 	tcb->state = newstate;
-
 	state_upcall(s, oldstate, newstate);
 }
 
@@ -1107,7 +1054,7 @@ ntohtcp(Tcp *tcph, Block **bpp)
 	for(optr = h->tcpopt, i = TCP_HDRSIZE; i < hdrlen;) {
 		switch(*optr++){
 		case EOL_KIND:
-			goto eol;
+			return hdrlen;
 		case NOOP_KIND:
 			i++;
 			break;
@@ -1119,6 +1066,5 @@ ntohtcp(Tcp *tcph, Block **bpp)
 			break;
 		}
 	}
-eol:
 	return hdrlen;
 }

@@ -266,7 +266,7 @@ lancesetup(Lance *lp)
 		lp->ea[i] = *cp++;
 	kunmap(k);
 
-	lp->lognrrb = 5;
+	lp->lognrrb = 7;
 	lp->logntrb = 5;
 	lp->nrrb = 1<<lp->lognrrb;
 	lp->ntrb = 1<<lp->logntrb;

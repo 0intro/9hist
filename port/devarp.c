@@ -282,7 +282,6 @@ arpoput(Queue *q, Block *bp)
 
 	if(bp->type != M_DATA) {
 		if(Servq == 0 && streamparse("arpd", bp)) {
-print("setting arp channel\n");
 			Servq = RD(q);
 			freeb(bp);
 		}
@@ -298,17 +297,20 @@ print("setting arp channel\n");
 	}
 
 	eh = (Etherhdr *)bp->rptr;
+	if(nhgets(eh->type) != ET_IP) {
+		PUTNEXT(q, bp);	
+		return;
+	}
+
 	iproute(eh->dst, ip);
 
 	/* Send downstream to the ethernet */
 	if(arplookup(ip, eh->d)) {
-print("arp hit %d.%d.%d.%d\n", ip[0], ip[1], ip[2], ip[3]);
 		PUTNEXT(q, bp);
 		return;
 	}
-print("arp miss %d.%d.%d.%d\n", ip[0], ip[1], ip[2], ip[3]);
 
-	/* Return the packet to the arp server for address resolution */
+	/* Push the packet up to the arp server for address resolution */
 	memmove(eh->d, ip, sizeof(ip));
 	PUTNEXT(Servq, bp);
 }

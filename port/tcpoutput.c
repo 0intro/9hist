@@ -8,19 +8,16 @@
 #include 	"ipdat.h"
 
 extern int tcpdbg;
+#define DPRINT if(tcpdbg) print
 extern ushort tcp_mss;
 int tcptimertype = 0;
-
-
-#define DPRINT if(tcpdbg) print
 
 void
 tcp_output(Ipconv *s)
 {
 	Block *hbp,*dbp, *sndq;
-	ushort ssize, dsize, usable, sent, oobsent;
+	ushort ssize, dsize, usable, sent;
 	int qlen;
-	char doing_oob;	
 	Tcphdr ph;
 	Tcp seg;
 	Tcpctl *tcb;
@@ -32,29 +29,11 @@ tcp_output(Ipconv *s)
 	case CLOSED:
 		return;
 	}
+
 	for(;;){
-		if (tcb->sndoobq) {
-			/* We have pending out-of-band data - use it */
-			qlen = tcb->sndoobcnt;
-			oobsent = tcb->snd.ptr - tcb->snd.up;
-			if (oobsent >= qlen) {
-				oobsent = qlen;
-				goto normal;
-			}
-			sndq = tcb->sndoobq;
-			sent = oobsent;
-			doing_oob = 1;
-			DPRINT("tcp_out: oob: qlen = %lux sent = %lux\n",
-						qlen, sent);
-		} else {
-			oobsent = 0;
-			normal:
-			qlen = tcb->sndcnt;
-			sent = tcb->snd.ptr - tcb->snd.una - oobsent;
-			sndq = tcb->sndq;
-			doing_oob = 0;
-			DPRINT("tcp_out: norm: qlen = %lux sent = %lux\n", qlen, sent);
-		}
+		qlen = tcb->sndcnt;
+		sent = tcb->snd.ptr - tcb->snd.una;
+		sndq = tcb->sndq;
 
 		/* Don't send anything else until our SYN has been acked */
 		if(sent != 0 && !(tcb->flags & SYNACK))
@@ -78,16 +57,10 @@ tcp_output(Ipconv *s)
 		ssize = MIN(qlen - sent, usable);
 		ssize = MIN(ssize, tcb->mss);
 		dsize = ssize;
-
-		if (!doing_oob)
-			seg.up = 0;
-		else {
-			seg.up = ssize;
-			DPRINT("tcp_out: oob seg.up = %d\n", seg.up);
-		}
+		seg.up = 0;
 
 		DPRINT("tcp_out: ssize = %lux\n", ssize);
-		if(ssize == 0 && !(tcb->flags & FORCE))
+		if(ssize == 0 && (tcb->flags & FORCE) == 0)
 			break;
 
 		/* Stop ack timer if one will be piggy backed on data */
@@ -110,7 +83,6 @@ tcp_output(Ipconv *s)
 			if(tcb->snd.ptr == tcb->iss){
 				seg.flags |= SYN;
 				dsize--;
-				/* Also send MSS */
 				seg.mss = tcp_mss;
 			}
 			break;
@@ -118,11 +90,6 @@ tcp_output(Ipconv *s)
 		seg.seq = tcb->snd.ptr;
 		seg.ack = tcb->last_ack = tcb->rcv.nxt;
 		seg.wnd = tcb->rcv.wnd;
-
-		if (doing_oob) {
-			DPRINT("tcp_out: Setting URG (up = %u)\n", seg.up);
-			seg.flags |= URG;
-		}
 
 		/* Now try to extract some data from the send queue.
 		 * Since SYN and FIN occupy sequence space and are reflected
@@ -259,7 +226,7 @@ void
 tcp_acktimer(Ipconv *s)
 {
 	Tcpctl *tcb = &s->tcpctl;
-
+print("Acktimer!\n");
 	qlock(tcb);
 	tcb->flags |= FORCE;
 	tcprcvwin(s);
