@@ -636,6 +636,7 @@ struct Proc
 	int	(*notify)(void*, char*);
 
 	Lock		*lockwait;
+	Lock		*lastlock;	/* debugging */
 
 	Mach	*wired;
 	Mach	*mp;		/* machine this process last ran on */
