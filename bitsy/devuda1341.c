@@ -10,7 +10,6 @@
  *
  *	The interface should be identical to that of devaudio.c
  */
-
 #include	"u.h"
 #include	"../port/lib.h"
 #include	"mem.h"
@@ -95,8 +94,8 @@ enum
 	Qdir		= 0,
 	Qaudio,
 	Qvolume,
-	Qspeed,
 	Qstatus,
+	Qstats,
 
 	Fmono		= 1,
 	Fin			= 2,
@@ -111,12 +110,13 @@ enum
 	Vtreb,
 	Vbass,
 	Vspeed,
+	Vbufsize,
 	Vfilter,
 	Vinvert,
 	Nvol,
 
-	Bufsize		= 4* 1024,	/* 23 ms each */
-	Nbuf			= 10,			/* 230 ms total */
+	Bufsize		= 4* 1024,	/* 46 ms each */
+	Nbuf			= 10,			/* 1.5 seconds total */
 
 	Speed		= 44100,
 	Ncmd		= 50,			/* max volume command words */
@@ -134,6 +134,7 @@ enum {
 	SC512FS = 0 << 2,
 	SC384FS = 1 << 2,
 	SC256FS = 2 << 2,
+	CLOCKMASK = 3 << 2,
 };
 
 /* Format */
@@ -150,11 +151,11 @@ enum {
 Dirtab
 audiodir[] =
 {
-	".",		{Qdir, 0, QTDIR},	0,	DMDIR|0555,
-	"audio",	{Qaudio},			0,	0666,
-	"volume",	{Qvolume},		0,	0666,
-	"speed",	{Qspeed},			0,	0666,
-	"audiostat",{Qstatus},		0,	0444,
+ 	".",			{Qdir, 0, QTDIR},	0,	DMDIR|0555,
+	"audio",		{Qaudio},			0,	0666,
+	"volume",		{Qvolume},		0,	0666,
+	"audiostatus",	{Qstatus},			0,	0444,
+	"audiostats",	{Qstats},			0,	0444,
 };
 
 struct	Buf
@@ -197,35 +198,43 @@ static	struct
 
 int	zerodma;	/* dma buffer used for sending zero */
 
-static struct
-{
-	ulong	bytes;
+typedef struct {
 	ulong	totaldma;
 	ulong	idledma;
 	ulong	faildma;
 	ulong	samedma;
 	ulong	empties;
+} iostats_t;
+
+static struct
+{
+	ulong	bytes;
+	iostats_t	rx, tx;
 } iostats;
+
+static void setaudio(int in, int out, int left, int right, int value);
+static void setspeed(int in, int out, int left, int right, int value);
+static void setbufsize(int in, int out, int left, int right, int value);
 
 static	struct
 {
 	char*	name;
-	int	flag;
-	int	ilval;		/* initial values */
-	int	irval;
+	int		flag;
+	int		ilval;		/* initial  values */
+	int		irval;
+	void		(*setval)(int, int, int, int, int);
 } volumes[] =
 {
-[Vaudio]	{"audio",	Fout|Fmono,	 	80,		80},
-[Vmic]	{"mic",	Fin|Fmono,		  0,		  0},
-[Vtreb]	{"treb",	Fout|Fmono,		50,		50},
-[Vbass]	{"bass",	Fout|Fmono, 		50,		50},
-[Vspeed]	{"speed",	Fin|Fout|Fmono,	Speed,	Speed},
-[Vfilter]	{"filter",	Fout|Fmono,		  0,		  0},
-[Vinvert]	{"invert",	Fin|Fout|Fmono,	  0,		  0},
+[Vaudio]	{"audio",		Fout|Fmono,	 	80,		80,	setaudio },
+[Vmic]	{"mic",		Fin|Fmono,		  0,		  0,	nil },
+[Vtreb]	{"treb",		Fout|Fmono,		50,		50,	nil },
+[Vbass]	{"bass",		Fout|Fmono, 		50,		50,	nil },
+[Vspeed]	{"speed",		Fin|Fout|Fmono,	Speed,	Speed,	setspeed },
+[Vbufsize]	{"bufsize",	Fin|Fout|Fmono,	Bufsize,	Bufsize,	setbufsize },
+[Vfilter]	{"filter",		Fout|Fmono,		  0,		  0,	nil },
+[Vinvert]	{"invert",		Fin|Fout|Fmono,	  0,		  0,	nil },
 [Nvol]	{0}
 };
-static int rate = Speed;		/* Current sample rate */
-static int bufsize = Bufsize;	/* Current buffer size */
 static void	setreg(char *name, int val, int n);
 
 /*
@@ -495,7 +504,7 @@ uchar	data0e6[2]	= {0xc6, 0xe3};
 static void
 enable(void)
 {
-	uchar	data[1], clock;
+	uchar	data[1];
 
 	L3_init();
 
@@ -510,63 +519,19 @@ enable(void)
 	/* Enable the audio power */
 	egpiobits(EGPIO_audio_ic_power | EGPIO_codec_reset, 1);
 
-	/* external clock configured for 44100 samples/sec */
-	switch (rate) {
-	case 32000:
-	case 48000:
-		/* 00 */
-		gpioregs->clear = GPIO_CLK_SET0_o|GPIO_CLK_SET1_o;
-		break;
-	default:
-		rate = 44100;
-	case 44100:
-		/* 01 */
-		gpioregs->set = GPIO_CLK_SET0_o;
-		gpioregs->clear = GPIO_CLK_SET1_o;
-		break;
-	case 8000:
-	case 16000:
-		/* 10 */
-		gpioregs->set = GPIO_CLK_SET1_o;
-		gpioregs->clear = GPIO_CLK_SET0_o;
-		break;
-	case 11025:
-	case 22050:
-		/* 11 */
-		gpioregs->set = GPIO_CLK_SET0_o|GPIO_CLK_SET1_o;
-		break;
-	}
+	setspeed(0, 0, 0, 0, volumes[Vspeed].ilval);
 
-	/* Wait for the UDA1341 to wake up */
-	delay(100);
-
-	/* Reset the chip */
-	switch (rate) {
-	case 8000:
-	case 11025:
-		clock = SC512FS;	/* Only works in MSB mode! */
-		break;
-	default:
-	case 16000:
-	case 22050:
-	case 44100:
-	case 48000:
-		clock = SC256FS;
-		break;
-	case 32000:
-		clock = SC384FS;	/* Only works in MSB mode! */
-		break;
-	}
-	data[0] = status0[0] | 1<<UdaStatusRST | clock;
+	data[0] = status0[0] | 1 << UdaStatusRST;
 	L3_write(UDA1341_L3Addr | UDA1341_STATUS, data, 1 );
-	if (debug)
-		print("enable:	status0	= 0x%2.2ux\n", data[0]);
-
 	gpioregs->clear = EGPIO_codec_reset;
 	gpioregs->set = EGPIO_codec_reset;
 	/* write uda 1341 status[0] */
-	data[0] = status0[0] | clock;
+	data[0] = status0[0];
 	L3_write(UDA1341_L3Addr | UDA1341_STATUS, data, 1);
+
+	if (debug)
+		print("enable:	status0	= 0x%2.2ux\n", data[0]);
+
 	L3_write(UDA1341_L3Addr | UDA1341_STATUS, status1, 1);
 	L3_write(UDA1341_L3Addr | UDA1341_DATA0, data02, 1);
 	L3_write(UDA1341_L3Addr | UDA1341_DATA0, data0e2, 2);
@@ -600,6 +565,10 @@ resetlevel(void)
 static void
 mxvolume(void) {
 	int *left, *right;
+
+	setspeed(0, 0, 0, 0, volumes[Vspeed].ilval);
+	if (!dmaidle(audio.i.dma) || !dmaidle(audio.o.dma))
+		L3_write(UDA1341_L3Addr | UDA1341_STATUS, status0, 1);
 
 	if(audio.amode & Aread){
 		left = audio.livol;
@@ -760,10 +729,10 @@ sendaudio(IOstate *s) {
 	ilock(&s->ilock);
 	if ((audio.amode &  Aread) && s->next == s->filling && dmaidle(s->dma)) {
 		// send an empty buffer to provide an input clock
-		zerodma |= dmastart(s->dma, Flushbuf, bufsize) & 0xff;
+		zerodma |= dmastart(s->dma, Flushbuf, volumes[Vbufsize].ilval) & 0xff;
 		if (zerodma == 0)
 			if (debug) print("emptyfail\n");
-		iostats.empties++;
+		iostats.tx.empties++;
 		iunlock(&s->ilock);
 		return;
 	}
@@ -771,16 +740,16 @@ sendaudio(IOstate *s) {
 		s->next->nbytes &= ~0x3;	/* must be a multiple of 4 */
 		if(s->next->nbytes) {
 			if ((n = dmastart(s->dma, s->next->phys, s->next->nbytes)) == 0) {
-				iostats.faildma++;
+				iostats.tx.faildma++;
 				break;
 			}
-			iostats.totaldma++;
+			iostats.tx.totaldma++;
 			switch (n >> 8) {
 			case 1:
-				iostats.idledma++;
+				iostats.tx.idledma++;
 				break;
 			case 3:
-				iostats.faildma++;
+				iostats.tx.faildma++;
 				break;
 			}
 			if (debug) {
@@ -807,17 +776,17 @@ recvaudio(IOstate *s) {
 	ilock(&s->ilock);
 	while (s->next != s->emptying) {
 		assert(s->next->nbytes == 0);
-		if ((n = dmastart(s->dma, s->next->phys, bufsize)) == 0) {
-			iostats.faildma++;
+		if ((n = dmastart(s->dma, s->next->phys, volumes[Vbufsize].ilval)) == 0) {
+			iostats.rx.faildma++;
 			break;
 		}
-		iostats.totaldma++;
+		iostats.rx.totaldma++;
 		switch (n >> 8) {
 		case 1:
-			iostats.idledma++;
+			iostats.rx.idledma++;
 			break;
 		case 3:
-			iostats.faildma++;
+			iostats.rx.faildma++;
 			break;
 		}
 		if (debug) {
@@ -883,7 +852,7 @@ audiointr(void *x, ulong ndma) {
 		/* A dma, not of a zero buffer completed, update current
 		 * Only interrupt routine touches s->current
 		 */
-		s->current->nbytes = (s == &audio.i)? bufsize: 0;
+		s->current->nbytes = (s == &audio.i)? volumes[Vbufsize].ilval: 0;
 		s->current++;
 		if (s->current == &s->buf[Nbuf])
 			s->current = &s->buf[0];
@@ -907,13 +876,13 @@ audioattach(char *param)
 static Walkqid*
 audiowalk(Chan *c, Chan *nc, char **name, int nname)
 {
-	return devwalk(c, nc, name, nname, audiodir, nelem(audiodir), devgen);
+ 	return devwalk(c, nc, name, nname, audiodir, nelem(audiodir), devgen);
 }
 
 static int
 audiostat(Chan *c, uchar *db, int n)
 {
-	return devstat(c, db, n, audiodir, nelem(audiodir), devgen);
+ 	return devstat(c, db, n, audiodir, nelem(audiodir), devgen);
 }
 
 static Chan*
@@ -928,10 +897,10 @@ audioopen(Chan *c, int mode)
 		break;
 
 	case Qstatus:
+	case Qstats:
 		if((omode&7) != OREAD)
 			error(Eperm);
 	case Qvolume:
-	case Qspeed:
 	case Qdir:
 		break;
 
@@ -997,8 +966,8 @@ audioclose(Chan *c)
 
 	case Qdir:
 	case Qvolume:
-	case Qspeed:
 	case Qstatus:
+	case Qstats:
 		break;
 
 	case Qaudio:
@@ -1054,12 +1023,6 @@ audioclose(Chan *c)
 				egpiobits(EGPIO_audio_ic_power | EGPIO_codec_reset, 0);
 			}
 			qunlock(&audio);
-			if (debug) {
-				print("total dmas: %lud\n", iostats.totaldma);
-				print("dmas while idle: %lud\n", iostats.idledma);
-				print("dmas while busy: %lud\n", iostats.faildma);
-				print("out of order dma: %lud\n", iostats.samedma);
-			}
 		}
 		break;
 	}
@@ -1068,7 +1031,7 @@ audioclose(Chan *c)
 static long
 audioread(Chan *c, void *v, long n, vlong off)
 {
-	int liv, riv, lov, rov, nsendb, nbufs;
+	int liv, riv, lov, rov;
 	long m, n0;
 	char buf[300];
 	int j;
@@ -1111,7 +1074,7 @@ audioread(Chan *c, void *v, long n, vlong off)
 			}
 
 			m = (s->emptying->nbytes > n)? n: s->emptying->nbytes;
-			memmove(p, s->emptying->virt + bufsize - 
+			memmove(p, s->emptying->virt + volumes[Vbufsize].ilval - 
 					  s->emptying->nbytes, m);
 
 			s->emptying->nbytes -= m;
@@ -1129,23 +1092,35 @@ audioread(Chan *c, void *v, long n, vlong off)
 			audio.totcount, audio.tottime);
 		return readstr(offset, p, n, buf);
 
-	case Qspeed:
-		s = &audio.o;
-		nbufs = s->filling - s->current;
-		if (nbufs < 0) nbufs = Nbuf + nbufs;
-		nsendb = (nbufs - 1) * bufsize + s->current->nbytes;
-		buf[0] = '\0';
-		snprint(buf, sizeof(buf), "speed %d\ndmasize %d\nsendbytes %d\n", rate, bufsize, nsendb);
+	case Qstats:
+		buf[0] = 0;
+		snprint(buf, sizeof(buf), 
+			    "bytes %lud\nRX dmas %lud, while idle %lud, while busy %lud, "
+			    "out-of-order %lud, empty dmas %lud\n"
+			    "TX dmas %lud, while idle %lud, while busy %lud, "
+			    "out-of-order %lud, empty dmas %lud\n",
+  			    iostats.bytes, iostats.rx.totaldma, iostats.rx.idledma, 
+			    iostats.rx.faildma, iostats.rx.samedma, iostats.rx.empties,
+ 			    iostats.tx.totaldma, iostats.tx.idledma, 
+			    iostats.tx.faildma, iostats.tx.samedma, iostats.tx.empties);
+
 		return readstr(offset, p, n, buf);
 
 	case Qvolume:
 		j = 0;
 		buf[0] = 0;
 		for(m=0; volumes[m].name; m++){
-			liv = audio.livol[m];
-			riv = audio.rivol[m];
-			lov = audio.lovol[m];
-			rov = audio.rovol[m];
+			if (m == Vaudio) {
+				liv = audio.livol[m];
+				riv = audio.rivol[m];
+				lov = audio.lovol[m];
+				rov = audio.rovol[m];
+			}
+			else {
+				lov = liv = volumes[m].ilval;
+				rov = riv = volumes[m].irval;
+			}
+	
 			j += snprint(buf+j, sizeof(buf)-j, "%s", volumes[m].name);
 			if((volumes[m].flag & Fmono) || liv==riv && lov==rov){
 				if((volumes[m].flag&(Fin|Fout))==(Fin|Fout) && liv==lov)
@@ -1183,26 +1158,85 @@ audioread(Chan *c, void *v, long n, vlong off)
 }
 
 static void
-setrate(int newrate)
+setaudio(int in, int out, int left, int right, int value)
 {
-	switch (newrate) {
-	case 16000:
-	case 22050:
-	case 44100:
+	if (value < 0 || value > 100) 
+		error(Evolume);
+	if(left && out)
+		audio.lovol[Vaudio] = value;
+	if(left && in)
+		audio.livol[Vaudio] = value;
+	if(right && out)
+		audio.rovol[Vaudio] = value;
+	if(right && in)
+		audio.rivol[Vaudio] = value;
+}
+
+static void 
+setspeed(int, int, int, int, int speed)
+{
+	uchar	clock;
+
+	/* external clock configured for 44100 samples/sec */
+	switch (speed) {
+	case 32000:
+		/* 00 */
+		gpioregs->clear = GPIO_CLK_SET0_o|GPIO_CLK_SET1_o;
+		clock = SC384FS;	/* Only works in MSB mode! */
+		break;
 	case 48000:
-		volumes[Vspeed].ilval = volumes[Vspeed].irval = rate = newrate;
+		/* 00 */
+		gpioregs->clear = GPIO_CLK_SET0_o|GPIO_CLK_SET1_o;
+		clock = SC256FS;
 		break;
 	default:
-		error(Ebadarg);
+		speed = 44100;
+	case 44100:
+		/* 01 */
+		gpioregs->set = GPIO_CLK_SET0_o;
+		gpioregs->clear = GPIO_CLK_SET1_o;
+		clock = SC256FS;
+		break;
+	case 8000:
+		/* 10 */
+		gpioregs->set = GPIO_CLK_SET1_o;
+		gpioregs->clear = GPIO_CLK_SET0_o;
+		clock = SC512FS;	/* Only works in MSB mode! */
+		break;
+	case 16000:
+		/* 10 */
+		gpioregs->set = GPIO_CLK_SET1_o;
+		gpioregs->clear = GPIO_CLK_SET0_o;
+		clock = SC256FS;
+		break;
+	case 11025:
+		/* 11 */
+		gpioregs->set = GPIO_CLK_SET0_o|GPIO_CLK_SET1_o;
+		clock = SC512FS;	/* Only works in MSB mode! */
+		break;
+	case 22050:
+		/* 11 */
+		gpioregs->set = GPIO_CLK_SET0_o|GPIO_CLK_SET1_o;
+		clock = SC256FS;
+		break;
 	}
+
+	/* Wait for the UDA1341 to wake up */
+	delay(100);
+
+	/* Reset the chip */
+	status0[0] &= ~CLOCKMASK;
+
+	status0[0] |=clock;
+	volumes[Vspeed].ilval = speed;
 }
 
 static void
-setbufsize(int newbufsize)
+setbufsize(int, int, int, int, int value)
 {
-	if (newbufsize < 0 || newbufsize > 8 * 1024 || newbufsize % sizeof(ulong))
+	if ((value % 8) != 0 || value < 8 || value >= Bufsize)
 		error(Ebadarg);
-	bufsize = newbufsize;
+	volumes[Vbufsize].ilval = value;
 }
 
 static long
@@ -1221,33 +1255,6 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 		error(Eperm);
 		break;
 
-	case Qspeed:
-		if(n > sizeof(buf)-1)
-			n = sizeof(buf)-1;
-		memmove(buf, p, n);
-		buf[n] = '\0';
-		nf = getfields(buf, field, Ncmd, 1, " \t\n");
-		if (nf == 1)
-			/* The user just supplied a number */
-			setrate((int)strtol(field[0], (char **)nil, 0));
-		else {
-			i = 0;
-			while (i < nf) {
-				int newval;
-
-				if (i + 1 >= nf) error(Ebadarg);
-				newval = (int)strtol(field[i + 1], (char **)nil, 0);
-				if (!strcmp(field[i], "speed"))
-					setrate(newval);
-				else if (!strcmp(field[i], "dmasize"))
-					setbufsize(newval);
-				else
-					error(Ebadarg);
-				i += 2;
-			}
-		}
-		break;
-		
 	case Qvolume:
 		v = Vaudio;
 		left = 1;
@@ -1266,16 +1273,8 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 			 */
 			if(field[i][0] >= '0' && field[i][0] <= '9') {
 				m = strtoul(field[i], 0, 10);
-				if (m < 0 || m > 100) 
-					error(Evolume);
-				if(left && out)
-					audio.lovol[v] = m;
-				if(left && in)
-					audio.livol[v] = m;
-				if(right && out)
-					audio.rovol[v] = m;
-				if(right && in)
-					audio.rivol[v] = m;
+				if (volumes[v].setval)
+					volumes[v].setval(in, out, left, right, m);
 				goto cont0;
 			}
 
@@ -1347,7 +1346,7 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 				if (debug > 1) print("#A: sleep\n");
 				sleep(&a->vous, audioqnotfull, a);
 			}
-			m = bufsize - a->filling->nbytes;
+			m = volumes[Vbufsize].ilval - a->filling->nbytes;
 			if(m > n)
 				m = n;
 			memmove(a->filling->virt + a->filling->nbytes, p, m);
@@ -1355,7 +1354,7 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 			a->filling->nbytes += m;
 			n -= m;
 			p += m;
-			if(a->filling->nbytes >= bufsize) {
+			if(a->filling->nbytes >= volumes[Vbufsize].ilval) {
 				if (debug > 1) print("#A: filled @%p\n", a->filling);
 				a->filling++;
 				if (a->filling == &a->buf[Nbuf])

@@ -8,7 +8,7 @@
 
 #include	"../port/netif.h"
 
-/* this isn't strictly a sa1110 driver.  The rts/cts stuff is h3650 specific */
+/* this isn't strictly an sa1110 driver.  The rts/cts stuff is h3650 specific */
 
 enum
 {
@@ -17,7 +17,7 @@ enum
 	Even=		1<<1,
 	Stop2=		1<<2,
 	Bits8=		1<<3,
-	SCE=		1<<4,	/* synchronous clock enable */
+	SCE=			1<<4,	/* synchronous clock enable */
 	RCE=		1<<5,	/* rx on falling edge of clock */
 	TCE=		1<<6,	/* tx on falling edge of clock */
 
@@ -25,13 +25,13 @@ enum
 	Rena=		1<<0,	/* receiver enable */
 	Tena=		1<<1,	/* transmitter enable */
 	Break=		1<<2,	/* force TXD3 low */
-	Rintena=	1<<3,	/* enable receive interrupt */
-	Tintena=	1<<4,	/* enable transmitter interrupt */
+	Rintena=		1<<3,	/* enable receive interrupt */
+	Tintena=		1<<4,	/* enable transmitter interrupt */
 	Loopback=	1<<5,	/* loop back data */
 
 	/* data bits */
-	DEparity=	1<<8,	/* parity error */
-	DEframe=	1<<9,	/* framing error */
+	DEparity=		1<<8,	/* parity error */
+	DEframe=		1<<9,	/* framing error */
 	DEoverrun=	1<<10,	/* overrun error */
 
 	/* status[0] bits */
@@ -40,41 +40,41 @@ enum
 	Rint1=		1<<2,	/* receiver fifo not empty and receiver idle */
 	Breakstart=	1<<3,
 	Breakend=	1<<4,
-	Fifoerror=	1<<5,	/* fifo error */
+	Fifoerror=		1<<5,	/* fifo error */
 
 	/* status[1] bits */
 	Tbusy=		1<<0,	/* transmitting */
 	Rnotempty=	1<<1,	/* receive fifo not empty */
-	Tnotfull=	1<<2,	/* transmit fifo not full */
+	Tnotfull=		1<<2,	/* transmit fifo not full */
 	ParityError=	1<<3,
 	FrameError=	1<<4,
-	Overrun=	1<<5,
+	Overrun=		1<<5,
 };
 
 extern PhysUart sa1110physuart;
 
 static Uart sa1110uart[2] = {
-{	.regs	= UART3REGS,
+{	.regs		= UART3REGS,
 	.name	= "serialport3",
-	.freq	= ClockFreq,
-	.bits	= 8,
-	.stop	= 1,
+	.freq		= ClockFreq,
+	.bits		= 8,
+	.stop		= 1,
 	.parity	= 'n',
 	.baud	= 115200,
 	.phys	= &sa1110physuart,
-	.special=0,
-	.next	= &sa1110uart[1], },
+	.special	= 0,
+	.next		= &sa1110uart[1], },
 
-{	.regs	= UART1REGS,
+{	.regs		= UART1REGS,
 	.name	= "serialport1",
-	.freq	= ClockFreq,
-	.bits	= 8,
-	.stop	= 1,
+	.freq		= ClockFreq,
+	.bits		= 8,
+	.stop		= 1,
 	.parity	= 'n',
 	.baud	= 115200,
 	.phys	= &sa1110physuart,
-	.special=0,
-	.next	= nil, },
+	.special	= 0,
+	.next		= nil, },
 };
 static Uart* consuart;
 static Uart* µcuart;
@@ -379,18 +379,18 @@ sa1110_pnp(void)
 PhysUart sa1110physuart = {
 	.name=		"sa1110",
 	.pnp= 		sa1110_pnp,
-	.enable=	sa1110_uartenable,
-	.disable=	sa1110_uartdisable,
+	.enable=		sa1110_uartenable,
+	.disable=		sa1110_uartdisable,
 	.bits=		sa1110_uartbits,
 	.kick=		sa1110_uartkick,
 	.modemctl=	sa1110_uartmodemctl,
 	.baud=		sa1110_uartbaud,
 	.stop=		sa1110_uartstop,
-	.parity=	sa1110_uartparity,
-	.dobreak=	sa1110_uartbreak,
-	.rts=		sa1110_uartrts,
-	.dtr=		sa1110_uartdtr,
-	.status=	sa1110_uartstatus,
+	.parity=		sa1110_uartparity,
+	.dobreak=		sa1110_uartbreak,
+	.rts=			sa1110_uartrts,
+	.dtr=			sa1110_uartdtr,
+	.status=		sa1110_uartstatus,
 };
 
 /*

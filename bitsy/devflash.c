@@ -224,7 +224,7 @@ findpart(char *name)
 	int i;
 
 	for(i = 0; i < Maxpart; i++)
-		if(strcmp(name, part[i].name) == 0)
+		if(part[i].name != nil && strcmp(name, part[i].name) == 0)
 			break;
 	if(i >= Maxpart)
 		return nil;
@@ -254,7 +254,7 @@ addpart(FPart *fp, char *name, ulong start, ulong end)
 	if(fp != nil)
 		error(Eexist);
 	for(i = 0; i < Maxpart; i++)
-		if(part[i].name[0] == 0)
+		if(part[i].name == nil)
 			break;
 	if(i == Maxpart)
 		error("no more partitions");

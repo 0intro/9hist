@@ -19,7 +19,7 @@ enum{
 	/* command types */
 	BLversion=	0,
 	BLbuttons=	2,	/* button events */
-	BLtouch=	3,	/* read touch screen events */
+	BLtouch=		3,	/* read touch screen events */
 	BLled=		8,	/* turn LED on/off */
 	BLbattery=	9,	/* read battery status */
 	BLbacklight=	0xd,	/* backlight control */

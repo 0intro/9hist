@@ -200,6 +200,7 @@ sacwalk(Chan *c, Chan *nc, char **name, int nname)
 	}
 	if(nc == nil){
 		nc = devclone(c);
+		nc->aux = saccpy(c->aux);
 		alloc = 1;
 	}
 	wq->clone = nc;
@@ -219,8 +220,8 @@ sacwalk(Chan *c, Chan *nc, char **name, int nname)
 			strncpy(up->error, Enonexist, NAMELEN);
 			break;
 		}
-		nc->aux = sac;
 		pathtoqid(getl(sac->qid), &nc->qid);
+		wq->qid[wq->nqid++] = nc->qid;
 	}
 	poperror();
 	if(wq->nqid < nname){
@@ -312,6 +313,7 @@ static void
 sacclose(Chan* c)
 {
 	Sac *sac = c->aux;
+
 	c->aux = nil;
 	sacfree(sac);
 }
@@ -535,7 +537,7 @@ saclookup(Sac *s, char *name)
 		sd = buf+i-j;
 		k = strcmp(name, sd->name);
 		if(k == 0) {
-		s->path = sacpathalloc(s->path, getl(s->blocks), i, ndir);
+			s->path = sacpathalloc(s->path, getl(s->blocks), i, ndir);
 			s->SacDir = *sd;
 			free(buf);
 			return s;
