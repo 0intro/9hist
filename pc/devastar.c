@@ -33,6 +33,8 @@ enum
 	ISAid=		0,		/* Id port and its values */
 	 ISAid0=	 0xEC,
 	 ISAid1=	 0x13,
+	 ISAid0x=	 0x69,
+	 ISAid1x=	 0x96,
 	ISActl1=	1,		/* board control */
 	 ISAien=	 1<<7,		/*  interrupt enable */
 	 ISAirq=	 7<<4,		/*  mask for irq code */
@@ -447,7 +449,9 @@ astarprobe(int port)
 	c = inb(port+ISAid);
 	c1 = inb(port+ISAid);
 	return (c == ISAid0 && c1 == ISAid1)
-		|| (c == ISAid1 && c1 == ISAid0);
+		|| (c == ISAid1 && c1 == ISAid0)
+		|| (c == ISAid0x && c1 == ISAid1x)
+		|| (c == ISAid1x && c1 == ISAid0x);
 }
 
 static int
