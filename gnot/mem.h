@@ -72,6 +72,7 @@
 #define PTEWRITE	0
 #define	PTERONLY	(1<<14)
 #define	PTEKERNEL	(1<<15)
+#define PTEUNCACHED	0
 #define	INVALIDPTE	0
 #define	PPN(pa)		((pa>>13)&0x1FFF)
 

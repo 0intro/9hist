@@ -578,7 +578,7 @@ duartputs(IOQ *cq, char *s, int n)
 }
 
 void
-duartdevice(Duartport *dp)
+duartenable(Duartport *dp)
 {
 	/*
 	 *  set up i/o routines
@@ -602,7 +602,7 @@ duartspecial(int port, IOQ *oq, IOQ *iq, int baud)
 	dp->nostream = 1;
 	dp->oq = oq;
 	dp->iq = iq;
-	duartdevice(dp);
+	duartenable(dp);
 	duartbaud(baud);
 }
 
@@ -805,7 +805,7 @@ duartreset(void)
 	initq(dp->iq);
 	dp->oq = ialloc(sizeof(IOQ), 0);
 	initq(dp->oq);
-	duartdevice(dp);
+	duartenable(dp);
 }
 
 Chan*

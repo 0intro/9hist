@@ -9,7 +9,7 @@
 int
 fault(ulong addr, int read)
 {
-	ulong mmuvirt, mmuphys, uncache = 0, n;
+	ulong mmuvirt, mmuphys, n;
 	Seg *s;
 	PTE *opte, *pte, *npte;
 	Orig *o;
@@ -71,7 +71,6 @@ fault(ulong addr, int read)
 					unlock(o);
 					return -1;
 				}
-				uncache = PTEUNCACHED;
 			}
 			else
 				pte->page = newpage(0, o, addr);
@@ -116,12 +115,19 @@ fault(ulong addr, int read)
 			}
 		}
 	}
-	/*
-	 * Copy on reference (conf.copymode==1) or write (conf.copymode==0)
-	 */
-	if((o->flag & (OWRPERM|OSHARED))==OWRPERM && (conf.copymode || !read)
+
+	if(o->flag&OSHARED) {
+		/* BUG: Does not cover enough flag options to shared data */
+		mmuphys = PTERONLY;
+		if(o->flag & OWRPERM)
+			mmuphys = PTEWRITE;
+	}
+	else if((o->flag&OWRPERM) && (conf.copymode || !read)
 	&& ((head && ((o->flag&OPURE) || o->nproc>1))
 	    || (!head && pte->page->ref>1))){
+		/*
+		 * Copy on reference (conf.copymode==1) or write (conf.copymode==0)
+		 */
 
 		if(!(o->flag&OISMEM))
 			panic("copy on ref/wr to non memory");
@@ -199,9 +205,13 @@ fault(ulong addr, int read)
 					mmuphys = PTEWRITE;
 	}
 	mmuvirt = addr;
-	mmuphys |= PPN(pte->page->pa) | PTEVALID | uncache;
-	if(o->flag&OISMEM)
+
+	/* Non memory is always uncached */
+	if(o->flag&OISMEM) {
+		mmuphys |= PPN(pte->page->pa) | PTEVALID;
 		usepage(pte->page, 1);
+	}else
+		mmuphys |= PPN(pte->page->pa) | PTEVALID | PTEUNCACHED;
 
 	if(pte->page->va != addr)
 		panic("wrong addr in tail %lux %lux", pte->page->va, addr);
@@ -216,6 +226,10 @@ fault(ulong addr, int read)
 		m->tlbfault++;
 
 	putmmu(mmuvirt, mmuphys);
+/*
+	if(s - u->p->seg == LSEG)
+		print("%d: f %lux v %lux p %lux\n", u->p->pid, o->flag, mmuvirt, mmuphys);
+*/
 	return 0;
 }
 

@@ -270,13 +270,13 @@ etherparse(uchar *to, char *from)
 		error(Ebadnet);
 
 	for(i = 0; i < 6; i++){
-		fdig = *from++;
-		tdig = fdig > 'a' ? (fdig - 'a' + 10)
-				: (fdig > 'A' ? (fdig - 'A' + 10) : (fdig - '0'));
-		fdig = *from++;
+		fdig = (*from++)&0x7f;
+		tdig = fdig >= 'a' ? ((fdig - 'a') + 10)
+				: (fdig >= 'A' ? ((fdig - 'A') + 10) : (fdig - '0'));
+		fdig = (*from++)&0x7f;
 		tdig <<= 4;
-		tdig |= fdig > 'a' ? (fdig - 'a' + 10)
-				: (fdig > 'A' ? (fdig - 'A' + 10) : (fdig - '0'));
+		tdig |= fdig >= 'a' ? ((fdig - 'a') + 10)
+				: (fdig >= 'A' ? ((fdig - 'A') + 10) : (fdig - '0'));
 		*to++ = tdig;
 	}
 }

@@ -27,6 +27,7 @@ void
 printinit(void)
 {
 	initq(&printq);
+	printq.puts = 0;
 	initq(&lineq);
 	initq(&kbdq);
 	kbdq.putc = kbdputc;
@@ -145,7 +146,10 @@ panic(char *fmt, ...)
 	buf[n] = '\n';
 	putstrn(buf, n+1);
 	dumpstack();
-	exit();
+	if(conf.cntrlp)
+		exit();
+	else
+		for(;;);
 }
 
 int
@@ -187,8 +191,9 @@ echo(int c)
 	/*
 	 * ^p hack
 	 */
-	if(c == 0x10)
+	if(c==0x10 && conf.cntrlp)
 		panic("^p");
+
 	/*
 	 * ^t hack BUG
 	 */
@@ -201,7 +206,7 @@ echo(int c)
 			mntdump();
 			return;
 		case 'p':
-			DEBUG();
+			procdump();
 			return;
 		case 'q':
 			dumpqueues();

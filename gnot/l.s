@@ -45,6 +45,11 @@ TEXT	touser(SB), $-4
 	MOVL	R0, CACR
 	RTE
 
+TEXT	firmware(SB), $0
+
+	MOVL	$0x40000090, A0
+	JMP	(A0)
+
 TEXT	splhi(SB), $0
 
 	MOVL	m(SB), A0

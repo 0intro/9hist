@@ -564,7 +564,7 @@ proctab(int i)
 
 #include <ureg.h>
 void
-DEBUG(void)
+procdump(void)
 {
 	int i;
 	Proc *p;

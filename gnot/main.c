@@ -196,10 +196,12 @@ exit(void)
 	int i;
 
 	u = 0;
+	spllo();
+	while(consactive())
+		for(i=0; i<1000; i++)
+			;
 	splhi();
-	print("exiting\n");
-	for(;;)
-		;
+	firmware();
 }
 
 /*
@@ -342,6 +344,7 @@ confinit(void)
 	conf.nfsyschan = 31 + conf.nchan/20;
 	conf.copymode = 0;		/* copy on write */
 	conf.portispaged = 0;
+	conf.cntrlp = 0;
 }
 
 /*
@@ -421,10 +424,4 @@ buzz(int f, int d)
 void
 lights(int val)
 {
-}
-
-void
-firmware(void)
-{
-	panic("you asked for it");
 }

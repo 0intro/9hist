@@ -64,3 +64,8 @@ mklockseg(Seg *s)
 {
 	error(Esegaddr);
 }
+
+Page*
+lkpage(Orig* o, ulong va)
+{
+}

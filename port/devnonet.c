@@ -912,7 +912,6 @@ noreset(Noconv *cp)
 	case Cconnected:
 	case Cconnecting:
 	case Chungup:
-		print("resetting connection\n");
 		cp->state = Creset;
 		cp->rcvcircuit = -1;
  		bp = allocb(0);
@@ -1162,7 +1161,7 @@ nonetrcvmsg(Noconv *cp, Block *bp)
 	 *  Obey reset even if the message id is bogus
 	 */
 	if(f & NO_RESET){
-		print("reset received\n");
+		DPRINT("reset received\n");
 		noreset(cp);
 		freeb(bp);
 		return;
@@ -1181,17 +1180,19 @@ nonetrcvmsg(Noconv *cp, Block *bp)
 		case Copen:
 		case Cannounced:
 		case Creset:
-			panic("nonetrcvmsg %d %d\n", cp->rcvcircuit, cp - cp->ifc->conv);
+			DPRINT("nonetrcvmsg %d %d\n", cp->rcvcircuit, cp - cp->ifc->conv);
+			freeb(bp);
+			return;
 		case Chungup:
 		case Cconnected:
-			print("Nonet call on connected/hanging-up circ %d conv %d\n",
+			DPRINT("Nonet call on connected/hanging-up circ %d conv %d\n",
 				cp->rcvcircuit, cp - cp->ifc->conv); 
 			freeb(bp);
 			noreset(cp);
 			return;
 		case Cconnecting:
 			if(h->mid != mp->mid){
-				print("Nonet call on connecting circ %d conv %d\n",
+				DPRINT("Nonet call on connecting circ %d conv %d\n",
 					cp->rcvcircuit, cp - cp->ifc->conv); 
 				freeb(bp);
 				noreset(cp);
@@ -1266,6 +1267,7 @@ nonetrcvmsg(Noconv *cp, Block *bp)
 	if(mp->rem == 0){
 		cp->hdr->flag &= ~(NO_NEWCALL|NO_SERVICE);
 		norack(cp, h->ack);
+		noqack(cp, h->mid);
 		if(f & NO_ACKME)
 			noqack(cp, h->mid);
 		mp->last->flags |= S_DELIM;
@@ -1457,10 +1459,10 @@ loop:
 			 */
 			if(cp->first!=cp->next && NOW>=cp->out[cp->first].time){
 				mp = &(cp->out[cp->first]);
-/*				if(cp->rexmit++ > 15){
+				if(cp->rexmit++ > 15){
 					norack(cp, mp->mid);
 					noreset(cp);
-				} else /**/
+				} else
 					nosend(cp, mp);
 			}
 
@@ -1469,7 +1471,7 @@ loop:
 			 */
 			while(cp->afirst!=cp->anext && cp->rq->next->len<16*1024){
 				DPRINT("sending ack %d\n", cp->ack[cp->afirst]);
-				nosendctl(cp, NO_NULL, 0);
+				nosendctl(cp, /*NO_NULL*/0, 0);
 			}
 			qunlock(cp);
 		}

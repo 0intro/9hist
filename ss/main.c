@@ -81,11 +81,16 @@ ioinit(void)
 {
 	KMap *k;
 
+	/* tell scc driver it's address */
 	k = kmappa(KMDUART, PTEIO|PTENOCACHE);
 	sccsetup((void*)(k->va));
-	sccspecial(0, 0, &kbdq, 2400);		/* scc port 0 is the keyboard */
+
+	/* scc port 0 is the keyboard */
+	sccspecial(0, 0, &kbdq, 2400);
 	kbdq.putc = kbdstate;
-	sccspecial(1, 0, &mouseq, 2400);	/* scc port 1 is the mouse */
+
+	/* scc port 1 is the mouse */
+	sccspecial(1, 0, &mouseq, 2400);
 }
 
 void
@@ -170,9 +175,12 @@ exit(void)
 	int i;
 
 	u = 0;
+	spllo();
+	print("cpu %d exiting\n", m->machno);
+	while(consactive())
+		for(i=0; i<1000; i++)
+			;
 	splhi();
-	print("exiting\n");
-	delay(30*1000);
 	reset();
 }
 
@@ -291,6 +299,7 @@ confinit(void)
 	conf.nservice = 3*mul;			/* was conf.nproc/5 */
 	conf.nfsyschan = 31 + conf.nchan/20;
 	conf.copymode = 0;		/* copy on write */
+	conf.cntrlp = 0;
 }
 
 /*

@@ -93,6 +93,7 @@ struct Conf
 	int	nfsyschan;	/* number of filsys open channels */
 	ulong	maxialloc;	/* maximum bytes used by ialloc */
 	int	copymode;	/* 0 is copy on write, 1 is copy on reference */
+	int	cntrlp;		/* panic on ^P */
 };
 
 /*

@@ -103,6 +103,7 @@ struct Conf
 	ulong	maxialloc;	/* maximum bytes used by ialloc */
 	int	copymode;	/* 0 is copy on write, 1 is copy on reference */
 	int	portispaged;	/* ??? */
+	int	cntrlp;		/* panic on ^P */
 };
 
 #include "../port/portdat.h"
