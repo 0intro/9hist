@@ -223,11 +223,15 @@ struct Endpt {
 	int		pollms;	/* polling interval in msec */
 	int		psize;	/* (remaining) size of this packet */
 	int		off;		/* offset into packet */
-	int		isolock;	/* reader/writer interlock with interrupt */
 	uchar*	bp0;		/* first block in array */
 	TD	*	td0;		/* first td in array */
 	TD	*	etd;		/* pointer into circular list of TDs for isochronous ept */
 	TD	*	xtd;		/* next td to be cleaned */
+	/* Real-time iso stuff */
+	ulong	foffset;	/* file offset (to detect seeks) */
+	ulong	poffset;	/* offset of next packet to be queued */
+	ulong	toffset;	/* offset associated with time */
+	vlong	time;		/* timeassociated with offset */
 	/* end ISO stuff */
 	QH	*	epq;		/* queue of TDs for this endpoint */
 	QLock	rlock;
@@ -246,7 +250,6 @@ struct Endpt {
 
 	ulong	nbytes;
 	ulong	nblocks;
-	vlong	time;
 };
 
 struct Ctlr {
@@ -826,6 +829,9 @@ schedendpt(Endpt *e)
 	e->etd = nil;
 	e->remain = 0;
 	e->nbytes = 0;
+	e->foffset = 0;
+	e->toffset = 0;
+	e->poffset = 0;
 	td = e->td0;
 	for(i = e->sched; i < NFRAME; i += e->pollms){
 		bp = e->bp0 + e->maxpkt*i/e->pollms;
@@ -1084,12 +1090,18 @@ cleaniso(Endpt *e, int frnum)
 		if ((td->flags & IsoClean) == 0)
 			e->nblocks++;
 		if (e->mode == OREAD){
+			e->poffset += (td->status + 1) & 0x3ff;
+			td->offset = e->poffset;
 			td->dev = ((e->maxpkt -1)<<21) | ((id&0x7FF)<<8) | TokIN;
+			e->toffset = td->offset;
 		}else{
+			e->toffset = td->offset;
 			n = (e->hz + e->remain)*e->pollms/1000;
 			e->remain = (e->hz + e->remain)*e->pollms%1000;
 			n *= e->samplesz;
 			td->dev = ((n -1)<<21) | ((id&0x7FF)<<8) | TokOUT;
+			td->offset = e->poffset;
+			e->poffset += n;
 		}
 		td = td->next;
 		if (e->xtd == td){
@@ -1099,8 +1111,6 @@ cleaniso(Endpt *e, int frnum)
 	} while ((td->status & Active) == 0);
 	e->time = todget(nil);
 	e->xtd = td;
-	if (e->isolock)
-		return;
 	for (n = 2; n < 6; n++){
 		i = ((frnum + n)&0x3ff);
 		td = e->td0 + i;
@@ -1124,15 +1134,6 @@ cleaniso(Endpt *e, int frnum)
 	wakeup(&e->wr);
 }
 
-static int sapecount1;
-static int sapecount2;
-static int sapecmd;
-static int sapestatus;
-static int sapeintenb;
-static int sapeframe;
-static int sapeport1;
-static int sapeport2;
-
 static void
 interrupt(Ureg*, void *a)
 {
@@ -1141,20 +1142,12 @@ interrupt(Ureg*, void *a)
 	int s, frnum;
 	QH *q;
 
-sapecount1++;
 	ub = a;
 	s = IN(Status);
-sapestatus = s;
-sapeintenb = IN(Usbintr);
-sapeframe = IN(Frnum);
-sapeport1 = IN(Portsc0);
-sapeport2 = IN(Portsc1);
-sapecmd = IN(Cmd);
 
 	OUT(Status, s);
 	if ((s & 0x1f) == 0)
 		return;
-sapecount2++;
 	frnum = IN(Frnum) & 0x3ff;
 //	iprint("usbint: #%x f%d\n", s, frnum);
 	if (s & 0x1a) {
@@ -1661,28 +1654,60 @@ isoready(void *arg)
 }
 
 static long
-isoio(Endpt *e, void *a, long n, vlong offset, int w)
+isoio(Endpt *e, void *a, long n, ulong offset, int w)
 {
 	int i, frnum;
+	volatile int isolock;
 	uchar *p, *q, *bp;
 	Ctlr *ub;
 	TD *td;
 
 	qlock(&e->rlock);
+	isolock = 0;
 	if(waserror()){
-		e->isolock = 0;
+		if (isolock){
+			isolock = 0;
+			iunlock(&activends);
+		}
 		qunlock(&e->rlock);
 		eptcancel(e);
 		nexterror();
 	}
 	p = a;
-	e->isolock = 1;
+	ub = &ubus;
+	if (offset != 0 && offset != e->foffset){
+		/* Seek to a specific position */
+		frnum = (IN(Frnum) + 8) & 0x3ff;
+		td = e->td0 +frnum;
+		if (offset < td->offset)
+			error("ancient history");
+		while (offset > e->toffset){
+			tsleep(&e->wr, return0, 0, 500);
+		}
+		while (offset >= td->offset + ((w?(td->dev >> 21):td->status) + 1) & 0x7ff){
+			td = td->next;
+			if (td == e->xtd)
+				iprint("trouble\n");
+		}
+		ilock(&activends);
+		isolock = 1;
+		e->off = td->offset - offset;
+		if (e->off >= e->maxpkt){
+			iprint("I can't program: %d\n", e->off);
+			e->off = 0;
+		}
+		e->etd = td;
+		e->foffset = offset;
+	}
 	do {
+		if (isolock == 0){
+			ilock(&activends);
+			isolock = 1;
+		}
 		td = e->etd;
 		if (td == nil || e->off == 0){
 			if (td == nil){
 				XPRINT("0");
-				ub = &ubus;
 				if (w)
 					frnum = (IN(Frnum) + 8) & 0x3ff;
 				else
@@ -1691,11 +1716,13 @@ isoio(Endpt *e, void *a, long n, vlong offset, int w)
 				e->off = 0;
 			}
 			/* New td, make sure it's ready */
-			e->isolock = 0;
+			isolock = 0;
+			iunlock(&activends);
 			while (isoready(e) == 0){
 				sleep(&e->wr, isoready, e);
 			}
-			e->isolock = 1;
+			ilock(&activends);
+			isolock = 1;
 			if (e->etd == nil){
 				XPRINT("!");
 				continue;
@@ -1707,6 +1734,8 @@ isoio(Endpt *e, void *a, long n, vlong offset, int w)
 			if (e->psize > e->maxpkt)
 				panic("packet size > maximum");
 		}
+		isolock = 0;
+		iunlock(&activends);
 		td->flags &= ~IsoClean;
 		bp = e->bp0 + (td - e->td0) * e->maxpkt / e->pollms;
 		q = bp + e->off;
@@ -1729,10 +1758,13 @@ isoio(Endpt *e, void *a, long n, vlong offset, int w)
 		e->etd = td->next;
 		e->off = 0;
 	} while(n > 0);
-	e->isolock = 0;
+	n = p-(uchar*)a;
+	e->foffset += n;
 	poperror();
+	if (isolock)
+		iunlock(&activends);
 	qunlock(&e->rlock);
-	return p-(uchar*)a;
+	return n;
 }
 
 static long
@@ -1846,8 +1878,8 @@ usbread(Chan *c, void *a, long n, vlong offset)
 		for(i=0; i<nelem(d->ep); i++)
 			if((e = d->ep[i]) != nil){	/* TO DO: freeze e */
 				l += snprint(s+l, READSTR-l, "%2d %#6.6lux %10lud bytes %10lud blocks", i, e->csp, e->nbytes, e->nblocks);
-				if (e->iso){
-					l += snprint(s+l, READSTR-l, "iso ");
+				if (e->iso && e->toffset){
+					l += snprint(s+l, READSTR-l, " %10lud offset %19lld time", e->toffset, e->time);
 				}
 				l += snprint(s+l, READSTR-l, "\n");
 			}
@@ -1863,7 +1895,7 @@ usbread(Chan *c, void *a, long n, vlong offset)
 		if((e = d->ep[t]) == nil || e->mode == OWRITE)
 			error(Eio);	/* can't happen */
 		if (e->iso)
-			n=isoio(e, a, n, offset, 0);
+			n=isoio(e, a, n, (ulong)offset, 0);
 		else
 			n=readusb(e, a, n);
 		break;
@@ -2122,7 +2154,7 @@ usbwrite(Chan *c, void *a, long n, vlong offset)
 			error(Eio);	/* can't happen */
 		}
 		if (e->iso)
-			n = isoio(e, a, n, offset, 1);
+			n = isoio(e, a, n, (ulong)offset, 1);
 		else
 			n = writeusb(e, a, n, TokOUT);
 		break;
