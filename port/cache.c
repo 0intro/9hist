@@ -396,7 +396,7 @@ cchain(uchar *buf, ulong offset, int len, Extent **tail)
 		lock(&cache);
 		e->bid = cache.pgno;
 		cache.pgno += BY2PG;
-		/* wrap the counter; low bits are unused by pghash by checked by lookpage */
+		/* wrap the counter; low bits are unused by pghash but checked by lookpage */
 		if((cache.pgno & ~(BY2PG-1)) == 0){
 			if(cache.pgno == BY2PG-1){
 				print("cache wrapped\n");
