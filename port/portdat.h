@@ -327,12 +327,10 @@ struct Image
 
 struct Pte
 {
-	union {
-		Pte	*next;			/* Free list */
-		Page	*pages[PTEPERTAB];	/* Page map for this chunk of pte */
-	};
-	Page	**first;			/* First used entry */
-	Page	**last;				/* Last used entry */
+	Page	*pages[PTEPERTAB];	/* Page map for this chunk of pte */
+	Page	**first;		/* First used entry */
+	Page	**last;			/* Last used entry */
+	Pte	*next;			/* Free list */
 };
 
 /* Segment types */

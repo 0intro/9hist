@@ -461,7 +461,7 @@ ptealloc(void)
 	while(ptealloclk.free == 0) {
 		unlock(&ptealloclk);
 
-		k = kmap(newpage(0, 0, 0));
+		k = kmap(newpage(1, 0, 0));
 		new = (Pte*)VA(k);
 		n = (BY2PG/sizeof(Pte))-1;
 		for(i = 0; i < n; i++)
@@ -476,9 +476,9 @@ ptealloc(void)
 	new = ptealloclk.free;
 	ptealloclk.free = new->next;
 	unlock(&ptealloclk);
-	memset(new->pages, 0, sizeof(new->pages));
 	new->first = &new->pages[PTEPERTAB];
 	new->last = new->pages;
+
 	return new;
 }
 
@@ -491,13 +491,17 @@ freepte(Segment *s, Pte *p)
 	case SG_PHYSICAL:
 		ptop = &p->pages[PTEPERTAB];
 		for(pg = p->pages; pg < ptop; pg++)
-			if(*pg)
+			if(*pg) {
 				(*s->pgfree)(*pg);
+				*pg = 0;
+			}
 		break;
 	default:
 		for(pg = p->first; pg <= p->last; pg++)
-			if(*pg)
+			if(*pg) {
 				putpage(*pg);
+				*pg = 0;
+			}
 	}
 
 	lock(&ptealloclk);

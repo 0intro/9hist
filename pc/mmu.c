@@ -183,9 +183,12 @@ mmugetpage(int clear)
 }
 
 /*
- *  Put all page map pages on the process's free list and
+ *  Put all bottom level page map pages on the process's free list and
  *  call mapstack to set up the prototype page map.  This
  *  effectively forgets all of the process's mappings.
+ *
+ *  Don't free the top level page.  Just zero the used entries.  This
+ *  avoids a 4k copy each flushmmu.
  */
 void
 flushmmu(void)
@@ -193,19 +196,20 @@ flushmmu(void)
 	int s;
 	Proc *p;
 	Page *pg;
+	ulong *top;
 
 	if(u == 0)
 		return;
 
 	p = u->p;
 	s = splhi();
-	if(p->mmutop){
-		p->mmutop->next = p->mmufree;
-		p->mmufree = p->mmutop;
-		for(pg = p->mmufree; pg->next; pg = pg->next)
-			;
-		pg->next = p->mmuused;
-		p->mmutop = 0;
+	if(p->mmutop && p->mmuused){
+		top = (ulong*)p->mmutop->va;
+		for(pg = p->mmuused; pg->next; pg = pg->next)
+			top[pg->daddr] = 0;
+		top[pg->daddr] = 0;
+		pg->next = p->mmufree;
+		p->mmufree = p->mmuused;
 		p->mmuused = 0;
 	}
 	mapstack(u->p);
@@ -227,15 +231,14 @@ mapstack(Proc *p)
 	if(p->upage->va != (USERADDR|(p->pid&0xFFFF)) && p->pid != 0)
 		panic("mapstack %d 0x%lux 0x%lux", p->pid, p->upage->pa, p->upage->va);
 
-	if(p->mmutop)
-		pg = p->mmutop;
-	else
-		pg = &ktoppg;
-
 	/* map in u area */
 	upt[0] = PPN(p->upage->pa) | PTEVALID | PTEKERNEL | PTEWRITE;
 
 	/* tell processor about new page table (flushes cached entries) */
+	if(p->mmutop)
+		pg = p->mmutop;
+	else
+		pg = &ktoppg;
 	putcr3(pg->pa);
 
 	u = (User*)USERADDR;
@@ -322,6 +325,7 @@ putmmu(ulong va, ulong pa, Page *pg)
 		top[topoff] = PPN(pg->pa) | PTEVALID | PTEUSER | PTEWRITE;
 		pg->next = p->mmuused;
 		p->mmuused = pg;
+		pg->daddr = topoff;
 	}
 
 	/*

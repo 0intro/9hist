@@ -49,7 +49,7 @@ rfork(ulong flag)
 	p = newproc();
 
 	/* Page va of upage used as check in mapstack */
-	p->upage = newpage(1, 0, USERADDR|(p->pid&0xFFFF));
+	p->upage = newpage(0, 0, USERADDR|(p->pid&0xFFFF));
 	k = kmap(p->upage);
 	upa = VA(k);
 
