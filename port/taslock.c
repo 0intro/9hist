@@ -42,6 +42,8 @@ canlock(Lock *l)
 void
 unlock(Lock *l)
 {
+	int s;
+
 	l->pc = 0;
 	l->key = 0;
 	if(u && u->p)

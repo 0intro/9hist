@@ -79,6 +79,7 @@ struct
 	Arena	*arena;		/* array */
 	int	narena;		/* number allocated */
 	int	mouseopen;	/* flag: mouse open */
+	int	bitbltopen;	/* flag: bitblt open */
 	int	bid;		/* last allocated bitmap id */
 	int	subfid;		/* last allocated subfont id */
 	int	cacheid;	/* last cached subfont id */
@@ -363,7 +364,7 @@ bitopen(Chan *c, int omode)
 		break;
 	case Qbitblt:
 		lock(&bit);
-		if(bit.ref){
+		if(bit.bitbltopen || bit.mouseopen){
 			unlock(&bit);
 			error(Einuse);
 		}
@@ -381,7 +382,7 @@ bitopen(Chan *c, int omode)
 		bit.rid = -1;
 		bit.mid = -1;
 		bit.init = 0;
-		bit.ref = 1;
+		bit.bitbltopen = 1;
 		Cursortocursor(&arrow);
 		unlock(&bit);
 		break;
@@ -434,6 +435,8 @@ bitclose(Chan *c)
 		lock(&bit);
 		if(c->qid.path == Qmouse)
 			bit.mouseopen = 0;
+		if(c->qid.path == Qbitblt)
+			bit.bitbltopen = 0;
 		if(--bit.ref == 0){
 			ebp = &bit.map[bit.nmap];
 			for(bp = bit.map; bp<ebp; bp++){

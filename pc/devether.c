@@ -20,7 +20,6 @@ struct Hw {
 	void	(*receive)(Ctlr*);
 	void	(*transmit)(Ctlr*);
 	void	(*intr)(Ureg*);
-	void	(*tweek)(Ctlr*);
 	int	addr;			/* interface address */
 	uchar	*ram;			/* interface shared memory address */
 	int	bt16;			/* true if a 16 bit interface */
@@ -465,8 +464,7 @@ etherkproc(void *arg)
 	}
 	cp->kproc = 1;
 	for(;;){
-		tsleep(&cp->rr, isinput, cp, 1000);
-		(*cp->hw->tweek)(cp);
+		sleep(&cp->rr, isinput, cp);
 
 		/*
 		 * process any internal loopback packets
@@ -713,40 +711,6 @@ print("ether width %d addr %lux size %d lvl %d\n", hw->bt16?16:8,
 }
 
 static void
-wd8013tweek(Ctlr *cp)
-{
-	uchar laar, msr;
-	Hw *hw = cp->hw;
-	Buffer *tb;
-	int s;
-
-	s = splhi();
-	msr = IN(hw, msr);
-	if(msr & MENB){
-		splx(s);
-		return;
-	}
-	print("TWEEK\n");
-	delay(500);
-
-	/* reset the hardware */
-	OUT(hw, msr, MENB|msr);
-	laar = IN(hw, laar);
-	if(hw->bt16)
-		OUT(hw, laar, laar|L16EN);
-	(*hw->init)(cp);
-	(*cp->hw->online)(cp, 1);
-
-	/* retransmit the current packet */
-	tb = &cp->tb[cp->ti];
-	if(tb->owner == Interface){
-		tb->busy = 0;
-		(*cp->hw->transmit)(cp);
-	}
-	splx(s);
-}
-
-static void
 dp8390rinit(Ctlr *cp)
 {
 	Hw *hw = cp->hw;
@@ -962,6 +926,5 @@ static Hw wd8013 =
 	wd8013receive,
 	wd8013transmit,
 	wd8013intr,
-	wd8013tweek,
 	0x360,					/* I/O base address */
 };

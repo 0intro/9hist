@@ -239,9 +239,8 @@ allocctx(Proc *proc)
 
 	c = (Ctx*)m->clist;
 	putctx(c);
-	if(c->proc){
+	if(c->proc)
 		freectx(c, 1);
-	}
 	if(c->pmeg)
 		panic("allocctx c->pmeg %lux\n", c->pmeg);
 
@@ -377,9 +376,9 @@ mmuinit(void)
 	compile();
 
 	/*
-	 *  map all of kernel region 0.
+	 *  map all of text image
 	 */
-	ktop = PGROUND(conf.npage0);
+	ktop = PGROUND((ulong)end);
 	i = 0;
 	for(c = 0; c < conf.ncontext; c++){
 		i = 0;
@@ -389,7 +388,7 @@ mmuinit(void)
 	fp = i;
 
 	/*
-	 *  Make sure cache is turned on for kernel region 0
+	 *  Make sure cache is turned on for program and data
 	 */
 	pme = PTEVALID|PTEWRITE|PTEKERNEL|PTEMAINMEM;
 	i = 0;
@@ -410,6 +409,33 @@ mmuinit(void)
 		putsegspace(INVALIDSEGM, j);
 		for(va = 0; va < BY2SEGM; va += BY2PG)
 			putpmegspace(INVALIDSEGM+va, INVALIDPTE);
+	}
+
+	if(conf.base0 < conf.npage0){
+		/*
+		 *  map kernel region 0, this may overlap kernel text image
+		 */
+		ktop1 = PGROUND(conf.npage0);
+		kbot1 = conf.base0 & ~(BY2SEGM - 1);
+		if(kbot1 < ktop)
+			kbot1 = ktop;
+		for(c = 0; c < conf.ncontext; c++){
+			i = fp;
+			putcontext(c);
+			for(va = kbot1; va < ktop1; va += BY2SEGM)
+				putsegspace(va, i++);
+		}
+		fp = i;
+	
+		/*
+		 *  Make sure cache is turned on for kernel region 0
+		 */
+		kbot1 = conf.base0 & ~(BY2PG - 1);
+		pme = PTEVALID|PTEWRITE|PTEKERNEL|PTEMAINMEM;
+		i = PPN(kbot1 & ~KZERO);
+		for(va = kbot1; va < ktop1; va += BY2PG, i++)
+			putpme(va, pme+i, 1);
+		ktop = ktop1;
 	}
 
 	if(conf.base1 < conf.npage1){
@@ -437,6 +463,7 @@ mmuinit(void)
 		i = PPN(kbot1 & ~KZERO);
 		for(va = kbot1; va < ktop1; va += BY2PG, i++)
 			putpme(va, pme+i, 1);
+		ktop = ktop1;
 	}
 
 	/*
@@ -626,11 +653,15 @@ kmappa(ulong pa, ulong flag)
 void
 kunmap(KMap *k)
 {
+	ulong pa;
+
+	pa = k->pa;
 	k->pa = 0;
 	lock(&kmapalloc);
 	k->next = kmapalloc.free;
 	kmapalloc.free = k;
-	putpme(k->va, INVALIDPTE, 1);
+	if(pa != k->pa)
+		putpme(k->va, INVALIDPTE, 1);
 	unlock(&kmapalloc);
 }
 
@@ -658,6 +689,29 @@ kmapregion(ulong pa, ulong n, ulong flag)
 KMap*
 kmap(Page *pg)
 {
+	ulong va;
+	KMap *k;
+
+	/*
+	 * avoid an alias: if part of kernel memory, just return map
+	 */
+	va = pg->pa|KZERO;
+	if((KZERO<=va && va<(ulong)end) ||
+	   (conf.base0<=va && va<conf.npage0) ||
+	   (conf.base1<=va && va<conf.npage1)){
+		lock(&kmapalloc);
+		k = kmapalloc.free;
+		if(k == 0){
+			dumpstack();
+			panic("kmap");
+		}
+		kmapalloc.free = k->next;
+		unlock(&kmapalloc);
+		k->va = va;
+		k->pa = va;
+		return k;
+	}
+
 	/*
 	 * Cache is virtual and a pain to deal with.
 	 * Must avoid having the same entry in the cache twice, so

@@ -281,7 +281,7 @@ isobuf(void *x)
 	Msg *m;
 
 	m = x;
-	return (MPus(m->flags)&LANCEOWNER) == 0;
+	return l.wedged || (MPus(m->flags)&LANCEOWNER) == 0;
 }
 
 static void
@@ -343,10 +343,20 @@ lanceoput(Queue *q, Block *bp)
 		return;
 	}
 
+	if(l.wedged) {
+		freeb(bp);
+		return;
+	}
+
 	/*
 	 *  only one transmitter at a time
 	 */
 	qlock(&l.tlock);
+	if(l.wedged) {
+		qunlock(&l.tlock);
+		freeb(bp);
+		return;
+	}
 
 	if(waserror()){
 		qunlock(&l.tlock);
@@ -360,17 +370,18 @@ lanceoput(Queue *q, Block *bp)
 	 */
 	m = &(LANCEMEM->tmr[l.tc]);
 	p = &l.tp[l.tc];
-	if((MPus(m->flags)&LANCEOWNER) != 0)
+	while((MPus(m->flags)&LANCEOWNER) != 0) {
 		tsleep(&l.tr, isobuf, m, 128);
 		if(l.wedged || isobuf(m) == 0){
 			qunlock(&l.tlock);
 			freeb(bp);
 			poperror();
-			l.wedged = 0;
 			print("lance wedged, dumping block & restarting\n");
 			lancestart(0);
+			l.wedged = 0;
 			return;
 		}
+	}
 
 	/*
 	 *  copy message into lance RAM
@@ -704,12 +715,12 @@ lanceintr(void)
 	 */
 	if(csr & (BABL|MISS|MERR)){
 		if(l.misses++ < 4)
-			print("lance err %ux\n", csr);
+			print("lance err #%ux\n", csr);
 		else {
+			print("lance stopped\n");
 			l.wedged = 1;
 			l.misses = 0;
-			*l.rap = 0;
-			*l.rdp = STOP;
+			lancereset();
 			wakeup(&l.rr);
 			wakeup(&l.tr);
 			return;
@@ -789,7 +800,7 @@ isinput(void *arg)
 {
 	Msg *m = arg;
 
-	return l.self.first || ((MPus(m->flags) & LANCEOWNER)==0);
+	return l.wedged || l.self.first || ((MPus(m->flags) & LANCEOWNER)==0);
 }
 
 static void
@@ -854,9 +865,9 @@ lancekproc(void *arg)
 		 *  if the lance is wedged, restart it
 		 */
 		if(l.wedged){
-			l.wedged = 0;
 			print("lance wedged, restarting\n");
 			lancestart(0);
+			l.wedged = 0;
 		}
 
 		/*

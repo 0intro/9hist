@@ -415,8 +415,8 @@ confinit(void)
 	conf.upages = (conf.npage*70)/100;
 	if(cpuserver){
 		i = conf.npage-conf.upages;
-		if(i > (6*MB)/BY2PG)
-			conf.upages +=  i - ((6*MB)/BY2PG);
+		if(i > (12*MB)/BY2PG)
+			conf.upages +=  i - ((12*MB)/BY2PG);
 	}
 
 	romputcxsegm = *(ulong*)(rom+260);

@@ -33,15 +33,13 @@ faultsparc(Ureg *ur)
 		if(ser&(SE_WRITE|SE_PROT))
 			read = 0;
 	}
-/*if(u && strcmp(u->p->text, "rc") == 0)
-print("fault pc=%lux addr=%lux %d\n", ur->pc, addr, read);/**/
+
 	spllo();
 	if(u == 0){
 		dumpregs(ur);
 		panic("fault u==0 pc=%lux addr=%lux", ur->pc, addr);
 	}
 
-/*	addr &= VAMASK; /**/
 	badvaddr = addr;
 	addr &= ~(BY2PG-1);
 	user = !(ur->psr&PSRPSUPER);

@@ -372,7 +372,7 @@ ip_reassemble(int offset, Block *bp, Etherhdr *ip)
 	int ovlap, len, fragsize, pktposn;
 	int end;
 
-	/* Check lance has handed us a contiguous buffer */
+	/* Check ethrnet has handed us a contiguous buffer */
 	if(bp->next)
 		panic("ip: reass ?");
 
@@ -384,12 +384,9 @@ ip_reassemble(int offset, Block *bp, Etherhdr *ip)
 	 *  find a reassembly queue for this fragment
 	 */
 	qlock(&fraglock);
-	for(f = flisthead; f; f = f->next) {
-		if(f->src == src)
-		if(f->dst == dst)
-		if(f->id == id)
+	for(f = flisthead; f; f = f->next)
+		if(f->src == src && f->dst == dst && f->id == id)
 			break;
-	}
 	qunlock(&fraglock);
 
 	/*
@@ -402,7 +399,7 @@ ip_reassemble(int offset, Block *bp, Etherhdr *ip)
 			qlock(f);
 			ipfragfree(f, 1);
 		}
-		return(bp);
+		return bp;
 	}
 
 	BLKFRAG(bp)->foff = offset<<3;

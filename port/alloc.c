@@ -5,6 +5,7 @@
 #include	"fns.h"
 #include	"error.h"
 
+
 /*
  * Plan 9 has two kernel allocators, the x... routines provide a first
  * fit hole allocator which should be used for permanent or large structures.
@@ -313,6 +314,8 @@ good:
 		bp = xalloc(size);
 		if(bp == nil)
 			return nil;
+
+		arena.nbuck[pow]++;
 	}
 
 	bp->size = pow;

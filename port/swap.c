@@ -59,10 +59,11 @@ putswap(Page *p)
 
 	lock(&swapalloc);
 	idx = &swapalloc.swmap[((ulong)p)/BY2PG];
-	if(--(*idx) == 0)
+	if(--(*idx) == 0) {
 		swapalloc.free++;
-	if(idx < swapalloc.last)
-		swapalloc.last = idx;
+		if(idx < swapalloc.last)
+			swapalloc.last = idx;
+	}
 	unlock(&swapalloc);
 }
 
@@ -293,7 +294,6 @@ executeio(void)
 
 	for(i = 0; i < ioptr; i++) {
 		out = iolist[i];
-
 		k = kmap(out);
 		kaddr = (char*)VA(k);
 

@@ -82,6 +82,36 @@ TEXT	tas(SB), $0			/* it seems we must be splhi */
 	NOOP
 	RETURN
 
+TEXT	softtas(SB), $0			/* all software; avoid LDSTUB */
+
+	MOVW	PSR, R8
+	MOVW	$SYSPSR, R9
+	MOVW	R9, PSR
+	NOOP
+	MOVB	(R7), R10
+	CMP	R10, R0
+	BE	gotit
+#ifdef asdf
+	ANDN	$31, R7			/* flush cache line */
+	MOVW	$0, (R7, 0xD)
+#endif
+	MOVW	$0xFF, R7
+	MOVW	R8, PSR
+	NOOP
+	RETURN
+
+gotit:
+	MOVW	$0xFF, R10
+	MOVB	R10, (R7)
+#ifdef asdf
+	ANDN	$31, R7			/* flush cache line */
+	MOVW	$0, (R7, 0xD)
+#endif
+	MOVW	$0, R7
+	MOVW	R8, PSR
+	NOOP
+	RETURN
+
 TEXT	spllo(SB), $0
 
 	MOVW	PSR, R7
