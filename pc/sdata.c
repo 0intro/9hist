@@ -11,8 +11,13 @@
 
 extern SDifc sdataifc;
 
-#define DEBUG		0
-#define DPRINT		if(DEBUG)print
+enum {
+	DbgCONFIG	= 0x01,		/* detected drive config info */
+	DbgIDENTIFY	= 0x02,		/* detected drive identify info */
+	DbgSTATE	= 0x04,		/* dump state on panic */
+	DbgPROBE	= 0x08,		/* trace device probing */
+};
+#define DEBUG		(DbgSTATE|DbgCONFIG)
 
 enum {					/* I/O ports */
 	Data		= 0,
@@ -190,6 +195,7 @@ typedef struct Ctlr {
 	int	cmdport;
 	int	ctlport;
 	int	irq;
+	int	tbdf;
 	int	bmiba;			/* bus master interface base address */
 
 	Pcidev*	pcidev;
@@ -202,6 +208,7 @@ typedef struct Ctlr {
 
 	QLock;				/* current command */
 	Drive*	curdrive;
+	int	command;		/* last command issued (debugging) */
 	Rendez;
 	int	done;
 
@@ -259,6 +266,56 @@ pc87415ienable(Ctlr* ctlr)
 	pcicfgw32(p, 0x40, x);
 }
 
+static void
+atadumpstate(Drive* drive, uchar* cmd, int lba, int count)
+{
+	Prd *prd;
+	Pcidev *p;
+	Ctlr *ctlr;
+	int i, bmiba;
+
+	if(!(DEBUG & DbgSTATE)){
+		USED(drive, cmd, lba, count);
+		return;
+	}
+
+	ctlr = drive->ctlr;
+	print("command %2.2uX\n", ctlr->command);
+	print("data %8.8p limit %8.8p dlen %d status %uX error %uX\n",
+		drive->data, drive->limit, drive->dlen,
+		drive->status, drive->error);
+	if(cmd != nil){
+		print("lba %d -> %d, count %d -> %d (%d)\n",
+			(cmd[2]<<24)|(cmd[3]<<16)|(cmd[4]<<8)|cmd[5], lba,
+			(cmd[7]<<8)|cmd[8], count, drive->count);
+	}
+	if(!(inb(ctlr->ctlport+As) & Bsy)){
+		for(i = 1; i < 7; i++)
+			print(" 0x%2.2uX", inb(ctlr->cmdport+i));
+		print(" 0x%2.2uX\n", inb(ctlr->ctlport+As));
+	}
+	if(drive->command == Cwd || drive->command == Crd){
+		bmiba = ctlr->bmiba;
+		prd = ctlr->prdt;
+		print("bmicx %2.2uX bmisx %2.2uX prdt %8.8p\n",
+			inb(bmiba+Bmicx), inb(bmiba+Bmisx), prd);
+		for(;;){
+			print("pa 0x%8.8luX count %8.8uX\n",
+				prd->pa, prd->count);
+			if(prd->count & PrdEOT)
+				break;
+			prd++;
+		}
+	}
+	if(ctlr->pcidev && ctlr->pcidev->vid == 0x8086){
+		p = ctlr->pcidev;
+		print("0x40: %4.4uX 0x42: %4.4uX",
+			pcicfgr16(p, 0x40), pcicfgr16(p, 0x42));
+		print("0x48: %2.2uX\n", pcicfgr8(p, 0x48));
+		print("0x4A: %4.4uX\n", pcicfgr16(p, 0x4A));
+	}
+}
+
 static int
 atadebug(int cmdport, int ctlport, char* fmt, ...)
 {
@@ -266,7 +323,7 @@ atadebug(int cmdport, int ctlport, char* fmt, ...)
 	va_list arg;
 	char buf[PRINTSIZE];
 
-	if(!DEBUG){
+	if(!(DEBUG & DbgPROBE)){
 		USED(cmdport, ctlport, fmt);
 		return 0;
 	}
@@ -384,7 +441,7 @@ retry:
 	inss(cmdport+Data, buf, 256);
 	inb(cmdport+Status);
 
-	if(DEBUG > 1){
+	if(DEBUG & DbgIDENTIFY){
 		int i;
 		ushort *sp;
 
@@ -465,9 +522,16 @@ retry:
 		if(drive->dma)
 			drive->dma |= 'U'<<16;
 	}
-print("dev %4.4uX capabilities %4.4uX config %4.4uX mwdma %4.4uX dma %8.8uX\n",
-    dev, drive->info[Icapabilities], drive->info[Iconfig],
-    drive->info[Imwdma], drive->dma);
+
+	if(DEBUG & DbgCONFIG){
+		print("dev %2.2uX capabilities %4.4uX config %4.4uX",
+			dev, drive->info[Icapabilities], drive->info[Iconfig]);
+		print(" mwdma %4.4uX dma %8.8uX", 
+			drive->info[Imwdma], drive->dma);
+		if(drive->info[Ivalid] & 0x04)
+			print(" udma %4.4uX", drive->info[Iudma]);
+		print("\n");
+	}
 
 	return drive;
 }
@@ -628,6 +692,8 @@ tryedd1:
 	ctlr->cmdport = cmdport;
 	ctlr->ctlport = ctlport;
 	ctlr->irq = irq;
+	ctlr->tbdf = BUSUNKNOWN;
+	ctlr->command = Cedd;		/* debugging */
 
 	sdev->ifc = &sdataifc;
 	sdev->ctlr = ctlr;
@@ -693,6 +759,7 @@ atanop(Drive* drive, int subcommand)
 	cmdport = ctlr->cmdport;
 	outb(cmdport+Features, subcommand);
 	outb(cmdport+Dh, drive->dev);
+	ctlr->command = 0;		/* debugging */
 	outb(cmdport+Command, 0);
 
 	microdelay(1);
@@ -778,14 +845,15 @@ atadmastart(Ctlr* ctlr, int write)
 		outb(ctlr->bmiba+Bmicx, Rwcon|Ssbm);
 }
 
-static void
+static int
 atadmastop(Ctlr* ctlr)
 {
 	int bmiba;
 
 	bmiba = ctlr->bmiba;
 	outb(bmiba+Bmicx, inb(bmiba+Bmicx) & ~Ssbm);
-	outb(bmiba+Bmisx, inb(bmiba+Bmisx)|Ideints|Idedmae);
+
+	return inb(bmiba+Bmisx);
 }
 
 static void
@@ -916,6 +984,8 @@ atapktio(Drive* drive, uchar* cmd, int clen)
 	outb(cmdport+Bytehi, len>>8);
 	outb(cmdport+Dh, drive->dev);
 	ctlr->done = 0;
+	ctlr->curdrive = drive;
+	ctlr->command = Cpkt;		/* debugging */
 	if(drive->pktdma)
 		atadmastart(ctlr, drive->write);
 	outb(cmdport+Command, Cpkt);
@@ -930,7 +1000,6 @@ atapktio(Drive* drive, uchar* cmd, int clen)
 		else
 			atapktinterrupt(drive);
 	}
-	ctlr->curdrive = drive;
 	iunlock(ctlr);
 
 	while(waserror())
@@ -1012,6 +1081,8 @@ atageniostart(Drive* drive, int lba)
 	outb(cmdport+Cyllo, c);
 	outb(cmdport+Cylhi, c>>8);
 	ctlr->done = 0;
+	ctlr->curdrive = drive;
+	ctlr->command = drive->command;	/* debugging */
 	outb(cmdport+Command, drive->command);
 	microdelay(1);
 
@@ -1034,7 +1105,6 @@ atageniostart(Drive* drive, int lba)
 		atadmastart(ctlr, drive->write);
 		break;
 	}
-	ctlr->curdrive = drive;
 	iunlock(ctlr);
 
 	return 0;
@@ -1153,6 +1223,7 @@ atagenio(Drive* drive, uchar* cmd, int)
 			 * Very hard to get out of this cleanly.
 			 * Let's see if it ever happens first...
 			 */
+			atadumpstate(drive, cmd, lba, count);
 			panic("atagenio");
 		}
 
@@ -1455,13 +1526,14 @@ atapnp(void)
 				else
 					head = sdev;
 				tail = sdev;
-				ctlr->pcidev = p;
+				ctlr->tbdf = p->tbdf;
 			}
 			else if((sdev = legacy[channel]) == nil)
 				continue;
 			else
 				ctlr = sdev->ctlr;
 
+			ctlr->pcidev = p;
 			if(!(pi & 0x80))
 				continue;
 			ctlr->bmiba = (p->mem[4].bar & ~0x01) + channel*8;
@@ -1518,7 +1590,6 @@ ataid(SDev* sdev)
 static int
 ataenable(SDev* sdev)
 {
-	int tbdf;
 	Ctlr *ctlr;
 	char name[NAMELEN];
 
@@ -1529,12 +1600,8 @@ ataenable(SDev* sdev)
 			pcisetbme(ctlr->pcidev);
 		ctlr->prdt = xspanalloc(Nprd*sizeof(Prd), 4, 4*1024);
 	}
-	if(ctlr->pcidev)
-		tbdf = ctlr->pcidev->tbdf;
-	else
-		tbdf = BUSUNKNOWN;
 	snprint(name, NAMELEN, "%s (%s)", sdev->name, sdev->ifc->name);
-	intrenable(ctlr->irq, atainterrupt, ctlr, tbdf, name);
+	intrenable(ctlr->irq, atainterrupt, ctlr, ctlr->tbdf, name);
 	outb(ctlr->ctlport+Dc, 0);
 	if(ctlr->ienable)
 		ctlr->ienable(ctlr);
