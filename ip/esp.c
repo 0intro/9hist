@@ -779,7 +779,7 @@ rc4cipher(Espcb *ecb, uchar *p, int n)
 					esprc4->ovalid = 0;
 			}
 		} else if(d > 0) {
-print("missing packet: %ld\n", d);
+print("missing packet: %uld %ld\n", seq, d);
 			// this link is hosed
 			if(d > RC4forward) {
 				strcpy(up->error, "rc4cipher: skipped too much");
@@ -795,12 +795,12 @@ print("missing packet: %ld\n", d);
 			rc4(&esprc4->current, p, n);
 			esprc4->cseq = seq+n;
 		} else {
+print("reordered packet: %uld %ld\n", seq, d);
 			dd = seq - esprc4->oseq;
 			if(!esprc4->ovalid || -d > RC4back || dd < 0) {
 				strcpy(up->error, "rc4cipher: too far back");
 				return 0;
 			}
-print("reordered packet: %uld\n", seq);
 			memmove(&tmpstate, &esprc4->old, sizeof(RC4state));
 			rc4skip(&tmpstate, dd);
 			rc4(&tmpstate, p, n);
