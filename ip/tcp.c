@@ -37,7 +37,7 @@ enum
 	MSL2		= 10,
 	MSPTICK		= 50,		/* Milliseconds per timer tick */
 	DEF_MSS		= 1024,		/* Default mean segment */
-	DEF_RTT		= 150,		/* Default round trip */
+	DEF_RTT		= 500,		/* Default round trip */
 	TCP_LISTEN	= 0,		/* Listen connection */
 	TCP_CONNECT	= 1,		/* Outgoing connection */
 
@@ -583,6 +583,7 @@ inittcpctl(Conv *s)
 	tcb->mss = tcp_mss;
 	tcb->ssthresh = 65535;
 	tcb->srtt = 0;
+	tcb->mdev = tcp_irtt << LOGDGAIN;
 
 	tcb->timer.start = tcp_irtt / MSPTICK;
 	tcb->timer.func = tcptimeout;
