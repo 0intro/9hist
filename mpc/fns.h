@@ -43,6 +43,10 @@ void	gotopc(ulong);
 void	icflush(void*, ulong);
 void	idle(void);
 #define	idlehands()			/* nothing to do in the runproc */
+void	iofree(int);
+void	ioinit(void);
+int	iounused(int, int);
+int	ioalloc(int, int, int, char*);
 int	inb(int);
 void	insb(int, void*, int);
 ushort	ins(int);
