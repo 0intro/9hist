@@ -763,19 +763,23 @@ void
 mntgate(Mnt *m)
 {
 	Mntrpc *q;
+	int x;
 
 	lock(m);
 	m->rip = 0;
 	for(q = m->queue; q; q = q->list) {
 		if(q->done == 0) {
+			x = splhi();	/* because sleep also does */
 			lock(&q->r);
 			if(q->r.p) {
 				unlock(&q->r);
+				splx(x);
 				unlock(m);
 				wakeup(&q->r);
 				return;
 			}
 			unlock(&q->r);
+			splx(x);
 		}
 	}
 	unlock(m);
