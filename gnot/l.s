@@ -1,5 +1,7 @@
 #include "mem.h"
 
+#define	DBMAGIC		0xBADC0C0A
+
 /*
  * Boot first processor
  */
@@ -155,12 +157,13 @@ TEXT	rfnote(SB), $0
 	MOVL	((8+8)*BY2WD)(A7), A0
 	MOVL	A0, USP
 	MOVEM	(A7), $0x7FFF
-	ADDL	$((8+8+1)*BY2WD), A7
+	ADDL	$((8+8+1)*BY2WD+BY2WD), A7
 	MOVL	$-1, R0			/* note causes error in sys call */
 	RTE
 
 TEXT	illegal(SB), $0
 
+	MOVL	$DBMAGIC, -(A7)
 	SUBL	$((8+8+1)*BY2WD), A7
 	MOVEM	$0x7FFF, (A7)
 	MOVL	$a6base(SB), A6
@@ -172,11 +175,12 @@ TEXT	illegal(SB), $0
 	MOVL	((8+8)*BY2WD)(A7), A0
 	MOVL	A0, USP
 	MOVEM	(A7), $0x7FFF
-	ADDL	$((8+8+1)*BY2WD), A7
+	ADDL	$((8+8+1)*BY2WD+BY2WD), A7
 	RTE
 
 TEXT	systrap(SB), $0
 
+	MOVL	$DBMAGIC, -(A7)
 	SUBL	$((8+8+1)*BY2WD), A7
 	MOVL	A6, ((8+6)*BY2WD)(A7)
 	MOVL	R0, (A7)
@@ -188,24 +192,25 @@ TEXT	systrap(SB), $0
 	MOVL	((1+8+8)*BY2WD)(A7), A0
 	MOVL	A0, USP
 	MOVL	((1+8+6)*BY2WD)(A7), A6
-	ADDL	$((1+8+8+1)*4), A7
+	ADDL	$((1+8+8+1)*BY2WD+BY2WD), A7
 	RTE
 
 TEXT	buserror(SB), $0
 
+	MOVL	$DBMAGIC, -(A7)
 	SUBL	$((8+8+1)*BY2WD), A7
 	MOVEM	$0x7FFF, (A7)
 	MOVL	$a6base(SB), A6
 	MOVL	USP, A0
 	MOVL	A0, ((8+8)*BY2WD)(A7)
-	PEA	((8+8+1+2)*BY2WD)(A7)
+	PEA	((8+8+1+3)*BY2WD)(A7)
 	PEA	4(A7)
 	BSR	fault68020(SB)
 	ADDL	$8, A7
 	MOVL	((8+8)*BY2WD)(A7), A0
 	MOVL	A0, USP
 	MOVEM	(A7), $0x7FFF
-	ADDL	$((8+8+1)*4), A7
+	ADDL	$((8+8+1)*BY2WD+BY2WD), A7
 	RTE
 
 TEXT	tacintr(SB), $0			/* level 1 */
@@ -217,6 +222,7 @@ TEXT	tacintr(SB), $0			/* level 1 */
 
 TEXT	portintr(SB), $0		/* level 2 */
 
+	MOVL	$DBMAGIC, -(A7)
 	SUBL	$((8+8+1)*BY2WD), A7
 	MOVEM	$0x7FFF, (A7)
 	MOVL	$a6base(SB), A6
@@ -228,11 +234,12 @@ TEXT	portintr(SB), $0		/* level 2 */
 	MOVL	((8+8)*BY2WD)(A7), A0
 	MOVL	A0, USP
 	MOVEM	(A7), $0x7FFF
-	ADDL	$((8+8+1)*BY2WD), A7
+	ADDL	$((8+8+1)*BY2WD+BY2WD), A7
 	RTE
 
 TEXT	dkintr(SB), $0			/* level 2 */
 
+	MOVL	$DBMAGIC, -(A7)
 	SUBL	$((8+8+1)*BY2WD), A7
 	MOVEM	$0x7FFF, (A7)
 	MOVL	$a6base(SB), A6
@@ -244,7 +251,7 @@ TEXT	dkintr(SB), $0			/* level 2 */
 	MOVL	((8+8)*BY2WD)(A7), A0
 	MOVL	A0, USP
 	MOVEM	(A7), $0x77FFF
-	ADDL	$((8+8+1)*4), A7
+	ADDL	$((8+8+1)*BY2WD+BY2WD), A7
 	RTE
 
 TEXT	mouseintr(SB), $0		/* level 4 */
@@ -265,6 +272,7 @@ TEXT	mouseintr(SB), $0		/* level 4 */
 
 TEXT	uartintr(SB), $0		/* level 5 */
 
+	MOVL	$DBMAGIC, -(A7)
 	SUBL	$((8+8+1)*BY2WD), A7
 	MOVEM	$0x7FFF, (A7)
 	MOVL	$a6base(SB), A6
@@ -276,11 +284,12 @@ TEXT	uartintr(SB), $0		/* level 5 */
 	MOVL	((8+8)*BY2WD)(A7), A0
 	MOVL	A0, USP
 	MOVEM	(A7), $0x7FFF
-	ADDL	$((8+8+1)*4), A7
+	ADDL	$((8+8+1)*BY2WD+BY2WD), A7
 	RTE
 
 TEXT	syncintr(SB), $0		/* level 6 */
 
+	MOVL	$DBMAGIC, -(A7)
 	SUBL	$((8+8+1)*BY2WD), A7
 	MOVEM	$0x7FFF, (A7)
 	MOVL	$a6base(SB), A6
@@ -292,7 +301,7 @@ TEXT	syncintr(SB), $0		/* level 6 */
 	MOVL	((8+8)*BY2WD)(A7), A0
 	MOVL	A0, USP
 	MOVEM	(A7), $0x7FFF
-	ADDL	$((8+8+1)*4), A7
+	ADDL	$((8+8+1)*BY2WD+BY2WD), A7
 	RTE
 
 GLOBL	mousetab(SB), $128

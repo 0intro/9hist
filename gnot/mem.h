@@ -48,7 +48,7 @@
  */
 
 #define	USERADDR	0x80000000
-#define	UREGADDR	(USERADDR+BY2PG-(2+4+2+(8+8+1)*BY2WD))
+#define	UREGADDR	(USERADDR+BY2PG-(2+4+2+(8+8+1+1)*BY2WD))
 
 /*
  * Devices poked during bootstrap

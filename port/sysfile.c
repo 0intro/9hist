@@ -278,6 +278,8 @@ sysseek(ulong *arg)
 	c = fdtochan(arg[0], -1);
 	if(c->qid.path & CHDIR)
 		error(Eisdir);
+	if(devchar[c->type] == '|')
+		error(Eisstream);
 	qlock(c);
 	if(waserror()){
 		qunlock(c);

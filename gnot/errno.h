@@ -59,5 +59,6 @@ enum{
 	Enoasync,	/* out of async stream modules */
 	Enopipe,	/* out of pipes */
 	Enofilsys,	/* out of filsys resources */
+	Eisstream,	/* seek on a stream */
 	Egreg,		/* ken has implemented datakit */
 };

@@ -53,5 +53,6 @@ enum{
 	Enovmem,	/* virtual memory allocation failed */
 	Enoasync,	/* out of async stream modules */
 	Enopipe,	/* out of pipes */
+	Eisstream,	/* seek on a stream */
 	Egreg,		/* ken has implemented datakit */
 };
