@@ -489,7 +489,7 @@ authcheckread(Chan *c, char *a, int n)
 	cp = c->aux;
 	if(cp == nil)
 		error(Ebadarg);
-	if(n < TICKETLEN))
+	if(n < TICKETLEN)
 		error(Ebadarg);
 	convT2M(&cp->t, a, nil);
 	return sizeof(cp->t);
