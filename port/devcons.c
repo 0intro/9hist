@@ -186,9 +186,7 @@ void
 echo(Rune r, char *buf, int n)
 {
 	static int ctrlt, pid;
-	ulong l, v, top;
 	extern ulong etext;
-	Proc *p, *ep;
 
 	/*
 	 * ^p hack
