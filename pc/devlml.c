@@ -140,6 +140,7 @@ lmlreset(void)
 	ulong cdsize;
 	void *grabbuf;
 	ulong grablen;
+	ISAConf isa;
 
 	if(isaconfig("lml", 0, &isa) == 0) {
 		if (debug) print("lml not in plan9.ini\n");
@@ -150,20 +151,20 @@ lmlreset(void)
 		return;
 	}
 	cdsize = CODEDATASIZE;
-	codeData = (CodeData*)(((ulong*)xalloc(cdsize+ BY2PG) +BY2PG-1)&~(BY2PG-1));
+	codeData = (CodeData*)(((ulong)xalloc(cdsize+ BY2PG) +BY2PG-1)&~(BY2PG-1));
 	if (codeData == nil) {
 		print("devlml: xalloc(%lux, %ux, 0)\n", cdsize, BY2PG);
 		return;
 	}
 
 	grablen = GRABDATASIZE;
-	grabbuf = (void*)(((ulong*)xalloc(grablen+ BY2PG) +BY2PG-1)&~(BY2PG-1));
+	grabbuf = (void*)(((ulong)xalloc(grablen+ BY2PG) +BY2PG-1)&~(BY2PG-1));
 	if (grabbuf == nil) {
 		print("devlml: xalloc(%lux, %ux, 0)\n", grablen, BY2PG);
 		return;
 	}
 
-	print("Installing Motion JPEG driver %s\n", MJPG_VERSION); 
+	print("Installing Motion JPEG driver %s, irq %d\n", MJPG_VERSION, pcidev->intl); 
 	print("MJPG buffer at 0x%.8lux, size 0x%.8lux\n", codeData, cdsize); 
 	print("Grab buffer at 0x%.8lux, size 0x%.8lux\n", grabbuf, grablen); 
 

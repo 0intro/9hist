@@ -348,7 +348,7 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 	n -= len;
 
 	l = snprint(p, READSTR, "srom:");
-	for(i = 0; i < (1<<ctlr->sromsz); i++){
+	for(i = 0; i < (1<<(ctlr->sromsz)*sizeof(ushort)); i++){
 		if(i && ((i & 0x0F) == 0))
 			l += snprint(p+l, READSTR-l, "\n     ");
 		l += snprint(p+l, READSTR-l, " %2.2uX", ctlr->srom[i]);
