@@ -584,7 +584,7 @@ sysoseek(ulong *arg)
 	} o;
 	ulong a[5];
 
-	o.v = arg[1];
+	o.v = (long)arg[1];
 	a[0] = (ulong)&o.v;
 	a[1] = arg[0];
 	a[2] = o.u[0];

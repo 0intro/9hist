@@ -534,11 +534,11 @@ tsleep(Rendez *r, int (*fn)(void*), void *arg, int ms)
  *  Richard Miller has a better solution that doesn't require both to
  *  be held simultaneously, but I'm a paranoid - presotto.
  */
-int
+Proc*
 wakeup(Rendez *r)
 {
-	Proc *p;
-	int s, rv;
+	Proc *p, *rv;
+	int s;
 
 	rv = 0;
 	s = splhi();
@@ -553,7 +553,7 @@ wakeup(Rendez *r)
 		r->p = nil;
 		p->r = nil;
 		ready(p);
-		rv = 1;
+		rv = p;
 		unlock(&p->rlock);
 	}
 

@@ -256,6 +256,8 @@ struct Stats
 	ulong	ninfo;
 	ulong	nidrop;
 	ulong	nwatchdogs;		// transmit time outs, actually
+	int	ticks;
+	int	tickintr;
 };
 
 struct Ctlr
@@ -817,7 +819,6 @@ w_timer(void* arg)
 {
 	Ether* ether = (Ether*) arg;
 	Ctlr* ctlr = (Ctlr*)ether->ctlr;
-	int tick=0;
 
 	for(;;){
 		tsleep(&ctlr->timer, return0, 0, 50);
@@ -826,7 +827,7 @@ w_timer(void* arg)
 			break;
 		if (ctlr->attached == 0)
 			continue;
-		tick++;
+		ctlr->ticks++;
 
 		ilock(&ctlr->Lock);
 
@@ -845,10 +846,12 @@ w_timer(void* arg)
 		// the card frames in the wrong way; due to the
 		// lack of documentation I cannot know.
 
-		if (csr_ins(ctlr, WR_EvSts)&WEvs)
+		if (csr_ins(ctlr, WR_EvSts)&WEvs){
+			ctlr->tickintr++;
 			w_intr(ether);
+		}
 
-		if (tick % 10 == 0) {
+		if ((ctlr->ticks % 10) == 0) {
 			if (ctlr->txtmout && --ctlr->txtmout == 0){
 				ctlr->nwatchdogs++;
 				w_txdone(ctlr, WTxErrEv|1); // 1: keep it busy
@@ -858,7 +861,7 @@ w_timer(void* arg)
 				if (ctlr->txbusy)
 					w_txstart(ether,1);
 			}
-			if (tick % 120 == 0)
+			if ((ctlr->ticks % 120) == 0)
 			if (ctlr->txbusy == 0)
 				w_cmd(ctlr, WCmdAskStats, WTyp_Stats);
 		}
@@ -922,6 +925,8 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 	PRINTSTAT("InfoEvs: %lud\n", ctlr->ninfo);
 	PRINTSTAT("InfoDrop: %lud\n", ctlr->nidrop);
 	PRINTSTAT("WatchDogs: %lud\n", ctlr->nwatchdogs);
+	PRINTSTAT("Ticks: %ud\n", ctlr->ticks);
+	PRINTSTAT("TickIntr: %ud\n", ctlr->tickintr);
 	k = ((ctlr->attached) ? "attached" : "not attached");
 	PRINTSTAT("Card %s", k);
 	k = ((ctlr->txbusy)? ", txbusy" : "");
@@ -1226,7 +1231,7 @@ reset(Ether* ether)
 	if(ctlr->hascrypt = ltv_ins(ctlr, WTyp_HasCrypt))
 		ctlr->crypt = 1;
 	*ctlr->netname = *ctlr->wantname = 0;
-	strcpy(ctlr->nodename, "wvlancard");
+	strcpy(ctlr->nodename, "Plan 9 STA");
 
 	for(i = 0; i < ether->nopt; i++){
 		//

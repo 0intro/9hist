@@ -320,7 +320,7 @@ long		userwrite(char*, int);
 void		validaddr(ulong, ulong, int);
 void		vcacheinval(Page*, ulong);
 void*		vmemchr(void*, int, int);
-int		wakeup(Rendez*);
+Proc*		wakeup(Rendez*);
 int		walk(Chan**, char*, int);
 int		walkname(Chan**, char*, int);
 void		wlock(RWlock*);
