@@ -47,6 +47,7 @@ main(void)
 	serialinit();
 	vecinit();
 	iprint("\n\nBrazil\n");
+/*screeninit();*/
 	pageinit();
 	procinit0();
 	initseg();
@@ -54,7 +55,6 @@ main(void)
 	rootfiles();
 	swapinit();
 	userinit();
-screeninit();
 	schedinit();
 }
 
@@ -155,6 +155,8 @@ serialinit(void)
 {
 	NS16552setup(Uart1, UartFREQ);
 	NS16552special(0, 9600, &kbdq, &printq, kbdcr2nl);
+
+	kbdinit();
 }
 
 /*
@@ -163,7 +165,7 @@ serialinit(void)
 void
 ioinit(void)
 {
-	ulong devphys, isaphys, intphys;
+	ulong devphys, isaphys, intphys, isamphys;
 
 	/*
 	 * Map devices and the Eisa control space
@@ -174,10 +176,12 @@ ioinit(void)
 	puttlbx(1, Devicevirt, devphys, isaphys, PGSZ64K);
 
 	/*
-	 * Map Interrupt control
+	 * Map Interrupt control & Eisa memory
 	 */
 	intphys = PPN(Intctlphys)|PTEGLOBL|PTEVALID|PTEWRITE|PTEUNCACHED;
-	puttlbx(2, Intctlvirt, intphys, PTEGLOBL, PGSZ4K);
+	isamphys = PPN(Eisamphys)|PTEGLOBL|PTEVALID|PTEWRITE|PTEUNCACHED;
+
+	puttlbx(2, Intctlvirt, intphys, isamphys, PGSZ1M);
 
 	/* Enable all devce interrupt */
 	IO(ushort, Intenareg) = 0xffff;
@@ -267,8 +271,6 @@ init0(void)
 	kproc("alarm", alarmkproc, 0);
 	touser((uchar*)(USTKTOP-sizeof(argbuf)));
 }
-
-FPsave	initfp;
 
 void
 userinit(void)
@@ -370,7 +372,7 @@ confinit(void)
 	conf.arp = 32;
 	conf.frag = 32;
 
-	conf.monitor = 1;
+	conf.monitor = 0;
 
 	conf.copymode = 0;		/* copy on write */
 }
@@ -379,11 +381,6 @@ confinit(void)
 /*
  *  for the sake of devcons
  */
-void
-lights(int v)
-{
-	USED(v);
-}
 
 void
 buzz(int f, int d)

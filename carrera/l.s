@@ -738,11 +738,12 @@ tas1:
  *  we avoid using R4, R5, R6, and R7 so gotopc can call us without saving them
  */
 TEXT	icflush(SB), $-4			/* icflush(virtaddr, count) */
-
 	MOVW	M(STATUS), R10
 	WAIT
 	MOVW	4(FP), R9
 	MOVW	$0, M(STATUS)
+	WAIT
+	WAIT
 	WAIT
 	ADDU	R1, R9			/* R9 = last address */
 	MOVW	$(~0x3f), R8
@@ -764,21 +765,36 @@ icflush1:			/* primary cache line size is 16 bytes */
 	BGTZ	R9, icflush1
 	MOVW	R10, M(STATUS)
 	WAIT
+	WAIT
+	WAIT
 	RET
 
-TEXT	dcinvalidate(SB), $-4	/* dcinvalidate(virtaddr, count) */
+TEXT	icdirty(SB), $-4			/* icdirty(virtaddr, count) */
 
 	MOVW	M(STATUS), R10
 	WAIT
-	MOVW	$0, M(STATUS)
+	WAIT
 	WAIT
 	MOVW	4(FP), R9
-dcinval:			/* secondary cache line size is 128 bytes */
-	CACHE	SD+HWBI, 0x00(R1)
-	SUBU	$128, R9
-	ADDU	$128, R1
-	BGTZ	R9, dcinval
+	MOVW	$0, M(STATUS)
+	WAIT
+	ADDU	R1, R9			/* R9 = last address */
+	MOVW	$(~0x3f), R8
+	AND	R1, R8			/* R8 = first address, rounded down */
+	ADD	$0x3f, R9
+	AND	$(~0x3f), R9		/* round last address up */
+	SUB	R8, R9			/* R9 = revised count */
+icdirty1:			/* primary cache line size is 16 bytes */
+	CACHE	PI+HI, 0x00(R8)
+	CACHE	PI+HI, 0x10(R8)
+	CACHE	PI+HI, 0x20(R8)
+	CACHE	PI+HI, 0x30(R8)
+	SUB	$0x40, R9
+	ADD	$0x40, R8
+	BGTZ	R9, icdirty1
 	MOVW	R10, M(STATUS)
+	WAIT
+	WAIT
 	WAIT
 	RET
 

@@ -80,6 +80,11 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 		if(pagedout(*pg))
 			pio(s, addr, soff, pg);
 
+		lkp = *pg;
+		lock(lkp);
+		if(lkp->image)     
+			duppage(lkp);	
+		unlock(lkp);
 		goto done;
 
 	case SG_BSS:

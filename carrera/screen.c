@@ -43,6 +43,20 @@ struct VGAmode
 	uchar	graphics[9];
 	uchar	attribute[0x15];
 	uchar	special[12];
+	struct {
+		uchar viden;
+		uchar sr6;
+		uchar sr7;
+		uchar ar16;
+		uchar ar17;
+		uchar crt31;
+		uchar crt32;
+		uchar crt33;
+		uchar crt34;
+		uchar crt35;
+		uchar crt36;
+		uchar crt37;
+	} tseng;
 };
 
 void	setmode(VGAmode*);
@@ -86,23 +100,13 @@ Lock	screenlock;
 
 GBitmap	gscreen =
 {
-	EISAUNCACHED(0xA0000),
+	EISA(0xA0000),
 	0,
 	(1024*(1<<3))/32,
 	3,
 	{ 0, 0, 1024, 768 },
 	{ 0, 0, 1024, 768 },
 	0
-};
-
-static GBitmap hwcursor=
-{
-	0,		/* base filled in by malloc when needed */
-	0,
-	4,
-	1,
-	{0, 0, 64, 64},
-	{0, 0, 64, 64}
 };
 
 uchar bdata[] =
@@ -121,9 +125,6 @@ GBitmap bgrnd =
 	0
 };
 
-/*
- *  a fatter than usual cursor for the safari
- */
 Cursor fatarrow = {
 	{ -1, -1 },
 	{
@@ -182,13 +183,31 @@ screenwin(void)
 void
 screeninit(void)
 {
+	int i, j;
+	uchar *scr;
+
 	setmode(&dfltmode);
 
 	memmove(&arrow, &fatarrow, sizeof(fatarrow));
 
+	scr = (uchar*)EISA(0xA0000);
+iprint("%lux\n", scr);
+*scr = 0xaa;
+i = *scr;
+iprint("%2.2ux\n", i);
+*scr = 0x55;
+i = *scr;
+iprint("%2.2ux\n", i);
+
+	for(j = 0; j < 768; j++)
+		for(i = 0; i < 1024; i++)
+			*(scr+i+(j*1024)) = i;
+
 	/* save space; let bitblt do the conversion work */
-	defont = &defont0;	
+	defont = &defont0;
+iprint("gbitblt\n");	
 	gbitblt(&gscreen, Pt(0, 0), &gscreen, gscreen.r, 0);
+iprint("done\n");
 	out.pos.x = MINX;
 	out.pos.y = 0;
 	out.bwid = defont0.info[' '].width;
@@ -363,6 +382,12 @@ srout(int reg, int val)
 	EISAOUTB(SR, val);
 }
 
+uchar
+srin(ushort i) {
+        EISAOUTB(SRX, i);
+        return EISAINB(SR);
+}
+
 void
 grout(int reg, int val)
 {
@@ -375,7 +400,8 @@ genout(int reg, int val)
 {
 	if(reg == 0)
 		EISAOUTB(EMISCW, val);
-	else if (reg == 1)
+	else
+	if (reg == 1)
 		EISAOUTB(EFCW, val);
 }
 
@@ -393,7 +419,8 @@ arout(int reg, int val)
 		junk = EISAINB(0x3DA);
 		USED(junk);
 		EISAOUTB(ARW, reg | 0x20);
-	} else {
+	}
+	else {
 		EISAOUTB(ARW, reg | 0x20);
 		EISAOUTB(ARW, val);
 	}
@@ -414,6 +441,12 @@ setmode(VGAmode *v)
 	/* turn screen off (to avoid damage) */
 	srout(1, 0x21);
 
+	EISAOUTB(0x3bf, 0x03);		/* hercules compatibility reg */
+	EISAOUTB(0x3d8, 0xa0);		/* display mode control register */
+	EISAOUTB(0x3cd, 0x00);		/* segment select */
+
+	srout(0x00, srin(0x00) & 0xFD);	/* synchronous reset*/
+
 	for(i = 0; i < sizeof(v->general); i++)
 		genout(i, v->general[i]);
 
@@ -423,7 +456,8 @@ setmode(VGAmode *v)
 		else
 			srout(i, v->sequencer[i]);
 
-	crout(Cvre, 0);	/* allow writes to CRT registers 0-7 */
+	/* allow writes to CRT registers 0-7 */
+	crout(Cvre, 0);
 	for(i = 0; i < sizeof(v->crt); i++)
 		crout(i, v->crt[i]);
 
@@ -432,6 +466,26 @@ setmode(VGAmode *v)
 
 	for(i = 0; i < sizeof(v->attribute); i++)
 		arout(i, v->attribute[i]);
+
+	EISAOUTB(0x3C6, 0xFF);	/* pel mask */
+	EISAOUTB(0x3C8, 0x00);	/* pel write address */
+	EISAOUTB(0x3bf, 0x03);	/* hercules compatibility reg */
+	EISAOUTB(0x3d8, 0xa0);	/* display mode control register */
+
+	srout(0x06, v->tseng.sr6);
+	srout(0x07, v->tseng.sr7);
+	i = EISAINB(0x3da); /* reset flip-flop. inp stat 1*/
+	USED(i);
+	arout(0x16, v->tseng.ar16);	/* misc */
+	arout(0x17, v->tseng.ar17);	/* misc 1*/
+	crout(0x31, v->tseng.crt31);	/* extended start. */
+	crout(0x32, v->tseng.crt32);	/* extended start. */
+	crout(0x33, v->tseng.crt33);	/* extended start. */
+	crout(0x34, v->tseng.crt34);	/* stub: 46ee + other bits */
+	crout(0x35, v->tseng.crt35);	/* overflow bits */
+	crout(0x36, v->tseng.crt36);	/* overflow bits */
+	crout(0x37, v->tseng.crt37);	/* overflow bits */
+	EISAOUTB(0x3c3, v->tseng.viden);/* video enable */
 
 	/* turn screen on */
 	srout(1, v->sequencer[1]);

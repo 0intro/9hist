@@ -244,7 +244,7 @@ trap(Ureg *ur)
 			postnote(up, 1, buf, NDebug);
 			break;
 		}
-		print("kernel%d %s pc=%lux\n", m->machno, excname[ecode], ur->pc);
+		print("kernel %s pc=%lux\n", excname[ecode], ur->pc);
 		dumpregs(ur);
 		dumpstack();
 		if(m->machno == 0)
@@ -285,20 +285,27 @@ intr(Ureg *ur)
 	cause &= INTR7|INTR6|INTR5|INTR4|INTR3|INTR2|INTR1|INTR0;
 
 	if(cause & INTR3) {
-		devint = IO(uchar, Intcause);
-		switch(devint) {
-		default:
-			panic("unknown devint=#%lux", devint);
+		for(;;) {
+			devint = IO(uchar, Intcause);
+			if(devint == 0)
+				break;
+			switch(devint) {
+			default:
+				panic("unknown devint=#%lux", devint);
 
-		case 0x28:		/* Serial 1 */
-			NS16552intr(0);
-			break;
-		case 0x24:		/* Serial 2 */
-			NS16552intr(1);
-			break;
-		case 0x14:
-			etherintr();
-			break;
+			case 0x28:		/* Serial 1 */
+				NS16552intr(0);
+				break;
+			case 0x24:		/* Serial 2 */
+				NS16552intr(1);
+				break;
+			case 0x14:
+				etherintr();
+				break;
+			case 0x1C:
+				kbdintr();
+				break;
+			}
 		}
 		cause &= ~INTR3;
 	}

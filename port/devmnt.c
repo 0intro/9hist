@@ -516,7 +516,8 @@ mntrdwr(int type, Chan *c, void *buf, long n, ulong offset)
 
 	m = mntchk(c);
 	uba = buf;
-	for(cnt = 0; n; n -= nr) {
+	cnt = 0;
+	for(;;) {
 		r = mntralloc(c);
 		if(waserror()) {
 			mntfree(r);
@@ -529,6 +530,8 @@ mntrdwr(int type, Chan *c, void *buf, long n, ulong offset)
 		r->request.count = limit(n, m->blocksize);
 		mountrpc(m, r);
 		nr = r->reply.count;
+		if(nr > r->request.count)
+			nr = r->request.count;
 		if(type == Tread)
 			memmove(uba, r->reply.data, nr);
 		poperror();
@@ -536,7 +539,8 @@ mntrdwr(int type, Chan *c, void *buf, long n, ulong offset)
 		offset += nr;
 		uba += nr;
 		cnt += nr;
-		if(nr != r->request.count)
+		n -= nr;
+		if(nr != r->request.count || n == 0)
 			break;
 	}
 	return cnt;

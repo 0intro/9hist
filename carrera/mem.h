@@ -104,6 +104,7 @@
 #define PGSZ4K		(0x00<<13)
 #define PGSZ64K		(0x0F<<13)
 #define PGSZ256K	(0x3F<<13)
+#define PGSZ1M		(0xFF<<13)
 	
 #define	KUSEG	0x00000000
 #define KSEG0	0x80000000

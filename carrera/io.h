@@ -4,7 +4,7 @@
 enum
 {
 	Devicephys	= 0x80000000,
-	Eisaphys	= 0x90000000,
+	Eisaphys	= 0x90000000,	/* IO port physical */
 	Devicevirt	= 0xE0000000,
 	Dmabase		= 0xE0000000,	
 	Sonicbase	= 0xE0001000,    	
@@ -19,17 +19,21 @@ enum
 	NvramRW		= 0xE000A000,
 	NvramRO		= 0xE000B000,
 	 Enetoffset	= 0,
-	KeyboardIO	= 0xE0005000,	
+	KeyboardIO	= 0xE0005000,
+	 Keyctl		= 6,
+	 Keydat		= 7,	
 	MouseIO		= 0xE0005000,  	
 	SoundIO		= 0xE000C000,
 	EisaLatch	= 0xE000E000,
 	Diag		= 0xE000F000,
-	EisaControl	= 0xE0010000,	/* Second 64K Page from Devicevirt */
 	VideoCTL	= 0x60000000,	
 	VideoMEM	= 0x40000000, 	
 	I386ack		= 0xE000023f,
+	EisaControl	= 0xE0010000,	/* Second 64K Page from Devicevirt */
+	Eisamphys	= 0x91000000,
+	Eisamvirt	= 0xE0300000,	/* Second 1M page entry from Intctl */
 	Intctlphys	= 0xF0000000,	
-	Intctlvirt	= 0xE0040000,
+	Intctlvirt	= 0xE0200000,
 	  Uart1int	= (1<<9),
 	  Uart0int	= (1<<8),
 	  Mouseint	= (1<<7),
@@ -40,8 +44,8 @@ enum
 	  Soundint	= (1<<2),
 	  Floppyint	= (1<<1),
 	  Parallelint	= (1<<0),
-	Intenareg	= 0xE0040004,	/* Device interrupt enable */
-	Intcause	= 0xE0040007,	/* Decice interrupt cause register */
+	Intenareg	= 0xE0200004,	/* Device interrupt enable */
+	Intcause	= 0xE0200007,	/* Decice interrupt cause register */
 
 	Ttbr		= 0x8000001C,	/* Translation table base address */
 	Tlrb		= 0x80000024,	/* Translation table limit address */
@@ -61,6 +65,6 @@ struct Tte
 #define CACHELINE(type, v)	(type*)(((ulong)(v)+127)&~127)
 #define UNCACHED(type, v)	(type*)((ulong)(v)|0xA0000000)
 
-#define EISAUNCACHED(v)		(0xA0000000|0x10000000|(v))
+#define EISA(v)			(Eisamvirt+(v))
 #define EISAOUTB(port, v)	*(uchar*)((EisaControl+(port))^7) = v
 #define EISAINB(port)		(*(uchar*)((EisaControl+(port))^7))
