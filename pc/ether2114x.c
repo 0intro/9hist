@@ -1432,4 +1432,5 @@ void
 ether2114xlink(void)
 {
 	addethercard("21140",  reset);
+	addethercard("2114x",  reset);
 }

@@ -219,15 +219,28 @@ typedef struct SCSIdev {
 	Scsiio	(*reset)(int, ISAConf*);
 } SCSIdev;
 
+/* SMBus transactions */
+enum
+{
+	SMBquick,		/* sends address only */
+
+	/* write */
+	SMBsend,		/* sends address and cmd */
+	SMBbytewrite,		/* sends address and cmd and 1 byte */
+	SMBwordwrite,		/* sends address and cmd and 2 bytes */
+
+	/* read */
+	SMBrecv,		/* sends address, recvs 1 byte */
+	SMBbyteread,		/* sends address and cmd, recv's byte */
+	SMBwordread,		/* sends address and cmd, recv's 2 bytes */
+};
+
 typedef struct SMBus SMBus;
 struct SMBus {
-	void	*arg;
-	ulong	addr;
-	int	(*quick)(SMBus*, int);
-	int	(*send)(SMBus*, int, int);
-	int	(*recv)(SMBus*, int, int*);
-	int	(*bytewrite)(SMBus*, int);
-	int	(*byteread)(SMBus*, int, int*);
-	int	(*wordwrite)(SMBus*, int);
-	int	(*wordread)(SMBus*, int, int*);
+	QLock;		/* mutex */
+	Rendez	r;	/* rendezvous point for completion interrupts */
+	void	*arg;	/* implementation dependent */
+	ulong	base;	/* port or memory base of smbus */
+	int	busy;
+	void	(*transact)(SMBus*, int, int, int, uchar*);
 };

@@ -5,7 +5,8 @@
 #include "fns.h"
 #include "../port/error.h"
 
-enum {
+enum
+{
 	Width		= 160,
 	Height		= 25,
 
@@ -84,7 +85,7 @@ screeninit(void)
 static void
 cgascreenputs(char* s, int n)
 {
-	if(!islo()){
+	if(!islo()) {
 		/*
 		 * Don't deadlock trying to
 		 * print in an interrupt.
