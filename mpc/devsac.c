@@ -98,7 +98,6 @@ print("devsac: bad magic\n");
 		return;
 	}
 	blocksize = getl(hdr->blocksize);
-print("blocksize = %d\n", blocksize);
 	root.SacDir = *(SacDir*)(data + sizeof(SacHeader));
 }
 
@@ -137,7 +136,8 @@ sacwalk(Chan *c, char *name)
 	Sac *sac;
 	Path *op;
 
-print("sacwalk\n");
+//print("walk %s\n", name);
+
 	isdir(c);
 	if(name[0]=='.' && name[1]==0)
 		return 1;
@@ -150,7 +150,6 @@ print("sacwalk\n");
 	c->aux = sac;
 	c->qid = (Qid){getl(sac->qid), 0};
 	op = c->path;
-print("op=%ux name = %s\n", op, name);
 	c->path = ptenter(&syspt, op, name);
 	decref(op);
 	return 1;
@@ -199,8 +198,8 @@ sacread(Chan *c, void *a, long n, vlong off)
 			error("i/o error");
 		return sacdirread(c, buf, off, cnt);
 	}
-print("data read\n");
 	sac = c->aux;
+//print("sacread: %s %llx %d\n", sac->name, off, n);
 	length = getv(sac->length);
 	if(off >= length)
 		return 0;
@@ -221,6 +220,7 @@ print("data read\n");
 		memmove(buf, buf2+j, nn);
 		cnt -= nn;
 		off += nn;
+		buf += nn;
 	}
 	free(buf2);
 	return n;
@@ -237,7 +237,6 @@ static void
 sacclose(Chan* c)
 {
 	Sac *sac = c->aux;
-print("close %ux\n", sac);
 	c->aux = nil;
 	sacfree(sac);
 }
@@ -255,7 +254,6 @@ saccpy(Sac *s)
 	Sac *ss;
 	
 	ss = malloc(sizeof(Sac));
-print("saccpy = %ux\n", ss);
 	*ss = *s;
 	if(ss->path)
 		incref(ss->path);
@@ -324,11 +322,9 @@ loadblock(void *buf, uchar *offset, int blocksize)
 		if(n < 0)
 			n = -n;
 		n -= block;
-print("blocksize = %d, block = %lld n = %lld\n", blocksize, block, n);
 		if(unsac(buf, data+block, blocksize, n)<0)
 			panic("unsac failed!");
 	} else {
-print("memmove: blocksize = %d\n", blocksize);
 		memmove(buf, data+block, blocksize);
 	}
 }
@@ -349,14 +345,12 @@ sacparent(Sac *s)
 	}
 	p = p->up;
 
-print("sacparent = %lld %d\n", p->blocks, p->entry);
 	blocks = data + p->blocks;
 	per = blocksize/sizeof(SacDir);
 	i = p->entry/per;
 	buf = malloc(per*sizeof(SacDir));
 	loadblock(buf, blocks + i*8, per*sizeof(SacDir));
 	s->SacDir = buf[p->entry-i*per];
-print("sacparent = %s\n", s->name);
 	free(buf);
 	incref(p);
 	sacpathfree(s->path);
@@ -372,7 +366,6 @@ sacdirread(Chan *c, char *p, long off, long cnt)
 	int iblock, per, i, j, ndir;
 	Sac *s;
 
-print("sacdirread %d %d\n", off, cnt);
 	s = c->aux;
 	blocks = data + getv(s->blocks);
 	per = blocksize/sizeof(SacDir);
@@ -428,7 +421,6 @@ saclookup(Sac *s, char *name)
 		sd = buf+i-j;
 		k = strcmp(name, sd->name);
 		if(k == 0) {
-print("walk %s %lld %d\n", name, getv(s->blocks), i);
 		s->path = sacpathalloc(s->path, getv(s->blocks), i);
 			s->SacDir = *sd;
 			free(buf);

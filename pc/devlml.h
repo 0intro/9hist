@@ -2,12 +2,6 @@
 
 #define MJPG_VERSION "LML33 v0.2"
 
-// Various minor numbers (functions) of the device
-#define MJPG_MINOR_STATUS 0
-#define MJPG_MINOR_VIDEO 1
-#define MJPG_MINOR_FRAME 2
-#define MJPG_MINOR_STILL 3
-
 // The following values can be modified to tune/set default behaviour of the
 // driver.
 
@@ -28,19 +22,13 @@
 // card found is mapped to a device minor number starting from 0.
 #define MAX_CARDS 1
 
-// The following is the number of device types supported.
-#define DEVICE_COUNT 2
-
-// The number of 8K pages per buffer, we will allocate four buffers,
-// locked into memory whenever the device is open so modify with care.
-#define PAGES 32
-
 // The following are the datastructures needed by the device.
 #define I2C_BUS		0x044
 // which bit of I2C_BUS is which
 #define I2C_SCL		1
 #define I2C_SDA		2
 #define INTR_JPEGREP	0x08000000
+#define INTR_GIRQ0	0x20000000
 #define INTR_STAT	0x03c
 
 // A Device records the properties of the various card types supported.
@@ -61,18 +49,15 @@ typedef struct {
 #define BT819Addr 0x8a
 #define BT856Addr 0x88
 
-#define MB 0x100000
 #define NBUF 4
 
 #define FRAGM_FINAL_B 1
 #define STAT_BIT 1
 
 typedef struct	FrameHeader		FrameHeader;
-typedef struct	MjpgDrv			MjpgDrv;
 typedef union	Fragment		Fragment;
 typedef struct	FragmentTable		FragmentTable;
 typedef struct	CodeData		CodeData;
-typedef struct	ML33Board		LML33Board;
 
 //If we're on the little endian architecture, then 0xFF, 0xD8 byte sequence is
 #define MRK_SOI		0xD8FF

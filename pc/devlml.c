@@ -23,20 +23,49 @@ int debug = 0;
 
 enum{
 	Qdir,
-	Qjcount,
+	Qjpg,
+//	Qraw,
 };
 
 static Dirtab lmldir[]={
-//	 name,		 qid,		size,		mode
-	"jcount",	{Qjcount},	0,		0444,
+//	 name,		qid,	size,	mode
+	"lmljpg",	{Qjpg},	0,	0444,
+//	"lmlraw",	{Qraw},	0,	0444,
 };
 
-CodeData *	codeData;
+static CodeData *	codeData;
+
+static ulong		jpgframeno;
+//static ulong		rawframeno;
+
+//static FrameHeader	rawheader;
+
+static FrameHeader	jpgheader[NBUF] = {
+	{
+		MRK_SOI, MRK_APP3, (sizeof(FrameHeader)-4) << 8,
+		{ 'L', 'M', 'L', '\0'},
+		-1, 0, 0, 0, 0
+	}, {
+		MRK_SOI, MRK_APP3, (sizeof(FrameHeader)-4) << 8,
+		{ 'L', 'M', 'L', '\0'},
+		-1, 0, 0, 0, 0
+	}, {
+		MRK_SOI, MRK_APP3, (sizeof(FrameHeader)-4) << 8,
+		{ 'L', 'M', 'L', '\0'},
+		-1, 0, 0, 0, 0
+	}, {
+		MRK_SOI, MRK_APP3, (sizeof(FrameHeader)-4) << 8,
+		{ 'L', 'M', 'L', '\0'},
+		-1, 0, 0, 0, 0
+	}
+};
 
 int		frameNo;
-Rendez		sleeper;
+Rendez		sleepjpg;
+//Rendez		sleepraw;
 int		singleFrame;
-int		nopens;
+int		jpgopens;
+//int		rawopens;
 
 #define writel(v, a) *(ulong *)(a) = (v)
 #define readl(a) *(ulong*)(a)
@@ -51,22 +80,55 @@ getbuffer(void){
 		if (codeData->statCom[last] & STAT_BIT)
 			return last;
 		if (last == l)
-			sleep(&sleeper, return0, 0);
+			sleep(&sleepjpg, return0, 0);
 	}
 	return 0;
 }
 
 static long
-vcount(Chan *, void *va, long nbytes, vlong) {
-	char *p = (char *)va;
+jpgread(Chan *, void *va, long nbytes, vlong) {
+	int bufno;
 
-	// reads always return one byte: the next available buffer number
-	if (nbytes <= 0) return 0;
-	*p = getbuffer();
-	return 1;
+	// reads should be of size 1 or sizeof(FrameHeader)
+	// Frameno is the number of the buffer containing the data
+	bufno = getbuffer();
+	if (nbytes == sizeof(FrameHeader)) {
+		memmove(va, &jpgheader[bufno], sizeof jpgheader[bufno]);
+		return sizeof jpgheader[bufno];
+	}
+	if (nbytes == 1) {
+		*(char *)va = bufno;
+		return 1;
+	}
+	return 0;
 }
 
+/*
+static long
+rawread(Chan *, void *va, long nbytes, vlong) {
+
+	// reads should be at least sizeof(FrameHeader) long
+	// Frameno is the number of the buffer containing the data
+	if (nbytes < sizeof(FrameHeader)) return 0;
+	sleep(&sleepraw, return0, 0);
+	memmove(va, &rawheader, sizeof rawheader);
+	return sizeof rawheader;
+}
+*/
+
 static void lmlintr(Ureg *, void *);
+
+static void
+prepbuf(void) {
+	int i;
+
+	for (i = 0; i < NBUF; i++) {
+		codeData->statCom[i] = PADDR(&(codeData->fragdesc[i]));
+		codeData->fragdesc[i].addr = PADDR(&(codeData->frag[i]));
+		// Length is in double words, in position 1..20
+		codeData->fragdesc[i].leng = ((sizeof codeData->frag[i]) >> 1) | FRAGM_FINAL_B;
+	}
+}
 
 static void
 lmlreset(void)
@@ -78,7 +140,6 @@ lmlreset(void)
 	ulong cdsize;
 	void *grabbuf;
 	ulong grablen;
-	int i;
 
 	pcidev = pcimatch(nil, PCI_VENDOR_ZORAN, PCI_DEVICE_ZORAN_36067);
 	if (pcidev == nil) {
@@ -105,12 +166,8 @@ lmlreset(void)
 	// Get access to DMA memory buffer
 	codeData->pamjpg = PADDR(codeData->statCom);
 	codeData->pagrab = PADDR(grabbuf);
-	for (i = 0; i < NBUF; i++) {
-		codeData->statCom[i] = PADDR(&(codeData->fragdesc[i]));
-		codeData->fragdesc[i].addr = PADDR(&(codeData->frag[i]));
-		// Length is in double words, in position 1..20
-		codeData->fragdesc[i].leng = ((sizeof codeData->frag[i]) >> 1) | FRAGM_FINAL_B;
-	}
+
+	prepbuf();
 
 	pciPhysBaseAddr = (void *)(pcidev->mem[0].bar & ~0x0F);
 
@@ -186,12 +243,22 @@ lmlopen(Chan *c, int omode) {
 
 	c->aux = 0;
 	switch(c->qid.path){
-	case Qjcount:
+	case Qjpg:
 		// allow one open
-		if (nopens)
+		if (jpgopens)
 			error(Einuse);
-		nopens = 1;
+		jpgopens = 1;
+		jpgframeno = 0;
+		prepbuf();
 		break;
+/*	case Qraw:
+		// allow one open
+		if (rawopens)
+			error(Einuse);
+		rawopens = 1;
+		rawframeno = 0;
+		break;
+*/
 	}
 	return devopen(c, omode, lmldir, nelem(lmldir), devgen);
 }
@@ -200,10 +267,15 @@ static void
 lmlclose(Chan *c) {
 
 	switch(c->qid.path){
-	case Qjcount:
-		nopens = 0;
-		authclose(c);
+	case Qjpg:
+		jpgopens = 0;
+		break;
+/*	case Qraw:
+		rawopens = 0;
+		break;
+*/
 	}
+	authclose(c);
 }
 
 static long
@@ -215,8 +287,11 @@ lmlread(Chan *c, void *va, long n, vlong voff) {
 
 	case Qdir:
 		return devdirread(c, (char *)buf, n, lmldir, nelem(lmldir), devgen);
-	case Qjcount:
-		return vcount(c, buf, n, off);
+	case Qjpg:
+		return jpgread(c, buf, n, off);
+/*	case Qraw:
+		return rawread(c, buf, n, off);
+*/
 	}
 }
 
@@ -250,7 +325,7 @@ Dev lmldevtab = {
 
 static void
 lmlintr(Ureg *, void *) {
-	static count;
+	ulong fstart, fno;
 	ulong flags = readl(pciBaseAddr+INTR_STAT);
 	
 	if(debug&(DBGINTR))
@@ -260,9 +335,28 @@ lmlintr(Ureg *, void *) {
 	writel(0xff000000, pciBaseAddr + INTR_STAT);
 
 	if(flags & INTR_JPEGREP) {
-		if ((debug&DBGINTR) || ((debug&DBGINTS) && (count++ % 128) == 0))
-			print("MjpgDrv_intrHandler wakeup\n");
-		wakeup(&sleeper);
+		vlong thetime;
+
+		fstart = jpgframeno & 0x00000003;
+		for (;;) {
+			jpgframeno++;
+			fno = jpgframeno & 0x00000003;
+			if (codeData->statCom[fno] & STAT_BIT)
+				break;
+			if (fno == fstart) {
+				if (debug & DBGINTR)
+					print("Spurious lml jpg intr?\n");
+				return;
+			}
+		}
+		thetime = todget(nil);
+		jpgheader[fno].sec  = (ulong)(thetime / 1000000000LL);
+		jpgheader[fno].usec = (ulong)(thetime % 1000000000LL) / 1000;
+		jpgheader[fno].frameSize =
+			(codeData->statCom[fno] & 0x00ffffff) >> 1;
+		jpgheader[fno].frameSeqNo = codeData->statCom[fno] >> 24;
+		jpgheader[fno].frameNo = jpgframeno;
+		wakeup(&sleepjpg);
 	}
 	return;
 }

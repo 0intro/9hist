@@ -59,3 +59,6 @@ extern int	connecttcp(void);
 extern void	configlocal(Method*);
 extern int	authlocal(void);
 extern int	connectlocal(void);
+extern void	configsac(Method*);
+extern int	authsac(void);
+extern int	connectsac(void);
