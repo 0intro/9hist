@@ -385,6 +385,11 @@ dstflush(int dstid, Memimage *dst, Rectangle r)
 		combinerect(&flushrect, r);
 		return;
 	}
+	/* how can this happen? -rsc, dec 12 2002 */
+	if(dst == 0){
+		print("nil dstflush\n");
+		return;
+	}
 	l = dst->layer;
 	if(l == nil)
 		return;
