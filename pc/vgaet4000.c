@@ -250,7 +250,7 @@ et4000move(VGAscr *scr, Point p)
 	return 0;
 }
 
-VGAcur et4000cur = {
+VGAcur vgaet4000cur = {
 	"et4000hwgc",
 
 	et4000enable,
@@ -259,7 +259,7 @@ VGAcur et4000cur = {
 	et4000move,
 };
 
-VGAdev et4000dev = {
+VGAdev vgaet4000dev = {
 	"et4000",
 
 	0,
