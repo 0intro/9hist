@@ -305,15 +305,21 @@ static
 void
 dstflush(int dstid, Memimage *dst, Rectangle r)
 {
+	Memlayer *l;
+
 	if(dstid == 0){
 		bbox(&flushrect, r);
 		return;
 	}
-	if(dst->layer == nil)
+	l = dst->layer;
+	if(l == nil)
 		return;
-	if(dst->layer->screen->image->data != screenimage.data)
-		return;
-	r = rectaddpt(r, dst->layer->delta);
+	do{
+		if(l->screen->image->data != screenimage.data)
+			return;
+		r = rectaddpt(r, l->delta);
+		l = l->screen->image->layer;
+	}while(l);
 	bbox(&flushrect, r);
 }
 
