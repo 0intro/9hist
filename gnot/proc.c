@@ -411,8 +411,35 @@ pexit(char *s, int freemem)
 	}
    out:
 	if(!freemem){
+		/*
+		 * weird thing: keep at most NBROKEN around
+		 */
+		#define	NBROKEN 4
+		static struct{
+			Lock;
+			int	n;
+			Proc	*p[NBROKEN];
+		}broken;
+		int b;
+
+		lock(&broken);
+		if(broken.n == NBROKEN){
+			ready(broken.p[0]);
+			memcpy(&broken.p[0], &broken.p[1], sizeof(Proc*)*(NBROKEN-1));
+			--broken.n;
+		}
+		broken.p[broken.n++] = c;
+		unlock(&broken);
 		c->state = Broken;
 		sched();		/* until someone lets us go */
+		lock(&broken);
+		for(b=0; b<NBROKEN; b++)
+			if(broken.p[b] == c){
+				broken.n--;
+				memcpy(&broken.p[b], &broken.p[b+1], sizeof(Proc*)*(NBROKEN-(b+1)));
+				break;
+			}
+		unlock(&broken);
 		freesegs(-1);
 		closepgrp(c->pgrp);
 		close(u->dot);

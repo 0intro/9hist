@@ -166,7 +166,7 @@ isflushed(void *a)
 	Urp *up;
 
 	up = (Urp *)a;
-	return (up->state&HUNGUP) || (up->unechoed==up->next && up->wq->len==0);
+	return (up->state&HUNGUP) || (up->unechoed==up->nxb && up->wq->len==0);
 }
 static int
 isdead(void *a)
@@ -188,25 +188,36 @@ urpclose(Queue *q)
 	/*
 	 *  wait for all outstanding messages to drain, tell kernel
 	 *  process we're closing.
+	 *
+	 *  if 2 minutes elapse, give it up
 	 */
 	up->state |= CLOSING;
-	tsleep(&up->r, isflushed, up, 60*1000);
-
-	/*
-	 *  ack all outstanding messages
-	 */
-	qlock(&up->xmit);
-	up->state |= HUNGUP;
-	i = up->next - 1;
-	if(i < 0)
-		i = 7;
-	rcvack(up, ECHO+i);
-	qunlock(&up->xmit);
+	tsleep(&up->r, isflushed, up, 2*60*1000);
 
 	/*
 	 *  kill off the kernel process
 	 */
+	up->state |= HUNGUP;
 	wakeup(&up->rq->r);
+
+	qlock(&up->xmit);
+	/*
+	 *  ack all outstanding messages
+	 */
+	i = up->next - 1;
+	if(i < 0)
+		i = 7;
+	rcvack(up, ECHO+i);
+
+	/*
+	 *  free all staged but unsent messages
+	 */
+	for(i = 0; i < 7; i++)
+		if(up->xb[i]){
+			freeb(up->xb[i]);
+			up->xb[i] = 0;
+		}
+	qunlock(&up->xmit);
 
 	if(up->kstarted == 0)
 		up->state = 0;

@@ -70,7 +70,9 @@ dumpqueues(void)
 	Queue *q;
 	int count;
 	Block *bp;
+	Bclass *bcp;
 
+	print("\n");
 	for(q = qlist; q < qlist + conf.nqueue; q++, q++){
 		if(!(q->flag & QINUSE))
 			continue;
@@ -81,6 +83,15 @@ dumpqueues(void)
 			count++;
 		print("  WR count %d len %d\n", count, WR(q)->len);
 	}
+	print("\n");
+	for(bcp=bclass; bcp<&bclass[Nclass-1]; bcp++){
+		lock(bcp);
+		for(count = 0, bp = bcp->first; bp; count++, bp = bp->next)
+			;
+		unlock(bcp);
+		print("%d blocks of size %d\n", count, bcp->size);
+	}
+	print("\n");
 }
 
 /*
