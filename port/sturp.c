@@ -23,7 +23,7 @@ typedef struct Urp	Urp;
 struct urpstat {
 	ulong	input;		/* bytes read from urp */
 	ulong	output;		/* bytes output to urp */
-	ulong	rxmit;		/* retransmit rejected urp msg */
+	ulong	rexmit;		/* retransmit rejected urp msg */
 	ulong	rjtrs;		/* reject, trailer size */
 	ulong	rjpks;		/* reject, packet size */
 	ulong	rjseq;		/* reject, sequence number */
@@ -286,6 +286,7 @@ urpciput(Queue *q, Block *bp)
 	 */
 	if(BLEN(bp)>0  && q->next->len<2*Streamhi && q->next->nb<2*Streambhi){
 		bp->flags |= S_DELIM;
+		urpstat.input += BLEN(bp);
 		PUTNEXT(q, bp);
 	} else
 		freeb(bp);
@@ -506,8 +507,10 @@ urpiput(Queue *q, Block *bp)
 		if(q->first) {
 			if(up->trbuf[0] != BOTM)
 				q->last->flags |= S_DELIM;
-			while(bp = getq(q))
+			while(bp = getq(q)){
+				urpstat.input += BLEN(bp);
 				PUTNEXT(q, bp);
+			}
 		} else {
 			bp = allocb(0);
 			if(up->trbuf[0] != BOTM)
@@ -656,6 +659,7 @@ output(Urp *up)
 		 *  if a retransmit is requested, move next back to
 		 *  the unacked blocks
 		 */
+		urpstat.rexmit++;
 		up->rexmit = 0;
 		up->next = up->unacked;
 	} else if(up->unechoed!=up->next && NOW>up->timer){
@@ -665,6 +669,7 @@ output(Urp *up)
 		 */
 		up->timer = NOW + MSrexmit;
 		up->state &= ~REJECTING;
+		urpstat.enqsx++;
 		sendctl(up, ENQ);
 		goto out;
 	}
@@ -1004,4 +1009,16 @@ urpdump(void)
 	for(up = urp; up < &urp[conf.nurp]; up++)
 		if(up->rq)
 			urpvomit("", up);
+}
+
+void
+urpfillstats(Chan *c, char *buf, int len)
+{
+	char b[256];
+
+	USED(c);
+	sprint(b, "in: %d\nout: %d\nrexmit: %d\nrjtrs: %d\nrjpks: %d\nrjseq: %d\nenqsx: %d\nenqsr: %d\n",
+		urpstat.input, urpstat.output, urpstat.rexmit, urpstat.rjtrs,
+		urpstat.rjpks, urpstat.rjseq, urpstat.enqsr, urpstat.enqsr);
+	strncpy(buf, b, len);
 }

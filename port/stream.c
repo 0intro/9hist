@@ -215,6 +215,7 @@ allocb(ulong size)
 	bp->flags = bcp - bclass;
 	bp->rptr = bp->wptr = bp->base;
 	bp->next = 0;
+	bp->list = 0;
 	bp->type = M_DATA;
 	bp->flags &= S_CLASS;
 	if(bp->lim-bp->rptr<size && size<4096)

@@ -170,7 +170,7 @@ netwstat(Chan *c, char *db, Network *np)
 Chan *
 netopen(Chan *c, int omode, Network *np)
 {
-	int id;
+	int id = 0;
 
 	if(c->qid.path & CHDIR){
 		if(omode != OREAD)

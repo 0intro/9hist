@@ -433,9 +433,9 @@ ptecpy(Pte *old)
 	Pte *new;
 
 	new = ptealloc();
-
-	end = &old->pages[PTEPERTAB];
-	for(src = old->pages, dst = new->pages; src < end; src++, dst++)
+	dst = &new->pages[old->first-old->pages];
+	new->first = dst;
+	for(src = old->first; src <= old->last; src++, dst++)
 		if(*src) {
 			if(onswap(*src))
 				dupswap(*src);
@@ -444,6 +444,7 @@ ptecpy(Pte *old)
 				(*src)->ref++;
 				unlockpage(*src);
 			}
+			new->last = dst;
 			*dst = *src;
 		}
 
@@ -461,7 +462,7 @@ ptealloc(void)
 	while(ptealloclk.free == 0) {
 		unlock(&ptealloclk);
 
-		k = kmap(newpage(1, 0, 0));
+		k = kmap(newpage(0, 0, 0));
 		new = (Pte*)VA(k);
 		n = (BY2PG/sizeof(Pte))-1;
 		for(i = 0; i < n; i++)
@@ -477,6 +478,8 @@ ptealloc(void)
 	ptealloclk.free = new->next;
 	unlock(&ptealloclk);
 	memset(new->pages, 0, sizeof(new->pages));
+	new->first = &new->pages[PTEPERTAB];
+	new->last = new->pages;
 	return new;
 }
 
@@ -485,16 +488,15 @@ freepte(Segment *s, Pte *p)
 {
 	Page **pg, **ptop;
 
-	ptop = &p->pages[PTEPERTAB];
-
 	switch(s->type&SG_TYPE) {
 	case SG_PHYSICAL:
+		ptop = &p->pages[PTEPERTAB];
 		for(pg = p->pages; pg < ptop; pg++)
 			if(*pg)
 				(*s->pgfree)(*pg);
 		break;
 	default:
-		for(pg = p->pages; pg < ptop; pg++)
+		for(pg = p->first; pg <= p->last; pg++)
 			if(*pg)
 				putpage(*pg);
 	}

@@ -323,6 +323,8 @@ struct Pte
 		Pte	*next;			/* Free list */
 		Page	*pages[PTEPERTAB];	/* Page map for this chunk of pte */
 	};
+	Page	**first;			/* First used entry */
+	Page	**last;				/* Last used entry */
 };
 
 /* Segment types */

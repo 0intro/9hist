@@ -800,22 +800,31 @@ dupb(Block **hp, Block *bp, int offset, int count)
 Block *
 copyb(Block *bp, int count)
 {
-	Block *nbp;
+	Block *nbp, *head, *tail;
 	int i;
 
-	nbp = allocb(count);
-	if(nbp == 0)
-		return 0;
-
+	head = 0;
 	while(bp && count) {
-		i = MIN(count, BLEN(bp));
+		i = BLEN(bp);
+		nbp = allocb(i);
+		if(i > nbp->lim-nbp->wptr) {
+			if(head)
+				freeb(head);
+			return 0;
+		}
 		memmove(nbp->wptr, bp->rptr, i);
 		nbp->wptr += i;
 		count -= i;
+		if(head == 0)
+			head = nbp;
+		else
+			tail->next = nbp;
+
+		tail = nbp;
 		bp = bp->next;
 	}
 
-	return nbp;	
+	return head;	
 }
 
 ushort tcp_mss = DEF_MSS;	/* Maximum segment size to be sent with SYN */

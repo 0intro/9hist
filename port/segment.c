@@ -186,6 +186,7 @@ segpage(Segment *s, Page *p)
 {
 	Pte **pte;
 	ulong off;
+	Page **pg;
 
 	if(p->va < s->base || p->va >= s->top)
 		panic("segpage");
@@ -195,7 +196,12 @@ segpage(Segment *s, Page *p)
 	if(*pte == 0)
 		*pte = ptealloc();
 
-	(*pte)->pages[(off&(PTEMAPMEM-1))/BY2PG] = p;
+	pg = &(*pte)->pages[(off&(PTEMAPMEM-1))/BY2PG];
+	*pg = p;
+	if(pg < (*pte)->first)
+		(*pte)->first = pg;
+	if(pg > (*pte)->last)
+		(*pte)->last = pg;
 }
 
 Image*

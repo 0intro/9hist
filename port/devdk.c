@@ -300,13 +300,15 @@ dkalloc(char *name, int ncsc, int lines)
 	dp->net.listen = dklisten;
 	dp->net.clone = dkcloneline;
 	dp->net.prot = dp->prot;
-	dp->net.ninfo = 3;
+	dp->net.ninfo = 4;
 	dp->net.info[0].name = "addr";
 	dp->net.info[0].fill = dkfilladdr;
 	dp->net.info[1].name = "raddr";
 	dp->net.info[1].fill = dkfillraddr;
 	dp->net.info[2].name = "ruser";
 	dp->net.info[2].fill = dkfillruser;
+	dp->net.info[3].name = "stats";
+	dp->net.info[3].fill = urpfillstats;
 
 	unlock(&dklock);
 	return dp;

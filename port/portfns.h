@@ -248,3 +248,4 @@ Mhead*	newmnthead(void);
 void	mountfree(Mount*);
 void	mntheadfree(Mhead*);
 void	unmount(Chan*, Chan*);
+void	urpfillstats(Chan*, char*, int);

@@ -46,7 +46,7 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 {
 	ulong mmuphys=0, soff;
 	Page **pg, *lkp, *new = 0;
-	Pte **p;
+	Pte **p, *etp;
 	int type;
 
 	addr &= ~(BY2PG-1);
@@ -55,8 +55,14 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 	if(*p == 0) 
 		*p = ptealloc();
 
-	pg = &(*p)->pages[(soff&(PTEMAPMEM-1))/BY2PG];
+	etp = *p;
+	pg = &etp->pages[(soff&(PTEMAPMEM-1))/BY2PG];
 	type = s->type&SG_TYPE;
+
+	if(pg < etp->first)
+		etp->first = pg;
+	if(pg > etp->last)
+		etp->last = pg;
 
 	switch(type) {
 	case SG_TEXT:

@@ -11,7 +11,7 @@
 #include	"arp.h"
 #include 	"ipdat.h"
 
-#define	 DBG	if(1)print
+#define	 DBG	if(0)print
 int 		ilcksum = 1;
 static 	int 	initseq = 25000;
 static	Rendez	ilackr;
@@ -21,8 +21,9 @@ char	*iltype[] =  { "sync", "data", "dataquerey", "ack", "querey", "state", "clo
 
 enum
 {
-	Slowtime = 20,
-	Fasttime = 1,
+	Mstime	  = 200,
+	Slowtime  = Mstime*20,
+	Fasttime  = Mstime,
 };
 
 void	ilrcvmsg(Ipconv*, Block*);
@@ -31,8 +32,12 @@ void	ilsendctl(Ipconv*, Ilhdr*, int);
 void	ilackq(Ilcb*, Block*);
 void	ilprocess(Ipconv*, Ilhdr*, Block*);
 void	ilpullup(Ipconv*);
-void	ilhangup(Ipconv*);
+void	ilhangup(Ipconv*, char*);
 void	ilfreeq(Ilcb*);
+
+char Crefused[] = "connection refused";
+char Ctimedout[] = "connection timed out";
+char Creset[] = "connection reset by peer";
 
 void
 ilopen(Queue *q, Stream *s)
@@ -85,8 +90,9 @@ ilclose(Queue *q)
 		ic->state = Ilclosing;
 		ilsendctl(s, 0, Ilclose);
 		break;
-	Illistening:
+	case Illistening:
 		ic->state = Ilclosed;
+		s->psrc = 0;
 		break;
 	}
 	netdisown(&s->ipinterface->net, s->index);
@@ -154,8 +160,8 @@ iloput(Queue *q, Block *bp)
 	/* Checksum of ilheader plus data (not ip & no pseudo header) */
 	if(ilcksum)
 		hnputs(ih->ilsum, ptcl_csum(bp, IL_EHSIZE, dlen+IL_HDRSIZE));
+
 	ilackq(ic, bp);
-	delay(100);
 	PUTNEXT(q, bp);
 }
 
@@ -233,7 +239,10 @@ ilrcvmsg(Ipconv *ipc, Block *bp)
 
 	etab = &ipc[conf.ip];
 	for(s = ipc; s < etab; s++)
-		if(s->psrc == sp && s->pdst == dp && s->dst == dst) {
+		if(s->ilctl.state != Ilclosed)
+		if(s->psrc == sp)
+		if(s->pdst == dp)
+		if(s->dst == dst) {
 			ilprocess(s, ih, bp);
 			return;
 		}
@@ -241,17 +250,18 @@ ilrcvmsg(Ipconv *ipc, Block *bp)
 	if(ih->iltype != Ilsync)
 		goto drop;
 
-	if(s->curlog > s->backlog)
-		goto reset;
-
 	/* Look for a listener */
 	for(s = ipc; s < etab; s++) {
 		if(s->ilctl.state == Illistening)
 		if(s->pdst == 0)
 		if(s->dst == 0) {
-			new = ipincoming(ipc, s);
-			if(new == 0)
+			if(s->curlog > s->backlog)
 				goto reset;
+			new = ipincoming(ipc, s);
+			if(new == 0) {
+				print("incoming\n");
+				goto reset;
+			}
 
 			new->newcon = 1;
 			new->ipinterface = s->ipinterface;
@@ -297,6 +307,7 @@ _ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 	ack = nhgetl(h->ilack);
 	ic = &s->ilctl;
 
+	ic->timeout = 0;
 	switch(ic->state) {
 	default:
 		panic("il unknown state");
@@ -310,7 +321,7 @@ _ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 		case Ilsync:
 			if(ack != ic->start) {
 				ic->state = Ilclosed;
-				ilhangup(s);
+				ilhangup(s, Crefused);
 			}
 			else {
 				ic->recvd = id;
@@ -323,7 +334,7 @@ _ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 		case Ilclose:
 			if(ack == ic->start) {
 				ic->state = Ilclosed;
-				ilhangup(s);
+				ilhangup(s, Crefused);
 			}
 			break;
 		}
@@ -350,7 +361,7 @@ _ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 		case Ilclose:
 			if(ack == ic->start) {
 				ic->state = Ilclosed;
-				ilhangup(s);
+				ilhangup(s, Crefused);
 			}
 			break;
 		}
@@ -361,7 +372,7 @@ _ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 		case Ilsync:
 			if(id != ic->start) {
 				ic->state = Ilclosed;
-				ilhangup(s);
+				ilhangup(s, Creset);
 			}
 			else 
 				ilsendctl(s, 0, Ilack);
@@ -423,7 +434,7 @@ _ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 			ic->recvd = id;
 			if(ack == ic->next) {
 				ic->state = Ilclosed;
-				ilhangup(s);
+				ilhangup(s, 0);
 			}
 			ilsendctl(s, 0, Ilclose);
 			break;
@@ -442,23 +453,31 @@ ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 	Ilcb *ic = &s->ilctl;
 
 	USED(ic);
-	DBG("%11s rcv %d/%d snt %d/%d pkt(%s id %d ack %d %d->%d) ",
+	DBG("%-11s rcv %d/%d snt %d/%d pkt(%-6s id %d ack %d %d->%d) ",
 		ilstate[ic->state],  ic->rstart, ic->recvd, ic->start, ic->next,
 		iltype[h->iltype], nhgetl(h->ilid), nhgetl(h->ilack), 
 		nhgets(h->ilsrc), nhgets(h->ildst));
 
 	_ilprocess(s, h, bp);
 
-	DBG("%11s rcv %d snt %d\n", ilstate[ic->state], ic->recvd, ic->next);
+	DBG("%-11s rcv %d snt %d\n", ilstate[ic->state], ic->recvd, ic->next);
 }
 
 void
-ilhangup(Ipconv *s)
+ilhangup(Ipconv *s, char *msg)
 {
 	Block *nb;
+	ulong l;
 
 	if(s->readq) {
-		nb = allocb(0);
+		if(msg) {
+			l = strlen(msg);
+			nb = allocb(l);
+			strcpy((char*)nb->wptr, msg);
+			nb->wptr += l;
+		}
+		else
+			nb = allocb(0);
 		nb->type = M_HANGUP;
 		nb->flags |= S_DELIM;
 		PUTNEXT(s->readq, nb);
@@ -588,22 +607,51 @@ ilackproc(void *a)
 
 	base = (Ipconv*)a;
 	end = &base[conf.ip];
-
 	for(;;) {
-		tsleep(&ilackr, return0, 0, 250);
+		tsleep(&ilackr, return0, 0, Mstime);
 		for(s = base; s < end; s++) {
 			ic = &s->ilctl;
 			switch(ic->state) {
-			case Ilclosed:
-			case Illistening:
+			default:
 				break;
 			case Ilclosing:
+				ic->timeout++;
+				if(ic->timeout >= Slowtime) {
+					ic->state = Ilclosed;
+					ilhangup(s, 0);
+				}
 				break;
 			case Ilsyncee:
+				ic->timeout++;
+				if(ic->timeout >= Slowtime) {
+					ic->state = Ilclosed;
+					ilhangup(s, Ctimedout);
+					break;
+				}
+print("Rxmit %d/%d %s", s->psrc, s->pdst, ilstate[ic->state]);
+				ilsendctl(s, 0, Ilsync);
 				break;
 			case Ilsyncer:
+				ic->timeout++;
+				if(ic->timeout >= Slowtime) {
+					ic->state = Ilclosed;
+					ilhangup(s, Ctimedout);
+					break;
+				}
+print("Rxmit %d/%d %s", s->psrc, s->pdst, ilstate[ic->state]);
+				ilsendctl(s, 0, Ilsync);
 				break;
 			case Ilestablished:
+				ic->timeout++;
+				if(ic->unacked == 0)
+					break;
+				if(ic->timeout >= Slowtime) {
+					ic->state = Ilclosed;
+					ilhangup(s, Ctimedout);
+					break;
+				}
+print("Rxmit %d/%d %s", s->psrc, s->pdst, ilstate[ic->state]);
+				ilsendctl(s, 0, Ilstate);
 				break;
 			}
 		}

@@ -24,7 +24,9 @@ enum {
 	Nincon=		1,	/* number of incons */
 	Nin=		32,	/* Blocks in the input ring */
 	Bsize=		128,	/* size of an input ring block */
-	Mfifo=		0xff	/* a mask, must be 2^n-1, must be > Nin */
+	Mfifo=		0xff,	/* a mask, must be 2^n-1, must be > Nin */
+
+	Qstats=		1,	/* qid of the statistics file */
 };
 
 /*
@@ -78,6 +80,7 @@ struct Incon {
 	ulong	crc;		/* crc errors */
 	ulong	in;		/* bytes in */
 	ulong	out;		/* bytes out */
+	ulong	wait;		/* wait time in milliseconds */
 };
 
 Incon incon[Nincon];
@@ -140,6 +143,10 @@ Qinfo inconinfo =
 };
 
 int incondebug;
+
+Dirtab incondir[]={
+	"stats",		{Qstats},	0,		0444,
+};
 
 /*
  *  set the incon parameters
@@ -354,19 +361,19 @@ inconclone(Chan *c, Chan *nc)
 int	 
 inconwalk(Chan *c, char *name)
 {
-	return devwalk(c, name, 0, 0, streamgen);
+	return devwalk(c, name, incondir, 1, streamgen);
 }
 
 void	 
 inconstat(Chan *c, char *dp)
 {
-	devstat(c, dp, 0, 0, streamgen);
+	devstat(c, dp, incondir, 1, streamgen);
 }
 
 Chan*
 inconopen(Chan *c, int omode)
 {
-	if(c->qid.path == CHDIR){
+	if(c->qid.path == CHDIR || c->qid.path == Qstats){
 		if(omode != OREAD)
 			error(Eperm);
 	}else
@@ -393,7 +400,18 @@ inconclose(Chan *c)
 long	 
 inconread(Chan *c, void *buf, long n, ulong offset)
 {
-	return streamread(c, buf, n);
+	char b[256];
+	Incon *i;
+
+	if(c->qid.path == CHDIR)
+		return devdirread(c, buf, n, incondir, 1, streamgen);
+	else if(c->qid.path == Qstats){
+		i = &incon[c->dev];
+		sprint(b, "in: %d\nout: %d\noverflow: %d\ncrc: %d\nwait: %d\n", i->in,
+			i->out, i->overflow, i->crc, i->wait);
+		return stringread(buf, n, b, offset);
+	} else
+		return streamread(c, buf, n);
 }
 
 long	 
@@ -486,7 +504,7 @@ inconoput(Queue *q, Block *bp)
 {
 	Device *dev;
 	Incon *ip;
-	ulong end;
+	ulong start, end;
 	int chan;
 	int ctl;
 	int n, size;
@@ -548,7 +566,8 @@ inconoput(Queue *q, Block *bp)
 		/*
 		 *  spin till there is room
 		 */
-		for(end = NOW+1000; dev->status & TX_FULL;){
+		start = NOW;
+		for(n = 0, end = start+1000; dev->status & TX_FULL; n++){
 			nop();	/* make sure we don't optimize too much */
 			if(NOW > end){
 				print("incon output stuck\n");
@@ -557,6 +576,7 @@ inconoput(Queue *q, Block *bp)
 				return;
 			}
 		}
+		ip->wait = (n + ip->wait)>>1;
 
 		/*
 		 *  put in next packet
@@ -566,6 +586,7 @@ inconoput(Queue *q, Block *bp)
 			n = 16;
 		size = n;
 		dev->cdata = chan;
+		ip->out += n;
 		while(n--){
 			*(uchar *)&dev->data_cntl = *bp->rptr++;
 		}
@@ -689,6 +710,7 @@ inconkproc(void *arg)
 		 */
 		while(ip->ri != ip->wi){
 			bp = ip->inb[ip->ri];
+			ip->in += BLEN(bp);
 			PUTNEXT(ip->rq, bp);
 			bp = ip->inb[ip->ri] = allocb(Bsize);
 			bp->wptr += 3;
