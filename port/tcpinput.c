@@ -784,31 +784,37 @@ dupb(Block **hp, Block *bp, int offset, int count)
 Block *
 copyb(Block *bp, int count)
 {
-	Block *nbp, *head, *tail;
-	int i;
+	Block *nb, *head, **p;
+	int l;
 
-	head = tail = 0;
-	while(bp && count) {
-		i = BLEN(bp);
-		nbp = allocb(i);
-		if(i > nbp->lim-nbp->wptr) {
-			if(head)
-				freeb(head);
-			return 0;
-		}
-		memmove(nbp->wptr, bp->rptr, i);
-		nbp->wptr += i;
-		count -= i;
-		if(head == 0)
-			head = nbp;
-		else
-			tail->next = nbp;
-
-		tail = nbp;
+	p = &head;
+	while(count) {
+		l = BLEN(bp);
+		if(count < l)
+			l = count;
+		nb = allocb(l);
+		if(nb == 0)
+			panic("copyb.1");
+		memmove(nb->wptr, bp->rptr, l);
+		nb->wptr += l;
+		count -= l;
+		*p = nb;
+		p = &nb->next;
 		bp = bp->next;
+		if(bp == 0)
+			break;
 	}
-
-	return head;	
+	if(count) {
+		nb = allocb(count);
+		if(nb == 0)
+			panic("copyb.2");
+		memset(nb->wptr, 0, count);
+		nb->wptr += count;
+		*p = nb;
+	}
+	if(blen(head) == 0)
+		print("copyb: zero length\n");
+	return head;
 }
 
 ushort tcp_mss = DEF_MSS;	/* Maximum segment size to be sent with SYN */

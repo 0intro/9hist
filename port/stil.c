@@ -114,6 +114,7 @@ iloput(Queue *q, Block *bp)
 	Ilcb *ic;
 	int dlen;
 	Block *np, *f;
+	ulong id;
 
 	ipc = (Ipconv *)(q->ptr);
 	if(ipc->psrc == 0)
@@ -158,9 +159,12 @@ iloput(Queue *q, Block *bp)
 	hnputs(ih->illen, dlen+IL_HDRSIZE);
 	hnputs(ih->ilsrc, ipc->psrc);
 	hnputs(ih->ildst, ipc->pdst);
+
 	lock(&ic->nxl);
-	hnputl(ih->ilid, ic->next++);
+	id = ic->next++;
 	unlock(&ic->nxl);
+	hnputl(ih->ilid, id);
+
 	hnputl(ih->ilack, ic->recvd);
 	ih->iltype = Ildata;
 	ih->ilspec = 0;
@@ -250,7 +254,7 @@ ilrcvmsg(Ipconv *ipc, Block *bp)
 
 	if(ilcksum && ptcl_csum(bp, IL_EHSIZE, illen) != 0) {
 		st = (ih->iltype < 0 || ih->iltype > Ilclose) ? "?" : iltype[ih->iltype];
-		print("il: cksum error, pkt(%s id %d ack %d %d.%d.%d.%d/%d->%d)\n",
+		print("il: cksum error, pkt(%s id %lud ack %lud %d.%d.%d.%d/%d->%d)\n",
 			st, nhgetl(ih->ilid), nhgetl(ih->ilack), fmtaddr(dst), sp, dp);
 		goto drop;
 	}
@@ -314,8 +318,7 @@ void
 _ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 {
 	Ilcb *ic;
-	Block *nb, *next;
-	ulong id, ack, dlen;
+	ulong id, ack;
 
 	id = nhgetl(h->ilid);
 	ack = nhgetl(h->ilack);
@@ -561,7 +564,6 @@ ilpullup(Ipconv *s)
 
 		ic->recvd = oid;
 		ic->outoforder = bp->list;
-		ic->oblks--;
 
 		qunlock(&ic->outo);
 		bp->list = 0;
@@ -587,14 +589,13 @@ iloutoforder(Ipconv *s, Ilhdr *h, Block *bp)
 
 	id = nhgetl(h->ilid);
 	/* Window checks */
-	if(id <= ic->recvd || ic->oblks > ic->window) {
+	if(id <= ic->recvd || id > ic->recvd+ic->window) {
 		freeb(bp);
 		return;
 	}
 
 	/* Packet is acceptable so sort onto receive queue for pullup */
 	qlock(&ic->outo);
-	ic->oblks++;
 	if(ic->outoforder == 0)
 		ic->outoforder = bp;
 	else {
@@ -753,7 +754,6 @@ ilstart(Ipconv *ipc, int type, int window)
 	ic->next = ic->start+1;
 	ic->recvd = 0;
 	ic->window = window;
-	ic->oblks = 0;
 
 	switch(type) {
 	case IL_PASSIVE:

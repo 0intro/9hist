@@ -104,7 +104,6 @@ struct Ilcb				/* Control block */
 
 	QLock	outo;			/* Out of order packet queue */
 	Block	*outoforder;
-	int	oblks;			/* Number of blocks in queue */
 
 	Lock	nxl;
 	ulong	next;			/* Id of next to send */
