@@ -257,8 +257,8 @@ ilrcvmsg(Ipconv *ipc, Block *bp)
 	dst = nhgetl(ih->src);
 
 	if(ilcksum && ptcl_csum(bp, IL_EHSIZE, illen) != 0) {
-		st = (ih->iltype < 0 || ih->iltype > Ilclose) ? "?" : iltype[ih->iltype];
-/*		print("il: cksum error, pkt(%s id %lud ack %lud %d.%d.%d.%d/%d->%d)\n",
+/*		st = (ih->iltype < 0 || ih->iltype > Ilclose) ? "?" : iltype[ih->iltype];
+		print("il: cksum error, pkt(%s id %lud ack %lud %d.%d.%d.%d/%d->%d)\n",
 			st, nhgetl(ih->ilid), nhgetl(ih->ilack), fmtaddr(dst), sp, dp); /**/
 		goto drop;
 	}
@@ -343,24 +343,21 @@ _ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 		default:
 			break;
 		case Ilsync:
-			if(ack != ic->start) {
-				ic->state = Ilclosed;
+			if(ack != ic->start)
 				ilhangup(s, "connection rejected");
-			}
 			else {
 				ic->recvd = id;
 				ic->rstart = id;
 				ilsendctl(s, 0, Ilack, ic->next, ic->recvd);
 				ic->state = Ilestablished;
+				wakeup(&ic->syncer);
 				ilpullup(s);
 				Starttimer(ic);
 			}
 			break;
 		case Ilclose:
-			if(ack == ic->start) {
-				ic->state = Ilclosed;
+			if(ack == ic->start)
 				ilhangup(s, "remote close");
-			}
 			break;
 		}
 		freeb(bp);
@@ -386,10 +383,8 @@ _ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 			}
 			break;
 		case Ilclose:
-			if(id == ic->next) {
-				ic->state = Ilclosed;
+			if(id == ic->next)
 				ilhangup(s, "remote close");
-			}
 			break;
 		}
 		freeb(bp);
@@ -397,10 +392,8 @@ _ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 	case Ilestablished:
 		switch(h->iltype) {
 		case Ilsync:
-			if(id != ic->start) {
-				ic->state = Ilclosed;
+			if(id != ic->start)
 				ilhangup(s, "remote close");
-			}
 			else {
 				ilsendctl(s, 0, Ilack, ic->next, ic->rstart);
 				Starttimer(ic);
@@ -458,10 +451,8 @@ _ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 		case Ilclose:
 			ic->recvd = id;
 			ilsendctl(s, 0, Ilclose, ic->next, ic->recvd);
-			if(ack == ic->next) {
-				ic->state = Ilclosed;
+			if(ack == ic->next)
 				ilhangup(s, 0);
-			}
 			Starttimer(ic);
 			break;
 		default:
@@ -522,8 +513,14 @@ ilhangup(Ipconv *s, char *msg)
 {
 	Block *nb;
 	int l;
+	Ilcb *ic;
+	int callout;
 
 	DBG("hangup! %s %d/%d\n", msg ? msg : "??", s->psrc, s->pdst);
+
+	ic = &s->ilctl;
+	callout = ic->state == Ilsyncer;
+	ic->state = Ilclosed;
 	if(s->readq) {
 		if(msg) {
 			l = strlen(msg);
@@ -537,6 +534,8 @@ ilhangup(Ipconv *s, char *msg)
 		nb->flags |= S_DELIM;
 		PUTNEXT(s->readq, nb);
 	}
+	if(callout)
+		wakeup(&ic->syncer);
 	s->psrc = 0;
 	s->pdst = 0;
 	s->dst = 0;
@@ -697,10 +696,8 @@ ilackproc(void *a)
 					ilsendctl(s, 0, Ilclose, ic->next, ic->recvd);
 					ilbackoff(ic);
 				}
-				if(ic->timeout >= ic->slowtime) {
-					ic->state = Ilclosed;
+				if(ic->timeout >= ic->slowtime)
 					ilhangup(s, 0);
-				}
 				break;
 			case Ilsyncee:
 			case Ilsyncer:
@@ -708,10 +705,8 @@ ilackproc(void *a)
 					ilsendctl(s, 0, Ilsync, ic->start, ic->recvd);
 					ilbackoff(ic);
 				}
-				if(ic->timeout >= ic->slowtime) {
-					ic->state = Ilclosed;
+				if(ic->timeout >= ic->slowtime)
 					ilhangup(s, etime);
-				}
 				break;
 			case Ilestablished:
 				ic->acktime -= Iltickms;
@@ -721,7 +716,6 @@ ilackproc(void *a)
 				if(ic->querytime <= 0){
 					ic->deathtime -= Querytime;
 					if(ic->deathtime < 0){
-						ic->state = Ilclosed;
 						ilhangup(s, etime);
 						break;
 					}
@@ -737,7 +731,6 @@ ilackproc(void *a)
 					ilbackoff(ic);
 				}
 				if(ic->timeout >= ic->slowtime) {
-					ic->state = Ilclosed;
 					ilhangup(s, etime);
 					break;
 				}
@@ -756,6 +749,11 @@ ilbackoff(Ilcb *ic)
 		ic->fasttime = (ic->fasttime)*3/2;
 }
 
+static int
+notsyncer(void *ic)
+{
+	return ((Ilcb*)ic)->state != Ilsyncer;
+}
 void
 ilstart(Ipconv *ipc, int type, int window)
 {
@@ -783,6 +781,9 @@ ilstart(Ipconv *ipc, int type, int window)
 	case IL_ACTIVE:
 		ic->state = Ilsyncer;
 		ilsendctl(ipc, 0, Ilsync, ic->start, ic->recvd);
+		sleep(&ic->syncer, notsyncer, ic);
+		if(ic->state == Ilclosed)
+			error(Etimedout);
 		break;
 	}
 }

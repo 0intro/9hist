@@ -311,6 +311,8 @@ struct Swapalloc
 	char	*alloc;			/* Round robin allocator */
 	char	*top;			/* Top of swap map */
 	Rendez	r;			/* Pager kproc idle sleep */
+	ulong	highwater;		/* Threshold beyond which we must page */
+	ulong	headroom;		/* Space pager attempts to clear below highwater */
 }swapalloc;
 
 struct Image
@@ -343,10 +345,8 @@ struct Pte
 #define SG_SHARED	004
 #define SG_PHYSICAL	005
 /* Segment flags */
-#define SG_RONLY	040		/* Segment is read only */
+#define SG_RONLY	040			/* Segment is read only */
 
-#define HIGHWATER	((conf.npage*5)/100)
-#define MAXHEADROOM	HIGHWATER*2	/* Silly but OK for debug */
 #define PG_ONSWAP	1
 #define pagedout(s)	(((ulong)s)==0 || (((ulong)s)&PG_ONSWAP))
 #define swapaddr(s)	(((ulong)s)&~PG_ONSWAP)

@@ -522,7 +522,10 @@ pexit(char *exitstr, int freemem)
 	 * if not a kernel process and have a parent,
 	 * do some housekeeping.
 	 */
-	if(c->kp == 0 && (p = c->parent)) {
+	if(c->kp == 0) {
+		if((p = c->parent) == 0)
+			panic("boot process died");
+			
 		wq = newwaitq();
 		wq->w.pid = c->pid;
 		utime = c->time[TUser] + c->time[TCUser];

@@ -103,7 +103,7 @@ void
 pageinit(void)
 {
 	ulong np, addr, lim;
-	ulong i, vmem, pmem;
+	ulong i, vmem, pmem, hw, hr;
 	Page *p;
 
 	/*
@@ -150,7 +150,15 @@ pageinit(void)
 	palloc.user = palloc.freecount = p - palloc.head;
 	pmem = palloc.user*BY2PG/1024;
 	vmem = pmem + ((conf.nswap)*BY2PG)/1024;
-	print("%lud free pages, %dK bytes, swap %dK bytes\n", palloc.user, pmem, vmem);
+
+	/* Pageing numbers */
+	swapalloc.highwater = (palloc.freecount*5)/100;
+	swapalloc.headroom = swapalloc.highwater + (swapalloc.highwater/4);
+	hw = (swapalloc.highwater*BY2PG)/1024;
+	hr = (swapalloc.headroom*BY2PG)/1024;
+	
+	print("%lud free pages, %dK bytes, swap %dK bytes, highwater %dK, headroom %dK\n", 
+				palloc.user, pmem, vmem, hw, hr);
 }
 
 Page*
@@ -166,7 +174,7 @@ newpage(int clear, Segment **s, ulong va)
 	lock(&palloc);
 
 	/* The kp test is a poor guard against the pager deadlocking */
-	while((palloc.freecount < HIGHWATER && u->p->kp == 0) || palloc.freecount == 0) {
+	while((palloc.freecount < swapalloc.highwater && u->p->kp == 0)||palloc.freecount == 0) {
 		palloc.wanted++;
 		unlock(&palloc);
 		if(s && *s) {
@@ -223,53 +231,54 @@ int
 ispages(void *p)
 {
 	USED(p);
-	return palloc.freecount >= HIGHWATER;
+	return palloc.freecount >= swapalloc.highwater;
 }
 
 void
 putpage(Page *p)
 {
-	int count;
+	int wake;
 
 	if(onswap(p)) {
 		putswap(p);
 		return;
 	}
 
+	wake = 0;
 	lockpage(p);
 	if(--p->ref == 0) {
 		lock(&palloc);
-		if(p->image) {
+		if(p->image && p->image != &swapimage) {
 			if(palloc.tail) {
 				p->prev = palloc.tail;
 				palloc.tail->next = p;
-				palloc.tail = p;
 			}
 			else {
-				palloc.head = palloc.tail = p;
+				palloc.head = p;
 				p->prev = 0;
 			}
+			palloc.tail = p;
 			p->next = 0;
 		}
 		else {
 			if(palloc.head) {
 				p->next = palloc.head;
 				palloc.head->prev = p;
-				palloc.head = p;
 			}
 			else {
-				palloc.head = palloc.tail = p;
+				palloc.tail = p;
 				p->next = 0;
 			}
+			palloc.head = p;
 			p->prev = 0;
 		}
 
+		wake = 1;
 		palloc.freecount++;		/* Release people waiting for memory */
 		unlock(&palloc);
 	}
 	unlockpage(p);
-
-	if(palloc.wanted)
+	if(wake && palloc.wanted)
 		wakeup(&palloc.r);
 }
 
@@ -297,8 +306,9 @@ duppage(Page *p)				/* Always call with p locked */
 
 	lock(&palloc);
 
-	if(palloc.freecount < HIGHWATER || /* No freelist cache when memory is very low */
-	   p->image == &swapimage) {	   /* No dup for swap pages */
+	/* No freelist cache when memory is very low, No dup for swap pages */
+	if(palloc.freecount < swapalloc.highwater || 
+	   p->image == &swapimage) {
 		unlock(&palloc);
 		uncachepage(p);	
 		return;

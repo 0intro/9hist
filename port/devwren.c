@@ -326,5 +326,6 @@ wrenpart(int dev)
 	dp->npart = pp - dp->p;
 	poperror();
 	scsifree(b);
+	poperror();
 	qunlock(dp);
 }

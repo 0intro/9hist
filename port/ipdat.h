@@ -98,6 +98,8 @@ struct Ilcb				/* Control block */
 {
 	int	state;			/* Connection state */
 
+	Rendez	syncer;			/* where syncer waits for a connect */
+
 	QLock	ackq;			/* Unacknowledged queue */
 	Block	*unacked;
 	Block	*unackedtail;
@@ -247,6 +249,7 @@ struct Tcpctl
 {
 	QLock;
 	struct Tctl;
+	Rendez syner;
 };
 
 struct	Tcp

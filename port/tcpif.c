@@ -15,6 +15,7 @@ state_upcall(Ipconv *s, char oldstate, char newstate)
 {
 	Block *bp;
 	int len;
+	Tcpctl *tcb = &s->tcpctl;
 
 	DPRINT("state_upcall: %s -> %s err %s\n", 
 	      tcpstate[oldstate], tcpstate[newstate], s->err);
@@ -48,8 +49,16 @@ state_upcall(Ipconv *s, char oldstate, char newstate)
 		qunlock(s);
 		break;
 	}
+
+	if(oldstate == Syn_sent)
+		wakeup(&tcb->syner);
 }
 
+static int
+notsyner(void *ic)
+{
+	return ((Tcpctl*)ic)->state != Syn_sent;
+}
 void
 tcpstart(Ipconv *s, int mode, ushort window, char tos)
 {
@@ -76,6 +85,9 @@ tcpstart(Ipconv *s, int mode, ushort window, char tos)
 		setstate(s, Syn_sent);
 		tcp_output(s);
 		qunlock(tcb);
+		sleep(&tcb->syner, notsyner, tcb);
+		if(tcb->state != Established && tcb->state != Syn_received)
+			error(Etimedout);
 		break;
 	}
 }

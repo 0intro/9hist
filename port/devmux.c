@@ -292,6 +292,53 @@ muxcreate(Chan *c, char *name, int omode, ulong perm)
 }
 
 void
+muxclose(Chan *c)
+{
+	Block *f1, *f2;
+	Con *cm, *e;
+	Mux *m;
+	int nc;
+
+	if(c->qid.path&CHDIR)
+		return;
+
+	m = &muxes[NMUX(c)];
+	if(!(c->flag&COPEN) || m->srv)
+		return;
+
+	nc = NCON(c);
+	f1 = 0;
+	f2 = 0;
+	switch(nc) {
+	case Qhead:
+		m->headopen = 0;
+		cm = m->connects;
+		for(e = &cm[Nmux]; cm < e; cm++)
+			if(cm->ref)
+				wakeup(&cm->conq.r);
+		lock(m);
+		if(--m->ref == 0)
+			f1 = muxclq(&m->headq);
+		unlock(m);
+		break;
+	case Qclone:
+		break;
+	default:
+		lock(m);
+		cm = &m->connects[nc-Qoffset];
+		if(--cm->ref == 0)
+			f1 = muxclq(&cm->conq);
+		if(--m->ref == 0)
+			f1 = muxclq(&m->headq);
+		unlock(m);
+	}
+	if(f1)
+		freeb(f1);
+	if(f2)
+		freeb(f2);
+}
+
+void
 muxremove(Chan *c)
 {
 	Mux *m;
@@ -353,53 +400,6 @@ muxwstat(Chan *c, char *db)
 		m->connects[nc-Qoffset].perm = d.mode;
 		break;
 	}
-}
-
-void
-muxclose(Chan *c)
-{
-	Block *f1, *f2;
-	Con *cm, *e;
-	Mux *m;
-	int nc;
-
-	if(c->qid.path&CHDIR)
-		return;
-
-	m = &muxes[NMUX(c)];
-	if(!(c->flag&COPEN) || m->srv)
-		return;
-
-	nc = NCON(c);
-	f1 = 0;
-	f2 = 0;
-	switch(nc) {
-	case Qhead:
-		m->headopen = 0;
-		cm = m->connects;
-		for(e = &cm[Nmux]; cm < e; cm++)
-			if(cm->ref)
-				wakeup(&cm->conq.r);
-		lock(m);
-		if(--m->ref == 0)
-			f1 = muxclq(&m->headq);
-		unlock(m);
-		break;
-	case Qclone:
-		break;
-	default:
-		lock(m);
-		cm = &m->connects[nc-Qoffset];
-		if(--cm->ref == 0)
-			f1 = muxclq(&cm->conq);
-		if(--m->ref == 0)
-			f1 = muxclq(&m->headq);
-		unlock(m);
-	}
-	if(f1)
-		freeb(f1);
-	if(f2)
-		freeb(f2);
 }
 
 long

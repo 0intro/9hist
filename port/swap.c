@@ -15,8 +15,10 @@ int	canflush(Proc *p, Segment*);
 
 enum
 {
-	Maxpages = 100,		/* Max number of pageouts per segment pass */
+	Maxpages = 500,		/* Max number of pageouts per segment pass */
 };
+
+#define DBG	if(1)print
 
 Image 	swapimage;
 static 	int swopen;
@@ -103,43 +105,49 @@ pager(void *junk)
 	Segment *s;
 	int i;
 
+	if(waserror()) 
+		panic("pager: os error\n");
+
 	USED(junk);
 	p = proctab(0);
 	ep = &p[conf.nproc];
+
+loop:
+	u->p->psstate = "Idle";
+	sleep(&swapalloc.r, needpages, 0);
+	u->p->psstate = "Pageout";
+
 	for(;;) {
-		if(waserror()) 
-			panic("pager: os error\n");
+		p++;
+		if(p > ep)
+			p = proctab(0);
 
-		u->p->psstate = "Idle";
-		sleep(&swapalloc.r, needpages, 0);
-		u->p->psstate = "Pageout";
+		if(p->state == Dead || p->kp)
+			continue;
 
-		for(p = proctab(0); p < ep; p++) {
-			if(p->state == Dead || p->kp)
-				continue;
-
-			if(swapimage.c) {
-				for(i = 0; i < NSEG; i++)
-					if(s = p->seg[i]) {
-						pageout(p, s);
-						executeio();
-					}
-			}
-			else 
-			if(palloc.freecount < HIGHWATER) {
-				/* Rob made me do it ! */
-				if(conf.cntrlp == 0)
-					freebroken();
-
-				/* Emulate the old system if no swap channel */
-				print("no physical memory\n");
-				tsleep(&swapalloc.r, return0, 0, 1000);
-				wakeup(&palloc.r);
+		if(swapimage.c) {
+			for(i = 0; i < NSEG; i++) {
+				if(!needpages(junk))
+					goto loop;
+				if(s = p->seg[i]) {
+					pageout(p, s);
+					executeio();
+				}
 			}
 		}
+		else 
+		if(palloc.freecount < swapalloc.highwater) {
+			/* Rob made me do it ! */
+			if(conf.cntrlp == 0)
+				freebroken();
 
-		poperror();
+			/* Emulate the old system if no swap channel */
+			print("no physical memory\n");
+			tsleep(&swapalloc.r, return0, 0, 1000);
+			wakeup(&palloc.r);
+		}
 	}
+	goto loop;
 }
 
 void			
@@ -147,13 +155,20 @@ pageout(Proc *p, Segment *s)
 {
 	Pte **sm, **endsm, *l;
 	Page **pg, *entry;
-	int type;
+	int type, nr;
 extern char *sname[];
+
 
 	if(!canqlock(&s->lk))	/* We cannot afford to wait, we will surely deadlock */
 		return;
 
-	if(!canflush(p, s) || s->steal) {
+	if(s->steal) {
+		qunlock(&s->lk);
+		putseg(s);
+		return;
+	}
+
+	if(!canflush(p, s)) {
 		qunlock(&s->lk);
 		putseg(s);
 		return;
@@ -166,6 +181,7 @@ extern char *sname[];
 	}
 
 	scavenge = 0;
+	nr = 0;
 
 	/* Pass through the pte tables looking for memory pages to swap out */
 	type = s->type&SG_TYPE;
@@ -175,13 +191,13 @@ extern char *sname[];
 		if(l == 0)
 			continue;
 		for(pg = l->first; pg < l->last; pg++) {
+			nr++;
 			entry = *pg;
 			if(pagedout(entry))
 				continue;
-			if(entry->modref & PG_REF) {
-				print("MODREF\n");
+
+			if(entry->modref & PG_REF)
 				entry->modref &= ~PG_REF;
-			}
 			else 
 				pagepte(type, s, pg);
 
@@ -190,8 +206,9 @@ extern char *sname[];
 		}
 	}
 out:
-	
-	print("%s: %d: type %s %d pages\n", p->text, p->pid, sname[type], scavenge);
+	DBG("%s: %d: %5s s %d nr %d fr %d\n", 
+	p->text, p->pid, sname[type], scavenge, nr, palloc.freecount);
+
 	poperror();
 	qunlock(&s->lk);
 	putseg(s);
@@ -235,14 +252,9 @@ int
 pagepte(int type, Segment *s, Page **pg)
 {
 	ulong daddr;
-	char *kaddr;
-	int n;
-	Chan *c;
 	Page *outp;
-	KMap *k;
 
 	outp = *pg;
-print("outp: %lux\n", *pg);
 	switch(type) {
 	case SG_TEXT:					/* Revert to demand load */
 		putpage(outp);
@@ -290,17 +302,7 @@ executeio(void)
 
 	for(i = 0; i < ioptr; i++) {
 		out = iolist[i];
-#ifdef asdf
-		if(out->ref > 2) {
-			lockpage(out);
-			if(out->ref > 2) {	
-				out->ref -= 2;
-				unlockpage(out);
-				continue;
-			}
-			unlockpage(out);
-		}
-#endif
+
 		k = kmap(out);
 		kaddr = (char*)VA(k);
 		qlock(&c->wrl);
@@ -330,7 +332,7 @@ int
 needpages(void *p)
 {
 	USED(p);
-	return palloc.freecount < HIGHWATER+MAXHEADROOM;
+	return palloc.freecount < swapalloc.headroom;
 }
 
 void
