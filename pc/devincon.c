@@ -10,13 +10,22 @@
 
 /* Centronix parallel (printer) port */
 
-/* base addresses */
-static int lptbase[] = {
-	0x3bc,	/* lpt1 */
-	0x378,	/* lpt2 (sic) */
-	0x278	/* lpt3 (sic) */
+typedef struct Lptinfo	Lptinfo;
+
+struct Lptinfo
+{
+	int	base;		/* port number */
+	int	ivec;		/* interrupt number */
 };
-#define NDEV	(sizeof lptbase/sizeof lptbase[0])
+
+static Lptinfo lptinfo[] = {
+	0x3bc,	Parallelvec,	/* lpt1 (safari) */
+	0x378,	Parallelvec,	/* lpt1 (`official') */
+	0x278,	Int0vec+5,	/* lpt2 (`official') */
+};
+#define NDEV	(sizeof lptinfo/sizeof lptinfo[0])
+
+extern int	incondev;	/* from config */
 
 /* offsets, and bits in the registers */
 enum
@@ -60,7 +69,7 @@ typedef struct Incon	Incon;
 
 #define NOW (MACHP(0)->ticks*MS2HZ)
 
-#define DPRINT /*if(incondebug)k*/print
+#define DPRINT if(incondebug)kprint
 
 static void	inconintr(Ureg *ur);
 
@@ -174,19 +183,20 @@ Dirtab incondir[]={
 };
 #define NINCON	(sizeof incondir/sizeof incondir[0])
 
-/*static void
+static void
 Xdelay(int n)
 {
 	while(--n >= 0) ;
 }
 #define	SDLY	1000
-*/
-#define	Xdelay(n)
+
+/*#define	Xdelay(n)*/
 
 static void
 reset(int dev)				/* hardware reset */
 {
 	outb(dev+Qpcr, Finitbar);
+	Xdelay(10000);
 	outb(dev+Qpcr, 0);
 	Xdelay(10000);
 	outb(dev+Qpcr, Finitbar);
@@ -195,8 +205,10 @@ reset(int dev)				/* hardware reset */
 static void
 wrctl(int dev, int data)		/* write control character */
 {
+	Xdelay(SDLY);
 	outb(dev+Qpcr, Finitbar);	/* no interrupts, please */
 	outb(dev+Qdlr, data);
+	Xdelay(SDLY);
 	outb(dev+Qpcr, Finitbar|Fstrobe);
 	Xdelay(SDLY);
 	outb(dev+Qpcr, Finitbar|Fie);
@@ -205,8 +217,10 @@ wrctl(int dev, int data)		/* write control character */
 static void
 wrdata(int dev, int data)		/* write data character */
 {
+	Xdelay(SDLY);
 	outb(dev+Qpcr, Finitbar|Fsi);
 	outb(dev+Qdlr, data);
+	Xdelay(SDLY);
 	outb(dev+Qpcr, Finitbar|Fsi|Fstrobe);
 	Xdelay(SDLY);
 	outb(dev+Qpcr, Finitbar|Fsi|Fie);
@@ -217,6 +231,7 @@ wrcmd(int dev, int data)		/* write command */
 {
 	outb(dev+Qpcr, Finitbar|Faf);
 	outb(dev+Qdlr, data);
+	Xdelay(SDLY);
 	outb(dev+Qpcr, Finitbar|Faf|Fstrobe);
 	Xdelay(SDLY);
 	outb(dev+Qpcr, Finitbar|Faf|Fie);
@@ -232,10 +247,8 @@ rdstatus(Incon *ip)			/* read status */
 	outb(dev+Qpcr, Finitbar|Faf|Fsi);
 	outb(dev+Qdlr, 0x01);
 	outb(dev+Qpcr, Finitbar|Faf|Fsi|Fstrobe);
-	Xdelay(SDLY);
 	data = (inb(dev+Qpsr)&0xf8)<<2;
 	outb(dev+Qpcr, Finitbar|Faf|Fsi);
-	Xdelay(SDLY);
 	data |= inb(dev+Qpsr)>>3;
 	if(data&(OVERFLOW|CRC_ERROR)){
 		if(data&OVERFLOW)
@@ -245,7 +258,6 @@ rdstatus(Incon *ip)			/* read status */
 	}
 	outb(dev+Qdlr, 0x03);
 	outb(dev+Qpcr, Finitbar|Faf|Fsi|Fstrobe);
-	Xdelay(SDLY);
 	outb(dev+Qpcr, Finitbar|Faf|Fsi|Fie);
 
 	return data;
@@ -255,6 +267,7 @@ static void
 iwrcmd(int dev, int data)		/* write command at interrupt level */
 {
 	outb(dev+Qdlr, data);
+	Xdelay(SDLY);
 	outb(dev+Qpcr, Finitbar|Faf|Fstrobe);
 	Xdelay(SDLY);
 	outb(dev+Qpcr, Finitbar|Faf);
@@ -269,10 +282,8 @@ irdstatus(Incon *ip)			/* read status at interrupt level */
 
 	outb(dev+Qdlr, 0x01);
 	outb(dev+Qpcr, Finitbar|Faf|Fsi|Fstrobe);
-	Xdelay(SDLY);
 	data = (inb(dev+Qpsr)&0xf8)<<2;
 	outb(dev+Qpcr, Finitbar|Faf|Fsi);
-	Xdelay(SDLY);
 	data |= inb(dev+Qpsr)>>3;
 	if(data&(OVERFLOW|CRC_ERROR)){
 		if(data&OVERFLOW)
@@ -291,10 +302,8 @@ irddata(int dev)			/* read data at interrupt level */
 
 	outb(dev+Qdlr, 0x00);
 	outb(dev+Qpcr, Finitbar|Faf|Fsi|Fstrobe);
-	Xdelay(SDLY);
 	data = (inb(dev+Qpsr)&0xf8)<<2;
 	outb(dev+Qpcr, Finitbar|Faf|Fsi);
-	Xdelay(SDLY);
 	data |= inb(dev+Qpsr)>>3;
 
 	return data;
@@ -306,10 +315,8 @@ irdnext(int dev)			/* read next data at interrupt level */
 	int data;
 
 	outb(dev+Qpcr, Finitbar|Faf|Fsi|Fstrobe);
-	Xdelay(SDLY);
 	data = (inb(dev+Qpsr)&0xf8)<<2;
 	outb(dev+Qpcr, Finitbar|Faf|Fsi);
-	Xdelay(SDLY);
 	data |= inb(dev+Qpsr)>>3;
 
 	return data;
@@ -319,14 +326,15 @@ static void
 irdnop(int dev, int pcr)		/* read nop (mux reset) */
 {
 	outb(dev+Qdlr, 0x03);
+	Xdelay(SDLY);
 	outb(dev+Qpcr, Finitbar|Faf|Fsi|Fstrobe);
 	Xdelay(SDLY);
 	outb(dev+Qpcr, pcr);
 }
-/*
+
 int		Irdnext(int);
 #define	irdnext	Irdnext
-*/
+
 /*
  *  set the incon parameters
  */
@@ -439,7 +447,6 @@ inconpoll(Incon *ip, int station)
 			break;
 		}
 	}
-print("poll: status 0x%.2ux\n", rdstatus(ip));
 }
 
 /*
@@ -496,7 +503,7 @@ inconreset(void)
 	 */
 /*	inconset(&incon[0], 3, 15); /**/
 	for(i=0; i<Nincon; i++){
-		incon[i].dev = lptbase[1/*i*/];
+		incon[i].dev = lptinfo[incondev].base;
 		incon[i].state = Notliving;
 		reset(incon[i].dev);
 		incon[i].ri = incon[i].wi = 0;
@@ -521,8 +528,7 @@ inconattach(char *spec)
 	int i;
 	Chan *c;
 
-	/*setvec(Parallelvec, inconintr);*/
-setvec(Int0vec+5, inconintr);
+	setvec(lptinfo[incondev].ivec, inconintr);
 	i = strtoul(spec, 0, 0);
 	if(i >= Nincon)
 		error(Ebadarg);
@@ -790,8 +796,10 @@ inconoput(Queue *q, Block *bp)
 	if(chan<=0)
 		print("bad channel %d\n", chan);
 
-	if(incondebug)
+	if(incondebug){
+		kprint("0x%.2ux ", rdstatus(ip));
 		showpkt("->", chan, ctl, bp, 0);
+	}
 
 	/*
 	 *  make sure there's an incon out there
@@ -947,11 +955,11 @@ inconkproc(void *arg)
 		}
 
 		/*
-		 *  send blocks upstream and stage new blocks.  if the block is small
-		 *  (< 64 bytes) copy into a smaller buffer.
+		 *  send blocks upstream and stage new blocks.
 		 */
 		while(ip->ri != ip->wi){
 			bp = ip->inb[ip->ri];
+			bp->flags |= S_DELIM;
 			ip->in += BLEN(bp);
 			PUTNEXT(ip->rq, bp);
 			bp = ip->inb[ip->ri] = allocb(Bsize);
@@ -1102,7 +1110,6 @@ inconintr(Ureg *ur)
 	int pcr;
 	Incon *ip;
 
-print("I");
 	USED(ur);
 	ip = &incon[0];
 	pcr = inb(ip->dev+Qpcr);

@@ -130,7 +130,7 @@ outready(void)
 	int tries;
 
 	for(tries = 0; (inb(Status) & Outbusy); tries++)
-		if(tries > 1000)
+		if(tries > 10000)
 			return -1;
 	return 0;
 }
@@ -160,7 +160,7 @@ mousecmd(int cmd)
 
 	c = 0;
 	do{
-		for(tries=0; tries < 10; tries++){
+		for(tries=0; tries < 100; tries++){
 			if(outready() < 0)
 				return -1;
 			outb(Cmd, 0xD4);

@@ -267,14 +267,16 @@ confinit(void)
 	conf.npage1 = ((i-1)*MB - conf.base1)/BY2PG;
 	conf.npage = conf.npage0 + conf.npage1;
 
-	pcnt = screenbits()-1;		/* Calculate % of memory for page pool */
-	pcnt = 70 - (pcnt*10);
-	conf.upages = (conf.npage*pcnt)/100;
-
 	ktop = PGROUND((ulong)end);
 	ktop = PADDR(ktop);
 	conf.npage0 -= ktop/BY2PG;
 	conf.base0 += ktop;
+
+	pcnt = screenbits()-1;		/* Calculate % of memory for page pool */
+	pcnt = 70 - (pcnt*10);
+	conf.upages = (conf.npage*pcnt)/100;
+	if(conf.npage - conf.upages < 1572864/BY2PG)
+		conf.upages = conf.npage - 1572864/BY2PG;
 
 	conf.topofmem = i*MB;
 

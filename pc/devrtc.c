@@ -60,6 +60,7 @@ rtcreset(void)
 void
 rtcinit(void)
 {
+	print("nvrm(0x2b) == 0x%lux\n", nvramread(0x2b));
 }
 
 Chan*
