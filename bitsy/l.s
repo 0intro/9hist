@@ -772,7 +772,31 @@ l12:	SUB	$1,R0
 	/* 6 */
 	MOVW	$1,R2
 
-	/* Follow the procedure */
+TEXT power_magic(SB), $-4
+	/* power_code gets copied into the area of no-ops below,
+	 * at a cache-line boundary (8 instructions)
+	 */
+	MOVW	R0, R0
+	MOVW	R0, R0
+	MOVW	R0, R0
+	MOVW	R0, R0
+	MOVW	R0, R0
+	MOVW	R0, R0
+	MOVW	R0, R0
+	MOVW	R0, R0
+	MOVW	R0, R0
+	MOVW	R0, R0
+	MOVW	R0, R0
+	MOVW	R0, R0
+	MOVW	R0, R0
+	MOVW	R0, R0
+	MOVW	R0, R0
+	MOVW	R0, R0
+
+TEXT power_code(SB), $-4
+	/* Follow the procedure; this code gets copied to the no-op
+	 * area preceding this code
+	 */
 	/* 1 */
 	MOVW	R1, 0x10(R5)
 	MOVW	R7, 0x14(R5)
@@ -791,12 +815,13 @@ slloop:
 	B		slloop			/* loop waiting for sleep */
 
 /* The first MCR instruction of this function needs to be on a cache-line
- * boundary; to make this happen, it will be copied (in trap.c).
+ * boundary; to make this happen, it will be copied to the first cache-line
+ * boundary 8 words from the start of doze.
  *
  * Doze puts the machine into idle mode.  Any interrupt will get it out
  * at the next instruction (the RET, to be precise).
  */
-TEXT _doze(SB), $-4
+TEXT doze(SB), $-4
 	MOVW	$UCDRAMZERO, R1
 	MOVW	R0,R0
 	MOVW	R0,R0
@@ -805,7 +830,26 @@ TEXT _doze(SB), $-4
 	MOVW	R0,R0
 	MOVW	R0,R0
 	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
+	RET
+	
+TEXT doze_code(SB), $-4
 	MCR   	CpPWR, 0, R0, C(CpTest), C(0x2), 2
 	MOVW	(R1), R0
 	MCR  	CpPWR, 0, R0, C(CpTest), C(0x8), 2
-	RET

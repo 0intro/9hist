@@ -30,7 +30,6 @@ Intrregs savedintrregs;
 
 uchar *savedtext;
 
-
 static void
 checkflash(void)
 {
@@ -165,14 +164,13 @@ powerdown(void *)
 void
 deepsleep(void) {
 	static int power_pl;
-	ulong xsp, xlink, mecr;
+	ulong xsp, xlink;
+//	ulong mecr;
 	extern void power_resume(void);
 
 	power_pl = splhi();
 	xlink = getcallerpc(&xlink);
 
-	*resumeaddr = (ulong) power_resume;
-//	*resumeaddr = nil;
 	/* Power down */
 	irpower(0);
 	audiopower(0);
@@ -188,7 +186,7 @@ deepsleep(void) {
 	intrcpy(&savedintrregs, intrregs);
 	cacheflush();
 	delay(50);
-	mecr = memconfregs->mecr;
+//	mecr = memconfregs->mecr;
 	if(setpowerlabel()){
 		/* return here with mmu back on */
 		trapresume();
@@ -281,6 +279,22 @@ blanktimer(void)
 void
 powerinit(void)
 {
+	extern ulong power_magic;
+	extern ulong power_code;
+	extern ulong doze_code;
+	ulong *p, *q, i;
+
+	p = (ulong*)(((ulong)&power_magic + 0x1f) & ~0x1f);
+	q = &power_code;
+	for (i = 0; i < 8; i++)
+		*p++ = *q++;
+	p = (ulong*)(((ulong)doze + 0x3f) & ~0x1f);
+	q = &doze_code;
+	for (i = 0; i < 3; i++)
+		*p++ = *q++;
+
+
+	*resumeaddr = (ulong) power_resume;
 	addclock0link(blanktimer);
 	intrenable(GPIOrising, bitno(GPIO_PWR_ON_i), onoffintr, nil, "on/off");
 }

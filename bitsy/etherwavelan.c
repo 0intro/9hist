@@ -27,66 +27,9 @@
 #include "../port/netif.h"
 #include "etherif.h"
 
-#define DEBUG	if(1)print
+#define DEBUG	if(1){}else print
 
 #define SEEKEYS 0
-
-typedef struct Ctlr	Ctlr;
-typedef struct Wltv	Wltv;
-typedef struct WFrame	WFrame;
-typedef struct Stats	Stats;
-typedef struct WStats	WStats;
-typedef struct WKey	WKey;
-
-struct WStats
-{
-	ulong	ntxuframes;		// unicast frames
-	ulong	ntxmframes;		// multicast frames
-	ulong	ntxfrags;		// fragments
-	ulong	ntxubytes;		// unicast bytes
-	ulong	ntxmbytes;		// multicast bytes
-	ulong	ntxdeferred;		// deferred transmits
-	ulong	ntxsretries;		// single retries
-	ulong	ntxmultiretries;	// multiple retries
-	ulong	ntxretrylimit;
-	ulong	ntxdiscards;
-	ulong	nrxuframes;		// unicast frames
-	ulong	nrxmframes;		// multicast frames
-	ulong	nrxfrags;		// fragments
-	ulong	nrxubytes;		// unicast bytes
-	ulong	nrxmbytes;		// multicast bytes
-	ulong	nrxfcserr;
-	ulong	nrxdropnobuf;
-	ulong	nrxdropnosa;
-	ulong	nrxcantdecrypt;
-	ulong	nrxmsgfrag;
-	ulong	nrxmsgbadfrag;
-	ulong	end;
-};
-
-struct WFrame
-{
-	ushort	sts;
-	ushort	rsvd0;
-	ushort	rsvd1;
-	ushort	qinfo;
-	ushort	rsvd2;
-	ushort	rsvd3;
-	ushort	txctl;
-	ushort	framectl;
-	ushort	id;
-	uchar	addr1[Eaddrlen];
-	uchar	addr2[Eaddrlen];
-	uchar	addr3[Eaddrlen];
-	ushort	seqctl;
-	uchar	addr4[Eaddrlen];
-	ushort	dlen;
-	uchar	dstaddr[Eaddrlen];
-	uchar	srcaddr[Eaddrlen];
-	ushort	len;
-	ushort	dat[3];
-	ushort	type;
-};
 
 // Lucent's Length-Type-Value records to talk to the wavelan.
 // most operational parameters are read/set using this.
@@ -191,6 +134,9 @@ enum
 	WR_Data0	= 0x36,
 	WR_Data1	= 0x38,
 
+	WR_PciCor	= 0x26,
+	WR_PciHcr	= 0x2E,
+
 	// Frame stuff
 
 	WF_Err		= 0x0003,
@@ -212,9 +158,62 @@ enum
 
 };
 
-#define csr_outs(ctlr,r,arg)	outs((ctlr)->iob+(r),(arg))
-#define csr_ins(ctlr,r)		ins((ctlr)->iob+(r))
-#define csr_ack(ctlr,ev)	outs((ctlr)->iob+WR_EvAck,(ev))
+typedef struct Ctlr	Ctlr;
+typedef struct Wltv	Wltv;
+typedef struct WFrame	WFrame;
+typedef struct Stats	Stats;
+typedef struct WStats	WStats;
+typedef struct WKey	WKey;
+
+struct WStats
+{
+	ulong	ntxuframes;		// unicast frames
+	ulong	ntxmframes;		// multicast frames
+	ulong	ntxfrags;		// fragments
+	ulong	ntxubytes;		// unicast bytes
+	ulong	ntxmbytes;		// multicast bytes
+	ulong	ntxdeferred;		// deferred transmits
+	ulong	ntxsretries;		// single retries
+	ulong	ntxmultiretries;	// multiple retries
+	ulong	ntxretrylimit;
+	ulong	ntxdiscards;
+	ulong	nrxuframes;		// unicast frames
+	ulong	nrxmframes;		// multicast frames
+	ulong	nrxfrags;		// fragments
+	ulong	nrxubytes;		// unicast bytes
+	ulong	nrxmbytes;		// multicast bytes
+	ulong	nrxfcserr;
+	ulong	nrxdropnobuf;
+	ulong	nrxdropnosa;
+	ulong	nrxcantdecrypt;
+	ulong	nrxmsgfrag;
+	ulong	nrxmsgbadfrag;
+	ulong	end;
+};
+
+struct WFrame
+{
+	ushort	sts;
+	ushort	rsvd0;
+	ushort	rsvd1;
+	ushort	qinfo;
+	ushort	rsvd2;
+	ushort	rsvd3;
+	ushort	txctl;
+	ushort	framectl;
+	ushort	id;
+	uchar	addr1[Eaddrlen];
+	uchar	addr2[Eaddrlen];
+	uchar	addr3[Eaddrlen];
+	ushort	seqctl;
+	uchar	addr4[Eaddrlen];
+	ushort	dlen;
+	uchar	dstaddr[Eaddrlen];
+	uchar	srcaddr[Eaddrlen];
+	ushort	len;
+	ushort	dat[3];
+	ushort	type;
+};
 
 struct WKey
 {
@@ -252,6 +251,7 @@ struct Wltv
 struct Stats
 {
 	ulong	nints;
+	ulong	ndoubleint;
 	ulong	nrx;
 	ulong	ntx;
 	ulong	ntxrq;
@@ -301,9 +301,21 @@ struct Ctlr
 	Wltv	keys;			// default keys
 	int	xclear;			// exclude clear packets off/on
 
+	int	ctlrno;
+
+	/* for PCI-based devices */
+	Ctlr	*next;
+	ushort	*mmb;
+	int	active;
+	Pcidev	*pcidev;
+
 	Stats;
 	WStats;
 };
+
+#define csr_outs(ctlr,r,arg)	outs((ctlr)->iob+(r),(arg))
+#define csr_ins(ctlr,r)		ins((ctlr)->iob+(r))
+#define csr_ack(ctlr,ev)	outs((ctlr)->iob+WR_EvAck,(ev))
 
 // w_... routines do not ilock the Ctlr and should
 // be called locked.

@@ -30,12 +30,6 @@ typedef struct Vpage0 {
 } Vpage0;
 Vpage0 *vpage0;
 
-/*
- *  A cached line for the doze and hibernate code
- */
-void (*doze)(void);
-void (*hibernate)(void);
-
 static void	irq(Ureg*);
 static void	gpiointr(Ureg*, void*);
 
@@ -66,15 +60,6 @@ trapinit(void)
 	memmove(vpage0->vectors, vectors, sizeof(vpage0->vectors));
 	memmove(vpage0->vtable, vtable, sizeof(vpage0->vtable));
 
-	/* relocate the doze and hibernate routines
-	 * to a cache line boundary in cached mem
-	 */
-	doze = xspanalloc(12*sizeof(long), 16, 0);
-	memmove(doze, _doze, 12*sizeof(long));
-#ifdef notdef
-	hibernate = xspanalloc(8*sizeof(long), 16, 0);
-	memmove(hibernate, _hibernate, 8*sizeof(long));
-#endif
 	wbflush();
 
 	/* use exception vectors at 0xFFFF0000 */
