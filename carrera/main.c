@@ -251,7 +251,7 @@ ioinit(int mapeisa)
 	 */
 
 	/* enable all PC interrupts except the clock */
-	int0mask &= ~((1<<2)|(1<<5));
+	int0mask = 0;
 	int0mask |= 1<<(Clockvec&7);
 	EISAOUTB(Int0aux, int0mask);
 

@@ -97,6 +97,8 @@ void		vector0(void);
 void		vector100(void);
 void		vector180(void);
 void		vmereset(void);
+void		uvst(void*, void*);
+void		uvld(void*, void*);
 void		wbflush(void);
 void		wrcompare(ulong);
 void		Xdelay(int);
@@ -115,3 +117,12 @@ void		enetaddr(uchar*);
 #define KADDR(a)	((void*)((ulong)(a)|KSEG0))
 #define KADDR1(a)	((void*)((ulong)(a)|KSEG1))
 #define PADDR(a)	((ulong)(a)&~KSEGM)
+
+#define hnputl(p, v)	((*(ulong*)p) = v)
+#define hnputs(p, v)	((*(ushort*)p) = v)
+#define nhgetl(p)	((*(ulong*)p))
+#define nhgets(p)	((*(ushrt*)p))
+
+void	ifwrite(void*, Block*);
+void*	ifinit(int);
+void	fiberint(int);

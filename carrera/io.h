@@ -55,7 +55,7 @@ enum
 	  Keybint	= (1<<6),
 	  Scsiint	= (1<<5),
 	  Etherint	= (1<<4),
-	  Videoint	= (1<<3),
+	  Fiberint	= (1<<3),
 	  Soundint	= (1<<2),
 	  Floppyint	= (1<<1),
 	  Parallelint	= (1<<0),

@@ -305,6 +305,9 @@ intr(Ureg *ur)
 		case 0x24:		/* Serial 2 */
 			NS16552intr(1);
 			break;
+		case 0x10:
+			fiberint(0);
+			break;
 		case 0x14:
 			etherintr();
 			break;
@@ -319,10 +322,6 @@ intr(Ureg *ur)
 	}
 	if(cause & INTR2) {
 		isr = IO(ulong, R4030Isr);
-		if(isr & (1<<5)) {
-			audiodmaintr();
-			isr &= ~(1<<5);
-		}
 		if(isr) {
 			iprint("R4030 Interrupt\n");
 			iprint(" ISR #%lux\n", IO(ulong, R4030Isr));
@@ -346,8 +345,11 @@ intr(Ureg *ur)
 		default:
 			iprint("i386ACK #%lux\n", devint);
 			break;
-		case 5:
+		case 7:
 			audiosbintr();
+			break;
+		case 13:
+			audiodmaintr();
 			break;
 		}
 		cause &= ~INTR4;

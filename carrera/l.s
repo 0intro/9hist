@@ -840,3 +840,22 @@ uvputuna:
 	MOVW	R2, 0(R3)
 	MOVW	R1, 4(R3)
 	RET
+
+TEXT	uvld(SB), $-4		/* uvld(address, dst) */
+	MOVV	0(R1), R5
+	MOVW	4(FP), R2
+	MOVW	R5, 4(R2)
+	DSRA	(16,5,5)
+	DSRA	(16,5,5)
+	MOVW	R5, 0(R2)
+	RET
+
+TEXT	uvst(SB), $-4		/* uvst(address, src) */
+	MOVW	4(FP), R2
+	MOVW	0(R2), R5
+	DSLL	(16,5,5)
+	DSLL	(16,5,5)
+	MOVW	4(R2), R2
+	OR	R2, R5	
+	MOVV	R5, 0(R1)
+	RET
