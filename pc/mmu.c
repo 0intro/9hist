@@ -168,6 +168,12 @@ mmuinit(void)
 	kpt = xspanalloc(nbytes, BY2PG, 0);
 	for(i = 0; i < npage; i++)
 		kpt[i] = (0+i*BY2PG) | PTEVALID | PTEKERNEL | PTEWRITE;
+	for(i = 0xa0000/BY2PG; i < 0xC0000/BY2PG; i++)
+		kpt[i] = (0+i*BY2PG) | PTEVALID | PTEKERNEL | PTEWRITE | PTEWT;
+	for(i = 0xC0000/BY2PG; i < MB/BY2PG; i++)
+		kpt[i] = (0+i*BY2PG) | PTEVALID | PTEKERNEL | PTEWRITE | PTEUNCACHED;
+	for(i = conf.topofmem/BY2PG; i < 128*MB/BY2PG; i++)
+		kpt[i] = (0+i*BY2PG) | PTEVALID | PTEKERNEL | PTEWRITE | PTEUNCACHED;
 	x = TOPOFF(KZERO);
 	y = ((ulong)kpt)&~KZERO;
 	for(i = 0; i < nkpt; i++)
