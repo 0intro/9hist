@@ -733,7 +733,6 @@ edfrunproc(void)
 		edfpush(nt);
 		t = nt;
 		t->scheduled = now;
-		t->periods++;
 	}else{
 		DPRINT("%d edfrunproc: current\n", m->machno);
 	}

@@ -11,11 +11,12 @@ enum {
 	Useblocking = 0x2,
 };
 
-typedef vlong	Time;
-typedef uvlong	Ticks;
+typedef vlong				Time;
+typedef uvlong				Ticks;
 
 typedef struct Task			Task;
 typedef struct Resource		Resource;
+typedef struct ResourceItem	ResourceItem;
 typedef struct Edf			Edf;
 typedef struct Taskq			Taskq;
 typedef struct List			List;
@@ -38,13 +39,13 @@ enum Edfstate {
 typedef enum Edfstate	Edfstate;
 
 struct List {
-	List	*	next;	/* next in list */
+	List	*	next;		/* next in list */
 	void	*	i;		/* item in list */
 };
 
 struct Head {
-	List	*next;	/* First item in list */
-	int	n;		/* number of items in list */
+	List	*next;		/* First item in list */
+	int	n;			/* number of items in list */
 };
 
 struct Edf {
@@ -108,6 +109,7 @@ struct Resource
 struct ResourceItem {
 	List;			/* links and identifies the resource (must be first) */
 	Ticks	C;	/* cost */
+	int		x;	/* exclusive access (as opposed to shared-read access) */
 	Head	h;	/* sub resource items */
 };
 
