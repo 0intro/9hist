@@ -127,3 +127,5 @@ char *sysctab[]={
 	[WRITE9P]	"Write9p",
 	[READ9P]	"Read9p",
 };
+
+int nsyscall = (sizeof systab/sizeof systab[0]);

@@ -512,7 +512,7 @@ syscall(Ureg *aur)
 	sp = ur->sp;
 	ret = -1;
 	if(!waserror()){
-		if(up->scallnr >= sizeof systab/sizeof systab[0]) {
+		if(up->scallnr >= nsyscall) {
 			pprint("bad sys call number %d pc %lux\n",
 						up->scallnr, ur->pc);
 			postnote(up, 1, "sys: bad sys call", NDebug);

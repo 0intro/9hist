@@ -531,7 +531,9 @@ screenload(Rectangle r, uchar *data, int tl, int l)
 	m = 0xFF >> lpart;
 	mr = 0xFF ^ (0xFF >> rpart);
 	/* may need to do bit insertion on edges */
-	if(l == 1){	/* all in one byte */
+	if(tl <= 0){
+		;
+	}else if(tl == 1){	/* all in one byte */
 		if(rpart)
 			m &= mr;
 		for(y=r.min.y; y<r.max.y; y++){
@@ -548,15 +550,13 @@ screenload(Rectangle r, uchar *data, int tl, int l)
 	}else if(rpart==0){
 		for(y=r.min.y; y<r.max.y; y++){
 			*q ^= (*data^*q) & m;
-			if(tl > 1)
-				memmove(q+1, data+1, tl-1);
+			memmove(q+1, data+1, tl-1);
 			q += gscreen.width*sizeof(ulong);
 			data += l;
 		}
 	}else if(lpart == 0){
 		for(y=r.min.y; y<r.max.y; y++){
-			if(tl > 1)
-				memmove(q, data, tl-1);
+			memmove(q, data, tl-1);
 			q[tl-1] ^= (data[tl-1]^q[tl-1]) & mr;
 			q += gscreen.width*sizeof(ulong);
 			data += l;

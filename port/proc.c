@@ -273,8 +273,10 @@ procinit0(void)		/* bad planning - clashes with devproc.c */
 	procalloc.arena = procalloc.free;
 
 	p = procalloc.free;
-	for(i=0; i<conf.nproc-1; i++,p++)
+	for(i=0; i<conf.nproc-1; i++,p++){
 		p->qnext = p+1;
+		p->syscall = xalloc(nsyscall * sizeof(ulong));
+	}
 	p->qnext = 0;
 }
 

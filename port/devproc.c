@@ -883,16 +883,16 @@ readcounters(Proc *p, ulong offset, void *va, int n)
 	int i, j, m;
 	extern char *sysctab[];
 
-	bp = smalloc((NSYSCALL+ncounter)*(NAMELEN+8));
+	bp = smalloc((nsyscall+ncounter)*(NAMELEN+8));
 	m = 0;
 	for(i = 0; i < Pcounter; i++)
 		if(counter[i])
 			m += sprint(bp+m, "%s\t%8d\n", counter[i], p->counter[i]);
 	j = 0;
-	for(i = 0; i < NSYSCALL; i++)
+	for(i = 0; i < nsyscall; i++)
 		j += p->syscall[i];
 	m += sprint(bp+m, "syscall\t%8d\n", j);
-	for(i = 0; i < NSYSCALL; i++)
+	for(i = 0; i < nsyscall; i++)
 		if(p->syscall[i])
 			m += sprint(bp+m, "%s\t%8d\n", sysctab[i], p->syscall[i]);
 	n = readstr(offset, va, n, bp);

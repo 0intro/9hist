@@ -500,62 +500,23 @@ extern	cursorunlock(void);
  * tile is at location r, first pixel in *data. 
  * tl is length of scan line to insert,
  * l is amount to advance data after each scan line.
+ * gscreen.ldepth is known to be >= 3
  */
 void
 screenload(Rectangle r, uchar *data, int tl, int l)
 {
 	uchar *q;
-	int y, lpart, rpart, mx, m, mr;
+	int y;
 
 	if(!rectclip(&r, gscreen.r) || tl<=0)
 		return;
 
 	lock(&screenlock);
-
 	q = gbaddr(&gscreen, r.min);
-	mx = 7>>gscreen.ldepth;
-	lpart = (r.min.x & mx) << gscreen.ldepth;
-	rpart = (r.max.x & mx) << gscreen.ldepth;
-	m = 0xFF >> lpart;
-	mr = 0xFF ^ (0xFF >> rpart);
-	/* may need to do bit insertion on edges */
-	if(l == 1){	/* all in one byte */
-		if(rpart)
-			m &= mr;
-		for(y=r.min.y; y<r.max.y; y++){
-			*q ^= (*data^*q) & m;
-			q += gscreen.width*sizeof(ulong);
-			data += l;
-		}
-	}else if(lpart==0 && rpart==0){	/* easy case */
-		for(y=r.min.y; y<r.max.y; y++){
-			memmove(q, data, tl);
-			q += gscreen.width*sizeof(ulong);
-			data += l;
-		}
-	}else if(rpart==0){
-		for(y=r.min.y; y<r.max.y; y++){
-			*q ^= (*data^*q) & m;
-			if(tl > 1)
-				memmove(q+1, data+1, tl-1);
-			q += gscreen.width*sizeof(ulong);
-			data += l;
-		}
-	}else if(lpart == 0){
-		for(y=r.min.y; y<r.max.y; y++){
-			if(tl > 1)
-				memmove(q, data, tl-1);
-			q[tl-1] ^= (data[tl-1]^q[tl-1]) & mr;
-			q += gscreen.width*sizeof(ulong);
-			data += l;
-		}
-	}else for(y=r.min.y; y<r.max.y; y++){
-			*q ^= (*data^*q) & m;
-			if(tl > 2)
-				memmove(q+1, data+1, tl-2);
-			q[tl-1] ^= (data[tl-1]^q[tl-1]) & mr;
-			q += gscreen.width*sizeof(ulong);
-			data += l;
-		}
+	for(y=r.min.y; y<r.max.y; y++){
+		memmove(q, data, tl);
+		q += gscreen.width*sizeof(ulong);
+		data += l;
+	}
 	unlock(&screenlock);
 }
