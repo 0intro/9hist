@@ -85,6 +85,7 @@ struct Conf
 	int	nsrv;		/* public servers (devsrv.c) */
 	int	nbitmap;	/* bitmap structs (devbit.c) */
 	int	nbitbyte;	/* bytes of bitmap data (devbit.c) */
+	int	nfont;		/* GFont structs (devbit.c) */
 	int	nsubfont;	/* Gsubfont structs (devbit.c) */
 	ulong	nnoifc;		/* number of nonet interfaces */
 	ulong	nnoconv;	/* number of nonet conversations/ifc */

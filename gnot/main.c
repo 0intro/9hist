@@ -7,7 +7,7 @@
 #include	"ureg.h"
 #include	"init.h"
 
-#include	<libg.h>
+#include	<libng.h>
 #include	<gnot.h>
 
 typedef struct Boot Boot;
@@ -272,6 +272,7 @@ confinit(void)
 	if(*(uchar*)MOUSE & (1<<4))
 		conf.nbitbyte *= 2;	/* ldepth 1 */
 	conf.nsubfont = 10*mul;
+	conf.nfont = 10*mul;
 	conf.nurp = 32;
 	conf.nasync = 1;
 	conf.npipe = conf.nstream/2;

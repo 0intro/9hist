@@ -548,7 +548,7 @@ confinit(void)
 	conf.npage = conf.npage0;
 	conf.npage1 = 0;
 	conf.base1 = 0;
-	conf.maxialloc = (128*1024*1024-256*1024-BY2PG);
+	conf.maxialloc = 16*1024*1024;
 
 	/*
  	 *  clear MP bus error caused by sizing memory
@@ -568,7 +568,7 @@ confinit(void)
 	conf.nmtab = conf.nproc;
 	conf.nseg = 4 * conf.nproc;
 	conf.npagetab = conf.nseg*3;
-	conf.nswap = 20000;
+	conf.nswap = 262144;
 	conf.nimage = 200;
 	conf.nchan = 20 * conf.nproc;
 	conf.nmntdev = conf.nproc;

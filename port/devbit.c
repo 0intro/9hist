@@ -7,7 +7,7 @@
 
 #include	"devtab.h"
 
-#include	<libg.h>
+#include	<libng.h>
 #include	<gnot.h>
 #include	"screen.h"
 
@@ -15,7 +15,7 @@ extern GSubfont	*defont;
 
 /*
  * Some monochrome screens are reversed from what we like:
- * We want 0's bright and 1s dark.
+ * We want 0's bright and 1's dark.
  * Indexed by an Fcode, these compensate for the source bitmap being wrong
  * (exchange S rows) and destination (exchange D columns and invert result)
  */
@@ -30,7 +30,6 @@ int flipD[] = {
 };
 
 int flipping;	/* are flip tables being used to transform Fcodes? */
-int hwcursor;	/* is there a hardware cursor? */
 
 /*
  * Device (#b/bitblt) is exclusive use on open, so no locks are necessary
@@ -53,8 +52,10 @@ struct
 	ulong	*words;		/* storage */
 	ulong	nwords;		/* total in arena */
 	ulong	*wfree;		/* pointer to next free word */
-	GSubfont *font;		/* arena; looked up linearly BUG */
+	GFont *font;		/* arena; looked up linearly BUG */
+	GSubfont *subfont;	/* arena; looked up linearly BUG */
 	int	lastid;		/* last allocated bitmap id */
+	int	lastsubfid;	/* last allocated subfont id */
 	int	lastfid;	/* last allocated font id */
 	int	init;		/* freshly opened; init message pending */
 	int	rid;		/* read bitmap id */
@@ -65,7 +66,10 @@ struct
 
 #define	FREE	0x80000000
 void	bitcompact(void);
+GBitmap*bitalloc(Rectangle, int);
 void	bitfree(GBitmap*);
+void	bitstring(GBitmap*, Point, GFont*, uchar*, long, Fcode);
+void	bitloadchar(GFont*, int, GSubfont*, int);
 extern	GBitmap	gscreen;
 
 Mouseinfo	mouse;
@@ -157,14 +161,18 @@ bitreset(void)
 		flipping = 1;
 	bit.free = bit.map+1;
 	bit.lastid = -1;
+	bit.lastsubfid = -1;
 	bit.lastfid = -1;
 	bit.words = ialloc(conf.nbitbyte, 0);
 	bit.nwords = conf.nbitbyte/sizeof(ulong);
 	bit.wfree = bit.words;
-	bit.font = ialloc(conf.nsubfont * sizeof(GSubfont), 0);
-	bit.font[0] = *defont;
+	bit.subfont = ialloc(conf.nsubfont * sizeof(GSubfont), 0);
+	bit.subfont[0] = *defont;
+	bit.font = ialloc(conf.nfont * sizeof(GFont), 0);
 	for(i=1; i<conf.nsubfont; i++)
-		bit.font[i].info = ialloc((NINFO+1)*sizeof(Fontchar), 0);
+		bit.subfont[i].info = ialloc((NINFO+1)*sizeof(Fontchar), 0);
+	for(i=0; i<conf.nfont; i++)
+		bit.font[i].ldepth = -1;
 	Cursortocursor(&arrow);
 }
 
@@ -223,6 +231,7 @@ bitopen(Chan *c, int omode)
 		}
 		bit.lastid = -1;
 		bit.lastfid = -1;
+		bit.lastsubfid = -1;
 		bit.rid = -1;
 		bit.mid = -1;
 		bit.init = 0;
@@ -264,6 +273,7 @@ bitclose(Chan *c)
 	int i;
 	GBitmap *bp;
 	GSubfont *fp;
+	GFont *ffp;
 
 	if(c->qid.path!=CHDIR && (c->flag&COPEN)){
 		lock(&bit);
@@ -271,8 +281,13 @@ bitclose(Chan *c)
 			for(i=1,bp=&bit.map[1]; i<conf.nbitmap; i++,bp++)
 				if(bp->ldepth >= 0)
 					bitfree(bp);
-			for(i=1,fp=&bit.font[1]; i<conf.nsubfont; i++,fp++)
+			for(i=1,fp=&bit.subfont[1]; i<conf.nsubfont; i++,fp++)
 				fp->bits = 0;
+			for(i=0,ffp=&bit.font[0]; i<conf.nfont; i++,ffp++){
+				ffp->b = 0;
+				ffp->ldepth = -1;
+			}
+bit.font[0].ldepth=0;/*BUG */
 		}
 		unlock(&bit);
 	}
@@ -282,14 +297,6 @@ bitclose(Chan *c)
 #define	GLONG(p)		((GSHORT(p)<<0) | (GSHORT(p+2)<<16))
 #define	PSHORT(p, v)		((p)[0]=(v), (p)[1]=((v)>>8))
 #define	PLONG(p, v)		(PSHORT(p, (v)), PSHORT(p+2, (v)>>16))
-
-/*
- * These macros turn user-level (high bit at left) into internal (whatever)
- * bit order. So far all machines have the same (good) order; when
- * that changes, these should switch on a variable set at init time.
- */
-#define	U2K(x)	(x)
-#define	K2U(x)	(x)
 
 long
 bitread(Chan *c, void *va, long n, ulong offset)
@@ -387,15 +394,29 @@ bitread(Chan *c, void *va, long n, ulong offset)
 			n = 3;
 			break;
 		}
-		if(bit.lastfid > 0){
+		if(bit.lastsubfid > 0){
 			/*
-			 * allocate font:
+			 * allocate subfont:
 			 *	'K'		1
-			 *	font id		2
+			 *	subfont id	2
 			 */
 			if(n < 3)
 				error(Ebadblt);
 			p[0] = 'K';
+			PSHORT(p+1, bit.lastsubfid);
+			bit.lastsubfid = -1;
+			n = 3;
+			break;
+		}
+		if(bit.lastfid >= 0){
+			/*
+			 * allocate font:
+			 *	'N'		1
+			 *	font id		2
+			 */
+			if(n < 3)
+				error(Ebadblt);
+			p[0] = 'N';
 			PSHORT(p+1, bit.lastfid);
 			bit.lastfid = -1;
 			n = 3;
@@ -463,10 +484,10 @@ bitread(Chan *c, void *va, long n, ulong offset)
 				q += (src->r.min.x&((sizeof(ulong))*ws-1))/ws;
 				if(bit.rid == 0 && flipping)	/* flip bits */
 					for(x=0; x<l; x++)
-						*p++ = ~K2U(*q++);
+						*p++ = ~(*q++);
 				else
 					for(x=0; x<l; x++)
-						*p++ = K2U(*q++);
+						*p++ = *q++;
 				n += l;
 			}
 			if(off)
@@ -502,10 +523,10 @@ bitread(Chan *c, void *va, long n, ulong offset)
 			q = (uchar*)gaddr(&gscreen, Pt(0, y));
 			if(flipping)
 				for(x=0; x<l; x++)
-					*p++ = ~K2U(*q++);
+					*p++ = ~(*q++);
 			else
 				for(x=0; x<l; x++)
-					*p++ = K2U(*q++);
+					*p++ = *q++;
 			n += l;
 		}
 		break;
@@ -532,6 +553,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 	Fontchar *fcp;
 	GBitmap *bp, *src, *dst;
 	GSubfont *f;
+	GFont *ff;
 
 	if(c->qid.path == CHDIR)
 		error(Eisdir);
@@ -564,47 +586,15 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			if(m < 18)
 				error(Ebadblt);
 			v = *(p+1);
-			if(v>3)	/* BUG */
+			if(v > 3)	/* BUG */
 				error(Ebadblt);
-			ws = 1<<(5-v);	/* pixels per word */
-			if(bit.free == 0)
-				error(Enobitmap);
 			rect.min.x = GLONG(p+2);
 			rect.min.y = GLONG(p+6);
 			rect.max.x = GLONG(p+10);
 			rect.max.y = GLONG(p+14);
 			if(Dx(rect) < 0 || Dy(rect) < 0)
 				error(Ebadblt);
-			if(rect.min.x >= 0)
-				l = (rect.max.x+ws-1)/ws - rect.min.x/ws;
-			else{	/* make positive before divide */
-				t = (-rect.min.x)+ws-1;
-				t = (t/ws)*ws;
-				l = (t+rect.max.x+ws-1)/ws;
-			}
-			nw = l*Dy(rect);
-			if(bit.wfree+2+nw > bit.words+bit.nwords){
-				bitcompact();
-				if(bit.wfree+2+nw > bit.words+bit.nwords)
-					error(Enobitstore);
-			}
-			bp = bit.free;
-			bit.free = (GBitmap*)(bp->base);
-			*bit.wfree++ = nw;
-			*bit.wfree++ = (ulong)bp;
-			bp->base = bit.wfree;
-			memset(bp->base, 0, nw*sizeof(ulong));
-			bit.wfree += nw;
-			bp->zero = l*rect.min.y;
-			if(rect.min.x >= 0)
-				bp->zero += rect.min.x/ws;
-			else
-				bp->zero -= (-rect.min.x+ws-1)/ws;
-			bp->zero = -bp->zero;
-			bp->width = l;
-			bp->ldepth = v;
-			bp->r = rect;
-			bp->cache = 0;
+			bp = bitalloc(rect, v);
 			bit.lastid = bp-bit.map;
 			m -= 18;
 			p += 18;
@@ -710,17 +700,37 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 
 		case 'g':
 			/*
-			 * free font (free bitmap separately)
+			 * free subfont (free bitmap separately)
 			 *	'g'		1
 			 *	id		2
 			 */
 			if(m < 3)
 				error(Ebadblt);
 			v = GSHORT(p+1);
-			f = &bit.font[v];
+			f = &bit.subfont[v];
 			if(v<0 || v>=conf.nsubfont || f->bits==0)
 				error(Ebadfont);
 			f->bits = 0;
+			m -= 3;
+			p += 3;
+			break;
+
+		case 'h':
+			/*
+			 * free font
+			 *	'h'		1
+			 *	id		2
+			 */
+			if(m < 3)
+				error(Ebadblt);
+			v = GSHORT(p+1);
+			ff = &bit.font[v];
+			if(v<0 || v>=conf.nfont || ff->ldepth<0)
+				error(Ebadfont);
+			if(ff->b)
+				bitfree(ff->b);
+			ff->b = 0;
+			ff->ldepth = -1;
 			m -= 3;
 			p += 3;
 			break;
@@ -738,7 +748,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 
 		case 'k':
 			/*
-			 * allocate font
+			 * allocate subfont
 			 *	'k'		1
 			 *	n		2
 			 *	height		1
@@ -753,11 +763,11 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			if(v<0 || v>NINFO || m<7+6*(v+1))	/* BUG */
 				error(Ebadblt);
 			for(i=1; i<conf.nsubfont; i++)
-				if(bit.font[i].bits == 0)
-					goto fontfound;
+				if(bit.subfont[i].bits == 0)
+					goto subfontfound;
 			error(Enofont);
-		fontfound:
-			f = &bit.font[i];
+		subfontfound:
+			f = &bit.subfont[i];
 			f->n = v;
 			f->height = p[3];
 			f->ascent = p[4];
@@ -778,7 +788,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 				p += 6;
 				m -= 6;
 			}
-			bit.lastfid = f - bit.font;
+			bit.lastsubfid = f - bit.subfont;
 			f->bits = dst;
 			break;
 
@@ -836,6 +846,37 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			bit.mid = v;
 			m -= 3;
 			p += 3;
+			break;
+
+		case 'n':
+			/*
+			 * allocate font
+			 *	'n'		1
+			 *	height		1
+			 *	ascent		1
+			 *	ldepth		2
+			 * next read returns allocated font id
+			 */
+			if(m < 5)
+				error(Ebadblt);
+			v = GSHORT(p+3);
+			if(v < 0)
+				error(Ebadblt);
+			for(i=0; i<conf.nfont; i++)
+				if(bit.font[i].ldepth < 0)
+					goto fontfound;
+			error(Enofont);
+		fontfound:
+			ff = &bit.font[i];
+			ff->height = p[1];
+			ff->ascent = p[2];
+			ff->ldepth = v;
+			ff->width = 0;
+if(ff->b)print("font allocate: bitmap nonzero\n");
+			ff->b = 0;
+			m -= 5;
+			p += 5;
+			bit.lastfid = ff - bit.font;
 			break;
 
 		case 'p':
@@ -900,11 +941,11 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 
 		case 's':
 			/*
-			 * string
+			 * subfstring
 			 *	's'		1
 			 *	id		2
 			 *	pt		8
-			 *	font id		2
+			 *	subfont id	2
 			 *	code		2
 			 * 	string		n (null terminated)
 			 */
@@ -924,7 +965,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			pt.x = GLONG(p+3);
 			pt.y = GLONG(p+7);
 			v = GSHORT(p+11);
-			f = &bit.font[v];
+			f = &bit.subfont[v];
 			if(v<0 || v>=conf.nsubfont || f->bits==0 || f->bits->ldepth<0)
 				error(Ebadblt);
 			p += 15;
@@ -981,6 +1022,78 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			p += 23;
 			break;
 
+		case 'u':
+			/*
+			 * string
+			 *	'u'		1
+			 *	id		2
+			 *	pt		8
+			 *	font id		2
+			 *	code		2
+			 *	n		2
+			 * 	cache indexes	2*n (not null terminated)
+			 */
+			if(m < 17)
+				error(Ebadblt);
+			v = GSHORT(p+1);
+			dst = &bit.map[v];
+			if(v<0 || v>=conf.nbitmap || dst->ldepth<0)
+				error(Ebadbitmap);
+			off = 0;
+			fc = GSHORT(p+13) & 0xF;
+			if(v == 0){
+				if(flipping)
+					fc = flipD[fc];
+				off = 1;
+			}
+			pt.x = GLONG(p+3);
+			pt.y = GLONG(p+7);
+			v = GSHORT(p+11);
+			ff = &bit.font[v];
+			if(v<0 || v>=conf.nfont || ff->ldepth<0)
+				error(Ebadblt);
+			l = GSHORT(p+15)*2;
+			p += 17;
+			m -= 17;
+			if(l > m)
+				error(Ebadblt);
+			if(off && !isoff){
+				cursoroff(1);
+				isoff = 1;
+			}
+			bitstring(dst, pt, ff, p, l, fc);
+			m -= l;
+			p += l;
+			break;
+
+		case 'v':
+			/*
+			 * clear font cache and bitmap
+			 *	'v'		1
+			 *	id		2
+			 *	width		2
+			 */
+			if(m < 5)
+				error(Ebadblt);
+			v = GSHORT(p+1);
+			ff = &bit.font[v];
+			if(v<0 || v>=conf.nfont || ff->ldepth<0)
+				error(Ebadblt);
+			/*
+			 * memset not necessary but helps avoid
+			 * confusion if the cache is mishandled by the
+			 * user.
+			 */
+			memset(ff->cache, 0, (NFCACHE+NFLOOK)*sizeof(ff->cache[0]));
+			if(ff->b)
+				bitfree(ff->b);
+			ff->width = GSHORT(p+3);
+			ff->b = 0;
+			ff->b = bitalloc(Rect(0, 0, (NFCACHE+NFLOOK)*ff->width, ff->height), ff->ldepth);
+			p += 5;
+			m -= 5;
+			break;
+
 		case 'w':
 			/*
 			 * write
@@ -1025,10 +1138,10 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 				q += (dst->r.min.x&((sizeof(ulong))*ws-1))/ws;
 				if(v == 0 && flipping)	/* flip bits */
 					for(x=0; x<l; x++)
-						*q++ = ~U2K(*p++);
+						*q++ = ~(*p++);
 				else
 					for(x=0; x<l; x++)
-						*q++ = U2K(*p++);
+						*q++ = *p++;
 				m -= l;
 			}
 			break;
@@ -1051,6 +1164,36 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			}
 			m -= 9;
 			p += 9;
+			break;
+
+		case 'y':
+			/*
+			 * load font from subfont
+			 *	'y'		1
+			 *	id		2
+			 *	cache pos	2
+			 *	subfont id	2
+			 *	subfont index	2
+			 */
+			if(m < 9)
+				error(Ebadblt);
+			v = GSHORT(p+1);
+			ff = &bit.font[v];
+			if(v<0 || v>=conf.nfont || ff->ldepth<0 || ff->b==0)
+				error(Ebadblt);
+			l = GSHORT(p+3);
+			if(l >= NFCACHE+NFLOOK)
+				error(Ebadblt);
+			v = GSHORT(p+5);
+			f = &bit.subfont[v];
+			if(v<0 || v>=conf.nsubfont || f->bits->ldepth<0)
+				error(Ebadblt);
+			nw = GSHORT(p+7);
+			if(nw >= f->n)
+				error(Ebadblt);
+			bitloadchar(ff, l, f, nw);
+			p += 9;
+			m -= 9;
 			break;
 
 		case 'z':
@@ -1092,6 +1235,49 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 	return n;
 }
 
+GBitmap*
+bitalloc(Rectangle rect, int ld)
+{
+	GBitmap *bp;
+	ulong l, ws, nw;
+	long t;
+
+	if(bit.free == 0)
+		error(Enobitmap);
+	ws = 1<<(5-ld);	/* pixels per word */
+	if(rect.min.x >= 0)
+		l = (rect.max.x+ws-1)/ws - rect.min.x/ws;
+	else{	/* make positive before divide */
+		t = (-rect.min.x)+ws-1;
+		t = (t/ws)*ws;
+		l = (t+rect.max.x+ws-1)/ws;
+	}
+	nw = l*Dy(rect);
+	if(bit.wfree+2+nw > bit.words+bit.nwords){
+		bitcompact();
+		if(bit.wfree+2+nw > bit.words+bit.nwords)
+			error(Enobitstore);
+	}
+	bp = bit.free;
+	bit.free = (GBitmap*)(bp->base);
+	*bit.wfree++ = nw;
+	*bit.wfree++ = (ulong)bp;
+	bp->base = bit.wfree;
+	memset(bp->base, 0, nw*sizeof(ulong));
+	bit.wfree += nw;
+	bp->zero = l*rect.min.y;
+	if(rect.min.x >= 0)
+		bp->zero += rect.min.x/ws;
+	else
+		bp->zero -= (-rect.min.x+ws-1)/ws;
+	bp->zero = -bp->zero;
+	bp->width = l;
+	bp->ldepth = ld;
+	bp->r = rect;
+	bp->cache = 0;
+	return bp;
+}
+
 void
 bitfree(GBitmap *bp)
 {
@@ -1101,9 +1287,66 @@ bitfree(GBitmap *bp)
 	bit.free = bp;
 }
 
+void
+bitstring(GBitmap *bp, Point pt, GFont *f, uchar *p, long l, Fcode fc)
+{
+	int full;
+	Rectangle rect;
+	ushort r;
+	GCacheinfo *c;
+
+	full = (fc==S || fc==notS);	/* for reverse-video */
+	if(full){
+		rect.min.y = 0;
+		rect.max.y = f->height;
+	}
+
+	while(l > 0){
+		r = GSHORT(p);
+		if(r >= NFCACHE+NFLOOK)
+			error(Ebadblt);
+		p += 2;
+		l -= 2;
+		c = &f->cache[r];
+		if(!full){
+			rect.min.y = c->top;
+			rect.max.y = c->bottom;
+		}
+		rect.min.x = c->x;
+		rect.max.x = c->xright;
+		gbitblt(bp, Pt(pt.x+c->left, pt.y+rect.min.y), f->b, rect, fc);
+		pt.x += c->width;
+	}
+}
+
+void
+bitloadchar(GFont *f, int ci, GSubfont *subf, int si)
+{
+	GCacheinfo *c;
+	Rectangle rect;
+	Fontchar *fi;
+
+	c = &f->cache[ci];
+	fi = &subf->info[si];
+	c->top = fi->top + (f->ascent-subf->ascent);
+	c->bottom = fi->bottom + (f->ascent-subf->ascent);
+	c->width = fi->width;
+	c->left = fi->left;
+	c->x = ci*f->width;
+	c->xright = c->x + ((fi+1)->x - fi->x);
+	rect.min.y = 0;
+	rect.max.y = f->height;
+	rect.min.x = c->x;
+	rect.max.x = c->xright;
+	gbitblt(f->b, Pt(c->x, 0), subf->bits, rect, 0);
+	rect.min.x = fi->x;
+	rect.max.x = (fi+1)->x;
+	gbitblt(f->b, Pt(c->x, f->ascent-subf->ascent), subf->bits, rect, S);
+}
+
 QLock	bitlock;
 
-GBitmap *
+GBitmap*
 id2bit(int k)
 {
 	GBitmap *bp;

@@ -194,7 +194,8 @@ dumpstack(void)
 	ulong l, v;
 	int i;
 	extern ulong etext;
-
+print("no dumpstack\n");
+return;
 	if(u){
 		i = 0;
 		for(l=(ulong)&l; l<USERADDR+BY2PG; l+=4){
