@@ -318,7 +318,7 @@ faultpower(Ureg *ureg, ulong addr, int read)
 	if(n < 0){
 		if(!user){
 			dumpregs(ureg);
-			_dumpstack(ureg);
+//			_dumpstack(ureg);
 			panic("fault: 0x%lux", addr);
 		}
 		sprint(buf, "sys: trap: fault %s addr=0x%lux", read? "read" : "write", addr);
