@@ -286,9 +286,10 @@ getconf(char *name)
 void
 confinit(void)
 {
-	long x, i, j, n;
+	long x, y, i, j, n;
 	int pcnt;
 	ulong ktop;
+	long *lp;
 	char *cp;
 	char *line[MAXCONF];
 
@@ -345,10 +346,30 @@ confinit(void)
 			mmap[i] = 'x';
 			/*
 			 *  zero memory to set ECC but skip over the kernel
+			 *  do a quick memory test also
 			 */
-			if(i != 1)
-				for(j = 0; j < MB/BY2PG; j += BY2PG)
-					memset(mapaddr(KZERO|(i*MB+j)), 0, BY2PG);
+			if(i != 1){
+				for(j = 0; j < MB/BY2PG; j += BY2PG){
+					lp = mapaddr(KZERO|(i*MB+j));
+					for(n = 0; n < BY2PG/BY2WD; n++)
+						lp[n] = x + n;
+				}
+				for(j = 0; j < MB/BY2PG; j += BY2PG){
+					lp = mapaddr(KZERO|(i*MB+j));
+					for(n = 0; n < BY2PG/(2*BY2WD); n++){
+						y = lp[n];
+						lp[n] = ~lp[n^((BY2PG/BY2WD)-1)];
+						lp[n^((BY2PG/BY2WD)-1)] = ~y;
+					}
+				}
+				for(j = 0; j < MB/BY2PG; j += BY2PG){
+					lp = mapaddr(KZERO|(i*MB+j));
+					for(n = 0; n < BY2PG/BY2WD; n++)
+						if(lp[n] != ~(x + (n^((BY2PG/BY2WD)-1))))
+							mmap[i] = ' ';
+					memset(lp, 0, BY2PG);
+				}
+			}
 		}
 		x += 0x3141526;
 	}

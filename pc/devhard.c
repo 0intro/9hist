@@ -1036,6 +1036,9 @@ hardintr(Ureg *ur, void *arg)
 		break;
 	case Cinitparam:
 	case Csetbuf:
+	case Cidle:
+	case Cstandby:
+	case Cpowerdown:
 		cp->lastcmd = cp->cmd;
 		cp->cmd = 0;
 		wakeup(&cp->r);

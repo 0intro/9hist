@@ -80,12 +80,12 @@ iallocb(int size)
 
 	size = sizeof(Block) + size + (BY2V-1);
 	if(ialloc.bytes > conf.ialloc){
-iprint("whoops %d/%d\n", ialloc.bytes, conf.ialloc);
+		iprint("ialloc limit exceeded %d/%d\n", ialloc.bytes, conf.ialloc);
 		return 0;
 	}
 	b = mallocz(size, 0);
 	if(b == 0){
-iprint("malloc %d/%d\n", ialloc.bytes, conf.ialloc);
+		iprint("iallocb: no memory %d/%d\n", ialloc.bytes, conf.ialloc);
 		return 0;
 	}
 	memset(b, 0, sizeof(Block));
@@ -108,7 +108,7 @@ iprint("malloc %d/%d\n", ialloc.bytes, conf.ialloc);
 void
 freeb(Block *b)
 {
-	if(b->intr){
+	if(b->intr) {
 		ilock(&ialloc);
 		ialloc.bytes -= b->lim - b->base;
 		iunlock(&ialloc);

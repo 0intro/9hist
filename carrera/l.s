@@ -344,7 +344,6 @@ utlbcom:
 	TLBWR
 	ERET
 utlindex:
-	MOVW	R0,(R0)
 	TLBWI
 	ERET
 
@@ -443,7 +442,7 @@ TEXT	saveregs(SB), $-4
 	MOVW	R2, 0x98(SP)
 	/* save R5, R6 as 64 bits */
 	ADDU	$(UREGSIZE-16), SP, R1
-	MOVW	$~7, R2	/* don't let him use R28 */
+	MOVW	$~7, R2			/* don't let him use R28 */
 	AND		R2, R1
 	STD		(5, 0,(1))
 	STD		(6, 8,(1))
@@ -536,7 +535,7 @@ TEXT	restregs(SB), $-4
 	MOVW	R1, HI
 	/* restore 64-bit R5, R6 */
 	ADDU	$(UREGSIZE-16), SP, R1
-	MOVW	$~7, R2	/* don't let him use R28 */
+	MOVW	$~7, R2			/* don't let him use R28 */
 	AND		R2, R1
 	LD		(0,(1), 5)
 	LD		(8,(1), 6)
