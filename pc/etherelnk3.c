@@ -136,6 +136,7 @@ enum {						/* Window 0 - setup */
 	EepromCommand		= 0x000A,
 	EepromData		= 0x000C,
 						/* AddressConfig Bits */
+	autoSelect9		= 0x0080,
 	xcvrMask9		= 0xC000,
 						/* ConfigControl bits */
 	Ena			= 0x0001,
@@ -673,7 +674,10 @@ interrupt(Ureg*, void* arg)
 			    ether->ctlrno, status, x);
 
 			if(x & txOverrun){
-				COMMAND(port, TxReset, 0);
+				if(ctlr->busmaster == 0)
+					COMMAND(port, TxReset, 0);
+				else
+					COMMAND(port, TxReset, dmaReset);
 				COMMAND(port, TxEnable, 0);
 				wakeup(&ether->tr);
 			}
@@ -702,7 +706,8 @@ interrupt(Ureg*, void* arg)
 			 * Pop the TxStatus stack, accumulating errors.
 			 * Adjust the TX start threshold if there was an underrun.
 			 * If there was a Jabber or Underrun error, reset
-			 * the transmitter.
+			 * the transmitter, taking care not to reset the dma logic
+			 * as a busmaster receive may be in progress.
 			 * For all conditions enable the transmitter.
 			 */
 			txstatus = 0;
@@ -722,7 +727,10 @@ interrupt(Ureg*, void* arg)
 			}
 
 			if(txstatus & (txJabber|txUnderrun)){
-				COMMAND(port, TxReset, dmaReset);
+				if(ctlr->busmaster == 0)
+					COMMAND(port, TxReset, 0);
+				else
+					COMMAND(port, TxReset, dmaReset);
 				while(STATUS(port) & commandInProgress)
 					;
 				COMMAND(port, SetTxStartThresh, ctlr->txthreshold>>ctlr->ts);
@@ -846,8 +854,8 @@ idseq(void)
 	 * One time only:
 	 *	write ID sequence to get the attention of all adapters;
 	 *	untag all adapters.
-	 * If we do a global reset here on all adapters we'll confuse any
-	 * ISA cards configured for EISA mode.
+	 * If a global reset is done here on all adapters it will confuse
+	 * any ISA cards configured for EISA mode.
 	 */
 	if(untag == 0){
 		outb(IDport, 0xD0);
@@ -874,7 +882,7 @@ activate(void)
 	 *    is the 'read EEPROM' command, 0x07 is the offset of
 	 *    the Manufacturer ID field in the EEPROM).
 	 *    The data comes back 1 bit at a time.
-	 *    We seem to need a delay here between reading the bits.
+	 *    A delay seems necessary between reading the bits.
 	 *
 	 * If the ID doesn't match, there are no more adapters.
 	 */
@@ -978,7 +986,7 @@ tcm5XXeisa(Ether* ether)
 	/*
 	 * Continue through the EISA slots looking for a match on both
 	 * 3COM as the manufacturer and 3C579-* or 3C59[27]-* as the product.
-	 * If we find an adapter, select window 0, enable it and clear
+	 * If an adapter is found, select window 0, enable it and clear
 	 * out any lingering status and interrupts.
 	 */
 	while(slot < MaxEISA){
@@ -1054,6 +1062,87 @@ tcm5XXpcmcia(Ether* ether)
 	return 0;
 }
 
+static int
+autoselect(int port, int rxstatus9)
+{
+	int media, x;
+
+	/*
+	 * Pathetic attempt at automatic media selection.
+	 * Really just to get the Fast Etherlink 10BASE-T/100BASE-TX
+	 * cards operational.
+	 */
+	media = auiAvailable|coaxAvailable|base10TAvailable;
+	if(rxstatus9 == 0){
+		COMMAND(port, SelectRegisterWindow, Wfifo);
+		media = ins(port+ResetOptions);
+	}
+
+	COMMAND(port, SelectRegisterWindow, Wdiagnostic);
+	x = ins(port+MediaStatus) & ~(dcConverterEnabled|linkBeatEnable|jabberGuardEnable);
+	outs(port+MediaStatus, x);
+
+	if(media & baseTXAvailable){
+		/*
+		 * Must have InternalConfig register.
+		 */
+		COMMAND(port, SelectRegisterWindow, Wfifo);
+		x = inl(port+InternalConfig) & ~xcvrMask;
+		x |= xcvr100BaseTX;
+		outl(port+InternalConfig, x);
+		COMMAND(port, TxReset, 0);
+		while(STATUS(port) & commandInProgress)
+			;
+		COMMAND(port, RxReset, 0);
+		while(STATUS(port) & commandInProgress)
+			;
+
+		COMMAND(port, SelectRegisterWindow, Wdiagnostic);
+		x = ins(port+MediaStatus);
+		outs(port+MediaStatus, linkBeatEnable|jabberGuardEnable|x);
+		delay(1);
+
+		if(ins(port+MediaStatus) & linkBeatDetect)
+			return xcvr100BaseTX;
+		outs(port+MediaStatus, x);
+	}
+
+	if(media & base10TAvailable){
+		if(rxstatus9 == 0){
+			COMMAND(port, SelectRegisterWindow, Wfifo);
+			x = inl(port+InternalConfig) & ~xcvrMask;
+			x |= xcvr10BaseT;
+			outl(port+InternalConfig, x);
+		}
+		else{
+			COMMAND(port, SelectRegisterWindow, Wsetup);
+			x = ins(port+AddressConfig) & ~xcvrMask9;
+			x |= (xcvr10BaseT>>20)<<14;
+			outs(port+AddressConfig, x);
+		}
+		COMMAND(port, TxReset, 0);
+		while(STATUS(port) & commandInProgress)
+			;
+		COMMAND(port, RxReset, 0);
+		while(STATUS(port) & commandInProgress)
+			;
+
+		COMMAND(port, SelectRegisterWindow, Wdiagnostic);
+		x = ins(port+MediaStatus);
+		outs(port+MediaStatus, linkBeatEnable|jabberGuardEnable|x);
+		delay(1);
+
+		if(ins(port+MediaStatus) & linkBeatDetect)
+			return xcvr10BaseT;
+		outs(port+MediaStatus, x);
+	}
+
+	/*
+	 * Botch.
+	 */
+	return autoSelect;
+}
+
 int
 etherelnk3reset(Ether* ether)
 {
@@ -1090,22 +1179,28 @@ etherelnk3reset(Ether* ether)
 	else if(port == 0 && (port = tcm59Xpci(ether))){
 		COMMAND(port, SelectRegisterWindow, Wfifo);
 		rxearly = 8188;
-		xcvr = inl(port+InternalConfig) & xcvrMask;
+		xcvr = inl(port+InternalConfig) & (autoSelect|xcvrMask);
 	}
 	else if(port == 0 && (port = tcm5XXeisa(ether))){
 		x = ins(port+ProductID);
 		if((x & 0xFF00) == 0x5900){
 			COMMAND(port, SelectRegisterWindow, Wfifo);
 			rxearly = 8188;
-			xcvr = inl(port+InternalConfig) & xcvrMask;
+			xcvr = inl(port+InternalConfig) & (autoSelect|xcvrMask);
 		}
 		else{
-			xcvr = ((ins(port+AddressConfig) & xcvrMask9)>>14)<<20;
+			x = ins(port+AddressConfig);
+			xcvr = ((x & xcvrMask9)>>14)<<20;
+			if(x & autoSelect9)
+				xcvr |= autoSelect;
 			rxstatus9 = 1;
 		}
 	}
 	else if(port == 0 && (port = tcm509isa(ether))){
-		xcvr = ((ins(port+AddressConfig) & xcvrMask9)>>14)<<20;
+		x = ins(port+AddressConfig);
+		xcvr = ((x & xcvrMask9)>>14)<<20;
+		if(x & autoSelect9)
+			xcvr |= autoSelect;
 		rxstatus9 = 1;
 	}
 
@@ -1127,8 +1222,8 @@ etherelnk3reset(Ether* ether)
 			while(EEPROMBUSY(port))
 				;
 			x = EEPROMDATA(port);
-			ether->ea[2*i] = (x>>8) & 0xFF;
-			ether->ea[2*i+1] = x & 0xFF;
+			ether->ea[2*i] = x>>8;
+			ether->ea[2*i+1] = x;
 		}
 	}
 
@@ -1141,6 +1236,8 @@ etherelnk3reset(Ether* ether)
 	 * busmastering can be used. Due to bugs in the first revision
 	 * of the 3C59[05], don't use busmastering at 10Mbps.
 	 */
+	if(xcvr & autoSelect)
+		xcvr = autoselect(port, rxstatus9);
 	COMMAND(port, SelectRegisterWindow, Wdiagnostic);
 	x = ins(port+MediaStatus) & ~(linkBeatEnable|jabberGuardEnable);
 	outs(port+MediaStatus, x);
