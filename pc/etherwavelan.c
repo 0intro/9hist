@@ -1187,13 +1187,19 @@ interrupt(Ureg* ,void* arg)
 	iunlock(&ctlr->Lock);
 }
 
+static char* wavenames[] = {
+	"WaveLAN/IEEE",
+	"TrueMobile 1150",
+	nil,
+};
+
 static int
 reset(Ether* ether)
 {
 	int i;
 	Wltv ltv;
 	Ctlr* ctlr;
-	char *p;
+	char *name, *p;
 
 	if((ctlr = malloc(sizeof(Ctlr))) == nil)
 		return -1;
@@ -1212,12 +1218,25 @@ reset(Ether* ether)
 		goto abort1;
 	}
 
-	if ((ctlr->slot = pcmspecial("WaveLAN/IEEE", ether))<0){
-		if ((ctlr->slot = pcmspecial("TrueMobile 1150", ether))<0){
+	for (i=0; wavenames[i]; i++)
+		if ((ctlr->slot = pcmspecial(wavenames[i], ether))>=0)
+			break;
+	name = wavenames[i];
+
+	if (name == nil){
+		for (i=0; i<ether->nopt; i++){
+			if (cistrncmp(ether->opt[i], "id=", 3) == 0){
+				name = &ether->opt[i][3];
+				if ((ctlr->slot = pcmspecial(name, ether)) < 0)
+					name = nil;
+			}
+		}
+		if (name == nil){
 			DEBUG("no wavelan found\n");
 			goto abort;
 		}
 	}
+
 	// DEBUG("#l%d: port=0x%lx irq=%ld\n",
 	//		ether->ctlrno, ether->port, ether->irq);
 
