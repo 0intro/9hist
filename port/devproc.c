@@ -438,8 +438,6 @@ procwrite(Chan *c, void *va, long n, ulong offset)
 		kunmap(k);
 		if(n >= ERRLEN-1)
 			error(Etoobig);
-		if(n>=4 && strncmp(va, "sys:", 4)==0)
-			error(Ebadarg);
 		memmove(buf, va, n);
 		buf[n] = 0;
 		if(!postnote(p, 0, buf, NUser))

@@ -88,8 +88,6 @@ pgrpnote(Pgrp *pg, char *a, long n, int flag)
 
 	if(n >= ERRLEN-1)
 		error(Etoobig);
-	if(n>=4 && strncmp(a, "sys:", 4)==0)
-		error(Ebadarg);
 	memmove(buf, a, n);
 	buf[n] = 0;
 	p = proctab(0);
