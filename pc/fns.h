@@ -87,6 +87,8 @@ int	tas(void*);
 void	uartclock(void);
 void	uartpoll(void);
 void	vgainit(void);
+void	vgasavecrash(uchar*, int);
+void	vgarestorecrash(uchar*, int);
 int	x86(void);
 
 #define	waserror()	(up->nerrlab++, setlabel(&up->errlab[up->nerrlab-1]))

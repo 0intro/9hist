@@ -361,12 +361,17 @@ intr(Ureg *ur)
 	if(cause & INTR7) {
 		clock(ur);
 		cause &= ~INTR7;
+		return;
 	}
 
 	if(cause) {
 		iprint("cause %lux\n", cause);
 		exit(1);
 	}
+
+	/* preemptive scheduling */
+	if(up && up->state == Running && anyhigher())
+		sched();
 }
 
 char*

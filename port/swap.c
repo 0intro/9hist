@@ -33,6 +33,8 @@ swapinit(void)
 	iolist = xalloc(Maxpages*sizeof(Page*));
 	if(swapalloc.swmap == 0 || iolist == 0)
 		panic("swapinit: not enough memory");
+
+	swapimage.notext = 1;
 }
 
 ulong

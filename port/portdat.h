@@ -315,6 +315,7 @@ struct Image
 	Segment *s;			/* TEXT segment for image if running */
 	Image	*hash;			/* Qid hash chains */
 	Image	*next;			/* Free list */
+	int	notext;			/* no file associated */
 };
 
 struct Pte
@@ -500,7 +501,9 @@ enum
 	NERR = 15,
 	NNOTE = 5,
 
-	Nrq	= 5,
+	Nrq		= 20,
+	PriNormal	= 10,
+	PriRoot		= 5,
 };
 
 struct Proc

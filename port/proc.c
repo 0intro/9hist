@@ -23,6 +23,7 @@ struct
 
 
 int	nrdy;
+int	lastreadied;
 Schedq	runq[Nrq];
 
 char *statename[] =
@@ -107,9 +108,13 @@ anyready(void)
 }
 
 int
-anyready0(void)
+anyhigher(void)
 {
-	return runq->head != 0;
+	int x;
+
+	x = lastreadied;
+	lastreadied = Nrq;
+	return nrdy && x <= up->priority;
 }
 
 void
@@ -138,6 +143,8 @@ ready(Proc *p)
 	nrdy++;
 	p->readyticks = m->ticks;
 	p->state = Ready;
+	if(lastreadied > p->priority)
+		lastreadied = p->priority;
 	unlock(runq);
 	splx(s);
 }

@@ -56,11 +56,6 @@
 #define	MACHSIZE	4096
 
 /*
- *  an area for storing crash info to be picked up later
- */
-#define CRASHSIZE	(KSTACK+BY2PG)
-
-/*
  *  known 80386 segments (in GDT) and their selectors
  */
 #define	NULLSEG	0	/* null segment */

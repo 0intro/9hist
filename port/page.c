@@ -250,11 +250,9 @@ duppage(Page *p)				/* Always call with p locked */
 	Page *np;
 	int color;
 
-	/* No dup for swap pages */
-	if(p->image == &swapimage) {
-		uncachepage(p);	
+	/* No dup for swap/cache pages */
+	if(p->image->notext)
 		return;
-	}
 
 	lock(&palloc);
 	/* No freelist cache when memory is very low */
@@ -333,7 +331,7 @@ uncachepage(Page *p)			/* Always called with a locked page */
 {
 	Page **l, *f;
 
-	if(p->image == 0)
+	if(p->image == 0 || p->image->notext)
 		return;
 
 	lock(&palloc.hashlock);

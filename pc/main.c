@@ -390,20 +390,13 @@ confinit(void)
 	}
 
 	/*
-	 *  zero and clear all except first 2 meg and crash area.
-	 *  put crash area at high end of memory.
+	 *  zero and clear all except first 2 meg.
 	 */
 	x = 0x12345678;
 	for(i = MAXMEG; i > 1; i--){
 		if(mmap[i] != 'x')
 			continue;
-		j = MB;
-		if(crasharea == 0){
-			crasharea = (i+1)*MB - PGROUND(CRASHSIZE);
-			crashend = crasharea + CRASHSIZE;
-			j = MB - PGROUND(CRASHSIZE);
-		}
-		if(memclrtest(i, j, x) < 0)
+		if(memclrtest(i, MB, x) < 0)
 			mmap[i] = ' ';
 		x += 0x3141526;
 	}
@@ -418,8 +411,6 @@ confinit(void)
 		;
 	conf.npage0 = (i*MB - ktop)/BY2PG;
 	conf.topofmem = i*MB;
-	if(crasharea < conf.base0 + BY2PG*conf.npage0)
-		conf.npage0 -= PGROUND(CRASHSIZE)/BY2PG;
 
 	/*
 	 *  bank1 usually goes from the end of BOOTARGS to 640k
@@ -441,14 +432,8 @@ confinit(void)
 				;
 			conf.npage1 = (j - i)*MB/BY2PG;
 			conf.topofmem = j*MB;
-			if(crasharea < conf.base1 + BY2PG*conf.npage1)
-				conf.npage1 -= PGROUND(CRASHSIZE)/BY2PG;
 			break;
 		}
-
-	/* make crasharea a virtual address */
-	crasharea |= KZERO;
-	crashend |= KZERO;
 
 	conf.npage = conf.npage0 + conf.npage1;
 	conf.ldepth = 0;

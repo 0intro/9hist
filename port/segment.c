@@ -274,7 +274,7 @@ imagereclaim(void)
 	lock(&palloc);
 	for(p = palloc.head; p; p = p->next) {
 		if(p->ref == 0 && p->image && canlock(p)) {
-			if(p->ref == 0 && p->image != &swapimage)
+			if(p->ref == 0)
 				uncachepage(p);
 			unlock(p);
 		}
@@ -289,7 +289,7 @@ putimage(Image *i)
 	Chan *c;
 	Image *f, **l;
 
-	if(i == &swapimage)
+	if(i->notext)
 		return;
 
 	lock(i);
