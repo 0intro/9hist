@@ -28,6 +28,7 @@ struct
 struct{
 	Lock;
 	Mount	*free;
+	Mhead	*mhfree;
 	ulong	mountid;
 }mountalloc;
 
@@ -39,15 +40,15 @@ grpinit(void)
 	Egrp *e, *ee;
 	Fgrp *f, *fe;
 	Mount *m, *em;
+	Mhead *hm, *hem;
 
 	pgrpalloc.arena = ialloc(conf.npgrp*sizeof(Pgrp), 0);
 	pgrpalloc.free = pgrpalloc.arena;
 
 	p = pgrpalloc.free;
-	for(i=0; i<conf.npgrp; i++,p++){
+	for(i=0; i<conf.npgrp; i++,p++) {
 		p->index = i;
 		p->next = p+1;
-		p->mtab = ialloc(conf.nmtab*sizeof(Mtab), 0);
 	}
 	p[-1].next = 0;
 
@@ -64,12 +65,6 @@ grpinit(void)
 	for(f = fgrpalloc.free; f < fe; f++)
 		f->next = f+1;
 	f->next = 0;
-
-	mountalloc.free = ialloc(conf.nmount*sizeof(Mount), 0);
-	em = &mountalloc.free[conf.nmount-1];
-	for(m = mountalloc.free; m < em; m++)
-		m->next = m+1;
-	m->next = 0;
 }
 
 Pgrp*
@@ -119,8 +114,8 @@ newpgrp(void)
 			pgrpalloc.free = p->next;
 			p->ref = 1;
 			p->pgrpid = ++pgrpalloc.pgrpid;
-			p->nmtab = 0;
 			memset(p->rendhash, 0, sizeof(p->rendhash));
+			memset(p->mnthash, 0, sizeof(p->mnthash));
 			unlock(&pgrpalloc);
 			return p;
 		}
@@ -202,18 +197,22 @@ resrcwait(char *reason)
 void
 closepgrp(Pgrp *p)
 {
-	int i;
-	Mtab *m;
-
+	Mhead **h, **e, *f, *next;
+	
 	if(decref(p) == 0){
 		qlock(&p->debug);
 		p->pgrpid = -1;
-		m = p->mtab;
-		for(i=0; i<p->nmtab; i++,m++)
-			if(m->c){
-				close(m->c);
-				closemount(m->mnt);
+
+		e = &p->mnthash[MNTHASH];
+		for(h = p->mnthash; h < e; h++) {
+			for(f = *h; f; f = next) {
+				close(f->from);
+				mountfree(f->mount);
+				next = f->hash;
+				mntheadfree(f);
 			}
+		}
+
 		lock(&pgrpalloc);
 		p->next = pgrpalloc.free;
 		pgrpalloc.free = p;
@@ -260,49 +259,34 @@ closefgrp(Fgrp *f)
 
 
 Mount*
-newmount(void)
+newmount(Mhead *mh, Chan *to)
 {
-	Mount *m;
+	Mount *m, *f, *e;
 
-loop:
-	lock(&mountalloc);
-	if(m = mountalloc.free){		/* assign = */
-		mountalloc.free = m->next;
-		m->ref = 1;
-		m->next = 0;
-		m->mountid = ++mountalloc.mountid;
-		unlock(&mountalloc);
-		return m;
-	}
-	unlock(&mountalloc);
-	print("no mounts\n");
-	if(u == 0)
-		panic("newmount");
-	u->p->state = Wakeme;
-	alarm(1000, wakeme, u->p);
-	sched();
-	goto loop;
-}
-
-void
-closemount(Mount *m)
-{
-	lock(m);
-	if(m->ref == 1){
-		if(m->c)
-			close(m->c);
-		if(m->next)
-			closemount(m->next);
-		unlock(m);
+	for(;;) {
 		lock(&mountalloc);
-		m->mountid = 0;
-		m->next = mountalloc.free;
+		if(m = mountalloc.free){		/* assign = */
+			mountalloc.free = m->next;
+			m->mountid = ++mountalloc.mountid;
+			unlock(&mountalloc);
+			m->next = 0;
+			m->head = mh;
+			m->to = to;
+			incref(to);
+			return m;
+		}
+		unlock(&mountalloc);
+
+		m = (Mount*)VA(kmap(newpage(0, 0, 0)));
+		e = &m[(BY2PG/sizeof(Mount))-1];
+		for(f = m; f < e; f++)
+			f->next = f+1;
+
+		lock(&mountalloc);
+		e->next = mountalloc.free;
 		mountalloc.free = m;
 		unlock(&mountalloc);
-		return;
 	}
-	m->ref--;
-	unlock(m);
 }
 
 void
@@ -348,21 +332,80 @@ envcpy(Egrp *to, Egrp *from)
 void
 pgrpcpy(Pgrp *to, Pgrp *from)
 {
-	int i;
-	Mtab *m;
+	Mhead **h, **e, *f, **l, *mh;
+	Mount *n, *m, **link;
 
-	lock(from);
 	memmove(to->user, from->user, NAMELEN);
-	memmove(to->mtab, from->mtab, from->nmtab*sizeof(Mtab));
-	to->nmtab = from->nmtab;
-	m = to->mtab;
-	for(i=0; i<from->nmtab; i++,m++)
-		if(m->c){
-			incref(m->c);
-			lock(m->mnt);
-			m->mnt->ref++;
-			unlock(m->mnt);
-		}
 
-	unlock(from);
+	rlock(&from->ns);
+
+	e = &from->mnthash[MNTHASH];
+	for(h = from->mnthash; h < e; h++) {
+		for(f = *h; f; f = f->hash) {
+			mh = newmnthead();
+			mh->from = f->from;
+			incref(mh->from);
+			l = &MOUNTH(to, mh->from);
+			mh->hash = *l;
+			*l = mh;
+			link = &mh->mount;
+			for(m = f->mount; m; m = m->next) {
+				n = newmount(mh, m->to);
+				*link = n;
+				link = &n->next;	
+			}
+		}
+	}
+	runlock(&from->ns);
+}
+
+Mhead *
+newmnthead(void)
+{
+	Mhead *mh, *f, *e;
+
+	for(;;) {
+		lock(&mountalloc);
+		if(mh = mountalloc.mhfree) {		/* Assign '=' */
+			mountalloc.mhfree = mh->hash;
+			unlock(&mountalloc);
+			mh->hash = 0;
+			mh->mount = 0;
+			return mh;
+		}
+		unlock(&mountalloc);
+
+		mh = (Mhead*)VA(kmap(newpage(0, 0, 0)));
+		e = &mh[(BY2PG/sizeof(Mhead))-1];
+		for(f = mh; f < e; f++)
+			f->hash = f+1;
+
+		lock(&mountalloc);
+		e->hash = mountalloc.mhfree;
+		mountalloc.mhfree = mh;
+		unlock(&mountalloc);
+	}
+}
+
+void
+mntheadfree(Mhead *mh)
+{
+	lock(&mountalloc);
+	mh->hash = mountalloc.mhfree;
+	mountalloc.mhfree = mh;
+	unlock(&mountalloc);
+}
+
+void
+mountfree(Mount *m)
+{
+	Mount *f;
+
+	for(f = m; f->next; f = f->next)
+		close(f->to);
+	close(f->to);
+	lock(&mountalloc);
+	f->next = mountalloc.free;
+	mountalloc.free = m;
+	unlock(&mountalloc);
 }

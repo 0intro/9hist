@@ -78,32 +78,28 @@ newchan(void)
 {
 	Chan *c;
 
-loop:
-	lock(&chanalloc);
-	if(c = chanalloc.free){		/* assign = */
-		chanalloc.free = c->next;
-		c->type = 0;	/* if closed before changed, this calls rooterror, a nop */
-		c->flag = 0;
-		c->ref = 1;
+	for(;;) {
+		lock(&chanalloc);
+		if(c = chanalloc.free) {
+			chanalloc.free = c->next;
+			/* if closed before changed, this calls rooterror, a nop */
+			c->type = 0;
+			c->flag = 0;
+			c->ref = 1;
+			unlock(&chanalloc);
+			c->dev = 0;
+			c->offset = 0;
+			c->mnt = 0;
+			c->stream = 0;
+			c->aux = 0;
+			c->mntindex = 0;
+			c->mchan = 0;
+			c->mqid = (Qid){0, 0};
+			return c;
+		}
 		unlock(&chanalloc);
-		c->dev = 0;
-		c->offset = 0;
-		c->mnt = 0;
-		c->stream = 0;
-		c->aux = 0;
-		c->mntindex = 0;
-		c->mchan = 0;
-		c->mqid = (Qid){0, 0};
-		return c;
+		resrcwait("no chans\n");
 	}
-	unlock(&chanalloc);
-	print("no chans\n");
-	if(u == 0)
-		panic("newchan");
-	u->p->state = Wakeme;
-	alarm(1000, wakeme, u->p);
-	sched();
-	goto loop;
 }
 
 void
@@ -111,6 +107,7 @@ close(Chan *c)
 {
 	if(c->flag & CFREE)
 		panic("close");
+
 	if(decref(c) == 0){
 		if(!waserror()) {
 			(*devtab[c->type].close)(c);
@@ -144,142 +141,121 @@ eqchan(Chan *a, Chan *b, int pathonly)
 	return 1;
 }
 
-/*
- * omnt is locked.  return with nmnt locked.
- */
-Mount*
-mountsplit(Mount *omnt)
-{
-	Mount *nmnt;
-
-	nmnt = newmount();
-	lock(nmnt);
-	nmnt->term = omnt->term;
-	nmnt->mountid = omnt->mountid;
-	nmnt->next = omnt->next;
-	if(nmnt->next)
-		incref(nmnt->next);
-	nmnt->c = omnt->c;
-	incref(nmnt->c);
-	omnt->ref--;
-	unlock(omnt);
-	return nmnt;
-}
-
 int
 mount(Chan *new, Chan *old, int flag)
 {
-	int i;
-	Mtab *mt, *mz;
-	Mount *mnt, *omnt, *nmnt, *pmnt;
 	Pgrp *pg;
-	int islast;
+	Mount *nm, *f;
+	Mhead *m, **l;
+	int order;
 
 	if(CHDIR & (old->qid.path^new->qid.path))
 		error(Emount);
-	if((old->qid.path&CHDIR)==0 && (flag&MORDER)!=MREPL)
+
+	order = flag&MORDER;
+
+	if((old->qid.path&CHDIR)==0 && order != MREPL)
 		error(Emount);
 
-	mz = 0;
-	islast = 0;
-	mnt = 0;
 	pg = u->p->pgrp;
-	lock(pg);
-	if(waserror()){
-		if(mnt){
-			mnt->c = 0;	/* caller will close new */
-			closemount(mnt);
-		}
-		unlock(pg);
+	wlock(&pg->ns);
+	if(waserror()) {
+		wunlock(&pg->ns);
 		nexterror();
 	}
-	/*
-	 * Is old already in mount table?
-	 */
-	mt = pg->mtab;
-	for(i=0; i<pg->nmtab; i++,mt++){
-		if(mt->c==0 && mz==0)
-			mz = mt;
-		else if(eqchan(mt->c, old, 1)){
-			mz = 0;
-			goto Found;
-		}
-	}
-	if(mz == 0){
-		if(i == conf.nmtab)
-			error(Enomount);
-		mz = &pg->mtab[i];
-		islast++;
-	}
-	mz->mnt = 0;
-	mt = mz;
 
-    Found:
-	new->flag = CMOUNT;
+	l = &MOUNTH(pg, old);
+	for(m = *l; m; m = m->hash) {
+		if(eqchan(m->from, old, 1))
+			break;
+		l = &m->hash;
+	}
+
+	if(m == 0) {
+		m = newmnthead();
+		m->from = old;
+		incref(old);
+		m->hash = *l;
+		*l = m;
+		if(order != MREPL) 
+			m->mount = newmount(m, old);
+	}
+
+	if(m->mount && order == MREPL) {
+		mountfree(m->mount);
+		m->mount = 0;
+	}
+
+	nm = newmount(m, new);
 	if(flag & MCREATE)
 		new->flag |= CCREATE;
-	mnt = newmount();
-	mnt->c = new;
 
-	switch(flag & MORDER){
-	/*
-	 * These two always go at head of list
-	 */
-	case MBEFORE:
-		if(mt->mnt == 0)
-			error(Enotunion);
-		/* fall through */
-
-	case MREPL:
-		mnt->next = mt->mnt;
-		mt->mnt = mnt;
-		if((flag&MORDER) == MBEFORE)
-			mnt->term = 0;
-		else
-			mnt->term = 1;
-		break;
-
-	/*
-	 * This one never goes at head of list
-	 */
-	case MAFTER:
-		if(mt->mnt == 0)
-			error(Enotunion);
-		omnt = mt->mnt;
-		pmnt = 0;
-		while(!omnt->term){
-			lock(omnt);
-			if(omnt->ref > 1){
-				omnt = mountsplit(omnt);
-				if(pmnt)
-					pmnt->next = omnt;
-				else
-					mt->mnt = omnt;
-			}
-			unlock(omnt);
-			nmnt = omnt->next;
-			if(nmnt == 0)
-				panic("MAFTER term");
-			pmnt = omnt;
-			omnt = nmnt;
-		}
-		mnt->next = omnt->next;
-		omnt->next = mnt;
-		mnt->term = 1;
-		omnt->term = 0;
-		break;
+	if(m->mount && order == MAFTER) {
+		for(f = m->mount; f->next; f = f->next)
+			;
+		f->next = nm;
+	}
+	else {
+		nm->next = m->mount;
+		m->mount = nm;
 	}
 
-	incref(new);
-	if(mz){
-		mz->c = old;
-		incref(old);
-	}
-	if(islast)
-		pg->nmtab++;
-	unlock(pg);
+	wunlock(&pg->ns);
 	poperror();
-	return mnt->mountid;
+	return nm->mountid;
+}
+
+void
+unmount(Chan *mnt, Chan *mounted)
+{
+	Pgrp *pg;
+	Mhead *m, **l;
+	Mount *f, **p;
+
+	pg = u->p->pgrp;
+	wlock(&pg->ns);
+
+	l = &MOUNTH(pg, mnt);
+	for(m = *l; m; m = m->hash) {
+		if(eqchan(m->from, mnt, 1))
+			break;
+		l = &m->hash;
+	}
+
+	if(m == 0) {
+		wunlock(&pg->ns);
+		errors("not mounted");
+	}
+
+	if(mounted == 0) {
+		*l = m->hash;
+		wunlock(&pg->ns);
+		mountfree(m->mount);
+		close(m->from);
+		mntheadfree(m);
+		return;
+	}
+
+	p = &m->mount;
+	for(f = *p; f; f = f->next) {
+		if(eqchan(f->to, mounted, 1)) {
+			*p = f->next;
+			f->next = 0;
+			mountfree(f);
+			if(m->mount == 0) {
+				*l = m->hash;
+				wunlock(&pg->ns);
+				close(m->from);
+				mntheadfree(m);
+				return;
+			}
+			wunlock(&pg->ns);
+			return;
+		}
+		p = &f->next;
+	}
+	wunlock(&pg->ns);
+	errors("not in union");
 }
 
 Chan*
@@ -291,128 +267,126 @@ clone(Chan *c, Chan *nc)
 Chan*
 domount(Chan *c)
 {
-	int i;
-	ulong mntid;
-	Mtab *mt;
-	Mount *mnt;
 	Pgrp *pg;
-	Chan *nc, *mc;
+	Chan *nc;
+	Mhead *m;
 
 	pg = u->p->pgrp;
-	/*
-	 * Is c in in mount table?
-	 */
-	mt = pg->mtab;
-	for(i=0; i<pg->nmtab; i++,mt++)
-		if(mt->c && eqchan(mt->c, c, 1))
-			goto Found;
-	/*
-	 * No; c is unaffected
-	 */
-	return c;
-
-	/*
-	 * Yes; move c through table
-	 */
-    Found:
-	lock(pg);
-	if(!eqchan(mt->c, c, 1)){	/* table changed underfoot */
-		pprint("domount: changed underfoot?\n");
-		unlock(pg);
-		return c;
-	}
-	mnt = mt->mnt;
-	mntid = mnt->mountid;
-	mc = mnt->c;
-	incref(mc);
-	unlock(pg);
-	if(waserror()){
-		close(mc);
+	rlock(&pg->ns);
+	if(waserror()) {
+		runlock(&pg->ns);
 		nexterror();
 	}
-	nc = clone(mc, 0);
-	close(mc);
+	c->mnt = 0;
+
+	for(m = MOUNTH(pg, c); m; m = m->hash)
+		if(eqchan(m->from, c, 1)) {
+			nc = clone(m->mount->to, 0);
+			nc->mnt = m->mount;
+			nc->mountid = m->mount->mountid;
+			close(c);
+			c = nc;	
+			break;			
+		}
+
 	poperror();
-	close(c);
-	nc->mnt = mnt;
-	nc->mountid = mntid;
-	return nc;
+	runlock(&pg->ns);
+	return c;
+}
+
+Chan*
+undomount(Chan *c)
+{
+	Pgrp *pg;
+	Mhead **h, **he, *f;
+	Mount *t;
+
+	pg = u->p->pgrp;
+	rlock(&pg->ns);
+	if(waserror()) {
+		runlock(&pg->ns);
+		nexterror();
+	}
+
+	he = &pg->mnthash[MNTHASH];
+	for(h = pg->mnthash; h < he; h++) {
+		for(f = *h; f; f = f->hash) {
+			for(t = f->mount; t; t = t->next)
+				if(eqchan(c, t->to, 1)) {
+					close(c);
+					c = clone(t->head->from, 0);
+					break;
+				}
+		}
+	}
+	poperror();
+	runlock(&pg->ns);
+	return c;
 }
 
 Chan*
 walk(Chan *ac, char *name, int domnt)
 {
-	Mount *mnt;
-	int first = 1;
-	Chan *c = ac;
-	Chan *nc, *mc;
-	Pgrp *pg = u->p->pgrp;
+	Pgrp *pg;
+	Chan *c = 0;
+	Mount *f;
+	int dotdot;
 
-	/*
-	 * name may be empty if the file name is "/", "#c" etc.
-	 */
-    Again:
-	if(name[0] && (*devtab[c->type].walk)(c, name)==0){
-		if(!(c->flag&CMOUNT))
-			goto Notfound;
-		mnt = c->mnt;
-		if(mnt == 0)
-			panic("walk");
-		lock(pg);
-		if(mnt->term){
-			unlock(pg);
-			goto Notfound;
-		}
-		if(c->mountid != mnt->mountid){
-			pprint("walk: changed underfoot? '%s'\n", name);
-			unlock(pg);
-			goto Notfound;
-		}
-		mnt = mnt->next;
-		mc = mnt->c;
-		incref(mc);
-		unlock(pg);
-		if(waserror()){
-			close(mc);
-			nexterror();
-		}
-		if(mnt == 0)
-			panic("walk 1");
-		nc = clone(mc, 0);
-		close(mc);
-		poperror();
-		if(!first)
+	if(*name == '\0')
+		return ac;
+
+	dotdot = 0;
+	if(name[0] == '.')
+	if(name[1] == '.')
+	if(name[2] == '\0') {
+		ac = undomount(ac);
+		dotdot = 1;
+	}
+
+	if((*devtab[ac->type].walk)(ac, name) != 0) {
+		if(dotdot)
+			ac = undomount(ac);
+		if(domnt)
+			ac = domount(ac);
+		return ac;
+	}
+
+	if(ac->mnt == 0) 
+		return 0;
+
+	pg = u->p->pgrp;
+	rlock(&pg->ns);
+	if(waserror()) {
+		runlock(&pg->ns);
+		if(c)
 			close(c);
-		nc->mnt = mnt;
-		nc->mountid = mnt->mountid;
-		c = nc;
-		first = 0;
-		goto Again;
+		nexterror();
 	}
-
-	if(name[0])			/* walk succeeded */
-		c->flag &= ~CMOUNT;
-
-	if(domnt){
-		if(waserror()){
-			if(!first)
-				close(c);
-			return 0;
-		}
-		c = domount(c);
-		poperror();
-	}
-
-	if(!first)
-		close(ac);
-
-
-	return c;
-
-    Notfound:
-	if(!first)
+	for(f = ac->mnt; f; f = f->next) {
+		c = clone(f->to, 0);
+		if((*devtab[c->type].walk)(c, name) != 0)
+			break;
 		close(c);
-	return 0;
+		c = 0;
+	}
+	poperror();
+	runlock(&pg->ns);
+
+	if(c) {
+		if(dotdot)
+			c = undomount(c);
+		c->mnt = 0;
+		if(domnt) {
+			if(waserror()) {
+				close(c);
+				nexterror();
+			}
+			c = domount(c);
+			poperror();
+		}
+		close(ac);
+	}
+	return c;	
 }
 
 /*
@@ -421,39 +395,26 @@ walk(Chan *ac, char *name, int domnt)
 Chan*
 createdir(Chan *c)
 {
-	Mount *mnt;
-	Pgrp *pg = u->p->pgrp;
-	Chan *mc, *nc;
+	Pgrp *pg;
+	Chan *nc;
+	Mount *f;
 
-	lock(pg);
-	if(waserror()){
-		unlock(pg);
+	pg = u->p->pgrp;
+	rlock(&pg->ns);
+	if(waserror()) {
+		runlock(&pg->ns);
 		nexterror();
 	}
-	mnt = c->mnt;
-	if(c->mountid != mnt->mountid){
-		pprint("createdir: changed underfoot?\n");
-		error(Enocreate);
+	for(f = c->mnt; f; f = f->next) {
+		if(f->to->flag&CCREATE) {
+			nc = clone(f->to, 0);
+			nc->mnt = f;
+			runlock(&pg->ns);
+			close(c);
+			return nc;
+		}
 	}
-	do{
-		if(mnt->term)
-			error(Enocreate);
-		mnt = mnt->next;
-	}while(!(mnt->c->flag&CCREATE));
-	mc = mnt->c;
-	incref(mc);
-	unlock(pg);
-	poperror();
-	if(waserror()){
-		close(mc);
-		nexterror();
-	}
-	nc = clone(mc, 0);
-	poperror();
-	close(c);
-	close(mc);
-	nc->mnt = mnt;
-	return nc;
+	error(Enocreate);
 }
 
 void
@@ -472,7 +433,7 @@ namec(char *name, int amode, int omode, ulong perm)
 	int t;
 	int mntok, isdot;
 	char *p;
-	char *elem;
+	char *elem, *nn;
 
 	if(name[0] == 0)
 		error(Enonexist);
@@ -580,7 +541,8 @@ namec(char *name, int amode, int omode, ulong perm)
 			c = nc;
 		}
 	Open:
-		saveregisters();	/* else error() in open has wrong value of c saved */
+		/* else error() in open has wrong value of c saved */
+		saveregisters();	
 		c = (*devtab[c->type].open)(c, omode);
 		if(omode & OCEXEC)
 			c->flag |= CCEXEC;
@@ -626,7 +588,7 @@ namec(char *name, int amode, int omode, ulong perm)
 		/*
 		 *  the file didn't exist, try the create
 		 */
-		if((c->flag&(CMOUNT|CCREATE)) == CMOUNT)
+		if(c->mnt && !(c->flag&CCREATE))
 			c = createdir(c);
 		(*devtab[c->type].create)(c, elem, omode, perm);
 		if(omode & OCEXEC)

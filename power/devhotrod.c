@@ -26,7 +26,7 @@ ulong	testbuf[NTESTBUF];
 /*
  * If 1, ENABCKSUM causes data transfers to have checksums
  */
-#define	ENABCKSUM	1
+#define	ENABCKSUM	0
 
 typedef struct Hotrod	Hotrod;
 

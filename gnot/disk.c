@@ -52,3 +52,4 @@ void streaminit0(void){
 }
 	#include "cfs.h"
 	#include "kfs.h"
+	void kproftimer(ulong pc){}

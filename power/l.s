@@ -99,9 +99,22 @@ TEXT	firmware(SB), $0
 
 TEXT	splhi(SB), $0
 
+	MOVW	R31, 8(R(MACH))	/* save PC in m->splpc */
 	MOVW	M(STATUS), R1
 	AND	$~IEC, R1, R2
 	MOVW	R2, M(STATUS)
+	NOOP
+	RET
+
+TEXT	splx(SB), $0
+
+	MOVW	R31, 8(R(MACH))	/* save PC in m->splpc */
+	MOVW	0(FP), R1
+	MOVW	M(STATUS), R2
+	AND	$IEC, R1
+	AND	$~IEC, R2
+	OR	R2, R1
+	MOVW	R1, M(STATUS)
 	NOOP
 	RET
 
@@ -113,15 +126,8 @@ TEXT	spllo(SB), $0
 	NOOP
 	RET
 
-TEXT	splx(SB), $0
+TEXT	spldone(SB), $0
 
-	MOVW	0(FP), R1
-	MOVW	M(STATUS), R2
-	AND	$IEC, R1
-	AND	$~IEC, R2
-	OR	R2, R1
-	MOVW	R1, M(STATUS)
-	NOOP
 	RET
 
 TEXT	wbflush(SB), $-4

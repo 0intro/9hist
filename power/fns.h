@@ -30,6 +30,7 @@ void	icflush(void *, ulong);
 void	ioboardinit(void);
 void	intr(Ureg*);
 void	kbdchar(int);
+void	kproftimer(ulong);
 void	lanceintr(void);
 void	lanceparity(void);
 void	lancesetup(Lance*);

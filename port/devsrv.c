@@ -179,7 +179,7 @@ srvwrite(Chan *c, void *va, long n, ulong offset)
 	memmove(buf, va, n);	/* so we can NUL-terminate */
 	buf[n] = 0;
 	fd = strtoul(buf, 0, 0);
-	fdtochan(fd, -1);	/* error check only */
+	fdtochan(fd, -1, 0);	/* error check only */
 	srv.chan[i] = u->p->fgrp->fd[fd];
 	incref(srv.chan[i]);
 	return n;

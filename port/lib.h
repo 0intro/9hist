@@ -22,6 +22,7 @@ extern	char	*strncat(char*, char*, long);
 extern	char	*strncpy(char*, char*, long);
 extern	int	strncmp(char*, char*, long);
 extern	long	strlen(char*);
+extern	int	atoi(char*);
 
 /*
  * print routines
@@ -47,14 +48,15 @@ extern	char	*doprint(char*, char*, char*, void*);
 extern	int	fmtinstall(char, int (*)(Op*));
 extern	int	sprint(char*, char*, ...);
 extern	int	print(char*, ...);
-extern  int	atoi(char *);
+
 /*
  * one-of-a-kind
  */
 extern	long	strtol(char*, char**, int);
 extern	ulong	strtoul(char*, char**, int);
+extern	long	etext;
+extern	long	edata;
 extern	long	end;
-
 /*
  * Syscall data structures
  */

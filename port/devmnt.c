@@ -154,6 +154,7 @@ mntattach(char *muxattach)
 	m->queue = 0;
 	m->rip = 0;
 	m->c = bogus.chan;
+	m->c->flag |= CMSG;
 	m->blocksize = MAXFDATA;
 
 	switch(devchar[m->c->type]) {
@@ -504,15 +505,22 @@ mountio(Mnt *m, Mntrpc *r)
 	/* Transmit a file system rpc */
 	n = convS2M(&r->request, r->rpc);
 	if(waserror()) {
-		qunlock(&m->c->wrl);
+		if(!m->mux)
+			qunlock(&m->c->wrl);
 		if(mntflush(m, r) == 0)
 			nexterror();
 	}
 	else {
-		qlock(&m->c->wrl);
-		if((*devtab[m->c->type].write)(m->c, r->rpc, n, 0) != n)
-			error(Eshortmsg);
-		qunlock(&m->c->wrl);
+		if(m->mux) {
+			if((*devtab[m->c->type].write)(m->c, r->rpc, n, 0) != n)
+				error(Eshortmsg);
+		}
+		else {
+			qlock(&m->c->wrl);
+			if((*devtab[m->c->type].write)(m->c, r->rpc, n, 0) != n)
+				error(Eshortmsg);
+			qunlock(&m->c->wrl);
+		}
 		poperror();
 	}
 	if(m->mux) {
@@ -553,7 +561,8 @@ mntrpcread(Mnt *m, Mntrpc *r)
 
 	for(;;) {
 		if(waserror()) {
-			qunlock(&m->c->rdl);
+			if(!m->mux)
+				qunlock(&m->c->rdl);
 			if(mntflush(m, r) == 0) {
 				if(m->mux == 0)
 					mntgate(m);
@@ -561,11 +570,15 @@ mntrpcread(Mnt *m, Mntrpc *r)
 			}
 			continue;
 		}
-		qlock(&m->c->rdl);
 		r->reply.type = 0;
 		r->reply.tag = 0;
-		n = (*devtab[m->c->type].read)(m->c, r->rpc, MAXRPC, 0);
-		qunlock(&m->c->rdl);
+		if(m->mux) 
+			n = (*devtab[m->c->type].read)(m->c, r->rpc, MAXRPC, 0);
+		else {
+			qlock(&m->c->rdl);
+			n = (*devtab[m->c->type].read)(m->c, r->rpc, MAXRPC, 0);
+			qunlock(&m->c->rdl);
+		}
 		poperror();
 		if(n == 0)
 			continue;
@@ -655,15 +668,20 @@ mntflush(Mnt *m, Mntrpc *r)
 	n = convS2M(&flush, r->flush);
 
 	if(waserror()) {
-		qunlock(&m->c->wrl);
+		if(!m->mux)
+			qunlock(&m->c->wrl);
 		if(strcmp(u->error, errstrtab[Eintr]) == 0)
 			return 1;
 		mntqrm(m, r);
 		return 0;
 	}
-	qlock(&m->c->wrl);
-	(*devtab[m->c->type].write)(m->c, r->flush, n, 0);
-	qunlock(&m->c->wrl);
+	if(m->mux)
+		(*devtab[m->c->type].write)(m->c, r->flush, n, 0);
+	else {
+		qlock(&m->c->wrl);
+		(*devtab[m->c->type].write)(m->c, r->flush, n, 0);
+		qunlock(&m->c->wrl);
+	}
 	poperror();
 	lock(m);
 	if(!r->done)

@@ -46,6 +46,8 @@ int	dkdial(char *);
 int	nonetdial(char *);
 int	bitdial(char *);
 int	preamble(int);
+void	srvcreate(char*, int);
+void	settime(void);
 
 /*
  *  usage: 9b [-a] [server] [file]
@@ -366,8 +368,6 @@ boot(int ask)
 {
 	int n, f, tries;
 	char *srvname;
-	Dir dir;
-	char dirbuf[DIRLEN];
 
 	if(ask)
 		outin("server", sys, sizeof(sys));
@@ -397,22 +397,8 @@ boot(int ask)
 	if(!preamble(fd))
 		return;
 
-	print("post...");
-	sprint(buf, "#s/%s", srvname);
-	f = create(buf, 1, 0666);
-	if(f < 0)
-		error("create");
-	sprint(buf, "%d", fd);
-	if(write(f, buf, strlen(buf)) != strlen(buf))
-		error("write");
-	close(f);
-	f = create("#s/boot", 1, 0666);
-	if(f < 0)
-		error("create");
-	sprint(buf, "%d", fd);
-	if(write(f, buf, strlen(buf)) != strlen(buf))
-		error("write");
-	close(f);
+	srvcreate("boot", fd);
+	srvcreate("bootes", fd);
 
 	print("mount...");
 	if(bind("/", "/", MREPL) < 0)
@@ -420,18 +406,7 @@ boot(int ask)
 	if(mount(fd, "/", MAFTER|MCREATE, "", "") < 0)
 		error("mount");
 
-	/*
-	 * set the time from the access time of the root of the file server,
-	 * accessible as /..
-	 */
-	print("time...");
-	if(stat("/..", dirbuf) < 0)
-		error("stat");
-	convM2D(dirbuf, &dir);
-	f = open("#c/time", OWRITE);
-	sprint(dirbuf, "%ld", dir.atime);
-	write(f, dirbuf, strlen(dirbuf));
-	close(f);
+	settime();
 
 	print("success\n");
 
@@ -501,4 +476,56 @@ outin(char *prompt, char *def, int len)
 		strcpy(def, buf);
 	}
 	return n;
+}
+
+void
+srvcreate(char *name, int fd)
+{
+	char *srvname;
+	int f;
+
+	srvname = strrchr(name, '/');
+	if(srvname)
+		srvname++;
+	else
+		srvname = name;
+
+	sprint(buf, "#s/%s", srvname);
+	f = create(buf, 1, 0666);
+	if(f < 0)
+		error("create");
+	sprint(buf, "%d", fd);
+	if(write(f, buf, strlen(buf)) != strlen(buf))
+		error("write");
+	close(f);
+}
+
+void
+settime(void)
+{
+	char dirbuf[DIRLEN];
+	Dir dir;
+	int f;
+
+	print("time...");
+	/*
+	 *  set the time from the access time of the root
+	 *  of the file server
+	 */
+	f = open("#s/boot", ORDWR);
+	if(f < 0)
+		return;
+	if(mount(f, "/n/boot", MREPL, "", "") < 0){
+		close(f);
+		return;
+	}
+	close(f);
+	if(stat("/n/boot", dirbuf) < 0)
+		error("stat");
+	convM2D(dirbuf, &dir);
+	sprint(dirbuf, "%ld", dir.atime);
+	unmount(0, "/n/boot");
+	f = open("#c/time", OWRITE);
+	write(f, dirbuf, strlen(dirbuf));
+	close(f);
 }

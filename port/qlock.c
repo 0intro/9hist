@@ -60,3 +60,37 @@ qunlock(QLock *q)
 	q->locked = 0;
 	unlock(&q->use);
 }
+
+void
+rlock(RWlock *l)
+{
+	qlock(&l->x);		/* wait here for writers and exclusion */
+	lock(l);
+	l->readers++;
+	canqlock(&l->k);	/* block writers if we are the first reader */
+	unlock(l);
+	qunlock(&l->x);
+}
+
+void
+runlock(RWlock *l)
+{
+	lock(l);
+	if(--l->readers == 0)	/* last reader out allows writers */
+		qunlock(&l->k);
+	unlock(l);
+}
+
+void
+wlock(RWlock *l)
+{
+	qlock(&l->x);		/* wait here for writers and exclusion */
+	qlock(&l->k);		/* wait here for last reader */
+}
+
+void
+wunlock(RWlock *l)
+{
+	qunlock(&l->x);
+	qunlock(&l->k);
+}

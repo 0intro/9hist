@@ -161,7 +161,7 @@ panic(char *fmt, ...)
 	char buf[PRINTSIZE];
 	int n;
 
-	strcpy(buf, "inconceivable: ");
+	strcpy(buf, "panic: ");
 	n = doprint(buf+strlen(buf), buf+sizeof(buf), fmt, (&fmt+1)) - buf;
 	buf[n] = '\n';
 	putstrn(buf, n+1);
@@ -764,7 +764,7 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 		memmove(buf, va, n);	/* so we can NUL-terminate */
 		buf[n] = 0;
 		fd = strtoul(buf, 0, 0);
-		swc = fdtochan(fd, -1);
+		swc = fdtochan(fd, -1, 1);
 		setswapchan(swc);
 		return n;
 

@@ -135,6 +135,7 @@ userinit(void)
 	p->fgrp = newfgrp();
 
 	strcpy(p->text, "*init*");
+	strcpy(p->pgrp->user, "bootes");
 	savefpregs(&initfp);
 	p->fpstate = FPinit;
 

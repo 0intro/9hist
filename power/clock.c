@@ -47,13 +47,6 @@ struct Timer{
 #define	MODE2	0x04		/* interval timer */
 
 
-/* #define	PROFILING /**/
-#ifdef PROFILING
-#undef TIME1
-#define	TIME1	211		/* profiling clock; prime; about 10ms per tick */
-#define	NPROF	50000
-ulong	profcnt[MAXMACH*NPROF];
-#endif
 
 void
 clockinit(void)
@@ -108,6 +101,7 @@ clock(Ureg *ur)
 			exit();
 		}
 		checkalarms();
+		kproftimer(ur->pc);
 		if(u && (ur->status&IEP) && u->p && u->p->state==Running){
 			if(anyready()){
 				if(u->p->hasspin)
@@ -128,12 +122,6 @@ clock(Ureg *ur)
 
 		i = *CLRTIM1;
 		USED(i);
-#ifdef	PROFILING
-		pc -= (ulong)&start;
-		pc /= sizeof(ulong);
-		if(pc < NPROF)
-			profcnt[m->machno*NPROF+pc]++;
-#endif
 		return;
 	}
 }

@@ -16,7 +16,7 @@ typedef struct IOQ	IOQ;
 typedef struct KIOQ	KIOQ;
 typedef struct List	List;
 typedef struct Mount	Mount;
-typedef struct Mtab	Mtab;
+typedef struct Mhead	Mhead;
 typedef struct Note	Note;
 typedef struct Page	Page;
 typedef struct Palloc	Palloc;
@@ -28,6 +28,7 @@ typedef struct QLock	QLock;
 typedef struct Queue	Queue;
 typedef struct Ref	Ref;
 typedef struct Rendez	Rendez;
+typedef struct RWlock	RWlock;
 typedef struct Segment	Segment;
 typedef struct Stream	Stream;
 typedef struct Waitq	Waitq;
@@ -57,6 +58,14 @@ struct QLock
 	Proc	*head;			/* next process waiting for object */
 	Proc	*tail;			/* last process waiting for object */
 	int	locked;			/* flag */
+};
+
+struct RWlock
+{
+	Lock;				/* Lock modify lock */
+	QLock	x;			/* Mutual exclusion lock */
+	QLock	k;			/* Lock for waiting writers held for readers */
+	int	readers;		/* Count of readers in lock */
 };
 
 struct Alarm
@@ -119,8 +128,8 @@ enum
  *  Chan.flags
  */
 #define	COPEN	1			/* for i/o */
-#define	CMOUNT	2			/* is result of a mount/bind */
-#define	CCREATE	4			/* permits creation if CMOUNT */
+#define	CMSG	2			/* is the message channel for a mount */
+#define	CCREATE	4			/* permits creation if c->mnt */
 #define	CCEXEC	8			/* close on exec */
 #define	CFREE	16			/* not in use */
 
@@ -242,17 +251,17 @@ extern KIOQ	kbdq;
 
 struct Mount
 {
-	Ref;				/* also used as a lock when playing lists */
-	short	term;			/* terminates list */
 	ulong	mountid;
 	Mount	*next;
-	Chan	*c;			/* channel replacing underlying channel */
+	Mhead	*head;
+	Chan	*to;			/* channel replacing underlying channel */
 };
 
-struct Mtab
+struct Mhead
 {
-	Chan	*c;			/* channel mounted upon */
-	Mount	*mnt;			/* what's mounted upon it */
+	Chan	*from;			/* channel mounted upon */
+	Mount	*mount;			/* what's mounted upon it */
+	Mhead	*hash;			/* Hash chain */
 };
 
 enum{
@@ -362,6 +371,8 @@ struct Segment
 
 #define RENDHASH	32
 #define REND(p,s)	((p)->rendhash[(s)%RENDHASH])
+#define MNTHASH		32
+#define MOUNTH(p,s)	((p)->mnthash[(s)->qid.path%MNTHASH])
 
 struct Pgrp
 {
@@ -370,9 +381,9 @@ struct Pgrp
 	int	index;			/* index in pgrp table */
 	ulong	pgrpid;
 	char	user[NAMELEN];
-	int	nmtab;			/* highest active mount table entry, +1 */
 	QLock	debug;			/* single access via devproc.c */
-	Mtab	*mtab;
+	RWlock	ns;			/* Namespace many read/one write lock */
+	Mhead	*mnthash[MNTHASH];
 	Proc	*rendhash[RENDHASH];	/* Rendezvous tag hash */
 };
 

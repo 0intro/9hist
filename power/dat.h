@@ -127,6 +127,7 @@ struct Mach
 {
 	int	machno;			/* physical id of processor NB. MUST BE FIRST */
 	Softtlb *stb;			/* Software tlb simulation NB. MUST BE SECOND */
+	ulong	splpc;			/* pc that called splhi() */
 	ulong	ticks;			/* of the clock since boot time */
 	Proc	*proc;			/* current process on this processor */
 	Label	sched;			/* scheduler wakeup */

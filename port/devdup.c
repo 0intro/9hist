@@ -72,7 +72,7 @@ dupopen(Chan *c, int omode)
 		c->offset = 0;
 		return c;
 	}
-	fdtochan(c->qid.path, openmode(omode));	/* error check only */
+	fdtochan(c->qid.path, openmode(omode), 0);	/* error check only */
 	f = u->p->fgrp->fd[c->qid.path];
 	close(c);
 	incref(f);

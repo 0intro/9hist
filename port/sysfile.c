@@ -30,20 +30,21 @@ newfd(Chan *c)
 }
 
 Chan*
-fdtochan(int fd, int mode)
+fdtochan(int fd, int mode, int chkmnt)
 {
 	Chan *c;
 
 	c = 0;
 	if(fd<0 || NFD<=fd || (c = u->p->fgrp->fd[fd])==0)
 		error(Ebadfd);
+	if(chkmnt && (c->flag&CMSG))
+		errors("channel is mounted");
 	if(mode<0 || c->mode==ORDWR)
 		return c;
 	if((mode&OTRUNC) && c->mode==OREAD)
-    err:
 		error(Ebadusefd);
 	if((mode&~OTRUNC) != c->mode)
-		goto err;
+		error(Ebadusefd);
 	return c;
 }
 
@@ -109,7 +110,7 @@ sysdup(ulong *arg)
 	/*
 	 * Close after dup'ing, so date > #d/1 works
 	 */
-	c = fdtochan(arg[0], -1);
+	c = fdtochan(arg[0], -1, 0);
 	fd = arg[1];
 	if(fd != -1){
 		if(fd<0 || NFD<=fd)
@@ -183,7 +184,7 @@ fdclose(int fd, int flag)
 long
 sysclose(ulong *arg)
 {
-	fdtochan(arg[0], -1);
+	fdtochan(arg[0], -1, 0);
 	fdclose(arg[0], 0);
 
 	return 0;
@@ -192,60 +193,56 @@ sysclose(ulong *arg)
 long
 unionread(Chan *c, void *va, long n)
 {
-	Mount *mnt;
 	Chan *mc, *nc;
 	Pgrp *pg = u->p->pgrp;
 	long nr;
 
-	mnt = c->mnt;
-	lock(pg);
-	if(c->mountid != mnt->mountid){
-		pprint("unionread: changed underfoot?\n");
-		unlock(pg);
-		return 0;
-	}
-    Again:
-	mc = mnt->c;
-	incref(mc);
-	unlock(pg);
-	if(waserror()){
-		close(mc);
-		nexterror();
-	}
-	nc = clone(mc, 0);
-	poperror();
-	close(mc);
-	if(waserror()){
+	rlock(&pg->ns);
+
+	for(;;) {
+		if(waserror()) {
+			runlock(&pg->ns);
+			nexterror();
+		}
+		nc = clone(c->mnt->to, 0);
+		poperror();
+
+		if(c->mountid != c->mnt->mountid){
+			pprint("unionread: changed underfoot?\n");
+			runlock(&pg->ns);
+			close(nc);
+			return 0;
+		}
+
+		if(waserror()){
+			runlock(&pg->ns);
+			close(nc);
+			nexterror();
+		}
+
+		nc = (*devtab[nc->type].open)(nc, OREAD);
+		nc->offset = c->offset;
+		nr = (*devtab[nc->type].read)(nc, va, n, nc->offset);
+		/* devdirread e.g. changes it */
+		c->offset = nc->offset;	
+		poperror();
+
 		close(nc);
-		nexterror();
+		if(nr > 0) {
+			runlock(&pg->ns);
+			return nr;
+		}
+		/*
+		 * Advance to next element
+		 */
+		c->mnt = c->mnt->next;
+		if(c->mnt == 0)
+			break;
+		c->mountid = c->mnt->mountid;
+		c->offset = 0;
 	}
-	nc = (*devtab[nc->type].open)(nc, OREAD);
-	nc->offset = c->offset;
-	nr = (*devtab[nc->type].read)(nc, va, n, nc->offset);
-	c->offset = nc->offset;		/* devdirread e.g. changes it */
-	poperror();
-	close(nc);
-	if(nr > 0)
-		return nr;
-	/*
-	 * Advance to next element
-	 */
-	lock(pg);
-	mnt = c->mnt;
-	if(c->mountid != mnt->mountid){
-		print("unionread: changed underfoot?\n");
-		unlock(pg);
-		return 0;
-	}
-	if(mnt->term){
-		unlock(pg);
-		return 0;
-	}
-	mnt = mnt->next;
-	c->mnt = mnt;
-	c->mountid = mnt->mountid;
-	c->offset = 0;
-	goto Again;
+	runlock(&pg->ns);
+	return 0;
 }
 
 long
@@ -254,7 +251,7 @@ sysread(ulong *arg)
 	Chan *c;
 	long n;
 
-	c = fdtochan(arg[0], OREAD);
+	c = fdtochan(arg[0], OREAD, 1);
 	validaddr(arg[1], arg[2], 1);
 	qlock(&c->rdl);
 
@@ -268,7 +265,7 @@ sysread(ulong *arg)
 		if(c->offset%DIRLEN || n==0)
 			error(Ebaddirread);
 	}
-	if((c->qid.path&CHDIR) && (c->flag&CMOUNT))
+	if((c->qid.path&CHDIR) && c->mnt)
 		n = unionread(c, (void*)arg[1], n);
 	else
 		n = (*devtab[c->type].read)(c, (void*)arg[1], n, c->offset);
@@ -284,7 +281,7 @@ syswrite(ulong *arg)
 	Chan *c;
 	long n;
 
-	c = fdtochan(arg[0], OWRITE);
+	c = fdtochan(arg[0], OWRITE, 1);
 	validaddr(arg[1], arg[2], 0);
 	qlock(&c->wrl);
 
@@ -309,7 +306,7 @@ sysseek(ulong *arg)
 	Dir dir;
 	long off;
 
-	c = fdtochan(arg[0], -1);
+	c = fdtochan(arg[0], -1, 1);
 	if(c->qid.path & CHDIR)
 		error(Eisdir);
 	if(devchar[c->type] == '|')
@@ -351,7 +348,7 @@ sysfstat(ulong *arg)
 
 	validaddr(arg[1], DIRLEN, 1);
 	evenaddr(arg[1]);
-	c = fdtochan(arg[0], -1);
+	c = fdtochan(arg[0], -1, 0);
 	(*devtab[c->type].stat)(c, (char*)arg[1]);
 	return 0;
 }
@@ -406,7 +403,7 @@ bindmount(ulong *arg, int ismount)
 	if(flag>MMASK || (flag&MORDER)==(MBEFORE|MAFTER))
 		error(Ebadarg);
 	if(ismount){
-		bogus.chan = fdtochan(arg[0], 2);
+		bogus.chan = fdtochan(arg[0], 2, 0);
 		validaddr(arg[3], 1, 0);
 		if(vmemchr((char*)arg[3], '\0', NAMELEN) == 0)
 			error(Ebadarg);
@@ -456,6 +453,40 @@ long
 sysmount(ulong *arg)
 {
 	return bindmount(arg, 1);
+}
+
+long
+sysunmount(ulong *arg)
+{
+	Chan *cmount, *cmounted;
+
+	cmounted = 0;
+
+	validaddr(arg[1], 1, 0);
+	cmount = namec((char *)arg[1], Amount, 0, 0);
+
+	if(arg[0]) {
+		if(waserror()) {
+			close(cmount);
+			nexterror();
+		}
+		validaddr(arg[0], 1, 0);
+		cmounted = namec((char*)arg[0], Aaccess, 0, 0);
+		poperror();
+	}
+
+	if(waserror()) {
+		close(cmount);
+		if(cmounted)
+			close(cmounted);
+		nexterror();
+	}
+	unmount(cmount, cmounted);
+	close(cmount);
+	if(cmounted)
+		close(cmounted);
+	poperror();	
+	return 0;
 }
 
 long
@@ -528,23 +559,7 @@ sysfwstat(ulong *arg)
 
 	validaddr(arg[1], DIRLEN, 0);
 	evenaddr(arg[1]);
-	c = fdtochan(arg[0], -1);
+	c = fdtochan(arg[0], -1, 1);
 	(*devtab[c->type].wstat)(c, (char*)arg[1]);
 	return 0;
 }
-
-#ifdef asdf
-long
-sysfilsys(ulong *arg)
-{
-	Chan *cin, *cout;
-
-	cin = fdtochan(arg[0], OREAD);
-	cout = fdtochan(arg[1], OWRITE);
-	validaddr(arg[2], 1, 0);
-	if((cin->qid.path&CHDIR) || (cout->qid.path&CHDIR))
-		error(Ebadarg);
-	service((char *)arg[2], cin, cout, filsys);
-	return 0;
-}
-#endif
