@@ -370,9 +370,9 @@ fpexcname(Ureg *ur, ulong fcr31, char *buf)
 void
 kernfault(Ureg *ur, int code)
 {
-	print("panic: kfault %s badvaddr=0x%lux\n", excname[code], ur->badvaddr);
-	print("u=0x%lux status=0x%lux pc=0x%lux sp=0x%lux\n",
-				up, ur->status, ur->pc, ur->sp);
+	print("kfault %s badvaddr=0x%lux\n", excname[code], ur->badvaddr);
+	print("UP=0x%lux SR=0x%lux PC=0x%lux R31=%lux SP=0x%lux\n",
+				up, ur->status, ur->pc, ur->r31, ur->sp);
 	kpteprint(ur);
 	panic("kfault");
 }
@@ -471,6 +471,7 @@ notify(Ureg *ur)
 	*(ulong*)(sp+2*BY2WD) = sp+3*BY2WD;	/* arg 2 is string */
 	up->svr1 = ur->r1;			/* save away r1 */
 	ur->r1 = (ulong)up->ureg;		/* arg 1 is ureg* */
+	*(ulong*)(sp+1*BY2WD) = (ulong)u->ureg;	/* arg 1 0(FP) is ureg* */
 	*(ulong*)(sp+0*BY2WD) = 0;		/* arg 0 is pc */
 	ur->usp = sp;
 	ur->pc = (ulong)up->notify;

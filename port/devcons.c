@@ -209,10 +209,16 @@ echo(Rune r, char *buf, int n)
 	/*
 	 *  finally, the actual echoing
 	 */
-	if(r == 0x15)
-		putstrn("^U\n", 3);
-	else
-		putstrn(buf, n);
+	if(r == '\n'){
+		if(printq)
+			qproduce(printq, "\r", 1);
+	} else if(r == 0x15){
+		buf = "^U\n";
+		n = 3;
+	}
+	screenputs(buf, n);
+	if(printq)
+		qproduce(printq, buf, n);
 }
 
 /*
