@@ -83,6 +83,18 @@ static Dirtab mousedir[]={
 	"mousectl",	{Qmousectl},		0,	0660,
 };
 
+enum
+{
+	CMcalibrate,
+	CMswap,
+};
+
+static Cmdtab penmousecmd[] =
+{
+	CMcalibrate,	"calibrate",	0,
+	CMswap,		"swap",		1,
+};
+
 static uchar buttonmap[8] = {
 	0, 1, 2, 3, 4, 5, 6, 7,
 };
@@ -325,6 +337,8 @@ penmousewrite(Chan *c, void *va, long n, vlong)
 {
 	char *p;
 	Point pt;
+	Cmdbuf *cb;
+	Cmdtab *ct;
 	char buf[64], *field[5];
 	int nf, b;
 
@@ -334,28 +348,27 @@ penmousewrite(Chan *c, void *va, long n, vlong)
 		error(Eisdir);
 
 	case Qmousectl:
-		if(n >= sizeof(buf))
-			n = sizeof(buf)-1;
-		strncpy(buf, va, n);
-		if(buf[n - 1] == '\n')
-			buf[n-1] = 0;
-		else
-			buf[n] = 0;
-		nf = tokenize(buf, field, 5);
-		if(strcmp(field[0], "swap") == 0){
+		cb = parsecmd(va, n);
+		if(waserror()){
+			free(cb);
+			nexterror();
+		}
+		ct = lookupcmd(cb, penmousecmd, nelem(penmousecmd));
+		switch(ct->index){
+		case CMswap:
 			if(mouseswap)
 				setbuttonmap("123");
 			else
 				setbuttonmap("321");
 			mouseswap ^= 1;
-		}
-		else if(strcmp(field[0], "calibrate") == 0){
-			if (nf == 1) {
+			break;
+		case CMcalibrate:
+			if (cb->nf == 1) {
 				calibration.scalex = 1<<16;
 				calibration.scaley = 1<<16;
 				calibration.transx = 0;
 				calibration.transy = 0;
-			} else if (nf == 5) {
+			} else if (cb->nf == 5) {
 				if ((!isdigit(*field[1]) && *field[1] != '-')
 				 || (!isdigit(*field[2]) && *field[2] != '-')
 				 || (!isdigit(*field[3]) && *field[3] != '-')
@@ -366,8 +379,11 @@ penmousewrite(Chan *c, void *va, long n, vlong)
 				calibration.transx = strtol(field[3], nil, 0);
 				calibration.transy = strtol(field[4], nil, 0);
 			} else
-				print("calibrate %d fields\n", nf);
+				cmderror(cb, Ecmdargs);
+			break;
 		}
+		free(cb);
+		poperror();
 		return n;
 
 	case Qmousein:

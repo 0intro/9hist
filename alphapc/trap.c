@@ -196,11 +196,11 @@ mcheck(Ureg *ur, void *x)
 
 	m = x;
 	data = x;
-	iprint("panic: Machine Check @%lux: %s (%lux) len %d\n",
+	iprint("panic: Machine Check @%lux: %s (%lux) len %lud\n",
 			m, smcheck(m->code), m->code, m->len);
 	iprint("proc offset %lux sys offset %lux\n", m->procoff, m->sysoff);
 	for (i = 0, col = 0; i < m->len/8; i++) {
-		iprint("%.3lux: %.16llux%s", 8*i, data[i], (col == 2) ? "\n" : "    ");
+		iprint("%.3x: %.16llux%s", 8*i, data[i], (col == 2) ? "\n" : "    ");
 		if (col++ == 2)
 			col = 0;
 	}

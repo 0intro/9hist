@@ -21,9 +21,10 @@ authentication(int cpuflag)
 	av[ac++] = "factotum";
 //av[ac++] = "-d";
 	if(cpuflag)
-		av[ac++] = "-s";
+		av[ac++] = "-S";
 	else
 		av[ac++] = "-u";
+	av[ac++] = "-sfactotum";
 	if(authaddr != nil){
 		av[ac++] = "-a";
 		av[ac++] = authaddr;

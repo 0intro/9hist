@@ -251,7 +251,7 @@ mmudump(void)
 	if(up) {
 		top = up->mmutop;
 		if(top != nil)
-			iprint("top %lux top[N-1] %lux\n", top->va, ((uvlong *)top->va)[PTE2PG-1]);
+			iprint("top %lux top[N-1] %llux\n", top->va, ((uvlong *)top->va)[PTE2PG-1]);
 		lvl2 = up->mmulvl2;
 		if(lvl2 != nil)
 			iprint("lvl2 %lux\n", lvl2->va);

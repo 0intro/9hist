@@ -1067,8 +1067,8 @@ static long
 audiowrite(Chan *c, void *vp, long n, vlong)
 {
 	long m, n0;
-	int i, nf, v, left, right, in, out;
-	char buf[255], *field[Ncmd];
+	int i, v, left, right, in, out;
+	Cmdbuf *cb;
 	Buf *b;
 	char *a;
 
@@ -1085,18 +1085,18 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 		right = 1;
 		in = 1;
 		out = 1;
-		if(n > sizeof(buf)-1)
-			n = sizeof(buf)-1;
-		memmove(buf, a, n);
-		buf[n] = '\0';
+		cb = parsecmd(vp, n);
+		if(waserror()){
+			free(cb);
+			nexterror();
+		}
 
-		nf = tokenize(buf, field, Ncmd);
-		for(i = 0; i < nf; i++){
+		for(i = 0; i < cb->nf; i++){
 			/*
 			 * a number is volume
 			 */
-			if(field[i][0] >= '0' && field[i][0] <= '9') {
-				m = strtoul(field[i], 0, 10);
+			if(cb->f[i][0] >= '0' && cb->f[i][0] <= '9') {
+				m = strtoul(cb->f[i], 0, 10);
 				if(left && out)
 					audio.lovol[v] = m;
 				if(left && in)
@@ -1110,7 +1110,7 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 			}
 
 			for(m=0; volumes[m].name; m++) {
-				if(strcmp(field[i], volumes[m].name) == 0) {
+				if(strcmp(cb->f[i], volumes[m].name) == 0) {
 					v = m;
 					in = 1;
 					out = 1;
@@ -1120,27 +1120,27 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 				}
 			}
 
-			if(strcmp(field[i], "reset") == 0) {
+			if(strcmp(cb->f[i], "reset") == 0) {
 				resetlevel();
 				mxvolume();
 				goto cont0;
 			}
-			if(strcmp(field[i], "in") == 0) {
+			if(strcmp(cb->f[i], "in") == 0) {
 				in = 1;
 				out = 0;
 				goto cont0;
 			}
-			if(strcmp(field[i], "out") == 0) {
+			if(strcmp(cb->f[i], "out") == 0) {
 				in = 0;
 				out = 1;
 				goto cont0;
 			}
-			if(strcmp(field[i], "left") == 0) {
+			if(strcmp(cb->f[i], "left") == 0) {
 				left = 1;
 				right = 0;
 				goto cont0;
 			}
-			if(strcmp(field[i], "right") == 0) {
+			if(strcmp(cb->f[i], "right") == 0) {
 				left = 0;
 				right = 1;
 				goto cont0;
@@ -1149,6 +1149,8 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 			break;
 		cont0:;
 		}
+		free(cb);
+		poperror();
 		break;
 
 	case Qaudio:

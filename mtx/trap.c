@@ -152,13 +152,14 @@ trap(Ureg *ur)
 {
 	int ecode;
 	static struct {int callsched;} c = {1};
-	int user = (ur->srr1 & MSR_PR) != 0;
-	char buf[ERRLEN];
+	int user;
+	char buf[ERRMAX];
 
 	m->intrts = fastticks(nil);
 	ecode = (ur->cause >> 8) & 0xff;
+//	user = (ur->srr1 & MSR_PR) != 0;
 
-if(ur->status & MSR_RI == 0)
+/* if(ur->status & MSR_RI == 0)
 print("double fault?: ecode = %d\n", ecode);
 	switch(ecode){
 	case CEI:
@@ -213,7 +214,7 @@ if(0) print("CDMISS: %lux %lux\n", m->epn, m->cmp1);
 		delay(100);
 		reset();
 	}
-
+*/
 	splhi();
 	if(user)
 		notify(ur);
@@ -223,8 +224,9 @@ void
 faultpower(Ureg *ureg, ulong addr, int read)
 {
 	int user, insyscall, n;
-	char buf[ERRLEN];
-	user = (ureg->srr1 & MSR_PR) != 0;
+	char buf[ERRMAX];
+
+//	user = (ureg->srr1 & MSR_PR) != 0;
 if(0)print("fault: pid=%ld pc = %lux, addr = %lux read = %d user = %d stack=%ulx\n", up->pid, ureg->pc, addr, read, user, &ureg);
 	insyscall = up->insyscall;
 	up->insyscall = 1;
@@ -261,6 +263,7 @@ Lock	veclock;
 void
 trapinit(void)
 {
+#ifdef	BLOG
 	int i;
 	IMM *io;
 
@@ -289,11 +292,13 @@ trapinit(void)
 	sethvec2(CIMISS<<8, itlbmiss);
 	sethvec2(CDMISS<<8, dtlbmiss);
 	sethvec2(CDTLBE<<8, dtlberror);
+#endif
 }
 
 void
 intrenable(int v, void (*r)(Ureg*, void*), void *arg, int, char *name)
 {
+#ifdef BLOG
 	Handler *h;
 	IMM *io;
 
@@ -327,11 +332,13 @@ intrenable(int v, void (*r)(Ureg*, void*), void *arg, int, char *name)
 		io->simask |= 1<<(31-LEV(v));
 	eieio();
 	iunlock(&veclock);
+#endif
 }
 
 void
 intr(Ureg *ur)
 {
+#ifdef BLOG
 	int b, v;
 	IMM *io;
 	Handler *h;
@@ -376,6 +383,7 @@ intr(Ureg *ur)
 	if(v >= VectorCPIC)
 		io->cisr |= 1<<(v-VectorCPIC);
 	eieio();
+#endif
 }
 
 int
@@ -457,7 +465,7 @@ dumpregs(Ureg *ur)
 	ulong *l;
 	if(up) {
 		print("registers for %s %ld\n", up->text, up->pid);
-		if(ur->srr1 & MSR_PR == 0)
+//		if(ur->srr1 & MSR_PR == 0)
 		if(ur->usp < (ulong)up->kstack || ur->usp > (ulong)up->kstack+KSTACK)
 			print("invalid stack ptr\n");
 	}
@@ -503,6 +511,7 @@ dumplongs(char*, ulong*, int)
 void
 reset(void)
 {
+#ifdef BLOG
 	IMM *io;
 
 	io = m->iomem;
@@ -515,6 +524,7 @@ print("reset = %ulx\n", getmsr());
 	// cause checkstop -> causes reset
 	*(uchar*)(0xdeadbeef) = 0;
 	*(ulong*)(0) = 0;
+#endif
 }
 
 /*
@@ -623,8 +633,8 @@ syscall(Ureg* ureg)
 	long	ret;
 	int	i, scallnr;
 
-	if((ureg->srr1 & MSR_PR) == 0)
-		panic("syscall: srr1 0x%4.4uX\n", ureg->srr1);
+//	if((ureg->srr1 & MSR_PR) == 0)
+//		panic("syscall: srr1 0x%4.4uX\n", ureg->srr1);
 
 	m->syscall++;
 	up->insyscall = 1;
@@ -709,8 +719,8 @@ notify(Ureg* ur)
 	n = &up->note[0];
 	if(strncmp(n->msg, "sys:", 4) == 0){
 		l = strlen(n->msg);
-		if(l > ERRLEN-15)	/* " pc=0x12345678\0" */
-			l = ERRLEN-15;
+		if(l > ERRMAX-15)	/* " pc=0x12345678\0" */
+			l = ERRMAX-15;
 		sprint(n->msg+l, " pc=0x%.8lux", ur->pc);
 	}
 
@@ -735,7 +745,7 @@ notify(Ureg* ur)
 	sp -= sizeof(Ureg);
 
 	if(!okaddr((ulong)up->notify, BY2WD, 0) ||
-	   !okaddr(sp-ERRLEN-4*BY2WD, sizeof(Ureg)+ERRLEN+4*BY2WD, 1)) {
+	   !okaddr(sp-ERRMAX-4*BY2WD, sizeof(Ureg)+ERRMAX+4*BY2WD, 1)) {
 		pprint("suicide: bad address or sp in notify\n");
 		qunlock(&up->debug);
 		pexit("Suicide", 0);
@@ -744,8 +754,8 @@ notify(Ureg* ur)
 	memmove((Ureg*)sp, ur, sizeof(Ureg));
 	*(Ureg**)(sp-BY2WD) = up->ureg;	/* word under Ureg is old up->ureg */
 	up->ureg = (void*)sp;
-	sp -= BY2WD+ERRLEN;
-	memmove((char*)sp, up->note[0].msg, ERRLEN);
+	sp -= BY2WD+ERRMAX;
+	memmove((char*)sp, up->note[0].msg, ERRMAX);
 	sp -= 3*BY2WD;
 	*(ulong*)(sp+2*BY2WD) = sp+3*BY2WD;	/* arg 2 is string */
 	ur->r1 = (long)up->ureg;		/* arg 1 is ureg* */
@@ -813,7 +823,7 @@ noted(Ureg* ureg, ulong arg0)
 			pexit("Suicide", 0);
 		}
 		qunlock(&up->debug);
-		sp = oureg-4*BY2WD-ERRLEN;
+		sp = oureg-4*BY2WD-ERRMAX;
 		splhi();
 		ureg->sp = sp;
 		((ulong*)sp)[1] = oureg;	/* arg 1 0(FP) is ureg* */

@@ -26,10 +26,12 @@ static int intellimouse;
 static int packetsize;
 static int resolution;
 static int accelerated;
+static int mousehwaccel;
 
 enum
 {
 	CMaccelerated,
+	CMhwaccel,
 	CMintellimouse,
 	CMlinear,
 	CMps2,
@@ -42,6 +44,7 @@ enum
 static Cmdtab mousectlmsg[] =
 {
 	CMaccelerated,		"accelerated",		0,
+	CMhwaccel,		"hwaccel",		2,
 	CMintellimouse,		"intellimouse",		1,
 	CMlinear,		"linear",		1,
 	CMps2,			"ps2",			1,
@@ -181,34 +184,46 @@ ps2mouse(void)
 
 	mousetype = MousePS2;
 	packetsize = 3;
+	mousehwaccel = 1;
 }
 
+/*
+ * The PS/2 Trackpoint multiplexor on the IBM Thinkpad T23 ignores
+ * acceleration commands.  It is supposed to pass them on
+ * to the attached device, but my Logitech mouse is simply
+ * not behaving any differently.  For such devices, we allow
+ * the user to use "hwaccel off" to tell us to back off to
+ * software acceleration even if we're using the PS/2 port.
+ * (Serial mice are always software accelerated.)
+ * For more information on the Thinkpad multiplexor, see
+ * http://wwwcssrv.almaden.ibm.com/trackpoint/
+ */
 static void
 setaccelerated(int x)
 {
 	accelerated = x;
-	switch(mousetype){
-	case MousePS2:
-		i8042auxcmd(0xE7);
-		break;
-	default:
-		mouseaccelerate(x);
-		break;
+	if(mousehwaccel){
+		switch(mousetype){
+		case MousePS2:
+			i8042auxcmd(0xE7);
+			return;
+		}
 	}
+	mouseaccelerate(x);
 }
 
 static void
 setlinear(void)
 {
 	accelerated = 0;
-	switch(mousetype){
-	case MousePS2:
-		i8042auxcmd(0xE6);
-		break;
-	default:
-		mouseaccelerate(0);
-		break;
+	if(mousehwaccel){
+		switch(mousetype){
+		case MousePS2:
+			i8042auxcmd(0xE6);
+			return;
+		}
 	}
+	mouseaccelerate(0);
 }
 
 static void
@@ -307,5 +322,12 @@ mousectl(Cmdbuf *cb)
 			break;
 		}
 		break;
+	case CMhwaccel:
+		if(strcmp(cb->f[1], "on")==0)
+			mousehwaccel = 1;
+		else if(strcmp(cb->f[1], "off")==0)
+			mousehwaccel = 0;
+		else
+			cmderror(cb, "bad mouse control message");
 	}
 }
