@@ -291,7 +291,7 @@ powerinit(void)
 		*p++ = *q++;
 
 	*resumeaddr = (ulong) power_resume;
-	addclock0link(blanktimer);
+	addclock0link(blanktimer, 1000/HZ);
 	intrenable(GPIOrising, bitno(GPIO_PWR_ON_i), onoffintr, nil, "on/off");
 }
 
