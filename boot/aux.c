@@ -86,6 +86,19 @@ readfile(char *name, char *buf, int len)
 	return 0;
 }
 
+int
+writefile(char *name, char *buf, int len)
+{
+	int f, n;
+
+	f = open(name, OWRITE);
+	if(f < 0)
+		return -1;
+	n = write(f, buf, len);
+	close(f);
+	return (n != len) ? -1 : 0;
+}
+
 void
 setenv(char *name, char *val)
 {

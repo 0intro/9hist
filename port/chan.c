@@ -95,6 +95,10 @@ void
 chanfree(Chan *c)
 {
 	c->flag = CFREE;
+	if(c->session){
+		freesession(c->session);
+		c->session = 0;
+	}
 	lock(&chanalloc);
 	c->next = chanalloc.free;
 	chanalloc.free = c;

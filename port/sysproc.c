@@ -42,8 +42,6 @@ sysrfork(ulong *arg)
 			p->pgrp = newpgrp();
 			if(flag & RFNAMEG)
 				pgrpcpy(p->pgrp, opg);
-			else
-				*p->pgrp->crypt = *opg->crypt;
 			closepgrp(opg);
 		}
 		if(flag & (RFENVG|RFCENVG)) {
@@ -126,8 +124,6 @@ sysrfork(ulong *arg)
 		p->pgrp = newpgrp();
 		if(flag & RFNAMEG)
 			pgrpcpy(p->pgrp, parent->pgrp);
-		else
-			*p->pgrp->crypt = *parent->pgrp->crypt;
 	}
 	else {
 		p->pgrp = parent->pgrp;

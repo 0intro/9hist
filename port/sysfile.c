@@ -85,13 +85,6 @@ openmode(ulong o)
 }
 
 long
-sysfsession(ulong *arg)
-{
-	USED(arg);
-	return 0;
-}
-
-long
 syspipe(ulong *arg)
 {
 	int fd[2];
@@ -442,7 +435,6 @@ bindmount(ulong *arg, int ismount)
 	struct{
 		Chan	*chan;
 		char	*spec;
-		char	*serv;
 	}bogus;
 
 	flag = arg[2];
@@ -462,11 +454,7 @@ bindmount(ulong *arg, int ismount)
 			error(Ebadarg);
 
 		bogus.spec = (char*)arg[3];
-		validaddr(arg[4], 1, 0);
-		if(vmemchr((char*)arg[4], '\0', NAMELEN) == 0)
-			error(Ebadarg);
 
-		bogus.serv = (char*)arg[4];
 		ret = devno('M', 0);
 		c0 = (*devtab[ret].attach)((char*)&bogus);
 

@@ -21,6 +21,15 @@ PCArch *knownarch[] =
 	&generic,
 };
 
+/* where b.com leaves configuration info */
+#define BOOTARGS	((char*)(KZERO|1024))
+#define	BOOTARGSLEN	1024
+#define	MAXCONF		32
+
+char *confname[MAXCONF];
+char *confval[MAXCONF];
+int nconf;
+
 void
 main(void)
 {
@@ -82,6 +91,7 @@ ulong garbage;
 void
 init0(void)
 {
+	int i;
 	char tstr[32];
 
 	u->nerrlab = 0;
@@ -102,6 +112,8 @@ init0(void)
 	chandevinit();
 
 	if(!waserror()){
+		for(i = 0; i < nconf; i++)
+			ksetenv(confname[i], confval[i]);
 		strcpy(tstr, arch->id);
 		strcat(tstr, " %s");
 		ksetterm(tstr);
@@ -229,6 +241,8 @@ confinit(void)
 	long x, i, j, *l;
 	int pcnt;
 	ulong ktop;
+	char *cp;
+	char *line[MAXCONF];
 
 	/*
 	 *  the first 640k is the standard useful memory
@@ -283,6 +297,27 @@ confinit(void)
 	conf.base0 += ktop;
 
 	conf.topofmem = i*MB;
+
+	/*
+	 *  parse configuration args from dos file p9rc
+	 */
+	cp = BOOTARGS;	/* where b.com leaves it's config */
+	cp[BOOTARGSLEN-1] = 0;
+	i = getfields(cp, line, MAXCONF, '\n');
+	for(j = 0; j < i; j++){
+		cp = strchr(line[j], '\r');
+		if(cp)
+			*cp = 0;
+		cp = strchr(line[j], '=');
+		if(cp == 0)
+			continue;
+		*cp++ = 0;
+		if(cp - line[j] >= NAMELEN+1)
+			*(line[j]+NAMELEN-1) = 0;
+		confname[nconf] = line[j];
+		confval[nconf] = cp;
+		nconf++;
+	}
 
 	conf.monitor = 1;
 	conf.nproc = 30 + i*5;

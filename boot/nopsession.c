@@ -1,5 +1,6 @@
 #include <u.h>
 #include <libc.h>
+#include <auth.h>
 #include <fcall.h>
 #include "../boot/boot.h"
 
@@ -48,11 +49,4 @@ nop(int fd)
 {
 	print("nop");
 	rpc(fd, Tnop);
-}
-
-void
-session(int fd)
-{
-	print("session");
-	rpc(fd, Tsession);
 }

@@ -2,7 +2,6 @@ typedef struct Alarms	Alarms;
 typedef struct Block	Block;
 typedef struct Blist	Blist;
 typedef struct Chan	Chan;
-typedef struct Crypt	Crypt;
 typedef struct Dev	Dev;
 typedef struct Dirtab	Dirtab;
 typedef struct Egrp	Egrp;
@@ -34,6 +33,7 @@ typedef struct Ref	Ref;
 typedef struct Rendez	Rendez;
 typedef struct RWlock	RWlock;
 typedef struct Sargs	Sargs;
+typedef struct Session	Session;
 typedef struct Scsi	Scsi;
 typedef struct Scsibuf	Scsibuf;
 typedef struct Scsidata	Scsidata;
@@ -47,7 +47,8 @@ typedef	void   Streamopen(Queue*, Stream*);
 typedef	void   Streamclose(Queue*);
 typedef	void   Streamreset(void);
 
-#include "fcall.h"
+#include <auth.h>
+#include <fcall.h>
 
 struct Ref
 {
@@ -171,13 +172,7 @@ struct Chan
 	};
 	Chan	*mchan;			/* channel to mounted server */
 	Qid	mqid;			/* qid of root of mount point */
-};
-
-struct Crypt
-{
-	char	key[DESKEYLEN];		/* des encryption key */
-	char	chal[8];		/* challenge for setting user name */
-	Crypt	*next;
+	Session	*session;
 };
 
 struct Dev
@@ -453,7 +448,6 @@ struct Pgrp
 	Ref;				/* also used as a lock when mounting */
 	Pgrp	*next;			/* free list */
 	ulong	pgrpid;
-	Crypt	*crypt;			/* encryption key and challenge */
 	QLock	debug;			/* single access via devproc.c */
 	RWlock	ns;			/* Namespace many read/one write lock */
 	Mhead	*mnthash[MNTHASH];
@@ -746,6 +740,7 @@ extern	int	cpuserver;
 extern	Rune*	devchar;
 extern	Dev	devtab[];
 extern  char	eve[];
+extern	char	hostdomain[];
 extern	uchar	initcode[];
 extern	FPsave	initfp;
 extern  KIOQ	kbdq;
@@ -783,8 +778,6 @@ enum
 
 	RXschal	= 0,
 	RXstick	= 1,
-
-	AUTHLEN	= 8,
 };
 
 /*

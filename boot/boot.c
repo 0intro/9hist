@@ -1,5 +1,6 @@
 #include <u.h>
 #include <libc.h>
+#include <auth.h>
 #include "../boot/boot.h"
 
 #define DEFSYS "bootes"
@@ -12,7 +13,6 @@ char	cputype[NAMELEN];
 char	terminal[NAMELEN];
 char	sys[2*NAMELEN];
 char	username[NAMELEN];
-char	*sauth;
 char	bootfile[3*NAMELEN];
 char	conffile[NAMELEN];
 
@@ -21,6 +21,7 @@ int fflag;
 int kflag;
 int aflag;
 int pflag;
+int afd = -1;
 
 static void	swapproc(void);
 static Method	*rootserver(char*);
@@ -94,9 +95,9 @@ boot(int argc, char *argv[])
 		fatal("can't connect to file server");
 	if(!islocal && !ishybrid){
 		nop(fd);
-		session(fd);
 		if(cfs)
 			fd = (*cfs)(fd);
+		doauthenticate(fd, mp);
 	}
 	srvcreate("boot", fd);
 
@@ -105,12 +106,8 @@ boot(int argc, char *argv[])
 	 */
 	if(bind("/", "/", MREPL) < 0)
 		fatal("bind");
-	sauth = "";
-	if(mount(fd, "/", MAFTER|MCREATE, "", sauth) < 0){
-		sauth = "any";
-		if(mount(fd, "/", MAFTER|MCREATE, "", sauth) < 0)
-			fatal("mount");
-	}
+	if(mount(fd, "/", MAFTER|MCREATE, "") < 0)
+		fatal("mount");
 	close(fd);
 	if(cpuflag == 0)
 		newkernel();
@@ -127,14 +124,16 @@ boot(int argc, char *argv[])
 			fd = (*mp->connect)();
 			if(fd < 0)
 				break;
-			mount(fd, "/n/kfs", MAFTER|MCREATE, "", "") ;
+			mount(fd, "/n/kfs", MAFTER|MCREATE, "") ;
 			close(fd);
 			break;
 		}
 	}
 
 	settime(islocal);
+	close(afd);
 	swapproc();
+	remove("#e/password");
 
 	sprint(cmd, "/%s/init", cputype);
 	sprint(flags, "-%s%s%s", cpuflag ? "c" : "t", mflag ? "m" : "", aflag ? "a" : "");

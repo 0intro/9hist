@@ -126,10 +126,8 @@ devstat(Chan *c, char *db, Dirtab *tab, int ntab, Devgen *gen)
 	int i;
 	Dir dir;
 
-	for(i=0;; i++) {
+	for(i=0;; i++)
 		switch((*gen)(c, tab, ntab, i, &dir)){
-		case 0:
-			break;
 		case -1:
 			/*
 			 *  given a channel, we cannot derive the directory name
@@ -137,15 +135,17 @@ devstat(Chan *c, char *db, Dirtab *tab, int ntab, Devgen *gen)
 			 *  by namec.
 			 */
 			if(c->qid.path & CHDIR){
-				devdir(c, c->qid, ".", 0L, eve, CHDIR|0700, &dir);
+				devdir(c, c->qid, ".", 0L, eve, CHDIR|0775, &dir);
 				convD2M(&dir, db);
 				return;
 			}
 			print("%s %s: devstat %C %lux\n", u->p->text, u->p->user,
-						devchar[c->type], c->qid.path);
+							devchar[c->type], c->qid.path);
 			error(Enonexist);
+		case 0:
+			break;
 		case 1:
-			if(eqqid(c->qid, dir.qid)) {
+			if(eqqid(c->qid, dir.qid)){
 				if(c->flag&CMSG)
 					dir.mode |= CHMOUNT;
 				convD2M(&dir, db);
@@ -153,7 +153,6 @@ devstat(Chan *c, char *db, Dirtab *tab, int ntab, Devgen *gen)
 			}
 			break;
 		}
-	}
 }
 
 long

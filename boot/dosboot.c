@@ -30,9 +30,9 @@ dosboot(void)
 	 */
 	if(bind("/", "/", MREPL) < 0)
 		fatal("bind");
-	if(mount(fd, "/", MAFTER|MCREATE, "#f/fd0disk", "") < 0)
-		if(mount(fd, "/", MAFTER|MCREATE, "#f/fd1disk", "") < 0)
-			if(mount(fd, "/", MAFTER|MCREATE, "#H/hd0dos", "") < 0)
+	if(mount(fd, "/", MAFTER|MCREATE, "#f/fd0disk") < 0)
+		if(mount(fd, "/", MAFTER|MCREATE, "#f/fd1disk") < 0)
+			if(mount(fd, "/", MAFTER|MCREATE, "#H/hd0dos") < 0)
 				fatal("mount");
 	close(fd);
 

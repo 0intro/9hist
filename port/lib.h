@@ -99,7 +99,6 @@ typedef struct Waitmsg	Waitmsg;
 #define	ERRLEN		64
 #define	DIRLEN		116
 #define	NAMELEN		28
-#define DESKEYLEN	7
 
 struct Qid
 {

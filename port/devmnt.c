@@ -48,8 +48,7 @@ struct Mntalloc
 #define MAXRPC		(MAXFDATA+MAXMSG)
 #define limit(n, max)	(n > max ? max : n)
 
-Chan*	mattach(Mnt*, char*, char*);
-void	mntauth(Mnt *, Mntrpc *, char *, ushort);
+Chan*	mattach(Mnt*, char*);
 Mnt*	mntchk(Chan*);
 void	mntdirfix(uchar*, Chan*);
 void	mntdoclunk(Mnt *, Mntrpc *);
@@ -96,7 +95,6 @@ mntattach(char *muxattach)
 	struct bogus{
 		Chan	*chan;
 		char	*spec;
-		char	*serv;
 	}bogus;
 
 	bogus = *((struct bogus *)muxattach);
@@ -110,7 +108,7 @@ mntattach(char *muxattach)
 				unlock(&mntalloc);
 				m->ref++;
 				unlock(m);
-				return mattach(m, bogus.spec, bogus.serv);
+				return mattach(m, bogus.spec);
 			}
 			unlock(m);	
 		}
@@ -157,8 +155,14 @@ mntattach(char *muxattach)
 		nexterror();
 	}
 
-	c = mattach(m, bogus.spec, bogus.serv);
+	c = mattach(m, bogus.spec);
 
+	/*
+	 *  If exportfs mounts on behalf of a local devmnt, the mount
+	 *  point is folded onto the original channel to preserve a single
+	 *  fid/tag space.  CHDIR is cleared by exportfs to indicate it
+	 *  is supplying the mount.
+	 */
 	mc = m->c;
 	if(mc->type == devno('M', 0) && (c->qid.path&CHDIR) == 0) {
 		c->qid.path |= CHDIR;
@@ -174,10 +178,11 @@ mntattach(char *muxattach)
 }
 
 Chan *
-mattach(Mnt *m, char *spec, char *serv)
+mattach(Mnt *m, char *spec)
 {
 	Chan *c;
 	Mntrpc *r;
+	ulong id;
 
 	r = mntralloc();
 	c = devattach('M', spec);
@@ -193,15 +198,13 @@ mattach(Mnt *m, char *spec, char *serv)
 		nexterror();
 	}
 
-	memset(r->request.auth, 0, sizeof r->request.auth);
-	if(*serv)
-		mntauth(m, r, serv, c->fid);
-
 	r->request.type = Tattach;
 	r->request.fid = c->fid;
 	memmove(r->request.uname, u->p->user, NAMELEN);
 	strncpy(r->request.aname, spec, NAMELEN);
+	id = authrequest(m->c->session, &r->request);
 	mountrpc(m, r);
+	authreply(m->c->session, id, &r->reply);
 
 	c->qid = r->reply.qid;
 	c->mchan = m->c;
@@ -209,43 +212,6 @@ mattach(Mnt *m, char *spec, char *serv)
 	poperror();
 	mntfree(r);
 	return c;
-}
-
-void
-mntauth(Mnt *m, Mntrpc *f, char *serv, ushort fid)
-{
-	int i;
-	Mntrpc *r;
-	uchar chal[AUTHLEN];
-
-	r = mntralloc();
-	if(waserror()) {
-		mntfree(r);
-		return;
-	}
-
-	r->request.type = Tauth;
-	r->request.fid = fid;
-	memmove(r->request.uname, u->p->user, NAMELEN);
-	chal[0] = FScchal;
-	for(i = 1; i < AUTHLEN; i++)
-		chal[i] = nrand(256);
-
-	memmove(r->request.chal, chal, AUTHLEN);
-	strncpy(r->request.chal+AUTHLEN, serv, NAMELEN);
-	encrypt(u->p->pgrp->crypt->key, r->request.chal, AUTHLEN+NAMELEN);
-
-	mountrpc(m, r);
-
-	decrypt(u->p->pgrp->crypt->key, r->reply.chal, 2*AUTHLEN+2*DESKEYLEN);
-	chal[0] = FSctick;
-	poperror();
-	if(memcmp(chal, r->reply.chal, AUTHLEN) != 0) {
-		mntfree(r);
-		error(Eperm);
-	}
-	memmove(f->request.auth, r->reply.chal+AUTHLEN+DESKEYLEN, AUTHLEN+DESKEYLEN);
-	mntfree(r);
 }
 
 Chan*

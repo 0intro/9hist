@@ -11,21 +11,22 @@ struct Method
 extern char*	bootdisk;
 extern int	(*cfs)(int);
 extern int	cpuflag;
-extern char	cputype[NAMELEN];
+extern char	cputype[];
 extern int	fflag;
 extern int	kflag;
 extern Method	method[];
-extern char	password[NAMELEN];
 extern void	(*pword)(int, Method*);
-extern char	sys[2*NAMELEN];
-extern char	terminal[NAMELEN];
+extern char	sys[];
+extern uchar	hostkey[];
+extern char	terminal[];
 extern char	username[NAMELEN];
-extern char	bootfile[3*NAMELEN];
-extern char	conffile[NAMELEN];
-extern char	*sauth;
+extern char	bootfile[];
+extern char	conffile[];
+extern int	afd;
 
 /* libc equivalent */
 extern int	cache(int);
+extern char*	checkkey(Method*, char*, char*);
 extern int	dkauth(void);
 extern int	dkconnect(void);
 extern void	fatal(char*);
@@ -37,6 +38,7 @@ extern void	nop(int);
 extern int	outin(char*, char*, int);
 extern int	plumb(char*, char*, int*, char*);
 extern int	readfile(char*, char*, int);
+extern int	readn(int, char*, int);
 extern int	sendmsg(int, char*);
 extern void	session(int);
 extern void	setenv(char*, char*);
@@ -44,8 +46,10 @@ extern void	settime(int);
 extern void	srvcreate(char*, int);
 extern void	userpasswd(int, Method*);
 extern void	warning(char*);
+extern int	writefile(char*, char*, int);
 extern void	boot(int, char **);
 extern void	bboot(int, char **);
+extern void	doauthenticate(int, Method*);
 
 /* methods */
 extern void	config9600(Method*);
