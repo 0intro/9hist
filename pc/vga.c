@@ -187,6 +187,10 @@ screeninit(void)
 		*l = (*l<<24) | ((*l>>8)&0x0000ff00) | ((*l<<8)&0x00ff0000) | (*l>>24);
 
 	gbitblt(&gscreen, Pt(0, 0), &gscreen, gscreen.r, flipD[0]);
+	delay(2000);
+	gbitblt(&gscreen, Pt(0, 0), &gscreen, gscreen.r, flipD[F]);
+	delay(2000);
+	gbitblt(&gscreen, Pt(0, 0), &gscreen, gscreen.r, flipD[0]);
 	out.pos.x = MINX;
 	out.pos.y = 0;
 	out.bwid = defont0.info[' '].width;
