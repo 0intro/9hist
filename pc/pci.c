@@ -394,21 +394,6 @@ pcimatch(Pcidev* prev, int vid, int did)
 }
 
 void
-pcireset(void)
-{
-	Pcidev *p;
-	int pcr;
-
-	if(pcicfgmode == -1)
-		pcicfginit();
-
-	for(p = pcilist; p != nil; p = p->list){
-		pcr = pcicfgr16(p, PciPSR);
-		pcicfgw16(p, PciPSR, pcr & ~0x04);
-	}
-}
-
-void
 pcihinv(Pcidev* p)
 {
 	int i;
@@ -419,9 +404,9 @@ pcihinv(Pcidev* p)
 		print("bus dev type vid  did  memory\n");
 	}
 	for(t = p; t != nil; t = t->link) {
-		print("%d  %2d/%d %.4ux %.4ux %.4ux ",
+		print("%d  %2d/%d %.4ux %.4ux %.4ux %d ",
 			BUSBNO(t->tbdf), BUSDNO(t->tbdf), BUSFNO(t->tbdf),
-			t->ccru, t->vid, t->did);
+			t->ccru, t->vid, t->did, t->intl);
 
 		for(i = 0; i < nelem(p->mem); i++) {
 			if(t->mem[i].size == 0)
@@ -473,4 +458,19 @@ pcimemmap(int tbdf, int rno, ulong *paddr)
 		*paddr = p;
 	pcicfgrw32(tbdf, rno, p, 0);
 	return (void*)v;
+}
+
+void
+pcireset(void)
+{
+	Pcidev *p;
+	int pcr;
+
+	if(pcicfgmode == -1)
+		pcicfginit();
+
+	for(p = pcilist; p != nil; p = p->list){
+		pcr = pcicfgr16(p, PciPSR);
+		pcicfgw16(p, PciPSR, pcr & ~0x04);
+	}
 }

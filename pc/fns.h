@@ -54,8 +54,8 @@ void	lidt(ushort[3]);
 void	links(void);
 void	ltr(ulong);
 void	mathinit(void);
-#define mmuflushtlb(pdb) putcr3(pdb)
 void	meminit(ulong);
+#define mmuflushtlb(pdb) putcr3(pdb)
 void	mmuinit(void);
 ulong	mmukmap(ulong, ulong, int);
 int	mmukmapsync(ulong);
