@@ -52,10 +52,10 @@ clockintr(Ureg* ureg, void*)
 
 	checkalarms();
 	if(m->machno == 0){
-		lock(&clock0lock);
+		ilock(&clock0lock);
 		for(lp = clock0link; lp; lp = lp->link)
 			lp->clock();
-		unlock(&clock0lock);
+		iunlock(&clock0lock);
 	}
 
 	if(up == 0 || up->state != Running)

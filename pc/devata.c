@@ -346,7 +346,7 @@ static int
 atactlrprobe(int ctlrno, int irq, int resetok)
 {
 	Controller *ctlr;
-	int atapi, mask, port;
+	int atapi, mask, once, port;
 	uchar error, status, msb, lsb;
 
 	/*
@@ -399,13 +399,16 @@ atactlrprobe(int ctlrno, int irq, int resetok)
 		}
 	}
 
+	once = 1;
+retry:
 	atapi = 0;
 	mask = 0;
 	DPRINT("ata%d: ATAPI %uX %uX %uX\n", ctlrno, status,
 		inb(port+Pcylmsb), inb(port+Pcyllsb));
-	if(status == 0 && inb(port+Pcylmsb) == 0xEB && inb(port+Pcyllsb) == 0x14){
+	if(/*status == 0 &&*/ inb(port+Pcylmsb) == 0xEB && inb(port+Pcyllsb) == 0x14){
 		DPRINT("ata%d: ATAPI ok\n", ctlrno);
-		intrenable(irq, ataintr, ctlr, ctlr->tbdf);
+		if(once)
+			intrenable(irq, ataintr, ctlr, ctlr->tbdf);
 		atapi |= 0x01;
 		mask |= 0x01;
 		goto atapislave;
@@ -413,10 +416,16 @@ atactlrprobe(int ctlrno, int irq, int resetok)
 	if(atactlrwait(ctlr, DHmagic, 0, MS2TK(1)) || waserror()){
 		DPRINT("ata%d: Cedd status %ux/%ux/%ux\n", ctlrno,
 			inb(port+Pstatus), inb(port+Pcylmsb), inb(port+Pcyllsb));
+		if(once){
+			once = 0;
+			ctlr->cmd = 0;
+			goto retry;
+		}
 		xfree(ctlr);
 		return -1;
 	}
-	intrenable(irq, ataintr, ctlr, ctlr->tbdf);
+	if(once)
+		intrenable(irq, ataintr, ctlr, ctlr->tbdf);
 	ctlr->cmd = Cedd;
 	outb(port+Pcmd, Cedd);
 	atasleep(ctlr, Hardtimeout);
@@ -1410,7 +1419,8 @@ atapart(Drive *dp)
 		 *  the last sector if none is found in the second last.
 		 */
 		i = 0;
-		ataxfer(dp, &dp->p[0], Cread, (dp->p[0].end-2)*dp->bytes, dp->bytes, buf);
+		ataxfer(dp, &dp->p[0], Cread, (dp->p[0].end-2)*
+			(vlong)dp->bytes, dp->bytes, buf);
 		buf[dp->bytes-1] = 0;
 		n = parsefields((char*)buf, line, Npart+1, "\n");
 		if(n > 0 && strncmp(line[0], PARTMAGIC, sizeof(PARTMAGIC)-1) == 0)

@@ -559,7 +559,7 @@ ns16552intr(int dev)
 		case 4:	/* received data available */
 		case 12:
 			ch = uartrdreg(p, Data) & 0xff;
-			lock(&p->tlock);
+			ilock(&p->tlock);
 			if(p->xonoff){
 				if(ch == CTLS){
 					p->blocked = 1;
@@ -568,15 +568,15 @@ ns16552intr(int dev)
 					 /* clock gets output going again */
 				}
 			}
-			unlock(&p->tlock);
+			iunlock(&p->tlock);
 			if(p->putc)
 				p->putc(p->iq, ch);
 			else {
-				lock(&p->rlock);
+				ilock(&p->rlock);
 				if(p->ip < p->ie)
 					*p->ip++ = ch;
 				p->haveinput = 1;
-				unlock(&p->rlock);
+				iunlock(&p->rlock);
 			}
 			break;
 	
@@ -587,12 +587,12 @@ ns16552intr(int dev)
 		case 0:	/* modem status */
 			ch = uartrdreg(p, Mstat);
 			if(ch & Ctsc){
-				lock(&p->tlock);
+				ilock(&p->tlock);
 				l = p->cts;
 				p->cts = ch & Cts;
 				if(l == 0 && p->cts)
 					p->ctsbackoff = 2; /* clock gets output going again */
-				unlock(&p->tlock);
+				iunlock(&p->tlock);
 			}
 			break;
 	
@@ -626,7 +626,7 @@ uartclock(void)
 
 		/* this amortizes cost of qproduce to many chars */
 		if(p->haveinput){
-			lock(&p->rlock);
+			ilock(&p->rlock);
 			if(p->haveinput){
 				n = p->ip - p->istage;
 				if(n > 0 && p->iq){
@@ -639,17 +639,17 @@ uartclock(void)
 				}
 				p->haveinput = 0;
 			}
-			unlock(&p->rlock);
+			iunlock(&p->rlock);
 		}
 
 		/* this adds hysteresis to hardware flow control */
 		if(p->ctsbackoff){
-			lock(&p->tlock);
+			ilock(&p->tlock);
 			if(p->ctsbackoff){
 				if(--(p->ctsbackoff) == 0)
 					ns16552kick0(p);
 			}
-			unlock(&p->tlock);
+			iunlock(&p->tlock);
 		}
 	}
 }

@@ -554,10 +554,10 @@ interrupt(Ureg*, void* arg)
 	ctlr = ether->ctlr;
 
 	for(;;){
-		lock(&ctlr->rlock);
+		ilock(&ctlr->rlock);
 		status = csr16r(ctlr, Status);
 		csr8w(ctlr, Ack, (status>>8) & 0xFF);
-		unlock(&ctlr->rlock);
+		iunlock(&ctlr->rlock);
 
 		if(!(status & (StatCX|StatFR|StatCNA|StatRNR|StatMDI|StatSWI)))
 			break;
@@ -634,7 +634,7 @@ interrupt(Ureg*, void* arg)
 		}
 
 		if(status & StatCNA){
-			lock(&ctlr->cblock);
+			ilock(&ctlr->cblock);
 
 			cb = ctlr->cbtail;
 			while(ctlr->cbq){
@@ -653,7 +653,7 @@ interrupt(Ureg*, void* arg)
 			ctlr->cbtail = cb;
 
 			txstart(ether);
-			unlock(&ctlr->cblock);
+			iunlock(&ctlr->cblock);
 
 			status &= ~StatCNA;
 		}

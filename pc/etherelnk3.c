@@ -949,7 +949,7 @@ interrupt(Ureg*, void* arg)
 	port = ether->port;
 	ctlr = ether->ctlr;
 
-	lock(&ctlr->wlock);
+	ilock(&ctlr->wlock);
 	w = (STATUS(port)>>13) & 0x07;
 	COMMAND(port, SelectRegisterWindow, Wop);
 
@@ -1102,7 +1102,7 @@ interrupt(Ureg*, void* arg)
 	}
 
 	COMMAND(port, SelectRegisterWindow, w);
-	unlock(&ctlr->wlock);
+	iunlock(&ctlr->wlock);
 }
 
 static long
@@ -1509,7 +1509,7 @@ miir(Ether* ether, int phyad, int regad)
 
 	if(data & 0x10000)
 		return -1;
-	XCVRDEBUG("phy%d/%d: data=%uX\n", phyad, regad, data);
+print("%d/%d: data=%uX\n", phyad, regad, data);
 
 	return data & 0xFFFF;
 }
@@ -1524,7 +1524,7 @@ scanphy(Ether* ether)
 			continue;
 		x <<= 6;
 		x |= miir(ether, i, 3)>>10;
-		print("phy%d: oui %uX reg1 %uX\n", i, x, miir(ether, i, 1));
+		XCVRDEBUG("phy%d: oui %uX reg1 %uX\n", i, x, miir(ether, i, 1));
 	}
 }
 
@@ -1763,7 +1763,7 @@ etherelnk3reset(Ether* ether)
 		an = miir(ether, phyaddr, 0x04);
 		an &= miir(ether, phyaddr, 0x05) & 0x03E0;
 		XCVRDEBUG("mii an: %uX\n", an);
-		if(an & 0x380)
+		//if(an & 0x380)
 			ether->mbps = 100;
 		if(an & 0x0140)
 			setfullduplex(port);

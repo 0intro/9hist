@@ -118,4 +118,3 @@ extern int	screenaperture(int, int);
 
 /* vga.c */
 extern void	vgascreenwin(VGAscr*);
-

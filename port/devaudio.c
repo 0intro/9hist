@@ -965,10 +965,10 @@ audioread(Chan *c, char *a, long n, vlong off)
 				else{
 					if(volumes[m].flag & Fin)
 						j += snprint(buf+j, sizeof(buf)-j,
-						" in %d", liv);
+							" in %d", liv);
 					if(volumes[m].flag & Fout)
 						j += snprint(buf+j, sizeof(buf)-j,
-						" out %d", lov);
+							" out %d", lov);
 				}
 			}else{
 				if((volumes[m].flag&(Fin|Fout))==(Fin|Fout) &&

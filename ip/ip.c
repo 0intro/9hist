@@ -323,7 +323,7 @@ ipiput(Fs *f, uchar *ia, Block *bp)
 //				h->src, h->dst, BLEN(bp), h->proto);
 
 	/*
-	 *  Ensure we have allt he header info in the first
+	 *  Ensure we have all the header info in the first
 	 *  block.  Make life easier for other protocols by
 	 *  collecting up to the first 64 bytes in the first block.
 	 */
