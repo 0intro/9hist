@@ -729,6 +729,8 @@ isaconfig(char *class, int ctlrno, ISAConf *isa)
 				isa->mem = strtoul(p+4, &p, 0);
 			else if(strncmp(p, "size=", 5) == 0)
 				isa->size = strtoul(p+5, &p, 0);
+			else if(strncmp(p, "freq=", 5) == 0)
+				isa->freq = strtoul(p+5, &p, 0);
 			else if(strncmp(p, "ea=", 3) == 0)
 				parseether(isa->ea, p+3);
 			while(*p && *p != ' ' && *p != '\t')

@@ -183,6 +183,7 @@ struct ISAConf {
 	ulong	irq;
 	ulong	mem;
 	ulong	size;
+	ulong	freq;
 	uchar	ea[6];
 };
 
