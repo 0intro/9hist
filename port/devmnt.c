@@ -66,6 +66,7 @@ void	mntqrm(Mnt*, Mntrpc*);
 void	mntdirfix(uchar*, Chan*);
 void	mntgate(Mnt*);
 void	mntrpcread(Mnt*, Mntrpc*);
+void	mntdoclunk(Mnt *, Mntrpc *);
 
 enum
 {
@@ -348,34 +349,41 @@ void
 mntclunk(Chan *c, int t)
 {
 	Mnt *m;
-	Mntrpc *r, *n, *q;
+	Mntrpc *r;
 		
 	m = mntchk(c);
 	r = mntralloc();
 	if(waserror()){
-		mntfree(r);
-		if(decref(m) == 0) {
-			for(q = m->queue; q; q = r) {
-if(q->flushed == 0)
-print("mail philw: %lux: not flushed\n", q);
-				r = q->list;
-				q->flushed = 0;
-				mntfree(q);
-			}
-			m->id = 0;
-			close(m->c);
-			lock(&mntalloc);
-			m->list = mntalloc.mntfree;
-			mntalloc.mntfree = m;
-			unlock(&mntalloc);
-		}
-		return;
+		mntdoclunk(m, r);
+		nexterror();
 	}
 
 	r->request.type = t;
 	r->request.fid = c->fid;
 	mountrpc(m, r);
-	nexterror();
+	mntdoclunk(m, r);
+	poperror();
+}
+
+void
+mntdoclunk(Mnt *m, Mntrpc *r)
+{
+	Mntrpc *q;
+
+	mntfree(r);
+	if(decref(m) == 0) {
+		for(q = m->queue; q; q = r) {
+			r = q->list;
+			q->flushed = 0;
+			mntfree(q);
+		}
+		m->id = 0;
+		close(m->c);
+		lock(&mntalloc);
+		m->list = mntalloc.mntfree;
+		mntalloc.mntfree = m;
+		unlock(&mntalloc);
+	}
 }
 
 void

@@ -69,12 +69,10 @@ Segdesc gdt[] =
 [TSSSEG]	TSSSEGM(0,0),		/* tss segment */
 };
 
-static ulong	*ktoppt;	/* prototype top level page table
-				 * containing kernel mappings
-				 */
-static ulong	*toppt;		/* top level page table */	
-static ulong	*kpt;		/* kernel level page tables */
-static ulong	*upt;		/* page table for struct User */
+static Page	ktoppg;		/* prototype top level page table
+				 * containing kernel mappings  */
+static ulong	*kpt;		/* 2nd level page tables for kernel mem */
+static ulong	*upt;		/* 2nd level page table for struct User */
 
 #define ROUNDUP(s,v)	(((s)+(v-1))&~(v-1))
 /*
@@ -102,12 +100,19 @@ mmudump(void)
 	panic("done");
 }
 
+/*
+ *  Create a prototype page map that maps all of memory into
+ *  kernel (KZERO) space.  This is the default map.  It is used
+ *  whenever the processor not running a process or whenever running
+ *  a process which does not yet have its own map.
+ */
 void
 mmuinit(void)
 {
 	int i, nkpt, npage, nbytes;
 	ulong x;
 	ulong y;
+	ulong *top;
 
 	/*
 	 *  set up the global descriptor table
@@ -123,7 +128,7 @@ mmuinit(void)
 	/*
 	 *  set up system page tables.
 	 *  map all of physical memory to start at KZERO.
-	 *  leave a map for a user area.
+	 *  leave a map entry for a user area.
 	 */
 
 	/*  allocate and fill low level page tables for kernel mem */
@@ -140,128 +145,199 @@ print("%d low level pte's, %d high level pte's\n", npage, nkpt);
 	upt = ialloc(BY2PG, 1);
 
 	/*  allocate top level table and put pointers to lower tables in it */
-	toppt = ialloc(BY2PG, 1);
+	top = ialloc(BY2PG, 1);
+	ktoppg.va = (ulong)top;
+	ktoppg.pa = ktoppg.va & ~KZERO;
 	x = TOPOFF(KZERO);
 	y = ((ulong)kpt)&~KZERO;
 	for(i = 0; i < nkpt; i++)
-		toppt[x+i] = (y+i*BY2PG) | PTEVALID | PTEKERNEL | PTEWRITE;
+		top[x+i] = (y+i*BY2PG) | PTEVALID | PTEKERNEL | PTEWRITE;
 	x = TOPOFF(USERADDR);
 	y = ((ulong)upt)&~KZERO;
-	toppt[x] = y | PTEVALID | PTEKERNEL | PTEWRITE;
-	putcr3(((ulong)toppt)&~KZERO);
+	top[x] = y | PTEVALID | PTEKERNEL | PTEWRITE;
+	putcr3(ktoppg.pa);
 
 	/*
 	 *  set up the task segment
 	 */
 	tss.sp0 = USERADDR+BY2PG;
 	tss.ss0 = KDSEL;
-	tss.cr3 = (ulong)toppt;
+	tss.cr3 = ktoppg.pa;
 	puttr(TSSSEL);
 }
 
+/*
+ *  Get a page for a process's page map.
+ *
+ *  Each process maintains its own free list of page
+ *  table pages.  All page table pages are put on
+ *  this list in flushmmu().  flushmmu() doesn't
+ *  putpage() the pages since the process will soon need
+ *  them back.  Also, this avoids worrying about deadlocks
+ *  twixt flushmmu() and putpage().
+ *
+ *  mmurelease() will give back the pages when the process
+ *  exits.
+ */
+static Page*
+mmugetpage(int clear)
+{
+	Proc *p = u->p;
+	Page *pg;
 
+	if(p->mmufree){
+		pg = p->mmufree;
+		p->mmufree = pg->next;
+		if(clear)
+			memset((void*)pg->va, 0, BY2PG);
+	} else {
+		pg = newpage(clear, 0, 0);
+		pg->va = VA(kmap(pg));
+	}
+	return pg;
+}
+
+/*
+ *  Put all page map pages on the process's free list and
+ *  call mapstack to set up the prototype page map.  This
+ *  effectively forgets all of the process's mappings.
+ */
+void
+flushmmu(void)
+{
+	int s;
+	Proc *p;
+	Page *pg;
+
+	if(u == 0)
+		return;
+
+	p = u->p;
+	s = splhi();
+	if(p->mmutop){
+		p->mmutop->next = p->mmufree;
+		p->mmufree = p->mmutop;
+		for(pg = p->mmufree; pg->next; pg = pg->next)
+			;
+		pg->next = p->mmuused;
+		p->mmutop = 0;
+		p->mmuused = 0;
+	}
+	mapstack(u->p);
+	splx(s);
+}
+
+/*
+ *  Switch to a process's memory map.  If the process doesn't
+ *  have a map yet, just use the prototype one that contains
+ *  mappings for only the kernel and the User struct.
+ */
 void
 mapstack(Proc *p)
 {
 	ulong tlbphys;
 	int i;
+	Page *pg;
 
 	if(p->upage->va != (USERADDR|(p->pid&0xFFFF)) && p->pid != 0)
 		panic("mapstack %d 0x%lux 0x%lux", p->pid, p->upage->pa, p->upage->va);
 
-	/*
- 	 *  dump any invalid mappings
-	 */
-	if(p->mmuvalid == 0){
-		for(i = 0; i < MAXMMU+MAXSMMU; i++){
-			if(p->mmu[i]==0)
-				continue;
-			memset(kmap(p->mmu[i]), 0, BY2PG);
-		}
-		p->mmuvalid = 1;
-	}
-
-	/*
-	 *  point top level page table to bottom level ones
-	 */
-	memmove(toppt, p->mmue, MAXMMU*sizeof(ulong));
-	memmove(&toppt[TOPOFF(USTKBTM)], &p->mmue[MAXMMU], MAXSMMU*sizeof(ulong));
+	if(p->mmutop)
+		pg = p->mmutop;
+	else
+		pg = &ktoppg;
 
 	/* map in u area */
 	upt[0] = PPN(p->upage->pa) | PTEVALID | PTEKERNEL | PTEWRITE;
 
-	/* flush cached mmu entries */
-	putcr3(((ulong)toppt)&~KZERO);
+	/* tell processor about new page table (flushes cached entries) */
+	putcr3(pg->pa);
 
 	u = (User*)USERADDR;
 }
 
-void
-flushmmu(void)
-{
-	int s;
-
-	if(u == 0)
-		return;
-
-	u->p->mmuvalid = 0;
-	s = splhi();
-	mapstack(u->p);
-	splx(s);
-}
-
+/*
+ *  give all page table pages back to the free pool.  This is called in sched()
+ *  with palloc locked.
+ */
 void
 mmurelease(Proc *p)
 {
-	p->mmuvalid = 0;
+	Page *pg;
+	Page *next;
+
+	/* point 386 to protoype page map */
+	putcr3(ktoppg.pa);
+
+	/* give away page table pages */
+	for(pg = p->mmufree; pg; pg = next){
+		next = pg->next;
+		simpleputpage(pg);
+	}
+	p->mmufree = 0;
+	for(pg = p->mmuused; pg; pg = next){
+		next = pg->next;
+		simpleputpage(pg);
+	}
+	p->mmuused = 0;
+	if(p->mmutop)
+		simpleputpage(p->mmutop);
+	p->mmutop = 0;
 }
 
+/*
+ *  Add an entry into the mmu.
+ */
+#define FOURMEG (4*1024*1024)
 void
 putmmu(ulong va, ulong pa, Page *pg)
 {
 	int topoff;
+	ulong *top;
 	ulong *pt;
 	Proc *p;
-	int i = 0;
+	char err[64];
 
-/*print("putmmu %lux %lux\n", va, pa); /**/
 	if(u==0)
 		panic("putmmu");
+
 	p = u->p;
 
-	/*
-	 *  check for exec/data vs stack vs illegal
-	 */
-	topoff = TOPOFF(va);
-	if(topoff < TOPOFF(TSTKTOP) && topoff >= TOPOFF(USTKBTM))
-		i = MAXMMU + topoff - TOPOFF(USTKBTM);
-	else if(topoff < MAXMMU)
-		i = topoff;
-	else
-		panic("putmmu bad addr %lux", va);
+	if(va >= USERADDR && va < USERADDR + FOURMEG)
+		print("putmmu in USERADDR page table 0x%lux\n", va);
+	if((va & 0xF0000000) == KZERO)
+		print("putmmu in kernel page table 0x%lux\n", va);
 
 	/*
-	 *  if bottom level page table missing, allocate one
+	 *  if no top level page, allocate one and copy the prototype
+	 *  into it.
 	 */
-	pg = p->mmu[i];
-/*print("toppt[%d] was %lux\n", topoff, toppt[topoff]);/**/
-	if(pg == 0){
-		pg = p->mmu[i] = newpage(1, 0, 0);
-		p->mmue[i] = PPN(pg->pa) | PTEVALID | PTEUSER | PTEWRITE;
-		toppt[topoff] = p->mmue[i];
-/*print("toppt[%d] now %lux\n", topoff, toppt[topoff]);/**/
+	if(p->mmutop == 0){
+		p->mmutop = mmugetpage(0);
+		memmove((void*)p->mmutop->va, (void*)ktoppg.va, BY2PG);
+	}
+	top = (ulong*)p->mmutop->va;
+
+	/*
+	 *  if bottom level page table missing, allocate one and point
+	 *  the top level page at it.
+	 */
+	topoff = TOPOFF(va);
+	if(top[topoff] == 0){
+		pg = mmugetpage(1);
+		top[topoff] = PPN(pg->pa) | PTEVALID | PTEUSER | PTEWRITE;
+		pg->next = p->mmuused;
+		p->mmuused = pg;
 	}
 
 	/*
-	 *  fill in the bottom level page table
+	 *  put in new mmu entry
 	 */
-	pt = (ulong*)(p->mmu[i]->pa|KZERO);
-/*print("%lux[%d] was %lux\n", pt, BTMOFF(va), pt[BTMOFF(va)]);/**/
+	pt = (ulong*)(PPN(top[topoff])|KZERO);
 	pt[BTMOFF(va)] = pa | PTEUSER;
-/*print("%lux[%d] now %lux\n", pt, BTMOFF(va), pt[BTMOFF(va)]);/**/
 
 	/* flush cached mmu entries */
-	putcr3(((ulong)toppt)&~KZERO);
+	putcr3(p->mmutop->pa);
 }
 
 void
@@ -271,7 +347,7 @@ invalidateu(void)
 	upt[0] = 0;
 
 	/* flush cached mmu entries */
-	putcr3(((ulong)toppt)&~KZERO);
+	putcr3(ktoppg.pa);
 }
 
 void

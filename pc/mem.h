@@ -47,8 +47,7 @@
 #define	TSTKTOP		USERADDR		/* end of new stack in sysexec */
 #define TSTKSIZ 10
 #define	USTKTOP		(TSTKTOP-TSTKSIZ*BY2PG)	/* byte just beyond user stack */
-#define	USTKSIZE	(4*1024*1024 - TSTKSIZ*BY2PG)	/* size of user stack */
-#define USTKBTM		(USTKTOP - USTKSIZE)
+#define	USTKSIZE	(16*1024*1024 - TSTKSIZ*BY2PG)	/* size of user stack */
 
 #define	MACHSIZE	4096
 

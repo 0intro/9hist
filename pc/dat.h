@@ -102,9 +102,9 @@ struct Conf
 #define MAXSMMU	1
 struct PMMU
 {
-	int	mmuvalid;
-	Page	*mmu[MAXMMU+MAXSMMU];	/* bottom level page tables */
-	ulong	mmue[MAXMMU+MAXSMMU];	/* top level pointers to mmu pages */
+	Page	*mmutop;	/* 1st level table */
+	Page	*mmufree;	/* unused page table pages */
+	Page	*mmuused;	/* used page table pages */
 };
 
 #include "../port/portdat.h"
