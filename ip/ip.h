@@ -523,11 +523,11 @@ struct Arpent
 	Arpent*	hash;
 	Block*	hold;
 	Block*	last;
-	uint	time;
-	uint	used;
+	uint	ctime;			/* time entry was created or refreshed */
+	uint	utime;			/* time entry was last used */
 	uchar	state;
 	Arpent	*nextrxt;		/* re-transmit chain */
-	uint	rxtat;
+	uint	rtime;			/* time for next retransmission */
 	uchar	rxtsrem;
 	Ipifc	*ifc;
 	uchar	ifcid;			/* must match ifc->id */
