@@ -224,6 +224,7 @@ s3load(VGAscr* scr, Cursor* curs)
 	case VIRGEDXGX:
 	case VIRGEGX2:
 	case VIRGEVX:	
+	case SAVAGEMXMV:
 	case SAVAGEIXMV:
 	case SAVAGE4:
 	case SUPERSAVAGEIXC16:
@@ -569,6 +570,7 @@ s3drawinit(VGAscr *scr)
 		scr->fill = hwfill;
 		scr->scroll = hwscroll;
 		break;
+	case SAVAGEMXMV:
 	case SAVAGEIXMV:
 		scr->mmio = (ulong*)(scr->aperture+0x1000000);
 		savageinit(scr);	

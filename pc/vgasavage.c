@@ -369,9 +369,9 @@ savagewaitidle(VGAscr *scr)
 		break;
 	/* case SAVAGEMXMV: ? */
 	/* case SAVAGEMX: ? */
-	/* case SAVAGEIXMV: ? */
 	/* case SAVAGEIX: ? */
 	case SUPERSAVAGEIXC16:
+	case SAVAGEMXMV:
 	case SAVAGEIXMV:
 		/* wait for engine idle and FIFO empty */
 		statw = (ulong*)((uchar*)scr->mmio+XStatus0);
@@ -479,6 +479,7 @@ savageinit(VGAscr *scr)
 	/* if you add chip IDs here be sure to update savagewaitidle */
 	switch(scr->id){
 	case SAVAGE4:
+	case SAVAGEMXMV:
 	case SAVAGEIXMV:
 	case SUPERSAVAGEIXC16:
 		break;
