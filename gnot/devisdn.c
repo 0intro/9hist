@@ -85,7 +85,7 @@ isdnattach(char *spec)
 		addportintr(isdnintr);
 		devinit(dev);
 	}
-	c = devattach('I', spec);
+	c = devattach('J', spec);
 	c->dev = dev;
 	return c;
 }
