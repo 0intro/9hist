@@ -181,7 +181,7 @@ confinit(void)
 	conf.maxialloc = 2*1024*1024;
 
 	mul = 1;
-	conf.nproc = 10 + 20*mul;
+	conf.nproc = 30 + 20*mul;
 	conf.npgrp = conf.nproc/2;
 	conf.nseg = conf.nproc*3;
 	conf.npagetab = (conf.nseg*14)/10;
