@@ -103,10 +103,11 @@ void
 sdinit(void)
 {
 	Disk *d;
-	uchar scratch[0xFF], type;
+	uchar *scratch, type;
 	int dev, i, nbytes;
 
 	dev = 0;
+	scratch = scsialloc(0xFF);
 	for(;;) {
 		d = &disk[ndisk];
 		dev = scsiinv(dev, types, &d->t, &d->inquire, d->id);
@@ -124,7 +125,7 @@ sdinit(void)
 			 * the peripheral device type and qualifier fields
 			 * in the response to an inquiry command are 0x7F.
 			 */
-			nbytes = sizeof(scratch);
+			nbytes = 0xFF;
 			memset(scratch, 0, nbytes);
 			if(scsiinquiry(d->t, d->lun, scratch, &nbytes) != STok)
 				continue;
@@ -179,6 +180,7 @@ sdinit(void)
 			break;
 		}
 	}
+	scsifree(scratch);
 }
 
 Chan*
