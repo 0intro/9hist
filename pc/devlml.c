@@ -11,7 +11,7 @@
 #define DBGREGS 0x1
 #define DBGREAD 0x2
 #define DBGWRIT 0x4
-int debug = DBGREAD|DBGWRIT|DBGREGS;
+int debug = DBGREAD|DBGWRIT;
 
 // Lml 22 driver
 
