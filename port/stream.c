@@ -962,22 +962,17 @@ streamclose1(Stream *s)
 	Queue *q, *nq;
 	Block *bp;
 	int rv;
-	char err[ERRLEN];
 
 	/*
 	 *  decrement the reference count
 	 */
 	qlock(s);
-	*err = 0;
 	if(s->opens == 1){
 		/*
 		 *  descend the stream closing the queues
 		 */
 		for(q = s->procq; q; q = q->next){
-			if(waserror()){
-				if(*err == 0)
-					strncpy(err, u->error, ERRLEN-1);
-			} else {
+			if(!waserror()){
 				if(q->info->close)
 					(*q->info->close)(q->other);
 				poperror();
@@ -1006,8 +1001,6 @@ streamclose1(Stream *s)
 	 */
 	streamexit(s, 1);
 	qunlock(s);
-	if(*err)
-		errors(err);
 	return rv;
 }
 int

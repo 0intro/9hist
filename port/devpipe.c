@@ -13,7 +13,7 @@ typedef struct Pipe	Pipe;
 struct Pipe
 {
 	Ref;
-	int	debug;
+	QLock;
 	Pipe	*next;
 };
 
@@ -88,6 +88,7 @@ pipeattach(char *spec)
 	unlock(&pipealloc);
 
 	c->qid = (Qid){CHDIR|STREAMQID(2*(p - pipealloc.pipe), 0), 0};
+	c->dev = 0;
 	return c;
 }
 
@@ -150,21 +151,18 @@ pipeopen(Chan *c, int omode)
 	}
 
 	p = &pipealloc.pipe[STREAMID(c->qid.path)/2];
-	remote = 0;
 	if(waserror()){
-		unlock(p);
-		if(remote)
-			streamclose1(remote);
+		qunlock(p);
 		nexterror();
 	}
-	lock(p);
+	qlock(p);
 	streamopen(c, &pipeinfo);
 	local = c->stream;
 	if(local->devq->ptr == 0){
 		/*
-		 *  First stream opened, create the other end also
+		 *  first open, create the other end also
 		 */
-		remote = streamnew(c->type, c->dev, STREAMID(c->qid.path)^1, &pipeinfo, 1);
+		remote = streamnew(c->type, c->dev, STREAMID(c->qid.path)^1, &pipeinfo,1);
 
 		/*
 		 *  connect the device ends of both streams
@@ -173,15 +171,13 @@ pipeopen(Chan *c, int omode)
 		remote->devq->ptr = local;
 		local->devq->other->next = remote->devq;
 		remote->devq->other->next = local->devq;
-
+	} else if(local->opens == 1){
 		/*
-		 *  increment the inuse count to reflect the
-		 *  pointer from the other stream.
+		 *  keep other side around till last close of this side
 		 */
-		if(streamenter(local)<0)
-			panic("pipeopen");
+		streamenter(local->devq->ptr);
 	}
-	unlock(p);
+	qunlock(p);
 	poperror();
 
 	c->mode = omode&~OTRUNC;
@@ -220,14 +216,16 @@ pipeclose(Chan *c)
 	p = &pipealloc.pipe[STREAMID(c->qid.path)/2];
 
 	/*
-	 *  take care of associated streams
+	 *  take care of local and remote streams
 	 */
 	if(c->stream){
+		qlock(p);
 		remote = c->stream->devq->ptr;
-		if(streamclose(c) <= 0){
+		if(streamclose(c) == 0){
 			if(remote)
 				streamexit(remote, 0);
 		}
+		qunlock(p);
 	}
 
 	/*
@@ -284,8 +282,7 @@ pipeiput(Queue *q, Block *bp)
 }
 
 /*
- *  send the block to the other side without letting the connection
- *  disappear in mid put.
+ *  send the block to the other side
  */
 static void
 pipeoput(Queue *q, Block *bp)
@@ -300,7 +297,6 @@ static void
 pipestclose(Queue *q)
 {
 	Block *bp;
-	Stream *remote;
 
 	/*
 	 *  point to the bit-bucket and let any in-progress
