@@ -107,40 +107,40 @@ enum {
 	Portsc1 = 0x12,
 
 	/* port status */
-	Suspend = 1<<12,
-	PortReset = 1<<9,
-	SlowDevice = 1<<8,
-	ResumeDetect = 1<<6,
-	PortChange = 1<<3,	/* write 1 to clear */
-	PortEnable = 1<<2,
-	StatusChange = 1<<1,	/* write 1 to clear */
-	DevicePresent = 1<<0,
+	Suspend =		1<<12,
+	PortReset =		1<<9,
+	SlowDevice =		1<<8,
+	ResumeDetect =	1<<6,
+	PortChange =		1<<3,	/* write 1 to clear */
+	PortEnable =		1<<2,
+	StatusChange =	1<<1,	/* write 1 to clear */
+	DevicePresent =	1<<0,
 
 	NFRAME = 	1024,
 	FRAMESIZE=	NFRAME*sizeof(ulong),	/* fixed by hardware; aligned to same */
-	FRAMEMASK=	FRAMESIZE-1,	/* fixed by hardware; aligned to same */
+	FRAMEMASK=	FRAMESIZE-1,
 	NISOTD = 4,			/* number of TDs for isochronous io per frame */
 
-	Vf = 1<<2,	/* TD only */
-	IsQH = 1<<1,
-	Terminate = 1<<0,
+	Vf =			1<<2,	/* TD only */
+	IsQH =		1<<1,
+	Terminate =	1<<0,
 
 	/* TD.status */
-	SPD = 1<<29,
-	ErrLimit0 = 0<<27,
-	ErrLimit1 = 1<<27,
-	ErrLimit2 = 2<<27,
-	ErrLimit3 = 3<<27,
-	LowSpeed = 1<<26,
-	IsoSelect = 1<<25,
-	IOC = 1<<24,
-	Active = 1<<23,
-	Stalled = 1<<22,
-	DataBufferErr = 1<<21,
-	Babbling = 1<<20,
-	NAKed = 1<<19,
+	SPD =		1<<29,
+	ErrLimit0 =	0<<27,
+	ErrLimit1 =	1<<27,
+	ErrLimit2 =	2<<27,
+	ErrLimit3 =	3<<27,
+	LowSpeed =	1<<26,
+	IsoSelect =	1<<25,
+	IOC =		1<<24,
+	Active =		1<<23,
+	Stalled =		1<<22,
+	DataBufferErr =	1<<21,
+	Babbling =	1<<20,
+	NAKed =		1<<19,
 	CRCorTimeout = 1<<18,
-	BitstuffErr = 1<<17,
+	BitstuffErr =	1<<17,
 	AnyError = (Stalled | DataBufferErr | Babbling | NAKed | CRCorTimeout | BitstuffErr),
 
 	/* TD.dev */
@@ -320,12 +320,12 @@ static Cmdtab usbbusctlmsg[] =
 
 static Cmdtab usbctlmsg[] =
 {
-	CMclass,	"class",	4,
-	CMdata,		"data",		3,
-	CMdebug,	"debug",	3,
+	CMclass,		"class",	4,
+	CMdata,		"data",	3,
+	CMdebug,		"debug",	3,
 	CMep,		"ep",		6,
 	CMmaxpkt,	"maxpkt",	3,
-	CMspeed,	"speed",	2,
+	CMspeed,		"speed",	2,
 	CMunstall,	"unstall",	2,
 };
 
