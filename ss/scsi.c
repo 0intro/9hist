@@ -16,7 +16,6 @@ Scsibuf *
 scsialloc(ulong n)
 {
 	Scsibuf *b;
-	KMap *k;
 	ulong pa, va;
 	int i;
 

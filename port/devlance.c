@@ -362,10 +362,11 @@ lanceoput(Queue *q, Block *bp)
 	p = &l.tp[l.tc];
 	if((MPus(m->flags)&LANCEOWNER) != 0)
 		tsleep(&l.tr, isobuf, m, 128);
-		if(isobuf(m) == 0){
+		if(l.wedged || isobuf(m) == 0){
 			qunlock(&l.tlock);
 			freeb(bp);
 			poperror();
+			l.wedged = 0;
 			print("lance wedged, dumping block & restarting\n");
 			lancestart(0);
 			return;
@@ -704,6 +705,15 @@ lanceintr(void)
 	if(csr & (BABL|MISS|MERR)){
 		if(l.misses++ < 4)
 			print("lance err %ux\n", csr);
+		else {
+			l.wedged = 1;
+			l.misses = 0;
+			*l.rap = 0;
+			*l.rdp = STOP;
+			wakeup(&l.rr);
+			wakeup(&l.tr);
+			return;
+		}
 	}
 
 	if(csr & IDON){
@@ -737,9 +747,9 @@ lanceintr(void)
 static void
 lanceup(Etherpkt *p, int len)
 {
+	int t;
 	Block *bp;
 	Ethertype *e;
-	int t;
 
 	if(len <= 0)
 		return;
@@ -844,8 +854,8 @@ lancekproc(void *arg)
 		 *  if the lance is wedged, restart it
 		 */
 		if(l.wedged){
-			print("lance wedged, restarting\n");
 			l.wedged = 0;
+			print("lance wedged, restarting\n");
 			lancestart(0);
 		}
 

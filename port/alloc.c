@@ -380,7 +380,7 @@ xsummary(void)
 {
 	Hole *h;
 	Bucket *k;
-	int i, nfree;
+	int i, nfree, nused;
 
 	i = 0;
 	for(h = xlists.flist; h; h = h->link)
@@ -393,12 +393,15 @@ xsummary(void)
 		i += h->size;
 	}
 	print("%d bytes free\n", i);
+	nused = 0;
 	for(i = 3; i < Maxpow; i++) {
 		if(arena.btab[i] == 0 && arena.nbuck[i] == 0)
 			continue;
+		nused += arena.nbuck[i]*(1<<i);
 		nfree = 0;
 		for(k = arena.btab[i]; k; k = k->next)
 			nfree++;
 		print("%8d %4d %4d\n", 1<<i, arena.nbuck[i], nfree);
 	}
+	print("%d bytes in pool\n", nused);
 }

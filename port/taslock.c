@@ -13,7 +13,7 @@ lock(Lock *l)
 	ulong pc;
 
 	pc = getcallerpc(((uchar*)&l) - sizeof(l));
-	for(i = 0; i < 10000000; i++){
+	for(i = 0; i < 100000000; i++){
     		if (tas(&ll->key) == 0){
 			if(u)
 				u->p->hasspin = 1;

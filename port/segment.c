@@ -345,7 +345,7 @@ ibrk(ulong addr, int seg)
 
 	if(newsize > (PTEMAPMEM*SEGMAPSIZE)/BY2PG) {
 		qunlock(&s->lk);
-		return -1;
+		error(Enovmem);
 	}
 
 	s->top = newtop;

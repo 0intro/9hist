@@ -28,24 +28,25 @@ swapinit(void)
 	swapalloc.swmap = xalloc(conf.nswap);
 	swapalloc.top = &swapalloc.swmap[conf.nswap];
 	swapalloc.alloc = swapalloc.swmap;
-
+	swapalloc.last = swapalloc.swmap;
 	swapalloc.free = conf.nswap;
 }
 
 ulong
 newswap(void)
 {
-	char *look;
+	uchar *look;
 
 	lock(&swapalloc);
 	if(swapalloc.free == 0)
 		panic("out of swap space");
 
-	look = memchr(swapalloc.swmap, 0, conf.nswap);
+	look = memchr(swapalloc.last, 0, swapalloc.top-swapalloc.last);
 	if(look == 0)
-		panic("inconsistant swap");
-
+		panic("inconsistent swap");
+	
 	*look = 1;
+	swapalloc.last = look;
 	swapalloc.free--;
 	unlock(&swapalloc);
 	return (look-swapalloc.swmap) * BY2PG; 
@@ -54,9 +55,14 @@ newswap(void)
 void
 putswap(Page *p)
 {
+	uchar *idx;
+
 	lock(&swapalloc);
-	if(--swapalloc.swmap[((ulong)p)/BY2PG] == 0)
+	idx = &swapalloc.swmap[((ulong)p)/BY2PG];
+	if(--(*idx) == 0)
 		swapalloc.free++;
+	if(idx < swapalloc.last)
+		swapalloc.last = idx;
 	unlock(&swapalloc);
 }
 

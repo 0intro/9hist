@@ -355,9 +355,10 @@ struct Swapalloc
 {
 	Lock;				/* Free map lock */
 	int	free;			/* Number of currently free swap pages */
-	char	*swmap;			/* Base of swap map in memory */
-	char	*alloc;			/* Round robin allocator */
-	char	*top;			/* Top of swap map */
+	uchar	*swmap;			/* Base of swap map in memory */
+	uchar	*alloc;			/* Round robin allocator */
+	uchar	*last;			/* Speed swap allocation */
+	uchar	*top;			/* Top of swap map */
 	Rendez	r;			/* Pager kproc idle sleep */
 	ulong	highwater;		/* Threshold beyond which we must page */
 	ulong	headroom;		/* Space pager keeps free under highwater */

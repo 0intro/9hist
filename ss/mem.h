@@ -19,7 +19,7 @@
 /*
  * Time
  */
-#define	HZ		20			/* clock frequency */
+#define	HZ		50			/* clock frequency */
 #define	MS2HZ		(1000/HZ)		/* millisec per clock tick */
 #define	TK2SEC(t)	((t)/HZ)		/* ticks to seconds */
 #define	TK2MS(t)	((((ulong)(t))*1000)/HZ)	/* ticks to milliseconds */
@@ -86,10 +86,10 @@
 
 #define PTEMAPMEM	(1024*1024)	
 #define	PTEPERTAB	(PTEMAPMEM/BY2PG)
-#define SEGMAPSIZE	16
+#define SEGMAPSIZE	128
 
 #define	INVALIDPTE	0
-#define	PPN(pa)		((pa>>12)&0xFFFF)
+#define	PPN(pa)		(((pa)>>12)&0xFFFF)
 
 /*
  * Weird addresses etc. in System ASI (2)

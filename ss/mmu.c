@@ -159,19 +159,6 @@ mkfirst(List **list, List *entry)
 }
 
 /*
- *  remove from list
- */
-static void
-remove(List **list, List *entry)
-{
-	if(*list == entry)
-		*list = entry->next;
-
-	entry->prev->next = entry->next;
-	entry->next->prev = entry->prev;
-}
-
-/*
  *  add to list
  */
 static void
@@ -199,13 +186,11 @@ static Pmeg*
 allocpmeg(ulong virt)
 {
 	Pmeg *p;
-	Ctx *c;
 
 	virt = virt & ~(BY2SEGM-1);
 	for(;;){
 		p = (Pmeg*)m->plist;
-		c = p->ctx;
-		if(c == 0)
+		if(p->ctx == 0)
 			break;
 		m->needpmeg = 1;
 		sched();
@@ -217,7 +202,7 @@ allocpmeg(ulong virt)
 	p->cnext = m->cctx->pmeg;
 	m->cctx->pmeg = p;
 	p->virt = virt;
-	p->lo = virt;
+	p->lo = virt + BY2PG;
 	p->hi = virt;
 	putsegspace(p->virt, p->index);
 	mklast(&m->plist, p);
@@ -229,7 +214,7 @@ freepmeg(Pmeg *p, int flush)
 {
 	ulong x;
 
-	/* invalidate any used PTE's, flush cache */
+	/* invalidate any used PTE's */
 	for(x = p->lo; x <= p->hi; x += BY2PG)
 		putpme(x, INVALIDPTE, flush);
 
@@ -241,6 +226,7 @@ freepmeg(Pmeg *p, int flush)
 	p->cnext = 0;
 	p->ctx = 0;
 	p->virt = 0;
+	mkfirst(&m->plist, p);
 }
 
 /*
@@ -253,8 +239,12 @@ allocctx(Proc *proc)
 
 	c = (Ctx*)m->clist;
 	putctx(c);
-	if(c->proc)
+	if(c->proc){
 		freectx(c, 1);
+	}
+	if(c->pmeg)
+		panic("allocctx c->pmeg %lux\n", c->pmeg);
+
 	c->proc = proc;
 	c->proc->ctxonmach[m->machno] = c;
 	mklast(&m->clist, c);
@@ -267,12 +257,15 @@ freectx(Ctx *c, int flush)
 	Pmeg *p;
 
 	putctx(c);
+	if(c->proc->ctxonmach[m->machno] != c)
+		panic("freectx %lux %lux\n", c->proc->ctxonmach[m->machno], c);
 
 	/* give back mappings */
 	while(p = c->pmeg){
+		if(p->ctx != c)
+			panic("freectx: %lux/%lux\n", p->ctx, c);
 		c->pmeg = p->cnext;
 		freepmeg(p, flush);
-		mkfirst(&m->plist, p);
 	}
 
 	/* flush u-> */
@@ -281,6 +274,7 @@ freectx(Ctx *c, int flush)
 	/* detach from process */
 	c->proc->ctxonmach[m->machno] = 0;
 	c->proc = 0;
+	mkfirst(&m->clist, c);
 }
 
 static void
@@ -301,6 +295,7 @@ flushpage(ulong virt)
 		a = flushpg(a);
 	while(a < evirt);
 }
+
 
 /*
  *  stuff an entry into a pmeg
@@ -330,8 +325,11 @@ putmmu(ulong virt, ulong phys, Page *pg)
 	x = getsegspace(v);
 	if(x == INVALIDPMEG)
 		p = allocpmeg(v);
-	else
+	else {
 		p = &m->pmeg[x - m->pfirst];
+		if(x != p->index)
+			panic("putmmu %d/%d\n", x, p->index);
+	}
 	if(virt < p->lo)
 		p->lo = virt;
 	if(virt > p->hi)
@@ -356,7 +354,7 @@ cacheinit(void)
 	/*
 	 * Turn cache on
 	 */
-	putenab(getenab()&~ENABCACHE);
+	putenab(getenab()|ENABCACHE);
 }
 
 /*
@@ -366,17 +364,20 @@ void
 mmuinit(void)
 {
 	int c, i, j;
-	ulong va, ktop, pme;
+	ulong va, ktop, pme, kbot1, ktop1;
 	int fp;		/* first free pmeg */
 	Pmeg *p;
 	Ctx *ctx;
 
-conf.ncontext = 1; /**/
+	/*
+	 *  mmuinit is entered with PMEG's 0 & 1 providing mappng
+	 *  for virtual addresses KZERO<->KZERO+2*BY2SEGM to physical
+	 *  0<->2*BY2SEGM
+	 */
 	compile();
 
 	/*
-	 *  First map kernel text, data, bss, and xalloc regions.
-	 *  xinit sets conf.npage0 to end of these.
+	 *  map all of kernel region 0.
 	 */
 	ktop = PGROUND(conf.npage0);
 	i = 0;
@@ -388,7 +389,7 @@ conf.ncontext = 1; /**/
 	fp = i;
 
 	/*
-	 *  Make sure cache is turned on for kernel
+	 *  Make sure cache is turned on for kernel region 0
 	 */
 	pme = PTEVALID|PTEWRITE|PTEKERNEL|PTEMAINMEM;
 	i = 0;
@@ -396,11 +397,47 @@ conf.ncontext = 1; /**/
 		putpme(va, pme+i, 1);
 
 	/*
-	 *  invalidate rest of kernel's PMEG
+	 *  invalidate rest of kernel's region 0's PMEG's
 	 */
 	va = ROUNDUP(ktop, BY2SEGM);
 	for(; ktop < va; ktop += BY2PG)
 		putpme(ktop, INVALIDPTE, 1);
+
+	/*
+	 *  Invalidate all entries in all other pmegs
+	 */
+	for(j = fp; j < conf.npmeg; j++){
+		putsegspace(INVALIDSEGM, j);
+		for(va = 0; va < BY2SEGM; va += BY2PG)
+			putpmegspace(INVALIDSEGM+va, INVALIDPTE);
+	}
+
+	if(conf.base1 < conf.npage1){
+		/*
+		 *  map kernel region 1, this may overlap kernel region 0's
+		 *  PMEG's.
+		 */
+		ktop1 = PGROUND(conf.npage1);
+		kbot1 = conf.base1 & ~(BY2SEGM - 1);
+		if(kbot1 < ktop)
+			kbot1 = ktop;
+		for(c = 0; c < conf.ncontext; c++){
+			i = fp;
+			putcontext(c);
+			for(va = kbot1; va < ktop1; va += BY2SEGM)
+				putsegspace(va, i++);
+		}
+		fp = i;
+	
+		/*
+		 *  Make sure cache is turned on for kernel region 1
+		 */
+		kbot1 = conf.base1 & ~(BY2PG - 1);
+		pme = PTEVALID|PTEWRITE|PTEKERNEL|PTEMAINMEM;
+		i = PPN(kbot1 & ~KZERO);
+		for(va = kbot1; va < ktop1; va += BY2PG, i++)
+			putpme(va, pme+i, 1);
+	}
 
 	/*
 	 *  allocate pmegs for kmap'ing
@@ -412,15 +449,6 @@ conf.ncontext = 1; /**/
 			putsegspace(va, i++);
 	}
 	fp = i;
-
-	/*
-	 *  Invalidate all entries in all other pmegs
-	 */
-	for(j = fp; j < conf.npmeg; j++){
-		putsegspace(INVALIDSEGM, j);
-		for(va = INVALIDSEGM; va < INVALIDSEGM+BY2SEGM; va += BY2PG)
-			putpme(va, INVALIDPTE, 1);
-	}
 
 	/*
 	 *  invalidate everything outside the kernel in every context
@@ -464,7 +492,6 @@ mmurelease(Proc *p)
 		return;
 
 	freectx(c, 1);
-	mkfirst(&m->clist, c);
 }
 
 /*
@@ -494,6 +521,8 @@ mapstack(Proc *p)
 				}
 				l = &f->cnext;
 			}
+			if(f != pm)
+				panic("mapstack f != pm\n");
 	
 			/* flush cache & remove mappings */
 			putctx(c);
@@ -513,9 +542,12 @@ mapstack(Proc *p)
 	/* set to this proc's context */
 	c = p->ctxonmach[m->machno];
 	if(c == 0)
-		allocctx(p);
+		c = allocctx(p);
 	else
 		putctx(c);
+
+	if(c->proc != p || p->ctxonmach[m->machno] != c)
+		panic("mapstack c->proc != p\n");
 
 	/* make sure there's a mapping for u-> */
 	tlbphys = PPN(p->upage->pa)|PTEVALID|PTEWRITE|PTEKERNEL|PTEMAINMEM;
@@ -536,7 +568,6 @@ flushmmu(void)
 	while(p = c->pmeg){
 		c->pmeg = p->cnext;
 		freepmeg(p, 1);
-		mkfirst(&m->plist, p);
 	}
 	spllo();
 }
@@ -552,6 +583,7 @@ struct
 	Lock;
 	KMap	*free;
 	KMap	arena[IOSEGSIZE/BY2PG];
+	int inited;
 }kmapalloc;
 
 void
@@ -566,6 +598,7 @@ kmapinit(void)
 		k->va = va;
 		kunmap(k);
 	}
+	kmapalloc.inited = 1;
 }
 
 KMap*
@@ -632,4 +665,3 @@ kmap(Page *pg)
 	 */
 	return kmappa(pg->pa, PTEMAINMEM|PTENOCACHE);
 }
-

@@ -39,6 +39,8 @@ canqlock(QLock *q)
 		unlock(&q->use);
 		return 0;
 	}
+	if(u)
+		u->p->qlockpc = getcallerpc(((uchar*)&q) - sizeof(q));
 	q->locked = 1;
 	unlock(&q->use);
 	return 1;
@@ -49,6 +51,8 @@ qunlock(QLock *q)
 {
 	Proc *p;
 
+	if(u)
+		u->p->qlockpc = 0;
 	lock(&q->use);
 	p = q->head;
 	if(p) {

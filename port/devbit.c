@@ -11,8 +11,6 @@
 #include	<gnot.h>
 #include	"screen.h"
 
-extern GSubfont	*defont;
-
 /*
  * Some monochrome screens are reversed from what we like:
  * We want 0's bright and 1's dark.
@@ -62,6 +60,11 @@ struct BSubfont
 	int	ref;		/* number of times this subfont is open */
 	ulong	qid[2];		/* unique id used as a cache tag */
 };
+
+extern GSubfont	*defont;
+       BSubfont	*bdefont;
+       BSubfont bdefont0;
+
 
 struct
 {
@@ -182,7 +185,7 @@ bitfreeup(void)
 	/* free unused subfonts and compact */
 	for(i=0; i<bit.nsubfont; i++){
 		s = bit.subfont[i];
-		if(s && s!=defont && s->ref==0){
+		if(s && s!=bdefont && s->ref==0){
 			s->ref = 1;
 			s->qid[0] = ~0;	/* force cleanup */
 			subfontfree(s, i);
@@ -247,6 +250,8 @@ bitreset(void)
 	ulong r;
 	Arena *a;
 
+	memmove(&bdefont0, defont, sizeof(*defont));
+	bdefont = &bdefont0;
 	if(!conf.monitor)
 		return;
 	bit.map = smalloc(DMAP*sizeof(GBitmap*));
@@ -365,7 +370,7 @@ bitopen(Chan *c, int omode)
 		b = smalloc(sizeof(GBitmap));
 		*b = gscreen;
 		bit.map[0] = b;			/* bitmap 0 is screen */
-		bit.subfont[0] = (BSubfont*)defont;	/* subfont 0 is default */
+		bit.subfont[0] = bdefont;	/* subfont 0 is default */
 		bit.subfont[0]->ref = 1;
 		bit.subfont[0]->qid[0] = 0;
 		bit.subfont[0]->qid[1] = 0;
@@ -556,7 +561,7 @@ bitread(Chan *c, void *va, long n, ulong offset)
 		 * 	rectangle	16
 		 * 	clip rectangle	16
 		 *	font info	3*12
-		 *	fontchars	6*(defont->n+1)
+		 *	fontchars	6*(bdefont->n+1)
 		 */
 		if(n < 34)
 			error(Ebadblt);
@@ -570,19 +575,19 @@ bitread(Chan *c, void *va, long n, ulong offset)
 		BPLONG(p+22, gscreen.clipr.min.y);
 		BPLONG(p+26, gscreen.clipr.max.x);
 		BPLONG(p+30, gscreen.clipr.max.y);
-		if(n >= 34+3*12+6*(defont->n+1)){
+		if(n >= 34+3*12+6*(bdefont->n+1)){
 			p += 34;
-			sprint((char*)p, "%11d %11d %11d ", defont->n,
-				defont->height, defont->ascent);
+			sprint((char*)p, "%11d %11d %11d ", bdefont->n,
+				bdefont->height, bdefont->ascent);
 			p += 3*12;
-			for(i=defont->info,j=0; j<=defont->n; j++,i++,p+=6){
+			for(i=bdefont->info,j=0; j<=bdefont->n; j++,i++,p+=6){
 				BPSHORT(p, i->x);
 				p[2] = i->top;
 				p[3] = i->bottom;
 				p[4] = i->left;
 				p[5] = i->width;
 			}
-			n = 34+3*12+6*(defont->n+1);
+			n = 34+3*12+6*(bdefont->n+1);
 		}else
 			n = 34;
 		bit.init = 0;
@@ -1259,7 +1264,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			pt.y = BGLONG(p+7);
 			v = BGSHORT(p+11);
 			if(v<0 || v>=bit.nfont || (ff=bit.font[v])==0)
-				error(Ebadblt);
+				error(Ebadfont);
 			l = BGSHORT(p+15)*2;
 			p += 17;
 			m -= 17;
@@ -1635,7 +1640,7 @@ fontfree(GFont *f)
 void
 subfontfree(BSubfont *s, int i)
 {
-	if(s!=defont && s->ref>0){	/* don't free subfont 0, defont */
+	if(s!=bdefont && s->ref>0){	/* don't free subfont 0, bdefont */
 		s->ref--;
 		if(s->ref==0 && s->qid[0]==~0){	/* uncached */
 			bitfree(s->bits);

@@ -68,7 +68,8 @@ void	trap(Ureg*);
 void	trapinit(void);
 #define	wbflush()	/* mips compatibility */
 #define	waserror()	(u->nerrlab++, setlabel(&u->errlab[u->nerrlab-1]))
-#define getcallerpc(x)	(*(ulong*)(x))
+#define getcallerpc(x)	_getcallerpc()
+ulong	_getcallerpc(void);
 
 /*
  * compiled entry points
@@ -85,6 +86,4 @@ extern ulong	(*getsegspace)(ulong);
 extern void	(*putsegspace)(ulong, ulong);
 extern ulong	(*getpmegspace)(ulong);
 extern void	(*putpmegspace)(ulong, ulong);
-extern ulong	(*flushcx)(ulong);
 extern ulong	(*flushpg)(ulong);
-extern ulong	(*flushpm)(ulong);

@@ -21,8 +21,6 @@ ulong	(*getsegspace)(ulong);
 void	(*putsegspace)(ulong, ulong);
 ulong	(*getpmegspace)(ulong);
 void	(*putpmegspace)(ulong, ulong);
-ulong	(*flushcx)(ulong);
-ulong	(*flushpm)(ulong);
 ulong	(*flushpg)(ulong);
 
 /*
@@ -180,13 +178,8 @@ compile(void)
 	putsegspace = compilestaddr(STBA, 3);
 	getpmegspace = compileldaddr(LDA, 4);
 	putpmegspace = compilestaddr(STA, 4);
-	if(conf.ss2){
+	if(conf.ss2)
 		flushpg = compile1(BY2PG, 6);
-		flushpm = compile16(conf.vaclinesize, 5);
-		flushcx = compile16(conf.vaclinesize, 7);
-	}else{
+	else
 		flushpg = compile16(conf.vaclinesize, 0xD);
-		flushpm = compile16(conf.vaclinesize, 0xC);
-		flushcx = compile16(conf.vaclinesize, 0xE);
-	}
 }

@@ -1,6 +1,6 @@
 #include "mem.h"
 
-#define	SYSPSR	(SPL(0x0)|PSREF|PSRET|PSRSUPER|SPL(15)|0)
+#define	SYSPSR	(PSREF|PSRET|PSRSUPER|SPL(15))
 #define	NOOP	ORN R0, R0; ORN R0, R0; ORN R0, R0
 
 TEXT	start(SB), $-4
@@ -66,32 +66,20 @@ TEXT	startvirt(SB), $-4
 	MOVW	(R0), R0
 	RETURN
 
-TEXT	tas(SB), $0
+TEXT	oldtas(SB), $0
 
 	TAS	(R7), R7		/* LDSTUB, thank you ken */
 	RETURN
 
-TEXT	swap1_should_work(SB), $0
+TEXT	tas(SB), $0			/* it seems we must be splhi */
 
-	MOVW	R7, R8
-	MOVW	$1, R7
-	SWAP	(R8), R7
-	RETURN
-
-TEXT	swap1x(SB), $0
-
-	MOVW	PSR, R9
-	MOVW	R9, R10
-	AND	$~PSRET, R10		/* BUG: book says this is buggy */
-	MOVW	R10, PSR
-	NOOP
-	MOVW	(R7), R7
-	CMP	R7, R0
-	BNE	was1
-	MOVW	$1, R10
-	MOVW	R10, (R8)
-was1:
+	MOVW	PSR, R8
+	MOVW	$SYSPSR, R9
 	MOVW	R9, PSR
+	NOOP
+	TAS	(R7), R7		/* LDSTUB, thank you ken */
+	MOVW	R8, PSR
+	NOOP
 	RETURN
 
 TEXT	spllo(SB), $0
@@ -463,6 +451,10 @@ TEXT	clearftt(SB), $0
 	MOVW	$fsr+0(SB), R7
 	MOVW	(R7), FSR
 	FMOVF	F0, F0
+	RETURN
+
+TEXT	_getcallerpc(SB), $0
+	MOVW	0(R1), R7
 	RETURN
 
 GLOBL	mach0+0(SB), $MACHSIZE

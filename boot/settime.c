@@ -40,10 +40,11 @@ settime(int islocal)
 		f = open(timeserver, ORDWR);
 		if(f < 0)
 			return;
-		if(mount(f, "/n/boot", MREPL, "", sauth) < 0){
-			close(f);
-			return;
-		}
+		if(mount(f, "/n/boot", MREPL, "", sauth) < 0)
+			if(mount(f, "/n/boot", MREPL, "", "any") < 0){
+				close(f);
+				return;
+			}
 		close(f);
 		if(stat("/n/boot", dirbuf) < 0)
 			fatal("stat");

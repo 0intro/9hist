@@ -57,7 +57,6 @@ main(void)
 	active.machs = 1;
 	trapinit();
 	confinit();
-conf.monitor = 0;
 	xinit();
 	mmuinit();
 	kmapinit();
@@ -140,8 +139,6 @@ init0(void)
 	print("Sun Sparcstation %s\n", sparam->name);
 	print("bank 0: %dM  1: %dM\n", bank[0], bank[1]);
 	print("frame buffer id %lux slot %ld %s\n", conf.monitor, fbslot, fbstr);
-	if(conf.npage1 != conf.base1)
-		print("kernel mem from second bank: reboot and fix!\n");
 
 	u->slash = (*devtab[0].attach)(0);
 	u->dot = clone(u->slash, 0);
@@ -447,8 +444,6 @@ confinit(void)
 	conf.frag = 32;
 	if(cpuserver)
 		conf.nproc = 500;
-
-	conf.monitor = 0;
 }
 
 /*
