@@ -1469,7 +1469,7 @@ dkcsckproc(void *a)
 		
 		case T_RESTART:	/* datakit reboot */
 			if(line >=0 && line<dp->lines)
-				dp->lines=line+1;
+				dp->lines = line+1;
 			break;
 		
 		default:

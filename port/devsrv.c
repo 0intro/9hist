@@ -4,27 +4,26 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"errno.h"
+
 #include	"devtab.h"
-#include	"fcall.h"
 
-void *calloc(unsigned, unsigned);
-void free(void *);
-
-/* This structure holds the contents of a directory entry.  Entries are kept
- * in a linked list.
- */
-typedef struct Entry Entry;
-struct Entry {
+typedef struct	Srv Srv;
+struct Srv{
 	Lock;
-	Entry *next;		/* next entry */
-	Entry **back;		/* entry pointer */
-	Entry *parent;		/* parent directory */
-	Dir dir;		/* dir structure */
-	union{
-		Chan *chan;	/* if not a subdirectory */
-		Entry *entries;	/* directory entries */
-	};
-};
+	char	*name;
+	Chan	**chan;
+}srv;
+
+int
+srvgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
+{
+	if(s >= conf.nsrv)
+		return -1;
+	if(srv.chan[s] == 0)
+		return 0;
+	devdir(c, (Qid){s, 0}, &srv.name[s*NAMELEN], 0, 0666, dp);
+	return 1;
+}
 
 void
 srvinit(void)
@@ -34,92 +33,40 @@ srvinit(void)
 void
 srvreset(void)
 {
-}
-
-Entry *
-srvalloc(int mode){
-	Entry *e;
-	static Lock qidlock;
-	static nextqid;
-
-	e = calloc(1, sizeof(Entry));
-	e->dir.atime = e->dir.mtime = seconds();
-	lock(&qidlock);	/* for qid allocation */
-	e->dir.qid = (Qid){mode|nextqid++, 0};
-	unlock(&qidlock);
-	return e;
+	srv.chan = ialloc(conf.nsrv*sizeof(Chan*), 0);
+	srv.name = ialloc(conf.nsrv*NAMELEN, 0);
 }
 
 Chan *
 srvattach(char *spec)
 {
-	Chan *c;
-	static Lock rootlock;
-	static Entry *root;
-
-	lock(&rootlock);
-	if(root==0){
-		root = srvalloc(CHDIR);
-		root->dir.mode = CHDIR | 0777;
-	}
-	unlock(&rootlock);
-	c = devattach('s', spec);
-	c->qid = root->dir.qid;
-	c->aux = root;
-	return c;
+	return devattach('s', spec);
 }
 
 Chan *
 srvclone(Chan *c, Chan *nc)
 {
-	nc = devclone(c, nc);
-	return nc;
+	return devclone(c, nc);
 }
 
 int
 srvwalk(Chan *c, char *name)
 {
-	Entry *dir, *e;
-
-	isdir(c);
-	if(strcmp(name, ".") == 0)
-		return 1;
-	if((dir=c->aux) == 0)
-		panic("bad aux pointer in srvwalk");
-	if(strcmp(name, "..") == 0)
-		e = dir->parent;
-	else{
-		lock(dir);
-		for(e=dir->entries; e; e=e->next)
-			if (strcmp(name, e->dir.name) == 0)
-				break;
-		unlock(dir);
-	}
-	if(e==0){
-		strncpy(u->error, errstrtab[Enonexist], NAMELEN);
-		return 0;
-	}
-	c->qid = e->dir.qid;
-	c->aux = e;
-	return 1;
+	return devwalk(c, name, 0, 0, srvgen);
 }
 
 void
 srvstat(Chan *c, char *db)
 {
-	Entry *e;
-
-	e = c->aux;
-	convD2M(&e->dir, db);
+	devstat(c, db, 0, 0, srvgen);
 }
 
 Chan *
 srvopen(Chan *c, int omode)
 {
-	Entry *e;
 	Chan *f;
 
-	if(c->qid.path & CHDIR){
+	if(c->qid.path == CHDIR){
 		if(omode != OREAD)
 			error(Eisdir);
 		c->mode = omode;
@@ -127,78 +74,77 @@ srvopen(Chan *c, int omode)
 		c->offset = 0;
 		return c;
 	}
-	if((e=c->aux) == 0)
-		error(Egreg);
-	if((f=e->chan) == 0)
+	lock(&srv);
+	if(waserror()){
+		unlock(&srv);
+		nexterror();
+	}
+	f = srv.chan[c->qid.path];
+	if(f == 0)
 		error(Eshutdown);
-	if(omode & OTRUNC)
+	if(omode&OTRUNC)
 		error(Eperm);
 	if(omode!=f->mode && f->mode!=ORDWR)
 		error(Eperm);
 	close(c);
 	incref(f);
+	unlock(&srv);
+	poperror();
 	return f;
 }
 
 void
 srvcreate(Chan *c, char *name, int omode, ulong perm)
 {
-	Entry *parent, *e;
+	int j, i;
 
-	parent = c->aux;
-	isdir(c);
-	lock(parent);
-	if (waserror()){
-		unlock(parent);
+	if(omode != OWRITE)
+		error(Eperm);
+	lock(&srv);
+	if(waserror()){
+		unlock(&srv);
 		nexterror();
 	}
-	for(e=parent->entries; e; e=e->next)
-		if(strcmp(name, e->dir.name) == 0)
+	j = -1;
+	for(i=0; i<conf.nsrv; i++){
+		if(srv.chan[i] == 0){
+			if(j == -1)
+				j = i;
+		}else if(strcmp(name, &srv.name[i*NAMELEN]) == 0)
 			error(Einuse);
-	e = srvalloc(perm & CHDIR);
-	e->parent = parent;
-	strcpy(e->dir.name, name);
-	e->dir.mode = perm & parent->dir.mode;
-	strcpy(e->dir.gid, parent->dir.gid);
-	if(e->next = parent->entries)	/* assign = */
-		e->next->back = &e->next;
-	e->back = &parent->entries;
-	*e->back = e;
-	parent->dir.mtime = e->dir.mtime;
-	unlock(parent);
+	}
+	if(j == -1)
+		error(Enosrv);
+	srv.chan[j] = c;
+	unlock(&srv);
 	poperror();
-	c->qid = e->dir.qid;
-	c->aux = e;
+	strcpy(&srv.name[j*NAMELEN], name);
+	c->qid.path = j;
 	c->flag |= COPEN;
-	c->mode = omode;
+	c->mode = OWRITE;
 }
 
 void
 srvremove(Chan *c)
 {
-	Entry *e;
+	Chan *f;
 
-	e = c->aux;
-	if(e->parent == 0)
+	if(c->qid.path == CHDIR)
 		error(Eperm);
-	lock(e->parent);
+	lock(&srv);
 	if(waserror()){
-		unlock(e->parent);
+		unlock(&srv);
 		nexterror();
 	}
-	if(e->dir.mode & CHDIR){
-		if (e->entries != 0)
-			error(Eperm);
-	}else{
-		if(e->chan == 0)
-			error(Eshutdown);
-		close(e->chan);
-	}
-	if(*e->back = e->next)	/* assign = */
-		e->next->back = e->back;
-	unlock(e->parent);
+	f = srv.chan[c->qid.path];
+	if(f == 0)
+		error(Eshutdown);
+	if(strcmp(&srv.name[c->qid.path*NAMELEN], "boot") == 0)
+		error(Eperm);
+	srv.chan[c->qid.path] = 0;
+	unlock(&srv);
 	poperror();
-	free(e);
+	close(f);
 }
 
 void
@@ -212,72 +158,29 @@ srvclose(Chan *c)
 {
 }
 
-/* A directory is being read.  The entries must be synthesized.  e points
- * to a list of entries in this directory.  Count is the size to be
- * read.
- */
-int
-srvdirentry(Entry *e, char *a, long count){
-	Dir dir;
-	int n;
-
-	n = 0;
-	while(n!=count && e!=0){
-		n += convD2M(&e->dir, a + n);
-		e = e->next;
-	}
-	return n;
-}
-
 long
 srvread(Chan *c, void *va, long n, ulong offset)
 {
-	Entry *dir, *e;
-
-	dir = c->aux;
 	isdir(c);
-	if(n <= 0)
-		return 0;
-	if(offset%DIRLEN || n%DIRLEN)
-		error(Ebaddirread);
-	lock(dir);
-	for(e=dir->entries; e; e=e->next)
-		if(offset <= 0){
-			n = srvdirentry(e, va, n);
-			unlock(dir);
-			c->offset += n;
-			return n;
-		}else
-			offset -= DIRLEN;
-	unlock(dir);
-	return 0;
+	return devdirread(c, va, n, 0, 0, srvgen);
 }
 
 long
 srvwrite(Chan *c, void *va, long n, ulong offset)
 {
-	Entry *e;
 	int i, fd;
 	char buf[32];
 
-	e = c->aux;
-	if(e->dir.mode & CHDIR)
-		panic("write to directory");
-	lock(e);
-	if(waserror()){
-		unlock(e);
-		nexterror();
-	}
-	if(e->chan)
+	i = c->qid.path;
+	if(srv.chan[i] != c)	/* already been written to */
 		error(Egreg);
 	if(n >= sizeof buf)
 		error(Egreg);
 	memmove(buf, va, n);	/* so we can NUL-terminate */
 	buf[n] = 0;
 	fd = strtoul(buf, 0, 0);
-	e->chan = fdtochan(fd, -1);
-	incref(e->chan);
-	unlock(e);
-	poperror();
+	fdtochan(fd, -1);	/* error check only */
+	srv.chan[i] = u->p->fgrp->fd[fd];
+	incref(u->p->fgrp->fd[fd]);
 	return n;
 }

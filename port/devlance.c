@@ -183,7 +183,9 @@ static SoftLance l;
  *  predeclared
  */
 static void lancekproc(void *);
-static void lancestart(int);
+static void lancestart(int, int);
+static void lancedump(void);
+
 /*
  *  lance stream module definition
  */
@@ -228,7 +230,7 @@ lancestclose(Queue *q)
 		qlock(&l);
 		l.prom--;
 		if(l.prom == 0)
-			lancestart(0);
+			lancestart(0, 1);
 		qunlock(&l);
 	}
 	qlock(et);
@@ -266,7 +268,7 @@ lanceoput(Queue *q, Block *bp )
 			qlock(&l);
 			l.prom++;
 			if(l.prom == 1)
-				lancestart(PROM);
+				lancestart(PROM, 1);
 			qunlock(&l);
 		}
 		freeb(bp);
@@ -283,13 +285,15 @@ lanceoput(Queue *q, Block *bp )
 	 *  only one transmitter at a time
 	 */
 	qlock(&l.tlock);
+	if(waserror()){
+		qunlock(&l.tlock);
+		nexterror();
+	}
 
 	/*
 	 *  Wait till we get an output buffer
 	 */
-	if(TSUCC(l.tc) == l.tl){
-		sleep(&l.tr, isobuf, (void *)0);
-	}
+	sleep(&l.tr, isobuf, (void *)0);
 	p = &l.tp[l.tc];
 
 	/*
@@ -335,6 +339,7 @@ lanceoput(Queue *q, Block *bp )
 	*l.rdp = INEA|TDMD; /**/
 	wbflush();
 	qunlock(&l.tlock);
+	poperror();
 }
 
 /*
@@ -377,7 +382,7 @@ lancereset(void)
  *  It may be used to restart a dead lance.
  */
 static void
-lancestart(int mode)
+lancestart(int mode, int dolock)
 {
 	int i;
 	Etherpkt *p;
@@ -388,8 +393,10 @@ lancestart(int mode)
 	 *   wait till both receiver and transmitter are
 	 *   quiescent
 	 */
-	qlock(&l.tlock);
-	qlock(&l.rlock);
+	if(dolock){
+		qlock(&l.tlock);
+		qlock(&l.rlock);
+	}
 
 	lancereset();
 	l.rl = 0;
@@ -509,7 +516,7 @@ lanceattach(char *spec)
 	if(l.kstarted == 0){
 		kproc("lancekproc", lancekproc, 0);/**/
 		l.kstarted = 1;
-		lancestart(0);
+		lancestart(0, 1);
 	}
 	return devattach('l', spec);
 }
@@ -625,6 +632,7 @@ lanceintr(void)
 	int i;
 	ushort csr;
 	Lancemem *lm = LANCEMEM;
+	static int misses;
 
 	csr = *l.rdp;
 
@@ -638,6 +646,8 @@ lanceintr(void)
 	 */
 	if(csr & (BABL|MISS|MERR)){
 		print("lance err %ux\n", csr);
+		if(csr & MISS)
+			lancedump();
 	}
 
 	if(csr & IDON){
@@ -650,6 +660,7 @@ lanceintr(void)
 	 *  look for rcv'd packets, just wakeup the input process
 	 */
 	if(l.rl!=l.rc && (MPus(lm->rmr[l.rl].flags) & OWN)==0){
+		misses = 0;
 		wakeup(&l.rr);
 	}
 
@@ -756,4 +767,10 @@ stage:
 		qunlock(&l.rlock);
 		sleep(&l.rr, isinput, 0);
 	}
+}
+
+static void
+lancedump(void)
+{
+	print("l.rl %d l.rc %d l.tl %d l.tc %d\n", l.rl, l.rc, l.tl, l.tc);
 }

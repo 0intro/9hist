@@ -181,14 +181,14 @@ confinit(void)
 	conf.maxialloc = 2*1024*1024;
 
 	mul = 1;
-	conf.nproc = 10 + 10*mul;
+	conf.nproc = 10 + 20*mul;
 	conf.npgrp = conf.nproc/2;
 	conf.nseg = conf.nproc*3;
 	conf.npagetab = (conf.nseg*14)/10;
 	conf.nswap = conf.nproc*80;
 	conf.nimage = 50;
 	conf.nalarm = 1000;
-	conf.nchan = 4*conf.nproc;
+	conf.nchan = 6*conf.nproc;
 	conf.nenv = 4*conf.nproc;
 	conf.nenvchar = 8000*mul;
 	conf.npgenv = 200*mul;
@@ -198,7 +198,7 @@ confinit(void)
 	conf.nmntbuf = conf.nmntdev+3;
 	conf.nmnthdr = 2*conf.nmntdev;
 	conf.nsrv = 16*mul;			/* was 32 */
-	conf.nbitmap = 256*mul;
+	conf.nbitmap = 512*mul;
 	conf.nbitbyte = conf.nbitmap*1024*screenbits();
 	conf.nfont = 10*mul;
 	conf.nnoifc = 1;
