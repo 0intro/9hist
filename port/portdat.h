@@ -68,6 +68,8 @@ struct RWlock
 	Proc	*tail;
 	int	readers;	/* number of readers */
 	int	writer;		/* number of writers */
+//	int	pidw;
+//	int	pidr[10];
 };
 
 struct Talarm

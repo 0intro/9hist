@@ -78,9 +78,20 @@ rlock(RWlock *q)
 	Proc *p, *mp;
 
 	lock(&q->use);
+//{int i;
+//for(i=0; i<nelem(q->pidr); i++)
+//if(q->pidr[i]==up->pid)
+//print("***already %d\n", up->pid);
+//}
 rwstats.rlock++;
 	if(q->writer == 0 && q->head == nil){
 		/* no writer, go for it */
+//{int i;
+//for(i=0; i<nelem(q->pidr); i++)
+//if(q->pidr[i]==0) {
+//q->pidr[i]=up->pid;
+//break;
+//}}
 		q->readers++;
 		unlock(&q->use);
 		return;
@@ -96,6 +107,7 @@ rwstats.rlockq++;
 	q->tail = mp;
 	mp->qnext = 0;
 	mp->state = Queueing;
+//print("%d rl for w%d\n", up->pid, q->pidw);
 	unlock(&q->use);
 	sched();
 }
@@ -106,6 +118,12 @@ runlock(RWlock *q)
 	Proc *p;
 
 	lock(&q->use);
+//{int i;
+//for(i=0; i<nelem(q->pidr); i++)
+//if(q->pidr[i]==up->pid) {
+//q->pidr[i] = 0;
+//break;
+//}}
 	p = q->head;
 	if(--(q->readers) > 0 || p == nil){
 		unlock(&q->use);
@@ -119,6 +137,7 @@ runlock(RWlock *q)
 	if(q->head == 0)
 		q->tail = 0;
 	q->writer = 1;
+//q->pidw = p->pid;
 	unlock(&q->use);
 	ready(p);
 }
@@ -132,13 +151,14 @@ wlock(RWlock *q)
 rwstats.wlock++;
 	if(q->readers == 0 && q->writer == 0){
 		/* noone waiting, go for it */
+//q->pidw = up->pid;
 		q->writer = 1;
 		unlock(&q->use);
 		return;
 	}
 
 	/* wait */
-rwstats.wlockq++;
+//rwstats.wlockq++;
 	p = q->tail;
 	mp = up;
 	if(p == nil)
@@ -148,6 +168,14 @@ rwstats.wlockq++;
 	q->tail = mp;
 	mp->qnext = 0;
 	mp->state = QueueingW;
+//print("%d wl for %d%d", up->pid, q->readers, q->writer);
+//if(q->pidw) print(" w%d", q->pidw);
+//{int i;
+//for(i=0; i<nelem(q->pidr); i++)
+//if(q->pidr[i])
+//print(" %d", q->pidr[i]);
+//print("\n");
+//}
 	unlock(&q->use);
 	sched();
 }
@@ -158,14 +186,17 @@ wunlock(RWlock *q)
 	Proc *p;
 
 	lock(&q->use);
+//if(q->pidw!=up->pid)
+//print("not qw\n");
+//q->pidw = 0;
 	p = q->head;
 	if(p == nil){
 		q->writer = 0;
 		unlock(&q->use);
 		return;
 	}
-
 	if(p->state == QueueingW){
+//q->pidw = p->pid;
 		/* start waiting writer */
 		q->head = p->qnext;
 		if(q->head == nil)
@@ -180,6 +211,12 @@ wunlock(RWlock *q)
 
 	/* waken waiting readers */
 	while(q->head != nil && q->head->state == Queueing){
+//{int i;
+//for(i=0;i<nelem(q->pidr); i++)
+//if(q->pidr[i]==0) {
+//q->pidr[i] = p->pid;
+//break;
+//}}
 		p = q->head;
 		q->head = p->qnext;
 		q->readers++;
