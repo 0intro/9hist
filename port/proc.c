@@ -916,7 +916,7 @@ dumpaproc(Proc *p)
 
 	s = p->psstate;
 	if(s == 0)
-		s = "kproc";
+		s = statename[p->state];
 	print("%3lud:%10s pc %8lux dbgpc %8lux  %8s (%s) ut %ld st %ld bss %lux qpc %lux\n",
 		p->pid, p->text, p->pc, dbgpc(p),  s, statename[p->state],
 		p->time[0], p->time[1], bss, p->qpc);
@@ -1013,7 +1013,7 @@ kproc(char *name, void (*func)(void *), void *arg)
 	static Pgrp *kpgrp;
 
 	p = newproc();
-	p->psstate = 0;
+	p->psstate = "kproc";
 	p->procmode = 0644;
 	p->kp = 1;
 

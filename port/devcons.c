@@ -332,6 +332,8 @@ echo(char *buf, int n)
 			break;
 		case 0x14:	/* ^T */
 			ctrlt++;
+			if(ctrlt > 2)
+				ctrlt = 2;
 			continue;
 		}
 

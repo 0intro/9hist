@@ -276,7 +276,7 @@ trap(Ureg* ureg)
 		 */
 		print("cpu%d: spurious interrupt %d, last %d",
 			m->machno, vno, m->lastintr);
-		for(i = 0; i < 32; i++){
+		for(i = 0; i < 0; i++){
 			if(!(active.machs & (1<<i)))
 				continue;
 			mach = MACHP(i);
