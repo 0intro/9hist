@@ -118,9 +118,9 @@ noetherbad(Noifc *ifc, Block *bp, int circuit)
 	 */
 	eh = (Etherpkt*)bp->rptr;
 	nh = (Nohdr*)eh->data;
-	print("bad %.2ux%.2ux%.2ux%.2ux%.2ux%.2ux c %d m %d f %d\n",
+/*	print("bad %.2ux%.2ux%.2ux%.2ux%.2ux%.2ux c %d m %d f %d\n",
 		eh->s[0], eh->s[1], eh->s[2], eh->s[3], eh->s[4],
-		eh->s[5], circuit, nh->mid, nh->flag);
+		eh->s[5], circuit, nh->mid, nh->flag); /**/
 	if(nh->flag & NO_RESET)
 		goto out;
 
@@ -134,7 +134,7 @@ noetherbad(Noifc *ifc, Block *bp, int circuit)
 	/*
 	 *  craft an error reply
 	 */
-	print("sending reset\n");
+/*	print("sending reset\n"); /**/
 	nbp = allocb(60);
 	nbp->flags |= S_DELIM;
 	nbp->wptr = nbp->rptr + 60;
