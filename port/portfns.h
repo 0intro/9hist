@@ -1,3 +1,4 @@
+void		addrootfile(char*, uchar*, ulong);
 void		alarmkproc(void*);
 int		anyready(void);
 Image*		attachimage(int, Chan*, ulong, ulong);
@@ -185,6 +186,7 @@ void		resrcwait(char*);
 int		return0(void*);
 void		rlock(RWlock*);
 void		rootreq(Chan*, Mnt*);
+void		rootfiles(void);
 void		runlock(RWlock*);
 Proc*		runproc(void);
 void		savefpregs(FPsave*);

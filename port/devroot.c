@@ -6,44 +6,33 @@
 #include	"../port/error.h"
 #include	"devtab.h"
 
-enum
-{
-	Qdir,
+enum{
+	Qdir=	0,
 	Qbin,
 	Qdev,
 	Qenv,
 	Qproc,
 	Qnet,
 	Qrecover,
+	Qboot,		/* readable files */
 
-	Qboot,
-	Qcfs,
-	Qfs,
+	Nfiles=13,	/* max root files */	
 };
 
-extern long	cfslen;
-extern ulong	cfscode[];
-extern long	fslen;
-extern ulong	fscode[];
 extern ulong	bootlen;
 extern uchar	bootcode[];
 
-Dirtab rootdir[]={
-	"bin",		{Qbin|CHDIR},	0,			0777,
-	"boot",		{Qboot},	0,			0777,
-	"dev",		{Qdev|CHDIR},	0,			0777,
-	"env",		{Qenv|CHDIR},	0,			0777,
-	"proc",		{Qproc|CHDIR},	0,			0777,
-	"net",		{Qnet|CHDIR},	0,			0777,
-	"recover",	{Qrecover},	0,			0777,
+Dirtab rootdir[Nfiles]={
+	"bin",		{Qbin|CHDIR},	0,	0777,
+	"dev",		{Qdev|CHDIR},	0,	0777,
+	"env",		{Qenv|CHDIR},	0,	0777,
+	"proc",		{Qproc|CHDIR},	0,	0777,
+	"net",		{Qnet|CHDIR},	0,	0777,
+	"recover",	{Qrecover},	0,	0777,
 };
-#define	NROOT	(sizeof rootdir/sizeof(Dirtab))
-Dirtab rootpdir[]={
-	"cfs",		{Qcfs},		0,			0777,
-	"fs",		{Qfs},		0,			0777,
-};
-Dirtab *rootmap[sizeof rootpdir/sizeof(Dirtab)];
-int	nroot;
+
+static uchar	*rootdata[Nfiles];
+static int	nroot = Qboot - 1;
 
 typedef struct Recover Recover;
 struct Recover
@@ -61,34 +50,30 @@ struct
 	Recover	*q;
 }reclist;
 
-int
-rootgen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
+/*
+ *  add a root file
+ */
+void
+addrootfile(char *name, uchar *contents, ulong len)
 {
-	USED(ntab);
+	Dirtab *d;
+	
 
-	if(i >= nroot)
-		return -1;
-
-	if(i < NROOT)
-		tab = &rootdir[i];
-	else
-		tab = rootmap[i - NROOT];
-
-	devdir(c, tab->qid, tab->name, tab->length, eve, tab->perm, dp);
-	return 1;
+	if(nroot >= Nfiles)
+		panic("too many root files");
+	rootdata[nroot] = contents;
+	d = &rootdir[nroot];
+	strcpy(d->name, name);
+	d->length = len;
+	d->perm = 0555;
+	d->qid.path = nroot+1;
+	nroot++;
 }
 
 void
 rootreset(void)
 {
-	int i;
-
-	i = 0;
-	if(cfslen)
-		rootmap[i++] = &rootpdir[0];
-	if(fslen)
-		rootmap[i++] = &rootpdir[1];
-	nroot = NROOT + i;
+	addrootfile("boot", bootcode, bootlen);	/* always have a boot file */
 }
 
 void
@@ -117,13 +102,13 @@ rootwalk(Chan *c, char *name)
 	}
 	if((c->qid.path & ~CHDIR) != Qdir)
 		return 0;
-	return devwalk(c, name, rootdir, nroot, rootgen);
+	return devwalk(c, name, rootdir, nroot, devgen);
 }
 
 void	 
 rootstat(Chan *c, char *dp)
 {
-	devstat(c, dp, rootdir, nroot, rootgen);
+	devstat(c, dp, rootdir, nroot, devgen);
 }
 
 Chan*
@@ -138,7 +123,7 @@ rootopen(Chan *c, int omode)
 		break;
 	}
 
-	return devopen(c, omode, rootdir, nroot, rootgen);
+	return devopen(c, omode, rootdir, nroot, devgen);
 }
 
 void	 
@@ -167,36 +152,15 @@ rdrdy(void *a)
 long	 
 rootread(Chan *c, void *buf, long n, ulong offset)
 {
+	ulong t;
+	Dirtab *d;
+	uchar *data;
 	Recover *r;
 
-	switch(c->qid.path & ~CHDIR){
+	t = c->qid.path & ~CHDIR;
+	switch(t){
 	case Qdir:
-		return devdirread(c, buf, n, rootdir, nroot, rootgen);
-
-	case Qboot:		/* boot */
-		if(offset >= bootlen)
-			return 0;
-		if(offset+n > bootlen)
-			n = bootlen - offset;
-		memmove(buf, bootcode+offset, n);
-		return n;
-
-	case Qcfs:		/* cfs */
-		if(offset >= cfslen)
-			return 0;
-		if(offset+n > cfslen)
-			n = cfslen - offset;
-		memmove(buf, ((char*)cfscode)+offset, n);
-		return n;
-
-	case Qfs:		/* fs */
-		if(offset >= fslen)
-			return 0;
-		if(offset+n > fslen)
-			n = fslen - offset;
-		memmove(buf, ((char*)fscode)+offset, n);
-		return n;
-
+		return devdirread(c, buf, n, rootdir, nroot, devgen);
 	case Qrecover:
 		qlock(&reclist);
 		if(waserror()) {
@@ -220,11 +184,19 @@ rootread(Chan *c, void *buf, long n, ulong offset)
 		free(r->req);
 		free(r);
 		return n;
-
-	case Qdev:
-		return 0;
 	}
-	return 0;
+
+	if(t < Qboot)
+		return 0;
+
+	d = &rootdir[t-1];
+	data = rootdata[t-1];
+	if(offset >= d->length)
+		return 0;
+	if(offset+n > d->length)
+		n = d->length - offset;
+	memmove(buf, data+offset, n);
+	return n;
 }
 
 long	 
