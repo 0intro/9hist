@@ -1286,17 +1286,21 @@ notfull(void *arg)
 	return !QFULL((Queue *)arg);
 }
 void
-flowctl(Queue *q)
+flowctl(Queue *q, Block *bp)
 {
-	qlock(&q->rlock);
-	if(waserror()){
+	if(bp->type != M_HANGUP){
+		qlock(&q->rlock);
+		if(waserror()){
+			qunlock(&q->rlock);
+			freeb(bp);
+			nexterror();
+		}
+		q->rp = &q->r;
+		sleep(q->rp, notfull, q->next);
 		qunlock(&q->rlock);
-		nexterror();
+		poperror();
 	}
-	q->rp = &q->r;
-	sleep(q->rp, notfull, q->next);
-	qunlock(&q->rlock);
-	poperror();
+	PUTNEXT(q, bp);
 }
 
 /*
@@ -1356,8 +1360,7 @@ streamwrite(Chan *c, void *a, long n, int docopy)
 	 *  send it down stream
 	 */
 	last->flags |= S_DELIM;
-	FLOWCTL(q);
-	PUTNEXT(q, first);
+	FLOWCTL(q, first);
 	return n;
 }
 

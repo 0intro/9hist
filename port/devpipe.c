@@ -276,9 +276,7 @@ pipewrite(Chan *c, void *va, long n, ulong offset)
 static void
 pipeiput(Queue *q, Block *bp)
 {
-	if(bp->type != M_HANGUP)
-		FLOWCTL(q);
-	PUTNEXT(q, bp);
+	FLOWCTL(q, bp);
 }
 
 /*

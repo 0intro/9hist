@@ -19,10 +19,8 @@ struct Mntrpc
 	Rendez	r;		/* Place to hang out */
 	char	*rpc;		/* I/O Data buffer */
 	char	done;		/* Rpc completed */
-	char	bfree;		/* Buffer may be freed after flush */
 	char	flushed;	/* Flush was sent */
-	ushort	flushtag;	/* Tag to send flush on */
-	ushort	flushbase;	/* Base tag of flush window for this buffer */
+	ushort	flushtag;	/* Tag flush sent on */
 	char	flush[MAXMSG];	/* Somewhere to build flush */
 };
 
@@ -36,6 +34,8 @@ struct Mnt
 	Mnt	*list;		/* Free list */
 	char	mux;		/* Set if the device aleady does the multiplexing */
 	int	blocksize;	/* read/write block size */
+	ushort	flushtag;	/* Tag to send flush on */
+	ushort	flushbase;	/* Base tag of flush window for this buffer */
 };
 
 struct Mntalloc
@@ -71,8 +71,7 @@ void	mntdoclunk(Mnt *, Mntrpc *);
 enum
 {
 	Tagspace = 1,
-	Flushspace = 64,
-	Flushtag = 512,
+	Tagend = 0xfffe,
 
 	ALIGN = 256,		/* Vme block mode alignment */
 };
@@ -82,24 +81,14 @@ mntreset(void)
 {
 	Mnt *me, *md;
 	Mntrpc *re, *rd;
-	ushort tag, ftag;
+	ushort tag;
 	ulong p;
 	int i;
 
 	mntalloc.mntarena = ialloc(conf.nmntdev*sizeof(Mnt), 0);
 	mntalloc.mntfree = mntalloc.mntarena;
 	me = &mntalloc.mntfree[conf.nmntdev];
-	for(md = mntalloc.mntfree; md < me; md++)
-		md->list = md+1;
-	me[-1].list = 0;
 
-	if(conf.nmntbuf > Flushtag) {
-		print("devmnt: buffers limited to %d\n", Flushtag);
-		conf.nmntbuf = Flushtag;
-	}
-
-	tag = Tagspace;
-	ftag = Flushtag;
 	mntalloc.rpcfree = ialloc(conf.nmntbuf*sizeof(Mntrpc), 0);
 	mntalloc.rpcarena = mntalloc.rpcfree;
 	re = &mntalloc.rpcfree[conf.nmntbuf];
@@ -112,15 +101,19 @@ mntreset(void)
 	i = MAXRPC+(ALIGN-1);
 	i &= ~(ALIGN-1);
 
+	tag = Tagspace;
 	for(rd = mntalloc.rpcfree; rd < re; rd++) {
 		rd->list = rd+1;
 		rd->request.tag = tag++;
-		rd->flushbase = ftag;
-		rd->flushtag = ftag;
-		ftag += Flushspace;
 		rd->rpc = ialloc(i, 0);
 	}
 	re[-1].list = 0;
+	for(md = mntalloc.mntfree; md < me; md++){
+		md->list = md+1;
+		md->flushbase = tag;
+		md->flushtag = tag;
+	}
+	me[-1].list = 0;
 
 	mntalloc.id = 1;
 }
@@ -491,6 +484,7 @@ void
 mountrpc(Mnt *m, Mntrpc *r)
 {
 	r->reply.tag = 0;		/* safety check */
+	r->reply.type = 4;		/* safety check */
 	mountio(m, r);
 	if(r->reply.type == Rerror)
 		error(r->reply.ename);
@@ -500,6 +494,7 @@ mountrpc(Mnt *m, Mntrpc *r)
 	if(r->reply.type != r->request.type+1) {
 		print("devmnt: mismatched reply 0x%lux T%d R%d tags req %d fls %d rep %d\n",
 		r, r->request.type, r->reply.type, r->request.tag, r->flushtag, r->reply.tag);
+		mntdump();
 		error(Emountrpc);
 	}
 }
@@ -510,6 +505,7 @@ mountio(Mnt *m, Mntrpc *r)
 	int n;
 
 	lock(m);
+	r->flushed = 0;
 	r->m = m;
 	r->list = m->queue;
 	m->queue = r;
@@ -625,44 +621,29 @@ void
 mountmux(Mnt *m, Mntrpc *r)
 {
 	Mntrpc **l, *q;
-	int done;
 	char *dp;
 
 	lock(m);
 	l = &m->queue;
 	for(q = *l; q; q = q->list) {
-		if(q->request.tag == r->reply.tag) {
-			if(q->flushed == 0)
-				*l = q->list;
-			q->done = 1;
-			unlock(m);
-			goto dispatch;
-		}
-		if(q->flushtag == r->reply.tag) {
+		if(q->request.tag == r->reply.tag
+		|| q->flushed && q->flushtag == r->reply.tag) {
 			*l = q->list;
-			q->flushed = 0;
-			done = q->done;
-			q->done = 1;
 			unlock(m);
-			if(done == 0)
-				goto dispatch;
-			if(q->bfree)
-				mntfree(q);
+			if(q != r) {		/* Completed someone else */
+				dp = q->rpc;
+				q->rpc = r->rpc;
+				r->rpc = dp;
+				memmove(&q->reply, &r->reply, sizeof(Fcall));
+				q->done = 1;
+				wakeup(&q->r);
+			}else
+				q->done = 1;
 			return;
 		}
 		l = &q->list;
 	}
 	unlock(m);
-	return;
-
-dispatch:
-	if(q != r) {		/* Completed someone else */
-		dp = q->rpc;
-		q->rpc = r->rpc;
-		r->rpc = dp;
-		memmove(&q->reply, &r->reply, sizeof(Fcall));
-		wakeup(&q->r);
-	}
 }
 
 int
@@ -671,9 +652,12 @@ mntflush(Mnt *m, Mntrpc *r)
 	Fcall flush;
 	int n;
 
-	r->flushtag++;
-	if((r->flushtag-r->flushbase) == Flushspace)
-		r->flushtag -= Flushspace;
+	lock(m);
+	r->flushtag = m->flushtag++;
+	if(m->flushtag == Tagend)
+		m->flushtag = m->flushbase;
+	r->flushed = 1;
+	unlock(m);
 
 	flush.type = Tflush;
 	flush.tag = r->flushtag;
@@ -696,10 +680,6 @@ mntflush(Mnt *m, Mntrpc *r)
 		qunlock(&m->c->wrl);
 	}
 	poperror();
-	lock(m);
-	if(!r->done)
-		r->flushed = 1;
-	unlock(m);
 	return 1;
 }
 
@@ -714,7 +694,7 @@ mntralloc(void)
 			mntalloc.rpcfree = new->list;
 			unlock(&mntalloc);
 			new->done = 0;
-			new->bfree = 0;
+			new->flushed = 0;
 			return new;
 		}
 		unlock(&mntalloc);
@@ -725,14 +705,6 @@ mntralloc(void)
 void
 mntfree(Mntrpc *r)
 {
-	Mntrpc *q;
-	Mnt *m, *e;
-	int i;
-
-	r->bfree = 1;
-	if(r->flushed)
-		return;
-
 	lock(&mntalloc);
 	r->list = mntalloc.rpcfree;
 	mntalloc.rpcfree = r;
@@ -803,10 +775,10 @@ mntdump(void)
 	print("rpcfree 0x%lux\n", mntalloc.rpcfree);
 	re = &mntalloc.rpcarena[conf.nmntbuf];
 	for(r = mntalloc.rpcarena; r < re; r++) 
-		print("%.8lux %.8lux T%d R%d tags req %d fls %d rep %d d %d b %d f %d\n",
+		print("%.8lux %.8lux T%d R%d tags req %d fls %d rep %d d %d f %d\n",
 			r, r->list, r->request.type, r->reply.type,
 			r->request.tag, r->flushtag, r->reply.tag, 
-			r->done, r->bfree, r->flushed);
+			r->done, r->flushed);
 
 }
 

@@ -173,8 +173,7 @@ aswrite(Async *ap)
 {
 	if(ap->bp->rptr == ap->bp->wptr)
 		return;
-	FLOWCTL(ap->wq);
-	PUTNEXT(ap->wq, ap->bp);
+	FLOWCTL(ap->wq, ap->bp);
 	ap->bp = 0;
 }
 

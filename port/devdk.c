@@ -104,9 +104,9 @@ struct Line {
  */
 struct Dk {
 	QLock;
+	Lock;
 	Chan	*csc;
 
-	Lock;
 	int	ref;
 	int	opened;
 
@@ -588,8 +588,7 @@ dkoput(Queue *q, Block *bp)
 	bp->rptr[0] = line;
 	bp->rptr[1] = line>>8;
 
-	FLOWCTL(dp->wq);
-	PUTNEXT(dp->wq, bp);
+	FLOWCTL(dp->wq, bp);
 }
 
 /*

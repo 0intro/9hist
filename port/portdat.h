@@ -626,7 +626,7 @@ struct Stream {
 #define PUTNEXT(q,b)	(*(q)->next->put)((q)->next, b)
 #define BLEN(b)		((b)->wptr - (b)->rptr)
 #define QFULL(q)	((q)->flag & QHIWAT)
-#define FLOWCTL(q)	{ if(QFULL(q->next)) flowctl(q); }
+#define FLOWCTL(q,b)	{ if(QFULL(q->next)) flowctl(q,b); else PUTNEXT(q,b);}
 
 /*
  *  stream file qid's & high water mark
