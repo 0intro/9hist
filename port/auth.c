@@ -34,7 +34,7 @@ struct
 	Crypt		*free;
 } cryptalloc;
 
-char	eve[NAMELEN] = "bootes";
+char	eve[NAMELEN];
 char	evekey[DESKEYLEN];
 char	hostdomain[DOMLEN];
 
@@ -595,6 +595,7 @@ hostownerwrite(char *a, int n)
 	strncpy(buf, a, n);
 	if(buf[0] == 0)
 		error(Ebadarg);
+	renameuser(eve, buf);
 	memmove(eve, buf, NAMELEN);
 	memmove(up->user, buf, NAMELEN);
 	up->basepri = PriNormal;

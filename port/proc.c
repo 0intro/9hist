@@ -938,3 +938,18 @@ killbig(void)
 	kp->procctl = Proc_exitme;
 	postnote(kp, 1, "killed: proc too big", NExit);
 }
+
+/*
+ *  change ownership to 'new' of all processes owned by 'old'.  Used when
+ *  eve changes.
+ */
+void
+renameuser(char *old, char *new)
+{
+	Proc *p, *ep;
+
+	ep = procalloc.arena+conf.nproc;
+	for(p = procalloc.arena; p < ep; p++)
+		if(strcmp(old, p->user) == 0)
+			memmove(p->user, new, NAMELEN);
+}

@@ -211,6 +211,7 @@ int		readnum(ulong, char*, ulong, ulong, int);
 int		readstr(ulong, char*, ulong, char*);
 void		ready(Proc*);
 void		relocateseg(Segment*, ulong);
+void		renameuser(char*, char*);
 void		resched(char*);
 void		resetscsi(void);
 void		resrcwait(char*);
