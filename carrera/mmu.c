@@ -128,6 +128,7 @@ kunmap(KMap *k)
 
 	s = splhi();
 	if(decref(k) == 0) {
+puttlb((k->virt & ~BY2PG) | TLBPID(tlbvirt()), k->phys0 & ~PTEVALID, k->phys1 & ~PTEVALID);
 		k->virt = 0;
 		k->phys0 = 0;
 		k->phys1 = 0;

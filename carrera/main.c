@@ -197,11 +197,23 @@ ioinit(int mapeisa)
 
 	puttlbx(2, Intctlvirt, intphys, isamphys, PGSZ1M);
 
-	/* Enable all devce interrupt */
+	/* Enable all device interrupts */
 	IO(ushort, Intenareg) = 0xffff;
 
 	/* Look at the first 16M of Eisa memory */
 /*	IO(uchar, EisaLatch) = 0; /**/
+}
+
+void	puttlbxx(int, ulong, ulong, ulong, int);
+void	puttlbx(int a, ulong b, ulong c, ulong d, int e)
+{
+	static int done[4];
+
+	if(((c|d)&PTEVALID) && a < 4){
+		if(done[a]++)
+			puttlbx(a, b, c, d, e);
+	}
+	puttlbxx(a, b, c, d, e);
 }
 
 /*

@@ -690,12 +690,12 @@ etherloop(Etherpkt *p, long n)
 	Netfile *f, **fp;
 
 	different = memcmp(p->d, p->s, sizeof(p->s));
-	if(different && memcmp(p->d, ether.bcast, sizeof(p->d)))
+	if(different && memcmp(p->d, ether[0]->bcast, sizeof(p->d)))
 		return 0;
 
 	s = splhi();
 	t = (p->type[0]<<8) | p->type[1];
-	for(fp = ether.f; fp < &ether.f[Ntypes]; fp++) {
+	for(fp = ether[0]->f; fp < &ether[0]->f[Ntypes]; fp++) {
 		f = *fp;
 		if(f == 0)
 			continue;

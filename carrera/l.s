@@ -212,7 +212,7 @@ TEXT	getrandom(SB),$0
 	WAIT
 	RET
 
-TEXT	puttlbx(SB), $0
+TEXT	puttlbxx(SB), $0
 
 	MOVW	4(FP), R2
 	MOVW	8(FP), R3
