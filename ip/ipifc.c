@@ -17,12 +17,8 @@ enum {
 	QMAX		= 64*1024-1,
 };
 
-Medium *media[] =
+Medium *media[32] =
 {
-	&ethermedium,
-	&pktmedium,
-	&nullmedium,
-	&tripmedium,
 	0
 };
 
@@ -70,6 +66,21 @@ static void	addselfcache(Fs *f, Ipifc *ifc, Iplifc *lifc, uchar *a, int type);
 static void	remselfcache(Fs *f, Ipifc *ifc, Iplifc *lifc, uchar *a);
 static char*	ipifcjoinmulti(Ipifc *ifc, char **argv, int argc);
 static char*	ipifcleavemulti(Ipifc *ifc, char **argv, int argc);
+
+/*
+ *  link in a new medium
+ */
+void
+addipmedium(Medium *med)
+{
+	int i;
+
+	for(i = 0; i < nelem(media)-1; i++)
+		if(media[i] == nil){
+			media[i] = med;
+			break;
+		}
+}
 
 /*
  *  find the medium with this name

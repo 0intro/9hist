@@ -74,3 +74,9 @@ pktin(Fs *f, Ipifc *ifc, Block *bp)
 	else
 		ipiput(f, ifc->lifc->local, bp);
 }
+
+void
+pktmediumlink(void)
+{
+	addipmedium(&pktmedium);
+}

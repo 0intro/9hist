@@ -54,6 +54,9 @@ QLock	fslock;
 Fs	*ipfs[Nfs];	/* attached fs's */
 Queue	*qlog;
 
+extern void nullmediumlink(void);
+extern void pktmediumlink(void);
+
 static int
 ip3gen(Chan *c, int i, Dir *dp)
 {
@@ -215,6 +218,8 @@ ipgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 static void
 ipreset(void)
 {
+	nullmediumlink();
+	pktmediumlink();
 }
 
 static void

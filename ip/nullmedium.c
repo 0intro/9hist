@@ -45,3 +45,9 @@ Medium nullmedium =
 	nil,		/* leave multi */
 	0,		/* don't unbind on last close */
 };
+
+void
+nullmediumlink(void)
+{
+	addipmedium(&nullmedium);
+}

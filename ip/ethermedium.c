@@ -515,3 +515,9 @@ multicastarp(Fs *f, Arpent *a, uchar *mac)
 	/* let arp take care of it */
 	return nil;
 }
+
+void
+ethermediumlink(void)
+{
+	addipmedium(&ethermedium);
+}

@@ -6,6 +6,7 @@ enum {
 typedef struct Ether Ether;
 struct Ether {
 	ISAConf;			/* hardware info */
+
 	int	ctlrno;
 	int	tbdf;			/* type+busno+devno+funcno */
 	int	mbps;			/* Mbps */
