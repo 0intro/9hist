@@ -24,10 +24,10 @@ enum{
 	Kprofmaxqid,
 };
 Dirtab kproftab[Nkproftab]={
-	"kpdata",	Kprofdataqid,		NBUF*sizeof timerbuf[0],	0600,
-	"kpstart",	Kprofstartqid,		0,		0600,
-	"kpstartclr",	Kprofstartclrqid,	0,		0600,
-	"kpstop",	Kprofstopqid,		0,		0600,
+	"kpdata",	{Kprofdataqid},		NBUF*sizeof timerbuf[0],	0600,
+	"kpstart",	{Kprofstartqid},	0,		0600,
+	"kpstartclr",	{Kprofstartclrqid},	0,		0600,
+	"kpstop",	{Kprofstopqid},		0,		0600,
 };
 
 void kproftimer(ulong);

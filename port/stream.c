@@ -52,7 +52,7 @@ typedef struct {
 Bclass bclass[Nclass]={
 	{ 0 },
 	{ 68 },
-	{ 260 },
+	{ 268 },
 	{ 4096 },
 };
 

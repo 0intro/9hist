@@ -71,12 +71,13 @@ devclone(Chan *c, Chan *nc)
 	if(nc == 0)
 		nc = newchan();
 	nc->type = c->type;
+	nc->dev = c->dev;
 	nc->mode = c->mode;
 	nc->qid = c->qid;
 	nc->offset = c->offset;
-	nc->dev = c->dev;
 	nc->flag = c->flag;
 	nc->mnt = c->mnt;
+	nc->aux = c->aux;
 	nc->mchan = c->mchan;
 	nc->mqid = c->mqid;
 	return nc;
@@ -119,7 +120,10 @@ devclwalk(Chan *c, char *name)
 		return 0;
 	}
 	nc = (*devtab[c->type].clone)(c, 0);
-	(*devtab[nc->type].walk)(nc, name);
+	if((*devtab[nc->type].walk)(nc, name) == 0){
+		close(nc);
+		nc = 0;
+	}
 	poperror();
 	return nc;
 }

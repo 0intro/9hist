@@ -73,7 +73,6 @@ Chan *
 srvclone(Chan *c, Chan *nc)
 {
 	nc = devclone(c, nc);
-	nc->aux = c->aux;
 	return nc;
 }
 

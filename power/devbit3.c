@@ -66,6 +66,12 @@ bit3clone(Chan *c, Chan *nc)
 	return devclone(c, nc);
 }
 
+Chan*
+bit3clwalk(Chan *c, char *name)
+{
+	return devclwalk(c, name);
+}
+
 int	 
 bit3walk(Chan *c, char *name)
 {

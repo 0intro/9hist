@@ -107,6 +107,7 @@ struct Chan
 		Stream	*stream;	/* for stream channels */
 		void	*aux;
 		Qid	pgrpid;		/* for #p/notepg */
+		int	mntindex;	/* for devmnt */
 	};
 	Chan	*mchan;			/* channel to mounted server */
 	Qid	mqid;			/* qid of root of mount point */

@@ -189,17 +189,14 @@ mqfree(MntQ *mq)
 }
 
 Mnt*
-mntdev(int dev, int noerr)
+mntdev(Chan *c, int noerr)
 {
 	Mnt *m;
 	int i;
 
-	for(m=mnt,i=0; i<conf.nmntdev; i++,m++)		/* use a hash table some day */
-		if(m->mntid == dev){
-			if(m->q == 0)
-				break;
-			return m;
-		}
+	m = &mnt[c->mntindex];
+	if(m->mntid==c->dev && m->q!=0)
+		return m;
 	if(noerr)
 		return 0;
 	error(Eshutdown);
@@ -277,6 +274,7 @@ mntattach(char *crud)
 	unlock(&mntid);
 	c = devattach('M', bogus.spec);
 	c->dev = m->mntid;
+	c->mntindex = m-mnt;
 	m->mntpt = c;
 	cm = bogus.chan;
 
@@ -336,7 +334,7 @@ mntclone(Chan *c, Chan *nc)
 			nexterror();
 		}
 	}
-	m = mntdev(c->dev, 0);
+	m = mntdev(c, 0);
 	mh = mhalloc();
 	if(waserror()){
 		mhfree(mh);
@@ -353,6 +351,8 @@ mntclone(Chan *c, Chan *nc)
 	nc->flag = c->flag;
 	nc->offset = c->offset;
 	nc->mnt = c->mnt;
+	nc->aux = c->aux;
+	nc->mntindex = c->mntindex;
 	nc->mchan = c->mchan;
 	nc->mqid = c->qid;
 	mhfree(mh);
@@ -371,7 +371,7 @@ mntwalk(Chan *c, char *name)
 	int found;
 
 	found = 1;
-	m = mntdev(c->dev, 0);
+	m = mntdev(c, 0);
 	mh = mhalloc();
 	mh->thdr.type = Twalk;
 	mh->thdr.fid = c->fid;
@@ -396,19 +396,22 @@ mntclwalk(Chan *c, char *name)
 	Chan *nc;
 
 	nc = newchan();
-	m = mntdev(c->dev, 0);
+	m = mntdev(c, 0);
 	mh = mhalloc();
 	mh->thdr.type = Tclwalk;
 	mh->thdr.fid = c->fid;
 	mh->thdr.newfid = nc->fid;
 	strcpy(mh->thdr.name, name);
 	if(waserror()){	/* BUG: can check type of error? */
+		print("mntclwalk(%d %lux) failed\n", c->type, c->qid.path);
 		freechan(nc);
 		nc = 0;
 		goto Out;
 	}
 	mntxmit(m, mh);
 	nc->qid = mh->rhdr.qid;
+	print("mntclwalk(%d %lux)->%d %lux\n", c->type, c->qid.path,
+		nc->type, nc->qid.path);
 	poperror();
     Out:
 	mhfree(mh);
@@ -421,7 +424,7 @@ mntstat(Chan *c, char *dp)
 	Mnt *m;
 	Mnthdr *mh;
 
-	m = mntdev(c->dev, 0);
+	m = mntdev(c, 0);
 	mh = mhalloc();
 	if(waserror()){
 		mhfree(mh);
@@ -445,7 +448,7 @@ mntopen(Chan *c, int omode)
 	Mnt *m;
 	Mnthdr *mh;
 
-	m = mntdev(c->dev, 0);
+	m = mntdev(c, 0);
 	mh = mhalloc();
 	if(waserror()){
 		mhfree(mh);
@@ -470,7 +473,7 @@ mntcreate(Chan *c, char *name, int omode, ulong perm)
 	Mnt *m;
 	Mnthdr *mh;
 
-	m = mntdev(c->dev, 0);
+	m = mntdev(c, 0);
 	mh = mhalloc();
 	if(waserror()){
 		mhfree(mh);
@@ -498,7 +501,7 @@ mntclunk(Chan *c, int t)
 	MntQ *q;
 	int waserr;
 
-	m = mntdev(c->dev, 0);
+	m = mntdev(c, 0);
 	mh = mhalloc();
 	mh->thdr.type = t;
 	mh->thdr.fid = c->fid;
@@ -540,7 +543,7 @@ mntreadwrite(Chan *c, void *vbuf, long n, int type, ulong offset)
 
 	buf = vbuf;
 	count = 0;
-	m = mntdev(c->dev, 0);
+	m = mntdev(c, 0);
 	mh = mhalloc();
 	if(waserror()){
 		mhfree(mh);
@@ -606,7 +609,7 @@ mntwstat(Chan *c, char *dp)
 	Mnt *m;
 	Mnthdr *mh;
 
-	m = mntdev(c->dev, 0);
+	m = mntdev(c, 0);
 	mh = mhalloc();
 	if(waserror()){
 		mhfree(mh);

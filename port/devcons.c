@@ -249,7 +249,7 @@ echo(int c)
 	/*
 	 * ^t hack BUG
 	 */
-	if(c == 0x18)
+	if(c == 0x10)
 		panic("^p");
 	if(c == 0x14)
 		DEBUG();
