@@ -61,7 +61,7 @@ main(int argc, char *argv[])
 	char cmd[64];
 	char flags[6];
 	int islocal;
-	char *bootfile;
+	char bootfile[NAMELEN];
 
 	sleep(1000);
 
@@ -88,9 +88,9 @@ main(int argc, char *argv[])
 	readenv("terminal", terminal, sizeof(cputype));
 	readenv("sysname", sysname, sizeof(sysname));
 	if(argc > 1)
-		bootfile = argv[1];
+		strcpy(bootfile, argv[1]);
 	else
-		bootfile = DEFFILE;
+		strcpy(bootfile, DEFFILE);
 
 	/*
 	 *  pick a method and initialize it
@@ -166,9 +166,8 @@ rootserver(char *arg)
 	else
 		strcpy(reply, method->name);
 	for(;;){
-		if(arg == 0 || mflag)
+		if(mflag)
 			outin(prompt, reply, sizeof(reply));
-		arg = 0;
 		for(mp = method; mp->name; mp++)
 			if(*reply == *mp->name){
 				cp = strchr(reply, '!');

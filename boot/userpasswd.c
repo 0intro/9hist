@@ -1,5 +1,6 @@
 #include <u.h>
 #include <libc.h>
+#include <auth.h>
 #include <../boot/boot.h>
 
 char	password[NAMELEN];
@@ -21,10 +22,7 @@ userpasswd(int islocal, Method *mp)
 	crfd = fd = -1;
 	while(strcmp(username, "none") != 0 && !islocal){
 		getpasswd(password, sizeof password);
-		if(!passtokey(key, password, strlen(password))){
-			print("bad password; try again\n");
-			continue;
-		}
+		passtokey(key, password);
 		fd = open("#c/key", OWRITE);
 		if(fd < 0)
 			fatal("can't open #c/key; please reboot");

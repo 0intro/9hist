@@ -705,7 +705,7 @@ extern	char	sysname[NAMELEN];
 /*
  * auth messages
  */
-#define CHLEN		8
+#define AUTHLEN		8
 enum{
 	FScchal	= 1,
 	FSschal,

@@ -31,7 +31,6 @@ extern void	key(int, Method*);
 extern void	newkernel(void);
 extern void	nop(int);
 extern int	outin(char*, char*, int);
-extern int	passtokey(char*, char*, int);
 extern int	plumb(char*, char*, int*, char*);
 extern int	readenv(char*, char*, int);
 extern int	sendmsg(int, char*);

@@ -529,6 +529,10 @@ tcpstoput(Queue *q, Block *bp)
 	case Established:
 	case Close_wait:
 		qlock(tcb);
+		if(waserror()) {
+			qunlock(tcb);
+			nexterror();
+		}
 		tcb->sndcnt += blen(bp);
 		if(tcb->sndq == 0)
 			tcb->sndq = bp;
@@ -539,6 +543,7 @@ tcpstoput(Queue *q, Block *bp)
 		}
 		tcprcvwin(s);
 		tcp_output(s);
+		poperror();
 		qunlock(tcb);
 		break;
 
@@ -707,7 +712,12 @@ tcpstclose(Queue *q)
 		setstate(s, Last_ack);
 	output:
 		qlock(tcb);
+		if(waserror()) {
+			qunlock(tcb);
+			nexterror();
+		}
 		tcp_output(s);
+		poperror();
 		qunlock(tcb);
 		break;
 	}

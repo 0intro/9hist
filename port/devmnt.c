@@ -241,7 +241,7 @@ void
 mntauth(Mnt *m, Mntrpc *f, char *serv, ushort fid)
 {
 	Mntrpc *r;
-	uchar chal[CHLEN];
+	uchar chal[AUTHLEN];
 	int i;
 
 	r = mntralloc();
@@ -254,22 +254,23 @@ mntauth(Mnt *m, Mntrpc *f, char *serv, ushort fid)
 	r->request.fid = fid;
 	memmove(r->request.uname, u->p->user, NAMELEN);
 	chal[0] = FScchal;
-	for(i = 1; i < CHLEN; i++)
+	for(i = 1; i < AUTHLEN; i++)
 		chal[i++] = nrand(256);
 
-	memmove(r->request.chal, chal, CHLEN);
-	strncpy(r->request.chal+CHLEN, serv, NAMELEN);
-	encrypt(u->p->pgrp->crypt->key, r->request.chal, CHLEN+NAMELEN);
+	memmove(r->request.chal, chal, AUTHLEN);
+	strncpy(r->request.chal+AUTHLEN, serv, NAMELEN);
+	encrypt(u->p->pgrp->crypt->key, r->request.chal, AUTHLEN+NAMELEN);
 
 	mountrpc(m, r);
-	decrypt(u->p->pgrp->crypt->key, r->reply.chal, 2*CHLEN+2*DESKEYLEN);
+
+	decrypt(u->p->pgrp->crypt->key, r->reply.chal, 2*AUTHLEN+2*DESKEYLEN);
 	chal[0] = FSctick;
 	poperror();
-	if(memcmp(chal, r->reply.chal, CHLEN) != 0) {
+	if(memcmp(chal, r->reply.chal, AUTHLEN) != 0) {
 		mntfree(r);
 		error(Eperm);
 	}
-	memmove(f->request.auth, r->reply.chal+CHLEN+DESKEYLEN, CHLEN+DESKEYLEN);
+	memmove(f->request.auth, r->reply.chal+AUTHLEN+DESKEYLEN, AUTHLEN+DESKEYLEN);
 	mntfree(r);
 }
 

@@ -1,5 +1,6 @@
 #include <u.h>
 #include <libc.h>
+#include <auth.h>
 #include <../boot/boot.h>
 
 void
@@ -20,7 +21,7 @@ key(int islocal, Method *mp)
 	if(prompt){
 		do
 			getpasswd(password, sizeof password);
-		while(!passtokey(key, password, strlen(password)));
+		while(!passtokey(key, password));
 	}else if(seek(fd, 1024+900, 0) < 0 || read(fd, key, 7) != 7){
 		close(fd);
 		warning("can't read key from nvram");

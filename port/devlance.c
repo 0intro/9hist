@@ -552,6 +552,9 @@ lanceattach(char *spec)
 		kproc("lancekproc", lancekproc, 0);/**/
 		l.kstarted = 1;
 		lancestart(0, 1);
+		print("lance ether: %.2x%.2x%.2x%.2x%.2x%.2x\n",
+			l.ea[0], l.ea[1], l.ea[2], l.ea[3], l.ea[4], l.ea[5]);
+
 	}
 	return devattach('l', spec);
 }

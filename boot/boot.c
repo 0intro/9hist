@@ -16,6 +16,7 @@ char	username[NAMELEN];
 int mflag;
 int fflag;
 int kflag;
+int aflag;
 
 int	cache(int);
 void	swapproc(void);
@@ -37,6 +38,9 @@ main(int argc, char *argv[])
 	open("#c/cons", OWRITE);
 
 	ARGBEGIN{
+	case 'a':
+		aflag = 1;
+		break;
 	case 'u':
 		strcpy(username, ARGF());
 		break;
@@ -112,7 +116,7 @@ main(int argc, char *argv[])
 	swapproc();
 
 	sprint(cmd, "/%s/init", cputype);
-	sprint(flags, "-%s%s", cpuflag ? "c" : "t", mflag ? "m" : "");
+	sprint(flags, "-%s%s%s", cpuflag ? "c" : "t", mflag ? "m" : "", aflag ? "a" : "");
 	execl(cmd, "init", flags, 0);
 	fatal(cmd);
 }
@@ -128,6 +132,7 @@ rootserver(char *arg)
 	Method *mp;
 	char *cp;
 	int n;
+	int notfirst;
 
 	mp = method;
 	n = sprint(prompt, "root is from (%s", mp->name);
@@ -139,10 +144,9 @@ rootserver(char *arg)
 		strcpy(reply, arg);
 	else
 		strcpy(reply, method->name);
-	for(;;){
-		if(arg == 0 || mflag)
+	for(notfirst = 0;; notfirst = 1){
+		if(mflag || notfirst)
 			outin(prompt, reply, sizeof(reply));
-		arg = 0;
 		for(mp = method; mp->name; mp++)
 			if(*reply == *mp->name){
 				cp = strchr(reply, '!');

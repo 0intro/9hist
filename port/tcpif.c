@@ -42,10 +42,15 @@ state_upcall(Ipconv *s, char oldstate, char newstate)
 		bp->flags |= S_DELIM;
 		bp->type = M_HANGUP;
 		qlock(s);
+		if(waserror()) {
+			qunlock(s);
+			nexterror();
+		}
 		if(s->readq == 0)
 			freeb(bp);
 		else
 			PUTNEXT(s->readq, bp);
+		poperror();
 		qunlock(s);
 		break;
 	}
@@ -81,9 +86,14 @@ tcpstart(Ipconv *s, int mode, ushort window, char tos)
 		/* Send SYN, go into SYN_SENT state */
 		tcb->flags |= ACTIVE;
 		qlock(tcb);
+		if(waserror()) {
+			qunlock(tcb);
+			nexterror();
+		}
 		send_syn(tcb);
 		setstate(s, Syn_sent);
 		tcp_output(s);
+		poperror();
 		qunlock(tcb);
 		sleep(&tcb->syner, notsyner, tcb);
 		if(tcb->state != Established && tcb->state != Syn_received)
