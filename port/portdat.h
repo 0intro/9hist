@@ -262,6 +262,7 @@ struct Mnt
 	ulong	id;		/* Multiplexer id for channel check */
 	Mnt	*list;		/* Free list */
 	int	flags;		/* cache */
+	Queue	*q;		/* input queue */
 };
 
 enum

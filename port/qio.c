@@ -233,6 +233,23 @@ pullupblock(Block *bp, int n)
 }
 
 /*
+ *  make sure the first block has at least n bytes
+ */
+Block*
+pullupqueue(Queue *q, int n)
+{
+	Block *b;
+
+	if(BLEN(q->bfirst) >= n)
+		return q->bfirst;
+	q->bfirst = pullupblock(q->bfirst, n);
+	for(b = q->bfirst; b != nil && b->next != nil; b = b->next)
+		;
+	q->blast = b;
+	return q->bfirst;
+}
+
+/*
  *  trim to len bytes starting at offset
  */
 Block *
@@ -812,9 +829,26 @@ qwait(Queue *q)
 }
 
 /*
+ * add a block to a queue
+ */
+void
+qadd(Queue *q, Block *b)
+{
+	/* queue the block */
+	if(q->bfirst)
+		q->blast->next = b;
+	else
+		q->bfirst = b;
+	q->blast = b;
+	b->next = 0;
+	q->len += BALLOC(b);
+	q->dlen += BLEN(b);
+}
+
+/*
  *  called with q ilocked
  */
-static Block*
+Block*
 qremove(Queue *q)
 {
 	Block *b;
@@ -834,7 +868,7 @@ qremove(Queue *q)
  *  put a block back to the front of the queue
  *  called with q ilocked
  */
-static void
+void
 qputback(Queue *q, Block *b)
 {
 	b->next = q->bfirst;

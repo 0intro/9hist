@@ -484,7 +484,7 @@ regurgitate(Dstate *s, uchar *p, int n)
  *  dump the remainder
  */
 static Block*
-qremove(Block **l, int n, int discard)
+qtake(Block **l, int n, int discard)
 {
 	Block *nb, *b, *first;
 	int i;
@@ -516,12 +516,12 @@ qremove(Block **l, int n, int discard)
 			}
 			b->next = 0;
 			if(BLEN(b) < 0)
-				panic("qremove");
+				panic("qtake");
 			return first;
 		} else
 			n -= i;
 		if(BLEN(b) < 0)
-			panic("qremove");
+			panic("qtake");
 	}
 	*l = 0;
 	return first;
@@ -586,7 +586,7 @@ sslbread(Chan *c, long n, ulong)
 		 */
 
 		/* grab the next message and decode/decrypt it */
-		b = qremove(&s.s->unprocessed, len, 0);
+		b = qtake(&s.s->unprocessed, len, 0);
 
 		if(waserror()){
 			qunlock(&s.s->in.ctlq);
@@ -619,7 +619,7 @@ sslbread(Chan *c, long n, ulong)
 
 		/* remove pad */
 		if(pad)
-			s.s->processed = qremove(&b, len - pad, 1);
+			s.s->processed = qtake(&b, len - pad, 1);
 		else
 			s.s->processed = b;
 		b = nil;
@@ -630,7 +630,7 @@ sslbread(Chan *c, long n, ulong)
 	}
 
 	/* return at most what was asked for */
-	b = qremove(&s.s->processed, n, 0);
+	b = qtake(&s.s->processed, n, 0);
 
 	qunlock(&s.s->in.q);
 	poperror();
