@@ -3,6 +3,7 @@ Block*		allocb(ulong);
 int		anyready(void);
 Image*		attachimage(int, Chan*, ulong, ulong);
 void		bitdebug(void);
+void		bitdepth(void);
 void		bitreverse(uchar*, int);
 int		blen(Block *);
 int		bround(Block *, int);

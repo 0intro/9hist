@@ -12,9 +12,6 @@
 
 #define	MINX	8
 
-extern	GSubfont	defont0;
-GSubfont		*defont;
-
 struct{
 	Point	pos;
 	int	bwid;
@@ -22,9 +19,11 @@ struct{
 
 int islittle = 1;		/* little endian bit ordering in bytes */
 
-extern Cursor arrow;
-extern uchar cswizzle[256];
-
+extern	GSubfont defont0;
+GSubfont *defont;
+extern	Cursor arrow;
+extern	GBitmap cursorback;
+static	Lock colorlock;		/* color map lock */
 
 /*
  *  screen dimensions
@@ -67,7 +66,7 @@ VGAmode mode12 =
 	0xff,
 	/* attribute */
 	0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-	0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x3f,
+	0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
 	0x01, 0x10, 0x0f, 0x00, 0x00,
 };
 
@@ -238,37 +237,42 @@ setscreen(int maxx, int maxy, int ldepth)
 	/*
 	 *  zero hard screen and setup a bitmap for the new size
 	 */
-	memset((void*)SCREENMEM, 0xff, 64*1024);
 	if(ldepth == 3)
 		vgascreen.ldepth = 3;
 	else
 		vgascreen.ldepth = 0;
 	vgascreen.base = (void*)SCREENMEM;
 	vgascreen.width = (maxx*(1<<vgascreen.ldepth))/32;
+	vgascreen.r.min = Pt(0, 0);
 	vgascreen.r.max = Pt(maxx, maxy);
-	vgascreen.clipr.max = vgascreen.r.max;
+	vgascreen.clipr = vgascreen.r;
 
 	/*
 	 *  setup new soft screen, free memory for old screen
 	 */
 	gscreen.ldepth = ldepth;
 	gscreen.width = (maxx*(1<<ldepth))/32;
+	gscreen.r.min = Pt(0, 0);
 	gscreen.r.max = Pt(maxx, maxy);
-	gscreen.clipr.max = gscreen.r.max;
+	gscreen.clipr = gscreen.r;
 	len = gscreen.width * BY2WD * maxy;
 	if(gscreen.base){
 		free(gscreen.base);
-		p = smalloc(len+2*1024));
-		gscreen.base = ((ulong*)p) + 256;
-	} else {
-		p = malloc(len+2*1024));
-		gscreen.base = ((ulong*)p) + 256;
-	}
+		p = smalloc(len + 2*1024);
+	} else
+		p = malloc(len + 2*1024);
 	pad1 = p;
-	pad2 = p + len + 1024;
+	pad2 = p + 1024 + len;
 	memset(pad1, 0, 1024);
 	memset(pad2, 0, 1024);
+	gscreen.base = (ulong*)(p+1024);
 	memset((char*)gscreen.base, 0xff, len);
+	memset((void*)SCREENMEM, 0xff, vgascreen.width * BY2WD * maxy);
+
+	/*
+	 *  set depth of cursor backup area
+	 */
+	bitdepth();
 
 	/*
 	 *  set string pointer to upper left
@@ -276,13 +280,6 @@ setscreen(int maxx, int maxy, int ldepth)
 	out.pos.x = MINX;
 	out.pos.y = 0;
 	out.bwid = defont0.info[' '].width;
-}
-
-int
-colourxpnd(int x)
-{
-	x &= 3;
-	return (x<<4)|(x<<2)|x;
 }
 
 void
@@ -322,20 +319,15 @@ screeninit(void)
 	/*
 	 *  set up color map
 	 */
+	lock(&colorlock);
 	outb(CMWX, 0);
 	for(i = 0; i < 16; i++){
-		outb(CM, colourxpnd(i<<1));
-		outb(CM, colourxpnd(i>>2));
-		outb(CM, colourxpnd(i&~1));
+		x = (i*63)/15;
+		outb(CM, x);
+		outb(CM, x);
+		outb(CM, x);
 	}
-	outb(CMWX, 5);
-	outb(CM, 21);
-	outb(CM, 21);
-	outb(CM, 21);
-	outb(CMWX, 0xa);
-	outb(CM, 42);
-	outb(CM, 42);
-	outb(CM, 42);
+	unlock(&colorlock);
 }
 
 /*
@@ -383,9 +375,18 @@ screenupdate(void)
 	uchar *sp, *hp;
 	int y, len, incs, inch, off, page, y2pg, ey;
 	Rectangle r;
+	static int nocheck;
 
 	r = mbb;
 	mbb = NULLMBB;
+
+	if(nocheck==0 && memcmp(pad1, pad2, 1024)){
+		nocheck = 1;
+		print("b: %d %d %d %d\n", r.min.x, r.min.y, r.max.x, r.max.y);
+		nocheck = 0;
+		memset(pad1, 0, 1024);
+		memset(pad2, 0, 1024);
+	}
 
 	if(Dy(r) < 0)
 		return;
@@ -424,8 +425,8 @@ screenupdate(void)
 		hp = (uchar*)(vgascreen.base+(r.min.y*vgascreen.width)) + off;
 		sp = (uchar*)(gscreen.base+(r.min.y*gscreen.width)) + 2*off;
 		len = (r.max.x + 15)/8 - r.min.x/8;
-		if(len < 2)
-			len = 2;
+		if(len < 0)
+			return;
 
 		/* reverse the bits and split into 2 bit planes */
 		for (y = r.min.y; y < r.max.y; y++){
@@ -473,6 +474,14 @@ screenupdate(void)
 			hp = (uchar*)(vgascreen.base) + r.min.x;
 		}
 		break;
+	}
+
+	if(nocheck==0 && memcmp(pad1, pad2, 1024)){
+		nocheck = 1;
+		print("a: %d %d %d %d\n", r.min.x, r.min.y, r.max.x, r.max.y);
+		nocheck = 0;
+		memset(pad1, 0, 1024);
+		memset(pad2, 0, 1024);
 	}
 }
 
@@ -548,27 +557,35 @@ mousescreenupdate(void)
 	screenupdate();
 }
 
+static ulong
+expand(uchar x)
+{
+	return (x<<(32-6))|(x<<(32-12))|(x<<(32-18))|(x<<(32-24));
+}
+
 void
 getcolor(ulong p, ulong *pr, ulong *pg, ulong *pb)
 {
-	ulong ans;
-
-	/*
-	 * The safari monochrome says 0 is black (zero intensity)
-	 */
-	if(p == 0)
-		ans = 0;
-	else
-		ans = ~0;
-	*pr = *pg = *pb = ans;
+	p &= (1<<(1<<gscreen.ldepth))-1;
+	lock(&colorlock);
+	outb(CMRX, p);
+	*pr = expand(inb(CM));
+	*pg = expand(inb(CM));
+	*pb = expand(inb(CM));
+	unlock(&colorlock);
 }
-
 
 int
 setcolor(ulong p, ulong r, ulong g, ulong b)
 {
-	USED(p, r, g, b);
-	return 0;	/* can't change mono screen colormap */
+	p &= (1<<(1<<gscreen.ldepth))-1;
+	lock(&colorlock);
+	outb(CMWX, p);
+	outb(CM, r>>(32-6));
+	outb(CM, g>>(32-6));
+	outb(CM, b>>(32-6));
+	unlock(&colorlock);
+	return ~0;
 }
 
 int

@@ -309,6 +309,22 @@ bitreset(void)
 	Cursortocursor(&arrow);
 }
 
+/*
+ *  screen bit depth changed, reset backup map for cursor
+ */
+void
+bitdepth(void)
+{
+	cursoroff(1);
+	if(gscreen.ldepth > 3)
+		cursorback.ldepth = 0;
+	else{
+		cursorback.ldepth = gscreen.ldepth;
+		cursorback.width = ((16 << gscreen.ldepth) + 31) >> 5;
+	}
+	cursoron(1);
+}
+
 void
 bitinit(void)
 {

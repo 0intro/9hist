@@ -645,7 +645,7 @@ TEXT	l0update(SB),$0
 	MOVL	from+0(FP),SI
 	MOVL	to+4(FP),DI
 l00:
-	MOVB	-2(SI)(CX*2),AL
+	MOVB	-1(SI)(CX*1),AL
 	MOVB	bitrevtab(SB)(AX*1),AL
 	MOVB	AL,-1(DI)(CX*1)
 	LOOP	l00
@@ -687,7 +687,7 @@ l10:
 	MOVB	$0x5,AL			/* write lo order bits to bit planes 1 & 3 */
 	OUTB
 	MOVW	BX,-2(DI)(CX*1)
-	SHRL	$16,BX			/* write hi order bits to bit planes 1 & 3 */
+	SHRL	$16,BX			/* write hi order bits to bit planes 0 & 2 */
 	MOVB	$0xA,AL
 	OUTB
 	MOVW	BX,-2(DI)(CX*1)

@@ -164,7 +164,11 @@ configwrite(Chan *c, void *buf, long n, ulong offset)
 		cbuf[n] = 0;
 		cp = cbuf;
 		maxx = strtoul(cp, &cp, 0);
+		if(*cp!=0)
+			cp++;
 		maxy = strtoul(cp, &cp, 0);
+		if(*cp!=0)
+			cp++;
 		ldepth = strtoul(cp, &cp, 0);
 		if(maxx == 0 || maxy == 0
 		|| maxx > 1280 || maxy > 1024
