@@ -29,6 +29,8 @@ struct Mntalloc
 	Mnt*	list;		/* Mount devices in use */
 	Mnt*	mntfree;	/* Free list */
 	Mntrpc*	rpcfree;
+	int	nrpcfree;
+	int	nrpcused;
 	ulong	id;
 	int	rpctag;
 }mntalloc;
@@ -767,20 +769,25 @@ mountmux(Mnt *m, Mntrpc *r)
 		|| q->flushed && q->flushtag == r->reply.tag) {
 			*l = q->list;
 			unlock(m);
-			if(q != r) {		/* Completed someone else */
-				/* trade pointers to receive buffer */
+			if(q != r) {
+				/*
+				 * Completed someone else.
+				 * Trade pointers to receive buffer.
+				 */
 				dp = q->rpc;
 				q->rpc = r->rpc;
 				r->rpc = dp;
 				q->reply = r->reply;
 				q->done = 1;
 				if(mntstats != nil)
-					(*mntstats)(q->request.type, m->c, q->stime,
-							q->reqlen + r->replen);
+					(*mntstats)(q->request.type,
+						m->c, q->stime,
+						q->reqlen + r->replen);
 				wakeup(&q->r);
 			}else {
 				if(mntstats != nil)
-					(*mntstats)(r->request.type, m->c, r->stime,
+					(*mntstats)(r->request.type,
+						m->c, r->stime,
 						r->reqlen + r->replen);
 				q->done = 1;
 			}
@@ -831,17 +838,29 @@ mntralloc(Chan *c)
 
 	lock(&mntalloc);
 	new = mntalloc.rpcfree;
-	if(new != 0)
-		mntalloc.rpcfree = new->list;
-	else {
-		new = xalloc(sizeof(Mntrpc)+MAXRPC);
-		if(new == 0) {
+	if(new == nil){
+		new = malloc(sizeof(Mntrpc));
+		if(new == nil) {
+			unlock(&mntalloc);
+			exhausted("mount rpc header");
+		}
+		/*
+		 * The header is split from the data buffer as
+		 * mountmux may swap the buffer with another header.
+		 */
+		new->rpc = mallocz(MAXRPC, 0);
+		if(new->rpc == nil){
+			free(new);
 			unlock(&mntalloc);
 			exhausted("mount rpc buffer");
 		}
-		new->rpc = (char*)new+sizeof(Mntrpc);
 		new->request.tag = mntalloc.rpctag++;
 	}
+	else {
+		mntalloc.rpcfree = new->list;
+		mntalloc.nrpcfree--;
+	}
+	mntalloc.nrpcused++;
 	unlock(&mntalloc);
 	new->c = c;
 	new->done = 0;
@@ -854,8 +873,16 @@ void
 mntfree(Mntrpc *r)
 {
 	lock(&mntalloc);
-	r->list = mntalloc.rpcfree;
-	mntalloc.rpcfree = r;
+	if(mntalloc.nrpcfree >= 10){
+		free(r->rpc);
+		free(r);
+	}
+	else{
+		r->list = mntalloc.rpcfree;
+		mntalloc.rpcfree = r;
+		mntalloc.nrpcfree++;
+	}
+	mntalloc.nrpcused--;
 	unlock(&mntalloc);
 }
 
