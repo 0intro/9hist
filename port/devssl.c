@@ -1134,7 +1134,7 @@ encryptb(Dstate *s, Block *b, int offset)
 }
 
 static Block*
-decryptb(Dstate *s, Block *inb)
+decryptb(Dstate *s, Block *bin)
 {
 	Block *b, **l;
 	uchar *p, *ep, *tp, *ip, *eip;
@@ -1142,8 +1142,8 @@ decryptb(Dstate *s, Block *inb)
 	uchar tmp[8];
 	int i;
 
-	l = &inb;
-	for(b = inb; b; b = b->next){
+	l = &bin;
+	for(b = bin; b; b = b->next){
 		/* make sure we have a multiple of s->blocklen */
 		if(s->blocklen > 1){
 			i = BLEN(b);
@@ -1182,7 +1182,7 @@ decryptb(Dstate *s, Block *inb)
 			break;
 		}
 	}
-	return inb;
+	return bin;
 }
 
 static Block*
@@ -1217,7 +1217,7 @@ digestb(Dstate *s, Block *b, int offset)
 }
 
 static void
-checkdigestb(Dstate *s, Block *inb)
+checkdigestb(Dstate *s, Block *bin)
 {
 	uchar *p;
 	DigestState ss;
@@ -1236,7 +1236,7 @@ checkdigestb(Dstate *s, Block *inb)
 
 	/* hash message */
 	h = s->diglen;
-	for(b = inb; b; b = b->next){
+	for(b = bin; b; b = b->next){
 		n = BLEN(b) - h;
 		if(n < 0)
 			panic("checkdigestb");
@@ -1253,7 +1253,7 @@ checkdigestb(Dstate *s, Block *inb)
 	*p = n;
 	(*s->hf)(msgid, 4, digest, &ss);
 
-	if(memcmp(digest, inb->rp, s->diglen) != 0)
+	if(memcmp(digest, bin->rp, s->diglen) != 0)
 		error("bad digest");
 }
 
