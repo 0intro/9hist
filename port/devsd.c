@@ -128,7 +128,7 @@ sdinitpart(SDunit* unit)
 {
 	int nf;
 	ulong start, end;
-	char *f[4], *p, *q;
+	char *f[4], *p, *q, buf[10];
 
 	unit->sectors = unit->secsize = 0;
 	unit->npart = 0;
@@ -157,12 +157,13 @@ sdinitpart(SDunit* unit)
 		/*
 		 * Use partitions passed from boot program,
 		 * e.g.
-		 *	sdC0=dos 63 123123/plan9 123123 456456
+		 *	sdC0part=dos 63 123123/plan9 123123 456456
 		 * This happens before /boot sets hostname so the
 		 * partitions will have the null-string for user.
 		 * The gen functions patch it up.
 		 */
-		for(p = getconf(unit->name); p != nil; p = q){
+		snprint(buf, sizeof buf, "%spart", unit->name);
+		for(p = getconf(buf); p != nil; p = q){
 			if(q = strchr(p, '/'))
 				*q++ = '\0';
 			nf = getfields(p, f, nelem(f), 1, " \t\r");

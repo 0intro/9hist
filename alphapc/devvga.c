@@ -329,6 +329,7 @@ vgactl(char* a)
 		if(n < 2)
 			error(Ebadarg);
 		blanktime = strtoul(field[1], 0, 0);
+		return;
 	}
 	else if(strcmp(field[0], "hwaccel") == 0){
 		if(n < 2)
