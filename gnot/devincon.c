@@ -683,14 +683,14 @@ nextin(Incon *ip, unsigned int c)
 	bp->base[1] = ip->chan>>8;
 	bp->base[2] = c;
 	if(incondebug)
-		print("<-(%d)%uo %d\n", ip->chan, c, bp->wptr-bp->rptr)-3;
+		print("<-(%d)%uo %d\n", ip->chan, c, bp->wptr-bp->rptr);
 
-	next = (ip->wi+3)%Nin;
+	next = (ip->wi+1)%Nin;
 	if(next == ip->ri){
 		bp->wptr = bp->base+3;
 		return bp;
 	}
-	ip->wi = (ip->wi+1)%Nin;
+	ip->wi = next;
 
 	return ip->inb[ip->wi];
 }

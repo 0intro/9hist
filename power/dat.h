@@ -199,9 +199,10 @@ struct Mach
 	Label	sched;			/* scheduler wakeup */
 	Lock	alarmlock;		/* access to alarm list */
 	void	*alarm;			/* alarms bound to this clock */
-	void	(*intr)(ulong);		/* pending interrupt */
+	void	(*intr)(ulong, ulong);	/* pending interrupt */
 	Proc	*intrp;			/* process that was interrupted */
 	ulong	cause;			/* arg to intr */
+	ulong	pc;			/* pc that was interrupted */
 	char	pidhere[NTLBPID];	/* is this pid possibly in this mmu? */
 	int	lastpid;		/* last pid allocated on this machine */
 	Proc	*pidproc[NTLBPID];	/* process that owns this tlbpid on this mach */

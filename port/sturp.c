@@ -988,7 +988,7 @@ urptimer(Alarm *a)
 	for(up = urp, last = &urp[conf.nurp]; up < last; up++){
 		if(up->state==0)
 			continue;
-		if(up->unacked!=up->next && NOW>up->timer){
+		if((up->unacked!=up->next || (up->state&INITING)) && NOW>up->timer){
 			q = up->rq;
 			if(q)
 				wakeup(&q->r);

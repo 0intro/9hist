@@ -77,7 +77,7 @@ sched(void)
 {
 	Proc *p;
 	ulong tlbvirt, tlbphys;
-	void (*f)(ulong);
+	void (*f)(ulong, ulong);
 
 	if(u){
 		splhi();
@@ -93,7 +93,7 @@ sched(void)
 	}
 	if(f = m->intr){			/* assign = */
 		m->intr = 0;
-		(*f)(m->cause);
+		(*f)(m->cause, m->pc);
 	}
 	spllo();
 	p = runproc();

@@ -107,12 +107,22 @@ struct Timer{
 		junk3[3];
 };
 
+
 #define	TIME0	(36*MS2HZ/10)
-#define	TIME1	0xFFFFFFFF	/* later, make this a profiling clock */
+#define	TIME1	0xFFFFFFFF	/* profiling disabled */
 #define	TIME2	1024
 #define	CTR(x)	((x)<<6)	/* which counter x */
 #define	SET16	0x30		/* lsbyte then msbyte */
 #define	MODE2	0x04		/* interval timer */
+
+
+#define	PROFILING
+#ifdef PROFILING
+#undef TIME1
+#define	TIME1	211		/* profiling clock; prime; about 10ms per tick */
+#define	NPROF	50000
+ulong	profcnt[MAXMACH*NPROF];
+#endif
 
 void
 clockinit(void)
@@ -135,9 +145,11 @@ clockinit(void)
 	m->ticks = 0;
 }
 
+
+
 #define NA 10
 void
-clock(ulong n)
+clock(ulong n, ulong pc)
 {
 	int i, na;
 	Alarm *a;
@@ -192,7 +204,15 @@ clock(ulong n)
 		return;
 	}
 	if(n & INTR4){
+		extern ulong start;
+
 		i = *CLRTIM1;
+#ifdef	PROFILING
+		pc -= (ulong)&start;
+		pc /= sizeof(ulong);
+		if(pc < NPROF)
+			profcnt[m->machno*NPROF+pc]++;
+#endif
 		return;
 	}
 }

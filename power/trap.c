@@ -101,11 +101,12 @@ trap(Ureg *ur)
 			}
 			m->intr = intr;
 			m->cause = ur->cause;
+			m->pc = ur->pc;
 			if(ur->cause & INTR2)
 				m->intrp = u->p;
 			sched();
 		}else
-			intr(ur->cause);
+			intr(ur->cause, ur->pc);
 		break;
 
 	case CTLBM:
@@ -179,14 +180,14 @@ trap(Ureg *ur)
 }
 
 void
-intr(ulong cause)
+intr(ulong cause, ulong pc)
 {
 	int i, pend;
 	long v;
 
 	cause &= INTR5|INTR4|INTR3|INTR2|INTR1;
 	if(cause & (INTR2|INTR4)){
-		clock(cause);
+		clock(cause, pc);
 		cause &= ~(INTR2|INTR4);
 	}
 	if(cause & INTR1){
