@@ -10,28 +10,22 @@
  */
 
 int
-newfd(Chan *c)
+growfd(Fgrp *f, int fd)	/* fd is always >= 0 */
 {
-	int i;
-	Fgrp *f = up->fgrp;
 	Chan **newfd, **oldfd;
 
-	lock(f);
-	for(i=0; i<f->nfd; i++)
-		if(f->fd[i] == 0){
-			if(i > f->maxfd)
-				f->maxfd = i;
-			f->fd[i] = c;
-			unlock(f);
-			return i;
-		}
+	if(fd < f->nfd)
+		return 0;
+	if(fd >= f->nfd+DELTAFD)
+		return -1;	/* out of range */
+	if(fd % 100 == 0)
+		pprint("warning: process exceeds %d file descriptors\n", fd);
 	/*
 	 * Unbounded allocation is unwise; besides, there are only 16 bits
 	 * of fid in 9P
 	 */
 	if(f->nfd >= 5000){
-   Exhausted:
-		unlock(f);
+    Exhausted:
 		exhausted("file descriptors");
 		return -1;
 	}
@@ -41,14 +35,33 @@ newfd(Chan *c)
 	oldfd = f->fd;
 	memmove(newfd, oldfd, f->nfd*sizeof(Chan*));
 	f->fd = newfd;
-	f->nfd += DELTAFD;
-	f->maxfd = i;
-	f->fd[i] = c;
-	unlock(f);
 	free(oldfd);
-	if(i%100 == 0)
-		pprint("warning: process exceeds %d file descriptors\n", i);
-	return i;
+	f->nfd += DELTAFD;
+	if(fd > f->maxfd)
+		f->maxfd = fd;
+	return 1;
+}
+
+int
+newfd(Chan *c)
+{
+	int fd;
+	Fgrp *f;
+
+	f = up->fgrp;
+	lock(f);
+	for(fd=0; fd<f->nfd; fd++)
+		if(f->fd[fd] == 0)
+			break;
+	if(fd >= f->nfd && growfd(f, fd) < 0){
+		unlock(f);
+		return -1;
+	}
+	if(fd > f->maxfd)
+		f->maxfd = fd;
+	f->fd[fd] = c;
+	unlock(f);
+	return fd;
 }
 
 Chan*
@@ -155,6 +168,8 @@ syspipe(ulong *arg)
 	c[1] = d->open(c[1], ORDWR);
 	fd[0] = newfd(c[0]);
 	fd[1] = newfd(c[1]);
+	if(fd[0] < 0 || fd[1] < 0)
+		error(Enofd);
 	((long*)arg[0])[0] = fd[0];
 	((long*)arg[0])[1] = fd[1];
 	poperror();
@@ -175,7 +190,7 @@ sysdup(ulong *arg)
 	fd = arg[1];
 	if(fd != -1){
 		lock(f);
-		if(fd<0 || f->nfd<=fd) {
+		if(fd<0 || growfd(f, fd)<0) {
 			unlock(f);
 			cclose(c);
 			error(Ebadfd);
@@ -194,6 +209,8 @@ sysdup(ulong *arg)
 			nexterror();
 		}
 		fd = newfd(c);
+		if(fd < 0)
+			error(Enofd);
 		poperror();
 	}
 
@@ -215,6 +232,8 @@ sysopen(ulong *arg)
 	validaddr(arg[0], 1, 0);
 	c = namec((char*)arg[0], Aopen, arg[1], 0);
 	fd = newfd(c);
+	if(fd < 0)
+		error(Enofd);
 	poperror();
 	return fd;
 }
@@ -724,6 +743,8 @@ syscreate(ulong *arg)
 	validaddr(arg[0], 1, 0);
 	c = namec((char*)arg[0], Acreate, arg[1], arg[2]);
 	fd = newfd(c);
+	if(fd < 0)
+		error(Enofd);
 	poperror();
 	return fd;
 }

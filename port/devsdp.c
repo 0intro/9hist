@@ -188,6 +188,7 @@ enum {
 	ConOpenAck,
 	ConOpenAckAck,
 	ConClose,
+	ConCloseAck,
 	ConReset,
 };
 
@@ -442,7 +443,7 @@ sdpopen(Chan* ch, int omode)
 	case Qstats:
 	case Qrstats:
 		c = sdp->conv[CONV(ch->qid)];
-print("open %d:%d: ref=%d\n", c->id, TYPE(ch->qid), c->ref);
+print("open %d:%ld: ref=%d\n", c->id, TYPE(ch->qid), c->ref);
 		qlock(c);
 		if(waserror()) {
 			qunlock(c);
@@ -717,7 +718,7 @@ sdpgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 		switch(TYPE(c->qid)){
 		case Qtopdir:
 		case Qsdpdir:
-			snprint(buf, sizeof(buf), "#E%d", c->dev);
+			snprint(buf, sizeof(buf), "#E%ld", c->dev);
 			devdir(c, (Qid){CHDIR|Qtopdir, 0}, buf, 0, eve, 0555, dp);
 			break;
 		case Qconvdir:
@@ -1199,6 +1200,21 @@ conviput(Conv *c, Block *b, int control)
 		return nil;
 	}
 
+	switch(c->state) {
+	case CInit:
+	case CDial:
+		c->lstats.inBadOther++;
+		convoconnect(c, ConReset, c->dialid, c->acceptid);
+		convsetstate(c, CClosed);
+		break;
+	case CAccept:
+	case CRemoteClose:
+	case CLocalClose:
+		c->lstats.inBadOther++;
+		freeb(b);
+		return nil;
+	}
+
 	seq = (b->rp[0]<<16) + (b->rp[1]<<8) + b->rp[2];
 	b->rp += 3;
 
@@ -1328,6 +1344,11 @@ conviconnect(Conv *c, int subtype, Block *b)
 
 print("conviconnect: %s: %d %uld %uld\n", convstatename[c->state], subtype, dialid, acceptid);
 
+	if(subtype == ConReset) {
+		convsetstate(c, CClosed);
+		return;
+	}
+
 	switch(c->state) {
 	default:
 		panic("unknown state: %d", c->state);
@@ -1380,36 +1401,28 @@ print("conviconnect: %s: %d %uld %uld\n", convstatename[c->state], subtype, dial
 			convsetstate(c, COpen);
 			return;
 		case COpen:
+		case CLocalClose:
+		case CRemoteClose:
 			// duplicate that we ignore
 			return;
 		}
 		break;
 	case ConClose:
-		convoconnect(c, ConReset, dialid, acceptid);
 		switch(c->state) {
-		case CInit:
-		case CDial:
-		case CAccept:
-		case CLocalClose:
-			convsetstate(c, CClosed);
-			return;
 		case COpen:
+			convoconnect(c, ConCloseAck, dialid, acceptid);
 			convsetstate(c, CRemoteClose);
 			return;
 		case CRemoteClose:
+			// duplicate ConClose
+			convoconnect(c, ConCloseAck, dialid, acceptid);
 			return;
 		}
 		break;
-	case ConReset:
+	case ConCloseAck:
 		switch(c->state) {
-		case CInit:
-		case CDial:
-		case CAccept:
-		case COpen:
 		case CLocalClose:
 			convsetstate(c, CClosed);
-			return;
-		case CRemoteClose:
 			return;
 		}
 		break;
@@ -1418,6 +1431,7 @@ Reset:
 	// invalid connection message - reset to sender
 print("invalid conviconnect - sending reset\n");
 	convoconnect(c, ConReset, dialid, acceptid);
+	convsetstate(c, CClosed);
 }
 
 static void
@@ -1637,7 +1651,7 @@ readcontrol(Conv *c, int n)
 	qlock(c);	// this lock is not held during the sleep below
 
 	for(;;) {
-		if(c->state == CInit || c->state == CClosed) {
+		if(c->chan == nil || c->state == CClosed) {
 			qunlock(c);
 print("readcontrol: return error - state = %s\n", convstatename[c->state]);
 			error("conversation closed");
