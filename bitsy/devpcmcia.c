@@ -329,6 +329,7 @@ pcmctlwrite(char *p, long n, ulong, PCMslot *sp)
 		}
 
 		/* configure device */
+		cf.type = nil;
 		kstrdup(&cf.type, cmd->f[2]);
 		cf.mem = (ulong)sp->mem;
 		cf.port = (ulong)sp->regs;

@@ -304,7 +304,7 @@ iospaces(Cisdat *cis, PCMconftab *ct)
 	nio = (c&0xf)+1;
 	for(i = 0; i < nio; i++){
 		ct->io[i].start = getlong(cis, (c>>4)&0x3);
-		ct->io[0].len = getlong(cis, (c>>6)&0x3);
+		ct->io[i].len = getlong(cis, (c>>6)&0x3);
 	}
 	ct->nio = nio;
 }
