@@ -353,17 +353,17 @@ drawgoodname(DImage *d)
 {
 	DName *n;
 
+	/* if window, validate the screen's own images */
+	if(d->dscreen)
+		if(drawgoodname(d->dscreen->dimage) == 0
+		|| drawgoodname(d->dscreen->dfill) == 0)
+			return 0;
 	if(d->name == nil)
 		return 1;
 	n = drawlookupname(strlen(d->name), d->name);
 	if(n==nil || n->vers!=d->vers)
 		return 0;
-	/* if window, validate the screen's own images */
-	if(d->dscreen == nil)
-		return 1;
-	if(drawgoodname(d->dscreen->dimage) && drawgoodname(d->dscreen->dfill))
-		return 1;
-	return 0;
+	return 1;
 }
 
 DImage*
@@ -375,7 +375,7 @@ drawlookup(Client *client, int id, int checkname)
 	while(d){
 		if(d->id == id){
 			if(checkname && !drawgoodname(d))
-				error("Eoldname");
+				error(Eoldname);
 			return d;
 		}
 		d = d->next;

@@ -5,6 +5,13 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
+void
+poot(char *s, int d)
+{
+	if(up->slash->type<0||up->slash->type>50||(up->slash->flag&COPEN))
+		panic("poot: %s %d=%lux\n", s, d, d);
+}
+
 /*
  * The sys*() routines needn't poperror() as they return directly to syscall().
  */

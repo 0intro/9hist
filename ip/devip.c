@@ -470,8 +470,14 @@ ipread(Chan *ch, void *a, long n, ulong offset)
 		sprint(buf, "%s/%d %d %s \n", c->p->name, c->x, c->inuse, statename);
 		return readstr(offset, p, n, buf);
 	case Qdata:
+{int xxx;
+poot("ipread 1", 0);
 		c = fs.p[PROTO(ch->qid)]->conv[CONV(ch->qid)];
-		return qread(c->rq, a, n);
+//		return qread(c->rq, a, n);
+		xxx = qread(c->rq, a, n);
+poot("ipread 2", 0);
+		return xxx;
+}
 	case Qerr:
 		c = fs.p[PROTO(ch->qid)]->conv[CONV(ch->qid)];
 		return qread(c->eq, a, n);
@@ -807,6 +813,7 @@ Fsprotoclone(Proto *p, char *user)
 			c->x = pp - p->conv;
 			c->ptcl = malloc(p->ptclsize);
 			if(c->ptcl == nil) {
+				unlock(c);
 				free(c);
 				error(Enomem);
 			}

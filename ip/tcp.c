@@ -805,34 +805,6 @@ sndrst(Ipaddr source, Ipaddr dest, ushort length, Tcp *seg)
 }
 
 /*
- *  flush an incoming call; send a reset to the remote side and close the
- *  conversation
- */
-void
-tcpflushincoming(Conv *s)
-{
-	Tcp seg;
-	byte dst[4];
-	Tcpctl *tcb;
-
-	tcb = (Tcpctl*)s->ptcl;
-
-	seg.source = s->rport;
-	seg.dest = s->lport;
-	seg.flags = ACK;
-	seg.seq = tcb->snd.ptr;
-	tcb->last_ack = tcb->rcv.nxt;
-	seg.ack = tcb->rcv.nxt;
-
-	if(s->laddr == 0) {
-		hnputl(dst, s->raddr);
-		s->laddr = Mediagetsrc(dst);
-	}
-	sndrst(s->raddr, s->laddr, 0, &seg);
-	localclose(s, nil);
-}
-
-/*
  *  send a reset to the remote side and close the conversation
  */
 char*

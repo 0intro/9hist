@@ -62,8 +62,11 @@ netlogopen(void)
 		nexterror();
 	}
 	if(alog.opens == 0){
-		if(alog.buf == nil)
+		if(alog.buf == nil){
 			alog.buf = malloc(Nlog);
+			if(alog.buf == nil)
+				error(Enomem);
+		}
 		alog.rptr = alog.buf;
 		alog.end = alog.buf + Nlog;
 	}

@@ -211,7 +211,7 @@ igmpiput(Media *m, Block *bp)
 			break;
 
 		rp = malloc(sizeof(*rp));
-		if(rp == 0)
+		if(rp == nil)
 			break;
 
 		rp->m = m;

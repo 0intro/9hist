@@ -696,10 +696,12 @@ mountio(Mnt *m, Mntrpc *r)
 	}
 	m->rip = up;
 	unlock(m);
+poot("M1", m->c->qid.path);
 	while(r->done == 0) {
 		mntrpcread(m, r);
 		mountmux(m, r);
 	}
+poot("M2", m->c->qid.path);
 	mntgate(m);
 }
 

@@ -218,7 +218,7 @@ initfrag(int size)
 {
 	Fragment *fq, *eq;
 
-	fragfree = (Fragment*)malloc(sizeof(Fragment) * size);
+	fragfree = malloc(sizeof(Fragment) * size);
 	if(fragfree == nil)
 		panic("initfrag");
 

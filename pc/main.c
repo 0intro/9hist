@@ -393,6 +393,7 @@ confinit(void)
 	if(cpuserver) {
 		if(pcnt < 10)
 			pcnt = 70;
+		poolsetparam("Main", BY2PG*conf.npage*(100-pcnt)/100, 0, 0);
 	} else {
 		if(pcnt < 10) {
 			if(conf.npage*BY2PG < 16*MB)

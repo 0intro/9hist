@@ -642,11 +642,15 @@ pexit(char *exitstr, int freemem)
 	Segment **s, **es;
 	long utime, stime;
 	Waitq *wq, *f, *next;
+	Fgrp *fgrp;
 
 	up->alarm = 0;
 
-	if(up->fgrp)
-		closefgrp(up->fgrp);
+	if(up->fgrp){
+		fgrp = up->fgrp;
+		up->fgrp = nil;
+		closefgrp(fgrp);
+	}
 	if(up->egrp)
 		closeegrp(up->egrp);
 	if(up->rgrp)
