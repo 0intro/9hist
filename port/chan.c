@@ -393,6 +393,7 @@ walk(Chan *ac, char *name, int domnt)
 		dotdot = 1;
 	}
 
+	ac->flag &= ~CCREATE;	/* not inherited through a walk */
 	if(devtab[ac->type]->walk(ac, name) != 0) {
 		if(dotdot)
 			ac = undomount(ac);
@@ -416,6 +417,7 @@ walk(Chan *ac, char *name, int domnt)
 	}
 	for(f = ac->mnt; f; f = f->next) {
 		c = cclone(f->to, 0);
+		c->flag &= ~CCREATE;	/* not inherited through a walk */
 		if(devtab[c->type]->walk(c, name) != 0)
 			break;
 		cclose(c);
