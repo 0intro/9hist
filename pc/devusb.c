@@ -146,7 +146,6 @@ enum {
 
 	/* TD.flags (software) */
 	CancelTD=	1<<0,
-	IsoLock=		1<<1,
 	IsoClean=		1<<2,
 };
 
@@ -212,25 +211,27 @@ struct Endpt {
 	volatile byte	iso;
 	byte		debug;
 	byte		active;	/* listed for examination by interrupts */
+	int		setin;
+	/* ISO related: */
 	byte *	tdalloc;
 	byte *	bpalloc;
 	int		hz;
-	int		remain;
+	int		remain;	/* for packet size calculations */
 	int		samplesz;
 	int		sched;	/* schedule index; -1 if undefined or aperiodic */
-	int		setin;
 	int		pollms;	/* polling interval in msec */
-	int		psize;	/* size of this packet */
-	int		curbytes;		/* # of bytes in that block */
+	int		psize;	/* (remaining) size of this packet */
+	int		off;		/* offset into packet */
+	int		isolock;	/* reader/writer interlock with interrupt */
+	TD*		td0;		/* first td in array */
+	TD*		etd;		/* pointer into circular list of TDs for isochronous ept */
+	TD*		xtd;		/* next td to be cleaned */
+	/* end ISO stuff */
 	QH*		epq;		/* queue of TDs for this endpoint */
-	TD*		td0;		/* pointer to list of TDs for isochronous ept */
-	volatile TD*	etd;	/* reader/writer pointer into list of TDs for isochronous ept */
-	volatile TD*	xtd;	/* next td to be cleaned */
 	QLock	rlock;
 	Rendez	rr;
 	Queue*	rq;
 	QLock	wlock;
-	int		isolock;
 	Rendez	wr;
 	Queue*	wq;
 
@@ -803,7 +804,7 @@ schedendpt(Endpt *e)
 	if (e->isopen){
 		return -1;
 	}
-	e->curbytes = 0;
+	e->off = 0;
 	e->sched = usbsched(ub, e->pollms, e->maxpkt);
 	if(e->sched < 0){
 		qunlock(&usbstate);
@@ -818,9 +819,8 @@ schedendpt(Endpt *e)
 	bp = (byte *)(((ulong)e->bpalloc + 0xf) & ~0xf);
 	frnum = (IN(Frnum) + 1) & 0x3ff;
 	frnum = (frnum & ~(e->pollms - 1)) + e->sched;
-	e->isolock = 1;
-	e->xtd = &e->td0[frnum];	/* Next td to finish */
-	e->etd = nil;	/* Writer is idle */
+	e->xtd = &e->td0[(frnum+8)&0x3ff];	/* Next td to finish */
+	e->etd = nil;
 	e->remain = 0;
 	td = e->td0;
 	for(i = e->sched; i < NFRAME; i += e->pollms){
@@ -851,7 +851,6 @@ schedendpt(Endpt *e)
 		td->link = ub->frames[ix];
 		ub->frames[ix] = PADDR(td);
 	}
-	e->isolock = 0;
 	return 0;
 }
 
@@ -1067,41 +1066,50 @@ static void
 cleaniso(Endpt *e, int frnum)
 {
 	TD *td;
-	int tok, id, size;
+	int id, n;
 
-	if (e->xtd->status & Active){
-		td = e->td0 + ((frnum -1)&0x3ff);
-		if (td->status & Active)
-			return;
-		iprint("%ld active -> %ld", e->xtd - e->td0, td - e->td0);
-		e->xtd = td;
-	}
-	tok = (e->mode == OREAD)?TokIN:TokOUT;
+	td = e->xtd;
+	if (td->status & Active)
+		return;
 	id = (e->x<<7)|(e->dev->x&0x7F);
-	for(td = e->xtd; (td->status & Active) == 0; td = td->next){
-		if (td->flags & IsoLock)
-			iprint("usbinterrupt: locked?\n");
-		if (e->isolock == 0 && td == e->etd){
-			/* if isolock is set, don't touch e->etd */
-			if (e->xtd == e->etd)
-				wakeup(&e->wr);	/* writer had to wait */
-			else
-				e->etd = nil;		/* writer was overtaken */
-		}
+	do{
 		if (td->status & AnyError)
 			iprint("usbisoerror 0x%lux\n", td->status);
-		size = (e->hz + e->remain)*e->pollms/1000;
-		e->remain = (e->hz + e->remain)*e->pollms%1000;
-		size *= e->samplesz;
-		if ((td->flags & IsoClean) == 0){
+		if (e->mode == OREAD){
+			td->dev = ((e->maxpkt -1)<<21) | ((id&0x7FF)<<8) | TokIN;
+		}else{
+			n = (e->hz + e->remain)*e->pollms/1000;
+			e->remain = (e->hz + e->remain)*e->pollms%1000;
+			n *= e->samplesz;
+			td->dev = ((n -1)<<21) | ((id&0x7FF)<<8) | TokOUT;
+		}
+		td = td->next;
+		if (e->xtd == td){
+			iprint("@");
+			break;
+		}
+	} while ((td->status & Active) == 0);
+	e->xtd = td;
+	if (e->isolock){
+		wakeup(&e->wr);
+		return;
+	}
+	for (n = 2; n < 6; n++){
+		td = e->td0 + ((frnum + n)&0x3ff);
+		if (td->status & Active)
+			continue;
+
+		if (td == e->etd) {
+			memset((byte*)td->bp+e->off, 0, e->maxpkt-e->off);
+			if (e->off == 0)
+				td->flags |= IsoClean;
+			e->etd = nil;
+		}else if ((td->flags & IsoClean) == 0){
 			memset((byte*)td->bp, 0, e->maxpkt);
 			td->flags |= IsoClean;
 		}
-		td->dev = ((size-1)<<21) | ((id&0x7FF)<<8) | tok;
 		td->status = ErrLimit3 | Active | IsoSelect | IOC;
 	}
-	e->xtd = td;
-	if (e->etd) wakeup(&e->wr);
 }
 
 static void
@@ -1597,33 +1605,12 @@ eptinput(void *arg)
 }
 
 static int
-isorready(void *arg)
+isoready(void *arg)
 {
-	int frnum;
-	Ctlr *ub;
 	Endpt *e;
 
 	e = arg;
-	e->isolock = 1;
-	ub = &ubus;
-	frnum = IN(Frnum) & 0x3ff;
-	if (e->etd == nil){
-		/* reader was idle, find a place to start */
-		e->etd = e->td0 + (frnum & 0x3ff);
-	}
-	if (e->etd->status & Active){
-		/* not yet ready */
-		e->isolock = 0;
-		return 0;
-	}
-	/* leave locked if succesful */
-	e->psize = (e->etd->status + 1) & 0x7FF;
-	e->curbytes = 0;
-	e->nbytes += e->psize;
-	e->nblocks++;
-	if (e->psize > e->maxpkt)
-		panic("packet size > maximum");
-	return 1;
+	return e->etd == nil || (e->etd->status & Active) == 0;
 }
 
 static long
@@ -1631,8 +1618,9 @@ readusb(Endpt *e, void *a, long n)
 {
 	Block *b;
 	uchar *p, *q;
-	long l, i, id;
+	int l, i, frnum;
 	TD *td;
+	Ctlr *ub;
 
 	XPRINT("qlock(%p)\n", &e->rlock);
 	qlock(&e->rlock);
@@ -1644,43 +1632,47 @@ readusb(Endpt *e, void *a, long n)
 	}
 	p = a;
 	if (e->iso){
-		do {
-			if (e->psize == 0){
-				while(isorready(e) == 0){
-					XPRINT("readusb: sleep %lux\n", &e->wr);
-					sleep(&e->wr, isorready, e);
-					XPRINT("readusb: awake\n");
-				}
-			}
-			td = e->etd;
+		if(waserror()){
 			e->isolock = 0;
-
-			if (e->psize > 0){
-				q = (byte*)td->bp + e->curbytes;
+			nexterror();
+		}
+		e->isolock = 1;
+		do {
+			while (isoready(e) == 0){
+				XPRINT("readusb: sleep %lux\n", &e->wr);
+				sleep(&e->wr, isoready, e);
+				XPRINT("readusb: awake\n");
+			}
+			if ((td = e->etd) == nil){
+				ub = &ubus;
+				frnum = (IN(Frnum) + 8) & 0x3ff;
+				e->etd = e->td0 +frnum;
+			}else{
+				q = (uchar*)td->bp + e->off;
 				if((i = n) >= e->psize)
 					i = e->psize;
 				memmove(p, q, i);
 				p += i;
 				n -= i;
-				e->curbytes += i;
+				e->off += i;
 				e->psize -= i;
-				if (e->psize > 0){
-					/* Read done, return */
+				if (e->psize){
 					if (n != 0)
 						panic("usb iso: can't happen");
 					break;
 				}
+				td->status = ErrLimit3 | Active | IsoSelect | IOC;
+				e->etd = td->next;
 			}
-			e->isolock = 1;
-			/* Finished a packet */
-			id = (e->x<<7)|(e->dev->x&0x7F);
-			td->dev = ((e->maxpkt-1)<<21) | ((id&0x7FF)<<8) | TokIN;
-			td->status = ErrLimit3 | Active | IsoSelect | IOC;
-			if (e->xtd == td)
-				e->xtd = td->next;
-			/* Get next buffer, wait for it to become ready */
-			e->etd = td->next;
-		} while (n > 0);
+			e->off = 0;
+			e->psize = (e->etd->status + 1) & 0x7ff;
+			if (e->psize > e->maxpkt)
+				panic("packet size > maximum");
+			e->nbytes += e->psize;
+			e->nblocks++;
+		} while(n > 0);
+		e->isolock = 0;
+		poperror();
 	}else{
 		do {
 			if(e->eof) {
@@ -1801,40 +1793,14 @@ qisempty(void *arg)
 	return ((QH*)arg)->entries & Terminate;
 }
 
-static int
-isowready(void *arg)
-{
-	int frnum;
-	Ctlr *ub;
-	Endpt *e;
-
-	e = arg;
-	e->isolock = 1;
-	ub = &ubus;
-	frnum = IN(Frnum) & 0x3ff;
-	if (e->etd == nil){
-		/* writer was idle, find a place to start */
-		e->etd = e->td0 + ((frnum + 4) & 0x3ff);
-		e->curbytes = 0;
-		e->psize = ((e->etd->dev >> 21) & 0x7ff) + 1;
-		if (e->psize > e->maxpkt)
-			panic("packet size > maximum");
-	}	
-	if (e->etd != e->xtd && e->etd->next != e->xtd){
-		/* leave locked if succesful */
-		return 1;
-	}
-	e->isolock = 0;
-	return 0;
-}
-
 static long
 writeusb(Endpt *e, void *a, long n, int tok)
 {
-	int i;
+	int i, frnum;
 	Block *b;
 	uchar *p, *q;
 	QH *qh;
+	Ctlr *ub;
 	TD *td;
 
 	p = a;
@@ -1848,41 +1814,45 @@ writeusb(Endpt *e, void *a, long n, int tok)
 	if (e->iso){
 		if(waserror()){
 			e->isolock = 0;
-			if (td = e->etd)
-				td->flags &= ~IsoLock;
 			nexterror();
 		}
+		e->isolock = 1;
 		do {
-			while (isowready(e) == 0){
-				XPRINT("writeusb: sleep %lux\n", &e->wr);
-				sleep(&e->wr, isowready, e);
-				XPRINT("writeusb: awake\n");
+			while (isoready(e) == 0){
+				iprint("i");
+				sleep(&e->wr, isoready, e);
 			}
-			td = e->etd;
-			e->isolock = 0;
-			td->flags |= IsoLock;
-			td->flags &= ~IsoClean;
-			q = (uchar*)td->bp + e->curbytes;
-			if((i = n) >= e->psize - e->curbytes)
-				i = e->psize - e->curbytes;
-			memmove(q, p, i);
-			p += i;
-			n -= i;
-			e->curbytes += i;
-			td->flags &= ~IsoLock;
-			if (e->curbytes < e->psize){
-				if (n != 0)
-					panic("usb iso: can't happen");
-				break;
+			if ((td = e->etd) == nil){
+				iprint("0");
+				ub = &ubus;
+				frnum = (IN(Frnum) + 8) & 0x3ff;
+				e->etd = e->td0 +frnum;
+			}else{
+				td->flags &= ~IsoClean;
+				q = (uchar*)td->bp + e->off;
+				if((i = n) >= e->psize)
+					i = e->psize;
+				memmove(q, p, i);
+				p += i;
+				n -= i;
+				e->off += i;
+				e->psize -= i;
+				if (e->psize){
+					if (n != 0)
+						panic("usb iso: can't happen");
+					break;
+				}
+				td->status = ErrLimit3 | Active | IsoSelect | IOC;
+				e->etd = td->next;
 			}
-			e->etd = td->next;
-			e->curbytes = 0;
-			e->psize = ((e->etd->dev >> 21) & 0x7ff) + 1;
+			e->off = 0;
+			e->psize = ((e->etd->dev >> 21) + 1) & 0x7ff;
 			if (e->psize > e->maxpkt)
 				panic("packet size > maximum");
 			e->nbytes += e->psize;
 			e->nblocks++;
 		} while(n > 0);
+		e->isolock = 0;
 		poperror();
 	}else{
 		do {

@@ -150,7 +150,7 @@ ipoput(Fs *f, Block *bp, int gating, int ttl, int tos)
 {
 	Ipifc *ifc;
 	uchar *gate;
-	ushort fragoff;
+	ulong fragoff;
 	Block *xp, *nb;
 	Iphdr *eh, *feh;
 	int lid, len, seglen, chunk, dlen, blklen, offset, medialen;
@@ -269,7 +269,7 @@ ipoput(Fs *f, Block *bp, int gating, int ttl, int tos)
 	xp->rp += offset;
 
 	if(gating)
-		fragoff = nhgets(eh->frag);
+		fragoff = nhgets(eh->frag)<<3;
 	else
 		fragoff = 0;
 	dlen += fragoff;

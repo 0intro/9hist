@@ -11,21 +11,21 @@
 #include	<libsec.h>
 
 typedef struct OneWay	OneWay;
-typedef struct Secret	Secret;
+typedef struct Secret		Secret;
 typedef struct TlsRec	TlsRec;
 typedef struct TlsErrs	TlsErrs;
 
 enum {
 	Statlen=	1024,		/* max. length of status or stats message */
 	/* buffer limits */
-	MaxRecLen	= 1<<14,	/* max payload length of a record layer message */
+	MaxRecLen		= 1<<14,	/* max payload length of a record layer message */
 	MaxCipherRecLen	= MaxRecLen + 2048,
-	RecHdrLen	= 5,
-	MaxMacLen	= SHA1dlen,
+	RecHdrLen		= 5,
+	MaxMacLen		= SHA1dlen,
 
 	/* protocol versions we can accept */
-	TLSVersion	= 0x0301,
-	SSL3Version	= 0x0300,
+	TLSVersion		= 0x0301,
+	SSL3Version		= 0x0300,
 	ProtocolVersion	= 0x0301,	/* maximum version we speak */
 	MinProtoVersion	= 0x0300,	/* limits on version we accept */
 	MaxProtoVersion	= 0x03ff,
@@ -46,30 +46,30 @@ enum {
 	RApplication,
 
 	/* alerts */
-	ECloseNotify = 0,
-	EUnexpectedMessage = 10,
-	EBadRecordMac = 20,
-	EDecryptionFailed = 21,
-	ERecordOverflow = 22,
-	EDecompressionFailure = 30,
-	EHandshakeFailure = 40,
-	ENoCertificate = 41,
-	EBadCertificate = 42,
-	EUnsupportedCertificate = 43,
-	ECertificateRevoked = 44,
-	ECertificateExpired = 45,
-	ECertificateUnknown = 46,
-	EIllegalParameter = 47,
-	EUnknownCa = 48,
-	EAccessDenied = 49,
-	EDecodeError = 50,
-	EDecryptError = 51,
-	EExportRestriction = 60,
-	EProtocolVersion = 70,
-	EInsufficientSecurity = 71,
-	EInternalError = 80,
-	EUserCanceled = 90,
-	ENoRenegotiation = 100,
+	ECloseNotify 			= 0,
+	EUnexpectedMessage 	= 10,
+	EBadRecordMac 		= 20,
+	EDecryptionFailed 		= 21,
+	ERecordOverflow 		= 22,
+	EDecompressionFailure 	= 30,
+	EHandshakeFailure 		= 40,
+	ENoCertificate 			= 41,
+	EBadCertificate 		= 42,
+	EUnsupportedCertificate 	= 43,
+	ECertificateRevoked 		= 44,
+	ECertificateExpired 		= 45,
+	ECertificateUnknown 	= 46,
+	EIllegalParameter 		= 47,
+	EUnknownCa 			= 48,
+	EAccessDenied 		= 49,
+	EDecodeError 			= 50,
+	EDecryptError 			= 51,
+	EExportRestriction 		= 60,
+	EProtocolVersion 		= 70,
+	EInsufficientSecurity 	= 71,
+	EInternalError 			= 80,
+	EUserCanceled 			= 90,
+	ENoRenegotiation 		= 100,
 
 	EMAX = 256
 };
@@ -85,7 +85,7 @@ struct Secret
 	int		block;		/* encryption block len, 0 if none */
 	int		maclen;
 	void		*enckey;
-	uchar		mackey[MaxMacLen];
+	uchar	mackey[MaxMacLen];
 };
 
 struct OneWay
@@ -99,16 +99,16 @@ struct OneWay
 
 struct TlsRec
 {
-	Chan		*c;		/* io channel */
-	int		ref;		/* serialized by tdlock for atomic destroy */
-	int		version;	/* version of the protocol we are speaking */
-	char		verset;		/* version has been set */
-	char		opened;		/* opened command every issued? */
-	char		err[ERRLEN];	/* error message to return to handshake requests */
-	vlong		handin;		/* bytes communicated by the record layer */
-	vlong		handout;
-	vlong		datain;
-	vlong		dataout;
+	Chan	*c;				/* io channel */
+	int		ref;				/* serialized by tdlock for atomic destroy */
+	int		version;			/* version of the protocol we are speaking */
+	char		verset;			/* version has been set */
+	char		opened;			/* opened command every issued? */
+	char		err[ERRMAX];		/* error message to return to handshake requests */
+	vlong	handin;			/* bytes communicated by the record layer */
+	vlong	handout;
+	vlong	datain;
+	vlong	dataout;
 
 	Lock		statelk;
 	int		state;
@@ -122,7 +122,7 @@ struct TlsRec
 	Block		*unprocessed;	/* data read from c but not parsed into records */
 
 	/* handshake queue */
-	Lock		hqlock;		/* protects hqref, alloc & free of handq, hprocessed */
+	Lock		hqlock;			/* protects hqref, alloc & free of handq, hprocessed */
 	int		hqref;
 	Queue		*handq;		/* queue of handshake messages */
 	Block		*hprocessed;	/* remainder of last block read from handq */
@@ -132,7 +132,7 @@ struct TlsRec
 	OneWay		out;
 
 	/* protections */
-	char		user[NAMELEN];
+	char		*user;
 	int		perm;
 };
 
@@ -145,54 +145,30 @@ struct TlsErrs{
 };
 
 static TlsErrs tlserrs[] = {
-	{ECloseNotify,			ECloseNotify,			ECloseNotify,
-		0, "close notify"},
-	{EUnexpectedMessage,		EUnexpectedMessage,		EUnexpectedMessage,
-		1, "unexpected message"},
-	{EBadRecordMac,			EBadRecordMac,			EBadRecordMac,
-		1, "bad record mac"},
-	{EDecryptionFailed,		EIllegalParameter,		EDecryptionFailed,
-		1, "decryption failed"},
-	{ERecordOverflow,		EIllegalParameter,		ERecordOverflow,
-		1, "record too long"},
-	{EDecompressionFailure,		EDecompressionFailure,		EDecompressionFailure,
-		1, "decompression failed"},
-	{EHandshakeFailure,		EHandshakeFailure,		EHandshakeFailure,
-		1, "could not negotiate acceptable security paramters"},
-	{ENoCertificate,		ENoCertificate,			ECertificateUnknown,
-		1, "no appropriate certificate available"},
-	{EBadCertificate,		EBadCertificate,		EBadCertificate,
-		1, "corrupted or invalid certificate"},
-	{EUnsupportedCertificate,	EUnsupportedCertificate,	EUnsupportedCertificate,
-		1, "unsupported certificate type"},
-	{ECertificateRevoked,		ECertificateRevoked,		ECertificateRevoked,
-		1, "revoked certificate"},
-	{ECertificateExpired,		ECertificateExpired,		ECertificateExpired,
-		1, "expired certificate"},
-	{ECertificateUnknown,		ECertificateUnknown,		ECertificateUnknown,
-		1, "unacceptable certificate"},
-	{EIllegalParameter,		EIllegalParameter,		EIllegalParameter,
-		1, "illegal parameter"},
-	{EUnknownCa,			EHandshakeFailure,		EUnknownCa,
-		1, "unknown certificate authority"},
-	{EAccessDenied,			EHandshakeFailure,		EAccessDenied,
-		1, "access denied"},
-	{EDecodeError,			EIllegalParameter,		EDecodeError,
-		1, "error decoding message"},
-	{EDecryptError,			EIllegalParameter,		EDecryptError,
-		1, "error decrypting message"},
-	{EExportRestriction,		EHandshakeFailure,		EExportRestriction,
-		1, "export restriction violated"},
-	{EProtocolVersion,		EIllegalParameter,		EProtocolVersion,
-		1, "protocol version not supported"},
-	{EInsufficientSecurity,		EHandshakeFailure,		EInsufficientSecurity,
-		1, "stronger security routines required"},
-	{EInternalError,		EHandshakeFailure,		EInternalError,
-		1, "internal error"},
-	{EUserCanceled,			ECloseNotify,		EUserCanceled,
-		0, "handshake canceled by user"},
-	{ENoRenegotiation,		EUnexpectedMessage,		ENoRenegotiation,
-		0, "no renegotiation"},
+	{ECloseNotify,			ECloseNotify,			ECloseNotify,			0, 	"close notify"},
+	{EUnexpectedMessage,	EUnexpectedMessage,	EUnexpectedMessage, 	1, "unexpected message"},
+	{EBadRecordMac,		EBadRecordMac,		EBadRecordMac, 		1, "bad record mac"},
+	{EDecryptionFailed,		EIllegalParameter,		EDecryptionFailed,		1, "decryption failed"},
+	{ERecordOverflow,		EIllegalParameter,		ERecordOverflow,		1, "record too long"},
+	{EDecompressionFailure,	EDecompressionFailure,	EDecompressionFailure,	1, "decompression failed"},
+	{EHandshakeFailure,		EHandshakeFailure,		EHandshakeFailure,		1, "could not negotiate acceptable security paramters"},
+	{ENoCertificate,		ENoCertificate,			ECertificateUnknown,	1, "no appropriate certificate available"},
+	{EBadCertificate,		EBadCertificate,		EBadCertificate,		1, "corrupted or invalid certificate"},
+	{EUnsupportedCertificate,	EUnsupportedCertificate,	EUnsupportedCertificate,	1, "unsupported certificate type"},
+	{ECertificateRevoked,	ECertificateRevoked,		ECertificateRevoked,		1, "revoked certificate"},
+	{ECertificateExpired,		ECertificateExpired,		ECertificateExpired,		1, "expired certificate"},
+	{ECertificateUnknown,	ECertificateUnknown,	ECertificateUnknown,	1, "unacceptable certificate"},
+	{EIllegalParameter,		EIllegalParameter,		EIllegalParameter,		1, "illegal parameter"},
+	{EUnknownCa,			EHandshakeFailure,		EUnknownCa,			1, "unknown certificate authority"},
+	{EAccessDenied,		EHandshakeFailure,		EAccessDenied,		1, "access denied"},
+	{EDecodeError,			EIllegalParameter,		EDecodeError,			1, "error decoding message"},
+	{EDecryptError,			EIllegalParameter,		EDecryptError,			1, "error decrypting message"},
+	{EExportRestriction,		EHandshakeFailure,		EExportRestriction,		1, "export restriction violated"},
+	{EProtocolVersion,		EIllegalParameter,		EProtocolVersion,		1, "protocol version not supported"},
+	{EInsufficientSecurity,	EHandshakeFailure,		EInsufficientSecurity,	1, "stronger security routines required"},
+	{EInternalError,			EHandshakeFailure,		EInternalError,			1, "internal error"},
+	{EUserCanceled,		ECloseNotify,			EUserCanceled,			0, "handshake canceled by user"},
+	{ENoRenegotiation,		EUnexpectedMessage,	ENoRenegotiation,		0, "no renegotiation"},
 };
 
 enum
@@ -205,6 +181,7 @@ static	Lock	tdlock;
 static	int	tdhiwat;
 static	int	maxtlsdevs = 128;
 static	TlsRec	**tlsdevs;
+static	char	**trnames;
 static	char	*encalgs;
 static	char	*hashalgs;
 
@@ -262,46 +239,49 @@ static char	*tlsstate(int s);
 #pragma	varargck	argpos	rcvError	3
 
 static char *tlsnames[] = {
-[Qclonus]	"clone",
+[Qclonus]		"clone",
 [Qencalgs]	"encalgs",
 [Qhashalgs]	"hashalgs",
 [Qdata]		"data",
 [Qctl]		"ctl",
 [Qhand]		"hand",
-[Qstatus]	"status",
-[Qstats]	"stats",
+[Qstatus]		"status",
+[Qstats]		"stats",
 };
 
 static int convdir[] = { Qctl, Qdata, Qhand, Qstatus, Qstats };
 
 static int
-tlsgen(Chan *c, Dirtab *d, int nd, int s, Dir *dp)
+tlsgen(Chan *c, char*, Dirtab *, int, int s, Dir *dp)
 {
 	Qid q;
 	TlsRec *tr;
-	char name[16], *nm;
+	char *name, *nm;
 	int perm, t;
 
-	USED(nd);
-	USED(d);
 	q.vers = 0;
+	q.type = QTFILE;
+
 	t = TYPE(c->qid);
 	switch(t) {
 	case Qtopdir:
 		if(s == DEVDOTDOT){
-			q.path = QID(0, Qtopdir)|CHDIR;
-			devdir(c, q, "#D", 0, eve, CHDIR|0555, dp);
+			q.path = QID(0, Qtopdir);
+			q.type = QTDIR;
+			devdir(c, q, "#a", 0, eve, 0555, dp);
 			return 1;
 		}
 		if(s > 0)
 			return -1;
-		q.path = QID(0, Qprotodir)|CHDIR;
-		devdir(c, q, "tls", 0, eve, CHDIR|0555, dp);
+		q.path = QID(0, Qprotodir);
+		q.type = QTDIR;
+		devdir(c, q, "tls", 0, eve, 0555, dp);
 		return 1;
 	case Qprotodir:
 		if(s == DEVDOTDOT){
-			q.path = QID(0, Qtopdir)|CHDIR;
-			devdir(c, q, ".", 0, eve, CHDIR|0555, dp);
+			q.path = QID(0, Qtopdir);
+			q.type = QTDIR;
+			devdir(c, q, ".", 0, eve, 0555, dp);
 			return 1;
 		}
 		if(s < 3){
@@ -327,21 +307,26 @@ tlsgen(Chan *c, Dirtab *d, int nd, int s, Dir *dp)
 		s -= 3;
 		if(s >= tdhiwat)
 			return -1;
-		sprint(name, "%d", s);
-		q.path = QID(s, Qconvdir)|CHDIR;
+		q.path = QID(s, Qconvdir);
+		q.type = QTDIR;
 		lock(&tdlock);
 		tr = tlsdevs[s];
 		if(tr != nil)
 			nm = tr->user;
 		else
 			nm = eve;
-		devdir(c, q, name, 0, nm, CHDIR|0555, dp);
+		if ((name = trnames[s]) == nil) {
+			name = trnames[s] = smalloc(16);
+			sprint(name, "%d", s);
+		}
+		devdir(c, q, name, 0, nm, 0555, dp);
 		unlock(&tdlock);
 		return 1;
 	case Qconvdir:
 		if(s == DEVDOTDOT){
-			q.path = QID(0, Qprotodir)|CHDIR;
-			devdir(c, q, "tls", 0, eve, CHDIR|0555, dp);
+			q.path = QID(0, Qprotodir);
+			q.type = QTDIR;
+			devdir(c, q, "tls", 0, eve, 0555, dp);
 			return 1;
 		}
 		if(s < 0 || s >= nelem(convdir))
@@ -395,21 +380,22 @@ tlsattach(char *spec)
 	Chan *c;
 
 	c = devattach('a', spec);
-	c->qid.path = QID(0, Qtopdir)|CHDIR;
+	c->qid.path = QID(0, Qtopdir);
+	c->qid.type = QTDIR;
 	c->qid.vers = 0;
 	return c;
 }
 
-static int
-tlswalk(Chan *c, char *name)
+static Walkqid*
+tlswalk(Chan *c, Chan *nc, char **name, int nname)
 {
-	return devwalk(c, name, 0, 0, tlsgen);
+	return devwalk(c, nc, name, nname, nil, 0, tlsgen);
 }
 
-static void
-tlsstat(Chan *c, char *db)
+static int
+tlsstat(Chan *c, uchar *db, int n)
 {
-	devstat(c, db, 0, 0, tlsgen);
+	return devstat(c, db, n, nil, 0, tlsgen);
 }
 
 static Chan*
@@ -498,18 +484,18 @@ tlsopen(Chan *c, int omode)
 	return c;
 }
 
-static void
-tlswstat(Chan *c, char *dp)
+static int
+tlswstat(Chan *c, uchar *dp, int n)
 {
-	Dir d;
+	Dir *d;
 	TlsRec *tr;
-
-	convM2D(dp, &d);
+	int rv;
 
 	if(waserror()){
 		unlock(&tdlock);
 		nexterror();
 	}
+
 	lock(&tdlock);
 	tr = tlsdevs[CONV(c->qid)];
 	if(tr == nil)
@@ -517,9 +503,17 @@ tlswstat(Chan *c, char *dp)
 	if(strcmp(tr->user, up->user) != 0)
 		error(Eperm);
 
-	memmove(tr->user, d.uid, NAMELEN);
-	tr->perm = d.mode;
+	d = smalloc(n + sizeof *d);
+	rv = convM2D(dp, n, &d[0], (char*) &d[1]);
+	if (rv > 0) {
+		kstrdup(&tr->user, d->uid);
+		tr->perm = d->mode;
+	}
+	free(d);
+	poperror();
 	unlock(&tdlock);
+
+	return rv;
 }
 
 static void
@@ -582,6 +576,7 @@ tlsclose(Chan *c)
 		freeSec(tr->in.new);
 		freeSec(tr->out.sec);
 		freeSec(tr->out.new);
+		free(tr->user);
 		free(tr);
 		break;
 	}
@@ -731,7 +726,7 @@ tlsrecread(TlsRec *tr)
 
 	nconsumed = 0;
 	if(waserror()){
-		if(strcmp(up->error, Eintr) == 0 && !waserror()){
+		if(strcmp(up->errstr, Eintr) == 0 && !waserror()){
 			regurgitate(tr, header, nconsumed);
 			poperror();
 		}else
@@ -909,7 +904,7 @@ rcvAlert(TlsRec *tr, int err)
 static void
 rcvError(TlsRec *tr, int err, char *fmt, ...)
 {
-	char msg[ERRLEN];
+	char msg[ERRMAX];
 	va_list arg;
 
 	va_start(arg, fmt);
@@ -986,10 +981,12 @@ checkstate(TlsRec *tr, int ishand, int ok)
 static Block*
 tlsbread(Chan *c, long n, ulong offset)
 {
-	TlsRec *volatile tr;
+	int ty;
 	Block *b;
+	TlsRec *volatile tr;
 
-	switch(TYPE(c->qid)) {
+	ty = TYPE(c->qid);
+	switch(ty) {
 	default:
 		return devbread(c, n, offset);
 	case Qhand:
@@ -1006,7 +1003,7 @@ tlsbread(Chan *c, long n, ulong offset)
 		nexterror();
 	}
 	qlock(&tr->in.io);
-	if(TYPE(c->qid) == Qdata){
+	if(ty == Qdata){
 		checkstate(tr, 0, SOpen);
 		while(tr->processed == nil)
 			tlsrecread(tr);
@@ -1038,10 +1035,9 @@ tlsbread(Chan *c, long n, ulong offset)
 		if(tr->hprocessed == nil){
 			b = qbread(tr->handq, MaxRecLen + 1);
 			if(*b->rp++ == RAlert){
-				strncpy(up->error, (char*)b->rp, ERRLEN - 1);
-				up->error[ERRLEN - 1] = '\0';
+				strecpy(up->errstr, up->errstr+ERRMAX, (char*)b->rp);
 				freeb(b);
-				error(up->error);
+				nexterror();
 			}
 			tr->hprocessed = b;
 		}
@@ -1060,16 +1056,17 @@ tlsread(Chan *c, void *a, long n, vlong off)
 	Block *volatile b;
 	Block *nb;
 	uchar *va;
-	int i;
+	int i, ty;
 	char *buf, *s, *e;
 	ulong offset = off;
 	TlsRec * tr;
 
-	if(c->qid.path & CHDIR)
+	if(c->qid.type & QTDIR)
 		return devdirread(c, a, n, 0, 0, tlsgen);
 
 	tr = tlsdevs[CONV(c->qid)];
-	switch(TYPE(c->qid)) {
+	ty = TYPE(c->qid);
+	switch(ty) {
 	default:
 		error(Ebadusefd);
 	case Qstatus:
@@ -1106,7 +1103,7 @@ tlsread(Chan *c, void *a, long n, vlong off)
 		return n;
 	case Qctl:
 		buf = smalloc(Statlen);
-		snprint(buf, Statlen, "%lud", CONV(c->qid));
+		snprint(buf, Statlen, "%llud", CONV(c->qid));
 		n = readstr(offset, a, n, buf);
 		free(buf);
 		return n;
@@ -1235,7 +1232,7 @@ tlsrecwrite(TlsRec *tr, int type, Block *b)
 		 * if not, we're out of sync with the receiver and will not recover.
 		 */
 		if(waserror()){
-			if(strcmp(up->error, "interrupted") != 0)
+			if(strcmp(up->errstr, "interrupted") != 0)
 				tlsError(tr, "channel error");
 			nexterror();
 		}
@@ -1249,8 +1246,9 @@ tlsrecwrite(TlsRec *tr, int type, Block *b)
 static long
 tlsbwrite(Chan *c, Block *b, ulong offset)
 {
-	TlsRec *tr;
+	int ty;
 	ulong n;
+	TlsRec *tr;
 
 	n = BLEN(b);
 
@@ -1258,7 +1256,8 @@ tlsbwrite(Chan *c, Block *b, ulong offset)
 	if(tr == nil)
 		panic("tlsbread");
 
-	switch(TYPE(c->qid)) {
+	ty = TYPE(c->qid);
+	switch(ty) {
 	default:
 		return devbwrite(c, b, offset);
 	case Qhand:
@@ -1398,7 +1397,7 @@ tlswrite(Chan *c, void *a, long n, vlong off)
 	Secret *volatile tos, *volatile toc;
 	Block *volatile b;
 	Cmdbuf *volatile cb;
-	int m;
+	int m, ty;
 	char *p, *e;
 	uchar *volatile x;
 	ulong offset = off;
@@ -1407,7 +1406,8 @@ tlswrite(Chan *c, void *a, long n, vlong off)
 	if(tr == nil)
 		panic("tlswrite");
 
-	switch(TYPE(c->qid)){
+	ty = TYPE(c->qid);
+	switch(ty){
 	case Qdata:
 	case Qhand:
 		p = a;
@@ -1572,7 +1572,7 @@ tlswrite(Chan *c, void *a, long n, vlong off)
 		if(cb->nf != 1)
 			error("usage: opened");
 		if(tr->in.sec == nil || tr->out.sec == nil)
-			error("cipher must be configure before enabling data messages");
+			error("cipher must be configured before enabling data messages");
 		lock(&tr->statelk);
 		if(tr->state != SHandshake && tr->state != SOpen){
 			unlock(&tr->statelk);
@@ -1622,6 +1622,8 @@ tlsinit(void)
 
 	if((tlsdevs = smalloc(sizeof(TlsRec*) * maxtlsdevs)) == 0)
 		panic("tlsinit");
+	if((trnames = smalloc((sizeof *trnames) * maxtlsdevs)) == 0)
+		panic("tlsinit");
 
 	n = 1;
 	for(e = encrypttab; e->name != nil; e++)
@@ -1659,7 +1661,6 @@ Dev tlsdevtab = {
 	devreset,
 	tlsinit,
 	tlsattach,
-	devclone,
 	tlswalk,
 	tlsstat,
 	tlsopen,
@@ -1732,8 +1733,8 @@ tlsError(TlsRec *tr, char *msg)
 	s = tr->state;
 	tr->state = SError;
 	if(s != SError){
-		strncpy(tr->err, msg, ERRLEN - 1);
-		tr->err[ERRLEN - 1] = '\0';
+		strncpy(tr->err, msg, ERRMAX - 1);
+		tr->err[ERRMAX - 1] = '\0';
 	}
 	unlock(&tr->statelk);
 	if(s != SError)
@@ -1773,6 +1774,7 @@ static TlsRec*
 newtls(Chan *ch)
 {
 	TlsRec **pp, **ep, **np;
+	char **nmp;
 	int t, newmax;
 
 	if(waserror()) {
@@ -1798,6 +1800,11 @@ newtls(Chan *ch)
 		tlsdevs = np;
 		pp = &tlsdevs[maxtlsdevs];
 		memset(pp, 0, sizeof(TlsRec*)*(newmax - maxtlsdevs));
+
+		nmp = smalloc(sizeof *nmp * newmax);
+		memmove(nmp, trnames, sizeof *nmp * maxtlsdevs);
+		trnames = nmp;
+
 		maxtlsdevs = newmax;
 	}
 	*pp = mktlsrec();
@@ -1823,7 +1830,7 @@ mktlsrec(void)
 		error(Enomem);
 	tr->state = SClosed;
 	tr->ref = 1;
-	strncpy(tr->user, up->user, sizeof(tr->user));
+	kstrdup(&tr->user, up->user);
 	tr->perm = 0660;
 	return tr;
 }
