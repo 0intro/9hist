@@ -551,6 +551,7 @@ loopbackwrite(Chan *c, void *va, long n, vlong off)
 			iunlock(link);
 		}else
 			error("unknown control request");
+		poperror();
 		free(cb);
 		break;
 	default:
