@@ -187,7 +187,7 @@ struct Mach
 	vlong	mtrrfix[11];
 	vlong	mtrrvar[32];		/* 256 max. */
 
-	vlong	clockstart;		/* starting value for cycle clock */
+	vlong	fastclock;		/* last sampled value */
 
 	int	stack[1];
 };

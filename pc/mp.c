@@ -356,9 +356,6 @@ squidboy(Apic* apic)
 {
 //	iprint("Hello Squidboy\n");
 
-	/* synchronize cycle clocks */
-	wrmsr(0x10, m->clockstart);
-
 	machinit();
 	mmuinit();
 
@@ -374,7 +371,7 @@ squidboy(Apic* apic)
 	 * Restrain your octopus! Don't let it go out on the sea!
 	 */
 	while(MACHP(0)->ticks == 0)
-		;
+		wrmsr(0x10, MACHP(0)->fastclock); /* synchronize fast counters */
 
 	lapicinit(apic);
 	lapiconline();
@@ -443,7 +440,6 @@ mpstartap(Apic* apic)
 	*p = i>>8;
 
 	nvramwrite(0x0F, 0x0A);
-	rdmsr(0x10, &mach->clockstart);
 	lapicstartap(apic, PADDR(APBOOTSTRAP));
 	for(i = 0; i < 100000; i++){
 		lock(&mprdthilock);

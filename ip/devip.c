@@ -511,7 +511,7 @@ ipclose(Chan* c)
 
 enum
 {
-	Statelen=	1024,
+	Statelen=	32*1024,
 };
 
 static long

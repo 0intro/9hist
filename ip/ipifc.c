@@ -211,7 +211,7 @@ ipifcstate(Conv *c, char *state, int n)
 	m = snprint(state, n, "%-12.12s %-5d", ifc->dev, ifc->maxmtu);
 
 	rlock(ifc);
-	for(lifc = ifc->lifc; lifc; lifc = lifc->next)
+	for(lifc = ifc->lifc; lifc && n > m; lifc = lifc->next)
 		m += snprint(state+m, n - m,
 			" %-20.20I %-20.20M %-20.20I %-7d %-7d %-7d %-7d\n",
 				lifc->local, lifc->mask, lifc->remote,
@@ -374,10 +374,6 @@ ipifcadd(Ipifc *ifc, char **argv, int argc)
 		break;
 	}
 
-	if(waserror()){
-		wunlock(ifc);
-		panic("ipifcadd");
-	}
 	wlock(ifc);
 
 	/* ignore if this is already a local address for this ifc */
@@ -433,7 +429,6 @@ ipifcadd(Ipifc *ifc, char **argv, int argc)
 
 out:
 	wunlock(ifc);
-	poperror();
 	return nil;
 }
 
@@ -457,13 +452,8 @@ ipifcrem(Ipifc *ifc, char **argv, int argc, int dolock)
 	parseip(ip, argv[1]);
 	parseipmask(mask, argv[2]);
 
-	if(dolock){
-		if(waserror()){
-			wunlock(ifc);
-			nexterror();
-		}
+	if(dolock)
 		wlock(ifc);
-	}
 
 	/* find address on this interface and remove from chain */
 	lifc = nil;
@@ -475,8 +465,11 @@ ipifcrem(Ipifc *ifc, char **argv, int argc, int dolock)
 			break;
 		}
 
-	if(lifc == nil)
+	if(lifc == nil){
+		if(dolock)
+			wunlock(ifc);
 		return "address not on this interface";
+	}
 
 	/* disassociate any addresses */
 	while(lifc->link)
@@ -491,10 +484,8 @@ ipifcrem(Ipifc *ifc, char **argv, int argc, int dolock)
 	free(lifc);
 
 out:
-	if(dolock){
+	if(dolock)
 		wunlock(ifc);
-		poperror();
-	}
 	return nil;
 }
 

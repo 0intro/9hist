@@ -223,6 +223,7 @@ cycletimer(uvlong *hz)
 	uvlong tsc;
 
 	rdmsr(0x10, (vlong*)&tsc);
+	m->fastclock = tsc;
 	if(hz != nil)
 		*hz = fasthz;
 	return tsc;
