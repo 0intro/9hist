@@ -517,6 +517,7 @@ qbwrite(Queue *q, Block *b)
 
 	if(q->state & Qclosed){
 		iunlock(q);
+		freeb(b);
 		error(Ehungup);
 	}
 

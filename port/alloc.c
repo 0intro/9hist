@@ -264,6 +264,7 @@ mallocz(ulong size, int zero)
 
 	return nil;
 good:
+
 	/* Allocate off this list */
 	ilock(&arena);
 	bp = arena.btab[pow];
