@@ -107,12 +107,17 @@ anyready(void)
 	return m->hiq.head != 0 || m->loq.head != 0;
 }
 
-void
+int
 newcallback(void (*func)(void))
 {
 	*m->cbin = func;
 	if(++m->cbin >= m->cbend)
 		m->cbin = m->calls;
+
+	if(m->hiq.head == 0 && m->loq.head == 0)
+		return 1;
+
+	return 0;
 }
 
 void

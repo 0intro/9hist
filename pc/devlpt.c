@@ -10,8 +10,8 @@
 
 /* base addresses */
 static int lptbase[] = {
-	0x3bc,	/* lpt1 */
-	0x378,	/* lpt2 (sic) */
+	0x378,	/* lpt1 */
+	0x3bc,	/* lpt2 */
 	0x278	/* lpt3 (sic) */
 };
 #define NDEV	(sizeof lptbase/sizeof lptbase[0])
@@ -41,7 +41,7 @@ enum
 
 static int	lptready(void*);
 static void	outch(int, int);
-static void	lptintr(Ureg*);
+static void	lptintr(Ureg*, void*);
 
 static Rendez	lptrendez;
 
@@ -89,7 +89,7 @@ lptattach(char *spec)
 
 	if(!set){
 		set = 1;
-		setvec(Parallelvec, lptintr);
+		setvec(Parallelvec, lptintr, 0);
 	}
 	if(i < 1 || i > NDEV)
 		error(Ebadarg);
@@ -217,8 +217,8 @@ lptready(void *base)
 }
 
 static void
-lptintr(Ureg *ur)
+lptintr(Ureg *ur, void *arg)
 {
-	USED(ur);
+	USED(ur, arg);
 	wakeup(&lptrendez);
 }

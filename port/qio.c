@@ -223,14 +223,14 @@ qpass(Queue *q, Block *b)
 		memmove(q->syncbuf, b->rp, i);
 		q->syncbuf = 0;		/* tell reader buffer is full */
 		len -= i;
-		if(len <= 0 || (q->state & Qmsg)){
+		if(len <= 0 || (q->state & Qmsg)) {
 			iunlock(q);
 			wakeup(&q->rr);
 			freeb(b);
 			return i;
 		}
-		/* queue anything that's left */
 		dowakeup = 1;
+		/* queue anything that's left */
 		b->rp += i;
 	}
 
@@ -242,6 +242,9 @@ qpass(Queue *q, Block *b)
 	q->blast = b;
 	q->len += len;
 checkb(b, "qpass");
+
+	if(q->len >= q->limit)
+		q->state |= Qflow;
 
 	if(q->state & Qstarve){
 		q->state &= ~Qstarve;
@@ -265,7 +268,6 @@ qproduce(Queue *q, void *vp, int len)
 	int i, dowakeup;
 	uchar *p = vp;
 
-if(debuging) print("qproduce %d\n", len);
 	/* sync with qread */
 	dowakeup = 0;
 	lock(q);
@@ -433,7 +435,7 @@ checkb(b, "qread 1");
 	q->len -= n;
 
 	/* if writer flow controlled, restart */
-	if((q->state & Qflow) && q->len < q->limit/2){
+	if((q->state & Qflow) && q->len < q->limit){
 		q->state &= ~Qflow;
 		dowakeup = 1;
 	} else
@@ -459,8 +461,11 @@ checkb(b, "qread 2");
 	}
 
 	/* wakeup flow controlled writers (with a bit of histeresis) */
-	if(dowakeup)
+	if(dowakeup){
+		if(q->kick)
+			(*q->kick)(q->arg);
 		wakeup(&q->wr);
+	}
 
 	poperror();
 	qunlock(&q->rlock);
