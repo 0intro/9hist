@@ -12,8 +12,8 @@
  */
 int _argc; char **_argv; char **_env;
 
-char *argv[5];
-char argx[4][64];
+char argbuf[512];
+int argsize;
 
 void
 main(void)
@@ -43,18 +43,47 @@ main(void)
 	schedinit();
 }
 
+/*
+ *  copy arguments into a temporary buffer.  we do this because the arguments
+ *  are in memory that may be allocated to processes or kernel buffers.
+ */
 void
 arginit(void)
 {
-	int i;
+	int i, n;
+	int nbytes;
+	int ssize;
+	char *p;
+	char **argv;
+	char *charp;
 
-	if(_argc > 5)
-		_argc = 5;
-
-	for(i = 1; i < _argc; i++){
-		strcpy(argx[i-1], _argv[i]);
-		argv[i-1] = &(argx[i-1][0]);
+	/*
+	 *  trim arguments to make them fit in the buffer
+	 */
+	for(nbytes = i = 0; i < _argc; i++){
+		n = strlen(_argv[i]) + 1;
+		ssize = BY2WD*(i+2) + ((nbytes+n+(BY2WD-1)) & ~(BY2WD-1));
+		if(ssize > sizeof(argbuf))
+			break;
+		nbytes += n;
 	}
+	_argc = i;
+	ssize = BY2WD*(i+1) + ((nbytes+(BY2WD-1)) & ~(BY2WD-1));
+
+	/*
+	 *  copy arguments into the buffer
+	 */
+	argv = (char**)(argbuf + sizeof(argbuf) - ssize);
+	charp = (char*)(argbuf + sizeof(argbuf) - nbytes);
+	for(i=0; i<_argc; i++){
+		argv[i] = charp;
+		n = strlen(_argv[i]) + 1;
+		memcpy(charp, _argv[i], n);
+		charp += n;
+	}
+	_argv = argv;
+
+	argsize = ssize;
 }
 
 void
@@ -168,17 +197,21 @@ void
 init0(void)
 {
 	int i;
+	ulong *sp;
 
 	m->proc = u->p;
 	u->p->state = Running;
 	u->p->mach = m;
 	spllo();
+
 	chandevinit();
 
 	u->slash = (*devtab[0].attach)(0);
 	u->dot = clone(u->slash, 0);
 
-	touser();
+	sp = (ulong*)(USTKTOP - argsize);
+
+	touser(sp);
 }
 
 FPsave	initfp;
@@ -189,6 +222,8 @@ userinit(void)
 	Proc *p;
 	Seg *s;
 	User *up;
+	int i;
+	char **av;
 
 	p = newproc();
 	p->pgrp = newpgrp();
@@ -211,11 +246,17 @@ userinit(void)
 	up->p = p;
 
 	/*
-	 * User Stack
+	 * User Stack, pass input arguments to boot process
 	 */
 	s = &p->seg[SSEG];
 	s->proc = p;
 	s->o = neworig(USTKTOP-BY2PG, 1, OWRPERM, 0);
+	s->o->pte[0].page = newpage(0, 0, USTKTOP-BY2PG);
+	memcpy((ulong*)(s->o->pte[0].page->pa|KZERO|(BY2PG-argsize)), 
+		argbuf + sizeof(argbuf) - argsize, argsize);
+	av = (char **)(s->o->pte[0].page->pa|KZERO|(BY2PG-argsize));
+	for(i = 0; i < _argc; i++)
+		av[i] += (char *)USTKTOP - (argbuf + sizeof(argbuf));
 	s->minva = USTKTOP-BY2PG;
 	s->maxva = USTKTOP;
 

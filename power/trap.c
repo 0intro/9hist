@@ -149,7 +149,7 @@ trap(Ureg *ur)
 			if(ecode == FPEXC)
 				sprint(buf, "fp: %s FCR31 %lux", fpexcname(x), x);
 			else
-				sprint(buf, "trap: %s", excname[ecode]);
+				sprint(buf, "trap: %s[%d]", excname[ecode], m->machno);
 			postnote(u->p, 1, buf, NDebug);
 		}else{
 			print("%s %s pc=%lux\n", user? "user": "kernel", excname[ecode], ur->pc);

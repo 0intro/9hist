@@ -162,7 +162,7 @@ int	streamparse(char*, Block*);
 long	stringread(Chan*, void*, long, char*);
 long	syscall(Ureg*);
 void	tlbinit(void);
-void	touser(void);
+void	touser(void *);
 void	tsleep(Rendez*, int (*)(void*), void*, int);
 void	twakeme(Alarm*);
 void	unlock(Lock*);

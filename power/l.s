@@ -61,11 +61,12 @@ clrbss:
  */
 
 TEXT	touser(SB), $-4
+
 	MOVW	M(STATUS), R1
 	OR	$(KUP|IEP), R1
 	MOVW	R1, M(STATUS)
 	NOOP
-	MOVW	$(USTKTOP-20), SP
+	MOVW	0(FP), SP
 	MOVW	$(UTZERO+32), R26	/* header appears in text */
 	RFE	(R26)
 
@@ -146,7 +147,10 @@ TEXT	gotolabel(SB), $0
 
 TEXT	gotopc(SB), $0
 
+	MOVW	$0, R0
 	MOVW	0(FP), R2
+	MOVW	_argc(SB), R4
+	MOVW	_argv(SB), R5
 	JAL	(R2)
 	RET			/* shouldn't get here */
 

@@ -252,6 +252,13 @@ lancedebq(char tag, Pkt *p, int len)
 	memcpy(&(t->p), p, sizeof(Dpkt));
 	l.dq.next = (l.dq.next+1) % Ndpkt;
 	unlock(&l.dq);
+/*	{
+		char buf[1024];
+		if(p->d[0] != 0xff){
+			sprintpacket(buf, t);
+			print("%s\n", buf);
+		}
+	} /**/
 }
 
 /*

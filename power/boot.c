@@ -3,11 +3,21 @@
 
 #include <fcall.h>
 
-Fcall	hdr;
-char	buf[100];
-char	srv[100];
+#define DEFSYS "bitbootes"
+#define DEFFILE "/mips/9"
 
-void	error(char *);
+Fcall	hdr;
+char	*sys;
+char	*scmd;
+char	*bootfile;
+
+char	sbuf[2*NAMELEN];
+char	buf[4*1024];
+
+int fd;
+int cfd;
+int efd;
+
 
 typedef
 struct address {
@@ -25,8 +35,243 @@ Address addr[] = {
 	{ 0 }
 };
 
-#define DEFUSER "bootes"
+/*
+ *  predeclared
+ */
+char	*lookup(char *);
+int	outin(char *, char *, char *, int);
+void	prerror(char *);
+void	error(char *);
+void	boot(int);
 
+/*
+ *  usage: 9b [-a] [server] [file]
+ *
+ *  default server is `bitbootes', default file is `/sys/src/9/mips/9'
+ */
+main(int argc, char *argv[])
+{
+	int i;
+	int manual=0;
+
+	open("#c/cons", 0);
+	open("#c/cons", 1);
+	open("#c/cons", 1);
+
+	print("boot.c staring\n");
+
+	argv++;
+	argc--;	
+
+	while(argc > 0){
+		if(argv[0][0] == '-'){
+			if(argv[0][1] == 'm')
+				manual = 1;
+			argc--;
+			argv++;
+		} else
+			break;
+	}
+
+	sys = DEFSYS;
+	bootfile = DEFFILE;
+	switch(argc){
+	case 1:
+		bootfile = argv[0];
+		break;
+	case 2:
+		bootfile = argv[0];
+		sys = argv[1];
+		break;
+	}
+
+	boot(manual);
+	for(;;){
+		if(fd > 0)
+			close(fd);
+		if(cfd > 0)
+			close(cfd);
+		if(efd > 0)
+			close(efd);
+		fd = cfd = efd = 0;
+		boot(1);
+	}
+}
+
+void
+boot(int ask)
+{
+	int n, f;
+
+	if(!ask)
+		scmd = lookup(sys);
+	else {
+		outin("server", sys, sbuf, sizeof(sbuf));
+		sys = sbuf;
+		scmd = lookup(sys);
+	}
+	if(scmd == 0){
+		fprint(2, "boot: %s unknown\n", sys);
+		return;
+	}
+
+	print("Connecting to server %s\n", sys);
+
+	/*
+	 *  for the bit, we skip all the ether goo
+	 */
+	if(strcmp(scmd, "bitconnect") == 0){
+		fd = open("#3/bit3", ORDWR);
+		if(fd < 0){
+			prerror("opening #3/bit3");
+			return;
+		}
+		goto Mesg;
+	}
+
+	/*
+	 *  grab a lance channel, make it recognize ether type 0x900,
+	 *  and push the nonet ethernet multiplexor onto it.
+	 */
+	efd = open("#l/1/ctl", 2);
+	if(efd < 0){
+		prerror("opening #l/1/ctl");
+		return;
+	}
+	if(write(efd, "connect 0x900", sizeof("connect 0x900")-1)<0){
+		prerror("connect 0x900");
+		return;
+	}
+	if(write(efd, "push noether", sizeof("push noether")-1)<0){
+		prerror("push noether");
+		return;
+	}
+
+	/*
+	 *  grab a nonet channel and call up the ross file server
+	 */
+	fd = open("#n/1/data", 2);
+	if(fd < 0) {
+		prerror("opening #n/1/data");
+		return;
+	}
+	cfd = open("#n/1/ctl", 2);
+	if(cfd < 0){
+		prerror("opening #n/1/ctl");
+		return;
+	}
+	if(write(cfd, scmd, strlen(scmd))<0){
+		prerror(scmd);
+		return;
+	}
+
+    Mesg:
+	print("nop...");
+	hdr.type = Tnop;
+	n = convS2M(&hdr, buf);
+	if(write(fd, buf, n) != n){
+		print("n = %d\n", n);
+		prerror("write nop");
+		return;
+	}
+	n = read(fd, buf, sizeof buf);
+	if(n <= 0){
+		prerror("read nop");
+		return;
+	}
+	if(convM2S(buf, &hdr, n) == 0) {
+		print("n = %d; buf = %.2x %.2x %.2x %.2x\n",
+			n, buf[0], buf[1], buf[2], buf[3]);
+		prerror("format nop");
+		return;
+	}
+	if(hdr.type != Rnop){
+		prerror("not Rnop");
+		return;
+	}
+
+	print("session...");
+	hdr.type = Tsession;
+	hdr.lang = 'v';
+	n = convS2M(&hdr, buf);
+	if(write(fd, buf, n) != n){
+		prerror("write session");
+		return;
+	}
+	n = read(fd, buf, sizeof buf);
+	if(n <= 0){
+		prerror("read session");
+		return;
+	}
+	if(convM2S(buf, &hdr, n) == 0){
+		prerror("format session");
+		return;
+	}
+	if(hdr.type != Rsession){
+		prerror("not Rsession");
+		return;
+	}
+	if(hdr.err){
+		print("error %d;", hdr.err);
+		prerror("remote error");
+		return;
+	}
+
+	print("post...");
+	sprint(buf, "#s/%s", sys);
+	f = create(buf, 1, 0666);
+	if(f < 0)
+		error("create");
+	sprint(buf, "%d", fd);
+	if(write(f, buf, strlen(buf)) != strlen(buf))
+		error("write");
+	close(f);
+	f = create("#s/boot", 1, 0666);
+	if(f < 0)
+		error("create");
+	sprint(buf, "%d", fd);
+	if(write(f, buf, strlen(buf)) != strlen(buf))
+		error("write");
+	close(f);
+
+	print("mount...");
+	if(bind("/", "/", MREPL) < 0)
+		error("bind");
+	if(mount(fd, "/", MAFTER|MCREATE, "") < 0)
+		error("mount");
+	print("success\n");
+	execl("/mips/init", "init", 0);
+	error("/mips/init");
+}
+
+/*
+ *  print error
+ */
+void
+prerror(char *s)
+{
+	char buf[64];
+
+	errstr(0, buf);
+	fprint(2, "boot: %s: %s\n", s, buf);
+}
+
+/*
+ *  print error and exit
+ */
+void
+error(char *s)
+{
+	char buf[64];
+
+	errstr(0, buf);
+	fprint(2, "boot: %s: %s\n", s, buf);
+	exits(0);
+}
+
+/*
+ *  lookup the address for a system
+ */
 char *
 lookup(char *arg)
 {
@@ -44,159 +289,23 @@ lookup(char *arg)
 	return 0;
 }
 
-main(int argc, char *argv[])
+/*
+ *  prompt and get input
+ */
+int
+outin(char *prompt, char *def, char *buf, int len)
 {
-	int cfd, fd, n, fu, f;
-	char buf[NAMELEN];
-	char *scmd;
+	int n;
 
-	open("#c/cons", 0);
-	open("#c/cons", 1);
-	open("#c/cons", 1);
-
-	/*
-	 *  get server
-	 */
 	do{
-		do{
-			print("server[%s]: ", addr[0].name);
-			n = read(0, srv, sizeof srv);
-		}while(n==0);
-		if(n < 0)
-			error("can't read #c/cons; please reboot");
-		if(n == 1)
-			strcpy(srv, addr[0].name);
-		else
-			srv[n-1] = 0;
-		scmd = lookup(srv);
-	}while(scmd == 0);
-
-	/*
-	 *  get user.  if the user typed cr to the server question, skip
-	 *  the user question and just use the default.
-	 */
-	if(n != 1){
-		do{
-			print("user[%s]: ", DEFUSER);
-			n = read(0, buf, sizeof buf);
-		}while(n==0);
-		if(n < 0)
-			error("can't read #c/cons; please reboot");
-		if(n == 1)
-			strcpy(buf, DEFUSER);
-		else
-			buf[n-1] = 0;
-	}else
-		strcpy(buf, DEFUSER);
-
-	fu = create("#c/user", 1, 0600);
-	if(fu < 0)
-		error("#c/user");
-	n = strlen(buf);
-	if(write(fu, buf, n) != n)
-		error("user write");
-	close(fu);
-
-	if(strcmp(scmd, "bitconnect") == 0){
-		fd = open("#3/bit3", ORDWR);
-		if(fd < 0)
-			error("opening #3/bit3");
-		goto Mesg;
-	}
-
-	/*
-	 *  grab a lance channel, make it recognize ether type 0x900,
-	 *  and push the nonet ethernet multiplexor onto it.
-	 */
-	cfd = open("#l/1/ctl", 2);
-	if(cfd < 0)
-		error("opening #l/1/ctl");
-	if(write(cfd, "connect 0x900", sizeof("connect 0x900")-1)<0)
-		error("connect 0x900");
-	if(write(cfd, "push noether", sizeof("push noether")-1)<0)
-		error("push noether");
-
-	/*
-	 *  grab a nonet channel and call up the ross file server
-	 */
-	fd = open("#n/1/data", 2);
-	if(fd < 0)
-		error("opening #n/1/data");
-	cfd = open("#n/1/ctl", 2);
-	if(cfd < 0)
-		error("opening #n/1/ctl");
-	if(write(cfd, scmd, strlen(scmd))<0)
-		error(scmd);
-
-    Mesg:
-	print("nop...");
-	hdr.type = Tnop;
-	n = convS2M(&hdr, buf);
-	if(write(fd, buf, n) != n)
-		error("write nop");
-	n = read(fd, buf, sizeof buf);
-	if(n <= 0)
-		error("read nop");
-	if(convM2S(buf, &hdr, n) == 0) {
-		print("n = %d; buf = %.2x %.2x %.2x %.2x\n",
-			n, buf[0], buf[1], buf[2], buf[3]);
-		error("format nop");
-	}
-	if(hdr.type != Rnop)
-		error("not Rnop");
-
-	print("session...");
-	hdr.type = Tsession;
-	hdr.lang = 'v';
-	n = convS2M(&hdr, buf);
-	if(write(fd, buf, n) != n)
-		error("write session");
-	n = read(fd, buf, sizeof buf);
-	if(n <= 0)
-		error("read session");
-	if(convM2S(buf, &hdr, n) == 0)
-		error("format session");
-	if(hdr.type != Rsession)
-		error("not Rsession");
-	if(hdr.err){
-		print("error %d;", hdr.err);
-		error("remote error");
-	}
-
-	print("post...");
-	sprint(buf, "#s/%s", srv);
-	f = create(buf, 1, 0666);
-	if(f < 0)
-		error("create");
-	sprint(buf, "%d", fd);
-	if(write(f, buf, strlen(buf)) != strlen(buf))
-		error("write");
-	close(f);
-	sprint(buf, "#s/%s", srv);
-	f = create("#s/boot", 1, 0666);
-	if(f < 0)
-		error("create");
-	sprint(buf, "%d", fd);
-	if(write(f, buf, strlen(buf)) != strlen(buf))
-		error("write");
-	close(f);
-	
-	print("mount...");
-	if(bind("/", "/", MREPL) < 0)
-		error("bind");
-	if(mount(fd, "/", MAFTER|MCREATE, "") < 0)
-		error("mount");
-	print("success\n");
-	execl("/mips/init", "init", 0);
-	error("/mips/init");
-}
-
-void
-error(char *s)
-{
-	char buf[64];
-
-	errstr(0, buf);
-	fprint(2, "boot: %s: %s\n", s, buf);
-	exits(0);
+		print("%s[%s]: ", prompt, def);
+		n = read(0, buf, len);
+	}while(n==0);
+	if(n < 0)
+		error("can't read #c/cons; please reboot");
+	if(n == 1)
+		strcpy(buf, def);
+	else
+		buf[n-1] = 0;
+	return n;
 }
