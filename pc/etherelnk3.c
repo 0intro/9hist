@@ -32,6 +32,7 @@
  *	9001 PCI	3C900-COMBO	Etherlink III XL PCI 10BASE-T/10BASE-2/AUI
  *	9050 PCI	3C905-TX	Fast Etherlink XL Shared 10BASE-T/100BASE-TX
  *	9051 PCI	3C905-T4	Fast Etherlink Shared 10BASE-T/100BASE-T4
+ *	9055 PCI	3C905B-TX	Fast Etherlink Shared 10BASE-T/100BASE-TX
  *
  *	9058 PCMCIA	3C589[B]-[TP|COMBO]
  *
@@ -1160,6 +1161,17 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 	return n;
 }
 
+static void
+txrxreset(int port)
+{
+	COMMAND(port, TxReset, 0);
+	while(STATUS(port) & commandInProgress)
+		;
+	COMMAND(port, RxReset, 0);
+	while(STATUS(port) & commandInProgress)
+		;
+}
+
 typedef struct Adapter {
 	int	port;
 	int	irq;
@@ -1316,8 +1328,7 @@ tcm509isa(void)
 		COMMAND(port, SelectRegisterWindow, Wsetup);
 		outs(port+ConfigControl, Ena);
 
-		COMMAND(port, TxReset, 0);
-		COMMAND(port, RxReset, 0);
+		txrxreset(port);
 		COMMAND(port, AcknowledgeInterrupt, 0xFF);
 
 		irq = (ins(port+ResourceConfig)>>12) & 0x0F;
@@ -1355,8 +1366,7 @@ tcm5XXeisa(void)
 		COMMAND(port, SelectRegisterWindow, Wsetup);
 		outs(port+ConfigControl, Ena);
 
-		COMMAND(port, TxReset, 0);
-		COMMAND(port, RxReset, 0);
+		txrxreset(port);
 		COMMAND(port, AcknowledgeInterrupt, 0xFF);
 
 		irq = (ins(port+ResourceConfig)>>12) & 0x0F;
@@ -1409,12 +1419,7 @@ setxcvr(int port, int xcvr, int is9)
 		outl(port+InternalConfig, x);
 	}
 
-	COMMAND(port, TxReset, 0);
-	while(STATUS(port) & commandInProgress)
-		;
-	COMMAND(port, RxReset, 0);
-	while(STATUS(port) & commandInProgress)
-		;
+	txrxreset(port);
 }
 
 static void
@@ -1426,12 +1431,7 @@ setfullduplex(int port)
 	x = ins(port+MacControl);
 	outs(port+MacControl, fullDuplexEnable|x);
 
-	COMMAND(port, TxReset, 0);
-	while(STATUS(port) & commandInProgress)
-		;
-	COMMAND(port, RxReset, 0);
-	while(STATUS(port) & commandInProgress)
-		;
+	txrxreset(port);
 }
 
 static int
@@ -1592,18 +1592,6 @@ autoselect(int port, int xcvr, int is9)
 		outs(port+MediaStatus, linkBeatEnable|x);
 		delay(10);
 
-{ int i, v;
-  for(i = 0; i < 2000; i++){
-	v = ins(port+MediaStatus);
-	if(v & linkBeatDetect){
-		print("count %d v %uX\n", i, v);
-		return xcvr100BaseTX;
-	}
-	delay(1);
-  }
-  XCVRDEBUG("count %d v %uX\n", i, ins(port+MediaStatus));
-}
-
 		if(ins(port+MediaStatus) & linkBeatDetect)
 			return xcvr100BaseTX;
 		outs(port+MediaStatus, x);
@@ -1693,6 +1681,7 @@ etherelnk3reset(Ether* ether)
 	case 0x9001:
 	case 0x9050:
 	case 0x9051:
+	case 0x9055:
 		if(BUSTYPE(ether->tbdf) != BusPCI)
 			goto buggery;
 		busmaster = 2;
@@ -1751,6 +1740,12 @@ etherelnk3reset(Ether* ether)
 	 * of the 3C59[05], don't use busmastering at 10Mbps.
 	 */
 	XCVRDEBUG("reset: xcvr %uX\n", xcvr);
+/*
+ * forgive me, but i am weak
+ */
+if(did == 0x9055)
+   xcvr = xcvrMii;
+else
 	if(xcvr & autoSelect)
 		xcvr = autoselect(port, xcvr, rxstatus9);
 	XCVRDEBUG("autoselect returns: xcvr %uX\n", xcvr);
@@ -1759,12 +1754,20 @@ etherelnk3reset(Ether* ether)
 	case xcvrMii:
 		/*
 		 * Quick hack.
+		scanphy(ether);
 		 */
 		phyaddr = 24;
 		an = miir(ether, phyaddr, 0x04);
 		an &= miir(ether, phyaddr, 0x05) & 0x03E0;
 		XCVRDEBUG("mii an: %uX\n", an);
-		//if(an & 0x380)
+		for(i = 0; i < ether->nopt; i++){
+			if(cistrcmp(ether->opt[i], "fullduplex") == 0)
+				an |= 0x0100;
+			else if(cistrcmp(ether->opt[i], "force100") == 0)
+				an |= 0x0080;
+		}
+		XCVRDEBUG("mii an: %uX\n", an);
+		if(an & 0x380)
 			ether->mbps = 100;
 		if(an & 0x0140)
 			setfullduplex(port);
