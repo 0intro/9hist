@@ -693,7 +693,7 @@ namec(char *name, int amode, int omode, ulong perm)
 		/* actually / is caught by parsing earlier */
 		if(utfrune("M", r))
 			error(Enoattach);
-		if(up->pgrp->noattach && utfrune("|decp", r))
+		if(up->pgrp->noattach && utfrune("|decp", r)==nil)
 			error(Enoattach);
 		t = devno(r, 1);
 		if(t == -1)
