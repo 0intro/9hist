@@ -296,8 +296,8 @@ middle(int newval)
 /*
  *  keyboard interrupt
  */
-int
-kbdintr0(void)
+void
+kbdintr(Ureg *ur)
 {
 	int s, c, i, nk, nc;
 	static int esc1, esc2;
@@ -308,6 +308,8 @@ kbdintr0(void)
 	static int lstate;
 	static uchar kc[5];
 	int keyup;
+
+	USED(ur);
 
 	/*
 	 *  get status
@@ -447,11 +449,4 @@ dochar:
 	}
 	kbdputc(&kbdq, c);
 	return 0;
-}
-
-void
-kbdintr(Ureg *ur)
-{
-	while(kbdintr0() == 0)
-		;
 }

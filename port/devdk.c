@@ -1175,6 +1175,7 @@ dklisten(Chan *c)
 	int n, lineno, ts, window;
 	int from;
 	Chan *dc;
+	static int dts;
 
 	dp = &dk[c->dev];
 	from = STREAMID(c->qid.path);
@@ -1256,7 +1257,8 @@ dklisten(Chan *c)
 		 *  this could be a duplicate request
 		 */
 		if(ts == lp->timestamp){
-			print("dklisten: repeat timestamp %d\n", lineno);
+			if((dts++ % 1000) == 0)
+				print("dklisten: repeat timestamp %d\n", lineno);
 			if(lp->state != Lconnected)
 				dkanswer(c, lineno, DKbusy);
 			continue;
