@@ -980,6 +980,57 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			p += 73;
 			break;
 
+		case 'e':
+			/*
+			 * polysegment
+			 *
+			 *	'e'		1
+			 *	id		2
+			 *	pt		8
+			 *	value		1
+			 *	code		2
+			 *	n		2
+			 *	pts		2*n
+			 */
+			if(m < 16)
+				error(Ebadblt);
+			l = BGSHORT(p+14);
+			if(m < 16+2*l)
+				error(Ebadblt);
+			v = BGSHORT(p+1);
+			if(v<0 || v>=bit.nmap || (dst=bit.map[v])==0)
+				error(Ebadbitmap);
+			off = 0;
+			fc = BGSHORT(p+12) & 0xF;
+			if(v == 0){
+				if(flipping)
+					fc = flipD[fc];
+				off = 1;
+			}
+			pt1.x = BGLONG(p+3);
+			pt1.y = BGLONG(p+7);
+			t = p[11];
+			if(off && !isoff){
+				cursoroff(1);
+				isoff = 1;
+			}
+			p += 16;
+			m -= 16;
+			while(l > 0){
+				pt2.x = pt1.x + (schar)p[0];
+				pt2.y = pt1.y + (schar)p[1];
+				gsegment(dst, pt1, pt2, t, fc);
+				if(dst->base < endscreen){
+					mbbpt(pt1);
+					mbbpt(pt2);
+				}
+				pt1 = pt2;
+				p += 2;
+				m -= 2;
+				l--;
+			}
+			break;
+
 		case 'f':
 			/*
 			 * free
