@@ -475,7 +475,7 @@ createdir(Chan *c)
 }
 
 Chan*
-mchan(char *id)
+mchan(char *id, int walkname)
 {
 	Chan *c;
 	Pgrp *pg;
@@ -500,7 +500,12 @@ mchan(char *id)
 			for(t = f->mount; t; t = t->next) {
 				c = t->to;
 				if(c->type == mdev && c->mntptr->id == mountid) {
-					c = clone(c, 0);
+					if(walkname == 0) {
+						c = c->mntptr->c;
+						incref(c);
+					}
+					else
+						c = clone(c, 0);
 					runlock(&pg->ns);
 					poperror();
 					return c;
@@ -561,8 +566,17 @@ namec(char *name, int amode, int omode, ulong perm)
 		elem[n] = '\0';
 		n = chartorune(&r, elem+1)+1;
 		if(r == 'M') {
-			c = mchan(elem+n);
-			name = skipslash(name);
+			if(elem[n] == 'c') {
+				c = mchan(elem+n+1, 0);
+				name = skipslash(name);
+				if(*name)
+					error(Efilename);
+				return c;
+			}
+			else {
+				c = mchan(elem+n, 1);
+				name = skipslash(name);
+			}
 			break;
 		}
 		t = devno(r, 1);
