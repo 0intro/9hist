@@ -766,12 +766,14 @@ qopen(int limit, int msg, void (*kick)(void*), void *arg)
 	if(q == 0)
 		return 0;
 
+	ilock(q);
 	q->limit = q->inilim = limit;
 	q->kick = kick;
 	q->arg = arg;
 	q->state = msg ? Qmsg : 0;
 	q->state |= Qstarve;
 	q->eof = 0;
+	iunlock(q);
 
 	return q;
 }
@@ -911,30 +913,36 @@ qbwrite(Queue *q, Block *b)
 	dowakeup = 0;
 	n = BLEN(b);
 
+	qlock(&q->wlock);
 	if(waserror()){
 		qunlock(&q->wlock);
 		nexterror();
 	}
-	qlock(&q->wlock);
 
 	/* flow control */
-	while(!qnotfull(q)){
+	for(;;){
+		ilock(q);
+
+		if(q->state & Qclosed){
+			iunlock(q);
+			freeb(b);
+			error(q->err);
+		}
+
+		if(q->len < q->limit)
+			break;
+
 		if(q->noblock){
+			iunlock(q);
 			freeb(b);
 			qunlock(&q->wlock);
 			poperror();
 			return n;
 		}
+
 		q->state |= Qflow;
-		sleep(&q->wr, qnotfull, q);
-	}
-
-	ilock(q);
-
-	if(q->state & Qclosed){
 		iunlock(q);
-		freeb(b);
-		error(q->err);
+		sleep(&q->wr, qnotfull, q);
 	}
 
 	if(q->bfirst)
@@ -1120,10 +1128,12 @@ qhangup(Queue *q, char *msg)
 void
 qreopen(Queue *q)
 {
+	ilock(q);
 	q->state &= ~Qclosed;
 	q->state |= Qstarve;
 	q->eof = 0;
 	q->limit = q->inilim;
+	iunlock(q);
 }
 
 /*

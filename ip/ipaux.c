@@ -210,7 +210,7 @@ common:
 
 #define CLASS(p) ((*(uchar*)(p))>>6)
 
-static char*
+extern char*
 v4parseip(uchar *to, char *from)
 {
 	int i;

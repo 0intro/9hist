@@ -61,7 +61,7 @@ struct Ipmux
 	Ipmux	*no;
 	uchar	type;
 	uchar	len;		/* length in bytes of item to compare */
-	ushort	off;		/* offset of comparison */
+	short	off;		/* offset of comparison */
 	int	n;		/* number of items val points to */
 	uchar	*val;
 	uchar	*mask;
@@ -77,6 +77,8 @@ struct Ipmuxrock
 {
 	Ipmux	*chain;
 };
+
+static int	ipmuxsprint(Ipmux*, int, char*, int);
 
 static char*
 skipwhite(char *p)
@@ -111,25 +113,25 @@ parseop(char **pp)
 	p = skipwhite(p);
 	if(strncmp(p, "dst", 3) == 0){
 		type = Tdst;
-		off = ((ulong)(ipoff->dst)) - IPHDR;
+		off = (ulong)(ipoff->dst);
 		len = IPv4addrlen;
 		p += 3;
 	}
 	else if(strncmp(p, "src", 3) == 0){
 		type = Tsrc;
-		off = ((ulong)(ipoff->src)) - IPHDR;
+		off = (ulong)(ipoff->src);
 		len = IPv4addrlen;
 		p += 3;
 	}
 	else if(strncmp(p, "ifc", 3) == 0){
 		type = Tifc;
-		off = -IPv4addrlen - IPHDR;
+		off = -IPv4addrlen;
 		len = IPv4addrlen;
 		p += 3;
 	}
 	else if(strncmp(p, "proto", 5) == 0){
 		type = Tproto;
-		off = ((ulong)&(ipoff->proto)) - IPHDR;
+		off = (ulong)&(ipoff->proto);
 		len = 1;
 		p += 5;
 	}
@@ -158,7 +160,7 @@ parseop(char **pp)
 			return nil;
 		p++;
 		len = end - off + 1;
-		off += ((ulong)(ipoff->data)) - IPHDR;
+		off += (ulong)(ipoff->data);
 	}
 	else 
 		return nil;
@@ -232,7 +234,7 @@ parsemux(char *p)
 		case Tdst:
 		case Tifc:
 			f->mask = smalloc(f->len);
-			parseipmask(f->mask, mask);
+			v4parseip(f->mask, mask);
 			break;
 		case Tdata:
 			f->mask = smalloc(f->len);
@@ -257,7 +259,7 @@ parsemux(char *p)
 		case Tsrc:
 		case Tdst:
 		case Tifc:
-			parseip(v, vals[n]);
+			v4parseip(v, vals[n]);
 			break;
 		case Tproto:
 		case Tdata:
@@ -538,8 +540,10 @@ ipmuxconnect(Conv *c, char **argv, int argc)
 static int
 ipmuxstate(Conv *c, char *state, int n)
 {
-	USED(c);
-	return snprint(state, n, "%s", "Datagram");
+	Ipmuxrock *r;
+	
+	r = (Ipmuxrock*)(c->ptcl);
+	return ipmuxsprint(r->chain, 0, state, n);
 }
 
 static void
@@ -579,6 +583,7 @@ ipmuxclose(Conv *c)
 	ipmuxremove(&(c->p->priv), r->chain);
 	wunlock(f);
 	ipmuxtreefree(r->chain);
+	r->chain = nil;
 
 	unlock(c);
 }
@@ -612,13 +617,12 @@ ipmuxiput(Proto *p, uchar *ia, Block *bp)
 		goto nomatch;
 
 	/* make interface address part of packet */
-	h = bp->rp - IPHDR - IPv4addrlen;
-	if(h < bp->base){
-		bp = padblock(bp, IPHDR + IPv4addrlen);
-		h = bp->rp;
-		bp->rp += IPHDR + IPv4addrlen;
+	if(bp->rp - bp->base < IPv4addrlen){
+		bp = padblock(bp, IPv4addrlen);
+		bp->rp += IPv4addrlen;
 	}
-	memmove(h, ia+IPv4off, IPv4addrlen);
+	h = bp->rp;
+	memmove(h-IPv4addrlen, ia+IPv4off, IPv4addrlen);
 	len = BLEN(bp);
 
 	/* run the v4 filter (needs optimizing) */
@@ -635,29 +639,29 @@ ipmuxiput(Proto *p, uchar *ia, Block *bp)
 			m = mux->mask;
 			hp = h + mux->off;
 			for(ve = v + mux->len; v < ve; v++){
-				if((*hp++ & *m++) != *v++)
+				if((*hp++ & *m++) != *v)
 					break;
 			}
 			if(v == ve){
 				if(mux->conv != nil)
 					c = mux->conv;
 				mux = mux->yes;
-				break;
+				goto match;
 			}
 		}
-		if(v == e)
-			mux = mux->no;
+		mux = mux->no;
+match:;
 	}
 	runlock(f);
 
 	if(c != nil){
-		bp->rp -= IPHDR;
 		if(bp->next){
 			bp = concatblock(bp);
 			if(bp == 0)
 				panic("ilpullup");
 		}
 		qpass(c->rq, bp);
+		return;
 	}
 
 nomatch:
@@ -675,20 +679,26 @@ static int
 ipmuxsprint(Ipmux *mux, int level, char *buf, int len)
 {
 	int i, j, n;
+	uchar *v;
 
 	n = 0;
-	if(mux == nil)
-		return n;
 	for(i = 0; i < level; i++)
 		n += snprint(buf+n, len-n, " ");
-	n += snprint(buf+n, len-n, "h[%d:%d] & ", mux->off, mux->off+mux->len-1);
+	if(mux == nil){
+		n += snprint(buf+n, len-n, "\n");
+		return n;
+	}
+	n += snprint(buf+n, len-n, "h[%d:%d]&", mux->off, mux->off+mux->len-1);
 	for(i = 0; i < mux->len; i++)
 		n += snprint(buf+n, len - n, "%2.2ux", mux->mask[i]);
+	n += snprint(buf+n, len-n, "=");
+	v = mux->val;
 	for(j = 0; j < mux->n; j++){
 		for(i = 0; i < mux->len; i++)
-			n += snprint(buf+n, len - n, "%2.2ux", mux->mask[i]);
+			n += snprint(buf+n, len - n, "%2.2ux", *v++);
 		n += snprint(buf+n, len-n, "|");
 	}
+	n += snprint(buf+n, len-n, "\n");
 	level++;
 	n += ipmuxsprint(mux->no, level, buf+n, len-n);
 	n += ipmuxsprint(mux->yes, level, buf+n, len-n);

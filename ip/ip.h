@@ -411,6 +411,7 @@ struct Cmdbuf
 extern int	myetheraddr(uchar*, char*);
 extern ulong	parseip(uchar*, char*);
 extern ulong	parseipmask(uchar*, char*);
+extern char*	v4parseip(uchar*, char*);
 extern void	maskip(uchar *from, uchar *mask, uchar *to);
 extern int	parsemac(uchar *to, char *from, int len);
 extern uchar*	defmask(uchar*);
