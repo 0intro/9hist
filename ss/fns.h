@@ -252,3 +252,4 @@ Chan	*walk(Chan*, char*, int);
 #define SET(x) x = 0
 #define	wbflush()	/* mips compatibility */
 #define	flushvirt()	flushmmu()
+#define	flushpage(x)

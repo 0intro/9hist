@@ -224,3 +224,4 @@ void	wbflush(void);
 #define USED(x) if(x)
 #define SET(x) x = 0
 #define	flushvirt()
+#define	flushpage(x)

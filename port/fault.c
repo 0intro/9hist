@@ -91,6 +91,7 @@ fault(ulong addr, int read)
 			l = (char*)VA(k);
 			if((*devtab[o->chan->type].read)(o->chan, l, n) != n)
 				error(Eioload);
+			flushpage(pg->pa);
 			qunlock(o->chan);
 			if(n<BY2PG)
 				memset(l+n, 0, BY2PG-n);

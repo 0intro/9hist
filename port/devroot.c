@@ -105,7 +105,7 @@ rootread(Chan *c, void *buf, long n)
 		memcpy(buf, ((char*)bootcode)+c->offset, n);
 		return n;
 
-	case Qcfs:		/* boot */
+	case Qcfs:		/* cfs */
 		if(c->offset >= cfslen)
 			return 0;
 		if(c->offset+n > cfslen)

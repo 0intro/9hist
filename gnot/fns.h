@@ -223,6 +223,7 @@ Chan	*walk(Chan*, char*, int);
 #define USED(x)	if(x)
 #define SET(x)	x = 0
 #define	flushvirt()
+#define	flushapage(x)
 
 /*
  *  for SCSI
