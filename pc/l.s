@@ -35,8 +35,8 @@ TEXT _start0x00100020(SB),$0
 /*
  * First check if the bootstrap programme left the first 4MB nicely mapped, otherwise
  * make the basic page tables for processor 0. Four pages are needed for the basic set:
- * a page directory, a page table for mapping the first 4MB of physical memory, a page
- * table for mapping the Mach page, and a page for the Mach structure itself.
+ * a page directory, a page table for mapping the first 4MB of physical memory, and
+ * virtual and physical pages for mapping the Mach structure.
  * The remaining PTEs will be allocated later when memory is sized.
  */
 TEXT _start0x80100020(SB), $0
