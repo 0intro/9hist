@@ -391,9 +391,9 @@ pexit(char *s, int freemem)
 		wp = &w.time[TUser];
 		up = &c->time[TUser];
 		ucp = &c->time[TCUser];
-		*wp++ = (*up++ + *ucp++)*MS2HZ;
-		*wp++ = (*up++ + *ucp  )*MS2HZ;
-		*wp   = (*up           )*MS2HZ;
+		*wp++ = TK2MS(*up++ + *ucp++);
+		*wp++ = TK2MS(*up++ + *ucp  );
+		*wp   = TK2MS(*up           );
 		p->child = c;
 		/*
 		 * Pass info through back door, to avoid huge Proc's

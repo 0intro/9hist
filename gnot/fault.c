@@ -163,7 +163,7 @@ fault(Ureg *ur, FFrame *f)
 				goto cant;
 			}
 			o->chan->offset = (addr-o->va) + o->minca;
-			l = (char*)k->va;
+			l = (char*)VA(k);
 			if((*devtab[o->chan->type].read)(o->chan, l, n) != n)
 				error(0, Eioload);
 			qunlock(o->chan);
@@ -239,7 +239,7 @@ fault(Ureg *ur, FFrame *f)
 			pte->page = newpage(1, o, addr);
 			k = kmap(pte->page);
 			k1 = kmap(pg);
-			memcpy((void*)k->va, (void*)k1->va, BY2PG);
+			memcpy((void*)VA(k), (void*)VA(k1), BY2PG);
 			kunmap(k);
 			kunmap(k1);
 			if(pg->ref <= 1)

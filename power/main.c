@@ -546,7 +546,8 @@ confinit(void)
 			break;
 		x += 0x3141526;
 	}
-	conf.npage = i*1024/4;
+	conf.npage0 = i*1024/4;
+	conf.npage = conf.npage0;
 
 	/*
 	 *  set minimal default values

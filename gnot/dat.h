@@ -187,6 +187,7 @@ struct KMap
 	ulong	pa;
 	ulong	va;
 };
+#define	VA(k)	((k)->va)
 
 struct Mach
 {

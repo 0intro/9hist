@@ -36,7 +36,7 @@ sysfork(ulong *arg)
 	p = newproc();
 	p->upage = newpage(1, 0, USERADDR|(p->pid&0xFFFF));
 	k = kmap(p->upage);
-	upa = k->va;
+	upa = VA(k);
 
 	/*
 	 * Save time: only copy u-> data and useful stack
@@ -77,11 +77,11 @@ sysfork(ulong *arg)
 			k = kmap(np);
 			p->seg[SSEG].o->pte[i].page = np;
 			if(i == 0){	/* only part of last stack page */
-				memset((void*)k->va, 0, usp);
-				memcpy((void*)(k->va+usp),
+				memset((void*)VA(k), 0, usp);
+				memcpy((void*)(VA(k)+usp),
 					(void*)(op->va+usp), BY2PG-usp);
 			}else		/* all of higher pages */
-				memcpy((void*)k->va, (void*)op->va, BY2PG);
+				memcpy((void*)VA(k), (void*)op->va, BY2PG);
 			kunmap(k);
 		}
 	}

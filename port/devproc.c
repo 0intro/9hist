@@ -147,12 +147,9 @@ procopen(Chan *c, int omode)
 	case Qnote:
 		break;
 	case Qdir:
+	case Qmem:
 	case Qproc:
 	case Qstatus:
-		if(omode!=OREAD)
-			error(0, Eperm);
-		break;
-	case Qmem:
 		if(omode!=OREAD)
 			error(0, Eperm);
 		break;
@@ -204,6 +201,8 @@ procread(Chan *c, void *va, long n)
 	Seg *s;
 	Orig *o;
 	Page *pg;
+	KMap *k;
+	PTE *pte, *opte;
 	int i;
 	long l;
 	long pid;
@@ -240,14 +239,25 @@ procread(Chan *c, void *va, long n)
 				unlock(o);
 				error(0, Egreg);
 			}
-			pg = o->pte[(c->offset-o->va)>>PGSHIFT].page;
+			pte = &o->pte[(c->offset-o->va)>>PGSHIFT];
+			if(s->mod){
+				opte = pte;
+				while(pte = pte->nextmod)	/* assign = */
+					if(pte->proc == p)
+						break;
+				if(pte == 0)
+					pte = opte;
+			}
+			pg = pte->page;
 			unlock(o);
 			if(pg == 0){
-				pprint("nonresident page (complain to rob)\n");
+				pprint("nonresident page addr %lux (complain to rob)\n", c->offset);
 				memset(a, 0, n);
 			}else{
-				b = (char*)(pg->pa|KZERO);
+				k = kmap(pg);
+				b = (char*)VA(k);
 				memcpy(a, b+(c->offset&(BY2PG-1)), n);
+				kunmap(k);
 			}
 			return n;
 		}
@@ -259,15 +269,17 @@ procread(Chan *c, void *va, long n)
 			pg = p->upage;
 			if(pg==0 || (p->pid&PIDMASK)!=PID(c->qid))
 				error(0, Eprocdied);
-			b = (char*)(pg->pa|KZERO);
+			k = kmap(pg);
+			b = (char*)VA(k);
 			memcpy(a, b+(c->offset-USERADDR), n);
+			kunmap(k);
 			return n;
 		}
 
 		/* kernel memory.  BUG: shouldn't be so easygoing. BUG: mem mapping? */
-		if(c->offset>=KZERO && c->offset<KZERO+conf.npage*BY2PG){
-			if(c->offset+n > KZERO+conf.npage*BY2PG)
-				n = KZERO+conf.npage*BY2PG - c->offset;
+		if(c->offset>=KZERO && c->offset<KZERO+conf.npage0*BY2PG){
+			if(c->offset+n > KZERO+conf.npage0*BY2PG)
+				n = KZERO+conf.npage0*BY2PG - c->offset;
 			memcpy(a, (char*)c->offset, n);
 			return n;
 		}
@@ -282,8 +294,10 @@ procread(Chan *c, void *va, long n)
 		}
 		if((p->pid&PIDMASK) != PID(c->qid))
 			error(0, Eprocdied);
-		up = (User*)(p->upage->pa|KZERO);
+		k = kmap(p->upage);
+		up = (User*)VA(k);
 		if(up->p != p){
+			kunmap(k);
 			pprint("note read u/p mismatch");
 			error(0, Egreg);
 		}
@@ -297,6 +311,7 @@ procread(Chan *c, void *va, long n)
 			memcpy(&up->note[0], &up->note[1], up->nnote*sizeof(Note));
 			n = ERRLEN;
 		}
+		kunmap(k);
 		unlock(&p->debug);
 		return n;
 
@@ -318,7 +333,7 @@ procread(Chan *c, void *va, long n)
 			l = p->time[i];
 			if(i == TReal)
 				l = MACHP(0)->ticks - l;
-			l *= MS2HZ;
+			l = TK2MS(l);
 			readnum(0, statbuf+2*NAMELEN+12+NUMSIZE*i, NUMSIZE, l, NUMSIZE);
 		}
 		memcpy(a, statbuf+c->offset, n);
@@ -333,6 +348,7 @@ procwrite(Chan *c, void *va, long n)
 {
 	Proc *p;
 	User *up;
+	KMap *k;
 	char buf[ERRLEN];
 
 	if(c->qid & CHDIR)
@@ -355,11 +371,14 @@ procwrite(Chan *c, void *va, long n)
 			error(0, Ebadctl);
 		break;
 	case Qnote:
-		up = (User*)(p->upage->pa|KZERO);
+		k = kmap(p->upage);
+		up = (User*)VA(k);
 		if(up->p != p){
+			kunmap(k);
 			pprint("note write u/p mismatch");
 			error(0, Egreg);
 		}
+		kunmap(k);
 		if(n >= ERRLEN-1)
 			error(0, Etoobig);
 		if(n>=4 && strncmp(va, "sys:", 4)==0)

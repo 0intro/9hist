@@ -43,6 +43,7 @@ struct Op
 };
 extern	void	strconv(char*, Op*, int, int);
 extern	int	numbconv(Op*, int);
+extern	char	*doprint(char*, char*, char*, void*);
 extern	int	fmtinstall(char, int (*)(Op*));
 extern	int	sprint(char*, char*, ...);
 extern	int	print(char*, ...);

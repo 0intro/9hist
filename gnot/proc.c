@@ -310,7 +310,7 @@ postnote(Proc *p, int dolock, char *n, int flag)
 	if(dolock)
 		lock(&p->debug);
 	k = kmap(p->upage);
-	up = (User*)k->va;
+	up = (User*)VA(k);
 	if(flag!=NUser && (up->notify==0 || up->notified))
 		up->nnote = 0;	/* force user's hand */
 	else if(up->nnote == NNOTE-1){
@@ -529,8 +529,8 @@ again:
 	p->child = 0;
 	k = kmap(c->upage);
 	if(w)
-		*w = *(Waitmsg*)(p->waitmsg|k->va);
-	cpid = ((Waitmsg*)(p->waitmsg|k->va))->pid;
+		*w = *(Waitmsg*)(p->waitmsg|VA(k));
+	cpid = ((Waitmsg*)(p->waitmsg|VA(k)))->pid;
 	kunmap(k);
 	p->time[TCUser] += c->time[TUser] + c->time[TCUser];
 	p->time[TCSys] += c->time[TSys] + c->time[TCSys];
@@ -580,7 +580,7 @@ kproc(char *name, void (*func)(void *), void *arg)
 	p = newproc();
 	p->upage = newpage(1, 0, USERADDR|(p->pid&0xFFFF));
 	k = kmap(p->upage);
-	upa = k->va;
+	upa = VA(k);
 	up = (User*)upa;
 	up->p = p;
 

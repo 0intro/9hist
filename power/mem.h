@@ -12,9 +12,16 @@
 #define	BY2PG		4096			/* bytes per page */
 #define	WD2PG		(BY2PG/BY2WD)		/* words per page */
 #define	PGSHIFT		12			/* log(BY2PG) */
-#define	MS2HZ		50			/* millisec per clock tick */
 
 #define	MAXMACH		4			/* max # cpus system can run */
+
+/*
+ * Time
+ */
+#define	MS2HZ		50			/* millisec per clock tick */
+#define	TK2SEC(t)	((t)/20)		/* ticks to seconds */
+#define	TK2MS(t)	((t)*MS2HZ)		/* ticks to milliseconds */
+#define	MS2TK(t)	((t)/MS2HZ)		/* milliseconds to ticks */
 
 /*
  * CP0 registers

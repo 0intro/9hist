@@ -255,7 +255,7 @@ procread(Chan *c, void *va, long n)
 				memset(a, 0, n);
 			}else{
 				k = kmap(pg);
-				b = (char*)k->va;
+				b = (char*)VA(k);
 				memcpy(a, b+(c->offset&(BY2PG-1)), n);
 				kunmap(k);
 			}
@@ -270,7 +270,7 @@ procread(Chan *c, void *va, long n)
 			if(pg==0 || (p->pid&PIDMASK)!=PID(c->qid))
 				error(0, Eprocdied);
 			k = kmap(pg);
-			b = (char*)k->va;
+			b = (char*)VA(k);
 			memcpy(a, b+(c->offset-USERADDR), n);
 			kunmap(k);
 			return n;
@@ -295,7 +295,7 @@ procread(Chan *c, void *va, long n)
 		if((p->pid&PIDMASK) != PID(c->qid))
 			error(0, Eprocdied);
 		k = kmap(p->upage);
-		up = (User*)k->va;
+		up = (User*)VA(k);
 		if(up->p != p){
 			kunmap(k);
 			pprint("note read u/p mismatch");
@@ -372,7 +372,7 @@ procwrite(Chan *c, void *va, long n)
 		break;
 	case Qnote:
 		k = kmap(p->upage);
-		up = (User*)k->va;
+		up = (User*)VA(k);
 		if(up->p != p){
 			kunmap(k);
 			pprint("note write u/p mismatch");

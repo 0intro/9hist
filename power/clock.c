@@ -17,7 +17,7 @@ alarm(int ms, void (*f)(Alarm*), void *arg)
 	if(ms < 0)
 		ms = 0;
 	a = newalarm();
-	a->dt = ms/MS2HZ;
+	a->dt = MS2TK(ms);
 	a->f = f;
 	a->arg = arg;
 	s = splhi();

@@ -2,6 +2,7 @@ Conftab conftab[] = {
 	{"nmach", &conf.nmach },
 	{"nproc", &conf.nproc },
 	{"npgrp", &conf.npgrp },
+	{"npage0", &conf.npage0 },
 	{"npage", &conf.npage },
 	{"norig", &conf.norig },
 	{"npte", &conf.npte },

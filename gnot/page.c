@@ -213,7 +213,7 @@ loop:
 	unlock(&palloc);
 	if(!noclear){
 		k = kmap(p);
-		memset((void*)k->va, 0, BY2PG);
+		memset((void*)VA(k), 0, BY2PG);
 		kunmap(k);
 	}
 	p->o = o;

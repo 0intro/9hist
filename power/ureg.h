@@ -2,7 +2,10 @@ struct Ureg
 {
 	ulong	status;
 	ulong	pc;
-	ulong	sp;		/* r29 */
+	union{
+		ulong	sp;		/* r29 */
+		ulong	usp;		/* r29 */
+	};
 	ulong	cause;
 	ulong	badvaddr;
 	ulong	tlbvirt;

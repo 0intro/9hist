@@ -140,7 +140,7 @@ userinit(void)
 	 * User
 	 */
 	k = kmap(p->upage);
-	up = (User*)k->va;
+	up = (User*)VA(k);
 	up->p = p;
 	kunmap(k);
 
@@ -161,7 +161,7 @@ userinit(void)
 	s->o = neworig(UTZERO, 1, 0, 0);
 	s->o->pte[0].page = newpage(0, 0, UTZERO);
 	k = kmap(s->o->pte[0].page);
-	memcpy((ulong*)k->va, initcode, sizeof initcode);
+	memcpy((ulong*)VA(k), initcode, sizeof initcode);
 	kunmap(k);
 	s->minva = UTZERO;
 	s->maxva = UTZERO+BY2PG;

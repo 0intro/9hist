@@ -118,6 +118,7 @@ struct Conf
 	ulong	nmach;		/* processors */
 	ulong	nproc;		/* processes */
 	ulong	npgrp;		/* process groups */
+	ulong	npage0;		/* total physical pages of memory */
 	ulong	npage;		/* total physical pages of memory */
 	ulong	norig;		/* origins */
 	ulong	npte;		/* contiguous page table entries */
@@ -357,6 +358,14 @@ struct User
 	int	(*notify)(void*, char*);
 	void	*ureg;
 };
+
+/*
+ * Fake kmap
+ */
+typedef void		KMap;
+#define	VA(k)		((ulong)(k))
+#define	kmap(p)		(KMap*)(p->pa|KZERO)
+#define	kunmap(k)
 
 /*
  *  operations available to a queue
