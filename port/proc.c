@@ -184,6 +184,7 @@ loop:
 	print("no procs\n");
 	if(u == 0)
 		panic("newproc");
+	u->p->state = Wakeme;
 	alarm(1000, wakeme, u->p);
 	sched();
 	goto loop;

@@ -186,6 +186,10 @@ noted(Ureg **urp)
 {
 	#ifdef asdfasdf
 	lock(&u->p->debug);
+	if(!u->notified){
+		unlock(&u->p->debug);
+		return;
+	}
 	u->notified = 0;
 	memcpy(*urp, u->ureg, sizeof(Ureg));
 	unlock(&u->p->debug);

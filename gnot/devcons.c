@@ -377,7 +377,7 @@ conscreate(Chan *c, char *name, int omode, ulong perm)
 void
 consclose(Chan *c)
 {
-	if(c->qid == Qrcons)
+	if(c->qid==Qrcons && (c->flag&COPEN))
 		decref(&raw);
 }
 

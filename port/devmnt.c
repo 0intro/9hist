@@ -65,6 +65,7 @@ struct
 struct
 {
 	Lock;
+	QLock;
 	MntQ	*arena;
 	MntQ	*free;
 }mntqalloc;
@@ -141,7 +142,7 @@ mhfree(Mnthdr *mh)
 }
 
 MntQ*
-mqalloc(Chan *msg)	/* mntqalloc is locked */
+mqalloc(Chan *msg)	/* mntqalloc is qlocked */
 {
 	MntQ *q;
 
@@ -166,7 +167,6 @@ mqfree(MntQ *mq)
 
 	lock(mq);
 	if(--mq->ref == 0){
-print("mqfree %lux %lux\n", mq->reader, mq->writer);
 		msg = mq->msg;
 		mq->msg = 0;
 		lock(&mntqalloc);
@@ -271,7 +271,7 @@ mntattach(char *spec)
 	 * Look for queue to same msg channel
 	 */
 	q = mntqalloc.arena;
-	lock(&mntqalloc);
+	qlock(&mntqalloc);
 	for(i=0; i<conf.nmntdev; i++,q++)
 		if(q->msg==cm){
 			lock(q);
@@ -286,7 +286,7 @@ mntattach(char *spec)
 	m->q = mqalloc(cm);
 
     out:
-	unlock(&mntqalloc);
+	qunlock(&mntqalloc);
 	mh = mhalloc();
 	if(waserror()){
 		mhfree(mh);
@@ -674,16 +674,16 @@ void
 mntxmit(Mnt *m, Mnthdr *mh)
 {
 	ulong n;
-	Mntbuf *mbr, *mbw;
+	Mntbuf *mbw;
 	Mnthdr *w, *ow;
 	Chan *mntpt;
 	MntQ *q;
 	int qlocked;
 
-	mbr = mballoc();
+	mh->mbr = mballoc();
 	mbw = mballoc();
 	if(waserror()){
-		mbfree(mbr);
+		mbfree(mh->mbr);
 		mbfree(mbw);
 		nexterror();
 	}
@@ -712,11 +712,11 @@ mntxmit(Mnt *m, Mnthdr *mh)
 	/*
 	 * Read response
 	 */
-	n = (*devtab[q->msg->type].read)(q->msg, mbr->buf, BUFSIZE);
+	n = (*devtab[q->msg->type].read)(q->msg, mh->mbr->buf, BUFSIZE);
 	mqfree(q);
 	poperror();
 
-	if(convM2S(mbr->buf, &mh->rhdr, n) == 0){
+	if(convM2S(mh->mbr->buf, &mh->rhdr, n) == 0){
 		print("format error in mntxmit\n");
 		error(0, Ebadmsg);
 	}
@@ -744,7 +744,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 	 */
 	if(mh->thdr.type == Tread)
 		memcpy(mh->thdr.data, mh->rhdr.data, mh->rhdr.count);
-	mbfree(mbr);
+	mbfree(mh->mbr);
 	mbfree(mbw);
 	poperror();
 	return;
@@ -769,9 +769,9 @@ mntxmit(Mnt *m, Mnthdr *mh)
     Read:
 		qunlock(q);
 		qlocked = 0;
-		n = (*devtab[q->msg->type].read)(q->msg, mbr->buf, BUFSIZE);
-		if(convM2S(mbr->buf, &mh->rhdr, n) == 0){
-			print("%lux %lux %lux %d format error in mntxmit %s\n", u->p, q->reader, q->writer, n, u->p->text);
+		n = (*devtab[q->msg->type].read)(q->msg, mh->mbr->buf, BUFSIZE);
+		if(convM2S(mh->mbr->buf, &mh->rhdr, n) == 0){
+			print("format error in mntxmit\n");
 			mnterrdequeue(q, mh);
 			error(0, Ebadmsg);
 		}
@@ -795,13 +795,13 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		/*
 		 * Hand response to correct recipient
 		 */
-if(q->writer == 0) print("response with empty queue %d %d %d: %d %d\n", mh->rhdr.type, mh->rhdr.err, mh->rhdr.fid, mh->thdr.type, mh->thdr.fid);
+		if(q->writer==0) print("response with empty queue\n");
 		for(ow=0,w=q->writer; w; ow=w,w=w->next)
 			if(mh->rhdr.fid == w->thdr.fid
 			&& mh->rhdr.type == w->thdr.type+1){
 				Mntbuf *t;
-				t = mbr;
-				mbr = w->mbr;
+				t = mh->mbr;
+				mh->mbr = w->mbr;
 				w->mbr = t;
 				memcpy(&w->rhdr, &mh->rhdr, sizeof mh->rhdr);
 				/* take recipient from queue */
@@ -814,7 +814,6 @@ if(q->writer == 0) print("response with empty queue %d %d %d: %d %d\n", mh->rhdr
 			}
 		goto Read;
 	}else{
-		mh->mbr = mbr;
 		mh->p = u->p;
 		/* put self in queue */
 		mh->next = q->writer;
@@ -822,7 +821,7 @@ if(q->writer == 0) print("response with empty queue %d %d %d: %d %d\n", mh->rhdr
 		qunlock(q);
 		qlocked = 0;
 		if(waserror()){		/* interrupted sleep */
-			print("%lux interrupted i/o %d %d\n", u->p, mh->thdr.type, mh->thdr.fid);
+			print("interrupted i/o\n");
 			mnterrdequeue(q, mh);
 			nexterror();
 		}
@@ -832,7 +831,6 @@ if(q->writer == 0) print("response with empty queue %d %d %d: %d %d\n", mh->rhdr
 		qlocked = 1;
 		if(q->reader == u->p)	/* i got promoted */
 			goto Read;
-		mbr = mh->mbr;		/* pick up my buffer */
 		qunlock(q);
 		qlocked = 0;
 		goto Respond;
@@ -852,7 +850,7 @@ if(q->writer == 0) print("response with empty queue %d %d %d: %d %d\n", mh->rhdr
 	 */
 	if(mh->thdr.type == Tread)
 		memcpy(mh->thdr.data, mh->rhdr.data, mh->rhdr.count);
-	mbfree(mbr);
+	mbfree(mh->mbr);
 	mbfree(mbw);
 	poperror();
 }

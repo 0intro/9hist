@@ -404,8 +404,6 @@ return0(void *a)
 long
 syssleep(ulong *arg)
 {
-	int ms;
-
 	tsleep(&u->p->sleep, return0, 0, arg[0]);
 	return 0;
 }

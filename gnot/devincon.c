@@ -783,14 +783,10 @@ inconintr(Ureg *ur)
 
 	/* check for exceptional conditions */
 	if(status&(OVERFLOW|CRC_ERROR)){
-		if(status&OVERFLOW){
-			screenputc('^');
+		if(status&OVERFLOW)
 			ip->overflow++;
-		}
-		if(status&CRC_ERROR){
-			screenputc('+');
+		if(status&CRC_ERROR)
 			ip->crc++;
-		}
 	}
 
 	/* see if it died underneath us */
