@@ -7,6 +7,7 @@
 #include	"ureg.h"
 #include	"errno.h"
 
+#include	<libg.h>
 #include	<gnot.h>
 
 #define	MINX	8
@@ -24,7 +25,7 @@ void	duartinit(void);
 int	duartacr;
 int	duartimr;
 
-GBitmap	screen =
+GBitmap	gscreen =
 {
 	(ulong*)((4*1024*1024-256*1024)|KZERO),	/* BUG */
 	0,
@@ -42,11 +43,11 @@ screeninit(void)
 	 * Read HEX switch to set ldepth
 	 */
 	if(*(uchar*)MOUSE & (1<<4)){
-		screen.ldepth = 1;
+		gscreen.ldepth = 1;
 		defont = &defont1;
 	}else
 		defont = &defont0;
-	gbitblt(&screen, Pt(0, 0), &screen, screen.r, 0);
+	gbitblt(&gscreen, Pt(0, 0), &gscreen, gscreen.r, 0);
 	out.pos.x = MINX;
 	out.pos.y = 0;
 	out.bwid = defont0.info[' '].width;
@@ -61,13 +62,13 @@ screenputc(int c)
 	if(c == '\n'){
 		out.pos.x = MINX;
 		out.pos.y += defont0.height;
-		if(out.pos.y > screen.r.max.y-defont0.height)
-			out.pos.y = screen.r.min.y;
-		gbitblt(&screen, Pt(0, out.pos.y), &screen,
-		    Rect(0, out.pos.y, screen.r.max.x, out.pos.y+2*defont0.height), 0);
+		if(out.pos.y > gscreen.r.max.y-defont0.height)
+			out.pos.y = gscreen.r.min.y;
+		gbitblt(&gscreen, Pt(0, out.pos.y), &gscreen,
+		    Rect(0, out.pos.y, gscreen.r.max.x, out.pos.y+2*defont0.height), 0);
 	}else if(c == '\t'){
 		out.pos.x += (8-((out.pos.x-MINX)/out.bwid&7))*out.bwid;
-		if(out.pos.x >= screen.r.max.x)
+		if(out.pos.x >= gscreen.r.max.x)
 			screenputc('\n');
 	}else if(c == '\b'){
 		if(out.pos.x >= out.bwid+MINX){
@@ -76,11 +77,11 @@ screenputc(int c)
 			out.pos.x -= out.bwid;
 		}
 	}else{
-		if(out.pos.x >= screen.r.max.x-out.bwid)
+		if(out.pos.x >= gscreen.r.max.x-out.bwid)
 			screenputc('\n');
 		buf[0] = c&0x7F;
 		buf[1] = 0;
-		out.pos = gstring(&screen, out.pos, defont, buf, S);
+		out.pos = gstring(&gscreen, out.pos, defont, buf, S);
 	}
 }
 

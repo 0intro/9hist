@@ -47,6 +47,7 @@ main(void)
 	active.machs = 1;
 	confinit();
 	arginit();
+	sysloginit();
 	lockinit();
 	printinit();
 	tlbinit();
@@ -59,7 +60,6 @@ main(void)
 	ioboardinit();
 	chandevreset();
 	streaminit();
-	sysloginit();
 	pageinit();
 	userinit();
 	launchinit();
@@ -112,12 +112,16 @@ ioboardinit(void)
 {
 	long i;
 	int noforce;
+	int maxlevel;
 
 	ioid = *IOID;
-	if(ioid >= IO3R1)
+	if(ioid >= IO3R1){
+		maxlevel = 11;
 		noforce = 1;
-	else
+	} else {
+		maxlevel = 8;
 		noforce = 0;
+	}
 
 
 	/*
@@ -138,7 +142,7 @@ ioboardinit(void)
 	/*
 	 *  tell IO2 to sent all interrupts to CPU 0's SBCC
 	 */
-	for(i=0; i<8; i++)
+	for(i=0; i<maxlevel; i++)
 		INTVECREG->i[i].vec = 0<<8;
 
 	/*
@@ -302,11 +306,18 @@ void
 launch(int n)
 {
 	Beef *p;
-	long i;
+	long i, s;
+	ulong *ptr;
 
 	p = (Beef*) 0xb0000500 + n;
 	p->launch = newstart;
-	p->sum -= (long)newstart;
+	p->sum = 0;
+	s = 0;
+	ptr = (ulong*)p;
+	for (i = 0; i < sizeof(Beef)/sizeof(ulong); i++)
+		s += *ptr++;
+	p->sum = -(s+1);
+
 	for(i=0; i<3000000; i++)
 		if(p->launch == 0)
 			break;

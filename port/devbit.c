@@ -7,6 +7,7 @@
 
 #include	"devtab.h"
 
+#include	<libg.h>
 #include	<gnot.h>
 
 extern GFont	*defont;
@@ -44,7 +45,7 @@ struct
 #define	FREE	0x80000000
 void	bitcompact(void);
 void	bitfree(GBitmap*);
-extern	GBitmap	screen;
+extern	GBitmap	gscreen;
 
 struct{
 	/*
@@ -145,7 +146,7 @@ bitreset(void)
 	}
 	bp--;
 	bp->base = 0;
-	bit.map[0] = screen;	/* bitmap 0 is screen */
+	bit.map[0] = gscreen;	/* bitmap 0 is screen */
 	bit.free = bit.map+1;
 	bit.lastid = -1;
 	bit.lastfid = -1;
@@ -164,9 +165,9 @@ bitinit(void)
 {
 	lock(&bit);
 	unlock(&bit);
-	if(screen.ldepth > 1)
+	if(gscreen.ldepth > 1)
 		panic("bitinit ldepth>1");
-	cursorback.ldepth = screen.ldepth;
+	cursorback.ldepth = gscreen.ldepth;
 	cursoron(1);
 }
 
@@ -332,11 +333,11 @@ bitread(Chan *c, void *va, long n)
 			if(n < 18)
 				error(0, Ebadblt);
 			p[0] = 'I';
-			p[1] = screen.ldepth;
-			PLONG(p+2, screen.r.min.x);
-			PLONG(p+6, screen.r.min.y);
-			PLONG(p+10, screen.r.max.x);
-			PLONG(p+14, screen.r.max.y);
+			p[1] = gscreen.ldepth;
+			PLONG(p+2, gscreen.r.min.x);
+			PLONG(p+6, gscreen.r.min.y);
+			PLONG(p+10, gscreen.r.max.x);
+			PLONG(p+14, gscreen.r.max.y);
 			if(n >= 18+3*12+6*(defont->n+1)){
 				p += 18;
 				sprint((char*)p, "%11d %11d %11d ", defont->n,
@@ -414,7 +415,7 @@ bitread(Chan *c, void *va, long n)
 			n = 0;
 			p = va;
 			for(y=miny; y<maxy; y++){
-				q = (uchar*)addr(src, Pt(src->r.min.x, y));
+				q = (uchar*)gaddr(src, Pt(src->r.min.x, y));
 				q += (src->r.min.x&((sizeof(ulong))*ws-1))/ws;
 				for(x=0; x<l; x++)
 					*p++ = K2U(*q++);
@@ -432,25 +433,25 @@ bitread(Chan *c, void *va, long n)
 			if(n < 5*12)
 				error(0, Eio);
 			sprint(va, "%11d %11d %11d %11d %11d ",
-				screen.ldepth, screen.r.min.x,
-				screen.r.min.y, screen.r.max.x,
-				screen.r.max.y);
+				gscreen.ldepth, gscreen.r.min.x,
+				gscreen.r.min.y, gscreen.r.max.x,
+				gscreen.r.max.y);
 			n = 5*12;
 			break;
 		}
-		ws = 1<<(3-screen.ldepth);	/* pixels per byte */
-		l = (screen.r.max.x+ws-1)/ws - screen.r.min.x/ws;
+		ws = 1<<(3-gscreen.ldepth);	/* pixels per byte */
+		l = (gscreen.r.max.x+ws-1)/ws - gscreen.r.min.x/ws;
 		t = c->offset-5*12;
 		miny = t/l;
 		maxy = (t+n)/l;
-		if(miny >= screen.r.max.y)
+		if(miny >= gscreen.r.max.y)
 			return 0;
-		if(maxy >= screen.r.max.y)
-			maxy = screen.r.max.y;
+		if(maxy >= gscreen.r.max.y)
+			maxy = gscreen.r.max.y;
 		n = 0;
 		p = va;
 		for(y=miny; y<maxy; y++){
-			q = (uchar*)addr(&screen, Pt(0, y));
+			q = (uchar*)gaddr(&gscreen, Pt(0, y));
 			for(x=0; x<l; x++)
 				*p++ = K2U(*q++);
 			n += l;
@@ -938,7 +939,7 @@ bitwrite(Chan *c, void *va, long n)
 				isoff = 1;
 			}
 			for(y=miny; y<maxy; y++){
-				q = (uchar*)addr(dst, Pt(dst->r.min.x, y));
+				q = (uchar*)gaddr(dst, Pt(dst->r.min.x, y));
 				q += (dst->r.min.x&((sizeof(ulong))*ws-1))/ws;
 				for(x=0; x<l; x++)
 					*q++ = U2K(*p++);
@@ -1049,10 +1050,10 @@ cursoron(int dolock)
 		cursor.r.min = mouse.xy;
 		cursor.r.max = add(mouse.xy, Pt(16, 16));
 		cursor.r = raddp(cursor.r, cursor.offset);
-		gbitblt(&cursorback, Pt(0, 0), &screen, cursor.r, S);
-		gbitblt(&screen, add(mouse.xy, cursor.offset),
+		gbitblt(&cursorback, Pt(0, 0), &gscreen, cursor.r, S);
+		gbitblt(&gscreen, add(mouse.xy, cursor.offset),
 			&clr, Rect(0, 0, 16, 16), D&~S);
-		gbitblt(&screen, add(mouse.xy, cursor.offset),
+		gbitblt(&gscreen, add(mouse.xy, cursor.offset),
 			&set, Rect(0, 0, 16, 16), S|D);
 	}
 	if(dolock)
@@ -1065,7 +1066,7 @@ cursoroff(int dolock)
 	if(dolock)
 		lock(&cursor);
 	if(--cursor.visible == 0)
-		gbitblt(&screen, cursor.r.min, &cursorback, Rect(0, 0, 16, 16), S);
+		gbitblt(&gscreen, cursor.r.min, &cursorback, Rect(0, 0, 16, 16), S);
 	if(dolock)
 		unlock(&cursor);
 }
@@ -1089,15 +1090,15 @@ mouseclock(void)	/* called spl6 */
 	int x, y;
 	if(mouse.track && canlock(&cursor)){
 		x = mouse.xy.x + mouse.dx;
-		if(x < screen.r.min.x)
-			x = screen.r.min.x;
-		if(x >= screen.r.max.x)
-			x = screen.r.max.x;
+		if(x < gscreen.r.min.x)
+			x = gscreen.r.min.x;
+		if(x >= gscreen.r.max.x)
+			x = gscreen.r.max.x;
 		y = mouse.xy.y + mouse.dy;
-		if(y < screen.r.min.y)
-			y = screen.r.min.y;
-		if(y >= screen.r.max.y)
-			y = screen.r.max.y;
+		if(y < gscreen.r.min.y)
+			y = gscreen.r.min.y;
+		if(y >= gscreen.r.max.y)
+			y = gscreen.r.max.y;
 		cursoroff(0);
 		mouse.xy = Pt(x, y);
 		cursoron(0);

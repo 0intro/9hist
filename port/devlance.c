@@ -467,6 +467,9 @@ lancereset(void)
 				l.rpa[i] = (uchar *)&l.lm->rp[i];
 			for(i = 0; i < Ntrb; i++)
 				l.tpa[i] = (uchar *)&l.lm->tp[i];
+
+			l.rp = ((Lancemem *)LANCERAM)->rp;
+			l.tp = ((Lancemem *)LANCERAM)->tp;
 		} else {
 			/*
 			 *  toggle lance's reset line

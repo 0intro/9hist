@@ -37,7 +37,6 @@ typedef struct Seg	Seg;
 typedef struct Stream	Stream;
 typedef struct Ureg	Ureg;
 typedef struct User	User;
-typedef struct Syslog	Syslog;
 
 typedef int Devgen(Chan*, Dirtab*, int, int, Dir*);
 
@@ -697,14 +696,3 @@ extern	Dev	devtab[];
 extern	char	devchar[];
 extern	FPsave	initfp;
 
-/*
- *  kernel based system log, passed between crashes
- */
-#define SYSLOG		((Syslog *)(0xa0001B00))
-#define SYSLOGMAGIC	0x87654321
-struct Syslog
-{
-	ulong	magic;
-	char	*next;
-	char	buf[8*1024];
-};

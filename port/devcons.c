@@ -303,7 +303,7 @@ enum{
 Dirtab consdir[]={
 	"cons",		Qcons,		0,	0600,
 	"cputime",	Qcputime,	72,	0600,
-	"log",		Qlog,		sizeof(SYSLOG->buf),	0600,
+	"log",		Qlog,		BY2PG-8,	0600,
 	"null",		Qnull,		0,	0600,
 	"pgrpid",	Qpgrpid,	12,	0600,
 	"pid",		Qpid,		12,	0600,
@@ -596,8 +596,19 @@ consuserstr(Error *e, char *buf)
 }
 
 /*
- *  crash info
+ *  kernel based system log, passed between crashes
  */
+#define SYSLOGMAGIC	0x23456789
+#define SYSLOG		((Syslog *)(UNCACHED | KZERO | 0x1B00))
+typedef struct Syslog	Syslog;
+struct Syslog
+{
+	ulong	magic;
+	char	*start;
+	char	*next;
+	char	buf[BY2PG - 3*BY2WD];
+};
+
 void
 sysloginit(void)
 {
@@ -606,7 +617,8 @@ sysloginit(void)
 
 	s = SYSLOG;
 	if(s->magic!=SYSLOGMAGIC || s->next>=&s->buf[sizeof(s->buf)]
-	|| s->next<s->buf){
+	|| s->start>=&s->buf[sizeof(s->buf)] || s->next<s->buf){
+		s->start = s->buf;
 		s->next = s->buf;
 		s->magic = SYSLOGMAGIC;
 	}
@@ -615,26 +627,35 @@ sysloginit(void)
 void
 syslog(char *p, int n)
 {
-	int i;
+	int restart;
 	Syslog *s;
 	char *end;
 
 	s = SYSLOG;
 	end = &s->buf[sizeof(s->buf)];
+	restart = 0;
 	while(n-- > 0){
 		*s->next++ = *p++;
 		if(s->next >= end)
 			s->next = s->buf;
+		if(s->next == s->start)
+			restart = 1;
 	}
+	if(restart){
+		s->start = s->next + 1;
+		if(s->start >= end)
+			s->start = s->buf;
+	}
+	wbflush();
 }
 
 long
 readlog(ulong off, char *buf, ulong n)
 {
 	Syslog *s;
-	int i;
 	char *p;
 	char *end;
+	char *a = buf;
 
 	s = SYSLOG;
 
@@ -642,20 +663,24 @@ readlog(ulong off, char *buf, ulong n)
 	if(off >= sizeof(s->buf))
 		return 0;
 
-	/* trim length */
-	if(off + n >= sizeof(s->buf))
-		n = sizeof(s->buf) - off;
-
 	/* point to start of area to be read */
 	end = &s->buf[sizeof(s->buf)];
-	p = s->next + off;
-	if(p > end)
-		p -= sizeof(s->buf);
+	p = s->start;
 
-	for(i = 0; i < n; i++){
-		*buf++ = *p++;
+	/* skip offset */
+	while(off-- > 0){
+		if(p == s->next)
+			return 0;
+		p++;
+	}
+
+	/* copy out */
+	while(n-- > 0){
+		if(p == s->next)
+			break;
+		*a++ = *p++;
 		if(p >= end)
 			p = s->buf;
 	}
-	return n;
+	return a-buf;
 }
