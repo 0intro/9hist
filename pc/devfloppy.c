@@ -144,8 +144,6 @@ floppyreset(void)
 	FDrive *dp;
 	FType *t;
 	ulong maxtsize;
-
-	dmainit(DMAchan);
 	
 	floppysetup0(&fl);
 
@@ -160,6 +158,8 @@ floppyreset(void)
 		if(maxtsize < t->tsize)
 			maxtsize = t->tsize;
 	}
+
+	dmainit(DMAchan, maxtsize);
 
 	/*
 	 *  allocate the drive storage

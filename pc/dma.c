@@ -32,6 +32,7 @@ struct DMAxfer
 {
 	ulong	bpa;		/* bounce buffer physical address */
 	void*	bva;		/* bounce buffer virtual address */
+	int	blen;		/* bounce buffer length */
 	void*	va;		/* virtual address destination/src */
 	long	len;		/* bytes to be transferred */
 	int	isread;
@@ -83,29 +84,38 @@ DMA dma[2] = {
  *  initialisation routines of any devices which require DMA to ensure
  *  the allocated bounce buffers are below the 16MB limit.
  */
-void
-dmainit(int chan)
+int
+dmainit(int chan, int maxtransfer)
 {
 	DMA *dp;
 	DMAxfer *xp;
-	ulong v;
+
+	if(maxtransfer > 64*1024)
+		maxtransfer = 64*1024;
 
 	dp = &dma[(chan>>2)&1];
 	chan = chan & 3;
 	xp = &dp->x[chan];
-	if(xp->bva != nil)
-		return;
-
-	v = (ulong)xalloc(BY2PG+BY2PG);
-	if(v == 0 || PADDR(v) >= 16*MB){
-		print("dmainit: chan %d: 0x%luX out of range\n", chan, v);
-		xfree((void*)v);
-		v = 0;
+	if(xp->bva != nil){
+		if(xp->blen < maxtransfer)
+			return 1;
+		return 0;
 	}
-	xp->bva = (void*)ROUND(v, BY2PG);
+
+	xp->bva = xspanalloc(maxtransfer, BY2PG, 64*1024);
+	if(xp->bva == nil)
+		return 1;
 	xp->bpa = PADDR(xp->bva);
+	if(xp->bpa >= 16*MB){
+		xfree(xp->bva);		/* doesn't work... */
+		xp->bva = nil;
+		return 1;
+	}
+	xp->blen = maxtransfer;
 	xp->len = 0;
 	xp->isread = 0;
+
+	return 0;
 }
 
 /*
@@ -132,7 +142,7 @@ dmasetup(int chan, void *va, long len, int isread)
 
 	/*
 	 *  if this isn't kernel memory or crossing 64k boundary or above 16 meg
-	 *  use the allocated low memory page.
+	 *  use the bounce buffer.
 	 */
 	pa = PADDR(va);
 	if((((ulong)va)&0xF0000000) != KZERO
@@ -140,8 +150,8 @@ dmasetup(int chan, void *va, long len, int isread)
 	|| pa >= 16*MB) {
 		if(xp->bva == nil)
 			return -1;
-		if(len > BY2PG)
-			len = BY2PG;
+		if(len > xp->blen)
+			len = xp->blen;
 		if(!isread)
 			memmove(xp->bva, va, len);
 		xp->va = va;

@@ -17,7 +17,7 @@ void	delay(int);
 int	dmacount(int);
 int	dmadone(int);
 void	dmaend(int);
-void	dmainit(int);
+int	dmainit(int, int);
 long	dmasetup(int, void*, long, int);
 #define	evenaddr(x)				/* x86 doesn't care */
 void	fpenv(FPsave*);
