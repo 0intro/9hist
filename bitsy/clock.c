@@ -7,44 +7,6 @@
 #include	"ureg.h"
 #include	"../port/error.h"
 
-typedef struct OSTimer
-{
-	ulong	osmr[4];	/* match registers */
-	ulong	oscr;		/* counter register */
-	ulong	ossr;		/* status register */
-	ulong	ower;		/* watchdog enable register */
-	ulong	oier;		/* timer interrupt enable register */
-} OSTimer;
-
-static OSTimer *timerregs = (OSTimer*)OSTIMERREGS;
-static int clockinited;
-
-static void	clockintr(Ureg*, void*);
-
-typedef struct Clock0link Clock0link;
-typedef struct Clock0link {
-	void		(*clock)(void);
-	Clock0link*	link;
-} Clock0link;
-
-static Clock0link *clock0link;
-static Lock clock0lock;
-
-void
-addclock0link(void (*clock)(void))
-{
-	Clock0link *lp;
-
-	if((lp = malloc(sizeof(Clock0link))) == 0){
-		print("addclock0link: too many links\n");
-		return;
-	}
-	ilock(&clock0lock);
-	lp->clock = clock;
-	lp->link = clock0link;
-	clock0link = lp;
-	iunlock(&clock0lock);
-}
 
 void
 clockinit(void)
@@ -83,40 +45,7 @@ clockintr(Ureg *ureg, void*)
 	/* post interrupt 1/HZ secs from now */
 	timerregs->osmr[0] = timerregs->oscr + ClockFreq/HZ;
 
-	m->ticks++;
-
-	if(m->proc)
-		m->proc->pc = ureg->pc;
-
-	if(inclockintr)
-		return;		/* interrupted ourself */
-
-	inclockintr = 1;
-
-	accounttime();
-	if(kproftimer != nil)
-		(*kproftimer)(ureg->pc);
-
-	checkalarms();
-	ilock(&clock0lock);
-	for(lp = clock0link; lp; lp = lp->link)
-		lp->clock();
-	iunlock(&clock0lock);
-
-	if(active.exiting && (active.machs & (1<<m->machno)))
-		exit(0);
-	inclockintr = 0;
-
-	if(up == 0 || up->state != Running)
-		return;
-
-	if(anyready())
-		sched();
-	
-	if((ureg->psr & PsrMask) == PsrMusr) {
-		(*(ulong*)(USTKTOP-BY2WD)) += TK2MS(1);
-		segclock(ureg->pc);
-	}
+	portclock();
 }
 
 void

@@ -43,6 +43,7 @@ configip(void)
 	case 'b':
 	case 'h':
 	case 'm':
+	case 'c':
 		p = ARGF();
 		USED(p);
 		break;

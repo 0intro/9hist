@@ -460,3 +460,376 @@ audioinit(void)
 
 	return 0;
 }
+
+static void
+audioinit(void)
+{}
+
+
+static Chan*
+audioattach(char *param)
+{
+	return devattach('A', param);
+}
+
+static int
+audiowalk(Chan *c, char *name)
+{
+	return devwalk(c, name, audiodir, nelem(audiodir), devgen);
+}
+
+static void
+audiostat(Chan *c, char *db)
+{
+	devstat(c, db, audiodir, nelem(audiodir), devgen);
+}
+
+static Chan*
+audioopen(Chan *c, int omode)
+{
+	int amode;
+
+	switch(c->qid.path & ~CHDIR) {
+	default:
+		error(Eperm);
+		break;
+
+	case Qstatus:
+		if((omode&7) != OREAD)
+			error(Eperm);
+	case Qvolume:
+	case Qdir:
+		break;
+
+	case Qaudio:
+		amode = Awrite;
+		switch (omode & 0x7)
+		case OREAD:
+			break;
+		case OWRITE
+		qlock(&audio);
+		if(audio.amode != Aclosed){
+			qunlock(&audio);
+			error(Einuse);
+		}
+		if(audio.bufinit == 0) {
+			audio.bufinit = 1;
+			sbbufinit();
+		}
+		audio.amode = amode;
+		setempty();
+		audio.curcount = 0;
+		qunlock(&audio);
+		mxvolume();
+		break;
+	}
+	c = devopen(c, omode, audiodir, nelem(audiodir), devgen);
+	c->mode = openmode(omode);
+	c->flag |= COPEN;
+	c->offset = 0;
+
+	return c;
+}
+
+static void
+audioclose(Chan *c)
+{
+	Buf *b;
+
+	switch(c->qid.path & ~CHDIR) {
+	default:
+		error(Eperm);
+		break;
+
+	case Qdir:
+	case Qvolume:
+	case Qstatus:
+		break;
+
+	case Qaudio:
+		if(c->flag & COPEN) {
+			qlock(&audio);
+			if(audio.amode == Awrite) {
+				/* flush out last partial buffer */
+				b = audio.filling;
+				if(b) {
+					audio.filling = 0;
+					memset(b->virt+audio.curcount, 0, Bufsize-audio.curcount);
+					swab(b->virt);
+					putbuf(&audio.full, b);
+				}
+				if(!audio.active && audio.full.first)
+					pokeaudio();
+			}
+			audio.amode = Aclosed;
+			if(waserror()){
+				qunlock(&audio);
+				nexterror();
+			}
+			while(audio.active)
+				waitaudio();
+			setempty();
+			poperror();
+			qunlock(&audio);
+		}
+		break;
+	}
+}
+
+static long
+audioread(Chan *c, void *v, long n, vlong off)
+{
+	int liv, riv, lov, rov;
+	long m, n0;
+	char buf[300];
+	Buf *b;
+	int j;
+	ulong offset = off;
+	char *a;
+
+	n0 = n;
+	a = v;
+	switch(c->qid.path & ~CHDIR) {
+	default:
+		error(Eperm);
+		break;
+
+	case Qdir:
+		return devdirread(c, a, n, audiodir, nelem(audiodir), devgen);
+
+	case Qaudio:
+		if(audio.amode != Aread)
+			error(Emode);
+		qlock(&audio);
+		if(waserror()){
+			qunlock(&audio);
+			nexterror();
+		}
+		while(n > 0) {
+			b = audio.filling;
+			if(b == 0) {
+				b = getbuf(&audio.full);
+				if(b == 0) {
+					waitaudio();
+					continue;
+				}
+				audio.filling = b;
+				swab(b->virt);
+				audio.curcount = 0;
+			}
+			m = Bufsize-audio.curcount;
+			if(m > n)
+				m = n;
+			memmove(a, b->virt+audio.curcount, m);
+
+			audio.curcount += m;
+			n -= m;
+			a += m;
+			if(audio.curcount >= Bufsize) {
+				audio.filling = 0;
+				putbuf(&audio.empty, b);
+			}
+		}
+		poperror();
+		qunlock(&audio);
+		break;
+
+	case Qstatus:
+		buf[0] = 0;
+		snprint(buf, sizeof(buf), "bytes %lud\ntime %lld\n",
+			audio.totcount, audio.tottime);
+		return readstr(offset, a, n, buf);
+
+	case Qvolume:
+		j = 0;
+		buf[0] = 0;
+		for(m=0; volumes[m].name; m++){
+			liv = audio.livol[m];
+			riv = audio.rivol[m];
+			lov = audio.lovol[m];
+			rov = audio.rovol[m];
+			j += snprint(buf+j, sizeof(buf)-j, "%s", volumes[m].name);
+			if((volumes[m].flag & Fmono) || liv==riv && lov==rov){
+				if((volumes[m].flag&(Fin|Fout))==(Fin|Fout) && liv==lov)
+					j += snprint(buf+j, sizeof(buf)-j, " %d", liv);
+				else{
+					if(volumes[m].flag & Fin)
+						j += snprint(buf+j, sizeof(buf)-j,
+							" in %d", liv);
+					if(volumes[m].flag & Fout)
+						j += snprint(buf+j, sizeof(buf)-j,
+							" out %d", lov);
+				}
+			}else{
+				if((volumes[m].flag&(Fin|Fout))==(Fin|Fout) &&
+				    liv==lov && riv==rov)
+					j += snprint(buf+j, sizeof(buf)-j,
+						" left %d right %d",
+						liv, riv);
+				else{
+					if(volumes[m].flag & Fin)
+						j += snprint(buf+j, sizeof(buf)-j,
+							" in left %d right %d",
+							liv, riv);
+					if(volumes[m].flag & Fout)
+						j += snprint(buf+j, sizeof(buf)-j,
+							" out left %d right %d",
+							lov, rov);
+				}
+			}
+			j += snprint(buf+j, sizeof(buf)-j, "\n");
+		}
+		return readstr(offset, a, n, buf);
+	}
+	return n0-n;
+}
+
+static long
+audiowrite(Chan *c, void *vp, long n, vlong)
+{
+	long m, n0;
+	int i, nf, v, left, right, in, out;
+	char buf[255], *field[Ncmd];
+	Buf *b;
+	char *a;
+
+	a = vp;
+	n0 = n;
+	switch(c->qid.path & ~CHDIR) {
+	default:
+		error(Eperm);
+		break;
+
+	case Qvolume:
+		v = Vaudio;
+		left = 1;
+		right = 1;
+		in = 1;
+		out = 1;
+		if(n > sizeof(buf)-1)
+			n = sizeof(buf)-1;
+		memmove(buf, a, n);
+		buf[n] = '\0';
+
+		nf = getfields(buf, field, Ncmd, 1, " \t\n");
+		for(i = 0; i < nf; i++){
+			/*
+			 * a number is volume
+			 */
+			if(field[i][0] >= '0' && field[i][0] <= '9') {
+				m = strtoul(field[i], 0, 10);
+				if(left && out)
+					audio.lovol[v] = m;
+				if(left && in)
+					audio.livol[v] = m;
+				if(right && out)
+					audio.rovol[v] = m;
+				if(right && in)
+					audio.rivol[v] = m;
+				mxvolume();
+				goto cont0;
+			}
+
+			for(m=0; volumes[m].name; m++) {
+				if(strcmp(field[i], volumes[m].name) == 0) {
+					v = m;
+					in = 1;
+					out = 1;
+					left = 1;
+					right = 1;
+					goto cont0;
+				}
+			}
+
+			if(strcmp(field[i], "reset") == 0) {
+				resetlevel();
+				mxvolume();
+				goto cont0;
+			}
+			if(strcmp(field[i], "in") == 0) {
+				in = 1;
+				out = 0;
+				goto cont0;
+			}
+			if(strcmp(field[i], "out") == 0) {
+				in = 0;
+				out = 1;
+				goto cont0;
+			}
+			if(strcmp(field[i], "left") == 0) {
+				left = 1;
+				right = 0;
+				goto cont0;
+			}
+			if(strcmp(field[i], "right") == 0) {
+				left = 0;
+				right = 1;
+				goto cont0;
+			}
+			error(Evolume);
+			break;
+		cont0:;
+		}
+		break;
+
+	case Qaudio:
+		if(audio.amode != Awrite)
+			error(Emode);
+		qlock(&audio);
+		if(waserror()){
+			qunlock(&audio);
+			nexterror();
+		}
+		while(n > 0) {
+			b = audio.filling;
+			if(b == 0) {
+				b = getbuf(&audio.empty);
+				if(b == 0) {
+					waitaudio();
+					continue;
+				}
+				audio.filling = b;
+				audio.curcount = 0;
+			}
+
+			m = Bufsize-audio.curcount;
+			if(m > n)
+				m = n;
+			memmove(b->virt+audio.curcount, a, m);
+
+			audio.curcount += m;
+			n -= m;
+			a += m;
+			if(audio.curcount >= Bufsize) {
+				audio.filling = 0;
+				swab(b->virt);
+				putbuf(&audio.full, b);
+			}
+		}
+		poperror();
+		qunlock(&audio);
+		break;
+	}
+	return n0 - n;
+}
+
+Dev audiodevtab = {
+	'A',
+	"audio",
+
+	devreset,
+	audioinit,
+	audioattach,
+	devclone,
+	audiowalk,
+	audiostat,
+	audioopen,
+	devcreate,
+	audioclose,
+	audioread,
+	devbread,
+	audiowrite,
+	devbwrite,
+	devremove,
+	devwstat,
+};

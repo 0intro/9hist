@@ -22,7 +22,7 @@ extern uchar	hostkey[];
 extern char	username[NAMELEN];
 enum
 {
-	Nbarg=	16,
+	Nbarg=	32,
 };
 extern int	bargc;
 extern char	*bargv[Nbarg];

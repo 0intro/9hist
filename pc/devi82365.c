@@ -178,6 +178,7 @@ struct Slot
 	uchar	busy;
 
 	/* cis info */
+	ulong	msec;		/* time of last slotinfo call */
 	char	verstr[512];	/* version string */
 	uchar	cpresent;	/* config registers present */
 	ulong	caddr;		/* relative address of config registers */
@@ -236,6 +237,7 @@ slotinfo(Slot *pp)
 	pp->battery = (isr & 3) == 3;
 	pp->wrprot = isr & (1<<4);
 	pp->busy = isr & (1<<5);
+	pp->msec = TK2MS(MACHP(0)->ticks);
 }
 
 static int
@@ -438,28 +440,35 @@ pcmspecial(char *idstr, ISAConf *isa)
 {
 	Slot *pp;
 	extern char *strstr(char*, char*);
-	static int resetdone;
+	int enabled;
 
 	i82365reset();
-print("pcmcia: looking for %s: ", idstr);
 	for(pp = slot; pp < lastslot; pp++){
 		if(pp->special)
 			continue;	/* already taken */
-		increfp(pp);
+		enabled = 0;
+		/* make sure we don't power on cards when we already know what's
+		 * in them.  We'll reread every two minutes if necessary
+		 */
+		if (pp->msec == ~0 || TK2MS(MACHP(0)->ticks) - pp->msec > 120000) {
+			increfp(pp);
+			enabled++;
+		}
 
 		if(pp->occupied) {
-print("[%8.8s]", pp->verstr);
-			if(strstr(pp->verstr, idstr))
-			if(isa == 0 || pcmio(pp->slotno, isa) == 0){
-				pp->special = 1;
-print(" - found\n");
-				return pp->slotno;
+			if(strstr(pp->verstr, idstr)) {
+				if (!enabled)
+					increfp(pp);
+				if(isa == 0 || pcmio(pp->slotno, isa) == 0){
+					pp->special = 1;
+					return pp->slotno;
+				}
 			}
 		} else
 			pp->special = 1;
-		decrefp(pp);
+		if (enabled)
+			decrefp(pp);
 	}
-print("\n");
 	return -1;
 }
 
@@ -680,6 +689,7 @@ i82365reset(void)
 			pp->memlen = 64*MB;
 			pp->base = (cp->dev<<7) | (j<<6);
 			pp->cp = cp;
+			pp->msec = ~0;
 			slotdis(pp);
 
 			/* interrupt on status change */

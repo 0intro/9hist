@@ -199,6 +199,34 @@ findmethod(char *a)
 	return 0;
 }
 
+int
+parsecmd(char *s, char **av, int n)
+{
+	int ac;
+
+	n--;
+	for(ac = 0; ac < n; ac++){
+		while(*s == ' ' || *s == '\t')
+			s++;
+		if(*s == 0 || *s == '\n' || *s == '\r')
+			break;
+		if(*s == '\''){
+			s++;
+			av[ac] = s;
+			while(*s && *s != '\'')
+				s++;
+		} else {
+			av[ac] = s;
+			while(*s && *s != ' ' && *s != '\t')
+				s++;
+		}
+		if(*s != 0)
+			*s++ = 0;
+	}
+	av[ac] = 0;
+	return ac;
+}
+
 /*
  *  ask user from whence cometh the root file system
  */
@@ -234,7 +262,7 @@ rootserver(char *arg)
 		outin(prompt, reply, sizeof(reply));
 		mp = findmethod(reply);
 		if(mp){
-			bargc = getfields(reply, bargv, Nbarg-1, 1, " ");
+			bargc = parsecmd(reply, bargv, Nbarg);
 			cp = strchr(reply, '!');
 			if(cp)
 				strcpy(sys, cp+1);
