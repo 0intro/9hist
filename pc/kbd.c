@@ -354,10 +354,24 @@ i8042intr(Ureg*, void*)
 			return;
 		case Latin:
 			alt = 1;
-			collecting = 1;
-			nk = 0;
+			/*
+			 * VMware uses Ctl-Alt as the key combination
+			 * to make the VM give up keyboard and mouse focus.
+			 * This has the unfortunate side effect that when you
+			 * come back into focus, Plan 9 thinks you want to type
+			 * a compose sequence (you just typed alt). 
+			 *
+			 * As a clusmy hack around this, we look for ctl-alt
+			 * and don't treat it as the start of a compose sequence.
+			 */
+			if(!ctl){
+				collecting = 1;
+				nk = 0;
+			}
 			return;
 		case Ctrl:
+			collecting = 0;
+			nk = 0;
 			ctl = 1;
 			return;
 		}

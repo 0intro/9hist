@@ -682,10 +682,12 @@ print("unknown noted arg 0x%lux\n", arg0);
 long
 syscall(Ureg *aur)
 {
+	int i;
 	char *e;
 	long ret;
 	ulong sp;
 	Ureg *ur;
+	ulong scallnr;
 
 	m->syscall++;
 	up = m->proc;
@@ -695,9 +697,10 @@ syscall(Ureg *aur)
 	up->dbgreg = aur;
 	ur->type = 5;		/* for debugging */
 
+	scallnr = ur->r0;
 	up->scallnr = ur->r0;
 
-	if(up->scallnr == RFORK && up->fpstate == FPactive){
+	if(scallnr == RFORK && up->fpstate == FPactive){
 		savefpregs(&up->fpsave);
 		up->fpstate = FPinactive;
 //print("SR=%lux+", up->fpsave.fpstatus);
@@ -707,46 +710,48 @@ syscall(Ureg *aur)
 	sp = ur->sp;
 	up->nerrlab = 0;
 	ret = -1;
-	if(waserror())
-		goto error;
+	if(!waserror()) {
+		if(scallnr >= nsyscall || systab[scallnr] == nil){
+			pprint("bad sys call %d pc %lux\n", up->scallnr, (ulong)ur->pc);
+			postnote(up, 1, "sys: bad sys call", NDebug);
+			error(Ebadarg);
+		}
 
-	if(up->scallnr >= nsyscall){
-		pprint("bad sys call %d pc %lux\n",
-			up->scallnr, (ulong)ur->pc);
-print("bad sys call %d pc %lux\n", up->scallnr, (ulong)ur->pc);
-		postnote(up, 1, "sys: bad sys call", NDebug);
-		error(Ebadarg);
+		if(sp & (BY2WD-1)){	/* XXX too weak? */
+			pprint("odd sp in sys call pc %lux sp %lux\n",
+				(ulong)ur->pc, (ulong)ur->sp);
+			postnote(up, 1, "sys: odd stack", NDebug);
+			error(Ebadarg);
+		}
+
+		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-sizeof(Sargs)))
+			validaddr(sp, sizeof(Sargs), 0);
+
+		up->s = *((Sargs*)(sp+2*BY2WD));
+		up->psstate = sysctab[scallnr];
+		ret = systab[scallnr](up->s.args);
+		poperror();
+	}else{
+		/* failure: save the error buffer for errstr */
+		e = up->syserrstr;
+		up->syserrstr = up->errstr;
+		up->errstr = e;
 	}
-
-	if(sp & (BY2WD-1)){	/* XXX too weak? */
-		pprint("odd sp in sys call pc %lux sp %lux\n",
-			(ulong)ur->pc, (ulong)ur->sp);
-		postnote(up, 1, "sys: odd stack", NDebug);
-		error(Ebadarg);
+	if(up->nerrlab){
+		print("bad errstack [%uld]: %d extra\n", scallnr, up->nerrlab);
+		for(i = 0; i < NERR; i++)
+			print("sp=%lux pc=%lux\n",
+				up->errlab[i].sp, up->errlab[i].pc);
+		panic("error stack");
 	}
-
-	if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-sizeof(Sargs)))
-		validaddr(sp, sizeof(Sargs), 0);
-
-	up->s = *((Sargs*)(sp+2*BY2WD));
-	up->psstate = sysctab[up->scallnr];
-
-	ret = (*systab[up->scallnr])(up->s.args);
-	poperror();
-
-error:
-	/* failure: save the error buffer for errstr */
-	e = up->syserrstr;
-	up->syserrstr = up->errstr;
-	up->errstr = e;
 
 	up->nerrlab = 0;
 	up->psstate = 0;
 	up->insyscall = 0;
-	if(up->scallnr == NOTED)			/* ugly hack */
+	if(scallnr == NOTED)			/* ugly hack */
 		noted(ur, &aur, *(ulong*)(sp+2*BY2WD));	/* doesn't return */
 
-	if(up->scallnr!=RFORK && (up->procctl || up->nnote)){
+	if(scallnr!=RFORK && (up->procctl || up->nnote)){
 		ur->r0 = ret;				/* load up for noted() */
 		if(notify(ur))
 			return ur->r0;

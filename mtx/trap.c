@@ -627,10 +627,10 @@ dbgpc(Proc *p)
 void
 syscall(Ureg* ureg)
 {
+	int i;
 	char *e;
-	ulong sp;
 	long	ret;
-	int i, scallnr;
+	ulong sp, scallnr;
 
 	m->syscall++;
 	up->insyscall = 1;
@@ -638,15 +638,14 @@ syscall(Ureg* ureg)
 	up->dbgreg = ureg;
 
 	scallnr = ureg->r3;
-//print("scall %s lr =%lux\n", sysctab[scallnr], ureg->lr);
-	up->scallnr = scallnr;
+	up->scallnr = ureg->r3;
 	spllo();
 
 	sp = ureg->usp;
 	up->nerrlab = 0;
 	ret = -1;
 	if(!waserror()){
-		if(scallnr >= nsyscall){
+		if(scallnr >= nsyscall || systab[scallnr] == nil){
 			pprint("bad sys call number %d pc %lux\n", scallnr, ureg->pc);
 			postnote(up, 1, "sys: bad sys call", NDebug);
 			error(Ebadarg);
@@ -667,7 +666,7 @@ syscall(Ureg* ureg)
 		up->errstr = e;
 	}
 	if(up->nerrlab){
-		print("bad errstack [%d]: %d extra\n", scallnr, up->nerrlab);
+		print("bad errstack [%uld]: %d extra\n", scallnr, up->nerrlab);
 		print("scall %s lr =%lux\n", sysctab[scallnr], ureg->lr);
 		for(i = 0; i < NERR; i++)
 			print("sp=%lux pc=%lux\n", up->errlab[i].sp, up->errlab[i].pc);

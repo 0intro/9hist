@@ -1425,23 +1425,33 @@ reset(Usbhost *uh)
 	if(ctlr == nil)
 		return -1;
 
+	io = ctlr->io;
 	p = ctlr->pcidev;
-	pcicfgw16(p, 0xc0, 0x2000);		/* legacy support register: turn off lunacy mode */
 
 	uh->ctlr = ctlr;
-	uh->port = ctlr->io;
+	uh->port = io;
 	uh->irq = p->intl;
 	uh->tbdf = p->tbdf;
 
-	io = ctlr->io;
-	i = inb(io+SOFMod);
+	XPRINT("usbcmd\t0x%.4x\nusbsts\t0x%.4x\nusbintr\t0x%.4x\nfrnum\t0x%.2x\n",
+		IN(Cmd), IN(Status), IN(Usbintr), inb(io+Frnum));
+	XPRINT("frbaseadd\t0x%.4x\nsofmod\t0x%x\nportsc1\t0x%.4x\nportsc2\t0x%.4x\n",
+		IN(Flbaseadd), inb(io+SOFMod), IN(Portsc0), IN(Portsc1));
+
+	OUT(Cmd, 0);					/* stop */
+	while((IN(Status) & (1<<5)) == 0)	/* wait for halt */
+		;
+	OUT(Status, 0xFF);				/* clear pending interrupts */
+	pcicfgw16(p, 0xc0, 0x2000);		/* legacy support register: turn off lunacy mode */
+
 	if(0){
+		i = inb(io+SOFMod);
 		OUT(Cmd, 4);	/* global reset */
 		delay(15);
 		OUT(Cmd, 0);	/* end reset */
 		delay(4);
+		outb(io+SOFMod, i);
 	}
-	outb(io+SOFMod, i);
 
 	ctlr->tdpool = xspanalloc(128*sizeof(TD), 16, 0);
 	for(i=128; --i>=0;){
@@ -1474,12 +1484,6 @@ reset(Usbhost *uh)
 	ctlr->bwsop->head = PCIWADDR(ctlr->bulkq) | IsQH;
 	ctlr->bulkq->head = PCIWADDR(ctlr->recvq) | IsQH;
 	ctlr->recvq->head = PCIWADDR(ctlr->bwsop) | IsQH;	/* loop back */
-
-	XPRINT("usbcmd\t0x%.4x\nusbsts\t0x%.4x\nusbintr\t0x%.4x\nfrnum\t0x%.2x\n",
-		IN(Cmd), IN(Status), IN(Usbintr), inb(io+Frnum));
-	XPRINT("frbaseadd\t0x%.4x\nsofmod\t0x%x\nportsc1\t0x%.4x\nportsc2\t0x%.4x\n",
-		IN(Flbaseadd), inb(io+SOFMod), IN(Portsc0), IN(Portsc1));
-	OUT(Cmd, 0);	/* stop */
 
 	ctlr->frames = xspanalloc(FRAMESIZE, FRAMESIZE, 0);
 	ctlr->frameld = xallocz(FRAMESIZE, 1);

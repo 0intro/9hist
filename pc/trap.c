@@ -531,7 +531,8 @@ syscall(Ureg* ureg)
 	char *e;
 	ulong	sp;
 	long	ret;
-	int	i, scallnr;
+	int	i;
+	ulong scallnr;
 
 	if((ureg->cs & 0xFFFF) != UESEL)
 		panic("syscall: cs 0x%4.4luX\n", ureg->cs);
