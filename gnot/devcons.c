@@ -95,6 +95,7 @@ Qinfo rs232info =
 void
 printinit(void)
 {
+	screeninit();
 
 	lock(&printq);		/* allocate lock */
 	unlock(&printq);
@@ -115,8 +116,6 @@ printinit(void)
 	unlock(&klogq);
 	lock(&klogq.put);	/* allocate lock */
 	unlock(&klogq.put);
-
-	screeninit();
 }
 
 /*
