@@ -450,7 +450,7 @@ _ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 	case Ilestablished:
 		switch(h->iltype) {
 		case Ilsync:
-			if(id != ic->start)
+			if(id != ic->rstart)
 				ilhangup(s, "remote close");
 			else {
 				ilsendctl(s, 0, Ilack, ic->next, ic->rstart);
