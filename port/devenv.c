@@ -28,6 +28,7 @@ struct
 	Envval	*free[EVFREE+1];
 	char	*block;			/* the free page we are allocating from */
 	char	*lim;			/* end of block */
+	int	npage;			/* total pages gotten from newpage() */
 }envalloc;
 
 QLock	evlock;
@@ -366,9 +367,10 @@ evalloc(ulong n)
 			b += ALIGN + sizeof *ev;
 		}
 		b = (char*)VA(kmap(newpage(0, 0, 0)));
+		envalloc.npage++;
 		envalloc.lim = b + BY2PG;
 	}
-
+	
 	ev = (Envval*)b;
 	ev->val = b + sizeof *ev;
 	ev->ref = 1;
@@ -398,6 +400,43 @@ evfree(Envval *ev)
 		n = EVFREE;
 	ev->next = envalloc.free[n];
 	envalloc.free[n] = ev;
+}
+
+void
+envdump(void)
+{
+	Envval *ev;
+	int i, j;
+
+	qlock(&evlock);
+	print("pages allocated: %d\n", envalloc.npage);
+	print("bytes left in page: %d\n", envalloc.lim - envalloc.block);
+	for(i = 0; i < EVFREE + 1; i++){
+		j = 0;
+		if(i == EVFREE)
+			print("big blocks:\n");
+		else
+			print("%d byte blocks:\n", (i + 1) * ALIGN);
+		for(ev = envalloc.free[i]; ev; ev = ev->next){
+			if(j++ == 1000){
+				print("circular\n");
+				break;
+			}
+			if(j < 10)
+				print("\tenv %d %lux n%lux p%lux r%d\n",
+					ev->len, ev, ev->next, ev->prev, ev->ref);
+		}
+	}
+	for(i = 0; i < EVHASH; i++){
+		j = 0;
+		for(ev = evhash[i].next; ev; ev = ev->next){
+			if(j++ == 1000){
+				print("hash bucket %d circular\n", i);
+				break;
+			}
+		}
+	}
+	qunlock(&evlock);
 }
 
 /*

@@ -19,7 +19,9 @@ char *ilstate[] = { "Closed", "Syncer", "Syncee", "Established", "Listening", "C
 
 void	ilrcvmsg(Ipconv*, Block*);
 void	ilackproc(void*);
-void	ilsendctl(Ipconv *, Ilhdr *, int);
+void	ilsendctl(Ipconv*, Ilhdr*, int, int);
+void	ilackq(Ilcb*, Block*);
+void	ilprocess(Ipconv*, Ilhdr*, Block*);
 
 void
 ilopen(Queue *q, Stream *s)
@@ -127,7 +129,7 @@ iloput(Queue *q, Block *bp)
 }
 
 void
-ilackq(Ilctl *ic, Block *bp)
+ilackq(Ilcb *ic, Block *bp)
 {
 	Block *np;
 
@@ -148,7 +150,7 @@ ilackq(Ilctl *ic, Block *bp)
 }
 
 void
-ilackto(Ilctl *ic, ulong ackto)
+ilackto(Ilcb *ic, ulong ackto)
 {
 	Ilhdr *h;
 	Block *bp;
@@ -157,7 +159,7 @@ ilackto(Ilctl *ic, ulong ackto)
 		lock(ic);
 		if(ic->unacked) {
 			h = (Ilhdr *)ic->unacked->rptr;
-			if(ackto < hngetl(h->ilack)) {
+			if(ackto < nhgetl(h->ilack)) {
 				unlock(ic);
 				break;	
 			}
@@ -184,7 +186,8 @@ ilrcvmsg(Ipconv *ipc, Block *bp)
 {
 	Ilhdr *ih;
 	int plen;
-	Ipconv *s;
+	Ipconv *s, *etab;
+	short sp, dp;
 
 	ih = (Ilhdr *)bp;
 
@@ -197,43 +200,46 @@ ilrcvmsg(Ipconv *ipc, Block *bp)
 		goto drop;
 	}
 
+	sp = nhgets(ih->ildst);
+	dp = nhgets(ih->ilsrc);
 	etab = &ipc[conf.ip];
 	for(s = ipc; s < etab; s++) {
-		if(s->sport == ih->ildst && s->dport == ih->ilsrc) {
+		if(s->psrc == sp && s->pdst == dp) {
 			ilprocess(s, ih, bp);
 			return;
 		}
 			
 	}
 	for(s = ipc; s < etab; s++) {
-		if(s->state == 	Illistening && s->sport == 0) {
+		if(s->ilctl.state == Illistening && s->psrc == 0) {
 			/* Do the listener stuff */
 			ilprocess(s, ih, bp);
 			return;
 		}
 	}
-	ilsendctl(0, ih, Ilreset);
+	ilsendctl(0, ih, Ilreset, 0);
+drop:
 	freeb(bp);
 }
 
 void
-ilprocess(Ipconv *s, Ihdr *h, Block *bp)
+ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 {
 	switch(s->ilctl.state) {
 	case Ilclosed:
 	case Ilclosing:
-	case Illistener:
+	case Illistening:
 		error(Ehungup);
 	}
 
-	switch(h->type) {
+	switch(h->iltype) {
 	case Ilsync:
 		if(s->ilctl.state == Ilsync)
 			s->ilctl.state = Ilestablished;
 		freeb(bp);
 		break;
 	case Ilack:
-		ilackto(&s->ilctl, hngetl(g->ilack));
+		ilackto(&s->ilctl, nhgetl(h->ilack));
 		freeb(bp);
 		break;
 	case Ilquerey:
@@ -242,12 +248,12 @@ ilprocess(Ipconv *s, Ihdr *h, Block *bp)
 		break;
 	case Ildataquery:
 	case Ildata:
-		ilackto(&s->ilctl, hngetl(h->ilack));
+		ilackto(&s->ilctl, nhgetl(h->ilack));
 		bp->rptr += IL_EHSIZE+IL_HDRSIZE;
 		PUTNEXT(s->readq, bp);
 		break;
 	case Ilreset:
-		s->ilctl.state = Closed;
+		s->ilctl.state = Ilclosed;
 		freeb(bp);
 	}
 }
@@ -324,7 +330,7 @@ ilstart(Ipconv *ipc, int type, int window)
 		break;
 	case IL_ACTIVE:
 		ic->state = Ilsyncer;
-		ilsendctl(ipc, 0, Ilsync);
+		ilsendctl(ipc, 0, Ilsync, 1);
 		break;
 	}
 
