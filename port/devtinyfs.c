@@ -13,8 +13,11 @@
 
 enum{
 	Qdir,
-	Nfile=	32,
+	Nfile=		32,
 	Qmedium,
+
+	Magic=		0xfeedbeef,
+	Superlen=	64,
 };
 
 typedef struct FS FS;
@@ -25,9 +28,9 @@ struct FS {
 	int	dev;
 	FS	*next;
 	Chan	*c;
-	Dirtab	*file;
-	int	nfile;
-	int	maxfile;
+	uchar	*fat;
+	ulong	nclust;
+	ulong	clustsize;
 };
 
 struct {
@@ -39,19 +42,80 @@ struct {
 void
 tinyfsreset(void)
 {
-	Dirtab *d;
-
-	d = tinyfs.file;
-	memmove(d->name, "medium");
-	d->qid.vers = 0;
-	d->qid.path = Qmedium;
-	d->perm = 0666;
-	tinyfs.nfile = 1;
 }
 
 void
 tinyfsinit(void)
 {
+}
+
+#define GETS(x) ((x)[0]|((x)[1]<<8))
+#define PUTS(x, v) {(x)[0] = (v);(x)[1] = ((v)>>8);}
+
+#define GETL(x) (GETS(x)|(GETS(x+2)<<16))
+#define PUTL(x, v) {PUTS(x, v);PUTS(x+2, (v)>>16)}; 
+
+/*
+ *  see if we have a reasonable fat/root directory
+ */
+static int
+fsinit(FS *fs)
+{
+	uchar buf[DIRLEN];
+	Dir d;
+	ulong x;
+
+	n = devtab[fs->c->type].read(fs->c, buf, Superlen, 0);
+	if(n != Superlen)
+		error(Eio);
+	x = GETL(buf);
+	if(x != Magic)
+		return -1;
+	fs->clustsize = GETL(buf+4);
+	fs->nclust = GETL(buf+8);
+	x = fs->clustsize*fs->nclust;
+
+	devtab[fs->c->type].stat(fs->c, buf);
+	convM2D(buf, &d);
+	if(d.length < 128)
+		error("tinyfs medium too small");
+	if(d.length < x)
+		return -1;
+
+	fs->fat = smalloc(2*fs->nclust);
+	n = devtab[fs->c->type].read(fs->c, buf, 2*fs->nclust, Superlen);
+	fd(n != 2*fs->nclust)
+		error(Eio);
+
+	x = GETS(fs->fat);
+	if(x == 0)
+		return -1;
+
+	return 0;
+}
+
+/*
+ *  set up the fat and then a root directory (starting at first cluster (1))
+ */
+static void
+fssetup(FS *fs)
+{
+	uchar buf[DIRLEN];
+	Dir d;
+
+	devtab[fs->c->type].stat(fs->c, buf);
+	convM2D(buf, &d);
+	fs->clustsize = d.length>>16;
+	if(fs->clustsize < 64)
+		fs->clustsize = 64;
+	fs->nclust = (d.length - 12)/fs->clustsize;
+	fs->fat = smalloc(2*fs->nclust);
+	n = devtab[fs->c->type].write(fs->c, buf, 2*fs->nclust, Superlen);
+	if(n < 2*fs->nclust)
+		error(Eio);
+	n = devtab[fs->c->type].write(fs->c, buf, Superlen, 0);
+	if(n < Superlen)
+		error(Eio);
 }
 
 Chan *
@@ -61,6 +125,11 @@ tinyfsattach(char *spec)
 	Chan *c, *cc;
 
 	cc = namec((char*)arg[0], Aopen, arg[1], 0);
+	if(waserror()){
+		close(cc);
+		unlock(&fs);
+		nexterror();
+	}
 	qlock(&tinyfs);
 	l = &tinyfs.l;
 	for(fs = tinyfs.l; fs != 0; fs = fs->next){
@@ -74,11 +143,19 @@ tinyfsattach(char *spec)
 		close(cc);
 	} else {
 		fs = smalloc(sizeof(*fs));
-		*l = fs;
 		fs->c = cc;
 		incref(&fs->r);
+		if(waserror()){
+			free(fs);
+			nexterror();
+		}
+		if(fsinit(fs) < 0)
+			fssetup(fs);
+		poperror();
+		*l = fs;
 		qunlock(&tinyfs);
 	}
+	poperror();
 
 	c = devattach('E', spec);
 	c->aux = fs;
@@ -123,21 +200,6 @@ tinyfscreate(Chan *c, char *name, int omode, ulong perm)
 		qunlock(&tinyfs);
 		nexterror();
 	}
-	qlock(&tinyfs);
-
-	if(tinyfs.nfile == Nfile)
-		error("out of space");
-	for(d = tinyfs.file; d < tinyfs.file[tinyfs.nfile]; d++)
-		if(strcmp(name, d->name) == 0)
-			error("create race");
-	strncpy(d->name, name, sizeof(d->name)-1);
-	d->perm = perm;
-	d->qid.vers = 0;
-	d->qid.path = tinyfs.high++;
-	tinyfs.nfile++;
-
-	qunlock(&tinyfs);
-
 	c->mode = openmode(omode);
 	c->flag |= COPEN;
 	c->qid = d->qid;
