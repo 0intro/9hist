@@ -235,7 +235,7 @@ Stream*		streamnew(ushort, ushort, ushort, Qinfo*, int);
 void		streamopen(Chan*, Qinfo*);
 int		streamparse(char*, Block*);
 long		streamread(Chan*, void*, long);
-void		streamstat(Chan*, char*, char*);
+void		streamstat(Chan*, char*, char*, long);
 long		streamwrite(Chan*, void*, long, int);
 void		naildownstream(Stream*);
 void		swapinit(void);

@@ -475,7 +475,7 @@ consclose(Chan *c)
 		unlock(&ctl);
 	}
 	if(c->qid.path == Qcrypt && c->aux)
-		freeb(c->aux);
+		free(c->aux);
 	c->aux = 0;
 }
 
@@ -485,8 +485,7 @@ consread(Chan *c, void *buf, long n, ulong offset)
 	int ch, i, k, id;
 	ulong l;
 	char *cbuf = buf;
-	char *chal, *b, *bp;
-	Block *cb;
+	char *chal, *b, *bp, *cb;
 	char tmp[128];	/* must be >= 6*NUMSIZE */
 	Mach *mp;
 
@@ -591,9 +590,9 @@ consread(Chan *c, void *buf, long n, ulong offset)
 		cb = c->aux;
 		if(!cb)
 			return 0;
-		if(n > cb->wptr - cb->base)
-			n = cb->wptr - cb->base;
-		memmove(buf, cb->base, n);
+		if(n > MAXCRYPT)
+			n = MAXCRYPT;
+		memmove(buf, &cb[1], n);
 		return n;
 
 	case Qchal:
@@ -738,8 +737,7 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 	char cbuf[64];
 	char buf[256];
 	long l, bp;
-	char *a = va;
-	Block *cb;
+	char *a = va, *cb;
 	Mach *mp;
 	int id, fd, ch;
 	Chan *swc;
@@ -801,23 +799,24 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 	case Qcrypt:
 		cb = c->aux;
 		if(!cb){
-			cb = c->aux = allocb(128);
-			cb->type = 'E';
+			/* first byte determines whether encrypting or decrypting */
+			cb = c->aux = smalloc(MAXCRYPT+1);
+			cb[0] = 'E';
 		}
 		if(n < 8){
 			if(n != 1 || a[0] != 'E' && a[0] != 'D')
 				error(Ebadarg);
-			cb->type = a[0];
+			cb[0] = a[0];
 			return 1;
 		}
-		if(n > cb->lim - cb->base)
-			n = cb->lim - cb->base;
-		memmove(cb->base, a, n);
-		cb->wptr = cb->base + n;
-		if(cb->type == 'E')
-			encrypt(u->p->pgrp->crypt->key, cb->base, n);
+		if(n > MAXCRYPT)
+			n = MAXCRYPT;
+		memset(&cb[1], 0, MAXCRYPT);
+		memmove(&cb[1], a, n);
+		if(cb[0] == 'E')
+			encrypt(u->p->pgrp->crypt->key, &cb[1], n);
 		else
-			decrypt(u->p->pgrp->crypt->key, cb->base, n);
+			decrypt(u->p->pgrp->crypt->key, &cb[1], n);
 		break;
 
 	case Qkey:

@@ -747,7 +747,8 @@ duartstat(Chan *c, char *p)
 {
 	switch(STREAMTYPE(c->qid.path)){
 	case Sdataqid:
-		streamstat(c, p, duartdir[2*STREAMID(c->qid.path)].name);
+		streamstat(c, p, duartdir[2*STREAMID(c->qid.path)].name,
+			duartdir[2*STREAMID(c->qid.path)].perm);
 		break;
 	default:
 		devstat(c, p, duartdir, 2*nduartport, devgen);

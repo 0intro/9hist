@@ -182,13 +182,13 @@ tcp_timeout(void *arg)
 	default:
 		tcb->backoff++;
 		if (tcb->backoff >= MAXBACKOFF)
-			close_self(s, Etimedout);
+			localclose(s, Etimedout);
 		else 
 			tcprxmit(s);
 		break;
 
 	case Time_wait:
-		close_self(s, 0);
+		localclose(s, 0);
 		break;
 	}
 }

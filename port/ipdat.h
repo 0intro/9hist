@@ -429,7 +429,7 @@ void	add_reseq(Tcpctl *, char, Tcp *, Block *, ushort);
 int	arp_lookup(uchar*, uchar*);
 int	backoff(int);
 Block*	btrim(Block*, int, int);
-void	close_self(Ipconv *, char []);
+void	localclose(Ipconv *, char []);
 int	dupb(Block **, Block *, int, int);
 void	extract_oob(Block **, Block **, Tcp *);
 void	get_reseq(Tcpctl *, char *, Tcp *, Block **, ushort *);

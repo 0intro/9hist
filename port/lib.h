@@ -33,6 +33,8 @@ extern	int	countrune(char*);
 extern	char*	utfrune(char*, long);
 extern	int	utflen(char*);
 
+extern	int	abs(int);
+
 /*
  * print routines
  */

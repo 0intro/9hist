@@ -42,8 +42,7 @@ enum
 	/* file types */
 	Qdir=		0,
 
-	Maxxfer=	512,		/* maximum transfer size/cmd */
-	Maxread=	512,		/* maximum transfer size/read */
+	Maxxfer=	32*512,		/* maximum transfer size/cmd */
 	Npart=		8+2,		/* 8 sub partitions, disk, and partition */
 	Nrepl=		64,		/* maximum replacement blocks */
 };
@@ -158,7 +157,7 @@ Drive		*hard;
 static void	hardintr(Ureg*);
 static long	hardxfer(Drive*, Partition*, int, long, long, char*);
 static void	hardident(Drive*);
-static void	hardsetbuf(Drive*, int);
+static void	hardsetbuf(Drive*);
 static void	hardpart(Drive*);
 
 static int
@@ -239,14 +238,13 @@ hardattach(char *spec)
 	for(dp = hard; dp < &hard[conf.nhard]; dp++){
 		if(!waserror()){
 			dp->bytes = 512;
-			hardsetbuf(dp, 0);
 			hardident(dp);
 			switch(dp->id.magic){
 			case 0xA5A:	/* conner drive on the AT&T NSX (safari) */
 				dp->cyl = dp->id.lcyls;
 				dp->heads = dp->id.lheads;
 				dp->sectors = dp->id.ls2t;
-				hardsetbuf(dp, 1);
+				hardsetbuf(dp);
 				break;
 			case 0x324A:	/* hard drive on the AT&T 6386 */
 				dp->cyl = dp->id.lcyls - 4;
@@ -500,8 +498,6 @@ hardxfer(Drive *dp, Partition *pp, int cmd, long start, long len, char *buf)
 	start = start / dp->bytes;
 	if(len > Maxxfer)
 		len = Maxxfer;
-	if(cmd == Cread && len > Maxread)
-		len = Maxread;
 	len = (len + dp->bytes - 1) / dp->bytes;
 	if(len == 0)
 		return 0;
@@ -578,10 +574,10 @@ hardxfer(Drive *dp, Partition *pp, int cmd, long start, long len, char *buf)
 }
 
 /*
- *  set read ahead mode (1 == on, 0 == off)
+ *  set read ahead mode
  */
 static void
-hardsetbuf(Drive *dp, int on)
+hardsetbuf(Drive *dp)
 {
 	Controller *cp = dp->cp;
 
@@ -594,11 +590,15 @@ hardsetbuf(Drive *dp, int on)
 	cmdreadywait(cp);
 
 	cp->cmd = Csetbuf;
-	outb(cp->pbase+Pprecomp, on ? 0xAA : 0xFF);
+	outb(cp->pbase+Pprecomp, 0xAA);
 	outb(cp->pbase+Pdh, 0x20 | (dp->drive<<4));
 	outb(cp->pbase+Pcmd, Csetbuf);
 
 	sleep(&cp->r, cmddone, cp);
+
+	if(cp->status & Serr)
+		print("hd%d setbuf err: status %lux, err %lux\n",
+			dp-hard, cp->status, cp->error);
 
 	poperror();
 	qunlock(cp);
@@ -638,7 +638,7 @@ hardident(Drive *dp)
 	memmove(&dp->id, buf, dp->bytes);
 	/*
 	 * this function appears to respond with an extra interrupt after
-	 * the indent information is read, except on the safari.  The following
+	 * the ident information is read, except on the safari.  The following
 	 * delay gives this extra interrupt a chance to happen while we are quiet.
 	 * Otherwise, the interrupt may come during a subsequent read or write,
 	 * causing a panic and much confusion.
@@ -647,6 +647,7 @@ hardident(Drive *dp)
 		tsleep(&cp->r, return0, 0, 10);
 	cp->cmd = 0;
 	cp->buf = 0;
+	free(buf);
 	poperror();
 	qunlock(cp);
 }
@@ -786,7 +787,6 @@ hardintr(Ureg *ur)
 	char *addr;
 
 	USED(ur);
-	spllo();	/* let in other interrupts */
 
 	/*
  	 *  BUG!! if there is ever more than one controller, we need a way to
@@ -796,12 +796,13 @@ hardintr(Ureg *ur)
 	dp = cp->dp;
 
 	loop = 0;
-	while((cp->status = inb(cp->pbase+Pstatus)) & Sbusy)
-		if(++loop > 10000) {
+	while((cp->status = inb(cp->pbase+Pstatus)) & Sbusy){
+		if(++loop > 100) {
 			print("cmd=%lux status=%lux\n",
 				cp->cmd, inb(cp->pbase+Pstatus));
 			panic("hardintr: wait busy");
 		}
+	}
 	switch(cp->cmd){
 	case Cwrite:
 		if(cp->status & Serr){
@@ -814,8 +815,8 @@ hardintr(Ureg *ur)
 		cp->sofar++;
 		if(cp->sofar < cp->nsecs){
 			loop = 0;
-			while((inb(cp->pbase+Pstatus) & Sdrq) == 0)
-				if(++loop > 10000) {
+			while(((cp->status = inb(cp->pbase+Pstatus)) & Sdrq) == 0)
+				if(++loop > 100) {
 					print("cmd=%lux status=%lux\n",
 						cp->cmd, inb(cp->pbase+Pstatus));
 					panic("hardintr: write");
@@ -833,13 +834,6 @@ hardintr(Ureg *ur)
 		break;
 	case Cread:
 	case Cident:
-		loop = 0;
-		while((inb(cp->pbase+Pstatus) & Sbusy) != 0)
-			if(++loop > 10000) {
-				print("cmd=%lux status=%lux\n",
-					cp->cmd, inb(cp->pbase+Pstatus));
-				panic("hardintr: wait busy");
-			}
 		loop = 0;
 		while((inb(cp->pbase+Pstatus) & Sdrq) == 0)
 			if(++loop > 10000) {

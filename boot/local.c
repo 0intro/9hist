@@ -7,7 +7,10 @@ static char *disk;
 void
 configlocal(Method *mp)
 {
-	disk = *sys ? sys : mp->arg;
+	if(*sys == '/' || *sys == '#')
+		disk = sys;
+	else
+		disk = mp->arg;
 	USED(mp);
 }
 

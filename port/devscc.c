@@ -718,7 +718,7 @@ sccstat(Chan *c, char *dp)
 	i = STREAMID(c->qid.path);
 	switch(STREAMTYPE(c->qid.path)){
 	case Sdataqid:
-		streamstat(c, dp, sccdir[2*i].name);
+		streamstat(c, dp, sccdir[2*i].name, sccdir[2*i].perm);
 		break;
 	default:
 		devstat(c, dp, sccdir, 2*nscc, devgen);

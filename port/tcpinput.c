@@ -19,7 +19,7 @@ char *tcpstate[] =
 };
 
 void
-reset(Ipaddr source, Ipaddr dest, char tos, ushort length, Tcp *seg)
+sndrst(Ipaddr source, Ipaddr dest, char tos, ushort length, Tcp *seg)
 {
 	Block *hbp;
 	Port tmp;
@@ -85,8 +85,8 @@ tcpflushincoming(Ipconv *s)
 	seg.seq = tcb->snd.ptr;
 	seg.ack = tcb->last_ack = tcb->rcv.nxt;
 
-	reset(s->dst, Myip[Myself], 0, 0, &seg);
-	close_self(s, 0);
+	sndrst(s->dst, Myip[Myself], 0, 0, &seg);
+	localclose(s, 0);
 }
 
 static void
@@ -159,7 +159,7 @@ tcp_input(Ipifc *ifc, Block *bp)
 	if((hdrlen = ntohtcp(&seg, &bp)) < 0)
 		return;
 
-	/* Adjust the data length */
+	/* trim the packet to the size claimed by the datagram */
 	length -= (hdrlen+TCP_IPLEN+TCP_PHDRSIZE);
 	bp = btrim(bp, hdrlen+TCP_PKT, length);
 	if(bp == 0)
@@ -198,7 +198,7 @@ tcp_input(Ipifc *ifc, Block *bp)
 		}
 		if(s == 0){
 			freeb(bp);   
-			reset(source, dest, tos, length, &seg);
+			sndrst(source, dest, tos, length, &seg);
 			return;
 		}
 	}
@@ -212,7 +212,7 @@ tcp_input(Ipifc *ifc, Block *bp)
 	switch(tcb->state) {
 	case Closed:
 		freeb(bp);
-		reset(source, dest, tos, length, &seg);
+		sndrst(source, dest, tos, length, &seg);
 		goto done;
 	case Listen:
 		if(seg.flags & RST) {
@@ -221,7 +221,7 @@ tcp_input(Ipifc *ifc, Block *bp)
 		} 
 		if(seg.flags & ACK) {
 			freeb(bp);
-			reset(source, dest, tos, length, &seg);
+			sndrst(source, dest, tos, length, &seg);
 			goto done;
 		}
 		if(seg.flags & SYN) {
@@ -239,13 +239,13 @@ tcp_input(Ipifc *ifc, Block *bp)
 		if(seg.flags & ACK) {
 			if(!seq_within(seg.ack, tcb->iss+1, tcb->snd.nxt)) {
 				freeb(bp);
-				reset(source, dest, tos, length, &seg);
+				sndrst(source, dest, tos, length, &seg);
 				goto done;
 			}
 		}
 		if(seg.flags & RST) {
 			if(seg.flags & ACK)
-				close_self(s, Econrefused);
+				localclose(s, Econrefused);
 			freeb(bp);
 			goto done;
 		}
@@ -253,7 +253,7 @@ tcp_input(Ipifc *ifc, Block *bp)
 		if(seg.flags & ACK)
 		if(PREC(tos) != PREC(tcb->tos)){
 			freeb(bp);
-			reset(source, dest, tos, length, &seg);
+			sndrst(source, dest, tos, length, &seg);
 			goto done;
 		}
 
@@ -277,7 +277,7 @@ tcp_input(Ipifc *ifc, Block *bp)
 		goto done;
 	}
 
-	/* Trim segment to fit receive window. */
+	/* Cut the data to fit the receive window */
 	if(trim(tcb, &seg, &bp, &length) == -1) {
 		if(!(seg.flags & RST)) {
 			tcb->flags |= FORCE;
@@ -286,15 +286,18 @@ tcp_input(Ipifc *ifc, Block *bp)
 		goto done;
 	}
 
-	/* If we dont understand answer with a rst */
+	/* Cannot accept so answer with a rst */
 	if(length)
 	if(s->readq == 0)
 	if(tcb->state == Closed) {
 		freeb(bp);
-		reset(source, dest, tos, length, &seg);
+		sndrst(source, dest, tos, length, &seg);
 		goto done;
 	}
 
+	/* The segment is beyond the current receive pointer so
+	 * queue the data in the resequence queue
+	 */
 	if(seg.seq != tcb->rcv.nxt)
 	if(length != 0 || (seg.flags & (SYN|FIN))) {
 		add_reseq(tcb, tos, &seg, bp, length);
@@ -308,7 +311,7 @@ tcp_input(Ipifc *ifc, Block *bp)
 			   && !(tcb->flags & (CLONE|ACTIVE))) 
 				setstate(s, Listen);
 			else
-				close_self(s, Econrefused);
+				localclose(s, Econrefused);
 
 			freeb(bp);
 			goto done;
@@ -316,7 +319,7 @@ tcp_input(Ipifc *ifc, Block *bp)
 
 		if(PREC(tos) != PREC(tcb->tos) || (seg.flags & SYN)){
 			freeb(bp);
-			reset(source, dest, tos, length, &seg);
+			sndrst(source, dest, tos, length, &seg);
 			goto done;
 		}
 
@@ -333,7 +336,7 @@ tcp_input(Ipifc *ifc, Block *bp)
 			}
 			else {
 				freeb(bp);
-				reset(source, dest, tos, length, &seg);
+				sndrst(source, dest, tos, length, &seg);
 				goto done;
 			}
 			break;
@@ -361,7 +364,7 @@ tcp_input(Ipifc *ifc, Block *bp)
 			update(s, &seg);
 			if(tcb->sndcnt == 0) {
 				freeb(bp);
-				close_self(s, Enoerror);
+				localclose(s, Enoerror);
 				goto done;
 			}			
 		case Time_wait:
@@ -393,7 +396,7 @@ tcp_input(Ipifc *ifc, Block *bp)
 			case Syn_received:
 			case Established:
 			case Finwait1:
-				/* Place on receive queue */
+				/* If we still have some data place on receive queue */
 				tcb->rcvcnt += blen(bp);
 				if(bp){
 					if(s->readq)
@@ -415,7 +418,7 @@ tcp_input(Ipifc *ifc, Block *bp)
 				/* no process to read the data, send a reset */
 				if(bp)
 					freeb(bp);
-				reset(source, dest, tos, length, &seg);
+				sndrst(source, dest, tos, length, &seg);
 				goto done;
 			}
 		}
@@ -454,15 +457,17 @@ tcp_input(Ipifc *ifc, Block *bp)
 				break;
 			}
 		}
+
 		while(tcb->reseq != 0) {
 			if(seq_ge(tcb->rcv.nxt, tcb->reseq->seg.seq) == 0)
 				break;
+
 			get_reseq(tcb, &tos, &seg, &bp, &length);
+
 			if(trim(tcb, &seg, &bp, &length) == 0)
-				goto gotone;
+				break;
 		}
 		break;
-		gotone:;
 	}
 output:
 	tcp_output(s);
@@ -473,11 +478,10 @@ done:
 void
 update(Ipconv *s, Tcp *seg)
 {
+	int rtt;
 	ushort acked;
 	ushort expand;
 	Tcpctl *tcb = &s->tcpctl;
-	int rtt;
-	int abserr;
 
 	if(seq_gt(seg->ack, tcb->snd.nxt)) {
 		tcb->flags |= FORCE;
@@ -498,6 +502,7 @@ update(Ipconv *s, Tcp *seg)
 	if(!seq_gt(seg->ack, tcb->snd.una))
 		return;	
 
+	/* Compute the new send window size */
 	acked = seg->ack - tcb->snd.una;
 	if(tcb->cwind < tcb->snd.wnd) {
 		if(tcb->cwind < tcb->ssthresh)
@@ -513,31 +518,25 @@ update(Ipconv *s, Tcp *seg)
 			tcb->cwind += expand;
 	}
 
-	/* Round trip time estimation */
+	/* Adjust the timers acorrding to the round trip time */
 	if(run_timer(&tcb->rtt_timer))
 	if(seq_ge(seg->ack, tcb->rttseq)) {
 		stop_timer(&tcb->rtt_timer);
 		if((tcb->flags&RETRAN) == 0) {
+			tcb->backoff = 0;
 			rtt = tcb->rtt_timer.start - tcb->rtt_timer.count;
-			rtt *= MSPTICK;	
+			rtt *= MSPTICK;
 			if(rtt > tcb->srtt &&
 			  (tcb->state == Syn_sent || tcb->state == Syn_received))
 				tcb->srtt = rtt;
 			else {
-				if(rtt > tcb->srtt)
-					abserr = rtt - tcb->srtt;
-				else
-					abserr = tcb->srtt - rtt;
 				tcb->srtt = ((AGAIN-1)*tcb->srtt + rtt) / AGAIN;
-				tcb->mdev = ((DGAIN-1)*tcb->mdev + abserr) / DGAIN;
-				DPRINT("tcpout: rtt %d, srtt %d, mdev %d\n", 
-					rtt, tcb->srtt, tcb->mdev);
+				rtt = abs(rtt - tcb->srtt);
+				tcb->mdev = ((DGAIN-1)*tcb->mdev + rtt) / DGAIN;
 			}
-			tcb->backoff = 0;
 		}
 	}
 
-	/* If we're waiting for an ack of our SYN, note it and adjust count */
 	if((tcb->flags & SYNACK) == 0){
 		tcb->flags |= SYNACK;
 		acked--;
@@ -548,12 +547,9 @@ update(Ipconv *s, Tcp *seg)
 
 	tcb->sndcnt -= acked;
 	tcb->snd.una = seg->ack;
-	if (seq_gt(seg->ack, tcb->snd.up))
+	if(seq_gt(seg->ack, tcb->snd.up))
 		tcb->snd.up = seg->ack;
 
-	/* Stop retransmission timer, but restart it if there is still
-	 * unacknowledged data.
-	 */	
 	stop_timer(&tcb->timer);
 	if(tcb->snd.una != tcb->snd.nxt)
 		start_timer(&tcb->timer);
@@ -561,7 +557,6 @@ update(Ipconv *s, Tcp *seg)
 	if(seq_lt(tcb->snd.ptr, tcb->snd.una))
 		tcb->snd.ptr = tcb->snd.una;
 
-	/* All data is acked now */
 	tcb->flags &= ~RETRAN;
 	tcb->backoff = 0;
 }
@@ -688,7 +683,7 @@ trim(Tcpctl *tcb, Tcp *seg, Block **bp, ushort *length)
 			return 0;
 	}
 	else {
-		/* Some part of the segment must be in the window */
+		/* Some part of the segment should be in the window */
 		if(in_window(tcb,seg->seq)) {
 			accept++;
 		}
@@ -839,7 +834,7 @@ init_tcpctl(Ipconv *s)
  *  called with tcb locked
  */
 void
-close_self(Ipconv *s, char reason[])
+localclose(Ipconv *s, char reason[])
 {
 	Reseq *rp,*rp1;
 	Tcpctl *tcb = &s->tcpctl;

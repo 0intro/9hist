@@ -117,7 +117,7 @@ pipewalk(Chan *c, char *name)
 void
 pipestat(Chan *c, char *db)
 {
-	streamstat(c, db, "pipe");
+	streamstat(c, db, "pipe", 0666);
 }
 
 /*

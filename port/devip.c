@@ -835,14 +835,14 @@ tcpstclose(Queue *q)
 		qunlock(s);
 
 		qlock(tcb);
-		close_self(s, 0);
+		localclose(s, 0);
 		qunlock(tcb);
 		break;
 
 	case Closed:
 	case Syn_sent:
 		qlock(tcb);
-		close_self(s, 0);
+		localclose(s, 0);
 		qunlock(tcb);
 		break;
 

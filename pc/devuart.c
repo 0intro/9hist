@@ -614,10 +614,10 @@ uartstat(Chan *c, char *dp)
 {
 	switch(c->qid.path){
 	case Qeia0:
-		streamstat(c, dp, "eia0");
+		streamstat(c, dp, uartdir[0].name, uartdir[0].perm);
 		break;
 	case Qeia1:
-		streamstat(c, dp, "eia1");
+		streamstat(c, dp, uartdir[2].name, uartdir[2].perm);
 		break;
 	default:
 		devstat(c, dp, uartdir, NUart, devgen);

@@ -1232,7 +1232,7 @@ streamwrite(Chan *c, void *a, long n, int docopy)
  *  first delimiter.
  */
 void
-streamstat(Chan *c, char *db, char *name)
+streamstat(Chan *c, char *db, char *name, long perm)
 {
 	Dir dir;
 	Stream *s;
@@ -1254,7 +1254,7 @@ streamstat(Chan *c, char *db, char *name)
 		unlock(q);
 	}
 
-	devdir(c, c->qid, name, n, eve, 0, &dir);
+	devdir(c, c->qid, name, n, eve, perm, &dir);
 	convD2M(&dir, db);
 }
 

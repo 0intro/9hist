@@ -675,7 +675,7 @@ duartstat(Chan *c, char *dp)
 {
 	switch(c->qid.path){
 	case Qeia0:
-		streamstat(c, dp, "eia0");
+		streamstat(c, dp, duartdir[0].name, duartdir[0].perm);
 		break;
 	default:
 		devstat(c, dp, duartdir, NDuartport, devgen);
