@@ -845,9 +845,6 @@ static void (*parse[256])(Slot*, int) =
 static int
 readc(Slot *pp, uchar *x)
 {
-	uchar l, r;
-	ushort s;
-
 	if(pp->cispos > pp->cisbase + Mchunk)
 		return 0;
 
