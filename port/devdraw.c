@@ -2028,3 +2028,9 @@ drawactive(int active)
 			sdraw.blanktime++;
 	}
 }
+
+int
+drawidletime(void)
+{
+	return TK2SEC(sdraw.blanktime)/60;
+}
