@@ -742,16 +742,10 @@ initDESkey_40(OneWay *w)
 		w->state = 0;
 	}
 
-	if(w->slen >= 16) {
-		w->secret[8] &= 0x0f; 
-		w->secret[10] &= 0x0f; 
-		w->secret[12] &= 0x0f; 
-		w->secret[14] &= 0x0f;
-	}
 	if(w->slen >= 8) {
-		w->secret[0] &= 0x0f; 
-		w->secret[2] &= 0x0f; 
-		w->secret[4] &= 0x0f; 
+		w->secret[0] &= 0x0f;
+		w->secret[2] &= 0x0f;
+		w->secret[4] &= 0x0f;
 		w->secret[6] &= 0x0f;
 	}
 
@@ -841,9 +835,9 @@ struct Encalg
 Encalg encrypttab[] =
 {
 	{ "descbc", 8, DESCBC, initDESkey, },
-	{ "desebc", 8, DESECB, initDESkey, },
+	{ "desecb", 8, DESECB, initDESkey, },
 	{ "descbc_40", 8, DESCBC, initDESkey_40, },
-	{ "desebc_40", 8, DESECB, initDESkey_40, },
+	{ "desecb_40", 8, DESECB, initDESkey_40, },
 	{ "rc4", 1, RC4, initRC4key, },
 	{ "rc4_40", 1, RC4, initRC4key_40, },
 	{ 0 }
@@ -852,9 +846,9 @@ Encalg encrypttab[] =
 Encalg encrypttab[] =
 {
 	{ "descbc", 8, DESCBC, initDESkey_40, },
-	{ "desebc", 8, DESECB, initDESkey_40, },
+	{ "desecb", 8, DESECB, initDESkey_40, },
 	{ "descbc_40", 8, DESCBC, initDESkey_40, },
-	{ "desebc_40", 8, DESECB, initDESkey_40, },
+	{ "desecb_40", 8, DESECB, initDESkey_40, },
 	{ "rc4", 1, RC4, initRC4key_40, },
 	{ "rc4_40", 1, RC4, initRC4key_40, },
 	{ 0 }
