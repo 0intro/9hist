@@ -2,7 +2,7 @@
 
 void	aamloop(int);
 void	addconf(char*, char*);
-void	addscsilink(char*, Scsiio (*)(int, ISAConf*));
+//void	addscsilink(char*, Scsiio (*)(int, ISAConf*));
 void	archinit(void);
 void	bootargs(ulong);
 int	cistrcmp(char*, char*);
@@ -38,7 +38,7 @@ void	i8253init(int);
 void	i8253enable(void);
 uvlong	i8253read(uvlong*);
 void	i8259init(void);
-int	i8259enable(int, int, Irqctl*);
+int	i8259enable(Vctl*);
 void	idle(void);
 int	inb(int);
 void	insb(int, void*, int);
@@ -81,6 +81,7 @@ void	pcicfgw16(Pcidev*, int, int);
 void	pcicfgw32(Pcidev*, int, int);
 void	pcihinv(Pcidev*);
 Pcidev* pcimatch(Pcidev*, int, int);
+Pcidev* pcimatchtbdf(int);
 void	pcireset(void);
 PCMmap*	pcmmap(int, ulong, int, int);
 int	pcmspecial(char*, ISAConf*);
@@ -97,6 +98,7 @@ void	screeninit(void);
 int	screenprint(char*, ...);			/* debugging */
 void	(*screenputs)(char*, int);
 void	touser(void*);
+void	trapenable(int, void (*)(Ureg*, void*), void*);
 void	trapinit(void);
 int	tas(void*);
 ulong	umbmalloc(ulong, int, int);

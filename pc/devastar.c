@@ -1053,14 +1053,14 @@ startcp(Astar *a)
 		 * Which bits in the interrupt control register should be set?
 		 */
 		outl(a->port+PCIcontrol, 0x00031F00);
-		intrenable(VectorPIC + a->irq, astarintr, a, a->pci->tbdf);
+		intrenable(a->irq, astarintr, a, a->pci->tbdf);
 	}
 	else{
 		c = inb(a->port+ISActl1);
 		c &= ~ISAirq;
 		c |= ISAien|isairqcode[a->irq];
 		outb(a->port+ISActl1, c);
-		intrenable(VectorPIC + a->irq, astarintr, a, BUSUNKNOWN);
+		intrenable(a->irq, astarintr, a, BUSUNKNOWN);
 	}
 
 	/* enable control program interrupt generation */

@@ -80,7 +80,7 @@ lptattach(char *spec)
 	if(!set){
 		outb(lptbase[i-1]+Qpcr, 0);	/* turn off interrupts */
 		set = 1;
-		intrenable(VectorLPT, lptintr, 0, BUSUNKNOWN);
+		intrenable(IrqLPT, lptintr, 0, BUSUNKNOWN);
 	}
 	if(i < 1 || i > NDEV)
 		error(Ebadarg);

@@ -10,33 +10,47 @@ enum {
 	VectorPF	= 14,		/* page fault */
 	VectorCERR	= 16,		/* coprocessor error */
 
-	VectorINTR	= 32,		/* maskable interrupts */
+	VectorPIC	= 32,		/* external i8259 interrupts */
+	IrqCLOCK	= 0,
+	IrqKBD		= 1,
+	IrqUART1	= 3,
+	IrqUART0	= 4,
+	IrqPCMCIA	= 5,
+	IrqFLOPPY	= 6,
+	IrqLPT		= 7,
+	IrqIRQ7		= 7,
+	IrqAUX		= 12,		/* PS/2 port */
+	IrqIRQ13	= 13,		/* coprocessor on 386 */
+	IrqATA0		= 14,
+	MaxIrqPIC	= 15,
 
-	VectorLAPIC	= 32,		/* local APIC interrupts */
-	VectorLINT0	= VectorLAPIC+0,/* LINT[01] must be offsets 0 and 1 */
-	VectorLINT1	= VectorLAPIC+1,
-	VectorTIMER	= VectorLAPIC+2,
-	VectorERROR	= VectorLAPIC+3,
-	VectorPCINT	= VectorLAPIC+4,
-	VectorSPURIOUS	= VectorLAPIC+15,/* must have bits [3-0] == 0x0F */
-	MaxVectorLAPIC	= VectorLAPIC+15,
+	VectorLAPIC	= VectorPIC+16,	/* local APIC interrupts */
+	IrqLINT0	= 16,		/* LINT[01] must be offsets 0 and 1 */
+	IrqLINT1	= 17,
+	IrqTIMER	= 18,
+	IrqERROR	= 19,
+	IrqPCINT	= 20,
+	IrqSPURIOUS	= 31,		/* must have bits [3-0] == 0x0F */
+	MaxIrqLAPIC	= 31,
 
 	VectorSYSCALL	= 64,
 
-	VectorPIC	= 128,		/* external [A]PIC interrupts */
-	VectorCLOCK	= VectorPIC+0,
-	VectorKBD	= VectorPIC+1,
-	VectorUART1	= VectorPIC+3,
-	VectorUART0	= VectorPIC+4,
-	VectorPCMCIA	= VectorPIC+5,
-	VectorFLOPPY	= VectorPIC+6,
-	VectorLPT	= VectorPIC+7,
-	VectorIRQ7	= VectorPIC+7,
-	VectorAUX	= VectorPIC+12,	/* PS/2 port */
-	VectorIRQ13	= VectorPIC+13,	/* coprocessor on x386 */
-	VectorATA0	= VectorPIC+14,
-	MaxVectorPIC	= VectorPIC+15,
+	VectorAPIC	= 65,		/* external APIC interrupts */
+	MaxVectorAPIC	= 255,
 };
+
+typedef struct Vctl {
+	Vctl*	next;			/* handlers on this vector */
+
+	int	isintr;			/* interrupt or fault/trap */
+	int	irq;
+	int	tbdf;
+	int	(*isr)(int);		/* get isr bit for this irq */
+	int	(*eoi)(int);		/* eoi */
+
+	void	(*f)(Ureg*, void*);	/* handler to call */
+	void*	a;			/* argument to call it with */
+} Vctl;
 
 enum {
 	BusCBUS		= 0,		/* Corollary CBUS */
@@ -163,3 +177,28 @@ struct PCMmap {
 	int	attr;			/* attribute memory */
 	int	ref;
 };
+
+/*
+ *  SCSI bus
+ */
+enum {
+	MaxScsi		= 8,
+	NTarget		= 8,		/* should be 16... */
+};
+struct Target {
+	int	ctlrno;
+	int	target;
+	uchar*	inq;
+	uchar*	scratch;
+
+	Rendez	rendez;
+
+	int	ok;
+};
+
+typedef int (*Scsiio)(Target*, int, uchar*, int, void*, int*);
+
+typedef struct SCSIdev {
+	char*	type;
+	Scsiio	(*reset)(int, ISAConf*);
+} SCSIdev;

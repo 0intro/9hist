@@ -94,9 +94,9 @@ ns16552install(void)
 
 	/* first two ports are always there and always the normal frequency */
 	ns16552setup(0x3F8, UartFREQ, "eia0");
-	intrenable(VectorUART0, ns16552intrx, (void*)0, BUSUNKNOWN);
+	intrenable(IrqUART0, ns16552intrx, (void*)0, BUSUNKNOWN);
 	ns16552setup(0x2F8, UartFREQ, "eia1");
-	intrenable(VectorUART1, ns16552intrx, (void*)1, BUSUNKNOWN);
+	intrenable(IrqUART1, ns16552intrx, (void*)1, BUSUNKNOWN);
 	addclock0link(uartclock);
 
 	/* set up a serial console */

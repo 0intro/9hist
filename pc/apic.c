@@ -114,7 +114,7 @@ lapiconline(void)
 	 */
 	microdelay((TK2MS(1)*1000/conf.nmach) * m->machno);
 	lapicw(LapicTICR, clkin/HZ);
-	lapicw(LapicTIMER, LapicCLKIN|LapicPERIODIC|VectorTIMER);
+	lapicw(LapicTIMER, LapicCLKIN|LapicPERIODIC|(VectorPIC+IrqTIMER));
 
 	lapicw(LapicTPR, 0);
 }
@@ -127,7 +127,7 @@ lapictimerinit(void)
 
 	v = m->cpumhz*1000;
 	lapicw(LapicTDCR, LapicX1);
-	lapicw(LapicTIMER, ApicIMASK|LapicCLKIN|LapicONESHOT|VectorTIMER);
+	lapicw(LapicTIMER, ApicIMASK|LapicCLKIN|LapicONESHOT|(VectorPIC+IrqTIMER));
 
 	if(clkin == 0){
 		lapicw(LapicTICR, v);
@@ -154,7 +154,7 @@ lapicinit(Apic* apic)
 	r = (lapicr(LapicID)>>24) & 0xFF;
 	lapicw(LapicLDR, (1<<r)<<24);
 	lapicw(LapicTPR, 0xFF);
-	lapicw(LapicSVR, LapicENABLE|VectorSPURIOUS);
+	lapicw(LapicSVR, LapicENABLE|(VectorPIC+IrqSPURIOUS));
 
 	lapictimerinit();
 
@@ -183,7 +183,7 @@ lapicinit(Apic* apic)
 	lvt = (lapicr(LapicVER)>>16) & 0xFF;
 	if(lvt >= 4)
 		lapicw(LapicPCINT, ApicIMASK);
-	lapicw(LapicERROR, VectorERROR);
+	lapicw(LapicERROR, VectorPIC+IrqERROR);
 	lapicw(LapicESR, 0);
 	lapicr(LapicESR);
 
@@ -271,8 +271,6 @@ lapicicrw(int hi, int lo)
 	lapicw(LapicICRLO, lo);
 }
 
-static int ioapicvecbase = VectorPIC;
-
 void
 ioapicrdtr(Apic* apic, int sel, int* hi, int* lo)
 {
@@ -283,9 +281,11 @@ ioapicrdtr(Apic* apic, int sel, int* hi, int* lo)
 
 	lock(apic);
 	*apic->addr = sel+1;
-	*hi = *iowin;
+	if(hi)
+		*hi = *iowin;
 	*apic->addr = sel;
-	*lo = *iowin;
+	if(lo)
+		*lo = *iowin;
 	unlock(apic);
 }
 
@@ -321,9 +321,6 @@ ioapicinit(Apic* apic, int apicno)
 	lock(apic);
 	*apic->addr = IoapicVER;
 	apic->mre = (*iowin>>16) & 0xFF;
-
-	apic->vecbase = ioapicvecbase;
-	ioapicvecbase += apic->mre+1;
 
 	*apic->addr = IoapicID;
 	*iowin = apicno<<24;

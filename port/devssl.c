@@ -789,6 +789,26 @@ initRC4key_40(OneWay *w)
 	setupRC4state(w->state, w->secret, w->slen);
 }
 
+/*
+ *  128 bit RC4 is the same as n-bit RC4.  However,
+ *  we ignore all but the first 128 bits of the key.
+ */
+static void
+initRC4key_128(OneWay *w)
+{
+	if(w->state){
+		free(w->state);
+		w->state = 0;
+	}
+
+	if(w->slen > 16)
+		w->slen = 16;
+
+	w->state = malloc(sizeof(RC4state));
+	setupRC4state(w->state, w->secret, w->slen);
+}
+
+
 typedef struct Hashalg Hashalg;
 struct Hashalg
 {
@@ -834,22 +854,24 @@ struct Encalg
 #ifdef NOSPOOKS
 Encalg encrypttab[] =
 {
-	{ "descbc", 8, DESCBC, initDESkey, },
-	{ "desecb", 8, DESECB, initDESkey, },
-	{ "descbc_40", 8, DESCBC, initDESkey_40, },
-	{ "desecb_40", 8, DESECB, initDESkey_40, },
-	{ "rc4", 1, RC4, initRC4key, },
+	{ "descbc", 8, DESCBC, initDESkey, },           /* DEPRECATED -- use des_56_cbc */
+	{ "desecb", 8, DESECB, initDESkey, },           /* DEPRECATED -- use des_56_ecb */
+	{ "des_56_cbc", 8, DESCBC, initDESkey, },
+	{ "des_56_ecb", 8, DESECB, initDESkey, },
+	{ "des_40_cbc", 8, DESCBC, initDESkey_40, },
+	{ "des_40_ecb", 8, DESECB, initDESkey_40, },
+	{ "rc4", 1, RC4, initRC4key_40, },              /* DEPRECATED -- use rc4_X      */
+	{ "rc4_256", 1, RC4, initRC4key, },
+	{ "rc4_128", 1, RC4, initRC4key_128, },
 	{ "rc4_40", 1, RC4, initRC4key_40, },
 	{ 0 }
 };
 #else
 Encalg encrypttab[] =
 {
-	{ "descbc", 8, DESCBC, initDESkey_40, },
-	{ "desecb", 8, DESECB, initDESkey_40, },
-	{ "descbc_40", 8, DESCBC, initDESkey_40, },
-	{ "desecb_40", 8, DESECB, initDESkey_40, },
-	{ "rc4", 1, RC4, initRC4key_40, },
+	{ "des_40_cbc", 8, DESCBC, initDESkey_40, },
+	{ "des_40_ecb", 8, DESECB, initDESkey_40, },
+	{ "rc4", 1, RC4, initRC4key_40, },              /* DEPRECATED -- use rc4_X      */
 	{ "rc4_40", 1, RC4, initRC4key_40, },
 	{ 0 }
 };

@@ -12,36 +12,58 @@ void	noted(Ureg*, ulong);
 static void debugbpt(Ureg*, void*);
 static void fault386(Ureg*, void*);
 
-static Lock irqctllock;
-static Irqctl *irqctl[256];
+static Lock vctllock;
+static Vctl *vctl[256];
 
 void
-intrenable(int v, void (*f)(Ureg*, void*), void* a, int tbdf)
+intrenable(int irq, void (*f)(Ureg*, void*), void* a, int tbdf)
 {
-	Irq *irq;
-	Irqctl *ctl;
+	int vno;
+	Vctl *v;
 
-	lock(&irqctllock);
-	if(irqctl[v] == 0)
-		irqctl[v] = xalloc(sizeof(Irqctl));
-	ctl = irqctl[v];
+	v = xalloc(sizeof(Vctl));
+	v->isintr = 1;
+	v->irq = irq;
+	v->tbdf = tbdf;
+	v->f = f;
+	v->a = a;
 
-	if(v >= VectorINTR && arch->intrenable(v, tbdf, ctl) == -1){
-		if(ctl->irq == nil){
-			irqctl[v] = nil;
-			xfree(ctl);
-		}
-		unlock(&irqctllock);
-		print("intrenable: didn't find v %d, tbdf 0x%uX\n", v, tbdf);
+	ilock(&vctllock);
+	vno = arch->intrenable(v);
+	//print("irq%d, vno %d\n", irq, vno);
+	if(vno == -1){
+		iunlock(&vctllock);
+		print("intrenable: couldn't enable irq %d, tbdf 0x%uX\n", irq, tbdf);
+		xfree(v);
 		return;
 	}
+	if(vctl[vno]){
+		if(vctl[vno]->isr != v->isr || vctl[vno]->eoi != v->eoi)
+			panic("intrenable: irq handler botch: %luX %luX %luX %luX\n",
+				vctl[vno]->isr, v->isr, vctl[vno]->eoi, v->eoi);
+		v->next = vctl[vno]->next;
+	}
+	vctl[vno] = v;
+	iunlock(&vctllock);
+}
 
-	irq = xalloc(sizeof(Irq));
-	irq->f = f;
-	irq->a = a;
-	irq->next = ctl->irq;
-	ctl->irq = irq;
-	unlock(&irqctllock);
+void
+trapenable(int vno, void (*f)(Ureg*, void*), void* a)
+{
+	Vctl *v;
+
+	if(vno < 0 || vno >= VectorPIC)
+		panic("trapenable: vno %d\n", vno);
+	v = xalloc(sizeof(Vctl));
+	v->tbdf = BUSUNKNOWN;
+	v->f = f;
+	v->a = a;
+
+	lock(&vctllock);
+	if(vctl[vno])
+		v->next = vctl[vno]->next;
+	vctl[vno] = v;
+	unlock(&vctllock);
 }
 
 static void
@@ -94,32 +116,45 @@ trapinit(void)
 	 * Special traps.
 	 * Syscall() is called directly without going through trap().
 	 */
-	intrenable(VectorBPT, debugbpt, 0, BUSUNKNOWN);
-	intrenable(VectorPF, fault386, 0, BUSUNKNOWN);
+	trapenable(VectorBPT, debugbpt, 0);
+	trapenable(VectorPF, fault386, 0);
 
 	nmienable();
 }
 
-static char *excname[] = {
-	[0]	"divide error",
-	[1]	"debug exception",
-	[2]	"nonmaskable interrupt",
-	[3]	"breakpoint",
-	[4]	"overflow",
-	[5]	"bounds check",
-	[6]	"invalid opcode",
-	[7]	"coprocessor not available",
-	[8]	"double fault",
-	[9]	"coprocessor segment overrun",
-	[10]	"invalid TSS",
-	[11]	"segment not present",
-	[12]	"stack exception",
-	[13]	"general protection violation",
-	[14]	"page fault",
-	[15]	"15 (reserved)",
-	[16]	"coprocessor error",
-	[17]	"alignment check",
-	[18]	"machine check",
+static char* excname[32] = {
+	"divide error",
+	"debug exception",
+	"nonmaskable interrupt",
+	"breakpoint",
+	"overflow",
+	"bounds check",
+	"invalid opcode",
+	"coprocessor not available",
+	"double fault",
+	"coprocessor segment overrun",
+	"invalid TSS",
+	"segment not present",
+	"stack exception",
+	"general protection violation",
+	"page fault",
+	"15 (reserved)",
+	"coprocessor error",
+	"alignment check",
+	"machine check",
+	"19 (reserved)",
+	"20 (reserved)",
+	"21 (reserved)",
+	"22 (reserved)",
+	"23 (reserved)",
+	"24 (reserved)",
+	"25 (reserved)",
+	"26 (reserved)",
+	"27 (reserved)",
+	"28 (reserved)",
+	"29 (reserved)",
+	"30 (reserved)",
+	"31 (reserved)",
 };
 
 /*
@@ -131,10 +166,9 @@ static char *excname[] = {
 void
 trap(Ureg* ureg)
 {
-	int i, v, user;
+	int i, vno, user;
 	char buf[ERRLEN];
-	Irqctl *ctl;
-	Irq *irq;
+	Vctl *ctl, *v;
 	Mach *mach;
 
 	user = 0;
@@ -143,21 +177,22 @@ trap(Ureg* ureg)
 		up->dbgreg = ureg;
 	}
 
-	v = ureg->trap;
-	if(ctl = irqctl[v]){
+	vno = ureg->trap;
+	if(ctl = vctl[vno]){
 		if(ctl->isintr){
 			m->intr++;
-			if(ctl->isr)
-				ctl->isr(v);
-			if(v >= VectorPIC && v <= MaxVectorPIC)
-				m->lastintr = v-VectorPIC;
+			if(vno >= VectorPIC && vno != VectorSYSCALL)
+				m->lastintr = ctl->irq;
 		}
 
-		for(irq = ctl->irq; irq; irq = irq->next)
-			irq->f(ureg, irq->a);
-
+		if(ctl->isr)
+			ctl->isr(vno);
+		for(v = ctl; v != nil; v = v->next){
+			if(v->f)
+				v->f(ureg, v->a);
+		}
 		if(ctl->eoi)
-			ctl->eoi(v);
+			ctl->eoi(vno);
 
 		/* 
 		 *  preemptive scheduling.  to limit stack depth,
@@ -165,7 +200,7 @@ trap(Ureg* ureg)
 		 *  the current interrupt before being preempted a
 		 *  second time.
 		 */
-		if(ctl->isintr && v != VectorTIMER && v != VectorCLOCK)
+		if(ctl->isintr && ctl->irq != IrqTIMER && ctl->irq != IrqCLOCK)
 		if(up && up->state == Running)
 		if(anyhigher())
 		if(up->preempted == 0)
@@ -177,12 +212,12 @@ trap(Ureg* ureg)
 			return;
 		}
 	}
-	else if(v <= 16 && user){
+	else if(vno <= nelem(excname) && user){
 		spllo();
-		sprint(buf, "sys: trap: %s", excname[v]);
+		sprint(buf, "sys: trap: %s", excname[vno]);
 		postnote(up, 1, buf, NDebug);
 	}
-	else if(v >= VectorPIC && v <= MaxVectorPIC){
+	else if(vno >= VectorPIC && vno != VectorSYSCALL){
 		/*
 		 * An unknown interrupt.
 		 * Check for a default IRQ7. This can happen when
@@ -192,7 +227,7 @@ trap(Ureg* ureg)
 		 * In fact, just ignore all such interrupts.
 		 */
 		print("cpu%d: spurious interrupt %d, last %d",
-			m->machno, v-VectorPIC, m->lastintr);
+			m->machno, vno, m->lastintr);
 		for(i = 0; i < 32; i++){
 			if(!(active.machs & (1<<i)))
 				continue;
@@ -206,7 +241,7 @@ trap(Ureg* ureg)
 		return;
 	}
 	else{
-		if(v == VectorNMI){
+		if(vno == VectorNMI){
 			nmienable();
 			if(m->machno != 0){
 				print("cpu%d: PC %8.8luX\n", m->machno, ureg->pc);
@@ -214,9 +249,9 @@ trap(Ureg* ureg)
 			}
 		}
 		dumpregs(ureg);
-		if(v < nelem(excname))
-			panic("%s", excname[v]);
-		panic("unknown trap/intr: %d\n", v);
+		if(vno < nelem(excname))
+			panic("%s", excname[vno]);
+		panic("unknown trap/intr: %d\n", vno);
 	}
 
 	if(user && (up->procctl || up->nnote)){
@@ -335,14 +370,13 @@ fault386(Ureg* ureg, void*)
 	spllo();
 	n = fault(addr, read);
 	if(n < 0){
-		if(user){
-			sprint(buf, "sys: trap: fault %s addr=0x%lux",
-				read? "read" : "write", addr);
-			postnote(up, 1, buf, NDebug);
-			return;
+		if(!user){
+			dumpregs(ureg);
+			panic("fault: 0x%lux\n", addr);
 		}
-		dumpregs(ureg);
-		panic("fault: 0x%lux\n", addr);
+		sprint(buf, "sys: trap: fault %s addr=0x%lux",
+			read? "read" : "write", addr);
+		postnote(up, 1, buf, NDebug);
 	}
 	up->insyscall = insyscall;
 }

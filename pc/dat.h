@@ -1,7 +1,5 @@
 typedef struct Conf	Conf;
 typedef struct FPsave	FPsave;
-typedef struct Irq	Irq;
-typedef struct Irqctl	Irqctl;
 typedef struct ISAConf	ISAConf;
 typedef struct Label	Label;
 typedef struct Lock	Lock;
@@ -16,6 +14,7 @@ typedef struct PMMU	PMMU;
 typedef struct Proc	Proc;
 typedef struct Segdesc	Segdesc;
 typedef struct Ureg	Ureg;
+typedef struct Vctl	Vctl;
 
 /*
  *  parameters for sysproc.c
@@ -220,7 +219,7 @@ struct PCArch
 	int	(*modempower)(int);	/* 1 == on, 0 == off */
 
 	void	(*intrinit)(void);
-	int	(*intrenable)(int, int, Irqctl*);
+	int	(*intrenable)(Vctl*);
 
 	void	(*clockenable)(void);
 	uvlong	(*fastclock)(uvlong*);
@@ -259,37 +258,3 @@ Mach* machp[MAXMACH];
 
 extern Mach	*m;
 #define up	(((Mach*)MACHADDR)->externup)
-
-/*
- *  SCSI bus
- */
-enum {
-	MaxScsi		= 4,
-	NTarget		= 8,
-};
-struct Target {
-	int	ctlrno;
-	int	target;
-	uchar*	inq;
-	uchar*	scratch;
-
-	Rendez	rendez;
-
-	int	ok;
-};
-typedef int 	(*Scsiio)(Target*, int, uchar*, int, void*, int*);
-
-typedef struct Irq {
-	void	(*f)(Ureg*, void*);	/* handler to call */
-	void*	a;			/* argument to call it with */
-
-	Irq*	next;			/* link to next handler */
-} Irq;
-
-typedef struct Irqctl {
-	int	(*isr)(int);		/* get isr bit for this irq */
-	int	(*eoi)(int);		/* eoi */
-	int	isintr;
-
-	Irq*	irq;			/* handlers on this IRQ */
-} Irqctl;

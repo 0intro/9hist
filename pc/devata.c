@@ -556,7 +556,7 @@ atactlrreset(void)
 				resetok = 1;
 		}
 
-		if(atactlrprobe(ctlrno, VectorPIC+isa.irq, resetok))
+		if(atactlrprobe(ctlrno, isa.irq, resetok))
 			continue;
 
 		if(spindown == 0 || atadrive[driveno] == 0)

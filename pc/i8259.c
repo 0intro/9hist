@@ -27,20 +27,21 @@ enum
 
 static int int0mask;			/* interrupts enabled for first 8259 */
 static int int1mask;			/* interrupts enabled for second 8259 */
-
-int elcr;				/* mask of level-triggered interrupts */
+static int elcr;			/* mask of level-triggered interrupts */
+static Lock i8259lock;
 
 void
 i8259init(void)
 {
 	int elcr1;
 
+	ilock(&i8259lock);
 	int0mask = 0xFF;
 	int1mask = 0xFF;
 
 	/*
 	 *  Set up the first 8259 interrupt processor.
-	 *  Make 8259 interrupts start at CPU vector Int0vec.
+	 *  Make 8259 interrupts start at CPU vector VectorPIC.
 	 *  Set the 8259 as master with edge triggered
 	 *  input with fully nested interrupts.
 	 */
@@ -91,59 +92,67 @@ i8259init(void)
 			elcr = (inb(Elcr2)<<8)|elcr1;
 	}
 	outb(Elcr1, elcr1);
+	iunlock(&i8259lock);
 //	if(elcr)
 //		print("ELCR: %4.4uX\n", elcr);
 }
 
 int
-i8259isr(int v)
+i8259isr(int vno)
 {
 	int isr;
+
+	if(vno < VectorPIC || vno > VectorPIC+MaxIrqPIC)
+		return 0;
 
 	/*
 	 *  tell the 8259 that we're done with the
 	 *  highest level interrupt (interrupts are still
 	 *  off at this point)
 	 */
-	isr = 0;
-	if(v >= VectorPIC && v <= MaxVectorPIC){
-		isr = inb(Int0ctl);
-		outb(Int0ctl, EOI);
-		if(v >= VectorPIC+8){
-			isr |= inb(Int1ctl)<<8;
-			outb(Int1ctl, EOI);
-		}
+	ilock(&i8259lock);
+	isr = inb(Int0ctl);
+	outb(Int0ctl, EOI);
+	if(vno >= VectorPIC+8){
+		isr |= inb(Int1ctl)<<8;
+		outb(Int1ctl, EOI);
 	}
+	iunlock(&i8259lock);
 
-	return isr & (1<<(v-VectorPIC));
+	return isr & (1<<(vno-VectorPIC));
 }
 
 int
-i8259enable(int v, int, Irqctl* irqctl)
+i8259enable(Vctl* v)
 {
-	if(v < VectorPIC || v > MaxVectorPIC){
-		print("i8259enable: vector %d out of range\n", v);
-		return -1;
-	}
-	v -= VectorPIC;
+	int irq;
 
 	/*
-	 *  enable corresponding interrupt in 8259
+	 * Given an IRQ, enable the corresponding interrupt in the i8259
+	 * and return the vector to be used. The i8259 is set to use a fixed
+	 * range of vectors starting at VectorPIC.
 	 */
-	if(v < 8){
-		int0mask &= ~(1<<v);
+	irq = v->irq;
+	if(irq < 0 || irq > MaxIrqPIC){
+		print("i8259enable: irq %d out of range\n", irq);
+		return -1;
+	}
+
+	ilock(&i8259lock);
+	if(irq < 8){
+		int0mask &= ~(1<<irq);
 		outb(Int0aux, int0mask);
 	}
 	else{
-		int1mask &= ~(1<<(v-8));
+		int1mask &= ~(1<<(irq-8));
 		outb(Int1aux, int1mask);
 	}
 
-	if(elcr & (1<<v))
-		irqctl->eoi = i8259isr;
+	if(elcr & (1<<irq))
+		v->eoi = i8259isr;
 	else
-		irqctl->isr = i8259isr;
-	irqctl->isintr = 1;
+		v->isr = i8259isr;
+	iunlock(&i8259lock);
 
-	return v;
+	return VectorPIC+irq;
 }

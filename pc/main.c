@@ -408,7 +408,7 @@ confinit(void)
 			poolsetparam("Image", 0, 0, 4*1024*1024);
 		/*
 		 * give terminals lots of image memory, too; the dynamic
-		 * allocation will balance the load properly, we hope.
+		 * allocation will balance the load properly, hopefully.
 		 * be careful with 32-bit overflow.
 		 */
 		poolsetparam("Image", (BY2PG*conf.npage/100)*(100-pcnt), 0, 0);
@@ -427,7 +427,7 @@ confinit(void)
 	conf.nimage = 200;
 }
 
-char *mathmsg[] =
+static char* mathmsg[] =
 {
 	"invalid",
 	"denormalized",
@@ -442,7 +442,7 @@ char *mathmsg[] =
 /*
  *  math coprocessor error
  */
-void
+static void
 matherror(Ureg *ur, void*)
 {
 	ulong status;
@@ -482,7 +482,7 @@ matherror(Ureg *ur, void*)
 /*
  *  math coprocessor emulation fault
  */
-void
+static void
 mathemu(Ureg*, void*)
 {
 	switch(up->fpstate){
@@ -503,7 +503,7 @@ mathemu(Ureg*, void*)
 /*
  *  math coprocessor segment overrun
  */
-void
+static void
 mathover(Ureg*, void*)
 {
 	pexit("math overrun", 0);
@@ -512,11 +512,11 @@ mathover(Ureg*, void*)
 void
 mathinit(void)
 {
-	intrenable(VectorCERR, matherror, 0, BUSUNKNOWN);
+	trapenable(VectorCERR, matherror, 0);
 	if(X86FAMILY(m->cpuidax) == 3)
-		intrenable(VectorIRQ13, matherror, 0, BUSUNKNOWN);
-	intrenable(VectorCNA, mathemu, 0, BUSUNKNOWN);
-	intrenable(VectorCSO, mathover, 0, BUSUNKNOWN);
+		intrenable(IrqIRQ13, matherror, 0, BUSUNKNOWN);
+	trapenable(VectorCNA, mathemu, 0);
+	trapenable(VectorCSO, mathover, 0);
 }
 
 /*

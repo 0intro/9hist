@@ -158,7 +158,6 @@ typedef struct Apic {
 	int	apicno;
 	ulong*	addr;			/* register base address */
 	int	flags;			/* PcmpBP|PcmpEN */
-	int	vecbase;		/* starting vector offset */
 
 	Lock;				/* I/O APIC: register access */
 	int	mre;			/* I/O APIC: maximum redirection entry */
@@ -221,6 +220,6 @@ extern void lapicicrw(int, int);
 
 extern void mpinit(void);
 extern void mpshutdown(void);
-extern int mpintrenable(int, int, Irqctl*);
+extern int mpintrenable(Vctl*);
 
 extern _MP_ *_mp_;

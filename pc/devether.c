@@ -354,7 +354,7 @@ etherreset(void)
 			 */
 			if(ether->irq == 2)
 				ether->irq = 9;
-			intrenable(VectorPIC+ether->irq, ether->interrupt, ether, ether->tbdf);
+			intrenable(ether->irq, ether->interrupt, ether, ether->tbdf);
 
 			i = sprint(buf, "#l%d: %s: %dMbps port 0x%luX irq %lud",
 				ctlrno, ether->type, ether->mbps, ether->port, ether->irq);

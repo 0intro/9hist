@@ -372,7 +372,7 @@ i8042auxenable(void (*putc)(int, int))
 		return;
 	}
 	auxputc = putc;
-	intrenable(VectorAUX, i8042intr, 0, BUSUNKNOWN);
+	intrenable(IrqAUX, i8042intr, 0, BUSUNKNOWN);
 	iunlock(&i8042lock);
 }
 
@@ -386,7 +386,7 @@ kbdinit(void)
 		panic("kbdinit");
 	qnoblock(kbdq, 1);
 
-	intrenable(VectorKBD, i8042intr, 0, BUSUNKNOWN);
+	intrenable(IrqKBD, i8042intr, 0, BUSUNKNOWN);
 
 	/* wait for a quiescent controller */
 	while((c = inb(Status)) & (Outbusy | Inready))

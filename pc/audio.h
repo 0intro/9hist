@@ -10,5 +10,5 @@ enum
 #define CACHELINESZ		8
 #define UNCACHED(type, v)	(type*)((ulong)(v))
 
-#define Int0vec			VectorPIC
+#define Int0vec
 #define setvec(v, f, a)		intrenable(v, f, a, BUSUNKNOWN)

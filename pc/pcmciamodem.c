@@ -49,6 +49,7 @@ pcmciamodemlink(void)
 		if(isa.port == 0)
 			isa.port = 0x2F8;
 
+		slot = -1;
 		for(j = 0; modems[j]; j++){
 			slot = pcmspecial(modems[j], &isa);
 			if(slot >= 0)

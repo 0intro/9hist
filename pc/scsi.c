@@ -7,8 +7,7 @@
 #include "ureg.h"
 #include "../port/error.h"
 
-enum
-{
+enum {
 	Ninq		= 255,
 	Nscratch	= 255,
 
@@ -22,49 +21,22 @@ enum
 	CMDwrite10	= 0x2A,
 };
 
-typedef struct
-{
+typedef struct {
 	ISAConf;
 	Scsiio	io;
 
 	Target	target[NTarget];
 } Ctlr;
 
-static	Ctlr*	scsi[MaxScsi];
+static Ctlr* scsi[MaxScsi];
 
-typedef struct Link Link;
-typedef struct Link
-{
-	char	*type;
-	Scsiio	(*reset)(int, ISAConf*);
-
-	Link*	link;
-} Link;
-
-static Link *link;
-static int linkcount;
-
-void
-addscsilink(char *t, Scsiio (*r)(int, ISAConf*))
-{
-	Link *lp;
-
-	if((lp = xalloc(sizeof(Link))) == 0)
-		return;
-	lp->type = t;
-	lp->reset = r;
-
-	lp->link = link;
-	link = lp;
-	linkcount++;
-}
+extern SCSIdev* scsidev[];
 
 void
 scsireset(void)
 {
 	Ctlr *ctlr;
-	int ctlrno, t;
-	Link *lp;
+	int ctlrno, i, t;
 
 	for(ctlr = 0, ctlrno = 0; ctlrno < MaxScsi; ctlrno++){
 		if(ctlr == 0)
@@ -72,10 +44,10 @@ scsireset(void)
 		memset(ctlr, 0, sizeof(Ctlr));
 		if(isaconfig("scsi", ctlrno, ctlr) == 0)
 			continue;
-		for(lp = link; lp; lp = lp->link){
-			if(strcmp(lp->type, ctlr->type))
+		for(i = 0; scsidev[i]; i++){
+			if(strcmp(ctlr->type, scsidev[i]->type))
 				continue;
-			if((ctlr->io = lp->reset(ctlrno, ctlr)) == 0)
+			if((ctlr->io = scsidev[i]->reset(ctlrno, ctlr)) == 0)
 				break;
 
 			print("scsi#%d: %s: port 0x%luX irq %lud",

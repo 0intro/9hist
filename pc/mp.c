@@ -19,6 +19,7 @@ static Apic mpapic[MaxAPICNO+1];
 static int machno2apicno[MaxAPICNO+1];	/* inverse map: machno -> APIC ID */
 static Lock mprdthilock;
 static int mprdthi;
+static Ref mpvnoref;			/* unique vector assignment */
 
 static char* buses[] = {
 	"CBUSI ",
@@ -54,7 +55,6 @@ mkprocessor(PCMPprocessor* p)
 	apic->type = PcmpPROCESSOR;
 	apic->apicno = p->apicno;
 	apic->flags = p->flags;
-	apic->vecbase = VectorLAPIC;
 	apic->lintr[0] = ApicIMASK;
 	apic->lintr[1] = ApicIMASK;
 
@@ -183,7 +183,7 @@ mkiointr(PCMPintr* p)
 }
 
 static int
-mpintrinit(Bus* bus, PCMPintr* intr, int vector)
+mpintrinit(Bus* bus, PCMPintr* intr, int vno)
 {
 	int el, po, v;
 
@@ -191,7 +191,7 @@ mpintrinit(Bus* bus, PCMPintr* intr, int vector)
 	 * Parse an I/O or Local APIC interrupt table entry and
 	 * return the encoded vector.
 	 */
-	v = vector;
+	v = vno;
 
 	po = intr->flags & PcmpPOMASK;
 	el = intr->flags & PcmpELMASK;
@@ -230,7 +230,7 @@ mpintrinit(Bus* bus, PCMPintr* intr, int vector)
 
 	/*
 	 */
-	if(bus->type == BusEISA && !po && !el /*&& !(elcr & (1<<(v-VectorPIC)))*/){
+	if(bus->type == BusEISA && !po && !el){
 		po = PcmpHIGH;
 		el = PcmpEDGE;
 	}
@@ -265,8 +265,6 @@ mklintr(PCMPintr* p)
 	/*
 	 * The offsets of vectors for LINT[01] are known to be
 	 * 0 and 1 from the local APIC vector space at VectorLAPIC.
-	 * Can't use apic->vecbase here as this vector may be applied
-	 * to all local APICs (apicno == 0xFF).
 	 */
 	if((bus = mpgetbus(p->busno)) == 0)
 		return 0;
@@ -274,7 +272,7 @@ mklintr(PCMPintr* p)
 
 	/*
 	 * Pentium Pros have problems if LINT[01] are set to ExtINT
-	 * so just bag it. Should be OK for SMP mode.
+	 * so just bag it, SMP mode shouldn't need ExtINT anyway.
 	 */
 	if(p->intr == PcmpExtINT || p->intr == PcmpNMI)
 		v = ApicIMASK;
@@ -545,9 +543,9 @@ mpinit(void)
 	 * and do not appear in the I/O APIC so it is OK
 	 * to set them now.
 	 */
-	intrenable(VectorTIMER, clockintr, 0, BUSUNKNOWN);
-	intrenable(VectorERROR, lapicerror, 0, BUSUNKNOWN);
-	intrenable(VectorSPURIOUS, lapicspurious, 0, BUSUNKNOWN);
+	intrenable(IrqTIMER, clockintr, 0, BUSUNKNOWN);
+	intrenable(IrqERROR, lapicerror, 0, BUSUNKNOWN);
+	intrenable(IrqSPURIOUS, lapicspurious, 0, BUSUNKNOWN);
 	lapiconline();
 
 	checkmtrr();
@@ -570,81 +568,114 @@ mpinit(void)
 }
 
 static int
-mpintrenablex(int v, int tbdf, Irqctl* irqctl)
+mpintrenablex(Vctl* v)
 {
 	Bus *bus;
 	Aintr *aintr;
 	Apic *apic;
-	int bno, dno, lo, n, type;
+	Pcidev *pcidev;
+	int bno, dno, irq, lo, n, type, vno;
 
 	/*
 	 * Find the bus, default is ISA.
 	 * There cannot be multiple ISA or EISA buses.
 	 */
-	type = BUSTYPE(tbdf);
-	bno = BUSBNO(tbdf);
-	dno = BUSDNO(tbdf);
+	type = BUSTYPE(v->tbdf);
+	bno = BUSBNO(v->tbdf);
+	dno = BUSDNO(v->tbdf);
 	n = 0;
-	for(bus = mpbus; bus; bus = bus->next){
+	for(bus = mpbus; bus != nil; bus = bus->next){
 		if(bus->type != type)
 			continue;
 		if(n == bno)
 			break;
 		n++;
 	}
-	if(bus == 0){
+	if(bus == nil){
 		print("ioapicirq: can't find bus type %d\n", type);
 		return -1;
 	}
 
 	/*
-	 * Find the interrupt info.
+	 * For PCI devices the interrupt pin (INT[ABCD]) and device
+	 * number are encoded into the entry irq field, so create something
+	 * to match on. The interrupt pin used by the device has to be
+	 * obtained from the PCI config space.
+	 */
+	if(bus->type == BusPCI){
+		pcidev = pcimatchtbdf(v->tbdf);
+		if(pcidev != nil && (n = pcicfgr8(pcidev, PciINTP)) != 0)
+			irq = (dno<<2)|(n-1);
+		else
+			irq = -1;
+		//print("pcidev %uX: irq %uX v->irq %uX\n", v->tbdf, irq, v->irq);
+	}
+	else
+		irq = v->irq;
+
+	/*
+	 * Find a matching interrupt entry from the list of interrupts
+	 * attached to this bus.
 	 */
 	for(aintr = bus->aintr; aintr; aintr = aintr->next){
-		if(bus->type == BusPCI){
-			n = (aintr->intr->irq>>2) & 0x1F;
-			if(n != dno)
-				continue;
-			/*
-			 * Problem: there can be an entry for
-			 * each of the device #INT[ABCD] lines.
-			 * For now look only for #INTA.
-			 */
-			if(aintr->intr->irq & 0x03)
-				continue;
-		}
-		else{
-			n = aintr->intr->irq;
-			if(n != (v-VectorPIC))
-				continue;
+		if(aintr->intr->irq != irq)
+			continue;
+
+		/*
+		 * Check not already enabled. This is a bad thing as it implies the
+		 * same device is requesting the same interrupt to be enabled multiple
+		 * times. The RDT read here is safe for now as currently interrupts
+		 * are never disabled once enabled.
+		 */
+		apic = aintr->apic;
+		ioapicrdtr(apic, aintr->intr->intin, 0, &lo);
+		if(!(lo & ApicIMASK)){
+			print("mpintrenable: multiple enable of irq %d, tbdf %uX\n",
+				v->irq, v->tbdf);
+			return -1;
 		}
 
-		lo = mpintrinit(bus, aintr->intr, v);
+		/*
+		 * With the APIC a unique vector can be assigned to each request
+		 * to enable an interrupt. There are two reasons this is a good idea:
+		 * 1) to prevent lost interrupts, no more than 2 interrupts should
+		 *    be assigned per block of 16 vectors (there is an in-service
+		 *    entry and a holding entry for each priority level and there is
+		 *    a priority level per block of 16 interrupts).
+		 * 2) each input pin on the IOAPIC will receive a different vector
+		 *    regardless of whether the devices on that pin use the same IRQ
+		 *    as devices on another pin.
+		 */
+		vno = VectorAPIC + (incref(&mpvnoref)-1)*8;
+		if(vno > MaxVectorAPIC){
+			print("mpintrenable: vno %d, irq %d, tbdf %uX\n",
+				vno, v->irq, v->tbdf);
+			return -1;
+		}
+		lo = mpintrinit(bus, aintr->intr, vno);
 		if(lo & ApicIMASK)
 			return -1;
 		lo |= ApicLOGICAL;
 
-		apic = aintr->apic;
 		if((apic->flags & PcmpEN) && apic->type == PcmpIOAPIC){
 			lock(&mprdthilock);
  			ioapicrdtw(apic, aintr->intr->intin, mprdthi, lo);
 			unlock(&mprdthilock);
 		}
 
-		irqctl->isr = lapicisr;
-		irqctl->eoi = lapiceoi;
-		irqctl->isintr = 1;
+		v->isr = lapicisr;
+		v->eoi = lapiceoi;
 
-		return lo & 0xFF;
+		return vno;
 	}
 
 	return -1;
 }
 
 int
-mpintrenable(int v, int tbdf, Irqctl* irqctl)
+mpintrenable(Vctl* v)
 {
-	int r;
+	int irq, tbdf, vno;
 
 	/*
 	 * If the bus is known, try it.
@@ -652,23 +683,24 @@ mpintrenable(int v, int tbdf, Irqctl* irqctl)
 	 * interrupts local to the processor (local APIC, coprocessor
 	 * breakpoint and page-fault).
 	 */
-	if(tbdf != BUSUNKNOWN && (r = mpintrenablex(v, tbdf, irqctl)) != -1)
-		return r;
+	tbdf = v->tbdf;
+	if(tbdf != BUSUNKNOWN && (vno = mpintrenablex(v)) != -1)
+		return vno;
 
-	if(v >= VectorLAPIC && v <= MaxVectorLAPIC){
-		if(v != VectorSPURIOUS)
-			irqctl->isr = lapiceoi;
-		irqctl->isintr = 1;
-		return v;
+	irq = v->irq;
+	if(irq >= IrqLINT0 && irq <= MaxIrqLAPIC){
+		if(irq != IrqSPURIOUS)
+			v->isr = lapiceoi;
+		return VectorPIC+irq;
 	}
-	if(v < VectorPIC || v > MaxVectorPIC){
-		print("mpintrenable: vector %d out of range\n", v);
+	if(irq < 0 || irq > MaxIrqPIC){
+		print("mpintrenable: irq %d out of range\n", irq);
 		return -1;
 	}
 
 	/*
-	 * Either didn't find it or we have to try the default
-	 * buses (ISA and EISA). This hack is due to either over-zealousness
+	 * Either didn't find it or have to try the default buses
+	 * (ISA and EISA). This hack is due to either over-zealousness 
 	 * or laziness on the part of some manufacturers.
 	 *
 	 * The MP configuration table on some older systems
@@ -678,14 +710,16 @@ mpintrenable(int v, int tbdf, Irqctl* irqctl)
 	 * be compatible with ISA.
 	 */
 	if(mpisabus != -1){
-		r = mpintrenablex(v, MKBUS(BusISA, 0, 0, 0), irqctl);
-		if(r != -1)
-			return r;
+		v->tbdf = MKBUS(BusISA, 0, 0, 0);
+		vno = mpintrenablex(v);
+		if(vno != -1)
+			return vno;
 	}
 	if(mpeisabus != -1){
-		r = mpintrenablex(v, MKBUS(BusEISA, 0, 0, 0), irqctl);
-		if(r != -1)
-			return r;
+		v->tbdf = MKBUS(BusEISA, 0, 0, 0);
+		vno = mpintrenablex(v);
+		if(vno != -1)
+			return vno;
 	}
 
 	return -1;
@@ -704,8 +738,10 @@ mpshutdown(void)
 		 * If this processor received the CTRL-ALT-DEL from
 		 * the keyboard, acknowledge it. Send an INIT to self.
 		 */
+#ifdef FIXTHIS
 		if(lapicisr(VectorKBD))
 			lapiceoi(VectorKBD);
+#endif /* FIX THIS */
 		idle();
 	}
 
