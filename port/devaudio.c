@@ -120,6 +120,9 @@ static struct
 	int	clri16;
 	int	clri401;
 	int	dma;
+
+	void	(*startdma)(void);
+	void	(*intr)(void);
 } blaster;
 
 static	void	swab(uchar*);
@@ -140,7 +143,7 @@ sbcmd(int val)
 			return 0;
 		}
 	}
-/*	print("#A: sbcmd (#%.2x) timeout\n", val);	/**/
+/*	print("#A: sbcmd (0x%.2x) timeout\n", val);	/**/
 	return 1;
 }
 
@@ -156,7 +159,25 @@ sbread(void)
 		}
 	}
 /*	print("#A: sbread did not respond\n");	/**/
-	return 0xbb;
+	return -1;
+}
+
+static int
+ess1688w(int reg, int val)
+{
+	if(sbcmd(reg) || sbcmd(val))
+		return 1;
+
+	return 0;
+}
+
+static int
+ess1688r(int reg)
+{
+	if(sbcmd(0xC0) || sbcmd(reg))
+		return -1;
+
+	return sbread();
 }
 
 static	int
@@ -321,11 +342,11 @@ contindma(void)
 
 	b = audio.current;
 	if(audio.amode == Aread) {
-		if(b)	/* shouldnt happen */
+		if(b)	/* shouldn't happen */
 			putbuf(&audio.full, b);
 		b = getbuf(&audio.empty);
 	} else {
-		if(b)	/* shouldnt happen */
+		if(b)	/* shouldn't happen */
 			putbuf(&audio.empty, b);
 		b = getbuf(&audio.full);
 	}
@@ -333,8 +354,10 @@ contindma(void)
 	if(b == 0)
 		goto shutdown;
 
-	dmasetup(blaster.dma, b->virt, Bufsize, audio.amode == Aread);
-	return;
+	if(dmasetup(blaster.dma, b->virt, Bufsize, audio.amode == Aread) >= 0)
+		return;
+	print("#A: dmasetup fail\n");
+	putbuf(&audio.empty, b);
 
 shutdown:
 	dmaend(blaster.dma);
@@ -349,7 +372,7 @@ shutdown:
  * start first dma
  */
 static	void
-startdma(void)
+sb16startdma(void)
 {
 	ulong count;
 	int speed;
@@ -380,6 +403,97 @@ startdma(void)
 	iunlock(&blaster);
 }
 
+static int
+ess1688reset(void)
+{
+	int i;
+
+	outb(blaster.reset, 3);
+	delay(1);			/* >3 υs */
+	outb(blaster.reset, 0);
+	delay(1);
+
+	i = sbread();
+	if(i != 0xAA) {
+		print("#A: no response 0x%.2x\n", i);
+		return 1;
+	}
+
+	if(sbcmd(0xC6)){		/* extended mode */
+		print("#A: barf 3\n");
+		return 1;
+	}
+
+	return 0;
+}
+
+static	void
+ess1688startdma(void)
+{
+	ulong count;
+	int speed, x;
+
+	ilock(&blaster);
+	dmaend(blaster.dma);
+
+	if(audio.amode == Awrite)
+		ess1688reset();
+	if(audio.amode == Aread)
+		sbcmd(0xD3);			/* speaker off */
+
+	/*
+	 * Set the speed.
+	 */
+	if(audio.amode == Aread)
+		speed = audio.livol[Vspeed];
+	else
+		speed = audio.lovol[Vspeed];
+	if(speed < 4000)
+		speed = 4000;
+	else if(speed > 48000)
+		speed = 48000;
+
+	if(speed > 22000)
+		  x = 0x80|(256-(795500+speed/2)/speed);
+	else
+		  x = 128-(397700+speed/2)/speed;
+	ess1688w(0xA1, x & 0xFF);
+
+	speed = (speed * 9) / 20;
+	x = 256 - 7160000 / (speed * 82);
+	ess1688w(0xA2, x & 0xFF);
+
+	if(audio.amode == Aread)
+		ess1688w(0xB8, 0x0E);		/* A/D, autoinit */
+	else
+		ess1688w(0xB8, 0x04);		/* D/A, autoinit */
+	x = ess1688r(0xA8) & ~0x03;
+	ess1688w(0xA8, x|0x01);			/* 2 channels */
+	ess1688w(0xB9, 2);			/* demand mode, 4 bytes per request */
+
+	if(audio.amode == Awrite)
+		ess1688w(0xB6, 0);
+	ess1688w(0xB7, 0x71);
+	ess1688w(0xB7, 0xBC);
+
+	x = ess1688r(0xB1) & 0x0F;
+	ess1688w(0xB1, x|0x50);
+	x = ess1688r(0xB2) & 0x0F;
+	ess1688w(0xB2, x|0x50);
+	if(audio.amode == Awrite)
+		sbcmd(0xD1);			/* speaker on */
+
+	count = -Bufsize;
+	ess1688w(0xA4, count & 0xFF);
+	ess1688w(0xA5, (count>>8) & 0xFF);
+	x = ess1688r(0xB8);
+	ess1688w(0xB8, x|0x05);
+
+	audio.active = 1;
+	contindma();
+	iunlock(&blaster);
+}
+
 /*
  * if audio is stopped,
  * start it up again.
@@ -388,11 +502,11 @@ static	void
 pokeaudio(void)
 {
 	if(!audio.active)
-		startdma();
+		blaster.startdma();
 }
 
-void
-audiosbintr(void)
+static void
+sb16intr(void)
 {
 	int stat, dummy;
 
@@ -417,11 +531,40 @@ audiosbintr(void)
 	}
 }
 
+static void
+ess1688intr(void)
+{
+	int dummy;
+
+	if(audio.active){
+		ilock(&blaster);
+		contindma();
+		dummy = inb(blaster.clri8);
+		iunlock(&blaster);
+		audio.intr = 1;
+		wakeup(&audio.vous);
+		USED(dummy);
+	}
+	else
+		print("#A: unexpected ess1688 interrupt\n");
+}
+
 void
+audiosbintr(void)
+{
+	/*
+	 * Carrera interrupt interface.
+	 */
+	blaster.intr();
+}
+
+static void
 pcaudiosbintr(Ureg*, void*)
 {
-/*	print("#A: audio interrupt\n");	/**/
-	audiosbintr();
+	/*
+	 * x86 interrupt interface.
+	 */
+	blaster.intr();
 }
 
 void
@@ -498,6 +641,68 @@ resetlevel(void)
 	}
 }
 
+static int
+ess1688(ISAConf* sbconf)
+{
+	int i, major, minor;
+
+	/*
+	 * Try for ESS1688.
+	 */
+	sbcmd(0xE7);			/* get version */
+	major = sbread();
+	minor = sbread();
+	if(major != 0x68 || minor != 0x8B){
+		print("#A: model 0x%.2x 0x%.2x; not ESS1688 compatible\n", major, minor);
+		return 1;
+	}
+
+	ess1688reset();
+
+	switch(sbconf->irq){
+	case 2:
+	case 9:
+		i = 0x50|(0<<2);
+		break;
+	case 5:
+		i = 0x50|(1<<2);
+		break;
+	case 7:
+		i = 0x50|(2<<2);
+		break;
+	case 10:
+		i = 0x50|(3<<2);
+		break;
+	default:
+		print("#A: bad ESS1688 irq %d\n", sbconf->irq);
+		return 1;
+	}
+	ess1688w(0xB1, i);
+
+	switch(sbconf->dma){
+	case 0:
+		i = 0x50|(1<<2);
+		break;
+	case 1:
+		i = 0xF0|(2<<2);
+		break;
+	case 3:
+		i = 0x50|(3<<2);
+		break;
+	default:
+		print("#A: bad ESS1688 dma %d\n", sbconf->dma);
+		return 1;
+	}
+	ess1688w(0xB2, i);
+
+	ess1688reset();
+
+	blaster.startdma = ess1688startdma;
+	blaster.intr = ess1688intr;
+
+	return 0;
+}
+
 static void
 audioinit(void)
 {
@@ -509,7 +714,7 @@ audioinit(void)
 	sbconf.irq = 7;
 	if(isaconfig("audio", 0, &sbconf) == 0)
 		return;
-	if(strcmp(sbconf.type, "sb16") != 0)
+	if(cistrcmp(sbconf.type, "sb16") != 0 && cistrcmp(sbconf.type, "ess1688") != 0)
 		return;
 	switch(sbconf.port){
 	case 0x220:
@@ -544,6 +749,9 @@ audioinit(void)
 	blaster.clri401 = sbconf.port + 0x100;
 	blaster.dma = sbconf.dma;
 
+	blaster.startdma = sb16startdma;
+	blaster.intr = sb16intr;
+
 	seteisadma(blaster.dma, audiodmaintr);
 	setvec(Int0vec+sbconf.irq, pcaudiosbintr, 0);
 
@@ -566,9 +774,14 @@ audioinit(void)
 	audio.minor = sbread();
 
 	if(audio.major != 4) {
-		print("#A: model #%.2x #%.2x; not SB 16\n", audio.major, audio.minor);
-		return;
+		if(audio.major != 3 || audio.minor != 1 || ess1688(&sbconf)){
+			print("#A: model 0x%.2x 0x%.2x; not SB 16 compatible\n",
+				audio.major, audio.minor);
+			return;
+		}
+		audio.major = 4;
 	}
+	
 	/*
 	 * initialize the mixer
 	 */

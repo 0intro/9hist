@@ -569,8 +569,6 @@ i82386probe(int x, int d, int dev)
 		outb(d, c & ~0xC0);
 	}
 
-	print("#y%d: %d slot %s\n", ncontroller, cp->nslot, chipname[cp->type]);
-
 	/* low power mode */
 	outb(x, Rmisc2 + (dev<<7));
 	c = inb(d);
@@ -602,13 +600,19 @@ static void
 i82365reset(void)
 {
 	static int already;
-	int i, j;
+	int i, j, vector;
 	I82365 *cp;
 	Slot *pp;
+	ISAConf isa;
 
 	if(already)
 		return;
 	already = 1;
+
+	memset(&isa, 0, sizeof(ISAConf));
+	vector = VectorPCMCIA;
+	if(isaconfig("pcmcia", 0, &isa) && isa.irq)
+		vector = VectorPIC+isa.irq;
 
 	/* look for controllers */
 	i82386probe(0x3E0, 0x3E1, 0);
@@ -623,6 +627,8 @@ i82365reset(void)
 	lastslot = slot;
 	for(i = 0; i < ncontroller; i++){
 		cp = controller[i];
+		print("#y%d: %d slot %s: port 0x%uX irq %d\n",
+			i, cp->nslot, chipname[cp->type], cp->xreg, vector-VectorPIC);
 		for(j = 0; j < cp->nslot; j++){
 			pp = lastslot++;
 			pp->slotno = pp - slot;
@@ -632,14 +638,14 @@ i82365reset(void)
 			slotdis(pp);
 
 			/* interrupt on status change */
-			wrreg(pp, Rcscic, ((VectorPCMCIA-VectorPIC)<<4) | Fchangeena);
+			wrreg(pp, Rcscic, ((vector-VectorPIC)<<4) | Fchangeena);
 			rdreg(pp, Rcsc);
 		}
 	}
 
 	/* for card management interrupts */
 	if(ncontroller)
-		intrenable(VectorPCMCIA, i82365intr, 0, BUSUNKNOWN);
+		intrenable(vector, i82365intr, 0, BUSUNKNOWN);
 }
 
 static Chan*
