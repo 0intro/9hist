@@ -328,6 +328,7 @@ typedef struct {
 
 	int	xcvr;				/* transceiver type */
 	int	rxstatus9;			/* old-style RxStatus register */
+	int	ts;				/* threshold shift */
 } Ctlr;
 
 static Block*
@@ -501,7 +502,7 @@ transmit(Ether* ether)
 		}
 		else if(ctlr->txbusy == 0){
 			ctlr->txbusy = 1;
-			COMMAND(port, SetTxAvailableThresh, len);
+			COMMAND(port, SetTxAvailableThresh, len>>ctlr->ts);
 			return;
 		}
 	}
@@ -724,7 +725,7 @@ interrupt(Ureg*, void* arg)
 				COMMAND(port, TxReset, 0);
 				while(STATUS(port) & commandInProgress)
 					;
-				COMMAND(port, SetTxStartThresh, ctlr->txthreshold);
+				COMMAND(port, SetTxStartThresh, ctlr->txthreshold>>ctlr->ts);
 			}
 			COMMAND(port, TxEnable, 0);
 			ether->oerrs++;
@@ -1200,6 +1201,8 @@ etherelnk3reset(Ether* ether)
 	ctlr->busmaster = busmaster;
 	ctlr->xcvr = xcvr;
 	ctlr->rxstatus9 = rxstatus9;
+	if(rxearly >= 2048)
+		ctlr->ts = 2;
 
 	COMMAND(port, StatisticsEnable, 0);
 
@@ -1217,8 +1220,8 @@ etherelnk3reset(Ether* ether)
 	 * interrupts happen.
 	 */
 	ctlr->txthreshold = ETHERMINTU;
-	COMMAND(port, SetTxStartThresh, ETHERMINTU);
-	COMMAND(port, SetRxEarlyThresh, rxearly);
+	COMMAND(port, SetTxStartThresh, ETHERMINTU>>ctlr->ts);
+	COMMAND(port, SetRxEarlyThresh, rxearly>>ctlr->ts);
 
 	iunlock(&ctlr->wlock);
 
