@@ -357,13 +357,13 @@ syscall(Ureg *aur)
 			msg = "sys: odd stack";
 			goto Bad;
 		}
-		if(((ulong*)ur->pc)[-2] != 0x82206004){	/* new calling convention: look for ADD $-4, SP */
-			pprint("new system call linkage\n");
-			sp -= BY2WD;
+		if(((ulong*)ur->pc)[-2] == 0x82206004){	/* new calling convention: look for ADD $-4, SP */
+			pprint("old system call linkage\n");
+			sp += BY2WD;
 		}
-		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-(2+MAXSYSARG)*BY2WD))
-			validaddr(sp, ((2+MAXSYSARG)*BY2WD), 0);
-		ret = (*systab[r7])((ulong*)(sp+2*BY2WD));
+		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-(1+MAXSYSARG)*BY2WD))
+			validaddr(sp, ((1+MAXSYSARG)*BY2WD), 0);
+		ret = (*systab[r7])((ulong*)(sp+1*BY2WD));
 		poperror();
 	}
 	ur->pc += 4;

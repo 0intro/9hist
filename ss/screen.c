@@ -382,20 +382,15 @@ kbdstate(IOQ *q, int c)
 {
 	static shift = 0x00;
 	static caps = 0;
-	static repeatc = -1;
 	static long startclick;
+	static int repeatc;
 	static int kbdstate, k1, k2;
 	int tc;
 
 	tc = kbdmap[shift][c&0x7F];
-/*
-	if(c==0xFFFF && repeatc!=-1 && clicks>startclick+40 && (clicks-startclick)%3==0){
-		kbdc = repeatc;
-		return;
-	}
-*/
 	if(c==0x7F){	/* all keys up */
-		repeatc = -1;
+    norepeat:
+		kbdrepeat(0);
 		return;
 	}
 	if(tc == 0xFF)	/* shouldn't happen; ignore */
@@ -403,43 +398,33 @@ kbdstate(IOQ *q, int c)
 	if(c & 0x80){	/* key went up */
 		if(tc == 0xF0){		/* control */
 			shift &= ~2;
-			repeatc =- 1;
-			return;
+			goto norepeat;
 		}
 		if(tc == 0xF1){	/* shift */
 			shift &= ~1;
-			repeatc = -1;
-			return;
+			goto norepeat;
 		}
 		if(tc == 0xF2){	/* caps */
-			repeatc = -1;
-			return;
+			goto norepeat;
 		}
-		if(tc == repeatc)
-			repeatc = -1;
-		return;
+		goto norepeat;
 	}
 	if(tc == 0xF0){		/* control */
 		shift |= 2;
-		repeatc = -1;
-		return;
+		goto norepeat;
 	}
 	if(tc==0xF1){	/* shift */
 		shift |= 1;
-		repeatc = -1;
-		return;
+		goto norepeat;
 	}
 	if(tc==0xF2){	/* caps */
 		caps ^= 1;
-		repeatc =- 1;
-		return;
+		goto norepeat;
 	}
 	if(caps && 'a'<=tc && tc<='z')
 		tc |= ' ';
 	repeatc = tc;
-/*
-	startclick = clicks;
-*/
+	kbdrepeat(1);
 	if(tc == 0xB6)	/* Compose */
 		kbdstate = 1;
 	else{
