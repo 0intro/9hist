@@ -3,6 +3,7 @@
 #include	"mem.h"
 #include	"dat.h"
 #include	"fns.h"
+#include	"error.h"
 
 /*
  * Plan 9 has two kernel allocators, the x... routines provide a first
@@ -19,7 +20,7 @@
 
 enum
 {
-	Maxpow		= 16,
+	Maxpow		= 18,
 	Nhole		= 128,
 	Magichole	= 0xDeadBabe,
 	Magic2n		= 0xFeedBeef,
@@ -260,7 +261,7 @@ malloc(ulong size)
 	int pow;
 	Bucket *bp;
 
-	for(pow = 3; pow < Maxpow; pow++)
+	for(pow = 3; pow <= Maxpow; pow++)
 		if(size <= (1<<pow))
 			goto good;
 
@@ -298,8 +299,9 @@ smalloc(ulong size)
 {
 	char *s;
 	void *p;
+	int attempt;
 
-	for(;;) {
+	for(attempt = 0; attempt < 1000; attempt++) {
 		p = malloc(size);
 		if(p != nil)
 			return p;
@@ -313,7 +315,8 @@ smalloc(ulong size)
 		qunlock(&arena.rq);
 		u->p->psstate = s;
 	}
-	return p;
+	pexit(Enomem, 1);
+	return 0;
 }
 
 int
