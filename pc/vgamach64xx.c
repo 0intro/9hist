@@ -90,7 +90,6 @@ mach64xxlinear(VGAscr* scr, int* size, int* align)
 	ulong aperture, osize, oaperture;
 	int i, oapsize, wasupamem;
 	Pcidev *p;
-	Physseg seg;
 
 	osize = *size;
 	oaperture = scr->aperture;
@@ -128,17 +127,8 @@ mach64xxlinear(VGAscr* scr, int* size, int* align)
 	scr->mmio = KADDR(aperture+osize-0x400);
 	if(oaperture && oaperture != aperture)
 		print("warning (BUG): redefinition of aperture does not change mach64mmio segment\n");
-	memset(&seg, 0, sizeof(seg));
-	seg.attr = SG_PHYSICAL;
-	kstrdup(&seg.name, "mach64mmio");
-	seg.pa = aperture+osize - BY2PG;
-	seg.size = BY2PG;
-	addphysseg(&seg);
-
-	kstrdup(&seg.name, "mach64screen");
-	seg.pa = aperture;
-	seg.size = osize;
-	addphysseg(&seg);
+	addvgaseg("mach64mmio", aperture+osize-BY2PG, BY2PG);
+	addvgaseg("mach64screen", aperture, osize);
 
 	return aperture;
 }

@@ -125,6 +125,7 @@ extern void mousectl(char*[], int);
 /* screen.c */
 extern int		hwaccel;	/* use hw acceleration; default on */
 extern int		hwblank;	/* use hw blanking; default on */
+extern void addvgaseg(char*, ulong, ulong);
 extern uchar* attachscreen(Rectangle*, ulong*, int*, int*, int*);
 extern void	flushmemscreen(Rectangle);
 extern int	cursoron(int);

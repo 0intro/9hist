@@ -105,7 +105,6 @@ static void
 nvidiaenable(VGAscr* scr)
 {
 	Pcidev *p;
-	Physseg seg;
 	ulong aperture;
 	int align, size;
 
@@ -123,13 +122,7 @@ nvidiaenable(VGAscr* scr)
 	scr->io = upamalloc(p->mem[0].bar & ~0x0F, p->mem[0].size, 0);
 	if (scr->io == 0)
 		return;
-
-	memset(&seg, 0, sizeof(seg));
-	seg.attr = SG_PHYSICAL;
-	seg.name = "nvidiammio";
-	seg.pa = scr->io;
-	seg.size = p->mem[0].size;
-	addphysseg(&seg);
+	addvgaseg("nvidiammio", scr->io, p->mem[0].size);
 
 	size = p->mem[1].size;
 	align = 0;
@@ -137,12 +130,7 @@ nvidiaenable(VGAscr* scr)
 	if(aperture) {
 		scr->aperture = aperture;
 		scr->apsize = size;
-		memset(&seg, 0, sizeof(seg));
-		seg.attr = SG_PHYSICAL;
-		seg.name = "nvidiascreen";
-		seg.pa = aperture;
-		seg.size = size;
-		addphysseg(&seg);
+		addvgaseg("nvidiascreen", aperture, size);
 	}
 }
 

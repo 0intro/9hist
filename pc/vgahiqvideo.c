@@ -85,7 +85,6 @@ static void
 hiqvideoenable(VGAscr* scr)
 {
 	Pcidev *p;
-	Physseg seg;
 	int align, size, vmsize;
 	ulong aperture;
 
@@ -124,12 +123,7 @@ hiqvideoenable(VGAscr* scr)
 	if(aperture) {
 		scr->aperture = aperture;
 		scr->apsize = size;
-		memset(&seg, 0, sizeof(seg));
-		seg.attr = SG_PHYSICAL;
-		kstrdup(&seg.name, "hiqvideoscreen");
-		seg.pa = aperture;
-		seg.size = size;
-		addphysseg(&seg);
+		addvgaseg("hiqvideoscreen", aperture, size);
 	}
 
 	/*

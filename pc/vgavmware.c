@@ -91,7 +91,6 @@ vmwarelinear(VGAscr* scr, int* size, int* align)
 	ulong aperture, oaperture;
 	int osize, oapsize, wasupamem;
 	Pcidev *p;
-	Physseg seg;
 
 	osize = *size;
 	oaperture = scr->aperture;
@@ -131,15 +130,9 @@ vmwarelinear(VGAscr* scr, int* size, int* align)
 	}else
 		scr->isupamem = 1;
 
-	if(oaperture)
+	if(oaperture && aperture != oaperture)
 		print("warning (BUG): redefinition of aperture does not change vmwarescreen segment\n");
-	memset(&seg, 0, sizeof(seg));
-	seg.attr = SG_PHYSICAL;
-	seg.name = smalloc(32);
-	snprint(seg.name, 32, "vmwarescreen");
-	seg.pa = aperture;
-	seg.size = osize;
-	addphysseg(&seg);
+	addvgaseg("vmwarescreen", aperture, osize);
 	return aperture;
 }
 
