@@ -896,8 +896,8 @@ uartstatus(Chan*, Uart *p, void *buf, long n, long offset)
 	istat = p->sticky[Iena];
 	fstat = p->sticky[Format];
 	snprint(str, sizeof str,
-		"b%d c%d d%d e%d l%d m%d p%c r%d s%d\n"
-		"dev(%d) type(%d) framing(%d) overruns(%d)%s%s%s%s%s\n",
+		"b%d c%d d%d e%d l%d m%d p%c r%d s%d i%d\n"
+		"dev(%d) type(%d) framing(%d) overruns(%d)%s%s%s%s\n",
 
 		p->baud,
 		p->hup_dcd, 
@@ -908,12 +908,12 @@ uartstatus(Chan*, Uart *p, void *buf, long n, long offset)
 		(fstat & Pena) ? ((fstat & Peven) ? 'e' : 'o') : 'n',
 		(tstat & Rts) != 0,
 		(fstat & Stop2) ? 2 : 1,
+		p->fifoon,
 
 		p->dev,
 		p->type,
 		p->frame,
 		p->overrun, 
-		p->fifoon       ? " fifo" : "",
 		(mstat & Cts)    ? " cts"  : "",
 		(mstat & Dsr)    ? " dsr"  : "",
 		(mstat & Dcd)    ? " dcd"  : "",
@@ -952,93 +952,99 @@ static void
 ns16552ctl(Uart *p, char *cmd)
 {
 	int i, n;
+	char *f[32];
+	int nf;
 
 	/* let output drain for a while */
 	for(i = 0; i < 16 && qlen(p->oq); i++)
 		tsleep(&p->r, (int(*)(void*))qlen, p->oq, 125);
 
-	if(strncmp(cmd, "break", 5) == 0){
-		ns16552break(p, 0);
-		return;
-	}
+	nf = getfields(cmd, f, nelem(f), 1, " \t\n");
 
+	for(i = 0; i < nf; i++){
 
-	n = atoi(cmd+1);
-	switch(*cmd){
-	case 'B':
-	case 'b':
-		ns16552setbaud(p, n);
-		break;
-	case 'C':
-	case 'c':
-		ns16552dcdhup(p, n);
-		break;
-	case 'D':
-	case 'd':
-		ns16552dtr(p, n);
-		break;
-	case 'E':
-	case 'e':
-		ns16552dsrhup(p, n);
-		break;
-	case 'f':
-	case 'F':
-		qflush(p->oq);
-		break;
-	case 'H':
-	case 'h':
-		qhangup(p->iq, 0);
-		qhangup(p->oq, 0);
-		break;
-	case 'i':
-	case 'I':
-		lock(&p->flock);
-		ns16552fifo(p, n);
-		unlock(&p->flock);
-		break;
-	case 'L':
-	case 'l':
-		ns16552bits(p, n);
-		break;
-	case 'm':
-	case 'M':
-		ns16552mflow(p, n);
-		break;
-	case 'n':
-	case 'N':
-		qnoblock(p->oq, n);
-		break;
-	case 'P':
-	case 'p':
-		ns16552parity(p, *(cmd+1));
-		break;
-	case 'K':
-	case 'k':
-		ns16552break(p, n);
-		break;
-	case 'R':
-	case 'r':
-		ns16552rts(p, n);
-		break;
-	case 'Q':
-	case 'q':
-		qsetlimit(p->iq, n);
-		qsetlimit(p->oq, n);
-		break;
-	case 'T':
-	case 't':
-		ns16552dcdts(p, n);
-		break;
-	case 'W':
-	case 'w':
-		/* obsolete */
-		break;
-	case 'X':
-	case 'x':
-		ilock(&p->tlock);
-		p->xonoff = n;
-		iunlock(&p->tlock);
-		break;
+		if(strncmp(f[i], "break", 5) == 0){
+			ns16552break(p, 0);
+			continue;
+		}
+
+		n = atoi(f[i]+1);
+		switch(*f[i]){
+		case 'B':
+		case 'b':
+			ns16552setbaud(p, n);
+			break;
+		case 'C':
+		case 'c':
+			ns16552dcdhup(p, n);
+			break;
+		case 'D':
+		case 'd':
+			ns16552dtr(p, n);
+			break;
+		case 'E':
+		case 'e':
+			ns16552dsrhup(p, n);
+			break;
+		case 'f':
+		case 'F':
+			qflush(p->oq);
+			break;
+		case 'H':
+		case 'h':
+			qhangup(p->iq, 0);
+			qhangup(p->oq, 0);
+			break;
+		case 'i':
+		case 'I':
+			lock(&p->flock);
+			ns16552fifo(p, n);
+			unlock(&p->flock);
+			break;
+		case 'L':
+		case 'l':
+			ns16552bits(p, n);
+			break;
+		case 'm':
+		case 'M':
+			ns16552mflow(p, n);
+			break;
+		case 'n':
+		case 'N':
+			qnoblock(p->oq, n);
+			break;
+		case 'P':
+		case 'p':
+			ns16552parity(p, *(cmd+1));
+			break;
+		case 'K':
+		case 'k':
+			ns16552break(p, n);
+			break;
+		case 'R':
+		case 'r':
+			ns16552rts(p, n);
+			break;
+		case 'Q':
+		case 'q':
+			qsetlimit(p->iq, n);
+			qsetlimit(p->oq, n);
+			break;
+		case 'T':
+		case 't':
+			ns16552dcdts(p, n);
+			break;
+		case 'W':
+		case 'w':
+			/* obsolete */
+			break;
+		case 'X':
+		case 'x':
+			ilock(&p->tlock);
+			p->xonoff = n;
+			iunlock(&p->tlock);
+			break;
+		}
 	}
 }
 
