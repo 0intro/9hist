@@ -159,7 +159,7 @@ vga1(void)
 	crout(Cmode, 0xe3);	/* turn off address wrap &
 				 * word mode */
 	crout(Cmsl, 0x40);	/* 1 pixel per scan line */
-	crout(Cvertend, MAXY);	/* 480 lne display */
+	crout(Cvertend, MAXY-1);	/* 480 lne display */
 	srout(Smode, 0x06);	/* extended memory,
 				 * odd/even off */
 	srout(Sclock, 0x01);	/* 8 bits/char */

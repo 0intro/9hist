@@ -241,8 +241,6 @@ lancestclose(Queue *q)
 }
 
 /*
- *  assume the q is locked external to this routine
- *
  *  the ``connect'' control message specifyies the type
  */
 Proc *lanceout;

@@ -8,34 +8,38 @@
 void
 qlock(QLock *q)
 {
-	Proc *p;
+	Proc *p, *mp;
 
-	if(canlock(&q->use))
-		return;
-	lock(&q->queue);
-	if(canlock(&q->use)){
-		unlock(&q->queue);
+	lock(&q->use);
+	if(!q->locked) {
+		q->locked = 1;
+		unlock(&q->use);
 		return;
 	}
-	if(u == 0)
-		panic("qlock");
 	p = q->tail;
+	mp = u->p;
 	if(p == 0)
-		q->head = u->p;
+		q->head = mp;
 	else
-		p->qnext = u->p;
-	q->tail = u->p;
-	u->p->qnext = 0;
-	u->p->state = Queueing;
-/*	u->p->qlock = q;	/* DEBUG */
-	unlock(&q->queue);
+		p->qnext = mp;
+	q->tail = mp;
+	mp->qnext = 0;
+	mp->state = Queueing;
+	unlock(&q->use);
 	sched();
 }
 
 int
 canqlock(QLock *q)
 {
-	return canlock(&q->use);
+	lock(&q->use);
+	if(q->locked) {
+		unlock(&q->use);
+		return 0;
+	}
+	q->locked = 1;
+	unlock(&q->use);
+	return 1;
 }
 
 void
@@ -43,17 +47,16 @@ qunlock(QLock *q)
 {
 	Proc *p;
 
-	lock(&q->queue);
-/*	u->p->qlock = 0; /* DEBUG */
-	if(q->head){
-		p = q->head;
+	lock(&q->use);
+	p = q->head;
+	if(p) {
 		q->head = p->qnext;
 		if(q->head == 0)
 			q->tail = 0;
-		unlock(&q->queue);
-		ready(p);
-	}else{
 		unlock(&q->use);
-		unlock(&q->queue);
+		ready(p);
+		return;
 	}
+	q->locked = 0;
+	unlock(&q->use);
 }

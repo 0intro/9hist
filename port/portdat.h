@@ -53,10 +53,10 @@ struct Rendez
 
 struct QLock
 {
+	Lock	use;			/* to use object */
 	Proc	*head;			/* next process waiting for object */
 	Proc	*tail;			/* last process waiting for object */
-	Lock	use;			/* to use object */
-	Lock	queue;			/* to access list */
+	int	locked;			/* flag */
 };
 
 struct Alarm
