@@ -659,11 +659,6 @@ consread(Chan *c, void *buf, long n, vlong off)
 			while(!qcanread(lineq)) {
 				qread(kbdq, &kbd.line[kbd.x], 1);
 				ch = kbd.line[kbd.x];
-				if(kbd.raw){
-					qiwrite(lineq, kbd.line, kbd.x+1);
-					kbd.x = 0;
-					continue;
-				}
 				eol = 0;
 				switch(ch){
 				case '\b':
@@ -856,8 +851,10 @@ conswrite(Chan *c, void *va, long n, vlong off)
 				kbd.raw = 1;
 				qunlock(&kbd);
 			} else if(strncmp(a, "rawoff", 6) == 0){
+				qlock(&kbd);
 				kbd.raw = 0;
 				kbd.x = 0;
+				qunlock(&kbd);
 			} else if(strncmp(a, "ctlpon", 6) == 0){
 				kbd.ctlpoff = 0;
 			} else if(strncmp(a, "ctlpoff", 7) == 0){

@@ -37,7 +37,7 @@ enum
 	MSL2		= 10,
 	MSPTICK		= 50,		/* Milliseconds per timer tick */
 	DEF_MSS		= 1460,		/* Default mean segment */
-	DEF_RTT		= 1000,		/* Default round trip */
+	DEF_RTT		= 500,		/* Default round trip */
 	DEF_KAT		= 30000,	/* Default time ms) between keep alives */
 	TCP_LISTEN	= 0,		/* Listen connection */
 	TCP_CONNECT	= 1,		/* Outgoing connection */
@@ -659,7 +659,10 @@ inittcpctl(Conv *s, int mode)
 	memset(tcb, 0, sizeof(Tcpctl));
 
 	tcb->ssthresh = 65535;
+	tcb->srtt = tcp_irtt<<LOGAGAIN;
+	tcb->mdev = 0;
 
+	/* setup timers */
 	tcb->timer.start = tcp_irtt / MSPTICK;
 	tcb->timer.func = tcptimeout;
 	tcb->timer.arg = s;
@@ -1787,12 +1790,6 @@ tcpoutput(Conv *s)
 			/* round trip depenency */
 			x = backoff(tcb->backoff) *
 			    (tcb->mdev + (tcb->srtt>>LOGAGAIN) + MSPTICK) / MSPTICK;
-
-			/*  allow for slow initial response
-			 *  (miller@hamnavoe.demon.co.uk)
-			 */
-			if(tcb->state == Syn_sent && x < 500/MSPTICK)
-				x = 500/MSPTICK;
 
 			/* take into account delayed ack */
 			if(sent <= 2*tcb->mss)
