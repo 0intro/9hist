@@ -434,6 +434,36 @@ syswait(ulong *arg)
 }
 
 long
+sys__wait__(ulong *arg)			/* binary compatibility: BUG */
+{
+	int i;
+
+	struct oldWaitmsg
+	{
+		int	pid;		/* of loved one */
+		int	status;		/* unused; a vestige */
+		long	time[3];	/* of loved one & descendants */
+		char	msg[ERRLEN];
+	} *wp;
+	Waitmsg w;
+
+	if(arg[0]){
+		validaddr(arg[0], sizeof(struct oldWaitmsg), 1);
+		evenaddr(arg[0]);
+		i = pwait(&w);
+		wp = (struct oldWaitmsg*)arg[0];
+		wp->pid = atoi(w.pid);
+		wp->status = 0;
+		wp->time[TUser] = atoi(w.time+TUser*NUMSIZE);
+		wp->time[TSys] = atoi(w.time+TSys*NUMSIZE);
+		wp->time[TReal] = atoi(w.time+TReal*NUMSIZE);
+		memmove(wp->msg, w.msg, ERRLEN);
+		return i;
+	}
+	return pwait(0);
+}
+
+long
 sysdeath(ulong *arg)
 {
 	USED(arg);

@@ -118,8 +118,7 @@ struct Dir
 
 struct Waitmsg
 {
-	int	pid;		/* of loved one */
-	int	status;		/* unused; a placeholder */
-	ulong	time[3];	/* of loved one */
+	char	pid[12];	/* of loved one */
+	char	time[3*12];	/* of loved one and descendants */
 	char	msg[ERRLEN];
 };

@@ -46,7 +46,7 @@ struct List
 struct Ref
 {
 	Lock;
-	int	ref;
+	long	ref;
 };
 
 struct Rendez

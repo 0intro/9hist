@@ -5,11 +5,7 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
-struct
-{
-	Lock;
-	ulong	pid;
-}pidalloc;
+Ref	pidalloc;
 
 struct
 {
@@ -34,7 +30,8 @@ typedef struct
 Schedq	runhiq, runloq;
 int	nrdy;
 
-char *statename[]={	/* BUG: generate automatically */
+char *statename[] =
+{			/* BUG: generate automatically */
 	"Dead",
 	"Moribund",
 	"Ready",
@@ -231,9 +228,7 @@ newproc(void)
 			p->procctl = 0;
 			p->notepending = 0;
 			memset(p->seg, 0, sizeof p->seg);
-			lock(&pidalloc);
-			p->pid = ++pidalloc.pid;
-			unlock(&pidalloc);
+			p->pid = incref(&pidalloc);
 			if(p->pid == 0)
 				panic("pidalloc");
 			return p;
@@ -448,7 +443,6 @@ postnote(Proc *p, int dolock, char *n, int flag)
 	return ret;
 }
 
-
 /*
  * weird thing: keep at most NBROKEN around
  */
@@ -527,12 +521,15 @@ pexit(char *exitstr, int freemem)
 			panic("boot process died");
 			
 		wq = newwaitq();
-		wq->w.pid = c->pid;
+		readnum(0, wq->w.pid, NUMSIZE, c->pid, NUMSIZE);
 		utime = c->time[TUser] + c->time[TCUser];
 		stime = c->time[TSys] + c->time[TCSys];
-		wq->w.time[TUser] = TK2MS(utime);
-		wq->w.time[TSys] = TK2MS(stime);
-		wq->w.time[TReal] = TK2MS(MACHP(0)->ticks - c->time[TReal]);
+		readnum(0, &wq->w.time[TUser*12], NUMSIZE,
+			TK2MS(utime), NUMSIZE);
+		readnum(0, &wq->w.time[TSys*12], NUMSIZE,
+			TK2MS(stime), NUMSIZE);
+		readnum(0, &wq->w.time[TReal*12], NUMSIZE,
+			TK2MS(MACHP(0)->ticks - c->time[TReal]), NUMSIZE);
 		if(exitstr && exitstr[0]){
 			n = sprint(wq->w.msg, "%s %d:", c->text, c->pid);
 			strncpy(wq->w.msg+n, exitstr, ERRLEN-n);
@@ -540,7 +537,8 @@ pexit(char *exitstr, int freemem)
 			wq->w.msg[0] = '\0';
 
 		lock(&p->exl);
-		/* My parent still alive */
+		/* My parent still alive, processes are limited to 128 Zombies to
+		 * prevent badly written daemon consuming all the wait records */
 		if(p->pid == c->parentpid && p->state != Broken && p->nwait < 128) {	
 			p->nchild--;
 			p->time[TCUser] += utime;
@@ -631,7 +629,7 @@ pwait(Waitmsg *w)
 
 	if(w)
 		memmove(w, &wq->w, sizeof(Waitmsg));
-	cpid = wq->w.pid;
+	cpid = atoi(wq->w.pid);
 	freewaitq(wq);
 	return cpid;
 }

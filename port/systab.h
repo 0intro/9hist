@@ -22,7 +22,7 @@ Syscall sysread;
 Syscall sysseek;
 Syscall syssleep;
 Syscall sysstat;
-Syscall syswait;
+Syscall sys__wait__;
 Syscall syswrite;
 Syscall syspipe;
 Syscall syscreate;
@@ -39,6 +39,7 @@ Syscall syssegfree;
 Syscall syssegflush;
 Syscall sysrendezvous;
 Syscall sysunmount;
+Syscall syswait;
 
 Syscall *systab[]={
 	[SYSR1]		sysr1,
@@ -60,7 +61,7 @@ Syscall *systab[]={
 	[SEEK]		sysseek,
 	[SLEEP]		syssleep,
 	[STAT]		sysstat,
-	[WAIT]		syswait,
+	[__WAIT__]	sys__wait__,
 	[WRITE]		syswrite,
 	[PIPE]		syspipe,
 	[CREATE]	syscreate,
@@ -77,6 +78,7 @@ Syscall *systab[]={
 	[SEGFLUSH]	syssegflush,
 	[RENDEZVOUS]	sysrendezvous,
 	[UNMOUNT]	sysunmount,
+	[WAIT]		syswait,
 };
 
 char *sysctab[]={
@@ -99,7 +101,7 @@ char *sysctab[]={
 	[SEEK]		"Seek",
 	[SLEEP]		"Sleep",
 	[STAT]		"Stat",
-	[WAIT]		"Wait",
+	[__WAIT__]	"__wait_",
 	[WRITE]		"Write",
 	[PIPE]		"Pipe",
 	[CREATE]	"Create",
@@ -116,4 +118,5 @@ char *sysctab[]={
 	[SEGFLUSH]	"Segflush",
 	[RENDEZVOUS]	"Rendez",
 	[UNMOUNT]	"Unmount",
+	[WAIT]		"Wait",
 };
