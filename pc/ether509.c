@@ -28,6 +28,7 @@ enum {
 	RxDiscard	= 0x08,		/* RX Discard Top Packet */
 	TxEnable	= 0x09,		/* TX Enable */
 	TxDisable	= 0x0A,		/* TX Disable */
+	TxReset		= 0x0B,		/* TX Reset */
 	AckIntr		= 0x0D,		/* Acknowledge Interrupt */
 	SetIntrMask	= 0x0E,		/* Set Interrupt Mask */
 	SetReadZeroMask	= 0x0F,		/* Set Read Zero Mask */
@@ -61,6 +62,11 @@ enum {
 	RxComplete	= 0x0010,	/* RX Complete */
 	AllIntr		= 0x00FE,	/* All Interrupt Bits */
 	CmdInProgress	= 0x1000,	/* Command In Progress */
+
+					/* TxStatus Bits */
+	TxJabber	= 0x20,		/* Jabber Error */
+	TxUnderrun	= 0x10,		/* Underrun */
+	TxMaxColl	= 0x08,		/* Maximum Collisions */
 
 					/* RxStatus Bits */
 	RxByteMask	= 0x07FF,	/* RX Bytes (0-1514) */
@@ -386,6 +392,7 @@ interrupt(EtherCtlr *cp)
 {
 	EtherHw *hw = cp->hw;
 	ushort status;
+	uchar txstatus;
 
 	status = ins(hw->addr+Status);
 
@@ -397,15 +404,25 @@ interrupt(EtherCtlr *cp)
 
 	if(status & TxComplete){
 		/*
-		 * Needs work here.
+		 * Pop the TX Status stack, accumulating errors.
+		 * If there was a Jabber or Underrun error, reset
+		 * the transmitter. For all conditions enable
+		 * the transmitter.
 		 */
-		print("txstat %ux\n", inb(hw->addr+TxStatus));
+		txstatus = 0;
+		while(ins(hw->addr+Status) & TxComplete){
+			txstatus |= inb(hw->addr+TxStatus);
+			outb(hw->addr+TxStatus, 0);
+		}
+		if(txstatus & (TxJabber|TxUnderrun))
+			COMMAND(hw, TxReset, 0);
+		COMMAND(hw, TxEnable, 0);
 	}
 
-	if(status & TxAvailable){
+	if(status & (TxAvailable|TxComplete)){
 		(*cp->hw->transmit)(cp);
 		wakeup(&cp->tr);
-		status &= ~TxAvailable;
+		status &= ~(TxAvailable|TxComplete);
 	}
 
 	/*
