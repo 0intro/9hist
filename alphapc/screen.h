@@ -89,7 +89,8 @@ struct VGAscr {
 
 	int	useflush;
 
-	ulong	aperture;			/* physical address */
+	ulong	aperture;			/* physical address, kernel */
+	ulong	pciaddr;			/* physical address, user */
 	int	isupamem;
 	int	apsize;
 

@@ -103,7 +103,12 @@ vgaread(Chan* c, void* a, long n, vlong off)
 		else
 			s = "off";
 		len += snprint(p+len, READSTR-len, "hwgc: %s\n", s);
-		snprint(p+len, READSTR-len, "addr: 0x%lux\n", scr->aperture);
+		if(scr->pciaddr)
+			snprint(p+len, READSTR-len, "addr: 0x%lux\n",
+				scr->pciaddr);
+		else
+			snprint(p+len, READSTR-len, "addr: 0x%lux\n",
+				scr->aperture);
 
 		n = readstr(offset, a, n, p);
 		poperror();

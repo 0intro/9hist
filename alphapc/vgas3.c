@@ -64,16 +64,18 @@ s3page(VGAscr* scr, int page)
 static ulong
 s3linear(VGAscr* scr, int* size, int* align)
 {
-	ulong aperture, oaperture;
+	ulong aperture, oaperture, opciaddr;
 	int oapsize, wasupamem;
 	Pcidev *p;
 
 	oaperture = scr->aperture;
 	oapsize = scr->apsize;
+	opciaddr = scr->pciaddr;
 	wasupamem = scr->isupamem;
 	if(wasupamem)
 		upafree(oaperture, oapsize);
 	scr->isupamem = 0;
+	scr->pciaddr = 0;
 
 	if(p = pcimatch(nil, 0x5333, 0)){
 		aperture = p->mem[0].bar & ~0x0F;
@@ -84,11 +86,15 @@ s3linear(VGAscr* scr, int* size, int* align)
 
 	aperture = upamalloc(aperture, *size, *align);
 	if(aperture == 0){
-		if(wasupamem && upamalloc(oaperture, oapsize, 0))
+		if(wasupamem && upamalloc(oaperture, oapsize, 0)){
 			scr->isupamem = 1;
+			scr->pciaddr = opciaddr;
+		}
 	}
-	else
+	else{
+		scr->pciaddr = p->mem[0].bar & ~0x0F;
 		scr->isupamem = 1;
+	}
 
 	return aperture;
 }

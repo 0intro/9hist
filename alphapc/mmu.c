@@ -238,14 +238,12 @@ upamalloc(ulong pa, int size, int align)
 	void *va;
 
 	/*
-	 * Viability hack.
-	return kmapv(((uvlong)space<<32LL)|offset, size);
-	return kmapio(0x88, addr, len);
+	 * Viability hack. Only for PCI frambuffers.
 	 */
+	if(pa == 0)
+		return 0;
 	USED(align);
-print("upa0: pa %luX size %d, align %d nextio %luX\n", pa, size, align, nextio);
 	va = kmapv(((uvlong)0x88<<32LL)|pa, size);
-print("upa1: va %luX nextio %luX\n", va, nextio);
 	if(va == nil)
 		return 0;
 	return PADDR(va);
