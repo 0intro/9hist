@@ -84,6 +84,7 @@ schedinit(void)		/* never returns */
 void
 sched(void)
 {
+	kmapinval();
 	if(up) {
 		splhi();
 		m->cs++;
@@ -135,9 +136,6 @@ ready(Proc *p)
 	splx(s);
 }
 
-/*
- * Always called splhi
- */
 Proc*
 runproc(void)
 {
