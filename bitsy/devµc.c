@@ -118,7 +118,7 @@ int
 			b = p[0] & 0x7f;
 			up = p[0] & 80;
 	
-			if(b > 5){
+			if(b > 5) {
 				/* rocker panel acts like arrow keys */
 				if(b < 10)
 					kbdputc(kbdq, bmap[b-6]);

@@ -228,7 +228,7 @@ attachscreen(Rectangle *r, ulong *chan, int* d, int *width, int *softscreen)
 	*width = gscreen->width;
 	*softscreen = 0;
 
-	return (uchar*)gscreen->data;
+	return (uchar*)gscreen->data->bdata;
 }
 
 void
@@ -332,7 +332,6 @@ screenputc(char *buf)
 	Rectangle r;
 	static int *xp;
 	static int xbuf[256];
-return;
 
 	if(xp < xbuf || xp >= &xbuf[sizeof(xbuf)])
 		xp = xbuf;

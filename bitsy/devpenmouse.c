@@ -90,11 +90,12 @@ void
 pentrackxy(int x, int y) {
 	if (x == -1) {
 		/* pen up. associate with button 1, 2, 3 up */
-		if (mouse.buttons & 0x7)
-			mouse.buttons &= ~0x7;
+		mouse.buttons &= ~0x7;
 	} else {
 		x = (x<<16)/calibration.scalex + calibration.transx;
 		y = (y<<16)/calibration.scaley + calibration.transy;
+		if ((mouse.buttons & 0x7) == 0)
+			mouse.buttons |= 0x1;
 	}
 	penmousetrack(mouse.buttons, x, y);
 }
@@ -204,14 +205,12 @@ penmouseclose(Chan *c)
 	}
 }
 
-
 static long
 penmouseread(Chan *c, void *va, long n, vlong)
 {
 	char buf[4*12+1];
 	static int map[8] = {0, 4, 2, 6, 1, 5, 3, 7 };
 	Mousestate m;
-	int b;
 
 	switch(c->qid.path){
 	case CHDIR:
@@ -239,12 +238,9 @@ penmouseread(Chan *c, void *va, long n, vlong)
 			m = mouse.Mousestate;
 		}
 
-		b = buttonmap[m.buttons&7];
-		/* put buttons 4 and 5 back in */
-		b |= m.buttons & (3<<3);
 		sprint(buf, "m%11d %11d %11d %11lud",
 			m.xy.x, m.xy.y,
-			b,
+			m.buttons,
 			m.msec);
 		mouse.lastcounter = m.counter;
 		if(n > 1+4*12)
@@ -303,7 +299,7 @@ penmousewrite(Chan *c, void *va, long n, vlong)
 {
 	char *p;
 	Point pt;
-	char buf[64], *field[3];
+	char buf[64], *field[5];
 	int nf, b;
 
 	p = va;
@@ -319,7 +315,7 @@ penmousewrite(Chan *c, void *va, long n, vlong)
 			buf[n-1] = 0;
 		else
 			buf[n] = 0;
-		nf = getfields(buf, field, 3, 1, " ");
+		nf = getfields(buf, field, 5, 1, " ");
 		if(strcmp(field[0], "swap") == 0){
 			if(mouseswap)
 				setbuttonmap("123");
@@ -338,7 +334,8 @@ penmousewrite(Chan *c, void *va, long n, vlong)
 				calibration.scaley = strtol(field[2], nil, 0);
 				calibration.transx = strtol(field[3], nil, 0);
 				calibration.transy = strtol(field[4], nil, 0);
-			}
+			} else
+				print("calibrate %d fields\n", nf);
 		}
 		return n;
 
