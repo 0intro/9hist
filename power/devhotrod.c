@@ -147,6 +147,9 @@ hotrodstat(Chan *c, char *dp)
 	error(Egreg);
 }
 
+#define	NTESTBUF	256
+ulong	testbuf[NTESTBUF];
+
 Chan*
 hotrodopen(Chan *c, int omode)
 {
@@ -184,6 +187,8 @@ hotrodopen(Chan *c, int omode)
 		 */
 		mp = &u->khot;
 		mp->cmd = TEST;
+		mp->param[0] = MP2VME(testbuf);
+		mp->param[1] = NTESTBUF;
 		hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->khot);
 		delay(100);
 		print("tested\n");
