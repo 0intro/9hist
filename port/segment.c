@@ -125,6 +125,7 @@ putseg(Segment *s)
 		free(s->map);
 	if(s->profile != 0)
 		free(s->profile);
+	unlock(s);	/* keep lock/unlocks balanced */
 	free(s);
 }
 

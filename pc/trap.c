@@ -303,21 +303,7 @@ trap(Ureg* ureg)
 		postnote(up, 1, buf, NDebug);
 	}
 	else if(vno >= VectorPIC && vno != VectorSYSCALL){
-		/* call all interrupt routines, just in case */
-		for(i = VectorPIC; i <= MaxIrqLAPIC; i++){
-			ctl = vctl[i];
-			if(ctl == nil)
-				continue;
-			if(!ctl->isintr)
-				continue;
-			for(v = ctl; v != nil; v = v->next){
-				if(v->f)
-					v->f(ureg, v->a);
-			}
-			/* should we do this? */
-			if(ctl->eoi)
-				ctl->eoi(i);
-		}
+		i8259isr(vno);
 			
 		/*
 		 * An unknown interrupt.

@@ -514,7 +514,7 @@ ms2tk(ulong ms)
 	/* avoid overflows at the cost of precision */
 	if(ms >= 1000000000/HZ)
 		return (ms/1000)*HZ;
-	return (ms+500)*HZ/1000;
+	return (ms*HZ+500)/1000;
 }
 
 void

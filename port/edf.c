@@ -29,7 +29,6 @@ char *edf_statename[] = {
 static Cycintr	cycdeadline;		/* Time of next deadline */
 static Cycintr	cycrelease;		/* Time of next release */
 
-static Ticks	utilization;		/* Current utilization */
 static int		initialized;
 static uvlong	fasthz;	
 static Ticks	now;
@@ -154,12 +153,10 @@ edfenqueue(Taskq *q, Task *t)
 {
 	Task *tt, **ttp;
 
-	ilock(q);
 	DPRINT("%d edfenqueue, %s, %d\n", m->machno, edf_statename[t->state], t->runq.n);
 	t->rnext = nil;
 	if (q->head == nil) {
 		q->head = t;
-		iunlock(q);
 		return t;
 	}
 	SET(tt);
@@ -175,7 +172,6 @@ edfenqueue(Taskq *q, Task *t)
 		tt->rnext = t;
 	if (t != q->head)
 		t = nil;
-	iunlock(q);
 	return t;
 }
 
@@ -185,12 +181,10 @@ edfdequeue(Taskq *q)
 	Task *t;
 
 	DPRINT("%d edfdequeue\n", m->machno);
-	ilock(q);
 	if (t = q->head){
 		q->head = t->rnext;
 		t->rnext = nil;
 	}
-	iunlock(q);
 	return t;
 }
 
@@ -199,17 +193,14 @@ edfqremove(Taskq *q, Task *t)
 {
 	Task **tp;
 
-	ilock(q);
 	DPRINT("%d edfqremove, %s, %d\n", m->machno, edf_statename[t->state], t->runq.n);
 	for (tp = &q->head; *tp; tp = &(*tp)->rnext){
 		if (*tp == t){
 			*tp = t->rnext;
 			t = (tp == &q->head) ? q->head : nil;
-			iunlock(q);
 			return t;
 		}
 	}
-	iunlock(q);
 	return nil;
 }
 
@@ -482,6 +473,8 @@ edfdeadlineintr(Ureg*, Cycintr*)
 				}	
 			}
 		}
+		if (up->nlocks)
+			iprint("have %lud locks at deadline\n", up->nlocks);
 	}
 	iunlock(&edflock);
 	sched();

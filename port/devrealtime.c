@@ -57,6 +57,18 @@ Dirtab scheddir[]={
 	"time",		{Qtime},				0,	0444,
 };
 
+static char *schedstatename[] = {
+	[SRelease] =	"Release",
+	[SRun] =		"Run",
+	[SPreempt] =	"Preempt",
+	[SBlock] =		"Block",
+	[SResume] =	"Resume",
+	[SDeadline] =	"Deadline",
+	[SYield] =		"Yield",
+	[SSlice] =		"Slice",
+	[SExpel] =		"Expel",
+};
+
 static char*
 dumptask(char *p, char *e, Task *t, Ticks now)
 {
@@ -169,7 +181,7 @@ _devrt(Task *t, Ticks t1, SEvent etype)
 	if (logopens.ref == 0 || nevents == Nevents)
 		return;
 
-	if(edfprint)iprint("state %s\n", edf_statename[etype]);
+	if(edfprint)iprint("state %s\n", schedstatename[etype]);
 	events[wevent].tid = t - tasks;
 	events[wevent].ts = 0;
 	if (t1)
