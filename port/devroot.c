@@ -158,7 +158,6 @@ rootread(Chan *c, void *buf, long n, ulong offset)
 	case Qdev:
 		return 0;
 	}
-	error(Egreg);
 	return 0;
 }
 

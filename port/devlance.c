@@ -311,7 +311,8 @@ lanceoput(Queue *q, Block *bp )
 	}
 	if(memcmp(l.bcast, p->d, sizeof(l.bcast)) == 0){
 		len = blen(bp);
-		nbp = copyb(bp, len = len >= ETHERMINTU ? len : ETHERMINTU);
+		nbp = copyb(bp, len);
+		nbp = expandb(nbp, len >= ETHERMINTU ? len : ETHERMINTU);
 		if(nbp){
 			nbp->wptr = nbp->rptr+len;
 			putq(&l.self, nbp);
