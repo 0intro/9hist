@@ -128,22 +128,6 @@ GBitmap bgrnd =
 	0
 };
 
-Cursor fatarrow = {
-	{ -1, -1 },
-	{
-		0xff, 0xff, 0x80, 0x01, 0x80, 0x02, 0x80, 0x0c, 
-		0x80, 0x10, 0x80, 0x10, 0x80, 0x08, 0x80, 0x04, 
-		0x80, 0x02, 0x80, 0x01, 0x80, 0x02, 0x8c, 0x04, 
-		0x92, 0x08, 0x91, 0x10, 0xa0, 0xa0, 0xc0, 0x40, 
-	},
-	{
-		0x00, 0x00, 0x7f, 0xfe, 0x7f, 0xfc, 0x7f, 0xf0, 
-		0x7f, 0xe0, 0x7f, 0xe0, 0x7f, 0xf0, 0x7f, 0xf8, 
-		0x7f, 0xfc, 0x7f, 0xfe, 0x7f, 0xfc, 0x73, 0xf8, 
-		0x61, 0xf0, 0x60, 0xe0, 0x40, 0x40, 0x00, 0x00, 
-	},
-};
-
 static Rectangle window;
 static Point cursor;
 static int h, w;
@@ -201,8 +185,6 @@ screeninit(void)
 	gscreen.base = xalloc(1024*1024);
 
 	gbitblt(&gscreen, Pt(0, 0), &gscreen, gscreen.r, 0);
-
-	memmove(&arrow, &fatarrow, sizeof(fatarrow));
 
 	screenwin();
 }
@@ -502,9 +484,10 @@ twizzle(uchar *f, uchar *t)
 void
 screenupdate(void)
 {
+	Rectangle r;
+	ulong *s, *h, in1, in2;
 	uchar *sp, *hp, *edisp;
 	int i, y, len, off, page, inc;
-	Rectangle r;
 
 	r = mbb;
 	mbb = NULLMBB;
@@ -529,11 +512,13 @@ screenupdate(void)
 
 	inc = gscreen.width*4;
 	off = r.min.y * inc + r.min.x;
+
 	sp = ((uchar*)gscreen.base) + off;
 
 	page = off>>16;
 	off &= (1<<16)-1;
-	hp = edisp = 0;
+	hp = 0;
+	edisp = 0;
 	for(y = r.min.y; y < r.max.y; y++){
 		if(hp >= edisp){
 			hp = ((uchar*)vgascreen.base) + off;
@@ -542,11 +527,27 @@ screenupdate(void)
 			off = r.min.x;
 			page++;
 		}
-		for(i = 0; i < len; i += 8)
-			twizzle(sp+i, hp+i);
+		for(i = 0; i < len; i += 8) {
+			s = (ulong*)(sp+i);
+			h = (ulong*)(hp+i);
+			in1 = s[0];
+			in2 = s[1];
+			h[0] = swiz(in2);
+			h[1] = swiz(in1);
+		}
 		hp += inc;
 		sp += inc;
 	}
+}
+
+void
+mousescreenupdate(void)
+{
+	if(canlock(&screenlock) == 0)
+		return;
+
+	screenupdate();
+	unlock(&screenlock);
 }
 
 /*

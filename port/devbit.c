@@ -105,7 +105,8 @@ extern	GBitmap	gscreen;
 typedef struct Mouseinfo	Mouseinfo;
 typedef struct Cursorinfo	Cursorinfo;
 
-struct Mouseinfo{
+struct Mouseinfo
+{
 	/*
 	 * First three fields are known in some l.s's
 	 */
@@ -119,7 +120,8 @@ struct Mouseinfo{
 	Rendez	r;
 };
 
-struct Cursorinfo{
+struct Cursorinfo
+{
 	Cursor;
 	Lock;
 	int	visible;	/* on screen */

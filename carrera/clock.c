@@ -87,6 +87,7 @@ clock(Ureg *ur)
 	}
 
 	checkalarms();
+	mouseclock();
 
 	if(up == 0 || (ur->status&IE) == 0 || up->state != Running)
 		return;

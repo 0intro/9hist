@@ -19,6 +19,7 @@ enum
 	Ktest=		0xAB,	/* keyboard test */
 	Kdisable=	0xAD,	/* disable keyboard */
 	Kenable=	0xAE,	/* enable keyboard */
+	Kmseena=	0xA8,	/* enable mouse */
 	Krdin=		0xC0,	/* read input port */
 	Krdout=		0xD0,	/* read output port */
 	Kwrout=		0xD1,	/* write output port */
@@ -46,6 +47,7 @@ enum
 	 *  command register bits
 	 */
 	Cintena=	1<<0,	/* enable output interrupt */
+	Cmseint=	1<<1,	/* enable mouse interrupt */
 	Csystem=	1<<2,	/* set system */
 	Cinhibit=	1<<3,	/* inhibit override */
 	Cdisable=	1<<4,	/* disable keyboard */
@@ -187,11 +189,34 @@ kbdackwait(void)
 void
 mouseintr(void)
 {
-	uchar code;
+	uchar c;
+	static int nb;
+	int buttons, dx, dy;
+	static short msg[3];
+	static uchar b[] = {0, 1, 4, 5, 2, 3, 6, 7, 0, 1, 2, 5, 2, 3, 6, 7 };
 
 	kbdwait();
-	code = KBDDAT;
-	print("mouse intr %d\n", code);
+	c = KBDDAT;
+
+	/* 
+	 *  check byte 0 for consistency
+	 */
+	if(nb==0 && (c&0xc8)!=0x08)
+		return;
+
+	msg[nb] = c;
+	if(++nb == 3){
+		nb = 0;
+		if(msg[0] & 0x10)
+			msg[1] |= 0xFF00;
+		if(msg[0] & 0x20)
+			msg[2] |= 0xFF00;
+
+		buttons = b[msg[0]&7];
+		dx = msg[1];
+		dy = -msg[2];
+		mousetrack(buttons, dx, dy);
+	}
 }
 
 int
@@ -342,6 +367,35 @@ empty(void)
 	}
 }
 
+/*
+ *  send a command to the mouse
+ */
+static int
+mousecmd(int cmd)
+{
+	int tries;
+	unsigned int c;
+
+	c = 0;
+	tries = 0;
+	do{
+		if(tries++ > 2)
+			break;
+		OUTWAIT;
+		KBDCTL = 0xD4;
+		OUTWAIT;
+		KBDDAT = cmd;
+		OUTWAIT;
+		kbdwait();
+		c = KBDDAT;
+	} while(c == 0xFE || c == 0);
+	if(c != 0xFA){
+		print("mouse returns %2.2ux to the %2.2ux command\n", c, cmd);
+		return -1;
+	}
+	return 0;
+}
+
 int
 kbdinit(void)
 {
@@ -387,10 +441,15 @@ kbdinit(void)
 	OUTWAIT;
 	KBDCTL = Kwrcmd;
 	OUTWAIT;
-	KBDDAT = Csystem | Cinhibit | Cintena;
+	KBDDAT = Csystem | Cinhibit | Cintena | Cmseint;
 	OUTWAIT;
 	KBDCTL = Kenable;
+	OUTWAIT;
+	KBDCTL = Kmseena;
 	empty();
+
+	mousecmd(0xEA);
+	mousecmd(0xF4);
 
 	return 1;
 }
