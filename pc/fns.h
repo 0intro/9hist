@@ -121,11 +121,12 @@ void	procsetup(Proc*);
 void	putcr3(ulong);
 void	putcr4(ulong);
 void	rdmsr(int, vlong*);
-void	rdtsc(vlong*);
+void	rdtsc(uvlong*);
 void	screeninit(void);
 int	screenprint(char*, ...);			/* debugging */
 void	(*screenputs)(char*, int);
 void	sfence(void);
+void	syncclock(void);
 void	touser(void*);
 void	trapenable(int, void (*)(Ureg*, void*), void*, char*);
 void	trapinit(void);

@@ -89,12 +89,47 @@ identify(void)
 	return 0;
 }
 
+Lock mpsynclock;
+
+void
+syncclock(void)
+{
+	uvlong x;
+
+	if(m->machno == 0){
+		wrmsr(0x10, 0);
+		m->tscticks = 0;
+		m->tscoff = 0;
+	} else {
+		x = MACHP(0)->tscticks;
+		while(x == MACHP(0)->tscticks)
+			;
+		m->tscoff = MACHP(0)->tscticks;
+		wrmsr(0x10, 0);
+		m->tscticks = 0;
+	}
+}
+
+uvlong
+tscticks(uvlong *hz)
+{
+	uvlong t;
+
+	if(hz != nil)
+		*hz = m->cpuhz;
+
+	rdtsc(&t);
+	m->tscticks = t;
+
+	return t+m->tscoff;
+}
+
 PCArch archmp = {
 .id=		"_MP_",	
 .ident=		identify,
 .reset=		mpshutdown,
 .intrinit=	mpinit,
 .intrenable=	mpintrenable,
-.fastclock=	i8253read,
+.fastclock=	tscticks,
 .timerset=	lapictimerset,
 };

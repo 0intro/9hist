@@ -365,6 +365,7 @@ squidboy(Apic* apic)
 
 	lapicinit(apic);
 	lapiconline();
+	syncclock();
 	timersinit();
 
 	lock(&active);
@@ -460,6 +461,7 @@ mpinit(void)
 	Apic *apic, *bpapic;
 
 	i8259init();
+	syncclock();
 
 	if(_mp_ == 0)
 		return;

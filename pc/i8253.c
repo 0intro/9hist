@@ -116,7 +116,7 @@ void
 guesscpuhz(int aalcycles)
 {
 	int cpufreq, loops, incr, x, y;
-	vlong a, b;
+	uvlong a, b;
 
 	/* find biggest loop that doesn't wrap */
 	incr = 16000000/(aalcycles*HZ*2);

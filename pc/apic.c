@@ -343,8 +343,6 @@ ioapicinit(Apic* apic, int apicno)
 		ioapicrdtw(apic, v, hi, lo);
 }
 
-ulong lapicperiodset[32];
-
 void
 lapictimerset(uvlong next)
 {
@@ -366,7 +364,6 @@ lapictimerset(uvlong next)
 	}
 
 	lapicw(LapicTICR, period);
-	lapicperiodset[m->machno]++;
 
 	unlock(&m->apictimerlock);
 	splx(x);

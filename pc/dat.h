@@ -185,13 +185,15 @@ struct Mach
 
 	Lock	apictimerlock;
 	int	cpumhz;
-	vlong	cpuhz;
+	uvlong	cpuhz;
 	int	cpuidax;
 	int	cpuiddx;
 	char	cpuidid[16];
 	char*	cpuidtype;
 	int	havetsc;
 	int	havepge;
+	uvlong	tscticks;
+	uvlong	tscoff;
 
 	vlong	mtrrcap;
 	vlong	mtrrdef;

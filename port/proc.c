@@ -263,7 +263,7 @@ found:
 
 	l = 0;
 	for(p = rq->head; p; p = p->rnext){
-		if(p->mp == MACHP(m->machno) || p->movetime < MACHP(0)->ticks)
+		if(p->mp == MACHP(m->machno) || p->movetime <= MACHP(0)->ticks)
 			break;
 		l = p;
 	}
@@ -359,6 +359,7 @@ newproc(void)
 	p->errbuf1[0] = '\0';
 	p->nlocks = 0;
 	p->delaysched = 0;
+	p->movetime = 0;
 	kstrdup(&p->user, "*nouser");
 	kstrdup(&p->text, "*notext");
 	kstrdup(&p->args, "");
