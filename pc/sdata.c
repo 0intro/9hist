@@ -1499,7 +1499,7 @@ atainterrupt(Ureg*, void* arg)
 	if((drive = ctlr->curdrive) == nil){
 		iunlock(ctlr);
 		if((DEBUG & DbgDEBUG) && ctlr->command != Cedd)
-			print("Inil%2.2uX+", ctlr->command);
+			print("Inil%2.2uX/%2.2uX+", ctlr->command, status);
 		return;
 	}
 
