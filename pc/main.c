@@ -476,6 +476,17 @@ modem(int onoff)
 	return pmuwrbit(1, 1^onoff, 5);
 }
 
+/*
+ *  CPU speed
+ *	onoff == 0 means 2 MHZ
+ *	onoff == 1 means 20 MHZ
+ */
+int
+cpuspeed(int speed)
+{
+	return pmuwrbit(0, speed, 0);
+}
+
 void
 buzz(int f, int d)
 {

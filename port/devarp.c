@@ -9,36 +9,42 @@
 
 #include	"devtab.h"
 
+#define ARP_FREE	0
+#define ARP_OK		1
+#define ARP_ASKED	2
+#define ARP_TEMP	0
+#define ARP_PERM	1
+#define Arphashsize	32
+#define ARPHASH(p)	arphash[((p[2]^p[3])%Arphashsize)]
+
+typedef struct Arpcache Arpcache;
+struct Arpcache {
+	uchar	status;
+	uchar	type;
+	uchar	eip[4];
+	uchar	et[6];
+	Arpcache *hash;
+	Arpcache **hashhd;
+	Arpcache *frwd;
+	Arpcache *prev;
+};
+
 Arpstats	arpstats;
 Arpcache 	*arplruhead, *arplrutail;
 Arpcache 	*arp, **arphash;
 Queue		*Servq;
+Lock		larphash;
 
-typedef struct Arpq Arpq;
-struct Arpq
-{
-	uchar	ip[4];
-	uchar	*etheraddr;
-	Block	*bp;
-	Queue	*put;
-	ulong	time;
-	Arpq	*next;
-};
+void	arpiput(Queue *, Block *);
+void	arpoput(Queue *, Block *);
+void	arpopn(Queue *, Stream *);
+void	arpcls(Queue *);
+void	arpenter(Arpentry*, int);
+void	arpflush(void);
+int	arpdelete(char*);
+void	arplinkhead(Arpcache*);
+int	arplookup(uchar*, uchar*);
 
-struct arpalloc
-{
-	Lock;
-	Lock	list;
-	Lock	hash;
-	Arpq	*free;
-	Arpq	*head;
-	Arpq	*tail;
-}arpalloc;
-
-void		arpiput(Queue *, Block *);
-void		arpoput(Queue *, Block *);
-void		arpopn(Queue *, Stream *);
-void		arpcls(Queue *);
 Qinfo arpinfo = { arpiput, arpoput, arpopn, arpcls, "arp" };
 
 #define ARP_ENTRYLEN	50
@@ -253,8 +259,6 @@ arpwrite(Chan *c, char *a, long n, ulong offset)
 void
 arpopn(Queue *q, Stream *s)
 {
-	if(!Servq)
-		Servq = RD(q);
 }
 
 void
@@ -273,7 +277,40 @@ arpiput(Queue *q, Block *bp)
 void
 arpoput(Queue *q, Block *bp)
 {
-	PUTNEXT(q, bp);
+	uchar ip[4];
+	Etherhdr *eh;
+
+	if(bp->type != M_DATA) {
+		if(Servq == 0 && streamparse("arpd", bp)) {
+print("setting arp channel\n");
+			Servq = RD(q);
+			freeb(bp);
+		}
+		else
+			PUTNEXT(q, bp);
+		return;
+	}
+
+	if(!Servq) {
+		print("arp: No server, packet dropped\n");
+		freeb(bp);
+		return;
+	}
+
+	eh = (Etherhdr *)bp->rptr;
+	iproute(eh->dst, ip);
+
+	/* Send downstream to the ethernet */
+	if(arplookup(ip, eh->d)) {
+print("arp hit %d.%d.%d.%d\n", ip[0], ip[1], ip[2], ip[3]);
+		PUTNEXT(q, bp);
+		return;
+	}
+print("arp miss %d.%d.%d.%d\n", ip[0], ip[1], ip[2], ip[3]);
+
+	/* Return the packet to the arp server for address resolution */
+	memmove(eh->d, ip, sizeof(ip));
+	PUTNEXT(Servq, bp);
 }
 
 int
@@ -281,77 +318,19 @@ arplookup(uchar *ip, uchar *et)
 {
 	Arpcache *ap;
 
-	lock(&arpalloc.hash);
+	lock(&larphash);
 	for(ap = ARPHASH(ip); ap; ap = ap->hash) {
 		if(ap->status == ARP_OK && memcmp(ap->eip, ip, sizeof(ap->eip)) == 0) {
 			memmove(et, ap->et, sizeof(ap->et));
 			arplinkhead(ap);
-			unlock(&arpalloc.hash);
+			unlock(&larphash);
 			arpstats.hit++;
 			return 1;
 		}
 	}
-	unlock(&arpalloc.hash);
-	return 0;
-}
-
-void
-arpsendpkt(uchar *unroutedip, uchar *ether, Queue *put, Block *bp)
-{
-	Arpq *aq;
-	Block *nbp;
-	uchar ip[4];
-
-	if(!Servq) {
-		print("arp: No server\n");
-		freeb(bp);
-		return;
-	}
-
-	iproute(unroutedip, ip);
-	if(arplookup(ip, ether)) {
-print("hit %d.%d.%d.%d\n", ip[0], ip[1], ip[2], ip[3]);
-		PUTNEXT(put, bp);
-		return;
-	}
-print("miss %d.%d.%d.%d\n", ip[0], ip[1], ip[2], ip[3]);
-
-	/* Send the request out to the user level arp daemon */
-	nbp = allocb(sizeof(ip));
-	memmove(nbp->rptr, ip, sizeof(ip));
-	nbp->wptr += sizeof(ip);
-	nbp->flags |= S_DELIM;
-	PUTNEXT(Servq, nbp);
 	arpstats.miss++;
-
-	lock(&arpalloc);
-	if(aq = arpalloc.free)
-		arpalloc.free = aq->next;
-	unlock(&arpalloc);
-
-	if(aq == 0) {
-		freeb(bp);
-		return;
-	}
-
-	/* Stash the work away until the arp completes or times out */
-	memmove(aq->ip, ip, sizeof(aq->ip));
-	aq->etheraddr = ether;
-	aq->bp = bp;
-	aq->put = put;
-	aq->time = MACHP(0)->ticks;
-
-	lock(&arpalloc.list);
-	if(arpalloc.head)  {
-		arpalloc.tail->next = aq;
-		arpalloc.tail = aq;
-	}
-	else {
-		arpalloc.tail = aq;
-		arpalloc.head = aq;
-	}
-	aq->next = 0;
-	unlock(&arpalloc.list);
+	unlock(&larphash);
+	return 0;
 }
 
 void
@@ -371,7 +350,7 @@ arpenter(Arpentry *ape, int type)
 
 	/* Update an entry if we have one already */
 	l = &ARPHASH(ape->ipaddr);
-	lock(&arpalloc.hash);
+	lock(&larphash);
 	for(ap = *l; ap; ap = ap->hash) {
 		if(ap->status == ARP_OK && memcmp(ap->eip, ape->ipaddr, sizeof(ap->eip)) == 0) {
 			if(ap->type != ARP_PERM) {
@@ -379,7 +358,7 @@ arpenter(Arpentry *ape, int type)
 				memmove(ap->et, ape->etaddr, sizeof(ap->et));
 				ap->status = ARP_OK;
 			}
-			unlock(&arpalloc.hash);
+			unlock(&larphash);
 			return;
 		}
 	}
@@ -390,7 +369,7 @@ arpenter(Arpentry *ape, int type)
 
 	if(!ap) {
 		print("arp: too many permanent entries\n");
-		unlock(&arpalloc.hash);
+		unlock(&larphash);
 		return;
 	}
 
@@ -408,43 +387,11 @@ arpenter(Arpentry *ape, int type)
 	ap->status = ARP_OK;
 	memmove(ap->eip, ape->ipaddr, sizeof(ape->ipaddr));
 	memmove(ap->et, ape->etaddr, sizeof(ape->etaddr));
-	ap->ip = nhgetl(ap->eip);
 	ap->hashhd = l;
 	ap->hash = *l;
 	*l = ap;
 	arplinkhead(ap);
-	unlock(&arpalloc.hash);
-	pusharpq();
-}
-
-void
-pusharpq(void)
-{
-	int sent;
-	Arpq *aq, *prev;
-
-loop:	prev = 0;
-	lock(&arpalloc.list);
-	for(aq = arpalloc.head; aq; aq = aq->next) {
-		if(arplookup(aq->ip, aq->etheraddr)) {
-			if(prev)
-				prev->next = aq->next;
-			else
-				arpalloc.head = 0;
-			if(aq->next == 0)
-				arpalloc.tail = prev;
-			unlock(&arpalloc.list);
-			PUTNEXT(aq->put, aq->bp);
-
-			lock(&arpalloc);
-			aq->next = arpalloc.free;
-			arpalloc.free = aq;
-			unlock(&arpalloc);
-			goto loop;
-		}
-		prev = aq;
-	}
-	unlock(&arpalloc.list);
+	unlock(&larphash);
 }
 
 int
@@ -464,14 +411,14 @@ arpdelete(char *addr)
 		ptr = strchr(ptr, ':')+1;
 	}
 
-	lock(&arpalloc.hash);
+	lock(&larphash);
 	for(ap = arplruhead; ap; ap = ap->frwd) {
 		if(memcmp(ap->et, ptr, sizeof(ap->et)) == 0) {
 			ap->status = ARP_FREE;
 			break;
 		}
 	}
-	unlock(&arpalloc.hash);
+	unlock(&larphash);
 }
 
 void

@@ -176,14 +176,14 @@ ipopen(Chan *c, int omode)
 			error(Ebadarg);
 		break;
 	case iplistenqid:
-		if(cp->stproto != &tcpinfo &&
-		   cp->stproto != &ilinfo)
+		if(cp->stproto != &tcpinfo && cp->stproto != &ilinfo)
 			error(Eprotonosup);
 
 		if(cp->backlog == 0)
 			cp->backlog = 3;
 
 		streamopen(c, &ipinfo);
+
 		if(c->stream->devq->next->info != cp->stproto)
 			pushq(c->stream, cp->stproto);
 
@@ -196,6 +196,7 @@ ipopen(Chan *c, int omode)
 		break;
 	case Sdataqid:
 		streamopen(c, &ipinfo);
+
 		if(c->stream->devq->next->info != cp->stproto)
 			pushq(c->stream, cp->stproto);
 
@@ -207,6 +208,7 @@ ipopen(Chan *c, int omode)
 		break;
 	case Sctlqid:
 		streamopen(c, &ipinfo);
+
 		if(c->stream->devq->next->info != cp->stproto)
 			pushq(c->stream, cp->stproto);
 		break;
@@ -697,6 +699,7 @@ print("listen awoke\n");
 				new->newcon = 0;
 				c->qid.path = CHDIR|STREAMQID(new-base, ipchanqid);
 				devwalk(c, "ctl", 0, 0, streamgen);
+
 				streamopen(c, &ipinfo);
 				pushq(c->stream, new->stproto);
 				new->ref--;

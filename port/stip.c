@@ -198,9 +198,9 @@ ipetheroput(Queue *q, Block *bp)
 		eh->cksum[1] = 0;
 		hnputs(eh->cksum, ip_csum(&eh->vihl));
 
-		/* Finally put in the ethernet level information */
+		/* Finally put in the type and pass down to the arp layer */
 		hnputs(eh->type, ET_IP);
-		arpsendpkt(eh->dst, eh->d, Etherq, bp);
+		PUTNEXT(Etherq, bp);
 		return;
 	}
 
@@ -263,9 +263,8 @@ ipetheroput(Queue *q, Block *bp)
 		feh->cksum[1] = 0;
 		hnputs(feh->cksum, ip_csum(&feh->vihl));
 		nb->flags |= S_DELIM;
-		arpsendpkt(feh->dst, feh->d, Etherq, nb);
+		PUTNEXT(Etherq, nb);
 	}
-
 drop:
 	freeb(bp);	
 }

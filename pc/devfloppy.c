@@ -455,6 +455,10 @@ floppywrite(Chan *c, void *a, long n)
 		} else if(SNCMP(aa, "reset") == 0){
 			fl.confused = 1;
 			floppyon(dp);
+		} else if(SNCMP(aa, "fast") == 0){
+			cpuspeed(1);
+		} else if(SNCMP(aa, "slow") == 0){
+			cpuspeed(0);
 		}
 		qunlock(&fl);
 		break;
