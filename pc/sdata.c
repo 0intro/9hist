@@ -17,6 +17,7 @@ enum {
 	DbgSTATE	= 0x04,		/* dump state on panic */
 	DbgPROBE	= 0x08,		/* trace device probing */
 	DbgDEBUG	= 0x80,		/* the current problem... */
+	DbgINL		= 0x100,		/* That Inil20+ message we hate */
 };
 #define DEBUG		(DbgDEBUG|DbgSTATE|DbgCONFIG)
 
@@ -1557,7 +1558,7 @@ atainterrupt(Ureg*, void* arg)
 	status = inb(cmdport+Status);
 	if((drive = ctlr->curdrive) == nil){
 		iunlock(ctlr);
-		if((DEBUG & DbgDEBUG) && ctlr->command != Cedd)
+		if((DEBUG & DbgINL) && ctlr->command != Cedd)
 			print("Inil%2.2uX+", ctlr->command);
 		return;
 	}
