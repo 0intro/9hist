@@ -31,6 +31,7 @@ enum
 	MAClen=		16,		/* longest mac address */
 
 	MAXTTL=		255,
+	DFLTTOS=	0,
 
 	IPaddrlen=	16,
 	IPv4addrlen=	4,
@@ -69,6 +70,7 @@ struct Conv
 	ushort	lport;			/* local port number */
 	ushort	rport;			/* remote port number */
 	uint	ttl;			/* max time to live */
+	uint	tos;			/* type of service */
 
 	char	owner[NAMELEN];		/* protections */
 	int	perm;
@@ -490,7 +492,7 @@ extern void	initfrag(IP*, int);
 extern ushort	ipcsum(uchar*);
 extern void	(*ipextprotoiput)(Block*);
 extern void	ipiput(Fs*, uchar*, Block*);
-extern void	ipoput(Fs*, Block*, int, int);
+extern void	ipoput(Fs*, Block*, int, int, int);
 extern int	ipstats(Fs*, char*, int);
 extern ushort	ptclbsum(uchar*, int);
 extern ushort	ptclcsum(Block*, int, int);

@@ -123,7 +123,7 @@ iprouting(Fs *f, int on)
 }
 
 void
-ipoput(Fs *f, Block *bp, int gating, int ttl)
+ipoput(Fs *f, Block *bp, int gating, int ttl, int tos)
 {
 	Ipifc *ifc;
 	uchar *gate;
@@ -185,6 +185,7 @@ ipoput(Fs *f, Block *bp, int gating, int ttl)
 		eh->tos = 0;
 	}
 	eh->ttl = ttl;
+	eh->tos = tos;
 
 	if(!canrlock(ifc))
 		goto free;
@@ -400,7 +401,7 @@ ipiput(Fs *f, uchar *ia, Block *bp)
 		}
 
 		ip->istats.ipForwDatagrams++;
-		ipoput(f, bp, 1, h->ttl - 1);
+		ipoput(f, bp, 1, h->ttl - 1, h->tos);
 
 		return;
 	}

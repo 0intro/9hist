@@ -353,7 +353,7 @@ ilkick(Conv *c, int l)
 
 	if(later(msec, ic->timeout, nil))
 		ilsettimeout(ic);
-	ipoput(f, bp, 0, c->ttl);
+	ipoput(f, bp, 0, c->ttl, c->tos);
 }
 
 static void
@@ -784,7 +784,7 @@ ilrexmit(Ilcb *ic)
 
 	ilbackoff(ic);
 
-	ipoput(c->p->f, nb, 0, ic->conv->ttl);
+	ipoput(c->p->f, nb, 0, ic->conv->ttl, ic->conv->tos);
 
 	/* statistics */
 	ic->rxtot++;
@@ -938,7 +938,7 @@ ilsendctl(Conv *ipc, Ilhdr *inih, int type, ulong id, ulong ack, int ilspec)
 	Ilhdr *ih;
 	Ilcb *ic;
 	Block *bp;
-	int ttl;
+	int ttl, tos;
 
 	bp = allocb(IL_IPSIZE+IL_HDRSIZE);
 	bp->wp += IL_IPSIZE+IL_HDRSIZE;
@@ -958,6 +958,7 @@ ilsendctl(Conv *ipc, Ilhdr *inih, int type, ulong id, ulong ack, int ilspec)
 		hnputl(ih->ilid, nhgetl(inih->ilack));
 		hnputl(ih->ilack, nhgetl(inih->ilid));
 		ttl = MAXTTL;
+		tos = DFLTTOS;
 	}
 	else {
 		v6tov4(ih->dst, ipc->raddr);
@@ -970,6 +971,7 @@ ilsendctl(Conv *ipc, Ilhdr *inih, int type, ulong id, ulong ack, int ilspec)
 		ic->acksent = ack;
 		ic->acktime = msec;
 		ttl = ipc->ttl;
+		tos = ipc->tos;
 	}
 	ih->iltype = type;
 	ih->ilspec = ilspec;
@@ -983,7 +985,7 @@ ilsendctl(Conv *ipc, Ilhdr *inih, int type, ulong id, ulong ack, int ilspec)
 		iltype[ih->iltype], nhgetl(ih->ilid), nhgetl(ih->ilack), 
 		nhgets(ih->ilsrc), nhgets(ih->ildst));
 
-	ipoput(ipc->p->f, bp, 0, ttl);
+	ipoput(ipc->p->f, bp, 0, ttl, tos);
 }
 
 void

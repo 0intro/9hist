@@ -849,6 +849,15 @@ bindctlmsg(Proto *x, Conv *c, Cmdbuf *cb)
 }
 
 static void
+tosctlmsg(Conv *c, Cmdbuf *cb)
+{
+	if(cb->nf < 2)
+		c->tos = 0;
+	else
+		c->tos = atoi(cb->f[1]);
+}
+
+static void
 ttlctlmsg(Conv *c, Cmdbuf *cb)
 {
 	if(cb->nf < 2)
@@ -917,6 +926,8 @@ ipwrite(Chan* ch, void *v, long n, vlong)
 			bindctlmsg(x, c, cb);
 		else if(strcmp(cb->f[0], "ttl") == 0)
 			ttlctlmsg(c, cb);
+		else if(strcmp(cb->f[0], "tos") == 0)
+			tosctlmsg(c, cb);
 		else if(strcmp(cb->f[0], "addmulti") == 0){
 			if(cb->nf < 2)
 				error("addmulti needs interface address");

@@ -226,7 +226,7 @@ udpkick(Conv *c, int)
 	hnputs(uh->udpcksum, ptclcsum(bp, UDP_IPHDR, dlen+UDP_HDRSIZE));
 
 	upriv->ustats.udpOutDatagrams++;
-	ipoput(f, bp, 0, c->ttl);
+	ipoput(f, bp, 0, c->ttl, c->tos);
 }
 
 void

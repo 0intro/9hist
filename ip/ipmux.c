@@ -639,7 +639,7 @@ ipmuxkick(Conv *c, int)
 
 	ih = (Iphdr*)(bp->rp);
 
-	ipoput(c->p->f, bp, 0, ih->ttl);
+	ipoput(c->p->f, bp, 0, ih->ttl, ih->tos);
 }
 
 static void

@@ -160,7 +160,7 @@ grekick(Conv *c, int l)
 	ghp->frag[0] = 0;
 	ghp->frag[1] = 0;
 
-	ipoput(c->p->f, bp, 0, c->ttl);
+	ipoput(c->p->f, bp, 0, c->ttl, c->tos);
 }
 
 static void

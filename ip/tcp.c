@@ -885,7 +885,7 @@ sndrst(Proto *tcp, uchar *source, uchar *dest, ushort length, Tcp *seg)
 	if(hbp == nil)
 		return;
 
-	ipoput(tcp->f, hbp, 0, MAXTTL);
+	ipoput(tcp->f, hbp, 0, MAXTTL, DFLTTOS);
 }
 
 /*
@@ -915,7 +915,7 @@ tcphangup(Conv *s)
 		tcb->last_ack = tcb->rcv.nxt;
 		hnputs(ph.tcplen, TCP_HDRSIZE);
 		hbp = htontcp(&seg, nil, &tcb->protohdr);
-		ipoput(s->p->f, hbp, 0, s->ttl);
+		ipoput(s->p->f, hbp, 0, s->ttl, s->tos);
 	}
 	localclose(s, nil);
 	poperror();
@@ -1773,7 +1773,7 @@ tcpoutput(Conv *s)
 		tpriv->tstats.tcpOutSegs++;
 		if(tcb->kacounter > 0)
 			tcpgo(tpriv, &tcb->katimer);
-		ipoput(f, hbp, 0, s->ttl);
+		ipoput(f, hbp, 0, s->ttl, s->tos);
 	}
 }
 
@@ -1814,7 +1814,7 @@ tcpsendka(Conv *s)
 		return;
 	}
 
-	ipoput(s->p->f, hbp, 0, s->ttl);
+	ipoput(s->p->f, hbp, 0, s->ttl, s->tos);
 }
 
 /*

@@ -296,7 +296,7 @@ rudpclose(Conv *c)
  *  randomly don't send packets
  */
 static void
-doipoput(Conv *c, Fs *f, Block *bp, int x, int ttl)
+doipoput(Conv *c, Fs *f, Block *bp, int x, int ttl, int tos)
 {
 	Rudpcb *ucb;
 
@@ -304,7 +304,7 @@ doipoput(Conv *c, Fs *f, Block *bp, int x, int ttl)
 	if(ucb->randdrop && nrand(100) < ucb->randdrop)
 		freeblist(bp);
 	else
-		ipoput(f, bp, x, ttl);
+		ipoput(f, bp, x, ttl, tos);
 }
 
 int
@@ -436,7 +436,7 @@ rudpkick(Conv *c, int)
 	DPRINT("sent: %lud/%lud, %lud/%lud\n", 
 		r->sndseq, r->sndgen, r->rcvseq, r->rcvgen);
 
-	doipoput(c, f, bp, 0, c->ttl);
+	doipoput(c, f, bp, 0, c->ttl, c->tos);
 
 	/* flow control of sorts */
 	qlock(&r->lock);
@@ -952,7 +952,7 @@ relsendack(Conv *c, Reliable *r)
 	hnputs(uh->udpcksum, ptclcsum(bp, UDP_IPHDR, UDP_RHDRSIZE));
 
 	DPRINT("sendack: %lud/%lud, %lud/%lud\n", 0L, r->sndgen, r->rcvseq, r->rcvgen);
-	doipoput(c, f, bp, 0, c->ttl);
+	doipoput(c, f, bp, 0, c->ttl, c->tos);
 }
 
 /*
@@ -1009,5 +1009,5 @@ relrexmit(Conv *c, Reliable *r)
 	upriv->rxmits++;
 	np = copyblock(r->unacked, blocklen(r->unacked));
 	DPRINT("rxmit r->ackrvcd+1 = %lud\n", r->ackrcvd+1);
-	doipoput(c, f, np, 0, c->ttl);
+	doipoput(c, f, np, 0, c->ttl, c->tos);
 }
