@@ -656,9 +656,9 @@ i8250console(void)
 		break;	
 	}
 
-	if(*cmd == 0)
-		cmd = "b9600 l8 pn s1";
-	uartctl(uart, cmd);
+	uartctl(uart, "b9600 l8 pn s1");
+	if(*cmd != nil)
+		uartctl(uart, cmd);
 	(*uart->phys->enable)(uart, 0);
 
 	consuart = uart;
