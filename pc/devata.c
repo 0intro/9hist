@@ -49,6 +49,10 @@ enum
 	 Serr=		 (1<<0),
 	Pcmd=		7,	/* cmd port (write) */
 
+	Pctrl=		0x206,	/* device control, alternate status */
+	 nIEN=		(1<<1),
+	 Srst=		(1<<2),
+
 	/* commands */
 	Cfirst=		0xFF,	/* pseudo command for initialisation */
 	Cread=		0x20,
@@ -152,7 +156,7 @@ struct Controller
 
 	int	pbase;		/* base port */
 	uchar	ctlrno;
-	uchar	noatapi;
+	uchar	resetok;
 
 	/*
 	 *  current operation
@@ -354,7 +358,7 @@ atactlrprobe(int ctlrno, int irq)
 {
 	Controller *ctlr;
 	int atapi, mask, port;
-	uchar error, status;
+	uchar error, status, msb, lsb;
 
 	/*
 	 * Check the existence of a controller by verifying a sensible
@@ -377,12 +381,13 @@ atactlrprobe(int ctlrno, int irq)
 	ctlr->ctlrno = ctlrno;
 	ctlr->lastcmd = 0xFF;
 
+
 	/*
 	 * Attempt to check the existence of drives on the controller
 	 * by issuing a 'check device diagnostics' command.
 	 * Issuing a device reset here would possibly destroy any BIOS
 	 * drive remapping and, anyway, some controllers (Vibra16) don't
-	 * seem to implement the control-block registers.
+	 * seem to implement the control-block registers; do it if requested.
 	 * Unfortunately the vector must be set at this point as the Cedd
 	 * command will generate an interrupt, which means the ataintr routine
 	 * will be left on the interrupt call chain even if there are no
@@ -392,6 +397,17 @@ atactlrprobe(int ctlrno, int irq)
 	 * ATAPI signature straight off. If we find it there will be no probe
 	 * done for a slave. Tough.
 	 */
+	if(ctlr->resetok){
+		outb(port+Pctrl, Srst|nIEN);
+		microdelay(1);
+		outb(port+Pctrl, 0);
+		if(atactlrwait(ctlr, DHmagic, 0, 100)){
+			DPRINT("ata%d: Srst status %ux/%ux/%ux\n", ctlrno,
+				inb(port+Pstatus), inb(port+Pcylmsb), inb(port+Pcyllsb));
+			xfree(ctlr);
+		}
+	}
+
 	atapi = 0;
 	mask = 0;
 	status = inb(port+Pstatus);
@@ -405,8 +421,8 @@ atactlrprobe(int ctlrno, int irq)
 		goto skipedd;
 	}
 	if(atactlrwait(ctlr, DHmagic, 0, MS2TK(1)) || waserror()){
-		DPRINT("ata%d: Cedd status %ux/%ux/%ux\n",
-			ctlrno, inb(port+Pstatus), inb(port+Pcylmsb), inb(port+Pcyllsb));
+		DPRINT("ata%d: Cedd status %ux/%ux/%ux\n", ctlrno,
+			inb(port+Pstatus), inb(port+Pcylmsb), inb(port+Pcyllsb));
 		xfree(ctlr);
 		return -1;
 	}
@@ -447,9 +463,15 @@ atactlrprobe(int ctlrno, int irq)
 	DPRINT("ata%d: slave diag status %ux, error %ux\n", ctlr->ctlrno, status, error);
 	if(status && (status & (Sbusy|Serr)) == 0 && (error & ~0x80) == 0x01)
 		mask |= 0x02;
-	else if(status == 0 && inb(port+Pcylmsb) == 0xEB && inb(port+Pcyllsb) == 0x14){
-		atapi |= 0x02;
-		mask |= 0x02;
+	else if(status == 0){
+		msb = inb(port+Pcylmsb);
+		lsb = inb(port+Pcyllsb);
+		DPRINT("ata%d: ATAPI slave %uX %uX %uX\n", ctlrno, status,
+			inb(port+Pcylmsb), inb(port+Pcyllsb));
+		if(msb == 0xEB && lsb == 0x14){
+			atapi |= 0x02;
+			mask |= 0x02;
+		}
 	}
 
 skipedd:
@@ -514,8 +536,8 @@ atactlrreset(void)
 				DPRINT("ata%d: opt spindownmask %ux\n",
 					ctlrno, spindownmask);
 			}
-			else if(strcmp(isa.opt[i], "noatapi") == 0)
-				atactlr[ctlrno]->noatapi = 1;
+			else if(strcmp(isa.opt[i], "reset") == 0)
+				atactlr[ctlrno]->resetok = 1;
 		}
 	}
 }
@@ -1091,7 +1113,10 @@ retryatapi:
 	IUNLOCK(&cp->reglock);
 
 	DPRINT("%s: ident command %ux sent\n", dp->vol, cmd);
-	atasleep(cp, 1000);
+	if(cmd == Cident)
+		atasleep(cp, 3000);
+	else
+		atasleep(cp, 30000);
 
 	if(cp->status & Serr){
 		DPRINT("%s: bad disk ident status\n", dp->vol);

@@ -339,7 +339,7 @@ scsireqsense(Target *t, char lun, void *data, int *nbytes, int quiet)
 
 	sense = malloc(*nbytes);
 
-	for(try = 0; try < 5; try++) {
+	for(try = 0; try < 20; try++) {
 		memset(cmd, 0, sizeof(cmd));
 		cmd[0] = CMDreqsense;
 		cmd[1] = lun<<5;
@@ -354,32 +354,41 @@ scsireqsense(Target *t, char lun, void *data, int *nbytes, int quiet)
 		*nbytes = sense[0x07]+8;
 		memmove(data, sense, *nbytes);
 
-		/*
-		 * Unit attention. We can handle that.
-		 */
-		if((sense[2] & 0x0F) == 0x00 || (sense[2] & 0x0F) == 0x06){
+		switch(sense[2] & 0x0F){
+
+		case 6:						/* unit attention */
+			if(sense[12] != 0x29)			/* power on, reset */
+				goto buggery;
+			/*FALLTHROUGH*/
+		case 0:						/* no sense */
+		case 1:						/* recovered error */
 			free(sense);
 			return STok;
+
+		case 2:						/* not ready */
+			if(sense[12] == 0x3A)			/* medium not present */
+				goto buggery;
+			/*FALLTHROUGH*/
+
+		default:
+			/*
+			 * If unit is becoming ready, rather than not ready,
+			 * then wait a little then poke it again; should this
+			 * be here or in the caller?
+			 */
+			if((sense[12] == 0x04 && sense[13] == 0x01)){
+				while(waserror())
+					;
+				tsleep(&t->rendez, return0, 0, 500);
+				poperror();
+				scsitest(t, lun);
+				break;
+			}
+			goto buggery;
 		}
-
-		/*
-		 * Recovered error. Why bother telling me.
-		 */
-		if((sense[2] & 0x0F) == 0x01){
-			free(sense);
-			return STok;
-		}
-
-		/*
-		 * Unit is becoming ready, rather than not ready
-		 */
-		if((sense[2] & 0x0F) != 0x02 &&
-		   (sense[12] != 0x04 || sense[13] != 0x01))
-			break;
-
-		delay(5000);
 	}
 
+buggery:
 	if(quiet == 0){
 		s = key[sense[2]&0x0F];
 		print("scsi%d: unit %d reqsense: '%s' code #%2.2ux #%2.2ux\n",

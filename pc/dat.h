@@ -228,6 +228,8 @@ struct Target {
 	uchar*	inq;
 	uchar*	scratch;
 
+	Rendez	rendez;
+
 	int	ok;
 };
 typedef int 	(*Scsiio)(Target*, int, uchar*, int, void*, int*);
