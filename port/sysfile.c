@@ -291,11 +291,13 @@ unionread(Chan *c, void *va, long n)
 	for(i = 0; mount != nil && i < c->uri; i++)
 		mount = mount->next;
 
-	for(;;) {
+	while(mount != nil) {
 		if(waserror()) {
 			runlock(&m->lock);
 			nexterror();
 		}
+		if(mount->to == nil)
+			goto next;
 		nc = cclone(mount->to, 0);
 		poperror();
 

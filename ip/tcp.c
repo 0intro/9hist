@@ -1509,7 +1509,7 @@ tcpoutput(Conv *s)
 		sent = tcb->snd.ptr - tcb->snd.una;
 
 		/* Don't send anything else until our SYN has been acked */
-		if(sent != 0 && (tcb->flags & (SYNACK|FORCE)) == 0)
+		if(tcb->snd.ptr != tcb->iss && (tcb->flags & SYNACK) == 0)
 			break;
 
 		/* Compute usable segment based on offered window and limit

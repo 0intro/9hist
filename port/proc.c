@@ -186,9 +186,9 @@ ready(Proc *p)
 Proc*
 runproc(void)
 {
-	int i;
-	Schedq *rq;
+	Schedq *rq, *xrq;
 	Proc *p, *l;
+	ulong rt;
 
 loop:
 
@@ -198,39 +198,42 @@ loop:
 	 */
 	spllo();
 	for(;;){
-		/*
-		 *  get lowest priority process that this
-		 *  processor can run given affinity constraints
-		 *  and that hasn't run in a while
-		 */
-		if((m->fairness++ & 3) == 0){
+		if((++(m->fairness) & 3) == 0){
+			/*
+			 *  once in a while, run process that's been waiting longest
+			 *  regardless of movetime
+			 */
+			rt = 0xffffffff;
+			xrq = nil;
 			for(rq = runq; rq < &runq[Nrq]; rq++){
 				p = rq->head;
 				if(p == 0)
 					continue;
-				for(; p; p = p->rnext){
-					if(p->mp != MACHP(m->machno))
-					if(p->movetime >= m->ticks)
-						continue;
-					i = m->ticks - p->readytime;
-					if(i >= 2*nrdy*p->art)
-						goto found;
+				if(p->readytime < rt){
+					xrq = rq;
+					rt = p->readytime;
 				}
 			}
-		}
-
-		/*
-		 *  get highest priority process that this
-		 *  processor can run given affinity constraints
-		 */
-		for(rq = &runq[Nrq-1]; rq >= runq; rq--){
-			p = rq->head;
-			if(p == 0)
-				continue;
-			for(; p; p = p->rnext){
-				if(p->mp == MACHP(m->machno)
-				|| p->movetime < m->ticks)
-					goto found;
+			if(xrq != nil){
+				rq = xrq;
+				p = rq->head;
+				if(p != nil)
+					p->movetime = 0;
+			}
+		} else {
+			/*
+			 *  get highest priority process that this
+			 *  processor can run given affinity constraints
+			 */
+			for(rq = &runq[Nrq-1]; rq >= runq; rq--){
+				p = rq->head;
+				if(p == 0)
+					continue;
+				for(; p; p = p->rnext){
+					if(p->mp == MACHP(m->machno)
+					|| p->movetime < m->ticks)
+						goto found;
+				}
 			}
 		}
 	}
