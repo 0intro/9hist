@@ -124,7 +124,6 @@ pager(void *junk)
 			else {
 				/* Emulate the old system if no swap channel */
 				print("no physical memory\n");
-				pprint("no physical memory\n");
 				tsleep(&swapalloc.r, return0, 0, 1000);
 				wakeup(&palloc.r);
 			}

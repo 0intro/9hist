@@ -242,15 +242,16 @@ print("putmmu %lux %lux\n", va, pa); /**/
 		pg = p->mmu[i] = newpage(1, 0, 0);
 		p->mmue[i] = PPN(pg->pa) | PTEVALID | PTEUSER | PTEWRITE;
 		toppt[topoff] = p->mmue[i];
-print("toppt[%d] = %lux\n", topoff, p->mmue[i]);
+print("toppt[%d] = %lux\n", topoff, toppt[topoff]);
 	}
 
 	/*
 	 *  fill in the bottom level page table
 	 */
+print("%lux[%d] was %lux\n", pt, BTMOFF(va), pt[BTMOFF(va)]);
 	pt = (ulong*)(p->mmu[i]->pa|KZERO);
 	pt[BTMOFF(va)] = pa | PTEUSER;
-print("%lux[%d] = %lux\n", pt, BTMOFF(va), pa | PTEUSER);
+print("%lux[%d] now %lux\n", pt, BTMOFF(va), pt[BTMOFF(va)]);
 
 	/* flush cached mmu entries */
 	putcr3(((ulong)toppt)&~KZERO);

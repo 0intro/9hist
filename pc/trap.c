@@ -5,6 +5,10 @@
 #include	"fns.h"
 #include	"io.h"
 #include	"ureg.h"
+#include	"errno.h"
+
+void	noted(Ureg*, ulong);
+void	notify(Ureg*);
 
 /*
  *  8259 interrupt controllers
@@ -155,18 +159,6 @@ dumpregs(Ureg *ur)
 		ur->si, ur->di, ur->bp, ur->ds);
 }
 
-/*
- *  system calls
- */
-long
-syscall(Ureg *ur)
-{
-	u->p->insyscall = 1;
-	u->p->pc = ur->pc;
-
-	panic("syscall");
-}
-
 void
 dumpstack(void)
 {
@@ -176,4 +168,202 @@ void
 execpc(ulong entry)
 {
 	((Ureg*)UREGADDR)->pc = entry;
+}
+
+/*
+ *  system calls
+ */
+#undef	CHDIR	/* BUG */
+#include "/sys/src/libc/9syscall/sys.h"
+
+typedef long Syscall(ulong*);
+Syscall	sysr1, sysfork, sysexec, sysgetpid, syssleep, sysexits, sysdeath, syswait;
+Syscall	sysopen, sysclose, sysread, syswrite, sysseek, syserrstr, sysaccess, sysstat, sysfstat;
+Syscall sysdup, syschdir, sysforkpgrp, sysbind, sysmount, syspipe, syscreate;
+Syscall	sysbrk_, sysremove, syswstat, sysfwstat, sysnotify, sysnoted, sysalarm;
+
+Syscall *systab[]={
+	sysr1,
+	syserrstr,
+	sysbind,
+	syschdir,
+	sysclose,
+	sysdup,
+	sysalarm,
+	sysexec,
+	sysexits,
+	sysfork,
+	sysforkpgrp,
+	sysfstat,
+	sysdeath,
+	sysmount,
+	sysopen,
+	sysread,
+	sysseek,
+	syssleep,
+	sysstat,
+	syswait,
+	syswrite,
+	syspipe,
+	syscreate,
+	sysdeath,
+	sysbrk_,
+	sysremove,
+	syswstat,
+	sysfwstat,
+	sysnotify,
+	sysnoted,
+	sysdeath,	/* sysfilsys */
+};
+
+long
+syscall(Ureg *ur)
+{
+	ulong	ax;
+	ulong	sp;
+	long	ret;
+	int	i;
+	static int times;
+ulong	*z;
+
+	u->p->insyscall = 1;
+	u->p->pc = ur->pc;
+	if((ur->cs)&0xffff == KESEL)
+		panic("recursive system call");
+	u->p->insyscall = 0;
+
+	/*
+	 *  do something about floating point!!!
+	 */
+
+	ax = ur->ax;
+	sp = ur->usp;
+	u->nerrlab = 0;
+	ret = -1;
+z = (ulong *)sp;
+print("syscall %lux %lux %lux %lux\n", *z, *(z+1), *(z+2), *(z+3));
+dumpregs(ur);
+if(++times==3)
+	panic("3rd time in syscall");
+	if(!waserror()){
+		if(ax >= sizeof systab/BY2WD){
+			pprint("bad sys call number %d pc %lux\n", ax, ur->pc);
+			postnote(u->p, 1, "sys: bad sys call", NDebug);
+			error(Ebadarg);
+		}
+		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-(1+MAXSYSARG)*BY2WD))
+			validaddr(sp, (1+MAXSYSARG)*BY2WD, 0);
+		ret = (*systab[ax])((ulong*)(sp+BY2WD));
+		poperror();
+	}
+print("return from syscall\n");
+	if(u->nerrlab){
+		print("bad errstack [%d]: %d extra\n", ax, u->nerrlab);
+		for(i = 0; i < NERR; i++)
+			print("sp=%lux pc=%lux\n", u->errlab[i].sp, u->errlab[i].pc);
+		panic("error stack");
+	}
+	u->p->insyscall = 0;
+	if(ax == NOTED){
+		noted(ur, *(ulong*)(sp+BY2WD));
+		ret = -1;
+	} else if(u->nnote){
+		ur->ax = ret;
+		notify(ur);
+	}
+	return ret;
+}
+
+/*
+ *  Call user, if necessary, with note.
+ *  Pass user the Ureg struct and the note on his stack.
+ */
+void
+notify(Ureg *ur)
+{
+	ulong sp;
+
+	lock(&u->p->debug);
+	if(u->nnote==0){
+		unlock(&u->p->debug);
+		return;
+	}
+	if(u->note[0].flag!=NUser && (u->notified || u->notify==0)){
+		if(u->note[0].flag == NDebug)
+			pprint("suicide: %s\n", u->note[0].msg);
+    Die:
+		unlock(&u->p->debug);
+		pexit(u->note[0].msg, u->note[0].flag!=NDebug);
+	}
+	if(!u->notified){
+		if(!u->notify)
+			goto Die;
+		u->svcs = ur->cs;
+		u->svss = ur->ss;
+		u->svflags = ur->flags;
+		sp = ur->usp;
+		sp -= sizeof(Ureg);
+		u->ureg = (void*)sp;
+		memmove((Ureg*)sp, ur, sizeof(Ureg));
+		sp -= ERRLEN;
+		memmove((char*)sp, u->note[0].msg, ERRLEN);
+		sp -= 3*BY2WD;
+		*(ulong*)(sp+2*BY2WD) = sp+3*BY2WD;	/* arg 2 is string */
+		*(ulong*)(sp+1*BY2WD) = (ulong)u->ureg;	/* arg 1 is ureg* */
+		*(ulong*)(sp+0*BY2WD) = 0;		/* arg 0 is pc */
+		ur->usp = sp;
+		ur->pc = (ulong)u->notify;
+		u->notified = 1;
+		u->nnote--;
+		memmove(&u->lastnote, &u->note[0], sizeof(Note));
+		memmove(&u->note[0], &u->note[1], u->nnote*sizeof(Note));
+	}
+	unlock(&u->p->debug);
+}
+
+/*
+ *   Return user to state before notify()
+ */
+void
+noted(Ureg *ur, ulong arg0)
+{
+	Ureg *nur;
+
+	nur = u->ureg;
+	validaddr(nur->pc, 1, 0);
+	validaddr(nur->usp, BY2WD, 0);
+	if(nur->cs!=u->svcs || nur->ss!=u->svss
+	|| (nur->flags&0xff)!=(u->svflags&0xff)){
+		pprint("bad noted ureg cs %ux ss %ux flags %ux\n", nur->cs, nur->ss,
+			nur->flags);
+		pexit("Suicide", 0);
+	}
+	lock(&u->p->debug);
+	if(!u->notified){
+		unlock(&u->p->debug);
+		return;
+	}
+	u->notified = 0;
+	nur->flags = (u->svflags&0xffffff00) | (ur->flags&0xff);
+	memmove(ur, u->ureg, sizeof(Ureg));
+	ur->ax = -1;	/* return error from the interrupted call */
+	switch(arg0){
+	case NCONT:
+		splhi();
+		unlock(&u->p->debug);
+		rfnote(ur);
+		break;
+		/* never returns */
+
+	default:
+		pprint("unknown noted arg 0x%lux\n", arg0);
+		u->lastnote.flag = NDebug;
+		/* fall through */
+		
+	case NDFLT:
+		if(u->lastnote.flag == NDebug)
+			pprint("suicide: %s\n", u->lastnote.msg);
+		unlock(&u->p->debug);
+		pexit(u->lastnote.msg, u->lastnote.flag!=NDebug);
+	}
 }

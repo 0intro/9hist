@@ -165,8 +165,9 @@ struct User
 	Note	lastnote;
 	int	(*notify)(void*, char*);
 	void	*ureg;
-	ushort	svvo;
-	ushort	svsr;
+	ulong	svcs;		/* cs before a notify */
+	ulong	svss;		/* ss before a notify */
+	ulong	svflags;		/* flags before a notify */
 };
 
 /*

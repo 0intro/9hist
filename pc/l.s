@@ -9,6 +9,11 @@ TEXT	origin(SB),$0
 
 #ifdef BOOT
 /*
+ *	This part of l.s is used only in the boot kernel.
+ *	It assumes that we are in real address mode, i.e.,
+ *	that we look like an 8086.
+ */
+/*
  *	relocate everything to a half meg and jump there
  *	- looks wierd because it is being assembled by a 32 bit
  *	  assembler for a 16 bit world
@@ -431,11 +436,11 @@ TEXT	setlabel(SB),$0
  *  Set up an interrupt return frame and IRET to user level.
  */
 TEXT	touser(SB),$0
-	PUSHL	$(UDSEL)			/* old ss */
-	PUSHL	$(USTKTOP-16)			/* old sp */
-	PUSHFL					/* old flags */
-	PUSHL	$(UESEL)			/* old cs */
-	PUSHL	$(UTZERO+32)			/* old pc */
+	PUSHL	$(UDSEL)		/* old ss */
+	PUSHL	$(USTKTOP)		/* old sp */
+	PUSHFL				/* old flags */
+	PUSHL	$(UESEL)		/* old cs */
+	PUSHL	$(UTZERO+32)		/* old pc */
 	MOVL	$(UDSEL),AX
 	MOVW	AX,DS
 	MOVW	AX,ES

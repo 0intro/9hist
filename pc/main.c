@@ -65,6 +65,9 @@ init0(void)
 	u->p->state = Running;
 	u->p->mach = m;
 
+print("go low\n");
+	spllo();
+
 	/*
 	 * These are o.k. because rootinit is null.
 	 * Then early kproc's will have a root and dot.
@@ -74,17 +77,8 @@ init0(void)
 
 	chandevinit();
 
-	/*
-	 *  fault in the first executable page and user stack
-	 */
-	print("text is %lux\n", *((ulong *)(UTZERO+32)));
-
-	/*  fault in the first stack page
-	 */
-	print("stack is %lux\n", *((ulong *)(USTKTOP-4)));
-	*((ulong *)(USTKTOP-4)) = 0xdeadbeef;
-	print("stack is %lux\n", *((ulong *)(USTKTOP-4)));
-	delay(5000);
+print("going to user\n");
+delay(1000);
 
 	touser();
 }
@@ -110,10 +104,9 @@ userinit(void)
 	 *
 	 * N.B. The -12 for the stack pointer is important.
 	 *	4 bytes for gotolabel's return PC
-	 *	8 bytes for optional sp and ss pushed during interrupts
 	 */
 	p->sched.pc = (ulong)init0;
-	p->sched.sp = USERADDR + BY2PG - 12;
+	p->sched.sp = USERADDR + BY2PG - 4;
 	p->upage = newpage(1, 0, USERADDR|(p->pid&0xFFFF));
 
 	/*

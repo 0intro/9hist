@@ -159,6 +159,9 @@ pprint(char *fmt, ...)
 	Chan *c;
 	int n;
 
+	if(u->p->fgrp == 0)
+		return 0;
+
 	c = u->p->fgrp->fd[2];
 	if(c==0 || (c->mode!=OWRITE && c->mode!=ORDWR))
 		return 0;
@@ -417,6 +420,9 @@ consopen(Chan *c, int omode)
 			}
 			unlock(&lineq);
 		}
+		break;
+	case Qswap:
+		kickpager();		/* start a pager if not already started */
 		break;
 	}
 	return devopen(c, omode, consdir, NCONS, devgen);
@@ -727,7 +733,6 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 		fd = strtoul(buf, 0, 0);
 		swc = fdtochan(fd, -1);
 		setswapchan(swc);
-		kickpager();
 		return n;
 
 	default:

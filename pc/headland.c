@@ -36,6 +36,5 @@ exit(void)
 
 	u = 0;
 	print("exiting\n");
-	delay(5000);
 	outb(Head, Reset);
 }
