@@ -462,6 +462,7 @@ etherintr(void)
 				txpkt = &c->tda[c->ti];
 			}
 			status &= ~(Txdn|Txer);
+			wakeup(&c->tr);
 		}
 
 		if((status & (Pktrx|Rde)) == 0)
@@ -699,6 +700,11 @@ etherwrite(Chan *c, void *buf, long n, ulong offset)
 
 	/* we handle data */
 	qlock(&ctlr->tlock);
+	if(waserror()) {
+		qunlock(&ctlr->tlock);
+		nexterror();
+	}
+
 	tsleep(&ctlr->tr, isoutbuf, ctlr, 10000);
 
 	if(!isoutbuf(ctlr))
@@ -723,6 +729,7 @@ etherwrite(Chan *c, void *buf, long n, ulong offset)
 		ctlr->th = NEXT(ctlr->th, Ntb);
 		WR(cr, Txp);
 	}
+	poperror();
 	qunlock(&ctlr->tlock);
 
 	return n;

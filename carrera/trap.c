@@ -368,9 +368,9 @@ void
 kernfault(Ureg *ur, int code)
 {
 	print("panic: kfault %s badvaddr=0x%lux\n", excname[code], ur->badvaddr);
-	kpteprint(ur);
 	print("u=0x%lux status=0x%lux pc=0x%lux sp=0x%lux\n",
 				up, ur->status, ur->pc, ur->sp);
+	kpteprint(ur);
 	panic("kfault");
 }
 

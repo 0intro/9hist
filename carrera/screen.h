@@ -4,5 +4,4 @@ extern void		mouseupdate(int);
 
 #define mbbpt(x)
 #define mbbrect(x)
-#define screenupdate()
 #define mousescreenupdate()

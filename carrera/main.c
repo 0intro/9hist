@@ -35,7 +35,7 @@ void
 main(void)
 {
 	tlbinit();		/* Very early to establish IO mappings */
-	ioinit();
+	ioinit(1);
 	arginit();
 	confinit();
 	savefpregs(&initfp);
@@ -46,8 +46,8 @@ main(void)
 	printinit();
 	serialinit();
 	vecinit();
-	iprint("\n\nBrazil\n");
-/* screeninit(); */
+	screeninit();
+	print("\n\nBrazil\n");
 	pageinit();
 	procinit0();
 	initseg();
@@ -163,15 +163,28 @@ serialinit(void)
  * Map IO address space in wired down TLB entry 1
  */
 void
-ioinit(void)
+ioinit(int mapeisa)
 {
 	ulong devphys, isaphys, intphys, isamphys;
+
+	/*
+	 * If you want to segattach the eisa space these
+	 * mappings must be turned off to prevent duplication
+	 * of the tlb entries
+	 */
+	if(mapeisa) {
+		isaphys = IOPTE|PPN(Eisaphys)|PTEGLOBL;
+		isamphys = 0x04000000|IOPTE|PTEGLOBL;
+	}
+	else {
+		isaphys = PTEGLOBL;
+		isamphys = PTEGLOBL;
+	}
 
 	/*
 	 * Map devices and the Eisa control space
 	 */
 	devphys = IOPTE|PPN(Devicephys);
-	isaphys = /* IOPTE|PPN(Eisaphys) */ PTEGLOBL;
 
 	puttlbx(1, Devicevirt, devphys, isaphys, PGSZ64K);
 
@@ -179,7 +192,6 @@ ioinit(void)
 	 * Map Interrupt control & Eisa memory
 	 */
 	intphys  = IOPTE|PPN(Intctlphys);
-	isamphys = /* IOPTE|PPN(Eisamphys) */ PTEGLOBL;
 
 	puttlbx(2, Intctlvirt, intphys, isamphys, PGSZ1M);
 
@@ -187,9 +199,7 @@ ioinit(void)
 	IO(ushort, Intenareg) = 0xffff;
 
 	/* Look at the first 16M of Eisa memory */
-iprint("write latch\n");
 /*	IO(uchar, EisaLatch) = 0; /**/
-iprint("done\n");
 }
 
 /*
@@ -364,7 +374,7 @@ confinit(void)
 	conf.npage1 = 0;
 	conf.base1 = 0;
 
-	conf.upages = (conf.npage*70)/100;
+	conf.upages = (conf.npage*50)/100;
 
 	conf.nmach = 1;
 
@@ -377,7 +387,7 @@ confinit(void)
 	conf.arp = 32;
 	conf.frag = 32;
 
-	conf.monitor = 0;
+	conf.monitor = 1;
 
 	conf.copymode = 0;		/* copy on write */
 }

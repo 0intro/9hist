@@ -769,11 +769,9 @@ icflush1:			/* primary cache line size is 16 bytes */
 	WAIT
 	RET
 
-TEXT	icdirty(SB), $-4			/* icdirty(virtaddr, count) */
+TEXT	dcflush(SB), $-4			/* dcflush(virtaddr, count) */
 
 	MOVW	M(STATUS), R10
-	WAIT
-	WAIT
 	WAIT
 	MOVW	4(FP), R9
 	MOVW	$0, M(STATUS)
@@ -784,17 +782,19 @@ TEXT	icdirty(SB), $-4			/* icdirty(virtaddr, count) */
 	ADD	$0x3f, R9
 	AND	$(~0x3f), R9		/* round last address up */
 	SUB	R8, R9			/* R9 = revised count */
-icdirty1:			/* primary cache line size is 16 bytes */
+dcflush1:			/* primary cache line size is 16 bytes */
 	CACHE	PI+HI, 0x00(R8)
 	CACHE	PI+HI, 0x10(R8)
 	CACHE	PI+HI, 0x20(R8)
 	CACHE	PI+HI, 0x30(R8)
+	CACHE	PD+HWB, 0x00(R8)
+	CACHE	PD+HWB, 0x10(R8)
+	CACHE	PD+HWB, 0x20(R8)
+	CACHE	PD+HWB, 0x30(R8)
 	SUB	$0x40, R9
 	ADD	$0x40, R8
-	BGTZ	R9, icdirty1
+	BGTZ	R9, dcflush1
 	MOVW	R10, M(STATUS)
-	WAIT
-	WAIT
 	WAIT
 	RET
 

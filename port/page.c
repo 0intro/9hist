@@ -58,7 +58,9 @@ pageinit(void)
 	swapalloc.highwater = (palloc.user*5)/100;
 	swapalloc.headroom = swapalloc.highwater + (swapalloc.highwater/4);
 
-	print("%lud free pages\n%dK bytes\n%dK swap\n", palloc.user, pm, vm);
+	print("%lud free pages\n", palloc.user);
+	print("%dK bytes\n", pm);
+	print("%dK swap\n", vm);
 }
 
 Page*

@@ -39,7 +39,7 @@ void	hinv(void);
 void	icdirty(void *, ulong);
 void	icflush(void *, ulong);
 void	intr(Ureg*);
-void	ioinit(void);
+void	ioinit(int);
 int	iprint(char*, ...);
 int	kbdinit(void);
 int	kbdintr(void);
@@ -79,7 +79,7 @@ ulong	rdcount(void);
 int	readlog(ulong, char*, ulong);
 void	restfpregs(FPsave*, ulong);
 void	screeninit(void);
-#define	screenputs 
+void	screenputs(char*, int);
 void	syslog(char*, int);
 void	sysloginit(void);
 int	tas(ulong*);

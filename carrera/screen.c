@@ -42,7 +42,6 @@ struct VGAmode
 	uchar	crt[0x19];
 	uchar	graphics[9];
 	uchar	attribute[0x15];
-	uchar	special[12];
 	struct {
 		uchar viden;
 		uchar sr6;
@@ -89,16 +88,20 @@ VGAmode dfltmode =
 extern	GSubfont	defont0;
 GSubfont		*defont;
 
-static ulong rep(ulong, int);
-
-struct{
-	Point	pos;
-	int	bwid;
-}out;
-
 Lock	screenlock;
 
 GBitmap	gscreen =
+{
+	0,
+	0,
+	(1024*(1<<3))/32,
+	3,
+	{ 0, 0, 1024, 768 },
+	{ 0, 0, 1024, 768 },
+	0
+};
+
+GBitmap	vgascreen =
 {
 	EISA(0xA0000),
 	0,
@@ -145,36 +148,10 @@ static Rectangle window;
 static Point cursor;
 static int h, w;
 extern Cursor arrow;
-
-#define IOPORT	((uchar*)0xE0010000)
-
-static uchar
-inb(int port)
-{
-	return IOPORT[port^7];
-}
-
-static void
-outb(int port, int val)
-{
-	IOPORT[port^7] = val;
-}
-
-void
-gborder(GBitmap *l, Rectangle r, int i, Fcode c)
-{
-	if(i < 0){
-		r = inset(r, i);
-		i = -i;
-	}
-	gbitblt(l, r.min, l, Rect(r.min.x, r.min.y, r.max.x, r.min.y+i), c);
-	gbitblt(l, Pt(r.min.x, r.max.y-i),
-		l, Rect(r.min.x, r.max.y-i, r.max.x, r.max.y), c);
-	gbitblt(l, Pt(r.min.x, r.min.y+i),
-		l, Rect(r.min.x, r.min.y+i, r.min.x+i, r.max.y-i), c);
-	gbitblt(l, Pt(r.max.x-i, r.min.y+i),
-		l, Rect(r.max.x-i, r.min.y+i, r.max.x, r.max.y-i), c);
-}
+static ulong colormap[256][3];
+static Rectangle mbb;
+static Rectangle NULLMBB = {10000, 10000, -10000, -10000};
+static int isscroll;
 
 void
 screenwin(void)
@@ -182,55 +159,50 @@ screenwin(void)
 	gtexture(&gscreen, gscreen.r, &bgrnd, S);
 	w = defont0.info[' '].width;
 	h = defont0.height;
+	defont = &defont0;	
 
-	window.min = Pt(100, 100);
-	window.max = add(window.min, Pt(10+w*120, 10+h*60));
+	window.min = Pt(50, 50);
+	window.max = add(window.min, Pt(10+w*100, 10+h*40));
 
 	gbitblt(&gscreen, window.min, &gscreen, window, Zero);
 	window = inset(window, 5);
 	cursor = window.min;
 	window.max.y = window.min.y+((window.max.y-window.min.y)/h)*h;
-
 	hwcurs = 0;
+
+	mbb = gscreen.r;
+	screenupdate();
 }
 
-void	getvmode(VGAmode *v);
-void	writeregisters(VGAmode *v);
-VGAmode x;
+/*
+ *  expand 3 and 6 bits of color to 32
+ */
+static ulong
+x3to32(uchar x)
+{
+	ulong y;
+
+	x = x&7;
+	x= (x<<3)|x;
+	y = (x<<(32-6))|(x<<(32-12))|(x<<(32-18))|(x<<(32-24))|(x<<(32-30));
+	return y;
+}
 
 void
 screeninit(void)
 {
-	int i, j;
-	uchar *scr;
+	int i;
 
 	setmode(&dfltmode);
-	getvmode(&x);
-	writeregisters(&x);
-return;
-	memmove(&arrow, &fatarrow, sizeof(fatarrow));
+	for(i = 0; i < 256; i++)
+		setcolor(i, x3to32(i>>5), x3to32(i>>2), x3to32(i<<1));
 
-	scr = (uchar*)EISA(0xC0000);
-iprint("%lux\n", scr);
-*scr = 0xaa;
-i = *scr;
-iprint("%2.2ux\n", i);
-*scr = 0x55;
-i = *scr;
-iprint("%2.2ux\n", i);
+	/* allocate a new soft bitmap area */
+	gscreen.base = xalloc(1024*1024);
 
-	for(j = 0; j < 768; j++)
-		for(i = 0; i < 1024; i++)
-			*(scr+i+(j*1024)) = i;
-
-	/* save space; let bitblt do the conversion work */
-	defont = &defont0;
-iprint("gbitblt\n");	
 	gbitblt(&gscreen, Pt(0, 0), &gscreen, gscreen.r, 0);
-iprint("done\n");
-	out.pos.x = MINX;
-	out.pos.y = 0;
-	out.bwid = defont0.info[' '].width;
+
+	memmove(&arrow, &fatarrow, sizeof(fatarrow));
 
 	screenwin();
 }
@@ -247,6 +219,33 @@ scroll(void)
 	r = Rpt(Pt(window.min.x, window.max.y-o), window.max);
 	gbitblt(&gscreen, r.min, &gscreen, r, Zero);
 	cursor.y -= o;
+	isscroll = 1;
+}
+
+void
+mbbrect(Rectangle r)
+{
+	if (r.min.x < mbb.min.x)
+		mbb.min.x = r.min.x;
+	if (r.min.y < mbb.min.y)
+		mbb.min.y = r.min.y;
+	if (r.max.x > mbb.max.x)
+		mbb.max.x = r.max.x;
+	if (r.max.y > mbb.max.y)
+		mbb.max.y = r.max.y;
+}
+
+void
+mbbpt(Point p)
+{
+	if (p.x < mbb.min.x)
+		mbb.min.x = p.x;
+	if (p.y < mbb.min.y)
+		mbb.min.y = p.y;
+	if (p.x >= mbb.max.x)
+		mbb.max.x = p.x+1;
+	if (p.y >= mbb.max.y)
+		mbb.max.y = p.y+1;
 }
 
 static void
@@ -276,11 +275,11 @@ screenputc(char *buf)
 	default:
 		if(cursor.x >= window.max.x-w)
 			screenputc("\n");
+
 		cursor = gsubfstring(&gscreen, cursor, &defont0, buf, S);
 	}
 }
 
-#ifdef USEME
 void
 screenputs(char *s, int n)
 {
@@ -288,7 +287,7 @@ screenputs(char *s, int n)
 	Rune r;
 	char buf[4];
 
-	if((getstatus() & IEC) == 0) {
+	if((getstatus() & IE) == 0) {
 		/* don't deadlock trying to print in interrupt */
 		if(!canlock(&screenlock))
 			return;	
@@ -296,7 +295,8 @@ screenputs(char *s, int n)
 	else
 		lock(&screenlock);
 
-	while(n > 0){
+	mbbpt(cursor);
+	while(n > 0) {
 		i = chartorune(&r, s);
 		if(i == 0){
 			s++;
@@ -309,52 +309,38 @@ screenputs(char *s, int n)
 		s += i;
 		screenputc(buf);
 	}
+	if(isscroll) {
+		mbb = window;
+		isscroll = 0;
+	}
+	else
+		mbbpt(Pt(cursor.x, cursor.y+h));
+
+	screenupdate();
 	unlock(&screenlock);
-}
-#endif
-
-/* replicate (from top) value in v (n bits) until it fills a ulong */
-static ulong
-rep(ulong v, int n)
-{
-	int o;
-	ulong rv;
-
-	rv = 0;
-	for(o = 32 - n; o >= 0; o -= n)
-		rv |= (v << o);
-	return rv;
 }
 
 void
 getcolor(ulong p, ulong *pr, ulong *pg, ulong *pb)
 {
-	ulong ans;
-
-	/*
-	 * The gnot says 0 is white (max intensity)
-	 */
-	if(gscreen.ldepth == 0){
-		if(p == 0)
-				ans = ~0;
-		else
-				ans = 0;
-	}else{
-		switch(p){
-		case 0:		ans = ~0;		break;
-		case 1:		ans = 0xAAAAAAAA;	break;
-		case 2:		ans = 0x55555555;	break;
-		default:	ans = 0;		break;
-		}
-	}
-	*pr = *pg = *pb = ans;
+	p &= (1<<(1<<gscreen.ldepth))-1;
+	*pr = colormap[p][0];
+	*pg = colormap[p][1];
+	*pb = colormap[p][2];
 }
 
 int
 setcolor(ulong p, ulong r, ulong g, ulong b)
 {
-	USED(p, r, g, b);
-	return 0;	/* can't change mono screen colormap */
+	p &= (1<<(1<<gscreen.ldepth))-1;
+	colormap[p][0] = r;
+	colormap[p][1] = g;
+	colormap[p][2] = b;
+	EISAOUTB(CMWX, 255-p);
+	EISAOUTB(CM, r>>(32-6));
+	EISAOUTB(CM, g>>(32-6));
+	EISAOUTB(CM, b>>(32-6));
+	return ~0;
 }
 
 void
@@ -381,18 +367,6 @@ int
 screenbits(void)
 {
 	return 1<<gscreen.ldepth;
-}
-
-void
-mbbrect(Rectangle r)
-{
-	USED(r);
-}
-
-void
-mbbpt(Point p)
-{
-	USED(p);
 }
 
 void
@@ -490,6 +464,7 @@ setmode(VGAmode *v)
 
 	EISAOUTB(0x3C6, 0xFF);	/* pel mask */
 	EISAOUTB(0x3C8, 0x00);	/* pel write address */
+
 	EISAOUTB(0x3bf, 0x03);	/* hercules compatibility reg */
 	EISAOUTB(0x3d8, 0xa0);	/* display mode control register */
 
@@ -512,98 +487,65 @@ setmode(VGAmode *v)
 	srout(1, v->sequencer[1]);
 }
 
-uchar
-grin(ushort i)
-{
-	EISAOUTB(GRX, i);
-	return EISAINB(GR);
-}
+#define swiz(s)	(s<<24)|((s>>8)&0xff00)|((s<<8)&0xff0000)|(s>>24)
 
-uchar
-arin(ushort i)
+void
+twizzle(uchar *f, uchar *t)
 {
-	uchar junk;
-	junk = EISAINB(0x3DA);
-	USED(junk);
-	EISAOUTB(ARW, i | 0x20);
-	return EISAINB(ARR);
-}
+	ulong in1, in2;
 
-uchar
-crin(ushort i) {
-	EISAOUTB(CRX, i);
-	return EISAINB(CR);
+	in1 = *(ulong*)f;
+	in2 = *(ulong*)(f+4);
+	*(ulong*)t = swiz(in2);
+	*(ulong*)(t+4) = swiz(in1);
 }
 
 void
-getvmode(VGAmode *v)
+screenupdate(void)
 {
-	int i;
+	uchar *sp, *hp, *edisp;
+	int i, y, len, off, page, inc;
+	Rectangle r;
 
-	v->general[0] = EISAINB(EMISCR);	/* misc output */
-	v->general[1] = EISAINB(EFCR);	/* feature control */
-	for(i = 0; i < sizeof(v->sequencer); i++)
-		v->sequencer[i] = srin(i);
-	for(i = 0; i < sizeof(v->crt); i++) 
-		v->crt[i] = crin(i);
-	for(i = 0; i < sizeof(v->graphics); i++) 
-		v->graphics[i] = grin(i);
-	for(i = 0; i < sizeof(v->attribute); i++)
-		v->attribute[i] = arin(i);
+	r = mbb;
+	mbb = NULLMBB;
 
-	v->tseng.viden = EISAINB(0x3c3);
-	v->tseng.sr6  = srin(6);
-	v->tseng.sr7  = srin(7);
-	v->tseng.ar16 = arin(0x16);
-	v->tseng.ar17 = arin(0x17);
-	v->tseng.crt31= crin(0x31);
-	v->tseng.crt32= crin(0x32);
-	v->tseng.crt33= crin(0x33);
-	v->tseng.crt34= crin(0x34);
-	v->tseng.crt35= crin(0x35);
-	v->tseng.crt36= crin(0x36);
-	v->tseng.crt37= crin(0x37);
-}
+	if(Dy(r) < 0)
+		return;
 
-void
-writeregisters(VGAmode *v)
-{
-	int i;
+	if(r.min.x < 0)
+		r.min.x = 0;
+	if(r.min.y < 0)
+		r.min.y = 0;
+	if(r.max.x > gscreen.r.max.x)
+		r.max.x = gscreen.r.max.x;
+	if(r.max.y > gscreen.r.max.y)
+		r.max.y = gscreen.r.max.y;
 
-	print("\t/* general */\n\t");
-	for (i=0; i<sizeof(v->general); i++)
-		print("0x%.2x, ", v->general[i]);
-	print("\n\t/* sequence */\n\t");
-	for (i=0; i<sizeof(v->sequencer); i++) {
-		if (i>0 && i%8 == 0)
-			print("\n\t");
-		print("0x%.2x, ", v->sequencer[i]);
-	}
-	print("\n\t/* crt */\n\t");
-	for (i=0; i<sizeof(v->crt); i++) {
-		if (i>0 && i%8 == 0)
-			print("\n\t");
-		print("0x%.2x, ", v->crt[i]);
-	}
-	print("\n\t/* graphics */\n\t");
-	for (i=0; i<sizeof(v->graphics); i++) {
-		if (i>0 && i%8 == 0)
-			print("\n\t");
-		print("0x%.2x, ", v->graphics[i]);
-	}
-	print("\n\t/* attribute */\n\t");
-	for (i=0; i<sizeof(v->attribute); i++) {
-		if (i>0 && i%8 == 0)
-			print("\n\t");
-		print("0x%.2x, ", v->attribute[i]);
-	}
-	print("\n");
-	print("\t/* special */\n");
+	r.min.x &= ~7;
+	len = r.max.x - r.min.x;
+	len = (len+7)&~7;
+	if(len <= 0)
+		return;
 
-	for (i=0; i<12; i++) {
-		if (i%8 == 0)
-			print("\n\t");
-		print("0x%.2x, ", ((uchar*)(&v->tseng))[i]);
+	inc = gscreen.width*4;
+	off = r.min.y * inc + r.min.x;
+	sp = ((uchar*)gscreen.base) + off;
+
+	page = off>>16;
+	off &= (1<<16)-1;
+	hp = edisp = 0;
+	for(y = r.min.y; y < r.max.y; y++){
+		if(hp >= edisp){
+			hp = ((uchar*)vgascreen.base) + off;
+			edisp = ((uchar*)vgascreen.base) + 64*1024;
+			EISAOUTB(0x3cd, (page<<4) | page);
+			off = r.min.x;
+			page++;
+		}
+		for(i = 0; i < len; i += 8)
+			twizzle(sp+i, hp+i);
+		hp += inc;
+		sp += inc;
 	}
-	print("\n");
 }
