@@ -905,7 +905,8 @@ sslwrite(Chan *c, void *a, long n, vlong off)
 	volatile struct { Dstate *s; } s;
 	volatile struct { Block *b; } b;
 	int m, t;
-	char *p, *np, *e, buf[32];
+	char *p, *np, *e, buf[128];
+	uchar *x;
 	ulong offset = off;
 
 	s.s = dstate[CONV(c->qid)];
@@ -955,17 +956,15 @@ sslwrite(Chan *c, void *a, long n, vlong off)
 	case Qsecretin:
 		setsecret(&s.s->in, a, n);
 		goto out;
-		return n;
 	case Qsecretout:
 		setsecret(&s.s->out, a, n);
 		goto out;
-		return n;
 	case Qctl:
 		break;
 	}
 
 	if(n >= sizeof(buf))
-		error(Ebadarg);
+		error("arg too long");
 	strncpy(buf, a, n);
 	buf[n] = 0;
 	p = strchr(buf, '\n');
@@ -1016,7 +1015,7 @@ sslwrite(Chan *c, void *a, long n, vlong off)
 
 			if(parsehashalg(p, s.s) < 0)
 			if(parseencryptalg(p, s.s) < 0)
-				error(Ebadarg);
+				error("bad algorithm");
 
 			if(np == 0)
 				break;
@@ -1024,7 +1023,7 @@ sslwrite(Chan *c, void *a, long n, vlong off)
 		}
 
 		if(s.s->hf == 0 && s.s->encryptalg == Noencryption)
-			error(Ebadarg);
+			error("bad algorithm");
 
 		if(s.s->blocklen != 1){
 			s.s->max = (1<<15) - s.s->diglen - 1;
@@ -1033,6 +1032,18 @@ sslwrite(Chan *c, void *a, long n, vlong off)
 			s.s->maxpad -= s.s->maxpad % s.s->blocklen;
 		} else
 			s.s->maxpad = s.s->max = (1<<15) - s.s->diglen - 1;
+	} else if(strcmp(buf, "secretin") == 0 && p != 0) {
+		m = (strlen(p)*3)/2;
+		x = smalloc(m);
+		n = dec64(x, m, p, strlen(p));
+		setsecret(&s.s->in, x, n);
+		free(x);
+	} else if(strcmp(buf, "secretout") == 0 && p != 0) {
+		m = (strlen(p)*3)/2 + 1;
+		x = smalloc(m);
+		n = dec64(x, m, p, strlen(p));
+		setsecret(&s.s->out, x, n);
+		free(x);
 	} else
 		error(Ebadarg);
 
