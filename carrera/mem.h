@@ -140,7 +140,7 @@
 #define	PTEPERTAB	(PTEMAPMEM/BY2PG)
 #define STLBLOG		13
 #define STLBSIZE	(1<<STLBLOG)
-#define KPTELOG		6
+#define KPTELOG		7
 #define KPTESIZE	(1<<KPTELOG)
 #define SEGMAPSIZE	512
 

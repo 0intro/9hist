@@ -76,6 +76,8 @@ clock(Ureg *ur)
 		m->load = (m->load*19+nrun)/20;
 	}
 
+	kproftimer(ur->pc);
+
 	kmapinval();
 
 	if((active.machs&(1<<m->machno)) == 0)
