@@ -1980,14 +1980,22 @@ drawblankscreen(int blank)
 	p = sdraw.savemap;
 	nc = screenimage->depth > 8 ? 256 : 1<<screenimage->depth;
 
-	if(blank == 0)	/* turn screen on */
+	/*
+	 * blankscreen uses the hardware to blank the screen
+	 * when possible.  to help in cases when it is not possible,
+	 * we set the color map to be all black.
+	 */
+	if(blank == 0){	/* turn screen on */
 		for(i=0; i<nc; i++, p+=3)
 			setcolor(i, p[0], p[1], p[2]);
-	else	/* turn screen off */
+		blankscreen(0);
+	}else{	/* turn screen off */
+		blankscreen(1);
 		for(i=0; i<nc; i++, p+=3){
 			getcolor(i, &p[0], &p[1], &p[2]);
 			setcolor(i, 0, 0, 0);
 		}
+	}
 	sdraw.blanked = blank;
 	qunlock(&sdraw);
 }

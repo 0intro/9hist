@@ -25,6 +25,12 @@ enum {
 };
 
 enum {						/* index registers */
+	CursorSyncCtl	= 0x03,
+	  HsyncHi = 0x01,
+	  HsyncLo = 0x02,
+	  VsyncHi = 0x04,
+	  VsyncLo = 0x08,
+
 	CursorCtl	= 0x30,
 	CursorXLo	= 0x31,
 	CursorXHi	= 0x32,
@@ -514,6 +520,18 @@ t2r4hwfill(VGAscr *scr, Rectangle r, ulong sval)
 }
 
 static void
+t2r4blank(VGAscr *scr, int blank)
+{
+	uchar x;
+
+	x = t2r4xi(scr, CursorSyncCtl);
+	x &= ~0x0F;
+	if(blank)
+		x |= HsyncLo | VsyncLo;
+	t2r4xo(scr, CursorSyncCtl, x);
+}
+
+static void
 t2r4drawinit(VGAscr *scr)
 {
 	ulong pitch;
@@ -557,6 +575,7 @@ t2r4drawinit(VGAscr *scr)
 
 	scr->fill = t2r4hwfill;
 	scr->scroll = t2r4hwscroll;
+	scr->blank = t2r4blank;
 }
 
 VGAdev vgat2r4dev = {

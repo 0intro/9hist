@@ -463,6 +463,7 @@ Memimage *lastbadi;
 Memdata *lastbad;
 Memimage *lastbadsrc, *lastbaddst;
 int hwaccel = 1;
+int hwblank = 1;
 
 int
 hwdraw(Memdrawparam *par)
@@ -515,4 +516,14 @@ hwdraw(Memdrawparam *par)
 	}
 
 	return 0;	
+}
+
+void
+blankscreen(int blank)
+{
+	VGAscr *scr;
+
+	scr = &vgascreen[0];
+	if(hwblank && scr->blank)
+		scr->blank(scr, blank);
 }

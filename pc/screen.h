@@ -110,6 +110,7 @@ struct VGAscr {
 
 	int	(*fill)(VGAscr*, Rectangle, ulong);
 	int	(*scroll)(VGAscr*, Rectangle, Rectangle);
+	void	(*blank)(VGAscr*, int);
 	ulong	id;	/* internal identifier for driver use */
 };
 
@@ -124,6 +125,7 @@ extern void mousectl(char*[], int);
 
 /* screen.c */
 extern int		hwaccel;	/* use hw acceleration; default on */
+extern int		hwblank;	/* use hw blanking; default on */
 extern void	flushmemscreen(Rectangle);
 extern int	cursoron(int);
 extern void	cursoroff(int);
@@ -131,6 +133,7 @@ extern void	setcursor(Cursor*);
 extern int	screensize(int, int, int, ulong);
 extern int	screenaperture(int, int);
 extern Rectangle physgscreenr;	/* actual monitor size */
+extern void	blankscreen(int);
 
 /* devdraw.c */
 extern void	deletescreenimage(void);

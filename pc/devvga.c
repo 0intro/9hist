@@ -1,4 +1,5 @@
 /*
+ * VGA controller
  */
 #include "u.h"
 #include "../port/lib.h"
@@ -151,10 +152,6 @@ vgactl(char* a)
 		if(n < 2)
 			error(Ebadarg);
 
-		/* BUG: drawinit should become a different message rather than piggybacking */
-		if(scr && scr->dev && scr->dev->drawinit)
-			scr->dev->drawinit(scr);
-
 		if(strcmp(field[1], "off") == 0){
 			lock(&cursor);
 			if(scr->cur){
@@ -269,17 +266,8 @@ vgactl(char* a)
 		return;
 	}
 	else if(strcmp(field[0], "drawinit") == 0){
-		/*
-		 * This is a separate message, but first we need to make
-		 * aux/vga send it; once everyone has the new vga, we
-		 * can take the drawinit stuff out of hwgc.
-		 */
-
-		/*
 		if(scr && scr->dev && scr->dev->drawinit)
 			scr->dev->drawinit(scr);
-		*/
-
 		return;
 	}
 	else if(strcmp(field[0], "linear") == 0){
@@ -315,6 +303,15 @@ vgactl(char* a)
 			hwaccel = 1;
 		else if(strcmp(field[1], "off") == 0)
 			hwaccel = 0;
+		return;
+	}
+	else if(strcmp(field[0], "hwblank") == 0){
+		if(n < 2)
+			error(Ebadarg);
+		if(strcmp(field[1], "on") == 0)
+			hwblank = 1;
+		else if(strcmp(field[1], "off") == 0)
+			hwblank = 0;
 		return;
 	}
 

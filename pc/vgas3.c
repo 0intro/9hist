@@ -441,6 +441,26 @@ hwfill(VGAscr *scr, Rectangle r, ulong sval)
 	return 1;
 }
 
+enum {
+	CursorSyncCtl = 0x0D,	/* in Seqx */
+	VsyncHi = 0x80,
+	VsyncLo = 0x40,
+	HsyncHi = 0x20,
+	HsyncLo = 0x10,
+};
+
+static void
+s3blank(int blank)
+{
+	uchar x;
+
+	x = vgaxi(Seqx, CursorSyncCtl);
+	x &= ~0xF0;
+	if(blank)
+		x |= VsyncLo | HsyncLo;
+	vgaxo(Seqx, CursorSyncCtl, x);
+}
+
 static void
 s3drawinit(VGAscr *scr)
 {
@@ -463,6 +483,7 @@ s3drawinit(VGAscr *scr)
 		scr->mmio = (ulong*)(scr->aperture+0x1000000);
 		scr->fill = hwfill;
 		scr->scroll = hwscroll;
+		/* scr->blank = hwblank; */
 	}
 }
 

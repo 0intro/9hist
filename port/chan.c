@@ -721,6 +721,7 @@ namec(char *name, int amode, int omode, ulong perm)
 		 *	c  time and pid, but also cons and consctl
 		 *	p  control of your own processes (and unfortunately
 		 *	   any others left unprotected)
+		 *  all are ASCII, so it's safe to use strchr to check.
 		 */
 		if(up->pgrp->noattach)
 		if(strchr("|decp", name[1]) == 0)
