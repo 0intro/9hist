@@ -858,6 +858,7 @@ conswrite(Chan *c, void *va, long n, vlong off)
 
 	case Qtimer:
 		error(Eperm);
+		break;
 
 	default:
 		print("conswrite: %d\n", c->qid.path);
