@@ -467,6 +467,7 @@ closeconv(Conv *cv)
 		cv->incall = nc->next;
 		closeconv(nc);
 	}
+	cv->incall = nil;
 
 	strcpy(cv->owner, network);
 	cv->perm = 0660;

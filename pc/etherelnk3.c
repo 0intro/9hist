@@ -1025,7 +1025,12 @@ interrupt(Ureg*, void* arg)
 					ctlr->txthreshold += ETHERMINTU;
 			}
 
-			if(s & (txJabber|txUnderrun)){
+			/*
+			 * According to the manual, maxCollisions does not require
+			 * a TxReset, merely a TxEnable. However, evidence points to
+			 * it being necessary on the 3C905. The jury is still out.
+			 */
+			if(s & (txJabber|txUnderrun|maxCollisions)){
 				if(ctlr->busmaster == 0)
 					COMMAND(port, TxReset, 0);
 				else
