@@ -111,6 +111,7 @@ loop:
 	print("no mounts\n");
 	if(u == 0)
 		panic("newmount");
+	print("%s %s\n", u->p->pgrp->user, u->p->text);
 	u->p->state = Wakeme;
 	alarm(1000, wakeme, u->p);
 	sched();
