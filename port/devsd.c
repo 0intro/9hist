@@ -122,6 +122,7 @@ sdinit(void)
 			 */
 			nbytes = 0xFF;
 			memset(scratch, 0, nbytes);
+
 			if(scsiinquiry(d->t, d->lun, scratch, &nbytes) != STok)
 				continue;
 			if(scratch[0] == 0x7F)
@@ -140,8 +141,21 @@ sdinit(void)
 				nbytes = 0xFF;
 				memset(scratch, 0, nbytes);
 				scsireqsense(d->t, 0, scratch, &nbytes, 1);
-				if((scratch[2] & 0x0F) != 0x02 && (scratch[2] & 0x0F) != 0)
+				switch(scratch[2] & 0x0F){
+
+				case 0x00:
+				case 0x01:
+				case 0x02:
+					break;
+				case 0x06:
+					if(scratch[12] == 0x28 && scratch[13] == 0)
+						break;
+					if(scratch[12] == 0x29 && scratch[13] == 0)
+						break;
+					/*FALLTHROUGH*/
+				default:
 					continue;
+				}
 				if(type == TypeDA)
 					scsistart(d->t, d->lun, 0);
 				d->size = d->bsize = 0;

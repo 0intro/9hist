@@ -570,11 +570,90 @@ transmit(Ether* ether)
 }
 
 static void
-interrupt(Ureg*, void* arg)
+receive(Ether* ether)
 {
 	Rfd *rfd;
+	Ctlr *ctlr;
+	int count;
+	Block *bp, *pbp, *xbp;
+
+	ctlr = ether->ctlr;
+	bp = ctlr->rfdhead;
+	for(rfd = (Rfd*)bp->rp; rfd->field & RfdC; rfd = (Rfd*)bp->rp){
+		/*
+		 * If it's an OK receive frame
+		 * 1) save the count 
+		 * 2) if it's small, try to allocate a block and copy
+		 *    the data, then adjust the necessary fields for reuse;
+		 * 3) if it's big, try to allocate a new Rfd and if
+		 *    successful
+		 *	adjust the received buffer pointers for the
+		 *	  actual data received;
+		 *	initialise the replacement buffer to point to
+		 *	  the next in the ring;
+		 *	initialise bp to point to the replacement;
+		 * 4) if there's a good packet, pass it on for disposal.
+		 */
+		if(rfd->field & RfdOK){
+			pbp = nil;
+			count = rfd->count & 0x3FFF;
+			if((count < ETHERMAXTU/4) && (pbp = iallocb(count))){
+				memmove(pbp->rp, bp->rp+sizeof(Rfd)-sizeof(rfd->data), count);
+				pbp->wp = pbp->rp + count;
+
+				rfd->count = 0;
+				rfd->field = 0;
+			}
+			else if(xbp = rfdalloc(rfd->link)){
+				bp->rp += sizeof(Rfd)-sizeof(rfd->data);
+				bp->wp = bp->rp + count;
+
+				xbp->next = bp->next;
+				bp->next = 0;
+
+				pbp = bp;
+				bp = xbp;
+			}
+			if(pbp != nil)
+				etheriq(ether, pbp, 1);
+		}
+		else{
+			rfd->count = 0;
+			rfd->field = 0;
+		}
+
+		/*
+		 * The ring tail pointer follows the head with with one
+		 * unused buffer in between to defeat hardware prefetch;
+		 * once the tail pointer has been bumped on to the next
+		 * and the new tail has the Suspend bit set, it can be
+		 * removed from the old tail buffer.
+		 * As a replacement for the current head buffer may have
+		 * been allocated above, ensure that the new tail points
+		 * to it (next and link).
+		 */
+		rfd = (Rfd*)ctlr->rfdtail->rp;
+		ctlr->rfdtail = ctlr->rfdtail->next;
+		ctlr->rfdtail->next = bp;
+		((Rfd*)ctlr->rfdtail->rp)->link = PADDR(bp->rp);
+		((Rfd*)ctlr->rfdtail->rp)->field |= RfdS;
+		coherence();
+		rfd->field &= ~RfdS;
+
+		/*
+		 * Finally done with the current (possibly replaced)
+		 * head, move on to the next and maintain the sentinel
+		 * between tail and head.
+		 */
+		ctlr->rfdhead = bp->next;
+		bp = ctlr->rfdhead;
+	}
+}
+
+static void
+interrupt(Ureg*, void* arg)
+{
 	Cb* cb;
-	Block *bp, *xbp;
 	Ctlr *ctlr;
 	Ether *ether;
 	int status;
@@ -599,62 +678,7 @@ interrupt(Ureg*, void* arg)
 			ctlr->tick = 0;
 
 		if(status & StatFR){
-			bp = ctlr->rfdhead;
-			rfd = (Rfd*)bp->rp;
-			while(rfd->field & RfdC){
-				/*
-				 * If it's an OK receive frame and a replacement buffer
-				 * can be allocated then
-				 *	adjust the received buffer pointers for the
-				 *	  actual data received;
-				 *	initialise the replacement buffer to point to
-				 *	  the next in the ring;
-				 *	pass the received buffer on for disposal;
-				 *	initialise bp to point to the replacement.
-				 * If not, just adjust the necessary fields for reuse.
-				 */
-				if((rfd->field & RfdOK) && (xbp = rfdalloc(rfd->link))){
-					bp->rp += sizeof(Rfd)-sizeof(rfd->data);
-					bp->wp = bp->rp + (rfd->count & 0x3FFF);
-
-					xbp->next = bp->next;
-					bp->next = 0;
-
-					etheriq(ether, bp, 1);
-					bp = xbp;
-				}
-				else{
-					rfd->field = 0;
-					rfd->count = 0;
-				}
-
-				/*
-				 * The ring tail pointer follows the head with with one
-				 * unused buffer in between to defeat hardware prefetch;
-				 * once the tail pointer has been bumped on to the next
-				 * and the new tail has the Suspend bit set, it can be
-				 * removed from the old tail buffer.
-				 * As a replacement for the current head buffer may have
-				 * been allocated above, ensure that the new tail points
-				 * to it (next and link).
-				 */
-				rfd = (Rfd*)ctlr->rfdtail->rp;
-				ctlr->rfdtail = ctlr->rfdtail->next;
-				ctlr->rfdtail->next = bp;
-				((Rfd*)ctlr->rfdtail->rp)->link = PADDR(bp->rp);
-				((Rfd*)ctlr->rfdtail->rp)->field |= RfdS;
-				coherence();
-				rfd->field &= ~RfdS;
-
-				/*
-				 * Finally done with the current (possibly replaced)
-				 * head, move on to the next and maintain the sentinel
-				 * between tail and head.
-				 */
-				ctlr->rfdhead = bp->next;
-				bp = ctlr->rfdhead;
-				rfd = (Rfd*)bp->rp;
-			}
+			receive(ether);
 			status &= ~StatFR;
 		}
 

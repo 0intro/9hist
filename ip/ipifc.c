@@ -483,7 +483,6 @@ ipifcrem(Ipifc *ifc, char **argv, int argc, int dolock)
 
 	free(lifc);
 
-out:
 	if(dolock)
 		wunlock(ifc);
 	return nil;
