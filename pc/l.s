@@ -7,46 +7,33 @@ TEXT	origin(SB),$0
 
 	CLI
 
+#ifdef BOOT
 /*
- *	move the first 1k bytes down to low core and jump to them
+ *	relocate everything to a half meg and jump there
  *	- looks wierd because it is being assembled by a 32 bit
  *	  assembler for a 16 bit world
  */
 	MOVL	$0,BX
 	INCL	BX
-	SHLL	$(10-1),BX
+	SHLL	$15,BX
 	MOVL	BX,CX
+	MOVW	BX,ES
 	MOVL	$0,SI
-	MOVW	SI,ES
 	MOVL	SI,DI
 	CLD
 	REP
 	MOVSL
-/*	JMPFAR	00:$lowcore(SB) /**/
+/*	JMPFAR	0X8000:$lowcore(SB) /**/
 	 BYTE	$0xEA
-	 WORD	$lowcore-KZERO(SB)
-	 WORD	$0
+	 WORD	$lowcore(SB)
+	 WORD	$0X8000
 
 TEXT	lowcore(SB),$0
-
-/*
- *	move the next 63K down
- */
-	MOVL	$0,CX
-	INCL	CX
-	SHLL	$(15-1),CX
-	SUBL	BX,CX
-	SHLL	$1,BX
-	MOVL	BX,SI
-	MOVL	BX,DI
-	REP
-	MOVSL
 
 /*
  *	now that we're in low core, update the DS
  */
 
-	MOVL	$0,BX
 	MOVW	BX,DS
 
 /*
@@ -56,7 +43,7 @@ TEXT	lowcore(SB),$0
 	 BYTE	$0x0f
 	 BYTE	$0x01
 	 BYTE	$0x16
-	 WORD	$tgdtptr-KZERO(SB)
+	 WORD	$tgdtptr(SB)
 	MOVL	CR0,AX
 	ORL	$1,AX
 	MOVL	AX,CR0
@@ -81,11 +68,14 @@ flush:
 	MOVW	AX,ES
 
 /*	JMPFAR	SELECTOR(2, SELGDT, 0):$mode32bit(SB) /**/
+	 BYTE	$0x66
 	 BYTE	$0xEA
-	 WORD	$mode32bit-KZERO(SB)
+	 LONG	$mode32bit-KZERO(SB)
 	 WORD	$SELECTOR(2, SELGDT, 0)
 
 TEXT	mode32bit(SB),$0
+
+#endif BOOT
 
 	/*
 	 * Clear BSS
