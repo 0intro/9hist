@@ -313,7 +313,6 @@ int
 readseg(int in, int out, long inoff, long outoff, int len)
 {
 	long	n, i;
-	ulong sum = 0;
 
 	if(seek(in, inoff, 0) < 0){
 		prerror("seeking bootfile");
@@ -328,16 +327,11 @@ readseg(int in, int out, long inoff, long outoff, int len)
 			prerror("reading bootfile");
 			return -1;
 		}
-		for(i = 0; i < n; i++)
-			sum += buf[i];
-		if(sum & 0xf0000000)
-			sum = (sum & 0xfffffff) + ((sum & 0xf0000000) >> 28);
 		if(write(out, buf, n) != n){
 			prerror("writing #b/mem");
 			return -1;
 		}
 	}
-	print("[%ux]", sum);
 	return 0;
 }
 

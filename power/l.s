@@ -8,6 +8,7 @@
 
 /*
  * Boot first processor
+ *   - why is the processor number loaded from R0 ?????
  */
 TEXT	start(SB), $-4
 
@@ -58,6 +59,7 @@ clrbss:
 
 /*
  * Take first processor into user mode
+ * 	- argument is stack pointer to user
  */
 
 TEXT	touser(SB), $-4
@@ -145,14 +147,47 @@ TEXT	gotolabel(SB), $0
 	MOVW	4(R2), R29
 	RET
 
-TEXT	gotopc(SB), $0
+TEXT	gotopc(SB), $-4
 
-	MOVW	$0, R0
-	MOVW	0(FP), R2
+	MOVW	0(FP), R7		/* save arguments for later */
 	MOVW	_argc(SB), R4
 	MOVW	_argv(SB), R5
-	JAL	(R2)
-	RET			/* shouldn't get here */
+
+	MOVW	$WBFLUSH, R1		/* flush write buffer */
+	MOVW	0(R1), R1
+	NOOP
+
+	MOVW	$KSEG1, R3		/* change to uncached address space */
+	MOVW	$gotopc0(SB), R2
+	OR	R3, R2
+	JMP	(R2)
+TEXT gotopc0(SB), $-4
+
+	MOVW	$(SWC|ISC), R1		/* swap and isolate cache, stay splhi */
+	MOVW	R1, M(STATUS)
+	NOOP
+
+	MOVW	$gotopc1(SB), R2	/* change back to cached address space */
+	JMP	(R2)
+TEXT gotopc1(SB), $-4
+
+	MOVW	$KSEG0, R6		/* init loop variables */
+	MOVW	$(64*1024), R8
+_gotopc1:
+	MOVBU	R0, 0x00(R6)
+	SUB	$0x4, R8
+	ADD	$0x4, R6
+	BGTZ	R8, _gotopc1
+
+	MOVW	$gotopc2(SB), R2	/* change to uncached address space */
+	OR	R3, R2
+	JMP	(R2)
+TEXT gotopc2(SB), $-4
+
+	MOVW	R0, M(STATUS)		/* put caches back, still splhi */
+	NOOP
+
+	JMP	(R7)
 
 TEXT	puttlb(SB), $4
 
@@ -438,6 +473,7 @@ TEXT	savefpregs(SB), $0
 	RET
 
 TEXT	restfpregs(SB), $0
+
 	MOVW	M(STATUS), R3
 	MOVW	0(FP), R1
 	OR	$CU1, R3
@@ -464,4 +500,99 @@ TEXT	restfpregs(SB), $0
 	MOVW	R2, FCR31
 	AND	$~CU1, R3
 	MOVW	R3, M(STATUS)
+	RET
+
+
+TEXT icflush(SB), $-4			/* icflush(physaddr, nbytes) */
+
+	MOVW	M(STATUS), R6
+	MOVW	0(FP), R4
+	MOVW	4(FP), R5
+	MOVW	$KSEG0, R3
+	OR	R3, R4
+	MOVW	$0, M(STATUS)
+	MOVW	$WBFLUSH, R1		/* wbflush */
+	MOVW	0(R1), R1
+	NOOP
+	MOVW	$KSEG1, R3
+	MOVW	$icflush0(SB), R2	/* make sure PC is in uncached address space */
+	MOVW	$(SWC|ISC), R1
+	OR	R3, R2
+	JMP	(R2)
+
+TEXT icflush0(SB), $-4
+
+	MOVW	R1, M(STATUS)		/* swap and isolate cache, splhi */
+	MOVW	$icflush1(SB), R2
+	JMP	(R2)
+
+TEXT icflush1(SB), $-4
+
+_icflush1:
+	MOVBU	R0, 0x00(R4)
+	MOVBU	R0, 0x04(R4)
+	MOVBU	R0, 0x08(R4)
+	MOVBU	R0, 0x0C(R4)
+	MOVBU	R0, 0x10(R4)
+	MOVBU	R0, 0x14(R4)
+	MOVBU	R0, 0x18(R4)
+	MOVBU	R0, 0x1C(R4)
+	MOVBU	R0, 0x20(R4)
+	MOVBU	R0, 0x24(R4)
+	MOVBU	R0, 0x28(R4)
+	MOVBU	R0, 0x2C(R4)
+	MOVBU	R0, 0x30(R4)
+	MOVBU	R0, 0x34(R4)
+	MOVBU	R0, 0x38(R4)
+	MOVBU	R0, 0x3C(R4)
+	SUB	$0x40, R5
+	ADD	$0x40, R4
+	BGTZ	R5, _icflush1
+	MOVW	$icflush2(SB), R2	/* make sure PC is in uncached address space */
+	OR	R3, R2
+	JMP	(R2)
+
+TEXT icflush2(SB), $-4
+
+	MOVW	$0, M(STATUS)		/* swap back caches, de-isolate them, and stay splhi */
+	NOOP				/* +++ */
+	MOVW	R6, M(STATUS)
+	RET
+
+TEXT dcflush(SB), $-4			/* dcflush(physaddr, nbytes) */
+
+	MOVW	M(STATUS), R6
+	MOVW	0(FP), R4
+	MOVW	4(FP), R5
+	MOVW	$KSEG0, R3
+	OR	R3, R4
+	MOVW	$0, M(STATUS)
+	MOVW	$WBFLUSH, R1
+	MOVW	0(R1), R1
+	NOOP
+	MOVW	$ISC, R1
+	MOVW	R1, M(STATUS)
+_dcflush0:
+	MOVBU	R0, 0x00(R4)
+	MOVBU	R0, 0x04(R4)
+	MOVBU	R0, 0x08(R4)
+	MOVBU	R0, 0x0C(R4)
+	MOVBU	R0, 0x10(R4)
+	MOVBU	R0, 0x14(R4)
+	MOVBU	R0, 0x18(R4)
+	MOVBU	R0, 0x1C(R4)
+	MOVBU	R0, 0x20(R4)
+	MOVBU	R0, 0x24(R4)
+	MOVBU	R0, 0x28(R4)
+	MOVBU	R0, 0x2C(R4)
+	MOVBU	R0, 0x30(R4)
+	MOVBU	R0, 0x34(R4)
+	MOVBU	R0, 0x38(R4)
+	MOVBU	R0, 0x3C(R4)
+	SUB	$0x40, R5
+	ADD	$0x40, R4
+	BGTZ	R5, _dcflush0
+	MOVW	$0, M(STATUS)
+	NOOP				/* +++ */
+	MOVW	R6, M(STATUS)
 	RET

@@ -104,7 +104,6 @@ bootwrite(Chan *c, void *buf, long n)
 	case Qboot:
 		pc = *(ulong*)buf;
 		splhi();
-		flushmmu();
 		gotopc(pc);
 	}
 	error(0, Ebadarg);

@@ -58,7 +58,6 @@ main(int argc, char *argv[])
 	open("#c/cons", 1);
 	open("#c/cons", 1);
 
-	print("boot.c staring\n");
 
 	argv++;
 	argc--;	

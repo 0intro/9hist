@@ -418,7 +418,7 @@ Conf	conf;
 void
 confinit(void)
 {
-	long x, i, j, *l;
+	long x, i, j, *l, *e;
 
 #include  "conf.h"
 
@@ -439,4 +439,11 @@ confinit(void)
 	conf.npte = 4 * conf.npage;
 	conf.nqueue = 5 * conf.nstream;
 	conf.nblock = 16 * conf.nstream;
+
+	/*
+	 *  zero memory from bss up
+	 */
+	e = (long *)(i*1024*1024);
+	for(l = &end; l < e; l++)
+		*l = 0;
 }
