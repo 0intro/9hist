@@ -85,6 +85,7 @@ dmainit(int chan, int maxtransfer)
 			return 1;
 		return 0;
 	}
+outb(dp->mc, 0);
 
 	xp->bva = xspanalloc(maxtransfer, BY2PG, 64*1024);
 	if(xp->bva == nil)
@@ -126,14 +127,15 @@ dmasetup(int chan, void *va, long len, int isread)
 
 	dp = &dma[(chan>>2)&1];
 	chan = chan & 3;
+//print("va%lux+", va);
+#define tryPCI
+#ifdef notdef
 	xp = &dp->x[chan];
 
 	/*
 	 *  if this isn't kernel memory or crossing 64k boundary or above 16 meg
 	 *  use the bounce buffer.
 	 */
-print("va%lux+", va);
-#ifdef notdef
 	pa = PADDR(va);
 	if((((ulong)va)&0xF0000000) != KZERO
 	|| (pa&0xFFFF0000) != ((pa+len)&0xFFFF0000)
@@ -151,9 +153,13 @@ print("va%lux+", va);
 	}
 	else
 		xp->len = 0;
-#else
-	pa = ISAWADDR(va);
 #endif /* notdef */
+#ifdef tryISA
+	pa = ISAWADDR(va);
+#endif /* tryISA */
+#ifdef tryPCI
+	pa = PCIWADDR(va);
+#endif /* tryPCI */
 
 	/*
 	 * this setup must be atomic
@@ -165,12 +171,14 @@ print("va%lux+", va);
 	outb(dp->addr[chan], pa>>dp->shift);		/* set address */
 	outb(dp->addr[chan], pa>>(8+dp->shift));
 	outb(dp->page[chan], pa>>16);
-//outb(0x400|dp->page[chan], pa>>24);
+#ifdef tryPCI
+	outb(0x400|dp->page[chan], pa>>24);
+#endif /* tryPCI */
 	outb(dp->count[chan], (len>>dp->shift)-1);		/* set count */
 	outb(dp->count[chan], ((len>>dp->shift)-1)>>8);
 	outb(dp->sbm, chan);		/* enable the channel */
 	iunlock(dp);
-print("pa%lux+", pa);
+//print("pa%lux+", pa);
 
 	return len;
 }
@@ -215,7 +223,7 @@ i = inb(dp->addr[chan]);
 i |= inb(dp->addr[chan])<<8;
 i |= inb(dp->page[chan])<<16;
 i |= inb(0x400|dp->page[chan])<<24;
-print("X%uX+", i);
+//print("X%uX+", i);
 }
 
 	xp = &dp->x[chan];

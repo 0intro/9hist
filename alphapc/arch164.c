@@ -42,7 +42,7 @@ sginit(void)
 	for(pa = 0; pa < 8*1024*1024; pa += BY2PG)
 		*pte++ = ((pa>>PGSHIFT)<<1)|1;
 
-	wind[0x400/4] = ISAWINDOW|2;
+	wind[0x400/4] = ISAWINDOW|4|2|1;
 	wind[0x440/4] = 0x00700000;
 	wind[0x480/4] = PADDR(sgmap);
 }
@@ -91,7 +91,7 @@ sginit();
 	core[0x8200/4] = 0x7ff;
 
 	/* set config: byte/word enable, no monster window, etc. */
-	core[0x140/4] = 1;
+	core[0x140/4] = 0x21;
 
 	/* turn off mcheck on master abort.  now we can probe PCI space. */
 	core[0x8280/4] &= ~(1<<7);
@@ -99,6 +99,12 @@ sginit();
 	/* set up interrupts. */
 	i8259init();
 	cserve(52, 4);		/* enable SIO interrupt */
+}
+
+void
+ciaerror(void)
+{
+	print("cia error 0x%luX\n", core[0x8200/4]);
 }
 
 static void

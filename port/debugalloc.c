@@ -414,7 +414,7 @@ malloc(ulong size)
 	void *v;
 
 	v = poolalloc(mainmem, size);
-remember(getcallerpc(size), v);
+remember(getcallerpc(&size), v);
 	if(v != nil)
 		memset(v, 0, size);
 	return v;
@@ -427,7 +427,7 @@ smalloc(ulong size)
 
 	for(;;) {
 		v = poolalloc(mainmem, size);
-remember(getcallerpc(size), v);
+remember(getcallerpc(&size), v);
 		if(v != nil)
 			break;
 		tsleep(&up->sleep, return0, 0, 100);
@@ -442,7 +442,7 @@ mallocz(ulong size, int clr)
 	void *v;
 
 	v = poolalloc(mainmem, size);
-remember(getcallerpc(size), v);
+remember(getcallerpc(&size), v);
 	if(clr && v != nil)
 		memset(v, 0, size);
 	return v;
@@ -477,7 +477,7 @@ realloc(void *v, ulong size)
 		return v;
 
 	nv = poolalloc(mainmem, size);
-remember(getcallerpc(v), nv);
+remember(getcallerpc(&v), nv);
 	if(nv != nil) {
 		memmove(nv, v, osize);
 		free(v);

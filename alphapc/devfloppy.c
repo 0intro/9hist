@@ -39,7 +39,7 @@ enum {
 };
 
 #define DPRINT if(floppydebug)print
-int floppydebug = 0;
+int floppydebug = 1;
 
 /*
  *  types of drive (from PC equipment byte)
@@ -56,12 +56,14 @@ enum
 FType floppytype[] =
 {
  { "3½HD",	T1440kb, 512, 18, 2, 1, 80, 0x1B, 0x54,	0, },
+/*
  { "3½DD",	T1440kb, 512,  9, 2, 1, 80, 0x1B, 0x54, 2, },
  { "3½DD",	T720kb,  512,  9, 2, 1, 80, 0x1B, 0x54, 2, },
  { "5¼HD",	T1200kb, 512, 15, 2, 1, 80, 0x2A, 0x50, 0, },
  { "5¼DD",	T1200kb, 512,  9, 2, 2, 40, 0x2A, 0x50, 1, },
  { "ATT3B1",	T1200kb, 512,  8, 2, 2, 48, 0x2A, 0x50, 1, },
  { "5¼DD",	T360kb,  512,  9, 2, 1, 40, 0x2A, 0x50, 2, },
+ */
 };
 
 /*
@@ -533,6 +535,7 @@ floppycmd(void)
 			microdelay(8);	/* for machine independence */
 		}
 		outb(Pfdata, fl.cmd[i]);
+microdelay(8);	/* for machine independence */
 	}
 	return 0;
 }
@@ -636,7 +639,11 @@ cmddone(void *)
 static void
 floppywait(void)
 {
+vlong t0, t1;
+t0 = fastticks(nil);
 	tsleep(&fl.r, cmddone, 0, 5000);
+t1 = fastticks(nil);
+print("wait %lld ticks\n", t1-t0);
 	if(!cmddone(0)){
 		floppyintr(0);
 		fl.confused = 1;
@@ -680,9 +687,22 @@ floppyrecal(FDrive *dp)
 	return 0;
 }
 
+static void
+specify(void)
+{
+	fl.ncmd = 0;
+	fl.cmd[fl.ncmd++] = Fspec;
+	fl.cmd[fl.ncmd++] = 0;
+	fl.cmd[fl.ncmd++] = 1;
+	if(floppycmd() < 0)
+		return;
+	floppywait();
+	fldump();
+}
+
 /*
  *  if the controller or a specific drive is in a confused state,
- *  reset it and get back to a kown state
+ *  reset it and get back to a known state
  */
 static void
 floppyrevive(void)
@@ -774,7 +794,7 @@ floppyxfer(FDrive *dp, int cmd, void *a, long off, long n)
 	/* retry on error (until it gets ridiculous) */
 	tries = 0;
 	while(waserror()){
-		if(tries++ > 20)
+		if(tries++ > 2/*0*/)
 			nexterror();
 		DPRINT("floppyxfer: retrying\n");
 		/*floppyon(dp);*/
@@ -820,6 +840,8 @@ floppyxfer(FDrive *dp, int cmd, void *a, long off, long n)
 	/*
 	 *  give bus to DMA, floppyintr() will read result
 	 */
+delay(10);
+print("msr 0x%2.2uX\n", inb(Pmsr));
 	floppywait();
 	dmaend(DMAchan);
 	poperror();

@@ -33,7 +33,7 @@ lock(Lock *l)
 	int i, cansched;
 	ulong pc, oldpri;
 
-	pc = getcallerpc(l);
+	pc = getcallerpc(&l);
 
 lockstats.locks++;
 	if(tas(&l->key) == 0){
@@ -89,7 +89,7 @@ ilock(Lock *l)
 	ulong pc, oldpri;
 	int cansched;
 
-	pc = getcallerpc(l);
+	pc = getcallerpc(&l);
 lockstats.locks++;
 
 	x = splhi();
@@ -138,7 +138,7 @@ canlock(Lock *l)
 	if(tas(&l->key))
 		return 0;
 
-	l->pc = getcallerpc(l);
+	l->pc = getcallerpc(&l);
 	l->p = up;
 	l->isilock = 0;
 	return 1;
@@ -149,9 +149,9 @@ unlock(Lock *l)
 {
 
 	if(l->key == 0)
-		print("unlock: not locked: pc %luX\n", getcallerpc(l));
+		print("unlock: not locked: pc %luX\n", getcallerpc(&l));
 	if(l->isilock)
-		print("iunlock of lock: pc %lux, held by %lux\n", getcallerpc(l), l->pc);
+		print("iunlock of lock: pc %lux, held by %lux\n", getcallerpc(&l), l->pc);
 	l->pc = 0;
 	l->key = 0;
 	coherence();
@@ -163,15 +163,15 @@ iunlock(Lock *l)
 	ulong sr;
 
 	if(l->key == 0)
-		print("iunlock: not locked: pc %luX\n", getcallerpc(l));
+		print("iunlock: not locked: pc %luX\n", getcallerpc(&l));
 	if(!l->isilock)
-		print("unlock of ilock: pc %lux, held by %lux\n", getcallerpc(l), l->pc);
+		print("unlock of ilock: pc %lux, held by %lux\n", getcallerpc(&l), l->pc);
 
 	sr = l->sr;
 	l->pc = 0;
 	l->key = 0;
 	coherence();
 
-	m->splpc = getcallerpc(l);
+	m->splpc = getcallerpc(&l);
 	splxpc(sr);
 }

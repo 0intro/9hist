@@ -115,7 +115,7 @@ int	xchgw(ushort*, int);
 ulong	TK2MS(ulong);				/* ticks to milliseconds */
 
 #define	waserror()	(up->nerrlab++, setlabel(&up->errlab[up->nerrlab-1]))
-#define getcallerpc(x)	(((ulong*)(&x))[-1])
+#define getcallerpc(x)	(((ulong*)(x))[-1])
 #define KADDR(a)	((void*)((ulong)(a)|KZERO))
 #define PADDR(a)	((ulong)(a)&~KZERO)
 

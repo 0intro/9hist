@@ -62,7 +62,7 @@ connectlocal(void)
 	char *dev;
 	char *args[16], **argp;
 
-	if(stat("/fs", d) < 0)
+	if(stat("/kfs", d) < 0)
 		return -1;
 
 	dev = disk ? disk : bootdisk;
@@ -73,7 +73,7 @@ connectlocal(void)
 			return -1;
 	}
 
-	print("fs...");
+	print("kfs...");
 	if(bind("#c", "/dev", MREPL) < 0)
 		fatal("bind #c");
 	if(bind("#p", "/proc", MREPL) < 0)
@@ -89,13 +89,13 @@ connectlocal(void)
 		close(p[0]);
 		close(p[1]);
 		argp = args;
-		*argp++ = "fs";
+		*argp++ = "kfs";
 		*argp++ = "-f";
 		*argp++ = partition;
 		*argp++ = "-s";
 		*argp = 0;
-		exec("/fs", args);
-		fatal("can't exec fs");
+		exec("/kfs", args);
+		fatal("can't exec kfs");
 	default:
 		break;
 	}

@@ -190,6 +190,7 @@ void	iliput(Proto*, uchar*, Block*);
 void	iladvise(Proto*, Block*, char*);
 int	ilnextqt(Ilcb*);
 void	ilcbinit(Ilcb*);
+int	later(ulong, ulong, char*);
 
 	int 	ilcksum = 1;
 static 	int 	initseq = 25001;

@@ -91,8 +91,8 @@ microdelay(int us)
 {
 	uvlong eot;
 
-	eot = cycletimer() + (m->cpuhz/1000000)*us;
-	while(cycletimer() < eot)
+	eot = fastticks(nil) + (m->cpuhz/1000000)*us;
+	while(fastticks(nil) < eot)
 		;
 }
 

@@ -368,6 +368,11 @@ malloc(ulong size)
 	v = poolalloc(mainmem, size);
 	if(v != nil)
 		memset(v, 0, size);
+{
+Bhdr *h;
+D2B(h, v);
+B2T(h)->pad = getcallerpc(&size);
+}
 	return v;
 }
 
@@ -383,6 +388,11 @@ smalloc(ulong size)
 		tsleep(&up->sleep, return0, 0, 100);
 	}
 	memset(v, 0, size);
+{
+Bhdr *h;
+D2B(h, v);
+B2T(h)->pad = getcallerpc(&size);
+}
 	return v;
 }
 
@@ -394,6 +404,11 @@ mallocz(ulong size, int clr)
 	v = poolalloc(mainmem, size);
 	if(clr && v != nil)
 		memset(v, 0, size);
+{
+Bhdr *h;
+D2B(h, v);
+B2T(h)->pad = getcallerpc(&size);
+}
 	return v;
 }
 
@@ -429,6 +444,11 @@ realloc(void *v, ulong size)
 		memmove(nv, v, osize);
 		free(v);
 	}
+{
+Bhdr *h;
+D2B(h, nv);
+B2T(h)->pad = getcallerpc(&size);
+}
 	return nv;
 }
 

@@ -322,7 +322,7 @@ setpage(Astar *a, ulong offset)
 	int i;
 
 	if(a->pci){
-		print("#G%d: setpage caller pc %luX\n", a->id, getcallerpc(a));
+		print("#G%d: setpage caller pc %luX\n", a->id, getcallerpc(&a));
 		return;
 	}
 

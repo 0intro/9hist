@@ -1787,7 +1787,7 @@ Dev drawdevtab = {
  * On 8 bit displays, load the default color map
  */
 void
-drawcmap(invert){
+drawcmap(int invert){
 	int r, g, b, cr, cg, cb, v;
 	int num, den;
 	int i, j;
