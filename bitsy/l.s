@@ -473,11 +473,11 @@ TEXT gotolabel(SB), $-4
 	MOVW	$1, R0
 	RET
 
-/* save the state machine in power_resume[] for an upcoming suspend
+/* save the state machine in power_state[] for an upcoming suspend
  */
 TEXT setpowerlabel(SB), $-4
-	MOVW	$power_resume+0(SB), R0
-	/* svc */				/* power_resume[]: what */
+	MOVW	$power_state+0(SB), R0
+	/* svc */				/* power_state[]: what */
 	MOVW	R1, 0(R0)
 	MOVW	R2, 4(R0)
 	MOVW	R3, 8(R0)
@@ -558,7 +558,7 @@ TEXT setpowerlabel(SB), $-4
 /* Entered after a resume from suspend state.
  * The bootldr jumps here after a processor reset.
  */
-TEXT sa1100_power_resume(SB), $-4
+TEXT power_resume(SB), $-4
 	MOVW	$setR12(SB), R12		/* load the SB */
 	/* SVC mode, interrupts disabled */
 	MOVW	$(PsrDirq|PsrDfiq|PsrMsvc), R1
@@ -566,7 +566,7 @@ TEXT sa1100_power_resume(SB), $-4
 	/* gotopowerlabel() */
 	/* svc */
 
-	MOVW	$power_resume+0(SB), R0
+	MOVW	$power_state+0(SB), R0
 	MOVW	56(R0), R1		/* R1: SPSR, R2: CPSR */
 	MOVW	60(R0), R2
 	MOVW	R1, SPSR
@@ -677,9 +677,9 @@ TEXT power_down(SB), $-4
 	MOVW	gpioregs+0(SB),R6
 	MOVW	memconfregs+0(SB),R5
 	MOVW	powerregs+0(SB),R3
-	MOVW	0x1c(R5),R1
-	ORR		$0x30400000,R1
-	MOVW	R1,refr-4(SP)
+	MOVW	0x1c(R5),R4
+	ORR		$0x30400000,R4
+	AND		$(~0xfff0),R4
 	MOVW	$0x80000003,R2
 	MOVW	R2,0xc(R3)
 	MOVW	$15,R2
@@ -688,7 +688,7 @@ TEXT power_down(SB), $-4
 	MOVW	R2,0x10(R3)
 	MOVW	$0,R2
 	MOVW	R2,0x18(R3)
-	MOVW	$sa1100_power_resume+0(SB),R2
+	MOVW	$power_resume+0(SB),R2
 	MOVW	R2,0x8(R3)
 	MOVW	$0,R2
 	MOVW	R2,0x4(R6)
@@ -705,43 +705,33 @@ l13:	SUB		$1,R0
 l14:	SUB		$1,R0
 	BGT		l14
 	MOVW	powerregs+0(SB),R5
-	MOVW	refr-4(SP),R4
-	AND		$(~0xfff0),R4
 	ORR		$0x80000000,R4,R6
 	AND		$(~0x80100000),R6,R11
 
 	MOVW	memconfregs+0(SB),R3
-	MOVW	(R3),R12
+	MOVW	0x0(R3),R12
 	AND		$(~0x30003),R12
 
 	MOVW	0x10(R3),R2
-	AND		$0xfffcfffc,R2
+	AND		$(~0x00030003),R2
 	MOVW	R2,0x10(R3)
 	MOVW	0x14(R3),R2
-	AND		$0xfffcfffc,R2
+	AND		$(~0x00030003),R2
 	MOVW	R2,0x14(R3)
 	MOVW	0x2c(R3),R2
-	AND		$0xfffcfffc,R2
+	AND		$(~0x00030003),R2
 	MOVW	R2,0x2c(R3)
+	MOVW	R0,R0			/* filler */
 
 	MOVW	$1,R2
 	MOVW	R4,0x1c(R3)
 //	MOVW	R6,0x1c(R3)
-//	MOVW	R12,(R3)
+	MOVW	R12,0x0(R3)
 //	MOVW	R11,0x1c(R3)
-	MOVW	R2,0(R5)
+	MOVW	R2,0x0(R5)
 
 slloop:
 	B		slloop			/* loop waiting for sleep */
-
-TEXT	coma(SB), $-4
-	MOVW	$1,R1
-	MOVW	$(MEMCONFREGS+0x1c),R2
-	MOVW	$(POWERREGS+0x0),R3
-//	MOVW	R0,(R2)
-	MOVW	R1,(R3)
-comaloop:
-	B		comaloop
 
 /* The first MCR instruction of this function needs to be on a cache-line
  * boundary; to make this happen, it will be copied (in trap.c).

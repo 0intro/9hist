@@ -606,7 +606,7 @@ retry:
 	atadmamode(drive);	
 
 	if(DEBUG & DbgCONFIG){
-		print("dev %2.2uX port %uX config %4.4uX capabilities %4.4uX",
+		print("dev %2.2uX port %uX config %4.4uX cap %4.4uX",
 			dev, cmdport,
 			iconfig, drive->info[Icapabilities]);
 		print(" mwdma %4.4uX", drive->info[Imwdma]);

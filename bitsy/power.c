@@ -13,11 +13,11 @@
  * it's only used up to 164/4.
  * it's only used by routines in l.s
  */
-ulong	power_resume[200/4];
+ulong	power_state[200/4];
 Rendez	powerr;
 ulong	powerflag = 0;	/* set to start power-off sequence */
 
-extern void	sa1100_power_resume(void);
+extern void	power_resume(void);
 extern int		setpowerlabel(void);
 extern void	_start(void);
 extern Uart	sa1110uart[];
@@ -143,50 +143,6 @@ gpiorestore(GPIOregs *to, GPIOregs *from)
 
 void	(*restart)(void) = nil;
 
-static void
-sa1100_power_off(void)
-{
-	ulong refr;
-
-	/* Set KAPD and EAPD bits */
-	refr = memconfregs->mdrefr;
-	refr |= 1<<REFR_kapd | 1 <<REFR_eapd | 1<<REFR_k1db2;
-
-	/* enable wakeup by µcontroller, on/off switch
-	 * or real-time clock alarm
-	 */
-	powerregs->pwer =  1 << IRQrtc | 1 << IRQgpio0 | 1 << IRQgpio1;
-
-	/* clear previous reset status */
-	resetregs->rcsr =  RCSR_all;
-
-	/* disable internal oscillator, float CS lines */
-	powerregs->pcfr = PCFR_opde|PCFR_fp|PCFR_fs;
-	powerregs->pgsr = 0;
-	/* set resume address. The loader jumps to it */
-	powerregs->pspr = (ulong)sa1100_power_resume;
-
-	/* set all GPIOs to input mode  */
-	gpioregs->direction = 0;
-
-	/* set lowest clock; delay to avoid resume hangs on fast sa1110 */
-	memconfregs->mdrefr |= 1<<22;
-	µdelay(90);
-	powerregs->ppcr = 0;
-	µdelay(90);
-
-	memconfregs->msc0 &= ~0x30003;
-	memconfregs->msc1 &= ~0x30003;
-	memconfregs->msc2 &= ~0x30003;
-	refr &= ~0xfff0;
-	memconfregs->mdrefr = refr;	/* Clear dri 0 ⋯ 11 */
-	refr |= 1<<REFR_slfrsh;
-
-	memconfregs->mdrefr = refr;	/* Set selfrefresh */
-	powerregs->pmcr = PCFR_suspend;
-	for(;;);
-}
-
 static int
 bitno(ulong x)
 {
@@ -262,7 +218,6 @@ deepsleep(void) {
 	cacheflush();
 	delay(100);
 	power_down();
-//	sa1100_power_off();
 	/* no return */
 }
 
