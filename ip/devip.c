@@ -573,8 +573,7 @@ ipread(Chan *ch, void *a, long n, vlong off)
 		buf = smalloc(Statelen);
 		x = f->p[PROTO(ch->qid)];
 		c = x->conv[CONV(ch->qid)];
-		m = sprint(buf, "%s/%d %d ", c->p->name, c->x, c->inuse);
-		(*x->state)(c, buf, Statelen-m-2);
+		(*x->state)(c, buf, Statelen-2);
 		rv = readstr(offset, p, n, buf);
 		free(buf);
 		return rv;
