@@ -5,7 +5,7 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
-#include	<auth.h>
+#include	<authsrv.h>
 
 void	(*consdebug)(void) = nil;
 void	(*screenputs)(char*, int) = nil;

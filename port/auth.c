@@ -5,7 +5,7 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
-#include	<auth.h>
+#include	<authsrv.h>
 
 char	*eve;
 char	evekey[DESKEYLEN];

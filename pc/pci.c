@@ -575,7 +575,7 @@ pcicfginit(void)
 					/* reset the cardbus */
 					bcr = pcicfgr16(pci, PciBCR);
 					pcicfgw16(pci, PciBCR, 0x40 | bcr);
-					pcicfgw16(pci, PciBCR, bcr);
+					delay(50);
 				}
 				pci = pci->link;
 			}
@@ -851,7 +851,7 @@ pcilhinv(Pcidev* p)
 	}
 	while(p != nil) {
 		if(p->bridge != nil)
-			pcihinv(p->bridge);
+			pcilhinv(p->bridge);
 		p = p->link;
 	}	
 }
