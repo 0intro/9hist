@@ -684,15 +684,14 @@ tdisready(void *arg)
 static Block *
 isoxmit(Endpt *e, Block *b, int pid)
 {
-	TD *td;
-	int n, id;
 	Block *ob;
 	static int ioc;
+	TD *td;
 
 	td = e->etd;
 	if (td == nil)
 		panic("usb: isoxmit");
-	while(td->status & Active && (td->dev & 0x7ff<21) != (0x7ff<21)){
+	while(td->status & Active){
 		XPRINT("isoxmit: sleep %lux\n", &e->wr);
 		sleep(&e->wr, tdisready, e->etd);
 		XPRINT("isoxmit: awake\n");
@@ -707,7 +706,10 @@ isoxmit(Endpt *e, Block *b, int pid)
 	n = BLEN(b);
 	id = (e->x<<7)|(e->dev->x&0x7F);
 	td->dev = ((n-1)<<21) | ((id&0x7FF)<<8) | pid;
-	td->status = ErrLimit1 | Active | IsoSelect | IOC;
+	if ((ioc++ & 0xff) == 0)
+		td->status = ErrLimit3 | Active | IsoSelect | IOC;
+	else
+		td->status = ErrLimit3 | Active | IsoSelect;
 	e->etd = td->next;
 	return ob;
 }
