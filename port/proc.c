@@ -293,7 +293,6 @@ newproc(void)
 	procalloc.free = p->qnext;
 	unlock(&procalloc);
 
-	procalloc.free = p->qnext;
 	p->state = Scheding;
 	p->psstate = "New";
 	p->mach = 0;
