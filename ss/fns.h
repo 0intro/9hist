@@ -59,6 +59,7 @@ void	restartprint(Alarm*);
 void	restfpregs(FPsave*);
 void	screeninit(void);
 void	screenputc(int);
+void	screenputs(char*, int);
 void	spldone(void);
 ulong	swap1(ulong*);
 void	touser(ulong);
@@ -66,34 +67,3 @@ void	trap(Ureg*);
 void	trapinit(void);
 #define	wbflush()	/* mips compatibility */
 #define	waserror()	(u->nerrlab++, setlabel(&u->errlab[u->nerrlab-1]))
-
-/*
- *  for queues (to go into portfns.h)
- */
-int	cangetc(void*);
-int	canputc(void*);
-int	getc(IOQ*);
-int	gets(IOQ*, void*, int);
-void	initq(IOQ*);
-int	putc(IOQ*, int);
-void	puts(IOQ*, void*, int);
-
-/*
- *  for the scc (to go into portfns.h)
- */
-void	sccintr(void);
-void	sccputs(IOQ*, char*, int);
-void	sccsetup(void*);
-void	sccspecial(int, IOQ*, IOQ*, int);
-
-/*
- *  for devcons (to go into portfns.h)
- */
-void	kbdclock(void);
-void	kbdrepeat(int);
-int	kbdputc(IOQ*, int);
-int	kprint(char*, ...);
-int	mouseputc(IOQ*, int);
-void	printinit(void);
-void	putstr(char*);
-void	putstrn(char*, long);

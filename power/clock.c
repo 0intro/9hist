@@ -101,8 +101,8 @@ clock(Ureg *ur)
 						p->time[p->insyscall]++;
 				}
 			}
-			printslave();
 		}
+		duartslave();
 		if(active.exiting && active.machs&(1<<m->machno)){
 			print("someone's exiting\n");
 			exit();

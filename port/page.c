@@ -334,6 +334,7 @@ loop:
 		o->nproc = 1;
 		o->npage = 0;
 		o->chan = c;
+		o->freepg = unusepage;
 		if(c){
 			o->type = c->type;
 			o->qid = c->qid;
@@ -428,8 +429,6 @@ forkmod(Seg *old, Seg *new, Proc *p)
 	ppte = 0;
 	pte = old->mod;
 	while(pte){
-if(pte->page==0) panic("forkmod zero page");
-if(pte->proc != u->p) panic("forkmod wrong page");
 		npte = newmod(o);
 		npte->proc = p;
 		npte->page = pte->page;
@@ -579,15 +578,16 @@ freepage(Orig *o, int dolock)
 	int i;
 
 	pte = o->pte;
-	for(i=0; i<o->npte; i++,pte++)
+	for(i=0; i<o->npte; i++,pte++) {
 		if(pg = pte->page){	/* assign = */
 			if(pg->ref == 1){
-				unusepage(pg, dolock);
+				(*o->freepg)(pg, dolock);
 				pte->page = 0;
 				pg->o = 0;
 			}
 			pg->ref--;
 		}
+	}
 	o->npage = 0;
 }
 

@@ -284,7 +284,6 @@ sccintr0(SCC *sp, uchar x)
 	IOQ *cq;
 
 	if(x & ExtPendB){
-		/*kprint("scc %d: %2.2ux\n", sp-scc, *sp->ptr);*/
 		sccwrreg(sp, 0, ResExtPend);
 	}
 	if(x & RxPendB){
@@ -305,10 +304,8 @@ sccintr0(SCC *sp, uchar x)
 		cq = sp->oq;
 		lock(cq);
 		ch = getc(cq);
-		/*kprint("<%2.2ux>", ch);*/
 		onepointseven();
 		if(ch < 0){
-			/*kprint("<done>", ch);*/
 			sccwrreg(sp, 0, ResTxPend);
 			sp->printing = 0;
 			wakeup(&cq->r);

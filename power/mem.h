@@ -96,7 +96,7 @@
 #define	PTEGLOBL	(1<<8)
 #define	PTEVALID	(1<<9)
 #define	PTEWRITE	(1<<10)
-#define PTEUNCACHE	(1<<11)
+#define PTEUNCACHED	(1<<11)
 #define PTERONLY	0
 #define	PTEPID(n)	((n)<<6)
 #define TLBPID(n)	(((n)>>6)&0x3F)

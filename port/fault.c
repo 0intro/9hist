@@ -9,7 +9,7 @@
 int
 fault(ulong addr, int read)
 {
-	ulong mmuvirt, mmuphys = 0, n;
+	ulong mmuvirt, mmuphys, uncache = 0, n;
 	Seg *s;
 	PTE *opte, *pte, *npte;
 	Orig *o;
@@ -67,7 +67,11 @@ fault(ulong addr, int read)
 			/* Make a new bss or lock segment page */
 			if(s - u->p->seg == LSEG) {
 				pte->page = lkpage(o, addr);
-				mmuphys = PTEUNCACHE;
+				if(pte->page == 0) {
+					unlock(o);
+					return -1;
+				}
+				uncache = PTEUNCACHED;
 			}
 			else
 				pte->page = newpage(0, o, addr);
@@ -115,9 +119,12 @@ fault(ulong addr, int read)
 	/*
 	 * Copy on reference (conf.copymode==1) or write (conf.copymode==0)
 	 */
-	if((o->flag & OWRPERM) && (conf.copymode || !read)
+	if((o->flag & (OWRPERM|OSHARED))==OWRPERM && (conf.copymode || !read)
 	&& ((head && ((o->flag&OPURE) || o->nproc>1))
 	    || (!head && pte->page->ref>1))){
+
+		if(!(o->flag&OISMEM))
+			panic("copy on ref/wr to non memory");
 		touched = 1;
 		/*
 		 * Look for the easy way out: are we the last non-modified?
@@ -163,6 +170,7 @@ fault(ulong addr, int read)
 		 * increment on the mod list which must be removed
 		 */
 		if(zeroed){
+			pg->ref--;
 			o->npage--;
 			opte->page = 0;
 		}else{		/* copy page */
@@ -174,25 +182,27 @@ fault(ulong addr, int read)
 			kunmap(k1);
 			if(pg->ref <= 1)
 				panic("pg->ref <= 1");
+			pg->ref--;
 		}
-		pg->ref--;
 
     easy:
-		mmuphys |= PTEWRITE;
+		mmuphys = PTEWRITE;
 	}else{
-		mmuphys |= PTERONLY;
+		mmuphys = PTERONLY;
 		if(o->flag & OWRPERM)
 			if(o->flag & OPURE){
 				if(!head && pte->page->ref==1)
-					mmuphys |= PTEWRITE;
+					mmuphys = PTEWRITE;
 			}else
 				if((head && o->nproc==1)
 	  			  || (!head && pte->page->ref==1))
-					mmuphys |= PTEWRITE;
+					mmuphys = PTEWRITE;
 	}
 	mmuvirt = addr;
-	mmuphys |= PPN(pte->page->pa) | PTEVALID;
-	usepage(pte->page, 1);
+	mmuphys |= PPN(pte->page->pa) | PTEVALID | uncache;
+	if(o->flag&OISMEM)
+		usepage(pte->page, 1);
+
 	if(pte->page->va != addr)
 		panic("wrong addr in tail %lux %lux", pte->page->va, addr);
 	if(pte->proc && pte->proc != u->p){
@@ -200,9 +210,11 @@ fault(ulong addr, int read)
 		print("u->p %lux pte->proc %lux\n", u->p, pte->proc);
 		panic("addr %lux seg %d wrong proc in tail", addr, s-u->p->seg);
 	}
+
 	unlock(o);
 	if(touched == 0)
 		m->tlbfault++;
+
 	putmmu(mmuvirt, mmuphys);
 	return 0;
 }

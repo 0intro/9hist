@@ -15,6 +15,7 @@
 
 #define	SEMPERPG	64		/* hardware semaphores per page */
 #define NSEMPG		1024
+#define ULOCKPG		512
 
 struct
 {
@@ -22,6 +23,7 @@ struct
 	ulong	*nextsem;		/* next one to allocate */
 	int	nsem;			/* at SEMPERPG, jump to next page */
 	uchar	bmap[NSEMPG];		/* allocation map */
+	int	ulockpg;		/* count of user lock available */
 }semalloc;
 
 Page lkpgheader[NSEMPG];
@@ -32,6 +34,7 @@ lockinit(void)
 	memset(semalloc.bmap, 0, sizeof(semalloc.bmap));
 	semalloc.bmap[0] = 1;
 
+	semalloc.ulockpg = ULOCKPG;
 	semalloc.lock.sbsem = SBSEM;
 	semalloc.nextsem = SBSEM+1;
 	semalloc.nsem = 1;
@@ -63,6 +66,11 @@ lkpage(Orig *o, ulong va)
 	int i;
 
 	lock(&semalloc.lock);
+	if(--semalloc.ulockpg < 0) {
+		semalloc.ulockpg++;
+		unlock(&semalloc.lock);
+		return 0;
+	}
 	top = &semalloc.bmap[NSEMPG];
 	for(p = semalloc.bmap; *p && p < top; p++)
 		;
@@ -72,23 +80,28 @@ lkpage(Orig *o, ulong va)
 	*p = 1;
 	i = p-semalloc.bmap;
 	pg = &lkpgheader[i];
-	pg->pa = (ulong)((i*WD2PG) + SBSEM);
+	pg->pa = (ulong)((i*WD2PG) + SBSEM) & ~UNCACHED;
 	pg->va = va;
 	pg->o = o;
+	pg->ref = 1;
 
 	unlock(&semalloc.lock);
 	return pg;
 }
 
 void
-lkpgfree(ulong *lpa)
+lkpgfree(Page *pg, int dolock)
 {
 	uchar *p;
 
-	p = &semalloc.bmap[(lpa-SBSEM)/WD2PG];
+	lock(&semalloc.lock);
+	p = &semalloc.bmap[((pg->pa|UNCACHED)-(ulong)SBSEM)/BY2PG];
 	if(!*p)
 		panic("lkpgfree");
 	*p = 0;
+	
+	semalloc.ulockpg++;
+	unlock(&semalloc.lock);
 }
 
 #define PCOFF -9
@@ -171,9 +184,10 @@ mklockseg(Seg *s)
 	Orig *o;
 
 	s->proc = u->p;
-	o = neworig(LKSEGBASE, 0, OWRPERM|OPURE, 0);
+	o = neworig(LKSEGBASE, 0, OWRPERM|OSHARED, 0);
 	o->minca = 0;
 	o->maxca = 0;
+	o->freepg = lkpgfree;
 	s->o = o;
 	s->minva = LKSEGBASE;
 	s->maxva = LKSEGBASE;

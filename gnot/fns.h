@@ -57,26 +57,3 @@ int	splduart(void);
 int	tas(char*);
 void	touser(void);
 #define	waserror()	(u->nerrlab++, setlabel(&u->errlab[u->nerrlab-1]))
-
-/*
- *  for queues (to go into portfns.h)
- */
-int	cangetc(void*);
-int	canputc(void*);
-int	getc(IOQ*);
-int	gets(IOQ*, void*, int);
-void	initq(IOQ*);
-int	putc(IOQ*, int);
-void	puts(IOQ*, void*, int);
-
-/*
- *  for devcons (to go into portfns.h)
- */
-void	kbdclock(void);
-void	kbdrepeat(int);
-int	kbdputc(IOQ*, int);
-int	kprint(char*, ...);
-int	mouseputc(IOQ*, int);
-void	printinit(void);
-void	putstr(char*);
-void	putstrn(char*, long);

@@ -212,38 +212,3 @@ struct
 	short	machs;
 	short	exiting;
 }active;
-
-/*
- *  character based IO (mouse, keyboard, console screen)
- */
-typedef struct IOQ	IOQ;
-typedef struct KIOQ	KIOQ;
-#define NQ	4096
-struct IOQ
-{
-	Lock;
-	uchar	buf[NQ];
-	uchar	*in;
-	uchar	*out;
-	int	state;
-	Rendez	r;
-	union{
-		void	(*puts)(IOQ*, void*, int);	/* output */
-		int	(*putc)(IOQ*, int);		/* input */
-	};
-	void	*ptr;
-};
-struct KIOQ
-{
-	QLock;
-	IOQ;
-	int	repeat;
-	int	c;
-	int	count;
-};
-
-extern IOQ	lineq;
-extern IOQ	printq;
-extern IOQ	mouseq;
-extern KIOQ	kbdq;
-

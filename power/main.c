@@ -57,6 +57,7 @@ main(void)
 	arginit();
 	lockinit();
 	printinit();
+	duartspecial(0, &printq, &kbdq, 9600);
 	tlbinit();
 	vecinit();
 	procinit0();
@@ -83,6 +84,7 @@ machinit(void)
 	memset(m, 0, sizeof(Mach));
 	m->machno = n;
 	m->stb = &stlb[n][0];
+	duartinit();
 }
 
 void
@@ -370,13 +372,13 @@ exit(void)
 	unlock(&active);
 	spllo();
 	print("cpu %d exiting\n", m->machno);
-	while(active.machs || consactive())
+	while(active.machs || duartactive())
 		for(i=0; i<1000; i++)
 			;
 	splhi();
 	for(i=0; i<2000000; i++)
 		;
-	duartreset();
+	duartenable0();
 	firmware();
 }
 
@@ -819,3 +821,17 @@ lanceparity(void)
 	MODEREG->promenet &= ~4;
 	MODEREG->promenet |= 4;
 }
+
+/*
+ *  for the sake of a single devcons.c
+ */
+void
+buzz(int f, int d)
+{
+}
+int
+mouseputc(IOQ *q, int c)
+{
+	return 0;
+}
+

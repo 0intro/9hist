@@ -8,90 +8,35 @@
 
 #include	"devtab.h"
 
-static struct
-{
-	Lock;
-	uchar	buf[4000];
-	uchar	*in;
-	uchar	*out;
-	int	printing;
-	int	c;
-}printq;
+struct {
+	IOQ;			/* lock to klogputs */
+	QLock;			/* qlock to getc */
+}	klogq;
 
-typedef struct IOQ	IOQ;
+IOQ	lineq;			/* lock to getc; interrupt putc's */
+IOQ	printq;
+IOQ	mouseq;
+KIOQ	kbdq;
 
-#define	NQ	4096
-struct IOQ{
-	union{
-		Lock;
-		QLock;
-	};
-	uchar	buf[NQ];
-	uchar	*in;
-	uchar	*out;
-	int	state;
-	Rendez	r;
-};
+Ref	raw;		/* whether kbd i/o is raw (rcons is open) */
 
-IOQ	kbdq;		/* qlock to getc; interrupt putc's */
-IOQ	lineq;		/* lock to getc; interrupt putc's */
-
-#define SYSLOGMAGIC	0xdeadbeaf
-#define SYSLOG		((Syslog *)(UNCACHED | 0x1B00))
-typedef struct Syslog	Syslog;
-struct Syslog
-{
-	ulong	magic;
-	int	wrapped;
-	char	*next;
-	char	buf[2*1024];
-};
-
-
+/*
+ *  init the queues and set the output routine
+ */
 void
 printinit(void)
 {
-
-	printq.in = printq.buf;
-	printq.out = printq.buf;
-	lock(&printq);		/* allocate lock */
-	unlock(&printq);
-
-	kbdq.in = kbdq.buf;
-	kbdq.out = kbdq.buf;
-	lineq.in = lineq.buf;
-	lineq.out = lineq.buf;
-	qlock(&kbdq);		/* allocate qlock */
-	qunlock(&kbdq);
-	lock(&lineq);		/* allocate lock */
-	unlock(&lineq);
-
-	duartinit();
+	initq(&printq);
+	initq(&lineq);
+	initq(&kbdq);
+	kbdq.putc = kbdputc;
+	initq(&klogq);
+	initq(&mouseq);
+	mouseq.putc = mouseputc;
 }
 
 /*
- * Put a string on the console.
- * n bytes of s are guaranteed to fit in the buffer and is ready to print.
- * Must be called splhi() and with printq locked.
- */
-void
-puts(char *s, int n)
-{
-	if(!printq.printing){
-		printq.printing = 1;
-		printq.c = *s++;
-		n--;
-	}
-	memmove(printq.in, s, n);
-	printq.in += n;
-	if(printq.in >= printq.buf+sizeof(printq.buf))
-		printq.in = printq.buf;
-}
-
-/*
- * Print a string on the console.  This is the high level routine
- * with a queue to the interrupt handler.  BUG: There is no check against
- * overflow.
+ *   Print a string on the console.  Convert \n to \r\n
  */
 void
 putstrn(char *str, int n)
@@ -99,39 +44,59 @@ putstrn(char *str, int n)
 	int s, c, m;
 	char *t;
 
-	s = splhi();
-	lock(&printq);
-	syslog(str, n);
 	while(n > 0){
-		if(*str == '\n')
-			puts("\r", 1);
-		m = printq.buf+sizeof(printq.buf) - printq.in;
-		if(n < m)
-			m = n;
+		if(printq.puts && *str=='\n')
+			(*printq.puts)(&printq, "\r", 1);
+		m = n;
 		t = memchr(str+1, '\n', m-1);
 		if(t)
 			if(t-str < m)
 				m = t - str;
-		puts(str, m);
+		if(printq.puts)
+			(*printq.puts)(&printq, str, m);
+		screenputs(str, m);
 		n -= m;
 		str += m;
 	}
-	unlock(&printq);
-	splx(s);
 }
 
-int
-cangetc(IOQ *q)
+/*
+ *   Print a string in the kernel log.  Ignore overflow.
+ */
+void
+klogputs(char *str, long n)
 {
-	return q->in != q->out;
+	int s, m;
+	uchar *nextin;
+
+	s = splhi();
+	lock(&klogq);
+	while(n){
+		m = &klogq.buf[NQ] - klogq.in;
+		if(m > n)
+			m = n;
+		memmove(klogq.in, str, m);
+		n -= m;
+		str += m;
+		nextin = klogq.in + m;
+		if(nextin >= &klogq.buf[NQ])
+			klogq.in = klogq.buf;
+		else
+			klogq.in = nextin;
+	}
+	unlock(&klogq);
+	splx(s);
+	wakeup(&klogq.r);
 }
 
 int
-isbrkc(IOQ *q)
+isbrkc(KIOQ *q)
 {
 	uchar *p;
 
 	for(p=q->out; p!=q->in; ){
+		if(raw.ref)
+			return 1;
 		if(*p==0x04 || *p=='\n')
 			return 1;
 		p++;
@@ -139,19 +104,6 @@ isbrkc(IOQ *q)
 			p = q->buf;
 	}
 	return 0;
-}
-
-int
-getc(IOQ *q)
-{
-	int c;
-
-	if(q->in == q->out)
-		return -1;
-	c = *q->out++;
-	if(q->out == q->buf+sizeof(q->buf))
-		q->out = q->buf;
-	return c;
 }
 
 int
@@ -168,6 +120,17 @@ print(char *fmt, ...)
 
 	n = doprint(buf, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
 	putstrn(buf, n);
+	return n;
+}
+
+int
+kprint(char *fmt, ...)
+{
+	char buf[PRINTSIZE];
+	int n;
+
+	n = doprint(buf, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
+	klogputs(buf, n);
 	return n;
 }
 
@@ -212,55 +175,50 @@ pprint(char *fmt, ...)
 void
 prflush(void)
 {
-	while(printq.printing)
-		delay(100);
-}
-
-/*
- * Get character to print at interrupt time.
- * Always called splhi from proc 0.
- */
-int
-conschar(void)
-{
-	uchar *p;
-	int c;
-
-	lock(&printq);
-	p = printq.out;
-	if(p == printq.in){
-		printq.printing = 0;
-		c = -1;
-	}else{
-		c = *p++;
-		if(p >= printq.buf+sizeof(printq.buf))
-			p = printq.buf;
-		printq.out = p;
-	}
-	unlock(&printq);
-	return c;
+	while(printq.in != printq.out) ;
 }
 
 void
 echo(int c)
 {
 	char ch;
+	static int ctrlt;
 
 	/*
-	 * ^t hack BUG
+	 * ^p hack
 	 */
 	if(c == 0x10)
 		panic("^p");
-	if(c == 0x14)
-		DEBUG();
+	/*
+	 * ^t hack BUG
+	 */
+	if(ctrlt == 2){
+		ctrlt = 0;
+		switch(c){
+		case 0x14:
+			break;	/* pass it on */
+		case 'm':
+			mntdump();
+			return;
+		case 'p':
+			DEBUG();
+			return;
+		case 'q':
+			dumpqueues();
+			return;
+		case 'r':
+			exit();
+			break;
+		}
+	}else if(c == 0x14){
+		ctrlt++;
+		return;
+	}
+	ctrlt = 0;
+	if(raw.ref)
+		return;
 	if(c == 0x15)
 		putstrn("^U\n", 3);
-	if(c == 0x16)
-		dumpqueues();
-	if(c == 0xe)
-		nonettoggle();
-	if(c == 0xc)
-		lancetoggle();
 	else{
 		ch = c;
 		putstrn(&ch, 1);
@@ -271,31 +229,38 @@ echo(int c)
  * Put character into read queue at interrupt time.
  * Always called splhi from proc 0.
  */
-void
-kbdchar(int c)
+int
+kbdputc(IOQ *q, int ch)
 {
-	if(c == 0)	/* NULs cause trouble */
-		return;
-	if(c == '\r')
-		c = '\n';
-	echo(c);
-	*kbdq.in++ = c;
+	echo(ch);
+	kbdq.c = ch;
+	*kbdq.in++ = ch;
 	if(kbdq.in == kbdq.buf+sizeof(kbdq.buf))
 		kbdq.in = kbdq.buf;
-	if(c=='\n' || c==0x04)
+	if(raw.ref || ch=='\n' || ch==0x04)
 		wakeup(&kbdq.r);
+	return 0;
 }
 
 void
-printslave(void)
+kbdrepeat(int rep)
 {
-	int c;
+	kbdq.repeat = rep;
+	kbdq.count = 0;
+}
 
-	c = printq.c;
-	if(c){
-		printq.c = 0;
-		duartxmit(c);
+void
+kbdclock(void)
+{
+	if(kbdq.repeat == 0)
+		return;
+	if(kbdq.repeat==1 && ++kbdq.count>HZ){
+		kbdq.repeat = 2;
+		kbdq.count = 0;
+		return;
 	}
+	if(++kbdq.count&1)
+		kbdputc(&kbdq, kbdq.c);
 }
 
 int
@@ -311,31 +276,37 @@ enum{
 	Qdir,
 	Qcons,
 	Qcputime,
-	Qlog,
+	Qlights,
+	Qnoise,
 	Qnull,
-/*	Qpanic, /**/
 	Qpgrpid,
 	Qpid,
 	Qppid,
+	Qrcons,
 	Qtime,
 	Quser,
-	Qvmereset,
+	Qklog,
+	Qmsec,
+	Qclock,
 	Qsysstat,
 };
 
 Dirtab consdir[]={
-	"cons",		{Qcons},	0,	0600,
-	"cputime",	{Qcputime},	72,	0600,
-	"log",		{Qlog},		BY2PG-8,	0600,
-	"null",		{Qnull},	0,	0600,
-/*	"panic",	{Qpanic},	0,	0666, /**/
-	"pgrpid",	{Qpgrpid},	12,	0600,
-	"pid",		{Qpid},		12,	0600,
-	"ppid",		{Qppid},	12,	0600,
-	"time",		{Qtime},	12,	0600,
-	"user",		{Quser},	0,	0600,
-	"vmereset",	{Qvmereset},	0,	0600,
-	"sysstat",	{Qsysstat},	0,	0600,
+	"cons",		{Qcons},	0,		0600,
+	"cputime",	{Qcputime},	6*NUMSIZE,	0600,
+	"lights",	{Qlights},	0,		0600,
+	"noise",	{Qnoise},	0,		0600,
+	"null",		{Qnull},	0,		0600,
+	"pgrpid",	{Qpgrpid},	NUMSIZE,	0600,
+	"pid",		{Qpid},		NUMSIZE,	0600,
+	"ppid",		{Qppid},	NUMSIZE,	0600,
+	"rcons",	{Qrcons},	0,		0600,
+	"time",		{Qtime},	NUMSIZE,	0600,
+	"user",		{Quser},	0,		0600,
+	"klog",		{Qklog},	0,		0400,
+	"msec",		{Qmsec},	NUMSIZE,	0400,
+	"clock",	{Qclock},	2*NUMSIZE,	0400,
+	"sysstat",	{Qsysstat},	0,		0600,
 };
 
 #define	NCONS	(sizeof consdir/sizeof(Dirtab))
@@ -415,12 +386,29 @@ consstat(Chan *c, char *dp)
 Chan*
 consopen(Chan *c, int omode)
 {
-	if(c->qid.path==Quser && omode==(OWRITE|OTRUNC)){
-		/* truncate? */
-		if(strcmp(u->p->pgrp->user, "bootes") == 0)	/* BUG */
-			u->p->pgrp->user[0] = 0;
-		else
-			error(Eperm);
+	int ch;
+
+	switch(c->qid.path){
+	case Quser:
+		if(omode==(OWRITE|OTRUNC)){
+			/* truncate? */
+			if(strcmp(u->p->pgrp->user, "bootes") == 0)	/* BUG */
+				u->p->pgrp->user[0] = 0;
+			else
+				error(Eperm);
+		}
+		break;
+	case Qrcons:
+		if(incref(&raw) == 1){
+			lock(&lineq);
+			while((ch=getc(&kbdq)) != -1){
+				*lineq.in++ = ch;
+				if(lineq.in == lineq.buf+sizeof(lineq.buf))
+					lineq.in = lineq.buf;
+			}
+			unlock(&lineq);
+		}
+		break;
 	}
 	return devopen(c, omode, consdir, NCONS, devgen);
 }
@@ -434,7 +422,10 @@ conscreate(Chan *c, char *name, int omode, ulong perm)
 void
 consclose(Chan *c)
 {
+	if(c->qid.path==Qrcons && (c->flag&COPEN))
+		decref(&raw);
 }
+
 
 long
 consread(Chan *c, void *buf, long n, ulong offset)
@@ -445,7 +436,7 @@ consread(Chan *c, void *buf, long n, ulong offset)
 	char *cbuf = buf;
 	char *user;
 	int userlen;
-	char tmp[6*NUMSIZE], xbuf[512];
+	char tmp[6*NUMSIZE], xbuf[1024];
 	Mach *mp;
 
 	if(n <= 0)
@@ -454,6 +445,7 @@ consread(Chan *c, void *buf, long n, ulong offset)
 	case Qdir:
 		return devdirread(c, buf, n, consdir, NCONS, devgen);
 
+	case Qrcons:
 	case Qcons:
 		qlock(&kbdq);
 		if(waserror()){
@@ -461,9 +453,14 @@ consread(Chan *c, void *buf, long n, ulong offset)
 			nexterror();
 		}
 		while(!cangetc(&lineq)){
-			sleep(&kbdq.r, (int(*)(void*))isbrkc, &kbdq);
+			sleep(&kbdq.r, isbrkc, &kbdq);
 			do{
+				lock(&lineq);
 				ch = getc(&kbdq);
+				if(raw.ref){
+					unlock(&lineq);
+					goto Default;
+				}
 				switch(ch){
 				case '\b':
 					if(lineq.in != lineq.out){
@@ -475,17 +472,21 @@ consread(Chan *c, void *buf, long n, ulong offset)
 				case 0x15:
 					lineq.in = lineq.out;
 					break;
+				Default:
 				default:
-					*lineq.in++ = ch;
-					if(lineq.in == lineq.buf+sizeof(lineq.buf))
-					lineq.in = lineq.buf;
+					*lineq.in = ch;
+					if(lineq.in >= lineq.buf+sizeof(lineq.buf)-1)
+						lineq.in = lineq.buf;
+					else
+						lineq.in++;
 				}
-			}while(ch!='\n' && ch!=0x04);
+				unlock(&lineq);
+			}while(raw.ref==0 && ch!='\n' && ch!=0x04);
 		}
 		i = 0;
-		while(n>0){
+		while(n > 0){
 			ch = getc(&lineq);
-			if(ch == 0x04 || ch == -1)
+			if(ch==-1 || (raw.ref==0 && ch==0x04))
 				break;
 			i++;
 			*cbuf++ = ch;
@@ -523,11 +524,42 @@ consread(Chan *c, void *buf, long n, ulong offset)
 	case Qtime:
 		return readnum(offset, buf, n, boottime+TK2SEC(MACHP(0)->ticks), 12);
 
+	case Qclock:
+		k = offset;
+		if(k >= 2*NUMSIZE)
+			return 0;
+		if(k+n > 2*NUMSIZE)
+			n = 2*NUMSIZE - k;
+		readnum(0, tmp, NUMSIZE, MACHP(0)->ticks, NUMSIZE);
+		readnum(0, tmp+NUMSIZE, NUMSIZE, HZ, NUMSIZE);
+		memmove(buf, tmp+k, n);
+		return n;
+
 	case Quser:
 		return readstr(offset, buf, n, u->p->pgrp->user);
 
-	case Qlog:
-		return readlog(offset, buf, n);
+	case Qnull:
+		return 0;
+
+	case Qklog:
+		qlock(&klogq);
+		if(waserror()){
+			qunlock(&klogq);
+			nexterror();
+		}
+		while(!cangetc(&klogq))
+			sleep(&klogq.r, cangetc, &klogq);
+		for(i=0; i<n; i++){
+			if((ch=getc(&klogq)) == -1)
+				break;
+			*cbuf++ = ch;
+		}
+		poperror();
+		qunlock(&klogq);
+		return i;
+
+	case Qmsec:
+		return readnum(offset, buf, n, TK2MS(MACHP(0)->ticks), NUMSIZE);
 
 	case Qsysstat:
 		j = 0;
@@ -536,17 +568,56 @@ consread(Chan *c, void *buf, long n, ulong offset)
 				mp = MACHP(id);
 				j += sprint(&xbuf[j], "%d %d %d %d %d %d %d %d\n",
 					id, mp->cs, mp->intr, mp->syscall, mp->pfault,
-					    mp->tlbfault, mp->tlbpurge, mp->spinlock);
+					    mp->tlbfault, mp->tlbpurge, m->spinlock);
 			}
 		}
-
 		return readstr(offset, buf, n, xbuf);
-	case Qnull:
-		return 0;
 
 	default:
 		panic("consread %lux\n", c->qid);
 		return 0;
+	}
+}
+
+void
+conslights(char *a, int n)
+{
+	int l;
+	char line[128];
+	char *lp;
+	int c;
+
+	lp = line;
+	while(n--){
+		*lp++ = c = *a++;
+		if(c=='\n' || n==0 || lp==&line[sizeof(line)-1])
+			break;
+	}
+	*lp = 0;
+	lights(strtoul(line, 0, 0));
+}
+
+void
+consnoise(char *a, int n)
+{
+	int freq;
+	int duration;
+	char line[128];
+	char *lp;
+	int c;
+
+	lp = line;
+	while(n--){
+		*lp++ = c = *a++;
+		if(c=='\n' || n==0 || lp==&line[sizeof(line)-1]){
+			*lp = 0;
+			freq = strtoul(line, &lp, 0);
+			while(*lp==' ' || *lp=='\t')
+				lp++;
+			duration = strtoul(lp, &lp, 0);
+			buzz(freq, duration);
+			lp = line;
+		}
 	}
 }
 
@@ -556,11 +627,12 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 	char cbuf[64];
 	char buf[256];
 	long l, m;
-	int id;
 	char *a = va;
 	Mach *mp;
+	int id;
 
 	switch(c->qid.path){
+	case Qrcons:
 	case Qcons:
 		/*
 		 * Damn. Can't page fault in putstrn, so copy the data locally.
@@ -607,11 +679,14 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 	case Qnull:
 		break;
 
-	case Qvmereset:
-		if(strcmp(u->p->pgrp->user, "bootes") != 0)
-			error(Eperm);
-		vmereset();
+	case Qnoise:
+		consnoise(a, n);
 		break;
+
+	case Qlights:
+		conslights(a, n);
+		break;
+
 	case Qsysstat:
 		for(id = 0; id < 32; id++) {
 			if(active.machs & (1<<id)) {
@@ -625,8 +700,8 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 				mp->spinlock = 0;
 			}
 		}
-
 		break;
+
 	default:
 		error(Egreg);
 	}
@@ -643,120 +718,4 @@ void
 conswstat(Chan *c, char *dp)
 {
 	error(Eperm);
-}
-
-/*
- *  kernel based system log, passed between crashes
- */
-void
-sysloginit(void)
-{
-	Syslog *s;
-	int i;
-
-	s = SYSLOG;
-	if(s->magic!=SYSLOGMAGIC || s->next>=&s->buf[sizeof(s->buf)] || s->next<s->buf){
-		s->wrapped = 0;
-		s->next = s->buf;
-		s->magic = SYSLOGMAGIC;
-	}
-}
-
-void
-syslog(char *p, int n)
-{
-	Syslog *s;
-	char *end;
-	int m;
-
-	sysloginit();
-	s = SYSLOG;
-	end = &s->buf[sizeof(s->buf)];
-	while(n){
-		if(s->next + n > end)
-			m = end - s->next;
-		else
-			m = n;
-		memmove(s->next, p, m);
-		s->next += m;
-		p += m;
-		n -= m;
-		if(s->next >= end){
-			s->wrapped = 1;
-			s->next = s->buf;
-		}
-	}
-	wbflush();
-}
-
-long
-readlog(ulong off, char *buf, ulong len)
-{
-	Syslog *s;
-	char *end;
-	char *start;
-	int n, m;
-	char *p;
-
-	n = len;
-	p = buf;
-
-	sysloginit();
-	s = SYSLOG;
-	end = &s->buf[sizeof(s->buf)];
-
-	if(s->wrapped){
-		start = s->next;
-		m = sizeof(s->buf);
-	} else {
-		start = s->buf;
-		m = s->next - start;
-	}
-
-	if(off > m)
-		return 0;
-	if(off + n > m)
-		n = m - off;
-	start += off;
-	if(start > end)
-		start -= sizeof(s->buf);
-
-	while(n > 0){
-		if(start + n > end)
-			m = end - start;
-		else
-			m = n;
-		memmove(p, start, m);
-		start += m;
-		p += m;
-		n -= m;
-		if(start >= end)
-			start = s->buf;
-	}
-
-	return p-buf;
-}
-
-/*
- *  Read and write every byte of the log.  This seems to ensure that
- *  on reboot, the bytes will really be in memory.  I don't understand -- presotto
- */
-void
-flushsyslog(void)
-{
-	Syslog *s;
-	char *p, *end;
-	int x;
-
-	s = SYSLOG;
-	end = &s->buf[sizeof(s->buf)];
-
-	x = splhi();
-	lock(&printq);
-	for(p = s->buf; p < end; p++)
-		*p = *p;
-	unlock(&printq);
-	splx(x);
-
-	wbflush();
 }

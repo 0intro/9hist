@@ -66,7 +66,7 @@ sysfork(ulong *arg)
 	usp = s->minva & (BY2PG-1);	/* just low bits */
 	s->maxva = USTKTOP;
 	n = (s->maxva-s->minva)>>PGSHIFT;
-	s->o = neworig(s->minva, n, OWRPERM, 0);
+	s->o = neworig(s->minva, n, OWRPERM|OISMEM, 0);
 	lock(s->o);
 	/*
 	 * Only part of last stack page
@@ -250,7 +250,7 @@ sysexec(ulong *arg)
 
 	s = &p->seg[ESEG];
 	s->proc = p;
-	s->o = neworig(TSTKTOP-(spage<<PGSHIFT), spage, OWRPERM, 0);
+	s->o = neworig(TSTKTOP-(spage<<PGSHIFT), spage, OWRPERM|OISMEM, 0);
 	s->minva = s->o->va;
 	s->maxva = TSTKTOP;
 
@@ -295,9 +295,9 @@ sysexec(ulong *arg)
 	 */
 	s = &p->seg[TSEG];
 	s->proc = p;
-	o = lookorig(UTZERO, (t-UTZERO)>>PGSHIFT, OCACHED, tc);
+	o = lookorig(UTZERO, (t-UTZERO)>>PGSHIFT, OCACHED|OISMEM, tc);
 	if(o == 0){
-		o = neworig(UTZERO, (t-UTZERO)>>PGSHIFT, OCACHED, tc);
+		o = neworig(UTZERO, (t-UTZERO)>>PGSHIFT, OCACHED|OISMEM, tc);
 		o->minca = 0;
 		o->maxca = sizeof(Exec)+exec.text;
 	}
@@ -311,9 +311,9 @@ sysexec(ulong *arg)
 	 */
 	s = &p->seg[DSEG];
 	s->proc = p;
-	o = lookorig(t, (d-t)>>PGSHIFT, OWRPERM|OPURE|OCACHED, tc);
+	o = lookorig(t, (d-t)>>PGSHIFT, OWRPERM|OPURE|OCACHED|OISMEM, tc);
 	if(o == 0){
-		o = neworig(t, (d-t)>>PGSHIFT, OWRPERM|OPURE|OCACHED, tc);
+		o = neworig(t, (d-t)>>PGSHIFT, OWRPERM|OPURE|OCACHED|OISMEM, tc);
 		o->minca = p->seg[TSEG].o->maxca;
 		o->maxca = o->minca + exec.data;
 	}
@@ -327,7 +327,7 @@ sysexec(ulong *arg)
 	 */
 	s = &p->seg[BSEG];
 	s->proc = p;
-	o = neworig(d, (b-d)>>PGSHIFT, OWRPERM, 0);
+	o = neworig(d, (b-d)>>PGSHIFT, OWRPERM|OISMEM, 0);
 	o->minca = 0;
 	o->maxca = 0;
 	s->o = o;

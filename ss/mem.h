@@ -92,6 +92,7 @@
 #define	PTEIO		(1<<26)
 #define	PTEACCESS	(1<<25)
 #define	PTEMODIFY	(1<<24)
+#define PTEUNCACHED	0
 
 #define	INVALIDPTE	0
 #define	PPN(pa)		((pa>>12)&0xFFFF)

@@ -1,8 +1,6 @@
 typedef struct Conf	Conf;
 typedef struct FFrame	FFrame;
 typedef struct FPsave	FPsave;
-typedef struct IOQ	IOQ;
-typedef struct KIOQ	KIOQ;
 typedef struct KMap	KMap;
 typedef struct Label	Label;
 typedef struct Lock	Lock;
@@ -119,38 +117,6 @@ struct KMap
 	ulong	va;
 };
 #define	VA(k)	((k)->va)
-
-/*
- *  character based IO (mouse, keyboard, console screen)
- */
-#define NQ	4096
-struct IOQ
-{
-	Lock;
-	uchar	buf[NQ];
-	uchar	*in;
-	uchar	*out;
-	int	state;
-	Rendez	r;
-	union{
-		void	(*puts)(IOQ*, void*, int);	/* output */
-		int	(*putc)(IOQ*, int);		/* input */
-	};
-	void	*ptr;
-};
-struct KIOQ
-{
-	QLock;
-	IOQ;
-	int	repeat;
-	int	c;
-	int	count;
-};
-
-extern IOQ	lineq;
-extern IOQ	printq;
-extern IOQ	mouseq;
-extern KIOQ	kbdq;
 
 struct Mach
 {

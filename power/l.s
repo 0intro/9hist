@@ -160,10 +160,8 @@ TEXT	gotopc(SB), $8
 
 TEXT	puttlb(SB), $4
 
-	JAL	splhi(SB)
 	MOVW	0(FP), R2
 	MOVW	4(FP), R3
-	MOVW	R1, 4(SP)
 	MOVW	R2, M(TLBVIRT)
 	MOVW	R3, M(TLBPHYS)
 	NOOP
@@ -173,7 +171,6 @@ TEXT	puttlb(SB), $4
 	BGEZ	R4, index
 	TLBWR
 	NOOP
-	JAL	splx(SB)
 	RET
 
 index:

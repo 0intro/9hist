@@ -9,6 +9,8 @@ typedef struct Env	Env;
 typedef struct Envp	Envp;
 typedef struct Envval	Envval;
 typedef struct Etherpkt	Etherpkt;
+typedef struct IOQ	IOQ;
+typedef struct KIOQ	KIOQ;
 typedef struct List	List;
 typedef struct Mount	Mount;
 typedef struct Mtab	Mtab;
@@ -199,6 +201,37 @@ struct Etherpkt {
 #define	ETHERMAXTU	1514	/* maximum transmit size */
 #define ETHERHDRSIZE	14	/* size of an ethernet header */
 
+/*
+ *  character based IO (mouse, keyboard, console screen)
+ */
+#define NQ	4096
+struct IOQ
+{
+	Lock;
+	uchar	buf[NQ];
+	uchar	*in;
+	uchar	*out;
+	int	state;
+	Rendez	r;
+	union{
+		void	(*puts)(IOQ*, void*, int);	/* output */
+		int	(*putc)(IOQ*, int);		/* input */
+	};
+	void	*ptr;
+};
+struct KIOQ
+{
+	QLock;
+	IOQ;
+	int	repeat;
+	int	c;
+	int	count;
+};
+extern IOQ	lineq;
+extern IOQ	printq;
+extern IOQ	mouseq;
+extern KIOQ	kbdq;
+
 struct Mount
 {
 	Ref;				/* also used as a lock when playing lists */
@@ -229,6 +262,8 @@ struct Note
 #define	OWRPERM	0x01	/* write permission */
 #define	OPURE	0x02	/* original data mustn't be written */
 #define	OCACHED	0x04	/* cached; don't discard on exit */
+#define OISMEM	0x08	/* origin contains real memory */
+#define OSHARED	0x10	/* origin does not copy on ref/wr */
 
 struct Orig
 {
@@ -247,6 +282,8 @@ struct Orig
 	Qid	mqid;
 	ulong	minca;			/* base of region in chan */
 	ulong	maxca;			/* end of region in chan */
+	void	(*freepg)(Page*, int);	/* how to free pages for this origin */
+	Page	(*allocpg)(int, Orig*, ulong);
 };
 
 struct Page
@@ -298,7 +335,6 @@ struct Seg
 	ulong	maxva;			/* va of last pte */
 	PTE	*mod;			/* list of modified pte's */
 	ulong	endseg;			/* segments end */
-	ulong	pad[2]; /**/
 };
 
 /*
