@@ -152,7 +152,7 @@ typedef struct Pcidev {
 	struct {
 		ulong	bar;		/* base address */
 		int	size;
-	} mem[3];
+	} mem[6];
 
 	uchar	intl;			/* interrupt line */
 	ushort	ccru;

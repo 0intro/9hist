@@ -396,7 +396,7 @@ pcimatch(Pcidev* prev, int vid, int did)
 		prev = prev->list;
 
 	while(prev != nil){
-		if(prev->vid == vid && (did == 0 || prev->did == did))
+		if((vid == 0 || prev->vid == vid) && (did == 0 || prev->did == did))
 			break;
 		prev = prev->list;
 	}
