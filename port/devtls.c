@@ -115,6 +115,67 @@ struct TlsRec
 	int	perm;
 };
 
+typedef struct TlsErrs	TlsErrs;
+struct TlsErrs{
+	int	err;
+	int	sslerr;
+	int	tlserr;
+	int	fatal;
+	char	*msg;
+};
+
+static TlsErrs tlserrs[] = {
+	{ECloseNotify,			ECloseNotify,			ECloseNotify,
+		0, "remote close"},
+	{EUnexpectedMessage,		EUnexpectedMessage,		EUnexpectedMessage,
+		1, "unexpected message"},
+	{EBadRecordMac,			EBadRecordMac,			EBadRecordMac,
+		1, "bad record MAC"},
+	{EDecryptionFailed,		EIllegalParameter,		EDecryptionFailed,
+		1, "decryption failed"},
+	{ERecordOverflow,		EIllegalParameter,		ERecordOverflow,
+		1, "record too long"},
+	{EDecompressionFailure,		EDecompressionFailure,		EDecompressionFailure,
+		1, "decompression failed"},
+	{EHandshakeFailure,		EHandshakeFailure,		EHandshakeFailure,
+		1, "could not negotiate acceptable security paramters"},
+	{ENoCertificate,		ENoCertificate,			ECertificateUnknown,
+		1, "no appropriate certificate available"},
+	{EBadCertificate,		EBadCertificate,		EBadCertificate,
+		1, "corrupted or invalid certificate"},
+	{EUnsupportedCertificate,	EUnsupportedCertificate,	EUnsupportedCertificate,
+		1, "unsupported certificate type"},
+	{ECertificateRevoked,		ECertificateRevoked,		ECertificateRevoked,
+		1, "revoked certificate"},
+	{ECertificateExpired,		ECertificateExpired,		ECertificateExpired,
+		1, "expired certificate"},
+	{ECertificateUnknown,		ECertificateUnknown,		ECertificateUnknown,
+		1, "unacceptable certificate"},
+	{EIllegalParameter,		EIllegalParameter,		EIllegalParameter,
+		1, "illegal parameter"},
+	{EUnknownCa,			EHandshakeFailure,		EUnknownCa,
+		1, "unknown certificate authority"},
+	{EAccessDenied,			EHandshakeFailure,		EAccessDenied,
+		1, "access denied"},
+	{EDecodeError,			EIllegalParameter,		EDecodeError,
+		1, "error decoding message"},
+	{EDecryptError,			EIllegalParameter,		EDecryptError,
+		1, "error decrypting message"},
+	{EExportRestriction,		EHandshakeFailure,		EExportRestriction,
+		1, "export restriction violated"},
+	{EProtocolVersion,		EIllegalParameter,		EProtocolVersion,
+		1, "protocol version not supported"},
+	{EInsufficientSecurity,		EHandshakeFailure,		EInsufficientSecurity,
+		1, "stronger security routines required"},
+	{EInternalError,		EHandshakeFailure,		EInternalError,
+		1, "internal error"},
+	{EUserCanceled,			ECloseNotify,		EUserCanceled,
+		0, "handshake canceled by user"},
+	{ENoRenegotiation,		EUnexpectedMessage,		ENoRenegotiation,
+		0, "renegotiation not supported"},
+	{-1},
+};
+
 static	Lock	dslock;
 static	int	dshiwat;
 static	int	maxdstate = 128;
@@ -124,6 +185,7 @@ static	char	*hashalgs;
 
 enum
 {
+//ZZZ
 	Maxdmsg=	1<<16,
 	Maxdstate=	64
 };
@@ -159,9 +221,11 @@ static void	put24(uchar *p, int);
 static void	put16(uchar *p, int);
 static u32int	get32(uchar *p);
 static int	get16(uchar *p);
-static void	tlsAlert(TlsRec *tr, int err);
-static void	tlsError(TlsRec *tr, int err, char *msg, ...);
-#pragma	varargck	argpos	tlsError	3
+static void	tlsSetState(TlsRec *tr, int newstate);
+static void	rcvAlert(TlsRec *tr, int err);
+static void	sendAlert(TlsRec *tr, int err);
+static void	rcvError(TlsRec *tr, int err, char *msg, ...);
+#pragma	varargck	argpos	rcvError	3
 
 static char *tlsnames[] = {
 [Qclonus]	"clone",
@@ -373,7 +437,8 @@ tlsopen(Chan *c, int omode)
 			qlock(&tr->in.io);
 			if(tr->handq != nil)
 				error(Einuse);
-			tr->handq = qopen(MaxRecLen, 0, nil, nil);
+//ZZZ what is the correct buffering here?
+			tr->handq = qopen(2 * MaxRecLen, 0, nil, nil);
 			if(tr->handq == nil)
 				error("can't allocate handshake queue");
 			qunlock(&tr->in.io);
@@ -598,13 +663,14 @@ tlsrecread(TlsRec *tr)
 	ver = get16(header+1);
 	len = get16(header+3);
 	if(ver != tr->version && (tr->verset || ver < MinProtoVersion || ver > MaxProtoVersion))
-		tlsError(tr, EProtocolVersion, "invalid version in record layer");
+		rcvError(tr, EProtocolVersion, "invalid version in record layer");
 	if(len <= 0)
-		tlsError(tr, EIllegalParameter, "invalid length in record layer");
+		rcvError(tr, EIllegalParameter, "invalid length in record layer");
 	if(len > MaxRecLen)
-		tlsError(tr, ERecordOverflow, "record message too long");
+		rcvError(tr, ERecordOverflow, "record message too long");
 	ensure(tr, &tr->unprocessed, len);
 	nconsumed = 0;
+	poperror();
 
 	/*
 	 * If an Eintr happens after this, we'll get out of sync.
@@ -616,7 +682,7 @@ tlsrecread(TlsRec *tr)
 
 	in = &tr->in;
 	if(waserror()){
-//ZZZ kill the connection
+//ZZZ kill the connection?
 		qunlock(&in->seclock);
 		if(b != nil)
 			freeb(b);
@@ -627,7 +693,7 @@ tlsrecread(TlsRec *tr)
 	p = b->rp;
 	if(in->sec != nil) {
 		if(len <= in->sec->maclen)
-			tlsError(tr, EDecodeError, "record message too short for mac");
+			rcvError(tr, EDecodeError, "record message too short for mac");
 		rc4(&in->sec->rc4, p, len);
 		len -= in->sec->maclen;
 
@@ -637,58 +703,65 @@ tlsrecread(TlsRec *tr)
 		in->seq++;
 		(*tr->packMac)(in->sec, in->sec->mackey, seq, header, p, len, hmac);
 		if(memcmp(hmac, p+len, in->sec->maclen) != 0)
-			tlsError(tr, EBadRecordMac, "record mac mismatch");
+			rcvError(tr, EBadRecordMac, "record mac mismatch");
 	}
-	qunlock(&tr->in.seclock);
+	qunlock(&in->seclock);
 	poperror();
 	if(len <= 0)
-		tlsError(tr, EDecodeError, "runt record message");
+		rcvError(tr, EDecodeError, "runt record message");
 
 	switch(type) {
 	default:
-		tlsError(tr, EIllegalParameter, "invalid record message 0x%x", type);
+		rcvError(tr, EIllegalParameter, "invalid record message 0x%x", type);
 		return;
 	case RChangeCipherSpec:
 		if(len != 1 || p[0] != 1)
-			tlsError(tr, EHandshakeFailure, "invalid change cipher spec");
+			rcvError(tr, EDecodeError, "invalid change cipher spec");
 		qlock(&in->seclock);
 		if(in->new == nil){
 			qunlock(&in->seclock);
-			tlsError(tr, EUnexpectedMessage, "unexpected change cipher spec");
+			rcvError(tr, EUnexpectedMessage, "unexpected change cipher spec");
 		}
-		free(tr->in.sec);
-		tr->in.sec = tr->in.new;
-		tr->in.new = nil;
-		tr->in.seq = 0;
+		free(in->sec);
+		in->sec = in->new;
+		in->new = nil;
+		in->seq = 0;
 		qunlock(&in->seclock);
 		break;
 	case RAlert:
 		if(len != 2)
-			tlsError(tr, EDecodeError, "invalid alert");
+			rcvError(tr, EDecodeError, "invalid alert");
 		if(p[0] == 1) {
 			if(p[1] == ECloseNotify) {
-				tlsError(tr, ECloseNotify, "remote close");
+				rcvError(tr, ECloseNotify, "remote close");
 				tlsSetState(tr, SRemoteClosed);
 			}
+			/*
+			 * ignore EUserCancelled, it's meaningless
+			 * need to handle ENoRenegotiation
+			 */
 		} else {
-			tlsSetState(tr, SError);
-			tlsAlert(tr, p[1]);
+			rcvAlert(tr, p[1]);
 		}
 		break;
 	case RHandshake:
 		/*
 		 * don't worry about dropping the block
-		 * qbwrite always queue it even if flow controlled and interrupted.
+		 * qbwrite always queues even if flow controlled and interrupted.
+		 *
+		 * if there isn't any handshaker, ignore the request,
+		 * but notify the other side we are doing so.
 		 */
 		if(tr->handq != nil){
 			qbwrite(tr->handq, b);
 			b = nil;
-		}
+		}else if(tr->verset && tr->version != SSL3Version)
+			sendAlert(tr, ENoRenegotiation);
 		break;
 	case RApplication:
 //ZZZ race on state
 		if(tr->state != SOpen)
-			tlsError(tr, EUnexpectedMessage, "application message received before handshake completed");
+			rcvError(tr, EUnexpectedMessage, "application message received before handshake completed");
 		tr->processed = b;
 		b = nil;
 		break;
@@ -770,6 +843,7 @@ tlsread(Chan *c, void *a, long n, vlong off)
 		snprint(buf, sizeof(buf), "%lud", CONV(c->qid));
 		return readstr(offset, a, n, buf);
 	case Qdata:
+	case Qhand:
 		b = tlsbread(c, n, offset);
 		break;
 	case Qencalgs:
@@ -914,8 +988,8 @@ tlsbwrite(Chan *c, Block *b, ulong offset)
 		return devbwrite(c, b, offset);
 	case Qhand:
 //ZZZ race setting state
-		if(tr->state != SHandshake && tr->state != SOpen)
-			error(Ebadusefd);
+//		if(tr->state != SHandshake && tr->state != SOpen)
+//			error(Ebadusefd);
 		tlsrecwrite(tr, RHandshake, b);
 		break;
 	case Qdata:
@@ -948,7 +1022,7 @@ initmd5key(Hashalg *ha, int version, Secret *s, uchar *p)
 	memmove(s->mackey, p, ha->maclen);
 }
 
-Hashalg hashtab[] =
+static Hashalg hashtab[] =
 {
 	{ "clear" },
 	{ "md5", MD5dlen, initmd5key, },
@@ -982,7 +1056,7 @@ initRC4key(Encalg *ea, Secret *s, uchar *p, uchar *)
 	setupRC4state(&s->rc4, p, ea->keylen);
 }
 
-Encalg encrypttab[] =
+static Encalg encrypttab[] =
 {
 	{ "clear" },
 	{ "rc4_128", 128/8, 0, initRC4key, },
@@ -1007,11 +1081,12 @@ tlswrite(Chan *c, void *a, long n, vlong off)
 	Encalg *ea;
 	Hashalg *ha;
 	TlsRec *volatile tr;
+	Secret *tos, *toc;
 	Block *volatile b;
 	Cmdbuf *volatile cb;
 	int m;
-	char *p, *e, buf[128];
-	uchar *x;
+	char *p, *e;
+	uchar *volatile x;
 	ulong offset = off;
 
 	tr = dstate[CONV(c->qid)];
@@ -1049,7 +1124,7 @@ tlswrite(Chan *c, void *a, long n, vlong off)
 		return -1;
 	}
 
-	cb = parsecmd(buf, n);
+	cb = parsecmd(a, n);
 	if(waserror()){
 		free(cb);
 		nexterror();
@@ -1072,11 +1147,12 @@ tlswrite(Chan *c, void *a, long n, vlong off)
 			error("usage: fd n version");
 		if(tr->c != nil)
 			error(Einuse);
-		n = strtol(cb->f[2], nil, 0);
-		if(n < MinProtoVersion || n > MinProtoVersion)
+		m = strtol(cb->f[2], nil, 0);
+		if(m < MinProtoVersion || m > MaxProtoVersion)
 			error("unsupported version");
 		tr->c = buftochan(cb->f[1]);
-		tr->version = n;
+		tr->version = m;
+		tlsSetState(tr, SHandshake);
 	}else if(strcmp(cb->f[0], "version") == 0){
 		if(cb->nf != 2)
 			error("usage: version n");
@@ -1084,49 +1160,63 @@ tlswrite(Chan *c, void *a, long n, vlong off)
 			error("must set fd before version");
 		if(tr->verset)
 			error("version already set");
-		n = strtol(cb->f[1], nil, 0);
-		if(n == SSL3Version)
+		m = strtol(cb->f[1], nil, 0);
+		if(m == SSL3Version)
 			tr->packMac = sslPackMac;
-		else if(n == TLSVersion)
+		else if(m == TLSVersion)
 			tr->packMac = tlsPackMac;
 		else
 			error("unsupported version");
 		tr->verset = 1;
-		tr->version = n;
+		tr->version = m;
+	}else if(strcmp(cb->f[0], "opened") == 0){
+		if(cb->nf != 1)
+			error("usage: opened");
+		tlsSetState(tr, SOpen);
 	}else if(strcmp(cb->f[0], "alert") == 0){
 		if(cb->nf != 2)
 			error("usage: alert n");
 		if(tr->c == nil)
 			error("must set fd before sending alerts");
+		m = strtol(cb->f[1], nil, 0);
 
-		n = strtol(cb->f[1], nil, 0);
+		qunlock(&tr->in.seclock);
+		qunlock(&tr->out.seclock);
+		poperror();
+		free(cb);
+		poperror();
 
-		tlsError(tr, n);
-		b = allocb(2);
-//ZZZ need to check for fatal error
-		*b->wp++ = 1;
-		*b->wp++ = n;
-		tlsrecwrite(tr, RAlert, b);
-		freeb(b);
-//ZZZ race on state
-		tlsSetState(tr, SError);
+		sendAlert(tr, m);
+
+		return n;
 	}else if(strcmp(cb->f[0], "changecipher") == 0){
 		if(cb->nf != 1)
 			error("usage: changecipher");
 		if(tr->out.new == nil)
 			error("can't change cipher spec without setting secret");
 
+		toc = tr->out.new;
+		tr->out.new = nil;
+
+//ZZZ minor race; worth fixing?
+		qunlock(&tr->in.seclock);
+		qunlock(&tr->out.seclock);
+		poperror();
+		free(cb);
+		poperror();
+	
 		b = allocb(1);
 		*b->wp++ = 1;
 		tlsrecwrite(tr, RChangeCipherSpec, b);
-		freeb(b);
 
+		qlock(&tr->out.seclock);
 		free(tr->out.sec);
-		tr->out.sec = tr->out.new;
-		tr->out.new = nil;
+		tr->out.sec = toc;
+		qunlock(&tr->out.seclock);
+		return n;
 	}else if(strcmp(cb->f[0], "secret") == 0){
-		if(cb->nf != 4)
-			error("usage: secret hashalg encalg secretdata");
+		if(cb->nf != 5)
+			error("usage: secret hashalg encalg isclient secretdata");
 		if(tr->c == nil || !tr->verset)
 			error("must set fd and version before secrets");
 
@@ -1142,25 +1232,33 @@ tlswrite(Chan *c, void *a, long n, vlong off)
 		ha = parsehashalg(cb->f[1]);
 		ea = parseencalg(cb->f[2]);
 
-		m = (strlen(cb->f[3])*3)/2;
+		p = cb->f[4];
+		m = (strlen(p)*3)/2;
 		x = smalloc(m);
 		if(waserror()){
 			free(x);
-			poperror();
+			nexterror();
 		}
-		m = dec64(x, m, cb->f[3], strlen(cb->f[3]));
-		if(m != 2 * ha->maclen + 2 * ea->keylen + 2 * ea->ivlen)
-			error("bad secret data length");
+		m = dec64(x, m, p, strlen(p));
+		if(m < 2 * ha->maclen + 2 * ea->keylen + 2 * ea->ivlen)
+			error("not enough secret data provided");
 
-		tr->out.new = smalloc(sizeof(Secret));
-		tr->in.new = smalloc(sizeof(Secret));
+		tos = smalloc(sizeof(Secret));
+		toc = smalloc(sizeof(Secret));
 		if(ha->initkey){
-			(*ha->initkey)(ha, tr->version, tr->in.new, &x[0]);
-			(*ha->initkey)(ha, tr->version, tr->out.new, &x[ha->maclen]);
+			(*ha->initkey)(ha, tr->version, tos, &x[0]);
+			(*ha->initkey)(ha, tr->version, toc, &x[ha->maclen]);
 		}
 		if(ea->initkey){
-			(*ea->initkey)(ea, tr->in.new, &x[2 * ha->maclen], &x[2 * ha->maclen + 2 * ea->keylen]);
-			(*ea->initkey)(ea, tr->out.new, &x[2 * ha->maclen + ea->keylen], &x[2 * ha->maclen + 2 * ea->keylen + ea->ivlen]);
+			(*ea->initkey)(ea, tos, &x[2 * ha->maclen], &x[2 * ha->maclen + 2 * ea->keylen]);
+			(*ea->initkey)(ea, toc, &x[2 * ha->maclen + ea->keylen], &x[2 * ha->maclen + 2 * ea->keylen + ea->ivlen]);
+		}
+		if(strtol(cb->f[3], nil, 0) == 0){
+			tr->in.new = tos;
+			tr->out.new = toc;
+		}else{
+			tr->in.new = toc;
+			tr->out.new = tos;
 		}
 
 		free(x);
@@ -1252,6 +1350,76 @@ buftochan(char *p)
 		error(Ebadarg);
 	c = fdtochan(fd, -1, 0, 1);	/* error check and inc ref */
 	return c;
+}
+
+static void
+sendAlert(TlsRec *tr, int err)
+{
+	Block *b;
+	int i, fatal;
+
+	fatal = 1;
+	for(i=0; i < nelem(tlserrs); i++) {
+		if(tlserrs[i].err == err) {
+			if(tr->version == SSL3Version)
+				err = tlserrs[i].sslerr;
+			else
+				err = tlserrs[i].tlserr;
+			fatal = tlserrs[i].fatal;
+			break;
+		}
+	}
+
+	b = allocb(2);
+	*b->wp++ = fatal + 1;
+	*b->wp++ = err;
+	tlsrecwrite(tr, RAlert, b);
+//ZZZ race on state
+	if(fatal)
+		tlsSetState(tr, SError);
+}
+
+static void
+rcvAlert(TlsRec *tr, int err)
+{
+	char *s;
+	int i, fatal;
+
+	s = "unknown error";
+	fatal = 1;
+	for(i=0; i < nelem(tlserrs); i++){
+		if(tlserrs[i].err == err){
+			s = tlserrs[i].msg;
+			fatal = tlserrs[i].fatal;
+			break;
+		}
+	}
+//ZZZ need to kill session if fatal error
+	if(fatal)
+		tlsSetState(tr, SError);
+	error(s);
+}
+
+static void
+rcvError(TlsRec *tr, int err, char *fmt, ...)
+{
+	char msg[ERRLEN];
+	va_list arg;
+
+	sendAlert(tr, err);
+	va_start(arg, fmt);
+	strcpy(msg, "tls local %s");
+	doprint(strchr(msg, '\0'), msg+sizeof(msg), fmt, arg);
+	va_end(arg);
+	error(msg);
+}
+
+static void
+tlsSetState(TlsRec *tr, int newstate)
+{
+	lock(&tr->statelk);
+	tr->state = newstate;
+	unlock(&tr->statelk);
 }
 
 /* hand up a digest connection */

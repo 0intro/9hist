@@ -69,6 +69,12 @@ serialmouse(int port, char *type, int setspeed)
  * Also on laptops with AccuPoint AND external mouse, the
  * controller may deliver 3 or 4 bytes according to the type
  * of the external mouse; code must adapt.
+ *
+ * On the NEC Versa series (and perhaps others?) we seem to
+ * lose a byte from the packet every once in a while, which
+ * means we lose where we are in the instruction stream.
+ * To resynchronize, if we get a byte more than two seconds
+ * after the previous byte, we assume it's the first in a packet.
  */
 static void
 ps2mouseputc(int c, int shift)
@@ -76,7 +82,17 @@ ps2mouseputc(int c, int shift)
 	static short msg[4];
 	static int nb;
 	static uchar b[] = {0, 1, 4, 5, 2, 3, 6, 7, 0, 1, 2, 3, 2, 3, 6, 7 };
+	static ulong lasttick;
+	ulong m;
 	int buttons, dx, dy;
+
+	/*
+	 * Resynchronize in stream with timing; see comment above.
+	 */
+	m = MACHP(0)->ticks;
+	if(TK2SEC(m - lasttick) > 2)
+		nb = 0;
+	lasttick = m;
 
 	/* 
 	 *  check byte 0 for consistency

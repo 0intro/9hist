@@ -115,6 +115,7 @@ enum
 	WTyp_Keys	= 0xfcb0,
 	WTyp_TxKey	= 0xfcb1,
 	WTyp_CurName	= 0xfd41,
+	WTyp_BaseID	= 0xfd42,	// ID of the currently connected-to base station
 	WTyp_CurTxRate	= 0xfd44,	// Current TX rate
 	WTyp_HasCrypt	= 0xfd4f,
 };
@@ -940,8 +941,16 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 	PRINTSTAT("Promiscuous mode: %d\n", ltv_ins(ctlr, WTyp_Prom));
 	if(i == 3)
 		PRINTSTAT("SSID name: %s\n", ltv_inname(ctlr, WTyp_NetName));
-	else
+	else {
+		Wltv ltv;
 		PRINTSTAT("Current name: %s\n", ltv_inname(ctlr, WTyp_CurName));
+		ltv.type = WTyp_BaseID;
+		ltv.len = 4;
+		if (w_inltv(ctlr, &ltv))
+			print("#l%d: unable to read base station mac addr\n", ether->ctlrno);
+		l += snprint(p+l, READSTR-l, "Base station: %2.2x:%2.2x:%2.2x:%2.2x:%2.2x:%2.2x\n",
+			ltv.addr[0], ltv.addr[1], ltv.addr[2], ltv.addr[3], ltv.addr[4], ltv.addr[5]);
+	}
 	PRINTSTAT("Net name: %s\n", ltv_inname(ctlr, WTyp_WantName));
 	PRINTSTAT("Node name: %s\n", ltv_inname(ctlr, WTyp_NodeName));
 	if (ltv_ins(ctlr, WTyp_HasCrypt) == 0)
