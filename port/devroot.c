@@ -85,7 +85,6 @@ rootreset(void)
 	addrootdir("net.alt");
 	addrootdir("root");
 	addrootdir("srv");
-	addrootdir("xsrv");
 
 	addrootfile("boot", bootcode, bootlen);	/* always have a boot file */
 }
