@@ -86,6 +86,7 @@ vgaread(Chan* c, void* a, long n, vlong off)
 	char *p, *s;
 	VGAscr *scr;
 	ulong offset = off;
+	char chbuf[30];
 
 	switch(c->qid.path & ~CHDIR){
 
@@ -100,22 +101,29 @@ vgaread(Chan* c, void* a, long n, vlong off)
 			free(p);
 			nexterror();
 		}
+
+		len = 0;
+
 		if(scr->dev)
 			s = scr->dev->name;
 		else
 			s = "cga";
-		len = snprint(p, READSTR, "type: %s\n", s);
-		if(scr->gscreen)
-			len += snprint(p+len, READSTR-len, "size: %dx%dx%d\n",
-				scr->gscreen->r.max.x, scr->gscreen->r.max.y,
-				scr->gscreen->depth);
-		if(scr->cur)
-			s = scr->cur->name;
-		else
-			s = "off";
-		len += snprint(p+len, READSTR-len, "hwgc: %s\n", s);
-		snprint(p+len, READSTR-len, "addr: 0x%lux\n", scr->aperture);
+		len += snprint(p+len, READSTR-len, "type %s\n", s);
 
+		if(scr->gscreen) {
+			len += snprint(p+len, READSTR-len, "size %dx%dx%d %s\n",
+				scr->gscreen->r.max.x, scr->gscreen->r.max.y,
+				scr->gscreen->depth, chantostr(chbuf, scr->gscreen->chan));
+
+			if(Dx(scr->gscreen->r) != Dx(physgscreenr) 
+			|| Dy(scr->gscreen->r) != Dy(physgscreenr))
+				len += snprint(p+len, READSTR-len, "actualsize %dx%d\n",
+					physgscreenr.max.x, physgscreenr.max.y);
+		}
+
+		len += snprint(p+len, READSTR-len, "hwaccel %s\n", hwaccel ? "on" : "off");
+		len += snprint(p+len, READSTR-len, "hwblank %s\n", hwblank ? "on" : "off");
+		snprint(p+len, READSTR-len, "addr 0x%lux\n", scr->aperture);
 		n = readstr(offset, a, n, p);
 		poperror();
 		free(p);
@@ -291,9 +299,9 @@ vgactl(char* a)
 	}
 */
 	else if(strcmp(field[0], "blank") == 0){
-		if(n < 2)
+		if(n < 1)
 			error(Ebadarg);
-		drawblankscreen(atoi(field[1]));
+		drawblankscreen(1);
 		return;
 	}
 	else if(strcmp(field[0], "hwaccel") == 0){

@@ -138,6 +138,9 @@ enum {
 	BusCntl	= 0x13,
 	GenTestCntl	= 0x19,
 
+	CrtcHsyncDis	= 0x04,
+	CrtcVsyncDis	= 0x08,
+
 	ContextMask	= 0x100,	/* not accessible via I/O */
 	FifoStat,
 	GuiStat,
@@ -654,6 +657,20 @@ mach64hwscroll(VGAscr *scr, Rectangle r, Rectangle sr)
 	return 1;
 }
 
+/*
+ * This should work, but doesn't.
+ */
+static void
+mach64blank(VGAscr *scr, int blank)
+{
+	ulong ctl;
+
+	ctl = ior32(scr, CrtcGenCtl) & ~(CrtcHsyncDis|CrtcVsyncDis);
+	if(blank)
+		ctl |= CrtcHsyncDis|CrtcVsyncDis;
+	iow32(scr, CrtcGenCtl, ctl);
+}
+
 static void
 mach64xxdrawinit(VGAscr *scr)
 {
@@ -662,6 +679,7 @@ mach64xxdrawinit(VGAscr *scr)
 		scr->fill = mach64hwfill;
 		scr->scroll = mach64hwscroll;
 	}
+/*	scr->blank = mach64blank; */
 }
 
 

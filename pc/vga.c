@@ -190,3 +190,30 @@ vgascreenwin(VGAscr* scr)
 	screenputs = vgascreenputs;
 }
 
+/*
+ * Supposedly this is the way to turn DPMS
+ * monitors off using just the VGA registers.
+ * Unfortunately, it seems to mess up the video mode
+ * on the cards I've tried.
+ */
+void
+vgablank(VGAscr*, int blank)
+{
+	uchar seq1, crtc17;
+
+	if(blank) {
+		seq1 = 0x00;
+		crtc17 = 0x80;
+	} else {
+		seq1 = 0x20;
+		crtc17 = 0x00;
+	}
+
+	outs(Seqx, 0x0100);			/* synchronous reset */
+	seq1 |= vgaxi(Seqx, 1) & ~0x20;
+	vgaxo(Seqx, 1, seq1);
+	crtc17 |= vgaxi(Crtx, 0x17) & ~0x80;
+	delay(10);
+	vgaxo(Crtx, 0x17, crtc17);
+	outs(Crtx, 0x0300);				/* end synchronous reset */
+}

@@ -592,49 +592,6 @@ createdir(Chan *c)
 	return 0;
 }
 
-Chan*
-mchan(char *id, int walkname)
-{
-	Chan *c;
-	Pgrp *pg;
-	Mount *t;
-	int mdev;
-	ulong mountid;
-	Mhead **h, **he, *f;
-
-	mountid = strtoul(id, 0, 0);
-	mdev = devno('M', 0);
-
-	pg = up->pgrp;
-	rlock(&pg->ns);
-	if(waserror()) {
-		runlock(&pg->ns);
-		nexterror();
-	}
-
-	he = &pg->mnthash[MNTHASH];
-	for(h = pg->mnthash; h < he; h++) {
-		for(f = *h; f; f = f->hash) {
-			for(t = f->mount; t; t = t->next) {
-				c = t->to;
-				if(c->type == mdev && c->mntptr->id == mountid) {
-					if(walkname == 0) {
-						c = c->mntptr->c;
-						incref(c);
-					}
-					else
-						c = cclone(c, 0);
-					runlock(&pg->ns);
-					poperror();
-					return c;
-				}
-			}
-		}
-	}
-	error(Enonexist);
-	return 0;
-}
-
 void
 saveregisters(void)
 {
@@ -710,6 +667,16 @@ namec(char *name, int amode, int omode, ulong perm)
 		c = cclone(up->slash, 0);
 		break;
 	case '#':
+		cname = newcname(name);	/* save this before advancing */
+		mntok = 0;
+		elem[0] = 0;
+		n = 0;
+		while(*name && (*name != '/' || n < 2)){
+			if(n >= NAMELEN-1)
+				error(Efilename);
+			elem[n++] = *name++;
+		}
+		elem[n] = '\0';
 		/*
 		 *  noattach is sandboxing.
 		 *
@@ -721,38 +688,13 @@ namec(char *name, int amode, int omode, ulong perm)
 		 *	c  time and pid, but also cons and consctl
 		 *	p  control of your own processes (and unfortunately
 		 *	   any others left unprotected)
-		 *  all are ASCII, so it's safe to use strchr to check.
 		 */
-		if(up->pgrp->noattach)
-		if(strchr("|decp", name[1]) == 0)
-			error(Enoattach);
-		cname = newcname(name);	/* save this before advancing */
-		mntok = 0;
-		elem[0] = 0;
-		n = 0;
-		while(*name && (*name != '/' || n < 2)){
-			if(n >= NAMELEN-1)
-				error(Efilename);
-			elem[n++] = *name++;
-		}
-		elem[n] = '\0';
 		n = chartorune(&r, elem+1)+1;
-		if(r == 'M') {
-			if(elem[n] == 'c') {
-				c = mchan(elem+n+1, 0);
-				name = skipslash(name);
-				if(*name)
-					error(Efilename);
-				poperror();
-				cnameclose(cname);
-				return c;
-			}
-			else {
-				c = mchan(elem+n, 1);
-				name = skipslash(name);
-			}
-			break;
-		}
+		/* actually / is caught by parsing earlier */
+		if(utfrune("M", r))
+			error(Enoattach);
+		if(up->pgrp->noattach && utfrune("|decp", r))
+			error(Enoattach);
 		t = devno(r, 1);
 		if(t == -1)
 			error(Ebadsharp);

@@ -93,21 +93,21 @@ vgaread(Chan* c, void* a, long n, vlong off)
 			s = scr->dev->name;
 		else
 			s = "cga";
-		len = snprint(p, READSTR, "type: %s\n", s);
+		len = snprint(p, READSTR, "type %s\n", s);
 		if(scr->gscreen)
-			len += snprint(p+len, READSTR-len, "size: %dx%dx%d\n",
+			len += snprint(p+len, READSTR-len, "size %dx%dx%d\n",
 				scr->gscreen->r.max.x, scr->gscreen->r.max.y,
 				1<<scr->gscreen->ldepth);
 		if(scr->cur)
 			s = scr->cur->name;
 		else
 			s = "off";
-		len += snprint(p+len, READSTR-len, "hwgc: %s\n", s);
+		len += snprint(p+len, READSTR-len, "hwgc %s\n", s);
 		if(scr->pciaddr)
-			snprint(p+len, READSTR-len, "addr: 0x%lux\n",
+			snprint(p+len, READSTR-len, "addr 0x%lux\n",
 				scr->pciaddr);
 		else
-			snprint(p+len, READSTR-len, "addr: 0x%lux\n",
+			snprint(p+len, READSTR-len, "addr 0x%lux\n",
 				scr->aperture);
 
 		n = readstr(offset, a, n, p);
