@@ -5,7 +5,7 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"../port/error.h"
-#include	"../port/devsched.h"
+#include	"../port/devrealtime.h"
 #include	"../port/edf.h"
 
 /* debugging */
@@ -68,7 +68,7 @@ Taskq		qadmit;
 /* Running/Preempted EDF tasks, head running, one stack per processor */
 Taskq		edfstack[MAXMACH];
 
-void (*devsched)(Task*, Ticks, int);
+void (*devrt)(Task*, Ticks, int);
 
 static void		edf_intr(Ureg*, Cycintr*);
 static void		edf_resched(Task *t);
@@ -115,16 +115,16 @@ edfpush(Task *t)
 {
 	Taskq *q;
 
-	DENTER("%.*sedfpush, %s, %d\n", ind, tabs, edf_statename[t->state], t->runq.n);
+	DENTER("%.*s%d edfpush, %s, %d\n", ind, tabs, m->machno, edf_statename[t->state], t->runq.n);
 	q = edfstack + m->machno;
 	assert(t->runq.n || (up && up->task == t));
 	if (q->head){
 		assert(q->head->state == EdfRunning);
 		q->head->state = EdfPreempted;
-		if(devsched) devsched(q->head, now, SPreempt);
+		if(devrt) devrt(q->head, now, SPreempt);
 	}
 	t->rnext = q->head;
-	if(devsched) devsched(t, now, SRun);
+	if(devrt) devrt(t, now, SRun);
 	q->head = t;
 	DLEAVE;
 }
@@ -135,7 +135,7 @@ edfpop(void)
 	Task *t;
 	Taskq *q;
 
-	DENTER("%.*sedfpop\n", ind, tabs);
+	DENTER("%.*s%d edfpop\n", ind, tabs, m->machno);
 	q = edfstack + m->machno;
 	if (t = q->head){
 		assert(t->state == EdfRunning);
@@ -144,7 +144,7 @@ edfpop(void)
 		if (q->head){
 			assert(q->head->state == EdfPreempted);
 			q->head->state = EdfRunning;
-			if(devsched) devsched(q->head, now, SRun);
+			if(devrt) devrt(q->head, now, SRun);
 		}
 	}
 	DLEAVE;
@@ -157,7 +157,7 @@ edfenqueue(Taskq *q, Task *t)
 	Task *tt, **ttp;
 
 	ilock(q);
-	DENTER("%.*sedfenqueue, %s, %d\n", ind, tabs, edf_statename[t->state], t->runq.n);
+	DENTER("%.*s%d edfenqueue, %s, %d\n", ind, tabs, m->machno, edf_statename[t->state], t->runq.n);
 	t->rnext = nil;
 	if (q->head == nil) {
 		q->head = t;
@@ -188,7 +188,7 @@ edfdequeue(Taskq *q)
 {
 	Task *t;
 
-	DENTER("%.*sedfdequeue\n", ind, tabs);
+	DENTER("%.*s%d edfdequeue\n", ind, tabs, m->machno);
 	ilock(q);
 	if (t = q->head){
 		q->head = t->rnext;
@@ -205,7 +205,7 @@ edfqremove(Taskq *q, Task *t)
 	Task **tp;
 
 	ilock(q);
-	DENTER("%.*sedfqremove, %s, %d\n", ind, tabs, edf_statename[t->state], t->runq.n);
+	DENTER("%.*s%d edfqremove, %s, %d\n", ind, tabs, m->machno, edf_statename[t->state], t->runq.n);
 	for (tp = &q->head; *tp; tp = &(*tp)->rnext){
 		if (*tp == t){
 			*tp = t->rnext;
@@ -226,7 +226,7 @@ edf_block(Proc *p)
 	/* The current proc has blocked */
 	ilock(&edflock);
 	t = p->task;
-	DENTER("%.*sedf_block, %s, %d\n", ind, tabs, edf_statename[t->state], t->runq.n);
+	DENTER("%.*s%d edf_block, %s, %d\n", ind, tabs, m->machno, edf_statename[t->state], t->runq.n);
 
 	assert(t);
 	assert(t->state == EdfRunning);
@@ -239,7 +239,7 @@ edf_block(Proc *p)
 	pt = edfpop();
 	assert(pt == t);
 	t->state = EdfBlocked;
-	if(devsched) devsched(t, now, SBlock);
+	if(devrt) devrt(t, now, SBlock);
 	DLEAVE;
 	iunlock(&edflock);
 }
@@ -250,7 +250,7 @@ edfdeadline(Proc *p, SEvent why)
 	Task *t, *nt;
 
 	/* Task has reached its deadline, lock must be held */
-	DENTER("%.*sedfdeadline, %s, %d\n", ind, tabs, edf_statename[p->task->state], p->task->runq.n);
+	DENTER("%.*s%d edfdeadline, %s, %d\n", ind, tabs, m->machno, edf_statename[p->task->state], p->task->runq.n);
 	SET(nt);
 	if (p){
 		nt = p->task;
@@ -260,14 +260,14 @@ edfdeadline(Proc *p, SEvent why)
 	t = edfpop();
 
 	if(p != nil && nt != t){
-		DPRINT("%.*sedfdeadline, %s, %d\n", ind, tabs, edf_statename[p->task->state], p->task->runq.n);
+		DPRINT("%.*s%d edfdeadline, %s, %d\n", ind, tabs, m->machno, edf_statename[p->task->state], p->task->runq.n);
 		iunlock(&edflock);
 		assert(0 && p == nil || nt == t);
 	}
 
 	t->d = now;
 	t->state = EdfDeadline;
-	if(devsched) devsched(t, now, why);
+	if(devrt) devrt(t, now, why);
 	edf_resched(t);
 	DLEAVE;
 }
@@ -275,7 +275,7 @@ edfdeadline(Proc *p, SEvent why)
 void
 edf_deadline(Proc *p)
 {
-	DENTER("%.*sedf_deadline\n", ind, tabs);
+	DENTER("%.*s%d edf_deadline\n", ind, tabs, m->machno);
 	/* Task has reached its deadline */
 	ilock(&edflock);
 	now = fastticks(nil);
@@ -291,27 +291,41 @@ edf_admit(Task *t)
 
 	if (t->state != EdfExpelled)
 		return "task state";	/* should never happen */
+
+	/* simple sanity checks */
+	if (t->T == 0)
+		return "T not set";
+	if (t->C == 0)
+		return "C not set";
+	if (t->D > t->T)
+		return "D > T";
+	if (t->D == 0)	/* if D is not set, set it to T */
+		t->D = t->T;
+	if (t->C > t->D)
+		return "C > D";
+
 	qlock(&edfschedlock);
 	if (err = edf_testschedulability(t)){
 		qunlock(&edfschedlock);
 		return err;
 	}
 	ilock(&edflock);
-	DENTER("%.*sedf_admit, %s, %d\n", ind, tabs, edf_statename[t->state], t->runq.n);
+	DENTER("%.*s%d edf_admit, %s, %d\n", ind, tabs, m->machno, edf_statename[t->state], t->runq.n);
 	now = fastticks(nil);
 
 	t->state = EdfAdmitted;
+	if(devrt) devrt(t, t->d, SAdmit);
 	if (up->task == t){
-		DPRINT("%.*sedf_admitting self\n", ind, tabs);
+		DPRINT("%.*s%d edf_admitting self\n", ind, tabs, m->machno);
 		/* Admitting self, fake reaching deadline */
 		t->r = now;
 		t->t = now + t->T;
 		t->d = now + t->D;
-		if(devsched) devsched(t, t->d, SDeadline);
+		if(devrt) devrt(t, t->d, SDeadline);
 		t->S = t->C;
 		t->scheduled = now;
 		t->state = EdfRunning;
-		if(devsched) devsched(t, now, SRun);
+		if(devrt) devrt(t, now, SRun);
 		setΔ();
 		assert(t->runq.n > 0 || (up && up->task == t));
 		edfpush(t);
@@ -342,7 +356,7 @@ edf_expel(Task *t)
 
 	qlock(&edfschedlock);
 	ilock(&edflock);
-	DENTER("%.*sedf_expel, %s, %d\n", ind, tabs, edf_statename[t->state], t->runq.n);
+	DENTER("%.*s%d edf_expel, %s, %d\n", ind, tabs, m->machno, edf_statename[t->state], t->runq.n);
 	now = fastticks(nil);
 	switch(t->state){
 	case EdfUnused:
@@ -378,7 +392,7 @@ edf_expel(Task *t)
 		break;
 	}
 	t->state = EdfExpelled;
-	if(devsched) devsched(t, now, SExpel);
+	if(devrt) devrt(t, now, SExpel);
 	setΔ();
 	DLEAVE;
 	iunlock(&edflock);
@@ -432,7 +446,7 @@ edf_setclock(void)
 	Ticks ticks;
 	Task *t;
 
-	DENTER("%.*sedf_setclock\n", ind, tabs);
+	DENTER("%.*s%d edf_setclock\n", ind, tabs, m->machno);
 	ticks = ~0ULL;
 	if ((t = qwaitrelease.head) && t->r < ticks)
 		ticks = t->r;
@@ -447,19 +461,19 @@ edf_setclock(void)
 		return;
 	}
 	if (schedpoint.when){
-		DPRINT("%.*scycintrdel %T\n", ind, tabs, ticks2time(schedpoint.when));
+		DPRINT("%.*s%d cycintrdel %T\n", ind, tabs, m->machno, ticks2time(schedpoint.when));
 		cycintrdel(&schedpoint);
 		schedpoint.when = 0;
 	}
 	if (ticks <= now){
-		DPRINT("%.*sedf_timer: %T too late\n", ind, tabs, ticks2time(now-ticks));
+		DPRINT("%.*s%d edf_timer: %T too late\n", ind, tabs, m->machno, ticks2time(now-ticks));
 		ticks = now;
 	}
 	if (ticks != ~0ULL) {
-		DPRINT("%.*sprogram timer in %T\n", ind, tabs, ticks2time(ticks-now));
+		DPRINT("%.*s%d program timer in %T\n", ind, tabs, m->machno, ticks2time(ticks-now));
 		schedpoint.when = ticks;
 		cycintradd(&schedpoint);
-		DPRINT("%.*scycintradd %T\n", ind, tabs, ticks2time(schedpoint.when-now));
+		DPRINT("%.*s%d cycintradd %T\n", ind, tabs, m->machno, ticks2time(schedpoint.when-now));
 	}
 	clockintrsched();
 	DLEAVE;
@@ -469,7 +483,7 @@ static void
 edf_intr(Ureg *, Cycintr *cy)
 {
 
-	DENTER("%.*sedf_intr\n", ind, tabs);
+	DENTER("%.*s%d edf_intr\n", ind, tabs, m->machno);
 	/* Timer interrupt
 	 * Timed events are:
 	 * 1. release a task (look in qwaitrelease)
@@ -497,13 +511,13 @@ edf_bury(Proc *p)
 	Task *t;
 	Proc **pp;
 
-	DPRINT("%.*sedf_bury\n", ind, tabs);
+	DPRINT("%.*s%d edf_bury\n", ind, tabs, m->machno);
 	ilock(&edflock);
 	now = fastticks(nil);
 	if ((t = p->task) == nil){
 		/* race condition? */
 		iunlock(&edflock);
-		DPRINT("%.*sedf bury race, pid %lud\n", ind, tabs, p->pid);
+		DPRINT("%.*s%d edf bury race, pid %lud\n", ind, tabs, m->machno, p->pid);
 		return;
 	}
 	assert(edfstack[m->machno].head == t);
@@ -520,7 +534,7 @@ edf_bury(Proc *p)
 		assert(t->runq.head == nil);
 		t->state = EdfIdle;
 	}
-	if(devsched) devsched(t, now, SBlock);
+	if(devrt) devrt(t, now, SBlock);
 	p->task = nil;
 	iunlock(&edflock);
 }
@@ -531,11 +545,11 @@ edf_ready(Proc *p)
 	Task *t;
 
 	ilock(&edflock);
-	DENTER("%.*sedf_ready, %s, %d\n", ind, tabs, edf_statename[p->task->state], p->task->runq.n);
+	DENTER("%.*s%d edf_ready, %s, %d\n", ind, tabs, m->machno, edf_statename[p->task->state], p->task->runq.n);
 	if ((t = p->task) == nil){
 		/* Must be a race */
 		iunlock(&edflock);
-		DPRINT("%.*sedf ready race, pid %lud\n", ind, tabs, p->pid);
+		DPRINT("%.*s%d edf ready race, pid %lud\n", ind, tabs, m->machno, p->pid);
 		return;
 	}
 	p->rnext = 0;
@@ -562,25 +576,25 @@ edf_resched(Task *t)
 {
 	Task *xt;
 
-	DENTER("%.*sedf_resched, %s, %d\n", ind, tabs, edf_statename[t->state], t->runq.n);
+	DENTER("%.*s%d edf_resched, %s, %d\n", ind, tabs, m->machno, edf_statename[t->state], t->runq.n);
 	if (t->nproc == 0){
 		/* No member processes */
 		if (t->state > EdfIdle){
 			t->state = EdfIdle;
-			if(devsched) devsched(t, now, SBlock);
+			if(devrt) devrt(t, now, SBlock);
 		}
 		DLEAVE;
 		return;
 	}
 	if (t->runq.n == 0 && (up == nil || up->task != t)){
 		/* Member processes but none runnable */
-		DPRINT("%.*sedf_resched, nothing runnable\n", ind, tabs);
+		DPRINT("%.*s%d edf_resched, nothing runnable\n", ind, tabs, m->machno);
 		if (t->state == EdfRunning)
 			edfpop();
 
 		if (t->state >= EdfIdle && t->state != EdfBlocked){
 			t->state = EdfBlocked;
-			if(devsched) devsched(t, now, SBlock);
+			if(devrt) devrt(t, now, SBlock);
 		}
 		DLEAVE;
 		return;
@@ -590,7 +604,7 @@ edf_resched(Task *t)
 
 	switch (t->state){
 	case EdfUnused:
-		iprint("%.*sattempt to schedule unused task\n", ind, tabs);
+		iprint("%.*s%d attempt to schedule unused task\n", ind, tabs, m->machno);
 	case EdfExpelled:
 		DLEAVE;
 		return;	/* Not admitted */
@@ -619,7 +633,7 @@ edf_resched(Task *t)
 	case EdfRunning:
 		if (t->r <= now){
 			if (t->t < now){
-				DPRINT("%.*sedf_resched, rerelease\n", ind, tabs);
+				DPRINT("%.*s%d edf_resched, rerelease\n", ind, tabs, m->machno);
 				/* Period passed, rerelease */
 				t->r = now;
 				xt = edfpop();
@@ -630,7 +644,7 @@ edf_resched(Task *t)
 			}
 			if (now < t->d){
 				if (t->S > 0){
-					DPRINT("%.*sedf_resched, resume\n", ind, tabs);
+					DPRINT("%.*s%d edf_resched, resume\n", ind, tabs, m->machno);
 					/* Running, not yet at deadline, leave it */
 					DLEAVE;
 					return;
@@ -640,7 +654,7 @@ edf_resched(Task *t)
 			/* Released, but deadline is past, release at t->t */
 			t->r = t->t;
 		}
-		DPRINT("%.*sedf_resched, schedule release\n", ind, tabs);
+		DPRINT("%.*s%d edf_resched, schedule release\n", ind, tabs, m->machno);
 		xt = edfpop();
 		assert(xt == t);
 		edfenqueue(&qwaitrelease, t);
@@ -651,7 +665,7 @@ edf_resched(Task *t)
 	case EdfDeadline:
 		if (t->r <= now){
 			if (t->t < now){
-				DPRINT("%.*sedf_resched, rerelease\n", ind, tabs);
+				DPRINT("%.*s%d edf_resched, rerelease\n", ind, tabs, m->machno);
 				/* Period passed, rerelease */
 				t->r = now;
 				edf_release(t);
@@ -660,11 +674,11 @@ edf_resched(Task *t)
 			}
 			if (now < t->d && (t->flags & Useblocking) == 0){
 				if (t->S > 0){
-					DPRINT("%.*sedf_resched, resume\n", ind, tabs);
+					DPRINT("%.*s%d edf_resched, resume\n", ind, tabs, m->machno);
 					/* Released, not yet at deadline, release (again) */
 					t->state = EdfReleased;
 					edfenqueue(&qreleased, t);
-					if(devsched) devsched(t, now, SResume);
+					if(devrt) devrt(t, now, SResume);
 					DLEAVE;
 					return;
 				}else
@@ -673,7 +687,7 @@ edf_resched(Task *t)
 			/* Released, but deadline is past, release at t->t */
 			t->r = t->t;
 		}
-		DPRINT("%.*sedf_resched, schedule release\n", ind, tabs);
+		DPRINT("%.*s%d edf_resched, schedule release\n", ind, tabs, m->machno);
 		edfenqueue(&qwaitrelease, t);
 		t->state = EdfAwaitrelease;
 		edf_setclock();
@@ -685,15 +699,15 @@ edf_resched(Task *t)
 void
 edf_release(Task *t)
 {
-	DENTER("%.*sedf_release, %s, %d\n", ind, tabs, edf_statename[t->state], t->runq.n);
+	DENTER("%.*s%d edf_release, %s, %d\n", ind, tabs, m->machno, edf_statename[t->state], t->runq.n);
 	assert(t->runq.n > 0 || (up && up->task == t));
 	t->t = t->r + t->T;
 	t->d = t->r + t->D;
-	if(devsched) devsched(t, t->d, SDeadline);
+	if(devrt) devrt(t, t->d, SDeadline);
 	t->S = t->C;
 	t->state = EdfReleased;
 	edfenqueue(&qreleased, t);
-	if(devsched) devsched(t, now, SRelease);
+	if(devrt) devrt(t, now, SRelease);
 	edf_setclock();
 	DLEAVE;
 }
@@ -727,7 +741,7 @@ edf_runproc(void)
 	DENTER("edf_runproc %lud\n", nilcount);
 	if (nt && (t == nil || (nt->D < t->Δ && nt->d < t->d))){
 		/* released task is better than current */
-		DPRINT("%.*sedf_runproc: released\n", ind, tabs);
+		DPRINT("%.*s%d edf_runproc: released\n", ind, tabs, m->machno);
 		edfdequeue(&qreleased);
 		assert(nt->runq.n >= 1);
 		edfpush(nt);
@@ -735,7 +749,7 @@ edf_runproc(void)
 		t = nt;
 		t->scheduled = now;
 	}else{
-		DPRINT("%.*sedf_runproc: current\n", ind, tabs);
+		DPRINT("%.*s%d edf_runproc: current\n", ind, tabs, m->machno);
 	}
 
 	assert (t->runq.n);

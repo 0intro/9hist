@@ -11,6 +11,7 @@ enum {
 	Useblocking = 0x2,
 };
 
+typedef vlong	Time;
 typedef uvlong	Ticks;
 
 typedef struct Task		Task;
@@ -97,7 +98,7 @@ extern Taskq		qreleased;
 extern Taskq		qextratime;
 extern Taskq		edfstack[];
 extern int			edf_stateupdate;
-extern void		(*devsched)(Task *, Ticks, int);
+extern void		(*devrt)(Task *, Ticks, int);
 extern char *		edf_statename[];
 
 #pragma	varargck	type	"T"		Time
