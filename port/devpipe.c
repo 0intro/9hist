@@ -255,7 +255,7 @@ pipewrite(Chan *c, void *va, long n, ulong offset)
 {
 	USED(offset);
 	if(waserror()) {
-		postnote(u->p, 1, "sys: write on closed pipe", NExit);
+		postnote(u->p, 1, "sys: write on closed pipe", NUser);
 		error(Egreg);
 	}
 	n = streamwrite(c, va, n, 0);

@@ -391,7 +391,7 @@ notify(Ureg *ur)
 		sprint(n->msg+l, " pc=0x%.8lux", ur->pc);
 	}
 	if(n->flag!=NUser && (u->notified || u->notify==0)){
-		if(u->note[0].flag == NDebug)
+		if(n->flag == NDebug)
 			pprint("suicide: %s\n", n->msg);
     Die:
 		qunlock(&u->p->debug);

@@ -12,6 +12,7 @@ int	shargs(char*, int, char**);
 long
 sysr1(ulong *arg)
 {
+	xsummary();
 	print("[%s %s %d] r1 = %d\n", u->p->user, u->p->text, u->p->pid, arg[0]);
 	return 0;
 }

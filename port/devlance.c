@@ -741,6 +741,9 @@ lanceup(Etherpkt *p, int len)
 	Ethertype *e;
 	int t;
 
+	if(len <= 0)
+		return;
+
 	t = (p->type[0]<<8) | p->type[1];
 	for(e = &l.e[0]; e < &l.e[Ntypes]; e++){
 		/*
