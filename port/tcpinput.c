@@ -84,7 +84,8 @@ tcpflushincoming(Ipconv *s)
 	seg.dest = s->psrc;
 	seg.flags = ACK;	
 	seg.seq = tcb->snd.ptr;
-	seg.ack = tcb->last_ack = tcb->rcv.nxt;
+	tcb->last_ack = tcb->rcv.nxt;
+	seg.ack = tcb->rcv.nxt;
 
 	sndrst(s->dst, Myip[Myself], 0, &seg);
 	localclose(s, 0);
@@ -409,10 +410,12 @@ tcpinput(Ipifc *ifc, Block *bp)
 
 				tcprcvwin(s);
 	
-				tcpgo(&tcb->acktimer);
+				if(tcb->acktimer.state != TimerON)
+					tcpgo(&tcb->acktimer);
 
-				if(tcb->max_snd <= tcb->rcv.nxt-tcb->last_ack)
+				if(tcb->rcv.nxt-tcb->last_ack > Streamhi/2)
 					tcb->flags |= FORCE;
+
 				break;
 			case Finwait2:
 				/* no process to read the data, send a reset */

@@ -46,10 +46,9 @@ tcpoutput(Ipconv *s)
 		 */
 		if(tcb->snd.wnd == 0){
 			if(sent != 0) {
-				if (tcb->flags&FORCE)
-						tcb->snd.ptr = tcb->snd.una;
-				else
+				if ((tcb->flags&FORCE) == 0)
 					break;
+				tcb->snd.ptr = tcb->snd.una;
 			}
 			usable = 1;
 		}
@@ -92,8 +91,9 @@ tcpoutput(Ipconv *s)
 			}
 			break;
 		}
+		tcb->last_ack = tcb->rcv.nxt;
 		seg.seq = tcb->snd.ptr;
-		seg.ack = tcb->last_ack = tcb->rcv.nxt;
+		seg.ack = tcb->rcv.nxt;
 		seg.wnd = tcb->rcv.wnd;
 
 		/* Pull out data to send */

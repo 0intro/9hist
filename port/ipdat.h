@@ -217,7 +217,7 @@ struct Tctl
 		int	wl2;
 	} snd;
 	struct {
-		int	nxt;		/* Receive pointer to next byte slot */
+		ulong	nxt;		/* Receive pointer to next byte slot */
 		ushort	wnd;		/* Receive window incoming */
 		int	up;		/* Urgent pointer */
 	} rcv;
@@ -230,7 +230,7 @@ struct Tctl
 	int	rerecv;			/* Overlap of data rerecevived */
 	ushort	window;			/* Recevive window */
 	int	max_snd;		/* Max send */
-	int	last_ack;		/* Last acknowledege received */
+	ulong	last_ack;		/* Last acknowledege received */
 	char	backoff;		/* Exponential backoff counter */
 	char	flags;			/* State flags */
 	char	tos;			/* Type of service */
@@ -311,7 +311,7 @@ struct Ipconv
 enum
 {
 	MAX_TIME 	= (1<<20),	/* Forever */
-	TCP_ACK		= 200,		/* Timed ack sequence every 200ms */
+	TCP_ACK		= 50,		/* Timed ack sequence in ms */
 
 	URG		= 0x20,		/* Data marked urgent */
 	ACK		= 0x10,		/* Aknowledge is valid */
@@ -326,7 +326,7 @@ enum
 
 	MSS_LENGTH	= 4,		/* Mean segment size */
 	MSL2		= 10,
-	MSPTICK		= 100,		/* Milliseconds per timer tick */
+	MSPTICK		= 50,		/* Milliseconds per timer tick */
 	DEF_MSS		= 1024,		/* Default mean segment */
 	DEF_RTT		= 1000,		/* Default round trip */
 
