@@ -332,7 +332,7 @@ struct Proc
 	ulong	pid;
 	int	nchild;
 	QLock	wait;			/* exiting children to be waited for */
-	ulong	waitmsg;
+	Waitmsg	waitmsg;		/* this is large but must be addressable */
 	Proc	*child;
 	Proc	*parent;
 	Pgrp	*pgrp;

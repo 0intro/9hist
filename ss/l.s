@@ -33,6 +33,14 @@ TEXT	getpsr(SB), $0
 	MOVW	PSR, R7
 	RETURN
 
+/*
+TEXT	swap1_please(SB), $0
+
+	MOVW	keyaddr+0(FP), R8
+	LDSTUB	(R8), R7
+	RETURN
+*/
+
 TEXT	swap1_should_work(SB), $0
 
 	MOVW	keyaddr+0(FP), R8

@@ -78,17 +78,21 @@ trap(Ureg *ur)
 	if(user){
 		print("user trap: %s pc=0x%lux\n", excname(tbr), ur->pc);
 dumpregs(ur);
-for(;;);
 		sprint(buf, "sys: trap: pc=0x%lux %s", ur->pc, excname(tbr));
+print("call postnote\n");
 		postnote(u->p, 1, buf, NDebug);
+print("return from postnote\n");
 	}else{
 		print("kernel trap: %s pc=0x%lux\n", excname(tbr), ur->pc);
 		dumpregs(ur);
 for(;;);
 		exit();
 	}
-	if(user && u->nnote)
+	if(user && u->nnote){
+		print("notify %d\n", u->p->pid);
 		notify(ur);
+		print("notifyed %d\n", u->p->pid);
+	}
 }
 
 void
@@ -157,7 +161,7 @@ notify(Ureg *ur)
 	ulong sp;
 
 	lock(&u->p->debug);
-	if(u->nnote==0){
+	if(u->nnote == 0){
 		unlock(&u->p->debug);
 		return;
 	}
@@ -165,6 +169,7 @@ notify(Ureg *ur)
 		if(u->note[0].flag == NDebug)
 			pprint("suicide: %s\n", u->note[0].msg);
     Die:
+print("suicide: %s\n", u->note[0].msg);
 		unlock(&u->p->debug);
 		pexit(u->note[0].msg, u->note[0].flag!=NDebug);
 	}

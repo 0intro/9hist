@@ -343,7 +343,7 @@ struct Proc
 	ulong	pid;
 	int	nchild;
 	QLock	wait;			/* exiting children to be waited for */
-	ulong	waitmsg;
+	Waitmsg	waitmsg;		/* this is large but must be addressable */
 	Proc	*child;
 	Proc	*parent;
 	Pgrp	*pgrp;
@@ -648,6 +648,12 @@ struct Service
 	char	name[NAMELEN];
 };
 
+/*
+ *  LANCE CSR3 (bus control bits)
+ */
+#define BSWP	0x4
+#define ACON	0x2
+#define BCON	0x1
 
 /*
  *  system dependent lance stuff
@@ -661,6 +667,7 @@ struct Lance
 	ushort	ntrb;		/* number of xmit ring buffers */
 	ushort	*rap;		/* lance address register */
 	ushort	*rdp;		/* lance data register */
+	ushort	busctl;		/* bus control bits */
 	uchar	ea[6];		/* our ether addr */
 	int	sep;		/* separation between shorts in lance ram
 				    as seen by host */

@@ -36,8 +36,7 @@ lock(Lock *l)
 			return;
 		}
 	ll->key = 0;
-dumpstack();
-	panic("lock loop %lux pc %lux held by pc %lux\n", l, ((ulong*)&l)[PCOFF], l->pc);
+	print("lock loop %lux pc %lux held by pc %lux\n", l, ((ulong*)&l)[PCOFF], l->pc);
 }
 
 int

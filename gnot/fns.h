@@ -202,4 +202,5 @@ Chan	*walk(Chan*, char*, int);
 
 #define	evenaddr(x)	/* 68020 doesn't care */
 
-#define USED(x) if(x)
+#define USED(x)	if(x)
+#define SET(x)	x = 0

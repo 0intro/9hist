@@ -791,6 +791,7 @@ lancesetup(Lance *lp)
 	lp->logntrb = 7;
 	lp->nrrb = 1<<lp->lognrrb;
 	lp->ntrb = 1<<lp->logntrb;
+	lp->busctl = BSWP;
 	if(ioid >= IO3R1)
 		lanceIO3setup(lp);
 	else

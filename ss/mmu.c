@@ -55,7 +55,7 @@ mapstack(Proc *p)
 int
 newpid(Proc *p)
 {
-	int i, j;
+	int i, j, k;
 	Proc *sp;
 
 	i = m->lastpid+1;
@@ -69,13 +69,16 @@ newpid(Proc *p)
 	m->pidproc[i] = p;
 	m->lastpid = i;
 	putcontext(i-1);
+/* print("new pid %d\n", i); /**/
 	/*
-	 * kludge: each context is allowed 2 pmegs, one for text and one for stack
+	 * kludge: each context is allowed 5 pmegs, four for text & data and one for stack
 	 */
-	putsegm(UZERO, kmapalloc.lowpmeg+(2*i));
-	putsegm(TSTKTOP-BY2SEGM, kmapalloc.lowpmeg+(2*i)+1);
+	for(j=0; j<4; j++)
+		putsegm(UZERO, kmapalloc.lowpmeg+(2*i)+j);
+	putsegm(TSTKTOP-BY2SEGM, kmapalloc.lowpmeg+(2*i)+4);
 	for(j=0; j<PG2SEGM; j++){
-		putpmeg(UZERO+j*BY2PG, INVALIDPTE);
+		for(k=0; k<4; k++)
+			putpmeg(UZERO+k*BY2SEGM+j*BY2PG, INVALIDPTE);
 		putpmeg((TSTKTOP-BY2SEGM)+j*BY2PG, INVALIDPTE);
 	}
 	return i;
@@ -95,7 +98,7 @@ purgepid(int pid)
 
 	if(m->pidhere[pid] == 0)
 		return;
-print("purge pid %d\n", pid);
+/* print("purge pid %d\n", pid);/**/
 	memset(m->pidhere, 0, sizeof m->pidhere);
 	putcontext(pid-1);
 	/*
@@ -103,7 +106,7 @@ print("purge pid %d\n", pid);
 	 */
 	for(i=0; i<0x1000; i++)
 		putwE((i<<4), 0);
-print("purge done\n");
+/* print("purge done\n");/**/
 }
 
 
@@ -199,7 +202,7 @@ putmmu(ulong tlbvirt, ulong tlbphys)
 	/*
 	 * kludge part 2: make sure we've got a valid segment
 	 */
-	if(tlbvirt>=TSTKTOP || (UZERO+BY2SEGM<=tlbvirt && tlbvirt<(TSTKTOP-BY2SEGM)))
+	if(tlbvirt>=TSTKTOP || (UZERO+4*BY2SEGM<=tlbvirt && tlbvirt<(TSTKTOP-BY2SEGM)))
 		panic("putmmu %lux", tlbvirt);
 	putpmeg(tlbvirt, tlbphys);
 	spllo();

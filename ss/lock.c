@@ -19,7 +19,6 @@ lock(Lock *l)
 		ll->pc = ((ulong*)&l)[PCOFF];
 		return;
 	}
-reset();
 	for(i=0; i<10000000; i++)
     		if(swap1(&ll->key) == 0){
 			ll->pc = ((ulong*)&l)[PCOFF];

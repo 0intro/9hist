@@ -3,13 +3,14 @@
 #include <fcall.h>
 
 #define DEFSYS "bootes"
-#define DEFFILE "/mips/9"
+
+char	*net;
+char	*netdev;
 
 Fcall	hdr;
 char	*scmd;
 
 char	buf[4*1024];
-char	bootfile[5*NAMELEN];
 char	sys[NAMELEN];
 
 int fd;
@@ -45,7 +46,7 @@ int	bitdial(char *);
 /*
  *  usage: 9b [-a] [server] [file]
  *
- *  default server is `bootes', default file is `/mips/9'
+ *  default server is `bootes', default file is `/sparc/9'
  */
 main(int argc, char *argv[])
 {
@@ -57,6 +58,13 @@ main(int argc, char *argv[])
 	open("#c/cons", 1);
 	open("#c/cons", 1);
 
+	strcpy(buf, "none");
+	outin("user", buf, sizeof(buf));
+	i = open("#c/user", 2);
+	if(i >= 0){
+		write(i, buf, strlen(buf));
+		close(i);
+	}
 	i = create("#e/sysname", 1, 0666);
 	if(i < 0)
 		error("sysname");
@@ -64,9 +72,13 @@ main(int argc, char *argv[])
 		error("sysname");
 	close(i);
 
-	argv++;
-	argc--;	
+	for(i = 0; i < argc; i++)
+		print("argv[%d] = %s\n", i, argv[i]);
 
+	argv++;
+	argc--;
+
+	manual = 1;
 	while(argc > 0){
 		if(argv[0][0] == '-'){
 			if(argv[0][1] == 'm')
@@ -78,13 +90,8 @@ main(int argc, char *argv[])
 	}
 
 	strcpy(sys, DEFSYS);
-	strcpy(bootfile, DEFFILE);
 	switch(argc){
-	case 1:
-		strcpy(bootfile, argv[0]);
-		break;
 	case 2:
-		strcpy(bootfile, argv[0]);
 		strcpy(sys, argv[1]);
 		break;
 	}
@@ -172,6 +179,9 @@ nonetdial(char *arg)
 		prerror(a->cmd);
 		return -1;
 	}
+
+	net = "nonet";
+	netdev = "#nnonet";
 	return fd;
 }
 
@@ -228,6 +238,8 @@ dkdial(char *arg)
 		prerror(cmd);
 		return -1;
 	}
+	net = "dk";
+	netdev = "#kdk";
 	return fd;
 }
 
@@ -348,11 +360,25 @@ boot(int ask)
 	print("success\n");
 	close(fd);
 
+	if(net){
+		char buf[128];
+
+		fd = create("#e/bootnet", 1, 0666);
+		if(fd >= 0){
+			if(write(fd, net, strlen(net)) != strlen(net))
+				error("writing bootnet");
+			close(fd);
+			sprint(buf, "/net/%s", net);
+			if(bind(netdev, buf, MREPL) < 0)
+				error("binding bootnet");
+		}
+	}
+
 	if(ask)
-		execl("/mips/init", "init", "-m", 0);
+		execl("/sparc/init", "init", "-t", "-m", 0);
 	else
-		execl("/mips/init", "init", 0);
-	error("/mips/init");
+		execl("/sparc/init", "init", "-t", 0);
+	error("/sparc/init");
 }
 
 /*
@@ -383,7 +409,6 @@ error(char *s)
 /*
  *  prompt and get input
  */
-int
 int
 outin(char *prompt, char *def, int len)
 {

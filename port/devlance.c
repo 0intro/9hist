@@ -176,13 +176,6 @@ static SoftLance l;
 #define INIT	0x1
 
 /*
- *  LANCE CSR3
- */
-#define BSWP	0x4
-#define ACON	0x2
-#define BCON	0x1
-
-/*
  *  flag bits from a buffer descriptor in the rcv/xmt rings
  */
 #define OWN	0x8000	/* 1 means that the buffer can be used by the chip */
@@ -342,9 +335,7 @@ lanceoput(Queue *q, Block *bp )
 	 *  Wait till we get an output buffer
 	 */
 	if(TSUCC(l.tc) == l.tl){
-		print("lance obuf sleep");
 		sleep(&l.tr, isobuf, (void *)0);
-		print("done");
 	}
 	p = &l.tp[l.tc];
 
@@ -421,13 +412,6 @@ lancereset(void)
 		already = 1;
 		lancesetup(&l);
 	}
-
-	*l.rap = 0;
-	print("csr0 %lux\n", *l.rdp);
-	*l.rap = 1;
-	print("csr1 %lux\n", *l.rdp);
-	*l.rap = 2;
-	print("csr2 %lux\n", *l.rdp);
 
 	/*
 	 *  stop the lance
@@ -521,16 +505,14 @@ lancestart(void)
 	 */
 	wbflush();
 	*l.rap = 3;
-	*l.rdp = BSWP;
+	*l.rdp = l.busctl;
 
 	/*
 	 *  initialize lance, turn on interrupts, turn on transmit and rcv.
 	 */
 	wbflush();
-	print("starting lance\n");
 	*l.rap = 0;
 	*l.rdp = INEA|INIT|STRT; /**/
-	print("lance started\n");
 }
 
 /*
@@ -746,16 +728,6 @@ lanceintr(void)
 	 */
 	if(csr & (BABL|MISS|MERR)){
 		print("lance err %ux\n", csr);
-		print("aser %lux asevar %lux\n", getw2(0x60000008), getw2(0x6000000C));
-	*l.rap = 0;
-	*l.rdp = STOP;
-delay(100);
-	*l.rap = 0;
-	print("csr0 %lux\n", *l.rdp);
-	*l.rap = 1;
-	print("csr1 %lux\n", *l.rdp);
-	*l.rap = 2;
-	print("csr2 %lux\n", *l.rdp);
 	}
 
 	if(csr & IDON){

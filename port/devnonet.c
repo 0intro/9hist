@@ -554,8 +554,9 @@ nonetoput(Queue *q, Block *bp)
 				mp->first = 0;
 			}
 			mp->inuse = 0;
-		} else
-			qunlock(&cp->mlock);
+		}
+		qunlock(&cp->mlock);
+		nexterror();
 	}
 
 	/*
@@ -593,8 +594,9 @@ nonetoput(Queue *q, Block *bp)
 		sendmsg(cp, mp);
 		tsleep(&mp->r, acked, mp, MSrexmit);
 		if(retries++ > 100)
-			errors("to many nonet rexmits");
+			errors("too many nonet rexmits");
 	}
+	poperror();
 
 	/*
 	 *  free buffer
@@ -603,7 +605,6 @@ nonetoput(Queue *q, Block *bp)
 	mp->first = 0;
 	mp->inuse = 0;
 	wakeup(&cp->r);
-	poperror();
 }
 
 /*

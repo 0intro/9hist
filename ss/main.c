@@ -92,7 +92,7 @@ reset(void)
 void
 unloadboot(void)
 {
-	strncpy(user, "rob", sizeof user);
+	strncpy(user, "bootes", sizeof user);
 	memcpy(bootline, "9s", sizeof bootline);
 	memcpy(bootserver, "bootes", sizeof bootserver);
 	memcpy(bootdevice, "parnfucky", sizeof bootdevice);
@@ -157,7 +157,6 @@ userinit(void)
 	p = newproc();
 	p->pgrp = newpgrp();
 	strcpy(p->text, "*init*");
-	strcpy(p->pgrp->user, user);
 	p->fpstate = FPinit;
 
 	/*
@@ -340,28 +339,28 @@ lancesetup(Lance *lp)
 	ulong pa, pte, va;
 	int i, j;
 
-	k = kmappa(ETHER, PTEIO|PTENOCACHE);
+	k = kmappa(ETHER, PTEIO);
 	lp->rdp = (void*)(k->va+0);
 	lp->rap = (void*)(k->va+2);
-	k = kmappa(EEPROM, PTEIO|PTENOCACHE);
+	k = kmappa(EEPROM, PTEIO);
 	cp = (uchar*)(k->va+0x7da);
 	for(i=0; i<6; i++)
 		lp->ea[i] = *cp++;
 	kunmap(k);
 
-	lp->lognrrb = 2;	/* should be larger */
-	lp->logntrb = 2;	/* should be larger */
+	lp->lognrrb = 5;
+	lp->logntrb = 5;
 	lp->nrrb = 1<<lp->lognrrb;
 	lp->ntrb = 1<<lp->logntrb;
-
 	lp->sep = 1;
+	lp->busctl = BSWP | ACON | BCON;
 
 	/*
 	 * Allocate area for lance init block and descriptor rings
 	 */
 	pa = (ulong)ialloc(BY2PG, 1)&~KZERO;	/* one whole page */
 	/* map at LANCESEGM */
-	k = kmappa(pa, PTEMAINMEM|PTENOCACHE);
+	k = kmappa(pa, PTEMAINMEM);
 print("init block va %lux\n", k->va);
 	lp->lanceram = (ushort*)k->va;
 	lp->lm = (Lancemem*)k->va;
@@ -377,7 +376,7 @@ print("%d lance buffers\n", i);
 	pa = (ulong)ialloc(i*BY2PG, 1)&~KZERO;
 	va = 0;
 	for(j=i-1; j>=0; j--){
-		k = kmappa(pa+j*BY2PG, PTEMAINMEM|PTENOCACHE);
+		k = kmappa(pa+j*BY2PG, PTEMAINMEM);
 		if(va){
 			if(va != k->va+BY2PG)
 				panic("lancesetup va unordered");
@@ -391,13 +390,6 @@ print("%d lance buffers\n", i);
 	lp->rp = (Etherpkt*)k->va;
 	lp->ltp = lp->lrp+lp->nrrb;
 	lp->tp = lp->rp+lp->nrrb;
-print("rp %lux tp %lux lm %lux\n", lp->rp, lp->tp, lp->lm);
-print("*rp %lux *tp %lux *lm %lux\n", *(ulong*)lp->rp, *(ulong*)lp->tp, *(ulong*)lp->lm);
-*(ulong*)lp->rp = 0;
-	k = kmappa(0xF8400000, PTEIO|PTENOCACHE);
-print("dma %lux %lux\n", k->va, *(ulong*)(k->va+4));
-	*(ulong*)(k->va+4) = 0;
-	kunmap(k);
 }
 
 /*

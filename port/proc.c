@@ -317,17 +317,24 @@ postnote(Proc *p, int dolock, char *n, int flag)
 
 	if(dolock)
 		lock(&p->debug);
-	k = kmap(p->upage);
-	up = (User*)VA(k);
+	if(p != u->p){
+		k = kmap(p->upage);
+		up = (User*)VA(k);
+	}else{
+		SET(k);
+		up = u;
+	}
 	if(flag!=NUser && (up->notify==0 || up->notified))
 		up->nnote = 0;	/* force user's hand */
 	else if(up->nnote == NNOTE-1){
-		kunmap(k);
+		if(up != u)
+			kunmap(k);
 		return 0;
 	}
 	strcpy(up->note[up->nnote].msg, n);
 	up->note[up->nnote++].flag = flag;
-	kunmap(k);
+	if(up != u)
+		kunmap(k);
 	if(dolock)
 		unlock(&p->debug);
 	if(r = p->r){	/* assign = */
@@ -387,16 +394,13 @@ addbroken(Proc *c)
 int
 freebroken(void)
 {
-	int n;
-
+	int i, n;
 
 	lock(&broken);
 	n = broken.n;
-	while(broken.n > 0){
-		ready(broken.p[0]);
-		memcpy(&broken.p[0], &broken.p[1], sizeof(Proc*)*(NBROKEN-1));
-		--broken.n;
-	}
+	for(i=0; i<n; i++)
+		ready(broken.p[i]);
+	broken.n = 0;
 	unlock(&broken);
 	return n;
 }
@@ -404,20 +408,14 @@ freebroken(void)
 void
 pexit(char *s, int freemem)
 {
-	char status[64];
 	ulong mypid;
 	Proc *p, *c, *k, *l;
-	Waitmsg w;
 	int n;
 	Chan *ch;
 	ulong *up, *ucp, *wp;
 
 	c = u->p;
 	mypid = c->pid;
-	if(s)
-		strcpy(status, s);
-	else
-		status[0] = 0;
 	if(freemem){
 		freesegs(-1);
 		closepgrp(c->pgrp);
@@ -452,19 +450,18 @@ pexit(char *s, int freemem)
 	qlock(&p->wait);
 	lock(&p->wait.queue);
 	if(p->pid==c->parentpid && !p->exiting){
-		w.pid = mypid;
-		strcpy(w.msg, status);
-		wp = &w.time[TUser];
+		if(s)
+			strcpy(p->waitmsg.msg, s);
+		else
+			p->waitmsg.msg[0] = 0;
+		p->waitmsg.pid = mypid;
+		wp = &p->waitmsg.time[TUser];
 		up = &c->time[TUser];
 		ucp = &c->time[TCUser];
 		*wp++ = TK2MS(*up++ + *ucp++);
 		*wp++ = TK2MS(*up++ + *ucp  );
 		*wp   = TK2MS(*up           );
 		p->child = c;
-		/*
-		 * Pass info through back door, to avoid huge Proc's
-		 */
-		p->waitmsg = (((ulong)&w)&(BY2PG-1));
 		c->state = Exiting;
 		if(p->state == Inwait)
 			ready(p);
@@ -495,7 +492,6 @@ ulong
 pwait(Waitmsg *w)
 {
 	Proc *c, *p;
-	KMap *k;
 	ulong cpid;
 
 	p = u->p;
@@ -518,11 +514,9 @@ again:
 		goto again;
 	}
 	p->child = 0;
-	k = kmap(c->upage);
 	if(w)
-		*w = *(Waitmsg*)(p->waitmsg|VA(k));
-	cpid = ((Waitmsg*)(p->waitmsg|VA(k)))->pid;
-	kunmap(k);
+		*w = p->waitmsg;
+	cpid = p->waitmsg.pid;
 	p->time[TCUser] += c->time[TUser] + c->time[TCUser];
 	p->time[TCSys] += c->time[TSys] + c->time[TCSys];
 	p->time[TCReal] += c->time[TReal];

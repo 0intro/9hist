@@ -1152,6 +1152,7 @@ mousechar(int c)
 {
 	static short msg[5];
 	static int nb;
+	static uchar b[] = {0, 4, 2, 6, 1, 5, 3, 7};
 
 	if((c&0xF0) == 0x80)
 		nb=0;
@@ -1159,7 +1160,7 @@ mousechar(int c)
 	if(c & 0x80)
 		msg[nb] |= 0xFF00;	/* sign extend */
 	if(++nb == 5){
-		mouse.newbuttons = (msg[0]&7)^7;
+		mouse.newbuttons = b[(msg[0]&7)^7];
 		mouse.dx = msg[1]+msg[3];
 		mouse.dy = -(msg[2]+msg[4]);
 		mouse.track = 1;
