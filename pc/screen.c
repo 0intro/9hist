@@ -82,7 +82,7 @@ screensize(int x, int y, int z, ulong chan)
 
 	physgscreenr = gscreen->r;
 
-	drawcmap(1);
+	drawcmap();
 	return 0;
 }
 
@@ -288,7 +288,6 @@ setcolor(ulong p, ulong r, ulong g, ulong b)
 		return 0;
 	}
 	p &= x;
-	p ^= x;
 
 	return setpalette(p, r, g, b);
 }

@@ -193,7 +193,7 @@ dacinit(void)
 	for(i = 0; i < 0x400; i++)
 		d->cr2 = 0xff;
 
-	drawcmap(1);
+	drawcmap();
 
 	/* Overlay Palette Ram */
 	d->cr0 = 0x00;
@@ -418,7 +418,7 @@ getcolor(ulong p, ulong *pr, ulong *pg, ulong *pb)
 	/* to protect DAC from mouse movement */
 	lock(&cursor);
 
-	d->cr0 = revtab0[255 - (p & 0xFF)];
+	d->cr0 = revtab0[p & 0xFF];
 	d->cr1 = 0;
 	r = d->cr3;
 	g = d->cr3;
@@ -441,7 +441,7 @@ setcolor(ulong p, ulong r, ulong g, ulong b)
 	/* to protect DAC from mouse movement */
 	lock(&cursor);
 
-	d->cr0 = revtab0[255 - (p & 0xFF)];
+	d->cr0 = revtab0[p & 0xFF];
 	d->cr1 = 0;
 	d->cr3 = r >> 24;
 	d->cr3 = g >> 24;

@@ -81,7 +81,7 @@ int		devwalk(Chan*, char*, Dirtab*, int, Devgen*);
 void		devwstat(Chan*, char*);
 Chan*		domount(Chan*);
 void		drawactive(int);
-void		drawcmap(int);
+void		drawcmap(void);
 void		dumpaproc(Proc*);
 void		dumpqueues(void);
 void		dumpregs(Ureg*);

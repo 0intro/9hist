@@ -1928,7 +1928,7 @@ Dev drawdevtab = {
  * On 8 bit displays, load the default color map
  */
 void
-drawcmap(int invert)
+drawcmap(void)
 {
 	int r, g, b, cr, cg, cb, v;
 	int num, den;
@@ -1952,12 +1952,8 @@ drawcmap(int invert)
 				cg = g*num/den;
 				cb = b*num/den;
 			}
-			if(invert)
-				setcolor(255-i-(j&15),
-					cr*0x01010101, cg*0x01010101, cb*0x01010101);
-			else
-				setcolor(i+(j&15),
-					cr*0x01010101, cg*0x01010101, cb*0x01010101);
+			setcolor(i+(j&15),
+				cr*0x01010101, cg*0x01010101, cb*0x01010101);
 		    }
 	}
 }
