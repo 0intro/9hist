@@ -15,6 +15,8 @@ static void fault386(Ureg*, void*);
 static Lock vctllock;
 static Vctl *vctl[256];
 
+uvlong	intrts;
+
 void
 intrenable(int irq, void (*f)(Ureg*, void*), void* a, int tbdf)
 {

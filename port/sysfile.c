@@ -109,9 +109,7 @@ sysfd2path(ulong *arg)
 {
 	Chan *c, *oc;
 
-	validaddr(arg[1], 1, 0);
-	if(vmemchr((char*)arg[1], '\0', arg[2]) == 0)
-		error(Ebadarg);
+	validaddr(arg[1], arg[2], 1);
 
 	/*
 	 * Undomount below may cclose the chan so bump the
