@@ -21,9 +21,9 @@ lock(Lock *l)
 	for(;;){
 		i = 0;
 		while(l->key)
-			if(i++ > 10000000)
-				panic("lock loop key 0x%lux pc 0x%lux held by pc 0x%lux\n",
-					l->key, getcallerpc(l), l->pc);
+			if(i++ > 100000000)
+				panic("lock loop key 0x%lux pc 0x%lux held by pc 0x%lux pl 0x%lux\n",
+					l->key, pc, l->pc, splhi());
 		if(tas(&l->key) == 0){
 			l->pc = pc;
 			return;
@@ -71,6 +71,7 @@ void
 unlock(Lock *l)
 {
 	l->key = 0;
+	l->pc = 0;
 }
 
 void
@@ -80,5 +81,6 @@ iunlock(Lock *l)
 
 	sr = l->sr;
 	l->key = 0;
+	l->pc = 0;
 	splx(sr);
 }
