@@ -97,7 +97,7 @@ dumpqueues(void)
 		print("  W n %d l %d f %ux r %ux\n", WR(q)->nb, WR(q)->len, WR(q)->flag,
 			&(WR(q)->r));
 		dumpblocks(q, 'R');
-		dumpblocks(q, 'W');
+		dumpblocks(WR(q), 'W');
 	}
 	print("\n");
 	for(bcp=bclass; bcp<&bclass[Nclass]; bcp++){

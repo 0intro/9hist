@@ -152,14 +152,14 @@ boot(int ask)
 	/*
 	 *  grab a nonet channel and call up the ross file server
 	 */
-	fd = open("#n/1/data", 2);
+	fd = open("#n/2/data", 2);
 	if(fd < 0) {
-		prerror("opening #n/1/data");
+		prerror("opening #n/2/data");
 		return;
 	}
-	cfd = open("#n/1/ctl", 2);
+	cfd = open("#n/2/ctl", 2);
 	if(cfd < 0){
-		prerror("opening #n/1/ctl");
+		prerror("opening #n/2/ctl");
 		return;
 	}
 	if(write(cfd, scmd, strlen(scmd))<0){

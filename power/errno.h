@@ -38,7 +38,7 @@ enum{
 	Ebadnet,	/* illegal network address */
 	Enoifc,		/* no free interface slots */
 	Enodev,		/* no free devices */
-	Ebadctl,	/* bad process control request */
+	Ebadctl,	/* bad process or stream control request */
 	Enonote,	/* note overflow */
 	Eintr,		/* interrupted */
 	Edestbusy,	/* datakit destination busy */

@@ -495,10 +495,11 @@ struct Nohdr {
 	uchar	remain[2];	/* count of remaing bytes of data */
 	uchar	sum[2];		/* checksum (0 means none) */
 };
-#define HDRSIZE 10
-#define NEWCALL	0x1		/* flag bit marking a new circuit */
-#define HANGUP 0x2		/* flag bit requesting hangup */
-#define ACKME 0x4		/* acknowledge this message */
+#define NO_HDRSIZE 10
+#define NO_NEWCALL	0x1	/* flag bit marking a new circuit */
+#define NO_HANGUP	0x2	/* flag bit requesting hangup */
+#define NO_ACKME	0x4	/* acknowledge this message */
+#define NO_SERVICE	0x8	/* message includes a service name */
 
 /*
  *  a buffer describing a nonet message
@@ -542,7 +543,9 @@ struct Noconv {
 
 	Noifc	*ifc;
 	int	kstarted;
-	char	raddr[64];	/* remote address */
+	char	raddr[NAMELEN];	/* remote address */
+	char	ruser[NAMELEN];	/* remote user */
+	char	addr[NAMELEN];	/* local address */
 	int	rexmit;		/* statistics */
 	int	retry;
 	int	bad;
@@ -555,7 +558,7 @@ struct Noconv {
  */
 struct Nocall {
 	Block	*msg;
-	char	raddr[64];
+	char	raddr[NAMELEN];
 	long	circuit;
 };
 
@@ -566,7 +569,7 @@ struct Nocall {
 struct Noifc {
 	Lock;
 	int	ref;
-	char	name[64];	/* interface name */		
+	char	name[NAMELEN];	/* interface name */		
 	Queue	*wq;		/* interface output queue */
 	Noconv	*conv;
 

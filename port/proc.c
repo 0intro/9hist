@@ -561,8 +561,8 @@ DEBUG()
 	for(i=0; i<conf.nproc; i++){
 		p = procalloc.arena+i;
 		if(p->state != Dead){
-			print("%d:%s upc %lux %s ut %ld st %ld r %lux\n",
-				p->pid, p->text, p->pc, statename[p->state],
+			print("%d:%s %s upc %lux %s ut %ld st %ld r %lux\n",
+				p->pid, p->text, p->pgrp->user, p->pc, statename[p->state],
 				p->time[0], p->time[1], p->r);
 		}
 	}
