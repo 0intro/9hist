@@ -311,7 +311,7 @@ confinit(void)
 	conf.maxialloc = (4*1024*1024-256*1024-BY2PG);
 	mul = 1 + (conf.npage1>0);
 	conf.nproc = 50*mul;
-	conf.npgrp = 12*mul;
+	conf.npgrp = 20*mul;
 	conf.npte = 700*mul;
 	conf.nmod = 400*mul;
 	conf.nalarm = 1000;
