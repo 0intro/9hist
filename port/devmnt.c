@@ -505,9 +505,11 @@ mntread(Chan *c, void *buf, long n, ulong offset)
 	if(cached) {
 		nc = cread(c, buf, n, offset);
 		if(nc > 0) {
+			n -= nc;
+			if(n == 0)
+				return nc;
 			buf = (uchar*)buf+nc;
 			offset += nc;
-			n -= nc;
 		}
 	}
 
@@ -570,7 +572,7 @@ mntrdwr(int type, Chan *c, void *buf, long n, ulong offset)
 		uba += nr;
 		cnt += nr;
 		n -= nr;
-		if(nr != r->request.count || n == 0)
+		if(nr != r->request.count || n == 0 || up->nnote)
 			break;
 	}
 	return cnt;

@@ -154,9 +154,9 @@ iallockproc(void *arg)
 			 *  increase goal if we've been drained.
 			 */
 			if(cl->have == 0){
-				i = cl->goal>>2;
+				i = cl->goal>>1;
 				if(cl->wanted > i)
-					cl->goal += cl->wanted;
+					cl->goal += 2*cl->wanted;
 				else
 					cl->goal += i;
 				cl->wanted = 0;
@@ -195,7 +195,7 @@ iallocinit(void)
 
 	for(pow = Minpow; pow <= Maxpow; pow++){
 		cl = &arena.alloc[pow];
-		cl->goal = Maxpow-pow + 4;
+		cl->goal = Maxpow-pow + 16;
 	}
 
 	/* start garbage collector */
