@@ -45,6 +45,9 @@ enum {
 	RHandshake,
 	RApplication,
 
+	SSL2ClientHello = 1,
+	HSSL2ClientHello = 9,  /* local convention;  see tlshand.c */
+
 	/* alerts */
 	ECloseNotify 			= 0,
 	EUnexpectedMessage 	= 10,
@@ -164,7 +167,7 @@ static TlsErrs tlserrs[] = {
 	{EDecodeError,			EIllegalParameter,		EDecodeError,			1, "error decoding message"},
 	{EDecryptError,			EIllegalParameter,		EDecryptError,			1, "error decrypting message"},
 	{EExportRestriction,		EHandshakeFailure,		EExportRestriction,		1, "export restriction violated"},
-	{EProtocolVersion,		EIllegalParameter,		EProtocolVersion,		0, "protocol version not supported"},
+	{EProtocolVersion,		EIllegalParameter,		EProtocolVersion,		1, "protocol version not supported"},
 	{EInsufficientSecurity,	EHandshakeFailure,		EInsufficientSecurity,	1, "stronger security routines required"},
 	{EInternalError,			EHandshakeFailure,		EInternalError,			1, "internal error"},
 	{EUserCanceled,		ECloseNotify,			EUserCanceled,			0, "handshake canceled by user"},
@@ -672,8 +675,7 @@ regurgitate(TlsRec *s, uchar *p, int n)
 }
 
 /*
- *  remove at most n bytes from the queue in a single block, if discard is set
- *  dump the remainder
+ *  remove at most n bytes from the queue
  */
 static Block*
 qgrab(Block **l, int n)
@@ -742,9 +744,21 @@ tlsrecread(TlsRec *tr)
 	ensure(tr, &tr->unprocessed, RecHdrLen);
 	consume(&tr->unprocessed, header, RecHdrLen);
 	nconsumed = RecHdrLen;
-	type = header[0];
-	ver = get16(header+1);
-	len = get16(header+3);
+
+	if(tr->handin == 0 && header[0] & 0x80){
+		/* Cope with an SSL3 ClientHello expressed in SSL2 record format.
+			This is sent by some clients that we must interoperate
+			with, such as Java's JSSE and Microsoft's Internet Explorer. */
+		len = (get16(header) & ~0x8000) - 5;
+		type = header[2];
+		ver = get16(header + 3);
+		if(type != SSL2ClientHello || len < 22)
+			rcvError(tr, EProtocolVersion, "invalid initial SSL2-like message");
+	}else{  /* normal SSL3 record format */
+		type = header[0];
+		ver = get16(header+1);
+		len = get16(header+3);
+	}
 	if(ver != tr->version && (tr->verset || ver < MinProtoVersion || ver > MaxProtoVersion))
 		rcvError(tr, EProtocolVersion, "invalid version in record layer");
 	if(len > MaxRecLen || len < 0)
@@ -857,6 +871,36 @@ tlsrecread(TlsRec *tr)
 			}
 			b = padblock(b, 1);
 			*b->rp = RHandshake;
+			qbwrite(tr->handq, b);
+			b = nil;
+			poperror();
+			dechandq(tr);
+		}else{
+			unlock(&tr->hqlock);
+			if(tr->verset && tr->version != SSL3Version && !waserror()){
+				sendAlert(tr, ENoRenegotiation);
+				poperror();
+			}
+		}
+		break;
+	case SSL2ClientHello:
+		lock(&tr->hqlock);
+		if(tr->handq != nil){
+			tr->hqref++;
+			unlock(&tr->hqlock);
+			if(waserror()){
+				dechandq(tr);
+				nexterror();
+			}
+			/* Pass the SSL2 format data, so that the handshake code can compute
+				the correct checksums.  HSSL2ClientHello = HandshakeType 9 is
+				unused in RFC2246. */
+			b = padblock(b, 8);
+			b->rp[0] = RHandshake;
+			b->rp[1] = HSSL2ClientHello;
+			put24(&b->rp[2], len);
+			b->rp[5] = SSL2ClientHello;
+			put16(&b->rp[6], ver);
 			qbwrite(tr->handq, b);
 			b = nil;
 			poperror();
@@ -2039,6 +2083,14 @@ put64(uchar *p, vlong x)
 {
 	put32(p, (u32int)(x >> 32));
 	put32(p+4, (u32int)x);
+}
+
+static void
+put24(uchar *p, int x)
+{
+	p[0] = x>>16;
+	p[1] = x>>8;
+	p[2] = x;
 }
 
 static void

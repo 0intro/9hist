@@ -416,7 +416,6 @@ struct Pgrp
 	ulong	pgrpid;
 	QLock	debug;			/* single access via devproc.c */
 	RWlock	ns;			/* Namespace n read/one write lock */
-	QLock	nsh;
 	Mhead	*mnthash[MNTHASH];
 };
 
