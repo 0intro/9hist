@@ -296,8 +296,13 @@ loopbackopen(Chan *c, int omode)
 
 	lb = c->aux;
 	qlock(lb);
-	if(TYPE(c->qid.path) == Qdata)
+	if(TYPE(c->qid.path) == Qdata){
+		if(lb->link[ID(c->qid.path)].ref){
+			qunlock(lb);
+			error(Einuse);
+		}
 		lb->link[ID(c->qid.path)].ref++;
+	}
 	qunlock(lb);
 
 	c->mode = openmode(omode);

@@ -13,7 +13,7 @@
 #include "screen.h"
 
 /*
- * ATI Mach64(CT|ET|G*|VT|VU|L*).
+ * ATI Mach64(CT|ET|G*|V*|L*).
  */
 static ushort mach64xxdid[] = {
 	('C'<<8)|'T',
@@ -29,6 +29,7 @@ static ushort mach64xxdid[] = {
 	('G'<<8)|'Z',
 	('V'<<8)|'T',
 	('V'<<8)|'U',
+	('V'<<8)|'V',
 	('L'<<8)|'B',
 	('L'<<8)|'I',
 	('L'<<8)|'M',

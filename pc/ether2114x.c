@@ -19,7 +19,7 @@
 
 #include "etherif.h"
 
-#define DEBUG		(1)
+#define DEBUG		(0)
 #define debug		if(DEBUG)print
 
 enum {
@@ -1400,8 +1400,9 @@ dec2114xpci(void)
 		softreset(ctlr);
 
 		if(srom(ctlr)){
+			iofree(ctlr->port);
 			free(ctlr);
-			break;
+			continue;
 		}
 
 		switch(ctlr->id){
