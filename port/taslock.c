@@ -43,15 +43,12 @@ lock(Lock *l)
 {
 	int i;
 	ulong pc;
-Lock *_l = l;
 
 	pc = getcallerpc(&l);
 
 	lockstats.locks++;
 	if(up)
 		up->nlocks++;	/* prevent being scheded */
-	if(l->key == 0x55555555)
-		panic("lock(1): l %p, key 5*, pc %.lux, %p\n", l, pc, _l);
 	if(tas(&l->key) == 0){
 		if(up)
 			up->lastlock = l;
@@ -60,8 +57,6 @@ Lock *_l = l;
 		l->isilock = 0;
 		return 0;
 	}
-	if(l->key == 0x55555555)
-		panic("lock(1a): l %p, key 5*, pc %.lux, %p\n", l, pc, _l);
 	if(up)
 		up->nlocks--;	/* didn't get the lock, allow scheding */
 
@@ -69,24 +64,14 @@ Lock *_l = l;
 	for(;;){
 		lockstats.inglare++;
 		i = 0;
-	if(l->key == 0x55555555)
-		panic("lock(2): l %p, key 5*, pc %.lux, %p\n", l, pc, _l);
 		while(l->key){
 			if(i++ > 100000000){
 				i = 0;
-	if(l->key == 0x55555555)
-		panic("lock(3): l %p, key 5*, pc %.lux, %p\n", l, pc, _l);
 				lockloop(l, pc);
-	if(l->key == 0x55555555)
-		panic("lock(4): l %p, key 5*, pc %.lux, %p\n", l, pc, _l);
 			}
 		}
-	if(l->key == 0x55555555)
-		panic("lock(5): l %p, key 5*, pc %.lux, %p\n", l, pc, _l);
 		if(up)
 			up->nlocks++;
-	if(l->key == 0x55555555)
-		panic("lock(6): l %p, key 5*, pc %.lux, %p\n", l, pc, _l);
 		if(tas(&l->key) == 0){
 			if(up)
 				up->lastlock = l;
@@ -95,8 +80,6 @@ Lock *_l = l;
 			l->isilock = 0;
 			return 1;
 		}
-	if(l->key == 0x55555555)
-		panic("lock(7): l %p, key 5*, pc %.lux, %p\n", l, pc, _l);
 		if(up)
 			up->nlocks--;
 	}
