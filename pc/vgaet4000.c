@@ -258,7 +258,7 @@ Hwgc et4000hwgc = {
 	0,
 };
 
-void
+static void
 et4000page(int page)
 {
 	if(hwgc == &et4000hwgc){

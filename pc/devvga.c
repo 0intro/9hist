@@ -1051,19 +1051,10 @@ screenputs(char *s, int n)
 	unlock(&screenlock);
 }
 
-/*
- *  paging routines for different cards
- */
 static void
 nopage(int page)
 {
 	USED(page);
-}
-
-static void
-cirruspage(int page)
-{
-	vgaxo(Grx, 0x09, page<<4);
 }
 
 /*

@@ -19,8 +19,6 @@ int	mflag;
 int	fflag;
 int	kflag;
 int	aflag;
-int	nflag;
-int	pflag;
 int	afd = -1;
 
 char	*bargv[Nbarg];
@@ -53,9 +51,6 @@ boot(int argc, char *argv[])
 	print("\n");
 #endif DEBUG
 
-	if(argc <= 1)
-		pflag = 1;
-
 	ARGBEGIN{
 	case 'a':
 		aflag = 1;
@@ -66,15 +61,8 @@ boot(int argc, char *argv[])
 	case 'k':
 		kflag = 1;
 		break;
-	case 'n':
-		nflag = 1;
-		break;
 	case 'm':
-		pflag = 1;
 		mflag = 1;
-		break;
-	case 'p':
-		pflag = 1;
 		break;
 	case 'f':
 		fflag = 1;
@@ -129,8 +117,6 @@ boot(int argc, char *argv[])
 	if(mount(fd, "/", MAFTER|MCREATE, "") < 0)
 		fatal("mount");
 	close(fd);
-	if(cpuflag == 0 && nflag == 0)
-		newkernel();
 
 	/*
 	 *  if a local file server exists and it's not
@@ -215,9 +201,8 @@ rootserver(char *arg)
 		strcpy(reply, method->name);
 
 	/* parse replies */
-	for(notfirst = 0;; notfirst = 1){
-		if(pflag || notfirst)
-			outin(prompt, reply, sizeof(reply));
+	for(;;){
+		outin(prompt, reply, sizeof(reply));
 		mp = findmethod(reply);
 		if(mp){
 			for(cp = reply; bargc < Nbarg-1 && *cp;){

@@ -567,6 +567,7 @@ syssegbrk(ulong *arg)
 		switch(s->type&SG_TYPE) {
 		case SG_TEXT:
 		case SG_DATA:
+		case SG_STACK:
 			error(Ebadarg);
 		default:
 			return ibrk(arg[1], i);

@@ -231,7 +231,7 @@ Hwgc s3hwgc = {
 	0,
 };
 
-void
+static void
 s3page(int page)
 {
 	if(hwgc == &s3hwgc){

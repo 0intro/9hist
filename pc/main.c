@@ -219,7 +219,6 @@ bootargs(ulong base)
 
 	ac = 0;
 	av[ac++] = pusharg("/386/9dos");
-	av[ac++] = pusharg("-p");
 	cp[64] = 0;
 	buf[0] = 0;
 	if(strncmp(cp, "fd!", 3) == 0){

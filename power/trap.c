@@ -8,7 +8,7 @@
 #include	"../port/error.h"
 
 void	(*vmevec[256])(int);
-void	noted(Ureg**, ulong);
+void	noted(Ureg*, Ureg**, ulong);
 void	rfnote(Ureg**);
 
 char *excname[] =
@@ -398,23 +398,22 @@ notify(Ureg *ur)
 		qunlock(&up->debug);
 		pexit(n->msg, n->flag!=NDebug);
 	}
-	up->svstatus = ur->status;
 	sp = ur->usp - sizeof(Ureg);
 
-	if(sp&0x3 || !okaddr((ulong)up->notify, BY2WD, 0)
-	|| !okaddr(sp-ERRLEN-3*BY2WD, sizeof(Ureg)+ERRLEN+3*BY2WD, 1)) {
+	if(sp&(BY2WD-1) || !okaddr((ulong)up->notify, BY2WD, 0)
+	|| !okaddr(sp-ERRLEN-4*BY2WD, sizeof(Ureg)+ERRLEN+4*BY2WD, 1)) {
 		pprint("suicide: bad address or sp in notify\n");
 		qunlock(&up->debug);
 		pexit("Suicide", 0);
 	}
 
-	up->ureg = (void*)sp;
 	memmove((Ureg*)sp, ur, sizeof(Ureg));
-	sp -= ERRLEN;
+	*(Ureg**)(sp-BY2WD) = up->ureg;	/* word under Ureg is old up->ureg */
+	up->ureg = (void*)sp;
+	sp -= BY2WD+ERRLEN;
 	memmove((char*)sp, up->note[0].msg, ERRLEN);
 	sp -= 3*BY2WD;
 	*(ulong*)(sp+2*BY2WD) = sp+3*BY2WD;	/* arg 2 is string */
-	up->svr1 = ur->r1;			/* save away r1 */
 	ur->r1 = (ulong)up->ureg;		/* arg 1 is ureg* */
 	*(ulong*)(sp+1*BY2WD) = (ulong)up->ureg;/* arg 1 0(FP) is ureg* (for Alef) */
 	*(ulong*)(sp+0*BY2WD) = 0;		/* arg 0 is pc */
@@ -431,15 +430,31 @@ notify(Ureg *ur)
 }
 
 /*
+ * Check that status is OK to return from note.
+ */
+int
+validstatus(ulong kstatus, ulong ustatus)
+{
+	if((kstatus & INTMASK) != (ustatus & INTMASK))
+		return 0;
+	if((ustatus&(KUO|IEO|KUP|IEP|KUC|IE)) != (KUP|IEP))
+		return 0;
+	if(ustatus & (0xFFFF0000&~(CU1|CM|PE)))	/* no CU3, CU2, CU0, BEV, TS, PZ, SWC, ISC */
+		return 0;
+	return 1;
+}
+
+/*
  * Return user to state before notify()
  */
 void
-noted(Ureg **urp, ulong arg0)
+noted(Ureg *kur, Ureg **urp, ulong arg0)
 {
 	Ureg *nur;
+	ulong oureg, sp;
 
 	qlock(&up->debug);
-	if(!up->notified) {
+	if(arg0!=NRSTR && !up->notified) {
 		qunlock(&up->debug);
 		pprint("call to noted() when not notified\n");
 		pexit("Suicide", 0);
@@ -447,16 +462,25 @@ noted(Ureg **urp, ulong arg0)
 	up->notified = 0;
 
 	nur = up->ureg;
-	if(nur->status != up->svstatus) {
+
+	oureg = (ulong)nur;
+	if((oureg & (BY2WD-1))
+	|| !okaddr((ulong)oureg-BY2WD, BY2WD+sizeof(Ureg), 0)){
+		pprint("bad ureg in noted or call to noted() when not notified\n");
+		qunlock(&up->debug);
+		pexit("Suicide", 0);
+	}
+
+	if(!validstatus(kur->status, nur->status)) {
 		qunlock(&up->debug);
 		pprint("bad noted ureg status %lux\n", nur->status);
 		pexit("Suicide", 0);
 	}
 
 	memmove(*urp, up->ureg, sizeof(Ureg));
-	(*urp)->r1 = up->svr1;
 	switch(arg0) {
 	case NCONT:
+	case NRSTR:
 		if(!okaddr(nur->pc, 1, 0) || !okaddr(nur->usp, BY2WD, 0)){
 			pprint("suicide: trap in noted\n");
 			qunlock(&up->debug);
@@ -464,6 +488,22 @@ noted(Ureg **urp, ulong arg0)
 		}
 		splhi();
 		qunlock(&up->debug);
+		rfnote(urp);
+		break;
+
+	case NSAVE:
+		if(!okaddr(nur->pc, BY2WD, 0) || !okaddr(nur->usp, BY2WD, 0)){
+			pprint("suicide: trap in noted\n");
+			qunlock(&up->debug);
+			pexit("Suicide", 0);
+		}
+		qunlock(&up->debug);
+		sp = oureg-4*BY2WD-ERRLEN;
+		splhi();
+		(*urp)->sp = sp;
+		((ulong*)sp)[1] = oureg;	/* arg 1 0(FP) is ureg* */
+		((ulong*)sp)[0] = 0;			/* arg 0 is pc */
+		(*urp)->r1 = oureg;		/* arg 1 is ureg* */
 		rfnote(urp);
 		break;
 
@@ -542,7 +582,7 @@ syscall(Ureg *aur)
 	up->psstate = 0;
 	up->insyscall = 0;
 	if(up->scallnr == NOTED)			/* ugly hack */
-		noted(&aur, *(ulong*)(sp+BY2WD));	/* doesn't return */
+		noted(ur, &aur, *(ulong*)(sp+BY2WD));	/* doesn't return */
 
 	splhi();
 	if(up->scallnr!=RFORK && (up->procctl || up->nnote)){

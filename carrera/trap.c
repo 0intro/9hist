@@ -596,8 +596,7 @@ noted(Ureg *kur, Ureg **urp, ulong arg0)
 	nur = up->ureg;
 
 	oureg = (ulong)nur;
-	if(oureg>=USTKTOP || oureg<USTKTOP-USTKSIZE
-	|| (oureg & (BY2V-1))
+	if((oureg & (BY2V-1))
 	|| !okaddr((ulong)oureg-BY2WD, BY2WD+sizeof(Ureg), 0)){
 		pprint("bad ureg in noted or call to noted() when not notified\n");
 		qunlock(&up->debug);
