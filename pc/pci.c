@@ -410,10 +410,12 @@ pcimemmap(int tbdf, int rno, ulong *paddr)
 	v = 0xFFFFFFFF;
 	pcicfgrw32(tbdf, rno, v, 0);
 	v = pcicfgrw32(tbdf, rno, 0, 1);
-	/* clear out bottom bits and negate to find size */
+	/*
+	 * Clear out bottom bits and negate to find size.
+	 * If none can be found could try for UPA memory here.
+	 */
 	size = -(v & ~0x0F);
 	v = umbmalloc(0, size, size);
-print("rno %uX, size %uX, v %uX\n", rno, size, v);
 	p = PADDR(v);
 	if(paddr)
 		*paddr = p;
