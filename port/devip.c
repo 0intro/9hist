@@ -297,7 +297,7 @@ ipread(Chan *c, void *a, long n, ulong offset)
 		return stringread(c, a, n, buf, offset);
 	}
 
-	return Eperm;
+	error(Eperm);
 }
 
 long
@@ -314,25 +314,27 @@ ipwrite(Chan *c, char *a, long n, ulong offset)
 
 	if (type == Sctlqid) {
 		cp = &ipconv[c->dev][STREAMID(c->qid.path)];
-		if(cp->stproto == &tcpinfo && cp->tcpctl.state != CLOSED)
-			return Edevbusy;
 
 		strncpy(buf, a, sizeof buf);
 		m = getfields(buf, field, 5, ' ');
 
 		if(strcmp(field[0], "connect") == 0) {
+			if(cp->stproto == &tcpinfo &&
+			   cp->tcpctl.state != CLOSED)
+				error(Edevbusy);
+
 			if(m != 2)
-				return Ebadarg;
+				error(Ebadarg);
 
 			switch(getfields(field[1], field, 5, '!')) {
 			default:
-				return Ebadarg;
+				error(Ebadarg);
 			case 2:
 				base = PORTALLOC;
 				break;
 			case 3:
 				if(strcmp(field[2], "r") != 0)
-					return Eperm;
+					error(Eperm);
 				base = PRIVPORTALLOC;
 				break;
 			}
@@ -348,14 +350,18 @@ ipwrite(Chan *c, char *a, long n, ulong offset)
 		}
 		else if(strcmp(field[0], "announce") == 0 ||
 			strcmp(field[0], "reserve") == 0) {
+				if(cp->stproto == &tcpinfo &&
+				   cp->tcpctl.state != CLOSED)
+					error(Edevbusy);
+
 			if(m != 2)
-				return Ebadarg;
+				error(Ebadarg);
 			port = atoi(field[1]);
 
 			qlock(&ipalloc);
 			if(portused(ipconv[c->dev], port)) {
 				qunlock(&ipalloc);	
-				return Einuse;
+				error(Einuse);
 			}
 			cp->psrc = port;
 			cp->ptype = *field[0];
@@ -363,10 +369,10 @@ ipwrite(Chan *c, char *a, long n, ulong offset)
 		}
 		else if(strcmp(field[0], "backlog") == 0) {
 			if(m != 2)
-				return Ebadarg;
+				error(Ebadarg);
 			backlog = atoi(field[1]);
 			if(backlog == 0)
-				return Ebadarg;
+				error(Ebadarg);
 			if(backlog > 5)
 				backlog = 5;
 			cp->backlog = backlog;
@@ -377,17 +383,14 @@ ipwrite(Chan *c, char *a, long n, ulong offset)
 		return n;
 	}
 
-	return Eperm;
+	error(Eperm);
 }
 
 
 void
 udpstiput(Queue *q, Block *bp)
 {
-	if(bp->type == M_CTL)
-		PUTNEXT(q, bp);
-	else
-		panic("udpstiput: Why am I here");
+	PUTNEXT(q, bp);
 }
 
 /*
@@ -535,10 +538,7 @@ udpstopen(Queue *q, Stream *s)
 void
 tcpstiput(Queue *q, Block *bp)
 {
-	if(bp->type == M_CTL)
-		PUTNEXT(q, bp);
-	else
-		panic("tcpstiput: Why am I here");
+	PUTNEXT(q, bp);
 }
 
 void

@@ -251,7 +251,7 @@ freeb(Block *bp)
 
 	for(; bp; bp = nbp){
 		bcp = &bclass[bp->flags & S_CLASS];
-		bp->flags = bp->flags|S_CLASS;		/* Check for doulbe free */
+		bp->flags = bp->flags|S_CLASS;		/* Check for double free */
 		lock(bcp);
 		bp->rptr = bp->wptr = 0;
 		if(bcp->first)

@@ -122,6 +122,7 @@ void	qlock(QLock*);
 void	qunlock(QLock*);
 int	readnum(ulong, char*, ulong, ulong, int);
 void	ready(Proc*);
+void	resched(char*);
 int	return0(void*);
 Proc*	runproc(void);
 void	savefpregs(FPsave*);
