@@ -298,7 +298,7 @@ scsiexec(Scsi *p, int read)
 	if(p->target == CtlrID)
 		return 0x6002;
 
-	p->status = scsiio(1, p, rw);
+	p->status = scsiio(0, p, rw);
 
 	return p->status;
 }
