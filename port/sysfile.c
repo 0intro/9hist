@@ -106,9 +106,13 @@ sysdup(ulong *arg)
 	 */
 	c = fdtochan(arg[0], -1);
 	fd = arg[1];
-	if(fd != -1)
+	if(fd != -1){
+		if(fd<0 || NFD<=fd)
+			error(Ebadfd);
+		if(fd > u->maxfd)
+			u->maxfd = fd;
 		oc = u->fd[fd];
-	else{
+	}else{
 		oc = 0;
 		fd = newfd();
 	}

@@ -255,6 +255,7 @@ panic(char *fmt, ...)
 	n = doprint(buf+7, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
 	buf[n] = '\n';
 	putstrn(buf, n+1);
+	dumpstack();
 	exit();
 }
 int
