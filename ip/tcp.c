@@ -232,7 +232,7 @@ tcpsetstate(Conv *s, byte newstate)
 		break;
 	}
 
-	if(oldstate == Syn_sent)
+	if(oldstate == Syn_sent && newstate != Closed)
 		Fsconnected(&fs, s, nil);
 }
 
