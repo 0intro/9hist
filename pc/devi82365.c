@@ -538,12 +538,12 @@ i82386probe(int x, int d, int dev)
 		outb(x, Rchipinfo + (dev<<7));
 		outb(d, 0);
 		c = inb(d);
-		if((c & 0xdf) == 0xdc){
-			c = inb(d);
-			if((c & 0xdf) != 0x0c)
-				break;
-		}
-		if(c & 0x40){
+		if((c & 0xc0) != 0xc0)
+			break;
+		c = inb(d);
+		if((c & 0xc0) != 0x00)
+			break;
+		if(c & 0x20){
 			cp->type = Tpd6720;
 		} else {
 			cp->type = Tpd6710;
@@ -907,7 +907,7 @@ pcmio(int slotno, ISAConf *isa)
 {
 	uchar we, x, *p;
 	Slot *pp;
-	Conftab *ct;
+	Conftab *ct, *et, *t;
 	PCMmap *m;
 	int irq;
 
@@ -922,19 +922,38 @@ pcmio(int slotno, ISAConf *isa)
 	if(!pp->occupied)
 		return -1;
 
-	/* find a configuration with the right port */
-	for(ct = pp->ctab; ct < &pp->ctab[pp->nctab]; ct++){
-		if(ct->nioregs && ct->port == isa->port && ((1<<irq) & ct->irqs))
-			break;
+	et = &pp->ctab[pp->nctab];
+
+	/* assume default is right */
+	if(pp->def)
+		ct = pp->def;
+	else
+		ct = pp->ctab;
+
+	/* try for best match */
+	if(ct->nioregs == 0 || ct->port != isa->port || ((1<<irq) & ct->irqs) == 0){
+		for(t = pp->ctab; t < et; t++)
+			if(t->nioregs && t->port == isa->port && ((1<<irq) & t->irqs)){
+				ct = t;
+				break;
+			}
+	}
+	if(ct->nioregs == 0 || ((1<<irq) & ct->irqs) == 0){
+		for(t = pp->ctab; t < et; t++)
+			if(t->nioregs && ((1<<irq) & t->irqs)){
+				ct = t;
+				break;
+			}
+	}
+	if(ct->nioregs == 0){
+		for(t = pp->ctab; t < et; t++)
+			if(t->nioregs){
+				ct = t;
+				break;
+			}
 	}
 
-	/* if non found, settle for one with the some ioregs */
-	if(ct == &pp->ctab[pp->nctab])
-		for(ct = pp->ctab; ct < &pp->ctab[pp->nctab]; ct++)
-			if(ct->nioregs && ((1<<irq) & ct->irqs))
-				break;
-
-	if(ct == &pp->ctab[pp->nctab])
+	if(ct == et || ct->nioregs == 0)
 		return -1;
 
 	/* route interrupts */

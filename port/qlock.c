@@ -92,6 +92,6 @@ wlock(RWlock *l)
 void
 wunlock(RWlock *l)
 {
-	qunlock(&l->x);
 	qunlock(&l->k);
+	qunlock(&l->x);
 }
