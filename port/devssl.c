@@ -525,7 +525,7 @@ sslbread(Chan *c, long n, ulong)
 
 	nconsumed = 0;
 	if(waserror()){
-		if(strcmp(up->error, Eintr) != 0 && nconsumed)
+		if(strcmp(up->error, Eintr) != 0)
 			regurgitate(s.s, consumed, nconsumed);
 		qunlock(&s.s->in.q);
 		nexterror();
@@ -554,7 +554,7 @@ sslbread(Chan *c, long n, ulong)
 		USED(nconsumed);
 		nconsumed = 0;
 
-		/*  if an Eintr happens after this, we screwed.  Make
+		/*  if an Eintr happens after this, we're screwed.  Make
 		 *  sure nothing we call can sleep.  Luckily, allocb
 		 *  won't sleep, it'll just error out.
 		 */
