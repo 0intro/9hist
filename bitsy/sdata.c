@@ -7,7 +7,7 @@
 #include "ureg.h"
 #include "../port/error.h"
 
-#include "../port/sd.h"
+#include "sd.h"
 
 
 extern SDifc sdataifc;
@@ -353,17 +353,16 @@ ataready(int cmdport, int ctlport, int dev, int reset, int ready, int micro)
 		 * can be used as a test for !Bsy.
 		 */
 		as = inb(ctlport+As);
-		if(as & reset)
-			;
-		else if(dev){
-			outb(cmdport+Dh, dev);
-			dev = 0;
+		if((as & reset) == 0){
+			if(dev){
+				outb(cmdport+Dh, dev);
+				dev = 0;
+			}
+			else if(ready == 0 || (as & ready)){
+				atadebug(0, 0, "ataready: %d 0x%2.2uX\n", micro, as);
+				return as;
+			}
 		}
-		else if(ready == 0 || (as & ready)){
-			atadebug(0, 0, "ataready: %d 0x%2.2uX\n", micro, as);
-			return as;
-		}
-
 		if(micro-- <= 0){
 			atadebug(0, 0, "ataready: %d 0x%2.2uX\n", micro, as);
 			break;
@@ -1581,18 +1580,15 @@ static SDev*
 ataid(SDev* sdev)
 {
 	int i;
-	Ctlr *ctlr;
 
 	if(sdev == nil)
 		return nil;
-	ctlr = sdev->ctlr;
 	i = 0;
 	while(sdev){
 		if(sdev->ifc == &sdataifc){
-			ctlr = sdev->ctlr;
 			sdev->idno = 'C'+i;
 			i++;
-			snprint(sdev->name, NAMELEN, "sd%c", sdev->idno);
+			snprint(sdev->name, KNAMELEN, "sd%c", sdev->idno);
 		}
 		sdev = sdev->next;
 	}
@@ -1606,14 +1602,14 @@ static int
 ataenable(SDev* sdev)
 {
 	Ctlr *ctlr;
-	char name[NAMELEN];
+	char name[KNAMELEN];
 
 	ctlr = sdev->ctlr;
 
 	if(ctlr->bmiba){
 		ctlr->prdt = xspanalloc(Nprd*sizeof(Prd), 4, 4*1024);
 	}
-	snprint(name, NAMELEN, "%s (%s)", sdev->name, sdev->ifc->name);
+	snprint(name, KNAMELEN, "%s (%s)", sdev->name, sdev->ifc->name);
 //	intrenable(ctlr->irq, atainterrupt, ctlr, ctlr->tbdf, name);
 	outb(ctlr->ctlport+Dc, 0);
 	intrenable(ataitype, atairq, atainterrupt, ctlr, name);
@@ -2040,9 +2036,8 @@ struct Try {
 };
 
 static SDev*
-ataconfig(int on, char *, void *pf)
+ataconfig(int on, char *, DevConf *cf)
 {
-	DevConf* cf = pf;
 	int	cmdport;
 	int	ctlport;
 	int	irq;
@@ -2054,10 +2049,10 @@ ataconfig(int on, char *, void *pf)
 	rc = nil;
 	for (try = &tries[0]; try->p != 0 || try->c != 0; try++){
 		ataitype = cf->itype;
-		atairq  = cf->intnum;
+		atairq  = cf->irq;
 		cmdport = cf->port + try->p;
 		ctlport = cmdport + try->c;
-		irq = cf->intnum;
+		irq = cf->irq;
 		rc = ataprobe(cmdport, ctlport, irq);
 		if (rc)
 			break;
