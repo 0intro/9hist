@@ -343,34 +343,6 @@ TEXT	intr16(SB),$0
 	PUSHL	$0
 	PUSHL	$16
 	JMP	intrcommon
-TEXT	intr17(SB),$0
-	PUSHL	$0
-	PUSHL	$17
-	JMP	intrcommon
-TEXT	intr18(SB),$0
-	PUSHL	$0
-	PUSHL	$18
-	JMP	intrcommon
-TEXT	intr19(SB),$0
-	PUSHL	$0
-	PUSHL	$19
-	JMP	intrcommon
-TEXT	intr20(SB),$0
-	PUSHL	$0
-	PUSHL	$20
-	JMP	intrcommon
-TEXT	intr21(SB),$0
-	PUSHL	$0
-	PUSHL	$21
-	JMP	intrcommon
-TEXT	intr22(SB),$0
-	PUSHL	$0
-	PUSHL	$22
-	JMP	intrcommon
-TEXT	intr23(SB),$0
-	PUSHL	$0
-	PUSHL	$23
-	JMP	intrcommon
 TEXT	intr24(SB),$0
 	PUSHL	$0
 	PUSHL	$24
@@ -402,6 +374,38 @@ TEXT	intr30(SB),$0
 TEXT	intr31(SB),$0
 	PUSHL	$0
 	PUSHL	$31
+	JMP	intrcommon
+TEXT	intr32(SB),$0
+	PUSHL	$0
+	PUSHL	$16
+	JMP	intrcommon
+TEXT	intr33(SB),$0
+	PUSHL	$0
+	PUSHL	$33
+	JMP	intrcommon
+TEXT	intr34(SB),$0
+	PUSHL	$0
+	PUSHL	$34
+	JMP	intrcommon
+TEXT	intr35(SB),$0
+	PUSHL	$0
+	PUSHL	$35
+	JMP	intrcommon
+TEXT	intr36(SB),$0
+	PUSHL	$0
+	PUSHL	$36
+	JMP	intrcommon
+TEXT	intr37(SB),$0
+	PUSHL	$0
+	PUSHL	$37
+	JMP	intrcommon
+TEXT	intr38(SB),$0
+	PUSHL	$0
+	PUSHL	$38
+	JMP	intrcommon
+TEXT	intr39(SB),$0
+	PUSHL	$0
+	PUSHL	$39
 	JMP	intrcommon
 TEXT	intr64(SB),$0
 	PUSHL	$0

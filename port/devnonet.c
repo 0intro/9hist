@@ -948,7 +948,8 @@ norack(Noconv *cp, int mid)
 	cp->rexmit = 0;
 	cp->lastacked = mid;
 	mp->acked = 1;
-	freeb(mp->first);
+	if(mp->first)
+		freeb(mp->first);
 	mp->first = 0;
 
 	/*

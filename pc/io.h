@@ -4,7 +4,7 @@
 enum
 {
 	Faultvec=	14,		/* page fault */
-	Int0vec=	16,		/* first 8259 */
+	Int0vec=	24,		/* first 8259 */
 	 Clockvec=	Int0vec+0,	/*  clock interrupts */
 	 Kbdvec=	Int0vec+1,	/*  keyboard interrupts */
 	 Uart1vec=	Int0vec+3,	/*  modem line */

@@ -277,16 +277,19 @@ mousecmd(int cmd)
 	unsigned int c;
 	int tries;
 
-	for(tries=0; tries < 10; tries++){
-		if(outready() < 0)
-			return -1;
-		outb(Cmd, 0xD4);
-		if(outready() < 0)
-			return -1;
-		outb(Data, cmd);
-		if(inready() < 0)
-			return -1;
-		c = inb(Data);
+	c = 0;
+	do{
+		for(tries=0; tries < 10; tries++){
+			if(outready() < 0)
+				return -1;
+			outb(Cmd, 0xD4);
+			if(outready() < 0)
+				return -1;
+			outb(Data, cmd);
+			if(inready() < 0)
+				return -1;
+			c = inb(Data);
+		}
 	} while(c == 0xFE);
 	if(c != 0xFA)
 		return -1;

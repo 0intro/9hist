@@ -14,10 +14,11 @@ void	intr0(void), intr1(void), intr2(void), intr3(void);
 void	intr4(void), intr5(void), intr6(void), intr7(void);
 void	intr8(void), intr9(void), intr10(void), intr11(void);
 void	intr12(void), intr13(void), intr14(void), intr15(void);
-void	intr16(void), intr17(void), intr18(void), intr19(void);
-void	intr20(void), intr21(void), intr22(void), intr23(void);
+void	intr16(void);
 void	intr24(void), intr25(void), intr26(void), intr27(void);
 void	intr28(void), intr29(void), intr30(void), intr31(void);
+void	intr32(void), intr33(void), intr34(void), intr35(void);
+void	intr36(void), intr37(void), intr38(void), intr39(void);
 void	intr64(void);
 void	intrbad(void);
 
@@ -78,11 +79,11 @@ trapinit(void)
 	/*
 	 *  set all interrupts to panics
 	 */
-	for(i = 32; i < 256; i++)
+	for(i = 0; i < 256; i++)
 		sethvec(i, intrbad, SEGTG, 0);
 
 	/*
-	 *  set the standard traps
+	 *  80386 processor (and coprocessor) traps
 	 */
 	sethvec(0, intr0, SEGTG, 0);
 	sethvec(1, intr1, SEGTG, 0);
@@ -100,18 +101,11 @@ trapinit(void)
 	sethvec(13, intr13, SEGTG, 0);
 	sethvec(14, intr14, SEGTG, 0);
 	sethvec(15, intr15, SEGTG, 0);
+	sethvec(16, intr16, SEGTG, 0);
 
 	/*
-	 *  set the standard devices
+	 *  device interrupts
 	 */
-	sethvec(16, intr16, SEGIG, 0);
-	sethvec(17, intr17, SEGIG, 0);
-	sethvec(18, intr18, SEGIG, 0);
-	sethvec(19, intr19, SEGIG, 0);
-	sethvec(20, intr20, SEGIG, 0);
-	sethvec(21, intr21, SEGIG, 0);
-	sethvec(22, intr22, SEGIG, 0);
-	sethvec(23, intr23, SEGIG, 0);
 	sethvec(24, intr24, SEGIG, 0);
 	sethvec(25, intr25, SEGIG, 0);
 	sethvec(26, intr26, SEGIG, 0);
@@ -120,6 +114,14 @@ trapinit(void)
 	sethvec(29, intr29, SEGIG, 0);
 	sethvec(30, intr30, SEGIG, 0);
 	sethvec(31, intr31, SEGIG, 0);
+	sethvec(32, intr32, SEGIG, 0);
+	sethvec(33, intr33, SEGIG, 0);
+	sethvec(34, intr34, SEGIG, 0);
+	sethvec(35, intr35, SEGIG, 0);
+	sethvec(36, intr36, SEGIG, 0);
+	sethvec(37, intr37, SEGIG, 0);
+	sethvec(38, intr38, SEGIG, 0);
+	sethvec(39, intr39, SEGIG, 0);
 
 	/*
 	 *  system calls

@@ -1095,6 +1095,7 @@ streamread(Chan *c, void *vbuf, long n)
 	left = n;
 	qlock(&s->rdlock);
 	tofree = 0;
+	q = 0;
 	if(waserror()){
 		/*
 		 *  put any partially read message back into the

@@ -34,7 +34,7 @@ fdtochan(int fd, int mode)
 {
 	Chan *c;
 
-	USED(c);
+	c = 0;
 	if(fd<0 || NFD<=fd || (c = u->p->fgrp->fd[fd])==0)
 		error(Ebadfd);
 	if(mode<0 || c->mode==ORDWR)
@@ -183,9 +183,7 @@ fdclose(int fd, int flag)
 long
 sysclose(ulong *arg)
 {
-	Chan *c;
-
-	c = fdtochan(arg[0], -1);
+	fdtochan(arg[0], -1);
 	fdclose(arg[0], 0);
 
 	return 0;

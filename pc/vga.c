@@ -148,12 +148,9 @@ munch(void)
 void
 screeninit(void)
 {
-	uchar *display;
 	int i, j, k;
 	int c;
 	ulong *l;
-
-	display = (uchar *)SCREENMEM;
 
 	arout(Acpe, 0x0f);	/* enable all planes */
 	arout(Amode, 0x01);	/* graphics mode - 4 bit pixels */
@@ -268,7 +265,7 @@ hwcursmove(int x, int y)
 }
 
 void
-mouseclock(void)	/* called splhi */
+mouseclock(void)
 {
 	mouseupdate(1);
 }

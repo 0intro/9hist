@@ -259,7 +259,7 @@ uartintr(Uart *up)
 			break;
 	
 		case 0:	/* modem status */
-			l = uartrdreg(up, Mstat);
+			uartrdreg(up, Mstat);
 			break;
 	
 		default:
@@ -528,6 +528,9 @@ uartkproc(void *a)
 	Block *bp;
 	int n;
 	ulong frame, overrun;
+
+	frame = 0;
+	overrun = 0;
 
 	if(waserror())
 		print("uartkproc got an error\n");
