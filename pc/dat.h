@@ -182,6 +182,9 @@ struct PCArch
 /*
  *  a parsed plan9.ini line
  */
+#define ISAOPTLEN	16
+#define NISAOPT		8
+
 struct ISAConf {
 	char	type[NAMELEN];
 	ulong	port;
@@ -191,6 +194,9 @@ struct ISAConf {
 	ulong	size;
 	ulong	freq;
 	uchar	ea[6];
+
+	int	nopt;
+	char	opt[NISAOPT][ISAOPTLEN];
 };
 
 /*

@@ -728,13 +728,14 @@ parseether(uchar *to, char *from)
 int
 isaconfig(char *class, int ctlrno, ISAConf *isa)
 {
-	char cc[NAMELEN], *p, *q;
+	char cc[NAMELEN], *p, *q, *r;
 	int n;
 
 	sprint(cc, "%s%d", class, ctlrno);
 	for(n = 0; n < nconf; n++){
 		if(strncmp(confname[n], cc, NAMELEN))
 			continue;
+		isa->nopt = 0;
 		p = confval[n];
 		while(*p){
 			while(*p == ' ' || *p == '\t')
@@ -762,8 +763,20 @@ isaconfig(char *class, int ctlrno, ISAConf *isa)
 				isa->size = strtoul(p+5, &p, 0);
 			else if(strncmp(p, "freq=", 5) == 0)
 				isa->freq = strtoul(p+5, &p, 0);
-			else if(strncmp(p, "ea=", 3) == 0)
-				parseether(isa->ea, p+3);
+			else if(strncmp(p, "ea=", 3) == 0){
+				if(parseether(isa->ea, p+3) == -1)
+					memset(isa->ea, 0, 6);
+			}
+			else if(isa->nopt < NISAOPT){
+				r = isa->opt[isa->nopt];
+				while(*p && *p != ' ' && *p != '\t'){
+					*r++ = *p++;
+					if(r-isa->opt[isa->nopt] >= ISAOPTLEN-1)
+						break;
+				}
+				*r = '\0';
+				isa->nopt++;
+			}
 			while(*p && *p != ' ' && *p != '\t')
 				p++;
 		}
