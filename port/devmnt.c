@@ -1024,7 +1024,7 @@ mntrepl(char *buf)
 	int fd;
 	Mnt *m;
 	char *p;
-	Chan *c1;
+	Chan *c1, *c2;
 	Mntrpc *r;
 
 	/* reply from boot is 'fd #M23' */
@@ -1046,7 +1046,7 @@ mntrepl(char *buf)
 	srvrecover(m->c, c1);
 
 	lock(m);
-	cclose(m->c);
+	c2 = m->c;
 	m->c = c1;
 	m->recprog = 0;
 
@@ -1055,6 +1055,7 @@ mntrepl(char *buf)
 		wakeup(&r->r);
 
 	unlock(m);
+	cclose(c2);
 }
 
 Dev mntdevtab = {

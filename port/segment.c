@@ -424,16 +424,21 @@ ibrk(ulong addr, int seg)
 	return 0;
 }
 
+/*
+ *  called with s->lk locked
+ */
 void
 mfreeseg(Segment *s, ulong start, int pages)
 {
 	int i, j;
 	ulong soff;
 	Page *pg;
+	Page *list;
 
 	soff = start-s->base;
 	j = (soff&(PTEMAPMEM-1))/BY2PG;
 
+	list = nil;
 	for(i = soff/PTEMAPMEM; i < SEGMAPSIZE; i++) {
 		if(pages <= 0)
 			break;
@@ -444,15 +449,23 @@ mfreeseg(Segment *s, ulong start, int pages)
 		}
 		while(j < PTEPERTAB) {
 			pg = s->map[i]->pages[j];
-			if(pg) {
-				putpage(pg);
+			if(pg)
 				s->map[i]->pages[j] = 0;
-			}
+			pg->next = list;
+			list = pg;
 			if(--pages == 0)
-				return;
+				goto out;
 			j++;
 		}
 		j = 0;
+	}
+out:
+	/* wait for others to get fix their tlb's and then free the pages */
+	if((s->type&SG_TYPE) == SG_SHARED){
+	}
+	for(pg = list; pg != nil; pg = list){
+		list = list->next;
+		putpage(pg);
 	}
 }
 

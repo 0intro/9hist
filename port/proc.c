@@ -384,7 +384,7 @@ procinit0(void)		/* bad planning - clashes with devproc.c */
 
 /*
  *  Sleep, postnote, and wakeup are complicated by the
- *  fact that they at least one of them must indirect
+ *  fact that at least one of them must indirect
  *  through an unlocked structure to find the synchronizing
  *  lock structure.  This is because sleep()
  *  and wakeup() share direct knowledge only of r while

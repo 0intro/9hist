@@ -266,9 +266,9 @@ tcpsetstate(Conv *s, uchar newstate)
 		qclose(s->rq);
 		qclose(s->wq);
 		qclose(s->eq);
-		s->lport = 0;		/* This connection is toast */
-		s->rport = 0;
-		ipmove(s->raddr, IPnoaddr);
+//		s->lport = 0;		/* This connection is toast */
+//		s->rport = 0;
+//		ipmove(s->raddr, IPnoaddr);
 
 	case Close_wait:		/* Remote closes */
 		qhangup(s->rq, nil);
@@ -1138,8 +1138,10 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 	/* Look for a connection. failing that look for a listener. */
 	for(p = tcp->conv; *p; p++) {
 		s = *p;
+		tcb = (Tcpctl*)s->ptcl;
 		if(s->rport == seg.source)
 		if(s->lport == seg.dest)
+		if(tcb->state != Closed)
 		if(ipcmp(s->raddr, source) == 0)
 			break;
 	}
@@ -1931,11 +1933,12 @@ tcpadvise(Proto *tcp, Block *bp, char *msg)
 	/* Look for a connection */
 	for(p = tcp->conv; *p; p++) {
 		s = *p;
+		tcb = (Tcpctl*)s->ptcl;
 		if(s->rport == pdest)
 		if(s->lport == psource)
+		if(tcb->state != Closed)
 		if(ipcmp(s->raddr, dest) == 0)
 		if(ipcmp(s->laddr, source) == 0){
-			tcb = (Tcpctl*)s->ptcl;
 			qlock(tcb);
 			switch(tcb->state){
 			case Syn_sent:
