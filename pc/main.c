@@ -215,7 +215,7 @@ bootargs(ulong base)
 	sp = (uchar*)base + BY2PG - MAXSYSARG*BY2WD;
 
 	ac = 0;
-	av[ac++] = pusharg("/386/9safari");
+	av[ac++] = pusharg("/386/9dos");
 	av[ac++] = pusharg("-p");
 	cp[64] = 0;
 	buf[0] = 0;

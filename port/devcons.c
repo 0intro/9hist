@@ -142,6 +142,7 @@ panic(char *fmt, ...)
 	putstrn(buf, n+1);
 	prflush();
 	dumpstack();
+
 	exit(1);
 }
 int

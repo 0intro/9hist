@@ -672,5 +672,5 @@ void
 setkernur(Ureg *xp, Proc *p)
 {
 	xp->pc = p->sched.pc;
-	xp->sp = p->sched.sp;
+	xp->sp = p->sched.sp+4;
 }

@@ -168,10 +168,16 @@ rootserver(char *arg)
 		n += sprint(prompt+n, ", %s", mp->name);
 	sprint(prompt+n, ")");
 
-	if(arg)
-		strcpy(reply, arg);
-	else
-		strcpy(reply, method->name);
+	strcpy(reply, method->name);
+	if(arg){
+		j = strlen(arg);
+		for(mp = method; mp->name; mp++)
+			if(strncmp(arg, mp->name, j) == 0)
+				break;
+		if(mp->name)
+			strcpy(reply, arg);
+	}
+
 	for(notfirst = 0;; notfirst = 1){
 		if(pflag || notfirst)
 			outin(prompt, reply, sizeof(reply));

@@ -721,6 +721,7 @@ qclose(Queue *q)
 	q->state |= Qclosed;
 	bfirst = q->bfirst;
 	q->bfirst = 0;
+	q->len = 0;
 	unlock(q);
 	splx(x);
 

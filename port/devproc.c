@@ -296,7 +296,8 @@ procread(Chan *c, void *va, long n, ulong offset)
 
 	switch(QID(c->qid)){
 	case Qmem:
-		if(offset < KZERO)
+		if(offset < KZERO
+		|| (offset >= USTKTOP-USTKSIZE && offset < USTKTOP))
 			return procctlmemio(p, offset, n, va, 1);
 
 		/* Protect crypt key memory */

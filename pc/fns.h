@@ -84,6 +84,7 @@ void	toscreen(void*);
 void	touser(void*);
 void	trapinit(void);
 int	tas(void*);
+void	uartclock(void);
 void	vgainit(void);
 #define	waserror()	(up->nerrlab++, setlabel(&up->errlab[up->nerrlab-1]))
 #define	kmapperm(x)	kmap(x)
