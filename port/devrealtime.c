@@ -13,6 +13,7 @@
 
 /* debugging */
 extern int			edfprint;
+extern Edfinterface	realedf, *edf;
 
 static Schedevent *events;
 static int nevents, revent, wevent;
@@ -219,6 +220,7 @@ devrtinit(void)
 	events = (Schedevent *)malloc(sizeof(Schedevent) * Nevents);
 	assert(events);
 	nevents = revent = wevent = 0;
+	edf = &realedf;
 }
 
 static Chan *
@@ -286,7 +288,7 @@ devrtopen(Chan *c, int mode)
 	case Qclone:
 		if (mode == OREAD) 
 			error(Eperm);
-		edfinit();
+		edf->edfinit();
 		/* open a new task */
 		for (t = tasks; t< tasks + Maxtasks; t++){
 			qlock(t);
@@ -638,7 +640,7 @@ removetask(Task *t)
 	Resource *r;
 
 	qlock(t);
-	edfexpel(t);
+	edf->edfexpel(t);
 	for (pp = t->procs; pp < t->procs + nelem(t->procs); pp++)
 		if (p = *pp)
 			p->task = nil;
@@ -724,7 +726,7 @@ devrtwrite(Chan *c, void *va, long n, vlong)
 				if (e=parsetime(&time, v))
 					error(e);
 				ticks = time2ticks(time);
-				edfexpel(t);
+				edf->edfexpel(t);
 				switch(add){
 				case -1:
 					if (ticks > t->T)
@@ -745,7 +747,7 @@ devrtwrite(Chan *c, void *va, long n, vlong)
 				if (e=parsetime(&time, v))
 					error(e);
 				ticks = time2ticks(time);
-				edfexpel(t);
+				edf->edfexpel(t);
 				switch(add){
 				case -1:
 					if (ticks > t->D)
@@ -764,7 +766,7 @@ devrtwrite(Chan *c, void *va, long n, vlong)
 				if (e=parsetime(&time, v))
 					error(e);
 				ticks = time2ticks(time);
-				edfexpel(t);
+				edf->edfexpel(t);
 				switch(add){
 				case -1:
 					if (ticks > t->C)
@@ -784,7 +786,7 @@ devrtwrite(Chan *c, void *va, long n, vlong)
 			}else if (strcmp(a, "resources") == 0){
 				if (v == nil)
 					error("resources: value missing");
-				edfexpel(t);
+				edf->edfexpel(t);
 				if (add == 0){
 					for (rp = t->res; rp < t->res + nelem(t->res); rp++)
 						if (*rp){
@@ -809,7 +811,7 @@ devrtwrite(Chan *c, void *va, long n, vlong)
 				if (v == nil)
 					error("procs: value missing");
 				if (add <= 0){
-					edfexpel(t);
+					edf->edfexpel(t);
 				}
 				if (add == 0){
 					for (pp = t->procs; pp < t->procs + nelem(t->procs); pp++)
@@ -835,10 +837,10 @@ devrtwrite(Chan *c, void *va, long n, vlong)
 						error(e);
 				}
 			}else if (strcmp(a, "admit") == 0){
-				if (e = edfadmit(t))
+				if (e = edf->edfadmit(t))
 					error(e);
 			}else if (strcmp(a, "expel") == 0){
-				edfexpel(t);
+				edf->edfexpel(t);
 			}else if (strcmp(a, "remove") == 0){
 				removetask(t);
 				return n;	/* Ignore any subsequent commands */
@@ -857,8 +859,8 @@ devrtwrite(Chan *c, void *va, long n, vlong)
 				else
 					t->flags |= Useblocking;
 			}else if (strcmp(a, "yield") == 0){
-				if (isedf(up) && up->task == t){
-					edfdeadline(up);	/* schedule next release */
+				if (edf->isedf(up) && up->task == t){
+					edf->edfdeadline(up);	/* schedule next release */
 					sched();
 				}else
 					error("yield outside task");

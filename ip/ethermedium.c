@@ -115,7 +115,7 @@ struct Etherarp
 static void
 etherbind(Ipifc *ifc, int argc, char **argv)
 {
-	Chan *mchan4, *cchan4, *achan, *mchan6, *cchan6;
+	Chan *mchan4, *cchan4, *achan, *mchan6, *cchan6, *schan;
 	char addr[Maxpath];	//char addr[2*KNAMELEN];
 	char dir[Maxpath];	//char dir[2*KNAMELEN];
 	char *buf;
@@ -158,9 +158,14 @@ etherbind(Ipifc *ifc, int argc, char **argv)
 	 */
 	snprint(addr, sizeof(addr), "%s/stats", dir);
 	buf = smalloc(512);
-	achan = namec(addr, Aopen, OREAD, 0);
-	n = devtab[achan->type]->read(achan, buf, 511, 0);
-	cclose(achan);
+	schan = namec(addr, Aopen, OREAD, 0);
+	if(waserror()){
+		cclose(schan);
+		nexterror();
+	}
+	n = devtab[schan->type]->read(schan, buf, 511, 0);
+	cclose(schan);
+	poperror();
 	buf[n] = 0;
 
 	ptr = strstr(buf, "addr: ");

@@ -679,23 +679,19 @@ tcpmtu(Conv *s)
 	uchar version;
 
 	version = s->ipversion;
-	mtu = 0;
 	ifc = findipifc(s->p->f, s->raddr, 0);
-	if(ifc != nil) {
-		switch(version){
-		case V4:
+	switch(version){
+	default:
+	case V4:
+		mtu = DEF_MSS;
+		if(ifc != nil)
 			mtu = ifc->maxmtu - ifc->m->hsize - (TCP4_PKT + TCP4_HDRSIZE);
-			break;
-		case V6:
+		break;
+	case V6:
+		mtu = DEF_MSS6;
+		if(ifc != nil)
 			mtu = ifc->maxmtu - ifc->m->hsize - (TCP6_PKT + TCP6_HDRSIZE);
-			break;
-		default:
-			panic("tcpmtu: version %d", version);
-		}
-	}
-
-	if(mtu < 32) {
-		mtu = 1280;
+		break;
 	}
 
 	return mtu;
@@ -1665,6 +1661,19 @@ reset:
 		break;
 	}
 
+	if(tcb->state != Syn_received){
+		/*
+		 *  One DOS attack is to open connections to us and then forget about them,
+		 *  thereby tying up a conv at no long term cost to the attacker.
+		 *  This is an attempt to defeat these stateless DOS attacks.  See
+		 *  corresponding code in tcpsendka().
+		 */
+		if(seq_within(seg.ack, tcb->snd.una-(1<<31), tcb->snd.una-(1<<29))){
+			print("stateless hog %lux - %lux - %lux\n", tcb->snd.una-(1<<31), seg.ack, tcb->snd.una-(1<<29));
+			localclose(s, "stateless hog");
+		}
+	}
+
 	/* Cut the data to fit the receive window */
 	if(tcptrim(tcb, &seg, &bp, &length) == -1) {
 		netlog(f, Logtcp, "tcp len < 0, %lux\n", seg.seq);
@@ -2122,6 +2131,10 @@ tcpoutput(Conv *s)
 
 /*
  *  the BSD convention (hack?) for keep alives.  resend last uchar acked.
+ *
+ *  To avoid stateless Conv hogs, we pick a sequence number at random.  If
+ *  it that number gets acked by the other end, we shut down the connection.
+ *  See the equivalent code in tcpiput().
  */
 void
 tcpsendka(Conv *s)
@@ -2138,7 +2151,7 @@ tcpsendka(Conv *s)
 	seg.dest = s->rport;
 	seg.flags = ACK|PSH;
 	seg.mss = 0;
-	seg.seq = tcb->snd.una-1;
+	seg.seq = tcb->snd.una-(1<<30)-nrand(1<<20);
 	seg.ack = tcb->rcv.nxt;
 	seg.wnd = tcb->rcv.wnd;
 	tcb->last_ack = tcb->rcv.nxt;
@@ -2320,7 +2333,6 @@ void
 procsyn(Conv *s, Tcp *seg)
 {
 	Tcpctl *tcb;
-	int mtu;
 
 	tcb = (Tcpctl*)s->ptcl;
 	tcb->flags |= FORCE;
@@ -2330,14 +2342,9 @@ procsyn(Conv *s, Tcp *seg)
 	tcb->irs = seg->seq;
 	tcb->snd.wnd = seg->wnd;
 
-	if(seg->mss != 0)
+	if(seg->mss != 0 && seg->mss < tcb->mss)
 		tcb->mss = seg->mss;
-
 	tcb->max_snd = seg->wnd;
-
-	mtu = tcpmtu(s);
-	if(tcb->mss > mtu)
-		tcb->mss = mtu;
 	tcb->cwind = tcb->mss;
 }
 

@@ -22,6 +22,10 @@ static struct Procalloc
 
 static Schedq	runq[Nrq];
 
+extern Edfinterface	nulledf;
+
+Edfinterface *edf = &nulledf;
+
 char *statename[] =
 {	/* BUG: generate automatically */
 	"Dead",
@@ -57,8 +61,8 @@ schedinit(void)		/* never returns */
 			break;
 		case Moribund:
 			up->state = Dead;
-			if (isedf(up))
-				edfbury(up);
+			if (edf->isedf(up))
+				edf->edfbury(up);
 
 			/*
 			 * Holding locks from pexit:
@@ -122,7 +126,7 @@ sched(void)
 int
 anyready(void)
 {
-	return nrdy || edfanyready();
+	return nrdy || edf->edfanyready();
 }
 
 int
@@ -153,8 +157,8 @@ ready(Proc *p)
 
 	s = splhi();
 
-	if(isedf(p)){
-		edfready(p);
+	if(edf->isedf(p)){
+		edf->edfready(p);
 		splx(s);
 		return;
 	}
@@ -208,7 +212,7 @@ runproc(void)
 	Proc *p, *l;
 	ulong rt;
 
-	if ((p = edfrunproc()) != nil)
+	if ((p = edf->edfrunproc()) != nil)
 		return p;
 
 loop:
@@ -503,8 +507,8 @@ sleep(Rendez *r, int (*f)(void*), void *arg)
 			unlock(r);
 			// Behind unlock, we may call wakeup on ourselves.
 
-			if (isedf(up))
-				edfblock(up);
+			if (edf->isedf(up))
+				edf->edfblock(up);
 
 			gotolabel(&m->sched);
 		}
@@ -713,8 +717,8 @@ addbroken(Proc *p)
 	broken.p[broken.n++] = p;
 	qunlock(&broken);
 
-	if (isedf(up))
-		edfbury(up);
+	if (edf->isedf(up))
+		edf->edfbury(up);
 	p->state = Broken;
 	p->psstate = 0;
 	sched();
@@ -884,8 +888,8 @@ pexit(char *exitstr, int freemem)
 	lock(&procalloc);
 	lock(&palloc);
 
-	if (isedf(up))
-		edfbury(up);
+	if (edf->isedf(up))
+		edf->edfbury(up);
 	up->state = Moribund;
 	sched();
 	panic("pexit");
@@ -1139,8 +1143,8 @@ procctl(Proc *p)
 		qunlock(&p->debug);
 		splhi();
 		p->state = Stopped;
-		if (isedf(up))
-			edfblock(up);
+		if (edf->isedf(up))
+			edf->edfblock(up);
 		sched();
 		p->psstate = state;
 		splx(s);

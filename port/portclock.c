@@ -122,7 +122,7 @@ hzclock(Ureg *ur)
 		return;
 
 	/* i.e. don't deschedule an EDF process here! */
-	if(anyready() && !isedf(up)){
+	if(anyready() && !edf->isedf(up)){
 		sched();
 		splhi();
 	}

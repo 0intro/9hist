@@ -14,10 +14,10 @@ enum {
 typedef vlong	Time;
 typedef uvlong	Ticks;
 
-typedef struct Task		Task;
-typedef struct Resource	Resource;
-typedef struct Edf		Edf;
-typedef struct Taskq		Taskq;
+typedef struct Task			Task;
+typedef struct Resource		Resource;
+typedef struct Edf			Edf;
+typedef struct Taskq			Taskq;
 
 enum Edfstate {
 	EdfUnused,		/* task structure not in use */

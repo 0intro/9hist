@@ -6,6 +6,7 @@ typedef struct Cmdtab	Cmdtab;
 typedef struct Cname	Cname;
 typedef struct Dev	Dev;
 typedef struct Dirtab	Dirtab;
+typedef struct Edfinterface	Edfinterface;
 typedef struct Egrp	Egrp;
 typedef struct Evalue	Evalue;
 typedef struct Fgrp	Fgrp;
@@ -845,6 +846,21 @@ struct Timer
 	Timer	*next;
 	ulong	period;
 };
+
+struct Edfinterface {
+	int		(*isedf)(Proc*);
+	void		(*edfbury)(Proc*);
+	int		(*edfanyready)(void);
+	void		(*edfready)(Proc*);
+	Proc*	(*edfrunproc)(void);
+	void		(*edfblock)(Proc*);
+	void		(*edfinit)(void);
+	void		(*edfexpel)(Task *t);
+	char *	(*edfadmit)(Task *t);
+	void		(*edfdeadline)(Proc *p);
+};
+
+extern Edfinterface *edf;
 
 #define DEVDOTDOT -1
 

@@ -49,6 +49,7 @@ enum{
 
 static int earlierrelease(Task *t1, Task *t2) {return t1->r < t2->r;}
 static int earlierdeadline(Task *t1, Task *t2) {return t1->d < t2->d;}
+static void	edfrelease(Task *t);
 
 /* Tasks waiting for release, head earliest release time */
 Taskq		qwaitrelease =	{{0}, nil, earlierrelease};
@@ -71,7 +72,7 @@ static void		edfreleaseintr(Ureg *, Timer *cy);
 static void		edfdeadlineintr(Ureg*, Timer*);
 static char *	edftestschedulability(Task *thetask);
 
-void
+static void
 edfinit(void)
 {
 	int i;
@@ -96,13 +97,13 @@ edfinit(void)
 	iunlock(&edflock);
 }
 
-int
+static int
 isedf(Proc *p)
 {
 	return p && p->task && p->task->state >= EdfIdle;
 }
 
-int
+static int
 edfanyready(void)
 {
 	return edfstack[m->machno].head || qreleased.head;
@@ -220,7 +221,7 @@ edfreleasetimer(void)
 	timeradd(&releasetimer[m->machno]);
 }
 
-void
+static void
 edfblock(Proc *p)
 {
 	Task *t, *pt;
@@ -284,7 +285,7 @@ deadline(Proc *p, SEvent why)
 	edfresched(t);
 }
 
-void
+static void
 edfdeadline(Proc *p)
 {
 	DPRINT("%d edfdeadline\n", m->machno);
@@ -295,7 +296,7 @@ edfdeadline(Proc *p)
 	iunlock(&edflock);
 }
 
-char *
+static char *
 edfadmit(Task *t)
 {
 	char *err;
@@ -361,7 +362,7 @@ edfadmit(Task *t)
 	return nil;
 }
 
-void
+static void
 edfexpel(Task *t)
 {
 	Task *tt;
@@ -492,7 +493,7 @@ edfdeadlineintr(Ureg*, Timer*)
 	splhi();
 }
 
-void
+static void
 edfbury(Proc *p)
 {
 	Task *t;
@@ -526,7 +527,7 @@ edfbury(Proc *p)
 	iunlock(&edflock);
 }
 
-void
+static void
 edfready(Proc *p)
 {
 	Task *t;
@@ -671,7 +672,7 @@ edfresched(Task *t)
 	}
 }
 
-void
+static void
 edfrelease(Task *t)
 {
 	DPRINT("%d edfrelease, %s, %d\n", m->machno, edfstatename[t->state], t->runq.n);
@@ -685,7 +686,7 @@ edfrelease(Task *t)
 	if(devrt) devrt(t, now, SRelease);
 }
 
-Proc *
+static Proc *
 edfrunproc(void)
 {
 	/* Return an edf proc to run or nil */
@@ -961,3 +962,16 @@ time2ticks(Time time)
 	assert(time >= 0);
 	return uvmuldiv(time, fasthz, Onesecond);
 }
+
+Edfinterface realedf = {
+	.isedf		= isedf,
+	.edfbury		= edfbury,
+	.edfanyready	= edfanyready,
+	.edfready		= edfready,
+	.edfrunproc	= edfrunproc,
+	.edfblock		= edfblock,
+	.edfinit		= edfinit,
+	.edfexpel		= edfexpel,
+	.edfadmit		= edfadmit,
+	.edfdeadline	= edfdeadline,
+};
