@@ -330,6 +330,8 @@ procread(Chan *c, void *va, long n, ulong offset)
 			return 0;
 		if(offset+n > STATSIZE)
 			n = STATSIZE - offset;
+if((p->state < Dead) || (p->state > Rendezvous))
+    panic("p->state=#%lux, p->psstate=#%lux\n", p->state, p->psstate);
 		j = sprint(statbuf, "%-27s %-27s %-11s ",
 			p->text, p->user, p->psstate ? p->psstate : statename[p->state]);
 		for(i=0; i<6; i++){

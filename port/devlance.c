@@ -348,10 +348,10 @@ lanceoput(Queue *q, Block *bp )
 	tsleep(&l.tr, isobuf, (void *)0, 1000);
 	if(isobuf(0) == 0 || l.misses > 4){
 		l.misses = 0;
-		print("lance wedged, restarting\n");
+print("lance wedged, restarting\n");
 		lancestart(0, 0);
-		qunlock(&l.tlock);
 		freeb(bp);
+		poperror();
 		return;		/* the interrupt routine will qunlock(&l.tlock) */
 	}
 	p = &l.tp[l.tc];

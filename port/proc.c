@@ -641,6 +641,8 @@ pwait(Waitmsg *w)
 Proc*
 proctab(int i)
 {
+if((i < 0) || (i >= conf.nproc))
+    panic("proctab(%d)\n", i);
 	return &procalloc.arena[i];
 }
 
