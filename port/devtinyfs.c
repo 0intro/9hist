@@ -13,24 +13,24 @@
 
 enum{
 	Qdir,
-	Nfile=		32,
 	Qmedium,
 
-	Magic=		0xfeedbeef,
-	Superlen=	64,
+	Blen=	48,
+
+	Tdir=	0,
+	Tdata,
+	Tend,
 };
 
 typedef struct FS FS;
-
 struct FS {
 	QLock;
 	Ref	r;
 	int	dev;
 	FS	*next;
 	Chan	*c;
-	uchar	*fat;
-	ulong	nclust;
-	ulong	clustsize;
+	uchar	*map;
+	int	nblocks;
 };
 
 struct {
@@ -38,6 +38,12 @@ struct {
 	FS	*l;
 	int	hidev;
 } tinyfs;
+
+#define GETS(x) ((x)[0]|((x)[1]<<8))
+#define PUTS(x, v) {(x)[0] = (v);(x)[1] = ((v)>>8);}
+
+#define GETL(x) (GETS(x)|(GETS(x+2)<<16))
+#define PUTL(x, v) {PUTS(x, v);PUTS(x+2, (v)>>16)};
 
 void
 tinyfsreset(void)
@@ -49,11 +55,51 @@ tinyfsinit(void)
 {
 }
 
-#define GETS(x) ((x)[0]|((x)[1]<<8))
-#define PUTS(x, v) {(x)[0] = (v);(x)[1] = ((v)>>8);}
+static uchar
+checksum(uchar *p)
+{
+	uchar *e;
+	uchar s;
 
-#define GETL(x) (GETS(x)|(GETS(x+2)<<16))
-#define PUTL(x, v) {PUTS(x, v);PUTS(x+2, (v)>>16)}; 
+	s = 0;
+	for(e = p + Blen; p < e; p++)
+		s += *p;
+}
+
+static void
+mapclr(FS *fs, int bno)
+{
+	fs->map[bno>>3] &= ~(1<<(bno&7));
+}
+
+static void
+mapset(FS *fs, int bno)
+{
+	fs->map[bno>>3] |= 1<<(bno&7);
+}
+
+static int
+mapalloc(FS *fs)
+{
+	int i, j, lim;
+	uchar x;
+
+	qlock(fs);
+	lim = (fs->nblocks + 8 - 1)/8;
+	for(i = 0; i < lim; i++){
+		x = fs->map[i];
+		if(x == 0xff)
+			continue;
+		for(j = 0; j < 8; j++)
+			if((x & (1<<j)) == 0){
+				fs->map[i] = x|(1<<j);
+				qunlock(fs);
+				return i*8 + j;
+			}
+	}
+	qunlock(fs);
+	return -1;
+}
 
 /*
  *  see if we have a reasonable fat/root directory
@@ -61,37 +107,35 @@ tinyfsinit(void)
 static int
 fsinit(FS *fs)
 {
-	uchar buf[DIRLEN];
+	uchar buf[Blen+DIRLEN];
 	Dir d;
-	ulong x;
-
-	n = devtab[fs->c->type].read(fs->c, buf, Superlen, 0);
-	if(n != Superlen)
-		error(Eio);
-	x = GETL(buf);
-	if(x != Magic)
-		return -1;
-	fs->clustsize = GETL(buf+4);
-	fs->nclust = GETL(buf+8);
-	x = fs->clustsize*fs->nclust;
+	ulong x, bno;
 
 	devtab[fs->c->type].stat(fs->c, buf);
 	convM2D(buf, &d);
-	if(d.length < 128)
+	fs->nblocks = d.length/Blen;
+	if(fs->nblocks < 3)
 		error("tinyfs medium too small");
-	if(d.length < x)
-		return -1;
 
-	fs->fat = smalloc(2*fs->nclust);
-	n = devtab[fs->c->type].read(fs->c, buf, 2*fs->nclust, Superlen);
-	fd(n != 2*fs->nclust)
-		error(Eio);
+	/* bitmap for block usage */
+	x = (fs->nblocks + 8 - 1)/8;
+	fs->map = malloc(x);
+	memset(fs->map, 0x0, x);
+	for(bno = fs->nblocks; bno < x*8; bno++)
+		mapset(fs, bno);
 
-	x = GETS(fs->fat);
-	if(x == 0)
-		return -1;
-
-	return 0;
+	for(bno = 0; bno < fs->nblocks; bno++){
+		n = devtab[fs->c->type].read(fs->c, buf, Blen, Blen*bno);
+		if(n != Blen)
+			break;
+		if(checksum(buf) != 0)
+			continue;
+		switch(buf[0]){
+		case Tdir:
+			mapset(fs, bno);
+			break;
+		}
+	}
 }
 
 /*
