@@ -277,8 +277,8 @@ faulterror(char *s)
 /*
  * Called only in a system call
  */
-void
-validaddr(ulong addr, ulong len, int write)
+int
+okaddr(ulong addr, ulong len, int write)
 {
 	Segment *s;
 
@@ -293,12 +293,20 @@ validaddr(ulong addr, ulong len, int write)
 				addr = s->top;
 				continue;
 			}
-			return;
+			return 1;
 		}
 	}
+	pprint("suicide: invalid address 0x%lux in sys call pc=0x%.8lux\n", addr, userpc());
+	return 0;
+}
+  
+void
+validaddr(ulong addr, ulong len, int write)
+{
+	Segment *s;
 
-	pprint("invalid address 0x%lux in sys call pc=0x%lux", addr, userpc());
-	error(Ebadarg);
+	if(!okaddr(addr, len, write))
+		pexit("Suicide", 0);
 }
   
 /*

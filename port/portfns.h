@@ -147,6 +147,7 @@ int	nodelims(Stream*);
 int	notify(Ureg*);
 int	nrand(int);
 void	nullput(Queue*, Block*);
+int	okaddr(ulong, ulong, int);
 int	openmode(ulong);
 Block*	padb(Block*, int);
 void	pageinit(void);

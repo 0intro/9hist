@@ -404,14 +404,12 @@ notify(Ureg *ur)
 		u->svflags = ur->flags;
 		sp = ur->usp;
 		sp -= sizeof(Ureg);
-		if(waserror()){
-			pprint("suicide: trap in notify\n");
+		if(!okaddr((ulong)u->notify, 1, 0)
+		|| !okaddr(sp-ERRLEN-3*BY2WD, sizeof(Ureg)+ERRLEN-3*BY2WD, 0)){
+			pprint("suicide: bad address in notify\n");
 			qunlock(&u->p->debug);
 			pexit("Suicide", 0);
 		}
-		validaddr((ulong)u->notify, 1, 0);
-		validaddr(sp-ERRLEN-3*BY2WD, sizeof(Ureg)+ERRLEN-3*BY2WD, 0);
-		poperror();
 		u->ureg = (void*)sp;
 		memmove((Ureg*)sp, ur, sizeof(Ureg));
 		sp -= ERRLEN;
@@ -459,14 +457,11 @@ noted(Ureg *ur, ulong arg0)
 	memmove(ur, nur, sizeof(Ureg));
 	switch(arg0){
 	case NCONT:
-		if(waserror()){
+		if(!okaddr(nur->pc, 1, 0) || !okaddr(nur->usp, BY2WD, 0)){
 			pprint("suicide: trap in noted\n");
 			qunlock(&u->p->debug);
 			goto Die;
 		}
-		validaddr(nur->pc, 1, 0);	/* check for valid pc & usp */
-		validaddr(nur->usp, BY2WD, 0);
-		poperror();
 		qunlock(&u->p->debug);
 		return;
 
