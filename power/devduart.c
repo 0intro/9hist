@@ -630,6 +630,9 @@ duartctl(Uart *p, char *cmd)
 	for(i = 0; i < 16 && qlen(p->oq); i++)
 		tsleep(&p->r, qlen, p->oq, 125);
 
+	if(strncmp(cmd, "break", 5) == 0)
+		cmed += 4;
+
 	n = atoi(cmd+1);
 	switch(cmd[0]){
 	case 'B':

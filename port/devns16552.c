@@ -144,6 +144,9 @@ ns16552setbaud(Uart *p, int rate)
 {
 	ulong brconst;
 
+	if(rate <= 0)
+		return;
+
 	brconst = (p->freq+8*rate-1)/(16*rate);
 
 	uartwrreg(p, Format, Dra);
