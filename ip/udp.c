@@ -270,7 +270,10 @@ udpiput(Media *m, Block *bp)
 		/* pass the src address */
 		bp = padblock(bp, UDP_USEAD);
 		hnputl(bp->rp, raddr);
-		hnputl(bp->rp+4, laddr);
+		if(Mediaforme(uh->udpdst) > 0)
+			hnputl(bp->rp+4, laddr);
+		else
+			hnputl(bp->rp+4, m->myip[0]);
 		hnputs(bp->rp+8, rport);
 		hnputs(bp->rp+10, lport);
 	} else {
@@ -282,7 +285,9 @@ udpiput(Media *m, Block *bp)
 
 			/* reply with the same ip address (if not broadcast) */
 			if(Mediaforme(uh->udpdst) > 0)
-				c->laddr = nhgetl(uh->udpdst);
+				c->laddr = laddr;
+			else
+				c->laddr = m->myip[0];
 		}
 	}
 	if(bp->next)
