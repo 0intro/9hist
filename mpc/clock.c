@@ -106,8 +106,8 @@ clockintr(Ureg *ur)
 	putdec(clkreload-v);
 
 	m->ticks++;
-	if(m->ticks%MS2TK(1000) == 0)
-		m->bcsr[4] ^= DisableLamp;
+//	if(m->ticks%MS2TK(1000) == 0)
+//		m->bcsr[4] ^= DisableLamp;
 
 	if(up)
 		up->pc = ur->pc;

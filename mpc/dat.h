@@ -126,7 +126,7 @@ struct Mach
 	long	clockgen;	/* clock generator frequency (cycles) */
 	int	cputype;
 	ulong	delayloop;
-	ulong*	bcsr;
+//	ulong*	bcsr;
 	IMM*	iomem;	/* MPC8xx internal i/o control memory */
 
 	ulong	fairness;		/* for runproc */

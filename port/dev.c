@@ -159,7 +159,7 @@ devstat(Chan *c, char *db, Dirtab *tab, int ntab, Devgen *gen)
 		case 0:
 			break;
 		case 1:
-			if(eqqid(c->qid, dir.qid)) {
+			if(c->qid.path == dir.qid.path) {
 				if(c->flag&CMSG)
 					dir.mode |= CHMOUNT;
 				convD2M(&dir, db);
@@ -211,7 +211,7 @@ devopen(Chan *c, int omode, Dirtab *tab, int ntab, Devgen *gen)
 		case 0:
 			break;
 		case 1:
-			if(eqqid(c->qid, dir.qid)) {
+			if(c->qid.path == dir.qid.path) {
 				if(strcmp(up->user, dir.uid) == 0)
 					mode = dir.mode;
 				else

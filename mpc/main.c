@@ -16,9 +16,35 @@ int nconf;
 Conf	conf;
 
 void
+flash(void)
+{
+	int i;
+	*(uchar*)(NIMMEM+0x2200) = 0;
+	for(i=0; i<1000000; i++)
+		;
+	*(uchar*)(NIMMEM+0x2200) = 0x2;
+	for(i=0; i<1000000; i++)
+		;
+}
+
+void
 main(void)
 {
 	machinit();
+	confinit();
+	xinit();
+	printinit();
+	cpminit();
+	uartinstall();
+	print("hello world\n");
+
+	delay(100);
+
+	reset();
+
+	*(uchar*)0 = 0;
+	for(;;)
+		;
 }
 
 void
@@ -37,6 +63,8 @@ machinit(void)
 	mf = io->plprcr >> 20;
 	m->oscclk = osc;
 	m->speed = osc*(mf+1);
+	m->cpuhz = m->speed*MHz;	/* general system clock (cycles) */
+	m->clockgen = osc*MHz;		/* clock generator frequency (cycles) */
 }
 
 void
@@ -110,6 +138,37 @@ iprint(char *fmt, ...)
 	return n;
 }
 
+void
+confinit(void)
+{
+	int nbytes;
+	ulong pa;
+
+	conf.nmach = 1;		/* processors */
+	conf.nproc = 200;	/* processes */
+
+	// hard wire for now
+	pa = 0xff200000;		// leave 2 Meg for kernel
+	nbytes = 10*1024*1024;	// leave room at the top as well
+	
+	conf.npage0 = nbytes/BY2PG;
+	conf.base0 = pa;
+	
+	conf.npage1 = 0;
+	conf.base1 = 0;
+
+	conf.npage = conf.npage0 + conf.npage1;
+
+	conf.upages = (conf.npage*50)/100;
+	conf.ialloc = ((conf.npage-conf.upages)/2)*BY2PG;
+
+	/* set up other configuration parameters */
+	conf.nswap = conf.npage*3;
+	conf.nswppo = 4096;
+	conf.nimage = 200;
+
+	conf.copymode = 0;		/* copy on write */
+}
 
 int
 isaconfig(char *class, int ctlrno, ISAConf *isa)

@@ -45,7 +45,7 @@ cpminit(void)
 	io = m->iomem;
 	io->rccr = 0;
 	io->rmds = 0;
-	io->lccr &= ~1;	/* disable LCD */
+//	io->lccr &= ~1;	/* disable LCD */
 	io->sdcr = 1;
 	io->pcint = 0;	/* disable all port C interrupts */
 	io->pcso = 0;
@@ -145,7 +145,7 @@ scc2claim(int force, ulong enable, void (*stop)(void*), void *arg)
 
 	clash = scc2owner.clash & ~enable;
 	ilock(&scc2owner);
-	if(~m->bcsr[1] & clash){
+	if(/* ~m->bcsr[1] & clash */ 0){
 		if(!force){
 			iunlock(&scc2owner);
 			return 0;
@@ -153,12 +153,12 @@ scc2claim(int force, ulong enable, void (*stop)(void*), void *arg)
 		/* notify current owner */
 		if(scc2owner.stop)
 			scc2owner.stop(scc2owner.arg);
-		m->bcsr[1] |= clash;
+//		m->bcsr[1] |= clash;
 	}
 	scc2owner.stop = stop;
 	scc2owner.arg = arg;
 	scc2owner.active = enable;
-	m->bcsr[1] &= ~enable;	/* the bits are active low */
+//	m->bcsr[1] &= ~enable;	/* the bits are active low */
 	iunlock(&scc2owner);
 	/* beware: someone else can claim it during the `successful' return */
 	return 1;
@@ -178,7 +178,7 @@ scc2stop(void *a)
 		cpmop(CloseRxBD, SCC2ID, 0);
 		delay(1);
 		scc->gsmrl &= ~(3<<4);	/* disable current use */
-		m->bcsr[1] |= scc2owner.clash;
+//		m->bcsr[1] |= scc2owner.clash;
 	}
 }
 
@@ -189,7 +189,7 @@ void
 scc2free(void)
 {
 	ilock(&scc2owner);
-	m->bcsr[1] |= scc2owner.active;
+//	m->bcsr[1] |= scc2owner.active;
 	scc2owner.active = 0;
 	iunlock(&scc2owner);
 }

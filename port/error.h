@@ -6,6 +6,7 @@ extern char Emountrpc[];	/* mount rpc error */
 extern char Eshutdown[];	/* mounted device shut down */
 extern char Enocreate[];	/* mounted directory forbids creation */
 extern char Enonexist[];	/* file does not exist */
+extern char Eexist[];		/* file already exists */
 extern char Ebadsharp[];	/* unknown device in # filename */
 extern char Enotdir[];		/* not a directory */
 extern char Eisdir[];		/* file is a directory */

@@ -63,12 +63,24 @@ srvstat(Chan *c, char *db)
 	devstat(c, db, 0, 0, srvgen);
 }
 
+static Srv*
+srvlookup(char *name, ulong qidpath)
+{
+	Srv *sp;
+	for(sp = srv; sp; sp = sp->link)
+		if(sp->path == qidpath || (name && strcmp(sp->name, name) == 0))
+			return sp;
+	return nil;
+}
+
 static Chan*
 srvopen(Chan *c, int omode)
 {
 	Srv *sp;
 
 	if(c->qid.path == CHDIR){
+		if(omode & ORCLOSE)
+			error(Eperm);
 		if(omode != OREAD)
 			error(Eisdir);
 		c->mode = omode;
@@ -82,16 +94,13 @@ srvopen(Chan *c, int omode)
 		nexterror();
 	}
 
-	for(sp = srv; sp; sp = sp->link)
-		if(sp->path == c->qid.path)
-			break;
-
+	sp = srvlookup(nil, c->qid.path);
 	if(sp == 0 || sp->chan == 0)
 		error(Eshutdown);
 
 	if(omode&OTRUNC)
 		error(Eperm);
-	if(omode!=sp->chan->mode && sp->chan->mode!=ORDWR)
+	if(openmode(omode)!=sp->chan->mode && sp->chan->mode!=ORDWR)
 		error(Eperm);
 
 	cclose(c);
@@ -106,8 +115,11 @@ srvcreate(Chan *c, char *name, int omode, ulong perm)
 {
 	Srv *sp;
 
-	if(omode != OWRITE)
+	if(openmode(omode) != OWRITE)
 		error(Eperm);
+
+	if(omode & OCEXEC)	/* can't happen */
+		panic("someone broke namec");
 
 	sp = malloc(sizeof(Srv));
 	if(sp == 0)
@@ -118,6 +130,9 @@ srvcreate(Chan *c, char *name, int omode, ulong perm)
 		qunlock(&srvlk);
 		nexterror();
 	}
+	if(srvlookup(name, -1))
+		error(Eexist);
+
 	sp->path = qidpath++;
 	sp->link = srv;
 	c->qid.path = sp->path;
@@ -174,9 +189,7 @@ srvwstat(Chan *c, char *dp)
 	Dir d;
 	Srv *sp;
 
-	if(!iseve())
-		error(Eperm);
-	if(CHDIR & c->qid.path)
+	if(c->qid.path & CHDIR)
 		error(Eperm);
 
 	qlock(&srvlk);
@@ -185,11 +198,13 @@ srvwstat(Chan *c, char *dp)
 		nexterror();
 	}
 
-	for(sp = srv; sp; sp = sp->link)
-		if(sp->path == c->qid.path)
-			break;
-	if(sp == 0 || sp->chan == 0)
-		error(Eshutdown);
+	sp = srvlookup(nil, c->qid.path);
+	if(sp == 0)
+		error(Enonexist);
+
+	if(strcmp(sp->owner, up->user) && !iseve())
+		error(Eperm);
+
 	convM2D(dp, &d);
 	d.mode &= 0777;
 	sp->perm = d.mode;
@@ -199,8 +214,16 @@ srvwstat(Chan *c, char *dp)
 }
 
 static void
-srvclose(Chan*)
+srvclose(Chan *c)
 {
+	/*
+	 * errors from srvremove will be caught by cclose and ignored.
+	 * in theory we need to override any changes in removability
+	 * since open, but since all that's checked is the owner,
+	 * which is immutable, all is well.
+	 */
+	if(c->flag & CRCLOSE)
+		srvremove(c);
 }
 
 static long
@@ -232,15 +255,12 @@ srvwrite(Chan *c, void *va, long n, vlong)
 		cclose(c1);
 		nexterror();
 	}
-	for(sp = srv; sp; sp = sp->link)
-		if(sp->path == c->qid.path)
-			break;
-
+	sp = srvlookup(nil, c->qid.path);
 	if(sp == 0)
 		error(Enonexist);
 
 	if(sp->chan)
-		panic("srvwrite");
+		error(Ebadusefd);
 
 	sp->chan = c1;
 	qunlock(&srvlk);

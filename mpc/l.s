@@ -122,16 +122,14 @@
 	MOVW	R4, SPR(IMMR)		/* set internal memory base */
 
 	MOVW	$mach0(SB), R(MACH)
-	ADD	$(MACHSIZE-8), R(MACH), R1
+	ADD	$(MACHSIZE-8), R(MACH), R1	/* set stack */
 	SUB	$4, R(MACH), R3
 	ADD	$4, R1, R4
+
 clrmach:
 	MOVWU	R0, 4(R3)
 	CMP	R3, R4
 	BNE	clrmach
-
-	MOVW	R0, R(USER)
-	MOVW	R0, 0(R(MACH))
 
 	MOVW	$edata(SB), R3
 	MOVW	$end(SB), R4
@@ -629,13 +627,6 @@ TEXT	powerupled(SB), $0
 	MOVW	$2,R7
 	MOVW	R7,0(R11)
 	RETURN
-
-TEXT	reset(SB), $-4
-	MOVW	$0,R4
-	MOVW	0(R4), R5
-loop:
-	BR	loop
-
 
 GLOBL	mach0+0(SB), $MACHSIZE
 GLOBL	spltbl+0(SB), $4

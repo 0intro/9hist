@@ -688,7 +688,7 @@ namec(char *name, int amode, int omode, ulong perm)
 		if(omode == OEXEC)
 			c->flag &= ~CCACHE;
 
-		c = devtab[c->type]->open(c, omode);
+		c = devtab[c->type]->open(c, omode&~OCEXEC);
 
 		if(omode & OCEXEC)
 			c->flag |= CCEXEC;
@@ -749,7 +749,7 @@ namec(char *name, int amode, int omode, ulong perm)
 			omode |= OTRUNC;
 			goto Open;
 		}
-		devtab[c->type]->create(c, elem, omode, perm);
+		devtab[c->type]->create(c, elem, omode&~OCEXEC, perm);
 		if(omode & OCEXEC)
 			c->flag |= CCEXEC;
 		if(omode & ORCLOSE)

@@ -28,9 +28,19 @@ envgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 		return -1;
 	}
 
-	devdir(c, (Qid){e->path, 0}, e->name, e->len, eve, 0666, dp);
+	devdir(c, e->qid, e->name, e->len, eve, 0666, dp);
 	qunlock(eg);
 	return 1;
+}
+
+static Evalue*
+envlookup(Egrp *eg, char *name, ulong qidpath)
+{
+	Evalue *e;
+	for(e = eg->entries; e; e = e->link)
+		if(e->qid.path == qidpath || (name && strcmp(e->name, name) == 0))
+			return e;
+	return nil;
 }
 
 static Chan*
@@ -48,6 +58,8 @@ envwalk(Chan *c, char *name)
 static void
 envstat(Chan *c, char *db)
 {
+	if(c->qid.path & CHDIR)
+		c->qid.vers = up->egrp->vers;
 	devstat(c, db, 0, 0, envgen);
 }
 
@@ -64,15 +76,13 @@ envopen(Chan *c, int omode)
 	}
 	else {
 		qlock(eg);
-		for(e = eg->entries; e; e = e->link)
-			if(e->path == c->qid.path)
-				break;
-
+		e = envlookup(eg, nil, c->qid.path);
 		if(e == 0) {
 			qunlock(eg);
 			error(Enonexist);
 		}
-		if(omode == (OWRITE|OTRUNC) && e->value) {
+		if((omode & OTRUNC) && e->value) {
+			e->qid.vers++;
 			free(e->value);
 			e->value = 0;
 			e->len = 0;
@@ -103,18 +113,19 @@ envcreate(Chan *c, char *name, int omode, ulong)
 		nexterror();
 	}
 
-	for(e = eg->entries; e; e = e->link)
-		if(strcmp(e->name, name) == 0)
-			error(Einuse);
+	if(envlookup(eg, name, -1))
+		error(Eexist);
 
 	e = smalloc(sizeof(Evalue));
 	e->name = smalloc(strlen(name)+1);
 	strcpy(e->name, name);
 
-	e->path = ++eg->path;
+	e->qid.path = ++eg->path;
+	e->qid.vers = 0;
+	eg->vers++;
 	e->link = eg->entries;
 	eg->entries = e;
-	c->qid = (Qid){e->path, 0};
+	c->qid = e->qid;
 
 	qunlock(eg);
 	poperror();
@@ -135,10 +146,9 @@ envremove(Chan *c)
 
 	eg = up->egrp;
 	qlock(eg);
-
 	l = &eg->entries;
 	for(e = *l; e; e = e->link) {
-		if(e->path == c->qid.path)
+		if(e->qid.path == c->qid.path)
 			break;
 		l = &e->link;
 	}
@@ -149,6 +159,7 @@ envremove(Chan *c)
 	}
 
 	*l = e->link;
+	eg->vers++;
 	qunlock(eg);
 	free(e->name);
 	if(e->value)
@@ -157,8 +168,15 @@ envremove(Chan *c)
 }
 
 static void
-envclose(Chan*)
+envclose(Chan *c)
 {
+	/*
+	 * close can't fail, so errors from remove will be ignored anyway.
+	 * since permissions aren't checked,
+	 * envremove can't not remove it if its there.
+	 */
+	if(c->flag & CRCLOSE)
+		envremove(c);
 }
 
 static long
@@ -173,10 +191,7 @@ envread(Chan *c, void *a, long n, vlong off)
 
 	eg = up->egrp;
 	qlock(eg);
-	for(e = eg->entries; e; e = e->link)
-		if(e->path == c->qid.path)
-			break;
-
+	e = envlookup(eg, nil, c->qid.path);
 	if(e == 0) {
 		qunlock(eg);
 		error(Enonexist);
@@ -210,10 +225,7 @@ envwrite(Chan *c, void *a, long n, vlong off)
 
 	eg = up->egrp;
 	qlock(eg);
-	for(e = eg->entries; e; e = e->link)
-		if(e->path == c->qid.path)
-			break;
-
+	e = envlookup(eg, nil, c->qid.path);
 	if(e == 0) {
 		qunlock(eg);
 		error(Enonexist);
@@ -228,6 +240,8 @@ envwrite(Chan *c, void *a, long n, vlong off)
 		e->len = vend;
 	}
 	memmove(e->value+offset, a, n);
+	e->qid.vers++;
+	eg->vers++;
 	qunlock(eg);
 	return n;
 }
@@ -269,7 +283,7 @@ envcpy(Egrp *to, Egrp *from)
 			memmove(ne->value, e->value, e->len);
 			ne->len = e->len;
 		}
-		ne->path = ++to->path;
+		ne->qid.path = ++to->path;
 		*l = ne;
 		l = &ne->link;
 	}

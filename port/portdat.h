@@ -422,7 +422,8 @@ struct Egrp
 	Ref;
 	QLock;
 	Evalue	*entries;
-	ulong	path;
+	ulong	path;	/* qid.path of next Evalue to be allocated */
+	ulong	vers;	/* of Egrp */
 };
 
 struct Evalue
@@ -430,8 +431,8 @@ struct Evalue
 	char	*name;
 	char	*value;
 	int	len;
-	ulong	path;
 	Evalue	*link;
+	Qid	qid;
 };
 
 struct Fgrp

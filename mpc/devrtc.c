@@ -97,7 +97,7 @@ static long
 rtcread(Chan *c, void *buf, long n, vlong offset)
 {
 	ulong t;
-	char *b;
+//	char *b;
 
 	if(c->qid.path & CHDIR)
 		return devdirread(c, buf, n, rtcdir, NRTC, devgen);
@@ -108,7 +108,7 @@ rtcread(Chan *c, void *buf, long n, vlong offset)
 		n = readnum(offset, buf, n, t, 12);
 		return n;
 	case Qswitch:
-		return readnum(offset, buf, n, (m->bcsr[2]>>19)&0xF, 12);
+		return readnum(offset, buf, n, 0xf/*(m->bcsr[2]>>19)&0xF*/, 12);
 	}
 	error(Egreg);
 	return 0;		/* not reached */

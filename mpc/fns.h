@@ -89,3 +89,5 @@ ulong	getcallerpc(void*);
 
 /* compatibility with inf2.1 */
 #define	bpenumenv(n)	((char*)0)
+
+#define IOREGS(x, T)	((T*)((char*)m->iomem+(x)))

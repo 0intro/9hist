@@ -18,6 +18,8 @@
 #define	CACHELINELOG	4
 #define CACHELINESZ	(1<<CACHELINELOG)
 
+#define	MHz	1000000
+
 #define	MAXMACH		1			/* max # cpus system can run */
 #define	MACHSIZE	BY2PG
 #define KSTACK		4096			/* Size of kernel stack */
@@ -146,8 +148,11 @@
 #define	SCC2P	(INTMEM+0x3D00)
 #define	SPIP	(INTMEM+0x3D80)
 #define	TIMERP	(INTMEM+0x3DB0)
+#define	IDMA2P	(INTMEM+0x3DC0)
+#define	SCC3P	(INTMEM+0x3E00)
 #define	SMC1P	(INTMEM+0x3E80)
 #define	DSP1P	(INTMEM+0x3EC0)
+#define	SCC4P	(INTMEM+0x3F00)
 #define	SMC2P	(INTMEM+0x3F80)
 #define	DSP2P	(INTMEM+0x3FC0)
 

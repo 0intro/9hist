@@ -96,8 +96,6 @@ fdtochan(int fd, int mode, int chkmnt, int iref)
 int
 openmode(ulong o)
 {
-	if(o >= (OTRUNC|OCEXEC|ORCLOSE|OEXEC))
-		error(Ebadarg);
 	o &= ~(OTRUNC|OCEXEC|ORCLOSE);
 	if(o > OEXEC)
 		error(Ebadarg);

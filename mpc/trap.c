@@ -131,3 +131,16 @@ intrenable(int v, void (*r)(Ureg*, void*), void *arg, int)
 {
 	USED(v, r, arg);
 }
+
+void
+reset(void)
+{
+	IMM *io;
+
+	io = m->iomem;
+	io->plprcrk = KEEP_ALIVE_KEY;	// unlock
+	io->plprcr |= IBIT(24);		// enable checkstop reset
+	putmsr(getmsr() & ~MSR_ME);
+	// cause checkstop -> causes reset
+	*(ulong*)(0) = 0;
+}
