@@ -637,9 +637,6 @@ static void	hangup(Stream*);
 int
 streamgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 {
-	Proc *p;
-	char buf[NAMELEN];
-
 	if(s < ntab)
 		tab = &tab[s];
 	else if(s < ntab + Shighqid - Slowqid + 1)
@@ -771,7 +768,7 @@ streamenter(Stream *s)
 			s->inuse++;
 			qunlock(hb);
 			if(s->opens == 0){
-				streamexit(s, 1);
+				streamexit(s);
 				return -1;
 			}
 			return 0;
@@ -785,11 +782,10 @@ streamenter(Stream *s)
  *  zero, free the stream.
  */
 void
-streamexit(Stream *s, int locked)
+streamexit(Stream *s)
 {
 	Queue *q;
 	Queue *nq;
-	char *name;
 	Sthash *hb;
 	Stream **l, *ns;
 
@@ -843,7 +839,6 @@ int
 streamclose1(Stream *s)
 {
 	Queue *q, *nq;
-	Block *bp;
 	int rv;
 
 	/*
@@ -883,7 +878,7 @@ streamclose1(Stream *s)
 	/*
 	 *  leave it and free it
 	 */
-	streamexit(s, 1);
+	streamexit(s);
 	return rv;
 }
 int
@@ -1180,6 +1175,12 @@ streamwrite(Chan *c, void *a, long n, int docopy)
 	int i;
 	Block *bp;
 	char *va;
+
+	/*
+	 *  docopy will get used if I ever figure out when to avoid copying
+	 *  data. -- presotto
+	 */
+	USED(docopy);
 
 	s = c->stream;
 

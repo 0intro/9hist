@@ -171,6 +171,7 @@ lapdopen(Queue *q, Stream *s)
 	Lapd *lp;
 	char name[32];
 
+	USED(s);
 	for(lp=lapd; lp<&lapd[conf.nlapd]; lp++){
 		qlock(lp);
 		if(lp->state == 0)
@@ -201,8 +202,6 @@ lapdopen(Queue *q, Stream *s)
 static void
 mdl_assign(Lapd *lp)
 {
-	Block *b; uchar *p;
-
 	qlock(lp);
 	if (lp->state != NoTEI) {
 		qunlock(lp);
@@ -244,8 +243,6 @@ assigntei(Lapd *lp)
 static void
 dl_establish(Lapd *lp)
 {
-	Block *b; uchar *p;
-
 	qlock(lp);
 	if (lp->state != TEIassigned) {
 		qunlock(lp);
@@ -265,8 +262,6 @@ dl_establish(Lapd *lp)
 static void
 dl_release(Lapd *lp)
 {
-	Block *b; uchar *p;
-
 	qlock(lp);
 	if (lp->state != Multiframe) {
 		qunlock(lp);
@@ -613,6 +608,7 @@ lapdctloput(Lapd *lp, Queue *q, Block *bp)
 {
 	char *fields[2];
 
+	USED(lp);
 	switch(bp->type){
 	case M_CTL:
 		if(streamparse("debug", bp)){

@@ -19,15 +19,13 @@ sysr1(ulong *arg)
 long
 sysrfork(ulong *arg)
 {
-	Chan *c;
 	KMap *k;
 	Pgrp *opg;
 	Egrp *oeg;
 	Fgrp *ofg;
-	Segment *s;
-	int n, on, i;
+	int n, i;
 	Proc *p, *parent;
-	ulong usp, upa, pid, flag;
+	ulong upa, pid, flag;
 	/*
 	 * used to compute last valid system stack address for copy
 	 */
@@ -206,14 +204,13 @@ sysexec(ulong *arg)
 {
 	Proc *p;
 	Segment *s, *ts;
-	ulong l, t, d, b, v;
+	ulong t, d, b;
 	int i;
-	Chan *tc, *c;
+	Chan *tc;
 	char **argv, **argp;
 	char *a, *charp, *file;
 	char *progarg[sizeof(Exec)/2+1], elem[NAMELEN];
 	ulong ssize, spage, nargs, nbytes, n, bssend;
-	ulong *sp;
 	int indir;
 	Exec exec;
 	char line[sizeof(Exec)];
@@ -506,8 +503,6 @@ sysdeath(ulong *arg)
 long
 syserrstr(ulong *arg)
 {
-	char buf[ERRLEN];
-
 	validaddr(arg[0], ERRLEN, 1);
 	memmove((char*)arg[0], u->error, ERRLEN);
 	strncpy(u->error, Enoerror, ERRLEN);
@@ -628,7 +623,7 @@ sysbrk_(ulong *arg)
 long
 sysrendezvous(ulong *arg)
 {
-	Proc *p, *d, **l;
+	Proc *p, **l;
 	int s, tag;
 	ulong val;
 

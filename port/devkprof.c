@@ -160,6 +160,8 @@ kprofread(Chan *c, void *va, long n, ulong offset)
 long
 kprofwrite(Chan *c, char *a, long n, ulong offset)
 {
+	USED(offset);
+
 	switch((int)(c->qid.path&~CHDIR)){
 	case Kprofctlqid:
 		if(strncmp(a, "startclr", 8) == 0){

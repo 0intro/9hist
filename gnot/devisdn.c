@@ -132,6 +132,7 @@ isdnopen(Chan *c, int omode)
 void	 
 isdncreate(Chan *c, char *name, int omode, ulong perm)
 {
+	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
@@ -245,12 +246,14 @@ isdnwrite(Chan *c, void *buf, long n, ulong offset)
 void	 
 isdnremove(Chan *c)
 {
+	USED(c);
 	error(Eperm);
 }
 
 void	 
 isdnwstat(Chan *c, char *dp)
 {
+	USED(c, dp);
 	error(Eperm);
 }
 

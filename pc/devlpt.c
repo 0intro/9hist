@@ -121,22 +121,27 @@ lptopen(Chan *c, int omode)
 void
 lptcreate(Chan *c, char *name, int omode, ulong perm)
 {
+	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
 void
 lptclose(Chan *c)
-{}
+{
+	USED(c);
+}
 
 void
 lptremove(Chan *c)
 {
+	USED(c);
 	error(Eperm);
 }
 
 void
 lptwstat(Chan *c, char *dp)
 {
+	USED(c, dp);
 	error(Eperm);
 }
 
@@ -210,5 +215,6 @@ lptready(void *base)
 static void
 lptintr(Ureg *ur)
 {
+	USED(ur);
 	wakeup(&lptrendez);
 }

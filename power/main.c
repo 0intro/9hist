@@ -90,7 +90,6 @@ vecinit(void)
 void
 vmereset(void)
 {
-	long i;
 	int noforce;
 
 	if(ioid >= IO3R1)
@@ -111,7 +110,6 @@ ioboardinit(void)
 {
 	long i;
 	int maxlevel;
-	ushort *sp;
 
 	ioid = *IOID;
 	if(ioid >= IO3R1)
@@ -180,9 +178,6 @@ launchinit(void)
 void
 init0(void)
 {
-	int i;
-	Chan *c;
-
 	m->proc = u->p;
 	u->p->state = Running;
 	u->p->mach = m;
@@ -216,7 +211,6 @@ userinit(void)
 	Segment *s;
 	User *up;
 	KMap *k;
-	int i;
 	char **av;
 	Page *pg;
 
@@ -413,7 +407,6 @@ confset(char *sym)
 {
 	char *val, *p;
 	Conftab *ct;
-	ulong x;
 
 	/*
  	 *  parse line
@@ -496,7 +489,7 @@ confprint(void)
 void
 confinit(void)
 {
-	long x, i, j, *l;
+	long x, i, *l;
 
 	/*
 	 *  copy configuration down from high memory
@@ -734,12 +727,14 @@ void
 buzz(int f, int d)
 {
 	USED(f);
+	USED(d);
 }
 
 int
 mouseputc(IOQ *q, int c)
 {
 	USED(q);
+	USED(c);
 	return 0;
 }
 

@@ -130,6 +130,7 @@ pmubuzz(int f, int d)
 	static QLock bl;
 	static Rendez br;
 
+	USED(f);
 	qlock(&bl);
 	pmuwrbit(0, 0, 6);
 	tsleep(&br, return0, 0, d);

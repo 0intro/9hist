@@ -62,7 +62,7 @@ bootopen(Chan *c, int omode)
 void	 
 bootcreate(Chan *c, char *name, int omode, ulong perm)
 {
-	USED(c);
+	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
@@ -130,6 +130,6 @@ bootremove(Chan *c)
 void	 
 bootwstat(Chan *c, char *dp)
 {
-	USED(c);
+	USED(c, dp);
 	error(Eperm);
 }

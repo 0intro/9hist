@@ -19,8 +19,6 @@ void
 mapstack(Proc *p)
 {
 	ulong tlbvirt, tlbphys;
-	ulong next;
-	MMU *mm, *mn, *me;
 
 
 	if(p->upage->va != (USERADDR|(p->pid&0xFFFF)) && p->pid != 0)
@@ -61,8 +59,9 @@ putkmmu(ulong tlbvirt, ulong tlbphys)
 }
 
 void
-putmmu(ulong tlbvirt, ulong tlbphys, Page *p)
+putmmu(ulong tlbvirt, ulong tlbphys, Page *pg)
 {
+	USED(pg);
 	if(tlbvirt&KZERO)
 		panic("putmmu");
 	tlbphys |= VTAG(tlbvirt)<<24;

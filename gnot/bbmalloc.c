@@ -53,7 +53,6 @@ bbmalloc(int nbytes)
 void
 bbfree(void *p, int n)
 {
-	ulong *up;
 	int a, s;
 
 	s = splhi();
@@ -66,12 +65,14 @@ bbfree(void *p, int n)
 void
 flushvirtpage(void *p)
 {
+	USED(p);
 	flushcpucache();
 }
 
 void
 bbdflush(void *p, int n)
 {
+	USED(p, n);
 	flushcpucache();
 }
 

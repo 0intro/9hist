@@ -14,7 +14,6 @@ alarmkproc(void *arg)
 {
 	Proc *rp;
 	ulong now;
-	int i, n, s;
 
 	USED(arg);
 

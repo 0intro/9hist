@@ -42,6 +42,7 @@ netgen(Chan *c, void *vp, int ntab, int i, Dir *dp)
 	int perm;
 	char *o;
 
+	USED(ntab);
 	q.vers = 0;
 
 	/* top level directory contains the name of the network */

@@ -283,7 +283,7 @@ concdevstclose(Queue *q)
 	q->ptr = 0;
 	q->other->ptr = 0;
 	dp->rq = 0;
-	streamexit(cp->s, 1);
+	streamexit(cp->s);
 	qunlock(cp);
 }
 
@@ -376,6 +376,7 @@ concgen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
 	Conc *cp;
 	char buf[16];
 
+	USED(tab, ntab);
 	cp = &concs[c->dev];
 	switch(c->qid.path){
 	case CHDIR:
@@ -445,7 +446,7 @@ concopen(Chan *c, int omode)
 void	 
 conccreate(Chan *c, char *name, int omode, ulong perm)
 {
-	USED(c);
+	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
@@ -459,6 +460,7 @@ concclose(Chan *c)
 long	 
 concread(Chan *c, void *a, long n, ulong offset)
 {
+	USED(offset);
 	if(c->stream)
 		return streamread(c, a, n);
 	if(c->qid.path & CHDIR)
@@ -470,6 +472,7 @@ concread(Chan *c, void *a, long n, ulong offset)
 long	 
 concwrite(Chan *c, void *a, long n, ulong offset)
 {
+	USED(offset);
 	return streamwrite(c, a, n, 0);
 }
 
@@ -483,6 +486,6 @@ concremove(Chan *c)
 void	 
 concwstat(Chan *c, char *dp)
 {
-	USED(c);
+	USED(c, dp);
 	error(Eperm);
 }

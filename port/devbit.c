@@ -242,8 +242,7 @@ bitdebug(void)
 void
 bitreset(void)
 {
-	int i, ws;
-	GBitmap *bp;
+	int ws;
 	ulong r;
 	Arena *a;
 
@@ -700,7 +699,7 @@ long
 bitwrite(Chan *c, void *va, long n, ulong offset)
 {
 	uchar *p, *q;
-	long m, v, miny, maxy, minx, maxx, t, x, y;
+	long m, v, miny, maxy, t, x, y;
 	ulong l, nw, ws, rv, q0, q1;
 	int off, isoff, i, j, ok;
 	Point pt, pt1, pt2;
@@ -708,10 +707,12 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 	Cursor curs;
 	Fcode fc;
 	Fontchar *fcp;
-	GBitmap *b, *src, *dst, *bp;
+	GBitmap *src, *dst;
 	BSubfont *f, *tf, **fp;
 	GFont *ff, **ffp;
 	GCacheinfo *gc;
+
+	USED(offset);
 
 	if(c->qid.path == CHDIR)
 		error(Eisdir);
@@ -1450,12 +1451,10 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 int
 bitalloc(Rectangle rect, int ld)
 {
-	Arena *a, *ea, *na, *aa;
+	Arena *a, *ea, *aa;
 	GBitmap *b, **bp, **ep;
-	BSubfont *s;
 	ulong l, ws, nw;
 	long t;
-	int i, try;
 
 	ws = BI2WD>>ld;	/* pixels per word */
 	if(rect.min.x >= 0){
@@ -1674,7 +1673,7 @@ bitloadchar(GFont *f, int ci, GSubfont *subf, int si)
 void
 bitcompact(void)
 {
-	Arena *a, *b, *ea, *na;
+	Arena *a, *ea, *na;
 	ulong *p1, *p2, n;
 
 	ea = &bit.arena[bit.narena];

@@ -194,7 +194,7 @@ sysclose(ulong *arg)
 long
 unionread(Chan *c, void *va, long n)
 {
-	Chan *mc, *nc;
+	Chan *nc;
 	Pgrp *pg = u->p->pgrp;
 	long nr;
 
@@ -343,7 +343,6 @@ long
 sysfstat(ulong *arg)
 {
 	Chan *c;
-	long n;
 
 	validaddr(arg[1], DIRLEN, 1);
 	evenaddr(arg[1]);
@@ -356,7 +355,6 @@ long
 sysstat(ulong *arg)
 {
 	Chan *c;
-	long n;
 
 	validaddr(arg[1], DIRLEN, 1);
 	evenaddr(arg[1]);
@@ -390,8 +388,7 @@ bindmount(ulong *arg, int ismount)
 	Chan *c0, *c1;
 	ulong flag;
 	long ret;
-	char *p;
-	int t, fd;
+	int fd;
 	struct{
 		Chan	*chan;
 		char	*spec;
@@ -534,7 +531,6 @@ long
 syswstat(ulong *arg)
 {
 	Chan *c;
-	long n;
 
 	validaddr(arg[1], DIRLEN, 0);
 	nameok((char*)arg[1]);
@@ -554,7 +550,6 @@ long
 sysfwstat(ulong *arg)
 {
 	Chan *c;
-	long n;
 
 	validaddr(arg[1], DIRLEN, 0);
 	nameok((char*)arg[1]);

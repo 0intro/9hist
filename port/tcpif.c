@@ -72,7 +72,6 @@ void
 tcpstart(Ipconv *s, int mode, ushort window, char tos)
 {
 	Tcpctl *tcb = &s->tcpctl;
-	char msg[NAMELEN+2];
 
 	if(tcb->state != Closed)
 		return;

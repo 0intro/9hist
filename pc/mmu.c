@@ -213,8 +213,6 @@ flushmmu(void)
 void
 mapstack(Proc *p)
 {
-	ulong tlbphys;
-	int i;
 	Page *pg;
 	ulong *top;
 
@@ -292,8 +290,6 @@ putmmu(ulong va, ulong pa, Page *pg)
 	ulong *top;
 	ulong *pt;
 	Proc *p;
-	char err[64];
-	int x;
 
 	if(u==0)
 		panic("putmmu");

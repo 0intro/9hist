@@ -41,8 +41,6 @@ bbmalloc(int nbytes)
 void
 bbfree(void *p, int n)
 {
-	ulong *up;
-
 	if(p == bblast)
 		bbcur = (ulong *)(((char *)bblast) + n);
 }

@@ -135,18 +135,21 @@ getcolor(ulong p, ulong *pr, ulong *pg, ulong *pb)
 int
 setcolor(ulong p, ulong r, ulong g, ulong b)
 {
+	USED(p, r, g, b);
 	return 0;	/* can't change mono screen colormap */
 }
 
 int
 hwcursset(uchar *s, uchar *c, int ox, int oy)
 {
+	USED(s, c, ox, oy);
 	return 0;
 }
 
 int
 hwcursmove(int x, int y)
 {
+	USED(x, y);
 	return 0;
 }
 

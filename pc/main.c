@@ -67,8 +67,6 @@ ulong garbage;
 void
 init0(void)
 {
-	Chan *c;
-
 	u->nerrlab = 0;
 	m->proc = u->p;
 	u->p->state = Running;
@@ -174,7 +172,6 @@ bootargs(ulong base)
 {
  	int i, ac;
 	uchar *av[32];
-	char *p, *pp;
 	uchar **lsp;
 
 	sp = (uchar*)base + BY2PG - MAXSYSARG*BY2WD;
@@ -306,6 +303,7 @@ matherror(Ureg *ur)
 void
 mathemu(Ureg *ur)
 {
+	USED(ur);
 	switch(u->p->fpstate){
 	case FPinit:
 		fpinit();
@@ -327,6 +325,7 @@ mathemu(Ureg *ur)
 void
 mathover(Ureg *ur)
 {
+	USED(ur);
 	pexit("Math overrun", 0);
 }
 
@@ -355,6 +354,7 @@ procsetup(Proc *p)
 void
 procsave(Proc *p)
 {
+	USED(p);
 	if(u->p->fpstate == FPactive){
 		fpsave(&u->fpsave);
 		u->p->fpstate = FPinactive;
@@ -367,6 +367,7 @@ procsave(Proc *p)
 void
 procrestore(Proc *p)
 {
+	USED(p);
 }
 
 
@@ -395,8 +396,6 @@ meminit(void)
 void
 exit(void)
 {
-	int i;
-
 	u = 0;
 	print("exiting\n");
 	switch(machtype){

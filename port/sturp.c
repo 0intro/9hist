@@ -124,7 +124,7 @@ static void	sendctl(Urp*, int);
 static void	sendack(Urp*);
 static void	sendrej(Urp*);
 static void	initoutput(Urp*, int);
-static void	initinput(Urp*, int);
+static void	initinput(Urp*);
 static void	urpkproc(void *arg);
 static void	urpvomit(char*, Urp*);
 static void	tryoutput(Urp*);
@@ -148,9 +148,8 @@ static void
 urpopen(Queue *q, Stream *s)
 {
 	Urp *up;
-	int i;
-	char name[128];
 
+	USED(s);
 	if(!urpkstarted){
 		qlock(&urpkl);
 		if(!urpkstarted){
@@ -188,7 +187,7 @@ urpopen(Queue *q, Stream *s)
 	up->wq = q->other;
 	up->state = OPEN;
 	qunlock(up);
-	initinput(up, 0);
+	initinput(up);
 	initoutput(up, 0);
 }
 
@@ -206,7 +205,6 @@ isflushed(void *a)
 static void
 urpclose(Queue *q)
 {
-	Block *bp;
 	Urp *up;
 	int i;
 
@@ -334,7 +332,7 @@ urpciput(Queue *q, Block *bp)
 		sendctl(up, AINIT);
 		if(ctl == INIT1)
 			q->put = urpiput;
-		initinput(up, 0);
+		initinput(up);
 		break;
 
 	case INITREQ:
@@ -467,7 +465,7 @@ urpiput(Queue *q, Block *bp)
 		sendctl(up, AINIT);
 		if(ctl == INIT0)
 			q->put = urpciput;
-		initinput(up, 0);
+		initinput(up);
 		break;
 
 	case INITREQ:
@@ -569,20 +567,12 @@ static void
 urpctloput(Urp *up, Queue *q, Block *bp)
 {
 	char *fields[2];
-	int n;
-	int inwin=0, outwin=0;
+	int outwin;
 
 	switch(bp->type){
 	case M_CTL:
 		if(streamparse("init", bp)){
-			switch(getfields((char *)bp->rptr, fields, 2, ' ')){
-			case 2:
-				inwin = strtoul(fields[1], 0, 0);
-			case 1:
-				outwin = strtoul(fields[0], 0, 0);
-			}
-			USED(inwin);
-/*			initinput(up, inwin); */
+			outwin = strtoul((char*)bp->rptr, 0, 0);
 			initoutput(up, outwin);
 			freeb(bp);
 			return;
@@ -635,7 +625,6 @@ output(Urp *up)
 	Block *bp, *nbp;
 	ulong now;
 	Queue *q;
-	int n;
 	int i;
 
 	if(!canqlock(&up->xmit))
@@ -787,8 +776,6 @@ sendrej(Urp *up)
 static void
 sendack(Urp *up)
 {
-	Block *bp;
-
 	/*
 	 *  check the precondition for acking
 	 */
@@ -986,7 +973,7 @@ initoutput(Urp *up, int window)
  *  initialize input
  */
 static void
-initinput(Urp *up, int window)
+initinput(Urp *up)
 {
 	/*
 	 *  restart all sequence parameters

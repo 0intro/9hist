@@ -45,6 +45,8 @@ int	nroot;
 int
 rootgen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
 {
+	USED(ntab);
+
 	if(i >= nroot)
 		return -1;
 

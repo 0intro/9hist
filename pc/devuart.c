@@ -193,7 +193,7 @@ void
 uartputs(IOQ *cq, char *s, int n)
 {
 	Uart *up = cq->ptr;
-	int st, ch, x;
+	int ch, x;
 	int tries;
 
 	x = splhi();
@@ -274,11 +274,13 @@ uartintr(Uart *up)
 void
 uartintr0(Ureg *ur)
 {
+	USED(ur);
 	uartintr(&uart[0]);
 }
 void
 uartintr1(Ureg *ur)
 {
+	USED(ur);
 	uartintr(&uart[1]);
 }
 
@@ -302,8 +304,6 @@ uartclock(void)
 void
 uartenable(Uart *up)
 {
-	int x;
-
 	/*
 	 *  turn on power to the port
 	 */
@@ -343,6 +343,7 @@ uartenable(Uart *up)
 /*
  *  turn off the uart
  */
+void
 uartdisable(Uart *up)
 {
 
@@ -654,6 +655,7 @@ uartopen(Chan *c, int omode)
 void
 uartcreate(Chan *c, char *name, int omode, ulong perm)
 {
+	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
@@ -667,6 +669,7 @@ uartclose(Chan *c)
 long
 uartread(Chan *c, void *buf, long n, ulong offset)
 {
+	USED(offset);
 	switch(c->qid.path&~CHDIR){
 	case Qdir:
 		return devdirread(c, buf, n, uartdir, NUart, devgen);
@@ -680,17 +683,20 @@ uartread(Chan *c, void *buf, long n, ulong offset)
 long
 uartwrite(Chan *c, void *va, long n, ulong offset)
 {
+	USED(offset);
 	return streamwrite(c, va, n, 0);
 }
 
 void
 uartremove(Chan *c)
 {
+	USED(c);
 	error(Eperm);
 }
 
 void
 uartwstat(Chan *c, char *dp)
 {
+	USED(c, dp);
 	error(Eperm);
 }

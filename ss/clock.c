@@ -10,7 +10,6 @@
 void
 delay(int ms)
 {
-	ulong t, *p;
 	int i;
 
 	ms *= 3000;	/* experimentally determined */
@@ -43,7 +42,6 @@ clock(Ureg *ur)
 {
 	Proc *p;
 	ulong i, nrun = 0;
-	Segment *s;
 
 	i = ctr->lim1;	/* clear interrupt */
 	USED(i);

@@ -76,7 +76,7 @@ mmurelease(Proc *p)
 int
 newpid(Proc *p)
 {
-	int i, j, k;
+	int i, j;
 	ulong t;
 	Proc *sp;
 
@@ -222,6 +222,7 @@ putmmu(ulong tlbvirt, ulong tlbphys, Page *pg)
 	ulong seg, l;
 	int j, k;
 
+	USED(pg);
 	splhi();
 	p = u->p;
 	tp = p->pidonmach[m->machno];
@@ -263,7 +264,6 @@ void
 putpmeg(ulong virt, ulong phys)
 {
 	int i;
-	int tp;
 
 	virt &= VAMASK;
 	virt &= ~(BY2PG-1);
@@ -287,8 +287,6 @@ int nflushmmu;
 void
 flushmmu(void)
 {
-	int tp;
-
 nflushmmu++;
 	splhi();
 	u->p->newtlb = 1;
@@ -378,9 +376,6 @@ kmapperm(Page *pg)
 void
 kunmap(KMap *k)
 {
-	ulong pte;
-	int i;
-
 	k->pa = 0;
 	lock(&kmapalloc);
 	k->next = kmapalloc.free;

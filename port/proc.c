@@ -52,7 +52,6 @@ void
 schedinit(void)		/* never returns */
 {
 	Proc *p;
-	Page *pg;
 
 	setlabel(&m->sched);
 	if(u){
@@ -152,7 +151,6 @@ runproc(void)
 {
 	Schedq *rq;
 	Proc *p;
-	int i;
 
 loop:
 	spllo();
@@ -731,8 +729,6 @@ kproc(char *name, void (*func)(void *), void *arg)
 	p->pgrp = kpgrp;
 	incref(kpgrp);
 
-	if(u->p->user[0] != '\0')
-		user = u->p->user;
 	strcpy(p->text, name);
 
 	p->nchild = 0;

@@ -709,6 +709,7 @@ duartopen(Chan *c, int omode)
 void
 duartcreate(Chan *c, char *name, int omode, ulong perm)
 {
+	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
@@ -742,17 +743,20 @@ duartread(Chan *c, void *buf, long n, ulong offset)
 long
 duartwrite(Chan *c, void *va, long n, ulong offset)
 {
+	USED(offset);
 	return streamwrite(c, va, n, 0);
 }
 
 void
 duartremove(Chan *c)
 {
+	USED(c);
 	error(Eperm);
 }
 
 void
 duartwstat(Chan *c, char *dp)
 {
+	USED(c, dp);
 	error(Eperm);
 }

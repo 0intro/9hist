@@ -123,12 +123,14 @@ portopen(Chan *c, int omode)
 void
 portcreate(Chan *c, char *name, int omode, ulong perm)
 {
+	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
 void
 portclose(Chan *c)
 {
+	USED(c);
 }
 
 long

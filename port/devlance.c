@@ -454,7 +454,6 @@ static void
 lancestart(int mode)
 {
 	int i;
-	Etherpkt *p;
 	Lancemem *lm = LANCEMEM;
 	Msg *m;
 
@@ -617,6 +616,7 @@ lanceread(Chan *c, void *a, long n, ulong offset)
 long	 
 lancewrite(Chan *c, void *a, long n, ulong offset)
 {
+	USED(offset);
 	return streamwrite(c, a, n, 0);
 }
 
@@ -689,7 +689,6 @@ lanceclonecon(Chan *c)
 void
 lanceintr(void)
 {
-	int i;
 	ushort csr;
 
 	csr = *l.rdp;

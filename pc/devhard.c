@@ -157,7 +157,7 @@ Drive		*hard;
 
 static void	hardintr(Ureg*);
 static long	hardxfer(Drive*, Partition*, int, long, long);
-static long	hardident(Drive*);
+static void	hardident(Drive*);
 static void	hardsetbuf(Drive*, int);
 static void	hardpart(Drive*);
 
@@ -171,6 +171,7 @@ hardgen(Chan *c, Dirtab *tab, long ntab, long s, Dir *dirp)
 	Partition *pp;
 	ulong l;
 
+	USED(tab, ntab);
 	qid.vers = 0;
 	drive = s/Npart;
 	s = s % Npart;
@@ -304,23 +305,27 @@ hardopen(Chan *c, int omode)
 void
 hardcreate(Chan *c, char *name, int omode, ulong perm)
 {
+	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
 void
 hardclose(Chan *c)
 {
+	USED(c);
 }
 
 void
 hardremove(Chan *c)
 {
+	USED(c);
 	error(Eperm);
 }
 
 void
 hardwstat(Chan *c, char *dp)
 {
+	USED(c, dp);
 	error(Eperm);
 }
 
@@ -481,7 +486,6 @@ static long
 hardxfer(Drive *dp, Partition *pp, int cmd, long start, long len)
 {
 	Controller *cp;
-	int err;
 	long lblk;
 	int cyl, sec, head;
 	int loop;
@@ -590,7 +594,7 @@ hardsetbuf(Drive *dp, int on)
 /*
  *  get parameters from the drive
  */
-static long
+static void
 hardident(Drive *dp)
 {
 	Controller *cp;
@@ -758,6 +762,7 @@ hardintr(Ureg *ur)
 	Drive *dp;
 	long loop;
 
+	USED(ur);
 	spllo();	/* let in other interrupts */
 
 	/*

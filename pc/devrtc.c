@@ -90,12 +90,14 @@ rtcopen(Chan *c, int omode)
 void	 
 rtccreate(Chan *c, char *name, int omode, ulong perm)
 {
+	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
 void	 
 rtcclose(Chan *c)
 {
+	USED(c);
 }
 
 #define GETBCD(o) ((bcdclock[o]&0xf) + 10*(bcdclock[o]>>4))
@@ -103,10 +105,7 @@ rtcclose(Chan *c)
 long	 
 rtctime(void)
 {
-	int i,j;
-	uchar ch;
 	uchar bcdclock[Nbcd];
-	char atime[64];
 	Rtc rtc;
 
 	outb(Paddr, Status);
@@ -166,12 +165,10 @@ rtcwrite(Chan *c, void *buf, long n, ulong offset)
 {
 	Rtc rtc;
 	ulong secs;
-	int i,j;
-	uchar ch;
 	uchar bcdclock[Nbcd];
-	uchar *nv;
 	char *cp, *ep;
 
+	USED(c);
 	if(offset!=0)
 		error(Ebadarg);
 
@@ -216,12 +213,14 @@ rtcwrite(Chan *c, void *buf, long n, ulong offset)
 void	 
 rtcremove(Chan *c)
 {
+	USED(c);
 	error(Eperm);
 }
 
 void	 
 rtcwstat(Chan *c, char *dp)
 {
+	USED(c, dp);
 	error(Eperm);
 }
 

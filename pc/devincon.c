@@ -544,6 +544,7 @@ inconopen(Chan *c, int omode)
 void	 
 inconcreate(Chan *c, char *name, int omode, ulong perm)
 {
+	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
@@ -589,6 +590,7 @@ inconwrite(Chan *c, void *buf, long n, ulong offset)
 	Incon *ip;
 	int data;
 
+	USED(offset);
 	switch(c->qid.path){
 	default:
 		return streamwrite(c, buf, n, 0);
@@ -617,12 +619,14 @@ inconwrite(Chan *c, void *buf, long n, ulong offset)
 void	 
 inconremove(Chan *c)
 {
+	USED(c);
 	error(Eperm);
 }
 
 void	 
 inconwstat(Chan *c, char *dp)
 {
+	USED(c, dp);
 	error(Eperm);
 }
 
@@ -872,7 +876,7 @@ static void
 inconkproc(void *arg)
 {
 	Incon *ip;
-	Block *bp, *nbp;
+	Block *bp;
 	int i;
 	int locked;
 
@@ -1072,6 +1076,7 @@ inconintr(Ureg *ur)
 	int pcr;
 	Incon *ip;
 
+	USED(ur);
 	ip = &incon[0];
 	pcr = inb(ip->dev+Qpcr);
 	status = irdstatus(ip);

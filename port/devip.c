@@ -37,8 +37,6 @@ Qinfo *protocols[] = { &tcpinfo, &udpinfo, &ilinfo, 0 };
 void
 ipinitifc(Ipifc *ifc, Qinfo *stproto)
 {
-	int j;
-
 	ifc->conv = xalloc(Nipconv * sizeof(Ipconv*));
 	ifc->protop = stproto;
 	ifc->nconv = Nipconv;
@@ -267,6 +265,7 @@ ipwrite(Chan *c, char *a, long n, ulong offset)
 	Port	port;
 	Ipconv  *cp;
 
+	USED(offset);
 	type = STREAMTYPE(c->qid.path);
 	if (type == Sdataqid)
 		return streamwrite(c, a, n, 0); 
@@ -588,7 +587,7 @@ udpstopen(Queue *q, Stream *s)
 	Ipconv *ipc;
 
 	ipc = ipcreateconv(ipifc[s->dev], s->id);
-	initipifc(ipifc[s->dev], IP_UDPPROTO, udprcvmsg, 1500, 512, ETHER_HDR, "UDP");
+	initipifc(ipifc[s->dev], IP_UDPPROTO, udprcvmsg, 1500, 512, ETHER_HDR);
 
 	ipc->readq = RD(q);	
 	RD(q)->ptr = (void *)ipc;
@@ -607,7 +606,6 @@ tcpstoput(Queue *q, Block *bp)
 {
 	Ipconv *s;
 	Tcpctl *tcb; 
-	int len, errnum;
 	Block *f;
 
 	s = (Ipconv *)(q->ptr);
@@ -687,7 +685,7 @@ tcpstopen(Queue *q, Stream *s)
 	if(tcpbase == 0)
 		tcpbase = ipifc[s->dev]->conv;
 	ifc = ipifc[s->dev];
-	initipifc(ifc, IP_TCPPROTO, tcp_input, 1500, 512, ETHER_HDR, "TCP");
+	initipifc(ifc, IP_TCPPROTO, tcp_input, 1500, 512, ETHER_HDR);
 	ipc = ipcreateconv(ifc, s->id);
 
 	ipc->readq = RD(q);
@@ -711,6 +709,8 @@ ipremotefill(Chan *c, char *buf, int len)
 {
 	Ipconv *cp;
 
+	if(len < 24)
+		error(Ebadarg);
 	cp = ipcreateconv(ipifc[c->dev], STREAMID(c->qid.path));
 	sprint(buf, "%d.%d.%d.%d %d\n", fmtaddr(cp->dst), cp->pdst);
 }
@@ -720,6 +720,8 @@ iplocalfill(Chan *c, char *buf, int len)
 {
 	Ipconv *cp;
 
+	if(len < 24)
+		error(Ebadarg);
 	cp = ipcreateconv(ipifc[c->dev], STREAMID(c->qid.path));
 	sprint(buf, "%d.%d.%d.%d %d\n", fmtaddr(Myip[Myself]), cp->psrc);
 }
@@ -730,6 +732,8 @@ ipstatusfill(Chan *c, char *buf, int len)
 	int connection;
 	Ipconv *cp;
 
+	if(len < 64)
+		error(Ebadarg);
 	connection = STREAMID(c->qid.path);
 	cp = ipcreateconv(ipifc[c->dev], connection);
 	if(cp->ifc->protop == &tcpinfo)
@@ -756,7 +760,6 @@ iplisten(Chan *c)
 	Ipconv **p, **etab, *new;
 	Ipconv *s;
 	int connection;
-	Ipconv *cp;
 
 	connection = STREAMID(c->qid.path);
 	s = ipcreateconv(ipifc[c->dev], connection);
@@ -1074,7 +1077,7 @@ nextport(Ipifc *ifc, int priv)
 /* NEEDS HASHING ! */
 
 Ipconv*
-ip_conn(Ipifc *ifc, Port dst, Port src, Ipaddr dest, char proto)
+ip_conn(Ipifc *ifc, Port dst, Port src, Ipaddr dest)
 {
 	Ipconv **p, *s, **etab;
 
@@ -1104,6 +1107,7 @@ ip_conn(Ipifc *ifc, Port dst, Port src, Ipaddr dest, char proto)
 void
 bsdopen(Queue *q, Stream *s)
 {
+	USED(s);
 	RD(q)->ptr = q;
 	WR(q)->ptr = q;
 }
@@ -1125,9 +1129,7 @@ void
 bsdoput(Queue *q, Block *bp)
 {
 	uchar *luser;
-	uchar *p;
 	Block *nbp;
-	int n;
 
 	/* just pass it on if we've done authentication */
 	if(q->ptr == 0 || bp->type != M_DATA){

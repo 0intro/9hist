@@ -95,7 +95,7 @@ ipetheropen(Queue *q, Stream *s)
  */
 void
 initipifc(Ipifc *ifc, uchar ptcl, void (*recvfun)(Ipifc*, Block *bp), int max,
-	int min, int hdrsize, char *name)
+	int min, int hdrsize)
 {
 	qlock(ifc);
 	ifc->iprcv = recvfun;

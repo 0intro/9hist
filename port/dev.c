@@ -57,6 +57,7 @@ devattach(int tc, char *spec)
 {
 	Chan *c;
 
+	USED(spec);
 	c = newchan();
 	c->qid = (Qid){CHDIR, 0};
 	c->type = devno(tc, 0);

@@ -91,7 +91,6 @@ void
 ipaddroute(ulong dst, ulong mask, ulong gate)
 {
 	Iproute *r, *e, *free;
-	int i;
 
 	/*
 	 *  filter out impossible requests
@@ -329,6 +328,8 @@ iproutewrite(Chan *c, char *a, long n, ulong offset)
 	char *field[4];
 	Ipaddr mask, dst, gate;
 	int m;
+
+	USED(offset);
 
 	switch((int)(c->qid.path&~CHDIR)){
 	case Qdata:

@@ -213,7 +213,7 @@ pipeclose(Chan *c)
 		remote = c->stream->devq->ptr;
 		if(streamclose(c) == 0){
 			if(remote)
-				streamexit(remote, 0);
+				streamexit(remote);
 		}
 		qunlock(p);
 	}
@@ -239,6 +239,7 @@ pipeclose(Chan *c)
 long
 piperead(Chan *c, void *va, long n, ulong offset)
 {
+	USED(offset);
 	if(c->qid.path & CHDIR)
 		return devdirread(c, va, n, pipedir, NPIPEDIR, pipegen);
 
@@ -252,6 +253,7 @@ piperead(Chan *c, void *va, long n, ulong offset)
 long
 pipewrite(Chan *c, void *va, long n, ulong offset)
 {
+	USED(offset);
 	if(waserror()) {
 		postnote(u->p, 1, "sys: write on closed pipe", NExit);
 		error(Egreg);

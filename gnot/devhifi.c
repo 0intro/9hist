@@ -175,6 +175,7 @@ hifiopen(Chan *c, int omode)
 void	 
 hificreate(Chan *c, char *name, int omode, ulong perm)
 {
+	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
@@ -233,6 +234,7 @@ hifiwrite(Chan *c, void *buf, long n, ulong offset)
 	Hifichan *hp = &hifichan[c->dev];
 	char nbuf[32], *p;
 
+	USED(offset);
 	if(n < 0)
 		return 0;
 	switch(STREAMTYPE(c->qid.path)){
@@ -252,12 +254,14 @@ hifiwrite(Chan *c, void *buf, long n, ulong offset)
 void	 
 hifiremove(Chan *c)
 {
+	USED(c);
 	error(Eperm);
 }
 
 void	 
 hifiwstat(Chan *c, char *dp)
 {
+	USED(c, dp);
 	error(Eperm);
 }
 
@@ -517,8 +521,7 @@ hifiintr(void)
 	Isdn *ip;
 	Hifichan *hp;
 	Hifi *hifi;
-	int intr = 0, status, n, c, wake = 0, w = 0;
-	uchar *p;
+	int intr = 0, status, wake = 0, w = 0;
 
 	for(hp=hifichan; hp<hifichanN; hp++){
 		if(!(ip = hp->udev))	/* assign = */

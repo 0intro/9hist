@@ -14,8 +14,6 @@ uchar *intrreg;
 void
 main(void)
 {
-	int a;
-
 	u = 0;
 	memset(edata, 0, (char*)end-(char*)edata);
 
@@ -93,8 +91,6 @@ ioinit(void)
 void
 init0(void)
 {
-	Chan *c;
-
 	u->nerrlab = 0;
 	m->proc = u->p;
 	u->p->state = Running;
@@ -227,9 +223,8 @@ void
 lancesetup(Lance *lp)
 {
 	KMap *k;
-	ushort *sp;
 	uchar *cp;
-	ulong pa, pte, va;
+	ulong pa, va;
 	int i, j;
 
 	k = kmappa(ETHER, PTEIO|PTENOCACHE);

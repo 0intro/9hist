@@ -78,6 +78,7 @@ wrengen(Chan *c, Dirtab *tab, long ntab, long s, Dir *dirp)
 	Partition *pp;
 	ulong l;
 
+	USED(tab, ntab);
 	qid.vers = 0;
 	drive = c->dev;
 	if(drive >= Ndisk)

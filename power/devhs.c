@@ -206,6 +206,9 @@ void
 hscreate(Chan *c, char *name, int omode, ulong perm)
 {
 	USED(c);
+	USED(name);
+	USED(omode);
+	USED(perm);
 	error(Eperm);
 }
 
@@ -219,12 +222,14 @@ hsclose(Chan *c)
 long	 
 hsread(Chan *c, void *buf, long n, ulong offset)
 {
+	USED(offset);
 	return streamread(c, buf, n);
 }
 
 long	 
 hswrite(Chan *c, void *buf, long n, ulong offset)
 {
+	USED(offset);
 	return streamwrite(c, buf, n, 0);
 }
 
@@ -239,6 +244,7 @@ void
 hswstat(Chan *c, char *dp)
 {
 	USED(c);
+	USED(dp);
 	error(Eperm);
 }
 
@@ -563,7 +569,6 @@ static void
 hsintr(int vec)
 {
 	ushort csr;
-	HSdev *addr;
 	Hs *hp;
 
 	hp = &hs[vec - Intvec];

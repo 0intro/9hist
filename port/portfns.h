@@ -212,7 +212,7 @@ void		splx(int);
 int		streamclose(Chan*);
 int		streamclose1(Stream*);
 int		streamenter(Stream*);
-void		streamexit(Stream*, int);
+void		streamexit(Stream*);
 Devgen		streamgen;
 void		streaminit(void);
 void		streaminit0(void);

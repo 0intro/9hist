@@ -273,7 +273,6 @@ noted(Ureg *ur, ulong arg0)
 long
 syscall(Ureg *aur)
 {
-	int i;
 	long ret;
 	ulong sp;
 	Ureg *ur;

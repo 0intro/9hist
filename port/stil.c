@@ -73,7 +73,7 @@ ilopen(Queue *q, Stream *s)
 	}
 
 	ipc = ipcreateconv(ipifc[s->dev], s->id);
-	initipifc(ipc->ifc, IP_ILPROTO, ilrcvmsg, 1500, 60, ETHER_HDR, "IL");
+	initipifc(ipc->ifc, IP_ILPROTO, ilrcvmsg, 1500, 60, ETHER_HDR);
 
 	ipc->readq = RD(q);	
 	RD(q)->ptr = (void *)ipc;
@@ -86,7 +86,6 @@ ilclose(Queue *q)
 {
 	Ipconv *s;
 	Ilcb *ic;
-	Block *bp, *next;
 
 	s = (Ipconv *)(q->ptr);
 	ic = &s->ilctl;
@@ -121,7 +120,7 @@ iloput(Queue *q, Block *bp)
 	Ilhdr *ih;
 	Ilcb *ic;
 	int dlen;
-	Block *np, *f;
+	Block *f;
 	ulong id;
 
 	ipc = (Ipconv *)(q->ptr);
@@ -266,7 +265,6 @@ ilrcvmsg(Ipifc *ifc, Block *bp)
 	Ipconv *s, **p, **etab, *new;
 	short sp, dp;
 	Ipaddr dst;
-	char *st;
 
 	ih = (Ilhdr *)bp->rptr;
 	plen = blen(bp);
@@ -499,7 +497,7 @@ _ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 void
 ilrexmit(Ilcb *ic)
 {
-	Block *nb, *bp;
+	Block *nb;
 	Ilhdr *h;
 
 	nb = 0;
@@ -713,7 +711,6 @@ ilackproc(void *a)
 	Ipifc *ifc;
 	Ipconv **base, **p, **end, *s;
 	Ilcb *ic;
-	Block *bp, *np;
 
 	ifc = (Ipifc*)a;
 	base = ifc->conv;

@@ -104,6 +104,9 @@ void
 rtccreate(Chan *c, char *name, int omode, ulong perm)
 {
 	USED(c);
+	USED(name);
+	USED(omode);
+	USED(perm);
 	error(Eperm);
 }
 
@@ -215,6 +218,7 @@ void
 rtcwstat(Chan *c, char *dp)
 {
 	USED(c);
+	USED(dp);
 	error(Eperm);
 }
 
@@ -279,7 +283,6 @@ rtctime(void)
 	uchar ch;
 	uchar *nv;
 	uchar bcdclock[Nbcd];
-	char atime[64];
 	Rtc rtc;
 
 	nv = &((Nvram*)NVRAM)[NVRTC].val;

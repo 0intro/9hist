@@ -301,8 +301,6 @@ okaddr(ulong addr, ulong len, int write)
 void
 validaddr(ulong addr, ulong len, int write)
 {
-	Segment *s;
-
 	if(!okaddr(addr, len, write))
 		pexit("Suicide", 0);
 }

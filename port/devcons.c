@@ -489,10 +489,8 @@ consread(Chan *c, void *buf, long n, ulong offset)
 {
 	int ch, i, j, k, id;
 	ulong l;
-	uchar *out;
 	char *cbuf = buf;
-	char *user, *chal;
-	int userlen;
+	char *chal;
 	Block *cb;
 	char tmp[6*NUMSIZE], xbuf[512];
 	Mach *mp;
@@ -685,7 +683,6 @@ consread(Chan *c, void *buf, long n, ulong offset)
 void
 conslights(char *a, int n)
 {
-	int l;
 	char line[128];
 	char *lp;
 	int c;

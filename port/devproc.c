@@ -64,6 +64,7 @@ procgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 	char buf[NAMELEN];
 	ulong pid, path, perm;
 
+	USED(ntab);
 	if(c->qid.path == CHDIR){
 		if(s >= conf.nproc)
 			return -1;
@@ -137,7 +138,6 @@ procopen(Chan *c, int omode)
 {
 	Proc *p;
 	Pgrp *pg;
-	Segment *s;
 	Chan *tc;
 
 	if(c->qid.path & CHDIR)
@@ -235,7 +235,6 @@ procread(Chan *c, void *va, long n, ulong offset)
 	KMap *k;
 	int i, j;
 	long l;
-	long pid;
 	User *up;
 	Segment *sg;
 

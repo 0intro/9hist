@@ -24,6 +24,8 @@ reset(Ipaddr source, Ipaddr dest, char tos, ushort length, Tcp *seg)
 	char rflags;
 	Tcphdr ph;
 
+	USED(tos);		/* is this right??? */
+
 	if(seg->flags & RST)
 		return;
 
@@ -162,7 +164,7 @@ tcp_input(Ipifc *ifc, Block *bp)
 		return;
 	
 	/* Look for a connection, failing that attempt to establish a listen */
-	s = ip_conn(ifc, seg.dest, seg.source, source, IP_TCPPROTO);
+	s = ip_conn(ifc, seg.dest, seg.source, source);
 	if (s == 0) {
 		if(seg.flags & SYN){
 			/*
@@ -969,7 +971,6 @@ ntohtcp(Tcp *tcph, Block **bpp)
 {
 	ushort hdrlen;
 	ushort i, optlen;
-	Block *nbp;
 	Tcphdr *h;
 	uchar *optr;
 

@@ -74,6 +74,9 @@ arpgen(Chan *c, void *vp, int ntab, int i, Dir *dp)
 {
 	Qid q;
 
+	USED(vp);
+	USED(ntab);
+
 	q.vers = 0;
 
 	/* top level directory contains the directory arp */
@@ -200,9 +203,9 @@ long
 arpread(Chan *c, void *a, long n, ulong offset)
 {
 	char	 buf[100];
-	Arpcache *ap, *ep;
+	Arpcache *ap;
 	int	 part, bytes, size;
-	char	 *ptr, *ststr;
+	char	 *ststr;
 
 	switch((int)(c->qid.path&~CHDIR)){
 	case arpdirqid:
@@ -254,6 +257,8 @@ arpwrite(Chan *c, char *a, long n, ulong offset)
 	Arpentry entry;
 	char	 buf[20], *field[5];
 	int 	 m;
+
+	USED(offset);
 
 	switch(STREAMTYPE(c->qid.path)) {
 	case arpctlqid:

@@ -358,7 +358,6 @@ dumpregs(Ureg *ur)
 {
 	int i;
 	ulong *l;
-	int (*pr)(char*, ...);
 
 	if(u)
 		print("registers for %s %d\n", u->p->text, u->p->pid);

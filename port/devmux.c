@@ -77,6 +77,7 @@ muxgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 	char buf[10];
 	int nq;
 
+	USED(tab, ntab);
 	if(c->qid.path == CHDIR) {
 		if(s >= Nmuxchan)
 			return -1;
@@ -190,7 +191,7 @@ muxopen(Chan *c, int omode)
 {
 	Mux *m;
 	Con *cm, *e;
-	int mux, ok;
+	int mux;
 	Chan *new;
 
 	c = devopen(c, omode, 0, 0, muxgen);
@@ -406,6 +407,7 @@ muxread(Chan *c, void *va, long n, ulong offset)
 	Con *cm;
 	int bread;
 
+	USED(offset);
 	if(c->qid.path & CHDIR)
 		return devdirread(c, va, n, 0, 0, muxgen);
 
@@ -449,9 +451,9 @@ muxwrite(Chan *c, void *va, long n, ulong offset)
 	Mux *m;
 	Con *cm;
 	int muxid, fd;
-	Block *f, *bp;
 	char *a, hdr[3], buf[10];
 
+	USED(offset);
 	if(c->qid.path&CHDIR)
 		error(Eisdir);
 
@@ -589,7 +591,7 @@ havedata(Dtq *q)
 ulong
 muxreadq(Mux *m, Dtq *q, char *va, ulong n)
 {
-	int l, nread, gotdelim;
+	int l, nread;
 	Block *bp, *f1;
 
 	qlock(&q->rd);

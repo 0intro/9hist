@@ -27,8 +27,6 @@ int
 decref(Ref *r)
 {
 	int x;
-	int i;
-	Segment *s;
 
 	lock(r);
 	x = --r->ref;
@@ -432,7 +430,7 @@ namec(char *name, int amode, int omode, ulong perm)
 	int t;
 	int mntok, isdot;
 	char *p;
-	char *elem, *nn;
+	char *elem;
 	char createerr[ERRLEN];
 
 	if(name[0] == 0)
@@ -668,8 +666,8 @@ nameok(char *elem)
 char*
 nextelem(char *name, char *elem)
 {
-	int i, user, w;
-	char *end, *e;
+	int w;
+	char *end;
 	Rune r;
 
 	if(*name == '/')

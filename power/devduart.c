@@ -377,7 +377,7 @@ duartxintr(Port *p)
 void
 duartintr(void)
 {
-	int cause, status, c;
+	int cause;
 	Duartreg *reg;
 	Port *p;
 
@@ -467,7 +467,6 @@ duartputs(IOQ *cq, char *s, int n)
 {
 	int ch, x;
 	Port *p;
-	Duartreg *reg;
 
 	x = splhi();
 	lock(cq);
@@ -783,6 +782,9 @@ void
 duartcreate(Chan *c, char *name, int omode, ulong perm)
 {
 	USED(c);
+	USED(name);
+	USED(omode);
+	USED(perm);
 	error(Eperm);
 }
 
@@ -823,6 +825,7 @@ duartread(Chan *c, void *buf, long n, ulong offset)
 long
 duartwrite(Chan *c, void *va, long n, ulong offset)
 {
+	USED(offset);
 	return streamwrite(c, va, n, 0);
 }
 
@@ -837,6 +840,7 @@ void
 duartwstat(Chan *c, char *p)
 {
 	USED(c);
+	USED(p);
 	error(Eperm);
 }
 

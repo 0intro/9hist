@@ -350,7 +350,7 @@ Pte*
 ptecpy(Pte *old)
 {
 	Pte *new;
-	Page **src, **dst, **end;
+	Page **src, **dst;
 
 	new = ptealloc();
 	dst = &new->pages[old->first-old->pages];

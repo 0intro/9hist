@@ -27,6 +27,8 @@ srvgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 {
 	Srv *sp;
 
+	USED(tab);
+	USED(ntab);
 	qlock(&srvlk);
 	for(sp = srv; sp && s; sp = sp->link)
 		s--;
@@ -148,7 +150,6 @@ srvcreate(Chan *c, char *name, int omode, ulong perm)
 void
 srvremove(Chan *c)
 {
-	Chan *f;
 	Srv *sp, **l;
 
 	if(c->qid.path == CHDIR)
@@ -197,6 +198,7 @@ srvclose(Chan *c)
 long
 srvread(Chan *c, void *va, long n, ulong offset)
 {
+	USED(offset);
 	isdir(c);
 	return devdirread(c, va, n, 0, 0, srvgen);
 }
@@ -207,9 +209,10 @@ srvwrite(Chan *c, void *va, long n, ulong offset)
 	Srv *sp;
 	Fgrp *f;
 	Chan *c1;
-	int i, fd;
+	int fd;
 	char buf[32];
 
+	USED(offset);
 	if(n >= sizeof buf)
 		error(Egreg);
 	memmove(buf, va, n);	/* so we can NUL-terminate */

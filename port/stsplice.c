@@ -73,8 +73,6 @@ spliceoput(Queue *q, Block *bp)
 static void
 spliceiput(Queue *q, Block *bp)
 {
-	Stream *s;
-
 	if(bp->type == M_HANGUP)
 		PUTNEXT(q, bp);
 	else

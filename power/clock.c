@@ -10,7 +10,6 @@
 void
 delay(int ms)
 {
-	ulong t, *p;
 	int i;
 
 	ms *= 7000;	/* experimentally determined */

@@ -221,8 +221,9 @@ cycread(Chan *c, void *buf, long n, ulong offset)
 	User *pu;
 	Commcyc *cp;
 	Cycmsg *mp, **cmp;
-	ulong l, m, isflush;
+	ulong l, m;
 
+	USED(offset);
 	cp = &cyclone[c->dev];
 	switch(c->qid.path & ~CHDIR){
 	case Qdir:
@@ -299,6 +300,7 @@ cycwrite(Chan *c, void *buf, long n, ulong offset)
 	Commcyc *cp;
 	Cycmsg *mp, **cmp;
 
+	USED(offset);
 	cp = &cyclone[c->dev];
 	switch(c->qid.path & ~CHDIR){
 	case Qdir:

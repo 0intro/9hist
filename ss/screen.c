@@ -259,17 +259,18 @@ kbdstate(IOQ *q, int c)
 	static int repeatc;
 	static int lstate;
 	static uchar kc[4];
-	uchar ch, code;
+	uchar ch;
 	int i, nk;
 
+	USED(q);
 	ch = kbdmap[shift][c&0x7F];
 	if(c==0x7F){	/* all keys up */
     norepeat:
 		kbdrepeat(0);
-		return;
+		return 0;
 	}
 	if(ch == 0xFF)	/* shouldn't happen; ignore */
-		return;
+		return 0;
 	if(c & 0x80){	/* key went up */
 		if(ch == 0xF0){		/* control */
 			shift &= ~2;
@@ -337,6 +338,7 @@ kbdstate(IOQ *q, int c)
 			break;
 		}
 	}
+	return 0;
 }
 
 void
@@ -376,18 +378,21 @@ getcolor(ulong p, ulong *pr, ulong *pg, ulong *pb)
 int
 setcolor(ulong p, ulong r, ulong g, ulong b)
 {
+	USED(p, r, g, b);
 	return 0;	/* can't change mono screen colormap */
 }
 
 int
 hwcursset(uchar *s, uchar *c, int ox, int oy)
 {
+	USED(s, c, ox, oy);
 	return 0;
 }
 
 int
 hwcursmove(int x, int y)
 {
+	USED(x, y);
 	return 0;
 }
 

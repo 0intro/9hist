@@ -133,7 +133,7 @@ closefgrp(Fgrp *f)
 Mount*
 newmount(Mhead *mh, Chan *to)
 {
-	Mount *m, *f, *e;
+	Mount *m;
 
 	m = smalloc(sizeof(Mount));
 	m->to = to;

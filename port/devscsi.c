@@ -96,12 +96,14 @@ scsigen1(Chan *c, long qid, Dir *dp)
 static int
 scsigeno(Chan *c, Dirtab *tab, long ntab, long s, Dir *dp)
 {
+	USED(tab, ntab, s);
 	return scsigen1(c, c->qid.path, dp);
 }
 
 static int
 scsigen(Chan *c, Dirtab *tab, long ntab, long s, Dir *dp)
 {
+	USED(tab, ntab);
 	if (c->qid.path == CHDIR) {
 		if (0<=s && s<=7)
 			return scsigen1(c, CHDIR|0x100|(s<<4), dp);
@@ -148,6 +150,7 @@ scsiopen(Chan *c, int omode)
 void
 scsicreate(Chan *c, char *name, int omode, ulong perm)
 {
+	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
@@ -303,12 +306,14 @@ scsiwrite(Chan *c, char *a, long n, ulong offset)
 void
 scsiremove(Chan *c)
 {
+	USED(c);
 	error(Eperm);
 }
 
 void
 scsiwstat(Chan *c, char *dp)
 {
+	USED(c, dp);
 	error(Eperm);
 }
 
@@ -559,6 +564,7 @@ scsiinit(void)
 static int
 scsidone(void *arg)
 {
+	USED(arg);
 	return (scsibusy == 0);
 }
 

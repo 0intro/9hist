@@ -196,9 +196,6 @@ floppyreset(void)
 {
 	Drive *dp;
 	Type *t;
-	int n;
-	ulong p;
-	long l;
 
 	/*
 	 *  init dependent parameters
@@ -290,23 +287,27 @@ floppyopen(Chan *c, int omode)
 void
 floppycreate(Chan *c, char *name, int omode, ulong perm)
 {
+	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
 void
 floppyclose(Chan *c)
 {
+	USED(c);
 }
 
 void
 floppyremove(Chan *c)
 {
+	USED(c);
 	error(Eperm);
 }
 
 void
 floppywstat(Chan *c, char *dp)
 {
+	USED(c, dp);
 	error(Eperm);
 }
 
@@ -351,7 +352,6 @@ floppyread(Chan *c, void *a, long n)
 	long rv, i;
 	int nn, sec, head, cyl;
 	long len;
-	long noff;
 	uchar *aa;
 
 	if(c->qid.path == CHDIR)
@@ -420,7 +420,6 @@ floppywrite(Chan *c, void *a, long n)
 	Drive *dp;
 	long rv, i;
 	char *aa = a;
-	int dev;
 
 	rv = 0;
 	dp = &fl.d[c->qid.path & ~Qmask];
@@ -474,6 +473,7 @@ floppykproc(void *a)
 {
 	Drive *dp;
 
+	USED(a);
 	while(waserror())
 		;
 	for(;;){
@@ -608,8 +608,6 @@ floppypos(Drive *dp, long off)
 	int lsec;
 	int ltrack;
 	int end;
-	int cyl;
-	int track;
 
 	lsec = off/dp->t->bytes;
 	ltrack = lsec/dp->t->sectors;
@@ -647,6 +645,7 @@ floppysense(void)
 static int
 cmddone(void *a)
 {
+	USED(a);
 	return fl.ncmd == 0;
 }
 
@@ -665,8 +664,6 @@ floppywait(void)
 static int
 floppyrecal(Drive *dp)
 {
-	int type;
-
 	dp->ccyl = -1;
 
 	fl.ncmd = 0;
@@ -784,7 +781,6 @@ static long
 floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 {
 	long offset;
-	ulong up;
 
 	if(off >= dp->t->cap)
 		return 0;
@@ -866,6 +862,7 @@ floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 static void
 floppyintr(Ureg *ur)
 {
+	USED(ur);
 	switch(fl.cmd[0]&~Fmulti){
 	case Fread:
 	case Fwrite:

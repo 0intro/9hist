@@ -7,7 +7,7 @@
 
 /* Predeclaration */
 void	pageout(Proc *p, Segment*);
-void	pagepte(int, Segment*, Page**);
+void	pagepte(int, Page**);
 int	needpages(void*);
 void	pager(void*);
 void	executeio(void);
@@ -188,7 +188,7 @@ pageout(Proc *p, Segment *s)
 			if(entry->modref & PG_REF)
 				entry->modref &= ~PG_REF;
 			else 
-				pagepte(type, s, pg);
+				pagepte(type, pg);
 
 			if(ioptr >= Maxpages)
 				goto out;
@@ -235,7 +235,7 @@ canflush(Proc *p, Segment *s)
 }
 
 void
-pagepte(int type, Segment *s, Page **pg)
+pagepte(int type, Page **pg)
 {
 	ulong daddr;
 	Page *outp;

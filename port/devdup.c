@@ -16,6 +16,8 @@ dupgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 	Chan *f;
 	static int perm[] = { 0400, 0200, 0600, 0 };
 
+	USED(tab);
+	USED(ntab);
 	if(s >= NFD)
 		return -1;
 	if((f=fgrp->fd[s]) == 0)
@@ -99,6 +101,7 @@ void
 dupwstat(Chan *c, char *dp)
 {
 	USED(c);
+	USED(dp);
 	error(Egreg);
 }
 
@@ -113,6 +116,7 @@ dupread(Chan *c, void *va, long n, ulong offset)
 {
 	char *a = va;
 
+	USED(offset);
 	if(c->qid.path != CHDIR)
 		panic("dupread");
 	return devdirread(c, a, n, (Dirtab *)0, 0L, dupgen);

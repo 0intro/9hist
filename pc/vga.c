@@ -224,7 +224,9 @@ dumpmodes(void) {
 #endif
 
 void
-setscreen(int maxx, int maxy, int bpp) {
+setscreen(int maxx, int maxy, int bpp)
+{
+	USED(bpp);
 	gbitblt(&gscreen, Pt(0, 0), &gscreen, gscreen.r, flipD[S]);
 	gscreen.width = maxx/32;
 	gscreen.r.max = Pt(maxx, maxy);
@@ -238,10 +240,8 @@ setscreen(int maxx, int maxy, int bpp) {
 void
 screeninit(void)
 {
-	int i, j, k;
-	int c;
+	int i;
 	ulong *l;
-	VGAmode testmode;
 
 	setmode(&mode12);
 
@@ -334,18 +334,21 @@ getcolor(ulong p, ulong *pr, ulong *pg, ulong *pb)
 int
 setcolor(ulong p, ulong r, ulong g, ulong b)
 {
+	USED(p, r, g, b);
 	return 0;	/* can't change mono screen colormap */
 }
 
 int
 hwcursset(uchar *s, uchar *c, int ox, int oy)
 {
+	USED(s, c, ox, oy);
 	return 0;
 }
 
 int
 hwcursmove(int x, int y)
 {
+	USED(x, y);
 	return 0;
 }
 

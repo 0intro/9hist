@@ -104,7 +104,7 @@ machinit(void)
 void
 mmuinit(void)
 {
-	ulong l, d, i, scr;
+	ulong l, d, i;
 
 	/*
 	 * Invalidate user addresses
@@ -128,8 +128,6 @@ mmuinit(void)
 void
 init0(void)
 {
-	Chan *c;
-
 	u->nerrlab = 0;
 	m->proc = u->p;
 	u->p->state = Running;
@@ -353,6 +351,7 @@ procsave(Proc *p)
 {
 	Balu *balu = (Balu *)u->balusave;
 
+	USED(p);
 	fpsave(&u->fpsave);
 	if(u->fpsave.type){
 		if(u->fpsave.size > sizeof u->fpsave.junk)
@@ -397,9 +396,11 @@ procrestore(Proc *p)
 void
 buzz(int f, int d)
 {
+	USED(f, d);
 }
 
 void
 lights(int val)
 {
+	USED(val);
 }

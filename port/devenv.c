@@ -28,6 +28,9 @@ envgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 	Egrp *eg;
 	Evalue *e;
 
+	USED(tab);
+	USED(ntab);
+
 	eg = u->p->egrp;
 	qlock(eg);
 
@@ -109,6 +112,7 @@ envcreate(Chan *c, char *name, int omode, ulong perm)
 	Egrp *eg;
 	Evalue *e;
 
+	USED(perm);
 	if(c->qid.path != CHDIR)
 		error(Eperm);
 

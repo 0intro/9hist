@@ -696,6 +696,9 @@ void
 dkcreate(Chan *c, char *name, int omode, ulong perm)
 {
 	USED(c);
+	USED(name);
+	USED(omode);
+	USED(perm);
 	error(Eperm);
 }
 
@@ -720,6 +723,7 @@ dkwrite(Chan *c, void *a, long n, ulong offset)
 	char *field[5];
 	int m;
 
+	USED(offset);
 	t = STREAMTYPE(c->qid.path);
 
 	/*
@@ -840,8 +844,6 @@ dkopenline(Dk *dp, int line)
 static Chan*
 dkopencsc(Dk *dp)
 {
-	Line *lp;
-
 	qlock(&dp->csclock);
 	if(dp->csc == 0)
 		dp->csc = dkopenline(dp, dp->ncsc);
@@ -1321,7 +1323,6 @@ static void
 dkwindow(Chan *c)
 {
 	char buf[64];
-	long wins;
 	Line *lp;
 
 	lp = linealloc(dk[c->dev], STREAMID(c->qid.path), 1);
@@ -1517,7 +1518,6 @@ dkchgmesg(Chan *c, Dk *dp, Dkmsg *dialp, int line)
 static void
 dkreplymesg(Dk *dp, Dkmsg *dialp, int line)
 {
-	Proc *p;
 	Line *lp;
 
 	DPRINT("dkreplymesg(%d)\n", line);
@@ -1557,7 +1557,7 @@ dkreplymesg(Dk *dp, Dkmsg *dialp, int line)
 static void
 dktimer(void *a)
 {
-	int dki, i;
+	int i;
 	Dk *dp;
 	Line *lp;
 	Chan *c;

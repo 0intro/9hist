@@ -194,7 +194,6 @@ sccparity(SCC *sp, char type)
 void
 sccbits(SCC *sp, int n)
 {
-	int val;
 	int rbits, tbits;
 
 	switch(n){
@@ -743,7 +742,6 @@ sccclose(Chan *c)
 long
 sccread(Chan *c, void *buf, long n, ulong offset)
 {
-	SCC *sp;
 	char b[8];
 
 	if(c->qid.path == CHDIR)
@@ -763,6 +761,7 @@ sccread(Chan *c, void *buf, long n, ulong offset)
 long
 sccwrite(Chan *c, void *va, long n, ulong offset)
 {
+	USED(offset);
 	return streamwrite(c, va, n, 0);
 }
 

@@ -143,6 +143,7 @@ etheropen(Chan *c, int omode)
 void
 ethercreate(Chan *c, char *name, int omode, ulong perm)
 {
+	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
@@ -162,12 +163,14 @@ etherread(Chan *c, void *a, long n, ulong offset)
 long
 etherwrite(Chan *c, char *a, long n, ulong offset)
 {
+	USED(offset);
 	return streamwrite(c, a, n, 0);
 }
 
 void
 etherremove(Chan *c)
 {
+	USED(c);
 	error(Eperm);
 }
 
@@ -350,6 +353,7 @@ clonecon(Chan *c)
 	Ctlr *cp = &ctlr[0];
 	Type *tp;
 
+	USED(c);
 	for(tp = cp->type; tp < &cp->type[NType]; tp++){
 		qlock(tp);
 		if(tp->inuse || tp->q){
@@ -362,6 +366,7 @@ clonecon(Chan *c)
 		return tp - cp->type;
 	}
 	exhausted("ether channels");
+	return 0;
 }
 
 static void
@@ -370,6 +375,7 @@ statsfill(Chan *c, char *p, int n)
 	Ctlr *cp = &ctlr[0];
 	char buf[256];
 
+	USED(c);
 	sprint(buf, "in: %d\nout: %d\ncrc errs %d\noverflows: %d\nframe errs %d\nbuff errs: %d\noerrs %d\naddr: %.02x:%.02x:%.02x:%.02x:%.02x:%.02x\n",
 		cp->inpackets, cp->outpackets, cp->crcs,
 		cp->overflows, cp->frames, cp->buffs, cp->oerrs,
@@ -693,6 +699,7 @@ wd8013mode(Ctlr *cp, int on)
 static void
 wd8013online(Ctlr *cp, int on)
 {
+	USED(on);
 	OUT(cp->hw, w.tcr, 0);
 }
 
@@ -777,6 +784,7 @@ wd8013intr(Ureg *ur)
 	Buffer *tb;
 	uchar isr;
 
+	USED(ur);
 	while(isr = IN(hw, r.isr)){
 		OUT(hw, w.isr, isr);
 		if(isr & 0x08)			/* Txe - transmit error */

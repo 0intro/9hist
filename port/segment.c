@@ -396,7 +396,7 @@ done:
 ulong
 segattach(Proc *p, ulong attr, char *name, ulong va, ulong len)
 {
-	Segment *s, *ns, *new;
+	Segment *s, *ns;
 	Physseg *ps;
 	ulong newtop;
 	int i, sno;

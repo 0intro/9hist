@@ -185,8 +185,7 @@ i8042a20(void)
 void
 kbdinit(void)
 {
-	int c, s;
-	int tries;
+	int c;
 
 	setvec(Kbdvec, kbdintr);
 
@@ -241,7 +240,6 @@ mymouseputc(int c)
 	static int nb;
 	static uchar b[] = {0, 1, 4, 5, 2, 3, 6, 7};
 	static lastdx, lastdy;
-	int diff;
 	extern Mouseinfo mouse;
 
 	/* 
@@ -289,7 +287,7 @@ middle(int newval)
 int
 kbdintr0(void)
 {
-	int s, c, i, nk, nc;
+	int s, c, i, nk;
 	static int esc1, esc2;
 	static int shift;
 	static int caps;
@@ -442,5 +440,6 @@ dochar:
 void
 kbdintr(Ureg *ur)
 {
+	USED(ur);
 	kbdintr0();
 }

@@ -149,8 +149,6 @@ dmaend(int chan)
 {
 	DMA *dp;
 	DMAxfer *xp;
-	ulong addr;
-	uchar mode;
 
 	dp = &dma[(chan>>2)&1];
 	chan = chan & 3;

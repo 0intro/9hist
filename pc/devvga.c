@@ -108,20 +108,21 @@ vgaopen(Chan *c, int omode)
 void
 vgacreate(Chan *c, char *name, int omode, ulong perm)
 {
+	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
 void
 vgaclose(Chan *c)
 {
+	USED(c);
 }
 
 long
 vgaread(Chan *c, void *buf, long n, ulong offset)
 {
 	char obuf[60];
-	int port, i;
-	uchar *mem;
+	int port;
 	uchar *cp = buf;
 	void *outfunc(int, int);
 
@@ -156,7 +157,7 @@ long
 vgawrite(Chan *c, void *buf, long n, ulong offset)
 {
 	char cbuf[20], *cp;
-	int port, i, maxx, maxy;
+	int port, maxx, maxy;
 
 	switch(c->qid.path&~CHDIR){
 	case Qdir:
@@ -203,11 +204,13 @@ vgawrite(Chan *c, void *buf, long n, ulong offset)
 void
 vgaremove(Chan *c)
 {
+	USED(c);
 	error(Eperm);
 }
 
 void
 vgawstat(Chan *c, char *dp)
 {
+	USED(c, dp);
 	error(Eperm);
 }
