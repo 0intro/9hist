@@ -248,13 +248,13 @@ extern MemConfRegs *memconfregs;
 typedef struct PowerRegs PowerRegs;
 struct PowerRegs
 {
-	ulong	pmcr;
-	ulong	pssr;
-	ulong	pspr;
-	ulong	pwer;
-	ulong	pcfr;
-	ulong	ppcr;
-	ulong	pgsr;
-	ulong	posr;
+	ulong	pmcr;	/* Power manager control register */
+	ulong	pssr;	/* Power manager sleep status register */
+	ulong	pspr;	/* Power manager scratch pad register */
+	ulong	pwer;	/* Power manager wakeup enable register */
+	ulong	pcfr;	/* Power manager general configuration register */
+	ulong	ppcr;	/* Power manager PPL configuration register */
+	ulong	pgsr;	/* Power manager GPIO sleep state register */
+	ulong	posr;	/* Power manager oscillator status register */
 };
 extern PowerRegs *powerregs;

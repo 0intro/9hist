@@ -624,8 +624,6 @@ outdisable(void) {
 static void
 inenable(void) {
 	/* turn on ADC, set input gain switch */
-//	egpiobits(EGPIO_audio_power, 1);
-//	audiomute(0);
 	status1 |= 0x22;
 	L3_write(UDA1341_L3Addr | UDA1341_STATUS, (uchar*)&status1, 1);
 	if (debug) {
@@ -644,20 +642,21 @@ indisable(void) {
 	}
 }
 
-static void
-disable(void) {
-	egpiobits(EGPIO_audio_ic_power | EGPIO_codec_reset, 0);
-}
-
-static void
+void
 audiopower(int flag) {
+	if (debug) {
+		iprint("audiopower %d\n", flag);
+	}
 	if (flag) {
 		egpiobits(EGPIO_audio_power, 1);
 		egpiobits(EGPIO_audio_ic_power | EGPIO_codec_reset, 1);
 	} else {
 		/* power off */
-		egpiobits(EGPIO_audio_power, 0);
-		egpiobits(EGPIO_audio_ic_power | EGPIO_codec_reset, 0);
+		if (audio.omode & Aread)
+			indisable();
+		if (audio.omode & Awrite)
+			outdisable();
+		egpiobits(EGPIO_audio_ic_power | EGPIO_codec_reset | EGPIO_audio_power, 0);
 	}
 }
 

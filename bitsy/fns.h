@@ -1,8 +1,6 @@
 #include "../port/portfns.h"
 
-void	amplifierpower(int);
 void	audiopower(int);
-void	audiomute(int);
 void	cacheflush(void);
 void	cachewb(void);
 void	cachewbaddr(void*);
