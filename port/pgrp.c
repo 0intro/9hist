@@ -115,7 +115,7 @@ closepgrp(Pgrp *p)
 	Envp *ep;
 
 	if(decref(p) == 0){
-		lock(&p->debug);
+		qlock(&p->debug);
 		p->pgrpid = -1;
 		m = p->mtab;
 		for(i=0; i<p->nmtab; i++,m++)
@@ -130,7 +130,7 @@ closepgrp(Pgrp *p)
 		lock(&pgrpalloc);
 		p->next = pgrpalloc.free;
 		pgrpalloc.free = p;
-		unlock(&p->debug);
+		qunlock(&p->debug);
 		unlock(&pgrpalloc);
 	}
 }

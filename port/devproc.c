@@ -374,17 +374,17 @@ procwrite(Chan *c, void *va, long n)
 	 */
 	if(QID(c->qid) == Qnotepg){
 		pg = pgrptab(c->pgrpid.path-1);
-		lock(&pg->debug);
+		qlock(&pg->debug);
 		if(waserror()){
-			unlock(&pg->debug);
+			qunlock(&pg->debug);
 			nexterror();
 		}
 		if(pg->pgrpid != c->pgrpid.vers){
-			unlock(&pg->debug);
+			qunlock(&pg->debug);
   	  		goto Died;
 		}
 		pgrpnote(pg, va, n, NUser);
-		unlock(&pg->debug);
+		qunlock(&pg->debug);
 		return n;
 	}
 

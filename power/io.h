@@ -71,8 +71,15 @@ struct MODE {
 
 #define MODEREG		IO2(MODE, 0xF40000)
 
+/*
+ * VME addressing.
+ * MP2VME takes a physical MP bus address and returns an address
+ * usable by a VME device through A32 space
+ */
 #define	MASTER	0x0
 #define	SLAVE	0x4
+#define	MP2VME(addr)	(((ulong)(addr) & 0x0fffffff) | (SLAVE<<28))
+
 
 struct INTVEC {
 	struct {
@@ -84,9 +91,9 @@ struct INTVEC {
 #define INTVECREG	IO2(INTVEC, 0xF60000)
 #define	NVRAM		IO2(uchar, 0xF10000)
 #define INTPENDREG	IO2(uchar, 0xF20000)	/* same as LED */
-#define IO2CLRMASK	IO2(uchar, 0xFE0000)
-#define IO2SETMASK	IO2(uchar, 0xFE8000)
-#define IO2MASK		IO2(ushort, 0xFE8000)
+#define INTPENDREG3	IO2(uchar, 0xFF0000)	/* same as ENET ID */
+#define IO2CLRMASK	IO2(ulong, 0xFE0000)
+#define IO2SETMASK	IO2(ulong, 0xFE8000)
 #define	MPBERR0		IO2(ulong, 0xF48000)
 #define	MPBERR1		IO2(ulong, 0xF4C000)
 #define	RTC		(NVRAM+0x3ff8)

@@ -288,7 +288,7 @@ struct Pgrp
 	char	user[NAMELEN];
 	int	nmtab;			/* highest active mount table entry, +1 */
 	int	nenv;			/* highest active env table entry, +1 */
-	Lock	debug;			/* single access via devproc.c */
+	QLock	debug;			/* single access via devproc.c */
 	Mtab	*mtab;
 	Envp	*etab;
 };

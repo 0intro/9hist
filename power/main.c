@@ -137,7 +137,7 @@ ioboardinit(void)
 
 	ioid = *IOID;
 	if(ioid >= IO3R1)
-		maxlevel = 11;
+		maxlevel = 8;
 	else
 		maxlevel = 8;
 
@@ -177,9 +177,9 @@ ioboardinit(void)
 	SBCCREG->idintenable |= 0x800000; /* allow interrupts from the IO2 */
 
 	/*
-	 *  enable all interrupts on the IO2
+	 *  Enable all interrupts on the IO2.  If IO3, run in compatibility mode.
 	 */
-	*IO2SETMASK = 0xff;
+	*IO2SETMASK = 0xff000000;
 
 }
 

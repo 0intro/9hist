@@ -688,10 +688,10 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		error(Eshutdown);
 #ifdef	BIT3
 	/*
-	 * Bit3 does its own multiplexing.  (Well, the file server does.)
+	 * Bit3 and Hotrod do their own multiplexing.  (Well, the file server does.)
 	 * The code is different enough that it's broken out separately here.
 	 */
-	if(devchar[q->msg->type] != '3')
+	if(devchar[q->msg->type]!='3' && devchar[q->msg->type]!='H')
 		goto Normal;
 
 	incref(q);

@@ -175,7 +175,8 @@ trap(Ureg *ur)
 void
 intr(Ureg *ur)
 {
-	int i, pend;
+	int i, any;
+	uchar pend, npend;
 	long v;
 	ulong cause;
 
@@ -189,19 +190,20 @@ intr(Ureg *ur)
 		cause &= ~INTR1;
 	}
 	if(cause & INTR5){
-
+		any = 0;
 		if(!(*MPBERR1 & (1<<8))){
 			print("MP bus error %lux %lux\n", *MPBERR0, *MPBERR1);
 			*MPBERR0 = 0;
 			i = *SBEADDR;
 			USED(i);
+			any = 1;
 		}
 
 		/*
 		 *  directions from IO2 manual
 		 *  1. clear all IO2 masks
 		 */
-		*IO2CLRMASK = 0xff;
+		*IO2CLRMASK = 0xff000000;
 
 		/*
 		 *  2. wait for interrupt in progress
@@ -212,7 +214,7 @@ intr(Ureg *ur)
 		/*
 		 *  3. read pending interrupts
 		 */
-		pend = SBCCREG->fintpending & 0xff;
+		npend = pend = SBCCREG->fintpending;
 
 		/*
 		 *  4. clear pending register
@@ -223,22 +225,26 @@ intr(Ureg *ur)
 		/*
 		 *  5a. process lance, scsi
 		 */
-	loop:
 		if(pend & 1) {
 			v = INTVECREG->i[0].vec;
 			if(!(v & (1<<12))){
 				print("io2 mp bus error %d %lux %lux\n", 0,
 					*MPBERR0, *MPBERR1);
 				*MPBERR0 = 0;
+				any = 1;
 			}
 			if(ioid < IO3R1){
+				if(!(v & 7))
+					any = 1;
 				if(!(v & (1<<2)))
 					lanceintr();
 				if(!(v & (1<<1)))
 					lanceparity();
 				if(!(v & (1<<0)))
 					print("SCSI interrupt\n");
-			} else {
+			}else{
+				if(v & 7)
+					any = 1;
 				if(v & (1<<2))
 					lanceintr();
 				if(v & (1<<1))
@@ -249,26 +255,32 @@ intr(Ureg *ur)
 		}
 		/*
 		 *  5b. process vme
-		 *  i bet i can guess your level
+		 *  i can guess your level
 		 */
-		pend >>= 1;
-		for(i=1; pend; i++) {
+		for(i=1; pend>>=1; i++){
 			if(pend & 1) {
 				v = INTVECREG->i[i].vec;
 				if(!(v & (1<<12))){
-					print("io2 mp bus error %d %lux %lux\n", i,
-						*MPBERR0, *MPBERR1);
+					print("io2 mp bus error %d %lux %lux\n",
+						i, *MPBERR0, *MPBERR1);
 					*MPBERR0 = 0;
 				}
 				v &= 0xff;
 				(*vmevec[v])(v);
+				any = 1;
 			}
-			pend >>= 1;
+		}
+		/*
+		 *  if nothing else, assume bus error
+		 */
+		if(!any){
+			print("bogus intr lvl 5 pend %lux on %d\n", npend, m->machno);
+			delay(100);
 		}
 		/*
 		 *  6. re-enable interrupts
 		 */
-		*IO2SETMASK = 0xff;
+		*IO2SETMASK = 0xff000000;
 		cause &= ~INTR5;
 	}
 	if(cause)
