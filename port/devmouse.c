@@ -12,16 +12,23 @@
 #include	"screen.h"
 
 typedef struct Mouseinfo	Mouseinfo;
+typedef struct Mousestate	Mousestate;
+
+struct Mousestate
+{
+	Point	xy;			/* mouse.xy */
+	int	buttons;		/* mouse.buttons */
+	ulong	counter;	/* increments every update */
+	ulong	msec;	/* time of last event */
+};
 
 struct Mouseinfo
 {
+	Mousestate;
 	int	dx;
 	int	dy;
 	int	track;		/* dx & dy updated */
-	Point	xy;			/* mouse.xy */
-	int	buttons;		/* mouse.buttons */
 	int	redraw;		/* update cursor on screen */
-	ulong	counter;	/* increments every update */
 	ulong	lastcounter;	/* value when /dev/mouse read */
 	Rendez	r;
 	Ref;
@@ -30,6 +37,10 @@ struct Mouseinfo
 	int	inopen;
 	int	acceleration;
 	int	maxacc;
+	Mousestate 	queue[16];	/* circular buffer of click events */
+	int	ri;	/* read index into queue */
+	int	wi;	/* write index into queue */
+	uchar	qfull;	/* queue is full */
 };
 
 Mouseinfo	mouse;
@@ -186,6 +197,7 @@ mouseread(Chan *c, void *va, long n, vlong off)
 	uchar *p;
 	static int map[8] = {0, 4, 2, 6, 1, 5, 3, 7 };
 	ulong offset = off;
+	Mousestate m;
 
 	p = va;
 	switch(c->qid.path){
@@ -210,15 +222,33 @@ mouseread(Chan *c, void *va, long n, vlong off)
 		while(mousechanged(0) == 0)
 			sleep(&mouse.r, mousechanged, 0);
 
-		while(!canlock(&cursor))
-			tsleep(&up->sleep, return0, 0, TK2MS(1));
+		mouse.qfull = 0;
+
+		/*
+		 * No lock of the indicies is necessary here, because ri is only
+		 * updated by us, and there is only one mouse reader
+		 * at a time.  I suppose that more than one process
+		 * could try to read the fd at one time, but such behavior
+		 * is degenerate and already violates the calling
+		 * conventions for sleep above.
+		 */
+		if(mouse.ri != mouse.wi) {
+			m = mouse.queue[mouse.ri];
+			if(++mouse.ri == nelem(mouse.queue))
+				mouse.ri = 0;
+		} else {
+			while(!canlock(&cursor))
+				tsleep(&up->sleep, return0, 0, TK2MS(1));
+	
+			m = mouse.Mousestate;
+			unlock(&cursor);
+		}
 
 		sprint(buf, "m%11d %11d %11d %11lud",
-			mouse.xy.x, mouse.xy.y,
-			buttonmap[mouse.buttons&7],
-			TK2MS(MACHP(0)->ticks));
-		mouse.lastcounter = mouse.counter;
-		unlock(&cursor);
+			m.xy.x, m.xy.y,
+			buttonmap[m.buttons&7],
+			m.msec);
+		mouse.lastcounter = m.counter;
 		if(n > 1+4*12)
 			n = 1+4*12;
 		memmove(va, buf, n);
@@ -457,7 +487,7 @@ scale(int x)
 void
 mousetrack(int b, int dx, int dy)
 {
-	int x, y;
+	int x, y, lastb;
 
 	if(gscreen==nil)
 		return;
@@ -476,10 +506,25 @@ mousetrack(int b, int dx, int dy)
 		y = gscreen->r.min.y;
 	if(y >= gscreen->r.max.y)
 		y = gscreen->r.max.y;
-	mouse.counter++;
+
+	lastb = mouse.buttons;
 	mouse.xy = Pt(x, y);
 	mouse.buttons = b;
 	mouse.redraw = 1;
+	mouse.counter++;
+	mouse.msec = TK2MS(MACHP(0)->ticks);
+
+	/*
+	 * if the queue fills, we discard the entire queue and don't
+	 * queue any more events until a reader polls the mouse.
+	 */
+	if(!mouse.qfull && lastb != b) {	/* add to ring */
+		mouse.queue[mouse.wi] = mouse.Mousestate;
+		if(++mouse.wi == nelem(mouse.queue))
+			mouse.wi = 0;
+		if(mouse.wi == mouse.ri)
+			mouse.qfull = 1;
+	}
 	wakeup(&mouse.r);
 	drawactive(1);
 }
@@ -561,7 +606,7 @@ mouseputc(Queue*, int c)
 int
 mousechanged(void*)
 {
-	return mouse.lastcounter - mouse.counter;
+	return mouse.lastcounter != mouse.counter;
 }
 
 Point
