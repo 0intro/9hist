@@ -47,7 +47,6 @@ main(void)
 	active.machs = 1;
 	confinit();
 	arginit();
-	sysloginit();
 	lockinit();
 	printinit();
 	tlbinit();

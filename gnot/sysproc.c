@@ -41,7 +41,6 @@ sysfork(ulong *arg)
 	/*
 	 * Save time: only copy u-> data and useful stack
 	 */
-	clearmmucache();
 	memcpy((void*)upa, u, sizeof(User));
 	n = USERADDR+BY2PG - (ulong)&lastvar;
 	n = (n+32) & ~(BY2WD-1);	/* be safe & word align */
@@ -362,7 +361,6 @@ sysexec(ulong *arg)
 	unlock(o);
 
 	flushmmu();
-	clearmmucache();
 	((Ureg*)UREGADDR)->pc = exec.entry;
 	sp = (ulong*)(USTKTOP - ssize);
 	*--sp = nargs;

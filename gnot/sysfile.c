@@ -31,12 +31,12 @@ fdtochan(int fd, int mode)
 
 	if(fd<0 || NFD<=fd || (c=u->fd[fd])==0)
 		error(0, Ebadfd);
-	if(mode<0 || c->mode == 2)
+	if(mode<0 || c->mode==ORDWR)
 		return c;
-	if((mode&16) && c->mode==0)
+	if((mode&OTRUNC) && c->mode==OREAD)
     err:
 		error(0, Ebadusefd);
-	if((mode&~16) != c->mode)
+	if((mode&~OTRUNC) != c->mode)
 		goto err;
 	return c;
 }

@@ -103,6 +103,7 @@ loop:
 	if(m = mountalloc.free){		/* assign = */
 		mountalloc.free = m->next;
 		m->ref = 1;
+		m->next = 0;
 		m->mountid = ++mountalloc.mountid;
 		unlock(&mountalloc);
 		return m;

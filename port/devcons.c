@@ -36,6 +36,18 @@ struct IOQ{
 IOQ	kbdq;		/* qlock to getc; interrupt putc's */
 IOQ	lineq;		/* lock to getc; interrupt putc's */
 
+#define SYSLOGMAGIC	0x23456789
+#define SYSLOG		((Syslog *)(UNCACHED | KZERO | 0x1B00))
+typedef struct Syslog	Syslog;
+struct Syslog
+{
+	ulong	magic;
+	char	*start;
+	char	*next;
+	char	buf[2*BY2PG - 3*BY2WD];
+};
+
+
 void
 printinit(void)
 {
@@ -55,6 +67,7 @@ printinit(void)
 	unlock(&lineq);
 
 	duartinit();
+	sysloginit();		/* must be at the end of printinit */
 }
 
 /*
@@ -164,12 +177,15 @@ panic(char *fmt, ...)
 {
 	char buf[PRINTSIZE];
 	int n;
+	Syslog *s;
 
 	strcpy(buf, "panic: ");
 	n = doprint(buf+7, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
 	buf[n] = '\n';
 	putstrn(buf, n+1);
 	dumpstack();
+	s = SYSLOG;
+	print("start/next is %lux/%lux\n", s->start, s->next);
 	exit();
 }
 
@@ -598,30 +614,23 @@ consuserstr(Error *e, char *buf)
 /*
  *  kernel based system log, passed between crashes
  */
-#define SYSLOGMAGIC	0x23456789
-#define SYSLOG		((Syslog *)(UNCACHED | KZERO | 0x1B00))
-typedef struct Syslog	Syslog;
-struct Syslog
-{
-	ulong	magic;
-	char	*start;
-	char	*next;
-	char	buf[BY2PG - 3*BY2WD];
-};
-
 void
 sysloginit(void)
 {
 	Syslog *s;
-	char *p;
+	char *start, *next;
 
 	s = SYSLOG;
-	if(s->magic!=SYSLOGMAGIC || s->next>=&s->buf[sizeof(s->buf)]
-	|| s->start>=&s->buf[sizeof(s->buf)] || s->next<s->buf){
+	next = s->next;
+	start = s->start;
+	if(s->magic!=SYSLOGMAGIC || next>=&s->buf[sizeof(s->buf)]
+	|| start>=&s->buf[sizeof(s->buf)] || next<s->buf){
 		s->start = s->buf;
 		s->next = s->buf;
 		s->magic = SYSLOGMAGIC;
 	}
+	print("start/next is %lux/%lux was %lux/%lux\n", s->start, s->next,
+		start, next);
 }
 
 void

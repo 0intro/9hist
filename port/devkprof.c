@@ -157,6 +157,8 @@ kprofwrite(Chan *c, char *a, long n)
 void
 kproftimer(ulong pc)
 {
+	extern ulong splpc;
+
 	timerbuf[0]++;
 	if(KTZERO<=pc && pc<KTZERO+MAXPC){
 		pc -= KTZERO;

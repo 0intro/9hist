@@ -339,20 +339,6 @@ struct Proc
 	ulong	pc;			/* DEBUG only */
 };
 
-struct MMU
-{
-	ulong	va;
-	ulong	pa;
-	int	pid;
-};
-
-#define NMMU 16
-struct MMUCache
-{
-	ulong	next;
-	MMU	mmu[NMMU];
-};
-
 #define	NERR	15
 #define	NNOTE	5
 #define	NFD	100
@@ -376,7 +362,6 @@ struct User
 	short	nnote;
 	short	notified;		/* sysnoted is due */
 	int	(*notify)(void*, char*);
-	MMUCache mc;
 	void	*ureg;
 };
 
