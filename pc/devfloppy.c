@@ -109,8 +109,8 @@ Type floppytype[] =
  { "3½DD",	T720kb,  512,  9, 2, 1, 80, 0x1B, 0x54, 2, },
  { "5¼HD",	T1200kb, 512, 15, 2, 1, 80, 0x2A, 0x50, 0, },
  { "5¼DD",	T1200kb, 512,  9, 2, 2, 40, 0x2A, 0x50, 1, },
+ { "ATT3B1",	T1200kb, 512,  8, 2, 2, 48, 0x2A, 0x50, 1, },
  { "5¼DD",	T360kb,  512,  9, 2, 1, 40, 0x2A, 0x50, 2, },
- { "ATT3B1",	T360kb,	 512,  8, 2, 1, 48, 0x2A, 0x50, 2, },
 };
 #define NTYPES (sizeof(floppytype)/sizeof(Type))
 
