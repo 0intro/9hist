@@ -499,6 +499,8 @@ rdbginit(void)
 	uchar *vec;
 	ulong jba;
 
+	return;	/* Not installed now */
+
 	/* Only interested in the PC */
 	Mipsjmpbuf.pc = 0x8001C020;
 

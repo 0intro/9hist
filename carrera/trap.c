@@ -341,6 +341,7 @@ intr(Ureg *ur)
 			if(vec == Int1vec)
 				EISAOUTB(Int1ctl, EOI);
 		}
+
 		switch(devint) {
 		default:
 			iprint("i386ACK #%lux\n", devint);
@@ -429,19 +430,16 @@ dumpregs(Ureg *ur)
 {
 	int i;
 	ulong *l;
+
 	if(up)
 		print("registers for %s %d\n", up->text, up->pid);
 	else
 		print("registers for kernel\n");
 
-
 	l = &ur->status;
 	for(i=0; i<sizeof regname/sizeof(char*); i+=2, l+=2)
-/*
-		print("%s\t0x%.8lux\t%s\t0x%.8lux\n", regname[i], l[0], regname[i+1], l[1]);
-*/
-		print("%s 0x%.8lux %s 0x%.8lux ", regname[i], l[0], regname[i+1], l[1]);
-
+		print("%s\t0x%.8lux\t%s\t0x%.8lux\n",
+				regname[i], l[0], regname[i+1], l[1]);
 }
 
 int

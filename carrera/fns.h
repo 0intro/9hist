@@ -118,11 +118,14 @@ void		enetaddr(uchar*);
 #define KADDR1(a)	((void*)((ulong)(a)|KSEG1))
 #define PADDR(a)	((ulong)(a)&~KSEGM)
 
-#define hnputl(p, v)	((*(ulong*)p) = v)
-#define hnputs(p, v)	((*(ushort*)p) = v)
-#define nhgetl(p)	((*(ulong*)p))
-#define nhgets(p)	((*(ushrt*)p))
+void	hnputl(void*, ulong v);
+void	hnputs(void*, ushort v);
+ulong	nhgetl(void*);
+ushort	nhgets(void*);
 
 void	ifwrite(void*, Block*);
 void*	ifinit(int);
 void	fiberint(int);
+ulong	ifaddr(void*);
+void	audiosbintr(void);
+void	audiodmaintr(void);
