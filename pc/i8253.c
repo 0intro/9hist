@@ -99,8 +99,6 @@ i8253enable(void)
 	intrenable(VectorCLOCK, clockintr, 0, BUSUNKNOWN);
 }
 
-Lock i8253lock;
-
 /*
  *  return time elapsed since clock start in
  *  10ths of nanoseconds
