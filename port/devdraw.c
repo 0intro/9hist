@@ -1744,8 +1744,6 @@ drawmesg(Client *client, void *av, int n)
 			if(n < m)
 				error(Eshortdraw);
 			i = drawimage(client, a+1);
-			if(i->layer)
-				error("readimage from window unimplemented");
 			drawrectangle(&r, a+5);
 			if(!rectinrect(r, i->r))
 				error(Ereadoutside);
@@ -1755,7 +1753,7 @@ drawmesg(Client *client, void *av, int n)
 			client->readdata = mallocz(c, 0);
 			if(client->readdata == nil)
 				error("readimage malloc failed");
-			client->nreaddata = unloadmemimage(i, r, client->readdata, c);
+			client->nreaddata = memunload(i, r, client->readdata, c);
 			if(client->nreaddata < 0){
 				free(client->readdata);
 				client->readdata = nil;
