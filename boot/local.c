@@ -25,16 +25,21 @@ connectlocal(void)
 {
 	int p[2];
 	char d[DIRLEN];
-	char sbuf[32];
-	char rbuf[32];
 	char partition[2*NAMELEN];
+	char *dev;
 
-	if(stat("/kfs", d) < 0)
+	if(stat("/fs", d) < 0)
 		return -1;
-	sprint(partition, "%sfs", disk ? disk : bootdisk);
-	if(stat(partition, d) < 0)
-		return -1;
-	print("kfs...");
+
+	dev = disk ? disk : bootdisk;
+	sprint(partition, "%sfs", dev);
+	if(stat(partition, d) < 0){
+		strcpy(partition, dev);
+		if(stat(partition, d) < 0)
+			return -1;
+	}
+
+	print("fs...");
 	if(bind("#c", "/dev", MREPL) < 0)
 		fatal("bind #c");
 	if(bind("#p", "/proc", MREPL) < 0)
@@ -45,10 +50,12 @@ connectlocal(void)
 	case -1:
 		fatal("fork");
 	case 0:
-		sprint(sbuf, "%d", p[0]);
-		sprint(rbuf, "%d", p[1]);
-		execl("/kfs", "kfs", "-f", partition, "-s", sbuf, rbuf, 0);
-		fatal("can't exec kfs");
+		dup(p[0], 0);
+		dup(p[1], 1);
+		close(p[0]);
+		close(p[1]);
+		execl("/fs", "fs", "-f", partition, "-s", 0);
+		fatal("can't exec fs");
 	default:
 		break;
 	}

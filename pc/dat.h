@@ -184,7 +184,12 @@ extern int	flipD[];	/* for flipping bitblt destination polarity */
 
 enum
 {
-	At=		0,
-	Attnsx=		1,
+	PMUnsx20=	0,
+	PMUother=	1,
+
+	Mouseserial=	0,
+	MousePS2=	1,
+	Mouseother=	2,
 };
-extern int machtype;
+extern int mousetype;
+extern int pmutype;

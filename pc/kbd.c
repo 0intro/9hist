@@ -182,6 +182,19 @@ i8042a20(void)
 	outready();
 }
 
+/*
+ *  ask 8042 to reset the machine
+ */
+void
+i8042reset(void)
+{
+	outready();
+	outb(Cmd, 0xD1);
+	outready();
+	outb(Data, 0xDE);
+	outready();
+}
+
 void
 kbdinit(void)
 {
@@ -194,8 +207,8 @@ kbdinit(void)
 		if(c & Inready)
 			inb(Data);
 
-	switch(machtype){
-	case Attnsx:
+	switch(mousetype){
+	case MousePS2:
 		bigcursor();
 		setvec(Mousevec, kbdintr);
 
@@ -216,7 +229,7 @@ kbdinit(void)
 		/* turn on mouse acceleration */
 		mouseaccelerate(0);
 		break;
-	case At:
+	case Mouseserial:
 		/* enable kbd xfers and interrupts */
 		outb(Cmd, 0x60);
 		if(outready() < 0)
@@ -225,6 +238,13 @@ kbdinit(void)
 
 		/* set up /dev/eia0 as the mouse */
 		uartspecial(0, 0, &mouseq, 1200);
+		break;
+	case Mouseother:
+		/* enable kbd xfers and interrupts */
+		outb(Cmd, 0x60);
+		if(outready() < 0)
+			print("kbd init failed\n");
+		outb(Data, 0x65);
 		break;
 	}
 }
@@ -236,8 +256,8 @@ void
 mouseaccelerate(int on)
 {
 
-	switch(machtype){
-	case Attnsx:
+	switch(mousetype){
+	case MousePS2:
 		if(on)
 			mousecmd(0xE7);
 		else

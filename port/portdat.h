@@ -732,7 +732,7 @@ extern	int	cpuserver;
 extern	char*	devchar;
 extern	Dev	devtab[];
 extern  char	eve[];
-extern	ulong	initcode[];
+extern	uchar	initcode[];
 extern	FPsave	initfp;
 extern  KIOQ	kbdq;
 extern  IOQ	lineq;

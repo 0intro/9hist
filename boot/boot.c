@@ -115,19 +115,18 @@ boot(int argc, char *argv[])
 	 *  if a local file server exists and it's not
 	 *  running, start it and mount it onto /n/kfs
 	 */
-	for(mp = method; mp->name; mp++){
-		if(strcmp(mp->name, "local") != 0)
-			continue;
-		if(access("#s/kfs", ORDWR) >= 0)
+	if(!islocal){
+		for(mp = method; mp->name; mp++){
+			if(strcmp(mp->name, "local") != 0)
+				continue;
+			(*mp->config)(mp);
+			fd = (*mp->connect)();
+			if(fd < 0)
+				break;
+			mount(fd, "/n/kfs", MAFTER|MCREATE, "", "") ;
+			close(fd);
 			break;
-		(*mp->config)(mp);
-		fd = (*mp->connect)();
-		if(fd < 0)
-			break;
-		if(mount(fd, "/n/kfs", MAFTER|MCREATE, "", "") < 0)
-			print("failed to mount kfs\n");
-		close(fd);
-		break;
+		}
 	}
 
 	settime(islocal);

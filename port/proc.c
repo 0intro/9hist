@@ -529,8 +529,11 @@ pexit(char *exitstr, int freemem)
 	 * do some housekeeping.
 	 */
 	if(c->kp == 0) {
-		if((p = c->parent) == 0)
-			panic("boot process died");
+		if((p = c->parent) == 0) {
+			if(exitstr == 0)
+				exitstr = "unknown";
+			panic("boot process died: %s", exitstr);
+		}
 
 		while(waserror())
 			;	

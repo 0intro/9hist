@@ -226,8 +226,6 @@ cdromsize(int dev)
 		error(Ecap);
 
 	scsiinquiry(dev, buf, sizeof buf);
-	if(buf[0]!=5 || buf[0]!=4)	/* CD-ROM or CD-R writer */
-		print("warning: scsi device %d type=%d, not type 4 or 5\n", dev>>3, buf[0]);
 	dp->drive = dev;
 	dp->blocks = nb;
 	dp->bsize = bs;

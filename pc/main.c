@@ -7,14 +7,15 @@
 #include	"ureg.h"
 #include	"init.h"
 
-int machtype;	/* machine type, mostly for power management */
+int mousetype;
+int pmutype;
 uchar	*sp;	/* stack pointer for /boot */
 
 void
 main(void)
 {
 	ident();
-	meminit();
+	i8042a20();		/* enable address lines 20 and up */
 	machinit();
 	active.exiting = 0;
 	active.machs = 1;
@@ -39,16 +40,26 @@ main(void)
 	schedinit();
 }
 
+/*
+ *  this should be changed to describe architecture dependencies outside the
+ *  PC model
+ */
 void
 ident(void)
 {
 	char *id = (char*)(ROMBIOS + 0xFF40);
 
 	/* check for a safari (tres special) */
-	if(strncmp(id, "AT&TNSX", 7) == 0)
-		machtype = Attnsx;
-	else
-		machtype = At;
+	if(strncmp(id, "AT&TNSX", 7) == 0){
+		mousetype = MousePS2;
+		pmutype = PMUnsx20;
+	}else if(strncmp(id, "NCRD.0", 6) == 0){
+		mousetype = MousePS2;
+		pmutype = PMUother;
+	}else{
+		mousetype = Mouseserial;
+		pmutype = PMUother;
+	}
 }
 
 void
@@ -243,7 +254,6 @@ confinit(void)
 	conf.npage0 -= ktop/BY2PG;
 	conf.base0 += ktop;
 
-	/* for meminit() */
 	conf.topofmem = i*MB;
 
 	conf.monitor = 1;
@@ -393,20 +403,6 @@ procrestore(Proc *p)
  *  PC to PC.
  */
 
-/* enable address bit 20 (extended memory) */
-void
-meminit(void)
-{
-	switch(machtype){
-	case Attnsx:
-		heada20();		/* via headland chip */
-		break;
-	case At:
-		i8042a20();		/* via keyboard controller */
-		break;
-	}
-}
-
 /*
  *  reset the i387 chip
  */
@@ -417,15 +413,9 @@ exit(int ispanic)
 	print("exiting\n");
 	if(ispanic)
 		for(;;);
-	switch(machtype){
-	case Attnsx:
-		headreset();		/* via headland chip */
-		break;
-	case At:
-		print("hit the button...");
-		for(;;);
-		putcr3(0);		/* crash and burn */
-	}
+	i8042reset();		/* via keyboard controller */
+	print("can't reset via software, do something drastic!\n");
+	for(;;);
 }
 
 /*
@@ -436,8 +426,8 @@ exit(int ispanic)
 int
 cpuspeed(int speed)
 {
-	switch(machtype){
-	case Attnsx:
+	switch(pmutype){
+	case PMUnsx20:
 		return pmucpuspeed(speed);
 	default:
 		return 0;
@@ -451,8 +441,8 @@ cpuspeed(int speed)
 void
 buzz(int f, int d)
 {
-	switch(machtype){
-	case Attnsx:
+	switch(pmutype){
+	case PMUnsx20:
 		pmubuzz(f, d);
 		break;
 	default:
@@ -466,8 +456,8 @@ buzz(int f, int d)
 void
 lights(int val)
 {
-	switch(machtype){
-	case Attnsx:
+	switch(pmutype){
+	case PMUnsx20:
 		pmulights(val);
 		break;
 	default:
@@ -483,8 +473,8 @@ lights(int val)
 int
 serial(int onoff)
 {
-	switch(machtype){
-	case Attnsx:
+	switch(pmutype){
+	case PMUnsx20:
 		return pmuserial(onoff);
 	default:
 		return 0;
@@ -499,8 +489,8 @@ serial(int onoff)
 int
 modem(int onoff)
 {
-	switch(machtype){
-	case Attnsx:
+	switch(pmutype){
+	case PMUnsx20:
 		return pmumodem(onoff);
 	default:
 		return 0;

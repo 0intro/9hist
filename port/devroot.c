@@ -16,15 +16,15 @@ enum{
 
 	Qboot,
 	Qcfs,
-	Qkfs,
+	Qfs,
 };
 
 extern long	cfslen;
 extern ulong	cfscode[];
-extern long	kfslen;
-extern ulong	kfscode[];
+extern long	fslen;
+extern ulong	fscode[];
 extern ulong	bootlen;
-extern ulong	bootcode[];
+extern uchar	bootcode[];
 
 Dirtab rootdir[]={
 	"bin",		{Qbin|CHDIR},	0,			0777,
@@ -37,7 +37,7 @@ Dirtab rootdir[]={
 #define	NROOT	(sizeof rootdir/sizeof(Dirtab))
 Dirtab rootpdir[]={
 	"cfs",		{Qcfs},		0,			0777,
-	"kfs",		{Qkfs},		0,			0777,
+	"fs",		{Qfs},		0,			0777,
 };
 Dirtab *rootmap[sizeof rootpdir/sizeof(Dirtab)];
 int	nroot;
@@ -67,7 +67,7 @@ rootreset(void)
 	i = 0;
 	if(cfslen)
 		rootmap[i++] = &rootpdir[0];
-	if(kfslen)
+	if(fslen)
 		rootmap[i++] = &rootpdir[1];
 	nroot = NROOT + i;
 }
@@ -142,7 +142,7 @@ rootread(Chan *c, void *buf, long n, ulong offset)
 			return 0;
 		if(offset+n > bootlen)
 			n = bootlen - offset;
-		memmove(buf, ((char*)bootcode)+offset, n);
+		memmove(buf, bootcode+offset, n);
 		return n;
 
 	case Qcfs:		/* cfs */
@@ -153,12 +153,12 @@ rootread(Chan *c, void *buf, long n, ulong offset)
 		memmove(buf, ((char*)cfscode)+offset, n);
 		return n;
 
-	case Qkfs:		/* kfs */
-		if(offset >= kfslen)
+	case Qfs:		/* fs */
+		if(offset >= fslen)
 			return 0;
-		if(offset+n > kfslen)
-			n = kfslen - offset;
-		memmove(buf, ((char*)kfscode)+offset, n);
+		if(offset+n > fslen)
+			n = fslen - offset;
+		memmove(buf, ((char*)fscode)+offset, n);
 		return n;
 
 	case Qdev:

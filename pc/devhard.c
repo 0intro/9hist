@@ -40,6 +40,7 @@ enum
 	Cident=		0xEC,
 	Cident2=	0xFF,	/* pseudo command for post Cident interrupt */
 	Csetbuf=	0xEF,
+	Cinitparam=	0x91,
 
 	/* file types */
 	Qdir=		0,
@@ -159,7 +160,8 @@ Drive		*hard;
 static void	hardintr(Ureg*);
 static long	hardxfer(Drive*, Partition*, int, long, long, char*);
 static void	hardident(Drive*);
-static void	hardsetbuf(Drive*);
+static void	hardsetbuf(Drive*, int);
+static void	hardinitparam(Drive*);
 static void	hardpart(Drive*);
 
 static int
@@ -239,28 +241,32 @@ hardattach(char *spec)
 
 	for(dp = hard; dp < &hard[conf.nhard]; dp++){
 		if(!waserror()){
-			dp->bytes = 512;
+			/*
+			 *  the following is magic to determine the parameters
+			 *  (number of cylinders/sectors/heads) on an IDE drive.
+			 *  I haven't found a method that is guaranteed to work.
+			 *  For some drives, it may be necessary to compile the
+			 *  numbers into this driver and circumvent this code.
+			 *  The BIOS disk type & tables doesn't help since the
+			 *  types are inconsistent from one BIOS to the next.
+			 */
+			dp->bytes = 512;	/* until we know better */
+			hardsetbuf(dp, 0);	/* turned off during ident */
 			hardident(dp);
+			hardsetbuf(dp, 1);
+			/*
+			 *  for now use the configuration word to identify the
+			 *  wayward 6386 disk.  BUG!!!  This word isn't
+			 *  meant to identify disks, but we have nothing
+			 *  better.
+			 */
 			switch(dp->id.magic){
-			case 0xA5A:	/* conner drive on the AT&T NSX (safari) */
-				dp->cyl = dp->id.lcyls;
-				dp->heads = dp->id.lheads;
-				dp->sectors = dp->id.ls2t;
-				hardsetbuf(dp);
-				break;
-			case 0x324A:	/* hard drive on the AT&T 6386 */
+			case 0x324A:	/* hard drive on the AT&T 6386, it lies */
 				dp->cyl = dp->id.lcyls - 4;
 				dp->heads = dp->id.lheads;
 				dp->sectors = dp->id.ls2t - 1;
 				break;
 			default:	/* others: we hope this works */
-				if (drivecomment) {
-					print("unknown hard disk type, magic=%04x",
-						dp->id.magic);
-					print("  cyl=%d h=%d sec=%d\n",
-						dp->id.lcyls, dp->id.lheads, dp->id.ls2t);
-				}
-			case 0x427a:	/* for now: a list of those that work */
 				dp->cyl = dp->id.lcyls;
 				dp->heads = dp->id.lheads;
 				dp->sectors = dp->id.ls2t;
@@ -269,7 +275,23 @@ hardattach(char *spec)
 			dp->bytes = 512;
 			dp->cap = dp->bytes * dp->cyl * dp->heads * dp->sectors;
 			dp->online = 1;
-			hardpart(dp);
+			/*
+			 *  Try reading the partition table (last disk sector).
+			 *  If an error occurs set the drive parameters and try
+			 *  again.  This works if the parameters reported
+			 *  by the disk are the physical parameters rather than
+			 *  the current logical ones (as they are on the NCR 3170).
+			 *
+			 *  We don't routinely set the parameters since it confuses
+			 *  some disks (on the Gateway and AT&T Safari for example).
+			 */
+			if(waserror()){
+				hardinitparam(dp);	/* set drive parameters */
+				hardpart();
+			} else {
+				hardpart();
+				poperror();
+			}
 			poperror();
 		} else
 			dp->online = 0;
@@ -579,7 +601,7 @@ hardxfer(Drive *dp, Partition *pp, int cmd, long start, long len, char *buf)
  *  set read ahead mode
  */
 static void
-hardsetbuf(Drive *dp)
+hardsetbuf(Drive *dp, int on)
 {
 	Controller *cp = dp->cp;
 
@@ -592,7 +614,7 @@ hardsetbuf(Drive *dp)
 	cmdreadywait(cp);
 
 	cp->cmd = Csetbuf;
-	outb(cp->pbase+Pprecomp, 0xAA);
+	outb(cp->pbase+Pprecomp, on ? 0xAA : 0x55);
 	outb(cp->pbase+Pdh, 0x20 | (dp->drive<<4));
 	outb(cp->pbase+Pcmd, Csetbuf);
 
@@ -600,6 +622,37 @@ hardsetbuf(Drive *dp)
 
 	if(cp->status & Serr)
 		DPRINT("hd%d setbuf err: status %lux, err %lux\n",
+			dp-hard, cp->status, cp->error);
+
+	poperror();
+	qunlock(cp);
+}
+
+/*
+ *  set the drive parameters
+ */
+static void
+hardinitparam(Drive *dp)
+{
+	Controller *cp = dp->cp;
+
+	qlock(cp);
+	if(waserror()){
+		qunlock(cp);
+		nexterror();
+	}
+
+	cmdreadywait(cp);
+
+	cp->cmd = Cinitparam;
+	outb(cp->pbase+Psector, dp->sectors);
+	outb(cp->pbase+Pdh, 0x20 | (dp->heads-1) | (dp->drive<<4));
+	outb(cp->pbase+Pcmd, Cinitparam);
+
+	sleep(&cp->r, cmddone, cp);
+
+	if(cp->status & Serr)
+		DPRINT("hd%d initparam err: status %lux, err %lux\n",
 			dp-hard, cp->status, cp->error);
 
 	poperror();
@@ -865,6 +918,7 @@ hardintr(Ureg *ur)
 			wakeup(&cp->r);
 		}
 		break;
+	case Cinitparam:
 	case Csetbuf:
 		cp->lastcmd = cp->cmd;
 		cp->cmd = 0;
@@ -873,10 +927,6 @@ hardintr(Ureg *ur)
 	case Cident2:
 		cp->lastcmd = cp->cmd;
 		cp->cmd = 0;
-		break;
-	case 0:
-		print("interrupt cmd=0, lastcmd=%02x status=%02x\n",
-			cp->lastcmd, cp->status);
 		break;
 	default:
 		print("weird disk interrupt, cmd=%02x, status=%02x\n",
