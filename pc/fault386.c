@@ -6,8 +6,6 @@
 #include	"ureg.h"
 #include	"io.h"
 
-int faulting;
-
 static void
 fault386(Ureg *ur, void *arg)
 {

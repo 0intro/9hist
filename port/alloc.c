@@ -261,8 +261,6 @@ malloc(ulong size)
 	ulong next;
 	int pow, n;
 	Bucket *bp, *nbp;
-ulong pc;
-pc = getcallerpc(0);
 
 	for(pow = 3; pow <= Maxpow; pow++)
 		if(size <= (1<<pow))
@@ -281,7 +279,7 @@ good:
 			panic("malloc");
 
 		bp->magic = Magic2n;
-bp->pc = pc;
+		bp->pc = getcallerpc(((uchar*)&size) - sizeof(size));
 		memset(bp->data, 0,  size);
 		return  bp->data;
 	}
@@ -321,7 +319,7 @@ bp->pc = pc;
 
 	bp->size = pow;
 	bp->magic = Magic2n;
-bp->pc = pc;
+	bp->pc = getcallerpc(((uchar*)&size) - sizeof(size));
 	return bp->data;
 }
 
@@ -331,11 +329,15 @@ smalloc(ulong size)
 	char *s;
 	void *p;
 	int attempt;
+	Bucket *bp;
 
 	for(attempt = 0; attempt < 1000; attempt++) {
 		p = malloc(size);
-		if(p != nil)
+		if(p != nil) {
+			bp = (Bucket*)((ulong)p - bdatoff);
+			bp->pc = getcallerpc(((uchar*)&size) - sizeof(size));
 			return p;
+		}
 		s = up->psstate;
 		up->psstate = "Malloc";
 		qlock(&arena.rq);
