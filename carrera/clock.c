@@ -17,6 +17,8 @@ typedef struct Clock0link {
 
 static Clock0link *clock0link;
 static Lock clock0lock;
+static ulong		incr;		/* compare register increment */
+static uvlong		fasthz;		/* ticks/sec of fast clock */
 
 void
 addclock0link(void (*clock)(void))
@@ -68,15 +70,35 @@ clockinit(void)
 	if(m->delayloop == 0)
 		m->delayloop = 1;
 
-	wrcompare(rdcount()+(m->speed*1000000)/HZ);
+	incr = (m->speed*1000000)/HZ;
+	fasthz = m->speed*1000000;
+	wrcompare(rdcount()+incr);
+}
+
+uvlong
+updatefastclock(ulong count)
+{
+	uvlong cyclecount;
+
+	/* keep track of higher precision time */
+	cyclecount = count;
+	if(cyclecount < m->lastcyclecount)
+		m->fastclock += (0x100000000LL - m->lastcyclecount) + cyclecount;
+	else
+		m->fastclock += cyclecount - m->lastcyclecount;
+	m->lastcyclecount = cyclecount;
+	return m->fastclock;
 }
 
 void
 clock(Ureg *ur)
 {
 	Clock0link *lp;
+	ulong count;
 
-	wrcompare(rdcount()+(m->speed*1000000)/HZ);
+	count = rdcount();
+	wrcompare(count+incr);
+	updatefastclock(count);
 
 	m->ticks++;
 	if(m->proc)
@@ -127,7 +149,15 @@ clock(Ureg *ur)
 vlong
 fastticks(uvlong *hz)
 {
+	uvlong cyclecount;
+	int x;
+
+	x = splhi();
+	cyclecount = updatefastclock(rdcount());
+	splx(x);
+
 	if(hz)
-		*hz = HZ*100;
-	return (vlong)m->ticks*100;
+		*hz = fasthz;
+
+	return (vlong)cyclecount;
 }

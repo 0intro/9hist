@@ -13,8 +13,6 @@ enum {
 
 	CMDtest		= 0x00,
 	CMDreqsense	= 0x03,
-	CMDread6	= 0x08,
-	CMDwrite6	= 0x0A,
 	CMDinquire	= 0x12,
 	CMDstart	= 0x1B,
 	CMDcapacity	= 0x25,
@@ -361,7 +359,12 @@ scsireqsense(Target *t, char lun, void *data, int *nbytes, int quiet)
 		switch(sense[2] & 0x0F){
 
 		case 6:					/* unit attention */
-			if(sense[12] != 0x29)		/* power on, reset */
+			/*
+			 * 0x28 - not ready to ready transition,
+			 *	  medium may have changed.
+			 * 0x29 - power on, RESET or BUS DEVICE RESET occurred.
+			 */
+			if(sense[12] != 0x28 && sense[12] != 0x29)
 				goto buggery;
 			/*FALLTHROUGH*/
 		case 0:					/* no sense */
@@ -408,116 +411,6 @@ buggery:
 	return STcheck;
 }
 
-int
-scsidiskinfo(Target *t, char lun, int track, uchar *data)
-{
-	int s, nbytes;
-	uchar cmd[10], *d;
-
-	nbytes = 12;
-
-	memset(cmd, 0, sizeof(cmd));
-	cmd[0] = 0x43;
-	cmd[1] = lun<<5;
-	cmd[6] = track;
-	cmd[7] = nbytes>>8;
-	cmd[8] = nbytes;
-
-	d = scsialloc(nbytes);
-	if(d == 0)
-		return scsierrstr(STnomem);
-
-	memset(d, 0, nbytes);
-	s = scsiexec(t, SCSIread, cmd, sizeof(cmd), d, &nbytes);
-	memmove(data, d, 12);
-	scsifree(d);
-	return s;
-}
-
-int
-scsitrackinfo(Target *t, char lun, int track, uchar *data)
-{
-	int s, nbytes;
-	uchar cmd[10], *d;
-
-	nbytes = 12;
-
-	memset(cmd, 0, sizeof(cmd));
-	cmd[0] = 0xe5;
-	cmd[1] = lun<<5;
-	cmd[5] = track;
-	cmd[7] = nbytes>>8;
-	cmd[8] = nbytes;
-
-	d = scsialloc(nbytes);
-	if(d == 0)
-		return scsierrstr(STnomem);
-
-	memset(d, 0, nbytes);
-	s = scsiexec(t, SCSIread, cmd, sizeof(cmd), d, &nbytes);
-	memmove(data, d, 12);
-	scsifree(d);
-
-	return s;
-}
-
-int
-scsibufsize(Target *t, char lun, int size)
-{
-	int s, nbytes;
-	uchar cmd[6], *d;
-
-	nbytes = 12;
-
-	memset(cmd, 0, sizeof(cmd));
-	cmd[0] = 0x15;
-	cmd[1] = lun<<5;
-	cmd[4] = nbytes;
-
-	d = scsialloc(nbytes);
-	if(d == 0)
-		return scsierrstr(STnomem);
-
-	memset(d, 0, nbytes);
-	d[3] = 8;
-	d[8] = size>>24;
-	d[9] = size>>16;
-	d[10] = size>>8;
-	d[11] = size;
-
-	s = scsiexec(t, SCSIwrite, cmd, sizeof(cmd), d, &nbytes);
-	scsifree(d);
-	return s;
-}
-
-int
-scsireadcdda(Target *t, char lun, int, void *b, long n, long bsize, long bno)
-{
-	uchar cmd[12];
-	int s, nbytes;
-
-	memset(cmd, 0, sizeof(cmd));
-
-	cmd[0] = 0xd8;
-	cmd[1] = (lun<<5);
-	cmd[2] = bno>>24;
-	cmd[3] = bno>>16;
-	cmd[4] = bno>>8;
-	cmd[5] = bno;
-	cmd[6] = n>>24;
-	cmd[7] = n>>16;
-	cmd[8] = n>>8;
-	cmd[9] = n;
-
-	nbytes = n*bsize;
-	s = scsiexec(t, SCSIread, cmd, sizeof(cmd), b, &nbytes);
-	if(s != STok) {
-		nbytes = Nscratch;
-		scsireqsense(t, lun, t->scratch, &nbytes, 0);
-		return scsierrstr(s);
-	}
-	return nbytes;
-}
 
 int
 scsierrstr(int errno)

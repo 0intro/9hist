@@ -115,7 +115,8 @@ struct Mach
 	ulong	delayloop;		/* for the delay() routine */
 	int	nrdy;
 	ulong	fairness;		/* for runproc */
-	vlong	fastclock;		/* last sampled value */
+	ulong	lastcyclecount;
+	uvlong	fastclock;
 	int	flushmmu;		/* make current proc flush it's mmu state */
 
 	int	pfault;

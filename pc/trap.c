@@ -30,16 +30,16 @@ intrenable(int irq, void (*f)(Ureg*, void*), void* a, int tbdf)
 
 	ilock(&vctllock);
 	vno = arch->intrenable(v);
-	//print("irq%d, vno %d\n", irq, vno);
 	if(vno == -1){
 		iunlock(&vctllock);
-		print("intrenable: couldn't enable irq %d, tbdf 0x%uX\n", irq, tbdf);
+		print("intrenable: couldn't enable irq %d, tbdf 0x%uX\n",
+			irq, tbdf);
 		xfree(v);
 		return;
 	}
 	if(vctl[vno]){
 		if(vctl[vno]->isr != v->isr || vctl[vno]->eoi != v->eoi)
-			panic("intrenable: irq handler botch: %luX %luX %luX %luX\n",
+			panic("intrenable: handler: %luX %luX %luX %luX\n",
 				vctl[vno]->isr, v->isr, vctl[vno]->eoi, v->eoi);
 		v->next = vctl[vno];
 	}
@@ -158,9 +158,10 @@ static char* excname[32] = {
 };
 
 /*
- *  All traps come here.  It is slower to have all traps call trap() rather than
- *  directly vectoring the handler.  However, this avoids a lot of code duplication
- *  and possible bugs.  The only exception is VectorSYSCALL.
+ *  All traps come here.  It is slower to have all traps call trap()
+ *  rather than directly vectoring the handler.  However, this avoids a
+ *  lot of code duplication and possible bugs.  The only exception is
+ *  VectorSYSCALL.
  *  Trap is called with interrupts disabled via interrupt-gates.
  */
 void
@@ -244,7 +245,8 @@ trap(Ureg* ureg)
 		if(vno == VectorNMI){
 			nmienable();
 			if(m->machno != 0){
-				print("cpu%d: PC %8.8luX\n", m->machno, ureg->pc);
+				print("cpu%d: PC %8.8luX\n",
+					m->machno, ureg->pc);
 				for(;;);
 			}
 		}
@@ -267,11 +269,12 @@ void
 dumpregs2(Ureg* ureg)
 {
 	if(up)
-		print("cpu%d: registers for %s %lud\n", m->machno, up->text, up->pid);
+		print("cpu%d: registers for %s %lud\n",
+			m->machno, up->text, up->pid);
 	else
 		print("cpu%d: registers for kernel\n", m->machno);
-	print("FLAGS=%luX TRAP=%luX ECODE=%luX PC=%luX", ureg->flags, ureg->trap,
-		ureg->ecode, ureg->pc);
+	print("FLAGS=%luX TRAP=%luX ECODE=%luX PC=%luX",
+		ureg->flags, ureg->trap, ureg->ecode, ureg->pc);
 	print(" SS=%4.4luX USP=%luX\n", ureg->ss & 0xFFFF, ureg->usp);
 	print("  AX %8.8luX  BX %8.8luX  CX %8.8luX  DX %8.8luX\n",
 		ureg->ax, ureg->bx, ureg->cx, ureg->dx);
@@ -292,12 +295,13 @@ dumpregs(Ureg* ureg)
 
 	/*
 	 * Processor control registers.
-	 * If machine check exception, time stamp counter, page size extensions or
-	 * enhanced virtual 8086 mode extensions are supported, there is a CR4.
-	 * If there is a CR4 and machine check extensions, read the machine check
-	 * address and machine check type registers if RDMSR supported.
+	 * If machine check exception, time stamp counter, page size extensions
+	 * or enhanced virtual 8086 mode extensions are supported, there is a
+	 * CR4. If there is a CR4 and machine check extensions, read the machine
+	 * check address and machine check type registers if RDMSR supported.
 	 */
-	print("  CR0 %8.8lux CR2 %8.8lux CR3 %8.8lux", getcr0(), getcr2(), getcr3());
+	print("  CR0 %8.8lux CR2 %8.8lux CR3 %8.8lux",
+		getcr0(), getcr2(), getcr3());
 	if(m->cpuiddx & 0x9A){
 		print(" CR4 %8.8lux", getcr4());
 		if((m->cpuiddx & 0xA0) == 0xA0){
@@ -328,7 +332,8 @@ dumpstack(void)
 			 * through AX (0xFFD0).
 			 */
 			p = (uchar*)v;
-			if(*(p-5) == 0xE8 || (*(p-2) == 0xFF && *(p-1) == 0xD0)){
+			if(*(p-5) == 0xE8
+			|| (*(p-2) == 0xFF && *(p-1) == 0xD0)){
 				print("%lux ", p-5);
 				i++;
 			}
@@ -417,7 +422,8 @@ syscall(Ureg* ureg)
 	ret = -1;
 	if(!waserror()){
 		if(scallnr >= nsyscall){
-			pprint("bad sys call number %d pc %lux\n", scallnr, ureg->pc);
+			pprint("bad sys call number %d pc %lux\n",
+				scallnr, ureg->pc);
 			postnote(up, 1, "sys: bad sys call", NDebug);
 			error(Ebadarg);
 		}
@@ -434,7 +440,8 @@ syscall(Ureg* ureg)
 	if(up->nerrlab){
 		print("bad errstack [%d]: %d extra\n", scallnr, up->nerrlab);
 		for(i = 0; i < NERR; i++)
-			print("sp=%lux pc=%lux\n", up->errlab[i].sp, up->errlab[i].pc);
+			print("sp=%lux pc=%lux\n",
+				up->errlab[i].sp, up->errlab[i].pc);
 		panic("error stack");
 	}
 
@@ -551,7 +558,7 @@ noted(Ureg* ureg, ulong arg0)
 	}
 	up->notified = 0;
 
-	nureg = up->ureg;		/* pointer to user returned Ureg struct */
+	nureg = up->ureg;	/* pointer to user returned Ureg struct */
 
 	/* sanity clause */
 	oureg = (ulong)nureg;
@@ -594,7 +601,8 @@ noted(Ureg* ureg, ulong arg0)
 		break;
 
 	case NSAVE:
-		if(!okaddr(nureg->pc, BY2WD, 0) || !okaddr(nureg->usp, BY2WD, 0)){
+		if(!okaddr(nureg->pc, BY2WD, 0)
+		|| !okaddr(nureg->usp, BY2WD, 0)){
 			pprint("suicide: trap in noted\n");
 			qunlock(&up->debug);
 			pexit("Suicide", 0);
@@ -644,8 +652,8 @@ userpc(void)
 	return ureg->pc;
 }
 
-/* This routine must save the values of registers the user is not permitted to write
- * from devproc and then restore the saved values before returning
+/* This routine must save the values of registers the user is not permitted
+ * to write from devproc and then restore the saved values before returning.
  */
 void
 setregisters(Ureg* ureg, char* pureg, char* uva, int n)
@@ -695,7 +703,8 @@ forkchild(Proc *p, Ureg *ureg)
 
 	cureg = (Ureg*)(p->sched.sp+2*BY2WD);
 	memmove(cureg, ureg, sizeof(Ureg));
-	cureg->ax = 0;				/* return value of syscall in child */
+	/* return value of syscall in child */
+	cureg->ax = 0;
 
 	/* Things from bottom of syscall which were never executed */
 	p->psstate = 0;

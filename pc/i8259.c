@@ -25,10 +25,9 @@ enum
 	Elcr2=		0x4D1,
 };
 
-static int int0mask;			/* interrupts enabled for first 8259 */
-static int int1mask;			/* interrupts enabled for second 8259 */
-int elcr;				/* mask of level-triggered interrupts */
 static Lock i8259lock;
+static int i8259mask = 0xFFFF;		/* disabled interrupts */
+int i8259elcr;				/* mask of level-triggered interrupts */
 
 void
 i8259init(void)
@@ -36,8 +35,6 @@ i8259init(void)
 	int x;
 
 	ilock(&i8259lock);
-	int0mask = 0xFF;
-	int1mask = 0xFF;
 
 	/*
 	 *  Set up the first 8259 interrupt processor.
@@ -62,13 +59,13 @@ i8259init(void)
 	outb(Int1aux, VectorPIC+8);		/* ICW2 - interrupt vector offset */
 	outb(Int1aux, 0x02);			/* ICW3 - I am a slave on level 2 */
 	outb(Int1aux, 0x01);			/* ICW4 - 8086 mode, not buffered */
-	outb(Int1aux, int1mask);
+	outb(Int1aux, (i8259mask>>8) & 0xFF);
 
 	/*
 	 *  pass #2 8259 interrupts to #1
 	 */
-	int0mask &= ~0x04;
-	outb(Int0aux, int0mask);
+	i8259mask &= ~0x04;
+	outb(Int0aux, i8259mask & 0xFF);
 
 	/*
 	 * Set Ocw3 to return the ISR when ctl read.
@@ -94,9 +91,9 @@ i8259init(void)
 		if(inb(Elcr1) == 0){
 			outb(Elcr1, 0x20);
 			if(inb(Elcr1) == 0x20)
-				elcr = x;
+				i8259elcr = x;
 			outb(Elcr1, x & 0xFF);
-			//print("ELCR: %4.4uX\n", elcr);
+			//print("ELCR: %4.4uX\n", i8259elcr);
 		}
 	}
 	iunlock(&i8259lock);
@@ -105,10 +102,11 @@ i8259init(void)
 int
 i8259isr(int vno)
 {
-	int isr;
+	int irq, isr;
 
 	if(vno < VectorPIC || vno > VectorPIC+MaxIrqPIC)
 		return 0;
+	irq = vno-VectorPIC;
 
 	/*
 	 *  tell the 8259 that we're done with the
@@ -118,19 +116,19 @@ i8259isr(int vno)
 	ilock(&i8259lock);
 	isr = inb(Int0ctl);
 	outb(Int0ctl, EOI);
-	if(vno >= VectorPIC+8){
+	if(irq >= 8){
 		isr |= inb(Int1ctl)<<8;
 		outb(Int1ctl, EOI);
 	}
 	iunlock(&i8259lock);
 
-	return isr & (1<<(vno-VectorPIC));
+	return isr & (1<<irq);
 }
 
 int
 i8259enable(Vctl* v)
 {
-	int irq;
+	int irq, irqbit;
 
 	/*
 	 * Given an IRQ, enable the corresponding interrupt in the i8259
@@ -142,18 +140,21 @@ i8259enable(Vctl* v)
 		print("i8259enable: irq %d out of range\n", irq);
 		return -1;
 	}
+	irqbit = 1<<irq;
 
 	ilock(&i8259lock);
-	if(irq < 8){
-		int0mask &= ~(1<<irq);
-		outb(Int0aux, int0mask);
+	if(!(i8259mask & irqbit) && !(i8259elcr & irqbit)){
+		print("i8259enable: irq %d shared but not level\n", irq);
+		iunlock(&i8259lock);
+		return -1;
 	}
-	else{
-		int1mask &= ~(1<<(irq-8));
-		outb(Int1aux, int1mask);
-	}
+	i8259mask &= ~irqbit;
+	if(irq < 8)
+		outb(Int0aux, i8259mask & 0xFF);
+	else
+		outb(Int1aux, (i8259mask>>8) & 0xFF);
 
-	if(elcr & (1<<irq))
+	if(i8259elcr & irqbit)
 		v->eoi = i8259isr;
 	else
 		v->isr = i8259isr;

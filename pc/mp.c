@@ -13,7 +13,7 @@ static Bus* mpbus;
 static Bus* mpbuslast;
 static int mpisabus = -1;
 static int mpeisabus = -1;
-extern int elcr;			/* mask of level-triggered interrupts */
+extern int i8259elcr;			/* mask of level-triggered interrupts */
 static Apic mpapic[MaxAPICNO+1];
 static int machno2apicno[MaxAPICNO+1];	/* inverse map: machno -> APIC ID */
 static Lock mprdthilock;
