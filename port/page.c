@@ -230,6 +230,7 @@ putpage(Page *p)
 	else 
 		pagechainhead(p);
 
+	uncachepage(p);
 	if(palloc.r.p != 0)
 		wakeup(&palloc.r);
 
