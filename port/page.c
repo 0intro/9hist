@@ -243,25 +243,25 @@ putpage(Page *p)
 			if(palloc.tail) {
 				p->prev = palloc.tail;
 				palloc.tail->next = p;
-				p->next = 0;
 				palloc.tail = p;
 			}
 			else {
 				palloc.head = palloc.tail = p;
-				p->prev = p->next = 0;
+				p->prev = 0;
 			}
+			p->next = 0;
 		}
 		else {
 			if(palloc.head) {
 				p->next = palloc.head;
 				palloc.head->prev = p;
-				p->prev = 0;
 				palloc.head = p;
 			}
 			else {
 				palloc.head = palloc.tail = p;
-				p->prev = p->next = 0;
+				p->next = 0;
 			}
+			p->prev = 0;
 		}
 
 		palloc.freecount++;		/* Release people waiting for memory */
