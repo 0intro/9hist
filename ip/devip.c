@@ -852,7 +852,7 @@ ipwrite(Chan* ch, char* a, long n, vlong)
 	Proto *x;
 	char *p;
 	Cmdbuf *cb;
-	uchar ia[IPaddrlen];
+	uchar ia[IPaddrlen], ma[IPaddrlen];
 	Fs *f;
 
 	f = ipfs[ch->dev];
@@ -904,10 +904,18 @@ ipwrite(Chan* ch, char* a, long n, vlong)
 		else if(strcmp(cb->f[0], "addmulti") == 0){
 			if(cb->nf < 2)
 				error("addmulti needs interface address");
-			if(!ipismulticast(c->raddr))
-				error("addmulti for a non multicast address");
-			parseip(ia, cb->f[1]);
-			ipifcaddmulti(c, c->raddr, ia);
+			if(cb->nf == 2){
+				if(!ipismulticast(c->raddr))
+					error("addmulti for a non multicast address");
+				parseip(ia, cb->f[1]);
+				ipifcaddmulti(c, c->raddr, ia);
+			} else {
+				parseip(ma, cb->f[2]);
+				if(!ipismulticast(ma))
+					error("addmulti for a non multicast address");
+				parseip(ia, cb->f[1]);
+				ipifcaddmulti(c, ma, ia);
+			}
 		} else if(strcmp(cb->f[0], "remmulti") == 0){
 			if(cb->nf < 2)
 				error("remmulti needs interface address");

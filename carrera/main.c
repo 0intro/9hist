@@ -59,6 +59,7 @@ main(void)
 	pageinit();
 	procinit0();
 	initseg();
+	links();
 	chandevreset();
 	swapinit();
 	userinit();
