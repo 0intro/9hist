@@ -335,6 +335,8 @@ struct Fs
 	Ifclog	*ilog;
 
 	char	ndb[1024];		/* an ndb entry for this interface */
+	int	ndbvers;
+	long	ndbmtime;
 };
 
 /* one per default router known to host */

@@ -669,7 +669,7 @@ pcirouting(void)
 	router_t *r;
 	int size, i, fn, tbdf;
 	Pcidev *sbpci, *pci;
-	uchar *p, *m, pin, irq;
+	uchar *p, *m, pin, irq, link;
 
 	// Search for PCI interrupt routing table in BIOS
 	for(p = (uchar *)KADDR(0xf0000); p < (uchar *)KADDR(0xfffff); p += 16)
@@ -723,16 +723,17 @@ pcirouting(void)
 				continue;
 
 			m = &e->e_maps[(pin - 1) * 3];
-			irq = southbridge->get(sbpci, m[0]);
+			link = m[0];
+			irq = southbridge->get(sbpci, link);
 			if(irq == 0 || irq == pci->intl)
 				continue;
 			if(pci->intl != 0 && pci->intl != 0xFF) {
-				print("pcirouting: BIOS workaround: %T at pin %d irq %d -> %d\n",
-					  tbdf, pin, irq, pci->intl);
-				southbridge->set(sbpci, m[0], pci->intl);
+				print("pcirouting: BIOS workaround: %T at pin %d link %d irq %d -> %d\n",
+					  tbdf, pin, link, irq, pci->intl);
+				southbridge->set(sbpci, link, pci->intl);
 				continue;
 			}
-			print("pcirouting: %T at pin %d irq %d\n", tbdf, pin, irq);
+			print("pcirouting: %T at pin %d link %d irq %d\n", tbdf, pin, link, irq);
 			pcicfgw8(pci, PciINTL, irq);
 			pci->intl = irq;
 		}

@@ -134,7 +134,7 @@ void
 configil(Method*)
 {
 	configip();
-	setauthaddr("il", 566);
+	setauthaddr("tcp", 567);
 }
 
 int
