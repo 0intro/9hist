@@ -264,8 +264,11 @@ lmlreset(void)
 {
 	Physseg segbuf;
 	Physseg segreg;
+	Physseg seggrab;
 	ulong regpa;
 	ulong cdsize;
+	ulong *grabpa;
+	ulong grablen;
 	int i;
 
 	pcidev = pcimatch(nil, PCI_VENDOR_ZORAN, PCI_DEVICE_ZORAN_36067);
@@ -279,8 +282,17 @@ lmlreset(void)
 		return;
 	}
 
+	grablen = (720 * 480 * 2 * 2 + BY2PG - 1) & ~(BY2PG - 1);
+	grabpa = (ulong *)xspanalloc(grablen, BY2PG, 0);
+	if (grabpa == nil) {
+		print("devlml: xspanalloc(%lux, %ux, 0)\n", grablen, BY2PG);
+		return;
+	}
+	*grabpa = PADDR(grabpa);
+
 	print("Installing Motion JPEG driver %s\n", MJPG_VERSION); 
-	print("Buffer at 0x%.8lux, size 0x%.8lux\n", codeData, cdsize); 
+	print("MJPG buffer at 0x%.8lux, size 0x%.8lux\n", codeData, cdsize); 
+	print("Grab buffer at 0x%.8lux, size 0x%.8lux\n", grabpa, grablen); 
 
 	// Get access to DMA memory buffer
 	memset(codeData, 0xAA, sizeof(CodeData));
@@ -327,7 +339,18 @@ lmlreset(void)
 	segreg.pa = (ulong)regpa;
 	segreg.size = pcidev->mem[0].size;
 	if (addphysseg(&segreg) == -1) {
-		print("lml: physsegment: lmlmjpg\n");
+		print("lml: physsegment: lmlregs\n");
+		return;
+	}
+
+	memset(&seggrab, 0, sizeof(seggrab));
+	seggrab.attr = SG_PHYSICAL;
+	seggrab.name = smalloc(NAMELEN);
+	snprint(seggrab.name, NAMELEN, "lmlgrab");
+	seggrab.pa = (ulong)PADDR(grabpa);
+	seggrab.size = grablen;
+	if (addphysseg(&seggrab) == -1) {
+		print("lml: physsegment: lmlgrab\n");
 		return;
 	}
 	return; 

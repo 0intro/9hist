@@ -360,6 +360,15 @@ poolread(char *va, int count, ulong offset)
 	return n;
 }
 
+static void
+tagwithpc(void *v, ulong pc)
+{
+	Bhdr *h;
+
+	D2B(h, v);
+	B2T(h)->pad = pc;
+}
+
 void*
 malloc(ulong size)
 {
@@ -368,11 +377,8 @@ malloc(ulong size)
 	v = poolalloc(mainmem, size);
 	if(v != nil)
 		memset(v, 0, size);
-if(v != nil){
-Bhdr *h;
-D2B(h, v);
-B2T(h)->pad = getcallerpc(&size);
-}
+	if(v != nil)
+		tagwithpc(v, getcallerpc(&size));
 	return v;
 }
 
@@ -388,11 +394,7 @@ smalloc(ulong size)
 		tsleep(&up->sleep, return0, 0, 100);
 	}
 	memset(v, 0, size);
-{
-Bhdr *h;
-D2B(h, v);
-B2T(h)->pad = getcallerpc(&size);
-}
+	tagwithpc(v, getcallerpc(&size));
 	return v;
 }
 
@@ -404,23 +406,16 @@ mallocz(ulong size, int clr)
 	v = poolalloc(mainmem, size);
 	if(clr && v != nil)
 		memset(v, 0, size);
-if(v != nil){
-Bhdr *h;
-D2B(h, v);
-B2T(h)->pad = getcallerpc(&size);
-}
+	if(v != nil)
+		tagwithpc(v, getcallerpc(&size));
 	return v;
 }
 
 void
 free(void *v)
 {
-	Bhdr *b;
-
-	if(v != nil) {
-		D2B(b, v);
+	if(v != nil)
 		poolfree(mainmem, v);
-	}
 }
 
 void*
@@ -444,11 +439,8 @@ realloc(void *v, ulong size)
 		memmove(nv, v, osize);
 		free(v);
 	}
-{
-Bhdr *h;
-D2B(h, nv);
-B2T(h)->pad = getcallerpc(&size);
-}
+	if(nv != nil)
+		tagwithpc(nv, getcallerpc(&v));
 	return nv;
 }
 
@@ -634,4 +626,171 @@ recur(Bhdr *t)
 	if(((ulong)t) > 0x90000000)
 		return 0;
 	return recur(t->right) && recur(t->left);
+}
+
+enum
+{
+	Hdrspc		= 64,		/* leave room for high-level headers */
+	Bdead		= 0x51494F42,	/* "QIOB" */
+};
+
+struct
+{
+	Lock;
+	ulong	bytes;
+} ialloc;
+
+/*
+ *  allocate blocks, round the data base upt to a multiple of BLOCKALIGN.
+ */
+Block*
+allocb(int size)
+{
+	Block *b;
+	ulong addr;
+	int n;
+
+	n = sizeof(Block) + size;
+	b = poolalloc(mainmem, n+Hdrspc);
+	if(b == 0)
+		exhausted("Blocks");
+	memset(b, 0, sizeof(Block));
+
+	/* align start of data portion by rounding up */
+	addr = (ulong)b;
+	addr = ROUND(addr + sizeof(Block), BLOCKALIGN);
+	b->base = (uchar*)addr;
+
+	/* align end of data portion by rounding down */
+	b->lim = ((uchar*)b) + msize(b);
+	addr = (ulong)(b->lim);
+	addr = addr & ~(BLOCKALIGN-1);
+	b->lim = (uchar*)addr;
+
+	/* leave sluff at beginning for added headers */
+	b->rp = b->lim - ROUND(size, BLOCKALIGN);
+	if(b->rp < b->base)
+		panic("allocb");
+	b->wp = b->rp;
+	tagwithpc(b, getcallerpc(&size));
+
+	return b;
+}
+
+/*
+ *  interrupt time allocation
+ */
+Block*
+iallocb(int size)
+{
+	Block *b;
+	ulong addr;
+	int n;
+
+	if(ialloc.bytes > conf.ialloc){
+		print("iallocb: limited %lud/%lud\n",
+			ialloc.bytes, conf.ialloc);
+		return 0;
+	}
+
+	n = sizeof(Block) + size;
+	b = poolalloc(mainmem, n+Hdrspc);
+	if(b == 0){
+		print("iallocb: no memory %lud/%lud\n",
+			ialloc.bytes, conf.ialloc);
+		return nil;
+	}
+	memset(b, 0, sizeof(Block));
+
+	/* align start of data portion by rounding up */
+	addr = (ulong)b;
+	addr = ROUND(addr + sizeof(Block), BLOCKALIGN);
+	b->base = (uchar*)addr;
+
+	/* align end of data portion by rounding down */
+	b->lim = ((uchar*)b) + msize(b);
+	addr = (ulong)(b->lim);
+	addr = addr & ~(BLOCKALIGN-1);
+	b->lim = (uchar*)addr;
+
+	/* leave sluff at beginning for added headers */
+	b->rp = b->lim - ROUND(size, BLOCKALIGN);
+	if(b->rp < b->base)
+		panic("allocb");
+	b->wp = b->rp;
+
+	b->flag = BINTR;
+
+	ilock(&ialloc);
+	ialloc.bytes += b->lim - b->base;
+	iunlock(&ialloc);
+	tagwithpc(b, getcallerpc(&size));
+
+	return b;
+}
+
+void
+freeb(Block *b)
+{
+	void *dead = (void*)Bdead;
+
+	if(b == nil)
+		return;
+
+	/*
+	 * drivers which perform non cache coherent DMA manage their own buffer
+	 * pool of uncached buffers and provide their own free routine.
+	 */
+	if(b->free) {
+		b->free(b);
+		return;
+	}
+	if(b->flag & BINTR) {
+		ilock(&ialloc);
+		ialloc.bytes -= b->lim - b->base;
+		iunlock(&ialloc);
+	}
+
+	/* poison the block in case someone is still holding onto it */
+	b->next = dead;
+	b->rp = dead;
+	b->wp = dead;
+	b->lim = dead;
+	b->base = dead;
+
+	poolfree(mainmem, b);
+}
+
+void
+checkb(Block *b, char *msg)
+{
+	void *dead = (void*)Bdead;
+
+	if(b == dead)
+		panic("checkb b %s %lux", msg, b);
+	if(b->base == dead || b->lim == dead || b->next == dead
+	  || b->rp == dead || b->wp == dead){
+		print("checkb: base 0x%8.8luX lim 0x%8.8luX next 0x%8.8luX\n",
+			b->base, b->lim, b->next);
+		print("checkb: rp 0x%8.8luX wp 0x%8.8luX\n", b->rp, b->wp);
+		panic("checkb dead: %s\n", msg);
+	}
+
+	if(b->base > b->lim)
+		panic("checkb 0 %s %lux %lux", msg, b->base, b->lim);
+	if(b->rp < b->base)
+		panic("checkb 1 %s %lux %lux", msg, b->base, b->rp);
+	if(b->wp < b->base)
+		panic("checkb 2 %s %lux %lux", msg, b->base, b->wp);
+	if(b->rp > b->lim)
+		panic("checkb 3 %s %lux %lux", msg, b->rp, b->lim);
+	if(b->wp > b->lim)
+		panic("checkb 4 %s %lux %lux", msg, b->wp, b->lim);
+
+}
+
+void
+iallocsummary(void)
+{
+	print("ialloc %lud/%lud\n", ialloc.bytes, conf.ialloc);
 }

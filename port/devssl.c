@@ -992,9 +992,9 @@ sslwrite(Chan *c, void *a, long n, vlong off)
 		if(s.s->c == 0)
 			error("must set fd before algorithm");
 
+		s.s->state = Sclear;
+		s.s->maxpad = s.s->max = (1<<15) - s.s->diglen - 1;
 		if(strcmp(p, "clear") == 0){
-			s.s->state = Sclear;
-			s.s->maxpad = s.s->max = (1<<15) - s.s->diglen - 1;
 			goto out;
 		}
 
