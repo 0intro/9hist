@@ -316,7 +316,9 @@ getmap(Slot *pp, ulong offset, int attr)
 
 		/* grab ISA address space for memory maps */
 		for(i = 0; i < Nmap; i++)
-			pp->mmap[i].isa = isamem(Mchunk);
+			pp->mmap[i].isa = getisa(0, Mchunk, BY2PG);
+		if(pp->mmap[i].isa == 0)
+			panic("getmap");
 	}
 
 	/* look for a map that starts in the right place */

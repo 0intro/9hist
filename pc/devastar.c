@@ -417,6 +417,9 @@ astarreset(void)
 			a->irq = 15;
 		a->id = i;
 
+		if(isaget(a->mem, Pagesize, 0) == 0)
+			panic("astarreset: %lux", a->mem);
+
 		if(astarsetup(a) < 0){
 			xfree(a);
 			astar[nastar] = 0;

@@ -313,9 +313,35 @@ memclrtest(int meg, int len, long seed)
 		for(n = 0; n < BY2PG/BY2WD; n++)
 			if(lp[n] != ~(seed + (n^((BY2PG/BY2WD)-1))))
 				return -1;
-		memset(lp, '!', BY2PG);
+/*		memset(lp, '!', BY2PG);/**/
 	}
 	return 0;
+}
+
+/*
+ *  look for unused address space in 0xC8000 to 1 meg
+ */
+void
+romscan(void)
+{
+	uchar *p;
+
+	p = (uchar*)(KZERO+0xC8000);
+	while(p < (uchar*)(KZERO+0xE0000)){
+		p[0] = 0x55;
+		p[1] = 0xAA;
+		p[2] = 4;
+		if(p[0] != 0x55 || p[1] != 0xAA){
+			putisa(PADDR(p), 2048);
+			p += 2048;
+			continue;
+		}
+		p += p[2]*512;
+	}
+
+	p = (uchar*)(KZERO+0xE0000);
+	if(p[0] != 0x55 || p[1] != 0xAA)
+		putisa(PADDR(p), 64*1024);
 }
 
 void
@@ -359,6 +385,7 @@ confinit(void)
 			strcpy(filaddr, confval[nconf]);
 		nconf++;
 	}
+
 
 	/*
 	 *  size memory above 1 meg. Kernel sits at 1 meg.  We
@@ -436,6 +463,14 @@ confinit(void)
 			conf.topofmem = j*MB;
 			break;
 		}
+
+	/*
+ 	 *  add address space holes holes under 16 meg to available
+	 *  isa space.
+	 */
+	romscan();
+	if(conf.topofmem < 16*MB)
+		putisa(conf.topofmem, 16*MB - conf.topofmem);
 
 	conf.npage = conf.npage0 + conf.npage1;
 	conf.ldepth = 0;

@@ -88,12 +88,15 @@ static ulong	*kpt;		/* 2nd level page tables for kernel mem */
 #define MAXUMEG 64	/* maximum memory per user process in megabytes */
 #define ONEMEG (1024*1024)
 
+enum {
+	Nisa=	256,
+};
 struct
 {
 	Lock;
-	ulong addr; 	/* next available address for isa bus memory */
-	ulong end;	/* one past available isa bus memory */
-} isamemalloc;
+	ulong s[Nisa];
+	ulong e[Nisa];
+} isaalloc;
 
 /*
  *  Change current page table and the stack to use for exceptions
@@ -149,10 +152,8 @@ mmuinit(void)
 	ktoppg.va = (ulong)top;
 	ktoppg.pa = ktoppg.va & ~KZERO;
 
-	/*  map all memory to KZERO (add some address space for ISA memory) */
-	isamemalloc.addr = 0xd8000;
-	isamemalloc.end = 0xe0000;
-	npage = 64*MB/BY2PG;
+	/*  map all memory to KZERO */
+	npage = 128*MB/BY2PG;
 	nbytes = PGROUND(npage*BY2WD);		/* words of page map */
 	nkpt = nbytes/BY2PG;			/* pages of page map */
 	kpt = xspanalloc(nbytes, BY2PG, 0);
@@ -336,23 +337,79 @@ putmmu(ulong va, ulong pa, Page *pg)
 }
 
 /*
+ *  make isa address space available
+ */
+void
+putisa(ulong addr, int len)
+{
+	ulong e;
+	int i, hole;
+
+	addr &= ~KZERO;
+
+	e = addr + len;
+	lock(&isaalloc);
+	hole = -1;
+	for(i = 0; i < Nisa; i++){
+		if(isaalloc.s[i] == e){
+			isaalloc.s[i] = addr;
+			break;
+		}
+		if(isaalloc.e[i] == addr){
+			isaalloc.e[i] = e;
+			break;
+		}
+		if(isaalloc.s[i] == 0)
+			hole = i;
+	}
+	if(i >= Nisa && hole >= 0){
+		isaalloc.s[hole] = addr;
+		isaalloc.e[hole] = e;
+	}
+	unlock(&isaalloc);
+}
+
+/*
  *  allocate some address space (already mapped into the kernel)
  *  for ISA bus memory.
  */
 ulong
-isamem(int len)
+getisa(ulong addr, int len, int align)
 {
-	ulong a, x;
+	int i;
+	ulong os, s, e;
 
-	lock(&isamemalloc);
-	len = PGROUND(len);
-	x = isamemalloc.addr + len;
-	if(x > isamemalloc.end)
-		panic("isamem");
-	a = isamemalloc.addr;
-	isamemalloc.addr = x;
-	unlock(&isamemalloc);
-	return a;
+	lock(&isaalloc);
+	os = s = e = 0;
+	for(i = 0; i < Nisa; i++){
+		s = os = isaalloc.s[i];
+		if(s == 0)
+			continue;
+		e = isaalloc.e[i];
+		if(addr && addr >= s && addr < isaalloc.e[i])
+			break;
+		if(align > 0)
+			s = ((s + align - 1)/align)*align;
+		if(e - s >= len)
+			break;
+	}
+	if(i >= Nisa){
+		unlock(&isaalloc);
+		return 0;
+	}
+
+	/* remove */
+	isaalloc.s[i] = 0;
+	unlock(&isaalloc);
+
+	/* give back edges */
+	if(s != os)
+		putisa(os, s - os);
+	os = s + len;
+	if(os != e)
+		putisa(os, e - os);
+
+	return KZERO|s;
 }
 
 /*
