@@ -10,6 +10,7 @@ enum{
 	Qbacklight = 1,
 	Qbattery,
 	Qbuttons,
+	Qkbdin,
 	Qled,
 	Qversion,
 
@@ -34,6 +35,7 @@ Dirtab µcdir[]={
 	"backlight",	{ Qbacklight, 0 },	0,	0664,
 	"battery",	{ Qbattery, 0 },	0,	0664,
 	"buttons",	{ Qbuttons, 0 },	0,	0664,
+	"kbdin",	{ Qkbdin, 0 },		0,	0664,
 	"led",		{ Qled, 0 },		0,	0664,
 	"version",	{ Qversion, 0 },	0,	0664,
 };
@@ -71,6 +73,7 @@ int
 	int i, len, b, up;
 	uchar cksum;
 	uchar *p;
+	static int samseq;
 
 	if(ctlr.n > sizeof(ctlr.buf))
 		panic("µcputc");
@@ -130,10 +133,13 @@ int
 			}
 			break;
 		case BLtouch:
-			if(len == 4)
-				pentrackxy((p[0]<<8)|p[1], (p[2]<<8)|p[3]);
-			else
+			if(len == 4) {
+				if (samseq++ > 10)
+					pentrackxy((p[0]<<8)|p[1], (p[2]<<8)|p[3]);
+			} else {
+				samseq = 0;
 				pentrackxy(-1, -1);
+			}
 			break;
 		case BLled:
 			wakeup(&ctlr.r);
@@ -302,7 +308,9 @@ static long
 {
 	Cmdbuf *cmd;
 	uchar data[16];
-	int i;
+	char str[64];
+	int i, j;
+	Rune r;
 
 	if(off != 0)
 		error(Ebadarg);
@@ -314,6 +322,16 @@ static long
 		data[i] = atoi(cmd->f[i]);
 
 	switch(c->qid.path){
+	case Qkbdin:
+		if(n >= sizeof(str))
+			n = sizeof(str)-1;
+		memmove(str, a, n);
+		str[n] = 0;
+		for(i = 0; i < n; i += j){
+          		j = chartorune(&r, &str[i]);
+			kbdputc(nil, r);
+		}
+		break;
 	case Qled:
 		sendmsgwithack(BLled, data, cmd->nf);
 		break;

@@ -91,7 +91,7 @@ warnregs(Ureg *ur, char *tag)
 	char *p;
 
 	p = seprint(buf, e, "%s:\n", tag);
-	p = seprint(p, e, "type %.8lux psr %.8lux pc %.8lux\n",
+	p = seprint(p, e, "type 0x%.8lux psr 0x%.8lux pc 0x%.8lux\n",
 		ur->type, ur->psr, ur->pc);
 	p = seprint(p, e, "r0  0x%.8lux r1  0x%.8lux r2  0x%.8lux r3  0x%.8lux\n",
 		ur->r0, ur->r1, ur->r2, ur->r3);
@@ -283,10 +283,9 @@ trap(Ureg *ureg)
 	}
 
 out:
-	if(user && (up->procctl || up->nnote)){
-		splhi();
+	splhi();
+	if(user && (up->procctl || up->nnote))
 		notify(ureg);
-	}
 }
 
 /*
@@ -358,10 +357,9 @@ syscall(Ureg* ureg)
 	if(scallnr == NOTED)
 		noted(ureg, *(ulong*)(sp+BY2WD));
 
-	if(scallnr != RFORK && (up->procctl || up->nnote)){
-		splhi();
+	splhi();
+	if(scallnr != RFORK && (up->procctl || up->nnote))
 		notify(ureg);
-	}
 }
 
 /*
@@ -617,11 +615,51 @@ execregs(ulong entry, ulong ssize, ulong nargs)
 }
 
 /*
- *  dump the processor stack for this process
+ * Fill in enough of Ureg to get a stack trace, and call a function.
+ * Used by debugging interface rdb.
  */
+void
+callwithureg(void (*fn)(Ureg*))
+{
+	Ureg ureg;
+	ureg.pc = getcallerpc(&fn);
+	ureg.sp = (ulong)&fn;
+	fn(&ureg);
+}
+
+static void
+_dumpstack(Ureg *ureg)
+{
+	ulong l, v, i;
+	ulong *p;
+	extern ulong etext;
+
+	if(up == 0)
+		return;
+
+	print("ktrace /kernel/path %.8lux %.8lux\n", ureg->pc, ureg->sp);
+	i = 0;
+	for(l=(ulong)&l; l<(ulong)(up->kstack+KSTACK); l+=4){
+		v = *(ulong*)l;
+		if(KTZERO < v && v < (ulong)&etext && (v&3)==0){
+			v -= 4;
+			p = (ulong*)v;
+			if((*p & 0x0f000000) == 0x0b000000)
+				print("%.8lux=%.8lux ", l, v);
+		}
+		if(i == 4){
+			i = 0;
+			print("\n");
+		}
+	}
+	if(i)
+		print("\n");
+}
+
 void
 dumpstack(void)
 {
+	callwithureg(_dumpstack);
 }
 
 /*
