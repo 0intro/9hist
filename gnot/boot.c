@@ -7,6 +7,7 @@ Fcall	hdr;
 char	buf[100];
 char	bootline[64];
 char	bootdevice;
+char	bootserver[64];
 
 void	error(char*);
 void	sendmsg(int, char*);
@@ -14,7 +15,7 @@ void	sendmsg(int, char*);
 main(int argc, char *argv[])
 {
 	int cfd, fd, n, fu, f;
-	char buf[NAMELEN];
+	char buf[256];
 	int p[2];
 
 	open("#c/cons", OREAD);
@@ -26,12 +27,17 @@ main(int argc, char *argv[])
 		read(fd, bootline, sizeof bootline);
 		close(fd);
 	}
-
 	fd = open("#e/bootdevice", OREAD);
 	if(fd >= 0){
 		read(fd, &bootdevice, 1);
 		close(fd);
 	}
+	fd = open("#e/bootserver", OREAD);
+	if(fd >= 0){
+		read(fd, bootserver, 64);
+		close(fd);
+	} else
+		strcpy(bootserver, "nfs");
 
 	switch(bootdevice){
 	case 'a':
@@ -88,8 +94,9 @@ main(int argc, char *argv[])
 	cfd = open("#k/2/ctl", 2);
 	if(cfd < 0)
 		error("opening #k/2/ctl");
-	sendmsg(cfd, "connect nfs");
-	print("connected to helix.bootfs\n");
+	sprint(buf, "connect %s", bootserver);
+	sendmsg(cfd, buf);
+	print("connected to %s\n", bootserver);
 	close(cfd);
 
 	/*
@@ -101,6 +108,8 @@ main(int argc, char *argv[])
 	if(write(fd, buf, n) != n)
 		error("write nop");
 	n = read(fd, buf, sizeof buf);
+	if(n==2 && buf[0]=='O' && buf[1]=='K')
+		n = read(fd, buf, sizeof buf);
 	if(n <= 0)
 		error("read nop");
 	if(convM2S(buf, &hdr, n) == 0) {

@@ -173,7 +173,6 @@ fault(Ureg *ur, FFrame *f)
 			if((*devtab[o->chan->type].read)(o->chan, l, n) != n)
 				error(0, Eioload);
 			qunlock(o->chan);
-			/* BUG: if was first page of bss, move to data */
 			if(n<BY2PG)
 				memset(l+n, 0, BY2PG-n);
 			lock(o);

@@ -313,6 +313,7 @@ struct Proc
 	int	state;
 	Page	*upage;			/* BUG: should be unlinked from page list */
 	Seg	seg[NSEG];
+	ulong	bssend;			/* initial top of bss seg */
 	ulong	pid;
 	Lock	kidlock;		/* access to kid and sib */
 	Proc	*pop;			/* some ascendant */

@@ -321,6 +321,8 @@ bindmount(ulong *arg, int ismount)
 	Chan *c0, *c1;
 	ulong flag;
 	long ret;
+	char *p;
+	int t;
 	struct{
 		Chan	*chan;
 		char	*spec;
@@ -331,8 +333,12 @@ bindmount(ulong *arg, int ismount)
 		error(0, Ebadarg);
 	if(ismount){
 		bogus.chan = fdtochan(arg[0], 2);
-/*BUG: check validaddr for ALL of arg[3]!! */
-		validaddr(arg[3], 1, 0);
+		p = (char*)arg[3];
+		t = BY2PG-((ulong)p&(BY2PG-1));
+		while(vmemchr(p, 0, t) == 0){
+			p += t;
+			t = BY2PG;
+		}
 		bogus.spec = (char*)arg[3];
 		ret = devno('M', 0);
 		c0 = (*devtab[ret].attach)((char*)&bogus);

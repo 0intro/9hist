@@ -163,7 +163,7 @@ sysexec(ulong *arg)
 	char *a, *charp, *file;
 	long fpnull = 0;
 	char *progarg[sizeof(Exec)/2+1], elem[NAMELEN];
-	ulong ssize, spage, nargs, nbytes, n;
+	ulong ssize, spage, nargs, nbytes, n, bssend;
 	ulong *sp;
 	int indir;
 	Exec exec;
@@ -218,11 +218,9 @@ sysexec(ulong *arg)
 
     Binary:
 	t = (UTZERO+sizeof(Exec)+exec.text+(BY2PG-1)) & ~(BY2PG-1);
-	/*
-	 * Last partial page of data goes into BSS.
-	 */
-	d = (t + exec.data) & ~(BY2PG-1);
-	b = (t + exec.data + exec.bss + (BY2PG-1)) & ~(BY2PG-1);
+	d = (t + exec.data + (BY2PG-1)) & ~(BY2PG-1);
+	bssend = t + exec.data + exec.bss;
+	b = (bssend + (BY2PG-1)) & ~(BY2PG-1);
 	if((t|d|b) & KZERO)
 		error(0, Ebadexec);
 
@@ -323,7 +321,7 @@ sysexec(ulong *arg)
 	if(o == 0){
 		o = neworig(t, (d-t)>>PGSHIFT, OWRPERM|OPURE|OCACHED, tc);
 		o->minca = p->seg[TSEG].o->maxca;
-		o->maxca = o->minca + (exec.data & ~(BY2PG-1));
+		o->maxca = o->minca + exec.data;
 	}
 	s->o = o;
 	s->minva = t;
@@ -331,21 +329,21 @@ sysexec(ulong *arg)
 	s->mod = 0;
 
 	/*
-	 * BSS.  Created afresh, starting with last page of data.
-	 * BUG: should pick up the last page of data, which should be cached in the
-	 * data segment.
+	 * BSS.  Created afresh.
 	 */
 	s = &p->seg[BSEG];
 	s->proc = p;
-	o = neworig(d, (b-d)>>PGSHIFT, OWRPERM, tc);
-	o->minca = p->seg[DSEG].o->maxca;
-	o->maxca = o->minca + (exec.data & (BY2PG-1));
+	o = neworig(d, (b-d)>>PGSHIFT, OWRPERM, 0);
+	o->minca = 0;
+	o->maxca = 0;
 	s->o = o;
 	s->minva = d;
 	s->maxva = b;
 	s->mod = 0;
 
 	close(tc);
+
+	p->bssend = bssend;
 
 	/*
 	 * Move the stack
@@ -529,7 +527,17 @@ sysnoted(ulong *arg)
 long
 sysbrk_(ulong *arg)
 {
+	ulong addr;
+	Seg *s;
+
+	addr = arg[0];
+	if(addr < u->p->bssend)
+		error(0, Esegaddr);
+	if(addr <= ((u->p->bssend+(BY2PG-1))&~(BY2PG-1)))	/* still in DSEG */
+		goto Return;
 	if(segaddr(&u->p->seg[BSEG], u->p->seg[BSEG].minva, arg[0]) == 0)
 		error(0, Esegaddr);
+    Return:
+	u->p->bssend = addr;
 	return 0;
 }

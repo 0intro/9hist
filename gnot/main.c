@@ -22,6 +22,7 @@ struct Boot
 
 char protouser[NAMELEN];
 char bootline[64];
+char bootserver[64];
 char bootdevice[2];
 int bank[2];
 
@@ -55,6 +56,7 @@ unloadboot(void)
 {
 	strncpy(protouser, BOOT->user, NAMELEN);
 	memcpy(bootline, BOOT->line, 64);
+	memcpy(bootserver, BOOT->server, 64);
 	bootdevice[0] = BOOT->device;
 }
 
@@ -110,6 +112,9 @@ init0(void)
 	if(!waserror()){
 		c = namec("#e/bootline", Acreate, OWRITE, 0600);
 		(*devtab[c->type].write)(c, bootline, 64);
+		close(c);
+		c = namec("#e/bootserver", Acreate, OWRITE, 0600);
+		(*devtab[c->type].write)(c, bootserver, 64);
 		close(c);
 		c = namec("#e/bootdevice", Acreate, OWRITE, 0600);
 		(*devtab[c->type].write)(c, bootdevice, 2);

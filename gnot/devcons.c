@@ -285,16 +285,31 @@ void
 echo(int c)
 {
 	char ch;
+	static int ctrlt;
 
 	/*
 	 * ^t hack BUG
 	 */
-	if(c == 0x14)
-		DEBUG();
-	if(c == 0x16)
-		dumpqueues();
-	if(c == 0x1A)
-		mntdump();
+	if(ctrlt == 2){
+		ctrlt = 0;
+		switch(c){
+		case 0x14:
+			break;	/* pass it on */
+		case 'p':
+			DEBUG();
+			return;
+		case 'q':
+			dumpqueues();
+			return;
+		case 'm':
+			mntdump();
+			return;
+		}
+	}else if(c == 0x14){
+		ctrlt++;
+		return;
+	}
+	ctrlt = 0;
 	if(raw.ref)
 		return;
 	if(c == 0x15)
