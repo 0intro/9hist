@@ -259,8 +259,7 @@ imagereclaim(void)
 
 	lock(&palloc);
 	for(p = palloc.head; p; p = p->next) {
-		if(p->image && p->ref == 0 && p->image != &swapimage) {
-			lock(p);
+		if(p->image && p->ref == 0 && p->image != &swapimage && canlock(p)) {
 			if(p->ref == 0)
 				uncachepage(p);
 			unlock(p);

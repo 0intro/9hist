@@ -47,8 +47,9 @@ fptrap(Ureg *ur, ulong fcr31)
 		}else
 			ur->pc += 4;
 		u->fpsave.fpstatus = fcr31 & ~(1<<17);
+		return 1;
 	}
-	return 1;
+	return 0;
 }
 
 static void
@@ -158,8 +159,7 @@ fpunimp(ulong iw)
 		sd = ss;
 		break;
 
-	default:
-		/* shouldn't get here */
+	default:	/* probably a compare */
 		return 0;
 	}
 	if(ed <= -(maxe-4)){	/* guess: underflow */

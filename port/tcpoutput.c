@@ -94,11 +94,7 @@ tcp_output(Ipconv *s)
 		seg.ack = tcb->last_ack = tcb->rcv.nxt;
 		seg.wnd = tcb->rcv.wnd;
 
-		/* Now try to extract some data from the send queue.
-		 * Since SYN and FIN occupy sequence space and are reflected
-		 * in sndcnt but don't actually sit in the send queue,
-		 * dupb will return one less than dsize if a FIN needs to be sent.
-		 */
+		/* Pull out data to send */
 		dbp = 0;
 		if(dsize != 0){
 			if(dupb(&dbp, sndq, sent, dsize) != dsize) {
@@ -111,19 +107,14 @@ tcp_output(Ipconv *s)
 		if(sent+dsize == qlen)
 			seg.flags |= PSH;
 
-		/* If this transmission includes previously transmitted data,
-		 * snd.nxt will already be past snd.ptr. In this case,
-		 * compute the amount of retransmitted data and keep score
-		 */
+		/*
+		 * keep track of balance of resent data */
 		if(tcb->snd.ptr < tcb->snd.nxt)
 			tcb->resent += MIN((int)tcb->snd.nxt - (int)tcb->snd.ptr,(int)ssize);
 
 		tcb->snd.ptr += ssize;
 
-		/* If this is the first transmission of a range of sequence
-		 * numbers, record it so we'll accept acknowledgments
-		 * for it later
-		 */
+		/* Pull up the send pointer so we can accept acks for this window */
 		if(seq_gt(tcb->snd.ptr,tcb->snd.nxt))
 			tcb->snd.nxt = tcb->snd.ptr;
 
@@ -139,8 +130,8 @@ tcp_output(Ipconv *s)
 			return;
 		}
 
-		/* If we're sending some data or flags, start retransmission
-		 * and round trip timers if they aren't already running.
+		/* Start the transmission timers if there is new data and we
+		 * expect acknowledges
 		 */
 		if(ssize != 0){
 			tcb->timer.start = backoff(tcb->backoff) *
