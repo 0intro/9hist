@@ -103,9 +103,10 @@ trap(Ureg *ur)
 		if(u == 0)
 			panic("fault u==0 pc %lux addr %lux", ur->pc, ur->badvaddr);
 
-		spllo();
 		x = u->p->insyscall;
 		u->p->insyscall = 1;
+
+		spllo();
 		faultmips(ur, user, ecode);
 		u->p->insyscall = x;
 		break;
@@ -165,12 +166,11 @@ trap(Ureg *ur)
 void
 intr(Ureg *ur)
 {
-	int i, any;
-	uchar xxx;
-	uchar pend, npend;
 	long v;
+	int i, any;
 	ulong cause;
 	static int bogies;
+	uchar pend, npend, xxx;
 
 	m->intr++;
 	cause = ur->cause&(INTR5|INTR4|INTR3|INTR2|INTR1);
@@ -450,7 +450,7 @@ noted(Ureg **urp, ulong arg0)
 	Ureg *nur;
 
 	nur = u->ureg;
-	if(nur->status!=u->svstatus) {
+	if(nur->status != u->svstatus) {
 		pprint("bad noted ureg status %lux\n", nur->status);
 		pexit("Suicide", 0);
 	}
@@ -505,12 +505,8 @@ syscall(Ureg *aur)
 	ur = aur;
 	p->pc = ur->pc;
 	u->dbgreg = aur;
-	ur->cause = 15<<2;		/* for debugging: system call is undef 15;
-	/*
-	 * since the system call interface does not
-	 * guarantee anything about registers, we can
-	 * smash them.  but we must save fpstatus.
-	 */
+	ur->cause = 15<<2;		/* for debugging: system call is undef 15; */
+
 	if(p->fpstate == FPactive) {
 		if((ur->status&CU1) == 0)
 			panic("syscall: FPactive but no CU1");
@@ -525,8 +521,8 @@ syscall(Ureg *aur)
 		procctl(p);
 
 	u->scallnr = ur->r1;
-	sp = ur->sp;
 	u->nerrlab = 0;
+	sp = ur->sp;
 	ret = -1;
 	if(!waserror()){
 		if(u->scallnr >= sizeof systab/sizeof systab[0]) {
