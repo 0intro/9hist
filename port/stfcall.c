@@ -158,9 +158,16 @@ fcalliput(Queue *q, Block *bp)
 	
 		if(q->len < len)
 			return;
-	
-		pullup(q->first, len);
-		bp = q->first;
+
+		/*
+		 *  the lock here is wrong.  it should be a qlock since
+		 *  the pullup may block.  not worth fixing.
+		 */
+		lock(q);
+		bp = q->first = pullup(q->first, len);
+		if(bp == 0)
+			q->len = 0;
+		unlock(q);
 		need = len+bp->rptr[off]+(bp->rptr[off+1]<<8);
 		if(q->len < need)
 			return;

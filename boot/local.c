@@ -24,6 +24,8 @@ configlocal(Method *mp)
 	}
 	if(*sys == '/' || *sys == '#')
 		disk = sys;
+	if(disk)
+		setenv("bootdisk", disk);
 	USED(mp);
 }
 
