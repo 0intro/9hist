@@ -1166,7 +1166,7 @@ streamread(Chan *c, void *vbuf, long n)
 					error(Ehungup);
 			}
 			q->rp = &q->r;
-			sleep(q->rp, &isinput, (void *)q);
+			sleep(q->rp, isinput, (void *)q);
 			continue;
 		}
 

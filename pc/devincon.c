@@ -179,7 +179,7 @@ reset(int dev)				/* hardware reset */
 {
 	outb(dev+Qpcr, Finitbar);
 	outb(dev+Qpcr, 0);
-	outb(dev+Qpcr, Finitbar|Fie);
+	outb(dev+Qpcr, Finitbar);
 }
 
 static void
@@ -464,7 +464,6 @@ inconreset(void)
 {
 	int i;
 
-	setvec(Parallelvec, inconintr);
 	/*
 	 * state is Selected if we used incon as the boot device
 	 * i.e. we've already got a station number.
@@ -497,10 +496,12 @@ inconattach(char *spec)
 	int i;
 	Chan *c;
 
+	setvec(Parallelvec, inconintr);
 	i = strtoul(spec, 0, 0);
 	if(i >= Nincon)
 		error(Ebadarg);
 	ip = &incon[i];
+	rdstatus(ip);
 	if(ip->state != Selected)
 		inconrestart(ip);
 
