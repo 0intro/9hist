@@ -1,0 +1,23 @@
+struct Ureg
+{
+	ulong	r0;
+	ulong	r1;
+	ulong	r2;
+	ulong	r3;
+	ulong	r4;
+	ulong	r5;
+	ulong	r6;
+	ulong	r7;
+	ulong	a0;
+	ulong	a1;
+	ulong	a2;
+	ulong	a3;
+	ulong	a4;
+	ulong	a5;
+	ulong	a6;
+	ulong	sp;
+	ulong	usp;
+	ushort	sr;
+	ulong	pc;
+	ushort	vo;
+};

@@ -1,15 +1,16 @@
 typedef struct Alarm	Alarm;
-typedef struct Bitmsg	Bitmsg;
-typedef struct Blist	Blist;
 typedef struct Block	Block;
+typedef struct Blist	Blist;
 typedef struct Chan	Chan;
 typedef struct Conf	Conf;
 typedef struct Dev	Dev;
+typedef struct Dir	Dir;
 typedef struct Dirtab	Dirtab;
 typedef struct Env	Env;
 typedef struct Envp	Envp;
 typedef struct Envval	Envval;
 typedef struct Error	Error;
+typedef struct FFrame	FFrame;
 typedef struct FPsave	FPsave;
 typedef struct Label	Label;
 typedef struct List	List;
@@ -23,8 +24,8 @@ typedef struct PTE	PTE;
 typedef struct Page	Page;
 typedef struct Pgrp	Pgrp;
 typedef struct Proc	Proc;
-typedef struct QLock	QLock;
 typedef struct Qinfo	Qinfo;
+typedef struct QLock	QLock;
 typedef struct Queue	Queue;
 typedef struct Ref	Ref;
 typedef struct Rendez	Rendez;
@@ -42,7 +43,7 @@ struct List
 
 struct Lock
 {
-	ulong	*sbsem;			/* addr of sync bus semaphore */
+	char	key[1];			/* addr of sync bus semaphore */
 	ulong	pc;
 };
 
@@ -62,8 +63,9 @@ struct QLock
 
 struct Label
 {
-	ulong	pc;
 	ulong	sp;
+	ulong	pc;
+	ushort	sr;
 };
 
 struct Alarm
@@ -74,14 +76,6 @@ struct Alarm
 	long	dt;		/* may underflow in clock(); must be signed */
 	void	(*f)(void*);
 	void	*arg;
-};
-
-struct Bitmsg
-{
-	ulong	cmd;
-	ulong	addr;
-	ulong	count;
-	ulong	rcount;
 };
 
 #define	CHDIR	0x80000000L
@@ -189,12 +183,6 @@ struct Mach
 	Label	sched;			/* scheduler wakeup */
 	Lock	alarmlock;		/* access to alarm list */
 	void	*alarm;			/* alarms bound to this clock */
-	void	(*intr)(ulong);		/* pending interrupt */
-	Proc	*intrp;			/* process that was interrupted */
-	ulong	cause;			/* arg to intr */
-	char	pidhere[NTLBPID];	/* is this pid possibly in this mmu? */
-	int	lastpid;		/* last pid allocated on this machine */
-	Proc	*pidproc[NTLBPID];	/* process that owns this tlbpid on this mach */
 	int	stack[1];
 };
 
@@ -293,6 +281,7 @@ struct Seg
 struct Proc
 {
 	Label	sched;
+	Lock;
 	Mach	*mach;			/* machine running this proc */
 	char	text[NAMELEN];
 	Proc	*rnext;			/* next process in run queue */
@@ -322,12 +311,11 @@ struct Proc
 	Rendez	sleep;			/* place for tsleep and syssleep */
 	int	wokeup;			/* whether sleep was interrupted */
 	ulong	pc;			/* DEBUG only */
-
 };
 
-#define	NERR	15
-#define	NFD	100
+#define	NERR	10
 #define	NNOTE	5
+#define	NFD	100
 struct User
 {
 	Proc	*p;
@@ -340,11 +328,6 @@ struct User
 	Chan	*dot;
 	Chan	*fd[NFD];
 	int	maxfd;			/* highest fd in use */
-	/*
-	 * I/O point for bit interface.  This is the easiest way to allocate
-	 * them, but not the prettiest or most general.
-	 */
-	Bitmsg	bit;
 	/*
 	 * Rest of structure controlled by devproc.c and friends.
 	 * lock(&p->debug) to modify.
@@ -453,15 +436,9 @@ enum {
 };
 
 #define	PRINTSIZE	256
-struct
-{
-	Lock;
-	short	machs;
-	short	exiting;
-}active;
 
-extern register	Mach	*m;
-extern register	User	*u;
+extern Mach	*m;
+extern User	*u;
 
 /*
  * Process states
@@ -540,10 +517,11 @@ enum
 
 #define	NUMSIZE	12		/* size of formatted number */
 
-#define	MACHP(n)	((Mach *)(MACHADDR+n*BY2PG))
+#define	MACHP(n)	(n==0? &mach0 : *(Mach**)0)
 
 extern	Conf	conf;
 extern	ulong	initcode[];
 extern	Dev	devtab[];
 extern	char	devchar[];
 extern	FPsave	initfp;
+extern	Mach	mach0;

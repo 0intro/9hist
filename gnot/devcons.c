@@ -11,9 +11,6 @@
 static struct
 {
 	Lock;
-	uchar	buf[4000];
-	uchar	*in;
-	uchar	*out;
 	int	printing;
 	int	c;
 }printq;
@@ -40,8 +37,6 @@ void
 printinit(void)
 {
 
-	printq.in = printq.buf;
-	printq.out = printq.buf;
 	lock(&printq);		/* allocate lock */
 	unlock(&printq);
 
@@ -54,55 +49,23 @@ printinit(void)
 	lock(&lineq);		/* allocate lock */
 	unlock(&lineq);
 
-	duartinit();
+	screeninit();
 }
 
 /*
- * Put a string on the console.
- * n bytes of s are guaranteed to fit in the buffer and is ready to print.
- * Must be called splhi() and with printq locked.
+ * Print a string on the console.
  */
 void
-puts(char *s, int n)
+putstrn(char *str, long n)
 {
-	if(!printq.printing){
-		printq.printing = 1;
-		printq.c = *s++;
-		n--;
-	}
-	memcpy(printq.in, s, n);
-	printq.in += n;
-	if(printq.in >= printq.buf+sizeof(printq.buf))
-		printq.in = printq.buf;
-}
-
-/*
- * Print a string on the console.  This is the high level routine
- * with a queue to the interrupt handler.  BUG: There is no check against
- * overflow.
- */
-void
-putstrn(char *str, int n)
-{
-	int s, c, m;
-	char *t;
+	int s;
 
 	s = splhi();
 	lock(&printq);
-	while(n > 0){
-		if(*str == '\n')
-			puts("\r", 1);
-		m = printq.buf+sizeof(printq.buf) - printq.in;
-		if(n < m)
-			m = n;
-		t = memchr(str+1, '\n', m-1);
-		if(t)
-			if(t-str < m)
-				m = t - str;
-		puts(str, m);
-		n -= m;
-		str += m;
-	}
+	printq.printing = 1;
+	while(--n >= 0)
+		screenputc(*str++);
+	printq.printing = 0;
 	unlock(&printq);
 	splx(s);
 }
@@ -170,7 +133,6 @@ panic(char *fmt, ...)
 	putstrn(buf, n+1);
 	exit();
 }
-
 int
 pprint(char *fmt, ...)
 {
@@ -199,31 +161,6 @@ prflush(void)
 {
 	while(printq.printing)
 		delay(100);
-}
-
-/*
- * Get character to print at interrupt time.
- * Always called splhi from proc 0.
- */
-int
-conschar(void)
-{
-	uchar *p;
-	int c;
-
-	lock(&printq);
-	p = printq.out;
-	if(p == printq.in){
-		printq.printing = 0;
-		c = -1;
-	}else{
-		c = *p++;
-		if(p >= printq.buf+sizeof(printq.buf))
-			p = printq.buf;
-		printq.out = p;
-	}
-	unlock(&printq);
-	return c;
 }
 
 void
@@ -261,22 +198,10 @@ kbdchar(int c)
 		wakeup(&kbdq.r);
 }
 
-void
-printslave(void)
-{
-	int c;
-
-	c = printq.c;
-	if(c){
-		printq.c = 0;
-		duartxmit(c);
-	}
-}
-
 int
 consactive(void)
 {
-	return printq.in != printq.out;
+	return printq.printing;
 }
 
 /*
@@ -575,4 +500,21 @@ void
 consuserstr(Error *e, char *buf)
 {
 	strcpy(buf, u->p->pgrp->user);
+}
+
+typedef struct Incon{
+	unsigned char	cdata;		unsigned char u0;
+	unsigned char	cstatus;	unsigned char u1;
+	unsigned char	creset;		unsigned char u2;
+	unsigned char	csend;		unsigned char u3;
+	unsigned short	data_cntl;	/* data is high byte, cntl is low byte */
+	unsigned char	status;		unsigned char u5;
+	unsigned char	reset;		unsigned char u6;
+	unsigned char	send;		unsigned char u7;
+}Incon;
+
+inconintr(Ureg *ur)
+{
+	int x;
+	x = ((Incon*)0x40700000)->status;
 }

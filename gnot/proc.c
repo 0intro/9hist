@@ -52,7 +52,7 @@ schedinit(void)		/* never returns */
 	if(u){
 		m->proc = 0;
 		p = u->p;
-		puttlbx(0, KZERO | PTEPID(0), 0);	/* safety first */
+		putkmmu(USERADDR, INVALIDPTE);	/* safety first */
 		u = 0;
 		if(p->state == Running)
 			ready(p);
@@ -82,6 +82,7 @@ sched(void)
 	if(u){
 		splhi();
 		if(setlabel(&u->p->sched)){	/* woke up */
+if(u->p->mach)panic("mach non zero");
 			p = u->p;
 			p->state = Running;
 			p->mach = m;
@@ -90,10 +91,6 @@ sched(void)
 			return;
 		}
 		gotolabel(&m->sched);
-	}
-	if(f = m->intr){			/* assign = */
-		m->intr = 0;
-		(*f)(m->cause);
 	}
 	spllo();
 	p = runproc();
@@ -127,12 +124,9 @@ Proc*
 runproc(void)
 {
 	Proc *p;
-	int i;
 
 loop:
-	while(runq.head == 0)
-		for(i=0; i<10; i++)
-			;
+	do; while(runq.head == 0);
 	splhi();
 	lock(&runq);
 	p = runq.head;
@@ -508,7 +502,6 @@ again:
 	return cpid;
 }
 
-
 Proc*
 proctab(int i)
 {
@@ -529,61 +522,4 @@ DEBUG()
 				p->pid, p->text, p->pc, statename[p->state],
 				p->time[0], p->time[1]);
 	}
-}
-
-void
-kproc(char *name, void (*func)(void *), void *arg)
-{
-	Proc *p;
-	int n;
-	ulong upa;
-	int lastvar;	/* used to compute stack address */
-	User *up;
-
-	/*
-	 * Kernel stack
-	 */
-	p = newproc();
-	p->upage = newpage(1, 0, USERADDR|(p->pid&0xFFFF));
-	upa = p->upage->pa|KZERO;
-	up = (User *)upa;
-
-	/*
-	 * Save time: only copy u-> data and useful stack
-	 */
-	memcpy((void*)upa, u, sizeof(User));
-	n = USERADDR+BY2PG - (ulong)&lastvar;
-	n = (n+32) & ~(BY2WD-1);	/* be safe & word align */
-	memcpy((void*)(upa+BY2PG-n), (void*)((u->p->upage->pa|KZERO)+BY2PG-n), n);
-	((User *)upa)->p = p;
-
-	/*
-	 * Refs
-	 */
-	incref(up->dot);
-	for(n=0; n<=up->maxfd; n++)
-		up->fd[n] = 0;
-	up->maxfd = 0;
-
-	/*
-	 * Sched
-	 */
-	if(setlabel(&p->sched)){
-		u->p = p;
-		p->state = Running;
-		p->mach = m;
-		m->proc = p;
-		spllo();
-		strncpy(p->text, name, sizeof p->text);
-		(*func)(arg);
-		pexit(0, 1);
-	}
-	p->pgrp = u->p->pgrp;
-	incref(p->pgrp);
-	p->nchild = 0;
-	p->parent = 0;
-	memset(p->time, 0, sizeof(p->time));
-	p->time[TReal] = MACHP(0)->ticks;
-	ready(p);
-	flushmmu();
 }

@@ -279,6 +279,7 @@ fpexcname(ulong x)
 			return str[i];
 	return "no floating point exception";
 }
+
 void
 dumpstack(void)
 {
@@ -420,6 +421,7 @@ syscall(Ureg *aur)
 
 	u->p->insyscall = 1;
 	ur = aur;
+	u->p->pc = ur->pc;		/* BUG */
 	/*
 	 * since the system call interface does not
 	 * guarantee anything about registers,
@@ -445,13 +447,13 @@ syscall(Ureg *aur)
 	ur->pc += 4;
 	u->nerrlab = 0;
 	splhi();
+	u->p->insyscall = 0;
 	if(r1 == NOTED)	/* ugly hack */
 		noted(&aur);	/* doesn't return */
 	if(u->nnote){
 		ur->r1 = ret;
 		notify(ur);
 	}
-	u->p->insyscall = 0;
 	return ret;
 }
 
