@@ -1712,7 +1712,7 @@ atapnp(void)
 		case (0x0571<<16)|0x1106:	/* VIA 82C686 */
 		case (0x0211<<16)|0x1166:	/* ServerWorks IB6566 */
 		case (0x1230<<16)|0x8086:	/* 82371FB (PIIX) */
-		case (0x248A<<16)|0x8086:	/* not sure (on Thinkpad T23) */
+		case (0x248A<<16)|0x8086:	/* 82801BAM ICH2-M */
 		case (0x7010<<16)|0x8086:	/* 82371SB (PIIX3) */
 		case (0x7111<<16)|0x8086:	/* 82371[AE]B (PIIX4[E]) */
 			break;
