@@ -498,7 +498,7 @@ cupdate(Chan *c, uchar *buf, int len, ulong offset)
 void
 cwrite(Chan* c, uchar *buf, int len, ulong offset)
 {
-	int o;
+	int o, n;
 	Mntcache *m;
 	ulong eblock, ee;
 	Extent *p, *f, *e, *tail;
@@ -524,6 +524,26 @@ cwrite(Chan* c, uchar *buf, int len, ulong offset)
 		if(f->start >= offset)
 			break;
 		p = f;		
+	}
+
+	if(f != 0) {
+		o = offset - f->start;
+		if(o >= 0) {
+			n = f->len - o;
+			if(n > len)
+				n = len;
+			if(n > 0) {
+				if(cpgmove(f, buf, o, n)) {
+					buf += n;
+					len -= n;
+					offset += n;
+				}
+				if(len == 0) {
+					qunlock(m);
+					return;
+				}
+			}	
+		}
 	}
 
 	if(p != 0) {
