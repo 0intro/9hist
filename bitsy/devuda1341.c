@@ -583,8 +583,9 @@ audioopen(Chan *c, int omode)
 			audio.amode |= Aread;
 			if(audio.i.bufinit == 0)
 				bufinit(&audio.i);
-			audio.i.chan = c;
 			setempty(&audio.i);
+			audio.i.chan = c;
+			audio.i.dma = dmaalloc(0, 0, 8, 2, SSPRecvDMA, Port4SSP, audiointr, (void*)&audio.o);
 		}
 		if (omode & 0x2) {
 			/* write */
@@ -595,7 +596,7 @@ audioopen(Chan *c, int omode)
 				bufinit(&audio.o);
 			setempty(&audio.o);
 			audio.o.chan = c;
-			audio.o.dma = dmaalloc(0, 0, 8, 2, AudioDMA, Port4MCP, audiointr, (void*)&audio.o);
+			audio.o.dma = dmaalloc(0, 0, 8, 2, SSPXmitDMA, Port4SSP, audiointr, (void*)&audio.o);
 		}
 		qunlock(&audio);
 //		mxvolume();

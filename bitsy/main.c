@@ -395,62 +395,54 @@ sspinit(void) {
 
 static ulong egpiosticky;
 
+static void
+egpiobits(ulong bits, int on)
+{
+	if(on)
+		egpiosticky |= bits;
+	else
+		egpiosticky &= ~bits;
+	*egpioreg = egpiosticky;
+}
+
 void
 rs232power(int on)
 {
-	if(on)
-		egpiosticky |= EGPIO_rs232_power;
-	else
-		egpiosticky &= ~EGPIO_rs232_power;
-	*egpioreg = egpiosticky;
+	egpiobits(EGPIO_rs232_power, on);
 }
 
 void
 irpower(int on)
 {
-	if(on)
-		egpiosticky |= EGPIO_ir_power;
-	else
-		egpiosticky &= ~EGPIO_ir_power;
-	*egpioreg = egpiosticky;
+	egpiobits(EGPIO_ir_power, on);
 }
 
 void
 lcdpower(int on)
 {
-	if(on)
-		egpiosticky |= EGPIO_lcd_3v|EGPIO_lcd_ic_power|EGPIO_lcd_5v|EGPIO_lcd_9v;
-	else
-		egpiosticky &= ~(EGPIO_lcd_3v|EGPIO_lcd_ic_power|EGPIO_lcd_5v|EGPIO_lcd_9v);
-	*egpioreg = egpiosticky;
+	egpiobits(EGPIO_lcd_3v|EGPIO_lcd_ic_power|EGPIO_lcd_5v|EGPIO_lcd_9v, on);
 }
 
 void
 audiopower(int on)
 {
-	if(on)
-		egpiosticky |= EGPIO_audio_ic_power | EGPIO_codec_reset;
-	else
-		egpiosticky &= ~(EGPIO_audio_ic_power | EGPIO_codec_reset);
-	*egpioreg = egpiosticky;
+	egpiobits(EGPIO_audio_ic_power | EGPIO_codec_reset, on);
 }
 
 void
 amplifierpower(int on)
 {
-	if(on)
-		egpiosticky |= EGPIO_audio_power;
-	else
-		egpiosticky &= ~(EGPIO_audio_power);
-	*egpioreg = egpiosticky;
+	egpiobits(EGPIO_audio_power, on);
 }
 
 void
 audiomute(int on)
 {
-	if(on)
-		egpiosticky |= EGPIO_audio_mute;
-	else
-		egpiosticky &= ~(EGPIO_audio_mute);
-	*egpioreg = egpiosticky;
+	egpiobits(EGPIO_audio_mute, on);
+}
+
+void
+flashprogpower(int on)
+{
+	egpiobits(EGPIO_prog_flash, on);
 }
