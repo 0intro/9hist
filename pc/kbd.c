@@ -250,9 +250,9 @@ serialmouse(int port, char *type, int setspeed)
 	if(setspeed)
 		setspeed = 1200;
 	if(type && *type == 'M')
-		NS16552special(port, setspeed, &mouseq, 0, NS16552m3mouse);
+		NS16552special(port, setspeed, &mouseq, 0, m3mouseputc);
 	else
-		NS16552special(port, setspeed, &mouseq, 0, NS16552mouse);
+		NS16552special(port, setspeed, &mouseq, 0, mouseputc);
 	mousetype = Mouseserial;
 }
 
