@@ -32,7 +32,7 @@
 #define DPRINT if(Chatty)print
 #define XPRINT if(debug)print
 
-static int debug = 1;
+static int debug = 0;
 
 /*
  * USB packet definitions
@@ -86,11 +86,12 @@ struct QH {
 	ulong	entries;	/* address of next TD or QH to process (updated by controller) */
 
 	/* software */
-	union {
-		TD*	first;
-		QH*	next;		/* free list */
-	};
-	TD*	last;
+	QH*		hlink;
+	TD*		first;
+	QH*		next;		/* free list */
+	TD*		last;
+	ulong	_d1;		/* fillers */
+	ulong	_d2;
 };
 #define	QFOL(p)	((QH*)KADDR((ulong)(p) & ~0xF))
 
@@ -267,6 +268,7 @@ struct Ctlr {
 	QH*	ctlq;	/* queue for control i/o */
 	QH*	bwsop;	/* empty bandwidth sop (to PIIX4 errata specifications) */
 	QH*	bulkq;	/* queue for bulk i/o (points back to bandwidth sop) */
+	QH*	recvq;	/* receive queues for bulk i/o */
 
 	Udev*	ports[2];
 };
@@ -371,11 +373,12 @@ dumptd(TD *t, int follow)
 		if(t->status & LowSpeed)
 			*s++ = 'L';
 		*s = 0;
-		XPRINT("td %8.8lux: l=%8.8lux s=%8.8lux d=%8.8lux b=%8.8lux %8.8lux f=%8.8lux\n",
-			t, t->link, t->status, t->dev, t->buffer, t->bp?(ulong)t->bp->rp:0, t->flags);
+		XPRINT("td %8.8lux: ", t);
+		XPRINT("l=%8.8lux s=%8.8lux d=%8.8lux b=%8.8lux %8.8lux f=%8.8lux\n",
+			t->link, t->status, t->dev, t->buffer, t->bp?(ulong)t->bp->rp:0, t->flags);
 		XPRINT("\ts=%s,ep=%ld,d=%ld,D=%ld\n", buf, (t->dev>>15)&0xF, (t->dev>>8)&0xFF, (t->dev>>19)&1);
-		if(t->bp)
-			dumpdata(t->bp, n);
+	//	if(t->bp && (t->flags & CancelTD) == 0 && (t->status & Active) == 0)
+	//		dumpdata(t->bp, n);
 		if(!follow || t->link & Terminate || t->link & IsQH)
 			break;
 		t = TFOL(t->link);
@@ -417,6 +420,7 @@ allocqh(Ctlr *ub)
 	iunlock(ub);
 	qh->head = Terminate;
 	qh->entries = Terminate;
+	qh->hlink = nil;
 	qh->first = nil;
 	qh->last = nil;
 	return qh;
@@ -662,6 +666,24 @@ eptdeactivate(Endpt *e)
 	iunlock(&activends);
 }
 
+static void
+queueqh(QH *qh) {
+	QH *q;
+	Ctlr *ub;
+
+	ub = &ubus;
+	// See if it's already queued
+	for (q = ub->recvq->next; q; q = q->hlink)
+		if (q == qh)
+			return;
+	if ((qh->hlink = ub->recvq->next) == nil)
+		qh->head = Terminate;
+	else
+		qh->head = PADDR(ub->recvq->next) | IsQH;
+	ub->recvq->next = qh;
+	ub->recvq->entries = PADDR(qh) | IsQH;
+}
+
 static QH*
 qxmit(Endpt *e, Block *b, int pid)
 {
@@ -670,6 +692,7 @@ qxmit(Endpt *e, Block *b, int pid)
 	Ctlr *ub;
 	QH *qh;
 
+XPRINT("qxmit\n");
 	if(b != nil){
 		n = BLEN(b);
 		t = alloctde(e, pid, n);
@@ -684,9 +707,11 @@ qxmit(Endpt *e, Block *b, int pid)
 if(e->debug)pprint("QTD: %8.8lux n=%ld\n", t, b?BLEN(b): 0);
 	vf = 0;
 	if(e->x == 0){
+XPRINT("enq\n");
 		qh = ub->ctlq;
 		vf = 0;
 	}else if((qh = e->epq) == nil || e->mode != OWRITE){
+XPRINT("bulkenq\n");
 		qh = ub->bulkq;
 		vf = Vf;
 	}
@@ -898,7 +923,7 @@ unschedendpt(Endpt *e)
 	int q;
 
 	ub = &ubus;
-	if(e->epq == nil || (q = e->sched) < 0)
+	if(!e->periodic || (q = e->sched) < 0)
 		return;
 	p = PADDR(e->epq) | IsQH;
 	qlock(ub->tree);
@@ -918,7 +943,9 @@ static Endpt *
 devendpt(Udev *d, int id, int add)
 {
 	Endpt *e, **p;
+	Ctlr *ub;
 
+	ub = &ubus;
 	p = &d->ep[id&0xF];
 	lock(d);
 	if((e = *p) != nil){
@@ -1095,6 +1122,7 @@ interrupt(Ureg*, void *a)
 	Ctlr *ub;
 	Endpt *e;
 	int s;
+	QH *q;
 
 	ub = a;
 	s = IN(Status);
@@ -1109,6 +1137,11 @@ interrupt(Ureg*, void *a)
 	cleanq(ub->ctlq, 0, 0);
 	XPRINT("cleanq(ub->bulkq, 0, Vf)\n");
 	cleanq(ub->bulkq, 0, Vf);
+	XPRINT("clean recvq\n");
+	for (q = ub->recvq->next; q; q = q->hlink) {
+		XPRINT("cleanq(q, 0, Vf)\n");
+		cleanq(q, 0, Vf);
+	}
 	ilock(&activends);
 	for(e = activends.f; e != nil; e = e->activef)
 		if(e->epq != nil) {
@@ -1217,12 +1250,12 @@ usbnewdevice(void)
 static void
 usbreset(void)
 {
-	Ctlr *ub;
 	Pcidev *cfg;
 	int i;
 	ulong port;
 	QTree *qt;
 	TD *t;
+	Ctlr *ub;
 
 	ub = &ubus;
 	memset(&cfg, 0, sizeof(cfg));
@@ -1277,15 +1310,21 @@ usbreset(void)
 	 * with its head entry leading on to the bulk traffic, the last QH of which
 	 * links back to the empty QH.
 	 */
+	ub->ctlq = allocqh(ub);
+	ub->bwsop = allocqh(ub);
 	ub->bulkq = allocqh(ub);
+	ub->recvq = allocqh(ub);
+XPRINT("bulkq: 0x%8.8lux\n", ub->bulkq);
+XPRINT("recvq: 0x%8.8lux\n", ub->recvq);
+XPRINT("bwsop: 0x%8.8lux\n", ub->bwsop);
+XPRINT("ctlq: 0x%8.8lux\n", ub->ctlq);
 	t = alloctd(ub);	/* inactive TD, looped */
 	t->link = PADDR(t);
-	ub->bwsop = allocqh(ub);
-	ub->bwsop->head = PADDR(ub->bulkq) | IsQH;
 	ub->bwsop->entries = PADDR(t);
-	ub->ctlq = allocqh(ub);
 	ub->ctlq->head = PADDR(ub->bwsop) | IsQH;
-	ub->bulkq->head = PADDR(ub->bwsop) | IsQH;	/* loop back */
+	ub->bwsop->head = PADDR(ub->bulkq) | IsQH;
+	ub->bulkq->head = PADDR(ub->recvq) | IsQH;
+	ub->recvq->head = PADDR(ub->bwsop) | IsQH;	/* loop back */
 	print("usbcmd\t0x%.4x\nusbsts\t0x%.4x\nusbintr\t0x%.4x\nfrnum\t0x%.2x\n",
 		IN(Cmd), IN(Status), IN(Usbintr), inb(port+Frnum));
 	print("frbaseadd\t0x%.4x\nsofmod\t0x%x\nportsc1\t0x%.4x\nportsc2\t0x%.4x\n",
@@ -1865,7 +1904,20 @@ usbwrite(Chan *c, void *a, long n, vlong)
 			e->mode = strcmp(fields[3],"r")==0? OREAD: strcmp(fields[3],"w") == 0? OWRITE: ORDWR;
 			e->periodic = 0;
 			e->sched = -1;
-			if(strcmp(fields[4], "bulk") != 0){
+			if(strcmp(fields[4], "bulk") == 0){
+				Ctlr *ub;
+
+				ub = &ubus;
+				/* Each bulk device gets a queue head hanging off the
+				 * bulk queue head
+				 */
+				if (e->epq == nil) {
+					e->epq = allocqh(ub);
+					if(e->epq == nil)
+						panic("usbwrite: allocqh");
+				}
+				queueqh(e->epq);
+			} else {
 				e->periodic = 1;
 				i = strtoul(fields[4], nil, 0);
 				if(i > 0 && i <= 1000)
