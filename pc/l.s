@@ -750,22 +750,22 @@ TEXT	fwblock(SB),$0
 	MOVL	$128,CX
 	CLD; REP; OUTSL
 
-	MOVL	p+0(FP),DX
+	MOVL	a+4(FP),DX
 	MOVL	$128,CX
 	MOVL	csum+8(FP), AX
 wcsum:
 	XORL	0(DX), AX
 	ADDL	$4,DX
-	LOOP	rcsum	
+	LOOP	wcsum	
 	RET
 
 TEXT	frblock(SB),$0
 	MOVL	p+0(FP),DX
-	MOVL	a+4(FP),SI
+	MOVL	a+4(FP),DI
 	MOVL	$128,CX
 	CLD; REP; INSL
 
-	MOVL	p+0(FP),DX
+	MOVL	a+4(FP),DX
 	MOVL	$128,CX
 	MOVL	csum+8(FP), AX
 rcsum:

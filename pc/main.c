@@ -27,6 +27,7 @@ PCArch *knownarch[] =
 #define	MAXCONF		32
 
 char bootdisk[NAMELEN];
+char filaddr[NAMELEN];
 char *confname[MAXCONF];
 char *confval[MAXCONF];
 int nconf;
@@ -316,6 +317,9 @@ confinit(void)
 			if(i < defmaxmsg && i >=128)
 				defmaxmsg = i;
 		}
+		/* HACK: where should this come from? */
+		if(strcmp(confname[nconf], "filaddr") == 0)
+			strcpy(filaddr, confval[nconf]);
 		nconf++;
 	}
 	/*
