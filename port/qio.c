@@ -896,6 +896,8 @@ qbwrite(Queue *q, Block *b)
 	n = BLEN(b);
 	qlock(&q->wlock);
 	if(waserror()){
+		if(b != nil)
+			freeb(b);
 		qunlock(&q->wlock);
 		nexterror();
 	}
@@ -906,7 +908,6 @@ qbwrite(Queue *q, Block *b)
 
 		if(q->state & Qclosed){
 			iunlock(q);
-			freeb(b);
 			error(q->err);
 		}
 
@@ -935,6 +936,7 @@ qbwrite(Queue *q, Block *b)
 	q->len += BALLOC(b);
 	q->dlen += n;
 	QDEBUG checkb(b, "qbwrite");
+	b = nil;
 
 	if(q->state & Qstarve){
 		q->state &= ~Qstarve;

@@ -181,7 +181,7 @@ loopbackattach(char *spec)
 
 	c->qid = (Qid){CHDIR|QID(0, Qtopdir), 0};
 	c->aux = lb;
-	c->dev = 0;
+	c->dev = dev;
 	return c;
 }
 
