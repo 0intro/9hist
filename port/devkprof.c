@@ -151,6 +151,8 @@ kprofwrite(Chan *c, char *a, long n, ulong offset)
 void
 kproftimer(ulong pc)
 {
+	extern void spldone(void);
+
 	if(kprof.time == 0)
 		return;
 	/*
