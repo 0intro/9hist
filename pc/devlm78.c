@@ -230,9 +230,10 @@ read_vid(void)
 enum
 {
 	IntelVendID=	0x8086,
-	PiixBridgeID=	0x122E,
-	Piix3BridgeID=	0x7000,
-	Piix4BridgeID=	0x7110,
+	PiixID=		0x122E,
+	Piix3ID=	0x7000,
+
+	Piix4PMID=	0x7113,		/* PIIX4 power management function */
 
 	PCSC=		0x78,		/* programmable chip select control register */
 	PCSC8bytes=	0x01,
@@ -247,31 +248,28 @@ readpcilm78(void)
 	p = nil;
 	while((p = pcimatch(p, IntelVendID, 0)) != nil){
 		switch(p->did){
-		case PiixBridgeID:
-		case Piix3BridgeID:
-		case Piix4BridgeID:
-			break;
-		default:
-			continue;
+		/* these bridges have pretty easy access to the lm78 */
+		case PiixID:
+		case Piix3ID:
+			pcs = pcicfgr16(p, PCSC);
+			if(pcs & 3) {
+				/* already enabled */
+				miBASE = pcs & ~3;
+				return 0;	
+			}
+
+			/* enable the chip, use default address 0x50 */
+			pcicfgw16(p, PCSC, 0x50|PCSC8bytes);
+			pcs = pcicfgr16(p, PCSC);
+			miBASE = pcs & ~3;
+			return 0;
+
+		/* this bridge uses the SMbus */
+		case Piix4PMID:
+			return -1:
 		}
-		break;
 	}
-	if(p == nil)
-		return -1;
-
-	pcs = pcicfgr16(p, PCSC);
-	if(pcs & 3) {
-		/* already enabled */
-		miBASE = pcs & ~3;
-		return 0;	
-	}
-
-	/* enable the chip, use default address 0x50 */
-	pcicfgw16(p, PCSC, 0x50|PCSC8bytes);
-	pcs = pcicfgr16(p, PCSC);
-	miBASE = pcs & ~3;
-
-	return 0;
+	return -1;
 }
 
 static void

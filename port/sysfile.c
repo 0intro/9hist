@@ -111,23 +111,13 @@ sysfd2path(ulong *arg)
 
 	validaddr(arg[1], arg[2], 1);
 
-	/*
-	 * Undomount below may cclose the chan so bump the
-	 * reference count to guard against it going to zero
-	 * and being freed.
-	 */
 	c = fdtochan(arg[0], -1, 0, 1);
-	if(waserror()) {
-		cclose(c);
-		nexterror();
-	}
 
 	if(c->name == nil)
 		snprint((char*)arg[1], arg[2], "<null>");
 	else
 		snprint((char*)arg[1], arg[2], "%s", c->name->s);
-
-	poperror();
+	cclose(c);
 	return 0;
 }
 

@@ -162,13 +162,15 @@ procopen(Chan *c, int omode)
 	Proc *p;
 	Pgrp *pg;
 	Chan *tc;
+	int pid;
 
 	if(c->qid.path & CHDIR)
 		return devopen(c, omode, 0, 0, procgen);
 
 	p = proctab(SLOT(c->qid));
 	pg = p->pgrp;
-	if(p->pid != PID(c->qid))
+	pid = PID(c->qid);
+	if(p->pid != pid)
 		error(Eprocdied);
 
 	omode = openmode(omode);
@@ -222,6 +224,11 @@ procopen(Chan *c, int omode)
 	if(p->state != Dead)
 		c->qid.vers = p->pid;
 
+	/* make sure the process slot didn't get reallocated while we were playing */
+	coherence();
+	if(p->pid != pid)
+		error(Eprocdied);
+
 	return devopen(c, omode, 0, 0, procgen);
 }
 
@@ -235,6 +242,12 @@ procwstat(Chan *c, char *db)
 		error(Eperm);
 
 	p = proctab(SLOT(c->qid));
+	if(waserror()){
+		qunlock(&p->debug);
+		nexterror();
+	}
+	qlock(&p->debug);
+
 	if(p->pid != PID(c->qid))
 		error(Eprocdied);
 
@@ -243,6 +256,9 @@ procwstat(Chan *c, char *db)
 
 	convM2D(db, &d);
 	p->procmode = d.mode&0777;
+
+	poperror();
+	qunlock(&p->debug);
 }
 
 static int

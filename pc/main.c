@@ -418,6 +418,7 @@ confinit(void)
 		if(kpages > (16*MB + conf.npage*sizeof(Page))/BY2PG){
 			kpages = (16*MB + conf.npage*sizeof(Page))/BY2PG;
 			conf.nimage = 2000;
+			kpages += (conf.nproc*KSTACK)/BY2PG;
 		}
 	} else {
 		if(userpcnt < 10) {
