@@ -42,7 +42,7 @@ kprofreset(void)
 	kprof.maxpc = (ulong)etext;
 	kprof.nbuf = (kprof.maxpc-kprof.minpc) >> LRES;
 	n = kprof.nbuf*SZ;
-	kprof.buf = ialloc(n, 0);
+	kprof.buf = xalloc(n);
 	kproftab[0].length = n;
 	if(SZ != sizeof kprof.buf[0])
 		panic("kprof size");

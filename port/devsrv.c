@@ -7,7 +7,7 @@
 
 #include	"devtab.h"
 
-typedef struct	Srv Srv;
+typedef struct Srv Srv;
 struct Srv{
 	char	name[NAMELEN];
 	char	owner[NAMELEN];
@@ -196,8 +196,8 @@ srvwrite(Chan *c, void *va, long n, ulong offset)
 	memmove(buf, va, n);	/* so we can NUL-terminate */
 	buf[n] = 0;
 	fd = strtoul(buf, 0, 0);
-	f = u->p->fgrp;
 
+	f = u->p->fgrp;
 	lock(f);
 	if(waserror()){
 		unlock(f);
@@ -218,6 +218,7 @@ srvwrite(Chan *c, void *va, long n, ulong offset)
 	i = c->qid.path;
 	if(srv[i].chan != c)	/* already been written to */
 		error(Egreg);
+
 	srv[i].chan = c1;
 	unlock(&srvlk);
 	poperror();

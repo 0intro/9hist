@@ -5,9 +5,11 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
-struct{
+struct
+{
 	Lock;
 	Chan	*free;
+	int	fid;
 }chanalloc;
 
 int
@@ -38,22 +40,6 @@ decref(Ref *r)
 }
 
 void
-chaninit(void)
-{
-	int i;
-	Chan *c;
-
-	chanalloc.free = ialloc(conf.nchan*sizeof(Chan), 0);
-
-	c = chanalloc.free;
-	for(i=0; i<conf.nchan-1; i++,c++){
-		c->fid = i;
-		c->next = c+1;
-	}
-	c->next = 0;
-}
-
-void
 chandevreset(void)
 {
 	int i;
@@ -75,30 +61,36 @@ Chan*
 newchan(void)
 {
 	Chan *c;
+	int nfid;
 
-	for(;;) {
-		lock(&chanalloc);
-		if(c = chanalloc.free) {
-			chanalloc.free = c->next;
-			/* if you get an error before associating with a dev,
-			   close calls rootclose, a nop */
-			c->type = 0;
-			c->flag = 0;
-			c->ref = 1;
-			unlock(&chanalloc);
-			c->dev = 0;
-			c->offset = 0;
-			c->mnt = 0;
-			c->stream = 0;
-			c->aux = 0;
-			c->mchan = 0;
-			c->mqid = (Qid){0, 0};
-			return c;
-		}
-		unlock(&chanalloc);
-		resrcwait("no chans\n");
+	SET(nfid);
+
+	lock(&chanalloc);
+	c = chanalloc.free;
+	if(c)
+		chanalloc.free = c->next;
+	else
+		nfid = ++chanalloc.fid;
+	unlock(&chanalloc);
+
+	if(c == 0) {
+		c = smalloc(sizeof(Chan));
+		c->fid = nfid;
 	}
-	return 0;	/* not reached */
+
+	/* if you get an error before associating with a dev,
+	   close calls rootclose, a nop */
+	c->type = 0;
+	c->flag = 0;
+	c->ref = 1;
+	c->dev = 0;
+	c->offset = 0;
+	c->mnt = 0;
+	c->stream = 0;
+	c->aux = 0;
+	c->mchan = 0;
+	c->mqid = (Qid){0, 0};
+	return c;
 }
 
 void

@@ -59,30 +59,19 @@ struct Conf
 {
 	int	nmach;		/* processors */
 	int	nproc;		/* processes */
-	int	npgrp;		/* process groups */
 	ulong	npage0;		/* total physical pages of memory, bank 0 */
 	ulong	npage1;		/* total physical pages of memory, bank 1 */
 	ulong	base0;		/* base of bank 0 */
 	ulong	base1;		/* base of bank 1 */
 	ulong	npage;		/* total physical pages of memory */
-	ulong	nseg;		/* number of segments */
 	ulong	nimage;		/* number of page cache image headers */
-	ulong 	npagetab;	/* number of pte tables */
 	ulong	nswap;		/* number of swap blocks */
 	ulong	upages;		/* number of user pages */
-	int	nalarm;		/* alarms */
-	int	nchan;		/* channels */
 	int	nenv;		/* distinct environment values */
 	int	nenvchar;	/* environment text storage */
 	int	npgenv;		/* environment files per process group */
-	int	nmtab;		/* mounted-upon channels per process group */
-	int	nmount;		/* mounts */
-	int	nmntdev;	/* mounted devices (devmnt.c) */
-	int	nmntbuf;	/* buffers for devmnt.c messages */
-	int	nmnthdr;	/* headers for devmnt.c messages */
 	int	nstream;	/* streams */
 	int	nqueue;		/* stream queues */
-	int	nblock;		/* stream blocks */
 	int	nsrv;		/* public servers (devsrv.c) */
 	int	nbitmap;	/* bitmap structs (devbit.c) */
 	int	nbitbyte;	/* bytes of bitmap data (devbit.c) */
@@ -91,8 +80,6 @@ struct Conf
 	int	nurp;		/* max urp conversations */
 	int	nasync;		/* number of async protocol modules */
 	int	npipe;		/* number of pipes */
-	int	nservice;	/* number of services */
-	int	nfsyschan;	/* number of filsys open channels */
 	int	copymode;	/* 0 is copy on write, 1 is copy on reference */
 	ulong	ipif;		/* Ip protocol interfaces */
 	ulong	ip;		/* Ip conversations per interface */

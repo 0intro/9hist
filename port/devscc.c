@@ -298,6 +298,7 @@ sccsetup0(SCC *sp)
 	sp->sticky[5] = TxEna | Tx8bits;
 	sccwrreg(sp, 5, 0);
 }
+
 void
 sccsetup(void *addr, ulong freq)
 {
@@ -309,13 +310,13 @@ sccsetup(void *addr, ulong freq)
 	/*
 	 *  allocate a structure, set port addresses, and setup the line
 	 */
-	sp = ialloc(sizeof(SCC), 0);
+	sp = xalloc(sizeof(SCC));
 	scc[nscc] = sp;
 	sp->ptr = &dev->ptra;
 	sp->data = &dev->dataa;
 	sp->freq = freq;
 	sccsetup0(sp);
-	sp = ialloc(sizeof(SCC), 0);
+	sp = xalloc(sizeof(SCC));
 	scc[nscc+1] = sp;
 	sp->ptr = &dev->ptrb;
 	sp->data = &dev->datab;
@@ -647,7 +648,7 @@ sccreset(void)
 	int i;
 	Dirtab *dp;
 
-	sccdir = ialloc(2 * nscc * sizeof(Dirtab), 0);
+	sccdir = xalloc(2 * nscc * sizeof(Dirtab));
 	dp = sccdir;
 	for(i = 0; i < nscc; i++){
 		/* 2 directory entries per port */

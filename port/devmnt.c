@@ -7,8 +7,6 @@
 #include	"devtab.h"
 
 typedef struct Mntrpc Mntrpc;
-typedef struct Mnt Mnt;
-
 struct Mntrpc
 {
 	Mntrpc	*list;		/* Free/pending list */
@@ -40,11 +38,11 @@ struct Mnt
 struct Mntalloc
 {
 	Lock;
-	Mnt	*mntfree;
-	Mnt	*mntarena;
+	Mnt	*list;		/* Mount devices in used */
+	Mnt	*mntfree;	/* Free list */
 	Mntrpc	*rpcfree;
-	Mntrpc	*rpcarena;
 	int	id;
+	int	rpctag;
 }mntalloc;
 
 #define MAXRPC		(MAXFDATA+MAXMSG)
@@ -71,6 +69,7 @@ void	mntpntfree(Mnt*);
 enum
 {
 	Tagspace = 1,
+	Tagfls = 0x8000,
 	Tagend = 0xfffe,
 
 	ALIGN = 256,		/* Vme block mode alignment */
@@ -79,39 +78,8 @@ enum
 void
 mntreset(void)
 {
-	Mnt *me, *md;
-	Mntrpc *re, *rd;
-	ushort tag;
-	ulong p;
-	int i;
-
-	mntalloc.mntarena = ialloc(conf.nmntdev*sizeof(Mnt), 0);
-	mntalloc.mntfree = mntalloc.mntarena;
-	me = &mntalloc.mntfree[conf.nmntdev];
-
-	mntalloc.rpcfree = ialloc(conf.nmntbuf*sizeof(Mntrpc), 0);
-	mntalloc.rpcarena = mntalloc.rpcfree;
-	re = &mntalloc.rpcfree[conf.nmntbuf];
-
-	/*
-	 *  Align mount buffers to 256 byte boundaries
-	 *  so we can use burst mode vme transfers
-	 */
-	tag = Tagspace;
-	for(rd = mntalloc.rpcfree; rd < re; rd++) {
-		rd->list = rd+1;
-		rd->request.tag = tag++;
-		rd->rpc = iallocspan(MAXRPC, ALIGN, 0);
-	}
-	re[-1].list = 0;
-	for(md = mntalloc.mntfree; md < me; md++){
-		md->list = md+1;
-		md->flushbase = tag;
-		md->flushtag = tag;
-	}
-	me[-1].list = 0;
-
 	mntalloc.id = 1;
+	mntalloc.rpctag = Tagspace;
 }
 
 void
@@ -122,7 +90,7 @@ mntinit(void)
 Chan*
 mntattach(char *muxattach)
 {
-	Mnt *m, *e;
+	Mnt *m;
 	Chan *c;
 	struct bogus{
 		Chan	*chan;
@@ -131,11 +99,14 @@ mntattach(char *muxattach)
 	}bogus;
 
 	bogus = *((struct bogus *)muxattach);
-	e = &mntalloc.mntarena[conf.nmntdev];
-	for(m = mntalloc.mntarena; m < e; m++) {
-		if(m->c == bogus.chan && m->id) {
+	c = bogus.chan;
+
+	lock(&mntalloc);
+	for(m = mntalloc.list; m; m = m->list) {
+		if(m->c == c && m->id) {
 			lock(m);
-			if(m->id && m->ref > 0 && m->c == bogus.chan) {
+			if(m->id && m->ref > 0 && m->c == c) {
+				unlock(&mntalloc);
 				m->ref++;
 				unlock(m);
 				return mattach(m, bogus.spec, bogus.serv);
@@ -143,29 +114,36 @@ mntattach(char *muxattach)
 			unlock(m);	
 		}
 	}
-	lock(&mntalloc);
-	if(mntalloc.mntfree == 0) {
-		unlock(&mntalloc);
-		exhausted("mount devices");
-	}
 	m = mntalloc.mntfree;
-	mntalloc.mntfree = m->list;	
+	if(m != 0)
+		mntalloc.mntfree = m->list;	
+	else {
+		m = malloc(sizeof(Mnt));
+		if(m == 0) {
+			unlock(&mntalloc);
+			exhausted("mount devices");
+		}
+		m->flushbase = Tagfls;
+		m->flushtag = Tagfls;
+	}
+	m->list = mntalloc.list;
+	mntalloc.list = m;
 	m->id = mntalloc.id++;
 	lock(m);
 	unlock(&mntalloc);
+
 	m->ref = 1;
 	m->queue = 0;
 	m->rip = 0;
-	m->c = bogus.chan;
+	m->c = c;
 	m->c->flag |= CMSG;
 	m->blocksize = MAXFDATA;
-
 
 	switch(devchar[m->c->type]) {
 	default:
 		m->mux = 0;
 		break;
-	case 'H':			/* Cyclone */
+	case 'C':			/* Cyclone */
 		m->mux = 1;
 		break;
 	}
@@ -195,7 +173,7 @@ mattach(Mnt *m, char *spec, char *serv)
 	lock(&mntalloc);
 	c->dev = mntalloc.id++;
 	unlock(&mntalloc);
-	c->mntindex = m-mntalloc.mntarena;
+	c->mntptr = m;
 
 	if(waserror()){
 		mntfree(r);
@@ -442,7 +420,18 @@ mntdoclunk(Mnt *m, Mntrpc *r)
 void
 mntpntfree(Mnt *m)
 {
+	Mnt *f, **l;
+
 	lock(&mntalloc);
+	l = &mntalloc.list;
+	for(f = *l; f; f = f->list) {
+		if(f == m) {
+			*l = m->list;
+			break;
+		}
+		l = &f->list;
+	}
+
 	m->list = mntalloc.mntfree;
 	mntalloc.mntfree = m;
 	unlock(&mntalloc);
@@ -538,17 +527,21 @@ mntrdwr(int type, Chan *c, void *buf, long n, ulong offset)
 void
 mountrpc(Mnt *m, Mntrpc *r)
 {
-	r->reply.tag = 0;		/* safety checks */
+	r->reply.tag = 0;		/* poison the old values */
 	r->reply.type = 4;
+
 	mountio(m, r);
 	if(r->reply.type == Rerror)
 		error(r->reply.ename);
+
 	if(r->reply.type == Rflush)
 		error(Eintr);
 
 	if(r->reply.type != r->request.type+1) {
-		print("devmnt: mismatched reply 0x%lux T%d R%d tags req %d fls %d rep %d\n",
-		r, r->request.type, r->reply.type, r->request.tag, r->flushtag, r->reply.tag);
+		print("mnt: mismatched reply 0x%lux T%d R%d tags req %d fls %d rep %d\n",
+				r, r->request.type, r->reply.type, r->request.tag, 
+				r->flushtag, r->reply.tag);
+
 		error(Emountrpc);
 	}
 }
@@ -744,19 +737,23 @@ mntralloc(void)
 {
 	Mntrpc *new;
 
-	for(;;) {
-		lock(&mntalloc);
-		if(new = mntalloc.rpcfree) {
-			mntalloc.rpcfree = new->list;
+	lock(&mntalloc);
+	new = mntalloc.rpcfree;
+	if(new != 0)
+		mntalloc.rpcfree = new->list;
+	else {
+		new = xalloc(sizeof(Mntrpc)+MAXRPC);
+		if(new == 0) {
 			unlock(&mntalloc);
-			new->done = 0;
-			new->flushed = 0;
-			return new;
+			exhausted("mount rpc buffer");
 		}
-		unlock(&mntalloc);
-		resrcwait("no mount buffers");
+		new->rpc = (char*)new+sizeof(Mntrpc);
+		new->request.tag = mntalloc.rpctag++;
 	}
-	return 0;		/* not reached */
+	unlock(&mntalloc);
+	new->done = 0;
+	new->flushed = 0;
+	return new;
 }
 
 void
@@ -793,9 +790,9 @@ mntchk(Chan *c)
 {
 	Mnt *m;
 
-	m = &mntalloc.mntarena[c->mntindex];
+	m = c->mntptr;
 	/* Was it closed and reused ? */
-	if(m->id == 0 || m->id >= c->dev)
+	if(m->id == 0 || m->id >= c->dev)	/* Sanity check */
 		error(Eshutdown);
 	return m;
 }
@@ -814,28 +811,3 @@ rpcattn(Mntrpc *r)
 {
 	return r->done || r->m->rip == 0;
 }
-
-void
-mntdump(void)
-{
-	Mnt *me, *m;
-	Mntrpc *re, *r;
-
-	me = &mntalloc.mntarena[conf.nmntdev];
-	for(m = mntalloc.mntarena; m < me; m++) {
-		if(m->ref == 0)
-			continue;
-		print("mount %d: mux %d queue %lux rip 0x%lux %d %s\n", 
-			m->id, m->mux, m->queue, m->rip,
-			m->rip ? m->rip->pid : 0, m->rip ? m->rip->text : "no");
-	}
-	print("rpcfree 0x%lux\n", mntalloc.rpcfree);
-	re = &mntalloc.rpcarena[conf.nmntbuf];
-	for(r = mntalloc.rpcarena; r < re; r++) 
-		print("%.8lux %.8lux T%d R%d tags req %d fls %d rep %d d %d f %d\n",
-			r, r->list, r->request.type, r->reply.type,
-			r->request.tag, r->flushtag, r->reply.tag, 
-			r->done, r->flushed);
-
-}
-

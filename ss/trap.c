@@ -376,16 +376,16 @@ syscall(Ureg *aur)
 	ret = -1;
 	if(!waserror()){
 		if(r7 >= sizeof systab/BY2WD){
-			pprint("bad sys call number %d pc %lux\n", r7, ((Ureg*)UREGADDR)->pc);
+			pprint("bad sys call number %d pc %lux\n", r7, ur->pc);
 			msg = "sys: bad sys call";
-	    Bad:
 			postnote(u->p, 1, msg, NDebug);
 			error(Ebadarg);
 		}
 		if(sp & (BY2WD-1)){
-			pprint("odd sp in sys call pc %lux sp %lux\n", ((Ureg*)UREGADDR)->pc, ((Ureg*)UREGADDR)->sp);
+			pprint("odd sp in sys call pc %lux sp %lux\n", ur->pc, ur->sp);
 			msg = "sys: odd stack";
-			goto Bad;
+			postnote(u->p, 1, msg, NDebug);
+			error(Ebadarg);
 		}
 		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-(1+MAXSYSARG)*BY2WD))
 			validaddr(sp, ((1+MAXSYSARG)*BY2WD), 0);
@@ -393,6 +393,7 @@ syscall(Ureg *aur)
 		ret = (*systab[r7])((ulong*)(sp+1*BY2WD));
 		poperror();
 	}
+
 	ur->pc += 4;
 	ur->npc = ur->pc+4;
 	u->nerrlab = 0;

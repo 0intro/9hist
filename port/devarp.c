@@ -94,8 +94,8 @@ arpreset(void)
 {
 	Arpcache *ap, *ep;
 
-	arp = (Arpcache *)ialloc(sizeof(Arpcache) * conf.arp, 0);
-	arphash = (Arpcache **)ialloc(sizeof(Arpcache *) * Arphashsize, 0);
+	arp = xalloc(sizeof(Arpcache) * conf.arp);
+	arphash = (Arpcache **)xalloc(sizeof(Arpcache *) * Arphashsize);
 
 	ep = &arp[conf.arp];
 	for(ap = arp; ap < ep; ap++) {

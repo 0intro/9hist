@@ -65,6 +65,7 @@ schedinit(void)		/* never returns */
 		else
 		if(p->state == Moribund) {
 			p->pid = 0;
+			p->state = Dead;
 			/* 
 			 * Holding locks from pexit:
 			 * 	procalloc, debug, palloc
@@ -79,8 +80,6 @@ schedinit(void)		/* never returns */
 			unlock(&palloc);
 			qunlock(&p->debug);
 			unlock(&procalloc);
-
-			p->state = Dead;
 		}
 		p->mach = 0;
 	}
@@ -399,7 +398,6 @@ postnote(Proc *p, int dolock, char *n, int flag)
 		up = u;
 	USED(k);
 
-
 	if(flag!=NUser && (up->notify==0 || up->notified))
 		up->nnote = 0;	/* force user's hand */
 
@@ -527,7 +525,7 @@ pexit(char *exitstr, int freemem)
 		if((p = c->parent) == 0)
 			panic("boot process died");
 			
-		wq = newwaitq();
+		wq = smalloc(sizeof(Waitq));
 		readnum(0, wq->w.pid, NUMSIZE, c->pid, NUMSIZE);
 		utime = c->time[TUser] + c->time[TCUser];
 		stime = c->time[TSys] + c->time[TCSys];
@@ -545,7 +543,8 @@ pexit(char *exitstr, int freemem)
 
 		lock(&p->exl);
 		/* My parent still alive, processes are limited to 128 Zombies to
-		 * prevent badly written daemon consuming all the wait records */
+		 * prevent a badly written daemon lots of wait records
+		 */
 		if(p->pid == c->parentpid && p->state != Broken && p->nwait < 128) {	
 			p->nchild--;
 			p->time[TCUser] += utime;
@@ -560,7 +559,7 @@ pexit(char *exitstr, int freemem)
 		}
 		else {
 			unlock(&p->exl);
-			freewaitq(wq);
+			free(wq);
 		}
 	}
 
@@ -580,7 +579,7 @@ pexit(char *exitstr, int freemem)
 
 	for(f = c->waitq; f; f = next) {
 		next = f->next;
-		freewaitq(f);
+		free(f);
 	}
 
 	/*
@@ -637,15 +636,13 @@ pwait(Waitmsg *w)
 	if(w)
 		memmove(w, &wq->w, sizeof(Waitmsg));
 	cpid = atoi(wq->w.pid);
-	freewaitq(wq);
+	free(wq);
 	return cpid;
 }
 
 Proc*
 proctab(int i)
 {
-if((i < 0) || (i >= conf.nproc))
-    panic("proctab(%d)\n", i);
 	return &procalloc.arena[i];
 }
 
@@ -660,7 +657,8 @@ procdump(void)
 		if(p->state != Dead){
 			print("%d:%s %s upc %lux %s ut %ld st %ld r %lux qpc %lux\n",
 				p->pid, p->text, p->user, p->pc, 
-				statename[p->state], p->time[0], p->time[1], p->r, p->qlockpc);
+				statename[p->state], p->time[0],
+				p->time[1], p->r, p->qlockpc);
 		}
 	}
 }
@@ -754,10 +752,12 @@ procctl(Proc *p)
 	case Proc_exitme:
 		spllo();	/* pexit has locks in it */
 		pexit("Killed", 1);
+
 	case Proc_traceme:
 		if(u->nnote == 0)
 			return;
 		/* No break */
+
 	case Proc_stopme:
 		p->procctl = 0;
 		state = p->psstate;
@@ -799,40 +799,4 @@ exhausted(char *resource)
 
 	sprint(buf, "no free %s", resource);
 	error(buf);
-}
-
-Waitq *
-newwaitq(void)
-{
-	Waitq *wq, *e, *f;
-
-	for(;;) {
-		lock(&waitqalloc);
-		if(wq = waitqalloc.free) {
-			waitqalloc.free = wq->next;
-			unlock(&waitqalloc);
-			return wq;
-		}
-		unlock(&waitqalloc);
-
-		wq = (Waitq*)VA(kmap(newpage(0, 0, 0)));
-		e = &wq[(BY2PG/sizeof(Waitq))-1];
-		for(f = wq; f < e; f++)
-			f->next = f+1;
-
-		lock(&waitqalloc);
-		e->next = waitqalloc.free;
-		waitqalloc.free = wq;
-		unlock(&waitqalloc);
-	}
-	return 0;		/* not reached */
-}
-
-void
-freewaitq(Waitq *wq)
-{
-	lock(&waitqalloc);
-	wq->next = waitqalloc.free;
-	waitqalloc.free = wq;
-	unlock(&waitqalloc);
 }

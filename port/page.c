@@ -8,13 +8,6 @@
 #define PGHFUN(x, y)	(((ulong)x^(ulong)y)%PGHSIZE)
 #define	pghash(s)	palloc.hash[PGHFUN(s->image, p->daddr)]
 
-struct Ptealloc
-{
-	Lock;
-	Pte	*free;
-	int	pages;
-}ptealloclk;
-
 static	Lock pglock;
 struct	Palloc palloc;
 
@@ -361,31 +354,10 @@ Pte*
 ptealloc(void)
 {
 	Pte *new;
-	int i, n;
-	KMap *k;
 
-	lock(&ptealloclk);
-	while(ptealloclk.free == 0) {
-		unlock(&ptealloclk);
-
-		k = kmap(newpage(1, 0, 0));
-		new = (Pte*)VA(k);
-		n = (BY2PG/sizeof(Pte))-1;
-		for(i = 0; i < n; i++)
-			new[i].next = &new[i+1];
-
-		lock(&ptealloclk);
-		ptealloclk.pages++;
-		new[i].next = ptealloclk.free;
-		ptealloclk.free = new;
-	}
-
-	new = ptealloclk.free;
-	ptealloclk.free = new->next;
-	unlock(&ptealloclk);
+	new = smalloc(sizeof(Pte));
 	new->first = &new->pages[PTEPERTAB];
 	new->last = new->pages;
-
 	return new;
 }
 
@@ -410,11 +382,7 @@ freepte(Segment *s, Pte *p)
 				*pg = 0;
 			}
 	}
-
-	lock(&ptealloclk);
-	p->next = ptealloclk.free;
-	ptealloclk.free = p;
-	unlock(&ptealloclk);
+	free(p);
 }
 
 /* Multiplex a hardware lock for per page manipulations */

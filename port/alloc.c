@@ -13,7 +13,7 @@ enum
 	Maxpow		= 16,
 	Nhole		= 128,
 	Magichole	= 0xDeadBabe,
-	Magic2n		= 0xBadC0c0a,
+	Magic2n		= 0xFeedBeef,
 };
 
 typedef struct Hole Hole;
@@ -56,7 +56,8 @@ struct Bucket
 struct Arena
 {
 	Lock;
-	Bucket	*btab[Maxpow];	
+	Bucket	*btab[Maxpow];
+	int	nbuck[Maxpow];
 };
 
 static Arena	arena;
@@ -226,32 +227,13 @@ xhole(ulong addr, ulong size)
 	unlock(&xlists);
 }
 
-void
-xsummary(void)
-{
-	int i;
-	Hole *h;
-
-	i = 0;
-	for(h = xlists.flist; h; h = h->link)
-		i++;
-
-	print("%d holes free\n", i);
-	i = 0;
-	for(h = xlists.table; h; h = h->link) {
-		print("%.8lux %.8lux %d\n", h->addr, h->top, h->size);
-		i += h->size;
-	}
-	print("%d bytes free\n", i);
-}
-
 void*
 malloc(ulong size)
 {
 	int pow;
 	Bucket *bp;
 
-	for(pow = 1; pow < Maxpow; pow++)
+	for(pow = 3; pow < Maxpow; pow++)
 		if(size <= (1<<pow))
 			goto good;
 
@@ -272,6 +254,7 @@ good:
 		memset(bp->data, 0,  size);
 		return  bp->data;
 	}
+	arena.nbuck[pow]++;
 	unlock(&arena);
 	size = sizeof(Bucket)+(1<<pow);
 	bp = xalloc(size);
@@ -309,4 +292,32 @@ free(void *ptr)
 	bp->next = *l;
 	*l = bp;
 	unlock(&arena);
+}
+
+void
+xsummary(void)
+{
+	Hole *h;
+	Bucket *k;
+	int i, nfree;
+
+	i = 0;
+	for(h = xlists.flist; h; h = h->link)
+		i++;
+
+	print("%d holes free\n", i);
+	i = 0;
+	for(h = xlists.table; h; h = h->link) {
+		print("%.8lux %.8lux %d\n", h->addr, h->top, h->size);
+		i += h->size;
+	}
+	print("%d bytes free\n", i);
+	for(i = 3; i < Maxpow; i++) {
+		if(arena.btab[i] == 0 && arena.nbuck[i] == 0)
+			continue;
+		nfree = 0;
+		for(k = arena.btab[i]; k; k = k->next)
+			nfree++;
+		print("%8d %4d %4d\n", 1<<i, arena.nbuck[i], nfree);
+	}
 }

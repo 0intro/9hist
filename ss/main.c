@@ -35,7 +35,6 @@ main(void)
 	intrinit();
 	procinit0();
 	initseg();
-	chaninit();
 	chandevreset();
 	streaminit();
 	userinit();
@@ -206,28 +205,16 @@ confinit(void)
 
 	conf.upages = 1400;
 
-	mul = 1;
-	if(conf.npage1 > 0)
-		mul = 2;
+	mul = conf.upages/700;
+
 	conf.nproc = 50*mul;
-	conf.npgrp = 12*mul;
-	conf.nseg = conf.nproc*4;
-	conf.npagetab = conf.nseg*2;
 	conf.nswap = 4096;
 	conf.nimage = 50;
-	conf.nalarm = 1000;
-	conf.nchan = 200*mul;
 	conf.nenv = 100*mul;
 	conf.nenvchar = 8000*mul;
 	conf.npgenv = 200*mul;
-	conf.nmtab = 50*mul;
-	conf.nmount = 80*mul;
-	conf.nmntdev = 10*mul;
-	conf.nmntbuf = conf.nmntdev+3;
-	conf.nmnthdr = 2*conf.nmntdev;
 	conf.nstream = 40 + 32*mul;
 	conf.nqueue = 5 * conf.nstream;
-	conf.nblock = 24 * conf.nstream;
 	conf.nsrv = 16*mul;			/* was 32 */
 	conf.nbitmap = 300*mul;
 	conf.nbitbyte = 300*1024*mul;
@@ -236,8 +223,6 @@ confinit(void)
 	conf.nurp = 32;
 	conf.nasync = 1;
 	conf.npipe = conf.nstream/2;
-	conf.nservice = 3*mul;			/* was conf.nproc/5 */
-	conf.nfsyschan = 31 + conf.nchan/20;
 	conf.copymode = 0;		/* copy on write */
 	conf.ipif = 8;
 	conf.ip = 64;

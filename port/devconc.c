@@ -285,7 +285,7 @@ concdevstclose(Queue *q)
 	q->ptr = 0;
 	q->other->ptr = 0;
 	dp->rq = 0;
-	streamexit(cp->s, 0);
+	streamexit(cp->s);
 	qunlock(cp);
 }
 

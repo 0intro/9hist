@@ -234,14 +234,8 @@ echo(Rune r, char *buf, int n)
 		case 'd':
 			consdebug();
 			return;
-		case 'm':
-			mntdump();
-			return;
 		case 'p':
 			procdump();
-			return;
-		case 'q':
-			dumpqueues();
 			return;
 		case 'r':
 			exit();

@@ -15,6 +15,7 @@ typedef struct IOQ	IOQ;
 typedef struct KIOQ	KIOQ;
 typedef struct List	List;
 typedef struct Mount	Mount;
+typedef struct Mnt	Mnt;
 typedef struct Mhead	Mhead;
 typedef struct Netinf	Netinf;
 typedef struct Netprot	Netprot;
@@ -158,7 +159,7 @@ struct Chan
 	union {
 		void	*aux;
 		Qid	pgrpid;		/* for #p/notepg */
-		int	mntindex;	/* for devmnt */
+		Mnt	*mntptr;	/* for devmnt */
 	};
 	Chan	*mchan;			/* channel to mounted server */
 	Qid	mqid;			/* qid of root of mount point */
@@ -608,6 +609,7 @@ struct Queue
 struct Stream
 {
 	QLock;				/* structure lock */
+	Stream	*next;
 	short	inuse;			/* number of processes in stream */
 	short	opens;			/* number of processes with stream open */
 	ushort	hread;			/* number of reads after hangup */
