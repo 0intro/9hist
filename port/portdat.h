@@ -63,10 +63,11 @@ struct QLock
 
 struct RWlock
 {
-	Lock;				/* Lock modify lock */
-	QLock	x;			/* Mutual exclusion lock */
-	QLock	k;			/* Lock for waiting writers */
-	int	readers;		/* Count of readers in lock */
+	Lock	use;
+	Proc	*head;		/* list of waiting processes */
+	Proc	*tail;
+	int	readers;	/* number of readers */
+	int	writer;		/* number of writers */
 };
 
 struct Talarm
@@ -495,6 +496,7 @@ enum
 	Scheding,
 	Running,
 	Queueing,
+	QueueingW,
 	Wakeme,
 	Broken,
 	Stopped,

@@ -4,17 +4,28 @@
 #include "dat.h"
 #include "fns.h"
 
+struct {
+	ulong rlock;
+	ulong rlockq;
+	ulong wlock;
+	ulong wlockq;
+	ulong qlock;
+	ulong qlockq;
+} rwstats;
+
 void
 qlock(QLock *q)
 {
 	Proc *p, *mp;
 
 	lock(&q->use);
+rwstats.qlock++;
 	if(!q->locked) {
 		q->locked = 1;
 		unlock(&q->use);
 		return;
 	}
+rwstats.qlockq++;
 	p = q->tail;
 	mp = up;
 	if(p == 0)
@@ -62,35 +73,120 @@ qunlock(QLock *q)
 }
 
 void
-rlock(RWlock *l)
+rlock(RWlock *q)
 {
-	qlock(&l->x);		/* wait here for writers and exclusion */
-	lock(l);
-	l->readers++;
-	canqlock(&l->k);	/* block writers if we are the first reader */
-	unlock(l);
-	qunlock(&l->x);
+	Proc *p, *mp;
+
+	lock(&q->use);
+rwstats.rlock++;
+	if(q->writer == 0 && q->head == nil){
+		/* no writer, go for it */
+		q->readers++;
+		unlock(&q->use);
+		return;
+	}
+
+rwstats.rlockq++;
+	p = q->tail;
+	mp = up;
+	if(p == 0)
+		q->head = mp;
+	else
+		p->qnext = mp;
+	q->tail = mp;
+	mp->qnext = 0;
+	mp->state = Queueing;
+	unlock(&q->use);
+	sched();
 }
 
 void
-runlock(RWlock *l)
+runlock(RWlock *q)
 {
-	lock(l);
-	if(--l->readers == 0)	/* last reader out allows writers */
-		qunlock(&l->k);
-	unlock(l);
+	Proc *p;
+
+	lock(&q->use);
+	p = q->head;
+	if(--(q->readers) > 0 || p == nil){
+		unlock(&q->use);
+		return;
+	}
+
+	/* start waiting writer */
+	if(p->state != QueueingW)
+		panic("runlock");
+	q->head = p->qnext;
+	if(q->head == 0)
+		q->tail = 0;
+	q->writer = 1;
+	unlock(&q->use);
+	ready(p);
 }
 
 void
-wlock(RWlock *l)
+wlock(RWlock *q)
 {
-	qlock(&l->x);		/* wait here for writers and exclusion */
-	qlock(&l->k);		/* wait here for last reader */
+	Proc *p, *mp;
+
+	lock(&q->use);
+rwstats.wlock++;
+	if(q->readers == 0 && q->writer == 0){
+		/* noone waiting, go for it */
+		q->writer = 1;
+		unlock(&q->use);
+		return;
+	}
+
+	/* wait */
+rwstats.wlockq++;
+	p = q->tail;
+	mp = up;
+	if(p == nil)
+		q->head = mp;
+	else
+		p->qnext = mp;
+	q->tail = mp;
+	mp->qnext = 0;
+	mp->state = QueueingW;
+	unlock(&q->use);
+	sched();
 }
 
 void
-wunlock(RWlock *l)
+wunlock(RWlock *q)
 {
-	qunlock(&l->k);
-	qunlock(&l->x);
+	Proc *p;
+
+	lock(&q->use);
+	p = q->head;
+	if(p == nil){
+		q->writer = 0;
+		unlock(&q->use);
+		return;
+	}
+
+	if(p->state == QueueingW){
+		/* start waiting writer */
+		q->head = p->qnext;
+		if(q->head == nil)
+			q->tail = nil;
+		unlock(&q->use);
+		ready(p);
+		return;
+	}
+
+	if(p->state != Queueing)
+		panic("wunlock");
+
+	/* waken waiting readers */
+	while(q->head != nil && q->head->state == Queueing){
+		p = q->head;
+		q->head = p->qnext;
+		q->readers++;
+		ready(p);
+	}
+	if(q->head == nil)
+		q->tail = nil;
+	q->writer = 0;
+	unlock(&q->use);
 }

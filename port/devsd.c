@@ -60,7 +60,7 @@ int	ndisk;
 Disk	disk[Ndisk];
 
 static	int	sdrdpart(Disk*);
-static	long	sdio(Chan*, int, char*, ulong, ulong);
+static	long	sdio(Chan*, int, char*, ulong, vlong);
 
 static int types[] =
 {
@@ -231,9 +231,8 @@ sdclose(Chan *c)
 }
 
 static long
-sdread(Chan *c, void *a, long n, vlong off)
+sdread(Chan *c, void *a, long n, vlong offset)
 {
-	ulong offset = off;
 
 	if(c->qid.path & CHDIR)
 		return devdirread(c, a, n, 0, 0, sdgen);
@@ -242,10 +241,9 @@ sdread(Chan *c, void *a, long n, vlong off)
 }
 
 static long
-sdwrite(Chan *c, char *a, long n, vlong off)
+sdwrite(Chan *c, char *a, long n, vlong offset)
 {
 	Disk *d;
-	ulong offset = off;
 
 	d = &disk[DRIVE(c->qid)];
 
@@ -350,12 +348,13 @@ sdrdpart(Disk *d)
 }
 
 static long
-sdio(Chan *c, int write, char *a, ulong len, ulong offset)
+sdio(Chan *c, int write, char *a, ulong len, vlong off)
 {
 	Disk *d;
 	Part *p;
 	uchar *b;
 	ulong block, n, max, x;
+	ulong offset = off;
 
 	d = &disk[DRIVE(c->qid)];
 	p = &d->table[PART(c->qid)];

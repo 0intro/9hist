@@ -1,12 +1,13 @@
 /*
- * Etherlink III and Fast EtherLink adapters.
+ * Etherlink III, Fast EtherLink and Fast EtherLink XL adapters.
  * To do:
  *	check robustness in the face of errors (e.g. busmaster & rxUnderrun);
  *	RxEarly and busmaster;
  *	autoSelect;
  *	PCI latency timer and master enable;
  *	errata list;
- *	rewrite all initialisation.
+ *	rewrite all initialisation;
+ *	handle the cyclone adapter.
  *
  * Product ID:
  *	9150 ISA	3C509[B]
@@ -47,6 +48,8 @@
 #include "../port/netif.h"
 
 #include "etherif.h"
+
+#define XCVRDEBUG		if(1)print
 
 enum {
 	IDport			= 0x0110,	/* anywhere between 0x0100 and 0x01F0 */
@@ -240,6 +243,9 @@ enum {						/* Window 3 - FIFO management */
 	deferTimerSelect	= 0x001E,	/* mask */
 	fullDuplexEnable	= 0x0020,
 	allowLargePackets	= 0x0040,
+	extendAfterCollision	= 0x0080,	/* 3C90xB */
+	flowControlEnable	= 0x0100,	/* 3C90xB */
+	vltEnable		= 0x0200,	/* 3C90xB */
 						/* ResetOptions bits */
 	baseT4Available		= 0x0001,
 	baseTXAvailable		= 0x0002,
@@ -264,6 +270,11 @@ enum {						/* Window 4 - diagnostic */
 	txOverrun		= 0x0400,
 	rxUnderrun		= 0x2000,
 	receiving		= 0x8000,
+						/* PhysicalMgmt bits */
+	mgmtClk			= 0x0001,
+	mgmtData		= 0x0002,
+	mgmtDir			= 0x0004,
+	cat5LinkTestDefeat	= 0x8000,
 						/* MediaStatus bits */
 	dataRate100		= 0x0002,
 	crcStripDisable		= 0x0004,
@@ -413,10 +424,12 @@ typedef struct {
 	long	stats[BytesRcvdOk+3];
 
 	int	upqmax;
+	int	upqmaxhw;
 	long	upinterrupts;
 	long	upqueued;
 	int	upstalls;
 	int	dnqmax;
+	int	dnqmaxhw;
 	long	dninterrupts;
 	long	dnqueued;
 
@@ -1124,13 +1137,18 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 	len += snprint(p+len, READSTR-len, "bytesxmittedok: %lud\n", ctlr->stats[BytesRcvdOk+1]);
 
 	if(ctlr->upenabled){
-		len += snprint(p+len, READSTR-len, "up: q %lud i %lud m %d s %lud\n",
-			ctlr->upqueued, ctlr->upinterrupts, ctlr->upqmax, ctlr->upstalls);
+		if(ctlr->upqmax > ctlr->upqmaxhw)
+			ctlr->upqmaxhw = ctlr->upqmax;
+		len += snprint(p+len, READSTR-len, "up: q %lud i %lud m %d h %d s %lud\n",
+			ctlr->upqueued, ctlr->upinterrupts,
+			ctlr->upqmax, ctlr->upqmaxhw, ctlr->upstalls);
 		ctlr->upqmax = 0;
 	}
 	if(ctlr->dnenabled){
-		len += snprint(p+len, READSTR-len, "dn: q %lud i %lud m %d\n",
-			ctlr->dnqueued, ctlr->dninterrupts, ctlr->dnqmax);
+		if(ctlr->dnqmax > ctlr->dnqmaxhw)
+			ctlr->dnqmaxhw = ctlr->dnqmax;
+		len += snprint(p+len, READSTR-len, "dn: q %lud i %lud m %d h %d\n",
+			ctlr->dnqueued, ctlr->dninterrupts, ctlr->dnqmax, ctlr->dnqmaxhw);
 		ctlr->dnqmax = 0;
 	}
 
@@ -1399,6 +1417,117 @@ setxcvr(int port, int xcvr, int is9)
 		;
 }
 
+static void
+setfullduplex(int port)
+{
+	int x;
+
+	COMMAND(port, SelectRegisterWindow, Wfifo);
+	x = ins(port+MacControl);
+	outs(port+MacControl, fullDuplexEnable|x);
+
+	COMMAND(port, TxReset, 0);
+	while(STATUS(port) & commandInProgress)
+		;
+	COMMAND(port, RxReset, 0);
+	while(STATUS(port) & commandInProgress)
+		;
+}
+
+static int
+miir(Ether* ether, int phyad, int regad)
+{
+	int data, i, port, w, x;
+
+	port = ether->port+PhysicalMgmt;
+
+	w = (STATUS(port)>>13) & 0x07;
+	COMMAND(ether->port, SelectRegisterWindow, Wdiagnostic);
+
+	/*
+	 * Taken from the Cyclone manual appendix describing
+	 * how to programme the MII Management Interface.
+	 */
+	/*
+	 * Preamble
+	 */
+	for(i = 0; i < 32; i++){
+		outs(port, mgmtDir|mgmtData);
+		microdelay(1);
+		outs(port, mgmtDir|mgmtData|mgmtClk);
+		microdelay(1);
+	}
+
+	/*
+	 * ST+OP+PHYAD+REGAD
+	 */
+	x = 0x1800|(phyad<<5)|regad;
+	for(i = 14-1; i >= 0; i--){
+		if(x & (1<<i))
+			data = mgmtDir|mgmtData;
+		else
+			data = mgmtDir;
+		outs(port, data);
+		microdelay(1);
+		outs(port, data|mgmtClk);
+		microdelay(1);
+	}
+
+	/*
+	 * "Z" cycle (turnaround) + one read (0 means there's a PHY responding).
+	 */
+	data = 0;
+	outs(port, 0);
+	microdelay(1);
+	outs(port, mgmtClk);
+	x = ins(port);
+	if(x & mgmtData)
+		data |= (1<<16);
+
+	/*
+	 * 16 data read cycles.
+	 */
+	for(i = 16-1; i >= 0; i--){
+		outs(port, 0);
+		microdelay(1);
+		outs(port, mgmtClk);
+		microdelay(1);
+		x = ins(port);
+		if(x & mgmtData)
+			data |= (1<<i);
+		microdelay(1);
+	}
+
+	/*
+	 * "Z" cycle (turnaround).
+	 */
+	outs(port, 0);
+	microdelay(1);
+	outs(port, mgmtClk);
+
+	COMMAND(ether->port, SelectRegisterWindow, w);
+
+	if(data & 0x10000)
+		return -1;
+print("%d/%d: data=%uX\n", phyad, regad, data);
+
+	return data & 0xFFFF;
+}
+
+static void
+scanphy(Ether* ether)
+{
+	int i, x;
+
+	for(i = 0; i < 32; i++){
+		if((x = miir(ether, i, 2)) == -1)
+			continue;
+		x <<= 6;
+		x |= miir(ether, i, 3)>>10;
+		print("phy%d: oui %uX reg1 %uX\n", i, x, miir(ether, i, 1));
+	}
+}
+
 #ifdef notdef
 static struct xxx {
 	int	available;
@@ -1416,9 +1545,11 @@ static struct xxx {
 #endif /* notdef */
 
 static int
-autoselect(int port, int , int is9)
+autoselect(int port, int xcvr, int is9)
 {
 	int media, x;
+
+	USED(xcvr);
 
 	/*
 	 * Pathetic attempt at automatic media selection.
@@ -1441,13 +1572,13 @@ autoselect(int port, int , int is9)
 		COMMAND(port, SelectRegisterWindow, Wfifo);
 		media = ins(port+ResetOptions);
 	}
-//print("autoselect: media %uX\n", media);
+	XCVRDEBUG("autoselect: media %uX\n", media);
 
 	if(media & miiConnector)
 		return xcvrMii;
 
-//COMMAND(port, SelectRegisterWindow, Wdiagnostic);
-//print("autoselect: media status %uX\n", ins(port+MediaStatus));
+	COMMAND(port, SelectRegisterWindow, Wdiagnostic);
+	XCVRDEBUG("autoselect: media status %uX\n", ins(port+MediaStatus));
 
 	if(media & baseTXAvailable){
 		/*
@@ -1469,7 +1600,7 @@ autoselect(int port, int , int is9)
 	}
 	delay(1);
   }
-//print("count %d v %uX\n", i, ins(port+MediaStatus));
+  XCVRDEBUG("count %d v %uX\n", i, ins(port+MediaStatus));
 }
 
 		if(ins(port+MediaStatus) & linkBeatDetect)
@@ -1485,6 +1616,7 @@ autoselect(int port, int , int is9)
 		outs(port+MediaStatus, linkBeatEnable|jabberGuardEnable|x);
 		delay(100);
 
+		XCVRDEBUG("autoselect: 10BaseT media status %uX\n", ins(port+MediaStatus));
 		if(ins(port+MediaStatus) & linkBeatDetect)
 			return xcvr10BaseT;
 		outs(port+MediaStatus, x);
@@ -1511,7 +1643,7 @@ eepromdata(int port, int offset)
 int
 etherelnk3reset(Ether* ether)
 {
-	int busmaster, did, i, port, rxearly, rxstatus9, x, xcvr;
+	int an, busmaster, did, i, phyaddr, port, rxearly, rxstatus9, x, xcvr;
 	Block *bp, **bpp;
 	Adapter *ap;
 	uchar ea[Eaddrlen];
@@ -1617,18 +1749,24 @@ etherelnk3reset(Ether* ether)
 	 * busmastering can be used. Due to bugs in the first revision
 	 * of the 3C59[05], don't use busmastering at 10Mbps.
 	 */
-//print("reset: xcvr %uX\n", xcvr);
+	XCVRDEBUG("reset: xcvr %uX\n", xcvr);
 	if(xcvr & autoSelect)
 		xcvr = autoselect(port, xcvr, rxstatus9);
+	XCVRDEBUG("autoselect returns: xcvr %uX\n", xcvr);
 	switch(xcvr){
 
 	case xcvrMii:
 		/*
-		 * Bug? the 3c905 always seems to have dataRate100 set.
+		 * Quick hack.
 		 */
-		COMMAND(port, SelectRegisterWindow, Wdiagnostic);
-		if(ins(port+MediaStatus) & dataRate100)
+		phyaddr = 24;
+		an = miir(ether, phyaddr, 0x04);
+		an &= miir(ether, phyaddr, 0x05) & 0x03E0;
+		XCVRDEBUG("mii an: %uX\n", an);
+		if(an & 0x380)
 			ether->mbps = 100;
+		if(an & 0x0140)
+			setfullduplex(port);
 		break;
 
 	case xcvr100BaseTX:

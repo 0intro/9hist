@@ -9,7 +9,9 @@
 
 #define DPRINT if(0)print
 
-typedef struct Iphdr	Iphdr;
+typedef struct Iphdr		Iphdr;
+typedef struct Ipmuxrock	Ipmuxrock;
+typedef struct Ipmux		Ipmux;
 
 enum
 {
@@ -28,6 +30,7 @@ struct Iphdr
 	uchar	cksum[2];	/* Header checksum */
 	uchar	src[4];		/* IP source */
 	uchar	dst[4];		/* IP destination */
+	uchar	data[1];	/* start of data */
 };
 
 enum
@@ -48,8 +51,9 @@ char *ftname[] =
 [Tifc]		"ifc",
 };
 
-typedef struct Ipmux Ipmux;
-
+/*
+ *  a node in the decision tree
+ */
 struct Ipmux
 {
 	Ipmux	*yes;
@@ -62,6 +66,15 @@ struct Ipmux
 	uchar	*mask;
 
 	int	ref;		/* so we can garbage collect */
+};
+
+/*
+ *  someplace to hold per conversation data
+ */
+struct Ipmuxrock
+{
+	Ipmux	*chain;
+	int	proto;
 };
 
 static char*
@@ -409,7 +422,7 @@ ipmuxmerge(Ipmux *a, Ipmux *b)
  *  remove a chain from a demux tree.  This is like merging accept that
  *  we remove instead of insert.
  */
-int
+static int
 ipmuxremove(Ipmux **l, Ipmux *f)
 {
 	int n, rv;
@@ -459,137 +472,6 @@ ipmuxremove(Ipmux **l, Ipmux *f)
 	return ipmuxremove(&ft->yes, f->yes);
 }
 
-void
-printtree(Biobuf *b, Ipmux *f, int level)
-{
-	int i, j;
-	uchar *p;
-
-	if(f == nil) {
-		Bprint(b, "\n");
-		return;
-	}
-	for(i = 0; i < level; i++)
-		Bprint(b, " ");
-	Bprint(b, "%s", ftname[f->type]);
-	if(f->type == Tdata)
-		Bprint(b, "[%d:%d]", f->off, f->off+f->len-1);
-	if(f->mask){
-		switch(f->type){
-		case Tifc:
-		case Tsrc:
-		case Tdst:
-			Bprint(b, " & %M", f->mask);
-			break;
-		case Tproto:
-		case Tdata:
-			Bprint(b, " & ");
-			for(j = 0; j < f->len; j++)
-				Bprint(b, "%2.2ux", f->mask[j]);
-			break;
-		}
-	}
-	p = f->val;
-	Bprint(b, " =");
-	for(i = 0; i < f->n; i++){
-		switch(f->type){
-		case Tifc:
-		case Tsrc:
-		case Tdst:
-			Bprint(b, " %I", p);
-			break;
-		case Tproto:
-		case Tdata:
-			Bprint(b, " ");
-			for(j = 0; j < f->len; j++)
-				Bprint(b, "%2.2ux", p[j]);
-			break;
-		}
-		p += f->len;
-	}
-	Bprint(b, "\n");
-	printtree(b, f->yes, level+1);
-	printtree(b, f->no, level+1);
-}
-
-void
-main(void)
-{
-	Ipmux *f, *f1, *f2, *f1copy, *f2copy;
-	Ipmux *root;
-	Biobuf out;
-
-	Binit(&out, 1, OWRITE);
-	fmtinstall('I', eipconv);
-	fmtinstall('M', eipconv);
-
-	Bprint(&out, "demux 1:\n");
-	f1 = parsedemux("data[0:3] = 12345678 23456789 3456789a");
-	f = parsedemux("ifc = 135.104.9.2");
-	ipmuxchain(&f1, f);
-	f = parsedemux("src & 255.255.255.0 = 135.104.9.2");
-	ipmuxchain(&f1, f);
-	f = parsedemux("proto = 17");
-	ipmuxchain(&f1, f);
-	printtree(&out, f1, 0);
-
-	f1copy = ipmuxcopy(f1);
-
-	Bprint(&out, "demux 2:\n");
-	f2 = parsedemux("data[0:3] = 12345678 23456789 3456789a");
-	f = parsedemux("ifc = 135.104.9.1");
-	ipmuxchain(&f2, f);
-	f = parsedemux("src & 255.255.255.0 = 135.104.9.3");
-	ipmuxchain(&f2, f);
-	printtree(&out, f2, 0);
-
-	f2copy = ipmuxcopy(f2);
-
-	Bprint(&out, "merged demux:\n");
-	root = ipmuxmerge(f1, f2);
-	printtree(&out, root, 0);
-	
-	Bprint(&out, "demux 1 removed:\n");
-	ipmuxremove(&root, f1copy);
-	printtree(&out, root, 0);
-	
-	Bprint(&out, "demux 2 removed:\n");
-	ipmuxremove(&root, f2copy);
-	printtree(&out, root, 0);
-}
-
-enum
-{
-	Tproto,
-	Tdata,
-	Tdst,
-	Tsrc,
-	Tifc,
-};
-
-char *ftname[] = 
-{
-[Tdata]	"data",
-[Tdst]	"dst",
-[Tsrc]	"src",
-[Tifc]	"ifc",
-};
-
-struct Ipmux
-{
-	Ipmux	*yes;
-	Ipmux	*no;
-	uchar	type;
-	ushort	len;		/* length in bytes of item to compare */
-	ushort	off;		/* offset of comparison */
-	int	n;		/* number of items val points to */
-	uchar	*val;
-	uchar	*mask;
-
-	Conv	*c;
-	int	ref;		/* so we can garbage collect */
-};
-
 /*
  *  connection request is a semi separated list of filters
  *  e.g. proto=17;dat[0:4]=11aa22bb;ifc=135.104.9.2
@@ -602,6 +484,7 @@ ipmuxconnect(Conv *c, char **argv, int argc)
 	int n, proto;
 	char *field[10];
 	Ipmux *mux, *chain;
+	Ipmuxrock *r;
 	Fs *f;
 
 	f = c->p->f;
@@ -636,12 +519,14 @@ ipmuxconnect(Conv *c, char **argv, int argc)
 	/* save a copy of the chain so we can later remove it */
 	mux->conv = c;
 	mux = ipmuxcopy(chain);
-	*(Ipmux***)(c->ptcl) = chain;
+	r = (Ipmuxrock*)(c->ptcl);
+	r->chain = chain;
+	r->proto = proto;
 
 	/* add the chain to the protocol demultiplexor tree */
-	qlock(p);
+	wlock(f);
 	f->t2m[proto] = ipmuxmerge(f->t2m[proto], mux);
-	qunlock(p);
+	wunlock(f);
 
 	Fsconnected(c, nil);
 	return nil;
@@ -671,6 +556,12 @@ ipmuxannounce(Conv*, char**, int)
 static void
 ipmuxclose(Conv *c)
 {
+	Ipmuxrock *r;
+
+	r = (Ipmuxrock*)(c->ptcl);
+	r->chain = chain;
+	r->proto = proto;
+
 	qclose(c->rq);
 	qclose(c->wq);
 	qclose(c->eq);
@@ -678,6 +569,11 @@ ipmuxclose(Conv *c)
 	ipmove(c->raddr, IPnoaddr);
 	c->lport = 0;
 	c->rport = 0;
+
+	wlock(f);
+	ipmuxremove(&(f->t2m[r->proto]), r->chain);
+	wunlock(f);
+	ipmuxtreefree(f->chain);
 
 	unlock(c);
 }
@@ -692,12 +588,66 @@ ipmuxkick(Conv *c, int l)
 }
 
 static void
-ipmuxiput(Proto *ipmux, uchar*, Block *bp)
+ipmuxiput(Proto *p, uchar *ia, Block *bp)
 {
+	int len;
+	Iphdr *ip;
+	Fs *f = p->f;
+	uchar *p;
+	Conv *c;
+
+	ip = bp->rptr;
+	rlock(f);
+	mux = f->t2m[ip->proto];
+	if(mux == nil)
+		goto out;
+
+	/* run the v4 filter */
+	len = BLEN(bp);
+	if(len < 64 && bp->next){
+		bp = concatblock(bp);
+		len = BLEN(bp);
+	}
+	c = nil;
+	while(mux != nil){
+		while(mux){
+			switch(mux->type){
+			case Tia:
+				p = ia;
+				break;
+			case Tsrc:
+				p = ip->src;
+				break;
+			case Tdst:
+				p = ip->dst;
+				break;
+			case Tdata:
+				p = ip->data;
+				if(mux->off+mux->len > len)
+					goto no;
+				break;
+			}
+		}
+		if(mux->mask != nil){
+		} else {
+		}
+no:
+		mux = mux->no;
+		continue;
+	}
+out:
+	/* doesn't match any filter, hand it to the specific protocol handler */
+	runlock(f);
+	p = f->t2p[ip->proto];
+	if(p)
+		(*p->rcv)(p, ia, bp);
+	else
+		freeblist(bp);
+	return;	
 }
 
 int
-ipmuxstats(Proto *ipmux, char *buf, int len)
+ipmuxstats(Proto *p, char *buf, int len)
 {
 	return 0;
 }
@@ -708,7 +658,7 @@ ipmuxinit(Fs *fs)
 	Proto *ipmux;
 
 	ipmux = smalloc(sizeof(Proto));
-	ipmux->priv = smalloc(sizeof(GREpriv));
+	ipmux->priv = nil;
 	ipmux->name = "ipmux";
 	ipmux->kick = ipmuxkick;
 	ipmux->connect = ipmuxconnect;
@@ -722,7 +672,7 @@ ipmuxinit(Fs *fs)
 	ipmux->stats = ipmuxstats;
 	ipmux->ipproto = -1;
 	ipmux->nc = 64;
-	ipmux->ptclsize = sizeof(Ipmux*);
+	ipmux->ptclsize = sizeof(Ipmuxrock);
 
 	Fsproto(fs, ipmux);
 }

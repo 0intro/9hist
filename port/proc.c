@@ -41,6 +41,7 @@ char *statename[] =
 	"Scheding",
 	"Running",
 	"Queueing",
+	"QueueingW",
 	"Wakeme",
 	"Broken",
 	"Stopped",

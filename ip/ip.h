@@ -237,7 +237,7 @@ struct IProuter {
  */
 struct Fs
 {
-	Lock;
+	RWlock;
 
 	int	np;
 	Proto*	p[Maxproto+1];		/* list of supported protocols */
