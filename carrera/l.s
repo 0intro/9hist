@@ -22,7 +22,7 @@
 			MOVW M(STATUS), R27; \
 			MOVW R27, 16(R26); \
 			MOVW M(BADVADDR), R27; \
-			MOVW R27, 20(R26)
+			MOVW R27, 20(R26);
 
 /*
  *  R4000 instructions

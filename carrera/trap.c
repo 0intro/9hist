@@ -238,7 +238,7 @@ trap(Ureg *ur)
 
 	Default:
 	default:
-		((ulong*)0xA0020000)[7] = 0x87654321;
+		((ulong*)0x80020000)[7] = 0x87654321;
 		((void(*)(void))0xA001C020)();
 
 		if(user) {
