@@ -383,14 +383,15 @@ sleep1(Rendez *r, int (*f)(void*), void *arg)
 	 * at interrupt time. lock is mutual exclusion
 	 */
 	s = splhi();
-	up->r = r;	/* early so postnote knows */
 	lock(r);
+	lock(&up->rlock);
 
 	/*
 	 * if condition happened, never mind
 	 */
 	if((*f)(arg)){
 		up->r = 0;
+		unlock(&up->rlock);
 		unlock(r);
 		splx(s);
 		return;
@@ -406,6 +407,8 @@ sleep1(Rendez *r, int (*f)(void*), void *arg)
 	}
 	up->state = Wakeme;
 	r->p = up;
+	up->r = r;
+	unlock(&up->rlock);
 	unlock(r);
 }
 
@@ -422,8 +425,10 @@ sleep(Rendez *r, int (*f)(void*), void *arg)
 		up->notepending = 0;
 		s = splhi();
 		lock(r);
+		lock(&up->rlock);
 		if(r->p == up)
 			r->p = 0;
+		unlock(&up->rlock);
 		unlock(r);
 		splx(s);
 		error(Eintr);
@@ -487,10 +492,12 @@ wakeup(Rendez *r)
 	lock(r);
 	p = r->p;
 	if(p){
+		lock(&p->rlock);
 		r->p = 0;
 		if(p->state != Wakeme) 
 			panic("wakeup: state");
 		p->r = 0;
+		unlock(&p->rlock);
 		ready(p);
 	}
 	unlock(r);
@@ -523,20 +530,35 @@ postnote(Proc *p, int dolock, char *n, int flag)
 	if(dolock)
 		qunlock(&p->debug);
 
-	r = p->r;
-	if(r != 0) {
-		for(;;) {
-			s = splhi();
-			if(canlock(r))
-				break;
+	for(;;){
+		s = splhi();
+		lock(&p->rlock);
+		r = p->r;
+		if(r == 0){
+			unlock(&p->rlock);
 			splx(s);
+			break;
 		}
+
+		/*  the canlock deals with a different lock ordering
+		 *  twixt r and p->rlock than everywhere else.  If we
+		 *  locked in the normal order we wouldn't be sure
+		 *  r was valid when we did the lock.
+		 */
+		if(!canlock(r)){
+			unlock(&p->rlock);
+			splx(s);
+			continue;
+		}
+
 		/* check we won the race */
 		if(p->r == r && r->p == p && p->state==Wakeme) {
 			r->p = 0;
 			p->r = 0;
 			ready(p);
 		}
+
+		unlock(&p->rlock);
 		unlock(r);
 		splx(s);
 	}
@@ -680,9 +702,12 @@ pexit(char *exitstr, int freemem)
 			wq->w.msg[0] = '\0';
 
 		lock(&p->exl);
-		/* My parent still alive, processes are limited to 128
-		 * Zombies to prevent a badly written daemon lots of wait
-		 * records
+		/*
+		 *  If my parent is no longer alive, or if there would be more
+		 *  than 128 zombie child processes for my parent, then don't
+		 *  leave a wait record behind.  This helps prevent badly
+		 *  written daemon processes from accumulating lots of wait
+		 *  records.
 		 */
 		if(p->pid == up->parentpid && p->state != Broken && p->nwait < 128) {	
 			p->nchild--;
@@ -692,9 +717,9 @@ pexit(char *exitstr, int freemem)
 			wq->next = p->waitq;
 			p->waitq = wq;
 			p->nwait++;
-			unlock(&p->exl);
 	
 			wakeup(&p->waitr);
+			unlock(&p->exl);
 		}
 		else {
 			unlock(&p->exl);

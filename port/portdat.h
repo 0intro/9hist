@@ -555,7 +555,7 @@ struct Proc
 	int	procctl;	/* Control for /proc debugging */
 	ulong	pc;		/* DEBUG only */
 
-	Lock	rlock;		/* synchronization for 'r' below */
+	Lock	rlock;		/* sync sleep/wakeup with postnote */
 	Rendez	*r;		/* rendezvous point slept on */
 	Rendez	sleep;		/* place for syssleep/debug */
 	int	notepending;	/* note issued but not acted on */
