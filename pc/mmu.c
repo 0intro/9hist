@@ -42,7 +42,7 @@ taskswitch(ulong pdb, ulong stack)
 void
 mmuinit(void)
 {
-	ulong x;
+	ulong x, *p;
 	ushort ptr[3];
 
 	m->tss = malloc(sizeof(Tss));
@@ -64,6 +64,14 @@ mmuinit(void)
 	ptr[1] = x & 0xFFFF;
 	ptr[2] = (x>>16) & 0xFFFF;
 	lidt(ptr);
+
+	/* make kernel text unwritable */
+	for(x = KTZERO; x < (ulong)etext; x += BY2PG){
+		p = mmuwalk(m->pdb, x, 2, 0);
+		if(p == nil)
+			panic("mmuinit");
+		*p &= ~PTEWRITE;
+	}
 
 	taskswitch(PADDR(m->pdb),  (ulong)m + BY2PG);
 	ltr(TSSSEL);
