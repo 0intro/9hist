@@ -145,6 +145,7 @@ loop:
 	spllo();
 	while(runhiq.head == 0 && runloq.head == 0)
 		;
+
 	splhi();
 
 	lock(&runhiq);

@@ -476,8 +476,6 @@ syssegflush(ulong *arg)
 	j = (soff&(PTEMAPMEM-1))/BY2PG;
 	len = arg[1]+BY2PG;
 
-print("%s segflush 0x%lux %d\n", up->text, arg[0], arg[1]);
-
 	for(i = soff/PTEMAPMEM; len > 0 && i < SEGMAPSIZE; i++) {
 		if(s->map[i] == 0) {
 			len -= PTEMAPMEM;

@@ -52,6 +52,8 @@ kmapinit(void)
 		k->next = k+1;
 	k->next = 0;
 	unlock(&kmaplock);
+
+	m->ktlbnext = TLBROFF;
 }
 
 /*
@@ -107,7 +109,7 @@ kmap(Page *pg)
 	puttlbx(x, (virt & ~BY2PG)|TLBPID(tlbvirt()), k->phys0, k->phys1, PGSZ4K);
 	m->ktlbx[x] = 1;
 	if(++x >= NTLB)
-		m->ktlbnext = 1;
+		m->ktlbnext = TLBROFF;
 	else
 		m->ktlbnext = x;
 
@@ -164,7 +166,7 @@ kfault(ulong addr)
 	puttlbx(x, (k->virt & ~BY2PG)|TLBPID(tlbvirt()), k->phys0, k->phys1, PGSZ4K);
 	m->ktlbx[x] = 1;
 	if(++x >= NTLB)
-		m->ktlbnext = 1;
+		m->ktlbnext = TLBROFF;
 	else
 		m->ktlbnext = x;
 }
@@ -196,7 +198,7 @@ kmapinval()
 		kunmap(k);
 	}
 	m->kactive = 0;
-	m->ktlbnext = 1;
+	m->ktlbnext = TLBROFF;
 }
 
 void

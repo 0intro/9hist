@@ -417,7 +417,7 @@ wasuser:
 
 	MOVW	$setR30(SB), R30
 	CONST	(MACHADDR, R1)
-	ADDU	R1, R(MACH)			/* R(MACH) = m-> */
+	MOVW	R1, R(MACH)			/* R(MACH) = m-> */
 	MOVW	8(R(MACH)), R(USER)		/* up = m->proc */
 	MOVW	4(SP), R1			/* first arg for syscall/trap */
 	BNE	R26, notsys
@@ -744,17 +744,23 @@ TEXT	icflush(SB), $-4			/* icflush(virtaddr, count) */
 	MOVW	4(FP), R9
 	MOVW	$0, M(STATUS)
 	WAIT
+	ADDU	R1, R9			/* R9 = last address */
+	MOVW	$(~0x3f), R8
+	AND	R1, R8			/* R8 = first address, rounded down */
+	ADD	$0x3f, R9
+	AND	$(~0x3f), R9		/* round last address up */
+	SUB	R8, R9			/* R9 = revised count */
 icflush1:			/* primary cache line size is 16 bytes */
-	/*
-	 * Due to a challenge bug PD+HWB DOES NOT WORK - philw
-	 */
-	WAIT
-	WAIT
-	CACHE	SD+HWBI, (R1)
-	WAIT
-	WAIT
-	SUBU	$128, R9
-	ADDU	$128, R1
+	CACHE	PD+HWB, 0x00(R8)
+	CACHE	PI+HI, 0x00(R8)
+	CACHE	PD+HWB, 0x10(R8)
+	CACHE	PI+HI, 0x10(R8)
+	CACHE	PD+HWB, 0x20(R8)
+	CACHE	PI+HI, 0x20(R8)
+	CACHE	PD+HWB, 0x30(R8)
+	CACHE	PI+HI, 0x30(R8)
+	SUB	$0x40, R9
+	ADD	$0x40, R8
 	BGTZ	R9, icflush1
 	MOVW	R10, M(STATUS)
 	WAIT
@@ -782,11 +788,14 @@ TEXT	cleancache(SB), $-4
 	WAIT
 	MOVW	$0, M(STATUS)
 	WAIT
-	MOVW	$(4*1024*1024), R9
+	MOVW	$(32*1024), R9
 ccache:
-	CACHE	SD+IWBI, 0x00(R1)
-	SUBU	$128, R9
-	ADDU	$128, R1
+	CACHE	PD+IWBI, 0x00(R1)
+	WAIT
+	CACHE	PI+IWBI, 0x00(R1)
+	WAIT
+	SUBU	$16, R9
+	ADDU	$16, R1
 	BGTZ	R9, ccache
 	MOVW	R10, M(STATUS)
 	WAIT

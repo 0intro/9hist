@@ -278,12 +278,46 @@ trap(Ureg *ur)
 void
 intr(Ureg *ur)
 {
+	uchar devint;
 	ulong cause = ur->cause;
 
 	m->intr++;
 	cause &= INTR7|INTR6|INTR5|INTR4|INTR3|INTR2|INTR1|INTR0;
 
-	iprint("intr %lux\n", cause);
+	if(cause & INTR3) {
+		devint = *(uchar*)Intcause;
+		switch(devint) {
+		default:
+			panic("unknown devint=#%lux", devint);
+
+		case 0x28:		/* Serial 1 */
+			NS16552intr(0);
+			break;
+		case 0x24:		/* Serial 2 */
+			NS16552intr(1);
+			break;
+		case 0x14:
+			etherintr();
+			break;
+		}
+		cause &= ~INTR3;
+	}
+
+	if(cause & INTR4) {
+		devint = *(uchar*)I386ack;
+		iprint("i386ack=#%lux\n", devint);
+		cause &= ~INTR4;
+	}
+
+	if(cause & INTR7) {
+		clock(ur);
+		cause &= ~INTR7;
+	}
+
+	if(cause) {
+		iprint("cause %lux\n", cause);
+		exit(1);
+	}
 }
 
 char*
@@ -512,27 +546,31 @@ syscall(Ureg *aur)
 	up->nerrlab = 0;
 	sp = ur->sp;
 	ret = -1;
-	if(!waserror()) {
-		if(up->scallnr >= sizeof systab/sizeof systab[0]){
-			pprint("bad sys call number %d pc %lux\n", up->scallnr, ur->pc);
-			postnote(up, 1, "sys: bad sys call", NDebug);
-			error(Ebadarg);
-		}
+	if(waserror())
+		goto error;
 
-		if(sp & (BY2WD-1)){
-			pprint("odd sp in sys call pc %lux sp %lux\n", ur->pc, ur->sp);
-			postnote(up, 1, "sys: odd stack", NDebug);
-			error(Ebadarg);
-		}
-
-		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-sizeof(Sargs)))
-			validaddr(sp, sizeof(Sargs), 0);
-
-		up->s = *((Sargs*)(sp+BY2WD));
-		up->psstate = sysctab[up->scallnr];
-		ret = (*systab[up->scallnr])(up->s.args);
-		poperror();
+	if(up->scallnr >= sizeof systab/sizeof systab[0]){
+		pprint("bad sys call %d pc %lux\n", up->scallnr, ur->pc);
+		postnote(up, 1, "sys: bad sys call", NDebug);
+		error(Ebadarg);
 	}
+
+	if(sp & (BY2WD-1)){
+		pprint("odd sp in sys call pc %lux sp %lux\n", ur->pc, ur->sp);
+		postnote(up, 1, "sys: odd stack", NDebug);
+		error(Ebadarg);
+	}
+
+	if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-sizeof(Sargs)))
+		validaddr(sp, sizeof(Sargs), 0);
+
+	up->s = *((Sargs*)(sp+BY2WD));
+	up->psstate = sysctab[up->scallnr];
+
+	ret = (*systab[up->scallnr])(up->s.args);
+	poperror();
+
+error:
 	ur->pc += 4;
 	up->nerrlab = 0;
 	up->psstate = 0;

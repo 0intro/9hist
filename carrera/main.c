@@ -34,7 +34,6 @@ FPsave	initfp;
 void
 main(void)
 {
-	*(uchar*)(Uart0) = '*';
 	tlbinit();		/* Very early to establish IO mappings */
 	ioinit();
 	arginit();
@@ -46,8 +45,10 @@ main(void)
 	kmapinit();
 	xinit();
 	printinit();
-	NS16552setup(Uart0, UartFREQ);
+
+	NS16552setup(Uart1, UartFREQ);
 	NS16552special(0, 9600, &kbdq, &printq, kbdcr2nl);
+
 	vecinit();
 	iprint("\n\nBrazil\n");
 	pageinit();
@@ -60,7 +61,6 @@ main(void)
 	schedinit();
 }
 
-
 /*
  *  copy arguments passed by the boot kernel (or ROM) into a temporary buffer.
  *  we do this because the arguments are in memory that may be allocated
@@ -72,7 +72,8 @@ struct
 {
 	char	*name;
 	char	*val;
-}bootenv[] = {
+}bootenv[] =
+{
 	{"netaddr=",	sysname},
 	{"console=",	consname},
 	{"bootdisk=",	bootdisk},
@@ -141,6 +142,7 @@ machinit(void)
 
 	n = m->machno;
 	m->stb = &stlb[n][0];
+
 	clockinit();
 }
 
@@ -152,9 +154,19 @@ ioinit(void)
 {
 	ulong phys;
 
+	/*
+	 * Map devices
+	 */
 	phys = PPN(Devicephys)|PTEGLOBL|PTEVALID|PTEWRITE|PTEUNCACHED;
+	puttlbx(1, Devicevirt, phys, PTEGLOBL, PGSZ64K);
 
-	puttlbx(1, Devicevirt, phys, PTEGLOBL, PGSZ256K);
+	/*
+	 * Map Interrupt control
+	 */
+	phys = PPN(Intctlphys)|PTEGLOBL|PTEVALID|PTEWRITE|PTEUNCACHED;
+	puttlbx(2, Intctlvirt, phys, PTEGLOBL, PGSZ4K);
+
+	*(ushort*)Intenareg = 0xffff;
 }
 
 /*
@@ -166,7 +178,8 @@ vecinit(void)
 	memmove((ulong*)UTLBMISS, (ulong*)vector0, 0x100);
 	memmove((ulong*)CACHETRAP, (ulong*)vector100, 0x80);
 	memmove((ulong*)EXCEPTION, (ulong*)vector180, 0x80);
-	icflush((ulong*)UTLBMISS, 32*1024);
+
+	icflush((ulong*)UTLBMISS, 8*1024);
 }
 
 void
@@ -263,12 +276,8 @@ exit(long type)
 
 	spllo();
 	print("cpu %d exiting %d\n", m->machno, type);
-	timer = 0;
-	while(active.machs || consactive()) {
-		if(timer++ > 400)
-			break;
+	while(consactive())
 		delay(10);
-	}
 	splhi();
 	for(;;)
 		;
@@ -296,7 +305,7 @@ confinit(void)
 	conf.npage1 = 0;
 	conf.base1 = 0;
 
-	conf.upages = (conf.npage*90)/100;
+	conf.upages = (conf.npage*70)/100;
 	if(top - conf.upages > (256*1024*1024)/BY2PG)
 		conf.upages = top - (256*1024*1024)/BY2PG;
 
@@ -304,7 +313,7 @@ confinit(void)
 
 	/* set up other configuration parameters */
 	conf.nproc = 100;
-	conf.nswap = 262144;
+	conf.nswap = conf.npage*3;
 	conf.nimage = 200;
 	conf.ipif = 8;
 	conf.ip = 64;

@@ -92,7 +92,7 @@ clock(Ureg *ur)
 		return;
 
 	if(anyready())
-		sched(); /**/
+		sched();
 
 	/* user profiling clock */
 	if(ur->status & KUSER)

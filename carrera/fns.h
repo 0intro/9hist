@@ -4,7 +4,6 @@ void	DEBUG(void);
 
 void	addportintr(int(*)(void));
 void	allflush(void*, ulong);
-void	audiointr(void);
 void	arginit(void);
 int	busprobe(ulong);
 void	cleancache(void);
@@ -19,7 +18,6 @@ void	consoff(void);
 int	consputc(int);
 void	dcflush(void*, ulong);
 void	dcinvalidate(void*, ulong);
-void	devportintr(void);
 void	epcenable(ulong);
 void	epcinit(int, int);
 void	evenaddr(ulong);
@@ -55,7 +53,6 @@ void	kunmap(KMap*);
 void	launchinit(void);
 void	launch(int);
 void	lightbits(int, int);
-void	lptintr(void);
 ulong	machstatus(void);
 void	mmunewpage(Page*);
 void	mntdump(void);
@@ -107,6 +104,8 @@ void	Xdelay(int);
 
 void	NS16552special(int, int, Queue**, Queue**, int (*)(Queue*, int));
 void	NS16552setup(ulong, ulong);
+void	NS16552intr(int);
+void	etherintr(void);
 
 #define	waserror()	setlabel(&up->errlab[up->nerrlab++])
 #define	kmapperm(x)	kmap(x)

@@ -122,7 +122,7 @@ faultmips(Ureg *ur, int user, int code)
 	addr &= ~(BY2PG-1);
 	read = !(code==CTLBM || code==CTLBS);
 
-/*	print("fault: %s code %d va %lux pc %lux r31 %lux %lux\n", up->text, code, ur->badvaddr, ur->pc, ur->r31, tlbvirt());/**/
+	print("fault: %s code %d va %lux pc %lux r31 %lux %lux\n", up->text, code, ur->badvaddr, ur->pc, ur->r31, tlbvirt());/**/
 
 	if(fault(addr, read) == 0)
 		return;
