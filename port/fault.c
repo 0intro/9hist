@@ -170,7 +170,6 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 		new = lookpage(s->image, daddr);
 	}
 	else {
-print("reclaim\n");
 		daddr = swapaddr(loadrec);
 		new = lookpage(&swapimage, daddr);
 		if(new)
@@ -222,7 +221,6 @@ print("reclaim\n");
 			putpage(new);
 	}
 	else {					/* This is paged out */
-print("SWAPIN\n");
 		c = swapimage.c;
 		qlock(&c->rdl);
 

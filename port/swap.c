@@ -7,7 +7,7 @@
 
 /* Predeclaration */
 void	pageout(Proc *p, Segment*);
-int	pagepte(int, Segment*, Page**);
+void	pagepte(int, Segment*, Page**);
 int	needpages(void*);
 void	pager(void*);
 void	executeio(void);
@@ -18,13 +18,10 @@ enum
 	Maxpages = 500,		/* Max number of pageouts per segment pass */
 };
 
-#define DBG	if(1)print
-
 Image 	swapimage;
 static 	int swopen;
 Page	*iolist[Maxpages];
 int	ioptr;
-int	scavenge;
 
 void
 swapinit(void)
@@ -103,7 +100,7 @@ pager(void *junk)
 {
 	Proc *p, *ep;
 	Segment *s;
-	int i;
+	int i, type;
 
 	if(waserror()) 
 		panic("pager: os error\n");
@@ -130,8 +127,18 @@ loop:
 				if(!needpages(junk))
 					goto loop;
 				if(s = p->seg[i]) {
-					pageout(p, s);
-					executeio();
+					type = s->type&SG_TYPE;
+					switch(type) {
+					default:
+						break;
+					case SG_TEXT:
+					case SG_DATA:
+					case SG_BSS:
+					case SG_STACK:
+					case SG_SHARED:
+						pageout(p, s);
+						executeio();
+					}
 				}
 			}
 		}
@@ -155,20 +162,18 @@ pageout(Proc *p, Segment *s)
 {
 	Pte **sm, **endsm, *l;
 	Page **pg, *entry;
-	int type, nr;
-extern char *sname[];
-
+	int type;
 
 	if(!canqlock(&s->lk))	/* We cannot afford to wait, we will surely deadlock */
 		return;
 
-	if(s->steal) {
+	if(s->steal) {		/* Protected by /dev/proc */
 		qunlock(&s->lk);
 		putseg(s);
 		return;
 	}
 
-	if(!canflush(p, s)) {
+	if(!canflush(p, s)) {	/* Able to invalidate all tlbs with references */
 		qunlock(&s->lk);
 		putseg(s);
 		return;
@@ -180,9 +185,6 @@ extern char *sname[];
 		return;
 	}
 
-	scavenge = 0;
-	nr = 0;
-
 	/* Pass through the pte tables looking for memory pages to swap out */
 	type = s->type&SG_TYPE;
 	endsm = &s->map[SEGMAPSIZE];
@@ -191,7 +193,6 @@ extern char *sname[];
 		if(l == 0)
 			continue;
 		for(pg = l->first; pg < l->last; pg++) {
-			nr++;
 			entry = *pg;
 			if(pagedout(entry))
 				continue;
@@ -206,9 +207,6 @@ extern char *sname[];
 		}
 	}
 out:
-	DBG("%s: %d: %5s s %d nr %d fr %d\n", 
-	p->text, p->pid, sname[type], scavenge, nr, palloc.freecount);
-
 	poperror();
 	qunlock(&s->lk);
 	putseg(s);
@@ -248,7 +246,7 @@ canflush(Proc *p, Segment *s)
 	return 1;						
 }
 
-int
+void
 pagepte(int type, Segment *s, Page **pg)
 {
 	ulong daddr;
@@ -259,7 +257,6 @@ pagepte(int type, Segment *s, Page **pg)
 	case SG_TEXT:					/* Revert to demand load */
 		putpage(outp);
 		*pg = 0;
-		scavenge++;
 		break;
 
 	case SG_DATA:
@@ -283,10 +280,7 @@ pagepte(int type, Segment *s, Page **pg)
 
 		/* Add me to IO transaction list */
 		iolist[ioptr++] = outp;
-		scavenge++;
 	}
-
-	return 1;
 }
 
 void
@@ -324,7 +318,6 @@ executeio(void)
 		unlockpage(out);
 		putpage(out);
 	}
-
 	ioptr = 0;
 }
 

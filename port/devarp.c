@@ -328,7 +328,8 @@ arpoput(Queue *q, Block *bp)
 
 	/* if ip broadcast, use ether bcast address */
 	addr = nhgetl(eh->dst);
-	if(addr == Myip[Mybcast] || addr == Myip[Mynet] || addr == Myip[Mysubnet]){
+	if(addr == Myip[Mybcast] || addr == Myip[Mynet]
+	|| ((addr & Mymask) == Myip[Mynet+1] && (addr & ~Mynetmask) == ~Mynetmask)){
 		memset(eh->d, 0xff, sizeof(eh->d));
 		PUTNEXT(q, bp);
 		return;

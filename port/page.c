@@ -237,14 +237,11 @@ ispages(void *p)
 void
 putpage(Page *p)
 {
-	int wake;
-
 	if(onswap(p)) {
 		putswap(p);
 		return;
 	}
 
-	wake = 0;
 	lockpage(p);
 	if(--p->ref == 0) {
 		lock(&palloc);
@@ -273,13 +270,10 @@ putpage(Page *p)
 			p->prev = 0;
 		}
 
-		wake = 1;
 		palloc.freecount++;		/* Release people waiting for memory */
 		unlock(&palloc);
 	}
 	unlockpage(p);
-	if(wake && palloc.wanted)
-		wakeup(&palloc.r);
 }
 
 void

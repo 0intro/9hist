@@ -511,6 +511,7 @@ void	ipsetaddrs(void);
 
 extern Ipaddr Myip[7];
 extern Ipaddr Mymask;
+extern Ipaddr Mynetmask;
 extern Ipaddr classmask[4];
 extern Ipconv *ipconv[];
 extern char *tcpstate[];

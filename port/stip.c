@@ -475,7 +475,7 @@ ip_reassemble(int offset, Block *bp, Etherhdr *ip)
 				(*l)->rptr += ovlap;
 				break;
 			}	
-			last = *l;
+			last = (*l)->next;
 			freeb(*l);
 			*l = last;
 		}
