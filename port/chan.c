@@ -643,7 +643,7 @@ saveregisters(void)
  * In place, rewrite name to compress multiple /, eliminate ., and process ..
  */
 void
-cleanname(Cname *n, int offset)
+cleancname(Cname *n, int offset)
 {
 	char *p, *q, *dotdot, *name;
 	int rooted;
@@ -669,7 +669,7 @@ cleanname(Cname *n, int offset)
 			if(q > dotdot) {	/* can backtrack */
 				while(--q > dotdot && *q != '/')
 					;
-			} else if(!rooted) {	/* ``/..'' ≡ ``/'', but ``./../'' ≡ ``..'' */
+			} else if(!rooted) {	/* /.. is / but ./../ is .. */
 				if(q != name)
 					*q++ = '/';
 				*q++ = '.';
@@ -685,7 +685,7 @@ cleanname(Cname *n, int offset)
 	}
 	if(q == name)	/* empty string is really ``.'' */
 		*q++ = '.';
-	*q = 0;
+	*q = '\0';
 	n->len = (q-name) + offset;
 }
 
@@ -910,9 +910,9 @@ namec(char *name, int amode, int omode, ulong perm)
 	/* peculiar workaround for #/ */
 	if(newname){
 		if(cname->s[0]=='#' && cname->s[1]=='/')
-			cleanname(cname, 2);
+			cleancname(cname, 1);
 		else
-			cleanname(cname, 0);
+			cleancname(cname, 0);
 		cnameclose(c->name);
 		c->name = cname;
 	}else

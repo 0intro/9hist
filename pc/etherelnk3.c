@@ -1312,7 +1312,7 @@ tcm509isa(void)
 	 * it fully.
 	 */
 	while(port = activate()){
-		if(ioalloc(port, 0x20, 0, "tcm509isa") < 0){
+		if(ioalloc(port, 0x10, 0, "tcm509isa") < 0){
 			print("tcm509isa:port %d in use\n", port);
 			continue;
 		}
@@ -1436,8 +1436,12 @@ tcm5XXpcmcia(Ether* ether)
 
 	for(i = 0; tcmpcmcia[i] != nil; i++){
 		if(!cistrcmp(ether->type, tcmpcmcia[i])){
-			if(ioalloc(ether->port, 0x20, 0, "tcm5XXpcmcia") < 0)
+			/*
+			 * No need for an ioalloc here, the 589 reset
+			 * code deals with it.
+			if(ioalloc(ether->port, 0x10, 0, "tcm5XXpcmcia") < 0)
 				return 0;
+			 */
 			return ether->port;
 		}
 	}

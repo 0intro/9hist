@@ -123,12 +123,15 @@ reset(Ether* ether)
 	if(ioalloc(port, 0x10, 0, "3C589") < 0)
 		return -1;
 
-	if((slot = pcmspecial(ether->type, ether)) < 0)
+	if((slot = pcmspecial(ether->type, ether)) < 0){
+		iofree(port);
 		return -1;
+	}
 
 	/* try configuring as a 10BaseT */
 	if(configASIC(ether, port, xcvr10BaseT) < 0){
 		pcmspecialclose(slot);
+		iofree(port);
 		return -1;
 	}
 	delay(100);
@@ -143,6 +146,7 @@ reset(Ether* ether)
 	COMMAND(port, GlobalReset, 0);
 	if(configASIC(ether, port, xcvr10Base2) < 0){
 		pcmspecialclose(slot);
+		iofree(port);
 		return -1;
 	}
 	print("#l%d: xcvr10Base2 %s\n", ether->ctlrno, ether->type);

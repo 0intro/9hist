@@ -64,12 +64,14 @@ s3page(VGAscr* scr, int page)
 static ulong
 s3linear(VGAscr* scr, int* size, int* align)
 {
-	ulong aperture, oaperture;
+	ulong aperture, oaperture, osize;
 	int oapsize, wasupamem;
 	Pcidev *p;
+	Physseg seg;
 
 	oaperture = scr->aperture;
 	oapsize = scr->apsize;
+	osize = *size;
 	wasupamem = scr->isupamem;
 	if(wasupamem)
 		upafree(oaperture, oapsize);
@@ -90,6 +92,13 @@ s3linear(VGAscr* scr, int* size, int* align)
 	else
 		scr->isupamem = 1;
 
+	memset(&seg, 0, sizeof(seg));
+	seg.attr = SG_PHYSICAL;
+	seg.name = smalloc(NAMELEN);
+	snprint(seg.name, NAMELEN, "s3screen");
+	seg.pa = aperture;
+	seg.size = osize;
+	addphysseg(&seg);
 	return aperture;
 }
 

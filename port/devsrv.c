@@ -114,7 +114,7 @@ srvopen(Chan *c, int omode)
 		error(Eshutdown);
 
 	if(omode&OTRUNC)
-		error(Eperm);
+		error("srv file already exists");
 	if(openmode(omode)!=sp->chan->mode && sp->chan->mode!=ORDWR)
 		error(Eperm);
 
@@ -270,6 +270,8 @@ srvwrite(Chan *c, void *va, long n, vlong)
 		cclose(c1);
 		nexterror();
 	}
+	if(c1->flag & (CCEXEC|CRCLOSE))
+		error("posted fd has remove-on-close or close-on-exec");
 	sp = srvlookup(nil, c->qid.path);
 	if(sp == 0)
 		error(Enonexist);
