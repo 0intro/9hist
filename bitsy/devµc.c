@@ -15,6 +15,7 @@ enum{
 	Qkbdin,
 	Qled,
 	Qversion,
+	Qsuspend,
 
 	/* command types */
 	BLversion=	0,
@@ -57,6 +58,7 @@ Dirtab µcdir[]={
 	"kbdin",		{ Qkbdin, 0 },		0,	0664,
 	"led",		{ Qled, 0 },			0,	0664,
 	"version",		{ Qversion, 0 },		0,	0664,
+	"suspend",	{ Qsuspend, 0 },	0,	0222,
 };
 
 static struct µcontroller
@@ -344,6 +346,8 @@ static long
 	char str[64];
 	int i, j;
 	Rune r;
+	extern Rendez	powerr;
+	extern ulong	powerflag;
 
 	if(c->qid.path == Qkbdin){
 		if(n >= sizeof(str))
@@ -355,6 +359,14 @@ static long
 			kbdcr2nl(nil, r);
 		}
 		return n;
+	}
+	if(c->qid.path == Qsuspend){
+		if(!iseve())
+			error(Eperm);
+		if(strncmp(a, "suspend", 7) != 0)
+			error(Ebadarg);
+		powerflag = 1;
+		wakeup(&powerr);
 	}
 
 	cmd = parsecmd(a, n);

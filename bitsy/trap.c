@@ -98,7 +98,7 @@ trapinit(void)
 void
 trapdump(char *tag)
 {
-	print("%s: icip %lux icmr %lux iclr %lux iccr %lux icfp %lux\n",
+	iprint("%s: icip %lux icmr %lux iclr %lux iccr %lux icfp %lux\n",
 		tag, intrregs->icip, intrregs->icmr, intrregs->iclr,
 		intrregs->iccr, intrregs->icfp);
 }
@@ -121,7 +121,7 @@ warnregs(Ureg *ur, char *tag)
 		ur->r8, ur->r9, ur->r10, ur->r11);
 	seprint(p, e, "r12 0x%.8lux r13 0x%.8lux r14 0x%.8lux\n",
 		ur->r12, ur->r13, ur->r14);
-	print("%s", buf);
+	iprint("%s", buf);
 }
 
 /*
@@ -764,7 +764,7 @@ _dumpstack(Ureg *ureg)
 		return;
 	}
 
-	print("ktrace /kernel/path %.8lux %.8lux %.8lux\n", ureg->pc, ureg->sp, ureg->r14);
+	iprint("ktrace /kernel/path %.8lux %.8lux %.8lux\n", ureg->pc, ureg->sp, ureg->r14);
 	i = 0;
 	for(l=(ulong)&l; l<(ulong)(up->kstack+KSTACK); l+=4){
 		v = *(ulong*)l;

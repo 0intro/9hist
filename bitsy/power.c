@@ -142,18 +142,17 @@ deepsleep(void) {
 	static int power_pl;
 
 	power_pl = splhi();
-
-	/* flush cache */
 	cachewb();
 	delay(500);
-
-	/* Save state and setjmp */
 	if (setpowerlabel()) {
-		/* return from longjmp, turn everything back on */
 		mmuinvalidate();
 		mmuenable();
 		cacheflush();
 		trapresume();
+		rs232power(1);
+		irpower(1);
+		audiopower(1);
+		clockpower(1);
 		gpclkregs->r0 = 1<<0;
 		gpiocpy(gpioregs, &savedgpioregs);
 		intrcpy(intrregs, &savedintrregs);
@@ -162,15 +161,27 @@ deepsleep(void) {
 			gpioregs->edgestatus = (1<<IRQgpio0);
 			intrregs->icip = (1<<IRQgpio0);
 		}
+		uartpower(1);
+		µcpower(1);
+		screenpower(1);
+		iprint("\nresuming execution\n");
 //		dumpitall();
 		delay(800);
 		splx(power_pl);
 		return;
 	}
 	/* Power down */
+	iprint("entering suspend mode\n");
 	gpiocpy(&savedgpioregs, gpioregs);
 	intrcpy(&savedintrregs, intrregs);
+	uartpower(0);
 	delay(400);
+	clockpower(0);
+	irpower(0);
+	audiopower(0);
+	screenpower(0);
+	µcpower(0);
+	rs232power(0);
 	sa1100_power_off();
 	/* no return */
 }
@@ -178,39 +189,26 @@ deepsleep(void) {
 void
 powerkproc(void*)
 {
-	static int power_pl;
+	void *xsp, *xlink;
 
 	for(;;){
 		while(powerflag == 0)
 			sleep(&powerr, powerdown, 0);
-		iprint("starting power down\n");
+
 		powerflag = 0;
 
-		power_pl = splhi();
-
-//		irpower(0);
-//		audiopower(0);
-		screenpower(0);
-		µcpower(0);
-		clockpower(0);
-
-		rs232power(0);
-		uartpower(0);
+		xsp = getsp();
+		xlink = getlink();
+		iprint("starting power down, sp = %lux, link = %lux\n", xsp, xlink);
+		delay(1000);
 
 		deepsleep();
 
-		rs232power(1);
-		uartpower(1);
+		delay(1000);
+		xsp = getsp();
+		xlink = getlink();
+		iprint("power restored, sp = %lux, link = %lux\n", xsp, xlink);
 
-		clockpower(1);
-		µcpower(1);
-		screenpower(1);
-//		audiopower(1);
-//		irpower(1);
-
-		splx(power_pl);
-
-		iprint("power restored\n");
 	}
 }
 

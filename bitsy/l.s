@@ -48,20 +48,20 @@ TEXT mmuinvalidateaddr(SB), $-4
 TEXT cacheflush(SB), $-4
 	/* splhi */
 	MOVW	CPSR, R3
-	ORR	$(PsrDirq), R3, R1
+	ORR		$(PsrDirq), R3, R1
 	MOVW	R1, CPSR
 
 	/* write back any dirty data */
 	MOVW	$0xe0000000,R0
-	ADD	$(8*1024),R0,R1
+	ADD		$(8*1024),R0,R1
 _cfloop:
 	MOVW.P	32(R0),R2
 	CMP.S	R0,R1
 	BGE	_cfloop
 	
 	/* drain write buffer and invalidate i cache contents */
-	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0xa), 4
-	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0x5), 0
+	MCR		CpMMU, 0, R0, C(CpCacheFlush), C(0xa), 4
+	MCR		CpMMU, 0, R0, C(CpCacheFlush), C(0x5), 0
 
 	/* drain prefetch */
 	MOVW	R0,R0						
@@ -78,12 +78,12 @@ TEXT cachewb(SB), $-4
 	/* write back any dirty data */
 _cachewb:
 	MOVW	$0xe0000000,R0
-	ADD	$(8*1024),R0,R1
+	ADD		$(8*1024),R0,R1
 _cwbloop:
 	MOVW.P	32(R0),R2
 	CMP.S	R0,R1
 	BGE	_cwbloop
-	
+
 	/* drain write buffer */
 	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0xa), 4
 	RET
@@ -413,6 +413,14 @@ TEXT spsrr(SB), $-4
 	MOVW	SPSR, R0
 	RET
 
+TEXT getsp(SB), $-4
+	MOVW	R13, R0
+	RET
+
+TEXT getlink(SB), $-4
+	MOVW	R14, R0
+	RET
+
 TEXT getcallerpc(SB), $-4
 	MOVW	0(R13), R0
 	RET
@@ -448,81 +456,81 @@ TEXT gotolabel(SB), $-4
 TEXT setpowerlabel(SB), $-4
 	MOVW	$power_resume+0(SB), R0
 	/* svc */				/* power_resume[]: what */
-	MOVW		R1, 0(R0)
-	MOVW		R2, 4(R0)
-	MOVW		R3, 8(R0)
-	MOVW		R4, 12(R0)
-	MOVW		R5, 16(R0)
-	MOVW		R6, 20(R0)
-	MOVW		R7, 24(R0)
-	MOVW		R8, 28(R0)
-	MOVW		R9, 32(R0)
-	MOVW		R10,36(R0)
-	MOVW		R11,40(R0)
-	MOVW		R12,44(R0)
-	MOVW		R13,48(R0)
-	MOVW		R14,52(R0)
-	MOVW		SPSR, R1
-	MOVW		R1, 56(R0)
-	MOVW		CPSR, R2
-	MOVW		R2, 60(R0)
+	MOVW	R1, 0(R0)
+	MOVW	R2, 4(R0)
+	MOVW	R3, 8(R0)
+	MOVW	R4, 12(R0)
+	MOVW	R5, 16(R0)
+	MOVW	R6, 20(R0)
+	MOVW	R7, 24(R0)
+	MOVW	R8, 28(R0)
+	MOVW	R9, 32(R0)
+	MOVW	R10,36(R0)
+	MOVW	R11,40(R0)
+	MOVW	R12,44(R0)
+	MOVW	R13,48(R0)
+	MOVW	R14,52(R0)
+	MOVW	SPSR, R1
+	MOVW	R1, 56(R0)
+	MOVW	CPSR, R2
+	MOVW	R2, 60(R0)
 	/* copro */
 	MRC		CpMMU, 0, R3, C(CpDAC), C(0x0)
-	MOVW		R3, 144(R0)
+	MOVW	R3, 144(R0)
 	MRC		CpMMU, 0, R3, C(CpTTB), C(0x0)
-	MOVW		R3, 148(R0)
+	MOVW	R3, 148(R0)
 	MRC		CpMMU, 0, R3, C(CpControl), C(0x0)
-	MOVW		R3, 152(R0)
+	MOVW	R3, 152(R0)
 	MRC		CpMMU, 0, R3, C(CpFSR), C(0x0)
-	MOVW		R3, 156(R0)
+	MOVW	R3, 156(R0)
 	MRC		CpMMU, 0, R3, C(CpFAR), C(0x0)
-	MOVW		R3, 160(R0)
+	MOVW	R3, 160(R0)
 	MRC		CpMMU, 0, R3, C(CpPID), C(0x0)
-	MOVW		R3, 164(R0)
+	MOVW	R3, 164(R0)
 	/* irq */
 	BIC		$(PsrMask), R2, R3
 	ORR		$(PsrDirq|PsrMirq), R3
-	MOVW		R3, CPSR
-	MOVW		SPSR, R11
-	MOVW		R11, 64(R0)
-	MOVW		R12, 68(R0)
-	MOVW		R13, 72(R0)
-	MOVW		R14, 76(R0)
+	MOVW	R3, CPSR
+	MOVW	SPSR, R11
+	MOVW	R11, 64(R0)
+	MOVW	R12, 68(R0)
+	MOVW	R13, 72(R0)
+	MOVW	R14, 76(R0)
 	/* und */
 	BIC		$(PsrMask), R2, R3
 	ORR		$(PsrDirq|PsrMund), R3
-	MOVW		R3, CPSR
-	MOVW		SPSR, R11
-	MOVW		R11, 80(R0)
-	MOVW		R12, 84(R0)
-	MOVW		R13, 88(R0)
-	MOVW		R14, 92(R0)
+	MOVW	R3, CPSR
+	MOVW	SPSR, R11
+	MOVW	R11, 80(R0)
+	MOVW	R12, 84(R0)
+	MOVW	R13, 88(R0)
+	MOVW	R14, 92(R0)
 	/* abt */
 	BIC		$(PsrMask), R2, R3
 	ORR		$(PsrDirq|PsrMabt), R3
-	MOVW		R3, CPSR
-	MOVW		SPSR, R11
-	MOVW		R11, 96(R0)
-	MOVW		R12, 100(R0)
-	MOVW		R13, 104(R0)
-	MOVW		R14, 108(R0)
+	MOVW	R3, CPSR
+	MOVW	SPSR, R11
+	MOVW	R11, 96(R0)
+	MOVW	R12, 100(R0)
+	MOVW	R13, 104(R0)
+	MOVW	R14, 108(R0)
 	/* fiq */
 	BIC		$(PsrMask), R2, R3
 	ORR		$(PsrDirq|PsrMfiq), R3
-	MOVW		R3, CPSR
-	MOVW		SPSR, R7
-	MOVW		R7, 112(R0)
-	MOVW		R8, 116(R0)
-	MOVW		R9, 120(R0)
-	MOVW		R10,124(R0)
-	MOVW		R11,128(R0)
-	MOVW		R12,132(R0)
-	MOVW		R13,136(R0)
-	MOVW		R14,140(R0)
+	MOVW	R3, CPSR
+	MOVW	SPSR, R7
+	MOVW	R7, 112(R0)
+	MOVW	R8, 116(R0)
+	MOVW	R9, 120(R0)
+	MOVW	R10,124(R0)
+	MOVW	R11,128(R0)
+	MOVW	R12,132(R0)
+	MOVW	R13,136(R0)
+	MOVW	R14,140(R0)
 	/* done */
-	MOVW		R2, CPSR
-	MOVW		R1, SPSR
-	MOVW		$0, R0
+	MOVW	R2, CPSR
+	MOVW	R1, SPSR
+	MOVW	$0, R0
 	RET
 
 /* Entered after a resume from suspend state.
@@ -534,7 +542,7 @@ TEXT sa1100_power_resume(SB), $-4
 	MOVW	$(PsrDirq|PsrDfiq|PsrMsvc), R1
 	MOVW	R1, CPSR
 	/* flush caches */
-	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0x7), 0
+	MCR		CpMMU, 0, R0, C(CpCacheFlush), C(0x7), 0
 	/* drain prefetch */
 	MOVW	R0,R0						
 	MOVW	R0,R0
@@ -548,22 +556,22 @@ TEXT sa1100_power_resume(SB), $-4
 	MOVW	56(R0), R1		/* R1: SPSR, R2: CPSR */
 	MOVW	60(R0), R2
 	/* copro */
-	MOVW		148(R0), R3
+	MOVW	148(R0), R3
 	MCR		CpMMU, 0, R3, C(CpTTB), C(0x0)
-	MOVW		144(R0), R3
+	MOVW	144(R0), R3
 	MCR		CpMMU, 0, R3, C(CpDAC), C(0x0)
-	MOVW		152(R0), R3
+	MOVW	152(R0), R3
 	MCR		CpMMU, 0, R3, C(CpControl), C(0x0)
-	MOVW		156(R0), R3
+	MOVW	156(R0), R3
 	MCR		CpMMU, 0, R3, C(CpFSR), C(0x0)
-	MOVW		160(R0), R3
+	MOVW	160(R0), R3
 	MCR		CpMMU, 0, R3, C(CpFAR), C(0x0)
-	MOVW		164(R0), R3
+	MOVW	164(R0), R3
 	MCR		CpMMU, 0, R3, C(CpPID), C(0x0)
 	MCR		CpMMU, 0, R0, C(CpTLBFlush), C(0x7)
 	/* irq */
-	BIC	$(PsrMask), R2, R3
-	ORR	$(PsrDirq|PsrMirq), R3
+	BIC		$(PsrMask), R2, R3
+	ORR		$(PsrDirq|PsrMirq), R3
 	MOVW	R3, CPSR
 	MOVW	64(R0), R11
 	MOVW	68(R0), R12
@@ -571,8 +579,8 @@ TEXT sa1100_power_resume(SB), $-4
 	MOVW	76(R0), R14
 	MOVW	R11, SPSR
 	/* und */
-	BIC	$(PsrMask), R2, R3
-	ORR	$(PsrDirq|PsrMund), R3
+	BIC		$(PsrMask), R2, R3
+	ORR		$(PsrDirq|PsrMund), R3
 	MOVW	R3, CPSR
 	MOVW	80(R0), R11
 	MOVW	84(R0), R12
@@ -580,8 +588,8 @@ TEXT sa1100_power_resume(SB), $-4
 	MOVW	92(R0), R14
 	MOVW	R11, SPSR
 	/* abt */
-	BIC	$(PsrMask), R2, R3
-	ORR	$(PsrDirq|PsrMabt), R3
+	BIC		$(PsrMask), R2, R3
+	ORR		$(PsrDirq|PsrMabt), R3
 	MOVW	R3, CPSR
 	MOVW	96(R0), R11
 	MOVW	100(R0), R12
@@ -589,8 +597,8 @@ TEXT sa1100_power_resume(SB), $-4
 	MOVW	108(R0), R14
 	MOVW	R11, SPSR
 	/* fiq */
-	BIC	$(PsrMask), R2, R3
-	ORR	$(PsrDirq|PsrMfiq), R3
+	BIC		$(PsrMask), R2, R3
+	ORR		$(PsrDirq|PsrMfiq), R3
 	MOVW	R3, CPSR
 	MOVW	112(R0), R7
 	MOVW	116(R0), R8
@@ -622,7 +630,7 @@ TEXT sa1100_power_resume(SB), $-4
 	MOVW	52(R0),R14
 	RET
 loop:
-	B	loop
+	B		loop
 
 /* The first MCR instruction of this function needs to be on a cache-line
  * boundary; to make this happen, it will be copied (in trap.c).
@@ -639,7 +647,7 @@ TEXT _doze(SB), $-4
 	MOVW	R0,R0
 	MOVW	R0,R0
 	MOVW	R0,R0
-	MCR     CpPWR, 0, R0, C(CpTest), C(0x2), 2
+	MCR   	CpPWR, 0, R0, C(CpTest), C(0x2), 2
 	MOVW	(R1), R0
-	MCR     CpPWR, 0, R0, C(CpTest), C(0x8), 2
+	MCR  	CpPWR, 0, R0, C(CpTest), C(0x8), 2
 	RET
