@@ -230,6 +230,7 @@ long		seconds(void);
 ulong		segattach(Proc*, ulong, char *, ulong, ulong);
 void		segpage(Segment*, Page*);
 int		setcolor(ulong, ulong, ulong, ulong);
+void		setkernur(Ureg*, Proc*);
 int		setlabel(Label*);
 void		setregisters(Ureg*, char*, char*, int);
 void		setswapchan(Chan*);

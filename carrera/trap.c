@@ -681,3 +681,14 @@ setregisters(Ureg *xp, char *pureg, char *uva, int n)
 	memmove(pureg, uva, n);
 	xp->status = status;
 }
+
+/* Give enough context in the ureg to produce a kernel stack for
+ * a sleeping process
+ */
+void
+setkernur(Ureg *xp, Proc *p)
+{
+	xp->pc = p->sched.pc;
+	xp->sp = p->sched.sp;
+	xp->r31 = (ulong)sched;
+}

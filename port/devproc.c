@@ -350,9 +350,7 @@ procread(Chan *c, void *va, long n, ulong offset)
 
 	case Qkregs:
 		memset(&kur, 0, sizeof(Ureg));
-		kur.pc = p->sched.pc;
-		kur.sp = p->sched.sp;
-		kur.r31 = (ulong)sched;
+		setkernur(&kur, p);
 		rptr = (uchar*)&kur;
 		rsize = sizeof(Ureg);
 		goto regread;

@@ -591,3 +591,13 @@ setregisters(Ureg *xp, char *pureg, char *uva, int n)
 	xp->cs = cs;
 	xp->ss = ss;
 }
+
+/* Give enough context in the ureg to produce a kernel stack for
+ * a sleeping process
+ */
+void
+setkernur(Ureg *xp, Proc *p)
+{
+	xp->pc = p->sched.pc;
+	xp->sp = p->sched.sp;
+}

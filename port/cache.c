@@ -555,6 +555,7 @@ cwrite(Chan* c, uchar *buf, int len, ulong offset)
 			m->list = e;
 		else
 			p->next = e;
+
 		if(tail != 0)
 			tail->next = f;
 	}
