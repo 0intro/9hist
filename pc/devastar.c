@@ -277,7 +277,7 @@ static int nastar;
 
 enum
 {
-	Qmem=	0,
+	Qmem= 1,
 	Qbctl,
 	Qdata,
 	Qctl,
@@ -560,11 +560,12 @@ astarclose(Chan *c)
 	Astar *a;
 	Astarchan *ac;
 
+	if((c->flag & COPEN) == 0)
+		return;
+
 	a = astar[BOARD(c->qid.path)];
 
 	switch(TYPE(c->qid.path)){
-	case Qmem:
-		break;
 	case Qdata:
 	case Qctl:
 		ac = a->c + CHAN(c->qid.path);

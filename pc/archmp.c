@@ -67,20 +67,26 @@ identify(void)
 	/*
 	 * Search for an MP configuration table. For now,
 	 * don't accept the default configurations (physaddr == 0).
-	 * Calculate the checksum.
+	 * Check for correct signature, calculate the checksum and,
+	 * if correct, check the version.
 	 * To do: check extended table checksum.
 	 */
 	if((_mp_ = mpsearch()) == 0 || _mp_->physaddr == 0)
 		return 1;
 
 	pcmp = KADDR(_mp_->physaddr);
-	length = pcmp->length;
+	if(memcmp(pcmp, "PCMP", 4))
+		return 1;
 
+	length = pcmp->length;
 	sum = 0;
 	for(p = (uchar*)pcmp; length; length--)
 		sum += *p++;
 
-	return sum;
+	if(sum || (pcmp->version != 1 && pcmp->version != 4))
+		return 1;
+
+	return 0;
 }
 
 PCArch archmp = {
