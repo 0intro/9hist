@@ -56,11 +56,11 @@ enum {
 	Rst		= 0x04,		/* Reset Adapter */
 	Ena		= 0x01,		/* Enable Adapter */
 
-	TxFreeBytes	= 0x0C,		/* window 1 */
-	TxStatus	= 0x0B,
-	Timer		= 0x0A,
+	Fifo		= 0x00,		/* window 1 */
 	RxStatus	= 0x08,
-	Fifo		= 0x00,
+	Timer		= 0x0A,
+	TxStatus	= 0x0B,
+	TxFreeBytes	= 0x0C,
 
 					/* Status/Interrupt Bits */
 	Latch		= 0x0001,	/* Interrupt Latch */

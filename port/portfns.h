@@ -204,6 +204,7 @@ long		qread(Queue*, void*, int);
 void		qreopen(Queue*);
 void		qunlock(QLock*);
 int		qwindow(Queue*);
+long		qiwrite(Queue*, void*, int);
 long		qwrite(Queue*, void*, int);
 void		qsetlimit(Queue*, int);
 void		qnoblock(Queue*, int);

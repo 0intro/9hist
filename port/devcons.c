@@ -48,7 +48,7 @@ printinit(void)
 static void
 putstrn0(char *str, int n, int usewrite)
 {
-	int m, x;
+	int m;
 	char *t;
 	char buf[PRINTSIZE+2];
 
@@ -76,21 +76,15 @@ putstrn0(char *str, int n, int usewrite)
 			buf[m+1] = '\n';
 			if(usewrite)
 				qwrite(printq, buf, m+2);
-			else {
-				x = splhi();
-				qproduce(printq, buf, m+2);
-				splx(x);
-			}
+			else
+				qiwrite(printq, buf, m+2);
 			str = t + 1;
 			n -= m + 1;
 		} else {
 			if(usewrite)
 				qwrite(printq, str, n);
-			else {
-				x = splhi();
-				qproduce(printq, str, n);
-				splx(x);
-			}
+			else 
+				qiwrite(printq, str, n);
 			break;
 		}
 	}
@@ -247,14 +241,14 @@ echo(Rune r, char *buf, int n)
 	 */
 	if(r == '\n'){
 		if(printq)
-			qproduce(printq, "\r", 1);
+			qiwrite(printq, "\r", 1);
 	} else if(r == 0x15){
 		buf = "^U\n";
 		n = 3;
 	}
 	screenputs(buf, n);
 	if(printq)
-		qproduce(printq, buf, n);
+		qiwrite(printq, buf, n);
 }
 
 /*
@@ -518,9 +512,7 @@ consread(Chan *c, void *buf, long n, ulong offset)
 			qread(kbdq, &kbd.line[kbd.x], 1);
 			ch = kbd.line[kbd.x];
 			if(kbd.raw){
-				i = splhi();
-				qproduce(lineq, &kbd.line[kbd.x], 1);
-				splx(i);
+				qiwrite(lineq, &kbd.line[kbd.x], 1);
 				continue;
 			}
 			eol = 0;

@@ -27,7 +27,7 @@ struct Mntalloc
 	Mnt	*list;		/* Mount devices in use */
 	Mnt	*mntfree;	/* Free list */
 	Mntrpc	*rpcfree;
-	int	id;
+	ulong	id;
 	int	rpctag;
 }mntalloc;
 

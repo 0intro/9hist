@@ -143,7 +143,7 @@ struct Chan
 	Chan*	link;
 	ulong	offset;			/* in file */
 	ushort	type;
-	ushort	dev;
+	ulong	dev;
 	ushort	mode;			/* read/write */
 	ushort	flag;
 	Qid	qid;

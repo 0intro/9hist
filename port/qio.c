@@ -170,15 +170,22 @@ qconsume(Queue *q, void *vp, int len)
 	/* sync with qwrite */
 	lock(q);
 
-	b = q->bfirst;
-	if(b == 0){
-		q->state |= Qstarve;
-		unlock(q);
-		return -1;
-	}
-	QDEBUG checkb(b, "qconsume 1");
+	for(;;) {
+		b = q->bfirst;
+		if(b == 0){
+			q->state |= Qstarve;
+			unlock(q);
+			return -1;
+		}
+		QDEBUG checkb(b, "qconsume 1");
 
-	n = BLEN(b);
+		n = BLEN(b);
+		if(n > 0)
+			break;
+		q->bfirst = b->next;
+		freeb(b);
+	};
+
 	if(n < len)
 		len = n;
 	memmove(p, b->rp, len);
@@ -606,6 +613,69 @@ qwrite(Queue *q, void *vp, int len)
 }
 
 /*
+ *  used by print() to write to a queue
+ */
+int
+qiwrite(Queue *q, void *vp, int len)
+{
+	int n, sofar, dowakeup;
+	Block *b;
+	uchar *p = vp;
+
+	dowakeup = 0;
+
+	sofar = 0;
+	do {
+		n = len-sofar;
+		if(n > 128*1024)
+			n = 128*1024;
+
+		b = allocb(n);
+		memmove(b->wp, p+sofar, n);
+		b->wp += n;
+
+		ilock(q);
+
+		QDEBUG checkb(b, "qiwrite");
+		if(q->syncbuf){
+			/* we guessed wrong and did an extra copy */
+			if(n > q->synclen)
+				n = q->synclen;
+			memmove(q->syncbuf, b->rp, n);
+			q->synclen = n;
+			q->syncbuf = 0;
+			dowakeup = 1;
+			freeb(b);
+		} else {
+			/* we guessed right, queue it */
+			if(q->bfirst)
+				q->blast->next = b;
+			else
+				q->bfirst = b;
+			q->blast = b;
+			q->len += n;
+
+			if(q->state & Qstarve){
+				q->state &= ~Qstarve;
+				dowakeup = 1;
+			}
+		}
+
+		iunlock(q);
+
+		if(dowakeup){
+			if(q->kick)
+				(*q->kick)(q->arg);
+			wakeup(&q->rr);
+		}
+
+		sofar += n;
+	} while(sofar < len && (q->state & Qmsg) == 0);
+
+	return len;
+}
+
+/*
  *  Mark a queue as closed.  No further IO is permitted.
  *  All blocks are released.
  */
@@ -738,4 +808,10 @@ qflush(Queue *q)
 
 	/* wake up readers/writers */
 	wakeup(&q->wr);
+}
+
+int
+qstate(Queue *q)
+{
+	return q->state;
 }
