@@ -293,8 +293,15 @@ intrscommon:
 	RET
 
 /*
- *  turn on interrupts
+ *  turn interrupts and traps on
  */
-TEXT	sti(SB),$0
+TEXT	spllo(SB),$0
 	STI
+	RET
+
+/*
+ *  turn interrupts and traps off
+ */
+TEXT	splhi(SB),$0
+	CLI
 	RET
