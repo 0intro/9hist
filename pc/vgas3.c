@@ -12,8 +12,6 @@
 #include <cursor.h>
 #include "screen.h"
 
-#define	round16(x)	(((x)+15)&~15)
-
 enum {
 	PCIS3		= 0x5333,		/* PCI VID */
 
@@ -463,7 +461,7 @@ hwscroll(VGAscr *scr, Rectangle r, Rectangle sr)
 	d = scr->gscreen->depth;
 	did = (d-8)/8;
 	cmd = 0x00000020|(Bitbltop<<17)|(did<<2);
-	stride = round16(Dx(scr->gscreen->r))*d/8;
+	stride = Dx(scr->gscreen->r)*d/8;
 
 	if(r.min.x <= sr.min.x){
 		cmd |= 1<<25;
@@ -508,7 +506,7 @@ hwfill(VGAscr *scr, Rectangle r, ulong sval)
 	d = scr->gscreen->depth;
 	did = (d-8)/8;
 	cmd = 0x16000120|(Bitbltop<<17)|(did<<2);
-	stride = round16(Dx(scr->gscreen->r))*d/8;
+	stride = Dx(scr->gscreen->r)*d/8;
 	mmio = scr->mmio;
 	waitforlinearfifo(scr);
 	waitforfifo(scr, 8);
@@ -533,7 +531,7 @@ enum {
 };
 
 static void
-s3blank(int blank)
+s3blank(VGAscr*, int blank)
 {
 	uchar x;
 
@@ -543,7 +541,6 @@ s3blank(int blank)
 		x |= VsyncLo | HsyncLo;
 	vgaxo(Seqx, CursorSyncCtl, x);
 }
-
 
 static void
 s3drawinit(VGAscr *scr)
@@ -561,6 +558,9 @@ s3drawinit(VGAscr *scr)
 	 * know that size, I'm not turning them on.  See waitforlinearfifo
 	 * above.
 	 */
+	scr->blank = s3blank;
+	/* hwblank = 1;		not known to work well */
+
 	switch(id){
 	case VIRGE:
 	case VIRGEVX:
@@ -568,7 +568,6 @@ s3drawinit(VGAscr *scr)
 		scr->mmio = (ulong*)(scr->aperture+0x1000000);
 		scr->fill = hwfill;
 		scr->scroll = hwscroll;
-		/* scr->blank = hwblank; */
 		break;
 	case SAVAGEIXMV:
 		scr->mmio = (ulong*)(scr->aperture+0x1000000);

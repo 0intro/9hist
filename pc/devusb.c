@@ -1630,29 +1630,22 @@ usbclose(Chan *c)
 	if(c->qid.type == QTDIR || c->qid.path < Q3rd)
 		return;
 	qlock(&usbstate);
-	if(waserror()){
-		qunlock(&usbstate);
-		nexterror();
-	}
 	d = usbdevice(c);
 	s = QID(c->qid) - Qep0;
 	if(s >= 0 && s < nelem(d->ep)){
 		Endpt *e;
-		if((e = d->ep[s]) == nil) {
-			XPRINT("usbopen failed (endpoint)\n");
-			error(Enodev);
-		}
-		e->isopen--;
-		if (e->isopen == 0){
-			eptdeactivate(e);
-			unschedendpt(e);
+		if(e = d->ep[s]) {
+			if (e->isopen == 1){
+				e->isopen = 0;
+				eptdeactivate(e);
+				unschedendpt(e);
+			}
 		}
 	}
 	if(QID(c->qid) == Qctl)
 		d->busy = 0;
 	if(c->flag & COPEN)
 		freedev(d);
-	poperror();
 	qunlock(&usbstate);
 }
 

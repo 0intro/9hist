@@ -860,7 +860,7 @@ initscreenimage(void)
 	}
 
 	screenimage->width = width;
-	screenimage->clipr = screenimage->r;
+	screenimage->clipr = r;
 	return 1;
 }
 

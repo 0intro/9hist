@@ -12,7 +12,6 @@
 #include <cursor.h>
 #include "screen.h"
 
-#define	round16(x)	(((x)+15)&~15)
 enum {
 	PCIS3		= 0x5333,		/* PCI VID */
 
@@ -363,7 +362,6 @@ savagewaitidle(VGAscr *scr)
 
 	switch(scr->id){
 	case SAVAGE4:
-	case SUPERSAVAGEIXC16:
 		/* wait for engine idle and FIFO empty */
 		statw = (ulong*)((uchar*)scr->mmio+AltStatus0);
 		mask = CBEMask | Ge2Idle;
@@ -373,6 +371,7 @@ savagewaitidle(VGAscr *scr)
 	/* case SAVAGEMX: ? */
 	/* case SAVAGEIXMV: ? */
 	/* case SAVAGEIX: ? */
+	case SUPERSAVAGEIXC16:
 	case SAVAGEIXMV:
 		/* wait for engine idle and FIFO empty */
 		statw = (ulong*)((uchar*)scr->mmio+XStatus0);
@@ -457,7 +456,6 @@ savagescroll(VGAscr *scr, Rectangle r, Rectangle sr)
 	return 1;
 }
 
-
 static void
 savageblank(VGAscr*, int blank)
 {
@@ -521,7 +519,7 @@ savageinit(VGAscr *scr)
 
 	/* set bitmap descriptors */
 	bd = (scr->gscreen->depth<<DepthShift) |
-		(round16(Dx(scr->gscreen->r))<<StrideShift) | BlockWriteDis
+		(Dx(scr->gscreen->r)<<StrideShift) | BlockWriteDis
 		| BDS64;
 
 	*(ulong*)(mmio+GBD1) = 0;
@@ -547,5 +545,6 @@ savageinit(VGAscr *scr)
 
 	scr->fill = savagefill;
 	scr->scroll = savagescroll;
+	scr->blank = savageblank;
 }
 

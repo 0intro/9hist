@@ -580,7 +580,7 @@ mach64xxcurmove(VGAscr* scr, Point p)
 	else
 		dx = 64 / scr->gscreen->depth;
 
-	if(screenpan(p, &physgscreenr, dx, 1)){
+	if(panning && screenpan(p, &physgscreenr, dx, 1)){
 		off = (physgscreenr.min.y*Dx(scr->gscreen->r)+physgscreenr.min.x)/dx;
 		pitch = Dx(scr->gscreen->r)/8;
 		iow32(scr, CrtcOffPitch, (pitch<<22)|off);
@@ -999,6 +999,7 @@ mach64xxdrawinit(VGAscr *scr)
 	case ('L'<<8)|'M':		/* 4C4D: Rage Mobility */
 	case ('L'<<8)|'P':		/* 4C50: Rage 3D LTPro */
 		scr->blank = mach64lcdblank;
+		hwblank = 1;
 		break;
 	}
 }

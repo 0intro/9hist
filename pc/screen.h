@@ -127,6 +127,7 @@ extern void mousectl(char*[], int);
 /* screen.c */
 extern int		hwaccel;	/* use hw acceleration; default on */
 extern int		hwblank;	/* use hw blanking; default on */
+extern int		panning;	/* use virtual screen panning; default off */
 extern void addvgaseg(char*, ulong, ulong);
 extern uchar* attachscreen(Rectangle*, ulong*, int*, int*, int*);
 extern void	flushmemscreen(Rectangle);
@@ -142,6 +143,7 @@ extern void	blankscreen(int);
 extern void	deletescreenimage(void);
 extern int		drawhasclients(void);
 extern ulong	blanktime;
+extern void	setscreenimageclipr(Rectangle);
 
 /* vga.c */
 extern void	vgascreenwin(VGAscr*);

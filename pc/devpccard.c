@@ -40,6 +40,7 @@ static variant_t variant[] = {
 {	Ricoh_vid,	Ricoh_478_did,	"Ricoh 478 PCI/Cardbus bridge",	},
 {	TI_vid,		TI_1450_did,		"TI PCI-1450 Cardbus Controller",	},
 {	TI_vid,		TI_1251A_did,		"TI PCI-1251A Cardbus Controller",	},
+{	TI_vid,		0xAC51,				"TI 0xAC51 Cardbus Controller", },
 };
 
 /* Cardbus registers */

@@ -151,6 +151,7 @@ vgaread(Chan* c, void* a, long n, vlong off)
 		len += snprint(p+len, READSTR-len, "blanktime %lud\n", blanktime);
 		len += snprint(p+len, READSTR-len, "hwaccel %s\n", hwaccel ? "on" : "off");
 		len += snprint(p+len, READSTR-len, "hwblank %s\n", hwblank ? "on" : "off");
+		len += snprint(p+len, READSTR-len, "panning %s\n", panning ? "on" : "off");
 		snprint(p+len, READSTR-len, "addr 0x%lux\n", scr->aperture);
 		n = readstr(offset, a, n, p);
 		poperror();
@@ -182,7 +183,6 @@ vgactl(char* a)
 	VGAscr *scr;
 	extern VGAdev *vgadev[];
 	extern VGAcur *vgacur[];
-	Rectangle r;
 
 	n = getfields(a, field, nelem(field), 1, " \t\n");
 	if(n < 1)
@@ -286,13 +286,8 @@ vgactl(char* a)
 		if(x > scr->gscreen->r.max.x || y > scr->gscreen->r.max.y)
 			error("physical screen bigger than virtual");
 
-		r = Rect(0,0,x,y);
-		if(!eqrect(r, scr->gscreen->r)){
-			if(scr->cur == nil || scr->cur->doespanning == 0)
-				error("virtual screen not supported");
-		}
-
-		physgscreenr = r;
+		physgscreenr = Rect(0,0,x,y);
+		scr->gscreen->clipr = physgscreenr;
 		return;
 	}
 	else if(strcmp(field[0], "palettedepth") == 0){
@@ -342,6 +337,24 @@ vgactl(char* a)
 		if(n < 2)
 			error(Ebadarg);
 		blanktime = strtoul(field[1], 0, 0);
+		return;
+	}
+	else if(strcmp(field[0], "panning") == 0){
+		if(n < 2)
+			error(Ebadarg);
+		if(strcmp(field[1], "on") == 0){
+			if(scr == nil || scr->cur == nil)
+				error("set screen first");
+			if(!scr->cur->doespanning)
+				error("panning not supported");
+			scr->gscreen->clipr = scr->gscreen->r;
+			panning = 1;
+		}
+		else if(strcmp(field[1], "off") == 0){
+			scr->gscreen->clipr = physgscreenr;
+			panning = 0;
+		}else
+			error(Ebadarg);
 		return;
 	}
 	else if(strcmp(field[0], "hwaccel") == 0){

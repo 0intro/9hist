@@ -13,8 +13,6 @@
 #include <cursor.h>
 #include "screen.h"
 
-#define round16(x) (((x)+15)&~15)
-
 #define RGB2K(r,g,b)	((156763*(r)+307758*(g)+59769*(b))>>19)
 
 Point ZP = {0, 0};
@@ -53,7 +51,7 @@ screensize(int x, int y, int z, ulong chan)
 	 * be given back if aperture is set.
 	 */
 	if(scr->aperture == 0){
-		int width = (round16(x)*z)/BI2WD;
+		int width = (x*z)/BI2WD;
 
 		gscreendata.bdata = xalloc(width*BY2WD*y);
 		if(gscreendata.bdata == 0)
@@ -69,12 +67,10 @@ screensize(int x, int y, int z, ulong chan)
 	if(gscreen)
 		freememimage(gscreen);
 
-	gscreen = allocmemimaged(Rect(0,0,round16(x),y), chan, &gscreendata);
+	gscreen = allocmemimaged(Rect(0,0,x,y), chan, &gscreendata);
 	vgaimageinit(chan);
 	if(gscreen == nil)
 		return -1;
-
-	gscreen->r.max.x = x;	/* we used round16(x) to allocate */
 
 	scr->palettedepth = 6;	/* default */
 	scr->gscreendata = &gscreendata;
@@ -131,7 +127,7 @@ attachscreen(Rectangle* r, ulong* chan, int* d, int* width, int *softscreen)
 	if(scr->gscreen == nil || scr->gscreendata == nil)
 		return nil;
 
-	*r = scr->gscreen->r;
+	*r = scr->gscreen->clipr;
 	*chan = scr->gscreen->chan;
 	*d = scr->gscreen->depth;
 	*width = scr->gscreen->width;
@@ -329,7 +325,8 @@ setcursor(Cursor* curs)
 }
 
 int hwaccel = 1;
-int hwblank = 1;
+int hwblank = 0;	/* turned on by drivers that are known good */
+int panning = 0;
 
 int
 hwdraw(Memdrawparam *par)

@@ -362,6 +362,7 @@ nvidiadrawinit(VGAscr *scr)
 	waitforidle(scr);
 
 	scr->blank = nvidiablank;
+	hwblank = 1;
 	scr->fill = nvidiahwfill;
 	scr->scroll = nvidiahwscroll;
 }

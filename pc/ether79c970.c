@@ -501,6 +501,9 @@ reset(Ether* ether)
 	/*
 	 * Allocate a controller structure and start to initialise it.
 	 */
+	if(ioalloc(ctlr->port, 0x20, 0, "ether79c970") < 0)
+		return -1;
+
 	ether->ctlr = ctlr;
 	ether->port = ctlr->port;
 	ether->irq = ctlr->pcidev->intl;

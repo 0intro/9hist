@@ -301,6 +301,8 @@ struct Ctlr
 	Wltv	keys;			// default keys
 	int	xclear;			// exclude clear packets off/on
 
+	int	ctlrno;
+
 	Stats;
 	WStats;
 };
@@ -326,22 +328,32 @@ w_cmd(Ctlr *ctlr, ushort cmd, ushort arg)
 {
 	int i, rc;
 
-	csr_outs(ctlr, WR_Parm0, arg);
-	csr_outs(ctlr, WR_Cmd, cmd);
-	for (i = 0; i<WTmOut; i++){
-		rc = csr_ins(ctlr, WR_EvSts);
-		if ( rc&WCmdEv ){
-			rc = csr_ins(ctlr, WR_Sts);
-			csr_ack(ctlr, WCmdEv);
-			if ((rc&WCmdMsk) != (cmd&WCmdMsk))
-				break;
-			if (rc&WResSts)
-				break;
-			return 0;
-		}
+	for(i=0; i<WTmOut; i++)
+		if((csr_ins(ctlr, WR_Cmd)&WCmdBusy) == 0)
+			break;
+	if(i==WTmOut){
+		print("#l%d: issuing cmd %.4ux: %.4ux\n", ctlr->ctlrno, cmd, csr_ins(ctlr, WR_Cmd));
+		return -1;
 	}
 
-	return -1;
+	csr_outs(ctlr, WR_Parm0, arg);
+	csr_outs(ctlr, WR_Cmd, cmd);
+
+	for(i=0; i<WTmOut; i++)
+		if(csr_ins(ctlr, WR_EvSts)&WCmdEv)
+			break;
+	if(i==WTmOut){
+		print("#l%d: execing cmd %.4ux: %.4ux\n", ctlr->ctlrno, cmd, csr_ins(ctlr, WR_EvSts));
+		return -1;
+	}
+	rc = csr_ins(ctlr, WR_Sts);
+	csr_ack(ctlr, WCmdEv);
+
+	if((rc&WCmdMsk) != (cmd&WCmdMsk) || (rc&WResSts)){
+		print("#l%d: cmd %.4ux: status %.4ux\n", ctlr->ctlrno, cmd, rc);
+		return -1;
+	}
+	return 0;
 }
 
 static int
@@ -1190,6 +1202,7 @@ interrupt(Ureg* ,void* arg)
 static char* wavenames[] = {
 	"WaveLAN/IEEE",
 	"TrueMobile 1150",
+	"Instant Wireless ; Network PC CARD",
 	nil,
 };
 
@@ -1205,6 +1218,7 @@ reset(Ether* ether)
 		return -1;
 
 	ilock(&ctlr->Lock);
+	ctlr->ctlrno = ether->ctlrno;
 
 	if (ether->port==0)
 		ether->port=WDfltIOB;

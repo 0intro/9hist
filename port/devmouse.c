@@ -501,15 +501,15 @@ mousetrack(int dx, int dy, int b, int msec)
 		dy = scale(dy);
 	}
 	x = mouse.xy.x + dx;
-	if(x < gscreen->r.min.x)
-		x = gscreen->r.min.x;
-	if(x >= gscreen->r.max.x)
-		x = gscreen->r.max.x;
+	if(x < gscreen->clipr.min.x)
+		x = gscreen->clipr.min.x;
+	if(x >= gscreen->clipr.max.x)
+		x = gscreen->clipr.max.x;
 	y = mouse.xy.y + dy;
-	if(y < gscreen->r.min.y)
-		y = gscreen->r.min.y;
-	if(y >= gscreen->r.max.y)
-		y = gscreen->r.max.y;
+	if(y < gscreen->clipr.min.y)
+		y = gscreen->clipr.min.y;
+	if(y >= gscreen->clipr.max.y)
+		y = gscreen->clipr.max.y;
 
 	lastb = mouse.buttons;
 	mouse.xy = Pt(x, y);
