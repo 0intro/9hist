@@ -606,8 +606,8 @@ portbind(Bridge *b, int argc, char *argv[])
 		b->nport = port->id+1;
 
 	// assumes kproc always succeeds
-	port->ref++;
 	kproc("etherread", etherread, port);	// poperror must be next
+	port->ref++;
 }
 
 // assumes b is locked
@@ -847,7 +847,10 @@ ethermultiwrite(Bridge *b, Block *bp, Port *port)
 		if(c != nil) {
 			b->copy++;
 			bp2 = copyblock(bp, blocklen(bp));
-			devtab[c->type]->bwrite(c, bp2, 0);
+			if(!waserror()) {
+				devtab[c->type]->bwrite(c, bp2, 0);
+				poperror();
+			}
 		}
 		c = b->port[i]->data[1];
 	}
@@ -855,7 +858,10 @@ ethermultiwrite(Bridge *b, Block *bp, Port *port)
 	// last write free block
 	if(c) {
 		bp2 = bp; bp = nil; USED(bp);
-		devtab[c->type]->bwrite(c, bp2, 0);
+		if(!waserror()) {
+			devtab[c->type]->bwrite(c, bp2, 0);
+			poperror();
+		}
 	} else
 		freeb(bp);
 
@@ -966,6 +972,7 @@ etherread(void *a)
 		// release lock to read - error means it is time to quit
 		qunlock(b);
 		if(waserror()) {
+print("etherread read error\n");
 			qlock(b);
 			break;
 		}
@@ -978,6 +985,7 @@ if(0)print("devbridge: etherread: blocklen = %d\n", blocklen(bp));
 		if(port->closed)
 			break;
 		if(waserror()) {
+print("etherread bridge error\n");
 			if(bp)
 				freeb(bp);
 			continue;

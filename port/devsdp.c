@@ -51,6 +51,7 @@ struct OneWay
 	ulong	seq;
 	ulong	window;
 
+	QLock	controllk;
 	Rendez	controlready;
 	Block	*controlpkt;		// control channel
 	ulong	controlseq;
@@ -206,6 +207,7 @@ static void conviput2(Conv *c, Block *b);
 static void writecontrol(Conv *c, void *p, int n);
 static Block *readcontrol(Conv *c, int n);
 static Block *readdata(Conv *c, int n);
+static long writedata(Conv *c, Block *b);
 static void convoput(Conv *c, int type, Block *b);
 static void convoput2(Conv *c, int op, ulong dialid, ulong acceptid);
 static void convreader(void *a);
@@ -377,8 +379,10 @@ sdpclose(Chan* ch)
 		c->ref--;
 		if(TYPE(ch->qid) == Qdata) {
 			c->dataopen--;
-			if(c->dataopen == 0)
-				wakeup(&c->in.controlready);
+			if(c->dataopen == 0 && c->reader == 0) {
+				kproc("convreader", convreader, c);
+				c->reader = 1;
+			}
 		}
 		if(c->ref == 0) {
 			switch(c->state) {
@@ -468,6 +472,7 @@ sdpwrite(Chan *ch, void *a, long n, vlong off)
 	char *arg0;
 	char *p;
 	Conv *c;
+	Block *b;
 	
 	USED(off);
 	switch(TYPE(ch->qid)) {
@@ -515,7 +520,22 @@ sdpwrite(Chan *ch, void *a, long n, vlong off)
 print("writecontrol %ld\n", n);
 		writecontrol(sdp->conv[CONV(ch->qid)], a, n);
 		return n;
+	case Qdata:
+		b = allocb(n);
+		memmove(b->wp, a, n);
+		b->wp += n;
+		return writedata(sdp->conv[CONV(ch->qid)], b);
 	}
+}
+
+long
+sdpbwrite(Chan *ch, Block *bp, ulong offset)
+{
+	Sdp *sdp = sdptab + ch->dev;
+
+	if(TYPE(ch->qid) != Qdata)
+		return devbwrite(ch, bp, offset);
+	return writedata(sdp->conv[CONV(ch->qid)], bp);
 }
 
 static int
@@ -769,14 +789,16 @@ print("convsetstate %s -> %s\n", convstatename[c->state], convstatename[state]);
 		break;
 	case CClosed:
 		wakeup(&c->in.controlready);
+		wakeup(&c->out.controlready);
 		if(c->readproc)
 			postnote(c->readproc, 1, "interrupt", 0);
-		if(c->ref)
-			break;
+print("CClosed -> ref = %d\n", c->ref);
 		if(c->chan) {	
 			cclose(c->chan);
 			c->chan = nil;
 		}
+		if(c->ref)
+			break;
 		if(c->channame) {
 			free(c->channame);
 			c->channame = nil;
@@ -815,7 +837,7 @@ onewaycleanup(OneWay *ow)
 static void
 convopenchan(Conv *c, char *path)
 {
-	if(c->chan != nil)
+	if(c->state != CInit || c->chan != nil)
 		error("already connected");
 	c->chan = namec(path, Aopen, ORDWR, 0);
 	c->channame = malloc(strlen(path)+1);
@@ -1042,6 +1064,7 @@ convoput(Conv *c, int type, Block *b)
 	// simulated errors
 	if(c->drop && c->drop > nrand(c->drop))
 		return;
+print("convoput\n");
 	devtab[c->chan->type]->bwrite(c->chan, b, 0);
 }
 
@@ -1114,7 +1137,14 @@ readcontrol(Conv *c, int n)
 	Block *b;
 
 	USED(n);
-	qlock(c);
+
+	qlock(&c->in.controllk);
+	if(waserror()) {
+		qunlock(&c->in.controllk);
+		nexterror();
+	}
+	qlock(c);	// this lock is not held during the sleep below
+
 	for(;;) {
 		if(c->state == CInit || c->state == CClosed) {
 			qunlock(c);
@@ -1128,6 +1158,7 @@ print("readcontrol: return error - state = %s\n", convstatename[c->state]);
 		if(c->state == CRemoteClose) {
 			qunlock(c);
 print("readcontrol: return nil - state = %s\n", convstatename[c->state]);
+			poperror();
 			return nil;
 		}
 		qunlock(c);
@@ -1144,6 +1175,8 @@ print("readcontrol: return nil - state = %s\n", convstatename[c->state]);
 	b = c->in.controlpkt;
 	c->in.controlpkt = nil;
 	qunlock(c);
+	poperror();
+	qunlock(&c->in.controllk);
 	return b;
 }
 
@@ -1161,7 +1194,13 @@ writecontrol(Conv *c, void *p, int n)
 {
 	Block *b;
 
-	qlock(c);
+
+	qlock(&c->out.controllk);
+	if(waserror()) {
+		qunlock(&c->out.controllk);
+		nexterror();
+	}
+	qlock(c);	// this lock is not held in the sleep below
 	for(;;) {
 		if(c->state == CInit || c->state == CClosed || c->state == CRemoteClose) {
 			qunlock(c);
@@ -1186,6 +1225,8 @@ print("writecontrol: return error - state = %s\n", convstatename[c->state]);
 print("send %ld size=%ld\n", c->out.controlseq, BLEN(b));	
 	convoput(c, TControl, copyblock(b, blocklen(b)));
 	qunlock(c);
+	poperror();
+	qunlock(&c->out.controllk);
 }
 
 static Block *
@@ -1208,6 +1249,30 @@ readdata(Conv *c, int n)
 	}
 }
 
+static long
+writedata(Conv *c, Block *b)
+{
+	int n;
+
+	qlock(c);
+print("writedata %ulx state=%s\n", b, convstatename[c->state]);
+	if(waserror()) {
+		qunlock(c);
+		nexterror();
+	}
+
+	if(c->state != COpen) {
+		freeb(b);
+		error("conversation not open");
+	}
+
+	n = BLEN(b);
+	convoput(c, TData, b);
+	poperror();
+	qunlock(c);
+	return n;
+}
+
 static void
 convreader(void *a)
 {
@@ -1217,7 +1282,7 @@ convreader(void *a)
 print("convreader\n");
 	qlock(c);
 	assert(c->reader == 1);
-	while(c->dataopen == 0) {
+	while(c->dataopen == 0 && c->state != CClosed) {
 		qunlock(c);
 		b = nil;
 		if(!waserror()) {
@@ -1226,10 +1291,15 @@ print("convreader\n");
 		}
 		qlock(c);
 		if(b == nil) {
-			convsetstate(c, CClosed);
-			break;
-		}
-		if(!waserror()) {
+print("up->error = %s\n", up->error);
+			if(strcmp(up->error, Eintr) != 0) {
+				if(!waserror()) {
+					convsetstate(c, CClosed);
+					poperror();
+				}
+				break;
+			}
+		} else if(!waserror()) {
 			conviput(c, b, 1);
 			poperror();
 		}
