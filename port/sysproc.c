@@ -32,7 +32,7 @@ sysrfork(ulong *arg)
 	 */
 	int lastvar;	
 
-	flag = arg[0];
+		flag = arg[0];
 	p = u->p;
 	if((flag&RFPROC) == 0) {
 		if(flag & (RFNAMEG|RFCNAMEG)) {
@@ -123,14 +123,11 @@ sysrfork(ulong *arg)
 
 	/* Process groups */
 	if(flag & (RFNAMEG|RFCNAMEG)) {	
-		if(flag & RFNAMEG) {
-			p->pgrp = newpgrp();
+		p->pgrp = newpgrp();
+		if(flag & RFNAMEG)
 			pgrpcpy(p->pgrp, parent->pgrp);
-		}
-		else {
-			p->pgrp = newpgrp();
+		else
 			*p->pgrp->crypt = *parent->pgrp->crypt;
-		}
 	}
 	else {
 		p->pgrp = parent->pgrp;
@@ -419,7 +416,8 @@ shargs(char *s, int n, char **ap)
 {
 	int i;
 
-	s += 2, n -= 2;		/* skip #! */
+	s += 2;
+	n -= 2;		/* skip #! */
 	for(i=0; s[i]!='\n'; i++)
 		if(i == n-1)
 			return 0;
