@@ -31,6 +31,7 @@ Address addr[] = {
 	{ "helix", "connect 080069020427" },
 	{ "spindle", "connect 0800690202df" },
 	{ "r70", "connect 08002b04265d" },
+	{ "fornax", "connect 00007701d2ba" },
 	{ 0 }
 };
 
