@@ -81,8 +81,13 @@ udpstate(char **s, Conv *c)
 }
 
 static char*
-udpannounce(Conv *c, char**, int)
+udpannounce(Conv *c, char** argv, int argc)
 {
+	char *e;
+
+	e = Fsstdannounce(c, argv, argc);
+	if(e != nil)
+		return e;
 	Fsconnected(&fs, c, nil);
 
 	return nil;

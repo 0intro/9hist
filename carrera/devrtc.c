@@ -175,6 +175,7 @@ _rtctime(void)
 long
 rtctime(void)
 {
+#ifdef notdef
 	int i;
 	long t, ot;
 
@@ -191,6 +192,11 @@ rtctime(void)
 	iunlock(&rtclock);
 
 	return t;
+#else
+	extern ulong boottime;
+
+	return boottime+TK2SEC(MACHP(0)->ticks);
+#endif /* notdef */
 }
 
 static long	 
