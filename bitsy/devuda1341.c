@@ -502,19 +502,25 @@ audioopen(Chan *c, int omode)
 		break;
 
 	case Qaudio:
-		amode = Awrite;
-		switch (omode & 0x7)
-		case OREAD:
-			break;
-		case OWRITE
+		if ((omode & 0x7) > 2)
+			error(Ebadarg);
 		qlock(&audio);
-		if(audio.amode != Aclosed){
+		omode++;
+		if(audio.amode & omode){
 			qunlock(&audio);
 			error(Einuse);
 		}
-		if(audio.bufinit == 0) {
-			audio.bufinit = 1;
-			sbbufinit();
+		if (omode & AudioIn) {
+			/* read */
+			audio.amode |= AudioIn;
+			if((audio.bufinit & AudioIn) == 0) {
+				audio.bufinit |= AudioIn;
+				sbbufinit();
+			}
+		}
+		if (omode & 0x2) {
+			/* write */
+			audio.amode |= 0x2;
 		}
 		audio.amode = amode;
 		setempty();
