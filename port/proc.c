@@ -515,7 +515,7 @@ postnote(Proc *p, int dolock, char *n, int flag)
 
 	ret = 0;
 	if(p->nnote < NNOTE) {
-		strcpy(p->note[up->nnote].msg, n);
+		strcpy(p->note[p->nnote].msg, n);
 		p->note[p->nnote++].flag = flag;
 		ret = 1;
 	}

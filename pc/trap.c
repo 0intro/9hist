@@ -269,7 +269,7 @@ trap(Ureg *ur)
 	else if(ur->pc <= (ulong)end && *(uchar*)ur->pc == 0xCF) {
 		if(iret_traps++ > 10)
 			panic("iret trap");
-		goto out;
+		goto saveout;
 	}
 	iret_traps = 0;
 
@@ -294,13 +294,12 @@ trap(Ureg *ur)
 		/* a processor or coprocessor error */
 		if(v <= 16){
 			if(user){
+				spllo();
 				sprint(buf, "sys: trap: %s", excname[v]);
 				postnote(up, 1, buf, NDebug);
 				goto out;
 			} else {
 				dumpregs(ur);
-print("%s pc=0x%lux", excname[v], ur->pc);
-for(;;);
 				panic("%s pc=0x%lux", excname[v], ur->pc);
 			}
 		}
@@ -316,7 +315,7 @@ for(;;);
 			 * In fact, just ignore all such interrupts.
 			 */
 			if((isr & (1<<v)) == 0)
-				goto out;
+				goto saveout;
 			if(badintr[v]++ == 0 || (badintr[v]%100000) == 0){
 				print("unknown interrupt %d pc=0x%lux: total %d\n", v,
 					ur->pc, badintr[v]);
@@ -326,7 +325,7 @@ for(;;);
 			/* unimplemented traps */
 			print("illegal trap %d pc=0x%lux\n", v, ur->pc);
 		}
-		goto out;
+		goto saveout;
 	}
 
 	/* there may be multiple handlers on one interrupt level */
@@ -338,10 +337,11 @@ for(;;);
 	/*
 	 *  check user since syscall does its own notifying
 	 */
+out:
 	splhi();
 	if(v != Syscallvec && user && (up->procctl || up->nnote))
 		notify(ur);
-out:
+saveout:
 	scndlastur = lastur;
 	lastur = *ur;
 }
@@ -526,9 +526,9 @@ notify(Ureg *ur)
 	}
 
 	if(n->flag!=NUser && (up->notified || up->notify==0)){
-		qunlock(&up->debug);
 		if(n->flag == NDebug)
 			pprint("suicide: %s\n", n->msg);
+		qunlock(&up->debug);
 		pexit(n->msg, n->flag!=NDebug);
 	}
 
