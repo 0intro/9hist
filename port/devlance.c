@@ -281,21 +281,20 @@ lanceoput(Queue *q, Block *bp )
 
 	if(bp->type == M_CTL){
 		e = q->ptr;
+		qlock(&l);
 		if(streamparse("connect", bp)){
+			if(e->type == -1)
+				l.all--;
 			e->type = strtol((char *)bp->rptr, 0, 0);
-			if(e->type == -1){
-				qlock(&l);
+			if(e->type == -1)
 				l.all++;
-				qunlock(&l);
-			}
 		} else if(streamparse("promiscuous", bp)) {
 			e->prom = 1;
-			qlock(&l);
 			l.prom++;
 			if(l.prom == 1)
 				lancestart(PROM, 1);/**/
-			qunlock(&l);
 		}
+		qunlock(&l);
 		freeb(bp);
 		return;
 	}
@@ -351,6 +350,7 @@ lanceoput(Queue *q, Block *bp )
 		l.misses = 0;
 		print("lance wedged, restarting\n");
 		lancestart(0, 0);
+		qunlock(&l.tlock);
 		freeb(bp);
 		return;		/* the interrupt routine will qunlock(&l.tlock) */
 	}
