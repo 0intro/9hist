@@ -255,10 +255,10 @@ mntclone(Chan *c, Chan *nc)
 	nc->mnt = c->mnt;
 	nc->mchan = c->mchan;
 	nc->mqid = c->qid;
-	if(new)
-		poperror();
 	mhfree(mh);
 	poperror();
+	if(new)
+		poperror();
 	incref(m);
 	return nc;
 }

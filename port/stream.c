@@ -192,6 +192,8 @@ freeb(Block *bp)
 	Bclass *bcp;
 	int tries;
 
+	if((bp->flags&S_CLASS) >= Nclass)
+		panic("freeb class");
 	bcp = &bclass[bp->flags & S_CLASS];
 	lock(bcp);
 	bp->rptr = bp->wptr = 0;

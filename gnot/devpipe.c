@@ -129,7 +129,9 @@ pipewrite(Chan *c, void *va, long n)
 		postnote(u->p, 1, "sys: write on closed pipe", NExit);
 		error(0, Egreg);
 	}
-	return streamwrite(c, va, n, 0);
+	n = streamwrite(c, va, n, 0);
+	poperror();
+	return n;
 }
 
 void

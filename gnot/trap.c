@@ -5,6 +5,7 @@
 #include	"fns.h"
 #include	"ureg.h"
 #include	"io.h"
+#include	"errno.h"
 
 void	notify(Ureg*);
 void	noted(Ureg**);
@@ -241,6 +242,7 @@ syscall(Ureg *aur)
 	ulong sp;
 	ulong r0;
 	Ureg *ur;
+	char *msg;
 
 	u->p->insyscall = 1;
 	ur = aur;
@@ -263,8 +265,8 @@ syscall(Ureg *aur)
 	u->nerrlab = 0;
 	ret = -1;
 	if(!waserror()){
-		if(r1 >= sizeof systab/BY2WD){
-			pprint("bad sys call number %d pc %lux\n", r1, ((Ureg*)UREGADDR)->pc);
+		if(r0 >= sizeof systab/BY2WD){
+			pprint("bad sys call number %d pc %lux\n", r0, ((Ureg*)UREGADDR)->pc);
 			msg = "bad sys call";
 	    Bad:
 			postnote(u->p, 1, msg, NDebug);
@@ -277,7 +279,7 @@ syscall(Ureg *aur)
 		}
 		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-4*BY2WD))
 			validaddr(ur->sp, 4*BY2WD, 0);
-		ret = (*systab[r1])((ulong*)(sp+2*BY2WD));
+		ret = (*systab[r0])((ulong*)(sp+2*BY2WD));
 	}
 	u->nerrlab = 0;
 	u->p->insyscall = 0;
