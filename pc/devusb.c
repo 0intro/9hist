@@ -59,6 +59,11 @@ typedef struct Udev Udev;
 typedef struct QH QH;
 typedef struct TD TD;
 
+#define Class(csp)		((csp)&0xff)
+#define Subclass(csp)	(((csp)>>8)&0xff)
+#define Proto(csp)		(((csp)>>16)&0xff)
+#define CSP(c, s, p)	((c) | ((s)<<8) | ((p)<<16))
+
 struct TD {
 	ulong	link;
 	ulong	status;	/* controller r/w */
@@ -168,9 +173,7 @@ struct Udev {
 	int		state;
 	int		id;
 	byte	port;		/* port number on connecting hub */
-	byte	class;
-	byte	subclass;
-	byte	proto;
+	ulong	csp;
 	int		ls;
 	int		npt;
 	Endpt*	ep[16];		/* active end points */
@@ -211,9 +214,7 @@ struct Endpt {
 	int		maxpkt;	/* maximum packet size (from endpoint descriptor) */
 	int		data01;	/* 0=DATA0, 1=DATA1 */
 	byte	eof;
-	byte	class;
-	byte	subclass;
-	byte	proto;
+	ulong	csp;
 	byte	mode;	/* OREAD, OWRITE, ORDWR */
 	byte	nbuf;	/* number of buffers allowed */
 	byte	periodic;
@@ -990,7 +991,7 @@ static void
 usbdevreset(Udev *d)
 {
 	d->state = Disabled;
-	if(d->class == Hubclass)
+	if(Class(d->csp) == Hubclass)
 		for(d = d->ports; d != nil; d = d->next)
 			usbdevreset(d);
 }
@@ -1689,10 +1690,10 @@ usbread(Chan *c, void *a, long n, vlong offset)
 			free(s);
 			nexterror();
 		}
-		l = snprint(s, READSTR, "%s %d.%d.%d\n", devstates[d->state], d->class, d->subclass, d->proto);
+		l = snprint(s, READSTR, "%s %#6.6x\n", devstates[d->state], d->csp);
 		for(i=0; i<nelem(d->ep); i++)
 			if((e = d->ep[i]) != nil)	/* TO DO: freeze e */
-				l += snprint(s+l, READSTR-l, "%2d %ud.%ud.%ud bytes %10lud blocks %10lud\n", i, e->class, e->subclass, e->proto, e->nbytes, e->nblocks);
+				l += snprint(s+l, READSTR-l, "%2d %#6.6x %10lud bytes %10lud blocks\n", i, e->csp, e->nbytes, e->nblocks);
 		n = readstr(offset, a, n, s);
 		poperror();
 		free(s);
@@ -1813,23 +1814,19 @@ usbwrite(Chan *c, void *a, long n, vlong)
 		nf = getfields(cmd, fields, nelem(fields), 0, " \t\n");
 		if(nf > 1 && strcmp(fields[0], "speed") == 0){
 			d->ls = strtoul(fields[1], nil, 0) == 0;
-		} else if(nf > 5 && strcmp(fields[0], "class") == 0){
+		} else if(nf > 3 && strcmp(fields[0], "class") == 0){
 			i = strtoul(fields[2], nil, 0);
 			d->npt = strtoul(fields[1], nil, 0);
-			/* class config# class subclass proto */
+			/* class config# csp ( == class subclass proto) */
 			if (i < 0 || i >= nelem(d->ep)
 			 || d->npt > nelem(d->ep) || i >= d->npt)
 				error(Ebadarg);
 			if (i == 0) {
-				d->class = strtoul(fields[3], nil, 0);
-				d->subclass = strtoul(fields[4], nil, 0);
-				d->proto = strtoul(fields[5], nil, 0);
+				d->csp = strtoul(fields[3], nil, 0);
 			}
 			if(d->ep[i] == nil)
 				d->ep[i] = devendpt(d, i, 1);
-			d->ep[i]->class = strtoul(fields[3], nil, 0);
-			d->ep[i]->subclass = strtoul(fields[4], nil, 0);
-			d->ep[i]->proto = strtoul(fields[5], nil, 0);
+			d->ep[i]->csp = strtoul(fields[3], nil, 0);
 		}else if(nf > 2 && strcmp(fields[0], "data") == 0){
 			i = strtoul(fields[1], nil, 0);
 			if(i < 0 || i >= nelem(d->ep) || d->ep[i] == nil)
