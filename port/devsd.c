@@ -9,7 +9,8 @@
 #include	"../port/error.h"
 #include	"devtab.h"
 
-enum {
+enum
+{
 	TypeDA		= 0x00,		/* Direct Access */
 	TypeSA		= 0x01,		/* Sequential Access */
 	TypeWO		= 0x04,		/* Worm */
@@ -60,7 +61,8 @@ Disk	disk[Ndisk];
 static	void	sdrdpart(Disk*);
 static	long	sdio(Chan*, int, char*, ulong, ulong);
 
-static int types[] = {
+static int types[] =
+{
 	TypeDA, TypeCD, TypeMO,
 	-1,
 };

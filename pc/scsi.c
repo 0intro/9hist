@@ -7,7 +7,8 @@
 #include "ureg.h"
 #include "../port/error.h"
 
-enum {
+enum
+{
 	Ninq		= 255,
 	Nscratch	= 255,
 
@@ -21,7 +22,8 @@ enum {
 	CMDwrite10	= 0x2A,
 };
 
-typedef struct {
+typedef struct
+{
 	ISAConf;
 	Scsiio	io;
 
@@ -31,7 +33,8 @@ typedef struct {
 static Ctlr *scsi[MaxScsi];
 
 typedef struct Link Link;
-typedef struct Link {
+typedef struct Link
+{
 	char	*type;
 	Scsiio	(*reset)(int, ISAConf*);
 
@@ -231,7 +234,7 @@ scsistart(Target *t, char lun, int s)
 	memset(cmd, 0, sizeof cmd);
 	cmd[0] = CMDstart;
 	cmd[1] = lun<<5;
-	cmd[4] = s ? 1 : 0;
+	cmd[4] = s? 1: 0;
 	return scsiexec(t, SCSIread, cmd, sizeof(cmd), 0, 0);
 }
 
@@ -388,3 +391,47 @@ scsireqsense(Target *t, char lun, void *data, int *nbytes, int quiet)
 	return STcheck;
 }
 
+int
+scsidiskinfo(Target *t, char lun, uchar *data)
+{
+	int s, nbytes, try;
+	uchar cmd[10];
+
+	for(try=0; try<3; try++) {
+
+		nbytes = 4;
+
+		memset(cmd, 0, sizeof(cmd));
+		cmd[0] = 0x43;
+		cmd[1] = lun<<5;
+		cmd[7] = nbytes>>8;
+		cmd[8] = nbytes>>0;
+
+		s = scsiexec(t, SCSIread, cmd, sizeof(cmd), data, &nbytes);
+		if(s == STok)
+			break;
+
+		nbytes = Nscratch;
+		scsireqsense(t, lun, t->scratch, &nbytes, 0);
+	}
+	return s;
+}
+
+int
+scsitrackinfo(Target *t, char lun, int track, uchar *data)
+{
+	int s, nbytes;
+	uchar cmd[10];
+
+	nbytes = 12;
+
+	memset(cmd, 0, sizeof(cmd));
+	cmd[0] = 0xe5;
+	cmd[1] = lun<<5;
+	cmd[5] = track;
+	cmd[7] = nbytes>>8;
+	cmd[8] = nbytes>>0;
+
+	s = scsiexec(t, SCSIread, cmd, sizeof(cmd), data, &nbytes);
+	return s;
+}
