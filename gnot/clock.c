@@ -35,8 +35,12 @@ clock(Ureg *ur)
 	kbdclock();
 	mouseclock();
 	if((ur->sr&SPL(7)) == 0 && p && p->state==Running){
-		if(anyready())
-			sched();
+		if(anyready()){
+			if(p->hasspin)
+				p->hasspin = 0;
+			else
+				sched();
+		}
 		if(u->nnote && (ur->sr&SUPER)==0)
 			notify(ur);
 	}

@@ -419,6 +419,7 @@ popq(Stream *s)
 		(*q->info->close)(RD(q));
 	s->procq->next = q->next;
 	RD(q->next)->next = RD(s->procq);
+	poperror();
 	qunlock(s);
 	freeq(q);
 }

@@ -43,7 +43,7 @@ enum {
 };
 
 /*
- *  exception/trap gates
+ *  trap/interrupt gates
  */
 Segdesc ilt[256] =
 {
@@ -63,3 +63,22 @@ Segdesc ilt[256] =
 [Efault]	TRAPGATE(KESEL, efault, 3),
 [Eco]		TRAPGATE(KESEL, eco, 3),
 };
+
+/*
+ *  trap table
+ */
+uchar	traptab[4096];
+
+/*
+ *  set up some basic vectored interrupts
+ */
+trapinit(
+
+/*
+ *  j-random uncaught trap or interrupt
+ */
+void
+trap(void)
+{
+	panic("unknown trap");
+}

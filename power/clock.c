@@ -109,8 +109,12 @@ clock(Ureg *ur)
 		}
 		checkalarms();
 		if(u && (ur->status&IEP) && u->p && u->p->state==Running){
-			if(anyready())
-				sched();
+			if(anyready()){
+				if(u->p->hasspin)
+					u->p->hasspin = 0;	/* just in case */
+				else
+					sched();
+			}
 			if(u->nnote && (ur->status&KUP))
 				notify(ur);
 		}

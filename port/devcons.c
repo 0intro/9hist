@@ -497,6 +497,7 @@ consread(Chan *c, void *buf, long n, ulong offset)
 			*cbuf++ = ch;
 			--n;
 		}
+		poperror();
 		qunlock(&kbdq);
 		return i;
 

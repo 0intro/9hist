@@ -10,8 +10,11 @@ qlock(QLock *q)
 {
 	Proc *p;
 
-	if(canlock(&q->use))
+	if(canlock(&q->use)){
+		if(u)
+			u->p->hasspin = 0;
 		return;
+	}
 	lock(&q->queue);
 	if(canlock(&q->use)){
 		unlock(&q->queue);

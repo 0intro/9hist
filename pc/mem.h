@@ -37,7 +37,7 @@ struct Segdesc
 /*
  *  segment descriptor initializers
  */
-#define	DATASEG(p) 	{ SEGG|(0xF<<16)|SEGP|SEGPL(p)|SEGDATA|SEGW, 0xFFFF }
+#define	DATASEG(p) 	{ SEGG|SEGB|(0xF<<16)|SEGP|SEGPL(p)|SEGDATA|SEGW, 0xFFFF }
 #define	EXECSEG(p) 	{ SEGG|SEGD|(0xF<<16)|SEGP|SEGPL(p)|SEGEXEC|SEGR, 0xFFFF }
 
 /*

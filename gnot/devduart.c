@@ -747,8 +747,8 @@ duartoput(Queue *q, Block *bp)
 		(*cq->puts)(cq, bp->rptr, n);
 		bp->rptr += n;
 	}
-	freeb(bp);
 	poperror();
+	freeb(bp);
 }
 
 /*

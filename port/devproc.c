@@ -328,6 +328,7 @@ procread(Chan *c, void *va, long n, ulong offset)
 			n = ERRLEN;
 		}
 		kunmap(k);
+		poperror();
 		unlock(&p->debug);
 		return n;
 
@@ -387,6 +388,7 @@ procwrite(Chan *c, void *va, long n, ulong offset)
   	  		goto Died;
 		}
 		pgrpnote(pg, va, n, NUser);
+		poperror();
 		qunlock(&pg->debug);
 		return n;
 	}
@@ -429,6 +431,7 @@ procwrite(Chan *c, void *va, long n, ulong offset)
 		pprint("unknown qid in procwrite\n");
 		error(Egreg);
 	}
+	poperror();
 	unlock(&p->debug);
 	return n;
 }

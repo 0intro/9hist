@@ -27,26 +27,6 @@ struct Label
 {
 	ulong	sp;
 	ulong	pc;
-	ushort	sr;
-};
-
-/*
- * floating point registers
- */
-enum
-{
-	FPinit,
-	FPactive,
-	FPdirty,
-};
-
-struct	FPsave
-{
-	uchar	type;
-	uchar	size;
-	short	reserved;
-	char	junk[212];	/* 68881: sizes 24, 180; 68882: 56, 212 */
-	char	reg[3*4+8*12];
 };
 
 struct Conf

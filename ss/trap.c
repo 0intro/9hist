@@ -309,6 +309,7 @@ Syscall *systab[]={
 long
 syscall(Ureg *aur)
 {
+	int i;
 	long ret;
 	ulong sp;
 	ulong r7;
@@ -349,13 +350,19 @@ syscall(Ureg *aur)
 			msg = "sys: odd stack";
 			goto Bad;
 		}
-		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-5*BY2WD))
-			validaddr(sp, 5*BY2WD, 0);
+		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-(2+MAXSYSARG)*BY2WD))
+			validaddr(sp, ((2+MAXSYSARG)*BY2WD), 0);
 		ret = (*systab[r7])((ulong*)(sp+2*BY2WD));
+		poperror();
 	}
 	ur->pc += 4;
 	ur->npc = ur->pc+4;
-	u->nerrlab = 0;
+	if(u->nerrlab){
+		print("unbalanced error stack: %d extra\n", u->nerrlab);
+		for(i = 0; i < NERR; i++)
+			print("sp=%lux pc=%lux\n", u->errlab[i].sp, u->errlab[i].pc);
+		panic("bad rob");
+	}
 	u->p->insyscall = 0;
 	if(r7 == NOTED)	/* ugly hack */
 		noted(&aur);	/* doesn't return */

@@ -1017,6 +1017,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			break;
 		}
 
+	poperror();
 	if(isoff)
 		cursoron(1);
 	return n;

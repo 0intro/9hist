@@ -243,6 +243,7 @@ sysread(ulong *arg)
 	else
 		n = (*devtab[c->type].read)(c, (void*)arg[1], n, c->offset);
 	c->offset += n;
+	poperror();
 	qunlock(&c->rdl);
 	return n;
 }
@@ -265,6 +266,7 @@ syswrite(ulong *arg)
 		error(Eisdir);
 	n = (*devtab[c->type].write)(c, (void*)arg[1], arg[2], c->offset);
 	c->offset += n;
+	poperror();
 	qunlock(&c->wrl);
 	return n;
 }
@@ -305,9 +307,9 @@ sysseek(ulong *arg)
 		break;
 	}
 	off = c->offset;
+	poperror();
 	qunlock(&c->rdl);
 	qunlock(&c->wrl);
-	poperror();
 	return off;
 }
 
@@ -412,8 +414,10 @@ bindmount(ulong *arg, int ismount)
 	if(flag && !(c0->qid.path&CHDIR))
 		error(Ebadmount);
 	ret = mount(c0, c1, flag);
-	close(c0);
+	poperror();
 	close(c1);
+	poperror();
+	close(c0);
 	if(ismount){
 		close(bogus.chan);
 		fdclose(arg[0]);
@@ -465,6 +469,7 @@ sysremove(ulong *arg)
 	 * so fake it up.  rootclose() is known to be a nop.
 	 */
 	c->type = 0;
+	poperror();
 	close(c);
 	return 0;
 }

@@ -204,8 +204,8 @@ sysexec(ulong *arg)
 	arg[1] += BY2WD;
 	file = progarg[0];
 	progarg[0] = elem;
-	close(tc);
 	poperror();
+	close(tc);
 	goto Header;
 
     Binary:
@@ -335,6 +335,7 @@ sysexec(ulong *arg)
 	s->maxva = b;
 	s->mod = 0;
 
+	poperror();
 	close(tc);
 
 	p->seg[BSEG].endseg = bssend;
@@ -435,6 +436,7 @@ sysexits(ulong *arg)
 			validaddr((ulong)status, 1, 0);
 			vmemchr(status, 0, ERRLEN);
 		}
+		poperror();
 	}
 	pexit(status, 1);
 }
@@ -496,6 +498,7 @@ sysforkpgrp(ulong *arg)
 		memset(u->note, 0, sizeof(u->note));
 	}
 
+	poperror();
 	closepgrp(u->p->pgrp);
 	u->p->pgrp = pg;
 	return pg->pgrpid;

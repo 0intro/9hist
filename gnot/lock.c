@@ -28,12 +28,16 @@ lock(Lock *l)
     	if(ll->key >= 0){
 		ll->key |= 0x80;
 		ll->pc = ((ulong*)&l)[PCOFF];
+		if(u && u->p)
+			u->p->hasspin = 1;
 		return;
 	}
 	for(i=0; i<10000000; i++)
     		if(ll->key >= 0){
 			ll->key |= 0x80;
 			ll->pc = ((ulong*)&l)[PCOFF];
+			if(u && u->p)
+				u->p->hasspin = 1;
 			return;
 		}
 	ll->key = 0;
@@ -47,6 +51,8 @@ canlock(Lock *l)
 	if(ll->key >= 0){
 		ll->key |= 0x80;
 		ll->pc = ((ulong*)&l)[PCOFF];
+		if(u && u->p)
+			u->p->hasspin = 1;
 		return 1;
 	}
 	return 0;
@@ -57,6 +63,8 @@ unlock(Lock *l)
 {
 	l->pc = 0;
 	l->key = 0;
+	if(u && u->p)
+		u->p->hasspin = 0;
 }
 
 void

@@ -400,6 +400,7 @@ struct Proc
 	int	kp;			/* true if a kernel process */
 	Proc	*palarm;		/* Next alarm time */
 	ulong	alarm;			/* Time of call */
+	int	hasspin;
 
 	/*
 	 *  machine specific MMU goo
@@ -491,6 +492,7 @@ enum {
 	Streambhi= 32,		/* block count high water mark */
 };
 
+#define MAXSYSARG	6	/* for mount(fd, mpt, flag, arg, srv, authfd) */
 #define	PRINTSIZE	256
 #define	NUMSIZE	12		/* size of formatted number */
 
