@@ -815,7 +815,7 @@ pcmio(int dev, ISAConf *isa)
 
 	/* enable io port map 0 */
 	if(isa->port == 0)
-		isa->port = 300;
+		isa->port = 0x300;
 	we = rdreg(pp, Rwe);
 	wrreg(pp, Riobtm0lo, isa->port);
 	wrreg(pp, Riobtm0hi, isa->port>>8);
