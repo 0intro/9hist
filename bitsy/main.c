@@ -13,6 +13,8 @@ Conf conf;
 
 static void	gpioinit(void);
 
+int  noprint;
+
 void
 main(void)
 {
@@ -21,6 +23,7 @@ main(void)
 
 	/* point to Mach structure */
 	m = (Mach*)MACHADDR;
+	memset(m, 0, sizeof(Mach));
 
 	rs232power(1);
 	iprint("bitsy kernel\n");
@@ -31,10 +34,16 @@ main(void)
 	sa1100_uartsetup();
 	gpioinit();
 	trapinit();
+	printinit();
 	clockinit();
+	procinit0();
+	initseg();
 	chandevreset();
+noprint = 1;
 	pageinit();
+	swapinit();
 	userinit();
+iprint("schedinit(), death soon\n");
 	schedinit();
 }
 
@@ -44,7 +53,7 @@ main(void)
 void
 exit(int ispanic)
 {
-	void (*f)();
+	void (*f)(void);
 
 	USED(ispanic);
 	delay(1000);
@@ -54,6 +63,8 @@ exit(int ispanic)
 	f = nil;
 	(*f)();
 }
+
+static uchar *sp;
 
 /*
  *  starting place for first process
@@ -87,7 +98,66 @@ init0(void)
 	}
 	kproc("alarm", alarmkproc, 0);
 
-	touser();
+	touser(sp);
+}
+
+/*
+ *  pass boot arguments to /boot
+ */
+static uchar *
+pusharg(char *p)
+{
+	int n;
+
+	n = strlen(p)+1;
+	sp -= n;
+	memmove(sp, p, n);
+	return sp;
+}
+static void
+bootargs(ulong base)
+{
+ 	int i, ac;
+	uchar *av[32];
+	uchar *bootpath;
+	uchar **lsp;
+
+	/*
+ 	 *  the sizeof(Sargs) is to make the validaddr check in
+	 *  trap.c's syscall() work even when we have less than the
+	 *  max number of args.
+	 */
+	sp = (uchar*)base + BY2PG - sizeof(Sargs);
+
+	bootpath = pusharg("/boot");
+	ac = 0;
+	av[ac++] = pusharg("boot");
+
+	/* 4 byte word align stack */
+	sp = (uchar*)((ulong)sp & ~3);
+
+	/* build argc, argv on stack */
+	sp -= (ac+1)*sizeof(sp);
+	lsp = (uchar**)sp;
+	for(i = 0; i < ac; i++)
+		*lsp++ = av[i] + ((USTKTOP - BY2PG) - base);
+	*lsp = 0;
+
+	/* push argv onto stack */
+	sp -= BY2WD;
+	lsp = (uchar**)sp;
+	*lsp = sp + BY2WD + ((USTKTOP - BY2PG) - base);
+
+	/* push pointer to "/boot" */
+	sp -= BY2WD;
+	lsp = (uchar**)sp;
+	*lsp = bootpath + ((USTKTOP - BY2PG) - base);
+
+	/* leave space for where the initcode's caller's return PC would normally reside */
+	sp -= BY2WD;
+
+	/* relocate stack to user's virtual addresses */
+	sp += (USTKTOP - BY2PG) - base;
 }
 
 /*
@@ -112,11 +182,12 @@ userinit(void)
 	strcpy(p->text, "*init*");
 	strcpy(p->user, eve);
 
+
 	/*
 	 * Kernel Stack
 	 */
 	p->sched.pc = (ulong)init0;
-	p->sched.sp = (ulong)p->kstack+KSTACK-(1+MAXSYSARG)*BY2WD;
+	p->sched.sp = (ulong)p->kstack+KSTACK-(sizeof(Sargs)+BY2WD);
 
 	/*
 	 * User Stack
@@ -125,6 +196,9 @@ userinit(void)
 	p->seg[SSEG] = s;
 	pg = newpage(1, 0, USTKTOP-BY2PG);
 	segpage(s, pg);
+	k = kmap(pg);
+	bootargs(VA(k));
+	kunmap(k);
 
 	/*
 	 * Text

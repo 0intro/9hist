@@ -84,6 +84,19 @@ trapdump(char *tag)
 		intrregs->iccr, intrregs->icfp);
 }
 
+void
+dumpregs(Ureg *ur)
+{
+	iprint("r0  0x%.8lux r1  0x%.8lux r3  0x%.8lux r3  0x%.8lux\n",
+		ur->r0, ur->r1, ur->r2, ur->r3);
+	iprint("r4  0x%.8lux r5  0x%.8lux r6  0x%.8lux r7  0x%.8lux\n",
+		ur->r4, ur->r5, ur->r6, ur->r7);
+	iprint("r8  0x%.8lux r9  0x%.8lux r10 0x%.8lux r11 0x%.8lux\n",
+		ur->r8, ur->r9, ur->r10, ur->r11);
+	iprint("r12 0x%.8lux r13 0x%.8lux r14 0x%.8lux\n",
+		ur->r12, ur->r13, ur->r14);
+	iprint("type %.8lux psr %.8lux pc %.8lux\n", ur->type, ur->psr, ur->pc);
+}
 
 /*
  *  enable an interrupt and attach a function to it
@@ -108,6 +121,31 @@ intrenable(int irq, void (*f)(Ureg*, void*), void* a, char *name)
 }
 
 /*
+ *  called by trap to handle access faults
+ */
+static void
+faultarm(Ureg *ureg, ulong va, int user, int read)
+{
+	int n, insyscall;
+	char buf[ERRLEN];
+
+	insyscall = up->insyscall;
+	up->insyscall = 1;
+	n = fault(va, read);
+iprint("fault returns %d\n", n);
+	if(n < 0){
+		if(!user){
+			dumpregs(ureg);
+			panic("fault: 0x%lux\n", va);
+		}
+		sprint(buf, "sys: trap: fault %s va=0x%lux",
+			read? "read" : "write", va);
+		postnote(up, 1, buf, NDebug);
+	}
+	up->insyscall = insyscall;
+}
+
+/*
  *  here on all exceptions other than syscall (SWI)
  */
 void
@@ -115,15 +153,66 @@ trap(Ureg *ureg)
 {
 	int i;
 	Vctl *v;
+	int user;
+	ulong pc, va;
+	char buf[ERRLEN];
 
-	iprint("trap %lux pc %lux psr %lux\n", ureg->type, ureg->pc, ureg->psr);
-
+	user = (ureg->psr & PsrMask) == PsrMusr;
 	switch(ureg->type){
 	default:
 		panic("unknown trap");
 		break;
-	case PsrMabt:	/* fault */
-		panic("faults not implemented");
+	case PsrMabt:	/* prefetch fault */
+		iprint("prefetch abort at %lux\n", ureg->pc-4);
+		faultarm(ureg, ureg->pc - 4, user, 1);
+		break;
+	case PsrMabt+1:	/* data fault */
+		pc = ureg->pc - 8;
+		va = getfar();
+		switch(getfsr() & 0xf){
+		case 0x0:
+			panic("vector exception at %lux\n", pc);
+			break;
+		case 0x1:
+		case 0x3:
+			if(user){
+				snprint(buf, sizeof(buf), "sys: alignment: pc 0x%lux va 0x%lux\n",
+					pc, va);
+				postnote(up, 1, buf, NDebug);
+			} else
+				panic("kernel alignment: pc 0x%lux va 0x%lux", pc, va);
+			break;
+		case 0x2:
+			panic("terminal exception at %lux\n", pc);
+			break;
+		case 0x4:
+		case 0x6:
+		case 0x8:
+		case 0xa:
+		case 0xc:
+		case 0xe:
+			panic("external abort at %lux\n", pc);
+			break;
+		case 0x5:
+		case 0x7:
+			/* translation fault, i.e., no pte entry */
+			faultarm(ureg, va, user, 0);
+			break;
+		case 0x9:
+		case 0xb:
+			/* domain fault, accessing something we shouldn't */
+			if(user){
+				sprint(buf, "sys: access violation: pc 0x%lux va 0x%lux\n", pc, va);
+				postnote(up, 1, buf, NDebug);
+			} else
+				panic("kernel access violation: pc 0x%lux va 0x%lux\n", pc, va);
+			break;
+		case 0xd:
+		case 0xf:
+			/* permission error, copy on write or real permission error */
+			faultarm(ureg, va, user, 1);
+			break;
+		}
 		break;
 	case PsrMund:	/* undefined instruction */
 		panic("undefined instruction");
@@ -136,6 +225,11 @@ trap(Ureg *ureg)
 					v->f(ureg, v->a);
 			}
 		break;
+	}
+
+	if(user && (up->procctl || up->nnote)){
+		splhi();
+		notify(ureg);
 	}
 }
 

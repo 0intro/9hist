@@ -55,7 +55,6 @@ newseg(int type, ulong base, ulong size)
 
 	if(swapfull())
 		error(Enoswap);
-
 	s = smalloc(sizeof(Segment));
 	s->ref = 1;
 	s->type = type;

@@ -1820,6 +1820,12 @@ tcpoutput(Conv *s)
 			x = backoff(tcb->backoff) *
 			    (tcb->mdev + (tcb->srtt>>LOGAGAIN) + MSPTICK) / MSPTICK;
 
+			/*  allow for slow initial response
+			 *  (miller@hamnavoe.demon.co.uk)
+			 */
+			if(tcb->state == Syn_sent && x < 500/MSPTICK)
+				x = 500/MSPTICK;
+
 			/* take into account delayed ack */
 			if(sent <= 2*tcb->mss)
 				x += TCP_ACK/MSPTICK;

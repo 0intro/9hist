@@ -249,11 +249,12 @@ userinit(void)
 	/*
 	 * Kernel Stack
 	 *
-	 * N.B. The -12 for the stack pointer is important.
+	 * N.B. make sure there's enough space for syscall to check
+	 *	for valid args and 
 	 *	4 bytes for gotolabel's return PC
 	 */
 	p->sched.pc = (ulong)init0;
-	p->sched.sp = (ulong)p->kstack+KSTACK-(1+MAXSYSARG)*BY2WD;
+	p->sched.sp = (ulong)p->kstack+KSTACK-(sizeof(Sargs)+BY2WD);
 
 	/*
 	 * User Stack

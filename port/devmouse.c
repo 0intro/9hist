@@ -199,6 +199,7 @@ mouseread(Chan *c, void *va, long n, vlong off)
 	static int map[8] = {0, 4, 2, 6, 1, 5, 3, 7 };
 	ulong offset = off;
 	Mousestate m;
+	int b;
 
 	p = va;
 	switch(c->qid.path){
@@ -245,9 +246,12 @@ mouseread(Chan *c, void *va, long n, vlong off)
 			unlock(&cursor);
 		}
 
+		b = buttonmap[m.buttons&7];
+		/* put buttons 4 and 5 back in */
+		b |= m.buttons & (3<<3);
 		sprint(buf, "m%11d %11d %11d %11lud",
 			m.xy.x, m.xy.y,
-			buttonmap[m.buttons&7],
+			b,
 			m.msec);
 		mouse.lastcounter = m.counter;
 		if(n > 1+4*12)

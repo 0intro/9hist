@@ -173,8 +173,8 @@ TEXT vtable(SB), $-4
 	WORD	$_vsvc(SB)			/* reset, in svc mode already */
 	WORD	$_vund(SB)			/* undefined, switch to svc mode */
 	WORD	$_vsvc(SB)			/* swi, in svc mode already */
-	WORD	$_vabt(SB)			/* prefetch abort, switch to svc mode */
-	WORD	$_vabt(SB)			/* data abort, switch to svc mode */
+	WORD	$_vpabt(SB)			/* prefetch abort, switch to svc mode */
+	WORD	$_vdabt(SB)			/* data abort, switch to svc mode */
 	WORD	$_vsvc(SB)			/* reserved */
 	WORD	$_virq(SB)			/* IRQ, switch to svc mode */
 	WORD	$_vfiq(SB)			/* FIQ, switch to svc mode */
@@ -208,9 +208,14 @@ TEXT _vund(SB), $-4			/* undefined */
 	MOVW	$PsrMund, R0
 	B	_vswitch
 
-TEXT _vabt(SB), $-4			/* prefetch abort */
+TEXT _vpabt(SB), $-4			/* prefetch abort */
 	MOVM.IA	[R0-R4], (R13)		/* free some working space */
 	MOVW	$PsrMabt, R0		/* r0 = type */
+	B	_vswitch
+
+TEXT _vdabt(SB), $-4			/* prefetch abort */
+	MOVM.IA	[R0-R4], (R13)		/* free some working space */
+	MOVW	$(PsrMabt+1), R0		/* r0 = type */
 	B	_vswitch
 
 TEXT _virq(SB), $-4			/* IRQ */
@@ -277,6 +282,33 @@ _userexcep:
 TEXT _vfiq(SB), $-4			/* FIQ */
 	RFE				/* FIQ is special, ignore it for now */
 
+/*
+ *  This is the first jump from kernel to user mode.
+ *  Fake a return from interrupt.
+ *
+ *  Enter with R0 containing the user stack pointer.
+ *  UTZERO + 0x20 is always the entry point.
+ *  
+ */
+TEXT touser(SB),$-4
+	/* store the user stack pointer into the USR_r13 */
+	MOVM.DB.W [R0], (R13)
+	MOVM.S.IA.W (R13),[R13]
+
+	/* set up a PSR for user level */
+	MOVW	$(PsrMusr), R0
+	MOVW	R0,SPSR
+
+	/* save the PC on the stack */
+	MOVW	$(UTZERO+0x20), R0
+	MOVM.DB.W [R0],(R13)
+
+	/* return from interrupt */
+	RFE				/* MOVM.IA.S.W (R13), [R15] */
+	
+/*
+ *  here to jump to a newly forked process
+ */
 TEXT forkret(SB),$-4
 	ADD	$(4*15), R13		/* make r13 point to ureg->type */
 	MOVW	8(R13), R14		/* restore link */

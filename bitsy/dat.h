@@ -80,7 +80,7 @@ enum
 
 struct PMMU
 {
-	ulong	pid;		/* current pid (0 if none) */
+	ulong	tlbpid;		/* current pid (0 if none) */
 	Page	*l1[Nmeg];	/* this's process' level 1 entries */
 };
 
@@ -114,6 +114,7 @@ struct Mach
 
 	ulong	fairness;		/* for runproc */
 
+	/* stats */
 	int	tlbfault;
 	int	tlbpurge;
 	int	pfault;
@@ -123,24 +124,15 @@ struct Mach
 	int	intr;
 	vlong	fastclock;		/* last sampled value */
 	vlong	intrts;			/* time stamp of last interrupt */
-	int	flushmmu;		/* make current proc flush it's mmu state */
-
 	ulong	spuriousintr;
 	int	lastintr;
 
-	int	loopconst;
+	int	flushmmu;		/* make current proc flush it's mmu state */
+	Proc	*pid2proc[31];		/* what proc holds what pid */
+	int	lastpid;		/* highest assigned pid slot */
 
-	int	cpumhz;
-	int	cpuhz;
-	int	cpuidax;
-	int	cpuiddx;
-	char	cpuidid[16];
-	char*	cpuidtype;
-
-	vlong	mtrrcap;
-	vlong	mtrrdef;
-	vlong	mtrrfix[11];
-	vlong	mtrrvar[32];		/* 256 max. */
+	int	cpumhz;			/* speed of cpu */
+	int	cpuhz;			/* ... *
 
 	/* save areas for exceptions */
 	ulong	sfiq[5];
@@ -197,4 +189,3 @@ enum
 {
 	OneMeg=	1024*1024,
 };
-

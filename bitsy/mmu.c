@@ -100,11 +100,9 @@ mmuinit(void)
 	t[(a&0xfffff)>>PGSHIFT] = L2SmallPage | L2KernelRW | (PHYSDRAM0 & L2PageBaseMask);
 
 	/* set up the domain register to cause all domains to obey pte access bits */
-	iprint("setting up domain access\n");
 	putdac(Dclient);
 
 	/* point to map */
-	iprint("setting tlb map %lux\n", (ulong)l1table);
 	putttb((ulong)l1table);
 
 	/* enable mmu */
@@ -196,14 +194,34 @@ mapspecial(ulong pa, int len)
 }
 
 /*
- *  find a new pid.  If none exist, flush all pids, mmu, and caches.
+ *  maintain pids
  */
 static Lock pidlock;
+
+void
+flushpids(void)
+{
+	memset(l1table, 0, BY2WD*nelem(m->pid2proc)*32);
+	memset(m->pid2proc, 0, sizeof(m->pid2proc));
+	flushcache();
+	flushmmu();
+}
 
 int
 newtlbpid(Proc *p)
 {
-	return p->pid;
+	int i;
+
+	ilock(&pidlock);
+	i = ++(m->lastpid);
+	if(i >= nelem(m->pid2proc)){
+		flushpids();
+		i = m->lastpid = 0;
+	}
+	m->pid2proc[i] = p;
+	p->tlbpid = i+1;
+	iunlock(&pidlock);
+	return p->tlbpid;
 }
 
 /*
@@ -232,9 +250,10 @@ putmmu(ulong va, ulong pa, Page*)
 	Page *p;
 	ulong *t;
 
-	/* if user memory, offset by pid value */
+iprint("putmmu(0x%.8lux, 0x%.8lux)\n", va, pa);
+	/* if user memory, add pid value */
 	if((va & 0xfe000000) == 0)
-		pva = va | (up->pid << 25);
+		pva = va | (up->tlbpid << 25);
 	else
 		pva = va;
 
@@ -281,10 +300,11 @@ void
 mmuswitch(Proc* p)
 {
 	/* set pid */
-	if(p->pid <= 0)
-		p->pid = newtlbpid(p);
-	putpid(p->pid<<25);
+	if(p->tlbpid <= 0)
+		p->tlbpid = newtlbpid(p);
+iprint("using tlbpid %d\n", p->tlbpid);
+	putpid(p->tlbpid<<25);
 
 	/* set domain register to this + the kernel's domains */
-	putdac((Dclient<<(2*p->pid)) | Dclient);
+	putdac((Dclient<<(2*p->tlbpid)) | Dclient);
 }
