@@ -226,6 +226,8 @@ udpiput(Media *m, Block *bp)
 
 	raddr = nhgetl(uh->udpsrc);
 	laddr = nhgetl(uh->udpdst);
+	lport = nhgets(uh->udpdport);
+	rport = nhgets(uh->udpsport);
 
 	if(udpsum && nhgets(uh->udpcksum)) {
 		if(ptclcsum(bp, UDP_IPHDR, len+UDP_PHDRSIZE)) {
@@ -235,9 +237,6 @@ udpiput(Media *m, Block *bp)
 			return;
 		}
 	}
-
-	lport = nhgets(uh->udpdport);
-	rport = nhgets(uh->udpsport);
 
 	/* Look for a conversation structure for this port */
 	c = nil;
@@ -250,6 +249,8 @@ udpiput(Media *m, Block *bp)
 	}
 
 	if(*p == nil) {
+		netlog(Logudp, "udp: no conv %I.%d -> %I.%d\n", uh->udpsrc, rport,
+			uh->udpdst, lport);
 		freeblist(bp);
 		return;
 	}
@@ -260,6 +261,8 @@ udpiput(Media *m, Block *bp)
 	len -= (UDP_HDRSIZE-UDP_PHDRSIZE);
 	bp = trimblock(bp, UDP_IPHDR+UDP_HDRSIZE, len);
 	if(bp == nil){
+		netlog(Logudp, "udp: len err %I.%d -> %I.%d\n", uh->udpsrc, rport,
+			uh->udpdst, lport);
 		udp.lenerr++;
 		return;
 	}
@@ -293,9 +296,11 @@ udpiput(Media *m, Block *bp)
 	if(bp->next)
 		bp = concatblock(bp);
 
-	if(qfull(c->rq))
+	if(qfull(c->rq)){
+		netlog(Logudp, "udp: qfull %I.%d -> %I.%d\n", uh->udpsrc, rport,
+			uh->udpdst, lport);
 		freeblist(bp);
-	else
+	}else
 		qpass(c->rq, bp);
 }
 
