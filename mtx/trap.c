@@ -314,7 +314,6 @@ faultpower(Ureg *ureg, ulong addr, int read)
 			dumpregs(ureg);
 			panic("fault: 0x%lux", addr);
 		}
-dumpregs(ureg);
 		sprint(buf, "sys: trap: fault %s addr=0x%lux", read? "read" : "write", addr);
 		postnote(up, 1, buf, NDebug);
 	}
@@ -452,7 +451,7 @@ _dumpstack(Ureg *ureg)
 	if(up == 0)
 		return;
 
-	print("ktrace /kernel/path %.8lux %.8lux\n", ureg->pc, ureg->sp);
+	print("ktrace /kernel/path %.8lux %.8lux %.8lux\n", ureg->pc, ureg->sp, ureg->lr);
 	i = 0;
 	for(l=(ulong)&l; l<(ulong)(up->kstack+KSTACK); l+=4){
 		v = *(ulong*)l;

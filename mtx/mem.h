@@ -146,12 +146,25 @@
 #define	PTE0(v, vsid, h, va)	(((v)<<31)|((vsid)<<7)|((h)<<6)|(((va)>>22)&0x3f))
 
 /*
- *  Second pte word, known by fault.c, passed to putmmu()
+ *  Second pte word; WIMG & PP(RW/RO) common to page table and BATs
  */
-#define	PTEVALID	0			/* implied for putmmu -- real V bit in first pte word */
-#define	PTEWRITE	2
-#define	PTERONLY	3
-#define	PTEUNCACHED	BIT(26)
+#define	PTE1_W	BIT(25)
+#define	PTE1_I	BIT(26)
+#define	PTE1_M	BIT(27)
+#define	PTE1_G	BIT(28)
+
+#define	PTE1_RW	BIT(30)
+#define	PTE1_RO	BIT(31)
+
+/*
+ *  PTE bits for fault.c.  These belong to the second PTE word.  Validity is
+ *  implied for putmmu(), and we always set PTE0_V.  PTEVALID is used
+ *  here to set cache policy bits on a global basis.
+ */
+#define	PTEVALID		0
+#define	PTEWRITE		PTE1_RW
+#define	PTERONLY	PTE1_RO
+#define	PTEUNCACHED	PTE1_I
 
 /*
  * Address spaces

@@ -56,6 +56,8 @@
 	/* debugger sets R1 to top of usable memory +1 */
 	MOVW R1, memsize(SB)
 
+	BL		kfpinit(SB)
+
 	/* set up Mach */
 	MOVW	$mach0(SB), R(MACH)
 	ADD	$(MACHSIZE-8), R(MACH), R1	/* set stack */
@@ -90,7 +92,7 @@ tlbloop:
 
 	/* KZERO -> 0 */
 	MOVW	$(KZERO|(0x7ff<<2)|2), R3
-	MOVW	$(0|(0<<3)|2), R4
+	MOVW	$(PTEVALID|PTEWRITE), R4
 	MOVW	R3, SPR(IBATU(0))
 	MOVW	R4, SPR(IBATL(0))
 	MOVW	R3, SPR(DBATU(0))
@@ -114,11 +116,13 @@ tlbloop:
 
 	/* direct map last block, uncached, (?guarded) */
 	MOVW	$((0xf<<28)|(0x7ff<<2)|2), R3
-	MOVW	$((0xf<<28)|(4<<3)|2), R4
-	MOVW	R3, SPR(IBATU(3))
-	MOVW	R4, SPR(IBATL(3))
+	MOVW	$((0xf<<28)|PTE1_I|PTE1_G|PTE1_RW), R4
 	MOVW	R3, SPR(DBATU(3))
 	MOVW	R4, SPR(DBATL(3))
+
+	/* IBAT 3 unused */
+	MOVW	R0, SPR(IBATU(3))
+	MOVW	R0, SPR(IBATL(3))
 
 	/* enable MMU */
 	MOVW	LR, R3
@@ -129,6 +133,49 @@ tlbloop:
 	MOVW	R4, SPR(SRR1)
 	RFI	/* resume in kernel mode in caller */
 
+	RETURN
+
+TEXT	kfpinit(SB), $0
+	MOVFL	$0,FPSCR(7)
+	MOVFL	$0xD,FPSCR(6)	/* VE, OE, ZE */
+	MOVFL	$0, FPSCR(5)
+	MOVFL	$0, FPSCR(3)
+	MOVFL	$0, FPSCR(2)
+	MOVFL	$0, FPSCR(1)
+	MOVFL	$0, FPSCR(0)
+
+	FMOVD	$4503601774854144.0, F27
+	FMOVD	$0.5, F29
+	FSUB		F29, F29, F28
+	FADD	F29, F29, F30
+	FADD	F30, F30, F31
+	FMOVD	F28, F0
+	FMOVD	F28, F1
+	FMOVD	F28, F2
+	FMOVD	F28, F3
+	FMOVD	F28, F4
+	FMOVD	F28, F5
+	FMOVD	F28, F6
+	FMOVD	F28, F7
+	FMOVD	F28, F8
+	FMOVD	F28, F9
+	FMOVD	F28, F10
+	FMOVD	F28, F11
+	FMOVD	F28, F12
+	FMOVD	F28, F13
+	FMOVD	F28, F14
+	FMOVD	F28, F15
+	FMOVD	F28, F16
+	FMOVD	F28, F17
+	FMOVD	F28, F18
+	FMOVD	F28, F19
+	FMOVD	F28, F20
+	FMOVD	F28, F21
+	FMOVD	F28, F22
+	FMOVD	F28, F23
+	FMOVD	F28, F24
+	FMOVD	F28, F25
+	FMOVD	F28, F26
 	RETURN
 
 TEXT	splhi(SB), $0

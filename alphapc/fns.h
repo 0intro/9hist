@@ -63,6 +63,7 @@ ulong 	meminit(void);
 void		mmudump(void);
 void		mmuinit(void);
 #define	mmunewpage(x)
+void		mmupark(void);
 void		mntdump(void);
 void		ns16552install(void);
 void		ns16552special(int, int, Queue**, Queue**, int (*)(Queue*, int));

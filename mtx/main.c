@@ -56,8 +56,8 @@ machinit(void)
 	m->loopconst = 100000;
 
 	/* turn on caches (instruction only for now) */
-	puthid0(gethid0() | BIT(16));
-//puthid0(gethid0() | BIT(16) | BIT(17));	/* and data */
+//	puthid0(gethid0() | BIT(16));
+puthid0(gethid0() | BIT(16) | BIT(17));	/* and data */
 
 	active.machs = 1;
 	active.exiting = 0;
@@ -260,17 +260,8 @@ void
 procsave(Proc *p)
 {
 	if(p->fpstate == FPactive){
-		if(p->state != Moribund) {
-			/*
-			 * Fpsave() stores without handling pending
-			 * unmasked exeptions. Postnote() can't be called
-			 * here as sleep() already has up->rlock, so
-			 * the handling of pending exceptions is delayed
-			 * until the process runs again and generates an
-			 * emulation fault to activate the FPU.
-			 */
+		if(p->state != Moribund)
 			fpsave(&up->fpsave);
-		}
 		fpoff(p);
 		p->fpstate = FPinactive;
 	}

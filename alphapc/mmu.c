@@ -74,6 +74,14 @@ mmuswitch(Proc *proc)
 	icflush();
 }
 
+/* point to protoype page map */
+void
+mmupark(void)
+{
+	setptb(origlvl1);
+	icflush();
+}
+
 /*
  *  give all page table pages back to the free pool.  This is called in sched()
  *  with palloc locked.
@@ -83,10 +91,7 @@ mmurelease(Proc *proc)
 {
 	Page *page, *next;
 
-	/* point to protoype page map */
-	setptb(origlvl1);
-	icflush();
-
+	mmupark();
 	mmuptefree(proc);
 	proc->mmuused = 0;
 	if(proc->mmutop) {

@@ -54,6 +54,7 @@ void	insl(int, void*, int);
 void	intr(Ureg*);
 void	intrenable(int, void (*)(Ureg*, void*), void*, int, char*);
 int	ioalloc(int, int, int, char*);
+void	iofree(int);
 void	ioinit(void);
 int	iprint(char*, ...);
 int	isaconfig(char*, int, ISAConf*);

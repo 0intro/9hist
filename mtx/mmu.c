@@ -94,9 +94,10 @@ mmurelease(Proc* p)
 }
 
 void
-putmmu(ulong va, ulong pa, Page*)
+putmmu(ulong va, ulong pa, Page *pg)
 {
 	int mp;
+	char *ctl;
 	ulong *p, *ep, *q, pteg;
 	ulong vsid, ptehi, x, hash;
 
@@ -133,6 +134,21 @@ if(q[1] == pa) panic("putmmu already set pte");
 	q[1] = pa;
 	sync();
 	unlock(&ptab);
+
+	ctl = &pg->cachectl[m->machno];
+	switch(*ctl) {
+	case PG_NEWCOL:
+	default:
+		panic("putmmu: %d\n", *ctl);
+		break;
+	case PG_NOFLUSH:
+		break;
+	case PG_TXTFLUSH:
+		dcflush((void*)pg->va, BY2PG);
+		icflush((void*)pg->va, BY2PG);
+		*ctl = PG_NOFLUSH;
+		break;
+	}
 }
 
 int

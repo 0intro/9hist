@@ -233,18 +233,8 @@ procsave(Proc *p)
 	if(p->fpstate == FPactive){
 		if(p->state == Moribund)
 			fpenab(0);
-		else{
-			/*
-			 * Fpsave() stores without handling pending
-			 * unmasked exeptions. Postnote() can't be called
-			 * here as sleep() already has up->rlock, so
-			 * the handling of pending exceptions is delayed
-			 * until the process runs again and generates an
-			 * emulation fault to activate the FPU.
-			 */
+		else
 			savefpregs(&up->fpsave);
-//print("PS=%lux+", up->fpsave.fpstatus);
-		}
 		p->fpstate = FPinactive;
 	}
 
@@ -256,6 +246,7 @@ procsave(Proc *p)
 	 * When this processor eventually has to get an entry from the
 	 * trashed page tables it will crash.
 	 */
+	mmupark();
 }
 
 /* still to do */
