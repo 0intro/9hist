@@ -174,6 +174,7 @@ Block*		packblock(Block*);
 Block*		padblock(Block*, int);
 void		pagechainhead(Page*);
 void		pageinit(void);
+void		pagersummary(void);
 void		panic(char*, ...);
 int		parseether(uchar*, char*);
 int		parsefields(char*, char**, int, char*);

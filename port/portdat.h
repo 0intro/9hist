@@ -326,7 +326,6 @@ struct Image
 	Image	*hash;			/* Qid hash chains */
 	Image	*next;			/* Free list */
 	int	notext;			/* no file associated */
-	QLock	rdlock;			/* mutex for reading from image */
 };
 
 struct Pte
@@ -622,6 +621,7 @@ struct Proc
 	int	preempted;	/* true if this process hasn't finished the interrupt
 				 *  that last preempted it
 				 */
+	ulong	qpc;		/* pc calling last blocking qlock */
 
 	void	*ureg;		/* User registers for notes */
 	void	*dbgreg;	/* User registers for devproc */

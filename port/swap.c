@@ -124,7 +124,9 @@ loop:
 			if(p->state == Dead || p->kp)
 				continue;
 
-			qlock(&p->seglock);
+			if(!canqlock(&p->seglock))
+				continue;		/* process changing its segments */
+
 			for(i = 0; i < NSEG; i++) {
 				if(!needpages(junk)){
 					qunlock(&p->seglock);
@@ -278,19 +280,6 @@ pagepte(int type, Page **pg)
 	case SG_SHARED:
 	case SG_SHDATA:
 	case SG_MAP:
-		/* if it's already on disk, no need to do io again */
-#ifdef asdf
-		lock(outp);
-		if(outp->image == &swapimage){
-			dupswap((Page*)outp->daddr);
-			*pg = (Page*)(outp->daddr|PG_ONSWAP);
-			unlock(outp);
-			putpage(outp);
-			return;
-		}
-		unlock(outp);
-#endif asdf
-
 		/*
 		 *  get a new swap address and clear any pages
 		 *  referring to it from the cache
@@ -312,6 +301,7 @@ pagepte(int type, Page **pg)
 		/*
 		 *  enter it into the cache so that a fault happening
 		 *  during the write will grab the page from the cache
+		 *  rather than one partially written to the disk
 		 */
 		outp->daddr = daddr;
 		cachepage(outp, &swapimage);
@@ -322,6 +312,15 @@ pagepte(int type, Page **pg)
 		iolist[ioptr++] = outp;
 		break;
 	}
+}
+
+void
+pagersummary(void)
+{
+	print("%lud/%lud memory %lud/%lud swap %d iolist\n",
+		palloc.user-palloc.freecount,
+		palloc.user, conf.nswap-swapalloc.free, conf.nswap,
+		ioptr);
 }
 
 static void
@@ -336,13 +335,17 @@ executeio(void)
 	c = swapimage.c;
 
 	for(i = 0; i < ioptr; i++) {
+		if(ioptr > conf.nswppo)
+			panic("executeio: ioptr %d > %d\n", ioptr, conf.nswppo);
 		out = iolist[i];
+		up->psstate = "I/Okm";
 		k = kmap(out);
 		kaddr = (char*)VA(k);
 
 		if(waserror())
 			panic("executeio: page out I/O error");
 
+		up->psstate = "I/Owr";
 		n = devtab[c->type]->write(c, kaddr, BY2PG, out->daddr);
 		if(n != BY2PG)
 			nexterror();
@@ -351,9 +354,11 @@ executeio(void)
 		poperror();
 
 		/* Free up the page after I/O */
+		up->psstate = "I/Odec";
 		lock(out);
 		out->ref--;
 		unlock(out);
+		up->psstate = "I/Oput";
 		putpage(out);
 	}
 	ioptr = 0;

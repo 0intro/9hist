@@ -95,13 +95,9 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 		lkp = *pg;
 		lock(lkp);
 
-		/* uncache the current swap image (since we may be changing it) */
-		if(lkp->image){
-			if(lkp->image == &swapimage)
-				uncachepage(lkp);
-			else
-				duppage(lkp);
-		}
+		/* save a copy of the original for the image cache */
+		if(lkp->image)
+			duppage(lkp);
 
 		unlock(lkp);
 		goto done;
@@ -153,16 +149,9 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 			putpage(lkp);
 		}
 		else {
-			/* uncache the current page (since we may be changing it)
-			 * and, if a text page, put a duplicate back onto
-			 * the free list
-			 */
-			if(lkp->image){
-				if(lkp->image == &swapimage)
-					uncachepage(lkp);
-				else
-					duppage(lkp);
-			}
+			/* save a copy of the original for the image cache */
+			if(lkp->image)
+				duppage(lkp);
 
 			unlock(lkp);
 		}
@@ -200,7 +189,7 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 void
 pio(Segment *s, ulong addr, ulong soff, Page **p)
 {
-	Page *new, *new2;
+	Page *new;
 	KMap *k;
 	Chan *c;
 	int n, ask;
@@ -208,22 +197,26 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 	ulong daddr;
 	Page *loadrec;
 
+retry:
 	loadrec = *p;
 	if(loadrec == 0) {	/* from a text/data image */
 		daddr = s->fstart+soff;
 		new = lookpage(s->image, daddr);
+		if(new != nil) {
+			*p = new;
+			return;
+		}
 	}
 	else {			/* from a swap image */
 		daddr = swapaddr(loadrec);
 		new = lookpage(&swapimage, daddr);
-		if(new != nil)
+		if(new != nil) {
 			putswap(loadrec);
+			*p = new;
+			return;
+		}
 	}
 
-	if(new != nil) {			/* Page found from cache */
-		*p = new;
-		return;
-	}
 
 	qunlock(&s->lk);
 
@@ -254,7 +247,11 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 		poperror();
 		kunmap(k);
 		qlock(&s->lk);
-		/* race, we may have multiple simultaneous reads */
+
+		/*
+		 *  race, another proc may have gotten here first while
+		 *  s->lk was unlocked
+		 */
 		if(*p == 0) { 
 			new->daddr = daddr;
 			cachepage(new, s->image);
@@ -265,35 +262,9 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 	}
 	else {				/* This is paged out */
 		c = swapimage.c;
-		qlock(&swapimage.rdlock);	/* mutex */
-
-		/*
-		 *  multiple processes could be swapping in the
-		 *  same page for the same segment
-		 */
-		if(!pagedout(*p)){
-			putpage(new);
-			qunlock(&swapimage.rdlock);
-			goto done;
-		}
-
-		/*
-		 *  multiple processes could be swapping in the
-		 *  same page for different segments
-		 */
-		new2 = lookpage(&swapimage, daddr);
-		if(new2 != nil){
-			putpage(new);
-			*p = new2;
-			putswap(loadrec);
-			qunlock(&swapimage.rdlock);
-			goto done;
-		}
-
 		if(waserror()) {
 			kunmap(k);
 			putpage(new);
-			qunlock(&swapimage.rdlock);
 			qlock(&s->lk);
 			qunlock(&s->lk);
 			faulterror("sys: page in I/O error");
@@ -307,12 +278,28 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 		kunmap(k);
 		qlock(&s->lk);
 
+		/*
+		 *  race, another proc may have gotten here first
+		 *  (and the pager may have run on that page) while
+		 *  s->lk was unlocked
+		 */
+		if(*p != loadrec){
+			if(!pagedout(*p)){
+				/* another process did it for me */
+				putpage(new);
+				goto done;
+			} else {
+print("!");
+				/* another process and the pager got in */
+				putpage(new);
+				goto retry;
+			}
+		}
+
 		new->daddr = daddr;
 		cachepage(new, &swapimage);
 		*p = new;
 		putswap(loadrec);
-
-		qunlock(&swapimage.rdlock);
 	}
 
 done:

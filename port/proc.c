@@ -903,9 +903,9 @@ dumpaproc(Proc *p)
 	s = p->psstate;
 	if(s == 0)
 		s = "kproc";
-	print("%3lud:%10s pc %8lux dbgpc %8lux  %8s (%s) ut %ld st %ld bss %lux pri %lud\n",
+	print("%3lud:%10s pc %8lux dbgpc %8lux  %8s (%s) ut %ld st %ld bss %lux qpc %lux\n",
 		p->pid, p->text, p->pc, dbgpc(p),  s, statename[p->state],
-		p->time[0], p->time[1], bss, p->priority);
+		p->time[0], p->time[1], bss, p->qpc);
 }
 
 void

@@ -233,6 +233,7 @@ echo(Rune r, char *buf, int n)
 			xsummary();
 			ixsummary();
 			poolsummary();
+			pagersummary();
 			break;
 		case 'd':
 			if(consdebug != nil)

@@ -35,6 +35,7 @@ rwstats.qlockq++;
 	q->tail = mp;
 	mp->qnext = 0;
 	mp->state = Queueing;
+	up->qpc = getcallerpc(q);
 	unlock(&q->use);
 	sched();
 }
