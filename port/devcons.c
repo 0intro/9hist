@@ -28,8 +28,9 @@ static struct
 
 char	sysname[NAMELEN];
 
-static ulong randomread(uchar*, ulong);
-static void randominit(void);
+static ulong	randomread(uchar*, ulong);
+static void	randominit(void);
+static void	seednrand(void);
 
 void
 printinit(void)
@@ -450,6 +451,12 @@ consinit(void)
 Chan*
 consattach(char *spec)
 {
+	static int seeded;
+
+	if(!seeded){
+		seednrand();
+		seeded = 1;
+	}
 	return devattach('c', spec);
 }
 
@@ -931,10 +938,15 @@ static struct
 	ulong	randn;
 } rb;
 
+static void
+seednrand(void)
+{
+	randomread((uchar*)&rb.randn, sizeof(rb.randn));
+}
+
 int
 nrand(int n)
 {
-	rb.randn ^= rb.bits;
 	rb.randn = rb.randn*1103515245 + 12345 + MACHP(0)->ticks;
 	return (rb.randn>>16) % n;
 }
