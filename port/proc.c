@@ -524,9 +524,7 @@ pexit(char *exitstr, int freemem)
 		wq = newwaitq();
 		wq->w.pid = c->pid;
 		wq->w.time[TUser] = TK2MS(c->time[TUser]);
-		wq->w.time[TCUser] = TK2MS(c->time[TCUser]);
 		wq->w.time[TSys] = TK2MS(c->time[TSys]);
-		wq->w.time[TCSys] = TK2MS(c->time[TCSys]);
 		wq->w.time[TReal] = TK2MS(MACHP(0)->ticks - c->time[TReal]);
 		if(exitstr)
 			strncpy(wq->w.msg, exitstr, ERRLEN);
