@@ -362,8 +362,10 @@ ipreassemble(int offset, Block *bp, Iphdr *ip)
 		return bp;
 	}
 
-	if(bp->base+sizeof(Ipfrag) >= bp->rp)
-		panic("ipreassemble");
+	if(bp->base+sizeof(Ipfrag) >= bp->rp){
+		bp = padblock(bp, sizeof(Ipfrag));
+		bp->rp += sizeof(Ipfrag);
+	}
 
 	BKFG(bp)->foff = offset<<3;
 	BKFG(bp)->flen = nhgets(ip->length)-IPHDR;
