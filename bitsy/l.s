@@ -289,6 +289,7 @@ _vswitch:
 	MOVW	$setR12(SB), R12	/* Make sure we've got the kernel's SB loaded */
 	MOVW	R13, R0			/* first arg is pointer to ureg */
 	SUB	$8, R13			/* space for argument+link (for debugger) */
+	MOVW	$0xdeaddead,R11		/* marker */
 
 	BL	trap(SB)
 

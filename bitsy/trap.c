@@ -178,7 +178,7 @@ trap(Ureg *ureg)
 	ulong inst;
 	int found;
 	Vctl *v;
-	int user;
+	int user, x, rv;
 	ulong va;
 	char buf[ERRLEN];
 
@@ -266,13 +266,11 @@ trap(Ureg *ureg)
 		break;
 	case PsrMund:	/* undefined instruction */
 		/* start of Inferno code [SJM] */
-		spllo();
-		if (waserror()) {
-			warnregs(ureg, "floating point error");
-			panic("floating point error");
-		}
 		if (user) {
-			if (!fpiarm(ureg)) {
+			x = spllo();
+			rv = fpiarm(ureg);
+			splx(x);
+			if (rv == 0) {
 				sprint(buf, "undefined instruction: pc 0x%lux\n", ureg->pc);
 				postnote(up, 1, buf, NDebug);
 			}
@@ -280,7 +278,6 @@ trap(Ureg *ureg)
 			warnregs(ureg, "undefined instruction");
 			panic("undefined instruction");
 		}
-		poperror();
 		/* end of Inferno code [SJM] */
 		break;
 	}

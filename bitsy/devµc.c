@@ -116,8 +116,8 @@ int
 			if(len < 1)
 				break;
 			b = p[0] & 0x7f;
-			up = p[0] & 80;
-	
+			up = p[0] & 0x80;
+
 			if(b > 5) {
 				/* rocker panel acts like arrow keys */
 				if(b < 10)

@@ -4,14 +4,14 @@
  * all arithmetic is done in double precision.
  * the FP trap status isn't updated.
  */
-#include "u.h"
+#include	<u.h>
 #include	"../port/lib.h"
 #include	"mem.h"
 #include	"dat.h"
 #include	"fns.h"
 #include	"io.h"
 
-#include	"ureg.h"
+#include	<ureg.h>
 
 #include "fpi.h"
 
@@ -20,13 +20,8 @@
  */
 
 
-#define	REG(x) (*(long*)(((char*)ur)+roff[(x)]))
-#define	FR(x) (*(Internal*)ufp->regs[(x)&7])
-
-/* BUG: check fetch (not worthwhile in Inferno) */
-#define	getubyte(a) (*(uchar*)(a))
-#define	getuword(a) (*(ushort*)(a))
-#define	getulong(a) (*(ulong*)(a))
+#define	REG(ur, x) (*(long*)(((char*)(ur))+roff[(x)]))
+#define	FR(ufp, x) (*(Internal*)(ufp)->regs[(x)&7])
 
 typedef struct FP2 FP2;
 typedef struct FP1 FP1;
@@ -49,7 +44,7 @@ enum {
 	REGPC = 15,
 };
 
-int	fpemudebug = 1;
+int	fpemudebug = 0;
 
 #undef OFR
 #define	OFR(X)	((ulong)&((Ureg*)0)->X)
@@ -210,7 +205,7 @@ fld(void (*f)(Internal*, void*), int d, ulong ea, int n, FPsave *ufp)
 	void *mem;
 
 	mem = (void*)ea;
-	(*f)(&FR(d), mem);
+	(*f)(&FR(ufp, d), mem);
 	if(fpemudebug)
 		print("MOV%c #%lux, F%d\n", n==8? 'D': 'F', ea, d);
 }
@@ -222,7 +217,7 @@ fst(void (*f)(void*, Internal*), ulong ea, int s, int n, FPsave *ufp)
 	void *mem;
 
 	mem = (void*)ea;
-	tmp = FR(s);
+	tmp = FR(ufp, s);
 	if(fpemudebug)
 		print("MOV%c	F%d,#%lux\n", n==8? 'D': 'F', s, ea);
 	(*f)(mem, &tmp);
@@ -300,7 +295,7 @@ fpemu(ulong pc, ulong op, Ureg *ur, FPsave *ufp)
 		off = (op&0xFF)<<2;
 		if((op & (1<<23)) == 0)
 			off = -off;
-		ea = REG(rn);
+		ea = REG(ur, rn);
 		if(rn == REGPC)
 			ea += 8;
 		if(op & (1<<24))
@@ -320,7 +315,7 @@ fpemu(ulong pc, ulong op, Ureg *ur, FPsave *ufp)
 		if((op & (1<<24)) == 0)
 			ea += off;
 		if(op & (1<<21))
-			REG(rn) = ea;
+			REG(ur, rn) = ea;
 		return;
 	}
 
@@ -335,12 +330,12 @@ fpemu(ulong pc, ulong op, Ureg *ur, FPsave *ufp)
 		 */
 		if(rd == 15 && op & (1<<20)){
 			rn = (op>>16)&7;
-			fn = &FR(rn);
+			fn = &FR(ufp, rn);
 			if(op & (1<<3)){
 				fm = &fpconst[op&7];
 				tag = 'C';
 			}else{
-				fm = &FR(op&7);
+				fm = &FR(ufp, op&7);
 				tag = 'F';
 			}
 			switch((op>>21)&7){
@@ -372,7 +367,7 @@ fpemu(ulong pc, ulong op, Ureg *ur, FPsave *ufp)
 			unimp(pc, op);
 		case 0:	/* FLT */
 			rn = (op>>16) & 7;
-			fpiw2i(&FR(rn), &REG(rd));
+			fpiw2i(&FR(ufp, rn), &REG(ur, rd));
 			if(fpemudebug)
 				print("MOVW[FD]	R%d, F%d\n", rd, rn);
 			break;
@@ -380,28 +375,28 @@ fpemu(ulong pc, ulong op, Ureg *ur, FPsave *ufp)
 			if(op & (1<<3))
 				unimp(pc, op);
 			rn = op & 7;
-			tmp = FR(rn);
-			fpii2w(&REG(rd), &tmp);
+			tmp = FR(ufp, rn);
+			fpii2w(&REG(ur, rd), &tmp);
 			if(fpemudebug)
-				print("MOV[FD]W	F%d, R%d =%ld\n", rn, rd, REG(rd));
+				print("MOV[FD]W	F%d, R%d =%ld\n", rn, rd, REG(ur, rd));
 			break;
 		case 2:	/* FPSR := Rd */
-			ufp->status = REG(rd);
+			ufp->status = REG(ur, rd);
 			if(fpemudebug)
 				print("MOVW	R%d, FPSR\n", rd);
 			break;
 		case 3:	/* Rd := FPSR */
-			REG(rd) = ufp->status;
+			REG(ur, rd) = ufp->status;
 			if(fpemudebug)
 				print("MOVW	FPSR, R%d\n", rd);
 			break;
 		case 4:	/* FPCR := Rd */
-			ufp->control = REG(rd);
+			ufp->control = REG(ur, rd);
 			if(fpemudebug)
 				print("MOVW	R%d, FPCR\n", rd);
 			break;
 		case 5:	/* Rd := FPCR */
-			REG(rd) = ufp->control;
+			REG(ur, rd) = ufp->control;
 			if(fpemudebug)
 				print("MOVW	FPCR, R%d\n", rd);
 			break;
@@ -417,7 +412,7 @@ fpemu(ulong pc, ulong op, Ureg *ur, FPsave *ufp)
 		fm = &fpconst[op&7];
 		tag = 'C';
 	}else{
-		fm = &FR(op&7);
+		fm = &FR(ufp, op&7);
 		tag = 'F';
 	}
 	rd = (op>>12)&7;
@@ -429,7 +424,7 @@ fpemu(ulong pc, ulong op, Ureg *ur, FPsave *ufp)
 			unimp(pc, op);
 		if(fpemudebug)
 			print("%s	%c%ld,F%d\n", fp->name, tag, op&7, rd);
-		(*fp->f)(fm, &FR(rd));
+		(*fp->f)(fm, &FR(ufp, rd));
 	} else {
 		FP2 *fp;
 		fp = &optab2[o];
@@ -438,7 +433,7 @@ fpemu(ulong pc, ulong op, Ureg *ur, FPsave *ufp)
 		rn = (op>>16)&7;
 		if(fpemudebug)
 			print("%s	%c%ld,F%d,F%d\n", fp->name, tag, op&7, rn, rd);
-		(*fp->f)(*fm, FR(rn), &FR(rd));
+		(*fp->f)(*fm, FR(ufp, rn), &FR(ufp, rd));
 	}
 }
 
@@ -464,9 +459,11 @@ fpiarm(Ureg *ur)
 		ufp->control = 0;
 		ufp->status = (0x01<<28)|(1<<12);	/* software emulation, alternative C flag */
 		for(n = 0; n < 8; n++)
-			FR(n) = fpconst[0];
+			FR(ufp, n) = fpconst[0];
 	}
 	for(n=0; ;n++){
+		if(fpemudebug)
+			print("0x%8.8lux ", ur->pc);
 		validaddr(ur->pc, 4, 0);
 		op = *(ulong*)(ur->pc);
 		o = (op>>24) & 0xF;
@@ -476,5 +473,6 @@ fpiarm(Ureg *ur)
 			fpemu(ur->pc, op, ur, ufp);
 		ur->pc += 4;
 	}
+	if(fpemudebug) print("\n");
 	return n;
 }
