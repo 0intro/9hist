@@ -218,7 +218,7 @@ consume(Queue *q, uchar *p, int len, int drop)
 }
 
 int
-produce(Queue *q, uchar *p, int len)
+produce(Queue *q, uchar *p, int len, int append)
 {
 	Block *b;
 
@@ -240,18 +240,24 @@ produce(Queue *q, uchar *p, int len)
 	/* no waiting receivers, buffer */
 	if(q->len >= q->limit)
 		return -1;
-	b = ialloc(sizeof(Block)+len);
-	if(b == 0)
-		return -1;
-	b->base = (uchar*)(b+1);
-	b->rp = b->base;
-	b->wp = b->lim = b->base + len;
-	memmove(b->rp, p, len);
-	if(q->bfirst)
-		q->blast->next = b;
-	else
-		q->bfirst = b;
-	q->last = b;
+	b = q->first;
+	if(append && b && b->lim-b->wp <= len){
+		memmove(b->wp, p, len);
+		b->wp += len;
+	} else {
+		b = ialloc(sizeof(Block)+len);
+		if(b == 0)
+			return -1;
+		b->base = (uchar*)(b+1);
+		b->rp = b->base;
+		b->wp = b->lim = b->base + len;
+		memmove(b->rp, p, len);
+		if(q->bfirst)
+			q->blast->next = b;
+		else
+			q->bfirst = b;
+		q->last = b;
+	}
 	q->len += len;
 	unlock(q);
 	return len;

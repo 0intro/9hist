@@ -95,8 +95,7 @@ xinit(void)
 	if(np1 > conf.npage1)
 		np1 = conf.npage1;
 
-	palloc.p1 = conf.base1;
-	conf.base1 += np1*BY2PG;
+	palloc.p1 = conf.base1 + (conf.npage1 - np1)*BY2PG;
 	conf.npage1 -= np1;
 	xhole(conf.base1, conf.npage1*BY2PG);
 	conf.npage1 = conf.base1+(conf.npage1*BY2PG);
@@ -106,8 +105,7 @@ xinit(void)
 	if(np0 > conf.npage0)
 		np0 = conf.npage0;
 
-	palloc.p0 = conf.base0;
-	conf.base0 += np0*BY2PG;
+	palloc.p0 = conf.base0 + (conf.npage0 - np0)*BY2PG;
 	conf.npage0 -= np0;
 	xhole(conf.base0, conf.npage0*BY2PG);
 	conf.npage0 = conf.base0+(conf.npage0*BY2PG);
