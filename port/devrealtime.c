@@ -6,7 +6,8 @@
 #include "io.h"
 #include "ureg.h"
 #include "../port/error.h"
-#include	"../port/realtime.h"
+#include	"realtime.h"
+#include	"../port/edf.h"
 
 #pragma	varargck	type	"T"		vlong
 
