@@ -213,9 +213,9 @@ ipifcunbind(Ipifc *ifc)
 
 
 
-char *sfixedformat = "device %-12s maxmtu %-5d sendra %-1d recvra %-1d mflag %-1d oflag %-1d maxraint %-10d minraint %-10d linkmtu %-10d reachtime %-10d rxmitra %-10d ttl %-10d routerlt %-10d pktin %-7lud pktout %-7lud errin %-7lud errout %-7lud\n";
+char sfixedformat[] = "device %s maxmtu %d sendra %d recvra %d mflag %d oflag %d maxraint %d minraint %d linkmtu %d reachtime %d rxmitra %d ttl %d routerlt %d pktin %lud pktout %lud errin %lud errout %lud\n";
 
-char *slineformat = "	%-40.40I %-10.10M %-40.40I %-12lud %-12lud\n";
+char slineformat[] = "	%-40.40I %-10.10M %-40.40I %-12lud %-12lud\n";
 
 
 static int

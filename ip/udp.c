@@ -558,8 +558,6 @@ udpadvise(Proto *udp, Block *bp, char *msg)
 		pdest = nhgets(h6->udpdport);
 	}
 
-print("udpadvise: looking for s %I sp %d d %I dp %d\n", source, (int)psource, dest, (int)pdest);
-
 	/* Look for a connection */
 	qlock(udp);
 	for(p = udp->conv; *p; p++) {
@@ -570,7 +568,6 @@ print("udpadvise: looking for s %I sp %d d %I dp %d\n", source, (int)psource, de
 		if(ipcmp(s->laddr, source) == 0){
 			qlock(s);
 			qunlock(udp);
-print("udpadvise: found, hanging up\n");
 			qhangup(s->rq, msg);
 			qhangup(s->wq, msg);
 			qunlock(s);
