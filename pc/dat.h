@@ -190,7 +190,6 @@ struct ISAConf {
 #define MAXPCMCIA 8			/* maximum number of PCMCIA cards */
 #define BOOTLINE ((char *)0x80000100)	/*  bootline passed by boot program */
 
-extern int	flipD[];		/* for flipping bitblt destination polarity */
 extern PCArch	*arch;			/* PC architecture */
 extern int	cpuflag;		/* true if this is a CPU */
 

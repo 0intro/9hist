@@ -13,4 +13,4 @@ extern void	cursoron(int);
 #define		cursoroff(x)
 #define		mousectl(s)
 extern Point	mousexy(void);
-#define		hwscreenwrite(a, b)
+void			setcursor(Cursor*);

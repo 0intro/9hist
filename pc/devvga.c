@@ -1307,6 +1307,10 @@ cursorinit(void)
 	cursor.l = cursorwork.width*BY2WD;
 
 	if(!already){
+		set.base = malloc(16*sizeof(ulong));
+		clr.base = malloc(16*sizeof(ulong));
+		if(set.base == 0 || clr.base == 0)
+			panic("cursorinit");
 		cursor.disable--;
 		already = 1;
 	}
@@ -1315,11 +1319,19 @@ cursorinit(void)
 }
 
 void
-setcursor(ulong *setbits, ulong *clrbits, int offx, int offy)
+setcursor(Cursor *curs)
 {
-	USED(offx, offy);
-	set.base = setbits;
-	clr.base = clrbits;
+	uchar *p;
+	int i;
+
+	for(i=0; i<16; i++){
+		p = (uchar*)&set.base[i];
+		*p = curs->set[2*i];
+		*(p+1) = curs->set[2*i+1];
+		p = (uchar*)&clr.base[i];
+		*p = curs->clr[2*i];
+		*(p+1) = curs->clr[2*i+1];
+	}
 }
 
 void

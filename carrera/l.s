@@ -835,7 +835,3 @@ frloop:
 	SRLV	$32, R6
 	XOR	R6, R1
 	RET
-
-TEXT	getprid(SB), $0
-	MOVW	M(PRID), R1
-	RET

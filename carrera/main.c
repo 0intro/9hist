@@ -55,7 +55,6 @@ main(void)
 	vecinit();
 	screeninit();
 	iprint("\n\nBrazil\n");
-	iprint("M(PRID) = 0x%.8lux\n", getprid());
 	pageinit();
 	procinit0();
 	initseg();

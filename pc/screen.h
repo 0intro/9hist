@@ -18,3 +18,4 @@ extern void	cursoron(int);
 extern void	cursoroff(int);
 extern Point	mousexy(void);
 extern void	cursorinit(void);
+extern void	setcursor(Cursor*);

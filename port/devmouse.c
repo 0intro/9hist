@@ -51,9 +51,6 @@ Cursor	arrow =
 	}
 };
 
-ulong setbits[16];
-ulong clrbits[16];
-
 void	Cursortocursor(Cursor*);
 int	mousechanged(void*);
 
@@ -303,20 +300,9 @@ mousewrite(Chan *c, void *va, long n, ulong offset)
 void
 Cursortocursor(Cursor *c)
 {
-	int i;
-	uchar *p;
-
 	lock(&cursor);
 	memmove(&cursor.Cursor, c, sizeof(Cursor));
-	for(i=0; i<16; i++){
-		p = (uchar*)&setbits[i];
-		*p = c->set[2*i];
-		*(p+1) = c->set[2*i+1];
-		p = (uchar*)&clrbits[i];
-		*p = c->clr[2*i];
-		*(p+1) = c->clr[2*i+1];
-	}
-	setcursor(setbits, clrbits, cursor.offset.x, cursor.offset.y);
+	setcursor(c);
 	unlock(&cursor);
 }
 

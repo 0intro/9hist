@@ -103,7 +103,7 @@ screenwin(void)
 	Dac *d;
 	Point p;
 	int i, y;
-	ulong zbuf[16];
+	Cursor zero;
 
 	memset((void*)Screenvirt, 0xff, 3*1024*1024);
 
@@ -149,8 +149,8 @@ screenwin(void)
 	d->cr2 = 0;
 	d->cr2 = 0;
 	/* initialize with all-transparent cursor */
-	memset(zbuf, 0, sizeof zbuf);
-	setcursor(zbuf, zbuf, 0, 0);
+	memset(&zero, 0, sizeof zero);
+	setcursor(&zero);
 	/* enable both planes of cursor */
 	d->cr1 = 0x03;
 	d->cr0 = 0x00;
@@ -407,19 +407,28 @@ rep(ulong v, int n)
 }
 
 void
-setcursor(ulong *s, ulong *c, int offx, int offy)
+setcursor(Cursor *curs)
 {
 	Dac *d;
-	int x, y;
+	int x, y, i;
 	Point org;
-	uchar ylow, yhigh;
+	uchar ylow, yhigh, *p;
 	ulong spix, cpix, dpix;
+	ulong s[16], c[16];
 
+	for(i=0; i<16; i++){
+		p = (uchar*)&s[i];
+		*p = curs->set[2*i];
+		*(p+1) = curs->set[2*i+1];
+		p = (uchar*)&c[i];
+		*p = curs->clr[2*i];
+		*(p+1) = curs->clr[2*i+1];
+	}
 	hwcursor.base = (ulong *)malloc(1024);
 	if(hwcursor.base == 0)
 		error(Enomem);
 	/* hw cursor is 64x64 with hot point at (32,32) */
-	org = add(Pt(32,32), Pt(offx,offy)); 
+	org = add(Pt(32,32), curs->offset); 
 	for(x = 0; x < 16; x++)
 		for(y = 0; y < 16; y++) {
 			spix = (s[y]>>(31-(x&0x1F)))&1;
