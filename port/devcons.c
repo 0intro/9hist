@@ -980,7 +980,8 @@ randomread(void *xp, ulong n)
 			rb.wakeme = 0;
 			continue;
 		}
-		*p++ = *rb.rp;
+		rb.randn = rb.randn*1103515245 + 12345 + *rb.rp;
+		*p++ = rb.randn;
 		if(rb.rp+1 == rb.ep)
 			rb.rp = rb.buf;
 		else

@@ -1408,7 +1408,7 @@ etherelnk3reset(Ether* ether)
 	ilock(&ctlr->wlock);
 	ctlr->xcvr = xcvr;
 	statistics(ether);
-	memset(ctlr, 0, sizeof(Ctlr));
+	memset(ctlr->stats, 0, sizeof(ctlr->stats));
 
 	ctlr->busmaster = busmaster;
 	ctlr->xcvr = xcvr;
