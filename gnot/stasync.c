@@ -192,6 +192,8 @@ asputf(Async *ap, int frame)
 		*p++ = FRAME;
 	}
 	ap->bp->wptr = p;
+	if(asyncdebug > 2)
+		showframe("out", ap, ap->bp->rptr, BLEN(ap->bp));
 	aswrite(ap);
 }
 
@@ -271,10 +273,6 @@ asyncoput(Queue *q, Block *bp)
 	if(chan != ap->chan && ap->count > 0)
 		asputf(ap, 0);
 	ap->chan = chan;
-
-	if(asyncdebug > 1)
-		kprint("a%d->(%d)%3.3uo %d\n",
-			ap-async, chan, ctl, bp->wptr - bp->rptr);
 
 	/*
 	 *  send the 8 bit data
