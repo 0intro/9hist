@@ -143,3 +143,19 @@ outin(char *prompt, char *def, int len)
 	}
 	return n;
 }
+
+void
+getconffile(char *conffile, char *terminal)
+{
+	char *p, *q;
+
+	*conffile = 0;
+	p = terminal;
+	if((p = strchr(p, ' ')) == 0 || p[1] == ' ' || p[1] == 0)
+		return;
+	p++;
+	for(q = p; *q && *q != ' '; q++)
+		;
+	while(p < q)
+		*conffile++ = *p++;
+}

@@ -14,6 +14,7 @@ char	sys[2*NAMELEN];
 char	username[NAMELEN];
 char	*sauth;
 char	bootfile[3*NAMELEN];
+char	conffile[NAMELEN];
 
 int mflag;
 int fflag;
@@ -21,9 +22,8 @@ int kflag;
 int aflag;
 int pflag;
 
-int	cache(int);
-void	swapproc(void);
-Method	*rootserver(char*);
+static void	swapproc(void);
+static Method	*rootserver(char*);
 
 void
 boot(int argc, char *argv[])
@@ -64,6 +64,7 @@ boot(int argc, char *argv[])
 
 	readenv("cputype", cputype, sizeof(cputype));
 	readenv("terminal", terminal, sizeof(cputype));
+	getconffile(conffile, terminal);
 
 	/*
 	 *  pick a method and initialize it
@@ -171,7 +172,7 @@ rootserver(char *arg)
 	return 0;		/* not reached */
 }
 
-void
+static void
 swapproc(void)
 {
 	int fd;

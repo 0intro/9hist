@@ -21,6 +21,7 @@ extern char	sys[2*NAMELEN];
 extern char	terminal[NAMELEN];
 extern char	username[NAMELEN];
 extern char	bootfile[3*NAMELEN];
+extern char	conffile[NAMELEN];
 extern char	*sauth;
 
 /* libc equivalent */
@@ -28,6 +29,7 @@ extern int	cache(int);
 extern int	dkauth(void);
 extern int	dkconnect(void);
 extern void	fatal(char*);
+extern void	getconffile(char*, char*);
 extern void	getpasswd(char*, int);
 extern void	key(int, Method*);
 extern void	newkernel(void);
