@@ -296,9 +296,28 @@ seteisadma(int ch, void (*func)(void))
 }
 
 void
-intr(Ureg *ur)
+eisadmaintr(void)
 {
 	int i;
+	uchar isr;
+	void (*f)(void);
+
+	isr = EISAINB(Eisadmaintr) & ~(1<<4);
+	for(i = 0; i < 8; i++) {
+		if(isr & 1) {
+			f = eisadma[i];
+			if(f == 0)
+				print("EISAdma%d: stray intr %.2ux\n", i, isr);
+			else
+				f();
+		}
+		isr >>= 1;
+	}
+}
+
+void
+intr(Ureg *ur)
+{
 	static uchar devint;
 	ulong cause = ur->cause;
 	ulong isr, vec;
@@ -368,12 +387,7 @@ intr(Ureg *ur)
 			mpegintr();
 			break;
 		case 13:
-			isr = EISAINB(Eisadmaintr) & ~(1<<4);
-			for(i = 0; i < 8; i++) {
-				if(isr & 1)
-					eisadma[i]();
-				isr >>= 1;
-			}
+			eisadmaintr();
 			break;
 		}
 		cause &= ~INTR4;

@@ -375,15 +375,26 @@ long
 qread(Queue *q, void *vp, int len)
 {
 	Block *b;
-	int n, dowakeup;
+	int n, dowakeup, syncwait;
 	uchar *p = vp;
 
 	qlock(&q->rlock);
+	syncwait = 0;
 	if(waserror()){
 		/* can't let go if the buffer is in use */
-		if(q->syncbuf){
+		if(syncwait){
 			qlock(&q->wlock);
 			ilock(q);
+			if(q->syncbuf == 0){
+				/* we got some data before the interrupt, queue it */
+				b = allocb(q->synclen);
+				memmove(b->wp, vp, q->synclen);
+				b->wp += q->synclen;
+				if(q->bfirst == 0)
+					q->blast = b;
+				q->bfirst = b;
+				q->len += q->synclen;
+			}
 			q->syncbuf = 0;
 			iunlock(q);
 			qunlock(&q->wlock);
@@ -415,10 +426,11 @@ qread(Queue *q, void *vp, int len)
 			q->synclen = len;
 			q->syncbuf = vp;
 			iunlock(q);
+			syncwait = 1; USED(syncwait);
 			sleep(&q->rr, filled, q);
 			len = q->synclen;
-			poperror();
 			qunlock(&q->rlock);
+			poperror();
 			return len;
 		} else {
 			q->state |= Qstarve;
