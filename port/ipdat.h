@@ -102,7 +102,6 @@ struct Ilcb				/* Control block */
 	Block	*unacked;
 	Block	*unackedtail;
 	Block	*outoforder;
-	Block	*outofordertail;
 	ulong	sent;
 	ulong	recvd;
 	ulong	lastack;
@@ -508,6 +507,7 @@ void 	tcp_timeout(void *);
 void	tcp_acktimer(void *);
 Ipconv  *ipclonecon(Chan *);
 void	iplisten(Chan *, Ipconv *, Ipconv *);
+void	iloutoforder(Ipconv*, Ilhdr*, Block*);
 
 #define	fmtaddr(xx)	(xx>>24)&0xff,(xx>>16)&0xff,(xx>>8)&0xff,xx&0xff
 #define	MIN(a, b)	((a) < (b) ? (a) : (b))

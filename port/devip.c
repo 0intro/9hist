@@ -365,7 +365,7 @@ ipwrite(Chan *c, char *a, long n, ulong offset)
 		if(m != 2)
 			error(Ebadarg);
 
-		switch(m = getfields(field[1], ctlarg, 5, '!')) {
+		switch(getfields(field[1], ctlarg, 5, '!')) {
 		default:
 			error(Ebadarg);
 		case 2:
@@ -676,10 +676,15 @@ iplisten(Chan *c, Ipconv *s, Ipconv *base)
 	Ipconv *etab, *new;
 
 	qlock(&s->listenq);
-
+	if(waserror()) {
+		qunlock(&s->listenq);
+		nexterror();
+	}
+print("listener on %lux R 0x%lux\n", s, &s->listenr);
 	for(;;) {
 		sleep(&s->listenr, iphavecon, s);
-
+		poperror();
+print("listen awoke\n");
 		new = base;
  		for(etab = &base[conf.ip]; new < etab; new++) {
 			if(new->newcon) {

@@ -313,6 +313,12 @@ procread(Chan *c, void *va, long n, ulong offset)
 			memmove(a, (char*)offset, n);
 			return n;
 		}
+		if(offset>=KZERO && offset<KZERO+conf.base1+conf.npage1*BY2PG){
+			if(offset+n > KZERO+conf.base1+conf.npage1*BY2PG)
+				n = KZERO+conf.base1+conf.npage1*BY2PG - offset;
+			memmove(a, (char*)offset, n);
+			return n;
+		}
 		return 0;
 		break;
 

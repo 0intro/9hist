@@ -135,7 +135,6 @@ ilackq(Ilcb *ic, Block *bp)
 	/* Enqueue a copy on the unacked queue in case this one gets lost */
 	np = copyb(bp, blen(bp));
 
-	lock(ic);
 	if(ic->unacked) {
 		ic->unackedtail->next = np;
 		ic->unackedtail = np;
@@ -145,7 +144,6 @@ ilackq(Ilcb *ic, Block *bp)
 		ic->unackedtail = np;
 	}
 	np->next = 0;
-	unlock(ic);
 }
 
 void
@@ -154,23 +152,13 @@ ilackto(Ilcb *ic, ulong ackto)
 	Ilhdr *h;
 	Block *bp;
 
-	for(;;) {
-		lock(ic);
-		if(ic->unacked) {
-			h = (Ilhdr *)ic->unacked->rptr;
-			if(ackto < nhgetl(h->ilack)) {
-				unlock(ic);
-				break;	
-			}
-			bp = ic->unacked;
-			ic->unacked = bp->next;
-			unlock(ic);
-			freeb(bp);
-		}
-		else {
-			unlock(ic);
-			break;
-		}
+	while(ic->unacked) {
+		h = (Ilhdr *)ic->unacked->rptr;
+		if(ackto < nhgetl(h->ilack))
+			break;	
+		bp = ic->unacked;
+		ic->unacked = bp->next;
+		freeb(bp);
 	}
 }
 
@@ -215,29 +203,28 @@ print("got packet from %d.%d.%d.%d %d %d\n", fmtaddr(dst), sp, dp);
 			
 	}
 
-	if(s->curlog > s->backlog) {
-print("Backlog\n");
+	if(s->curlog > s->backlog)
 		goto reset;
-	}
 
 	for(s = ipc; s < etab; s++) {
-		if(s->ilctl.state == Illistening && s->pdst == 0) {
+		if(s->ilctl.state == Illistening && s->pdst == 0 && s->dst == 0) {
 			/* Do the listener stuff */
 			new = ipincoming(ipc);
-			if(new == 0) 
+			if(new == 0)
 				goto reset;
-			if(ih->type != Ilsync)
+			if(ih->iltype != Ilsync)
 				goto reset;
 
 			new->newcon = 1;
 			new->ipinterface = s->ipinterface;
-			s->ipinterface->ref++;
-			s->curlog++;
 			new->psrc = sp;
 			new->pdst = dp;
+			new->ilctl.state = Ilsyncee;
 			new->dst = nhgetl(ih->src);
 			ilprocess(new, ih, bp);
 
+			s->ipinterface->ref++;
+			s->curlog++;
 			wakeup(&s->listenr);
 			return;
 		}
@@ -252,22 +239,32 @@ void
 ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 {
 	Block *nb;
+	ulong id, ack;
 
+	/* Active transition machine - this tracks connection state */
 	switch(s->ilctl.state) {
+	case Ilsyncee:	
+		switch(h->iltype) {
+		case Ilsync:
+			ilsendctl(s, 0, Ilsync, 0);
+			break;
+		case Ilack:
+			s->ilctl.state = Ilestablished;
+			break;
+		}
+		break;
 	case Ilclosed:
 	case Ilclosing:
-	case Illistening:
-		error(Ehungup);
+		goto hungup;
 	}
 
+	/* Passive actions based on packet type */
 	switch(h->iltype) {
-	case Ilsync:
-		if(s->ilctl.state == Ilsync)
-			s->ilctl.state = Ilestablished;
-		freeb(bp);
-		break;
 	case Ilack:
-		ilackto(&s->ilctl, nhgetl(h->ilack));
+		ack = nhgetl(h->ilack);
+		if(s->ilctl.recvd+1 == ack)
+			s->ilctl.recvd = ack;
+		ilackto(&s->ilctl, ack);
 		freeb(bp);
 		break;
 	case Ilquerey:
@@ -277,17 +274,60 @@ ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 	case Ildataquery:
 	case Ildata:
 		ilackto(&s->ilctl, nhgetl(h->ilack));
-		bp->rptr += IL_EHSIZE+IL_HDRSIZE;
-/* Check and trim to length */
-		PUTNEXT(s->readq, bp);
+		switch(s->ilctl.state) {
+		default:
+			iloutoforder(s, h, bp);
+			break;
+		case Ilestablished:
+			id = nhgetl(h->ilid);
+			if(id < s->ilctl.recvd)
+				freeb(bp);
+			else if(id > s->ilctl.recvd)
+				iloutoforder(s, h, bp);
+			else {
+				bp->rptr += IL_EHSIZE+IL_HDRSIZE;
+				PUTNEXT(s->readq, bp);
+			}
+		}
 		break;
 	case Ilreset:
 		s->ilctl.state = Ilclosed;
-		nb = allocb(0);
-		nb->type = M_HANGUP;
-		PUTNEXT(s->readq, nb);
+	hungup:
+		if(s->readq) {
+			nb = allocb(0);
+			nb->type = M_HANGUP;
+			PUTNEXT(s->readq, nb);
+		}
 		freeb(bp);
 	}
+}
+
+void
+iloutoforder(Ipconv *s, Ilhdr *h, Block *bp)
+{
+	Block *f, **l;
+	Ilcb *ic;
+	ulong id;
+	uchar *lid;
+
+	ic = &s->ilctl;
+
+	if(ic->outoforder == 0) {
+		ic->outoforder = bp;
+		bp->next = 0;
+		return;
+	}
+
+	id = nhgetl(h->id);
+	l = &ic->outoforder;
+	for(f = *l; f; f = f->next) {
+		lid = ((Ilhdr*)(bp->rptr))->ilid;
+		if(id < nhgetl(lid))
+			break;
+		l = &f->next;
+	}
+	bp->next = *l;
+	*l = bp;
 }
 
 void
