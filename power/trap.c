@@ -409,8 +409,13 @@ noted(Ureg **urp)
 	Ureg *nur;
 
 	nur = u->ureg;
+	if(waserror()){
+		pprint("suicide: trap in noted\n");
+		pexit("Suicide", 0);
+	}
 	validaddr(nur->pc, 1, 0);
 	validaddr(nur->usp, BY2WD, 0);
+	poperror();
 	if(nur->status!=u->svstatus){
 		pprint("bad noted ureg status %ux\n", nur->status);
 		pexit("Suicide", 0);
