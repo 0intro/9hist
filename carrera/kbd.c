@@ -369,7 +369,7 @@ int
 kbdinit(void)
 {
 	int i;
-
+return;
 	/*
 	 *  empty the buffer
 	 */

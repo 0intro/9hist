@@ -47,6 +47,7 @@ Bitmap	gscreen;
 
 /* vga screen */
 static	Lock	screenlock;
+static	Lock	loadlock;
 static	ulong	colormap[256][3];
 
 /* cga screen */
@@ -169,6 +170,13 @@ Vgacard vgachips[] =
 
 Vgacard	*vgacard;	/* current vga card */
 
+/*
+ *  work areas for bitblting screen characters, scrolling, and cursor redraw
+ */
+Bitmap chwork;
+Bitmap scrollwork;
+Bitmap cursorwork;
+
 /* predefined for the stupid compiler */
 static void	setscreen(int, int, int);
 static uchar	srin(int);
@@ -183,9 +191,11 @@ static void	screenputc(char*);
 static void	scroll(void);
 static ulong	x3to32(uchar);
 static ulong	x6to32(uchar);
+static void	workinit(Bitmap*, int, int);
 
-extern void cursorlock(Rectangle);
-extern void cursorunlock(void);
+static void cursorlock(Rectangle);
+static void cursorunlock(void);
+extern int graphicssubtile(uchar*, int, int, Rectangle, Rectangle, uchar**);
 
 /*
  *  vga device
@@ -221,7 +231,6 @@ vgainit(void)
 Chan*
 vgaattach(char *upec)
 {
-	print("visible %d disable %d frozen %d\n", cursor.visible, cursor.disable, cursor.frozen);
 	return devattach('v', upec);
 }
 
@@ -448,6 +457,12 @@ setscreen(int maxx, int maxy, int ldepth)
 {
 	int i, x;
 
+	if(waserror()){
+		unlock(&screenlock);
+		nexterror();
+	}
+	lock(&screenlock);
+
 	switch(ldepth){
 	case 0:
 		setmode(&mode12);
@@ -459,24 +474,48 @@ setscreen(int maxx, int maxy, int ldepth)
 		error(Ebadarg);
 	}
 
-	lock(&screenlock);
-
 	/*
 	 *  setup a bitmap for the new size
 	 */
 	gscreen.ldepth = ldepth;
-	gscreen.width = (maxx*(1<<gscreen.ldepth))/32;
+	gscreen.width = (maxx*(1<<gscreen.ldepth)+31)/32;
 	gscreen.base = (void*)SCREENMEM;
 	gscreen.r.min = Pt(0, 0);
 	gscreen.r.max = Pt(maxx, maxy);
 	gscreen.clipr = gscreen.r;
 	for(i = 0; i < gscreen.width*BY2WD*maxy; i += Footprint){
 		vgacard->setpage(i>>Footshift);
-		memset(gscreen.base, 0, Footprint);
+		memset(gscreen.base, 0xff, Footprint);
 	}
 
 	/*
-	 *  default color map
+	 *  set up inset system window
+	 */
+	h = defont0.height;
+	w = defont0.info[' '].width;
+
+	window.min = Pt(48, 48);
+	window.max = add(window.min, Pt(10+w*64, 36*h));
+	if(window.max.y >= gscreen.r.max.y)
+		window.max.y = gscreen.r.max.y-1;
+	if(window.max.x >= gscreen.r.max.x)
+		window.max.x = gscreen.r.max.x-1;
+
+	vgacard->setpage(0);
+	window.max.y = window.min.y+((window.max.y-window.min.y)/h)*h;
+	bitblt(&gscreen, window.min, &gscreen, window, Zero);
+	curpos = window.min;
+
+	/* work areas */
+	workinit(&chwork, w, h);
+	workinit(&scrollwork, 64*w, 1);
+	cursorinit();
+
+	unlock(&screenlock);
+	poperror();
+
+	/*
+	 *  default color map (has to be outside the lock)
 	 */
 	switch(ldepth){
 	case 3:
@@ -492,28 +531,25 @@ setscreen(int maxx, int maxy, int ldepth)
 		}
 		break;
 	}
+
+	/* stop character mode changes */
 	cga = 0;
+}
 
-	/*
-	 *  set up inset system window
-	 */
-	h = defont0.height;
-	w = defont0.info[' '].width;
-
-	window.min = Pt(50, 50);
-	window.max = add(window.min, Pt(10+w*64, Footprint/(BY2WD*gscreen.width)));
-	if(window.max.y >= gscreen.r.max.y)
-		window.max.y = gscreen.r.max.y;
-	if(window.max.x >= gscreen.r.max.x)
-		window.max.x = gscreen.r.max.x;
-
-	vgacard->setpage(0);
-	bitblt(&gscreen, window.min, &gscreen, window, Zero);
-	window = inset(window, 5);
-	curpos = window.min;
-	window.max.y = window.min.y+((window.max.y-window.min.y)/h)*h;
-
-	cursorinit();
+/*
+ *  init a bitblt work area
+ */
+static void
+workinit(Bitmap *bm, int maxx, int maxy)
+{
+	bm->ldepth = gscreen.ldepth;
+	bm->r = Rect(0, 0, maxx, maxy);
+	if(gscreen.ldepth != 3)
+		bm->r.max.x += 1<<(3-gscreen.ldepth);
+	bm->clipr = bm->r;
+	bm->width = ((bm->r.max.x << gscreen.ldepth) + 31) >> 5;
+	if(bm->base == 0)
+		bm->base = xalloc(maxx*maxy);
 }
 
 /*
@@ -587,7 +623,7 @@ screenload(Rectangle r, uchar *data, int tl, int l, int dolock)
 
 	if(dolock)
 		cursorlock(r);
-	lock(&screenlock);
+	lock(&loadlock);
 
 	q = byteaddr(&gscreen, r.min);
 	mx = 7>>gscreen.ldepth;
@@ -667,7 +703,7 @@ screenload(Rectangle r, uchar *data, int tl, int l, int dolock)
 			data += l;
 		}
 
-	unlock(&screenlock);
+	unlock(&loadlock);
 	if(dolock)
 		cursorunlock();
 }
@@ -743,7 +779,7 @@ screenunload(Rectangle r, uchar *data, int tl, int l, int dolock)
 
 	if(dolock)
 		cursorlock(r);
-	lock(&screenlock);
+	lock(&loadlock);
 
 	q = byteaddr(&gscreen, r.min);
 	mx = 7>>gscreen.ldepth;
@@ -823,7 +859,7 @@ screenunload(Rectangle r, uchar *data, int tl, int l, int dolock)
 			data += l;
 		}
 
-	unlock(&screenlock);
+	unlock(&loadlock);
 	if(dolock)
 		cursorunlock();
 }
@@ -940,21 +976,6 @@ x6to32(uchar x)
 }
 
 /*
- *  just in case we have one
- */
-void
-hwcursset(ulong *s, ulong *c, int ox, int oy)
-{
-	USED(s, c, ox, oy);
-}
-
-void
-hwcursmove(int x, int y)
-{
-	USED(x, y);
-}
-
-/*
  *  paging routines for different cards
  */
 static void
@@ -1036,6 +1057,9 @@ s3page(int page)
 		crout(0x35, (page<<2) & 0x0C);
 }
 
+/*
+ *  character mode console
+ */
 static void
 cgascreenputc(int c)
 {
@@ -1073,25 +1097,38 @@ cgascreenputs(char *s, int n)
 		cgascreenputc(*s++);
 }
 
+/*
+ *  graphics mode console
+ */
+#define LINE2SCROLL 4
 static void
 scroll(void)
 {
-	int o;
+	int from, to, tl, l;
+	uchar *a;
 	Rectangle r;
 
-	o = 2*h;
-	vgacard->setpage(0);
-	r = Rpt(Pt(window.min.x, window.min.y+o), window.max);
-	bitblt(&gscreen, window.min, &gscreen, r, S);
-	r = Rpt(Pt(window.min.x, window.max.y-o), window.max);
-	bitblt(&gscreen, r.min, &gscreen, r, Zero);
-	curpos.y -= o;
+	l = gscreen.width * BY2WD;
+	tl = graphicssubtile(0, l, gscreen.ldepth, gscreen.r, window, &a);
+
+	from = window.min.y + LINE2SCROLL*h;
+	to = window.min.y;
+	for(; from < window.max.y; from++){
+		r = Rpt(Pt(window.min.x, from), Pt(window.max.x, from + 1));
+		screenunload(r, (uchar*)scrollwork.base, tl, l, 1);
+		r = Rpt(Pt(window.min.x, to), Pt(window.max.x, to+1));
+		screenload(r, (uchar*)scrollwork.base, tl, l, 1);
+	}
+		
+	curpos.y -= LINE2SCROLL*h;
 }
 
 static void
 screenputc(char *buf)
 {
-	int pos;
+	int pos, l, tl, off;
+	uchar *a;
+	Rectangle r;
 
 	switch(buf[0]) {
 	case '\n':
@@ -1109,14 +1146,30 @@ screenputc(char *buf)
 		curpos.x += pos*w;
 		break;
 	case '\b':
-		if(curpos.x-w >= window.min.x)
+		if(curpos.x-w >= window.min.x){
 			curpos.x -= w;
+			screenputc(" ");
+			curpos.x -= w;
+		}
 		break;
 	default:
 		if(curpos.x >= window.max.x-w)
 			screenputc("\n");
 
-		curpos = subfstring(&gscreen, curpos, &defont0, buf, S);
+		/* tile width */
+		r.min = curpos;
+		r.max = add(r.min, Pt(w, h));
+		off = ((1<<gscreen.ldepth)*r.min.x) & 7;
+		l = chwork.width*BY2WD;
+		tl = graphicssubtile(0, l, gscreen.ldepth, gscreen.r, r, &a);
+
+		/* add char into work area */
+		subfstring(&chwork, Pt(off, 0), &defont0, buf, S);
+
+		/* move work area to screen */
+		screenload(r, (uchar*)chwork.base, tl, l, 0);
+
+		curpos.x += w;
 	}
 }
 
@@ -1175,23 +1228,18 @@ setcolor(ulong p, ulong r, ulong g, ulong b)
 	return ~0;
 }
 
-
 /*
  *  software cursor
  */
 
-ulong backbits[16*5];
-ulong workbits[16*5];
-Bitmap cursorwork =
-{
-	{0, 0, 16+8, 16},
-	{0, 0, 16+8, 16},
-	0,
-	workbits,
-	0,
-	1,
-};
+/*
+ *  area to store the bits that are behind the cursor
+ */
+ulong backbits[16*4];
 
+/*
+ *  the white border around the cursor
+ */
 Bitmap	clr =
 {
 	{0, 0, 16, 16},
@@ -1202,6 +1250,9 @@ Bitmap	clr =
 	1,
 };
 
+/*
+ *  the black center of the cursor
+ */
 Bitmap	set =
 {
 	{0, 0, 16, 16},
@@ -1219,8 +1270,7 @@ cursorinit(void)
 
 	lock(&cursor);
 
-	cursorwork.ldepth = gscreen.ldepth;
-	cursorwork.width = ((cursorwork.r.max.x << gscreen.ldepth) + 31) >> 5;
+	workinit(&cursorwork, 16, 16);
 	cursor.l = cursorwork.width*BY2WD;
 
 	if(!already){
@@ -1252,7 +1302,6 @@ cursoron(int dolock)
 		Rectangle r;
 		Fcode f;
 	} xx;
-	extern int graphicssubtile(uchar*, int, int, Rectangle, Rectangle, uchar**);
 
 	if(cursor.disable)
 		return;
@@ -1282,19 +1331,19 @@ cursoron(int dolock)
 				gscreen.r, xx.r, &a);
 		if(cursor.tl > 0){
 			/* get tile */
-			screenunload(xx.r, (uchar*)workbits, cursor.tl, cursor.l, 0);
+			screenunload(xx.r, (uchar*)cursorwork.base, cursor.tl, cursor.l, 0);
 	
 			/* save for cursoroff */
-			memmove(backbits, workbits, cursor.l*16);
+			memmove(backbits, cursorwork.base, cursor.l*16);
 	
 			/* add mouse into work area */
 			r = Rect(0, 0, Dx(xx.r), Dy(xx.r));
-			bitblt(&cursorwork, xx.p, &clr, r, S|D);
-			bitblt(&cursorwork, xx.p, &set, r, D&~S);
+			bitblt(&cursorwork, xx.p, &clr, r, D&~S);
+			bitblt(&cursorwork, xx.p, &set, r, S|D);
 	
 			/* put back tile */
 			cursor.clipr = xx.r;
-			screenload(xx.r, (uchar*)workbits, cursor.tl, cursor.l, 0);
+			screenload(xx.r, (uchar*)cursorwork.base, cursor.tl, cursor.l, 0);
 		}
 	}
 
@@ -1315,7 +1364,7 @@ cursoroff(int dolock)
 		unlock(&cursor);
 }
 
-void
+static void
 cursorlock(Rectangle r)
 {
 	lock(&cursor);
@@ -1327,7 +1376,7 @@ cursorlock(Rectangle r)
 	unlock(&cursor);
 }
 
-void
+static void
 cursorunlock(void)
 {
 	lock(&cursor);

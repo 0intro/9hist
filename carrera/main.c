@@ -505,7 +505,7 @@ rdbginit(void)
 	ulong jba;
 return;/**/
 	/* Only interested in the PC */
-	Mipsjmpbuf.pc = 0x8001C020;
+	Mipsjmpbuf.pc = 0xA001C020;
 
 	/* Link an NMI handler to the debugger
 	 * - addresses from the ARCS rom source
@@ -523,5 +523,5 @@ return;/**/
 	vec[7] = jba;
 
 	/* Install the debugger code in a known place */
-	memmove((void*)0x8001C000, rdbgcode, rdbglen);
+	memmove((void*)0xA001C000, rdbgcode, rdbglen);
 }
