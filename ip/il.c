@@ -237,7 +237,6 @@ ilclose(Conv *c)
 	case Ilsyncer:
 	case Ilsyncee:
 	case Ilestablished:
-		ilfreeq(ic);
 		ic->state = Ilclosing;
 		ilsendctl(c, nil, Ilclose, ic->next, ic->recvd, 0);
 		break;
@@ -247,6 +246,7 @@ ilclose(Conv *c)
 		c->lport = 0;
 		break;
 	}
+	ilfreeq(ic);
 	unlock(c);
 }
 
@@ -784,7 +784,7 @@ ilhangup(Conv *s, char *msg)
 	Ilcb *ic;
 	int callout;
 
-	netlog(Logil, "il: hangup! %i %d/%d\n", s->raddr, s->lport, s->rport);
+	netlog(Logil, "il: hangup! %i %d/%d: %s\n", s->raddr, s->lport, s->rport, msg?msg:"no reason");
 
 	ic = (Ilcb*)s->ptcl;
 	callout = ic->state == Ilsyncer;
