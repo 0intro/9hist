@@ -129,6 +129,7 @@ struct Block
 	uchar	*base;			/* start of the buffer */
 	uchar	flag;
 };
+#define BLEN(s)	((s)->wp - (s)->rp)
 
 struct Chan
 {

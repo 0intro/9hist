@@ -91,7 +91,6 @@ int		tas(ulong*);
 void		tlbinit(void);
 ulong		tlbvirt(void);
 void		touser(void*);
-ulong		uvmove(uvlong*, uvlong*);
 void		vecinit(void);
 void		vector0(void);
 void		vector100(void);
@@ -125,7 +124,9 @@ ushort	nhgets(void*);
 
 void	ifwrite(void*, Block*);
 void*	ifinit(int);
+void	ifjab(void);
 void	fiberint(int);
 ulong	ifaddr(void*);
 void	audiosbintr(void);
 void	audiodmaintr(void);
+ulong	fwblock(void*, void*, ulong);

@@ -791,7 +791,6 @@ ccache:
 	RET
 	
 TEXT	getcallerpc(SB), $0
-
 	MOVW	0(SP), R1
 	RET
 
@@ -804,43 +803,6 @@ TEXT	wrcompare(SB), $0
 	MOVW	R1, M(COMPARE)
 	RET
 
-TEXT	uvmove(SB), $-4
-	AND	$7, R1, R2
-	MOVW	4(FP), R3
-	BNE	R2, uvgetuna
-	/* aligned load */
-	LD	(0,(1), 2)
-	WAIT
-	MOVW	R2, R1
-	DSLL	(16,1,1)
-	DSLL	(16,1,1)
-	DSRA	(16,1,1)
-	DSRA	(16,1,1)
-uvput:
-	AND	$7, R3, R4
-	BNE	R4, uvputuna
-	/* aligned store */
-	STD	(2, 0,(3))
-	NOP
-	RET
-
-	/* unaligned load */
-uvgetuna:
-	MOVW	0(R1),R2
-	MOVW	4(R1),R1
-	DSLL	(16,2,2)
-	DSLL	(16,2,2)
-	OR	R1, R2
-	JMP	uvput
-
-	/* unalligned store */
-uvputuna:
-	DSRA	(16,2,2)
-	DSRA	(16,2,2)
-	MOVW	R2, 0(R3)
-	MOVW	R1, 4(R3)
-	RET
-
 TEXT	uvld(SB), $-4		/* uvld(address, dst) */
 	MOVW	4(FP), R2
 	MOVV	0(R1), R5
@@ -851,4 +813,23 @@ TEXT	uvst(SB), $-4		/* uvst(address, src) */
 	MOVW	4(FP), R2
 	MOVV	0(R2), R5
 	MOVV	R5, 0(R1)
+	RET
+
+TEXT	fwblock(SB), $-4	/* wblock(void*port, void *block, csum) */
+	MOVW	4(FP), R2
+	MOVW	8(FP), R3
+
+	MOVW	$64, R4
+fwloop:
+	MOVV	0(R2), R5
+	MOVV	R5, 0(R1)
+	ADDU	R5, R3
+	SRLV	$32, R5
+	ADDU	R5, R3
+
+	ADD	$8, R2
+	SUB	$1, R4
+	BNE	R4, fwloop
+
+	MOVW	R3, R1
 	RET

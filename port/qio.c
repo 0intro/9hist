@@ -46,7 +46,6 @@ static Arena arena;
  *  IO queues
  */
 typedef struct Queue	Queue;
-#define BLEN(b)		((b)->wp - (b)->rp)
 
 struct Queue
 {

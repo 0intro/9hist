@@ -76,6 +76,8 @@ clock(Ureg *ur)
 		m->load = (m->load*19+nrun)/20;
 	}
 
+	ifjab();
+
 	kproftimer(ur->pc);
 
 	kmapinval();
