@@ -15,6 +15,14 @@ int nconf;
 
 int	predawn = 1;
 
+typedef struct Bootargs Bootargs;
+
+struct Bootargs
+{
+	char	args[1000];
+	uchar	chksum;
+};
+
 Conf	conf;
 
 static void options(void);
@@ -31,22 +39,10 @@ main(void)
 	cpminit();
 	uartinstall();
 	mmuinit();
-if(0) {
-	predawn = 0;
-	print("spllo() = %ux\n", spllo());
-	for(;;) {
-		print("hello\n");
-		delay(1000);
-	}
-}
+
 // turn on pcmcia
 *(uchar*)(NVRAMMEM+0x100001) |= 0x60;
-//print("sr1=%ux sr2=%ux\n", *(uchar*)(NVRAMMEM+0x100000), *(uchar*)(NVRAMMEM+0x100001));
 
-//print("sccr=%ulx\n", m->iomem->sccr);
-print("%ux %ux\n", m->iomem->memc[0].base, m->iomem->memc[7].base);
-print("%ux %ux\n", m->iomem->memc[0].option, m->iomem->memc[7].option);
-print("%ux\n", *(uchar*)(0xff000000));
 	pageinit();
 	procinit0();
 	initseg();
@@ -81,7 +77,9 @@ machinit(void)
 	*(ushort*)&(io->memc[4].base) = 0x8060;
 //	*(ushort*)&(io->memc[7].option) = 0xffe0;
 	*(ushort*)&(io->memc[7].base) = 0xff00;
+
 }
+
 
 void
 bootargs(ulong base)
@@ -278,7 +276,7 @@ confinit(void)
 
 	conf.npage = conf.npage0 + conf.npage1;
 
-	conf.upages = (conf.npage*50)/100;
+	conf.upages = (conf.npage*60)/100;
 	conf.ialloc = ((conf.npage-conf.upages)/2)*BY2PG;
 
 	/* set up other configuration parameters */
@@ -312,10 +310,7 @@ getcfields(char* lp, char** fields, int n, char* sep)
 
 static char BOOTARGS[] = 
 		"ether0=type=SCC port=1 ea=08003e27df94\r\n"
-		"ether1=type=589E port=0x300\r\n"
-		"vgasize=640x480x8\r\n"
-		"kernelpercent=40\r\n"
-		"console=0 lcd\r\nbaud=9600\r\n";
+		"ether1=type=589E port=0x300\r\n";
 
 static void
 options(void)
@@ -323,11 +318,18 @@ options(void)
 	long i, n;
 	char *cp, *p, *q;
 	char *line[MAXCONF];
+	Bootargs *ba;
 
 	/*
 	 *  parse configuration args from dos file plan9.ini
 	 */
-	cp = BOOTARGS;	/* where b.com leaves its config */
+	ba = (Bootargs*)(NVRAMMEM+ 4*1024);
+	if(ba->chksum == nvcsum(ba->args, sizeof(ba->args))) {
+		cp = smalloc(strlen(ba->args)+1);
+		memmove(cp, ba->args, strlen(ba->args)+1);
+	} else
+		cp = BOOTARGS;
+print("bootargs = %s\n", cp);
 
 	/*
 	 * Strip out '\r', change '\t' -> ' '.
@@ -435,3 +437,4 @@ cistrcmp(char *a, char *b)
 	}
 	return 0;
 }
+

@@ -83,6 +83,9 @@ key(int islocal, Method *mp)
 	}
 	close(fd);
 
+//fprint(2, "hostowner = %s\n", safe->authid);
+//fprint(2, "hostdomain = %s\n", safe->authdom);
+
 	/* set host's key */
 	if(writefile("#c/key", safe->machkey, DESKEYLEN) < 0)
 		fatal("#c/key");

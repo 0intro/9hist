@@ -15,7 +15,6 @@ configsac(Method *mp)
 
 	USED(mp);
 
-print("configsac\n");
 	/*
 	 *  create the name space, mount the root fs
 	 */
@@ -24,6 +23,7 @@ print("configsac\n");
 	if(bind("#C", "/", MAFTER) < 0)
 		fatal("bind /");
 
+	// fixed sysname - enables correct namespace file
 	fd = open("#c/sysname", OWRITE);
 	if(fd < 0)
 		fatal("open sysname");
@@ -36,12 +36,6 @@ print("configsac\n");
 	write(fd, "brick", 5);
 	close(fd);
 
-	bargc = parsefields("-n 135.104.9.69 255.255.255.0 135.104.9.1 "
-						"135.104.9.69 135.104.9.69", bargv, Nbarg-1, " ");
-	configip("ether0");
-
-	// fixed sysname - enables correct cpurc and namespace files
-	// to be used
 
 	sprint(cmd, "/%s/init", cputype);
 	execl(cmd, "init", "-c", 0);

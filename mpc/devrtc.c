@@ -22,7 +22,7 @@ enum{
 
 	Nvoff=		4*1024,	/* where usable nvram lives */
 	Nvsize=		4*1024,
-	Nvoff2=		8*1024,	/* where usable nvram lives */
+	Nvoff2=		8*1024,	/* where second usable nvram lives */
 	Nvsize2=	4*1024,
 };
 

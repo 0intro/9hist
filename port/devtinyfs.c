@@ -460,7 +460,7 @@ tinyfsgen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
 		return 0;
 	qid.path = i;
 	qid.vers = 0;
-	devdir(c, qid, f->name, f->length, eve, 0664, dp);
+	devdir(c, qid, f->name, f->length, eve, 0775, dp);
 	return 1;
 }
 
@@ -480,13 +480,12 @@ tinyfsattach(void *spec)
 	Tfs *fs;
 	Chan *c;
 	volatile struct { Chan *cc; } rock;
-	int i, fd;
+	int i;
+	char buf[NAMELEN*2];
 
-	fd = atoi(spec);
-	if(fd < 0)
-		error("bad specifier");
+	snprint(buf, sizeof(buf), "/dev/%s", spec);
+	rock.cc = namec(buf, Aopen, ORDWR, 0);
 
-	rock.cc = fdtochan(fd, ORDWR, 0, 1);
 	if(waserror()){
 		cclose(rock.cc);
 		nexterror();
@@ -594,6 +593,7 @@ tinyfsopen(Chan *c, int omode)
 			c->qid.path = f - rock.fs->f;
 			break;
 		case OREAD:
+		case OEXEC:
 			break;
 		default:
 			error(Eperm);

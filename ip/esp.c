@@ -352,7 +352,7 @@ espiput(Proto *esp, uchar*, Block *bp)
 		bp = concatblock(bp);
 
 	if(BLEN(bp) < EsphdrSize + ecb->espivlen + EsptailSize + ecb->ahlen) {
-		qunlock(esp);
+		qunlock(c);
 		netlog(f, Logesp, "esp: short block %I -> %I!%d\n", raddr,
 			laddr, spi);
 		freeb(bp);
@@ -362,7 +362,7 @@ espiput(Proto *esp, uchar*, Block *bp)
 	eh = (Esphdr*)(bp->rp);
 	auth = bp->wp - ecb->ahlen;
 	if(!ecb->auth(ecb, eh->espspi, auth-eh->espspi, auth)) {
-		qunlock(esp);
+		qunlock(c);
 print("esp: bad auth %I -> %I!%ld\n", raddr, laddr, spi);
 		netlog(f, Logesp, "esp: bad auth %I -> %I!%d\n", raddr,
 			laddr, spi);
@@ -372,14 +372,14 @@ print("esp: bad auth %I -> %I!%ld\n", raddr, laddr, spi);
 
 	payload = BLEN(bp)-EsphdrSize-ecb->ahlen;
 	if(payload<=0 || payload%4 != 0 || payload%ecb->espblklen!=0) {
-		qunlock(esp);
+		qunlock(c);
 		netlog(f, Logesp, "esp: bad length %I -> %I!%d payload=%d BLEN=%d\n", raddr,
 			laddr, spi, payload, BLEN(bp));
 		freeb(bp);
 		return;
 	}
 	if(!ecb->cipher(ecb, bp->rp+EsphdrSize, payload)) {
-		qunlock(esp);
+		qunlock(c);
 print("esp: cipher failed %I -> %I!%ld: %r\n", raddr, laddr, spi);
 		netlog(f, Logesp, "esp: cipher failed %I -> %I!%d: %r\n", raddr,
 			laddr, spi);
@@ -392,7 +392,7 @@ print("esp: cipher failed %I -> %I!%ld: %r\n", raddr, laddr, spi);
 	payload -= et->pad + ecb->espivlen;
 	nexthdr = et->nexthdr;
 	if(payload <= 0) {
-		qunlock(esp);
+		qunlock(c);
 		netlog(f, Logesp, "esp: short packet after decrypt %I -> %I!%d\n", raddr,
 			laddr, spi);
 		freeb(bp);
