@@ -398,7 +398,7 @@ mntclunk(Chan *c, int t)
 }
 
 void
-mclose(Mnt *m, Chan *c)
+mclose(Mnt *m, Chan*)
 {
 	Mntrpc *q, *r;
 
@@ -894,7 +894,7 @@ mntqrm(Mnt *m, Mntrpc *r)
 }
 
 void
-recoverchan(Mnt *m, Chan *c)
+recoverchan(Mnt*, Chan*)
 {
 panic("recoverchan");
 #ifdef asdf
@@ -1060,7 +1060,7 @@ panic("mntrecover\n");
 }
 
 void
-mntrepl(char *buf)
+mntrepl(char*)
 {
 panic("mntrepl");
 #ifdef asdf

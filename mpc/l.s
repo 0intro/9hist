@@ -407,10 +407,6 @@ TEXT	putdec(SB), $0
 	MOVW	R3, SPR(DEC)
 	RETURN
 
-TEXT	getcallerpc(SB), $-4
-	MOVW	0(R1), R3
-	RETURN
-
 TEXT	getdar(SB), $0
 	MOVW	SPR(DAR), R3
 	RETURN

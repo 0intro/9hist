@@ -136,6 +136,13 @@ pcfloppyintr(Ureg *ur, void *a)
 void
 floppysetup0(FController *fl)
 {
+	fl->ndrive = 0;
+	if(ioalloc(Psra, 6, 0, "floppy") < 0)
+		return;
+	if(ioalloc(Pdir, 1, 0, "floppy") < 0){
+		iofree(Psra);
+		return;
+	}
 	fl->ndrive = 2;
 }
 

@@ -618,11 +618,20 @@ i82365reset(void)
 	if(isaconfig("pcmcia", 0, &isa) && isa.irq)
 		irq = isa.irq;
 
-	/* look for controllers */
-	i82386probe(0x3E0, 0x3E1, 0);
-	i82386probe(0x3E0, 0x3E1, 1);
-	i82386probe(0x3E2, 0x3E3, 0);
-	i82386probe(0x3E2, 0x3E3, 1);
+	/* look for controllers if the ports aren't already taken */
+	if(ioalloc(0x3E0, 2, 0, "i82386.0") >= 0){
+		i82386probe(0x3E0, 0x3E1, 0);
+		i82386probe(0x3E0, 0x3E1, 1);
+		if(ncontroller == 0)
+			iofree(0x3E0);
+	}
+	if(ioalloc(0x3E2, 2, 0, "i82386.1") >= 0){
+		i = ncontroller;
+		i82386probe(0x3E2, 0x3E3, 0);
+		i82386probe(0x3E2, 0x3E3, 1);
+		if(ncontroller == i)
+			iofree(0x3E2);
+	}
 	for(i = 0; i < ncontroller; i++)
 		nslot += controller[i]->nslot;
 	slot = xalloc(nslot * sizeof(Slot));

@@ -1304,6 +1304,12 @@ dec2114xpci(void)
 		ctlr->port = p->mem[0].bar & ~0x01;
 		ctlr->pcidev = p;
 
+		if(ioalloc(ctlr->port, p->mem[0].size, 0, "dec2114x") < 0){
+			print("dec2114x: port %d in use\n", ctlr->port);
+			free(ctlr);
+			continue;
+		}
+
 		/*
 		 * Some cards (e.g. ANA-6910FX) seem to need the Ps bit
 		 * set or they don't always work right after a hardware

@@ -50,7 +50,7 @@ allocb(int size)
 	if(b->rp < b->base)
 		panic("allocb");
 	b->wp = b->rp;
-	tagwithpc(b, getcallerpc(&size));
+	setmalloctag(b, getcallerpc(&size));
 
 	return b;
 }
@@ -102,7 +102,7 @@ iallocb(int size)
 	ilock(&ialloc);
 	ialloc.bytes += b->lim - b->base;
 	iunlock(&ialloc);
-	tagwithpc(b, getcallerpc(&size));
+	setmalloctag(b, getcallerpc(&size));
 
 	return b;
 }

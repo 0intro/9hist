@@ -146,6 +146,8 @@ floppyreset(void)
 	ulong maxtsize;
 	
 	floppysetup0(&fl);
+	if(fl.ndrive == 0)
+		return;
 
 	/*
 	 *  init dependent parameters
@@ -200,6 +202,9 @@ static Chan*
 floppyattach(char *spec)
 {
 	static int kstarted;
+
+	if(fl.ndrive == 0)
+		error(Enodev);
 
 	if(kstarted == 0){
 		/*

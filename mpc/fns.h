@@ -98,7 +98,6 @@ int unsac(uchar *dst, uchar *src, int n, int nsrc);
 void	wbflush(void);
 
 #define	waserror()	(up->nerrlab++, setlabel(&up->errlab[up->nerrlab-1]))
-ulong	getcallerpc(void*);
 
 // identity map between kernel physical and virtual addresses
 #define KADDR(a)	((void*)(a))

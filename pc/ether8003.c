@@ -203,6 +203,8 @@ reset(Ether* ether)
 		ether->mem = 0xD0000;
 	if(ether->size == 0)
 		ether->size = 8*1024;
+	if(ioalloc(ether->port, 0x20, 0, "wd8003") < 0)
+		return -1;
 
 	/*
 	 * Look for the interface. Read the LAN address ROM
@@ -221,8 +223,10 @@ reset(Ether* ether)
 	id = inb(port+Id);
 	sum += id;
 	sum += inb(port+Cksum);
-	if(sum != 0xFF)
+	if(sum != 0xFF){
+		iofree(ether->port);
 		return -1;
+	}
 
 	ether->ctlr = malloc(sizeof(Dp8390));
 	ctlr = ether->ctlr;

@@ -996,7 +996,7 @@ drawread(Chan *c, void *a, long n, vlong off)
 
 	case Qcolormap:
 		drawactive(1);	/* to restore map from backup */
-		p = malloc(4*12*256);
+		p = malloc(4*12*256+1);
 		if(p == 0)
 			error(Enomem);
 		m = 0;

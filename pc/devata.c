@@ -425,6 +425,7 @@ atactlrprobe(int ctlrno, Atadev* devp, int irq, int resetok)
 	Controller *ctlr;
 	int atapi, cmdport, ctlport, mask, once, timo;
 	uchar error, status, msb, lsb;
+	char name[13];
 
 	cmdport = devp->cmdport;
 	ctlport = devp->ctlport;
@@ -588,6 +589,19 @@ atapislave:
 
 //skipslave:
 	if(mask == 0){
+		xfree(ctlr);
+		return -1;
+	}
+	sprint(name, "ata%dcmd", ctlrno);
+	if(ioalloc(devp->cmdport, 0x8, 0, name) < 0){
+		print("#H%d: cmd port %d in use", ctlrno, devp->cmdport);
+		xfree(ctlr);
+		return -1;
+	}
+	sprint(name, "ata%dctl", ctlrno);
+	if(ioalloc(devp->ctlport+Pctl, 1, 0, name) < 0){
+		iofree(devp->cmdport);
+		print("#H%d: ctl port %d in use", ctlrno, devp->ctlport);
 		xfree(ctlr);
 		return -1;
 	}

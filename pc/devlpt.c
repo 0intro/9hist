@@ -14,7 +14,8 @@ static int lptbase[] = {
 	0x3bc,	/* lpt2 */
 	0x278	/* lpt3 (sic) */
 };
-#define NDEV	(sizeof lptbase/sizeof lptbase[0])
+#define NDEV	nelem(lptbase)
+static int lptallocd[NDEV];
 
 /* offsets, and bits in the registers */
 enum
@@ -75,6 +76,7 @@ lptattach(char *spec)
 {
 	Chan *c;
 	int i  = (spec && *spec) ? strtol(spec, 0, 0) : 1;
+	char name[5];
 	static int set;
 
 	if(!set){
@@ -84,6 +86,12 @@ lptattach(char *spec)
 	}
 	if(i < 1 || i > NDEV)
 		error(Ebadarg);
+	if(lptallocd[i-1] == 0){
+		sprint(name, "lpt%d", i-1);
+		if(ioalloc(lptbase[i-1], 3, 0, name) < 0)
+			error("lpt port space in use");
+		lptallocd[i-1] = 1;
+	}
 	c = devattach('L', spec);
 	c->dev = i-1;
 	return c;

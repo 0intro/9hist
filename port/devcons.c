@@ -389,7 +389,7 @@ static Dirtab consdir[]={
 	"sysstat",	{Qsysstat},	0,		0666,
 	"time",		{Qtime},	7*NUMSIZE,	0664,
 	"user",		{Quser},	NAMELEN,	0666,
-	"zero",		{Qzero},	0,		0666,
+	"zero",		{Qzero},	0,		0444,
 };
 
 int
@@ -816,9 +816,6 @@ conswrite(Chan *c, void *va, long n, vlong off)
 		if(sysname[n-1] == '\n')
 			sysname[n-1] = 0;
 		break;
-
-	case Qzero:
-		return n;
 
 	default:
 		print("conswrite: %lud\n", c->qid.path);

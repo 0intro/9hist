@@ -897,6 +897,7 @@ static void
 i82557pci(void)
 {
 	Pcidev *p;
+	int port;
 
 	p = nil;
 	while(p = pcimatch(p, 0x8086, 0x1229)){
@@ -905,7 +906,12 @@ i82557pci(void)
 		 * bar[1] is the I/O port register address (32 bytes) and
 		 * bar[2] is for the flash ROM (1MB).
 		 */
-		i82557adapter(&adapter, p->mem[1].bar & ~0x01, p->intl, p->tbdf);
+		port = p->mem[1].bar & ~0x01;
+		if(ioalloc(port, p->mem[1].size, 0, "i82557pci") < 0){
+			print("i82557pci: port %d in use\n", port);
+			continue;
+		}
+		i82557adapter(&adapter, port, p->intl, p->tbdf);
 		pcisetbme(p);
 	}
 }

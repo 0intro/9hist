@@ -8,23 +8,6 @@ typedef struct DMAport	DMAport;
 typedef struct DMA	DMA;
 typedef struct DMAxfer	DMAxfer;
 
-enum
-{
-	/*
-	 *  the byte registers for DMA0 are all one byte apart
-	 */
-	Dma0=		0x00,
-	Dma0status=	Dma0+0x8,	/* status port */
-	Dma0reset=	Dma0+0xD,	/* reset port */
-
-	/*
-	 *  the byte registers for DMA1 are all two bytes apart (why?)
-	 */
-	Dma1=		0xC0,
-	Dma1status=	Dma1+2*0x8,	/* status port */
-	Dma1reset=	Dma1+2*0xD,	/* reset port */
-};
-
 /*
  *  state of a dma transfer
  */
@@ -89,11 +72,15 @@ dmainit(int chan, int maxtransfer)
 {
 	DMA *dp;
 	DMAxfer *xp;
+	static int once;
 
-	if(ioalloc(0x00, 0x10, 0) < 0
-	|| ioalloc(0x80, 0x10, 0) < 0
-	|| ioalloc(0xd0, 0x10, 0) < 0)
-		panic("dmainit");
+	if(once == 0){
+		if(ioalloc(0x00, 0x10, 0, "dma") < 0
+		|| ioalloc(0x80, 0x10, 0, "dma") < 0
+		|| ioalloc(0xd0, 0x10, 0, "dma") < 0)
+			panic("dmainit");
+		once = 1;
+	}
 
 	if(maxtransfer > 64*1024)
 		maxtransfer = 64*1024;

@@ -1312,12 +1312,19 @@ tcm509isa(void)
 	 * it fully.
 	 */
 	while(port = activate()){
+		if(ioalloc(port, 0x20, 0, "tcm509isa") < 0){
+			print("tcm509isa:port %d in use\n", port);
+			continue;
+		}
+
 		/*
 		 * 6. Tag the adapter so it won't respond in future.
 		 */
 		outb(IDport, 0xD1);
-		if(port == 0x3F0)
+		if(port == 0x3F0){
+			iofree(port);
 			continue;
+		}
 
 		/*
 		 * 6. Activate the adapter by writing the Activate command
@@ -1367,11 +1374,19 @@ tcm5XXeisa(void)
 	 */
 	for(slot = 1; slot < MaxEISA; slot++){
 		port = slot*0x1000;
-		if(ins(port+0xC80+ManufacturerID) != 0x6D50)
+		if(ioalloc(port, 0x1000, 0, "tcm5XXeisa") < 0){
+			print("tcm5XXeisa: port %d in use\n", port);
 			continue;
+		}
+		if(ins(port+0xC80+ManufacturerID) != 0x6D50){
+			iofree(port);
+			continue;
+		}
 		x = ins(port+0xC80+ProductID);
-		if((x & 0xF0FF) != 0x9050 && (x & 0xFF00) != 0x5900)
+		if((x & 0xF0FF) != 0x9050 && (x & 0xFF00) != 0x5900){
+			iofree(port);
 			continue;
+		}
 
 		COMMAND(port, SelectRegisterWindow, Wsetup);
 		outs(port+ConfigControl, Ena);
@@ -1393,6 +1408,10 @@ tcm59Xpci(void)
 	p = nil;
 	while(p = pcimatch(p, 0x10B7, 0)){
 		port = p->mem[0].bar & ~0x01;
+		if(ioalloc(port, p->mem[0].size, 0, "tcm59Xpci") < 0){
+			print("tcm59Xpci: port %d in use\n", port);
+			continue;
+		}
 		irq = p->intl;
 		COMMAND(port, GlobalReset, 0);
 		while(STATUS(port) & commandInProgress)
@@ -1416,8 +1435,11 @@ tcm5XXpcmcia(Ether* ether)
 	int i;
 
 	for(i = 0; tcmpcmcia[i] != nil; i++){
-		if(!cistrcmp(ether->type, tcmpcmcia[i]))
+		if(!cistrcmp(ether->type, tcmpcmcia[i])){
+			if(ioalloc(ether->port, 0x20, 0, "tcm5XXpcmcia") < 0)
+				return 0;
 			return ether->port;
+		}
 	}
 
 	return 0;

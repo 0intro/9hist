@@ -19,7 +19,6 @@ ulong		fcr31(void);
 void		firmware(int);
 #define		flushpage(s)		icflush((void*)(s), BY2PG)
 void		fptrap(Ureg*);
-ulong		getcallerpc(void*);
 ulong		getstatus(void);
 void		gettlb(int, ulong*);
 int		gettlbp(ulong, ulong*);

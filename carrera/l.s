@@ -785,10 +785,6 @@ ccache:
 	WAIT
 	RET
 	
-TEXT	getcallerpc(SB), $0
-	MOVW	0(SP), R1
-	RET
-
 TEXT	rdcount(SB), $0
 	MOVW	M(COUNT), R1
 	NOOP

@@ -804,6 +804,10 @@ reset(Ether* ether)
 		return -1;
 	}
 
+	if(ioalloc(port, 0x20, 0, "wavelan") < 0){
+		print("wavelan: port %d in use\n", port);
+		return -1;
+	}
 
 	print("#l%dWaveLAN: slot %d, port 0x%ulX irq %ld type %s\n", ether->ctlrno, slot, ether->port, ether->irq, ether->type);
 
@@ -813,6 +817,7 @@ reset(Ether* ether)
 /* map a piece of memory (Attribute memory) first */
 	m = pcmmap(slot, 0, 0x5000, 1);
 	if (m==0) {
+		iofree(port);
 		return 1;
 	}
 /* read ethernet address from the card and put in ether->ea */
@@ -843,6 +848,7 @@ reset(Ether* ether)
 	outb(HACR(port), HACR_DEFAULT);
 
 	if(inb(HASR(port)) & HASR_NO_CLK) {
+		iofree(port);
 		print("wavelan: modem not connected\n");
 		return 1;
 	}
@@ -852,11 +858,15 @@ reset(Ether* ether)
 	outb(LCCR(port), OP0_RESET);	/* reset the LAN controller */
 	delay(10);
 
-	if (wavelan_hw_config(port, ether) == FALSE)
+	if (wavelan_hw_config(port, ether) == FALSE){
+		iofree(port);
 		return 1;
+	}
 
-	if (wavelan_diag(ether, port) == 1) 
+	if (wavelan_diag(ether, port) == 1){
+		iofree(port);
 		return 1;
+	}
 	wavelan_ru_start(ether, port);
 
 	print("wavelan: init done; receiver started\n");

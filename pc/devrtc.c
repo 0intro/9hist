@@ -52,6 +52,13 @@ Dirtab rtcdir[]={
 static ulong rtc2sec(Rtc*);
 static void sec2rtc(ulong, Rtc*);
 
+void
+rtcinit(void)
+{
+	if(ioalloc(Paddr, 2, 0, "rtc/nvr") < 0)
+		panic("rtcinit: ioalloc failed");
+}
+
 static Chan*
 rtcattach(char* spec)
 {
@@ -298,7 +305,7 @@ Dev rtcdevtab = {
 	"rtc",
 
 	devreset,
-	devinit,
+	rtcinit,
 	rtcattach,
 	devclone,
 	rtcwalk,

@@ -169,10 +169,6 @@ tas1:
 tas2:
 	RET
 
-TEXT	getcallerpc(SB), $-8
-	MOVL	0(SP), R0
-	RET
-
 TEXT	fpenab(SB), $-8
 	MOVQ	R0, R16
 	CALL_PAL $PALwrfen

@@ -444,10 +444,16 @@ static void
 amd79c970pci(void)
 {
 	Pcidev *p;
+	int port;
 
 	p = nil;
 	while(p = pcimatch(p, 0x1022, 0x2000)){
-		amd79c970adapter(&adapter, p->mem[0].bar & ~0x01, p->intl, p->tbdf);
+		port = p->mem[0].bar & ~0x01;
+		if(ioalloc(port, p->mem[0].size, 0, "amd79c970") < 0){
+			print("amd79c970: port %d in use\n", port);
+			continue;
+		}
+		amd79c970adapter(&adapter, port, p->intl, p->tbdf);
 		pcisetbme(p);
 	}
 }

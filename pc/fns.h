@@ -48,9 +48,10 @@ void	inss(int, void*, int);
 ulong	inl(int);
 void	insl(int, void*, int);
 void	intrenable(int, void (*)(Ureg*, void*), void*, int);
-void	iofree(ulong, int);
+void	iofree(int);
 void	ioinit(void);
-ulong	ioalloc(ulong, int, int);
+int	iounused(int, int);
+int	ioalloc(int, int, int, char*);
 int	iprint(char*, ...);
 int	isaconfig(char*, int, ISAConf*);
 void	kbdinit(void);
@@ -118,7 +119,6 @@ int	xchgw(ushort*, int);
 ulong	TK2MS(ulong);				/* ticks to milliseconds */
 
 #define	waserror()	(up->nerrlab++, setlabel(&up->errlab[up->nerrlab-1]))
-#define getcallerpc(x)	(((ulong*)(x))[-1])
 #define KADDR(a)	((void*)((ulong)(a)|KZERO))
 #define PADDR(a)	((ulong)(a)&~KZERO)
 

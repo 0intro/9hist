@@ -35,6 +35,7 @@ i8253init(int aalcycles, int havecycleclock)
 
 	if(initialised == 0){
 		initialised = 1;
+		ioalloc(T0cntr, 4, 0, "i8253");
 		/*
 		 *  set clock for 1/HZ seconds
 		 */

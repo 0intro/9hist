@@ -120,6 +120,9 @@ reset(Ether* ether)
 		ether->port = 0x240;
 	port = ether->port;
 
+	if(ioalloc(port, 0x10, 0, "3C589") < 0)
+		return -1;
+
 	if((slot = pcmspecial(ether->type, ether)) < 0)
 		return -1;
 

@@ -435,7 +435,7 @@ confinit(void)
 		 * 4MB on the first Image chunk allocation.
 		 */
 		if(conf.npage*BY2PG < 16*MB)
-			poolconfig(imagmem, 0, 4*1024*1024, 0, nil);
+			imagmem->minarena = 4*1024*1024;
 	}
 	conf.upages = conf.npage - kpages;
 	conf.ialloc = (kpages/2)*BY2PG;
@@ -451,14 +451,14 @@ confinit(void)
 		+ conf.nimage*sizeof(Image)
 		+ conf.nswap
 		+ conf.nswppo*sizeof(Page);
-	poolconfig(mainmem, kpages, 0, 0, nil);
+	mainmem->maxsize = kpages;
 	if(!cpuserver){
 		/*
 		 * give terminals lots of image memory, too; the dynamic
 		 * allocation will balance the load properly, hopefully.
 		 * be careful with 32-bit overflow.
 		 */
-		poolconfig(imagmem, kpages, 0, 0, nil);
+		imagmem->maxsize = kpages;
 	}
 }
 

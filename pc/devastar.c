@@ -413,6 +413,7 @@ astarreset(void)
 	int i, x;
 	Astar *a;
 	Pcidev *p;
+	char name[8];
 
 	p = nil;
 	for(i = 0; i < Maxcard; i++){
@@ -455,6 +456,14 @@ astarreset(void)
 			a->mem = upamalloc(p->mem[2].bar & ~0x0F, p->mem[2].size, 0);
 			a->addr = (uchar*)a->mem;
 			a->gcb = (GCB*)(a->mem+0x10000);
+
+			sprint(name, "astar%d", i);
+			if(ioalloc(a->port, p->mem[2].size, 0, name) < 0){
+				print("#G%d: port 0x%lux in use", a->id, a->port);
+				xfree(a);
+				astar[nastar] = 0;
+				continue;
+			}
 
 			/*
 			 * Toggle the software reset and wait for
@@ -528,28 +537,40 @@ static int
 astarsetup(Astar *a)
 {
 	int i, found;
+	char name[8];
 
 	/* see if the card exists */
 	found = 0;
 	if(a->port == 0)
 		for(i = 0; isaport[i]; i++){
 			a->port = isaport[i];
+			sprint(name, "astar%d", a->id);
+			if(ioalloc(a->port, 6, 0, name) < 0)
+				continue;
 			found = astarprobe(isaport[i]);
 			if(found){
 				isaport[i] = -1;
 				break;
 			}
 		}
-	else
+	else {
+		sprint(name, "astar%d", a->id);
+		if(ioalloc(a->port, 6, 0, name) < 0){
+			print("#G%d: port 0x%lux in use\n", a->id, a->port);
+			return -1;
+		}
 		found = astarprobe(a->port);
+	}
 	if(!found){
 		print("#G%d: not found\n", a->id);
+		iofree(a->port);
 		return -1;
 	}
 
 	/* check interrupt level */
 	if(isairqcode[a->irq] == -1){
 		print("#G%d: bad irq %lud\n", a->id, a->irq);
+		iofree(a->port);
 		return -1;
 	}
 

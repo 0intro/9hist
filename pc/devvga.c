@@ -31,6 +31,11 @@ static Dirtab vgadir[] = {
 static void
 vgareset(void)
 {
+	/* reserve the 'standard' vga registers */
+	if(ioalloc(0x2b0, 0x2df-0x2b0+1, 0, "vga") < 0)
+		panic("vga ports already allocated"); 
+	if(ioalloc(0x3c0, 0x3da-0x3c0+1, 0, "vga") < 0)
+		panic("vga ports already allocated"); 
 	conf.monitor = 1;
 }
 
@@ -63,6 +68,20 @@ vgaopen(Chan* c, int omode)
 static void
 vgaclose(Chan*)
 {
+}
+
+static void
+checkport(int start, int end)
+{
+	/* standard vga regs are OK */
+	if(start >= 0x2b0 && end <= 0x2df+1)
+		return;
+	if(start >= 0x3c0 && end <= 0x3da+1)
+		return;
+
+	if(iounused(start, end))
+		return;
+	error(Eperm);
 }
 
 static long
@@ -112,6 +131,7 @@ vgaread(Chan* c, void* a, long n, vlong off)
 
 	case Qvgaiob:
 		port = offset;
+		checkport(offset, offset+n);
 		for(p = a; port < offset+n; port++)
 			*p++ = inb(port);
 		return n;
@@ -119,6 +139,7 @@ vgaread(Chan* c, void* a, long n, vlong off)
 	case Qvgaiow:
 		if((n & 0x01) || (offset & 0x01))
 			error(Ebadarg);
+		checkport(offset, offset+n+1);
 		n /= 2;
 		sp = a;
 		for(port = offset; port < offset+n; port += 2)
@@ -128,6 +149,7 @@ vgaread(Chan* c, void* a, long n, vlong off)
 	case Qvgaiol:
 		if((n & 0x03) || (offset & 0x03))
 			error(Ebadarg);
+		checkport(offset, offset+n+3);
 		n /= 4;
 		lp = a;
 		for(port = offset; port < offset+n; port += 4)
@@ -278,6 +300,7 @@ vgawrite(Chan* c, void* a, long n, vlong off)
 
 	case Qvgaiob:
 		p = a;
+		checkport(offset, offset+n);
 		for(port = offset; port < offset+n; port++)
 			outb(port, *p++);
 		return n;
@@ -285,6 +308,7 @@ vgawrite(Chan* c, void* a, long n, vlong off)
 	case Qvgaiow:
 		if((n & 01) || (offset & 01))
 			error(Ebadarg);
+		checkport(offset, offset+n+1);
 		n /= 2;
 		sp = a;
 		for(port = offset; port < offset+n; port += 2)
@@ -294,6 +318,7 @@ vgawrite(Chan* c, void* a, long n, vlong off)
 	case Qvgaiol:
 		if((n & 0x03) || (offset & 0x03))
 			error(Ebadarg);
+		checkport(offset, offset+n+3);
 		n /= 4;
 		lp = a;
 		for(port = offset; port < offset+n; port += 4)

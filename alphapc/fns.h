@@ -26,7 +26,6 @@ void		firmware(void);
 #define	flushpage(s)	icflush()
 void		fpenab(int);
 void		fptrap(Ureg*);
-ulong	getcallerpc(void*);
 char		*getconf(char*);
 ulong	getfcr(void);
 ulong	getstatus(void);

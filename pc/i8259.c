@@ -34,6 +34,8 @@ i8259init(void)
 {
 	int x;
 
+	ioalloc(Int0ctl, 2, 0, "i8259.0");
+	ioalloc(Int1ctl, 2, 0, "i8259.1");
 	ilock(&i8259lock);
 
 	/*

@@ -50,6 +50,9 @@ reset(Ether* ether)
 		ether->size = 16*1024;
 	port = ether->port;
 
+	if(ioalloc(ether->port, 0x20, 0, "ne2000") < 0)
+		return -1;
+
 	ether->ctlr = malloc(sizeof(Dp8390));
 	ctlr = ether->ctlr;
 	ctlr->width = 2;
@@ -92,6 +95,7 @@ reset(Ether* ether)
 	memset(buf, 0, sizeof(buf));
 	dp8390read(ctlr, buf, 0, sizeof(buf));
 	if((buf[0x0E] & 0xFF) != 0x57 || (buf[0x0F] & 0xFF) != 0x57){
+		iofree(ether->port);
 		free(ether->ctlr);
 		return -1;
 	}
