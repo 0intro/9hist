@@ -46,6 +46,7 @@ static int
 configASIC(Ether *ether, int port, int xcvr)
 {
 	ushort x;
+int r;
 
 	/* set Window 0 configuration registers */
 	COMMAND(port, SelectWindow, 0);
@@ -53,6 +54,7 @@ configASIC(Ether *ether, int port, int xcvr)
 	/* ROM size & base - must be set before we can access ROM */
 	/* transceiver type is 2 for 'figure it out'  */
 	x = ins(port + AddressConfig);
+print("x = %uX\n", x);
 	outs(port + AddressConfig, (x & 0xf0) | xcvr);
 
 	/* IRQ must be 3 on 3C589 */
@@ -68,7 +70,9 @@ configASIC(Ether *ether, int port, int xcvr)
 	x = ins(port+EEPROMdata);
 	outs(port + ProductID, x);
 
-	return ether509reset(ether);
+	r = ether509reset(ether);
+	outs(port + ResourceConfig, 0x3f00);
+	return r;
 }
 
 static int
