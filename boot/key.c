@@ -207,12 +207,12 @@ finddosfile(int fd, char *file)
 	sectsize = GETSHORT(b->sectsize);
 	if(sectsize != 512)
 		return -1;
-	rootoff = (1 + b->nfats*GETSHORT(b->fatsize)) * sectsize;
+	rootoff = (GETSHORT(b->nresrv) + b->nfats*GETSHORT(b->fatsize)) * sectsize;
 	if(seek(fd, rootoff, 0) < 0)
 		return -1;
 	nroot = GETSHORT(b->rootsize);
 	rootsects = (nroot*sizeof(Dosdir)+sectsize-1)/sectsize;
-	if(rootsects <= 0 || rootsects > 20)
+	if(rootsects <= 0 || rootsects > 64)
 		return -1;
 
 	/* 

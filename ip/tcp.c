@@ -189,6 +189,7 @@ struct Tcpctl
 	int	kacounter;		/* count down for keep alive */
 	uint	sndsyntime;		/* time syn sent */
 	ulong	time;			/* time Finwait2 or Syn_received was sent */
+	int	nochecksum;		/* non-zero means don't send checksums */ 
 
 	Tcphdr	protohdr;		/* prototype header */
 };
@@ -751,7 +752,7 @@ tcpflag(ushort flag)
 }
 
 Block *
-htontcp(Tcp *tcph, Block *data, Tcphdr *ph)
+htontcp(Tcp *tcph, Block *data, Tcphdr *ph, Tcpctl *tcb)
 {
 	int dlen;
 	Tcphdr *h;
@@ -793,8 +794,12 @@ htontcp(Tcp *tcph, Block *data, Tcphdr *ph)
 		h->tcpopt[1] = MSS_LENGTH;
 		hnputs(h->tcpmss, tcph->mss);
 	}
-	csum = ptclcsum(data, TCP_IPLEN, hdrlen+dlen+TCP_PHDRSIZE);
-	hnputs(h->tcpcksum, csum);
+	if(tcb != nil && tcb->nochecksum){
+		h->tcpcksum[0] = h->tcpcksum[1] = 0;
+	} else {
+		csum = ptclcsum(data, TCP_IPLEN, hdrlen+dlen+TCP_PHDRSIZE);
+		hnputs(h->tcpcksum, csum);
+	}
 
 /*	netlog(f, Logtcpmsg, "%d > %d s %l8.8ux a %8.8lux %s w %.4ux l %d\n",
 		tcph->source, tcph->dest,
@@ -931,7 +936,7 @@ sndrst(Proto *tcp, uchar *source, uchar *dest, ushort length, Tcp *seg)
 	seg->wnd = 0;
 	seg->urg = 0;
 	seg->mss = 0;
-	hbp = htontcp(seg, nil, &ph);
+	hbp = htontcp(seg, nil, &ph, nil);
 	if(hbp == nil)
 		return;
 
@@ -964,7 +969,7 @@ tcphangup(Conv *s)
 		seg.mss = 0;
 		tcb->last_ack = tcb->rcv.nxt;
 		hnputs(ph.tcplen, TCP_HDRSIZE);
-		hbp = htontcp(&seg, nil, &tcb->protohdr);
+		hbp = htontcp(&seg, nil, &tcb->protohdr, tcb);
 		ipoput(s->p->f, hbp, 0, s->ttl, s->tos);
 	}
 	localclose(s, nil);
@@ -1231,7 +1236,8 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 
 	h->Unused = 0;
 	hnputs(h->tcplen, length-TCP_PKT);
-	if(ptclcsum(bp, TCP_IPLEN, length-TCP_IPLEN)) {
+	if((h->tcpcksum[0] || h->tcpcksum[0]) && 
+	    ptclcsum(bp, TCP_IPLEN, length-TCP_IPLEN)) {
 		tpriv->stats[CsumErrs]++;
 		tpriv->stats[InErrs]++;
 		netlog(f, Logtcp, "bad tcp proto cksum\n");
@@ -1800,7 +1806,7 @@ tcpoutput(Conv *s)
 			tcb->snd.nxt = tcb->snd.ptr;
 
 		/* Build header, link data and compute cksum */
-		hbp = htontcp(&seg, bp, &tcb->protohdr);
+		hbp = htontcp(&seg, bp, &tcb->protohdr, tcb);
 		if(hbp == nil) {
 			freeblist(bp);
 			return;
@@ -1875,7 +1881,7 @@ tcpsendka(Conv *s)
 	}
 
 	/* Build header, link data and compute cksum */
-	hbp = htontcp(&seg, dbp, &tcb->protohdr);
+	hbp = htontcp(&seg, dbp, &tcb->protohdr, tcb);
 	if(hbp == nil) {
 		freeblist(dbp);
 		return;
@@ -1937,6 +1943,20 @@ tcpstartka(Conv *s, char **f, int n)
 	}
 	tcpsetkacounter(tcb);
 	tcpgo(s->p->priv, &tcb->katimer);
+
+	return nil;
+}
+
+/*
+ *  turn checksums on/off
+ */
+char*
+tcpsetchecksum(Conv *s, char **f, int)
+{
+	Tcpctl *tcb;
+
+	tcb = (Tcpctl*)s->ptcl;
+	tcb->nochecksum = !atoi(f[1]);
 
 	return nil;
 }
@@ -2230,6 +2250,8 @@ tcpctl(Conv* c, char** f, int n)
 		return tcphangup(c);
 	if(n >= 1 && strcmp(f[0], "keepalive") == 0)
 		return tcpstartka(c, f, n);
+	if(n >= 1 && strcmp(f[0], "checksum") == 0)
+		return tcpsetchecksum(c, f, n);
 	return "unknown control request";
 }
 

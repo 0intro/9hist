@@ -443,13 +443,13 @@ regurgitate(Dstate *s, uchar *p, int n)
 	b = s->unprocessed;
 	if(s->unprocessed == nil || b->rp - b->base < n) {
 		b = allocb(n);
-		memmove(p, b->wp, n);
+		memmove(b->wp, p, n);
 		b->wp += n;
 		b->next = s->unprocessed;
 		s->unprocessed = b;
 	} else {
 		b->rp -= n;
-		memmove(p, b->rp, n);
+		memmove(b->rp, p, n);
 	}
 }
 
@@ -701,8 +701,6 @@ sslbwrite(Chan *c, Block *b, ulong offset)
 		qunlock(&s.s->out.q);
 		if(bb.b != nil)
 			freeb(bb.b);
-		if(nb != nil)
-			freeb(nb);
 		nexterror();
 	}
 	qlock(&s.s->out.q);
