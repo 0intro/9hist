@@ -54,9 +54,9 @@ clock(Ureg *ur, void *arg)
 
 	m->ticks++;
 
-	uartclock();
 	checkalarms();
 	hardclock();
+	uartclock();
 
 	/*
 	 *  process time accounting

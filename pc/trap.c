@@ -222,11 +222,10 @@ char *excname[] =
 [13]	"general protection violation",
 };
 
-
 /*
  *  All traps come here.  It is slower to have all traps call trap() rather than
  *  directly vectoring the handler.  However, this avoids a lot of code duplication
- *  and possible bugs.
+ *  and possible bugs.  trap is called splhi().
  */
 void
 trap(Ureg *ur)
@@ -297,9 +296,11 @@ trap(Ureg *ur)
 		h = h->next;
 	} while(h);
 
-	/* check user since syscall does its own notifying */
+	/*
+	 *  check user since syscall does its own notifying
+	 */
 	splhi();
-	if(user && (up->procctl || up->nnote))
+	if(v != Syscallvec && user && (up->procctl || up->nnote))
 		notify(ur);
 }
 
@@ -374,7 +375,7 @@ dumpstack(void)
 #include "../port/systab.h"
 
 /*
- *  syscall is called spllo()
+ *  syscall is called splhi()
  */
 void
 syscall(Ureg *ur, void *arg)
@@ -384,6 +385,7 @@ syscall(Ureg *ur, void *arg)
 	int	i;
 
 	USED(arg);
+
 
 	up->insyscall = 1;
 	up->pc = ur->pc;
@@ -396,15 +398,17 @@ syscall(Ureg *ur, void *arg)
 	if(up->scallnr == RFORK && up->fpstate == FPactive){
 		/*
 		 *  so that the child starts out with the
-		 *  same registers as the parent
+		 *  same registers as the parent.
+		 *  this must be atomic relative to this CPU, hence
+		 *  the spl's.
 		 */
-		splhi();
 		if(up->fpstate == FPactive){
 			fpsave(&up->fpsave);
 			up->fpstate = FPinactive;
 		}
-		spllo();
 	}
+	spllo();
+
 	sp = ur->usp;
 	up->nerrlab = 0;
 	ret = -1;
@@ -442,13 +446,10 @@ syscall(Ureg *ur, void *arg)
 	 */
 	ur->ax = ret;
 
+	splhi();
 	if(up->scallnr == NOTED)
 		noted(ur, *(ulong*)(sp+BY2WD));
 
-	if(up->nerrlab != 0)
-		panic("nerrlab = %d syscall = %d\n", up->nerrlab, up->scallnr);
-
-	splhi(); /* avoid interrupts during the iret */
 	if(up->scallnr!=RFORK && (up->procctl || up->nnote))
 		notify(ur);
 }

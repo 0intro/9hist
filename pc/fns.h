@@ -85,6 +85,7 @@ void	touser(void*);
 void	trapinit(void);
 int	tas(void*);
 void	uartclock(void);
+void	uartpoll(void);
 void	vgainit(void);
 int	x86(void);
 

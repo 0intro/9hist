@@ -455,7 +455,7 @@ receive(Ether *ether)
 			/*
 			 * Copy the packet to whoever wants it.
 			 */
-			etherrloop(ether, &ether->rpkt, len);
+			etherrloop(ether, &ether->rpkt, len, 1);
 		}
 
 		/*

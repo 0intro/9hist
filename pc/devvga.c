@@ -24,7 +24,6 @@ Bitmap	gscreen;
 
 /* vga screen */
 static	Lock	screenlock;
-static	Lock	loadlock;
 static	ulong	colormap[256][3];
 Lock pallettelock;
 
@@ -758,7 +757,7 @@ screenload(Rectangle r, uchar *data, int tl, int l, int dolock)
 
 	if(dolock && hwgc == 0)
 		cursorlock(r);
-	lock(&loadlock);
+	lock(&pallettelock);
 
 	q = byteaddr(&gscreen, r.min);
 	mx = 7>>gscreen.ldepth;
@@ -838,7 +837,7 @@ screenload(Rectangle r, uchar *data, int tl, int l, int dolock)
 			data += l;
 		}
 
-	unlock(&loadlock);
+	unlock(&pallettelock);
 	if(dolock && hwgc == 0)
 		cursorunlock();
 }
@@ -914,7 +913,7 @@ screenunload(Rectangle r, uchar *data, int tl, int l, int dolock)
 
 	if(dolock && hwgc == 0)
 		cursorlock(r);
-	lock(&loadlock);
+	lock(&pallettelock);
 
 	q = byteaddr(&gscreen, r.min);
 	mx = 7>>gscreen.ldepth;
@@ -994,7 +993,7 @@ screenunload(Rectangle r, uchar *data, int tl, int l, int dolock)
 			data += l;
 		}
 
-	unlock(&loadlock);
+	unlock(&pallettelock);
 	if(dolock && hwgc == 0)
 		cursorunlock();
 }
