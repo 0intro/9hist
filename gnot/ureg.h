@@ -17,8 +17,9 @@ struct Ureg
 	ulong	a6;
 	ulong	sp;
 	ulong	usp;
-	ulong	magic;	/* for db to find bottom of ureg */
+	ulong	magic;		/* for db to find bottom of ureg */
 	ushort	sr;
 	ulong	pc;
 	ushort	vo;
+	uchar	microstate[UREGVARSZ];	/* variable-sized portion */
 };

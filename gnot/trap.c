@@ -172,6 +172,7 @@ notify(Ureg *ur)
 		*(ulong*)(sp+0*BY2WD) = 0;		/* arg 0 is pc */
 		ur->usp = sp;
 		ur->pc = (ulong)u->notify;
+		ur->vo = 0x0080;	/* pretend we're returning from syscall */
 		u->notified = 1;
 		u->nnote--;
 		memmove(&u->lastnote, &u->note[0], sizeof(Note));

@@ -432,12 +432,13 @@ TEXT	setlabel(SB),$0
  */
 TEXT	touser(SB),$0
 	PUSHL	$(UDSEL)			/* old ss */
-	PUSHL	$(USTKTOP-4*BY2WD)		/* old sp */
+	PUSHL	$(USTKTOP-16)			/* old sp */
 	PUSHFL					/* old flags */
 	PUSHL	$(UESEL)			/* old cs */
 	PUSHL	$(UTZERO+32)			/* old pc */
-	MOVL	$(UDSEL),AX		/* set up user's data segment */
+	MOVL	$(UDSEL),AX
 	MOVW	AX,DS
+	MOVW	AX,ES
 	IRETL
 
 /*

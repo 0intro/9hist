@@ -257,7 +257,7 @@ kbdintr(Ureg *ur)
 	int keyup;
 
 	/*
-	 *  get a character to be there
+	 *  get a character
 	 */
 	c = inb(Data);
 

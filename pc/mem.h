@@ -48,7 +48,7 @@
 #define TSTKSIZ 10
 #define	USTKTOP		(TSTKTOP-TSTKSIZ*BY2PG)	/* byte just beyond user stack */
 #define	USTKSIZE	(4*1024*1024 - TSTKSIZ*BY2PG)	/* size of user stack */
-#define USTKBTM		USTKTOP - USTKSIZE
+#define USTKBTM		(USTKTOP - USTKSIZE)
 
 #define	MACHSIZE	4096
 
@@ -63,9 +63,7 @@
 #define	UDSEG	3	/* user data/stack */
 #define	UESEG	4	/* user executable */
 #define	SYSGATE	5	/* system call gate */
-#define	RDSEG	6	/* reboot data/stack */
-#define	RESEG	7	/* reboot executable */
-#define TSSSEG	8	/* task segment */
+#define TSSSEG	6	/* task segment */
 
 #define SELGDT	(0<<3)	/* selector is in gdt */
 #define	SELLDT	(1<<3)	/* selector is in ldt */
@@ -77,8 +75,6 @@
 #define KDSEL	SELECTOR(KDSEG, SELGDT, 0)
 #define UESEL	SELECTOR(UESEG, SELGDT, 3)
 #define UDSEL	SELECTOR(UDSEG, SELGDT, 3)
-#define RDSEL	SELECTOR(RDSEG, SELGDT, 0)
-#define RESEL	SELECTOR(RESEG, SELGDT, 0)
 #define TSSSEL	SELECTOR(TSSSEG, SELGDT, 0)
 
 /*

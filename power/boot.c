@@ -369,9 +369,8 @@ boot(int ask)
 	Dir dir;
 	char dirbuf[DIRLEN];
 
-	if(ask){
+	if(ask)
 		outin("server", sys, sizeof(sys));
-	}
 
 	for(tries = 0; tries < 5; tries++){
 		fd = -1;

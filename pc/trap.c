@@ -60,30 +60,30 @@ trapinit(void)
 	/*
 	 *  set the standard traps
 	 */
-	sethvec(0, intr0, SEGTG, 0);
-	sethvec(1, intr1, SEGTG, 0);
-	sethvec(2, intr2, SEGTG, 0);
-	sethvec(3, intr3, SEGTG, 0);
-	sethvec(4, intr4, SEGTG, 0);
-	sethvec(5, intr5, SEGTG, 0);
-	sethvec(6, intr6, SEGTG, 0);
-	sethvec(7, intr7, SEGTG, 0);
-	sethvec(8, intr8, SEGTG, 0);
-	sethvec(9, intr9, SEGTG, 0);
-	sethvec(10, intr10, SEGTG, 0);
-	sethvec(11, intr11, SEGTG, 0);
-	sethvec(12, intr12, SEGTG, 0);
-	sethvec(13, intr13, SEGTG, 0);
-	sethvec(14, intr14, SEGTG, 0);
-	sethvec(15, intr15, SEGTG, 0);
-	sethvec(16, intr16, SEGTG, 0);
-	sethvec(17, intr17, SEGTG, 0);
-	sethvec(18, intr18, SEGTG, 0);
-	sethvec(19, intr19, SEGTG, 0);
-	sethvec(20, intr20, SEGTG, 0);
-	sethvec(21, intr21, SEGTG, 0);
-	sethvec(22, intr22, SEGTG, 0);
-	sethvec(23, intr23, SEGTG, 0);
+	sethvec(0, intr0, SEGIG, 0);
+	sethvec(1, intr1, SEGIG, 0);
+	sethvec(2, intr2, SEGIG, 0);
+	sethvec(3, intr3, SEGIG, 0);
+	sethvec(4, intr4, SEGIG, 0);
+	sethvec(5, intr5, SEGIG, 0);
+	sethvec(6, intr6, SEGIG, 0);
+	sethvec(7, intr7, SEGIG, 0);
+	sethvec(8, intr8, SEGIG, 0);
+	sethvec(9, intr9, SEGIG, 0);
+	sethvec(10, intr10, SEGIG, 0);
+	sethvec(11, intr11, SEGIG, 0);
+	sethvec(12, intr12, SEGIG, 0);
+	sethvec(13, intr13, SEGIG, 0);
+	sethvec(14, intr14, SEGIG, 0);
+	sethvec(15, intr15, SEGIG, 0);
+	sethvec(16, intr16, SEGIG, 0);
+	sethvec(17, intr17, SEGIG, 0);
+	sethvec(18, intr18, SEGIG, 0);
+	sethvec(19, intr19, SEGIG, 0);
+	sethvec(20, intr20, SEGIG, 0);
+	sethvec(21, intr21, SEGIG, 0);
+	sethvec(22, intr22, SEGIG, 0);
+	sethvec(23, intr23, SEGIG, 0);
 
 	/*
 	 *  set all others to unknown interrupts

@@ -47,6 +47,7 @@ fault68020(Ureg *ur, FFrame *f)
 {
 	ulong addr, badvaddr;
 	int user, read, insyscall;
+	char buf[ERRLEN];
 
 	if(u == 0){
 		dumpregs(ur);
@@ -88,9 +89,11 @@ fault68020(Ureg *ur, FFrame *f)
 
 	if(fault(addr, read) < 0){
 		if(user){
-			pprint("user %s error addr=0x%lux\n", read? "read" : "write", badvaddr);
-			pprint("status=0x%lux pc=0x%lux sp=0x%lux\n", ur->sr, ur->pc, ur->usp);
-			pexit("Suicide", 0);
+			sprint(buf, "sys: fault %s pc=0x%lux addr=0x%lux",
+				read? "read" : "write", ur->pc, badvaddr);
+			postnote(u->p, 1, buf, NDebug);
+			notify(ur);
+			return;
 		}
 		u->p->state = MMUing;
 		dumpregs(ur);

@@ -23,6 +23,20 @@ enum
 	Freq=		1193182,	/* Real clock frequency */
 };
 
+/*
+ *  delay for l milliseconds
+ */
+void
+delay(int l)
+{
+	int i;
+
+	while(--l){
+		for(i=0; i < 404; i++)
+			;
+	}
+}
+
 void
 clockinit(void)
 {

@@ -13,12 +13,14 @@ extern long edata;
 void
 main(void)
 {
+	a20enable();
 	machinit();
 	confinit();
 	screeninit();
 	printinit();
 	mmuinit();
 	trapinit();
+	kbdinit();
 	clockinit();
 	faultinit();
 	procinit0();
@@ -31,7 +33,6 @@ main(void)
 	swapinit();
 	pageinit();
 	userinit();
-print("user inited\n");
 
 	schedinit();
 }
@@ -52,7 +53,7 @@ machinit(void)
 	active.machs = 1;
 }
 
-long useless;
+ulong garbage;
 
 void
 init0(void)
@@ -64,9 +65,6 @@ init0(void)
 	u->p->state = Running;
 	u->p->mach = m;
 
-	spllo();
-print("interrupts on\n");
-
 	/*
 	 * These are o.k. because rootinit is null.
 	 * Then early kproc's will have a root and dot.
@@ -75,12 +73,18 @@ print("interrupts on\n");
 	u->dot = clone(u->slash, 0);
 
 	chandevinit();
-print("going to user\n");
 
 	/*
-	 *  fault in the first executable page
+	 *  fault in the first executable page and user stack
 	 */
-	useless = *((ulong *)UTZERO);
+	print("text is %lux\n", *((ulong *)(UTZERO+32)));
+
+	/*  fault in the first stack page
+	 */
+	print("stack is %lux\n", *((ulong *)(USTKTOP-4)));
+	*((ulong *)(USTKTOP-4)) = 0xdeadbeef;
+	print("stack is %lux\n", *((ulong *)(USTKTOP-4)));
+	delay(5000);
 
 	touser();
 }
@@ -104,11 +108,12 @@ userinit(void)
 	/*
 	 * Kernel Stack
 	 *
-	 * N.B. The -4 for the stack pointer is important.  Gotolabel
-	 *	uses the bottom 4 bytes of stack to store it's return pc.
+	 * N.B. The -12 for the stack pointer is important.
+	 *	4 bytes for gotolabel's return PC
+	 *	8 bytes for optional sp and ss pushed during interrupts
 	 */
 	p->sched.pc = (ulong)init0;
-	p->sched.sp = USERADDR + BY2PG - 4;
+	p->sched.sp = USERADDR + BY2PG - 12;
 	p->upage = newpage(1, 0, USERADDR|(p->pid&0xFFFF));
 
 	/*
@@ -182,13 +187,13 @@ confinit(void)
 	 *  the last 128k belongs to the roms
 	 */
 	conf.npage1 = (i)*1024/4;
-	conf.base1 = 1024/4;
+	conf.base1 = 1024*1024;
 
 	conf.npage = conf.npage0 + conf.npage1;
 	conf.maxialloc = (conf.npage0*BY2PG-PGROUND((ulong)&end));
 
 	mul = 1;
-	conf.nproc = 20 + 50*mul;
+	conf.nproc = 20 + 20*mul;
 	conf.npgrp = conf.nproc/2;
 	conf.nseg = conf.nproc*3;
 	conf.npagetab = (conf.nseg*14)/10;
@@ -275,4 +280,3 @@ mouseputc(IOQ *q, int c)
 {
 	return c;
 }
-

@@ -66,8 +66,6 @@ Segdesc gdt[] =
 [UDSEG]		DATASEGM(3),		/* user data/stack */
 [UESEG]		EXECSEGM(3),		/* user code */
 [SYSGATE]	CALLGATE(KESEL,0,3),	/* call gate for system calls */
-[RDSEG]		D16SEGM(0),		/* reboot data/stack */
-[RESEG]		E16SEGM(0),		/* reboot code */
 [TSSSEG]	TSSSEGM(0,0),		/* tss segment */
 };
 
@@ -86,7 +84,20 @@ static ulong	*upt;		/* page table for struct User */
  *  offset of virtual address into
  *  bottom level page table
  */
-#define BTMOFF(v)	(((v)>>(PGSHIFT))&(BY2PG-1))
+#define BTMOFF(v)	(((v)>>(PGSHIFT))&(WD2PG-1))
+
+void
+mmudump(void)
+{
+	int i;
+	ulong *z;
+	z = (ulong*)gdt;
+	for(i = 0; i < sizeof(gdt)/4; i+=2)
+		print("%8.8lux %8.8lux\n", *z++, *z++);
+	print("UESEL %lux UDSEL %lux\n", UESEL, UDSEL);
+	print("KESEL %lux KDSEL %lux\n", KESEL, KDSEL);
+	panic("done");
+}
 
 void
 mmuinit(void)
@@ -112,12 +123,11 @@ mmuinit(void)
 	 *  leave a map for a user area.
 	 */
 
-	/*  allocate and fill low level page tables for physical mem */
-	nkpt = ROUNDUP(conf.npage0+conf.npage1, 4*1024*1024);
-	nkpt = nkpt/(4*1024*1024);
+	/*  allocate and fill low level page tables for kernel mem */
+	nkpt = ROUNDUP(conf.npage, 4*1024);
+	nkpt = nkpt/(4*1024);
 	kpt = ialloc(nkpt*BY2PG, 1);
-	n = ROUNDUP(conf.npage0+conf.npage1, 1*1024*1024);
-	n = n/(4*1024);
+	n = ROUNDUP(conf.npage, 1024);
 	for(i = 0; i < n; i++)
 		kpt[i] = (i<<PGSHIFT) | PTEVALID | PTEKERNEL | PTEWRITE;
 
@@ -149,8 +159,6 @@ mapstack(Proc *p)
 {
 	ulong tlbphys;
 	int i;
-
-print("mapstack\n");
 
 	if(p->upage->va != (USERADDR|(p->pid&0xFFFF)))
 		panic("mapstack %d 0x%lux 0x%lux", p->pid, p->upage->pa, p->upage->va);
@@ -210,7 +218,7 @@ putmmu(ulong va, ulong pa, Page *pg)
 	Proc *p;
 	int i;
 
-print("putmmu %lux %lux USTKTOP %lux\n", va, pa, USTKTOP); /**/
+print("putmmu %lux %lux\n", va, pa); /**/
 	if(u==0)
 		panic("putmmu");
 	p = u->p;
@@ -232,8 +240,9 @@ print("putmmu %lux %lux USTKTOP %lux\n", va, pa, USTKTOP); /**/
 	pg = p->mmu[i];
 	if(pg == 0){
 		pg = p->mmu[i] = newpage(1, 0, 0);
-		p->mmue[i] = PPN(pg->pa) | PTEVALID | PTEKERNEL | PTEWRITE;
+		p->mmue[i] = PPN(pg->pa) | PTEVALID | PTEUSER | PTEWRITE;
 		toppt[topoff] = p->mmue[i];
+print("toppt[%d] = %lux\n", topoff, p->mmue[i]);
 	}
 
 	/*
@@ -241,6 +250,7 @@ print("putmmu %lux %lux USTKTOP %lux\n", va, pa, USTKTOP); /**/
 	 */
 	pt = (ulong*)(p->mmu[i]->pa|KZERO);
 	pt[BTMOFF(va)] = pa | PTEUSER;
+print("%lux[%d] = %lux\n", pt, BTMOFF(va), pa | PTEUSER);
 
 	/* flush cached mmu entries */
 	putcr3(((ulong)toppt)&~KZERO);
@@ -260,16 +270,4 @@ void
 systrap(void)
 {
 	panic("system trap from user");
-}
-
-void
-exit(void)
-{
-	int i;
-
-	u = 0;
-	print("exiting\n");
-	for(i = 0; i < WD2PG; i++)
-		toppt[i] = 0;
-	putcr3(((ulong)toppt)&~KZERO);
 }

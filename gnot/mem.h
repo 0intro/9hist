@@ -50,7 +50,9 @@
  */
 
 #define	USERADDR	0x80000000
-#define	UREGADDR	(USERADDR+BY2PG-(2+4+2+(8+8+1+1)*BY2WD))
+/* assuming we're in a syscall, this is the address of the Ureg structure */
+#define	UREGVARSZ	(23*BY2WD)	/* size of variable part of Ureg */
+#define	UREGADDR	(USERADDR+BY2PG-(UREGVARSZ+2+4+2+(8+8+1+1)*BY2WD))
 
 /*
  * Devices poked during bootstrap
