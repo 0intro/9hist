@@ -478,6 +478,8 @@ sysforkpgrp(ulong *arg)
 
 	if(mask & FPnamespc)
 		pgrpcpy(pg, u->p->pgrp);
+	else
+		*pg->crypt = *u->p->pgrp->crypt;
 
 	if(mask & FPenv)
 		envcpy(eg, u->p->egrp);

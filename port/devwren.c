@@ -185,7 +185,10 @@ wrenread(Chan *c, char *a, long n, ulong offset)
 long
 wrenwrite(Chan *c, char *a, long n, ulong offset)
 {
-	return wrenio(c, 1, a, n, offset);
+	n = wrenio(c, 1, a, n, offset);
+	if(n)
+		return n;
+	error("end of device");
 }
 
 static long

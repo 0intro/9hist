@@ -821,7 +821,7 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 			error(Eperm);
 		strncpy(u->p->user, a+8, NAMELEN);
 		u->p->user[NAMELEN-1] = '\0';
-		memmove(u->p->pgrp->crypt->key, a+NAMELEN+DESKEYLEN, DESKEYLEN);
+		memmove(u->p->pgrp->crypt->key, a+8+NAMELEN, DESKEYLEN);
 		break;
 
 	case Qnull:

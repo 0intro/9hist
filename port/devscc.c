@@ -101,10 +101,16 @@ struct SCC
 	Rendez	r;		/* kproc waiting for input */
 	Alarm	*a;		/* alarm for waking the kernel process */
  	int	kstarted;	/* kproc started */
+
+	/* idiot flow control */
+	int	xonoff;		/* true if we obey this tradition */
+	int	blocked;	/* abstinence */
 };
 
 int	nscc;
 SCC	*scc[8];	/* up to 4 8530's */
+#define CTLS	023
+#define CTLQ	021
 
 void
 onepointseven(void)
@@ -272,7 +278,7 @@ sccputs(IOQ *cq, char *s, int n)
 	x = splhi();
 	lock(cq);
 	puts(cq, s, n);
-	if(sp->printing == 0){
+	if(sp->printing == 0 && sp->blocked==0){
 		ch = getc(cq);
 		/*kprint("<start %2.2ux>", ch);*/
 		if(ch >= 0){
@@ -303,6 +309,12 @@ sccintr0(SCC *sp, uchar x)
 		while(*sp->ptr&RxReady){
 			onepointseven();
 			ch = *sp->data;
+			if (ch == CTLS && sp->xonoff)
+				sp->blocked = 1;
+			else if (ch == CTLQ && sp->xonoff) {
+				sp->blocked = 0;
+				sccputs(sp->oq, "", 0);
+			}
 			if(cq->putc)
 				(*cq->putc)(cq, ch);
 			else
@@ -310,6 +322,11 @@ sccintr0(SCC *sp, uchar x)
 		}
 	}
 	if(x & TxPendB){
+		if (sp->blocked) {
+			sccwrreg(sp, 0, ResTxPend);
+			sp->printing = 0;
+			return;
+		}
 		cq = sp->oq;
 		lock(cq);
 		ch = getc(cq);
@@ -502,6 +519,10 @@ sccoput(Queue *q, Block *bp)
 		case 'W':
 		case 'w':
 			/* obsolete */
+			break;
+		case 'X':
+		case 'x':
+			sp->xonoff = n;
 			break;
 		}
 	}else while((m = BLEN(bp)) > 0){
