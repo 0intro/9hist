@@ -604,7 +604,7 @@ consread(Chan *c, void *buf, long n, ulong offset)
 		return readnum(offset, buf, n, up->parentpid, NUMSIZE);
 
 	case Qtime:
-		return readnum(offset, buf, n, boottime+TK2SEC(MACHP(0)->ticks), 12);
+		return readnum(offset, buf, n, rtctime(), 12);
 
 	case Qclock:
 		k = offset;
