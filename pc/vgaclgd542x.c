@@ -17,10 +17,21 @@ static Lock clgd542xlock;
 static ulong storage;
 
 static void
+setclgd542xpage(int page)
+{
+	if(vgaxi(Seqx, 0x07) & 0xF0)
+		page = 0;
+	if(vgaxi(Seqx, 0x0B) & 0x20)
+		vgaxo(Grx, 0x09, page<<2);
+	else
+		vgaxo(Grx, 0x09, page<<4);
+}
+
+static void
 clgd542xpage(int page)
 {
 	lock(&clgd542xlock);
-	vgaxo(Grx, 0x09, page<<4);
+	setclgd542xpage(page);
 	unlock(&clgd542xlock);
 }
 
@@ -30,7 +41,11 @@ clgd542xlinear(ulong* mem, ulong* size, ulong* align)
 	ulong baseaddr;
 	static Pcidev *p;
 
-	if((*size && *size < 16*MB) || (*align && (*align & (16*MB-1))))
+	if(*size != 16*MB)
+		return 0;
+	if(*align == 0)
+		*align = 16*MB;
+	else if(*align & (16*MB-1))
 		return 0;
 
 	*mem = 0;
@@ -53,6 +68,10 @@ clgd542xlinear(ulong* mem, ulong* size, ulong* align)
 		return 0;
 	}
 
+	/*
+	 * This doesn't work if the card is on the other side of a
+	 * a bridge. Need to coordinate with PCI support.
+	 */
 	if((baseaddr = upamalloc(0, *size, *align)) == 0)
 		return 0;
 	*mem = baseaddr;
@@ -157,12 +176,10 @@ initcursor(Cursor* c, int xo, int yo, int index)
 	if(vgaxi(Seqx, 0x07) & 0xF0)
 		p = ((uchar*)gscreen.base) + storage;
 	else {
-		vgaxo(Grx, 0x09, (storage>>16)<<4);
+		setclgd542xpage(storage>>16);
 		p = ((uchar*)gscreen.base) + (storage & 0xFFFF);
 	}
-//	p += index*1024;
-memset(p, 0xFF, 16*1024);
-return;
+	p += index*1024;
 
 	for(y = yo; y < 16; y++){
 		p0 = c->clr[2*y];
@@ -228,6 +245,10 @@ load(Cursor* c)
 	 */
 	vgaxo(Seqx, 0x13, 0);
 	vgaxo(Seqx, 0x12, sr12|0x05);
+{
+for(storage = 0; storage < (2048-32)*1024; storage += 16*1024)
+    initcursor(c, 0, 0, 0);
+}
 
 	unlock(&clgd542xlock);
 }
