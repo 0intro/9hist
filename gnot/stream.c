@@ -1047,7 +1047,9 @@ notfull(void *arg)
 void
 flowctl(Queue *q)
 {
+	qlock(&q->rlock);
 	sleep(&q->r, notfull, q->next);
+	qunlock(&q->rlock);
 }
 
 /*

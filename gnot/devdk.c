@@ -118,7 +118,7 @@ struct Line {
 struct Dk {
 	QLock;
 	int	ref;
-	char	name[64];	/* dk name */	
+	char	name[64];	/* dk name */
 	Queue	*wq;		/* dk output queue */
 	int	lines;		/* number of lines */
 	int	ncsc;		/* csc line number */
@@ -420,11 +420,8 @@ dkoput(Queue *q, Block *bp)
 	bp->rptr[0] = line;
 	bp->rptr[1] = line>>8;
 
-	if(QFULL(dp->wq->next)){
-		print("dk wq full\n");
-		freeb(bp);
-	} else
-		PUTNEXT(dp->wq, bp);
+	FLOWCTL(dp->wq);
+	PUTNEXT(dp->wq, bp);
 }
 
 /*

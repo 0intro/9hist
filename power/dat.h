@@ -9,7 +9,6 @@ typedef struct Dirtab	Dirtab;
 typedef struct Env	Env;
 typedef struct Envp	Envp;
 typedef struct Envval	Envval;
-typedef struct Error	Error;
 typedef struct FPsave	FPsave;
 typedef struct Label	Label;
 typedef struct List	List;
@@ -174,7 +173,7 @@ struct Dev
 struct Dirtab
 {
 	char	name[NAMELEN];
-	long	qid;
+	ulong	qid;
 	long	length;
 	long	perm;
 };
@@ -439,6 +438,7 @@ struct Queue {
 	Queue	*other;		/* opposite direction, same line discipline */
 	Queue	*next;		/* next queue in the stream */
 	void	(*put)(Queue*, Block*);
+	QLock	rlock;		/* mutex for r */
 	Rendez	r;
 	void	*ptr;		/* private info for the queue */
 };

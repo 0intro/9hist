@@ -14,7 +14,7 @@ typedef struct Device	Device;
 enum {
 	Vmevec=		0xd2,		/* vme vector for interrupts */
 	Intlevel=	5,		/* level to interrupt on */
-	Nhotrod=	1,
+	Nhotrod=	2,
 };
 
 /*
@@ -24,9 +24,9 @@ enum {
  *  and	  0xB00000 to   0xBFFFFF  in	A24 space
  */
 struct Device {
-	uchar	mem[1*1024*1024];
+	ulong	mem[1024*1024/sizeof(ulong)];
 };
-#define HOTROD		VMEA32SUP(Device, 0x30000000)
+#define HOTROD		VMEA24SUP(Device, 0xB00000)
 
 struct Hotrod {
 	QLock;
@@ -56,7 +56,7 @@ void
 hotrodreset(void)
 {
 	int i;
-	Hsvme *hp;
+	Hotrod *hp;
 
 	for(i=0; i<Nhotrod; i++){
 		hotrod[i].addr = HOTROD+i;
@@ -116,8 +116,7 @@ hotrodopen(Chan *c, int omode)
 	if(c->qid == CHDIR){
 		if(omode != OREAD)
 			error(0, Eperm);
-	}else
-		streamopen(c, &hotrodinfo);
+	}
 	c->mode = openmode(omode);
 	c->flag |= COPEN;
 	c->offset = 0;
@@ -143,6 +142,18 @@ hotrodread(Chan *c, void *buf, long n)
 {
 	Hotrod *hp;
 	Device *dp;
+	ulong *from;
+	ulong *to;
+	ulong *end;
+
+	if(c->qid&CHDIR)
+		return devdirread(c, buf, n, 0, 0, hotrodgen);
+
+	/*
+	 *  allow full word access only
+	 */
+	if((c->offset&(sizeof(ulong)-1)) || (n&(sizeof(ulong)-1)))
+		error(0, Ebadarg);
 
 	hp = &hotrod[c->dev];
 	dp = hp->addr;
@@ -150,8 +161,16 @@ hotrodread(Chan *c, void *buf, long n)
 		return 0;
 	if(c->offset+n > sizeof(dp->mem))
 		n = sizeof(dp->mem) - c->offset;
+
+	/*
+	 *  avoid memcpy to ensure VME 32-bit reads
+	 */
 	qlock(hp);
-	memcpy(buf, &dp->mem[c->offset], n);
+	to = buf;
+	from = &dp->mem[c->offset/sizeof(ulong)];
+	end = to + (n/sizeof(ulong));
+	while(to != end)
+		*to++ = *from++;
 	qunlock(hp);
 	return n;
 }
@@ -164,6 +183,15 @@ hotrodwrite(Chan *c, void *buf, long n)
 {
 	Hotrod *hp;
 	Device *dp;
+	ulong *from;
+	ulong *to;
+	ulong *end;
+
+	/*
+	 *  allow full word access only
+	 */
+	if((c->offset&(sizeof(ulong)-1)) || (n&(sizeof(ulong)-1)))
+		error(0, Ebadarg);
 
 	hp = &hotrod[c->dev];
 	dp = hp->addr;
@@ -171,8 +199,16 @@ hotrodwrite(Chan *c, void *buf, long n)
 		return 0;
 	if(c->offset+n > sizeof(dp->mem))
 		n = sizeof(dp->mem) - c->offset;
+
+	/*
+	 *  avoid memcpy to ensure VME 32-bit writes
+	 */
 	qlock(hp);
-	memcpy(&dp->mem[c->offset], buf, n);
+	from = buf;
+	to = &dp->mem[c->offset/sizeof(ulong)];
+	end = to + (n/sizeof(ulong));
+	while(to != end)
+		*to++ = *from++;
 	qunlock(hp);
 	return n;
 }
@@ -201,6 +237,7 @@ hotroderrstr(Error *e, char *buf)
 	rooterrstr(e, buf);
 }
 
+static void
 hotrodintr(int vec)
 {
 	Hotrod *hp;

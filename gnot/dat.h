@@ -4,12 +4,10 @@ typedef struct Blist	Blist;
 typedef struct Chan	Chan;
 typedef struct Conf	Conf;
 typedef struct Dev	Dev;
-typedef struct Dir	Dir;
 typedef struct Dirtab	Dirtab;
 typedef struct Env	Env;
 typedef struct Envp	Envp;
 typedef struct Envval	Envval;
-typedef struct Error	Error;
 typedef struct FFrame	FFrame;
 typedef struct FPsave	FPsave;
 typedef struct KMap	KMap;
@@ -175,7 +173,7 @@ struct Dev
 struct Dirtab
 {
 	char	name[NAMELEN];
-	long	qid;
+	ulong	qid;
 	long	length;
 	long	perm;
 };
@@ -445,6 +443,7 @@ struct Queue {
 	Queue	*other;		/* opposite direction, same line discipline */
 	Queue	*next;		/* next queue in the stream */
 	void	(*put)(Queue*, Block*);
+	QLock	rlock;		/* mutex for processes sleeping at r */
 	Rendez	r;
 	void	*ptr;		/* private info for the queue */
 };

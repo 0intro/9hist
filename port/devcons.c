@@ -36,15 +36,15 @@ struct IOQ{
 IOQ	kbdq;		/* qlock to getc; interrupt putc's */
 IOQ	lineq;		/* lock to getc; interrupt putc's */
 
-#define SYSLOGMAGIC	0x23456789
-#define SYSLOG		((Syslog *)(UNCACHED | KZERO | 0x1B00))
+#define SYSLOGMAGIC	0xdeadbeaf
+#define SYSLOG		((Syslog *)(UNCACHED | 0x1B00))
 typedef struct Syslog	Syslog;
 struct Syslog
 {
 	ulong	magic;
-	char	*start;
+	int	wrapped;
 	char	*next;
-	char	buf[2*BY2PG - 3*BY2WD];
+	char	buf[2*1024];
 };
 
 
@@ -67,7 +67,6 @@ printinit(void)
 	unlock(&lineq);
 
 	duartinit();
-	sysloginit();		/* must be at the end of printinit */
 }
 
 /*
@@ -177,15 +176,12 @@ panic(char *fmt, ...)
 {
 	char buf[PRINTSIZE];
 	int n;
-	Syslog *s;
 
 	strcpy(buf, "panic: ");
 	n = doprint(buf+7, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
 	buf[n] = '\n';
 	putstrn(buf, n+1);
 	dumpstack();
-	s = SYSLOG;
-	print("start/next is %lux/%lux\n", s->start, s->next);
 	exit();
 }
 
@@ -309,6 +305,7 @@ enum{
 	Qcputime,
 	Qlog,
 	Qnull,
+/*	Qpanic, /**/
 	Qpgrpid,
 	Qpid,
 	Qppid,
@@ -321,6 +318,7 @@ Dirtab consdir[]={
 	"cputime",	Qcputime,	72,	0600,
 	"log",		Qlog,		BY2PG-8,	0600,
 	"null",		Qnull,		0,	0600,
+/*	"panic",	Qpanic,		0,	0666, /**/
 	"pgrpid",	Qpgrpid,	12,	0600,
 	"pid",		Qpid,		12,	0600,
 	"ppid",		Qppid,		12,	0600,
@@ -618,78 +616,111 @@ void
 sysloginit(void)
 {
 	Syslog *s;
-	char *start, *next;
+	int i;
 
 	s = SYSLOG;
-	next = s->next;
-	start = s->start;
-	if(s->magic!=SYSLOGMAGIC || next>=&s->buf[sizeof(s->buf)]
-	|| start>=&s->buf[sizeof(s->buf)] || next<s->buf){
-		s->start = s->buf;
+	if(s->magic!=SYSLOGMAGIC || s->next>=&s->buf[sizeof(s->buf)] || s->next<s->buf){
+		s->wrapped = 0;
 		s->next = s->buf;
 		s->magic = SYSLOGMAGIC;
 	}
-	print("start/next is %lux/%lux was %lux/%lux\n", s->start, s->next,
-		start, next);
 }
 
 void
 syslog(char *p, int n)
 {
-	int restart;
 	Syslog *s;
 	char *end;
+	int m;
 
+	sysloginit();
 	s = SYSLOG;
 	end = &s->buf[sizeof(s->buf)];
-	restart = 0;
-	while(n-- > 0){
-		*s->next++ = *p++;
-		if(s->next >= end)
+	while(n){
+		if(s->next + n > end)
+			m = end - s->next;
+		else
+			m = n;
+		memcpy(s->next, p, m);
+		s->next += m;
+		p += m;
+		n -= m;
+		if(s->next >= end){
+			s->wrapped = 1;
 			s->next = s->buf;
-		if(s->next == s->start)
-			restart = 1;
-	}
-	if(restart){
-		s->start = s->next + 1;
-		if(s->start >= end)
-			s->start = s->buf;
+		}
 	}
 	wbflush();
 }
 
 long
-readlog(ulong off, char *buf, ulong n)
+readlog(ulong off, char *buf, ulong len)
 {
 	Syslog *s;
-	char *p;
 	char *end;
-	char *a = buf;
+	char *start;
+	int n, m;
+	char *p;
+
+	n = len;
+	p = buf;
+
+	sysloginit();
+	s = SYSLOG;
+	end = &s->buf[sizeof(s->buf)];
+
+	if(s->wrapped){
+		start = s->next;
+		m = sizeof(s->buf);
+	} else {
+		start = s->buf;
+		m = s->next - start;
+	}
+
+	if(off > m)
+		return 0;
+	if(off + n > m)
+		n = m - off;
+	start += off;
+	if(start > end)
+		start -= sizeof(s->buf);
+
+	while(n > 0){
+		if(start + n > end)
+			m = end - start;
+		else
+			m = n;
+		memcpy(p, start, m);
+		start += m;
+		p += m;
+		n -= m;
+		if(start >= end)
+			start = s->buf;
+	}
+
+	return p-buf;
+}
+
+/*
+ *  Read and write every byte of the log.  This seems to ensure that
+ *  on reboot, the bytes will really be in memory.  I don't understand -- presotto
+ */
+void
+flushsyslog(void)
+{
+	Syslog *s;
+	char *p, *end;
+	int x;
 
 	s = SYSLOG;
-
-	/* past end */
-	if(off >= sizeof(s->buf))
-		return 0;
-
-	/* point to start of area to be read */
 	end = &s->buf[sizeof(s->buf)];
-	p = s->start;
 
-	/* skip offset */
-	while(off-- > 0){
-		if(p == s->next)
-			return 0;
-		p++;
-	}
+	x = splhi();
+	lock(&printq);
+	for(p = s->buf; p < end; p++)
+		*p = *p;
+	unlock(&printq);
+	splx(x);
 
-	/* copy out */
-	while(n-- > 0){
-		if(p == s->next)
-			break;
-		*a++ = *p++;
-		if(p >= end)
-			p = s->buf;
-	}
-	return a-buf;
+	wbflush();
 }

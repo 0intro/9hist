@@ -463,6 +463,7 @@ freesegs(int save)
 		if(i == save)
 			continue;
 		o = s->o;
+		s->o = 0;	/* seg() won't match it (e.g. in procread()) */
 		if(o == 0)
 			continue;
 		lock(o);
