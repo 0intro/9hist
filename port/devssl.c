@@ -1,16 +1,14 @@
 /*
  *  devssl - secure sockets layer emulation
  */
-#include "u.h"
-#include "../port/lib.h"
-#include "../port/error.h"
-#include "mem.h"
-#include "dat.h"
-#include "fns.h"
+#include	"u.h"
+#include	"../port/lib.h"
+#include	"mem.h"
+#include	"dat.h"
+#include	"fns.h"
+#include	"../port/error.h"
 
-#include <libcrypt.h>
-
-#define NOSPOOKS 1
+#include	<libcrypt.h>
 
 typedef struct OneWay OneWay;
 struct OneWay
@@ -28,16 +26,15 @@ enum
 {
 	/* connection states */
 	Sincomplete=	0,
-	Sclear,
-	Sencrypting,
-	Sdigesting,
+	Sclear=		1,
+	Sencrypting=	2,
+	Sdigesting=	4,
+	Sdigenc=	Sencrypting|Sdigesting,
 
 	/* encryption algorithms */
 	Noencryption=	0,
-#ifdef NOSPOOKS
 	DESCBC=		1,
 	DESECB=		2,
-#endif NOSPOOKS
 	RC4=		3
 };
 
@@ -171,7 +168,7 @@ sslgen(Chan *c, Dirtab *d, int nd, int s, Dir *dp)
 static void
 sslinit(void)
 {
-	if((dstate = malloc(sizeof(Dstate*) * maxdstate)) == 0)
+	if((dstate = smalloc(sizeof(Dstate*) * maxdstate)) == 0)
 		panic("sslinit");
 }
 
@@ -490,7 +487,16 @@ sslbread(Chan *c, long n, ulong offset)
 			checkdigestb(s.s, s.s->processed);
 			s.s->processed->rp += s.s->diglen;
 			break;
+		case Sdigenc:
+			s.s->processed = decryptb(s.s, s.s->processed);
+			s.s->processed = pullupblock(s.s->processed, s.s->diglen);
+			if(s.s->processed == 0)
+				error("ssl message too short");
+			checkdigestb(s.s, s.s->processed);
+			s.s->processed->rp += s.s->diglen;
+			break;
 		}
+		s.s->in.mid++;
 		qunlock(&s.s->in.ctlq);
 		poperror();
 
@@ -557,19 +563,8 @@ sslread(Chan *c, void *a, long n, ulong offset)
 static void
 randfill(uchar *buf, int len)
 {
-	int j;
-	ushort rn;
-
-	j = 0;
-	rn = 0;
-	while(len-- > 0){
-		if(j == 0){
-			rn = nrand(1<<16);
-			*buf++ = rn;
-		} else
-			*buf++ = rn>>8;
-		j ^= 1;
-	}
+	while(len-- > 0)
+		*buf++ = nrand(256);
 }
 
 /*
@@ -663,7 +658,13 @@ sslbwrite(Chan *c, Block *b, ulong offset)
 		case Sdigesting:
 			nb = digestb(s.s, nb, offset);
 			break;
+		case Sdigenc:
+			nb = digestb(s.s, nb, offset);
+			nb = encryptb(s.s, nb, offset);
+			break;
 		}
+
+		s.s->out.mid++;
 
 		m = BLEN(nb);
 		devtab[s.s->c->type]->bwrite(s.s->c, nb, s.s->c->offset);
@@ -681,14 +682,11 @@ setsecret(OneWay *w, uchar *secret, int n)
 	if(w->secret)
 		free(w->secret);
 
-	w->secret = malloc(n);
+	w->secret = smalloc(n);
 	memmove(w->secret, secret, n);
 	w->slen = n;
-	w->mid = 0;
-
 }
 
-#ifdef NOSPOOKS
 static void
 initDESkey(OneWay *w)
 {
@@ -697,7 +695,7 @@ initDESkey(OneWay *w)
 		w->state = 0;
 	}
 
-	w->state = malloc(sizeof(DESstate));
+	w->state = smalloc(sizeof(DESstate));
 	if(w->slen >= 16)
 		setupDESstate(w->state, w->secret, w->secret+8);
 	else if(w->slen >= 8)
@@ -705,7 +703,6 @@ initDESkey(OneWay *w)
 	else
 		error("secret too short");
 }
-#endif NOSPOOKS
 
 static void
 initRC4key(OneWay *w)
@@ -715,13 +712,74 @@ initRC4key(OneWay *w)
 		w->state = 0;
 	}
 
-#ifndef NOSPOOKS
 	if(w->slen > 5)
 		w->slen = 5;
-#endif NOSPOOKS
 
-	w->state = malloc(sizeof(RC4state));
+	w->state = smalloc(sizeof(RC4state));
 	setupRC4state(w->state, w->secret, w->slen);
+}
+
+struct Hashalg
+{
+	char	*name;
+	int	diglen;
+	DigestState *(*hf)(uchar*, ulong, uchar*, DigestState*);
+} hashtab[] =
+{
+	{ "md4", MD4dlen, md4, },
+	{ "md5", MD5dlen, md5, },
+	{ "sha", SHAdlen, sha, },
+	{ 0 }
+};
+
+static int
+parsehashalg(char *p, Dstate *s)
+{
+	struct Hashalg *ha;
+
+	for(ha = hashtab; ha->name; ha++){
+		if(strcmp(p, ha->name) == 0){
+			s->hf = ha->hf;
+			s->diglen = ha->diglen;
+			s->state &= ~Sclear;
+			s->state |= Sdigesting;
+			return 0;
+		}
+	}
+	return -1;
+}
+
+struct Encalg
+{
+	char	*name;
+	int	blocklen;
+	int	alg;
+	void	(*keyinit)(OneWay*);
+} encrypttab[] =
+{
+	{ "descbc", 8, DESCBC, initDESkey, },
+	{ "desebc", 8, DESECB, initDESkey, },
+	{ "rc4", 1, RC4, initRC4key, },
+	{ 0 }
+};
+
+static int
+parseencryptalg(char *p, Dstate *s)
+{
+	struct Encalg *ea;
+
+	for(ea = encrypttab; ea->name; ea++){
+		if(strcmp(p, ea->name) == 0){
+			s->encryptalg = ea->alg;
+			s->blocklen = ea->blocklen;
+			(*ea->keyinit)(&s->in);
+			(*ea->keyinit)(&s->out);
+			s->state &= ~Sclear;
+			s->state |= Sencrypting;
+			return 0;
+		}
+	}
+	return -1;
 }
 
 static long
@@ -730,7 +788,7 @@ sslwrite(Chan *c, void *a, long n, ulong offset)
 	volatile struct { Dstate *s; } s;
 	volatile struct { Block *b; } b;
 	int m, t;
-	char *p, *e, buf[32];
+	char *p, *np, *e, buf[32];
 
 	s.s = dstate[CONV(c->qid)];
 	if(s.s == 0)
@@ -807,6 +865,8 @@ sslwrite(Chan *c, void *a, long n, ulong offset)
 		s.s->blocklen = 1;
 		s.s->diglen = 0;
 		s.s->maxpad = s.s->max = (1<<15) - s.s->diglen - 1;
+		s.s->in.mid = 0;
+		s.s->out.mid = 0;
 	} else if(strcmp(buf, "alg") == 0 && p != 0){
 		s.s->blocklen = 1;
 		s.s->diglen = 0;
@@ -824,41 +884,28 @@ sslwrite(Chan *c, void *a, long n, ulong offset)
 			setsecret(&s.s->out, s.s->in.secret, s.s->in.slen);
 		if(s.s->out.secret && s.s->in.secret == 0)
 			setsecret(&s.s->in, s.s->out.secret, s.s->out.slen);
-		if(strcmp(p, "md5") == 0){
-			s.s->hf = md5;
-			s.s->diglen = MD5dlen;
-			s.s->state = Sdigesting;
-		} else if(strcmp(p, "sha") == 0){
-			s.s->hf = sha;
-			s.s->diglen = SHAdlen;
-			s.s->state = Sdigesting;
-#ifdef NOSPOOKS
-		} else if(strcmp(p, "descbc") == 0){
-			if(s.s->in.secret == 0 || s.s->out.secret == 0)
+		if(s.s->in.secret == 0 || s.s->out.secret == 0)
+			error("algorithm but no secret");
+
+		s.s->hf = 0;
+		s.s->encryptalg = Noencryption;
+		s.s->blocklen = 1;
+
+		for(;;){
+			np = strchr(p, ' ');
+			if(np)
+				*np++ = 0;
+
+			if(parsehashalg(p, s.s) < 0)
+			if(parseencryptalg(p, s.s) < 0)
 				error(Ebadarg);
-			s.s->encryptalg = DESCBC;
-			s.s->blocklen = 8;
-			initDESkey(&s.s->in);
-			initDESkey(&s.s->out);
-			s.s->state = Sencrypting;
-		} else if(strcmp(p, "desecb") == 0){
-			if(s.s->in.secret == 0 || s.s->out.secret == 0)
-				error(Ebadarg);
-			s.s->encryptalg = DESECB;
-			s.s->blocklen = 8;
-			initDESkey(&s.s->in);
-			initDESkey(&s.s->out);
-			s.s->state = Sencrypting;
-#endif NOSPOOKS
-		} else if(strcmp(p, "rc4") == 0){
-			if(s.s->in.secret == 0 || s.s->out.secret == 0)
-				error(Ebadarg);
-			s.s->encryptalg = RC4;
-			s.s->blocklen = 1;
-			initRC4key(&s.s->in);
-			initRC4key(&s.s->out);
-			s.s->state = Sencrypting;
-		} else
+
+			if(np == 0)
+				break;
+			p = np;
+		}
+
+		if(s.s->hf == 0 && s.s->encryptalg == Noencryption)
 			error(Ebadarg);
 
 		if(s.s->blocklen != 1){
@@ -902,13 +949,10 @@ Dev ssldevtab = {
 static Block*
 encryptb(Dstate *s, Block *b, int offset)
 {
-#ifdef NOSPOOKS
 	uchar *p, *ep, *p2, *ip, *eip;
 	DESstate *ds;
-#endif NOSPOOKS
 
 	switch(s->encryptalg){
-#ifdef NOSPOOKS
 	case DESECB:
 		ds = s->out.state;
 		ep = b->rp + BLEN(b);
@@ -927,7 +971,6 @@ encryptb(Dstate *s, Block *b, int offset)
 			memmove(ds->ivec, p, 8);
 		}
 		break;
-#endif NOSPOOKS
 	case RC4:
 		rc4(s->out.state, b->rp + offset, BLEN(b) - offset);
 		break;
@@ -939,11 +982,9 @@ static Block*
 decryptb(Dstate *s, Block *inb)
 {
 	Block *b, **l;
-#ifdef NOSPOOKS
 	uchar *p, *ep, *tp, *ip, *eip;
 	DESstate *ds;
 	uchar tmp[8];
-#endif NOSPOOKS
 	int i;
 
 	l = &inb;
@@ -961,7 +1002,6 @@ decryptb(Dstate *s, Block *inb)
 
 		/* decrypt */
 		switch(s->encryptalg){
-#ifdef NOSPOOKS
 		case DESECB:
 			ds = s->in.state;
 			ep = b->rp + BLEN(b);
@@ -982,7 +1022,6 @@ decryptb(Dstate *s, Block *inb)
 				}
 			}
 			break;
-#endif NOSPOOKS
 		case RC4:
 			rc4(s->in.state, b->rp, BLEN(b));
 			break;
@@ -1007,17 +1046,17 @@ digestb(Dstate *s, Block *b, int offset)
 	n = BLEN(b) - h;
 
 	/* hash secret + message */
-	s->hf(w->secret, w->slen, 0, &ss);
-	s->hf(b->rp + h, n, 0, &ss);
+	(*s->hf)(w->secret, w->slen, 0, &ss);
+	(*s->hf)(b->rp + h, n, 0, &ss);
 
 	/* hash message id */
 	p = msgid;
-	n = w->mid++;
+	n = w->mid;
 	*p++ = n>>24;
 	*p++ = n>>16;
 	*p++ = n>>8;
 	*p = n;
-	s->hf(msgid, 4, b->rp + offset, &ss);
+	(*s->hf)(msgid, 4, b->rp + offset, &ss);
 
 	return b;
 }
@@ -1038,7 +1077,7 @@ checkdigestb(Dstate *s, Block *inb)
 	memset(&ss, 0, sizeof(ss));
 
 	/* hash secret */
-	s->hf(w->secret, w->slen, 0, &ss);
+	(*s->hf)(w->secret, w->slen, 0, &ss);
 
 	/* hash message */
 	h = s->diglen;
@@ -1046,18 +1085,18 @@ checkdigestb(Dstate *s, Block *inb)
 		n = BLEN(b) - h;
 		if(n < 0)
 			panic("checkdigestb");
-		s->hf(b->rp + h, n, 0, &ss);
+		(*s->hf)(b->rp + h, n, 0, &ss);
 		h = 0;
 	}
 
 	/* hash message id */
 	p = msgid;
-	n = w->mid++;
+	n = w->mid;
 	*p++ = n>>24;
 	*p++ = n>>16;
 	*p++ = n>>8;
 	*p = n;
-	s->hf(msgid, 4, digest, &ss);
+	(*s->hf)(msgid, 4, digest, &ss);
 
 	if(memcmp(digest, inb->rp, s->diglen) != 0)
 		error("bad digest");
@@ -1116,19 +1155,14 @@ extern void rbcheck(char*);
 void*
 crypt_malloc(int size)
 {
-	void *x;
-
-	x = malloc(size);
-	if(x == 0)
-		handle_exception(CRITICAL, "out of memory");
-	return x;
+	return smalloc(size);
 }
 
 void
 crypt_free(void *x)
 {
 	if(x == 0)
-		handle_exception(CRITICAL, "freeing null pointer");
+		return;
 	free(x);
 }
 
@@ -1197,4 +1231,3 @@ dsnew(Chan *ch, Dstate **pp)
 	ch->qid.path = QID(pp - dstate, t);
 	ch->qid.vers = 0;
 }
-
