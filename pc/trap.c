@@ -172,6 +172,7 @@ trapinit(void)
 	sethvec(Bptvec, intr3, SEGIG, 3);
 	setvec(Bptvec, debugbpt, 0);
 
+
 	/*
 	 *  tell the hardware where the table is (and how long)
 	 */

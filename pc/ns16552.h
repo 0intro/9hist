@@ -81,17 +81,28 @@ mp008intr(Ureg *ur, void *arg)
 /*
  *  install the uarts (called by reset)
  */
-static void
+void
 ns16552install(void)
 {
 	int i, j, port;
+	char *p;
 	Scard *sc;
+	static int already;
+
+	if(already)
+		return;
+	already = 1;
 
 	/* first two ports are always there and always the normal frequency */
 	ns16552setup(0x3F8, UartFREQ);
 	setvec(Uart0vec, ns16552intrx, (void*)0);
 	ns16552setup(0x2F8, UartFREQ);
 	setvec(Uart1vec, ns16552intrx, (void*)1);
+
+	/* set up a serial console */
+	p = getconf("console");
+	if(p)
+		ns16552special(atoi(p), 9600, &kbdq, &printq, kbdcr2nl);
 
 	/* the rest come out of plan9.ini */
 	for(i = 0; i < Maxcard; i++){

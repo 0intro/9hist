@@ -50,6 +50,7 @@ main(void)
 	screeninit();
 	printinit();
 	mmuinit();
+	ns16552install();
 	pageinit();
 	trapinit();
 	mathinit();
