@@ -17,12 +17,23 @@ enum{
 	Qmedium,
 };
 
+typedef struct FS FS;
+
+struct FS {
+	QLock;
+	Ref	r;
+	int	dev;
+	FS	*next;
+	Chan	*c;
+	Dirtab	*file;
+	int	nfile;
+	int	maxfile;
+};
 
 struct {
 	QLock;
-	Chan	*c;
-	Dirtab	file[Nfile+1];
-	int	nfile;
+	FS	*l;
+	int	hidev;
 } tinyfs;
 
 void
@@ -46,9 +57,34 @@ tinyfsinit(void)
 Chan *
 tinyfsattach(char *spec)
 {
-	c = namec((char*)arg[0], Aopen, arg[1], 0);
+	FS *fs, **l;
+	Chan *c, *cc;
 
-	return devattach('E', spec);
+	cc = namec((char*)arg[0], Aopen, arg[1], 0);
+	qlock(&tinyfs);
+	l = &tinyfs.l;
+	for(fs = tinyfs.l; fs != 0; fs = fs->next){
+		if(eqchan(c, fs->c))
+			break;
+		l = &(fs->next);
+	}
+	if(fs){
+		incref(&fs->r);
+		qunlock(&tinyfs);
+		close(cc);
+	} else {
+		fs = smalloc(sizeof(*fs));
+		*l = fs;
+		fs->c = cc;
+		incref(&fs->r);
+		qunlock(&tinyfs);
+	}
+
+	c = devattach('E', spec);
+	c->aux = fs;
+	c->dev = fs->dev;
+
+	return c;
 }
 
 Chan *
