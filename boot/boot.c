@@ -36,12 +36,11 @@ boot(int argc, char *argv[])
 {
 	int fd, afd;
 	Method *mp;
-	char cmd[64];
+	char *cmd, cmdbuf[64], *iargv[16];
 	char rootbuf[64];
-	char flags[6];
 	int islocal, ishybrid;
 	char *rp;
-	int n;
+	int iargc, n;
 	char buf[32];
 	AuthInfo *ai;
 
@@ -154,9 +153,24 @@ boot(int argc, char *argv[])
 	settime(islocal, afd);
 	swapproc();
 
-	sprint(cmd, "/%s/ninit", cputype);
-	sprint(flags, "-%s%s", cpuflag ? "c" : "t", mflag ? "m" : "");
-	execl(cmd, "init", flags, 0);
+	cmd = getenv("init");
+	if(cmd == nil){
+		sprint(cmdbuf, "/%s/ninit -%s%s", cputype,
+			cpuflag ? "c" : "t", mflag ? "m" : "");
+		cmd = cmdbuf;
+	}
+	iargc = tokenize(cmd, iargv, nelem(iargv)-1);
+	cmd = iargv[0];
+
+	/* make iargv[0] basename(iargv[0]) */
+	if(iargv[0] = strrchr(iargv[0], '/'))
+		iargv[0]++;
+	else
+		iargv[0] = cmd;
+
+	iargv[iargc] = nil;
+
+	exec(cmd, iargv);
 	fatal(cmd);
 }
 

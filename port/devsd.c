@@ -1366,6 +1366,9 @@ configure(char *spec, DevConf *cf)
 		snprint(name, sizeof(name), "sd%c", *spec);
 		kstrdup(&sdev->name, name);
 		sdev->idno = *spec;
+		sdev->unit = (SDunit **)malloc(sdev->nunit * sizeof(SDunit *));
+		sdev->unitflg = (int *)malloc(sdev->nunit * sizeof(int));
+		assert(sdev->unit && sdev->unitflg);
 
 		devs[ndevs].dt_dev = sdev;
 		devs[ndevs].dt_nunits = sdev->nunit;
