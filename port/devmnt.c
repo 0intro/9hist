@@ -18,6 +18,7 @@ struct Mntrpc
 	uvlong	stime;		/* start time for mnt statistics */
 	ulong	reqlen;		/* request length for mnt statistics */
 	ulong	replen;		/* reply length for mnt statistics */
+	Mntrpc*	flushed;	/* message this one flushes */
 };
 
 struct Mntalloc
@@ -36,7 +37,8 @@ void	mattach(Mnt*, Chan*, char*);
 void	mntauth(Mnt*, Mntrpc*, char*, ushort);
 Mnt*	mntchk(Chan*);
 void	mntdirfix(uchar*, Chan*);
-void	mntflush(Mnt*, Mntrpc*);
+Mntrpc*	mntflushalloc(Mntrpc*);
+void	mntflushfree(Mnt*, Mntrpc*);
 void	mntfree(Mntrpc*);
 void	mntgate(Mnt*);
 void	mntpntfree(Mnt*);
@@ -633,6 +635,16 @@ mountio(Mnt *m, Mntrpc *r)
 {
 	int n;
 
+	while(waserror()) {
+		if(m->rip == up)
+			mntgate(m);
+		if(strcmp(up->error, Eintr) != 0){
+			mntflushfree(m, r);
+			nexterror();
+		}
+		r = mntflushalloc(r);
+	}
+
 	lock(m);
 	r->m = m;
 	r->list = m->queue;
@@ -643,14 +655,6 @@ mountio(Mnt *m, Mntrpc *r)
 	n = convS2M(&r->request, r->rpc);
 	if(n < 0)
 		panic("bad message type in mountio");
-	if(waserror()) {
-		if(m->rip == up)
-			mntgate(m);
-		if(strcmp(up->error, Eintr) != 0)
-			nexterror();
-		mntflush(m, r);
-		return;
-	}
 	if(devtab[m->c->type]->dc == L'M'){
 		if(mnt9prdwr(Twrite, m->c, r->rpc, n, 0) != n)
 			error(Emountrpc);
@@ -670,6 +674,7 @@ mountio(Mnt *m, Mntrpc *r)
 		sleep(&r->r, rpcattn, r);
 		if(r->done){
 			poperror();
+			mntflushfree(m, r);
 			return;
 		}
 	}
@@ -681,6 +686,7 @@ mountio(Mnt *m, Mntrpc *r)
 	}
 	mntgate(m);
 	poperror();
+	mntflushfree(m, r);
 }
 
 void
@@ -728,7 +734,7 @@ mountmux(Mnt *m, Mntrpc *r)
 	lock(m);
 	l = &m->queue;
 	for(q = *l; q; q = q->list) {
-		// look for a reply to a message
+		/* look for a reply to a message */
 		if(q->request.tag == r->reply.tag) {
 			*l = q->list;
 			if(q != r) {
@@ -756,8 +762,12 @@ mountmux(Mnt *m, Mntrpc *r)
 	unlock(m);
 }
 
-void
-mntflush(Mnt *m, Mntrpc *r)
+/*
+ * Create a new flush request and chain the previous
+ * requests from it
+ */
+Mntrpc*
+mntflushalloc(Mntrpc *r)
 {
 	Mntrpc *fr;
 
@@ -768,13 +778,32 @@ mntflush(Mnt *m, Mntrpc *r)
 		fr->request.oldtag = r->request.oldtag;
 	else
 		fr->request.oldtag = r->request.tag;
+	fr->flushed = r;
 
-	mountio(m, fr);
-	mntfree(fr);
+	return fr;
+}
 
-	if(!r->done){
-		r->reply.type = Rflush;
-		mntqrm(m, r);
+/*
+ *  Free a chain of flushes.  Remove each unanswered
+ *  flush and the original message from the unanswered
+ *  request queue.  Mark the original message as done
+ *  and if it hasn't been answered set the reply to to
+ *  Rflush.
+ */
+void
+mntflushfree(Mnt *m, Mntrpc *r)
+{
+	Mntrpc *fr;
+
+	while(r){
+		fr = r->flushed;
+		if(!r->done){
+			r->reply.type = Rflush;
+			mntqrm(m, r);
+		}
+		if(fr)
+			mntfree(r);
+		r = fr;
 	}
 }
 
@@ -811,6 +840,7 @@ mntralloc(Chan *c)
 	unlock(&mntalloc);
 	new->c = c;
 	new->done = 0;
+	new->flushed = nil;
 	return new;
 }
 
