@@ -65,4 +65,3 @@ void	unthwackinit(Unthwack*);
 int	thwack(Thwack*, uchar *dst, uchar *src, int nsrc, ulong seq, ulong stats[ThwStats]);
 void	thwackack(Thwack*, ulong seq, ulong mask);
 int	unthwack(Unthwack*, uchar *dst, int ndst, uchar *src, int nsrc, ulong seq);
-int	unthwackadd(Unthwack*, uchar *src, int nsrc, ulong seq);

@@ -30,7 +30,9 @@
 #define Pprint
 #define Chatty	1
 #define DPRINT if(Chatty)print
-#define XPRINT if(0)print
+#define XPRINT if(debug)print
+
+static int debug = 1;
 
 /*
  * USB packet definitions
@@ -211,10 +213,10 @@ static char *devstates[] = {
 struct Endpt {
 	Ref;
 	Lock;
-	int	x;	/* index in Udev.ep */
-	int	id;		/* hardware endpoint address */
-	int	maxpkt;	/* maximum packet size (from endpoint descriptor) */
-	int	data01;	/* 0=DATA0, 1=DATA1 */
+	int		x;	/* index in Udev.ep */
+	int		id;		/* hardware endpoint address */
+	int		maxpkt;	/* maximum packet size (from endpoint descriptor) */
+	int		data01;	/* 0=DATA0, 1=DATA1 */
 	byte	eof;
 	byte	class;
 	byte	subclass;
@@ -225,11 +227,11 @@ struct Endpt {
 	byte	iso;
 	byte	debug;
 	byte	active;	/* listed for examination by interrupts */
-	int	sched;	/* schedule index; -1 if undefined or aperiodic */
-	int	setin;
+	int		sched;	/* schedule index; -1 if undefined or aperiodic */
+	int		setin;
 	ulong	bw;	/* bandwidth requirement */
-	int	pollms;	/* polling interval in msec */
-	QH*	epq;	/* queue of TDs for this endpoint */
+	int		pollms;	/* polling interval in msec */
+	QH*		epq;	/* queue of TDs for this endpoint */
 
 	QLock	rlock;
 	Rendez	rr;
@@ -238,7 +240,7 @@ struct Endpt {
 	Rendez	wr;
 	Queue*	wq;
 
-	int	ntd;
+	int		ntd;
 	char*	err;
 
 	Udev*	dev;	/* owning device */
@@ -470,6 +472,7 @@ queuetd(Ctlr *ub, QH *q, TD *t, int vf)
 		q->entries = PADDR(t);
 	}
 	q->last = lt;
+	dumpqh(q);
 	iunlock(ub);
 }
 
@@ -541,36 +544,60 @@ cleantd(TD *t, int discard)
 }
 
 static void
-cleanq(QH *q, int discard)
+cleanq(QH *q, int discard, int vf)
 {
-	TD *t;
+	TD *t, *tp;
 	Ctlr *ub;
 
 	ub = &ubus;
 	ilock(ub);
+	tp = nil;
 	for(t = q->first; t != nil;){
-//		XPRINT("cleanq: %8.8lux %8.8lux %8.8lux %8.8lux\n", t->link, t->status, t->dev, t->buffer);
+		XPRINT("cleanq: %8.8lux %8.8lux %8.8lux %8.8lux %8.8lux %8.8lux\n", t->link, t->status, t->dev, t->buffer, t->flags, t->next);
 		if(t->status & Active){
-			if(t->flags & CancelTD){
-				XPRINT("cancelTD: %8.8lux\n", (ulong)t);
-				t->status = (t->status & ~Active) | IOC;	/* ensure interrupt next frame */
+			if(t->status & NAKed){
+				t->status = (t->status & ~NAKed) | IOC;	/* ensure interrupt next frame */
+				tp = t;
 				t = t->next;
 				continue;
 			}
+			if(t->flags & CancelTD){
+				XPRINT("cancelTD: %8.8lux\n", (ulong)t);
+				t->status = (t->status & ~Active) | IOC;	/* ensure interrupt next frame */
+				tp = t;
+				t = t->next;
+				continue;
+			}
+tp = t;
+t = t->next;
+continue;
 			break;
 		}
 		t->status &= ~IOC;
-		/* TO DO: need to deal with TDs as chain if necessary */
-		q->first = t->next;
-		if(q->first != nil)
-			q->entries = PADDR(q->first);
-		else
-			q->entries = Terminate;
-		t->next = nil;
+		if (tp == nil) {
+			q->first = t->next;
+			if(q->first != nil)
+				q->entries = PADDR(q->first);
+			else
+				q->entries = Terminate;
+		} else {
+			tp->next = t->next;
+			if (t->next != nil)
+				tp->link = PADDR(t->next) | vf;
+			else
+				tp->link = Terminate;
+		}
+		if (q->last == t)
+			q->last = tp;
 		iunlock(ub);
 		cleantd(t, discard);
 		ilock(ub);
-		t = q->first;
+		if (tp)
+			t = tp->next;
+		else
+			t = q->first;
+		XPRINT("t = %8.8lux\n", t);
+		dumpqh(q);
 	}
 	iunlock(ub);
 }
@@ -676,6 +703,7 @@ qrcv(Endpt *e)
 	QH *qh;
 	int vf;
 
+XPRINT("qrcv\n");
 	t = alloctde(e, TokIN, e->maxpkt);
 	b = allocb(e->maxpkt);
 	t->bp = b;
@@ -683,9 +711,10 @@ qrcv(Endpt *e)
 	ub = &ubus;
 	vf = 0;
 	if(e->x == 0){
+XPRINT("enq\n");
 		qh = ub->ctlq;
-		vf = 0;
 	}else if((qh = e->epq) == nil || e->mode != OREAD){
+XPRINT("bulkenq\n");
 		qh = ub->bulkq;
 		vf = Vf;
 	}
@@ -912,6 +941,10 @@ devendpt(Udev *d, int id, int add)
 	e->nbuf = 1;
 	e->dev = d;
 	e->active = 0;
+	e->epq = allocqh(ub);
+	if(e->epq == nil)
+		panic("devendpt");
+
 	lock(d);
 	if(*p != nil){
 		incref(*p);
@@ -1065,22 +1098,22 @@ interrupt(Ureg*, void *a)
 
 	ub = a;
 	s = IN(Status);
+	XPRINT("usbint: #%x f%d\n", s, IN(Frnum));
 	if (s & 0x1a) {
-		XPRINT("usbint: #%x f%d\n", s, IN(Frnum));
 		XPRINT("cmd #%x sofmod #%x\n", IN(Cmd), inb(ub->io+SOFMod));
 		XPRINT("sc0 #%x sc1 #%x\n", IN(Portsc0), IN(Portsc1));
 	}
 	OUT(Status, s);
 
-//	XPRINT("cleanq(ub->ctlq, 0)\n");
-	cleanq(ub->ctlq, 0);
-//	XPRINT("cleanq(ub->bulkq, 0)\n");
-	cleanq(ub->bulkq, 0);
+	XPRINT("cleanq(ub->ctlq, 0, 0)\n");
+	cleanq(ub->ctlq, 0, 0);
+	XPRINT("cleanq(ub->bulkq, 0, Vf)\n");
+	cleanq(ub->bulkq, 0, Vf);
 	ilock(&activends);
 	for(e = activends.f; e != nil; e = e->activef)
 		if(e->epq != nil) {
-//			XPRINT("cleanq(e->epq, 0)\n");
-			cleanq(e->epq, 0);
+			XPRINT("cleanq(e->epq, 0, 0)\n");
+			cleanq(e->epq, 0, 0);
 		}
 	iunlock(&activends);
 }
@@ -1252,7 +1285,7 @@ usbreset(void)
 	ub->bwsop->entries = PADDR(t);
 	ub->ctlq = allocqh(ub);
 	ub->ctlq->head = PADDR(ub->bwsop) | IsQH;
-//	ub->bulkq->head = PADDR(ub->bwsop) | IsQH;	/* loop back */
+	ub->bulkq->head = PADDR(ub->bwsop) | IsQH;	/* loop back */
 	print("usbcmd\t0x%.4x\nusbsts\t0x%.4x\nusbintr\t0x%.4x\nfrnum\t0x%.2x\n",
 		IN(Cmd), IN(Status), IN(Usbintr), inb(port+Frnum));
 	print("frbaseadd\t0x%.4x\nsofmod\t0x%x\nportsc1\t0x%.4x\nportsc2\t0x%.4x\n",
@@ -1523,7 +1556,9 @@ readusb(Endpt *e, void *a, long n)
 	uchar *p;
 	long l, i;
 
+	XPRINT("qlock(%p)\n", &e->rlock);
 	qlock(&e->rlock);
+	XPRINT("got qlock(%p)\n", &e->rlock);
 	if(waserror()){
 		qunlock(&e->rlock);
 		eptcancel(e);
@@ -1794,10 +1829,15 @@ usbwrite(Chan *c, void *a, long n, vlong)
 				e->maxpkt = 1500;
 		}else if(nf > 2 && strcmp(fields[0], "debug") == 0){
 			i = strtoul(fields[1], nil, 0);
-			if(i < 0 || i >= nelem(d->ep) || d->ep[i] == nil)
+			if(i < -1 || i >= nelem(d->ep) || d->ep[i] == nil)
 				error(Ebadarg);
-			e = d->ep[i];
-			e->debug = strtoul(fields[2], nil, 0);
+			if (i == -1)
+				debug = 0;
+			else {
+				debug = 1;
+				e = d->ep[i];
+				e->debug = strtoul(fields[2], nil, 0);
+			}
 		}else if(nf > 1 && strcmp(fields[0], "unstall") == 0){
 			i = strtoul(fields[1], nil, 0);
 			if(i < 0 || i >= nelem(d->ep) || d->ep[i] == nil)

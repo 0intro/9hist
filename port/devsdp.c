@@ -341,8 +341,6 @@ sdpinit(void)
 	int i;
 	Dirtab *dt;
 	
-	return;
-
 	// setup dirtab with non directory entries
 	for(i=0; i<nelem(sdpdirtab); i++) {
 		dt = sdpdirtab + i;
@@ -774,7 +772,7 @@ sdpclone(Sdp *sdp)
 			break;
 		}
 		if(canqlock(c)){
-			if(c->state == CClosed && c->reader == 0)
+			if(c->state == CClosed && c->reader == 0 && c->ref == 0)
 				break;
 			qunlock(c);
 		}

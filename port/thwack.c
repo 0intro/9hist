@@ -6,11 +6,6 @@
 
 #include "thwack.h"
 
-/*
- * don't include compressed blocks
- */
-#define NOUNCOMP
-
 typedef struct Huff	Huff;
 
 enum
@@ -27,12 +22,11 @@ enum
 	StatOutBytes,
 	StatLits,
 	StatMatches,
-	StatLitBits,
 	StatOffBits,
 	StatLenBits,
 
-	StatProbe,
-	StatProbeMiss,
+	StatDelay,
+	StatHist,
 
 	MaxStat
 };
@@ -172,7 +166,7 @@ thwack(Thwack *tw, uchar *dst, uchar *src, int n, ulong seq, ulong stats[ThwStat
 	ThwBlock *eblocks, *b, blocks[CompBlocks];
 	uchar *s, *ss, *sss, *esrc, *half, *twdst, *twdmax;
 	ulong cont, cseq, bseq, cmask, code, twbits;
-	int now, toff, lithist, h, len, slot, bits, use, twnbits, lits, matches, offbits, lenbits;
+	int now, toff, lithist, h, len, slot, bits, use, twnbits, lits, matches, offbits, lenbits, nhist;
 
 	if(n > ThwMaxBlock || n < MinMatch)
 		return -1;
@@ -204,6 +198,7 @@ thwack(Thwack *tw, uchar *dst, uchar *src, int n, ulong seq, ulong stats[ThwStat
 	b = blocks;
 	b->maxoff = 0;
 	b++;
+	nhist = 0;
 	while(b < blocks + CompBlocks){
 		slot--;
 		if(slot < 0)
@@ -222,17 +217,12 @@ thwack(Thwack *tw, uchar *dst, uchar *src, int n, ulong seq, ulong stats[ThwStat
 		else
 			cmask |= 1 << (cseq - bseq - 1);
 		*b = tw->blocks[slot];
+		nhist += b->maxoff;
 		b++;
 	}
 	eblocks = b;
 	*twdst++ = seq - cseq;
 	*twdst++ = cmask;
-
-#ifndef NOUNCOMP
-	tw->slot++;
-	if(tw->slot >= EWinBlocks)
-		tw->slot = 0;
-#endif
 
 	cont = (s[0] << 16) | (s[1] << 8) | s[2];
 
@@ -280,7 +270,6 @@ thwack(Thwack *tw, uchar *dst, uchar *src, int n, ulong seq, ulong stats[ThwStat
 			lits++;
 			blocks->maxoff++;
 
-#ifdef NOUNCOMP
 			/*
 			 * speed hack
 			 * check for compression progress, bail if none achieved
@@ -290,7 +279,6 @@ thwack(Thwack *tw, uchar *dst, uchar *src, int n, ulong seq, ulong stats[ThwStat
 					return -1;
 				half = esrc;
 			}
-#endif
 
 			if(s + MinMatch <= esrc){
 				blocks->hash[(h ^ blocks->seq) & HashMask] = now;
@@ -370,9 +358,10 @@ thwack(Thwack *tw, uchar *dst, uchar *src, int n, ulong seq, ulong stats[ThwStat
 	stats[StatBytes] += blocks->maxoff;
 	stats[StatLits] += lits;
 	stats[StatMatches] += matches;
-	stats[StatLitBits] += (twdst - (dst + 2)) * 8 + twnbits - offbits - lenbits;
 	stats[StatOffBits] += offbits;
 	stats[StatLenBits] += lenbits;
+	stats[StatDelay] = stats[StatDelay]*7/8 + dst[0];
+	stats[StatHist] = stats[StatHist]*7/8 + nhist;
 
 	if(twnbits & 7){
 		twbits <<= 8 - (twnbits & 7);
@@ -384,11 +373,9 @@ thwack(Thwack *tw, uchar *dst, uchar *src, int n, ulong seq, ulong stats[ThwStat
 		*twdst++ = twbits >> (twnbits - 8);
 	}
 
-#ifdef NOUNCOMP
 	tw->slot++;
 	if(tw->slot >= EWinBlocks)
 		tw->slot = 0;
-#endif
 
 	stats[StatOutBytes] += twdst - dst;
 

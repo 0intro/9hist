@@ -6,11 +6,6 @@
 
 #include "thwack.h"
 
-/*
- * don't include compressed blocks
- */
-#define NOUNCOMP
-
 enum
 {
 	DMaxFastLen	= 7,
@@ -65,36 +60,6 @@ unthwackinit(Unthwack *ut)
 }
 
 int
-unthwackadd(Unthwack *ut, uchar *src, int nsrc, ulong seq)
-{
-	int slot, tslot;
-
-	if(nsrc > ThwMaxBlock)
-		return -1;
-
-#ifndef NOUNCOMP
-	tslot = ut->slot;
-	for(;;){
-		slot = tslot - 1;
-		if(slot < 0)
-			slot += DWinBlocks;
-		if(ut->blocks[slot].seq <= seq)
-			break;
-		ut->blocks[slot] = ut->blocks[tslot];
-		tslot = slot;
-	}
-	ut->blocks[tslot].seq = seq;
-	ut->blocks[tslot].maxoff = nsrc;
-	memmove(ut->blocks[tslot].data, src, nsrc);
-
-	ut->slot++;
-	if(ut->slot >= DWinBlocks)
-		ut->slot = 0;
-#endif
-	return nsrc;
-}
-
-int
 unthwack(Unthwack *ut, uchar *dst, int ndst, uchar *src, int nsrc, ulong seq)
 {
 	UnthwBlock blocks[CompBlocks], *b, *eblocks;
@@ -118,7 +83,9 @@ unthwack(Unthwack *ut, uchar *dst, int ndst, uchar *src, int nsrc, ulong seq)
 			slot += DWinBlocks;
 		if(ut->blocks[slot].seq <= seq)
 			break;
-		ut->blocks[slot] = ut->blocks[tslot];
+		d = ut->blocks[tslot].data;
+		ut->blocks[tslot] = ut->blocks[slot];
+		ut->blocks[slot].data = d;
 		tslot = slot;
 	}
 	b = blocks;
