@@ -526,7 +526,7 @@ cwrite(Chan* c, uchar *buf, int len, ulong offset)
 		p = f;		
 	}
 
-	if(f != 0 && offset < f->start+f->len) {
+	if(0 && f != 0 && offset < f->start+f->len) {
 		o = offset - f->start;
 		n = f->len - o;
 		if(n > len)
