@@ -172,6 +172,7 @@ clockinit(void)
 
 	/* find biggest loop that doesn't wrap */
 	incr = 16000000/(t->aalcycles*HZ*2);
+	x = 2000;
 	for(loops = incr; loops < 64*1024; loops += incr) {
 	
 		/*

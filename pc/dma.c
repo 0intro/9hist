@@ -182,7 +182,7 @@ dmaend(int chan)
 	unlock(dp);
 
 	xp = &dp->x[chan];
-	if(xp->len == 0 || xp->isread)
+	if(xp->len == 0 || !xp->isread)
 		return;
 
 	/*
