@@ -271,7 +271,7 @@ userinit(void)
 	 */
 	s = &p->seg[SSEG];
 	s->proc = p;
-	s->o = neworig(USTKTOP-BY2PG, 1, OWRPERM, 0);
+	s->o = neworig(USTKTOP-BY2PG, 1, OWRPERM|OISMEM, 0);
 	s->o->pte[0].page = newpage(0, 0, USTKTOP-BY2PG);
 	memmove((ulong*)(s->o->pte[0].page->pa|KZERO|(BY2PG-argsize)), 
 		argbuf + sizeof(argbuf) - argsize, argsize);
@@ -290,7 +290,7 @@ userinit(void)
 	 * On the mips, init text must be OCACHED to avoid reusing page
 	 * and getting in trouble with the hardware instruction cache.
 	 */
-	s->o = neworig(UTZERO, 1, OCACHED, 0);
+	s->o = neworig(UTZERO, 1, OCACHED|OISMEM, 0);
 	s->o->pte[0].page = newpage(0, 0, UTZERO);
 	s->o->npage = 1;
 	k = kmap(s->o->pte[0].page);

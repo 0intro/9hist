@@ -226,10 +226,6 @@ fault(ulong addr, int read)
 		m->tlbfault++;
 
 	putmmu(mmuvirt, mmuphys);
-/*
-	if(s - u->p->seg == LSEG)
-		print("%d: f %lux v %lux p %lux\n", u->p->pid, o->flag, mmuvirt, mmuphys);
-*/
 	return 0;
 }
 
@@ -299,5 +295,6 @@ seg(Proc *p, ulong addr)
 	for(s=p->seg; s < et; s++)
 		if(s->o && s->minva<=addr && addr<s->maxva)
 			return s;
+
 	return 0;
 }
