@@ -66,15 +66,13 @@ mp008intr(Ureg *ur, void *arg)
 
 	USED(ur);
 	mp = arg;
-	for(loops = 0;; loops++){
-		if(loops > 1024)
-			panic("mp008intr");
+	for(loops = 0; loops < 1024; loops++){
 		n = ~inb(mp->mem);
 		if(n == 0)
 			return;
 		for(i = 0; n; i++){
 			if(n & 1)
-				ns16552intrx(ur, uart[mp->first+i]);
+				ns16552intrx(ur, (void*)(mp->first+i));
 			n >>= 1;
 		}
 	}
