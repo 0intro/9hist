@@ -535,7 +535,7 @@ overflow(Ether *ether)
 	regw(ctlr, Cr, Page0|RdABORT|Sta);
 	receive(ether);
 	regw(ctlr, Isr, Ovw);
-	regw(ctlr, Tcr, 0);
+	regw(ctlr, Tcr, LpbkNORMAL);
 
 	if(resend)
 		regw(ctlr, Cr, Page0|RdABORT|Txp|Sta);
@@ -555,7 +555,7 @@ interrupt(Ureg*, void* arg)
 	 * While there is something of interest,
 	 * clear all the interrupts and process.
 	 */
-	lock(ctlr);
+	ilock(ctlr);
 	regw(ctlr, Imr, 0x00);
 	while(isr = (regr(ctlr, Isr) & (Cnt|Ovw|Txe|Rxe|Ptx|Prx))){
 		if(isr & Ovw){
@@ -601,7 +601,7 @@ interrupt(Ureg*, void* arg)
 		}
 	}
 	regw(ctlr, Imr, Cnt|Ovw|Txe|Rxe|Ptx|Prx);
-	unlock(ctlr);
+	iunlock(ctlr);
 }
 
 static uchar allmar[8] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
@@ -705,6 +705,10 @@ attach(Ether* ether)
 	 * The init routine leaves the chip in monitor
 	 * mode. Clear the missed-packet counter, it
 	 * increments while in monitor mode.
+	 * Sometimes there's an interrupt pending at this
+	 * point but there's nothing in the Isr, so
+	 * any pending interrupts are cleared and the
+	 * mask of acceptable interrupts is enabled here.
 	 */
 	r = Ab;
 	if(ether->prom)
@@ -712,8 +716,11 @@ attach(Ether* ether)
 	if(ether->nmaddr)
 		r |= Am;
 	ilock(ctlr);
+	regw(ctlr, Isr, 0xFF);
+	regw(ctlr, Imr, Cnt|Ovw|Txe|Rxe|Ptx|Prx);
 	regw(ctlr, Rcr, r);
 	r = regr(ctlr, Cntr2);
+	regw(ctlr, Tcr, LpbkNORMAL);
 	iunlock(ctlr);
 	USED(r);
 }
@@ -759,7 +766,7 @@ dp8390reset(Ether* ether)
 	regw(ctlr, Rbcr0, 0);
 	regw(ctlr, Rbcr1, 0);
 
-	regw(ctlr, Tcr, 0);
+	regw(ctlr, Tcr, LpbkNIC);
 	regw(ctlr, Rcr, Mon);
 
 	/*
@@ -770,8 +777,11 @@ dp8390reset(Ether* ether)
 	ringinit(ctlr);
 	regw(ctlr, Tpsr, ctlr->tstart);
 
+	/*
+	 * Clear any pending interrupts and mask then all off.
+	 */
 	regw(ctlr, Isr, 0xFF);
-	regw(ctlr, Imr, Cnt|Ovw|Txe|Rxe|Ptx|Prx);
+	regw(ctlr, Imr, 0);
 
 	/*
 	 * Leave the chip initialised,

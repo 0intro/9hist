@@ -1,6 +1,7 @@
 /*
- * Linksys Combo PCMCIA EthernetCard (EC2T).
- * Supposedly an NE2000 clone, see the comments in ether2000.c
+ * Linksys Combo PCMCIA EthernetCard (EC2T)
+ * and EtherFast 10/100 PC Card (PCMPC100).
+ * Supposedly NE2000 clones, see the comments in ether2000.c
  */
 #include "u.h"
 #include "../port/lib.h"
@@ -13,9 +14,16 @@
 
 #include "etherif.h"
 #include "ether8390.h"
+
 enum {
 	Data		= 0x10,		/* offset from I/O base of data port */
 	Reset		= 0x1F,		/* offset from I/O base of reset port */
+};
+
+static char* ec2tpcmcia[] = {
+	"EC2T",
+	"PCMPC100",
+	nil,
 };
 
 static int
@@ -25,7 +33,8 @@ reset(Ether* ether)
 	ulong port;
 	Dp8390 *ctlr;
 	int i, slot;
-	uchar ea[Eaddrlen];
+	uchar ea[Eaddrlen], sum, x;
+	char *type;
 
 	/*
 	 * Set up the software configuration.
@@ -46,7 +55,14 @@ reset(Ether* ether)
 
 	if(ioalloc(ether->port, 0x20, 0, "ec2t") < 0)
 		return -1;
-	if((slot = pcmspecial(ether->type, ether)) < 0){
+	slot = -1;
+	type = nil;
+	for(i = 0; ec2tpcmcia[i] != nil; i++){
+		type = ec2tpcmcia[i];
+		if((slot = pcmspecial(type, ether)) >= 0)
+			break;
+	}
+	if(slot < 0){
 		iofree(port);
 		return -1;
 	}
@@ -79,7 +95,7 @@ reset(Ether* ether)
 	delay(2);
 	outb(port+Reset, buf[0]);
 	delay(2);
-	
+
 	/*
 	 * Init the (possible) chip, then use the (possible)
 	 * chip to read the (possible) PROM for ethernet address
@@ -90,9 +106,25 @@ reset(Ether* ether)
 	 * match.
 	 */
 	dp8390reset(ether);
-	memset(buf, 0, sizeof(buf));
-	dp8390read(ctlr, buf, 0, sizeof(buf));
-	if((buf[0x0E] & 0xFF) != 0x57 || (buf[0x0F] & 0xFF) != 0x57){
+	sum = 0;
+	if(strcmp(type, "PCMPC100")){
+		memset(buf, 0, sizeof(buf));
+		dp8390read(ctlr, buf, 0, sizeof(buf));
+		if((buf[0x0E] & 0xFF) == 0x57 && (buf[0x0F] & 0xFF) == 0x57)
+			sum = 0xFF;
+	}
+	else{
+		/*
+		 * The PCMPC100 has the ethernet address in I/O space.
+		 * There's a checksum over 8 bytes which sums to 0xFF.
+		 */
+		for(i = 0; i < 8; i++){
+			x = inb(port+0x14+i);
+			sum += x;
+			buf[i] = (x<<8)|x;
+		}
+	}
+	if(sum != 0xFF){
 		pcmspecialclose(slot);
 		iofree(ether->port);
 		free(ether->ctlr);
