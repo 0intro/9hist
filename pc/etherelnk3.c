@@ -1443,6 +1443,12 @@ tcm59Xpci(void)
 
 	p = nil;
 	while(p = pcimatch(p, 0x10B7, 0)){
+		/*
+		 * Not prepared to deal with memory-mapped
+		 * devices yet.
+		 */
+		if(!(p->mem[0].bar & 0x01))
+			continue;
 		port = p->mem[0].bar & ~0x01;
 		if(ioalloc(port, p->mem[0].size, 0, "tcm59Xpci") < 0){
 			print("tcm59Xpci: port 0x%uX in use\n", port);

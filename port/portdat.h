@@ -543,6 +543,7 @@ struct Proc
 	QLock	seglock;	/* locked whenever seg[] changes */
 	ulong	pid;
 	ulong	noteid;		/* Equivalent of note group */
+	Proc	*pidhash;	/* next proc in pid hash */
 
 	Lock	exl;		/* Lock count and waitq */
 	Waitq	*waitq;		/* Exited processes wait children */

@@ -150,7 +150,21 @@ procattach(char *spec)
 static int
 procwalk(Chan *c, char *name)
 {
-	return devwalk(c, name, 0, 0, procgen);
+	int s;
+	int pid;
+
+	if(c->qid.path == CHDIR && name[0] != '.'){
+		/* this is a hack to speed walks through a large directory */
+		pid = strtol(name, &name, 0);
+		if(pid < 0 || *name != 0)
+			return 0;
+		s = procindex(pid);
+		if(s < 0)
+			return 0;
+		c->qid = (Qid){CHDIR|((s+1)<<QSHIFT), pid};
+		return 1;
+	} else
+		return devwalk(c, name, 0, 0, procgen);
 }
 
 static void

@@ -11,6 +11,7 @@ Ref	noteidalloc;
 struct Procalloc
 {
 	Lock;
+	Proc*	ht[128];
 	Proc*	arena;
 	Proc*	free;
 }procalloc;
@@ -47,6 +48,9 @@ char *statename[] =
 	"Stopped",
 	"Rendez",
 };
+
+static void pidhash(Proc*);
+static void pidunhash(Proc*);
 
 /*
  * Always splhi()'ed.
@@ -342,6 +346,7 @@ newproc(void)
 	p->error[0] = '\0';
 	memset(p->seg, 0, sizeof p->seg);
 	p->pid = incref(&pidalloc);
+	pidhash(p);
 	p->noteid = incref(&noteidalloc);
 	if(p->pid==0 || p->noteid==0)
 		panic("pidalloc");
@@ -825,6 +830,7 @@ pexit(char *exitstr, int freemem)
 	qunlock(&up->seglock);
 
 	lock(&up->exl);		/* Prevent my children from leaving waits */
+	pidunhash(up);
 	up->pid = 0;
 	wakeup(&up->waitr);
 	unlock(&up->exl);
@@ -1212,4 +1218,51 @@ accounttime(void)
 
 	n = (nrdy+n)*1000;
 	m->load = (m->load*19+n)/20;
+}
+
+static void
+pidhash(Proc *p)
+{
+	int h;
+
+	h = p->pid % nelem(procalloc.ht);
+	lock(&procalloc);
+	p->pidhash = procalloc.ht[h];
+	procalloc.ht[h] = p;
+	unlock(&procalloc);
+}
+
+static void
+pidunhash(Proc *p)
+{
+	int h;
+	Proc **l;
+
+	h = p->pid % nelem(procalloc.ht);
+	lock(&procalloc);
+	for(l = &procalloc.ht[h]; *l != nil; l = &(*l)->pidhash)
+		if(*l == p){
+			*l = p->pidhash;
+			break;
+		}
+	unlock(&procalloc);
+}
+
+int
+procindex(int pid)
+{
+	Proc *p;
+	int h;
+	int s;
+
+	s = -1;
+	h = pid % nelem(procalloc.ht);
+	lock(&procalloc);
+	for(p = procalloc.ht[h]; p != nil; p = p->pidhash)
+		if(p->pid == pid){
+			s = p - procalloc.arena;
+			break;
+		}
+	unlock(&procalloc);
+	return s;
 }

@@ -133,6 +133,11 @@ ioalloc(int port, int size, int align, char *tag)
 			return -1;
 		}
 	} else {
+		// Only 64KB I/O space on the x86.
+		if((port+size) >= 0x10000){
+			unlock(&iomap);
+			return -1;
+		}
 		// see if the space clashes with previously allocated ports
 		for(l = &iomap.m; *l; l = &(*l)->next){
 			m = *l;

@@ -57,7 +57,23 @@ envattach(char *spec)
 static int
 envwalk(Chan *c, char *name)
 {
-	return devwalk(c, name, 0, 0, envgen);
+	Evalue *e;
+	Egrp *eg;
+	int rv;
+
+	if(c->qid.path == CHDIR && name[0] != '.'){
+		rv = 0;
+		eg = up->egrp;
+		qlock(eg);
+		for(e = eg->entries; e; e = e->link)
+			if(strcmp(e->name, name) == 0){
+				rv = 1;
+				c->qid = e->qid;
+			}
+		qunlock(eg);
+		return rv;
+	} else
+		return devwalk(c, name, 0, 0, envgen);
 }
 
 static void

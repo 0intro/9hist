@@ -114,7 +114,7 @@ enum
 	Vinvert,
 	Nvol,
 
-	Bufsize		= /* 4* */ 1024,	/* 46 ms each */
+	Bufsize		= 4* 1024,	/* 46 ms each */
 	Nbuf		= 32,		/* 1.5 seconds total */
 
 	Speed		= 44100,
@@ -222,8 +222,8 @@ static	struct
 [Vinvert]	{"invert",	Fin|Fout|Fmono,	  0,		  0},
 [Nvol]	{0}
 };
-
 static int rate = Speed;		/* Current sample rate */
+static int bufsize = Bufsize;	/* Current buffer size */
 static void	setreg(char *name, int val, int n);
 
 /*
@@ -758,7 +758,7 @@ sendaudio(IOstate *s) {
 	ilock(&s->ilock);
 	if ((audio.amode &  Aread) && s->next == s->filling && dmaidle(s->dma)) {
 		// send an empty buffer to provide an input clock
-		zerodma |= dmastart(s->dma, Flushbuf, Bufsize) & 0xff;
+		zerodma |= dmastart(s->dma, Flushbuf, bufsize) & 0xff;
 		if (zerodma == 0)
 			if (debug) print("emptyfail\n");
 		iostats.empties++;
@@ -803,7 +803,7 @@ recvaudio(IOstate *s) {
 	ilock(&s->ilock);
 	while (s->next != s->emptying) {
 		assert(s->next->nbytes == 0);
-		if ((n = dmastart(s->dma, s->next->phys, Bufsize)) == 0) {
+		if ((n = dmastart(s->dma, s->next->phys, bufsize)) == 0) {
 			iostats.faildma++;
 			break;
 		}
@@ -879,7 +879,7 @@ audiointr(void *x, ulong ndma) {
 		/* A dma, not of a zero buffer completed, update current
 		 * Only interrupt routine touches s->current
 		 */
-		s->current->nbytes = (s == &audio.i)? Bufsize: 0;
+		s->current->nbytes = (s == &audio.i)? bufsize: 0;
 		s->current++;
 		if (s->current == &s->buf[Nbuf])
 			s->current = &s->buf[0];
@@ -1107,7 +1107,7 @@ audioread(Chan *c, void *v, long n, vlong off)
 			}
 
 			m = (s->emptying->nbytes > n)? n: s->emptying->nbytes;
-			memmove(p, s->emptying->virt + Bufsize - 
+			memmove(p, s->emptying->virt + bufsize - 
 					  s->emptying->nbytes, m);
 
 			s->emptying->nbytes -= m;
@@ -1127,7 +1127,7 @@ audioread(Chan *c, void *v, long n, vlong off)
 
 	case Qspeed:
 		buf[0] = '\0';
-		snprint(buf, sizeof(buf), "speed %d\n", rate);
+		snprint(buf, sizeof(buf), "speed %d\ndmasize %d\n", rate, bufsize);
 		return readstr(offset, p, n, buf);
 
 	case Qvolume:
@@ -1174,6 +1174,29 @@ audioread(Chan *c, void *v, long n, vlong off)
 	return n0-n;
 }
 
+static void
+setrate(int newrate)
+{
+	switch (newrate) {
+	case 16000:
+	case 22050:
+	case 44100:
+	case 48000:
+		volumes[Vspeed].ilval = volumes[Vspeed].irval = rate = newrate;
+		break;
+	default:
+		error(Ebadarg);
+	}
+}
+
+static void
+setbufsize(int newbufsize)
+{
+	if (newbufsize < 0 || newbufsize > 8 * 1024 || newbufsize % sizeof(ulong))
+		error(Ebadarg);
+	bufsize = newbufsize;
+}
+
 static long
 audiowrite(Chan *c, void *vp, long n, vlong)
 {
@@ -1196,24 +1219,24 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 		memmove(buf, p, n);
 		buf[n] = '\0';
 		nf = getfields(buf, field, Ncmd, 1, " \t\n");
-		if (nf != 2 && nf != 1) error(Ebadarg);
-		if (nf == 2) {
-			if (strcmp(field[0], "speed")) 
-				error(Ebadarg);
-			i = 1;
-		}
-		else
+		if (nf == 1)
+			/* The user just supplied a number */
+			setrate((int)strtol(field[0], (char **)nil, 0));
+		else {
 			i = 0;
-		i = (int)strtol(field[i], (char **)nil, 0);
-		switch (i) {
-		case 16000:
-		case 22050:
-		case 44100:
-		case 48000:
-			volumes[Vspeed].ilval = volumes[Vspeed].irval = rate = i;
-			break;
-		default:
-			error(Ebadarg);
+			while (i < nf) {
+				int newval;
+
+				if (i + 1 >= nf) error(Ebadarg);
+				newval = (int)strtol(field[i + 1], (char **)nil, 0);
+				if (!strcmp(field[i], "speed"))
+					setrate(newval);
+				else if (!strcmp(field[i], "dmasize"))
+					setbufsize(newval);
+				else
+					error(Ebadarg);
+				i += 2;
+			}
 		}
 		break;
 		
@@ -1316,7 +1339,7 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 				if (debug > 1) print("#A: sleep\n");
 				sleep(&a->vous, audioqnotfull, a);
 			}
-			m = Bufsize - a->filling->nbytes;
+			m = bufsize - a->filling->nbytes;
 			if(m > n)
 				m = n;
 			memmove(a->filling->virt + a->filling->nbytes, p, m);
@@ -1324,7 +1347,7 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 			a->filling->nbytes += m;
 			n -= m;
 			p += m;
-			if(a->filling->nbytes >= Bufsize) {
+			if(a->filling->nbytes >= bufsize) {
 				if (debug > 1) print("#A: filled @%p\n", a->filling);
 				a->filling++;
 				if (a->filling == &a->buf[Nbuf])
