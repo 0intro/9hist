@@ -1,1 +1,1 @@
-#include "/mips2/include/ureg.h"
+#include "/mips/include/mips2ureg.h"
