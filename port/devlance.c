@@ -579,6 +579,12 @@ lancewalk(Chan *c, char *name)
 		return devwalk(c, name, 0, 0, streamgen);
 }
 
+Chan*
+lanceclwalk(Chan *c, char *name)
+{
+	return devclwalk(c, name);
+}
+
 void	 
 lancestat(Chan *c, char *dp)
 {

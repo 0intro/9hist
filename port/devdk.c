@@ -753,6 +753,12 @@ dkwalk(Chan *c, char *name)
 		return devwalk(c, name, dksubdir, Nsubdir, streamgen);
 }
 
+Chan*
+dkclwalk(Chan *c, char *name)
+{
+	return devclwalk(c, name);
+}
+
 void	 
 dkstat(Chan *c, char *dp)
 {

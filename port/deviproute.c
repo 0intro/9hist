@@ -190,7 +190,7 @@ enum{
 	Qdata,
 };
 Dirtab iproutetab[]={
-	"iproute",		Qdata,		0,	0600,
+	"iproute",		{Qdata},		0,	0600,
 };
 #define Niproutetab (sizeof(iproutetab)/sizeof(Dirtab))
 
@@ -220,6 +220,12 @@ int
 iproutewalk(Chan *c, char *name)
 {
 	return devwalk(c, name, iproutetab, (long)Niproutetab, devgen);
+}
+
+Chan*
+iprouteclwalk(Chan *c, char *name)
+{
+	return devclwalk(c, name);
 }
 
 void

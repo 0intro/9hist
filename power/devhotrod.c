@@ -152,6 +152,12 @@ hotrodwalk(Chan *c, char *name)
 	return devwalk(c, name, hotroddir, NHOTRODDIR, devgen);
 }
 
+Chan*
+hotrodclwalk(Chan *c, char *name)
+{
+	return devclwalk(c, name);
+}
+
 void	 
 hotrodstat(Chan *c, char *dp)
 {

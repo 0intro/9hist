@@ -47,6 +47,12 @@ bootwalk(Chan *c, char *name)
 	return devwalk(c, name, bootdir, NBOOT, devgen);
 }
 
+Chan*
+bootclwalk(Chan *c, char *name)
+{
+	return devclwalk(c, name);
+}
+
 void	 
 bootstat(Chan *c, char *dp)
 {

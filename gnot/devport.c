@@ -83,6 +83,12 @@ portwalk(Chan *c, char *name)
 	return devwalk(c, name, portdir, NPORT, devgen);
 }
 
+Chan*
+portclwalk(Chan *c, char *name)
+{
+	return devclwalk(c, name);
+}
+
 void
 portstat(Chan *c, char *db)
 {

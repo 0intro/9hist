@@ -104,6 +104,12 @@ rtcwalk(Chan *c, char *name)
 	return 0;
 }
 
+Chan*
+rtcclwalk(Chan *c, char *name)
+{
+	return devclwalk(c, name);
+}
+
 void	 
 rtcstat(Chan *c, char *dp)
 {

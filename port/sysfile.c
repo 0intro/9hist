@@ -227,10 +227,8 @@ sysread(ulong *arg)
 	c = fdtochan(arg[0], OREAD);
 	validaddr(arg[1], arg[2], 1);
 	qlock(&c->rdl);
-	qlock(&c->wrl);		/* BUG BUG BUG */
 	if(waserror()){
 		qunlock(&c->rdl);
-		qunlock(&c->wrl);		/* BUG BUG BUG */
 		nexterror();
 	}
 	n = arg[2];
@@ -245,7 +243,6 @@ sysread(ulong *arg)
 		n = (*devtab[c->type].read)(c, (void*)arg[1], n, c->offset);
 	c->offset += n;
 	qunlock(&c->rdl);
-	qunlock(&c->wrl);		/* BUG BUG BUG */
 	return n;
 }
 
@@ -257,10 +254,8 @@ syswrite(ulong *arg)
 
 	c = fdtochan(arg[0], OWRITE);
 	validaddr(arg[1], arg[2], 0);
-	qlock(&c->rdl);		/* BUG BUG BUG */
 	qlock(&c->wrl);
 	if(waserror()){
-		qunlock(&c->rdl);		/* BUG BUG BUG */
 		qunlock(&c->wrl);
 		nexterror();
 	}
@@ -268,7 +263,6 @@ syswrite(ulong *arg)
 		error(Eisdir);
 	n = (*devtab[c->type].write)(c, (void*)arg[1], arg[2], c->offset);
 	c->offset += n;
-	qunlock(&c->rdl);		/* BUG BUG BUG */
 	qunlock(&c->wrl);
 	return n;
 }

@@ -223,6 +223,7 @@ allocb(ulong size)
 	/*
 	 *  return an empty block
 	 */
+	bp->flags = bcp - bclass;
 	bp->rptr = bp->wptr = bp->base;
 	bp->next = 0;
 	bp->type = M_DATA;
@@ -248,6 +249,7 @@ freeb(Block *bp)
 		panic("freeb class");
 	for(; bp; bp = nbp){
 		bcp = &bclass[bp->flags & S_CLASS];
+		bp->flags = S_CLASS;			/* Check for doulbe free */
 		lock(bcp);
 		bp->rptr = bp->wptr = 0;
 		if(bcp->first)
@@ -596,6 +598,7 @@ pullup(Block *bp, int n)
 	/*
 	 *  if not enough room in the first block,
 	 *  add another to the front of the list.
+	 */
 	if(bp->lim - bp->rptr < n){
 		nbp = allocb(n);
 		nbp->next = bp;

@@ -36,6 +36,7 @@ void	delete(List**, List*, List*);
 void	delete0(List**, List*);
 Chan	*devattach(int, char*);
 Chan	*devclone(Chan*, Chan*);
+Chan	*devclwalk(Chan*, char*);
 void	devdir(Chan*, Qid, char*, long, long, Dir*);
 long	devdirread(Chan*, char*, long, Dirtab*, int, Devgen*);
 Devgen	devgen;

@@ -270,6 +270,12 @@ envwalk(Chan *c, char *name)
 	return 0;
 }
 
+Chan*
+envclwalk(Chan *c, char *name)
+{
+	return devclwalk(c, name);
+}
+
 void
 envstat(Chan *c, char *db)
 {

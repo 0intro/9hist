@@ -175,6 +175,12 @@ wrenwalk(Chan *c, char *name)
 	return devwalk(c, name, wrendir, NWREN, wrengen);
 }
 
+Chan*
+wrenclwalk(Chan *c, char *name)
+{
+	return devclwalk(c, name);
+}
+
 void
 wrenstat(Chan *c, char *db)
 {
