@@ -19,9 +19,7 @@ clockintr(Ureg *ureg)
 		m->flushmmu = 0;
 	}
 
-print("portclock\n");
 	portclock(ureg);
-print("done portclock\n");
 }
 
 void
@@ -40,7 +38,6 @@ microdelay(int l)
 {
 	ulong i;
 
-return;
 	l *= m->loopconst;
 	l += 500;
 	l /= 1000;

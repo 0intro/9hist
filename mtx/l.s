@@ -9,9 +9,9 @@
 /* special instruction definitions */
 #define	BDNZ	BC	16,0,
 #define	BDNE	BC	0,2,
-//#define	TLBIA	WORD	$(31<<26)
-#define	TLBIA	WORD	$((31<<26)|(370<<1))
-//#define	MFTB(tbr,d)	WORD	$((31<<26)|((d)<<21)|((tbr&0x1f)<<16)|(((tbr>>5)&0x1f)<<11)|(371<<1))
+
+#define	TLBIA	WORD	$((31<<26)|(307<<1))
+#define	TLBSYNC	WORD	$((31<<26)|(566<<1))
 
 /* on some models mtmsr doesn't synchronise enough (eg, 603e) */
 #define	MSRSYNC	SYNC; ISYNC
@@ -20,13 +20,112 @@
 
 	TEXT start(SB), $-4
 
+	/*
+	 * setup MSR
+	 * turn off interrupts
+	 * use 0x000 as exception prefix
+	 * enable machine check
+	 */
+	MOVW	MSR, R3
+	MOVW	$(MSR_EE|MSR_IP), R4
+	ANDN	R4, R3
+	OR		$(MSR_ME), R3
+	ISYNC
+	MOVW	R3, MSR
+	MSRSYNC
+
+	/* except during trap handling, R0 is zero from now on */
+	MOVW	$0, R0
+
+	/* setup SB for pre mmu */
 	MOVW	$setSB(SB), R2
-	MOVW	$MACHADDR, R(MACH)
-	MOVW	$(KTZERO-8), R1	/* stack, in Mach */
+	MOVW	$KZERO, R3
+	ANDN	R3, R2
+
+	BL	mmuinit0(SB)
+
+	/* running with MMU on!! */
+
+	/* set R2 to correct value */
+	MOVW	$setSB(SB), R2
+
+	/* save SPR(SPRG3), or else we can't go back to firmware! */
+	MOVW SPR(SAVEXX), R3
+	MOVW R3, initsprg3(SB)
+
+	/* set up Mach */
+	MOVW	$mach0(SB), R(MACH)
+	ADD	$(MACHSIZE-8), R(MACH), R1	/* set stack */
+
+	MOVW	R0, R(USER)
+	MOVW	R0, 0(R(MACH))
 
 	BL	main(SB)
 
 	RETURN		/* not reached */
+
+GLOBL	mach0(SB), $(MAXMACH*BY2PG)
+GLOBL	initsprg3(SB), $4
+
+/*
+ * on return from this function we will be running in virtual mode.
+ * We set up the Block Address Translation (BAT) registers thus:
+ * 1) first 3 BATs are 256M blocks, starting from KZERO->0
+ * 2) remaining BAT maps last 256M directly
+ */
+TEXT	mmuinit0(SB), $0
+	/* reset all the tlbs */
+	MOVW	$64, R3
+	MOVW	R3, CTR
+	MOVW	$0, R4
+tlbloop:
+	TLBIE	R4
+	ADD		$BIT(19), R4
+	BDNZ	tlbloop
+	TLBSYNC
+
+	/* KZERO -> 0 */
+	MOVW	$(KZERO|(0x7ff<<2)|2), R3
+	MOVW	$(0|(0<<3)|2), R4
+	MOVW	R3, SPR(IBATU(0))
+	MOVW	R4, SPR(IBATL(0))
+	MOVW	R3, SPR(DBATU(0))
+	MOVW	R4, SPR(DBATL(0))
+
+	/* KZERO+256M -> 256M */
+	ADD		$(1<<28), R3
+	ADD		$(1<<28), R4
+	MOVW	R3, SPR(IBATU(1))
+	MOVW	R4, SPR(IBATL(1))
+	MOVW	R3, SPR(DBATU(1))
+	MOVW	R4, SPR(DBATL(1))
+
+	/* KZERO+512M -> 512M */
+	ADD		$(1<<28), R3
+	ADD		$(1<<28), R4
+	MOVW	R3, SPR(IBATU(2))
+	MOVW	R4, SPR(IBATL(2))
+	MOVW	R3, SPR(DBATU(2))
+	MOVW	R4, SPR(DBATL(2))
+
+	/* direct map last block, uncached, (?guarded) */
+	MOVW	$((0xf<<28)|(0x7ff<<2)|2), R3
+	MOVW	$((0xf<<28)|(4<<3)|2), R4
+	MOVW	R3, SPR(IBATU(3))
+	MOVW	R4, SPR(IBATL(3))
+	MOVW	R3, SPR(DBATU(3))
+	MOVW	R4, SPR(DBATL(3))
+
+	/* enable MMU */
+	MOVW	LR, R3
+	OR	$KZERO, R3
+	MOVW	R3, SPR(SRR0)
+	MOVW	MSR, R4
+	OR	$(MSR_IR|MSR_DR), R4
+	MOVW	R4, SPR(SRR1)
+	RFI	/* resume in kernel mode in caller */
+
+	RETURN
 
 TEXT	splhi(SB), $0
 	MOVW	LR, R31
@@ -136,9 +235,11 @@ tas0:
 	RETURN
 
 TEXT	firmware(SB), $0
-	MOVW	$0, R4
+	MOVW	initsprg3(SB), R3
+	MOVW	R3, SPR(SAVEXX)
+	MOVW	$MSR_IP, R4
 	MOVW	R4, SPR(SRR1)
-	MOVW	$0x100, R5
+	MOVW	$0xfff00100, R5
 	MOVW	R5, SPR(SRR0)
 	RFI
 
@@ -177,7 +278,14 @@ TEXT	eieio(SB), $0
 	RETURN
 
 TEXT	tlbflushall(SB), $0
-	TLBIA
+	MOVW	$64, R3
+	MOVW	R3, CTR
+	MOVW	$0, R4
+tlbflushall0:
+	TLBIE	R4
+	ADD		$BIT(19), R4
+	BDNZ	tlbflushall0
+	TLBSYNC
 	RETURN
 
 TEXT	tlbflush(SB), $0
@@ -211,12 +319,17 @@ TEXT	trapvec(SB), $-4
 	
 	/* switch to kernel stack */
 	MOVW	R1, CR
-	MOVW	$(MACHADDR&~KZERO), R1	/* PADDR(m->) */
+	MOVW	R2, R0
+	MOVW	$setSB(SB), R2
+	RLWNM	$0, R2, $~KZERO, R2		/* PADDR(setSB) */
+	MOVW	$mach0(SB), R1	/* m-> */
+	RLWNM	$0, R1, $~KZERO, R1		/* PADDR(m->) */
 	MOVW	8(R1), R1				/* m->proc  */
 	RLWNM	$0, R1, $~KZERO, R1		/* PADDR(m->proc) */
 	MOVW	8(R1), R1				/* m->proc->kstack */
 	RLWNM	$0, R1, $~KZERO, R1		/* PADDR(m->proc->kstack) */
 	ADD	$(KSTACK-UREGSIZE), R1
+	MOVW	R0, R2
 	BL	saveureg(SB)
 	BL	trap(SB)
 	BR	restoreureg
@@ -242,9 +355,12 @@ TEXT	saveureg(SB), $-4
  */
 	MOVMW	R2, 48(R1)	/* r2:r31 */
 	MOVW	$setSB(SB), R2
-	MOVW	$(MACHADDR&~KZERO), R(MACH)
+	RLWNM	$0, R2, $~KZERO, R2		/* PADDR(setSB) */
+	MOVW	$mach0(SB), R(MACH)
+	RLWNM	$0, R(MACH), $~KZERO, R(MACH)		/* PADDR(m->) */
 	MOVW	8(R(MACH)), R(USER)
-	MOVW	$MACHADDR, R(MACH)
+	MOVW	$mach0(SB), R(MACH)
+	MOVW	$setSB(SB), R2
 	MOVW	SPR(SAVER1), R4
 	MOVW	R4, 44(R1)
 	MOVW	SPR(SAVER0), R5
@@ -270,7 +386,7 @@ TEXT	saveureg(SB), $-4
 	MOVW	$0, R0	/* compiler/linker expect R0 to be zero */
 
 	MOVW	MSR, R5
-//	OR	$(MSR_IR|MSR_DR|MSR_RI), R5	/* enable MMU */
+	OR	$(MSR_IR|MSR_DR|MSR_RI), R5	/* enable MMU */
 	MOVW	R5, SPR(SRR1)
 	MOVW	LR, R31
 	OR	$KZERO, R31	/* return PC in KSEG0 */

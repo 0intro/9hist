@@ -19,32 +19,27 @@ main(void)
 	clockinit();
 	i8250console();
 	print("\nPlan 9\n");
-//	confinit();
-//	xinit();
+	confinit();
+	xinit();
 	trapinit();
-//	printinit();
-//	cpuidprint();
-//	mmuinit();
-//	procinit0();
-//	initseg();
-//	links();
-//	chandevreset();
-//	pageinit();
-//	swapinit();
-//	userinit();
-//	schedinit();
-spllo();
-putdec(64);
-putmsr(getmsr() | MSR_IR | MSR_DR);
-*(ulong*)-1 = 0;
-firmware();
+	printinit();
+	cpuidprint();
+	mmuinit();
+	procinit0();
+	initseg();
+	links();
+	chandevreset();
+	pageinit();
+	swapinit();
+	userinit();
+	schedinit();
 }
 
 void
 machinit(void)
 {
 	memset(m, 0, sizeof(Mach));
-//	m->cputype = getpvr()>>16;
+	m->cputype = getpvr()>>16;
 
 	/*
 	 * For polled uart output at boot, need
@@ -64,13 +59,10 @@ cpuidprint(void)
 {
 	char *id;
 
-	id = "?";
+	id = "unknown PowerPC";
 	switch(m->cputype) {
 	case 9:
 		id = "PowerPC 604e";
-		break;
-	default:
-		panic("unknown PowerPC");
 		break;
 	}
 	print("cpu0: %s\n", id);
@@ -262,9 +254,8 @@ confinit(void)
 	conf.nmach = 1;		/* processors */
 	conf.nproc = 60;	/* processes */
 
-	// hard wire for now
-	pa = 0x200000;		// leave 2 Meg for kernel
-	nbytes = 8*1024*1024;	// leave room at the top as well
+	pa = PGROUND(PADDR(end));
+	nbytes = 256*1024*1024;	// hard wire for now
 	
 	conf.npage0 = nbytes/BY2PG;
 	conf.base0 = pa;

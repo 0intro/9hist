@@ -6,8 +6,6 @@ typedef struct Lock	Lock;
 typedef struct Mach	Mach;
 typedef struct Notsave	Notsave;
 typedef struct Page	Page;
-typedef struct PCArch	PCArch;
-typedef struct PCB	PCB;
 typedef struct Pcidev	Pcidev;
 typedef struct PMMU	PMMU;
 typedef struct Proc	Proc;
@@ -167,36 +165,6 @@ struct
 }active;
 
 /*
- *	Implementation-dependant functions (outside of Alpha architecture proper).
- *	Called PCArch because that's what mkdevc calls it (for the PC).
- */
-struct PCArch
-{
-	char*	id;
-	int	(*ident)(void);
-
-	void	(*coreinit)(void);		/* set up core logic, PCI mappings etc */
-	void	(*corehello)(void);		/* identify core logic to user */
-	void	(*coredetach)(void);		/* restore core logic before return to console */
-	void	*(*pcicfg)(int, int);		/* map and point to PCI cfg space */
-	void	*(*pcimem)(int, int);		/* map and point to PCI memory space */
-	int	(*intrenable)(Vctl*);
-
-	int		(*_inb)(int);
-	ushort	(*_ins)(int);
-	ulong	(*_inl)(int);
-	void		(*_outb)(int, int);
-	void		(*_outs)(int, ushort);
-	void		(*_outl)(int, ulong);
-	void		(*_insb)(int, void*, int);
-	void		(*_inss)(int, void*, int);
-	void		(*_insl)(int, void*, int);
-	void		(*_outsb)(int, void*, int);
-	void		(*_outss)(int, void*, int);
-	void		(*_outsl)(int, void*, int);
-};
-
-/*
  *  a parsed plan9.ini line
  */
 #define NISAOPT		8
@@ -214,10 +182,8 @@ struct ISAConf {
 	char	*opt[NISAOPT];
 };
 
-extern PCArch	*arch;
-
-//#define	MACHP(n)	((Mach *)((int)&mach0+n*BY2PG))
-//extern Mach		mach0;
+#define	MACHP(n)	((Mach *)((int)&mach0+n*BY2PG))
+extern Mach		mach0;
 
 extern register Mach	*m;
 extern register Proc	*up;

@@ -102,8 +102,6 @@ trap(Ureg *ur)
 	int ecode,user;
 	char buf[ERRMAX], *s;
 
-if(m->loopconst != 5000) print("XXX\n");
-print("trap\n");
 	m->intrts = fastticks(nil);
 	ecode = (ur->cause >> 8) & 0xff;
 	user = (ur->srr1 & MSR_PR) != 0;
@@ -147,7 +145,7 @@ print("program\n");
 		break;
 
 	default:
-print("default\n");
+print("trap: default\n");
 		if(ecode <= nelem(excname) && user){
 			spllo();
 			sprint(buf, "sys: trap: %s", excname[ecode]);
@@ -233,9 +231,9 @@ trapinit(void)
 	int i;
 
 	/*
-	 * set all exceptions to trap, except reset
+	 * set all exceptions to trap
 	 */
-	for(i = 0x200; i < 0x2000; i += 0x100)
+	for(i = 0; i < 0x2000; i += 0x100)
 		sethvec(i, trapvec);
 
 	putmsr(getmsr() & ~MSR_IP);

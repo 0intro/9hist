@@ -16,15 +16,15 @@
 #define 	ROUND(s, sz)	(((s)+(sz-1))&~(sz-1))
 #define 	PGROUND(s)	ROUND(s, BY2PG)
 #define	CACHELINELOG	4
-#define CACHELINESZ	(1<<CACHELINELOG)
-#define BLOCKALIGN	CACHELINESZ
+#define	CACHELINESZ	(1<<CACHELINELOG)
+#define	BLOCKALIGN	CACHELINESZ
 
 #define	MHz	1000000
 
-//#define	BY2PTE		8			/* bytes per pte entry */
-//#define	PTE2PG		(BY2PG/BY2PTE)	/* pte entries per page */
+#define	BY2PTE		8				/* bytes per pte entry */
+#define	PTE2PG		(BY2PG/BY2PTE)	/* pte entries per page */
 
-#define	MAXMACH		1			/* max # cpus system can run */
+#define	MAXMACH	1				/* max # cpus system can run */
 #define	MACHSIZE	BY2PG
 #define	KSTACK		4096			/* Size of kernel stack */
 
@@ -123,11 +123,6 @@
 #define CIBREAK	0x13
 #define CSMI		0x14
 
-// left over from 603?
-// #define CIMISS		0x10
-// #define CDLMISS	0x11
-// #define CDSMISS	0x12
-
 /*
  * Magic registers
  */
@@ -144,14 +139,6 @@
 #define SEGMAPSIZE	1984
 #define SSEGMAPSIZE	16
 #define PPN(x)		((x)&~(BY2PG-1))
-
-/*
- * Fundamental addresses
- */
-#define	MACHADDR	(KZERO+0x2000)
-#define	MACHP(n)	((Mach *)(MACHADDR+(n)*MACHSIZE))
-
-#define	UREGSIZE	((8+32)*4)
 
 /*
  * MMU
@@ -177,10 +164,6 @@
 
 #define	NTLBPID		16
 #define	TLBPID(n)	((n)&(NTLBPID-1))
-
-/* soft tlb */
-#define	STLBLOG		12
-#define	STLBSIZE	(1<<STLBLOG)
 
 /*
  *  portable MMU bits for fault.c - though still machine specific
@@ -208,10 +191,10 @@
 #define	USTKTOP	(TSTKTOP-TSTKSIZ*BY2PG)	/* byte just beyond user stack */
 #define	TSTKTOP	KZERO	/* top of temporary stack */
 #define	TSTKSIZ 100
-//#define	KZERO	0x80000000	/* base of kernel address space */
-#define	KZERO	0
-#define	KTZERO	(KZERO+0x4000)		/* first address in kernel text */
-#define	USTKSIZE	(4*1024*1024)	/* size of user stack */
+#define	KZERO	0x80000000		/* base of kernel address space */
+#define	KTZERO	(KZERO+0x4000)	/* first address in kernel text */
+#define	USTKSIZE	(4*1024*1024)		/* size of user stack */
+#define	UREGSIZE	((8+32)*4)
 
 #define	PCI1			0x40000000
 #define	PCI0			0xfd000000

@@ -686,7 +686,7 @@ bindmount(int ismount, int fd, int afd, char* arg0, char* arg1, ulong flag, char
 		int	flags;
 	}bogus;
 
-	if(flag>MMASK || (flag&MORDER)==(MBEFORE|MAFTER))
+	if((flag&~MMASK) || (flag&MORDER)==(MBEFORE|MAFTER))
 		error(Ebadarg);
 
 	bogus.flags = flag & MCACHE;

@@ -5,8 +5,6 @@
 #include	"fns.h"
 #include	"io.h"
 
-#define TLBINVLAID	KZERO
-
 void
 mmuinit(void)
 {
