@@ -35,8 +35,8 @@ void	lancetoggle(void);
 void	mmuinit(void);
 void	mousebuttons(int);
 void	printinit(void);
-#define	procrestore(x,y)
-#define	procsave(x,y)
+#define	procrestore(p)
+#define	procsave(p)
 #define	procsetup(x)	((p)->fpstate = FPinit)
 void	putb2(ulong, int);
 void	putcontext(int);
