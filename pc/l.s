@@ -567,22 +567,29 @@ TEXT	idle(SB),$0
 	RET
 
 /*
- *  return cpu type (what is a pentium?)
+ *  return cpu type (586 == pentium or better)
  */
 TEXT	x86(SB),$0
 
 	PUSHFL
 	MOVL	0(SP),AX
-	ORL	$0x40000,AX
+	ORL	$0x240000,AX
 	PUSHL	AX
 	POPFL
 	PUSHFL
-	POPL	AX
+	MOVL	0(SP),AX
 	ANDL	$0x40000,AX
 	JZ	is386
+	POPL	AX
+	ANDL	$0x200000,AX
+	JZ	is486
+	MOVL	$586,AX
+	JMP	done
+is486
 	MOVL	$486,AX
 	JMP	done
 is386:
+	POPL	AX
 	MOVL	$386,AX
 done:
 	POPFL
@@ -817,4 +824,42 @@ dsploop:
 	JMP	dsploop
 
 dspout:
+	RET
+
+
+	TEXT	damove(SB), $0
+
+	MOVL	p1+0(FP), DI
+	MOVL	p2+4(FP), SI
+	MOVL	n+8(FP), BX
+	CLD
+/*
+ * less than a word, just copy bytes
+ */
+	CMPL	BX, $4
+	JLS	bybyte
+/*
+ * copy bytes till dest is word alligned
+ */
+	MOVL	DI, DX
+	ANDL	$3, DX
+	JEQ	byword
+	MOVL	$4, CX
+	SUBL	DX, CX
+	SUBL	CX, BX
+	REP;	MOVSB
+/*
+ * copy whole longs
+ */
+byword:
+	MOVL	BX, CX
+	SHRL	$2, CX
+	REP;	MOVSL
+/*
+ * copy the rest, by bytes
+ */
+	ANDL	$3, BX
+bybyte:
+	MOVL	BX, CX
+	REP;	MOVSB
 	RET

@@ -627,6 +627,8 @@ screenupdate(void)
 		break;
 	case 3:
 		f = memmove;
+		r.min.x &= ~3;
+		r.max.x = ROUND(r.max.x, 4);
 		len = r.max.x - r.min.x;
 		break;
 	default:
