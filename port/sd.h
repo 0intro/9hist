@@ -9,8 +9,8 @@ typedef struct SDreq SDreq;
 typedef struct SDunit SDunit;
 
 typedef struct SDperm {
-	char	*name;
-	char	*user;
+	char*	name;
+	char*	user;
 	ulong	perm;
 } SDperm;
 
@@ -37,33 +37,34 @@ typedef struct SDunit {
 	ulong	vers;
 	SDperm	ctlperm;
 
-	QLock	raw;		/* raw read or write in progress */
+	QLock	raw;			/* raw read or write in progress */
 	Lock	rawinuse;		/* really just a test-and-set */
 	int	state;
 	SDreq*	req;
 	SDperm	rawperm;
 
-	Log log;
+	Log	log;
 } SDunit;
 
 /* 
-  * Each controller is represented by a SDev, each controller is responsible
-  * for allocating its unit structures.
-  */ 
+ * Each controller is represented by a SDev.
+ * Each controller is responsible for allocating its unit structures.
+ * Each controller has at least one unit.
+ */ 
 typedef struct SDev {
-	Ref		r;			/* Number of callers using device */
+	Ref	r;			/* Number of callers using device */
 	SDifc*	ifc;			/* pnp/legacy */
-	void	*ctlr;
+	void*	ctlr;
 	int	idno;
-	char	*name;
+	char*	name;
 	SDev*	next;
 
 	QLock;				/* enable/disable */
 	int	enabled;
-	int		nunit;		/* Number of units */
+	int	nunit;			/* Number of units */
 	QLock	unitlock;		/* `Loading' of units */
-	int		*unitflg;		/* Unit flags */
-	SDunit	**unit;		/* Each controller has at least one unit */
+	int*	unitflg;		/* Unit flags */
+	SDunit**unit;
 } SDev;
 
 typedef struct SDifc {
@@ -82,8 +83,8 @@ typedef struct SDifc {
 	int	(*wctl)(SDunit*, Cmdbuf*);
 
 	long	(*bio)(SDunit*, int, int, void*, long, long);
-	SDev*	(*probe)(DevConf *);
-	void		(*clear)(SDev *);
+	SDev*	(*probe)(DevConf*);
+	void	(*clear)(SDev*);
 	char*	(*stat)(SDev*, char*, char*);
 } SDifc;
 

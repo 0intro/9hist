@@ -13,7 +13,6 @@ struct Ether {
 	int	minmtu;
 	int 	maxmtu;
 	uchar	ea[Eaddrlen];
-	int	encry;
 
 	void	(*attach)(Ether*);	/* filled in by reset routine */
 	void	(*transmit)(Ether*);
