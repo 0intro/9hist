@@ -114,7 +114,8 @@
 #define	TLBROFF	8	/* offset of first randomly indexed entry */
 
 #define NCOLOR	1
-#define getcolor(a)	0
+#define getpgcolor(a) 0
+
 /*
  * Address spaces
  */

@@ -416,6 +416,7 @@ notify(Ureg *ur)
 	*(ulong*)(sp+2*BY2WD) = sp+3*BY2WD;	/* arg 2 is string */
 	up->svr1 = ur->r1;			/* save away r1 */
 	ur->r1 = (ulong)up->ureg;		/* arg 1 is ureg* */
+	*(ulong*)(sp+1*BY2WD) = (ulong)up->ureg;/* arg 1 0(FP) is ureg* (for Alef) */
 	*(ulong*)(sp+0*BY2WD) = 0;		/* arg 0 is pc */
 	ur->usp = sp;
 	ur->pc = (ulong)up->notify;

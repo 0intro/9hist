@@ -76,7 +76,7 @@ retry:
 	color = getpgcolor(va);
 	hw = swapalloc.highwater;
 	for(;;) {
-		if(palloc.freecol[color] > hw)
+		if(palloc.freecol[color] > hw/NCOLOR)
 			break;
 		if(up->kp && palloc.freecol[color] > 0)
 			break;

@@ -559,6 +559,7 @@ screenload(Rectangle r, uchar *data, long n)
 		unlock(&screenlock);
 		error("bad tile size");
 	}
+	cursoroff(1);
 	q = gbaddr(&gscreen, r.min);
 	mx = 7>>gscreen.ldepth;
 	lpart = (r.min.x & mx) << gscreen.ldepth;
@@ -605,6 +606,7 @@ screenload(Rectangle r, uchar *data, long n)
 			data += l;
 		}
 	mbbrect(r);
+	cursoron(1);
 	screenupdate();
 	unlock(&screenlock);
 }

@@ -251,34 +251,25 @@ mouseclose(Chan *c)
 long
 mouseread(Chan *c, void *va, long n, ulong offset)
 {
-	uchar *p;
+	char buf[4*12+1];
 
 	USED(offset);
 	if(c->qid.path & CHDIR)
 		return devdirread(c, va, n, mousedir, NMOUSE, devgen);
 
 	if(c->qid.path == Qmouse){
-		/*
-		 * mouse:
-		 *	'm'		1
-		 *	buttons		1
-		 * 	point		8
-		 * 	msec		4
-		 */
-		if(n < 14)
-			error(Eshort);
 		while(mousechanged(0) == 0)
 			sleep(&mouse.r, mousechanged, 0);
 		lock(&cursor);
-		p = va;
-		p[0] = 'm';
-		p[1] = mouse.buttons;
-		BPLONG(p+2, mouse.xy.x);
-		BPLONG(p+6, mouse.xy.y);
-		BPLONG(p+10, TK2MS(MACHP(0)->ticks));
+		sprint(buf, "%11d %11d %11d %11d",
+			mouse.xy.x, mouse.xy.y, mouse.buttons,
+			TK2MS(MACHP(0)->ticks));
 		mouse.lastcounter = mouse.counter;
 		unlock(&cursor);
-		return 14;
+		if(n > 4*12)
+			n = 4*12;
+		memmove(va, buf, n);
+		return n;
 	}
 	return 0;
 }
@@ -286,7 +277,7 @@ mouseread(Chan *c, void *va, long n, ulong offset)
 long
 mousewrite(Chan *c, void *va, long n, ulong offset)
 {
-	uchar *p;
+	char *p;
 	Point pt;
 	char buf[64];
 
@@ -305,12 +296,16 @@ mousewrite(Chan *c, void *va, long n, ulong offset)
 		return n;
 
 	case Qmouse:
-		if(n != 9)
+		if(n > sizeof buf-1)
+			n = sizeof buf -1;
+		memmove(buf, va, n);
+		buf[n] = 0;
+		p = 0;
+		pt.x = strtoul(buf, &p, 0);
+		if(p == 0)
 			error(Eshort);
+		pt.y = strtoul(p, 0, 0);
 		qlock(&mouse);
-		p = va;
-		pt.x = BGLONG(p+1);
-		pt.y = BGLONG(p+5);
 		if(ptinrect(pt, gscreen.r)){
 			mouse.xy = pt;
 			mouse.redraw = 1;
