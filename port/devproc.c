@@ -255,6 +255,14 @@ procwstat(Chan *c, char *db)
 		error(Eperm);
 
 	convM2D(db, &d);
+	if(strcmp(d.uid, p->user) != 0){
+		if(strcmp(up->user, eve) != 0)
+			error(Eperm);
+		else {
+			strncpy(p->user, d.uid, sizeof(p->user));
+			p->user[sizeof(p->user)-1] = 0;
+		}
+	}
 	p->procmode = d.mode&0777;
 
 	poperror();
