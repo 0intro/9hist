@@ -9,6 +9,7 @@
 #define	BI2BY		8			/* bits per byte */
 #define	BI2WD		32			/* bits per word */
 #define	BY2WD		4			/* bytes per word */
+#define BY2V		8			/* bytes per vlong */
 #define	BY2PG		4096			/* bytes per page */
 #define	WD2PG		(BY2PG/BY2WD)		/* words per page */
 #define	PGSHIFT		12			/* log(BY2PG) */

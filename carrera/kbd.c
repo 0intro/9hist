@@ -10,30 +10,14 @@
 
 enum
 {
-	/*
-	 *  commands
-	 */
-	Krdcmd=		0x20,	/* read command byte */
-	Kwrcmd=		0x60,	/* write command byte */
-	Kselftest=	0xAA,	/* self test */
-	Ktest=		0xAB,	/* keyboard test */
-	Kdisable=	0xAD,	/* disable keyboard */
-	Kenable=	0xAE,	/* enable keyboard */
-	Kmseena=	0xA8,	/* enable mouse */
-	Krdin=		0xC0,	/* read input port */
-	Krdout=		0xD0,	/* read output port */
-	Kwrout=		0xD1,	/* write output port */
-	Krdtest=	0xE0,	/* read test inputs */
-	Kwrlights=	0xED,	/* set lights */
-	Kreset=		0xF0,	/* soft reset */
-	/*
-	 *  magic characters
-	 */
-	Msetscan=	0xF0,	/* set scan type (0 == unix) */
-	Menable=	0xF4,	/* enable the keyboard */
-	Mdisable=	0xF5,	/* disable the keyboard */
-	Mdefault=	0xF6,	/* set defaults */
-	Mreset=		0xFF,	/* reset the keyboard */
+	/* controller command byte */
+	Cscs1=		(1<<6),		/* scan code set 1 */
+	Cmousedis=	(1<<5),		/* mouse disable */
+	Ckbddis=	(1<<4),		/* kbd disable */
+	Csf=		(1<<2),		/* system flag */
+	Cmouseint=	(1<<1),		/* mouse interrupt enable */
+	Ckbdint=	(1<<0),		/* kbd interrupt enable */
+
 	/*
 	 *  responses from keyboard
 	 */
@@ -43,23 +27,7 @@ enum
 	Rfail=		0xFC,		/* self test failed */
 	Rresend=	0xFE,		/* ??? */
 	Rovfl=		0xFF,		/* input overflow */
-	/*
-	 *  command register bits
-	 */
-	Cintena=	1<<0,	/* enable output interrupt */
-	Cmseint=	1<<1,	/* enable mouse interrupt */
-	Csystem=	1<<2,	/* set system */
-	Cinhibit=	1<<3,	/* inhibit override */
-	Cdisable=	1<<4,	/* disable keyboard */
-	/*
-	 *  output port bits
-	 */
-	Osoft=		1<<0,	/* soft reset bit (must be 1?) */
-	Oparity=	1<<1,	/* force bad parity */
-	Omemtype=	1<<2,	/* simm type (1 = 4Mb, 0 = 1Mb)	*/
-	Obigendian=	1<<3,	/* big endian */
-	Ointena=	1<<4,	/* enable interrupt */
-	Oclear=		1<<5,	/* clear expansion slot interrupt */
+
 	/*
 	 *  status bits
 	 */
@@ -71,12 +39,32 @@ enum
 	Stxtimeout=	1<<5,	/* transmit to kybd has timed out */
 	Srxtimeout=	1<<6,	/* receive from kybd has timed out */
 	Sparity=	1<<7,	/* parity on byte was even */
-	/*
-	 *  light bits
-	 */
-	L1=		1<<0,	/* light 1, network activity */
-	L2=		1<<2,	/* light 2, caps lock */
-	L3=		1<<1,	/* light 3, no label */
+
+	Spec=		0x80,
+
+	PF=		Spec|0x20,	/* num pad function key */
+	View=		Spec|0x00,	/* view (shift window up) */
+	KF=		Spec|0x40,	/* function key */
+	Shift=		Spec|0x60,
+	Break=		Spec|0x61,
+	Ctrl=		Spec|0x62,
+	Latin=		Spec|0x63,
+	Caps=		Spec|0x64,
+	Num=		Spec|0x65,
+	Middle=		Spec|0x66,
+	No=		0x00,		/* peter */
+
+	Home=		KF|13,
+	Up=		KF|14,
+	Pgup=		KF|15,
+	Print=		KF|16,
+	Left=		View,
+	Right=		View,
+	End=		'\r',
+	Down=		View,
+	Pgdown=		View,
+	Ins=		KF|20,
+	Del=		0x7F,
 };
 
 #define KBDCTL	(*(uchar*)(KeyboardIO+Keyctl))
@@ -85,69 +73,60 @@ enum
 #define INWAIT	while(!(KBDCTL & Sobf)); kdbdly(1)
 #define ACKWAIT INWAIT ; if(KBDDAT != Rack) print("bad response\n"); kdbdly(1)
 
-enum
+uchar kbtab[] = 
 {
-	Spec=	0x80,
-
-	PF=	Spec|0x20,	/* num pad function key */
-	View=	Spec|0x00,	/* view (shift window up) */
-	F=	Spec|0x40,	/* function key */
-	Shift=	Spec|0x60,
-	Break=	Spec|0x61,
-	Ctrl=	Spec|0x62,
-	Latin=	Spec|0x63,
-	Up=	Spec|0x70,	/* key has come up */
-	No=	Spec|0x7F,	/* no mapping */
-
-	Tmask=	Spec|0x60,
+[0x00]	No,	0x1b,	'1',	'2',	'3',	'4',	'5',	'6',
+[0x08]	'7',	'8',	'9',	'0',	'-',	'=',	'\b',	'\t',
+[0x10]	'q',	'w',	'e',	'r',	't',	'y',	'u',	'i',
+[0x18]	'o',	'p',	'[',	']',	'\n',	Ctrl,	'a',	's',
+[0x20]	'd',	'f',	'g',	'h',	'j',	'k',	'l',	';',
+[0x28]	'\'',	'`',	Shift,	'\\',	'z',	'x',	'c',	'v',
+[0x30]	'b',	'n',	'm',	',',	'.',	'/',	Shift,	'*',
+[0x38]	Latin,	' ',	Ctrl,	KF|1,	KF|2,	KF|3,	KF|4,	KF|5,
+[0x40]	KF|6,	KF|7,	KF|8,	KF|9,	KF|10,	Num,	KF|12,	'7',
+[0x48]	'8',	'9',	'-',	'4',	'5',	'6',	'+',	'1',
+[0x50]	'2',	'3',	'0',	'.',	No,	No,	No,	KF|11,
+[0x58]	KF|12,	No,	No,	No,	No,	No,	No,	No,
 };
 
-uchar keymap[] = {
-[0]	No,	No,	No,	No,	No,	No,	No,	F|1,
-	'\033',	No,	No,	No,	No,	'\t',	'`',	F|2,
-[0x10]	No,	Ctrl,	Shift,	Shift,	Shift,	'q',	'1',	F|3,
-	No,	Shift,	'z',	's',	'a',	'w',	'2',	F|4,
-[0x20]	No,	'c',	'x',	'd',	'e',	'4',	'3',	F|5,
-	No,	' ',	'v',	'f',	't',	'r',	'5',	F|6,
-[0x30]	No,	'n',	'b',	'h',	'g',	'y',	'6',	F|7,
-	No,	View,	'm',	'j',	'u',	'7',	'8',	F|8,
-[0x40]	No,	',',	'k',	'i',	'o',	'0',	'9',	F|9,
-	No,	'.',	'/',	'l',	';',	'p',	'-',	F|10,
-[0x50]	No,	No,	'\'',	No,	'[',	'=',	F|11,	'\r',
-	Latin,	Shift,	'\n',	']',	'\\',	No,	F|12,	Break,
-[0x60]	View,	View,	Break,	Shift,	'\177',	No,	'\b',	No,
-	No,	'1',	View,	'4',	'7',	',',	No,	No,
-[0x70]	'0',	'.',	'2',	'5',	'6',	'8',	PF|1,	PF|2,
-	No,	'\n',	'3',	No,	PF|4,	'9',	PF|3,	No,
-[0x80]	No,	No,	No,	No,	'-',	No,	No,	No,
+uchar kbtabshift[] =
+{
+[0x00]	No,	0x1b,	'!',	'@',	'#',	'$',	'%',	'^',
+[0x08]	'&',	'*',	'(',	')',	'_',	'+',	'\b',	'\t',
+[0x10]	'Q',	'W',	'E',	'R',	'T',	'Y',	'U',	'I',
+[0x18]	'O',	'P',	'{',	'}',	'\n',	Ctrl,	'A',	'S',
+[0x20]	'D',	'F',	'G',	'H',	'J',	'K',	'L',	':',
+[0x28]	'"',	'~',	Shift,	'|',	'Z',	'X',	'C',	'V',
+[0x30]	'B',	'N',	'M',	'<',	'>',	'?',	Shift,	'*',
+[0x38]	Latin,	' ',	Ctrl,	KF|1,	KF|2,	KF|3,	KF|4,	KF|5,
+[0x40]	KF|6,	KF|7,	KF|8,	KF|9,	KF|10,	Num,	KF|12,	'7',
+[0x48]	'8',	'9',	'-',	'4',	'5',	'6',	'+',	'1',
+[0x50]	'2',	'3',	'0',	'.',	No,	No,	No,	KF|11,
+[0x58]	KF|12,	No,	No,	No,	No,	No,	No,	No,
 };
 
-uchar skeymap[] = {
-[0]	No,	No,	No,	No,	No,	No,	No,	F|1,
-	'\033',	No,	No,	No,	No,	'\t',	'~',	F|2,
-[0x10]	No,	Ctrl,	Shift,	Shift,	Shift,	'Q',	'!',	F|3,
-	No,	Shift,	'Z',	'S',	'A',	'W',	'@',	F|4,
-[0x20]	No,	'C',	'X',	'D',	'E',	'$',	'#',	F|5,
-	No,	' ',	'V',	'F',	'T',	'R',	'%',	F|6,
-[0x30]	No,	'N',	'B',	'H',	'G',	'Y',	'^',	F|7,
-	No,	View,	'M',	'J',	'U',	'&',	'*',	F|8,
-[0x40]	No,	'<',	'K',	'I',	'O',	')',	'(',	F|9,
-	No,	'>',	'?',	'L',	':',	'P',	'_',	F|10,
-[0x50]	No,	No,	'"',	No,	'{',	'+',	F|11,	'\r',
-	Latin,	Shift,	'\n',	'}',	'|',	No,	F|12,	Break,
-[0x60]	View,	View,	Break,	Shift,	'\177',	No,	'\b',	No,
-	No,	'1',	View,	'4',	'7',	',',	No,	No,
-[0x70]	'0',	'.',	'2',	'5',	'6',	'8',	PF|1,	PF|2,
-	No,	'\n',	'3',	No,	PF|4,	'9',	PF|3,	No,
-[0x80]	No,	No,	No,	No,	'-',	No,	No,	No,
+uchar kbtabesc1[] =
+{
+[0x00]	No,	No,	No,	No,	No,	No,	No,	No,
+[0x08]	No,	No,	No,	No,	No,	No,	No,	No,
+[0x10]	No,	No,	No,	No,	No,	No,	No,	No,
+[0x18]	No,	No,	No,	No,	'\n',	Ctrl,	No,	No,
+[0x20]	No,	No,	No,	No,	No,	No,	No,	No,
+[0x28]	No,	No,	Shift,	No,	No,	No,	No,	No,
+[0x30]	No,	No,	No,	No,	No,	'/',	No,	Print,
+[0x38]	Latin,	No,	No,	No,	No,	No,	No,	No,
+[0x40]	No,	No,	No,	No,	No,	No,	Break,	Home,
+[0x48]	Up,	Pgup,	No,	Left,	No,	Right,	No,	End,
+[0x50]	Down,	Pgdown,	Ins,	Del,	No,	No,	No,	No,
+[0x58]	No,	No,	No,	No,	No,	No,	No,	No,
 };
-
 
 struct Kbd
 {
 	Lock;
 	int l;
 } kbd;
+static uchar ccc;
 
 void
 kdbdly(int l)
@@ -172,17 +151,6 @@ kbdwait(void)
 			return 1;
 		kdbdly(1);
 	}
-	return 0;
-}
-
-/*
- *  wait for a keyboard acknowledge (or some max time)
- */
-int
-kbdackwait(void)
-{
-	if(kbdintr())
-		return KBDDAT;
 	return 0;
 }
 
@@ -219,136 +187,137 @@ mouseintr(void)
 	}
 }
 
-int
+void
 kbdintr(void)
 {
 	int c, i, nk;
-	uchar ch, code;
+	static int esc1, esc2;
+	static int caps;
+	static int ctl;
+	static int num;
+	static int lstate;
 	static uchar kc[5];
-	static int shifted, ctrled, lstate;
-	static int upcode;
+	static int shift;
+	int keyup;
 
 	kbdwait();
-	code = KBDDAT;
+	c = KBDDAT;
 
 	/*
-	 *  key has gone up
+	 *  e0's is the first of a 2 character sequence
 	 */
-	if(code == Up) {
-		upcode = 1;
-		return 0;
+	if(c == 0xe0){
+		esc1 = 1;
+		return;
+	} else if(c == 0xe1){
+		esc2 = 2;
+		return;
 	}
 
-	if(code > 0x87)
-		return 1;
-
-	if(upcode){
-		ch = keymap[code];
-		if(ch == Ctrl)
-			ctrled = 0;
-		else if(ch == Shift)
-			shifted = 0;
-		upcode = 0;
-		return 0;
+	keyup = c&0x80;
+	c &= 0x7f;
+	if(c > sizeof kbtab){
+		print("unknown key %ux\n", c|keyup);
+		return;
 	}
-	upcode = 0;
 
-	/*
-	 *  convert
-	 */
-	if(shifted)
-		ch = skeymap[code];
+	if(esc1){
+		c = kbtabesc1[c];
+		esc1 = 0;
+	}
+	else if(esc2){
+		esc2--;
+		return;
+	}
+	else if(shift)
+		c = kbtabshift[c];
 	else
-		ch = keymap[code];
+		c = kbtab[c];
+
+	if(caps && c<='z' && c>='a')
+		c += 'A' - 'a';
+
+	/*
+	 *  keyup only important for shifts
+	 */
+	if(keyup){
+		switch(c){
+		case Shift:
+			shift = 0;
+			break;
+		case Ctrl:
+			ctl = 0;
+			break;
+		}
+		return;
+	}
 	/*
  	 *  normal character
 	 */
-	if(!(ch & Spec)){
-		if(ctrled)
-			ch &= 0x1f;
+	if(!(c & Spec)){
+		if(ctl)
+			c &= 0x1f;
 		switch(lstate){
 		case 1:
-			kc[0] = ch;
+			kc[0] = c;
 			lstate = 2;
-			if(ch == 'X')
+			if(c == 'X')
 				lstate = 3;
 			break;
 		case 2:
-			kc[1] = ch;
+			kc[1] = c;
 			c = latin1(kc);
 			nk = 2;
 		putit:
 			lstate = 0;
 			if(c != -1)
 				kbdputc(kbdq, c);
-			else {
-				for(i=0; i<nk; i++)
-					kbdputc(kbdq, kc[i]);
-			}
+			else for(i=0; i<nk; i++)
+				kbdputc(kbdq, kc[i]);
 			break;
 		case 3:
 		case 4:
 		case 5:
-			kc[lstate-2] = ch;
+			kc[lstate-2] = c;
 			lstate++;
 			break;
 		case 6:
-			kc[4] = ch;
+			kc[4] = c;
 			c = unicode(kc);
 			nk = 5;
 			goto putit;
 		default:
-			kbdputc(kbdq, ch);
+			kbdputc(kbdq, c);
 			break;
 		}
-		return 0;
+		return;
 	}
-
-	/*
-	 *  filter out function keys
-	 */
-	if((Tmask&ch) == (Spec|F))
-		return 0;
-
-	/*
-	 *  special character
-	 */
-	switch(ch){
-	case Shift:
-		shifted = 1;
-		break;
-	case Break:
-		break;
-	case Ctrl:
-		ctrled = 1;
-		break;
-	case Latin:
-		lstate = 1;
-		break;
-	default:
-		kbdputc(kbdq, ch);
+	else {
+		switch(c){
+		case Caps:
+			caps ^= 1;
+			return;
+		case Num:
+			num ^= 1;
+			return;
+		case Shift:
+			shift = 1;
+			return;
+		case Latin:
+			lstate = 1;
+			return;
+		case Ctrl:
+			ctl = 1;
+			return;
+		}
 	}
-	return 0;
+	kbdputc(kbdq, c);
 }
 
 void
 lights(int l)
 {
-	int s;
-	int tries;
-
-	s = splhi();
-	for(tries = 0; tries < 2000 && (KBDCTL & Sibf); tries++)
-		;
-	kdbdly(1);
-	KBDDAT = Kwrlights;
-	kbdackwait();
-	for(tries = 0; tries < 2000 && (KBDCTL & Sibf); tries++)
-		;
-	kdbdly(1);
-	KBDDAT = kbd.l = l;
-	kbdackwait();
-	splx(s);
+	USED(l);
 }
 
 static void
@@ -410,43 +379,24 @@ kbdinit(void)
 	}
 
 
-	/*
-	 *  disable the interface
-	 */
+	/* wait for a quiescent controller */
 	OUTWAIT;
-	KBDCTL = Kwrcmd;
-	OUTWAIT;
-	KBDDAT = Csystem | Cinhibit | Cdisable | Cintena;
+	KBDCTL = 0x20;
+	if(kbdwait() == 0) {
+		print("kbdinit: can't read ccc\n");
+		ccc = 0;
+	} else
+		ccc = KBDDAT;
 
-	/*
-	 *  set unix scan on the keyboard
-	 */
-	OUTWAIT;
-	KBDDAT = Mdisable;
-	INWAIT;
-	if(KBDDAT != Rack)
-		return 0;
-	OUTWAIT;
-	KBDDAT = Msetscan;
-	ACKWAIT;
-	OUTWAIT;
-	KBDDAT = 0;
-	ACKWAIT;
-	OUTWAIT;
-	KBDDAT = Menable;
+	/* enable kbd xfers and interrupts */
+	ccc &= ~Ckbddis;
+	ccc |= Csf | Ckbdint | Cscs1 | Cmouseint;
 
-	/*
-	 *  enable the interface
-	 */
 	OUTWAIT;
-	KBDCTL = Kwrcmd;
+	KBDCTL = 0x60;
 	OUTWAIT;
-	KBDDAT = Csystem | Cinhibit | Cintena | Cmseint;
+	KBDDAT = ccc;
 	OUTWAIT;
-	KBDCTL = Kenable;
-	OUTWAIT;
-	KBDCTL = Kmseena;
-	empty();
 
 	mousecmd(0xEA);	/* streaming */
 	mousecmd(0xE8);	/* set resolution */

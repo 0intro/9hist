@@ -159,8 +159,8 @@ xallocz(ulong size, int zero)
 	Xhdr *p;
 	Hole *h, **l;
 
-	size += BY2WD + sizeof(Xhdr);
-	size &= ~(BY2WD-1);
+	size += BY2V + sizeof(Xhdr);
+	size &= ~(BY2V-1);
 
 	lock(&xlists);
 	l = &xlists.table;
@@ -292,8 +292,8 @@ good:
 	unlock(&arena);
 
 	size = sizeof(Bucket)+(1<<pow);
-	size += 3;
-	size &= ~3;
+	size += BY2V;
+	size &= ~(BY2V-1);
 
 	if(pow < CUTOFF) {
 		n = (CUTOFF-pow)+2;

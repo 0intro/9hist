@@ -249,14 +249,16 @@ ioinit(int mapeisa)
 	/*
 	 *  pass #2 8259 interrupts to #1
 	 */
-	int0mask &= ~0x04;
-	EISAOUTB(Int0aux, int0mask);
 
 	/* enable all PC interrupts except the clock */
+	int0mask &= ~((1<<2)|(1<<5));
 	int0mask |= 1<<(Clockvec&7);
 	EISAOUTB(Int0aux, int0mask);
+
 	int1mask = 0;
 	EISAOUTB(Int1aux, int1mask);
+
+	IO(ulong, R4030ier) = 0xf;	/* enable eisa interrupts */
 }
 
 /*

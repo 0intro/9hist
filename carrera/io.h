@@ -9,8 +9,9 @@ enum
 	Devicephys	= 0x80000000,
 	Eisaphys	= 0x90000000,	/* IO port physical */
 	Devicevirt	= 0xE0000000,
-	Dmabase		= 0xE0000000,	
-	  R4030ier	= 0xE00000E8,	/* Interrupt enable register */
+	Dmabase		= 0xE0000100,	
+	  R4030ier	= 0xE00000EC,	/* Interrupt enable register */
+	  R4030ipr	= 0xE00000EC,	/* Interrupt pending register */
 	  R4030Isr	= 0xE0000204,	/* Interrupt status register */
 	  R4030Et	= 0xE000020C,	/* Eisa error type */
 	  R4030Rfa	= 0xE000003C,	/* Remote failed address */
@@ -82,7 +83,7 @@ struct Tte
 	ulong	lo;
 };
 
-#define IO(type, reg)		(*(type*)reg)
+#define IO(type, reg)		(*(type*)(reg))
 #define QUAD(type, v)		(type*)(((ulong)(v)+7)&~7)
 #define CACHELINE(type, v)	(type*)(((ulong)(v)+127)&~127)
 #define UNCACHED(type, v)	(type*)((ulong)(v)|0xA0000000)

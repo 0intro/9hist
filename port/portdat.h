@@ -118,6 +118,18 @@ struct Path
 	char	elem[NAMELEN];
 };
 
+struct Block
+{
+	Block	*next;
+	Block	*list;
+
+	uchar	*rp;			/* first unconsumed byte */
+	uchar	*wp;			/* first empty byte */
+	uchar	*lim;			/* 1 past the end of the buffer */
+	uchar	*base;			/* start of the buffer */
+	uchar	flag;
+};
+
 struct Chan
 {
 	Ref;
