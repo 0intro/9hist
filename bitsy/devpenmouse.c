@@ -123,6 +123,7 @@ penbutton(int up, int b) {
 
 void
 pentrackxy(int x, int y) {
+
 	if (x == -1) {
 		/* pen up. associate with button 1 through 5 up */
 		mouse.buttons &= ~0x1f;
@@ -339,8 +340,8 @@ penmousewrite(Chan *c, void *va, long n, vlong)
 	Point pt;
 	Cmdbuf *cb;
 	Cmdtab *ct;
-	char buf[64], *field[5];
-	int nf, b;
+	char buf[64];
+	int b;
 
 	p = va;
 	switch((ulong)c->qid.path){
@@ -369,15 +370,15 @@ penmousewrite(Chan *c, void *va, long n, vlong)
 				calibration.transx = 0;
 				calibration.transy = 0;
 			} else if (cb->nf == 5) {
-				if ((!isdigit(*field[1]) && *field[1] != '-')
-				 || (!isdigit(*field[2]) && *field[2] != '-')
-				 || (!isdigit(*field[3]) && *field[3] != '-')
-				 || (!isdigit(*field[4]) && *field[4] != '-'))
+				if ((!isdigit(*cb->f[1]) && *cb->f[1] != '-')
+				 || (!isdigit(*cb->f[2]) && *cb->f[2] != '-')
+				 || (!isdigit(*cb->f[3]) && *cb->f[3] != '-')
+				 || (!isdigit(*cb->f[4]) && *cb->f[4] != '-'))
 					error("bad syntax in control file message");
-				calibration.scalex = strtol(field[1], nil, 0);
-				calibration.scaley = strtol(field[2], nil, 0);
-				calibration.transx = strtol(field[3], nil, 0);
-				calibration.transy = strtol(field[4], nil, 0);
+				calibration.scalex = strtol(cb->f[1], nil, 0);
+				calibration.scaley = strtol(cb->f[2], nil, 0);
+				calibration.transx = strtol(cb->f[3], nil, 0);
+				calibration.transy = strtol(cb->f[4], nil, 0);
 			} else
 				cmderror(cb, Ecmdargs);
 			break;

@@ -386,10 +386,11 @@ etherreset(void)
 				ether->irq = 9;
 			snprint(name, sizeof(name), "ether%d", ctlrno);
 
-			/* If ether->irq is less than 0, it is a hack to indicate no interrupt
-			 * used for the second logical ethernet for the wavelan card
+			/*
+			 * If ether->irq is 0, it is a hack to indicate no interrupt
+			 * used by ethersink.
 			 */
-			if(ether->irq >= 0)
+			if(ether->irq > 0)
 				intrenable(ether->irq, ether->interrupt, ether, ether->tbdf, name);
 
 			i = sprint(buf, "#l%d: %s: %dMbps port 0x%luX irq %lud",

@@ -21,6 +21,12 @@ intrenable(int irq, void (*f)(Ureg*, void*), void* a, int tbdf, char *name)
 	int vno;
 	Vctl *v;
 
+	if(f == nil){
+		print("intrenable: nil handler for %d, tbdf 0x%uX for %s\n",
+			irq, tbdf, name);
+		return;
+	}
+
 	v = xalloc(sizeof(Vctl));
 	v->isintr = 1;
 	v->irq = irq;

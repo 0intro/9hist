@@ -371,8 +371,8 @@ savagewaitidle(VGAscr *scr)
 	/* case SAVAGEMX: ? */
 	/* case SAVAGEIX: ? */
 	case SUPERSAVAGEIXC16:
-	case SAVAGEMXMV:
 	case SAVAGEIXMV:
+	case SAVAGEMXMV:
 		/* wait for engine idle and FIFO empty */
 		statw = (ulong*)((uchar*)scr->mmio+XStatus0);
 		mask = CBEMaskA | Ge2IdleA;
@@ -461,12 +461,23 @@ savageblank(VGAscr*, int blank)
 {
 	uchar seqD;
 
+	/*
+	 * Will handle DPMS to monitor
+	 */
 	vgaxo(Seqx, 8, vgaxi(Seqx,8)|0x06);
 	seqD = vgaxi(Seqx, 0xD);
 	seqD &= 0x03;
 	if(blank)
 		seqD |= 0x50;
 	vgaxo(Seqx, 0xD, seqD);
+
+	/*
+	 * Will handle LCD
+	 */
+	if(blank)
+		vgaxo(Seqx, 0x31, vgaxi(Seqx, 0x31) & ~0x10);
+	else
+		vgaxo(Seqx, 0x31, vgaxi(Seqx, 0x31) | 0x10);
 }
 
 
@@ -479,9 +490,9 @@ savageinit(VGAscr *scr)
 	/* if you add chip IDs here be sure to update savagewaitidle */
 	switch(scr->id){
 	case SAVAGE4:
-	case SAVAGEMXMV:
 	case SAVAGEIXMV:
 	case SUPERSAVAGEIXC16:
+	case SAVAGEMXMV:
 		break;
 	default:
 		print("unknown savage %.4lux\n", scr->id);
@@ -547,5 +558,6 @@ savageinit(VGAscr *scr)
 	scr->fill = savagefill;
 	scr->scroll = savagescroll;
 	scr->blank = savageblank;
+	hwblank = 1;
 }
 

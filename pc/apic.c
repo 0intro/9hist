@@ -134,7 +134,7 @@ lapictimerinit(void)
 		wrmsr(0x10, 0);
 
 		do{
-			rdmsr(0x10, &tsc);
+			rdtsc(&tsc);
 			lo = (ulong)tsc;
 		}while(lo < v);
 

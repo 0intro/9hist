@@ -88,6 +88,8 @@ Rune bmap[4] =
 	Kup, Kright, Kleft, Kdown
 };
 
+extern int landscape;
+
 int
 µcputc(Queue*, int ch)
 {
@@ -162,8 +164,12 @@ int
 				break;
 			touching = 1;
 			if(len == 4) {
-				if (samseq++ > 10)
-					pentrackxy((p[2]<<8)|p[3], (p[0]<<8)|p[1]);
+				if (samseq++ > 10){
+					if (landscape)
+						pentrackxy((p[0]<<8)|p[1], (p[2]<<8)|p[3]);
+					else
+						pentrackxy((p[2]<<8)|p[3], (p[0]<<8)|p[1]);
+				}
 			} else {
 				samseq = 0;
 				pentrackxy(-1, -1);

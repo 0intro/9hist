@@ -1149,7 +1149,7 @@ cleaniso(Endpt *e, int frnum)
 			if ((td->flags & IsoClean) == 0){
 				e->buffered -= n;
 				if (e->buffered < 0){
-					iprint("e->buffered %d?\n", e->buffered);
+					print("e->buffered %d?\n", e->buffered);
 					e->buffered = 0;
 				}
 			}
@@ -1682,6 +1682,10 @@ usbclose(Chan *c)
 	if(c->qid.type == QTDIR || QID(c->qid) < Q3rd)
 		return;
 	qlock(&usbstate);
+	if(waserror()){
+		qunlock(&usbstate);
+		return;
+	}
 	d = usbdevice(c);
 	if(QID(c->qid) == Qctl)
 		d->busy = 0;
@@ -1689,6 +1693,7 @@ usbclose(Chan *c)
 		XPRINT("usbclose: freedev 0x%p\n", d);
 		freedev(d);
 	}
+	poperror();
 	qunlock(&usbstate);
 }
 

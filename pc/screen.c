@@ -378,6 +378,10 @@ blankscreen(int blank)
 	VGAscr *scr;
 
 	scr = &vgascreen[0];
-	if(hwblank && scr->blank)
-		scr->blank(scr, blank);
+	if(hwblank){
+		if(scr->blank)
+			scr->blank(scr, blank);
+		else
+			vgablank(scr, blank);
+	}
 }

@@ -16,7 +16,7 @@
 
 #define	MINX	8
 
-int landscape = 0;	/* orientation of the screen, default is 0: portait */
+int landscape = 1;	/* orientation of the screen, default is 0: portait */
 
 enum {
 	Wid		= 240,
@@ -116,17 +116,17 @@ static Memdata xgdata;
 
 static Memimage xgscreen =
 {
-	{ 0, 0, Wid, Ht },	/* r */
-	{ 0, 0, Wid, Ht },	/* clipr */
-	16,					/* depth */
-	3,					/* nchan */
-	RGB16,				/* chan */
+	{ 0, 0, Wid, Ht },		/* r */
+	{ 0, 0, Wid, Ht },		/* clipr */
+	16,				/* depth */
+	3,				/* nchan */
+	RGB16,			/* chan */
 	nil,				/* cmap */
 	&xgdata,			/* data */
-	0,					/* zero */
-	Wid/2,				/* width */
-	0,					/* layer */
-	0,					/* flags */
+	0,				/* zero */
+	Wid/2,			/* width */
+	0,				/* layer */
+	0,				/* flags */
 };
 
 struct{
@@ -180,10 +180,12 @@ flipscreen(int ls) {
 	if (ls) {
 		gscreen->r = Rect(0, 0, Ht, Wid);
 		gscreen->clipr = gscreen->r;
+		gscreen->width = Ht/2;
 		xgdata.bdata = (uchar *)framebuf->pixel;
 	} else {
 		gscreen->r = Rect(0, 0, Wid, Ht);
 		gscreen->clipr = gscreen->r;
+		gscreen->width = Wid/2;
 		xgdata.bdata = (uchar *)vscreen;
 	}
 	landscape = ls;
@@ -228,14 +230,21 @@ screeninit(void)
 	lcdinit();
 
 	gscreen = &xgscreen;
+
 	xgdata.ref = 1;
 	i = 0;
 	if (landscape) {
+		gscreen->r = Rect(0, 0, Ht, Wid);
+		gscreen->clipr = gscreen->r;
+		gscreen->width = Ht/2;
 		xgdata.bdata = (uchar *)framebuf->pixel;
 		while (i < Wid*Ht*1/3)	framebuf->pixel[i++] = 0xf800;	/* red */
-		while (i < Wid*Ht*2/3)	framebuf->pixel[i++] = 0xffff;	/* white */
+		while (i < Wid*Ht*2/3)	framebuf->pixel[i++] = 0xffff;		/* white */
 		while (i < Wid*Ht*3/3)	framebuf->pixel[i++] = 0x001f;	/* blue */
 	} else {
+		gscreen->r = Rect(0, 0, Wid, Ht);
+		gscreen->clipr = gscreen->r;
+		gscreen->width = Wid/2;
 		xgdata.bdata = (uchar *)vscreen;
 		while (i < Wid*Ht*1/3)	vscreen[i++] = 0xf800;	/* red */
 		while (i < Wid*Ht*2/3)	vscreen[i++] = 0xffff;	/* white */

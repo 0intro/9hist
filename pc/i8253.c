@@ -120,13 +120,13 @@ i8253init(int aalcycles, int havecycleclock)
 		 */
 		outb(Tmode, Latch0);
 		if(havecycleclock)
-			rdmsr(0x10, &a);
+			rdtsc(&a);
 		x = inb(T0cntr);
 		x |= inb(T0cntr)<<8;
 		aamloop(loops);
 		outb(Tmode, Latch0);
 		if(havecycleclock)
-			rdmsr(0x10, &b);
+			rdtsc(&b);
 		y = inb(T0cntr);
 		y |= inb(T0cntr)<<8;
 		x -= y;

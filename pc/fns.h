@@ -120,6 +120,7 @@ void	procsetup(Proc*);
 void	putcr3(ulong);
 void	putcr4(ulong);
 void	rdmsr(int, vlong*);
+void	rdtsc(vlong*);
 void	screeninit(void);
 int	screenprint(char*, ...);			/* debugging */
 void	(*screenputs)(char*, int);

@@ -11,6 +11,7 @@
 #define CPUID		BYTE $0x0F; BYTE $0xA2	/* CPUID, argument in AX */
 #define WRMSR		BYTE $0x0F; BYTE $0x30	/* WRMSR, argument in AX/DX (lo/hi) */
 #define RDMSR		BYTE $0x0F; BYTE $0x32	/* RDMSR, result in AX/DX (lo/hi) */
+#define RDTSC 		BYTE $0x0F; BYTE $0x31
 #define WBINVD		BYTE $0x0F; BYTE $0x09
 #define HLT		BYTE $0xF4
 
@@ -283,11 +284,18 @@ TEXT putcr4(SB), $0
 	MOVL	AX, CR4
 	RET
 
+TEXT rdtsc(SB), $0				/* time stamp counter; cycles since power up */
+	RDTSC
+	MOVL	vlong+0(FP), CX			/* &vlong */
+	MOVL	AX, 0(CX)			/* lo */
+	MOVL	DX, 4(CX)			/* hi */
+	RET
+
 TEXT rdmsr(SB), $0				/* model-specific register */
 	MOVL	index+0(FP), CX
 	RDMSR
 	MOVL	vlong+4(FP), CX			/* &vlong */
-	MOVL	AX, (CX)			/* lo */
+	MOVL	AX, 0(CX)			/* lo */
 	MOVL	DX, 4(CX)			/* hi */
 	RET
 	

@@ -12,9 +12,6 @@ authentication(int cpuflag)
 	char *argv[16], **av;
 	int ac;
 
-	/* make capabilities available to factotum */
-	bind("#¤", "/dev", MAFTER);
-
 	/* start agent */
 	ac = 0;
 	av = argv;
