@@ -12,6 +12,7 @@ void	clockinit(void);
 void	config(int);
 int	cpuspeed(int);
 void	delay(int);
+int	dmadone(int);
 void	dmaend(int);
 void	dmainit(void);
 long	dmasetup(int, void*, long, int);

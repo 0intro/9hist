@@ -202,7 +202,7 @@ trapinit(void)
 	 *  Set the 8259 as master with level triggered
 	 *  input with fully nested interrupts.
 	 */
-	outb(Int1ctl, (1<<4)|(1<<3)|(1<<0));	/* ICW1 - master, level triggered,
+	outb(Int1ctl, (1<<4)|(0<<3)|(1<<0));	/* ICW1 - master, level triggered,
 					  	 ICW4 will be sent */
 	outb(Int1aux, Int1vec);		/* ICW2 - interrupt vector offset */
 	outb(Int1aux, 0x02);		/* ICW3 - I am a slave on level 2 */
