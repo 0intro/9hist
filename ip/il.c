@@ -1015,7 +1015,9 @@ loop:
 				break;
 			}
 			if(ic->timeout >= ic->fasttime) {
-				ilrexmit(ic);
+				ilsendctl(p, nil, Ilquery, ic->next, ic->recvd, ilnextqt(ic));
+				ic->querytime = Querytime;
+				ic->timeout = 0;
 				ilbackoff(ic);
 			}
 			if(ic->timeout >= ic->slowtime) {
@@ -1109,8 +1111,8 @@ iltimers(Ilcb *ic)
 	int pt;
 
 	ic->timeout = 0;
-	pt = (ic->delay>>LogAGain) + ic->unackedbytes/(ic->rate>>LogAGain) + ic->mdev;
-	ic->fasttime = Acktime + pt + Iltickms - 1;
+	pt = (ic->delay>>LogAGain) + ic->unackedbytes/(ic->rate>>LogAGain) + (ic->mdev>>(LogDGain-1));
+	ic->fasttime = pt + Iltickms - 1;
 	if(ic->fasttime > Fasttime)
 		ic->fasttime = Fasttime;
 	ic->slowtime = (Slowtime/Seconds)*pt;

@@ -492,10 +492,13 @@ noted(Ureg* ureg, ulong arg0)
 	 * Check the segment selectors are all valid, otherwise
 	 * a fault will be taken on attempting to return to the
 	 * user process.
+	 * Take care with the comparisons as different processor
+	 * generations push segment descriptors in different ways.
 	 */
-	if(nureg->cs != UESEL || nureg->ss != UDSEL || nureg->ds != UDSEL
-	  || nureg->es != UDSEL || nureg->fs != UDSEL || nureg->gs != UDSEL){
-		pprint("bad segement selector in noted\n");
+	if((nureg->cs & 0xFFFF) != UESEL || (nureg->ss & 0xFFFF) != UDSEL
+	  || (nureg->ds & 0xFFFF) != UDSEL || (nureg->es & 0xFFFF) != UDSEL
+	  || (nureg->fs & 0xFFFF) != UDSEL || (nureg->gs & 0xFFFF) != UDSEL){
+		pprint("bad segment selector in noted\n");
 		qunlock(&up->debug);
 		pexit("Suicide", 0);
 	}
