@@ -304,6 +304,7 @@ confinit(void)
 	conf.copymode = 0;			/* copy on write */
 	conf.nfloppy = 2;
 	conf.nhard = 2;
+	conf.nmach = 1;
 
 	/*
 	 *  parse configuration args from dos file p9rc
