@@ -364,6 +364,8 @@ dumpregs(Ureg *ur)
 	print("  ur %lux up %lux\n", ur, up);
 
 	/* save crash info */
+	if(crasharea == 0)
+		return;
 	print("crasharea 0x%lux\n", crasharea);
 	cs = (Crashstate*)crasharea;
 	memmove(&cs->ureg, ur, sizeof(Ureg));
@@ -396,6 +398,8 @@ dumpstack(void)
 	}
 
 	/* save crash info */
+	if(crasharea == 0)
+		return;
 	print("crasharea 0x%lux\n", crasharea);
 	cs = (Crashstate*)crasharea;
 	memmove(cs->kstack, up->kstack, KSTACK);

@@ -49,6 +49,10 @@ Dirtab procdir[] =
 /* Segment type from portdat.h */
 char *sname[]={ "Text", "Data", "Bss", "Stack", "Shared", "Phys", "Shdata" };
 
+/* where to put crash information when memory isn't wiped */
+ulong crasharea;
+ulong crashend;
+
 /*
  * Qids are, in path:
  *	 4 bits of file type (qids above)
@@ -311,6 +315,12 @@ procread(Chan *c, void *va, long n, ulong offset)
 		if(offset >= conf.base1 && offset < conf.npage1){
 			if(offset+n > conf.npage1)
 				n = conf.npage1 - offset;
+			memmove(a, (char*)offset, n);
+			return n;
+		}
+		if(offset >= crasharea && offset < crashend){
+			if(offset+n > crashend)
+				n = crashend - offset;
 			memmove(a, (char*)offset, n);
 			return n;
 		}

@@ -195,4 +195,3 @@ extern int	cpuflag;		/* true if this is a CPU */
 extern Mach	*m;
 extern Proc	*up;
 extern char	filaddr[];
-extern ulong	crasharea;

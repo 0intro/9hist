@@ -697,5 +697,8 @@ enum
 extern int mouseshifted;
 extern int mousetype;
 extern int mouseswap;
+
 extern int nsyscall;
 extern Physseg physseg[];
+extern ulong crasharea;
+extern ulong crashend;

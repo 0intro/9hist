@@ -31,7 +31,6 @@ char filaddr[NAMELEN];
 char *confname[MAXCONF];
 char *confval[MAXCONF];
 int nconf;
-ulong crasharea;
 
 /* memory map */
 #define MAXMEG 64
@@ -64,7 +63,6 @@ main(void)
 	chandevreset();
 	swapinit();
 	userinit();
-conf.npage0 += CRASHSIZE;
 	schedinit();
 }
 
@@ -282,13 +280,48 @@ getconf(char *name)
 	return 0;
 }
 
+/*
+ *  zero memory to set ECC.
+ *  do a quick memory test also.
+ *
+ *  if any part of a meg is missing/broken, drop the whole meg.
+ */
+int
+memclrtest(int meg, int len, long seed)
+{
+	int j, n;
+	long y;
+	long *lp;
+	
+	for(j = 0; j < len; j += BY2PG){
+		lp = mapaddr(KZERO|(meg*MB+j));
+		for(n = 0; n < BY2PG/BY2WD; n++)
+			lp[n] = seed + n;
+	}
+	for(j = 0; j < len; j += BY2PG){
+		lp = mapaddr(KZERO|(meg*MB+j));
+		for(n = 0; n < BY2PG/(2*BY2WD); n++){
+			y = lp[n];
+			lp[n] = ~lp[n^((BY2PG/BY2WD)-1)];
+			lp[n^((BY2PG/BY2WD)-1)] = ~y;
+		}
+	}
+	for(j = 0; j < len; j += BY2PG){
+		lp = mapaddr(KZERO|(meg*MB+j));
+		for(n = 0; n < BY2PG/BY2WD; n++)
+			if(lp[n] != ~(seed + (n^((BY2PG/BY2WD)-1))))
+				return -1;
+		memset(lp, 0, BY2PG);
+	}
+	return 0;
+}
+
 void
 confinit(void)
 {
-	long x, y, i, j, n;
+	long x, i, j, n;
 	int pcnt;
 	ulong ktop;
-	long *lp;
 	char *cp;
 	char *line[MAXCONF];
 	extern int defmaxmsg;
@@ -320,11 +353,11 @@ confinit(void)
 			if(i < defmaxmsg && i >=128)
 				defmaxmsg = i;
 		}
-		/* HACK: where should this come from? */
 		if(strcmp(confname[nconf], "filaddr") == 0)
 			strcpy(filaddr, confval[nconf]);
 		nconf++;
 	}
+
 	/*
 	 *  size memory above 1 meg. Kernel sits at 1 meg.  We
 	 *  only recognize MB size chunks.
@@ -350,37 +383,30 @@ confinit(void)
 		/*
 		 *  check for correct value
 		 */
-		if(*mapaddr(KZERO|(i*MB)) == x && *mapaddr(KZERO|((i+1)*MB-BY2WD)) == x){
+		if(*mapaddr(KZERO|(i*MB)) == x && *mapaddr(KZERO|((i+1)*MB-BY2WD)) == x)
 			mmap[i] = 'x';
-			/*
-			 *  zero memory to set ECC but skip over the kernel
-			 *  do a quick memory test also
-			if(i != 1){
-				for(j = 0; j < MB/BY2PG; j += BY2PG){
-					lp = mapaddr(KZERO|(i*MB+j));
-					for(n = 0; n < BY2PG/BY2WD; n++)
-						lp[n] = x + n;
-				}
-				for(j = 0; j < MB/BY2PG; j += BY2PG){
-					lp = mapaddr(KZERO|(i*MB+j));
-					for(n = 0; n < BY2PG/(2*BY2WD); n++){
-						y = lp[n];
-						lp[n] = ~lp[n^((BY2PG/BY2WD)-1)];
-						lp[n^((BY2PG/BY2WD)-1)] = ~y;
-					}
-				}
-				for(j = 0; j < MB/BY2PG; j += BY2PG){
-					lp = mapaddr(KZERO|(i*MB+j));
-					for(n = 0; n < BY2PG/BY2WD; n++)
-						if(lp[n] != ~(x + (n^((BY2PG/BY2WD)-1))))
-							mmap[i] = ' ';
-					memset(lp, 0, BY2PG);
-				}
-			}
-			 */
-		}
 		x += 0x3141526;
 	}
+
+	/*
+	 *  zero and clear all except first 2 meg and crash area.
+	 *  put crash area at high end of memory.
+	 */
+	x = 0x12345678;
+	for(i = MAXMEG; i > 1; i--){
+		if(mmap[i] != 'x')
+			continue;
+		j = MB;
+		if(crasharea == 0){
+			crasharea = i*MB - CRASHSIZE;
+			crashend = crasharea + CRASHSIZE;
+			j = MB - CRASHSIZE;
+		}
+		if(memclrtest(i, j, x) < 0)
+			mmap[i] = ' ';
+		x += 0x3141526;
+	}
+
 	/*
 	 *  bank0 usually goes from the end of kernel bss to the end of memory
 	 */
@@ -389,12 +415,13 @@ confinit(void)
 	conf.base0 = ktop;
 	for(i = 1; mmap[i] == 'x'; i++)
 		;
-	conf.npage0 = (i*MB - ktop - CRASHSIZE)/BY2PG;
-	crasharea = KZERO|(conf.base0 + conf.npage0*BY2PG);
+	conf.npage0 = (i*MB - ktop)/BY2PG;
 	conf.topofmem = i*MB;
+	if(crasharea < conf.base0 + BY2PG*conf.npage0)
+		conf.npage0 -= PGROUND(CRASHSIZE)/BY2PG;
 
 	/*
-	 *  bank1 usually goes from the end of BOOTARGS to 640k - crash space
+	 *  bank1 usually goes from the end of BOOTARGS to 640k
 	 */
 	conf.base1 = (ulong)(BOOTARGS + BOOTARGSLEN);
 	conf.base1 = PGROUND(conf.base1);
@@ -402,7 +429,7 @@ confinit(void)
 	conf.npage1 = (640*1024 - conf.base1)/BY2PG;
 
 	/*
-	 *  if there is a hole in memory (due to a shadow BIOS) make the
+	 *  if there is a hole in memory (e.g. due to a shadow BIOS) make the
 	 *  memory after the hole be bank 1. The memory from 0 to 640k
 	 *  is lost.
 	 */
@@ -413,8 +440,14 @@ confinit(void)
 				;
 			conf.npage1 = (j - i)*MB/BY2PG;
 			conf.topofmem = j*MB;
+			if(crasharea < conf.base1 + BY2PG*conf.npage1)
+				conf.npage1 -= PGROUND(CRASHSIZE)/BY2PG;
 			break;
 		}
+
+	/* make crasharea a virtual address */
+	crasharea |= KZERO;
+	crashend |= KZERO;
 
 	conf.npage = conf.npage0 + conf.npage1;
 	conf.ldepth = 0;
