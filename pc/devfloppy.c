@@ -26,8 +26,11 @@ enum
 	 Fseek=		 0xf,	/* seek cmd */
 	 Fsense=	 0x8,	/* sense cmd */
 	 Fread=		 0x66,	/* read cmd */
-	 Fwrite=	 0x47,	/* write cmd */
+	 Fwrite=	 0x45,	/* write cmd */
 	 Fmulti=	 0x80,	/* or'd with Fread or Fwrite for multi-head */
+
+	Fchanged=	0x3F7,	/* disk changed register */
+	 Fchange=	 0x80,	/* disk has changed */
 
 	DMAchan=	2,	/* floppy dma channel */
 
@@ -281,6 +284,18 @@ ul2user(uchar *a, ulong x)
 }
 
 /*
+ *  look for a floppy change
+ */
+void
+floppychange(Drive *dp)
+{
+	if((inb(Fchanged) & Fchange) == 0)
+		return;
+
+	
+}
+
+/*
  *  the floppy is so slow, we always read a cylinder
  *  at a time and cache the extra bytes.
  */
@@ -299,6 +314,7 @@ floppyread(Chan *c, void *a, long n)
 	dp = &floppy.d[c->qid.path & ~Qmask];
 	switch ((int)(c->qid.path & Qmask)) {
 	case Qdata:
+		floppychanged(dp);
 		if(c->offset % dp->t->bytes)
 			errors("bad offset");
 		if(n % dp->t->bytes)
@@ -343,6 +359,8 @@ floppywrite(Chan *c, void *a, long n)
 	dp = &floppy.d[c->qid.path & ~Qmask];
 	switch ((int)(c->qid.path & Qmask)) {
 	case Qdata:
+		floppychanged(dp);
+		dp->ccyl = -1;
 		for(rv = 0; rv < n; rv += i){
 			i = floppyxfer(dp, Fwrite, aa+rv, c->offset+rv, n-rv);
 			if(i <= 0)

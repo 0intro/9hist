@@ -43,11 +43,8 @@ static Lock garbagelock;
  */
 typedef struct {
 	int	size;
-	int	lim;
 	int	made;
 	Blist;
-	QLock;		/* qlock for sleepers on r */
-	Rendez	r;	/* sleep here waiting for blocks */
 } Bclass;
 Bclass bclass[Nclass]={
 	{ 0 },
@@ -74,14 +71,13 @@ streaminit(void)
 	qlist = (Queue *)ialloc(conf.nqueue * sizeof(Queue), 0);
 
 	/*
-	 *  set limits on blocks
+	 *  set block classes
 	 */
 	n = conf.nblock;
 	for(class = 0; class < Nclass; class++){
 		if(class < Nclass-1)
 			n = n/2;
 		bcp = &bclass[class];
-		bcp->lim = n;
 		bcp->made = 0;
 	}
 
@@ -115,9 +111,6 @@ newblock(Bclass *bcp)
 	Block *bp;
 	uchar *cp;
 
-	if(bcp->made > bcp->lim)
-		return -1;
-
 	page = newpage(1, 0, 0);
 	page->va = VA(kmap(page));
 	if(bcp == bclass){
@@ -149,11 +142,11 @@ newblock(Bclass *bcp)
 			 *  upgrade a level 0 block
 			 */
 			bp = allocb(0);
-			qlock(bclass);
+			lock(bclass);
 			bclass->made--;
 			bcp->made++;
 			bp->flags = bcp - bclass;
-			qunlock(bclass);
+			unlock(bclass);
 
 			/*
 			 *  tack on the data area
@@ -199,18 +192,12 @@ allocb(ulong size)
 	 */
 	lock(bcp);
 	while(bcp->first == 0){
-		if(newblock(bcp) == 0)
-			continue;
-		unlock(bcp);
-		qlock(bcp);
 		if(waserror()){
-			qunlock(bcp);
+			unlock(bcp);
 			nexterror();
 		}
-		tsleep(&bcp->r, isblock, (void *)bcp, 250);
-		qunlock(bcp);
+		newblock(bcp);
 		poperror();
-		lock(bcp);
 	}
 	bp = bcp->first;
 	bcp->first = bp->next;
@@ -1462,7 +1449,8 @@ dumpqueues(void)
 		for(count = 0, bp = bcp->first; bp; count++, bp = bp->next)
 			;
 		unlock(bcp);
-		print("%d blocks of size %d\n", count, bcp->size);
+		print("%d byte blocks: %d made %d free\n", bcp->size,
+			bcp->made, count);
 	}
 	print("\n");
 }
