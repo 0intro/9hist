@@ -854,6 +854,8 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 			error(Egreg);
 		memmove(buf, va, n);	/* so we can NUL-terminate */
 		buf[n] = 0;
+		if(buf[0]<'0' && '9'<buf[0])
+			error(Ebadarg);
 		fd = strtoul(buf, 0, 0);
 		swc = fdtochan(fd, -1, 1);
 		setswapchan(swc);

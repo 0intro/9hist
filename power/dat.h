@@ -60,8 +60,6 @@ struct Conf
 	ulong	nqueue;		/* stream queues */
 	ulong	nblock;		/* stream blocks */
 	ulong	nsrv;		/* public servers (devsrv.c) */
-	ulong	nnoifc;		/* number of nonet interfaces */
-	ulong	nnoconv;	/* number of nonet conversations/ifc */
 	ulong	nurp;		/* max urp conversations */
 	ulong	nasync;		/* number of async protocol modules */
 	ulong	npipe;		/* number of pipes */

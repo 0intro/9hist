@@ -222,8 +222,6 @@ confinit(void)
 	conf.nbitbyte = conf.nbitmap*1024*screenbits();
 	conf.nfont = 10*mul;
 	conf.nsubfont = 30*mul;
-	conf.nnoifc = 1;
-	conf.nnoconv = 32;
 	conf.nurp = 32;
 	conf.nasync = 1;
 	conf.nstream = (conf.nproc*3)/2;

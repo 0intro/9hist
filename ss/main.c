@@ -231,8 +231,6 @@ confinit(void)
 	conf.nbitbyte = 300*1024*mul;
 	conf.nfont = 10*mul;
 	conf.nsubfont = 10*mul;
-	conf.nnoifc = 1;
-	conf.nnoconv = 32;
 	conf.nurp = 32;
 	conf.nasync = 1;
 	conf.npipe = conf.nstream/2;

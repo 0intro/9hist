@@ -578,8 +578,6 @@ confinit(void)
 	conf.nalarm = 500;
 	conf.nmount = 500;
 	conf.nsrv = 20;
-	conf.nnoifc = 1;
-	conf.nnoconv = 32;
 	conf.nurp = 25;
 	conf.dkif = 1;
 	conf.nqueue = 5 * conf.nstream;

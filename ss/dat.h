@@ -87,8 +87,6 @@ struct Conf
 	int	nbitbyte;	/* bytes of bitmap data (devbit.c) */
 	int	nfont;		/* GFont structs (devbit.c) */
 	int	nsubfont;	/* Gsubfont structs (devbit.c) */
-	ulong	nnoifc;		/* number of nonet interfaces */
-	ulong	nnoconv;	/* number of nonet conversations/ifc */
 	int	nurp;		/* max urp conversations */
 	int	nasync;		/* number of async protocol modules */
 	int	npipe;		/* number of pipes */
