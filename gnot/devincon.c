@@ -610,6 +610,12 @@ inconkproc(void *arg)
 		bp->wptr += 3;
 	}
 
+	/*
+	 *  ignore errors
+	 */
+	if(waserror())
+		;
+
 	for(;;){
 		/*
 		 *  sleep if input fifo empty

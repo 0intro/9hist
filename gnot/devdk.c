@@ -116,10 +116,10 @@ struct Line {
  *  dkmux line discipline is pushed onto.
  */
 struct Dk {
-	QLock;
-	int	ref;
+	Lock;
 	char	name[64];	/* dk name */
 	Queue	*wq;		/* dk output queue */
+	Stream	*s;
 	int	lines;		/* number of lines */
 	int	ncsc;		/* csc line number */
 	Chan	*csc;		/* common signalling line */
@@ -189,6 +189,7 @@ static void	dktimer(void*);
 static void	dkchgmesg(Dk*, Dkmsg*, int);
 static void	dkreplymesg(Dk*, Dkmsg*, int);
 Chan*		dkopen(Chan*, int);
+static void	dkhangup(Line*);
 
 /*
  *  the datakit multiplexor stream module definition
@@ -201,6 +202,7 @@ Qinfo dkmuxinfo = { dkmuxiput, dkmuxoput, dkmuxopen, dkmuxclose, "dkmux" };
 
 /*
  *  a new dkmux.  find a free dk structure and assign it to this queue.
+ *  when we get though here dp->s is meaningful and the name is set to "/".
  */
 static void
 dkmuxopen(Queue *q, Stream *s)
@@ -209,20 +211,21 @@ dkmuxopen(Queue *q, Stream *s)
 	int i;
 
 	for(dp = dk; dp < &dk[Ndk]; dp++){
-		if(dp->wq == 0){
-			qlock(dp);
-			if(dp->wq) {
+		if(dp->name[0]==0){
+			lock(dp);
+			if(dp->name[0]){
 				/* someone was faster than us */
-				qunlock(dp);
+				unlock(dp);
 				continue;
 			}
 			q->ptr = q->other->ptr = (void *)dp;
 			dp->csc = 0;
 			dp->ncsc = 4;
 			dp->lines = 16;
-			dp->name[0] = 0;
+			strcpy(dp->name, "/");
 			dp->wq = WR(q);
-			qunlock(dp);
+			dp->s = s;
+			unlock(dp);
 			return;
 		}
 	}
@@ -236,13 +239,22 @@ static void
 dkmuxclose(Queue *q)
 {
 	Dk *dp;
+	int i;
 
 	dp = (Dk *)q->ptr;
-	qlock(dp);
-	if(dp->csc)
-		close(dp->csc);
-	dp->wq = 0;
-	qunlock(dp);
+
+	/*
+	 *  if we're the last user of the stream,
+	 *  free the Dk structure
+	 */
+	if(dp->s->inuse == 1)
+		dp->name[0] = 0;
+
+	/*
+	 *  hang up all datakit connections
+	 */
+	for(i=dp->ncsc; i < dp->lines; i++)
+		dkhangup(&dp->line[i]);
 }
 
 /*
@@ -272,7 +284,7 @@ dkmuxoput(Queue *q, Block *bp)
  *
  *  Simplifying assumption:  one put == one message && the channel number
  *	is in the first block.  If this isn't true, demultiplexing will not
-  *	work.
+ *	work.
  */
 static void
 dkmuxiput(Queue *q, Block *bp)
@@ -608,30 +620,53 @@ dkattach(char *spec)
 	if(*spec == 0)
 		spec = "dk";
 	for(dp = dk; dp < &dk[Ndk]; dp++){
-		qlock(dp);
-		if(dp->wq && strcmp(spec, dp->name)==0) {
-			dp->ref++;
-			qunlock(dp);
+		lock(dp);
+		if(strcmp(spec, dp->name)==0)
 			break;
-		}
-		qunlock(dp);
+		unlock(dp);
 	}
 	if(dp == &dk[Ndk])
 		error(0, Enoifc);
+
+	/*
+	 *  don't let the multiplexed stream disappear under us
+	 */
+	if(streamenter(dp->s) < 0){
+		/*
+		 *  it's closing down, forget it
+		 */
+		unlock(dp);
+		error(0, Ehungup);
+	}
+
+	/*
+	 *  return the new channel
+	 */
+	if(waserror()){
+		if(streamexit(dp->s, 0) == 0)
+			dp->name[0] = 0;
+		unlock(dp);
+		nexterror();
+	}
 	c = devattach('k', spec);
 	c->dev = dp - dk;
+	unlock(dp);
+	poperror();
 	return c;
 }
 
+/*
+ *  clone as long as the multiplexed channel is not closing
+ *  down
+ */
 Chan*
 dkclone(Chan *c, Chan *nc)
 {
 	Dk *dp;
 
 	dp = &dk[c->dev];
-	qlock(dp);
-	dp->ref++;
-	qunlock(dp);
+	if(streamenter(dp->s) < 0)
+		error(0, Ehungup);
 	return devclone(c, nc);
 }
 
@@ -679,10 +714,10 @@ dkopen(Chan *c, int omode)
 			error(0, Ebadarg);
 	} else switch(STREAMTYPE(c->qid)){
 	case Dcloneqid:
+		dp = &dk[c->dev];
 		/*
 		 *  get an unused device and open it's control file
 		 */
-		dp = &dk[c->dev];
 		end = &dp->line[dp->lines];
 		for(lp = &dp->line[dp->ncsc+1]; lp < end; lp++){
 			if(lp->state == Lclosed && canqlock(lp)){
@@ -752,10 +787,13 @@ dkclose(Chan *c)
 	if(c->stream)
 		streamclose(c);
 
+	/*
+	 *  Let go of the mulitplexed stream.  If we're the last out,
+	 *  free dp.
+	 */
 	dp = &dk[c->dev];
-	qlock(dp);
-	dp->ref--;
-	qunlock(dp);
+	if(streamexit(dp->s, 0) == 0)
+		dp->name[0] = 0;
 }
 
 long	 
@@ -1320,12 +1358,25 @@ dkcsckproc(void *a)
 
 	dp = (Dk *)a;
 
+	if(waserror()){
+		Chan *csc;
+
+		csc = dp->csc;
+		lock(dp);
+		dp->csc = 0;
+		unlock(dp);
+		close(csc);
+		return;
+	}
+
 	/*
 	 *  loop forever listening
 	 */
 	for(;;){
 		n = streamread(dp->csc, (char *)&d, (long)sizeof(d));
 		if(n != sizeof(d)){
+			if(n == 0)
+				error(0, Ehungup);
 			print("strange csc message %d\n", n);
 			continue;
 		}
@@ -1527,8 +1578,12 @@ dktimer(void *a)
 		 */
 		for(dki=0; dki<Ndk; dki++){
 			dp = &dk[dki];
-			if(dp->csc==0)
+			if(!canlock(dp))
 				continue;
+			if(dp->csc==0){
+				unlock(dp);
+				continue;
+			}
 
 			/*
 			 * send keep alive
@@ -1553,6 +1608,7 @@ dktimer(void *a)
 					break;
 				}
 			}
+			unlock(dp);
 		}
 		tsleep(&dkt, fuckit, 0, 7500);
 	}

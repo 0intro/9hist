@@ -155,7 +155,7 @@ Devgen	streamgen;
 void	streamclose(Chan*);
 void	streamclose1(Stream*);
 int	streamenter(Stream*);
-void	streamexit(Stream*, int);
+int	streamexit(Stream*, int);
 void	streaminit(void);
 long	streamread(Chan*, void*, long);
 long	streamwrite(Chan*, void*, long, int);

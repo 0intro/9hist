@@ -537,7 +537,7 @@ consclose(Chan *c)
 {
 	if(c->qid==Qrcons && (c->flag&COPEN))
 		decref(&raw);
-	if(c->qid == Qrs232)
+	if(c->stream)
 		streamclose(c);
 }
 
