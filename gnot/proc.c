@@ -172,6 +172,8 @@ loop:
 		unlock(&pidalloc);
 		if(p->pid == 0)
 			panic("pidalloc");
+print("allocate process %d\n", p->pid);
+DEBUG();
 		return p;
 	}
 	unlock(&procalloc);
@@ -522,4 +524,61 @@ DEBUG()
 				p->pid, p->text, p->pc, statename[p->state],
 				p->time[0], p->time[1]);
 	}
+}
+
+void
+kproc(char *name, void (*func)(void *), void *arg)
+{
+	Proc *p;
+	int n;
+	ulong upa;
+	int lastvar;	/* used to compute stack address */
+	User *up;
+
+	/*
+	 * Kernel stack
+	 */
+	p = newproc();
+	p->upage = newpage(1, 0, USERADDR|(p->pid&0xFFFF));
+	upa = p->upage->pa|KZERO;
+	up = (User *)upa;
+
+	/*
+	 * Save time: only copy u-> data and useful stack
+	 */
+	memcpy((void*)upa, u, sizeof(User));
+	n = USERADDR+BY2PG - (ulong)&lastvar;
+	n = (n+32) & ~(BY2WD-1);	/* be safe & word align */
+	memcpy((void*)(upa+BY2PG-n), (void*)((u->p->upage->pa|KZERO)+BY2PG-n), n);
+	((User *)upa)->p = p;
+
+	/*
+	 * Refs
+	 */
+	incref(up->dot);
+	for(n=0; n<=up->maxfd; n++)
+		up->fd[n] = 0;
+	up->maxfd = 0;
+
+	/*
+	 * Sched
+	 */
+	if(setlabel(&p->sched)){
+		u->p = p;
+		p->state = Running;
+		p->mach = m;
+		m->proc = p;
+		spllo();
+		strncpy(p->text, name, sizeof p->text);
+		(*func)(arg);
+		pexit(0, 1);
+	}
+	p->pgrp = u->p->pgrp;
+	incref(p->pgrp);
+	p->nchild = 0;
+	p->parent = 0;
+	memset(p->time, 0, sizeof(p->time));
+	p->time[TReal] = MACHP(0)->ticks;
+	ready(p);
+	flushmmu();
 }

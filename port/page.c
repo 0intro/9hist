@@ -287,6 +287,7 @@ loop:
 		o->nproc = 1;
 		o->npage = 0;
 		o->chan = c;
+o->nmod = 0;
 		if(c){
 			o->type = c->type;
 			o->qid = c->qid;
@@ -350,6 +351,8 @@ loop:
 	}
 	unlock(&modalloc);
 	print("no mods\n");
+DEBUG();
+panic("mods");
 	if(u == 0)
 		panic("newmod");
 	u->p->state = Wakeme;
@@ -376,6 +379,7 @@ forkmod(Seg *old, Seg *new, Proc *p)
 if(pte->page==0) panic("forkmod zero page");
 if(pte->proc != u->p) panic("forkmod wrong page");
 		npte = newmod();
+o->nmod++;
 		npte->proc = p;
 		npte->page = pte->page;
 		pte->page->ref++;
@@ -435,6 +439,7 @@ freesegs(int save)
 				}
 				pg->ref--;
 				o->npage--;
+o->nmod--;
 				old = (PTEA*)pte;
 				pte = pte->nextva;
 				lock(&modalloc);

@@ -244,6 +244,7 @@ syscall(Ureg *aur)
 
 	u->p->insyscall = 1;
 	ur = aur;
+	u->p->pc = ur->pc;
 	if(ur->sr & SUPER)
 		panic("recursive system call");
 #ifdef asdf

@@ -7,12 +7,23 @@
 #include	"errno.h"
 #include	"devtab.h"
 
+/*
+ *  process end line discipline
+ */
 static void stputq(Queue*, Block*);
-Qinfo procinfo = { stputq, nullput, 0, 0, "process" } ;
-/*extern Qinfo noetherinfo;	*/
+Qinfo procinfo = { stputq, nullput, 0, 0, "process" };
 
+/*
+ *  line disciplines that can be pushed
+ *
+ *  WARNING: this table should be the result of configuration
+ */
+extern Qinfo noetherinfo;
+extern Qinfo dkmuxinfo;
+extern Qinfo urpinfo;
 static Qinfo *lds[] = {
-/*	&noetherinfo,	*/
+	&dkmuxinfo,
+	&urpinfo,
 	0
 };
 
@@ -34,7 +45,9 @@ static Lock garbagelock;
  */
 typedef struct {
 	int	size;
-	Queue;
+	Blist;
+	QLock;		/* qlock for sleepers on r */
+	Rendez	r;	/* sleep here waiting for blocks */
 } Bclass;
 Bclass bclass[Nclass]={
 	{ 0 },
@@ -108,7 +121,9 @@ allocb(ulong size)
 	while(bcp->first == 0){
 		unlock(bcp);
 		print("waiting for blocks\n");
+		qlock(bcp);
 		sleep(&bcp->r, isblock, (void *)bcp);
+		qunlock(bcp);
 		lock(bcp);
 	}
 	bp = bcp->first;
@@ -128,25 +143,33 @@ allocb(ulong size)
 }
 
 /*
- *  Free a block.  Poison its pointers so that someone trying to access
- *  it after freeing will cause a dump.
+ *  Free a block (or list of blocks).  Poison its pointers so that
+ *  someone trying to access it after freeing will cause a dump.
  */
 void
 freeb(Block *bp)
 {
 	Bclass *bcp;
+	int tries;
 
 	bcp = &bclass[bp->flags & S_CLASS];
-	bp->rptr = bp->wptr = 0;
 	lock(bcp);
+	bp->rptr = bp->wptr = 0;
 	if(bcp->first)
 		bcp->last->next = bp;
 	else
 		bcp->first = bp;
+	tries = 0;
+	while(bp->next){
+		if(++tries > 10){
+			dumpstack();
+			panic("freeb");
+		}
+		bp = bp->next;
+	}
 	bcp->last = bp;
-	bp->next = 0;
-	wakeup(&bcp->r);
 	unlock(bcp);
+	wakeup(&bcp->r);
 }
 
 /*
@@ -269,11 +292,11 @@ putq(Queue *q, Block *bp)
 		q->last->next = bp;
 	else
 		q->first = bp;
-	q->len += bp->wptr - bp->rptr;
+	q->len += BLEN(bp);
 	delim = bp->flags & S_DELIM;
 	while(bp->next) {
 		bp = bp->next;
-		q->len += bp->wptr - bp->rptr;
+		q->len += BLEN(bp);
 		delim |= bp->flags & S_DELIM;
 	}
 	q->last = bp;
@@ -292,22 +315,21 @@ putb(Blist *q, Block *bp)
 		q->last->next = bp;
 	else
 		q->first = bp;
-	q->len += bp->wptr - bp->rptr;
+	q->len += BLEN(bp);
 	delim = bp->flags & S_DELIM;
 	while(bp->next) {
 		bp = bp->next;
-		q->len += bp->wptr - bp->rptr;
+		q->len += BLEN(bp);
 		delim |= bp->flags & S_DELIM;
 	}
 	q->last = bp;
-	bp->next = 0;
 	return delim;
 }
 
 /*
  *  add a block to the start of a queue 
  */
-static void
+void
 putbq(Blist *q, Block *bp)
 {
 	lock(q);
@@ -316,12 +338,12 @@ putbq(Blist *q, Block *bp)
 	else
 		q->last = bp;
 	q->first = bp;
-	q->len += bp->wptr - bp->rptr;
+	q->len += BLEN(bp);
 	unlock(q);
 }
 
 /*
- *  remove the first block from a queue 
+ *  remove the first block from a queue
  */
 Block *
 getq(Queue *q)
@@ -334,7 +356,7 @@ getq(Queue *q)
 		q->first = bp->next;
 		if(q->first == 0)
 			q->last = 0;
-		q->len -= bp->wptr - bp->rptr;
+		q->len -= BLEN(bp);
 		if((q->flag&QHIWAT) && q->len < Streamhi/2){
 			wakeup(&q->other->next->other->r);
 			q->flag &= ~QHIWAT;
@@ -344,6 +366,10 @@ getq(Queue *q)
 	unlock(q);
 	return bp;
 }
+
+/*
+ *  remove the first block from a list of blocks
+ */
 Block *
 getb(Blist *q)
 {
@@ -354,10 +380,84 @@ getb(Blist *q)
 		q->first = bp->next;
 		if(q->first == 0)
 			q->last = 0;
-		q->len -= bp->wptr - bp->rptr;
+		q->len -= BLEN(bp);
 		bp->next = 0;
 	}
 	return bp;
+}
+
+/*
+ *  make sure the first block has n bytes
+ */
+Block *
+pullup(Block *bp, int n)
+{
+	Block *nbp;
+	int i;
+
+	/*
+	 *  this should almost always be true, the rest it
+	 *  just for to avoid every caller checking.
+	 */
+	if(BLEN(bp) >= n)
+		return bp;
+
+	/*
+	 *  if not enough room in the first block,
+	 *  add another to the front of the list.
+	if(bp->lim - bp->rptr < n){
+		nbp = allocb(n);
+		nbp->next = bp;
+		bp = nbp;
+	}
+
+	/*
+	 *  copy bytes from the trailing blocks into the first
+	 */
+	n -= BLEN(bp);
+	while(nbp = bp->next){
+		i = BLEN(nbp);
+		if(i > n) {
+			memcpy(bp->wptr, nbp->rptr, n);
+			bp->wptr += n;
+			nbp->rptr += n;
+			return bp;
+		} else {
+			memcpy(bp->wptr, nbp->rptr, i);
+			bp->wptr += i;
+			bp->next = nbp->next;
+			nbp->next = 0;
+			freeb(nbp);
+		}
+	}
+	freeb(bp);
+	return 0;
+}
+
+/*
+ *  grow the front of a list of blocks by n bytes
+ */
+Block *
+prepend(Block *bp, int n)
+{
+	Block *nbp;
+
+	if(bp->base && (bp->rptr - bp->base)>=n){
+		/*
+		 *  room for channel number in first block of message
+		 */
+		bp->rptr -= n;
+		return bp;
+	} else {
+		/*
+		 *  make new block, put message number at end
+		 */
+		nbp = allocb(2);
+		nbp->next = bp;
+		nbp->wptr = nbp->lim;
+		nbp->rptr = nbp->wptr - n;
+		return nbp;
+	}
 }
 
 /*
@@ -415,7 +515,7 @@ streamparse(char *name, Block *bp)
 	int len;
 
 	len = strlen(name);
-	if(bp->wptr - bp->rptr < len)
+	if(BLEN(bp) < len)
 		return 0;
 	if(strncmp(name, (char *)bp->rptr, len)==0){
 		if(bp->rptr[len] == ' ')
@@ -622,14 +722,19 @@ stputq(Queue *q, Block *bp)
 		freeb(bp);
 		q->flag |= QHUNGUP;
 		q->other->flag |= QHUNGUP;
+		wakeup(&q->other->r);
 	} else {
 		lock(q);
 		if(q->first)
 			q->last->next = bp;
 		else
 			q->first = bp;
+		q->len += BLEN(bp);
+		while(bp->next) {
+			bp = bp->next;
+			q->len += BLEN(bp);
+		}
 		q->last = bp;
-		q->len += bp->wptr - bp->rptr;
 		if(q->len >= Streamhi)
 			q->flag |= QHIWAT;
 		unlock(q);
@@ -651,8 +756,7 @@ stringread(Chan *c, uchar *buf, long n, char *str)
 		n = i;
 	if(n<0)
 		return 0;
-	memcpy(buf + c->offset, str, n);
-	c->offset += n;
+	memcpy(buf, str + c->offset, n);
 	return n;
 }
 
@@ -716,7 +820,7 @@ streamread(Chan *c, void *vbuf, long n)
 			continue;
 		}
 
-		i = bp->wptr - bp->rptr;
+		i = BLEN(bp);
 		if(i <= left){
 			memcpy(buf, bp->rptr, i);
 			left -= i;
@@ -806,7 +910,7 @@ flowctl(Queue *q)
  *  send the request as a single delimited block
  */
 long
-streamwrite(Chan *c, void *a, long n)
+streamwrite(Chan *c, void *a, long n, int docopy)
 {
 	Stream *s;
 	Block *bp;
@@ -846,7 +950,7 @@ streamwrite(Chan *c, void *a, long n)
 	if(q->other->flag & QHUNGUP)
 		error(0, Ehungup);
 
-	if(GLOBAL(a) || n==0){
+	if((GLOBAL(a) && !docopy) || n==0){
 		/*
 		 *  `a' is global to the whole system, just create a
 		 *  pointer to it and pass it on.
@@ -886,4 +990,28 @@ streamwrite(Chan *c, void *a, long n)
 	qunlock(&s->wrlock);
 	poperror();
 	return n;
+}
+
+/*
+ *  like andrew's getmfields but no hidden state
+ */
+int
+getfields(char *lp,	/* to be parsed */
+	char **fields,	/* where to put pointers */
+	int n,		/* number of pointers */
+	char sep	/* separator */
+)
+{
+	int i;
+
+	for(i=0; lp && *lp && i<n; i++){
+		while(*lp == sep)
+			*lp++=0;
+		if(*lp == 0)
+			break;
+		fields[i]=lp;
+		while(*lp && *lp != sep)
+			lp++;
+	}
+	return i;
 }

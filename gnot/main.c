@@ -7,10 +7,24 @@
 #include	"ureg.h"
 #include	"init.h"
 
+typedef struct Boot{
+	long station;
+	long traffic;
+	char user[NAMELEN];
+	char server[64];
+	char line[64];
+}Boot;
+#define BOOT ((Boot*)0)
+
+char protouser[NAMELEN];
+
+void unloadboot(void);
+
 void
 main(void)
 {
 	Lock l;
+	unloadboot();
 	machinit();
 	mmuinit();
 	confinit();
@@ -25,6 +39,12 @@ main(void)
 	pageinit();
 	userinit();
 	schedinit();
+}
+
+void
+unloadboot(void)
+{
+	strncpy(protouser, BOOT->user, NAMELEN);
 }
 
 void
@@ -87,7 +107,7 @@ userinit(void)
 	p = newproc();
 	p->pgrp = newpgrp();
 	strcpy(p->text, "*init*");
-	strcpy(p->pgrp->user, "bootes");
+	strcpy(p->pgrp->user, protouser);
 /*	savefpregs(&initfp);	/**/
 /*	p->fpstate = FPinit;	/**/
 
@@ -219,7 +239,7 @@ confinit(void)
 	conf.npage = (2*1024*1024)/BY2PG;
 	conf.npte = 500;
 	conf.nmod = 50;
-	conf.nalarm = 50;
+	conf.nalarm = 1000;
 	conf.norig = 50;
 	conf.nchan = 100;
 	conf.nenv = 50;
@@ -228,6 +248,8 @@ confinit(void)
 	conf.nmtab = 50;
 	conf.nmount = 100;
 	conf.nmntdev = 5;
+	conf.nmntbuf = 10;
+	conf.nmnthdr = 10;
 	conf.nstream = 64;
 	conf.nqueue = 5 * conf.nstream;
 	conf.nblock = 16 * conf.nstream;

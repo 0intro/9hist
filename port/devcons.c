@@ -323,7 +323,8 @@ readnum(ulong off, char *buf, ulong n, ulong val, int size)
 
 	numbconv(&op, 10);
 	tmp[size-1] = ' ';
-	off %= size;
+	if(off >= size)
+		return 0;
 	if(off+n > size)
 		n = size-off;
 	memcpy(buf, tmp+off, n);
@@ -336,7 +337,8 @@ readstr(ulong off, char *buf, ulong n, char *str)
 	int size;
 
 	size = strlen(str);
-	off %= size;
+	if(off >= size)
+		return 0;
 	if(off+n > size)
 		n = size-off;
 	memcpy(buf, str+off, n);
@@ -455,7 +457,9 @@ consread(Chan *c, void *buf, long n)
 		return i;
 
 	case Qcputime:
-		k = c->offset % sizeof tmp;
+		k = c->offset;
+		if(k >= sizeof tmp)
+			return 0;
 		if(k+n > sizeof tmp)
 			n = sizeof tmp - k;
 		/* easiest to format in a separate buffer and copy out */

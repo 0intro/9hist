@@ -6,7 +6,8 @@
 Fcall	hdr;
 char	buf[100];
 
-void	error(char *);
+void	error(char*);
+void	sendmsg(int, char*);
 
 main(int argc, char *argv[])
 {
@@ -18,22 +19,123 @@ main(int argc, char *argv[])
 	open("#c/cons", OWRITE);
 	open("#c/cons", OWRITE);
 
-	do{
-		print("user: ");
-		n = read(0, buf, sizeof buf);
-	}while(n==0 || n==1);
+	fd = open("#c/user", 0);
+	if(fd < 0)
+		error("#c/user");
+	n = read(fd, buf, sizeof buf-1);
 	if(n < 0)
-		error("can't read #c/cons; please reboot");
-	buf[n-1] = 0;
+		error("can't read #c/user; please reboot");
+	buf[n] = 0;
 	print("hello %s!\n", buf);
-	if(pipe(p) == -1)
-		error("pipe");
-	if(write(p[1], "hohoHO!", 8) != 8)
+	close(fd);
+
+	/*
+	 *  grab the incon,
+	 *  push the dk multiplexor onto it,
+	 *  and use line 1 as the signalling channel.
+	 */
+	cfd = open("#i/ctl", 2);
+	if(cfd < 0)
+		error("opening #i/ctl");
+	sendmsg(cfd, "push dkmux");
+	sendmsg(cfd, "config 1 16");
+	print("dkmux configured\n");
+
+	/*
+	 *  open a datakit channel and call ken via r70, leave the
+	 *  incon ctl channel open
+	 */
+	fd = open("#k/2/data", 2);
+	if(fd < 0)
+		error("opening #k/2/data");
+	cfd = open("#k/2/ctl", 2);
+	if(cfd < 0)
+		error("opening #k/2/ctl");
+	print("#k/2/ctl open\n");
+	sendmsg(cfd, "connect r70.nonet!bootes!fs");
+	print("connected to r70.nonet!bootes!fs\n");
+	close(cfd);
+
+/*
+	for(;;){
+		print("ding\n");
+		sleep(10000);
+	}
+/**/
+
+	/*
+	 *  talk to the file server
+	 */
+	print("nop...");
+	hdr.type = Tnop;
+	n = convS2M(&hdr, buf);
+	if(write(fd, buf, n) != n)
+		error("write nop");
+	n = read(fd, buf, sizeof buf);
+	if(n <= 0)
+		error("read nop");
+	if(convM2S(buf, &hdr, n) == 0) {
+		print("n = %d; buf = %.2x %.2x %.2x %.2x\n",
+			n, buf[0], buf[1], buf[2], buf[3]);
+		error("format nop");
+	}
+	if(hdr.type != Rnop)
+		error("not Rnop");
+
+	print("session...");
+	hdr.type = Tsession;
+	hdr.lang = 'v';
+	n = convS2M(&hdr, buf);
+	if(write(fd, buf, n) != n)
+		error("write session");
+	n = read(fd, buf, sizeof buf);
+	if(n <= 0)
+		error("read session");
+	if(convM2S(buf, &hdr, n) == 0)
+		error("format session");
+	if(hdr.type != Rsession)
+		error("not Rsession");
+	if(hdr.err){
+		print("error %d;", hdr.err);
+		error("remote error");
+	}
+
+	print("post...");
+	sprint(buf, "#s/%s", "bootes");
+	f = create(buf, 1, 0666);
+	if(f < 0)
+		error("create");
+	sprint(buf, "%d", fd);
+	if(write(f, buf, strlen(buf)) != strlen(buf))
 		error("write");
-	if(read(p[0], buf, 8) != 8)
-		error("read");
-	print("%s\n", buf);
-	for(;;);
+	close(f);
+	sprint(buf, "#s/%s", "bootes");
+	f = create("#s/boot", 1, 0666);
+	if(f < 0)
+		error("create");
+	sprint(buf, "%d", fd);
+	if(write(f, buf, strlen(buf)) != strlen(buf))
+		error("write");
+	close(f);
+	
+	print("mount...");
+	if(bind("/", "/", MREPL) < 0)
+		error("bind");
+	if(mount(fd, "/", MAFTER|MCREATE, "") < 0)
+		error("mount");
+	print("success\n");
+	execl("/68020/init", "init", 0);
+	error("/68020/init");
+}
+
+void
+sendmsg(int fd, char *msg)
+{
+	int n;
+
+	n = strlen(msg);
+	if(write(fd, msg, n) != n)
+		error(msg);
 }
 
 void

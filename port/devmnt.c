@@ -468,6 +468,7 @@ mntremove(Chan *c)
 		mhfree(mh);
 		nexterror();
 	}
+	decref(m);
 	mh->thdr.type = Tremove;
 	mh->thdr.fid = c->fid;
 	mntxmit(m, mh);

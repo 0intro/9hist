@@ -382,6 +382,7 @@ mntclose(Chan *c)
 	if(c == m->mntpt)
 		m->mntpt = 0;
 	if(decref(m) == 0){		/* BUG: need to hang up all pending i/o */
+print("close mount table %d\n", m->mntid);
 		qlock(m);
 		close(m->msg);
 		m->msg = 0;
@@ -467,6 +468,7 @@ mntremove(Chan *c)
 		mhfree(mh);
 		nexterror();
 	}
+	decref(m);
 	mh->thdr.type = Tremove;
 	mh->thdr.fid = c->fid;
 	mntxmit(m, mh);

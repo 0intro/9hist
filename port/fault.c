@@ -138,6 +138,7 @@ fault(Ureg *ur, int user, int code)
 			 * Add to mod list
 			 */
 			pte = newmod();
+o->nmod++;
 			pte->proc = u->p;
 			pte->page = opte->page;
 			pte->page->ref++;
@@ -210,9 +211,10 @@ validaddr(ulong addr, ulong len, int write)
 	Seg *s;
 
 	if((long)len < 0)
-		panic("validaddr len %lux\n", len);
+		goto Err;
 	s = seg(u->p, addr);
 	if(s==0 || addr+len>s->maxva || (write && (s->o->flag&OWRPERM)==0)){
+    Err:
 		pprint("invalid address in sys call pc %lux sp %lux\n", ((Ureg*)UREGADDR)->pc, ((Ureg*)UREGADDR)->sp);
 		postnote(u->p, 1, "bad address", NDebug);
 		error(0, Ebadarg);

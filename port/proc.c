@@ -518,16 +518,23 @@ proctab(int i)
 #include <ureg.h>
 DEBUG()
 {
-	int i;
+	int i, j;
 	Proc *p;
+	Orig *o;
 
 	print("DEBUG\n");
 	for(i=0; i<conf.nproc; i++){
 		p = procalloc.arena+i;
-		if(p->state != Dead)
+		if(p->state != Dead){
 			print("%d:%s upc %lux %s ut %ld st %ld\n",
 				p->pid, p->text, p->pc, statename[p->state],
 				p->time[0], p->time[1]);
+			for(j=0; j<NSEG; j++){
+				o = p->seg[j].o;
+				if(o)
+					print("	s%d %d %d\n", j, o->nmod, o->npte);
+			}
+		}
 	}
 }
 

@@ -242,6 +242,7 @@ struct Orig
 	ulong	mqid;
 	ulong	minca;			/* base of region in chan */
 	ulong	maxca;			/* end of region in chan */
+int nmod;
 };
 
 struct Page
@@ -439,7 +440,8 @@ struct Stream {
 #define STREAMTYPE(x)	((x)&0x1f)
 #define STREAMID(x)	(((x)&~CHDIR)>>5)
 #define STREAMQID(i,t)	(((i)<<5)|(t))
-#define PUTNEXT(q,b)	(*(q)->next->put)((q)->next, bp)
+#define PUTNEXT(q,b)	(*(q)->next->put)((q)->next, b)
+#define BLEN(b)		((b)->wptr - (b)->rptr)
 
 /*
  *  stream file qid's & high water mark

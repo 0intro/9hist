@@ -51,7 +51,7 @@ sysfork(ulong *arg)
 	s = &p->seg[SSEG];
 	s->proc = p;
 	on = (s->maxva-s->minva)>>PGSHIFT;
-	usp = ((Ureg*)UREGADDR)->sp;
+	usp = ((Ureg*)UREGADDR)->usp;
 	if(usp >= USTKTOP)
 		panic("fork bad usp %lux", usp);
 	if(usp < u->p->seg[SSEG].minva)
@@ -174,21 +174,27 @@ sysexec(ulong *arg)
 	}
 	if(!indir)
 		strcpy(elem, u->elem);
+print("offset %lux\n", tc->offset);
 	n = (*devtab[tc->type].read)(tc, &exec, sizeof(Exec));
-	if(n < 2)
+	if(n < 2){
+		print("short read\n");
     Err:
 		error(0, Ebadexec);
+	}
 	if(n==sizeof(Exec) && exec.magic==A_MAGIC){
 		if((exec.text&KZERO)
 		|| (ulong)exec.entry < UTZERO+sizeof(Exec)
-		|| (ulong)exec.entry >= UTZERO+sizeof(Exec)+exec.text)
+		|| (ulong)exec.entry >= UTZERO+sizeof(Exec)+exec.text){
+			print("bad header sizes\n");
 			goto Err;
+		}
 		goto Binary;
 	}
 
 	/*
 	 * Process #! /bin/sh args ...
 	 */
+print("do #! magic=%lux size=%d\n", exec.magic, n);
 	memcpy(line, &exec, sizeof(Exec));
 	if(indir || line[0]!='#' || line[1]!='!')
 		goto Err;
@@ -347,10 +353,10 @@ sysexec(ulong *arg)
 	unlock(o);
 
 	flushmmu();
-	((Ureg*)UREGADDR)->pc = exec.entry - 4;
+	((Ureg*)UREGADDR)->pc = exec.entry;
 	sp = (ulong*)(USTKTOP - ssize);
 	*--sp = nargs;
-	((Ureg*)UREGADDR)->sp = (ulong)sp;
+	((Ureg*)UREGADDR)->usp = (ulong)sp;
 	lock(&p->debug);
 	u->nnote = 0;
 	u->notify = 0;

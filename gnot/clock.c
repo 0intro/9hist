@@ -98,8 +98,10 @@ clock(Ureg *ur)
 	SYNCREG[1] = 0x5F;	/* clear interrupt */
 	m->ticks++;
 	p = m->proc;
-	if(p)
+	if(p){
+		p->pc = ur->pc;
 		p->time[p->insyscall]++;
+	}
 	if(canlock(&m->alarmlock)){
 		if(m->alarm){
 			a = m->alarm;

@@ -36,10 +36,15 @@ enum{
 	Etoosmall,	/* read or write too small */
 	Ehungup,	/* write to hungup stream */
 	Ebadnet,	/* illegal network address */
-	Enoifc,		/* no free nonet interface slots */
+	Enoifc,		/* no free interface slots */
 	Enodev,		/* no free devices */
 	Ebadctl,	/* bad process control request */
 	Enonote,	/* note overflow */
 	Eintr,		/* interrupted */
+	Edestbusy,	/* datakit destination busy */
+	Enetbusy,	/* datakit controller busy */
+	Edestotl,	/* datakit destination out to lunch */
+	Enetotl,	/* datakit controller out to lunch */
+	Erejected,	/* datakit destination rejected call */
 	Egreg,		/* it's all greg's fault */
 };

@@ -281,7 +281,6 @@ struct Seg
 struct Proc
 {
 	Label	sched;
-	Lock;
 	Mach	*mach;			/* machine running this proc */
 	char	text[NAMELEN];
 	Proc	*rnext;			/* next process in run queue */
@@ -422,7 +421,8 @@ struct Stream {
 #define STREAMTYPE(x)	((x)&0x1f)
 #define STREAMID(x)	(((x)&~CHDIR)>>5)
 #define STREAMQID(i,t)	(((i)<<5)|(t))
-#define PUTNEXT(q,b)	(*(q)->next->put)((q)->next, bp)
+#define PUTNEXT(q,b)	(*(q)->next->put)((q)->next, b)
+#define BLEN(b)		((b)->wptr - (b)->rptr)
 
 /*
  *  stream file qid's & high water mark

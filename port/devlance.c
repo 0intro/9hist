@@ -362,7 +362,7 @@ lanceoput(Queue *q, Block *bp )
 	 */
 	len = 0;
 	while(bp = getq(q)){
-		if(sizeof(Pkt) - len >= (n = bp->wptr - bp->rptr)){
+		if(sizeof(Pkt) - len >= (n = BLEN(bp))){
 			memcpy(((uchar *)p)+len, bp->rptr, n);
 			len += n;
 		} else
@@ -704,7 +704,7 @@ lanceread(Chan *c, void *a, long n)
 long	 
 lancewrite(Chan *c, void *a, long n)
 {
-	return streamwrite(c, a, n);
+	return streamwrite(c, a, n, 0);
 }
 
 void	 

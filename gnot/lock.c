@@ -66,6 +66,12 @@ qlock(QLock *q)
 	sched();
 }
 
+int
+canqlock(QLock *q)
+{
+	return canlock(&q->use);
+}
+
 void
 qunlock(QLock *q)
 {

@@ -371,7 +371,7 @@ confinit(void)
 	conf.npage = i*1024/4;
 
 	conf.npte = 20000;
-	conf.nmod = 500;
+	conf.nmod = 2000;
 	conf.nalarm = 1000;
 	conf.norig = 500;
 	conf.nchan = 500;
