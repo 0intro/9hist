@@ -656,6 +656,20 @@ qlen(Queue *q)
 }
 
 /*
+ * return space remaining before flow control
+ */
+int
+qwindow(Queue *q)
+{
+	int l;
+
+	l = q->limit - q->len;
+	if(l < 0)
+		l = 0;
+	return l;
+}
+
+/*
  *  return true if we can read without blocking
  */
 int

@@ -503,7 +503,7 @@ rdbginit(void)
 {
 	uchar *vec;
 	ulong jba;
-
+return;
 	/* Only interested in the PC */
 	Mipsjmpbuf.pc = 0x8001C020;
 

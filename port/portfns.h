@@ -204,6 +204,7 @@ int		qproduce(Queue*, void*, int);
 long		qread(Queue*, void*, int);
 void		qreopen(Queue*);
 void		qunlock(QLock*);
+int		qwindow(Queue*);
 long		qwrite(Queue*, void*, int, int);
 int		readnum(ulong, char*, ulong, ulong, int);
 int		readstr(ulong, char*, ulong, char*);
