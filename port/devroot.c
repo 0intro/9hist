@@ -213,6 +213,9 @@ rootwrite(Chan *c, void *buf, long n, ulong)
 }
 
 Dev rootdevtab = {
+	'/',
+	"root",
+
 	rootreset,
 	devinit,
 	rootattach,

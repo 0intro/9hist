@@ -1003,6 +1003,9 @@ floppyintr(Ureg *ur)
 }
 
 Dev floppydevtab = {
+	'f',
+	"floppy",
+
 	floppyreset,
 	devinit,
 	floppyattach,

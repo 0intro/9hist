@@ -410,6 +410,9 @@ vgawrite(Chan *c, void *buf, long n, ulong offset)
 }
 
 Dev vgadevtab = {
+	'v',
+	"vga",
+
 	vgareset,
 	vgainit,
 	vgaattach,

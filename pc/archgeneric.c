@@ -57,8 +57,6 @@ static X86type x86type[] =
 	{ 5,	2,	23,	"P54C", },
 	{ 5,	3,	23,	"P24T", },
 	{ 5,	4,	23,	"P55C MMX", },
-	{ 5,	5,	23,	"PODDX4", },
-	{ 5,	6,	23,	"PODP5", },
 	{ 5,	7,	23,	"P54C VRT", },
 	{ 6,	1,	16,	"PentiumPro", },/* determined by trial and error */
 

@@ -169,6 +169,9 @@ kprofwrite(Chan *c, char *a, long n, ulong)
 }
 
 Dev kprofdevtab = {
+	'T',
+	"kprof",
+
 	devreset,
 	kprofinit,
 	kprofattach,

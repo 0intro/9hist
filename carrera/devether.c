@@ -836,6 +836,9 @@ parseether(uchar *to, char *from)
 }
 
 Dev etherdevtab = {
+	'l',
+	"ether",
+
 	etherreset,
 	devinit,
 	etherattach,

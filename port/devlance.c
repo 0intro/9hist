@@ -546,6 +546,9 @@ parseether(uchar *to, char *from)
 }
 
 Dev lancedevtab = {
+	'l',
+	"lance",
+
 	lancereset,
 	lanceinit,
 	lanceattach,

@@ -397,7 +397,7 @@ sysexec(ulong *arg)
 	/*
 	 *  '/' processes are higher priority (hack to make /ip more responsive).
 	 */
-	if(devchar[tc->type] == L'/')
+	if(devtab[tc->type]->dc == L'/')
 		up->basepri = PriRoot;
 	up->priority = up->basepri;
 	poperror();

@@ -71,7 +71,7 @@ kread(int fd, void *va, long n)
 
 	if(dir && c->mnt)
 		n = unionread(c, va, n);
-	else if(devchar[c->type] != L'M')
+	else if(devtab[c->type]->dc != L'M')
 		n = devtab[c->type]->read(c, va, n, c->offset);
 	else
 		n = mntread9p(c, va, n, c->offset);
@@ -106,7 +106,7 @@ kseek(int fd, int offset, int whence)
 	if(c->qid.path & CHDIR)
 		error(Eisdir);
 
-	if(devchar[c->type] == '|')
+	if(devtab[c->type]->dc == '|')
 		error(Eisstream);
 
 	off = 0;

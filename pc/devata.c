@@ -1912,6 +1912,9 @@ atapiintr(Controller *cp)
 }
 
 Dev atadevtab = {
+	'H',
+	"ata",
+
 	devreset,
 	devinit,
 	ataattach,

@@ -85,6 +85,9 @@ dupwrite(Chan*, void*, long, ulong)
 }
 
 Dev dupdevtab = {
+	'd',
+	"dup",
+
 	devreset,
 	devinit,
 	dupattach,

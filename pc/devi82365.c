@@ -877,6 +877,9 @@ i82365write(Chan *c, void *a, long n, ulong offset)
 }
 
 Dev i82365devtab = {
+	'y',
+	"i82365",
+
 	i82365reset,
 	devinit,
 	i82365attach,

@@ -668,7 +668,7 @@ mountio(Mnt *m, Mntrpc *r)
 			nexterror();
 	}
 	else {
-		if(devchar[m->c->type] == L'M'){
+		if(devtab[m->c->type]->dc == L'M'){
 			if(mnt9prdwr(Twrite, m->c, r->rpc, n, 0) != n)
 				error(Emountrpc);
 		}else{
@@ -718,7 +718,7 @@ mntrpcread(Mnt *m, Mntrpc *r)
 		}
 		r->reply.type = 0;
 		r->reply.tag = 0;
-		if(devchar[m->c->type] == L'M')
+		if(devtab[m->c->type]->dc == L'M')
 			n = mnt9prdwr(Tread, m->c, r->rpc, MAXRPC, 0);
 		else
 			n = devtab[m->c->type]->read(m->c, r->rpc, MAXRPC, 0);
@@ -940,8 +940,11 @@ mntchk(Chan *c)
 void
 mntdirfix(uchar *dirbuf, Chan *c)
 {
-	dirbuf[DIRLEN-4] = devchar[c->type]>>0;
-	dirbuf[DIRLEN-3] = devchar[c->type]>>8;
+	int r;
+
+	r = devtab[c->type]->dc;
+	dirbuf[DIRLEN-4] = r>>0;
+	dirbuf[DIRLEN-3] = r>>8;
 	dirbuf[DIRLEN-2] = c->dev;
 	dirbuf[DIRLEN-1] = c->dev>>8;
 }
@@ -1055,6 +1058,9 @@ mntrepl(char *buf)
 }
 
 Dev mntdevtab = {
+	'm',
+	"mnt",
+
 	mntreset,
 	devinit,
 	mntattach,

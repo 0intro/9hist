@@ -249,6 +249,9 @@ srvwrite(Chan *c, void *va, long n, ulong)
 }
 
 Dev srvdevtab = {
+	's',
+	"srv",
+
 	devreset,
 	srvinit,
 	srvattach,

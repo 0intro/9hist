@@ -828,6 +828,9 @@ setterm(char *f)
 }
 
 Dev consdevtab = {
+	'c',
+	"cons",
+
 	devreset,
 	consinit,
 	consattach,

@@ -193,6 +193,9 @@ lptintr(Ureg *ur, void *arg)
 }
 
 Dev lptdevtab = {
+	'L',
+	"lpt",
+
 	devreset,
 	devinit,
 	lptattach,

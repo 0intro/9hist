@@ -129,6 +129,9 @@ XXXbwrite(Chan* c, Block* bp, ulong offset)		/* default in dev.c */
 }
 
 Dev XXXdevtab = {					/* defaults in dev.c */
+	'X',
+	"XXX",
+
 	XXXreset,					/* devreset */
 	XXXinit,					/* devinit */
 	XXXattach,

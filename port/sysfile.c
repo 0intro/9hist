@@ -317,7 +317,7 @@ sysread9p(ulong *arg)
 
 	if(dir && c->mnt)
 		n = unionread(c, (void*)arg[1], n);
-	else if(devchar[c->type] != L'M')
+	else if(devtab[c->type]->dc != L'M')
 		n = devtab[c->type]->read(c, (void*)arg[1], n, c->offset);
 	else
 		n = mntread9p(c, (void*)arg[1], n, c->offset);
@@ -386,7 +386,7 @@ syswrite9p(ulong *arg)
 	if(c->qid.path & CHDIR)
 		error(Eisdir);
 
-	if(devchar[c->type] != L'M')
+	if(devtab[c->type]->dc != L'M')
 		n = devtab[c->type]->write(c, (void*)arg[1], arg[2], c->offset);
 	else
 		n = mntwrite9p(c, (void*)arg[1], arg[2], c->offset);
@@ -440,7 +440,7 @@ sysseek(ulong *arg)
 	if(c->qid.path & CHDIR)
 		error(Eisdir);
 
-	if(devchar[c->type] == '|')
+	if(devtab[c->type]->dc == '|')
 		error(Eisstream);
 
 	off = 0;

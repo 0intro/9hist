@@ -879,6 +879,9 @@ out:
 }
 
 Dev ssldevtab = {
+	'D',
+	"ssl",
+
 	devreset,
 	sslinit,
 	sslattach,

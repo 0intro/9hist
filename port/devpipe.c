@@ -349,6 +349,9 @@ pipebwrite(Chan *c, Block *bp, ulong)
 }
 
 Dev pipedevtab = {
+	'|',
+	"pipe",
+
 	devreset,
 	pipeinit,
 	pipeattach,

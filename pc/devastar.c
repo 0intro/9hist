@@ -378,7 +378,7 @@ astargen(Chan *c, Dirtab *tab, int ntab, int i, Dir *db)
 	db->mtime = kerndate;
 	memmove(db->uid, eve, NAMELEN);
 	memmove(db->gid, eve, NAMELEN);
-	db->type = devchar[c->type];
+	db->type = devtab[c->type]->dc;
 	db->dev = c->dev;
 	if(c->flag&CMSG)
 		db->mode |= CHMOUNT;
@@ -1236,6 +1236,9 @@ astarwstat(Chan *c, char *dp)
 }
 
 Dev astardevtab = {
+	'G',
+	"astar",
+
 	astarreset,
 	devinit,
 	astarattach,

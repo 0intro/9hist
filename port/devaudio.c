@@ -921,6 +921,9 @@ swab(uchar *a)
 }
 
 Dev audiodevtab = {
+	'A',
+	"audio",
+
 	devreset,
 	audioinit,
 	audioattach,

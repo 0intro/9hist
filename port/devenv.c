@@ -231,6 +231,9 @@ envwrite(Chan *c, void *a, long n, ulong offset)
 }
 
 Dev envdevtab = {
+	'e',
+	"env",
+
 	devreset,
 	devinit,
 	envattach,

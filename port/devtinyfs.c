@@ -872,6 +872,9 @@ tinyfswrite(Chan *c, void *a, long n, ulong offset)
 }
 
 Dev tinyfsdevtab = {
+	'U',
+	"tinyfs",
+
 	tinyfsreset,
 	devinit,
 	tinyfsattach,

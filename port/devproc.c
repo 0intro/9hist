@@ -619,6 +619,9 @@ procwrite(Chan *c, void *va, long n, ulong offset)
 }
 
 Dev procdevtab = {
+	'p',
+	"proc",
+
 	devreset,
 	procinit,
 	procattach,

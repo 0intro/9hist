@@ -942,6 +942,9 @@ ns16552wstat(Chan *c, char *dp)
 }
 
 Dev ns16552devtab = {
+	't',
+	"ns16552",
+
 	ns16552reset,
 	devinit,
 	ns16552attach,

@@ -288,6 +288,9 @@ mousewrite(Chan *c, void *va, long n, ulong)
 }
 
 Dev mousedevtab = {
+	'm',
+	"mouse",
+
 	mousereset,
 	mouseinit,
 	mouseattach,

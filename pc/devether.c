@@ -386,6 +386,9 @@ etherreset(void)
 }
 
 Dev etherdevtab = {
+	'l',
+	"ether",
+
 	etherreset,
 	devinit,
 	etherattach,

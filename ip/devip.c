@@ -712,6 +712,9 @@ ipbwrite(Chan* c, Block* bp, ulong offset)
 }
 
 Dev ipdevtab = {
+	'I',
+	"ip",
+
 	ipreset,
 	ipinit,
 	ipattach,

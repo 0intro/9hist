@@ -293,6 +293,9 @@ rtcwrite(Chan *c, void *buf, long n, ulong offset)
 }
 
 Dev rtcdevtab = {
+	'r',
+	"rtc",
+
 	rtcreset,
 	devinit,
 	rtcattach,

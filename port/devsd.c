@@ -252,6 +252,9 @@ sdwrite(Chan *c, char *a, long n, ulong offset)
 }
 
 Dev sddevtab = {
+	'w',
+	"sd",
+
 	devreset,
 	sdinit,
 	sdattach,

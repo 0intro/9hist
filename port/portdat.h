@@ -166,6 +166,9 @@ struct Chan
 
 struct Dev
 {
+	int	dc;
+	char*	name;
+
 	void	(*reset)(void);
 	void	(*init)(void);
 	Chan*	(*attach)(char*);
@@ -620,7 +623,6 @@ enum
 extern	Conf	conf;
 extern	char*	conffile;
 extern	int	cpuserver;
-extern	Rune*	devchar;
 extern	Dev*	devtab[];
 extern  char	eve[];
 extern	char	hostdomain[];
