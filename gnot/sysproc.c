@@ -533,12 +533,18 @@ sysbrk_(ulong *arg)
 	Seg *s;
 
 	addr = arg[0];
-	if(addr < u->p->bssend)
+	if(addr < u->p->bssend){
+		pprint("addr below bss\n");
+		pexit("Suicide", 0);
 		error(0, Esegaddr);
+	}
 	if(addr <= ((u->p->bssend+(BY2PG-1))&~(BY2PG-1)))	/* still in DSEG */
 		goto Return;
-	if(segaddr(&u->p->seg[BSEG], u->p->seg[BSEG].minva, arg[0]) == 0)
+	if(segaddr(&u->p->seg[BSEG], u->p->seg[BSEG].minva, arg[0]) == 0){
+		pprint("bad segaddr in brk\n");
+		pexit("Suicide", 0);
 		error(0, Esegaddr);
+	}
     Return:
 	u->p->bssend = addr;
 	return 0;

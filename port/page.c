@@ -559,7 +559,7 @@ segaddr(Seg *s, ulong min, ulong max)
 	 * Shrink
 	 */
 	print("segaddr shrink");
-	for(;;);
+	pexit("Suicide", 0);
 }
 
 /*

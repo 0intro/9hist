@@ -316,10 +316,10 @@ confinit(void)
 	conf.nmntdev = 10*mul;
 	conf.nmntbuf = 2*conf.nmntdev;
 	conf.nmnthdr = 2*conf.nmntdev;
-	conf.nstream = 64;
-	conf.nqueue = 5 * conf.nstream;
-	conf.nblock = 32 * conf.nstream;
-	conf.nsrv = 32*mul;
+	conf.nstream = 40 + 16*mul;		/* was 64 */
+	conf.nqueue = 4 * conf.nstream;		/* was 5 */
+	conf.nblock = 24 * conf.nstream;	/* was 32 */
+	conf.nsrv = 16*mul;			/* was 32 */
 	conf.nbitmap = 300*mul;
 	conf.nbitbyte = 300*1024*mul;
 	if(*(uchar*)MOUSE & (1<<4))
@@ -328,6 +328,6 @@ confinit(void)
 	conf.nurp = 32;
 	conf.nasync = 1;
 	conf.npipe = conf.nstream/2;
-	conf.nservice = conf.nproc/5;
+	conf.nservice = 3*mul;			/* was conf.nproc/5 */
 	conf.nfsyschan = 31 + conf.nchan/20;
 }

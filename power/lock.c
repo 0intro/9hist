@@ -72,6 +72,7 @@ int addr;
 	}
 	*sbsem = 0;
 	print("lock loop %lux pc %lux held by pc %lux\n", l, ((ulong*)&addr)[-7], l->pc);
+dumpstack();
 }
 
 int

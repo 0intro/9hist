@@ -155,7 +155,7 @@ procopen(Chan *c, int omode)
 		break;
 
 	case Qnotepg:
-		if(omode != OWRITE)
+		if(omode!=OWRITE || pg->pgrpid==1)	/* easy to do by mistake */
 			error(0, Eperm);
 		c->pgrpid = (pg->pgrpid<<PIDSHIFT)|((pg->index+1)<<QSHIFT);
 		break;

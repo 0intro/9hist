@@ -27,7 +27,14 @@ struct Pipealloc
 static void pipeiput(Queue*, Block*);
 static void pipeoput(Queue*, Block*);
 static void pipestclose(Queue *);
-Qinfo pipeinfo = { pipeiput, pipeoput, 0, pipestclose, "pipe" };
+Qinfo pipeinfo =
+{
+	pipeiput,
+	pipeoput,
+	0,
+	pipestclose,
+	"pipe"
+};
 
 Dirtab pipedir[]={
 	"data",		Sdataqid,	0,			0600,
@@ -171,7 +178,7 @@ pipeopen(Chan *c, int omode)
 		 *  pointer from the other stream.
 		 */
 		if(streamenter(local)<0)
-			panic("pipeattach");
+			panic("pipeopen");
 	}
 	unlock(p);
 	poperror();
@@ -221,6 +228,11 @@ pipeclose(Chan *c)
 	Pipe *p;
 
 	p = &pipealloc.pipe[STREAMID(c->qid)/2];
+	lock(p);
+	if(waserror()){
+		unlock(p);
+		nexterror();
+	}
 
 	/*
 	 *  take care of associated streams
@@ -230,6 +242,8 @@ pipeclose(Chan *c)
 		streamclose(c);		/* close this stream */
 		streamexit(remote, 0);	/* release stream for other half of pipe */
 	}
+	unlock(p);
+	poperror();
 	pipeexit(p);
 }
 
