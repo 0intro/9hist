@@ -55,8 +55,6 @@ todinit(void)
 void
 todsetfreq(vlong f)
 {
-	int lf;
-
 	// the shift is an attempt to maintain precision
 	// during the caculations.  the number of bits in
 	// the multiplier should be log(TODFREQ) + 31 - log(f).

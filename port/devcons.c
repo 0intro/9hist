@@ -340,6 +340,7 @@ enum{
 	Qauth,
 	Qauthcheck,
 	Qauthent,
+	Qtiming,
 	Qclock,
 	Qcons,
 	Qconsctl,
@@ -391,6 +392,7 @@ static Dirtab consdir[]={
 	"sysname",	{Qsysname},	0,		0664,
 	"sysstat",	{Qsysstat},	0,		0666,
 	"time",		{Qtime},	NUMSIZE,	0664,
+	"timing",	{Qtiming},	3*8,		0664,
 	"user",		{Quser},	NAMELEN,	0666,
 };
 
@@ -528,6 +530,21 @@ consclose(Chan *c)
 	}
 }
 
+
+uvlong order = 0x0001020304050607ULL;
+
+void
+vlong2le(char *t, vlong from)
+{
+	uchar *f, *o;
+	int i;
+
+	f = (uchar*)&from;
+	o = (uchar*)&order;
+	for(i = 0; i < 8; i++)
+		t[i] = f[o[i]];
+}
+
 static long
 consread(Chan *c, void *buf, long n, vlong off)
 {
@@ -654,6 +671,26 @@ consread(Chan *c, void *buf, long n, vlong off)
 		readvlnum(0, tmp+2*NUMSIZE, 2*NUMSIZE, fasthz, 2*NUMSIZE);
 		memmove(buf, tmp+k, n);
 		return n;
+
+	case Qtiming:
+		k = 0;
+		if(n >= 3*8){
+			ticks = fastticks((uvlong*)&fasthz);
+			vlong2le(cbuf+16, fasthz);
+			vlong2le(cbuf+8, ticks);
+			k += 2*8;
+		} else if(n >= 2*8){
+			ticks = fastticks(nil);
+			vlong2le(cbuf+8, ticks);
+			k += 8;
+		}
+		if(n >= 8){
+			ticks = todget();
+			vlong2le(cbuf, ticks);
+			k += 8;
+		}
+		return k;
+			
 
 	case Qkey:
 		return keyread(buf, n, offset);
