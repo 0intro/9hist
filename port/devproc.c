@@ -55,7 +55,7 @@ enum
  */
 Dirtab procdir[] =
 {
-	"args",	{Qargs},		0,			0660,
+	"args",		{Qargs},	0,			0660,
 	"ctl",		{Qctl},		0,			0000,
 	"fd",		{Qfd},		0,			0444,
 	"fpregs",	{Qfpregs},	sizeof(FPsave),		0000,
