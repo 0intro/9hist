@@ -237,7 +237,7 @@ drawgen(Chan *c, Dirtab *tab, int x, int s, Dir *dp)
 	if(t == Q2nd || t == Qnew){
 		if(s == 0){
 			q = (Qid){Qnew, 0};
-			devdir(c, q, "new", 0, eve, 0666, dp);
+			devdir(c, q, "new", 0, eve, 0600, dp);
 		}
 		else if(s <= sdraw.nclient){
 			cl = sdraw.client[s-1];
