@@ -135,13 +135,13 @@ eipfmt(Fmt *f)
 	switch(f->r) {
 	case 'E':		/* Ethernet address */
 		p = va_arg(f->args, uchar*);
-		return fmtit(f, efmt, p[0], p[1], p[2], p[3], p[4], p[5]);
+		return fmtprint(f, efmt, p[0], p[1], p[2], p[3], p[4], p[5]);
 
 	case 'I':		/* Ip address */
 		p = va_arg(f->args, uchar*);
 common:
 		if(memcmp(p, v4prefix, 12) == 0)
-			return fmtit(f, ifmt, p[12], p[13], p[14], p[15]);
+			return fmtprint(f, ifmt, p[12], p[13], p[14], p[15]);
 
 		/* find longest elision */
 		eln = eli = -1;
@@ -179,7 +179,7 @@ common:
 
 	case 'V':		/* v4 ip address */
 		p = va_arg(f->args, uchar*);
-		return fmtit(f, ifmt, p[0], p[1], p[2], p[3]);
+		return fmtprint(f, ifmt, p[0], p[1], p[2], p[3]);
 
 	case 'M':		/* ip mask */
 		p = va_arg(f->args, uchar*);
@@ -199,10 +199,10 @@ common:
 			n = 8*16;
 
 		/* got one, use /xx format */
-		return fmtit(f, "/%d", n);
+		return fmtprint(f, "/%d", n);
 
 	}
-	return fmtit(f, "(eipfmt)");
+	return fmtprint(f, "(eipfmt)");
 }
 
 #define CLASS(p) ((*(uchar*)(p))>>6)
