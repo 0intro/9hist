@@ -44,9 +44,20 @@ s3pageset(VGAscr* scr, int page)
 static void
 s3page(VGAscr* scr, int page)
 {
-	lock(&scr->devlock);
-	s3pageset(scr, page);
-	unlock(&scr->devlock);
+	int id;
+
+	id = (vgaxi(Crtx, 0x30)<<8)|vgaxi(Crtx, 0x2E);
+	switch(id){
+
+	case 0xE110:				/* ViRGE/GX2 */
+		break;
+
+	default:
+		lock(&scr->devlock);
+		s3pageset(scr, page);
+		unlock(&scr->devlock);
+		break;
+	}
 }
 
 static ulong
@@ -109,7 +120,7 @@ s3disable(VGAscr*)
 static void
 s3enable(VGAscr* scr)
 {
-	int i;
+	int i, id;
 	ulong storage;
 
 	s3disable(scr);
@@ -117,16 +128,30 @@ s3enable(VGAscr* scr)
 	/*
 	 * Cursor colours. Set both the CR0[EF] and the colour
 	 * stack in case we are using a 16-bit RAMDAC.
-	 * Why are these colours reversed?
+	 * This stuff is just a mystery for the ViRGE/GX2.
 	 */
 	vgaxo(Crtx, 0x0E, Pwhite);
 	vgaxo(Crtx, 0x0F, Pblack);
 	vgaxi(Crtx, 0x45);
-	for(i = 0; i < 4; i++)
-		vgaxo(Crtx, 0x4A, Pwhite);
-	vgaxi(Crtx, 0x45);
-	for(i = 0; i < 4; i++)
-		vgaxo(Crtx, 0x4B, Pblack);
+	id = (vgaxi(Crtx, 0x30)<<8)|vgaxi(Crtx, 0x2E);
+	switch(id){
+
+	case 0xE110:				/* ViRGE/GX2 */
+		for(i = 0; i < 3; i++)
+			vgaxo(Crtx, 0x4A, Pblack);
+		vgaxi(Crtx, 0x45);
+		for(i = 0; i < 3; i++)
+			vgaxo(Crtx, 0x4B, Pwhite);
+		break;
+
+	default:
+		for(i = 0; i < 3; i++)
+			vgaxo(Crtx, 0x4A, Pwhite);
+		vgaxi(Crtx, 0x45);
+		for(i = 0; i < 3; i++)
+			vgaxo(Crtx, 0x4B, Pblack);
+		break;
+	}
 
 	/*
 	 * Find a place for the cursor data in display memory.
@@ -139,9 +164,9 @@ s3enable(VGAscr* scr)
 	scr->storage = storage;
 
 	/*
-	 * Enable the cursor in X11 mode.
+	 * Enable the cursor in Microsoft Windows format.
 	 */
-	vgaxo(Crtx, 0x55, vgaxi(Crtx, 0x55)|0x10);
+	vgaxo(Crtx, 0x55, vgaxi(Crtx, 0x55) & ~0x10);
 	s3vsyncactive();
 	vgaxo(Crtx, 0x45, 0x01);
 }
@@ -150,29 +175,38 @@ static void
 s3load(VGAscr* scr, Cursor* curs)
 {
 	uchar *p;
-	int opage, x, y;
+	int id, opage, x, y;
 
 	/*
 	 * Disable the cursor and
 	 * set the pointer to the two planes.
-	 * Is linear addressing turned on? This will determine
-	 * how we access the cursor storage.
 	 */
 	s3disable(scr);
 
+	opage = 0;
 	p = KADDR(scr->aperture);
-	lock(&scr->devlock);
-	opage = s3pageset(scr, scr->storage>>16);
-	p += (scr->storage & 0xFFFF);
+	id = (vgaxi(Crtx, 0x30)<<8)|vgaxi(Crtx, 0x2E);
+	switch(id){
+
+	case 0xE110:				/* ViRGE/GX2 */
+		p += scr->storage;
+		break;
+
+	default:
+		lock(&scr->devlock);
+		opage = s3pageset(scr, scr->storage>>16);
+		p += (scr->storage & 0xFFFF);
+		break;
+	}
 
 	/*
-	 * The cursor is set in X11 mode which gives the following
-	 * truth table:
+	 * The cursor is set in Microsoft Windows format (the ViRGE/GX2 no
+	 * longer supports the X11 format) which gives the following truth table:
 	 *	and xor	colour
-	 *	 0   0	underlying pixel colour
-	 *	 0   1	underlying pixel colour
-	 *	 1   0	background colour
-	 *	 1   1	foreground colour
+	 *	 0   0	background colour
+	 *	 0   1	foreground colour
+	 *	 1   0	current screen pixel
+	 *	 1   1	NOT current screen pixel
 	 * Put the cursor into the top-left of the 64x64 array.
 	 *
 	 * The cursor pattern in memory is interleaved words of
@@ -181,22 +215,30 @@ s3load(VGAscr* scr, Cursor* curs)
 	for(y = 0; y < 64; y++){
 		for(x = 0; x < 64/8; x += 2){
 			if(x < 16/8 && y < 16){
-				*p++ = curs->clr[2*y + x]|curs->set[2*y + x];
-				*p++ = curs->clr[2*y + x+1]|curs->set[2*y + x+1];
+				*p++ = ~(curs->clr[2*y + x]|curs->set[2*y + x]);
+				*p++ = ~(curs->clr[2*y + x+1]|curs->set[2*y + x+1]);
 				*p++ = curs->set[2*y + x];
 				*p++ = curs->set[2*y + x+1];
 			}
 			else {
-				*p++ = 0x00;
-				*p++ = 0x00;
+				*p++ = 0xFF;
+				*p++ = 0xFF;
 				*p++ = 0x00;
 				*p++ = 0x00;
 			}
 		}
 	}
 
-	s3pageset(scr, opage);
-	unlock(&scr->devlock);
+	switch(id){
+
+	case 0xE110:				/* ViRGE/GX2 */
+		break;
+
+	default:
+		s3pageset(scr, opage);
+		unlock(&scr->devlock);
+		break;
+	}
 
 	/*
 	 * Save the cursor hotpoint and enable the cursor.

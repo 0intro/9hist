@@ -91,6 +91,7 @@ ark2000pvload(VGAscr* scr, Cursor* curs)
 	opage = 0;
 	p = KADDR(scr->aperture);
 	if(!(seq10 & 0x10)){
+		lock(&scr->devlock);
 		opage = ark2000pvpageset(scr, scr->storage>>16);
 		p += (scr->storage & 0xFFFF);
 	}
