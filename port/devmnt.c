@@ -176,7 +176,9 @@ mattach(Mnt *m, char *spec, char *auth)
 	r = mntralloc();
 
 	c = devattach('M', spec);
-	c->dev = m->id;
+	lock(&mntalloc);
+	c->dev = mntalloc.id++;
+	unlock(&mntalloc);
 	c->mntindex = m-mntalloc.mntarena;
 
 	if(waserror()){
@@ -719,7 +721,8 @@ mntchk(Chan *c)
 	Mnt *m;
 
 	m = &mntalloc.mntarena[c->mntindex];
-	if(m->id != c->dev)
+	/* Was it closed and reused ? */
+	if(m->id == 0 || m->id >= c->dev)
 		error(Eshutdown);
 	return m;
 }
