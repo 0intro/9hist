@@ -1203,13 +1203,13 @@ drawcoord(uchar *p, uchar *maxp, int oldx, int *newx)
 }
 
 static void
-printmesg(char *fmt, uchar *a, int itwouldmakemehappyifyouprintthis)
+printmesg(char *fmt, uchar *a, int plsprnt)
 {
 	char buf[256];
 	char *p, *q;
 	int s;
 
-	if(1|| itwouldmakemehappyifyouprintthis==0){
+	if(1|| plsprnt==0){
 		SET(s,q,p);
 		USED(fmt, a, buf, p, q, s);
 		return;
@@ -1813,7 +1813,7 @@ drawmesg(Client *client, void *av, int n)
 			dstflush(dstid, dst, Rect(p.x, p.y, q.x, p.y+Dy(font->image->r)));
 			continue;
 
-		/* use public screen: 'S' id[4] ldepth[4] */
+		/* use public screen: 'S' id[4] chan[4] */
 		case 'S':
 			printmesg(fmt="Ll", a, 0);
 			m = 1+4+4;
@@ -1825,8 +1825,8 @@ drawmesg(Client *client, void *av, int n)
 			dscrn = drawlookupdscreen(dstid);
 			if(dscrn==0 || (dscrn->public==0 && dscrn->owner!=client))
 				error(Enodrawscreen);
-			if(dscrn->screen->image->depth != (1<<BGLONG(a+5)))
-				error("inconsistent depth");
+			if(dscrn->screen->image->chan != BGLONG(a+5))
+				error("inconsistent chan");
 			if(drawinstallscreen(client, dscrn, 0, 0, 0, 0) == 0)
 				error(Edrawmem);
 			continue;
