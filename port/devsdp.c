@@ -1040,8 +1040,8 @@ convstats(Conv *c, int local, char *buf, int n)
 	p += snprint(p, ep-p, "outDataPackets: %lud\n", stats->outDataPackets);
 	p += snprint(p, ep-p, "outDataBytes: %lud\n", stats->outDataBytes);
 	p += snprint(p, ep-p, "outCompDataBytes: %lud\n", stats->outCompDataBytes);
-	for(i=0; i<NCompStat; i++) {
-		if(stat->outCompStats[i] == 0)
+	for(i=0; i<NCompStats; i++) {
+		if(stats->outCompStats[i] == 0)
 			continue;
 		p += snprint(p, ep-p, "outCompStats[%d]: %lud\n", i, stats->outCompStats[i]);
 	}
@@ -1078,7 +1078,7 @@ convack(Conv *c)
 	hnputl(ack->outDataPackets, s->outDataPackets);
 	hnputl(ack->outDataBytes, s->outDataBytes);
 	hnputl(ack->outCompDataBytes, s->outCompDataBytes);
-	for(i=0; i<NCompStat; i++)
+	for(i=0; i<NCompStats; i++)
 		hnputl(ack->outCompStats+i*4, s->outCompStats[i]);
 	hnputl(ack->inPackets, s->inPackets);
 	hnputl(ack->inDataPackets, s->inDataPackets);
@@ -1324,7 +1324,6 @@ convicontrol(Conv *c, int subtype, Block *b)
 {
 	ulong cseq;
 	AckPkt *ack;
-	int i;
 
 	if(BLEN(b) < 4)
 		return;
@@ -2002,7 +2001,7 @@ thwackcomp(Conv *c, int, ulong seq, Block **bp)
 	b->rp[3] = c->in.seq;
 
 	bb = allocb(BLEN(b));
-	nn = thwack(c->out.compstate, bb->wp, b->rp, BLEN(b), seq, c->lstats.outCompStats);
+	nn = thwack(c->out.compstate, bb->wp, b->rp, BLEN(b), seq);
 	if(nn < 0) {
 		freeb(bb);
 		*bp = b;
