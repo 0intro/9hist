@@ -499,6 +499,7 @@ void	ipremotefill(Chan*, char*, int);
 void	ipstatusfill(Chan*, char*, int);
 int	ipforme(uchar*);
 void	ipsetaddrs(void);
+int	ipconbusy(Ipconv*);
 
 #define	fmtaddr(xx)	(xx>>24)&0xff,(xx>>16)&0xff,(xx>>8)&0xff,xx&0xff
 #define	MIN(a, b)	((a) < (b) ? (a) : (b))
@@ -525,7 +526,8 @@ extern Qinfo arpinfo;
 extern Queue *Ipoutput;
 
 /* offsets into Myip */
-enum {
+enum
+{
 	Myself=		0,
 	Mybcast=	1,
 	Mynet=		3,

@@ -36,7 +36,8 @@ tcp_output(Ipconv *s)
 		sndq = tcb->sndq;
 
 		/* Don't send anything else until our SYN has been acked */
-		if(sent != 0 && !(tcb->flags & SYNACK))
+		if(sent != 0)
+		if((tcb->flags & SYNACK) == 0)
 			break;
 
 		if(tcb->snd.wnd == 0){
@@ -50,7 +51,8 @@ tcp_output(Ipconv *s)
 			 * limited by the congestion window
 			 */
 			usable = MIN(tcb->snd.wnd,tcb->cwind) - sent;
-			if(sent != 0 && qlen - sent < tcb->mss) 
+			if(sent != 0)
+			if(qlen - sent < tcb->mss) 
 				usable = 0;
 		}
 
@@ -60,7 +62,8 @@ tcp_output(Ipconv *s)
 		seg.up = 0;
 
 		DPRINT("tcp_out: ssize = %lux\n", ssize);
-		if(ssize == 0 && (tcb->flags & FORCE) == 0)
+		if(ssize == 0)
+		if((tcb->flags & FORCE) == 0)
 			break;
 
 		/* Stop ack timer if one will be piggy backed on data */
@@ -175,9 +178,11 @@ tcp_timeout(void *arg)
 	switch(tcb->state){
 	case Closed:
 		panic("tcptimeout");
+
 	case Time_wait:
 		close_self(s, 0);
 		break;
+
 	case Established:
 		if(tcb->backoff < MAXBACKOFF)
 			tcb->backoff++;

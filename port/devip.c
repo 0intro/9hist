@@ -160,18 +160,18 @@ ipincoming(Ipconv *base, Ipconv *from)
 	etab = &base[conf.ip];
 	for(new = base; new < etab; new++) {
 		if(new->ref == 0 && canqlock(new)) {
-			if(new->ref ||
-		          (new->stproto == &tcpinfo && new->tcpctl.state != Closed) ||
-			  (new->stproto == &ilinfo && new->ilctl.state != Ilclosed)) {
+			if(new->ref || ipconbusy(new)) {
 				qunlock(new);
 				continue;
 			}
 			if(from)
 				/* copy ownership from listening channel */
-				netown(new->net, new->index, new->net->prot[from->index].owner, 0);
+				netown(new->net, new->index,
+				       new->net->prot[from->index].owner, 0);
 			else
 				/* current user becomes owner */
 				netown(new->net, new->index, u->p->user, 0);
+
 			new->ref = 1;
 			new->newcon = 0;
 			qunlock(new);
@@ -242,9 +242,8 @@ ipwrite(Chan *c, char *a, long n, ulong offset)
 		error(Ebadarg);
 
 	if(strcmp(field[0], "connect") == 0) {
-		if((cp->stproto == &tcpinfo && cp->tcpctl.state != Closed) ||
-		   (cp->stproto == &ilinfo && cp->ilctl.state != Ilclosed))
-				error(Enetbusy);
+		if(ipconbusy(cp))
+			error(Enetbusy);
 
 		if(m != 2)
 			error(Ebadarg);
@@ -284,9 +283,8 @@ ipwrite(Chan *c, char *a, long n, ulong offset)
 		cp->pdst = 0;
 	}
 	else if(strcmp(field[0], "announce") == 0) {
-		if((cp->stproto == &tcpinfo && cp->tcpctl.state != Closed) ||
-		   (cp->stproto == &ilinfo && cp->ilctl.state != Ilclosed))
-				error(Enetbusy);
+		if(ipconbusy(cp))
+			error(Enetbusy);
 
 		if(m != 2)
 			error(Ebadarg);
@@ -325,6 +323,19 @@ ipwrite(Chan *c, char *a, long n, ulong offset)
 	return n;
 }
 
+int
+ipconbusy(Ipconv  *cp)
+{
+	if(cp->stproto == &tcpinfo)
+	if(cp->tcpctl.state != Closed)
+		return 1;
+
+	if(cp->stproto == &ilinfo)
+	if(cp->ilctl.state != Ilclosed)
+		return 1;
+
+	return 0;
+}
 
 void
 udpstiput(Queue *q, Block *bp)
@@ -369,8 +380,9 @@ udprcvmsg(Ipconv *muxed, Block *bp)
 	/* Look for a conversation structure for this port */
 	etab = &muxed[conf.ip];
 	for(ifc = muxed; ifc < etab; ifc++) {
-		if(ifc->psrc == dport && ifc->ref &&
-		   (ifc->pdst == 0 || ifc->pdst == sport)) {
+		if(ifc->ref)
+		if(ifc->psrc == dport)
+		if(ifc->pdst == 0 || ifc->pdst == sport) {
 			/* Trim the packet down to data size */
 			len = len - (UDP_HDRSIZE-UDP_PHDRSIZE);
 			bp = btrim(bp, UDP_EHSIZE+UDP_HDRSIZE, len);
@@ -512,6 +524,7 @@ tcpstoput(Queue *q, Block *bp)
 		tcb->flags |= ACTIVE;
 		send_syn(tcb);
 		setstate(s, Syn_sent);
+
 		/* No break */
 	case Syn_sent:
 	case Syn_received:
@@ -530,6 +543,7 @@ tcpstoput(Queue *q, Block *bp)
 		tcp_output(s);
 		qunlock(tcb);
 		break;
+
 	default:
 		freeb(bp);
 		error(Ehungup);
@@ -629,8 +643,12 @@ iplisten(Chan *c)
 	s = &ipconv[c->dev][connection];
 	base = ipconv[c->dev];
 
-	if((s->stproto == &tcpinfo && s->tcpctl.state != Listen) ||
-	   (s->stproto == &ilinfo && s->ilctl.state != Illistening))
+	if(s->stproto == &tcpinfo)
+	if(s->tcpctl.state != Listen)
+		error(Enolisten);
+
+	if(s->stproto == &ilinfo)
+	if(s->ilctl.state != Illistening)
 		error(Enolisten);
 
 	qlock(&s->listenq);
@@ -677,12 +695,14 @@ tcpstclose(Queue *q)
 	case Syn_sent:
 		close_self(s, 0);
 		break;
+
 	case Syn_received:
 	case Established:
 		tcb->sndcnt++;
 		tcb->snd.nxt++;
 		setstate(s, Finwait1);
 		goto output;
+
 	case Close_wait:
 		tcb->sndcnt++;
 		tcb->snd.nxt++;

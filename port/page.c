@@ -49,54 +49,139 @@ unlockpage(Page *p)
 	p->lock = 0;
 }
 
+typedef struct Region	Region;
+struct Region
+{
+	ulong	start;
+	ulong	end;
+};
+
+enum
+{
+	Nregion=	10,
+};
+Region region[Nregion];
+
+
 /*
  *  Called to allocate permanent data structures, before calling pageinit().
  *  We assume all of text+data+bss is in the first memory bank.
+ *
+ *  alignment is in number of bytes
+ *
+ *  WARNING: You can't cross a crevasse!
  */
+void
+addsplit(Region *r, ulong start, ulong end)
+{
+	Region *rr;
+	int len = end - start;
+
+	/* first look for an unused one */
+	for(rr = region; rr < &region[Nregion]; rr++){
+		if(rr == r)
+			continue;
+		if(rr->end - rr->start == 0){
+			rr->start = start;
+			rr->end = end;
+			return;
+		}
+	}
+
+	/* then look for a smaller one */
+	for(rr = region; rr < &region[Nregion]; rr++){
+		if(rr == r)
+			continue;
+		if(rr->end - rr->start < len){
+			rr->start = start;
+			rr->end = end;
+			return;
+		}
+	}
+}
 void*
-ialloc(ulong n, int align)
+iallocspan(ulong n, int align, ulong crevasse)
 {
 	ulong p;
-	ulong *ap;
+	Region *r;
+	int m;
+	int ledge;
 
 	if(palloc.active && n!=0)
 		print("ialloc bad\n");
 
 	if(palloc.addr0 == 0){
-		/* addr0 and addr1 are physical addresses */
-		palloc.addr0 = (((ulong)&end)&~KZERO) + conf.base0;
-		palloc.addr1 = conf.base1;
+		region[Nregion-2].start = (((ulong)&end)&~KZERO) + conf.base0;
+		region[Nregion-2].end = conf.base0 + (conf.npage0<<PGSHIFT);
+		region[Nregion-1].start = conf.base1;
+		region[Nregion-1].end = conf.base1 + (conf.npage1<<PGSHIFT);
+
+		palloc.addr0 = region[Nregion-2].start;
+		palloc.addr1 = region[Nregion-1].start;
 	}
 
 	/*
-	 *  try first bank
+	 *  alignment also applies to length
 	 */
-	p = align ? PGROUND(palloc.addr0) : palloc.addr0;
-	if(p+n > conf.base0 + (conf.npage0<<PGSHIFT)){
-		/*
-		 *  no room in first bank, try second bank
-		 */
-		if(conf.npage1 <= 0)
-			panic("keep bill joy away 1");
-		p = align ? PGROUND(palloc.addr1) : palloc.addr1;
-		ap = &palloc.addr1;
-	} else
-		ap = &palloc.addr0;
+	if(align){
+		m = n % align;
+		if(m)
+			n += align - m;
+	}
 
-	if(p >= conf.maxialloc)
-		panic("keep bill joy away 2");
+	p = 0;
+	for(r = region; r < &region[Nregion]; r++){
+		/* allign region */
+		p = r->start;
+		if(align){
+			m = p % align;
+			if(m)
+				p += align - m;
+		}
+
+		/* check for crossing a crevasse */
+		if(crevasse){
+			ledge = p / crevasse;
+			if(ledge != ((p+n-1) / crevasse))
+				p = ((p+n-1) / crevasse) * crevasse;
+		}
+
+		/* see if it fits */
+		if(p + n > r->end)
+			continue;
+
+		/* split the region */
+		if(p != r->start)
+			addsplit(r, r->start, p);
+		r->start = p + n;
+		break;
+	}
+	if(r == &region[Nregion])
+		panic("out of memory");
+
+	/*
+	 *  remember high water marks
+	 */
+	if(palloc.addr0 < r->start && r->start <= conf.base0+(conf.npage0<<PGSHIFT))
+		palloc.addr0 = r->start;
+	else if(palloc.addr1 < r->start && r->start <= conf.base1+(conf.npage1<<PGSHIFT))
+		palloc.addr1 = r->start;
 
 	/*
 	 *  zero it
 	 */
 	memset((void*)(p|KZERO), 0, n);
 
-	/*
-	 *  don't put anything else into a page aligned ialloc
-	 */
-	*ap = align ? PGROUND(p+n) : (p+n);
-
 	return (void*)(p|KZERO);
+}
+
+/*
+ *  allocate with possible page alignment
+ */
+void*
+ialloc(ulong n, int align)
+{
+	return iallocspan(n, align ? BY2PG : 0, 0);
 }
 
 void

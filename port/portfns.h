@@ -88,6 +88,7 @@ void	grpinit(void);
 int	hwcursmove(int, int);
 int	hwcursset(uchar*, uchar*, int, int);
 void*	ialloc(ulong, int);
+void*	iallocspan(ulong, int, ulong);
 long	ibrk(ulong, int);
 int	incref(Ref*);
 void	initq(IOQ*);

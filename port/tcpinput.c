@@ -156,11 +156,13 @@ process:
 			goto done;
 		}
 
-		if((seg.flags & ACK) && PREC(tos) != PREC(tcb->tos)){
+		if(seg.flags & ACK)
+		if(PREC(tos) != PREC(tcb->tos)){
 			freeb(bp);
 			reset(source, dest, tos, length, &seg);
 			goto done;
 		}
+
 		if(seg.flags & SYN) {
 			proc_syn(s, tos, &seg);
 			if(seg.flags & ACK){
@@ -193,7 +195,8 @@ process:
 	/* If we have no opens and the other end is sending data then
 	 * reply with a reset
 	 */
-	if(s->readq == 0 && length) {
+	if(length)
+	if(s->readq == 0) {
 		freeb(bp);
 		reset(source, dest, tos, length, &seg);
 		goto done;
@@ -293,7 +296,8 @@ process:
 			case Finwait2:
 				/* Place on receive queue */
 				tcb->rcvcnt += blen(bp);
-				if(s->readq && bp) {
+				if(bp)
+				if(s->readq) {
 					PUTNEXT(s->readq, bp);
 					bp = 0;
 				}
@@ -358,42 +362,6 @@ done:
 }
 
 void
-tcp_icmp(Ipconv *ipc, Ipaddr source, Ipaddr dest, char type, char code, Block **bpp)
-{
-	Tcp seg;
-	Tcpctl *tcb;
-	Ipconv *s;
-
-	ntohtcp(&seg, bpp);
-	if(!(s = ip_conn(ipc, seg.source, seg.dest, dest, IP_TCPPROTO)))
-		return;
-
-	tcb = &s->tcpctl;
-
-	if(!seq_within(seg.seq, tcb->snd.una, tcb->snd.nxt))
-		return;
-
-	switch((uchar)type) {
-	case ICMP_UNREACH:
-		tcb->type = type;
-		tcb->code = code;
-		if(tcb->state == Syn_sent || tcb->state == Syn_received)
-			close_self(s, Enetunreach);
-		break;
-	case ICMP_TIMXCEED:
-		tcb->type = type;
-		tcb->code = code;
-		if(tcb->state == Syn_sent || tcb->state == Syn_received)
-			close_self(s, Etimedout);
-		break;
-	case ICMP_SOURCEQUENCH:
-		tcb->cwind = tcb->cwind/2;
-		tcb->cwind = MAX(tcb->mss,tcb->cwind);
-		break;
-	}
-}
-
-void
 reset(Ipaddr source, Ipaddr dest, char tos, ushort length, Tcp *seg)
 {
 	Block *hbp;
@@ -455,10 +423,12 @@ update(Ipconv *s, Tcp *seg)
 		return;
 	}
 
-	if(seq_gt(seg->seq,tcb->snd.wl1) || ((seg->seq == tcb->snd.wl1) 
-	 && seq_ge(seg->ack,tcb->snd.wl2))) {
-		if(tcb->snd.wnd == 0 && seg->wnd != 0)
+	if(seq_ge(seg->ack,tcb->snd.wl2))
+	if(seq_gt(seg->seq,tcb->snd.wl1) || (seg->seq == tcb->snd.wl1)) {
+		if(seg->wnd != 0)
+		if(tcb->snd.wnd == 0)
 			tcb->snd.ptr = tcb->snd.una;
+
 		tcb->snd.wnd = seg->wnd;
 		tcb->snd.wl1 = seg->seq;
 		tcb->snd.wl2 = seg->ack;
@@ -483,10 +453,11 @@ update(Ipconv *s, Tcp *seg)
 	}
 
 	/* Round trip time estimation */
-	if(run_timer(&tcb->rtt_timer) && seq_ge(seg->ack, tcb->rttseq)) {
+	if(run_timer(&tcb->rtt_timer))
+	if(seq_ge(seg->ack, tcb->rttseq)) {
 		stop_timer(&tcb->rtt_timer);
-		if(!(tcb->flags & RETRAN)) {
 
+		if(!(tcb->flags & RETRAN)) {
 			rtt = tcb->rtt_timer.start - tcb->rtt_timer.count;
 			rtt *= MSPTICK;	
 			if(rtt > tcb->srtt &&
@@ -654,7 +625,8 @@ trim(Tcpctl *tcb, Tcp *seg, Block **bp, ushort *length)
 		len++;
 
 	if(tcb->rcv.wnd == 0) {
-		if(seg->seq == tcb->rcv.nxt && len == 0)
+		if(len == 0)
+		if(seg->seq == tcb->rcv.nxt)
 			return 0;
 	}
 	else {
