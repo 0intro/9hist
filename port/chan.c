@@ -8,10 +8,6 @@
 int chandebug=0;		/* toggled by sysr1 */
 QLock chanprint;		/* probably asking for trouble (deadlocks) -rsc */
 
-/* transition BUG */
-int client9p = 2;
-int kernel9p = 2;
-
 int domount(Chan**, Mhead**);
 Ref mheadcounter;
 

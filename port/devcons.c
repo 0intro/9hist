@@ -103,8 +103,7 @@ putstrn0(char *str, int n, int usewrite)
 	char *t;
 
 	/*
-	 *  if someone is reading /dev/kprint and the message
-	 *  is from the kernel (as opposed to from conswrite),
+	 *  if someone is reading /dev/kprint,
 	 *  put the message there.
 	 *  if not and there's an attached bit mapped display,
 	 *  put the message there.

@@ -8,7 +8,6 @@
 #include	<authsrv.h>
 
 char	*eve;
-char	evekey[DESKEYLEN];
 char	hostdomain[DOMLEN];
 
 /*

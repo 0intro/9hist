@@ -3,9 +3,6 @@
 #include <auth.h>
 #include <fcall.h>
 #include "../boot/boot.h"
-/*BUG transition*/
-int client9p=2;
-int kernel9p=2;
 
 static long lusertime(char*);
 
