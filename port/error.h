@@ -45,7 +45,7 @@ extern char Enovmem[];		/* virtual memory allocation failed */
 extern char Ebadld[];		/* illegal line discipline */
 extern char Ebadfd[];		/* fd out of range or not open */
 extern char Eisstream[];	/* seek on a stream */
-extern char Ebadexec[];		/* a.out header invalid */
+extern char Ebadexec[];		/* exec header invalid */
 extern char Etimedout[];	/* connection timed out */
 extern char Econrefused[];	/* connection refused */
 extern char Enetunreach[];	/* network unreachable */

@@ -94,19 +94,18 @@ schedinit(void)		/* never returns */
 void
 sched(void)
 {
-	uchar procstate[64];
 	Proc *p;
 
 	if(u){
 		splhi();
 		m->cs++;
-		procsave(procstate, sizeof(procstate));
+		procsave(u->p);
 		if(setlabel(&u->p->sched)){	/* woke up */
 			p = u->p;
 			p->state = Running;
 			p->mach = m;
 			m->proc = p;
-			procrestore(p, procstate);
+			procrestore(p);
 			spllo();
 			return;
 		}

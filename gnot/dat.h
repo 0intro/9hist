@@ -178,6 +178,7 @@ struct User
 {
 	Proc	*p;
 	FPsave	fpsave;			/* address of this is known by vdb */
+	uchar	balusave[64];		/* #include botch */
 	int	nerrlab;
 	Label	errlab[NERR];
 	char	error[ERRLEN];

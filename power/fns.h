@@ -44,8 +44,8 @@ Block*	prepend(Block*, int);
 void	prflush(void);
 void	printslave(void);
 #define procsetup(p)	((p)->fpstate = FPinit)
-#define procsave(x,y)
-#define procrestore(x,y)
+#define procsave(p)
+#define procrestore(p)
 void	purgetlb(int);
 void	putstlb(ulong, ulong);
 void	putstrn(char*, long);

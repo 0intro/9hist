@@ -1,4 +1,3 @@
-
 Alarm*	alarm(int, void (*)(Alarm*), void*);
 void	alarminit(void);
 Block*	allocb(ulong);
@@ -149,7 +148,6 @@ void	nullput(Queue*, Block*);
 int	openmode(ulong);
 Block*	padb(Block*, int);
 void	pageinit(void);
-int	pagemeis0(void*);
 void	panic(char*, ...);
 void	pexit(char*, int);
 void	pgrpcpy(Pgrp*, Pgrp*);

@@ -333,7 +333,7 @@ procsetup(Proc *p)
  *  Save the mach dependent part of the process state.
  */
 void
-procsave(uchar *state, int len)
+procsave(Proc *p)
 {
 	if(u->p->fpstate == FPactive){
 		fpsave(&u->fpsave);
@@ -345,7 +345,7 @@ procsave(uchar *state, int len)
  *  Restore what procsave() saves
  */
 void
-procrestore(Proc *p, uchar *state)
+procrestore(Proc *p)
 {
 }
 

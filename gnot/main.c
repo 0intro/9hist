@@ -303,13 +303,10 @@ procsetup(Proc *p)
  * Save the part of the process state.
  */
 void
-procsave(uchar *state, int len)
+procsave(Proc *p)
 {
-	Balu *balu;
+	Balu *balu = (Balu *)u->balusave;
 
-	if(len < sizeof(Balu))
-		panic("save state too small");
-	balu = (Balu *)state;
 	fpsave(&u->fpsave);
 	if(u->fpsave.type){
 		if(u->fpsave.size > sizeof u->fpsave.junk)
@@ -332,11 +329,10 @@ procsave(uchar *state, int len)
  *  Procsave() makes sure that what state points to is long enough
  */
 void
-procrestore(Proc *p, uchar *state)
+procrestore(Proc *p)
 {
-	Balu *balu;
+	Balu *balu = (Balu *)u->balusave;
 
-	balu = (Balu *)state;
 	if(p->fpstate != m->fpstate){
 		if(p->fpstate == FPinit){
 			u->p->fpstate = FPinit;
@@ -349,7 +345,7 @@ procrestore(Proc *p, uchar *state)
 		}
 	}
 	if(balu->cr0 != 0xFFFFFFFF)	/* balu busy */
-		memmove(BALU, balu, sizeof balu);
+		memmove(BALU, balu, sizeof BALU);
 }
 
 void
