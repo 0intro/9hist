@@ -452,7 +452,7 @@ tcpstate(Conv *c, char *state, int n)
 	return snprint(state, n,
 		"%s srtt %d mdev %d cwin %lud swin %lud>>%d rwin %lud>>%d timer.start %d timer.count %d rerecv %d\n",
 		tcpstates[s->state], s->srtt, s->mdev,
-		s->cwind, s->snd.wnd, s->snd.scale, s->rcv.wnd, s->rcv.scale,
+		s->cwind, s->snd.wnd, s->rcv.scale, s->rcv.wnd, s->snd.scale,
 		s->timer.start, s->timer.count, s->rerecv);
 }
 
@@ -924,14 +924,20 @@ htontcp6(Tcp *tcph, Block *data, Tcp6hdr *ph, Tcpctl *tcb)
 	int dlen;
 	Tcp6hdr *h;
 	ushort csum;
-	ushort hdrlen;
+	ushort hdrlen, optpad = 0;
 	uchar *opt;
 
 	hdrlen = TCP6_HDRSIZE;
-	if(tcph->mss)
-		hdrlen += MSS_LENGTH;
-	if(tcph->ws)
-		hdrlen += WS_LENGTH;
+	if(tcph->flags & SYN){
+		if(tcph->mss)
+			hdrlen += MSS_LENGTH;
+		if(tcph->ws)
+			hdrlen += WS_LENGTH;
+		optpad = hdrlen & 3;
+		if(optpad)
+			optpad = 4 - optpad;
+		hdrlen += optpad;
+	}
 
 	if(data) {
 		dlen = blocklen(data);
@@ -963,17 +969,21 @@ htontcp6(Tcp *tcph, Block *data, Tcp6hdr *ph, Tcpctl *tcb)
 	hnputs(h->tcpwin, tcph->wnd>>(tcb != nil ? tcb->snd.scale : 0));
 	hnputs(h->tcpurg, tcph->urg);
 
-	opt = h->tcpopt;
-	if(tcph->mss != 0){
-		*opt++ = MSSOPT;
-		*opt++ = MSS_LENGTH;
-		hnputs(opt, tcph->mss);
-		opt += 2;
-	}
-	if(tcph->ws != 0){
-		*opt++ = WSOPT;
-		*opt++ = WS_LENGTH;
-		*opt = tcph->ws;
+	if(tcph->flags & SYN){
+		opt = h->tcpopt;
+		if(tcph->mss != 0){
+			*opt++ = MSSOPT;
+			*opt++ = MSS_LENGTH;
+			hnputs(opt, tcph->mss);
+			opt += 2;
+		}
+		if(tcph->ws != 0){
+			*opt++ = WSOPT;
+			*opt++ = WS_LENGTH;
+			*opt++ = tcph->ws;
+		}
+		while(optpad-- > 0)
+			*opt++ = NOOPOPT;
 	}
 
 	if(tcb != nil && tcb->nochecksum){
@@ -998,14 +1008,20 @@ htontcp4(Tcp *tcph, Block *data, Tcp4hdr *ph, Tcpctl *tcb)
 	int dlen;
 	Tcp4hdr *h;
 	ushort csum;
-	ushort hdrlen;
+	ushort hdrlen, optpad = 0;
 	uchar *opt;
 
 	hdrlen = TCP4_HDRSIZE;
-	if(tcph->mss)
-		hdrlen += MSS_LENGTH;
-	if(tcph->ws)
-		hdrlen += WS_LENGTH;
+	if(tcph->flags & SYN){
+		if(tcph->mss)
+			hdrlen += MSS_LENGTH;
+		if(tcph->ws)
+			hdrlen += WS_LENGTH;
+		optpad = hdrlen & 3;
+		if(optpad)
+			optpad = 4 - optpad;
+		hdrlen += optpad;
+	}
 
 	if(data) {
 		dlen = blocklen(data);
@@ -1033,17 +1049,21 @@ htontcp4(Tcp *tcph, Block *data, Tcp4hdr *ph, Tcpctl *tcb)
 	hnputs(h->tcpwin, tcph->wnd>>(tcb != nil ? tcb->snd.scale : 0));
 	hnputs(h->tcpurg, tcph->urg);
 
-	opt = h->tcpopt;
-	if(tcph->mss != 0){
-		*opt++ = MSSOPT;
-		*opt++ = MSS_LENGTH;
-		hnputs(opt, tcph->mss);
-		opt += 2;
-	}
-	if(tcph->ws != 0){
-		*opt++ = WSOPT;
-		*opt++ = WS_LENGTH;
-		*opt = tcph->ws;
+	if(tcph->flags & SYN){
+		opt = h->tcpopt;
+		if(tcph->mss != 0){
+			*opt++ = MSSOPT;
+			*opt++ = MSS_LENGTH;
+			hnputs(opt, tcph->mss);
+			opt += 2;
+		}
+		if(tcph->ws != 0){
+			*opt++ = WSOPT;
+			*opt++ = WS_LENGTH;
+			*opt++ = tcph->ws;
+		}
+		while(optpad-- > 0)
+			*opt++ = NOOPOPT;
 	}
 
 	if(tcb != nil && tcb->nochecksum){
@@ -1074,7 +1094,7 @@ ntohtcp6(Tcp *tcph, Block **bpp)
 	tcph->dest = nhgets(h->tcpdport);
 	tcph->seq = nhgetl(h->tcpseq);
 	tcph->ack = nhgetl(h->tcpack);
-	hdrlen = h->tcpflag[0]>>2;
+	hdrlen = (h->tcpflag[0]>>2) & ~3;
 	if(hdrlen < TCP6_HDRSIZE) {
 		freeblist(*bpp);
 		return -1;
@@ -1108,7 +1128,7 @@ ntohtcp6(Tcp *tcph, Block **bpp)
 				tcph->mss = nhgets(optr+2);
 			break;
 		case WSOPT:
-			if(optlen == WS_LENGTH)
+			if(optlen == WS_LENGTH && *(optr+2) <= 14)
 				tcph->ws = HaveWS | *(optr+2);
 			break;
 		}
@@ -1137,7 +1157,7 @@ ntohtcp4(Tcp *tcph, Block **bpp)
 	tcph->seq = nhgetl(h->tcpseq);
 	tcph->ack = nhgetl(h->tcpack);
 
-	hdrlen = h->tcpflag[0]>>2;
+	hdrlen = (h->tcpflag[0]>>2) & ~3;
 	if(hdrlen < TCP4_HDRSIZE) {
 		freeblist(*bpp);
 		return -1;
@@ -1171,7 +1191,7 @@ ntohtcp4(Tcp *tcph, Block **bpp)
 				tcph->mss = nhgets(optr+2);
 			break;
 		case WSOPT:
-			if(optlen == WS_LENGTH)
+			if(optlen == WS_LENGTH && *(optr+2) <= 14)
 				tcph->ws = HaveWS | *(optr+2);
 			break;
 		}
