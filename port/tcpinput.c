@@ -657,7 +657,6 @@ add_reseq(Tcpctl *tcb, char tos, Tcp *seg, Block *bp, ushort length)
 	qlock(&reseqlock);
 	if(!reseqfree) {
 		qunlock(&reseqlock);
-		print("tcp: no resequence descriptors\n");
 		freeb(bp);
 		return;
 	}

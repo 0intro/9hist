@@ -70,11 +70,6 @@ Segdesc ilt[256] =
 uchar	traptab[4096];
 
 /*
- *  set up some basic vectored interrupts
- */
-trapinit(
-
-/*
  *  j-random uncaught trap or interrupt
  */
 void

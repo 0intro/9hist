@@ -519,6 +519,8 @@ syscall(Ureg *aur)
 			msg = "sys: odd stack";
 			goto Bad;
 		}
+		if(((ulong*)ur->pc)[-2] != 0x23bdfffc)	/* new calling convention: look for ADD $-4, SP */
+			sp -= BY2WD;
 		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-5*BY2WD))
 			validaddr(sp, 5*BY2WD, 0);
 		ret = (*systab[r1])((ulong*)(sp+2*BY2WD));
