@@ -972,7 +972,7 @@ ilsettimeout(Ilcb *ic)
 
 	pt = (ic->delay>>LogAGain)
 		+ ic->unackedbytes/(ic->rate>>LogAGain)
-		+ (ic->mdev>>(LogDGain-1))
+		+ (ic->mdev>>(LogDGain-2))
 		+ AckDelay;
 	if(pt > MaxTimeout)
 		pt = MaxTimeout;
@@ -987,7 +987,7 @@ ilbackoff(Ilcb *ic)
 
 	pt = (ic->delay>>LogAGain)
 		+ ic->unackedbytes/(ic->rate>>LogAGain)
-		+ (ic->mdev>>(LogDGain-1))
+		+ (ic->mdev>>(LogDGain-2))
 		+ AckDelay;
 	for(i = 0; i < ic->rexmit; i++)
 		pt = pt + (pt>>1);
@@ -1082,6 +1082,7 @@ ilcbinit(Ilcb *ic)
 	ic->outoforder = nil;
 	ic->rexmit = 0;
 	ic->rxtot = 0;
+	ic->rxquery = 0;
 	ic->qtx = 1;
 
 	/* timers */
