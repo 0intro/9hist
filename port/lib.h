@@ -60,6 +60,7 @@ extern	int	numbconv(void*, Fconv*);
 extern	char	*doprint(char*, char*, char*, void*);
 extern	int	fmtinstall(int, int (*)(void*, Fconv*));
 extern	int	sprint(char*, char*, ...);
+extern	int	snprint(char*, int, char*, ...);
 extern	int	print(char*, ...);
 
 /*

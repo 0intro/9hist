@@ -95,6 +95,12 @@ putstrn(char *str, int n)
 }
 
 int
+snprint(char *s, int n, char *fmt, ...)
+{
+	return doprint(s, s+n, fmt, (&fmt+1)) - s;
+}
+
+int
 sprint(char *s, char *fmt, ...)
 {
 	return doprint(s, s+PRINTSIZE, fmt, (&fmt+1)) - s;

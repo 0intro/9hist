@@ -256,7 +256,7 @@ vgactl(char *arg)
 	int i, x, y, z;
 	char *cp, *field[3];
 
-	if(getfields(arg, field, 3, ' ') != 2)
+	if(getfields(arg, field, 3, " ") != 2)
 		error(Ebadarg);
 
 	if(strcmp(field[0], "hwgc") == 0){

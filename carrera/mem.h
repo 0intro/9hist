@@ -166,6 +166,7 @@
 #define	KSEG2	0xC0000000
 #define	KSEG3	0xE0000000
 #define	KSEGM	0xE0000000	/* mask to check which seg */
+#define	CACHELINESZ	128
 
 #define	PIDXSHFT	12
 #define	PIDX		(0x7<<PIDXSHFT)

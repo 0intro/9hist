@@ -151,7 +151,7 @@ struct Slot
 	uchar	busy;
 
 	/* cis info */
-	uchar	verstr[512];	/* version string */
+	char	verstr[512];	/* version string */
 	uchar	vpp1;
 	uchar	vpp2;
 	uchar	bit16;
@@ -1173,7 +1173,7 @@ tvers1(Slot *pp, int ttype)
 	if(readc(pp, &minor) != 1)
 		return;
 	for(i = 0; i < sizeof(pp->verstr)-1; i++){
-		if(readc(&c) != 1)
+		if(readc(pp, &c) != 1)
 			return;
 		if(c == 0)
 			c = '\n';

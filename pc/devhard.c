@@ -880,12 +880,12 @@ hardreplinit(Drive *dp)
 	/*
 	 *  parse replacement table.
 	 */
-	n = getfields(buf, line, Nrepl+1, '\n');
+	n = getfields(buf, line, Nrepl+1, "\n");
 	if(strncmp(line[0], REPLMAGIC, sizeof(REPLMAGIC)-1)){
 		dp->repl.p = 0;
 	} else {
 		for(dp->repl.nrepl = 0, i = 1; i < n; i++, dp->repl.nrepl++){
-			if(getfields(line[i], field, 1, ' ') != 1)
+			if(getfields(line[i], field, 1, " ") != 1)
 				break;
 			dp->repl.blk[dp->repl.nrepl] = strtoul(field[0], 0, 0);
 			if(dp->repl.blk[dp->repl.nrepl] <= 0)
@@ -948,14 +948,14 @@ hardpart(Drive *dp)
 	 */
 	hardxfer(dp, pp, Cread, 0, dp->bytes, buf);
 	buf[dp->bytes-1] = 0;
-	n = getfields(buf, line, Npart+1, '\n');
+	n = getfields(buf, line, Npart+1, "\n");
 	if(n == 0 || strncmp(line[0], PARTMAGIC, sizeof(PARTMAGIC)-1)){
 		dp->p[0].end--;
 		dp->p[1].start--;
 		dp->p[1].end--;
 		hardxfer(dp, pp, Cread, 0, dp->bytes, buf);
 		buf[dp->bytes-1] = 0;
-		n = getfields(buf, line, Npart+1, '\n');
+		n = getfields(buf, line, Npart+1, "\n");
 	}
 
 	/*
@@ -964,7 +964,7 @@ hardpart(Drive *dp)
 	if(n && strncmp(line[0], PARTMAGIC, sizeof(PARTMAGIC)-1) == 0){
 		for(i = 1; i < n; i++){
 			pp++;
-			switch(getfields(line[i], field, 3, ' ')) {
+			switch(getfields(line[i], field, 3, " ")) {
 			case 2:
 				if(strcmp(field[0], "unit") == 0)
 					strncpy(dp->vol, field[1], NAMELEN);

@@ -361,7 +361,7 @@ confinit(void)
 	 */
 	cp = BOOTARGS;	/* where b.com leaves its config */
 	cp[BOOTARGSLEN-1] = 0;
-	n = getfields(cp, line, MAXCONF, '\n');
+	n = getfields(cp, line, MAXCONF, "\n");
 	for(j = 0; j < n; j++){
 		cp = strchr(line[j], '\r');
 		if(cp)
