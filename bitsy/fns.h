@@ -38,6 +38,7 @@ void	intrenable(int, int, void (*)(Ureg*, void*), void*, char*);
 int	iprint(char*, ...);
 void	irpower(int);
 void	lcdpower(int);
+void	links(void);
 void*	mapmem(ulong, int, int);
 void	mappedIvecEnable(void);
 void	mappedIvecDisable(void);

@@ -128,7 +128,7 @@ struct Dir
 	ulong	mode;
 	long	atime;
 	long	mtime;
-	Length;
+	vlong	length;
 	short	type;
 	short	dev;
 };

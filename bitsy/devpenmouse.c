@@ -10,6 +10,7 @@
 #include	<memdraw.h>
 #include	<cursor.h>
 #include	"screen.h"
+#include	<ctype.h>
 
 typedef struct Mouseinfo	Mouseinfo;
 typedef struct Mousestate	Mousestate;
@@ -361,6 +362,11 @@ penmousewrite(Chan *c, void *va, long n, vlong)
 				calibration.transx = 0;
 				calibration.transy = 0;
 			} else if (nf == 5) {
+				if ((!isdigit(*field[1]) && *field[1] != '-')
+				 || (!isdigit(*field[2]) && *field[2] != '-')
+				 || (!isdigit(*field[3]) && *field[3] != '-')
+				 || (!isdigit(*field[4]) && *field[4] != '-'))
+					error(Ectlsyntax);
 				calibration.scalex = strtol(field[1], nil, 0);
 				calibration.scaley = strtol(field[2], nil, 0);
 				calibration.transx = strtol(field[3], nil, 0);

@@ -47,12 +47,24 @@ clockinit(void)
 	clockinited = 1;
 }
 
+/*  turn 32 bit counter into a 64 bit one.  since todfix calls
+ *  us at least once a second and we overflow once every 1165
+ *  seconds, we won't miss an overflow.
+ */
 vlong
 fastticks(uvlong *hz)
 {
+	static vlong high;
+	static ulong last;
+	ulong x;
+
 	if(hz != nil)
 		*hz = ClockFreq;
-	return timerregs->oscr;
+	x = timerregs->oscr;
+	if(x < last)
+		high += 1LL<<32;
+	last = x;
+	return high+x;
 }
 
 static void
