@@ -8,80 +8,111 @@
 #include	"devtab.h"
 #include	"fcall.h"
 
+typedef struct Pipe	Pipe;
+
+struct Pipe
+{
+	Ref;
+	int	debug;
+	Pipe	*next;
+};
+
+struct Pipealloc
+{
+	Lock;
+	Pipe *pipe;
+	Pipe *free;
+} pipealloc;
+
 static void pipeiput(Queue*, Block*);
 static void pipeoput(Queue*, Block*);
 static void pipestclose(Queue *);
 Qinfo pipeinfo = { pipeiput, pipeoput, 0, pipestclose, "pipe" };
+
+Dirtab pipedir[]={
+	"data",		Sdataqid,	0,			0600,
+	"ctl",		Sctlqid,	0,			0600,
+	"data1",	Sdataqid,	0,			0600,
+	"ctl1",		Sctlqid,	0,			0600,
+};
+#define NPIPEDIR 4
 
 void
 pipeinit(void)
 {
 }
 
+/*
+ *  allocate structures for conf.npipe pipes
+ */
 void
 pipereset(void)
 {
+	Pipe *p, *ep;
+
+	pipealloc.pipe = ialloc(conf.npipe * sizeof(Pipe), 0);
+	ep = &pipealloc.pipe[conf.npipe-1];
+	for(p = pipealloc.pipe; p < ep; p++)
+		p->next = p+1;
+	pipealloc.free = pipealloc.pipe;
 }
 
 /*
- *  allocate both streams
- *
- *  a subsequent clone will get them the second stream
+ *  create a pipe, no streams are created until an open
  */
 Chan*
 pipeattach(char *spec)
 {
+	Pipe *p;
 	Chan *c;
-	int i;
 
-	/*
-	 *  make the first stream
-	 */
 	c = devattach('|', spec);
-	c->qid = STREAMQID(0, Sdataqid);
-	streamnew(c, &pipeinfo);
+
+	lock(&pipealloc);
+	if(pipealloc.free == 0){
+		unlock(&pipealloc);
+		error(0, Enopipe);
+	}
+	p = pipealloc.free;
+	pipealloc.free = p->next;
+	p->ref = 1;
+	unlock(&pipealloc);
+
+	c->qid = CHDIR|STREAMQID(2*(p - pipealloc.pipe), 0);
 	return c;
 }
 
 Chan*
 pipeclone(Chan *c, Chan *nc)
 {
-	/*
-	 *  make the second stream 
-	 */
+	Pipe *p;
+
+	p = &pipealloc.pipe[STREAMID(c->qid)/2];
 	nc = devclone(c, nc);
-	if(waserror()){
-		close(nc);
-		nexterror();
-	}
-	nc->qid = STREAMQID(1, Sdataqid);
-	streamnew(nc, &pipeinfo);
-	poperror();
-
-	/*
-	 *  attach it to the first
-	 */
-	c->stream->devq->ptr = (Stream *)nc->stream;
-	nc->stream->devq->ptr = (Stream *)c->stream;
-	c->stream->devq->other->next = nc->stream->devq;
-	nc->stream->devq->other->next = c->stream->devq;
-
-	/*
-	 *  up the inuse count of each stream to reflect the
-	 *  pointer from the other stream.
-	 */
-	if(streamenter(c->stream)<0)
-		panic("pipeattach");
-	if(streamenter(nc->stream)<0)
-		panic("pipeattach");
+	incref(p);
 	return nc;
 }
 
 int
+pipegen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
+{
+	int id;
+
+	id = STREAMID(c->qid);
+	if(i > 1)
+		id++;
+	if(tab==0 || i>=ntab)
+		return -1;
+	tab += i;
+	devdir(c, STREAMQID(id, tab->qid), tab->name, tab->length, tab->perm, dp);
+	return 1;
+}
+
+
+int
 pipewalk(Chan *c, char *name)
 {
-	print("pipewalk\n");
-	error(0, Egreg);
+	return devwalk(c, name, pipedir, NPIPEDIR, pipegen);
 }
 
 void
@@ -90,10 +121,60 @@ pipestat(Chan *c, char *db)
 	streamstat(c, db, "pipe");
 }
 
+/*
+ *  if the stream doesn't exist, create it
+ */
 Chan *
 pipeopen(Chan *c, int omode)
 {
-	c->mode = omode;
+	Pipe *p;
+	Stream *local, *remote;
+
+	if(CHDIR & c->qid){
+		if(omode != OREAD)
+			error(0, Ebadarg);
+		c->mode = omode;
+		c->flag |= COPEN;
+		c->offset = 0;
+		return c;
+	}
+
+	p = &pipealloc.pipe[STREAMID(c->qid)/2];
+	remote = 0;
+	if(waserror()){
+		unlock(p);
+		if(remote)
+			streamclose1(remote);
+		nexterror();
+	}
+	lock(p);
+	streamopen(c, &pipeinfo);
+	local = c->stream;
+	if(local->devq->ptr == 0){
+		/*
+		 *  First stream opened, create the other end also
+		 */
+		remote = streamnew(c->type, c->dev, STREAMID(c->qid)^1, &pipeinfo, 1);
+
+		/*
+		 *  connect the device ends of both streams
+		 */
+		local->devq->ptr = remote;
+		remote->devq->ptr = local;
+		local->devq->other->next = remote->devq;
+		remote->devq->other->next = local->devq;
+
+		/*
+		 *  increment the inuse count to reflect the
+		 *  pointer from the other stream.
+		 */
+		if(streamenter(local)<0)
+			panic("pipeattach");
+	}
+	unlock(p);
+	poperror();
+
+	c->mode = omode&~OTRUNC;
 	c->flag |= COPEN;
 	c->offset = 0;
 	return c;
@@ -118,27 +199,56 @@ pipewstat(Chan *c, char *db)
 }
 
 void
+pipeexit(Pipe *p)
+{
+	decref(p);
+	if(p->ref <= 0){
+		lock(&pipealloc);
+		p->next = pipealloc.free;
+		pipealloc.free = p;
+		unlock(&pipealloc);
+	}
+}
+
+void
 pipeclose(Chan *c)
 {
-	Stream *other;
+	Stream *remote;
+	Stream *local;
+	Pipe *p;
 
-	other = (Stream *)c->stream->devq->ptr;
+	p = &pipealloc.pipe[STREAMID(c->qid)/2];
 
-	if(waserror()){
-		streamexit(other, 0);
-		nexterror();
+	/*
+	 *  take care of assosiated streams
+	 */
+	if(local = c->stream){
+		remote = (Stream *)c->stream->devq->ptr;
+		if(waserror()){
+			streamexit(remote, 0);
+			pipeexit(p);
+			nexterror();
+		}
+		streamclose(c);		/* close this stream */
+		streamexit(remote, 0);	/* release stream for other half of pipe */
+		poperror();
 	}
-	streamclose(c);		/* close this stream */
-	streamexit(other, 0);	/* release stream for other half of pipe */
-	poperror();
+	pipeexit(p);
 }
 
 long
 piperead(Chan *c, void *va, long n)
 {
-	return streamread(c, va, n);
+	if(CHDIR&c->qid)
+		return devdirread(c, va, n, pipedir, NPIPEDIR, pipegen);
+	else
+		return streamread(c, va, n);
 }
 
+/*
+ *  a write to a closed pipe causes a note to be sent to
+ *  the process.
+ */
 long
 pipewrite(Chan *c, void *va, long n)
 {

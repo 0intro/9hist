@@ -148,6 +148,8 @@ struct Conf
 	ulong	nnoifc;		/* number of nonet interfaces */
 	ulong	nnoconv;	/* number of nonet conversations/ifc */
 	ulong	nurp;		/* max urp conversations */
+	ulong	nasync;		/* number of async protocol modules */
+	ulong	npipe;		/* number of pipes */
 };
 
 struct Dev
@@ -450,14 +452,13 @@ struct Queue {
  */
 struct Stream {
 	Lock;			/* structure lock */
-	int	inuse;		/* number of processes in stream */
-	int	opens;		/* number of processes with stream open */
-	int	hread;		/* number of reads after hangup */
-	int	type;		/* correclation with Chan */
-	int	dev;		/* ... */
-	int	id;		/* ... */
+	short	inuse;		/* number of processes in stream */
+	short	opens;		/* number of processes with stream open */
+	ushort	hread;		/* number of reads after hangup */
+	ushort	type;		/* correlation with Chan */
+	ushort	dev;		/* ... */
+	ushort	id;		/* ... */
 	QLock	rdlock;		/* read lock */
-	QLock	wrlock;		/* write lock */
 	Queue	*procq;		/* write queue at process end */
 	Queue	*devq;		/* read queue at device end */
 };

@@ -24,6 +24,8 @@ Conftab conftab[] = {
 	{"nnoifc", &conf.nnoifc },
 	{"nnoconv", &conf.nnoconv },
 	{"nurp", &conf.nurp },
+	{"nasync", &conf.nasync },
+	{"npipe", &conf.npipe },
 	{ 0, 0 },
 };
 

@@ -500,6 +500,8 @@ sysforkpgrp(ulong *arg)
 	}
 	if(arg[0] == 0)
 		pgrpcpy(pg, u->p->pgrp);
+	else
+		memcpy(pg->user, u->p->pgrp->user, NAMELEN);
 	closepgrp(u->p->pgrp);
 	u->p->pgrp = pg;
 	return pg->pgrpid;

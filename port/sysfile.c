@@ -31,12 +31,12 @@ fdtochan(int fd, int mode)
 
 	if(fd<0 || NFD<=fd || (c=u->fd[fd])==0)
 		error(0, Ebadfd);
-	if(mode<0 || c->mode == 2)
+	if(mode<0 || c->mode==ORDWR)
 		return c;
-	if((mode&16) && c->mode==0)
+	if((mode&OTRUNC) && c->mode==OREAD)
     err:
 		error(0, Ebadusefd);
-	if((mode&~16) != c->mode)
+	if((mode&~OTRUNC) != c->mode)
 		goto err;
 	return c;
 }
@@ -53,6 +53,45 @@ openmode(ulong o)
 	if(o == OEXEC)
 		return OREAD;
 	return o;
+}
+
+long
+syspipe(ulong *arg)
+{
+	int fd[2];
+	Chan *c[2];
+	Dev *d;
+
+	validaddr(arg[0], 2*BY2WD, 1);
+	evenaddr(arg[0]);
+	d = &devtab[devno('|', 0)];
+	c[0] = (*d->attach)(0);
+	c[1] = 0;
+	fd[0] = -1;
+	fd[1] = -1;
+	if(waserror()){
+		close(c[0]);
+		if(c[1])
+			close(c[1]);
+		if(fd[0] >= 0)
+			u->fd[fd[0]]=0;
+		if(fd[1] >= 0)
+			u->fd[fd[1]]=0;
+		nexterror();
+	}
+	c[1] = (*d->clone)(c[0], 0);
+	(*d->walk)(c[0], "data");
+	(*d->walk)(c[1], "data1");
+	c[0] = (*d->open)(c[0], ORDWR);
+	c[1] = (*d->open)(c[1], ORDWR);
+	fd[0] = newfd();
+	u->fd[fd[0]] = c[0];
+	fd[1] = newfd();
+	u->fd[fd[1]] = c[1];
+	((long*)arg[0])[0] = fd[0];
+	((long*)arg[0])[1] = fd[1];
+	poperror();
+	return 0;
 }
 
 long
@@ -180,7 +219,7 @@ sysread(ulong *arg)
 	Chan *c;
 	long n;
 
-	c = fdtochan(arg[0], 0);
+	c = fdtochan(arg[0], OREAD);
 	validaddr(arg[1], arg[2], 1);
 	qlock(c);
 	if(waserror()){
@@ -208,7 +247,7 @@ syswrite(ulong *arg)
 	Chan *c;
 	long n;
 
-	c = fdtochan(arg[0], 1);
+	c = fdtochan(arg[0], OWRITE);
 	validaddr(arg[1], arg[2], 0);
 	qlock(c);
 	if(waserror()){
@@ -380,43 +419,6 @@ long
 sysmount(ulong *arg)
 {
 	return bindmount(arg, 1);
-}
-
-long
-syspipe(ulong *arg)
-{
-	int fd[2];
-	Chan *c[2];
-	Dev *d;
-
-	validaddr(arg[0], 2*BY2WD, 1);
-	evenaddr(arg[0]);
-	d = &devtab[devno('|', 0)];
-	c[0] = (*d->attach)(0);
-	c[1] = 0;
-	fd[0] = -1;
-	fd[1] = -1;
-	if(waserror()){
-		close(c[0]);
-		if(c[1])
-			close(c[1]);
-		if(fd[0] >= 0)
-			u->fd[fd[0]]=0;
-		if(fd[1] >= 0)
-			u->fd[fd[1]]=0;
-		nexterror();
-	}
-	c[1] = (*d->clone)(c[0], 0);
-	c[0] = (*d->open)(c[0], ORDWR);
-	c[1] = (*d->open)(c[1], ORDWR);
-	fd[0] = newfd();
-	u->fd[fd[0]] = c[0];
-	fd[1] = newfd();
-	u->fd[fd[1]] = c[1];
-	((long*)arg[0])[0] = fd[0];
-	((long*)arg[0])[1] = fd[1];
-	poperror();
-	return 0;
 }
 
 long

@@ -612,6 +612,7 @@ confinit(void)
 	conf.npte = 4 * conf.npage;
 	conf.nqueue = 3 * conf.nstream;
 	conf.nblock = 10 * conf.nstream;
+	conf.npipe = conf.nstream/2;
 
 	confread();
 

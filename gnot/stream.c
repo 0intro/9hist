@@ -235,6 +235,7 @@ allocq(Qinfo *qi)
 	q->info = qi;
 	q->put = qi->iput;
 	q->len = q->nb = 0;
+	q->ptr = 0;
 	wq = q->other = q + 1;
 
 	wq->flag = QINUSE;
@@ -242,6 +243,7 @@ allocq(Qinfo *qi)
 	wq->info = qi;
 	wq->put = qi->oput;
 	wq->other = q;
+	wq->ptr = 0;
 	wq->len = wq->nb = 0;
 
 	unlock(q);
@@ -625,10 +627,10 @@ streamgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 }
 
 /*
- *  create a new stream
+ *  create a new stream, if noopen is non-zero, don't increment the open count
  */
 Stream *
-streamnew(Chan *c, Qinfo *qi)
+streamnew(ushort type, ushort dev, ushort id, Qinfo *qi, int noopen)
 {
 	Stream *s;
 	Queue *q;
@@ -651,26 +653,25 @@ streamnew(Chan *c, Qinfo *qi)
 	}
 	if(waserror()){
 		unlock(s);
-		streamclose(c);
+		streamclose1(s);
 		nexterror();
 	}
 
 	/*
-	 *  marry a stream and a channel
+	 *  identify the stream
 	 */
-	if(c){
-		c->stream = s;
-		s->type = c->type;
-		s->dev = c->dev;
-		s->id = STREAMID(c->qid);
-	} else
-		s->type = -1;
+	s->type = type;
+	s->dev = dev;
+	s->id = id;
 
 	/*
  	 *  hang a device and process q off the stream
 	 */
 	s->inuse = 1;
-	s->opens = 1;
+	if(noopen)
+		s->opens = 0;
+	else
+		s->opens = 1;
 	s->hread = 0;
 	q = allocq(&procinfo);
 	s->procq = WR(q);
@@ -699,7 +700,7 @@ streamopen(Chan *c, Qinfo *qi)
 	Queue *q;
 
 	/*
-	 *  if the stream already exists, just up the reference count.
+	 *  if the stream already exists, just increment the reference counts.
 	 */
 	for(s = slist; s < &slist[conf.nstream]; s++) {
 		if(s->inuse && s->type == c->type && s->dev == c->dev
@@ -721,7 +722,7 @@ streamopen(Chan *c, Qinfo *qi)
 	/*
 	 *  create a new stream
 	 */
-	streamnew(c, qi);
+	c->stream = streamnew(c->type, c->dev, STREAMID(c->qid), qi, 0);
 }
 
 /*
@@ -773,17 +774,10 @@ streamexit(Stream *s, int locked)
  *  stream release its blocks and call its close routine.
  */
 void
-streamclose(Chan *c)
+streamclose1(Stream *s)
 {
 	Queue *q, *nq;
 	Block *bp;
-	Stream *s = c->stream;
-
-	/*
-	 *  if not open, ignore it
-	 */
-	if(!c->stream)
-		return;
 
 	/*
 	 *  decrement the reference count
@@ -816,6 +810,16 @@ streamclose(Chan *c)
 	 */
 	streamexit(s, 1);
 	unlock(s);
+}
+void
+streamclose(Chan *c)
+{
+	/*
+	 *  if no stream, ignore it
+	 */
+	if(!c->stream)
+		return;
+	streamclose1(c->stream);
 }
 
 /*
@@ -1174,7 +1178,7 @@ dumpblocks(Queue *q, char c)
 
 	lock(q);
 	for(bp = q->first; bp; bp = bp->next){
-		print("%c%d%c", c, bp->wptr-bp->rptr, (bp->flags&S_DELIM));
+		print("%c%d%c", c, bp->wptr-bp->rptr, (bp->flags&S_DELIM)?'D':' ');
 		for(cp = bp->rptr; cp<bp->wptr && cp<bp->rptr+10; cp++)
 			print(" %uo", *cp);
 		print("\n");
