@@ -156,7 +156,7 @@ kfault(Ureg *ur)
 		panic("kmapfault: %lux", addr);
 
 	k = &kpte[index];
-	if(k->virt == 0)
+	if(k->virt == 0 || k->ref < 1)
 		panic("kmapfault: unmapped %lux", addr);
 
 	for(f = m->kactive; f; f = f->konmach[mno])
@@ -211,6 +211,7 @@ mmuswitch(Proc *p)
 	tp = p->pidonmach[m->machno];
 	if(tp == 0)
 		tp = newtlbpid(p);
+
 	puttlbx(0, KZERO|PTEPID(tp), 0, 0, PGSZ4K);
 }
 

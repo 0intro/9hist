@@ -15,8 +15,8 @@
 
 #define SONICADDR	((Sonic*)Sonicbase)
 
-#define RD(rn)		(sncdly(), *(ulong*)((ulong)&SONICADDR->rn^4))
-#define WR(rn, v)	(sncdly(), *(ulong*)((ulong)&SONICADDR->rn^4) = (v))
+#define RD(rn)		(delay(0), *(ulong*)((ulong)&SONICADDR->rn^4))
+#define WR(rn, v)	(delay(0), *(ulong*)((ulong)&SONICADDR->rn^4) = (v))
 #define ISquad(s)	if((ulong)s & 0x7) panic("sonic: Quad alignment");
 
 typedef struct Pbuf Pbuf;
@@ -251,16 +251,6 @@ Ether *ether[Nether];
 void sonicswap(void*, int);
 
 static void
-sncdly(void)
-{
-	int i, j, *pj;
-
-	pj = &j;
-	for(i = 0; i < 200; i++)
-		*pj++;
-}
-
-static void
 wus(ushort *a, ushort v)
 {
 	a[0] = v;
@@ -458,12 +448,13 @@ etherintr(void)
 		if(status == 0)
 			break;
 
+		/* Clear the interrupt cause */
 		WR(isr, status);
 	
 		/*
 		 * Transmission complete, for good or bad.
 		 */
-		if(status & (Txdn|Txer)){
+		if(status & (Txdn|Txer)) {
 			txpkt = &c->tda[c->ti];
 			while(txpkt->status != Host){
 				if(txpkt->status == Interface){
@@ -621,7 +612,6 @@ etherreset(void)
 	 * Set the physical ethernet address and
 	 * prime the interrupt handler.
 	 */
-
 	if(ether[0] == 0) {
 		ctlr = malloc(sizeof(Ether));
 		ether[0] = ctlr;

@@ -391,10 +391,6 @@ confinit(void)
 	conf.nproc = 100;
 	conf.nswap = conf.npage*3;
 	conf.nimage = 200;
-	conf.ipif = 8;
-	conf.ip = 64;
-	conf.arp = 32;
-	conf.frag = 32;
 
 	conf.monitor = 1;
 

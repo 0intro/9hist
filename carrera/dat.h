@@ -48,11 +48,6 @@ struct Conf
 	ulong	base1;		/* base of bank 1 */
 	ulong	copymode;	/* 0 is copy on write, 1 is copy on reference */
 	int	monitor;
-
-	ulong	ipif;		/* Ip protocol interfaces */
-	ulong	ip;		/* Ip conversations per interface */
-	ulong	arp;		/* Arp table size */
-	ulong	frag;		/* Ip fragment assemble queue size */
 };
 
 /*
@@ -101,15 +96,12 @@ struct Mach
 	int	tlbfault;		/* # of tlb faults FIFTH */
 	int	tlbpurge;		/* MUST BE SIXTH */
 
-	/* the following is safe to move */
+	/* the following are safe to move */
 	ulong	otlbfault;		/* tlbfault at last sched */
 	ulong	ticks;			/* of the clock since boot time */
 	Label	sched;			/* scheduler wakeup */
-	Lock	alarmlock;		/* access to alarm list */
-	void*	alarm;			/* alarms bound to this clock */
 	int	lastpid;		/* last pid allocated on this machine */
 	Proc*	pidproc[NTLBPID];	/* proc that owns tlbpid on this mach */
-	Page*	ufreeme;		/* address of upage of exited process */
 	Ureg*	ur;
 	KMap*	kactive;		/* active on this machine */
 	int	knext;

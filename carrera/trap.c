@@ -238,6 +238,9 @@ trap(Ureg *ur)
 
 	Default:
 	default:
+		((ulong*)0xA0020000)[7] = 0x87654321;
+		((void(*)(void))0xA001C020)();
+
 		if(user) {
 			spllo();
 			sprint(buf, "sys: %s", excname[ecode]);
@@ -278,36 +281,32 @@ trap(Ureg *ur)
 void
 intr(Ureg *ur)
 {
-	uchar devint;
+	static uchar devint;
 	ulong cause = ur->cause;
 
 	m->intr++;
 	cause &= INTR7|INTR6|INTR5|INTR4|INTR3|INTR2|INTR1|INTR0;
 
 	if(cause & INTR3) {
-		for(;;) {
-			devint = IO(uchar, Intcause);
-			if(devint == 0)
-				break;
-			switch(devint) {
-			default:
-				panic("unknown devint=#%lux", devint);
-			case 0x28:		/* Serial 1 */
-				NS16552intr(0);
-				break;
-			case 0x24:		/* Serial 2 */
-				NS16552intr(1);
-				break;
-			case 0x14:
-				etherintr();
-				break;
-			case 0x1C:
-				kbdintr();
-				break;
-			case 0x20:
-				mouseintr();
-				break;
-			}
+		devint = IO(uchar, Intcause);
+		switch(devint) {
+		default:
+			panic("unknown devint=#%lux", devint);
+		case 0x28:		/* Serial 1 */
+			NS16552intr(0);
+			break;
+		case 0x24:		/* Serial 2 */
+			NS16552intr(1);
+			break;
+		case 0x14:
+			etherintr();
+			break;
+		case 0x1C:
+			kbdintr();
+			break;
+		case 0x20:
+			mouseintr();
+			break;
 		}
 		cause &= ~INTR3;
 	}

@@ -134,7 +134,6 @@ print("! ");
 	else
 		palloc.tail = p->prev;
 
-
 	palloc.freecount--;
 	unlock(&palloc);
 
