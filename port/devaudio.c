@@ -15,7 +15,6 @@
 
 typedef struct	AQueue	AQueue;
 typedef struct	Buf	Buf;
-typedef struct	Level	Level;
 
 enum
 {
@@ -24,10 +23,23 @@ enum
 	Qvolume,
 
 	Fmono		= 1,
+	Fin		= 2,
+	Fout		= 4,
 
 	Aclosed		= 0,
 	Aread,
 	Awrite,
+
+	Vaudio		= 0,
+	Vsynth,
+	Vcd,
+	Vline,
+	Vmic,
+	Vspeaker,
+	Vtreb,
+	Vbass,
+	Vspeed,
+	Nvol,
 
 	Speed		= 44100,
 	Ncmd		= 50,		/* max volume command words */
@@ -40,19 +52,6 @@ audiodir[] =
 	"volume",	{Qvolume},		0,	0666,
 };
 
-struct	Level
-{
-	int	master;		/* mixer output volume control */
-	int	ogain;		/* extra gain after master */
-	int	pcm;		/* mixer volume on D/A (voice) */
-	int	synth;		/* mixer volume on synthesizer (MIDI) */
-	int	cd;		/* mixer volume on cd */
-	int	line;		/* mixer volume on line */
-	int	igain;		/* mixer volume to A/D */
-	int	treb;		/* treb control */
-	int	bass;		/* bass control */
-	int	iswitch;	/* input on/off switches */
-};
 struct	Buf
 {
 	uchar*	virt;
@@ -74,12 +73,10 @@ static	struct
 	int	active;		/* boolean dma running */
 	int	intr;		/* boolean an interrupt has happened */
 	int	amode;		/* Aclosed/Aread/Awrite for /audio */
-	Level	left;		/* all of left volumes */
-	Level	right;		/* all of right volumes */
-	int	mic;		/* mono level */
-	int	speaker;	/* mono level */
-	int	oswitch;	/* output on/off switches */
-	int	speed;		/* pcm sample rate, doesnt change w stereo */
+	int	rivol[Nvol];		/* right/left input/output volumes */
+	int	livol[Nvol];
+	int	rovol[Nvol];
+	int	lovol[Nvol];
 	int	major;		/* SB16 major version number (sb 4) */
 	int	minor;		/* SB16 minor version number */
 
@@ -93,31 +90,22 @@ static	struct
 static	struct
 {
 	char*	name;
-	int*	ptr1;
-	int*	ptr2;
 	int	flag;
-	int	ilval;
+	int	ilval;		/* initial values */
 	int	irval;
 } volumes[] =
 {
-	"master",	&audio.left.master,	&audio.right.master,	0,	50,	50,
-	"ogain",	&audio.left.ogain,	&audio.right.ogain,	0, 	0,	0,
-	"igain",	&audio.left.igain,	&audio.right.igain,	0, 	0,	0,
+[Vaudio]		"audio",		Fout, 		50,	50,
+[Vsynth]		"synth",		Fin|Fout,		0,	0,
+[Vcd]		"cd",		Fin|Fout,		0,	0,
+[Vline]		"line",		Fin|Fout,		0,	0,
+[Vmic]		"mic",		Fin|Fout|Fmono,	0,	0,
+[Vspeaker]	"speaker",	Fout|Fmono,	0,	0,
 
-	"treb",		&audio.left.treb,	&audio.right.treb,	0, 	50,	50,
-	"bass",		&audio.left.bass,	&audio.right.bass,	0, 	50,	50,
+[Vtreb]		"treb",		Fout, 		50,	50,
+[Vbass]		"bass",		Fout, 		50,	50,
 
-	"pcm",		&audio.left.pcm,	&audio.right.pcm,	0, 	90,	90,
-	"synth",	&audio.left.synth,	&audio.right.synth,	0,	90,	90,
-	"cd",		&audio.left.cd,		&audio.right.cd,	0,	81,	81,
-	"line",		&audio.left.line,	&audio.right.line,	0,	65,	65,
-
-	"mic",		&audio.mic,		&audio.mic,		Fmono,	0,	0,
-	"speaker",	&audio.speaker,		&audio.speaker,		Fmono,	0,	0,
-	"oswitch",	&audio.oswitch,		&audio.oswitch,		Fmono,	31,	31,
-	"iswitch",	&audio.left.iswitch,	&audio.right.iswitch,	0,	85,	43,
-
-	"speed",	&audio.speed,		&audio.speed,		Fmono,	Speed,	Speed,
+[Vspeed]		"speed",		Fin|Fout|Fmono,	Speed,	Speed,
 	0
 };
 
@@ -229,39 +217,68 @@ mxcmdu(int s, int v)
 static	void
 mxvolume(void)
 {
+	int *left, *right;
+	int source;
+
+	if(audio.amode == Aread){
+		left = audio.livol;
+		right = audio.rivol;
+	}else{
+		left = audio.lovol;
+		right = audio.rovol;
+	}
+
 	ilock(&blaster);
-	mxcmds(0x30, audio.left.master);
-	mxcmds(0x31, audio.right.master);
 
-	mxcmdt(0x32, audio.left.pcm);
-	mxcmdt(0x33, audio.right.pcm);
+	mxcmd(0x30, 255);		/* left master */
+	mxcmd(0x31, 255);		/* right master */
+	mxcmd(0x3f, 0);		/* left igain */
+	mxcmd(0x40, 0);		/* right igain */
+	mxcmd(0x41, 0);		/* left ogain */
+	mxcmd(0x42, 0);		/* right ogain */
 
-	mxcmdt(0x34, audio.left.synth);
-	mxcmdt(0x35, audio.right.synth);
+	mxcmds(0x32, left[Vaudio]);
+	mxcmds(0x33, right[Vaudio]);
 
-	mxcmdt(0x36, audio.left.cd);
-	mxcmdt(0x37, audio.right.cd);
+	mxcmds(0x34, left[Vsynth]);
+	mxcmds(0x35, right[Vsynth]);
 
-	mxcmdt(0x38, audio.left.line);
-	mxcmdt(0x39, audio.right.line);
+	mxcmds(0x36, left[Vcd]);
+	mxcmds(0x37, right[Vcd]);
 
-	mxcmdt(0x3a, audio.mic);
-	mxcmdt(0x3b, audio.speaker);
+	mxcmds(0x38, left[Vline]);
+	mxcmds(0x39, right[Vline]);
 
-	mxcmds(0x3f, audio.left.igain);
-	mxcmds(0x40, audio.right.igain);
-	mxcmds(0x41, audio.left.ogain);
-	mxcmds(0x42, audio.right.ogain);
+	mxcmds(0x3a, left[Vmic]);
+	mxcmds(0x3b, left[Vspeaker]);
 
-	mxcmdu(0x44, audio.left.treb);
-	mxcmdu(0x45, audio.right.treb);
+	mxcmdu(0x44, left[Vtreb]);
+	mxcmdu(0x45, right[Vtreb]);
 
-	mxcmdu(0x46, audio.left.bass);
-	mxcmdu(0x47, audio.right.bass);
+	mxcmdu(0x46, left[Vbass]);
+	mxcmdu(0x47, right[Vbass]);
 
-	mxcmd(0x3c, audio.oswitch);
-	mxcmd(0x3d, audio.left.iswitch);
-	mxcmd(0x3e, audio.right.iswitch);
+	source = 0;
+	if(left[Vsynth])
+		source |= 1<<6;
+	if(right[Vsynth])
+		source |= 1<<5;
+	if(left[Vaudio])
+		source |= 1<<4;
+	if(right[Vaudio])
+		source |= 1<<3;
+	if(left[Vcd])
+		source |= 1<<2;
+	if(right[Vcd])
+		source |= 1<<1;
+	if(left[Vmic])
+		source |= 1<<0;
+	if(audio.amode == Aread)
+		mxcmd(0x3c, 0);		/* output switch */
+	else
+		mxcmd(0x3c, source);
+	mxcmd(0x3d, source);		/* input left switch */
+	mxcmd(0x3e, source);		/* input right switch */
 	iunlock(&blaster);
 }
 
@@ -337,15 +354,19 @@ static	void
 startdma(void)
 {
 	ulong count;
+	int speed;
 
 	ilock(&blaster);
 	dmaend(Dma);
-	if(audio.amode == Aread)
+	if(audio.amode == Aread) {
 		sbcmd(0x42);			/* input sampling rate */
-	else
+		speed = audio.livol[Vspeed];
+	} else {
 		sbcmd(0x41);			/* output sampling rate */
-	sbcmd(audio.speed>>8);
-	sbcmd(audio.speed);
+		speed = audio.lovol[Vspeed];
+	}
+	sbcmd(speed>>8);
+	sbcmd(speed);
 
 	count = (Bufsize >> 1) - 1;
 	if(audio.amode == Aread)
@@ -479,8 +500,10 @@ resetlevel(void)
 	int i;
 
 	for(i=0; volumes[i].name; i++) {
-		*volumes[i].ptr1 = volumes[i].ilval;
-		*volumes[i].ptr2 = volumes[i].irval;
+		audio.lovol[i] = volumes[i].ilval;
+		audio.rovol[i] = volumes[i].irval;
+		audio.livol[i] = volumes[i].ilval;
+		audio.rivol[i] = volumes[i].irval;
 	}
 }
 
@@ -629,6 +652,7 @@ audioopen(Chan *c, int omode)
 		setempty();
 		audio.curcount = 0;
 		qunlock(&audio);
+		mxvolume();
 		break;
 	}
 	c = devopen(c, omode, audiodir, NPORT, devgen);
@@ -684,8 +708,9 @@ audioclose(Chan *c)
 long
 audioread(Chan *c, char *a, long n, ulong offset)
 {
-	long m, o, n0, bn;
-	char buf[256];
+	int liv, riv, lov, rov;
+	long m, n0;
+	char buf[300];
 	Buf *b;
 	int j;
 
@@ -737,18 +762,36 @@ audioread(Chan *c, char *a, long n, ulong offset)
 
 	case Qvolume:
 		j = 0;
-		for(m=0; volumes[m].name; m++) {
-			o = *volumes[m].ptr1;
-			if(volumes[m].flag & Fmono)
-				j += snprint(buf+j, sizeof(buf)-j, "%s %d\n", volumes[m].name, o);
-			else {
-				bn = *volumes[m].ptr2;
-				if(o == bn)
-					j += snprint(buf+j, sizeof(buf)-j, "%s both %d\n", volumes[m].name, o);
-				else
-					j += snprint(buf+j, sizeof(buf)-j, "%s left %d right %d\n",
-						volumes[m].name, o, bn);
+		buf[0] = 0;
+		for(m=0; volumes[m].name; m++){
+			liv = audio.livol[m];
+			riv = audio.rivol[m];
+			lov = audio.lovol[m];
+			rov = audio.rovol[m];
+			j += snprint(buf+j, sizeof(buf)-j, "%s", volumes[m].name);
+			if((volumes[m].flag & Fmono) || liv==riv && lov==rov){
+				if((volumes[m].flag&(Fin|Fout))==(Fin|Fout) && liv==lov)
+					j += snprint(buf+j, sizeof(buf)-j, " %d", liv);
+				else{
+					if(volumes[m].flag & Fin)
+						j += snprint(buf+j, sizeof(buf)-j, " in %d", liv);
+					if(volumes[m].flag & Fout)
+						j += snprint(buf+j, sizeof(buf)-j, " out %d", lov);
+				}
+			}else{
+				if((volumes[m].flag&(Fin|Fout))==(Fin|Fout) && liv==lov && riv==rov)
+					j += snprint(buf+j, sizeof(buf)-j, " left %d right %d",
+						liv, riv);
+				else{
+					if(volumes[m].flag & Fin)
+						j += snprint(buf+j, sizeof(buf)-j, " in left %d right %d",
+							liv, riv);
+					if(volumes[m].flag & Fout)
+						j += snprint(buf+j, sizeof(buf)-j, " out left %d right %d",
+							lov, rov);
+				}
 			}
+			j += snprint(buf+j, sizeof(buf)-j, "\n");
 		}
 
 		return readstr(offset, a, n, buf);
@@ -766,7 +809,7 @@ long
 audiowrite(Chan *c, char *a, long n, ulong offset)
 {
 	long m, n0;
-	int i, nf, v, left, right;
+	int i, nf, v, left, right, in, out;
 	char buf[255], *field[Ncmd];
 	Buf *b;
 
@@ -779,9 +822,11 @@ audiowrite(Chan *c, char *a, long n, ulong offset)
 		break;
 
 	case Qvolume:
-		v = 0;
+		v = Vaudio;
 		left = 1;
 		right = 1;
+		in = 1;
+		out = 1;
 		if(n > sizeof(buf)-1)
 			n = sizeof(buf)-1;
 		memmove(buf, a, n);
@@ -794,10 +839,14 @@ audiowrite(Chan *c, char *a, long n, ulong offset)
 			 */
 			if(field[i][0] >= '0' && field[i][0] <= '9') {
 				m = strtoul(field[i], 0, 10);
-				if(left)
-					*volumes[v].ptr1 = m;
-				if(right)
-					*volumes[v].ptr2 = m;
+				if(left && out)
+					audio.lovol[v] = m;
+				if(left && in)
+					audio.livol[v] = m;
+				if(right && out)
+					audio.rovol[v] = m;
+				if(right && in)
+					audio.rivol[v] = m;
 				mxvolume();
 				goto cont0;
 			}
@@ -805,6 +854,10 @@ audiowrite(Chan *c, char *a, long n, ulong offset)
 			for(m=0; volumes[m].name; m++) {
 				if(strcmp(field[i], volumes[m].name) == 0) {
 					v = m;
+					in = 1;
+					out = 1;
+					left = 1;
+					right = 1;
 					goto cont0;
 				}
 			}
@@ -814,6 +867,16 @@ audiowrite(Chan *c, char *a, long n, ulong offset)
 				mxvolume();
 				goto cont0;
 			}
+			if(strcmp(field[i], "in") == 0) {
+				in = 1;
+				out = 0;
+				goto cont0;
+			}
+			if(strcmp(field[i], "out") == 0) {
+				in = 0;
+				out = 1;
+				goto cont0;
+			}
 			if(strcmp(field[i], "left") == 0) {
 				left = 1;
 				right = 0;
@@ -821,11 +884,6 @@ audiowrite(Chan *c, char *a, long n, ulong offset)
 			}
 			if(strcmp(field[i], "right") == 0) {
 				left = 0;
-				right = 1;
-				goto cont0;
-			}
-			if(strcmp(field[i], "both") == 0) {
-				left = 1;
 				right = 1;
 				goto cont0;
 			}
