@@ -169,7 +169,7 @@ long		mntwrite9p(Chan*, void*, long, vlong);
 void		mountfree(Mount*);
 ulong		msize(void*);
 Chan*		namec(char*, int, int, ulong);
-void		nameok(char*);
+void		nameok(char*, int);
 #define		nelem(x)	(sizeof(x)/sizeof(x[0]))
 Chan*		newchan(void);
 Mount*		newmount(Mhead*, Chan*, int, char*);

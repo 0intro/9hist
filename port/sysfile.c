@@ -624,7 +624,7 @@ bindmount(ulong *arg, int ismount)
 		bogus.spec = (char*)arg[3];
 		if(waserror())
 			error(Ebadspec);
-		nameok(bogus.spec);
+		nameok(bogus.spec, 1);
 		poperror();
 
 		ret = devno('M', 0);
@@ -757,7 +757,7 @@ syswstat(ulong *arg)
 	Chan *c;
 
 	validaddr(arg[1], DIRLEN, 0);
-	nameok((char*)arg[1]);
+	nameok((char*)arg[1], 0);
 	validaddr(arg[0], 1, 0);
 	c = namec((char*)arg[0], Aaccess, 0, 0);
 	if(waserror()){
@@ -776,7 +776,7 @@ sysfwstat(ulong *arg)
 	Chan *c;
 
 	validaddr(arg[1], DIRLEN, 0);
-	nameok((char*)arg[1]);
+	nameok((char*)arg[1], 0);
 	c = fdtochan(arg[0], -1, 1, 1);
 	if(waserror()) {
 		cclose(c);

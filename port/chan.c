@@ -865,7 +865,7 @@ namec(char *name, int amode, int omode, ulong perm)
 			cclose(cc);
 			nexterror();
 		}
-		nameok(elem);
+		nameok(elem, 0);
 		if(walk(&cc, elem, 1) == 0){
 			poperror();
 			cclose(c);
@@ -949,14 +949,15 @@ char isfrog[256]={
 };
 
 void
-nameok(char *elem)
+nameok(char *elem, int slashok)
 {
 	char *eelem;
 
 	eelem = elem+NAMELEN;
 	while(*elem) {
 		if(isfrog[*(uchar*)elem])
-			error(Ebadchar);
+			if(!slashok || *elem!='/')
+				error(Ebadchar);
 		elem++;
 		if(elem >= eelem)
 			error(Efilename);
