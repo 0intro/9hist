@@ -1396,6 +1396,7 @@ nonetcksum(Block *bp, int offset)
 	hp->sum[1] = s>>8;
 	hp->sum[0] = s;
 	s &= 0xffff;
+if(0)
 	switch(s){
 	case 0xac9f:
 	case 0xc1a4:

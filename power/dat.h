@@ -218,6 +218,7 @@ struct User
 	short	notified;		/* sysnoted is due */
 	int	(*notify)(void*, char*);
 	void	*ureg;
+	ulong	svstatus;
 	/*
 	 *  machine dependent User stuff
 	 */

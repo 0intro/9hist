@@ -25,7 +25,7 @@ faultsparc(Ureg *ur)
 			read = 0;
 	}
 	spllo();
-/* print("fault: %s pc=0x%lux addr %lux %d\n", excname(tbr), ur->pc, addr, read); /**/
+print("fault: %s pc=0x%lux addr %lux %d\n", excname(tbr), ur->pc, addr, read); /**/
 	if(u == 0){
 		dumpregs(ur);
 		panic("fault u==0 pc=%lux addr=%lux", ur->pc, addr);

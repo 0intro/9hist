@@ -159,12 +159,11 @@ TEXT	fpcr(SB), $0
 
 TEXT	rfnote(SB), $0
 
-	MOVL	uregpp+0(FP), A0
-	MOVL	(A0), A7
+	MOVL	uregp+0(FP), A7
 	MOVL	((8+8)*BY2WD)(A7), A0
 	MOVL	A0, USP
 	MOVEM	(A7), $0x7FFF
-	ADDL	$((8+8+1)*BY2WD+BY2WD), A7
+	ADDL	$((8+8+1+1)*BY2WD), A7
 	MOVL	$-1, R0			/* note causes error in sys call */
 	RTE
 

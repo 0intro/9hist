@@ -8,8 +8,8 @@
 #include	"errno.h"
 
 void	notify(Ureg*);
-void	noted(Ureg**);
-void	rfnote(Ureg**);
+void	noted(Ureg*);
+void	rfnote(Ureg*);
 
 char *regname[]={
 	"R0",
@@ -156,6 +156,8 @@ notify(Ureg *ur)
 	if(!u->notified){
 		if(!u->notify)
 			goto Die;
+		u->svvo = ur->vo;
+		u->svsr = ur->sr;
 		sp = ur->usp;
 		sp -= sizeof(Ureg);
 		u->ureg = (void*)sp;
@@ -179,18 +181,27 @@ notify(Ureg *ur)
  * Return user to state before notify()
  */
 void
-noted(Ureg **urp)
+noted(Ureg *ur)
 {
+	Ureg *nur;
+
+	nur = u->ureg;
+	validaddr(nur->pc, 1, 0);
+	validaddr(nur->usp, BY2WD, 0);
+	if(nur->sr!=u->svsr || nur->vo!=u->svvo){
+		pprint("bad noted ureg sr %ux vo %ux\n", nur->sr, nur->vo);
+		pexit("Suicide", 0);
+	}
 	lock(&u->p->debug);
 	if(!u->notified){
 		unlock(&u->p->debug);
 		return;
 	}
 	u->notified = 0;
-	memmove(*urp, u->ureg, sizeof(Ureg));
+	memmove(ur, u->ureg, sizeof(Ureg));
 	unlock(&u->p->debug);
 	splhi();
-	rfnote(urp);
+	rfnote(ur);
 }
 
 #undef	CHDIR	/* BUG */
@@ -288,7 +299,7 @@ syscall(Ureg *aur)
 	u->nerrlab = 0;
 	u->p->insyscall = 0;
 	if(r0 == NOTED)	/* ugly hack */
-		noted(&aur);	/* doesn't return */
+		noted(aur);	/* doesn't return */
 	if(u->nnote){
 		ur->r0 = ret;
 		notify(ur);

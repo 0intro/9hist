@@ -380,6 +380,7 @@ notify(Ureg *ur)
 	if(!u->notified){
 		if(!u->notify)
 			goto Die;
+		u->svstatus = ur->status;
 		sp = ur->usp;
 		sp -= sizeof(Ureg);
 		u->ureg = (void*)sp;
@@ -405,6 +406,15 @@ notify(Ureg *ur)
 void
 noted(Ureg **urp)
 {
+	Ureg *nur;
+
+	nur = u->ureg;
+	validaddr(nur->pc, 1, 0);
+	validaddr(nur->usp, BY2WD, 0);
+	if(nur->status!=u->svstatus){
+		pprint("bad noted ureg status %ux\n", nur->status);
+		pexit("Suicide", 0);
+	}
 	lock(&u->p->debug);
 	if(!u->notified){
 		unlock(&u->p->debug);
