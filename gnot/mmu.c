@@ -40,13 +40,17 @@ mapstack(Proc *p)
 	flushmmu();
 	u = (User*)USERADDR;
 
+	/*
+ 	 *  preload the MMU with the last (up to) NMMU user entries
+	 *  previously faulted into it for this process.
+	 */
 	if(u->mc.next >= NMMU){
 		u->mc.next &= NMMU - 1;
 		for(i = u->mc.next; i < NMMU; i++)
 			putxmmu(u->mc.mmu[i].va, u->mc.mmu[i].pa, u->mc.mmu[i].pid);
 	}
 	for(i = 0; i < u->mc.next; i++)
-		putxmmu(u->mc.mmu[i].va, u->mc.mmu[i].pa, u->mc.mmu[i].pid);/**/
+		putxmmu(u->mc.mmu[i].va, u->mc.mmu[i].pa, u->mc.mmu[i].pid);
 }
 
 void
@@ -70,7 +74,7 @@ putmmu(ulong tlbvirt, ulong tlbphys)
 		mp->va = tlbvirt;
 		mp->pid = u->p->pid;
 		u->mc.next++;
-	}/**/
+	}
 	tlbphys |= VTAG(tlbvirt)<<24;
 	UMAP[(tlbvirt&0x003FE000L)>>2] = tlbphys;
 }
@@ -84,19 +88,11 @@ flushmmu(void)
 }
 
 void
-flushmmucache(void)
+clearmmucache(void)
 {
 	if(u == 0)
 		panic("flushmmucache");
 	u->mc.next = 0;
-}
-
-void
-clearmmucache(void)
-{
-	if(u == 0)
-		panic("clearmmucache");
-	memset(&u->mc, 0, sizeof u->mc);
 }
 
 void

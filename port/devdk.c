@@ -1100,9 +1100,7 @@ dklisten(Chan *c)
 		n = streamread(dc, dialstr, sizeof(dialstr)-1);
 		DPRINT("returns %d\n", n);
 		if(n <= 0)
-{print("bad n\n");
 			error(0, Eio);
-}
 		dialstr[n] = 0;
 		DPRINT("dialstr = %s\n", dialstr);
 
@@ -1112,7 +1110,6 @@ dklisten(Chan *c)
 		n = getfields(dialstr, line, 12, '\n');
 		if (n < 2) {
 			DPRINT("bad dialstr from dk (1 line)\n");
-print("bad dialstr %d '%s'\n", n, dialstr);
 			error(0, Eio);
 		}
 

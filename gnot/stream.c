@@ -127,7 +127,7 @@ allocb(ulong size)
 		;
 
 	/*
-	 *  look for a free block, garbage collect if there are none
+	 *  look for a free block
 	 */
 	lock(bcp);
 	while(bcp->first == 0){
@@ -1038,15 +1038,6 @@ streamwrite(Chan *c, void *a, long n, int docopy)
 	s = c->stream;
 
 	/*
-	 *  one writer at a time
-	qlock(&s->wrlock);
-	if(waserror()){
-		qunlock(&s->wrlock);
-		nexterror();
-	}
-	 */
-
-	/*
 	 *  decode the qid
 	 */
 	switch(STREAMTYPE(c->qid)){
@@ -1104,8 +1095,6 @@ streamwrite(Chan *c, void *a, long n, int docopy)
 		}
 	}
 out:
-/*	qunlock(&s->wrlock);
-	poperror(); /**/
 	return n;
 }
 

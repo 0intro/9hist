@@ -40,6 +40,18 @@ main(int argc, char *argv[])
 		strcpy(bootserver, "nfs");
 
 	switch(bootdevice){
+	case 'A':
+		/*
+		 *  grab the rs232 line,
+		 *  make it 9600 baud,
+		 *  push the async protocol onto it,
+		 */
+		cfd = open("#c/rs232ctl", 2);
+		if(cfd < 0)
+			error("opening #c/rs232ctl");
+		sendmsg(cfd, "B9600");
+		sendmsg(cfd, "push async");
+		break;
 	case 'a':
 		/*
 		 *  grab the rs232 line,

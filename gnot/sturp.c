@@ -33,7 +33,6 @@ struct urpstat {
 } urpstat;
 
 struct Urp {
-	QLock;
 	short	state;		/* flags */
 	Rendez	r;		/* process waiting for close */
 
@@ -52,11 +51,11 @@ struct Urp {
 	int	maxout;		/* maximum outstanding unacked blocks */
 	int	maxblock;	/* max block size */
 	int	next;		/* next block to send */
+	int	tofree;		/* first block to be freed (unacked is first not to) */
 	int	unechoed;	/* first unechoed block */
 	int	unacked;	/* first unacked block */
 	int	nxb;		/* next xb to use */
 	Block	*xb[8];		/* the xmit window buffer */
-	QLock	xl[8];
 	ulong	timer;		/* timeout for xmit */
 	int	rexmit;
 
@@ -97,6 +96,7 @@ struct Urp {
 #define CLOSING		0x10
 
 Urp	*urp;
+Lock	urpalloc;
 
 /*
  *  predeclared
@@ -112,7 +112,7 @@ static void	sendblock(Urp*, int);
 static void	rcvack(Urp*, int);
 static void	flushinput(Urp*);
 static void	sendctl(Urp*, int);
-static void	sendack(Urp*);
+static void	sendack(Urp*, int);
 static void	sendrej(Urp*);
 static void	initoutput(Urp*, int);
 static void	initinput(Urp*, int);
@@ -139,15 +139,14 @@ urpopen(Queue *q, Stream *s)
 	/*
 	 *  find a free urp structure
 	 */
-	for(up = urp; up < &urp[conf.nurp]; up++){
-		qlock(up);
+	lock(&urpalloc);
+	for(up = urp; up < &urp[conf.nurp]; up++)
 		if(up->state == 0)
 			break;
-		qunlock(up);
-	}
 	if(up == &urp[conf.nurp]){
 		q->ptr = 0;
 		WR(q)->ptr = 0;
+		unlock(&urpalloc);
 		error(0, Egreg);
 	}
 
@@ -155,7 +154,7 @@ urpopen(Queue *q, Stream *s)
 	up->rq = q;
 	up->wq = q->other;
 	up->state = OPEN;
-	qunlock(up);
+	unlock(&urpalloc);
 	initinput(up, 0);
 	initoutput(up, 0);
 
@@ -340,12 +339,8 @@ urpciput(Queue *q, Block *bp)
 
 	case SEQ+0: case SEQ+1: case SEQ+2: case SEQ+3:
 	case SEQ+4: case SEQ+5: case SEQ+6: case SEQ+7:
-		qlock(&up->ack);
-		i = ctl & Nmask;
-		if(!QFULL(q->next))
-			sendctl(up, up->lastecho = ECHO+i);
 		up->iseq = i;
-		qunlock(&up->ack);
+		sendack(up, ECHO);
 		break;
 	}
 }
@@ -515,11 +510,8 @@ urpiput(Queue *q, Block *bp)
 		/*
 		 *  acknowledge receipt
 		 */
-		qlock(&up->ack);
 		up->iseq = i;
-		if(!QFULL(q->next))
-			sendctl(up, up->lastecho = ECHO|i);
-		qunlock(&up->ack);
+		sendack(up, ECHO);
 		break;
 	}
 }
@@ -599,8 +591,7 @@ output(Urp *up)
 	int n;
 	int i;
 
-	if(!canqlock(&up->xmit))
-		return;
+	qlock(&up->xmit);
 
 	if(waserror()){
 		print("urp output error\n");
@@ -665,22 +656,26 @@ output(Urp *up)
 	}
 
 	/*
+	 *  free any blocks that can be freed
+	 */
+	while(up->tofree != up->unacked){
+		if(up->xb[up->tofree] == 0)
+			urpvomit("output2", up);
+		else
+			freeb(up->xb[up->tofree]);
+		up->xb[up->tofree] = 0;
+		up->tofree = NEXT(up->tofree);
+	}
+
+	/*
 	 *  if there's a window open, push some blocks out
 	 *
 	 *  the lock is to synchronize with acknowledges that free
 	 *  blocks.
 	 */
 	while(WINDOW(up)>0 && up->next!=up->nxb){
-		i = up->next;
-		qlock(&up->xl[i]);
-		if(waserror()){
-			qunlock(&up->xl[i]);
-			nexterror();
-		}
-		sendblock(up, i);
-		qunlock(&up->xl[i]);
+		sendblock(up, up->next);
 		up->next = NEXT(up->next);
-		poperror();
 	}
 out:
 	qunlock(&up->xmit);
@@ -713,9 +708,10 @@ static void
 sendrej(Urp *up)
 {
 	Queue *q = up->wq;
+
 	flushinput(up);
 	qlock(&up->ack);
-	if((up->lastecho&~Nmask) == ECHO){
+	if(!QFULL(up->rq->next) && (up->lastecho&~Nmask)==ECHO){
 		DPRINT("REJ %d\n", up->iseq);
 		sendctl(up, up->lastecho = REJ|up->iseq);
 	}
@@ -726,31 +722,13 @@ sendrej(Urp *up)
  *  send an acknowledge
  */
 static void
-sendack(Urp *up)
+sendack(Urp *up, int type)
 {
 	Block *bp;
 
-	/*
-	 *  check the precondition for acking
-	 */
-	if(QFULL(up->rq->next) || (up->lastecho&Nmask)==up->iseq)
-		return;
-
-	if(!canqlock(&up->ack))
-		return;
-
-	/*
-	 *  check again now that we've locked
-	 */
-	if(QFULL(up->rq->next) || (up->lastecho&Nmask)==up->iseq){
-		qunlock(&up->ack);
-		return;
-	}
-
-	/*
-	 *  send the ack
-	 */
-	sendctl(up, up->lastecho = ECHO|up->iseq);
+	qlock(&up->ack);
+	if(!QFULL(up->rq->next) && (up->lastecho&Nmask)!=up->iseq)
+		sendctl(up, up->lastecho = type|up->iseq);
 	qunlock(&up->ack);
 }
 
@@ -814,16 +792,8 @@ rcvack(Urp *up, int msg)
 	 *  release any acknowledged blocks
 	 */
 	if(IN(seqno, up->unacked, up->next)){
-		for(; up->unacked != next; up->unacked = NEXT(up->unacked)){
+		for(; up->unacked != next; up->unacked = NEXT(up->unacked))
 			i = up->unacked;
-			qlock(&up->xl[i]);
-			if(up->xb[i])
-				freeb(up->xb[i]);
-			else
-				urpvomit("rcvack", up);
-			up->xb[i] = 0;
-			qunlock(&up->xl[i]);
-		}
 	}
 
 	switch(msg & 0370){
@@ -879,6 +849,7 @@ initoutput(Urp *up, int window)
 {
 	int i;
 
+	qlock(&up->xmit);
 	/*
 	 *  set output window
 	 */
@@ -891,6 +862,7 @@ initoutput(Urp *up, int window)
 	/*
 	 *  set sequence varialbles
 	 */
+	up->tofree = 1;
 	up->unechoed = 1;
 	up->unacked = 1;
 	up->next = 1;
@@ -901,11 +873,9 @@ initoutput(Urp *up, int window)
 	 *  free any outstanding blocks
 	 */
 	for(i = 0; i < 8; i++){
-		qlock(&up->xl[i]);
 		if(up->xb[i])
 			freeb(up->xb[i]);
 		up->xb[i] = 0;
-		qunlock(&up->xl[i]);
 	}
 
 	/*
@@ -913,6 +883,7 @@ initoutput(Urp *up, int window)
 	 */
 	up->state |= INITING;
 	up->timer = NOW + MSrexmit;
+	qunlock(&up->xmit);
 	sendctl(up, INIT1);
 }
 
@@ -945,6 +916,7 @@ todo(void *arg)
 	return (up->state&INITING)
 	? NOW>up->timer					/* time to INIT1 */
 	: ((up->unacked!=up->next && NOW>up->timer)	/* time to ENQ */
+	  || up->tofree != up->unacked
 	  || WINDOW(up)>0 && up->next!=up->nxb
 	  || (!QFULL(up->rq->next) && up->iseq!=(up->lastecho&7))); /* time to ECHO */
 }
@@ -966,7 +938,7 @@ urpkproc(void *arg)
 		if(up->state & HUNGUP)
 			break;
 		if(!QFULL(up->rq->next))
-			sendack(up);
+			sendack(up, ECHO);
 		output(up);
 		sleep(&up->rq->r, todo, up);
 	}
