@@ -127,6 +127,10 @@ ip1gen(Chan *c, int i, Dir *dp)
 	Qid q;
 	char *p;
 	int prot;
+	int len = 0;
+	Fs *f;
+
+	f = ipfs[c->dev];
 
 	prot = 0666;
 	switch(i) {
@@ -143,6 +147,7 @@ ip1gen(Chan *c, int i, Dir *dp)
 	case Qndb:
 		p = "ndb";
 		q = (Qid){QID(0, 0, Qndb), 0};
+		len = strlen(f->ndb);
 		break;
 	case Qiproute:
 		p = "iproute";
@@ -162,7 +167,7 @@ ip1gen(Chan *c, int i, Dir *dp)
 		q = (Qid){QID(0, 0, Qlog), 0};
 		break;
 	}
-	devdir(c, q, p, 0, network, prot, dp);
+	devdir(c, q, p, len, network, prot, dp);
 	return 1;
 }
 
@@ -349,6 +354,12 @@ ipopen(Chan* c, int omode)
 
 	switch(TYPE(c->qid)) {
 	default:
+		break;
+	case Qndb:
+		if(omode & (OWRITE|OTRUNC) && !iseve())
+			error(Eperm);
+		if((omode & (OWRITE|OTRUNC)) == (OWRITE|OTRUNC))
+			f->ndb[0] = 0;
 		break;
 	case Qlog:
 		netlogopen(f);
@@ -1220,11 +1231,11 @@ Fsnewcall(Conv *c, uchar *raddr, ushort rport, uchar *laddr, ushort lport)
 long
 ndbwrite(Fs *f, char *a, ulong off, int n)
 {
-	if(off != 0)
+	if(off > strlen(f->ndb))
 		error(Eio);
-	if(n >= sizeof(f->ndb))
+	if(off+n >= sizeof(f->ndb))
 		error(Eio);
-	memmove(f->ndb, a, n);
-	f->ndb[n] = 0;
+	memmove(f->ndb+off, a, n);
+	f->ndb[off+n] = 0;
 	return n;
 }

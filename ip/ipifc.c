@@ -10,14 +10,14 @@
 #define DPRINT if(0)print
 
 enum {
-	Maxmedia	= 16,
+	Maxmedia	= 32,
 	Nself		= Maxmedia*5,
 	NHASH		= (1<<6),
 	NCACHE		= 256,
 	QMAX		= 64*1024-1,
 };
 
-Medium *media[32] =
+Medium *media[Maxmedia] =
 {
 	0
 };
