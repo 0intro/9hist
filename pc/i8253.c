@@ -40,6 +40,21 @@ i8253init(int aalcycles)
 		outb(Tmode, Load0|Square);
 		outb(T0cntr, (Freq/HZ));	/* low byte */
 		outb(T0cntr, (Freq/HZ)>>8);	/* high byte */
+
+		/*
+		 * Introduce a little delay to make sure the count is
+		 * latched and the timer is counting down; with a fast
+		 * enough processor this may not be the case.
+		 * The i8254 (which this probably is) has a read-back
+		 * command which can be used to make sure the counting
+		 * register has been written into the counting element.
+		 */
+		x = (Freq/HZ);
+		for(loops = 0; loops < 100000 && x >= (Freq/HZ); loops++){
+			outb(Tmode, Latch0);
+			x = inb(T0cntr);
+			x |= inb(T0cntr)<<8;
+		}
 	}
 
 	/* find biggest loop that doesn't wrap */

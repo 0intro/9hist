@@ -650,7 +650,7 @@ sysbrk_(ulong *arg)
 long
 sysrendezvous(ulong *arg)
 {
-	int tag;
+	ulong tag;
 	ulong val;
 	Proc *p, **l;
 
