@@ -381,25 +381,23 @@ idseq(void)
 }
 
 static ulong
-activate(Ether *ether)
+activate(void)
 {
 	int i;
 	ushort x, acr;
+	ulong port;
 
 	/*
 	 * Do the little configuration dance:
 	 *
-	 * 2. get to command state, reset, then return to command state
+	 * 2. write the ID sequence to get to command state.
 	 */
-	idseq();
-	outb(IDport, 0xC1);
-	delay(2);
 	idseq();
 
 	/*
 	 * 3. Read the Manufacturer ID from the EEPROM.
 	 *    This is done by writing the IDPort with 0x87 (0x80
-	 *    is the 'read EEPROM command, 0x07 is the offset of
+	 *    is the 'read EEPROM' command, 0x07 is the offset of
 	 *    the Manufacturer ID field in the EEPROM).
 	 *    The data comes back 1 bit at a time.
 	 *    We seem to need a delay here between reading the bits.
@@ -413,8 +411,8 @@ activate(Ether *ether)
 		x <<= 1;
 		x |= inb(IDport) & 0x01;
 	}
-	if((x & 0xF0FF) != 0x6D50)
-		return -1;
+	if(x != 0x6D50)
+		return 0;
 
 	/*
 	 * 3. Read the Address Configuration from the EEPROM.
@@ -436,10 +434,10 @@ activate(Ether *ether)
 	 *
 	 *    Enable the adapter. 
 	 */
-	ether->port = (acr & 0x1F)*0x10 + 0x200;
-	outb(ether->port+ConfigControl, 0x01);
+	port = (acr & 0x1F)*0x10 + 0x200;
+	outb(port+ConfigControl, 0x01);
 
-	return ether->port;
+	return port;
 }
 
 static ulong
@@ -458,7 +456,7 @@ tcm579(Ether *ether)
 
 	if(slot == 1 && strncmp((char*)(KZERO|0xFFFD9), "EISA", 4))
 		return 0;
-	while(slot < 8){
+	while(slot < 16){
 		port = slot++*0x1000;
 		if(ins(port+0xC80+ManufacturerID) != 0x6D50)
 			continue;
