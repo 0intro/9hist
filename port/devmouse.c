@@ -124,7 +124,7 @@ mousewalk(Chan *c, Chan *nc, char **name, int nname)
 	Walkqid *wq;
 
 	wq = devwalk(c, nc, name, nname, mousedir, nelem(mousedir), devgen);
-	if(wq != nil && wq->clone != c && (wq->clone->qid.type&QTDIR)==0)
+	if(wq != nil && wq->clone != c && wq->clone != nil && (wq->clone->qid.type&QTDIR)==0)
 		incref(&mouse);
 	return wq;
 }
