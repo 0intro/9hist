@@ -925,19 +925,10 @@ genrandom(void*)
 	}
 }
 
-static void
-randominit(void)
-{
-	addclock0link(randomclock);
-	rb.ep = rb.buf + sizeof(rb.buf);
-	rb.rp = rb.wp = rb.buf;
-	kproc("genrandom", genrandom, 0);
-}
-
 /*
  *  produce random bits in a circular buffer
  */
-void
+static void
 randomclock(void)
 {
 	if(rb.randomcount == 0 || !rbnotfull(0))
@@ -959,6 +950,15 @@ randomclock(void)
 
 	if(rb.wakeme)
 		wakeup(&rb.consumer);
+}
+
+static void
+randominit(void)
+{
+	addclock0link(randomclock);
+	rb.ep = rb.buf + sizeof(rb.buf);
+	rb.rp = rb.wp = rb.buf;
+	kproc("genrandom", genrandom, 0);
 }
 
 /*

@@ -1,7 +1,6 @@
 #include "../port/portfns.h"
 
 void	aamloop(int);
-void	addclock0link(void (*)(void));
 void	addconf(char*, char*);
 void	addscsilink(char*, Scsiio (*)(int, ISAConf*));
 void	archinit(void);
