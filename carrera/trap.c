@@ -320,7 +320,7 @@ intr(Ureg *ur)
 {
 	static uchar devint;
 	ulong cause = ur->cause;
-	ulong isr, vec;
+	ulong isr;
 
 	m->intr++;
 	cause &= INTR7|INTR6|INTR5|INTR4|INTR3|INTR2|INTR1|INTR0;
@@ -351,20 +351,21 @@ intr(Ureg *ur)
 		cause &= ~INTR3;
 	}
 
-	if(cause & INTR5)
-		panic("EISA NMI\n");
-
 	if(cause & INTR2) {
 		isr = IO(ulong, R4030Isr);
 		if(isr) {
-			iprint("R4030 Interrupt\n");
-			iprint(" ISR #%lux\n", IO(ulong, R4030Isr));
-			iprint(" ET  #%lux\n", IO(ulong, R4030Et));
-			iprint(" RFA #%lux\n", IO(ulong, R4030Rfa));
-			iprint(" MFA #%lux\n", IO(ulong, R4030Mfa));
+			print("R4030 Interrupt PC %lux R31 %lux\n", ur->pc, ur->r31);
+			print(" ISR #%lux\n", IO(ulong, R4030Isr));
+			print(" ET  #%lux\n", IO(ulong, R4030Et));
+			print(" RFA #%lux\n", IO(ulong, R4030Rfa));
+			print(" MFA #%lux\n", IO(ulong, R4030Mfa));
 		}
 		cause &= ~INTR2;
 	}
+
+	if(cause & INTR5)
+		panic("EISA NMI\n");
+
 
 	if(cause & INTR4) {
 		devint = IO(uchar, I386ack);

@@ -142,7 +142,7 @@ void
 clockinit(void)
 {
 	int x, y;	/* change in counter */
-	int family, model, loops;
+	int family, model, loops, incr;
 	X86type *t;
 
 	/*
@@ -170,35 +170,37 @@ clockinit(void)
 	outb(T0cntr, (Freq/HZ));	/* low byte */
 	outb(T0cntr, (Freq/HZ)>>8);	/* high byte */
 
-	/* use biggest loop that works */
-	if(t->family == 3)
-		loops = 10000;
-	else
-		loops = 30000;
+	/* find biggest loop that doesn't wrap */
+	incr = 16000000/(t->aalcycles*HZ*2);
+	for(loops = incr; loops < 64*1024; loops += incr) {
+	
+		/*
+		 *  measure time for the loop
+		 *
+		 *			MOVL	loops,CX
+		 *	aaml1:	 	AAM
+		 *			LOOP	aaml1
+		 *
+		 *  the time for the loop should be independent of external
+		 *  cache and memory system since it fits in the execution
+		 *  prefetch buffer.
+		 *
+		 */
+		outb(Tmode, Latch0);
+		x = inb(T0cntr);
+		x |= inb(T0cntr)<<8;
+		aamloop(loops);
+		outb(Tmode, Latch0);
+		y = inb(T0cntr);
+		y |= inb(T0cntr)<<8;
+		x -= y;
+	
+		if(x < 0)
+			x += Freq/HZ;
 
-	/*
-	 *  measure time for the loop
-	 *
-	 *			MOVL	loops,CX
-	 *	aaml1:	 	AAM
-	 *			LOOP	aaml1
-	 *
-	 *  the time for the loop should be independent of external
-	 *  cache and memory system since it fits in the execution
-	 *  prefetch buffer.
-	 *
-	 */
-	outb(Tmode, Latch0);
-	x = inb(T0cntr);
-	x |= inb(T0cntr)<<8;
-	aamloop(loops);
-	outb(Tmode, Latch0);
-	y = inb(T0cntr);
-	y |= inb(T0cntr)<<8;
-	x -= y;
-
-	if(x < 0)
-		x += 2^16;
+		if(x > Freq/(3*HZ))
+			break;
+	}
 
 	/*
 	 *  counter  goes at twice the frequency, once per transition,
@@ -213,7 +215,7 @@ clockinit(void)
 	loopconst = (cpufreq/1000)/t->aalcycles;	/* AAM+LOOP's for 1 ms */
 
 	/*
-	 *  add in possible .1% error and convert to MHz
+	 *  add in possible .2% error and convert to MHz
 	 */
-	cpumhz = (cpufreq + cpufreq/1000)/1000000;
+	cpumhz = (cpufreq + cpufreq/500)/1000000;
 }

@@ -60,7 +60,7 @@ struct Vgacard
 
 static void	nopage(int);
 static void	cirruspage(int);
-static void	et4000page(int);
+extern void	et4000page(int);
 extern void	s3page(int);
 
 Vgacard vgachips[] =
@@ -75,11 +75,13 @@ Vgacard vgachips[] =
 Vgacard	*vgacard = &vgachips[0];	/* current vga card */
 
 extern Hwgc bt485hwgc;
+extern Hwgc et4000hwgc;
 extern Hwgc s3hwgc;
 extern Hwgc tvp3020hwgc;
 
 static Hwgc *hwcursor[] = {
 	&bt485hwgc,
+	&et4000hwgc,
 	&s3hwgc,
 	&tvp3020hwgc,
 	0,
@@ -1069,20 +1071,6 @@ static void
 nopage(int page)
 {
 	USED(page);
-}
-
-static void
-et4000page(int page)
-{
-	uchar p;
-
-	p = page & 0x0F;
-	p |= p<<4;
-	outb(0x3CD, p);
-
-	p = (page & 0x30);
-	p |= p>>4;
-	outb(0x3CB, p);
 }
 
 static void
