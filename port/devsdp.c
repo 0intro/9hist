@@ -9,7 +9,8 @@
 #include	<libcrypt.h>
 
 typedef struct Sdp		Sdp;
-typedef struct Port 	Port;
+typedef struct Conv 	Conv;
+typedef struct OneWay OneWay;
 
 enum
 {
@@ -20,53 +21,74 @@ enum
 	Qstats,
 	Qlog,
 
-	Qportdir,			/* directory for a protocol */
+	Qconvdir,			/* directory per conversation */
 	Qctl,
 	Qdata,				/* reliable control channel */
 	Qpacket,			/* unreliable packet channel */
-	Qerr,
-	Qlisten,
-	Qlocal,
-	Qremote,
 	Qstatus,
 
 	MaxQ,
 
-	Maxport=	256,		// power of 2
+	Maxconv=	256,		// power of 2
 	Nfs=		4,			// number of file systems
 };
 
 #define TYPE(x) 	((x).path & 0xff)
-#define PORT(x) 	(((x).path >> 8)&(Maxport-1))
+#define CONV(x) 	(((x).path >> 8)&(Maxconv-1))
 #define QID(x, y) 	(((x)<<8) | (y))
 
-struct Port {
+struct OneWay
+{
+	ulong	seqwrap;	// number of wraps of the sequence number
+	ulong	seq;
+	ulong	window;		// for replay attacks
+
+	char	*calg;
+	void	*cstate;	// state cipher
+	int		civlen;		// in bytes
+	int		(*cipher)(OneWay*, uchar *buf, int len);
+
+	char	*aalg;
+	void	*astate;	// auth state
+	int		alen;		// auth data length in bytes
+	int		(*auth)(OneWay*, uchar *buf, int len, uchar *hash);
+};
+
+struct Conv {
+	QLock;
+
 	int	id;
 	Sdp	*sdp;
-	int	ref;
-	int	closed;
+
+	Chan chan;	// packet channel
+
+	char	user[NAMELEN];		/* protections */
+	int	perm;
+	int	inuse;
+	int	length;
+	int	state;
+
+	OneWay	in;
+	OneWay	out;
 };
 
 struct Sdp {
 	QLock;
 	Log;
-	int	nport;
-	Port	*port[Maxport];
+	int	nconv;
+	Conv	*conv[Maxconv];
 };
 
 static Dirtab sdpdirtab[]={
-	"ctl",		{Qctl},	0,	0666,
 	"stats",	{Qstats},	0,	0444,
 	"log",		{Qlog},		0,	0666,
+	"clone",	{Qclone},		0,	0666,
 };
 
-static Dirtab portdirtab[]={
+static Dirtab convdirtab[]={
 	"ctl",		{Qctl},	0,	0666,
 	"data",		{Qdata},	0,	0666,
 	"packet",	{Qpacket},	0,	0666,
-	"listen",	{Qlisten},	0,	0666,
-	"local",	{Qlocal},	0,	0444,
-	"remote",	{Qlocal},	0,	0444,
 	"status",	{Qstatus},	0,	0444,
 };
 
@@ -94,6 +116,7 @@ static Dirtab	*dirtab[MaxQ];
 static Sdp sdptab[Nfs];
 
 static int sdpgen(Chan *c, Dirtab*, int, int s, Dir *dp);
+static Conv *sdpclone(Sdp *sdp);
 
 static void
 sdpinit(void)
@@ -107,8 +130,8 @@ sdpinit(void)
 		dirtab[TYPE(dt->qid)] = dt;
 	}
 
-	for(i=0; i<nelem(portdirtab); i++) {
-		dt = portdirtab + i;
+	for(i=0; i<nelem(convdirtab); i++) {
+		dt = convdirtab + i;
 		dirtab[TYPE(dt->qid)] = dt;
 	}
 }
@@ -123,7 +146,7 @@ sdpattach(char* spec)
 	if(dev<0 || dev >= Nfs)
 		error("bad specification");
 
-	c = devattach('B', spec);
+	c = devattach('T', spec);
 	c->qid = (Qid){QID(0, Qtopdir)|CHDIR, 0};
 	c->dev = dev;
 
@@ -139,7 +162,7 @@ sdpwalk(Chan *c, char *name)
 		case Qsdpdir:
 			c->qid = (Qid){CHDIR|Qtopdir, 0};
 			break;
-		case Qportdir:
+		case Qconvdir:
 			c->qid = (Qid){CHDIR|Qsdpdir, 0};
 			break;
 		default:
@@ -158,25 +181,25 @@ sdpstat(Chan* c, char* db)
 }
 
 static Chan*
-sdpopen(Chan* c, int omode)
+sdpopen(Chan* ch, int omode)
 {
 	int perm;
 	Sdp *sdp;
+	Conv *c;
 
 	omode &= 3;
 	perm = m2p[omode];
 	USED(perm);
 
-	sdp = sdptab + c->dev;
+	sdp = sdptab + ch->dev;
 
-	switch(TYPE(c->qid)) {
+	switch(TYPE(ch->qid)) {
 	default:
 		break;
 	case Qtopdir:
 	case Qsdpdir:
-	case Qportdir:
+	case Qconvdir:
 	case Qstatus:
-	case Qlocal:
 	case Qstats:
 		if(omode != OREAD)
 			error(Eperm);
@@ -184,11 +207,17 @@ sdpopen(Chan* c, int omode)
 	case Qlog:
 		logopen(sdp);
 		break;
+	case Qclone:
+		c = sdpclone(sdp);
+		if(c == nil)
+			error(Enodev);
+		ch->qid.path = QID(c->id, Qctl);
+		break;
 	}
-	c->mode = openmode(omode);
-	c->flag |= COPEN;
-	c->offset = 0;
-	return c;
+	ch->mode = openmode(omode);
+	ch->flag |= COPEN;
+	ch->offset = 0;
+	return ch;
 }
 
 static void
@@ -205,46 +234,48 @@ sdpclose(Chan* c)
 }
 
 static long
-sdpread(Chan *c, void *a, long n, vlong off)
+sdpread(Chan *ch, void *a, long n, vlong off)
 {
 	char buf[256];
-	Sdp *sdp = sdptab + c->dev;
-	Port *port;
+	Sdp *sdp = sdptab + ch->dev;
+	Conv *c;
 
 	USED(off);
-	switch(TYPE(c->qid)) {
+	switch(TYPE(ch->qid)) {
 	default:
 		error(Eperm);
 	case Qtopdir:
 	case Qsdpdir:
-	case Qportdir:
-		return devdirread(c, a, n, 0, 0, sdpgen);
+	case Qconvdir:
+		return devdirread(ch, a, n, 0, 0, sdpgen);
 	case Qlog:
 		return logread(sdp, a, off, n);
 	case Qstatus:
 		qlock(sdp);
-		port = sdp->port[PORT(c->qid)];
-		if(port == 0)
+		c = sdp->conv[CONV(ch->qid)];
+		if(c == 0)
 			strcpy(buf, "unbound\n");
 		else {
 		}
 		n = readstr(off, a, n, buf);
 		qunlock(sdp);
 		return n;
+	case Qctl:
+		sprint(buf, "%lud", CONV(ch->qid));
+		return readstr(off, a, n, buf);
 	}
-
 }
 
 static long
-sdpwrite(Chan *c, void *a, long n, vlong off)
+sdpwrite(Chan *ch, void *a, long n, vlong off)
 {
-	Sdp *sdp = sdptab + c->dev;
+	Sdp *sdp = sdptab + ch->dev;
 	Cmdbuf *cb;
 	char *arg0;
 	char *p;
 	
 	USED(off);
-	switch(TYPE(c->qid)) {
+	switch(TYPE(ch->qid)) {
 	default:
 		error(Eperm);
 	case Qctl:
@@ -258,6 +289,7 @@ sdpwrite(Chan *c, void *a, long n, vlong off)
 		if(cb->nf == 0)
 			error("short write");
 		arg0 = cb->f[0];
+print("cmd = %s\n", arg0);
 		if(strcmp(arg0, "xxx") == 0) {
 			print("xxx\n");
 		} else
@@ -309,20 +341,61 @@ sdpgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 			return 1;
 		}
 		s -= nelem(sdpdirtab);
-		if(s >= sdp->nport)
+		if(s >= sdp->nconv)
 			return -1;
-		qid = (Qid){QID(s,Qportdir)|CHDIR, 0};
+		qid = (Qid){QID(s,Qconvdir)|CHDIR, 0};
 		snprint(buf, sizeof(buf), "%d", s);
 		devdir(c, qid, buf, 0, eve, 0555, dp);
 		return 1;
-	case Qportdir:
-		if(s>=nelem(portdirtab))
+	case Qconvdir:
+		if(s>=nelem(convdirtab))
 			return -1;
-		dt = portdirtab+s;
-		qid = (Qid){QID(PORT(c->qid),TYPE(dt->qid)),0};
+		dt = convdirtab+s;
+		qid = (Qid){QID(CONV(c->qid),TYPE(dt->qid)),0};
 		devdir(c, qid, dt->name, dt->length, eve, dt->perm, dp);
 		return 1;
 	}
+}
+
+static Conv*
+sdpclone(Sdp *sdp)
+{
+	Conv *c, **pp, **ep;
+
+	c = nil;
+	ep = sdp->conv + nelem(sdp->conv);
+	for(pp = sdp->conv; pp < ep; pp++) {
+		c = *pp;
+		if(c == nil){
+			c = malloc(sizeof(Conv));
+			if(c == nil)
+				error(Enomem);
+			qlock(c);
+			c->sdp = sdp;
+			c->id = pp - sdp->conv;
+			*pp = c;
+			sdp->nconv++;
+			break;
+		}
+		if(canqlock(c)){
+			if(c->inuse == 0)
+				break;
+
+			qunlock(c);
+		}
+	}
+
+	if(pp >= ep) {
+		return nil;
+	}
+
+	c->inuse = 1;
+	strncpy(c->user, up->user, sizeof(c->user));
+	c->perm = 0660;
+	c->state = 0;
+
+	qunlock(c);
+	return c;
 }
 
 

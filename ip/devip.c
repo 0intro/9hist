@@ -609,9 +609,21 @@ ipread(Chan *ch, void *a, long n, vlong off)
 }
 
 static Block*
-ipbread(Chan* c, long n, ulong offset)
+ipbread(Chan* ch, long n, ulong offset)
 {
-	return devbread(c, n, offset);
+	Conv *c;
+	Proto *x;
+	Fs *f;
+
+	switch(TYPE(ch->qid)){
+	case Qdata:
+		f = ipfs[ch->dev];
+		x = f->p[PROTO(ch->qid)];
+		c = x->conv[CONV(ch->qid)];
+		return qbread(c->rq, n);
+	default:
+		return devbread(ch, n, offset);
+	}
 }
 
 /*
@@ -964,9 +976,31 @@ ipwrite(Chan* ch, void *v, long n, vlong)
 }
 
 static long
-ipbwrite(Chan* c, Block* bp, ulong offset)
+ipbwrite(Chan* ch, Block* bp, ulong offset)
 {
-	return devbwrite(c, bp, offset);
+	Conv *c;
+	Proto *x;
+	Fs *f;
+	int n;
+
+	switch(TYPE(ch->qid)){
+	case Qdata:
+		f = ipfs[ch->dev];
+		x = f->p[PROTO(ch->qid)];
+		c = x->conv[CONV(ch->qid)];
+
+		if(c->wq == nil)
+			error(Eperm);
+
+		if(bp->next)
+			bp = concatblock(bp);
+		n = BLEN(bp);
+		qbwrite(c->wq, bp);
+		x->kick(c, n);
+		return n;
+	default:
+		return devbwrite(ch, bp, offset);
+	}
 }
 
 Dev ipdevtab = {

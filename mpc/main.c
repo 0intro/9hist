@@ -235,21 +235,16 @@ procsave(Proc *p)
 }
 
 // print without using interrupts
-int
-iprint(char *fmt, ...)
+void
+serialputs(char *s, int n)
 {
-	char buf[PRINTSIZE];
-	int n;
-	va_list arg;
+	putstrn(s, n);
+}
 
-	va_start(arg, fmt);
-	n = doprint(buf, buf+sizeof(buf), fmt, arg) - buf;
-	va_end(arg);
-
-	putstrn(buf, n);
-	uartwait();
-
-	return n;
+void
+rdb(void)
+{
+	panic("rdb");
 }
 
 void

@@ -94,8 +94,9 @@ struct Bridge
 	int	nport;
 	Port	*port[Maxport];
 	Centry	cache[CacheSize];
-	int	hit;
-	int	miss;
+	ulong	hit;
+	ulong	miss;
+	ulong copy;
 	int tcpmss;		// modify tcpmss value
 
 	Log;
@@ -349,6 +350,11 @@ bridgeread(Chan *c, void *a, long n, vlong off)
 		return n;
 	case Qcache:
 		n = readstr(off, a, n, c->aux);
+		return n;
+	case Qstats:
+		snprint(buf, sizeof(buf), "hit=%uld miss=%uld copy=%uld\n",
+			b->hit, b->miss, b->copy);
+		n = readstr(off, a, n, buf);
 		return n;
 	}
 }
@@ -832,7 +838,7 @@ ethermultiwrite(Bridge *b, Block *bp, Port *port)
 
 		// delay one so that the last write does not copy
 		if(c != nil) {
-			// can not use write since it changes scr addr
+			b->copy++;
 			bp2 = copyblock(bp, blocklen(bp));
 			devtab[c->type]->bwrite(c, bp2, 0);
 		}
