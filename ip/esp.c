@@ -15,6 +15,7 @@ typedef struct Userhdr Userhdr;
 typedef struct Esppriv Esppriv;
 typedef struct Espcb Espcb;
 typedef struct Algorithm Algorithm;
+typedef struct Esprc4 Esprc4;
 
 #define DPRINT if(0)print
 
@@ -94,6 +95,23 @@ struct Algorithm
 	void	(*init)(Espcb*, char* name, uchar *key, int keylen);
 };
 
+
+enum {
+	RC4forward	= 10*1024*1024,	// maximum skip forward
+	RC4back = 100*1024,		// maximum look back
+};
+
+struct Esprc4
+{
+	ulong cseq;	// current byte sequence number
+	RC4state current;
+
+	int ovalid;	// old is valid
+	ulong lgseq; // last good sequence
+	ulong oseq;	// old byte sequence number
+	RC4state old;
+};
+
 static	Conv* convlookup(Proto *esp, ulong spi);
 static	char *setalg(Espcb *ecb, char **f, int n, Algorithm *alg);
 static	void nullespinit(Espcb*, char*, uchar *key, int keylen);
@@ -101,11 +119,13 @@ static	void nullahinit(Espcb*, char*, uchar *key, int keylen);
 static	void shaahinit(Espcb*, char*, uchar *key, int keylen);
 static	void md5ahinit(Espcb*, char*, uchar *key, int keylen);
 static	void desespinit(Espcb *ecb, char *name, uchar *k, int n);
+static	void rc4espinit(Espcb *ecb, char *name, uchar *k, int n);
 
 static Algorithm espalg[] =
 {
 	"null",			0,	nullespinit,
 	"des_56_cbc",		64,	desespinit,
+	"rc4_128",		128,	rc4espinit,
 	nil,			0,	nil,
 };
 
@@ -358,7 +378,14 @@ print("esp: bad auth %I -> %I!%ld\n", raddr, laddr, spi);
 		freeb(bp);
 		return;
 	}
-	ecb->cipher(ecb, bp->rp+EsphdrSize, payload);
+	if(!ecb->cipher(ecb, bp->rp+EsphdrSize, payload)) {
+		qunlock(esp);
+print("esp: cipher failed %I -> %I!%ld: %r\n", raddr, laddr, spi);
+		netlog(f, Logesp, "esp: cipher failed %I -> %I!%d: %r\n", raddr,
+			laddr, spi);
+		freeb(bp);
+		return;
+	}
 
 	payload -= EsptailSize;
 	et = (Esptail*)(bp->rp + EsphdrSize + payload);
@@ -477,7 +504,6 @@ espremote(Conv *c, char *buf, int len)
 	return n;
 }
 
-// should have esp locked
 static	Conv*
 convlookup(Proto *esp, ulong spi)
 {
@@ -725,6 +751,95 @@ desespinit(Espcb *ecb, char *name, uchar *k, int n)
 	ecb->cipher = descipher;
 	ecb->espstate = smalloc(sizeof(DESstate));
 	setupDESstate(ecb->espstate, key, ivec);
+}
+
+static int
+rc4cipher(Espcb *ecb, uchar *p, int n)
+{
+	Esprc4 *esprc4;
+	RC4state tmpstate;
+	ulong seq;
+	long d, dd;
+
+	if(n < 4)
+		return 0;
+
+	esprc4 = ecb->espstate;
+	if(ecb->incoming) {
+		seq = nhgetl(p);
+		p += 4;
+		n -= 4;
+		d = seq-esprc4->cseq;
+		if(d == 0) {
+			rc4(&esprc4->current, p, n);
+			esprc4->cseq += n;
+			if(esprc4->ovalid) {
+				dd = esprc4->cseq - esprc4->lgseq;
+				if(dd > RC4back)
+					esprc4->ovalid = 0;
+			}
+		} else if(d > 0) {
+print("missing packet: %ld\n", d);
+			// this link is hosed
+			if(d > RC4forward) {
+				strcpy(up->error, "rc4cipher: skipped too much");
+				return 0;
+			}
+			esprc4->lgseq = seq;
+			if(!esprc4->ovalid) {
+				esprc4->ovalid = 1;
+				esprc4->oseq = esprc4->cseq;
+				memmove(&esprc4->old, &esprc4->current, sizeof(RC4state));
+			}
+			rc4skip(&esprc4->current, d);
+			rc4(&esprc4->current, p, n);
+			esprc4->cseq = seq+n;
+		} else {
+			dd = seq - esprc4->oseq;
+			if(!esprc4->ovalid || -d > RC4back || dd < 0) {
+				strcpy(up->error, "rc4cipher: too far back");
+				return 0;
+			}
+print("reordered packet: %uld\n", seq);
+			memmove(&tmpstate, &esprc4->old, sizeof(RC4state));
+			rc4skip(&tmpstate, dd);
+			rc4(&tmpstate, p, n);
+			return 1;
+		}
+
+		// move old state up
+		if(esprc4->ovalid) {
+			dd = esprc4->cseq - RC4back - esprc4->oseq;
+			if(dd > 0) {
+				rc4skip(&esprc4->old, dd);
+				esprc4->oseq += dd;
+			}
+		}
+	} else {
+		hnputl(p, esprc4->cseq);
+		p += 4;
+		n -= 4;
+		rc4(&esprc4->current, p, n);
+		esprc4->cseq += n;
+	}
+	return 1;
+}
+
+static void
+rc4espinit(Espcb *ecb, char *name, uchar *k, int n)
+{	
+	Esprc4 *esprc4;
+
+	// bits to bytes
+	n = (n+7)>>3;
+	esprc4 = smalloc(sizeof(Esprc4));
+	memset(esprc4, 0, sizeof(Esprc4));
+	setupRC4state(&esprc4->current, k, n);
+	ecb->espalg = name;
+	ecb->espblklen = 4;
+	ecb->espivlen = 4;
+	ecb->cipher = rc4cipher;
+	ecb->espstate = esprc4;
 }
 	
 void
