@@ -233,24 +233,31 @@ setscreen(int maxx, int maxy, int ldepth)
 	mbb = NULLMBB;
 
 	/*
-	 *  zero hard screen
+	 *  zero hard screen and setup a bitmap for the new size
 	 */
 	memset((void*)SCREENMEM, 0xff, 64*1024);
-	vgascreen.ldepth = 0;
+	if(ldepth == 3)
+		vgascreen.ldepth = 3;
+	else
+		vgascreen.ldepth = 0;
 	vgascreen.base = (void*)SCREENMEM;
 	vgascreen.width = (maxx*(1<<ldepth))/32;
 	vgascreen.r.max = Pt(maxx, maxy);
 	vgascreen.clipr.max = vgascreen.r.max;
 
 	/*
-	 *  setup new soft screen
+	 *  setup new soft screen, free memory for old screen
 	 */
 	gscreen.ldepth = ldepth;
 	gscreen.width = (maxx*(1<<ldepth))/32;
 	gscreen.r.max = Pt(maxx, maxy);
 	gscreen.clipr.max = gscreen.r.max;
 	len = gscreen.width * 4 * maxy;
-	gscreen.base = ((ulong*)malloc(len+2*1024))+256;
+	if(gscreen.base){
+		free(gscreen.base);
+		gscreen.base = ((ulong*)smalloc(len+2*1024))+256;
+	} else
+		gscreen.base = ((ulong*)malloc(len+2*1024))+256;
 	memset((char*)gscreen.base, 0xff, len);
 
 	/*
@@ -334,7 +341,7 @@ void
 screenupdate(void)
 {
 	uchar *sp, *hp;
-	int y, len, incs, inch;
+	int y, len, incs, inch, bits;
 	Rectangle r;
 
 	r = mbb;
@@ -352,9 +359,10 @@ screenupdate(void)
 	if(r.max.y > gscreen.r.max.y)
 		r.max.y = gscreen.r.max.y;
 
+	bits = 1<<vgascreen.ldepth;
 	sp = (uchar*)gaddr(&gscreen, r.min);
 	hp = (uchar*)gaddr(&vgascreen, r.min);
-	len = (r.max.x + 31)/32 - r.min.x/32;
+	len = (r.max.x*bits + 31)/32 - (r.min.x*bits)/32;
 	len *= BY2WD;
 	if(len <= 0)
 		return;
@@ -364,6 +372,8 @@ screenupdate(void)
 
 	switch(gscreen.ldepth){
 	case 0:
+	case 3:
+		/* reverse the bits */
 		for (y = r.min.y; y < r.max.y; y++){
 			l0update(sp, hp, len);
 			sp += incs;
@@ -371,6 +381,7 @@ screenupdate(void)
 		}
 		break;
 	case 1:
+		/* reverse the bits and split into 2 bitmaps */
 		for (y = r.min.y; y < r.max.y; y++){
 			l1update(sp, hp, len);
 			sp += incs;

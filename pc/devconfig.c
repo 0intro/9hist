@@ -146,7 +146,7 @@ long
 configwrite(Chan *c, void *buf, long n, ulong offset)
 {
 	char cbuf[20], *cp;
-	int port, maxx, maxy;
+	int port, maxx, maxy, ldepth;
 
 	switch(c->qid.path&~CHDIR){
 	case Qdir:
@@ -165,10 +165,12 @@ configwrite(Chan *c, void *buf, long n, ulong offset)
 		cp = cbuf;
 		maxx = strtoul(cp, &cp, 0);
 		maxy = strtoul(cp, &cp, 0);
-		if (maxx == 0 || maxy == 0 ||
-		    maxx > 1280 || maxy > 1024)
+		ldepth = strtoul(cp, &cp, 0);
+		if(maxx == 0 || maxy == 0
+		|| maxx > 1280 || maxy > 1024
+		|| ldepth > 3 || ldepth < 0)
 			error(Ebadarg);
-		setscreen(maxx, maxy, 1);
+		setscreen(maxx, maxy, ldepth);
 		return n;
 	case Qvgaport:
 		cp = buf;

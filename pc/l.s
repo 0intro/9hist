@@ -662,25 +662,21 @@ TEXT	l1update(SB),$0
 	MOVL	from+0(FP),SI
 	MOVL	to+4(FP),DI
 	MOVL	len+8(FP),CX
-l10:
-	XORL	DX,DX
-	MOVB	-2(SI)(CX*2),DL		/* high order nibbles */
-	MOVW	l1revsep(SB)(DX*2),BX
-	SHLW	$4,BX
-	MOVB	-1(SI)(CX*2),DL		/* low order nibbles */
-	ORW	l1revsep(SB)(DX*2),BX
-	MOVB	$(Smmask),AL		/* write hi order bits to bit planes 0 & 2 */
+	MOVB	$(Smmask),AL
 	MOVW	$(SRX),DX
 	OUTB
-	MOVB	$0xA,AL
 	MOVW	$(SR),DX
+l10:
+	XORL	AX,AX
+	MOVB	-2(SI)(CX*2),AL		/* high order nibbles */
+	MOVW	l1revsep(SB)(AX*2),BX
+	SHLW	$4,BX
+	MOVB	-1(SI)(CX*2),AL		/* low order nibbles */
+	ORW	l1revsep(SB)(AX*2),BX
+	MOVB	$0xA,AL			/* write hi order bits to bit planes 0 & 2 */
 	OUTB
 	MOVB	BH,-1(DI)(CX*1)
-	MOVB	$(Smmask),AL		/* write lo order bits to bit planes 1 & 3 */
-	MOVW	$(SRX),DX
-	OUTB
-	MOVB	$0x5,AL
-	MOVW	$(SR),DX
+	MOVB	$0x5,AL			/* write lo order bits to bit planes 1 & 3 */
 	OUTB
 	MOVB	BL,-1(DI)(CX*1)
 	LOOP	l10
