@@ -6,12 +6,6 @@
 #include	"ureg.h"
 #include	"errno.h"
 
-ck(char *s)
-{
-	if(u->p->seg[SSEG].o->flag == 0)
-		panic(s);
-}
-
 void
 faultsparc(Ureg *ur)
 {
@@ -34,8 +28,7 @@ faultsparc(Ureg *ur)
 		return;
 	}
 	spllo();
-print("fault: %s pc=0x%lux addr %lux %d\n", excname(tbr), ur->pc, addr, read); /**/
-ck("faultsparc");
+/* print("fault: %s pc=0x%lux addr %lux %d\n", excname(tbr), ur->pc, addr, read); /**/
 	if(u == 0){
 		dumpregs(ur);
 		panic("fault u==0 pc=%lux", ur->pc);
@@ -48,11 +41,6 @@ ck("faultsparc");
 	user = !(ur->psr&PSRPSUPER);
 
 	if(fault(addr, read) < 0){
-print("death read %lux %d sizes %lux-%lux %lux-%lux, %lux-%lux %lux-%lux\n", addr, read,
-u->p->seg[SSEG].minva, u->p->seg[SSEG].maxva, 
-u->p->seg[TSEG].minva, u->p->seg[TSEG].maxva, 
-u->p->seg[DSEG].minva, u->p->seg[DSEG].maxva, 
-u->p->seg[BSEG].minva, u->p->seg[BSEG].maxva); 
 		if(user){
 			pprint("user %s error addr=0x%lux\n", read? "read" : "write", badvaddr);
 			pprint("psr=0x%lux pc=0x%lux sp=0x%lux\n", ur->psr, ur->pc, ur->sp);
@@ -64,7 +52,6 @@ u->p->seg[BSEG].minva, u->p->seg[BSEG].maxva);
 		exit();
 	}
 	u->p->insyscall = insyscall;
-ck("faultsparc return");
 }
 
 void

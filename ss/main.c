@@ -66,9 +66,10 @@ main(void)
 	confinit();
 	mmuinit();
 	printinit();
-	print("sparc plan 9\n");
+	print("sparc plan 9 %lux\n", getb2(ENAB));
 	trapinit();
 	kmapinit();
+	print("sparc plan 9 %lux\n", getb2(ENAB));
 	cacheinit();
 	intrinit();
 	procinit0();
@@ -220,8 +221,7 @@ exit(void)
 	u = 0;
 	splhi();
 	print("exiting\n");
-for(;;)
-	delay(60*1000);
+	delay(30*1000);
 	reset();
 }
 
@@ -301,12 +301,15 @@ confinit(void)
 	conf.nmach = 1;
 	if(conf.nmach > MAXMACH)
 		panic("confinit");
-	conf.npage0 = (6*1024*1024)/BY2PG;	/* BUG */
-	conf.npage = conf.npage0;
+	conf.npage0 = (4*1024*1024)/BY2PG;	/* BUG */
+	conf.npage1 = 0*(4*1024*1024)/BY2PG;	/* BUG */
 	conf.base0 = 0;
+	conf.base1 = 16*1024*1024;
 	conf.npage = conf.npage0+conf.npage1;
 	conf.maxialloc = 4*1024*1024;		/* BUG */
-	mul = 2;
+	mul = 1;
+	if(conf.npage1 > 0)
+		mul = 2;
 	conf.nproc = 50*mul;
 	conf.npgrp = 12*mul;
 	conf.npte = 1400*mul;
@@ -320,7 +323,7 @@ confinit(void)
 	conf.nmtab = 50*mul;
 	conf.nmount = 80*mul;
 	conf.nmntdev = 10*mul;
-	conf.nmntbuf = conf.nmntdev+3;
+	conf.nmntbuf = conf.nmntdev+6;
 	conf.nmnthdr = 2*conf.nmntdev;
 	conf.nstream = 40 + 32*mul;
 	conf.nqueue = 5 * conf.nstream;

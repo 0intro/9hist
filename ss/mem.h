@@ -99,10 +99,14 @@
  * Weird addresses in various ASI's
  */
 #define	CACHETAGS	0x80000000		/* ASI 2 */
+#define	CACHEDATA	0x90000000		/* ASI 2 */
 #define	SER		0x60000000		/* ASI 2 */
 #define	SEVAR		0x60000004		/* ASI 2 */
 #define	ASER		0x60000008		/* ASI 2 */
 #define	ASEVAR		0x6000000C		/* ASI 2 */
+#define	ENAB		0x40000000		/* ASI 2 */
+#define	ENABCACHE	0x10
+#define	ENABRESET	0x04
 
 /*
  * Virtual addresses

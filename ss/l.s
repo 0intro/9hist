@@ -1,6 +1,6 @@
 #include "mem.h"
 
-#define	SYSPSR	(SPL(0xF)|PSRSUPER)
+#define	SYSPSR	(SPL(0x0)|PSRSUPER)
 
 TEXT	start(SB), $-4
 

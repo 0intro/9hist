@@ -14,7 +14,7 @@ struct
 	KMap	arena[(IOEND-IOSEGM)/BY2PG];
 }kmapalloc;
 
-#define	NKLUDGE	8
+#define	NKLUDGE	12
 
 /*
  * On SPARC, tlbpid i == context i-1 so that 0 means unallocated
@@ -77,6 +77,7 @@ newpid(Proc *p)
 	m->pidproc[i] = p;
 	m->lastpid = i;
 	putcontext(i-1);
+
 	/*
 	 * kludge: each context is allowed NKLUDGE pmegs, NKLUDGE-1 for text & data and 1 for stack
 	 */
@@ -153,9 +154,16 @@ mmuinit(void)
 		/*
 		 * Invalidate user addresses
 		 */
-
 		for(l=UZERO; l<(KZERO&VAMASK); l+=BY2SEGM)
 			putsegm(l, INVALIDPMEG);
+
+#ifdef doesntwork
+		/*
+		 * Invalidate high kernel addresses
+		 */
+		for(l=conf.maxialloc; l<IOSEGM0; l+=BY2SEGM)
+			putsegm(l, INVALIDPMEG);
+#endif
 
 		/*
 		 * One segment for screen
@@ -210,7 +218,7 @@ putmmu(ulong tlbvirt, ulong tlbphys)
 	 */
 	if(tlbvirt>=TSTKTOP || (UZERO+(NKLUDGE-1)*BY2SEGM<=tlbvirt && tlbvirt<(TSTKTOP-BY2SEGM))){
 		pprint("putmmu %lux", tlbvirt);
-		pexit("Suicide", 0);
+		pexit("Suicide", 1);
 	}
 	putpmeg(tlbvirt, tlbphys);
 	spllo();
@@ -309,27 +317,7 @@ kmappa(ulong pa, ulong flag)
 	 * must use NOCACHE or else extreme cleverness elsewhere.
 	 */
 	s = splhi();
-#ifdef stupid
-{
-	int i, c, d;
-
-	c = u->p->pidonmach[m->machno];
-	/*
-	 * Flush old entries from cache
-	 */
-	for(d=0; d<NCONTEXT; d++){
-		putcontext(d);
-		for(i=0; i<0x100; i+=16)
-			putwD16(k->va+(i<<4), 0);
-	}
-	putcontext(c-1);
-	if(u && u->p)
-		m->pidhere[c] = 1;	/* UGH! */
-	putw4(k->va, PPN(pa)|PTEVALID|PTEKERNEL|PTEWRITE|PTENOCACHE|flag);
-}
-#else
 	putpmeg(k->va, PPN(pa)|PTEVALID|PTEKERNEL|PTEWRITE|PTENOCACHE|flag);
-#endif
 	splx(s);
 	return k;
 }
