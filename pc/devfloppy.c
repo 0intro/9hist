@@ -409,7 +409,8 @@ floppykproc(void *a)
 	Drive *dp;
 	int disp = 0;
 
-	waserror();
+	while(waserror())
+		;
 	for(;;){
 		for(dp = floppy.d; dp < &floppy.d[conf.nfloppy]; dp++){
 			if(dp->motoron && TK2SEC(m->ticks - dp->lasttouched) > 5

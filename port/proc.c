@@ -732,6 +732,15 @@ kproc(char *name, void (*func)(void *), void *arg)
 	 * Sched
 	 */
 	if(setlabel(&p->sched)){
+		/*
+		 *  use u->p instead of p, because we
+		 *  don't trust the compiler, after a
+		 *  gotolabel, to find the correct contents
+		 *  of a local variable.  Passed parameters
+		 *  (func & arg) are a bit safer since we
+		 *  don't play with them anywhere else.
+		 */
+		p = u->p;
 		p->state = Running;
 		p->mach = m;
 		m->proc = p;
@@ -756,13 +765,14 @@ kproc(char *name, void (*func)(void *), void *arg)
 	p->parent = 0;
 	memset(p->time, 0, sizeof(p->time));
 	p->time[TReal] = MACHP(0)->ticks;
-	ready(p);
 	/*
 	 *  since the bss/data segments are now shareable,
 	 *  any mmu info about this process is now stale
 	 *  and has to be discarded.
 	 */
 	flushmmu();
+	clearmmucache();
+	ready(p);
 }
 
 void

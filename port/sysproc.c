@@ -103,6 +103,13 @@ rfork(ulong flag)
 	 * Sched
 	 */
 	if(setlabel(&p->sched)){
+		/*
+		 *  use u->p instead of p, because we
+		 *  don't trust the compiler, after a
+		 *  gotolabel, to find the correct contents
+		 *  of a local variable.
+		 */
+		p = u->p;
 		p->state = Running;
 		p->mach = m;
 		m->proc = p;
