@@ -271,6 +271,7 @@ reset(Ether *ctlr)
 	 */
 	WR(cr, Rst);
 	WR(dcr, 0x2423);	/* 5-19 Carrera manual */
+	WR(cr, 0);
 
 	/*
 	 * Initialise the receive resource area (RRA) and
@@ -379,11 +380,8 @@ reset(Ether *ctlr)
 	WR(cdc, 1);
 
 	/*
-	 * End the reset
 	 * Load the Resource Descriptors and Cam contents
 	 */
-	WR(cr, 0);
-
 	WR(cr, Rrra);
 	while(RD(cr) & Rrra)
 		;
@@ -397,7 +395,7 @@ reset(Ether *ctlr)
 	 * and interrupt-mask registers.
 	 * The SONIC is now initialised, but not enabled.
 	 */
-	WR(rcr, Err|Rnt|Brd);
+	WR(rcr, Brd);
 	WR(tcr, 0);
 	WR(imr, AllIntr);
 }
@@ -437,6 +435,7 @@ void
 etherintr(void)
 {
 	Ether *c;
+	ushort *s;
 	ulong status;
 	TXpkt *txpkt;
 	RXpkt *rxpkt;
@@ -448,8 +447,20 @@ etherintr(void)
 		if(status == 0)
 			break;
 
-		/* Clear the interrupt cause */
-		WR(isr, status);
+		/*
+		 * Warnings that something is atoe.
+		 */
+		if(status & Hbl){
+			WR(isr, Hbl);
+			status &= ~Hbl;
+			print("sonic: cd heartbeat lost\n");
+		}
+		if(status & Br){
+WR(cr, Rst);
+			print("sonic: bus retry occurred\n");
+(*(void(*)(void))0xA001C020)();
+			status &= ~Br;
+		}
 	
 		/*
 		 * Transmission complete, for good or bad.
@@ -470,6 +481,7 @@ etherintr(void)
 				c->ti = NEXT(c->ti, Ntb);
 				txpkt = &c->tda[c->ti];
 			}
+			WR(isr, status & (Txdn|Txer));
 			status &= ~(Txdn|Txer);
 			if(isoutbuf(c))
 				wakeup(&c->tr);
@@ -500,19 +512,22 @@ etherintr(void)
 			else
 				c->buffs++;
 	
+			rxpkt->status  = 0;
 			/*
 			 * Finished with this packet, it becomes the
 			 * last free packet in the ring, so give it Eol,
 			 * and take the Eol bit off the previous packet.
 			 * Move the ring index on.
 			 */
-			rxpkt->link |= Eol;
+			wus(&rxpkt->link,  rxpkt->link|Eol);
 			rxpkt->owner = Interface;
-			c->rda[PREV(c->rh, Nrb)].link &= ~Eol;
+			s = &c->rda[PREV(c->rh, Nrb)].link;
+			wus(s, *s & ~Eol);
 			c->rh = NEXT(c->rh, Nrb);
 	
 			rxpkt = &c->rda[c->rh];
 		}
+		WR(isr, status & (Pktrx|Rde));
 		status &= ~(Pktrx|Rde);
 
 	noinput:
@@ -520,23 +535,15 @@ etherintr(void)
 		 * We get a 'load CAM done' interrupt
 		 * after initialisation. Ignore it.
 		 */
-		if(status & Lcd)
+		if(status & Lcd) {
+			WR(isr, Lcd);
 			status &= ~Lcd;
-	
-		/*
-		 * Warnings that something is atoe.
-		 */
-		if(status & Hbl){
-			print("sonic: cd heartbeat lost\n");
-			status &= ~Hbl;
-		}
-		if(status & Br){
-			print("sonic: bus retry occurred\n");
-			status &= ~Br;
 		}
 	
-		if(status & AllIntr)
+		if(status & AllIntr) {
+			WR(isr, status);
 			print("sonic #%lux\n", status);
+		}
 	}
 }
 
@@ -716,6 +723,7 @@ long
 etherwrite(Chan *c, void *buf, long n, ulong offset)
 {
 	Pbuf *p;
+	ushort *s;
 	TXpkt *txpkt;
 	Ether *ctlr = ether[0];
 
@@ -733,6 +741,7 @@ etherwrite(Chan *c, void *buf, long n, ulong offset)
 		return n;
 
 	qlock(&ctlr->tlock);
+	ctlr->outpackets++;
 	if(waserror()) {
 		qunlock(&ctlr->tlock);
 		nexterror();
@@ -755,9 +764,10 @@ etherwrite(Chan *c, void *buf, long n, ulong offset)
 		txpkt = &ctlr->tda[ctlr->th];
 		txpkt->size = n;
 		txpkt->fsize = n;
-		txpkt->link |= Eol;
+		wus(&txpkt->link, txpkt->link|Eol);
 		txpkt->status = Interface;
-		ctlr->tda[PREV(ctlr->th, Ntb)].link &= ~Eol;
+		s = &ctlr->tda[PREV(ctlr->th, Ntb)].link;
+		wus(s, *s & ~Eol);
 
 		ctlr->th = NEXT(ctlr->th, Ntb);
 		WR(cr, Txp);
