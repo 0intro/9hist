@@ -392,7 +392,7 @@ getq(Queue *q)
 			q->last = 0;
 		q->len -= BLEN(bp);
 		q->nb--;
-		if((q->flag&QHIWAT) && q->len < Streamhi/2 && q->nb < Streambhi){
+		if((q->flag&QHIWAT) && q->len<Streamhi/2 && q->nb<Streambhi/2){
 			wakeup(&q->other->next->other->r);
 			q->flag &= ~QHIWAT;
 		}
@@ -942,10 +942,7 @@ streamctlwrite(Stream *s, void *a, long n)
 static int
 notfull(void *arg)
 {
-	Queue *q;
-
-	q = (Queue *)arg;
-	return !QFULL(q->next);
+	return !QFULL((Queue *)arg);
 }
 void
 flowctl(Queue *q)

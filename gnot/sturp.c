@@ -207,6 +207,9 @@ urpclose(Queue *q)
 	 *  kill off the kernel process
 	 */
 	wakeup(&up->rq->r);
+
+	if(up->kstarted == 0)
+		up->state = 0;
 }
 
 /*
@@ -572,18 +575,20 @@ output(Urp *up)
 	 *  fill the transmit buffers
 	 */
 	q = up->wq;
-	for(bp = getq(q); bp && up->xb[up->nxb]==0; up->nxb = NEXT(up->nxb)){
-		if(BLEN(bp) > up->maxblock){
-			nbp = up->xb[up->nxb] = allocb(0);
-			nbp->rptr = bp->rptr;
-			nbp->wptr = bp->rptr = bp->rptr + up->maxblock;
-		} else {
-			up->xb[up->nxb] = bp;
-			bp = getq(q);
+	if(up->xb[up->nxb]==0) {
+		for(bp=getq(q); bp && up->xb[up->nxb]==0; up->nxb=NEXT(up->nxb)){
+			if(BLEN(bp) > up->maxblock){
+				nbp = up->xb[up->nxb] = allocb(0);
+				nbp->rptr = bp->rptr;
+				nbp->wptr = bp->rptr = bp->rptr + up->maxblock;
+			} else {
+				up->xb[up->nxb] = bp;
+				bp = getq(q);
+			}
 		}
+		if(bp)
+			putbq(q, bp);
 	}
-	if(bp)
-		putbq(q, bp);
 /*	print("output w(%d) up->xb[%d](%ux) up->nxb(%d) up->state(%ux)\n",
 		WINDOW(up), up->next, up->xb[up->next], up->nxb, up->state);
 /**/
@@ -868,6 +873,12 @@ urpkproc(void *arg)
 
 	up = (Urp *)arg;
 
+	if(waserror()){
+		up->state = 0;
+		up->kstarted = 0;
+		wakeup(&up->r);
+		return;
+	}
 	for(;;){
 		if(up->state & (HUNGUP|CLOSING)){
 			if(isflushed(up))
@@ -879,6 +890,6 @@ urpkproc(void *arg)
 		output(up);
 		tsleep(&up->rq->r, todo, up, MSrexmit/2);
 	}
-	up->kstarted = 0;
 	up->state = 0;
+	up->kstarted = 0;
 }

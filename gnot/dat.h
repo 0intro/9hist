@@ -383,6 +383,7 @@ struct Blist {
 	Block	*first;		/* first data block */
 	Block	*last;		/* last data block */
 	long	len;		/* length of list in bytes */
+	int	nb;		/* number of blocks in list */
 };
 
 /*
@@ -390,7 +391,6 @@ struct Blist {
  */
 struct Queue {
 	Blist;
-	int	nb;		/* number of blocks in queue */
 	int	flag;
 	Qinfo	*info;		/* line discipline definition */
 	Queue	*other;		/* opposite direction, same line discipline */
@@ -428,7 +428,7 @@ struct Stream {
 #define PUTNEXT(q,b)	(*(q)->next->put)((q)->next, b)
 #define BLEN(b)		((b)->wptr - (b)->rptr)
 #define QFULL(q)	((q)->flag & QHIWAT)
-#define FLOWCTL(q)	{ if(QFULL(q)) flowctl(q); }
+#define FLOWCTL(q)	{ if(QFULL(q->next)) flowctl(q); }
 
 /*
  *  stream file qid's & high water mark
