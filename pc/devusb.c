@@ -1836,11 +1836,11 @@ usbwrite(Chan *c, void *a, long n, vlong)
 		nf = getfields(cmd, fields, nelem(fields));
 		if(nf > 1 && strcmp(fields[0], "speed") == 0){
 			d->ls = strtoul(fields[1], nil, 0) == 0;
-		} else if(nf > 4 && strcmp(fields[0], "class") == 0){
+		} else if(nf > 3 && strcmp(fields[0], "class") == 0){
 			/* class class subclass proto */
-			d->class = strtoul(fields[4], nil, 0);
-			d->subclass = strtoul(fields[5], nil, 0);
-			d->proto = strtoul(fields[6], nil, 0);
+			d->class = strtoul(fields[1], nil, 0);
+			d->subclass = strtoul(fields[2], nil, 0);
+			d->proto = strtoul(fields[3], nil, 0);
 		}else if(nf > 2 && strcmp(fields[0], "data") == 0){
 			i = strtoul(fields[1], nil, 0);
 			if(i < 0 || i >= nelem(d->ep) || d->ep[i] == nil)
