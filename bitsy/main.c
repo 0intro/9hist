@@ -18,12 +18,15 @@ int  noprint;
 void
 main(void)
 {
+	cleancache();
+
 	/* zero out bss */
 	memset(edata, 0, end-edata);
 
 	/* point to Mach structure */
 	m = (Mach*)MACHADDR;
 	memset(m, 0, sizeof(Mach));
+	m->ticks = 1;
 
 	rs232power(1);
 	iprint("bitsy kernel\n");
@@ -193,6 +196,9 @@ userinit(void)
 	KMap *k;
 	Page *pg;
 
+	/* no processes yet */
+	up = nil;
+
 	p = newproc();
 	p->pgrp = newpgrp();
 	p->egrp = smalloc(sizeof(Egrp));
@@ -226,7 +232,6 @@ userinit(void)
 	 * Text
 	 */
 	s = newseg(SG_TEXT, UTZERO, 1);
-	s->flushme++;
 	p->seg[TSEG] = s;
 	pg = newpage(1, 0, UTZERO);
 	memset(pg->cachectl, PG_TXTFLUSH, sizeof(pg->cachectl));
@@ -234,6 +239,9 @@ userinit(void)
 	k = kmap(s->map[0]->pages[0]);
 	memmove((ulong*)VA(k), initcode, sizeof initcode);
 	kunmap(k);
+	cleancache();
+	wbflush();
+iprint("userinit %lux[0x20] = %lux\n", VA(k), *((ulong*)(VA(k)+0x20)));
 
 	ready(p);
 }

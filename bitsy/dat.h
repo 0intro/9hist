@@ -99,13 +99,8 @@ struct Mach
 	int	machno;			/* physical id of processor */
 	ulong	splpc;			/* pc of last caller to splhi */
 
-	ulong*	pdb;			/* page directory base for this processor (va) */
-
 	Proc*	proc;			/* current process on this processor */
 	Proc*	externup;		/* extern register Proc *up */
-
-	Page*	pdbpool;
-	int	pdbcnt;
 
 	ulong	ticks;			/* of the clock since boot time */
 	Label	sched;			/* scheduler wakeup */
@@ -172,15 +167,7 @@ struct
 	int	ispanic;		/* shutdown in response to a panic */
 }active;
 
-/*
- *  Each processor sees its own Mach structure at address MACHADDR.
- *  However, the Mach structures must also be available via the per-processor
- *  MMU information array machp, mainly for disambiguation and access to
- *  the clock which is only maintained by the bootstrap processor (0).
- */
-Mach* machp[MAXMACH];
-	
-#define	MACHP(n)	(machp[n])
+#define	MACHP(n)	((Mach*)MACHADDR)
 
 extern Mach	*m;
 #define up	(((Mach*)MACHADDR)->externup)

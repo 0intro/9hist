@@ -233,8 +233,10 @@ iprint("putmmu(0x%.8lux, 0x%.8lux)\n", va, pa);
 			pexit("out of memory", 1);
 		p->va = VA(kmap(p));
 		up->l1page[va>>20] = p;
+		memset((uchar*)(p->va), 0, BY2PG);
 	}
 	l1table[va>>20] = L1PageTable | L1Domain0 | (p->pa & L1PTBaseMask);
+	cleanaddr((ulong)&l1table[va>>20]);
 iprint("%lux[%lux] = %lux\n", l1table, va>>20, l1table[va>>20]);
 	up->l1table[va>>20] = l1table[va>>20];
 	t = (ulong*)p->va;
@@ -243,8 +245,9 @@ iprint("%lux[%lux] = %lux\n", l1table, va>>20, l1table[va>>20]);
 	t[(va & (OneMeg-1))>>PGSHIFT] = mmubits[pa & (PTEKERNEL|PTEVALID|PTEUNCACHED|PTEWRITE)]
 		| (pa & ~(PTEKERNEL|PTEVALID|PTEUNCACHED|PTEWRITE));
 iprint("%lux[%lux] = %lux\n", (ulong)t, (va & (OneMeg-1))>>PGSHIFT, t[(va & (OneMeg-1))>>PGSHIFT]);
+	cleanaddr((ulong)&t[(va & (OneMeg-1))>>PGSHIFT]);
 
-	flushmmu();
+	wbflush();
 }
 
 /*
@@ -270,7 +273,32 @@ mmurelease(Proc* p)
 void
 mmuswitch(Proc* p)
 {
-//	flushcache();	/* drain and flush the cache */
-//	flushmmu();
-//	memmove(l1table, p->l1table, sizeof(p->l1table));
+iprint("switching to proc %d\n", p->pid);
+	memmove(l1table, p->l1table, sizeof(p->l1table));
+	cleanaddr((ulong)l1table);
+	wbflush();
+}
+
+void
+peekmmu(ulong va)
+{
+	ulong e;
+
+	e = l1table[va>>20];
+	switch(e & L1TypeMask){
+	default:
+		iprint("l1: %lux invalid\n", e);
+		break;
+	case L1PageTable:
+		iprint("l1: %lux pt\n", e);
+		va &= OneMeg-1;
+		va >>= PGSHIFT;
+		e &= L1PTBaseMask;
+		e = ((ulong*)e)[va];
+		iprint("l2: %lux\n", e);
+		break;
+	case L1Section:
+		iprint("l1: %lux section\n", e);
+		break;
+	}
 }

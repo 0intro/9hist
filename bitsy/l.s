@@ -39,8 +39,8 @@ TEXT flushmmu(SB), $-4
 	MCR	CpMMU, 0, R0, C(CpTLBFlush), C(0x7)
 	RET
 
-/* flush i and d caches */
-TEXT flushcache(SB), $-4
+/* clean and flush i and d caches */
+TEXT cleancache(SB), $-4
 	/* write back any dirty data */
 	MOVW	$0xe0000000,R0
 	ADD	$(8*1024),R0,R1
@@ -57,6 +57,24 @@ _wbloop:
 	MOVW	R0,R0
 	MOVW	R0,R0
 	MOVW	R0,R0
+	RET
+
+/* clean a single virtual address */
+TEXT cleanaddr(SB), $-4
+	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0xa), 1
+	RET
+
+/* flush i and d caches */
+TEXT flushcache(SB), $-4
+	/* flush cache contents */
+	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0x7), 0
+
+	/* drain prefetch */
+	MOVW	R0,R0						
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
+	RET
 
 /* drain write buffer */
 TEXT wbflush(SB), $-4
@@ -75,6 +93,11 @@ TEXT getfsr(SB), $-4
 
 /* return fault address */
 TEXT getfar(SB), $-4
+	MRC	CpMMU, 0, R0, C(CpFAR), C(0x0)
+	RET
+
+/* return fault address */
+TEXT putfar(SB), $-4
 	MRC	CpMMU, 0, R0, C(CpFAR), C(0x0)
 	RET
 
@@ -167,11 +190,11 @@ TEXT _vrst(SB), $-4
 	BL	reset(SB)
 
 TEXT _vsvc(SB), $-4			/* SWI */
-	MOVW.DB.W R14, (R13)		/* ureg->pc = interupted PC */
+	MOVW.W	R14, -4(R13)		/* ureg->pc = interupted PC */
 	MOVW	SPSR, R14		/* ureg->psr = SPSR */
-	MOVW.DB.W R14, (R13)		/* ... */
+	MOVW.W	R14, -4(R13)		/* ... */
 	MOVW	$PsrMsvc, R14		/* ureg->type = PsrMsvc */
-	MOVW.DB.W R14, (R13)		/* ... */
+	MOVW.W	R14, -4(R13)		/* ... */
 	MOVM.DB.W.S [R0-R14], (R13)	/* save user level registers, at end r13 points to ureg */
 	MOVW	$setR12(SB), R12	/* Make sure we've got the kernel's SB loaded */
 	MOVW	R13, R0			/* first arg is pointer to ureg */

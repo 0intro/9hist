@@ -131,6 +131,7 @@ faultarm(Ureg *ureg, ulong va, int user, int read)
 
 	insyscall = up->insyscall;
 	up->insyscall = 1;
+peekmmu(va);
 	n = fault(va, read);
 iprint("fault returns %d\n", n);
 	if(n < 0){
@@ -154,37 +155,46 @@ trap(Ureg *ureg)
 	int i;
 	Vctl *v;
 	int user;
-	ulong pc, va;
+	ulong va;
 	char buf[ERRLEN];
 
 	user = (ureg->psr & PsrMask) == PsrMusr;
+
+	/*
+	 * All interrupts/exceptions should be resumed at ureg->pc-4,
+	 * except for Data Abort which resumes at ureg->pc-8.
+	 */
+	if(ureg->type == (PsrMabt+1))
+		ureg->pc -= 8;
+	else
+		ureg->pc -= 4;
+
 	switch(ureg->type){
 	default:
 		qpanic("unknown trap");
 		break;
 	case PsrMabt:	/* prefetch fault */
-		iprint("prefetch abort at 0x%lux\n", ureg->pc-4);
-		faultarm(ureg, ureg->pc - 4, user, 1);
+		iprint("prefetch abort at 0x%lux\n", ureg->pc);
+		faultarm(ureg, ureg->pc, user, 1);
 		break;
 	case PsrMabt+1:	/* data fault */
-		pc = ureg->pc - 8;
 		va = getfar();
-		iprint("data fault pc 0x%lux va 0x%lux fsr 0x%lux\n", pc, va, getfsr());
+		iprint("data fault pc 0x%lux va 0x%lux fsr 0x%lux\n", ureg->pc, va, getfsr());
 		switch(getfsr() & 0xf){
 		case 0x0:
-			qpanic("vector exception at %lux\n", pc);
+			qpanic("vector exception at %lux\n", ureg->pc);
 			break;
 		case 0x1:
 		case 0x3:
 			if(user){
 				snprint(buf, sizeof(buf), "sys: alignment: pc 0x%lux va 0x%lux\n",
-					pc, va);
+					ureg->pc, va);
 				postnote(up, 1, buf, NDebug);
 			} else
-				qpanic("kernel alignment: pc 0x%lux va 0x%lux", pc, va);
+				qpanic("kernel alignment: pc 0x%lux va 0x%lux", ureg->pc, va);
 			break;
 		case 0x2:
-			qpanic("terminal exception at %lux\n", pc);
+			qpanic("terminal exception at %lux\n", ureg->pc);
 			break;
 		case 0x4:
 		case 0x6:
@@ -192,7 +202,7 @@ trap(Ureg *ureg)
 		case 0xa:
 		case 0xc:
 		case 0xe:
-			qpanic("external abort at %lux\n", pc);
+			qpanic("external abort at %lux\n", ureg->pc);
 			break;
 		case 0x5:
 		case 0x7:
@@ -203,10 +213,10 @@ trap(Ureg *ureg)
 		case 0xb:
 			/* domain fault, accessing something we shouldn't */
 			if(user){
-				sprint(buf, "sys: access violation: pc 0x%lux va 0x%lux\n", pc, va);
+				sprint(buf, "sys: access violation: pc 0x%lux va 0x%lux\n", ureg->pc, va);
 				postnote(up, 1, buf, NDebug);
 			} else
-				qpanic("kernel access violation: pc 0x%lux va 0x%lux\n", pc, va);
+				qpanic("kernel access violation: pc 0x%lux va 0x%lux\n", ureg->pc, va);
 			break;
 		case 0xd:
 		case 0xf:
@@ -221,7 +231,6 @@ trap(Ureg *ureg)
 	case PsrMirq:	/* device interrupt */
 		for(i = 0; i < 32; i++)
 			if((1<<i) & intrregs->icip){
-				iprint("irq: %d\n", i);
 				for(v = vctl[i]; v != nil; v = v->next)
 					v->f(ureg, v->a);
 			}
@@ -249,6 +258,8 @@ syscall(Ureg* ureg)
 	long	ret;
 	int	i, scallnr;
 
+iprint("syscall in\n");
+dumpregs(ureg);
 	if((ureg->psr & PsrMask) != PsrMusr)
 		qpanic("syscall: cs 0x%4.4uX\n", ureg->psr);
 
@@ -278,7 +289,9 @@ syscall(Ureg* ureg)
 		up->s = *((Sargs*)(sp+BY2WD));
 		up->psstate = sysctab[scallnr];
 
+iprint("before syscall\n");
 		ret = systab[scallnr](up->s.args);
+iprint("syscall retuns %d\n", ret);
 		poperror();
 	}
 	if(up->nerrlab){

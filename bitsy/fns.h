@@ -2,6 +2,8 @@
 
 int	cistrcmp(char*, char*);
 int	cistrncmp(char*, char*, int);
+void	cleancache(void);
+void	cleanaddr(ulong);
 #define	clearmmucache()				/* x86 doesn't have one */
 void	clockinit(void);
 #define	coherence()
