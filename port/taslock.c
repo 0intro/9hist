@@ -8,19 +8,12 @@
 void
 lock(Lock *l)
 {
-	int i;
-	ulong pc;
-
-	pc = getcallerpc(((uchar*)&l) - sizeof(l));
-
-	for(i = 0; i < 20000000; i++){
-    		if (tas(&l->key) == 0){
-			l->pc = pc;
+	for(;;){
+		while(l->key)
+			;
+		if(tas(&l->key) == 0)
 			return;
-		}
 	}
-	panic("lock loop 0x%lux key 0x%lux pc 0x%lux held by pc 0x%lux\n",
-			i, l->key, pc, l->pc);
 }
 
 int
