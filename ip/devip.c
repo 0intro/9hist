@@ -650,7 +650,7 @@ setladdr(Conv* c)
 /*
  *  set a local port making sure the quad of raddr,rport,laddr,lport is unique
  */
-static void
+static char*
 setluniqueport(Conv* c, int lport)
 {
 	Proto *p;
@@ -664,17 +664,20 @@ setluniqueport(Conv* c, int lport)
 		xp = p->conv[x];
 		if(xp == nil)
 			break;
+		if(xp == c)
+			continue;
 		if((xp->state == Connected || xp->state == Announced)
 		&& xp->lport == lport
 		&& xp->rport == c->rport
 		&& ipcmp(xp->raddr, c->raddr) == 0
 		&& ipcmp(xp->laddr, c->laddr) == 0){
 			qunlock(p);
-			error("address in use");
+			return "address in use";
 		}
 	}
 	c->lport = lport;
 	qunlock(p);
+	return nil;
 }
 
 
@@ -734,11 +737,14 @@ setlport(Conv* c)
  *  if port is 0, pick a free one
  *  if port is '*', leave port as zero (i.e. matches anything)
  */
-static void
+static char*
 setladdrport(Conv* c, char* str, int announcing)
 {
 	char *p;
+	char *rv;
 	ushort lport;
+
+	rv = nil;
 
 	/*
 	 *  ignore restricted part if it exists.  it's
@@ -758,11 +764,13 @@ setladdrport(Conv* c, char* str, int announcing)
 	c->lport = 0;
 	if(*p != '*'){
 		lport = atoi(p);
-		if(lport != 0)
-			setluniqueport(c, lport);
+		if(lport > 0)
+			rv = setluniqueport(c, lport);
 		else
 			setlport(c);
-	}
+	} else
+		rv = setluniqueport(c, 0);
+	return rv;
 }
 
 static char*
@@ -806,8 +814,7 @@ Fsstdconnect(Conv *c, char *argv[], int argc)
 		p = setraddrport(c, argv[1]);
 		if(p != nil)
 			return p;
-		setladdrport(c, argv[2], 0);
-		break;
+		return setladdrport(c, argv[2], 0);
 	}
 	return nil;
 }
@@ -859,8 +866,7 @@ Fsstdannounce(Conv* c, char* argv[], int argc)
 	default:
 		return "bad args to announce";
 	case 2:
-		setladdrport(c, argv[1], 1);
-		break;
+		return setladdrport(c, argv[1], 1);
 	}
 	return nil;
 }
@@ -911,8 +917,7 @@ Fsstdbind(Conv* c, char* argv[], int argc)
 	default:
 		return "bad args to bind";
 	case 2:
-		setladdrport(c, argv[1], 0);
-		break;
+		return setladdrport(c, argv[1], 0);
 	}
 	return nil;
 }

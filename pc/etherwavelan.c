@@ -10,6 +10,8 @@
 	For known BUGS see the comments below. Besides,
 	the driver keeps interrupts disabled for just too
 	long. When it gets robust, locks should be revisited.
+
+	BUGS: Endian, alignment and mem/io issues?
  */
 
 #include "u.h"
@@ -1161,10 +1163,10 @@ ctl(Ether* ether, void* buf, long n)
 				kp->len = WKeyLen;
 			memset(kp->dat, 0, sizeof(kp->dat));
 			strncpy(kp->dat, cb->f[1], kp->len);
-			if (kp->len > WMinKeyLen)
-				kp->len = WKeyLen;
-			else if (kp->len > 0)
-				kp->len = WMinKeyLen;
+//			if (kp->len > WMinKeyLen)
+//				kp->len = WKeyLen;
+//			else if (kp->len > 0)
+//				kp->len = WMinKeyLen;
 		}
 	} 
 	else if(strcmp(cb->f[0], "pm") == 0){
@@ -1305,10 +1307,10 @@ setopt(Ctlr* ctlr, char* opt, int no)
 			kp->len = WKeyLen;
 		memset(kp->dat, 0, sizeof(kp->dat));
 		strncpy(kp->dat, opt+5, kp->len);
-		if (kp->len > WMinKeyLen)
-			kp->len = WKeyLen;
-		else if (kp->len > 0)
-			kp->len = WMinKeyLen;
+//		if (kp->len > WMinKeyLen)
+//			kp->len = WKeyLen;
+//		else if (kp->len > 0)
+//			kp->len = WMinKeyLen;
 	}
 }
 

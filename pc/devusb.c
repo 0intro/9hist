@@ -1238,29 +1238,36 @@ static void
 usbreset(void)
 {
 	Pcidev *cfg;
-	int i;
-	ulong port;
+	int i, port;
 	QTree *qt;
 	TD *t;
 	Ctlr *ub;
 
 	ub = &ubus;
-	memset(&cfg, 0, sizeof(cfg));
-	cfg = pcimatch(0, 0x8086, 0x7112);	/* Intel chipset PIIX 4*/
-	if(cfg == nil) {
-		cfg = pcimatch(0, 0x1106, 0x0586);	/* Via chipset */
-		if(cfg == nil) {
-			DPRINT("No USB device found\n");
-			return;
+	for(cfg = pcimatch(nil, 0, 0); cfg != nil; cfg = pcimatch(cfg, 0, 0)){
+		/*
+		 * Look for devices with the correct class and
+		 * sub-class code and known device and vendor ID.
+		 */
+		if(cfg->ccrb != 0x0C || cfg->ccru != 0x03)
+			continue;
+		switch((cfg->did<<16)|cfg->vid){
+		default:
+			continue;
+		case (0x7112<<16)|0x8086:	/* 82371[AE]B (PIIX4[E]) */
+		case (0x719A<<16)|0x8086:	/* 82443MX */
+		case (0x1106<<16)|0x0586:	/* VIA 82C586 */
+			break;
 		}
+		if((cfg->mem[4].bar & ~0x0F) != 0)
+			break;
 	}
-	port = cfg->mem[4].bar & ~0x0F;
-	if (port == 0) {
-		print("usb: failed to map registers\n");
+	if(cfg == nil)
 		return;
-	}
 
-	DPRINT("USB: %x/%x port 0x%lux size 0x%x irq %d\n",
+	port = cfg->mem[4].bar & ~0x0F;
+
+	DPRINT("USB: %x/%x port 0x%ux size 0x%x irq %d\n",
 		cfg->vid, cfg->did, port, cfg->mem[4].size, cfg->intl);
 
 	i = inb(port+SOFMod);
