@@ -69,10 +69,10 @@ portclock(Ureg *ur)
 		unlock(&clock0lock);
 	}
 
-	m->inclockintr = 0;
-
-	if(up == 0 || up->state != Running)
+	if(up == 0 || up->state != Running){
+		m->inclockintr = 0;
 		return;
+	}
 
 	if(anyready())
 		sched();
@@ -82,4 +82,5 @@ portclock(Ureg *ur)
 		(*(ulong*)(USTKTOP-BY2WD)) += TK2MS(1);
 		segclock(ur->pc);
 	}
+	m->inclockintr = 0;
 }
