@@ -512,27 +512,28 @@ TEXT setlabel(SB), $0
  * The size of each entry in the vector table (6 bytes) is known in trapinit().
  */
 TEXT _strayintr(SB), $0
-	PUSHL	AX				/* save AX */
-	MOVL	4(SP), AX			/* return PC from vectortable(SB) */
-	MOVBLZX	(AX), AX			/* trap type */
-	XCHGL	AX, (SP)			/* restore AX and put the type on the stack */
+	PUSHL	AX			/* save AX */
+	MOVL	4(SP), AX		/* return PC from vectortable(SB) */
 	JMP	intrcommon
 
 TEXT _strayintrx(SB), $0
-	XCHGL	AX, (SP)			/* exchange AX with pointer to trap type */
-	MOVBLZX	(AX), AX			/* trap type -> AX */
-	XCHGL	AX, (SP)			/* exchange trap type with AX */
-
+	XCHGL	AX, (SP)		/* swap AX with vectortable CALL PC */
 intrcommon:
-	PUSHL	DS
-	PUSHL	ES
-	PUSHL	FS
+	PUSHL	DS			/* save DS */
+	PUSHL	$(KDSEL)
+	POPL	DS			/* fix up DS */
+	MOVBLZX	(AX), AX		/* trap type -> AX */
+	XCHGL	AX, 4(SP)		/* exchange trap type with saved AX */
+
+	PUSHL	ES			/* save ES */
+	PUSHL	$(KDSEL)
+	POPL	ES			/* fix up ES */
+
+	PUSHL	FS			/* save the rest of the Ureg struct */
 	PUSHL	GS
 	PUSHAL
-	MOVL	$(KDSEL), AX
-	MOVW	AX, DS
-	MOVW	AX, ES
-	PUSHL	SP
+
+	PUSHL	SP			/* Ureg* argument to trap */
 	CALL	trap(SB)
 
 TEXT forkret(SB), $0
