@@ -1477,7 +1477,7 @@ nokproc(void *arg)
 			}
 			nonetfreeifc(ifc);
 		}
-		tsleep(&nonetkr, return0, 0, MSrexmit/2);
+		tsleep(&nonetkr, return0, 0, MSrexmit);
 	}
 }
 

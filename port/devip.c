@@ -19,7 +19,6 @@ int 	udpsum = 1;
 Queue	*Ipoutput;		/* Control message stream for tcp/il */
 Ipifc	*ipifc;			/* IP protocol interfaces for stip */
 Ipconv	*ipconv[Nrprotocol];	/* Connections for each protocol */
-Dirtab  *ipdir[Nrprotocol];	/* Connection directory structures */
 QLock	ipalloc;		/* Protocol port allocation lock */
 
 /* ARPA User Datagram Protocol */
@@ -44,65 +43,44 @@ Qinfo ilinfo  = { iliput,    iloput,    ilopen,    ilclose,    "il"  };
 
 Qinfo *protocols[] = { &tcpinfo, &udpinfo, &ilinfo, 0 };
 
-enum
+void
+ipinitifc(Ipifc *ifc, Qinfo *stproto, Ipconv *cp)
 {
-	ipdirqid,
-	iplistenqid,
-	iplportqid,
-	iprportqid,
-	ipstatusqid,
-	ipchanqid,
+	int j;
 
-	ipcloneqid
-};
-
-Dirtab ipsubdir[]={
-	"listen",	{iplistenqid},		0,	0666,
-	"local",	{iplportqid},		0,	0666,
-	"remote",	{iprportqid},		0,	0666,
-	"status",	{ipstatusqid},		0,	0666,
-};
+	for(j = 0; j < conf.ip; j++, cp++)
+		cp->stproto = stproto;
+	ifc->net.name = stproto->name;
+	ifc->net.nconv = conf.ip;
+	ifc->net.devp = &ipinfo;
+	ifc->net.protop = stproto;
+	if(stproto != &udpinfo)
+		ifc->net.listen = iplisten;
+	ifc->net.clone = ipclonecon;
+	ifc->net.ninfo = 3;
+	ifc->net.info[0].name = "remote";
+	ifc->net.info[0].fill = ipremotefill;
+	ifc->net.info[1].name = "local";
+	ifc->net.info[1].fill = iplocalfill;
+	ifc->net.info[2].name = "status";
+	ifc->net.info[2].fill = ipstatusfill;
+}
 
 void
 ipreset(void)
 {
-	int i;
+	int i, j;
 
 	ipifc = (Ipifc *)ialloc(sizeof(Ipifc) * conf.ip, 0);
 
 	for(i = 0; protocols[i]; i++) {
 		ipconv[i] = (Ipconv *)ialloc(sizeof(Ipconv) * conf.ip, 0);
-		ipdir[i] = (Dirtab *)ialloc(sizeof(Dirtab) * (conf.ip+1), 0);
-		ipmkdir(protocols[i], ipdir[i], ipconv[i]);
+		ipinitifc(&ipifc[i], protocols[i], ipconv[i]);
 		newqinfo(protocols[i]);
 	}
 
 	initfrag(conf.frag);
 	tcpinit();
-}
-
-void
-ipmkdir(Qinfo *stproto, Dirtab *dir, Ipconv *cp)
-{
-	Dirtab *etab;
-	int i;
-
-	etab = &dir[conf.ip];
-	for(i = 0; dir < etab; i++, cp++, dir++) {
-		cp->stproto = stproto;
-		sprint(dir->name, "%d", i);
-		dir->qid.path = CHDIR|STREAMQID(i, ipchanqid);
-		dir->qid.vers = 0;
-		dir->length = 0;
-		dir->perm = 0600;
-	}
-
-	/* Make the clone */
-	strcpy(dir->name, "clone");
-	dir->qid.path = ipcloneqid;
-	dir->qid.vers = 0;
-	dir->length = 0;
-	dir->perm = 0600;
 }
 
 void
@@ -137,89 +115,22 @@ ipclone(Chan *c, Chan *nc)
 int
 ipwalk(Chan *c, char *name)
 {
-	if(c->qid.path == CHDIR)
-		return devwalk(c, name, ipdir[c->dev], conf.ip+1, devgen);
-	else
-		return devwalk(c, name, ipsubdir, Nipsubdir, streamgen);
+	return netwalk(c, name, &ipifc[c->dev].net);
 }
 
 void
 ipstat(Chan *c, char *db)
 {
-	if(c->qid.path == CHDIR)
-		devstat(c, db, ipdir[c->dev], conf.ip+1, devgen);
-	else if(c->qid.path == ipcloneqid)
-		devstat(c, db, &ipdir[c->dev][conf.ip], 1, devgen);
-	else
-		devstat(c, db, ipsubdir, Nipsubdir, streamgen);
+	netstat(c, db, &ipifc[c->dev].net);
 }
 
 Chan *
 ipopen(Chan *c, int omode)
 {
-	Ipconv *cp;
-
-	cp = &ipconv[c->dev][STREAMID(c->qid.path)];
-	if(c->qid.path & CHDIR) {
-		if(omode != OREAD)
-			error(Eperm);
-	}
-	else switch(STREAMTYPE(c->qid.path)) {
-	case ipcloneqid:
-		ipclonecon(c);
-		break;
-	case iplportqid:
-	case iprportqid:
-	case ipstatusqid:
-		if(omode != OREAD)
-			error(Ebadarg);
-		break;
-	case iplistenqid:
-		if(cp->stproto != &tcpinfo && cp->stproto != &ilinfo)
-			error(Eprotonosup);
-
-		if(cp->backlog == 0)
-			cp->backlog = 3;
-
-		streamopen(c, &ipinfo);
-
-		if(c->stream->devq->next->info != cp->stproto)
-			pushq(c->stream, cp->stproto);
-
-		if(cp->stproto == &tcpinfo)
-			tcpstart(cp, TCP_PASSIVE, Streamhi, 0);
-		else if(cp->stproto == &ilinfo)
-			ilstart(cp, IL_PASSIVE, 10);
-
-		iplisten(c, cp, ipconv[c->dev]);
-		break;
-	case Sdataqid:
-		streamopen(c, &ipinfo);
-
-		if(c->stream->devq->next->info != cp->stproto)
-			pushq(c->stream, cp->stproto);
-
-		if(cp->stproto == &tcpinfo)
-			tcpstart(cp, TCP_ACTIVE, Streamhi, 0);
-		else if(cp->stproto == &ilinfo)
-			ilstart(cp, IL_ACTIVE, 10);
-
-		break;
-	case Sctlqid:
-		streamopen(c, &ipinfo);
-
-		if(c->stream->devq->next->info != cp->stproto)
-			pushq(c->stream, cp->stproto);
-		break;
-	}
-
-	c->mode = openmode(omode);
-	c->flag |= COPEN;
-	c->offset = 0;
-	return c;
+	return netopen(c, omode, &ipifc[c->dev].net);
 }
 
-Ipconv *
+int
 ipclonecon(Chan *c)
 {
 	Ipconv *new, *base;
@@ -228,14 +139,7 @@ ipclonecon(Chan *c)
 	new = ipincoming(base);
 	if(new == 0)
 		error(Enodev);
-
-	c->qid.path = CHDIR|STREAMQID(new-base, ipchanqid);
-	devwalk(c, "ctl", 0, 0, streamgen);
-
-	streamopen(c, &ipinfo);
-	pushq(c->stream, new->stproto);
-	new->ref--;
-	return new;
+	return new - base;
 }
 
 Ipconv *
@@ -252,7 +156,7 @@ ipincoming(Ipconv *base)
 				qunlock(new);
 				continue;
 			}
-			new->ref++;
+			new->ref = 1;
 			qunlock(new);
 			return new;
 		}	
@@ -281,49 +185,14 @@ ipwstat(Chan *c, char *dp)
 void
 ipclose(Chan *c)
 {
-	if(c->qid.path != CHDIR)
+	if(c->stream)
 		streamclose(c);
 }
 
 long
 ipread(Chan *c, void *a, long n, ulong offset)
 {
-	int t, connection;
-	Ipconv *cp;
-	char buf[WORKBUF];
-
-	t = STREAMTYPE(c->qid.path);
-	if(t >= Slowqid)
-		return streamread(c, a, n);
-
-	if(c->qid.path == CHDIR)
-		return devdirread(c, a, n, ipdir[c->dev], conf.ip+1, devgen);
-	if(c->qid.path & CHDIR)
-		return devdirread(c, a, n, ipsubdir, Nipsubdir, streamgen);
-
-	connection = STREAMID(c->qid.path);
-	cp = &ipconv[c->dev][connection];
-
-	switch(t) {
-	case iprportqid:
-		sprint(buf, "%d.%d.%d.%d %d\n", fmtaddr(cp->dst), cp->pdst);
-		return stringread(c, a, n, buf, offset);
-	case iplportqid:
-		sprint(buf, "%d.%d.%d.%d %d\n", fmtaddr(Myip), cp->psrc);
-		return stringread(c, a, n, buf, offset);
-	case ipstatusqid:
-		if(cp->stproto == &tcpinfo)
-			sprint(buf, "tcp/%d %d %s %s\n", connection, cp->ref, tcpstate[cp->tcpctl.state],
-				cp->tcpctl.flags & CLONE ? "listen" : "connect");
-		else if(cp->stproto == &ilinfo)
-			sprint(buf, "il/%d %d %s\n", connection, cp->ref, ilstate[cp->ilctl.state]);
-		else
-			sprint(buf, "%s/%d %d\n", cp->stproto->name, connection, cp->ref);
-
-		return stringread(c, a, n, buf, offset);
-	}
-
-	error(Eperm);
+	return netread(c, a, n, offset,  &ipifc[c->dev].net);
 }
 
 long
@@ -382,6 +251,11 @@ ipwrite(Chan *c, char *a, long n, ulong offset)
 			cp->psrc = nextport(ipconv[c->dev], base);
 		qunlock(&ipalloc);
 
+		if(cp->stproto == &tcpinfo)
+			tcpstart(cp, TCP_ACTIVE, Streamhi, 0);
+		else if(cp->stproto == &ilinfo)
+			ilstart(cp, IL_ACTIVE, 10);
+
 	}
 	else if(strcmp(field[0], "announce") == 0) {
 		if((cp->stproto == &tcpinfo && cp->tcpctl.state != CLOSED) ||
@@ -400,6 +274,14 @@ ipwrite(Chan *c, char *a, long n, ulong offset)
 		}
 		cp->psrc = port;
 		qunlock(&ipalloc);
+
+		if(cp->stproto == &tcpinfo)
+			tcpstart(cp, TCP_PASSIVE, Streamhi, 0);
+		else if(cp->stproto == &ilinfo)
+			ilstart(cp, IL_PASSIVE, 10);
+
+		if(cp->backlog == 0)
+			cp->backlog = 3;
 	}
 	else if(strcmp(field[0], "backlog") == 0) {
 		if(m != 2)
@@ -544,13 +426,10 @@ udpstclose(Queue *q)
 
 	ipc = (Ipconv *)(q->ptr);
 
-	qlock(ipc);
-	if(--ipc->ref == 0) {
-		ipc->psrc = 0;
-		ipc->pdst = 0;
-		ipc->dst = 0;
-	}
-	qunlock(ipc);
+	ipc->psrc = 0;
+	ipc->pdst = 0;
+	ipc->dst = 0;
+	ipc->ref = 0;
 
 	closeipifc(ipc->ipinterface);
 }
@@ -564,9 +443,7 @@ udpstopen(Queue *q, Stream *s)
 	ipc->ipinterface = newipifc(IP_UDPPROTO, udprcvmsg, ipconv[s->dev],
 			            1500, 512, ETHER_HDR, "UDP");
 
-	qlock(ipc);
-	ipc->ref++;
-	qunlock(ipc);
+	ipc->ref = 1;
 	ipc->readq = RD(q);	
 	RD(q)->ptr = (void *)ipc;
 	WR(q)->next->ptr = (void *)ipc->ipinterface;
@@ -649,9 +526,7 @@ tcpstopen(Queue *q, Stream *s)
 	ipc->ipinterface = newipifc(IP_TCPPROTO, tcp_input, ipconv[s->dev], 
 			            1500, 512, ETHER_HDR, "TCP");
 
-	qlock(ipc);
-	ipc->ref++;
-	qunlock(ipc);
+	ipc->ref = 1;
 
 	ipc->readq = RD(q);
 	ipc->readq->rp = &tcpflowr;
@@ -661,16 +536,66 @@ tcpstopen(Queue *q, Stream *s)
 	WR(q)->ptr = (void *)ipc;
 }
 
+void
+ipremotefill(Chan *c, char *buf, int len)
+{
+	int connection;
+	Ipconv *cp;
+
+	connection = STREAMID(c->qid.path);
+	cp = &ipconv[c->dev][connection];
+	sprint(buf, "%d.%d.%d.%d %d\n", fmtaddr(cp->dst), cp->pdst);
+}
+void
+iplocalfill(Chan *c, char *buf, int len)
+{
+	int connection;
+	Ipconv *cp;
+
+	connection = STREAMID(c->qid.path);
+	cp = &ipconv[c->dev][connection];
+	sprint(buf, "%d.%d.%d.%d %d\n", fmtaddr(Myip), cp->psrc);
+}
+void
+ipstatusfill(Chan *c, char *buf, int len)
+{
+	int connection;
+	Ipconv *cp;
+
+	connection = STREAMID(c->qid.path);
+	cp = &ipconv[c->dev][connection];
+	if(cp->stproto == &tcpinfo)
+		sprint(buf, "tcp/%d %d %s %s\n", connection, cp->ref,
+			tcpstate[cp->tcpctl.state],
+			cp->tcpctl.flags & CLONE ? "listen" : "connect");
+	else if(cp->stproto == &ilinfo)
+		sprint(buf, "il/%d %d %s\n", connection, cp->ref,
+			ilstate[cp->ilctl.state]);
+	else
+		sprint(buf, "%s/%d %d\n", cp->stproto->name, connection, cp->ref);
+}
+
 int
 iphavecon(Ipconv *s)
 {
 	return s->curlog;
 }
 
-void
-iplisten(Chan *c, Ipconv *s, Ipconv *base)
+int
+iplisten(Chan *c)
 {
 	Ipconv *etab, *new;
+	Ipconv *s, *base;
+	int connection;
+	Ipconv *cp;
+
+	connection = STREAMID(c->qid.path);
+	s = &ipconv[c->dev][connection];
+	base = ipconv[c->dev];
+
+	if((s->stproto == &tcpinfo && s->tcpctl.state != LISTEN) ||
+	   (s->stproto == &ilinfo && s->ilctl.state != Illistening))
+		errors("not announced");
 
 	qlock(&s->listenq);
 	if(waserror()) {
@@ -684,21 +609,10 @@ iplisten(Chan *c, Ipconv *s, Ipconv *base)
 		new = base;
  		for(etab = &base[conf.ip]; new < etab; new++) {
 			if(new->newcon) {
-				/* Remove the listen channel reference */
-				streamclose(c);
-
 				s->curlog--;
-
-				/* Attach the control channel to the new connection */
 				new->newcon = 0;
-				c->qid.path = CHDIR|STREAMQID(new-base, ipchanqid);
-				devwalk(c, "ctl", 0, 0, streamgen);
-
-				streamopen(c, &ipinfo);
-				pushq(c->stream, new->stproto);
-				new->ref--;
 				qunlock(&s->listenq);
-				return;
+				return new - base;
 			}
 		}
 	}
@@ -713,9 +627,7 @@ tcpstclose(Queue *q)
 	s = (Ipconv *)(q->ptr);
 	tcb = &s->tcpctl;
 
-	qlock(s);
-	s->ref--;
-	qunlock(s);
+	s->ref = 0;
 
 	/* Not interested in data anymore */
 	s->readq = 0;

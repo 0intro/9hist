@@ -268,6 +268,7 @@ confinit(void)
 	conf.nsrv = 16*mul;			/* was 32 */
 	conf.nbitmap = 300*mul;
 	conf.nbitbyte = 300*1024*mul;
+	conf.nmux = 10;
 	if(*(uchar*)MOUSE & (1<<4))
 		conf.nbitbyte *= 2;	/* ldepth 1 */
 	conf.nfont = 10*mul;

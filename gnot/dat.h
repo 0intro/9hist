@@ -46,6 +46,7 @@ struct	FPsave
 	uchar	size;
 	short	reserved;
 	char	junk[212];	/* 68881: sizes 24, 180; 68882: 56, 212 */
+	/* this offset known in db */
 	char	reg[3*4+8*12];
 };
 
@@ -88,6 +89,7 @@ struct Conf
 	int	nmntdev;	/* mounted devices (devmnt.c) */
 	int	nmntbuf;	/* buffers for devmnt.c messages */
 	int	nmnthdr;	/* headers for devmnt.c messages */
+	int	nmux;		/* number of mux devices */
 	int	nstream;	/* streams */
 	int	nqueue;		/* stream queues */
 	int	nblock;		/* stream blocks */

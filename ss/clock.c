@@ -42,7 +42,7 @@ void
 clock(Ureg *ur)
 {
 	Proc *p;
-	ulong i, ss, nrun = 0;
+	ulong i, nrun = 0;
 	Segment *s;
 
 	i = ctr->lim1;	/* clear interrupt */
@@ -71,10 +71,9 @@ clock(Ureg *ur)
 				sched();
 		}
 		if((ur->psr&PSRPSUPER) == 0){
-			ss = spllo();				/* Low because we may fault */
+			spllo();				/* Low because we may fault */
 			*(ulong*)(USTKTOP-BY2WD) += TK2MS(1);
-			notify(ur);
-			splx(ss);				/* return hi for restore */
+			splhi();				/* return hi for restore */
 		}
 	}
 }

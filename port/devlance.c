@@ -9,7 +9,6 @@
 
 enum {
 	Ntypes=		9,		/* max number of ethernet packet types */
-	Ndir=		Ntypes+1,	/* entries in top level directory */
 	Maxrb=		128,		/* max buffers in a ring */
 };
 #define RSUCC(x) (((x)+1)%l.nrrb)
@@ -82,6 +81,7 @@ typedef struct {
 	int	type;		/* ethernet type */
 	int	prom;		/* promiscuous mode */
 	Queue	*q;
+	int	inuse;
 } Ethertype;
 
 
@@ -93,6 +93,7 @@ typedef struct {
 
 	Lance;			/* host dependent lance params */
 	int	prom;		/* number of promiscuous channels */
+	Network	net;
 
 	int	inited;
 	uchar	*lmp;		/* location of parity test */
@@ -186,9 +187,12 @@ static SoftLance l;
 /*
  *  predeclared
  */
-static void lancekproc(void *);
-static void lancestart(int, int);
-static void lanceup(Etherpkt*, int);
+static void	lancekproc(void *);
+static void	lancestart(int, int);
+static void	lanceup(Etherpkt*, int);
+static int	lanceclonecon(Chan*);
+static void	lancestatsfill(Chan*, char*, int);
+static void	lancetypefill(Chan*, char*, int);
 
 /*
  *  lance stream module definition
@@ -215,6 +219,7 @@ lancestopen(Queue *q, Stream *s)
 	RD(q)->ptr = WR(q)->ptr = et;
 	et->type = 0;
 	et->q = RD(q);
+	et->inuse = 1;
 	qunlock(et);
 }
 
@@ -241,6 +246,7 @@ lancestclose(Queue *q)
 	et->type = 0;
 	et->q = 0;
 	et->prom = 0;
+	et->inuse = 0;
 	qunlock(et);
 }
 
@@ -355,31 +361,28 @@ lanceoput(Queue *q, Block *bp )
 }
 
 /*
- *  lance directory
- */
-enum {
-	Lchanqid = 1,
-	Lstatsqid = 2,
-};
-Dirtab lancedir[Ndir];
-
-/*
  *  stop the lance and allocate buffers
  */
 void
 lancereset(void)
 {
-	int i;
-	ulong x;
-	int index;
 	static int already;
-	ushort *lanceaddr;
-	ushort *hostaddr;
-
 
 	if(already == 0){
 		already = 1;
 		lancesetup(&l);
+
+		l.net.name = "ether";
+		l.net.nconv = Ntypes;
+		l.net.devp = &lanceinfo;
+		l.net.protop = 0;
+		l.net.listen = 0;
+		l.net.clone = lanceclonecon;
+		l.net.ninfo = 2;
+		l.net.info[0].name = "stats";
+		l.net.info[0].fill = lancestatsfill;
+		l.net.info[1].name = "type";
+		l.net.info[1].fill = lancetypefill;
 	}
 
 	/*
@@ -503,23 +506,6 @@ lancestart(int mode, int dolock)
 void
 lanceinit(void)
 {
-	int i;
-
-	/*
-	 *  staticly set up types for now
-	 */
-	for(i=0; i<Ntypes; i++) {
-		sprint(lancedir[i].name, "%d", i);
-		lancedir[i].qid.path = CHDIR|STREAMQID(i, Lchanqid);
-		lancedir[i].qid.vers = 0;
-		lancedir[i].length = 0;
-		lancedir[i].perm = 0666;
-	}
-	strcpy(lancedir[Ntypes].name, "stats");
-	lancedir[Ntypes].qid.path = Lstatsqid;
-	lancedir[Ntypes].length = 0;
-	lancedir[Ntypes].perm = 0666;
-
 }
 
 Chan*
@@ -539,26 +525,16 @@ lanceclone(Chan *c, Chan *nc)
 	return devclone(c, nc);
 }
 
-/*
- *  if the name doesn't exist, the name is numeric, and room exists
- *  in lancedir, create a new entry.
- */
 int	 
 lancewalk(Chan *c, char *name)
 {
-	if(c->qid.path == CHDIR)
-		return devwalk(c, name, lancedir, Ndir, devgen);
-	else
-		return devwalk(c, name, 0, 0, streamgen);
+	return netwalk(c, name, &l.net);
 }
 
 void	 
 lancestat(Chan *c, char *dp)
 {
-	if(c->qid.path==CHDIR || c->qid.path==Lstatsqid)
-		devstat(c, dp, lancedir, Ndir, devgen);
-	else
-		devstat(c, dp, 0, 0, streamgen);
+	netstat(c, dp, &l.net);
 }
 
 /*
@@ -567,20 +543,7 @@ lancestat(Chan *c, char *dp)
 Chan*
 lanceopen(Chan *c, int omode)
 {
-	switch(c->qid.path){
-	case CHDIR:
-	case Lstatsqid:
-		if(omode != OREAD)
-			error(Eperm);
-		break;
-	default:
-		streamopen(c, &lanceinfo);
-		break;
-	}
-	c->mode = openmode(omode);
-	c->flag |= COPEN;
-	c->offset = 0;
-	return c;
+	return netopen(c, omode, &l.net);
 }
 
 void	 
@@ -599,20 +562,7 @@ lanceclose(Chan *c)
 long	 
 lanceread(Chan *c, void *a, long n, ulong offset)
 {
-	char buf[256];
-
-	switch(c->qid.path){
-	case CHDIR:
-		return devdirread(c, a, n, lancedir, Ndir, devgen);
-	case Lstatsqid:
-		sprint(buf, "in: %d\nout: %d\ncrc errs %d\noverflows: %d\nframe errs %d\nbuff errs: %d\noerrs %d\naddr: %.02x:%.02x:%.02x:%.02x:%.02x:%.02x\n",
-		l.inpackets, l.outpackets, l.crcs,
-		l.overflows, l.frames, l.buffs, l.oerrs,
-		l.ea[0], l.ea[1], l.ea[2], l.ea[3], l.ea[4], l.ea[5]);
-		return stringread(c, a, n, buf, offset);
-	default:
-		return streamread(c, a, n);
-	}
+	return netread(c, a, n, offset,  &l.net);
 }
 
 long	 
@@ -631,6 +581,49 @@ void
 lancewstat(Chan *c, char *dp)
 {
 	error(Eperm);
+}
+
+/*
+ *  user level network interface routines
+ */
+static void
+lancestatsfill(Chan *c, char* p, int n)
+{
+	char buf[256];
+
+	sprint(buf, "in: %d\nout: %d\ncrc errs %d\noverflows: %d\nframe errs %d\nbuff errs: %d\noerrs %d\naddr: %.02x:%.02x:%.02x:%.02x:%.02x:%.02x\n",
+		l.inpackets, l.outpackets, l.crcs,
+		l.overflows, l.frames, l.buffs, l.oerrs,
+		l.ea[0], l.ea[1], l.ea[2], l.ea[3], l.ea[4], l.ea[5]);
+	strncpy(p, buf, n);
+}
+static void
+lancetypefill(Chan *c, char* p, int n)
+{
+	char buf[16];
+	Ethertype *e;
+
+	e = &l.e[STREAMID(c->qid.path)];
+	sprint(buf, "%d", e->type);
+	strncpy(p, buf, n);
+}
+
+static int
+lanceclonecon(Chan *c)
+{
+	Ethertype *e;
+
+	for(e = l.e; e < &l.e[Ntypes]; e++){
+		qlock(e);
+		if(e->inuse || e->q){
+			qunlock(e);
+			continue;
+		}
+		e->inuse = 1;
+		qunlock(e);
+		return e - l.e;
+	}
+	errors("no unused lance channels");
 }
 
 /*

@@ -126,9 +126,9 @@ nonetdial(char *arg)
 		 *  grab a lance channel, make it recognize ether type 0x900,
 		 *  and push the nonet ethernet multiplexor onto it.
 		 */
-		efd = open("#l/1/ctl", ORDWR);
+		efd = open("#l/ether/0/ctl", ORDWR);
 		if(efd < 0){
-			prerror("opening #l/1/ctl");
+			prerror("opening #l/ether/0/ctl");
 			return -1;
 		}
 		if(write(efd, "connect 0x900", sizeof("connect 0x900")-1)<0){
@@ -255,7 +255,7 @@ hotdial(char *arg)
 	/*
 	 * use /dev; it's local
 	 */
-	if(mount(fd, "/dev", MREPL, "", "") < 0)
+	if(mount(fd, "/dev", MREPL, "", "", -1) < 0)
 		error("mount");
 	switch(fork()){
 	case 0:
@@ -388,7 +388,7 @@ boot(int ask)
 	print("mount...");
 	if(bind("/", "/", MREPL) < 0)
 		error("bind");
-	if(mount(fd, "/", MAFTER|MCREATE, "", "") < 0)
+	if(mount(fd, "/", MAFTER|MCREATE, "", "", -1) < 0)
 		error("mount");
 
 	settime();
@@ -503,7 +503,7 @@ settime(void)
 	f = open("#s/boot", ORDWR);
 	if(f < 0)
 		return;
-	if(mount(f, "/n/boot", MREPL, "", "") < 0){
+	if(mount(f, "/n/boot", MREPL, "", "", -1) < 0){
 		close(f);
 		return;
 	}

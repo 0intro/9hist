@@ -147,13 +147,14 @@ dumpregs(Ureg *ur)
 void
 notify(Ureg *ur)
 {
-	ulong sp;
+	ulong s, sp;
 
 	if(u->p->procctl)
 		procctl(u->p);
 	if(u->nnote==0)
 		return;
 
+	s = spllo();
 	lock(&u->p->debug);
 	u->p->notepending = 0;
 	if(u->note[0].flag!=NUser && (u->notified || u->notify==0)){
@@ -195,6 +196,7 @@ notify(Ureg *ur)
 		memmove(&u->note[0], &u->note[1], u->nnote*sizeof(Note));
 	}
 	unlock(&u->p->debug);
+	splx(s);
 }
 
 /*
@@ -315,7 +317,8 @@ syscall(Ureg *aur)
 
 	if(r0 == NOTED)		/* ugly hack */
 		noted(aur, *(ulong*)(sp+BY2WD));	/* doesn't return */
-	if(u->p->procctl || (u->nnote && r0!=FORK)){
+	splhi();
+	if(r0!=FORK && (u->p->procctl || u->nnote)){
 		ur->r0 = ret;
 		notify(ur);
 	}

@@ -43,13 +43,13 @@ netgen(Chan *c, void *vp, int ntab, int i, Dir *dp)
 	}
 
 	/* second level contains clone plus all the conversations */
-	if(STREAMID(c->qid.path) == 0){
+	if(STREAMTYPE(c->qid.path) == Q2nd){
 		if(i == 0){
 			q.path = Qclone;
 			devdir(c, q, "clone", 0, eve, 0666, dp);
-		}else if(i < np->nconv){
-			q.path = CHDIR|STREAMQID(i, Q3rd);
-			sprint(buf, "%d", i);
+		}else if(i <= np->nconv){
+			q.path = CHDIR|STREAMQID(i-1, Q3rd);
+			sprint(buf, "%d", i-1);
 			devdir(c, q, buf, 0, eve, 0666, dp);
 		}else
 			return -1;

@@ -267,7 +267,7 @@ dkalloc(char *name, int ncsc, int lines)
 	bp->wptr += n;
 	dp->alloc = bp;
 	n = sizeof(Line)*(dp->lines);
-	for(i = 1; i <= dp->lines; i++){
+	for(i = 0; i <= dp->lines; i++){
 		if(bp->lim - bp->wptr < sizeof(Line)){
 			bp = allocb(sizeof(Line)*n);
 			memset(bp->base, 0, bp->lim-bp->base);

@@ -219,19 +219,17 @@ dumpregs(Ureg *ur)
 	dumpstack();
 }
 
-/*
- * Call user, if necessary, with note
- */
 void
 notify(Ureg *ur)
 {
-	ulong sp;
+	ulong s, sp;
 
 	if(u->p->procctl)
 		procctl(u->p);
 	if(u->nnote == 0)
 		return;
 
+	s = spllo();		/* need to go low as may fault */
 	lock(&u->p->debug);
 	u->p->notepending = 0;
 	if(u->nnote==0){
@@ -277,6 +275,7 @@ notify(Ureg *ur)
 		memmove(&u->note[0], &u->note[1], u->nnote*sizeof(Note));
 	}
 	unlock(&u->p->debug);
+	splx(s);
 }
 
 /*
@@ -392,7 +391,9 @@ syscall(Ureg *aur)
 	u->p->psstate = 0;
 	if(r7 == NOTED)	/* ugly hack */
 		noted(&aur, *(ulong*)(sp+1*BY2WD));	/* doesn't return */
-	if(u->p->procctl || (u->nnote && r7!=FORK)){
+
+	splhi();
+	if(r7!=FORK && (u->p->procctl || u->nnote)){
 		ur->r7 = ret;
 		notify(ur);
 	}
@@ -405,11 +406,15 @@ execpc(ulong entry)
 	((Ureg*)UREGADDR)->pc = entry - 4;		/* syscall advances it */
 }
 
-/* This routine must save the values of registers the user is not permitted
- * to write from devproc and restore them before returning
+/* This routine must save the values of registers the user is not permitted to write
+ * from devproc and the restore the saved values before returning
  */
 void
 setregisters(Ureg *xp, char *pureg, char *uva, int n)
 {
-	print("setregisters: no idea\n");
+	ulong psr;
+
+	status = xp->psr;
+	memmove(pureg, uva, n);
+	xp->psr = psr;
 }

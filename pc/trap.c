@@ -342,14 +342,16 @@ syscall(Ureg *ur)
 			print("sp=%lux pc=%lux\n", u->errlab[i].sp, u->errlab[i].pc);
 		panic("error stack");
 	}
+
 	u->p->insyscall = 0;
 	u->p->psstate = 0;
 	ur->ax = ret;
-	if(ax == NOTED){
+	if(ax == NOTED)
 		noted(ur, *(ulong*)(sp+BY2WD));
-	} else if(u->p->procctl || (u->nnote && ax!=FORK)){
+
+	splhi();
+	if(ax!=FORK && (u->p->procctl || u->nnote))
 		notify(ur);
-	}
 	return ret;
 }
 
@@ -360,12 +362,14 @@ syscall(Ureg *ur)
 void
 notify(Ureg *ur)
 {
-	ulong sp;
+	ulong s, sp;
 
 	if(u->p->procctl)
 		procctl(u->p);
 	if(u->nnote==0)
 		return;
+
+	s = spllo();
 	lock(&u->p->debug);
 	u->p->notepending = 0;
 	if(u->note[0].flag!=NUser && (u->notified || u->notify==0)){
@@ -407,6 +411,7 @@ notify(Ureg *ur)
 		memmove(&u->note[0], &u->note[1], u->nnote*sizeof(Note));
 	}
 	unlock(&u->p->debug);
+	splx(s);
 }
 
 /*

@@ -361,6 +361,7 @@ struct Ipifc
 	int		maxmtu;			/* Maximum transfer unit */
 	int		minmtu;			/* Minumum tranfer unit */
 	int		hsize;			/* Media header size */	
+	Network		net;
 	Lock;	
 };
 
@@ -479,9 +480,12 @@ void	ilstart(Ipconv *, int, int);
 void	tcpflow(void*);
 void 	tcp_timeout(void *);
 void	tcp_acktimer(void *);
-Ipconv  *ipclonecon(Chan *);
-void	iplisten(Chan *, Ipconv *, Ipconv *);
+int	ipclonecon(Chan *);
+int	iplisten(Chan *);
 void	iloutoforder(Ipconv*, Ilhdr*, Block*);
+void	iplocalfill(Chan*, char*, int);
+void	ipremotefill(Chan*, char*, int);
+void	ipstatusfill(Chan*, char*, int);
 
 #define	fmtaddr(xx)	(xx>>24)&0xff,(xx>>16)&0xff,(xx>>8)&0xff,xx&0xff
 #define	MIN(a, b)	((a) < (b) ? (a) : (b))

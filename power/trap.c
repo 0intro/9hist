@@ -166,14 +166,14 @@ trap(Ureg *ur)
 		}
 	}
 
-	if(user)
-		notify(ur);
-
 	splhi();
-	if(user && u && u->p->fpstate == FPinactive) {
-		restfpregs(&u->fpsave, u->fpsave.fpstatus);
-		u->p->fpstate = FPactive;
-		ur->status |= CU1;
+	if(user) {
+		notify(ur);
+		if(u->p->fpstate == FPinactive) {
+			restfpregs(&u->fpsave, u->fpsave.fpstatus);
+			u->p->fpstate = FPactive;
+			ur->status |= CU1;
+		}
 	}
 }
 
@@ -367,12 +367,14 @@ dumpregs(Ureg *ur)
 void
 notify(Ureg *ur)
 {
-	ulong sp;
+	ulong s, sp;
 
 	if(u->p->procctl)
 		procctl(u->p);
 	if(u->nnote == 0)
 		return;
+
+	s = spllo();
 	lock(&u->p->debug);
 	u->p->notepending = 0;
 	if(u->note[0].flag!=NUser && (u->notified || u->notify==0)){
@@ -412,6 +414,7 @@ notify(Ureg *ur)
 		memmove(&u->note[0], &u->note[1], u->nnote*sizeof(Note));
 	}
 	unlock(&u->p->debug);
+	splx(s);
 }
 
 /*
@@ -524,12 +527,12 @@ syscall(Ureg *aur)
 	ur->pc += 4;
 	u->nerrlab = 0;
 
-	splhi();
 	u->p->psstate = 0;
 	u->p->insyscall = 0;
 	if(r1 == NOTED)					/* ugly hack */
 		noted(&aur, *(ulong*)(sp+BY2WD));	/* doesn't return */
-	if(u->p->procctl || (u->nnote && r1!=FORK)){
+	splhi();
+	if(r1!=FORK && (u->p->procctl || u->nnote)){
 		ur->r1 = ret;
 		notify(ur);
 	}
