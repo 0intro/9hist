@@ -12,6 +12,16 @@
 #define prev	u.s.bhv
 #define parent	u.s.bhp
 
+typedef struct Bhdr	Bhdr;
+
+struct Bhdr {
+	ulong	magic;
+	ulong	size;
+};
+enum {
+	NOT_MAGIC = 0xdeadfa11,
+};
+
 struct Pool
 {
 	char*	name;

@@ -955,7 +955,7 @@ static void
 convsetstate(Conv *c, int state)
 {
 
-if(0)print("convsetstate %s -> %s\n", convstatename[c->state], convstatename[state]);
+if(1)print("convsetstate %d: %s -> %s\n", c->id, convstatename[c->state], convstatename[state]);
 
 	switch(state) {
 	default:
@@ -1017,12 +1017,13 @@ static void
 convderef(Conv *c)
 {
 	c->ref--;
-	if(c->ref > 0)
+	if(c->ref > 0) {
 		return;
+	}
 	assert(c->ref == 0);
 	assert(c->dataopen == 0);
 	assert(c->controlopen == 0);
-//print("convderef: %d: ref == 0!\n", c->id);
+if(0)print("convderef: %d: ref == 0!\n", c->id);
 	c->state = CFree;
 	if(c->chan) {	
 		cclose(c->chan);
@@ -1070,7 +1071,7 @@ convopenchan(Conv *c, char *path)
 	if(c->state != CInit || c->chan != nil)
 		error("already connected");
 	c->chan = namec(path, Aopen, ORDWR, 0);
-	c->channame = malloc(strlen(path)+1);
+	c->channame = smalloc(strlen(path)+1);
 	strcpy(c->channame, path);
 	if(waserror()) {
 		cclose(c->chan);
@@ -2300,8 +2301,12 @@ thwackcompinit(Conv *c)
 	compfree(c);
 
 	c->in.compstate = malloc(sizeof(Unthwack));
+	if(c->in.compstate == nil)
+		error(Enomem);
 	unthwackinit(c->in.compstate);
 	c->out.compstate = malloc(sizeof(Thwack));
+	if(c->out.compstate == nil)
+		error(Enomem);
 	thwackinit(c->out.compstate);
 	c->in.comp = thwackuncomp;
 	c->out.comp = thwackcomp;
