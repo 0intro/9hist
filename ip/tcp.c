@@ -1129,8 +1129,16 @@ update(Conv *s, Tcp *seg)
 	}
 
 
-	if(!seq_gt(seg->ack, tcb->snd.una))
+	if(!seq_gt(seg->ack, tcb->snd.una)){
+		/*
+		 *  don't let us hangup if sending into a closed window and
+		 *  we're still getting acks
+		 */
+		if((tcb->flags&RETRAN) && tcb->snd.wnd == 0){
+			tcb->backedoff = MAXBACKMS/4;
+		}
 		return;
+	}
 
         /*
 	 *  any positive ack turns off fast rxt,
