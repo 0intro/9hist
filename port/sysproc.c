@@ -53,8 +53,12 @@ sysrfork(ulong *arg)
 			up->pgrp = newpgrp();
 			if(flag & RFNAMEG)
 				pgrpcpy(up->pgrp, opg);
+			/* inherit noattach */
+			up->pgrp->noattach = opg->noattach;
 			closepgrp(opg);
 		}
+		if(flag & RFNOMNT)
+			up->pgrp->noattach = 1;
 		if(flag & RFREND) {
 			org = up->rgrp;
 			up->rgrp = newrgrp();
@@ -121,11 +125,15 @@ sysrfork(ulong *arg)
 		p->pgrp = newpgrp();
 		if(flag & RFNAMEG)
 			pgrpcpy(p->pgrp, up->pgrp);
+		/* inherit noattach */
+		p->pgrp->noattach = up->pgrp->noattach;
 	}
 	else {
 		p->pgrp = up->pgrp;
 		incref(p->pgrp);
 	}
+	if(flag & RFNOMNT)
+		up->pgrp->noattach = 1;
 
 	if(flag & RFREND)
 		p->rgrp = newrgrp();

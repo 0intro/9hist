@@ -396,6 +396,7 @@ enum
 struct Pgrp
 {
 	Ref;				/* also used as a lock when mounting */
+	int	noattach;
 	ulong	pgrpid;
 	QLock	debug;			/* single access via devproc.c */
 	RWlock	ns;			/* Namespace n read/one write lock */
@@ -476,6 +477,7 @@ enum
 	RFCENVG		= (1<<11),
 	RFCFDG		= (1<<12),
 	RFREND		= (1<<13),
+	RFNOMNT		= (1<<14),
 };
 
 /*

@@ -56,3 +56,4 @@ extern char Eshort[];		/* i/o count too small */
 extern char Egreg[];		/* xterm: Error 50, errno 1: Too big */
 extern char Ebadspec[];		/* bad attach specifier */
 extern char Enoreg[];		/* process has no saved registers */
+extern char Enoattach[];	/* mount/attach disallowed */

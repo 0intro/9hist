@@ -629,6 +629,9 @@ bindmount(ulong *arg, int ismount)
 	bogus.flags = flag & MCACHE;
 
 	if(ismount){
+		if(up->pgrp->noattach)
+			error(Enoattach);
+
 		bc = fdtochan(fd, ORDWR, 0, 1);
 		if(waserror()) {
 			cclose(bc);

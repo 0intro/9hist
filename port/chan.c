@@ -710,6 +710,21 @@ namec(char *name, int amode, int omode, ulong perm)
 		c = cclone(up->slash, 0);
 		break;
 	case '#':
+		/*
+		 *  noattach is sandboxing.
+		 *
+		 *  the OK exceptions are:
+		 *	|  it only gives access to pipes you create
+		 *	d  this process's file descriptors
+		 *	e  this process's environment
+		 *  the iffy exceptions are:
+		 *	c  time and pid, but also cons and consctl
+		 *	p  control of your own processes (and unfortunately
+		 *	   any others left unprotected)
+		 */
+		if(up->pgrp->noattach)
+		if(strchr("|decp", name[1]) == 0)
+			error(Enoattach);
 		cname = newcname(name);	/* save this before advancing */
 		mntok = 0;
 		elem[0] = 0;
