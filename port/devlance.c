@@ -23,6 +23,8 @@ enum {
 
 #define NOW (MACHP(0)->ticks*MS2HZ)
 
+int plance;
+
 /*
  *  Communication with the lance is via a transmit and receive ring of
  *  message descriptors.  The Initblock contains pointers to and sizes of
@@ -57,12 +59,6 @@ typedef struct Lancemem
 	 */
 	Msg	rmr[Nrrb];		/* recieve message ring */
 	Msg	tmr[Ntrb];		/* transmit message ring */
-
-	/*
-	 *  packet buffers (for SGI IO2 version only)
-	 */
-	Etherpkt	rp[Nrrb];
-	Etherpkt	tp[Ntrb];
 } Lancemem;
 
 /*
@@ -128,7 +124,6 @@ typedef struct {
 	int	sep;		/* separaqtion between shorts in lance ram
 				    as seen by host */
 	ushort	*lanceram;	/* start of lance ram as seen by host */
-	ushort	*lanceend;	/* end of lance ram as seen by host */
 	Lancemem *lm;		/* start of lance memory as seen by lance */
 
 	Rendez	rr;		/* rendezvous for an input buffer */
@@ -145,10 +140,10 @@ typedef struct {
 	int	kstarted;
 	Debqueue dq;
 
-	Etherpkt	*rp;		/* receive buffers */
-	Etherpkt	*tp;		/* transmit buffers */
-	uchar	*rpa[Nrrb];	/* receive buffer address in lance space */
-	uchar	*tpa[Ntrb];	/* transmit buffer address in lance space */
+	Etherpkt	*rp;	/* receive buffers (host address) */
+	Etherpkt	*tp;	/* transmit buffers (host address) */
+	Etherpkt	*lrp;	/* receive buffers (lance address) */
+	Etherpkt	*ltp;	/* transmit buffers (lance address) */
 
 	/* sadistics */
 
@@ -266,7 +261,7 @@ lancedebq(char tag, Etherpkt *p, int len)
 	memcpy(&(t->p), p, sizeof(Dpkt));
 	l.dq.next = (l.dq.next+1) % Ndpkt;
 	unlock(&l.dq);
-/*	{
+	if(plance){
 		char buf[1024];
 		if(p->d[0] != 0xff){
 			sprintpacket(buf, t);
@@ -405,10 +400,11 @@ lanceoput(Queue *q, Block *bp )
 	m = &(LANCEMEM->tmr[l.tc]);
 	MPs(m->size) = -len;
 	MPus(m->cntflags) = 0;
-	MPus(m->laddr) = LADDR(l.tpa[l.tc]);
-	MPus(m->flags) = OWN|STP|ENP|HADDR(l.tpa[l.tc]);
+	MPus(m->laddr) = LADDR(&l.ltp[l.tc]);
+	MPus(m->flags) = OWN|STP|ENP|HADDR(&l.ltp[l.tc]);
 	l.tc = TSUCC(l.tc);
 	*l.rdp = INEA|TDMD; /**/
+	wbflush();
 	qunlock(&l.tlock);
 }
 
@@ -423,23 +419,7 @@ enum {
 Dirtab lancedir[Ndir];
 
 /*
- *  configure the lance
- */
-void
-lanceconfig(void *ramstart, void *ramend, void *rap, void *rdp, int sep,
-	void *lancemem, uchar* ea)
-{
-	l.lanceram = ramstart;
-	l.lanceend = ramend;
-	l.rap = rap;
-	l.rdp = rdp;
-	l.sep = sep;
-	l.lm = lancemem;	/* where lance sees its memory start */
-	memcpy(l.ea, ea, 6);
-}
-
-/*
- *  stop the lance, disable all ring buffers, and free all staged rcv buffers
+ *  stop the lance and allocate buffers
  */
 void
 lancereset(void)
@@ -448,6 +428,11 @@ lancereset(void)
 	ulong x;
 	int index;
 	static int already;
+	ushort *lanceaddr;
+	ushort *hostaddr;
+
+	l.rap = LANCERAP;
+	l.rdp = LANCERDP;
 
 	/*
 	 *  stop the lance
@@ -457,38 +442,32 @@ lancereset(void)
 
 	if(already == 0){
 		already = 1;
-		if(ioid < IO3R1){
-			/*
-			 *  allocate packet buffers in lance memory
-			 */
-			for(i = 0; i < Nrrb; i++)
-				l.rpa[i] = (uchar *)&l.lm->rp[i];
-			for(i = 0; i < Ntrb; i++)
-				l.tpa[i] = (uchar *)&l.lm->tp[i];
 
-			l.rp = ((Lancemem *)l.lanceram)->rp;
-			l.tp = ((Lancemem *)l.lanceram)->tp;
-		} else {
-			/*
-			 *  allocate packet buffers in MP bus memory
-			 *  and map it into lance space
-			 */
-			l.rp = (Etherpkt *)ialloc((Nrrb + Ntrb)*sizeof(Etherpkt), 1);
-			l.tp = l.rp + Nrrb;
-			index = 0x1E00;
-			for(i = 0; i < Nrrb; i++){
-				x = (ulong)&l.rp[i];
-				*WRITEMAP = (index<<16) | (x>>12)&0xFFFF;
-				l.rpa[i] = (uchar *)((i<<12) | (x & 0xFFF));
-				index++;
-			}
-			for(i = 0; i < Ntrb; i++){
-				x = (ulong)&l.tp[i];
-				*WRITEMAP = (index<<16) | (x>>12)&0xFFFF;
-				l.tpa[i] = (uchar *)(((i+Nrrb)<<12) | (x & 0xFFF));
-				index++;
-			}
-		}
+		/*
+		 *  lance ethernet address
+		 */
+		lanceeaddr(l.ea);
+
+		/*
+		 *  lance init block and descriptor rings
+		 */
+		lancectlmem(&hostaddr, &lanceaddr, &l.sep, sizeof(Lancemem));
+		l.lanceram = hostaddr;
+		l.lm = (Lancemem*)lanceaddr;
+
+		/*
+		 *  lance receive buffers
+		 */
+		lancepktmem(&hostaddr, &lanceaddr, Nrrb*sizeof(Etherpkt));
+		l.rp = (Etherpkt*)hostaddr;
+		l.lrp = (Etherpkt*)lanceaddr;
+
+		/*
+		 *  lance xmt buffers
+		 */
+		lancepktmem(&hostaddr, &lanceaddr, Ntrb*sizeof(Etherpkt));
+		l.tp = (Etherpkt*)hostaddr;
+		l.ltp = (Etherpkt*)lanceaddr;
 	}
 
 }
@@ -536,8 +515,8 @@ lancestart(void)
 	for(i = 0; i < Nrrb; i++, m++){
 		MPs(m->size) = -sizeof(Etherpkt);
 		MPus(m->cntflags) = 0;
-		MPus(m->laddr) = LADDR(l.rpa[i]);
-		MPus(m->flags) = HADDR(l.rpa[i]);
+		MPus(m->laddr) = LADDR(&l.lrp[i]);
+		MPus(m->flags) = HADDR(&l.lrp[i]);
 	}
 	MPus(lm->rdralow) = LADDR(l.lm->rmr);
 	MPus(lm->rdrahigh) = (LogNrrb<<13)|HADDR(l.lm->rmr);
@@ -558,8 +537,8 @@ lancestart(void)
 	for(i = 0; i < Ntrb; i++, m++){
 		MPs(m->size) = 0;
 		MPus(m->cntflags) = 0;
-		MPus(m->laddr) = LADDR(l.tpa[i]);
-		MPus(m->flags) = HADDR(l.tpa[i]);
+		MPus(m->laddr) = LADDR(&l.ltp[i]);
+		MPus(m->flags) = HADDR(&l.ltp[i]);
 	}
 	MPus(lm->tdralow) = LADDR(l.lm->tmr);
 	MPus(lm->tdrahigh) = (LogNtrb<<13)|HADDR(l.lm->tmr);
@@ -583,6 +562,7 @@ lancestart(void)
 	/*
 	 *  initialize lance, turn on interrupts, turn on transmit and rcv.
 	 */
+	wbflush();
 	*l.rap = 0;
 	*l.rdp = INEA|INIT|STRT; /**/
 }
@@ -807,8 +787,9 @@ lanceintr(void)
 	/*
 	 *  look for rcv'd packets, just wakeup the input process
 	 */
-	if(l.rl!=l.rc && (MPus(lm->rmr[l.rl].flags) & OWN)==0)
+	if(l.rl!=l.rc && (MPus(lm->rmr[l.rl].flags) & OWN)==0){
 		wakeup(&l.rr);
+	}
 
 	/*
 	 *  look for xmitt'd packets, wake any process waiting for a
@@ -907,18 +888,16 @@ stage:
 			m = &(lm->rmr[l.rc]);
 			MPs(m->size) = -sizeof(Etherpkt);
 			MPus(m->cntflags) = 0;
-			MPus(m->laddr) = LADDR(l.rpa[l.rc]);
-			MPus(m->flags) = OWN|HADDR(l.rpa[l.rc]);
+			MPus(m->laddr) = LADDR(&l.lrp[l.rc]);
+			MPus(m->flags) = OWN|HADDR(&l.lrp[l.rc]);
 			l.rc = RSUCC(l.rc);
+			wbflush();
 		}
 		sleep(&l.rr, isinput, 0);
 	}
 }
 
-void
-lanceparity(void)
+lancetoggle()
 {
-	print("lance DRAM parity error lmp=%ux\n", l.lmp);
-	MODEREG->promenet &= ~4;
-	MODEREG->promenet |= 4;
+	plance ^= 1;
 }

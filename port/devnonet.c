@@ -6,16 +6,17 @@
 #include	"io.h"
 #include	"errno.h"
 
-#define DPRINT if(0)
+#define DPRINT if(pnonet)print
 #define NOW (MACHP(0)->ticks*MS2HZ)
 
 static Noifc *noifc;
+int pnonet;
 
 enum {
 	/*
 	 *  tuning parameters
 	 */
-	MSrexmit = 500,	/* retranmission interval in ms */
+	MSrexmit = 500,		/* retranmission interval in ms */
 	MSack = 50,		/* ms to sit on an ack */
 
 	/*
@@ -102,7 +103,7 @@ nonetreset(void)
 	 *  allocate the interfaces
 	 */
 	noifc = (Noifc *)ialloc(sizeof(Noifc) * conf.nnoifc, 0);
-	for(i = 0; i < conf.nnoconv; i++)
+	for(i = 0; i < conf.nnoifc; i++)
 		noifc[i].conv = (Noconv *)ialloc(sizeof(Noconv) * conf.nnoconv, 0);
 
 	/*
@@ -1040,6 +1041,7 @@ nonetrcvmsg(Noconv *cp, Block *bp)
 	 *  if a new call request comes in on a connected channel, hang up the call
 	 */
 	if(h->mid==0 && (f & NO_NEWCALL) && cp->state==Cconnected){
+		DPRINT("new call on connected channel\n"); 
 		freeb(bp);
 		hangup(cp);
 		return;
@@ -1227,4 +1229,9 @@ nonetcksum(Block *bp, int offset)
 	hp->sum[1] = s>>8;
 	hp->sum[0] = s;
 	return s & 0xffff;
+}
+
+nonettoggle()
+{
+	pnonet ^= 1;
 }

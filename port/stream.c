@@ -214,7 +214,6 @@ allocb(ulong size)
 		tsleep(&bcp->r, isblock, (void *)bcp, 250);
 		qunlock(bcp);
 		poperror();
-		splhi();
 		lock(bcp);
 	}
 	bp = bcp->first;
@@ -242,6 +241,7 @@ freeb(Block *bp)
 {
 	Bclass *bcp;
 	int tries;
+	int x;
 
 	if((bp->flags&S_CLASS) >= Nclass)
 		panic("freeb class");

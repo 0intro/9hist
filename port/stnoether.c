@@ -12,6 +12,9 @@
 #include	"io.h"
 #include	"errno.h"
 
+#define DPRINT if(pnonet)print
+extern int pnonet;
+
 static void	etherparse(uchar*, char*);
 static void	noetherclose(Queue*);
 static void	noetheriput(Queue*, Block*);
@@ -148,6 +151,7 @@ noetheriput(Queue *q, Block *bp)
 	 */
 	ep = &ifc->conv[conf.nnoconv];
 	for(cp = &ifc->conv[0]; cp < ep; cp++){
+		DPRINT("checking %d %.2ux %.2ux %.2ux %.2ux %.2ux %.2ux\n", cp->rcvcircuit, ph->d[0], ph->d[1], ph->d[2], ph->d[3], ph->d[4], ph->d[5]);
 		if(circuit==cp->rcvcircuit && canqlock(cp)){
 			ph = (Etherhdr *)(cp->media->rptr);
 			if(circuit == cp->rcvcircuit
@@ -166,6 +170,7 @@ noetheriput(Queue *q, Block *bp)
 	 *  if not a new call, then its misaddressed
 	 */
 	if((h->flag & NO_NEWCALL) == 0) {
+		DPRINT("misaddressed nonet packet %d %.2ux %.2ux %.2ux %.2ux %.2ux %.2ux\n", circuit, h->s[0], h->s[1], h->s[2], h->s[3], h->s[4], h->s[5]);
 		freeb(bp);
 		return;
 	}
@@ -173,6 +178,7 @@ noetheriput(Queue *q, Block *bp)
 	/*
 	 *  Queue call in a circular queue and wakeup a listener.
 	 */
+	DPRINT("call in\n");
 	lock(&ifc->lock);
 	next = (ifc->wptr + 1) % Nnocalls;
 	if(next == ifc->rptr){

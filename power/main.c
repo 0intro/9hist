@@ -40,23 +40,16 @@ char sysname[64];
 int ioid;
 
 /*
- *  lance memory mapping
+ *  lance memory allocation
  */
-typedef struct Lancemap	Lancemap;
-struct Lancemap
-{
-	int	rused;		/* first used receive map */
-	int	rnext;		/* next receive map to use */
-	int	rtot;
+ushort	*lancelmem;	/* next free lance mem as seen by lance */
+ushort	*lancehmem;	/* next free lance mem as seen by host */
+ushort	*lancehend;
 
-	int	tused;		/* first used transmit map */
-	int	tnext;		/* next transmit map to use */
-	int	ttot;
-	Rendez	tr;		/* where to wait for a transmit map */
-};
-Lancemap lm;
-
-extern int	ioid;
+/*
+ *  next free lance memory map
+ */
+int	lancemap;
 
 char	user[NAMELEN] = "bootes";
 
@@ -152,7 +145,6 @@ ioboardinit(void)
 	long i;
 	int maxlevel;
 	ushort *sp;
-	uchar ea[6];
 
 	ioid = *IOID;
 	if(ioid >= IO3R1)
@@ -201,120 +193,26 @@ ioboardinit(void)
 	*IO2SETMASK = 0xff;
 
 	/*
-	 *  get our ether addr out of the non-volatile ram
-	 */
-	ea[0] = LANCEID[20]>>8;
-	ea[1] = LANCEID[16]>>8;
-	ea[2] = LANCEID[12]>>8;
-	ea[3] = LANCEID[8]>>8;
-	ea[4] = LANCEID[4]>>8;
-	ea[5] = LANCEID[0]>>8;
-
-	/*
 	 *  reset the lance.
-	 *  configure the lance software parameters.
 	 *  run through all lance memory to set parity.
 	 */
 	if(ioid >= IO3R1){
 		MODEREG->promenet |= 1;
 		MODEREG->promenet &= ~1;
-		lanceconfig(LANCE3RAM, LANCE3END, LANCERAP, LANCERDP, 4,
-			(void*)0x800000, ea);
 		for(sp = LANCE3RAM; sp < LANCE3END; sp += 2)
 			*sp = 0;
+		lancehmem = LANCE3RAM;
+		lancehend = LANCE3END;
+		lancelmem = (ushort*)0x800000;
 	} else {
 		MODEREG->promenet &= ~1;
 		MODEREG->promenet |= 1;
-		lanceconfig(LANCERAM, LANCEEND, LANCERAP, LANCERDP, 1,
-			(void*)0x0, ea);
 		for(sp = LANCERAM; sp < LANCEEND; sp += 1)
 			*sp = 0;
+		lancehmem = LANCERAM;
+		lancehend = LANCEEND;
+		lancelmem = (ushort*)0;
 	}
-
-	/*
-	 *  initialize the map/buffer use
-	 */
-	lm.ttot = 128;
-	lm.rtot = 128;
-	lm.rnext = lm.rused = lm.tnext = lm.tused = 0;
-}
-
-/*
- *  map/copy a list of blocks to somewhere the lance can access
- *
- *  if bp==0, just create a block and map it in
- */
-static int
-isomap(void *x)
-{
-	int next;
-
-	next = (int)x;
-	return x != lm.tused;
-}
-Block *
-lancemap(Block *bp, int len)
-{
-	Block *nbp, *tbp;
-	int next;
-	ulong x;
-
-	if(bp == 0){
-		next = lm.rnext+1 % lm.rtot;
-		if(ioid >= IO3R1){
-			bp = allocb(sizeof(Etherpkt));
-			x = (ulong)(bp->wptr);
-			*WRITEMAP = (next<<16) | ((x>>12)&0xFFFF);
-			bp->va = (next<<12) | (x & 0xFFF));
-		} else {
-			bp = allocb(0);
-			x = (ulong)(LANCEMEM+4*1024+next*sizeof(Etherpkt));
-			bp->va = x;
-			bp->rptr = (uchar *)x;
-			bp->wptr = (uchar *)x;
-		}
-		lm.rnext = next;
-		return bp;
-	}
-
-	if(ioid >= IO3R1){
-		for(nbp = bp; nbp; nbp = nbp->next){
-			next = lm.tnext+1 % lm.ttot;
-			if(next == lm.tused)
-				sleep(&lm.tr, isomap, (void *)next);
-			x = (ulong)(nbp->rptr);
-			*WRITEMAP = ((lm.rtot + next)<<16) | ((x>>12)&0xFFFF);
-			nbp->va = ((lm.rtot + next)<<12) | (x & 0xFFF));
-			lm.tnext = next;
-		}
-	} else {
-		tbp = bp;
-		bp = allocb(0);
-		next = lm.tnext+1 % lm.ttot;
-		if(next == lm.tused)
-			sleep(&lm.tr, isomap, (void *)next);
-		x = (ulong)(LANCEMEM+4*1024+(next+lm.rtot)*sizeof(Etherpkt));
-		bp->va = x;
-		bp->rptr = (uchar *)x;
-		bp->wptr = (uchar *)x;
-		for(nbp = tbp; nbp; nbp = nbp->next){
-			n = BLEN(nbp);
-			if(BLEN(bp) + n < sizeof(Etherpkt))
-				n = sizeof(Etherpkt) - BLEN(bp);
-			memcpy(bp->wptr, nbp->rptr, n);
-			bp->wptr += n;
-		}
-		freeb(tbp);
-		lm.tnext = next;
-	}
-}
-
-/*
- *  get a block back from the lance
- */
-Block *
-lanceunmap(Block *bp)
-{
 }
 
 void
@@ -833,4 +731,89 @@ arginit(void)
 	}
 	_argv = argv;
 	argsize = ssize;
+}
+
+/*
+ *  get our ether addr out of the non-volatile ram
+ */
+void
+lanceeaddr(uchar *ea)
+{
+	ea[0] = LANCEID[20]>>8;
+	ea[1] = LANCEID[16]>>8;
+	ea[2] = LANCEID[12]>>8;
+	ea[3] = LANCEID[8]>>8;
+	ea[4] = LANCEID[4]>>8;
+	ea[5] = LANCEID[0]>>8;
+}
+
+/*
+ *  allocate command memory for the initialization block
+ *  and descriptor rings.
+ *
+ *  pass back the host's address of the memory, the lance's address
+ *  of the memory, and the span (in shorts) of each short as seen
+ *  by the host.  The latter is only for a peculiarity of the SGI IO3.
+ *  It is normally 1.
+ */
+void
+lancectlmem(ushort **hostaddr, ushort **lanceaddr, int *sep, int len)
+{
+	len = (len + sizeof(ushort) - 1)/sizeof(ushort);
+	if(ioid >= IO3R1)
+		*sep = 4;
+	else
+		*sep = 1;
+	if(len+lancehmem > lancehend)
+		panic("lancecmdmem");
+	*lanceaddr = lancelmem;
+	*hostaddr = lancehmem;
+	lancelmem += len;
+	lancehmem += len;
+}
+
+/*
+ *  allocate packet buffer memory for the lance.
+ *
+ *  pass back the host's address of the memory and the lance's address
+ *  of the memory.
+ */
+void
+lancepktmem(ushort **hostaddr, ushort **lanceaddr, int len)
+{
+	ulong x;
+	ulong y;
+
+	if(ioid >= IO3R1){
+		/*
+		 *  allocate some host mempry and map it into lance
+		 *  space
+		 */
+		*hostaddr = (ushort*)ialloc(len, 1);
+		x = (ulong)*hostaddr;
+		*lanceaddr = (ushort*)((lancemap<<12) | (x & 0xFFF));
+		for(y = x; y < x+len; y += 0x1000){
+			*WRITEMAP = ((0x1E00+lancemap)<<16) | (y>>12)&0xFFFF;
+			lancemap++;
+		}
+	} else {
+		/*
+		 *  allocate lance memory
+		 */
+		len = (len + sizeof(ushort) - 1)/sizeof(ushort);
+		if(len+lancehmem > lancehend)
+			panic("lancecmdmem");
+		*lanceaddr = lancelmem;
+		*hostaddr = lancehmem;
+		lancelmem += len;
+		lancehmem += len;
+	}
+}
+
+void
+lanceparity(void)
+{
+	print("lance DRAM parity error\n");
+	MODEREG->promenet &= ~4;
+	MODEREG->promenet |= 4;
 }
