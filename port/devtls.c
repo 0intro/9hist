@@ -18,6 +18,7 @@ enum {
 	MaxRecLen	= 1<<14,	/* max payload length of a record layer message */
 	MaxCipherRecLen	= MaxRecLen + 2048,
 	RecHdrLen	= 5,
+	MaxMacLen	= SHA1dlen,
 
 	/* protocol versions we can accept */
 	TLSVersion	= 0x0301,
@@ -73,9 +74,12 @@ enum {
 struct Secret
 {
 	DigestState	*(*mac)(uchar*, ulong, uchar*, ulong, uchar*, DigestState*);
+	int		(*enc)(Secret*, uchar*, int);
+	int		(*dec)(Secret*, uchar*, int);
+	int		(*unpad)(uchar*, int, int);
 	int		maclen;
-	RC4state	rc4;
-	uchar		mackey[64];
+	void		*enckey;
+	uchar		mackey[MaxMacLen];
 };
 
 struct OneWay
@@ -222,6 +226,8 @@ static void	alertHand(TlsRec*, char *);
 static TlsRec	*newtls(Chan *c);
 static TlsRec	*mktlsrec(void);
 static DigestState*sslmac_md5(uchar *p, ulong len, uchar *key, ulong klen, uchar *digest, DigestState *s);
+static DigestState*sslmac_sha1(uchar *p, ulong len, uchar *key, ulong klen, uchar *digest, DigestState *s);
+static DigestState*nomac(uchar *p, ulong len, uchar *key, ulong klen, uchar *digest, DigestState *s);
 static void	sslPackMac(Secret *sec, uchar *mackey, uchar *seq, uchar *header, uchar *body, int len, uchar *mac);
 static void	tlsPackMac(Secret *sec, uchar *mackey, uchar *seq, uchar *header, uchar *body, int len, uchar *mac);
 static void	put64(uchar *p, vlong x);
@@ -234,6 +240,14 @@ static void	tlsSetState(TlsRec *tr, int new, int old);
 static void	rcvAlert(TlsRec *tr, int err);
 static void	sendAlert(TlsRec *tr, int err);
 static void	rcvError(TlsRec *tr, int err, char *msg, ...);
+static int	rc4enc(Secret *sec, uchar *buf, int n);
+static int	des3enc(Secret *sec, uchar *buf, int n);
+static int	des3dec(Secret *sec, uchar *buf, int n);
+static int	noenc(Secret *sec, uchar *buf, int n);
+static int	sslunpad(uchar *buf, int n, int block);
+static int	tlsunpad(uchar *buf, int n, int block);
+static void	freeSec(Secret *sec);
+
 #pragma	varargck	argpos	rcvError	3
 
 static char *tlsnames[] = {
@@ -457,7 +471,6 @@ tlswstat(Chan *c, char *dp)
 	if(strcmp(tr->user, up->user) != 0)
 		error(Eperm);
 
-//ZZZ propagate chown to tr->datafd?
 	memmove(tr->user, d.uid, NAMELEN);
 	tr->perm = d.mode;
 }
@@ -509,17 +522,17 @@ tlsclose(Chan *c)
 		unlock(&tdlock);
 
 		if(tr->c != nil && !waserror()){
-			checkstate(tr, 0, SOpen|SHandshake|SRClose);
+			checkstate(tr, t != Qdata, SOpen|SHandshake|SRClose);
 			sendAlert(tr, ECloseNotify);
 			poperror();
 		}
 		tlshangup(tr);
 		if(tr->c != nil)
 			cclose(tr->c);
-		free(tr->in.sec);
-		free(tr->in.new);
-		free(tr->out.sec);
-		free(tr->out.new);
+		freeSec(tr->in.sec);
+		freeSec(tr->in.new);
+		freeSec(tr->out.sec);
+		freeSec(tr->out.new);
 		free(tr);
 		break;
 	}
@@ -727,9 +740,11 @@ tlsrecread(TlsRec *tr)
 	b = pullupblock(b, len);
 	p = b->rp;
 	if(in->sec != nil) {
+		len = (*in->sec->dec)(in->sec, p, len);
+		if(len < 0)
+			rcvError(tr, EDecodeError, "incorrectly encrypted message");
 		if(len <= in->sec->maclen)
 			rcvError(tr, EDecodeError, "record message too short for mac");
-		rc4(&in->sec->rc4, p, len);
 		len -= in->sec->maclen;
 
 		/* update length */
@@ -739,7 +754,7 @@ tlsrecread(TlsRec *tr)
 		(*tr->packMac)(in->sec, in->sec->mackey, seq, header, p, len, hmac);
 		if(memcmp(hmac, p+len, in->sec->maclen) != 0)
 			rcvError(tr, EBadRecordMac, "record mac mismatch");
-		b->wp -= in->sec->maclen;
+		b->wp = b->rp + in->sec->maclen;
 	}
 	qunlock(&in->seclock);
 	poperror();
@@ -758,7 +773,7 @@ tlsrecread(TlsRec *tr)
 			qunlock(&in->seclock);
 			rcvError(tr, EUnexpectedMessage, "unexpected change cipher spec");
 		}
-		free(in->sec);
+		freeSec(in->sec);
 		in->sec = in->new;
 		in->new = nil;
 		in->seq = 0;
@@ -1104,22 +1119,27 @@ tlsrecwrite(TlsRec *tr, int type, Block *b)
 		}
 		qlock(&out->seclock);
 		maclen = 0;
-		if(out->sec != nil)
+		if(out->sec != nil){
 			maclen = out->sec->maclen;
+			block = out->sec->block;
+		}
 		n = BLEN(bb);
 		if(n > MaxRecLen){
 			n = MaxRecLen;
-			nb = allocb(n + RecHdrLen + maclen);
+			block = n + maclen + block;
+			block -= n % block;
+			nb = allocb(block + RecHdrLen);
 			memmove(nb->wp + RecHdrLen, bb->rp, n);
-			nb->wp += n + RecHdrLen;
 			bb->rp += n;
 		}else{
 			/*
 			 * carefully reuse bb so it will get freed if we're out of memory
 			 */
+			block = n + maclen + block;
+			block -= n % block;
 			bb = padblock(bb, RecHdrLen);
 			if(maclen)
-				nb = padblock(bb, -maclen);
+				nb = padblock(bb, -(block - n));
 			else
 				nb = bb;
 			bb = nil;
@@ -1133,20 +1153,20 @@ tlsrecwrite(TlsRec *tr, int type, Block *b)
 		if(out->sec != nil){
 			put64(seq, out->seq);
 			out->seq++;
-			(*tr->packMac)(out->sec, out->sec->mackey, seq, p, p + RecHdrLen, n, nb->wp);
-			nb->wp += maclen;
+			(*tr->packMac)(out->sec, out->sec->mackey, seq, p, p + RecHdrLen, n, p + RecHdrLen + n);
 			n += maclen;
+
+			/* encrypt */
+			n = (*out->sec->enc)(out->sec, p + RecHdrLen, n);
+			nb->wp = nb->rp + n;
 
 			/* update length */
 			put16(p+3, n);
-
-			/* encrypt */
-			rc4(&out->sec->rc4, p+RecHdrLen, n);
 		}
 		if(type == RChangeCipherSpec){
 			if(out->new == nil)
 				error("change cipher without a new cipher");
-			free(out->sec);
+			freeSec(out->sec);
 			out->sec = out->new;
 			out->new = nil;
 			out->seq = 0;
@@ -1216,10 +1236,29 @@ initmd5key(Hashalg *ha, int version, Secret *s, uchar *p)
 	memmove(s->mackey, p, ha->maclen);
 }
 
+static void
+initclearmac(Hashalg *, int, Secret *s, uchar *)
+{
+	s->maclen = 0;
+	s->mac = nomac;
+}
+
+static void
+initsha1key(Hashalg *ha, int version, Secret *s, uchar *p)
+{
+	s->maclen = ha->maclen;
+	if(version == SSL3Version)
+		s->mac = sslmac_sha1;
+	else
+		s->mac = hmac_sha1;
+	memmove(s->mackey, p, ha->maclen);
+}
+
 static Hashalg hashtab[] =
 {
-	{ "clear" },
+	{ "clear", 0, initclearmac, },
 	{ "md5", MD5dlen, initmd5key, },
+	{ "sha1", SHA1dlen, initsha1key, },
 	{ 0 }
 };
 
@@ -1247,13 +1286,34 @@ struct Encalg
 static void
 initRC4key(Encalg *ea, Secret *s, uchar *p, uchar *)
 {
-	setupRC4state(&s->rc4, p, ea->keylen);
+	s->enckey = smalloc(sizeof(RC4state));
+	s->enc = rc4enc;
+	s->dec = rc4enc;
+	setupRC4state(s->enckey, p, ea->keylen);
+}
+
+static void
+initDES3key(Encalg *, Secret *s, uchar *p, uchar *iv)
+{
+	s->enckey = smalloc(sizeof(DES3state));
+	s->enc = des3enc;
+	s->dec = des3dec;
+//ZZZ type hack
+	setupDES3state(s->enckey, (void*)p, iv);
+}
+
+static void
+initclearenc(Encalg *, Secret *s, uchar *, uchar *)
+{
+	s->enc = noenc;
+	s->dec = noenc;
 }
 
 static Encalg encrypttab[] =
 {
-	{ "clear" },
-	{ "rc4_128", 128/8, 0, initRC4key, },
+	{ "clear", 0, 0, initclearenc },
+	{ "rc4_128", 128/8, 0, initRC4key },
+	{ "3des_ede_cbc", 3 * 8, 8, initDES3key },
 	{ 0 }
 };
 
@@ -1275,7 +1335,7 @@ tlswrite(Chan *c, void *a, long n, vlong off)
 	Encalg *ea;
 	Hashalg *ha;
 	TlsRec *volatile tr;
-	Secret *tos, *toc;
+	Secret *volatile tos, *volatile toc;
 	Block *volatile b;
 	Cmdbuf *volatile cb;
 	int m;
@@ -1369,11 +1429,11 @@ tlswrite(Chan *c, void *a, long n, vlong off)
 			error("must set fd and version before secrets");
 
 		if(tr->in.new != nil){
-			free(tr->in.new);
+			freeSec(tr->in.new);
 			tr->in.new = nil;
 		}
 		if(tr->out.new != nil){
-			free(tr->out.new);
+			freeSec(tr->out.new);
 			tr->out.new = nil;
 		}
 
@@ -1383,7 +1443,11 @@ tlswrite(Chan *c, void *a, long n, vlong off)
 		p = cb->f[4];
 		m = (strlen(p)*3)/2;
 		x = smalloc(m);
+		tos = nil;
+		toc = nil;
 		if(waserror()){
+			freeSec(tos);
+			freeSec(toc);
 			free(x);
 			nexterror();
 		}
@@ -1393,20 +1457,29 @@ tlswrite(Chan *c, void *a, long n, vlong off)
 
 		tos = smalloc(sizeof(Secret));
 		toc = smalloc(sizeof(Secret));
-		if(ha->initkey){
-			(*ha->initkey)(ha, tr->version, tos, &x[0]);
-			(*ha->initkey)(ha, tr->version, toc, &x[ha->maclen]);
-		}
-		if(ea->initkey){
-			(*ea->initkey)(ea, tos, &x[2 * ha->maclen], &x[2 * ha->maclen + 2 * ea->keylen]);
-			(*ea->initkey)(ea, toc, &x[2 * ha->maclen + ea->keylen], &x[2 * ha->maclen + 2 * ea->keylen + ea->ivlen]);
-		}
+		if(!ha->initkey || !ea->initkey)
+			error("misimplemented secret algorithm");
+		(*ha->initkey)(ha, tr->version, tos, &x[0]);
+		(*ha->initkey)(ha, tr->version, toc, &x[ha->maclen]);
+		(*ea->initkey)(ea, tos, &x[2 * ha->maclen], &x[2 * ha->maclen + 2 * ea->keylen]);
+		(*ea->initkey)(ea, toc, &x[2 * ha->maclen + ea->keylen], &x[2 * ha->maclen + 2 * ea->keylen + ea->ivlen]);
+
+		if(!tos->mac || !tos->enc || !tos->dec
+		|| !toc->mac || !toc->enc || !toc->dec)
+			error("missing algorithm implementations");
 		if(strtol(cb->f[3], nil, 0) == 0){
 			tr->in.new = tos;
 			tr->out.new = toc;
 		}else{
 			tr->in.new = toc;
 			tr->out.new = tos;
+		}
+		if(tr->version == SSL3Version){
+			toc->unpad = sslunpad;
+			tos->unpad = sslunpad;
+		}else{
+			toc->unpad = tlsunpad;
+			tos->unpad = tlsunpad;
 		}
 
 		free(x);
@@ -1688,6 +1761,92 @@ mktlsrec(void)
 	strncpy(tr->user, up->user, sizeof(tr->user));
 	tr->perm = 0660;
 	return tr;
+}
+
+static void
+freeSec(Secret *s)
+{
+	if(s != nil){
+		free(s->enckey);
+		free(s);
+	}
+}
+
+static int
+noenc(Secret *, uchar *, int n)
+{
+	return n;
+}
+
+static int
+rc4enc(Secret *sec, uchar *buf, int n)
+{
+	rc4(sec->enckey, buf, n);
+	return n;
+}
+
+static int
+tlsunpad(uchar *buf, int n, int block)
+{
+	int pad, nn;
+
+	pad = buf[n - 1];
+	nn = n - 1 - pad;
+	if(nn <= 0 || n % block)
+		return -1;
+	while(--n > nn)
+		if(pad != buf[n - 1])
+			return -1;
+	return nn;
+}
+
+static int
+sslunpad(uchar *buf, int n, int block)
+{
+	int pad, nn;
+
+	pad = buf[n - 1];
+	nn = n - 1 - pad;
+	if(nn <= 0 || n % block)
+		return -1;
+	return nn;
+}
+
+static int
+blockpad(uchar *buf, int n, int block)
+{
+	int pad, nn;
+
+	nn = n + block;
+	nn -= nn % block;
+	pad = nn - (n + 1);
+	while(n < nn)
+		buf[n++] = pad;
+	return nn;
+}
+		
+static int
+des3enc(Secret *sec, uchar *buf, int n)
+{
+	n = blockpad(buf, n, 8);
+	if(n < 0 || (n & 7))
+		return -1;
+	des3CBCencrypt(buf, n, sec->enckey);
+	return n;
+}
+
+static int
+des3dec(Secret *sec, uchar *buf, int n)
+{
+	if(n & 7)
+		return -1;
+	des3CBCdecrypt(buf, n, sec->enckey);
+	return (*sec->unpad)(buf, n, 8);
+}
+static DigestState*
+nomac(uchar *, ulong, uchar *, ulong, uchar *, DigestState *)
+{
+	return nil;
 }
 
 /*

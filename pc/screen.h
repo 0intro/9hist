@@ -146,3 +146,4 @@ extern ulong	vgapcilinear(VGAscr*, int*, int*, int, int);
 
 extern void	drawblankscreen(int);
 extern void	vgablank(VGAscr*, int);
+extern void addvgaseg(char*, ulong, ulong);
