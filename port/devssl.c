@@ -70,19 +70,18 @@ struct Dstate
 	int	perm;
 };
 
-Lock	dslock;
-int	dshiwat;
-int	maxdstate = 128;
-char	**dsname;
-Dstate	**dstate;
-char	*encalgs;
-char	*hashalgs;
-
 enum
 {
 	Maxdmsg=	1<<16,
-	Maxdstate=	64
+	Maxdstate=	128,	/* must be a power of 2 */
 };
+
+Lock	dslock;
+int	dshiwat;
+char	*dsname[Maxdstate];
+Dstate	*dstate[Maxdstate];
+char	*encalgs;
+char	*hashalgs;
 
 enum{
 	Qtopdir		= 1,	/* top level directory */
@@ -1173,12 +1172,6 @@ sslinit(void)
 	int n;
 	char *cp;
 
-	if((dstate = smalloc(sizeof(Dstate*) * maxdstate)) == 0)
-		panic("sslinit");
-
-	if((dsname = smalloc(sizeof(char*) * maxdstate)) == 0)
-		panic("sslinit");
-
 	n = 1;
 	for(e = encrypttab; e->name != nil; e++)
 		n += strlen(e->name) + 1;
@@ -1397,6 +1390,10 @@ buftochan(char *p)
 	if(fd < 0)
 		error(Ebadarg);
 	c = fdtochan(fd, -1, 0, 1);	/* error check and inc ref */
+	if(devtab[c->type] == &ssldevtab){
+		cclose(c);
+		error("cannot ssl encrypt devssl files");
+	}
 	return c;
 }
 
@@ -1422,51 +1419,25 @@ sslhangup(Dstate *s)
 static Dstate*
 dsclone(Chan *ch)
 {
-	Dstate **pp, **ep, **np;
-	char **names;
-	int newmax;
+	int i;
+	Dstate *ret;
 
 	if(waserror()) {
 		unlock(&dslock);
 		nexterror();
 	}
 	lock(&dslock);
-	ep = &dstate[maxdstate];
-	for(pp = dstate; pp < ep; pp++) {
-		if(*pp == 0) {
-			dsnew(ch, pp);
+	ret = nil;
+	for(i=0; i<Maxdstate; i++){
+		if(dstate[i] == nil){
+			dsnew(ch, &dstate[i]);
+			ret = dstate[i];
 			break;
 		}
 	}
-	if(pp >= ep) {
-		if(maxdstate >= Maxdstate) {
-			unlock(&dslock);
-			poperror();
-			return 0;
-		}
-		newmax = 2 * maxdstate;
-		if(newmax > Maxdstate)
-			newmax = Maxdstate;
-
-		np = smalloc(sizeof(Dstate*) * newmax);
-		if(np == 0)
-			error(Enomem);
-		memmove(np, dstate, sizeof(Dstate*) * maxdstate);
-		dstate = np;
-		pp = &dstate[maxdstate];
-
-		names = smalloc(sizeof(char*) * newmax);
-		if(names == 0)
-			error(Enomem);
-		memmove(names, dsname, sizeof(char*) * maxdstate);
-		dsname = names;
-
-		maxdstate = newmax;
-		dsnew(ch, pp);
-	}
 	unlock(&dslock);
 	poperror();
-	return *pp;
+	return ret;
 }
 
 static void

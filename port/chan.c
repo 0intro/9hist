@@ -1099,7 +1099,9 @@ if(c->umh != nil){
 	print("cunique umh\n");
 	putmhead(c->umh);
 }
-			if(c->qid.type&QTDIR)
+
+			/* only save the mount head if it's a multiple element union */
+			if(m && m->mount && m->mount->next)
 				c->umh = m;
 			else
 				putmhead(m);
