@@ -391,7 +391,8 @@ archread(Chan *c, void *a, long n, vlong offset)
 		break;
 	}
 
-	if((buf = malloc(n)) == nil)
+	/* allocate a buffer to avoid page faults in the loop */
+	if((buf = malloc(n+1)) == nil)	/* +1 for the NUL */
 		error(Enomem);
 	p = buf;
 	n = n/Linelen;
@@ -403,7 +404,7 @@ archread(Chan *c, void *a, long n, vlong offset)
 			continue;
 		if(strcmp(m->tag, "dummy") == 0)
 			break;
-		sprint(p, "%8lux %8lux %-12.12s\n", m->start, m->end-1, m->tag);
+		snprint(p, Linelen+1, "%8lux %8lux %-12.12s\n", m->start, m->end-1, m->tag);
 		p += Linelen;
 		n--;
 	}
