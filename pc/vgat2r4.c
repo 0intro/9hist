@@ -385,10 +385,10 @@ waitforcmd(VGAscr *scr)
 	x = 0;
 
 	d = scr->mmio + RBaseD;
-	while((d[Flow]&1) && x++ < 1000000)
+	while((d[Flow]&0x1B) && x++ < 1000000)
 		;
 	if(x >= 1000000)	/* shouldn't happen */
-		iprint("flow %8lux\n", d[Busy]);
+		iprint("flow %8lux\n", d[Flow]);
 }
 
 /* wait until memory controller not busy (i.e. wait for writes to flush) */
@@ -412,7 +412,31 @@ t2r4hwscroll(VGAscr *scr, Rectangle r, Rectangle sr)
 	int ctl;
 	Point dp, sp;
 	ulong *d;
+	int depth;
 
+	if(r.min.y == sr.min.y){	/* a purely horizontal scroll */
+		depth = scr->gscreen->depth;
+		switch(depth){
+		case 32:
+			/*
+			 * Using the SGI flat panels with the Ticket-to-Ride IV, horizontal
+			 * 32-bit scrolls don't work perfectly on rectangles of width <= 24.
+			 * we bail on a bigger bound for padding.
+			 */
+			if(Dx(r) < 32)
+				return 0;
+			break;
+		case 16:
+			/*
+			 * Using the SGI flat panels with the Ticket-to-Ride IV, horizontal
+			 * 16-bit scrolls don't work perfectly on rectangles of width <= 96.
+			 * we bail on a bigger bound for padding.
+			 */
+			if(Dx(r) < 104)
+				return 0;
+			break;
+		}
+	}
 	waitformem(scr);
 	waitforfifo(scr);
 	d = scr->mmio + RBaseD;
@@ -426,7 +450,7 @@ t2r4hwscroll(VGAscr *scr, Rectangle r, Rectangle sr)
 		sp.x = sr.max.x-1;
 	}
 
-	if(r.min.y <= sr.min.y){
+	if(r.min.y < sr.min.y){
 		dp.y = r.min.y;
 		sp.y = sr.min.y;
 	}else{
@@ -439,6 +463,8 @@ t2r4hwscroll(VGAscr *scr, Rectangle r, Rectangle sr)
 	d[CmdRop] = 0xC;	/* copy source */
 	d[CmdStyle] = 0;
 	d[CmdPatrn] = 0;
+	d[Fore] = 0;
+	d[Back] = 0;
 
 	/* writing XY1 executes cmd */
 	d[XY3] = ctl;
@@ -465,6 +491,7 @@ t2r4hwfill(VGAscr *scr, Rectangle r, ulong sval)
 	d[CmdStyle] = 1;	/* use source from Fore register */
 	d[CmdPatrn] = 0;	/* no stipple */
 	d[Fore] = sval;
+	d[Back] = sval;
 
 	/* writing XY1 executes cmd */
 	d[XY3] = 0;
