@@ -1045,6 +1045,9 @@ interrupt(Ureg*, void* arg)
 			 * According to the manual, maxCollisions does not require
 			 * a TxReset, merely a TxEnable. However, evidence points to
 			 * it being necessary on the 3C905. The jury is still out.
+			 * On busy or badly configured networks maxCollisions can
+			 * happen frequently enough for messages to be annoying so
+			 * keep quiet about them by popular request.
 			 */
 			if(s & (txJabber|txUnderrun|maxCollisions)){
 				if(ctlr->busmaster == 0)
@@ -1060,8 +1063,9 @@ interrupt(Ureg*, void* arg)
 					status |= dnComplete;
 			}
 
-			print("#l%d: txstatus 0x%uX, threshold %d\n",
-			    	ether->ctlrno, s, ctlr->txthreshold);
+			if(s & ~(txStatusComplete|maxCollisions))
+				print("#l%d: txstatus 0x%uX, threshold %d\n",
+			    		ether->ctlrno, s, ctlr->txthreshold);
 			COMMAND(port, TxEnable, 0);
 			ether->oerrs++;
 			status &= ~txComplete;
