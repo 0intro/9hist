@@ -249,7 +249,7 @@ ipwrite(Chan *c, char *a, long n, ulong offset)
 
 		switch(getfields(field[1], ctlarg, 5, '!')) {
 		default:
-			error(Ebadarg);
+			error(Eneedservice);
 		case 2:
 			priv = 0;
 			break;

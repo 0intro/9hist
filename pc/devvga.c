@@ -7,6 +7,7 @@
 #include	"../port/error.h"
 
 #include	"devtab.h"
+#include	"vga.h"
 
 /*
  *  Driver for various VGA cards
@@ -25,15 +26,17 @@ enum {
 	Qvgamonitor=	1,
 	Qvgasize=	2,
 	Qvgatype=	3,
-	Qvgaportio=	4,
-	Nvga=		4,
+	Qvgaport=	4,
+	Qvgaiport=	5,
+	Nvga=		5,
 };
 
 Dirtab vgadir[]={
 	"vgamonitor",	{Qvgamonitor},	0,		0666,
 	"vgatype",	{Qvgatype},	0,		0666,
 	"vgasize",	{Qvgasize},	0,		0666,
-	"vgaportio",	{Qvgaportio},	0,		0666,
+	"vgaport",	{Qvgaport},	0,		0666,
+	"vgaiport",	{Qvgaiport},	0,		0666,
 };
 
 /* a routine from ../port/devcons.c */
@@ -93,7 +96,7 @@ vgaopen(Chan *c, int omode)
 	case Qvgamonitor:
 	case Qvgatype:
 	case Qvgasize:
-	case Qvgaportio:
+	case Qvgaport:
 		break;
 	}
 
@@ -115,6 +118,10 @@ long
 vgaread(Chan *c, void *buf, long n, ulong offset)
 {
 	char obuf[60];
+	int port, i;
+	uchar *cp = buf;
+	void *outfunc(int, int);
+
 	switch(c->qid.path&~CHDIR){
 	case Qdir:
 		return devdirread(c, buf, n, vgadir, Nvga, devgen);
@@ -125,27 +132,62 @@ vgaread(Chan *c, void *buf, long n, ulong offset)
 	case Qvgasize:
 		sprint(obuf, "%dx%d%x%d %s",
 			screeninfo.maxx, screeninfo.maxy,
-			screeninfo.packed ? 16 : 256,
-			screeninfo.interlaced ? "interlaced" : "non-interlaced");
+			(screeninfo.packed == 0) ? 256 : 16,
+			(screeninfo.interlaced != 0) ? "interlaced" : "non-interlaced");
 		return readstr(offset, buf, n, obuf);
-	case Qvgaportio:
-		return 0;
+	case Qvgaport:
+		if (offset + n >= 0x8000)
+			error(Ebadarg);
+		for (port=offset; port<offset+n; port++)
+			*cp++ = inb(port);
+		return n;
+	case Qvgaiport:
+		error(Eio);
 	}
 }
 
 long
-vgawrite(Chan *c, void *va, long n, ulong offset)
+vgawrite(Chan *c, void *buf, long n, ulong offset)
 {
-	if(offset != 0)
-		error(Ebadarg);
+	uchar *cp = buf;
+	void (*outfunc)(int, int);
+	int port, i;
+
 	switch(c->qid.path&~CHDIR){
 	case Qdir:
 		error(Eperm);
 	case Qvgamonitor:
+		if(offset != 0)
+			error(Ebadarg);
+		error(Eperm);
 	case Qvgatype:
+		if(offset != 0)
+			error(Ebadarg);
+		error(Eperm);
 	case Qvgasize:
-	case Qvgaportio:
-		return 0;
+		if(offset != 0)
+			error(Ebadarg);
+		error(Eperm);
+	case Qvgaport:
+		if (offset + n >= 0x8000)
+			error(Ebadarg);
+		for (port=offset; port<offset+n; port++)
+			outb(port, *cp++);
+		return n;
+	case Qvgaiport:
+		port = offset / 256;
+		switch (port) {
+		case EMISCW:	outfunc = genout;	break;
+		case SRX:	outfunc = srout;	break;
+		case GRX:	outfunc = grout;	break;
+		case ARW:	outfunc = arout;	break;
+		case CRX:	outfunc = crout;	break;
+		default:
+			error(Ebadarg);
+		}
+		for (i = offset%256; i < (offset%256) + n; i++)
+			outfunc(i, *cp++);
+		return n;
 	}
 }
 

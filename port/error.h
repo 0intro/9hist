@@ -50,4 +50,5 @@ extern char Etimedout[];	/* connection timed out */
 extern char Econrefused[];	/* connection refused */
 extern char Enetunreach[];	/* network unreachable */
 extern char Eintr[];		/* interrupted */
+extern char Eneedservice[];	/* service required for tcp/udp/il calls */
 extern char Egreg[];		/* it's a thermal problem */
