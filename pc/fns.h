@@ -1,6 +1,8 @@
 #include "../port/portfns.h"
 
-void	loopbackintr(Ureg*);
+void	checkcycintr(Ureg*, void*);
+void	cycintradd(Cycintr*);
+void	cycintrdel(Cycintr*);
 
 
 void	aamloop(int);

@@ -14,21 +14,49 @@ enum
 	T1cntr=	0x41,		/* ... */
 	T2cntr=	0x42,		/* ... */
 	Tmode=	0x43,		/* mode port (control word register) */
+	T2ctl=	0x61,		/* counter 2 control port */
 
 	/* commands */
 	Latch0=	0x00,		/* latch counter 0's value */
 	Load0l=	0x10,		/* load counter 0's lsb */
 	Load0m=	0x20,		/* load counter 0's msb */
 	Load0=	0x30,		/* load counter 0 with 2 bytes */
+	Latch2=	0x80,		/* latch counter 2's value */
+	Load2l=	0x90,		/* load counter 2's lsb */
+	Load2m=	0xa0,		/* load counter 2's msb */
+	Load2=	0xb0,		/* load counter 2 with 2 bytes */
+
+	/* 8254 read-back command: everything > pc-at has an 8254 */
+	Rdback=	0xc0,		/* readback counters & status */
+	Rdnstat=0x10,		/* don't read status */
+	Rdncnt=	0x20,		/* don't read counter value */
+	Rd0cntr=0x02,		/* read back for which counter */
+	Rd1cntr=0x04,
+	Rd2cntr=0x08,
 
 	/* modes */
+	ModeMsk=0xe,
 	Square=	0x6,		/* periodic square wave */
-	Trigger= 0x0,		/* interrupt on terminal count */
+	Trigger=0x0,		/* interrupt on terminal count */
+	Sstrobe=0x8,		/* software triggered strobe */
+
+	/* counter 2 controls */
+	C2gate=	0x1,
+	C2speak=0x2,
+	C2out=	0x10,
 
 	Freq=	1193182,	/* Real clock frequency */
+
+	FreqMul=16,		/* extra accuracy in fastticks/Freq calculation; ok up to ~8ghz */
 };
 
-static Lock	i8253lock;
+static struct
+{
+	Lock	lock;
+	vlong	when;		/* next fastticks a clock interrupt should occur */
+	long	fastperiod;	/* fastticks/hz */
+	long	fast2freq;	/* fastticks*FreqMul/Freq */
+}i8253;
 
 void
 i8253init(int aalcycles, int havecycleclock)
@@ -40,6 +68,8 @@ i8253init(int aalcycles, int havecycleclock)
 	if(initialised == 0){
 		initialised = 1;
 		ioalloc(T0cntr, 4, 0, "i8253");
+		ioalloc(T2ctl, 1, 0, "i8253.cntr2ctl");
+
 		/*
 		 *  set clock for 1/HZ seconds
 		 */
@@ -126,25 +156,93 @@ i8253init(int aalcycles, int havecycleclock)
 		m->cpumhz = (cpufreq + cpufreq/200)/1000000;
 		m->cpuhz = cpufreq;
 	}
+
+outb(Tmode, Load0|Trigger);
+outb(T0cntr, (Freq/HZ));	/* low byte */
+outb(T0cntr, (Freq/HZ)>>8);	/* high byte */
 }
 
+static vlong lastfast;
+
 int
-i8253readcnt(void)
+i8253readcnt(int cntr)
 {
-	ilock(&i8253lock);
-	iunlock(&i8253lock);
+	int v;
+
+	ilock(&i8253.lock);
+	if(cntr == 2){
+		outb(Tmode, Rdback|Rd2cntr);
+		v = inb(T2cntr) << 16;
+		v |= inb(T2cntr);
+		v |= inb(T2cntr) << 8;
+	}else if(cntr == 0){
+		outb(Tmode, Rdback|Rd0cntr);
+		v = inb(T0cntr) << 16;
+		v |= inb(T0cntr);
+		v |= inb(T0cntr) << 8;
+	}else if(cntr == 3){
+		vlong nf = fastticks(nil);
+		long set;
+
+		set = (long)(nf - lastfast) * 100 / (long)((vlong)m->cpuhz * 100 / Freq);
+		set = (Freq/HZ) - set;
+		set -= 3 - 1;	/* outb, outb, wait - outb(mode) */
+		outb(Tmode, Rdback|Rdnstat|Rd0cntr);
+		v = inb(T0cntr);
+		v |= inb(T0cntr) << 8;
+		v = set - v;
+	}else if(cntr == 4){
+		vlong nf = fastticks(nil);
+		long set;
+
+		set = (long)(nf - lastfast) * 16 / (long)((vlong)m->cpuhz * 16 / Freq);
+		set = (Freq/HZ) - set;
+		set -= 3 - 1;	/* outb, outb, wait - outb(mode) */
+		outb(Tmode, Rdback|Rdnstat|Rd0cntr);
+		v = inb(T0cntr);
+		v |= inb(T0cntr) << 8;
+		v = set - v;
+	}else{
+		vlong nf = fastticks(nil);
+		long set;
+
+		set = (nf - lastfast) * Freq / m->cpuhz;
+		set = (Freq/HZ) - set;
+		set -= 3 - 1;	/* outb, outb, wait - outb(mode) */
+		outb(Tmode, Rdback|Rdnstat|Rd0cntr);
+		v = inb(T0cntr);
+		v |= inb(T0cntr) << 8;
+		v = set - v;
+	}
+	iunlock(&i8253.lock);
+	return v;
 }
 
 static void
 clockintr0(Ureg* ureg, void *v)
 {
-	loopbackintr(ureg);
+	vlong now;
+	long set;
+
+	now = fastticks(nil);
+	while(i8253.when < now)
+		i8253.when += i8253.fastperiod;
+	set = (long)(i8253.when - now) * FreqMul / i8253.fast2freq;
+	set -= 3;	/* three cycles for the count to take effect: outb, outb, wait */
+lastfast = now;
+	outb(T0cntr, set);	/* low byte */
+	outb(T0cntr, set>>8);	/* high byte */
+
+	checkcycintr(ureg, v);
 	clockintr(ureg, v);
 }
 
 void
 i8253enable(void)
 {
+	i8253.when = fastticks(nil);
+	i8253.fastperiod = (m->cpuhz + HZ/2) / HZ;
+	i8253.fast2freq = (vlong)m->cpuhz * FreqMul / Freq;
 	intrenable(IrqCLOCK, clockintr0, 0, BUSUNKNOWN, "clock");
 }
 
