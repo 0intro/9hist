@@ -136,7 +136,7 @@ ns16552install(void)
 				ns16552setup(port, sc->freq, name);
 				port += 8;
 			}
-		} else if(cistrcmp(sc->type, "com") == 0){
+		} else if(cistrcmp(sc->type, "com") == 0 && sc->port != 0x3F8 && sc->port != 0x2F8){
 			/*
 			 *  port gives base port address for the uart
 			 *  irq is interrupt

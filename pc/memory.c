@@ -251,7 +251,6 @@ umbscan(void)
 	}
 }
 
-
 static void
 ramscan(ulong maxmem)
 {

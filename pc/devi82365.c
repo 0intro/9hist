@@ -130,7 +130,7 @@ struct Conftab
 	ushort	irqs;		/* legal irqs */
 	ushort	port;		/* port address */
 	uchar	irqtype;
-	uchar	nioregs;	/* number of io registers */
+	ulong	nioregs;	/* number of io registers */
 	uchar	bit16;		/* true for 16 bit access */
 	uchar	vpp1;
 	uchar	vpp2;
@@ -357,7 +357,6 @@ pcmmap(int slotno, ulong offset, int len, int attr)
 			m->len = 0;
 		}
 		m->isa = umbmalloc(0, len, Mgran)&~KZERO;
-print("m->isa = 0x%uX, %d\n", m->isa, len);
 		if(m->isa == 0){
 			print("pcmmap: out of isa space\n");
 			unlock(&pp->mlock);

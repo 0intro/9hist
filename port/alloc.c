@@ -615,11 +615,3 @@ recur(Bhdr *t)
 		return 0;
 	return recur(t->right) && recur(t->left);
 }
-
-int
-poolok(int x)
-{
-	if(x & 1)
-		return recur(mainmem->root);
-	return recur(imagmem->root);
-}
