@@ -26,23 +26,34 @@ int	nconf;
 static void
 options(void)
 {
-	char *cp, *line[MAXCONF];
-	int i, n;
+	long i, n;
+	char *cp, *line[MAXCONF], *p, *q;
 
 	cp = bootconf->bootargs;
 	cp[BOOTARGSLEN-1] = 0;
 	strcpy(bootargs, cp);
 
-	n = getcfields(bootargs, line, MAXCONF, "\n");
+	/*
+	 * Strip out '\r', change '\t' -> ' '.
+	 */
+	p = cp;
+	for(q = cp; *q; q++){
+		if(*q == '\r')
+			continue;
+		if(*q == '\t')
+			*q = ' ';
+		*p++ = *q;
+	}
+	*p = 0;
+
+	n = getfields(cp, line, MAXCONF, 1, "\n");
 	for(i = 0; i < n; i++){
 		if(*line[i] == '#')
 			continue;
 		cp = strchr(line[i], '=');
-		if(cp == 0)
+		if(cp == nil)
 			continue;
-		*cp++ = 0;
-		if(cp - line[i] >= NAMELEN+1)
-			*(line[i]+NAMELEN-1) = 0;
+		*cp++ = '\0';
 		confname[nconf] = line[i];
 		confval[nconf] = cp;
 		nconf++;
@@ -56,8 +67,8 @@ main(void)
 	hwrpb = (Hwrpb*)(KZERO|hwrpb->phys);
 	arginit();
 	machinit();
-	ioinit();
 	options();
+	ioinit();
 	clockinit();
 	confinit();
 	archinit();
@@ -69,11 +80,9 @@ main(void)
 	trapinit();
 	screeninit();
 	printinit();
-
-	/* console */
-	ns16552install();
-	ns16552special(0, 9600, 0, &printq, kbdcr2nl);
 	kbdinit();
+	i8250console();
+	print("\nPlan 9\n");
 
 	cpuidprint();
 	if(arch->corehello)
@@ -123,7 +132,9 @@ void
 init0(void)
 {
 	int i;
-	char buf[2*NAMELEN];
+	char tstr[32];
+
+	up->nerrlab = 0;
 
 	spllo();
 
@@ -134,15 +145,14 @@ init0(void)
 	up->slash = namec("#/", Atodir, 0, 0);
 	cnameclose(up->slash->name);
 	up->slash->name = newcname("/");
-	up->dot = cclone(up->slash, 0);
+	up->dot = cclone(up->slash);
 
 	chandevinit();
 
 	if(!waserror()){
 		ksetenv("cputype", "alpha");
-		sprint(buf, "alpha %s alphapc", conffile);
-		ksetenv("terminal", buf);
-		ksetenv("sysname", sysname);
+		sprint(tstr, "alpha %s alphapc", conffile);
+		ksetenv("terminal", tstr);
 		if(cpuserver)
 			ksetenv("service", "cpu");
 		else
@@ -174,8 +184,9 @@ userinit(void)
 	p->rgrp = newrgrp();
 	p->procmode = 0640;
 
-	strcpy(p->text, "*init*");
-	strcpy(p->user, eve);
+	kstrdup(&eve, "");
+	kstrdup(&p->text, "*init*");
+	kstrdup(&p->user, eve);
 
 	procsetup(p);
 
@@ -398,7 +409,7 @@ confinit(void)
 		imagmem->maxsize = kpages;
 	}
 
-	conf.monitor = 1;	/* BUG */
+//	conf.monitor = 1;	/* BUG */
 }
 
 void
@@ -454,29 +465,18 @@ getconf(char *name)
 int
 isaconfig(char *class, int ctlrno, ISAConf *isa)
 {
-	char cc[NAMELEN], *p, *q, *r;
-	int n;
+	char cc[32], *p;
+	int i, n;
 
-	sprint(cc, "%s%d", class, ctlrno);
+	snprint(cc, sizeof cc, "%s%d", class, ctlrno);
 	for(n = 0; n < nconf; n++){
-		if(cistrncmp(confname[n], cc, NAMELEN))
+		if(cistrcmp(confname[n], cc) != 0)
 			continue;
-		isa->nopt = 0;
-		p = confval[n];
-		while(*p){
-			while(*p == ' ' || *p == '\t')
-				p++;
-			if(*p == '\0')
-				break;
-			if(cistrncmp(p, "type=", 5) == 0){
-				p += 5;
-				for(q = isa->type; q < &isa->type[NAMELEN-1]; q++){
-					if(*p == '\0' || *p == ' ' || *p == '\t')
-						break;
-					*q = *p++;
-				}
-				*q = '\0';
-			}
+		isa->nopt = tokenize(confval[n], isa->opt, NISAOPT);
+		for(i = 0; i < isa->nopt; i++){
+			p = isa->opt[i];
+			if(cistrncmp(p, "type=", 5) == 0)
+				isa->type = p + 5;
 			else if(cistrncmp(p, "port=", 5) == 0)
 				isa->port = strtoul(p+5, &p, 0);
 			else if(cistrncmp(p, "irq=", 4) == 0)
@@ -489,18 +489,6 @@ isaconfig(char *class, int ctlrno, ISAConf *isa)
 				isa->size = strtoul(p+5, &p, 0);
 			else if(cistrncmp(p, "freq=", 5) == 0)
 				isa->freq = strtoul(p+5, &p, 0);
-			else if(isa->nopt < NISAOPT){
-				r = isa->opt[isa->nopt];
-				while(*p && *p != ' ' && *p != '\t'){
-					*r++ = *p++;
-					if(r-isa->opt[isa->nopt] >= ISAOPTLEN-1)
-						break;
-				}
-				*r = '\0';
-				isa->nopt++;
-			}
-			while(*p && *p != ' ' && *p != '\t')
-				p++;
 		}
 		return 1;
 	}

@@ -44,8 +44,8 @@ intrenable(int irq, void (*f)(Ureg*, void*), void* a, int tbdf, char *name)
 	v->tbdf = tbdf;
 	v->f = f;
 	v->a = a;
-	strncpy(v->name, name, NAMELEN-1);
-	v->name[NAMELEN-1] = 0;
+	strncpy(v->name, name, KNAMELEN-1);
+	v->name[KNAMELEN-1] = 0;
 
 	ilock(&vctllock);
 	vno = arch->intrenable(v);
@@ -79,7 +79,7 @@ irqallocread(char *buf, long n, vlong offset)
 	int vno;
 	Vctl *v;
 	long oldn;
-	char str[11+1+NAMELEN+1], *p;
+	char str[11+1+KNAMELEN+1], *p;
 	int m;
 
 	if(n < 0 || offset < 0)
@@ -88,7 +88,7 @@ irqallocread(char *buf, long n, vlong offset)
 	oldn = n;
 	for(vno=0; vno<nelem(vctl); vno++){
 		for(v=vctl[vno]; v; v=v->next){
-			m = snprint(str, sizeof str, "%11d %11d %.*s\n", vno, v->irq, NAMELEN, v->name);
+			m = snprint(str, sizeof str, "%11d %11d %.*s\n", vno, v->irq, KNAMELEN, v->name);
 			if(m <= offset)	/* if do not want this, skip entry */
 				offset -= m;
 			else{
@@ -252,7 +252,7 @@ intr(Ureg *ur)
 void
 trap(Ureg *ur)
 {
-	char buf[ERRLEN];
+	char buf[ERRMAX];
 	int user, x;
 
 	m->intrts = fastticks(nil);
@@ -335,7 +335,7 @@ trapinit(void)
 void
 fataltrap(Ureg *ur, char *reason)
 {
-	char buf[ERRLEN];
+	char buf[ERRMAX];
 
 	if(ur->status&UMODE) {
 		spllo();
@@ -474,8 +474,8 @@ notify(Ureg *ur)
 	n = &up->note[0];
 	if(strncmp(n->msg, "sys:", 4) == 0) {
 		l = strlen(n->msg);
-		if(l > ERRLEN-15)	/* " pc=0x12345678\0" */
-			l = ERRLEN-15;
+		if(l > ERRMAX-15)	/* " pc=0x12345678\0" */
+			l = ERRMAX-15;
 
 		sprint(n->msg+l, " pc=0x%lux", (ulong)ur->pc);
 	}
@@ -501,7 +501,7 @@ notify(Ureg *ur)
 	sp -= sizeof(Ureg);
 
 	if(!okaddr((ulong)up->notify, BY2WD, 0)
-	|| !okaddr(sp-ERRLEN-6*BY2WD, sizeof(Ureg)+ERRLEN-6*BY2WD, 1)) {
+	|| !okaddr(sp-ERRMAX-6*BY2WD, sizeof(Ureg)+ERRMAX-6*BY2WD, 1)) {
 		pprint("suicide: bad address or sp in notify\n");
 print("suicide: bad address or sp in notify\n");
 		qunlock(&up->debug);
@@ -511,8 +511,8 @@ print("suicide: bad address or sp in notify\n");
 	memmove((Ureg*)sp, ur, sizeof(Ureg));
 	*(Ureg**)(sp-BY2WD) = up->ureg;	/* word under Ureg is old up->ureg */
 	up->ureg = (void*)sp;
-	sp -= 2*BY2WD+ERRLEN;
-	memmove((char*)sp, up->note[0].msg, ERRLEN);
+	sp -= 2*BY2WD+ERRMAX;
+	memmove((char*)sp, up->note[0].msg, ERRMAX);
 	sp -= 4*BY2WD;
 	*(ulong*)(sp+3*BY2WD) = sp+4*BY2WD;	/* arg 2 is string */
 	ur->r0 = (ulong)up->ureg;		/* arg 1 (R0) is ureg* */
@@ -603,7 +603,7 @@ print("suicide: trap in noted\n");
 			pexit("Suicide", 0);
 		}
 		qunlock(&up->debug);
-		sp = oureg-4*BY2WD-ERRLEN;
+		sp = oureg-4*BY2WD-ERRMAX;
 		splhi();
 		(*urp)->sp = sp;
 		((ulong*)sp)[1] = oureg;	/* arg 1 0(FP) is ureg* */

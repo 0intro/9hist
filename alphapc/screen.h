@@ -6,7 +6,7 @@ struct Cursorinfo {
 };
 
 /* devmouse.c */
-extern void mousetrack(int, int, int);
+extern void mousetrack(int, int, int, int);
 extern Point mousexy(void);
 
 extern void mouseaccelerate(int);
@@ -127,6 +127,7 @@ extern void mousectl(char*[], int);
 /* screen.c */
 extern int		hwaccel;	/* use hw acceleration; default on */
 extern int		hwblank;	/* use hw blanking; default on */
+extern uchar* attachscreen(Rectangle*, ulong*, int*, int*, int*);
 extern void	flushmemscreen(Rectangle);
 extern int	cursoron(int);
 extern void	cursoroff(int);

@@ -531,10 +531,10 @@ ataidentify(int cmdport, int ctlport, int dev, int pkt, void* info)
 static Drive*
 atadrive(int cmdport, int ctlport, int dev)
 {
-	ushort *sp;
 	Drive *drive;
 	int as, i, pkt;
 	uchar buf[512], *p;
+	ushort iconfig, *sp;
 
 	atadebug(0, 0, "identify: port 0x%uX dev 0x%2.2uX\n", cmdport, dev);
 	pkt = 1;
@@ -567,8 +567,18 @@ retry:
 	}
 
 	drive->secsize = 512;
-	if((drive->info[Iconfig] & 0xC000) == 0x8000){
-		if(drive->info[Iconfig] & 0x01)
+
+	/*
+	 * Beware the CompactFlash Association feature set.
+	 * Now, why this value in Iconfig just walks all over the bit
+	 * definitions used in the other parts of the ATA/ATAPI standards
+	 * is a mystery and a sign of true stupidity on someone's part.
+	 * Anyway, the standard says if this value is 0x848A then it's
+	 * CompactFlash and it's NOT a packet device.
+	 */
+	iconfig = drive->info[Iconfig];
+	if(iconfig != 0x848A && (iconfig & 0xC000) == 0x8000){
+		if(iconfig & 0x01)
 			drive->pkt = 16;
 		else
 			drive->pkt = 12;
@@ -598,7 +608,7 @@ retry:
 	if(DEBUG & DbgCONFIG){
 		print("dev %2.2uX port %uX config %4.4uX capabilities %4.4uX",
 			dev, cmdport,
-			drive->info[Iconfig], drive->info[Icapabilities]);
+			iconfig, drive->info[Icapabilities]);
 		print(" mwdma %4.4uX", drive->info[Imwdma]);
 		if(drive->info[Ivalid] & 0x04)
 			print(" udma %4.4uX", drive->info[Iudma]);

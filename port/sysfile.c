@@ -414,18 +414,17 @@ sys_read(ulong *arg)
 long
 syspread(ulong *arg)
 {
-	union {
-		uvlong v;
-		ulong u[2];
-	} o;
+	uvlong v;
+	va_list list;
 
-	if(arg[3]==~0UL && arg[4]==~0UL)
+	va_start(list, arg[2]);
+	v = va_arg(list, uvlong);
+	va_end(list);
+
+	if(v ==~0ULL)
 		return read(arg, nil);
 
-	o.u[0] = arg[3];
-	o.u[1] = arg[4];
-
-	return read(arg, &o.v);
+	return read(arg, &v);
 }
 
 static long
@@ -487,18 +486,17 @@ sys_write(ulong *arg)
 long
 syspwrite(ulong *arg)
 {
-	union {
-		uvlong v;
-		ulong u[2];
-	} o;
+	uvlong v;
+	va_list list;
 
-	if(arg[3]==~0UL && arg[4]==~0UL)
+	va_start(list, arg[2]);
+	v = va_arg(list, uvlong);
+	va_end(list);
+
+	if(v ==~0ULL)
 		return write(arg, nil);
 
-	o.u[0] = arg[3];
-	o.u[1] = arg[4];
-
-	return write(arg, &o.v);
+	return write(arg, &v);
 }
 
 static void

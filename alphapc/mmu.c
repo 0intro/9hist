@@ -254,3 +254,19 @@ upafree(ulong, int)
 {
 	print("upafree: virtual mapping not freed\n");
 }
+
+void
+mmudump(void)
+{
+	Page *top, *lvl2;
+
+	iprint("ptbr %lux up %lux\n", (ulong)m->ptbr, up);
+	if(up) {
+		top = up->mmutop;
+		if(top != nil)
+			iprint("top %lux top[N-1] %lux\n", top->va, ((uvlong *)top->va)[PTE2PG-1]);
+		lvl2 = up->mmulvl2;
+		if(lvl2 != nil)
+			iprint("lvl2 %lux\n", lvl2->va);
+	}
+}

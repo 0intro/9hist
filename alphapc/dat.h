@@ -132,29 +132,31 @@ struct Mach
 	Proc	*proc;			/* current process on this processor */
 
 	/* ordering from here on irrelevant */
-	int	tlbfault;		/* only used by devproc; no access to tlb */
-	int	tlbpurge;		/* ... */
+
 	ulong	ticks;			/* of the clock since boot time */
 	Label	sched;			/* scheduler wakeup */
 	Lock	alarmlock;		/* access to alarm list */
 	void	*alarm;			/* alarms bound to this clock */
-	Page	*ufreeme;		/* address of upage of exited process */
-	int	nrdy;
+	int	inclockintr;
+
 	ulong	fairness;		/* for runproc */
-	int	lastintr;
 
 	ulong	cpuhz;			/* hwrpb->cfreq */
 	ulong	pcclast;
 	uvlong	fastclock;
 	vlong	intrts;			/* time stamp of last interrupt */
 
+	int	tlbfault;		/* only used by devproc; no access to tlb */
+	int	tlbpurge;		/* ... */
 	int	pfault;
 	int	cs;
 	int	syscall;
 	int	load;
 	int	intr;
-	int	spuriousintr;
 	int	flushmmu;		/* make current proc flush it's mmu state */
+
+	ulong	spuriousintr;
+	int	lastintr;
 
 	PCB;
 
@@ -203,11 +205,10 @@ struct PCArch
 /*
  *  a parsed plan9.ini line
  */
-#define ISAOPTLEN	16
 #define NISAOPT		8
 
 struct ISAConf {
-	char	type[NAMELEN];
+	char		*type;
 	ulong	port;
 	ulong	irq;
 	ulong	dma;
@@ -216,7 +217,7 @@ struct ISAConf {
 	ulong	freq;
 
 	int	nopt;
-	char	opt[NISAOPT][ISAOPTLEN];
+	char	*opt[NISAOPT];
 };
 
 extern PCArch	*arch;

@@ -2030,13 +2030,13 @@ symenable(SDev* sdev)
 {
 	Pcidev *pcidev;
 	Controller *ctlr;
-	char name[NAMELEN];
+	char name[32];
 
 	ctlr = sdev->ctlr;
 	pcidev = ctlr->pcidev;
 
 	pcisetbme(pcidev);
-	snprint(name, NAMELEN, "%s (%s)", sdev->name, sdev->ifc->name);
+	snprint(name, sizeof(name), "%s (%s)", sdev->name, sdev->ifc->name);
 	intrenable(pcidev->intl, interrupt, ctlr, pcidev->tbdf, name);
 
 	ilock(ctlr);

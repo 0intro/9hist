@@ -1,6 +1,6 @@
 #include "../port/portfns.h"
 
-void		addclock0link(void (*)(void));
+Dirtab*	addarchfile(char*, int, long(*)(Chan*,void*,long,vlong), long(*)(Chan*,void*,long,vlong));
 void		archinit(void);
 void		arginit(void);
 void		arith(void);
@@ -34,6 +34,7 @@ void		gotopc(ulong);
 int		i8042auxcmd(int);
 void		i8042auxenable(void (*)(int, int));
 void		i8042reset(void);
+void	i8250console(void);
 void		i8259init(void);
 int		i8259enable(int, int, Vctl*);
 #define	idlehands()			/* nothing to do in the runproc */
@@ -49,6 +50,7 @@ int		iprint(char*, ...);
 int		irqallocread(char*, long, vlong);
 int		isaconfig(char*, int, ISAConf*);
 void		kbdinit(void);
+#define	kmapinval()
 void		*kmapv(uvlong, int);
 int		kprint(char*, ...);
 void		launchinit(void);
@@ -57,6 +59,7 @@ void		links(void);
 void		mb(void);
 void 		memholes(void);
 ulong 	meminit(void);
+void		mmudump(void);
 void		mmuinit(void);
 #define	mmunewpage(x)
 void		mntdump(void);
@@ -95,6 +98,7 @@ void	upafree(ulong, int);
 #define		userureg(ur) ((ur)->status & UMODE)
 void		wrent(int, void*);
 void		wrvptptr(uvlong);
+ulong	TK2MS(ulong);				/* ticks to milliseconds */
 
 #define	waserror()	(up->nerrlab++, setlabel(&up->errlab[up->nerrlab-1]))
 #define	kmapperm(x)	kmap(x)
