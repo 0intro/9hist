@@ -122,10 +122,9 @@ promiscuous(void *arg, int on)
 static void
 receive(Ether *ether)
 {
-	ushort status, type;
+	ushort status;
 	int len;
 	ulong port;
-	Netfile *f, **fp, **ep;
 
 	port = ether->port;
 	while(((status = ins(port+RxStatus)) & RxEmpty) == 0){
@@ -169,13 +168,7 @@ receive(Ether *ether)
 			/*
 			 * Copy the packet to whoever wants it.
 			 */
-			type = (ether->rpkt.type[0]<<8)|ether->rpkt.type[1];
-			ep = &ether->f[Ntypes];
-			for(fp = ether->f; fp < ep; fp++) {
-				f = *fp;
-				if(f && (f->type == type || f->type < 0))
-					qproduce(f->in, &ether->rpkt, len);
-			}
+			etherrloop(ether, &ether->rpkt, len);
 		}
 
 		/*

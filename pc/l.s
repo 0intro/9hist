@@ -733,58 +733,32 @@ l20:
 	LOOP	l20
 	RET
 
-#ifdef notdef
 /*
  * The DP8390 ethernet chip needs some time between
  * successive chip selects, so we force a jump into
  * the instruction stream to break the pipeline.
  */
-TEXT dp8390inb(SB), $0
+TEXT slowinb(SB), $0
 	MOVL	p+0(FP),DX
 	XORL	AX,AX				/* CF = 0 */
 	INB
 
-	JCC	_dp8390inb0			/* always true */
+	JCC	_slowinb0			/* always true */
 	MOVL	AX,AX
 
-_dp8390inb0:
+_slowinb0:
 	RET
 
-TEXT dp8390outb(SB), $0
+TEXT slowoutb(SB), $0
 	MOVL	p+0(FP),DX
 	MOVL	b+4(FP),AX
 	OUTB
 
 	CLC					/* CF = 0 */
-	JCC	_dp8390outb0			/* always true */
+	JCC	_slowoutb0			/* always true */
 	MOVL	AX,AX
 
-_dp8390outb0:
-	RET
-#endif
-
-TEXT slowinb(SB), $0
-	MOVL	$0x84, DX
-	INB
-	INB
-
-	MOVL	p+0(FP),DX
-	XORL	AX,AX
-	INB
-	RET
-
-TEXT slowoutb(SB),$0
-	MOVL	$0x84, DX
-	INB
-	INB
-
-	MOVL	p+0(FP),DX
-	MOVL	b+4(FP),AX
-	OUTB
-
-	MOVL	$0x84, DX
-	INB
-
+_slowoutb0:
 	RET
 
 /*

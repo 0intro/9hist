@@ -103,19 +103,8 @@ etherrloop(Ether *ctlr, Etherpkt *pkt, long len)
 	type = (pkt->type[0]<<8)|pkt->type[1];
 	ep = &ctlr->f[Ntypes];
 	for(fp = ctlr->f; fp < ep; fp++){
-		f = *fp;
-		if(f && (f->type == type || f->type < 0)){
-			switch(qproduce(f->in, pkt->d, len)){
-
-			case -1:
-				print("etherrloop overflow\n");
-				break;
-
-			case -2:
-				print("etherrloop memory\n");
-				break;
-			}
-		}
+		if((f = *fp) && (f->type == type || f->type < 0))
+			qproduce(f->in, pkt->d, len);
 	}
 }
 

@@ -22,6 +22,14 @@ struct Ether {
 	Netif;
 };
 
+extern void etherrloop(Ether*, Etherpkt*, long);
+extern void addethercard(char*, int(*)(Ether*));
+
+/*
+ * Stuff for the boards using the National Semiconductor DP8390
+ * and SMC 83C90 Network Interface Controller.
+ * Common code is in ether8390.c.
+ */
 typedef struct {
 	uchar	bit16;			/* true if a 16 bit interface */
 	uchar	ram;			/* true if card has shared memory */
@@ -46,5 +54,3 @@ extern void dp8390setea(Ether*);
 #define NEXT(x, l)	(((x)+1)%(l))
 #define	HOWMANY(x, y)	(((x)+((y)-1))/(y))
 #define ROUNDUP(x, y)	(HOWMANY((x), (y))*(y))
-
-extern void addethercard(char*, int(*)(Ether*));

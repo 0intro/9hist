@@ -287,7 +287,12 @@ dp8390write(Dp8390 *dp8390, ulong to, void *from, ulong len)
 	uchar cr;
 	int s, tries;
 
+	/*
+	 * Keep out interrupts since reading and writing
+	 * use the same DMA engine.
+	 */
 	s = splhi();
+
 	/*
 	 * Write some data to offset 'to' in the card's memory
 	 * using the DP8390 remote DMA facility, reading it at
@@ -338,22 +343,23 @@ dp8390write(Dp8390 *dp8390, ulong to, void *from, ulong len)
 		outss(dp8390->data, from, len/2);
 	else
 		outsb(dp8390->data, from, len);
-	splx(s);
 
 	/*
-	 * Wait for the remote DMA to finish. We'll need
-	 * a timeout here if this ever gets called before
-	 * we know there really is a chip there.
+	 * Wait for the remote DMA to finish. It should
+	 * be almost immediate.
 	 */
 	tries = 0;
-	while((slowinb(port+Isr) & Rdc) == 0)
-		if(tries++ >= 10000000){
-			print("dp8390write whoops\n");
+	while((slowinb(port+Isr) & Rdc) == 0){
+		if(tries++ >= 100000){
+			print("dp8390write dma timed out\n");
 			break;
 		}
+	}
 
 	slowoutb(port+Isr, Rdc);
 	slowoutb(port+Cr, cr);
+	splx(s);
+
 	return (void*)to;
 }
 
@@ -377,8 +383,6 @@ receive(Ether *ether)
 	uchar curr, *pkt;
 	Hdr hdr;
 	ulong port, data, len, len1;
-	ushort type;
-	Netfile *f, **fp, **ep;
 
 	dp8390 = ether->private;
 	port = dp8390->dp8390;
@@ -421,6 +425,9 @@ receive(Ether *ether)
 		/*
 		 * If it's a good packet read it in to the software buffer.
 		 * If the packet wraps round the hardware ring, read it in two pieces.
+		 *
+		 * We could conceivably remove the copy into rpkt here by wrapping
+		 * this up with the etherrloop code.
 		 */
 		if((hdr.status & (Fo|Fae|Crce|Prxok)) == Prxok){
 			pkt = (uchar*)&ether->rpkt;
@@ -448,13 +455,7 @@ receive(Ether *ether)
 			/*
 			 * Copy the packet to whoever wants it.
 			 */
-			type = (ether->rpkt.type[0]<<8)|ether->rpkt.type[1];
-			ep = &ether->f[Ntypes];
-			for(fp = ether->f; fp < ep; fp++) {
-				f = *fp;
-				if(f && (f->type == type || f->type < 0))
-					qproduce(f->in, &ether->rpkt, len);
-			}
+			etherrloop(ether, &ether->rpkt, len);
 		}
 
 		/*
