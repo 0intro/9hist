@@ -185,8 +185,8 @@ promiscuous(void* arg, int on)
 	ctlr = ether->ctlr;
 
 	/*
-	 * Put the chip into promiscuous mode. First we must wait until
-	 * anyone transmitting is done, then we can stop the chip and put
+	 * Put the chip into promiscuous mode. First must wait until
+	 * anyone transmitting is done, then stop the chip and put
 	 * it in promiscuous mode. Restarting is made harder by the chip
 	 * reloading the transmit and receive descriptor pointers with their
 	 * base addresses when Strt is set (unlike the older Lance chip),
@@ -284,7 +284,7 @@ interrupt(Ureg*, void* arg)
 	/*
 	 * Receiver interrupt: run round the descriptor ring logging
 	 * errors and passing valid receive data up to the higher levels
-	 * until we encounter a descriptor still owned by the chip.
+	 * until a descriptor is encountered still owned by the chip.
 	 */
 	if(csr0 & Rint){
 		rdre = &ctlr->rdr[ctlr->rdrx];
@@ -371,8 +371,8 @@ reset(Ether* ether)
 
 	/*
 	 * Any adapter matches if no ether->port is supplied, otherwise the
-	 * ports must match. First see if we've already found an adapter that fits
-	 * the bill. If not then scan for another.
+	 * ports must match. First see if an adapter that fits the bill has
+	 * already been found. If not then scan for another.
 	 */
 	port = 0;
 	for(app = &adapter, ap = *app; ap; app = &ap->next, ap = ap->next){

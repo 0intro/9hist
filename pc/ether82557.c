@@ -434,7 +434,6 @@ interrupt(Ureg*, void* arg)
 					etherrloop(ether, rfd, rfd->count & 0x3FFF);
 					ether->inpackets++;
 				}
-else print("%s#%d: rfd->field %uX\n", ctlr->type,  ctlr->ctlrno, rfd->field);
 
 				/*
 				 * Reinitialise the frame for reception and bump
@@ -463,7 +462,6 @@ else print("%s#%d: rfd->field %uX\n", ctlr->type,  ctlr->ctlrno, rfd->field);
 			while(csr8r(ctlr, Command))
 				;
 			csr8w(ctlr, Command, RUresume);
-print("%s#%d: status %uX\n", ctlr->type,  ctlr->ctlrno, status);
 
 			status &= ~StatRNR;
 		}

@@ -1,8 +1,9 @@
 #define nil		((void*)0)
 typedef	unsigned short	ushort;
 typedef	unsigned char	uchar;
-typedef	signed char	schar;
+typedef unsigned int	uint;
 typedef unsigned long	ulong;
+typedef   signed char	schar;
 typedef	long		vlong;
 typedef union Length	Length;
 typedef ushort		Rune;

@@ -564,7 +564,6 @@ receive(Ether* ether)
 		 */
 		if(rxstatus & rxError){
 			if(ctlr->rxstatus9){
-iprint("R%uX|", rxstatus);
 				switch(rxstatus & rxError9){
 
 				case rxOverrun9:
@@ -588,7 +587,6 @@ iprint("R%uX|", rxstatus);
 			}
 			else{
 				rxerror = inb(port+RxError);
-iprint("R%uX|", rxerror);
 				if(rxerror & rxOverrun)
 					ether->overflows++;
 				if(rxerror & (oversizedFrame|runtFrame))

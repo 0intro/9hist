@@ -72,54 +72,56 @@ typedef struct Uart Uart;
 struct Uart
 {
 	QLock;
+	int	opens;
 
-	Uart	*elist;		/* next enabled interface */
+	int	enabled;
+	Uart	*elist;			/* next enabled interface */
 	char	name[NAMELEN];
 
-	uchar	sticky[8];	/* sticky write register values */
+	uchar	sticky[8];		/* sticky write register values */
 	ulong	port;
-	Lock	plock;		/* for printing variable */
-	ulong	freq;		/* clock frequency */
-	int	opens;
-	uchar	mask;		/* bits/char */
-	uchar	istat;		/* last istat read */
-	uchar	fifoon;		/* fifo's enabled */
-	uchar	nofifo;		/* earlier chip version with nofifo */
-	int	enabled;
+	ulong	freq;			/* clock frequency */
+	uchar	mask;			/* bits/char */
 	int	dev;
+	int	baud;			/* baud rate */
 
-	int	frame;		/* framing errors */
-	int	overrun;	/* rcvr overruns */
-	int	baud;		/* baud rate */
-
-	/* flow control */
-	int	xonoff;		/* software flow control on */
-	int	blocked;
-	int	modem;		/* hardware flow control on */
-	int	cts;		/* ... cts state */
-	int	ctsbackoff;
-	int	rts;		/* ... rts state */
-	Rendez	r;
+	uchar	istat;			/* last istat read */
+	int	frame;			/* framing errors */
+	int	overrun;		/* rcvr overruns */
 
 	/* buffers */
 	int	(*putc)(Queue*, int);
 	Queue	*iq;
 	Queue	*oq;
 
-	/* staging areas to avoid some of the per character costs */
+	Lock	flock;			/* fifo */
+	uchar	fifoon;			/* fifo's enabled */
+	uchar	nofifo;			/* earlier chip version with nofifo */
+
+	Lock	rlock;			/* receive */
 	uchar	istage[Stagesize];
 	uchar	*ip;
 	uchar	*ie;
 
+	int	haveinput;
+
+	Lock	tlock;			/* transmit */
 	uchar	ostage[Stagesize];
 	uchar	*op;
 	uchar	*oe;
+
+	int	modem;			/* hardware flow control on */
+	int	xonoff;			/* software flow control on */
+	int	blocked;
+	int	cts;
+	int	ctsbackoff;
+
+	Rendez	r;
 };
 
 static Uart *uart[Nuart];
 static int nuart;
 
-static int haveinput;
 struct Uartalloc {
 	Lock;
 	Uart *elist;	/* list of enabled interfaces */
@@ -209,27 +211,18 @@ ns16552dtr(Uart *p, int n)
 void
 ns16552rts(Uart *p, int n)
 {
-	int x;
-
-	x = splhi();
-	lock(&p->plock);
-
 	if(n)
 		p->sticky[Mctl] |= Rts;
 	else
 		p->sticky[Mctl] &= ~Rts;
 
 	uartwrreg(p, Mctl, 0);
-	p->rts = n;
-
-	unlock(&p->plock);
-	splx(x);
 }
 
 /*
  *  send break
  */
-void
+static void
 ns16552break(Uart *p, int ms)
 {
 	if(ms == 0)
@@ -240,7 +233,7 @@ ns16552break(Uart *p, int ms)
 	uartwrreg(p, Format, 0);
 }
 
-void
+static void
 ns16552fifoon(Uart *p)
 {
 	ulong i, x;
@@ -276,33 +269,40 @@ ns16552fifoon(Uart *p)
 /*
  *  modem flow control on/off (rts/cts)
  */
-void
+static void
 ns16552mflow(Uart *p, int n)
 {
+	ilock(&p->tlock);
 	if(n){
 		p->sticky[Iena] |= Imstat;
 		uartwrreg(p, Iena, 0);
 		p->modem = 1;
 		p->cts = uartrdreg(p, Mstat) & Cts;
-
-		/* turn on fifo's */
-		ns16552fifoon(p);
 	} else {
 		p->sticky[Iena] &= ~Imstat;
 		uartwrreg(p, Iena, 0);
 		p->modem = 0;
 		p->cts = 1;
+		iunlock(&p->tlock);
+	}
+	iunlock(&p->tlock);
 
+	ilock(&p->flock);
+	if(n)
+		/* turn on fifo's */
+		ns16552fifoon(p);
+	else {
 		/* turn off fifo's */
 		p->fifoon = 0;
 		uartwrreg(p, Fifoctl, 0);
 	}
+	iunlock(&p->flock);
 }
 
 /*
  *  turn on a port's interrupts.  set DTR and RTS
  */
-void
+static void
 ns16552enable(Uart *p)
 {
 	Uart **l;
@@ -327,8 +327,10 @@ ns16552enable(Uart *p)
 	/*
 	 *  assume we can send
 	 */
+	ilock(&p->tlock);
 	p->cts = 1;
 	p->blocked = 0;
+	iunlock(&p->tlock);
 
 	/*
 	 *  set baud rate to the last used
@@ -351,7 +353,7 @@ ns16552enable(Uart *p)
 /*
  *  turn off a port's interrupts.  reset DTR and RTS
  */
-void
+static void
 ns16552disable(Uart *p)
 {
 	Uart **l;
@@ -374,7 +376,10 @@ ns16552disable(Uart *p)
 	ns16552dtr(p, 0);
 	ns16552rts(p, 0);
 	ns16552mflow(p, 0);
-	p->xonoff = p->blocked = 0;
+	ilock(&p->tlock);
+	p->blocked = 0;
+	iunlock(&p->tlock);
+	p->xonoff = 0;
 
 	uartpower(p->dev, 0);
 
@@ -410,30 +415,23 @@ stageoutput(Uart *p)
  *  (re)start output
  */
 static void
+ns16552kick0(Uart *p)
+{
+	if(p->cts == 0 || p->blocked)
+		return;
+	while(uartrdreg(p, Lstat) & Outready){
+		if(p->op >= p->oe && stageoutput(p) == 0)
+			break;
+		outb(p->port + Data, *(p->op++));
+	}
+}
+
+static void
 ns16552kick(Uart *p)
 {
-	int x, n;
-
-	x = splhi();
-	lock(&p->plock);
-	if((uartrdreg(p, Lstat) & Outready))
-	if(p->cts && p->blocked == 0)
-	if(p->op < p->oe || stageoutput(p)){
-		n = 0;
-		while((uartrdreg(p, Lstat) & Outready) == 0){
-			if(++n > 100000){
-				print("stuck serial line\n");
-				break;
-			}
-		}
-		do{
-			outb(p->port + Data, *(p->op++));
-			if(p->op >= p->oe && stageoutput(p) == 0)
-				break;
-		}while(uartrdreg(p, Lstat) & Outready);
-	}
-	unlock(&p->plock);
-	splx(x);
+	ilock(&p->tlock);
+	ns16552kick0(p);
+	iunlock(&p->tlock);
 }
 
 /*
@@ -444,7 +442,9 @@ ns16552flow(Uart *p)
 {
 	if(p->modem){
 		ns16552rts(p, 1);
-		haveinput = 1;
+		ilock(&p->rlock);
+		p->haveinput = 1;
+		iunlock(&p->rlock);
 	}
 }
 
@@ -519,22 +519,6 @@ ns16552special(int port, int baud, Queue **in, Queue **out, int (*putc)(Queue*, 
 }
 
 /*
- *  reset the interface
- */
-void
-ns16552shake(Uart *p)
-{
-	int xonoff, modem;
-
-	xonoff = p->xonoff;
-	modem = p->modem;
-	ns16552disable(p);
-	ns16552enable(p);
-	p->xonoff = xonoff;
-	ns16552mflow(p, modem);
-}
-
-/*
  *  handle an interrupt to a single uart
  */
 void
@@ -564,6 +548,7 @@ ns16552intr(int dev)
 		case 4:	/* received data available */
 		case 12:
 			ch = uartrdreg(p, Data) & 0xff;
+			lock(&p->tlock);
 			if(p->xonoff){
 				if(ch == CTLS){
 					p->blocked = 1;
@@ -572,37 +557,31 @@ ns16552intr(int dev)
 					 /* clock gets output going again */
 				}
 			}
+			unlock(&p->tlock);
 			if(p->putc)
 				(*p->putc)(p->iq, ch);
 			else {
+				lock(&p->rlock);
 				if(p->ip < p->ie)
 					*p->ip++ = ch;
-				haveinput = 1;
+				p->haveinput = 1;
+				unlock(&p->rlock);
 			}
 			break;
 	
 		case 2:	/* transmitter not full */
-			lock(&p->plock);
-			l = uartrdreg(p, Lstat) & Outready;
-			if(l && p->cts && p->blocked == 0)
-			if(p->op < p->oe || stageoutput(p)){
-				do{
-					outb(p->port + Data, *(p->op++));
-					if(p->op >= p->oe && stageoutput(p) == 0)
-						break;
-					l = uartrdreg(p, Lstat) & Outready;
-				}while(l);
-			}
-			unlock(&p->plock);
+			ns16552kick(p);
 			break;
 	
 		case 0:	/* modem status */
 			ch = uartrdreg(p, Mstat);
 			if(ch & Ctsc){
+				lock(&p->tlock);
 				l = p->cts;
 				p->cts = ch & Cts;
 				if(l == 0 && p->cts)
 					p->ctsbackoff = 2; /* clock gets output going again */
+				unlock(&p->tlock);
 			}
 			break;
 	
@@ -633,8 +612,10 @@ uartclock(void)
 	Uart *p;
 
 	for(p = uartalloc.elist; p; p = p->elist){
+
 		/* this amortizes cost of qproduce to many chars */
-		if(haveinput){
+		lock(&p->rlock);
+		if(p->haveinput){
 			n = p->ip - p->istage;
 			if(n > 0 && p->iq){
 				if(n > Stagesize)
@@ -644,15 +625,18 @@ uartclock(void)
 				else
 					p->ip = p->istage;
 			}
+			p->haveinput = 0;
 		}
+		unlock(&p->rlock);
 
 		/* this adds hysteresis to hardware flow control */
+		lock(&p->tlock);
 		if(p->ctsbackoff){
 			if(--(p->ctsbackoff) == 0)
-				ns16552kick(p);
+				ns16552kick0(p);
 		}
+		unlock(&p->tlock);
 	}
-	haveinput = 0;
 }
 
 Dirtab *ns16552dir;
@@ -672,7 +656,6 @@ setlength(int i)
 		if(p && p->opens && p->iq)
 			ns16552dir[3*i].length = qlen(p->iq);
 	}
-		
 }
 
 /*
@@ -792,7 +775,7 @@ ns16552close(Chan *c)
 	}
 }
 
-static long
+long
 uartstatus(Chan*, Uart *p, void *buf, long n, long offset)
 {
 	uchar mstat;
@@ -855,7 +838,7 @@ ns16552bread(Chan *c, long n, ulong offset)
 	return devbread(c, n, offset);
 }
 
-static void
+void
 ns16552ctl(Uart *p, char *cmd)
 {
 	int i, n;
@@ -944,8 +927,10 @@ ns16552write(Chan *c, void *buf, long n, ulong)
 	 *  The fifo's turn themselves off sometimes.
 	 *  It must be something I don't understand. -- presotto
 	 */
+	lock(&p->flock);
 	if((p->istat & Fenabd) == 0 && p->fifoon && p->nofifo == 0)
 		ns16552fifoon(p);
+	unlock(&p->flock);
 
 	switch(NETTYPE(c->qid.path)){
 	case Ndataqid:
