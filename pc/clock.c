@@ -29,9 +29,8 @@ enum
 
 static int cpufreq = 66000000;
 static int cpumhz = 66;
-static int cputype = 486;
 static int loopconst = 100;
-ulong cpuidax, cpuiddx;
+static int cpuidax, cpuiddx;
 
 static void
 clock(Ureg *ur, void *arg)
@@ -72,6 +71,49 @@ clock(Ureg *ur, void *arg)
 	mouseclock();
 }
 
+#define STEPPING(x)	((x)&0xf)
+#define MODEL(x)	(((x)>>4)&0xf)
+#define FAMILY(x)	(((x)>>8)&0xf)
+
+enum
+{
+	/* flags */
+	CpuidFPU	= 0x001,	/* on-chip floating point unit */
+	CpuidMCE	= 0x080,	/* machine check exception */
+	CpuidCX8	= 0x100,	/* CMPXCHG8B instruction */
+};
+
+typedef struct
+{
+	int family;
+	int model;
+	int aalcycles;
+	char *name;
+} X86type;
+
+X86type x86type[] =
+{
+	/* from the cpuid instruction */
+	{ 4,	0,	22,	"Intel486DX", },
+	{ 4,	1,	22,	"Intel486DX", },
+	{ 4,	2,	22,	"Intel486SX", },
+	{ 4,	4,	22,	"Intel486DX2", },
+	{ 4,	5,	22,	"Intel486SL", },
+	{ 4,	8,	22,	"IntelDX4", },
+	{ 5,	1,	23,	"Pentium510", },
+	{ 5,	2,	23,	"Pentium735", },
+
+	/* family defaults */
+	{ 3,	-1,	32,	"Intel386", },
+	{ 4,	-1,	22,	"Intel486", },
+	{ 5,	-1,	23,	"Pentium", },
+
+	/* total default */
+	{ -1,	-1,	23,	"unknown", },
+};
+
+static X86type	*cputype;
+
 /*
  *  delay for l milliseconds more or less.  delayloop is set by
  *  clockinit() to match the actual CPU speed.
@@ -89,31 +131,36 @@ printcpufreq(void)
 		cpufreq, cputype, cpuidax, cpuiddx);
 }
 
+int
+x86(void)
+{
+	return cputype->family;
+}
+
 void
 clockinit(void)
 {
-	ulong x, y;	/* change in counter */
-	ulong cycles, loops;
-
-	switch(cputype = x86()){
-	case 386:
-		loops = 10000;
-		cycles = 32;
-		break;
-	case 486:
-		loops = 10000;
-		cycles = 22;
-		break;
-	default:
-		loops = 30000;
-		cycles = 23;
-		break;
-	}
+	int x, y;	/* change in counter */
+	int family, model, loops;
+	X86type *t;
 
 	/*
 	 *  set vector for clock interrupts
 	 */
 	setvec(Clockvec, clock, 0);
+
+	/*
+	 *  figure out what we are
+	 */
+	x86cpuid(&cpuidax, &cpuiddx);
+	family = FAMILY(cpuidax);
+	model = MODEL(cpuidax);
+	for(t = x86type; t->name; t++)
+		if((t->family == family && t->model == model)
+		|| (t->family == family && t->model == -1)
+		|| (t->family == -1))
+			break;
+	cputype = t;
 
 	/*
 	 *  set clock for 1/HZ seconds
@@ -122,39 +169,46 @@ clockinit(void)
 	outb(T0cntr, (Freq/HZ));	/* low byte */
 	outb(T0cntr, (Freq/HZ)>>8);	/* high byte */
 
+	/* use biggest loop that works */
+	for(loops = 10000; ; loops += 5000) {
+		/*
+		 *  measure time for the loop
+		 *
+		 *			MOVL	loops,CX
+		 *	aaml1:	 	AAM
+		 *			LOOP	aaml1
+		 *
+		 *  the time for the loop should be independent of external
+		 *  cache and memory system since it fits in the execution
+		 *  prefetch buffer.
+		 *
+		 */
+		outb(Tmode, Latch0);
+		x = inb(T0cntr);
+		x |= inb(T0cntr)<<8;
+		aamloop(loops);
+		outb(Tmode, Latch0);
+		y = inb(T0cntr);
+		y |= inb(T0cntr)<<8;
+		x -= y;
 
-	/*
-	 *  measure time for the loop
-	 *
-	 *			MOVL	loops,CX
-	 *	aaml1:	 	AAM
-	 *			LOOP	aaml1
-	 *
-	 *  the time for the loop should be independent from external
-	 *  cache's and memory system since it fits in the execution
-	 *  prefetch buffer.
-	 *
-	 */
-	outb(Tmode, Latch0);
-	x = inb(T0cntr);
-	x |= inb(T0cntr)<<8;
-	aamloop(loops);
-	outb(Tmode, Latch0);
-	y = inb(T0cntr);
-	y |= inb(T0cntr)<<8;
-	x -= y;
+		if(x < 0)
+			x += 2^16;
+		if(x > (2^15))
+			break;
+	
+		/*
+		 *  counter  goes at twice the frequency, once per transition,
+		 *  i.e., twice per square wave
+		 */
+		x >>= 1;
 
-	/*
-	 *  counter  goes at twice the frequency, once per transition,
-	 *  i.e., twice per square wave
-	 */
-	x >>= 1;
-
-	/*
- 	 *  figure out clock frequency and a loop multiplier for delay().
-	 */
-	cpufreq = loops*((cycles*Freq)/x);
-	loopconst = (cpufreq/1000)/cycles;	/* AAM+LOOP's for 1 ms */
+		/*
+	 	 *  figure out clock frequency and a loop multiplier for delay().
+		 */
+		cpufreq = loops*((t->aalcycles*Freq)/x);
+		loopconst = (cpufreq/1000)/t->aalcycles;	/* AAM+LOOP's for 1 ms */
+	} while(x > 0);
 
 	/*
 	 *  add in possible .1% error and convert to MHz

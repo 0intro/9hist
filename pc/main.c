@@ -448,11 +448,10 @@ confinit(void)
 	conf.nswap = conf.nproc*80;
 	conf.nimage = 50;
 	switch(x86()){
-	case 386:
+	case 3:
 		conf.copymode = 1;	/* copy on reference */
 		break;
 	default:
-	case 486:
 		conf.copymode = 0;	/* copy on write */
 		break;
 	}

@@ -572,7 +572,7 @@ TEXT	getstatus(SB),$0
 /*
  *  return cpu type (586 == pentium or better)
  */
-TEXT	x86(SB),$0
+TEXT	x86cpuid(SB),$0
 
 	PUSHFL
 	MOVL	0(SP),AX
@@ -591,22 +591,17 @@ TEXT	x86(SB),$0
 	/* CPUID */
 	 BYTE $0x0F
 	 BYTE $0xA2
-
-	MOVL	AX, cpuidax(SB)
-	MOVL	DX, cpuiddx(SB)
-
-	SHLL	$20,AX
-	SHRL	$28,AX
-	CMPL	AX, $4
-	JEQ	is486
-	MOVL	$586,AX
 	JMP	done
 is486:
-	MOVL	$486,AX
+	MOVL	$(4<<8),AX
+	MOVL	$0,DX
 	JMP	done
 is386:
-	MOVL	$386,AX
+	MOVL	$(3<<8),AX
+	MOVL	$0,DX
 done:
+	MOVL	AX, a+0(FP)
+	MOVL	DX, d+4(FP)
 	POPL	BX
 	POPFL
 	RET
