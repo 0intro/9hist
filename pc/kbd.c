@@ -46,6 +46,7 @@ enum {
 	Pgdown=		KF|19,
 	Ins=		KF|20,
 	Del=		0x7F,
+	Scroll=		KF|21,
 };
 
 Rune kbtab[] = 
@@ -58,14 +59,14 @@ Rune kbtab[] =
 [0x28]	'\'',	'`',	Shift,	'\\',	'z',	'x',	'c',	'v',
 [0x30]	'b',	'n',	'm',	',',	'.',	'/',	Shift,	'*',
 [0x38]	Latin,	' ',	Ctrl,	KF|1,	KF|2,	KF|3,	KF|4,	KF|5,
-[0x40]	KF|6,	KF|7,	KF|8,	KF|9,	KF|10,	Num,	KF|12,	'7',
+[0x40]	KF|6,	KF|7,	KF|8,	KF|9,	KF|10,	Num,	Scroll,	'7',
 [0x48]	'8',	'9',	'-',	'4',	'5',	'6',	'+',	'1',
 [0x50]	'2',	'3',	'0',	'.',	No,	No,	No,	KF|11,
 [0x58]	KF|12,	No,	No,	No,	No,	No,	No,	No,
 [0x60]	No,	No,	No,	No,	No,	No,	No,	No,
 [0x68]	No,	No,	No,	No,	No,	No,	No,	No,
 [0x70]	No,	No,	No,	No,	No,	No,	No,	No,
-[0x78]	No,	View,	No,	KF|14,	No,	No,	No,	No,
+[0x78]	No,	No,	No,	No,	No,	No,	No,	No,
 };
 
 Rune kbtabshift[] =
@@ -78,14 +79,14 @@ Rune kbtabshift[] =
 [0x28]	'"',	'~',	Shift,	'|',	'Z',	'X',	'C',	'V',
 [0x30]	'B',	'N',	'M',	'<',	'>',	'?',	Shift,	'*',
 [0x38]	Latin,	' ',	Ctrl,	KF|1,	KF|2,	KF|3,	KF|4,	KF|5,
-[0x40]	KF|6,	KF|7,	KF|8,	KF|9,	KF|10,	Num,	KF|12,	'7',
+[0x40]	KF|6,	KF|7,	KF|8,	KF|9,	KF|10,	Num,	Scroll,	'7',
 [0x48]	'8',	'9',	'-',	'4',	'5',	'6',	'+',	'1',
 [0x50]	'2',	'3',	'0',	'.',	No,	No,	No,	KF|11,
 [0x58]	KF|12,	No,	No,	No,	No,	No,	No,	No,
 [0x60]	No,	No,	No,	No,	No,	No,	No,	No,
 [0x68]	No,	No,	No,	No,	No,	No,	No,	No,
 [0x70]	No,	No,	No,	No,	No,	No,	No,	No,
-[0x78]	No,	KF|14,	No,	KF|14,	No,	No,	No,	No,
+[0x78]	No,	No,	No,	No,	No,	No,	No,	No,
 };
 
 Rune kbtabesc1[] =
@@ -105,7 +106,7 @@ Rune kbtabesc1[] =
 [0x60]	No,	No,	No,	No,	No,	No,	No,	No,
 [0x68]	No,	No,	No,	No,	No,	No,	No,	No,
 [0x70]	No,	No,	No,	No,	No,	No,	No,	No,
-[0x78]	No,	KF|14,	No,	No,	No,	No,	No,	No,
+[0x78]	No,	No,	No,	No,	No,	No,	No,	No,
 };
 
 enum
