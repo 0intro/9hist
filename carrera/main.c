@@ -355,15 +355,21 @@ userinit(void)
 void
 exit(long type)
 {
+	uchar *vec;
+
 	USED(type);
 
 	spllo();
 	print("cpu %d exiting\n", m->machno);
 	while(consactive())
 		delay(10);
+
 	splhi();
-	for(;;)
-		;
+	/* Turn off the NMI hander for the debugger */
+	vec = (uchar*)0xA0000420;
+	vec[0] = 0;
+	/* Call the prom */
+	((void(*)(void))0xBFC00000)();
 }
 
 void

@@ -613,34 +613,12 @@ TEXT	config(SB),$0
 	OUTB
 	RET
 
-/*
- *  copy bitmap changes to screen memory for ldepth 0 screen.
- *  reverse the bits since the screen is big-endian
- *  and the bitmaps are little.
- */
-TEXT	l0update(SB),$0
-	MOVL	len+8(FP),CX
-	SHRL	$1,CX
-	MOVL	from+4(FP),SI
-	MOVL	to+0(FP),DI
-	XORL	AX,AX
-l00:
-	MOVW	-2(SI)(CX*2),DX
-	MOVB	DH,AL
-	MOVB	revtab0(SB)(AX*1),BX
-	SHLL	$8,BX
-	MOVB	DL,AL
-	ORB	revtab0(SB)(AX*1),BX
-	MOVW	BX,-2(DI)(CX*2)
-	LOOP	l00
-	RET
-
 #define SRX	0x3C4		/* index to sequence registers */
 #define	SR	0x3C5		/* sequence registers */
 #define Smmask	0x02		/*  map mask */
 
 /*
- *  same as l0update but for ldepth 1 (2 bit plane) screens
+ *  separate ldepth 1 bitmap into 2 bit planes
  */
 TEXT	l1update(SB),$0
 	XORL	AX,AX
@@ -653,19 +631,19 @@ TEXT	l1update(SB),$0
 l10:
 	MOVL	-4(SI)(CX*2),DX
 	MOVB	DL,AL
-	MOVL	l1revsep(SB)(AX*4),BX
+	MOVL	l1septab(SB)(AX*4),BX
 	SHLL	$4,BX
 	RORL	$8,DX
 	MOVB	DL,AL
-	ORL	l1revsep(SB)(AX*4),BX
+	ORL	l1septab(SB)(AX*4),BX
 	RORL	$12,BX
 	RORL	$8,DX
 	MOVB	DL,AL
-	ORL	l1revsep(SB)(AX*4),BX
+	ORL	l1septab(SB)(AX*4),BX
 	SHLL	$4,BX
 	RORL	$8,DX
 	MOVB	DL,AL
-	ORL	l1revsep(SB)(AX*4),BX
+	ORL	l1septab(SB)(AX*4),BX
 	ROLL	$8,BX
 	MOVW	$(SR),DX
 	MOVB	$0x5,AL			/* write lo order bits to bit planes 1 & 3 */
@@ -679,7 +657,7 @@ l10:
 	RET
 
 /*
- *  same as l0update but for ldepth 2 (4 bit plane) screens
+ *  separate ldepth 2 bitmap into 4 bit planes
  */
 TEXT	l2update(SB),$0
 	XORL	AX,AX
@@ -692,19 +670,19 @@ TEXT	l2update(SB),$0
 l20:
 	MOVL	-4(SI)(CX*4),DX
 	MOVB	DL,AL
-	MOVL	l2revsep(SB)(AX*4),BX
+	MOVL	l2septab(SB)(AX*4),BX
 	SHLL	$2,BX
 	SHRL	$8,DX
 	MOVB	DL,AL
-	ORL	l2revsep(SB)(AX*4),BX
+	ORL	l2septab(SB)(AX*4),BX
 	SHLL	$2,BX
 	SHRL	$8,DX
 	MOVB	DL,AL
-	ORL	l2revsep(SB)(AX*4),BX
+	ORL	l2septab(SB)(AX*4),BX
 	SHLL	$2,BX
 	SHRL	$8,DX
 	MOVB	DL,AL
-	ORL	l2revsep(SB)(AX*4),BX
+	ORL	l2septab(SB)(AX*4),BX
 	MOVW	$(SR),DX
 	MOVB	$0x1,AL			/* plane 3 */
 	OUTB

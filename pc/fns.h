@@ -91,3 +91,5 @@ void	vgainit(void);
 #define PADDR(a)	((ulong)(a)&~KZERO)
 
 void	NS16552special(int, int, Queue**, Queue**, int (*)(Queue*, int));
+int	NS16552m3mouse(Queue*, int);
+int	NS16552mouse(Queue*, int);

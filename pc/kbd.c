@@ -130,8 +130,6 @@ enum
 	Ckbdint=	(1<<0),		/* kbd interrupt enable */
 };
 
-extern int m3mouseputc(IOQ*, int), mouseputc(IOQ*, int);
-
 /*
  *  wait for output no longer busy
  */
@@ -248,9 +246,9 @@ serialmouse(int port, char *type, int setspeed)
 	if(setspeed)
 		setspeed = 1200;
 	if(type && *type == 'M')
-		NS16552special(port, setspeed, &mouseq, 0, m3mouseputc);
+		NS16552special(port, setspeed, &mouseq, 0, NS16552m3mouse);
 	else
-		NS16552special(port, setspeed, &mouseq, 0, mouseputc);
+		NS16552special(port, setspeed, &mouseq, 0, NS16552mouse);
 	mousetype = Mouseserial;
 }
 

@@ -285,7 +285,8 @@ putmmu(ulong tlbvirt, ulong tlbphys, Page *pg)
 	ctl = &pg->cachectl[m->machno];
 	switch(*ctl) {
 	case PG_TXTFLUSH:
-		icflush((void*)pg->va, BY2PG);
+cleancache();		/* Too expensive */
+/*		icflush((void*)pg->va, BY2PG);*/
 		*ctl = PG_NOFLUSH;
 		break;
 	case PG_DATFLUSH:
