@@ -33,6 +33,9 @@ typedef struct Ref	Ref;
 typedef struct Rendez	Rendez;
 typedef struct RWlock	RWlock;
 typedef struct Sargs	Sargs;
+typedef struct Scsi	Scsi;
+typedef struct Scsibuf	Scsibuf;
+typedef struct Scsidata	Scsidata;
 typedef struct Segment	Segment;
 typedef struct Stream	Stream;
 typedef struct Talarm	Talarm;
@@ -217,6 +220,53 @@ struct Etherpkt
 #define	ETHERMAXTU	1514		/* maximum transmit size */
 #define ETHERHDRSIZE	14		/* size of an ethernet header */
 
+/*
+ *  SCSI devices.
+ */
+enum
+{
+	ScsiTestunit	= 0x00,
+	ScsiExtsens	= 0x03,
+	ScsiModesense	= 0x1a,
+	ScsiGetcap	= 0x25,
+	ScsiRead	= 0x08,
+	ScsiWrite	= 0x0a,
+
+	/*
+	 * data direction
+	 */
+	ScsiIn		= 1,
+	ScsiOut		= 0,
+};
+
+struct Scsibuf
+{
+	void *	virt;
+	void *	phys;
+	Scsibuf *next;
+};
+
+struct Scsidata
+{
+	uchar *	base;
+	uchar *	lim;
+	uchar *	ptr;
+};
+
+struct Scsi
+{
+	QLock;
+	ulong	pid;
+	ushort	target;
+	ushort	lun;
+	ushort	rflag;
+	ushort	status;
+	Scsidata cmd;
+	Scsidata data;
+	Scsibuf	*b;
+	uchar	*save;
+	uchar	cmdblk[16];
+};
 /*
  *  character based IO (mouse, keyboard, console screen)
  */

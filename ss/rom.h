@@ -34,7 +34,8 @@ struct ROM
 	uint	(*seek)(uint, uint, uint);
 	void	(*chain)(void*, uint, void*, void*, uint);
 	void	(*release)(void*, uint);
-	uint	pad5[16];
+	uint	pad4[15];
+	void	(*putcxsegm)(int, ulong, int);
 	int	(*startcpu)(uint, uint, uint, uint);
 	int	(*stopcpu)(uint);
 	int	(*idlecpu)(uint);
@@ -47,6 +48,7 @@ struct ROMconf
 	uint	(*child)(uint);
 	int	(*getproplen)(uint, void*);
 	int	(*getprop)(uint, void*, void*);
+	int	(*setprop)(uint, void*, void*);
 	void*	(*nextprop)(uint, void*);	
 };
 

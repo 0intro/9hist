@@ -5,6 +5,7 @@
 #include	"fns.h"
 #include	"io.h"
 #include	"init.h"
+#include	"rom.h"
 
 #include	<libg.h>
 #include	<gnot.h>
@@ -12,10 +13,12 @@
 uchar	*intrreg;
 int	model;
 uchar	idprom[32];
-ulong	romvec;		/* open boot rom vector */
+ROM	*rom;		/* open boot rom vector */
 int	cpuserver;
-ulong	romputcxsegm;
+void	(*romputcxsegm)(int, ulong, int);
 ulong	bank[2];
+char	rombuf[20000];
+char	mempres[256];
 
 void
 main(void)
@@ -114,6 +117,7 @@ init0(void)
 	kproc("alarm", alarmkproc, 0);
 	chandevinit();
 
+
 	if(!waserror()){
 		ksetterm("sun %s");
 		ksetenv("cputype", "sparc");
@@ -204,34 +208,86 @@ exit(void)
 	systemreset();
 }
 
-int
-banksize(ulong addr, ulong nbytes)
+void
+scanmem(char *mempres, int n)
 {
 	int i;
-	ulong min, max, t;
-	ulong va, pa;
-	ulong nmeg;
+	ulong va, addr;
 
-	nmeg = nbytes/MB;
 	va = 1*MB-2*BY2PG;
-	for(i=0; i<nmeg; i++){
-		pa = addr+i*MB;
-		putw4(va, PPN(pa)|PTEVALID|PTEKERNEL|PTENOCACHE|PTEWRITE|PTEMAINMEM);
-		*(ulong*)va = pa;
+	for(i=0; i<n; i++){
+		mempres[i] = 0;
+		addr = i*MB;
+		putw4(va, PPN(addr)|PTEVALID|PTEKERNEL|PTENOCACHE|PTEWRITE|PTEMAINMEM);
+		*(ulong*)va = addr;
+		if(*(ulong*)va == addr){
+			addr = ~addr;
+			*(ulong*)va = addr;
+			if(*(ulong*)va == addr){
+				mempres[i] = 1;
+				*(ulong*)va = i + '0';
+			}
+		}
 	}
-	min = ~0;
-	max = 0;
-	for(i=0; i<nmeg; i++){
-		pa = addr+i*MB;
-		putw4(va, PPN(pa)|PTEVALID|PTEKERNEL|PTENOCACHE|PTEWRITE|PTEMAINMEM);
-		t = *(ulong*)va;
-		if(min > t)
-			min = t;
-		if(max < t)
-			max = t;
+	for(i=0; i<n; i++)
+		if(mempres[i]){
+			addr = i*MB;
+			putw4(va, PPN(addr)|PTEVALID|PTEKERNEL|PTENOCACHE|PTEWRITE|PTEMAINMEM);
+			mempres[i] = *(ulong*)va;
+		}else
+			mempres[i] = 0;
+}
+
+char name[1024];
+
+void
+romprops(ulong d, char *namep, ulong p)
+{
+	static ulong romp;
+	uchar buf[128];
+	int i, n;
+
+	romp += sprint(rombuf+romp, "romprops %lux %lux\n", d, p);
+	while(p && *(char*)p){
+		n = call(rom->conf->getproplen, d, p);
+		if(n>=0 && n<sizeof buf){
+			call(rom->conf->getprop, d, p, buf);
+			if(strcmp((char*)p, "name")==0){
+				strcpy(namep, (char*)buf);
+				romp += sprint(rombuf+romp, "`%s'\n", name);
+			}else{
+				romp += sprint(rombuf+romp, "%lux: %s: ", d, p);
+				for(i=0; i<n; i++)
+					romp += sprint(rombuf+romp, "%.2ux ", buf[i]);
+				romp += sprint(rombuf+romp, "\n");
+			}
+		}else
+			romp += sprint(rombuf+romp, "%lux: %s(%d)\n", d, p, n);
+		p = call(rom->conf->nextprop, d, p);
 	}
-	putw4(va, INVALIDPTE);
-	return (max-min)/MB+1;
+}
+
+void
+romwalk(ulong d, char* namep)
+{
+	char *endp;
+
+	*namep++ = '/';
+	*namep = 0;
+	while(d){
+		romprops(d, namep, call(rom->conf->nextprop, d, 0));
+		endp = namep+strlen(namep);
+		romwalk(call(rom->conf->child, d), endp);
+		*endp = 0;
+		d = call(rom->conf->next, d);
+	}
+}
+
+void
+fuck(void)
+{
+	name[0] = 0;
+	romwalk(call(rom->conf->next, 0), name);
 }
 
 Conf	conf;
@@ -240,8 +296,8 @@ void
 confinit(void)
 {
 	int mul;
-	ulong i;
-	ulong ktop, va, mbytes;
+	ulong i, j;
+	ulong ktop, va, mbytes, nmeg, npg, v;
 
 	conf.nmach = 1;
 	if(conf.nmach > MAXMACH)
@@ -256,8 +312,14 @@ confinit(void)
 	putw4(va, INVALIDPTE);
 
 	switch(idprom[1]){
-	case 0x51:		/* sparcstation 1 */
-	case 0x54:		/* slc */
+
+	/* sparcstation 1+ BUG: unknown! */
+	case 0x52:		/* IPC 4/40 */
+	case 0x53:		/* sparcstation 1+ 4/65 */
+		/* fall through */
+	/* sparcstation 1 */
+	case 0x51:		/* sparcstation 1 4/60 */
+	case 0x54:		/* slc 4/20 */
 	default:
 		conf.ss2 = 0;
 		conf.vacsize = 65536;
@@ -266,11 +328,13 @@ confinit(void)
 		conf.npmeg = 128;
 		conf.ss2cachebug = 0;
 		conf.monitor = 1;		/* BUG */
-		conf.base0 = 0;
-		conf.base1 = 32*MB;
+		nmeg = 64;
 		break;
 
-	case 0x55:		/* sparcstation 2 */
+	/* sparcstation 2 */
+	case 0x55:		/* sparcstation 2 4/75 */
+	case 0x56:		/* ELC 4/25 */
+	case 0x57:		/* IPX 4/50 */
 		conf.ss2 = 1;
 		conf.vacsize = 65536;
 		conf.vaclinesize = 32;
@@ -278,18 +342,30 @@ confinit(void)
 		conf.npmeg = 256;
 		conf.ss2cachebug = 1;
 		conf.monitor = 0;		/* BUG */
-		conf.base0 = 0;
-		conf.base1 = 16*MB;
+		nmeg = 64;
 		break;
 	}
 
-	bank[0] = banksize(conf.base0, 16*MB);
-	bank[1] = banksize(conf.base1, 16*MB);
-	conf.npage0 = (bank[0]*MB)/BY2PG;
-	conf.npage1 = (bank[1]*MB)/BY2PG;
+	scanmem(mempres, nmeg);
+	for(i=0; i<nmeg; i++)
+		if(mempres[i]){
+			v = mempres[i];
+			for(j=i+1; j<nmeg && mempres[j]>v; j++)
+				v = mempres[j];
+			npg = ((v+1)-mempres[i])*MB/BY2PG;
+			if(conf.npage0 == 0){
+				conf.base0 = i*MB;
+				conf.npage0 = npg;
+			}else if(conf.npage1 < npg){
+				conf.base1 = i*MB;
+				conf.npage1 = npg;
+			}
+			i = v-'0';
+		}
 
-	romputcxsegm = *(ulong*)(romvec+260);
-
+	bank[0] = conf.npage0*BY2PG/MB;
+	bank[1] = conf.npage1*BY2PG/MB;
+	
 	conf.npage = conf.npage0+conf.npage1;
 	conf.upages = (conf.npage*70)/100;
 	if(cpuserver){
@@ -297,6 +373,8 @@ confinit(void)
 		if(i > (6*MB)/BY2PG)
 			conf.upages +=  i - ((6*MB)/BY2PG);
 	}
+
+	romputcxsegm = rom->putcxsegm;
 
 	ktop = PGROUND((ulong)end);
 	ktop = PADDR(ktop);

@@ -8,7 +8,6 @@ typedef struct MMU	MMU;
 typedef struct Mach	Mach;
 typedef struct PMMU	PMMU;
 typedef struct Portpage	Portpage;
-typedef struct Scsibuf	Scsibuf;
 typedef struct Ureg	Ureg;
 typedef struct User	User;
 
@@ -138,12 +137,6 @@ struct Portpage
 };
 
 extern int	portispaged;
-
-struct Scsibuf
-{
-	void	*virt;
-	void	*phys;
-};
 
 #define	NERR	25
 #define	NNOTE	5

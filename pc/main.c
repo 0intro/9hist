@@ -7,7 +7,7 @@
 #include	"ureg.h"
 #include	"init.h"
 
-int machtype;
+int machtype;	/* machine type, mostly for power management */
 uchar	*sp;	/* stack pointer for /boot */
 
 void

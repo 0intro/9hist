@@ -22,7 +22,7 @@ TEXT	start(SB), $-4
 
 TEXT	startvirt(SB), $-4
 
-	MOVW	$romvec(SB), R7
+	MOVW	$rom(SB), R7
 	MOVW	R8, (R7)	/* romvec passed in %i0==R8 */
 
 	MOVW	$BOOTSTACK, R1
@@ -453,3 +453,25 @@ TEXT	clearftt(SB), $0
 
 GLOBL	mach0+0(SB), $MACHSIZE
 GLOBL	fsr+0(SB), $BY2WD
+
+/*
+ * Interface to ROM.  Must save and restore state because
+ * of different calling conventions.
+ */
+
+TEXT	call(SB), $16
+	MOVW	R1, R14		/* save my SP in their SP */
+	MOVW	R2, sb-4(SP)
+	MOVW	R(MACH), mach-8(SP)
+	MOVW	R(USER), user-12(SP)
+	MOVW	param1+4(FP), R8
+	MOVW	param2+8(FP), R9
+	MOVW	param3+12(FP), R10
+	MOVW	param4+16(FP), R11
+	JMPL	(R7)
+	MOVW	R14, R1		/* restore my SP */
+	MOVW	user-12(SP), R(USER)
+	MOVW	mach-8(SP), R(MACH)
+	MOVW	sb-4(SP), R2
+	MOVW	R8, R7		/* move their return value into mine */
+	RETURN

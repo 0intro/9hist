@@ -37,7 +37,7 @@ struct Drive
 	ulong		bytes;			/* bytes per block */
 	int		npart;			/* actual number of partitions */
 	int		drive;
-	int		ready;			/* true if ever ready */
+	int		readonly;
 	Partition	p[Npart];
 };
 
@@ -96,7 +96,7 @@ wrengen(Chan *c, Dirtab *tab, long ntab, long s, Dir *dirp)
 	name[NAMELEN] = 0;
 	qid.path = MKQID(drive, s);
 	l = (pp->end - pp->start) * dp->bytes;
-	devdir(c, qid, name, l, eve, 0666, dirp);
+	devdir(c, qid, name, l, eve, dp->readonly ? 0444 : 0666, dirp);
 	return 1;
 }
 
@@ -111,7 +111,7 @@ wreninit(void)
 }
 
 /*
- *  param is #r<target>.<lun>
+ *  param is #w<target>.<lun>
  */
 Chan *
 wrenattach(char *param)
@@ -273,28 +273,26 @@ wrenpart(int dev)
 		nexterror();
 	}
 	qlock(dp);
-	if(!dp->ready){
-		scsiready(dev);
-		scsisense(dev, buf);
-		if (scsicap(dev, buf))
-			error(Eio);
-		dp->drive = dev;
-		dp->ready = 1;
+	scsiready(dev);
+	scsisense(dev, buf);
+	if(scsicap(dev, buf))
+		error(Eio);
+	dp->drive = dev;
+	dp->readonly = scsiwp(dev);
 
-		/*
-		 *  we always have a partition for the whole disk
-		 *  and one for the partition table
-		 */
-		dp->bytes = (buf[4]<<24)+(buf[5]<<16)+(buf[6]<<8)+(buf[7]);
-		pp = &dp->p[0];
-		strcpy(pp->name, "disk");
-		pp->start = 0;
-		pp->end = (buf[0]<<24)+(buf[1]<<16)+(buf[2]<<8)+(buf[3]) + 1;
-		pp++;
-		strcpy(pp->name, "partition");
-		pp->start = dp->p[0].end - 1;
-		pp->end = dp->p[0].end;
-	}
+	/*
+	 *  we always have a partition for the whole disk
+	 *  and one for the partition table
+	 */
+	dp->bytes = (buf[4]<<24)+(buf[5]<<16)+(buf[6]<<8)+(buf[7]);
+	pp = &dp->p[0];
+	strcpy(pp->name, "disk");
+	pp->start = 0;
+	pp->end = (buf[0]<<24)+(buf[1]<<16)+(buf[2]<<8)+(buf[3]) + 1;
+	pp++;
+	strcpy(pp->name, "partition");
+	pp->start = dp->p[0].end - 1;
+	pp->end = dp->p[0].end;
 
 	/*
 	 *  read partition table from disk, null terminate
@@ -313,7 +311,7 @@ wrenpart(int dev)
 	 */
 	pp = &dp->p[2];
 	n = getfields(rawpart, line, Npart+1, '\n');
-	if(strncmp(line[0], MAGIC, sizeof(MAGIC)-1) == 0){
+	if(n > 0 && strncmp(line[0], MAGIC, sizeof(MAGIC)-1) == 0){
 		for(i = 1; i < n; i++){
 			if(getfields(line[i], field, 3, ' ') != 3)
 				break;

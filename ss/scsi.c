@@ -7,7 +7,10 @@
 #include	"devtab.h"
 #include	"io.h"
 
-static int	ownid = 7;
+int	scsiownid = 7;
+int	scsidebugs[8];
+
+static int	dmatype;
 
 Scsibuf *
 scsialloc(ulong n)
@@ -92,13 +95,15 @@ resetscsi(void)
 	dev->timeout = 146;
 	dev->syncperiod = 0;
 	dev->syncoffset = 0;
-	dev->config = 0x10|(ownid&7);
+	dev->config = 0x10|(scsiownid&7);
 	dev->cmd = Dma|Nop;
 
 	dma->csr = Dma_Reset;
 	delay(1);
 	dma->csr = Int_en;
 	dma->count = 0;
+
+	dmatype = (dma->csr>>28) & 0xF;
 
 	putenab(getenab()|ENABDMA); /**/
 }
@@ -251,9 +256,23 @@ scsiintr(void)
 			goto Done;
 		}
 
-		if(p->rflag)
-			while(dma->csr & Pack_cnt)
-				;
+		if(p->rflag){
+			switch(dmatype){
+
+			case 8:
+				dma->csr = Drain|Int_en;
+				/*FALLTHROUGH*/
+
+			case 9:
+				while(dma->csr & Pack_cnt)
+					;
+				break;
+
+			default:
+				break;
+			}
+		}
+
 
 		dev->cmd = Cmdcomplete;
 		return;
@@ -261,6 +280,7 @@ scsiintr(void)
 	case 0x46:	/* Cmdcomplete was issued */
 		p->status = 0x6000|dev->fifo;
 		m = dev->fifo;
+		USED(m);
 		dev->cmd = Msgaccept;
 		return;
 

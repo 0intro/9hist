@@ -12,7 +12,6 @@ settime(int islocal)
 	int timeset;
 	Dir dir;
 	char dirbuf[DIRLEN];
-	char *srvname;
 
 	print("time...");
 	timeset = 0;

@@ -7,9 +7,6 @@ typedef struct Lancemem	Lancemem;
 typedef struct Label	Label;
 typedef struct Lock	Lock;
 typedef struct PMMU	PMMU;
-typedef struct Scsi	Scsi;
-typedef struct Scsibuf	Scsibuf;
-typedef struct Scsidata	Scsidata;
 typedef struct Mach	Mach;
 typedef struct Ureg	Ureg;
 typedef struct User	User;
@@ -214,48 +211,3 @@ struct
 	short	machs;
 	short	exiting;
 }active;
-
-enum
-{
-	ScsiTestunit	= 0x00,
-	ScsiExtsens	= 0x03,
-	ScsiModesense	= 0x1a,
-	ScsiGetcap	= 0x25,
-	ScsiRead	= 0x08,
-	ScsiWrite	= 0x0a,
-
-	/*
-	 * data direction
-	 */
-	ScsiIn		= 1,
-	ScsiOut		= 0,
-};
-
-struct Scsibuf
-{
-	void	*virt;
-	void	*phys;
-	Scsibuf	*next;
-};
-
-struct Scsidata
-{
-	uchar	*base;
-	uchar	*lim;
-	uchar	*ptr;
-};
-
-struct Scsi
-{
-	QLock;
-	ulong	pid;
-	ushort	target;
-	ushort	lun;
-	ushort	rflag;
-	ushort	status;
-	Scsidata cmd;
-	Scsidata data;
-	Scsibuf	*b;
-	uchar	*save;
-	uchar	cmdblk[16];
-};

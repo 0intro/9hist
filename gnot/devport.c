@@ -34,7 +34,7 @@ Dirtab portdir[]={
 
 #define	Nportservice	8
 static	int (*portservice[Nportservice])(void);
-static	Portpage portpage;
+	Portpage portpage;
 static	Lock intrlock;
 
 int

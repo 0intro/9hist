@@ -1,6 +1,7 @@
 #include "../port/portfns.h"
 
 void	cacheinit(void);
+ulong	call(void*, ...);
 void	clearftt(ulong);
 #define	clearmmucache()
 void	clockinit(void);
@@ -56,15 +57,7 @@ void	restfpregs(FPsave*, ulong);
 void	screeninit(void);
 void	screenputc(int);
 void	screenputs(char*, int);
-Scsibuf	*scsialloc(ulong);
-int	scsibread(int, Scsibuf*, long, long, long);
-int	scsibwrite(int, Scsibuf*, long, long, long);
-Scsibuf	*scsibuf(void);
-int	scsicap(int, void*);
-void	scsifree(Scsibuf*);
 void	scsiintr(void);
-int	scsiready(int);
-int	scsisense(int, void *);
 void	spldone(void);
 ulong	tas(ulong*);
 void	touser(ulong);
