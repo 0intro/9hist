@@ -18,23 +18,24 @@
 void
 lock(Lock *l)
 {
+	Lock *ll = l;	/* do NOT take the address of l */
 	int i;
 
 	/*
 	 * Try the fast grab first
 	 */
-    	if(l->key >= 0){
-		l->key |= 0x80;
-		l->pc = ((ulong*)&l)[PCOFF];
+    	if(ll->key >= 0){
+		ll->key |= 0x80;
+		ll->pc = ((ulong*)&l)[PCOFF];
 		return;
 	}
 	for(i=0; i<10000000; i++)
-    		if(l->key >= 0){
-			l->key |= 0x80;
-			l->pc = ((ulong*)&l)[PCOFF];
+    		if(ll->key >= 0){
+			ll->key |= 0x80;
+			ll->pc = ((ulong*)&l)[PCOFF];
 			return;
 		}
-	l->key = 0;
+	ll->key = 0;
 dumpstack();
 	panic("lock loop %lux pc %lux held by pc %lux\n", l, ((ulong*)&l)[PCOFF], l->pc);
 }
@@ -42,9 +43,10 @@ dumpstack();
 int
 canlock(Lock *l)
 {
-	if(l->key >= 0){
-		l->key |= 0x80;
-		l->pc = ((ulong*)&l)[PCOFF];
+	Lock *ll = l;	/* do NOT take the address of l */
+	if(ll->key >= 0){
+		ll->key |= 0x80;
+		ll->pc = ((ulong*)&l)[PCOFF];
 		return 1;
 	}
 	return 0;

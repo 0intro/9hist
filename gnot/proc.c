@@ -510,7 +510,7 @@ pwait(Waitmsg *w)
 
 	p = u->p;
 again:
-	while(canlock(&p->wait.use)){
+	while(canqlock(&p->wait)){
 		if(p->nchild == 0){
 			qunlock(&p->wait);
 			error(0, Enochild);

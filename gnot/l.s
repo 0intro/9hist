@@ -6,16 +6,16 @@
 TEXT	start(SB), $-4
 
 	MOVW	$(SUPER|SPL(7)), SR
+	MOVL	$a6base(SB), A6
 	MOVL	$0, R0
 	MOVL	R0, CACR
-	MOVL	R0, TACADDR
-	MOVL	$a6base(SB), A6
+	MOVL	R0, TACADDR		/* zero tac counter (cause an intr?) */
 
 	MOVL	$mach0(SB), A0
 	MOVL	A0, m(SB)
 	MOVL	$0, 0(A0)
 	MOVL	A0, A7
-	ADDL	$(MACHSIZE-4), A7
+	ADDL	$(MACHSIZE-4), A7	/* start stack under machine struct */
 	MOVL	$0, u(SB)
 
 	MOVL	$vectors(SB), A0
@@ -157,7 +157,7 @@ TEXT	tacintr(SB), $0			/* level 1 */
 
 	MOVL	R0, -(A7)
 	MOVL	TACADDR, R0
-	ADDL	$4, A7
+	MOVL	(A7)+, R0
 	RTE
 
 TEXT	dkintr(SB), $0			/* level 2 */

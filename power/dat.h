@@ -519,6 +519,7 @@ struct Nomsg {
 struct Noconv {
 	QLock;
 
+	Stream	*s;
 	Queue	*rq;		/* input queue */
 	int	version;	/* incremented each time struct is changed */
 	int	state;		/* true if listening */

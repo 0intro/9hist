@@ -46,8 +46,9 @@ enum{
 	Edestotl,	/* datakit destination out to lunch */
 	Enetotl,	/* datakit controller out to lunch */
 	Erejected,	/* datakit destination rejected call */
-	Egreg,		/* it's all greg's fault */
 	Eshortmsg,	/* short message */
 	Ebadmsg,	/* format error or mismatch in message */
 	Ebadcnt,	/* read count greater than requested */
+	Enoannounce,	/* listening on an unannounced network connection */
+	Egreg,		/* it's all greg's fault */
 };
