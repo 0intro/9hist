@@ -43,7 +43,7 @@ struct List
 
 struct Lock
 {
-	char	key[1];			/* addr of sync bus semaphore */
+	char	key;			/* addr of sync bus semaphore */
 	ulong	pc;
 };
 
@@ -390,6 +390,7 @@ struct Blist {
  */
 struct Queue {
 	Blist;
+	int	nb;		/* number of blocks in queue */
 	int	flag;
 	Qinfo	*info;		/* line discipline definition */
 	Queue	*other;		/* opposite direction, same line discipline */
@@ -426,6 +427,8 @@ struct Stream {
 #define STREAMQID(i,t)	(((i)<<5)|(t))
 #define PUTNEXT(q,b)	(*(q)->next->put)((q)->next, b)
 #define BLEN(b)		((b)->wptr - (b)->rptr)
+#define QFULL(q)	((q)->flag & QHIWAT)
+#define FLOWCTL(q)	{ if(QFULL(q)) flowctl(q); }
 
 /*
  *  stream file qid's & high water mark
@@ -435,7 +438,8 @@ enum {
 	Sdataqid = Shighqid,
 	Sctlqid = Sdataqid-1,
 	Slowqid = Sctlqid,
-	Streamhi= (8*1024),	/* stream high water mark */
+	Streamhi= (9*1024),	/* byte count high water mark */
+	Streambhi= 16,		/* block count high water mark */
 };
 
 #define	PRINTSIZE	256

@@ -158,7 +158,6 @@ hsvmeattach(char *spec)
 		error(0, Ebadarg);
 	hp = &hsvme[i];
 	hsvmerestart(hp);
-	print("hsvme [%d] csr %ux\n", i, hp->addr->csr);
 
 	c = devattach('h', spec);
 	c->dev = i;
@@ -466,6 +465,7 @@ hsvmekproc(void *arg)
 	Hsvme *hp;
 	Device *addr;
 	unsigned int c;
+	int miss;
 
 	hp = (Hsvme *)arg;
 	addr = hp->addr;
@@ -485,15 +485,14 @@ hsvmekproc(void *arg)
 		}
 
 		/*
-		 *  let the fifo fill a bit
+		 *  if we loop many times without finding a character, sleep
 		 */
-		delay(1);
-
+		for(miss = 0; miss < 10; miss++){
 		/*
 		 *  0xFFFF means an empty fifo
 		 */
 		while ((c = addr->data) != 0xFFFF) {
-/*			print(" %.2uo<-\n", c); /**/
+			miss = 0;
 			if(c & CHNO){
 				c &= 0x1FF;
 				if(hp->chan == c)
@@ -517,6 +516,7 @@ hsvmekproc(void *arg)
 				if(hp->wptr == &hp->buf[sizeof hp->buf])
 					upstream(hp, 0);
 			}
+		}
 		}
 		qunlock(hp);
 

@@ -4,6 +4,15 @@
 #include "dat.h"
 #include "fns.h"
 
+#define PCOFF -2
+
+/*
+ *  N.B.  Ken's compiler generates a TAS instruction for the sequence:
+ *
+ *  	if(l->key >= 0){
+ *		l->key |= 0x80;
+ *		...
+ */
 void
 lock(Lock *l)
 {
@@ -12,24 +21,29 @@ lock(Lock *l)
 	/*
 	 * Try the fast grab first
 	 */
-    	if(tas(l->key) == 0){
-		l->pc = ((ulong*)&l)[-1];
+    	if(l->key >= 0){
+		l->key |= 0x80;
+		l->pc = ((ulong*)&i)[PCOFF];
 		return;
 	}
 	for(i=0; i<10000000; i++)
-    		if(tas(l->key) == 0){
-			l->pc = ((ulong*)&l)[-1];
+    		if(l->key >= 0){
+			l->key |= 0x80;
+			l->pc = ((ulong*)&i)[PCOFF];
 			return;
 	}
-	l->key[0] = 0;
-	panic("lock loop %lux pc %lux held by pc %lux\n", l, ((ulong*)&l)[-1], l->pc);
+	l->key = 0;
+	panic("lock loop %lux pc %lux held by pc %lux\n", l, ((ulong*)&i)[PCOFF], l->pc);
 }
 
 int
 canlock(Lock *l)
 {
-	if(tas(l->key) == 0){
-		l->pc = ((ulong*)&l)[-1];
+	int i;
+
+	if(l->key >= 0){
+		l->key |= 0x80;
+		l->pc = ((ulong*)&i)[PCOFF];
 		return 1;
 	}
 	return 0;
@@ -39,7 +53,7 @@ void
 unlock(Lock *l)
 {
 	l->pc = 0;
-	l->key[0] = 0;
+	l->key = 0;
 }
 
 void

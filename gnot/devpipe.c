@@ -154,8 +154,7 @@ pipeerrstr(Error *e, char *buf)
 static void
 pipeiput(Queue *q, Block *bp)
 {
-	if(q->next->len >= Streamhi)
-		flowctl(q);
+	FLOWCTL(q);
 	PUTNEXT(q, bp);
 }
 

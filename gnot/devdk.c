@@ -417,11 +417,7 @@ dkoput(Queue *q, Block *bp)
 	bp->rptr[0] = line;
 	bp->rptr[1] = line>>8;
 
-	if(dp->wq->len >= Streamhi){
-		print("dkoput free\n");
-		freeb(bp);
-	} else
-		PUTNEXT(dp->wq, bp);
+	PUTNEXT(dp->wq, bp);
 }
 
 /*
@@ -1132,6 +1128,8 @@ dklisten(Chan *c)
 		 */
 		if(ts == lp->timestamp){
 			print("dklisten: repeat timestamp %d\n", lineno);
+			if(lp->state != Lconnected)
+				dkanswer(c, lineno, DKbusy);
 			continue;
 		}
 	

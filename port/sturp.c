@@ -207,6 +207,9 @@ urpclose(Queue *q)
 	 *  kill off the kernel process
 	 */
 	wakeup(&up->rq->r);
+
+	if(up->kstarted == 0)
+		up->state = 0;
 }
 
 /*
@@ -253,7 +256,7 @@ urpciput(Queue *q, Block *bp)
 	/*
 	 *  take care of any data
 	 */
-	if(BLEN(bp)>0 && q->next->len<Streamhi)
+	if(BLEN(bp)>0 && !QFULL(q->next))
 		PUTNEXT(q, bp);
 	else
 		freeb(bp);
@@ -311,7 +314,7 @@ urpciput(Queue *q, Block *bp)
 	case SEQ+4: case SEQ+5: case SEQ+6: case SEQ+7:
 		qlock(&up->ack);
 		i = ctl & Nmask;
-		if(q->next->len < Streamhi)
+		if(!QFULL(q->next))
 			sendctl(up, up->lastecho = ECHO+i);
 		up->iseq = i;
 		qunlock(&up->ack);
@@ -479,7 +482,7 @@ urpiput(Queue *q, Block *bp)
 		 */
 		qlock(&up->ack);
 		up->iseq = i;
-		if(q->next->len < Streamhi)
+		if(!QFULL(q->next))
 			sendctl(up, up->lastecho = ECHO|i);
 		qunlock(&up->ack);
 		break;
@@ -572,14 +575,16 @@ output(Urp *up)
 	 *  fill the transmit buffers
 	 */
 	q = up->wq;
-	for(bp = getq(q); bp && up->xb[up->nxb]==0; up->nxb = NEXT(up->nxb)){
+	for(bp = getq(q); q->first && up->xb[up->nxb]==0; up->nxb = NEXT(up->nxb)){
+		if(bp == 0)
+			bp = getq(q);
 		if(BLEN(bp) > up->maxblock){
 			nbp = up->xb[up->nxb] = allocb(0);
 			nbp->rptr = bp->rptr;
 			nbp->wptr = bp->rptr = bp->rptr + up->maxblock;
 		} else {
 			up->xb[up->nxb] = bp;
-			bp = getq(q);
+			bp = 0;
 		}
 	}
 	if(bp)
@@ -622,7 +627,7 @@ sendctl(Urp *up, int ctl)
 {
 	Block *bp;
 
-	if(up->wq->next->len > Streamhi)
+	if(QFULL(up->wq->next))
 		return;
 	bp = allocb(1);
 	bp->wptr = bp->lim;
@@ -658,7 +663,7 @@ sendack(Urp *up)
 	/*
 	 *  check the precondition for acking
 	 */
-	if(up->rq->next->len>=Streamhi || (up->lastecho&Nmask)==up->iseq)
+	if(QFULL(up->rq->next) || (up->lastecho&Nmask)==up->iseq)
 		return;
 
 	if(!canqlock(&up->ack))
@@ -667,7 +672,7 @@ sendack(Urp *up)
 	/*
 	 *  check again now that we've locked
 	 */
-	if(up->rq->next->len>=Streamhi || (up->lastecho&Nmask)==up->iseq){
+	if(QFULL(up->rq->next) || (up->lastecho&Nmask)==up->iseq){
 		qunlock(&up->ack);
 		return;
 	}
@@ -689,7 +694,7 @@ sendblock(Urp *up, int bn)
 	int n;
 
 	up->timer = NOW + MSrexmit;
-	if(up->wq->next->len > Streamhi)
+	if(QFULL(up->wq->next))
 		return;
 
 	/*
@@ -804,8 +809,6 @@ initoutput(Urp *up, int window)
 	up->maxblock = window/4;
 	if(up->maxblock < 64)
 		up->maxblock = 64;
-	if(up->maxblock > Streamhi/4)
-		up->maxblock = Streamhi/4;
 	up->maxblock -= 4;
 	up->maxout = 3;
 
@@ -870,6 +873,12 @@ urpkproc(void *arg)
 
 	up = (Urp *)arg;
 
+	if(waserror()){
+		up->state = 0;
+		up->kstarted = 0;
+		wakeup(&up->r);
+		return;
+	}
 	for(;;){
 		if(up->state & (HUNGUP|CLOSING)){
 			if(isflushed(up))
@@ -881,6 +890,6 @@ urpkproc(void *arg)
 		output(up);
 		tsleep(&up->rq->r, todo, up, MSrexmit/2);
 	}
-	up->kstarted = 0;
 	up->state = 0;
+	up->kstarted = 0;
 }

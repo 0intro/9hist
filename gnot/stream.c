@@ -145,10 +145,9 @@ allocb(ulong size)
 	lock(bcp);
 	while(bcp->first == 0){
 		unlock(bcp);
-		if(loop++ > 10){
+		if(loop++ == 10){
 			dumpqueues();
-			dumpstack();
-			panic("waiting for blocks\n");
+			print("waiting for blocks\n");
 		}
 		qlock(bcp);
 		tsleep(&bcp->r, isblock, (void *)bcp, 250);
@@ -230,12 +229,14 @@ allocq(Qinfo *qi)
 	q->r.p = 0;
 	q->info = qi;
 	q->put = qi->iput;
+	q->len = q->nb = 0;
 	wq = q->other = q + 1;
 
 	wq->r.p = 0;
 	wq->info = qi;
 	wq->put = qi->oput;
 	wq->other = q;
+	wq->len = wq->nb = 0;
 
 	unlock(q);
 
@@ -323,14 +324,16 @@ putq(Queue *q, Block *bp)
 	else
 		q->first = bp;
 	q->len += BLEN(bp);
+	q->nb++;
 	delim = bp->flags & S_DELIM;
 	while(bp->next) {
 		bp = bp->next;
 		q->len += BLEN(bp);
+		q->nb++;
 		delim |= bp->flags & S_DELIM;
 	}
 	q->last = bp;
-	if(q->len >= Streamhi)
+	if(q->len >= Streamhi || q->nb >= Streambhi)
 		q->flag |= QHIWAT;
 	unlock(q);
 	return delim;
@@ -387,7 +390,8 @@ getq(Queue *q)
 		if(q->first == 0)
 			q->last = 0;
 		q->len -= BLEN(bp);
-		if((q->flag&QHIWAT) && q->len < Streamhi/2){
+		q->nb--;
+		if((q->flag&QHIWAT) && q->len < Streamhi/2 && q->nb < Streambhi){
 			wakeup(&q->other->next->other->r);
 			q->flag &= ~QHIWAT;
 		}
@@ -762,14 +766,16 @@ stputq(Queue *q, Block *bp)
 		else
 			q->first = bp;
 		q->len += BLEN(bp);
+		q->nb++;
 		delim = bp->flags & S_DELIM;
 		while(bp->next) {
 			bp = bp->next;
 			q->len += BLEN(bp);
+			q->nb++;
 			delim |= bp->flags & S_DELIM;
 		}
 		q->last = bp;
-		if(q->len >= Streamhi){
+		if(q->len >= Streamhi || q->nb >= Streambhi){
 			q->flag |= QHIWAT;
 			delim = 1;
 		}
@@ -938,13 +944,12 @@ notfull(void *arg)
 	Queue *q;
 
 	q = (Queue *)arg;
-	return q->len < Streamhi;
+	return !QFULL(q->next);
 }
 void
 flowctl(Queue *q)
 {
-	if(q->next->len >= Streamhi)
-		sleep(&q->r, notfull, q->next);
+	sleep(&q->r, notfull, q->next);
 }
 
 /*
@@ -996,7 +1001,7 @@ streamwrite(Chan *c, void *a, long n, int docopy)
 		 *  `a' is global to the whole system, just create a
 		 *  pointer to it and pass it on.
 		 */
-		flowctl(q);
+		FLOWCTL(q);
 		bp = allocb(0);
 		bp->rptr = bp->base = (uchar *)a;
 		bp->wptr = bp->lim = (uchar *)a+n;
@@ -1009,7 +1014,7 @@ streamwrite(Chan *c, void *a, long n, int docopy)
 		 *  system buffers and pass the buffers on.
 		 */
 		for(rem = n; ; rem -= i) {
-			flowctl(q);
+			FLOWCTL(q);
 			bp = allocb(rem);
 			i = bp->lim - bp->wptr;
 			if(i >= rem){

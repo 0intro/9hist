@@ -11,7 +11,7 @@
 static void pipeiput(Queue*, Block*);
 static void pipeoput(Queue*, Block*);
 static void pipestclose(Queue *);
-Qinfo pipeinfo = { pipeiput, pipeoput, 0, pipestclose, "process" };
+Qinfo pipeinfo = { pipeiput, pipeoput, 0, pipestclose, "pipe" };
 
 void
 pipeinit(void)
@@ -154,7 +154,7 @@ pipeerrstr(Error *e, char *buf)
 static void
 pipeiput(Queue *q, Block *bp)
 {
-	flowctl(q);
+	FLOWCTL(q);
 	PUTNEXT(q, bp);
 }
 
@@ -168,6 +168,10 @@ pipeoput(Queue *q, Block *bp)
 	lock(q);
 	if(q->next)
 		pipeiput(q->next, bp);
+	else{
+		print("pipeoput losing block\n");
+		freeb(bp);
+	}
 	unlock(q);
 }
 

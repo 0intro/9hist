@@ -1128,6 +1128,8 @@ dklisten(Chan *c)
 		 */
 		if(ts == lp->timestamp){
 			print("dklisten: repeat timestamp %d\n", lineno);
+			if(lp->state != Lconnected)
+				dkanswer(c, lineno, DKbusy);
 			continue;
 		}
 	
