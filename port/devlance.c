@@ -765,8 +765,8 @@ lanceup(Etherpkt *p, int len)
 			bp->wptr += len;
 			bp->flags |= S_DELIM;
 			PUTNEXT(e->q, bp);
+			poperror();
 		}
-		poperror();
 		qunlock(e);
 	}
 }
@@ -794,6 +794,10 @@ lancekproc(void *arg)
 	Block *bp;
 
 	USED(arg);
+
+	while(waserror())
+		print("lancekproc err %s\n", u->error);
+
 	for(;;){
 		qlock(&l.rlock);
 		while(bp = getq(&l.self)){

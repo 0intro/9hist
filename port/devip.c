@@ -712,7 +712,7 @@ ipremotefill(Chan *c, char *buf, int len)
 	if(len < 24)
 		error(Ebadarg);
 	cp = ipcreateconv(ipifc[c->dev], STREAMID(c->qid.path));
-	sprint(buf, "%d.%d.%d.%d %d\n", fmtaddr(cp->dst), cp->pdst);
+	sprint(buf, "%d.%d.%d.%d!%d\n", fmtaddr(cp->dst), cp->pdst);
 }
 
 void
@@ -723,7 +723,7 @@ iplocalfill(Chan *c, char *buf, int len)
 	if(len < 24)
 		error(Ebadarg);
 	cp = ipcreateconv(ipifc[c->dev], STREAMID(c->qid.path));
-	sprint(buf, "%d.%d.%d.%d %d\n", fmtaddr(Myip[Myself]), cp->psrc);
+	sprint(buf, "%d.%d.%d.%d!%d\n", fmtaddr(Myip[Myself]), cp->psrc);
 }
 
 void

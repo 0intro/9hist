@@ -96,7 +96,6 @@ struct Line {
 	char	addr[64];
 	char	raddr[64];
 	char	ruser[32];
-	char	other[32];
 	Dk *dp;			/* interface contianing this line */
 };
 
@@ -140,6 +139,18 @@ typedef enum {
 	Lackwait,		/* incoming call waiting for ack/nak */
 	Laccepting,		/* waiting for user to accept or reject the call */
 } Lstate;
+char *dkstate[] =
+{
+	[Lclosed]	"Closed",
+	[Lopened]	"Opened",
+	[Lconnected]	"Established",
+	[Lrclose]	"Rclose",
+	[Llclose]	"Lclose",
+	[Ldialing]	"Dialing",
+	[Llistening]	"Listen",
+	[Lackwait]	"Ackwait",
+	[Laccepting]	"Accepting",
+};
 
 /*
  *  map datakit error to errno 
@@ -197,7 +208,7 @@ static int	dklisten(Chan*);
 static void	dkfilladdr(Chan*, char*, int);
 static void	dkfillraddr(Chan*, char*, int);
 static void	dkfillruser(Chan*, char*, int);
-static void	dkfillother(Chan*, char*, int);
+static void	dkfillstatus(Chan*, char*, int);
 
 extern Qinfo dkinfo;
 
@@ -577,16 +588,16 @@ dkmuxconfig(Queue *q, Block *bp)
 	dp->net.listen = dklisten;
 	dp->net.clone = dkcloneline;
 	dp->net.ninfo = 5;
-	dp->net.info[0].name = "addr";
+	dp->net.info[0].name = "local";
 	dp->net.info[0].fill = dkfilladdr;
-	dp->net.info[1].name = "raddr";
+	dp->net.info[1].name = "remote";
 	dp->net.info[1].fill = dkfillraddr;
 	dp->net.info[2].name = "ruser";
 	dp->net.info[2].fill = dkfillruser;
-	dp->net.info[3].name = "stats";
+	dp->net.info[3].name = "urpstats";
 	dp->net.info[3].fill = urpfillstats;
-	dp->net.info[4].name = "other";
-	dp->net.info[4].fill = dkfillother;
+	dp->net.info[4].name = "status";
+	dp->net.info[4].fill = dkfillstatus;
 	dp->restart = restart;
 	dp->urpwindow = window;
 	dp->wq = WR(q);
@@ -858,22 +869,38 @@ dkopencsc(Dk *dp)
 void
 dkfilladdr(Chan *c, char *buf, int len)
 {
-	strncpy(buf, dk[c->dev]->linep[STREAMID(c->qid.path)]->addr, len);
+	if(len < sizeof(dk[0]->linep[0]->addr)+2)
+		error(Ebadarg);
+	sprint(buf, "%s\n", dk[c->dev]->linep[STREAMID(c->qid.path)]->addr);
 }
 void
 dkfillraddr(Chan *c, char *buf, int len)
 {
-	strncpy(buf, dk[c->dev]->linep[STREAMID(c->qid.path)]->raddr, len);
+	if(len < sizeof(dk[0]->linep[0]->raddr)+2)
+		error(Ebadarg);
+	sprint(buf, "%s\n", dk[c->dev]->linep[STREAMID(c->qid.path)]->raddr);
 }
 void
 dkfillruser(Chan *c, char *buf, int len)
 {
-	strncpy(buf, dk[c->dev]->linep[STREAMID(c->qid.path)]->ruser, len);
+	if(len < sizeof(dk[0]->linep[0]->ruser)+2)
+		error(Ebadarg);
+	sprint(buf, "%s\n", dk[c->dev]->linep[STREAMID(c->qid.path)]->ruser);
 }
 void
-dkfillother(Chan *c, char *buf, int len)
+dkfillstatus(Chan *c, char *buf, int len)
 {
-	strncpy(buf, dk[c->dev]->linep[STREAMID(c->qid.path)]->other, len);
+	Dk *dp;
+	Line *lp;
+	int line;
+	char lbuf[65];
+
+	line = STREAMID(c->qid.path);
+	dp = dk[c->dev];
+	lp = linealloc(dp, line, 1);
+	sprint(lbuf, "%s/%d %d %s window %d\n", dp->name, line,
+		lp->state != Lclosed ? 1 : 0, dkstate[lp->state], lp->window);
+	strncpy(buf, lbuf, len);
 }
 
 /*
@@ -1082,7 +1109,6 @@ dkcall(int type, Chan *c, char *addr, char *nuser, char *machine)
 	 */
 	strncpy(lp->addr, addr, sizeof(lp->addr)-1);
 	strncpy(lp->raddr, addr, sizeof(lp->raddr)-1);
-	sprint(lp->other, "w=%d", lp->window);
 
 	/*
 	 *  reset the protocol
@@ -1105,6 +1131,7 @@ dklisten(Chan *c)
 	int from;
 	Chan *dc;
 	static int dts;
+	char *cp;
 
 	dp = dk[c->dev];
 	from = STREAMID(c->qid.path);
@@ -1213,9 +1240,15 @@ dklisten(Chan *c)
 
 		/*
 		 *  Line 1 is `my-dk-name.service[.more-things]'.
-		 *  Special characters are escaped by '\'s.
+		 *  Special characters are escaped by '\'s.  Convert to
+		 *  a plan 9 address, i.e. system!service.
 		 */
 		strncpy(lp->addr, line[1], sizeof(lp->addr)-1);
+		if(cp = strchr(lp->addr, '.')){
+			*cp = '!';
+			if(cp = strchr(cp, '.'))
+				*cp = 0;
+		}
 	
 		/*
 		 *  the rest is variable length
