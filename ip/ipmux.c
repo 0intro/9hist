@@ -296,7 +296,7 @@ parsemux(char *p)
 			f->ctype = nomask ? Cshort : Cmshort;
 			break;
 		case 4:
-			if(f->type == Cifc)
+			if(f->type == Tifc)
 				f->ctype = nomask ? Cifc : Cmifc;
 			else
 				f->ctype = nomask ? Clong : Cmlong;
@@ -674,7 +674,7 @@ ipmuxiput(Proto *p, uchar *ia, Block *bp)
 				goto yes;
 			break;
 		case Cmbyte:
-			if((*mux->val & *mux->mask) == *hp)
+			if((*hp & *mux->mask) == *mux->val)
 				goto yes;
 			break;
 		case Cshort:
@@ -682,7 +682,7 @@ ipmuxiput(Proto *p, uchar *ia, Block *bp)
 				goto yes;
 			break;
 		case Cmshort:
-			if((*((ushort*)mux->val) & (*((ushort*)mux->mask))) == *(ushort*)hp)
+			if((*(ushort*)hp & (*((ushort*)mux->mask))) == *((ushort*)mux->val))
 				goto yes;
 			break;
 		case Clong:
@@ -690,15 +690,15 @@ ipmuxiput(Proto *p, uchar *ia, Block *bp)
 				goto yes;
 			break;
 		case Cmlong:
-			if((*((ulong*)mux->val) & (*((ulong*)mux->mask))) == *(ulong*)hp)
+			if((*(ulong*)hp & (*((ulong*)mux->mask))) == *((ulong*)mux->val))
 				goto yes;
 			break;
 		case Cifc:
-			if(*((ulong*)mux->val) == *(ulong*)ia)
+			if(*((ulong*)mux->val) == *(ulong*)(ia + IPv4off))
 				goto yes;
 			break;
 		case Cmifc:
-			if((*((ulong*)mux->val) & (*((ulong*)mux->mask))) == *(ulong*)ia)
+			if((*(ulong*)(ia + IPv4off) & (*((ulong*)mux->mask))) == *((ulong*)mux->val))
 				goto yes;
 			break;
 		default:

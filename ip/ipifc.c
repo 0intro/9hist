@@ -135,6 +135,7 @@ ipifcbind(Conv *c, char **argv, int argc)
 	ifc->m = m;
 	ifc->minmtu = ifc->m->minmtu;
 	ifc->maxmtu = ifc->m->maxmtu;
+	ifc->conv->inuse++;
 	ifc->ifcid++;
 
 	wunlock(ifc);
@@ -160,6 +161,7 @@ ipifcunbind(Ipifc *ifc)
 	wlock(ifc);
 
 	/* dissociate routes */
+	ifc->conv->inuse--;
 	ifc->ifcid++;
 
 	/* disassociate device */

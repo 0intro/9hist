@@ -92,6 +92,8 @@ struct VGAscr {
 	int	isupamem;
 	int	apsize;
 
+	ulong	io;				/* device specific registers */
+
 	ulong	colormap[Pcolours][3];
 
 	Memimage* gscreen;

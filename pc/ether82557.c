@@ -530,6 +530,13 @@ promiscuous(void* arg, int on)
 }
 
 static void
+multicast(void* arg, uchar *addr, int on)
+{
+	USED(addr, on);
+	configure(arg, 1);
+}
+
+static void
 transmit(Ether* ether)
 {
 	Ctlr *ctlr;
@@ -1010,6 +1017,7 @@ reset(Ether* ether)
 	ether->ifstat = ifstat;
 
 	ether->promiscuous = promiscuous;
+	ether->multicast = multicast;
 	ether->arg = ether;
 
 	return 0;
