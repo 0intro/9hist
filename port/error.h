@@ -23,10 +23,14 @@ extern char Enobitstore[];	/* out of bitmap storage */
 extern char Ebadfont[];		/* unallocated font */
 extern char Enofont[];		/* out of font descriptors */
 extern char Eauth[];		/* authentication failure */
-extern char Eaddrnotfound[];	/* network address not found */
+extern char Ebadaddr[];		/* bad network address */
 extern char Emsgsize[];		/* message is too big for protocol */
 extern char Enetbusy[];		/* network device is busy or allocated */
+extern char Enoproto[];		/* network protocol not supported */
+extern char Enoport[];		/* network port not available */
+extern char Enoroute[];		/* no free routes */
 extern char Enoifc[];		/* bad interface or no free interface slots */
+extern char Enolisten[];	/* not announced */
 extern char Ehungup[];		/* write to hungup stream */
 extern char Enodev[];		/* no free devices */
 extern char Enoenv[];		/* no free environment resources */
@@ -62,11 +66,9 @@ extern char Ebadcnt[];		/* read count greater than requested */
 extern char Enovmem[];		/* virtual memory allocation failed */
 extern char Enoasync[];		/* out of async stream modules */
 extern char Enopipe[];		/* out of pipes */
-extern char Enoport[];		/* network port not available */
 extern char Enetunreach[];	/* network unreachable */
 extern char Etimedout[];	/* connection timed out */
 extern char Econrefused[];	/* connection refused */
-extern char Enoproto[];		/* network protocol not supported */
 extern char Eprotonosup[];	/* operation not supported by network protocol */
 extern char Eisstream[];	/* seek on a stream */
 extern char Enofilsys[];	/* out of filsys resources */

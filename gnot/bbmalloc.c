@@ -64,8 +64,22 @@ bbfree(void *p, int n)
 }
 
 void *
+flushvirtpage(void *p)
+{
+	flushcpucache();
+}
+
+void *
 bbdflush(void *p, int n)
 {
 	flushcpucache();
 	return (void *)(((ulong)p));
+}
+
+int
+bbonstack(void)
+{
+	if(u)
+		return 1;
+	return 0;
 }

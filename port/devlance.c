@@ -654,7 +654,7 @@ lanceclonecon(Chan *c)
 		qunlock(e);
 		return e - l.e;
 	}
-	errors("no unused lance channels");
+	error(Enodev);
 }
 
 /*

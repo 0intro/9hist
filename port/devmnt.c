@@ -480,7 +480,7 @@ mountrpc(Mnt *m, Mntrpc *r)
 	r->reply.tag = 0;		/* safety check */
 	mountio(m, r);
 	if(r->reply.type == Rerror)
-		errors(r->reply.ename);
+		error(r->reply.ename);
 	if(r->reply.type == Rflush)
 		error(Eintr);
 

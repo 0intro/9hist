@@ -97,7 +97,7 @@ ipaddroute(ulong dst, ulong mask, ulong gate)
 	 *  filter out impossible requests
 	 */
 	if((dst&mask) != dst)
-		errors("bad ip route");
+		error(Ebadaddr);
 
 	/*
 	 *  see if we already have a route for
@@ -118,7 +118,7 @@ ipaddroute(ulong dst, ulong mask, ulong gate)
 	}
 	if(free == 0){
 		unlock(&iprtab);
-		errors("no free ip routes");
+		error(Enoroute);
 	}
 
 	/*

@@ -624,7 +624,7 @@ iplisten(Chan *c)
 
 	if((s->stproto == &tcpinfo && s->tcpctl.state != Listen) ||
 	   (s->stproto == &ilinfo && s->ilctl.state != Illistening))
-		errors("not announced");
+		error(Enolisten);
 
 	qlock(&s->listenq);
 	if(waserror()) {
