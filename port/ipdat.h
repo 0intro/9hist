@@ -240,6 +240,9 @@ struct Tctl
 
 	Block	*sndq;			/* List of data going out */
 	ulong	sndcnt;			/* Amount of data in send queue */
+	Rendez	sndr;			/* process flow control */
+	QLock	sndrlock;
+	int	sndfull;
 
 	Reseq	*reseq;			/* Resequencing queue */
 	Timer	timer;			/* Activity timer */

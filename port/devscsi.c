@@ -8,7 +8,7 @@
 
 #define	DPRINT	if(debug)kprint
 
-#define DATASIZE	(32*512)
+#define DATASIZE	(64*512)
 
 static Scsi	staticcmd;	/* BUG: should be one per scsi device */
 
