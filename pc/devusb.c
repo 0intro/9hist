@@ -1280,7 +1280,12 @@ usbreset(void)
 		delay(4);
 	}
 	outb(port+SOFMod, i);
-	// Interrupt handler
+	/*
+	 * Interrupt handler.
+	 * Bail out if no IRQ assigned by the BIOS.
+	 */
+	if(cfg->intl == 0xFF)
+		return;
 	intrenable(cfg->intl, interrupt, ub, cfg->tbdf, "usb");
 
 	ub->io = port;
