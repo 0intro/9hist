@@ -560,8 +560,13 @@ tsleep(Rendez *r, int (*fn)(void*), void *arg, int ms)
 	*l = up;
 	unlock(&talarm);
 
+	if(waserror()){
+		up->twhen = 0;
+		nexterror();
+	}
 	sleep(r, tfn, arg);
 	up->twhen = 0;
+	poperror();
 }
 
 /*
