@@ -6,6 +6,7 @@
 #include	"io.h"
 
 Alarm	*alarmtab;
+Alarms	alarms;
 
 Alarm*
 alarm(int ms, void (*f)(Alarm*), void *arg)
@@ -82,6 +83,8 @@ checkalarms(void)
 	Alarm *a;
 	void (*f)(void*);
 	Alarm *alist[NA];
+	ulong now;
+	Proc *rp;
 
 	if(canlock(&m->alarmlock)){
 		a = m->alarm;
@@ -105,4 +108,68 @@ checkalarms(void)
 		} else
 			unlock(&m->alarmlock);
 	}
+
+	if(m == MACHP(0) && canqlock(&alarms)) {
+		now = MACHP(0)->ticks;
+		while((rp = alarms.head) && rp->alarm <= now) {
+			if(rp->alarm != 0L) {
+				if(canlock(&rp->debug)) {
+					postnote(rp, 0, "alarm", NUser);
+					unlock(&rp->debug);
+					rp->alarm = 0L;
+				}
+				else
+					break;
+			}
+			alarms.head = rp->palarm;
+		}
+	}
+	qunlock(&alarms);
+}
+
+ulong
+procalarm(ulong time)
+{
+	Proc **l, *f;
+	ulong when, old;
+
+	when = MS2TK(time);
+	old = u->p->alarm - MACHP(0)->ticks;
+	if(when == 0) {
+		u->p->alarm = 0;
+		return TK2MS(old);
+	}
+	else
+		when += MACHP(0)->ticks;
+
+	qlock(&alarms);
+	l = &alarms.head;
+	for(f = *l; f; f = f->palarm) {
+		if(u->p == f) {
+			*l = f->palarm;
+			break;
+		}
+		l = &f->palarm;
+	}
+
+	u->p->palarm = 0;
+	if(alarms.head) {
+		l = &alarms.head;
+		for(f = *l; f; f = f->palarm) {
+			if(f->alarm > when) {
+				u->p->palarm = f;
+				*l = u->p;
+				goto done;
+			}
+			l = &f->palarm;
+		}
+		*l = u->p;
+	}
+	else
+		alarms.head = u->p;
+done:
+	u->p->alarm = when;
+	qunlock(&alarms);
+
+	return TK2MS(old);			
 }

@@ -441,6 +441,7 @@ pexit(char *s, int freemem)
 	else
 		msg[0] = 0;
 	c = u->p;
+	c->alarm = 0;
 	mypid = c->pid;
 	if(freemem){
 		freesegs(-1);

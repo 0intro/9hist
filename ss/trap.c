@@ -270,7 +270,7 @@ typedef long Syscall(ulong*);
 Syscall	sysr1, sysfork, sysexec, sysgetpid, syssleep, sysexits, sysdeath, syswait;
 Syscall	sysopen, sysclose, sysread, syswrite, sysseek, syserrstr, sysaccess, sysstat, sysfstat;
 Syscall sysdup, syschdir, sysforkpgrp, sysbind, sysmount, syspipe, syscreate;
-Syscall	sysbrk_, sysremove, syswstat, sysfwstat, sysnotify, sysnoted;
+Syscall	sysbrk_, sysremove, syswstat, sysfwstat, sysnotify, sysnoted, sysalarm;
 
 Syscall *systab[]={
 	sysr1,
@@ -279,7 +279,7 @@ Syscall *systab[]={
 	syschdir,
 	sysclose,
 	sysdup,
-	sysdeath,
+	sysalarm,
 	sysexec,
 	sysexits,
 	sysfork,

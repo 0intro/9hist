@@ -1,4 +1,5 @@
 typedef struct Alarm	Alarm;
+typedef struct Alarms	Alarms;
 typedef struct Block	Block;
 typedef struct Blist	Blist;
 typedef struct Chan	Chan;
@@ -60,6 +61,12 @@ struct Alarm
 	long	dt;		/* may underflow in clock(); must be signed */
 	void	(*f)(void*);
 	void	*arg;
+};
+
+struct Alarms
+{
+	QLock;
+	Proc	*head;
 };
 
 /* Block.flags */
@@ -347,6 +354,9 @@ struct Proc
 	int	wokeup;			/* whether sleep was interrupted */
 	ulong	pc;			/* DEBUG only */
 	int	kp;			/* true if a kernel process */
+	Proc	*palarm;		/* Next alarm time */
+	ulong	alarm;			/* Time of call */
+
 	/*
 	 *  machine specific MMU goo
 	 */

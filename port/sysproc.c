@@ -407,6 +407,11 @@ syssleep(ulong *arg)
 	return 0;
 }
 
+long
+sysalarm(ulong *arg)
+{
+	return procalarm(arg[0]);		
+}
 
 long
 sysexits(ulong *arg)

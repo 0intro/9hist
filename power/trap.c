@@ -437,7 +437,7 @@ Syscall sysbind, sysbrk_, syschdir, sysclose, syscreate, sysdeath;
 Syscall	sysdup, syserrstr, sysexec, sysexits, sysfork, sysforkpgrp;
 Syscall	sysfstat, sysfwstat, sysgetpid, sysmount, sysnoted;
 Syscall	sysnotify, sysopen, syspipe, sysr1, sysread, sysremove, sysseek;
-Syscall syssleep, sysstat, syswait, syswrite, syswstat;
+Syscall syssleep, sysstat, syswait, syswrite, syswstat, sysalarm;
 
 Syscall *systab[]={
 	[SYSR1]		sysr1,
@@ -446,7 +446,7 @@ Syscall *systab[]={
 	[CHDIR]		syschdir,
 	[CLOSE]		sysclose,
 	[DUP]		sysdup,
-	[___ERRSTR___]	sysdeath,
+	[ALARM]		sysalarm,
 	[EXEC]		sysexec,
 	[EXITS]		sysexits,
 	[FORK]		sysfork,

@@ -107,6 +107,7 @@ Pgrp*	pgrptab(int);
 int	postnote(Proc*, int, char*, int);
 int	pprint(char*, ...);
 void	printslave(void);
+ulong 	procalarm(ulong);
 void	procinit0(void);
 Proc*	proctab(int);
 Block*	pullup(Block *, int);
