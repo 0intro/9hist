@@ -791,6 +791,7 @@ mkqhtree(ulong *frame, int framesize, int maxms)
 		return nil;
 	}
 	qt->root = tree;
+print("tree root %8.8lux\n", tree);
 	tree->head = Terminate;	/* root */
 	tree->entries = Terminate;
 	for(i=1; i<n; i++){
@@ -798,6 +799,7 @@ mkqhtree(ulong *frame, int framesize, int maxms)
 		qh->head = PADDR(&tree[(i-1)/2]) | IsQH;
 		qh->entries = Terminate;
 	}
+print("after loop tree root %8.8lux head %8.8lux entries %8.8lux\n", tree, tree->head, tree->entries);
 	/* distribute leaves evenly round the frame list */
 	leaf0 = n/2;
 	for(i=0; i<framesize; i++){
@@ -831,14 +833,14 @@ dumpframe(int f, int t)
 	if(t < 0)
 		t = 32;
 	for(i=f; i<t; i++){
-		XPRINT("F%.2d %8.8lux %8.8lux\n", i, frame[i], QFOL(frame[i])->head);
+		pprint("F%.2d %8.8lux %8.8lux\n", i, frame[i], QFOL(frame[i])->head);
 		for(p=frame[i]; (p & IsQH) && (p &Terminate) == 0; p = q->head){
 			q = QFOL(p);
 			if(!(q >= tree && q < &tree[n])){
-				XPRINT("Q: p=%8.8lux out of range\n", p);
+				pprint("Q: p=%8.8lux out of range\n", p);
 				break;
 			}
-			XPRINT("  -> %8.8lux h=%8.8lux e=%8.8lux\n", p, q->head, q->entries);
+			pprint("  -> %8.8lux h=%8.8lux e=%8.8lux\n", p, q->head, q->entries);
 		}
 	}
 }
@@ -1310,6 +1312,7 @@ usbreset(void)
 	ub->bwsop = allocqh(ub);
 	ub->bulkq = allocqh(ub);
 	ub->recvq = allocqh(ub);
+if(0){ /* DISABLE ERRATA FOR NOW */
 	t = alloctd(ub);	/* inactive TD, looped */
 	t->link = PADDR(t);
 	ub->bwsop->entries = PADDR(t);
@@ -1317,6 +1320,7 @@ usbreset(void)
 	ub->bwsop->head = PADDR(ub->bulkq) | IsQH;
 	ub->bulkq->head = PADDR(ub->recvq) | IsQH;
 	ub->recvq->head = PADDR(ub->bwsop) | IsQH;	/* loop back */
+}
 	XPRINT("usbcmd\t0x%.4x\nusbsts\t0x%.4x\nusbintr\t0x%.4x\nfrnum\t0x%.2x\n",
 		IN(Cmd), IN(Status), IN(Usbintr), inb(port+Frnum));
 	XPRINT("frbaseadd\t0x%.4x\nsofmod\t0x%x\nportsc1\t0x%.4x\nportsc2\t0x%.4x\n",
