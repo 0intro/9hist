@@ -10,9 +10,9 @@
 #include	"io.h"
 #include	"../port/error.h"
 
-
-#define DPRINT if(0)print
-#define XPRINT if(0)print
+#define DEBUG	0
+#define DPRINT if(DEBUG)print
+#define XPRINT if(DEBUG)print
 #define ILOCK(x)
 #define IUNLOCK(x)
 
@@ -69,6 +69,7 @@ enum
 	Creqsense=	0x03,
 	Ccapacity=	0x25,
 	Cread2=		0x28,
+	Cwrite2=	0x2A,
 
 	/* disk states */
 	Sspinning,
@@ -199,7 +200,7 @@ static void	atasleep(Controller*, int);
 static void	ataclock(void);
 
 static int	isatapi(Drive*);
-static long	atapirwio(Chan*, char*, ulong, ulong);
+static long	atapirwio(Chan*, uchar*, ulong, ulong, int);
 static void	atapipart(Drive*);
 static void	atapiintr(Controller*);
 
@@ -400,7 +401,6 @@ atactlrprobe(int ctlrno, int irq, int resetok)
 
 	atapi = 0;
 	mask = 0;
-	status = inb(port+Pstatus);
 	DPRINT("ata%d: ATAPI %uX %uX %uX\n", ctlrno, status,
 		inb(port+Pcylmsb), inb(port+Pcyllsb));
 	if(status == 0 && inb(port+Pcylmsb) == 0xEB && inb(port+Pcyllsb) == 0x14){
@@ -408,8 +408,7 @@ atactlrprobe(int ctlrno, int irq, int resetok)
 		intrenable(irq, ataintr, ctlr, ctlr->tbdf);
 		atapi |= 0x01;
 		mask |= 0x01;
-//		goto skipedd;
-goto atapislave;
+		goto atapislave;
 	}
 	if(atactlrwait(ctlr, DHmagic, 0, MS2TK(1)) || waserror()){
 		DPRINT("ata%d: Cedd status %ux/%ux/%ux\n", ctlrno,
@@ -441,9 +440,11 @@ goto atapislave;
 	 *	in the cylinder registers after reset. Of course, if the drive
 	 *	has been messed about by the BIOS or some other O/S then the
 	 *	signature may be gone.
+	 * When checking status, mask off the IDX bit.
 	 */
 	error = inb(port+Perror);
-	DPRINT("ata%d: master diag error %ux\n", ctlr->ctlrno, error);
+	DPRINT("ata%d: master diag status %uX, error %ux\n",
+		ctlr->ctlrno, inb(port+Pstatus), error);
 	if((error & ~0x80) == 0x01)
 		mask |= 0x01;
 
@@ -453,7 +454,7 @@ atapislave:
 	status = inb(port+Pstatus);
 	error = inb(port+Perror);
 	DPRINT("ata%d: slave diag status %ux, error %ux\n", ctlr->ctlrno, status, error);
-	if(status && (status & (Sbusy|Serr)) == 0 && (error & ~0x80) == 0x01)
+	if((status & ~0x02) && (status & (Sbusy|Serr)) == 0 && (error & ~0x80) == 0x01)
 		mask |= 0x02;
 	else if(status == 0){
 		msb = inb(port+Pcylmsb);
@@ -658,7 +659,7 @@ ataread(Chan* c, void* a, long n, ulong offset)
 			atapipart(dp);
 		qunlock(dp);
 		poperror();
-		return atapirwio(c, a, n, offset);
+		return atapirwio(c, a, n, offset, Cread2);
 	}
 	pp = &dp->p[PART(c->qid.path)];
 
@@ -699,8 +700,19 @@ atawrite(Chan *c, void *a, long n, ulong offset)
 		error(Eisdir);
 
 	dp = atadrive[DRIVE(c->qid.path)];
-	if(dp->atapi)
-		error(Eperm);
+	if(dp->atapi){
+		if(dp->online == 0 || dp->atapi == 1)
+			error(Eio);
+		if(waserror()){
+			qunlock(dp);
+			nexterror();
+		}
+		qlock(dp);
+		if(dp->partok == 0)
+			atapipart(dp);
+		qunlock(dp);
+		poperror();
+	}
 	pp = &dp->p[PART(c->qid.path)];
 
 	buf = smalloc(Maxxfer);
@@ -716,13 +728,19 @@ atawrite(Chan *c, void *a, long n, ulong offset)
 	 */
 	partial = offset % dp->bytes;
 	if(partial){
-		ataxfer(dp, pp, Cread, offset-partial, dp->bytes, buf);
+		if(dp->atapi)
+			atapirwio(c, buf, dp->bytes, offset-partial, Cread2);
+		else
+			ataxfer(dp, pp, Cread, offset-partial, dp->bytes, buf);
 		if(partial+n > dp->bytes)
 			rv = dp->bytes - partial;
 		else
 			rv = n;
 		memmove(buf+partial, aa, rv);
-		ataxfer(dp, pp, Cwrite, offset-partial, dp->bytes, buf);
+		if(dp->atapi)
+			atapirwio(c, buf, dp->bytes, offset-partial, Cwrite2);
+		else
+			ataxfer(dp, pp, Cwrite, offset-partial, dp->bytes, buf);
 	} else
 		rv = 0;
 
@@ -736,7 +754,10 @@ atawrite(Chan *c, void *a, long n, ulong offset)
 		if(i > Maxxfer)
 			i = Maxxfer;
 		memmove(buf, aa+rv, i);
-		i = ataxfer(dp, pp, Cwrite, offset+rv, i, buf);
+		if(dp->atapi)
+			i = atapirwio(c, buf, i, offset+rv, Cwrite2);
+		else
+			i = ataxfer(dp, pp, Cwrite, offset+rv, i, buf);
 		if(i == 0)
 			break;
 	}
@@ -747,9 +768,15 @@ atawrite(Chan *c, void *a, long n, ulong offset)
 	 *  it out.
 	 */
 	if(partial){
-		ataxfer(dp, pp, Cread, offset+rv, dp->bytes, buf);
+		if(dp->atapi)
+			atapirwio(c, buf, dp->bytes, offset+rv, Cread2);
+		else
+			ataxfer(dp, pp, Cread, offset+rv, dp->bytes, buf);
 		memmove(buf, aa+rv, partial);
-		ataxfer(dp, pp, Cwrite, offset+rv, dp->bytes, buf);
+		if(dp->atapi)
+			atapirwio(c, buf, dp->bytes, offset+rv, Cwrite2);
+		else
+			ataxfer(dp, pp, Cwrite, offset+rv, dp->bytes, buf);
 		rv += partial;
 	}
 
@@ -1101,6 +1128,8 @@ retryatapi:
 		dp->bytes = 2048;
 		if((ip->config & 0x0060) == 0x0020)
 			dp->drqintr = 1;
+		if((ip->config & 0x1F00) == 0x0000)
+			dp->atapi = 2;
 	}
 	if(dp->spindown && (ip->capabilities & (1<<13)))
 		dp->spindown /= 5;
@@ -1672,7 +1701,7 @@ atapiexec(Drive *dp)
 }
 
 static long
-atapiio(Drive *dp, char *a, ulong len, ulong offset)
+atapiio(Drive *dp, uchar *a, ulong len, ulong offset, int cmd)
 {
 	ulong bn, n, o, m;
 	Controller *cp;
@@ -1681,7 +1710,10 @@ atapiio(Drive *dp, char *a, ulong len, ulong offset)
 
 	cp = dp->cp;
 
-	buf = smalloc(Maxxfer);
+	if(cmd == Cread2)
+		buf = smalloc(Maxxfer);
+	else
+		buf = 0;
 	qlock(cp->ctlrlock);
 	retrycount = 2;
 retry:
@@ -1695,12 +1727,16 @@ retry:
 			}
 		}
 		cp->dp = 0;
-		free(buf);
+		if(cmd == Cread2)
+			free(buf);
 		qunlock(cp->ctlrlock);
 		nexterror();
 	}
 
-	cp->buf = buf;
+	if(cmd == Cread2)
+		cp->buf = buf;
+	else
+		cp->buf = a;
 	cp->dp = dp;
 	cp->len = dp->bytes;
 
@@ -1714,7 +1750,7 @@ retry:
 		if(m > n)
 			m = n;
 		memset(cp->cmdblk, 0, 12);
-		cp->cmdblk[0] = Cread2;
+		cp->cmdblk[0] = cmd;
 		cp->cmdblk[2] = bn >> 24;
 		cp->cmdblk[3] = bn >> 16;
 		cp->cmdblk[4] = bn >> 8;
@@ -1732,14 +1768,15 @@ retry:
 		a += m;
 	}
 	poperror();
-	free(buf);
+	if(cmd == Cread2)
+		free(buf);
 	cp->dp = 0;
 	qunlock(cp->ctlrlock);
 	return len-n;
 }
 
 static long
-atapirwio(Chan *c, char *a, ulong len, ulong offset)
+atapirwio(Chan *c, uchar *a, ulong len, ulong offset, int cmd)
 {
 	Drive *dp;
 	ulong vers;
@@ -1757,7 +1794,7 @@ atapirwio(Chan *c, char *a, ulong len, ulong offset)
 	c->qid.vers = dp->vers;
 	if(vers && vers != dp->vers)
 		error(Eio);
-	rv = atapiio(dp, a, len, offset);
+	rv = atapiio(dp, a, len, offset, cmd);
 
 	poperror();
 	qunlock(dp);
@@ -1860,9 +1897,6 @@ atapiintr(Controller *cp)
 	DPRINT("%s: atapiintr %uX\n", cp->dp->vol, cause);
 	switch(cause){
 
-	case 0:						/* data out */
-		cp->status |= Serr;
-		/*FALLTHROUGH*/
 	case 1:						/* command */
 		if(cp->status & Serr){
 			cp->lastcmd = cp->cmd;
@@ -1874,6 +1908,7 @@ atapiintr(Controller *cp)
 		outss(pbase+Pdata, cp->cmdblk, sizeof(cp->cmdblk)/2);
 		break;
 
+	case 0:						/* data out */
 	case 2:						/* data in */
 		addr = cp->buf;
 		if(addr == 0){
@@ -1904,7 +1939,10 @@ atapiintr(Controller *cp)
 		count = inb(pbase+Pcyllsb)|(inb(pbase+Pcylmsb)<<8);
 		if (count > Maxxfer) 
 			count = Maxxfer;
-		inss(pbase+Pdata, addr, count/2);
+		if(cause == 0)
+			outss(pbase+Pdata, addr, count/2);
+		else
+			inss(pbase+Pdata, addr, count/2);
 		cp->count = count;
 		cp->lastcmd = cp->cmd; 
 		break;
