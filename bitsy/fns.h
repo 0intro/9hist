@@ -7,14 +7,18 @@ void	clockinit(void);
 #define	coherence()
 void	delay(int);
 void	evenaddr(ulong);
-void	exceptionvectors(void);
+void	flushcache(void);
+void	flushmmu(void);
 ulong	getfar(void);
 ulong	getfsr(void);
 #define	getpgcolor(a)	0
+void	h3650uartsetup(void);
 void	idle(void);
 #define	idlehands()			/* nothing to do in the runproc */
 void	intrenable(int, void (*)(Ureg*, void*), void*, char*);
 int	iprint(char*, ...);
+void	mappedIvecEnable(void);
+void	mappedIvecDisable(void);
 void*	mapspecial(ulong, int);
 void	meminit(void);
 void	mmuinit(void);
@@ -29,13 +33,19 @@ void	putdac(ulong);
 void	putttb(ulong);
 void	putpid(ulong);
 void	reset(void);
+Uart*	uartsetup(PhysUart*, void*, ulong, char*);
+void	sa1100_uartsetup(void);
 void	screeninit(void);
 int	screenprint(char*, ...);			/* debugging */
 void	(*screenputs)(char*, int);
+void	setr13(int, ulong*);
 void	touser(void*);
+void	trapdump(char *tag);
 void	trapinit(void);
 int	tas(void*);
-void	uartsetup(void);
+int	uartstageoutput(Uart*);
+void	vectors(void);
+void	vtable(void);
 void	wbflush(void);
 
 #define	waserror()	(up->nerrlab++, setlabel(&up->errlab[up->nerrlab-1]))

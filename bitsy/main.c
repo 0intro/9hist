@@ -17,6 +17,9 @@ main(void)
 	/* zero out bss */
 	memset(edata, 0, end-edata);
 
+	/* point to Mach structure */
+	m = (Mach*)MACHADDR;
+
 	iprint("bitsy kernel\n");
 	confinit();
 	iprint("%d pages %lux(%lud) %lux(%lud)\n", conf.npage, conf.base0, conf.npage0, conf.base1, conf.npage1);
@@ -26,15 +29,17 @@ main(void)
 	delay(2000);
 	iprint("done\n");
 	mmuinit();
-	uartsetup();
+	sa1100_uartsetup();
 	iprint("after mmuinit\n");
-	clockinit();
-	iprint("after clockinit\n");
 	trapinit();
 	iprint("after trapinit\n");
+	clockinit();
+	iprint("after clockinit\n");
+trapdump("before spllo");
 	spllo();
 	iprint("after spllo\n");
-	delay(1000000);
+	delay(10000);
+trapdump("after delay");
 	exit(1);
 }
 
@@ -181,3 +186,4 @@ confinit(void)
 
 	conf.copymode = 0;		/* copy on write */
 }
+

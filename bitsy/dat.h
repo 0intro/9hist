@@ -10,6 +10,8 @@ typedef struct PMMU	PMMU;
 typedef struct Proc	Proc;
 typedef struct Ureg	Ureg;
 typedef struct Vctl	Vctl;
+typedef struct PhysUart	PhysUart;
+typedef struct Uart	Uart;
 
 /*
  *  parameters for sysproc.c
@@ -133,6 +135,12 @@ struct Mach
 	vlong	mtrrdef;
 	vlong	mtrrfix[11];
 	vlong	mtrrvar[32];		/* 256 max. */
+
+	/* save areas for exceptions */
+	ulong	sfiq[5];
+	ulong	sirq[5];
+	ulong	sund[5];
+	ulong	sabt[5];
 
 	int	stack[1];
 };

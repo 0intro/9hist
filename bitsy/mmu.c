@@ -54,6 +54,7 @@ static ulong phystrans[16] =
 
 ulong *l1table;
 
+
 /*
  *  We map all of memory, flash, and the zeros area with sections.
  *  Special use space is mapped on the fly with regmap.
@@ -65,8 +66,8 @@ mmuinit(void)
 	ulong *t;
 
 	/* get a prototype level 1 page */
-	l1table = xspanalloc(BY2PG, 16*1024, 0);
-	memset(l1table, 0, BY2PG);
+	l1table = xspanalloc(16*1024, 16*1024, 0);
+	memset(l1table, 0, 16*1024);
 
 	/* direct map DRAM */
 	e = conf.base1 + BY2PG*conf.npage1;
@@ -83,11 +84,14 @@ mmuinit(void)
 		l1table[a>>20] = L1Section | L1KernelRW | (a&L1SectBaseMask) |
 				L1Cached | L1Buffered;
 
-	/* map first page of DRAM also into 0xFFFF0000 for the interrupt vectors */
-	t = xspanalloc(BY2PG, 16*1024, 0);
+	/*
+	 *  double map start of ram to exception vectors
+	 */
+	a = EVECTORS;
+	t = xspanalloc(BY2PG, 1024, 0);
 	memset(t, 0, BY2PG);
-	l1table[0xFFFF0000>>20] = L1PageTable | L1Domain0 | (((ulong)t) & L1PTBaseMask);
-	t[0xF0000>>PGSHIFT] = L2SmallPage | L2KernelRW | PHYSDRAM0;
+	l1table[a>>20] = L1PageTable | L1Domain0 | (((ulong)t) & L1PTBaseMask);
+	t[(a&0xfffff)>>PGSHIFT] = L2SmallPage | L2KernelRW | (PHYSDRAM0 & L2PageBaseMask);
 
 	/* set up the domain register to cause all domains to obey pte access bits */
 	iprint("setting up domain access\n");
@@ -97,7 +101,10 @@ mmuinit(void)
 	iprint("setting tlb map %lux\n", (ulong)l1table);
 	putttb((ulong)l1table);
 
-	/* enable mmu, and make 0xFFFF0000 the virtual address of the exception vecs */
+	/* enable mmu */
+	wbflush();
+	flushcache();
+	flushmmu();
 	mmuenable();
 }
 

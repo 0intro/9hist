@@ -10,8 +10,12 @@ _main:
 	MOVW	$(PsrDirq|PsrDfiq|PsrMsvc), R1
 	MOVW	R1, CPSR
 
-	/* flush TLB's */
-	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0x0)
+	/* disable the MMU */
+	MOVW	$0x130, R1
+	MCR     CpMMU, 0, R1, C(CpControl), C(0x0)
+
+	/* flush caches */
+	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0x7), 0
 	/* drain prefetch */
 	MOVW	R0,R0						
 	MOVW	R0,R0
@@ -19,11 +23,7 @@ _main:
 	MOVW	R0,R0
 
 	/* drain write buffer */
-	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0x0), 4
-
-	/* disable the MMU */
-	MOVW	$0x130, R1
-	MCR     CpMMU, 0, R1, C(CpControl), C(0x0)
+	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0xa), 4
 
 	MOVW	$(MACHADDR+BY2PG), R13		/* stack */
 	SUB	$4, R13				/* link */
@@ -36,12 +36,12 @@ _mainloop:
 
 /* flush tlb's */
 TEXT flushmmu(SB), $-4
-	MCR	CpMMU, 0, R0, C(CpTLBFlush), C(0x0)
+	MCR	CpMMU, 0, R0, C(CpTLBFlush), C(0x7)
 	RET
 
 /* flush instruction cache */
 TEXT flushicache(SB), $-4
-	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0x0)
+	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0x5), 0
 	/* drain prefetch */
 	MOVW	R0,R0					
 	MOVW	R0,R0
@@ -51,12 +51,12 @@ TEXT flushicache(SB), $-4
 
 /* flush data cache */
 TEXT flushdcache(SB), $-4
-	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0x0)
+	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0x6), 0
 	RET
 
 /* flush i and d caches */
 TEXT flushcache(SB), $-4
-	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0x0)
+	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0x7), 0
 	/* drain prefetch */
 	MOVW	R0,R0						
 	MOVW	R0,R0
@@ -66,7 +66,7 @@ TEXT flushcache(SB), $-4
 
 /* drain write buffer */
 TEXT wbflush(SB), $-4
-	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0x0), 4
+	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0xa), 4
 	RET
 
 /* return cpu id */
@@ -90,17 +90,31 @@ TEXT putttb(SB), $-4
 	RET
 
 /*
- *  enable mmu, i and d caches, and exception vectors at 0xffff0000
+ *  enable mmu, i and d caches
  */
 TEXT mmuenable(SB), $-4
 	MRC	CpMMU, 0, R0, C(CpControl), C(0x0)
-	ORR	$(CpCmmuena|CpCdcache|CpCicache|CpCvivec), R0
+	ORR	$(CpCmmuena|CpCdcache|CpCicache), R0
 	MCR     CpMMU, 0, R0, C(CpControl), C(0x0)
 	RET
 
 TEXT mmudisable(SB), $-4
 	MRC	CpMMU, 0, R0, C(CpControl), C(0x0)
 	BIC	$(CpCmmuena|CpCdcache|CpCicache|CpCvivec), R0
+	MCR     CpMMU, 0, R0, C(CpControl), C(0x0)
+	RET
+
+/*
+ *  use exception vectors at 0xffff0000
+ */
+TEXT mappedIvecEnable(SB), $-4
+	MRC	CpMMU, 0, R0, C(CpControl), C(0x0)
+	ORR	$(CpCvivec), R0
+	MCR     CpMMU, 0, R0, C(CpControl), C(0x0)
+	RET
+TEXT mappedIvecDisable(SB), $-4
+	MRC	CpMMU, 0, R0, C(CpControl), C(0x0)
+	BIC	$(CpCvivec), R0
 	MCR     CpMMU, 0, R0, C(CpControl), C(0x0)
 	RET
 
@@ -134,23 +148,26 @@ TEXT setr13(SB), $-4
 /*
  *  exception vectors, copied by trapinit() to somewhere useful
  */
-TEXT exceptionvectors(SB), $-4
-	MOVW	0x18(R15), R15		/* reset */
-	MOVW	0x18(R15), R15		/* undefined */
-	MOVW	0x18(R15), R15		/* SWI */
-	MOVW	0x18(R15), R15		/* prefetch abort */
-	MOVW	0x18(R15), R15		/* data abort */
-	MOVW	0x18(R15), R15		/* reserved */
-	MOVW	0x18(R15), R15		/* IRQ */
-	MOVW	0x18(R15), R15		/* FIQ */
-	WORD	$_vrst(SB)		/* reset, in svc mode already */
-	WORD	$_vund(SB)		/* undefined, switch to svc mode */
-	WORD	$_vsvc(SB)		/* swi, in svc mode already */
-	WORD	$_vabt(SB)		/* prefetch abort, switch to svc mode */
-	WORD	$_vabt(SB)		/* data abort, switch to svc mode */
-	WORD	$_vrst(SB)		/* reserved, shouldn't happen */
-	WORD	$_virq(SB)		/* IRQ, switch to svc mode */
-	WORD	$_vfiq(SB)		/* FIQ, switch to svc mode */
+
+TEXT vectors(SB), $-4
+	MOVW	0x18(R15), R15			/* reset */
+	MOVW	0x18(R15), R15			/* undefined */
+	MOVW	0x18(R15), R15			/* SWI */
+	MOVW	0x18(R15), R15			/* prefetch abort */
+	MOVW	0x18(R15), R15			/* data abort */
+	MOVW	0x18(R15), R15			/* reserved */
+	MOVW	0x18(R15), R15			/* IRQ */
+	MOVW	0x18(R15), R15			/* FIQ */
+
+TEXT vtable(SB), $-4
+	WORD	$_vsvc(SB)			/* reset, in svc mode already */
+	WORD	$_vund(SB)			/* undefined, switch to svc mode */
+	WORD	$_vsvc(SB)			/* swi, in svc mode already */
+	WORD	$_vabt(SB)			/* prefetch abort, switch to svc mode */
+	WORD	$_vabt(SB)			/* data abort, switch to svc mode */
+	WORD	$_vsvc(SB)			/* reserved */
+	WORD	$_virq(SB)			/* IRQ, switch to svc mode */
+	WORD	$_vfiq(SB)			/* FIQ, switch to svc mode */
 
 TEXT _vrst(SB), $-4
 	BL	reset(SB)

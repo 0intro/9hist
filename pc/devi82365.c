@@ -440,10 +440,7 @@ pcmspecial(char *idstr, ISAConf *isa)
 	extern char *strstr(char*, char*);
 	static int resetdone;
 
-	if (! resetdone) {
-		i82365reset();
-		resetdone++;
-	}
+	i82365reset();
 	for(pp = slot; pp < lastslot; pp++){
 		if(pp->special)
 			continue;	/* already taken */

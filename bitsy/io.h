@@ -77,3 +77,90 @@ enum
 	COM_RTS_oi=	1<<26,	/* RTS to UART3 */
 	OPT_IND_i=	1<<27,	/* expansion pack inserted */
 };
+
+enum
+{
+	/* hardware counter frequency */
+	ClockFreq=	3686400,
+	Stagesize=	1024,
+	Nuart = 4,
+
+	/* soft flow control chars */
+	CTLS= 023,
+	CTLQ= 021,
+};
+
+typedef struct PhysUart PhysUart;
+typedef struct Uart Uart;
+
+/* link twixt hardware and software */
+struct PhysUart
+{
+	void	(*enable)(Uart*, int);
+	void	(*disable)(Uart*);
+	void	(*kick)(void*);
+	void	(*flow)(void*);
+	void	(*intr)(Ureg*, void*);
+	void	(*dobreak)(Uart*, int);
+	void	(*baud)(Uart*, int);
+	void	(*bits)(Uart*, int);
+	void	(*stop)(Uart*, int);
+	void	(*parity)(Uart*, int);
+	void	(*modemctl)(Uart*, int);
+	void	(*rts)(Uart*, int);
+	void	(*dtr)(Uart*, int);
+	long	(*status)(Uart*, void*, long, long);
+};
+
+/* software representation */
+struct Uart
+{
+	QLock;
+	int	type;
+	int	dev;
+	int	opens;
+	void	*regs;
+	PhysUart	*phys;
+
+	int	enabled;
+	Uart	*elist;			/* next enabled interface */
+	char	name[NAMELEN];
+
+	uchar	sticky[4];		/* sticky write register values */
+	ulong	freq;			/* clock frequency */
+	uchar	mask;			/* bits/char */
+	int	baud;			/* baud rate */
+
+	int	parity;			/* parity errors */
+	int	frame;			/* framing errors */
+	int	overrun;		/* rcvr overruns */
+
+	/* buffers */
+	int	(*putc)(Queue*, int);
+	Queue	*iq;
+	Queue	*oq;
+
+	Lock	rlock;			/* receive */
+	uchar	istage[Stagesize];
+	uchar	*ip;
+	uchar	*ie;
+
+	int	haveinput;
+
+	Lock	tlock;			/* transmit */
+	uchar	ostage[Stagesize];
+	uchar	*op;
+	uchar	*oe;
+
+	int	modem;			/* hardware flow control on */
+	int	xonoff;			/* software flow control on */
+	int	blocked;
+	int	cts, dsr, dcd, dcdts;		/* keep track of modem status */ 
+	int	ctsbackoff;
+	int	hup_dsr, hup_dcd;	/* send hangup upstream? */
+	int	dohup;
+
+	int	kinuse;		/* device in use by kernel */
+
+	Rendez	r;
+};

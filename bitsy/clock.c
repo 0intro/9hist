@@ -18,12 +18,6 @@ typedef struct OSTimer
 
 static OSTimer *timerregs = (OSTimer*)OSTIMERREGS;
 
-enum
-{
-	/* hardware counter frequency */
-	ClockFreq=	3686400,
-};
-
 static void	clockintr(Ureg*, void*);
 
 typedef struct Clock0link Clock0link;
@@ -58,8 +52,9 @@ clockinit(void)
 	timerregs = mapspecial(OSTIMERREGS, 32);
 
 	/* enable interrupts on match register 0, turn off all others */
-	timerregs->oier = 1<<0;
+	timerregs->ossr |= 1<<0;
 	intrenable(IRQtimer0, clockintr, nil, "clock");
+	timerregs->oier = 1<<0;
 
 	/* post interrupt 1/HZ secs from now */
 	timerregs->osmr[0] = timerregs->oscr + ClockFreq/HZ;
@@ -91,15 +86,10 @@ clockintr(Ureg*, void*)
 void
 delay(int ms)
 {
-	ulong cnt, old;
+	ulong start;
 
 	while(ms-- > 0){
-		cnt = ClockFreq/1000;
-		while(cnt-- > 0){
-			old = timerregs->oscr;
-			while(old == timerregs->oscr)
-				;
-		}
+		start = timerregs->oscr;
+		while(timerregs->oscr-start < ClockFreq/1000);
 	}
-		
 }

@@ -34,22 +34,39 @@ typedef struct Vctl {
 static Lock vctllock;
 static Vctl *vctl[32];
 
+
+/*
+ *   Layout at virtual address 0.
+ */
+typedef struct Vpage0 {
+	void	(*vectors[8])(void);
+	ulong	vtable[8];
+
+	ulong	hole[16];
+} Vpage0;
+Vpage0 *vpage0;
+
 /*
  *  set up for exceptioons
  */
 void
 trapinit(void)
 {
-	/*
-	 *  exceptionvectors points to a prototype in l.s of the
-	 *  exception vectors that save the regs and then call
-	 *  trap().  The actual vectorrs are double mapped
-	 *  to 0xffff0000 and to KZERO.  We write them via
-	 *  KZERO since a data access to them will cause an
-	 *  exception.
-	 */
-	memmove((void*)KZERO, exceptionvectors, 2*4*8);
+	/* set up the exception vectors */
+	vpage0 = (Vpage0*)EVECTORS;
+	memmove(vpage0->vectors, vectors, sizeof(vpage0->vectors));
+	memmove(vpage0->vtable, vtable, sizeof(vpage0->vtable));
+	memset(vpage0->hole, 0, sizeof(vpage0->hole));
 	wbflush();
+
+	/* use exception vectors at 0xFFFF0000 */
+	mappedIvecEnable();
+
+	/* set up the stacks for the interrupt modes */
+	setr13(PsrMfiq, m->sfiq);
+	setr13(PsrMirq, m->sirq);
+	setr13(PsrMabt, m->sabt);
+	setr13(PsrMund, m->sund);
 
 	/* map in interrupt registers */
 	intrregs = mapspecial(INTRREGS, sizeof(*intrregs));
@@ -58,6 +75,15 @@ trapinit(void)
 	intrregs->iclr = 0;
 	intrregs->icmr = 0;
 }
+
+void
+trapdump(char *tag)
+{
+	iprint("%s: icip %lux icmr %lux iclr %lux iccr %lux icfp %lux\n",
+		tag, intrregs->icip, intrregs->icmr, intrregs->iclr,
+		intrregs->iccr, intrregs->icfp);
+}
+
 
 /*
  *  enable an interrupt and attach a function to it

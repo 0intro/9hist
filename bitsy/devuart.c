@@ -8,119 +8,7 @@
 
 #include	"../port/netif.h"
 
-enum
-{
-	Nuart = 1,
-	Stagesize= 1024,
-};
 
-/* hardware registers */
-struct Uartregs
-{
-	ulong	ctl[4];
-	ulong	dummya;
-	ulong	data;
-	ulong	dummyb;
-	ulong	status0;
-	ulong	status1;
-};
-
-enum
-{
-	/* ctl[0] bits */
-	Parity=		1<<0,
-	Even=		1<<1,
-	Stop1=		0<<2,
-	Stop2=		1<<2,
-	Bits7=		0<<3,
-	Bits8=		1<<3,
-	SCE=		1<<4,	/* synchronous clock enable */
-	RCE=		1<<5,	/* rx on falling edge of clock */
-	TCE=		1<<6,	/* tx on falling edge of clock */
-
-	/* ctl[3] bits */
-	Rena=		1<<0,	/* receiver enable */
-	Tena=		1<<1,	/* transmitter enable */
-	Break=		1<<2,	/* force TXD3 low */
-	Rintena=	1<<3,	/* enable receive interrupt */
-	Tintena=	1<<4,	/* enable transmitter interrupt */
-	Loopback=	1<<5,	/* loop back data */
-
-	/* data bits */
-	DEparity=	1<<8,	/* parity error */
-	DEframe=		1<<9,	/* framing error */
-	DEoverrun=	1<<10,	/* overrun error */
-
-	/* status0 bits */
-	Tint=		1<<0,	/* transmit fifo half full interrupt */
-	Rint0=		1<<1,	/* receiver fifo 1/3-2/3 full */
-	Rint1=		1<<2,	/* receiver fifo not empty and receiver idle */
-	Breakstart=	1<<3,
-	Breakend=	1<<4,
-	Fifoerror=	1<<5,	/* fifo error */
-
-	/* status1 bits */
-	Tbusy=		1<<0,	/* transmitting */
-	Rnotempty=	1<<1,	/* receive fifo not empty */
-	Tnotfull=	1<<2,	/* transmit fifo not full */
-	ParityError=	1<<3,
-	FrameError=	1<<4,
-	Overrun=	1<<5,
-};
-
-Uartregs *uart3regs = UART3REGS;
-
-/* software representation */
-typedef struct Uart Uart;
-struct Uart
-{
-	QLock;
-	int	dev;
-	int	opens;
-	Uartregs	*regs;
-
-	int	enabled;
-	Uart	*elist;			/* next enabled interface */
-	char	name[NAMELEN];
-
-	uchar	sticky[4];		/* sticky write register values */
-	ulong	freq;			/* clock frequency */
-	uchar	mask;			/* bits/char */
-	int	baud;			/* baud rate */
-
-	int	parity;			/* parity errors */
-	int	frame;			/* framing errors */
-	int	overrun;		/* rcvr overruns */
-
-	/* buffers */
-	int	(*putc)(Queue*, int);
-	Queue	*iq;
-	Queue	*oq;
-
-	Lock	rlock;			/* receive */
-	uchar	istage[Stagesize];
-	uchar	*ip;
-	uchar	*ie;
-
-	int	haveinput;
-
-	Lock	tlock;			/* transmit */
-	uchar	ostage[Stagesize];
-	uchar	*op;
-	uchar	*oe;
-
-	int	modem;			/* hardware flow control on */
-	int	xonoff;			/* software flow control on */
-	int	blocked;
-	int	cts, dsr, dcd, dcdts;		/* keep track of modem status */ 
-	int	ctsbackoff;
-	int	hup_dsr, hup_dcd;	/* send hangup upstream? */
-	int	dohup;
-
-	int	kinuse;		/* device in use by kernel */
-
-	Rendez	r;
-};
 static	Uart*	uart[Nuart];
 static	int	nuart;
 
@@ -132,23 +20,20 @@ static int uartndir;
  */
 static char	Ekinuse[] = "device in use by kernel";
 
-static void	uartsetbaud(Uart *p, int rate);
-static void	uartflow(void *v);
-static void	uartkick0(void *v);
-static void	uartkick(void *v);
-static void	uartrts(Uart *p, int on);
-static void	uartintr(Ureg*, void*);
+static void	uartdcdhup(Uart*, int);
+static void	uartdcdts(Uart*, int);
+static void	uartdsrhup(Uart*, int);
 
 /*
- *  define a Uart.
+ *  define a Uart
  */
-static void
-uartsetup0(Uartregs *regs, ulong freq, char *name)
+Uart*
+uartsetup(PhysUart *phys, void *regs, ulong freq, char *name)
 {
 	Uart *p;
 
 	if(nuart >= Nuart)
-		return;
+		return nil;
 
 	p = xalloc(sizeof(Uart));
 	uart[nuart] = p;
@@ -156,23 +41,21 @@ uartsetup0(Uartregs *regs, ulong freq, char *name)
 	p->dev = nuart++;
 	p->freq = freq;
 	p->regs = regs;
-
-	memset(p->sticky, 0, sizeof(p->sticky));
+	p->phys = phys;
 
 	/*
 	 *  set rate to 115200 baud.
 	 *  8 bits/character.
 	 *  1 stop bit.
-	 *  interrupts disabled.
+	 *  enabled with interrupts disabled.
 	 */
-	p->sticky[0] = Bits8;
-	p->regs->ctl[0] = p->sticky[0];
-	p->sticky[3] = Rena|Tena;
-	p->regs->ctl[3] = p->sticky[3];
-	uartsetbaud(p, 115200);
+	(*p->phys->bits)(p, 8);
+	(*p->phys->stop)(p, 1);
+	(*p->phys->baud)(p, 115200);
+	(*p->phys->enable)(p, 0);
 
-	p->iq = qopen(4*1024, 0, uartflow, p);
-	p->oq = qopen(4*1024, 0, uartkick, p);
+	p->iq = qopen(4*1024, 0, p->phys->flow, p);
+	p->oq = qopen(4*1024, 0, p->phys->kick, p);
 	if(p->iq == nil || p->oq == nil)
 		panic("uartsetup");
 
@@ -180,47 +63,7 @@ uartsetup0(Uartregs *regs, ulong freq, char *name)
 	p->ie = &p->istage[Stagesize];
 	p->op = p->ostage;
 	p->oe = p->ostage;
-}
-
-/*
- *  setup all uarts (called early by main() to allow debugging output to
- *  a serial port)
- */
-void
-uartsetup(void)
-{
-	uart3regs = mapspecial(UART3REGS, 64);
-	uartsetup0(uart3regs, 36864000, "serialport3");
-}
-
-/*
- *  enable a port's interrupts.  set DTR and RTS
- */
-static void
-uartenable(Uart *p)
-{
-	p->sticky[3] |= Rintena|Tintena;
-	p->regs->ctl[3] = p->sticky[3];
-	intrenable(IRQuart3, uartintr, p, p->name);
-}
-
-/*
- *  disable interrupts. clear DTR, and RTS
- */
-static void
-uartdisable(Uart *p)
-{
-	p->sticky[3] &= ~(Rintena|Tintena);
-	p->regs->ctl[3] = p->sticky[3];
-}
-
-static long
-uartstatus(Chan*, Uart *p, void *buf, long n, long offset)
-{
-	USED(p);
-//		"b%d c%d d%d e%d l%d m%d p%c r%d s%d i%d\n"
-//		"dev(%d) type(%d) framing(%d) overruns(%d)%s%s%s%s\n",
-	return readstr(offset, buf, n, "");
+	return p;
 }
 
 static void
@@ -304,7 +147,7 @@ uartopen(Chan *c, int omode)
 			error(Ekinuse);
 		qlock(p);
 		if(p->opens++ == 0){
-			uartenable(p);
+			(*p->phys->enable)(p, 1);
 			qreopen(p->iq);
 			qreopen(p->oq);
 		}
@@ -332,7 +175,7 @@ uartclose(Chan *c)
 			error(Ekinuse);
 		qlock(p);
 		if(--(p->opens) == 0){
-			uartdisable(p);
+			(*p->phys->disable)(p);
 			qclose(p->iq);
 			qclose(p->oq);
 			p->ip = p->istage;
@@ -363,7 +206,7 @@ uartread(Chan *c, void *buf, long n, vlong off)
 	case Nctlqid:
 		return readnum(offset, buf, n, NETID(c->qid.path), NUMSIZE);
 	case Nstatqid:
-		return uartstatus(c, p, buf, n, offset);
+		return (*p->phys->status)(p, buf, n, offset);
 	}
 
 	return 0;
@@ -385,7 +228,7 @@ uartctl(Uart *p, char *cmd)
 	for(i = 0; i < nf; i++){
 
 		if(strncmp(f[i], "break", 5) == 0){
-//			uartbreak(p, 0);
+			(*p->phys->dobreak)(p, 0);
 			continue;
 		}
 
@@ -393,19 +236,19 @@ uartctl(Uart *p, char *cmd)
 		switch(*f[i]){
 		case 'B':
 		case 'b':
-//			uartsetbaud(p, n);
+			(*p->phys->baud)(p, n);
 			break;
 		case 'C':
 		case 'c':
-//			uartdcdhup(p, n);
+			uartdcdhup(p, n);
 			break;
 		case 'D':
 		case 'd':
-//			uartdtr(p, n);
+			(*p->phys->dtr)(p, n);
 			break;
 		case 'E':
 		case 'e':
-//			uartdsrhup(p, n);
+			uartdsrhup(p, n);
 			break;
 		case 'f':
 		case 'F':
@@ -418,17 +261,14 @@ uartctl(Uart *p, char *cmd)
 			break;
 		case 'i':
 		case 'I':
-//			lock(&p->flock);
-//			uartfifo(p, n);
-//			unlock(&p->flock);
 			break;
 		case 'L':
 		case 'l':
-//			uartbits(p, n);
+			(*p->phys->bits)(p, n);
 			break;
 		case 'm':
 		case 'M':
-//			uartmflow(p, n);
+			(*p->phys->modemctl)(p, n);
 			break;
 		case 'n':
 		case 'N':
@@ -436,15 +276,15 @@ uartctl(Uart *p, char *cmd)
 			break;
 		case 'P':
 		case 'p':
-//			uartparity(p, *(cmd+1));
+			(*p->phys->parity)(p, *(cmd+1));
 			break;
 		case 'K':
 		case 'k':
-//			uartbreak(p, n);
+			(*p->phys->dobreak)(p, n);
 			break;
 		case 'R':
 		case 'r':
-//			uartrts(p, n);
+			(*p->phys->rts)(p, n);
 			break;
 		case 'Q':
 		case 'q':
@@ -453,7 +293,7 @@ uartctl(Uart *p, char *cmd)
 			break;
 		case 'T':
 		case 't':
-//			uartdcdts(p, n);
+			uartdcdts(p, n);
 			break;
 		case 'W':
 		case 'w':
@@ -536,107 +376,42 @@ Dev uartdevtab = {
 };
 
 /*
- *  set the buad rate
+ * decide if we should hangup when dsr or dcd drops.
  */
 static void
-uartsetbaud(Uart *p, int rate)
+uartdsrhup(Uart *p, int n)
 {
-	ulong brconst;
+	p->hup_dsr = n;
+}
 
-	if(rate <= 0)
-		return;
-
-	brconst = (p->freq+8*rate-1)/(16*rate) - 1;
-	p->regs->ctl[1] = (brconst>>8) & 0xf;
-	p->regs->ctl[2] = brconst;
-
-	p->baud = rate;
+static void
+uartdcdhup(Uart *p, int n)
+{
+	p->hup_dcd = n;
 }
 
 /*
- *  turn on/off rts
+ *  save dcd timestamps for gps clock
  */
 static void
-uartrts(Uart*, int)
+uartdcdts(Uart *p, int n)
 {
+	p->dcdts = n;
 }
 
 /*
- *  restart input if it's off
+ *  put some bytes into the local queue to avoid calling
+ *  qconsume for every character
  */
-static void
-uartflow(void *v)
+int
+uartstageoutput(Uart *p)
 {
-	Uart *p;
+	int n;
 
-	p = v;
-	if(p->modem){
-		uartrts(p, 1);
-		ilock(&p->rlock);
-		p->haveinput = 1;
-		iunlock(&p->rlock);
-	}
-}
-
-/*
- *  restart output if not blocked and OK to send
- */
-static void
-uartkick0(void *v)
-{
-	int i;
-	Uart *p;
-
-	p = v;
-	if(p->cts == 0 || p->blocked)
-		return;
-
-	/*
-	 *  128 here is an arbitrary limit to make sure
-	 *  we don't stay in this loop too long.  If the
-	 *  chips output queue is longer than 128, too
-	 *  bad -- presotto
-	 */
-	for(i = 0; i < 128; i++){
-//		if(!(uartrdreg(p, Lstat) & Outready))
-//			break;
-//		if(p->op >= p->oe && stageoutput(p) == 0)
-//			break;
-//		outb(p->port + Data, *(p->op++));
-	}
-}
-
-static void
-uartkick(void *v)
-{
-	Uart *p;
-
-	p = v;
-	ilock(&p->tlock);
-	uartkick0(p);
-	iunlock(&p->tlock);
-}
-
-static void
-uartintr(Ureg*, void *x)
-{
-	Uart *p;
-
-	p = x;
-}
-
-void
-serialputs(char *str, int n)
-{
-	Uartregs *ur;
-
-	ur = uart3regs;
-	while(n-- > 0){
-		/* wait for output ready */
-		while((ur->status1 & Tnotfull) == 0)
-			;
-		ur->data = *str++;
-	}
-	while((ur->status1 & Tbusy))
-		;
+	n = qconsume(p->oq, p->ostage, Stagesize);
+	if(n <= 0)
+		return 0;
+	p->op = p->ostage;
+	p->oe = p->ostage + n;
+	return n;
 }

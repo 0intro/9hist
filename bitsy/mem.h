@@ -53,7 +53,7 @@
 #define	TSTKTOP		(USTKTOP-USTKSIZE)	/* end of new stack in sysexec */
 #define TSTKSIZ 	100
 #define MACHADDR	(KZERO+0x00001000)
-#define	EVECTORS	0xFFFF0000		/* base of exception vectors (also mapped to KZERO) */
+#define	EVECTORS	0xFFFF0000		/* virt base of exception vectors */
 
 #define KSTACK		(16*1024)		/* Size of kernel stack */
 
