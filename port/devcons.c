@@ -144,7 +144,7 @@ getc(IOQ *q)
 int
 sprint(char *s, char *fmt, ...)
 {
-	return donprint(s, s+PRINTSIZE, fmt, (&fmt+1)) - s;
+	return doprint(s, s+PRINTSIZE, fmt, (&fmt+1)) - s;
 }
 
 int
@@ -153,7 +153,7 @@ print(char *fmt, ...)
 	char buf[PRINTSIZE];
 	int n;
 
-	n = donprint(buf, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
+	n = doprint(buf, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
 	putstrn(buf, n);
 	return n;
 }
@@ -165,7 +165,7 @@ panic(char *fmt, ...)
 	int n;
 
 	strcpy(buf, "panic: ");
-	n = donprint(buf+7, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
+	n = doprint(buf+7, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
 	buf[n] = '\n';
 	putstrn(buf, n+1);
 	exit();
@@ -182,7 +182,7 @@ pprint(char *fmt, ...)
 	if(c==0 || (c->mode!=OWRITE && c->mode!=ORDWR))
 		return 0;
 	n = sprint(buf, "%s %d: ", u->p->text, u->p->pid);
-	n = donprint(buf+n, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
+	n = doprint(buf+n, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
 	qlock(c);
 	if(waserror()){
 		qunlock(c);

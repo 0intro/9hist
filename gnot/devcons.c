@@ -117,7 +117,7 @@ getc(IOQ *q)
 int
 sprint(char *s, char *fmt, ...)
 {
-	return donprint(s, s+PRINTSIZE, fmt, (&fmt+1)) - s;
+	return doprint(s, s+PRINTSIZE, fmt, (&fmt+1)) - s;
 }
 
 int
@@ -126,7 +126,7 @@ print(char *fmt, ...)
 	char buf[PRINTSIZE];
 	int n;
 
-	n = donprint(buf, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
+	n = doprint(buf, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
 	putstrn(buf, n);
 	return n;
 }
@@ -138,7 +138,7 @@ panic(char *fmt, ...)
 	int n;
 
 	strcpy(buf, "panic: ");
-	n = donprint(buf+7, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
+	n = doprint(buf+7, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
 	buf[n] = '\n';
 	putstrn(buf, n+1);
 	exit();
@@ -154,7 +154,7 @@ pprint(char *fmt, ...)
 	if(c==0 || (c->mode!=OWRITE && c->mode!=ORDWR))
 		return 0;
 	n = sprint(buf, "%s %d: ", u->p->text, u->p->pid);
-	n = donprint(buf+n, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
+	n = doprint(buf+n, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
 	qlock(c);
 	if(waserror()){
 		qunlock(c);
@@ -274,7 +274,7 @@ ulong	boottime;		/* seconds since epoch at boot */
 long
 seconds(void)
 {
-	return boottime + MACHP(0)->ticks*MS2HZ/1000;
+	return boottime + TK2SEC(MACHP(0)->ticks);
 }
 
 int
@@ -451,7 +451,7 @@ consread(Chan *c, void *buf, long n)
 			l = u->p->time[i];
 			if(i == TReal)
 				l = MACHP(0)->ticks - l;
-			l *= MS2HZ;
+			l = TK2MS(l);
 			readnum(0, tmp+NUMSIZE*i, NUMSIZE, l, NUMSIZE);
 		}
 		memcpy(buf, tmp+k, n);
@@ -467,7 +467,7 @@ consread(Chan *c, void *buf, long n)
 		return readnum(c->offset, buf, n, u->p->parentpid, NUMSIZE);
 
 	case Qtime:
-		return readnum(c->offset, buf, n, boottime+MACHP(0)->ticks/(1000/MS2HZ), 12);
+		return readnum(c->offset, buf, n, boottime+TK2SEC(MACHP(0)->ticks), 12);
 
 	case Quser:
 		return readstr(c->offset, buf, n, u->p->pgrp->user);

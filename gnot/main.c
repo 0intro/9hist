@@ -275,7 +275,7 @@ confinit(void)
 	conf.npage1 = (bank[1]*1024*1024)/BY2PG;
 	conf.base1 = 16*1024*1024;
 	conf.npage = conf.npage0+conf.npage1;
-	mul = 1 + (conf.npage0>0);
+	mul = 1 + (conf.npage1>0);
 	conf.nproc = 32*mul;
 	conf.npgrp = 15*mul;
 	conf.npte = 700*mul;
@@ -296,5 +296,5 @@ confinit(void)
 	conf.nblock = 12 * conf.nstream;
 	conf.nsrv = 32*mul;
 	conf.nbitmap = 100*mul;
-	conf.nbitbyte = 300*1024*mul;
+	conf.nbitbyte = 300*1024*mul*mul;
 }

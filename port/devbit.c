@@ -346,7 +346,7 @@ bitwrite(Chan *c, void *va, long n)
 	long m, v, miny, maxy, t, x, y;
 	ulong l, nw, ws;
 	int off;
-	Point pt;
+	Point pt, pt1, pt2;
 	Rectangle rect;
 	Cursor curs;
 	Bitmap *bp, *src, *dst;
@@ -519,6 +519,41 @@ bitwrite(Chan *c, void *va, long n)
 			p += 1;
 			break;
 
+		case 'l':
+			/*
+			 * line segment
+			 *
+			 *	'l'		1
+			 *	id		2
+			 *	pt1		8
+			 *	pt2		8
+			 *	value		1
+			 *	code		2
+			 */
+			if(m < 22)
+				error(0, Ebadblt);
+			v = GSHORT(p+1);
+			dst = &bit.map[v];
+			if(v>=conf.nbitmap || dst->ldepth<0)
+				error(0, Ebadbitmap);
+			off = 0;
+			if(v == 0)
+				off = 1;
+			pt1.x = GLONG(p+3);
+			pt1.y = GLONG(p+7);
+			pt2.x = GLONG(p+11);
+			pt2.y = GLONG(p+15);
+			t = p[19];
+			v = GSHORT(p+20);
+			if(off)
+				cursoroff(1);
+			segment(dst, pt1, pt2, t, v);
+			if(off)
+				cursoron(1);
+			m -= 22;
+			p += 22;
+			break;
+
 		case 's':
 			/*
 			 * string
@@ -526,7 +561,7 @@ bitwrite(Chan *c, void *va, long n)
 			 *	id		2
 			 *	pt		8
 			 *	font id		2
-			 *	fcode		2
+			 *	code		2
 			 * 	string		n (null terminated)
 			 */
 			if(m < 16)

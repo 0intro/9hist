@@ -245,9 +245,9 @@ boot(int ask)
 	close(fd);
 
 	if(ask)
-		execl("/mips/init", "init", 0);
-	else
 		execl("/mips/init", "init", "-m", 0);
+	else
+		execl("/mips/init", "init", 0);
 	error("/mips/init");
 }
 

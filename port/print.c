@@ -60,7 +60,7 @@ fmtinstall(char c, int (*f)(Op*))
 }
 
 char*
-donprint(char *p, char *ep, char *fmt, void *argp)
+doprint(char *p, char *ep, char *fmt, void *argp)
 {
 	int sf1, c;
 	Op o;

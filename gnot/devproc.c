@@ -333,7 +333,7 @@ procread(Chan *c, void *va, long n)
 			l = p->time[i];
 			if(i == TReal)
 				l = MACHP(0)->ticks - l;
-			l *= MS2HZ;
+			l = TK2MS(l);
 			readnum(0, statbuf+2*NAMELEN+12+NUMSIZE*i, NUMSIZE, l, NUMSIZE);
 		}
 		memcpy(a, statbuf+c->offset, n);
