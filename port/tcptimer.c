@@ -19,6 +19,7 @@ tcpackproc(void *junk)
 	Timer *t,*tp;
 	Timer *expired;
 
+	USED(junk);
 	for(;;) {
 		expired = 0;
 

@@ -131,6 +131,7 @@ newipifc(uchar ptcl, void (*recvfun)(Ipconv *, Block *bp),
 static void
 ipetherclose(Queue *q)
 {
+	USED(q);
 }
 
 void

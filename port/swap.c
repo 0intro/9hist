@@ -103,6 +103,7 @@ pager(void *junk)
 	Segment *s;
 	int i;
 
+	USED(junk);
 	p = proctab(0);
 	ep = &p[conf.nproc];
 	for(;;) {
@@ -320,6 +321,7 @@ executeio(void)
 int
 needpages(void *p)
 {
+	USED(p);
 	return palloc.freecount < HIGHWATER+MAXHEADROOM;
 }
 

@@ -1,7 +1,4 @@
 
-#define	SET(x)	x = 0
-#define	USED(x)	if(x)
-
 Alarm*	alarm(int, void (*)(Alarm*), void*);
 void	alarminit(void);
 Block*	allocb(ulong);
@@ -123,11 +120,14 @@ void	mouseclock(void);
 int	mouseputc(IOQ*, int);
 Chan*	namec(char*, int, int, ulong);
 void	nameok(char*);
+void	netdisown(Network*, int);
 int	netgen(Chan*, void*, int, int, Dir*);
 Chan*	netopen(Chan*, int, Network*);
+int	netown(Network*, int, char*, int);
 long	netread(Chan*, void*, long, ulong, Network*);
 void	netstat(Chan*, char*, Network*);
 int	netwalk(Chan*, char*, Network*);
+void	netwstat(Chan*, char*, Network*);
 Alarm*	newalarm(void);
 Chan*	newchan(void);
 Egrp*	newegrp(void);
@@ -224,7 +224,7 @@ int	streamparse(char*, Block*);
 long	streamread(Chan*, void*, long);
 void	streamstat(Chan*, char*, char*);
 long	streamwrite(Chan*, void*, long, int);
-long	stringread(Chan*, void*, long, char*, ulong);
+long	stringread(void*, long, char*, ulong);
 void	swapinit(void);
 long	syscall(Ureg*);
 void	tcpinit(void);

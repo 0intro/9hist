@@ -264,6 +264,7 @@ struct Ipconv
 {
 	QLock;				/* Ref count lock */
 	int 	ref;
+	int	index;
 	Qinfo	*stproto;		/* Stream protocol for this device */
 	Ipaddr	dst;			/* Destination from connect */
 	Port	psrc;			/* Source port */
@@ -450,7 +451,7 @@ int	seq_gt(int, int);
 void	appendb(Block **, Block *);
 Ipconv	*ip_conn(Ipconv *, Port, Port, Ipaddr dest, char proto);
 void	ipmkdir(Qinfo *, Dirtab *, Ipconv *);
-Ipconv	*ipincoming(Ipconv*);
+Ipconv	*ipincoming(Ipconv*, Ipconv*);
 int	inb_window(Tcpctl *, int);
 Block	*htontcp(Tcp *, Block *, Tcphdr *);
 void	start_timer(Timer *);

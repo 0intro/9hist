@@ -48,8 +48,11 @@ ipinitifc(Ipifc *ifc, Qinfo *stproto, Ipconv *cp)
 {
 	int j;
 
-	for(j = 0; j < conf.ip; j++, cp++)
+	for(j = 0; j < conf.ip; j++, cp++){
+		cp->index = j;
 		cp->stproto = stproto;
+		cp->ipinterface = ifc;
+	}
 	ifc->net.name = stproto->name;
 	ifc->net.nconv = conf.ip;
 	ifc->net.devp = &ipinfo;
@@ -57,6 +60,7 @@ ipinitifc(Ipifc *ifc, Qinfo *stproto, Ipconv *cp)
 	if(stproto != &udpinfo)
 		ifc->net.listen = iplisten;
 	ifc->net.clone = ipclonecon;
+	ifc->net.prot = (Netprot *)ialloc(sizeof(Netprot) * conf.ip, 0);
 	ifc->net.ninfo = 3;
 	ifc->net.info[0].name = "remote";
 	ifc->net.info[0].fill = ipremotefill;
@@ -136,16 +140,17 @@ ipclonecon(Chan *c)
 	Ipconv *new, *base;
 
 	base = ipconv[c->dev];
-	new = ipincoming(base);
+	new = ipincoming(base, 0);
 	if(new == 0)
 		error(Enodev);
 	return new - base;
 }
 
 Ipconv *
-ipincoming(Ipconv *base)
+ipincoming(Ipconv *base, Ipconv *from)
 {
 	Ipconv *new, *etab;
+	Ipifc *ifc;
 
 	etab = &base[conf.ip];
 	for(new = base; new < etab; new++) {
@@ -156,6 +161,13 @@ ipincoming(Ipconv *base)
 				qunlock(new);
 				continue;
 			}
+			ifc = base->ipinterface;
+			if(from)
+				/* copy ownership from listening channel */
+				netown(&ifc->net, new->index, ifc->net.prot[from->index].owner, 0);
+			else
+				/* current user becomes owner */
+				netown(&ifc->net, new->index, u->p->user, 0);
 			new->ref = 1;
 			qunlock(new);
 			return new;
@@ -167,19 +179,21 @@ ipincoming(Ipconv *base)
 void
 ipcreate(Chan *c, char *name, int omode, ulong perm)
 {
+	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
 void
 ipremove(Chan *c)
 {
+	USED(c);
 	error(Eperm);
 }
 
 void
 ipwstat(Chan *c, char *dp)
 {
-	error(Eperm);
+	netwstat(c, dp, &ipifc[c->dev].net);
 }
 
 void
@@ -432,6 +446,7 @@ udpstclose(Queue *q)
 	ipc->ref = 0;
 
 	closeipifc(ipc->ipinterface);
+	netdisown(&ipc->ipinterface->net, ipc->index);
 }
 
 void
@@ -654,6 +669,7 @@ tcpstclose(Queue *q)
 		qunlock(tcb);
 		break;
 	}
+	netdisown(&s->ipinterface->net, s->index);
 }
 
 

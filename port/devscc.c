@@ -524,17 +524,17 @@ loop:
 
 enum{
 	Qdir=		0,
-	Qtty0=		STREAMQID(0, Sdataqid),
-	Qtty0ctl=	STREAMQID(0, Sctlqid),
-	Qtty1=		STREAMQID(1, Sdataqid),
-	Qtty1ctl=	STREAMQID(1, Sctlqid),
+	Qeia0=		STREAMQID(0, Sdataqid),
+	Qeia0ctl=	STREAMQID(0, Sctlqid),
+	Qeia1=		STREAMQID(1, Sdataqid),
+	Qeia1ctl=	STREAMQID(1, Sctlqid),
 };
 
 Dirtab sccdir[]={
-	"tty0",		{Qtty0},	0,		0666,
-	"tty0ctl",	{Qtty0ctl},	0,		0666,
-	"tty1",		{Qtty1},	0,		0666,
-	"tty1ctl",	{Qtty1ctl},	0,		0666,
+	"eia0",		{Qeia0},	0,		0666,
+	"eia0ctl",	{Qeia0ctl},	0,		0666,
+	"eia1",		{Qeia1},	0,		0666,
+	"eia1ctl",	{Qeia1ctl},	0,		0666,
 };
 
 #define	NSCC	(sizeof sccdir/sizeof(Dirtab))
@@ -585,11 +585,11 @@ void
 sccstat(Chan *c, char *dp)
 {
 	switch(c->qid.path){
-	case Qtty0:
-		streamstat(c, dp, "tty0");
+	case Qeia0:
+		streamstat(c, dp, "eia0");
 		break;
-	case Qtty1:
-		streamstat(c, dp, "tty1");
+	case Qeia1:
+		streamstat(c, dp, "eia1");
 		break;
 	default:
 		devstat(c, dp, sccdir, NSCC, devgen);
@@ -603,12 +603,12 @@ sccopen(Chan *c, int omode)
 	SCC *sp;
 
 	switch(c->qid.path){
-	case Qtty0:
-	case Qtty0ctl:
+	case Qeia0:
+	case Qeia0ctl:
 		sp = &scc[0];
 		break;
-	case Qtty1:
-	case Qtty1ctl:
+	case Qeia1:
+	case Qeia1ctl:
 		sp = &scc[1];
 		break;
 	default:
@@ -627,6 +627,7 @@ sccopen(Chan *c, int omode)
 void
 scccreate(Chan *c, char *name, int omode, ulong perm)
 {
+	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
@@ -645,10 +646,10 @@ sccread(Chan *c, void *buf, long n, ulong offset)
 	switch(c->qid.path&~CHDIR){
 	case Qdir:
 		return devdirread(c, buf, n, sccdir, NSCC, devgen);
-	case Qtty1ctl:
+	case Qeia1ctl:
 		++sp;
 		/* fall through */
-	case Qtty0ctl:
+	case Qeia0ctl:
 		if(offset)
 			return 0;
 		s = splhi();
@@ -668,11 +669,13 @@ sccwrite(Chan *c, void *va, long n, ulong offset)
 void
 sccremove(Chan *c)
 {
+	USED(c);
 	error(Eperm);
 }
 
 void
 sccwstat(Chan *c, char *dp)
 {
+	USED(c, dp);
 	error(Eperm);
 }

@@ -84,24 +84,28 @@ dupopen(Chan *c, int omode)
 void
 dupcreate(Chan *c, char *name, int omode, ulong perm)
 {
+	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
 void
 dupremove(Chan *c)
 {
+	USED(c);
 	error(Eperm);
 }
 
 void
 dupwstat(Chan *c, char *dp)
 {
+	USED(c);
 	error(Egreg);
 }
 
 void
 dupclose(Chan *c)
 {
+	USED(c);
 }
 
 long
@@ -117,5 +121,6 @@ dupread(Chan *c, void *va, long n, ulong offset)
 long
 dupwrite(Chan *c, void *va, long n, ulong offset)
 {
+	USED(c, va, n, offset);
 	panic("dupwrite");
 }

@@ -384,9 +384,6 @@ postnote(Proc *p, int dolock, char *n, int flag)
 	Rendez *r;
 	Proc *d, **l;
 
-	SET(k);
-	USED(k);
-
 	if(dolock)
 		lock(&p->debug);
 
@@ -396,10 +393,11 @@ postnote(Proc *p, int dolock, char *n, int flag)
 		errors("noted process disappeared");
 	}
 
+	SET(k);
 	if(u == 0 || p != u->p){
 		k = kmap(p->upage);
 		up = (User*)VA(k);
-	}else 
+	}else
 		up = u;
 
 

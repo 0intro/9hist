@@ -608,13 +608,13 @@ loop:
 
 enum{
 	Qdir=		0,
-	Qtty0=		STREAMQID(0, Sdataqid),
-	Qtty0ctl=	STREAMQID(0, Sctlqid),
+	Qeia0=		STREAMQID(0, Sdataqid),
+	Qeia0ctl=	STREAMQID(0, Sctlqid),
 };
 
 Dirtab duartdir[]={
-	"tty0",		{Qtty0},	0,		0666,
-	"tty0ctl",	{Qtty0ctl},	0,		0666,
+	"eia0",		{Qeia0},	0,		0666,
+	"eia0ctl",	{Qeia0ctl},	0,		0666,
 };
 
 #define	NDuartport	(sizeof duartdir/sizeof(Dirtab))
@@ -658,8 +658,8 @@ void
 duartstat(Chan *c, char *dp)
 {
 	switch(c->qid.path){
-	case Qtty0:
-		streamstat(c, dp, "tty0");
+	case Qeia0:
+		streamstat(c, dp, "eia0");
 		break;
 	default:
 		devstat(c, dp, duartdir, NDuartport, devgen);
@@ -673,8 +673,8 @@ duartopen(Chan *c, int omode)
 	Duartport *dp;
 
 	switch(c->qid.path){
-	case Qtty0:
-	case Qtty0ctl:
+	case Qeia0:
+	case Qeia0ctl:
 		dp = &duartport[0];
 		break;
 	default:
@@ -712,7 +712,7 @@ duartread(Chan *c, void *buf, long n, ulong offset)
 	switch(c->qid.path&~CHDIR){
 	case Qdir:
 		return devdirread(c, buf, n, duartdir, NDuartport, devgen);
-	case Qtty0ctl:
+	case Qeia0ctl:
 		if(offset)
 			return 0;
 		s = splhi();

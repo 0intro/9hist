@@ -40,8 +40,6 @@ main(void)
 	alarminit();
 	chandevreset();
 	streaminit();
-/*	serviceinit(); /**/
-/*	filsysinit(); /**/
 	pageinit();
 	userinit();
 	clockinit();

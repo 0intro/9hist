@@ -13,7 +13,7 @@ delay(int ms)
 	ulong t, *p;
 	int i;
 
-	ms *= 2000;	/* experimentally determined */
+	ms *= 3000;	/* experimentally determined */
 	for(i=0; i<ms; i++)
 		;
 }

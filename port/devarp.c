@@ -147,18 +147,21 @@ arpopen(Chan *c, int omode)
 void
 arpcreate(Chan *c, char *name, int omode, ulong perm)
 {
+	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
 void
 arpremove(Chan *c)
 {
+	USED(c);
 	error(Eperm);
 }
 
 void
 arpwstat(Chan *c, char *dp)
 {
+	USED(c, dp);
 	error(Eperm);
 }
 
@@ -212,7 +215,7 @@ arpread(Chan *c, void *a, long n, ulong offset)
 		sprint(buf, "hits: %d miss: %d failed: %d\n",
 			arpstats.hit, arpstats.miss, arpstats.failed);
 
-		return stringread(c, a, n, buf, offset);
+		return stringread(a, n, buf, offset);
 	default:
 		n=0;
 		break;
@@ -255,10 +258,10 @@ arpwrite(Chan *c, char *a, long n, ulong offset)
 	return n;
 }
 
-
 void
 arpopn(Queue *q, Stream *s)
 {
+	USED(q, s);
 }
 
 void

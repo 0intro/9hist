@@ -87,11 +87,10 @@ clock(Ureg *ur)
 			else
 				sched();
 		}
-		/*
-		 *  notes for processes that might be spinning
-		 *  in user mode.
-		 */
-		if((ur->cs&0xffff) == UESEL)
-			notify(ur);
+		if((ur->cs&0xffff) == UESEL){
+			spllo();		/* in case we fault */
+			(*(ulong*)(USTKTOP-BY2WD)) += TK2MS(1);	/* profiling clock */
+			splhi();
+		}
 	}
 }

@@ -696,8 +696,8 @@ duartreset(void)
 	nduartport = 2*conf.nmach;
 	duartdir = ialloc(nduartport*2*sizeof(Dirtab), 0);
 	for(i = 0; i < nduartport; i++){
-		sprint(duartdir[2*i].name, "tty%d", i);
-		sprint(duartdir[2*i+1].name, "tty%dctl", i);
+		sprint(duartdir[2*i].name, "eia%d", i);
+		sprint(duartdir[2*i+1].name, "eia%dctl", i);
 		duartdir[2*i].length = duartdir[2*i+1].length = 0;
 		duartdir[2*i].perm = duartdir[2*i+1].perm = 0666;
 		duartdir[2*i].qid.path = STREAMQID(i, Sdataqid);
@@ -745,7 +745,7 @@ duartstat(Chan *c, char *dp)
 {
 	switch(STREAMTYPE(c->qid.path)){
 	case Sdataqid:
-		streamstat(c, dp, "tty0");
+		streamstat(c, dp, "eia0");
 		break;
 	default:
 		devstat(c, dp, duartdir, 2*nduartport, devgen);
@@ -779,7 +779,7 @@ duartopen(Chan *c, int omode)
 void
 duartcreate(Chan *c, char *name, int omode, ulong perm)
 {
-	errors("only God can create a tty");
+	errors(Eperm);
 }
 
 void

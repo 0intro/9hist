@@ -150,12 +150,14 @@ srvremove(Chan *c)
 void
 srvwstat(Chan *c, char *dp)
 {
+	USED(c, dp);
 	error(Egreg);
 }
 
 void
 srvclose(Chan *c)
 {
+	USED(c);
 }
 
 long

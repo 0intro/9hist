@@ -244,24 +244,28 @@ iprouteopen(Chan *c, int omode)
 void
 iproutecreate(Chan *c, char *name, int omode, ulong perm)
 {
+	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
 void
 iprouteremove(Chan *c)
 {
+	USED(c);
 	error(Eperm);
 }
 
 void
 iproutewstat(Chan *c, char *dp)
 {
+	USED(c, dp);
 	error(Eperm);
 }
 
 void
 iprouteclose(Chan *c)
 {
+	USED(c);
 }
 
 #define IPR_ENTRYLEN 54

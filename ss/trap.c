@@ -414,7 +414,7 @@ setregisters(Ureg *xp, char *pureg, char *uva, int n)
 {
 	ulong psr;
 
-	status = xp->psr;
+	psr = xp->psr;
 	memmove(pureg, uva, n);
 	xp->psr = psr;
 }

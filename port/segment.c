@@ -418,6 +418,7 @@ segattach(Proc *p, ulong attr, char *name, ulong va, ulong len)
 	ulong newtop;
 	int i, sno;
 
+	USED(p);
 	if(va&KZERO)					/* BUG: Only ok for now */
 		errors("bad virtual address");
 

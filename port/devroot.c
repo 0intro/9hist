@@ -101,6 +101,7 @@ rootopen(Chan *c, int omode)
 void	 
 rootcreate(Chan *c, char *name, int omode, ulong perm)
 {
+	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
@@ -110,6 +111,7 @@ rootcreate(Chan *c, char *name, int omode, ulong perm)
 void	 
 rootclose(Chan *c)
 {
+	USED(c);
 }
 
 #include	"boot.h"
@@ -156,17 +158,20 @@ rootread(Chan *c, void *buf, long n, ulong offset)
 long	 
 rootwrite(Chan *c, void *buf, long n, ulong offset)
 {
+	USED(c, buf, n, offset);
 	error(Egreg);
 }
 
 void	 
 rootremove(Chan *c)
 {
+	USED(c);
 	error(Eperm);
 }
 
 void	 
 rootwstat(Chan *c, char *dp)
 {
+	USED(c, dp);
 	error(Eperm);
 }

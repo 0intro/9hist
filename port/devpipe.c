@@ -193,18 +193,21 @@ pipeopen(Chan *c, int omode)
 void
 pipecreate(Chan *c, char *name, int omode, ulong perm)
 {
+	USED(c, name, omode, perm);
 	error(Egreg);
 }
 
 void
 piperemove(Chan *c)
 {
+	USED(c);
 	error(Egreg);
 }
 
 void
 pipewstat(Chan *c, char *db)
 {
+	USED(c, db);
 	error(Eperm);
 }
 

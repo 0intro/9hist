@@ -137,8 +137,6 @@ dumpregs(Ureg *ur)
 	l = &ur->r0;
 	for(i=0; i<sizeof regname/sizeof(char*); i+=2, l+=2)
 		print("%s\t%.8lux\t%s\t%.8lux\n", regname[i], l[0], regname[i+1], l[1]);
-
-	dumpstack();
 }
 
 /*

@@ -468,10 +468,15 @@ TEXT	putsegm(SB), $0
 	MOVW	R8, (R7, 3)
 	RETURN
 
+/*
+ * in savefpregs and restfpregs, incoming R7 points to doubleword
+ * below where F0 will go; doubleword align in and backfill FSR
+ */
 TEXT	savefpregs(SB), $0
 
-	MOVW	FSR, 0(R7)
-	ADD	$4, R7		/* assumes R7 is now MOVD-aligned */
+	ADD	$8, R7
+	ANDN	$7, R7		/* now MOVD-aligned */
+	MOVW	FSR, -4(R7)
 
 	MOVD	F0, (0*4)(R7)
 	MOVD	F2, (2*4)(R7)
@@ -501,10 +506,11 @@ TEXT	restfpregs(SB), $0
 	OR	$PSREF, R8
 	MOVW	R8, PSR
 
-	NOOP
+	ADD	$8, R7
+	ANDN	$7, R7		/* now MOVD-aligned */
+	OR	R0, R0
 
-	MOVW	(R7), FSR
-	ADD	$4, R7		/* assumes R7 is now MOVD-aligned */
+	MOVW	-4(R7), FSR
 
 	MOVD	(0*4)(R7), F0
 	MOVD	(2*4)(R7), F2

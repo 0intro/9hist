@@ -86,24 +86,28 @@ kprofopen(Chan *c, int omode)
 void
 kprofcreate(Chan *c, char *name, int omode, ulong perm)
 {
+	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
 void
 kprofremove(Chan *c)
 {
+	USED(c);
 	error(Eperm);
 }
 
 void
 kprofwstat(Chan *c, char *dp)
 {
+	USED(c, dp);
 	error(Eperm);
 }
 
 void
 kprofclose(Chan *c)
 {
+	USED(c);
 }
 
 long

@@ -25,6 +25,11 @@ netgen(Chan *c, void *vp, int ntab, int i, Dir *dp)
 	Qid q;
 	char buf[32];
 	Network *np = vp;
+	int t;
+	int id;
+	Netprot *p;
+	int perm;
+	char *o;
 
 	q.vers = 0;
 
@@ -34,7 +39,7 @@ netgen(Chan *c, void *vp, int ntab, int i, Dir *dp)
 		case 0:
 			q.path = CHDIR | Q2nd;
 			strcpy(buf, np->name);
-			devdir(c, q, buf, 0, eve, 0666, dp);
+			devdir(c, q, buf, 0, eve, 0555, dp);
 			break;
 		default:
 			return -1;
@@ -43,41 +48,51 @@ netgen(Chan *c, void *vp, int ntab, int i, Dir *dp)
 	}
 
 	/* second level contains clone plus all the conversations */
-	if(STREAMTYPE(c->qid.path) == Q2nd){
+	t = STREAMTYPE(c->qid.path);
+	if(t == Q2nd || t == Qclone){
 		if(i == 0){
 			q.path = Qclone;
 			devdir(c, q, "clone", 0, eve, 0666, dp);
 		}else if(i <= np->nconv){
 			q.path = CHDIR|STREAMQID(i-1, Q3rd);
 			sprint(buf, "%d", i-1);
-			devdir(c, q, buf, 0, eve, 0666, dp);
+			devdir(c, q, buf, 0, eve, 0555, dp);
 		}else
 			return -1;
 		return 1;
 	}
 
 	/* third level depends on the number of info files */
+	id = STREAMID(c->qid.path);
+	p = &np->prot[id];
+	if(*p->owner){
+		o = p->owner;
+		perm = p->mode;
+	} else {
+		o = eve;
+		perm = 0666;
+	}
 	switch(i){
 	case 0:
 		q.path = STREAMQID(STREAMID(c->qid.path), Sdataqid);
-		devdir(c, q, "data", 0, eve, 0666, dp);
+		devdir(c, q, "data", 0, o, perm, dp);
 		break;
 	case 1:
 		q.path = STREAMQID(STREAMID(c->qid.path), Sctlqid);
-		devdir(c, q, "ctl", 0, eve, 0666, dp);
+		devdir(c, q, "ctl", 0, o, perm, dp);
 		break;
 	case 2:
 		if(np->listen == 0)
 			return 0;
 		q.path = STREAMQID(STREAMID(c->qid.path), Qlisten);
-		devdir(c, q, "listen", 0, eve, 0666, dp);
+		devdir(c, q, "listen", 0, o, perm, dp);
 		break;
 	default:
 		i -= 3;
 		if(i >= np->ninfo)
 			return -1;
 		q.path = STREAMQID(STREAMID(c->qid.path), Qinf+i);
-		devdir(c, q, np->info[i].name, 0, eve, 0666, dp);
+		devdir(c, q, np->info[i].name, 0, eve, 0444, dp);
 		break;
 	}
 	return 1;
@@ -117,7 +132,7 @@ netstat(Chan *c, char *db, Network *np)
 			 * here, which is good because we've lost the name by now.
 			 */
 			if(c->qid.path & CHDIR){
-				devdir(c, c->qid, ".", 0L, eve, CHDIR|0700, &dir);
+				devdir(c, c->qid, ".", 0L, eve, CHDIR|0555, &dir);
 				convD2M(&dir, db);
 				return;
 			}
@@ -134,10 +149,28 @@ netstat(Chan *c, char *db, Network *np)
 		}
 }
 
+void
+netwstat(Chan *c, char *db, Network *np)
+{
+	Dir dir;
+	Netprot *p;
+
+	p = &np->prot[STREAMID(c->qid.path)];
+	lock(np);
+	if(strncmp(p->owner, u->p->user, NAMELEN)){
+		unlock(np);
+		error(Eperm);
+	}
+	convM2D(db, &dir);
+	strncpy(p->owner, dir.uid, NAMELEN);
+	p->mode = dir.mode;
+	unlock(np);
+}
+
 Chan *
 netopen(Chan *c, int omode, Network *np)
 {
-	int conv;
+	int id;
 
 	if(c->qid.path & CHDIR){
 		if(omode != OREAD)
@@ -146,14 +179,19 @@ netopen(Chan *c, int omode, Network *np)
 		switch(STREAMTYPE(c->qid.path)){
 		case Sdataqid:
 		case Sctlqid:
+			id = STREAMID(c->qid.path);
+			if(netown(np, id, u->p->user, omode&7) < 0)
+				error(Eperm);
 			break;
 		case Qlisten:
-			conv = (*np->listen)(c);
-			c->qid.path = STREAMQID(conv, Sctlqid);
+			streamopen(c, np->devp);
+			id = (*np->listen)(c);
+			streamclose(c);
+			c->qid.path = STREAMQID(id, Sctlqid);
 			break;
 		case Qclone:
-			conv = (*np->clone)(c);
-			c->qid.path = STREAMQID(conv, Sctlqid);
+			id = (*np->clone)(c);
+			c->qid.path = STREAMQID(id, Sctlqid);
 			break;
 		default:
 			if(omode != OREAD)
@@ -191,5 +229,44 @@ netread(Chan *c, void *a, long n, ulong offset, Network *np)
 		error(Ebadusefd);
 
 	(*np->info[t-Qinf].fill)(c, buf, sizeof(buf));
-	return stringread(c, a, n, buf, offset);
+	return stringread(a, n, buf, offset);
+}
+
+int
+netown(Network *np, int id, char *o, int omode)
+{
+	static int access[] = { 0400, 0200, 0600, 0100 };
+	Netprot *p;
+	int mode;
+	int t;
+
+	p = &np->prot[id];
+	lock(np);
+	if(*p->owner){
+		if(strncmp(o, p->owner, NAMELEN) == 0)	/* User */
+			mode = p->mode;
+		else if(strncmp(o, eve, NAMELEN) == 0)	/* Bootes is group */
+			mode = p->mode<<3;
+		else
+			mode = p->mode<<6;		/* Other */
+
+		t = access[omode&3];
+		if((t & mode) == t){
+			unlock(np);
+			return 0;
+		} else {
+			unlock(np);
+			return -1;
+		}
+	}
+	strncpy(p->owner, o, NAMELEN);
+	np->prot[id].mode = 0660;
+	unlock(np);
+	return 0;
+}
+
+void
+netdisown(Network *np, int id)
+{
+	*np->prot[id].owner = 0;
 }

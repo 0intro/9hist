@@ -303,6 +303,7 @@ nonetopen(Chan *c, int omode)
 void	 
 nonetcreate(Chan *c, char *name, int omode, ulong perm)
 {
+	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
@@ -345,15 +346,15 @@ nonetread(Chan *c, void *a, long n, ulong offset)
 	cp = &noifc[c->dev].conv[STREAMID(c->qid.path)];
 	switch(t){
 	case Nraddrqid:
-		return stringread(c, a, n, cp->raddr, offset);
+		return stringread(a, n, cp->raddr, offset);
 	case Naddrqid:
-		return stringread(c, a, n, cp->addr, offset);
+		return stringread(a, n, cp->addr, offset);
 	case Nruserqid:
-		return stringread(c, a, n, cp->ruser, offset);
+		return stringread(a, n, cp->ruser, offset);
 	case Nstatsqid:
 		sprint(stats, "sent: %d\nrcved: %d\nrexmit: %d\nbad: %d\n",
 			cp->sent, cp->rcvd, cp->rexmit, cp->bad);
-		return stringread(c, a, n, stats, offset);
+		return stringread(a, n, stats, offset);
 	}
 	error(Eperm);
 }
@@ -401,12 +402,14 @@ nonetwrite(Chan *c, void *a, long n, ulong offset)
 void	 
 nonetremove(Chan *c)
 {
+	USED(c);
 	error(Eperm);
 }
 
 void	 
 nonetwstat(Chan *c, char *dp)
 {
+	USED(c, dp);
 	error(Eperm);
 }
 
@@ -1418,6 +1421,7 @@ nokproc(void *arg)
 	Noconv *cp, *ep;
 	Nomsg *mp;
 
+	USED(arg);
 	cp = 0;
 	ifc = 0;
 	if(waserror()){

@@ -578,6 +578,7 @@ confinit(void)
 	conf.nnoifc = 1;
 	conf.nnoconv = 32;
 	conf.nurp = 25;
+	conf.dkif = 1;
 	conf.nqueue = 5 * conf.nstream;
 	conf.nblock = 10 * conf.nstream;
 	conf.ipif = 8;
@@ -593,7 +594,6 @@ confinit(void)
 
 	conf.copymode = 1;		/* copy on reference */
 	conf.cntrlp = 1;
-	conf.dkif = 2;
 }
 
 /*

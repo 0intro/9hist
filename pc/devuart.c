@@ -557,17 +557,17 @@ uartkproc(void *a)
 
 enum{
 	Qdir=		0,
-	Qtty0=		STREAMQID(0, Sdataqid),
-	Qtty0ctl=	STREAMQID(0, Sctlqid),
-	Qtty1=		STREAMQID(1, Sdataqid),
-	Qtty1ctl=	STREAMQID(1, Sctlqid),
+	Qeia0=		STREAMQID(0, Sdataqid),
+	Qeia0ctl=	STREAMQID(0, Sctlqid),
+	Qeia1=		STREAMQID(1, Sdataqid),
+	Qeia1ctl=	STREAMQID(1, Sctlqid),
 };
 
 Dirtab uartdir[]={
-	"tty0",		{Qtty0},	0,		0666,
-	"tty0ctl",	{Qtty0ctl},	0,		0666,
-	"tty1",		{Qtty1},	0,		0666,
-	"tty1ctl",	{Qtty1ctl},	0,		0666,
+	"eia0",		{Qeia0},	0,		0666,
+	"eia0ctl",	{Qeia0ctl},	0,		0666,
+	"eia1",		{Qeia1},	0,		0666,
+	"eia1ctl",	{Qeia1ctl},	0,		0666,
 };
 
 #define	NUart	(sizeof uartdir/sizeof(Dirtab))
@@ -618,11 +618,11 @@ void
 uartstat(Chan *c, char *dp)
 {
 	switch(c->qid.path){
-	case Qtty0:
-		streamstat(c, dp, "tty0");
+	case Qeia0:
+		streamstat(c, dp, "eia0");
 		break;
-	case Qtty1:
-		streamstat(c, dp, "tty1");
+	case Qeia1:
+		streamstat(c, dp, "eia1");
 		break;
 	default:
 		devstat(c, dp, uartdir, NUart, devgen);
@@ -636,12 +636,12 @@ uartopen(Chan *c, int omode)
 	Uart *up;
 
 	switch(c->qid.path){
-	case Qtty0:
-	case Qtty0ctl:
+	case Qeia0:
+	case Qeia0ctl:
 		up = &uart[0];
 		break;
-	case Qtty1:
-	case Qtty1ctl:
+	case Qeia1:
+	case Qeia1ctl:
 		up = &uart[1];
 		break;
 	default:
@@ -676,8 +676,8 @@ uartread(Chan *c, void *buf, long n, ulong offset)
 	switch(c->qid.path&~CHDIR){
 	case Qdir:
 		return devdirread(c, buf, n, uartdir, NUart, devgen);
-	case Qtty1ctl:
-	case Qtty0ctl:
+	case Qeia1ctl:
+	case Qeia0ctl:
 		return 0;
 	}
 	return streamread(c, buf, n);

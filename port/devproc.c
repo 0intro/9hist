@@ -189,12 +189,14 @@ procopen(Chan *c, int omode)
 void
 proccreate(Chan *c, char *name, int omode, ulong perm)
 {
+	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
 void
 procremove(Chan *c)
 {
+	USED(c);
 	error(Eperm);
 }
 
@@ -221,6 +223,7 @@ procwstat(Chan *c, char *db)
 void
 procclose(Chan * c)
 {
+	USED(c);
 }
 
 long

@@ -21,6 +21,7 @@ sysr1(ulong *arg)
 long
 sysfork(ulong *arg)
 {
+	USED(arg);
 	return rfork(Forkfd);
 }
 
@@ -393,6 +394,7 @@ shargs(char *s, int n, char **ap)
 int
 return0(void *a)
 {
+	USED(a);
 	return 0;
 }
 
@@ -443,6 +445,7 @@ syswait(ulong *arg)
 long
 sysdeath(ulong *arg)
 {
+	USED(arg);
 	pprint("deprecated system call");
 	pexit("Suicide", 0);
 }
@@ -500,6 +503,7 @@ sysforkpgrp(ulong *arg)
 long
 sysnotify(ulong *arg)
 {
+	USED(arg);
 	if(arg[0] != 0)
 		validaddr(arg[0], sizeof(ulong), 0);
 	u->notify = (int(*)(void*, char*))(arg[0]);
@@ -509,6 +513,7 @@ sysnotify(ulong *arg)
 long
 sysnoted(ulong *arg)
 {
+	USED(arg);
 	if(u->notified == 0)
 		error(Egreg);
 	return 0;

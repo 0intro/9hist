@@ -15,13 +15,16 @@ typedef struct Dtq Dtq;
 enum
 {
 	Qdir	= 0,
-	Qhead,
+	Qhead	= 0,
 	Qclone,
+	Qoffset,
 };
 
 enum
 {
 	Nmux	=	20,
+	Maxmsg	=	(32*1024),
+	Flowctl	=	Maxmsg/2,
 };
 
 struct Dtq
@@ -31,6 +34,9 @@ struct Dtq
 	Lock	listlk;
 	Block	*list;
 	int	ndelim;
+	int	nb;
+	QLock	flow;
+	Rendez	flowr;
 };
 
 struct Con
@@ -44,6 +50,7 @@ struct Con
 struct Mux
 {
 	Ref;
+	int	type;
 	char	name[NAMELEN];
 	char	user[NAMELEN];
 	ulong	perm;
@@ -56,9 +63,12 @@ Mux	*muxes;
 
 ulong	muxreadq(Mux *m, Dtq*, char*, ulong);
 void	muxwriteq(Dtq*, char*, long, int, int);
+void	muxflow(Dtq*);
+Block  *muxclq(Dtq *q);
 
 #define NMUX(c)		(((c->qid.path>>8)&0xffff)-1)
-#define NQID(m, c)	(Qid){(m)<<8|(c)&0xff, 0}
+#define NQID(m, c)	(Qid){(m+1)<<8|(c)&0xff, 0}
+#define DQID(m)		(Qid){(m+1)<<8|CHDIR, 0}
 #define NCON(c)		(c->qid.path&0xff)
 
 int
@@ -68,6 +78,7 @@ muxgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 	int mux;
 	Con *cm;
 	char buf[10];
+	int nq;
 
 	if(c->qid.path == CHDIR) {
 		if(s >= conf.nmux)
@@ -76,7 +87,7 @@ muxgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 		m = &muxes[s];
 		if(m->name[0] == '\0')
 			return 0;
-		devdir(c, (Qid){CHDIR|((s+1)<<8), 0}, m->name, 0, m->user, m->perm, dp);
+		devdir(c, DQID(s), m->name, 0, m->user, m->perm, dp);
 		return 1;
 	}
 
@@ -85,19 +96,21 @@ muxgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 
 	mux = NMUX(c);
 	m = &muxes[mux];
+
 	switch(s) {
 	case Qhead:
-		devdir(c, NQID(mux, Qhead), "head", m->headq.ndelim, m->user, m->perm, dp);
+		devdir(c, NQID(mux, Qhead), "head", m->headq.nb, m->user, m->perm, dp);
 		break;
 	case Qclone:
 		devdir(c, NQID(mux, Qclone), "clone", 0, m->user, m->perm, dp);
 		break;
 	default:
-		cm = &m->connects[s-Qclone];
+		nq = s-Qoffset;
+		cm = &m->connects[nq];
 		if(cm->ref == 0)
 			return 0;
-		sprint(buf, "%d", s-Qclone);
-		devdir(c, NQID(mux, Qclone+s), buf, cm->conq.ndelim, cm->user, cm->perm, dp);
+		sprint(buf, "%d", nq);
+		devdir(c, NQID(mux, Qoffset+s), buf, cm->conq.nb, cm->user, cm->perm, dp);
 		break;
 	}
 	return 1;
@@ -120,7 +133,6 @@ muxattach(char *spec)
 	Chan *c;
 
 	c = devattach('m', spec);
-
 	c->qid.path = CHDIR|Qdir;
 	return c;
 }
@@ -136,8 +148,11 @@ muxclone(Chan *c, Chan *nc)
 
 	m = &muxes[NMUX(c)];
 	ncon = NCON(c);
-
 	c = devclone(c, nc);
+
+	if((c->flag&COPEN) == 0)
+		return c;
+
 	switch(ncon) {
 	case Qhead:
 		incref(m);
@@ -146,7 +161,7 @@ muxclone(Chan *c, Chan *nc)
 		break;
 	default:
 		lock(m);
-		m->connects[ncon].ref++;
+		m->connects[ncon-Qoffset].ref++;
 		m->ref++;
 		unlock(m);
 	}
@@ -175,19 +190,29 @@ muxopen(Chan *c, int omode)
 {
 	Mux *m;
 	Con *cm, *e;
+	int mux, ok;
 
 	if(c->qid.path & CHDIR)
 		return devopen(c, omode, 0, 0, muxgen);
 
-	m = &muxes[NMUX(c)];
+	mux = NMUX(c);
+	m = &muxes[mux];
 	switch(NCON(c)) {
 	case Qhead:
+		c = devopen(c, omode, 0, 0, muxgen);
+		lock(m);
 		if(m->headopen)
+			ok = 0;
+		else {
+			ok = 1;
+			m->headopen = 1;
+			m->ref++;
+		}
+		unlock(m);
+		if(!ok) {
+			c->flag &= ~COPEN;
 			errors("server channel busy");
-
-		c = devopen(c, omode, 0, 0,muxgen);
-		m->headopen = 1;
-		incref(m);
+		}
 		break;
 	case Qclone:
 		if(m->headopen == 0)
@@ -203,18 +228,20 @@ muxopen(Chan *c, int omode)
 			unlock(m);
 			errors("all cannels busy");
 		}
-		cm->ref++;
+		cm->ref = 1;
 		m->ref++;
 		unlock(m);
 		strncpy(cm->user, u->p->user, NAMELEN);
 		cm->perm = 0600;
-		c->qid = NQID(NMUX(c), cm-m->connects);
+		c->qid = NQID(mux, (cm-m->connects)+Qoffset);
 		break;
 	default:
-		c = devopen(c, omode, 0, 0,muxgen);
-		cm = &m->connects[NCON(c)];
+		c = devopen(c, omode, 0, 0, muxgen);
+		cm = &m->connects[NCON(c)-Qoffset];
+		lock(m);
 		cm->ref++;
-		incref(m);
+		m->ref++;
+		unlock(m);
 		break;
 	}
 
@@ -234,7 +261,7 @@ muxcreate(Chan *c, char *name, int omode, ulong perm)
 
 	m = muxes;
 	for(e = &m[conf.nmux]; m < e; m++) {
-		if(m->ref == 0 && canlock(m)) {
+		if(m->name[0] == '\0' && m->ref == 0 && canlock(m)) {
 			if(m->ref != 0) {
 				unlock(m);
 				continue;
@@ -291,7 +318,6 @@ muxwstat(Chan *c, char *db)
 	d.mode &= 0777;
 	if(c->qid.path&CHDIR) {
 		strcpy(m->name, d.name);
-		strcpy(m->user, d.uid);
 		m->perm = d.mode;
 		return;
 	}
@@ -303,7 +329,7 @@ muxwstat(Chan *c, char *db)
 		m->perm = d.mode;
 		break;
 	default:
-		m->connects[nc].perm = d.mode;
+		m->connects[nc-Qoffset].perm = d.mode;
 		break;
 	}
 }
@@ -316,7 +342,10 @@ muxclose(Chan *c)
 	Mux *m;
 	int nc;
 
-	if(c->qid.path == CHDIR)
+	if(c->qid.path&CHDIR)
+		return;
+
+	if((c->flag&COPEN) == 0)
 		return;
 
 	m = &muxes[NMUX(c)];
@@ -331,26 +360,19 @@ muxclose(Chan *c)
 			if(cm->ref)
 				wakeup(&cm->conq.r);
 		lock(m);
-		if(--m->ref == 0) {
-			f1 = m->headq.list;
-			m->headq.list = 0;
-		}
+		if(--m->ref == 0)
+			f1 = muxclq(&m->headq);
 		unlock(m);
 		break;
 	case Qclone:
-		panic("muxclose");
+		break;
 	default:
 		lock(m);
-		cm = &m->connects[nc];
-		if(--cm->ref == 0) {
-			f1 = cm->conq.list;
-			cm->conq.list = 0;		
-		}
-		if(--m->ref == 0) {
-			m->name[0] = '\0';
-			f2 = m->headq.list;
-			m->headq.list = 0;
-		}
+		cm = &m->connects[nc-Qoffset];
+		if(--cm->ref == 0)
+			f1 = muxclq(&cm->conq);
+		if(--m->ref == 0)
+			f1 = muxclq(&m->headq);
 		unlock(m);
 	}
 	if(f1)
@@ -377,7 +399,7 @@ muxread(Chan *c, void *va, long n, ulong offset)
 	case Qclone:
 		error(Eperm);
 	default:
-		cm = &m->connects[NCON(c)];
+		cm = &m->connects[NCON(c)-Qoffset];
 		bread = muxreadq(m, &cm->conq, va, n);
 		break;
 	}
@@ -390,7 +412,7 @@ muxhdr(Mux *m, char *h)
 {
 	Con *c;
 
-	if(h[0] != Tmux)
+	if(h[0] != Tmux || h[2] != 0)
 		error(Ebadmsg);
 
 	c = &m->connects[h[1]];
@@ -410,10 +432,13 @@ muxwrite(Chan *c, void *va, long n, ulong offset)
 	Con *cm;
 	int muxid;
 	Block *f, *bp;
-	char *a, hdr[2];
+	char *a, hdr[3];
 
-	if(c->qid.path & CHDIR)
+	if(c->qid.path&CHDIR)
 		error(Eisdir);
+
+	if(n > Maxmsg)
+		error(Etoobig);
 
 	m = &muxes[NMUX(c)];
 	switch(NCON(c)) {
@@ -435,7 +460,7 @@ muxwrite(Chan *c, void *va, long n, ulong offset)
 		if(m->headopen == 0)
 			error(Ehungup);
 
-		muxid = NCON(c);
+		muxid = NCON(c)-Qoffset;
 		muxwriteq(&m->headq, va, n, 1, muxid);
 		break;
 	}
@@ -447,7 +472,7 @@ void
 muxwriteq(Dtq *q, char *va, long n, int addid, int muxid)
 {
 	Block *head, *tail, *bp;
-	ulong l;
+	ulong l, bwrite;
 
 	head = 0;
 	SET(tail);
@@ -457,13 +482,26 @@ muxwriteq(Dtq *q, char *va, long n, int addid, int muxid)
 		nexterror();
 	}
 
+	bwrite = 0;
 	while(n) {
-		bp = allocb(n);
-		bp->type = M_DATA;
+		if(addid) {
+			bp = allocb(n+3);
+			bp->wptr[0] = Tmux;
+			bp->wptr[1] = muxid;
+			bp->wptr[2] = 0;
+			bp->wptr += 3;
+			bwrite += 3;
+			addid = 0;
+		}
+		else
+			bp = allocb(n);
 		l = bp->lim - bp->wptr;
+		if(l > n)
+			l = n;
 		memmove(bp->wptr, va, l);	/* Interruptable thru fault */
 		va += l;
 		bp->wptr += l;
+		bwrite += l;
 		n -= l;
 		if(head == 0)
 			head = bp;
@@ -473,16 +511,45 @@ muxwriteq(Dtq *q, char *va, long n, int addid, int muxid)
 	}
 	poperror();
 	tail->flags |= S_DELIM;
+
+	if(q->nb > Flowctl)
+		muxflow(q);
+
 	lock(&q->listlk);
-	for(tail = q->list; tail->next; tail = tail->next)
-		;
-	tail->next = head;
+	if(q->list == 0)
+		q->list = head;
+	else {
+		for(tail = q->list; tail->next; tail = tail->next)
+			;
+		tail->next = head;
+	}
 	q->ndelim++;
+	q->nb += bwrite;
 	unlock(&q->listlk);
+	wakeup(&q->r);
 }
 
 int
-nodata(Dtq *q)
+muxflw(Dtq *q)
+{
+	return q->nb < Flowctl;
+}
+
+void
+muxflow(Dtq *q)
+{
+	qlock(&q->flow);
+	if(waserror()) {
+		qunlock(&q->flow);
+		nexterror();
+	}
+	sleep(&q->flowr, muxflw, q);
+	poperror();
+	qunlock(&q->flow);
+}
+
+int
+havedata(Dtq *q)
 {
 	int n;
 
@@ -496,7 +563,7 @@ ulong
 muxreadq(Mux *m, Dtq *q, char *va, ulong n)
 {
 	int l, nread, gotdelim;
-	Block *bp;
+	Block *bp, *f1;
 
 	qlock(&q->rd);
 	bp = 0;
@@ -510,41 +577,63 @@ muxreadq(Mux *m, Dtq *q, char *va, ulong n)
 		unlock(&q->listlk);
 		nexterror();
 	}
-	while(nodata(q))
-		sleep(&q->r, nodata, q);
-
-	if(m->headopen == 0)
-		errors("server shutdown");
+	while(!havedata(q)) {
+		sleep(&q->r, havedata, q);
+		if(m->headopen == 0)
+			errors("server shutdown");
+	}
 
 	nread = 0;
+	f1 = 0;
+	lock(&q->listlk);
 	while(n) {
-		lock(&q->listlk);
 		bp = q->list;
 		q->list = bp->next;
 		bp->next = 0;
 		unlock(&q->listlk);
-
+		if(f1) {
+			freeb(f1);
+			f1 = 0;
+		}
 		l = BLEN(bp);
-		if(n < l)
-			n = l;
+		if(l > n)
+			l = n;
 		memmove(va, bp->rptr, l);	/* Interruptable thru fault */
 		va += l;
 		bp->rptr += l;
 		n -= l;
-		gotdelim = bp->flags&S_DELIM;
+		nread += l;
 		lock(&q->listlk);
-		if(bp->rptr != bp->wptr) {
+		if(bp->rptr == bp->wptr)
+			f1 = bp;
+		else {
 			bp->next = q->list;
 			q->list = bp;
 		}
-		else if(gotdelim)
+		if(bp->flags&S_DELIM) {
 			q->ndelim--;
-		unlock(&q->listlk);
-		if(bp->rptr == bp->wptr)
-			freeb(bp);
-		if(gotdelim)
 			break;
+		}
 	}
+	q->nb -= nread;
+	unlock(&q->listlk);
+	if(f1)
+		freeb(f1);
 	qunlock(&q->rd);
+	poperror();
+	if(q->nb < Flowctl)
+		wakeup(&q->flowr);
 	return nread;
+}
+
+Block *
+muxclq(Dtq *q)
+{
+	Block *f;
+
+	f = q->list;
+	q->list = 0;
+	q->nb = 0;
+	q->ndelim = 0;
+	return f;
 }

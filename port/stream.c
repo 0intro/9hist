@@ -689,6 +689,7 @@ prepend(Block *bp, int n)
 void
 nullput(Queue *q, Block *bp)
 {
+	USED(q);
 	if(bp->type == M_HANGUP)
 		freeb(bp);
 	else {
@@ -1065,7 +1066,7 @@ stputq(Queue *q, Block *bp)
  *  read a string.  update the offset accordingly.
  */
 long
-stringread(Chan *c, uchar *buf, long n, char *str, ulong offset)
+stringread(uchar *buf, long n, char *str, ulong offset)
 {
 	long i;
 
@@ -1092,7 +1093,7 @@ streamctlread(Chan *c, void *vbuf, long n)
 	s = c->stream;
 	if(STREAMTYPE(c->qid.path) == Sctlqid){
 		sprint(num, "%d", s->id);
-		return stringread(c, buf, n, num, c->offset);
+		return stringread(buf, n, num, c->offset);
 	} else {
 		if(CHDIR & c->qid.path)
 			return devdirread(c, vbuf, n, 0, 0, streamgen);

@@ -223,6 +223,7 @@ newpage(int clear, Segment **s, ulong va)
 int
 ispages(void *p)
 {
+	USED(p);
 	return palloc.freecount >= HIGHWATER;
 }
 

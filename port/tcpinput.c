@@ -81,7 +81,7 @@ tcp_input(Ipconv *ipc, Block *bp)
 				if(s->curlog >= s->backlog)
 					goto clear;
 
-				new = ipincoming(ipc);
+				new = ipincoming(ipc, s);
 				if(new == 0)
 					goto clear;
 

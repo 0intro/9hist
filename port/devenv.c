@@ -196,12 +196,14 @@ envremove(Chan *c)
 void
 envwstat(Chan *c, char *db)
 {
+	USED(c, db);
 	error(Eperm);
 }
 
 void
 envclose(Chan * c)
 {
+	USED(c);
 }
 
 void

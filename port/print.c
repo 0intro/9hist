@@ -240,6 +240,8 @@ dconv(Op *op)
 static	int
 hconv(Op *op)
 {
+
+	USED(op);
 	return -FSHORT;
 }
 
@@ -247,6 +249,7 @@ static	int
 lconv(Op *op)
 {
 
+	USED(op);
 	return -FLONG;
 }
 
@@ -268,6 +271,8 @@ sconv(Op *op)
 static	int
 uconv(Op *op)
 {
+
+	USED(op);
 	return -FUNSIGN;
 }
 

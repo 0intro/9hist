@@ -240,18 +240,21 @@ bitopen(Chan *c, int omode)
 void
 bitcreate(Chan *c, char *name, int omode, ulong perm)
 {
+	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
 void
 bitremove(Chan *c)
 {
+	USED(c);
 	error(Eperm);
 }
 
 void
 bitwstat(Chan *c, char *db)
 {
+	USED(c, db);
 	error(Eperm);
 }
 
@@ -1246,6 +1249,7 @@ mouseputc(IOQ *q, int c)
 	static int nb;
 	static uchar b[] = {0, 4, 2, 6, 1, 5, 3, 7};
 
+	USED(q);
 	if((c&0xF0) == 0x80)
 		nb=0;
 	msg[nb] = c;
@@ -1264,5 +1268,6 @@ mouseputc(IOQ *q, int c)
 int
 mousechanged(void *m)
 {
+	USED(m);
 	return mouse.changed;
 }

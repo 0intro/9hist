@@ -10,13 +10,14 @@ typedef struct Env	Env;
 typedef struct Envval	Envval;
 typedef struct Etherpkt	Etherpkt;
 typedef struct Fgrp	Fgrp;
-typedef struct Ifile	Ifile;
 typedef struct Image	Image;
 typedef struct IOQ	IOQ;
 typedef struct KIOQ	KIOQ;
 typedef struct List	List;
 typedef struct Mount	Mount;
 typedef struct Mhead	Mhead;
+typedef struct Netinf	Netinf;
+typedef struct Netprot	Netprot;
 typedef struct Network	Network;
 typedef struct Note	Note;
 typedef struct Page	Page;
@@ -622,13 +623,19 @@ enum {
 /*
  *  a multiplexed network
  */
-struct Ifile
+struct Netprot
+{
+	ulong	mode;
+	char	owner[NAMELEN];
+};
+struct Netinf
 {
 	char	*name;
 	void	(*fill)(Chan*, char*, int);
 };
 struct Network
 {
+	Lock;
 	char	*name;
 	int	nconv;			/* max # of conversations */
 	Qinfo	*devp;			/* device end line disc */
@@ -636,7 +643,8 @@ struct Network
 	int	(*listen)(Chan*);
 	int	(*clone)(Chan*);
 	int	ninfo;
-	Ifile	info[5];
+	Netinf	info[5];
+	Netprot	*prot;			/* protections */
 };
 #define MAJOR(q) ((q) >> 8)
 #define MINOR(q) ((q) & 0xff)

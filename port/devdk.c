@@ -14,6 +14,10 @@ typedef struct Dkmsg	Dkmsg;
 typedef struct Line	Line;
 typedef struct Dk	Dk;
 
+enum {
+	Maxlines = 256,
+};
+
 /*
  *  types of possible dkcalls
  */
@@ -117,6 +121,7 @@ struct Dk {
 	int	closeall;	/* set when we receive a closeall message */
 	Rendez	closeallr;	/* wait here for a closeall */
 	Network	net;
+	Netprot *prot;
 
 	Block	*alloc;
 };
@@ -256,7 +261,7 @@ dkalloc(char *name, int ncsc, int lines)
 	/*
 	 *  allocate memory for line structures
 	 */
-	n = sizeof(Line*)*(dp->lines+1);
+	n = sizeof(Line*)*(dp->lines);
 	bp = allocb(n);
 	if(bp->lim - bp->base < n){
 		unlock(&dklock);
@@ -267,7 +272,7 @@ dkalloc(char *name, int ncsc, int lines)
 	bp->wptr += n;
 	dp->alloc = bp;
 	n = sizeof(Line)*(dp->lines);
-	for(i = 0; i <= dp->lines; i++){
+	for(i = 0; i < dp->lines; i++){
 		if(bp->lim - bp->wptr < sizeof(Line)){
 			bp = allocb(sizeof(Line)*n);
 			memset(bp->base, 0, bp->lim-bp->base);
@@ -284,11 +289,12 @@ dkalloc(char *name, int ncsc, int lines)
 	 *  fill in the network structure
 	 */
 	dp->net.name = dp->name;
-	dp->net.nconv = dp->lines+1;
+	dp->net.nconv = dp->lines;
 	dp->net.devp = &dkinfo;
 	dp->net.protop = &urpinfo;
 	dp->net.listen = dklisten;
 	dp->net.clone = dkcloneline;
+	dp->net.prot = dp->prot;
 	dp->net.ninfo = 3;
 	dp->net.info[0].name = "addr";
 	dp->net.info[0].fill = dkfilladdr;
@@ -530,6 +536,7 @@ dkstclose(Queue *q)
 out:
 	qlock(lp);
 	lp->rq = 0;
+	netdisown(&dp->net, lp->lineno);
 	qunlock(lp);
 }
 
@@ -695,7 +702,10 @@ dkmuxconfig(Queue *q, Block *bp)
 void
 dkreset(void)
 {
+	int i;
 	dk = (Dk*)ialloc(conf.dkif*sizeof(Dk), 0);
+	for(i = 0; i < conf.dkif; i++)
+		dk[i].prot = (Netprot*)ialloc(conf.nurp*sizeof(Netprot), 0);
 	newqinfo(&dkmuxinfo);
 }
 
@@ -827,7 +837,7 @@ dkremove(Chan *c)
 void	 
 dkwstat(Chan *c, char *dp)
 {
-	error(Eperm);
+	netwstat(c, dp, &dk[c->dev].net);
 }
 
 /*
@@ -852,6 +862,10 @@ dkcloneline(Chan *c)
 				continue;
 			}
 			lp->state = Lopened;
+
+			/* current user becomes owner */
+			netown(&dp->net, lp->lineno, u->p->user, 0);
+
 			qunlock(lp);
 			return lp->lineno;
 		}
@@ -1125,9 +1139,11 @@ dklisten(Chan *c)
 	Line *lp;
 	Dk *dp;
 	int n, lineno, ts, window;
+	int from;
 	Chan *dc;
 
 	dp = &dk[c->dev];
+	from = STREAMID(c->qid.path);
 
 	/*
 	 *  open the data file
@@ -1270,6 +1286,10 @@ dklisten(Chan *c)
 
 		lp->timestamp = ts;
 		lp->state = Lconnected;
+
+		/* listener becomes owner */
+		netown(&dp->net, lp->lineno, dp->prot[from].owner, 0);
+
 		qunlock(lp);
 		close(dc);
 		poperror();

@@ -1,4 +1,4 @@
-/*
+/*
  * stil - Internet link protocol
  */
 #include	"u.h"
@@ -93,6 +93,7 @@ ilclose(Queue *q)
 		ic->state = Ilclosed;
 		break;
 	}
+	netdisown(&s->ipinterface->net, s->index);
 }
 
 void
@@ -256,7 +257,7 @@ ilrcvmsg(Ipconv *ipc, Block *bp)
 		if(s->ilctl.state == Illistening)
 		if(s->pdst == 0)
 		if(s->dst == 0) {
-			new = ipincoming(ipc);
+			new = ipincoming(ipc, s);
 			if(new == 0)
 				goto reset;
 

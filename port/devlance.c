@@ -94,6 +94,7 @@ typedef struct {
 	Lance;			/* host dependent lance params */
 	int	prom;		/* number of promiscuous channels */
 	Network	net;
+	Netprot	prot[Ntypes];
 
 	int	inited;
 	uchar	*lmp;		/* location of parity test */
@@ -247,6 +248,7 @@ lancestclose(Queue *q)
 	et->q = 0;
 	et->prom = 0;
 	et->inuse = 0;
+	netdisown(&l.net, et - l.e);
 	qunlock(et);
 }
 
@@ -257,6 +259,7 @@ Proc *lanceout;
 static int
 isobuf(void *x)
 {
+	USED(x);
 	return TSUCC(l.tc) != l.tl;
 }
 static void
@@ -379,6 +382,7 @@ lancereset(void)
 		l.net.listen = 0;
 		l.net.clone = lanceclonecon;
 		l.net.ninfo = 2;
+		l.net.prot = l.prot;
 		l.net.info[0].name = "stats";
 		l.net.info[0].fill = lancestatsfill;
 		l.net.info[1].name = "type";
@@ -549,6 +553,7 @@ lanceopen(Chan *c, int omode)
 void	 
 lancecreate(Chan *c, char *name, int omode, ulong perm)
 {
+	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
@@ -574,13 +579,14 @@ lancewrite(Chan *c, void *a, long n, ulong offset)
 void	 
 lanceremove(Chan *c)
 {
+	USED(c);
 	error(Eperm);
 }
 
 void	 
 lancewstat(Chan *c, char *dp)
 {
-	error(Eperm);
+	netwstat(c, dp, &l.net);
 }
 
 /*
@@ -591,12 +597,14 @@ lancestatsfill(Chan *c, char* p, int n)
 {
 	char buf[256];
 
+	USED(c);
 	sprint(buf, "in: %d\nout: %d\ncrc errs %d\noverflows: %d\nframe errs %d\nbuff errs: %d\noerrs %d\naddr: %.02x:%.02x:%.02x:%.02x:%.02x:%.02x\n",
 		l.inpackets, l.outpackets, l.crcs,
 		l.overflows, l.frames, l.buffs, l.oerrs,
 		l.ea[0], l.ea[1], l.ea[2], l.ea[3], l.ea[4], l.ea[5]);
 	strncpy(p, buf, n);
 }
+
 static void
 lancetypefill(Chan *c, char* p, int n)
 {
@@ -613,6 +621,7 @@ lanceclonecon(Chan *c)
 {
 	Ethertype *e;
 
+	USED(c);
 	for(e = l.e; e < &l.e[Ntypes]; e++){
 		qlock(e);
 		if(e->inuse || e->q){
@@ -620,6 +629,7 @@ lanceclonecon(Chan *c)
 			continue;
 		}
 		e->inuse = 1;
+		netown(&l.net, e - l.e, u->p->user, 0);
 		qunlock(e);
 		return e - l.e;
 	}
@@ -733,6 +743,8 @@ static int
 isinput(void *arg)
 {
 	Lancemem *lm = LANCEMEM;
+
+	USED(arg);
 	return l.self.first || (l.rl!=l.rc && (MPus(lm->rmr[l.rl].flags) & OWN)==0);
 }
 
@@ -747,6 +759,7 @@ lancekproc(void *arg)
 	Msg *m;
 	Block *bp;
 
+	USED(arg);
 	for(;;){
 		qlock(&l.rlock);
 		while(bp = getq(&l.self)){

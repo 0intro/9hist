@@ -273,6 +273,7 @@ kbdcr2nl(IOQ *q, int ch)
 int
 kbdputc(IOQ *q, int ch)
 {
+	USED(q);
 	echo(ch);
 	kbdq.c = ch;
 	*kbdq.in++ = ch;
@@ -455,6 +456,7 @@ consopen(Chan *c, int omode)
 void
 conscreate(Chan *c, char *name, int omode, ulong perm)
 {
+	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
@@ -770,12 +772,14 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 void
 consremove(Chan *c)
 {
+	USED(c);
 	error(Eperm);
 }
 
 void
 conswstat(Chan *c, char *dp)
 {
+	USED(c);
 	error(Eperm);
 }
 
