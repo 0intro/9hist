@@ -623,8 +623,9 @@ uartclock(void)
 					(*p->phys->rts)(p, 0);
 				p->ir = p->istage;
 			}
-			if(qproduce(p->iq, p->ir, iw-p->ir) < 0)
-				(*p->phys->rts)(p, 0);
+			if(iw > p->ir)
+				if(qproduce(p->iq, p->ir, iw-p->ir) < 0)
+					(*p->phys->rts)(p, 0);
 			p->ir = iw;
 		}
 
