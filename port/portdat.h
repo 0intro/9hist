@@ -193,6 +193,7 @@ struct Dev
 	long	(*bwrite)(Chan*, Block*, ulong);
 	void	(*remove)(Chan*);
 	void	(*wstat)(Chan*, char*);
+	void	(*power)(int);	/* power mgt: power(1) → on, power (0) → off */
 };
 
 struct Dirtab

@@ -109,6 +109,16 @@ enum
 	GPIO_32_768kHz_o=	1<<27,	/* 32.768 kHz clock (O, RTC) */
 };
 
+/*
+ *  edge argument for gpiointrenable
+ */
+enum
+{
+	GPIOrising,
+	GPIOfalling,
+	GPIOboth,
+};
+
 /* hardware registers */
 typedef struct Uartregs Uartregs;
 struct Uartregs

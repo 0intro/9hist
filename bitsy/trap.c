@@ -128,6 +128,44 @@ intrenable(int irq, void (*f)(Ureg*, void*), void* a, char *name)
 }
 
 /*
+ *  enable an interrupt on gpio line.  edge is encoded as follows
+ */
+void
+gpiointrenable(ulong bit, int edge, void (*f)(Ureg*, void*), void* a, char *name)
+{
+	int irq;
+
+	/* figure out which interrupt */
+	for(irq = 0; irq < 28; irq++)
+		if((1<<irq) & bit)
+			break;
+	if(irq >= 28)
+		panic("gpiointrenable %lux", bit);
+	if(irq > 11)
+		irq = 11;
+
+	/* it had better be input */
+	if(bit & gpioregs->direction)
+		panic(""gpiointrenable %lux of output pin", bit);
+
+	/* set edge register */
+	switch(edge){
+	case GPIOboth:
+		gpioregs->rising |= bit;
+		gpioregs->falling |= bit;
+		break;
+	case GPIOfalling:
+		gpioregs->falling |= bit;
+		break;
+	case GPIOrising:
+		gpioregs->rising |= bit;
+		break;
+	}
+
+	intrenable(irq, f, a, name);
+}
+
+/*
  *  called by trap to handle access faults
  */
 static void
@@ -196,6 +234,10 @@ trap(Ureg *ureg)
 	if(ureg->type == PsrMirq){
 		found = 0;
 		va = intrregs->icip;
+
+		/* clear any gpio edge interrupt */
+		gpioregs->irqbit = va & 0xFFF;
+
 		for(v = vctl; v != nil; v = v->next){
 			if(v->irqbit & va){
 				v->f(ureg, v->a);

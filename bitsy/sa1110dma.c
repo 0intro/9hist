@@ -115,6 +115,11 @@ dmafree(int i) {
 	dma.chan[i].intr = nil;
 }
 
+void
+dmastop(int i) {
+	dmaregs[i].dcsr_clr = 0xff;
+}
+
 ulong
 dmastart(int chan,  ulong addr, int count) {
 	ulong status, n;
@@ -194,9 +199,18 @@ dmaintr(Ureg*, void *x)
 		iprint("error, channel %d, status 0x%lux\n", i, dcsr);
 	donebit = 1<<((dcsr&1<<BIU)?DONEA:DONEB);
 	if (dcsr & donebit) {
-		regs->dcsr_clr = donebit;
+		regs->dcsr_clr = 1<<DONEA|1<<DONEB;
 		if (dma.chan[i].intr) {
 			(*dma.chan[i].intr)(dma.chan[i].param, dcsr & (1<<DONEA|1<<DONEB));
+		}
+		wakeup(&dma.chan[i].r);
+		return;
+	}
+	if (dcsr & 1<<ERROR) {
+		regs->dcsr_clr = ERROR;
+		iprint("DMA error, channel %d, status 0x%lux\n", i, dcsr);
+		if (dma.chan[i].intr) {
+			(*dma.chan[i].intr)(dma.chan[i].param, 0);
 		}
 		wakeup(&dma.chan[i].r);
 		return;

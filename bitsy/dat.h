@@ -316,7 +316,7 @@ struct Cisdat
  */
 struct PCMslot
 {
-	Ref;
+	Ref	ref;
 
 	long	memlen;		/* memory length */
 	uchar	slotno;		/* slot number */

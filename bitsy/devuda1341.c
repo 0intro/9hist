@@ -19,7 +19,7 @@
 #include	"io.h"
 #include	"sa1110dma.h"
 
-static int debug = 2;
+static int debug = 0;
 
 /*
  * GPIO based L3 bus support.
@@ -382,6 +382,12 @@ L3_read(uchar addr, uchar *data, int len)
 	return bytes;
 }
 
+void
+audiomute(int on)
+{
+	egpiobits(EGPIO_audio_mute, on);
+}
+
 static	char	Emode[]		= "illegal open mode";
 static	char	Evolume[]	= "illegal volume specifier";
 
@@ -390,7 +396,7 @@ bufinit(IOstate *b)
 {
 	int i;
 
-	if (debug) print("#A: bufinit\n");
+	if (debug) print("bufinit\n");
 	for (i = 0; i < Nbuf; i++) {
 		b->buf[i].virt = xalloc(Bufsize);
 		b->buf[i].phys = PADDR(b->buf[i].virt);
@@ -403,7 +409,7 @@ setempty(IOstate *b)
 {
 	int i;
 
-	if (debug) print("#A: setempty\n");
+	if (debug) print("setempty\n");
 	for (i = 0; i < Nbuf; i++) {
 		b->buf[i].nbytes = 0;
 	}
@@ -470,7 +476,7 @@ enable(void)
 	sspregs->control0 = 0x039f;	/* enable */
 
 	/* Enable the audio power */
-	audiopower(1);
+	egpiobits(EGPIO_audio_ic_power | EGPIO_codec_reset, 1);
 
 	/* external clock configured for 44100 samples/sec */
 	gpioregs->set	= GPIO_CLK_SET0_o;
@@ -492,15 +498,14 @@ enable(void)
 	L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data0e6, 2 );
 
 	if (debug) {
-		print("uchar	status0	= 0x%2.2ux\n", status0);
-		print("uchar	status1	= 0x%2.2ux\n", status1);
-		print("uchar	data02	= 0x%2.2ux\n", data02);
-		print("ushort	data0e2	= 0x%4.4ux\n", data0e2);
-		print("ushort	data0e4	= 0x%4.4ux\n", data0e4);
-		print("ushort	data0e6	= 0x%4.4ux\n", data0e6);
-		print("#A: audio enabled\n");
-		print("\tsspregs->control0 = 0x%lux\n", sspregs->control0);
-		print("\tsspregs->control1 = 0x%lux\n", sspregs->control1);
+		print("enable:	status0	= 0x%2.2ux\n", status0);
+		print("enable:	status1	= 0x%2.2ux\n", status1);
+		print("enable:	data02	= 0x%2.2ux\n", data02);
+		print("enable:	data0e2	= 0x%4.4ux\n", data0e2);
+		print("enable:	data0e4	= 0x%4.4ux\n", data0e4);
+		print("enable:	data0e6	= 0x%4.4ux\n", data0e6);
+		print("enable:	sspregs->control0 = 0x%lux\n", sspregs->control0);
+		print("enable:	sspregs->control1 = 0x%lux\n", sspregs->control1);
 	}
 }
 
@@ -521,7 +526,6 @@ static void
 mxvolume(void) {
 	int *left, *right;
 
-	if (debug) print("mxvolume\n");
 	if(audio.amode & Aread){
 		left = audio.livol;
 		right = audio.rivol;
@@ -540,7 +544,16 @@ mxvolume(void) {
 			L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data0e4, 2 );
 			L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data0e5, 2 );
 		}
-		
+		if (left[Vinvert]+right[Vinvert] == 0)
+			status1 &= ~0x04;
+		else
+			status1 |= 0x04;
+		L3_write(UDA1341_L3Addr | UDA1341_STATUS, (uchar*)&status1, 1);
+		if (debug) {
+			print("mxvolume:	status1	= 0x%2.2ux\n", status1);
+			print("mxvolume:	data0e4	= 0x%4.4ux\n", data0e4);
+			print("mxvolume:	data0e5	= 0x%4.4ux\n", data0e5);
+		}
 	}
 	if(audio.amode & Awrite){
 		left = audio.lovol;
@@ -562,27 +575,26 @@ mxvolume(void) {
 		else
 			data02 |= 0x10;
 		if (left[Vinvert]+right[Vinvert] == 0)
-			status1 &= ~0x14;
+			status1 &= ~0x10;
 		else
-			status1 |= 0x14;
+			status1 |= 0x10;
 		L3_write(UDA1341_L3Addr | UDA1341_STATUS, (uchar*)&status1, 1);
 		L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data00, 1);
 		L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data01, 1);
 		L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data02, 1);
 		if (debug) {
-			print("uchar	status1	= 0x%2.2ux;\n", status1);
-			print("uchar	data00	= 0x%2.2ux; /* audio out */\n", data00);
-			print("uchar	data01	= 0x%2.2ux; /* bass&treb */\n", data01);
-			print("uchar	data02	= 0x%2.2ux; /* mode */\n", data02);
+			print("mxvolume:	status1	= 0x%2.2ux\n", status1);
+			print("mxvolume:	data00	= 0x%2.2ux\n", data00);
+			print("mxvolume:	data01	= 0x%2.2ux\n", data01);
+			print("mxvolume:	data02	= 0x%2.2ux\n", data02);
 		}
 	}
-
 }
 
 static void
 outenable(void) {
 	/* turn on DAC, set output gain switch */
-	amplifierpower(1);
+	egpiobits(EGPIO_audio_power, 1);
 	audiomute(0);
 	status1 |= 0x41;
 	L3_write(UDA1341_L3Addr | UDA1341_STATUS, (uchar*)&status1, 1);
@@ -590,40 +602,62 @@ outenable(void) {
 	data00 |= 0xf;
 	L3_write(UDA1341_L3Addr | UDA1341_DATA0, (uchar*)&data00, 1);
 	if (debug) {
-		print("uchar	status1	= 0x%2.2ux\n", status1);
-		print("uchar	data00	= 0x%2.2ux\n", data00);
+		print("outenable:	status1	= 0x%2.2ux\n", status1);
+		print("outenable:	data00	= 0x%2.2ux\n", data00);
 	}
 }
 
 static void
 outdisable(void) {
+	dmastop(audio.o.dma);
 	/* turn off DAC, clear output gain switch */
 	audiomute(1);
-	amplifierpower(0);
+	egpiobits(EGPIO_audio_power, 0);
 	status1 &= ~0x41;
 	L3_write(UDA1341_L3Addr | UDA1341_STATUS, (uchar*)&status1, 1);
 	if (debug) {
-		print("uchar	status1	= 0x%2.2ux\n", status1);
+		print("outdisable:	status1	= 0x%2.2ux\n", status1);
 	}
+	egpiobits(EGPIO_audio_power, 0);
 }
 
 static void
 inenable(void) {
 	/* turn on ADC, set input gain switch */
+//	egpiobits(EGPIO_audio_power, 1);
+//	audiomute(0);
 	status1 |= 0x22;
 	L3_write(UDA1341_L3Addr | UDA1341_STATUS, (uchar*)&status1, 1);
 	if (debug) {
-		print("uchar	status1	= 0x%2.2ux\n", status1);
+		print("inenable:	status1	= 0x%2.2ux\n", status1);
 	}
 }
 
 static void
 indisable(void) {
+	dmastop(audio.i.dma);
 	/* turn off ADC, clear input gain switch */
 	status1 &= ~0x22;
 	L3_write(UDA1341_L3Addr | UDA1341_STATUS, (uchar*)&status1, 1);
 	if (debug) {
-		print("uchar	status1	= 0x%2.2ux\n", status1);
+		print("indisable:	status1	= 0x%2.2ux\n", status1);
+	}
+}
+
+static void
+disable(void) {
+	egpiobits(EGPIO_audio_ic_power | EGPIO_codec_reset, 0);
+}
+
+static void
+audiopower(int flag) {
+	if (flag) {
+		egpiobits(EGPIO_audio_power, 1);
+		egpiobits(EGPIO_audio_ic_power | EGPIO_codec_reset, 1);
+	} else {
+		/* power off */
+		egpiobits(EGPIO_audio_power, 0);
+		egpiobits(EGPIO_audio_ic_power | EGPIO_codec_reset, 0);
 	}
 }
 
@@ -649,7 +683,12 @@ sendaudio(IOstate *s) {
 			iostats.faildma++;
 			break;
 		}
-		if (debug > 1) print("#A: dmastart @%p\n", s->next);
+		if (debug) {
+			if (debug > 1)
+				print("dmastart @%p\n", s->next);
+			else
+				iprint("+");
+		}
 		s->next->nbytes = 0;
 		s->next++;
 		if (s->next == &s->buf[Nbuf])
@@ -680,7 +719,12 @@ recvaudio(IOstate *s) {
 			iostats.faildma++;
 			break;
 		}
-		if (debug > 1) print("#A: dmastart @%p\n", s->next);
+		if (debug) {
+			if (debug > 1)
+				print("dmastart @%p\n", s->next);
+			else
+				iprint("+");
+		}
 		s->next++;
 		if (s->next == &s->buf[Nbuf])
 			s->next = &s->buf[0];
@@ -692,7 +736,12 @@ static void
 audiointr(void *x, ulong ndma) {
 	IOstate *s = x;
 
-	if (debug > 1) iprint("#A: audio interrupt @%p\n", s->current);
+	if (debug) {
+		if (debug > 1)
+			iprint("#A: audio interrupt @%p\n", s->current);
+		else
+			iprint("-");
+	}
 	/* Only interrupt routine touches s->current */
 	s->current++;
 	if (s->current == &s->buf[Nbuf])
@@ -762,7 +811,7 @@ audioopen(Chan *c, int mode)
 			setempty(s);
 			s->emptying = &s->buf[Nbuf-1];
 			s->chan = c;
-			s->dma = dmaalloc(0, 0, 4, 2, SSPRecvDMA, Port4SSP, audiointr, (void*)s);
+			s->dma = dmaalloc(1, 0, 4, 2, SSPRecvDMA, Port4SSP, audiointr, (void*)s);
 		}
 		if (omode & Awrite) {
 			outenable();
@@ -777,7 +826,7 @@ audioopen(Chan *c, int mode)
 		resetlevel();
 		mxvolume();
 		qunlock(&audio);
-		if (debug) print("#A: open done\n");
+		if (debug) print("open done\n");
 		break;
 	}
 	c = devopen(c, mode, audiodir, nelem(audiodir), devgen);
@@ -829,7 +878,6 @@ audioclose(Chan *c)
 				}
 				dmawait(s->dma);
 				outdisable();
-				amplifierpower(0);
 				setempty(s);
 				dmafree(s->dma);
 				qunlock(s);
@@ -844,7 +892,6 @@ audioclose(Chan *c)
 					qunlock(s);
 					nexterror();
 				}
-				dmawait(s->dma);
 				indisable();
 				setempty(s);
 				dmafree(s->dma);
@@ -853,7 +900,7 @@ audioclose(Chan *c)
 			}
 			if (audio.amode == 0) {
 				/* turn audio off */
-				audiopower(0);
+				egpiobits(EGPIO_audio_ic_power | EGPIO_codec_reset, 0);
 			}
 			qunlock(&audio);
 			poperror();
@@ -1127,4 +1174,5 @@ Dev uda1341devtab = {
 	devbwrite,
 	devremove,
 	devwstat,
+	audiopower,
 };

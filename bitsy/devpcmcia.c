@@ -86,6 +86,9 @@ pcmciareset(void)
 	/* set timing to the default, 300 */
 	slottiming(0, 300, 300, 300, 0);
 	slottiming(1, 300, 300, 300, 0);
+
+	/* interrupt on card insertion */
+	gpiointrenable(
 }
 
 static Chan*
@@ -286,7 +289,7 @@ Dev pcmciadevtab = {
 
 /* see what's there */
 static void
-slotinfo(void)
+slotinfo(Ureg*, void*)
 {
 	ulong x = gpioregs->level;
 
@@ -295,8 +298,14 @@ slotinfo(void)
 		slot[0].occupied = 0;
 		slot[1].occupied = 0;
 	} else {
-		slot[0].occupied = (x & GPIO_CARD_IND0_i) == 0;
-		slot[1].occupied = (x & GPIO_CARD_IND1_i) == 0;
+		if(!slot[0].occupied && (x & GPIO_CARD_IND0_i)){
+			slot[0].occupied = 1;
+			slot[0].cisread = 0;
+		}
+		if(!slot[1].occupied && (x & GPIO_CARD_IND1_i)){
+			slot[1].occupied = 1;
+			slot[0].cisread = 0;
+		}
 	}
 }
 
@@ -304,21 +313,20 @@ slotinfo(void)
 static void
 increfp(PCMslot *pp)
 {
+	slotinfo(nil, nil);
 	if(incref(&pcmcia) == 1){
 		egpiobits(EGPIO_exp_nvram_power|EGPIO_exp_full_power, 1);
 		egpiobits(EGPIO_pcmcia_reset, 0);
-		delay(100);	/* time to power up */
+		delay(200);	/* time to power up */
 	}
-
 	incref(pp);
-
-	slotinfo();
+	if(pp->occupied && pp->cisread == 0)
+		pcmcisread(pp);
 }
 
 static void
 decrefp(PCMslot *pp)
 {
-	slotinfo();
 	decref(pp);
 	if(decref(&pcmcia) == 0)
 		egpiobits(EGPIO_exp_nvram_power|EGPIO_exp_full_power, 0);

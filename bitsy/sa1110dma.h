@@ -14,4 +14,5 @@ void	dmafree(int);
 ulong	dmastart(int, ulong, int);
 
 void	dmawait(int);
+void	dmastop(int);
 int		dmaidle(int);

@@ -426,24 +426,6 @@ lcdpower(int on)
 }
 
 void
-audiopower(int on)
-{
-	egpiobits(EGPIO_audio_ic_power | EGPIO_codec_reset, on);
-}
-
-void
-amplifierpower(int on)
-{
-	egpiobits(EGPIO_audio_power, on);
-}
-
-void
-audiomute(int on)
-{
-	egpiobits(EGPIO_audio_mute, on);
-}
-
-void
 flashprogpower(int on)
 {
 	egpiobits(EGPIO_prog_flash, on);
