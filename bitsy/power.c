@@ -9,31 +9,14 @@
 
 /* Power management for the bitsy */
 
-
-/*
- * Very ugly. This is just to get/set the offset field without
- * touching port/tod.c.
- */
 #define TODFREQ	1000000000LL
-extern struct {
-	ulong	cnt;
-	Lock;
-	vlong	multiplier;	// t = off + (multiplier*ticks)>>31
-	vlong	hz;		// frequency of fast clock
-	vlong	last;		// last reading of fast clock
-	vlong	off;		// offset from epoch to last
-	vlong	lasttime;	// last return value from todget
-	vlong	delta;	// add 'delta' each slow clock tick from sstart to send
-	ulong	sstart;	// ...
-	ulong	send;	// ...
-} tod;
-
 
 /* saved state during power down. 
  * it's only used up to 164/4.
  * it's only used by routines in l.s
  */
 ulong	power_state[200/4];
+
 ulong	resumeaddr[1];
 Rendez	powerr;
 ulong	powerflag = 0;	/* set to start power-off sequence */
@@ -49,18 +32,6 @@ Intrregs savedintrregs;
 #define R(p) ((Uartregs*)((p)->regs))
 
 uchar *savedtext;
-
-static vlong
-todgetoff(void)
-{
-	return tod.off;
-}
-
-static void
-todsetoff(vlong off)
-{
-	tod.off = off;
-}
 
 static void
 checkflash(void)
@@ -235,7 +206,7 @@ deepsleep(void) {
 		}
 		clkd = clockpower(1);
 		gpclkregs->r0 = 1<<0;
-		todsetoff( savedtod + clkd * TODFREQ);
+		todset(savedtod + clkd * TODFREQ, 0LL, 0);
 		resetsuspendtimer();
 		rs232power(1);
 		uartpower(1);
@@ -254,7 +225,7 @@ deepsleep(void) {
 	}
 	cacheflush();
 	delay(100);
-	savedtod = todgetoff();
+	savedtod = todget(nil);
 	power_down();
 	/* no return */
 }
