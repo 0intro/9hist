@@ -509,8 +509,6 @@ consread(Chan *c, void *buf, long n, ulong offset)
 			qunlock(&kbdq);
 			nexterror();
 		}
-		return getline((char*)buf, n);
-#ifdef asdf
 		while(!cangetc(&lineq)){
 			sleep(&kbdq.r, isbrkc, &kbdq);
 			do{
@@ -549,7 +547,6 @@ consread(Chan *c, void *buf, long n, ulong offset)
 			*cbuf++ = ch;
 			--n;
 		}
-#endif asdf
 		poperror();
 		qunlock(&kbdq);
 		return i;
