@@ -554,9 +554,6 @@ raise:
 	return;
 }
 
-int	sdataquery;	/* temporary counters for measuring */
-int	squery;
-
 void
 _ilprocess(Conv *s, Ilhdr *h, Block *bp)
 {
@@ -647,7 +644,6 @@ _ilprocess(Conv *s, Ilhdr *h, Block *bp)
 			ilpullup(s);
 			break;
 		case Ildataquery:
-sdataquery++;
 			iltimers(ic);
 			ilackto(ic, ack);
 			ic->acktime = Acktime;
@@ -661,7 +657,6 @@ sdataquery++;
 			freeblist(bp);
 			break;
 		case Ilquerey:
-squery++;
 			ilackto(ic, ack);
 			ilsendctl(s, nil, Ilstate, ic->next, ic->recvd);
 			iltimers(ic);
@@ -709,6 +704,9 @@ ilrexmit(Ilcb *ic)
 {
 	Ilhdr *h;
 	Block *nb;
+	Conv *c;
+	int x;
+	ulong id;
 
 	nb = nil;
 	qlock(&ic->ackq);
@@ -720,7 +718,6 @@ ilrexmit(Ilcb *ic)
 		return;
 
 	h = (Ilhdr*)nb->rp;
-/*	netlog(Logil, "il: rxmit %ux %d\n", nb, nhgetl(h->ilid)); */
 
 	h->iltype = Ildataquery;
 	hnputl(h->ilack, ic->recvd);
@@ -729,9 +726,26 @@ ilrexmit(Ilcb *ic)
 	if(ilcksum)
 		hnputs(h->ilsum, ptclcsum(nb, IL_IPSIZE, nhgets(h->illen)));
 
+	c = ic->conv;
+	id = nhgetl(h->ilid);
+	netlog(Logil, "il: rexmit %ud %ud: %d %d: %i %d/%d\n", id, ic->recvd,
+		ic->fasttime, ic->timeout,
+		c->raddr, c->lport, c->rport);
+
 	il.rexmit++;
 	ic->rexmit++;
-	ic->rttack = 0;		/* stop counting rtt */
+
+	/*
+	 *  Double delay estimate and half bandwidth estimate.  This is
+	 *  in keeping with van jacobson's tcp alg.
+	 */
+	ic->rttack = 0;
+	if((ic->delay>>LogAGain) < 2*Seconds)
+		ic->delay *= 2;
+	x = ic->rate>>1;
+	if(x >= (1<<LogAGain))
+		ic->rate = x;
+
 	ipoput(nb, 0, ic->conv->ttl);
 }
 
