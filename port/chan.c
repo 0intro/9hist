@@ -95,7 +95,9 @@ newchan(void)
 	c->ref = 1;
 	c->dev = 0;
 	c->offset = 0;
-	c->mnt = 0;
+	c->mh = 0;
+	c->xmh = 0;
+	c->uri = 0;
 	c->aux = 0;
 	c->mchan = 0;
 	c->path = 0;
@@ -112,6 +114,11 @@ chanfree(Chan *c)
 	if(c->session){
 		freesession(c->session);
 		c->session = 0;
+	}
+
+	if(c->mh != nil){
+		putmhead(c->mh);
+		c->mh = nil;
 	}
 
 	/*
@@ -187,10 +194,6 @@ cmount(Chan *new, Chan *old, int flag, char *spec)
 
 	pg = up->pgrp;
 	wlock(&pg->ns);
-	if(waserror()) {
-		wunlock(&pg->ns);
-		nexterror();
-	}
 
 	l = &MOUNTH(pg, old);
 	for(m = *l; m; m = m->hash) {
@@ -205,6 +208,7 @@ cmount(Chan *new, Chan *old, int flag, char *spec)
 		 *  head and add to the hash table.
 		 */
 		m = smalloc(sizeof(Mhead));
+		m->ref = 1;
 		m->from = old;
 		incref(old);
 		m->hash = *l;
@@ -217,9 +221,15 @@ cmount(Chan *new, Chan *old, int flag, char *spec)
 		if(order != MREPL)
 			m->mount = newmount(m, old, 0, 0);
 	}
+	wlock(&m->lock);
+	if(waserror()){
+		wunlock(&m->lock);
+		nexterror();
+	}
+	wunlock(&pg->ns);
 
 	nm = newmount(m, new, flag, spec);
-	if(new->mnt != 0) {
+	if(new->mh != nil && new->mh->mount != nil) {
 		/*
 		 *  copy a union when binding it onto a directory
 		 */
@@ -227,7 +237,8 @@ cmount(Chan *new, Chan *old, int flag, char *spec)
 		if(order == MREPL)
 			flg = MAFTER;
 		h = &nm->next;
-		for(um = new->mnt->next; um; um = um->next) {
+		um = new->mh->mount;
+		for(um = um->next; um; um = um->next) {
 			f = newmount(m, um->to, flg, um->spec);
 			*h = f;
 			h = &f->next;
@@ -254,7 +265,7 @@ cmount(Chan *new, Chan *old, int flag, char *spec)
 		m->mount = nm;
 	}
 
-	wunlock(&pg->ns);
+	wunlock(&m->lock);
 	poperror();
 	return nm->mountid;
 }
@@ -281,14 +292,18 @@ cunmount(Chan *mnt, Chan *mounted)
 		error(Eunmount);
 	}
 
+	wlock(&m->lock);
 	if(mounted == 0) {
 		*l = m->hash;
 		wunlock(&pg->ns);
 		mountfree(m->mount);
+		m->mount = nil;
 		cclose(m->from);
-		free(m);
+		wunlock(&m->lock);
+		putmhead(m);
 		return;
 	}
+	wunlock(&pg->ns);
 
 	p = &m->mount;
 	for(f = *p; f; f = f->next) {
@@ -298,19 +313,20 @@ cunmount(Chan *mnt, Chan *mounted)
 			*p = f->next;
 			f->next = 0;
 			mountfree(f);
-			if(m->mount == 0) {
+			if(m->mount == nil) {
 				*l = m->hash;
 				wunlock(&pg->ns);
 				cclose(m->from);
-				free(m);
+				wunlock(&m->lock);
+				putmhead(m);
 				return;
 			}
-			wunlock(&pg->ns);
+			wunlock(&m->lock);
 			return;
 		}
 		p = &f->next;
 	}
-	wunlock(&pg->ns);
+	wunlock(&m->lock);
 	error(Eunion);
 }
 
@@ -329,24 +345,34 @@ domount(Chan *c)
 
 	pg = up->pgrp;
 	rlock(&pg->ns);
-	if(waserror()) {
-		runlock(&pg->ns);
-		nexterror();
+	if(c->mh){
+		putmhead(c->mh);
+		c->mh = 0;
 	}
-	c->mnt = 0;
 
-	for(m = MOUNTH(pg, c); m; m = m->hash)
+	for(m = MOUNTH(pg, c); m; m = m->hash){
+		rlock(&m->lock);
 		if(eqchan(m->from, c, 1)) {
+			if(waserror()) {
+				runlock(&m->lock);
+				nexterror();
+			}
+			runlock(&pg->ns);
 			nc = cclone(m->mount->to, 0);
-			nc->mnt = m->mount;
-			nc->xmnt = nc->mnt;
-			nc->mountid = m->mount->mountid;
+			if(nc->mh != nil)
+				putmhead(nc->mh);
+			nc->mh = m;
+			nc->xmh = m;
+			incref(m);
 			cclose(c);
 			c = nc;
-			break;
+			poperror();
+			runlock(&m->lock);
+			return c;
 		}
+		runlock(&m->lock);
+	}
 
-	poperror();
 	runlock(&pg->ns);
 	return c;
 }
@@ -387,7 +413,6 @@ undomount(Chan *c)
 int
 walk(Chan **cp, char *name, int domnt)
 {
-	Pgrp *pg;
 	Chan *c, *ac;
 	Mount *f;
 	int dotdot;
@@ -412,20 +437,19 @@ walk(Chan **cp, char *name, int domnt)
 		return 0;
 	}
 
-	if(ac->mnt == nil)
+	if(ac->mh == nil)
 		return -1;
 
 	c = nil;
-	pg = up->pgrp;
 
-	rlock(&pg->ns);
+	rlock(&ac->mh->lock);
 	if(waserror()) {
-		runlock(&pg->ns);
+		runlock(&ac->mh->lock);
 		if(c)
 			cclose(c);
 		nexterror();
 	}
-	for(f = ac->mnt; f; f = f->next) {
+	for(f = ac->mh->mount; f; f = f->next) {
 		c = cclone(f->to, 0);
 		c->flag &= ~CCREATE;	/* not inherited through a walk */
 		if(devtab[c->type]->walk(c, name) != 0)
@@ -434,7 +458,7 @@ walk(Chan **cp, char *name, int domnt)
 		c = nil;
 	}
 	poperror();
-	runlock(&pg->ns);
+	runlock(&ac->mh->lock);
 
 	if(c == nil)
 		return -1;
@@ -442,7 +466,10 @@ walk(Chan **cp, char *name, int domnt)
 	if(dotdot)
 		c = undomount(c);
 
-	c->mnt = 0;
+	if(c->mh){
+		putmhead(c->mh);
+		c->mh = nil;
+	}
 	if(domnt) {
 		if(waserror()) {
 			cclose(c);
@@ -462,21 +489,22 @@ walk(Chan **cp, char *name, int domnt)
 Chan*
 createdir(Chan *c)
 {
-	Pgrp *pg;
 	Chan *nc;
 	Mount *f;
 
-	pg = up->pgrp;
-	rlock(&pg->ns);
+	rlock(&c->mh->lock);
 	if(waserror()) {
-		runlock(&pg->ns);
+		runlock(&c->mh->lock);
 		nexterror();
 	}
-	for(f = c->mnt; f; f = f->next) {
+	for(f = c->mh->mount; f; f = f->next) {
 		if(f->to->flag&CCREATE) {
 			nc = cclone(f->to, 0);
-			nc->mnt = f;
-			runlock(&pg->ns);
+			if(nc->mh != nil)
+				putmhead(nc->mh);
+			nc->mh = c->mh;
+			incref(c->mh);
+			runlock(&c->mh->lock);
 			poperror();
 			cclose(c);
 			return nc;
@@ -604,7 +632,6 @@ namec(char *name, int amode, int omode, ulong perm)
 		if(*name == 0)
 			isdot = 1;
 	}
-	c->mnt = nil;
 
 	if(waserror()){
 		cclose(c);
@@ -708,7 +735,7 @@ namec(char *name, int amode, int omode, ulong perm)
 		/*
 		 *  the file didn't exist, try the create
 		 */
-		if(c->mnt && !(c->flag&CCREATE))
+		if(c->mh != nil && !(c->flag&CCREATE))
 			c = createdir(c);
 
 		/*
@@ -812,4 +839,11 @@ isdir(Chan *c)
 	if(c->qid.path & CHDIR)
 		return;
 	error(Enotdir);
+}
+
+void
+putmhead(Mhead *m)
+{
+	if(decref(m) == 0)
+		free(m);
 }

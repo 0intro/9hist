@@ -150,8 +150,9 @@ struct Chan
 	Qid	qid;
 	int	fid;			/* for devmnt */
 	Path*	path;
-	Mount*	mnt;			/* mount point that derived Chan */
-	Mount*	xmnt;			/* Last mount point crossed */
+	Mhead*	mh;			/* mount point that derived Chan */
+	Mhead*	xmh;			/* Last mount point crossed */
+	int	uri;			/* union read index */
 	ulong	mountid;
 	Mntcache *mcp;			/* Mount cache pointer */
 	union {
@@ -232,6 +233,8 @@ struct Mount
 
 struct Mhead
 {
+	Ref;
+	RWlock	lock;
 	Chan*	from;			/* channel mounted upon */
 	Mount*	mount;			/* what's mounted upon it */
 	Mhead*	hash;			/* Hash chain */

@@ -82,10 +82,13 @@ closepgrp(Pgrp *p)
 	e = &p->mnthash[MNTHASH];
 	for(h = p->mnthash; h < e; h++) {
 		for(f = *h; f; f = next) {
+			wlock(&f->lock);
 			cclose(f->from);
 			mountfree(f->mount);
+			f->mount = nil;
 			next = f->hash;
-			free(f);
+			wunlock(&f->lock);
+			putmhead(f);
 		}
 	}
 	wunlock(&p->ns);
@@ -130,8 +133,10 @@ pgrpcpy(Pgrp *to, Pgrp *from)
 	for(i = 0; i < MNTHASH; i++) {
 		l = tom++;
 		for(f = from->mnthash[i]; f; f = f->hash) {
+			rlock(&f->lock);
 			mh = smalloc(sizeof(Mhead));
 			mh->from = f->from;
+			mh->ref = 1;
 			incref(mh->from);
 			*l = mh;
 			l = &mh->hash;
@@ -149,6 +154,7 @@ pgrpcpy(Pgrp *to, Pgrp *from)
 				*link = n;
 				link = &n->next;
 			}
+			runlock(&f->lock);
 		}
 	}
 	/*

@@ -11,6 +11,11 @@
 #include <memdraw.h>
 #include "screen.h"
 
+enum {
+	CursorON	= 0xC8,
+	CursorOFF	= 0x00,
+};
+
 static int
 cyber938xpageset(VGAscr*, int page)
 {
@@ -67,7 +72,7 @@ cyber938xlinear(VGAscr* scr, int* size, int* align)
 static void
 cyber938xcurdisable(VGAscr*)
 {
-	vgaxo(Crtx, 0x50, 0);
+	vgaxo(Crtx, 0x50, CursorOFF);
 }
 
 static void
@@ -94,39 +99,12 @@ cyber938xcurload(VGAscr* scr, Cursor* curs)
 		*p++ = curs->set[2*y + 1]|curs->clr[2*y + 1];
 		*p++ = 0x00;
 		*p++ = 0x00;
-	}
-	while(y < 32){
-		*p++ = 0x00;
-		*p++ = 0x00;
-		*p++ = 0x00;
-		*p++ = 0x00;
-		y++;
-	}
-
-	/*
-	 * This is clearly not what's supposed to be done, but
-	 * without a proper datasheet this is what binary search
-	 * through the display memory gives as the place for the
-	 * pattern.
-	 * Note also that it seems the cursor image offset (CRT44
-	 * and CRT45) cannot be set above 512KB.
-	 * This will do for now as the ThinkPad 560E has 1MB and
-	 * can only manage 800x600x8.
-	 */
-	p += 512*1024 - 128;
-	for(y = 0; y < 16; y++){
 		*p++ = curs->set[2*y];
 		*p++ = curs->set[2*y + 1];
 		*p++ = 0x00;
 		*p++ = 0x00;
 	}
-	while(y < 32){
-		*p++ = 0x00;
-		*p++ = 0x00;
-		*p++ = 0x00;
-		*p++ = 0x00;
-		y++;
-	}
+	memset(p, 0, (32-y)*8);
 
 	if(!islinear){
 		cyber938xpageset(scr, opage);
@@ -137,7 +115,7 @@ cyber938xcurload(VGAscr* scr, Cursor* curs)
 	 * Save the cursor hotpoint and enable the cursor.
 	 */
 	scr->offset = curs->offset;
-	vgaxo(Crtx, 0x50, 0xC8);
+	vgaxo(Crtx, 0x50, CursorON);
 }
 
 static int
@@ -195,10 +173,10 @@ cyber938xcurenable(VGAscr* scr)
 	/*
 	 * Find a place for the cursor data in display memory.
 	 */
-	storage = ((scr->gscreen->width*BY2WD*scr->gscreen->r.max.y+1023)/1024)*2;
+	storage = ((scr->gscreen->width*BY2WD*scr->gscreen->r.max.y+1023)/1024);
 	vgaxo(Crtx, 0x44, storage & 0xFF);
 	vgaxo(Crtx, 0x45, (storage>>8) & 0xFF);
-	storage *= 512;
+	storage *= 1024;
 	scr->storage = storage;
 
 	/*
@@ -209,7 +187,7 @@ cyber938xcurenable(VGAscr* scr)
 	 */
 	cyber938xcurload(scr, &arrow);
 	cyber938xcurmove(scr, ZP);
-	vgaxo(Crtx, 0x50, 0xC8);
+	vgaxo(Crtx, 0x50, CursorON);
 }
 
 VGAdev vgacyber938xdev = {

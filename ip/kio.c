@@ -69,7 +69,7 @@ kread(int fd, void *va, long n)
 			error(Etoosmall);
 	}
 
-	if(dir && c->mnt)
+	if(dir && c->mh)
 		n = unionread(c, va, n);
 	else if(devtab[c->type]->dc != L'M')
 		n = devtab[c->type]->read(c, va, n, c->offset);

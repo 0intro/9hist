@@ -203,6 +203,7 @@ int		ptpath(Path*, char*, int);
 int		pullblock(Block**, int);
 Block*		pullupblock(Block*, int);
 void		putimage(Image*);
+void		putmhead(Mhead*);
 void		putmmu(ulong, ulong, Page*);
 void		putpage(Page*);
 void		putseg(Segment*);

@@ -279,27 +279,25 @@ sysclose(ulong *arg)
 long
 unionread(Chan *c, void *va, long n)
 {
+	int i;
 	long nr;
 	Chan *nc;
-	Pgrp *pg;
+	Mhead *m;
+	Mount *mount;
 
-	pg = up->pgrp;
-	rlock(&pg->ns);
+	m = c->mh;
+	rlock(&m->lock);
+	mount = m->mount;
+	for(i = 0; mount != nil && i < c->uri; i++)
+		mount = mount->next;
 
 	for(;;) {
 		if(waserror()) {
-			runlock(&pg->ns);
+			runlock(&m->lock);
 			nexterror();
 		}
-		nc = cclone(c->mnt->to, 0);
+		nc = cclone(mount->to, 0);
 		poperror();
-
-		if(c->mountid != c->mnt->mountid) {
-			pprint("unionread: changed underfoot?\n");
-			runlock(&pg->ns);
-			cclose(nc);
-			return 0;
-		}
 
 		/* Error causes component of union to be skipped */
 		if(waserror()) {
@@ -316,18 +314,18 @@ unionread(Chan *c, void *va, long n)
 
 		cclose(nc);
 		if(nr > 0) {
-			runlock(&pg->ns);
+			runlock(&m->lock);
 			return nr;
 		}
 		/* Advance to next element */
 	next:
-		c->mnt = c->mnt->next;
-		if(c->mnt == 0)
+		c->uri++;
+		mount = mount->next;
+		if(mount == nil)
 			break;
-		c->mountid = c->mnt->mountid;
 		c->offset = 0;
 	}
-	runlock(&pg->ns);
+	runlock(&m->lock);
 	return 0;
 }
 
@@ -354,7 +352,7 @@ sysread9p(ulong *arg)
 			error(Etoosmall);
 	}
 
-	if(dir && c->mnt)
+	if(dir && c->mh)
 		n = unionread(c, (void*)arg[1], n);
 	else if(devtab[c->type]->dc != L'M')
 		n = devtab[c->type]->read(c, (void*)arg[1], n, c->offset);
@@ -394,7 +392,7 @@ sysread(ulong *arg)
 			error(Etoosmall);
 	}
 
-	if(dir && c->mnt)
+	if(dir && c->mh)
 		n = unionread(c, (void*)arg[1], n);
 	else
 		n = devtab[c->type]->read(c, (void*)arg[1], n, c->offset);
@@ -514,6 +512,7 @@ sseek(ulong *arg)
 		break;
 	}
 	*(vlong*)arg[0] = off;
+	c->uri = 0;
 	cclose(c);
 	poperror();
 }

@@ -900,7 +900,7 @@ Dev consdevtab = {
 	devwstat,
 };
 
-static struct
+struct Rb
 {
 	QLock;
 	Rendez	producer;
@@ -964,8 +964,8 @@ genrandom(void*)
 		for(;;)
 			if(++rb.randomcount > 100000)
 				break;
-			if(anyhigher())
-				sched();
+		if(anyhigher())
+			sched();
 		if(!rbnotfull(0))
 			sleep(&rb.producer, rbnotfull, 0);
 	}

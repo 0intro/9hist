@@ -893,7 +893,7 @@ recoverchan(Mnt *m, Chan *c)
 	}
 
 	/* Attach the fid onto the file server (sets c->path to #Mxxx) */
-	mattach(m, c, c->xmnt->spec);
+	mattach(m, c, c->xmh->mount->spec);
 	poperror();
 
 	/*

@@ -93,7 +93,9 @@ devclone(Chan *c, Chan *nc)
 	nc->qid = c->qid;
 	nc->offset = c->offset;
 	nc->flag = c->flag;
-	nc->mnt = c->mnt;
+	nc->mh = c->mh;
+	if(c->mh != nil)
+		incref(c->mh);
 	nc->mountid = c->mountid;
 	nc->aux = c->aux;
 	nc->mchan = c->mchan;
