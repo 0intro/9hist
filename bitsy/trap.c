@@ -88,21 +88,21 @@ trapdump(char *tag)
 void
 warnregs(Ureg *ur, char *tag)
 {
-	char buf[512];
+	char buf[1024];
 	char *e = buf+sizeof(buf);
 	char *p;
 
 	p = seprint(buf, e, "%s:\n", tag);
+	p = seprint(p, e, "type %.8lux psr %.8lux pc %.8lux\n",
+		ur->type, ur->psr, ur->pc);
 	p = seprint(p, e, "r0  0x%.8lux r1  0x%.8lux r2  0x%.8lux r3  0x%.8lux\n",
 		ur->r0, ur->r1, ur->r2, ur->r3);
 	p = seprint(p, e, "r4  0x%.8lux r5  0x%.8lux r6  0x%.8lux r7  0x%.8lux\n",
 		ur->r4, ur->r5, ur->r6, ur->r7);
 	p = seprint(p, e, "r8  0x%.8lux r9  0x%.8lux r10 0x%.8lux r11 0x%.8lux\n",
 		ur->r8, ur->r9, ur->r10, ur->r11);
-	p = seprint(p, e, "r12 0x%.8lux r13 0x%.8lux r14 0x%.8lux\n",
+	seprint(p, e, "r12 0x%.8lux r13 0x%.8lux r14 0x%.8lux\n",
 		ur->r12, ur->r13, ur->r14);
-	seprint(p, e, "type %.8lux psr %.8lux pc %.8lux\n",
-		ur->type, ur->psr, ur->pc);
 	print("%s", buf);
 }
 
@@ -267,7 +267,14 @@ trap(Ureg *ureg)
 		}
 		break;
 	case PsrMund:	/* undefined instruction */
-		panic("undefined instruction");
+		if(user){
+			sprint(buf, "sys: undefined instruction: pc 0x%lux\n",
+					ureg->pc);
+			postnote(up, 1, buf, NDebug);
+		}else{
+			warnregs(ureg, "undefined instruction");
+			panic("undefined instruction");
+		}
 		break;
 	}
 

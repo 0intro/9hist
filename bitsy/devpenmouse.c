@@ -80,9 +80,9 @@ extern	Memimage*	gscreen;
 void
 penbutton(int up, int b) {
 	if (up)
-		mouse.buttons &= ~ (1 << b);
+		mouse.buttons &= ~b;
 	else
-		mouse.buttons |= 1 << b;
+		mouse.buttons |= b;
 	penmousetrack(mouse.buttons, -1, -1);
 }
 
@@ -406,12 +406,8 @@ penmousetrack(int b, int x, int y)
 {
 	int lastb;
 
-	if(gscreen==nil)
-		return;
-
-	if (x >= 0) {
+	if (x >= 0)
 		mouse.xy = Pt(x, y);
-	}
 	lastb = mouse.buttons;
 	mouse.buttons = b;
 	mouse.counter++;
