@@ -349,7 +349,6 @@ pcmctlwrite(char *p, long n, ulong, PCMslot *sp)
 
 		/* configure device */
 		memset(&cf, 0, sizeof cf);
-		wlock(&cf);
 		kstrdup(&cf.type, cmd->f[2]);
 		cf.mem = (ulong)sp->mem;
 		cf.port = (ulong)sp->regs;
@@ -357,7 +356,6 @@ pcmctlwrite(char *p, long n, ulong, PCMslot *sp)
 		cf.interrupt = bitno(sp == slot ? GPIO_CARD_IRQ0_i : GPIO_CARD_IRQ1_i);
 		if(devtab[dtx]->config(1, p, &cf) < 0)
 			error("couldn't configure device");
-		wunlock(&cf);
 
 		wunlock(sp);
 		poperror();
@@ -365,15 +363,23 @@ pcmctlwrite(char *p, long n, ulong, PCMslot *sp)
 		/* don't let the power turn off */
 		increfp(sp);
 	}else if(strcmp(cmd->f[0], "remove") == 0){
-		wlock(sp);
-		if(waserror()){
-			wunlock(sp);
-			nexterror();
-		}
+		/* see if driver exists and is configurable */
+		if(cmd->nf != 2)
+			error(Ebadarg);
+		p = cmd->f[1];
+		if(*p++ != '#')
+			error(Ebadarg);
+		p += chartorune(&r, p);
+		dtx = devno(r, 1);
+		if(dtx < 0)
+			error("no such device type");
+		if(devtab[dtx]->config == nil)
+			error("not a dynamicly configurable device");
+		if(devtab[dtx]->config(0, p, nil) < 0)
+			error("couldn't unconfigure device");
 
-
-		wunlock(sp);
-		poperror();
+		/* let the power turn off */
+		decrefp(sp);
 	}
 	free(cmd);
 
