@@ -231,7 +231,7 @@ arpwrite(Arp *arp, char *s, int len)
 	Block *bp;
 	Arpent *a;
 	char *f[4], buf[256];
-	uchar ip[], mac[MAClen];
+	uchar ip[IPaddrlen], mac[MAClen];
 	Medium *m;
 
 	if(len == 0)

@@ -24,7 +24,7 @@ intrenable(int v, void (*f)(Ureg*, void*), void* a, int tbdf)
 	lock(&irqctllock);
 	if(irqctl[v] == 0){
 		ctl = xalloc(sizeof(Irqctl));
-		if(arch->intrenable(v, tbdf, ctl) == -1){
+		if(v >= VectorINTR && arch->intrenable(v, tbdf, ctl) == -1){
 			unlock(&irqctllock);
 			/*
 			print("intrenable: didn't find v %d, tbdf 0x%uX\n", v, tbdf);
@@ -51,12 +51,12 @@ nmienable(void)
 	/*
 	 * Hack: should be locked with NVRAM access.
 	 */
-	outb(0x70, 0x80);
+	outb(0x70, 0x80);		/* NMI latch clear */
 	outb(0x70, 0);
 
-	x = inb(0x61);
+	x = inb(0x61) & 0x07;		/* Enable NMI */
 	outb(0x61, 0x08|x);
-	outb(0x61, x & ~0x08);
+	outb(0x61, x);
 }
 
 void
@@ -99,7 +99,7 @@ trapinit(void)
 	nmienable();
 }
 
-char *excname[] = {
+static char *excname[] = {
 	[0]	"divide error",
 	[1]	"debug exception",
 	[2]	"nonmaskable interrupt",
@@ -187,10 +187,10 @@ trap(Ureg* ureg)
 		return;
 	}
 	else{
-		if(v == 2){
+		if(v == VectorNMI){
 			if(m->machno != 0)
 				for(;;);
-			nmienable();
+			//nmienable();
 		}
 		dumpregs(ureg);
 		if(v < nelem(excname))

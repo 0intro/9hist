@@ -12,6 +12,8 @@ extern int elcr;
 
 static Bus* mpbus;
 static Bus* mpbuslast;
+static int mpisabus = -1;
+static int mpeisabus = -1;
 static Apic mpapic[MaxAPICNO+1];
 static int machno2apicno[MaxAPICNO+1];	/* inverse map: machno -> APIC ID */
 static Lock mprdthilock;
@@ -93,10 +95,20 @@ mkbus(PCMPbus* p)
 	if(bus->type == BusEISA){
 		bus->po = PcmpLOW;
 		bus->el = PcmpLEVEL;
+		if(mpeisabus != -1)
+			print("mkbus: more than one EISA bus\n");
+		mpeisabus = bus->busno;
 	}
 	else if(bus->type == BusPCI){
 		bus->po = PcmpLOW;
 		bus->el = PcmpLEVEL;
+	}
+	else if(bus->type == BusISA){
+		bus->po = PcmpHIGH;
+		bus->el = PcmpEDGE;
+		if(mpisabus != -1)
+			print("mkbus: more than one ISA bus\n");
+		mpisabus = bus->busno;
 	}
 	else{
 		bus->po = PcmpHIGH;
@@ -495,30 +507,13 @@ mpintrenablex(int v, int tbdf, Irqctl* irqctl)
 	Apic *apic;
 	int bno, dno, lo, n, type;
 
-	if(v >= VectorLAPIC && v <= MaxVectorLAPIC){
-		if(v != VectorSPURIOUS)
-			irqctl->isr = lapiceoi;
-		irqctl->isintr = 1;
-		return v;
-	}
-
-	if(v < VectorPIC || v > MaxVectorPIC)
-		return 0;
-
 	/*
 	 * Find the bus, default is ISA.
 	 * There cannot be multiple ISA or EISA buses.
 	 */
-	if(tbdf == BUSUNKNOWN){
-		type = BusISA;
-		bno = 0;
-		dno = -1;
-	}
-	else{
-		type = BUSTYPE(tbdf);
-		bno = BUSBNO(tbdf);
-		dno = BUSDNO(tbdf);
-	}
+	type = BUSTYPE(tbdf);
+	bno = BUSBNO(tbdf);
+	dno = BUSDNO(tbdf);
 	n = 0;
 	for(bus = mpbus; bus; bus = bus->next){
 		if(bus->type != type)
@@ -528,21 +523,8 @@ mpintrenablex(int v, int tbdf, Irqctl* irqctl)
 		n++;
 	}
 	if(bus == 0){
-		/*
-		 * The MP configuration table on some older systems
-		 * (e.g. ASUS PCI/E-P54NP4) has an entry for the EISA bus
-		 * but none for ISA. It also has the interrupt type and
-		 * polarity set to 'default for this bus' which wouldn't
-		 * be compatible with ISA.
-		 */
-		for(bus = mpbus; bus; bus = bus->next){
-			if(bus->type == BusEISA)
-				break;
-		}
-		if(bus == 0){
-			print("ioapicirq: can't find bus type %d\n", type);
-			return -1;
-		}
+		print("ioapicirq: can't find bus type %d\n", type);
+		return -1;
 	}
 
 	/*
@@ -552,6 +534,13 @@ mpintrenablex(int v, int tbdf, Irqctl* irqctl)
 		if(bus->type == BusPCI){
 			n = (aintr->intr->irq>>2) & 0x1F;
 			if(n != dno)
+				continue;
+			/*
+			 * Problem: there can be an entry for
+			 * each of the device #INT[ABCD] lines.
+			 * For now look only for #INTA.
+			 */
+			if(aintr->intr->irq & 0x03)
 				continue;
 		}
 		else{
@@ -587,10 +576,49 @@ mpintrenable(int v, int tbdf, Irqctl* irqctl)
 {
 	int r;
 
-	r = mpintrenablex(v, tbdf, irqctl);
-	if(r == -1 && tbdf != BUSUNKNOWN /*&& _mp_->specrev == 1*/)
-		return mpintrenablex(v, BUSUNKNOWN, irqctl);
-	return r;
+	/*
+	 * If the bus is known, try it.
+	 * BUSUNKNOWN is given both by [E]ISA devices and by
+	 * interrupts local to the processor (local APIC, coprocessor
+	 * breakpoint and page-fault).
+	 */
+	if(tbdf != BUSUNKNOWN && (r = mpintrenablex(v, tbdf, irqctl)) != -1)
+		return r;
+
+	if(v >= VectorLAPIC && v <= MaxVectorLAPIC){
+		if(v != VectorSPURIOUS)
+			irqctl->isr = lapiceoi;
+		irqctl->isintr = 1;
+		return v;
+	}
+	if(v < VectorPIC || v > MaxVectorPIC){
+		print("mpintrenable: vector %d out of range\n", v);
+		return -1;
+	}
+
+	/*
+	 * Either didn't find it or we have to try the default
+	 * buses (ISA and EISA). This hack is due to either over-zealousness
+	 * or laziness on the part of some manufacturers.
+	 *
+	 * The MP configuration table on some older systems
+	 * (e.g. ASUS PCI/E-P54NP4) has an entry for the EISA bus
+	 * but none for ISA. It also has the interrupt type and
+	 * polarity set to 'default for this bus' which wouldn't
+	 * be compatible with ISA.
+	 */
+	if(mpisabus != -1){
+		r = mpintrenablex(v, MKBUS(BusISA, 0, 0, 0), irqctl);
+		if(r != -1)
+			return r;
+	}
+	if(mpeisabus != -1){
+		r = mpintrenablex(v, MKBUS(BusEISA, 0, 0, 0), irqctl);
+		if(r != -1)
+			return r;
+	}
+
+	return -1;
 }
 
 void

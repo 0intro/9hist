@@ -505,7 +505,7 @@ sysvseek(ulong *arg)
 	case 2:
 		devtab[c->type]->stat(c, buf);
 		convM2D(buf, &dir);
-		off = (long)dir.length2 + o.v;	/* BOTCH */
+		off = (long)dir.length1 + o.v;	/* BOTCH */
 		c->offset = off;
 		break;
 	}

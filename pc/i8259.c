@@ -121,8 +121,10 @@ i8259isr(int v)
 int
 i8259enable(int v, int, Irqctl* irqctl)
 {
-	if(v < VectorPIC || v > MaxVectorPIC)
-		return 0;
+	if(v < VectorPIC || v > MaxVectorPIC){
+		print("i8259enable: vector %d out of range\n", v);
+		return -1;
+	}
 	v -= VectorPIC;
 
 	/*

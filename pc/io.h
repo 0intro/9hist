@@ -3,11 +3,14 @@
 #define X86FAMILY(x)	(((x)>>8) & 0x0F)
 
 enum {
+	VectorNMI	= 2,		/* non-maskable interrupt */
 	VectorBPT	= 3,		/* breakpoint */
 	VectorCNA	= 7,		/* coprocessor not available */
 	VectorCSO	= 9,		/* coprocessor segment overrun */
 	VectorPF	= 14,		/* page fault */
 	VectorCERR	= 16,		/* coprocessor error */
+
+	VectorINTR	= 32,		/* maskable interrupts */
 
 	VectorLAPIC	= 32,		/* local APIC interrupts */
 	VectorLINT0	= VectorLAPIC+0,/* LINT[01] must be offsets 0 and 1 */

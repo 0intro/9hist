@@ -959,7 +959,7 @@ interrupt(Ureg*, void* arg)
 				if(ctlr->busmaster == 0)
 					COMMAND(port, TxReset, 0);
 				else
-					COMMAND(port, TxReset, dmaReset);
+					COMMAND(port, TxReset, (updnReset|dmaReset));
 				COMMAND(port, TxEnable, 0);
 			}
 

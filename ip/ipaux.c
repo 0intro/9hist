@@ -280,7 +280,8 @@ parseip(uchar *to, char *from)
 		x = strtoul(p, &p, 16);
 		if(*p == '.' || (*p == 0 && i == 0)){
 			p = v4parseip(to+i, op);
-			i += 2;
+			i += 4;
+			break;
 		} else {
 			to[i] = x>>8;
 			to[i+1] = x;
