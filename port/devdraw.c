@@ -948,6 +948,7 @@ drawopen(Chan *c, int omode)
 	c->mode = openmode(omode);
 	c->flag |= COPEN;
 	c->offset = 0;
+	c->iounit = 32*1024;
 	return c;
 }
 

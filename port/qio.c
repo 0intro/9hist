@@ -1187,7 +1187,7 @@ qbwrite(Queue *q, Block *b)
 	 *  flow control, wait for queue to get below the limit
 	 *  before allowing the process to continue and queue
 	 *  more.  We do this here so that postnote can only
-	 *  interrupt us after the data has been quued.  This
+	 *  interrupt us after the data has been queued.  This
 	 *  means that things like 9p flushes and ssl messages
 	 *  will not be disrupted by software interrupts.
 	 *
