@@ -104,7 +104,6 @@ ilclose(Queue *q)
 		s->dst = 0;
 		break;
 	}
-	netdisown(&s->ipinterface->net, s->index);
 }
 
 void

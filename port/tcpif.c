@@ -27,6 +27,7 @@ state_upcall(Ipconv *s, char oldstate, char newstate)
 		s->psrc = 0;
 		s->pdst = 0;
 		s->dst = 0;
+		/* NO break */
 	case CLOSE_WAIT:		/* Remote closes */
 		if(s->readq == 0)
 			break;

@@ -19,6 +19,7 @@ int 	udpsum = 1;
 Queue	*Ipoutput;		/* Control message stream for tcp/il */
 Ipifc	*ipifc;			/* IP protocol interfaces for stip */
 Ipconv	*ipconv[Nrprotocol];	/* Connections for each protocol */
+Network	*ipnet[Nrprotocol];	/* User level interface for protocol */
 QLock	ipalloc;		/* Protocol port allocation lock */
 
 /* ARPA User Datagram Protocol */
@@ -44,30 +45,30 @@ Qinfo ilinfo  = { iliput,    iloput,    ilopen,    ilclose,    "il"  };
 Qinfo *protocols[] = { &tcpinfo, &udpinfo, &ilinfo, 0 };
 
 void
-ipinitifc(Ipifc *ifc, Qinfo *stproto, Ipconv *cp)
+ipinitnet(Network *np, Qinfo *stproto, Ipconv *cp)
 {
 	int j;
 
 	for(j = 0; j < conf.ip; j++, cp++){
 		cp->index = j;
 		cp->stproto = stproto;
-		cp->ipinterface = ifc;
+		cp->net = np;
 	}
-	ifc->net.name = stproto->name;
-	ifc->net.nconv = conf.ip;
-	ifc->net.devp = &ipinfo;
-	ifc->net.protop = stproto;
+	np->name = stproto->name;
+	np->nconv = conf.ip;
+	np->devp = &ipinfo;
+	np->protop = stproto;
 	if(stproto != &udpinfo)
-		ifc->net.listen = iplisten;
-	ifc->net.clone = ipclonecon;
-	ifc->net.prot = (Netprot *)ialloc(sizeof(Netprot) * conf.ip, 0);
-	ifc->net.ninfo = 3;
-	ifc->net.info[0].name = "remote";
-	ifc->net.info[0].fill = ipremotefill;
-	ifc->net.info[1].name = "local";
-	ifc->net.info[1].fill = iplocalfill;
-	ifc->net.info[2].name = "status";
-	ifc->net.info[2].fill = ipstatusfill;
+		np->listen = iplisten;
+	np->clone = ipclonecon;
+	np->prot = (Netprot *)ialloc(sizeof(Netprot) * conf.ip, 0);
+	np->ninfo = 3;
+	np->info[0].name = "remote";
+	np->info[0].fill = ipremotefill;
+	np->info[1].name = "local";
+	np->info[1].fill = iplocalfill;
+	np->info[2].name = "status";
+	np->info[2].fill = ipstatusfill;
 }
 
 void
@@ -79,7 +80,8 @@ ipreset(void)
 
 	for(i = 0; protocols[i]; i++) {
 		ipconv[i] = (Ipconv *)ialloc(sizeof(Ipconv) * conf.ip, 0);
-		ipinitifc(&ipifc[i], protocols[i], ipconv[i]);
+		ipnet[i] = (Network *)ialloc(sizeof(Network), 0);
+		ipinitnet(ipnet[i], protocols[i], ipconv[i]);
 		newqinfo(protocols[i]);
 	}
 
@@ -119,19 +121,19 @@ ipclone(Chan *c, Chan *nc)
 int
 ipwalk(Chan *c, char *name)
 {
-	return netwalk(c, name, &ipifc[c->dev].net);
+	return netwalk(c, name, ipnet[c->dev]);
 }
 
 void
 ipstat(Chan *c, char *db)
 {
-	netstat(c, db, &ipifc[c->dev].net);
+	netstat(c, db, ipnet[c->dev]);
 }
 
 Chan *
 ipopen(Chan *c, int omode)
 {
-	return netopen(c, omode, &ipifc[c->dev].net);
+	return netopen(c, omode, ipnet[c->dev]);
 }
 
 int
@@ -150,7 +152,6 @@ Ipconv *
 ipincoming(Ipconv *base, Ipconv *from)
 {
 	Ipconv *new, *etab;
-	Ipifc *ifc;
 
 	etab = &base[conf.ip];
 	for(new = base; new < etab; new++) {
@@ -161,13 +162,12 @@ ipincoming(Ipconv *base, Ipconv *from)
 				qunlock(new);
 				continue;
 			}
-			ifc = base->ipinterface;
 			if(from)
 				/* copy ownership from listening channel */
-				netown(&ifc->net, new->index, ifc->net.prot[from->index].owner, 0);
+				netown(new->net, new->index, new->net->prot[from->index].owner, 0);
 			else
 				/* current user becomes owner */
-				netown(&ifc->net, new->index, u->p->user, 0);
+				netown(new->net, new->index, u->p->user, 0);
 			new->ref = 1;
 			qunlock(new);
 			return new;
@@ -193,7 +193,7 @@ ipremove(Chan *c)
 void
 ipwstat(Chan *c, char *dp)
 {
-	netwstat(c, dp, &ipifc[c->dev].net);
+	netwstat(c, dp, ipnet[c->dev]);
 }
 
 void
@@ -206,7 +206,7 @@ ipclose(Chan *c)
 long
 ipread(Chan *c, void *a, long n, ulong offset)
 {
-	return netread(c, a, n, offset,  &ipifc[c->dev].net);
+	return netread(c, a, n, offset, ipnet[c->dev]);
 }
 
 long
@@ -454,7 +454,6 @@ udpstclose(Queue *q)
 	ipc->dst = 0;
 
 	closeipifc(ipc->ipinterface);
-	netdisown(&ipc->ipinterface->net, ipc->index);
 }
 
 void
@@ -484,9 +483,9 @@ tcpstoput(Queue *q, Block *bp)
 	Ipconv *s;
 	Tcpctl *tcb; 
 	int len, errnum;
+	Block *f;
 
 	s = (Ipconv *)(q->ptr);
-	len = blen(bp);
 	tcb = &s->tcpctl;
 
 	if(bp->type == M_CTL) {
@@ -512,8 +511,14 @@ tcpstoput(Queue *q, Block *bp)
 	case ESTABLISHED:
 	case CLOSE_WAIT:
 		qlock(tcb);
-		appendb(&tcb->sndq, bp);
-		tcb->sndcnt += len;
+		tcb->sndcnt += blen(bp);
+		if(tcb->sndq == 0)
+			tcb->sndq = bp;
+		else {
+			for(f = tcb->sndq; f->next; f = f->next)
+				;
+			f->next = bp;
+		}
 		tcprcvwin(s);
 		tcp_output(s);
 		qunlock(tcb);
@@ -675,7 +680,6 @@ tcpstclose(Queue *q)
 		qunlock(tcb);
 		break;
 	}
-	netdisown(&s->ipinterface->net, s->index);
 }
 
 

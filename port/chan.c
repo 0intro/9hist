@@ -410,6 +410,7 @@ createdir(Chan *c)
 			nc = clone(f->to, 0);
 			nc->mnt = f;
 			runlock(&pg->ns);
+			poperror();
 			close(c);
 			return nc;
 		}

@@ -540,7 +540,7 @@ getq(Queue *q)
 			q->last = 0;
 		q->len -= BLEN(bp);
 		q->nb--;
-		if((q->flag&QHIWAT) && q->len<Streamhi/2 && q->nb<Streambhi/2){
+		if((q->flag&QHIWAT) && q->len<Streamhi/2 && q->nb<Streambhi/2 &&q->other){
 			wakeup(q->other->next->other->rp);
 			q->flag &= ~QHIWAT;
 		}

@@ -231,16 +231,8 @@ struct Tcpctl
 	Block	*rcvq;
 	ushort	rcvcnt;
 
-	Block	*rcvoobq;
-	ushort	rcvoobcnt;
-
 	Block	*sndq;			/* List of data going out */
 	ushort	sndcnt;			/* Amount of data in send queue */
-
-	Block	*sndoobq;		/* List of blocks going oob */
-	ushort	sndoobcnt;		/* Size of out of band queue */
-	ushort	oobmark;		/* Out of band sequence mark */
-	char	oobflags;		/* Out of band data flags */
 
 	Reseq	*reseq;			/* Resequencing queue */
 	Timer	timer;			 
@@ -279,6 +271,7 @@ struct Ipconv
 	int 	ref;
 	int	index;
 	Qinfo	*stproto;		/* Stream protocol for this device */
+	Network	*net;			/* user level network interface */
 	Ipaddr	dst;			/* Destination from connect */
 	Port	psrc;			/* Source port */
 	Port	pdst;			/* Destination port */
@@ -375,7 +368,6 @@ struct Ipifc
 	int		maxmtu;			/* Maximum transfer unit */
 	int		minmtu;			/* Minumum tranfer unit */
 	int		hsize;			/* Media header size */	
-	Network		net;
 	Lock;	
 };
 
@@ -460,7 +452,6 @@ int	trim(Tcpctl *, Tcp *, Block **, ushort *);
 void	add_reseq(Tcpctl *, char, Tcp *, Block *, ushort);
 void	close_self(Ipconv *, int);
 int	seq_gt(int, int);
-void	appendb(Block **, Block *);
 Ipconv	*ip_conn(Ipconv *, Port, Port, Ipaddr dest, char proto);
 void	ipmkdir(Qinfo *, Dirtab *, Ipconv *);
 Ipconv	*ipincoming(Ipconv*, Ipconv*);
@@ -499,6 +490,7 @@ void	iloutoforder(Ipconv*, Ilhdr*, Block*);
 void	iplocalfill(Chan*, char*, int);
 void	ipremotefill(Chan*, char*, int);
 void	ipstatusfill(Chan*, char*, int);
+int	ipforme(uchar*);
 
 #define	fmtaddr(xx)	(xx>>24)&0xff,(xx>>16)&0xff,(xx>>8)&0xff,xx&0xff
 #define	MIN(a, b)	((a) < (b) ? (a) : (b))

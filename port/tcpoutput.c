@@ -108,8 +108,7 @@ tcp_output(Ipconv *s)
 		/* If the entire send queue will now be in the pipe, set the
 		 * push flag
 		 */
-		if((dsize != 0) && 
-		   ((sent + ssize) == (tcb->rcvcnt + tcb->rcvoobcnt)))
+		if(sent+dsize == qlen)
 			seg.flags |= PSH;
 
 		/* If this transmission includes previously transmitted data,

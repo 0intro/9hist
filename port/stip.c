@@ -28,6 +28,7 @@ Queue 		*Etherq;
 
 Ipaddr		Myip;
 Ipaddr		Mymask;
+Ipaddr		Mynetmask;
 uchar		Netmyip[4];	/* In Network byte order */
 uchar		bcast[4] = { 0xff, 0xff, 0xff, 0xff };
 
@@ -142,8 +143,10 @@ ipetherclose(Queue *q)
 	Ipconv *ipc;
 
 	ipc = (Ipconv *)(q->ptr);
-	if(ipc)
+	if(ipc){
+		netdisown(ipc->net, ipc->index);
 		ipc->ref = 0;
+	}
 }
 
 void
@@ -184,6 +187,10 @@ ipetheroput(Queue *q, Block *bp)
 				ptr++;
 			if(*ptr)
 				Mymask = ipparse((char *)ptr);
+			/*
+			 * Temporary Until we understand real subnets
+			 */
+			Mynetmask = Mymask;
 			freeb(bp);
 		}
 		else
@@ -310,9 +317,9 @@ ipetheriput(Queue *q, Block *bp)
 	}
 
 	/* Look to see if its for me before we waste time checksuming it */
-	if(memcmp(h->dst, Netmyip, sizeof(Netmyip)) != 0 &&
-	   memcmp(h->dst, bcast, sizeof(bcast)) != 0)
+	if(ipforme(h->dst) == 0)
 		goto drop;
+
 
 	if(ipcksum && ip_csum(&h->vihl)) {
 		print("ip: checksum error (from %d.%d.%d.%d ?)\n",
@@ -346,6 +353,34 @@ drop:
 	freeb(bp);
 }
 
+int
+ipforme(uchar *addr)
+{
+	Ipaddr haddr;
+
+	if(memcmp(addr, Netmyip, sizeof(Netmyip)) == 0)
+		return 1;
+
+	haddr = nhgetl(addr);
+
+	/* My subnet broadcast */
+	if((haddr&Mymask) == (Myip&Mymask))
+		return 1;
+
+	/* My network broadcast */
+	if((haddr&Mynetmask) == (Myip&Mynetmask))
+		return 1;
+
+	/* Real ip broadcast */
+	if(haddr == 0)
+		return 1;
+
+	/* Old style 255.255.255.255 address */
+	if(haddr == ~0)
+		return 1;
+
+	return 0;
+}
 Block *
 ip_reassemble(int offset, Block *bp, Etherhdr *ip)
 {

@@ -118,6 +118,7 @@ typedef struct {
 
 	/* sadistics */
 
+	int	misses;
 	int	inpackets;
 	int	outpackets;
 	int	crcs;		/* input crc errors */
@@ -318,10 +319,18 @@ lanceoput(Queue *q, Block *bp )
 		}
 	}
 
+	/* restart the lance if'n it needs it */
+	if(l.misses > 4){
+		l.misses = 0;
+		print("restarting lance\n");
+		lancestart(0, 1);
+	}
+
 	/*
 	 *  only one transmitter at a time
 	 */
 	qlock(&l.tlock);
+
 	if(waserror()){
 		freeb(bp);
 		qunlock(&l.tlock);
@@ -659,7 +668,6 @@ lanceintr(void)
 	int i;
 	ushort csr;
 	Lancemem *lm = LANCEMEM;
-	static int misses;
 
 	csr = *l.rdp;
 
@@ -672,7 +680,7 @@ lanceintr(void)
 	 *  see if an error occurred
 	 */
 	if(csr & (BABL|MISS|MERR)){
-		if(misses++ < 4)
+		if(l.misses++ < 4)
 			print("lance err %ux\n", csr);
 	}
 
@@ -685,10 +693,8 @@ lanceintr(void)
 	/*
 	 *  look for rcv'd packets, just wakeup the input process
 	 */
-	if(l.rl!=l.rc && (MPus(lm->rmr[l.rl].flags) & OWN)==0){
-		misses = 0;
+	if(l.rl!=l.rc && (MPus(lm->rmr[l.rl].flags) & OWN)==0)
 		wakeup(&l.rr);
-	}
 
 	/*
 	 *  look for xmitt'd packets, wake any process waiting for a
@@ -780,6 +786,7 @@ lancekproc(void *arg)
 		}
 		for(; l.rl!=l.rc && (MPus(lm->rmr[l.rl].flags) & OWN)==0 ; l.rl=RSUCC(l.rl)){
 			l.inpackets++;
+			l.misses = 0;
 			m = &(lm->rmr[l.rl]);
 			t = MPus(m->flags);
 			if(t & ERR){

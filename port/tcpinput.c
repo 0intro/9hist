@@ -744,22 +744,6 @@ copyupb(Block **bph, uchar *data, int count)
 	return bytes;
 }
 
-void
-appendb(Block **list, Block *bp)
-{
-	Block *f;
-
-	if(f = *list) {
-		while(f->next)
-			f = f->next;
-		f->next = bp;
-	}
-	else
-		*list = bp;
-
-	bp->next = 0;
-}
-
 int
 dupb(Block **hp, Block *bp, int offset, int count)
 {
@@ -803,7 +787,7 @@ copyb(Block *bp, int count)
 	Block *nbp, *head, *tail;
 	int i;
 
-	head = 0;
+	head = tail = 0;
 	while(bp && count) {
 		i = BLEN(bp);
 		nbp = allocb(i);
