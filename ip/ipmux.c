@@ -724,6 +724,9 @@ yes:
 	runlock(f);
 
 	if(c != nil){
+		/* tack on interface address */
+		bp = padblock(bp, IPaddrlen);
+		ipmove(bp->rp, ia);
 		qpass(c->rq, bp);
 		return;
 	}
