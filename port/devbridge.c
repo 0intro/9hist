@@ -986,7 +986,7 @@ if(0)print("devbridge: etherread: blocklen = %d\n", blocklen(bp));
 		if(bp == nil || port->closed)
 			break;
 		if(waserror()) {
-print("etherread bridge error\n");
+//print("etherread bridge error\n");
 			if(bp)
 				freeb(bp);
 			continue;
@@ -1026,7 +1026,7 @@ print("etherread bridge error\n");
 		if(bp)
 			freeb(bp);
 	}
-print("etherread: trying to exit\n");
+//print("etherread: trying to exit\n");
 	port->readp = nil;
 	portfree(port);
 	qunlock(b);

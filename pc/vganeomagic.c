@@ -21,10 +21,6 @@ typedef struct {
 	int	addr;
 } CursorNM;
 
-enum {
-	CursorMMIO	= 0x1000,	/* MagicMedia 256AV */
-};
-
 static ulong
 neomagiclinear(VGAscr* scr, int* size, int* align)
 {
@@ -39,6 +35,7 @@ neomagiclinear(VGAscr* scr, int* size, int* align)
 	aperture = 0;
 	if(p = pcimatch(nil, 0x10C8, 0)){
 		switch(p->did){
+		case 0x0004:		/* MagicGraph 128XD */
 		case 0x0005:		/* MagicMedia 256AV */
 			aperture = p->mem[0].bar & ~0x0F;
 			*size = p->mem[0].size;
@@ -74,20 +71,26 @@ neomagicenable(VGAscr* scr)
 {
 	Pcidev *p;
 	Physseg seg;
-	int size, align, asize;
+	int align, curoff, size, vmsize;
 	ulong aperture;
 
 	/*
 	 * Only once, can't be disabled for now.
-	 * scr->io holds the virtual address of
-	 * the MMIO registers.
+	 * scr->io holds the physical address of the cursor registers
+	 * in the MMIO space. This may need to change for older chips
+	 * which have the MMIO space offset in the framebuffer region.
 	 */
 	if(scr->io)
 		return;
 	if(p = pcimatch(nil, 0x10C8, 0)){
 		switch(p->did){
+		case 0x0004:		/* MagicGraph 128XD */
+			curoff = 0x100;
+			vmsize = 2048*1024;
+			break;
 		case 0x0005:		/* MagicMedia 256AV */
-			asize = 2560*1024;
+			curoff = 0x1000;
+			vmsize = 2560*1024;
 			break;
 		default:
 			return;
@@ -107,14 +110,14 @@ neomagicenable(VGAscr* scr)
 	seg.size = p->mem[1].size;
 	addphysseg(&seg);
 
-	scr->io = (ulong)KADDR(scr->io);
+	scr->io += curoff;
 
 	size = p->mem[0].size;
 	align = 0;
 	aperture = neomagiclinear(scr, &size, &align);
 	if(aperture) {
 		scr->aperture = aperture;
-		scr->apsize = asize;
+		scr->apsize = vmsize;
 		memset(&seg, 0, sizeof(seg));
 		seg.attr = SG_PHYSICAL;
 		seg.name = smalloc(NAMELEN);
@@ -132,16 +135,16 @@ neomagiccurdisable(VGAscr* scr)
 
 	if(scr->io == 0)
 		return;
-	cursornm = KADDR(scr->io+CursorMMIO);
+	cursornm = KADDR(scr->io);
 	cursornm->enable = 0;
 }
 
 static void
 neomagicinitcursor(VGAscr* scr, int xo, int yo, int index)
 {
-	int x, y;
 	uchar *p;
 	uint p0, p1;
+	int x, y;
 
 	p = KADDR(scr->aperture);
 	p += scr->storage + index*1024;
@@ -187,7 +190,7 @@ neomagiccurload(VGAscr* scr, Cursor* curs)
 
 	if(scr->io == 0)
 		return;
-	cursornm = KADDR(scr->io+CursorMMIO);
+	cursornm = KADDR(scr->io);
 
 	cursornm->enable = 0;
 	memmove(&scr->Cursor, curs, sizeof(Cursor));
@@ -203,7 +206,7 @@ neomagiccurmove(VGAscr* scr, Point p)
 
 	if(scr->io == 0)
 		return 1;
-	cursornm = KADDR(scr->io+CursorMMIO);
+	cursornm = KADDR(scr->io);
 
 	index = 0;
 	if((x = p.x+scr->offset.x) < 0){
@@ -242,7 +245,7 @@ neomagiccurenable(VGAscr* scr)
 	neomagicenable(scr);
 	if(scr->io == 0)
 		return;
-	cursornm = KADDR(scr->io+CursorMMIO);
+	cursornm = KADDR(scr->io);
 	cursornm->enable = 0;
 
 	/*
@@ -257,7 +260,7 @@ neomagiccurenable(VGAscr* scr)
 	 * 2KB of the framebuffer and initialise them to be
 	 * transparent.
 	 */
-	scr->storage = /*scr->apsize*/2560*1024-2*1024;
+	scr->storage = scr->apsize-2*1024;
 
 	/*
 	 * Load, locate and enable the 64x64 cursor.

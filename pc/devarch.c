@@ -441,6 +441,8 @@ static X86type x86amd[] =
 	{ 5,	8,	11,	"AMD-K6 3D", },	/* guesswork */
 	{ 5,	9,	11,	"AMD-K6 3D+", },/* guesswork */
 
+	{ 6,	1,	11,	"AMD-Athlon", },
+
 	{ 4,	-1,	22,	"Am486", },	/* guesswork */
 	{ 5,	-1,	23,	"AMD-K5/K6", },	/* guesswork */
 
