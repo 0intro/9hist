@@ -452,13 +452,12 @@ struct Palloc
 	ulong	np0, np1;		/* number of pages in bank 0/1 */
 	Page	*head;			/* most recently used */
 	Page	*tail;			/* least recently used */
-	ulong	freecount;
 	ulong	freecol[NCOLOR];	/* how many pages on free list now */
 	ulong	user;			/* how many user pages */
 	Page	*hash[PGHSIZE];
 	Lock	hashlock;
-	Rendez	r;			/* Sleep for free mem */
-	QLock	pwait;			/* Queue of procs waiting for memory */
+	Rendez	r[NCOLOR];		/* Sleep for free mem */
+	QLock	pwait[NCOLOR];		/* Queue of procs waiting for memory */
 	int	wanted;			/* Do the wakeup at free */
 	ulong	cmembase;		/* Key memory */
 	ulong	cmemtop;

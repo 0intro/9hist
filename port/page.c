@@ -87,17 +87,17 @@ retry:
 			*s = 0;
 			dontalloc = 1;
 		}
-		qlock(&palloc.pwait);	 /* Hold memory requesters here */
+		qlock(&palloc.pwait[color]); /* Hold memory requesters here */
 
 		while(waserror())	/* Ignore interrupts */
 			;
 
 		kickpager();
-		tsleep(&palloc.r, ispages, 0, 1000);
+		tsleep(&palloc.r[color], ispages, (void*)color, 1000);
 
 		poperror();
 
-		qunlock(&palloc.pwait);
+		qunlock(&palloc.pwait[color]);
 
 		/*
 		 * If called from fault and we lost the segment from
@@ -130,7 +130,6 @@ retry:
 		palloc.tail = p->prev;
 
 
-	palloc.freecount--;
 	palloc.freecol[color]--;
 	unlock(&palloc);
 
@@ -160,13 +159,17 @@ retry:
 int
 ispages(void *p)
 {
-	USED(p);
-	return palloc.freecount >= swapalloc.highwater;
+	int color;
+
+	color = (int)p;
+	return palloc.freecol[color] >= swapalloc.highwater/NCOLOR;
 }
 
 void
 putpage(Page *p)
 {
+	Rendez *r;
+
 	if(onswap(p)) {
 		putswap(p);
 		return;
@@ -204,10 +207,10 @@ putpage(Page *p)
 		p->prev = 0;
 	}
 
-	palloc.freecount++;	/* Release people waiting for memory */
 	palloc.freecol[p->color]++;
-	if(palloc.r.p != 0)
-		wakeup(&palloc.r);
+	r = &palloc.r[p->color];
+	if(r->p != 0)
+		wakeup(r);
 
 	unlock(&palloc);
 	unlock(p);
@@ -227,7 +230,7 @@ duppage(Page *p)				/* Always call with p locked */
 
 	lock(&palloc);
 	/* No freelist cache when memory is very low */
-	if(palloc.freecount < swapalloc.highwater) {
+	if(palloc.freecol[p->color] < swapalloc.highwater/NCOLOR) {
 		unlock(&palloc);
 		uncachepage(p);	
 		return;
@@ -385,7 +388,7 @@ lookpage(Image *i, ulong daddr)
 					f->next->prev = f->prev;
 				else
 					palloc.tail = f->prev;
-				palloc.freecount--;
+
 				palloc.freecol[f->color]--;
 			}
 			unlock(&palloc);

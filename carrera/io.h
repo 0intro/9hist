@@ -70,5 +70,7 @@ struct Tte
 #define UNCACHED(type, v)	(type*)((ulong)(v)|0xA0000000)
 
 #define EISA(v)			(Eisamvirt+(v))
-#define EISAOUTB(port, v)	*(uchar*)((EisaControl+(port))^7) = v
 #define EISAINB(port)		(*(uchar*)((EisaControl+(port))^7))
+#define EISAINW(port)		(*(ushort*)((EisaControl+(port))^7))
+#define EISAOUTB(port, v)	EISAINB(port) = v
+#define EISAOUTW(port, v)	EISAINW(port) = v

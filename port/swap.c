@@ -109,7 +109,7 @@ loop:
 	up->psstate = "Idle";
 	sleep(&swapalloc.r, needpages, 0);
 
-	for(;;) {
+	while(needpages(junk)) {
 		p++;
 		if(p >= ep)
 			p = proctab(0);
@@ -142,17 +142,16 @@ loop:
 					}
 				}
 			}
-			continue;
 		}
-
-		if(palloc.freecount < swapalloc.highwater) {
+		else {
 			if(!cpuserver)
 				freebroken();	/* can use the memory */
 
 			/* Emulate the old system if no swap channel */
 			print("no physical memory\n");
 			tsleep(&swapalloc.r, return0, 0, 1000);
-			wakeup(&palloc.r);
+			for(i = 0; i < NCOLOR; i++)
+				wakeup(&palloc.r[i]);
 		}
 	}
 	goto loop;
@@ -211,7 +210,6 @@ out:
 	poperror();
 	qunlock(&s->lk);
 	putseg(s);
-	wakeup(&palloc.r);
 }
 
 int
@@ -322,8 +320,13 @@ executeio(void)
 int
 needpages(void *p)
 {
+	int i;
+
 	USED(p);
-	return palloc.freecount < swapalloc.headroom;
+	for(i = 0; i < NCOLOR; i++)
+		if(palloc.freecol[i] < swapalloc.headroom/NCOLOR)
+			return 1;
+	return 0;
 }
 
 void
