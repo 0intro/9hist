@@ -763,7 +763,6 @@ enum
 	CMpge,
 	CMcoherence,
 	CMi8253set,
-CMrealmode
 };
 
 static Cmdtab archctlmsg[] =
@@ -771,7 +770,6 @@ static Cmdtab archctlmsg[] =
 	CMpge,		"pge",		2,
 	CMcoherence,	"coherence",	2,
 	CMi8253set,	"i8253set",	2,
-CMrealmode, "realmode", 1,
 };
 
 static long
@@ -815,10 +813,6 @@ archctlwrite(Chan*, void *a, long n, vlong)
 			i8253dotimerset = 0;
 		else
 			cmderror(cb, "invalid i2853set ctl");
-		break;
-	case CMrealmode:
-		if(strcmp(cb->f[1], "realmode") == 0)
-			realmode();
 		break;
 	}
 	free(cb);

@@ -113,7 +113,7 @@ void
 configtcp(Method*)
 {
 	sleep(100);
-	print("t");
+	print("t");	
 	sleep(100);
 	configip();
 	sleep(100);
@@ -134,6 +134,7 @@ connecttcp(void)
 void
 configil(Method*)
 {
+	print("i");
 	configip();
 	setauthaddr("tcp", 567);
 }

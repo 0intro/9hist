@@ -40,6 +40,7 @@ uartenable(Uart *p)
 {
 	Uart **l;
 
+dbgputc('E');
 	if(p->iq == nil){
 		if((p->iq = qopen(4*1024, 0, uartflow, p)) == nil)
 			return nil;

@@ -828,6 +828,3 @@ TEXT vectortable(SB), $0
 	CALL _strayintr(SB); BYTE $0xFE
 	CALL _strayintr(SB); BYTE $0xFF
 
-TEXT realmode(SB), $0
-	RET
-
