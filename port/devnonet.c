@@ -37,7 +37,6 @@ static void	sendctlmsg(Noconv*, int, int);
 static void	sendmsg(Noconv*, Nomsg*);
 static void	startconv(Noconv*, int, char*, int);
 static void	queueack(Noconv*, int);
-static void	sendack(Noconv*, int);
 
 static void	nonetiput(Queue*, Block*);
 static void	nonetoput(Queue*, Block*);
@@ -921,7 +920,7 @@ sendmsg(Noconv *cp, Nomsg *mp)
 	wq = ifc->wq->next;
 
 	/*
-	 *  one transmitter at a time
+	 *  one transmitter at a time for this connection
 	 */
 	qlock(&cp->xlock);
 
@@ -1005,28 +1004,17 @@ sendmsg(Noconv *cp, Nomsg *mp)
 static void
 sendctlmsg(Noconv *cp, int flag, int new)
 {
-	cp->ctl.len = 0;
-	cp->ctl.first = 0;
-	cp->ctl.acked = 0;
-	if(new)
-		cp->ctl.mid = Nnomsg^cp->out[cp->next].mid;
-	else
-		cp->ctl.mid = cp->lastacked;
-	cp->hdr->flag |= flag;
-	sendmsg(cp, &cp->ctl);
-}
+	Nomsg ctl;
 
-/*
- *  send an acknowledgement
- */
-static void
-sendack(Noconv *cp, int ack)
-{
-	cp->ackmsg.len = 0;
-	cp->ackmsg.first = 0;
-	cp->ackmsg.acked = ack;
-	cp->ackmsg.mid = cp->lastacked;
-	sendmsg(cp, &cp->ctl);
+	ctl.len = 0;
+	ctl.first = 0;
+	ctl.acked = 0;
+	if(new)
+		ctl.mid = Nnomsg^cp->out[cp->next].mid;
+	else
+		ctl.mid = cp->lastacked;
+	cp->hdr->flag |= flag;
+	sendmsg(cp, &ctl);
 }
 
 /*
@@ -1074,8 +1062,10 @@ nonetrcvmsg(Noconv *cp, Block *bp)
 			if(f & NO_HANGUP)
 				hangup(cp);
 		} else {
-			if(r>0)
-				sendack(cp, h->mid);
+			if(r>0){
+				queueack(cp, h->mid);
+				sendctlmsg(cp, 0, 0);
+			}
 			cp->bad++;
 		}
 		freeb(bp);

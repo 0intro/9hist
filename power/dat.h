@@ -561,8 +561,6 @@ struct Noconv {
 
 	QLock	xlock;		/* one trasmitter at a time */
 	Rendez	r;		/* process waiting for an output mid */
-	Nomsg	ctl;		/* for control messages */
-	Nomsg	ackmsg;		/* for acknowledge messages */
 	QLock	mlock;		/* lock for out */
 	Nomsg	out[Nnomsg];	/* messages being sent */
 	int	first;		/* first unacknowledged message */
