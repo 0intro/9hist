@@ -1,5 +1,5 @@
 enum {
-	MaxEther	= 4,
+	MaxEther	= 8,
 	Ntypes		= 8,
 };
 

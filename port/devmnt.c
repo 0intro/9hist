@@ -44,7 +44,8 @@ void	mntgate(Mnt*);
 void	mntpntfree(Mnt*);
 void	mntqrm(Mnt*, Mntrpc*);
 Mntrpc*	mntralloc(Chan*);
-long	mntrdwr(int , Chan*, void*,long , ulong, int);
+long	mntrdwr(int , Chan*, void*,long , ulong);
+long	mnt9prdwr(int , Chan*, void*,long , ulong);
 void	mntrpcread(Mnt*, Mntrpc*);
 void	mountio(Mnt*, Mntrpc*);
 void	mountmux(Mnt*, Mntrpc*);
@@ -487,38 +488,36 @@ mntwstat(Chan *c, char *dp)
 long	 
 mntread9p(Chan *c, void *buf, long n, ulong offset)
 {
-	return mntrdwr(Tread, c, buf, n, offset, 1);
+	return mnt9prdwr(Tread, c, buf, n, offset);
 }
 
 long	 
 mntread(Chan *c, void *buf, long n, ulong offset)
 {
+	int nc;
 	uchar *p, *e;
-	int nc, cached;
 
-	cached = c->flag & CCACHE;
-
-	SET(nc);
-	if(cached) {
+	p = buf;
+	if(c->flag & CCACHE) {
 		nc = cread(c, buf, n, offset);
 		if(nc > 0) {
 			n -= nc;
 			if(n == 0)
 				return nc;
-			buf = (uchar*)buf+nc;
+			p += nc;
 			offset += nc;
 		}
+		n = mntrdwr(Tread, c, p, n, offset);
+		cupdate(c, p, n, offset);
+		return n + nc;
 	}
 
-	n = mntrdwr(Tread, c, buf, n, offset, 0);
-	if(c->qid.path & CHDIR) {
-		for(p = (uchar*)buf, e = &p[n]; p < e; p += DIRLEN)
-			mntdirfix(p, c);
-	}
-	else if(cached) {
-		cupdate(c, buf, n, offset);
-		n += nc;
-	}
+	n = mntrdwr(Tread, c, buf, n, offset);
+	if((c->qid.path & CHDIR) == 0)
+		return n;
+
+	for(e = &p[n]; p < e; p += DIRLEN)
+		mntdirfix(p, c);
 
 	return n;
 }
@@ -532,13 +531,13 @@ mntbread(Chan *c, long n, ulong offset)
 long	 
 mntwrite9p(Chan *c, void *buf, long n, ulong offset)
 {
-	return mntrdwr(Twrite, c, buf, n, offset, 1);
+	return mnt9prdwr(Twrite, c, buf, n, offset);
 }
 
 long	 
 mntwrite(Chan *c, void *buf, long n, ulong offset)
 {
-	return mntrdwr(Twrite, c, buf, n, offset, 0);
+	return mntrdwr(Twrite, c, buf, n, offset);
 }
 
 long
@@ -548,7 +547,44 @@ mntbwrite(Chan *c, Block *bp, ulong offset)
 }
 
 long
-mntrdwr(int type, Chan *c, void *buf, long n, ulong offset, int p9msg)
+mnt9prdwr(int type, Chan *c, void *buf, long n, ulong offset)
+{
+	Mnt *m;
+ 	ulong nr;
+	Mntrpc *r;
+
+	if(n > MAXRPC-32) {
+		if(type == Twrite)
+			error("write9p too long");
+		n = MAXRPC-32;
+	}
+
+	m = mntchk(c);
+	r = mntralloc(c);
+	if(waserror()) {
+		mntfree(r);
+		nexterror();
+	}
+	r->request.type = type;
+	r->request.fid = c->fid;
+	r->request.offset = offset;
+	r->request.data = buf;
+	r->request.count = n;
+	mountrpc(m, r);
+	nr = r->reply.count;
+	if(nr > r->request.count)
+		nr = r->request.count;
+
+	if(type == Tread)
+		memmove(buf, r->reply.data, nr);
+
+	poperror();
+	mntfree(r);
+	return nr;
+}
+
+long
+mntrdwr(int type, Chan *c, void *buf, long n, ulong offset)
 {
 	Mnt *m;
  	Mntrpc *r;
@@ -570,15 +606,7 @@ mntrdwr(int type, Chan *c, void *buf, long n, ulong offset, int p9msg)
 		r->request.fid = c->fid;
 		r->request.offset = offset;
 		r->request.data = uba;
-		if(p9msg) {
-			if(n > MAXRPC-32){
-				if(type == Twrite)
-					error("write9p too long");
-				n = MAXRPC-32;
-			}
-			r->request.count = n;
-		} else
-			r->request.count = limit(n, m->blocksize);
+		r->request.count = limit(n, m->blocksize);
 		mountrpc(m, r);
 		nr = r->reply.count;
 		if(nr > r->request.count)
@@ -653,7 +681,7 @@ mountio(Mnt *m, Mntrpc *r)
 	}
 	else {
 		if(devchar[m->c->type] == L'M'){
-			if(mntrdwr(Twrite, m->c, r->rpc, n, 0, 1) != n)
+			if(mnt9prdwr(Twrite, m->c, r->rpc, n, 0) != n)
 				error(Emountrpc);
 		}else{
 			if((*devtab[m->c->type].write)(m->c, r->rpc, n, 0) != n)
@@ -709,7 +737,7 @@ mntrpcread(Mnt *m, Mntrpc *r)
 		r->reply.type = 0;
 		r->reply.tag = 0;
 		if(devchar[m->c->type] == L'M')
-			n = mntrdwr(Tread, m->c, r->rpc, MAXRPC, 0, 1);
+			n = mnt9prdwr(Tread, m->c, r->rpc, MAXRPC, 0);
 		else
 			n = devtab[m->c->type].read(m->c, r->rpc, MAXRPC, 0);
 		poperror();
