@@ -36,12 +36,27 @@ enum {
 	Qctl		= Qunitbase,
 	Qraw,
 	Qpart,
+
+	TypeLOG		= 4,
+	NType		= (1<<TypeLOG),
+	TypeMASK	= (NType-1),
+	TypeSHIFT	= 0,
+
+	PartLOG		= 8,
+	NPart		= (1<<PartLOG),
+	PartMASK	= (NPart-1),
+	PartSHIFT	= TypeLOG,
+
+	UnitLOG		= 8,
+	NUnit		= (1<<UnitLOG),
+	UnitMASK	= (NUnit-1),
+	UnitSHIFT	= (PartLOG+TypeLOG),
 };
 
-#define TYPE(q)		(((ulong)(q).path) & 0x0F)
-#define PART(q)		((((ulong)(q).path)>>4) & 0x0F)
-#define UNIT(q)		((((ulong)(q).path)>>8) & 0xFF)
-#define QID(u, p, t)	(((u)<<8)|((p)<<4)|(t))
+#define TYPE(q)		((((ulong)(q).path)>>TypeSHIFT) & TypeMASK)
+#define PART(q)		((((ulong)(q).path)>>PartSHIFT) & PartMASK)
+#define UNIT(q)		((((ulong)(q).path)>>UnitSHIFT) & UnitMASK)
+#define QID(u, p, t)	(((u)<<UnitSHIFT)|((p)<<PartSHIFT)|((t)<<TypeSHIFT))
 
 static void
 sdaddpart(SDunit* unit, char* name, ulong start, ulong end)
@@ -81,6 +96,8 @@ sdaddpart(SDunit* unit, char* name, ulong start, ulong end)
 	 * array size (can't get here with unit->part == nil).
 	 */
 	if(partno == -1){
+		if(unit->npart >= NPart)
+			error(Enomem);
 		if((pp = malloc(sizeof(SDpart)*(unit->npart+SDnpart))) == nil)
 			error(Enomem);
 		memmove(pp, unit->part, sizeof(SDpart)*unit->npart);
@@ -308,6 +325,8 @@ sdreset(void)
 	 */
 	if(sdnunit == 0)
 		return;
+	if(sdnunit > NUnit)
+		sdnunit = NUnit;
 	if((sdunit = malloc(sdnunit*sizeof(SDunit*))) == nil)
 		return;
 	if((sdunitflg = malloc(sdnunit*sizeof(int))) == nil){
