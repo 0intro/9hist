@@ -81,7 +81,7 @@ lock(Lock *l)
 				if (edf_waitlock(l))
 					sched();
 			} else if(conf.nmach < 2 && cansched){
-				if (i++ > 1000){
+				if (i++ > 5000){
 					i = 0;
 					lockloop(l, pc);
 				}

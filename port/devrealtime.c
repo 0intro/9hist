@@ -13,8 +13,6 @@
 
 /* debugging */
 extern int			edfprint;
-extern char		tabs[16];
-extern int			ind;
 
 static Schedevent *events;
 static int nevents, revent, wevent;
@@ -171,7 +169,7 @@ _devrt(Task *t, Ticks t1, SEvent etype)
 	if (logopens.ref == 0 || nevents == Nevents)
 		return;
 
-	if(edfprint)iprint("%.*sstate %s\n", ind, tabs, edf_statename[etype]);
+	if(edfprint)iprint("state %s\n", edf_statename[etype]);
 	events[wevent].tid = t - tasks;
 	events[wevent].ts = 0;
 	if (t1)
@@ -189,7 +187,7 @@ _devrt(Task *t, Ticks t1, SEvent etype)
 	else
 		revent = (revent + 1) % Nevents;
 
-	if(edfprint)iprint("%.*swakesched\n", ind, tabs);
+	if(edfprint)iprint("wakesched\n");
 	/* To avoid circular wakeup when used in combination with 
 	 * EDF scheduling.
 	 */
@@ -214,7 +212,7 @@ devrtinit(void)
 static Chan *
 devrtattach(char *param)
 {
-	return devattach(L'Σ', param);
+	return devattach('R', param);
 }
 
 static Walkqid *
@@ -865,7 +863,7 @@ devrtremove(Chan *c)
 }
 
 Dev realtimedevtab = {
-	L'Σ',
+	'R',
 	"scheduler",
 
 	devreset,
