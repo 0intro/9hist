@@ -1127,7 +1127,7 @@ tlsread(Chan *c, void *a, long n, vlong off)
 		s = buf;
 		e = buf + Statlen;
 		s = seprint(s, e, "State: %s\n", tlsstate(tr->state));
-		s = seprint(s, e, "Version: 0x%lux\n", tr->version);
+		s = seprint(s, e, "Version: 0x%x\n", tr->version);
 		if(tr->in.sec != nil)
 			s = seprint(s, e, "EncIn: %s\nHashIn: %s\n", tr->in.sec->encalg, tr->in.sec->hashalg);
 		if(tr->in.new != nil)
@@ -1145,10 +1145,10 @@ tlsread(Chan *c, void *a, long n, vlong off)
 		buf = smalloc(Statlen);
 		s = buf;
 		e = buf + Statlen;
-		s = seprint(s, e, "DataIn: %d\n", tr->datain);
-		s = seprint(s, e, "DataOut: %d\n", tr->dataout);
-		s = seprint(s, e, "HandIn: %d\n", tr->handin);
-		seprint(s, e, "HandOut: %d\n", tr->handout);
+		s = seprint(s, e, "DataIn: %lld\n", tr->datain);
+		s = seprint(s, e, "DataOut: %lld\n", tr->dataout);
+		s = seprint(s, e, "HandIn: %lld\n", tr->handin);
+		seprint(s, e, "HandOut: %lld\n", tr->handout);
 		n = readstr(offset, a, n, buf);
 		free(buf);
 		return n;

@@ -571,7 +571,7 @@ i8250enable(Uart* uart, int ie)
 	 * The i8250 thinks the interrupt is still outstanding and does not
 	 * generate any further interrupts. To work around this we call the
 	 * interrupt handler to clear any pending inerrupt events.
-	 * Note this must be donw after setting Ier.
+	 * Note this must be done after setting Ier.
 	 */
 	if(ie)
 		i8250interrupt(nil, uart);

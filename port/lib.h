@@ -73,16 +73,16 @@ extern	int	snprint(char*, int, char*, ...);
 extern	int	vsnprint(char*, int, char*, va_list);
 extern	int	sprint(char*, char*, ...);
 
-extern	int	fmtinstall(int c, int (*f)(Fmt*));
+extern	int	fmtinstall(int, int (*)(Fmt*));
 extern	int	quotefmtinstall(void);
-extern	int	fmtit(Fmt *f, char *fmt, ...);
-extern	int	fmtstrcpy(Fmt *f, char *s);
+extern	int	fmtprint(Fmt*, char*, ...);
+extern	int	fmtstrcpy(Fmt*, char*);
 
-#pragma	varargck	argpos	fmtit	2
-#pragma	varargck	argpos	print	1
-#pragma	varargck	argpos	seprint	3
-#pragma	varargck	argpos	snprint	3
-#pragma	varargck	argpos	sprint	2
+#pragma	varargck	argpos	fmtprint	2
+#pragma	varargck	argpos	print		1
+#pragma	varargck	argpos	seprint		3
+#pragma	varargck	argpos	snprint		3
+#pragma	varargck	argpos	sprint		2
 
 /*
  * one-of-a-kind

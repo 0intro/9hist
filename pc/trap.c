@@ -473,7 +473,8 @@ fault386(Ureg* ureg, void*)
 	if(!user && mmukmapsync(addr))
 		return;
 	read = !(ureg->ecode & 2);
-if(up == nil) {print("what? up is zero pc %8lux\n", ureg->pc); for(;;);}
+	if(up == nil)
+		panic("what? up is zero pc 0x%8.8lux\n", ureg->pc);
 	insyscall = up->insyscall;
 	up->insyscall = 1;
 	n = fault(addr, read);

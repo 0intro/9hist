@@ -843,13 +843,6 @@ epmode(Usbhost *uh, Endpt *e)
 	}
 }
 
-static void
-hubportreset(Udev *h, int p)
-{
-	USED(h, p);
-	/* reset state of each attached device? */
-}
-
 static	int	ioport[] = {-1, Portsc0, Portsc1};
 
 static void
@@ -883,7 +876,6 @@ portreset(Usbhost *uh, int port)
 	XPRINT("r': %x %d\n", IN(p), i);
 	OUT(p, (IN(p) & ~PortReset)|PortEnable);
 	iunlock(ctlr);
-	hubportreset(nil, port);
 	poperror();
 	qunlock(&ctlr->resetl);
 }
@@ -915,8 +907,6 @@ portenable(Usbhost *uh, int port, int on)
 	microdelay(64);
 	iunlock(ctlr);
 	XPRINT("e: %x\n", IN(p));
-	if(!on)
-		hubportreset(nil, port);
 	poperror();
 	qunlock(&ctlr->resetl);
 }
@@ -1454,8 +1444,8 @@ reset(Usbhost *uh)
 		ctlr->tdpool[i].next = ctlr->freetd;
 		ctlr->freetd = &ctlr->tdpool[i];
 	}
-	ctlr->qhpool = xspanalloc(32*sizeof(QH), 16, 0);
-	for(i=32; --i>=0;){
+	ctlr->qhpool = xspanalloc(64*sizeof(QH), 16, 0);
+	for(i=64; --i>=0;){
 		ctlr->qhpool[i].next = ctlr->freeqh;
 		ctlr->freeqh = &ctlr->qhpool[i];
 	}
