@@ -100,7 +100,7 @@ struct Duartport
 	Alarm	*a;		/* alarm for waking the kernel process */
 	int	delay;		/* between character input and waking kproc */
  	int	kstarted;	/* kproc started */
-	uchar	delim[256];	/* characters that act as delimiters */
+	uchar	delim[256/8];	/* characters that act as delimiters */
 };
 Duartport	duartport[1];
 
@@ -424,7 +424,7 @@ duartrintr(char ch)
 		(*cq->putc)(cq, ch);
 	else {
 		putc(cq, ch);
-		if(dp->delim[ch])
+		if(dp->delim[ch/8] & (1<<(ch&7)) )
 			wakeup(&cq->r);
 	}
 }

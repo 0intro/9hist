@@ -1204,7 +1204,7 @@ nonetrcvmsg(Noconv *cp, Block *bp)
 	/*
 	 *  ignore old messages and process the acknowledgement
 	 */
-	if(h->mid != mp->mid){
+	if(h->mid!=mp->mid || (f&NO_NULL)){
 		DPRINT("old msg %d instead of %d r==%d\n", h->mid, mp->mid, r);
 		if(r == 0){
 			norack(cp, h->ack);
@@ -1469,7 +1469,7 @@ loop:
 			 */
 			while(cp->afirst!=cp->anext && cp->rq->next->len<16*1024){
 				DPRINT("sending ack %d\n", cp->ack[cp->afirst]);
-				nosendctl(cp, 0, 0);
+				nosendctl(cp, NO_NULL, 0);
 			}
 			qunlock(cp);
 		}

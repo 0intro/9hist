@@ -7,16 +7,8 @@
 #define	P_write(sel, addr, val, type)	P_oper(sel, *(type *)(PORT+addr) = val)
 
 void	addportintr(int (*)(void));
-int	cangetc(void*);
-int	canputc(void*);
 void	clearmmucache(void);
-void	duartbaud(int);
-void	duartbreak(int);
-void	duartdtr(int);
-int	duartinputport(void);
-void	duartrs232start(char);
-void	duartrs232stop(void);
-void	duartrs232xmit(char);
+void	duartinit(void);
 void	duartstarttimer(void);
 void	duartstoptimer(void);
 #define	evenaddr(x)	/* 68020 doesn't care */
@@ -30,36 +22,20 @@ void	fpregrestore(char*);
 void	fpregsave(char*);
 void	fprestore(FPsave*);
 void	fpsave(FPsave*);
-int	getc(IOQ*);
-int	gets(IOQ*, void*, int);
 void	incontoggle(void);
-void	initq(IOQ*);
-int	kbdputc(IOQ*, int);
-void	kbdclock(void);
-void	kbdrepeat(int);
 KMap*	kmap(Page*);
 void	kmapinit(void);
-int	kprint(char*, ...);
 void	kunmap(KMap*);
 void	mmuinit(void);
 void	mousebuttons(int);
 void	mouseclock(void);
-int	mouseputc(IOQ*, int);
 int	portprobe(char*, int, int, int, long);
-void	printinit(void);
 void	procrestore(Proc*, uchar*);
 void	procsave(uchar*, int);
 void	procsetup(Proc*);
-int	putc(IOQ*, int);
-void	puts(IOQ*, void*, int);
 void	putkmmu(ulong, ulong);
-void	putstr(char*);
-void	putstrn(char*, long);
 void	restartprint(Alarm*);
 void	restfpregs(FPsave*);
-void	rs232puts(IOQ*, char*, int);
-void	rs232rintr(char);
-void	rs232xintr(void);
 void	screeninit(void);
 void	screenputc(int);
 void	screenputs(char*, int);
@@ -81,3 +57,26 @@ int	splduart(void);
 int	tas(char*);
 void	touser(void);
 #define	waserror()	(u->nerrlab++, setlabel(&u->errlab[u->nerrlab-1]))
+
+/*
+ *  for queues (to go into portfns.h)
+ */
+int	cangetc(void*);
+int	canputc(void*);
+int	getc(IOQ*);
+int	gets(IOQ*, void*, int);
+void	initq(IOQ*);
+int	putc(IOQ*, int);
+void	puts(IOQ*, void*, int);
+
+/*
+ *  for devcons (to go into portfns.h)
+ */
+void	kbdclock(void);
+void	kbdrepeat(int);
+int	kbdputc(IOQ*, int);
+int	kprint(char*, ...);
+int	mouseputc(IOQ*, int);
+void	printinit(void);
+void	putstr(char*);
+void	putstrn(char*, long);

@@ -125,7 +125,6 @@ sysfork(ulong *arg)
 	p->parent = u->p;
 	p->parentpid = u->p->pid;
 	p->pgrp = u->p->pgrp;
-	p->bssend = u->p->bssend;
 	p->fpstate = u->p->fpstate;
 	incref(p->pgrp);
 	u->p->nchild++;
@@ -338,7 +337,7 @@ sysexec(ulong *arg)
 
 	close(tc);
 
-	p->bssend = bssend;
+	p->seg[BSEG].endseg = bssend;
 
 	/*
 	 * Move the stack
@@ -525,58 +524,11 @@ sysnoted(ulong *arg)
 long
 sysbrk_(ulong *arg)
 {
-	ulong addr;
-	Seg *s;
-
-	addr = arg[0];
-	if(addr < u->p->bssend){
-		pprint("addr below bss\n");
-		pexit("Suicide", 0);
-		error(Esegaddr);
-	}
-	if(addr <= ((u->p->bssend+(BY2PG-1))&~(BY2PG-1)))	/* still in DSEG */
-		goto Return;
-	if(segaddr(&u->p->seg[BSEG], u->p->seg[BSEG].minva, arg[0]) == 0){
-		pprint("bad segaddr in brk\n");
-		pexit("Suicide", 0);
-		error(Esegaddr);
-	}
-    Return:
-	u->p->bssend = addr;
-	return 0;
+	return ibrk(arg[0], BSEG);
 }
-/*
+
 long
-syslkbrk(ulong *arg)
+syslkbrk_(ulong *arg)
 {
-	ulong addr;
-	Orig *o;
-	Seg *s;
-
-	addr = arg[0];
-	s = &u->p->seg[LSEG];
-	if(addr < LKSEGBASE)
-		error(Esegaddr);
-
-	/* If we have never seen a lock segment create one */
-	if(s->o == 0) {
-		s->proc = u->p;
-		s->minva = LKSEGBASE;
-		s->maxva = addr;
-		o = neworig(s->minva, (addr-LKSEGBASE)>>PGSHIFT, OWRPERM, 0);
-		o->minca = 0;
-		o->maxca = 0;
-		s->o = o;
-		s->mod = 0;
-	}
-	if(addr < s->maxva)
-		return 0;
-	if(segaddr(&u->p->seg[LSEG], s->minva, addr) == 0) {
-		pprint("bad segaddr in brk\n");
-		pexit("Suicide", 0);
-		error(Esegaddr);
-
-	}
-	return 0;
+	return ibrk(arg[0], LSEG);
 }
-*/

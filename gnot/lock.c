@@ -3,6 +3,7 @@
 #include "mem.h"
 #include "dat.h"
 #include "fns.h"
+#include "errno.h"
 
 #define PCOFF -1
 
@@ -56,4 +57,10 @@ unlock(Lock *l)
 {
 	l->pc = 0;
 	l->key = 0;
+}
+
+void
+mklockseg(Seg *s)
+{
+	error(Esegaddr);
 }

@@ -61,17 +61,15 @@ ialloc(ulong n, int align)
 		print("ialloc bad\n");
 	if(palloc.addr == 0)
 		palloc.addr = ((ulong)&end)&~KZERO;
-	if(align){
-		palloc.addr += BY2PG-1;
-		palloc.addr &= ~(BY2PG-1);
-	}
+	if(align)
+		palloc.addr = PGROUND(palloc.addr);
+
 	memset((void*)(palloc.addr|KZERO), 0, n);
 	p = palloc.addr;
 	palloc.addr += n;
-	if(align){
-		palloc.addr += BY2PG-1;
-		palloc.addr &= ~(BY2PG-1);
-	}
+	if(align)
+		palloc.addr = PGROUND(palloc.addr);
+
 	if(palloc.addr >= conf.maxialloc)
 		panic("keep bill joy away");
 	return (void*)(p|KZERO);
@@ -549,7 +547,7 @@ segaddr(Seg *s, ulong min, ulong max)
 		return 0;
 	if(min != s->minva)	/* can't grow down yet (stacks: fault.c) */
 		return 0;
-	max = (max+(BY2PG-1)) & ~(BY2PG-1);
+	max = PGROUND(max);
 	o = s->o;
 	if(max == s->maxva)
 		return 1;
@@ -707,5 +705,35 @@ compactpte(Orig *o, ulong n)
 	if(u && u->p)
 		print("%s: %s: ", u->p->text, u->p->pgrp->user);
 	print("compactpte fails addr %lux %lux %d\n", o->va+n*BY2PG, o->va, n);
+	return 0;
+}
+
+long
+ibrk(ulong addr, int seg)
+{
+	Seg *s;
+
+	s = &u->p->seg[seg];
+	if(seg == LSEG && s->o == 0)
+		mklockseg(s);
+
+	/* Allows us to determine the base of the segment */
+	if(addr == 0)
+		return s->minva;
+
+	if(addr < s->endseg){
+		pprint("addr below segment\n");
+		pexit("Suicide", 0);
+		error(Esegaddr);
+	}
+
+	if(addr > PGROUND(s->endseg))
+		if(segaddr(s, s->minva, addr) == 0){
+			pprint("bad segaddr in brk\n");
+			pexit("Suicide", 0);
+			error(Esegaddr);
+		}
+
+	s->endseg = addr;
 	return 0;
 }

@@ -1,20 +1,9 @@
 #include "../port/portfns.h"
 
 void	cacheinit(void);
-int	cangetc(void*);
-int	canputc(void*);
 void	clearfpintr(void);
 #define	clearmmucache()
 void	clockinit(void);
-void	duartbaud(int);
-void	duartbreak(int);
-void	duartdtr(int);
-void	duartinit(void);
-int	duartinputport(void);
-void	duartintr(void);
-void	duartstartrs232o(void);
-void	duartstarttimer(void);
-void	duartstoptimer(void);
 void	evenaddr(ulong);
 char*	excname(ulong);
 void	faultasync(Ureg*);
@@ -27,15 +16,10 @@ void	fpregrestore(char*);
 void	fpregsave(char*);
 void	fprestore(FPsave*);
 void	fpsave(FPsave*);
-int	getc(IOQ*);
-int	gets(IOQ*, void*, int);
 int	getb2(ulong);
-int	getrs232o(void);
 int	getw2(ulong);
-void	initq(IOQ*);
 void	intrinit(void);
 void	ioinit(void);
-int	kbdputc(IOQ*, int);
 int	kbdstate(IOQ*, int);
 void	kbdclock(void);
 void	kbdrepeat(int);
@@ -49,14 +33,11 @@ void	lancesetup(Lance*);
 void	lancetoggle(void);
 void	mmuinit(void);
 void	mousebuttons(int);
-int	mouseputc(IOQ*, int);
 void	mouseclock(void);
 void	printinit(void);
 #define	procrestore(x,y)
 #define	procsave(x,y)
 #define	procsetup(x)	((p)->fpstate = FPinit)
-int	putc(IOQ*, int);
-void	puts(IOQ*, void*, int);
 void	putb2(ulong, int);
 void	putcontext(int);
 void	putcxreg(int);
@@ -76,11 +57,6 @@ void	putwE(ulong, ulong);
 void	reset(void);
 void	restartprint(Alarm*);
 void	restfpregs(FPsave*);
-void	rs232ichar(int);
-void	sccintr(void);
-void	sccputs(IOQ*, char*, int);
-void	sccsetup(void*);
-void	sccspecial(int, IOQ*, IOQ*, int);
 void	screeninit(void);
 void	screenputc(int);
 void	spldone(void);
@@ -90,3 +66,34 @@ void	trap(Ureg*);
 void	trapinit(void);
 #define	wbflush()	/* mips compatibility */
 #define	waserror()	(u->nerrlab++, setlabel(&u->errlab[u->nerrlab-1]))
+
+/*
+ *  for queues (to go into portfns.h)
+ */
+int	cangetc(void*);
+int	canputc(void*);
+int	getc(IOQ*);
+int	gets(IOQ*, void*, int);
+void	initq(IOQ*);
+int	putc(IOQ*, int);
+void	puts(IOQ*, void*, int);
+
+/*
+ *  for the scc (to go into portfns.h)
+ */
+void	sccintr(void);
+void	sccputs(IOQ*, char*, int);
+void	sccsetup(void*);
+void	sccspecial(int, IOQ*, IOQ*, int);
+
+/*
+ *  for devcons (to go into portfns.h)
+ */
+void	kbdclock(void);
+void	kbdrepeat(int);
+int	kbdputc(IOQ*, int);
+int	kprint(char*, ...);
+int	mouseputc(IOQ*, int);
+void	printinit(void);
+void	putstr(char*);
+void	putstrn(char*, long);

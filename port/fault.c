@@ -9,7 +9,7 @@
 int
 fault(ulong addr, int read)
 {
-	ulong mmuvirt, mmuphys, n;
+	ulong mmuvirt, mmuphys = 0, n;
 	Seg *s;
 	PTE *opte, *pte, *npte;
 	Orig *o;
@@ -64,13 +64,15 @@ fault(ulong addr, int read)
 	if(pte->page == 0){
 		touched = 1;
 		if(o->chan==0 || addr>(o->va+(o->maxca-o->minca))){
-			/*
-			 * Zero fill page.  If we are really doing a copy-on-write
-			 * (e.g. into shared bss) we'll move the page later.
-			 */
-			pte->page = newpage(0, o, addr);
-			o->npage++;
+			/* Make a new bss or lock segment page */
+			if(s - u->p->seg == LSEG) {
+				pte->page = lkpage(o, addr);
+				mmuphys = PTEUNCACHE;
+			}
+			else
+				pte->page = newpage(0, o, addr);
 			zeroed = 1;
+			o->npage++;
 		}else{
 			/*
 			 * Demand load.  Release o because it could take a while.
@@ -157,8 +159,10 @@ fault(ulong addr, int read)
 			head = 0;
 		}
 		pg = pte->page;
-		if(zeroed){	/* move page */
-			pg->ref--;
+		/* when creating pages in the bss which are zfod we create a double
+		 * increment on the mod list which must be removed
+		 */
+		if(zeroed){
 			o->npage--;
 			opte->page = 0;
 		}else{		/* copy page */
@@ -170,20 +174,21 @@ fault(ulong addr, int read)
 			kunmap(k1);
 			if(pg->ref <= 1)
 				panic("pg->ref <= 1");
-			pg->ref--;
 		}
+		pg->ref--;
+
     easy:
-		mmuphys = PTEWRITE;
+		mmuphys |= PTEWRITE;
 	}else{
-		mmuphys = PTERONLY;
+		mmuphys |= PTERONLY;
 		if(o->flag & OWRPERM)
 			if(o->flag & OPURE){
 				if(!head && pte->page->ref==1)
-					mmuphys = PTEWRITE;
+					mmuphys |= PTEWRITE;
 			}else
 				if((head && o->nproc==1)
 	  			  || (!head && pte->page->ref==1))
-					mmuphys = PTEWRITE;
+					mmuphys |= PTEWRITE;
 	}
 	mmuvirt = addr;
 	mmuphys |= PPN(pte->page->pa) | PTEVALID;
@@ -212,7 +217,8 @@ validaddr(ulong addr, ulong len, int write)
 
 	if((long)len < 0){
     Err:
-		pprint("invalid address %lux in sys call pc %lux sp %lux\n", addr, ((Ureg*)UREGADDR)->pc, ((Ureg*)UREGADDR)->sp);
+		pprint("invalid address %lux in sys call pc %lux sp %lux\n", 
+			addr, ((Ureg*)UREGADDR)->pc, ((Ureg*)UREGADDR)->sp);
 		postnote(u->p, 1, "sys: bad address", NDebug);
 		error(Ebadarg);
 	}
@@ -261,10 +267,10 @@ vmemchr(void *s, int c, int n)
 Seg*
 seg(Proc *p, ulong addr)
 {
-	int i;
-	Seg *s;
+	Seg *s, *et;
 
-	for(i=0,s=p->seg; i<NSEG; i++,s++)
+	et = &p->seg[NSEG];
+	for(s=p->seg; s < et; s++)
 		if(s->o && s->minva<=addr && addr<s->maxva)
 			return s;
 	return 0;

@@ -120,9 +120,9 @@ dkconfig(void)
 		 *  make it 9600 baud,
 		 *  push the async protocol onto it,
 		 */
-		cfd = open("#c/rs232ctl", 2);
+		cfd = open("#t/tty0ctl", 2);
 		if(cfd < 0)
-			error("opening #c/rs232ctl");
+			error("opening #t/tty0ctl");
 		sendmsg(cfd, "B9600");
 		sendmsg(cfd, "push async");
 		break;
@@ -133,9 +133,9 @@ dkconfig(void)
 		 *  make it 19200 baud,
 		 *  push the async protocol onto it,
 		 */
-		cfd = open("#c/rs232ctl", 2);
+		cfd = open("#t/tty0ctl", 2);
 		if(cfd < 0)
-			error("opening #c/rs232ctl");
+			error("opening #t/tty0ctl");
 		sendmsg(cfd, "B19200");
 		sendmsg(cfd, "push async");
 		break;

@@ -297,7 +297,8 @@ struct Seg
 	ulong	minva;			/* va of 0th pte (not necessarily Seg->o->va) */
 	ulong	maxva;			/* va of last pte */
 	PTE	*mod;			/* list of modified pte's */
-	ulong	pad[3]; /**/
+	ulong	endseg;			/* segments end */
+	ulong	pad[2]; /**/
 };
 
 /*
@@ -343,7 +344,6 @@ struct Proc
 	int	state;
 	Page	*upage;			/* BUG: should be unlinked from page list */
 	Seg	seg[NSEG];
-	ulong	bssend;			/* initial top of bss seg */
 	ulong	pid;
 	int	nchild;
 	QLock	wait;			/* exiting children to be waited for */

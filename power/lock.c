@@ -4,6 +4,7 @@
 #include "dat.h"
 #include "fns.h"
 #include "io.h"
+#include "errno.h"
 
 /*
  * The hardware semaphores are strange.  64 per page, replicated 16 times
@@ -23,11 +24,14 @@ struct
 	uchar	bmap[NSEMPG];		/* allocation map */
 }semalloc;
 
+Page lkpgheader[NSEMPG];
+
 void
 lockinit(void)
 {
 	memset(semalloc.bmap, 0, sizeof(semalloc.bmap));
 	semalloc.bmap[0] = 1;
+
 	semalloc.lock.sbsem = SBSEM;
 	semalloc.nextsem = SBSEM+1;
 	semalloc.nsem = 1;
@@ -48,6 +52,32 @@ lkpgalloc(void)
 
 	*p = 1;
 	return (p-semalloc.bmap)*WD2PG + SBSEM;
+}
+
+/* Moral equivalent of newpage for pages of hardware lock */
+Page*
+lkpage(Orig *o, ulong va)
+{
+	uchar *p, *top;
+	Page *pg;
+	int i;
+
+	lock(&semalloc.lock);
+	top = &semalloc.bmap[NSEMPG];
+	for(p = semalloc.bmap; *p && p < top; p++)
+		;
+	if(p == top)
+		panic("lkpage");
+
+	*p = 1;
+	i = p-semalloc.bmap;
+	pg = &lkpgheader[i];
+	pg->pa = (ulong)((i*WD2PG) + SBSEM);
+	pg->va = va;
+	pg->o = o;
+
+	unlock(&semalloc.lock);
+	return pg;
 }
 
 void
@@ -133,4 +163,19 @@ unlock(Lock *l)
 {
 	l->pc = 0;
 	*l->sbsem = 0;
+}
+
+void
+mklockseg(Seg *s)
+{
+	Orig *o;
+
+	s->proc = u->p;
+	o = neworig(LKSEGBASE, 0, OWRPERM|OPURE, 0);
+	o->minca = 0;
+	o->maxca = 0;
+	s->o = o;
+	s->minva = LKSEGBASE;
+	s->maxva = LKSEGBASE;
+	s->mod = 0;
 }

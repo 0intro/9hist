@@ -12,12 +12,14 @@
 #define	BY2PG		4096			/* bytes per page */
 #define	WD2PG		(BY2PG/BY2WD)		/* words per page */
 #define	PGSHIFT		12			/* log(BY2PG) */
+#define PGROUND(s)	(((s)+(BY2PG-1))&~(BY2PG-1))
 
 #define	MAXMACH		4			/* max # cpus system can run */
 
 /*
  * Time
  */
+#define HZ		20
 #define	MS2HZ		50			/* millisec per clock tick */
 #define	TK2SEC(t)	((t)/20)		/* ticks to seconds */
 #define	TK2MS(t)	((t)*MS2HZ)		/* ticks to milliseconds */
@@ -94,6 +96,7 @@
 #define	PTEGLOBL	(1<<8)
 #define	PTEVALID	(1<<9)
 #define	PTEWRITE	(1<<10)
+#define PTEUNCACHE	(1<<11)
 #define PTERONLY	0
 #define	PTEPID(n)	((n)<<6)
 #define TLBPID(n)	(((n)>>6)&0x3F)
