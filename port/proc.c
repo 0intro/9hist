@@ -216,9 +216,10 @@ loop:
 		 *  processor can run given affinity constraints
 		 */
 		for(rq = &runq[Nrq-1]; rq >= runq; rq--){
-			if(rq->head == 0)
+			p = rq->head;
+			if(p == 0)
 				continue;
-			for(p = rq->head; p; p = p->rnext){
+			for(; p; p = p->rnext){
 				if(p->mp == m || m->ticks - p->movetime > HZ/2)
 					goto found;
 			}

@@ -109,6 +109,14 @@ iallocb(int size)
 void
 freeb(Block *b)
 {
+	/*
+	 * drivers which perform non cache coherent DMA manage their
+	 * own buffer pools, so they provide their own free routines.
+	 */
+	if(b->free) {
+		b->free(b);
+		return;
+	}
 	if(b->flag & BINTR) {
 		ilock(&ialloc);
 		ialloc.bytes -= b->lim - b->base;
