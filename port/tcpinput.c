@@ -163,7 +163,7 @@ tcp_input(Ipifc *ifc, Block *bp)
 	if(bp == 0)
 		return;
 	
-	/* Look for a connection, failing that attempt to establish a listen */
+	/* Look for a connection. failing that look for a listener. */
 	s = ip_conn(ifc, seg.dest, seg.source, source);
 	if (s == 0) {
 		if(seg.flags & SYN){
@@ -390,7 +390,6 @@ tcp_input(Ipifc *ifc, Block *bp)
 			case Syn_received:
 			case Established:
 			case Finwait1:
-			case Finwait2:
 				/* Place on receive queue */
 				tcb->rcvcnt += blen(bp);
 				if(bp){
@@ -409,6 +408,12 @@ tcp_input(Ipifc *ifc, Block *bp)
 				if(tcb->max_snd <= tcb->rcv.nxt-tcb->last_ack)
 					tcb->flags |= FORCE;
 				break;
+			case Finwait2:
+				/* no process to read the data, send a reset */
+				if(bp)
+					freeb(bp);
+				reset(source, dest, tos, length, &seg);
+				goto done;
 			}
 		}
 
@@ -612,8 +617,10 @@ add_reseq(Tcpctl *tcb, char tos, Tcp *seg, Block *bp, ushort length)
 	Reseq *rp, *rp1;
 
 	rp = malloc(sizeof(Reseq));
-	if(rp == 0)
+	if(rp == 0){
+		freeb(bp);	/* bp always consumed by add_reseq */
 		return;
+	}
 
 	rp->seg = *seg;
 	rp->tos = tos;

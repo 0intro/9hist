@@ -3,14 +3,12 @@
 #include <auth.h>
 #include <../boot/boot.h>
 
-char defpass[] = {0x64, 0x3e, 0x4d, 0x13, 0x32, 0x00, 0x0b, 0xe1, 0xce};
-
 void
 key(int islocal, Method *mp)
 {
 	Nvrsafe safe;
 	char password[20];
-	int prompt, fd, i;
+	int prompt, fd;
 
 	USED(islocal);
 	USED(mp);
@@ -25,16 +23,16 @@ key(int islocal, Method *mp)
 	|| read(fd, &safe, sizeof safe) != sizeof safe)
 		warning("can't read nvram key");
 
+getp:
 	if(prompt){
 		do
 			getpasswd(password, sizeof password);
 		while(!passtokey(safe.machkey, password));
 	}else if(nvcsum(safe.machkey, DESKEYLEN) != safe.machsum){
-		warning("bad nvram key; using default password");
-		/* Just so its not plain text in the binary */
-		for(i=0; i<sizeof(defpass); i++)
-			defpass[i] = (defpass[i]-19)^(17*(i+3));
-		passtokey(safe.machkey, defpass);
+		warning("bad nvram key");
+		prompt = 1;
+		kflag = 1;
+		goto getp;
 	}
 	safe.machsum = nvcsum(safe.machkey, DESKEYLEN);
 	if(kflag){

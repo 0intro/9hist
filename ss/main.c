@@ -96,14 +96,12 @@ init0(void)
 	u->p->state = Running;
 	u->p->mach = m;
 	spllo();
-print("init0:\n"); prflush();
 
 	u->slash = (*devtab[0].attach)(0);
 	u->dot = clone(u->slash, 0);
 
 	kproc("alarm", alarmkproc, 0);
 	chandevinit();
-print("alarmkp:\n"); prflush();
 
 	if(!waserror()){
 		ksetterm("sun %s");

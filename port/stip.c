@@ -467,6 +467,9 @@ ip_reassemble(int offset, Block *bp, Etherhdr *ip)
 				fragstat.succall++;
 				BLKFRAG(*l)->flen -= ovlap;
 				BLKFRAG(*l)->foff += ovlap;
+				/* move up ether+ip hdrs */
+				memmove((*l)->rptr + ovlap, (*l)->rptr,
+					 ETHER_HDR+ETHER_IPHDR);
 				(*l)->rptr += ovlap;
 				break;
 			}

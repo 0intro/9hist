@@ -231,13 +231,17 @@ void
 tcprcvwin(Ipconv *s)				/* Call with tcb locked */
 {
 	Tcpctl *tcb = &s->tcpctl;
+	int w;
 
 	/* Calculate new window */
 	qlock(s);
 	if(s->readq) {
-		tcb->rcv.wnd = Streamhi - s->readq->next->len;
-		if(tcb->rcv.wnd < 0)
+		/* use w because rcv.wnd is unsigned */
+		w = Streamhi - s->readq->next->len;
+		if(w < 0)
 			tcb->rcv.wnd = 0;
+		else
+			tcb->rcv.wnd = w;
 	}
 	else
 		tcb->rcv.wnd = Streamhi;

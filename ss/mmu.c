@@ -125,8 +125,8 @@ flushcontext(void)
 	/*
 	 * Clear context from cache
 	 */
-	for(i=0; i<0x1000; i+=16)
-		putwE16((i<<4), 0);
+	for(i=0; i<VACSIZE; i+=16*VACLINESZ)
+		putwE16(i, 0);
 }
 
 void
@@ -142,9 +142,9 @@ mmuinit(void)
 	ulong ktop, l, i, j, c, pte;
 
 	/*
-	 * TEMP: just map the first 8M of bank 0 for the kernel - philw
+	 * TEMP: just map the first 4M of bank 0 for the kernel - philw
 	 */
-	ktop = 8*1024*1024;
+	ktop = 4*1024*1024;
 	/*
 	 * First map lots of memory as kernel addressable in all contexts
 	 */
@@ -270,7 +270,7 @@ putpmeg(ulong virt, ulong phys)
 	/*
 	 * Flush old entries from cache
 	 */
-	for(i=0; i<VACSIZE; i+=16*VACLINESZ)
+	for(i=0; i<BY2PG; i+=16*VACLINESZ)
 		putwD16(virt+i, 0);
 	putw4(virt, phys);
 }
@@ -305,8 +305,8 @@ cacheinit(void)
 	 */
 	for(c=0; c<NCONTEXT; c++){	/* necessary? */
 		putcontext(c);
-		for(i=0; i<0x1000; i++)
-			putw2(CACHETAGS+(i<<4), 0);
+		for(i=0; i<VACSIZE; i+=VACLINESZ)
+			putw2(CACHETAGS+i, 0);
 	}
 	putcontext(0);
 
