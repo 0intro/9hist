@@ -43,7 +43,7 @@ extern int	nop(int);
 extern int	outin(char*, char*, int);
 extern int	plumb(char*, char*, int*, char*);
 extern int	readfile(char*, char*, int);
-extern int	readn(int, char*, int);
+extern long	readn(int, void*, long);
 extern int	sendmsg(int, char*);
 extern void	setenv(char*, char*);
 extern void	settime(int);

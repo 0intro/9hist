@@ -589,7 +589,7 @@ qwrite(Queue *q, void *vp, int len)
  *  used by print() to write to a queue.  Since we may be splhi or not in
  *  a process, don't qlock.
  */
-int
+long
 qiwrite(Queue *q, void *vp, int len)
 {
 	int n, sofar, dowakeup;

@@ -69,7 +69,7 @@ static int types[] =
 };
 
 static int
-sdgen(Chan *c, Dirtab*, long, long s, Dir *dirp)
+sdgen(Chan *c, Dirtab*, int, int s, Dir *dirp)
 {
 	Qid qid;
 	Disk *d;

@@ -203,7 +203,7 @@ static void	atapipart(Drive*);
 static void	atapiintr(Controller*);
 
 static int
-atagen(Chan *c, Dirtab*, long, long s, Dir *dirp)
+atagen(Chan *c, Dirtab*, int, int s, Dir *dirp)
 {
 	Qid qid;
 	int drive;
