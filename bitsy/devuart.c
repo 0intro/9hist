@@ -28,7 +28,8 @@ struct Uartregs
 	ulong	status0;
 	ulong	status1;
 };
-#define	UART3REGS IOA(Uartregs, 0x50000)
+
+static Uartregs *uart3regs = UART3REGS;
 
 /* ctl0 bits */
 enum
@@ -497,7 +498,7 @@ serialputs(char *str, int n)
 {
 	Uartregs *ur;
 
-	ur = UART3REGS;
+	ur = uart3regs;
 	while(n-- > 0){
 		/* wait for output ready */
 		while((ur->status1 & XmitNotFull) == 0)

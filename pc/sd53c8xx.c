@@ -1732,18 +1732,8 @@ docheck:
 
 	while(waserror())
 		;
-	tsleep(d, done, d, 30 * 1000);
+	sleep(d, done, d);
 	poperror();
-
-	if (!done(d)) {
-		KPRINT(PRINTPREFIX "%d/%d: exec: Timed out\n", target, r->lun);
-		dumpncrregs(c, 0);
-		dsafree(c, d);
-		reset(c);
-		qunlock(&c->q[target]);
-		r->status = SDtimeout;
-		return r->status = SDtimeout;	/* assign */
-	}
 
 	if((status = d->p9status) == SDeio)
 		c->s[target] = NeitherDone;

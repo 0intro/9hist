@@ -409,20 +409,8 @@ mylex24rio(SDreq* r)
 	 */
 	while(waserror())
 		;
-	tsleep(ccb, done24, ccb, 30*1000);
+	sleep(ccb, done24, ccb);
 	poperror();
-
-	if(!done24(ccb)){
-		print("%s: %d/%d: sd24rio timeout\n",
-			ctlr->sdev->name, target, r->lun);
-		if(ccb->data != nil){
-			free(data);
-			ccb->data = nil;
-		}
-		ccbfree(ctlr, (Ccb*)ccb);
-
-		return SDtimeout;
-	}
 
 	/*
 	 * Save the status and patch up the number of

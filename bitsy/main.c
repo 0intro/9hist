@@ -8,8 +8,6 @@
 #include	"init.h"
 #include	"pool.h"
 
-#include	"sa1110.h"
-
 Mach *m;
 Conf conf;
 
@@ -18,6 +16,7 @@ main(void)
 {
 	iprint("bitsy kernel\n");
 	confinit();
+	xinit();
 	mmuinit();
 }
 

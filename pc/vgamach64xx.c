@@ -21,6 +21,7 @@ static ushort mach64xxdid[] = {
 	('G'<<8)|'B',
 	('G'<<8)|'D',
 	('G'<<8)|'I',
+	('G'<<8)|'M',
 	('G'<<8)|'P',
 	('G'<<8)|'Q',
 	('G'<<8)|'T',
@@ -799,3 +800,4 @@ VGAcur vgamach64xxcur = {
 
 	1					/* doespanning */
 };
+

@@ -1,6 +1,4 @@
 #include "mem.h"
-#include "sa1110.h"
-#include "io.h"
 
 /*
  * Entered here from Compaq's bootldr with MMU disabled.
@@ -87,8 +85,16 @@ TEXT getfar(SB), $-4
 	RET
 
 /* set the translation table base */
-TEXT setttb(SB), $-4
+TEXT putttb(SB), $-4
 	MCR	CpMMU, 0, R0, C(CpTTB), C(0x0)
+
+/* set the translation table base */
+TEXT putdac(SB), $-4
+	MCR	CpMMU, 0, R0, C(CpDAC), C(0x0)
+
+/* set the translation table base */
+TEXT putpid(SB), $-4
+	MCR	CpMMU, 0, R0, C(CpPID), C(0x0)
 
 /*
  *  set the stack value for the mode passed in R0
