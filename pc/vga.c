@@ -26,10 +26,6 @@ struct{
 
 #define MAXX	640
 #define MAXY	480
-/*
-#define MAXX	800
-#define MAXY	600
-*/
 
 #define SCREENMEM	(0xA0000 | KZERO)
 
@@ -76,28 +72,6 @@ VGAmode mode12 =
 	0x01, 0x10, 0x0f, 0x00, 0x00,
 };
 
-/*
- *  cardinal (tseng labs) 800x600 display, 16 bit color. 
- */
-VGAmode mode25 = 
-{
-	/* general */
-	0xe3, 0x00,  /* 0x70, 0x04, these are read-only */
-	/* sequence */
-	0x03, 0x01, 0x0f, 0x00, 0x06,
-	/* crt */
-	0x5f, 0x4f, 0x50, 0x02, 0x54, 0x80, 0x0b, 0x3e,
-	0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa0,
-	0xea, 0x8c, 0xdf, 0x28, 0x00, 0xe7, 0x04, 0xe3,
-	0xff,
-	/* graphics */
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x0f,
-	0xff,
-	/* attribute */
-	0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-	0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x3f,
-	0x01, 0x10, 0x0f, 0x00, 0x00,
-};
 
 void
 genout(int reg, int val)
@@ -139,27 +113,6 @@ crout(int reg, int val)
 {
 	outb(CRX, reg);
 	outb(CR, val);
-}
-
-/*
- *  m is a bit mask of planes to be affected by CPU writes
- */
-vgawrmask(int m)
-{
-	srout(Smmask, m&0xf);
-}
-
-/*
- *  p is the plane that will respond to CPU reads
- */
-vgardplane(int p)
-{
-	grout(Grms, p&3);
-}
-
-vgadump(void)
-{
-	print("misc is 0x%ux fc is 0x%ux\n", inb(EMISCR), inb(EFCR));
 }
 
 void
@@ -272,6 +225,17 @@ dumpmodes(void) {
 #endif
 
 void
+setscreen(int maxx, int maxy, int bpp) {
+	gbitblt(&gscreen, Pt(0, 0), &gscreen, gscreen.r, flipD[S]);
+	gscreen.width = maxx/32;
+	gscreen.r.max = Pt(maxx, maxy);
+	gbitblt(&gscreen, Pt(0, 0), &gscreen, gscreen.r, flipD[0]);
+	out.pos.x = MINX;
+	out.pos.y = 0;
+	out.bwid = defont0.info[' '].width;
+}
+
+void
 screeninit(void)
 {
 	int i, j, k;
@@ -290,11 +254,7 @@ screeninit(void)
 	l = defont->bits->base;
 	for(i = defont->bits->width*Dy(defont->bits->r); i > 0; i--, l++)
 		*l = (*l<<24) | ((*l>>8)&0x0000ff00) | ((*l<<8)&0x00ff0000) | (*l>>24);
-
-	gbitblt(&gscreen, Pt(0, 0), &gscreen, gscreen.r, flipD[0]);
-	out.pos.x = MINX;
-	out.pos.y = 0;
-	out.bwid = defont0.info[' '].width;
+	setscreen(MAXX, MAXY, 1);
 }
 
 void
@@ -394,34 +354,6 @@ mouseclock(void)
 {
 	mouseupdate(1);
 }
-
-vgaset(char *cmd)
-{
-	int set;
-	int reg;
-	int val;
-
-	set = *cmd++;
-	cmd++;
-	reg = strtoul(cmd, &cmd, 0);
-	cmd++;
-	val = strtoul(cmd, &cmd, 0);
-	switch(set){
-	case 'a':
-		arout(reg, val);
-		break;
-	case 'g':
-		grout(reg, val);
-		break;
-	case 'c':
-		crout(reg, val);
-		break;
-	case 's':
-		srout(reg, val);
-		break;
-	}
-}
-
 
 /*
  *  a fatter than usual cursor for the safari

@@ -6,6 +6,8 @@
 #include	"io.h"
 #include	"../port/error.h"
 
+#include	<libg.h>
+#include	<gnot.h>
 #include	"devtab.h"
 #include	"vga.h"
 
@@ -128,16 +130,15 @@ vgaread(Chan *c, void *buf, long n, ulong offset)
 	case Qvgatype:
 		return readstr(offset, buf, n, vgacard);
 	case Qvgasize:
-		sprint(obuf, "%dx%d%x%d %s",
-			screeninfo.maxx, screeninfo.maxy,
-			(screeninfo.packed == 0) ? 256 : 16,
-			(screeninfo.interlaced != 0) ? "interlaced" : "non-interlaced");
+		sprint(obuf, "%d %d",
+			gscreen.r.max.x, gscreen.r.max.y);
 		return readstr(offset, buf, n, obuf);
 	case Qvgaport:
 		if (offset + n >= 0x8000)
 			error(Ebadarg);
-		for (port=offset; port<offset+n; port++)
+		for (port=offset; port<offset+n; port++) {
 			*cp++ = inb(port);
+		}
 		return n;
 	}
 }
@@ -145,9 +146,8 @@ vgaread(Chan *c, void *buf, long n, ulong offset)
 long
 vgawrite(Chan *c, void *buf, long n, ulong offset)
 {
-	uchar *cp = buf;
-	void (*outfunc)(int, int);
-	int port, i;
+	char cbuf[20], *cp;
+	int port, i, maxx, maxy;
 
 	switch(c->qid.path&~CHDIR){
 	case Qdir:
@@ -163,12 +163,25 @@ vgawrite(Chan *c, void *buf, long n, ulong offset)
 	case Qvgasize:
 		if(offset != 0)
 			error(Ebadarg);
-		error(Eperm);
+		if(n >= sizeof cbuf)
+			n = sizeof cbuf - 1;
+		memmove(cbuf, buf, n);
+		cbuf[n-1] = 0;
+		cp = cbuf;
+		maxx = strtoul(cp, &cp, 0);
+		maxy = strtoul(cp, &cp, 0);
+		if (maxx == 0 || maxy == 0 ||
+		    maxx > 1280 || maxy > 1024)
+			error(Ebadarg);
+		setscreen(maxx, maxy, 1);
+		return n;
 	case Qvgaport:
+		cp = buf;
 		if (offset + n >= 0x8000)
 			error(Ebadarg);
-		for (port=offset; port<offset+n; port++)
+		for (port=offset; port<offset+n; port++) {
 			outb(port, *cp++);
+		}
 		return n;
 	}
 }

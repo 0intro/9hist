@@ -106,9 +106,7 @@ sched(void)
 		}
 		gotolabel(&m->sched);
 	}
-	spllo();
 	p = runproc();
-	splhi();
 	mapstack(p);
 	gotolabel(&p->sched);
 }
@@ -147,7 +145,7 @@ ready(Proc *p)
 }
 
 /*
- * Always called spllo
+ * Always called splhi
  */
 Proc*
 runproc(void)
@@ -157,6 +155,7 @@ runproc(void)
 	int i;
 
 loop:
+	spllo();
 	while(runhiq.head==0 && runloq.head==0)
 		for(i=0; i<10; i++)	/* keep out of shared memory for a while */
 			;
@@ -170,7 +169,6 @@ loop:
 	p = rq->head;
 	if(p==0 || p->mach){	/* p->mach==0 only when process state is saved */
 		unlock(&runhiq);
-		spllo();
 		goto loop;
 	}
 	if(p->rnext == 0)
@@ -181,7 +179,6 @@ loop:
 		print("runproc %s %d %s\n", p->text, p->pid, statename[p->state]);
 	unlock(&runhiq);
 	p->state = Scheding;
-	spllo();
 	return p;
 }
 

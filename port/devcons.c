@@ -607,7 +607,7 @@ consread(Chan *c, void *buf, long n, ulong offset)
 			error(Ebadarg);
 		chal = u->p->pgrp->crypt->chal;
 		chal[0] = RXschal;
-		for(i=1; i<8; i++)
+		for(i=1; i<AUTHLEN; i++)
 			chal[i] = nrand(256);
 		memmove(buf, chal, 8);
 		encrypt(evekey, buf, 8);

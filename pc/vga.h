@@ -17,8 +17,6 @@ enum
 	ARR=		0x3C1,		/* attribute registers (reading) */
 };
 
-extern	void genout(int, int);
-extern	void srout(int, int);
-extern	void grout(int, int);
-extern	void arout(int, int);
-extern	void crout(int, int);
+extern	void setscreen(int, int, int);
+
+extern	struct GBitmap	gscreen;

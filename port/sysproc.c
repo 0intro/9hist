@@ -571,7 +571,7 @@ syserrstr(ulong *arg)
 }
 
 long
-sysforkpgrp(ulong *arg)
+sys__forkpgrp__(ulong *arg)
 {
 	int mask;
 	Pgrp *pg;

@@ -171,14 +171,6 @@ newblock(Bclass *bcp)
 /*
  *  allocate a block
  */
-static int
-isblock(void *arg)
-{
-	Bclass *bcp;
-
-	bcp = (Bclass *)arg;
-	return bcp->first!=0;
-}
 Block *
 allocb(ulong size)
 {
@@ -217,10 +209,6 @@ allocb(ulong size)
 	bp->next = 0;
 	bp->list = 0;
 	bp->type = M_DATA;
-	bp->flags &= S_CLASS;
-	if(bp->lim-bp->rptr<size && size<4096)
-		panic("allocb %lux %lux %d %ux %d", bp->lim, bp->rptr,
-			size, bp->flags, bcp-bclass);
 	return bp;
 }
 
@@ -237,11 +225,12 @@ freeb(Block *bp)
 	int x;
 	ulong pc;
 
+#ifdef asdf
 	pc = getcallerpc(((uchar*)&bp) - sizeof(bp));
 	if((bp->flags&S_CLASS) >= Nclass)		/* Check for double free */
 		panic("freeb class last(%lux) this(%lux)", bp->pc, pc);
 	bp->pc = pc;
-
+#endif asdf
 	for(; bp; bp = nbp){
 		bcp = &bclass[bp->flags & S_CLASS];
 		bp->flags = bp->flags|S_CLASS;		/* Check for double free */

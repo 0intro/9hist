@@ -191,6 +191,7 @@ wrenwrite(Chan *c, char *a, long n, ulong offset)
 	if(n)
 		return n;
 	error("end of device");
+	return 0;		/* not reached */
 }
 
 static long

@@ -242,7 +242,7 @@ mntauth(Mnt *m, Mntrpc *f, char *serv, ushort fid)
 	memmove(r->request.uname, u->p->user, NAMELEN);
 	chal[0] = FScchal;
 	for(i = 1; i < AUTHLEN; i++)
-		chal[i++] = nrand(256);
+		chal[i] = nrand(256);
 
 	memmove(r->request.chal, chal, AUTHLEN);
 	strncpy(r->request.chal+AUTHLEN, serv, NAMELEN);
