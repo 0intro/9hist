@@ -1777,6 +1777,7 @@ etherelnk3reset(Ether* ether)
 	case 0x5157:		/* 3C575 Cyclone */
 		ctlr->cbfns = KADDR(pcicfgr32(ctlr->pcidev, PciBAR2));
 		/*FALLTHROUGH*/
+	case 0x4500:		/* 3C450 HomePNA Tornado */
 	case 0x6056:
 	case 0x7646:		/* 3CSOHO100-TX */
 	case 0x9055:		/* 3C905B-TX */
@@ -1867,8 +1868,9 @@ etherelnk3reset(Ether* ether)
 		if(ctlr->xcvr & autoSelect)
 			ctlr->xcvr = autoselect(ctlr);
 		break;
-	case 0x6056:
+	case 0x4500:
 	case 0x5157:
+	case 0x6056:
 	case 0x7646:
 	case 0x9055:
 	case 0x9200:

@@ -90,7 +90,7 @@ intrdisable(int irq, void (*f)(Ureg *, void *), void *a, int tbdf, char *name)
 static long
 irqallocread(Chan*, void *vbuf, long n, vlong offset)
 {
-	char *buf, *p, str[11+1+KNAMELEN+1];
+	char *buf, *p, str[2*(11+1)+KNAMELEN+1+1];
 	int m, vno;
 	long oldn;
 	Vctl *v;
