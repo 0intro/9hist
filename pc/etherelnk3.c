@@ -30,6 +30,7 @@
  *
  *	9000 PCI	3C900-TPO	Etherlink III XL PCI 10BASE-T
  *	9001 PCI	3C900-COMBO	Etherlink III XL PCI 10BASE-T/10BASE-2/AUI
+ *	9005 PCI	3C900B-COMBO	Etherlink III XL PCI 10BASE-T/10BASE-2/AUI
  *	9050 PCI	3C905-TX	Fast Etherlink XL Shared 10BASE-T/100BASE-TX
  *	9051 PCI	3C905-T4	Fast Etherlink Shared 10BASE-T/100BASE-T4
  *	9055 PCI	3C905B-TX	Fast Etherlink Shared 10BASE-T/100BASE-TX
@@ -1685,6 +1686,7 @@ etherelnk3reset(Ether* ether)
 
 	case 0x9000:
 	case 0x9001:
+	case 0x9005:
 	case 0x9050:
 	case 0x9051:
 	case 0x9055:

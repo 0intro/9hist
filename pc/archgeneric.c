@@ -205,7 +205,7 @@ archinit(void)
 		coherence = wbflush;
 }
 
-extern uvlong fasthz;
+static uvlong fasthz;
 
 void
 cycletimerinit(void)
@@ -227,4 +227,10 @@ cycletimer(uvlong *hz)
 	if(hz != nil)
 		*hz = fasthz;
 	return tsc;
+}
+
+vlong
+fastticks(uvlong *hz)
+{
+	return (*arch->fastclock)(hz);
 }

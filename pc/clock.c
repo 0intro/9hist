@@ -17,11 +17,6 @@ typedef struct Clock0link {
 static Clock0link *clock0link;
 static Lock clock0lock;
 
-/* for fast clock */
-static	vlong	fastoff;
-static	vlong	fastsecs;
-	uvlong	fasthz;
-
 void
 addclock0link(void (*clock)(void))
 {
@@ -99,28 +94,4 @@ microdelay(int microsecs)
 	if(microsecs <= 0)
 		microsecs = 1;
 	aamloop(microsecs);
-}
-
-vlong
-fastticks(uvlong *hz)
-{
-	return (*arch->fastclock)(hz) + fastoff;
-}
-
-void
-syncfastticks(vlong secs)
-{
-	vlong x, ofastoff;
-	vlong err, deltat;
-
-	/* set new offset */
-	x = (*arch->fastclock)(nil);
-	ofastoff = fastoff;
-	fastoff = secs*fasthz - x;
-
-	/* calculate first order diversion rate */
-	err = fastoff - ofastoff;
-	deltat = secs - fastsecs;
-	fastsecs = secs;
-	deltat *= fasthz;
 }

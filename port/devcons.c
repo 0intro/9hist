@@ -372,7 +372,7 @@ static Dirtab consdir[]={
 	"consctl",	{Qconsctl},	0,		0220,
 	"cputime",	{Qcputime},	6*NUMSIZE,	0444,
 	"drivers",	{Qdrivers},	0,		0644,
-	"fastclock",	{Qfastclock},	4*NUMSIZE,	0444,
+	"fastclock",	{Qfastclock},	4*NUMSIZE,	0664,
 	"hostdomain",	{Qhostdomain},	DOMLEN,		0664,
 	"hostowner",	{Qhostowner},	NAMELEN,	0664,
 	"hz",		{Qhz},		NUMSIZE,	0666,

@@ -295,7 +295,6 @@ void		srvrecover(Chan*, Chan*);
 int		swapcount(ulong);
 int		swapfull(void);
 void		swapinit(void);
-void		syncfastticks(vlong);
 Block*		trimblock(Block*, int, int);
 void		tsleep(Rendez*, int (*)(void*), void*, int);
 void		unbreak(Proc*);
