@@ -76,6 +76,25 @@ addrootfile(char *name, uchar *contents, ulong len)
 	nroot++;
 }
 
+/*
+ *  add a root file
+ */
+static void
+addrootdir(char *name)
+{
+	Dirtab *d;
+
+	if(nroot >= Nfiles)
+		panic("too many root files");
+	rootdata[nroot] = nil;
+	d = &rootdir[nroot];
+	strcpy(d->name, name);
+	d->length = 0;
+	d->perm = 0;
+	d->qid.path = nroot+1;
+	nroot++;
+}
+
 static void
 rootreset(void)
 {
@@ -217,6 +236,20 @@ rootwrite(Chan *c, void *buf, long n, vlong)
 	return 0;
 }
 
+static void
+rootcreate(Chan *c, char *name, int mode, ulong perm)
+{
+	if(!iseve())
+		error(Eperm);
+	if(c->qid.path != (CHDIR|Qdir))
+		error(Eperm);
+	perm &= 0777|CHDIR;
+	if((perm & CHDIR) == 0)
+		error(Eperm);
+	c->flag |= COPEN;
+	c->mode = mode & ~OWRITE;
+}
+
 Dev rootdevtab = {
 	'/',
 	"root",
@@ -228,7 +261,7 @@ Dev rootdevtab = {
 	rootwalk,
 	rootstat,
 	rootopen,
-	devcreate,
+	rootcreate,
 	rootclose,
 	rootread,
 	devbread,
