@@ -626,6 +626,8 @@ procctlreq(Proc *p, char *va, int n)
 	}
 	else if(strncmp(buf, "hang", 4) == 0)
 		p->hang = 1;
+	else if(strncmp(buf, "nohang", 6) == 0)
+		p->hang = 0;
 	else if(strncmp(buf, "waitstop", 8) == 0)
 		procstopwait(p, 0);
 	else if(strncmp(buf, "startstop", 9) == 0) {
