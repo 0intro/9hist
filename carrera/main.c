@@ -143,7 +143,7 @@ machinit(void)
 	clrfpintr();
 
 	/* scrub cache */
-	cleancache();
+	((void(*)(void))((ulong)cleancache|0xA0000000))();
 
 	memset(m, 0, sizeof(Mach));
 
@@ -209,7 +209,7 @@ ioinit(int mapeisa)
 	puttlbx(2, Intctlvirt, intphys, isamphys, PGSZ1M);
 
 	/* Enable all device interrupts */
-	IO(ushort, Intenareg) = 0xffff;
+	IO(ushort, Intenareg) = 0xfff7;
 
 	/* Map the rom back into Promvirt to allow NMI handling */
 	promphys = IOPTE|PPN(Promphys);

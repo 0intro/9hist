@@ -782,6 +782,9 @@ ccache:
 	BGTZ	R9, ccache
 	MOVW	R10, M(STATUS)
 	WAIT
+	MOVW	M(CONFIG), R1
+	OR	$((1<<4)|(1<<5)), R1
+	MOVW	R1, M(CONFIG)
 	RET
 	
 TEXT	getcallerpc(SB), $0
