@@ -540,8 +540,8 @@ scsireadcdda(Target *t, char lun, int, void *b, long n, long bsize, long bno)
 	cmd[3] = bno>>16;
 	cmd[4] = bno>>8;
 	cmd[5] = bno;
-	cmd[6] = n>>8;
-	cmd[7] = n;
+	cmd[8] = n>>8;
+	cmd[9] = n;
 
 	nbytes = n*bsize;
 	s = scsiexec(t, SCSIread, cmd, sizeof(cmd), b, &nbytes);
