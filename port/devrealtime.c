@@ -639,6 +639,7 @@ devrtwrite(Chan *c, void *va, long n, vlong)
 			a = args[i];
 			add  = 0;
 			if (v = strchr(a, '=')){
+				*v = '\0';
 				if (v != a && v[-1] == '+'){
 					add = 1;
 					v[-1] = '\0';
@@ -646,7 +647,7 @@ devrtwrite(Chan *c, void *va, long n, vlong)
 					add = -1;
 					v[-1] = '\0';
 				}
-				*v++ = '\0';
+				v++;
 			}
 			if (strcmp(a, "T") == 0){
 				if (e=parsetime(&time, v))
@@ -690,12 +691,14 @@ devrtwrite(Chan *c, void *va, long n, vlong)
 			}else if (strcmp(a, "procs") == 0){
 				if (v == nil)
 					error("procs: value missing");
-				if (add <= 0)
+				if (add <= 0){
 					edf_expel(t);
+				}
 				if (add == 0){
 					for (pp = t->procs; pp < t->procs + nelem(t->procs); pp++)
-						if (*pp)
+						if (*pp){
 							proctotask(t, *pp, -1);
+						}
 					add = 1;
 				}
 				nrargs = tokenize(v, rargs, nelem(rargs));

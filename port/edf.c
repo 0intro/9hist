@@ -777,6 +777,8 @@ static Lock	waitlock;
 int
 edf_waitlock(Lock *l)
 {
+	Task *t;
+
 	iprint("edf_waitlock\n");
 	ilock(&waitlock);	/* can't afford normal locks here */
 	if (l->key == 0){
