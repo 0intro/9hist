@@ -323,6 +323,7 @@ enum{
 	Qdir,
 	Qauth,
 	Qauthcheck,
+	Qauthent,
 	Qclock,
 	Qcons,
 	Qconsctl,
@@ -350,6 +351,7 @@ enum{
 Dirtab consdir[]={
 	"authenticate",	{Qauth},	0,		0666,
 	"authcheck",	{Qauthcheck},	0,		0666,
+	"authenticator", {Qauthent},	0,		0666,
 	"clock",	{Qclock},	2*NUMSIZE,	0444,
 	"cons",		{Qcons},	0,		0660,
 	"consctl",	{Qconsctl},	0,		0220,
@@ -481,9 +483,12 @@ consclose(Chan *c)
 				raw = 0;
 			unlock(&ctl);
 		}
+		break;
 	case Qauth:
 	case Qauthcheck:
+	case Qauthent:
 		authclose(c);
+		break;
 	}
 }
 
@@ -599,6 +604,9 @@ consread(Chan *c, void *buf, long n, ulong offset)
 
 	case Qauth:
 		return authread(c, cbuf, n);
+
+	case Qauthent:
+		return authentread(c, cbuf, n);
 
 	case Qhostowner:
 		return readstr(offset, buf, n, eve);
@@ -804,6 +812,9 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 
 	case Qauthcheck:
 		return authcheck(c, a, n);
+
+	case Qauthent:
+		return authentwrite(c, a, n);
 
 	case Qnull:
 		break;

@@ -4,6 +4,8 @@ int		anyready(void);
 Image*		attachimage(int, Chan*, ulong, ulong);
 long		authcheck(Chan*, char*, int);
 void		authclose(Chan*);
+long		authentread(Chan*, char*, int);
+long		authentwrite(Chan*, char*, int);
 long		authread(Chan*, char*, int);
 ulong		authrequest(Session*, Fcall*);
 void		authreply(Session*, ulong, Fcall*);
