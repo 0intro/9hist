@@ -54,7 +54,6 @@ struct Mdata {
 
 typedef struct Tfile Tfile;
 struct Tfile {
-	Lock;
 	int	r;
 	char	name[NAMELEN];
 	ushort	bno;
@@ -70,7 +69,7 @@ struct Tfile {
 
 typedef struct Tfs Tfs;
 struct Tfs {
-	QLock;
+	QLock	ql;
 	int	r;
 	Chan	*c;
 	uchar	*map;
@@ -81,7 +80,6 @@ struct Tfs {
 };
 
 struct {
-	QLock;
 	Tfs	fs[Maxfs];
 } tinyfs;
 
@@ -482,14 +480,14 @@ tinyfsattach(char *spec)
 	char *p;
 
 	p = 0;
-	if(strncmp(spec, "hd0") == 0)
-		p = "#H/hd0nvram";
-	else if(strncmp(spec, "hd1") == 0)
-		p = "#H/hd1nvram";
-	else if(strncmp(spec, "sd0") == 0)
-		p = "#H/sd0nvram";
-	else if(strncmp(spec, "sd1") == 0)
-		p = "#H/sd1nvram";
+	if(strncmp(spec, "hd0", 3) == 0)
+		p = "/dev/hd0nvram";
+	else if(strncmp(spec, "hd1", 3) == 0)
+		p = "/dev/hd1nvram";
+	else if(strncmp(spec, "sd0", 3) == 0)
+		p = "/dev/sd0nvram";
+	else if(strncmp(spec, "sd1", 3) == 0)
+		p = "/dev/sd1nvram";
 	else
 		error("bad spec");
 
@@ -502,21 +500,21 @@ tinyfsattach(char *spec)
 	fs = 0;
 	for(i = 0; i < Maxfs; i++){
 		fs = &tinyfs.fs[i];
-		qlock(fs);
+		qlock(&fs->ql);
 		if(fs->r && eqchan(cc, fs->c, 0))
 			break;
-		qunlock(fs);
+		qunlock(&fs->ql);
 	}
 	if(i < Maxfs){
 		fs->r++;
-		qunlock(fs);
+		qunlock(&fs->ql);
 		close(cc);
 	} else {
 		for(fs = tinyfs.fs; fs < &tinyfs.fs[Maxfs]; fs++){
-			qlock(fs);
+			qlock(&fs->ql);
 			if(fs->r == 0)
 				break;
-			qunlock(fs);
+			qunlock(&fs->ql);
 		}
 		if(fs == &tinyfs.fs[Maxfs])
 			error("too many tinyfs's");
@@ -526,7 +524,7 @@ tinyfsattach(char *spec)
 		fs->nf = 0;
 		fs->fsize = 0;
 		fsinit(fs);
-		qunlock(fs);
+		qunlock(&fs->ql);
 	}
 	poperror();
 
@@ -545,9 +543,9 @@ tinyfsclone(Chan *c, Chan *nc)
 
 	fs = &tinyfs.fs[c->dev];
 
-	qlock(fs);
+	qlock(&fs->ql);
 	fs->r++;
-	qunlock(fs);
+	qunlock(&fs->ql);
 
 	return devclone(c, nc);
 }
@@ -560,13 +558,13 @@ tinyfswalk(Chan *c, char *name)
 
 	fs = &tinyfs.fs[c->dev];
 
-	qlock(fs);
+	qlock(&fs->ql);
 	n = devwalk(c, name, 0, 0, tinyfsgen);
 	if(n != 0 && c->qid.path != CHDIR){
 		fs = &tinyfs.fs[c->dev];
 		fs->f[c->qid.path].r++;
 	}
-	qunlock(fs);
+	qunlock(&fs->ql);
 	return n;
 }
 
@@ -588,9 +586,9 @@ tinyfsopen(Chan *c, int omode)
 		if(omode != OREAD)
 			error(Eperm);
 	} else {
-		qlock(fs);
+		qlock(&fs->ql);
 		if(waserror()){
-			qunlock(fs);
+			qunlock(&fs->ql);
 			nexterror();
 		}
 		switch(omode){
@@ -605,7 +603,7 @@ tinyfsopen(Chan *c, int omode)
 		default:
 			error(Eperm);
 		}
-		qunlock(fs);
+		qunlock(&fs->ql);
 		poperror();
 	}
 
@@ -622,13 +620,13 @@ tinyfscreate(Chan *c, char *name, int omode, ulong perm)
 
 	fs = &tinyfs.fs[c->dev];
 
-	qlock(fs);
+	qlock(&fs->ql);
 	if(waserror()){
-		qunlock(fs);
+		qunlock(&fs->ql);
 		nexterror();
 	}
 	f = newfile(fs, name);
-	qunlock(fs);
+	qunlock(&fs->ql);
 	poperror();
 
 	c->qid.path = f - fs->f;
@@ -646,9 +644,9 @@ tinyfsremove(Chan *c)
 		error(Eperm);
 	fs = &tinyfs.fs[c->dev];
 	f = &fs->f[c->qid.path];
-	qlock(fs);
+	qlock(&fs->ql);
 	freefile(fs, f, Notabno);
-	qunlock(fs);
+	qunlock(&fs->ql);
 }
 
 void
@@ -667,7 +665,7 @@ tinyfsclose(Chan *c)
 
 	fs = &tinyfs.fs[c->dev];
 
-	qlock(fs);
+	qlock(&fs->ql);
 
 	/* dereference file and remove old versions */
 	if(!waserror()){
@@ -711,7 +709,7 @@ tinyfsclose(Chan *c)
 		close(fs->c);
 		fs->c = 0;
 	}
-	qunlock(fs);
+	qunlock(&fs->ql);
 }
 
 long
@@ -733,9 +731,9 @@ tinyfsread(Chan *c, void *a, long n, ulong offset)
 	if(offset >= f->length)
 		return 0;
 
-	qlock(fs);
+	qlock(&fs->ql);
 	if(waserror()){
-		qunlock(fs);
+		qunlock(&fs->ql);
 		nexterror();
 	}
 	if(n + offset >= f->length)
@@ -776,7 +774,7 @@ tinyfsread(Chan *c, void *a, long n, ulong offset)
 		bno = GETS(md->bno);
 		off = 0;
 	}
-	qunlock(fs);
+	qunlock(&fs->ql);
 	poperror();
 
 	return sofar;
@@ -816,11 +814,11 @@ tinyfswrite(Chan *c, void *a, long n, ulong offset)
 	if(offset != f->length)
 		error("append only");
 
-	qlock(fs);
+	qlock(&fs->ql);
 	dbno = Notabno;
 	if(waserror()){
 		freeblocks(fs, dbno, Notabno);
-		qunlock(fs);
+		qunlock(&fs->ql);
 		nexterror();
 	}
 
@@ -886,7 +884,7 @@ tinyfswrite(Chan *c, void *a, long n, ulong offset)
 		f->fbno =  fbno;
 	}
 	poperror();
-	qunlock(fs);
+	qunlock(&fs->ql);
 
 	return n;
 }
