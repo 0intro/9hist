@@ -19,7 +19,7 @@ static Pcidev *		pcidev;
 #define DBGINTR	0x10
 #define DBGINTS	0x20
 
-int debug = DBGREAD;
+int debug = 0;
 
 // Lml 22 driver
 
@@ -62,14 +62,9 @@ typedef enum {
 	Error,
 } State;
 
-int		currentBuffer;
-int		currentBufferLength;
-void *		currentBufferPtr;
 int		frameNo;
 Rendez		sleeper;
 int		singleFrame;
-int		bufferPrepared;
-int		hdrPos;
 int		nopens;
 uchar		q856[3];
 State		state = New;
@@ -489,16 +484,22 @@ vread(Chan *, void *va, long nbytes, vlong) {
 	while (count > 0) {
 		switch (state) {
 		case New:
-			while((curbuf = getProcessedBuffer()) == -1)
+			while ((curbuf = getProcessedBuffer()) == -1)
 				sleep(&sleeper, return0, 0);
 			fragsize = getBuffer(curbuf, &frameno);
 			if (debug & DBGREAD)
 				pprint("devlml: got read buf %d, fr %d, size %d\n",
 					curbuf, frameNo, fragsize);
-			if(frameno != (frameprev + 1) % 256)
-				pprint("Frames out of sequence: %d %d\n",
-					frameno, frameprev);
+			if (frameno != (frameprev + 1) % 256)
+				pprint("Frame out of sequence: %d %d\n",
+					frameprev, frameno);
 			frameprev = frameno;
+			if (fragsize <= 0 || fragsize > sizeof(Fragment)) {
+				pprint("Wrong sized fragment, %d (ignored)\n",
+					fragsize);
+				prepareBuffer(curbuf);
+				break;
+			}
 			// Fill in APP marker fields here
 			thetime = todget();
 			frameHeader.sec = (ulong)(thetime / 1000000000LL);
@@ -507,7 +508,7 @@ vread(Chan *, void *va, long nbytes, vlong) {
 			frameHeader.frameSeqNo++;
 			frameHeader.frameNo = frameno;
 			bufpos = 0;
-			state = Body;
+			state = Header;
 			bufptr = (char *)(&frameHeader);
 			// Fall through
 		case Header:
@@ -522,12 +523,12 @@ vread(Chan *, void *va, long nbytes, vlong) {
 			count -= i;
 			p += i;
 			bufpos = 2;
-			bufptr = codeData->frag[curbuf].fb;
+			bufptr = codeData->frag[curbuf].fb + 2;
 			state = Body;
 			// Fall through
 		case Body:
 			i = fragsize - bufpos;
-			if (count <= i) {
+			if (count < i) {
 				memmove(p, bufptr, count);
 				bufptr += count;
 				bufpos += count;
@@ -540,99 +541,16 @@ vread(Chan *, void *va, long nbytes, vlong) {
 			// Allow reuse of current buffer
 			prepareBuffer(curbuf);
 			state = New;
+			if (singleFrame) {
+				state = Error;
+				return nbytes - count;
+			}
 			break;
 		case Error:
 			return 0;
 		}
 	}
 }
-
-/*
-static long
-vread(Chan *, void *va, long count, vlong pos) {
-	int prevFrame;
-	//  how much bytes left to transfer for the header
-	int hdrLeft;
-	// Count of bytes that we need to copy into buf from code-buffer
-	// (different from count only while in header reading mode)
-	int cpcount = count;
-	// Count of bytes that we copied into buf altogether and will return
-	int retcount=0;
-	vlong thetime;
-	uchar *buf = va;
-
-	if(debug&DBGREAD)
-		pprint("devlml::vread() count=%ld pos=%lld\n", count, pos);
-
-	// If we just begin reading a file, pos would never be 0 otherwise
-	if (pos == 0 && hdrPos == -1) {
-		if(debug&DBGREAD)
-			pprint("devlml::first read\n");
-		 currentBuffer = -1;
-		 currentBufferLength = 0;
-		 frameNo = -1;
-	}
-	prevFrame = frameNo;
-
-	// We get to the end of the current buffer, also covers just
-	// open file, since 0 >= -1
-	if(hdrPos == -1 && pos >= currentBufferLength) {
-		if(debug&DBGREAD)
-			pprint("devlml::prepareBuffer\n");
-		prepareBuffer(currentBuffer);
-		// if not the first buffer read and single frame mode - return EOF
-		if (currentBuffer != -1 && singleFrame)
-			return 0;
-		if(debug&DBGREAD)
-			pprint("devlml::sleep\n");
-		while((currentBuffer = getProcessedBuffer()) == -1)
-			sleep(&sleeper, return0, 0);
-		if(debug&DBGREAD)
-			pprint("devlml::wokeup\n");
-		currentBufferLength = getBuffer(currentBuffer, &frameNo);
-		currentBufferPtr = (void*)(&codeData->frag[currentBuffer]);
-
-		pos = 0; // ??????????????
-
-		// pprint("getBufffer %d -> %d 0x%x %d\n",currentBuffer, currentBufferLength, currentBufferPtr, frameNo);
-		if(frameNo != (prevFrame + 1) % 256)
-			pprint("Frames out of sequence: %d %d\n", prevFrame, frameNo);
-		// Fill in APP marker fields here
-		thetime = todget();
-		frameHeader.sec = (ulong)(thetime / 1000000000LL);
-		frameHeader.usec = (ulong)(thetime % 1000000000LL) / 1000;
-		frameHeader.frameSize = currentBufferLength - 2 + sizeof(FrameHeader);
-		frameHeader.frameSeqNo++;
-		frameHeader.frameNo = frameNo;
-		hdrPos=0;
-	}
-
-	if (hdrPos != -1) {
-		hdrLeft = sizeof(FrameHeader) - hdrPos;
-		// Write the frame size here
-		if (count >= hdrLeft) {
-			memmove(buf, (char*)&frameHeader + hdrPos, hdrLeft);
-			retcount += hdrLeft;
-			cpcount = count - hdrLeft;
-			pos = sizeof(frameHeader.mrkSOI);
-			hdrPos = -1;
-		} else {
-			memmove(buf, (char*)&frameHeader + hdrPos, count);
-			hdrPos += count;
-			return count;
-		}
-	}
-
-	if(cpcount + pos > currentBufferLength)
-		cpcount = currentBufferLength - pos;
-
-	memmove(buf + retcount, (char *)currentBufferPtr + pos, cpcount);
-	retcount += cpcount;
-
-	//pr_debug&DBGREGS("return %d %d\n",cpcount,retcount);
-	return retcount;
-}
-*/
 
 static long
 vwrite(Chan *, void *va, long nbytes, vlong) {
@@ -683,7 +601,7 @@ vwrite(Chan *, void *va, long nbytes, vlong) {
 					codeData->frag[curbuf].fh.mrkAPP3,
 					codeData->frag[curbuf].fh.nm);
 				state = Error;
-				return p - (char *)va;
+				return nbytes - count;
 			}
 			fragsize = codeData->frag[curbuf].fh.frameSize;
 			if (fragsize <= sizeof(FrameHeader)
@@ -691,18 +609,18 @@ vwrite(Chan *, void *va, long nbytes, vlong) {
 				pprint("devlml: frame size error: 0x%.8ux\n",
 					fragsize);
 				state = Error;
-				return p - (char *)va;
+				return nbytes - count;
 			}
 			state = Body;
 			// Fall through
 		case Body:
-			if (count < fragsize - bufpos) {
+			i = fragsize - bufpos;
+			if (count < i) {
 				memmove(bufptr, p, count);
 				bufptr += count;
 				bufpos += count;
 				return nbytes;
 			}
-			i = fragsize - bufpos;
 			memmove(bufptr, p, i);
 			bufptr += i;
 			bufpos += i;
@@ -712,6 +630,10 @@ vwrite(Chan *, void *va, long nbytes, vlong) {
 			i = prepareBuffer(curbuf);
 			if (debug&DBGWRIT)
 				pprint("Sending buffer %d: %d\n", curbuf, i);
+			if (singleFrame) {
+				state = Error;
+				return nbytes - count;
+			}
 			state = New;
 			break;
 		case Error:
@@ -801,6 +723,7 @@ lmlstat(Chan *c, char *dp)
 
 static Chan*
 lmlopen(Chan *c, int omode) {
+	int i;
 
 	c->aux = 0;
 	switch(c->qid.path){
@@ -811,19 +734,15 @@ lmlopen(Chan *c, int omode) {
 	case Qmap:
 	case Qbuf:
 		break;
-	case Qjvideo:
 	case Qjframe:
+	case Qjvideo:
 		if (nopens)
 			error(Einuse);
 		nopens = 1;
 		singleFrame = (c->qid.path == Qjframe) ? 1 : 0;;
-		currentBuffer = 0;
-		currentBufferLength = 0;
-		currentBufferPtr = 0;
-		frameNo = 0;
-		bufferPrepared = 0;
-		hdrPos = -1;
 		state = New;
+		for (i = 0; i < NBUF; i++)
+			codeData->statCom[i] = PADDR(&(codeData->fragdesc[i]));
 
 		// allow one open total for these two
 		break;
