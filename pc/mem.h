@@ -73,8 +73,8 @@
 #define	UESEG	4	/* user executable */
 #define TSSSEG	5	/* task segment */
 
-#define SELGDT	(0<<3)	/* selector is in gdt */
-#define	SELLDT	(1<<3)	/* selector is in ldt */
+#define SELGDT	(0<<2)	/* selector is in gdt */
+#define	SELLDT	(1<<2)	/* selector is in ldt */
 
 #define SELECTOR(i, t, p)	(((i)<<3) | (t) | (p))
 

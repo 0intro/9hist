@@ -483,14 +483,22 @@ noted(Ureg* ureg, ulong arg0)
 	/* sanity clause */
 	oureg = (ulong)nureg;
 	if(!okaddr((ulong)oureg-BY2WD, BY2WD+sizeof(Ureg), 0)){
-		pprint("bad ureg in noted or call to noted() when not notified\n");
+		pprint("bad ureg in noted or call to noted when not notified\n");
 		qunlock(&up->debug);
 		pexit("Suicide", 0);
 	}
 
-	/* don't let user change text or stack segments */
-	nureg->cs = ureg->cs;
-	nureg->ss = ureg->ss;
+	/*
+	 * Check the segment selectors are all valid, otherwise
+	 * a fault will be taken on attempting to return to the
+	 * user process.
+	 */
+	if(nureg->cs != UESEL || nureg->ss != UDSEL || nureg->ds != UDSEL
+	  || nureg->es != UDSEL || nureg->fs != UDSEL || nureg->gs != UDSEL){
+		pprint("bad segement selector in noted\n");
+		qunlock(&up->debug);
+		pexit("Suicide", 0);
+	}
 
 	/* don't let user change system flags */
 	nureg->flags = (ureg->flags & ~0xCD5) | (nureg->flags & 0xCD5);
