@@ -608,3 +608,8 @@ screenunload(Rectangle r, uchar *data, int tl, int l, int dolock)
 	}
 	unlock(&screenlock);
 }
+
+void
+blankscreen(int)
+{
+}

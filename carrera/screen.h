@@ -17,3 +17,4 @@ void		setcursor(Cursor*);
 
 void		mousectl(char*[], int);
 void		mousetrack(int, int, int);
+void		blankscreen(int);

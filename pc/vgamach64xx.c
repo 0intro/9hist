@@ -64,6 +64,8 @@ mach64xxenable(VGAscr* scr)
 	if(scr->io)
 		return;
 	if(p = mach64xxpci()){
+		scr->id = p->did;
+
 		/*
 		 * The CT doesn't always have the I/O base address
 		 * in the PCI base registers. There is a way to find
@@ -181,6 +183,22 @@ enum {
 	ClrCmpMask,
 	DpChainMask,
 	SrcOffPitch,	
+	LcdIndex,
+	LcdData,
+};
+
+enum {
+	LCD_ConfigPanel = 0,
+	LCD_GenCtrl,
+	LCD_DstnCntl,
+	LCD_HfbPitchAddr,
+	LCD_HorzStretch,
+	LCD_VertStretch,
+	LCD_ExtVertStretch,
+	LCD_LtGio,
+	LCD_PowerMngmnt,
+	LCD_ZvgPio,
+	Nlcd,
 };
 
 static uchar mmoffset[] = {
@@ -191,6 +209,8 @@ static uchar mmoffset[] = {
 	[CurHVposn]	0x1B,
 	[CurHVoff]	0x1C,
 	[BusCntl]		0x28,
+	[LcdIndex]	0x29,
+	[LcdData]	0x2A,
 	[GenTestCntl]	0x34,
 	[DstOffPitch]	0x40,
 	[DstYX]		0x43,
@@ -252,6 +272,26 @@ iow32(VGAscr* scr, int r, ulong l)
 		scr->mmio[mmoffset[r]] = l;
 	else
 		outl((mmoffset[r]<<2)+scr->io, l);
+}
+
+static ulong
+lcdr32(VGAscr *scr, ulong r)
+{
+	ulong or;
+
+	or = ior32(scr, LcdIndex);
+	iow32(scr, LcdIndex, (or&~0x0F) | (r&0x0F));
+	return ior32(scr, LcdData);
+}
+
+static void
+lcdw32(VGAscr *scr, ulong r, ulong v)
+{
+	ulong or;
+
+	or = ior32(scr, LcdIndex);
+	iow32(scr, LcdIndex, (or&~0x0F) | (r&0x0F));
+	iow32(scr, LcdData, v);
 }
 
 static void
@@ -660,6 +700,7 @@ mach64hwscroll(VGAscr *scr, Rectangle r, Rectangle sr)
 
 /*
  * This should work, but doesn't.
+ * It messes up the screen timings for some reason.
  */
 static void
 mach64blank(VGAscr *scr, int blank)
@@ -672,6 +713,37 @@ mach64blank(VGAscr *scr, int blank)
 	iow32(scr, CrtcGenCtl, ctl);
 }
 
+/*
+ * We squirrel away whether the LCD and/or CRT were
+ * on when we were called to blank the screen, and
+ * restore the old state.  If we are called to blank the
+ * screen when it is already blank, we don't update the state.
+ * Such a call sequence should not happen, though.
+ *
+ * We could try forcing the chip into power management
+ * mode instead, but I'm not sure how that would interact
+ * with screen updates going on while the screen is blanked.
+ */
+static void
+mach64lcdblank(VGAscr *scr, int blank)
+{
+	static int crtlcd;
+	ulong x;
+
+	if(blank) {
+		x = lcdr32(scr, LCD_GenCtrl);
+		if(x & 3) {
+			crtlcd = x & 3;
+			lcdw32(scr, LCD_GenCtrl,  x&~3);
+		}
+	} else {
+		if(crtlcd == 0)
+			crtlcd = 2;	/* lcd only */
+		x = lcdr32(scr, LCD_GenCtrl);
+		lcdw32(scr, LCD_GenCtrl, x | crtlcd);
+	}
+}
+
 static void
 mach64xxdrawinit(VGAscr *scr)
 {
@@ -681,8 +753,9 @@ mach64xxdrawinit(VGAscr *scr)
 		scr->scroll = mach64hwscroll;
 	}
 /*	scr->blank = mach64blank; */
+	if(scr->id == ('L'<<8)|'P')	/* Rage LT PRO */
+		scr->blank = mach64lcdblank;
 }
-
 
 VGAdev vgamach64xxdev = {
 	"mach64xx",
