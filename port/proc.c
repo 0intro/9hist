@@ -230,7 +230,8 @@ loop:
 
 found:
 	splhi();
-	lock(runq);
+	if(!canlock(runq))
+		goto loop;
 
 	l = 0;
 	for(p = rq->head; p; p = p->rnext){

@@ -525,8 +525,15 @@ consread(Chan *c, void *buf, long n, ulong offset)
 		if(kbd.raw) {
 			if(qcanread(lineq))
 				n = qread(lineq, buf, n);
-			else
-				n = qread(kbdq, buf, n);
+			else {
+				/* read as much as possible */
+				do {
+					i = qread(kbdq, cbuf, n);
+					cbuf += i;
+					n -= i;
+				} while (n>0 && qcanread(kbdq));
+				n = cbuf - (char*)buf;
+			}
 		} else {
 			while(!qcanread(lineq)) {
 				qread(kbdq, &kbd.line[kbd.x], 1);
