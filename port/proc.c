@@ -326,26 +326,35 @@ void
 tsleep(Rendez *r, int (*fn)(void*), void *arg, int ms)
 {
 	ulong when;
-	Proc *p, *f, **l, **i;
+	Proc *p, *f, **l;
 
 	p = u->p;
 	when = MS2TK(ms)+MACHP(0)->ticks;
-	i = &talarm.list;
 
 	lock(&talarm);
+	/* take out of list if checkalarm didn't */
+	if(p->trend) {
+		l = &talarm.list;
+		for(f = *l; f; f = f->tlink) {
+			if(f == p) {
+				*l = p->tlink;
+				break;
+			}
+			l = &f->tlink;
+		}
+	}
+	/* insert in increasing time order */
 	l = &talarm.list;
-	for(f = talarm.list; f; f = f->tlink) {
-		if(f == p)
-			*l = p->tlink;
-		if(f->twhen && f->twhen < when)
-			i = &f->tlink;
+	for(f = *l; f; f = f->tlink) {
+		if(f->twhen >= when)
+			break;
 		l = &f->tlink;
 	}
 	p->trend = r;
 	p->twhen = when;
-	p->tlink = *i;
 	p->tfn = fn;
-	*i = p;
+	p->tlink = *l;
+	*l = p;
 	unlock(&talarm);
 
 	sleep(r, tfn, arg);

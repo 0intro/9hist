@@ -322,7 +322,7 @@ syscall(Ureg *aur)
 		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-sizeof(Sargs)))
 			validaddr(sp, sizeof(Sargs), 0);
 
-		u->s = *((Sargs*)(sp+BY2WD));
+		u->s = *((Sargs*)(sp+1*BY2WD));
 		u->p->psstate = sysctab[u->scallnr];
 
 		ret = (*systab[u->scallnr])(u->s.args);

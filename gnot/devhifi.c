@@ -15,7 +15,7 @@
 
 #define DPRINT 	if(hifidebug)kprint
 
-#define	BSIZE	4096
+#define	BSIZE	4000
 
 typedef struct Hifichan
 {
@@ -433,9 +433,9 @@ Top:
 	for(;;){
 		qlock(hp);
 		while(hp->ri != hp->wi){
-			if(hp->rq)
-				PUTNEXT(hp->rq, hp->inb[hp->ri]);
-			else
+			if(hp->rq){
+				FLOWCTL(hp->rq, hp->inb[hp->ri]);
+			}else
 				freeb(hp->inb[hp->ri]);
 			if(hp->renable)
 				hp->inb[hp->ri] = allocb(BSIZE);
@@ -583,6 +583,7 @@ Loop:
 		if(n > m){
 			hp->toolong++;
 			bp->wptr = bp->base;
+			bp->rptr = bp->base;
 			SET(hifi->opreg, hp->opreg | Rres);
 			return wake;
 		}
@@ -613,6 +614,7 @@ Loop:
 					hp->badcount++;
 			}
 			bp->wptr = bp->base;
+			bp->rptr = bp->base;
 		}else
 			bp->wptr = p;
 	}else{
@@ -627,6 +629,7 @@ Loop:
 			i = NEXT(hp->wi);
 			if(i == hp->ri){
 				bp->wptr = bp->base;
+				bp->rptr = bp->base;
 				return wake;
 			}else{
 				bp->flags |= S_DELIM;

@@ -15,7 +15,7 @@
 
 #define DPRINT 	if(isdndebug)kprint
 
-#define	BSIZE	260
+#define	BSIZE	200	/* should be 260, but for xalloc */
 
 Isdn *	isdndev;
 Isdn *	isdndevN;
@@ -412,7 +412,7 @@ isdnkproc(void *arg)
 	Isdn *ip = (Isdn *)arg;
 	int i;
 
-	if (waserror()) {
+	if(waserror()){
 		devctl(ip, Enr, 0);
 		ip->kstart = 0;
 		wakeup(&ip->kctlr);
@@ -421,7 +421,7 @@ isdnkproc(void *arg)
 	/*
 	 *  create a number of blocks for input
 	 */
-	for (i=0; i<NB; i++)
+	for(i=0; i<NB; i++)
 		if (!ip->inb[i])
 			ip->inb[i] = allocb(BSIZE);
 	ip->ri = 0;
@@ -429,19 +429,19 @@ isdnkproc(void *arg)
 	devctl(ip, 0, Enr);
 	ip->kstart = 1;
 	wakeup(&ip->kctlr);
-	for (;;) {
+	for(;;){
 		qlock(ip);
-		if (!ip->rq) {
+		if (!ip->rq){
 			qunlock(ip);
 			break;
 		}
-		while (ip->ri != ip->wi) {
-			PUTNEXT(ip->rq, ip->inb[ip->ri]);
+		while (ip->ri != ip->wi){
+			FLOWCTL(ip->rq, ip->inb[ip->ri]);
 			ip->inb[ip->ri] = allocb(BSIZE);
 			ip->ri = NEXT(ip->ri);
 		}
 		i = 0;
-		while (ip->so != ip->ro) {
+		while(ip->so != ip->ro){
 			freeb(ip->outb[ip->so]);
 			ip->so = NEXT(ip->so);
 			i++;
@@ -453,7 +453,7 @@ isdnkproc(void *arg)
 	}
 	devctl(ip, Enr, 0);
 	sleep(&ip->kr, tEmpty, ip);
-	while (ip->so != ip->ro) {
+	while(ip->so != ip->ro){
 		freeb(ip->outb[ip->so]);
 		ip->so = NEXT(ip->so);
 	}

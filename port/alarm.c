@@ -12,10 +12,9 @@ Talarm	talarm;
 void
 alarmkproc(void *arg)
 {
-	int i, n;
-	ulong now;
 	Proc *rp;
-	int s;
+	ulong now;
+	int i, n, s;
 
 	USED(arg);
 
@@ -67,12 +66,14 @@ checkalarms(void)
 
 		if(p->twhen == 0) {
 			talarm.list = p->tlink;
+			p->trend = 0;
 			continue;
 		}
 		if(now < p->twhen)
 			break;
-		talarm.list = p->tlink;
 		wakeup(p->trend);
+		talarm.list = p->tlink;
+		p->trend = 0;
 	}
 
 	unlock(&talarm);
