@@ -325,6 +325,11 @@ vgawstat(Chan *c, char *dp)
 	error(Eperm);
 }
 
+uchar
+srin(int i) {
+	outb(SRX, i);
+	return inb(SR);
+}
 void
 genout(int reg, int val)
 {
@@ -649,7 +654,7 @@ atipage(int page)
 static void
 tridentpage(int page)
 {
-	srout(0x0e, page^0x02);
+	srout(0x0e, (srin(0xe)&0xf0) | page^0x02);
 }
 static void
 tsengpage(int page)
