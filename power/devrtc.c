@@ -44,7 +44,7 @@ QLock	rtclock;		/* mutex on nvram operations */
 
 static Dirtab rtcdir[]={
 	"rtc",		{Qrtc, 0},	0,	0644,
-/*	"nvram",	{Qnvram, 0},	0,	0644,/**/
+	"nvram",	{Qnvram, 0},	0,	0644,
 };
 #define	NRTC	(sizeof(rtcdir)/sizeof(rtcdir[0]))
 
@@ -97,10 +97,12 @@ rtcstat(Chan *c, char *dp)
 Chan*
 rtcopen(Chan *c, int omode)
 {
-	if(c->qid.path==1 && (omode&(OWRITE|OTRUNC))){
-		if(strcmp(u->p->pgrp->user, "bootes"))	/* BUG */
-			error(Eperm);
-	}
+	if(c->qid.path==Qrtc && (omode&(OWRITE|OTRUNC)))
+	if(strcmp(u->p->pgrp->user, "bootes") != 0)	/* BUG */
+		error(Eperm);
+	if(c->qid.path == Qnvram)
+	if(strcmp(u->p->pgrp->user, "bootes") != 0)	/* BUG */
+		error(Eperm);
 	return devopen(c, omode, rtcdir, NRTC, devgen);
 }
 
@@ -290,7 +292,7 @@ rtctime(void)
 	/*
 	 *  read out the clock one bit at a time
 	 */
-	for (i = 0; i < Nbcd; i++){
+	for(i = 0; i < Nbcd; i++){
 		ch = 0;
 		for (j = 0; j < 8; j++)
 			ch |= ((*nv & 0x1) << j);
@@ -350,7 +352,7 @@ setrtc(Rtc *rtc)
 	 *  write the clock one bit at a time
 	 */
 	nv = &((Nvram*)NVRAM)[NVRTC].val;
-	for (i = 0; i < Nbcd; i++){
+	for(i = 0; i < Nbcd; i++){
 		ch = bcdclock[i];
 		for (j = 0; j < 8; j++){
 			*nv = ch & 1;

@@ -95,6 +95,7 @@ struct Alarms
 struct Block
 {
 	Block	*next;
+	Block	*list;			/* chain of block lists */
 	uchar	*rptr;			/* first unconsumed byte */
 	uchar	*wptr;			/* first empty byte */
 	uchar	*lim;			/* 1 past the end of the buffer */

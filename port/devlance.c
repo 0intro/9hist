@@ -719,8 +719,8 @@ lancekproc(void *arg)
 		for(; l.rl!=l.rc && (MPus(lm->rmr[l.rl].flags) & OWN)==0 ; l.rl=RSUCC(l.rl)){
 			l.inpackets++;
 			m = &(lm->rmr[l.rl]);
-			if(MPus(m->flags) & ERR){
-				t = MPus(m->flags);
+			t = MPus(m->flags);
+			if(t & ERR){
 				if(t & FRAM)
 					l.frames++;
 				if(t & OFLO)
