@@ -185,21 +185,6 @@ loopbackattach(char *spec)
 	return c;
 }
 
-static Chan*
-loopbackclone(Chan *c, Chan *nc)
-{
-	Loop *lb;
-
-	lb = c->aux;
-	nc = devclone(c, nc);
-	qlock(lb);
-	lb->ref++;
-	if((c->flag & COPEN) && TYPE(c->qid.path) == Qdata)
-		lb->link[ID(c->qid.path)].ref++;
-	qunlock(lb);
-	return nc;
-}
-
 static int
 loopbackgen(Chan *c, char*, Dirtab*, int, int i, Dir *dp)
 {
@@ -247,7 +232,7 @@ loopbackgen(Chan *c, char*, Dirtab*, int, int i, Dir *dp)
 		if(i >= nelem(loopportdir))
 			return -1;
 		tab = &loopportdir[i];
-		mkqid(&qid, QID(ID(c->qid.path), tab->qid.path), 0, QTDIR);
+		mkqid(&qid, QID(ID(c->qid.path), tab->qid.path), 0, QTFILE);
 		devdir(c, qid, tab->name, tab->length, eve, tab->perm, dp);
 		return 1;
 	default:
@@ -273,7 +258,19 @@ loopbackgen(Chan *c, char*, Dirtab*, int, int i, Dir *dp)
 static Walkqid*
 loopbackwalk(Chan *c, Chan *nc, char **name, int nname)
 {
-	return devwalk(c, nc, name, nname, nil, 0, loopbackgen);
+	Walkqid *wq;
+	Loop *lb;
+
+	wq = devwalk(c, nc, name, nname, nil, 0, loopbackgen);
+	if(wq != nil && wq->clone != nil && wq->clone != c){
+		lb = c->aux;
+		qlock(lb);
+		lb->ref++;
+		if((c->flag & COPEN) && TYPE(c->qid.path) == Qdata)
+			lb->link[ID(c->qid.path)].ref++;
+		qunlock(lb);
+	}
+	return wq;
 }
 
 static int

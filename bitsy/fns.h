@@ -39,6 +39,7 @@ ulong	inl(ulong);
 void	intrenable(int, int, void (*)(Ureg*, void*), void*, char*);
 int	iprint(char*, ...);
 void	irpower(int);
+#define	kmapinval()
 void	lcdpower(int);
 void	links(void);
 void*	mapmem(ulong, int, int);
@@ -75,7 +76,7 @@ void	putpid(ulong);
 void	qpanic(char *, ...);
 void	rs232power(int);
 void	uartspecial(Uart*, int, Queue**, Queue**, int (*)(Queue*, int));
-void	sa1100_uartsetup(int);
+void	sa1110_uartsetup(int);
 void	screeninit(void);
 int	screenprint(char*, ...);			/* debugging */
 void	serialµcputs(uchar *str, int n);

@@ -80,7 +80,7 @@ static Chan*
 mntattach(char *muxattach)
 {
 	Mnt *m;
-	Chan *c, *mc;
+	Chan *c;
 	struct bogus{
 		Chan	*chan;
 		char	*spec;
@@ -155,23 +155,6 @@ mntattach(char *muxattach)
 	mattach(m, c, bogus.spec);
 	poperror();
 
-	/*
-	 * Detect a recursive mount for a mount point served by exportfs.
-	 * If QTDIR is clear in the returned qid, the foreign server is
-	 * requesting the mount point be folded into the connection
-	 * to the exportfs. In this case the remote mount driver does
-	 * the multiplexing.
-	 */
-	mc = m->c;
-	if(mc->type == devno('M', 0) && (c->qid.type&QTDIR) == 0) {
-		mclose(m, c);
-		c->qid.type |= QTDIR;
-		c->mntptr = mc->mntptr;
-		c->mchan = c->mntptr->c;
-		c->mqid = c->qid;
-		incref(c->mntptr);
-	}
-
 	if(bogus.flags & MCACHE)
 		c->flag |= CCACHE;
 
@@ -227,8 +210,8 @@ mntwalk(Chan *c, Chan *nc, char **name, int nname)
 	Mnt *m;
 	Mntrpc *r;
 	Walkqid *wq;
-extern int chandebug;
-if(chandebug){
+
+if(0){
 	print("mntwalk ");
 	for(i=0; i<nname; i++)
 		print("%s/", name[i]);
@@ -678,12 +661,22 @@ mountio(Mnt *m, Mntrpc *r)
 }
 
 int
-mntreadn(Chan *c, uchar *buf, int n)
+mntreadn(Chan *c, uchar *buf, int n, int uninterruptable)
 {
 	int m, dm;
 
 	for(m=0; m<n; m+=dm){
+		if(uninterruptable)
+			if(waserror()){
+				/* user DEL may stop assembly; wait for full 9P msg. */
+				if(strstr(up->error, "interrupt") == nil)
+					nexterror();
+				dm = 0;
+				continue;
+			}
 		dm = devtab[c->type]->read(c, buf, n-m, 0);
+		if(uninterruptable)
+			poperror();
 		if(dm <= 0)
 			return 0;
 		buf += dm;
@@ -703,7 +696,7 @@ mntrpcread(Mnt *m, Mntrpc *r)
 	r->reply.type = 0;
 	r->reply.tag = 0;
 	/* read size, then read exactly the right number of bytes */
-	n = mntreadn(m->c, r->rpc, BIT32SZ);
+	n = mntreadn(m->c, r->rpc, BIT32SZ, 0);
 	if(n != BIT32SZ){
 		if(n > 0)
 			print("devmnt expected BIT32SZ got %d\n", n);
@@ -714,7 +707,7 @@ mntrpcread(Mnt *m, Mntrpc *r)
 		print("devmnt: len %d max messagesize %ld\n", len, m->c->iounit);
 		return -1;
 	}
-	n += mntreadn(m->c, r->rpc+BIT32SZ, len-BIT32SZ);
+	n += mntreadn(m->c, r->rpc+BIT32SZ, len-BIT32SZ, 1);
 	if(n != len){
 		print("devmnt: length %d expected %d\n", n, len);
 		return -1;

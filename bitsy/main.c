@@ -35,7 +35,7 @@ main(void)
 	mmuinit();
 	machinit();
 	trapinit();
-	sa1100_uartsetup(1);
+	sa1110_uartsetup(1);
 	rs232power(1);
 	dmainit();
 	screeninit();

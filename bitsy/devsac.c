@@ -99,13 +99,13 @@ static Sac root;
 static Cache cache[CacheSize];
 static ulong cacheage;
 
-static void	sacdir(Chan *, SacDir*, char*);
+static int	sacdir(Chan *, SacDir*, uchar*, int);
 static ulong	getl(void *p);
 static Sac	*saccpy(Sac *s);
-static Sac *saclookup(Sac *s, char *name);
-static int sacdirread(Chan *, char *p, long off, long cnt);
-static void loadblock(void *buf, uchar *offset, int blocksize);
-static void sacfree(Sac*);
+static Sac	*saclookup(Sac *s, char *name);
+static int	sacdirread(Chan *, uchar *p, long off, long cnt);
+static void	loadblock(void *buf, uchar *offset, int blocksize);
+static void	sacfree(Sac*);
 
 static void
 pathtoqid(ulong path, Qid *q)
@@ -116,6 +116,17 @@ pathtoqid(ulong path, Qid *q)
 		q->type = QTFILE;
 	q->path = path & ~(CHDIR|CHAPPEND|CHEXCL|CHMOUNT);
 	q->vers = 0;
+}
+
+static void
+omodetomode(ulong om, ulong *m)
+{
+	ulong nm;
+
+	nm = om & ~(CHDIR|CHAPPEND|CHEXCL|CHMOUNT);
+	if(om & CHDIR)
+		nm |= DMDIR;
+	*m = nm;
 }
 
 static void
@@ -152,7 +163,6 @@ sacattach(char* spec)
 {
 	Chan *c;
 	int dev;
-	int opath;
 
 	dev = atoi(spec);
 	if(dev != 0)
@@ -163,29 +173,19 @@ sacattach(char* spec)
 		error("devsac: bad magic");
 
 	c = devattach('C', spec);
-	path = getl(root.qid);
-	pathtoqid(path, &c->qid;
+	pathtoqid(getl(root.qid), &c->qid);
 	c->dev = dev;
 	c->aux = saccpy(&root);
 	return c;
-}
-
-static Chan*
-sacclone(Chan *c, Chan *nc)
-{
-	nc = devclone(c, nc);
-	nc->aux = saccpy(c->aux);
-	return nc;
 }
 
 static Walkqid*
 sacwalk(Chan *c, Chan *nc, char **name, int nname)
 {
 	Sac *sac;
-	int i, j, alloc;
+	int j, alloc;
 	Walkqid *wq;
 	char *n;
-	Dir dir;
 
 	if(nname > 0)
 		isdir(c);
@@ -200,26 +200,35 @@ sacwalk(Chan *c, Chan *nc, char **name, int nname)
 	}
 	if(nc == nil){
 		nc = devclone(c);
-		nc->type = 0;	/* device doesn't know about this channel yet */
 		alloc = 1;
 	}
 	wq->clone = nc;
 
 	for(j=0; j<nname; j++){
 		isdir(nc);
-
-		if(name[0]=='.' && name[1]==0)
-			return 1;
+		n = name[j];
+		if(strcmp(n, ".") == 0){
+			wq->qid[wq->nqid++] = nc->qid;
+			continue;
+		}
 		sac = nc->aux;
-		sac = saclookup(sac, name);
+		sac = saclookup(sac, n);
 		if(sac == nil) {
+			if(j == 0)
+				error(Enonexist);
 			strncpy(up->error, Enonexist, NAMELEN);
-			return 0;
+			break;
 		}
 		nc->aux = sac;
 		pathtoqid(getl(sac->qid), &nc->qid);
 	}
-	return 1;
+	poperror();
+	if(wq->nqid < nname){
+		if(alloc)
+			cclose(wq->clone);
+		wq->clone = nil;
+	}
+	return wq;
 }
 
 static Chan*
@@ -260,12 +269,8 @@ sacread(Chan *c, void *a, long n, vlong voff)
 
 	buf = a;
 	cnt = n;
-	if(c->qid.path & CHDIR){
-		cnt = (cnt/DIRLEN)*DIRLEN;
-		if(off%DIRLEN)
-			error("i/o error");
-		return sacdirread(c, buf, off, cnt);
-	}
+	if(c->qid.type & QTDIR)
+		return sacdirread(c, a, off, cnt);
 	sac = c->aux;
 	length = getl(sac->length);
 	if(off >= length)
@@ -311,11 +316,13 @@ sacclose(Chan* c)
 	sacfree(sac);
 }
 
-
-static void
-sacstat(Chan *c, char *db)
+static int
+sacstat(Chan *c, uchar *db, int n)
 {
-	sacdir(c, c->aux, db);
+	n = sacdir(c, c->aux, db, n);
+	if(n == 0)
+		error(Ebadarg);
+	return n;
 }
 
 static Sac*
@@ -361,24 +368,23 @@ sacfree(Sac *s)
 	free(s);
 }
 
-static void
-sacdir(Chan *c, SacDir *s, char *buf)
+static int
+sacdir(Chan *c, SacDir *s, uchar *db, int n)
 {
 	Dir dir;
 
-	memmove(dir.name, s->name, NAMELEN);
-	dir.qid = (Qid){getl(s->qid), 0};
-	dir.mode = getl(s->mode);
+	dir.name = s->name;
+	dir.uid = s->uid;
+	dir.gid = s->gid;
+	dir.muid = s->uid;
+	pathtoqid(getl(s->qid), &dir.qid);
+	omodetomode(getl(s->mode), &dir.mode);
 	dir.length = getl(s->length);
-	if(dir.mode &CHDIR)
-		dir.length *= DIRLEN;
-	memmove(dir.uid, s->uid, NAMELEN);
-	memmove(dir.gid, s->gid, NAMELEN);
 	dir.atime = getl(s->atime);
 	dir.mtime = getl(s->mtime);
 	dir.type = devtab[c->type]->dc;
 	dir.dev = c->dev;
-	convD2M(&dir, buf);
+	return convD2M(&dir, db, n);
 }
 
 static void
@@ -457,41 +463,44 @@ sacparent(Sac *s)
 	return s;
 }
 
+/* n**2 alg to read a directory */
 static int
-sacdirread(Chan *c, char *p, long off, long cnt)
+sacdirread(Chan *c, uchar *p, long off, long cnt)
 {
 	uchar *blocks;
 	SacDir *buf;
-	int iblock, per, i, j, n, ndir;
+	int per, i, j, n, ndir;
+	long sofar;
 	Sac *s;
 
 	s = c->aux;
 	blocks = data + getl(s->blocks);
 	per = blocksize/sizeof(SacDir);
 	ndir = getl(s->length);
-	off /= DIRLEN;
-	cnt /= DIRLEN;
-	if(off >= ndir)
-		return 0;
-	if(cnt > ndir-off)
-		cnt = ndir-off;
-	iblock = -1;
-	buf = malloc(per*sizeof(SacDir));
-	for(i=off; i<off+cnt; i++) {
-		j = i/per;
-		if(j != iblock) {
+
+	buf = malloc(blocksize);
+	sofar = 0;
+	for(j = 0; j < ndir; j++) {
+		i = j%per;
+		if(i == 0) {
 			n = per;
 			if(n > ndir-j*per)
 				n = ndir-j*per;
 			loadblock(buf, blocks + j*OffsetSize, n*sizeof(SacDir));
-			iblock = j;
 		}
-		j *= per;
-		sacdir(c, buf+i-j, p);
-		p += DIRLEN;
+		n = sacdir(c, buf+i, p, cnt - sofar);
+		if(n == 0)
+			break;
+		if(off > 0)
+			off -= n;
+		else {
+			p += n;
+			sofar += n;
+		}
 	}
 	free(buf);
-	return cnt*DIRLEN;
+
+	return sofar;
 }
 
 static Sac*
@@ -551,7 +560,6 @@ Dev sacdevtab = {
 	devreset,
 	sacinit,
 	sacattach,
-	sacclone,
 	sacwalk,
 	sacstat,
 	sacopen,

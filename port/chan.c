@@ -6,11 +6,11 @@
 #include	"../port/error.h"
 
 int chandebug=0;		/* toggled by sysr1 */
+QLock chanprint;		/* probably asking for trouble (deadlocks) -rsc */
 
 /* transition BUG */
 int client9p = 2;
 int kernel9p = 2;
-
 
 int domount(Chan**, Mhead**);
 Ref mheadcounter;
@@ -45,11 +45,24 @@ dumpmount(void)		/* DEBUGGING */
 				f->from->qid.vers, devtab[f->from->type]->dc,
 				f->from->dev);
 			for(t = f->mount; t; t = t->next)
-				print("\t%p: %s (umh %p)\n", t, t->to->name->s, t->to->umh);
+				print("\t%p: %s (umh %p) (path %.8llux dev %C %lud)\n", t, t->to->name->s, t->to->umh, t->to->qid.path, devtab[t->to->type]->dc, t->to->dev);
 		}
 	}
 	poperror();
 	runlock(&pg->ns);
+}
+
+
+char*
+c2name(Chan *c)		/* DEBUGGING */
+{
+	if(c == nil)
+		return "<nil chan>";
+	if(c->name == nil)
+		return "<nil name>";
+	if(c->name->s == nil)
+		return "<nil name.s>";
+	return c->name->s;
 }
 
 enum
@@ -225,7 +238,6 @@ newchan(void)
 		c->link = chanalloc.list;
 		chanalloc.list = c;
 		unlock(&chanalloc);
-if(chandebug) print("newchan %d\n", c->fid);
 	}
 
 	/* if you get an error before associating with a dev,
@@ -676,6 +688,11 @@ undomount(Chan *c, Cname *name)
 	he = &pg->mnthash[MNTHASH];
 	for(h = pg->mnthash; h < he; h++) {
 		for(f = *h; f; f = f->hash) {
+			if(strcmp(f->from->name->s, name->s) != 0)
+				continue;
+if(chandebug)
+print("[%lud]\tundomount found head %s; need chan (path %.8llux dev %C %lud)\n",
+	up->pid, name->s, c->qid.path, devtab[c->type]->dc, c->dev);
 			for(t = f->mount; t; t = t->next) {
 				if(eqchan(c, t->to, 1)) {
 					/*
@@ -690,6 +707,8 @@ undomount(Chan *c, Cname *name)
 					incref(nc);
 					cclose(c);
 					c = nc;
+if(chandebug)
+print("[%lud]\tundomount found %s\n", up->pid, c2name(c));
 					break;
 				}
 			}
@@ -722,10 +741,12 @@ walk(Chan **cp, char **names, int nnames, int nomount)
 	mh = nil;
 
 if(chandebug){
-print("walk");
+qlock(&chanprint);
+print("[%lud] walk %s to ", up->pid, c2name(c));
 for(i=0; i<nnames; i++)
-	print(" %s", names[i]);
+	print("%s%s", i?"/":"", names[i]);
 print("\n");
+qunlock(&chanprint);
 }
 
 	/*
@@ -755,9 +776,13 @@ print("\n");
 		}
 
 if(chandebug){
-print("\ttry chan: qid %.8llux devchar %C dev %lud ->\n", c->qid.path, devtab[c->type]->dc, c->dev);
+qlock(&chanprint);
+print("[%lud]\twalk from %s (path %.8llux dev %C %lud) to ", 
+	up->pid, c2name(c), c->qid.path, devtab[c->type]->dc, c->dev);
 for(i=0; i<ntry; i++)
-	print(" %s", names[i]);
+	print("%s%s", i?"/":"", names[i]);
+print("\n");
+qunlock(&chanprint);
 }
 		if(!dotdot && !nomount)
 			domount(&c, &mh);
@@ -766,12 +791,11 @@ for(i=0; i<ntry; i++)
 		dev = c->dev;
 
 		if((wq = devtab[type]->walk(c, nil, names, ntry)) == nil){
-if(chandebug) print("walk failed.");
+if(chandebug) print("[%lud]\twalk failed.\n", up->pid);
 			/* try a union mount, if any */
 			if(mh == nil || nomount){
 			Giveup:
-if(chandebug) print("give up\n");
-//delay(2000);
+if(chandebug) print("[%lud]\tgive up\n", up->pid);
 				cclose(c);
 				cnameclose(cname);
 				return -1;
@@ -784,7 +808,9 @@ if(chandebug) print("give up\n");
 			}
 			for(f = mh->mount; f; f = f->next)
 {
-if(chandebug) print("\ttry chan: qid %.8llux devchar %C dev %lud ->\n", c->qid.path, devtab[c->type]->dc, c->dev);
+if(chandebug)
+ print("[%lud]\twalk from %s (path %.8llux dev %C %lud)\n", 
+  up->pid, c2name(c), c->qid.path, devtab[c->type]->dc, c->dev);
 				if((wq = devtab[f->to->type]->walk(f->to, nil, names, ntry)) != nil)
 					break;
 }
@@ -802,34 +828,49 @@ if(chandebug) print("\ttry chan: qid %.8llux devchar %C dev %lud ->\n", c->qid.p
 		if(dotdot) {
 			assert(wq->nqid == 1);
 			assert(wq->clone != nil);
-if(chandebug) print("undo wq->clone->name %s cname %s...", wq->clone->name->s, cname->s);
+
+			cname = addelem(cname, "..");
+if(chandebug)
+print("[%lud]\tundo wq->clone %s cname %s\n", up->pid, c2name(wq->clone), cname?cname->s:"<nil name>");
 			nc = undomount(wq->clone, cname);
-if(chandebug) print("undidmount nc %s...", nc->name->s);
+if(chandebug)
+print("[%lud]\tundo returned %s\n", up->pid, c2name(nc));
 			n = 1;
 		} else {
 			nc = nil;
-if(chandebug) print("find.");
 			if(!nomount)
 				for(i=0; i<wq->nqid && i<nnames-1; i++)
 					if(findmount(&nc, &nmh, type, dev, wq->qid[i]))
 						break;
 			if(nc == nil){	/* no mount points along path */
+if(chandebug)
+print("[%lud]\tno mount points along path\n", up->pid);
 				if(wq->clone == nil){
 					cclose(c);
 					cnameclose(cname);
 					free(wq);
-if(chandebug) print("fail\n");
 					return -1;
 				}
 				n = wq->nqid;
 				nc = wq->clone;
 			}else{		/* stopped early, at a mount point */
+if(chandebug){int j;
+qlock(&chanprint);
+print("[%lud]\tfound mount point: ", up->pid);
+for(j=0; j<=i; j++)
+	print("%s%s", j?"/":"", names[j]);
+print(" becomes ");
+print("%s\n", c2name(nc));
+qunlock(&chanprint);
+}
 				if(wq->clone != nil){
 					cclose(wq->clone);
 					wq->clone = nil;
 				}
 				n = i+1;
 			}
+			for(i=0; i<n; i++)
+				cname = addelem(cname, names[i]);
 		}
 
 		cclose(c);
@@ -837,12 +878,8 @@ if(chandebug) print("fail\n");
 		putmhead(mh);
 		mh = nmh;
 
-		for(i=0; i<n; i++)
-			cname = addelem(cname, names[i]);
-
 		names += n;
 		nnames -= n;
-//print("nc %s nnames %d devchar %C qid %.8llux\n", cname->s, nnames, devtab[c->type]->dc, c->qid.path);
 		free(wq);
 	}
 
@@ -860,7 +897,8 @@ if(c->umh != nil){
 
 	cclose(*cp);
 	*cp = c;
-if(chandebug) print("success\n");
+if(chandebug)
+print("[%lud]\twalk succeeds; name %s chan (path %.8llux dev %C %lud)\n", up->pid, c2name(c), c->qid.path, devtab[c->type]->dc, c->dev);
 	return 0;
 }
 
