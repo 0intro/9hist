@@ -10,6 +10,7 @@ void
 faultsparc(Ureg *ur)
 {
 	ulong addr, badvaddr;
+	char buf[ERRLEN];
 	int user, read;
 	ulong tbr;
 
@@ -36,9 +37,11 @@ faultsparc(Ureg *ur)
 
 	if(fault(addr, read) < 0){
 		if(user){
-			pprint("user %s error addr=0x%lux\n", read? "read" : "write", badvaddr);
-			pprint("psr=0x%lux pc=0x%lux sp=0x%lux\n", ur->psr, ur->pc, ur->sp);
-			pexit("Suicide", 0);
+			sprint(buf, "sys: fault %s pc=0x%lux addr=0x%lux",
+				read? "read" : "write", ur->pc, badvaddr);
+			postnote(u->p, 1, buf, NDebug);
+			notify(ur);
+			return;
 		}
 		u->p->state = MMUing;
 		dumpregs(ur);

@@ -133,6 +133,15 @@ setpte:
 	MOVL	AX,CR0
 
 	/*
+	 *  use a jump to an absolute location to get the PC into
+	 *  KZERO.
+	 */
+	LEAL	tokzero(SB),AX
+	JMP*	AX
+
+TEXT	tokzero(SB),$0
+
+	/*
 	 *  stack and mach
 	 */
 	MOVL	$mach0(SB),SP
@@ -206,7 +215,7 @@ TEXT	tas(SB),$0
 	RET
 
 /*
- *  load the idt
+ *  routines to load various system registers
  */
 GLOBL	idtptr(SB),$6
 TEXT	lidt(SB),$0
@@ -217,9 +226,6 @@ TEXT	lidt(SB),$0
 	MOVL	idtptr(SB),IDTR
 	RET
 
-/*
- *  load the gdt
- */
 GLOBL	gdtptr(SB),$6
 TEXT	lgdt(SB),$0
 	MOVL	t+0(FP),AX
@@ -227,6 +233,16 @@ TEXT	lgdt(SB),$0
 	MOVL	l+4(FP),AX
 	MOVW	AX,gdtptr(SB)
 	MOVL	gdtptr(SB),GDTR
+	RET
+
+TEXT	lcr3(SB),$0
+	MOVL	t+0(FP),AX
+	MOVL	AX,CR3
+	RET
+
+TEXT	ltr(SB),$0
+	MOVL	t+0(FP),AX
+	MOVW	AX,TASK
 	RET
 
 /*
@@ -403,13 +419,15 @@ TEXT	setlabel(SB),$0
 	RET
 
 TEXT	touser(SB),$0
-	MOVL	$(USERADDR+BY2PG-5*BY2WD),AX
+	MOVL	$(USERADDR+BY2PG-6*BY2WD),AX
 	MOVL	$(UTZERO+32),0(AX)	/* header is in text */
 	MOVL	$(UESEL),4(AX)
 	MOVL	$(IFLAG|2),8(AX)
 	MOVL	$(USTKTOP-4*BY2WD),12(AX)
 	MOVL	$(UDSEL),16(AX)
 	MOVL	AX,SP
+	MOVL	$(UDSEL),AX		/* set up data segment */
+	MOVW	AX,DS
 	IRETL
 
 /*

@@ -12,7 +12,7 @@
  */
 void	(*vmevec[256])(int);
 
-void	noted(Ureg**);
+void	noted(Ureg**, ulong);
 void	rfnote(Ureg**);
 
 #define	LSYS	0x01
@@ -409,6 +409,7 @@ notify(Ureg *ur)
 		ur->pc = (ulong)u->notify;
 		u->notified = 1;
 		u->nnote--;
+		memmove(&u->lastnote, &u->note[0], sizeof(Note));
 		memmove(&u->note[0], &u->note[1], u->nnote*sizeof(Note));
 	}
 	unlock(&u->p->debug);
@@ -418,20 +419,15 @@ notify(Ureg *ur)
  * Return user to state before notify()
  */
 void
-noted(Ureg **urp)
+noted(Ureg **urp, ulong arg0)
 {
 	Ureg *nur;
 
 	nur = u->ureg;
-	if(waserror()){
-		pprint("suicide: trap in noted\n");
-		pexit("Suicide", 0);
-	}
 	validaddr(nur->pc, 1, 0);
 	validaddr(nur->usp, BY2WD, 0);
-	poperror();
 	if(nur->status!=u->svstatus){
-		pprint("bad noted ureg status %ux\n", nur->status);
+		pprint("bad noted ureg status %lux\n", nur->status);
 		pexit("Suicide", 0);
 	}
 	lock(&u->p->debug);
@@ -442,9 +438,25 @@ noted(Ureg **urp)
 	u->notified = 0;
 	memmove(*urp, u->ureg, sizeof(Ureg));
 	(*urp)->r1 = -1;	/* return error from the interrupted call */
-	unlock(&u->p->debug);
-	splhi();
-	rfnote(urp);
+	switch(arg0){
+	case NCONT:
+		splhi();
+		unlock(&u->p->debug);
+		rfnote(urp);
+		break;
+		/* never returns */
+
+	default:
+		pprint("unknown noted arg 0x%lux\n", arg0);
+		u->lastnote.flag = NDebug;
+		/* fall through */
+		
+	case NTERM:
+		if(u->lastnote.flag == NDebug)
+			pprint("suicide: %s\n", u->lastnote.msg);
+		unlock(&u->p->debug);
+		pexit(u->lastnote.msg, u->lastnote.flag!=NDebug);
+	}
 }
 
 
@@ -558,7 +570,7 @@ syscall(Ureg *aur)
 	splhi();
 	u->p->insyscall = 0;
 	if(r1 == NOTED)	/* ugly hack */
-		noted(&aur);	/* doesn't return */
+		noted(&aur, *(ulong*)(sp+BY2WD));	/* doesn't return */
 	if(u->nnote){
 		ur->r1 = ret;
 		notify(ur);

@@ -230,7 +230,6 @@ init0(void)
 
 	sp = (ulong*)(USTKTOP - argsize);
 
-	kickpager();
 	touser(sp);
 }
 

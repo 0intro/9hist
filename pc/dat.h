@@ -4,6 +4,7 @@ typedef struct Label	Label;
 typedef struct Lock	Lock;
 typedef struct MMU	MMU;
 typedef struct Mach	Mach;
+typedef struct Page	Page;
 typedef struct PMMU	PMMU;
 typedef struct Segdesc	Segdesc;
 typedef struct Ureg	Ureg;
@@ -96,9 +97,11 @@ struct Conf
 /*
  *  MMU stuff in proc
  */
+#define MAXMMU	4
 struct PMMU
 {
-	MMU	*mmu;
+	ulong	mmuent[MAXMMU];	/* a process' mmu entries */
+	Page	*mmupg[MAXMMU];	/* mmu pages */
 };
 
 #include "../port/portdat.h"
@@ -157,6 +160,7 @@ struct User
 	Note	note[NNOTE];
 	short	nnote;
 	short	notified;		/* sysnoted is due */
+	Note	lastnote;
 	int	(*notify)(void*, char*);
 	void	*ureg;
 	ushort	svvo;

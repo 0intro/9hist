@@ -16,11 +16,11 @@ typedef struct Tss	Tss;
 struct Tss
 {
 	ulong	backlink;	/* unused */
-	ulong	esp0;		/* pl0 stack pointer */
+	ulong	sp0;		/* pl0 stack pointer */
 	ulong	ss0;		/* pl0 stack selector */
-	ulong	esp1;		/* pl1 stack pointer */
+	ulong	sp1;		/* pl1 stack pointer */
 	ulong	ss1;		/* pl1 stack selector */
-	ulong	esp2;		/* pl2 stack pointer */
+	ulong	sp2;		/* pl2 stack pointer */
 	ulong	ss2;		/* pl2 stack selector */
 	ulong	cr3;		/* page table descriptor */
 	ulong	eip;		/* instruction pointer */
@@ -42,15 +42,18 @@ struct Tss
 	ulong	ldt;		/* local descriptor table */
 	ulong	iomap;		/* io map base */
 };
+Tss tss;
 
 /*
  *  segment descriptor initializers
  */
-#define	DATASEG(p) 	{ 0xFFFF, SEGG|SEGB|(0xF<<16)|SEGP|SEGPL(p)|SEGDATA|SEGW }
-#define	EXECSEG(p) 	{ 0xFFFF, SEGG|SEGD|(0xF<<16)|SEGP|SEGPL(p)|SEGEXEC|SEGR }
-#define CALLGATE(s,o,p)	{ (o)&0xFFFF|((s)<<16), (o)&0xFFFF0000|SEGP|SEGPL(p)|SEGCG }
-#define	D16SEG(p) 	{ 0xFFFF, (0x0<<16)|SEGP|SEGPL(p)|SEGDATA|SEGW }
-#define	E16SEG(p) 	{ 0xFFFF, (0x0<<16)|SEGP|SEGPL(p)|SEGEXEC|SEGR }
+#define	DATASEGM(p) 	{ 0xFFFF, SEGG|SEGB|(0xF<<16)|SEGP|SEGPL(p)|SEGDATA|SEGW }
+#define	EXECSEGM(p) 	{ 0xFFFF, SEGG|SEGD|(0xF<<16)|SEGP|SEGPL(p)|SEGEXEC|SEGR }
+#define CALLGATE(s,o,p)	{ ((o)&0xFFFF)|((s)<<16), (o)&0xFFFF0000|SEGP|SEGPL(p)|SEGCG }
+#define	D16SEGM(p) 	{ 0xFFFF, (0x0<<16)|SEGP|SEGPL(p)|SEGDATA|SEGW }
+#define	E16SEGM(p) 	{ 0xFFFF, (0x0<<16)|SEGP|SEGPL(p)|SEGEXEC|SEGR }
+#define	TSSSEGM(b,p)	{ ((b)<<16)|sizeof(Tss),\
+			  ((b)&0xFF000000)|(((b)<<16)&0xFF)|SEGTSS|SEGPL(p)|SEGP }
 
 /*
  *  global descriptor table describing all segments
@@ -58,39 +61,85 @@ struct Tss
 Segdesc gdt[] =
 {
 [NULLSEG]	{ 0, 0},		/* null descriptor */
-[KDSEG]		DATASEG(0),		/* kernel data/stack */
-[KESEG]		EXECSEG(0),		/* kernel code */
-[UDSEG]		DATASEG(3),		/* user data/stack */
-[UESEG]		EXECSEG(3),		/* user code */
+[KDSEG]		DATASEGM(0),		/* kernel data/stack */
+[KESEG]		EXECSEGM(0),		/* kernel code */
+[UDSEG]		DATASEGM(3),		/* user data/stack */
+[UESEG]		EXECSEGM(3),		/* user code */
 [SYSGATE]	CALLGATE(KESEL,0,3),	/* call gate for system calls */
-[RDSEG]		D16SEG(0),		/* reboot data/stack */
-[RESEG]		E16SEG(0),		/* reboot code */
+[RDSEG]		D16SEGM(0),		/* reboot data/stack */
+[RESEG]		E16SEGM(0),		/* reboot code */
+[TSSSEG]	TSSSEGM(0,0),		/* tss segment */
 };
 
-extern ulong tpt[];
+static ulong	*toppt;		/* top level page table */	
+static ulong	*kpt;		/* kernel level page tables */
+static ulong	*upt;		/* page table for struct User */
+
+#define ROUNDUP(s,v)	(((s)+(v-1))&~(v-1))
 
 void
 mmuinit(void)
 {
+	int i, n, nkpt;
+	ulong x;
+	ulong y;
+
 	/*
 	 *  set up the global descriptor table
 	 */
-	gdt[SYSGATE].d0 = ((ulong)systrap)&0xFFFF|(KESEL<<16);
-	gdt[SYSGATE].d1 = ((ulong)systrap)&0xFFFF0000|SEGP|SEGPL(3)|SEGCG;
+	x = (ulong)systrap;
+	gdt[SYSGATE].d0 = (x&0xFFFF)|(KESEL<<16);
+	gdt[SYSGATE].d1 = (x&0xFFFF0000)|SEGP|SEGPL(3)|SEGCG;
+	x = (long)&tss;
+	gdt[TSSSEG].d0 = (x<<16)|sizeof(Tss);
+	gdt[TSSSEG].d1 = (x&0xFF000000)|((x>>16)&0xFF)|SEGTSS|SEGPL(0)|SEGP;
 	lgdt(gdt, sizeof gdt);
 
 	/*
-	 *  set up system page tables
+	 *  set up system page tables.
+	 *  map all of physical memory to start at KZERO.
+	 *  leave a map for a user area.
 	 */
+
+	/*  allocate and fill low level page tables for physical mem */
+	nkpt = ROUNDUP(conf.npage0+conf.npage1, 4*1024*1024);
+	nkpt = nkpt/(4*1024*1024);
+	kpt = ialloc(nkpt*BY2PG, 1);
+	n = ROUNDUP(conf.npage0+conf.npage1, 1*1024*1024);
+	n = n/(4*1024);
+	for(i = 0; i < n; i++){
+		kpt[i] = (i<<PGSHIFT)|PTEVALID|PTEKERNEL|PTEWRITE;
+	}
+
+	/*  allocate page table for u-> */
+	upt = ialloc(BY2PG, 1);
+
+	/*  allocate top level table and put pointers to lower tables in it */
+	toppt = ialloc(BY2PG, 1);
+	x = KZERO>>(2*PGSHIFT-2);
+	y = ((ulong)kpt)&~KZERO;
+	for(i = 0; i < nkpt; i++){
+/*		toppt[i] = (y+i*BY2PG)|PTEVALID|PTEKERNEL|PTEWRITE;/**/
+		toppt[x+i] = (y+i*BY2PG)|PTEVALID|PTEKERNEL|PTEWRITE;
+	}
+	x = USERADDR>>(2*PGSHIFT-2);
+	y = ((ulong)upt)&~KZERO;
+	toppt[x] = y|PTEVALID|PTEKERNEL|PTEWRITE;
+	lcr3(((ulong)toppt)&~KZERO);
 
 	/*
 	 *  set up the task segment
 	 */
+	tss.sp0 = USERADDR;
+	tss.ss0 = KDSEL;
+	tss.cr3 = (ulong)toppt;
+	ltr(TSSSEL);
 }
 
 void
 mapstack(Proc *p)
 {
+	
 }
 
 void
@@ -104,7 +153,7 @@ mmurelease(Proc *p)
 }
 
 void
-putmmu(ulong x, ulong y, Page*z)
+putmmu(ulong x, ulong y, Page *z)
 {
 }
 
@@ -117,4 +166,16 @@ void
 systrap(void)
 {
 	panic("system trap from user");
+}
+
+void
+exit(void)
+{
+	int i;
+
+	u = 0;
+	print("exiting\n");
+	for(i = 0; i < WD2PG; i++)
+		toppt[i] = 0;
+	lcr3(((ulong)toppt)&~KZERO);
 }

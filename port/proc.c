@@ -67,7 +67,7 @@ schedinit(void)		/* never returns */
 			p->pid = 0;
 			mmurelease(p);
 			/* 
-			 * Holding locks:
+			 * Holding locks from pexit:
 			 * 	procalloc, debug, palloc
 			 */
 			pg = p->upage;
@@ -473,7 +473,7 @@ freebroken(void)
 }
 
 void
-pexit(char *s, int freemem)
+pexit(char *exitstr, int freemem)
 {
 	ulong mypid;
 	Proc *p, *c, *k, *l;
@@ -481,9 +481,10 @@ pexit(char *s, int freemem)
 	Chan *ch;
 	char msg[ERRLEN];
 	ulong *up, *ucp, *wp;
+	Segment **s, **es, *os;
 
-	if(s) 	/* squirrel away; we'll lose our address space */
-		strcpy(msg, s);
+	if(exitstr) 			/* squirrel away before we lose our address space */
+		strcpy(msg, exitstr);
 	else
 		msg[0] = 0;
 	
@@ -496,9 +497,12 @@ pexit(char *s, int freemem)
 
 	if(freemem){
 		flushvirt();
-		for(i = 0; i < NSEG; i++)
-			if(c->seg[i])
-				putseg(c->seg[i]);
+		es = &c->seg[NSEG];
+		for(s = c->seg; s < es; s++)
+			if(os = *s) {
+				*s = 0;
+				putseg(os);
+			}
 		closepgrp(c->pgrp);
 		if(c->egrp)
 			closeegrp(c->egrp);
@@ -552,9 +556,12 @@ pexit(char *s, int freemem)
 	if(!freemem){
 		addbroken(c);
 		flushvirt();
-		for(i = 0; i < NSEG; i++)
-			if(c->seg[i])
-				putseg(c->seg[i]);
+		es = &c->seg[NSEG];
+		for(s = c->seg; s < es; s++)
+			if(os = *s) {
+				*s = 0;
+				putseg(os);
+			}
 		closepgrp(c->pgrp);
 		closeegrp(c->egrp);
 		close(u->dot);

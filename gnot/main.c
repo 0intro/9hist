@@ -132,7 +132,6 @@ init0(void)
 	}
 	poperror();
 
-	kickpager();
 	touser();
 }
 

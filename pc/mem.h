@@ -59,7 +59,8 @@
 #define	UESEG	4	/* user executable */
 #define	SYSGATE	5	/* system call gate */
 #define	RDSEG	6	/* reboot data/stack */
-#define	RESEG	7	/* reboot executable */	
+#define	RESEG	7	/* reboot executable */
+#define TSSSEG	8	/* task segment */
 
 #define SELGDT	(0<<3)	/* selector is in gdt */
 #define	SELLDT	(1<<3)	/* selector is in ldt */
@@ -73,12 +74,14 @@
 #define UDSEL	SELECTOR(UDSEG, SELGDT, 3)
 #define RDSEL	SELECTOR(RDSEG, SELGDT, 0)
 #define RESEL	SELECTOR(RESEG, SELGDT, 0)
+#define TSSSEL	SELECTOR(TSSSEG, SELGDT, 0)
 
 /*
  *  fields in segment descriptors
  */
 #define SEGDATA	(0x10<<8)	/* data/stack segment */
 #define SEGEXEC	(0x18<<8)	/* executable segment */
+#define	SEGTSS	(0x9<<8)	/* TSS segment */
 #define SEGCG	(0x0C<<8)	/* call gate */
 #define	SEGIG	(0x0E<<8)	/* interrupt gate */
 #define SEGTG	(0x0F<<8)	/* task gate */

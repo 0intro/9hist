@@ -20,7 +20,9 @@ main(void)
 	print("%d pages in bank0, %d pages in bank1\n", conf.npage0, conf.npage1);
 	print("edata == %lux, end == %lux\n", &edata, &end);
 	mmuinit();
+print("mmu inited\n");
 	procinit0();
+print("proc inited\n");
 	initseg();
 	grpinit();
 	chaninit();
@@ -31,6 +33,7 @@ main(void)
 	swapinit();
 	pageinit();
 	userinit();
+print("user inited\n");
 
 	schedinit();
 }
@@ -94,9 +97,12 @@ userinit(void)
 
 	/*
 	 * Kernel Stack
+	 *
+	 * N.B. The -4 for the stack pointer is important.  Gotolabel
+	 *	uses the bottom 4 bytes of stack to store it's return pc.
 	 */
 	p->sched.pc = (ulong)init0;
-	p->sched.sp = USERADDR + BY2PG - 24;
+	p->sched.sp = USERADDR + BY2PG - 4;
 	p->upage = newpage(1, 0, USERADDR|(p->pid&0xFFFF));
 
 	/*
@@ -124,18 +130,6 @@ userinit(void)
 	kunmap(k);
 
 	ready(p);
-}
-
-void
-exit(void)
-{
-	int i;
-
-	u = 0;
-	splhi();
-	print("exiting\n");
-	for(;;)
-		;
 }
 
 Conf	conf;
@@ -185,7 +179,7 @@ confinit(void)
 	conf.base1 = 1024/4;
 
 	conf.npage = conf.npage0 + conf.npage1;
-	conf.maxialloc = (640*1024-256*1024-BY2PG);
+	conf.maxialloc = (conf.npage0*BY2PG-PGROUND((ulong)&end));
 
 	mul = 1;
 	conf.nproc = 20 + 50*mul;
@@ -269,3 +263,10 @@ void
 lights(int val)
 {
 }
+
+int
+mouseputc(IOQ *q, int c)
+{
+	return c;
+}
+

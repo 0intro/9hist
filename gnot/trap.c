@@ -8,7 +8,7 @@
 #include	"errno.h"
 
 void	notify(Ureg*);
-void	noted(Ureg*);
+void	noted(Ureg*, ulong);
 void	rfnote(Ureg*);
 
 char *regname[]={
@@ -174,6 +174,7 @@ notify(Ureg *ur)
 		ur->pc = (ulong)u->notify;
 		u->notified = 1;
 		u->nnote--;
+		memmove(&u->lastnote, &u->note[0], sizeof(Note));
 		memmove(&u->note[0], &u->note[1], u->nnote*sizeof(Note));
 	}
 	unlock(&u->p->debug);
@@ -183,7 +184,7 @@ notify(Ureg *ur)
  * Return user to state before notify()
  */
 void
-noted(Ureg *ur)
+noted(Ureg *ur, ulong arg0)
 {
 	Ureg *nur;
 
@@ -201,9 +202,26 @@ noted(Ureg *ur)
 	}
 	u->notified = 0;
 	memmove(ur, u->ureg, sizeof(Ureg));
-	unlock(&u->p->debug);
-	splhi();
-	rfnote(ur);
+	ur->r0 = -1;	/* return error from the interrupted call */
+	switch(arg0){
+	case NCONT:
+		splhi();
+		unlock(&u->p->debug);
+		rfnote(ur);
+		break;
+		/* never returns */
+
+	default:
+		pprint("unknown noted arg 0x%lux\n", arg0);
+		u->lastnote.flag = NDebug;
+		/* fall through */
+		
+	case NTERM:
+		if(u->lastnote.flag == NDebug)
+			pprint("suicide: %s\n", u->lastnote.msg);
+		unlock(&u->p->debug);
+		pexit(u->lastnote.msg, u->lastnote.flag!=NDebug);
+	}
 }
 
 #undef	CHDIR	/* BUG */
@@ -316,7 +334,7 @@ syscall(Ureg *aur)
 	u->p->insyscall = 0;
 
 	if(r0 == NOTED)		/* ugly hack */
-		noted(aur);	/* doesn't return */
+		noted(aur, *(ulong*)(sp+BY2WD));	/* doesn't return */
 	if(u->nnote){
 		ur->r0 = ret;
 		notify(ur);

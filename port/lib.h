@@ -74,6 +74,9 @@ extern	long	end;
 #define	OCEXEC	32	/* or'ed in, close on exec */
 #define	ORCLOSE	64	/* or'ed in, remove on close */
 
+#define	NCONT	0	/* continue after note */
+#define	NTERM	1	/* terminate after note */
+
 typedef struct Qid	Qid;
 typedef struct Dir	Dir;
 typedef struct Waitmsg	Waitmsg;

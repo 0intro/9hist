@@ -219,6 +219,7 @@ struct User
 	Note	note[NNOTE];
 	short	nnote;
 	short	notified;		/* sysnoted is due */
+	Note	lastnote;
 	int	(*notify)(void*, char*);
 	void	*ureg;
 	ushort	svsr;

@@ -8,7 +8,7 @@
 #include	"errno.h"
 
 void	notify(Ureg*);
-void	noted(Ureg**);
+void	noted(Ureg**, ulong);
 void	rfnote(Ureg**);
 
 extern	void traplink(void);
@@ -232,6 +232,7 @@ notify(Ureg *ur)
 	if(!u->notified){
 		if(!u->notify)
 			goto Die;
+		u->svpsr = ur->psr;
 		sp = ur->usp;
 		sp -= sizeof(Ureg);
 		u->ureg = (void*)sp;
@@ -247,6 +248,7 @@ notify(Ureg *ur)
 		ur->npc = (ulong)u->notify+4;
 		u->notified = 1;
 		u->nnote--;
+		memmove(&u->lastnote, &u->note[0], sizeof(Note));
 		memmove(&u->note[0], &u->note[1], u->nnote*sizeof(Note));
 	}
 	unlock(&u->p->debug);
@@ -256,8 +258,17 @@ notify(Ureg *ur)
  * Return user to state before notify()
  */
 void
-noted(Ureg **urp)
+noted(Ureg **urp, ulong arg0)
 {
+	Ureg *nur;
+
+	nur = u->ureg;
+	validaddr(nur->pc, 1, 0);
+	validaddr(nur->usp, BY2WD, 0);
+	if(nur->psr!=u->svpsr){
+		pprint("bad noted ureg psr %lux\n", nur->psr);
+		pexit("Suicide", 0);
+	}
 	lock(&u->p->debug);
 	if(!u->notified){
 		unlock(&u->p->debug);
@@ -266,9 +277,25 @@ noted(Ureg **urp)
 	u->notified = 0;
 	memmove(*urp, u->ureg, sizeof(Ureg));
 	(*urp)->r7 = -1;	/* return error from the interrupted call */
-	unlock(&u->p->debug);
-	splhi();
-	rfnote(urp);
+	switch(arg0){
+	case NCONT:
+		splhi();
+		unlock(&u->p->debug);
+		rfnote(urp);
+		break;
+		/* never returns */
+
+	default:
+		pprint("unknown noted arg 0x%lux\n", arg0);
+		u->lastnote.flag = NDebug;
+		/* fall through */
+		
+	case NTERM:
+		if(u->lastnote.flag == NDebug)
+			pprint("suicide: %s\n", u->lastnote.msg);
+		unlock(&u->p->debug);
+		pexit(u->lastnote.msg, u->lastnote.flag!=NDebug);
+	}
 }
 
 #undef	CHDIR	/* BUG */
@@ -376,7 +403,7 @@ syscall(Ureg *aur)
 	}
 	u->p->insyscall = 0;
 	if(r7 == NOTED)	/* ugly hack */
-		noted(&aur);	/* doesn't return */
+		noted(&aur, *(ulong*)(sp+1*BY2WD));	/* doesn't return */
 	if(u->nnote){
 		ur->r7 = ret;
 		notify(ur);

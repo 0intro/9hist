@@ -727,6 +727,7 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 		fd = strtoul(buf, 0, 0);
 		swc = fdtochan(fd, -1);
 		setswapchan(swc);
+		kickpager();
 		return n;
 
 	default:
