@@ -943,7 +943,7 @@ procstopwait(Proc *p, int ctl)
 
 	if(p->pdbg)
 		error(Einuse);
-	if(procstopped(p))
+	if(procstopped(p) || p->state == Broken)
 		return;
 
 	if(ctl != 0)

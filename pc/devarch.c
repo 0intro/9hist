@@ -98,6 +98,7 @@ addarchfile(char *name, int perm, Rdwrfn *rdfn, Rdwrfn *wrfn)
 void
 ioinit(void)
 {
+	char *excluded;
 	int i;
 
 	for(i = 0; i < nelem(iomap.maps)-1; i++)
@@ -109,6 +110,31 @@ ioinit(void)
 	ioalloc(0x10000, 1, 0, "dummy");
 	ioalloc(0x0fff, 1, 0, "dummy");	// i82557 is at 0x1000, the dummy
 							// entry is needed for swappable devs.
+
+	if ((excluded = getconf("ioexclude")) != nil) {
+		char *s;
+
+		s = excluded;
+		while (s && *s != '\0' && *s != '\n') {
+			char *ends;
+			int io_s, io_e;
+
+			io_s = (int)strtol(s, &ends, 0);
+			if (ends == nil || ends == s || *ends != '-') {
+				print("ioinit: cannot parse option string\n");
+				break;
+			}
+			s = ++ends;
+
+			io_e = (int)strtol(s, &ends, 0);
+			if (ends && *ends == ',')
+				*ends++ = '\0';
+			s = ends;
+
+			ioalloc(io_s, io_e - io_s + 1, 0, "pre-allocated");
+		}
+	}
+
 }
 
 // Reserve a range to be ioalloced later.  This is in particular useful for exchangable cards, such

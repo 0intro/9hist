@@ -45,31 +45,22 @@ static variant_t variant[] = {
 /* Cardbus registers */
 enum {
 	SocketEvent = 0,
+		SE_CCD = 3 << 1,
+		SE_POWER = 1 << 3,
 	SocketMask = 1,
 	SocketState = 2,
+		SS_CCD = 3 << 1,
+		SS_POWER = 1 << 3,
+		SS_PC16 = 1 << 4,
+		SS_CBC = 1 << 5,
+		SS_NOTCARD = 1 << 7,
+		SS_BADVCC = 1 << 9,
+		SS_5V = 1 << 10,
+		SS_3V = 1 << 11,
 	SocketForce = 3,
 	SocketControl = 4,
-};
-
-enum {
-	SS_CCD = 3 << 1,
-	SS_POWER = 1 << 3,
-	SS_PC16 = 1 << 4,
-	SS_CBC = 1 << 5,
-	SS_NOTCARD = 1 << 7,
-	SS_BADVCC = 1 << 9,
-	SS_5V = 1 << 10,
-	SS_3V = 1 << 11,
-};
-
-enum {
-	SC_5V = 0x22,
-	SC_3V = 0x33,
-};
-
-enum {
-	SE_CCD = SS_CCD,
-	SE_POWER = SS_POWER,
+		SC_5V = 0x22,
+		SC_3V = 0x33,
 };
 
 enum {
@@ -523,9 +514,14 @@ devpccardlink(void)
 		cb->cb_pci = pci;
 		cb->cb_variant = &variant[i];
 		
-		if (intl != -1 && intl != pci->intl)
-			intrenable(pci->intl, interrupt, cb, pci->tbdf, "cardbus");
-		intl = pci->intl;
+		pcicfgw32(pci, PciCBMBR0, 0xffffffff);
+		pcicfgw32(pci, PciCBMLR0, 0);
+		pcicfgw32(pci, PciCBMBR1, 0xffffffff);
+		pcicfgw32(pci, PciCBMLR1, 0);
+		pcicfgw32(pci, PciCBIBR0, 0xffffffff);
+		pcicfgw32(pci, PciCBILR0, 0);
+		pcicfgw32(pci, PciCBIBR1, 0xffffffff);
+		pcicfgw32(pci, PciCBILR1, 0);
 
 		// Set up PCI bus numbers if needed.
 		if (pcicfgr8(pci, PciSBN) == 0) {
@@ -545,7 +541,10 @@ devpccardlink(void)
 			if (pci->intl == 0xff || pci->intl == 0)
 				print("#Y%d: No interrupt?\n", (int)(cb - cbslots));
 		}
-	
+		if (intl != -1 && intl != pci->intl)
+			intrenable(pci->intl, interrupt, cb, pci->tbdf, "cardbus");
+		intl = pci->intl;
+
 		if ((baddr = pcicfgr32(cb->cb_pci, PciBAR0)) == 0) {
 			int align = (pci->did == Ricoh_478_did)? 0x10000: 0x1000;
 
@@ -696,6 +695,9 @@ configure(cb_t *cb)
 		ulong size, bar;
 		int memindex, ioindex;
 
+		pcicfgw16(pci, PciPCR, 
+				pcicfgr16(pci, PciPCR) & ~(PciPCR_IO|PciPCR_MEM));
+
 		/* Treat the found device as an ordinary PCI card.  It seems that the 
 		     CIS is not always present in CardBus cards.  XXX, need to support 
 		     multifunction cards */
@@ -711,12 +713,15 @@ configure(cb_t *cb)
 					continue;
 				}
 				bar = ioreserve(-1, pci->mem[i].size, 0, "cardbus");
+
 				pci->mem[i].bar = bar | 1;
 				pcicfgw32(pci, PciBAR0 + i * sizeof(ulong), 
 					          pci->mem[i].bar);
 				pcicfgw16(cb->cb_pci, PciCBIBR0 + ioindex * 8, bar);
 				pcicfgw16(cb->cb_pci, PciCBILR0 + ioindex * 8, 
 						 bar + pci->mem[i].size - 1);
+				//print("ioindex[%d] %.8uX (%d)\n", 
+				//	ioindex, bar, pci->mem[i].size);
 				ioindex++;
 				continue;
 			}
@@ -740,6 +745,8 @@ configure(cb_t *cb)
 						 pcicfgr16(cb->cb_pci, PciBCR) | 
 							          (1 << (8 + memindex)));
 
+			//print("memindex[%d] %.8uX (%d)\n", 
+			//	  memindex, bar, pci->mem[i].size);
 			memindex++;
 		}
 
