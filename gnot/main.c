@@ -246,9 +246,9 @@ confinit(void)
 	conf.npgenv = 200;
 	conf.nmtab = 50;
 	conf.nmount = 100;
-	conf.nmntdev = 5;
-	conf.nmntbuf = 10;
-	conf.nmnthdr = 10;
+	conf.nmntdev = 10;
+	conf.nmntbuf = 20;
+	conf.nmnthdr = 20;
 	conf.nstream = 64;
 	conf.nqueue = 5 * conf.nstream;
 	conf.nblock = 12 * conf.nstream;

@@ -191,9 +191,10 @@ bitopen(Chan *c, int omode)
 		}
 		bit.lastid = -1;
 		bit.init = 1;
+		bit.ref = 1;
 		unlock(&bit);
+	}else
 		incref(&bit);
-	}
 	c->mode = openmode(omode);
 	c->flag |= COPEN;
 	c->offset = 0;
@@ -224,7 +225,7 @@ bitclose(Chan *c)
 	int i;
 	Bitmap *bp;
 
-	if(c->qid != CHDIR){
+	if(c->qid!=CHDIR && (c->flag&COPEN)){
 		lock(&bit);
 		if(--bit.ref == 0){
 			for(i=1,bp=&bit.map[1]; i<conf.nbitmap; i++,bp++)
