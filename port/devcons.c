@@ -313,7 +313,9 @@ kbdclock(void)
 int
 consactive(void)
 {
-	return qlen(printq) > 0;
+	if(printq)
+		return qlen(printq) > 0;
+	return 0;
 }
 
 enum{

@@ -446,7 +446,10 @@ receive(Ether *ether)
 			for(fp = ether->f; fp < ep; fp++) {
 				f = *fp;
 				if(f && (f->type == type || f->type < 0))
+{
+print("Q%d|", len);
 					qproduce(f->in, &ether->rpkt, len);
+}
 			}
 		}
 
@@ -464,9 +467,9 @@ receive(Ether *ether)
 }
 
 static int
-istxbusy(void *arg)
+istxavail(void *arg)
 {
-	return ((Dp8390*)arg)->busy == 0;
+	return ((Ether*)arg)->tlen == 0;
 }
 
 static long
@@ -478,16 +481,12 @@ write(Ether *ether, void *buf, long n)
 	dp8390 = ether->private;
 	port = dp8390->dp8390;
 
-	qlock(&ether->tlock);
-	if(waserror()) {
-		qunlock(&ether->tlock);
-		nexterror();
-	}
-
-	tsleep(&ether->tr, istxbusy, dp8390, 10000);
-	if(dp8390->busy)
+	tsleep(&ether->tr, istxavail, ether, 10000);
+	if(ether->tlen){
 		print("dp8390: transmitter jammed\n");
-	dp8390->busy = 1;
+		return 0;
+	}
+	ether->tlen = n;
 
 	if(dp8390->ram)
 		memmove((void*)(ether->mem+dp8390->tstart*Dp8390BufSz), buf, n);
@@ -497,9 +496,6 @@ write(Ether *ether, void *buf, long n)
 	dp8390outb(port+Tbcr0, n & 0xFF);
 	dp8390outb(port+Tbcr1, (n>>8) & 0xFF);
 	dp8390outb(port+Cr, Page0|RDMAabort|Txp|Sta);
-
-	poperror();
-	qunlock(&ether->tlock);
 
 	return n;
 }
@@ -555,6 +551,7 @@ interrupt(Ether *ether)
 	 */
 	dp8390outb(port+Imr, 0x00);
 	while(isr = dp8390inb(port+Isr)){
+print("I%2.2ux|", isr);
 
 		if(isr & Ovw){
 			overflow(ether);
@@ -588,7 +585,7 @@ interrupt(Ether *ether)
 
 			if(isr & Ptx)
 				ether->outpackets++;
-			dp8390->busy = 0;
+			ether->tlen = 0;
 			wakeup(&ether->tr);
 		}
 

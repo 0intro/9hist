@@ -138,18 +138,17 @@ etherintr(Ureg *ur)
 	}
 }
 
-#define NCARD 32
 static struct {
 	char	*type;
 	int	(*reset)(Ether*);
-} cards[NCARD+1];
+} cards[MaxEther+1];
 
 void
 addethercard(char *t, int (*r)(Ether*))
 {
 	static int ncard;
 
-	if(ncard == NCARD)
+	if(ncard == MaxEther)
 		panic("too many ether cards");
 	cards[ncard].type = t;
 	cards[ncard].reset = r;

@@ -17,7 +17,7 @@ struct Ether {
 
 	QLock	tlock;			/* lock for grabbing transmitter queue */
 	Rendez	tr;			/* wait here for free xmit buffer */
-	long	tlen;			/* length of data in tb for txfifo management */
+	long	tlen;			/* length of data in tpkt */
 
 	Netif;
 };
@@ -30,7 +30,6 @@ typedef struct {
 	ulong	data;			/* I/O data port if no shared memory */
 
 	uchar	nxtpkt;			/* receive: software bndry */
-	uchar	busy;			/* transmit: busy */
 	uchar	tstart;			/* 8390 ring addresses */
 	uchar	pstart;
 	uchar	pstop;

@@ -57,6 +57,10 @@ static int intrmap[] = {
 	9, 3, 5, 7, 10, 11, 15, 4,
 };
 
+static uchar debugea[6] = {
+	0x00, 0x60, 0x8c, 0x00, 0x1a, 0x42,
+};
+
 /*
  * Get configuration parameters, enable memory.
  * There are opportunities here for buckets of code.
@@ -184,6 +188,7 @@ reset(Ether *ether)
 	 * ethernet address.
 	 */
 	dp8390reset(ether);
+memmove(ether->ea, debugea, 6);
 	dp8390setea(ether);
 
 	return 0;
