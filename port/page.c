@@ -17,7 +17,6 @@ struct Ptealloc
 	int	pages;
 }ptealloclk;
 
-extern	long end;
 ulong	hiaddr;
 static Lock pglock;
 
@@ -115,7 +114,7 @@ iallocspan(ulong n, int align, ulong crevasse)
 		print("ialloc bad\n");
 
 	if(palloc.addr0 == 0){
-		region[Nregion-2].start = (((ulong)&end)&~KZERO) + conf.base0;
+		region[Nregion-2].start = (((ulong)end)&~KZERO) + conf.base0;
 		region[Nregion-2].end = conf.base0 + (conf.npage0<<PGSHIFT);
 		region[Nregion-1].start = conf.base1;
 		region[Nregion-1].end = conf.base1 + (conf.npage1<<PGSHIFT);

@@ -603,6 +603,8 @@ struct Queue
 	Rendez	r;			/* standard place to wait for flow control */
 	Rendez	*rp;			/* where flow control wakeups go to */
 	void	*ptr;			/* private info for the queue */
+	Proc	*pp;
+	Proc	*pg;
 };
 
 struct Stream

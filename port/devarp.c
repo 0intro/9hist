@@ -286,6 +286,8 @@ arpwrite(Chan *c, char *a, long n, ulong offset)
 void
 arpopn(Queue *q, Stream *s)
 {
+	if(Myip[Myself])
+		error(Einuse);
 	USED(q, s);
 }
 

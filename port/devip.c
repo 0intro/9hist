@@ -530,6 +530,7 @@ tcpstoput(Queue *q, Block *bp)
 	case Close_wait:
 		qlock(tcb);
 		tcb->sndcnt += blen(bp);
+		print("q %d\n", blen(bp));
 		if(tcb->sndq == 0)
 			tcb->sndq = bp;
 		else {

@@ -39,7 +39,7 @@ kprofreset(void)
 	ulong n;
 
 	kprof.minpc = KTZERO;
-	kprof.maxpc = (ulong)&etext;
+	kprof.maxpc = (ulong)etext;
 	kprof.nbuf = (kprof.maxpc-kprof.minpc) >> LRES;
 	n = kprof.nbuf*SZ;
 	kprof.buf = ialloc(n, 0);

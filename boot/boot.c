@@ -111,7 +111,6 @@ main(int argc, char *argv[])
 	settime(islocal);
 	swapproc();
 
-	sleep(1000);
 	sprint(cmd, "/%s/init", cputype);
 	sprint(flags, "-%s%s", cpuflag ? "c" : "t", mflag ? "m" : "");
 	execl(cmd, "init", flags, 0);

@@ -66,6 +66,7 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 	switch(type) {
 	default:
 		panic("fault");
+		break;
 
 	case SG_TEXT:
 		if(pagedout(*pg)) 			/* Demand load */
@@ -209,6 +210,7 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 		ask = s->flen-soff;
 		if(ask > BY2PG)
 			ask = BY2PG;
+
 		n = (*devtab[c->type].read)(c, kaddr, ask, daddr);
 		if(n != ask)
 			error(Eioload);

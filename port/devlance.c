@@ -753,10 +753,12 @@ lanceup(Etherpkt *p, int len)
 		 */
 		if(!canqlock(e))
 			continue;
+
 		if(e->q==0 || e->q->next->len>Streamhi || (t!=e->type && e->type!=-1)){
 			qunlock(e);
 			continue;
 		}
+
 		if(!waserror()){
 			bp = allocb(len);
 			memmove(bp->rptr, (uchar *)p, len);

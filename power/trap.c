@@ -340,8 +340,11 @@ dumpstack(void)
 	if(u)
 		for(l=(ulong)&l; l<USERADDR+BY2PG; l+=4){
 			v = *(ulong*)l;
-			if(KTZERO < v && v < (ulong)&etext)
+			if(KTZERO < v && v < (ulong)&etext){
 				print("%lux=%lux\n", l, v);
+				prflush();
+				delay(250);
+			}
 		}
 }
 
@@ -357,8 +360,10 @@ dumpregs(Ureg *ur)
 	else
 		print("registers for kernel\n");
 	l = &ur->status;
-	for(i=0; i<sizeof regname/sizeof(char*); i+=2, l+=2)
+	for(i=0; i<sizeof regname/sizeof(char*); i+=2, l+=2){
 		print("%s\t%.8lux\t%s\t%.8lux\n", regname[i], l[0], regname[i+1], l[1]);
+		prflush();
+	}
 }
 
 /*

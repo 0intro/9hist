@@ -4,53 +4,55 @@
 #include "../boot/boot.h"
 
 static Fcall	hdr;
-static char	buf[4*1024];
+
+static void
+rpc(int fd, int type)
+{
+	int n, l;
+	char buf[128], *p;
+
+	hdr.type = type;
+	hdr.tag = NOTAG;
+	n = convS2M(&hdr, buf);
+	if(write(fd, buf, n) != n)
+		fatal("write rpc");
+
+	print("...");
+	p = buf;
+	l = 0;
+	while(l < 3) {
+		n = read(fd, p, 3);
+		if(n <= 0)
+			fatal("read rpc");
+		if(n == 2 && l == 0 && buf[0] == 'O' && buf[1] == 'K')
+			continue;
+		p += n;
+		l += n;
+	}
+	if(convM2S(buf, &hdr, n) == 0){
+		print("%ux %ux %ux\n", buf[0], buf[1], buf[2]);
+		fatal("rpc format");
+	}
+	if(hdr.tag != NOTAG)
+		fatal("rpc tag not NOTAG");
+	if(hdr.type == Rerror){
+		print("error %s;", hdr.ename);
+		fatal("remote error");
+	}
+	if(hdr.type != type+1)
+		fatal("not reply");
+}
 
 void
 nop(int fd)
 {
-	long n;
-
-	print("nop...");
-	hdr.type = Tnop;
-	hdr.tag = NOTAG;
-	n = convS2M(&hdr, buf);
-	if(write(fd, buf, n) != n)
-		fatal("write nop");
-	n = read(fd, buf, sizeof buf);
-	if(n==2 && buf[0]=='O' && buf[1]=='K')
-		n = read(fd, buf, sizeof buf);
-	if(n <= 0)
-		fatal("read nop");
-	if(convM2S(buf, &hdr, n) == 0) {
-		print("n = %d; buf = %#.2x %#.2x %#.2x %#.2x\n",
-			n, buf[0], buf[1], buf[2], buf[3]);
-		fatal("format nop");
-	}
-	if(hdr.type != Rnop)
-		fatal("not Rnop");
+	print("nop");
+	rpc(fd, Tnop);
 }
 
 void
 session(int fd)
 {
-	long n;
-
-	print("session...");
-	hdr.type = Tsession;
-	hdr.tag = NOTAG;
-	n = convS2M(&hdr, buf);
-	if(write(fd, buf, n) != n)
-		fatal("write session");
-	n = read(fd, buf, sizeof buf);
-	if(n <= 0)
-		fatal("read session");
-	if(convM2S(buf, &hdr, n) == 0)
-		fatal("format session");
-	if(hdr.type == Rerror){
-		print("error %s;", hdr.ename);
-		fatal(hdr.ename);
-	}
-	if(hdr.type != Rsession)
-		fatal("not Rsession");
+	print("session");
+	rpc(fd, Tsession);
 }

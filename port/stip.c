@@ -405,6 +405,7 @@ ip_reassemble(int offset, Block *bp, Etherhdr *ip)
 	ushort id;
 	Block *bl, **l, *last, *prev;
 	int ovlap, len, fragsize, pktposn;
+	int end;
 
 	/* Check lance has handed us a contiguous buffer */
 	if(bp->next)
@@ -476,7 +477,7 @@ ip_reassemble(int offset, Block *bp, Etherhdr *ip)
 	bp->next = *l;
 	*l = bp;
 
-	/* Check to see if suceeding segments overlap */
+	/* Check to see if succeeding segments overlap */
 	if(bp->next) {
 		l = &bp->next;
 		end = BLKFRAG(bp)->foff + BLKFRAG(bp)->flen;
@@ -491,7 +492,7 @@ ip_reassemble(int offset, Block *bp, Etherhdr *ip)
 				BLKFRAG(*l)->flen -= ovlap;
 				(*l)->rptr += ovlap;
 				break;
-			}	
+			}
 			last = (*l)->next;
 			freeb(*l);
 			*l = last;

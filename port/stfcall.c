@@ -109,6 +109,7 @@ upstream(Queue *q, ulong len)
 	for(bp = bl; bp->next; bp = bp->next)
 		;
 	bp->flags |= S_DELIM;
+if(bl->rptr[0] == 73) print("fcall Rclunk %d\n", blen(bl));
 	PUTNEXT(q, bl);
 }
 

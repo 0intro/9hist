@@ -99,18 +99,15 @@ tcp_output(Ipconv *s)
 		 * in sndcnt but don't actually sit in the send queue,
 		 * dupb will return one less than dsize if a FIN needs to be sent.
 		 */
+		dbp = 0;
 		if(dsize != 0){
 			if(dupb(&dbp, sndq, sent, dsize) != dsize) {
 				seg.flags |= FIN;
 				dsize--;
 			}
-			DPRINT("dupb: 1st char = %c\n", dbp->rptr[0]);
-		} else
-			dbp = 0;
+			print("dupb: %d\n", dbp->rptr[0]);
+		}
 
-		/* If the entire send queue will now be in the pipe, set the
-		 * push flag
-		 */
 		if(sent+dsize == qlen)
 			seg.flags |= PSH;
 
@@ -157,11 +154,30 @@ tcp_output(Ipconv *s)
 				tcb->rttseq = tcb->snd.ptr;
 			}
 		}
-		DPRINT("tcp_output: ip_send s%lux a%lux w%lux u%lux\n",
-			seg.seq, seg.ack, seg.wnd, seg.up);
-
+		print("snd: %d %x\n", blen(hbp), seg.seq);
 		PUTNEXT(Ipoutput, hbp);
 	}
+}
+
+void
+tcprxmit(Ipconv *s)
+{
+	Tcpctl *tcb;
+
+	print("tcp! rexmit\n");
+	tcb = &s->tcpctl;
+	qlock(tcb);
+	tcb->flags |= RETRAN|FORCE;
+	tcb->snd.ptr = tcb->snd.una;
+
+	/* Reduce slowstart threshold to half current window */
+	tcb->ssthresh = tcb->cwind / 2;
+	tcb->ssthresh = MAX(tcb->ssthresh,tcb->mss);
+
+	/* Shrink congestion window to 1 packet */
+	tcb->cwind = tcb->mss;
+	tcp_output(s);
+	qunlock(tcb);
 }
 
 void
@@ -173,11 +189,17 @@ tcp_timeout(void *arg)
 	s = (Ipconv *)arg;
 	tcb = &s->tcpctl;
 
-	DPRINT("Timer %lux state = %d\n", s, tcb->state);
+	print("Timer %lux state = %d\n", s, tcb->state);
 
 	switch(tcb->state){
-	case Closed:
-		panic("tcptimeout");
+	default:
+		tcb->backoff++;
+		DPRINT("tcp_timeout: retransmit %d %x\n", tcb->backoff, s);
+		if (tcb->backoff >= MAXBACKOFF)
+			close_self(s, Etimedout);
+		else 
+			tcprxmit(s);
+		break;
 
 	case Time_wait:
 		close_self(s, 0);
@@ -186,30 +208,8 @@ tcp_timeout(void *arg)
 	case Established:
 		if(tcb->backoff < MAXBACKOFF)
 			tcb->backoff++;
-		goto retran;
-	default:
-		tcb->backoff++;
-		DPRINT("tcp_timeout: retransmit %d %x\n", tcb->backoff, s);
-
-		if (tcb->backoff >= MAXBACKOFF) {
-			DPRINT("tcp_timeout: timeout\n");
-			close_self(s, Etimedout);
-		}
-		else {
-	retran:
-			qlock(tcb);
-			tcb->flags |= RETRAN|FORCE;
-			tcb->snd.ptr = tcb->snd.una;
-
-			/* Reduce slowstart threshold to half current window */
-			tcb->ssthresh = tcb->cwind / 2;
-			tcb->ssthresh = MAX(tcb->ssthresh,tcb->mss);
-
-			/* Shrink congestion window to 1 packet */
-			tcb->cwind = tcb->mss;
-			tcp_output(s);
-			qunlock(tcb);
-		}
+		tcprxmit(s);
+		break;
 	}
 }
 
@@ -239,7 +239,7 @@ tcp_acktimer(Ipconv *s)
 }
 
 void
-tcprcvwin(Ipconv *s)
+tcprcvwin(Ipconv *s)				/* Call with tcb locked */
 {
 	Tcpctl *tcb = &s->tcpctl;
 

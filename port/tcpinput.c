@@ -42,6 +42,7 @@ tcp_input(Ipconv *ipc, Block *bp)
 	Ipaddr source, dest;
 	char tos;
 	ushort length;
+	Block *f;
 
 	DPRINT("tcp_input.\n");
 
@@ -290,6 +291,7 @@ process:
 				/* Ignore segment text */
 				freeb(bp);
 				break;
+
 			case Syn_received:
 			case Established:
 			case Finwait1:
@@ -298,6 +300,13 @@ process:
 				tcb->rcvcnt += blen(bp);
 				if(bp)
 				if(s->readq) {
+					print("bl %d ty %d\n", blen(bp), bp->rptr[0]);
+					for(f = bp; bp->next; f = f->next)
+						;
+					if((f->flags&S_DELIM) == 0) {
+						print("No delim upstream rcp");
+						f->flags |= S_DELIM;
+					}		
 					PUTNEXT(s->readq, bp);
 					bp = 0;
 				}
@@ -347,7 +356,9 @@ process:
 				break;
 			}
 		}
-		while(tcb->reseq != 0 && seq_ge(tcb->rcv.nxt, tcb->reseq->seg.seq)) {
+		while(tcb->reseq != 0) {
+			if(seq_ge(tcb->rcv.nxt, tcb->reseq->seg.seq) == 0)
+				break;
 			get_reseq(tcb, &tos, &seg, &bp, &length);
 			if(trim(tcb, &seg, &bp, &length) == 0)
 				goto gotone;
@@ -880,7 +891,8 @@ htontcp(Tcp *tcph, Block *data, Tcphdr *ph)
 
 	if(data) {
 		dlen = blen(data);	
-		if((data = padb(data, hdrlen + TCP_PKT)) == 0)
+		data = padb(data, hdrlen + TCP_PKT);
+		if(data == 0)
 			return 0;
 		/* If we collected blocks delimit the end of the chain */
 		for(bp = data; bp->next; bp = bp->next)
@@ -976,4 +988,40 @@ ntohtcp(Tcp *tcph, Block **bpp)
 		}
 	}
 	return hdrlen;
+}
+
+void
+tcpdumpconv(Ipconv *c)
+{
+	if(c->tcpctl.state == Closed)
+		return;
+
+	print("%s %d -> %d.%d.%d.%d/%d snd %d recv %d una %d nxt %d ptr %d wnd %d\n",
+	tcpstate[c->tcpctl.state],
+	c->psrc,
+	fmtaddr(c->dst),
+	c->pdst,
+	c->tcpctl.sndcnt,
+	c->tcpctl.rcvcnt,
+	c->tcpctl.snd.una,
+	c->tcpctl.snd.nxt,
+	c->tcpctl.snd.ptr,
+	c->tcpctl.snd.wnd);
+}
+
+void
+tcpdump(void)
+{
+	Ipifc *ep, *ifp;
+	Ipconv *cp, *ecp;
+	extern Ipifc *ipifc;
+
+	ep = &ipifc[conf.ipif];
+	for(ifp = ipifc; ifp < ep; ifp++)
+		if(strcmp(ifp->name, "TCP") == 0) {
+			ecp = &ifp->connections[conf.ip];
+			for(cp = ifp->connections; cp < ecp; cp++)
+				tcpdumpconv(cp);
+			break;
+		}
 }

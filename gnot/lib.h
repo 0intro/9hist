@@ -62,9 +62,9 @@ extern	int	print(char*, ...);
  */
 extern	long	strtol(char*, char**, int);
 extern	ulong	strtoul(char*, char**, int);
-extern	long	etext;
-extern	long	edata;
-extern	long	end;
+extern	char	etext[];
+extern	char	edata[];
+extern	char	end[];
 /*
  * Syscall data structures
  */

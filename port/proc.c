@@ -347,6 +347,10 @@ wakeup(Rendez *r)
 		if(p->state != Wakeme) 
 			panic("wakeup: state");
 		p->r = 0;
+if((p->sched.pc&KZERO) != KZERO){
+	spllo();
+	panic("wakeup");
+}
 		ready(p);
 	}
 	unlock(r);
