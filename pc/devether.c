@@ -7,6 +7,7 @@
  *	output
  *	deal with stalling and restarting output on input overflow
  *	fix magic ring constants
+ *	rewrite per SMC doc
  */
 #include "u.h"
 #include "../port/lib.h"
@@ -79,7 +80,8 @@ enum {
 struct Ring {
 	uchar	status;
 	uchar	next;
-	ushort	len;
+	uchar	len0;
+	uchar	len1;
 	uchar	data[BUFsize-4];
 };
 
@@ -101,14 +103,17 @@ struct Pktype {
 struct Ctlr {
 	QLock;
 
+	Ring	*ring;
 	Rendez	rr;			/* rendezvous for an input buffer */
+	Queue	rq;
 	uchar	bnry;
 	uchar	curr;
 	uchar	ovw;
-	Queue	rq;
 
+	Etherpkt *xpkt;
 	QLock	xl;
 	Rendez	xr;
+	uchar	xbusy;
 
 	int	iobase;			/* I/O base address */
 
@@ -131,6 +136,14 @@ struct Ctlr {
 	int	buffs;			/* buffering errors */
 };
 static Ctlr ctlr[Nctlr];
+
+static int
+isxfree(void *arg)
+{
+	Ctlr *cp = arg;
+
+	return cp->xbusy == 0 && cp->ovw == 0;
+}
 
 static void
 etheroput(Queue *q, Block *bp)
@@ -184,22 +197,20 @@ etheroput(Queue *q, Block *bp)
 		}
 	}
 
-panic("etheroput\n");
-#ifdef notdef
 	/*
 	 * only one transmitter at a time
 	 */
-	qlock(&c->xl);
+	qlock(&cp->xl);
 	if(waserror()){
-		qunlock(&c->xl);
+		qunlock(&cp->xl);
 		nexterror();
 	}
 
 	/*
-	 *  Wait till we get an output buffer
+	 * Wait till we get an output buffer
 	 */
-	sleep(&c->xr, isobuf, c);
-	p = enet.xn;
+	sleep(&cp->xr, isxfree, cp);
+	p = cp->xpkt;
 
 	/*
 	 * copy message into buffer
@@ -216,38 +227,29 @@ panic("etheroput\n");
 	}
 
 	/*
-	 *  pad the packet (zero the pad)
+	 * pad the packet (zero the pad)
 	 */
 	if(len < ETHERMINTU){
 		memset(((char*)p)+len, 0, ETHERMINTU-len);
 		len = ETHERMINTU;
 	}
-	enet.xn->len = len;
 
 	/*
-	 *  give packet a local address
+	 * give packet a local address
 	 */
-	memmove(p->s, enet.ea, sizeof(enet.ea));
+	memmove(p->s, cp->ea, sizeof(cp->ea));
 
 	/*
-	 *  give to Chip
+	 * start the transmission
 	 */
-	splhi();		/* sync with interrupt routine */
-	enet.xn->owner = Chip;
-	if(enet.xmting == 0)
-		ethersend(enet.xn);
-	spllo();
+	outb(cp->iobase+Tbcr0, len & 0xFF);
+	outb(cp->iobase+Tbcr1, (len>>8) & 0xFF);
+	outb(cp->iobase+Cr, 0x26);			/* Page0|TXP|STA */
+	cp->xbusy = 1;
 
-	/*
-	 *  send
-	 */
-	enet.xn = XSUCC(enet.xn);
 	freeb(bp);
-	qunlock(&enet.xl);
+	qunlock(&cp->xl);
 	poperror();
-
-	enet.outpackets++;
-#endif
 }
 
 /*
@@ -370,7 +372,8 @@ intr(Ureg *ur)
 		if(isr & Ptx)
 			cp->outpackets++;
 		if(isr & (Txe|Ptx)){
-			panic("tx intr\n");
+			cp->xbusy = 0;
+			wakeup(&cp->xr);
 		}
 		/*
 		 * the receive ring is full.
@@ -422,6 +425,7 @@ init(Ctlr *cp)
 	outb(cp->iobase+Tcr, 0x20);		/* LB0 */
 	outb(cp->iobase+Bnry, 6);
 	cp->bnry = 6;
+	cp->ring = (Ring*)(KZERO|RAMbase);
 	outb(cp->iobase+Pstart, 6);		/* 6*256 */
 	outb(cp->iobase+Pstop, 32);		/* 8*1024/256 */
 	outb(cp->iobase+Isr, 0xFF);
@@ -435,6 +439,7 @@ init(Ctlr *cp)
 
 	outb(cp->iobase+Cr, 0x22);		/* Page0, RD2|STA */
 	outb(cp->iobase+Tpsr, 0);
+	cp->xpkt = (Etherpkt*)(KZERO|RAMbase);
 }
 
 void
@@ -556,14 +561,13 @@ etherkproc(void *arg)
 		/*
 		 * process any received packets
 		 */
-		bnry = inb(cp->iobase+Bnry);
-		while(bnry != cp->curr){
-			rp = &((Ring*)RAMbase)[bnry];
-printpkt(bnry, rp->len, (Etherpkt*)rp->data);
+		cp->bnry = inb(cp->iobase+Bnry);
+		while(cp->bnry != cp->curr){
+			rp = &cp->ring[cp->bnry];
 			cp->inpackets++;
-			etherup(cp, (Etherpkt*)rp->data, rp->len-4);
-			bnry = rp->next;
-			outb(cp->iobase+Bnry, bnry);
+			etherup(cp, (Etherpkt*)rp->data, ((rp->len1<<8)+rp->len0)-4);
+			cp->bnry = rp->next;
+			outb(cp->iobase+Bnry, cp->bnry);
 		}
 		/*
 		 * if we idled input because of overflow,
@@ -572,6 +576,7 @@ printpkt(bnry, rp->len, (Etherpkt*)rp->data);
 		if(cp->ovw){
 			cp->ovw = 0;
 			outb(cp->iobase+Tcr, 0);
+			wakeup(&cp->xr);
 		}
 	}
 }

@@ -498,11 +498,13 @@ syscall(Ureg *aur)
 	ulong r1;
 	Ureg *ur;
 	char *msg;
+	Proc *p;
 
 	m->syscall++;
-	u->p->insyscall = 1;
+	p = u->p;
+	p->insyscall = 1;
 	ur = aur;
-	u->p->pc = ur->pc;		/* BUG */
+	p->pc = ur->pc;		/* BUG */
 	u->dbgreg = aur;
 	ur->cause = 15<<2;		/* for debugging: system call is undef 15;
 	/*
@@ -510,9 +512,9 @@ syscall(Ureg *aur)
 	 * guarantee anything about registers, we can
 	 * smash them.  but we must save fpstatus.
 	 */
-	if(u->p->fpstate == FPactive) {
+	if(p->fpstate == FPactive) {
 		u->fpsave.fpstatus = fcr31();
-		u->p->fpstate = FPinit;
+		p->fpstate = FPinit;
 		ur->status &= ~CU1;
 	}
 	spllo();
@@ -526,7 +528,7 @@ syscall(Ureg *aur)
 			pprint("bad sys call number %d pc %lux\n", r1, ((Ureg*)UREGADDR)->pc);
 			msg = "sys: bad sys call";
 	    Bad:
-			postnote(u->p, 1, msg, NDebug);
+			postnote(p, 1, msg, NDebug);
 			error(Ebadarg);
 		}
 		if(sp & (BY2WD-1)){
@@ -534,24 +536,20 @@ syscall(Ureg *aur)
 			msg = "sys: odd stack";
 			goto Bad;
 		}
-		if(((ulong*)ur->pc)[-2] == 0x23bdfffc){	/* old calling convention: look for ADD $-4, SP */
-			pprint("old system call linkage; recompile\n");
-			sp += BY2WD;
-		}
 		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-(1+MAXSYSARG)*BY2WD))
 			validaddr(sp, (1+MAXSYSARG)*BY2WD, 0);
-		u->p->psstate = sysctab[r1];
+		p->psstate = sysctab[r1];
 		ret = (*systab[r1])((ulong*)(sp+BY2WD));
 	}
 	ur->pc += 4;
 	u->nerrlab = 0;
 
-	u->p->psstate = 0;
-	u->p->insyscall = 0;
+	p->psstate = 0;
+	p->insyscall = 0;
 	if(r1 == NOTED)					/* ugly hack */
 		noted(&aur, *(ulong*)(sp+BY2WD));	/* doesn't return */
 	splhi();
-	if(r1!=FORK && (u->p->procctl || u->nnote)){
+	if(r1!=FORK && (u->nnote || p->procctl)){
 		u->svr1 = ret;
 		if(notify(ur))
 			return ur->r1;
