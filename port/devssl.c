@@ -73,7 +73,7 @@ enum{
 	Qclone,
 };
 Dirtab digesttab[]={
-	"ssl",		{Qclone, 0},	0,	0600,
+	"ssl",		{Qclone, 0},	0,	0666,
 };
 #define Ndigesttab (sizeof(digesttab)/sizeof(Dirtab))
 
