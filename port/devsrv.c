@@ -199,9 +199,14 @@ srvwrite(Chan *c, void *va, long n, ulong offset)
 	fd = strtoul(buf, 0, 0);
 	f = u->p->fgrp;
 	lock(f);
+	if(waserror()){
+		unlock(f);
+		nexterror();
+	}
 	fdtochan(fd, -1, 0);	/* error check only */
 	srv[i].chan = f->fd[fd];
 	incref(srv[i].chan);
 	unlock(f);
+	poperror();
 	return n;
 }

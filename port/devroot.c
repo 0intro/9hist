@@ -95,7 +95,7 @@ rootwalk(Chan *c, char *name)
 		return 1;
 	}
 	if((c->qid.path & ~CHDIR) != Qdir)
-		error(Enonexist);
+		return 0;
 	return devwalk(c, name, rootdir, nroot, rootgen);
 }
 

@@ -448,9 +448,6 @@ consopen(Chan *c, int omode)
 			error(Eperm);
 		incref(&ctl);
 		break;
-	case Qswap:
-		kickpager();		/* start a pager if not already started */
-		break;
 	}
 	c->aux = 0;
 	return devopen(c, omode, consdir, NCONS, devgen);
@@ -850,6 +847,7 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 		break;
 
 	case Qswap:
+		kickpager();		/* start a pager if not already started */
 		if(conf.cntrlp && strcmp(u->p->user, eve) != 0)
 			error(Eperm);
 		if(n >= sizeof buf)

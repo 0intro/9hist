@@ -280,7 +280,6 @@ validaddr(ulong addr, ulong len, int write)
 	}
 
 	pprint("invalid address 0x%lux in sys call pc=0x%lux", addr, userpc());
-	postnote(u->p, 1, "sys: bad address", NDebug);
 	error(Ebadarg);
 }
   
