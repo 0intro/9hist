@@ -131,12 +131,14 @@ ns16552install(void)
 				ns16552setup(port, sc->freq);
 				port += 8;
 			}
-		} else {
+		} else if(strcmp(sc->type, "com") == 0 || strcmp(sc->type, "COM") == 0){
 			/*
 			 *  port gives base port address for the uart
 			 *  irq is interrupt
 			 *  freq is the baud rate generator frequency
 			 */
+			if(sc->freq == 0)
+				sc->freq = UartFREQ;
 			ns16552setup(sc->port, sc->freq);
 			setvec(Int0vec+sc->irq, ns16552intrx, (void*)(nuart-1));
 		}
