@@ -81,10 +81,13 @@ struct INTVEC {
 };
 
 #define INTVECREG	IO2(INTVEC, 0xF60000)
+#define	NVRAM		IO2(uchar, 0xF10000)
 #define INTPENDREG	IO2(uchar, 0xF20000)	/* same as LED */
 #define IO2CLRMASK	IO2(uchar, 0xFE0000)
 #define IO2SETMASK	IO2(uchar, 0xFE8000)
 #define IO2MASK		IO2(ushort, 0xFE8000)
 #define	MPBERR0		IO2(ulong, 0xF48000)
 #define	MPBERR1		IO2(ulong, 0xF4C000)
+#define	RTC		(NVRAM+0x3ff8)
+
 #define SBEADDR		((ulong *)(UNCACHED|0x1F080000))
