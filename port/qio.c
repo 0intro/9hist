@@ -44,14 +44,11 @@ struct Queue
 
 enum
 {
-	/* Block.flag */
-	Bfilled=1,		/* block filled */
-
 	/* Queue.state */	
-	Qstarve=	(1<<0),		/* consumer starved */
-	Qmsg=		(1<<1),		/* message stream */
-	Qclosed=	(1<<2),
-	Qflow=		(1<<3),
+	Qstarve		= (1<<0),	/* consumer starved */
+	Qmsg		= (1<<1),	/* message stream */
+	Qclosed		= (1<<2),
+	Qflow		= (1<<3),
 };
 
 void
@@ -80,7 +77,7 @@ iallocb(int size)
 
 	size = sizeof(Block) + size + (BY2V-1);
 	if(ialloc.bytes > conf.ialloc){
-		iprint("ialloc limit exceeded %d/%d\n", ialloc.bytes, conf.ialloc);
+		iprint("ialloc limit %d/%d\n", ialloc.bytes, conf.ialloc);
 		return 0;
 	}
 	b = mallocz(size, 0);
@@ -96,11 +93,11 @@ iallocb(int size)
 	b->rp = b->base;
 	b->wp = b->base;
 	b->lim = ((uchar*)b) + size;
-	b->intr = 1;
+	b->flag = BINTR;
 
-	lock(&ialloc);
+	ilock(&ialloc);
 	ialloc.bytes += b->lim - b->base;
-	unlock(&ialloc);
+	iunlock(&ialloc);
 
 	return b;
 }
@@ -108,7 +105,7 @@ iallocb(int size)
 void
 freeb(Block *b)
 {
-	if(b->intr) {
+	if(b->flag & BINTR) {
 		ilock(&ialloc);
 		ialloc.bytes -= b->lim - b->base;
 		iunlock(&ialloc);

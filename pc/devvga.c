@@ -132,9 +132,7 @@ static void	cgascreenputc(int);
 static void	cgascreenputs(char*, int);
 static void	screenputc(char*);
 static void	scroll(void);
-static ulong	x3to32(uchar);
-static ulong	x6to32(uchar);
-static void	greyscale(void);
+static ulong	xnto32(uchar, int);
 static void	workinit(Bitmap*, int, int);
 extern void	screenload(Rectangle, uchar*, int, int, int);
 extern void	screenunload(Rectangle, uchar*, int, int, int);
@@ -309,8 +307,6 @@ vgawrite(Chan *c, void *buf, long n, ulong offset)
 		cbuf[n] = 0;
 		if(strncmp(cbuf, "hwcursor", 8) == 0)
 			hwcursor = 1;
-		else if(strncmp(cbuf, "grey", 4) == 0)
-			greyscale();
 		break;
 	case Qvgasize:
 		if(offset != 0 || n >= sizeof(cbuf))
@@ -591,13 +587,16 @@ setscreen(int maxx, int maxy, int ldepth)
 	switch(ldepth){
 	case 3:
 		for(i = 0; i < 256; i++)
-			setcolor(i, x3to32(i>>5), x3to32(i>>2), x3to32(i|(i<<1)));
+			setcolor(i, xnto32(i>>5, 3), xnto32(i>>2, 3), xnto32(i<<1, 2));
+		setcolor(0x55, xnto32(0x15, 6), xnto32(0x15, 6), xnto32(0x15, 6));
+		setcolor(0xaa, xnto32(0x2a, 6), xnto32(0x2a, 6), xnto32(0x2a, 6));
+		setcolor(0xff, xnto32(0x3f, 6), xnto32(0x3f, 6), xnto32(0x3f, 6));
 		break;
 	case 2:
 	case 1:
 	case 0:
 		for(i = 0; i < 16; i++){
-			x = x6to32((i*63)/15);
+			x = xnto32((i*63)/15, 6);
 			setcolor(i, x, x, x);
 		}
 		break;
@@ -976,59 +975,21 @@ screenputs(char *s, int n)
 
 
 /*
- *  expand 3 and 6 bits of color to 32
+ *  expand n bits of color to 32
  */
 static ulong
-x3to32(uchar x)
+xnto32(uchar x, int n)
 {
+	int s;
 	ulong y;
 
-	x = x&7;
-	x= (x<<3)|x;
-	y = (x<<(32-6))|(x<<(32-12))|(x<<(32-18))|(x<<(32-24))|(x<<(32-30));
+	x &= (1<<n)-1;
+	y = 0;
+	for(s = 32 - n; s > 0; s -= n)
+		y |= x<<s;
+	if(s < 0)
+		y |= x>>(-s);
 	return y;
-}
-static ulong
-x6to32(uchar x)
-{
-	ulong y;
-
-	x = x&0x3f;
-	y = (x<<(32-6))|(x<<(32-12))|(x<<(32-18))|(x<<(32-24))|(x<<(32-30));
-	return y;
-}
-static ulong
-x8to32(uchar x)
-{
-	ulong y;
-
-	x = x&0xff;
-	y = (x<<(32-8))|(x<<(32-16))|(x<<(32-24))|x;
-	return y;
-}
-static void
-greyscale(void)
-{
-	int i;
-	ulong x;
-
-	/* default color map (has to be outside the lock) */
-	switch(gscreen.ldepth){
-	case 3:
-		for(i = 0; i < 256; i++){
-			x = x8to32(i);
-			setcolor(i, x, x, x);
-		}
-		break;
-	case 2:
-	case 1:
-	case 0:
-		for(i = 0; i < 16; i++){
-			x = x6to32((i*63)/15);
-			setcolor(i, x, x, x);
-		}
-		break;
-	}
 }
 
 /*
@@ -1364,7 +1325,7 @@ setcursor(ulong *setbits, ulong *clrbits, int offx, int offy)
 void
 cursoron(int dolock)
 {
-	int xoff, yoff;
+	int xoff, yoff, s;
 	Rectangle r;
 	uchar *a;
 	struct {
@@ -1377,8 +1338,11 @@ cursoron(int dolock)
 
 	if(cursor.disable)
 		return;
-	if(dolock)
+	if(dolock){
+		s = 0;		/* to avoid compiler warning */
 		lock(&cursor);
+	} else
+		s = spllo();	/* to avoid freezing out the eia ports */
 
 	if(hwcursor)
 		(*vgacard->mvcursor)(mousexy());
@@ -1430,21 +1394,30 @@ cursoron(int dolock)
 
 	if(dolock)
 		unlock(&cursor);
+	else
+		splx(s);
 }
 
 void
 cursoroff(int dolock)
 {
+	int s;
+
 	if(hwcursor)
 		return;
 	if(cursor.disable)
 		return;
-	if(dolock)
+	if(dolock){
+		s = 0;		/* to avoid a compiler warning */
 		lock(&cursor);
+	} else
+		s = spllo();	/* to avoid freezing out the eia ports */
 	if(--cursor.visible == 0 && cursor.tl > 0)
 		screenload(cursor.clipr, (uchar*)backbits, cursor.tl, cursor.l, 0);
 	if(dolock)
 		unlock(&cursor);
+	else
+		splx(s);
 }
 
 static void

@@ -53,7 +53,6 @@ clock(Ureg *ur, void *arg)
 	m->ticks++;
 
 	checkalarms();
-	mouseclock();
 	hardclock();
 	uartclock();
 
@@ -70,16 +69,18 @@ clock(Ureg *ur, void *arg)
 	nrun = (nrdy+nrun)*1000;
 	MACHP(0)->load = (MACHP(0)->load*19+nrun)/20;
 
-	if(up == 0 || (ur->cs&0xffff) != UESEL || up->state != Running)
-		return;
+	if(up && (ur->cs&0xffff) == UESEL && up->state == Running){
+		if(anyready())
+			sched();
+	
+		/* user profiling clock */
+		spllo();		/* in case we fault */
+		(*(ulong*)(USTKTOP-BY2WD)) += TK2MS(1);
+		splhi();
+	}
 
-	if(anyready())
-		sched();
-
-	/* user profiling clock */
-	spllo();		/* in case we fault */
-	(*(ulong*)(USTKTOP-BY2WD)) += TK2MS(1);
-	splhi();
+	/* last because it could spllo() */
+	mouseclock();
 }
 
 /*

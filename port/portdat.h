@@ -118,6 +118,12 @@ struct Path
 	char	elem[NAMELEN];
 };
 
+enum
+{
+	BINTR	=	(1<<0),
+	BFREE	=	(1<<1),
+};
+
 struct Block
 {
 	Block*	next;
@@ -126,8 +132,7 @@ struct Block
 	uchar*	wp;			/* first empty byte */
 	uchar*	lim;			/* 1 past the end of the buffer */
 	uchar*	base;			/* start of the buffer */
-	uchar	flag;
-	uchar	intr;
+	ulong	flag;
 };
 #define BLEN(s)	((s)->wp - (s)->rp)
 
