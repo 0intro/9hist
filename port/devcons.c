@@ -906,15 +906,6 @@ conswstat(Chan*, char*)
 	error(Eperm);
 }
 
-int
-nrand(int n)
-{
-	static ulong randn;
-
-	randn = randn*1103515245 + 12345 + MACHP(0)->ticks;
-	return (randn>>16) % n;
-}
-
 void
 setterm(char *f)
 {
@@ -935,10 +926,18 @@ static struct
 	uchar	*rp;
 	uchar	*wp;
 	uchar	next;
-	uchar	bits;
 	uchar	wakeme;
+	ushort	bits;
+	ulong	randn;
 } rb;
 
+int
+nrand(int n)
+{
+	rb.randn ^= rb.bits;
+	rb.randn = rb.randn*1103515245 + 12345 + MACHP(0)->ticks;
+	return (rb.randn>>16) % n;
+}
 
 static int
 rbnotfull(void*)

@@ -10,11 +10,13 @@
 
 #include <libcrypt.h>
 
+#define NOSPOOKS 1
 
 typedef struct OneWay OneWay;
 struct OneWay
 {
 	QLock	q;
+	QLock	ctlq;
 
 	void	*state;		/* encryption state */
 	int	slen;		/* hash data length */
@@ -25,17 +27,18 @@ struct OneWay
 enum
 {
 	/* connection states */
-	Algwait=	0,	/* waiting for user to write algorithm */
-	Fdwait=		1,	/* waiting for user to write fd */
-	Secretinwait=	2,	/* waiting for user to write input secret */
-	Secretoutwait=	3,	/* waiting for user to write output secret */
-	Established=	4,
-	Closed=		5,
+	Sincomplete=	0,
+	Sclear,
+	Sencrypting,
+	Sdigesting,
 
 	/* encryption algorithms */
 	Noencryption=	0,
+#ifdef NOSPOOKS
 	DESCBC=		1,
-	DESECB=		2
+	DESECB=		2,
+#endif NOSPOOKS
+	RC4=		3
 };
 
 typedef struct Dstate Dstate;
@@ -43,6 +46,8 @@ struct Dstate
 {
 	Chan	*c;		/* io channel */
 	uchar	state;		/* state of connection */
+	int	ref;		/* serialized by dslock for atomic destroy */
+
 	uchar	encryptalg;	/* encryption algorithm */
 	ushort	blocklen;	/* blocking length */
 
@@ -60,60 +65,130 @@ struct Dstate
 
 	/* output side */
 	OneWay	out;
+
+	/* protections */
+	char	user[NAMELEN];
+	int	perm;
 };
+
+Lock	dslock;
+int	dshiwat;
+int	maxdstate = 20;
+Dstate** dstate;
 
 enum
 {
-	Maxdmsg=	1<<16
+	Maxdmsg=	1<<16,
+	Maxdstate=	64
 };
 
 enum{
-	Qdir,
-	Qclone
+	Qtopdir		= 1,	/* top level directory */
+	Qclonus,
+	Qconvdir,		/* directory for a conversation */
+	Qdata,
+	Qctl,
+	Qsecretin,
+	Qsecretout
 };
-Dirtab digesttab[]={
-	"ssl",		{Qclone, 0},	0,	0666,
-};
-#define Ndigesttab (sizeof(digesttab)/sizeof(Dirtab))
 
-/* a circular list of random numbers */
-typedef struct
-{
-	uchar	*rp;
-	uchar	*wp;
-	uchar	buf[1024];
-	uchar	*ep;
-} Randq;
-Randq randq;
-
-void producerand(void);
+#define TYPE(x) 	((x).path & 0xf)
+#define CONV(x) 	(((x).path >> 4)&(Maxdstate-1))
+#define QID(c, y) 	(((c)<<4) | (y))
 
 static void	ensure(Dstate*, Block**, int);
 static void	consume(Block**, uchar*, int);
-static void	setsecret(Dstate*, OneWay*, uchar*, int);
+static void	setsecret(OneWay*, uchar*, int);
 static Block*	encryptb(Dstate*, Block*, int);
 static Block*	decryptb(Dstate*, Block*);
 static Block*	digestb(Dstate*, Block*, int);
 static void	checkdigestb(Dstate*, Block*);
-static Chan*	buftochan(char*, long);
-static void	dighangup(Dstate*);
+static Chan*	buftochan(char*);
+static void	sslhangup(Dstate*);
+static Dstate*	dsclone(Chan *c);
+static void	dsnew(Chan *c, Dstate **);
 
 void
 sslreset(void)
 {
 }
 
+int
+sslgen(Chan *c, Dirtab *d, int nd, int s, Dir *dp)
+{
+	Qid q;
+	Dstate *ds;
+	char name[16], *p, *nm;
+
+	USED(nd);
+	USED(d);
+	q.vers = 0;
+	switch(TYPE(c->qid)) {
+	case Qtopdir:
+		if(s < dshiwat) {
+			sprint(name, "%d", s);
+			q.path = QID(s, Qconvdir)|CHDIR;
+			ds = dstate[s];
+			if(ds != 0)
+				nm = ds->user;
+			else
+				nm = eve;
+			devdir(c, q, name, 0, nm, CHDIR|0555, dp);
+			return 1;
+		}
+		if(s > dshiwat)
+			return -1;
+		q.path = QID(0, Qclonus);
+		devdir(c, q, "clone", 0, eve, 0555, dp);
+		return 1;
+	case Qconvdir:
+		ds = dstate[CONV(c->qid)];
+		if(ds != 0)
+			nm = ds->user;
+		else
+			nm = eve;
+		switch(s) {
+		default:
+			return -1;
+		case 0:
+			q.path = QID(CONV(c->qid), Qctl);
+			p = "ctl";
+			break;
+		case 1:
+			q.path = QID(CONV(c->qid), Qdata);
+			p = "data";
+			break;
+		case 2:
+			q.path = QID(CONV(c->qid), Qsecretin);
+			p = "secretin";
+			break;
+		case 3:
+			q.path = QID(CONV(c->qid), Qsecretout);
+			p = "secretout";
+			break;
+		}
+		devdir(c, q, p, 0, nm, 0660, dp);
+		return 1;
+	}
+	return -1;
+}
+
 void
 sslinit(void)
 {
-	randq.ep = randq.buf + sizeof(randq.buf);
-	randq.rp = randq.wp = randq.buf;
+	if((dstate = malloc(sizeof(Dstate*) * maxdstate)) == 0)
+		panic("sslinit");
 }
 
 Chan *
 sslattach(void *spec)
 {
-	return devattach('D', spec);
+	Chan *c;
+
+	c = devattach('D', spec);
+	c->qid.path = QID(0, Qtopdir)|CHDIR;
+	c->qid.vers = 0;
+	return c;
 }
 
 Chan *
@@ -125,29 +200,77 @@ sslclone(Chan *c, Chan *nc)
 int
 sslwalk(Chan *c, char *name)
 {
-	return devwalk(c, name, digesttab, Ndigesttab, devgen);
+	return devwalk(c, name, 0, 0, sslgen);
 }
 
 void
 sslstat(Chan *c, char *db)
 {
-	devstat(c, db, digesttab, Ndigesttab, devgen);
+	devstat(c, db, 0, 0, sslgen);
 }
 
 Chan *
 sslopen(Chan *c, int omode)
 {
-	Dstate *s;
+	Dstate *s, **pp;
+	int perm;
 
-	switch(c->qid.path & ~CHDIR){
-	case Qclone:
-		s = malloc(sizeof(Dstate));
-		memset(s, 0, sizeof(*s));
-		s->state = Algwait;
-		c->aux = s;
+	perm = 0;
+	omode &= 3;
+	switch(omode) {
+	case OREAD:
+		perm = 4;
+		break;
+	case OWRITE:
+		perm = 2;
+		break;
+	case ORDWR:
+		perm = 6;
 		break;
 	}
-	return devopen(c, omode, digesttab, Ndigesttab, devgen);
+
+	switch(TYPE(c->qid)) {
+	default:
+		panic("sslopen");
+	case Qtopdir:
+	case Qconvdir:
+		if(omode != OREAD)
+			error(Eperm);
+		break;
+	case Qclonus:
+		s = dsclone(c);
+		if(s == 0)
+			error(Enodev);
+		break;
+	case Qctl:
+	case Qdata:
+	case Qsecretin:
+	case Qsecretout:
+		if(waserror()) {
+			unlock(&dslock);
+			nexterror();
+		}
+		lock(&dslock);
+		pp = &dstate[CONV(c->qid)];
+		s = *pp;
+		if(s == 0)
+			dsnew(c, pp);
+		else {
+			if((perm & (s->perm>>6)) != perm
+			   && (strcmp(up->user, s->user) != 0
+			     || (perm & s->perm) != perm))
+				error(Eperm);
+
+			s->ref++;
+		}
+		unlock(&dslock);
+		poperror();
+		break;
+	}
+	c->mode = openmode(omode);
+	c->flag |= COPEN;
+	c->offset = 0;
+	return c;
 }
 
 void
@@ -170,9 +293,19 @@ sslremove(Chan *c)
 void
 sslwstat(Chan *c, char *dp)
 {
-	USED(c);
-	USED(dp);
-	error(Eperm);
+	Dir d;
+	Dstate *s;
+
+	convM2D(dp, &d);
+
+	s = dstate[CONV(c->qid)];
+	if(s == 0)
+		error(Ebadusefd);
+	if(strcmp(s->user, up->user) != 0)
+		error(Eperm);
+
+	memmove(s->user, d.uid, NAMELEN);
+	s->perm = d.mode;
 }
 
 void
@@ -180,17 +313,172 @@ sslclose(Chan *c)
 {
 	Dstate *s;
 
-	if(c->aux){
-		s = c->aux;
-		dighangup(s);
+	switch(TYPE(c->qid)) {
+	case Qctl:
+	case Qdata:
+	case Qsecretin:
+	case Qsecretout:
+		if((c->flag & COPEN) == 0)
+			break;
+
+		s = dstate[CONV(c->qid)];
+		if(s == 0)
+			break;
+
+		lock(&dslock);
+		if(--s->ref > 0) {
+			unlock(&dslock);
+			break;
+		}
+		dstate[CONV(c->qid)] = 0;
+		unlock(&dslock);
+
+		sslhangup(s);
 		if(s->c)
 			close(s->c);
 		if(s->in.secret)
 			free(s->in.secret);
 		if(s->out.secret)
 			free(s->out.secret);
+		if(s->in.state)
+			free(s->in.state);
+		if(s->out.state)
+			free(s->out.state);
 		free(s);
+
 	}
+}
+
+static int
+blen(Block *bp)
+{
+	int i = 0;
+
+	for(; bp; bp = bp->next)
+		i += BLEN(bp);
+	return i;
+}
+
+/*
+ *  make sure we have at least 'n' bytes in list 'l'
+ */
+static void
+ensure(Dstate *s, Block **l, int n)
+{
+	int sofar, i;
+	Block *b, *bl;
+
+	sofar = 0;
+	for(b = *l; b; b = b->next){
+		sofar += BLEN(b);
+		if(sofar >= n)
+			return;
+		l = &b->next;
+	}
+
+	while(sofar < n){
+		bl = (*devtab[s->c->type].bread)(s->c, Maxdmsg, 0);
+		if(bl == 0)
+			error(Ehungup);
+		*l = bl;
+		i = 0;
+		for(b = bl; b; b = b->next){
+			i += BLEN(b);
+			l = &b->next;
+		}
+		if(i == 0)
+			error(Ehungup);
+		sofar += i;
+	}
+}
+
+/*
+ *  copy 'n' bytes from 'l' into 'p' and free
+ *  the bytes in 'l'
+ */
+static void
+consume(Block **l, uchar *p, int n)
+{
+	Block *b;
+	int i;
+
+	for(; *l && n > 0; n -= i){
+		b = *l;
+		i = BLEN(b);
+		if(i > n)
+			i = n;
+		memmove(p, b->rp, i);
+		b->rp += i;
+		p += i;
+		if(BLEN(b) < 0)
+			panic("consume");
+		if(BLEN(b))
+			break;
+		*l = b->next;
+		freeb(b);
+	}
+}
+
+/* 
+ *  free a list of blocks
+ */
+void
+freeblist(Block *b)
+{
+	Block *next;
+
+	for(; b != 0; b = next){
+		next = b->next;
+		freeb(b);
+	}
+}
+
+/*
+ *  remove at most n bytes from the queue, if discard is set
+ *  dump the remainder
+ */
+static Block*
+qremove(Block **l, int n, int discard)
+{
+	Block *nb, *b, *first;
+	int i;
+
+	first = *l;
+	for(b = first; b; b = b->next){
+		i = BLEN(b);
+		if(i == n){
+			if(discard){
+				freeblist(b->next);
+				*l = 0;
+			} else
+				*l = b->next;
+			b->next = 0;
+			break;
+		} else if(i > n){
+			i -= n;
+			if(discard){
+				freeblist(b->next);
+				b->wp -= i;
+				*l = 0;
+			} else {
+				nb = allocb(i);
+				memmove(nb->wp, b->rp+n, i);
+				nb->wp += i;
+				b->wp -= i;
+				nb->next = b->next;
+				*l = nb;
+			}
+			b->next = 0;
+			if(BLEN(b) < 0)
+				panic("qremove");
+			return first;
+		} else
+			n -= i;
+		if(BLEN(b) < 0)
+			panic("qremove");
+	}
+	*l = 0;
+	return first;
 }
 
 Block*
@@ -199,76 +487,72 @@ sslbread(Chan *c, long n, ulong offset)
 	volatile struct { Dstate *s; } s;
 	Block *b;
 	uchar count[2];
-	int i, len, pad;
+	int len, pad;
 
 	USED(offset);
 
-	s.s = c->aux;
-	if(s.s == 0 || s.s->state != Established)
+	s.s = dstate[CONV(c->qid)];
+	if(s.s == 0)
+		panic("sslbread");
+	if(s.s->state == Sincomplete)
 		error(Ebadusefd);
 
 	if(waserror()){
 		qunlock(&s.s->in.q);
-		dighangup(s.s);
+		sslhangup(s.s);
 		nexterror();
 	}
 	qlock(&s.s->in.q);
 
-	b = s.s->processed;
-	if(b == 0){
-	
+	if(s.s->processed == 0){
 		/* read in the whole message */
-		s.s->processed = s.s->unprocessed;
-		s.s->unprocessed = 0;
-		ensure(s.s, &s.s->processed, 2);
-		consume(&s.s->processed, count, 2);
+		ensure(s.s, &s.s->unprocessed, 2);
+		consume(&s.s->unprocessed, count, 2);
 		if(count[0] & 0x80){
 			len = ((count[0] & 0x7f)<<8) | count[1];
-			ensure(s.s, &s.s->processed, len);
+			ensure(s.s, &s.s->unprocessed, len);
 			pad = 0;
 		} else {
 			len = ((count[0] & 0x3f)<<8) | count[1];
-			ensure(s.s, &s.s->processed, len+1);
-			consume(&s.s->processed, count, 1);
+			ensure(s.s, &s.s->unprocessed, len+1);
+			consume(&s.s->unprocessed, count, 1);
 			pad = count[0];
+			if(pad > len){
+				print("pad %d buf len %d\n", pad, len);
+				error("bad pad in ssl message");
+			}
 		}
 
-		/* trade memory bandwidth for less processing complexity */
-		b = s.s->processed = pullupblock(s.s->processed, len);
+		/* put extra on unprocessed queue */
+		s.s->processed = qremove(&s.s->unprocessed, len, 0);
 
-		/* put remainder on unprocessed queue */
-		i = BLEN(b);
-		if(i > len){
-			i -= len;
-			s.s->unprocessed = allocb(i);
-			memmove(s.s->unprocessed->wp, b->rp+len, i);
-			s.s->unprocessed->wp += i;
-			b->wp -= i;
+		if(waserror()){
+			qunlock(&s.s->in.ctlq);
+			nexterror();
 		}
-
-		if(s.s->encryptalg)
-			b = decryptb(s.s, b);
-		else {
-			if(BLEN(b) < s.s->diglen)
-				error("baddigest");
-			checkdigestb(s.s, b);
-			b->rp += s.s->diglen;
+		qlock(&s.s->in.ctlq);
+		switch(s.s->state){
+		case Sencrypting:
+			s.s->processed = decryptb(s.s, s.s->processed);
+			break;
+		case Sdigesting:
+			s.s->processed = pullupblock(s.s->processed, s.s->diglen);
+			if(s.s->processed == 0)
+				error("ssl message too short");
+			checkdigestb(s.s, s.s->processed);
+			s.s->processed->rp += s.s->diglen;
+			break;
 		}
+		qunlock(&s.s->in.ctlq);
+		poperror();
 
 		/* remove pad */
-		if(b->wp - b->rp < pad)
-			panic("sslbread");
-		b->wp -= pad;
-		s.s->processed = b;
+		if(pad)
+			s.s->processed = qremove(&s.s->processed, len - pad, 1);
 	}
 
-	if(BLEN(b) > n){
-		b = allocb(n);
-		memmove(b->wp, s.s->processed->rp, n);
-		b->wp += n;
-		s.s->processed->rp += n;
-	} else 
-		s.s->processed = b->next;
+	/* return at most what was asked for */
+	b = qremove(&s.s->processed, n, 0);
 
 	qunlock(&s.s->in.q);
 	poperror();
@@ -280,26 +564,64 @@ long
 sslread(Chan *c, void *a, long n, ulong offset)
 {
 	volatile struct { Block *b; } b;
+	Block *nb;
+	uchar *va;
+	int i;
+	char buf[128];
 
-	switch(c->qid.path & ~CHDIR){
-	case Qdir:
-		return devdirread(c, a, n, digesttab, Ndigesttab, devgen);
+	if(c->qid.path & CHDIR)
+		return devdirread(c, a, n, 0, 0, sslgen);
+
+	switch(TYPE(c->qid)) {
+	default:
+		error(Ebadusefd);
+	case Qctl:
+		sprint(buf, "%d", CONV(c->qid));
+		return readstr(offset, a, n, buf);
+	case Qdata:
+		b.b = sslbread(c, n, offset);
+		break;
 	}
 
-	b.b = sslbread(c, n, offset);
-
 	if(waserror()){
-		freeb(b.b);
+		freeblist(b.b);
 		nexterror();
 	}
 
-	n = BLEN(b.b);
-	memmove(a, b.b->rp, n);
-	freeb(b.b);
+	n = 0;
+	va = a;
+	for(nb = b.b; nb; nb = nb->next){
+		i = BLEN(nb);
+		memmove(va+n, nb->rp, i);
+		n += i;
+	}
 
+	freeblist(b.b);
 	poperror();
 
 	return n;
+}
+
+/*
+ *  this algorithm doesn't have to be great since we're just
+ *  trying to obscure the block fill
+ */
+static void
+randfill(uchar *buf, int len)
+{
+	int j;
+	ushort rn;
+
+	j = 0;
+	rn = 0;
+	while(len-- > 0){
+		if(j == 0){
+			rn = nrand(1<<16);
+			*buf++ = rn;
+		} else
+			*buf++ = rn>>8;
+		j ^= 1;
+	}
 }
 
 /*
@@ -315,15 +637,19 @@ sslbwrite(Chan *c, Block *b, ulong offset)
 	uchar *p;
 
 	bb.b = b;
-	s.s = c->aux;
-	if(s.s == 0 || s.s->state != Established)
+	s.s = dstate[CONV(c->qid)];
+	if(s.s == 0)
+		panic("sslbwrite");
+	if(s.s->state == Sincomplete){
+		freeb(b);
 		error(Ebadusefd);
+	}
 
 	if(waserror()){
 		qunlock(&s.s->out.q);
 		if(bb.b)
 			freeb(bb.b);
-		dighangup(s.s);
+		sslhangup(s.s);
 		nexterror();
 	}
 	qlock(&s.s->out.q);
@@ -366,7 +692,7 @@ sslbwrite(Chan *c, Block *b, ulong offset)
 		/* SSL style count */
 		if(pad){
 			nb = padblock(nb, -pad);
-			memset(nb->wp, 0, pad);
+			randfill(nb->wp, pad);
 			nb->wp += pad;
 			m += pad;
 
@@ -382,13 +708,18 @@ sslbwrite(Chan *c, Block *b, ulong offset)
 			offset = 2;
 		}
 
-		if(s.s->encryptalg)
+		switch(s.s->state){
+		case Sencrypting:
 			nb = encryptb(s.s, nb, offset);
-		else
+			break;
+		case Sdigesting:
 			nb = digestb(s.s, nb, offset);
+			break;
+		}
 
-		(*devtab[s.s->c->type].bwrite)(s.s->c, nb, offset);
-
+		m = BLEN(nb);
+		(*devtab[s.s->c->type].bwrite)(s.s->c, nb, s.s->c->offset);
+		s.s->c->offset += m;
 	}
 	qunlock(&s.s->out.q);
 	poperror();
@@ -396,78 +727,78 @@ sslbwrite(Chan *c, Block *b, ulong offset)
 	return rv;
 }
 
+static void
+setsecret(OneWay *w, uchar *secret, int n)
+{
+	if(w->secret)
+		free(w->secret);
+
+	w->secret = malloc(n);
+	memmove(w->secret, secret, n);
+	w->slen = n;
+	w->mid = 0;
+
+}
+
+#ifdef NOSPOOKS
+static void
+initDESkey(OneWay *w)
+{
+	if(w->state){
+		free(w->state);
+		w->state = 0;
+	}
+
+	w->state = malloc(sizeof(DESstate));
+	if(w->slen >= 16)
+		setupDESstate(w->state, w->secret, w->secret+8);
+	else if(w->slen >= 8)
+		setupDESstate(w->state, w->secret, 0);
+	else
+		error("secret too short");
+}
+#endif NOSPOOKS
+
+static void
+initRC4key(OneWay *w)
+{
+	if(w->state){
+		free(w->state);
+		w->state = 0;
+	}
+
+#ifndef NOSPOOKS
+	if(w->slen > 5)
+		w->slen = 5;
+#endif NOSPOOKS
+
+	w->state = malloc(sizeof(RC4state));
+	setupRC4state(w->state, w->secret, w->slen);
+}
+
 long
 sslwrite(Chan *c, void *a, long n, ulong offset)
 {
-	Dstate *s;
+	volatile struct { Dstate *s; } s;
 	volatile struct { Block *b; } b;
-	int m;
+	int m, t;
 	char *p, *e, buf[32];
 
-	switch(c->qid.path & ~CHDIR){
-	case Qclone:
-		break;
-	default:
-		error(Ebadusefd);
-	}
+	s.s = dstate[CONV(c->qid)];
+	if(s.s == 0)
+		panic("sslwrite");
 
-	s = c->aux;
-	if(s == 0)
-		error(Ebadusefd);
+	t = TYPE(c->qid);
+	if(t == Qdata){
+		if(s.s->state == Sincomplete)
+			error(Ebadusefd);
 
-	switch(s->state){
-	case Algwait:
-		/* get algorithm */
-		if(n >= sizeof(buf))
-			error(Ebadarg);
-		strncpy(buf, a, n);
-		buf[n] = 0;
-		s->blocklen = 1;
-		s->diglen = 0;
-		if(strcmp(buf, "md5") == 0){
-			s->hf = md5;
-			s->diglen = MD5dlen;
-		} else if(strcmp(buf, "sha") == 0){
-			s->hf = sha;
-			s->diglen = SHAdlen;
-		} else if(strcmp(buf, "descbc") == 0){
-			s->encryptalg = DESCBC;
-			s->blocklen = 8;
-		} else if(strcmp(buf, "desecb") == 0){
-			s->encryptalg = DESECB;
-			s->blocklen = 8;
-		} else
-			error(Ebadarg);
-		s->state = Fdwait;
-		break;
-	case Fdwait:
-		/* get communications channel */
-		s->c = buftochan(a, n);
-		s->state = Secretinwait;
-		break;
-	case Secretinwait:
-		/* get secret for incoming messages */
-		setsecret(s, &s->in, a, n);
-		s->state = Secretoutwait;
-		break;
-	case Secretoutwait:
-		/* get secret for outgoing messages */
-		setsecret(s, &s->out, a, n);
-		if(s->blocklen != 1){
-			s->max = (1<<15) - s->diglen;
-			s->max -= s->max % s->blocklen;
-			s->maxpad = (1<<14) - s->diglen;
-			s->maxpad -= s->maxpad % s->blocklen;
-		} else
-			s->maxpad = s->max = (1<<15) - s->diglen;
-		s->state = Established;
-		break;
-	case Established:
 		p = a;
-		for(e = p + n; p < e; p += m){
+		e = p + n;
+		do {
 			m = e - p;
-			if(m > s->max)
-				m = s->max;
+			if(m > s.s->max)
+				m = s.s->max;
 	
 			b.b = allocb(m);
 			if(waserror()){
@@ -479,103 +810,137 @@ sslwrite(Chan *c, void *a, long n, ulong offset)
 			b.b->wp += m;
 	
 			sslbwrite(c, b.b, offset);
-		}
-		break;
-	default:
-		error(Ebadusefd);
+
+			p += m;
+		} while(p < e);
+		return n;
 	}
 
+	/* mutex with operations using what we're about to change */
+	if(waserror()){
+		qunlock(&s.s->in.ctlq);
+		qunlock(&s.s->out.q);
+		nexterror();
+	}
+	qlock(&s.s->in.ctlq);
+	qlock(&s.s->out.q);
+
+	switch(t){
+	default:
+		panic("sslwrite");
+	case Qsecretin:
+		setsecret(&s.s->in, a, n);
+		goto out;
+		return n;
+	case Qsecretout:
+		setsecret(&s.s->out, a, n);
+		goto out;
+		return n;
+	case Qctl:
+		break;
+	}
+
+	if(n >= sizeof(buf))
+		error(Ebadarg);
+	strncpy(buf, a, n);
+	buf[n] = 0;
+	p = strchr(buf, '\n');
+	if(p)
+		*p = 0;
+	p = strchr(buf, ' ');
+	if(p)
+		*p++ = 0;
+
+	if(strcmp(buf, "fd") == 0){
+		s.s->c = buftochan(p);
+
+		/* default is clear (msg delimiters only) */
+		s.s->state = Sclear;
+		s.s->blocklen = 1;
+		s.s->diglen = 0;
+		s.s->maxpad = s.s->max = (1<<15) - s.s->diglen - 1;
+	} else if(strcmp(buf, "alg") == 0 && p != 0){
+		s.s->blocklen = 1;
+		s.s->diglen = 0;
+
+		if(s.s->c == 0)
+			error("must set fd before algorithm");
+
+		if(strcmp(p, "clear") == 0){
+			s.s->state = Sclear;
+			s.s->maxpad = s.s->max = (1<<15) - s.s->diglen - 1;
+			goto out;
+		}
+
+		if(s.s->in.secret && s.s->out.secret == 0)
+			setsecret(&s.s->out, s.s->in.secret, s.s->in.slen);
+		if(s.s->out.secret && s.s->in.secret == 0)
+			setsecret(&s.s->in, s.s->out.secret, s.s->out.slen);
+		if(strcmp(p, "md5") == 0){
+			s.s->hf = md5;
+			s.s->diglen = MD5dlen;
+			s.s->state = Sdigesting;
+		} else if(strcmp(p, "sha") == 0){
+			s.s->hf = sha;
+			s.s->diglen = SHAdlen;
+			s.s->state = Sdigesting;
+#ifdef NOSPOOKS
+		} else if(strcmp(p, "descbc") == 0){
+			if(s.s->in.secret == 0 || s.s->out.secret == 0)
+				error(Ebadarg);
+			s.s->encryptalg = DESCBC;
+			s.s->blocklen = 8;
+			initDESkey(&s.s->in);
+			initDESkey(&s.s->out);
+			s.s->state = Sencrypting;
+		} else if(strcmp(p, "desecb") == 0){
+			if(s.s->in.secret == 0 || s.s->out.secret == 0)
+				error(Ebadarg);
+			s.s->encryptalg = DESECB;
+			s.s->blocklen = 8;
+			initDESkey(&s.s->in);
+			initDESkey(&s.s->out);
+			s.s->state = Sencrypting;
+#endif NOSPOOKS
+		} else if(strcmp(p, "rc4") == 0){
+			if(s.s->in.secret == 0 || s.s->out.secret == 0)
+				error(Ebadarg);
+			s.s->encryptalg = RC4;
+			s.s->blocklen = 1;
+			initRC4key(&s.s->in);
+			initRC4key(&s.s->out);
+			s.s->state = Sencrypting;
+		} else
+			error(Ebadarg);
+
+		if(s.s->blocklen != 1){
+			s.s->max = (1<<15) - s.s->diglen - 1;
+			s.s->max -= s.s->max % s.s->blocklen;
+			s.s->maxpad = (1<<14) - s.s->diglen - 1;
+			s.s->maxpad -= s.s->maxpad % s.s->blocklen;
+		} else
+			s.s->maxpad = s.s->max = (1<<15) - s.s->diglen - 1;
+	} else
+		error(Ebadarg);
+
+out:
+	qunlock(&s.s->in.ctlq);
+	qunlock(&s.s->out.q);
+	poperror();
 	return n;
 }
 
-/*
- *  make sure we have at least 'n' bytes in list 'l'
- */
-static void
-ensure(Dstate *s, Block **l, int n)
-{
-	int i, sofar;
-	Block *b;
-
-	b = *l;
-	if(b){
-		sofar = BLEN(b);
-		l = &b->next;
-	} else
-		sofar = 0;
-
-	while(sofar < n){
-		b = (*devtab[s->c->type].bread)(s->c, Maxdmsg, 0);
-		if(b == 0)
-			error(Ehungup);
-		i = BLEN(b);
-		if(i <= 0){
-			freeb(b);
-			continue;
-		}
-
-		*l = b;
-		l = &b->next;
-		sofar += i;
-	}
-}
-
-/*
- *  copy 'n' bytes from 'l' into 'p' and free
- *  the bytes in 'l'
- */
-static void
-consume(Block **l, uchar *p, int n)
-{
-	Block *b;
-	int i;
-
-	for(; *l && n > 0; n -= i){
-		b = *l;
-		i = BLEN(b);
-		if(i > n)
-			i = n;
-		memmove(p, b->rp, i);
-		b->rp += i;
-		p += i;
-		if(BLEN(b))
-			break;
-		*l = b->next;
-		freeb(b);
-	}
-}
-
-static void
-setsecret(Dstate *s, OneWay *w, uchar *secret, int n)
-{
-	w->secret = malloc(n);
-	memmove(w->secret, secret, n);
-	w->slen = n;
-	w->mid = 0;
-
-	switch(s->encryptalg){
-	case DESECB:
-		if(n < 8)
-			error("secret too small");
-		w->state = malloc(sizeof(DESstate));
-		setupDESstate(w->state, secret, 0);
-		break;
-	case DESCBC:
-		if(n < 16)
-			error("secret too small");
-		w->state = malloc(sizeof(DESstate));
-		setupDESstate(w->state, secret, secret+8);
-		break;
-	}
-}
 
 static Block*
 encryptb(Dstate *s, Block *b, int offset)
 {
+#ifdef NOSPOOKS
 	uchar *p, *ep, *p2, *ip, *eip;
 	DESstate *ds;
+#endif NOSPOOKS
 
 	switch(s->encryptalg){
+#ifdef NOSPOOKS
 	case DESECB:
 		ds = s->out.state;
 		ep = b->rp + BLEN(b);
@@ -594,40 +959,68 @@ encryptb(Dstate *s, Block *b, int offset)
 			memmove(ds->ivec, p, 8);
 		}
 		break;
+#endif NOSPOOKS
+	case RC4:
+		rc4(s->out.state, b->rp + offset, BLEN(b) - offset);
+		break;
 	}
 	return b;
 }
 
 static Block*
-decryptb(Dstate *s, Block *b)
+decryptb(Dstate *s, Block *inb)
 {
+	Block *b, **l;
+#ifdef NOSPOOKS
 	uchar *p, *ep, *tp, *ip, *eip;
 	DESstate *ds;
 	uchar tmp[8];
+#endif NOSPOOKS
+	int i;
 
-	switch(s->encryptalg){
-	case DESECB:
-		ds = s->out.state;
-		ep = b->rp + BLEN(b);
-		for(p = b->rp + s->diglen; p < ep; p += 8)
-			block_cipher(ds->expanded, p, 1);
-		break;
-	case DESCBC:
-		ds = s->out.state;
-		ep = b->rp + BLEN(b);
-		for(p = b->rp + s->diglen; p < ep;){
-			memmove(tmp, p, 8);
-			block_cipher(ds->expanded, p, 1);
-			tp = tmp;
-			ip = ds->ivec;
-			for(eip = ip+8; ip < eip; ){
-				*p++ ^= *ip;
-				*ip++ = *tp++;
+	l = &inb;
+	for(b = inb; b; b = b->next){
+		/* make sure we have a multiple of s->blocklen */
+		if(s->blocklen > 1){
+			i = BLEN(b);
+			if(i % s->blocklen){
+				*l = b = pullupblock(b, i + s->blocklen - (i%s->blocklen));
+				if(b == 0)
+					error("ssl encrypted message too short");
 			}
 		}
-		break;
+		l = &b->next;
+
+		/* decrypt */
+		switch(s->encryptalg){
+#ifdef NOSPOOKS
+		case DESECB:
+			ds = s->in.state;
+			ep = b->rp + BLEN(b);
+			for(p = b->rp + s->diglen; p < ep; p += 8)
+				block_cipher(ds->expanded, p, 1);
+			break;
+		case DESCBC:
+			ds = s->in.state;
+			ep = b->rp + BLEN(b);
+			for(p = b->rp + s->diglen; p < ep;){
+				memmove(tmp, p, 8);
+				block_cipher(ds->expanded, p, 1);
+				tp = tmp;
+				ip = ds->ivec;
+				for(eip = ip+8; ip < eip; ){
+					*p++ ^= *ip;
+					*ip++ = *tp++;
+				}
+			}
+			break;
+#endif NOSPOOKS
+		case RC4:
+			rc4(s->in.state, b->rp, BLEN(b));
+			break;
+		}
 	}
-	return b;
+	return inb;
 }
 
 static Block*
@@ -662,7 +1055,7 @@ digestb(Dstate *s, Block *b, int offset)
 }
 
 static void
-checkdigestb(Dstate *s, Block *b)
+checkdigestb(Dstate *s, Block *inb)
 {
 	uchar *p;
 	DigestState ss;
@@ -670,16 +1063,24 @@ checkdigestb(Dstate *s, Block *b)
 	int n, h;
 	OneWay *w;
 	uchar digest[128];
+	Block *b;
 
 	w = &s->in;
 
 	memset(&ss, 0, sizeof(ss));
-	h = s->diglen;
-	n = BLEN(b) - h;
 
-	/* hash secret + message */
+	/* hash secret */
 	(*s->hf)(w->secret, w->slen, 0, &ss);
-	(*s->hf)(b->rp + h, n, 0, &ss);
+
+	/* hash message */
+	h = s->diglen;
+	for(b = inb; b; b = b->next){
+		n = BLEN(b) - h;
+		if(n < 0)
+			panic("checkdigestb");
+		(*s->hf)(b->rp + h, n, 0, &ss);
+		h = 0;
+	}
 
 	/* hash message id */
 	p = msgid;
@@ -690,31 +1091,29 @@ checkdigestb(Dstate *s, Block *b)
 	*p = n;
 	(*s->hf)(msgid, 4, digest, &ss);
 
-	if(memcmp(digest, b->rp, s->diglen) != 0)
+	if(memcmp(digest, inb->rp, s->diglen) != 0)
 		error("bad digest");
 }
 
 /* get channel associated with an fd */
 static Chan*
-buftochan(char *a, long n)
+buftochan(char *p)
 {
 	Chan *c;
 	int fd;
-	char buf[32];
 
-	if(n >= sizeof buf)
-		error(Egreg);
-	memmove(buf, a, n);		/* so we can NUL-terminate */
-	buf[n] = 0;
-	fd = strtoul(buf, 0, 0);
-
+	if(p == 0)
+		error(Ebadarg);
+	fd = strtoul(p, 0, 0);
+	if(fd < 0)
+		error(Ebadarg);
 	c = fdtochan(fd, -1, 0, 1);	/* error check and inc ref */
 	return c;
 }
 
 /* hand up a digest connection */
 static void
-dighangup(Dstate *s)
+sslhangup(Dstate *s)
 {
 	Block *b;
 
@@ -727,7 +1126,7 @@ dighangup(Dstate *s)
 		freeb(s->unprocessed);
 		s->unprocessed = 0;
 	}
-	s->state = Closed;
+	s->state = Sincomplete;
 	qunlock(&s->in.q);
 }
 
@@ -739,10 +1138,12 @@ void
 handle_exception(int type, char *exception)
 {
 	if(type == CRITICAL)
-		panic("crypt library (devssl): %s", exception);
+		panic("crypt library: %s: %r", exception);
 	else
-		print("crypt library (devssl): %s\n", exception);
+		print("crypt library: %s: %r\n", exception);
 }
+
+extern void rbcheck(char*);
 
 void*
 crypt_malloc(int size)
@@ -762,3 +1163,70 @@ crypt_free(void *x)
 		handle_exception(CRITICAL, "freeing null pointer");
 	free(x);
 }
+
+
+static Dstate*
+dsclone(Chan *ch)
+{
+	Dstate **pp, **ep, **np;
+	int newmax;
+
+	if(waserror()) {
+		unlock(&dslock);
+		nexterror();
+	}
+	lock(&dslock);
+	ep = &dstate[maxdstate];
+	for(pp = dstate; pp < ep; pp++) {
+		if(*pp == 0) {
+			dsnew(ch, pp);
+			break;
+		}
+	}
+	if(pp >= ep) {
+		if(maxdstate >= Maxdstate) {
+			unlock(&dslock);
+			poperror();
+			return 0;
+		}
+		newmax = 2 * maxdstate;
+		if(newmax > Maxdstate)
+			newmax = Maxdstate;
+		np = smalloc(sizeof(Dstate*) * newmax);
+		if(np == 0)
+			error(Enomem);
+		memmove(np, dstate, sizeof(Dstate*) * maxdstate);
+		dstate = np;
+		pp = &dstate[maxdstate];
+		memset(pp, 0, sizeof(Dstate*)*(newmax - maxdstate));
+		maxdstate = newmax;
+		dsnew(ch, pp);
+	}
+	unlock(&dslock);
+	poperror();
+	return *pp;
+}
+
+static void
+dsnew(Chan *ch, Dstate **pp)
+{
+	Dstate *s;
+	int t;
+
+	*pp = s = malloc(sizeof(*s));
+	if(!s)
+		error(Enomem);
+	if(pp - dstate >= dshiwat)
+		dshiwat++;
+	memset(s, 0, sizeof(*s));
+	s->state = Sincomplete;
+	s->ref = 1;
+	strncpy(s->user, up->user, sizeof(s->user));
+	s->perm = 0660;
+	t = TYPE(ch->qid);
+	if(t == Qclonus)
+		t = Qctl;
+	ch->qid.path = QID(pp - dstate, t);
+	ch->qid.vers = 0;
+}
+
