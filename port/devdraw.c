@@ -293,6 +293,16 @@ drawrefactive(void *a)
 
 static
 void
+drawrefreshscreen(DImage *l, Client *client)
+{
+	while(l != nil && l->dscreen == nil)
+		l = l->fromname;
+	if(l != nil && l->dscreen->owner != client)
+		l->dscreen->owner->refreshme = 1;
+}
+
+static
+void
 drawrefresh(Memimage *l, Rectangle r, void *v)
 {
 	Refx *x;
@@ -1651,8 +1661,7 @@ drawmesg(Client *client, void *av, int n)
 					addflush(r);
 					addflush(dst->layer->screenr);
 					ll = drawlookup(client, BGLONG(a+1), 1);
-					if(ll->dscreen->owner != client)
-						ll->dscreen->owner->refreshme = 1;
+					drawrefreshscreen(ll, client);
 				}
 			}
 			continue;
@@ -1870,8 +1879,7 @@ drawmesg(Client *client, void *av, int n)
 				for(j=0; j<nw; j++)
 					addflush(lp[j]->layer->screenr);
 			ll = drawlookup(client, BGLONG(a+1+1+2), 1);
-			if(ll->dscreen->owner != client)
-				ll->dscreen->owner->refreshme = 1;
+			drawrefreshscreen(ll, client);
 			poperror();
 			free(lp);
 			continue;

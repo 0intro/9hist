@@ -406,13 +406,12 @@ static X86type x86intel[] =
 	{ 5,	3,	23,	"P24T", },
 	{ 5,	4,	23,	"P55C MMX", },
 	{ 5,	7,	23,	"P54C VRT", },
-	{ 5,	8,	11,	"AMD-K6 3D", },	/* Kenji Arisawa arisawa@aichi-u.ac.jp */
-	{ 5,	9,	11,	"AMD-K6 3D+", },/* Kenji Arisawa arisawa@aichi-u.ac.jp */
-	{ 6,	1,	16,	"PentiumPro", },/* determined by trial and error */
+	{ 6,	1,	16,	"PentiumPro", },/* trial and error */
 	{ 6,	3,	16,	"PentiumII", },
 	{ 6,	5,	16,	"PentiumII/Xeon", },
 	{ 6,	6,	16,	"Celeron", },
 	{ 6,	7,	16,	"PentiumIII/Xeon", },
+	{ 6,	8,	16,	"PentiumIII/Xeon", },
 
 	{ 3,	-1,	32,	"386", },	/* family defaults */
 	{ 4,	-1,	22,	"486", },
@@ -448,6 +447,7 @@ static X86type x86amd[] =
 
 	{ 4,	-1,	22,	"Am486", },	/* guesswork */
 	{ 5,	-1,	23,	"AMD-K5/K6", },	/* guesswork */
+	{ 6,	-1,	11,	"AMD-Athlon", },/* guesswork */
 
 	{ -1,	-1,	23,	"unknown", },	/* total default */
 };
