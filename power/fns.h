@@ -80,3 +80,4 @@ void	wbflush(void);
 #define PADDR(a)	((ulong)(a)&~KZERO)
 Page*	lkpage(Segment*, ulong);
 void	lkpgfree(Page*);
+#define vcacheinval(s)
