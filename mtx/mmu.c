@@ -5,8 +5,21 @@
 #include	"fns.h"
 #include	"io.h"
 
-void *ptab;
-ulong ptabsize;
+/*
+ *	The page table is shared across all processes and processors
+ *	(hence needs to be locked for updates on a multiprocessor).
+ *	Different processes are distinguished via the VSID field in
+ *	the segment registers.  As flushing the entire page table is an
+ *	expensive operation, we implement an aging algorithm for
+ *	mmu pids, with a background kproc to purge stale pids en mass.
+ */
+
+static struct {
+	Lock;
+	void		*base;		/* start of page table in kernel virtual space */
+	ulong	size;			/* number of bytes in page table */
+	int		slotgen;		/* used to choose which pte to alocate in pteg */
+} ptab;
 
 void
 mmuinit(void)
@@ -22,9 +35,9 @@ mmuinit(void)
 		mem <<= 1;
 	}
 
-	ptabsize = (1<<(lhash+6));
-	ptab = xspanalloc(ptabsize, 0, ptabsize);
-	putsdr1(PADDR(ptab) | ((1<<(lhash-10))-1));
+	ptab.size = (1<<(lhash+6));
+	ptab.base = xspanalloc(ptab.size, 0, ptab.size);
+	putsdr1(PADDR(ptab.base) | ((1<<(lhash-10))-1));
 }
 
 void

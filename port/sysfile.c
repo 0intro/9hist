@@ -197,9 +197,9 @@ syspipe(ulong *arg)
 		nexterror();
 	}
 	c[1] = cclone(c[0]);
-	if(walk(&c[0], datastr+0, 1, 1) < 0)
+	if(walk(&c[0], datastr+0, 1, 1, nil) < 0)
 		error(Egreg);
-	if(walk(&c[1], datastr+1, 1, 1) < 0)
+	if(walk(&c[1], datastr+1, 1, 1, nil) < 0)
 		error(Egreg);
 	c[0] = d->open(c[0], ORDWR);
 	c[1] = d->open(c[1], ORDWR);

@@ -147,7 +147,11 @@ devwalk(Chan *c, Chan *nc, char **name, int nname, Dirtab *tab, int ntab, Devgen
 	wq->clone = nc;
 
 	for(j=0; j<nname; j++){
-		isdir(nc);
+		if(!(nc->qid.type&QTDIR)){
+			if(j==0)
+				error(Enotdir);
+			goto Done;
+		}
 		n = name[j];
 		if(strcmp(n, ".") == 0){
     Accept:

@@ -85,6 +85,7 @@ struct Elemlist
 	char	*name;	/* copy of name, so '/' can be overwritten */
 	int	nelems;
 	char	**elems;
+	int	*off;
 };
 
 #define SEP(c) ((c) == 0 || (c) == '/')
@@ -708,12 +709,14 @@ undomount(Chan *c, Cname *name)
 }
 
 /*
- * Either walks all the way or not at all.  No partial results.
+ * Either walks all the way or not at all.  No partial results in *cp.
+ * *nerror is the number of names to display in an error message.
  */
+static char Edoesnotexist[] = "does not exist";
 int
-walk(Chan **cp, char **names, int nnames, int nomount)
+walk(Chan **cp, char **names, int nnames, int nomount, int *nerror)
 {
-	int i, dotdot, n, ntry, type, dev;
+	int dev, dotdot, i, n, nhave, ntry, type;
 	Chan *c, *nc;
 	Cname *cname;
 	Mount *f;
@@ -736,13 +739,21 @@ walk(Chan **cp, char **names, int nnames, int nomount)
 	 * An invariant is that each time through the loop, c is on the undomount
 	 * side of the mount point, and c's name is cname.
 	 */
-	while(nnames > 0){
-		ntry = nnames;
+	for(nhave=0; nhave<nnames; nhave+=n){
+		if((c->qid.type&QTDIR)==0){
+			if(nerror)
+				*nerror = nhave;
+			cnameclose(cname);
+			cclose(c);
+			strcpy(up->errstr, Enotdir);
+			return -1;
+		}
+		ntry = nnames - nhave;
 		if(ntry > MAXWELEM)
 			ntry = MAXWELEM;
 		dotdot = 0;
-		for(i=0; i<nnames; i++){
-			if(isdotdot(names[i])){
+		for(i=0; i<ntry; i++){
+			if(isdotdot(names[nhave+i])){
 				if(i==0) {
 					dotdot = 1;
 					ntry = 1;
@@ -758,34 +769,29 @@ walk(Chan **cp, char **names, int nnames, int nomount)
 		type = c->type;
 		dev = c->dev;
 
-		if((wq = devtab[type]->walk(c, nil, names, ntry)) == nil){
+		if((wq = devtab[type]->walk(c, nil, names+nhave, ntry)) == nil){
 			/* try a union mount, if any */
-			if(mh == nil || nomount){
-			Giveup:
+			if(mh && !nomount){
+				/*
+				 * mh->mount == c, so start at mh->mount->next
+				 */
+				rlock(&mh->lock);
+				for(f = mh->mount->next; f; f = f->next)
+					if((wq = devtab[f->to->type]->walk(f->to, nil, names+nhave, ntry)) != nil)
+						break;
+				runlock(&mh->lock);
+				if(f != nil){
+					type = f->to->type;
+					dev = f->to->dev;
+				}
+			}
+			if(wq == nil){
 				cclose(c);
 				cnameclose(cname);
+				if(nerror)
+					*nerror = nhave+1;
 				return -1;
 			}
-
-			rlock(&mh->lock);
-			if(waserror()){
-				runlock(&mh->lock);
-				nexterror();
-			}
-			/*
-			 * mh->mount == c, so start at mh->mount->next
-			 */
-			for(f = mh->mount->next; f; f = f->next)
-				if((wq = devtab[f->to->type]->walk(f->to, nil, names, ntry)) != nil)
-					break;
-			poperror();
-			runlock(&mh->lock);
-
-			if(wq == nil)
-				goto Giveup;
-
-			type = f->to->type;
-			dev = f->to->dev;
 		}
 
 		nmh = nil;
@@ -806,6 +812,15 @@ walk(Chan **cp, char **names, int nnames, int nomount)
 				if(wq->clone == nil){
 					cclose(c);
 					cnameclose(cname);
+					if(wq->nqid==0 || (wq->qid[wq->nqid-1].type&QTDIR)){
+						if(nerror)
+							*nerror = nhave+wq->nqid+1;
+						strcpy(up->errstr, Edoesnotexist);
+					}else{
+						if(nerror)
+							*nerror = nhave+wq->nqid;
+						strcpy(up->errstr, Enotdir);
+					}
 					free(wq);
 					return -1;
 				}
@@ -819,15 +834,12 @@ walk(Chan **cp, char **names, int nnames, int nomount)
 				n = i+1;
 			}
 			for(i=0; i<n; i++)
-				cname = addelem(cname, names[i]);
+				cname = addelem(cname, names[nhave+i]);
 		}
 		cclose(c);
 		c = nc;
 		putmhead(mh);
 		mh = nmh;
-
-		names += n;
-		nnames -= n;
 		free(wq);
 	}
 
@@ -846,6 +858,8 @@ walk(Chan **cp, char **names, int nnames, int nomount)
 
 	cclose(*cp);
 	*cp = c;
+	if(nerror)
+		*nerror = 0;
 	return 0;
 }
 
@@ -910,6 +924,7 @@ static void
 growparse(Elemlist *e)
 {
 	char **new;
+	int *inew;
 	enum { Delta = 8 };
 
 	if(e->nelems % Delta == 0){
@@ -917,6 +932,10 @@ growparse(Elemlist *e)
 		memmove(new, e->elems, e->nelems*sizeof(char*));
 		free(e->elems);
 		e->elems = new;
+		inew = smalloc((e->nelems+Delta+1) * sizeof(int));
+		memmove(inew, e->off, e->nelems*sizeof(int));
+		free(e->off);
+		e->off = inew;
 	}
 }
 
@@ -934,18 +953,36 @@ parsename(char *name, Elemlist *e)
 	name = e->name;
 	e->nelems = 0;
 	e->elems = nil;
+	e->off = smalloc(sizeof(int));
+	e->off[0] = 0;
 	for(;;){
 		name = skipslash(name);
 		if(*name=='\0')
 			break;
 		growparse(e);
+		
 		e->elems[e->nelems++] = name;
 		slash = utfrune(name, '/');
-		if(slash == nil)
+		if(slash == nil){
+			e->off[e->nelems] = name+strlen(name) - e->name;
 			break;
+		}
+		e->off[e->nelems] = slash - e->name;
 		*slash++ = '\0';
 		name = slash;
 	}
+}
+
+void*
+memrchr(void *va, int c, long n)
+{
+	uchar *a, *e;
+
+	a = va;
+	for(e=a+n-1; e>a; e--)
+		if(*e == c)
+			return e;
+	return nil;
 }
 
 /*
@@ -967,7 +1004,7 @@ parsename(char *name, Elemlist *e)
 Chan*
 namec(char *aname, int amode, int omode, ulong perm)
 {
-	int n, t, nomount;
+	int n, prefix, len, t, nomount, npath;
 	Chan *c, *cnew;
 	Cname *cname;
 	Elemlist e;
@@ -1034,19 +1071,17 @@ namec(char *aname, int amode, int omode, ulong perm)
 		name = skipslash(name);
 		break;
 	}
+	prefix = name - aname;
 
 	e.name = nil;
 	e.elems = nil;
+	e.off = nil;
+	e.nelems = 0;
 	if(waserror()){
-		if(strcmp(up->errstr, Enonexist) == 0){
-			if(strlen(aname) < ERRMAX/3 || (name=strrchr(aname, '/'))==nil || name==aname)
-				snprint(up->errstr, ERRMAX, "\"%s\" does not exist", aname);
-			else
-				snprint(up->errstr, ERRMAX, "file \"...%s\" does not exist", name);
-		}
 		cclose(c);
 		free(e.name);
 		free(e.elems);
+		free(e.off);
 //dumpmount();
 		nexterror();
 	}
@@ -1065,8 +1100,19 @@ namec(char *aname, int amode, int omode, ulong perm)
 		e.nelems--;
 	}
 
-	if(walk(&c, e.elems, e.nelems, nomount) < 0)
-		error(Enonexist);
+	if(walk(&c, e.elems, e.nelems, nomount, &npath) < 0){
+		if(npath < 0 || npath > e.nelems){
+			print("namec %s walk error npath=%d\n", aname, npath);
+			nexterror();
+		}
+		len = prefix+e.off[npath];
+		strcpy(tmperrbuf, up->errstr);
+		if(len < ERRMAX/3 || (name=memrchr(aname, '/', len))==nil || name==aname)
+			snprint(up->errstr, ERRMAX, "\"%.*s\" %s", len, aname, tmperrbuf);
+		else
+			snprint(up->errstr, ERRMAX, "\"...%.*s\" %s", (int)(len-(name-aname)), name, tmperrbuf);
+		nexterror();
+	}
 
 	switch(amode){
 	case Aaccess:
@@ -1156,7 +1202,7 @@ if(c->umh != nil){
 		 * If omode&OEXCL is set, just give up.
 		 */
 		e.nelems++;
-		if(walk(&c, e.elems+e.nelems-1, 1, nomount) == 0){
+		if(walk(&c, e.elems+e.nelems-1, 1, nomount, nil) == 0){
 			if(omode&OEXCL)
 				error(Eexist);
 			omode |= OTRUNC;
@@ -1246,7 +1292,7 @@ if(c->umh != nil){
 			createerr = up->errstr;
 			up->errstr = tmperrbuf;
 			/* note: we depend that walk does not error */
-			if(walk(&c, e.elems+e.nelems-1, 1, nomount) < 0){
+			if(walk(&c, e.elems+e.nelems-1, 1, nomount, nil) < 0){
 				up->errstr = createerr;
 				error(createerr);	/* report true error */
 			}
@@ -1269,6 +1315,7 @@ if(c->umh != nil){
 		kstrcpy(up->genbuf, ".", sizeof up->genbuf);
 	free(e.name);
 	free(e.elems);
+	free(e.off);
 
 	return c;
 }

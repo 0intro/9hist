@@ -137,6 +137,7 @@ init0(void)
 		poperror();
 	}
 	kproc("alarm", alarmkproc, 0);
+print("touser forestalled\n");
 for(;;);
 	touser((void*)(USTKTOP-8));
 }
