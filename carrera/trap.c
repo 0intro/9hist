@@ -466,20 +466,30 @@ kernfault(Ureg *ur, int code)
 				up, ur->status, ur->pc, ur->r31, ur->sp);
 
 	dumpregs(ur);
-	splhi();
-	for(;;);
 	panic("kfault");
 }
 
+note rsc_wrote_this_but_has_not_checked_it yet;
 void
-dumpstack(void)
+getpcsp(ulong *pc, ulong *sp)
 {
-	ulong l, v, top, i;
+	*pc = getcallerpc(&pc);
+	sp = (ulong)&pc-4;
+}
+
+static void
+_dumpstack(ulong dummy)
+{
+	ulong pc, sp, link, l, v, top, i;
 	extern ulong etext;
 
 	if(up == 0)
 		return;
 
+	getpcsp(&pc, &sp);
+	link = getcallerpc(&dummy);
+
+	print("ktrace /kernel/path %.8lux %.8lux %.8lux\n", pc, sp, r31);
 	top = (ulong)up->kstack + KSTACK;
 	i = 0;
 	for(l=(ulong)&l; l < top; l += BY2WD) {
@@ -493,6 +503,12 @@ dumpstack(void)
 		}
 	}
 	print("\n");
+}
+
+void
+dumpstack(void)
+{
+	_dumpstack(0);
 }
 
 ulong

@@ -315,15 +315,25 @@ dumpregs(Ureg* ureg)
 }
 
 void
+getpcsp(ulong *pc, ulong *sp)
+{
+	*pc = getcallerpc(&pc);
+	*sp = (ulong)&pc;
+}
+
+void
 dumpstack(void)
 {
 	ulong l, v, i;
+	ulong sp, pc;
 	uchar *p;
 	extern ulong etext;
 
 	if(up == 0)
 		return;
 
+	getpcsp(&pc, &sp);
+	print("ktrace /kernel/path %.8lux %.8lux\n", pc, sp);
 	i = 0;
 	for(l=(ulong)&l; l<(ulong)(up->kstack+KSTACK); l+=4){
 		v = *(ulong*)l;
@@ -335,15 +345,17 @@ dumpstack(void)
 			p = (uchar*)v;
 			if(*(p-5) == 0xE8
 			|| (*(p-2) == 0xFF && *(p-1) == 0xD0)){
-				print("%p ", p-5);
+				print("%.8lux=%.8lux ", l, v);
 				i++;
 			}
 		}
-		if(i == 8){
+		if(i == 4){
 			i = 0;
 			print("\n");
 		}
 	}
+	if(i)
+		print("\n");
 }
 
 static void

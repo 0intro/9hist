@@ -771,6 +771,8 @@ conswrite(Chan *c, void *va, long n, vlong off)
 			print("conswrite: reboot\n");
 			exit(0);
 		}
+		if(strncmp(a, "panic", 5) == 0)
+			panic("/dev/reboot");
 		break;
 
 	case Qsysstat:
