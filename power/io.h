@@ -77,4 +77,4 @@ struct INTVEC {
 #define IO2MASK		IO2(ushort, 0xFE8000)
 #define	MPBERR0		IO2(ulong, 0xF48000)
 #define	MPBERR1		IO2(ulong, 0xF4C000)
-#define SBEADDR		((ulong *)(UNCACHED|0x1f080000))
+#define SBEADDR		((ulong *)(UNCACHED|0x1F080000))

@@ -172,6 +172,8 @@ void	streamopen(Chan*, Qinfo*);
 int	streamparse(char*, Block*);
 long	stringread(Chan*, void*, long, char*);
 long	syscall(Ureg*);
+void	sysloginit(void);
+void	syslog(char*, int);
 void	tlbinit(void);
 void	touser(void *);
 void	tsleep(Rendez*, int (*)(void*), void*, int);

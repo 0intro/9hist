@@ -89,6 +89,7 @@ putstrn(char *str, int n)
 
 	s = splhi();
 	lock(&printq);
+	syslog(str, n);
 	while(n > 0){
 		if(*str == '\n')
 			puts("\r", 1);

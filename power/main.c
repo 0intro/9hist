@@ -57,6 +57,7 @@ main(void)
 	io2init();
 	chandevreset();
 	streaminit();
+	sysloginit();
 	pageinit();
 	userinit();
 	launchinit();
