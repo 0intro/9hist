@@ -32,7 +32,7 @@ enum {
 	MyEtherAddr	= 0x01,		/* Individual address */
 	Multicast	= 0x02,		/* Group (multicast) addresses */
 	Broadcast	= 0x04,		/* Broadcast address */
-	Promiscuous	= 0x08,		/* All addresses (promiscuous mode */
+	Promiscuous	= 0x08,		/* All addresses (promiscuous mode) */
 
 					/* Window Register Offsets */
 	Command		= 0x0E,		/* all windows */
