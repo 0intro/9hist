@@ -31,14 +31,14 @@ enum
 
 	EOLOPT		= 0,
 	NOOPOPT		= 1,
-	MAXBACKOFF	= 20,
+	MAXBACKMS	= 30000,	/* longest backoff time (ms) before hangup */
 	MSSOPT		= 2,
 	MSS_LENGTH	= 4,		/* Mean segment size */
 	MSL2		= 10,
 	MSPTICK		= 50,		/* Milliseconds per timer tick */
 	DEF_MSS		= 1460,		/* Default mean segment */
 	DEF_RTT		= 1000,		/* Default round trip */
-	DEF_KAT		= 10000,	/* Default keep alive trip in ms */
+	DEF_KAT		= 10000,	/* Default time ms) between keep alives */
 	TCP_LISTEN	= 0,		/* Listen connection */
 	TCP_CONNECT	= 1,		/* Outgoing connection */
 
@@ -249,6 +249,7 @@ void	tcpsndsyn(Tcpctl*);
 void	tcprcvwin(Conv*);
 void	tcpacktimer(void*);
 void	tcpkeepalive(void*);
+void	tcpsetkacounter(Tcpctl*);
 void    tcprxmit(Conv*, int);
 
 void
@@ -1285,7 +1286,9 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 	qunlock(tcp);
 
 	if(tcb->kacounter > 0)
-		tcb->kacounter = MAXBACKOFF;
+		tcb->kacounter = MAXBACKMS / (tcb->katimer.start*MSPTICK);
+	if(tcb->kacounter < 3)
+		tcb->kacounter = 3;
 
 	switch(tcb->state) {
 	case Closed:
@@ -1411,7 +1414,7 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 			if(tcb->sndcnt == 0){
 				tcphalt(tpriv, &tcb->rtt_timer);
 				tcphalt(tpriv, &tcb->acktimer);
-				tcb->kacounter = MAXBACKOFF;
+				tcpsetkacounter(tcb);
 				tcpsetstate(s, Finwait2);
 				tcb->katimer.start = MSL2 * (1000 / MSPTICK);
 				tcpgo(tpriv, &tcb->katimer);
@@ -1816,6 +1819,13 @@ tcpsendka(Conv *s)
  *  otherwise, send a keepalive and restart the timer
  */
 void
+tcpsetkacounter(Tcpctl *tcb)
+{
+	tcb->kacounter = MAXBACKMS / (tcb->katimer.start*MSPTICK);;
+	if(tcb->kacounter < 3)
+		tcb->kacounter = 3;
+}
+void
 tcpkeepalive(void *v)
 {
 	Tcpctl *tcb;
@@ -1848,7 +1858,7 @@ tcpstartka(Conv *s, char **f, int n)
 		if(x >= MSPTICK)
 			tcb->katimer.start = x/MSPTICK;
 	}
-	tcb->kacounter = MAXBACKOFF;
+	tcpsetkacounter(tcb);
 	tcpgo(s->p->priv, &tcb->katimer);
 
 	return nil;
@@ -1892,7 +1902,7 @@ tcptimeout(void *arg)
 {
 	Conv *s;
 	Tcpctl *tcb;
-	int maxback;
+	int back, maxback;
 	Tcppriv *tpriv;
 
 	s = (Conv*)arg;
@@ -1904,10 +1914,11 @@ tcptimeout(void *arg)
 	default:
 		tcb->backoff++;
 		if(tcb->state == Syn_sent)
-			maxback = (3*MAXBACKOFF)/4;
+			maxback = MAXBACKMS/2;
 		else
-			maxback = MAXBACKOFF;
-		if(tcb->backoff >= maxback) {
+			maxback = MAXBACKMS;
+		back = backoff(tcb->backoff) * (tcb->mdev + (tcb->srtt>>LOGAGAIN));
+		if(back >= maxback) {
 			localclose(s, Etimedout);
 			break;
 		}

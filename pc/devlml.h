@@ -91,7 +91,7 @@ struct FrameHeader {	// Don't modify this struct, used by h/w
 	ulong frameSeqNo;
 };
 
-#define FRAGSIZE ((MB-0x100)/NBUF)
+#define FRAGSIZE (128*1024)
 
 union Fragment {
 	FrameHeader	fh;
@@ -104,11 +104,15 @@ struct FragmentTable {	// Don't modify this struct, used by h/w
 };
 
 struct CodeData {	// Don't modify this struct, used by h/w
-	ulong		physaddr;		// Physical addr of statCom[0]
-	ulong		statCom[4];		// Physical address
+	ulong		pamjpg;		// Physical addr of statCom[0]
+	ulong		pagrab;		// Physical addr of grab buffer
+	ulong		statCom[4];	// Physical addresses of fragdescs
 	FragmentTable	fragdesc[4];
 	Fragment	frag[4];
 };
+
+#define CODEDATASIZE ((sizeof(CodeData) + BY2PG - 1) & ~(BY2PG - 1))
+#define GRABDATASIZE ((720 * 480 * 2 * 2 + BY2PG - 1) & ~(BY2PG - 1))
 
 #define POST_OFFICE		0x200
 #define POST_PEND		0x02000000

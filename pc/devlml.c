@@ -267,7 +267,7 @@ lmlreset(void)
 	Physseg seggrab;
 	ulong regpa;
 	ulong cdsize;
-	ulong *grabpa;
+	void *grabbuf;
 	ulong grablen;
 	int i;
 
@@ -275,28 +275,30 @@ lmlreset(void)
 	if (pcidev == nil) {
 		return;
 	}
-	cdsize = (sizeof(CodeData) + BY2PG - 1) & ~(BY2PG - 1);
+	cdsize = CODEDATASIZE;
 	codeData = (CodeData*)xspanalloc(cdsize, BY2PG, 0);
 	if (codeData == nil) {
 		print("devlml: xspanalloc(%lux, %ux, 0)\n", cdsize, BY2PG);
 		return;
 	}
 
-	grablen = (720 * 480 * 2 * 2 + BY2PG - 1) & ~(BY2PG - 1);
-	grabpa = (ulong *)xspanalloc(grablen, BY2PG, 0);
-	if (grabpa == nil) {
+	grablen = GRABDATASIZE;
+	grabbuf = xspanalloc(grablen, BY2PG, 0);
+	if (grabbuf == nil) {
 		print("devlml: xspanalloc(%lux, %ux, 0)\n", grablen, BY2PG);
 		return;
 	}
-	*grabpa = PADDR(grabpa);
+
+	memset(grabbuf, 0x33, grablen);
 
 	print("Installing Motion JPEG driver %s\n", MJPG_VERSION); 
 	print("MJPG buffer at 0x%.8lux, size 0x%.8lux\n", codeData, cdsize); 
-	print("Grab buffer at 0x%.8lux, size 0x%.8lux\n", grabpa, grablen); 
+	print("Grab buffer at 0x%.8lux, size 0x%.8lux\n", grabbuf, grablen); 
 
 	// Get access to DMA memory buffer
 	memset(codeData, 0xAA, sizeof(CodeData));
-	codeData->physaddr = PADDR(codeData->statCom);
+	codeData->pamjpg = PADDR(codeData->statCom);
+	codeData->pagrab = PADDR(grabbuf);
 	for (i = 0; i < NBUF; i++) {
 		codeData->statCom[i] = PADDR(&(codeData->fragdesc[i]));
 		codeData->fragdesc[i].addr = PADDR(&(codeData->frag[i]));
@@ -347,13 +349,13 @@ lmlreset(void)
 	seggrab.attr = SG_PHYSICAL;
 	seggrab.name = smalloc(NAMELEN);
 	snprint(seggrab.name, NAMELEN, "lmlgrab");
-	seggrab.pa = (ulong)PADDR(grabpa);
+	seggrab.pa = PADDR(grabbuf);
 	seggrab.size = grablen;
 	if (addphysseg(&seggrab) == -1) {
 		print("lml: physsegment: lmlgrab\n");
 		return;
 	}
-	return; 
+	return;
 }
 
 static Chan*

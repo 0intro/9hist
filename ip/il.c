@@ -56,7 +56,7 @@ enum
 	Seconds		= 1000,
 	Iltickms 	= 50,		/* time base */
 	AckDelay	= 2*Iltickms,	/* max time twixt message rcvd & ack sent */
-	MaxTimeout 	= 4*Seconds,	/* max time between rexmit */
+	MaxTimeout 	= 30*Seconds,	/* max time between rexmit */
 	QueryTime	= 10*Seconds,	/* time between subsequent queries */
 	DeathTime	= 5*QueryTime,
 
