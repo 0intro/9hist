@@ -123,6 +123,7 @@ enum {
 extern void mousectl(char*[], int);
 
 /* screen.c */
+extern int		hwaccel;	/* use hw acceleration; default on */
 extern void	flushmemscreen(Rectangle);
 extern int	cursoron(int);
 extern void	cursoroff(int);

@@ -237,7 +237,7 @@ struct Tcppriv
 	QLock	apl;
 };
 
-void	addreseq(Tcpctl*, Tcp*, Block*, ushort);
+int	addreseq(Tcpctl*, Tcp*, Block*, ushort);
 void	getreseq(Tcpctl*, Tcp*, Block**, ushort*);
 void	localclose(Conv*, char*);
 void	procsyn(Conv*, Tcp*);
@@ -1386,7 +1386,8 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 	if(length != 0 || (seg.flags & (SYN|FIN))) {
 		update(s, &seg);
 		tpriv->order++;
-		addreseq(tcb, &seg, bp, length);
+		if(addreseq(tcb, &seg, bp, length) < 0)
+			print("reseq %I.%d -> %I.%d\n", s->raddr, s->rport, s->laddr, s->lport);
 		tcb->flags |= FORCE;
 		goto output;
 	}
@@ -1973,16 +1974,17 @@ procsyn(Conv *s, Tcp *seg)
 	tcb->cwind = tcb->mss;
 }
 
-void
+int
 addreseq(Tcpctl *tcb, Tcp *seg, Block *bp, ushort length)
 {
 	Reseq *rp, *rp1;
 	int i;
+	static int once;
 
 	rp = malloc(sizeof(Reseq));
 	if(rp == nil){
 		freeblist(bp);	/* bp always consumed by add_reseq */
-		return;
+		return 0;
 	}
 
 	rp->seg = *seg;
@@ -1994,7 +1996,7 @@ addreseq(Tcpctl *tcb, Tcp *seg, Block *bp, ushort length)
 	if(rp1 == nil || seq_lt(seg->seq, rp1->seg.seq)) {
 		rp->next = rp1;
 		tcb->reseq = rp;
-		return;
+		return 0;
 	}
 
 	length = 0;
@@ -2007,8 +2009,14 @@ addreseq(Tcpctl *tcb, Tcp *seg, Block *bp, ushort length)
 		}
 		rp1 = rp1->next;
 	}
-	if(i > 100)
+	if(i > 100 && once++ == 0){
 		print("very long tcp resequence queue: %d\n", length);
+		for(rp1 = tcb->reseq, i = 0; i < 10 && rp1 != nil; rp1 = rp1->next, i++)
+			print("0x%lux 0x%lux 0x%ux", rp1->seg.seq, rp1->seg.ack,
+				rp1->seg.flags);
+		return -1;
+	}
+	return 0;
 }
 
 void

@@ -26,7 +26,9 @@ enum {
 	Width		= 80*2,
 	Height		= 25,
 
-	Attr		= (Black<<4)|White,		/* high nibble background, low foreground */
+	Attr		= (Black<<4)|Grey,	/* high nibble background
+						 * low foreground
+						 */
 };
 
 #define CGASCREENBASE	((uchar*)KADDR(0xB8000))

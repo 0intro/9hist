@@ -1123,101 +1123,6 @@ interrupt(Ureg*, void *a)
 	iunlock(&activends);
 }
 
-static void
-resetusbctlr(void)
-{
-	Ctlr *ub;
-	Pcidev *cfg;
-	int i;
-	ulong port;
-	QTree *qt;
-	TD *t;
-
-	ub = &ubus;
-	memset(&cfg, 0, sizeof(cfg));
-	cfg = pcimatch(0, 0x8086, 0x7112);	/* Intel chipset PIIX 4*/
-	if(cfg == nil) {
-//		cfg = pcimatch(0, 0x8086, 0x7112);	/* Intel chipset PIIX 3*/
-//		if(cfg == nil) {
-			cfg = pcimatch(0, 0x1106, 0x0586);	/* Via chipset */
-			if(cfg == nil) {
-				DPRINT("No USB device found\n");
-				return;
-			}
-//		}
-	}
-	port = cfg->mem[4].bar & ~0x0F;
-	if (port == 0) {
-		print("usb: failed to map registers\n");
-		return;
-	}
-
-	print("USB: %x/%x port 0x%lux size 0x%x irq %d\n",
-		cfg->vid, cfg->did, port, cfg->mem[4].size, cfg->intl);
-
-	i = inb(port+SOFMod);
-	if(0){
-		OUT(Cmd, 4);	/* global reset */
-		delay(15);
-		OUT(Cmd, 0);	/* end reset */
-		delay(4);
-	}
-	outb(port+SOFMod, i);
-	// Interrupt handler
-	intrenable(cfg->intl, interrupt, ub, cfg->tbdf, "usb");
-
-	ub->io = port;
-	ub->tdpool = xspanalloc(128*sizeof(TD), 16, 0);
-	for(i=128; --i>=0;){
-		ub->tdpool[i].next = ub->freetd;
-		ub->freetd = &ub->tdpool[i];
-	}
-	ub->qhpool = xspanalloc(32*sizeof(QH), 16, 0);
-	for(i=32; --i>=0;){
-		ub->qhpool[i].next = ub->freeqh;
-		ub->freeqh = &ub->qhpool[i];
-	}
-
-	/*
-	 * the root of the periodic (interrupt & isochronous) scheduling tree
-	 * points to the control queue and the bandwidth sop for bulk traffic.
-	 * this is looped following the instructions in PIIX4 errata 29773804.pdf:
-	 * a QH links to a looped but inactive TD as its sole entry,
-	 * with its head entry leading on to the bulk traffic, the last QH of which
-	 * links back to the empty QH.
-	 */
-	ub->bulkq = allocqh(ub);
-	t = alloctd(ub);	/* inactive TD, looped */
-	t->link = PADDR(t);
-	ub->bwsop = allocqh(ub);
-	ub->bwsop->head = PADDR(ub->bulkq) | IsQH;
-	ub->bwsop->entries = PADDR(t);
-	ub->ctlq = allocqh(ub);
-	ub->ctlq->head = PADDR(ub->bwsop) | IsQH;
-//	ub->bulkq->head = PADDR(ub->bwsop) | IsQH;	/* loop back */
-	print("usbcmd\t0x%.4x\nusbsts\t0x%.4x\nusbintr\t0x%.4x\nfrnum\t0x%.2x\n",
-		IN(Cmd), IN(Status), IN(Usbintr), inb(port+Frnum));
-	print("frbaseadd\t0x%.4x\nsofmod\t0x%x\nportsc1\t0x%.4x\nportsc2\t0x%.4x\n",
-		IN(Flbaseadd), inb(port+SOFMod), IN(Portsc0), IN(Portsc1));
-	OUT(Cmd, 0);	/* stop */
-	ub->frames = xspanalloc(FRAMESIZE, FRAMESIZE, 0);
-	qt = mkqhtree(ub->frames, NFRAME, 32);
-	if(qt == nil){
-		print("usb: can't allocate scheduling tree\n");
-		ub->io = 0;
-		return;
-	}
-	qt->root->head = PADDR(ub->ctlq) | IsQH;
-	ub->tree = qt;
-	print("usb tree: nel=%d depth=%d\n", qt->nel, qt->depth);
-
-	outl(port+Flbaseadd, PADDR(ub->frames));
-	OUT(Frnum, 0);
-	OUT(Usbintr, 0xF);	/* enable all interrupts */
-	print("cmd 0x%x sofmod 0x%x\n", IN(Cmd), inb(port+SOFMod));
-	print("sc0 0x%x sc1 0x%x\n", IN(Portsc0), IN(Portsc1));
-}
-
 enum
 {
 	Qtopdir = 0,
@@ -1317,7 +1222,96 @@ usbnewdevice(void)
 static void
 usbreset(void)
 {
-	resetusbctlr();
+	Ctlr *ub;
+	Pcidev *cfg;
+	int i;
+	ulong port;
+	QTree *qt;
+	TD *t;
+
+	ub = &ubus;
+	memset(&cfg, 0, sizeof(cfg));
+	cfg = pcimatch(0, 0x8086, 0x7112);	/* Intel chipset PIIX 4*/
+	if(cfg == nil) {
+//		cfg = pcimatch(0, 0x8086, 0x7112);	/* Intel chipset PIIX 3*/
+//		if(cfg == nil) {
+			cfg = pcimatch(0, 0x1106, 0x0586);	/* Via chipset */
+			if(cfg == nil) {
+				DPRINT("No USB device found\n");
+				return;
+			}
+//		}
+	}
+	port = cfg->mem[4].bar & ~0x0F;
+	if (port == 0) {
+		print("usb: failed to map registers\n");
+		return;
+	}
+
+	print("USB: %x/%x port 0x%lux size 0x%x irq %d\n",
+		cfg->vid, cfg->did, port, cfg->mem[4].size, cfg->intl);
+
+	i = inb(port+SOFMod);
+	if(0){
+		OUT(Cmd, 4);	/* global reset */
+		delay(15);
+		OUT(Cmd, 0);	/* end reset */
+		delay(4);
+	}
+	outb(port+SOFMod, i);
+	// Interrupt handler
+	intrenable(cfg->intl, interrupt, ub, cfg->tbdf, "usb");
+
+	ub->io = port;
+	ub->tdpool = xspanalloc(128*sizeof(TD), 16, 0);
+	for(i=128; --i>=0;){
+		ub->tdpool[i].next = ub->freetd;
+		ub->freetd = &ub->tdpool[i];
+	}
+	ub->qhpool = xspanalloc(32*sizeof(QH), 16, 0);
+	for(i=32; --i>=0;){
+		ub->qhpool[i].next = ub->freeqh;
+		ub->freeqh = &ub->qhpool[i];
+	}
+
+	/*
+	 * the root of the periodic (interrupt & isochronous) scheduling tree
+	 * points to the control queue and the bandwidth sop for bulk traffic.
+	 * this is looped following the instructions in PIIX4 errata 29773804.pdf:
+	 * a QH links to a looped but inactive TD as its sole entry,
+	 * with its head entry leading on to the bulk traffic, the last QH of which
+	 * links back to the empty QH.
+	 */
+	ub->bulkq = allocqh(ub);
+	t = alloctd(ub);	/* inactive TD, looped */
+	t->link = PADDR(t);
+	ub->bwsop = allocqh(ub);
+	ub->bwsop->head = PADDR(ub->bulkq) | IsQH;
+	ub->bwsop->entries = PADDR(t);
+	ub->ctlq = allocqh(ub);
+	ub->ctlq->head = PADDR(ub->bwsop) | IsQH;
+//	ub->bulkq->head = PADDR(ub->bwsop) | IsQH;	/* loop back */
+	print("usbcmd\t0x%.4x\nusbsts\t0x%.4x\nusbintr\t0x%.4x\nfrnum\t0x%.2x\n",
+		IN(Cmd), IN(Status), IN(Usbintr), inb(port+Frnum));
+	print("frbaseadd\t0x%.4x\nsofmod\t0x%x\nportsc1\t0x%.4x\nportsc2\t0x%.4x\n",
+		IN(Flbaseadd), inb(port+SOFMod), IN(Portsc0), IN(Portsc1));
+	OUT(Cmd, 0);	/* stop */
+	ub->frames = xspanalloc(FRAMESIZE, FRAMESIZE, 0);
+	qt = mkqhtree(ub->frames, NFRAME, 32);
+	if(qt == nil){
+		print("usb: can't allocate scheduling tree\n");
+		ub->io = 0;
+		return;
+	}
+	qt->root->head = PADDR(ub->ctlq) | IsQH;
+	ub->tree = qt;
+	print("usb tree: nel=%d depth=%d\n", qt->nel, qt->depth);
+
+	outl(port+Flbaseadd, PADDR(ub->frames));
+	OUT(Frnum, 0);
+	OUT(Usbintr, 0xF);	/* enable all interrupts */
+	print("cmd 0x%x sofmod 0x%x\n", IN(Cmd), inb(port+SOFMod));
+	print("sc0 0x%x sc1 0x%x\n", IN(Portsc0), IN(Portsc1));
 }
 
 void
@@ -1851,8 +1845,10 @@ usbwrite(Chan *c, void *a, long n, vlong)
 		}else if(nf == 6 && strcmp(fields[0], "ep") == 0){
 			/* ep n maxpkt mode poll nbuf */
 			i = strtoul(fields[1], nil, 0);
-			if(i < 0 || i >= nelem(d->ep))
+			if(i < 0 || i >= nelem(d->ep)) {
+				pprint("field 1: 0 <= %d < %d\n", i, nelem(d->ep));
 				error(Ebadarg);
+			}
 			if(d->ep[i] != nil)
 				error(Einuse);
 			e = devendpt(d, i, 1);
@@ -1872,15 +1868,19 @@ usbwrite(Chan *c, void *a, long n, vlong)
 				i = strtoul(fields[4], nil, 0);
 				if(i > 0 && i <= 1000)
 					e->pollms = i;
-				else
+				else {
+					pprint("field 4: 0 <= %d <= 1000\n", i);
 					error(Ebadarg);
+				}
 			}
 			i = strtoul(fields[5], nil, 0);
 			if(i >= 1 && i <= 32)
 				e->nbuf = i;
 			poperror();
-		}else
+		}else {
+			pprint("command %s, fields %d\n", fields[0], nf);
 			error(Ebadarg);
+		}
 		return n;
 
 	case Qsetup:	/* SETUP endpoint 0 */

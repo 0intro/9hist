@@ -294,9 +294,13 @@ vgactl(char* a)
 		drawblankscreen(atoi(field[1]));
 		return;
 	}
-	else if(strcmp(field[0], "hwacceloff") == 0){
-		scr->fill = nil;
-		scr->scroll = nil;
+	else if(strcmp(field[0], "hwaccel") == 0){
+		if(n < 2)
+			error(Ebadarg);
+		if(strcmp(field[1], "on") == 0)
+			hwaccel = 1;
+		else if(strcmp(field[1], "off") == 0)
+			hwaccel = 0;
 		return;
 	}
 

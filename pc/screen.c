@@ -464,13 +464,16 @@ rgbatoimg(Memimage *img, ulong rgba)
 Memimage *lastbadi;
 Memdata *lastbad;
 Memimage *lastbadsrc, *lastbaddst;
+int hwaccel = 1;
 
-#ifndef SDFSDF
 int
 hwdraw(Memdrawparam *par)
 {
 	VGAscr *scr;
 	Memimage *dst, *src;
+
+	if(hwaccel == 0)
+		return 0;
 
 	dst = par->dst;
 	scr = &vgascreen[0];
@@ -514,4 +517,3 @@ hwdraw(Memdrawparam *par)
 
 	return 0;	
 }
-#endif
