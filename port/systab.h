@@ -40,6 +40,7 @@ Syscall syssegflush;
 Syscall sysrendezvous;
 Syscall sysunmount;
 Syscall syswait;
+Syscall sysfsession;
 Syscall	sysdeath;
 
 Syscall *systab[]={
@@ -80,6 +81,7 @@ Syscall *systab[]={
 	[RENDEZVOUS]	sysrendezvous,
 	[UNMOUNT]	sysunmount,
 	[WAIT]		syswait,
+	[FSESSION]	sysfsession,
 };
 
 char *sysctab[]={
@@ -120,4 +122,5 @@ char *sysctab[]={
 	[RENDEZVOUS]	"Rendez",
 	[UNMOUNT]	"Unmount",
 	[WAIT]		"Wait",
+	[FSESSION]	"Fsession",
 };

@@ -85,6 +85,13 @@ openmode(ulong o)
 }
 
 long
+sysfsession(ulong *arg)
+{
+	USED(arg);
+	return 0;
+}
+
+long
 syspipe(ulong *arg)
 {
 	int fd[2];
