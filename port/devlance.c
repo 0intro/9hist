@@ -76,13 +76,17 @@ struct Lancemem
 /*
  *  one per ethernet packet type
  */
-typedef struct {
+typedef struct Ethertype	Ethertype;
+struct Ethertype
+{
 	QLock;
-	int	type;		/* ethernet type */
-	int	prom;		/* promiscuous mode */
-	Queue	*q;
-	int	inuse;
-} Ethertype;
+	int		type;		/* ethernet type */
+	int		prom;		/* promiscuous mode */
+	Queue		*q;
+	int		inuse;
+	Rendez		rc;		/* rendzvous for close */
+	Ethertype	*closeline;	/* close list */
+};
 
 
 /*
@@ -94,6 +98,7 @@ typedef struct {
 	Lance;			/* host dependent lance params */
 	int	prom;		/* number of promiscuous channels */
 	int	all;		/* number of channels listening to all packets */
+	int	wedged;		/* the lance is wedged */
 	Network	net;
 	Netprot	prot[Ntypes];
 
@@ -103,13 +108,13 @@ typedef struct {
 	Rendez	rr;		/* rendezvous for an input buffer */
 	QLock	rlock;		/* semaphore on tc */
 	ushort	rl;		/* first rcv Message belonging to Lance */	
-	ushort	rc;		/* first rcv Message belonging to CPU */
 
 	Rendez	tr;		/* rendezvous for an output buffer */
 	QLock	tlock;		/* semaphore on tc */
-	ushort	tl;		/* first xmt Message belonging to Lance */	
-	ushort	tc;		/* first xmt Message belonging to CPU */	
+	ushort	tc;		/* next xmt Message CPU will try for */	
 
+	Ethertype *closeline;	/* channels waiting to close */
+	Lock	closepin;	/* lock for closeline */
 	Ethertype e[Ntypes];
 	int	debug;
 	int	kstarted;
@@ -166,7 +171,7 @@ static SoftLance l;
 /*
  *  flag bits from a buffer descriptor in the rcv/xmt rings
  */
-#define OWN	0x8000	/* 1 means that the buffer can be used by the chip */
+#define LANCEOWNER	0x8000	/* 1 means that the buffer can be used by the chip */
 #define ERR	0x4000	/* error summary, the OR of all error bits */
 #define FRAM	0x2000	/* CRC error and incoming packet not a multiple of 8 bits */
 #define OFLO	0x1000	/* (receive) lost some of the packet */
@@ -192,7 +197,7 @@ static SoftLance l;
  *  predeclared
  */
 static void	lancekproc(void *);
-static void	lancestart(int, int);
+static void	lancestart(int);
 static void	lanceup(Etherpkt*, int);
 static int	lanceclonecon(Chan*);
 static void	lancestatsfill(Chan*, char*, int);
@@ -209,9 +214,6 @@ Qinfo lanceinfo = { nullput, lanceoput, lancestopen, lancestclose, "lance" };
 
 /*
  *  open a lance line discipline
- *
- *  the lock is to synchronize changing the ethertype with
- *  sending packets up the stream on interrupts.
  */
 void
 lancestopen(Queue *q, Stream *s)
@@ -219,12 +221,10 @@ lancestopen(Queue *q, Stream *s)
 	Ethertype *et;
 
 	et = &l.e[s->id];
-	qlock(et);
 	RD(q)->ptr = WR(q)->ptr = et;
 	et->type = 0;
 	et->q = RD(q);
 	et->inuse = 1;
-	qunlock(et);
 }
 
 /*
@@ -233,6 +233,11 @@ lancestopen(Queue *q, Stream *s)
  *  the lock is to synchronize changing the ethertype with
  *  sending packets up the stream on interrupts.
  */
+static int
+isclosed(void *x)
+{
+	return ((Ethertype *)x)->q == 0;
+}
 static void
 lancestclose(Queue *q)
 {
@@ -243,7 +248,7 @@ lancestclose(Queue *q)
 		qlock(&l);
 		l.prom--;
 		if(l.prom == 0)
-			lancestart(0, 1);
+			lancestart(0);
 		qunlock(&l);
 	}
 	if(et->type == -1){
@@ -251,13 +256,22 @@ lancestclose(Queue *q)
 		l.all--;
 		qunlock(&l);
 	}
-	qlock(et);
+
+	/*
+	 *  mark as closing and wait for kproc to close us
+	 */
+	lock(&l.closepin);
+	et->closeline = l.closeline;
+	l.closeline = et;
+	unlock(&l.closepin);
+	wakeup(&l.rr);
+	sleep(&et->rc, isclosed, et);
+	
 	et->type = 0;
 	et->q = 0;
 	et->prom = 0;
 	et->inuse = 0;
 	netdisown(&l.net, et - l.e);
-	qunlock(et);
 }
 
 /*
@@ -267,11 +281,13 @@ Proc *lanceout;
 static int
 isobuf(void *x)
 {
-	USED(x);
-	return TSUCC(l.tc) != l.tl;
+	Msg *m;
+
+	m = x;
+	return (MPus(m->flags)&LANCEOWNER) == 0;
 }
 static void
-lanceoput(Queue *q, Block *bp )
+lanceoput(Queue *q, Block *bp)
 {
 	int n, len;
 	Etherpkt *p;
@@ -285,14 +301,14 @@ lanceoput(Queue *q, Block *bp )
 		if(streamparse("connect", bp)){
 			if(e->type == -1)
 				l.all--;
-			e->type  = strtol((char *)bp->rptr, 0, 0);
+			e->type = strtol((char *)bp->rptr, 0, 0);
 			if(e->type == -1)
 				l.all++;
 		} else if(streamparse("promiscuous", bp)) {
 			e->prom = 1;
 			l.prom++;
 			if(l.prom == 1)
-				lancestart(PROM, 1);/**/
+				lancestart(PROM);/**/
 		}
 		qunlock(&l);
 		freeb(bp);
@@ -341,18 +357,21 @@ lanceoput(Queue *q, Block *bp )
 	}
 
 	/*
-	 *  Wait till we get an output buffer, reset the lance if input
+	 *  Wait till we get an output buffer, complain if input
 	 *  or output seems wedged.
 	 */
-	tsleep(&l.tr, isobuf, (void *)0, 1000);
-	if(isobuf(0) == 0 || l.misses > 4){
-print("lance wedged\n");
-		qunlock(&l.tlock);
-		freeb(bp);
-		poperror();
-		return;
-	}
+	m = &(LANCEMEM->tmr[l.tc]);
 	p = &l.tp[l.tc];
+	if((MPus(m->flags)&LANCEOWNER) != 0)
+		tsleep(&l.tr, isobuf, m, 128);
+		if(isobuf(m) == 0){
+			qunlock(&l.tlock);
+			freeb(bp);
+			poperror();
+			print("lance wedged, dumping block & restarting\n");
+			lancestart(0);
+			return;
+		}
 
 	/*
 	 *  copy message into lance RAM
@@ -380,11 +399,10 @@ print("lance wedged\n");
 	 *  set up the ring descriptor and hand to lance
 	 */
 	l.outpackets++;
-	m = &(LANCEMEM->tmr[l.tc]);
 	MPs(m->size) = -len;
 	MPus(m->cntflags) = 0;
 	MPus(m->laddr) = LADDR(&l.ltp[l.tc]);
-	MPus(m->flags) = OWN|STP|ENP|HADDR(&l.ltp[l.tc]);
+	MPus(m->flags) = LANCEOWNER|STP|ENP|HADDR(&l.ltp[l.tc]);
 	l.tc = TSUCC(l.tc);
 	*l.rdp = INEA|TDMD; /**/
 	wbflush();
@@ -429,11 +447,11 @@ lancereset(void)
 }
 
 /*
- *  Initialize and start the lance.  This routine can be called at any time.
+ *  Initialize and start the lance.  This routine can be called only from a process.
  *  It may be used to restart a dead lance.
  */
 static void
-lancestart(int mode, int dolock)
+lancestart(int mode)
 {
 	int i;
 	Etherpkt *p;
@@ -444,14 +462,11 @@ lancestart(int mode, int dolock)
 	 *   wait till both receiver and transmitter are
 	 *   quiescent
 	 */
-	if(dolock)
-		qlock(&l.tlock);
+	qlock(&l.tlock);
 	qlock(&l.rlock);
 
 	lancereset();
 	l.rl = 0;
-	l.rc = 0;
-	l.tl = 0;
 	l.tc = 0;
 
 	/*
@@ -493,10 +508,9 @@ lancestart(int mode, int dolock)
 	/*
 	 *  give the lance all the rcv buffers except one (as a sentinel)
 	 */
-	l.rc = l.nrrb - 1;
 	m = lm->rmr;
-	for(i = 0; i < l.rc; i++, m++)
-		MPus(m->flags) |= OWN;
+	for(i = 0; i < l.nrrb; i++, m++)
+		MPus(m->flags) |= LANCEOWNER;
 
 	/*
 	 *  set up xmit message ring
@@ -549,7 +563,7 @@ lanceattach(char *spec)
 	if(l.kstarted == 0){
 		kproc("lancekproc", lancekproc, 0);/**/
 		l.kstarted = 1;
-		lancestart(0, 1);
+		lancestart(0);
 		print("lance ether: %.2x%.2x%.2x%.2x%.2x%.2x\n",
 			l.ea[0], l.ea[1], l.ea[2], l.ea[3], l.ea[4], l.ea[5]);
 
@@ -681,7 +695,6 @@ lanceintr(void)
 {
 	int i;
 	ushort csr;
-	Lancemem *lm = LANCEMEM;
 
 	csr = *l.rdp;
 
@@ -699,27 +712,28 @@ lanceintr(void)
 	}
 
 	if(csr & IDON){
-		l.inited = 1;
+		l.wedged = 0;
 		qunlock(&l.rlock);
 		qunlock(&l.tlock);
 	}
 
 	/*
-	 *  look for rcv'd packets, just wakeup the input process
+	 *  the lance turns off if it gets strange output errors
 	 */
-	if(l.rl!=l.rc && (MPus(lm->rmr[l.rl].flags) & OWN)==0)
+	if((csr & (TXON|RXON)) != (TXON|RXON))
+		l.wedged = 1;
+
+	/*
+	 *  wakeup the input process
+	 */
+	if(csr & RINT)
 		wakeup(&l.rr);
 
 	/*
-	 *  look for xmitt'd packets, wake any process waiting for a
-	 *  transmit buffer
+	 *  wake any process waiting for a transmit buffer
 	 */
-	while(l.tl!=l.tc && (MPus(lm->tmr[l.tl].flags) & OWN)==0){
-		if(MPus(lm->tmr[l.tl].flags) & ERR)
-			l.oerrs++;
-		l.tl = TSUCC(l.tl);
+	if(csr & TINT)
 		wakeup(&l.tr);
-	}
 }
 
 /*
@@ -735,28 +749,17 @@ lanceup(Etherpkt *p, int len)
 	t = (p->type[0]<<8) | p->type[1];
 	for(e = &l.e[0]; e < &l.e[Ntypes]; e++){
 		/*
-		 *  check before locking just to save a lock
+		 *  check for open, the right type, and flow control
 		 */
-		if(e->q==0 || (t!=e->type && e->type!=-1))
+		if(e->q==0 || (t!=e->type && e->type!=-1) || e->q->next->len>Streamhi)
 			continue;
 
 		/*
 		 *  only a trace channel gets packets destined for other machines
 		 */
-		if(e->type!=-1 && p->d[0]!=0xff && memcmp(p->d, l.ea, sizeof(p->d))!=0)
+		if(e->type!=-1 && p->d[0]!=0xff
+		&& (*p->d != *l.ea || memcmp(p->d, l.ea, sizeof(p->d))!=0))
 			continue;
-
-		/*
-		 *  check after locking to make sure things didn't
-		 *  change under foot
-		 */
-		if(!canqlock(e))
-			continue;
-
-		if(e->q==0 || e->q->next->len>Streamhi || (t!=e->type && e->type!=-1)){
-			qunlock(e);
-			continue;
-		}
 
 		if(!waserror()){
 			bp = allocb(len);
@@ -776,10 +779,9 @@ lanceup(Etherpkt *p, int len)
 static int
 isinput(void *arg)
 {
-	Lancemem *lm = LANCEMEM;
+	Msg *m = arg;
 
-	USED(arg);
-	return l.self.first || (l.rl!=l.rc && (MPus(lm->rmr[l.rl].flags) & OWN)==0);
+	return l.self.first || ((MPus(m->flags) & LANCEOWNER)==0);
 }
 
 static void
@@ -800,10 +802,9 @@ lancekproc(void *arg)
 			lanceup((Etherpkt*)bp->rptr, BLEN(bp));
 			freeb(bp);
 		}
-		for(; l.rl!=l.rc && (MPus(lm->rmr[l.rl].flags) & OWN)==0 ; l.rl=RSUCC(l.rl)){
+		m = &(lm->rmr[l.rl]);
+		while((MPus(m->flags) & LANCEOWNER)==0){
 			l.inpackets++;
-			l.misses = 0;
-			m = &(lm->rmr[l.rl]);
 			t = MPus(m->flags);
 			if(t & ERR){
 				if(t & FRAM)
@@ -814,29 +815,49 @@ lancekproc(void *arg)
 					l.crcs++;
 				if(t & BUFF)
 					l.buffs++;
-				goto stage;
+			} else {
+				/*
+				 *  stuff packet up each queue that wants it
+				 */
+				p = &l.rp[l.rl];
+				len = MPus(m->cntflags) - 4;
+				lanceup(p, len);
 			}
-	
-			/*
-			 *  stuff packet up each queue that wants it
-			 */
-			p = &l.rp[l.rl];
-			len = MPus(m->cntflags) - 4;
-			lanceup(p, len);
 
-stage:
 			/*
 			 *  stage the next input buffer
 			 */
-			m = &(lm->rmr[l.rc]);
 			MPs(m->size) = -sizeof(Etherpkt);
 			MPus(m->cntflags) = 0;
-			MPus(m->laddr) = LADDR(&l.lrp[l.rc]);
-			MPus(m->flags) = OWN|HADDR(&l.lrp[l.rc]);
-			l.rc = RSUCC(l.rc);
+			MPus(m->laddr) = LADDR(&l.lrp[l.rl]);
+			MPus(m->flags) = LANCEOWNER|HADDR(&l.lrp[l.rl]);
 			wbflush();
+			l.rl = RSUCC(l.rl);
+			m = &(lm->rmr[l.rl]);
 		}
 		qunlock(&l.rlock);
-		sleep(&l.rr, isinput, 0);
+		sleep(&l.rr, isinput, m);
+
+		/*
+		 *  if the lance is wedged, restart it
+		 */
+		if(l.wedged){
+			print("lance wedged, restarting\n");
+			l.wedged = 0;
+			lancestart(0);
+		}
+
+		/*
+		 *  close ethertypes requesting it
+		 */
+		if(l.closeline){
+			lock(&l.closepin);
+			for(e = l.closeline; e; e = e->closeline){
+				e->q = 0;
+				wakeup(&e->rc);
+			}
+			l.closeline = 0;
+			unlock(&l.closepin);
+		}
 	}
 }

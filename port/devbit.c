@@ -309,7 +309,7 @@ bitread(Chan *c, void *va, long n, ulong offset)
 	uchar *p, *q;
 	long miny, maxy, t, x, y;
 	ulong l, nw, ws, rv, gv, bv;
-	int off, j;
+	int off, j, dn;
 	Fontchar *i;
 	GBitmap *src;
 
@@ -367,8 +367,16 @@ bitread(Chan *c, void *va, long n, ulong offset)
 			PLONG(p+6, gscreen.r.min.y);
 			PLONG(p+10, gscreen.r.max.x);
 			PLONG(p+14, gscreen.r.max.y);
-			if(n >= 18+3*12+6*(defont->n+1)){
-				p += 18;
+			dn = 18;
+			if(bit.init=='j' && n>=18+16){
+				PLONG(p+18, gscreen.clipr.min.x);
+				PLONG(p+22, gscreen.clipr.min.y);
+				PLONG(p+26, gscreen.clipr.max.x);
+				PLONG(p+30, gscreen.clipr.max.y);
+				dn += 16;
+			}
+			if(n >= dn+3*12+6*(defont->n+1)){
+				p += dn;
 				sprint((char*)p, "%11d %11d %11d ", defont->n,
 					defont->height, defont->ascent);
 				p += 3*12;
@@ -379,9 +387,9 @@ bitread(Chan *c, void *va, long n, ulong offset)
 					p[4] = i->left;
 					p[5] = i->width;
 				}
-				n = 18+3*12+6*(defont->n+1);
+				n = dn+3*12+6*(defont->n+1);
 			}else
-				n = 18;
+				n = dn;
 			bit.init = 0;
 			break;
 		}
@@ -741,12 +749,13 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			break;
 
 		case 'i':
+		case 'j':
 			/*
 			 * init
 			 *
-			 *	'i'		1
+			 *	'i','j'		1
 			 */
-			bit.init = 1;
+			bit.init = *p;
 			m -= 1;
 			p += 1;
 			break;
