@@ -11,12 +11,14 @@ enum {
 	Status=		0x64,	/* status port */
 	 Inready=	0x01,	/*  input character ready */
 	 Outbusy=	0x02,	/*  output busy */
-	 Sysflag=	0x04,	/*  ??? */
+	 Sysflag=	0x04,	/*  system flag */
 	 Cmddata=	0x08,	/*  cmd==0, data==1 */
-	 kbdinh=	0x10,	/*  keyboard inhibited */
-	 Xtimeout=	0x20,	/*  transmit timeout */
-	 Rtimeout=	0x40,	/*  receive timeout */
-	 Parity=	0x80,	/*  0==odd, 1==even */
+	 Inhibit=	0x10,	/*  keyboard/mouse inhibited */
+	 Minready=	0x20,	/*  mouse character ready */
+	 Rtimeout=	0x40,	/*  general timeout */
+	 Parity=	0x80,	/*  1 == error */
+
+	Cmd=		0x64,	/* command port (write only) */
 
 	Spec=	0x80,
 
@@ -237,8 +239,35 @@ latin1(int k1, int k2)
 void
 kbdinit(void)
 {
+	uchar c;
+
 	initq(&kbdq);
 	setvec(Kbdvec, kbdintr);
+
+	/* wait for a quiescent controller */
+	while((c = inb(Status)) & (Outbusy | Inready))
+		if(c & Inready)
+			inb(Data);
+
+	/* read controller command byte */
+	outb(Cmd, 0x20);
+	while(!(inb(Status) & Inready))
+		;
+	c = inb(Data);
+print("input completed\n");
+delay(5000);
+
+	/* enable mouse and mouse interupts */
+	c = (c&~0x20) | 0x02;
+	outb(Cmd, 0x60);
+	while(inb(Status) & Outbusy)
+		;
+	outb(Data, c);
+print("mouse enabled\n");
+delay(5000);
+
+	initq(&mouseq);
+	setvec(Mousevec, kbdintr);
 }
 
 /*
@@ -247,7 +276,7 @@ kbdinit(void)
 void
 kbdintr(Ureg *ur)
 {
-	int c, nc;
+	int s, c, nc;
 	static int esc1, esc2;
 	static int shift;
 	static int caps;
@@ -257,9 +286,19 @@ kbdintr(Ureg *ur)
 	int keyup;
 
 	/*
-	 *  get a character
+	 *  get status and character
 	 */
+	s = inb(Status);
 	c = inb(Data);
+
+	/*
+	 *  if it's the mouse...
+	 */
+	if(s & Minready){
+print("mousechar\n");
+		mouseputc(&mouseq, c);
+		return;
+	}
 
 	keyup = c&0x80;
 	c &= 0x7f;

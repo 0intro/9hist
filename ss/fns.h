@@ -33,7 +33,6 @@ void	lancesetup(Lance*);
 void	lancetoggle(void);
 void	mmuinit(void);
 void	mousebuttons(int);
-void	mouseclock(void);
 void	printinit(void);
 #define	procrestore(x,y)
 #define	procsave(x,y)

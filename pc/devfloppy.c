@@ -253,21 +253,6 @@ floppypos(Drive *dp, long off)
 		dp->len -= ((lsec/dp->t->sectors) % dp->t->heads)*secbytes[dp->t->bytes]
 				*dp->t->sectors;
 	}
-
-	dp->lasttouched = m->ticks;	
-	floppy.intr = 0;
-}
-
-void
-floppywait(void)
-{
-	int tries;
-
-	for(tries = 0; tries < 100 && floppy.intr == 0; tries++)
-		delay(5);
-	if(tries >= 100)
-		print("tired floopy\n");
-	floppy.intr = 0;
 }
 
 int

@@ -112,6 +112,7 @@ void	mfreeseg(Segment*, ulong, int);
 void	mmurelease(Proc*);
 void	mntdump(void);
 int	mount(Chan*, Chan*, int);
+void	mouseclock(void);
 int	mouseputc(IOQ*, int);
 Chan*	namec(char*, int, int, ulong);
 void	nameok(char*);

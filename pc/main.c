@@ -268,12 +268,6 @@ lights(int val)
 {
 }
 
-int
-mouseputc(IOQ *q, int c)
-{
-	return c;
-}
-
 /*
  *  headland hip set for the safari.
  *  

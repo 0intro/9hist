@@ -5,6 +5,38 @@
 #include	"fns.h"
 #include	"io.h"
 
+#include	<libg.h>
+#include	<gnot.h>
+#include	"screen.h"
+
+#define	MINX	8
+
+extern	GFont	defont0;
+GFont		*defont;
+
+struct{
+	Point	pos;
+	int	bwid;
+}out;
+
+/*
+ *  screen dimensions
+ */
+#define MAXX	640
+#define MAXY	480
+
+#define SCREENMEM	(0xA0000 | KZERO)
+
+GBitmap	gscreen =
+{
+	(ulong*)SCREENMEM,
+	0,
+	640/32,
+	0,
+	0, 0, MAXX, MAXY,
+	0
+};
+
 enum
 {
 	GRX=		0x3CE,		/* index to graphics registers */
@@ -27,12 +59,6 @@ enum
 	 Amode=		 0x10,		/*  mode register */
 	 Acpe=		 0x12,		/*  color plane enable */
 };
-
-/*
- *  screen dimensions
- */
-#define MAXX	640
-#define MAXY	480
 
 /*
  *  routines for setting vga registers
@@ -91,7 +117,7 @@ munch(void)
 	ulong x,y,i,d;
 	uchar *screen, tab[8], *p;
 
-	screen = (uchar *)(0xA0000 | KZERO);
+	screen = (uchar *)SCREENMEM;
 	d=0;
 	tab[0] = 0x80;
 	tab[1] = 0x40;
@@ -120,13 +146,15 @@ munch(void)
  *  Set up for 4 separately addressed bit planes.  Each plane is 
  */
 void
-vgainit(void)
+screeninit(void)
 {
 	uchar *display;
 	int i, j, k;
 	int c;
+	ulong *l;
 
-	display = (uchar *)(0xA0000 | KZERO);
+	display = (uchar *)SCREENMEM;
+
 	arout(Acpe, 0x0f);	/* enable all planes */
 	arout(Amode, 0x01);	/* graphics mode - 4 bit pixels */
 	grout(Gmisc, 0x01);	/* graphics mode */
@@ -136,14 +164,112 @@ vgainit(void)
 	crout(Cmsl, 0x40);	/* 1 pixel per scan line */
 	srout(Smode, 0x06);	/* extended memory, odd/even off */
 	srout(Sclock, 0x01);	/* 8 bits/char */
+	srout(Smmask, 0x0f);	/* enable all 4 color planes for writing */
 
 	/*
 	 *  zero out display
 	 */
-	srout(Smmask, 0x0f);	/* enable all 4 color planes for writing */
-	for(i=0; i<MAXY*(MAXX/8); i++)
-		display[i] = 0;
-	
-	munch();
+	defont = &defont0;	/* save space; let bitblt do the conversion work */
+	gbitblt(&gscreen, Pt(0, 0), &gscreen, gscreen.r, 0); /**/
+
+	/*
+	 *  stick print at the top
+	 */
+	out.pos.x = MINX;
+	out.pos.y = 0;
+	out.bwid = defont0.info[' '].width;
+
+	/*
+	 *  swizzle the damn font longs.
+	 *  we do it here since the font is in a machine independent (i.e.
+	 *  made for the 68020) format.
+	 */
+	l = defont->bits->base;
+	for(i = defont->bits->width*Dy(defont->bits->r); i > 0; i--, l++)
+		*l = (*l<<24) | ((*l>>8)&0x0000ff00) | ((*l<<8)&0x00ff0000) | (*l>>24);
 }
 
+void
+screenputc(int c)
+{
+	char buf[2];
+	int nx;
+
+	if(c == '\n'){
+		out.pos.x = MINX;
+		out.pos.y += defont0.height;
+		if(out.pos.y > gscreen.r.max.y-defont0.height)
+			out.pos.y = gscreen.r.min.y;
+		gbitblt(&gscreen, Pt(0, out.pos.y), &gscreen,
+		    Rect(0, out.pos.y, gscreen.r.max.x, out.pos.y+2*defont0.height), 0);
+	}else if(c == '\t'){
+		out.pos.x += (8-((out.pos.x-MINX)/out.bwid&7))*out.bwid;
+		if(out.pos.x >= gscreen.r.max.x)
+			screenputc('\n');
+	}else if(c == '\b'){
+		if(out.pos.x >= out.bwid+MINX){
+			out.pos.x -= out.bwid;
+			screenputc(' ');
+			out.pos.x -= out.bwid;
+		}
+	}else{
+		if(out.pos.x >= gscreen.r.max.x-out.bwid)
+			screenputc('\n');
+		buf[0] = c&0x7F;
+		buf[1] = 0;
+		out.pos = gstring(&gscreen, out.pos, defont, buf, S);
+	}
+}
+
+void
+screenputs(char *s, int n)
+{
+	while(n-- > 0)
+		screenputc(*s++);
+}
+
+int
+screenbits(void)
+{
+	return 1;	/* bits per pixel */
+}
+
+void
+getcolor(ulong p, ulong *pr, ulong *pg, ulong *pb)
+{
+	ulong ans;
+
+	/*
+	 * The magnum monochrome says 0 is black (zero intensity)
+	 */
+	if(p == 0)
+		ans = 0;
+	else
+		ans = ~0;
+	*pr = *pg = *pb = ans;
+}
+
+
+int
+setcolor(ulong p, ulong r, ulong g, ulong b)
+{
+	return 0;	/* can't change mono screen colormap */
+}
+
+int
+hwcursset(uchar *s, uchar *c, int ox, int oy)
+{
+	return 0;
+}
+
+int
+hwcursmove(int x, int y)
+{
+	return 0;
+}
+
+void
+mouseclock(void)	/* called splhi */
+{
+	mouseupdate(1);
+}
