@@ -33,6 +33,7 @@ extern char*	checkkey(Method*, char*, char*);
 extern void	fatal(char*);
 extern void	getpasswd(char*, int);
 extern void	key(int, Method*);
+extern void glendakey(int, Method*);
 extern int	nop(int);
 extern int	outin(char*, char*, int);
 extern int	plumb(char*, char*, int*, char*);

@@ -1019,7 +1019,6 @@ static long
 ctl(Ether* ether, void* buf, long n)
 {
 	int i;
-	char *p;
 	Ctlr *ctlr;
 	Cmdbuf *cb;
 
@@ -1047,13 +1046,13 @@ ctl(Ether* ether, void* buf, long n)
 		strncpy(ctlr->nodename, cb->f[1], WNameLen);
 	else if(strcmp(cb->f[0], "chan") == 0){
 		i = atoi(cb->f[1]);
-		if (i < 1 || i > 16 )
+		if(i < 1 || i > 16 )
 			error("invalid wavelan channel");
 		ctlr->chan = i;
 	}
 	else if(strcmp(cb->f[0], "ptype") == 0){
 		i = atoi(cb->f[1]);
-		if (i < 1 || i > 3 )
+		if(i < 1 || i > 3 )
 			error("invalid wavelan port type");
 		ctlr->ptype = i;
 	}

@@ -64,15 +64,20 @@ connectlocal(void)
 	char *dev;
 	char **arg, **argp;
 
-	if(stat("/kfs", d) < 0)
+	if(stat("/kfs", d) < 0){
+		print("stat /kfs fails: %r\n");
 		return -1;
+	}
 
 	dev = disk ? disk : bootdisk;
 	sprint(partition, "%sfs", dev);
 	if(dirstat(partition, &dir) < 0){
 		strcpy(partition, dev);
-		if(dirstat(partition, &dir) < 0)
+		if(dirstat(partition, &dir) < 0){
+			print("stat %s fails: %r\n", partition);
+			print("(stat %sfs also failed)\n", dev);
 			return -1;
+		}
 	}
 	if(dir.mode & CHDIR)
 		return -1;

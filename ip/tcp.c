@@ -150,7 +150,6 @@ struct Tcpctl
 		ulong	ptr;		/* Data pointer */
 		ushort	wnd;		/* Tcp send window */
 		ulong	urg;		/* Urgent data pointer */
-		ulong	wl1;
 		ulong	wl2;
 
                 /* to implement tahoe and reno TCP */
@@ -189,7 +188,7 @@ struct Tcpctl
 	int	kacounter;		/* count down for keep alive */
 	uint	sndsyntime;		/* time syn sent */
 	ulong	time;			/* time Finwait2 or Syn_received was sent */
-	int	nochecksum;		/* non-zero means don't send checksums */ 
+	int	nochecksum;		/* non-zero means don't send checksums */
 
 	Tcphdr	protohdr;		/* prototype header */
 };
@@ -646,7 +645,7 @@ tcpmtu(Conv *s)
 }
 
 void
-inittcpctl(Conv *s)
+inittcpctl(Conv *s, int mode)
 {
 	Tcpctl *tcb;
 	Tcphdr *h;
@@ -669,6 +668,7 @@ inittcpctl(Conv *s)
 	tcb->katimer.arg = s;
 
 	/* create a prototype(pseudo) header */
+	if(mode != TCP_LISTEN)
 	if(ipcmp(s->laddr, IPnoaddr) == 0)
 		findlocalip(s->p->f, s->laddr, s->raddr);
 	h = &tcb->protohdr;
@@ -707,7 +707,7 @@ tcpstart(Conv *s, int mode, ushort window)
 	tcb = (Tcpctl*)s->ptcl;
 
 	/* Send SYN, go into SYN_SENT state */
-	inittcpctl(s);
+	inittcpctl(s, mode);
 	tcb->window = window;
 	tcb->rcv.wnd = window;
 
@@ -1111,20 +1111,14 @@ update(Conv *s, Tcp *seg)
 	}
 
 	/*
-	 *  update our send window if this is a new ack (ignore old packets
-	 *  even if the ack is new)
+	 *  update window
 	 */
-	if(seq_ge(seg->ack,tcb->snd.wl2))
-	if(seq_ge(seg->seq,tcb->snd.wl1)) {
-
-		/* a closed window opened, start retransmitting.  why? - presotto */
-		if(seg->wnd != 0 && tcb->snd.wnd == 0)
-			tcb->snd.ptr = tcb->snd.una;
-
+	if( seq_gt(seg->ack, tcb->snd.wl2)
+	||  (tcb->snd.wl2 == seg->ack && seg->wnd > tcb->snd.wnd)){
 		tcb->snd.wnd = seg->wnd;
-		tcb->snd.wl1 = seg->seq;
 		tcb->snd.wl2 = seg->ack;
 	}
+
 
 	if(!seq_gt(seg->ack, tcb->snd.una))
 		return;
@@ -1738,19 +1732,6 @@ tcpoutput(Conv *s)
 		if((tcb->flags&FORCE) == 0)
 			break;
 
-		/* avoid sending short packets unless... */
-		if(dsize != 0) {
-			/* ...we have a full segment */
-			if(dsize != tcb->mss)
-			/* ...the data was just queued */
-			if((dsize + sent) != sndcnt)
-			/* ...we're being forced */
-			if(!(tcb->flags&FORCE))
-			/* ...we have at least half a window's worth to send */
-			if(dsize < tcb->snd.wnd/2 || tcb->snd.wnd == 0)
-				return;
-		}
-
 		tcphalt(tpriv, &tcb->acktimer);
 
 		tcb->flags &= ~FORCE;
@@ -2075,7 +2056,6 @@ procsyn(Conv *s, Tcp *seg)
 
 	tcb->rcv.nxt = seg->seq + 1;
 	tcb->rcv.urg = tcb->rcv.nxt;
-	tcb->snd.wl1 = seg->seq;
 	tcb->irs = seg->seq;
 	tcb->snd.wnd = seg->wnd;
 
