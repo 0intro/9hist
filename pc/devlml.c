@@ -11,9 +11,15 @@
 #define DBGREGS 0x1
 #define DBGREAD 0x2
 #define DBGWRIT 0x4
-int debug = DBGREAD|DBGWRIT;
+int debug = DBGREAD|DBGWRIT|DBGREGS;
 
 // Lml 22 driver
+
+struct {
+	ulong pci;
+	ulong dma;
+	ulong codedata;
+} lmlmap;
 
 enum{
 	Qdir,
@@ -29,8 +35,8 @@ static Dirtab lmldir[]={
 //	 name,		 qid,		size,		mode
 	"lml819",	{Q819},		0,		0644,
 	"lml856",	{Q856},		0,		0644,
-	"lmlreg",	{Qreg},		0,		0644,
-	"lmlmap",	{Qmap},		0,		0444,
+	"lmlreg",	{Qreg},		0x400,		0644,
+	"lmlmap",	{Qmap},		sizeof lmlmap,	0444,
 	"jvideo",	{Qjvideo},	0,		0666,
 	"jframe",	{Qjframe},	0,		0666,
 };
@@ -48,12 +54,6 @@ int		hdrPos;
 int		nopens;
 uchar		q856[3];
 
-struct {
-	ulong pci;
-	ulong dma;
-	ulong codedata;
-} lmlmap;
-
 static FrameHeader frameHeader = {
 	MRK_SOI, MRK_APP3, (sizeof(FrameHeader)-4) << 8,
 	{ 'L', 'M', 'L', '\0'},
@@ -63,24 +63,24 @@ static FrameHeader frameHeader = {
 ulong
 writel(ulong v, ulong a) {
 	if (debug&DBGREGS)
-		pprint("writing %.8lux  to  %.8lux (%.4lux)\n",
-			v, a, (ulong)a-pciBaseAddr);
+		pprint("%.8lux (%.8lux) <-- %.8lux\n",
+			a, (ulong)a-pciBaseAddr, v);
 	return *(ulong *)a = v;
 }
 
 ushort
 writew(ushort v, ulong a) {
 	if (debug&DBGREGS)
-		pprint("writing     %.4ux  to  %.8lux (%.4lux)\n",
-			v, a, (ulong)a-pciBaseAddr);
+		pprint("%.8lux (%.8lux) <--     %.4ux\n",
+			a, (ulong)a-pciBaseAddr, v);
 	return *(ushort *)a = v;
 }
 
 uchar
 writeb(uchar v, ulong a) {
 	if (debug&DBGREGS)
-		pprint("writing       %.2ux  to  %.8lux (%.4lux)\n",
-			v, a, (ulong)a-pciBaseAddr);
+		pprint("%.8lux (%.8lux) <--       %.2ux\n",
+			a, (ulong)a-pciBaseAddr, v);
 	return *(uchar *)a = v;
 }
 
@@ -90,8 +90,8 @@ readl(ulong a) {
 
 	v = *(ulong*)a;
 	if (debug&DBGREGS)
-		pprint("reading %.8lux from %.8lux (%.4lux)\n",
-			v, a, (ulong)a-pciBaseAddr);
+		pprint("%.8lux (%.8lux) --> %.8lux\n",
+			a, (ulong)a-pciBaseAddr, v);
 	return v;
 }
 
@@ -101,8 +101,8 @@ readw(ulong a) {
 
 	v = *(ushort*)a;
 	if (debug&DBGREGS)
-		pprint("reading     %.4ux from %.8lux (%.4lux)\n",
-			v, a, (ulong)a-pciBaseAddr);
+		pprint("%.8lux (%.8lux) -->     %.4ux\n",
+			a, (ulong)a-pciBaseAddr, v);
 	return v;
 }
 
@@ -112,8 +112,8 @@ readb(ulong a) {
 
 	v = *(uchar*)a;
 	if (debug&DBGREGS)
-		pprint("reading       %.2ux from %.8lux (%.4lux)\n",
-			v, a, (ulong)a-pciBaseAddr);
+		pprint("%.8lux (%.8lux) -->       %.2ux\n",
+			a, (ulong)a-pciBaseAddr, v);
 	return v;
 }
 
@@ -330,7 +330,7 @@ static int
 prepareBuffer(CodeData * this, int bufferNo) {
   if(bufferNo >= 0 && bufferNo < NBUF && (this->statCom[bufferNo] & STAT_BIT)) {
     this->statCom[bufferNo] = this->statComInitial[bufferNo];
-    return this->fragmDescr[bufferNo].fragmLength;
+    return this->fragdesc[bufferNo].leng;
   } else
     return -1;
 }
@@ -354,7 +354,7 @@ static int
 getBuffer(CodeData *this, int bufferNo, void** bufferPtr, int* frameNo) {
 	int codeLength;
 	if(this->statCom[bufferNo] & STAT_BIT) {
-		*bufferPtr = (void*)this->fragmDescr[bufferNo].fragmAddress;
+		*bufferPtr = (void*)this->fragdesc[bufferNo].addr;
 		*frameNo = this->statCom[bufferNo] >> 24;
 		codeLength=((this->statCom[bufferNo] & 0x00FFFFFF) >> 1);
 		return codeLength;
@@ -560,12 +560,11 @@ lmlreset(void)
 	strncpy(codeData->idString, MJPG_VERSION, strlen(MJPG_VERSION));
 
 	for(i = 0; i < NBUF; i++) {
-		codeData->statCom[i] = PADDR(&(codeData->fragmDescr[i]));
+		codeData->statCom[i] = PADDR(&(codeData->fragdesc[i]));
 		codeData->statComInitial[i] = codeData->statCom[i];
-		codeData->fragmDescr[i].fragmAddress =
-			(Fragment *)PADDR(&(codeData->frag[i]));
+		codeData->fragdesc[i].addr = PADDR(&(codeData->frag[i]));
 		// Length is in double words, in position 1..20
-		codeData->fragmDescr[i].fragmLength = (FRAGSIZE >> 1) | FRAGM_FINAL_B;
+		codeData->fragdesc[i].leng = (FRAGSIZE >> 1) | FRAGM_FINAL_B;
 	}
 
 	print("initializing LML33 board...");
@@ -620,6 +619,8 @@ lmlstat(Chan *c, char *dp)
 static Chan*
 lmlopen(Chan *c, int omode)
 {
+	int i;
+
 	c->aux = 0;
 	switch(c->qid.path){
 	case Q819:
@@ -639,7 +640,14 @@ lmlopen(Chan *c, int omode)
 		frameNo = 0;
 		bufferPrepared = 0;
 		hdrPos = -1;
+
+		for (i = 0; i < 4; i++) {
+			codeData->statCom[i] = codeData->statComInitial[i];
+			// Also memset the buffer with some fill value
+			memset(&(codeData->frag[i]),0x55,sizeof codeData->frag[i]);
+		}
 		// allow one open total for these two
+		intrenable(pcidev->intl, lmlintr, nil, pcidev->tbdf);
 		break;
 	}
 	return devopen(c, omode, lmldir, nelem(lmldir), devgen);
@@ -707,7 +715,7 @@ lmlread(Chan *c, void *va, long n, vlong voff) {
 		if (off < 0)
 			return 0;
 		for (i = 0; i < n; i++) {
-			if (off + i > sizeof lmlmap)
+			if (off + i >= sizeof lmlmap)
 				break;
 			buf[i] = ((uchar *)&lmlmap)[off + i];
 		}
@@ -749,7 +757,7 @@ lmlwrite(Chan *c, void *va, long n, vlong voff) {
 		error(Eperm);
 
 	case Q819:
-		if (off < 0 || off + n > 0x20)
+		if (off < 0 || off + n >= 0x20)
 			return 0;
 		for (i = n; i > 0; i--)
 			if (i2c_wr8(BT819Addr, off++, *buf++) == 0)

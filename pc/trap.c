@@ -681,8 +681,13 @@ linkproc(void)
 void
 kprocchild(Proc* p, void (*func)(void*), void* arg)
 {
+	/*
+	 * gotolabel() needs a word on the stack in
+	 * which to place the return PC used to jump
+	 * to linkproc().
+	 */
 	p->sched.pc = (ulong)linkproc;
-	p->sched.sp = (ulong)p->kstack+KSTACK;
+	p->sched.sp = (ulong)p->kstack+KSTACK-BY2WD;
 
 	p->kpfun = func;
 	p->kparg = arg;

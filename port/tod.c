@@ -29,9 +29,7 @@
 
 struct {
 	Lock;
-	int	s1;		// time = ((ticks>>s2)*multiplier)>>(s1-s2)
-	vlong	multiplier;	// ...
-	int	s2;		// ...
+	vlong	multiplier;	// t = off + (multiplier*ticks)>>31
 	vlong	hz;		// frequency of fast clock
 	vlong	last;		// last reading of fast clock
 	vlong	off;		// offset from epoch to last
@@ -55,19 +53,6 @@ todinit(void)
 void
 todsetfreq(vlong f)
 {
-	// the shift is an attempt to maintain precision
-	// during the caculations.  the number of bits in
-	// the multiplier should be log(TODFREQ) + 31 - log(f).
-	//
-	//	Freq		bits
-	//	167 MHZ		34
-	//	267 MHZ		33
-	//	500 MHZ		32
-	//
-	// in all cases, we need to call todget() at least once
-	// a second to keep the subsequent calculations from
-	// overflowing.
-
 	ilock(&tod);
 	tod.hz = f;
 	tod.multiplier = (TODFREQ<<31)/f;
@@ -81,11 +66,12 @@ void
 todset(vlong t, vlong delta, int n)
 {
 	ilock(&tod);
-	tod.sstart = tod.send = 0;
 	if(t >= 0){
 		tod.off = t;
 		tod.last = fastticks(nil);
 		tod.lasttime = 0;
+		tod.delta = 0;
+		tod.sstart = tod.send;
 	} else {
 		if(n <= 0)
 			n = 1;
@@ -121,7 +107,7 @@ todget(void)
 	diff = ticks - tod.last;
 
 	// add in correction
-	if(tod.sstart < tod.send){
+	if(tod.sstart != tod.send){
 		t = MACHP(0)->ticks;
 		if(t >= tod.send)
 			t = tod.send;
@@ -129,13 +115,15 @@ todget(void)
 		tod.sstart = t;
 	}
 
-	// convert to epoch, make sure calculation is unsigned
-	x = (((uvlong)diff) * ((uvlong)tod.multiplier)) >> 31;
+	// convert to epoch
+	x = (diff * tod.multiplier) >> 31;
 	x += tod.off;
 
-	// protect against overflows (gettod is called at least once a second)
-	tod.last = ticks;
-	tod.off = x;
+	// protect against overflows
+	if(diff > tod.hz){
+		tod.last = ticks;
+		tod.off = x;
+	}
 
 	// time can't go backwards
 	if(x < tod.lasttime)
@@ -152,9 +140,13 @@ todget(void)
 void
 todfix(void)
 {
+	static ulong last;
+
 	// once a second, make sure we don't overflow
-	if((MACHP(0)->ticks % HZ) == 0)
+	if(MACHP(0)->ticks - last >= HZ){
+		last = MACHP(0)->ticks;
 		todget();
+	}
 }
 
 long

@@ -50,28 +50,6 @@ typedef struct {
 	int	zr060addr;	// Which guest bus address for the ZR36060
 } Device;
 
-// An entry in the fragment table
-typedef struct {
-	ulong	address;	// bus address of page
-	int	length;		// length of page
-} RingPage;
-
-// The structure that we will use to tell the '57 about the buffers
-// The sizeof(RingData) should not exceed page size
-typedef struct {
-	void		*buffer[4];
-	ulong		i_stat_com[4];
-	RingPage	ring_pages[4][PAGES];
-} RingData;
-
-typedef struct {
-	int	expect;		// the buffer the int routine expects next
-	int	which;		// which ring buffer the read or write uses
-	int	filled;		// the current number of filled buffers
-	int	pages;		// the number of complete pages
-	int	remainder;	// the number of bytes in incomplete page
-} RingPtr;
-
 // The remainder of the #defs are constants which should not need changing.
 
 // The PCI vendor and device ids of the zoran chipset on the dc30
@@ -103,16 +81,16 @@ struct Fragment {
 };
 
 struct FragmentTable {	// Don't modify this struct, used by h/w
-	Fragment *		fragmAddress;			// Physical address
-	ulong			fragmLength;
+	ulong		addr;		// Physical address
+	ulong		leng;
 };
 
 struct CodeData {	// Don't modify this struct, used by h/w
-	char			idString[16];
-	ulong			statCom[4];				// Physical address
-	ulong			statComInitial[4];		// Physical address
-	FragmentTable	fragmDescr[4];
-	Fragment		frag[4];
+	char		idString[16];
+	ulong		statCom[4];		// Physical address
+	ulong		statComInitial[4];	// Physical address
+	FragmentTable	fragdesc[4];
+	Fragment	frag[4];
 };
 
 static void *		pciPhysBaseAddr;

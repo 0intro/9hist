@@ -18,6 +18,7 @@ enum
 	FSHORT	= 1<<4,
 	FUNSIGN	= 1<<5,
 	FVLONG	= 1<<6,
+	FPOINTER	= 1<<7,
 };
 
 int	printcol;
@@ -64,6 +65,7 @@ initfmt(void)
 	fmtindex['o'] = cc;
 	fmtindex['x'] = cc;
 	fmtindex['X'] = cc;
+	fmtindex['p'] = cc;
 	cc++;
 
 	fmtconv[cc] = cconv;
@@ -242,6 +244,10 @@ numbconv(va_list *arg, Fconv *fp)
 	case 'x':
 		b = 16;
 		break;
+	case 'p':
+		fp->f3 |= FPOINTER|FUNSIGN;
+		b = 16;
+		break;
 	}
 
 	f = 0;
@@ -270,6 +276,10 @@ numbconv(va_list *arg, Fconv *fp)
 	case FUNSIGN|FSHORT:
 		h = va_arg(*arg, int);
 		v = (ushort)h;
+		break;
+
+	case FUNSIGN|FPOINTER:
+		v = (ulong)va_arg(*arg, void*);
 		break;
 
 	default:
