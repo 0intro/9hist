@@ -262,16 +262,7 @@ mntclone(Chan *c, Chan *nc)
 	r->request.newfid = nc->fid;
 	mountrpc(m, r);
 
-	nc->type = c->type;
-	nc->dev = c->dev;
-	nc->qid = c->qid;
-	nc->mode = c->mode;
-	nc->flag = c->flag;
-	nc->offset = c->offset;
-	nc->mnt = c->mnt;
-	nc->mountid = c->mountid;
-	nc->aux = c->aux;
-	nc->mchan = c->mchan;
+	devclone(c, nc);
 	nc->mqid = c->qid;
 	incref(m);
 
