@@ -13,29 +13,29 @@ isedf(Proc*)
 }
 
 void
-edf_bury(Proc*)
+edfbury(Proc*)
 {
 }
 
 int
-edf_anyready(void)
+edfanyready(void)
 {
 	return 0;
 }
 
 void
-edf_ready(Proc*)
+edfready(Proc*)
 {
 }
 
 Proc*
-edf_runproc(void)
+edfrunproc(void)
 {
 	return nil;
 }
 
 void
-edf_block(Proc*)
+edfblock(Proc*)
 {
 }
 

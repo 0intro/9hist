@@ -10,7 +10,6 @@ int	cistrcmp(char*, char*);
 int	cistrncmp(char*, char*, int);
 #define	clearmmucache()				/* x86 doesn't have one */
 void	clockintr(Ureg*, void*);
-void	clockintrsched(void);
 void	(*coherence)(void);
 void	cpuid(char*, int*, int*);
 int	cpuidentify(void);
@@ -126,6 +125,7 @@ void	rdtsc(vlong*);
 void	screeninit(void);
 int	screenprint(char*, ...);			/* debugging */
 void	(*screenputs)(char*, int);
+void	sfence(void);
 void	touser(void*);
 void	trapenable(int, void (*)(Ureg*, void*), void*, char*);
 void	trapinit(void);
@@ -140,6 +140,7 @@ void	upafree(ulong, int);
 void	vectortable(void);
 void	wrmsr(int, vlong);
 void	wbflush(void);
+void	wbinvd(void);
 int	xchgw(ushort*, int);
 ulong	TK2MS(ulong);				/* ticks to milliseconds */
 

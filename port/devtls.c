@@ -760,8 +760,8 @@ tlsrecread(TlsRec *tr)
 		len = get16(header+3);
 	}
 	if(ver != tr->version && (tr->verset || ver < MinProtoVersion || ver > MaxProtoVersion))
-		rcvError(tr, EProtocolVersion, "record layer saw ver %x, not %x/%d; %d %d",
-			ver, tr->version, tr->verset, type, len);
+		rcvError(tr, EProtocolVersion, "devtls expected ver=%x%s, saw (len=%d) type=%x ver=%x '%.12s'",
+			tr->version, tr->verset?"/set":"", len, type, ver, (char*)header);
 	if(len > MaxCipherRecLen || len < 0)
 		rcvError(tr, ERecordOverflow, "record message too long %d", len);
 	ensure(tr, &tr->unprocessed, len);

@@ -96,10 +96,6 @@ hzclock(Ureg *ur)
 	if(m->proc)
 		m->proc->pc = ur->pc;
 
-	if(m->inclockintr)
-		return;		/* interrupted ourself */
-	m->inclockintr = 1;
-
 	if(m->flushmmu){
 		if(up)
 			flushmmu();
@@ -148,10 +144,14 @@ timerintr(Ureg *u, uvlong)
 	uvlong when, now;
 	int callhzclock;
 
+	if(m->inclockintr)
+		return;
+	m->inclockintr = 1;
+
 	intrcount[m->machno]++;
 	callhzclock = 0;
 	tt = &timers[m->machno];
-	now = (uvlong)fastticks(nil);
+	now = fastticks(nil);
 	ilock(tt);
 	while(t = tt->head){
 		when = t->when;
@@ -160,6 +160,7 @@ timerintr(Ureg *u, uvlong)
 			timerset(when);
 			if(callhzclock)
 				hzclock(u);
+			m->inclockintr = 0;
 			return;
 		}
 		tt->head = t->next;
@@ -179,6 +180,7 @@ timerintr(Ureg *u, uvlong)
 		}
 	}
 	iunlock(tt);
+	m->inclockintr = 0;
 }
 
 uvlong hzperiod;
@@ -190,7 +192,8 @@ timersinit(void)
 
 	hzperiod = ms2fastticks(1000/HZ);
 
-	t = smalloc(sizeof(*t));
+	t = malloc(sizeof(*t));
+	t->when = 0;
 	t->period = hzperiod;
 	t->f = nil;
 	timeradd(t);
@@ -215,9 +218,4 @@ addclock0link(void (*f)(void))
 	 * this one's synchronized with hztimer which is already running
 	 */
 	iunlock(&timers[0]);
-}
-
-void
-clockintrsched(void)
-{
 }

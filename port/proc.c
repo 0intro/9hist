@@ -1146,6 +1146,7 @@ error(char *err)
 {
 	spllo();
 	kstrcpy(up->errstr, err, ERRMAX);
+	setlabel(&up->errlab[NERR-1]);
 	nexterror();
 }
 

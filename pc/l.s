@@ -14,6 +14,7 @@
 #define RDTSC 		BYTE $0x0F; BYTE $0x31
 #define WBINVD		BYTE $0x0F; BYTE $0x09
 #define HLT		BYTE $0xF4
+#define SFENCE		BYTE $0x0F; BYTE $0xAE; BYTE $0xF8
 
 /*
  * Macros for calculating offsets within the page directory base
@@ -303,6 +304,10 @@ TEXT wbinvd(SB), $0
 	WBINVD
 	RET
 
+TEXT sfence(SB), $0
+	SFENCE
+	RET
+
 /*
  * Try to determine the CPU type which requires fiddling with EFLAGS.
  * If the Id bit can be toggled then the CPUID instruciton can be used
@@ -495,6 +500,16 @@ TEXT gotolabel(SB), $0
 	MOVL	0(AX), SP			/* restore sp */
 	MOVL	4(AX), AX			/* put return pc on the stack */
 	MOVL	AX, 0(SP)
+	MOVL	$1, AX				/* return 1 */
+	RET
+
+TEXT swaplabel(SB), $0
+	MOVL	label+0(FP), AX
+	MOVL	pc+4(FP), BX
+	MOVL	0(AX), SP			/* restore sp */
+	MOVL	4(AX), CX			/* put return pc on the stack */
+	MOVL	CX, 0(SP)
+	MOVL	BX, 4(AX)			/* put caller pc where return pc was */
 	MOVL	$1, AX				/* return 1 */
 	RET
 

@@ -791,6 +791,9 @@ archinit(void)
 	if(X86FAMILY(m->cpuidax) == 3)
 		conf.copymode = 1;
 
+//	if(X86FAMILY(m->cpuidax) >= 5 && conf.nmach > 1)
+		coherence = wbflush;
+
 	addarchfile("cputype", 0444, cputyperead, nil);
 	addarchfile("pge", 0664, pgeread, pgewrite);
 }

@@ -597,7 +597,6 @@ looper(Loop *lb)
 	t = fastticks(nil);
 	for(chan = 0; chan < 2; chan++)
 		pushlink(&lb->link[chan], t);
-	clockintrsched();
 }
 
 static void
