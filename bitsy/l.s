@@ -722,15 +722,38 @@ l14:	SUB		$1,R0
 	MOVW	0x2c(R3),R2
 	AND		$(~0x00030003),R2
 	MOVW	R2,0x2c(R3)
-	MOVW	R0,R0			/* filler */
 
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
+	/* align this on a cache-line boundary */
 	MOVW	$1,R2
 	MOVW	R4,0x1c(R3)
 	MOVW	R6,0x1c(R3)
 	MOVW	R12,0x0(R3)
 	MOVW	R11,0x1c(R3)
 	MOVW	R2,0x0(R5)
+xlloop:
+	B		xlloop			/* loop waiting for sleep */
 
+/* The first instruction of this function needs to be on a cache-line
+ * boundary; to make this happen, it will be copied (in trap.c).
+ *
+ * Hibernate puts the machine into hibernation.
+ */
+TEXT _hibernate(SB), $-4
+	MOVW	$1,R2
+	MOVW	R4,0x1c(R3)
+	MOVW	R6,0x1c(R3)
+	MOVW	R12,0x0(R3)
+	MOVW	R11,0x1c(R3)
+	MOVW	R2,0x0(R5)
 slloop:
 	B		slloop			/* loop waiting for sleep */
 

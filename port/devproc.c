@@ -556,6 +556,9 @@ procread(Chan *c, void *va, long n, vlong off)
 		|| (offset >= USTKTOP-USTKSIZE && offset < USTKTOP))
 			return procctlmemio(p, offset, n, va, 1);
 
+		if(!iseve())
+			error(Eperm);
+
 		/* validate kernel addresses */
 		if(offset < (ulong)end) {
 			if(offset+n > (ulong)end)

@@ -43,6 +43,8 @@ ulong	getsp(void);
 void	gpiointrenable(ulong, int, void (*)(Ureg*, void*), void*, char*);
 void	h3650uartsetup(void);
 int	havetimer(void);
+void	_hibernate(void);
+void	(*hibernate)(void);
 void	icacheinvalidate(void);
 void	idle(void);
 void	idlehands(void);
