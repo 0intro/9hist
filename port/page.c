@@ -7,7 +7,6 @@
 
 #define	pghash(daddr)	palloc.hash[(daddr>>PGSHIFT)&(PGHSIZE-1)]
 
-static	Lock pglock;
 struct	Palloc palloc;
 
 void
@@ -63,6 +62,59 @@ pageinit(void)
 	print("%dK swap\n", vm);
 }
 
+static void
+pageunchain(Page *p)
+{
+	if(canlock(&palloc))
+		panic("pageunchain");
+	if(p->prev)
+		p->prev->next = p->next;
+	else
+		palloc.head = p->next;
+	if(p->next)
+		p->next->prev = p->prev;
+	else
+		palloc.tail = p->prev;
+	p->prev = p->next = nil;
+	palloc.freecount--;
+}
+
+void
+pagechaintail(Page *p)
+{
+	if(canlock(&palloc))
+		panic("pagechaintail");
+	if(palloc.tail) {
+		p->prev = palloc.tail;
+		palloc.tail->next = p;
+	}
+	else {
+		palloc.head = p;
+		p->prev = 0;
+	}
+	palloc.tail = p;
+	p->next = 0;
+	palloc.freecount++;
+}
+
+void
+pagechainhead(Page *p)
+{
+	if(canlock(&palloc))
+		panic("pagechainhead");
+	if(palloc.head) {
+		p->next = palloc.head;
+		palloc.head->prev = p;
+	}
+	else {
+		palloc.tail = p;
+		p->next = 0;
+	}
+	palloc.head = p;
+	p->prev = 0;
+	palloc.freecount++;
+}
+
 Page*
 newpage(int clear, Segment **s, ulong va)
 {
@@ -70,7 +122,6 @@ newpage(int clear, Segment **s, ulong va)
 	KMap *k;
 	uchar ct;
 	int i, hw, dontalloc, color;
-
 
 	lock(&palloc);
 	color = getpgcolor(va);
@@ -124,15 +175,7 @@ newpage(int clear, Segment **s, ulong va)
 		ct = PG_NEWCOL;
 	}
 
-	if(p->prev)
-		p->prev->next = p->next;
-	else
-		palloc.head = p->next;
-	if(p->next)
-		p->next->prev = p->prev;
-	else
-		palloc.tail = p->prev;
-	palloc.freecount--;
+	pageunchain(p);
 
 	lock(p);
 	if(p->ref != 0)
@@ -178,31 +221,10 @@ putpage(Page *p)
 		return;
 	}
 
-	if(p->image && p->image != &swapimage) {
-		if(palloc.tail) {
-			p->prev = palloc.tail;
-			palloc.tail->next = p;
-		}
-		else {
-			palloc.head = p;
-			p->prev = 0;
-		}
-		palloc.tail = p;
-		p->next = 0;
-	}
-	else {
-		if(palloc.head) {
-			p->next = palloc.head;
-			palloc.head->prev = p;
-		}
-		else {
-			palloc.tail = p;
-			p->next = 0;
-		}
-		palloc.head = p;
-		p->prev = 0;
-	}
-	palloc.freecount++;
+	if(p->image && p->image != &swapimage)
+		pagechaintail(p);
+	else 
+		pagechainhead(p);
 
 	if(palloc.r.p != 0)
 		wakeup(&palloc.r);
@@ -222,9 +244,7 @@ auxpage()
 		unlock(&palloc);
 		return 0;
 	}
-	p->next->prev = 0;
-	palloc.head = p->next;
-	palloc.freecount--;
+	pageunchain(p);
 
 	lock(p);
 	if(p->ref != 0)
@@ -246,8 +266,9 @@ duppage(Page *p)				/* Always call with p locked */
 
 	retries = 0;
 retry:
+
 	if(retries++ > 10000)
-		panic("duppage");
+		panic("duppage %d", retries);
 
 	/* No dup for swap/cache pages */
 	if(p->ref == 0 || p->image == nil || p->image->notext)
@@ -286,26 +307,8 @@ retry:
 		return;
 	}
 
-	if(np->prev)
-		np->prev->next = np->next;
-	else
-		palloc.head = np->next;
-	if(np->next)
-		np->next->prev = np->prev;
-	else
-		palloc.tail = np->prev;
-
-	/* Link back onto tail to give us lru in the free list */
-	if(palloc.tail) {
-		np->prev = palloc.tail;
-		palloc.tail->next = np;
-		np->next = 0;
-		palloc.tail = np;
-	}
-	else {
-		palloc.head = palloc.tail = np;
-		np->prev = np->next = 0;
-	}
+	pageunchain(np);
+	pagechaintail(np);
 
 	lock(np);
 	unlock(&palloc);
@@ -411,17 +414,8 @@ lookpage(Image *i, ulong daddr)
 				unlock(&palloc);
 				return 0;
 			}
-			if(++f->ref == 1) {
-				if(f->prev)
-					f->prev->next = f->next;
-				else
-					palloc.head = f->next;
-				if(f->next)
-					f->next->prev = f->prev;
-				else
-					palloc.tail = f->prev;
-				palloc.freecount--;
-			}
+			if(++f->ref == 1)
+				pageunchain(f);
 			unlock(&palloc);
 			unlock(f);
 

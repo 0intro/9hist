@@ -536,7 +536,6 @@ struct Proc
 	QLock	*qlock;		/* addrof qlock being queued for DEBUG */
 	int	state;
 	char	*psstate;	/* What /proc/#/status reports */
-	Page	*upage;		/* page from palloc */
 	Segment	*seg[NSEG];
 	ulong	pid;
 	ulong	noteid;		/* Equivalent of note group */
@@ -601,6 +600,8 @@ struct Proc
 	short	notified;	/* sysnoted is due */
 	Note	lastnote;
 	int	(*notify)(void*, char*);
+
+	int	nlocks;		/* Number of locks held */
 
 	Mach	*wired;
 	Mach	*mp;		/* machine this process last ran on */

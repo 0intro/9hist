@@ -271,7 +271,15 @@ mklintr(PCMPintr* p)
 	if((bus = mpgetbus(p->busno)) == 0)
 		return 0;
 	intin = p->intin;
-	v = mpintrinit(bus, p, VectorLAPIC+intin);
+
+	/*
+	 * Pentium Pros have problems if LINT[01] are set to ExtINT
+	 * so just bag it. Should be OK for SMP mode.
+	 */
+	if(p->intr == PcmpExtINT || p->intr == PcmpNMI)
+		v = ApicIMASK;
+	else
+		v = mpintrinit(bus, p, VectorLAPIC+intin);
 
 	if(p->apicno == 0xFF){
 		for(apic = mpapic; apic <= &mpapic[MaxAPICNO]; apic++){
@@ -446,21 +454,6 @@ mpstartap(Apic* apic)
 	nvramwrite(0x0F, 0x00);
 }
 
-static void
-senddbgnmi(void)
-{
-	/*
-	 * NMI all excluding self.
-	 */
-	lapicicrw(0, 0x000C0000|ApicNMI);
-}
-
-static void
-mpdbg(Ureg* ureg, void*)
-{
-	iprint("MPDBG: cpu%d: PC 0x%uX\n", m->machno, ureg->pc);
-}
-
 void
 mpinit(void)
 {
@@ -568,9 +561,6 @@ mpinit(void)
 	 */
 	if(conf.nmach > 1)
 		conf.copymode = 1;
-
-	consdebug = senddbgnmi;
-	intrenable(VectorNMI, mpdbg, 0, BUSUNKNOWN);
 }
 
 static int
@@ -695,34 +685,25 @@ mpintrenable(int v, int tbdf, Irqctl* irqctl)
 	return -1;
 }
 
+static Lock mpshutdownlock;
+
 void
 mpshutdown(void)
 {
-	int apicno, machno;
-
 	/*
 	 * To be done...
 	 */
-	if(m->machno){
+	if(!canlock(&mpshutdownlock)){
 		/*
 		 * If this processor received the CTRL-ALT-DEL from
 		 * the keyboard, acknowledge it. Send an INIT to self.
 		 */
 		if(lapicisr(VectorKBD))
 			lapiceoi(VectorKBD);
-		lapicicrw(0, 0x00040000|ApicINIT);	
 		idle();
 	}
 
 	print("apshutdown: active = 0x%2.2uX\n", active.machs);
-	if(active.machs){
-		for(machno = 1; machno < conf.nmach; machno++){
-			if(!(active.machs & (1<<machno)))
-				continue;
-			apicno = machno2apicno[machno];
-			lapicicrw(1<<apicno, ApicNMI);
-		}
-	}
 	delay(1000);
 	splhi();
 

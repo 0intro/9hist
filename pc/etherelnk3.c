@@ -1435,14 +1435,14 @@ setfullduplex(int port)
 }
 
 static int
-miir(Ether* ether, int phyad, int regad)
+miir(int port, int phyad, int regad)
 {
-	int data, i, port, w, x;
-
-	port = ether->port+PhysicalMgmt;
+	int data, i, w, x;
 
 	w = (STATUS(port)>>13) & 0x07;
-	COMMAND(ether->port, SelectRegisterWindow, Wdiagnostic);
+	COMMAND(port, SelectRegisterWindow, Wdiagnostic);
+
+	port += PhysicalMgmt;
 
 	/*
 	 * Taken from the Cyclone manual appendix describing
@@ -1505,26 +1505,26 @@ miir(Ether* ether, int phyad, int regad)
 	microdelay(1);
 	outs(port, mgmtClk);
 
-	COMMAND(ether->port, SelectRegisterWindow, w);
+	port -= PhysicalMgmt;
+	COMMAND(port, SelectRegisterWindow, w);
 
 	if(data & 0x10000)
 		return -1;
-print("%d/%d: data=%uX\n", phyad, regad, data);
 
 	return data & 0xFFFF;
 }
 
 static void
-scanphy(Ether* ether)
+scanphy(int port)
 {
 	int i, x;
 
 	for(i = 0; i < 32; i++){
-		if((x = miir(ether, i, 2)) == -1)
+		if((x = miir(port, i, 2)) == -1 || x == 0)
 			continue;
 		x <<= 6;
-		x |= miir(ether, i, 3)>>10;
-		XCVRDEBUG("phy%d: oui %uX reg1 %uX\n", i, x, miir(ether, i, 1));
+		x |= miir(port, i, 3)>>10;
+		XCVRDEBUG("phy%d: oui %uX reg1 %uX\n", i, x, miir(port, i, 1));
 		USED(x);
 	}
 }
@@ -1748,17 +1748,17 @@ if(did == 0x9055)
 else
 	if(xcvr & autoSelect)
 		xcvr = autoselect(port, xcvr, rxstatus9);
-	XCVRDEBUG("autoselect returns: xcvr %uX\n", xcvr);
+	XCVRDEBUG("autoselect returns: xcvr %uX, did 0x%uX\n", xcvr, did);
 	switch(xcvr){
 
 	case xcvrMii:
 		/*
 		 * Quick hack.
-		scanphy(ether);
+		scanphy(port);
 		 */
 		phyaddr = 24;
-		an = miir(ether, phyaddr, 0x04);
-		an &= miir(ether, phyaddr, 0x05) & 0x03E0;
+		an = miir(port, phyaddr, 0x04);
+		an &= miir(port, phyaddr, 0x05) & 0x03E0;
 		XCVRDEBUG("mii an: %uX\n", an);
 		for(i = 0; i < ether->nopt; i++){
 			if(cistrcmp(ether->opt[i], "fullduplex") == 0)
@@ -1869,7 +1869,6 @@ else
 		 */
 		ctlr->upenabled = 1;
 		x = eepromdata(port, 0x0F);
-		//print("software info 2: %uX\n", x);
 		if(!(x & 0x01))
 			outl(port+PktStatus, upRxEarlyEnable);
 

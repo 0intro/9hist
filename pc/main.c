@@ -542,6 +542,16 @@ procsave(Proc *p)
 			fpsave(&up->fpsave);
 		p->fpstate = FPinactive;
 	}
+
+	/*
+	 * Switch to the prototype page tables for this processor.
+	 * While this processor is in the scheduler, the process could run
+	 * on another processor and exit, returning the page tables to
+	 * the free list where they could be reallocated and overwritten.
+	 * When this processor eventually has to get an entry from the
+	 * trashed page tables it will crash.
+	 */
+	mmuflushtlb(PADDR(m->pdb));
 }
 
 void

@@ -66,6 +66,7 @@ schedinit(void)		/* never returns */
 			/*
 			 * Holding locks from pexit:
 			 * 	procalloc
+			 *	palloc
 			 */
 			mmurelease(up);
 
@@ -330,6 +331,7 @@ newproc(void)
 		panic("pidalloc");
 	if(p->kstack == 0)
 		p->kstack = smalloc(KSTACK);
+	p->nlocks = 0;
 
 	return p;
 }
@@ -812,7 +814,7 @@ pexit(char *exitstr, int freemem)
 	}
 	qunlock(&up->debug);
 
-	/* Sched must not loop for this lock */
+	/* Sched must not loop for these locks */
 	lock(&procalloc);
 	lock(&palloc);
 

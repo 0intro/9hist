@@ -154,6 +154,7 @@ lapicinit(Apic* apic)
 	lapicw(LapicSVR, LapicENABLE|VectorSPURIOUS);
 
 	clkin = lapictimerinit();
+
 	/*
 	 * Some Pentium revisions have a bug whereby spurious
 	 * interrupts are generated in the through-local mode.
@@ -165,8 +166,17 @@ lapicinit(Apic* apic)
 		wrmsr(0x0E, 1<<14);		/* TR12 */
 		break;
 	}
+
+	/*
+	 * Set the local interrupts. It's likely these should just be
+	 * masked off for SMP mode as some Pentium Pros have problems if
+	 * LINT[01] are set to ExtINT.
+	 * Acknowledge any outstanding interrupts.
 	lapicw(LapicLINT0, apic->lintr[0]);
 	lapicw(LapicLINT1, apic->lintr[1]);
+	 */
+	lapiceoi(0);
+
 	lvt = (lapicr(LapicVER)>>16) & 0xFF;
 	if(lvt >= 4)
 		lapicw(LapicPCINT, ApicIMASK);

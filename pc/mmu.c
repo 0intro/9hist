@@ -24,7 +24,7 @@ Segdesc gdt[6] =
 #define PTX(va)		((((ulong)(va))>>12) & 0x03FF)
 
 static void
-taskswitch(ulong pagetbl, ulong stack)
+taskswitch(ulong pdb, ulong stack)
 {
 	Tss *tss;
 
@@ -35,8 +35,8 @@ taskswitch(ulong pagetbl, ulong stack)
 	tss->esp1 = stack;
 	tss->ss2 = KDSEL;
 	tss->esp2 = stack;
-	tss->cr3 = pagetbl;
-	putcr3(pagetbl);
+	tss->cr3 = pdb;
+	putcr3(pdb);
 }
 
 void
@@ -81,126 +81,115 @@ flushmmu(void)
 }
 
 static void
-mmuptefree(Proc* p)
+mmuptefree(Proc* proc)
 {
 	ulong *pdb;
-	Page **lpg, *pg;
+	Page **last, *page;
 
-	if(p->mmupdb && p->mmuused){
-		pdb = (ulong*)p->mmupdb->va;
-		lpg = &p->mmuused;
-		for(pg = *lpg; pg; pg = pg->next){
-			pdb[pg->daddr] = 0;
-			lpg = &pg->next;
+	if(proc->mmupdb && proc->mmuused){
+		pdb = (ulong*)proc->mmupdb->va;
+		last = &proc->mmuused;
+		for(page = *last; page; page = page->next){
+			pdb[page->daddr] = 0;
+			last = &page->next;
 		}
-		*lpg = p->mmufree;
-		p->mmufree = p->mmuused;
-		p->mmuused = 0;
+		*last = proc->mmufree;
+		proc->mmufree = proc->mmuused;
+		proc->mmuused = 0;
 	}
 }
 
 void
-mmuswitch(Proc* p)
+mmuswitch(Proc* proc)
 {
-	ulong *top;
+	ulong *pdb;
 
-	if(p->newtlb){
-		mmuptefree(p);
-		p->newtlb = 0;
+	if(proc->newtlb){
+		mmuptefree(proc);
+		proc->newtlb = 0;
 	}
 
-	if(p->mmupdb){
-		top = (ulong*)p->mmupdb->va;
-		top[PDX(MACHADDR)] = m->pdb[PDX(MACHADDR)];
-		taskswitch(p->mmupdb->pa, (ulong)(p->kstack+KSTACK));
+	if(proc->mmupdb){
+		pdb = (ulong*)proc->mmupdb->va;
+		pdb[PDX(MACHADDR)] = m->pdb[PDX(MACHADDR)];
+		taskswitch(proc->mmupdb->pa, (ulong)(proc->kstack+KSTACK));
 	}
 	else
-		taskswitch(PADDR(m->pdb), (ulong)(p->kstack+KSTACK));
+		taskswitch(PADDR(m->pdb), (ulong)(proc->kstack+KSTACK));
 }
 
 void
-mmurelease(Proc* p)
+mmurelease(Proc* proc)
 {
-	Page *pg, *next;
+	Page *page, *next;
 
 	/*
 	 * Release any pages allocated for a page directory base or page-tables
 	 * for this process:
 	 *   switch to the prototype pdb for this processor (m->pdb);
-	 *   call mmuptefree() to place all pages used for page-tables (p->mmuused)
-	 *   onto the process' free list (p->mmufree). This has the side-effect of
-	 *   cleaning any user entries in the pdb (p->mmupdb);
+	 *   call mmuptefree() to place all pages used for page-tables (proc->mmuused)
+	 *   onto the process' free list (proc->mmufree). This has the side-effect of
+	 *   cleaning any user entries in the pdb (proc->mmupdb);
 	 *   if there's a pdb put it in the cache of pre-initialised pdb's
 	 *   for this processor (m->pdbpool) or on the process' free list;
 	 *   finally, place any pages freed back into the free pool (palloc).
 	 * This routine is only called from sched() with palloc locked.
 	 */
 	taskswitch(PADDR(m->pdb), (ulong)m + BY2PG);
-	mmuptefree(p);
+	mmuptefree(proc);
 
-	if(p->mmupdb){
+	if(proc->mmupdb){
 		if(m->pdbcnt > 10){
-			p->mmupdb->next = p->mmufree;
-			p->mmufree = p->mmupdb;
+			proc->mmupdb->next = proc->mmufree;
+			proc->mmufree = proc->mmupdb;
 		}
 		else{
-			p->mmupdb->next = m->pdbpool;
-			m->pdbpool = p->mmupdb;
+			proc->mmupdb->next = m->pdbpool;
+			m->pdbpool = proc->mmupdb;
 			m->pdbcnt++;
 		}
-		p->mmupdb = 0;
+		proc->mmupdb = 0;
 	}
 
-	for(pg = p->mmufree; pg; pg = next){
-		next = pg->next;
-		if(--pg->ref)
-			panic("mmurelease: pg->ref %d\n", pg->ref);
-		pg->ref = 0;
-		if(palloc.head){
-			pg->next = palloc.head;
-			palloc.head->prev = pg;
-		}
-		else{
-			palloc.tail = pg;
-			pg->next = 0;
-		}
-		palloc.head = pg;
-		pg->prev = 0;
-
-		palloc.freecount++;
+	for(page = proc->mmufree; page; page = next){
+		next = page->next;
+		if(--page->ref)
+			panic("mmurelease: page->ref %d\n", page->ref);
+		pagechainhead(page);
 	}
-	if(p->mmufree && palloc.r.p)
+	if(proc->mmufree && palloc.r.p)
 		wakeup(&palloc.r);
-	p->mmufree = 0;
+	proc->mmufree = 0;
 }
 
 static Page*
 mmupdballoc(void)
 {
 	int s;
-	Page *pg;
+	Page *page;
 
 	s = splhi();
 	if(m->pdbpool == 0){
 		spllo();
-		pg = newpage(0, 0, 0);
-		pg->va = VA(kmap(pg));
-		memmove((void*)pg->va, m->pdb, BY2PG);
+		page = newpage(0, 0, 0);
+		page->va = VA(kmap(page));
+		memmove((void*)page->va, m->pdb, BY2PG);
 	}
 	else{
-		pg = m->pdbpool;
-		m->pdbpool = pg->next;
+		page = m->pdbpool;
+		m->pdbpool = page->next;
 		m->pdbcnt--;
 	}
 	splx(s);
-	return pg;
+	return page;
 }
 
 void
-putmmu(ulong va, ulong pa, Page* pg)
+putmmu(ulong va, ulong pa, Page*)
 {
 	int pdbx;
-	ulong *pdb, *pt;
+	Page *page;
+	ulong *pdb, *pte;
 	int s;
 
 	if(up->mmupdb == 0)
@@ -210,22 +199,22 @@ putmmu(ulong va, ulong pa, Page* pg)
 
 	if(PPN(pdb[pdbx]) == 0){
 		if(up->mmufree == 0){
-			pg = newpage(1, 0, 0);
-			pg->va = VA(kmap(pg));
+			page = newpage(1, 0, 0);
+			page->va = VA(kmap(page));
 		}
 		else {
-			pg = up->mmufree;
-			up->mmufree = pg->next;
-			memset((void*)pg->va, 0, BY2PG);
+			page = up->mmufree;
+			up->mmufree = page->next;
+			memset((void*)page->va, 0, BY2PG);
 		}
-		pdb[pdbx] = PPN(pg->pa)|PTEUSER|PTEWRITE|PTEVALID;
-		pg->daddr = pdbx;
-		pg->next = up->mmuused;
-		up->mmuused = pg;
+		pdb[pdbx] = PPN(page->pa)|PTEUSER|PTEWRITE|PTEVALID;
+		page->daddr = pdbx;
+		page->next = up->mmuused;
+		up->mmuused = page;
 	}
 
-	pt = KADDR(PPN(pdb[pdbx]));
-	pt[PTX(va)] = pa|PTEUSER;
+	pte = KADDR(PPN(pdb[pdbx]));
+	pte[PTX(va)] = pa|PTEUSER;
 
 	s = splhi();
 	pdb[PDX(MACHADDR)] = m->pdb[PDX(MACHADDR)];

@@ -29,6 +29,7 @@ lock(Lock *l)
 		l->p = up;
 		l->isilock = 0;
 		if(up){
+			up->nlocks++;
 			l->pri = up->priority;
 			up->priority = PriLock;
 		}
@@ -56,6 +57,7 @@ lock(Lock *l)
 			l->p = up;
 			l->isilock = 0;
 			if(up){
+				up->nlocks++;
 				l->pri = up->priority;
 				up->priority = PriLock;
 			}
@@ -74,6 +76,8 @@ ilock(Lock *l)
 
 	x = splhi();
 	if(tas(&l->key) == 0){
+		if (up)
+			up->nlocks++;
 		l->sr = x;
 		l->pc = pc;
 		l->p = up;
@@ -90,6 +94,8 @@ ilock(Lock *l)
 			;
 		x = splhi();
 		if(tas(&l->key) == 0){
+			if (up)
+			 up->nlocks++;
 			l->sr = x;
 			l->pc = pc;
 			l->p = up;
@@ -109,6 +115,7 @@ canlock(Lock *l)
 	l->p = up;
 	l->isilock = 0;
 	if(up){
+		up->nlocks++;
 		l->pri = up->priority;
 		up->priority = PriLock;
 	}
@@ -119,6 +126,9 @@ void
 unlock(Lock *l)
 {
 	int p;
+	ulong pc;
+
+	pc = getcallerpc(l);
 
 	p = l->pri;
 	if(l->key == 0)
@@ -127,8 +137,18 @@ unlock(Lock *l)
 		print("iunlock of lock: pc %lux, held by %lux\n", getcallerpc(l), l->pc);
 	l->pc = 0;
 	l->key = 0;
-	if(up && p < up->priority)
-		up->priority = p;
+	if(up) {
+		if (up != l->p) {
+			print("different unlocker 0x%lux pc 0x%lux held by pc 0x%lux proc %d\n",
+				l->key, pc, l->pc, l->p ? l->p->pid : 0);
+			dumpaproc(up);
+		}
+		if (--up->nlocks < 0)
+			print("number of locks < 0: pc %lux, held by %lux\n",
+				getcallerpc(l), l->pc);
+		if (p < up->priority)
+			up->priority = p;
+	}
 	coherence();
 }
 
@@ -145,6 +165,11 @@ iunlock(Lock *l)
 	sr = l->sr;
 	l->pc = 0;
 	l->key = 0;
+	if(up) {
+		if (--up->nlocks < 0)
+			print("number of locks < 0: pc %lux, held by %lux\n",
+				getcallerpc(l), l->pc);
+	}
 	splx(sr);
 	coherence();
 }

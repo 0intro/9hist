@@ -171,6 +171,7 @@ trap(Ureg* ureg)
 			sched();
 			splhi();
 			up->preempted = 0;
+			return;
 		}
 	}
 	else if(v <= 16 && user){
@@ -417,6 +418,10 @@ syscall(Ureg* ureg)
 	if(scallnr!=RFORK && (up->procctl || up->nnote)){
 		splhi();
 		notify(ureg);
+	}
+	if (up->nlocks != 0) {
+		print("nlock = %d\n", up->nlocks);
+		up->nlocks = 0;
 	}
 }
 

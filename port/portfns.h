@@ -170,6 +170,7 @@ int		nrand(int);
 int		okaddr(ulong, ulong, int);
 int		openmode(ulong);
 Block*		padblock(Block*, int);
+void		pagechainhead(Page*);
 void		pageinit(void);
 void		panic(char*, ...);
 int		parseether(uchar*, char*);

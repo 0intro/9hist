@@ -19,7 +19,7 @@ static ulong consumecnt;
 static ulong producecnt;
 static ulong qcopycnt;
 
-static int debuging;
+static int debugging;
 
 #define QDEBUG	if(0)
 
@@ -62,15 +62,24 @@ enum
 	Qflow		= (1<<3),
 
 	Hdrspc		= 64,		/* leave room for high-level headers */
+
+	Bdead		= 0x51494F42,	/* "QIOB" */
 };
 
 void
 checkb(Block *b, char *msg)
 {
-	void *dead = (void*)0xDEADBABE;
+	void *dead = (void*)Bdead;
 
 	if(b == dead)
 		panic("checkb b %s %lux", msg, b);
+	if(b->base == dead || b->lim == dead || b->next == dead
+	  || b->rp == dead || b->wp == dead){
+		print("checkb: base 0x%8.8luX lim 0x%8.8luX next 0x%8.8luX\n",
+			b->base, b->lim, b->next);
+		print("checkb: rp 0x%8.8luX wp 0x%8.8luX\n", b->rp, b->wp);
+		panic("checkb dead: %s\n", msg);
+	}
 
 	if(b->base > b->lim)
 		panic("checkb 0 %s %lux %lux", msg, b->base, b->lim);
@@ -83,20 +92,13 @@ checkb(Block *b, char *msg)
 	if(b->wp > b->lim)
 		panic("checkb 4 %s %lux %lux", msg, b->wp, b->lim);
 
-	if(b->base == dead || b->lim == dead || b->next == dead
-	  || b->rp == dead || b->wp == dead){
-		print("checkb: base 0x%8.8luX lim 0x%8.8luX next 0x%8.8luX\n",
-			b->base, b->lim, b->next);
-		print("checkb: rp 0x%8.8luX wp 0x%8.8luX\n", b->rp, b->wp);
-		panic("checkb dead: %s\n", msg);
-	}
 }
 
 void
 ixsummary(void)
 {
-	debuging ^= 1;
-	print("ialloc %d/%d %d\n", ialloc.bytes, conf.ialloc, debuging);
+	debugging ^= 1;
+	print("ialloc %d/%d %d\n", ialloc.bytes, conf.ialloc, debugging);
 	print("pad %lud, concat %lud, pullup %lud, copy %lud\n",
 		padblockcnt, concatblockcnt, pullupblockcnt, copyblockcnt);
 	print("consume %lud, produce %lud, qcopy %lud\n",
@@ -177,6 +179,8 @@ iallocb(int size)
 void
 freeb(Block *b)
 {
+	void *dead = (void*)Bdead;
+
 	/*
 	 * drivers which perform non cache coherent DMA manage their own buffer
 	 * pool of uncached buffers and provide their own free routine.
@@ -192,11 +196,11 @@ freeb(Block *b)
 	}
 
 	/* poison the block in case someone is still holding onto it */
-	b->next = (void*)0xdeadbabe;
-	b->rp = (void*)0xdeadbabe;
-	b->wp = (void*)0xdeadbabe;
-	b->lim = (void*)0xdeadbabe;
-	b->base = (void*)0xdeadbabe;
+	b->next = dead;
+	b->rp = dead;
+	b->wp = dead;
+	b->lim = dead;
+	b->base = dead;
 
 	free(b);
 }
@@ -225,12 +229,15 @@ padblock(Block *bp, int size)
 	int n;
 	Block *nbp;
 
+	QDEBUG checkb(bp, "padblock 1");
 	if(size >= 0){
 		if(bp->rp - bp->base >= size){
 			bp->rp -= size;
 			return bp;
 		}
 
+		if(bp->next)
+			panic("padblock 0x%uX", getcallerpc(bp));
 		n = BLEN(bp);
 		padblockcnt++;
 		nbp = allocb(size+n);
@@ -246,6 +253,8 @@ padblock(Block *bp, int size)
 		if(bp->lim - bp->wp >= size)
 			return bp;
 
+		if(bp->next)
+			panic("padblock 0x%uX", getcallerpc(bp));
 		n = BLEN(bp);
 		padblockcnt++;
 		nbp = allocb(size+n);
@@ -253,6 +262,7 @@ padblock(Block *bp, int size)
 		nbp->wp += n;
 		freeb(bp);
 	}
+	QDEBUG checkb(nbp, "padblock 1");
 	return nbp;
 }
 
@@ -293,6 +303,7 @@ concatblock(Block *bp)
 	}
 	concatblockcnt += BLEN(nb);
 	freeblist(bp);
+	QDEBUG checkb(nb, "concatblock 1");
 	return nb;
 }
 
@@ -333,6 +344,7 @@ pullupblock(Block *bp, int n)
 			pullupblockcnt++;
 			bp->wp += n;
 			nbp->rp += n;
+			QDEBUG checkb(bp, "pullupblock 1");
 			return bp;
 		}
 		else {
@@ -343,8 +355,10 @@ pullupblock(Block *bp, int n)
 			nbp->next = 0;
 			freeb(nbp);
 			n -= i;
-			if(n == 0)
+			if(n == 0){
+				QDEBUG checkb(bp, "pullupblock 2");
 				return bp;
+			}
 		}
 	}
 	freeb(bp);
@@ -360,6 +374,7 @@ trimblock(Block *bp, int offset, int len)
 	ulong l;
 	Block *nb, *startb;
 
+	QDEBUG checkb(bp, "trimblock 1");
 	if(blocklen(bp) < offset+len) {
 		freeblist(bp);
 		return nil;
@@ -400,6 +415,7 @@ copyblock(Block *bp, int count)
 	int l;
 	Block *nbp;
 
+	QDEBUG checkb(bp, "copyblock 0");
 	nbp = allocb(count);
 	for(; count > 0 && bp != 0; bp = bp->next){
 		l = BLEN(bp);
@@ -414,6 +430,7 @@ copyblock(Block *bp, int count)
 		nbp->wp += count;
 	}
 	copyblockcnt++;
+	QDEBUG checkb(nbp, "copyblock 1");
 
 	return nbp;
 }
@@ -432,6 +449,7 @@ adjustblock(Block* bp, int len)
 	if(bp->rp+len > bp->lim){
 		nbp = copyblock(bp, len);
 		freeblist(bp);
+		QDEBUG checkb(nbp, "adjustblock 1");
 
 		return nbp;
 	}
@@ -440,6 +458,7 @@ adjustblock(Block* bp, int len)
 	if(len > n)
 		memset(bp->wp, 0, len-n);
 	bp->wp = bp->rp+len;
+	QDEBUG checkb(bp, "adjustblock 2");
 
 	return bp;
 }
@@ -468,6 +487,7 @@ pullblock(Block **bph, int count)
 		bytes += n;
 		count -= n;
 		bp->rp += n;
+		QDEBUG checkb(bp, "pullblock ");
 		if(BLEN(bp) == 0) {
 			*bph = bp->next;
 			bp->next = nil;
@@ -498,6 +518,7 @@ qget(Queue *q)
 	q->bfirst = b->next;
 	b->next = 0;
 	q->len -= BLEN(b);
+	QDEBUG checkb(b, "qget");
 
 	/* if writer flow controlled, restart */
 	if((q->state & Qflow) && q->len < q->limit/2){
@@ -528,6 +549,7 @@ qdiscard(Queue *q, int len)
 		b = q->bfirst;
 		if(b == nil)
 			break;
+		QDEBUG checkb(b, "qdiscard");
 		n = BLEN(b);
 		if(n <= len - sofar){
 			q->bfirst = b->next;
@@ -732,6 +754,7 @@ qcopy(Queue *q, int len, ulong offset)
 			n -= offset - sofar;
 			break;
 		}
+		QDEBUG checkb(b, "qcopy");
 		b = b->next;
 	}
 
@@ -952,6 +975,7 @@ qbwrite(Queue *q, Block *b)
 	q->blast = b;
 	b->next = 0;
 	q->len += n;
+	QDEBUG checkb(b, "qbwrite");
 
 	if(q->state & Qstarve){
 		q->state &= ~Qstarve;

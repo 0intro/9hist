@@ -13,9 +13,9 @@ typedef struct Pcidev	Pcidev;
 typedef struct PCMmap	PCMmap;
 typedef struct Page	Page;
 typedef struct PMMU	PMMU;
+typedef struct Proc	Proc;
 typedef struct Segdesc	Segdesc;
 typedef struct Ureg	Ureg;
-typedef struct Proc	Proc;
 
 /*
  *  parameters for sysproc.c

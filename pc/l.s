@@ -142,6 +142,7 @@ _clearbss:
  */
 TEXT idle(SB), $0
 _idle:
+	STI
 	HLT
 	JMP	_idle
 
