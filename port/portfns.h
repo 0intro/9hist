@@ -81,7 +81,6 @@ void		freechan(Chan*);
 void		freepte(Segment*, Pte*);
 void		freesegs(int);
 void		freesession(Session*);
-void		getcolor(ulong, ulong*, ulong*, ulong*);
 int		getfields(char*, char**, int, char);
 void		gotolabel(Label*);
 int		haswaitq(void*);

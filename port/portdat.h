@@ -306,6 +306,7 @@ struct Page
 	ulong	daddr;			/* Disc address on swap */
 	ushort	ref;			/* Reference count */
 	char	modref;			/* Simulated modify/reference bits */
+	char	color;			/* Cache coloring */
 	char	cachectl[MAXMACH];	/* Cache flushing control for putmmu */
 	Image	*image;			/* Associated text or swap image */
 	Page	*next;			/* Lru free list */
@@ -454,7 +455,8 @@ struct Palloc
 	ulong	np0, np1;		/* number of pages in bank 0/1 */
 	Page	*head;			/* most recently used */
 	Page	*tail;			/* least recently used */
-	ulong	freecount;		/* how many pages on free list now */
+	ulong	freecount;
+	ulong	freecol[NCOLOR];	/* how many pages on free list now */
 	ulong	user;			/* how many user pages */
 	Page	*hash[PGHSIZE];
 	Lock	hashlock;

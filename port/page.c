@@ -13,19 +13,24 @@ struct	Palloc palloc;
 void
 pageinit(void)
 {
+	int color;
 	Page *p;
-	ulong np, vmem, pmem;
+	ulong np, vm, pm;
 
 	np = palloc.np0+palloc.np1;
 	palloc.head = xalloc(np*sizeof(Page));
 	if(palloc.head == 0)
 		panic("pageinit");
 
+	color = 0;
 	p = palloc.head;
 	while(palloc.np0 > 0) {
 		p->prev = p-1;
 		p->next = p+1;
 		p->pa = palloc.p0;
+		p->color = color;
+		palloc.freecol[color]++;
+		color = (color+1)%NCOLOR;
 		palloc.p0 += BY2PG;
 		palloc.np0--;
 		p++;
@@ -34,6 +39,9 @@ pageinit(void)
 		p->prev = p-1;
 		p->next = p+1;
 		p->pa = palloc.p1;
+		p->color = color;
+		palloc.freecol[color]++;
+		color = (color+1)%NCOLOR;
 		palloc.p1 += BY2PG;
 		palloc.np1--;
 		p++;
@@ -43,15 +51,14 @@ pageinit(void)
 	palloc.tail->next = 0;
 
 	palloc.user = p - palloc.head;
-	palloc.freecount = palloc.user;
-	pmem = palloc.user*BY2PG/1024;
-	vmem = pmem + (conf.nswap*BY2PG)/1024;
+	pm = palloc.user*BY2PG/1024;
+	vm = pm + (conf.nswap*BY2PG)/1024;
 
 	/* Pageing numbers */
-	swapalloc.highwater = (palloc.freecount*5)/100;
+	swapalloc.highwater = (palloc.user*5)/100;
 	swapalloc.headroom = swapalloc.highwater + (swapalloc.highwater/4);
 
-	print("%lud free pages\n%dK bytes\n%dK swap\n", palloc.user, pmem, vmem);
+	print("%lud free pages\n%dK bytes\n%dK swap\n", palloc.user, pm, vm);
 }
 
 Page*
@@ -59,14 +66,19 @@ newpage(int clear, Segment **s, ulong va)
 {
 	Page *p;
 	KMap *k;
-	int i, hw, dontalloc, fc;
+	int i, hw, dontalloc, color;
 
 retry:
 	lock(&palloc);
 
+	color = getcolor(va);
 	hw = swapalloc.highwater;
-	fc = palloc.freecount;
-	while((fc < hw && up->kp == 0) || fc == 0) {
+	for(;;) {
+		if(palloc.freecol[color] > hw)
+			break;
+		if(up->kp && palloc.freecol[color] > 0)
+			break;
+
 		palloc.wanted++;
 		unlock(&palloc);
 		dontalloc = 0;
@@ -75,7 +87,7 @@ retry:
 			*s = 0;
 			dontalloc = 1;
 		}
-		qlock(&palloc.pwait);	/* Hold memory requesters here */
+		qlock(&palloc.pwait);	 /* Hold memory requesters here */
 
 		while(waserror())	/* Ignore interrupts */
 			;
@@ -100,13 +112,26 @@ retry:
 		palloc.wanted--;
 	}
 
-	p = palloc.head;
-	if(palloc.head = p->next)		/* = Assign */
-		palloc.head->prev = 0;
+	for(p = palloc.head; p; p = p->next)
+		if(p->color == color)
+			break;
+
+	if(p == 0)
+		panic("newpage");
+
+	if(p->prev) 
+		p->prev->next = p->next;
 	else
-		palloc.tail = 0;
+		palloc.head = p->next;
+
+	if(p->next)
+		p->next->prev = p->prev;
+	else
+		palloc.tail = p->prev;
+
 
 	palloc.freecount--;
+	palloc.freecol[color]--;
 	unlock(&palloc);
 
 	lock(p);
@@ -158,7 +183,6 @@ putpage(Page *p)
 		return;
 	}
 
-	vcacheinval(p, p->va);
 	lock(&palloc);
 	if(p->image && p->image != &swapimage) {
 		if(palloc.tail) {
@@ -186,6 +210,10 @@ putpage(Page *p)
 	}
 
 	palloc.freecount++;	/* Release people waiting for memory */
+	palloc.freecol[p->color]++;
+	if(palloc.r.p != 0)
+		wakeup(&palloc.r);
+
 	unlock(&palloc);
 	unlock(p);
 }
@@ -194,6 +222,7 @@ void
 duppage(Page *p)				/* Always call with p locked */
 {
 	Page *np;
+	int color;
 
 	/* No dup for swap pages */
 	if(p->image == &swapimage) {
@@ -209,11 +238,27 @@ duppage(Page *p)				/* Always call with p locked */
 		return;
 	}
 
-	np = palloc.head;		/* Allocate a new page from freelist */
-	if(palloc.head = np->next)	/* = Assign */
-		palloc.head->prev = 0;
+	color = getcolor(p->va);
+	for(np = palloc.head; np; np = np->next)
+		if(np->color == color)
+			break;
+
+	/* No page of the correct color */
+	if(np == 0) {
+		unlock(&palloc);
+		uncachepage(p);	
+		return;
+	}
+
+	if(np->prev) 
+		np->prev->next = np->next;
 	else
-		palloc.tail = 0;
+		palloc.head = np->next;
+
+	if(np->next)
+		np->next->prev = np->prev;
+	else
+		palloc.tail = np->prev;
 
 	if(palloc.tail) {		/* Link back onto tail to give us lru */
 		np->prev = palloc.tail;
@@ -349,6 +394,7 @@ lookpage(Image *i, ulong daddr)
 				else
 					palloc.tail = f->prev;
 				palloc.freecount--;
+				palloc.freecol[f->color]--;
 			}
 			unlock(&palloc);
 
