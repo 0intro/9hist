@@ -7,18 +7,20 @@
 #include	"devtab.h"
 #include	"io.h"
 
+#define DATASIZE	(8*1024)
+
 typedef struct Partition	Partition;
 typedef struct Drive		Drive;
 
 enum {
 	Npart=		8+2,	/* 8 sub partitions, disk, and partition */
-	Ndisk=		64,	/* maximum disks */
+	Ndisk=		64,	/* maximum disks; must be power of 2 or change DRIVE */
 
 	/* file types */
 	Qdir=		0,
 };
 #define PART(x)		((x)&0xF)
-#define DRIVE(x)	(((x)>>4)&0x7)
+#define DRIVE(x)	(((x)>>4)&(Ndisk-1))
 #define MKQID(d,p)	(((d)<<4) | (p))
 
 struct Partition
@@ -37,8 +39,6 @@ struct Drive
 };
 
 static Drive	wren[Ndisk];
-
-#define	DATASIZE	(8*1024)	/* BUG */
 
 static void	wrenpart(int);
 static long	wrenio(Drive *, Partition *, int, char *, ulong, ulong);
@@ -86,17 +86,19 @@ wrengen(Chan *c, Dirtab *tab, long ntab, long s, Dir *dirp)
 	ulong l;
 
 	qid.vers = 0;
-	drive = s/Npart;
-	s = s % Npart;
+	drive = c->dev;
 	if(drive >= Ndisk)
 		return -1;
 	dp = &wren[drive];
 
 	if(s >= dp->npart)
-		return 0;
+		return -1;
 
 	pp = &dp->p[s];
-	sprint(name, "hd%d%s", drive, pp->name);
+	if(drive & 7)
+		sprint(name, "hd%d.%d%s", drive>>3, drive&7, pp->name);
+	else
+		sprint(name, "hd%d%s", drive>>3, pp->name);
 	name[NAMELEN] = 0;
 	qid.path = MKQID(drive, s);
 	l = (pp->end - pp->start) * dp->bytes;
@@ -188,6 +190,8 @@ wrenread(Chan *c, char *a, long n, ulong offset)
 		return devdirread(c, a, n, 0, 0, wrengen);
 
 	d = &wren[DRIVE(c->qid.path)];
+	if(d->npart == 0)
+		errors("bad drive");
 	p = &d->p[PART(c->qid.path)];
 	return wrenio(d, p, 0, a, n, offset);
 }
@@ -199,6 +203,8 @@ wrenwrite(Chan *c, char *a, long n, ulong offset)
 	Partition *p;
 
 	d = &wren[DRIVE(c->qid.path)];
+	if(d->npart == 0)
+		errors("bad drive");
 	p = &d->p[PART(c->qid.path)];
 	return wrenio(d, p, 1, a, n, offset);
 }
@@ -206,8 +212,7 @@ wrenwrite(Chan *c, char *a, long n, ulong offset)
 static long
 wrenio(Drive *d, Partition *p, int write, char *a, ulong n, ulong offset)
 {
-	Scsi *cmd;
-	void *b;
+	Scsibuf *b;
 	ulong block;
 
 	if(n % d->bytes || offset % d->bytes)
@@ -222,26 +227,20 @@ wrenio(Drive *d, Partition *p, int write, char *a, ulong n, ulong offset)
 		n = p->end - block;
 	if(n == 0)
 		return 0;
-	if(write)
-		cmd = scsicmd(d->drive, 0x0a, n*d->bytes);
-	else
-		cmd = scsicmd(d->drive, 0x08, n*d->bytes);
+	b = scsibuf();
 	if(waserror()){
-		qunlock(cmd);
+		scsifree(b);
 		nexterror();
 	}
-	cmd->cmdblk[1] = block>>16;
-	cmd->cmdblk[2] = block>>8;
-	cmd->cmdblk[3] = block;
-	cmd->cmdblk[4] = n;
-	if(write)
-		memmove(cmd->data.base, a, n*d->bytes);
-	scsiexec(cmd, !write);
-	n = cmd->data.ptr - cmd->data.base;
-	if(!write)
-		memmove(a, cmd->data.base, n);
-	qunlock(cmd);
+	if(write){
+		memmove(b->virt, a, n*d->bytes);
+		n = scsibwrite(d->drive, b, n, d->bytes, block);
+	}else{
+		n = scsibread(d->drive, b, n, d->bytes, block);
+		memmove(a, b->virt, n);
+	}
 	poperror();
+	scsifree(b);
 	return n;
 }
 
@@ -252,13 +251,11 @@ wrenio(Drive *d, Partition *p, int write, char *a, ulong n, ulong offset)
 static void
 wrenpart(int dev)
 {
-	Scsi *cmd;
 	Drive *dp;
 	Partition *pp;
 	uchar buf[32];
-	char *b;
-	char *line[Npart+1];
-	char *field[3];
+	Scsibuf *b;
+	char *rawpart, *line[Npart+1], *field[3];
 	ulong n;
 	int i;
 
@@ -267,8 +264,7 @@ wrenpart(int dev)
 	scsicap(dev, buf);
 	dp = &wren[dev];
 	dp->drive = dev;
-	if(dp->npart)
-		return;
+
 	/*
 	 *  we always have a partition for the whole disk
 	 *  and one for the partition table
@@ -287,39 +283,34 @@ wrenpart(int dev)
 	/*
 	 *  read partition table from disk, null terminate
 	 */
-	cmd = scsicmd(dev, 0x08, dp->bytes);
+	b = scsibuf();
 	if(waserror()){
-		qunlock(cmd);
+		scsifree(b);
 		nexterror();
 	}
-	n = dp->p[0].end-1;
-	cmd->cmdblk[1] = n>>16;
-	cmd->cmdblk[2] = n>>8;
-	cmd->cmdblk[3] = n;
-	cmd->cmdblk[4] = 1;
-	scsiexec(cmd, 1);
-	cmd->data.base[dp->bytes-1] = 0;
+	scsibread(dev, b, 1, dp->bytes, dp->p[0].end-1);
+	rawpart = b->virt;
+	rawpart[dp->bytes-1] = 0;
 
 	/*
 	 *  parse partition table.
 	 */
-	n = getfields((char *)cmd->data.base, line, Npart+1, '\n');
-	if(strncmp(line[0], MAGIC, sizeof(MAGIC)-1) != 0)
-		goto out;
-	for(i = 1; i < n; i++){
-		pp++;
-		if(getfields(line[i], field, 3, ' ') != 3){
-			break;
+	n = getfields(rawpart, line, Npart+1, '\n');
+	if(strncmp(line[0], MAGIC, sizeof(MAGIC)-1) == 0){
+		for(i = 1; i < n; i++){
+			pp++;
+			if(getfields(line[i], field, 3, ' ') != 3){
+				break;
+			}
+			strncpy(pp->name, field[0], NAMELEN);
+			pp->start = strtoul(field[1], 0, 0);
+			pp->end = strtoul(field[2], 0, 0);
+			if(pp->start > pp->end || pp->start >= dp->p[0].end){
+				break;
+			}
+			dp->npart++;
 		}
-		strncpy(pp->name, field[0], NAMELEN);
-		pp->start = strtoul(field[1], 0, 0);
-		pp->end = strtoul(field[2], 0, 0);
-		if(pp->start > pp->end || pp->start >= dp->p[0].end){
-			break;
-		}
-		dp->npart++;
 	}
-out:
-	qunlock(cmd);
 	poperror();
+	scsifree(b);
 }

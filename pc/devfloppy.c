@@ -420,6 +420,7 @@ floppywrite(Chan *c, void *a, long n)
 	long rv, i;
 	char *aa = a;
 	int dev;
+extern void vgaset(char*);
 
 	rv = 0;
 	dp = &fl.d[c->qid.path & ~Qmask];
@@ -452,6 +453,8 @@ floppywrite(Chan *c, void *a, long n)
 		} else if(SNCMP(aa, "reset") == 0){
 			fl.confused = 1;
 			floppyon(dp);
+		} else if(SNCMP(aa, "v") == 0){
+			vgaset(aa+1);
 		}
 		qunlock(&fl);
 		break;

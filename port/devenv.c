@@ -543,3 +543,18 @@ dumpenv(void)
 			i += ev->n*sizeof(Envval);
 	print(" %d free enval chars\n", i+((char *)envalloc.end-(char*)envalloc.vfree));
 }
+
+/*
+ *  to let the kernel set environment variables
+ */
+void
+ksetenv(char *ename, char *eval)
+{
+	Chan *c;
+	char buf[2*NAMELEN];
+
+	sprint(buf, "#e/%s", ename);
+	c = namec(buf, Acreate, OWRITE, 0600);
+	(*devtab[c->type].write)(c, eval, strlen(eval), 0);
+	close(c);
+}

@@ -111,12 +111,8 @@ init0(void)
 	u->dot = clone(u->slash, 0);
 
 	if(!waserror()){
-		c = namec("#e/terminal", Acreate, OWRITE, 0600);
-		(*devtab[c->type].write)(c, "sun sparc slc", strlen("sun sparc slc"), 0);
-		close(c);
-		c = namec("#e/cputype", Acreate, OWRITE, 0600);
-		(*devtab[c->type].write)(c, "sparc", strlen("sparc"), 0);
-		close(c);
+		ksetenv("terminal", "sun sparc slc");
+		ksetenv("cputype", "sparc");
 		poperror();
 	}
 

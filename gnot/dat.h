@@ -9,8 +9,7 @@ typedef struct MMUCache	MMUCache;
 typedef struct Mach	Mach;
 typedef struct PMMU	PMMU;
 typedef struct Portpage	Portpage;
-typedef struct Scsi	Scsi;
-typedef struct Scsidata	Scsidata;
+typedef struct Scsibuf	Scsibuf;
 typedef struct Ureg	Ureg;
 typedef struct User	User;
 
@@ -177,27 +176,11 @@ extern Portpage portpage;
 extern int	portispaged;
 extern int	(*portservice[])(void);
 
-/*
- *  for SCSI bus
- */
-struct Scsidata
+struct Scsibuf
 {
-	uchar *	base;
-	uchar *	lim;
-	uchar *	ptr;
-};
-
-struct Scsi
-{
-	QLock;
-	ulong	pid;
-	ushort	target, lun;
-	ushort	rflag;
-	ushort	status;
-	Scsidata cmd;
-	Scsidata data;
-	uchar *	save;
-	uchar	cmdblk[16];
+	void	*virt;
+	void	*phys;
+	Scsibuf	*next;
 };
 
 #define	NERR	25

@@ -7,12 +7,63 @@
 #include	"devtab.h"
 #include	"io.h"
 
-int	scsiintr(void);
-
 #define	DPRINT	if(debug)kprint
 
-enum {
-	Qdir, Qcmd, Qdata, Qdebug,
+typedef struct Scsi	Scsi;
+typedef struct Scsidata	Scsidata;
+
+#define Nbuf	4
+#define DATASIZE (8*1024)
+enum
+{
+	ScsiTestunit	= 0x00,
+	ScsiExtsens	= 0x03,
+	ScsiGetcap	= 0x25,
+	ScsiRead	= 0x08,
+	ScsiWrite	= 0x0a,
+
+	/*
+	 * data direction
+	 */
+	ScsiIn		= 1,
+	ScsiOut		= 0,
+};
+
+struct Scsidata
+{
+	uchar	*base;
+	uchar	*lim;
+	uchar	*ptr;
+};
+
+struct Scsi
+{
+	QLock;
+	ulong	pid;
+	ushort	target;
+	ushort	lun;
+	ushort	rflag;
+	ushort	status;
+	Scsidata cmd;
+	Scsidata data;
+	Scsibuf	*b;
+	uchar	*save;
+	uchar	cmdblk[16];
+};
+
+struct{
+	Lock;
+	Scsibuf	*free;
+}scsibufalloc;
+
+static Scsi	staticcmd;	/* BUG: should be one per scsi device */
+
+enum
+{
+	Qdir,
+	Qcmd,
+	Qdata,
+	Qdebug,
 };
 
 static Dirtab scsidir[]={
@@ -20,22 +71,13 @@ static Dirtab scsidir[]={
 	"data",		{Qdata},	0,	0600,
 	"debug",	{Qdebug},	1,	0600,
 };
-
 #define	NSCSI	(sizeof scsidir/sizeof(Dirtab))
 
-static Scsi	staticcmd;	/* BUG */
-#define	DATASIZE	(8*1024)
-static uchar	datablk[DATASIZE];	/* BUG */
-
 static int	debugs[8];
-static int	isscsi;
 static int	ownid = 0x08|7; /* enable advanced features */
 
-void *
-dmaalloc(ulong n)
-{
-	return ialloc(n, 0);
-}
+int	scsiexec(Scsi*, int);
+int	scsiintr(void);
 
 static int
 scsigen1(Chan *c, long qid, Dir *dp)
@@ -75,12 +117,6 @@ scsigen(Chan *c, Dirtab *tab, long ntab, long s, Dir *dp)
 	if (s >= NSCSI)
 		return -1;
 	return scsigen1(c, (c->qid.path&~CHDIR)+s+1, dp);
-}
-
-void
-scsireset(void)
-{
-	addportintr(scsiintr);
 }
 
 Chan *
@@ -138,7 +174,8 @@ long
 scsiread(Chan *c, char *a, long n, ulong offset)
 {
 	Scsi *cmd = &staticcmd;
-	if (n == 0)
+
+	if(n == 0)
 		return 0;
 	if(c->qid.path & CHDIR)
 		return devdirread(c, a, n, 0, 0, scsigen);
@@ -149,9 +186,9 @@ scsiread(Chan *c, char *a, long n, ulong offset)
 			n = 1;
 		}else
 			n = 0;
-	}else switch((int)(c->qid.path & 0xf)){
+	}else switch(c->qid.path & 0xf){
 	case Qcmd:
-		if (n < 4)
+		if(n < 4)
 			error(Ebadarg);
 		if(canqlock(cmd)){
 			qunlock(cmd);
@@ -160,8 +197,10 @@ scsiread(Chan *c, char *a, long n, ulong offset)
 		if(cmd->pid != u->p->pid)
 			error(Egreg);
 		n = 4;
-		*a++ = 0; *a++ = 0;
-		*a++ = cmd->status>>8; *a = cmd->status;
+		*a++ = 0;
+		*a++ = 0;
+		*a++ = cmd->status >> 8;
+		*a = cmd->status;
 		cmd->pid = 0;
 		qunlock(cmd);
 		break;
@@ -174,19 +213,26 @@ scsiread(Chan *c, char *a, long n, ulong offset)
 			error(Egreg);
 		if (n > DATASIZE)
 			error(Ebadarg);
-		cmd->data.base = datablk;
+		cmd->b = scsibuf();
+		cmd->data.base = cmd->b->virt;
+		if(waserror()){
+			scsifree(cmd->b);
+			nexterror();
+		}
 		cmd->data.lim = cmd->data.base + n;
 		cmd->data.ptr = cmd->data.base;
 		cmd->save = cmd->data.base;
-		scsiexec(cmd, 1);
+		scsiexec(cmd, ScsiIn);
 		n = cmd->data.ptr - cmd->data.base;
 		memmove(a, cmd->data.base, n);
+		poperror();
+		scsifree(cmd->b);
 		break;
 	case Qdebug:
-		if (offset == 0) {
+		if(offset == 0){
 			n=1;
 			*a="01"[debugs[(c->qid.path>>4)&7]!=0];
-		} else
+		}else
 			n = 0;
 		break;
 	default:
@@ -199,6 +245,7 @@ long
 scsiwrite(Chan *c, char *a, long n, ulong offset)
 {
 	Scsi *cmd = &staticcmd;
+
 	if(c->qid.path==1 && n>0){
 		if(offset == 0){
 			n = 1;
@@ -206,9 +253,9 @@ scsiwrite(Chan *c, char *a, long n, ulong offset)
 			scsireset();
 		}else
 			n = 0;
-	}else switch ((int)c->qid.path & 0xf){
+	}else switch(c->qid.path & 0xf){
 	case Qcmd:
-		if (n < 6 || n > sizeof cmd->cmdblk)
+		if(n < 6 || n > sizeof cmd->cmdblk)
 			error(Ebadarg);
 		qlock(cmd);
 		cmd->pid = u->p->pid;
@@ -229,19 +276,26 @@ scsiwrite(Chan *c, char *a, long n, ulong offset)
 			error(Egreg);
 		if (n > DATASIZE)
 			error(Ebadarg);
-		cmd->data.base = datablk;
+		cmd->b = scsibuf();
+		cmd->data.base = cmd->b->virt;
+		if(waserror()){
+			scsifree(cmd->b);
+			nexterror();
+		}
 		cmd->data.lim = cmd->data.base + n;
 		cmd->data.ptr = cmd->data.base;
 		cmd->save = cmd->data.base;
 		memmove(cmd->data.base, a, n);
-		scsiexec(cmd, 0);
+		scsiexec(cmd, ScsiOut);
 		n = cmd->data.ptr - cmd->data.base;
+		poperror();
+		scsifree(cmd->b);
 		break;
 	case Qdebug:
-		if (offset == 0) {
+		if(offset == 0){
 			debugs[(c->qid.path>>4)&7] = (*a=='1');
 			n = 1;
-		} else
+		}else
 			n = 0;
 		break;
 	default:
@@ -263,37 +317,39 @@ scsiwstat(Chan *c, char *dp)
 }
 
 Scsi *
-scsicmd(int dev, int cmdbyte, long size)
+scsicmd(int dev, int cmdbyte, Scsibuf *b, long size)
 {
 	Scsi *cmd = &staticcmd;
 
-	if(size > DATASIZE)
-		panic("scsicmd %d", size);
 	qlock(cmd);
-	cmd->target = dev>>3;
-	cmd->lun = dev&7;
+	cmd->target = dev >> 3;
+	cmd->lun = dev & 7;
 	cmd->cmd.base = cmd->cmdblk;
 	cmd->cmd.ptr = cmd->cmd.base;
 	memset(cmd->cmdblk, 0, sizeof cmd->cmdblk);
 	cmd->cmdblk[0] = cmdbyte;
-	switch(cmdbyte>>5){
+	switch(cmdbyte >> 5){
 	case 0:
-		cmd->cmd.lim = &cmd->cmdblk[6]; break;
+		cmd->cmd.lim = &cmd->cmdblk[6];
+		break;
 	case 1:
-		cmd->cmd.lim = &cmd->cmdblk[10]; break;
+		cmd->cmd.lim = &cmd->cmdblk[10];
+		break;
 	default:
-		cmd->cmd.lim = &cmd->cmdblk[12]; break;
+		cmd->cmd.lim = &cmd->cmdblk[12];
+		break;
 	}
 	switch(cmdbyte){
-	case 0x00:	/* test unit ready */
+	case ScsiTestunit:
 		break;
-	case 0x03:	/* read sense data */
+	case ScsiExtsens:
 		cmd->cmdblk[4] = size;
 		break;
-	case 0x25:	/* read capacity */
+	case ScsiGetcap:
 		break;
 	}
-	cmd->data.base = datablk;
+	cmd->b = b;
+	cmd->data.base = b->virt;
 	cmd->data.lim = cmd->data.base + size;
 	cmd->data.ptr = cmd->data.base;
 	cmd->save = cmd->data.base;
@@ -303,12 +359,20 @@ scsicmd(int dev, int cmdbyte, long size)
 int
 scsiready(int dev)
 {
-	Scsi *cmd = scsicmd(dev, 0x00, 0);
+	Scsi *cmd;
 	int status;
 
-	status = scsiexec(cmd, 0);
+	cmd = scsicmd(dev, ScsiTestunit, scsibuf(), 0);
+	if(waserror()){
+		scsifree(cmd->b);
+		qunlock(cmd);
+		nexterror();
+	}
+	status = scsiexec(cmd, ScsiOut);
+	poperror();
+	scsifree(cmd->b);
 	qunlock(cmd);
-	if ((status&0xff00) != 0x6000)
+	if((status&0xff00) != 0x6000)
 		error(Eio);
 	return status&0xff;
 }
@@ -316,13 +380,21 @@ scsiready(int dev)
 int
 scsisense(int dev, void *p)
 {
-	Scsi *cmd = scsicmd(dev, 0x03, 18);
+	Scsi *cmd;
 	int status;
 
-	status = scsiexec(cmd, 1);
+	cmd = scsicmd(dev, ScsiExtsens, scsibuf(), 18);
+	if(waserror()){
+		scsifree(cmd->b);
+		qunlock(cmd);
+		nexterror();
+	}
+	status = scsiexec(cmd, ScsiIn);
 	memmove(p, cmd->data.base, 18);
+	poperror();
+	scsifree(cmd->b);
 	qunlock(cmd);
-	if ((status&0xff00) != 0x6000)
+	if((status&0xff00) != 0x6000)
 		error(Eio);
 	return status&0xff;
 }
@@ -330,15 +402,111 @@ scsisense(int dev, void *p)
 int
 scsicap(int dev, void *p)
 {
-	Scsi *cmd = scsicmd(dev, 0x25, 8);
+	Scsi *cmd;
 	int status;
 
-	status = scsiexec(cmd, 1);
+	cmd = scsicmd(dev, ScsiGetcap, scsibuf(), 8);
+	if(waserror()){
+		scsifree(cmd->b);
+		qunlock(cmd);
+		nexterror();
+	}
+	status = scsiexec(cmd, ScsiIn);
 	memmove(p, cmd->data.base, 8);
+	poperror();
+	scsifree(cmd->b);
 	qunlock(cmd);
-	if ((status&0xff00) != 0x6000)
+	if((status&0xff00) != 0x6000)
 		error(Eio);
 	return status&0xff;
+}
+
+int
+scsibread(int dev, Scsibuf *b, long n, long blocksize, long blockno)
+{
+	Scsi *cmd;
+
+	cmd = scsicmd(dev, ScsiRead, b, n*blocksize);
+	if(waserror()){
+		qunlock(cmd);
+		nexterror();
+	}
+	cmd->cmdblk[1] = blockno >> 16;
+	cmd->cmdblk[2] = blockno >> 8;
+	cmd->cmdblk[3] = blockno;
+	cmd->cmdblk[4] = n;
+	scsiexec(cmd, ScsiIn);
+	n = cmd->data.ptr - cmd->data.base;
+	poperror();
+	qunlock(cmd);
+	return n;
+}
+
+int
+scsibwrite(int dev, Scsibuf *b, long n, long blocksize, long blockno)
+{
+	Scsi *cmd;
+
+	cmd = scsicmd(dev, ScsiWrite, b, n*blocksize);
+	if(waserror()){
+		qunlock(cmd);
+		nexterror();
+	}
+	cmd->cmdblk[1] = blockno >> 16;
+	cmd->cmdblk[2] = blockno >> 8;
+	cmd->cmdblk[3] = blockno;
+	cmd->cmdblk[4] = n;
+	scsiexec(cmd, ScsiOut);
+	n = cmd->data.ptr - cmd->data.base;
+	poperror();
+	qunlock(cmd);
+	return n;
+}
+
+/*
+ * allocate a scsi buf of any length
+ * must be called at ialloc time and never freed
+ */
+Scsibuf *
+scsialloc(ulong n)
+{
+	Scsibuf *b;
+	uchar *x;
+	long m;
+
+	b = ialloc(sizeof *b, 0);
+	b->virt = b->phys = ialloc(n, 0);
+	return b;
+}
+
+/*
+ * get a scsi io buffer of DATASIZE size
+ */
+Scsibuf *
+scsibuf(void)
+{
+	Scsibuf *b;
+
+	for(;;) {
+		lock(&scsibufalloc);
+		if(b = scsibufalloc.free) {
+			scsibufalloc.free = b->next;
+			unlock(&scsibufalloc);
+			return b;
+		}
+
+		unlock(&scsibufalloc);
+		resrcwait("no scsi buffers");
+	}
+}
+
+void
+scsifree(Scsibuf *b)
+{
+	lock(&scsibufalloc);
+	b->next = scsibufalloc.free;
+	scsibufalloc.free = b;
+	unlock(&scsibufalloc);
 }
 
 typedef struct Scsictl {
@@ -385,6 +553,7 @@ enum Aux_status {
 	PE=0x02, DBR=0x01,
 };
 
+static int	isscsi;
 static QLock	scsilock;
 static Rendez	scsirendez;
 static uchar	*datap;
@@ -393,6 +562,37 @@ static long	debug, scsirflag, scsibusy, scsiinservice;
 static void
 nop(void)
 {}
+
+void
+scsireset(void)
+{
+	static int alloced = 0;
+	int i;
+
+	addportintr(scsiintr);
+	if(!alloced){
+		for(i = 0; i < Nbuf; i++)
+			scsifree(scsialloc(DATASIZE));
+		alloced = 1;
+	}
+}
+
+void
+scsiinit(void)
+{
+	isscsi = portprobe("scsi", -1, Scsiaddr, -1, 0L);
+	if (isscsi >= 0) {
+		DEV->stat = Scsirst;
+		WAIT; nop(); WAIT;
+		DEV->stat = Inten;
+		while (DEV->stat & (INTRQ|DMA))
+			nop();
+		ownid &= 0x0f; /* possibly advanced features */
+		ownid |= 0x80; /* 16MHz */
+		PUT(Own_id, ownid);
+		PUT(Cmd, Reset);
+	}
+}
 
 static int
 scsidone(void *arg)
@@ -450,23 +650,6 @@ scsirun(void)
 {
 	wakeup(&scsirendez);
 	scsibusy = 0;
-}
-
-void
-scsiinit(void)
-{
-	isscsi = portprobe("scsi", -1, Scsiaddr, -1, 0L);
-	if (isscsi >= 0) {
-		DEV->stat = Scsirst;
-		WAIT; nop(); WAIT;
-		DEV->stat = Inten;
-		while (DEV->stat & (INTRQ|DMA))
-			nop();
-		ownid &= 0x0f; /* possibly advanced features */
-		ownid |= 0x80; /* 16MHz */
-		PUT(Own_id, ownid);
-		PUT(Cmd, Reset);
-	}
 }
 
 void

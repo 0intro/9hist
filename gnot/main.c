@@ -121,24 +121,12 @@ init0(void)
 	u->slash = (*devtab[0].attach)(0);
 	u->dot = clone(u->slash, 0);
 	if(!waserror()){
-		c = namec("#e/terminal", Acreate, OWRITE, 0600);
-		(*devtab[c->type].write)(c, "at&t gnot 1", strlen("at&t gnot 1"), 0);
-		close(c);
-		c = namec("#e/cputype", Acreate, OWRITE, 0600);
-		(*devtab[c->type].write)(c, "68020", strlen("68020"), 0);
-		close(c);
-		c = namec("#e/bootuser", Acreate, OWRITE, 0600);
-		(*devtab[c->type].write)(c, bootuser, strlen(bootuser), 0);
-		close(c);
-		c = namec("#e/bootline", Acreate, OWRITE, 0600);
-		(*devtab[c->type].write)(c, bootline, strlen(bootline), 0);
-		close(c);
-		c = namec("#e/bootserver", Acreate, OWRITE, 0600);
-		(*devtab[c->type].write)(c, bootserver, strlen(bootserver), 0);
-		close(c);
-		c = namec("#e/bootdevice", Acreate, OWRITE, 0600);
-		(*devtab[c->type].write)(c, bootdevice, strlen(bootdevice), 0);
-		close(c);
+		ksetenv("terminal", "at&t gnot 1");
+		ksetenv("cputype", "68020");
+		ksetenv("bootuser", bootuser);
+		ksetenv("bootline", bootline);
+		ksetenv("bootserver", bootserver);
+		ksetenv("bootdevice", bootdevice);
 		poperror();
 	}
 

@@ -106,43 +106,6 @@ vgardplane(int p)
 }
 
 /*
- *  partial screen munching squares
- */
-#define	DELTA	1
-#define	DADDR	((long *) 0)
-#define	SIDE	256
-void
-munch(void)
-{
-	ulong x,y,i,d;
-	uchar *screen, tab[8], *p;
-
-	screen = (uchar *)SCREENMEM;
-	d=0;
-	tab[0] = 0x80;
-	tab[1] = 0x40;
-	tab[2] = 0x20;
-	tab[3] = 0x10;
-	tab[4] = 0x08;
-	tab[5] = 0x04;
-	tab[6] = 0x02;
-	tab[7] = 0x01;
-
-	for(i=0; i<MAXY*(MAXX/8); i++)
-		screen[i]=0;
-
-	for(;;){
-		for(x=0; x<SIDE; x++){
-			y = (x^d) % SIDE;
-			p = &screen[y*(MAXX/8) + (x/8)];
-			y = *p;
-			*p = y ^ tab[x&7];
-		}
-		d+=DELTA;
-	}
-}
-
-/*
  *  Set up for 4 separately addressed bit planes.  Each plane is 
  */
 void
@@ -269,4 +232,31 @@ void
 mouseclock(void)
 {
 	mouseupdate(1);
+}
+
+vgaset(char *cmd)
+{
+	int set;
+	int reg;
+	int val;
+
+	set = *cmd++;
+	cmd++;
+	reg = strtoul(cmd, &cmd, 0);
+	cmd++;
+	val = strtoul(cmd, &cmd, 0);
+	switch(set){
+	case 'a':
+		arout(reg, val);
+		break;
+	case 'g':
+		grout(reg, val);
+		break;
+	case 'c':
+		crout(reg, val);
+		break;
+	case 's':
+		srout(reg, val);
+		break;
+	}
 }

@@ -230,9 +230,7 @@ init0(void)
 	chandevinit();
 
 	if(!waserror()){
-		c = namec("#e/cputype", Acreate, OWRITE, 0600);
-		(*devtab[c->type].write)(c, "mips", strlen("mips"), 0);
-		close(c);
+		ksetenv("cputype", "mips");
 		poperror();
 	}
 

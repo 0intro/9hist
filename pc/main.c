@@ -79,12 +79,8 @@ init0(void)
 	chandevinit();
 
 	if(!waserror()){
-		c = namec("#e/terminal", Acreate, OWRITE, 0600);
-		(*devtab[c->type].write)(c, "safari", strlen("next station 68040"), 0);
-		close(c);
-		c = namec("#e/cputype", Acreate, OWRITE, 0600);
-		(*devtab[c->type].write)(c, "386", strlen("68020"), 0);
-		close(c);
+		ksetenv("terminal", "safari");
+		ksetenv("cputype", "386");
 		poperror();
 	}
 	touser();

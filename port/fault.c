@@ -294,15 +294,16 @@ seg(Proc *p, ulong addr, int dolock)
 
 	et = &p->seg[NSEG];
 	for(s = p->seg; s < et; s++)
-		if(n = *s)
-		if(addr >= n->base && addr < n->top) {
-			if(dolock == 0)
-				return n;
-
-			qlock(&n->lk);
-			if(addr >= n->base && addr < n->top)
-				return n;
-			qunlock(&n->lk);
+		if(n = *s){
+			if(addr >= n->base && addr < n->top) {
+				if(dolock == 0)
+					return n;
+	
+				qlock(&n->lk);
+				if(addr >= n->base && addr < n->top)
+					return n;
+				qunlock(&n->lk);
+			}
 		}
 
 	return 0;
