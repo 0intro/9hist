@@ -378,36 +378,38 @@ undomount(Chan *c)
 	return c;
 }
 
-Chan*
-walk(Chan *ac, char *name, int domnt)
+int
+walk(Chan **cp, char *name, int domnt)
 {
 	Pgrp *pg;
-	Chan *c;
+	Chan *c, *ac;
 	Mount *f;
 	int dotdot;
 
+	ac = *cp;
+
 	if(name[0] == '\0')
-		return ac;
+		return 0;
 
 	dotdot = 0;
 	if(name[0] == '.' && name[1] == '.' && name[2] == '\0') {
-		ac = undomount(ac);
+		*cp = ac = undomount(ac);
 		dotdot = 1;
 	}
 
 	ac->flag &= ~CCREATE;	/* not inherited through a walk */
 	if(devtab[ac->type]->walk(ac, name) != 0) {
 		if(dotdot)
-			ac = undomount(ac);
+			*cp = undomount(*cp);
 		if(domnt)
-			ac = domount(ac);
-		return ac;
+			*cp = domount(*cp);
+		return 0;
 	}
 
-	if(ac->mnt == 0) 
-		return 0;
+	if(ac->mnt == nil) 
+		return -1;
 
-	c = 0;
+	c = nil;
 	pg = up->pgrp;
 
 	rlock(&pg->ns);
@@ -423,13 +425,13 @@ walk(Chan *ac, char *name, int domnt)
 		if(devtab[c->type]->walk(c, name) != 0)
 			break;
 		cclose(c);
-		c = 0;
+		c = nil;
 	}
 	poperror();
 	runlock(&pg->ns);
 
-	if(c == 0)
-		return 0;
+	if(c == nil)
+		return -1;
 
 	if(dotdot)
 		c = undomount(c);
@@ -444,7 +446,8 @@ walk(Chan *ac, char *name, int domnt)
 		poperror();
 	}
 	cclose(ac);
-	return c;	
+	*cp = c;
+	return 0;	
 }
 
 /*
@@ -537,7 +540,7 @@ namec(char *name, int amode, int omode, ulong perm)
 	char *elem;
 	int t, n;
 	int mntok, isdot;
-	Chan *c, *nc, *cc;
+	Chan *c, *cc;
 	char createerr[ERRLEN];
 
 	if(name[0] == 0)
@@ -611,10 +614,8 @@ namec(char *name, int amode, int omode, ulong perm)
 		c = domount(c);			/* see case Atodir below */
 
 	while(*name) {
-		nc = walk(c, elem, mntok);
-		if(nc == 0)
+		if(walk(&c, elem, mntok) < 0)
 			error(Enonexist);
-		c = nc;
 		name = nextelem(name, elem);
 	}
 
@@ -624,10 +625,8 @@ namec(char *name, int amode, int omode, ulong perm)
 			c = domount(c);
 			break;
 		}
-		nc = walk(c, elem, mntok);
-		if(nc == 0)
+		if(walk(&c, elem, mntok) < 0)
 			error(Enonexist);
-		c = nc;
 		break;
 
 	case Atodir:
@@ -635,10 +634,8 @@ namec(char *name, int amode, int omode, ulong perm)
 		 * Directories (e.g. for cd) are left before the mount point,
 		 * so one may mount on / or . and see the effect.
 		 */
-		nc = walk(c, elem, 0);
-		if(nc == 0)
+		if(walk(&c, elem, 0) < 0)
 			error(Enonexist);
-		c = nc;
 		if(!(c->qid.path & CHDIR))
 			error(Enotdir);
 		break;
@@ -647,10 +644,8 @@ namec(char *name, int amode, int omode, ulong perm)
 		if(isdot)
 			c = domount(c);
 		else {
-			nc = walk(c, elem, mntok);
-			if(nc == 0)
+			if(walk(&c, elem, mntok) < 0)
 				error(Enonexist);
-			c = nc;
 		}
 	Open:
 		/* else error() in open has wrong value of c saved */
@@ -673,10 +668,8 @@ namec(char *name, int amode, int omode, ulong perm)
 		 * one wants subsequent mounts to be attached to the 
 		 * original directory, not the replacement.
 		 */
-		nc = walk(c, elem, 0);
-		if(nc == 0)
+		if(walk(&c, elem, 0) < 0)
 			error(Enonexist);
-		c = nc;
 		break;
 
 	case Acreate:
@@ -695,11 +688,10 @@ namec(char *name, int amode, int omode, ulong perm)
 			nexterror();
 		}
 		nameok(elem);
-		nc = walk(cc, elem, 1);
-		if(nc != 0) {
+		if(walk(&cc, elem, 1) == 0){
 			poperror();
 			cclose(c);
-			c = nc;
+			c = cc;
 			omode |= OTRUNC;
 			goto Open;
 		}
@@ -718,10 +710,8 @@ namec(char *name, int amode, int omode, ulong perm)
 		 */
 		if(waserror()) {
 			strcpy(createerr, up->error);
-			nc = walk(c, elem, 1);
-			if(nc == 0)
+			if(walk(&c, elem, 1) < 0)
 				error(createerr);
-			c = nc;
 			omode |= OTRUNC;
 			goto Open;
 		}

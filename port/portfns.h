@@ -297,7 +297,7 @@ void		validaddr(ulong, ulong, int);
 void		vcacheinval(Page*, ulong);
 void*		vmemchr(void*, int, int);
 int		wakeup(Rendez*);
-Chan*		walk(Chan*, char*, int);
+int		walk(Chan**, char*, int);
 void		wlock(RWlock*);
 void		wunlock(RWlock*);
 #define		xalloc(s)	xallocz(s, 1)
