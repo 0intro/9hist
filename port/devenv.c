@@ -66,7 +66,7 @@ envgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 		if(!e->name)
 			ans = 0;
 		else{
-			devdir(c, (Qid){s+1, (ulong)e->val}, e->name->val, e->val? e->val->len : 0, eve, 0666, dp);
+			devdir(c, (Qid){s+1, (ulong)e->name}, e->name->val, e->val? e->val->len : 0, eve, 0666, dp);
 			ans = 1;
 		}
 	}
