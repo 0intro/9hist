@@ -670,31 +670,35 @@ TEXT sa1100_power_resume(SB), $-4
 loop:
 	B		loop
 
-TEXT sa1100_power_down(SB), $-4
+TEXT power_down(SB), $-4
 
 	/* disable clock switching */
 	MCR   	CpPWR, 0, R0, C(CpTest), C(0x2), 2
 
-	/* save address of sleep_param in r4 */
-	mov	r0, r4
-
-        @ Adjust memory timing before lowering CPU clock
-	/* Clock speed ajdustment without changing memory timing makes */
-	/* CPU hang in some cases */
-        ldr     r0, =MDREFR
-        ldr     r1, [r0]
-        orr     r1, r1, #MDREFR_K1DB2
-        str     r1, [r0]
+	/* Adjust memory timing before lowering CPU clock
+	 * Clock speed ajdustment without changing memory
+	 * timing makes CPU hang in some cases
+	 */
+        MOVW	$(MEMCONFREGS+0x1c),R0
+        MOVW	(R0),R1				/* mdrefr */
+        ORR		$(1<<22), R1			/* set K1DB2 */
+        MOVW	R1,(R0)
 	
 	/* delay 90us and set CPU PLL to lowest speed */
 	/* fixes resume problem on high speed SA1110 */
-	mov	r0, #90
-	bl	SYMBOL_NAME(udelay)
-	ldr	r0, =PPCR
-	mov	r1, #0
-	str	r1, [r0]
-	mov	r0, #90
-	bl	SYMBOL_NAME(udelay)
+	MOVW	$(90*206),R0
+d1:
+	SUB		$1,R0
+	BNE		d1
+
+	MOVW	$(POWERREGS+0x14),R0
+	MOVW	$0,R1
+	MOVW	R1,(R0)				/* clear PPCR */
+
+	MOVW	$(90*206),R0
+d2:
+	SUB		$1,R0
+	BNE		d2
 
 
 /* setup up register contents for jump to page containing SA1110 SDRAM controller bug fix suspend code
@@ -716,72 +720,72 @@ TEXT sa1100_power_down(SB), $-4
  *
  */
 
-	ldr	r0, =MSC0
-	ldr	r1, =MSC1
-	ldr	r2, =MSC2
+	MOVW	$(MEMCONFREGS+0x10),R0
+	MOVW	$(MEMCONFREGS+0x14),R1
+	MOVW	$(MEMCONFREGS+0x2c),R2
 
-        ldr     r3, [r0]
-        bic     r3, r3, #FMsk(MSC_RT)
-        bic     r3, r3, #FMsk(MSC_RT)<<16
+	MOVW	(R0),R3
+	BIC		$0x00030003,R3		/* MSC_RT fields */
 
-        ldr     r4, [r1]
-        bic     r4, r4, #FMsk(MSC_RT)
-        bic     r4, r4, #FMsk(MSC_RT)<<16
+	MOVW	(R1),R4
+	BIC		$0x00030003,R4		/* MSC_RT fields */
 
-        ldr     r5, [r2]
-        bic     r5, r5, #FMsk(MSC_RT)
-        bic     r5, r5, #FMsk(MSC_RT)<<16
+	MOVW	(R2),R5
+	BIC		$0x00030003,R5		/* MSC_RT fields */
 
-        ldr     r6, =MDREFR
+	MOVW	$(MEMCONFREGS+0x1c),R6
 
-        ldr     r7, [r6]
-        bic     r7, r7, #0x0000FF00
-        bic     r7, r7, #0x000000F0
-        orr     r8, r7, #MDREFR_SLFRSH
+	MOVW	(R6),R7
+	BIC		$0x0000FFF0,R7		/* DRI 0 .. 11 */
+	ORR		$(1<<31),R7,R8		/* prepare to set self refresh */
 
-        ldr     r9, =MDCNFG
-        ldr     r10, [r9]
-        bic     r10, r10, #(MDCNFG_DE0+MDCNFG_DE1)
-        bic     r10, r10, #(MDCNFG_DE2+MDCNFG_DE3)  
+	MOVW	$(MEMCONFREGS+0x0),R9
+	MOVW	(R9),R10
+	BIC		$(0x00030003),R10		/* clear DE0 ⋯ DE3 */
 
-        bic     r11, r8, #MDREFR_SLFRSH
-        bic     r11, r11, #MDREFR_E1PIN
+	BIC		$(1<<31 | 1<<20),R8,R11	/* self-refresh and e1pin */
 
-        ldr     r12, =PMCR
+	MOVW	$(POWERREGS+0x0),R12
+	MOVW	$1,R13				/* sleep force bit */
 
-        mov     r13, #PMCR_SF
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
+	/* Fall through */
 
-	b	sa1110_sdram_controller_fix
-
-	.align 5
-sa1110_sdram_controller_fix:
+/*	.align 5	Needs to be on a cache line boundary? */
+	TEXT	sdram_controller_fix(SB),$0
 
 	/* Step 1 clear RT field of all MSCx registers */
-	str 	r3, [r0]
-	str	r4, [r1]
-	str	r5, [r2]
+	MOVW	R3,(R0)
+	MOVW	R4,(R1)
+	MOVW	R5,(R2)
 
 	/* Step 2 clear DRI field in MDREFR */
-	str	r7, [r6]
+	MOVW	R7,(R6)
 
 	/* Step 3 set SLFRSH bit in MDREFR */
-	str	r8, [r6]
+	MOVW	R8,(R6)
 
 	/* Step 4 clear DE bis in MDCNFG */
-	str	r10, [r9]
+	MOVW	R10,(R9)
 
 	/* Step 5 clear DRAM refresh control register */
-	str	r11, [r6]
+	MOVW	R11,(R6)
 
 	/* Wow, now the hardware suspend request pins can be used, that makes them functional for  */
 	/* about 7 ns out of the	entire time that the CPU is running! */
 
 	/* Step 6 set force sleep bit in PMCR */
 
-	str	r13, [r12]
-	
-20:
-	b	20b			/* loop waiting for sleep */
+	MOVW	R13,(R12)
+
+slloop:
+	B		slloop			/* loop waiting for sleep */
 
 /* The first MCR instruction of this function needs to be on a cache-line
  * boundary; to make this happen, it will be copied (in trap.c).

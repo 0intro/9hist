@@ -223,24 +223,29 @@ enum
 	MECR_attr1=	MECR_attr0+16,
 	MECR_mem1=	MECR_mem0+16,
 	MECR_fast1=	MECR_fast0+16,
+
+	REFR_kapd=	29,
+	REFR_eapd=	28,
+	REFR_k1db2=	22,
+	REFR_slfrsh=	31,
 };
 
 typedef struct MemConfRegs MemConfRegs;
 struct MemConfRegs
 {
-	ulong	mdcnfg;		/* dram */
-	ulong	mdcas00;	/* dram banks 0/1 */
-	ulong	mdcas01;
-	ulong	mdcas02;
-	ulong	msc0;		/* static */
-	ulong	msc1;
-	ulong	mecr;		/* pcmcia */
-	ulong	mdrefr;		/* dram refresh */
-	ulong	mdcas20;	/* dram banks 2/3 */
-	ulong	mdcas21;
-	ulong	mdcas22;
-	ulong	msc2;		/* static */
-	ulong	smcnfg;		/* SMROM config */
+	ulong	mdcnfg;		/* 0x00	dram */
+	ulong	mdcas00;		/* 0x04	dram banks 0/1 */
+	ulong	mdcas01;		/* 0x08 */
+	ulong	mdcas02;		/* 0x0c */
+	ulong	msc0;		/* 0x10	static */
+	ulong	msc1;		/* 0x14 */
+	ulong	mecr;		/* 0x18	pcmcia */
+	ulong	mdrefr;		/* 0x1c	dram refresh */
+	ulong	mdcas20;		/* 0x20	dram banks 2/3 */
+	ulong	mdcas21;		/* 0x24 */
+	ulong	mdcas22;		/* 0x28 */
+	ulong	msc2;		/* 0x2c	static */
+	ulong	smcnfg;		/* 0x30	SMROM config */
 };
 extern MemConfRegs *memconfregs;
 

@@ -146,8 +146,11 @@ void	(*restart)(void) = nil;
 static void
 sa1100_power_off(void)
 {
+	ulong refr;
+
 	/* Set KAPD and EAPD bits */
-//	memconfregs->mdrefr |= 0x30000000;
+	refr = memconfregs->mdrefr;
+	refr |= 1<<REFR_kapd | 1 <<REFR_eapd | 1<<REFR_k1db2;
 
 	/* enable wakeup by µcontroller, on/off switch
 	 * or real-time clock alarm
@@ -165,16 +168,19 @@ sa1100_power_off(void)
 
 	/* set all GPIOs to input mode  */
 	gpioregs->direction = 0;
-	delay(100);
-	/* enter sleep mode */
 
 	/* set lowest clock; delay to avoid resume hangs on fast sa1110 */
-/*	Doesn't work [sjm] 
+	memconfregs->mdrefr |= 1<<22;
+	µdelay(90);
 	powerregs->ppcr = 0;
-	delay(500);
-*/
-	
-	memconfregs->mdrefr |= 0x80000000;
+	µdelay(90);
+
+	memconfregs->msc0 &= ~0x30003;
+	memconfregs->msc1 &= ~0x30003;
+	memconfregs->msc2 &= ~0x30003;
+	memconfregs->mdrefr = refr;	/* Clear dri 0 ⋯ 11 */
+	refr |= 1<<REFR_slfrsh;
+//	memconfregs->mdrefr = refr;	/* Set selfrefresh */
 	powerregs->pmcr = PCFR_suspend;
 	for(;;);
 }

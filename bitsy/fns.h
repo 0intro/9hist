@@ -77,6 +77,7 @@ PCMmap*	pcmmap(int, ulong, int, int);
 void	pcmunmap(int, PCMmap*);
 void	penbutton(int, int);
 void	pentrackxy(int x, int y);
+void	power_down(void);
 void	powerinit(void);
 void	powerkproc(void*);
 #define	procrestore(p)
