@@ -40,6 +40,11 @@ mapstack(Proc *p)
 	/* don't set m->pidhere[*tp] because we're only writing U entry */
 	tlbphys = PPN(p->upage->pa)|PTEVALID|PTEWRITE|PTEKERNEL|PTEMAINMEM;
 	putcontext(tp-1);
+	/*
+	 * putw4(USERADDR, tlbphys) might be good enough but
+	 * there is that fuss in pexit/pwait() copying between
+	 * u areas and that might surprise any cache entries
+	 */
 	putpmeg(USERADDR, tlbphys);
 	u = (User*)USERADDR;
 }
@@ -64,6 +69,7 @@ newpid(Proc *p)
 	m->pidproc[i] = p;
 	m->lastpid = i;
 print("new context %d\n", i);
+	putcontext(i-1);
 	/*
 	 * kludge: each context is allowed 2 pmegs, one for text and one for stack
 	 */
@@ -128,11 +134,10 @@ mmuinit(void)
 		/*
 		 * Invalidate user addresses
 		 */
-/*
-		for(l=UZERO; l<KZERO; l+=BY2SEGM)
+
+		for(l=UZERO; l<(KZERO&VAMASK); l+=BY2SEGM)
 			putsegm(l, INVALIDPMEG);
-*/
-putsegm(0x0000, INVALIDPMEG);
+
 		/*
 		 * One segment for screen
 		 */
@@ -168,9 +173,6 @@ putsegm(0x0000, INVALIDPMEG);
 	putcontext(0);
 }
 
-
-
-
 void
 putmmu(ulong tlbvirt, ulong tlbphys)
 {
@@ -197,6 +199,21 @@ putmmu(ulong tlbvirt, ulong tlbphys)
 	m->pidhere[tp] = 1;
 	p->state = Running;
 	spllo();
+}
+
+void
+putpmeg(ulong virt, ulong phys)
+{
+	int i;
+
+	virt &= VAMASK;
+	virt &= ~(BY2PG-1);
+	/*
+	 * Flush old entries from cache
+	 */
+	for(i=0; i<0x100; i++)
+		putwD(virt+(i<<4), 0);
+	putw4(virt, phys);
 }
 
 void
@@ -233,7 +250,6 @@ kmapinit(void)
 	KMap *k;
 	int i;
 
-print("low pmeg %d\n", kmapalloc.lowpmeg);
 	kmapalloc.free = 0;
 	k = kmapalloc.arena;
 	for(i=0; i<(IOEND-IOSEGM)/BY2PG; i++,k++){
@@ -243,7 +259,7 @@ print("low pmeg %d\n", kmapalloc.lowpmeg);
 }
 
 KMap*
-kmap1(Page *pg, ulong flag)
+kmappa(ulong pa, ulong flag)
 {
 	KMap *k;
 
@@ -255,20 +271,20 @@ kmap1(Page *pg, ulong flag)
 	}
 	kmapalloc.free = k->next;
 	unlock(&kmapalloc);
-	k->pa = pg->pa;
+	k->pa = pa;
 	/*
 	 * Cache is virtual and a pain to deal with.
 	 * Must avoid having the same entry in the cache twice, so
 	 * must use NOCACHE or else extreme cleverness elsewhere.
 	 */
-	putpmeg(k->va, PPN(k->pa)|PTEVALID|PTEKERNEL|PTEWRITE|PTENOCACHE|flag);
+	putpmeg(k->va, PPN(pa)|PTEVALID|PTEKERNEL|PTEWRITE|PTENOCACHE|flag);
 	return k;
 }
 
 KMap*
 kmap(Page *pg)
 {
-	return kmap1(pg, PTEMAINMEM);
+	return kmappa(pg->pa, PTEMAINMEM);
 }
 
 void

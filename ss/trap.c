@@ -35,8 +35,6 @@ excname(ulong tbr)
 {
 	static char buf[32];	/* BUG: not reentrant! */
 
-	tbr &= 0xFFF;
-	tbr >>= 4;
 	if(tbr < sizeof trapname/sizeof(char*))
 		return trapname[tbr];
 	if(tbr == 36)
@@ -57,19 +55,26 @@ trap(Ureg *ur)
 {
 	int user;
 	char buf[64];
+	ulong tbr;
+
+	tbr = (ur->tbr&0xFFF)>>4;
+	if(tbr == 30){				/* interrupt 14: counter 1 */
+		clock(ur);
+		return;
+	}
 
 	user = !(ur->psr&PSRPSUPER);
 
 /*	if(u)
 		u->p->pc = ur->pc;		/* BUG */
 	if(user){
-		print("user trap: %s pc=0x%lux\n", excname(ur->tbr), ur->pc);
+		print("user trap: %s pc=0x%lux\n", excname(tbr), ur->pc);
 dumpregs(ur);
 for(;;);
-		sprint(buf, "sys: trap: pc=0x%lux %s", ur->pc, excname(ur->tbr));
+		sprint(buf, "sys: trap: pc=0x%lux %s", ur->pc, excname(tbr));
 		postnote(u->p, 1, buf, NDebug);
 	}else{
-		print("kernel trap: %s pc=0x%lux\n", excname(ur->tbr), ur->pc);
+		print("kernel trap: %s pc=0x%lux\n", excname(tbr), ur->pc);
 		dumpregs(ur);
 for(;;);
 		exit();

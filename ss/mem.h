@@ -18,7 +18,7 @@
 /*
  * Time
  */
-#define	HZ		(60)			/* clock frequency */
+#define	HZ		20			/* clock frequency */
 #define	MS2HZ		(1000/HZ)		/* millisec per clock tick */
 #define	TK2SEC(t)	((t)/HZ)		/* ticks to seconds */
 #define	TK2MS(t)	((((ulong)(t))*1000)/HZ)	/* ticks to milliseconds */
@@ -54,7 +54,7 @@
  * MMU
  */
 
-#define	VAMASK		0x1FFFFFFF
+#define	VAMASK		0x3FFFFFFF
 #define	NPMEG		(1<<12)
 #define	BY2SEGM		(1<<18)
 #define	PG2SEGM		(1<<6)

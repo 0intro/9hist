@@ -78,6 +78,12 @@ main(void)
 /*	filsysinit(); /**/
 	pageinit();
 	userinit();
+{KMap *k;
+k = kmappa(0xF5000000, PTENOCACHE|PTEIO);
+print("interrupt %ux\n", *(uchar*)k->va);
+kunmap(k);
+}
+	clockinit();
 	schedinit();
 }
 

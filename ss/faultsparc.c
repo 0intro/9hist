@@ -14,16 +14,16 @@ faultsparc(Ureg *ur)
 	int user, read, insyscall;
 	ulong tbr;
 
-	tbr = ur->tbr&0xFFF;
+	tbr = (ur->tbr&0xFFF)>>4;
 	addr = ur->pc;			/* assume instr. exception */
-	if(tbr == (9<<4))		/* data access exception */
+	if(tbr == 9)			/* data access exception */
 		addr = getw2(SEVAR);
-	else if(tbr != (1<<4)){		/* should be instruction access exception */
+	else if(tbr != 1){		/* should be instruction access exception */
 		trap(ur);
-		panic("trap returns");
+		return;
 	}
 	spllo();
-print("fault: %s pc=0x%lux addr %lux\n", excname(ur->tbr), ur->pc, addr);
+print("fault: %s pc=0x%lux addr %lux\n", excname(tbr), ur->pc, addr);
 	if(u == 0){
 		dumpregs(ur);
 		panic("fault u==0 pc=%lux", ur->pc);

@@ -105,6 +105,12 @@ sched(void)
 	gotolabel(&p->sched);
 }
 
+int
+anyready(void)
+{
+	return runq.head != 0;
+}
+
 void
 ready(Proc *p)
 {

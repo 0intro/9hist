@@ -1,6 +1,6 @@
 #include "mem.h"
 
-#define	SYSPSR	(PSREF|SPL(0xF)|PSRSUPER)
+#define	SYSPSR	(PSREF|SPL(0x0)|PSRSUPER)
 
 TEXT	start(SB), $-4
 
@@ -319,11 +319,11 @@ TEXT	setlabel(SB), $0
 
 TEXT	gotolabel(SB), $0
 
-	MOVW	r+4(FP), R7
 	MOVW	b+0(FP), R8
 	MOVW	(R8), R1
 	MOVW	4(R8), R15
 	MOVW	R15, 0(R1)
+	MOVW	$1, R7
 	RETURN
 
 TEXT	putcxsegm(SB), $0
@@ -368,6 +368,27 @@ TEXT	putw2(SB), $0
 	MOVW	R8, (R7, 2)
 	RETURN
 
+TEXT	putw4(SB), $0
+
+	MOVW	0(FP), R7
+	MOVW	4(FP), R8
+	MOVW	R8, (R7, 4)
+	RETURN
+
+TEXT	putwC(SB), $0
+
+	MOVW	0(FP), R7
+	MOVW	4(FP), R8
+	MOVW	R8, (R7, 0xC)
+	RETURN
+
+TEXT	putwD(SB), $0
+
+	MOVW	0(FP), R7
+	MOVW	4(FP), R8
+	MOVW	R8, (R7, 0xD)
+	RETURN
+
 TEXT	putwE(SB), $0
 
 	MOVW	0(FP), R7
@@ -380,20 +401,6 @@ TEXT	putsegm(SB), $0
 	MOVW	0(FP), R7
 	MOVW	4(FP), R8
 	MOVW	R8, (R7, 3)
-	RETURN
-
-TEXT	putpmeg(SB), $0
-
-	MOVW	0(FP), R7
-	MOVW	4(FP), R8
-	MOVW	R8, (R7, 4)
-	RETURN
-
-TEXT	putwd(SB), $0
-
-	MOVW	0(FP), R7
-	MOVW	4(FP), R8
-	MOVW	R8, (R7, 0xD)
 	RETURN
 
 GLOBL	mach0+0(SB), $MACHSIZE

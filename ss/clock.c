@@ -18,12 +18,34 @@ delay(int ms)
 		;
 }
 
+typedef struct Ctr Ctr;
+struct Ctr
+{
+	ulong	ctr0;
+	ulong	lim0;
+	ulong	ctr1;
+	ulong	lim1;
+};
+Ctr	*ctr;
+
+void
+clockinit(void)
+{
+	KMap *k;
+
+	k = kmappa(CLOCK, PTENOCACHE|PTEIO);
+	ctr = (Ctr*)k->va;
+	ctr->lim1 = (CLOCKFREQ/HZ)<<10;
+}
+
 void
 clock(Ureg *ur)
 {
 	Proc *p;
+	ulong i;
 
-	SYNCREG[1] = 0x5F;	/* clear interrupt */
+	i = ctr->lim1;	/* clear interrupt */
+	USED(i);
 	m->ticks++;
 	p = m->proc;
 	if(p){
@@ -34,9 +56,10 @@ clock(Ureg *ur)
 	checkalarms();
 	kbdclock();
 	mouseclock();
-	if((ur->psr&SPL(7)) == 0 && p && p->state==Running){
-		sched();
-		if(u->nnote && (ur->psr&PSRSUPER)==0)
+	if((ur->psr&SPL(0xF))==0 && p && p->state==Running){
+		if(anyready())
+			sched();
+		if(u->nnote && (ur->psr&PSRPSUPER)==0)
 			notify(ur);
 	}
 }

@@ -24,7 +24,11 @@ main(int argc, char *argv[])
 write(1, "hello from boot\n", 16);
 bind("#c", "/dev", MREPL);
 binit(0, 0);
+if(fork()==0)
 bitblt(&screen, Pt(100, 100), &screen, Rect(100, 100, 300, 200), 0xF);
+else
+bitblt(&screen, Pt(500, 500), &screen, Rect(100, 100, 300, 200), 0xF);
+
 
 	fd = open("#e/bootline", OREAD);
 	if(fd >= 0){

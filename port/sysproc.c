@@ -126,6 +126,7 @@ sysfork(ulong *arg)
 	p->parent = u->p;
 	p->parentpid = u->p->pid;
 	p->pgrp = u->p->pgrp;
+	p->bssend = u->p->bssend;
 	incref(p->pgrp);
 	u->p->nchild++;
 	pid = p->pid;
@@ -495,13 +496,11 @@ sysbrk_(ulong *arg)
 	Seg *s;
 
 	addr = arg[0];
-#ifdef WHYROB
 	if(addr < u->p->bssend){
 		pprint("addr below bss\n");
 		pexit("Suicide", 0);
 		error(Esegaddr);
 	}
-#endif WHYROB
 	if(addr <= ((u->p->bssend+(BY2PG-1))&~(BY2PG-1)))	/* still in DSEG */
 		goto Return;
 	if(segaddr(&u->p->seg[BSEG], u->p->seg[BSEG].minva, arg[0]) == 0){

@@ -3,6 +3,8 @@ typedef struct	Duart	Duart;
 #define	SYNCREG		((char*)0x40400000)
 #define	DISPLAYRAM	0x1E800000
 #define	EPROM		0xF6000000
+#define	CLOCK		0xF3000000
+#define	CLOCKFREQ	1000000		/* one microsecond increments */
 #define	DUARTREG	((Duart*)0x40100000)
 #define	PORT		((uchar *)0x40300000)
 

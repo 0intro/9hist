@@ -1,6 +1,7 @@
 Alarm	*alarm(int, void (*)(Alarm*), void*);
 void	alarminit(void);
 Block	*allocb(ulong);
+int	anyready(void);
 void	append(List**, List*);
 void	cancel(Alarm*);
 int	canlock(Lock*);
