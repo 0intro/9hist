@@ -241,19 +241,25 @@ clockintrsched(void)
 	iunlock(&i8253);
 }
 
-int nclockintr0;
+ulong i8253ding[2];
+
 static void
 clockintr0(Ureg* ureg, void *v)
 {
 	vlong now, when;
 
-nclockintr0++;
 	/* goes with syncing in squidboy */
 	if(m->havetsc)
 		rdtsc(&m->lasttsc);
 
 	now = fastticks(nil);
 	when = i8253.when;
+
+if(i8253.last1 == 0 || i8253.last1 >= 0xffe0)
+	i8253ding[1]++;
+else
+	i8253ding[0]++;
+	
 
 	if(now >= i8253.when){
 		clockintr(ureg, v);

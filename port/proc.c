@@ -107,9 +107,6 @@ schedinit(void)		/* never returns */
 			break;
 		}
 		up->mach = 0;
-#ifdef RSC
-le('e', up);
-#endif
 		up = nil;
 	}
 	sched();
@@ -143,9 +140,6 @@ sched(void)
 		gotolabel(&m->sched);
 	}
 	up = runproc();
-#ifdef RSC
-le('u',up);
-#endif
 	up->state = Running;
 	up->mach = MACHP(m->machno);
 	m->proc = up;

@@ -7,22 +7,42 @@ typedef struct SDpart SDpart;
 typedef struct SDperm SDperm;
 typedef struct SDreq SDreq;
 typedef struct SDunit SDunit;
+typedef struct SDwp SDwp;
+typedef struct SDcache SDcache;
 
-typedef struct SDperm {
+enum {
+	SDcachesize = 20,
+};
+
+struct SDperm {
 	char*	name;
 	char*	user;
 	ulong	perm;
-} SDperm;
+};
 
-typedef struct SDpart {
+struct SDpart {
 	ulong	start;
 	ulong	end;
 	SDperm;
 	int	valid;
 	ulong	vers;
-} SDpart;
+};
 
-typedef struct SDunit {
+struct SDcache {
+	ulong age;
+	ulong bn;
+	uchar *data;
+};
+
+struct SDwp {
+	QLock;
+	ulong age;
+	ulong start;
+	ulong end;
+	SDcache cache[SDcachesize];
+};
+
+struct SDunit {
 	SDev*	dev;
 	int	subno;
 	uchar	inquiry[256];		/* format follows SCSI spec */
@@ -42,14 +62,17 @@ typedef struct SDunit {
 	int	state;
 	SDreq*	req;
 	SDperm	rawperm;
-} SDunit;
+
+	int	wpunit;			/* whole unit is write protected */
+	SDwp	*wp;			/* block level write prtection */
+};
 
 /* 
  * Each controller is represented by a SDev.
  * Each controller is responsible for allocating its unit structures.
  * Each controller has at least one unit.
  */ 
-typedef struct SDev {
+struct SDev {
 	Ref	r;			/* Number of callers using device */
 	SDifc*	ifc;			/* pnp/legacy */
 	void*	ctlr;
@@ -63,9 +86,9 @@ typedef struct SDev {
 	QLock	unitlock;		/* `Loading' of units */
 	int*	unitflg;		/* Unit flags */
 	SDunit**unit;
-} SDev;
+};
 
-typedef struct SDifc {
+struct SDifc {
 	char*	name;
 
 	SDev*	(*pnp)(void);
@@ -84,9 +107,9 @@ typedef struct SDifc {
 	SDev*	(*probe)(DevConf*);
 	void	(*clear)(SDev*);
 	char*	(*stat)(SDev*, char*, char*);
-} SDifc;
+};
 
-typedef struct SDreq {
+struct SDreq {
 	SDunit*	unit;
 	int	lun;
 	int	write;
@@ -100,7 +123,7 @@ typedef struct SDreq {
 	int	status;
 	long	rlen;
 	uchar	sense[256];
-} SDreq;
+};
 
 enum {
 	SDnosense	= 0x00000001,

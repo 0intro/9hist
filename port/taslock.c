@@ -162,11 +162,15 @@ unlock(Lock *l)
 	if(l->p != up)
 		print("unlock: up changed: pc %lux, acquired at pc %lux, lock p 0x%p, unlock up 0x%p\n", getcallerpc(&l), l->pc, l->p, up);
 	l->key = 0;
-	if (up && --up->nlocks == 0 && up->delaysched){
+	coherence();
+
+	/* give up the processor if ... */
+	if(up && --up->nlocks == 0	/* we've closed the last nexted lock */
+	&& up->delaysched		/* we delayed scheduling because of the lock */
+	&& up->state == Running){	/* we're in running state */
 		up->delaysched = 0;
 		sched();
 	}
-	coherence();
 }
 
 void

@@ -9,11 +9,11 @@
 
 typedef struct OSTimer
 {
-	ulong	osmr[4];	/* match registers */
-	ulong	oscr;		/* counter register */
-	ulong	ossr;		/* status register */
-	ulong	ower;	/* watchdog enable register */
-	ulong	oier;		/* timer interrupt enable register */
+	ulong		osmr[4];	/* match registers */
+	volatile ulong	oscr;		/* counter register */
+	ulong		ossr;		/* status register */
+	ulong		ower;	/* watchdog enable register */
+	ulong		oier;		/* timer interrupt enable register */
 } OSTimer;
 
 OSTimer *timerregs = (OSTimer*)OSTIMERREGS;
@@ -23,7 +23,7 @@ static void	clockintr(Ureg*, void*);
 
 enum
 {
-	Minfreq = ClockFreq/HZ,		/* At least one interrupt per HZ (10 ms) */
+	Minfreq = ClockFreq/HZ,		/* At least one interrupt per HZ (50 ms) */
 	Maxfreq = ClockFreq/10000,	/* At most one interrupt every 100 µs */
 };
 
@@ -79,7 +79,7 @@ clockinit(void)
 vlong
 fastticks(uvlong *hz)
 {
-	static vlong high;
+	static uvlong high;
 	static ulong last;
 	ulong x;
 
@@ -93,9 +93,10 @@ fastticks(uvlong *hz)
 }
 
 void
-timerset(vlong v)
+timerset(uvlong v)
 {
-	ulong when;	/* Must be unsigned! */
+	ulong when, tics;	/* Must be unsigned! */
+	static int count;
 
 	if (v == 0LL)
 		when = timerregs->oscr + Minfreq;
@@ -103,9 +104,11 @@ timerset(vlong v)
 		when = v;
 
 		/* post next interrupt: calculate # of tics from now */
-		when = when - timerregs->oscr - Maxfreq;
-		if (when - timerregs->oscr > Minfreq)
+		tics = when - timerregs->oscr - Maxfreq;
+		if (tics > Minfreq){
+			iprint("%lud %lud %lud %d\n", when, tics, timerregs->oscr, Minfreq);
 			when = timerregs->oscr + Maxfreq;
+		}
 	}
 	timerregs->osmr[0] = when;
 }
@@ -113,11 +116,14 @@ timerset(vlong v)
 static void
 clockintr(Ureg *ureg, void*)
 {
+	static ulong count;
 
 	/* reset previous interrupt */
 	timerregs->ossr |= 1<<0;
 
 	timerset(timerintr(ureg, nil));
+	if ((count++ % 100) == 0)
+		iprint("%lud ", timerregs->osmr[0] - timerregs->oscr);
 }
 
 void

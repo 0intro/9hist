@@ -34,6 +34,8 @@ enum
 {
 	CMpart,
 	CMdelpart,
+	CMwpenable,
+	CMwpblocks,
 	CMwildcard,
 };
 
@@ -41,6 +43,8 @@ Cmdtab ctlmsg[] =
 {
 	CMpart,		"part",		3,
 	CMdelpart,	"delpart",	1,
+	CMwpenable,	"wpenable",	0,
+	CMwpblocks,	"wpblocks",	2,
 	CMwildcard,	"*",		0,
 };
 
@@ -719,7 +723,7 @@ sdclose(Chan* c)
 }
 
 static long
-sdbio(Chan* c, int write, char* a, long len, vlong off)
+sdio(Chan* c, int write, char* a, long len, vlong off)
 {
 	int nchange;
 	long l;
@@ -785,11 +789,11 @@ sdbio(Chan* c, int write, char* a, long len, vlong off)
 		poperror();
 	}
 
-	b = sdmalloc(nb*unit->secsize);
+	b = malloc(nb*unit->secsize);
 	if(b == nil)
 		error(Enomem);
 	if(waserror()){
-		sdfree(b);
+		free(b);
 		if(!(unit->inquiry[1] & 0x80))
 			decref(&sdev->r);		/* gadverdamme! */
 		nexterror();
@@ -829,7 +833,7 @@ sdbio(Chan* c, int write, char* a, long len, vlong off)
 			len = l - offset;
 		memmove(a, b+offset, len);
 	}
-	sdfree(b);
+	free(b);
 	poperror();
 
 	if(unit->inquiry[1] & 0x80){
@@ -851,7 +855,7 @@ sdrio(SDreq* r, void* a, long n)
 
 	data = nil;
 	if(n){
-		if((data = sdmalloc(n)) == nil)
+		if((data = malloc(n)) == nil)
 			error(Enomem);
 		if(r->write)
 			memmove(data, a, n);
@@ -861,7 +865,7 @@ sdrio(SDreq* r, void* a, long n)
 
 	if(waserror()){
 		if(data != nil){
-			sdfree(data);
+			free(data);
 			r->data = nil;
 		}
 		nexterror();
@@ -873,7 +877,7 @@ sdrio(SDreq* r, void* a, long n)
 	if(!r->write && r->rlen > 0)
 		memmove(a, data, r->rlen);
 	if(data != nil){
-		sdfree(data);
+		free(data);
 		r->data = nil;
 	}
 	poperror();
@@ -986,7 +990,7 @@ sdread(Chan *c, void *a, long n, vlong off)
 		return i;
 
 	case Qpart:
-		return sdbio(c, 0, a, n, off);
+		return sdio(c, 0, a, n, off);
 	}
 
 	return 0;
@@ -1238,7 +1242,7 @@ sdwrite(Chan* c, void* a, long n, vlong off)
 		poperror();
 		break;
 	case Qpart:
-		return sdbio(c, 1, a, n, off);
+		return sdio(c, 1, a, n, off);
 	}
 
 	return n;

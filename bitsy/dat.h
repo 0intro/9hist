@@ -268,8 +268,8 @@ struct DevConf
  */
 struct Timer
 {
-	vlong	when;			/* fastticks when f should be called */
-	vlong	period;			/* non-zero for recurring periodic timers */
+	uvlong	when;			/* fastticks when f should be called */
+	ulong	period;			/* non-zero for recurring periodic timers */
 	void		(*f)(Ureg*, Timer*);	/* function to call */
 	void		*a;				/* User parameter */
 	Timer	*next;

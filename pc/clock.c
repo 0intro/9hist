@@ -10,11 +10,9 @@
  *  this is called both by the mp's clock interrupt and
  *  by the clockintr0 for the i8253
  */
-int nclockintr;
 void
 clockintr(Ureg* ureg, void*)
 {
-nclockintr++;
 	/* this has to get called every tick or the 8253 timer will overflow */
 	fastticks(nil);
 
