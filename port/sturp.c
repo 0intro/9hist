@@ -943,7 +943,11 @@ todo(void *arg)
 	Urp *up;
 
 	up = (Urp *)arg;
-	return (WINDOW(up)>0 && up->wq->len>0 && !(up->state&INITING));
+
+	return (up->state&INITING)
+	? NOW>up->timer					/* time to INIT1 */
+	: ((up->unacked!=up->next && NOW>up->timer)	/* time to ENQ */
+	  || (!QFULL(up->rq->next) && up->iseq!=(up->lastecho&7))); /* time to ECHO */
 }
 static void
 urpkproc(void *arg)
@@ -970,7 +974,6 @@ urpkproc(void *arg)
 	up->kstarted = 0;
 	wakeup(&up->r);
 	poperror();
-	DPRINT("urpkproc %ux\n", up);
 }
 
 /*
@@ -988,11 +991,8 @@ urptimer(Alarm *a)
 	for(up = urp, last = &urp[conf.nurp]; up < last; up++){
 		if(up->state==0)
 			continue;
-		if((up->unacked!=up->next || (up->state&INITING)) && NOW>up->timer){
-			q = up->rq;
-			if(q)
-				wakeup(&q->r);
-		}
+		if(up->rq && todo(up))
+			wakeup(&up->rq->r);
 	}
 }
 
