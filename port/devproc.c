@@ -246,11 +246,23 @@ procwstat(Chan *c, char *db)
 }
 
 static int
-procfds(Fgrp *f, char *va, int count, long offset)
+procfds(Proc *p, char *va, int count, long offset)
 {
+	Fgrp *f;
 	Chan *c;
 	int n, i;
 
+	f = p->fgrp;
+	if(f == nil)
+		return 0;
+	if(waserror()){
+		unlock(f);
+		qunlock(&p->debug);
+		nexterror();
+	}
+
+	qlock(&p->debug);
+	lock(f);
 	n = 0;
 	for(i = 0; i <= f->maxfd; i++) {
 		c = f->fd[i];
@@ -273,6 +285,10 @@ procfds(Fgrp *f, char *va, int count, long offset)
 				n = 0;
 		}
 	}
+	unlock(f);
+	qunlock(&p->debug);
+	poperror();
+
 	return n;
 }
 
@@ -519,7 +535,7 @@ procread(Chan *c, void *va, long n, vlong off)
 	case Qnoteid:
 		return readnum(offset, va, n, p->noteid, NUMSIZE);
 	case Qfd:
-		return procfds(p->fgrp, va, n, offset);
+		return procfds(p, va, n, offset);
 	}
 	error(Egreg);
 	return 0;		/* not reached */

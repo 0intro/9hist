@@ -648,9 +648,11 @@ pexit(char *exitstr, int freemem)
 	up->alarm = 0;
 
 	if(up->fgrp){
+		qlock(&up->debug);
 		fgrp = up->fgrp;
 		up->fgrp = nil;
 		closefgrp(fgrp);
+		qunlock(&up->debug);
 	}
 	if(up->egrp)
 		closeegrp(up->egrp);
