@@ -76,7 +76,7 @@ addrootfile(char *name, uchar *contents, ulong len)
 static void
 addrootdir(char *name)
 {
-	addroot(name, nil, 0, CHDIR);
+	addroot(name, nil, 0, CHDIR|0555);
 }
 
 static void

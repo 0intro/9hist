@@ -799,7 +799,7 @@ etherread(void *a)
 	Block *bp, *bp2;
 	Etherpkt *ep;
 	Centry *ce;
-
+static uchar tribble[Eaddrlen] = {0x00, 0xd1, 0x80, 0xaa, 0xbb, 0x07};
 	
 	qlock(b);
 	port->readp = up;	/* hide identity under a rock for unbind */
@@ -841,8 +841,10 @@ etherread(void *a)
 			if(ce == nil) {
 				b->miss++;
 				port->inunknown++;
-				bp2 = bp; bp = nil;
-				ethermultiwrite(b, bp2, port);
+				if(port->type != Tether || memcmp(ep->s, tribble, Eaddrlen) == 0) {
+					bp2 = bp; bp = nil;
+					ethermultiwrite(b, bp2, port);
+				}	
 			} else if (ce->port != port->id) {
 				b->hit++;
 				bp2 = bp; bp = nil;

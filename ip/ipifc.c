@@ -1244,6 +1244,7 @@ ipifcregisterproxy(Fs *f, Ipifc *ifc, uchar *ip)
 	Conv **cp, **e;
 	Ipifc *nifc;
 	Iplifc *lifc;
+	Medium *m;
 	uchar net[IPaddrlen];
 
 	/* register the address on any network that will proxy for us */
@@ -1252,16 +1253,22 @@ ipifcregisterproxy(Fs *f, Ipifc *ifc, uchar *ip)
 		if(*cp == nil)
 			continue;
 		nifc = (Ipifc*)(*cp)->ptcl;
-		if(nifc->m->areg == nil)
-			continue;
 		if(nifc == ifc)
 			continue;
+
+		rlock(nifc);
+		m = nifc->m;
+		if(m == nil || m->areg == nil){
+			runlock(nifc);
+			continue;
+		}
 		for(lifc = nifc->lifc; lifc; lifc = lifc->next){
 			maskip(ip, lifc->mask, net);
 			if(ipcmp(net, lifc->remote) == 0){
-				(*nifc->m->areg)(nifc, ip);
+				(*m->areg)(nifc, ip);
 				break;
 			}
 		}
+		runlock(nifc);
 	}
 }
