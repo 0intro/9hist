@@ -123,7 +123,7 @@ loopbackinit(void)
 static Chan*
 loopbackattach(char *spec)
 {
-	Loop *lb;
+	Loop *volatile lb;
 	Queue *q;
 	Chan *c;
 	int chan;
@@ -472,8 +472,8 @@ loopbackwrite(Chan *c, void *va, long n, vlong off)
 {
 	Loop *lb;
 	Link *link;
-	Cmdbuf *cb;
-	Block *bp;
+	Cmdbuf *volatile cb;
+	Block *volatile bp;
 	vlong d0, d0ns;
 	long dn, dnns;
 
@@ -492,6 +492,10 @@ loopbackwrite(Chan *c, void *va, long n, vlong off)
 		lb = c->aux;
 		link = &lb->link[ID(c->qid.path)];
 		cb = parsecmd(va, n);
+		if(waserror()){
+			free(cb);
+			nexterror();
+		}
 		if(cb->nf < 1)
 			error("short control request");
 		if(strcmp(cb->f[0], "delay") == 0){
@@ -545,6 +549,7 @@ loopbackwrite(Chan *c, void *va, long n, vlong off)
 			iunlock(link);
 		}else
 			error("unknown control request");
+		free(cb);
 		break;
 	default:
 		error(Eperm);

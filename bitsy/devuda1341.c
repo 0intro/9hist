@@ -44,13 +44,13 @@ static int debug = 0;
  * L3 setup and hold times (expressed in µs)
  */
 enum {
-	L3_DataSetupTime =	1,		/* 190 ns */
-	L3_DataHoldTime =	1,		/*  30 ns */
-	L3_ModeSetupTime =	1,		/* 190 ns */
-	L3_ModeHoldTime =	1,		/* 190 ns */
-	L3_ClockHighTime =	10,		/* 250 ns (min is 64*fs, 35µs @ 44.1 Khz) */
-	L3_ClockLowTime =	10,		/* 250 ns (min is 64*fs, 35µs @ 44.1 Khz) */
-	L3_HaltTime =		1,		/* 190 ns */
+	L3_DataSetupTime =	10,	/* 190 ns */
+	L3_DataHoldTime =		10,	/*  30 ns */
+	L3_ModeSetupTime =	10,	/* 190 ns */
+	L3_ModeHoldTime =		10,	/* 190 ns */
+	L3_ClockHighTime =		100,	/* 250 ns (min is 64*fs, 35µs @ 44.1 Khz) */
+	L3_ClockLowTime =		100,	/* 250 ns (min is 64*fs, 35µs @ 44.1 Khz) */
+	L3_HaltTime =			10,	/* 190 ns */
 };
 
 /* UDA 1341 Registers */
@@ -940,6 +940,7 @@ audioread(Chan *c, void *v, long n, vlong off)
 	ulong offset = off;
 	char *p;
 	IOstate *s;
+	uchar voldata;
 
 	n0 = n;
 	p = v;

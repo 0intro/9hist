@@ -525,7 +525,7 @@ sslbread(Chan *c, long n, ulong)
 
 	nconsumed = 0;
 	if(waserror()){
-		if(strcmp(up->error, Eintr) != 0)
+		if(strcmp(up->error, Eintr) == 0)
 			regurgitate(s.s, consumed, nconsumed);
 		qunlock(&s.s->in.q);
 		nexterror();
@@ -773,9 +773,7 @@ sslbwrite(Chan *c, Block *b, ulong offset)
 
 		s.s->out.mid++;
 
-		m = BLEN(nb);
 		devtab[s.s->c->type]->bwrite(s.s->c, nb, s.s->c->offset);
-		s.s->c->offset += m;
 	}
 	qunlock(&s.s->out.q);
 	poperror();

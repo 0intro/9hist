@@ -76,7 +76,7 @@ kprofattach(char *spec)
 			error(Enomem);
 	}
 	kproftab[0].length = n;
-	return devattach('T', spec);
+	return devattach('K', spec);
 }
 
 static int
@@ -171,7 +171,7 @@ kprofwrite(Chan *c, void *a, long n, vlong)
 }
 
 Dev kprofdevtab = {
-	'T',
+	'K',
 	"kprof",
 
 	devreset,

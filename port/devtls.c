@@ -1,5 +1,5 @@
 /*
- *  devtls - transport layer security 1.0 and secure sockets layer 3.0 record layer
+ *  devtls - record layer for transport layer security 1.0 and secure sockets layer 3.0
  */
 #include	"u.h"
 #include	"../port/lib.h"
@@ -13,25 +13,8 @@
 #define NOSPOOKS 1
 
 typedef struct OneWay OneWay;
-struct OneWay
-{
-	QLock	q;
-	QLock	ctlq;
-
-	void	*state;		/* encryption state */
-	int	slen;		/* hash data length */
-	uchar	*secret;	/* secret */
-	ulong	mid;		/* message id */
-};
-
 enum
 {
-	/* connection states */
-	Sincomplete=	0,
-	Sclear=		1,
-	Sencrypting=	2,
-	Sdigesting=	4,
-	Sdigenc=	Sencrypting|Sdigesting,
 
 	/* encryption algorithms */
 	Noencryption=	0,
@@ -40,27 +23,97 @@ enum
 	RC4=		3
 };
 
-typedef struct Dstate Dstate;
-struct Dstate
+enum {
+	MaxRecLen	= 1<<14,	/* max payload length of a record layer message */
+	RecHdrLen	= 5,
+	TLSVersion	= 0x0301,
+	SSL3Version	= 0x0300,
+	ProtocolVersion	= 0x0301,	/* maximum version we speak */
+	MinProtoVersion	= 0x0300,	/* limits on version we accept */
+	MaxProtoVersion	= 0x03ff,
+};
+
+/* connection states */
+enum {
+	SHandshake,		// doing handshake
+	SOpen,			// application data can be sent
+	SRemoteClosed,		// remote side has closed down
+	SError,			// some sort of error has occured
+	SClosed,		// it is all over
+};
+
+/* record types */
+enum {
+	RChangeCipherSpec = 20,
+	RAlert,
+	RHandshake,
+	RApplication,
+};
+
+/* alerts */
+enum {
+	ECloseNotify = 0,
+	EUnexpectedMessage = 10,
+	EBadRecordMac = 20,
+	EDecryptionFailed = 21,
+	ERecordOverflow = 22,
+	EDecompressionFailure = 30,
+	EHandshakeFailure = 40,
+	ENoCertificate = 41,
+	EBadCertificate = 42,
+	EUnsupportedCertificate = 43,
+	ECertificateRevoked = 44,
+	ECertificateExpired = 45,
+	ECertificateUnknown = 46,
+	EIllegalParameter = 47,
+	EUnknownCa = 48,
+	EAccessDenied = 49,
+	EDecodeError = 50,
+	EDecryptError = 51,
+	EExportRestriction = 60,
+	EProtocolVersion = 70,
+	EInsufficientSecurity = 71,
+	EInternalError = 80,
+	EUserCanceled = 90,
+	ENoRenegotiation = 100,
+
+	EMAX = 256
+};
+struct OneWay
 {
-	Chan	*c;		/* io channel */
-	uchar	state;		/* state of connection */
-	int	ref;		/* serialized by dslock for atomic destroy */
+	QLock		q;		/* locks io access */
+	QLock		ctlq;		/* locks one-way paramaters */
 
-	uchar	encryptalg;	/* encryption algorithm */
-	ushort	blocklen;	/* blocking length */
+	ulong		seq;
+	int		keyed;		/* have key, waiting for cipher enable */
 
-	ushort	diglen;		/* length of digest */
-	DigestState *(*hf)(uchar*, ulong, uchar*, DigestState*);	/* hash func */
+	int		protected;	/* cipher is enabled */
+	RC4state	rc4;
+	uchar		mackey[64];
+};
 
-	/* for SSL format */
-	int	max;		/* maximum unpadded data per msg */
-	int	maxpad;		/* maximum padded data per msg */
 
-	/* input side */
+typedef struct TlsRec TlsRec;
+struct TlsRec
+{
+	Chan		*c;			/* io channel */
+	int		ref;			/* serialized by dslock for atomic destroy */
+	int		version;		/* version of the protocol we are speaking */
+	int		verset;			/* version has been set */
+
+	Lock		statelk;
+	int		state;			/* must be set using setstate */
+
+	/* record layer mac functions for different protocol versions */
+	void		(*packMac)(TlsRec*, uchar*, uchar*, uchar*, uchar*, int, uchar*);
+	DigestState	*(*mac)(uchar*, ulong, uchar*, ulong, uchar*, DigestState*);
+	int		maclen;
+
+	/* input side -- protected by in.q */
 	OneWay	in;
-	Block	*processed;
-	Block	*unprocessed;
+	Queue	*handq;				/* queue of handshake messages */
+	Block	*processed;			/* next bunch of application data */
+	Block	*unprocessed;			/* data read from c but not parsed into records */
 
 	/* output side */
 	OneWay	out;
@@ -73,7 +126,7 @@ struct Dstate
 static	Lock	dslock;
 static	int	dshiwat;
 static	int	maxdstate = 128;
-static	Dstate** dstate;
+static	TlsRec** dstate;
 static	char	*encalgs;
 static	char	*hashalgs;
 
@@ -90,8 +143,7 @@ enum{
 	Qconvdir,		/* directory for a conversation */
 	Qdata,
 	Qctl,
-	Qsecretin,
-	Qsecretout,
+	Qhand,
 	Qencalgs,
 	Qhashalgs,
 };
@@ -100,24 +152,32 @@ enum{
 #define CONV(x) 	(((x).path >> 5)&(Maxdstate-1))
 #define QID(c, y) 	(((c)<<5) | (y))
 
-static void	ensure(Dstate*, Block**, int);
+static void	ensure(TlsRec*, Block**, int);
 static void	consume(Block**, uchar*, int);
 static void	setsecret(OneWay*, uchar*, int);
-static Block*	encryptb(Dstate*, Block*, int);
-static Block*	decryptb(Dstate*, Block*);
-static Block*	digestb(Dstate*, Block*, int);
-static void	checkdigestb(Dstate*, Block*);
+static Block*	encryptb(TlsRec*, Block*, int);
+static Block*	decryptb(TlsRec*, Block*);
+static Block*	digestb(TlsRec*, Block*, int);
+static void	checkdigestb(TlsRec*, Block*);
 static Chan*	buftochan(char*);
-static void	tlshangup(Dstate*);
-static Dstate*	dsclone(Chan *c);
-static void	dsnew(Chan *c, Dstate **);
+static void	tlshangup(TlsRec*);
+static TlsRec*	dsclone(Chan *c);
+static void	dsnew(Chan *c, TlsRec **);
+static void	put64(uchar *p, vlong x);
+static void	put32(uchar *p, u32int);
+static void	put24(uchar *p, int);
+static void	put16(uchar *p, int);
+static u32int	get32(uchar *p);
+static int	get16(uchar *p);
+static void	tlsAlert(TlsRec *tr, int err);
+static void	tlsError(TlsRec *tr, int err, char *msg, ...);
+#pragma	varargck	argpos	tlsError	3
 
 static char *tlsnames[] = {
 [Qclonus]	"clone",
 [Qdata]		"data",
 [Qctl]		"ctl",
-[Qsecretin]	"secretin",
-[Qsecretout]	"secretout",
+[Qhand]		"hand",
 [Qencalgs]	"encalgs",
 [Qhashalgs]	"hashalgs",
 };
@@ -126,7 +186,7 @@ static int
 tlsgen(Chan *c, Dirtab *d, int nd, int s, Dir *dp)
 {
 	Qid q;
-	Dstate *ds;
+	TlsRec *ds;
 	char name[16], *p, *nm;
 
 	USED(nd);
@@ -189,18 +249,14 @@ tlsgen(Chan *c, Dirtab *d, int nd, int s, Dir *dp)
 			p = "data";
 			break;
 		case 2:
-			q.path = QID(CONV(c->qid), Qsecretin);
-			p = "secretin";
+			q.path = QID(CONV(c->qid), Qhand);
+			p = "hand";
 			break;
 		case 3:
-			q.path = QID(CONV(c->qid), Qsecretout);
-			p = "secretout";
-			break;
-		case 4:
 			q.path = QID(CONV(c->qid), Qencalgs);
 			p = "encalgs";
 			break;
-		case 5:
+		case 4:
 			q.path = QID(CONV(c->qid), Qhashalgs);
 			p = "hashalgs";
 			break;
@@ -223,7 +279,7 @@ tlsattach(char *spec)
 {
 	Chan *c;
 
-	c = devattach('D', spec);
+	c = devattach('a', spec);
 	c->qid.path = QID(0, Qtopdir)|CHDIR;
 	c->qid.vers = 0;
 	return c;
@@ -244,7 +300,7 @@ tlsstat(Chan *c, char *db)
 static Chan*
 tlsopen(Chan *c, int omode)
 {
-	Dstate *s, **pp;
+	TlsRec *s, **pp;
 	int perm;
 
 	perm = 0;
@@ -277,8 +333,7 @@ tlsopen(Chan *c, int omode)
 		break;
 	case Qctl:
 	case Qdata:
-	case Qsecretin:
-	case Qsecretout:
+	case Qhand:
 		if(waserror()) {
 			unlock(&dslock);
 			nexterror();
@@ -315,7 +370,7 @@ static void
 tlswstat(Chan *c, char *dp)
 {
 	Dir d;
-	Dstate *s;
+	TlsRec *s;
 
 	convM2D(dp, &d);
 
@@ -332,13 +387,12 @@ tlswstat(Chan *c, char *dp)
 static void
 tlsclose(Chan *c)
 {
-	Dstate *s;
+	TlsRec *s;
 
 	switch(TYPE(c->qid)) {
 	case Qctl:
 	case Qdata:
-	case Qsecretin:
-	case Qsecretout:
+	case Qhand:
 		if((c->flag & COPEN) == 0)
 			break;
 
@@ -357,10 +411,6 @@ tlsclose(Chan *c)
 		tlshangup(s);
 		if(s->c)
 			cclose(s->c);
-		free(s->in.secret);
-		free(s->out.secret);
-		free(s->in.state);
-		free(s->out.state);
 		free(s);
 	}
 }
@@ -369,7 +419,7 @@ tlsclose(Chan *c)
  *  make sure we have at least 'n' bytes in list 'l'
  */
 static void
-ensure(Dstate *s, Block **l, int n)
+ensure(TlsRec *s, Block **l, int n)
 {
 	int sofar, i;
 	Block *b, *bl;
@@ -429,7 +479,7 @@ consume(Block **l, uchar *p, int n)
  *  give back n bytes
  */
 static void
-regurgitate(Dstate *s, uchar *p, int n)
+regurgitate(TlsRec *s, uchar *p, int n)
 {
 	Block *b;
 
@@ -497,6 +547,129 @@ qremove(Block **l, int n, int discard)
 }
 
 /*
+ * read and process one tls record layer message
+ * must be called with tr->in.q held
+ */
+static void
+tlsrecread(TlsRec *tr)
+{
+	OneWay *volatile in;
+	Block *volatile b;
+	uchar *p, seq[8], header[RecHdrLen], hmac[MD5dlen];
+	int volatile nconsumed;
+	int len, type, ver;
+
+	nconsumed = 0;
+	if(waserror()){
+		if(strcmp(up->error, Eintr) == 0)
+			regurgitate(tr, header, nconsumed);
+		nexterror();
+	}
+	ensure(tr, &tr->unprocessed, RecHdrLen);
+	consume(&tr->unprocessed, header, RecHdrLen);
+	nconsumed = RecHdrLen;
+	type = header[0];
+	ver = get16(header+1);
+	len = get16(header+3);
+	if(ver != tr->version && (tr->verset || ver < MinProtoVersion || ver > MaxProtoVersion))
+		tlsError(tr, EProtocolVersion, "invalid version in record layer");
+	if(len <= 0)
+		tlsError(tr, EIllegalParameter, "invalid length in record layer");
+	if(len > MaxRecLen)
+		tlsError(tr, ERecordOverflow, "record message too long");
+	ensure(tr, &tr->unprocessed, len);
+	nconsumed = 0;
+
+	/*
+	 *  if an Eintr happens after this, we're screwed.  Make
+	 *  sure nothing we call can sleep.  Luckily, allocb
+	 *  won't sleep, it'll just error out.
+	 *  grab the next message and decode/decrypt it
+	 */
+	b = qremove(&tr->unprocessed, len, 0);
+
+	in = &tr->in;
+	if(waserror()){
+		qunlock(&in->ctlq);
+		if(b != nil)
+			freeb(b);
+		nexterror();
+	}
+	qlock(&in->ctlq);
+	b = pullupblock(b, len);
+	p = b->rp;
+	if(in->protected) {
+		if(len <= tr->maclen)
+			tlsError(tr, EDecodeError, "record message too short for mac");
+		rc4(&in->rc4, p, len);
+		len -= tr->maclen;
+
+		/* update length */
+		put16(header+3, len);
+		put64(seq, in->seq);
+		in->seq++;
+		(*tr->packMac)(tr, in->mackey, seq, header, p, len, hmac);
+		if(memcmp(hmac, p+len, tr->maclen) != 0)
+			tlsError(tr, EBadRecordMac, "record mac mismatch");
+	}
+	qunlock(&tr->in.ctlq);
+	poperror();
+	if(len <= 0)
+		tlsError(tr, EDecodeError, "runt record message");
+
+	switch(type) {
+	default:
+		tlsError(tr, EIllegalParameter, "invalid record message 0x%x", type);
+		return;
+	case RChangeCipherSpec:
+		if(len != 1 || p[0] != 1)
+			tlsError(tr, EHandshakeFailure, "invalid change cipher spec");
+		qlock(&in->ctlq);
+		if(!tr->in.keyed){
+			qunlock(&in->ctlq);
+			tlsError(tr, EUnexpectedMessage, "unexpected change cipher spec");
+		}
+		tr->in.keyed = 0;
+		tr->in.protected = 1;
+		tr->in.seq = 0;
+		qunlock(&in->ctlq);
+		break;
+	case RAlert:
+		if(len != 2)
+			tlsError(tr, EDecodeError, "invalid alert");
+		if(p[0] == 1) {
+			if(p[1] == ECloseNotify) {
+				tlsError(tr, ECloseNotify, "remote close");
+				tlsSetState(tr, SRemoteClosed);
+			}
+		} else {
+			tlsSetState(tr, SError);
+			tlsAlert(tr, p[1]);
+		}
+		break;
+	case RHandshake:
+		/*
+		 * don't worry about dropping the block
+		 * qbwrite always queue it even if flow controlled and interrupted.
+		 */
+		if(tr->handq != nil){
+			qbwrite(tr->handq, b);
+			b = nil;
+		}
+		break;
+	case RApplication:
+//ZZZ race on state
+		if(tr->state != SOpen)
+			tlsError(tr, EUnexpectedMessage, "application message received before handshake completed");
+		tr->processed = b;
+		b = nil;
+		break;
+	}
+	if(b != nil)
+		freeb(b);
+}
+
+/*
  *  We can't let Eintr's lose data since the program
  *  doing the read may be able to handle it.  The only
  *  places Eintr is possible is during the read's in consume.
@@ -504,105 +677,47 @@ qremove(Block **l, int n, int discard)
  *  consumed before the last ensure.
  */
 static Block*
-tlsbread(Chan *c, long n, ulong)
+tlsbread(Chan *c, long n, ulong offset)
 {
-	Dstate *volatile s;
+	TlsRec *volatile tr;
 	Block *b;
-	uchar consumed[3];
-	int nconsumed;
-	int len, pad;
 
-	s = dstate[CONV(c->qid)];
-	if(s == nil)
+	switch(TYPE(c->qid)) {
+	default:
+		return devbread(c, n, offset);
+	case Qhand:
+	case Qdata:
+		break;
+	}
+
+	tr = dstate[CONV(c->qid)];
+	if(tr == nil)
 		panic("tlsbread");
-	if(s->state == Sincomplete)
-		error(Ebadusefd);
 
-	nconsumed = 0;
 	if(waserror()){
-		if(strcmp(up->error, Eintr) != 0)
-			regurgitate(s, consumed, nconsumed);
-		qunlock(&s->in.q);
+		qunlock(&tr->in.q);
 		nexterror();
 	}
-	qlock(&s->in.q);
+	qlock(&tr->in.q);
+	if(TYPE(c->qid) == Qdata){
+//ZZZ race setting state
+		if(tr->state != SOpen)
+			error(Ebadusefd);
+		while(tr->processed == nil)
+			tlsrecread(tr);
 
-	if(s->processed == 0){
-		/* read in the whole message */
-		ensure(s, &s->unprocessed, 2);
-		consume(&s->unprocessed, consumed, 2);
-		nconsumed = 2;
-		if(consumed[0] & 0x80){
-			len = ((consumed[0] & 0x7f)<<8) | consumed[1];
-			ensure(s, &s->unprocessed, len);
-			pad = 0;
-		} else {
-			len = ((consumed[0] & 0x3f)<<8) | consumed[1];
-			ensure(s, &s->unprocessed, len+1);
-			consume(&s->unprocessed, &consumed[2], 1);
-			pad = consumed[2];
-			if(pad > len){
-				print("pad %d buf len %d\n", pad, len);
-				error("bad pad in tls message");
-			}
-		}
-		USED(nconsumed);
-		nconsumed = 0;
-
-		/*  if an Eintr happens after this, we're screwed.  Make
-		 *  sure nothing we call can sleep.  Luckily, allocb
-		 *  won't sleep, it'll just error out.
-		 */
-
-		/* grab the next message and decode/decrypt it */
-		b = qremove(&s->unprocessed, len, 0);
-
-		if(waserror()){
-			qunlock(&s->in.ctlq);
-			if(b != nil)
-				freeb(b);
-			nexterror();
-		}
-		qlock(&s->in.ctlq);
-		switch(s->state){
-		case Sencrypting:
-			b = decryptb(s, b);
-			break;
-		case Sdigesting:
-			b = pullupblock(b, s->diglen);
-			if(b == nil)
-				error("tls message too short");
-			checkdigestb(s, b);
-			b->rp += s->diglen;
-			break;
-		case Sdigenc:
-			b = decryptb(s, b);
-			b = pullupblock(b, s->diglen);
-			if(b == nil)
-				error("tls message too short");
-			checkdigestb(s, b);
-			b->rp += s->diglen;
-			len -= s->diglen;
-			break;
-		}
-
-		/* remove pad */
-		if(pad)
-			s->processed = qremove(&b, len - pad, 1);
-		else
-			s->processed = b;
-		b = nil;
-		s->in.mid++;
-		qunlock(&s->in.ctlq);
+		/* return at most what was asked for */
+		b = qremove(&tr->processed, n, 0);
+		qunlock(&tr->in.q);
 		poperror();
-		USED(nconsumed);
+	}else{
+//ZZZ race setting state
+		while(tr->state == SHandshake && !qcanread(tr->handq))
+			tlsrecread(tr);
+		qunlock(&tr->in.q);
+		poperror();
+		b = qbread(tr->handq, n);
 	}
-
-	/* return at most what was asked for */
-	b = qremove(&s->processed, n, 0);
-
-	qunlock(&s->in.q);
-	poperror();
 
 	return b;
 }
@@ -666,114 +781,124 @@ randfill(uchar *buf, int len)
 }
 
 /*
- *  use SSL record format, add in count, digest and/or encrypt.
- *  the write is interruptable.  if it is interrupted, we'll
- *  get out of sync with the far side.  not much we can do about
- *  it since we don't know if any bytes have been written.
+ *  write a block in tls records
  */
-static long
-tlsbwrite(Chan *c, Block *b, ulong offset)
+static void
+tlsrecwrite(TlsRec *tr, int type, Block *b)
 {
-	Dstate *volatile s;
 	Block *volatile bb;
 	Block *nb;
-	int h, n, m, pad, rv;
-	uchar *p;
+	uchar *p, seq[8];
+	OneWay *volatile out;
+	int n, maclen;
 
+	out = &tr->out;
 	bb = b;
-	s = dstate[CONV(c->qid)];
-	if(s == nil)
-		panic("tlsbwrite");
-	if(s->state == Sincomplete){
-		freeb(b);
-		error(Ebadusefd);
-	}
-
 	if(waserror()){
-		qunlock(&s->out.q);
+		qunlock(&out->q);
 		if(bb != nil)
 			freeb(bb);
 		nexterror();
 	}
-	qlock(&s->out.q);
+	qlock(&out->q);
 
-	rv = 0;
-	while(bb){
-		m = n = BLEN(bb);
-		h = s->diglen + 2;
+	while(bb != nil){
+//ZZZ race on state
+		if(tr->state != SHandshake && tr->state != SOpen)
+			error(Ebadusefd);
 
-		/* trim to maximum block size */
-		pad = 0;
-		if(m > s->max){
-			m = s->max;
-		} else if(s->blocklen != 1){
-			pad = (m + s->diglen)%s->blocklen;
-			if(pad){
-				if(m > s->maxpad){
-					pad = 0;
-					m = s->maxpad;
-				} else {
-					pad = s->blocklen - pad;
-					h++;
-				}
-			}
+		/*
+		 * get at most one maximal record's input,
+		 * with padding on the front for header and back for mac
+		 */
+		if(waserror()){
+			qunlock(&out->ctlq);
+			nexterror();
 		}
-
-		rv += m;
-		if(m != n){
-			nb = allocb(m + h + pad);
-			memmove(nb->wp + h, bb->rp, m);
-			nb->wp += m + h;
-			bb->rp += m;
-		} else {
-			/* add header space */
-			nb = padblock(bb, h);
+		qlock(&out->ctlq);
+		maclen = 0;
+		if(out->protected)
+			maclen = tr->maclen;
+		n = BLEN(bb);
+		if(n > MaxRecLen){
+			n = MaxRecLen;
+			nb = allocb(n + RecHdrLen + maclen);
+			memmove(nb->wp + RecHdrLen, bb->rp, n);
+			nb->wp += n + RecHdrLen;
+			bb->rp += n;
+		}else{
+			/*
+			 * carefully reuse bb so it will get freed if we're out of memory
+			 */
+			bb = padblock(bb, RecHdrLen);
+			if(maclen)
+				nb = padblock(bb, -maclen);
+			else
+				nb = bb;
 			bb = nil;
 		}
-		m += s->diglen;
 
-		/* SSL style count */
-		if(pad){
-			nb = padblock(nb, -pad);
-			randfill(nb->wp, pad);
-			nb->wp += pad;
-			m += pad;
+		p = nb->rp;
+		p[0] = type;
+		put16(p+1, tr->version);
+		put16(p+3, n);
 
-			p = nb->rp;
-			p[0] = (m>>8);
-			p[1] = m;
-			p[2] = pad;
-			offset = 3;
-		} else {
-			p = nb->rp;
-			p[0] = (m>>8) | 0x80;
-			p[1] = m;
-			offset = 2;
+		if(out->protected){
+			put64(seq, out->seq);
+			out->seq++;
+			(*tr->packMac)(tr, out->mackey, seq, p, p + RecHdrLen, n, nb->wp);
+			b->wp += maclen;
+			n += maclen;
+
+			/* update length */
+			put16(p+3, n);
+
+			/* encrypt */
+			rc4(&out->rc4, p+RecHdrLen, n);
 		}
+		qunlock(&out->ctlq);
+		poperror();
 
-		switch(s->state){
-		case Sencrypting:
-			nb = encryptb(s, nb, offset);
-			break;
-		case Sdigesting:
-			nb = digestb(s, nb, offset);
-			break;
-		case Sdigenc:
-			nb = digestb(s, nb, offset);
-			nb = encryptb(s, nb, offset);
-			break;
-		}
-
-		s->out.mid++;
-
-		m = BLEN(nb);
-		devtab[s->c->type]->bwrite(s->c, nb, s->c->offset);
-		s->c->offset += m;
+		/*
+		 * if bwrite error's, we assume the block is queued.
+		 * if not, we're out of sync with the receiver and will not recover.
+		 */
+		devtab[tr->c->type]->bwrite(tr->c, nb, 0);
 	}
-	qunlock(&s->out.q);
+	qunlock(&out->q);
 	poperror();
+}
 
-	return rv;
+static long
+tlsbwrite(Chan *c, Block *b, ulong offset)
+{
+	TlsRec *tr;
+	ulong n;
+
+	n = BLEN(b);
+
+	tr = dstate[CONV(c->qid)];
+	if(tr == nil)
+		panic("tlsbread");
+
+	switch(TYPE(c->qid)) {
+	default:
+		return devbwrite(c, b, offset);
+	case Qhand:
+//ZZZ race setting state
+		if(tr->state != SHandshake && tr->state != SOpen)
+			error(Ebadusefd);
+		tlsrecwrite(tr, RHandshake, b);
+		break;
+	case Qdata:
+//ZZZ race setting state
+		if(tr->state != SOpen)
+			error(Ebadusefd);
+		tlsrecwrite(tr, RApplication, b);
+		break;
+	}
+
+	return n;
 }
 
 static void
@@ -785,85 +910,6 @@ setsecret(OneWay *w, uchar *secret, int n)
 	w->secret = smalloc(n);
 	memmove(w->secret, secret, n);
 	w->slen = n;
-}
-
-static void
-initDESkey(OneWay *w)
-{
-	if(w->state){
-		free(w->state);
-		w->state = 0;
-	}
-
-	w->state = smalloc(sizeof(DESstate));
-	if(w->slen >= 16)
-		setupDESstate(w->state, w->secret, w->secret+8);
-	else if(w->slen >= 8)
-		setupDESstate(w->state, w->secret, 0);
-	else
-		error("secret too short");
-}
-
-/*
- *  40 bit DES is the same as 56 bit DES.  However,
- *  16 bits of the key are masked to zero.
- */
-static void
-initDESkey_40(OneWay *w)
-{
-	uchar key[8];
-
-	if(w->state){
-		free(w->state);
-		w->state = 0;
-	}
-
-	if(w->slen >= 8){
-		memmove(key, w->secret, 8);
-		key[0] &= 0x0f;
-		key[2] &= 0x0f;
-		key[4] &= 0x0f;
-		key[6] &= 0x0f;
-	}
-
-	w->state = malloc(sizeof(DESstate));
-	if(w->slen >= 16)
-		setupDESstate(w->state, key, w->secret+8);
-	else if(w->slen >= 8)
-		setupDESstate(w->state, key, 0);
-	else
-		error("secret too short");
-}
-
-static void
-initRC4key(OneWay *w)
-{
-	if(w->state){
-		free(w->state);
-		w->state = 0;
-	}
-
-	w->state = smalloc(sizeof(RC4state));
-	setupRC4state(w->state, w->secret, w->slen);
-}
-
-/*
- *  40 bit RC4 is the same as n-bit RC4.  However,
- *  we ignore all but the first 40 bits of the key.
- */
-static void
-initRC4key_40(OneWay *w)
-{
-	if(w->state){
-		free(w->state);
-		w->state = 0;
-	}
-
-	if(w->slen > 5)
-		w->slen = 5;
-
-	w->state = malloc(sizeof(RC4state));
-	setupRC4state(w->state, w->secret, w->slen);
 }
 
 /*
@@ -897,12 +943,11 @@ struct Hashalg
 Hashalg hashtab[] =
 {
 	{ "md5", MD5dlen, md5, },
-	{ "sha1", SHA1dlen, sha1, },
 	{ 0 }
 };
 
 static int
-parsehashalg(char *p, Dstate *s)
+parsehashalg(char *p, TlsRec *s)
 {
 	Hashalg *ha;
 
@@ -927,34 +972,14 @@ struct Encalg
 	void	(*keyinit)(OneWay*);
 };
 
-#ifdef NOSPOOKS
 Encalg encrypttab[] =
 {
-	{ "descbc", 8, DESCBC, initDESkey, },           /* DEPRECATED -- use des_56_cbc */
-	{ "desecb", 8, DESECB, initDESkey, },           /* DEPRECATED -- use des_56_ecb */
-	{ "des_56_cbc", 8, DESCBC, initDESkey, },
-	{ "des_56_ecb", 8, DESECB, initDESkey, },
-	{ "des_40_cbc", 8, DESCBC, initDESkey_40, },
-	{ "des_40_ecb", 8, DESECB, initDESkey_40, },
-	{ "rc4", 1, RC4, initRC4key_40, },              /* DEPRECATED -- use rc4_X      */
-	{ "rc4_256", 1, RC4, initRC4key, },
 	{ "rc4_128", 1, RC4, initRC4key_128, },
-	{ "rc4_40", 1, RC4, initRC4key_40, },
 	{ 0 }
 };
-#else
-Encalg encrypttab[] =
-{
-	{ "des_40_cbc", 8, DESCBC, initDESkey_40, },
-	{ "des_40_ecb", 8, DESECB, initDESkey_40, },
-	{ "rc4", 1, RC4, initRC4key_40, },              /* DEPRECATED -- use rc4_X      */
-	{ "rc4_40", 1, RC4, initRC4key_40, },
-	{ 0 }
-};
-#endif NOSPOOKS
 
 static int
-parseencryptalg(char *p, Dstate *s)
+parseencryptalg(char *p, TlsRec *s)
 {
 	Encalg *ea;
 
@@ -975,28 +1000,25 @@ parseencryptalg(char *p, Dstate *s)
 static long
 tlswrite(Chan *c, void *a, long n, vlong off)
 {
-	Dstate *volatile s;
+	TlsRec *volatile tr;
 	Block *volatile b;
 	int m, t;
 	char *p, *np, *e, buf[128];
 	uchar *x;
 	ulong offset = off;
 
-	s = dstate[CONV(c->qid)];
-	if(s == nil)
+	tr = dstate[CONV(c->qid)];
+	if(tr == nil)
 		panic("tlswrite");
 
 	t = TYPE(c->qid);
-	if(t == Qdata){
-		if(s->state == Sincomplete)
-			error(Ebadusefd);
-
+	if(t == Qdata || t == Qhand){
 		p = a;
 		e = p + n;
 		do {
 			m = e - p;
-			if(m > s->max)
-				m = s->max;
+			if(m > MaxRecLen)
+				m = MaxRecLen;
 
 			b = allocb(m);
 			if(waserror()){
@@ -1025,13 +1047,7 @@ tlswrite(Chan *c, void *a, long n, vlong off)
 
 	switch(t){
 	default:
-		panic("tlswrite");
-	case Qsecretin:
-		setsecret(&s->in, a, n);
-		goto out;
-	case Qsecretout:
-		setsecret(&s->out, a, n);
-		goto out;
+		error(Ebadusefd);
 	case Qctl:
 		break;
 	}
@@ -1048,13 +1064,14 @@ tlswrite(Chan *c, void *a, long n, vlong off)
 		*p++ = 0;
 
 	if(strcmp(buf, "fd") == 0){
+		if(s->c != nil)
+			error(Einuse);
 		s->c = buftochan(p);
 
 		/* default is clear (msg delimiters only) */
 		s->state = Sclear;
 		s->blocklen = 1;
 		s->diglen = 0;
-		s->maxpad = s->max = (1<<15) - s->diglen - 1;
 		s->in.mid = 0;
 		s->out.mid = 0;
 	} else if(strcmp(buf, "alg") == 0 && p != 0){
@@ -1135,7 +1152,7 @@ tlsinit(void)
 	int n;
 	char *cp;
 
-	if((dstate = smalloc(sizeof(Dstate*) * maxdstate)) == 0)
+	if((dstate = smalloc(sizeof(TlsRec*) * maxdstate)) == 0)
 		panic("tlsinit");
 
 	n = 1;
@@ -1168,7 +1185,7 @@ tlsinit(void)
 }
 
 Dev tlsdevtab = {
-	'D',
+	'a',
 	"tls",
 
 	devreset,
@@ -1189,7 +1206,7 @@ Dev tlsdevtab = {
 };
 
 static Block*
-encryptb(Dstate *s, Block *b, int offset)
+encryptb(TlsRec *s, Block *b, int offset)
 {
 	uchar *p, *ep, *p2, *ip, *eip;
 	DESstate *ds;
@@ -1221,7 +1238,7 @@ encryptb(Dstate *s, Block *b, int offset)
 }
 
 static Block*
-decryptb(Dstate *s, Block *bin)
+decryptb(TlsRec *s, Block *bin)
 {
 	Block *b, **l;
 	uchar *p, *ep, *tp, *ip, *eip;
@@ -1273,7 +1290,7 @@ decryptb(Dstate *s, Block *bin)
 }
 
 static Block*
-digestb(Dstate *s, Block *b, int offset)
+digestb(TlsRec *s, Block *b, int offset)
 {
 	uchar *p;
 	DigestState ss;
@@ -1304,7 +1321,7 @@ digestb(Dstate *s, Block *b, int offset)
 }
 
 static void
-checkdigestb(Dstate *s, Block *bin)
+checkdigestb(TlsRec *s, Block *bin)
 {
 	uchar *p;
 	DigestState ss;
@@ -1362,7 +1379,7 @@ buftochan(char *p)
 
 /* hand up a digest connection */
 static void
-tlshangup(Dstate *s)
+tlshangup(TlsRec *s)
 {
 	Block *b;
 
@@ -1371,18 +1388,18 @@ tlshangup(Dstate *s)
 		s->processed = b->next;
 		freeb(b);
 	}
-	if(s->unprocessed){
+	if(s->unprocessed != nil){
 		freeb(s->unprocessed);
-		s->unprocessed = 0;
+		s->unprocessed = nil;
 	}
 	s->state = Sincomplete;
 	qunlock(&s->in.q);
 }
 
-static Dstate*
+static TlsRec*
 dsclone(Chan *ch)
 {
-	Dstate **pp, **ep, **np;
+	TlsRec **pp, **ep, **np;
 	int newmax;
 
 	if(waserror()) {
@@ -1392,7 +1409,7 @@ dsclone(Chan *ch)
 	lock(&dslock);
 	ep = &dstate[maxdstate];
 	for(pp = dstate; pp < ep; pp++) {
-		if(*pp == 0) {
+		if(*pp == nil) {
 			dsnew(ch, pp);
 			break;
 		}
@@ -1401,18 +1418,18 @@ dsclone(Chan *ch)
 		if(maxdstate >= Maxdstate) {
 			unlock(&dslock);
 			poperror();
-			return 0;
+			return nil;
 		}
 		newmax = 2 * maxdstate;
 		if(newmax > Maxdstate)
 			newmax = Maxdstate;
-		np = smalloc(sizeof(Dstate*) * newmax);
-		if(np == 0)
+		np = smalloc(sizeof(TlsRec*) * newmax);
+		if(np == nil)
 			error(Enomem);
-		memmove(np, dstate, sizeof(Dstate*) * maxdstate);
+		memmove(np, dstate, sizeof(TlsRec*) * maxdstate);
 		dstate = np;
 		pp = &dstate[maxdstate];
-		memset(pp, 0, sizeof(Dstate*)*(newmax - maxdstate));
+		memset(pp, 0, sizeof(TlsRec*)*(newmax - maxdstate));
 		maxdstate = newmax;
 		dsnew(ch, pp);
 	}
@@ -1422,9 +1439,9 @@ dsclone(Chan *ch)
 }
 
 static void
-dsnew(Chan *ch, Dstate **pp)
+dsnew(Chan *ch, TlsRec **pp)
 {
-	Dstate *s;
+	TlsRec *s;
 	int t;
 
 	*pp = s = malloc(sizeof(*s));
@@ -1442,4 +1459,39 @@ dsnew(Chan *ch, Dstate **pp)
 		t = Qctl;
 	ch->qid.path = QID(pp - dstate, t);
 	ch->qid.vers = 0;
+}
+
+static void
+put32(uchar *p, u32int x)
+{
+	p[0] = x>>24;
+	p[1] = x>>16;
+	p[2] = x>>8;
+	p[3] = x;
+}
+
+static void
+put64(uchar *p, vlong x)
+{
+	put32(p, (u32int)(x >> 32));
+	put32(p+4, (u32int)x);
+}
+
+static void
+put16(uchar *p, int x)
+{
+	p[0] = x>>8;
+	p[1] = x;
+}
+
+static u32int
+get32(uchar *p)
+{
+	return (p[0]<<24)|(p[1]<<16)|(p[2]<<8)|p[3];
+}
+
+static int
+get16(uchar *p)
+{
+	return (p[0]<<8)|p[1];
 }

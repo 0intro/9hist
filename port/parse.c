@@ -11,13 +11,20 @@
 Cmdbuf*
 parsecmd(char *p, int n)
 {
-	Cmdbuf *cb;
+	Cmdbuf *volatile cb;
 
 	cb = smalloc(sizeof(*cb));
 	
 	if(n > sizeof(cb->buf)-1)
 		n = sizeof(cb->buf)-1;
+
+	if(waserror()){
+		free(cb);
+		nexterror();
+	}
 	memmove(cb->buf, p, n);
+	poperror();
+
 	if(n > 0 && cb->buf[n-1] == '\n')
 		n--;
 	cb->buf[n] = '\0';
