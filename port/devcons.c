@@ -522,37 +522,45 @@ consread(Chan *c, void *buf, long n, ulong offset)
 			qunlock(&kbd);
 			nexterror();
 		}
-		while(!qcanread(lineq)) {
-			qread(kbdq, &kbd.line[kbd.x], 1);
-			ch = kbd.line[kbd.x];
-			if(kbd.raw){
-				qiwrite(lineq, &kbd.line[kbd.x], 1);
-				continue;
+		if(kbd.raw) {
+			if(qcanread(lineq))
+				n = qread(lineq, buf, n);
+			else
+				n = qread(kbdq, buf, n);
+		} else {
+			while(!qcanread(lineq)) {
+				qread(kbdq, &kbd.line[kbd.x], 1);
+				ch = kbd.line[kbd.x];
+				if(kbd.raw){
+					qiwrite(lineq, kbd.line, kbd.x+1);
+					kbd.x = 0;
+					continue;
+				}
+				eol = 0;
+				switch(ch){
+				case '\b':
+					if(kbd.x)
+						kbd.x--;
+					break;
+				case 0x15:
+					kbd.x = 0;
+					break;
+				case '\n':
+				case 0x04:
+					eol = 1;
+				default:
+					kbd.line[kbd.x++] = ch;
+					break;
+				}
+				if(kbd.x == sizeof(kbd.line) || eol){
+					if(ch == 0x04)
+						kbd.x--;
+					qwrite(lineq, kbd.line, kbd.x);
+					kbd.x = 0;
+				}
 			}
-			eol = 0;
-			switch(ch){
-			case '\b':
-				if(kbd.x)
-					kbd.x--;
-				break;
-			case 0x15:
-				kbd.x = 0;
-				break;
-			case '\n':
-			case 0x04:
-				eol = 1;
-			default:
-				kbd.line[kbd.x++] = ch;
-				break;
-			}
-			if(kbd.x == sizeof(kbd.line) || eol){
-				if(ch == 0x04)
-					kbd.x--;
-				qwrite(lineq, kbd.line, kbd.x);
-				kbd.x = 0;
-			}
+			n = qread(lineq, buf, n);
 		}
-		n = qread(lineq, buf, n);
 		qunlock(&kbd);
 		poperror();
 		return n;
