@@ -97,7 +97,7 @@ vgascreenputc(VGAscr* scr, char* buf, Rectangle *flushr)
 		pos = 4-(pos%4);
 		r = Rect(curpos.x, curpos.y, curpos.x+pos*w, curpos.y+h);
 		memimagedraw(scr->gscreen, r, back, back->r.min, nil, ZP);
-		bbox(flushr, r);
+		combinerect(flushr, r);
 		curpos.x += pos*w;
 		break;
 
@@ -107,7 +107,7 @@ vgascreenputc(VGAscr* scr, char* buf, Rectangle *flushr)
 		xp--;
 		r = Rect(*xp, curpos.y, curpos.x, curpos.y+h);
 		memimagedraw(scr->gscreen, r, back, back->r.min, nil, ZP);
-		bbox(flushr, r);
+		combinerect(flushr, r);
 		curpos.x = *xp;
 		break;
 
@@ -122,7 +122,7 @@ vgascreenputc(VGAscr* scr, char* buf, Rectangle *flushr)
 		r = Rect(curpos.x, curpos.y, curpos.x+w, curpos.y+h);
 		memimagedraw(scr->gscreen, r, back, back->r.min, nil, back->r.min);
 		memimagestring(scr->gscreen, curpos, conscol, scr->memdefont, buf);
-		bbox(flushr, r);
+		combinerect(flushr, r);
 		curpos.x += w;
 	}
 //	drawdebug = 0;

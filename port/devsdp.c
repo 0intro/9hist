@@ -1185,7 +1185,7 @@ print("dup sequence number: %ld (%ld %ld)\n", seq, c->in.seqwrap, seqdiff);
 if(0) print("coniput seq=%ulx\n", seq);
 	if(c->in.auth != 0) {
 		if(!(*c->in.auth)(&c->in, b->rp-4, BLEN(b)+4)) {
-print("bad auth %d\n", BLEN(b)+4);
+print("bad auth %ld\n", BLEN(b)+4);
 			c->lstats.inBadAuth++;
 			freeb(b);
 			return nil;
@@ -1686,9 +1686,17 @@ static Block *
 readdata(Conv *c, int n)
 {
 	Block *b;
+	int nn;
 
 	for(;;) {
-		b = convreadblock(c, n);
+
+		// some slack for tunneling overhead
+		nn = n + 100;
+
+		// make sure size is big enough for control messages
+		if(nn < 1000)
+			nn = 1000;
+		b = convreadblock(c, nn);
 		if(b == nil)
 			return nil;
 		qlock(c);
@@ -1699,8 +1707,11 @@ readdata(Conv *c, int n)
 		b = conviput(c, b, 0);
 		poperror();
 		qunlock(c);
-		if(b != nil)
+		if(b != nil) {
+			if(BLEN(b) > n)
+				b->wp = b->rp + n;
 			return b;
+		}
 	}
 }
 
@@ -1726,7 +1737,7 @@ writedata(Conv *c, Block *b)
 	c->lstats.outDataPackets++;
 	c->lstats.outDataBytes += n;
 
-	if(c->out.comp != nil && 0) {
+	if(0 && c->out.comp != nil) {
 		// must generate same value as convoput
 		seq = (c->out.seq + 1) & (SeqMax-1);
 

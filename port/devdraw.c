@@ -287,7 +287,7 @@ drawrefresh(Memimage *l, Rectangle r, void *v)
 	d = x->dimage;
 	for(ref=c->refresh; ref; ref=ref->next)
 		if(ref->dimage == d){
-			bbox(&ref->r, r);
+			combinerect(&ref->r, r);
 			return;
 		}
 	ref = malloc(sizeof(Refresh));
@@ -314,7 +314,7 @@ addflush(Rectangle r)
 		return;
 	}
 	nbb = flushrect;
-	bbox(&nbb, r);
+	combinerect(&nbb, r);
 	ar = Dx(r)*Dy(r);
 	abb = Dx(flushrect)*Dy(flushrect);
 	anbb = Dx(nbb)*Dy(nbb);
@@ -349,7 +349,7 @@ dstflush(int dstid, Memimage *dst, Rectangle r)
 	Memlayer *l;
 
 	if(dstid == 0){
-		bbox(&flushrect, r);
+		combinerect(&flushrect, r);
 		return;
 	}
 	l = dst->layer;
