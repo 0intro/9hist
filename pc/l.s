@@ -27,9 +27,7 @@ TEXT	origin(SB),$0
 	MOVW	BX,ES
 	MOVL	$0,SI
 	MOVL	SI,DI
-	CLD
-	REP
-	MOVSL
+	CLD; REP; MOVSL
 /*	JMPFAR	0X8000:$lowcore(SB) /**/
 	 BYTE	$0xEA
 	 WORD	$lowcore(SB)
@@ -95,8 +93,7 @@ TEXT	mode32bit(SB),$0
 	LEAL	end-KZERO(SB),CX
 	SUBL	DI,CX
 	SHRL	$2,CX
-	REP
-	MOVSL
+	CLD; REP; MOVSL
 
 	/*
 	 *  make a bottom level page table page that maps the first
@@ -157,6 +154,13 @@ TEXT	tokzero(SB),$0
 	MOVL	$0,0(SP)
 	ADDL	$(MACHSIZE-4),SP	/* start stack under machine struct */
 	MOVL	$0, u(SB)
+
+	/*
+	 *  clear flags
+	 */
+	MOVL	$0,AX
+	PUSHL	AX
+	POPFL
 
 	CALL	main(SB)
 
@@ -220,8 +224,7 @@ TEXT	inss(SB),$0
 	MOVL	p+0(FP),DX
 	MOVL	a+4(FP),DI
 	MOVL	c+8(FP),CX
-	CLD
-	REP; OP16; INSL
+	CLD; REP; OP16; INSL
 	RET
 
 /*
@@ -231,8 +234,7 @@ TEXT	outss(SB),$0
 	MOVL	p+0(FP),DX
 	MOVL	a+4(FP),SI
 	MOVL	c+8(FP),CX
-	CLD
-	REP; OP16; OUTSL
+	CLD; REP; OP16; OUTSL
 	RET
 
 /*
@@ -558,6 +560,8 @@ TEXT	touser(SB),$0
 	MOVL	$(UDSEL),AX
 	MOVW	AX,DS
 	MOVW	AX,ES
+	MOVW	AX,GS
+	MOVW	AX,FS
 	IRETL
 
 /*

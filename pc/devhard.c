@@ -226,9 +226,21 @@ hardattach(char *spec)
 			dp->bytes = 512;
 			hardsetbuf(dp, 1);
 			hardident(dp);
-			dp->cyl = dp->id.lcyls;
-			dp->heads = dp->id.lheads;
-			dp->sectors = dp->id.ls2t;
+			switch(dp->id.magic){
+			case 0xA5A:	/* conner drive on the AT&T NSX (safari) */
+				dp->cyl = dp->id.lcyls;
+				dp->heads = dp->id.lheads;
+				dp->sectors = dp->id.ls2t;
+				break;
+			case 0x324A:	/* hard drive on the AT&T 6386 */
+				dp->cyl = dp->id.lcyls - 4;
+				dp->heads = dp->id.lheads;
+				dp->sectors = dp->id.ls2t - 1;
+				break;
+			default:
+				print("unknown hard disk type\n");
+				errors("unknown hard disk type");
+			}
 			dp->bytes = 512;
 			dp->cap = dp->bytes * dp->cyl * dp->heads * dp->sectors;
 			dp->online = 1;
@@ -542,7 +554,6 @@ hardident(Drive *dp)
 	cp = dp->cp;
 	qlock(cp);
 	if(waserror()){
-print("waserror in hardident\n");
 		qunlock(cp);
 		nexterror();
 	}
@@ -557,15 +568,10 @@ print("waserror in hardident\n");
 	outb(cp->pbase+Pcmd, Cident);
 	sleep(&cp->r, cmddone, cp);
 	if(cp->status & Serr){
-print("bad disk magic\n");
+		print("bad disk ident status\n");
 		errors("disk I/O error");
 	}
 	memmove(&dp->id, cp->buf, dp->bytes);
-
-	if(dp->id.magic != 0xA5A){
-print("bad disk magic\n");
-		errors("bad disk magic");
-	}
 
 	poperror();
 	qunlock(cp);

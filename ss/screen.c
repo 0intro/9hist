@@ -244,66 +244,84 @@ kbdstate(IOQ *q, int c)
 	static caps = 0;
 	static long startclick;
 	static int repeatc;
-	static int kbdstate, k1, k2;
-	int tc;
+	static int lstate;
+	static uchar kc[4];
+	uchar ch, code;
+	int i, nk;
 
-	tc = kbdmap[shift][c&0x7F];
+	ch = kbdmap[shift][c&0x7F];
 	if(c==0x7F){	/* all keys up */
     norepeat:
 		kbdrepeat(0);
 		return;
 	}
-	if(tc == 0xFF)	/* shouldn't happen; ignore */
+	if(ch == 0xFF)	/* shouldn't happen; ignore */
 		return;
 	if(c & 0x80){	/* key went up */
-		if(tc == 0xF0){		/* control */
+		if(ch == 0xF0){		/* control */
 			shift &= ~2;
 			goto norepeat;
 		}
-		if(tc == 0xF1){	/* shift */
+		if(ch == 0xF1){	/* shift */
 			shift &= ~1;
 			goto norepeat;
 		}
-		if(tc == 0xF2){	/* caps */
+		if(ch == 0xF2){	/* caps */
 			goto norepeat;
 		}
 		goto norepeat;
 	}
-	if(tc == 0xF0){		/* control */
+	if(ch == 0xF0){		/* control */
 		shift |= 2;
 		goto norepeat;
 	}
-	if(tc==0xF1){	/* shift */
+	if(ch==0xF1){	/* shift */
 		shift |= 1;
 		goto norepeat;
 	}
-	if(tc==0xF2){	/* caps */
+	if(ch==0xF2){	/* caps */
 		caps ^= 1;
 		goto norepeat;
 	}
-	if(caps && 'a'<=tc && tc<='z')
-		tc |= ' ';
-	repeatc = tc;
+	if(caps && 'a'<=ch && ch<='z')
+		ch |= ' ';
+	repeatc = ch;
 	kbdrepeat(1);
-	if(tc == 0xB6)	/* Compose */
-		kbdstate = 1;
+	if(ch == 0xB6)	/* Compose */
+		lstate = 1;
 	else{
-		switch(kbdstate){
+		switch(lstate){
 		case 1:
-			k1 = tc;
-			kbdstate = 2;
+			kc[0] = ch;
+			lstate = 2;
+			if(ch == 'X')
+				lstate = 3;
 			break;
 		case 2:
-			k2 = tc;
-			tc = latin1(k1, k2);
-			if(c == 0){
-				kbdputc(&kbdq, k1);
-				tc = k2;
-			}
-			/* fall through */
+			kc[1] = ch;
+			c = latin1(kc);
+			nk = 2;
+		putit:
+			lstate = 0;
+			if(c != -1)
+				kbdputc(&kbdq, c);
+			else for(i=0; i<nk; i++)
+				kbdputc(&kbdq, kc[i]);
+			break;
+		case 3:
+		case 4:
+		case 5:
+			kc[lstate-2] = ch;
+			lstate++;
+			break;
+		case 6:
+			kc[4] = ch;
+			c = unicode(kc);
+			nk = 5;
+			goto putit;
 		default:
-			kbdstate = 0;
-			kbdputc(&kbdq, tc);
+			kbdputc(&kbdq, ch);
+			break;
 		}
 	}
 }

@@ -191,7 +191,7 @@ i8042reset(void)
 	outready();
 	outb(Cmd, 0xD1);
 	outready();
-	outb(Data, 0xDE);
+	outb(Data, 0x0);
 	outready();
 }
 
@@ -299,13 +299,14 @@ middle(int newval)
 int
 kbdintr0(void)
 {
-	int s, c, nc;
+	int s, c, i, nk, nc;
 	static int esc1, esc2;
 	static int shift;
 	static int caps;
 	static int ctl;
 	static int num;
-	static int lstate, k1, k2;
+	static int lstate;
+	static uchar kc[5];
 	int keyup;
 
 	/*
@@ -343,7 +344,6 @@ kbdintr0(void)
 	c &= 0x7f;
 	if(c > sizeof kbtab){
 		print("unknown key %ux\n", c|keyup);
-		kbdputc(&kbdq, k1);
 		return 0;
 	}
 
@@ -390,21 +390,38 @@ kbdintr0(void)
 			c &= 0x1f;
 		switch(lstate){
 		case 1:
-			k1 = c;
+			kc[0] = c;
 			lstate = 2;
-			return 0;
+			if(c == 'X')
+				lstate = 3;
+			break;
 		case 2:
-			k2 = c;
+			kc[1] = c;
+			c = latin1(kc);
+			nk = 2;
+		putit:
 			lstate = 0;
-			c = latin1(k1, k2);
-			if(c == 0){
-				kbdputc(&kbdq, k1);
-				c = k2;
-			}
-			/* fall through */
+			if(c != -1)
+				kbdputc(&kbdq, c);
+			else for(i=0; i<nk; i++)
+				kbdputc(&kbdq, kc[i]);
+			break;
+		case 3:
+		case 4:
+		case 5:
+			kc[lstate-2] = c;
+			lstate++;
+			break;
+		case 6:
+			kc[4] = c;
+			c = unicode(kc);
+			nk = 5;
+			goto putit;
 		default:
+			kbdputc(&kbdq, c);
 			break;
 		}
+		return 0;
 	} else {
 		switch(c){
 		case Caps:

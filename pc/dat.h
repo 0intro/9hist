@@ -181,7 +181,6 @@ struct Segdesc
 	ulong	d1;
 };
 
-
 struct
 {
 	Lock;

@@ -160,6 +160,7 @@ mmuinit(void)
 	/*
 	 *  set up the task segment
 	 */
+	memset(&tss, 0, sizeof(tss));
 	tss.sp0 = USERADDR+BY2PG;
 	tss.ss0 = KDSEL;
 	tss.cr3 = ktoppg.pa;

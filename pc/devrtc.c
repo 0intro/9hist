@@ -6,6 +6,10 @@
 #include	"errno.h"
 #include	"devtab.h"
 
+/*
+ *  real time clock and non-volatile ram
+ */
+
 enum {
 	Paddr=		0x70,	/* address port */
 	Pdata=		0x71,	/* data port */

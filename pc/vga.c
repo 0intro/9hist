@@ -52,8 +52,8 @@ enum
 	CRX=		0x3D4,		/* index to crt registers */
 	CR=		0x3D5,		/* crt registers */
 	 Cvre=		 0x11,		/*  vertical retrace end */
-	ARX=		0x3C0,		/* index to attribute registers */
-	AR=		0x3C1,		/* attribute registers */
+	ARW=		0x3C0,		/* attribute registers (writing) */
+	ARR=		0x3C1,		/* attribute registers (reading) */
 };
 
 typedef struct VGAmode	VGAmode;
@@ -113,8 +113,8 @@ void
 arout(int reg, int val)
 {
 	inb(0x3DA);
-	outb(ARX, reg | 0x20);
-	outb(AR, val);
+	outb(ARW, reg | 0x20);
+	outb(ARW, val);
 }
 void
 crout(int reg, int val)

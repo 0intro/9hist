@@ -21,7 +21,7 @@ main(void)
 	confinit();
 	screeninit();
 	printinit();
-	print("%ludK bytes of physical memory\n", (conf.base1 + conf.npage1*BY2PG)/1024);
+	print("\n\n%ludK bytes of physical memory\n", (conf.base1 + conf.npage1*BY2PG)/1024);
 	mmuinit();
 	trapinit();
 	mathinit();
@@ -389,7 +389,7 @@ exit(void)
 		headreset();		/* via headland chip */
 		break;
 	case At:
-		i8042reset();			/* via keyboard controller */
+		i8042reset();		/* via keyboard controller */
 		break;
 	}
 }

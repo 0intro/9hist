@@ -336,25 +336,25 @@ enum{
 };
 
 Dirtab consdir[]={
-	"cons",		{Qcons},	0,		0666,
+	"cons",		{Qcons},	0,		0660,
 	"cputime",	{Qcputime},	6*NUMSIZE,	0444,
-	"time",		{Qtime},	NUMSIZE,	0666,
+	"time",		{Qtime},	NUMSIZE,	0664,
 	"clock",	{Qclock},	2*NUMSIZE,	0444,
 	"msec",		{Qmsec},	NUMSIZE,	0444,
-	"lights",	{Qlights},	0,		0222,
-	"noise",	{Qnoise},	0,		0222,
+	"lights",	{Qlights},	0,		0220,
+	"noise",	{Qnoise},	0,		0220,
 	"null",		{Qnull},	0,		0666,
 	"pgrpid",	{Qpgrpid},	NUMSIZE,	0444,
 	"pid",		{Qpid},		NUMSIZE,	0444,
 	"ppid",		{Qppid},	NUMSIZE,	0444,
-	"rcons",	{Qrcons},	0,		0666,
+	"rcons",	{Qrcons},	0,		0660,
 	"user",		{Quser},	0,		0666,
 	"chal",		{Qchal},	8,		0666,
 	"crypt",	{Qcrypt},	0,		0666,
 	"key",		{Qkey},		DESKEYLEN,	0222,
 	"klog",		{Qklog},	0,		0444,
 	"sysstat",	{Qsysstat},	0,		0666,
-	"swap",		{Qswap},	0,		0666,
+	"swap",		{Qswap},	0,		0664,
 };
 
 #define	NCONS	(sizeof consdir/sizeof(Dirtab))
@@ -438,7 +438,7 @@ consopen(Chan *c, int omode)
 
 	switch(c->qid.path){
 	case Qrcons:
-		if(conf.cntrlp)
+		if(strcmp(u->p->user, eve) != 0)
 			error(Eperm);
 		if(incref(&raw) == 1){
 			lock(&lineq);
