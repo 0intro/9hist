@@ -226,7 +226,8 @@ static uchar configdata[24] = {
 	0x00,				/* adaptive IFS */
 	0x00,	
 	0x00,				/* Rx DMA maximum byte count */
-	0x80,				/* Tx DMA maximum byte count */
+//	0x80,				/* Tx DMA maximum byte count */
+	0x00,				/* Tx DMA maximum byte count */
 	0x32,				/* !late SCB, CNA interrupts */
 	0x03,				/* discard short Rx frames */
 	0x00,				/* 503/MII */
@@ -343,12 +344,12 @@ watchdog(void* arg)
 			pexit("disabled", 0);
 		}
 
+		ilock(&ctlr->cblock);
 		if(ctlr->tick++){
-			ilock(&ctlr->cblock);
 			ctlr->action = CbMAS;
 			txstart(ether);
-			iunlock(&ctlr->cblock);
 		}
+		iunlock(&ctlr->cblock);
 	}
 }
 
@@ -674,8 +675,11 @@ interrupt(Ureg*, void* arg)
 		 * If the watchdog timer for the receiver lockup errata is running,
 		 * let it know the receiver is active.
 		 */
-		if(status & (StatFR|StatRNR))
+		if(status & (StatFR|StatRNR)){
+			ilock(&ctlr->cblock);
 			ctlr->tick = 0;
+			iunlock(&ctlr->cblock);
+		}
 
 		if(status & StatFR){
 			receive(ether);
@@ -765,7 +769,7 @@ ctlrinit(Ctlr* ctlr)
 	ctlr->cbq = 0;
 
 	memmove(ctlr->configdata, configdata, sizeof(configdata));
-	ctlr->threshold = 8;
+	ctlr->threshold = 80;
 	ctlr->tick = 0;
 
 	iunlock(&ctlr->cblock);
@@ -1127,6 +1131,9 @@ reset(Ether* ether)
 			if(medium != -1)
 				miiw(ctlr, phyaddr, 0x00, bmcr);
 		}
+
+		if(bmcr & 0x2000)
+			ether->mbps = 100;
 
 		ctlr->configdata[8] = 1;
 		ctlr->configdata[15] &= ~0x80;
