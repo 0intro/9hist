@@ -81,7 +81,7 @@ static struct µcontroller
 /* button map */
 Rune bmap[4] = 
 {
-	Kup, Kright, Kdown, Kleft
+	Kup, Kright, Kleft, Kdown
 };
 
 int
@@ -143,7 +143,7 @@ int
 
 			if(b > 5) {
 				/* rocker panel acts like arrow keys */
-				if(b < 10)
+				if(b < 10 && !up)
 					kbdputc(kbdq, bmap[b-6]);
 			} else {
 				/* the rest like mouse buttons */

@@ -46,13 +46,18 @@ TEXT mmuinvalidateaddr(SB), $-4
 
 /* write back and invalidate i and d caches */
 TEXT cacheflush(SB), $-4
+	/* splhi */
+	MOVW	CPSR, R3
+	ORR	$(PsrDirq), R3, R1
+	MOVW	R1, CPSR
+
 	/* write back any dirty data */
 	MOVW	$0xe0000000,R0
 	ADD	$(8*1024),R0,R1
 _cfloop:
 	MOVW.P	32(R0),R2
 	CMP.S	R0,R1
-	BNE	_cfloop
+	BGE	_cfloop
 	
 	/* drain write buffer and invalidate i cache contents */
 	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0xa), 4
@@ -63,6 +68,9 @@ _cfloop:
 	MOVW	R0,R0
 	MOVW	R0,R0
 	MOVW	R0,R0
+
+	/* splx */
+	MOVW	R3, CPSR
 	RET
 
 /* write back d cache */
@@ -74,7 +82,7 @@ _cachewb:
 _cwbloop:
 	MOVW.P	32(R0),R2
 	CMP.S	R0,R1
-	BNE	_cwbloop
+	BGE	_cwbloop
 	
 	/* drain write buffer */
 	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0xa), 4
