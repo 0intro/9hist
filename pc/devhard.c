@@ -53,7 +53,7 @@ enum
  */
 struct Ident
 {
-	ushort	magic;		/* must be 0x0A5A */
+	ushort	magic;		/* drive type magic */
 	ushort	lcyls;		/* logical number of cylinders */
 	ushort	rcyl;		/* number of removable cylinders */
 	ushort	lheads;		/* logical number of heads */
@@ -221,6 +221,7 @@ Chan*
 hardattach(char *spec)
 {
 	Drive *dp;
+	static int drivecomment=1;
 
 	for(dp = hard; dp < &hard[conf.nhard]; dp++){
 		if(!waserror()){
@@ -239,9 +240,20 @@ hardattach(char *spec)
 				dp->heads = dp->id.lheads;
 				dp->sectors = dp->id.ls2t - 1;
 				break;
-			default:
-				print("unknown hard disk type\n");
-				error(Egreg);
+			default:	/* others: we hope this works */
+				if (drivecomment) {
+					print("unknown hard disk type, magic=%04x\n",
+						dp->id.magic);
+					print(" lcyls=%d lheads=%d sectors=%d\n",
+						dp->id.lcyls, dp->id.lheads, dp->id.ls2t);
+					print(" ncyls=%d nheads=%d dlcyls=%d dlheads=%d\n",
+						dp->id.ncyls, dp->id.nheads, dp->id.dlcyls,
+						dp->id.dlheads);
+				}
+				dp->cyl = dp->id.lcyls;
+				dp->heads = dp->id.lheads;
+				dp->sectors = dp->id.ls2t;
+				break;
 			}
 			dp->bytes = 512;
 			dp->cap = dp->bytes * dp->cyl * dp->heads * dp->sectors;
@@ -251,7 +263,7 @@ hardattach(char *spec)
 		} else
 			dp->online = 0;
 	}
-
+	drivecomment=0;	/* only the first time */
 	return devattach('w', spec);
 }
 
@@ -713,7 +725,8 @@ hardintr(Ureg *ur)
 		wakeup(&cp->r);
 		break;
 	default:
-		print("weird disk interrupt\n");
+		print("weird disk interrupt, cmd=%02x\n",
+			cp->cmd);
 		break;
 	}
 }

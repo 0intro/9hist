@@ -59,7 +59,7 @@ enum
 typedef struct VGAmode	VGAmode;
 struct VGAmode
 {
-	uchar	general[4];
+	uchar	general[2];
 	uchar	sequencer[5];
 	uchar	crt[0x19];
 	uchar	graphics[9];
@@ -73,7 +73,7 @@ struct VGAmode
 VGAmode mode12 = 
 {
 	/* general */
-	0xe3, 0x00, 0x70, 0x04,
+	0xe3, 0x00, /* 0x70, 0x04, these are read-only */
 	/* sequence */
 	0x03, 0x01, 0x0f, 0x00, 0x06,
 	/* crt */
@@ -96,7 +96,7 @@ VGAmode mode12 =
 VGAmode mode12 = 
 {
 	/* general */
-	0xe7, 0x00, 0x70, 0x04,
+	0xe7, 0x00,  /* 0x70, 0x04, these are read-only */
 	/* sequence */
 	0x03, 0x01, 0x0f, 0x00, 0x06,
 	/* crt */
@@ -109,7 +109,7 @@ VGAmode mode12 =
 	0xff,
 	/* attribute */
 	0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-	0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0d, 0x0f,
+	0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x3f,
 	0x01, 0x10, 0x0f, 0x00, 0x00,
 };
 #endif
@@ -119,7 +119,6 @@ VGAmode mode12 =
 void
 genout(int reg, int val)
 {
-delay(TESTDELAY);
 	if(reg == 0)
 		outb(EMISCW, val);
 	else if (reg == 1)
@@ -131,7 +130,6 @@ srout(int reg, int val)
 	/*
 	 * needed or the screen goes blank on an ultra VGA card
 	 */
-	delay(TESTDELAY);
 	outb(SRX, reg);
 	outb(SR, val);
 }
@@ -147,15 +145,21 @@ arout(int reg, int val)
 	/*
 	 * if this print is missing, we are left with a blank white screen.
 	 */
-	print("arout %d %2x\n", reg, val);
 	inb(0x3DA);
-	outb(ARW, reg | 0x20);
-	outb(ARW, val);
+	if (reg <= 0xf) {
+		outb(ARW, reg | 0x0);
+		outb(ARW, val);
+		inb(0x3DA);
+		outb(ARW, reg | 0x20);
+	} else {
+		outb(ARW, reg | 0x20);
+		outb(ARW, val);
+	}
 }
+
 void
 crout(int reg, int val)
 {
-	delay(TESTDELAY);	/* needed for 16bit VGA path on Ultra SVGA */
 	outb(CRX, reg);
 	outb(CR, val);
 }
@@ -203,6 +207,44 @@ setmode(VGAmode *v)
 		arout(i, v->attribute[i]);
 }
 
+#ifdef VGATROUBLE
+void
+dumpmodes(VGAmode *v)
+{
+	int i;
+
+	print("general registers: %02x %02x %02x %02x\n",
+		inb(0x3cc), inb(0x3ca), inb(0x3c2), inb(0x3da));
+
+	print("sequence registers: ");
+	for(i = 0; i < sizeof(v->sequencer); i++) {
+		outb(SRX, i);
+		print(" %02x", inb(SR));
+	}
+
+	print("\nCRT registers: ");
+	for(i = 0; i < sizeof(v->crt); i++) {
+		outb(CRX, i);
+		print(" %02x", inb(CR));
+	}
+
+	print("\nGraphics registers: ");
+	for(i = 0; i < sizeof(v->graphics); i++) {
+		outb(GRX, i);
+		print(" %02x", inb(GR));
+	}
+
+	print("\nAttribute registers: ");
+	for(i = 0; i < sizeof(v->attribute); i++) {
+		inb(0x3DA);
+		outb(ARW, i | 0x20);
+		print(" %02x", inb(ARR));
+	}
+
+	print("\nPEL Mask Register = %02x\n\n", inb(0x3c6)&0xff);
+}
+#endif
+
 void
 screeninit(void)
 {
@@ -226,7 +268,6 @@ screeninit(void)
 	out.pos.x = MINX;
 	out.pos.y = 0;
 	out.bwid = defont0.info[' '].width;
-print("PEL Mask Register = %02x\n", inb(0x3c6)&0xff);
 }
 
 void

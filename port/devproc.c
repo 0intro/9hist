@@ -330,8 +330,12 @@ procread(Chan *c, void *va, long n, ulong offset)
 			return 0;
 		if(offset+n > STATSIZE)
 			n = STATSIZE - offset;
+
+/* Assertion for deref of psstate which causes faults */
 if((p->state < Dead) || (p->state > Rendezvous))
-    panic("p->state=#%lux, p->psstate=#%lux\n", p->state, p->psstate);
+	panic("p->state=#%lux, p->psstate=#%lux\n", p->state, p->psstate);
+
+
 		j = sprint(statbuf, "%-27s %-27s %-11s ",
 			p->text, p->user, p->psstate ? p->psstate : statename[p->state]);
 		for(i=0; i<6; i++){
@@ -608,7 +612,7 @@ procctlmemio(Proc *p, ulong offset, int n, void *va, int read)
 	Page *pg;
 	KMap *k;
 	Segment *s;
-	ulong soff;
+	ulong soff, l;
 	char *a = va, *b;
 
 	for(;;) {
@@ -640,7 +644,11 @@ procctlmemio(Proc *p, ulong offset, int n, void *va, int read)
 	pg = pte->pages[(soff&(PTEMAPMEM-1))/BY2PG];
 	if(pagedout(pg))
 		panic("procctlmemio1"); 
-		
+
+	l = BY2PG - (offset&(BY2PG-1));
+	if(n > l)
+		n = l;
+
 	k = kmap(pg);
 	b = (char*)VA(k);
 	if(read == 1)
