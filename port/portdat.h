@@ -676,6 +676,7 @@ struct Network
 
 #define	PRINTSIZE	256
 #define	NUMSIZE		12		/* size of formatted number */
+#define MB		(1024*1024)
 
 extern	Conf	conf;
 extern	char*	conffile;

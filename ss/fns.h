@@ -1,9 +1,11 @@
 #include "../port/portfns.h"
 
 void	cacheinit(void);
-void	clearfpintr(void);
+void	clearftt(ulong);
 #define	clearmmucache()
 void	clockinit(void);
+void	disabfp(void);
+void	enabfp(void);
 void	evenaddr(ulong);
 char*	excname(ulong);
 void	faultasync(Ureg*);
@@ -15,7 +17,10 @@ void	fpregrestore(char*);
 void	fpregsave(char*);
 void	fprestore(FPsave*);
 void	fpsave(FPsave*);
+int	fptrap(void);
 int	getb2(ulong);
+int	getfpq(ulong*);
+ulong	getfsr(void);
 int	getw2(ulong);
 void	intrinit(void);
 void	ioinit(void);

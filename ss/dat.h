@@ -48,11 +48,16 @@ enum
 	FPinactive,
 };
 
+#define	NFPQ	4	/* just a guess */
+
 struct	FPsave
 {
 	long	fsr;
 	long	fpreg[32];
-	long	pad;		/* so fsr can be guaranteed at 4 mod 8 */
+	struct{
+		ulong	a;	/* address */
+		ulong	i;	/* instruction */
+	}q[NFPQ];
 };
 
 struct Conf

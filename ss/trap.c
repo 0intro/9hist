@@ -14,7 +14,8 @@ int	domuldiv(ulong, Ureg*);
 extern	void traplink(void);
 extern	void syslink(void);
 
-long	ticks;
+	long	ticks;
+static	char	excbuf[64];	/* BUG: not reentrant! */
 
 char *trapname[]={
 	"reset",
@@ -31,14 +32,37 @@ char *trapname[]={
 	"watchpoint detected",
 };
 
+char *fptrapname[]={
+	"none",
+	"IEEE 754 exception",
+	"unfinished FP op",
+	"unimplemented FP op",
+	"sequence error",
+	"hardware error",
+	"invalid FP register",
+	"reserved",
+};
+
 char*
 excname(ulong tbr)
 {
-	static char buf[64];	/* BUG: not reentrant! */
 	char xx[64];
 	char *t;
+	ulong fsr;
 
 	switch(tbr){
+	case 8:
+		if(u == 0){
+			fsr = getfsr();
+			sprint(excbuf, "fp: %s FSR %lux",
+				fptrapname[(fsr>>14)&7], fsr);
+		}else{
+			fsr = u->fpsave.fsr;
+			sprint(excbuf, "fp: %s FQpc=0x%lux",
+				fptrapname[(fsr>>14)&7],
+				u->fpsave.q[0].a, fsr);
+		}
+		return excbuf;
 	case 36:
 		return "trap: cp disabled";
 	case 37:
@@ -65,10 +89,10 @@ excname(ulong tbr)
 		t = xx;
 	}
 	if(strncmp(t, "fp: ", 4) == 0)
-		strcpy(buf, t);
+		strcpy(excbuf, t);
 	else
-		sprint(buf, "trap: %s", t);
-	return buf;
+		sprint(excbuf, "trap: %s", t);
+	return excbuf;
 }
 
 void
@@ -148,7 +172,10 @@ trap(Ureg *ur)
 			}
 			break;
 		case 8:				/* floating point exception */
-			clearfpintr();
+			if(fptrap()){
+				/* do NOT talk to the FPU: see fptrap.c */
+				return;
+			}
 			break;
 		default:
 			break;
@@ -157,8 +184,6 @@ trap(Ureg *ur)
 		if(user){
 			spllo();
 			sprint(buf, "sys: %s", excname(tbr));
-			if(tbr == 8)
-				sprint(buf+strlen(buf), " FSR %lux", u->fpsave.fsr);
 			postnote(u->p, 1, buf, NDebug);
 		}else{
 			print("kernel trap: %s pc=0x%lux\n", excname(tbr), ur->pc);

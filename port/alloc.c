@@ -113,7 +113,7 @@ xinit(void)
 
 	palloc.np0 = np0;
 	palloc.np1 = np1;
-	/* Save the bounds of kernel alloc memory for kernel mmu mapping (NeXT) */
+	/* Save the bounds of kernel alloc memory for kernel mmu mapping */
 	conf.base0 = (ulong)KADDR(conf.base0);
 	conf.base1 = (ulong)KADDR(conf.base1);
 	conf.npage0 = (ulong)KADDR(conf.npage0);

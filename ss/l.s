@@ -500,6 +500,20 @@ TEXT	savefpregs(SB), $0
 	MOVW	R8, PSR
 	RETURN
 
+TEXT	enabfp(SB), $0
+
+	MOVW	PSR, R8
+	OR	$PSREF, R8
+	MOVW	R8, PSR
+	RETURN
+
+TEXT	disabfp(SB), $0
+
+	MOVW	PSR, R8
+	ANDN	$PSREF, R8
+	MOVW	R8, PSR
+	RETURN
+
 TEXT	restfpregs(SB), $0
 
 	MOVW	PSR, R8
@@ -533,17 +547,21 @@ TEXT	restfpregs(SB), $0
 	MOVW	R8, PSR
 	RETURN
 
-TEXT	clearfpintr(SB), $0
+TEXT	getfpq(SB), $0
 
-	MOVW	$fpq+BY2WD(SB), R7
-	ANDN	$0x7, R7		/* must be D aligned */
+	MOVW	R7, R8	/* must be D aligned */
 	MOVW	$fsr+0(SB), R9
-clrq:
-	MOVD	FQ, (R7)
+	MOVW	$0, R7
+getfpq1:
 	MOVW	FSR, (R9)
-	MOVW	(R9), R8
-	AND	$(1<<13), R8		/* queue not empty? */
-	BNE	clrq
+	MOVW	(R9), R10
+	ANDCC	$(1<<13), R10		/* queue not empty? */
+	BE	getfpq2
+	MOVD	FQ, (R8)
+	ADD	$1, R7
+	ADD	$8, R8
+	BA	getfpq1
+getfpq2:
 	RETURN
 
 TEXT	getfsr(SB), $0
@@ -552,6 +570,12 @@ TEXT	getfsr(SB), $0
 	MOVW	(R7), R7
 	RETURN
 
+TEXT	clearftt(SB), $0
+	MOVW	R7, fsr+0(SB)
+	MOVW	$fsr+0(SB), R7
+	MOVW	(R7), FSR
+	FMOVF	F0, F0
+	RETURN
+
 GLOBL	mach0+0(SB), $MACHSIZE
-GLOBL	fpq+0(SB), $(3*BY2WD)
 GLOBL	fsr+0(SB), $BY2WD
