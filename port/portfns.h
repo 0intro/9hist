@@ -46,6 +46,7 @@ void		copypage(Page*, Page*);
 int		cread(Chan*, uchar*, int, ulong);
 void		cupdate(Chan*, uchar*, int, ulong);
 void		cwrite(Chan*, uchar*, int, ulong);
+ulong		dbgpc(Proc*);
 int		decref(Ref*);
 int		decrypt(void*, void*, int);
 void		delay(int);

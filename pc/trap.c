@@ -743,3 +743,15 @@ setkernur(Ureg *xp, Proc *p)
 	xp->pc = p->sched.pc;
 	xp->sp = p->sched.sp+4;
 }
+
+ulong
+dbgpc(Proc *p)
+{
+	Ureg *ur;
+
+	ur = p->dbgreg;
+	if(ur == 0)
+		return 0;
+
+	return ur->pc;
+}

@@ -808,8 +808,8 @@ procdump(void)
 		s = p->psstate;
 		if(s == 0)
 			s = "kproc";
-		print("%3d:%10s pc %8lux %8s (%s) ut %ld st %ld bss %lux\n",
-			p->pid, p->text, p->pc,  s, statename[p->state],
+		print("%3d:%10s pc %8lux dbgpc %8lux  %8s (%s) ut %ld st %ld bss %lux\n",
+			p->pid, p->text, p->pc, dbgpc(p),  s, statename[p->state],
 			p->time[0], p->time[1], bss);
 	}
 	for(rq = &runq[Nrq-1]; rq >= runq; rq--){
