@@ -32,9 +32,8 @@ typedef struct SDunit {
 	int	nopen;			/* of partitions on this unit */
 	int	changed;
 
-	QLock	raw;
+	Lock	rawinuse;		/* really just a test-and-set */
 	int	state;
-	ulong	pid;
 	SDreq*	req;
 } SDunit;
 
@@ -91,6 +90,7 @@ enum {
 };
 
 enum {
+	SDretry		= -5,		/* internal to controllers */
 	SDmalloc	= -4,
 	SDeio		= -3,
 	SDtimeout	= -2,

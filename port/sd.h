@@ -90,6 +90,7 @@ enum {
 };
 
 enum {
+	SDretry		= -5,		/* internal to controllers */
 	SDmalloc	= -4,
 	SDeio		= -3,
 	SDtimeout	= -2,

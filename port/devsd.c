@@ -721,15 +721,15 @@ sdread(Chan *c, void *a, long n, vlong off)
 		l = snprint(p, READSTR, "inquiry %.48s\n",
 			(char*)unit->inquiry+8);
 		qlock(&unit->ctl);
+		/*
+		 * If there's a device specific routine it must
+		 * provide all information pertaining to night geometry
+		 * and the garscadden trains.
+		 */
+		if(unit->dev->ifc->rctl)
+			l += unit->dev->ifc->rctl(unit, p+l, READSTR-l);
 		if(!unit->changed && unit->sectors){
-			/*
-			 * If there's a device specific routine it must
-			 * provide all information pertaining to night geometry
-			 * and the garscadden trains.
-			 */
-			if(unit->dev->ifc->rctl)
-				l += unit->dev->ifc->rctl(unit, p+l, READSTR-l);
-			else
+			if(unit->dev->ifc->rctl == nil)
 				l += snprint(p+l, READSTR-l,
 					"geometry %ld %ld\n",
 					unit->sectors, unit->secsize);

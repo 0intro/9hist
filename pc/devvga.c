@@ -152,7 +152,7 @@ vgactl(char* a)
 	extern VGAcur *vgacur[];
 	Rectangle r;
 
-	n = getfields(a, field, nelem(field), 1, " ");
+	n = getfields(a, field, nelem(field), 1, " \t\n");
 	if(n < 1)
 		error(Ebadarg);
 
@@ -318,6 +318,8 @@ vgactl(char* a)
 			hwaccel = 1;
 		else if(strcmp(field[1], "off") == 0)
 			hwaccel = 0;
+		else
+			error(Ebadarg);
 		return;
 	}
 	else if(strcmp(field[0], "hwblank") == 0){
@@ -327,6 +329,8 @@ vgactl(char* a)
 			hwblank = 1;
 		else if(strcmp(field[1], "off") == 0)
 			hwblank = 0;
+		else
+			error(Ebadarg);
 		return;
 	}
 
