@@ -423,6 +423,7 @@ iprint("pcmciapower %d\n", on);
 			if (sp->dev){
 				increfp(sp);
 				iprint("pcmciapower: %s\n", sp->verstr);
+				delay(10000);
 				if (sp->dev->power)
 					sp->dev->power(on);
 			}
