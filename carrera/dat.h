@@ -157,6 +157,7 @@ struct ISAConf {
 	char	type[NAMELEN];
 	ulong	port;
 	ulong	irq;
+	int	dma;
 };
 
 extern KMap kpte[];
