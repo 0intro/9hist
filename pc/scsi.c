@@ -286,7 +286,7 @@ scsicap(Target *t, char lun, ulong *size, ulong *bsize)
 	nbytes = 8;
 	d = scsialloc(nbytes);
 	if(d == 0)
-		return -1;
+		return scsierrstr(STnomem);
 
 	s = scsiexec(t, SCSIread, cmd, sizeof(cmd), d, &nbytes);
 	if(s == STok) {
