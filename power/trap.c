@@ -230,16 +230,27 @@ intr(ulong cause, ulong pc)
 	loop:
 		if(pend & 1) {
 			v = INTVECREG->i[0].vec;
-/* a botch, bit 12 seems to always be on
-			if(v & (1<<12))
+			if(!(v & (1<<12)))
 				print("io2 mp bus error %d\n", 0);
- */
-			if(!(v & (1<<2)))
-				lanceintr();
-			if(!(v & (1<<1)))
-				lanceparity();
-			if(!(v & (1<<0)))
-				print("SCSI interrupt\n");
+			switch(ioid){
+			case IO2R1:
+			case IO2R2:
+				if(!(v & (1<<2)))
+					lanceintr();
+				if(!(v & (1<<1)))
+					lanceparity();
+				if(!(v & (1<<0)))
+					print("SCSI interrupt\n");
+				break;
+			case IO3R1:
+				if(v & (1<<2))
+					lance3intr();
+				if(v & (1<<1))
+					print("SCSI 1 interrupt\n");
+				if(v & (1<<0))
+					print("SCSI 0 interrupt\n");
+				break;
+			}
 		}
 		/*
 		 *  5b. process vme
@@ -249,10 +260,8 @@ intr(ulong cause, ulong pc)
 		for(i=1; pend; i++) {
 			if(pend & 1) {
 				v = INTVECREG->i[i].vec;
-/* a botch, bit 12 seems to always be on
-				if(v & (1<<12))
+				if(!(v & (1<<12)))
 					print("io2 mp bus error %d\n", i);
- */
 				v &= 0xff;
 				(*vmevec[v])(v);
 			}
@@ -392,7 +401,7 @@ Syscall syssleep, sysstat, sysuserstr, syswait, syswrite, syswstat;
 
 Syscall *systab[]={
 	[SYSR1]		sysr1,
-	[ACCESS]	sysaccess,
+	[___ACCESS___]	sysaccess,
 	[BIND]		sysbind,
 	[CHDIR]		syschdir,
 	[CLOSE]		sysclose,

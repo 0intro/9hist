@@ -83,3 +83,7 @@ struct INTVEC {
 #define	MPBERR1		IO2(ulong, 0xF4C000)
 #define SBEADDR		((ulong *)(UNCACHED|0x1F080000))
 
+/*
+ *  IO board type
+ */
+extern int ioid;

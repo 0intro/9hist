@@ -888,3 +888,9 @@ lanceparity(void)
 	MODEREG->promenet &= ~4;
 	MODEREG->promenet |= 4;
 }
+
+void
+lance3intr(void)
+{
+	panic("lance3 interrupt\n");
+}

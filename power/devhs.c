@@ -488,6 +488,7 @@ hsvmekproc(void *arg)
 		 *  0xFFFF means an empty fifo
 		 */
 		while ((c = addr->data) != 0xFFFF) {
+			hp->in++;
 			miss = 0;
 			if(c & CHNO){
 				c &= 0x1FF;

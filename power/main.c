@@ -34,6 +34,11 @@ char confbuf[4*1024];
  */
 char sysname[64];
 
+/*
+ *  IO board type
+ */
+int ioid;
+
 void
 main(void)
 {
@@ -53,12 +58,13 @@ main(void)
 	chaninit();
 	clockinit();
 	alarminit();
-	io2init();
+	ioboardinit();
 	chandevreset();
 	streaminit();
 	sysloginit();
 	pageinit();
 	userinit();
+	ioboardid();
 	launchinit();
 	schedinit();
 }
@@ -100,14 +106,35 @@ vecinit(void)
 		*p++ = *q++;
 }
 
+void
+ioboardid(void)
+{
+	switch(ioid){
+	case IO2R1:
+		print("IO2 revision 1\n");
+		break;
+	case IO2R2:
+		print("IO2 revision 2\n");
+		break;
+	case IO3R1:
+		print("IO3 revision 1\n");
+		break;
+	default:
+		print("unknown IO board\n");
+		break;
+	}
+}
+
 /*
  *  We have to program both the IO2 board to generate interrupts
  *  and the SBCC on CPU 0 to accept them.
  */
 void
-io2init(void)
+ioboardinit(void)
 {
 	long i;
+
+	ioid = *IOID;
 
 	/*
 	 *  reset VME bus (MODEREG is on the IO2)
