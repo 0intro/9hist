@@ -26,10 +26,12 @@ struct Handler
 
 struct
 {
-	Handler	*ivec[128];
+	Handler	*ivec[MaxVectorPIC+1];
 	Handler	h[Maxhandler];
 	int	free;
 } halloc;
+
+Lock	veclock;
 
 void	faultpower(Ureg *ur, ulong addr, int read);
 void	syscall(Ureg* ureg);
@@ -198,11 +200,6 @@ spurious(Ureg *ur, void *a)
 	panic("bad interrupt");
 }
 
-#define	LEV(n)	(((n)<<1)|1)
-#define	IRQ(n)	(((n)<<1)|0)
-
-Lock	veclock;
-
 void
 sethvec(int v, void (*r)(void))
 {
@@ -242,92 +239,43 @@ trapinit(void)
 void
 intrenable(int v, void (*r)(Ureg*, void*), void *arg, int, char *name)
 {
-#ifdef BLOG
 	Handler *h;
-	IMM *io;
 
 	if(halloc.free >= Maxhandler)
 		panic("out of interrupt handlers");
-	v -= VectorPIC;
 	if(v < 0 || v >= nelem(halloc.ivec))
-		panic("intrenable(%d)", v+VectorPIC);
+		panic("intrenable(%d)", v);
 	ilock(&veclock);
-	if(v < VectorCPIC || (h = halloc.ivec[v]) == nil){
-		h = &halloc.h[halloc.free++];
-		h->next = halloc.ivec[v];
-		halloc.ivec[v] = h;
-	}
+	h = &halloc.h[halloc.free++];
+	h->next = halloc.ivec[v];
+	halloc.ivec[v] = h;
 	h->r = r;
 	h->arg = arg;
 
-	/*
-	 * enable corresponding interrupt in SIU/CPM
-	 */
-
 	eieio();
-	io = m->iomem;
-	if(v >= VectorCPIC){
-		v -= VectorCPIC;
-		io->cimr |= 1<<(v&0x1F);
-	}
-	else if(v >= VectorIRQ)
-		io->simask |= 1<<(31-IRQ(v&7));
-	else
-		io->simask |= 1<<(31-LEV(v));
 	eieio();
 	iunlock(&veclock);
-#endif
 }
 
 void
 intr(Ureg *ur)
 {
-#ifdef BLOG
 	int b, v;
-	IMM *io;
 	Handler *h;
-	long t0;
 
-	ur->cause &= ~0xff;
-	io = m->iomem;
-	b = io->sivec>>2;
-	v = b>>1;
-	if(b & 1) {
-		if(v == CPIClevel){
-			io->civr = 1;
-			eieio();
-			v = VectorCPIC+(io->civr>>11);
-		}
-	}else
-		v += VectorIRQ;
-	ur->cause |= v;
-	h = halloc.ivec[v];
-	if(h == nil){
-		print("unknown interrupt %d pc=0x%lux\n", v, ur->pc);
-		uartwait();
-		return;
+	v = mpicintack();
+	if(v == 0) {			/* 8259 */
 	}
-	if(h->edge){
-		io->sipend |= 1<<(31-b);
-		eieio();
-	}
+
 	/*
 	 *  call the interrupt handlers
 	 */
-	do {
+/*	do {
 		h->nintr++;
-		t0 = getdec();
 		(*h->r)(ur, h->arg);
-		t0 -= getdec();
-		h->ticks += t0;
-		if(h->maxtick < t0)
-			h->maxtick = t0;
 		h = h->next;
 	} while(h != nil);
-	if(v >= VectorCPIC)
-		io->cisr |= 1<<(v-VectorCPIC);
-	eieio();
-#endif
+*/
 }
 
 int

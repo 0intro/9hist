@@ -13,7 +13,7 @@ enum {
 	IrqATA1		= 15,
 	MaxIrqPIC	= 15,
 
-	VectorPIC	= 64,
+	VectorPIC	= 32,
 	MaxVectorPIC	= VectorPIC+MaxIrqPIC,
 };
 
@@ -85,7 +85,6 @@ enum {					/* type 0 and type 1 pre-defined header */
 
 	PciBAR0		= 0x10,		/* base address */
 	PciBAR1		= 0x14,
-	PciROM		= 0x30,
 
 	PciINTL		= 0x3C,		/* interrupt line */
 	PciINTP		= 0x3D,		/* interrupt pin */
@@ -99,7 +98,7 @@ enum {					/* type 0 pre-defined header */
 	PciCIS		= 0x28,		/* cardbus CIS pointer */
 	PciSVID		= 0x2C,		/* subsystem vendor ID */
 	PciSID		= 0x2E,		/* cardbus CIS pointer */
-	PciEBAR0	= 0x30,		/* xpansion ROM base address */
+	PciEBAR0	= 0x30,		/* expansion ROM base address */
 	PciMGNT		= 0x3E,		/* burst period length */
 	PciMLT		= 0x3F,		/* maximum latency between bursts */
 };
@@ -122,6 +121,34 @@ enum {					/* type 1 pre-defined header */
 	PciIULR		= 0x32,		/* I/O limit upper 16 bits */
 	PciEBAR1	= 0x28,		/* expansion ROM base address */
 	PciBCR		= 0x3E,		/* bridge control register */
+};
+
+enum {					/* type 2 pre-defined header */
+	PciCBExCA	= 0x10,
+	PciCBSPSR	= 0x16,
+	PciCBPBN	= 0x18,		/* primary bus number */
+	PciCBSBN	= 0x19,		/* secondary bus number */
+	PciCBUBN	= 0x1A,		/* subordinate bus number */
+	PciCBSLTR	= 0x1B,		/* secondary latency timer */
+	PciCBMBR0	= 0x1C,
+	PciCBMLR0	= 0x20,
+	PciCBMBR1	= 0x24,
+	PciCBMLR1	= 0x28,
+	PciCBIBR0	= 0x2C,		/* I/O base */
+	PciCBILR0	= 0x30,		/* I/O limit */
+	PciCBIBR1	= 0x34,		/* I/O base */
+	PciCBILR1	= 0x38,		/* I/O limit */
+	PciCBSVID	= 0x40,		/* subsystem vendor ID */
+	PciCBSID	= 0x42,		/* subsystem ID */
+	PciCBLMBAR	= 0x44,		/* legacy mode base address */
+};
+
+typedef struct Pcisiz Pcisiz;
+struct Pcisiz
+{
+	Pcidev*	dev;
+	int	siz;
+	int	bar;
 };
 
 typedef struct Pcidev Pcidev;
@@ -153,7 +180,5 @@ typedef struct Pcidev {
 	ulong	pcr;
 };
 
-//#define PCIWINDOW	0x40000000
-//#define PCIWADDR(va)	(PADDR(va)+PCIWINDOW)
-//#define ISAWINDOW	0x00800000
-//#define ISAWADDR(va)	(PADDR(va)+ISAWINDOW)
+#define PCIWINDOW	0
+#define PCIWADDR(va)	(PADDR(va)+PCIWINDOW)

@@ -196,9 +196,12 @@
 #define	USTKSIZE	(4*1024*1024)		/* size of user stack */
 #define	UREGSIZE	((8+32)*4)
 
-#define	PCI1			0x40000000
-#define	PCI0			0xfd000000
+#define	PCIMEM0		0xf0000000
+#define	PCISIZE0		0x0e000000
+#define	PCIMEM1		0xc0000000
+#define	PCISIZE1		0x30000000
 #define	IOMEM		0xfe000000
+#define	IOSIZE		0x00800000
 #define	FALCON		0xfef80000
 #define	RAVEN		0xfeff0000
 #define	FLASHA		0xff000000

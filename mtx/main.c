@@ -21,9 +21,12 @@ main(void)
 	print("\nPlan 9\n");
 	confinit();
 	xinit();
+	raveninit();
 	trapinit();
 	printinit();
 	cpuidprint();
+pcihinv(nil);
+firmware();
 	mmuinit();
 	procinit0();
 	initseg();
