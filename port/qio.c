@@ -1217,23 +1217,33 @@ qbwrite(Queue *q, Block *b)
 int
 qwrite(Queue *q, void *vp, int len)
 {
-	Block *b, *next;
+	int n, sofar;
+	Block *b;
+	uchar *p = vp;
 
 	QDEBUG if(!islo())
 		print("qwrite hi %lux\n", getcallerpc(&q));
 
-	next = nil;
-	b = mem2bl(vp, len);
-	if(waserror()){
-		freeblist(next);
-		nexterror();
-	}
-	for(; b != nil; b = next){
-		next = b->next;
-		b->next = nil;
+	sofar = 0;
+	do {
+		n = len-sofar;
+		if(n > Maxatomic)
+			n = Maxatomic;
+
+		b = allocb(n);
+		setmalloctag(b, (up->text[0]<<24)|(up->text[1]<<16)|(up->text[2]<<8)|up->text[3]);
+		if(waserror()){
+			freeb(b);
+			nexterror();
+		}
+		memmove(b->wp, p+sofar, n);
+		poperror();
+		b->wp += n;
+
 		qbwrite(q, b);
-	}
-	poperror();
+
+		sofar += n;
+	} while(sofar < len && (q->state & Qmsg) == 0);
 
 	return len;
 }
