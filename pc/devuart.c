@@ -1,4 +1,4 @@
-#include	"u.h"
+#include	"u.h"
 #include	"lib.h"
 #include	"mem.h"
 #include	"dat.h"
@@ -18,6 +18,10 @@ enum
 	 */
 	Data=	0,		/* xmit/rcv buffer */
 	Iena=	1,		/* interrupt enable */
+	 Ircv=	(1<<0),		/*  for char rcv'd */
+	 Ixmt=	(1<<1),		/*  for xmit buffer empty */
+	 Irstat=(1<<2),		/*  for change in rcv'er status */
+	 Imstat=(1<<3),		/*  for change in modem status */
 	Istat=	2,		/* interrupt flag (read) */
 	Tctl=	2,		/* test control (write) */
 	Format=	3,		/* byte format */
@@ -36,7 +40,9 @@ enum
 	 Loop=	(1<<4),		/*  loop bask */
 	Lstat=	5,		/* line status */
 	 Inready=(1<<0),	/*  receive buffer full */
-	 Overrun=(1<<1),	/*  we lost an input char */
+	 Oerror=(1<<1),		/*  receiver overrun */
+	 Perror=(1<<2),		/*  receiver parity error */
+	 Ferror=(1<<3),		/*  rcv framing error */
 	 Outready=(1<<5),	/*  output buffer full */
 	Mstat=	6,		/* modem status */
 	Scratch=7,		/* scratchpad */
@@ -67,6 +73,10 @@ struct Uart
 	Alarm	*a;		/* alarm for waking the kernel process */
  	int	kstarted;	/* kproc started */
 	uchar	delim[256/8];	/* characters that act as delimiters */
+
+	/* error statistics */
+	ulong	frame;
+	ulong	overrun;
 };
 
 Uart uart[2];
@@ -213,14 +223,15 @@ uartintr(Uart *up)
 	IOQ *cq;
 	int s, l;
 
-	/*
-	 *  the for loop takes care of multiple events per interrupt
-	 */
 	for(;;){
 		s = uartrdreg(up, Istat);
 		switch(s){
 		case 6:	/* receiver line status */
 			l = uartrdreg(up, Lstat);
+			if(l & Ferror)
+				up->frame++;
+			if(l & Oerror)
+				up->overrun++;
 			break;
 	
 		case 4:	/* received data available */
@@ -233,9 +244,6 @@ uartintr(Uart *up)
 				if(up->delim[ch/8] & (1<<(ch&7)) )
 					wakeup(&cq->r);
 			}
-			l = uartrdreg(up, Lstat);
-			if(l & Overrun)
-				screenputc('!');
 			break;
 	
 		case 2:	/* transmitter empty */
@@ -257,7 +265,7 @@ uartintr(Uart *up)
 		default:
 			if(s&1)
 				return;
-			print("weird modem interrupt\n");
+/*			print("weird modem interrupt\n");/**/
 			break;
 		}
 	}
@@ -290,6 +298,11 @@ uartenable(Uart *up)
 	}
 
 	/*
+	 *  speed up the clock to poll the uart
+	fclockinit();
+	 */
+
+	/*
 	 *  set up i/o routines
 	 */
 	if(up->oq){
@@ -304,7 +317,7 @@ uartenable(Uart *up)
 	/*
  	 *  turn on interrupts
 	 */
-	up->sticky[Iena] = 0x7;
+	up->sticky[Iena] = Ircv | Ixmt | Irstat;
 	uartwrreg(up, Iena, 0);
 
 	/*
@@ -514,6 +527,7 @@ uartkproc(void *a)
 	IOQ *cq = up->iq;
 	Block *bp;
 	int n;
+	ulong frame, overrun;
 
 	if(waserror())
 		print("uartkproc got an error\n");
@@ -531,6 +545,14 @@ uartkproc(void *a)
 			PUTNEXT(RD(up->wq), bp);
 		}
 		qunlock(up);
+		if(up->frame != frame){
+			kprint("uart%d: %d framing\n", up-uart, up->frame);
+			frame = up->frame;
+		}
+		if(up->overrun != overrun){
+			kprint("uart%d: %d overruns\n", up-uart, up->overrun);
+			overrun = up->overrun;
+		}
 	}
 }
 

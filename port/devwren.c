@@ -7,41 +7,41 @@
 #include	"devtab.h"
 #include	"io.h"
 
-typedef struct Part	Part;
-typedef struct Disk	Disk;
+typedef struct Partition	Partition;
+typedef struct Drive		Drive;
 
 enum {
-	Npart=		2,	/* maximum partitions per disk */
+	Npart=		8+2,	/* 8 sub partitions, disk, and partition */
 	Ndisk=		64,	/* maximum disks */
 
+	/* file types */
 	Qdir=		0,
-	Qdata=		16,
-	Qstruct=	32,
-
-	Mask=		0x7,
 };
+#define PART(x)		((x)&0xF)
+#define DRIVE(x)	(((x)>>4)&0x7)
+#define MKQID(d,p)	(((d)<<4) | (p))
 
-static Dirtab *wrendir;
-#define	NWREN	(2*(Npart+1))
-
-struct Part
+struct Partition
 {
-	ulong 	firstblock;
-	ulong 	maxblock;
+	ulong	start;
+	ulong	end;
+	char	name[NAMELEN+1];
 };
-struct Disk
+
+struct Drive
 {
-	ulong	blocksize;
-	Part	p[Npart];
+	ulong		bytes;			/* bytes per block */
+	int		npart;			/* actual number of partitions */
+	int		drive;
+	Partition	p[Npart];
 };
 
-static Disk	wren[Ndisk];
-
-void	wrenint(uchar*, ulong);
+static Drive	wren[Ndisk];
 
 #define	DATASIZE	(8*1024)	/* BUG */
 
-#define	BGLONG(p)	(((((((p)[0]<<8)|(p)[1])<<8)|(p)[2])<<8)|(p)[3])
+static void	wrenpart(int);
+static long	wrenio(Drive *, Partition *, int, char *, ulong, ulong);
 
 /*
  *  accepts [0-7].[0-7], or abbreviation
@@ -50,21 +50,22 @@ static int
 wrendev(char *p)
 {
 	int dev = 0;
-	if (p==0 || p[0]==0)
+
+	if(p == 0 || p[0] == 0)
 		goto out;
-	if (p[0]<'0' || p[0]>'7')
+	if(p[0] < '0' || p[0] > '7')
 		goto cant;
-	dev = (p[0]-'0')<<3;
-	if (p[1]==0)
+	dev = (p[0] - '0') << 3;
+	if(p[1] == 0)
 		goto out;
-	if (p[1]!='.')
+	if(p[1] != '.')
 		goto cant;
-	if (p[2]==0)
+	if(p[2] == 0)
 		goto out;
-	if (p[2]<'0' || p[2]>'7')
+	if(p[2] < '0' || p[2] > '7')
 		goto cant;
-	dev |= p[2]-'0';
-	if (p[3]!=0)
+	dev |= p[2] - '0';
+	if(p[3] != 0)
 		goto cant;
 out:
 	if(dev >= Ndisk)
@@ -75,58 +76,43 @@ cant:
 }
 
 static int
-wrengen(Chan *c, Dirtab *tab, long ntab, long s, Dir *dp)
+wrengen(Chan *c, Dirtab *tab, long ntab, long s, Dir *dirp)
 {
-	long l;
-	Part *p;
-	Disk *d;
+	Qid qid;
+	int drive;
+	char name[NAMELEN+4];
+	Drive *dp;
+	Partition *pp;
+	ulong l;
 
-	if(s >= ntab)
+	qid.vers = 0;
+	drive = s/Npart;
+	s = s % Npart;
+	if(drive >= Ndisk)
 		return -1;
-	if(c->dev >= Ndisk)
-		return -1;
+	dp = &wren[drive];
 
-	tab += s;
-	d = &wren[c->dev];
-	p = &d->p[tab->qid.path&Mask];
-	if((tab->qid.path&~Mask) == Qdata)
-		l = d->blocksize * (p->maxblock - p->firstblock);
-	else
-		l = 8;
-	devdir(c, tab->qid, tab->name, l, tab->perm, dp);
+	if(s >= dp->npart)
+		return 0;
+
+	pp = &dp->p[s];
+	sprint(name, "hd%d%s", drive, pp->name);
+	name[NAMELEN] = 0;
+	qid.path = MKQID(drive, s);
+	l = (pp->end - pp->start) * dp->bytes;
+	devdir(c, qid, name, l, 0600, dirp);
 	return 1;
 }
 
 void
 wrenreset(void)
 {
-	Dirtab *p;
-	int i;
-
-	p = wrendir = ialloc((Npart+1) * 2 * sizeof(Dirtab), 0);
-	for(i = 0; i < Npart; i++){
-		sprint(p->name, "data%d", i);
-		p->qid.path = Qdata + i;
-		p->perm = 0600;
-		p++->length = 0;
-		sprint(p->name, "struct%d", i);
-		p->qid.path = Qstruct + i;
-		p->perm = 0600;
-		p++->length = 0;
-	}
-	strcpy(p->name, "data");
-	p->qid.path = Qdata + Npart;
-	p->perm = 0600;
-	p++->length = 0;
-	strcpy(p->name, "struct");
-	p->qid.path = Qstruct + Npart;
-	p->perm = 0600;
-	p->length = 0;
 }
 
 void
 wreninit(void)
-{}
+{
+}
 
 /*
  *  param is #r<target>.<lun>
@@ -134,34 +120,17 @@ wreninit(void)
 Chan *
 wrenattach(char *param)
 {
-	uchar buf[32];
-	int dev;
 	Chan *c;
-	Disk *d;
-	ulong plen;
-	int i;
+	int drive;
 
-	dev = wrendev(param);
-	scsiready(dev);
-	scsisense(dev, buf);
-	scsicap(dev, buf);
+	drive = wrendev(param);
+	wrenpart(drive);
 	c = devattach('r', param);
-	c->dev = dev;
-	d = &wren[dev];
-	d->blocksize = BGLONG(&buf[4]);
-
-	plen = BGLONG(&buf[0])+1;
-	d->p[Npart].firstblock = 0;
-	d->p[Npart].maxblock = plen;
-	plen = plen/Npart;
-	for(i = 0; i < Npart; i++){
-		d->p[i].firstblock = i*plen;
-		d->p[i].maxblock = (i+1)*plen;
-	}
+	c->dev = drive;
 	return c;
 }
 
-Chan *
+Chan*
 wrenclone(Chan *c, Chan *nc)
 {
 	return devclone(c, nc);
@@ -170,21 +139,19 @@ wrenclone(Chan *c, Chan *nc)
 int
 wrenwalk(Chan *c, char *name)
 {
-	return devwalk(c, name, wrendir, NWREN, wrengen);
+	return devwalk(c, name, 0, 0, wrengen);
 }
 
 void
-wrenstat(Chan *c, char *db)
+wrenstat(Chan *c, char *dp)
 {
-	devstat(c, db, wrendir, NWREN, wrengen);
+	devstat(c, dp, 0, 0, wrengen);
 }
 
-Chan *
+Chan*
 wrenopen(Chan *c, int omode)
 {
-	if (c->qid.path == Qdata && scsiready(c->dev) != 0)
-		error(Eio);
-	return devopen(c, omode, wrendir, NWREN, wrengen);
+	return devopen(c, omode, 0, 0, wrengen);
 }
 
 void
@@ -195,104 +162,7 @@ wrencreate(Chan *c, char *name, int omode, ulong perm)
 
 void
 wrenclose(Chan *c)
-{}
-
-long
-wrenread(Chan *c, char *a, long n, ulong offset)
 {
-	Scsi *cmd;
-	ulong lbn;
-	Part *p;
-	Disk *d;
-
-	if (n == 0)
-		return 0;
-
-	if(c->qid.path == CHDIR)
-		return devdirread(c, a, n, wrendir, NWREN, wrengen);
-
-	d = &wren[c->dev];
-	p = &(d->p[Mask&c->qid.path]);
-	switch ((int)(c->qid.path & ~Mask)) {
-	case Qdata:
-		if (n % d->blocksize || offset % d->blocksize)
-			error(Ebadarg);
-		lbn = (offset/d->blocksize) + p->firstblock;
-		if (lbn >= p->maxblock)
-			error(Ebadarg);
-		if (n > DATASIZE)
-			n = DATASIZE;
-		cmd = scsicmd(c->dev, 0x08, n);
-		if (waserror()) {
-			qunlock(cmd);
-			nexterror();
-		}
-		cmd->cmdblk[1] = lbn>>16;
-		cmd->cmdblk[2] = lbn>>8;
-		cmd->cmdblk[3] = lbn;
-		cmd->cmdblk[4] = n/d->blocksize;
-		scsiexec(cmd, 1);
-		n = cmd->data.ptr - cmd->data.base;
-		memmove(a, cmd->data.base, n);
-		qunlock(cmd);
-		poperror();
-		break;
-	case Qstruct:
-		if (n < 2*sizeof(ulong))
-			error(Ebadarg);
-		if (offset >= 2*sizeof(ulong))
-			return 0;
-		n = 2*sizeof(ulong);
-		wrenint((uchar*)a, p->maxblock - p->firstblock);
-		wrenint((uchar*)a+sizeof(ulong), d->blocksize);
-		break;
-	default:
-		panic("wrenread");
-	}
-	return n;
-}
-
-long
-wrenwrite(Chan *c, char *a, long n, ulong offset)
-{
-	Scsi *cmd;
-	ulong lbn;
-	Part *p;
-	Disk *d;
-
-	if (n == 0)
-		return 0;
-
-	d = &wren[c->dev];
-	p = &(d->p[Mask&c->qid.path]);
-	switch ((int)(c->qid.path & ~Mask)) {
-	case Qdata:
-		if (n % d->blocksize || offset % d->blocksize)
-			error(Ebadarg);
-		lbn = offset/d->blocksize + p->firstblock;
-		if (lbn >= p->maxblock)
-			error(Ebadarg);
-		if (n > DATASIZE)
-			n = DATASIZE;
-		cmd = scsicmd(c->dev, 0x0a, n);
-		if (waserror()) {
-			qunlock(cmd);
-			nexterror();
-		}
-		cmd->cmdblk[1] = lbn>>16;
-		cmd->cmdblk[2] = lbn>>8;
-		cmd->cmdblk[3] = lbn;
-		cmd->cmdblk[4] = n/d->blocksize;
-		memmove(cmd->data.base, a, n);
-		scsiexec(cmd, 0);
-		n = cmd->data.ptr - cmd->data.base;
-		qunlock(cmd);
-		poperror();
-		break;
-	default:
-		panic("wrenwrite");
-	}
-	return n;
 }
 
 void
@@ -307,11 +177,149 @@ wrenwstat(Chan *c, char *dp)
 	error(Eperm);
 }
 
-void
-wrenint(uchar *a, ulong x)
+long
+wrenread(Chan *c, char *a, long n, ulong offset)
 {
-	a[0] = x >> 24;
-	a[1] = x >> 16;
-	a[2] = x >> 8;
-	a[3] = x;
+	Drive *d;
+	Partition *p;
+
+
+	if(c->qid.path == CHDIR)
+		return devdirread(c, a, n, 0, 0, wrengen);
+
+	d = &wren[DRIVE(c->qid.path)];
+	p = &d->p[PART(c->qid.path)];
+	return wrenio(d, p, 0, a, n, offset);
+}
+
+long
+wrenwrite(Chan *c, char *a, long n, ulong offset)
+{
+	Drive *d;
+	Partition *p;
+
+	d = &wren[DRIVE(c->qid.path)];
+	p = &d->p[PART(c->qid.path)];
+	return wrenio(d, p, 1, a, n, offset);
+}
+
+static long
+wrenio(Drive *d, Partition *p, int write, char *a, ulong n, ulong offset)
+{
+	Scsi *cmd;
+	void *b;
+	ulong block;
+
+	if(n % d->bytes || offset % d->bytes)
+		error(Ebadarg);
+	block = offset / d->bytes + p->start;
+	if(block >= p->end)
+		return 0;
+	if(n > DATASIZE)
+		n = DATASIZE;
+	n /= d->bytes;
+	if(block + n > p->end)
+		n = p->end - block;
+	if(n == 0)
+		return 0;
+	if(write)
+		cmd = scsicmd(d->drive, 0x0a, n*d->bytes);
+	else
+		cmd = scsicmd(d->drive, 0x08, n*d->bytes);
+	if(waserror()){
+		qunlock(cmd);
+		nexterror();
+	}
+	cmd->cmdblk[1] = block>>16;
+	cmd->cmdblk[2] = block>>8;
+	cmd->cmdblk[3] = block;
+	cmd->cmdblk[4] = n;
+	if(write)
+		memmove(cmd->data.base, a, n*d->bytes);
+	scsiexec(cmd, !write);
+	n = cmd->data.ptr - cmd->data.base;
+	if(!write)
+		memmove(a, cmd->data.base, n);
+	qunlock(cmd);
+	poperror();
+	return n;
+}
+
+/*
+ *  read partition table.  The partition table is just ascii strings.
+ */
+#define MAGIC "plan9 partitions"
+static void
+wrenpart(int dev)
+{
+	Scsi *cmd;
+	Drive *dp;
+	Partition *pp;
+	uchar buf[32];
+	char *b;
+	char *line[Npart+1];
+	char *field[3];
+	ulong n;
+	int i;
+
+	scsiready(dev);
+	scsisense(dev, buf);
+	scsicap(dev, buf);
+	dp = &wren[dev];
+	dp->drive = dev;
+	if(dp->npart)
+		return;
+	/*
+	 *  we always have a partition for the whole disk
+	 *  and one for the partition table
+	 */
+	dp->bytes = (buf[4]<<24)+(buf[5]<<16)+(buf[6]<<8)+(buf[7]);
+	pp = &dp->p[0];
+	strcpy(pp->name, "disk");
+	pp->start = 0;
+	pp->end = (buf[0]<<24)+(buf[1]<<16)+(buf[2]<<8)+(buf[3]) + 1;
+	pp++;
+	strcpy(pp->name, "partition");
+	pp->start = dp->p[0].end - 1;
+	pp->end = dp->p[0].end;
+	dp->npart = 2;
+
+	/*
+	 *  read partition table from disk, null terminate
+	 */
+	cmd = scsicmd(dev, 0x08, dp->bytes);
+	if(waserror()){
+		qunlock(cmd);
+		nexterror();
+	}
+	n = dp->p[0].end-1;
+	cmd->cmdblk[1] = n>>16;
+	cmd->cmdblk[2] = n>>8;
+	cmd->cmdblk[3] = n;
+	cmd->cmdblk[4] = 1;
+	scsiexec(cmd, 1);
+	cmd->data.base[dp->bytes-1] = 0;
+
+	/*
+	 *  parse partition table.
+	 */
+	n = getfields((char *)cmd->data.base, line, Npart+1, '\n');
+	if(strncmp(line[0], MAGIC, sizeof(MAGIC)-1) != 0)
+		goto out;
+	for(i = 1; i < n; i++){
+		pp++;
+		if(getfields(line[i], field, 3, ' ') != 3){
+			break;
+		}
+		strncpy(pp->name, field[0], NAMELEN);
+		pp->start = strtoul(field[1], 0, 0);
+		pp->end = strtoul(field[2], 0, 0);
+		if(pp->start > pp->end || pp->start >= dp->p[0].end){
+			break;
+		}
+		dp->npart++;
+	}
+out:
+	qunlock(cmd);
+	poperror();
 }

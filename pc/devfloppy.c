@@ -31,12 +31,6 @@ enum
 
 	DMAchan=	2,	/* floppy dma channel */
 
-	/* sector size encodings */
-	S128=		0,
-	S256=		1,
-	S512=		2,
-	S1024=		3,
-
 	/* status 0 byte */
 	Drivemask=	3<<0,
 	Seekend=	1<<5,
@@ -45,7 +39,6 @@ enum
 	/* file types */
 	Qdir=		0,
 	Qdata=		(1<<2),
-	Qstruct=	(2<<2),
 	Qmask=		(3<<2),
 };
 
@@ -163,14 +156,10 @@ static long	floppyxfer(Drive*, int, void*, long, long);
 static void	floppyintr(Ureg*);
 
 Dirtab floppydir[]={
-	"fd0data",		{Qdata + 0},	0,	0600,
-	"fd0struct",		{Qstruct + 0},	8,	0600,
-	"fd1data",		{Qdata + 1},	0,	0600,
-	"fd1struct",		{Qstruct + 1},	8,	0600,
-	"fd2data",		{Qdata + 2},	0,	0600,
-	"fd2struct",		{Qstruct + 2},	8,	0600,
-	"fd3data",		{Qdata + 3},	0,	0600,
-	"fd3struct",		{Qstruct + 3},	8,	0600,
+	"fd0disk",		{Qdata + 0},	0,	0600,
+	"fd1disk",		{Qdata + 1},	0,	0600,
+	"fd2disk",		{Qdata + 2},	0,	0600,
+	"fd3disk",		{Qdata + 3},	0,	0600,
 };
 #define NFDIR	2	/* directory entries/drive */
 
@@ -337,15 +326,6 @@ floppyread(Chan *c, void *a, long n)
 			memmove(aa+rv, dp->ccache + (sec-1)*dp->t->bytes, len);
 		}
 		break;
-	case Qstruct:
-		if (n < 2*sizeof(ulong))
-			error(Ebadarg);
-		if (c->offset >= 2*sizeof(ulong))
-			return 0;
-		rv = 2*sizeof(ulong);
-		ul2user((uchar*)a, dp->t->cap);
-		ul2user((uchar*)a+sizeof(ulong), dp->t->bytes);
-		break;
 	default:
 		panic("floppyread: bad qid");
 	}
@@ -368,9 +348,6 @@ floppywrite(Chan *c, void *a, long n)
 			if(i <= 0)
 				break;
 		}
-		break;
-	case Qstruct:
-		error(Eperm);
 		break;
 	default:
 		panic("floppywrite: bad qid");
@@ -733,7 +710,7 @@ floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 	if(floppyseek(dp) < 0)
 		errors("seeking floppy");
 
-print("tcyl %d, thead %d, tsec %d, addr %lux, n %d\n",
+/*print("tcyl %d, thead %d, tsec %d, addr %lux, n %d\n",
 		dp->tcyl, dp->thead, dp->tsec, addr, n);/**/
 
 	/*
@@ -797,7 +774,7 @@ print("new offset %d instead of %d\n", offset, off+dp->len);
 static void
 floppyintr(Ureg *ur)
 {
-print("floppy intr\n");
+/*print("floppy intr\n");/**/
 	floppy.intr = 1;
 	wakeup(&floppy.r);
 }

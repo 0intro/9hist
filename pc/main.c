@@ -18,6 +18,7 @@ main(void)
 	confinit();
 	screeninit();
 	printinit();
+	print("%lud K bytes of physical memory\n", 1024 + conf.npage1*BY2PG/1024);
 	mmuinit();
 	trapinit();
 	kbdinit();
@@ -141,7 +142,15 @@ confinit(void)
 	int mul;
 
 	/*
-	 *  size memory
+	 *  the first 640k is the standard useful memory
+	 *  the next 128K is the display
+	 *  the last 256k belongs to the roms
+	 */
+	conf.npage0 = 640/4;
+	conf.base0 = 0;
+
+	/*
+	 *  size the non-standard memory
 	 */
 	x = 0x12345678;
 	for(i=1; i<16; i++){
@@ -165,17 +174,7 @@ confinit(void)
 			break;
 		x += 0x3141526;
 	}
-
-	/*
-	 *  the first 640k is the standard useful memory
-	 */
-	conf.npage0 = 640/4;
-	conf.base0 = 0;
-
-	/*
-	 *  the last 128k belongs to the roms
-	 */
-	conf.npage1 = (i-1)*1024/4;
+	conf.npage1 = (i-2)*1024/4;
 	conf.base1 = 1024*1024;
 
 	conf.npage = conf.npage0 + conf.npage1;

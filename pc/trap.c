@@ -79,27 +79,27 @@ trapinit(void)
 	 *  set all interrupts to panics
 	 */
 	for(i = 32; i < 256; i++)
-		sethvec(i, intrbad, SEGIG, 0);
+		sethvec(i, intrbad, SEGTG, 0);
 
 	/*
 	 *  set the standard traps
 	 */
-	sethvec(0, intr0, SEGIG, 0);
-	sethvec(1, intr1, SEGIG, 0);
-	sethvec(2, intr2, SEGIG, 0);
-	sethvec(3, intr3, SEGIG, 0);
-	sethvec(4, intr4, SEGIG, 0);
-	sethvec(5, intr5, SEGIG, 0);
-	sethvec(6, intr6, SEGIG, 0);
-	sethvec(7, intr7, SEGIG, 0);
-	sethvec(8, intr8, SEGIG, 0);
-	sethvec(9, intr9, SEGIG, 0);
-	sethvec(10, intr10, SEGIG, 0);
-	sethvec(11, intr11, SEGIG, 0);
-	sethvec(12, intr12, SEGIG, 0);
-	sethvec(13, intr13, SEGIG, 0);
-	sethvec(14, intr14, SEGIG, 0);
-	sethvec(15, intr15, SEGIG, 0);
+	sethvec(0, intr0, SEGTG, 0);
+	sethvec(1, intr1, SEGTG, 0);
+	sethvec(2, intr2, SEGTG, 0);
+	sethvec(3, intr3, SEGTG, 0);
+	sethvec(4, intr4, SEGTG, 0);
+	sethvec(5, intr5, SEGTG, 0);
+	sethvec(6, intr6, SEGTG, 0);
+	sethvec(7, intr7, SEGTG, 0);
+	sethvec(8, intr8, SEGTG, 0);
+	sethvec(9, intr9, SEGTG, 0);
+	sethvec(10, intr10, SEGTG, 0);
+	sethvec(11, intr11, SEGTG, 0);
+	sethvec(12, intr12, SEGTG, 0);
+	sethvec(13, intr13, SEGTG, 0);
+	sethvec(14, intr14, SEGTG, 0);
+	sethvec(15, intr15, SEGTG, 0);
 
 	/*
 	 *  set the standard devices
@@ -188,13 +188,9 @@ trap(Ureg *ur)
 		if(c == Int1vec)
 			outb(Int1ctl, EOI);
 		outb(Int0ctl, EOI);
+		if(v != Uart0vec)
+			uartintr0(ur);
 	}
-
-	/*
-	 *  check for a waiting character, the uart is at too low
-	 *  a priority level to work correctly at 9600 baud.
-	 */
-	uartintr0(ur);
 
 	/*
 	 *  call the trap routine
@@ -270,7 +266,6 @@ syscall(Ureg *ur)
 	u->p->pc = ur->pc;
 	if((ur->cs)&0xffff == KESEL)
 		panic("recursive system call");
-	spllo();
 
 	/*
 	 *  do something about floating point!!!

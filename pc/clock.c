@@ -62,7 +62,6 @@ clock(Ureg *ur)
 	m->ticks++;
 
 	checkalarms();
-	mouseclock();
 
 	/*
 	 *  process time accounting
