@@ -1,14 +1,12 @@
 /*
  *  a pity the code isn't also tiny...
  */
-
-#include	"u.h"
-#include	"../port/lib.h"
-#include	"mem.h"
-#include	"dat.h"
-#include	"fns.h"
-#include	"../port/error.h"
-
+#include "u.h"
+#include "../port/lib.h"
+#include "../port/error.h"
+#include "mem.h"
+#include "dat.h"
+#include "fns.h"
 
 enum{
 	Qdir,
@@ -29,7 +27,7 @@ enum{
 	Notabno=		0xffff,
 
 	Fcreating=	1,
-	Frmonclose=	2,
+	Frmonclose=	2
 };
 
 /* representation of a Tdir on medium */
@@ -181,6 +179,8 @@ validdata(Tfs *fs, uchar *p, int *lenp)
 		if(lenp)
 			*lenp = x;
 		break;
+	default:
+		return 0;
 	}
 	return md;
 }
@@ -237,7 +237,7 @@ writedir(Tfs *fs, Tfile *f)
 	PUTS(md->bno, f->dbno);
 	PUTS(md->pin, f->pin);
 	md->sum = 0 - checksum(buf);
-
+	
 	if(devtab[fs->c->type]->write(fs->c, buf, Blen, Blen*f->bno) != Blen)
 		error(Eio);
 }
@@ -276,9 +276,7 @@ freefile(Tfs *fs, Tfile *f, ulong bend)
 
 	/* change file type to free on medium */
 	if(f->bno != Notabno){
-		if(devtab[fs->c->type]->read(fs->c, buf, Blen, Blen*f->bno) != Blen)
-			return;
-		buf[0] = Tagfree;
+		memset(buf, 0x55, Blen);
 		devtab[fs->c->type]->write(fs->c, buf, Blen, Blen*f->bno);
 		mapclr(fs, f->bno);
 	}
@@ -293,7 +291,7 @@ expand(Tfs *fs)
 	Tfile *f;
 
 	fs->fsize += 8;
-	f = smalloc(fs->fsize*sizeof(*f));
+	f = malloc(fs->fsize*sizeof(*f));
 
 	if(fs->f){
 		memmove(f, fs->f, fs->nf*sizeof(*f));
@@ -306,45 +304,50 @@ static Tfile*
 newfile(Tfs *fs, char *name)
 {
 	int i;
-	Tfile *f;
+	volatile struct {
+		Tfile *f;
+		Tfs *fs;
+	} rock;
 
 	/* find free entry in file table */
-	f = 0;
+	rock.f = 0;
+	rock.fs = fs;
 	for(;;) {
-		for(i = 0; i < fs->fsize; i++){
-			f = &fs->f[i];
-			if(f->name[0] == 0){
-				strncpy(f->name, name, sizeof(f->name)-1);
+		for(i = 0; i < rock.fs->fsize; i++){
+			rock.f = &rock.fs->f[i];
+			if(rock.f->name[0] == 0){
+				strncpy(rock.f->name, name, sizeof(rock.f->name)-1);
 				break;
 			}
 		}
 
-		if(i < fs->fsize){
-			if(i >= fs->nf)
-				fs->nf = i+1;
+		if(i < rock.fs->fsize){
+			if(i >= rock.fs->nf)
+				rock.fs->nf = i+1;
 			break;
 		}
 
-		expand(fs);
+		expand(rock.fs);
 	}
 
-	f->flag = Fcreating;
-	f->dbno = Notabno;
-	f->bno = mapalloc(fs);
-	f->fbno = Notabno;
-	f->r = 1;
+	rock.f->flag = Fcreating;
+	rock.f->dbno = Notabno;
+	rock.f->bno = mapalloc(rock.fs);
+	rock.f->fbno = Notabno;
+	rock.f->r = 1;
+	rock.f->pin = Notapin;  // what is a pin??
 
 	/* write directory block */
 	if(waserror()){
-		freefile(fs, f, Notabno);
+		freefile(rock.fs, rock.f, Notabno);
 		nexterror();
 	}
-	if(f->bno == Notabno)
+	if(rock.f->bno == Notabno)
 		error("out of space");
-	writedir(fs, f);
+	writedir(rock.fs, rock.f);
 	poperror();
 	
-	return f;
+	return rock.f;
 }
 
 /*
@@ -353,7 +356,7 @@ newfile(Tfs *fs, char *name)
  *  had better be small or this could take a while.
  */
 static void
-fsinit(Tfs *fs)
+tfsinit(Tfs *fs)
 {
 	char dbuf[DIRLEN];
 	Dir d;
@@ -372,7 +375,7 @@ fsinit(Tfs *fs)
 
 	/* bitmap for block usage */
 	x = (fs->nblocks + 8 - 1)/8;
-	fs->map = smalloc(x);
+	fs->map = malloc(x);
 	memset(fs->map, 0x0, x);
 	for(bno = fs->nblocks; bno < x*8; bno++)
 		mapset(fs, bno);
@@ -398,6 +401,7 @@ fsinit(Tfs *fs)
 		f->pin = GETS(mdir->pin);
 		f->bno = bno;
 		f->dbno = x;
+		f->fbno = Notabno;
 	}
 
 	/* follow files */
@@ -445,7 +449,8 @@ tinyfsgen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
 	Tfile *f;
 	Qid qid;
 
-	USED(ntab, tab);
+	USED(ntab);
+	USED(tab);
 
 	fs = &tinyfs.fs[c->dev];
 	if(i >= fs->nf)
@@ -460,35 +465,30 @@ tinyfsgen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
 }
 
 static void
-tinyfsreset(void)
+tinyfsinit(void)
 {
 	if(Nlen > NAMELEN)
-		panic("tinyfsreset");
+		panic("tinyfsinit");
 }
 
+/*
+ *  specifier is an open file descriptor
+ */
 static Chan*
-tinyfsattach(char *spec)
+tinyfsattach(void *spec)
 {
 	Tfs *fs;
-	Chan *c, *cc;
-	int i;
-	char *p;
+	Chan *c;
+	volatile struct { Chan *cc; } rock;
+	int i, fd;
 
-	p = 0;
-	if(strncmp(spec, "hd0", 3) == 0)
-		p = "/dev/hd0nvram";
-	else if(strncmp(spec, "hd1", 3) == 0)
-		p = "/dev/hd1nvram";
-	else if(strncmp(spec, "sd0", 3) == 0)
-		p = "/dev/sd0nvram";
-	else if(strncmp(spec, "sd1", 3) == 0)
-		p = "/dev/sd1nvram";
-	else
-		error("bad spec");
+	fd = atoi(spec);
+	if(fd < 0)
+		error("bad specifier");
 
-	cc = namec(p, Aopen, ORDWR, 0);
+	rock.cc = fdtochan(fd, ORDWR, 0, 1);
 	if(waserror()){
-		cclose(cc);
+		cclose(rock.cc);
 		nexterror();
 	}
 
@@ -496,14 +496,14 @@ tinyfsattach(char *spec)
 	for(i = 0; i < Maxfs; i++){
 		fs = &tinyfs.fs[i];
 		qlock(&fs->ql);
-		if(fs->r && eqchan(cc, fs->c, 0))
+		if(fs->r && eqchan(rock.cc, fs->c, 1))
 			break;
 		qunlock(&fs->ql);
 	}
 	if(i < Maxfs){
 		fs->r++;
 		qunlock(&fs->ql);
-		cclose(cc);
+		cclose(rock.cc);
 	} else {
 		for(fs = tinyfs.fs; fs < &tinyfs.fs[Maxfs]; fs++){
 			qlock(&fs->ql);
@@ -513,17 +513,17 @@ tinyfsattach(char *spec)
 		}
 		if(fs == &tinyfs.fs[Maxfs])
 			error("too many tinyfs's");
-		fs->c = cc;
+		fs->c = rock.cc;
 		fs->r = 1;
 		fs->f = 0;
 		fs->nf = 0;
 		fs->fsize = 0;
-		fsinit(fs);
+		tfsinit(fs);
 		qunlock(&fs->ql);
 	}
 	poperror();
 
-	c = devattach('U', spec);
+	c = devattach('F', spec);
 	c->dev = fs - tinyfs.fs;
 	c->qid.path = CHDIR;
 	c->qid.vers = 0;
@@ -572,33 +572,33 @@ tinyfsstat(Chan *c, char *db)
 static Chan*
 tinyfsopen(Chan *c, int omode)
 {
-	Tfs *fs;
 	Tfile *f;
+	volatile struct { Tfs *fs; } rock;
 
-	fs = &tinyfs.fs[c->dev];
+	rock.fs = &tinyfs.fs[c->dev];
 
 	if(c->qid.path & CHDIR){
 		if(omode != OREAD)
 			error(Eperm);
 	} else {
-		qlock(&fs->ql);
+		qlock(&rock.fs->ql);
 		if(waserror()){
-			qunlock(&fs->ql);
+			qunlock(&rock.fs->ql);
 			nexterror();
 		}
 		switch(omode){
 		case OTRUNC|ORDWR:
 		case OTRUNC|OWRITE:
-			f = newfile(fs, fs->f[c->qid.path].name);
-			fs->f[c->qid.path].r--;
-			c->qid.path = f - fs->f;
+			f = newfile(rock.fs, rock.fs->f[c->qid.path].name);
+			rock.fs->f[c->qid.path].r--;
+			c->qid.path = f - rock.fs->f;
 			break;
 		case OREAD:
 			break;
 		default:
 			error(Eperm);
 		}
-		qunlock(&fs->ql);
+		qunlock(&rock.fs->ql);
 		poperror();
 	}
 
@@ -608,23 +608,23 @@ tinyfsopen(Chan *c, int omode)
 static void
 tinyfscreate(Chan *c, char *name, int omode, ulong perm)
 {
-	Tfs *fs;
+	volatile struct { Tfs *fs; } rock;
 	Tfile *f;
 
 	USED(perm);
 
-	fs = &tinyfs.fs[c->dev];
+	rock.fs = &tinyfs.fs[c->dev];
 
-	qlock(&fs->ql);
+	qlock(&rock.fs->ql);
 	if(waserror()){
-		qunlock(&fs->ql);
+		qunlock(&rock.fs->ql);
 		nexterror();
 	}
-	f = newfile(fs, name);
-	qunlock(&fs->ql);
+	f = newfile(rock.fs, name);
+	qunlock(&rock.fs->ql);
 	poperror();
 
-	c->qid.path = f - fs->f;
+	c->qid.path = f - rock.fs->f;
 	c->qid.vers = 0;
 	c->mode = openmode(omode);
 }
@@ -647,33 +647,33 @@ tinyfsremove(Chan *c)
 static void
 tinyfsclose(Chan *c)
 {
-	Tfs *fs;
+	volatile struct { Tfs *fs; } rock;
 	Tfile *f, *nf;
 	int i;
 
-	fs = &tinyfs.fs[c->dev];
+	rock.fs = &tinyfs.fs[c->dev];
 
-	qlock(&fs->ql);
+	qlock(&rock.fs->ql);
 
 	/* dereference file and remove old versions */
 	if(!waserror()){
 		if(c->qid.path != CHDIR){
-			f = &fs->f[c->qid.path];
+			f = &rock.fs->f[c->qid.path];
 			f->r--;
 			if(f->r == 0){
 				if(f->flag & Frmonclose)
-					freefile(fs, f, Notabno);
+					freefile(rock.fs, f, Notabno);
 				else if(f->flag & Fcreating){
 					/* remove all other files with this name */
-					for(i = 0; i < fs->fsize; i++){
-						nf = &fs->f[i];
+					for(i = 0; i < rock.fs->fsize; i++){
+						nf = &rock.fs->f[i];
 						if(f == nf)
 							continue;
 						if(strcmp(nf->name, f->name) == 0){
 							if(nf->r)
 								nf->flag |= Frmonclose;
 							else
-								freefile(fs, nf, Notabno);
+								freefile(rock.fs, nf, Notabno);
 						}
 					}
 					f->flag &= ~Fcreating;
@@ -683,60 +683,61 @@ tinyfsclose(Chan *c)
 		poperror();
 	}
 
-	/* dereference fs and remove on zero refs */
-	fs->r--;
-	if(fs->r == 0){
-		if(fs->f)
-			free(fs->f);
-		fs->f = 0;
-		fs->nf = 0;
-		fs->fsize = 0;
-		if(fs->map)
-			free(fs->map);
-		fs->map = 0;
-		cclose(fs->c);
-		fs->c = 0;
+	/* dereference rock.fs and remove on zero refs */
+	rock.fs->r--;
+	if(rock.fs->r == 0){
+		if(rock.fs->f)
+			free(rock.fs->f);
+		rock.fs->f = 0;
+		rock.fs->nf = 0;
+		rock.fs->fsize = 0;
+		if(rock.fs->map)
+			free(rock.fs->map);
+		rock.fs->map = 0;
+		cclose(rock.fs->c);
+		rock.fs->c = 0;
 	}
-	qunlock(&fs->ql);
+	qunlock(&rock.fs->ql);
 }
 
 static long
-tinyfsread(Chan *c, void *a, long n, ulong offset)
+tinyfsread(Chan *c, void *a, long n, vlong offset)
 {
-	Tfs *fs;
+	volatile struct { Tfs *fs; } rock;
 	Tfile *f;
 	int sofar, i, off;
 	ulong bno;
 	Mdata *md;
 	uchar buf[Blen];
-	uchar *p = a;
+	uchar *p;
 
 	if(c->qid.path & CHDIR)
 		return devdirread(c, a, n, 0, 0, tinyfsgen);
 
-	fs = &tinyfs.fs[c->dev];
-	f = &fs->f[c->qid.path];
+	p = a;
+	rock.fs = &tinyfs.fs[c->dev];
+	f = &rock.fs->f[c->qid.path];
 	if(offset >= f->length)
 		return 0;
 
-	qlock(&fs->ql);
+	qlock(&rock.fs->ql);
 	if(waserror()){
-		qunlock(&fs->ql);
+		qunlock(&rock.fs->ql);
 		nexterror();
 	}
 	if(n + offset >= f->length)
 		n = f->length - offset;
 
 	/* walk to starting data block */
-	if(f->finger < offset && f->fbno != Notabno){
+	if(0 && f->finger <= offset && f->fbno != Notabno){
 		sofar = f->finger;
 		bno = f->fbno;
 	} else {
 		sofar = 0;
 		bno = f->dbno;
 	}
-	for(; sofar + Dlen < offset; sofar += Dlen){
-		md = readdata(fs, bno, buf, 0);
+	for(; sofar + Dlen <= offset; sofar += Dlen){
+		md = readdata(rock.fs, bno, buf, 0);
 		if(md == 0)
 			error(Eio);
 		bno = GETS(md->bno);
@@ -746,23 +747,24 @@ tinyfsread(Chan *c, void *a, long n, ulong offset)
 	off = offset%Dlen;
 	offset -= off;
 	for(sofar = 0; sofar < n; sofar += i){
-		md = readdata(fs, bno, buf, &i);
+		md = readdata(rock.fs, bno, buf, &i);
 		if(md == 0)
 			error(Eio);
 
 		/* update finger for successful read */
-		f->finger = offset + sofar;
+		f->finger = offset;
 		f->fbno = bno;
+		offset += Dlen;
 
 		i -= off;
-		if(i > n)
-			i = n;
-		memmove(p, md->data, i);
+		if(i > n - sofar)
+			i = n - sofar;
+		memmove(p, md->data+off, i);
 		p += i;
 		bno = GETS(md->bno);
 		off = 0;
 	}
-	qunlock(&fs->ql);
+	qunlock(&rock.fs->ql);
 	poperror();
 
 	return sofar;
@@ -773,15 +775,18 @@ tinyfsread(Chan *c, void *a, long n, ulong offset)
  *  be lost.  They should be recovered next fsinit.
  */
 static long
-tinyfswrite(Chan *c, void *a, long n, ulong offset)
+tinyfswrite(Chan *c, void *a, long n, vlong offset)
 {
-	Tfs *fs;
 	Tfile *f;
-	int last, next, i, off, finger;
-	ulong bno, dbno, fbno;
+	int last, next, i, finger, off, used;
+	ulong bno, fbno;
 	Mdata *md;
 	uchar buf[Blen];
-	uchar *p = a;
+	uchar *p;
+	volatile struct {
+		Tfs *fs;
+		ulong dbno;
+	} rock;
 
 	if(c->qid.path & CHDIR)
 		error(Eperm);
@@ -789,74 +794,85 @@ tinyfswrite(Chan *c, void *a, long n, ulong offset)
 	if(n == 0)
 		return 0;
 
-	fs = &tinyfs.fs[c->dev];
-	f = &fs->f[c->qid.path];
+	p = a;
+	rock.fs = &tinyfs.fs[c->dev];
+	f = &rock.fs->f[c->qid.path];
+
+	qlock(&rock.fs->ql);
+	rock.dbno = Notabno;
+	if(waserror()){
+		freeblocks(rock.fs, rock.dbno, Notabno);
+		qunlock(&rock.fs->ql);
+		nexterror();
+	}
 
 	/* files are append only, anything else is illegal */
 	if(offset != f->length)
 		error("append only");
 
-	qlock(&fs->ql);
-	dbno = Notabno;
-	if(waserror()){
-		freeblocks(fs, dbno, Notabno);
-		qunlock(&fs->ql);
-		nexterror();
-	}
-
 	/* write blocks backwards */
 	p += n;
 	last = offset + n;
-	off = offset;
 	fbno = Notabno;
 	finger = 0;
-	for(next = (last/Dlen)*Dlen; next >= off; next -= Dlen){
-		bno = mapalloc(fs);
-		if(bno == Notabno){
+	off = offset; /* so we have something signed to compare against */
+	for(next = ((last-1)/Dlen)*Dlen; next >= off; next -= Dlen){
+		bno = mapalloc(rock.fs);
+		if(bno == Notabno)
 			error("out of space");
-		}
 		i = last - next;
 		p -= i;
 		if(last == n+offset){
-			writedata(fs, bno, dbno, p, i, 1);
+			writedata(rock.fs, bno, rock.dbno, p, i, 1);
 			finger = next;	/* remember for later */
 			fbno = bno;
-		} else
-			writedata(fs, bno, dbno, p, i, 0);
-		dbno = bno;
+		} else {
+			writedata(rock.fs, bno, rock.dbno, p, i, 0);
+		}
+		rock.dbno = bno;
 		last = next;
 	}
 
 	/* walk to last data block */
 	md = (Mdata*)buf;
-	if(f->finger < offset && f->fbno != Notabno){
+	if(0 && f->finger < offset && f->fbno != Notabno){
 		next = f->finger;
 		bno = f->fbno;
 	} else {
 		next = 0;
 		bno = f->dbno;
 	}
-	for(; next < offset; next += Dlen){
-		md = readdata(fs, bno, buf, 0);
+
+	used = 0;
+	while(bno != Notabno){
+		md = readdata(rock.fs, bno, buf, &used);
 		if(md == 0)
 			error(Eio);
-		if(md->type == Tagend)
+		if(md->type == Tagend){
+			if(next + Dlen < offset)
+				panic("devtinyfs1");
 			break;
+		}
+		next += Dlen;
+		if(next > offset)
+			panic("devtinyfs1");
 		bno = GETS(md->bno);
 	}
 
 	/* point to new blocks */
 	if(offset == 0){
-		f->dbno = dbno;
-		writedir(fs, f);
+		/* first block in a file */
+		f->dbno = rock.dbno;
+		writedir(rock.fs, f);
 	} else {
+		/* updating a current block */
 		i = last - offset;
-		next = offset%Dlen;
 		if(i > 0){
 			p -= i;
-			memmove(md->data + next, p, i);
+			memmove(md->data + used, p, i);
+			used += i;
 		}
-		writedata(fs, bno, dbno, md->data, i+next, last == n+offset);
+		writedata(rock.fs, bno, rock.dbno, md->data, used, last == n+offset);
 	}
 	f->length += n;
 
@@ -866,17 +882,17 @@ tinyfswrite(Chan *c, void *a, long n, ulong offset)
 		f->fbno =  fbno;
 	}
 	poperror();
-	qunlock(&fs->ql);
+	qunlock(&rock.fs->ql);
 
 	return n;
 }
 
 Dev tinyfsdevtab = {
-	'U',
+	'F',
 	"tinyfs",
 
-	tinyfsreset,
-	devinit,
+	devreset,
+	tinyfsinit,
 	tinyfsattach,
 	tinyfsclone,
 	tinyfswalk,

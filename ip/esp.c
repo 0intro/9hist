@@ -98,6 +98,8 @@ static	Conv* convlookup(Proto *esp, ulong spi);
 static	char *setalg(Espcb *ecb, char **f, int n, Algorithm *alg);
 static	void nullespinit(Espcb*, char*, uchar *key, int keylen);
 static	void nullahinit(Espcb*, char*, uchar *key, int keylen);
+static	void shaahinit(Espcb*, char*, uchar *key, int keylen);
+static	void md5ahinit(Espcb*, char*, uchar *key, int keylen);
 static	void desespinit(Espcb *ecb, char *name, uchar *k, int n);
 
 static Algorithm espalg[] =
@@ -110,6 +112,8 @@ static Algorithm espalg[] =
 static Algorithm ahalg[] =
 {
 	"null",			0,	nullahinit,
+	"hmac_sha_96",		128,	shaahinit,
+	"hmac_md5_96",		128,	md5ahinit,
 	nil,			0,	nil,
 };
 
@@ -263,7 +267,6 @@ espkick(Conv *c, int)
 
 	ecb->cipher(ecb, bp->rp+EsphdrSize, payload+pad+EsptailSize);
 	auth = bp->rp + EsphdrSize + payload + pad + EsptailSize;
-	ecb->auth(ecb, bp->rp+IphdrSize, (EsphdrSize-IphdrSize)+payload+pad+EsptailSize, auth);
 
 	// fill in head
 	hnputl(eh->espspi, ecb->spi);
@@ -273,6 +276,8 @@ espkick(Conv *c, int)
 	eh->espproto = IP_ESPPROTO;
 	eh->frag[0] = 0;
 	eh->frag[1] = 0;
+
+	ecb->auth(ecb, bp->rp+IphdrSize, (EsphdrSize-IphdrSize)+payload+pad+EsptailSize, auth);
 
 	qunlock(c);
 //print("esp: pass down: %uld\n", BLEN(bp));
@@ -338,6 +343,7 @@ espiput(Proto *esp, uchar*, Block *bp)
 	auth = bp->wp - ecb->ahlen;
 	if(!ecb->auth(ecb, eh->espspi, auth-eh->espspi, auth)) {
 		qunlock(esp);
+print("esp: bad auth %I -> %I!%ld\n", raddr, laddr, spi);
 		netlog(f, Logesp, "esp: bad auth %I -> %I!%d\n", raddr,
 			laddr, spi);
 		freeb(bp);
@@ -558,6 +564,109 @@ nullahinit(Espcb *ecb, char *name, uchar*, int)
 	ecb->ahblklen = 1;
 	ecb->ahlen = 0;
 	ecb->auth = nullauth;
+}
+
+void
+hmac_sha(uchar hash[SHAdlen], uchar *t, long tlen, uchar *key, long klen)
+{
+	uchar ipad[65], opad[65];
+	int i;
+	DigestState *digest;
+	uchar innerhash[SHAdlen];
+
+	for(i=0; i<64; i++){
+		ipad[i] = 0x36;
+		opad[i] = 0x5c;
+	}
+	ipad[64] = opad[64] = 0;
+	for(i=0; i<klen; i++){
+		ipad[i] ^= key[i];
+		opad[i] ^= key[i];
+	}
+	digest = sha(ipad, 64, nil, nil);
+	sha(t, tlen, innerhash, digest);
+	digest = sha(opad, 64, nil, nil);
+	sha(innerhash, SHAdlen, hash, digest);
+}
+
+static int
+shaauth(Espcb *ecb, uchar *t, int tlen, uchar *auth)
+{
+	uchar hash[SHAdlen];
+	int r;
+
+	memset(hash, 0, SHAdlen);
+	hmac_sha(hash, t, tlen, (uchar*)ecb->ahstate, 16);
+	r = memcmp(auth, hash, ecb->ahlen) == 0;
+	memmove(auth, hash, ecb->ahlen);
+	return r;
+}
+
+static void
+shaahinit(Espcb *ecb, char *name, uchar *key, int klen)
+{
+	if(klen != 128)
+		panic("shaahinit: bad keylen");
+	klen >>= 8;	// convert to bytes
+
+	ecb->ahalg = name;
+	ecb->ahblklen = 1;
+	ecb->ahlen = 12;
+	ecb->auth = shaauth;
+	ecb->ahstate = smalloc(klen);
+	memmove(ecb->ahstate, key, klen);
+}
+
+void
+hmac_md5(uchar hash[MD5dlen], uchar *t, long tlen, uchar *key, long klen)
+{
+	uchar ipad[65], opad[65];
+	int i;
+	DigestState *digest;
+	uchar innerhash[MD5dlen];
+
+	for(i=0; i<64; i++){
+		ipad[i] = 0x36;
+		opad[i] = 0x5c;
+	}
+	ipad[64] = opad[64] = 0;
+	for(i=0; i<klen; i++){
+		ipad[i] ^= key[i];
+		opad[i] ^= key[i];
+	}
+	digest = md5(ipad, 64, nil, nil);
+	md5(t, tlen, innerhash, digest);
+	digest = md5(opad, 64, nil, nil);
+	md5(innerhash, MD5dlen, hash, digest);
+}
+
+static int
+md5auth(Espcb *ecb, uchar *t, int tlen, uchar *auth)
+{
+	uchar hash[MD5dlen];
+	int r;
+
+	memset(hash, 0, MD5dlen);
+	hmac_md5(hash, t, tlen, (uchar*)ecb->ahstate, 16);
+	r = memcmp(auth, hash, ecb->ahlen) == 0;
+	memmove(auth, hash, ecb->ahlen);
+	return r;
+}
+
+static void
+md5ahinit(Espcb *ecb, char *name, uchar *key, int klen)
+{
+	if(klen != 128)
+		panic("md5ahinit: bad keylen");
+	klen >>= 3;	// convert to bytes
+
+
+	ecb->ahalg = name;
+	ecb->ahblklen = 1;
+	ecb->ahlen = 12;
+	ecb->auth = md5auth;
+	ecb->ahstate = smalloc(klen);
+	memmove(ecb->ahstate, key, klen);
 }
 
 static int

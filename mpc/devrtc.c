@@ -10,6 +10,7 @@
 enum{
 	Qrtc = 1,
 	Qnvram,
+	Qnvram2,
 
 	/* sccr */
 	RTDIV=	1<<24,
@@ -21,6 +22,8 @@ enum{
 
 	Nvoff=		4*1024,	/* where usable nvram lives */
 	Nvsize=		4*1024,
+	Nvoff2=		8*1024,	/* where usable nvram lives */
+	Nvsize2=	4*1024,
 };
 
 static	QLock	rtclock;		/* mutex on clock operations */
@@ -30,6 +33,7 @@ static Lock nvrtlock;
 static Dirtab rtcdir[]={
 	"rtc",		{Qrtc, 0},	12,	0666,
 	"nvram",	{Qnvram, 0},	Nvsize,	0664,
+	"nvram2",	{Qnvram2, 0},	Nvsize,	0664,
 };
 #define	NRTC	(sizeof(rtcdir)/sizeof(rtcdir[0]))
 
@@ -77,6 +81,7 @@ rtcopen(Chan *c, int omode)
 			error(Eperm);
 		break;
 	case Qnvram:
+	case Qnvram2:
 		if(strcmp(up->user, eve)!=0)
 			error(Eperm);
 		break;
@@ -110,6 +115,16 @@ rtcread(Chan *c, void *buf, long n, vlong offset)
 			n = Nvsize - t;
 		ilock(&nvrtlock);
 		memmove(buf, (uchar*)(NVRAMMEM + Nvoff + t), n);
+		iunlock(&nvrtlock);
+		return n;
+	case Qnvram2:
+		if(offset >= Nvsize2)
+			return 0;
+		t = offset;
+		if(t + n > Nvsize2)
+			n = Nvsize2 - t;
+		ilock(&nvrtlock);
+		memmove(buf, (uchar*)(NVRAMMEM + Nvoff2 + t), n);
 		iunlock(&nvrtlock);
 		return n;
 	}
@@ -157,6 +172,16 @@ rtcwrite(Chan *c, void *buf, long n, vlong offset)
 			n = Nvsize - t;
 		ilock(&nvrtlock);
 		memmove((uchar*)(NVRAMMEM + Nvoff + offset), buf, n);
+		iunlock(&nvrtlock);
+		return n;
+	case Qnvram2:
+		if(offset >= Nvsize2)
+			return 0;
+		t = offset;
+		if(t + n > Nvsize2)
+			n = Nvsize2 - t;
+		ilock(&nvrtlock);
+		memmove((uchar*)(NVRAMMEM + Nvoff2 + offset), buf, n);
 		iunlock(&nvrtlock);
 		return n;
 	}
