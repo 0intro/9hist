@@ -118,8 +118,14 @@ chanfree(Chan *c)
 	 * Channel can be closed before a path is created or the last
 	 * channel in a mount which has already cleared its pt names
 	 */
-	if(c->path)
+	if(c->path) {
+		if (c->path->ref <= 0) {
+			char buf[100]; 
+			ptpath(c->path, buf, sizeof(buf)); 
+			print("decref %s\n", buf); 
+		} 
 		decref(c->path);
+	} 
 
 	lock(&chanalloc);
 	c->next = chanalloc.free;
