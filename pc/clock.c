@@ -83,7 +83,6 @@ clock(Ureg *ur, void *arg)
 		splhi();
 }
 
-
 /*
  *  delay for l milliseconds more or less.  delayloop is set by
  *  clockinit() to match the actual CPU speed.
@@ -154,12 +153,12 @@ clockinit(void)
 		cycles = 30;
 		break;
 	case 486:
-		cycles = 24;
+		cycles = 22;
 		break;
 	default:
 		cycles = 23;
 		break;
 	}
-	cpufreq = (cycles*loops) * (Freq/x);
+	cpufreq = loops*((cycles*Freq)/x);
 	loopconst = (cpufreq/1000)/cycles;	/* AAM+LOOP's for 1 ms */
 }
