@@ -64,7 +64,7 @@ schedinit(void)		/* never returns */
 			up->state = Dead;
 			/* 
 			 * Holding locks from pexit:
-			 * 	procalloc, debug, palloc
+			 * 	procalloc
 			 */
 			mmurelease(up);
 
@@ -884,6 +884,7 @@ void
 procctl(Proc *p)
 {
 	char *state;
+	ulong s;
 
 	switch(p->procctl) {
 	case Proc_exitme:
@@ -900,7 +901,7 @@ procctl(Proc *p)
 		state = p->psstate;
 		p->psstate = "Stopped";
 		/* free a waiting debugger */
-		spllo();
+		s = spllo();
 		qlock(&p->debug);
 		if(p->pdbg) {
 			wakeup(&p->pdbg->sleep);
@@ -909,8 +910,9 @@ procctl(Proc *p)
 		qunlock(&p->debug);
 		splhi();
 		p->state = Stopped;
-		sched();		/* sched returns spllo() */
+		sched();
 		p->psstate = state;
+		splx(s);
 		return;
 	}
 }

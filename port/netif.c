@@ -159,7 +159,7 @@ netifread(Netif *nif, Chan *c, void *a, long n, ulong offset)
 {
 	int i, j;
 	Netfile *f;
-	char buf[256];
+	char buf[512];
 
 	if(c->qid.path&CHDIR)
 		return devdirread(c, a, n, (Dirtab*)nif, 0, netifgen);

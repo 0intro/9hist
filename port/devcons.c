@@ -24,6 +24,7 @@ static struct
 	char	c;
 	int	count;
 	int	repeat;
+	int	ctlpoff;
 } kbd;
 
 
@@ -185,7 +186,7 @@ echo(Rune r, char *buf, int n)
 	/*
 	 * ^p hack
 	 */
-	if(r==0x10 && cpuserver)
+	if(r==0x10 && cpuserver && !kbd.ctlpoff)
 		exit(0);
 
 	/*
@@ -732,6 +733,10 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 			} else if(strncmp(a, "rawoff", 6) == 0){
 				kbd.raw = 0;
 				kbd.x = 0;
+			} else if(strncmp(a, "ctlpon", 6) == 0){
+				kbd.ctlpoff = 0;
+			} else if(strncmp(a, "ctlpoff", 7) == 0){
+				kbd.ctlpoff = 1;
 			}
 			if(a = strchr(a, ' '))
 				a++;
