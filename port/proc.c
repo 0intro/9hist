@@ -4,6 +4,7 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"../port/error.h"
+#include	"../port/edf.h"
 
 int	nrdy;
 Ref	noteidalloc;
@@ -42,6 +43,37 @@ char *statename[] =
 static void pidhash(Proc*);
 static void pidunhash(Proc*);
 
+/*DEBUGGING: scheduling event log */
+#ifdef RSC
+static ulong *lg;
+enum {Nlg = 1024*1024};
+static ulong wp, rp;
+static void
+le(int c, Proc *p)
+{
+	if(lg==nil)
+		lg = malloc(Nlg*sizeof(lg[0]));
+	lg[wp++&(Nlg-1)] = MACHP(0)->ticks;
+	lg[wp++&(Nlg-1)] = c;
+	lg[wp++&(Nlg-1)] = (ulong)p;
+}
+void
+dumpschedlog(void)
+{
+	int i;
+
+	i=0;
+	iprint("%lux=>%lux\n", rp, wp);
+	while((rp&(Nlg-1))!=(wp&(Nlg-1))){
+		iprint("%lux ", lg[rp++&(Nlg-1)]);
+		if(++i%8==0)
+			iprint("\n");
+	}
+	if(i%8)
+		iprint("\n");	
+}
+#endif
+
 /*
  * Always splhi()'ed.
  */
@@ -57,6 +89,8 @@ schedinit(void)		/* never returns */
 			break;
 		case Moribund:
 			up->state = Dead;
+			if (isedf(up))
+				edf_bury(up);
 
 			/*
 			 * Holding locks from pexit:
@@ -73,6 +107,9 @@ schedinit(void)		/* never returns */
 			break;
 		}
 		up->mach = 0;
+#ifdef RSC
+le('e', up);
+#endif
 		up = nil;
 	}
 	sched();
@@ -106,6 +143,9 @@ sched(void)
 		gotolabel(&m->sched);
 	}
 	up = runproc();
+#ifdef RSC
+le('u',up);
+#endif
 	up->state = Running;
 	up->mach = MACHP(m->machno);
 	m->proc = up;
@@ -116,7 +156,7 @@ sched(void)
 int
 anyready(void)
 {
-	return nrdy;
+	return nrdy || edf_anyready();
 }
 
 int
@@ -146,7 +186,15 @@ ready(Proc *p)
 	Schedq *rq;
 
 	s = splhi();
+#ifdef RSC
+le('r',p);
+#endif
 
+	if(isedf(p)){
+		edf_ready(p);
+		splx(s);
+		return;
+	}
 	if(p->fixedpri){
 		pri = p->basepri;
 	} else {
@@ -196,6 +244,9 @@ runproc(void)
 	Schedq *rq, *xrq;
 	Proc *p, *l;
 	ulong rt;
+
+	if ((p = edf_runproc()) != nil)
+		return p;
 
 loop:
 
@@ -348,6 +399,8 @@ newproc(void)
 	p->syserrstr = p->errbuf1;
 	p->errbuf0[0] = '\0';
 	p->errbuf1[0] = '\0';
+	p->nlocks = 0;
+	p->delaysched = 0;
 	kstrdup(&p->user, "*nouser");
 	kstrdup(&p->text, "*notext");
 	kstrdup(&p->args, "");
@@ -433,6 +486,9 @@ sleep(Rendez *r, int (*f)(void*), void *arg)
 
 	s = splhi();
 
+	if (up->nlocks)
+		print("process %lud sleeps with %lud locks held, last lock 0x%p locked at pc 0x%lux\n",
+			up->pid, up->nlocks, up->lastlock, up->lastlock->pc);
 	lock(r);
 	lock(&up->rlock);
 	if(r->p){
@@ -480,8 +536,10 @@ sleep(Rendez *r, int (*f)(void*), void *arg)
 			 */
 			unlock(&up->rlock);
 			unlock(r);
-
 			// Behind unlock, we may call wakeup on ourselves.
+
+			if (isedf(up))
+				edf_block(up);
 
 			gotolabel(&m->sched);
 		}
@@ -690,6 +748,8 @@ addbroken(Proc *p)
 	broken.p[broken.n++] = p;
 	qunlock(&broken);
 
+	if (isedf(up))
+		edf_bury(up);
 	p->state = Broken;
 	p->psstate = 0;
 	sched();
@@ -857,6 +917,8 @@ pexit(char *exitstr, int freemem)
 	lock(&procalloc);
 	lock(&palloc);
 
+	if (isedf(up))
+		edf_bury(up);
 	up->state = Moribund;
 	sched();
 	panic("pexit");
@@ -932,9 +994,9 @@ dumpaproc(Proc *p)
 	s = p->psstate;
 	if(s == 0)
 		s = statename[p->state];
-	print("%3lud:%10s pc %8lux dbgpc %8lux  %8s (%s) ut %ld st %ld bss %lux qpc %lux\n",
+	print("%3lud:%10s pc %8lux dbgpc %8lux  %8s (%s) ut %ld st %ld bss %lux qpc %lux nl %lud nd %lud lpc %lux\n",
 		p->pid, p->text, p->pc, dbgpc(p),  s, statename[p->state],
-		p->time[0], p->time[1], bss, p->qpc);
+		p->time[0], p->time[1], bss, p->qpc, p->nlocks, p->delaysched, p->lastlock ? p->lastlock->pc : 0);
 }
 
 void
@@ -1109,6 +1171,8 @@ procctl(Proc *p)
 		qunlock(&p->debug);
 		splhi();
 		p->state = Stopped;
+		if (isedf(up))
+			edf_block(up);
 		sched();
 		p->psstate = state;
 		splx(s);

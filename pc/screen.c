@@ -72,6 +72,9 @@ screensize(int x, int y, int z, ulong chan)
 	if(gscreen == nil)
 		return -1;
 
+	if(scr->dev && scr->dev->flush)
+		scr->useflush = 1;
+
 	scr->palettedepth = 6;	/* default */
 	scr->gscreendata = &gscreendata;
 	scr->memdefont = getmemdefont();
@@ -147,6 +150,10 @@ flushmemscreen(Rectangle r)
 	int y, len, incs, off, page;
 
 	scr = &vgascreen[0];
+	if(scr->dev && scr->dev->flush){
+		scr->dev->flush(scr, r);
+		return;
+	}
 	if(scr->gscreen == nil || scr->useflush == 0)
 		return;
 	if(scr->dev == nil || scr->dev->page == nil)

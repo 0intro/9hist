@@ -5,6 +5,7 @@
 #include "fns.h"
 #include "io.h"
 #include "ureg.h"
+#include "../port/edf.h"
 
 void (*kproftimer)(ulong);
 
@@ -74,6 +75,12 @@ portclock(Ureg *ur)
 
 	if(up == 0 || up->state != Running)
 		return;
+
+	// i.e. don't schedule an EDF process here!
+	if(!isedf(up) && anyready()){
+		sched();
+		splhi();
+	}
 
 	/* user profiling clock */
 	if(userureg(ur)) {

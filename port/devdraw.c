@@ -368,7 +368,8 @@ addflush(Rectangle r)
 		return;
 	}
 	/* emit current state */
-	flushmemscreen(flushrect);
+	if(flushrect.min.x < flushrect.max.x)
+		flushmemscreen(flushrect);
 	flushrect = r;
 	waste = 0;
 }
@@ -395,11 +396,11 @@ dstflush(int dstid, Memimage *dst, Rectangle r)
 	addflush(r);
 }
 
-static
 void
 drawflush(void)
 {
-	flushmemscreen(flushrect);
+	if(flushrect.min.x < flushrect.max.x)
+		flushmemscreen(flushrect);
 	flushrect = Rect(10000, 10000, -10000, -10000);
 }
 

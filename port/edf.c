@@ -477,8 +477,6 @@ edfdeadlineintr(Ureg*, Cycintr*)
 				}	
 			}
 		}
-		if (up->nlocks)
-			iprint("have %lud locks at deadline\n", up->nlocks);
 	}
 	iunlock(&edflock);
 	sched();
@@ -869,7 +867,6 @@ edf_testschedulability(Task *thetask)
 	}
 	H=0;
 	G=0;
-	ticks = 0;
 	for(steps = 0; steps < Maxsteps; steps++){
 		t = qschedulability;
 		qschedulability = t->testnext;

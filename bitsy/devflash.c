@@ -338,7 +338,7 @@ flashctlread(FPart *fp, void* a, long n, vlong off)
 
 	buf = smalloc(1024);
 	e = buf + 1024;
-	p = seprint(buf, e, "0x%-9lux 0x%-9lux 0x%-9lux 0x%-9lux\n", fp->end-fp->start,
+	p = seprint(buf, e, "0x%-9lux 0x%-9x 0x%-9ux 0x%-9ux\n", fp->end-fp->start,
 		flash.wbsize, flash.manid, flash.devid);
 	addr = fp->start;
 	for(i = 0; i < flash.nr && addr < fp->end; i++)

@@ -3,6 +3,7 @@
 void	aamloop(int);
 Dirtab*	addarchfile(char*, int, long(*)(Chan*,void*,long,vlong), long(*)(Chan*,void*,long,vlong));
 //void	addscsilink(char*, Scsiio (*)(int, ISAConf*));
+void	apicclkenable(void);
 void	archinit(void);
 void	bootargs(ulong);
 vlong	checkcycintr(Ureg*, void*);

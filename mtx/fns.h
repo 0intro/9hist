@@ -6,7 +6,10 @@ int	cistrncmp(char*, char*, int);
 void	clockcheck(void);
 void	clockinit(void);
 void	clockintr(Ureg*);
+void	clockintrsched(void);
 #define coherence()	eieio()
+void	cycintradd(Cycintr *);
+void	cycintrdel(Cycintr *);
 void	cpuidentify(void);
 void	cpuidprint(void);
 void	dcflush(void*, ulong);
@@ -33,6 +36,7 @@ ulong	getpvr(void);
 ulong	gettbl(void);
 ulong	gettbu(void);
 void	gotopc(ulong);
+int	havecycintr(void);
 void	hwintrinit(void);
 void	i8250console(void);
 void	i8259init(void);

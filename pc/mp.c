@@ -43,6 +43,43 @@ static char* buses[] = {
 	0,
 };
 
+void
+apicclkenable(void)
+{
+	Apic *apic;
+
+	i8259init();
+
+	/* Uniprocessor local apic init for apic clock */
+	apic = &mpapic[0];
+	apic->type = PcmpPROCESSOR;
+	apic->apicno = 0;
+	apic->flags = 0;
+	apic->lintr[0] = ApicIMASK;
+	apic->lintr[1] = ApicIMASK;
+	apic->machno = 0;
+	apic->addr = (ulong*)0xfee00000;
+	machno2apicno[0] = 0;
+
+	/*
+	 * Map the local APIC.
+	 */
+	if(mmukmap((ulong)apic->addr, 0, 1024) == 0)
+		return;
+
+	/*
+	 * These interrupts are local to the processor
+	 * and do not appear in the I/O APIC so it is OK
+	 * to set them now.
+	 */
+	intrenable(IrqTIMER, clockintr, 0, BUSUNKNOWN, "clock");
+	intrenable(IrqERROR, lapicerror, 0, BUSUNKNOWN, "lapicerror");
+	intrenable(IrqSPURIOUS, lapicspurious, 0, BUSUNKNOWN, "lapicspurious");
+
+	lapicinit(apic);
+	lapiconline();
+}
+
 static Apic*
 mkprocessor(PCMPprocessor* p)
 {

@@ -1,4 +1,5 @@
 typedef struct Conf	Conf;
+typedef struct Cycintr	Cycintr;
 typedef struct FPsave	FPsave;
 typedef struct ISAConf	ISAConf;
 typedef struct Label	Label;
@@ -246,4 +247,15 @@ struct DevConf
 	char		*type;	/* card type, malloced */
 	int		nports;	/* Number of ports */
 	port_t	*ports;	/* The ports themselves */
+};
+
+/*
+ * fasttick timer interrupts (Dummy for now)
+ */
+struct Cycintr
+{
+	vlong	when;			/* fastticks when f should be called */
+	void	(*f)(Ureg*, Cycintr*);
+	void	*a;
+	Cycintr	*next;
 };

@@ -434,15 +434,17 @@ callwithureg(void (*fn)(Ureg*))
 static void
 _dumpstack(Ureg *ureg)
 {
-	ulong l, v, i;
+	ulong l, v, i, estack;
 	extern ulong etext;
-
-	if(up == 0)
-		return;
 
 	print("ktrace /kernel/path %.8lux %.8lux\n", ureg->pc, ureg->sp);
 	i = 0;
-	for(l=(ulong)&l; l<(ulong)(up->kstack+KSTACK); l+=4){
+	if(up)
+		estack = (ulong)up->kstack+KSTACK;
+	else
+		estack = (ulong)m+MACHSIZE;
+
+	for(l=(ulong)&l; l<estack; l+=4){
 		v = *(ulong*)l;
 		if(KTZERO < v && v < (ulong)&etext){
 			/*

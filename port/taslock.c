@@ -53,7 +53,8 @@ lock(Lock *l)
 	if(up)
 		up->nlocks++;	/* prevent being scheded */
 	if(tas(&l->key) == 0){
-		if (up) up->lastlock = l;
+		if(up)
+			up->lastlock = l;
 		l->pc = pc;
 		l->p = up;
 		l->isilock = 0;
@@ -85,6 +86,7 @@ lock(Lock *l)
 		if(up)
 			up->nlocks--;
 	}
+	return 0;	/* For the compiler */
 }
 
 void
@@ -120,7 +122,8 @@ ilock(Lock *l)
 			;
 		x = splhi();
 		if(tas(&l->key) == 0){
-			if (up) up->lastlock = l;
+			if(up)
+				up->lastlock = l;
 			l->sr = x;
 			l->pc = pc;
 			l->p = up;
@@ -158,7 +161,6 @@ unlock(Lock *l)
 		print("unlock of ilock: pc %lux, held by %lux\n", getcallerpc(&l), l->pc);
 	if(l->p != up)
 		print("unlock: up changed: pc %lux, acquired at pc %lux, lock p 0x%p, unlock up 0x%p\n", getcallerpc(&l), l->pc, l->p, up);
-	l->pc = ~0;
 	l->key = 0;
 	if (up && --up->nlocks == 0 && up->delaysched){
 		up->delaysched = 0;
@@ -178,7 +180,6 @@ iunlock(Lock *l)
 		print("iunlock of lock: pc %lux, held by %lux\n", getcallerpc(&l), l->pc);
 
 	sr = l->sr;
-	l->pc = ~1;
 	l->key = 0;
 	coherence();
 

@@ -42,8 +42,6 @@ typedef struct SDunit {
 	int	state;
 	SDreq*	req;
 	SDperm	rawperm;
-
-	Log	log;
 } SDunit;
 
 /* 

@@ -363,21 +363,19 @@ archread(Chan *c, void *a, long n, vlong offset)
 		if(n & 1)
 			error(Ebadarg);
 		checkport(offset, offset+n);
-		n /= 2;
 		sp = a;
 		for(port = offset; port < offset+n; port += 2)
 			*sp++ = ins(port);
-		return n*2;
+		return n;
 
 	case Qiol:
 		if(n & 3)
 			error(Ebadarg);
 		checkport(offset, offset+n);
-		n /= 4;
 		lp = a;
 		for(port = offset; port < offset+n; port += 4)
 			*lp++ = inl(port);
-		return n*4;
+		return n;
 
 	case Qioalloc:
 		break;
@@ -427,24 +425,22 @@ archwrite(Chan *c, void *a, long n, vlong offset)
 		return n;
 
 	case Qiow:
-		if((n & 01) || (offset & 01))
+		if(n & 1)
 			error(Ebadarg);
 		checkport(offset, offset+n);
-		n /= 2;
 		sp = a;
 		for(port = offset; port < offset+n; port += 2)
 			outs(port, *sp++);
-		return n*2;
+		return n;
 
 	case Qiol:
-		if((n & 0x03) || (offset & 0x03))
+		if(n & 3)
 			error(Ebadarg);
 		checkport(offset, offset+n);
-		n /= 4;
 		lp = a;
 		for(port = offset; port < offset+n; port += 4)
 			outl(port, *lp++);
-		return n*4;
+		return n;
 
 	default:
 		if(c->qid.path < narchdir && (fn = writefn[c->qid.path]))

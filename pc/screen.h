@@ -70,6 +70,7 @@ struct VGAdev {
 	int	(*fill)(VGAscr*, Rectangle, ulong);
 	void	(*ovlctl)(VGAscr*, Chan*, void*, int);
 	int	(*ovlwrite)(VGAscr*, void*, int, vlong);
+	void (*flush)(VGAscr*, Rectangle);
 };
 
 struct VGAcur {
@@ -144,6 +145,7 @@ extern void	deletescreenimage(void);
 extern int		drawhasclients(void);
 extern ulong	blanktime;
 extern void	setscreenimageclipr(Rectangle);
+extern void	drawflush(void);
 
 /* vga.c */
 extern void	vgascreenwin(VGAscr*);

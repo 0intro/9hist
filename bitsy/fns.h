@@ -13,7 +13,10 @@ int	cistrcmp(char*, char*);
 int	cistrncmp(char*, char*, int);
 void	clockinit(void);
 void	clockpower(int);
+void	clockintrsched(void);
 #define	coherence()
+void	cycintradd(Cycintr *);
+void	cycintrdel(Cycintr *);
 #define	dcflush(a, b)
 void	delay(int);
 void	µdelay(ulong);
@@ -40,6 +43,7 @@ void*	getlink(void);
 ulong	getsp(void);
 void	gpiointrenable(ulong, int, void (*)(Ureg*, void*), void*, char*);
 void	h3650uartsetup(void);
+int	havecycintr(void);
 void	icacheinvalidate(void);
 void	idle(void);
 void	idlehands(void);

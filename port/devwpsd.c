@@ -1,3 +1,6 @@
+/*
+ * Storage Device.
+ */
 #include "u.h"
 #include "../port/lib.h"
 #include "mem.h"
@@ -9,11 +12,7 @@
 
 #include "../port/sd.h"
 
-/*
- * Storage Device.
- */
-
-extern Dev sddevtab;
+extern Dev wpsddevtab;
 extern SDifc* sdifc[];
 
 typedef struct {
@@ -29,6 +28,20 @@ enum {
 	Rawcmd,
 	Rawdata,
 	Rawstatus,
+};
+
+enum
+{
+	CMpart,
+	CMdelpart,
+	CMwildcard,
+};
+
+Cmdtab ctlmsg[] =
+{
+	CMpart,		"part",		3,
+	CMdelpart,	"delpart",	1,
+	CMwildcard,	"*",		0,
 };
 
 enum {
@@ -461,7 +474,7 @@ sdgen(Chan* c, char*, Dirtab*, int, int s, Dir* dp)
 	case Qtopdir:
 		if(s == DEVDOTDOT){
 			mkqid(&q, QID(0, s, 0, Qtopdir), 0, QTDIR);
-			sprint(up->genbuf, "#%C", sddevtab.dc);
+			sprint(up->genbuf, "#%C", wpsddevtab.dc);
 			devdir(c, q, up->genbuf, 0, eve, 0555, dp);
 			return 1;
 		}
@@ -507,7 +520,7 @@ sdgen(Chan* c, char*, Dirtab*, int, int s, Dir* dp)
 	case Qunitdir:
 		if(s == DEVDOTDOT){
 			mkqid(&q, QID(0, s, 0, Qtopdir), 0, QTDIR);
-			sprint(up->genbuf, "#%C", sddevtab.dc);
+			sprint(up->genbuf, "#%C", wpsddevtab.dc);
 			devdir(c, q, up->genbuf, 0, eve, 0555, dp);
 			return 1;
 		}
@@ -591,7 +604,7 @@ sdattach(char* spec)
 	int idno, subno, i;
 
 	if(ndevs == 0 || *spec == '\0'){
-		c = devattach(sddevtab.dc, spec);
+		c = devattach(wpsddevtab.dc, spec);
 		mkqid(&c->qid, QID(0, 0, 0, Qtopdir), 0, QTDIR);
 		return c;
 	}
@@ -615,7 +628,7 @@ sdattach(char* spec)
 	incref(&sdev->r);
 	qunlock(&devslock);
 
-	c = devattach(sddevtab.dc, spec);
+	c = devattach(wpsddevtab.dc, spec);
 	mkqid(&c->qid, QID(sdev->idno, subno, 0, Qunitdir), 0, QTDIR);
 	c->dev = (sdev->idno << UnitLOG) + subno;
 	decref(&sdev->r);
@@ -657,7 +670,7 @@ sdopen(Chan* c, int omode)
 		break;
 	case Qraw:
 		c->qid.vers = unit->vers;
-		if(!canlock(&unit->rawinuse)){
+		if(tas(&unit->rawinuse) != 0){
 			c->flag &= ~COPEN;
 			error(Einuse);
 		}
@@ -698,7 +711,7 @@ sdclose(Chan* c)
 		sdev = sdgetdev(DEV(c->qid));
 		if (sdev) {
 			unit = sdev->unit[UNIT(c->qid)];
-			unlock(&unit->rawinuse);
+			unit->rawinuse = 0;
 			decref(&sdev->r);
 		}
 		break;
@@ -783,6 +796,8 @@ sdbio(Chan* c, int write, char* a, long len, vlong off)
 	}
 
 	offset = off%unit->secsize;
+	if(offset+len > nb*unit->secsize)
+		len = nb*unit->secsize - offset;
 	if(write){
 		if(offset || (len%unit->secsize)){
 			l = unit->dev->ifc->bio(unit, 0, 0, b, nb, bno);
@@ -1081,6 +1096,7 @@ static long
 sdwrite(Chan* c, void* a, long n, vlong off)
 {
 	Cmdbuf *cb;
+	Cmdtab *ct;
 	SDreq *req;
 	SDunit *unit;
 	SDev *sdev;
@@ -1130,18 +1146,18 @@ sdwrite(Chan* c, void* a, long n, vlong off)
 				error(Ebadarg);
 		}
 
-		if(sddevtab.config == nil)
+		if(wpsddevtab.config == nil)
 			error("No configuration function");
-		sddevtab.config(cd.o_on, cd.o_spec, &cd.o_cf);
+		wpsddevtab.config(cd.o_on, cd.o_spec, &cd.o_cf);
 		break;
 	}
 	case Qctl:
-		cb = parsecmd(a, n);
 		sdev = sdgetdev(DEV(c->qid));
 		if (sdev == nil)
 			error(Enonexist);
 		unit = sdev->unit[UNIT(c->qid)];
 
+		cb = parsecmd(a, n);
 		qlock(&unit->ctl);
 		if(waserror()){
 			qunlock(&unit->ctl);
@@ -1152,29 +1168,27 @@ sdwrite(Chan* c, void* a, long n, vlong off)
 		if(unit->vers != c->qid.vers)
 			error(Eio);
 
-		if(cb->nf < 1)
-			error(Ebadctl);
-		if(strcmp(cb->f[0], "part") == 0){
-			if(cb->nf != 4)
-				error(Ebadctl);
+		ct = lookupcmd(cb, ctlmsg, nelem(ctlmsg));
+		switch(ct->index) {
+		case CMpart:
 			if(unit->sectors == 0 && !sdinitpart(unit))
 				error(Eio);
 			start = strtoul(cb->f[2], 0, 0);
 			end = strtoul(cb->f[3], 0, 0);
 			sdaddpart(unit, cb->f[1], start, end);
-		}
-		else if(strcmp(cb->f[0], "delpart") == 0){
-			if(cb->nf != 2 || unit->part == nil)
-				error(Ebadctl);
+			break;
+		case CMdelpart:
 			sddelpart(unit, cb->f[1]);
-		}
-		else if(unit->dev->ifc->wctl)
+			break;
+		case CMwildcard:
+			if(unit->dev->ifc->wctl == nil)
+				error(Ebadctl);
 			unit->dev->ifc->wctl(unit, cb);
-		else
-			error(Ebadctl);
+			break;
+		}
+		poperror();
 		qunlock(&unit->ctl);
 		decref(&sdev->r);
-		poperror();
 		free(cb);
 		break;
 
@@ -1448,7 +1462,7 @@ sdconfig(int on, char* spec, DevConf* cf)
 	return unconfigure(spec);
 }
 
-Dev sddevtab = {
+Dev wpwpsddevtab = {
 	'S',
 	"sd",
 

@@ -118,33 +118,30 @@ i8253init(int aalcycles, int havecycleclock)
 		 *  prefetch buffer.
 		 *
 		 */
-		outb(Tmode, Latch0);
 		if(havecycleclock)
 			rdtsc(&a);
+		outb(Tmode, Latch0);
 		x = inb(T0cntr);
 		x |= inb(T0cntr)<<8;
 		aamloop(loops);
-		outb(Tmode, Latch0);
 		if(havecycleclock)
 			rdtsc(&b);
 		y = inb(T0cntr);
 		y |= inb(T0cntr)<<8;
 		x -= y;
-	
+
 		if(x < 0)
 			x += Freq/HZ;
 
 		if(x > Freq/(3*HZ))
 			break;
 	}
-
 	/*
  	 *  figure out clock frequency and a loop multiplier for delay().
 	 *  n.b. counter goes up by 2*Freq
 	 */
 	cpufreq = loops*((aalcycles*2*Freq)/x);
 	m->loopconst = (cpufreq/1000)/aalcycles;	/* AAM+LOOP's for 1 ms */
-
 	if(havecycleclock){
 
 		/* counter goes up by 2*Freq */

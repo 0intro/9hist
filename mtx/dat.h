@@ -1,4 +1,5 @@
 typedef struct Conf	Conf;
+typedef struct Cycintr		Cycintr;
 typedef struct FPsave	FPsave;
 typedef struct ISAConf	ISAConf;
 typedef struct Label	Label;
@@ -190,6 +191,16 @@ struct ISAConf {
 
 	int	nopt;
 	char	*opt[NISAOPT];
+};
+/*
+ * fasttick timer interrupts (Dummy for now)
+ */
+struct Cycintr
+{
+	vlong	when;			/* fastticks when f should be called */
+	void	(*f)(Ureg*, Cycintr*);
+	void	*a;
+	Cycintr	*next;
 };
 
 #define	MACHP(n)	((Mach *)((int)&mach0+n*BY2PG))

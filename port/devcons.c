@@ -16,6 +16,7 @@ Queue*	lineq;			/* processed console input */
 Queue*	serialoq;		/* serial console output */
 Queue*	kprintoq;		/* console output, for /dev/kprint */
 ulong	kprintinuse;		/* test and set whether /dev/kprint is open */
+int		iprintscreenputs = 1;
 
 static struct
 {
@@ -56,7 +57,7 @@ enum
 	CMpanic,
 };
 
-Cmdtab reboottbl[] =
+Cmdtab rebootmsg[] =
 {
 	CMreboot,	"reboot",	0,
 	CMpanic,	"panic",	0,
@@ -185,7 +186,7 @@ iprint(char *fmt, ...)
 	va_start(arg, fmt);
 	n = vseprint(buf, buf+sizeof(buf), fmt, arg) - buf;
 	va_end(arg);
-	if(screenputs != nil)
+	if(screenputs != nil && iprintscreenputs)
 		screenputs(buf, n);
 	if(serialputs != nil)
 		serialputs(buf, n);
@@ -348,15 +349,21 @@ echo(char *buf, int n)
 		/* ^T escapes */
 		ctrlt = 0;
 		switch(*p){
+		case 'S':
+			x = splhi();
+			dumpstack();
+			procdump();
+			splx(x);
+			return;
 		case 's':
 			dumpstack();
-			break;
+			return;
 		case 'x':
 			xsummary();
 			ixsummary();
 			mallocsummary();
 			pagersummary();
-			break;
+			return;
 		case 'd':
 			if(consdebug == nil)
 				consdebug = rdb;
@@ -376,14 +383,22 @@ echo(char *buf, int n)
 			return;
 		case 'q':
 			scheddump();
-			break;
+			return;
+#ifdef RSC
+case 'Q':
+{
+extern void dumpschedlog(void);
+dumpschedlog();
+return;
+}
+#endif
 		case 'k':
 			if(!cpuserver)
 				killbig();
-			break;
+			return;
 		case 'r':
 			exit(0);
-			break;
+			return;
 		}
 	}
 
@@ -924,7 +939,7 @@ conswrite(Chan *c, void *va, long n, vlong off)
 			free(cb);
 			nexterror();
 		}
-		ct = lookupcmd(cb, reboottbl, nelem(reboottbl));
+		ct = lookupcmd(cb, rebootmsg, nelem(rebootmsg));
 		switch(ct->index) {
 		case CMreboot:
 			rebootcmd(cb->nf-1, cb->f+1);

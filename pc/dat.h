@@ -1,4 +1,5 @@
 typedef struct Conf	Conf;
+typedef struct Cycintr	Cycintr;
 typedef struct FPsave	FPsave;
 typedef struct ISAConf	ISAConf;
 typedef struct Label	Label;
@@ -198,8 +199,6 @@ struct Mach
 
 	int	stack[1];
 };
-
-typedef struct Cycintr	Cycintr;
 
 /*
  * fasttick timer interrupts

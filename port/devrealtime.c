@@ -224,12 +224,16 @@ devrtinit(void)
 static Chan *
 devrtattach(char *param)
 {
+	if(havecycintr() == 0)
+		error("no edf on multiprocessors");
 	return devattach('R', param);
 }
 
 static Walkqid *
 devrtwalk(Chan *c, Chan *nc, char **name, int nname)
 {
+	if (havecycintr() == 0)
+		error("no edf on multiprocessors");
 	return devwalk(c, nc, name, nname, nil, 0, schedgen);
 }
 
@@ -263,6 +267,8 @@ devrtopen(Chan *c, int mode)
 {
 	Task *t;
 
+	if (havecycintr() == 0)
+		error("no edf on multiprocessors");
 	switch ((ulong)c->qid.path){
 	case Qlog:
 	case Qnblog:
