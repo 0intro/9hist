@@ -178,10 +178,10 @@ mountfree(Mount *m)
 {
 	Mount *f;
 
-	for(f = m; f->next; f = f->next)
-		close(f->to);
-
-	close(f->to);
-
-	free(f);
+	while(m) {
+		f = m->next;
+		close(m->to);
+		free(m);
+		m = f;
+	}
 }
