@@ -413,6 +413,7 @@ sleep1(Rendez *r, int (*f)(void*), void *arg)
 	up->state = Wakeme;
 	up->r = r;
 	unlock(&up->rlock);
+	splx(s);
 }
 
 void

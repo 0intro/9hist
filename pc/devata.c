@@ -1,6 +1,7 @@
 /*
  * This has gotten a bit messy with the addition of multiple controller
  * and ATAPI support; needs a rewrite before adding any 'ctl' functions.
+ * The register locking needs looked at.
  */
 #include	"u.h"
 #include	"../port/lib.h"
@@ -10,11 +11,11 @@
 #include	"io.h"
 #include	"../port/error.h"
 
-#define DEBUG	0
-#define DPRINT if(DEBUG)print
-#define XPRINT if(DEBUG)print
-#define ILOCK(x)
-#define IUNLOCK(x)
+#define DEBUG		0
+#define DPRINT 		if(DEBUG)print
+#define XPRINT 		if(DEBUG)print
+#define ILOCK(x)	ilock(x)
+#define IUNLOCK(x)	iunlock(x)
 
 typedef	struct Drive		Drive;
 typedef	struct Ident		Ident;
@@ -1150,9 +1151,6 @@ retryatapi:
 	dp->cyl = ip->cyls;
 	dp->heads = ip->heads;
 	dp->sectors = ip->s2t;
-	XPRINT("%s: %s %d/%d/%d CHS %lld bytes\n",
-		dp->vol, id, dp->cyl, dp->heads, dp->sectors,
-		dp->cap);
 
 	if(ip->cvalid&(1<<0)){
 		/* use current settings */
@@ -1176,6 +1174,9 @@ retryatapi:
 		dp->lbasecs = 0;
 		dp->cap = (vlong)dp->bytes * dp->cyl * dp->heads * dp->sectors;
 	}
+	XPRINT("%s: %s %d/%d/%d CHS %lld bytes\n",
+		dp->vol, id, dp->cyl, dp->heads, dp->sectors,
+		dp->cap);
 
 	if(cp->cmd){
 		cp->lastcmd = cp->cmd;
@@ -1716,6 +1717,39 @@ atapiexec(Drive *dp)
 	}
 }
 
+static void
+atapireqsense(Drive* dp)
+{
+	Controller *cp;
+	uchar *buf;
+
+	cp = dp->cp;
+
+	buf = smalloc(Maxxfer);
+	cp->buf = buf;
+	cp->dp = dp;
+
+	if(waserror()){
+		free(buf);
+		return;
+	}
+
+	cp->len = 18;
+	cp->count = 0;
+	memset(cp->cmdblk, 0, sizeof(cp->cmdblk));
+	cp->cmdblk[0] = Creqsense;
+	cp->cmdblk[4] = 18;
+	atapiexec(dp);
+	if(cp->count != 18){
+		print("cmd=%2.2uX, lastcmd=%2.2uX ", cp->cmd, cp->lastcmd);
+		print("cdsize count %d, status 0x%2.2uX, error 0x%2.2uX\n",
+			cp->count, cp->status, cp->error);
+	}
+
+	poperror();
+	free(buf);
+}
+
 static long
 atapiio(Drive *dp, uchar *a, ulong len, vlong off, int cmd)
 {
@@ -1735,8 +1769,10 @@ atapiio(Drive *dp, uchar *a, ulong len, vlong off, int cmd)
 
 retry:
 	if(waserror()){
+		DPRINT("atapiio: cmd %uX error %uX\n", cp->cmdblk[0], cp->error);
 		dp->partok = 0;
 		if((cp->status & Serr) && (cp->error & 0xF0) == 0x60){
+			atapireqsense(dp);
 			dp->vers++;
 			if(retrycount){
 				retrycount--;
@@ -1842,7 +1878,7 @@ atapipart(Drive *dp)
 	retrycount = 2;
 retry:
 	if(waserror()){
-		DPRINT("atapipart: cmd %uX error %uX\n", cp->cmd, cp->error);
+		DPRINT("atapipart: cmd %uX error %uX\n", cp->cmdblk[0], cp->error);
 		if((cp->status & Serr) && (cp->error & 0xF0) == 0x60){
 			dp->vers++;
 			if(retrycount){
