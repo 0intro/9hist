@@ -130,7 +130,7 @@ TEXT	wbflush(SB), $-4
 	MOVW	0(R1), R1
 	RET
 
-TEXT	setlabel(SB), $0
+TEXT	setlabel(SB), $-4
 
 	MOVW	0(FP), R2
 	MOVW	$0, R1
@@ -138,7 +138,7 @@ TEXT	setlabel(SB), $0
 	MOVW	R29, 4(R2)
 	RET
 
-TEXT	gotolabel(SB), $0
+TEXT	gotolabel(SB), $-4
 
 	MOVW	0(FP), R2
 	MOVW	$1, R1
