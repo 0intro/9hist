@@ -34,7 +34,7 @@ enum
 	UDP_USEAD4	= 12,
 
 	Rudprxms	= 200,
-	Rudptickms	= 100,
+	Rudptickms	= 50,
 	Rudpmaxxmit	= 10,
 	Maxunacked	= 100,
 };
@@ -858,6 +858,7 @@ reliput(Conv *c, Block *bp, uchar *addr, ushort port)
 
 	/* refuse out of order delivery */
 	if(seq != NEXTSEQ(r->rcvseq)){
+		relsendack(c, r);	/* tell him we got it already */
 		upriv->orders++;
 		DPRINT("out of sequence %lud not %lud\n", seq, NEXTSEQ(r->rcvseq));
 		return -1;
