@@ -670,7 +670,6 @@ mntread(Chan *c, void *buf, long n, vlong off)
 		if(p != e)
 			error(Esbadstat);
 	}
-
 	return n;
 }
 

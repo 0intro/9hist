@@ -122,6 +122,7 @@ typedef struct Waitmsg	Waitmsg;
 #define QTDIR		0x80		/* type bit for directories */
 #define QTAPPEND	0x40		/* type bit for append only files */
 #define QTEXCL		0x20		/* type bit for exclusive use files */
+#define QTMOUNT		0x10		/* type bit for mounted channel */
 #define QTAUTH		0x08		/* type bit for authentication file */
 #define QTFILE		0x00		/* plain file */
 

@@ -1238,4 +1238,7 @@ SDifc sdmylexifc = {
 	nil,				/* wctl */
 
 	scsibio,			/* bio */
+	nil,				/* probe */
+	nil,				/* clear */
+	nil,				/* stat */
 };

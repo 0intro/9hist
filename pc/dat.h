@@ -241,6 +241,8 @@ struct PCArch
 
 	void	(*intrinit)(void);
 	int	(*intrenable)(Vctl*);
+	int	(*intrvecno)(int);
+	int	(*intrdisable)(int);
 
 	void	(*clockenable)(void);
 	uvlong	(*fastclock)(uvlong*);
@@ -278,3 +280,19 @@ Mach* machp[MAXMACH];
 
 extern Mach	*m;
 #define up	(((Mach*)MACHADDR)->externup)
+
+/*
+ *  hardware info about a device
+ */
+typedef struct {
+	ulong	port;	
+	int		size;
+} port_t;
+
+struct DevConf
+{
+	ulong	interrupt;	/* interrupt number */
+	char		*type;	/* card type, malloced */
+	int		nports;	/* Number of ports */
+	port_t	*ports;	/* The ports themselves */
+};

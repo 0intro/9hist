@@ -98,6 +98,8 @@ PCArch archmp = {
 
 	mpinit,					/* intrinit */
 	mpintrenable,				/* intrenable */
+	0,					/* intrvecno */
+	0,					/* intrdisable */
 
 	0,					/* clockenable */
 };

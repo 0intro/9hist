@@ -164,3 +164,36 @@ i8259enable(Vctl* v)
 
 	return VectorPIC+irq;
 }
+
+int
+i8259vecno(int irq)
+{
+	return VectorPIC+irq;
+}
+
+int
+i8259disable(int irq)
+{
+	int irqbit;
+
+	/*
+	 * Given an IRQ, disable the corresponding interrupt
+	 * in the 8259.
+	 */
+	if(irq < 0 || irq > MaxIrqPIC){
+		print("i8259disable: irq %d out of range\n", irq);
+		return -1;
+	}
+	irqbit = 1<<irq;
+
+	ilock(&i8259lock);
+	if(!(i8259mask & irqbit)){
+		i8259mask |= irqbit;
+		if(irq < 8)
+			outb(Int0aux, i8259mask & 0xFF);
+		else
+			outb(Int1aux, (i8259mask>>8) & 0xFF);
+	}
+	iunlock(&i8259lock);
+	return 0;
+}

@@ -2059,5 +2059,8 @@ SDifc sd53c8xxifc = {
 	nil,				/* wctl */
 
 	scsibio,			/* bio */
+	nil,				/* probe */
+	nil,				/* clear */
+	nil,				/* stat */
 };
 

@@ -50,6 +50,30 @@ intrenable(int irq, void (*f)(Ureg*, void*), void* a, int tbdf, char *name)
 	iunlock(&vctllock);
 }
 
+void
+intrdisable(int irq, void (*f)(Ureg *, void *), void *a, int tbdf, char *name)
+{
+	Vctl **pv, *v;
+	int vno;
+
+	vno = arch->intrvecno(irq);
+	ilock(&vctllock);
+	pv = &vctl[vno];
+	while (*pv && 
+		  ((*pv)->irq != irq || (*pv)->tbdf != tbdf || (*pv)->f != f || (*pv)->a != a ||
+		   strcmp((*pv)->name, name)))
+		pv = &((*pv)->next);
+	assert(*pv);
+
+	v = *pv;
+	*pv = (*pv)->next;	/* Link out the entry */
+	
+	if (vctl[vno] == nil)
+		arch->intrdisable(irq);
+	iunlock(&vctllock);
+	xfree(v);
+}
+
 static long
 irqallocread(Chan*, void *vbuf, long n, vlong offset)
 {

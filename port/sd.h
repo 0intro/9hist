@@ -46,17 +46,24 @@ typedef struct SDunit {
 	Log log;
 } SDunit;
 
+/* 
+  * Each controller is represented by a SDev, each controller is responsible
+  * for allocating its unit structures.
+  */ 
 typedef struct SDev {
+	Ref		r;			/* Number of callers using device */
 	SDifc*	ifc;			/* pnp/legacy */
 	void	*ctlr;
 	int	idno;
 	char	*name;
-	int	index;			/* into unit space */
-	int	nunit;
 	SDev*	next;
 
 	QLock;				/* enable/disable */
 	int	enabled;
+	int		nunit;		/* Number of units */
+	QLock	unitlock;		/* `Loading' of units */
+	int		*unitflg;		/* Unit flags */
+	SDunit	**unit;		/* Each controller has at least one unit */
 } SDev;
 
 typedef struct SDifc {
@@ -75,6 +82,9 @@ typedef struct SDifc {
 	int	(*wctl)(SDunit*, Cmdbuf*);
 
 	long	(*bio)(SDunit*, int, int, void*, long, long);
+	SDev*	(*probe)(DevConf *);
+	void		(*clear)(SDev *);
+	char*	(*stat)(SDev*, char*, char*);
 } SDifc;
 
 typedef struct SDreq {

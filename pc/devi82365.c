@@ -348,8 +348,8 @@ decrefp(PCMslot *pp)
 /*
  *  look for a card whose version contains 'idstr'
  */
-int
-pcmspecial(char *idstr, ISAConf *isa)
+static int
+pcmcia_pcmspecial(char *idstr, ISAConf *isa)
 {
 	PCMslot *pp;
 	extern char *strstr(char*, char*);
@@ -389,8 +389,8 @@ pcmspecial(char *idstr, ISAConf *isa)
 	return -1;
 }
 
-void
-pcmspecialclose(int slotno)
+static void
+pcmcia_pcmspecialclose(int slotno)
 {
 	PCMslot *pp;
 
@@ -578,6 +578,17 @@ i82365reset(void)
 	I82365 *cp;
 	PCMslot *pp;
 	char buf[32];
+
+	if (!getconf("pcmcia0"))
+		return;
+	
+	if (_pcmspecial) {
+		print("#y: PCMCIA and CardBus at the same time?\n");
+		return;
+	}
+	
+	_pcmspecial = pcmcia_pcmspecial;
+	_pcmspecialclose = pcmcia_pcmspecialclose;
 
 	if(already)
 		return;

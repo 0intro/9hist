@@ -554,9 +554,32 @@ pcicfginit(void)
 
 	list = &pciroot;
 	for(bno = 0; bno <= pcimaxbno; bno++) {
+		int sbno = bno;
 		bno = pcilscan(bno, list);
+
 		while(*list)
 			list = &(*list)->link;
+
+		if (sbno == 0) {
+			Pcidev *pci;
+
+			/*
+			  * If we have found a PCI-to-Cardbus bridge, make sure
+			  * it has no valid mappings anymore.  
+			  */
+			pci = pciroot;
+			while (pci) {
+				if (pci->ccrb == 6 && pci->ccru == 7) {
+					ushort bcr;
+
+					/* reset the cardbus */
+					bcr = pcicfgr16(pci, PciBCR);
+					pcicfgw16(pci, PciBCR, 0x40 | bcr);
+					pcicfgw16(pci, PciBCR, bcr);
+				}
+				pci = pci->link;
+			}
+		}
 	}
 
 	if(pciroot == nil)
@@ -864,5 +887,15 @@ pcisetbme(Pcidev* p)
 
 	pcr = pcicfgr16(p, PciPCR);
 	pcr |= MASen;
+	pcicfgw16(p, PciPCR, pcr);
+}
+
+void
+pciclrbme(Pcidev* p)
+{
+	int pcr;
+
+	pcr = pcicfgr16(p, PciPCR);
+	pcr &= ~MASen;
 	pcicfgw16(p, PciPCR, pcr);
 }

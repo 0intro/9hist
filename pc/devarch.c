@@ -52,6 +52,9 @@ static Dirtab archdir[Qmax] = {
 };
 Lock archwlock;	/* the lock is only for changing archdir */
 int narchdir = Qbase;
+int (*_pcmspecial)(char *, ISAConf *);
+void (*_pcmspecialclose)(int);
+
 
 /*
  * Add a file to the #P listing.  Once added, you can't delete it.
@@ -476,6 +479,8 @@ PCArch archgeneric = {
 
 	i8259init,				/* intrinit */
 	i8259enable,				/* intrenable */
+	i8259vecno,				/* vector number */
+	i8259disable,				/* intrdisable */
 
 	i8253enable,				/* clockenable */
 
@@ -722,4 +727,17 @@ vlong
 fastticks(uvlong *hz)
 {
 	return (*arch->fastclock)(hz);
+}
+
+int
+pcmspecial(char *idstr, ISAConf *isa)
+{
+	return (_pcmspecial  != nil)? _pcmspecial(idstr, isa): -1;
+}
+
+void
+pcmspecialclose(int a)
+{
+	if (_pcmspecialclose != nil)
+		_pcmspecialclose(a);
 }
