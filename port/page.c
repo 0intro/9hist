@@ -493,6 +493,7 @@ segaddr(Seg *s, ulong min, ulong max)
 
 	if(max < min)
 		return 0;
+if(max > 20*1024*1024) pprint("segaddr %lux\n", max);
 	if(min != s->minva)	/* can't grow down yet (stacks: fault.c) */
 		return 0;
 	max = (max+(BY2PG-1)) & ~(BY2PG-1);

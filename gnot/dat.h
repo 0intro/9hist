@@ -454,7 +454,7 @@ enum {
 	Sctlqid = Sdataqid-1,
 	Slowqid = Sctlqid,
 	Streamhi= (9*1024),	/* byte count high water mark */
-	Streambhi= 16,		/* block count high water mark */
+	Streambhi= 32,		/* block count high water mark */
 };
 
 #define	PRINTSIZE	256

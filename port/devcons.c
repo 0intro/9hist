@@ -290,6 +290,7 @@ enum{
 	Qdir,
 	Qcons,
 	Qcputime,
+	Qlog,
 	Qnull,
 	Qpgrpid,
 	Qpid,
@@ -301,6 +302,7 @@ enum{
 Dirtab consdir[]={
 	"cons",		Qcons,		0,	0600,
 	"cputime",	Qcputime,	72,	0600,
+	"log",		Qlog,		sizeof(SYSLOG->buf),	0600,
 	"null",		Qnull,		0,	0600,
 	"pgrpid",	Qpgrpid,	12,	0600,
 	"pid",		Qpid,		12,	0600,
@@ -496,6 +498,9 @@ consread(Chan *c, void *buf, long n)
 	case Quser:
 		return readstr(c->offset, buf, n, u->p->pgrp->user);
 
+	case Qlog:
+		return readlog(c->offset, buf, n);
+
 	case Qnull:
 		return 0;
 
@@ -587,4 +592,69 @@ void
 consuserstr(Error *e, char *buf)
 {
 	strcpy(buf, u->p->pgrp->user);
+}
+
+/*
+ *  crash info
+ */
+void
+sysloginit(void)
+{
+	Syslog *s;
+	char *p;
+
+	s = SYSLOG;
+	if(s->magic!=SYSLOGMAGIC || s->next>=&s->buf[sizeof(s->buf)]
+	|| s->next<s->buf){
+		s->next = s->buf;
+		s->magic = SYSLOGMAGIC;
+	}
+}
+
+void
+syslog(char *p, int n)
+{
+	int i;
+	Syslog *s;
+	char *end;
+
+	s = SYSLOG;
+	end = &s->buf[sizeof(s->buf)];
+	while(n-- > 0){
+		*s->next++ = *p++;
+		if(s->next >= end)
+			s->next = s->buf;
+	}
+}
+
+long
+readlog(ulong off, char *buf, ulong n)
+{
+	Syslog *s;
+	int i;
+	char *p;
+	char *end;
+
+	s = SYSLOG;
+
+	/* past end */
+	if(off >= sizeof(s->buf))
+		return 0;
+
+	/* trim length */
+	if(off + n >= sizeof(s->buf))
+		n = sizeof(s->buf) - off;
+
+	/* point to start of area to be read */
+	end = &s->buf[sizeof(s->buf)];
+	p = s->next + off;
+	if(p > end)
+		p -= sizeof(s->buf);
+
+	for(i = 0; i < n; i++){
+		*buf++ = *p++;
+		if(p >= end)
+			p = s->buf;
+	}
+	return n;
 }

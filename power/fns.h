@@ -139,6 +139,7 @@ void	putbq(Blist*, Block*);
 int	putq(Queue*, Block*);
 void	putstrn(char*, long);
 ulong	pwait(Waitmsg*);
+int	readlog(ulong, char*, ulong);
 int	readnum(ulong, char*, ulong, ulong, int);
 void	ready(Proc*);
 void	rooterrstr(Error*, char*);

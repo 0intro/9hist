@@ -694,11 +694,11 @@ extern	FPsave	initfp;
 /*
  *  kernel based system log, passed between crashes
  */
-#define SYSLOG		((Syslog *)(0x80001B00))
-#define SYSLOGMAGIC	0x12345678
+#define SYSLOG		((Syslog *)(0xa0001B00))
+#define SYSLOGMAGIC	0x87654321
 struct Syslog
 {
 	ulong	magic;
 	char	*next;
-	char	buf[16*1024];
+	char	buf[8*1024];
 };
