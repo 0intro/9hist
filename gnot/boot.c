@@ -86,8 +86,19 @@ main(int argc, char *argv[])
 
 	if(manual)
 		execl("/68020/init", "init", "-m", 0);
-	else
-		execl("/68020/init", "init", 0);
+	else {
+		switch(fork()){
+		case -1:
+			print("can't start connection server\n");
+			break;
+		case 0:
+			execl("/68020/init", "init", "-d", "/bin/cs", 0);
+			error("/68020/bin/cs");
+			break;
+		default:
+			execl("/68020/init", "init", 0);
+		}
+	}
 	error("/68020/init");
 }
 

@@ -207,7 +207,7 @@ iprouteinit(void)
 Chan *
 iprouteattach(char *spec)
 {
-	return devattach('R', spec);
+	return devattach('P', spec);
 }
 
 Chan *
