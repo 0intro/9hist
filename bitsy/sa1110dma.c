@@ -78,10 +78,25 @@ dmainit(void) {
 	}
 }
 
+void
+dmareset(int i, int rd, int bigendian, int burstsize, int datumsize, int device, ulong port) {
+	ulong ddar;
+
+	ddar =
+		(rd?1:0)<<RW |
+		(bigendian?1:0)<<E |
+		((burstsize==8)?1:0)<<BS |
+		((datumsize==2)?1:0)<<DW |
+		device<<DS |
+		0x80000000 | ((ulong)port << 6);
+	dmaregs[i].ddar = ddar;
+	dmaregs[i].dcsr_clr = 0xff;
+	if (debug) print("dma: dmareset: 0x%lux\n", ddar);
+}
+
 int
 dmaalloc(int rd, int bigendian, int burstsize, int datumsize, int device, ulong port, void (*intr)(void*, ulong), void *param) {
 	int i;
-	ulong ddar;
 
 	lock(&dma);
 	for (i = 0; i < NDMA; i++) {
@@ -89,18 +104,9 @@ dmaalloc(int rd, int bigendian, int burstsize, int datumsize, int device, ulong 
 			continue;
 		dma.chan[i].allocated++;
 		unlock(&dma);
-		ddar =
-			(rd?1:0)<<RW |
-			(bigendian?1:0)<<E |
-			((burstsize==8)?1:0)<<BS |
-			((datumsize==2)?1:0)<<DW |
-			device<<DS |
-			0x80000000 | ((ulong)port << 6);
-		dmaregs[i].ddar = ddar;
-		if (debug) print("dma: dmaalloc: 0x%lux\n", ddar);
+		dmareset(i, rd, bigendian, burstsize, datumsize, device, port);
 		dma.chan[i].intr = intr;
 		dma.chan[i].param = param;
-		dmaregs[i].dcsr_clr = 0xff;
 		return i;
 	}
 	unlock(&dma);

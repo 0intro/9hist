@@ -642,24 +642,6 @@ indisable(void) {
 	}
 }
 
-void
-audiopower(int flag) {
-	if (debug) {
-		iprint("audiopower %d\n", flag);
-	}
-	if (flag) {
-		egpiobits(EGPIO_audio_power, 1);
-		egpiobits(EGPIO_audio_ic_power | EGPIO_codec_reset, 1);
-	} else {
-		/* power off */
-		if (audio.omode & Aread)
-			indisable();
-		if (audio.omode & Awrite)
-			outdisable();
-		egpiobits(EGPIO_audio_ic_power | EGPIO_codec_reset | EGPIO_audio_power, 0);
-	}
-}
-
 static void
 sendaudio(IOstate *s) {
 	/* interrupt routine calls this too */
@@ -729,6 +711,42 @@ recvaudio(IOstate *s) {
 			s->next = &s->buf[0];
 	}
 	iunlock(&s->ilock);
+}
+
+void
+audiopower(int flag) {
+	IOstate *s;
+
+	if (debug) {
+		iprint("audiopower %d\n", flag);
+	}
+	if (flag) {
+		/* power on only when necessary */
+		if (audio.amode) {
+			egpiobits(EGPIO_audio_power | EGPIO_audio_ic_power | EGPIO_codec_reset, 1);
+			enable();
+			if (audio.amode & Aread) {
+				inenable();
+				s = &audio.i;
+				dmareset(s->dma, 1, 0, 4, 2, SSPRecvDMA, Port4SSP);
+				recvaudio(s);
+			}
+			if (audio.amode & Awrite) {
+				outenable();
+				s = &audio.o;
+				dmareset(s->dma, 0, 0, 4, 2, SSPXmitDMA, Port4SSP);
+				sendaudio(s);
+			}
+			mxvolume();
+		}
+	} else {
+		/* power off */
+		if (audio.amode & Aread)
+			indisable();
+		if (audio.amode & Awrite)
+			outdisable();
+		egpiobits(EGPIO_audio_ic_power | EGPIO_codec_reset | EGPIO_audio_power, 0);
+	}
 }
 
 static void
@@ -804,13 +822,13 @@ audioopen(Chan *c, int mode)
 		if (omode & Aread) {
 			inenable();
 			s = &audio.i;
-			audio.amode |= Aread;
 			if(s->bufinit == 0)
 				bufinit(s);
 			setempty(s);
 			s->emptying = &s->buf[Nbuf-1];
 			s->chan = c;
 			s->dma = dmaalloc(1, 0, 4, 2, SSPRecvDMA, Port4SSP, audiointr, (void*)s);
+			audio.amode |= Aread;
 		}
 		if (omode & Awrite) {
 			outenable();
@@ -821,6 +839,7 @@ audioopen(Chan *c, int mode)
 			setempty(s);
 			s->chan = c;
 			s->dma = dmaalloc(0, 0, 4, 2, SSPXmitDMA, Port4SSP, audiointr, (void*)s);
+			audio.amode |= Awrite;
 		}
 		resetlevel();
 		mxvolume();

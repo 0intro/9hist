@@ -9,6 +9,7 @@ enum {
 
 void	dmainit(void);
 int		dmaalloc(int, int, int, int, int, ulong, void (*)(void*, ulong), void*);
+void	dmareset(int, int, int, int, int, int, ulong);
 void	dmafree(int);
 
 ulong	dmastart(int, ulong, int);

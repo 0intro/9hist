@@ -23,7 +23,7 @@ char*	getconf(char*);
 ulong	getfar(void);
 ulong	getfsr(void);
 #define	getpgcolor(a)	0
-void	gpiointrenable(ulong, int, void (*)(Ureg*, void*), void*, char*)
+void	gpiointrenable(ulong, int, void (*)(Ureg*, void*), void*, char*);
 void	h3650uartsetup(void);
 void	icacheinvalidate(void);
 void	idle(void);

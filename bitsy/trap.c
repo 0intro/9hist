@@ -146,7 +146,7 @@ gpiointrenable(ulong bit, int edge, void (*f)(Ureg*, void*), void* a, char *name
 
 	/* it had better be input */
 	if(bit & gpioregs->direction)
-		panic(""gpiointrenable %lux of output pin", bit);
+		panic("gpiointrenable %lux of output pin", bit);
 
 	/* set edge register */
 	switch(edge){
