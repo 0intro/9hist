@@ -112,17 +112,17 @@ enum
 struct Path
 {
 	Ref;
-	Path	*hash;
-	Path	*parent;
-	Pthash	*pthash;
+	Path*	hash;
+	Path*	parent;
+	Pthash*	pthash;
 	char	elem[NAMELEN];
 };
 
 struct Chan
 {
 	Ref;
-	Chan	*next;			/* allocation */
-	Chan	*link;
+	Chan*	next;			/* allocation */
+	Chan*	link;
 	ulong	offset;			/* in file */
 	ushort	type;
 	ushort	dev;
@@ -130,20 +130,20 @@ struct Chan
 	ushort	flag;
 	Qid	qid;
 	int	fid;			/* for devmnt */
-	Path	*path;
-	Mount	*mnt;			/* mount point that derived Chan */
-	Mount	*xmnt;			/* Last mount point crossed */
+	Path*	path;
+	Mount*	mnt;			/* mount point that derived Chan */
+	Mount*	xmnt;			/* Last mount point crossed */
 	ulong	mountid;
 	Mntcache *mcp;			/* Mount cache pointer */
 	union {
-		void	*aux;
+		void*	aux;
 		Qid	pgrpid;		/* for #p/notepg */
-		Mnt	*mntptr;	/* for devmnt */
+		Mnt*	mntptr;		/* for devmnt */
 		ulong	mid;		/* for ns in devproc */
 	};
-	Chan	*mchan;			/* channel to mounted server */
+	Chan*	mchan;			/* channel to mounted server */
 	Qid	mqid;			/* qid of root of mount point */
-	Session *session;
+	Session*session;
 };
 
 struct Dev
@@ -182,32 +182,32 @@ struct Pthash
 {
 	QLock;
 	int	npt;
-	Path	*root;
-	Path	*hash[NSCACHE];
+	Path*	root;
+	Path*	hash[NSCACHE];
 };
 
-struct Mntwalk
+struct Mntwalk				/* state for /proc/#/ns */
 {
 	ulong	id;
-	Mhead	*mh;
-	Mount	*cm;
+	Mhead*	mh;
+	Mount*	cm;
 };
 
 struct Mount
 {
 	ulong	mountid;
-	Mount	*next;
-	Mhead	*head;
-	Chan	*to;			/* channel replacing channel */
+	Mount*	next;
+	Mhead*	head;
+	Chan*	to;			/* channel replacing channel */
 	int	flag;
 	char	spec[NAMELEN];
 };
 
 struct Mhead
 {
-	Chan	*from;			/* channel mounted upon */
-	Mount	*mount;			/* what's mounted upon it */
-	Mhead	*hash;			/* Hash chain */
+	Chan*	from;			/* channel mounted upon */
+	Mount*	mount;			/* what's mounted upon it */
+	Mhead*	hash;			/* Hash chain */
 };
 
 struct Mnt

@@ -69,6 +69,11 @@ enum
 	Ntranslation	= 4096,		/* Number of translation registers */
 };
 
+enum
+{
+	SB16pcm		= 100,
+};
+
 typedef struct Tte Tte;
 struct Tte
 {
@@ -86,3 +91,33 @@ struct Tte
 #define EISAINW(port)		(*(ushort*)((EisaControl+(port))^6))
 #define EISAOUTB(port, v)	EISAINB(port) = v
 #define EISAOUTW(port, v)	EISAINW(port) = v
+
+/*
+ *  8259 interrupt controllers
+ */
+enum
+{
+	Int0vec=	0,		/* first 8259 */
+	 Clockvec=	Int0vec+0,	/*  clock interrupts */
+	 Kbdvec=	Int0vec+1,	/*  keyboard interrupts */
+	 Uart1vec=	Int0vec+3,	/*  modem line */
+	 Uart0vec=	Int0vec+4,	/*  serial line */
+	 PCMCIAvec=	Int0vec+5,	/*  PCMCIA card change */
+	 Floppyvec=	Int0vec+6,	/*  floppy interrupts */
+	 Parallelvec=	Int0vec+7,	/*  parallel port interrupts */
+	Int1vec=	Int0vec+8,	/* second 8259 */
+	 Ethervec=	Int0vec+10,	/*  ethernet interrupt */
+	 Mousevec=	Int0vec+12,	/*  mouse interrupt */
+	 Matherr2vec=	Int0vec+13,	/*  math coprocessor */
+	 Hardvec=	Int0vec+14,	/*  hard disk */
+
+	Int0ctl=	0x20,		/* control port (ICW1, OCW2, OCW3) */
+	Int0aux=	0x21,		/* everything else (ICW2, ICW3, ICW4, OCW1) */
+	Int1ctl=	0xA0,		/* control port */
+	Int1aux=	0xA1,		/* everything else (ICW2, ICW3, ICW4, OCW1) */
+
+	EOI=		0x20,		/* non-specific end of interrupt */
+};
+
+extern int	int0mask;	/* interrupts enabled for first 8259 */
+extern int	int1mask;	/* interrupts enabled for second 8259 */

@@ -116,13 +116,11 @@ static uchar
 bcd2binary(int reg)
 {
 	uchar x;
-/*
+
 	x = (*(uchar*)Rtcindex)&~0x7f;
 	*(uchar*)Rtcindex = x|reg;
 	x = *(uchar*)Rtcdata;
 	return (x&0xf) + 10*(x>>4);
-/**/
-	return 0;
 }
 
 long	 
@@ -191,11 +189,9 @@ static void
 binary2bcd(int reg, uchar val)
 {
 	uchar x;
-/*
 	x = (*(uchar*)Rtcindex)&~0x7f;
 	*(uchar*)Rtcindex = x|reg;
 	*(uchar*)Rtcdata = (val % 10) | (((val / 10) % 10)<<4);
-/**/
 }
 
 

@@ -289,7 +289,7 @@ intr(Ureg *ur)
 {
 	static uchar devint;
 	ulong cause = ur->cause;
-	ulong isr;
+	ulong isr, vec;
 
 	m->intr++;
 	cause &= INTR7|INTR6|INTR5|INTR4|INTR3|INTR2|INTR1|INTR0;
@@ -319,8 +319,9 @@ intr(Ureg *ur)
 	}
 	if(cause & INTR2) {
 		isr = IO(ulong, R4030Isr);
+
 		if(isr & (1<<5)) {
-			audiointr();
+			audiodmaintr();
 			isr &= ~(1<<5);
 		}
 		if(isr) {
@@ -334,7 +335,22 @@ intr(Ureg *ur)
 	}
 	if(cause & INTR4) {
 		devint = IO(uchar, I386ack);
-		iprint("i386ACK #%lux\n", devint);
+		vec = devint&~0x7;
+
+		/* reenable the 8259 interrupt */
+		if(vec == Int0vec || vec == Int1vec){
+			EISAOUTB(Int0ctl, EOI);
+			if(vec == Int1vec)
+				EISAOUTB(Int1ctl, EOI);
+		}
+		switch(devint) {
+		default:
+			iprint("i386ACK #%lux\n", devint);
+			break;
+		case 5:
+			audiosbintr();
+			break;
+		}
 		cause &= ~INTR4;
 	}
 	if(cause & INTR7) {

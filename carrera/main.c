@@ -31,6 +31,9 @@ Softtlb stlb[MAXMACH][STLBSIZE];
 Conf	conf;
 FPsave	initfp;
 
+int	int0mask = 0xff;	/* interrupts enabled for first 8259 */
+int	int1mask = 0xff;	/* interrupts enabled for second 8259 */
+
 extern	uchar rdbgcode[];
 extern	ulong	rdbglen;
 
@@ -217,6 +220,43 @@ ioinit(int mapeisa)
 	ptec = PPN(VideoCTL)|PTEGLOBL|PTEVALID|PTEWRITE|PTEUNCACHED;
 	ptes = PPN(VideoMEM)|PTEGLOBL|PTEVALID|PTEWRITE|PTEUNCACHED;
 	puttlbx(4, Screenvirt, ptes, ptec, PGSZ4M);
+
+	/* for PC weenies */
+	/*
+	 *  Set up the first 8259 interrupt processor.
+	 *  Make 8259 interrupts start at CPU vector Int0vec.
+	 *  Set the 8259 as master with edge triggered
+	 *  input with fully nested interrupts.
+	 */
+	EISAOUTB(Int0ctl, 0x11);		/* ICW1 - edge triggered, master,
+						   ICW4 will be sent */
+	EISAOUTB(Int0aux, Int0vec);		/* ICW2 - interrupt vector offset */
+	EISAOUTB(Int0aux, 0x04);		/* ICW3 - have slave on level 2 */
+	EISAOUTB(Int0aux, 0x01);		/* ICW4 - 8086 mode, not buffered */
+
+	/*
+	 *  Set up the second 8259 interrupt processor.
+	 *  Make 8259 interrupts start at CPU vector Int0vec.
+	 *  Set the 8259 as master with edge triggered
+	 *  input with fully nested interrupts.
+	 */
+	EISAOUTB(Int1ctl, 0x11);		/* ICW1 - edge triggered, master,
+						   ICW4 will be sent */
+	EISAOUTB(Int1aux, Int1vec);		/* ICW2 - interrupt vector offset */
+	EISAOUTB(Int1aux, 0x02);		/* ICW3 - I am a slave on level 2 */
+	EISAOUTB(Int1aux, 0x01);		/* ICW4 - 8086 mode, not buffered */
+
+	/*
+	 *  pass #2 8259 interrupts to #1
+	 */
+	int0mask &= ~0x04;
+	EISAOUTB(Int0aux, int0mask);
+
+	/* enable all PC interrupts except the clock */
+	int0mask |= 1<<(Clockvec&7);
+	EISAOUTB(Int0aux, int0mask);
+	int1mask = 0;
+	EISAOUTB(Int1aux, int1mask);
 }
 
 /*
