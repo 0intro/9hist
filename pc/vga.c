@@ -31,6 +31,7 @@ GBitmap	gscreen;
 static	Lock vgalock;
 static	GBitmap	vgascreen;
 static	ulong colormap[256][3];
+static	int cga = 1;		/* true if in cga mode */
 
 /*
  *  screen dimensions
@@ -100,6 +101,12 @@ VGAmode mode13 =
 
 static Rectangle mbb;
 static Rectangle NULLMBB = {10000, 10000, -10000, -10000};
+
+void
+unlocktseng(void) {
+	outb(0x3bf, 0x03);
+	outb(0x3d8, 0xa0);
+}
 
 void
 genout(int reg, int val)
@@ -267,6 +274,7 @@ setscreen(int maxx, int maxy, int ldepth)
 	if(p == 0)
 		panic("can't alloc screen bitmap");
 	mbb = NULLMBB;
+	cga = 0;
 
 	/*
 	 *  zero hard screen and setup a bitmap for the new size
@@ -338,6 +346,8 @@ screeninit(void)
 	int i;
 	ulong *l;
 
+	unlocktseng();
+
 	/*
 	 *  arrow is defined as a big endian
 	 */
@@ -355,14 +365,9 @@ screeninit(void)
 	pixreverse((uchar*)defont->bits->base,
 		defont->bits->width*BY2WD*Dy(defont->bits->r), 0);
 
-	/*
-	 *  set up 'soft' and hard screens
-	 */
-	if(conf.maxx == 0)
-		conf.maxx = MAXX;
-	if(conf.maxy == 0)
-		conf.maxy = MAXY;
-	setscreen(conf.maxx, conf.maxy, conf.ldepth);
+	cga = 1;
+	crout(0x0a, 0xff);		/* turn off cursor */
+	memset(CGASCREEN, 0, CGAWIDTH*CGAHEIGHT);
 }
 
 /*
@@ -396,22 +401,16 @@ mbbpt(Point p)
 		mbb.max.y = p.y+1;
 }
 
-void
-unlocktseng(void) {
-	outb(0x3bf, 0x03);
-	outb(0x3d8, 0xa0);
-}
-
 /*
  *  copy litte endian soft screen to big endian hard screen
  */
 static void
 vgaupdate(void)
 {
-	uchar *sp, *hp;
-	int y, len, incs, inch, off, page, ey;
+	uchar *sp, *hp, *edisp;
+	int y, len, incs, inch, off, page;
 	Rectangle r;
-	static int nocheck;
+	void* (*f)(void*, void*, long);
 
 	r = mbb;
 	mbb = NULLMBB;
@@ -428,80 +427,62 @@ vgaupdate(void)
 	if(r.max.y > gscreen.r.max.y)
 		r.max.y = gscreen.r.max.y;
 
+	outb(0x3bf, 0x03);
+	outb(0x3d8, 0xa0);
+
 	incs = gscreen.width * BY2WD;
 	inch = vgascreen.width * BY2WD;
 
+	off = r.min.y * vgascreen.width * BY2WD + (r.min.x>>(3 - vgascreen.ldepth));
+	page = off>>16;
+	off &= (1<<16)-1;
+	hp = ((uchar*)vgascreen.base) + off;
+	off = r.min.y * gscreen.width * BY2WD + (r.min.x>>(3 - gscreen.ldepth));
+	sp = ((uchar*)gscreen.base) + off;
+
 	switch(gscreen.ldepth){
 	case 0:
-		off = r.min.x>>3;
-		hp = (uchar*)(vgascreen.base+(r.min.y*vgascreen.width)) + off;
-		sp = (uchar*)(gscreen.base+(r.min.y*gscreen.width)) + off;
+		f = l0update;
 		len = (r.max.x + 7)/8 - r.min.x/8;
-		if(len < 1)
-			return;
-
-		/* reverse the bits */
-		for (y = r.min.y; y < r.max.y; y++){
-			l0update(sp, hp, len);
-			sp += incs;
-			hp += inch;
-		}
 		break;
 	case 1:
-		r.min.x &= ~15;		/* 16 bit allignment for l1update() */
-		off = r.min.x>>3;
-		hp = (uchar*)(vgascreen.base+(r.min.y*vgascreen.width)) + off;
-		sp = (uchar*)(gscreen.base+(r.min.y*gscreen.width)) + 2*off;
+		f = l1update;
 		len = (r.max.x + 15)/8 - r.min.x/8;
-		if(len < 0)
-			return;
-
-		/* reverse the bits and split into 2 bit planes */
-		for (y = r.min.y; y < r.max.y; y++){
-			l1update(sp, hp, len);
-			sp += incs;
-			hp += inch;
-		}
 		break;
 	case 2:
-		off = r.min.x>>3;
-		hp = (uchar*)(vgascreen.base+(r.min.y*vgascreen.width)) + off;
-		sp = (uchar*)(gscreen.base+(r.min.y*gscreen.width)) + 4*off;
+		f = l2update;
 		len = (r.max.x + 7)/8 - r.min.x/8;
-		if(len < 1)
-			len = 1;
-
-		/* reverse the bits and split into 2 bit planes */
-		for (y = r.min.y; y < r.max.y; y++){
-			l2update(sp, hp, len);
-			sp += incs;
-			hp += inch;
-		}
 		break;
 	case 3:
-		off = (r.min.y % vgascreen.r.max.y) * vgascreen.width * BY2WD + r.min.x;
-		hp = (uchar*)(vgascreen.base) + off;
-		off = r.min.y * gscreen.width * BY2WD + r.min.x;
-		sp = (uchar*)(gscreen.base) + off;
+		f = memmove;
 		len = r.max.x - r.min.x;
-		if(len < 1)
-			return;
-
-		y = r.min.y;
-		for(page = y/vgascreen.r.max.y; y < r.max.y; page++){
-			unlocktseng();
-			outb(0x3cd, (page<<4)|page);
-			ey = (page+1)*vgascreen.r.max.y;
-			if(ey > r.max.y)
-				ey = r.max.y;
-			for (; y < ey; y++){
-				memmove(hp, sp, len);
-				sp += incs;
-				hp += inch;
-			}
-			hp = (uchar*)(vgascreen.base) + r.min.x;
-		}
 		break;
+	}
+	if(len < 1)
+		return;
+
+	edisp = ((uchar*)vgascreen.base) + 64*1024;
+	outb(0x3cd, (page<<4)|page);
+	for(y = r.min.y; y < r.max.y; y++){
+		if(hp + inch < edisp){
+			f(hp, sp, len);
+			sp += incs;
+			hp += inch;
+		} else {
+			off = edisp - hp;
+			if(off <= len){
+				f(hp, sp, off);
+				page++;
+				outb(0x3cd, (page<<4)|page);
+				f(vgascreen.base, sp+off, len - off);
+			} else {
+				f(hp, sp, len);
+				page++;
+				outb(0x3cd, (page<<4)|page);
+			}
+			sp += incs;
+			hp += inch - 64*1024;
+		}
 	}
 }
 
@@ -520,6 +501,43 @@ mousescreenupdate(void)
 		vgaupdate();
 		unlock(&vgalock);
 	}
+}
+
+static void
+cgascreenputc(int c)
+{
+	int i;
+	static int color;
+	static int pos;
+
+	if(c == '\n'){
+		pos = pos/CGAWIDTH;
+		pos = (pos+1)*CGAWIDTH;
+	} else if(c == '\t'){
+		i = 8 - ((pos/2)&7);
+		while(i-->0)
+			cgascreenputc(' ');
+	} else if(c == '\b'){
+		if(pos >= 2)
+			pos -= 2;
+		cgascreenputc(' ');
+		pos -= 2;
+	} else {
+		CGASCREEN[pos++] = c;
+		CGASCREEN[pos++] = 2;	/* green on black */
+	}
+	if(pos >= CGAWIDTH*CGAHEIGHT){
+		memmove(CGASCREEN, &CGASCREEN[CGAWIDTH], CGAWIDTH*(CGAHEIGHT-1));
+		memset(&CGASCREEN[CGAWIDTH*(CGAHEIGHT-1)], 0, CGAWIDTH);
+		pos = CGAWIDTH*(CGAHEIGHT-1);
+	}
+}
+
+void
+cgascreenputs(char *s, int n)
+{
+	while(n-- > 0)
+		cgascreenputc(*s++);
 }
 
 void
@@ -546,6 +564,11 @@ screenputs(char *s, int n)
 	int i;
 	char buf[4];
 	Rectangle rect;
+
+	if(cga) {
+		cgascreenputs(s, n);
+		return;
+	}
 
 	while(n > 0){
 		i = chartorune(&r, s);

@@ -21,6 +21,9 @@ enum
 };
 
 #define SCREENMEM	(0xA0000 | KZERO)
+#define CGASCREEN	((uchar*)(0xB8000 | KZERO))
+#define	CGAWIDTH	160
+#define	CGAHEIGHT	24
 
 extern	void setscreen(int, int, int);
 extern	struct GBitmap	gscreen;
