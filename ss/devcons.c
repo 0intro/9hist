@@ -300,17 +300,20 @@ echo(int c)
 		switch(c){
 		case 0x14:
 			break;	/* pass it on */
+		case 'l':
+			lancetoggle();
+			return;
+		case 'm':
+			mntdump();
+			return;
 		case 'p':
 			DEBUG();
 			return;
 		case 'q':
 			dumpqueues();
 			return;
-		case 'l':
-			lancetoggle();
-			return;
-		case 'm':
-			mntdump();
+		case 'r':
+			reset();
 			return;
 		}
 	}else if(c == 0x14){

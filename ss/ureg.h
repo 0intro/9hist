@@ -41,4 +41,5 @@ struct Ureg
 	ulong	psr;
 	ulong	npc;
 	ulong	pc;
+	ulong	pad;	/* so structure is double word aligned */
 };

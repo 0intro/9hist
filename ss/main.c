@@ -11,47 +11,8 @@
 #include	<gnot.h>
 
 char user[NAMELEN];
-char bootline[64];
-char bootserver[64];
-char bootdevice[64];
 
 uchar *intrreg;
-
-void unloadboot(void);
-
-#ifdef asdf
-static int ok;
-int
-Xprint(char *fmt, ...)
-{
-	char buf[PRINTSIZE];
-	int n;
-
-	if(!ok){
-		sccsetup();
-		ok = 1;
-	}
-	n = doprint(buf, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
-	sccputs(buf);
-	return n;
-}
-
-void
-putx(ulong x)
-{
-	int i;
-
-	if(!ok){
-		sccsetup();
-		ok = 1;
-	}
-	for(i=0; i<8; i++){
-		sccputc("0123456789ABCDEF"[x>>28]);
-		x <<= 4;
-	}
-	sccputc('\n');
-}
-#endif
 
 void
 main(void)
@@ -61,15 +22,13 @@ main(void)
 	u = 0;
 	memset(&edata, 0, (char*)&end-(char*)&edata);
 
-	unloadboot();
 	machinit();
 	confinit();
 	mmuinit();
 	printinit();
-	print("sparc plan 9 %lux\n", getb2(ENAB));
+	print("sparc plan 9\n");
 	trapinit();
 	kmapinit();
-	print("sparc plan 9 %lux\n", getb2(ENAB));
 	cacheinit();
 	intrinit();
 	procinit0();
@@ -102,14 +61,6 @@ reset(void)
 	putb2(ENAB, ENABRESET);
 }
 
-void
-unloadboot(void)
-{
-	strncpy(user, "bootes", sizeof user);
-	memcpy(bootline, "9s", sizeof bootline);
-	memcpy(bootserver, "bootes", sizeof bootserver);
-	memcpy(bootdevice, "parnfucky", sizeof bootdevice);
-}
 
 void
 machinit(void)
@@ -141,18 +92,6 @@ init0(void)
 	
 	u->slash = (*devtab[0].attach)(0);
 	u->dot = clone(u->slash, 0);
-	if(!waserror()){
-		c = namec("#e/bootline", Acreate, OWRITE, 0600);
-		(*devtab[c->type].write)(c, bootline, 64);
-		close(c);
-		c = namec("#e/bootserver", Acreate, OWRITE, 0600);
-		(*devtab[c->type].write)(c, bootserver, 64);
-		close(c);
-		c = namec("#e/bootdevice", Acreate, OWRITE, 0600);
-		(*devtab[c->type].write)(c, bootdevice, 2);
-		close(c);
-	}
-	poperror();
 
 	touser(USTKTOP-5*BY2WD);
 }
@@ -304,7 +243,7 @@ confinit(void)
 	conf.npage0 = (4*1024*1024)/BY2PG;	/* BUG */
 	conf.npage1 = 0*(4*1024*1024)/BY2PG;	/* BUG */
 	conf.base0 = 0;
-	conf.base1 = 16*1024*1024;
+	conf.base1 = 32*1024*1024;
 	conf.npage = conf.npage0+conf.npage1;
 	conf.maxialloc = 4*1024*1024;		/* BUG */
 	mul = 1;

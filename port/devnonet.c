@@ -781,7 +781,7 @@ listen(Chan *c, Noifc *ifc)
 		 */
 		ep = &ifc->conv[conf.nnoconv];
 		for(cp = &ifc->conv[0]; cp < ep; cp++){
-			if(cp->state>Cannounced && call.circuit==cp->rcvcircuit
+			if(cp->state>Cannounced && (call.circuit^1)==cp->rcvcircuit
 			&& strcmp(call.raddr, cp->raddr)==0)
 				break;
 		}

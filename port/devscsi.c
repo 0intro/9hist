@@ -318,7 +318,7 @@ typedef struct Scsictl {
 #define	DEV	((Scsictl *)&PORT[Scsiaddr])
 
 static long	poot;
-#define	WAIT	(poot=0, (poot==0?0:poot))
+#define	WAIT	(poot=0, poot==0?0:poot)
 
 #define	PUT(a,d)	(DEV->asr=(a), WAIT, DEV->data=(d))
 #define	GET(a)		(DEV->asr=(a), WAIT, DEV->data)
@@ -470,7 +470,7 @@ scsiintr(void)
 void
 scsidmaintr(void)
 {
-	uchar *p=0;
+		uchar *p = 0;
 /*
  *	if (scsirflag) {
  *		unsigned char *p;

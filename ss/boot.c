@@ -78,7 +78,6 @@ main(int argc, char *argv[])
 	argv++;
 	argc--;
 
-	manual = 1;
 	while(argc > 0){
 		if(argv[0][0] == '-'){
 			if(argv[0][1] == 'm')

@@ -186,7 +186,7 @@ noetheriput(Queue *q, Block *bp)
 		freeb(bp);
 		return;
 	}
-	clp = &ifc->call[ifc->rptr];
+	clp = &ifc->call[ifc->wptr];
 	sprint(clp->raddr, "%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux",
 		h->s[0], h->s[1], h->s[2], h->s[3], h->s[4], h->s[5]);
 	clp->circuit = circuit^1;

@@ -308,6 +308,9 @@ echo(int c)
 		case 'q':
 			dumpqueues();
 			return;
+		case 'r':
+			panic("you asked for it");
+			break;
 		case 'm':
 			mntdump();
 			return;

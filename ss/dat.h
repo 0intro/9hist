@@ -359,6 +359,7 @@ struct Proc
 	ulong	pc;			/* DEBUG only */
 	int	kp;			/* true if a kernel process */
 	int	pidonmach[MAXMACH];	/* TLB pid on each mmu */
+	int	nmmuseg;		/* number of segments active in mmu */
 };
 
 struct MMU

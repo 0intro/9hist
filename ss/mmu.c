@@ -79,17 +79,18 @@ newpid(Proc *p)
 	putcontext(i-1);
 
 	/*
-	 * kludge: each context is allowed NKLUDGE pmegs, NKLUDGE-1 for text & data and 1 for stack
+	 * kludge: each context is allowed NKLUDGE pmegs.
+	 * NKLUDGE-1 for text & data and 1 for stack.
+	 * initialize by giving just a stack segment.
 	 */
+	i--;	/* now i==context */
+	p->nmmuseg = 0;
 	for(j=0; j<NKLUDGE-1; j++)
-		putsegm(UZERO+j*BY2SEGM, kmapalloc.lowpmeg+(NKLUDGE*(i-1))+j);
-	putsegm(TSTKTOP-BY2SEGM, kmapalloc.lowpmeg+(NKLUDGE*(i-1))+(NKLUDGE-1));
-	for(j=0; j<PG2SEGM; j++){
-		for(k=0; k<NKLUDGE-1; k++)
-			putpmeg(UZERO+k*BY2SEGM+j*BY2PG, INVALIDPTE);
+		putsegm(UZERO+j*BY2SEGM, INVALIDPMEG);
+	putsegm(TSTKTOP-BY2SEGM, kmapalloc.lowpmeg+NKLUDGE*i+(NKLUDGE-1));
+	for(j=0; j<PG2SEGM; j++)
 		putpmeg((TSTKTOP-BY2SEGM)+j*BY2PG, INVALIDPTE);
-	}
-	return i;
+	return i+1;
 }
 
 void
@@ -205,6 +206,8 @@ putmmu(ulong tlbvirt, ulong tlbphys)
 {
 	short tp;
 	Proc *p;
+	ulong seg, l;
+	int j, k;
 
 	splhi();
 	p = u->p;
@@ -216,10 +219,30 @@ putmmu(ulong tlbvirt, ulong tlbphys)
 	/*
 	 * kludge part 2: make sure we've got a valid segment
 	 */
-	if(tlbvirt>=TSTKTOP || (UZERO+(NKLUDGE-1)*BY2SEGM<=tlbvirt && tlbvirt<(TSTKTOP-BY2SEGM))){
-		pprint("putmmu %lux", tlbvirt);
+	if(TSTKTOP-BY2SEGM<=tlbvirt && tlbvirt<TSTKTOP)	/* stack; easy */
+		goto put;
+	/* UZERO is known to be zero here */
+	if(tlbvirt < UZERO+p->nmmuseg*BY2SEGM)		/* in range; easy */
+		goto put;
+	seg = tlbvirt/BY2SEGM;
+	if(seg >= (UZERO/BY2SEGM)+(NKLUDGE-1)){
+		pprint("putmmu %lux\n", tlbvirt);
+print("putmmu %lux %d %s\n", tlbvirt, seg, p->text);
 		pexit("Suicide", 1);
 	}
+	/*
+	 * Prepare mmu up to this address
+	 */
+	tp--;	/* now tp==context */
+	tp = tp*NKLUDGE;
+	l = UZERO+p->nmmuseg*BY2SEGM;
+	for(j=p->nmmuseg; j<=seg; j++){
+		putsegm(l, kmapalloc.lowpmeg+tp+j);
+		for(k=0; k<PG2SEGM; k++,l+=BY2PG)
+			putpmeg(l, INVALIDPTE);
+	}
+	p->nmmuseg = seg+1;
+    put:
 	putpmeg(tlbvirt, tlbphys);
 	spllo();
 }

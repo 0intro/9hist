@@ -80,7 +80,6 @@ trap(Ureg *ur)
 /*	if(u)
 		u->p->pc = ur->pc;		/* BUG */
 	if(user){
-		print("user trap: %s pc=0x%lux\n", excname(tbr), ur->pc);
 		sprint(buf, "sys: trap: pc=0x%lux %s", ur->pc, excname(tbr));
 		postnote(u->p, 1, buf, NDebug);
 	}else{
@@ -89,11 +88,8 @@ trap(Ureg *ur)
 for(;;);
 		exit();
 	}
-	if(user && u->nnote){
-		print("notify %d\n", u->p->pid);
+	if(user && u->nnote)
 		notify(ur);
-		print("notifyed %d\n", u->p->pid);
-	}
 }
 
 void
@@ -162,7 +158,7 @@ notify(Ureg *ur)
 	ulong sp;
 
 	lock(&u->p->debug);
-	if(u->nnote == 0){
+	if(u->nnote==0){
 		unlock(&u->p->debug);
 		return;
 	}
@@ -188,6 +184,7 @@ notify(Ureg *ur)
 		*(ulong*)(sp+0*BY2WD) = 0;		/* arg 0 is pc */
 		ur->usp = sp;
 		ur->pc = (ulong)u->notify;
+		ur->npc = (ulong)u->notify+4;
 		u->notified = 1;
 		u->nnote--;
 		memcpy(&u->note[0], &u->note[1], u->nnote*sizeof(Note));
@@ -208,6 +205,7 @@ noted(Ureg **urp)
 	}
 	u->notified = 0;
 	memcpy(*urp, u->ureg, sizeof(Ureg));
+	(*urp)->r7 = -1;	/* return error from the interrupted call */
 	unlock(&u->p->debug);
 	splhi();
 	rfnote(urp);
@@ -323,7 +321,6 @@ void
 execpc(ulong entry)
 {
 	((Ureg*)UREGADDR)->pc = entry - 4;		/* syscall advances it */
-	((Ureg*)UREGADDR)->npc = entry;
 }
 
 #include "errstr.h"

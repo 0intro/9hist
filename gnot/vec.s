@@ -31,7 +31,8 @@ TEXT	vectors0<>(SB), $0
 	LONG	illegal(SB)		/* 24 */
 /* origin	0064, vector 25 */
 	LONG	tacintr(SB)		/* level 1 autovector */
-	LONG	illegal(SB)		/* level 2 autovector (port)*/
+/*	LONG	portintr(SB)		/* level 2 autovector */
+	LONG	illegal(SB)		/* level 2 autovector */
 	LONG	dkintr(SB)		/* level 3 autovector */
 	LONG	mouseintr(SB)		/* level 4 autovector */
 	LONG	uartintr(SB)		/* level 5 autovector */

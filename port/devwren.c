@@ -9,22 +9,38 @@
 
 #include	"scsi.h"
 
+typedef struct Part	Part;
+typedef struct Disk	Disk;
+
 enum {
-	Qdir, Qdata, Qstruct,
+	Npart=		2,	/* maximum partitions per disk */
+	Ndisk=		64,	/* maximum disks */
+
+	Qdir=		0,
+	Qdata=		16,
+	Qstruct=	32,
+
+	Mask=		0x7,
 };
 
-static Dirtab wrendir[]={
-	"data",		{Qdata},	0,	0600,
-	"struct",	{Qstruct},	8,	0400,
+static Dirtab *wrendir;
+#define	NWREN	(2*(Npart+1))
+
+struct Part
+{
+	ulong 	firstblock;
+	ulong 	maxblock;
+};
+struct Disk
+{
+	ulong	blocksize;
+	Part	p[Npart];
 };
 
-#define	NWREN	(sizeof wrendir/sizeof(Dirtab))
+static Disk	wren[Ndisk];
 
-static long	maxblock[64];
-static long	blocksize[64];
-
-static Scsi	staticcmd;		/* BUG */
-static uchar	datablk[4*512];		/* BUG */
+static Scsi	staticcmd;			/* BUG */
+static uchar	datablk[2*4*512];		/* BUG */
 
 /*
  *  accepts [0-7].[0-7], or abbreviation
@@ -50,6 +66,8 @@ wrendev(char *p)
 	if (p[3]!=0)
 		goto cant;
 out:
+	if(dev >= Ndisk)
+		error(Ebadarg);
 	return dev;
 cant:
 	error(Ebadarg);
@@ -59,20 +77,51 @@ static int
 wrengen(Chan *c, Dirtab *tab, long ntab, long s, Dir *dp)
 {
 	long l;
-	if(tab==0 || s>=ntab)
+	Part *p;
+	Disk *d;
+
+	if(s >= ntab)
 		return -1;
-	tab+=s;
-	if (tab->qid.path==Qdata && 0<=c->dev && c->dev<64)
-		l = maxblock[c->dev]*blocksize[c->dev];
+	if(c->dev >= Ndisk)
+		return -1;
+
+	tab += s;
+	d = &wren[c->dev];
+	p = &d->p[tab->qid.path&Mask];
+	if((tab->qid.path&~Mask) == Qdata)
+		l = d->blocksize * (p->maxblock - p->firstblock);
 	else
-		l = tab->length;
+		l = 8;
 	devdir(c, tab->qid, tab->name, l, tab->perm, dp);
 	return 1;
 }
 
 void
 wrenreset(void)
-{}
+{
+	Dirtab *p;
+	int i;
+
+	p = wrendir = ialloc((Npart+1) * 2 * sizeof(Dirtab), 0);
+	for(i = 0; i < Npart; i++){
+		sprint(p->name, "data%d", i);
+		p->qid.path = Qdata + i;
+		p->perm = 0600;
+		p++->length = 0;
+		strcpy(p->name, "struct%d");
+		p->qid.path = Qstruct + i;
+		p->perm = 0600;
+		p++->length = 0;
+	}
+	strcpy(p->name, "data");
+	p->qid.path = Qdata + Npart;
+	p->perm = 0600;
+	p++->length = 0;
+	strcpy(p->name, "struct");
+	p->qid.path = Qstruct + Npart;
+	p->perm = 0600;
+	p->length = 0;
+}
 
 void
 wreninit(void)
@@ -91,14 +140,26 @@ wrenattach(char *param)
 	uchar buf[32];
 	int dev;
 	Chan *c;
+	Disk *d;
+	ulong plen;
+	int i;
+
 	dev = wrendev(param);
 	scsiready(dev);
 	scsisense(dev, buf);
 	scsicap(dev, buf);
 	c = devattach('r', param);
 	c->dev = dev;
-	maxblock[dev] = BGLONG(&buf[0]);
-	blocksize[dev] = BGLONG(&buf[4]);
+	d = &wren[dev];
+	d->blocksize = BGLONG(&buf[4]);
+	plen = BGLONG(&buf[0]);
+	d->p[Npart].firstblock = 0;
+	d->p[Npart].maxblock = plen;
+	plen = plen/Npart;
+	for(i = 0; i < Npart; i++){
+		d->p[i].firstblock = i*plen;
+		d->p[i].maxblock = (i+1)*plen;
+	}
 	return c;
 }
 
@@ -145,16 +206,23 @@ wrenread(Chan *c, char *a, long n)
 {
 	Scsi *cmd = &staticcmd;
 	unsigned long lbn;
+	Part *p;
+	Disk *d;
+
 	if (n == 0)
 		return 0;
-	switch ((int)(c->qid.path & ~CHDIR)) {
-	case Qdir:
+
+	if(c->qid.path == CHDIR)
 		return devdirread(c, a, n, wrendir, NWREN, wrengen);
+
+	d = &wren[c->dev];
+	p = &(d->p[Mask&c->qid.path]);
+	switch ((int)(c->qid.path & ~Mask)) {
 	case Qdata:
-		if (n % blocksize[c->dev] || c->offset % blocksize[c->dev])
+		if (n % d->blocksize || c->offset % d->blocksize)
 			error(Ebadarg);
-		lbn = c->offset/blocksize[c->dev];
-		if (lbn >= maxblock[c->dev])
+		lbn = (c->offset/d->blocksize) + p->firstblock;
+		if (lbn >= p->maxblock)
 			error(Ebadarg);
 		if (n > sizeof datablk)
 			n = sizeof datablk;
@@ -170,7 +238,7 @@ wrenread(Chan *c, char *a, long n)
 		cmd->cmdblk[1] = lbn>>16;
 		cmd->cmdblk[2] = lbn>>8;
 		cmd->cmdblk[3] = lbn;
-		cmd->cmdblk[4] = n/blocksize[c->dev];
+		cmd->cmdblk[4] = n/d->blocksize;
 		cmd->cmdblk[5] = 0x00;
 		cmd->cmd.lim = &cmd->cmdblk[6];
 		cmd->data.lim = cmd->data.base + n;
@@ -187,8 +255,8 @@ wrenread(Chan *c, char *a, long n)
 		if (c->offset >= 8)
 			return 0;
 		n = 8;
-		PLONG((uchar *)&a[0], maxblock[c->dev]);
-		PLONG((uchar *)&a[4], blocksize[c->dev]);
+		PLONG((uchar *)&a[0], p->maxblock - p->firstblock);
+		PLONG((uchar *)&a[4], d->blocksize);
 		break;
 	default:
 		panic("wrenread");
@@ -201,14 +269,20 @@ wrenwrite(Chan *c, char *a, long n)
 {
 	Scsi *cmd = &staticcmd;
 	unsigned long lbn;
+	Part *p;
+	Disk *d;
+
 	if (n == 0)
 		return 0;
-	switch ((int)(c->qid.path & ~CHDIR)) {
+
+	d = &wren[c->dev];
+	p = &(d->p[Mask&c->qid.path]);
+	switch ((int)(c->qid.path & ~Mask)) {
 	case Qdata:
-		if (n % blocksize[c->dev] || c->offset % blocksize[c->dev])
+		if (n % d->blocksize || c->offset % d->blocksize)
 			error(Ebadarg);
-		lbn = c->offset/blocksize[c->dev];
-		if (lbn >= maxblock[c->dev])
+		lbn = c->offset/d->blocksize + p->firstblock;
+		if (lbn >= p->maxblock)
 			error(Ebadarg);
 		if (n > sizeof datablk)
 			n = sizeof datablk;
@@ -224,7 +298,7 @@ wrenwrite(Chan *c, char *a, long n)
 		cmd->cmdblk[1] = lbn>>16;
 		cmd->cmdblk[2] = lbn>>8;
 		cmd->cmdblk[3] = lbn;
-		cmd->cmdblk[4] = n/blocksize[c->dev];
+		cmd->cmdblk[4] = n/d->blocksize;
 		cmd->cmdblk[5] = 0x00;
 		cmd->cmd.lim = &cmd->cmdblk[6];
 		cmd->data.lim = cmd->data.base + n;

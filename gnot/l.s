@@ -215,6 +215,24 @@ TEXT	tacintr(SB), $0			/* level 1 */
 	MOVL	(A7)+, R0
 	RTE
 
+#ifdef asdf
+TEXT	portintr(SB), $0		/* level 2 */
+
+	SUBL	$((8+8+1)*BY2WD), A7
+	MOVEM	$0x7FFF, (A7)
+	MOVL	$a6base(SB), A6
+	MOVL	USP, A0
+	MOVL	A0, ((8+8)*BY2WD)(A7)
+	MOVL	A7, -(A7)
+	BSR	devportintr(SB)
+	ADDL	$4, A7
+	MOVL	((8+8)*BY2WD)(A7), A0
+	MOVL	A0, USP
+	MOVEM	(A7), $0x7FFF
+	ADDL	$((8+8+1)*BY2WD), A7
+	RTE
+#endif
+
 TEXT	dkintr(SB), $0			/* level 2 */
 
 	SUBL	$((8+8+1)*BY2WD), A7
