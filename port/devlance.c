@@ -826,11 +826,14 @@ lancekproc(void *arg)
 				/*
 				 *  The lock on e makes sure the queue is still there.
 				 */
-				bp = allocb(len);
-				memcpy(bp->rptr, (uchar *)p, len);
-				bp->wptr += len;
-				bp->flags |= S_DELIM;
-				PUTNEXT(e->q, bp);
+				if(!waserror()){
+					bp = allocb(len);
+					memcpy(bp->rptr, (uchar *)p, len);
+					bp->wptr += len;
+					bp->flags |= S_DELIM;
+					PUTNEXT(e->q, bp);
+					poperror();
+				}
 				qunlock(e);
 			}
 	
