@@ -3,6 +3,8 @@
 #include <auth.h>
 #include <../boot/boot.h>
 
+static long	finddosfile(int, char*);
+
 static void
 check(void *x, int len, uchar sum, char *msg)
 {
@@ -24,7 +26,6 @@ key(int islocal, Method *mp)
 	char buf[1024];
 	Nvrsafe *safe;
 	char password[20];
-	Dir d;
 
 	USED(islocal);
 	USED(mp);
@@ -42,14 +43,15 @@ key(int islocal, Method *mp)
 			fd = open("#w/sd0nvram", ORDWR);
 		if(fd < 0){
 			fd = open("#f/fd0disk", ORDWR);
+			if(fd < 0)
+				fd = open("#f/fd1disk", ORDWR);
 			if(fd >= 0){
-				if(dirfstat(fd, &d) >= 0){
-					safeoff = d.length - 512;
-					safelen = 512;
-				} else {
+				safeoff = finddosfile(fd, "plan9.nvr");
+				if(safeoff < 0){
 					close(fd);
 					fd = -1;
 				}
+				safelen = 512;
 			}
 		}
 	} else {
@@ -92,4 +94,136 @@ key(int islocal, Method *mp)
 	/* set host's domain */
 	if(writefile("#c/hostdomain", safe->authdom, strlen(safe->authdom)) < 0)
 		fatal("#c/hostdomain");
+}
+
+typedef struct Dosboot	Dosboot;
+struct Dosboot{
+	uchar	magic[3];	/* really an xx86 JMP instruction */
+	uchar	version[8];
+	uchar	sectsize[2];
+	uchar	clustsize;
+	uchar	nresrv[2];
+	uchar	nfats;
+	uchar	rootsize[2];
+	uchar	volsize[2];
+	uchar	mediadesc;
+	uchar	fatsize[2];
+	uchar	trksize[2];
+	uchar	nheads[2];
+	uchar	nhidden[4];
+	uchar	bigvolsize[4];
+	uchar	driveno;
+	uchar	reserved0;
+	uchar	bootsig;
+	uchar	volid[4];
+	uchar	label[11];
+	uchar	type[8];
+};
+#define	GETSHORT(p) (((p)[1]<<8) | (p)[0])
+#define	GETLONG(p) ((GETSHORT((p)+2) << 16) | GETSHORT((p)))
+
+typedef struct Dosdir	Dosdir;
+struct Dosdir
+{
+	char	name[8];
+	char	ext[3];
+	uchar	attr;
+	uchar	reserved[10];
+	uchar	time[2];
+	uchar	date[2];
+	uchar	start[2];
+	uchar	length[4];
+};
+
+static char*
+dosparse(char *from, char *to, int len)
+{
+	char c;
+
+	memset(to, ' ', len);
+	if(from == 0)
+		return 0;
+	while(len-- > 0){
+		c = *from++;
+		if(c == '.')
+			return from;
+		if(c == 0)
+			break;
+		if(c >= 'a' && c <= 'z')
+			*to++ = c + 'A' - 'a';
+		else
+			*to++ = c;
+	}
+	return 0;
+}
+
+/*
+ *  return offset of first file block
+ *
+ *  This is a very simplistic dos file system.  It only
+ *  works on floppies, only looks in the root, and only
+ *  returns a pointer to the first block of a file.
+ *
+ *  This exists for cpu servers that have no hard disk
+ *  or nvram to store the key on.
+ *
+ *  Please don't make this any smarter: it stays resident
+ *  and I'ld prefer not to waste the space on something that
+ *  runs only at boottime -- presotto.
+ */
+static long
+finddosfile(int fd, char *file)
+{
+	uchar secbuf[512];
+	char name[8];
+	char ext[3];
+	Dosboot	*b;
+	Dosdir *root, *dp;
+	int nroot, sectsize, rootoff, rootsects, n;
+
+	/* dos'ize file name */
+	file = dosparse(file, name, 8);
+	dosparse(file, ext, 3);
+
+	/* read boot block, check for sanity */
+	b = (Dosboot*)secbuf;
+	if(read(fd, secbuf, sizeof(secbuf)) != sizeof(secbuf))
+		return -1;
+	if(b->magic[0] != 0xEB || b->magic[1] != 0x3C || b->magic[2] != 0x90)
+		return -1;
+	sectsize = GETSHORT(b->sectsize);
+	if(sectsize != 512)
+		return -1;
+	rootoff = (1 + b->nfats*GETSHORT(b->fatsize)) * sectsize;
+	if(seek(fd, rootoff, 0) < 0)
+		return -1;
+	nroot = GETSHORT(b->rootsize);
+	rootsects = (nroot*sizeof(Dosdir)+sectsize-1)/sectsize;
+	if(rootsects <= 0 || rootsects > 20)
+		return -1;
+
+	/* 
+	 *  read root. it is contiguous to make stuff like
+	 *  this easier
+	 */
+	root = malloc(rootsects*sectsize);
+	if(read(fd, root, rootsects*sectsize) != rootsects*sectsize)
+		return -1;
+	n = -1;
+	for(dp = root; dp < &root[nroot]; dp++)
+		if(memcmp(name, dp->name, 8) == 0 && memcmp(ext, dp->ext, 3) == 0){
+			n = GETSHORT(dp->start);
+			break;
+		}
+	free(root);
+
+	if(n < 0)
+		return -1;
+
+	/*
+	 *  dp->start is in cluster units, not sectors.  The first
+	 *  cluster is cluster 2 which starts immediately after the
+	 *  root directory
+	 */
+	return rootoff + rootsects*sectsize + (n-2)*sectsize*b->clustsize;
 }
