@@ -416,10 +416,18 @@ lancereset(void)
 	ushort *lanceaddr;
 	ushort *hostaddr;
 
+
 	if(already == 0){
 		already = 1;
 		lancesetup(&l);
 	}
+
+	*l.rap = 0;
+	print("csr0 %lux\n", *l.rdp);
+	*l.rap = 1;
+	print("csr1 %lux\n", *l.rdp);
+	*l.rap = 2;
+	print("csr2 %lux\n", *l.rdp);
 
 	/*
 	 *  stop the lance
@@ -736,8 +744,19 @@ lanceintr(void)
 	/*
 	 *  see if an error occurred
 	 */
-	if(csr & (BABL|MISS|MERR))
+	if(csr & (BABL|MISS|MERR)){
 		print("lance err %ux\n", csr);
+		print("aser %lux asevar %lux\n", getw2(0x60000008), getw2(0x6000000C));
+	*l.rap = 0;
+	*l.rdp = STOP;
+delay(100);
+	*l.rap = 0;
+	print("csr0 %lux\n", *l.rdp);
+	*l.rap = 1;
+	print("csr1 %lux\n", *l.rdp);
+	*l.rap = 2;
+	print("csr2 %lux\n", *l.rdp);
+	}
 
 	if(csr & IDON){
 		print("lance inited\n");

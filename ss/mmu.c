@@ -175,6 +175,10 @@ mmuinit(void)
 				for(i=0; i<PG2SEGM; i++)
 					putpmeg(IOSEGM0+j*BY2SEGM+i*BY2PG, INVALIDPTE);
 		}
+		/*
+		 * Lance
+		 */
+		putsegm(LANCESEGM, LANCEPMEG);
 	}
 	putcontext(0);
 }

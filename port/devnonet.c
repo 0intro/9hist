@@ -16,7 +16,7 @@ enum {
 	/*
 	 *  tuning parameters
 	 */
-	MSrexmit = 500,		/* retranmission interval in ms */
+	MSrexmit = 250,		/* retranmission interval in ms */
 	MSack = 50,		/* ms to sit on an ack */
 
 	/*
@@ -37,7 +37,7 @@ static void	sendctlmsg(Noconv*, int, int);
 static void	sendmsg(Noconv*, Nomsg*);
 static void	startconv(Noconv*, int, char*, int);
 static void	queueack(Noconv*, int);
-
+static void	nonetkproc(void*);
 static void	nonetiput(Queue*, Block*);
 static void	nonetoput(Queue*, Block*);
 static void	nonetstclose(Queue*);
@@ -87,6 +87,12 @@ enum {
 	Chungup,
 	Cclosing,
 };
+
+/*
+ *  nonet kproc
+ */
+static int kstarted;
+static Rendez nonetkr;
 
 /*
  *  nonet file system.  most of the calls use dev.c to access the nonet
@@ -164,6 +170,7 @@ nonetattach(char *spec)
 		error(Enoifc);
 	c = devattach('n', spec);
 	c->dev = ifc - noifc;
+
 	return c;
 }
 
@@ -239,6 +246,11 @@ nonetopen(Chan *c, int omode)
 	Stream *s;
 	Noifc *ifc;
 	int line;
+
+	if(!kstarted){
+		kproc("nonetack", nonetkproc, 0);
+		kstarted = 1;
+	}
 
 	if(c->qid.path & CHDIR){
 		/*
@@ -466,8 +478,10 @@ nonetstclose(Queue *q)
 		}
 	}
 
+	qlock(cp);
 	cp->rcvcircuit = -1;
 	cp->state = Cclosed;
+	qunlock(cp);
 	poperror();
 }
 
@@ -511,6 +525,7 @@ nonetoput(Queue *q, Block *bp)
 	Noconv *cp;
 	int next;
 	Nomsg *mp;
+	int retries;
 
 	cp = (Noconv *)(q->ptr);
 
@@ -573,9 +588,12 @@ nonetoput(Queue *q, Block *bp)
 	/*
 	 *  wait for acknowledgement
 	 */
+	retries = 0;
 	while(!mp->acked && cp->state!=Chungup){
 		sendmsg(cp, mp);
 		tsleep(&mp->r, acked, mp, MSrexmit);
+		if(retries++ > 100)
+			errors("to many nonet rexmits");
 	}
 
 	/*
@@ -704,9 +722,9 @@ connect(Chan *c, char *addr)
 		cp->hdr->flag |= NO_SERVICE;
 		sprint(buf, "%s %s", service, u->p->pgrp->user);
 		c->qid.path = STREAMQID(STREAMID(c->qid.path), Sdataqid);
-		print("sending request\n");
+		DPRINT("sending request\n");
 		streamwrite(c, buf, strlen(buf), 1);
-		print("request sent\n");
+		DPRINT("request sent\n");
 		c->qid.path = STREAMQID(STREAMID(c->qid.path), Sctlqid);
 	}
 }
@@ -783,9 +801,9 @@ listen(Chan *c, Noifc *ifc)
 		 *  stuff the connect message into it
 		 */
 		f = ((Nohdr *)(call.msg->rptr))->flag;
-		print("call from %d %s\n", call.circuit, call.raddr);
+		DPRINT("call from %d %s\n", call.circuit, call.raddr);
 		startconv(cp, call.circuit, call.raddr, Cconnecting);
-		print("rcving %d byte message\n", call.msg->wptr - call.msg->rptr);
+		DPRINT("rcving %d byte message\n", call.msg->wptr - call.msg->rptr);
 		nonetrcvmsg(cp, call.msg);
 		call.msg = 0;
 
@@ -794,15 +812,13 @@ listen(Chan *c, Noifc *ifc)
 		 *  grab them
 		 */
 		if(f & NO_SERVICE){
-			print("reading service\n");
+			DPRINT("reading service\n");
 			c->qid.path = STREAMQID(cp - ifc->conv, Sdataqid);
 			n = streamread(c, buf, sizeof(buf));
 			c->qid.path = STREAMQID(cp - ifc->conv, Sctlqid);
-			print("read %d bytes\n", n);
 			if(n <= 0)
 				error(Ebadctl);
 			buf[n] = 0;
-			print("read %s\n", buf);
 			user = strchr(buf, ' ');
 			if(user){
 				*user++ = 0;
@@ -1056,15 +1072,15 @@ nonetrcvmsg(Noconv *cp, Block *bp)
 	 *  ignore old messages and process the acknowledgement
 	 */
 	if(h->mid != mp->mid){
-		DPRINT("old msg %d instead of %d\n", h->mid, mp->mid);
+		DPRINT("old msg %d instead of %d r==%d\n", h->mid, mp->mid, r);
 		if(r == 0){
 			rcvack(cp, h->ack);
 			if(f & NO_HANGUP)
 				hangup(cp);
 		} else {
 			if(r>0){
+				rcvack(cp, h->ack);
 				queueack(cp, h->mid);
-				sendctlmsg(cp, 0, 0);
 			}
 			cp->bad++;
 		}
@@ -1238,7 +1254,47 @@ nonetcksum(Block *bp, int offset)
 	return s & 0xffff;
 }
 
+/*
+ *  send acknowledges that need to be sent.  this happens at 1/2
+ *  the retransmission interval.
+ */
+static void
+nonetkproc(void *arg)
+{
+	Noifc *ifc;
+	Noconv *cp, *ep;
+
+	cp = 0;
+	ifc = 0;
+	if(waserror()){
+		if(ifc)
+			unlock(ifc);
+		if(cp)
+			qunlock(cp);
+	}
+
+loop:
+	for(ifc = noifc; ifc < &noifc[conf.nnoifc]; ifc++){
+		if(ifc->wq==0 || !canlock(ifc))
+			continue;
+		ep = ifc->conv + conf.nnoconv;
+		for(cp = ifc->conv; cp < ep; cp++){
+			if(cp->state==Cclosed || !canqlock(cp))
+				continue;
+			if(cp->afirst != cp->anext){
+				DPRINT("sending ack %d\n", cp->ack[cp->afirst]);
+				sendctlmsg(cp, 0, 0);
+			}
+			qunlock(cp);
+		}
+		unlock(ifc);
+	}
+	tsleep(&nonetkr, return0, 0, MSrexmit/2);
+	goto loop;
+}
+
 nonettoggle()
 {
 	pnonet ^= 1;
 }
+

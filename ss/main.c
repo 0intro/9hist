@@ -337,12 +337,8 @@ lancesetup(Lance *lp)
 	KMap *k;
 	ushort *sp;
 	uchar *cp;
-	ulong pa;
-	int i;
-
-k = kmappa(0xF8400000, PTEIO|PTENOCACHE);
-print("dma reg %lux\n", *(ulong*)k->va);
-kunmap(k);
+	ulong pa, pte, va;
+	int i, j;
 
 	k = kmappa(ETHER, PTEIO|PTENOCACHE);
 	lp->rdp = (void*)(k->va+0);
@@ -353,37 +349,55 @@ kunmap(k);
 		lp->ea[i] = *cp++;
 	kunmap(k);
 
-	lp->lognrrb = 1;	/* should be larger */
-	lp->logntrb = 1;	/* should be larger */
+	lp->lognrrb = 2;	/* should be larger */
+	lp->logntrb = 2;	/* should be larger */
 	lp->nrrb = 1<<lp->lognrrb;
 	lp->ntrb = 1<<lp->logntrb;
 
 	lp->sep = 1;
 
 	/*
-	 *  allocate area for lance init block and descriptor rings
+	 * Allocate area for lance init block and descriptor rings
 	 */
 	pa = (ulong)ialloc(BY2PG, 1)&~KZERO;	/* one whole page */
+	/* map at LANCESEGM */
 	k = kmappa(pa, PTEMAINMEM|PTENOCACHE);
+print("init block va %lux\n", k->va);
 	lp->lanceram = (ushort*)k->va;
 	lp->lm = (Lancemem*)k->va;
-	print("lm %lux %lux\n", k->va, k->pa);
 
 	/*
-	 *  Allocate space in host memory for the io buffers.
+	 * Allocate space in host memory for the io buffers.
+	 * Allocate a block and kmap it page by page.  kmap's are initially
+	 * in reverse order so rearrange them.
 	 */
-	i = lp->nrrb*sizeof(Etherpkt);
+	i = (lp->nrrb+lp->ntrb)*sizeof(Etherpkt);
 	i = (i+(BY2PG-1))/BY2PG;
-	if(i != 1)
-		panic("lancesetup");
+print("%d lance buffers\n", i);
 	pa = (ulong)ialloc(i*BY2PG, 1)&~KZERO;
-	k = kmappa(pa, PTEMAINMEM|PTENOCACHE);
+	va = 0;
+	for(j=i-1; j>=0; j--){
+		k = kmappa(pa+j*BY2PG, PTEMAINMEM|PTENOCACHE);
+		if(va){
+			if(va != k->va+BY2PG)
+				panic("lancesetup va unordered");
+			va = k->va;
+		}
+	}
+	/*
+	 * k->va is the base of the region
+	 */
 	lp->lrp = (Etherpkt*)k->va;
 	lp->rp = (Etherpkt*)k->va;
-	pa = (ulong)ialloc(i*BY2PG, 1)&~KZERO;
-	k = kmappa(pa, PTEMAINMEM|PTENOCACHE);
-	lp->ltp = (Etherpkt*)k->va;
-	lp->tp = (Etherpkt*)k->va;
+	lp->ltp = lp->lrp+lp->nrrb;
+	lp->tp = lp->rp+lp->nrrb;
+print("rp %lux tp %lux lm %lux\n", lp->rp, lp->tp, lp->lm);
+print("*rp %lux *tp %lux *lm %lux\n", *(ulong*)lp->rp, *(ulong*)lp->tp, *(ulong*)lp->lm);
+*(ulong*)lp->rp = 0;
+	k = kmappa(0xF8400000, PTEIO|PTENOCACHE);
+print("dma %lux %lux\n", k->va, *(ulong*)(k->va+4));
+	*(ulong*)(k->va+4) = 0;
+	kunmap(k);
 }
 
 /*

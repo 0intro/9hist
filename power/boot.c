@@ -5,6 +5,9 @@
 #define DEFSYS "bit!bootes"
 #define DEFFILE "/mips/9"
 
+char	*net;
+char	*netdev;
+
 Fcall	hdr;
 char	*scmd;
 
@@ -171,6 +174,8 @@ nonetdial(char *arg)
 		prerror(a->cmd);
 		return -1;
 	}
+	net = "nonet";
+	netdev = "#nnonet";
 	return fd;
 }
 
@@ -227,6 +232,8 @@ dkdial(char *arg)
 		prerror(cmd);
 		return -1;
 	}
+	net = "dk";
+	netdev = "#kdk";
 	return fd;
 }
 
@@ -346,6 +353,20 @@ boot(int ask)
 		error("mount");
 	print("success\n");
 	close(fd);
+
+	if(net){
+		char buf[128];
+
+		fd = create("#e/bootnet", 1, 0666);
+		if(fd >= 0){
+			if(write(fd, net, strlen(net)) != strlen(net))
+				error("writing bootnet");
+			close(fd);
+			sprint(buf, "/net/%s", net);
+			if(bind(netdev, buf, MREPL) < 0)
+				error("binding bootnet");
+		}
+	}
 
 	if(ask)
 		execl("/mips/init", "init", "-m", 0);
