@@ -4,6 +4,7 @@
 
 static char diskname[2*NAMELEN];
 static char *disk;
+static char **args;
 
 void
 configlocal(Method *mp)
@@ -56,12 +57,12 @@ authlocal(void)
 int
 connectlocal(void)
 {
-	int p[2];
+	int i, p[2];
 	Dir dir;
 	char d[DIRLEN];
 	char partition[2*NAMELEN];
 	char *dev;
-	char *args[16], **argp;
+	char **arg, **argp;
 
 	if(stat("/kfs", d) < 0)
 		return -1;
@@ -87,17 +88,26 @@ connectlocal(void)
 	case -1:
 		fatal("fork");
 	case 0:
-		dup(p[0], 0);
-		dup(p[1], 1);
-		close(p[0]);
-		close(p[1]);
-		argp = args;
+		arg = malloc((bargc+5)*sizeof(char*));
+		argp = arg;
 		*argp++ = "kfs";
 		*argp++ = "-f";
 		*argp++ = partition;
 		*argp++ = "-s";
+		for(i=1; i<bargc; i++)
+			*argp++ = bargv[i];
 		*argp = 0;
-		exec("/kfs", args);
+
+		print("kfs");
+		for(argp=arg; *argp; argp++)
+			print(" %s", *argp);
+		print("\n");
+
+		dup(p[0], 0);
+		dup(p[1], 1);
+		close(p[0]);
+		close(p[1]);
+		exec("/kfs", arg);
 		fatal("can't exec kfs");
 	default:
 		break;

@@ -29,12 +29,13 @@ main(void)
 	m->ticks = 1;
 
 	rs232power(1);
-	iprint("bitsy kernel\n");
+	iprint("\nPlan 9 bitsy kernel\n");
 	confinit();
 	xinit();
 	mmuinit();
 	gpioinit();
 	trapinit();
+	screeninit();
 	sa1100_uartsetup(1);
 	printinit();	/* from here on, print works, before this we need iprint */
 	clockinit();
@@ -44,7 +45,6 @@ main(void)
 	pageinit();
 	swapinit();
 	userinit();
-//iprint("schedinit(), death soon\n");
 	schedinit();
 }
 
@@ -60,33 +60,12 @@ exit(int ispanic)
 	delay(1000);
 
 	iprint("it's a wonderful day to die\n");
+	cacheflush();
 	mmuinvalidate();
 	mmudisable();
 	f = nil;
 	(*f)();
 }
-
-/*
- *  quicker panic
- */
-void
-qpanic(char *fmt, ...)
-{
-	int n;
-	va_list arg;
-	char buf[PRINTSIZE];
-
-	splhi();
-	strcpy(buf, "panic: ");
-	va_start(arg, fmt);
-	n = doprint(buf+strlen(buf), buf+sizeof(buf), fmt, arg) - buf;
-	va_end(arg);
-	buf[n] = '\n';
-	serialputs(buf, n+1);
-
-	exit(1);
-}
-
 
 static uchar *sp;
 

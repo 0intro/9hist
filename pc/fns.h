@@ -2,6 +2,7 @@
 
 void	aamloop(int);
 void	addconf(char*, char*);
+Dirtab*	addarchfile(char*, int, long(*)(Chan*,void*,long,vlong), long(*)(Chan*,void*,long,vlong));
 //void	addscsilink(char*, Scsiio (*)(int, ISAConf*));
 void	archinit(void);
 void	bootargs(ulong);
@@ -59,7 +60,6 @@ void	ioinit(void);
 int	iounused(int, int);
 int	ioalloc(int, int, int, char*);
 int	iprint(char*, ...);
-int	irqallocread(char*, long, vlong);
 int	isaconfig(char*, int, ISAConf*);
 void	kbdinit(void);
 void	lgdt(ushort[3]);

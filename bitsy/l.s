@@ -39,17 +39,22 @@ TEXT mmuinvalidate(SB), $-4
 	MCR	CpMMU, 0, R0, C(CpTLBFlush), C(0x7)
 	RET
 
+/* flush tlb's */
+TEXT mmuinvalidateaddr(SB), $-4
+	MCR	CpMMU, 0, R0, C(CpTLBFlush), C(0x6), 1
+	RET
+
 /* write back and invalidate i and d caches */
 TEXT cacheflush(SB), $-4
 	/* write back any dirty data */
 	MOVW	$0xe0000000,R0
 	ADD	$(8*1024),R0,R1
-_wbloop:
-	MOVW.W	32(R0),R2
+_cfloop:
+	MOVW.P	32(R0),R2
 	CMP	R0,R1
-	BNE	_wbloop
+	BNE	_cfloop
 	
-	/* drain write buffer and flush i&d cache contents */
+	/* drain write buffer and invalidate i&d cache contents */
 	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0xa), 4
 	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0x7), 0
 
@@ -60,13 +65,52 @@ _wbloop:
 	MOVW	R0,R0
 	RET
 
-/* clean a single virtual address */
-TEXT cacheflushaddr(SB), $-4
+/* write back and invalidate i and d caches */
+TEXT cachewb(SB), $-4
+	/* write back any dirty data */
+	MOVW	$0xe0000000,R0
+	ADD	$(8*1024),R0,R1
+_cwbloop:
+	MOVW.P	32(R0),R2
+	CMP	R0,R1
+	BNE	_cfloop
+	
+	/* drain write buffer */
+	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0xa), 4
+	RET
+
+/* write back a single cache line */
+TEXT cachewbaddr(SB), $-4
+	BIC	$31,R0
 	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0xa), 1
+	B	_wbflush
+
+/* write back a region of cache lines */
+TEXT cachewbregion(SB), $-4
+	MOVW	4(FP),R1
+	BIC	$31,R0
+	ADD	R0,R1
+	ADD	$32,R1
+_cfrloop:
+	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0xa), 1
+	ADD	$32,R0
+	CMP.S	R0,R1
+	BNE	_cfrloop
+	B	_wbflush
+
+/* invalidate the dcache */
+TEXT dcacheinvalidate(SB), $-4
+	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0x6)
+	RET
+
+/* invalidate the icache */
+TEXT icacheinvalidate(SB), $-4
+	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0x9)
 	RET
 
 /* drain write buffer */
 TEXT wbflush(SB), $-4
+_wbflush:
 	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0xa), 4
 	RET
 
@@ -100,7 +144,7 @@ TEXT putttb(SB), $-4
  */
 TEXT mmuenable(SB), $-4
 	MRC	CpMMU, 0, R0, C(CpControl), C(0x0)
-	ORR	$(CpCmmuena|CpCwb|CpCdcache), R0
+	ORR	$(CpCmmuena|CpCdcache|CpCwb), R0
 	MCR     CpMMU, 0, R0, C(CpControl), C(0x0)
 	RET
 

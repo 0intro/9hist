@@ -1,7 +1,10 @@
 #include "../port/portfns.h"
 
 void	cacheflush(void);
-void	cacheflushaddr(ulong);
+void	cachewb(void);
+void	cachewbaddr(void*);
+void	cachewbregion(void*, int);
+void	dcacheinvalidate(void);
 int	cistrcmp(char*, char*);
 int	cistrncmp(char*, char*, int);
 void	clockinit(void);
@@ -14,6 +17,7 @@ ulong	getfar(void);
 ulong	getfsr(void);
 #define	getpgcolor(a)	0
 void	h3650uartsetup(void);
+void	icacheinvalidate(void);
 void	idle(void);
 #define	idlehands()			/* nothing to do in the runproc */
 void	intrenable(int, void (*)(Ureg*, void*), void*, char*);
@@ -28,6 +32,7 @@ void	mmuinit(void);
 void	mmuenable(void);
 void	mmudisable(void);
 void	mmuinvalidate(void);
+void	mmuinvalidateaddr(ulong);
 void	noted(Ureg*, ulong);
 int	notify(Ureg*);
 #define	procrestore(p)

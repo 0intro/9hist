@@ -148,7 +148,7 @@ struct Mach
 
 	ulong*	pdb;			/* page directory base for this processor (va) */
 	Tss*	tss;			/* tss for this processor */
-	Segdesc	gdt[6];			/* gdt for this processor */
+	Segdesc	gdt[NGDT];			/* gdt for this processor */
 
 	Proc*	proc;			/* current process on this processor */
 	Proc*	externup;		/* extern register Proc *up */

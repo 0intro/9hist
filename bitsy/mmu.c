@@ -220,40 +220,57 @@ static ulong mmubits[16] =
  *  add an entry to the current map
  */
 void
-putmmu(ulong va, ulong pa, Page*)
+putmmu(ulong va, ulong pa, Page *pg)
 {
-	Page *pg;
-	ulong *t;
+	Page *l2pg;
+	ulong *t, *l1p, *l2p;
+	int s;
 
-print("putmmu(0x%.8lux, 0x%.8lux)\n", va, pa);
-	/* always point L1 entry to L2 page, can't hurt */
-	pg = up->l1page[va>>20];
-	if(pg == nil){
-		pg = up->mmufree;
-		if(pg != nil){
-			up->mmufree = pg->next;
+	s = splhi();
+
+	/* clear out the current entry */
+	mmuinvalidateaddr(va);
+
+	l2pg = up->l1page[va>>20];
+	if(l2pg == nil){
+		l2pg = up->mmufree;
+		if(l2pg != nil){
+			up->mmufree = l2pg->next;
 		} else {
-			pg = auxpage();
-			if(pg == nil)
+			l2pg = auxpage();
+			if(l2pg == nil)
 				pexit("out of memory", 1);
 		}
-		pg->va = VA(kmap(pg));
-		up->l1page[va>>20] = pg;
-		memset((uchar*)(pg->va), 0, BY2PG);
+		l2pg->va = VA(kmap(l2pg));
+		up->l1page[va>>20] = l2pg;
+		memset((uchar*)(l2pg->va), 0, BY2PG);
 	}
-	l1table[va>>20] = L1PageTable | L1Domain0 | (pg->pa & L1PTBaseMask);
-	cacheflushaddr((ulong)&l1table[va>>20]);
-print("%lux[%lux] = %lux\n", l1table, va>>20, l1table[va>>20]);
-	up->l1table[va>>20] = l1table[va>>20];
-	t = (ulong*)pg->va;
+
+	/* always point L1 entry to L2 page, can't hurt */
+	l1p = &l1table[va>>20];
+	*l1p = L1PageTable | L1Domain0 | (l2pg->pa & L1PTBaseMask);
+	up->l1table[va>>20] = *l1p;
+	t = (ulong*)l2pg->va;
 
 	/* set L2 entry */
-	t[(va & (OneMeg-1))>>PGSHIFT] = mmubits[pa & (PTEKERNEL|PTEVALID|PTEUNCACHED|PTEWRITE)]
+	l2p = &t[(va & (OneMeg-1))>>PGSHIFT];
+	*l2p = mmubits[pa & (PTEKERNEL|PTEVALID|PTEUNCACHED|PTEWRITE)]
 		| (pa & ~(PTEKERNEL|PTEVALID|PTEUNCACHED|PTEWRITE));
-print("%lux[%lux] = %lux\n", (ulong)t, (va & (OneMeg-1))>>PGSHIFT, t[(va & (OneMeg-1))>>PGSHIFT]);
-	cacheflushaddr((ulong)&t[(va & (OneMeg-1))>>PGSHIFT]);
 
-	wbflush();
+	/*  write back dirty entries - we need this because the pio() in
+	 *  fault.c is writing via a different virt addr and won't clean
+	 *  its changes out of the dcache.  Page coloring doesn't work
+	 *  on this mmu because the virtual cache is set associative
+	 *  rather than direct mapped.
+	 */
+	cachewb();
+	if(pg->cachectl[0] == PG_TXTFLUSH){
+		/* pio() sets PG_TXTFLUSH whenever a text page has been written */
+		icacheinvalidate();
+		pg->cachectl[0] = PG_NOFLUSH;
+	}
+
+	splx(s);
 }
 
 /*
@@ -300,6 +317,7 @@ mmurelease(Proc* p)
 	p->mmufree = nil;
 
 	memset(l1table, 0, sizeof(p->l1table));
+	cachewbregion(l1table, sizeof(p->l1table));
 }
 
 void
@@ -309,20 +327,19 @@ mmuswitch(Proc *p)
 		return;
 	m->mmupid = p->pid;
 
+	/* write back dirty cache entries and invalidate all cache entries */
+	cacheflush();
+
 	if(p->newtlb){
 		mmuptefree(p);
 		p->newtlb = 0;
 	}
 
-	/* write back dirty cache entries before changing map */
-	cacheflush();
-
 	/* move in new map */
 	memmove(l1table, p->l1table, sizeof(p->l1table));
 
-	/* make sure map is in memory and drain write buffer */
-	cacheflushaddr((ulong)l1table);
-	wbflush();
+	/* make sure map is in memory */
+	cachewbregion(l1table, sizeof(p->l1table));
 
 	/* lose any possible stale tlb entries */
 	mmuinvalidate();

@@ -1056,6 +1056,7 @@ kproc(char *name, void (*func)(void *), void *arg)
 	 *  any mmu info about this process is now stale
 	 *  and has to be discarded.
 	 */
+	p->newtlb = 1;
 	flushmmu();
 }
 

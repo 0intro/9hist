@@ -698,6 +698,8 @@ struct Log {
 	char	*end;
 	char	*rptr;
 	int	len;
+	int	nlog;
+	int	minread;
 
 	int	logmask;	/* mask of things to debug */
 

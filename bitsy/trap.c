@@ -79,23 +79,30 @@ trapinit(void)
 void
 trapdump(char *tag)
 {
-	iprint("%s: icip %lux icmr %lux iclr %lux iccr %lux icfp %lux\n",
+	print("%s: icip %lux icmr %lux iclr %lux iccr %lux icfp %lux\n",
 		tag, intrregs->icip, intrregs->icmr, intrregs->iclr,
 		intrregs->iccr, intrregs->icfp);
 }
 
 void
-dumpregs(Ureg *ur)
+warnregs(Ureg *ur, char *tag)
 {
-	iprint("r0  0x%.8lux r1  0x%.8lux r2  0x%.8lux r3  0x%.8lux\n",
+	char buf[512];
+	char *e = buf+sizeof(buf);
+	char *p;
+
+	p = seprint(buf, e, "%s:\n", tag);
+	p = seprint(p, e, "r0  0x%.8lux r1  0x%.8lux r2  0x%.8lux r3  0x%.8lux\n",
 		ur->r0, ur->r1, ur->r2, ur->r3);
-	iprint("r4  0x%.8lux r5  0x%.8lux r6  0x%.8lux r7  0x%.8lux\n",
+	p = seprint(p, e, "r4  0x%.8lux r5  0x%.8lux r6  0x%.8lux r7  0x%.8lux\n",
 		ur->r4, ur->r5, ur->r6, ur->r7);
-	iprint("r8  0x%.8lux r9  0x%.8lux r10 0x%.8lux r11 0x%.8lux\n",
+	p = seprint(p, e, "r8  0x%.8lux r9  0x%.8lux r10 0x%.8lux r11 0x%.8lux\n",
 		ur->r8, ur->r9, ur->r10, ur->r11);
-	iprint("r12 0x%.8lux r13 0x%.8lux r14 0x%.8lux\n",
+	p = seprint(p, e, "r12 0x%.8lux r13 0x%.8lux r14 0x%.8lux\n",
 		ur->r12, ur->r13, ur->r14);
-	iprint("type %.8lux psr %.8lux pc %.8lux\n", ur->type, ur->psr, ur->pc);
+	seprint(p, e, "type %.8lux psr %.8lux pc %.8lux\n",
+		ur->type, ur->psr, ur->pc);
+	print("%s", buf);
 }
 
 /*
@@ -131,29 +138,36 @@ faultarm(Ureg *ureg, ulong va, int user, int read)
 
 	insyscall = up->insyscall;
 	up->insyscall = 1;
-//peekmmu(va);
 	n = fault(va, read);
-//iprint("fault returns %d\n", n);
 	if(n < 0){
 		if(!user){
-			dumpregs(ureg);
-			panic("fault: 0x%lux\n", va);
+			warnregs(ureg, "kernel fault");
+			panic("fault: kernel accessing 0x%lux\n", va);
 		}
-		dumpregs(ureg);
-		sprint(buf, "sys: trap: fault %s va=0x%lux",
-			read? "read" : "write", va);
+//		warnregs(ureg, "user fault");
+		sprint(buf, "sys: trap: fault %s va=0x%lux", read ? "read" : "write", va);
 		postnote(up, 1, buf, NDebug);
 	}
 	up->insyscall = insyscall;
 }
 
-/* all Pabt+1 faults are caused by loads or stores.  The Lbit of
- * the instruction distinquishes between them.
+/*
+ *  returns 1 if the instruction writes memory, 0 otherwise
  */
-enum
+int
+writetomem(ulong inst)
 {
-	Lbit = 1<<20,	/* load instruction */
-};
+	/* swap always write memory */
+	if((inst & 0x0FC00000) == 0x01000000)
+		return 1;
+
+	/* loads and stores are distinguished by bit 20 */
+	if(inst & (1<<20))
+		return 0;
+
+	return 1;
+}
+
 
 /*
  *  here on all exceptions other than syscall (SWI)
@@ -179,18 +193,21 @@ trap(Ureg *ureg)
 	else
 		ureg->pc -= 4;
 
+	if((user && (ureg->r13 & 0xf0000000)) || (ureg->psr & 0x10) != 0x10){
+		warnregs(ureg, "wierd ureg");
+		panic("bad ureg\n");
+	}
+
 	switch(ureg->type){
 	default:
 		panic("unknown trap");
 		break;
 	case PsrMabt:	/* prefetch fault */
-print("%d: prefetch abort at 0x%lux\n", m->lastpid, ureg->pc);
 		faultarm(ureg, ureg->pc, user, 1);
 		break;
 	case PsrMabt+1:	/* data fault */
 		va = getfar();
 		inst = *(ulong*)(ureg->pc);
-print("%d: data fault pc 0x%lux(0x%lux) va 0x%lux fsr 0x%lux\n", m->lastpid, ureg->pc, inst, va, getfsr());
 		switch(getfsr() & 0xf){
 		case 0x0:
 			panic("vector exception at %lux\n", ureg->pc);
@@ -218,21 +235,23 @@ print("%d: data fault pc 0x%lux(0x%lux) va 0x%lux fsr 0x%lux\n", m->lastpid, ure
 		case 0x5:
 		case 0x7:
 			/* translation fault, i.e., no pte entry */
-			faultarm(ureg, va, user, inst & Lbit);
+			faultarm(ureg, va, user, !writetomem(inst));
 			break;
 		case 0x9:
 		case 0xb:
 			/* domain fault, accessing something we shouldn't */
 			if(user){
-				sprint(buf, "sys: access violation: pc 0x%lux va 0x%lux\n", ureg->pc, va);
+				sprint(buf, "sys: access violation: pc 0x%lux va 0x%lux\n",
+					ureg->pc, va);
 				postnote(up, 1, buf, NDebug);
 			} else
-				panic("kernel access violation: pc 0x%lux va 0x%lux\n", ureg->pc, va);
+				panic("kernel access violation: pc 0x%lux va 0x%lux\n",
+					ureg->pc, va);
 			break;
 		case 0xd:
 		case 0xf:
 			/* permission error, copy on write or real permission error */
-			faultarm(ureg, va, user, inst & Lbit);
+			faultarm(ureg, va, user, !writetomem(inst));
 			break;
 		}
 		break;
@@ -552,10 +571,11 @@ forkchild(Proc *p, Ureg *ureg)
 {
 	Ureg *cureg;
 
+//print("%lud setting up for forking child %lud\n", up->pid, p->pid);
 	p->sched.sp = (ulong)p->kstack+KSTACK-sizeof(Ureg);
 	p->sched.pc = (ulong)forkret;
 
-	cureg = (Ureg*)(p->sched.sp+2*BY2WD);
+	cureg = (Ureg*)(p->sched.sp);
 	memmove(cureg, ureg, sizeof(Ureg));
 
 	/* syscall returns 0 for child */
@@ -582,7 +602,7 @@ execregs(ulong entry, ulong ssize, ulong nargs)
 	memset(ureg, 0, 15*sizeof(ulong));
 	ureg->r13 = (ulong)sp;
 	ureg->pc = entry;
-print("execregs pc 0x%lux sp 0x%lux\n", ureg->pc, ureg->r13);
+//print("%lud: EXECREGS pc 0x%lux sp 0x%lux\n", up->pid, ureg->pc, ureg->r13);
 	return USTKTOP-BY2WD;		/* address of user-level clock */
 }
 

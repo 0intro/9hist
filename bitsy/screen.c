@@ -18,13 +18,13 @@ enum {
 	Ht		= 240,
 	Pal0	= 0x2000,	/* 16-bit pixel data in active mode (12 in passive) */
 
-	hsw		= 0x4,
+	hsw		= 0x04,
 	elw		= 0x11,
-	blw		= 0xc,
+	blw		= 0x0c,
 
-	vsw		= 0x3,
-	efw		= 0x1,
-	bfw		= 0xa,
+	vsw		= 0x03,
+	efw		= 0x01,
+	bfw		= 0x0a,
 
 	pcd		= 0x10,
 };
@@ -93,16 +93,16 @@ enum {
 };
 
 struct sa1110regs {
-	ulong	lccr0;	/* 0xb0100000 */
-	ulong	lcsr;	/* 0xb0100004 */
-	ulong	dummies[2];	/* unused  0xb0100008 and 0xb010000c */
-	short*	dbar1;	/* 0xb0100010 */
-	ulong	dcar1;	/* 0xb0100014 */
-	ulong	dbar2;	/* 0xb0100018 */
-	ulong	dcar2;	/* 0xb010001c */
-	ulong	lccr1;	/* 0xb0100020 */
-	ulong	lccr2;	/* 0xb0100024 */
-	ulong	lccr3;	/* 0xb0100028 */
+	ulong	lccr0;
+	ulong	lcsr;
+	ulong	dummies[2];
+	short*	dbar1;
+	ulong	dcar1;
+	ulong	dbar2;
+	ulong	dcar2;
+	ulong	lccr1;
+	ulong	lccr2;
+	ulong	lccr3;
 } *lcd;
 
 Point	ZP = {0, 0};
@@ -128,15 +128,31 @@ Memimage *back;
 Memimage *hwcursor;
 
 static void
+lcdstop(void) {
+	ulong	lccr0;
+
+	lcd->lccr0 &= ~(0<<LEN);	/* disable the LCD */
+	while((lcd->lcsr & LDD) == 0)
+		sleep(1);
+	lcdpower(0);
+}
+
+static void
 lcdinit(void)
 {
-	lcd = (struct sa1110regs*)0xb0100000;
+	/* map the lcd regs into the kernel's virtual space */
+	lcd = (struct sa1110regs*)mapspecial(LCDREGS, sizeof(struct sa1110regs));;
+
+	/* the following works because main memory is direct mapped */
+	lcd->lccr0 &= ~(0<<LEN);	/* disable the LCD */
+	while((lcd->lcsr & LDD) == 0)
+		sleep(1);
 
 	lcd->dbar1 = framebuf->palette;
-	lcd->lccr3 = (pcd << PCD) | (0 << ACB) | (0 << API) | (1 << VSP) | (1 << HSP);
-	lcd->lccr2 = ((Ht-1) << LPP) | (vsw << VSW) | (efw << EFW) | (bfw << BFW);
-	lcd->lccr1 = (Wid << PPL) | (hsw << HSW) | (elw << ELW) | (blw << BLW);
-	lcd->lccr0 = 1<<LEN | 1 << CMS | 0<<SDS | 1<<LDM | 1<<BAM | 1<<ERM | 1<<PAS | 0<<BLE | 0<<PDD;
+	lcd->lccr3 = pcd<<PCD | 0<<ACB | 0<<API | 1<<VSP | 1<<HSP | 0<<PCP | 0<<OEP;
+	lcd->lccr2 = (Ht-1)<<LPP | vsw<<VSW | efw<<EFW | bfw<<BFW;
+	lcd->lccr1 = (Wid-16)<<PPL | hsw<<HSW | elw<<ELW | blw<<BLW;
+	lcd->lccr0 = 1<<LEN | 0<<CMS | 0<<SDS | 1<<LDM | 1<<BAM | 1<<ERM | 1<<PAS | 0<<BLE | 0<<DPD | 0<<PDD;
 
 }
 
@@ -145,9 +161,14 @@ screeninit(void)
 {
 	framebuf = xspanalloc(sizeof *framebuf, 0x10, 0);
 	memset(framebuf->palette, 0, sizeof framebuf->palette);
+	memset(framebuf->pixel, 0xf8, sizeof framebuf->pixel);
 	framebuf->palette[0] = Pal0;
 
+	print("LCD status before power up: 0x%lux\n", lcd->lcsr);
+	lcdpower(1);
+	print("LCD status after power up: 0x%lux\n", lcd->lcsr);
 	lcdinit();
+	print("LCD status after lcdinit: 0x%lux\n", lcd->lcsr);
 
 	gscreen = &xgscreen;
 	gscreen->data = (struct Memdata *)framebuf->pixel;
