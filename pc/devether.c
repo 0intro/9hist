@@ -693,7 +693,6 @@ int intrmap[] =
 	9, 3, 5, 7, 10, 11, 15, 4,
 };
 
-
 /*
  *  get configuration parameters, enable memory
  */
@@ -702,18 +701,28 @@ wd8013reset(Ctlr *cp)
 {
 	Hw *hw = cp->hw;
 	int i;
-	uchar msr;
-	uchar icr;
-	uchar laar;
-	uchar irr;
+	uchar msr, icr, laar, irr;
 	ulong ram;
 
-	msr = IN(hw, msr);
-	icr = IN(hw, icr);
-	irr = IN(hw, irr);
-	laar = IN(hw, laar);
+	/* find the ineterface */
+	SET(msr, icr, irr, laar);
+	for(hw->addr = 0x200; hw->addr < 0x400; hw->addr += 0x20){
+		msr = IN(hw, msr);
+		icr = IN(hw, icr);
+		irr = IN(hw, irr);
+		laar = IN(hw, laar);
+		if((msr&0x80) || (icr&0xf0) || irr == 0xff || laar == 0xff)
+			continue;	/* nothing there */
 
-	if(msr == 0xff || icr == 0xff || irr == 0xff || laar == 0xff)
+		/* ethernet address */
+		for(i = 0; i < sizeof(cp->ea); i++)
+			cp->ea[i] = IN(hw, lan[i]);
+
+		/* look for an elite ether address */
+		if(cp->ea[0] == 0x00 && cp->ea[1] == 0x00 && cp->ea[2] == 0xC0)
+			break;
+	}
+	if(hw->addr >= 0x400)
 		return -1;
 
 	if(cp->rb == 0){
@@ -722,10 +731,6 @@ wd8013reset(Ctlr *cp)
 		cp->tb = xspanalloc(sizeof(Buffer)*Ntb, BY2PG, 0);
 		cp->ntb = Ntb;
 	}
-
-	/* ethernet address */
-	for(i = 0; i < sizeof(cp->ea); i++)
-		cp->ea[i] = IN(hw, lan[i]);
 
 	/* 16 bit operation? */
 	hw->bt16 = icr & 0x1;
@@ -751,7 +756,7 @@ wd8013reset(Ctlr *cp)
 	hw->pstart = HOWMANY(sizeof(Etherpkt), 256);
 	hw->pstop = HOWMANY(hw->size, 256);
 
-/* print("ether width %d addr %lux size %d lvl %d\n", hw->bt16?16:8,
+print("elite at %lux width %d addr %lux size %d lvl %d\n", hw->addr, hw->bt16?16:8,
 	hw->ram, hw->size, hw->lvl);/**/
 
 	/* enable interface RAM, set interface width */
@@ -902,7 +907,8 @@ wd8013receive(Ctlr *cp)
 		OUT(hw, w.cr, Page0|RD2|STA);
 		if(next == curr)
 			break;
-		waitfordma(hw);
+		if(strcmp(machtype, "NCRD.0") == 0)
+			waitfordma(hw);
 		cp->inpackets++;
 		p = &((Ring*)hw->ram)[next];
 		len = ((p->len1<<8)|p->len0)-4;
@@ -1009,5 +1015,4 @@ static Hw wd8013 =
 	wd8013transmit,
 	wd8013intr,
 	wd8013tweek,
-	0x360,					/* I/O base address */
 };

@@ -295,19 +295,23 @@ mouseres(int res)
 	}
 }
 
+static int shift;
+
 /*
  *  mouse message is three bytes
  *
  *	byte 0 -	0 0 SDY SDX 1 M R L
  *	byte 1 -	DX
  *	byte 2 -	DY
+ *
+ *  shift & left button is the same as middle button
  */
 static void
 mymouseputc(int c)
 {
 	static short msg[3];
 	static int nb;
-	static uchar b[] = {0, 1, 4, 5, 2, 3, 6, 7};
+	static uchar b[] = {0, 1, 4, 5, 2, 3, 6, 7, 0, 1, 2, 5, 2, 3, 6, 7 };
 	static lastdx, lastdy;
 	extern Mouseinfo mouse;
 
@@ -325,7 +329,7 @@ mymouseputc(int c)
 		if(msg[0] & 0x20)
 			msg[2] |= 0xFF00;
 
-		mousebuttons = b[msg[0]&7];
+		mousebuttons = b[(msg[0]&7) | (shift ? 8 : 0)];
 		mouse.newbuttons = mousebuttons | keybuttons;
 		mouse.dx = msg[1];
 		mouse.dy = -msg[2];
@@ -369,7 +373,6 @@ kbdintr0(void)
 {
 	int s, c, i, nk;
 	static int esc1, esc2;
-	static int shift;
 	static int caps;
 	static int ctl;
 	static int num;

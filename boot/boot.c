@@ -149,7 +149,7 @@ rootserver(char *arg)
 	char reply[64];
 	Method *mp;
 	char *cp;
-	int n;
+	int n, j;
 	int notfirst;
 
 	mp = method;
@@ -165,9 +165,13 @@ rootserver(char *arg)
 	for(notfirst = 0;; notfirst = 1){
 		if(pflag || notfirst)
 			outin(prompt, reply, sizeof(reply));
+		cp = strchr(reply, '!');
+		if(cp)
+			j = cp - reply;
+		else
+			j = strlen(reply);
 		for(mp = method; mp->name; mp++)
-			if(*reply == *mp->name){
-				cp = strchr(reply, '!');
+			if(strncmp(reply, mp->name, j) == 0){
 				if(cp)
 					strcpy(sys, cp+1);
 				return mp;

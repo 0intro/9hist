@@ -33,7 +33,6 @@ void	idle(void);
 int	inb(int);
 void	inss(int, void*, int);
 void	kbdinit(void);
-void	ksetpcinfo(void);
 void	mathinit(void);
 void	mmuinit(void);
 int	modem(int);

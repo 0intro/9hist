@@ -186,3 +186,5 @@ extern int	flipD[];	/* for flipping bitblt destination polarity */
  *  bootline passed by boot program
  */
 #define BOOTLINE ((char *)0x80000100)
+
+extern char	machtype[];

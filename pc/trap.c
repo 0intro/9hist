@@ -235,7 +235,8 @@ trap(Ureg *ur)
 				panic("%s pc=0x%lux", excname[v], ur->pc);
 			}
 		}
-		panic("bad trap type %d pc=0x%lux\n", v, ur->pc);
+		print("bad trap type %d pc=0x%lux\n", v, ur->pc);
+		return;
 	}
 
 	(*ivec[v])(ur);

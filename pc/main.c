@@ -6,6 +6,7 @@
 #include	"io.h"
 #include	"ureg.h"
 #include	"init.h"
+#include	<ctype.h>
 
 /* configuration parameters */
 enum
@@ -21,6 +22,7 @@ enum
 };
 int pmutype;
 int resettype;
+char machtype[9];
 
 uchar *sp;	/* stack pointer for /boot */
 
@@ -62,11 +64,19 @@ void
 ident(void)
 {
 	char *id = (char*)(ROMBIOS + 0xFF40);
+	int i;
 
-	if(strncmp(id, "AT&TNSX", 7) == 0){
+	for(i = 0; i < 8; i++){
+		if(isprint(id[i]) == 0)
+			break;
+		machtype[i] = id[i];
+	}
+	if(i == 0)
+		strcpy(machtype, "generic");
+	if(strcmp(machtype, "AT&TNSX") == 0){
 		pmutype = PMUnsx20;
 		resettype = Resetheadland;
-	}else if(strncmp(id, "NCRD.0", 6) == 0){
+	}else if(strcmp(machtype, "NCRD.0") == 0){
 		resettype = Reset8042;
 	}
 }
@@ -87,6 +97,8 @@ ulong garbage;
 void
 init0(void)
 {
+	char tstr[32];
+
 	u->nerrlab = 0;
 	m->proc = u->p;
 	u->p->state = Running;
@@ -105,7 +117,9 @@ init0(void)
 	chandevinit();
 
 	if(!waserror()){
-		ksetpcinfo();
+		strcpy(tstr, machtype);
+		strcat(tstr, " %s");
+		ksetterm(tstr);
 		ksetenv("cputype", "386");
 		poperror();
 	}
