@@ -20,23 +20,23 @@ struct{
 	int	bwid;
 }out;
 
+int islittle = 1;		/* little endian bit ordering in bytes */
+
+extern Cursor arrow;
+extern uchar cswizzle[256];
+
+
 /*
  *  screen dimensions
  */
-
 #define MAXX	640
 #define MAXY	480
 
-GBitmap	gscreen =
-{
-	(ulong*)SCREENMEM,
-	0,
-	640/32,
-	0,
-	{ 0, 0, MAXX, MAXY, },
-	{ 0, 0, MAXX, MAXY, },
-	0
-};
+/*
+ *  'soft' screen bitmap
+ */
+GBitmap	gscreen;
+GBitmap	vgascreen;
 
 typedef struct VGAmode	VGAmode;
 struct VGAmode
@@ -71,6 +71,8 @@ VGAmode mode12 =
 	0x01, 0x10, 0x0f, 0x00, 0x00,
 };
 
+static Rectangle mbb;
+static Rectangle NULLMBB = {10000, 10000, -10000, -10000};
 
 void
 genout(int reg, int val)
@@ -224,14 +226,36 @@ dumpmodes(void) {
 #endif
 
 void
-setscreen(int maxx, int maxy, int bpp)
+setscreen(int maxx, int maxy, int ldepth)
 {
-	USED(bpp);
-	gbitblt(&gscreen, Pt(0, 0), &gscreen, gscreen.r, flipD[S]);
-	gscreen.width = maxx/32;
+	int len;
+
+	mbb = NULLMBB;
+
+	/*
+	 *  zero hard screen
+	 */
+	memset((void*)SCREENMEM, 0xff, 64*1024);
+	vgascreen.ldepth = 0;
+	vgascreen.base = (void*)SCREENMEM;
+	vgascreen.width = (maxx*(1<<ldepth))/32;
+	vgascreen.r.max = Pt(maxx, maxy);
+	vgascreen.clipr.max = vgascreen.r.max;
+
+	/*
+	 *  setup new soft screen
+	 */
+	gscreen.ldepth = ldepth;
+	gscreen.width = (maxx*(1<<ldepth))/32;
 	gscreen.r.max = Pt(maxx, maxy);
 	gscreen.clipr.max = gscreen.r.max;
-	gbitblt(&gscreen, Pt(0, 0), &gscreen, gscreen.r, flipD[0]);
+	len = gscreen.width * 4 * maxy;
+	gscreen.base = malloc(len);
+	memset((void*)gscreen.base, 0xff, len);
+
+	/*
+	 *  set string pointer to upper left
+	 */
 	out.pos.x = MINX;
 	out.pos.y = 0;
 	out.bwid = defont0.info[' '].width;
@@ -246,26 +270,77 @@ screeninit(void)
 	setmode(&mode12);
 
 	/*
-	 *  swizzle the font longs.
-	 *  we do it here since the font is initialized with big
-	 *  endian longs.
+	 *  arrow is defined as a big endian
+	 */
+	bitreverse(arrow.set, 2*16);
+	bitreverse(arrow.clr, 2*16);
+
+	/*
+	 *  swizzle the font longs.  we do both byte and bit swizzling
+	 *  since the font is initialized with big endian longs.
 	 */
 	defont = &defont0;
 	l = defont->bits->base;
 	for(i = defont->bits->width*Dy(defont->bits->r); i > 0; i--, l++)
 		*l = (*l<<24) | ((*l>>8)&0x0000ff00) | ((*l<<8)&0x00ff0000) | (*l>>24);
-	setscreen(MAXX, MAXY, 1);
+	bitreverse((uchar*)defont->bits->base,
+		defont->bits->width*BY2WD*Dy(defont->bits->r));
+
+	/*
+	 *  set up 'soft' and hard screens
+	 */
+	if(conf.maxx == 0)
+		conf.maxx = MAXX;
+	if(conf.maxy == 0)
+		conf.maxy = MAXY;
+
+	setscreen(conf.maxx, conf.maxy, conf.ldepth);
+}
+
+/*
+ *  collect changes to the 'soft' screen
+ */
+void
+mbbrect(Rectangle r)
+{
+	if (r.min.x < mbb.min.x)
+		mbb.min.x = r.min.x;
+	if (r.min.y < mbb.min.y)
+		mbb.min.y = r.min.y;
+	if (r.max.x > mbb.max.x)
+		mbb.max.x = r.max.x;
+	if (r.max.y > mbb.max.y)
+		mbb.max.y = r.max.y;
+	screenupdate();
+}
+
+void
+mbbpt(Point p)
+{
+	if (p.x < mbb.min.x)
+		mbb.min.x = p.x;
+	if (p.y < mbb.min.y)
+		mbb.min.y = p.y;
+	if (p.x >= mbb.max.x)
+		mbb.max.x = p.x+1;
+	if (p.y >= mbb.max.y)
+		mbb.max.y = p.y+1;
+	screenupdate();
 }
 
 void
 screenputnl(void)
 {
+	Rectangle r;
+
 	out.pos.x = MINX;
 	out.pos.y += defont0.height;
 	if(out.pos.y > gscreen.r.max.y-defont0.height)
 		out.pos.y = gscreen.r.min.y;
-	gbitblt(&gscreen, Pt(0, out.pos.y), &gscreen,
-	    Rect(0, out.pos.y, gscreen.r.max.x, out.pos.y+2*defont0.height), flipD[0]);
+	r = Rect(0, out.pos.y, gscreen.r.max.x, out.pos.y+2*defont0.height);
+	gbitblt(&gscreen, r.min, &gscreen, r, flipD[0]);
+	mbbrect(r);
+	screenupdate();
 }
 
 Lock screenlock;
@@ -275,8 +350,10 @@ screenputs(char *s, int n)
 {
 	Rune r;
 	int i;
+	Rectangle rs;
 	char buf[4];
 
+	rs.min = Pt(0, out.pos.y);
 	while(n > 0){
 		i = chartorune(&r, s);
 		if(i == 0){
@@ -305,12 +382,54 @@ screenputs(char *s, int n)
 			out.pos = gsubfstring(&gscreen, out.pos, defont, buf, flipD[S]);
 		}
 	}
+	rs.max = Pt(gscreen.r.max.x, out.pos.y+defont0.height);
+	unlock(&screenlock);
+	mbbrect(rs);
+	screenupdate();
 }
 
 int
 screenbits(void)
 {
 	return 1;	/* bits per pixel */
+}
+
+
+/*
+ *  copy litte endian soft screen to big endian hard screen
+ */
+void
+screenupdate(void)
+{
+	uchar *sp, *hp, *se;
+	int y, len, inc;
+	Rectangle r=mbb;
+
+	if(Dy(r) < 0)
+		return;
+
+	sp = (uchar*)gaddr(&gscreen, r.min);
+	hp = (uchar*)gaddr(&vgascreen, r.min);
+
+	len = (r.max.x * (1<<gscreen.ldepth) + 31)/32
+		- (r.min.x * (1<<gscreen.ldepth))/32;
+	len *= BY2WD;
+
+	inc = gscreen.width * BY2WD - len;
+
+	for (y = r.min.y; y < r.max.y; y++){
+		for(se = sp + len; sp < se;)
+			*hp++ = cswizzle[*sp++];
+		sp += inc;
+		hp += inc;
+	}
+	mbb = NULLMBB;
+}
+
+void
+mousescreenupdate(void)
+{
+	screenupdate();
 }
 
 void
@@ -374,56 +493,11 @@ Cursor fatarrow = {
 		0x61, 0xf0, 0x60, 0xe0, 0x40, 0x40, 0x00, 0x00, 
 	},
 };
+
 void
 bigcursor(void)
 {
-	extern Cursor arrow;
-
 	memmove(&arrow, &fatarrow, sizeof(fatarrow));
+	bitreverse(arrow.set, 2*16);
+	bitreverse(arrow.clr, 2*16);
 }
-
-/*
- *  collect changes to the 'soft' screen
- */
-static Rectangle mbb;
-
-void
-mbbrect(Rectangle r)
-{
-	if(!islcd)
-		return;
-	if (r.min.x < mbb.min.x)
-		mbb.min.x = r.min.x;
-	if (r.min.y < mbb.min.y)
-		mbb.min.y = r.min.y;
-	if (r.max.x > mbb.max.x)
-		mbb.max.x = r.max.x;
-	if (r.max.y > mbb.max.y)
-		mbb.max.y = r.max.y;
-}
-
-void
-mbbpt(Point p)
-{
-	if(!islcd)
-		return;
-	if (p.x < mbb.min.x)
-		mbb.min.x = p.x;
-	if (p.y < mbb.min.y)
-		mbb.min.y = p.y;
-	if (p.x >= mbb.max.x)
-		mbb.max.x = p.x+1;
-	if (p.y >= mbb.max.y)
-		mbb.max.y = p.y+1;
-}
-
-void
-screenupdate(void)
-{
-}
-
-void
-mousescreenupdate(void)
-{
-}
-
