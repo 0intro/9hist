@@ -76,18 +76,18 @@ m->ur = ur;
 
 	ecode = (ur->cause>>2)&0xf;
 	user = ur->status&KUP;
-	if(user)
-		u->dbgreg = ur;
-
 	fpchk = 0;
-	if(u && u->p->fpstate == FPactive) {
-		if((ur->status&CU1) == 0)		/* Paranoid */
-			panic("FPactive but no CU1");
-		u->p->fpstate = FPinactive;
-		ur->status &= ~CU1;
-		savefpregs(&u->fpsave);
-		fptrap(ur);
-		fpchk = 1;
+	if(user) {
+		u->dbgreg = ur;
+		if(u->p->fpstate == FPactive) {
+			if((ur->status&CU1) == 0)		/* Paranoid */
+				panic("FPactive but no CU1");
+			u->p->fpstate = FPinactive;
+			ur->status &= ~CU1;
+			savefpregs(&u->fpsave);
+			fptrap(ur);
+			fpchk = 1;
+		}
 	}
 
 	switch(ecode){
@@ -115,7 +115,7 @@ m->ur = ur;
 
 	case CCPU:
 		cop = (ur->cause>>28)&3;
-		if(user && u && cop == 1) {
+		if(user && cop == 1) {
 			if(u->p->fpstate == FPinit) {
 				u->p->fpstate = FPinactive;
 				fcr31 = u->fpsave.fpstatus;

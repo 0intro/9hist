@@ -103,6 +103,7 @@ VGAmode mode13 =
 static	Rectangle mbb;
 static	Rectangle NULLMBB = {10000, 10000, -10000, -10000};
 static	void nopage(int), tsengpage(int), tridentpage(int), parapage(int);
+static	void atipage(int);
 static	void vgaupdate(void);
 
 /*
@@ -124,9 +125,9 @@ enum
 	Generic,
 };
 
-Vgacard vgacards[] =
+Vgacard vgachips[] =
 {
-[Ati]		{ "ati", nopage, },
+[Ati]		{ "ati", atipage, },
 [Pvga1a]	{ "pvga1a", parapage, },
 [Trident]	{ "trident", tridentpage, },
 [Tseng]		{ "tseng", tsengpage, },
@@ -145,7 +146,7 @@ enum
 	Qvgasize=	1,
 	Qvgatype=	2,
 	Qvgaport=	3,
-	Nvga=		4,
+	Nvga=		3,
 };
 Dirtab vgadir[]={
 	"vgasize",	{Qvgasize},	0,		0666,
@@ -156,7 +157,7 @@ Dirtab vgadir[]={
 void
 vgareset(void)
 {
-	vgacard = &vgacards[Generic];
+	vgacard = &vgachips[Generic];
 }
 
 void
@@ -253,7 +254,7 @@ vgawrite(Chan *c, void *buf, long n, ulong offset)
 		cbuf[n] = 0;
 		if(cp = strchr(cbuf, '\n'))
 			*cp = 0;
-		for(vp = vgacards; vp->name; vp++)
+		for(vp = vgachips; vp->name; vp++)
 			if(strcmp(cbuf, vp->name) == 0){
 				vgacard = vp;
 				return n;
@@ -629,10 +630,26 @@ nopage(int page)
 {
 	USED(page);
 }
+/*
+ * The following code is unproven: we haven't got the
+ * ATI stuff to work yet.
+ */
+static void
+atipage(int page)
+{
+	/* the ext register is in the ATI ROM at a fixed address */
+	ushort extreg = *((ushort *)0x800C0010);
+	uchar v;
+
+	outb(extreg, 0xb2);
+	v = (inb(extreg+1) & 0xe1) | (page<<1);
+	outb(extreg, 0xb2);
+	outb(extreg+1, v);
+}
 static void
 tridentpage(int page)
 {
-	srout(0x0e, page^0x02);	/* yes, the page bit needs to be toggled! */
+	srout(0x0e, page^0x02);
 }
 static void
 tsengpage(int page)

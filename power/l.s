@@ -493,19 +493,18 @@ TEXT	clrfpintr(SB), $0
 	OR	$CU1, R3
 	MOVW	R3, M(STATUS)
 	WAIT
-
-	MOVW	FCR31, R1
-	MOVW	R1, R2
-	AND	$~(0x3F<<12), R2
-	MOVW	R2, FCR31
-
+	MOVW	FCR31, R1		/* Read it to stall the fpu */
+	WAIT
+	MOVW	R0, FCR31
+	WAIT
 	AND	$~CU1, R3
 	MOVW	R3, M(STATUS)
 	RET
 
 TEXT	savefpregs(SB), $0
 	MOVW	M(STATUS), R3
-	MOVW	FCR31, R2
+	MOVW	FCR31, R2		/* Read stalls the fpu until inst. complete. */
+	WAIT
 
 	MOVD	F0, 0x00(R1)
 	MOVD	F2, 0x08(R1)
@@ -523,6 +522,7 @@ TEXT	savefpregs(SB), $0
 	MOVD	F26, 0x68(R1)
 	MOVD	F28, 0x70(R1)
 	MOVD	F30, 0x78(R1)
+	WAIT
 
 	MOVW	R2, 0x80(R1)
 	AND	$~CU1, R3

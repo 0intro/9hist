@@ -537,7 +537,7 @@ confinit(void)
 	/*
 	 *  set minimal default values
 	 */
-	conf.nmach = 1;
+	conf.nmach = 2;
 	conf.nproc = 100;
 	conf.nswap = 262144;
 	conf.nimage = 200;
