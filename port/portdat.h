@@ -388,10 +388,9 @@ struct Fgrp
 struct Palloc
 {
 	Lock;
-	ulong	addr;
+	ulong	addr0;			/* next available ialloc addr in bank 0 */
+	ulong	addr1;			/* next available ialloc addr in bank 1 */
 	int	active;
-	Page	*page;			/* base of Page structures */
-	ulong	minppn;			/* index of first usable page */
 	Page	*head;			/* most recently used */
 	Page	*tail;			/* least recently used */
 	ulong	freecount;		/* how many pages on free list now */

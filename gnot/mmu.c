@@ -127,7 +127,7 @@ kmapinit(void)
 		return;
 	}
 	e = (4*1024*1024 - 256*1024)/BY2PG;	/* screen lives at top 256K */
-	i = (((ulong)ialloc(0, 0))&~KZERO)/BY2PG;
+	i = PGROUND(((ulong)ialloc(0, 0))&~KZERO)/BY2PG;
 	print("%lud free map registers\n", e-i);
 	kmapalloc.free = 0;
 	for(k=&kmapalloc.arena[i]; i<e; i++,k++){

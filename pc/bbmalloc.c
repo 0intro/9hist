@@ -15,6 +15,9 @@
  * address in non-cached space, the need for flushing the
  * d-cache is avoided.
  *
+ * On the safari, all this is unnecessary, since the
+ * only icache is a miniscule prefetch buffer.
+ *
  * Currently, the only kernel users of bitblt are devbit,
  * print, and the cursor stuff in devbit.  The cursor
  * can get drawn at clock interrupt time, so it might need
@@ -61,9 +64,12 @@ void
 bbfree(void *p, int n)
 {
 	ulong *up;
+	int s;
 
+	s = splhi();
 	if(p == bblast)
 		bbcur = (ulong *)(((char *)bblast) + n);
+	splx(s);
 }
 
 void *

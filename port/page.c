@@ -51,31 +51,50 @@ unlockpage(Page *p)
 }
 
 /*
- * Called to allocate permanent data structures, before calling pageinit().
+ *  Called to allocate permanent data structures, before calling pageinit().
+ *  We assume all of text+data+bss is in the first memory bank.
  */
 void*
 ialloc(ulong n, int align)
 {
 	ulong p;
+	ulong *ap;
 
 	if(palloc.active && n!=0)
 		print("ialloc bad\n");
-	if(palloc.addr == 0)
-		palloc.addr = ((ulong)&end)&~KZERO;
-	if(align)
-		palloc.addr = PGROUND(palloc.addr);
 
-	if(palloc.addr+n > conf.base0 + conf.npage0*BY2PG)
-		palloc.addr = conf.base1;
+	if(palloc.addr0 == 0){
+		palloc.addr0 = ((ulong)&end)&~KZERO;
+		palloc.addr1 = conf.base1;
+	}
 
-	memset((void*)(palloc.addr|KZERO), 0, n);
-	p = palloc.addr;
-	palloc.addr += n;
-	if(align)
-		palloc.addr = PGROUND(palloc.addr);
+	/*
+	 *  try first bank
+	 */
+	p = align ? PGROUND(palloc.addr0) : palloc.addr0;
+	if(p+n > conf.base0 + (conf.npage0<<PGSHIFT)){
+		/*
+		 *  no room in first bank, try second bank
+		 */
+		if(conf.npage1 <= 0)
+			panic("keep bill joy away 1");
+		p = align ? PGROUND(palloc.addr1) : palloc.addr1;
+		ap = &palloc.addr1;
+	} else
+		ap = &palloc.addr0;
 
-	if(palloc.addr >= conf.maxialloc)
-		panic("keep bill joy away");
+	if(p >= conf.maxialloc)
+		panic("keep bill joy away 2");
+
+	/*
+	 *  zero it
+	 */
+	memset((void*)(p|KZERO), 0, n);
+
+	/*
+	 *  don't put anything else into a page aligned ialloc
+	 */
+	*ap = align ? PGROUND(p+n) : (p+n);
 
 	return (void*)(p|KZERO);
 }
@@ -83,44 +102,55 @@ ialloc(ulong n, int align)
 void
 pageinit(void)
 {
-	ulong pa, nb, ppn;
+	ulong np, addr, lim;
 	ulong i, vmem, pmem;
 	Page *p;
 
+	/*
+	 *  calculate an upper bound to the number of pages structures
+	 *  we'll need (np).
+	 */
+	np = (conf.npage0<<PGSHIFT) - (palloc.addr0 - conf.base0);
+	np += (conf.npage1<<PGSHIFT) - (palloc.addr1 - conf.base1);
+	np = np>>PGSHIFT;
+
+	/*
+	 *  allocate Page structs (no more ialloc's allowed after this).
+	 *  np is useless after this ialloc since we've just eaten up
+	 *  some pages for the Page structures.
+	 */
+	palloc.head = ialloc(np*sizeof(Page), 0);
 	palloc.active = 1;
 
-	nb = (conf.npage<<PGSHIFT) - palloc.addr;
-	nb -= ((nb+(BY2PG-1))>>PGSHIFT)*sizeof(Page);	/* safe overestimate */
-	nb &= ~(BY2PG-1);
-	pa = (conf.npage<<PGSHIFT) - nb; /* physical addr of first free page */
-	ppn = pa >> PGSHIFT;		 /* physical page number of first free page */
-	palloc.page = (Page *)((palloc.addr - ppn*sizeof(Page))|KZERO);
 	/*
-	 * Now palloc.page[ppn] describes first free page
+ 	 *  for each page in each bank, point a page structure to
+	 *  the page and chain it into the free list
 	 */
-	palloc.minppn = ppn;
-	palloc.addr = ppn<<PGSHIFT;
-
-	palloc.head = &palloc.page[ppn];
-	palloc.tail = &palloc.page[conf.npage-1];
-	memset(palloc.head, 0, (conf.npage-ppn)*sizeof(Page));
-
-	pmem = ((conf.npage-ppn)*BY2PG)/1024;
-	vmem = pmem + ((conf.nswap)*BY2PG)/1024;
-	palloc.user = conf.npage-ppn;
-	print("%lud free pages, %dK bytes, swap %dK bytes\n", palloc.user, pmem, vmem);
-
-	for(p=palloc.head; p<=palloc.tail; p++,ppn++){
+	p = palloc.head;
+	addr = palloc.addr0 = PGROUND(palloc.addr0);
+	lim = conf.base0 + (conf.npage0<<PGSHIFT);
+	for(; addr < lim; addr += BY2PG){
 		p->next = p+1;
 		p->prev = p-1;
-		if(ppn < conf.npage0)
-			p->pa = conf.base0+(ppn<<PGSHIFT);
-		else
-			p->pa = conf.base1+((ppn-conf.npage0)<<PGSHIFT);
-		palloc.freecount++;
+		p->pa = addr;
+		p++;
 	}
+	addr = palloc.addr1 = PGROUND(palloc.addr1);
+	lim = conf.base1 + (conf.npage1<<PGSHIFT);
+	for(; addr < lim; addr += BY2PG){
+		p->next = p+1;
+		p->prev = p-1;
+		p->pa = addr;
+		p++;
+	}
+	palloc.tail = p - 1;
 	palloc.head->prev = 0;
 	palloc.tail->next = 0;
+
+	palloc.user = palloc.freecount = p - palloc.head;
+	pmem = palloc.user*BY2PG/1024;
+	vmem = pmem + ((conf.nswap)*BY2PG)/1024;
+	print("%lud free pages, %dK bytes, swap %dK bytes\n", palloc.user, pmem, vmem);
 }
 
 Page*

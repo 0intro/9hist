@@ -70,12 +70,16 @@ clock(Ureg *ur)
 			p->time[p->insyscall]++;
 	}
 
-/*	if(u && p && p->state==Running){
+	if(u && p && p->state==Running){
 		if(anyready()){
 			if(p->hasspin)
 				p->hasspin = 0;
 			else
 				sched();
 		}
-	}/**/
+		if((ur->cs&0xffff) == UESEL){ /* if was in user mode */
+			if(u->nnote)
+				notify(ur);
+		}
+	}
 }

@@ -7,9 +7,15 @@
 /*
  *  headland chip set for the safari.
  */
+typedef struct DMAport	DMAport;
+typedef struct DMA	DMA;
+typedef struct DMAxfer	DMAxfer;
 
 enum
 {
+	/*
+	 *  system control port
+	 */
 	Head=		0x92,		/* control port */
 	 Reset=		(1<<0),		/* reset the 386 */
 	 A20ena=	(1<<1),		/* enable address line 20 */
@@ -32,10 +38,9 @@ enum
 /*
  *  state of a dma transfer
  */
-typedef struct DMAxfer	DMAxfer;
 struct DMAxfer
 {
-	Page	pg;		/* page used by dma */
+	Page	*pg;		/* page used by dma */
 	void	*va;		/* virtual address destination/src */
 	long	len;		/* bytes to be transferred */
 	int	isread;
@@ -45,7 +50,6 @@ struct DMAxfer
  *  the dma controllers.  the first half of this structure specifies
  *  the I/O ports used by the DMA controllers.
  */
-typedef struct DMAport	DMAport;
 struct DMAport
 {
 	uchar	addr[4];	/* current address (4 channels) */
@@ -63,7 +67,6 @@ struct DMAport
 	Lock;
 };
 
-typdef struct DMA	DMA;
 struct DMA
 {
 	DMAport;
@@ -123,21 +126,20 @@ dmasetup(int chan, void *va, long len, int isread)
 	uchar mode;
 
 	dp = &dma[(chan>>2)&1];
-	chan &= 3;
+	chan = chan & 3;
 	xp = &dp->x[chan];
 
 	/*
-	 *  if this isn't kernel memory, we can't count on it being
-	 *  there during the DMA.  Allocate a page for the DMA.
+	 *  if this isn't kernel memory (or crossing 64k boundary),
+	 *  allocate a page for the DMA.
 	 */
-	if(isphys(va)){
-		pa = va & ~KZERO;
-	} else {
+	pa = ((ulong)va) & ~KZERO;
+	if(!isphys(va) || (pa&0xFFFF0000)!=((pa+len)&0xFFFF0000)){
 		xp->pg = newpage(1, 0, 0);
 		if(len > BY2PG)
 			len = BY2PG;
 		if(!isread)
-			memmove(KZERO|xp->pg->pa, a, len);
+			memmove((void*)(KZERO|xp->pg->pa), va, len);
 		xp->va = va;
 		xp->len = len;
 		xp->isread = isread;
@@ -151,15 +153,15 @@ dmasetup(int chan, void *va, long len, int isread)
 	outb(dp->cbp, 0);		/* set count & address to their first byte */
 	mode = (isread ? 0x44 : 0x48) | chan;
 	outb(dp->mode, mode);		/* single mode dma (give CPU a chance at mem) */
-	outb(dp->addr, pa);		/* set address */
-	outb(dp->addr, pa>>8);
-	outb(dp->page, pa>>16);
-	outb(dp->count, len-1);		/* set count */
-	outb(dp->count, (len-1)>>8);
+	outb(dp->addr[chan], pa);		/* set address */
+	outb(dp->addr[chan], pa>>8);
+	outb(dp->page[chan], pa>>16);
+	outb(dp->count[chan], len-1);		/* set count */
+	outb(dp->count[chan], (len-1)>>8);
 	outb(dp->sbm, chan);		/* enable the channel */
 	unlock(dp);
 
-	return n;
+	return len;
 }
 
 /*
@@ -178,13 +180,23 @@ dmaend(int chan)
 	uchar mode;
 
 	dp = &dma[(chan>>2)&1];
-	chan &= 3;
-	outb(dp->sbm, 4|chan);		/* disable the channel */
+	chan = chan & 3;
+
+	/*
+	 *  disable the channel
+	 */
+	lock(dp);
+	outb(dp->sbm, 4|chan);
+	unlock(dp);
+
 	xp = &dp->x[chan];
 	if(xp->pg == 0)
 		return;
 
-	memmove(a, KZERO|xp->pg->pa, xp->len);
+	/*
+	 *  copy out of temporary page
+	 */
+	memmove(xp->va, (void*)(KZERO|xp->pg->pa), xp->len);
 	putpage(xp->pg);
 	xp->pg = 0;
 }

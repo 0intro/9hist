@@ -251,6 +251,7 @@ syscall(Ureg *ur)
 	sp = ur->usp;
 	u->nerrlab = 0;
 	ret = -1;
+	spllo();
 	if(!waserror()){
 		if(ax >= sizeof systab/BY2WD){
 			pprint("bad sys call number %d pc %lux\n", ax, ur->pc);
@@ -270,9 +271,9 @@ syscall(Ureg *ur)
 	}
 	u->p->insyscall = 0;
 	ur->ax = ret;
-	if(ax == NOTED)
+	if(ax == NOTED){
 		noted(ur, *(ulong*)(sp+BY2WD));
-	else if(u->nnote && ax!=FORK){
+	} else if(u->nnote && ax!=FORK){
 		notify(ur);
 	}
 	return ret;
@@ -346,7 +347,7 @@ noted(Ureg *ur, ulong arg0)
 	validaddr(nur->pc, 1, 0);
 	validaddr(nur->usp, BY2WD, 0);
 	if(nur->cs!=u->svcs || nur->ss!=u->svss
-	|| (nur->flags&0xff)!=(u->svflags&0xff)){
+	|| (nur->flags&0xff00)!=(u->svflags&0xff00)){
 		pprint("bad noted ureg cs %ux ss %ux flags %ux\n", nur->cs, nur->ss,
 			nur->flags);
 		pexit("Suicide", 0);
@@ -359,10 +360,8 @@ noted(Ureg *ur, ulong arg0)
 	u->notified = 0;
 	nur->flags = (u->svflags&0xffffff00) | (ur->flags&0xff);
 	memmove(ur, u->ureg, sizeof(Ureg));
-/*	ur->ax = -1;	/* return error from the interrupted syscall */
 	switch(arg0){
 	case NCONT:
-		splhi();
 		unlock(&u->p->debug);
 		return;
 

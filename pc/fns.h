@@ -5,13 +5,11 @@ void	a20enable(void);
 void	clock(Ureg*);
 void	clockinit(void);
 void	delay(int);
+void	dmaend(int);
+long	dmasetup(int, void*, long, int);
 #define	evenaddr(x)		/* 386 doesn't care */
 void	fault386(Ureg*);
 void	faultinit(void);
-void	floppyinit(void);
-void	floppyintr(Ureg*);
-long	floppyseek(int, long);
-long	floppyread(int, void*, long);
 #define	flushvirt();
 void	fpsave(FPsave*);
 void	fprestore(FPsave*);

@@ -115,15 +115,17 @@ lock(Lock *l)
 	sbsem = l->sbsem;
 	if(sbsem == 0){
 		lock(&semalloc.lock);
-		if(semalloc.nsem == SEMPERPG){
-			semalloc.nsem = 0;
-			semalloc.nextsem = lkpgalloc();
+		if(l->sbsem == 0){
+			if(semalloc.nsem == SEMPERPG){
+				semalloc.nsem = 0;
+				semalloc.nextsem = lkpgalloc();
+			}
+			l->sbsem = semalloc.nextsem;
+			semalloc.nextsem++;
+			semalloc.nsem++;
+			unlock(l);		/* put sem in known state */
 		}
-		l->sbsem = semalloc.nextsem;
-		semalloc.nextsem++;
-		semalloc.nsem++;
 		unlock(&semalloc.lock);
-		unlock(l);		/* put sem in known state */
 		sbsem = l->sbsem;
 	}
 	/*
@@ -151,15 +153,17 @@ canlock(Lock *l)
 	sbsem = l->sbsem;
 	if(sbsem == 0){
 		lock(&semalloc.lock);
-		if(semalloc.nsem == SEMPERPG){
-			semalloc.nsem = 0;
-			semalloc.nextsem = lkpgalloc();
+		if(l->sbsem == 0){
+			if(semalloc.nsem == SEMPERPG){
+				semalloc.nsem = 0;
+				semalloc.nextsem = lkpgalloc();
+			}
+			l->sbsem = semalloc.nextsem;
+			semalloc.nextsem++;
+			semalloc.nsem++;
+			unlock(l);		/* put sem in known state */
 		}
-		l->sbsem = semalloc.nextsem;
-		semalloc.nextsem++;
-		semalloc.nsem++;
 		unlock(&semalloc.lock);
-		unlock(l);		/* put sem in known state */
 		sbsem = l->sbsem;
 	}
 	if(*sbsem & 1)
