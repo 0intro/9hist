@@ -48,7 +48,7 @@ scsialloc(ulong n)
 }
 
 enum {
-	ResetIntDis	= 0x40,		/* config regsiter */
+	ResetIntDis	= 0x40,		/* config register */
 	Penable		= 0x10,
 
 	Dma		= 0x80,		/* NCR 53C90 commands */
@@ -294,7 +294,6 @@ scsiintr(void)
 				break;
 			}
 		}
-
 
 		dev->cmd = Cmdcomplete;
 		return;

@@ -215,12 +215,12 @@ bitdebug(void)
 		a = &bit.arena[i];
 		if(a->words){
 			l += a->nwords;
-			print("%d: %ld used; %ld total\n", i,
+			print("%d: %ld bytes used; %ld total\n", i,
 				(a->wfree-a->words)*sizeof(ulong),
 				a->nwords*sizeof(ulong));
 		}
 	}
-	print("arena: %ld words\n", l*sizeof(ulong));
+	print("arena: %ld bytes\n", l*sizeof(ulong));
 	l = 0;
 	for(i=0; i<bit.nmap; i++)
 		if(bit.map[i])

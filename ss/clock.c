@@ -12,7 +12,9 @@ delay(int ms)
 {
 	int i;
 
-	ms *= 3000;	/* experimentally determined */
+	ms *= 6666;		/* experimentally determined */
+	if(conf.ss2)
+		ms *= 2;
 	for(i=0; i<ms; i++)
 		;
 }

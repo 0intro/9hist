@@ -140,8 +140,8 @@ init0(void)
 	print("bank 0: %dM  1: %dM\n", bank[0], bank[1]);
 	print("frame buffer id %lux %s\n", conf.monitor, fbstr);
 	print("NKLUDGE %d\n", NKLUDGE);
-
-mapdump();
+	if(conf.npage1 != conf.base1)
+		print("kernel mem from second bank: reboot and fix!\n");
 
 	u->slash = (*devtab[0].attach)(0);
 	u->dot = clone(u->slash, 0);
@@ -401,12 +401,12 @@ confinit(void)
 		 * it has only a 24bit address counter.
 		 * NB. Suns must have at LEAST 8Mbytes.
 		 */
-		conf.npage1 = conf.npage0 - (4*MB)/BY2PG;
-		conf.base1 = 4*MB;
-		conf.npage0 = (4*MB)/BY2PG;
+		conf.npage1 = conf.npage0 - (8*MB)/BY2PG;
+		conf.base1 = 8*MB;
+		conf.npage0 = (8*MB)/BY2PG;
 		conf.base0 = 0;
-		bank[1] = bank[0]-4;
-		bank[0] = 4;
+		bank[1] = bank[0]-8;
+		bank[0] = 8;
 	}
 
 	conf.npage = conf.npage0+conf.npage1;

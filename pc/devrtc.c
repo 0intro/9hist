@@ -38,9 +38,14 @@ struct Rtc
 
 QLock rtclock;	/* mutex on clock operations */
 
+enum{
+	Qrtc = 1,
+	Qnvram,
+};
+
 #define	NRTC	1
 Dirtab rtcdir[]={
-	"rtc",		{1, 0},	0,	0666,
+	"rtc",		{Qrtc, 0},	0,	0666,
 };
 
 ulong rtc2sec(Rtc*);
