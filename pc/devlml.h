@@ -81,15 +81,6 @@ typedef struct {
 #define BT819Addr 0x8a
 #define BT856Addr 0x88
 
-#define GID060							0
-
-#define ZR36057_POST_OFFICE				0x200
-#define ZR36057_POST_PEND				0x02000000
-#define ZR36057_POST_TIME				0x01000000
-#define ZR36057_POST_DIR				0x00800000
-#define ZR36057_INTR_JPEGREP			0x08000000
-#define ZR36057_INTR_STAT				0x03c
-
 #define MB 0x100000
 #define NBUF 4
 

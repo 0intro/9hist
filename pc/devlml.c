@@ -13,8 +13,7 @@
 enum{
 	Q819,
 	Q856,
-	Q060,
-	Q067,
+	Qreg,
 	Qvideo,
 	Qjframe,
 };
@@ -23,8 +22,7 @@ static Dirtab viddir[]={
 //	 name,		 qid,	  size,		mode
 	"vid819",	{Q819},		0,		0644,
 	"vid856",	{Q856},		0,		0644,
-	"vid060",	{Q060},		0,		0644,
-	"vid067",	{Q067},		0,		0644,
+	"vidreg",	{Qreg},		0,		0644,
 	"video",	{Qvideo},	0,		0666,
 	"jframe",	{Qjframe},	0,		0666,
 };
@@ -236,105 +234,6 @@ lml33_i2c_wr8(uchar addr, uchar sub, uchar msb) {
 	lml33_i2c_stop();
 	
 	return 1;
-}
-
-/*
- * The following mapping applies for the guests in the LML33
- *
- * Guest        Device
- *   0          zr36060
- *              uses subaddress GADR[0..1]
- *   1          zr36060 START#
- *   2          -
- *   3          zr36060 RESET#
- *   4          -
- *   5          -
- *   6          -
- *   7          -
- */
-
-// lml33_post_idle waits for the guest bus to become free
-static int
-lml33_post_idle(void) {
-	ulong a;
-	int timeout;
-
-	for(timeout = 0;;timeout += 1){
-		a = readl(pciBaseAddr + ZR36057_POST_OFFICE);
-		if ((a & ZR36057_POST_PEND) == 0) 
-			return a;
-		if (timeout == GUEST_TIMEOUT) 
-			return -1;
-	}
-}
-
-// lml33_post_write writes a byte to a guest using postoffice mechanism
-static int
-lml33_post_write(int guest, int reg, int v) {
-	int w;
-
-	// wait for postoffice not busy
-	lml33_post_idle();
-
-	// Trim the values, just in case
-	guest &= 0x07;
-	reg   &= 0x07;
-	v     &= 0xFF;
-
-	// write postoffice operation
-	w = ZR36057_POST_DIR + (guest<<20) + (reg<<16) + v;
-	writel(w, pciBaseAddr + ZR36057_POST_OFFICE);
-
-	// wait for postoffice not busy
-	return lml33_post_idle() == -1;
-}
-
-// lml33_post_read reads a byte from a guest using postoffice mechanism
-static int
-lml33_post_read(int guest, int reg) {
-	int w;
-
-	// wait for postoffice not busy
-	lml33_post_idle();
-
-	// Trim the values, just in case
-	guest &= 0x07;
-	reg   &= 0x07;
-
-	// write postoffice operation
-	w = (guest<<20) + (reg<<16);
-	writel(w, pciBaseAddr + ZR36057_POST_OFFICE);
-
-	// wait for postoffice not busy, get result
-	w = lml33_post_idle();
-
-	// decide if read went ok
-	if (w == -1) return -1;
-
-	return w & 0xFF;
-}
-
-static int
-lml33_zr060_write(int reg, int v) {
-	int guest_id;
-
-	guest_id = GID060;
-
-	lml33_post_write(guest_id, 1, reg>>8 & 0x03);
-	lml33_post_write(guest_id, 2, reg    & 0xff);
-	return lml33_post_write(guest_id, 3, v);
-}
-
-static int
-lml33_zr060_read(int reg) {
-	int guest_id;
-
-	guest_id = GID060;
-
-	lml33_post_write(guest_id, 1, reg>>8 & 0x03);
-	lml33_post_write(guest_id, 2, reg    & 0xff);
-
-	return lml33_post_read(guest_id, 3);
 }
 
 static int
@@ -623,8 +522,7 @@ vidopen(Chan *c, int omode)
 	switch(c->qid.path){
 	case Q819:
 	case Q856:
-	case Q060:
-	case Q067:
+	case Qreg:
 		break;
 	case Qvideo:
 	case Qjframe:
@@ -650,8 +548,7 @@ vidclose(Chan *c)
 	switch(c->qid.path){
 	case Q819:
 	case Q856:
-	case Q060:
-	case Q067:
+	case Qreg:
 	case Qvideo:
 	case Qjframe:
 		authclose(c);
@@ -680,23 +577,23 @@ vidread(Chan *c, void *va, long n, vlong off) {
 			*buf++ = d;
 		}
 		return n - i;
-	case Q060:
-		if (off < 0 || off + n > 0x60)
-			return 0;
-		for (i = 0; i < n; i++) {
-			if ((d = lml33_zr060_read(off++)) < 0) break;
-			*buf++ = d;
-		}
-		return n - i;
-	case Q067:
+	case Qreg:
 		if (off < 0 || off + n > 0x200 || (off & 0x3))
 			return 0;
-		for (i = n; i >= 4; i -= 4) {
+		switch(n) {
+		case 1:
+			*buf = readb(pciBaseAddr + off);
+			break;
+		case 2:
+			*(short *)buf = readw(pciBaseAddr + off);
+			break;
+		case 4:
 			*(long *)buf = readl(pciBaseAddr + off);
-			buf += 4;
-			off += 4;
+			break;
+		default:
+			return 0;
 		}
-		return n-i;
+		return n;
 	case Qvideo:
 	case Qjframe:
 		return vread(c, buf, n, off);
@@ -723,22 +620,23 @@ vidwrite(Chan *c, void *va, long n, vlong off) {
 			if (lml33_i2c_wr8(BT856Addr, off++, *buf++) == 0)
 				break;
 		return n - i;
-	case Q060:
-		if (off < 0 || off + n > 0x60)
-			return 0;
-		for (i = 0; i < n; i++)
-			if (lml33_zr060_write(off++, *buf++) < 0)
-				break;
-		return n - i;
-	case Q067:
+	case Qreg:
 		if (off < 0 || off + n > 0x200 || (off & 0x3))
 			return 0;
-		for (i = n; i >= 4; i -= 4) {
+		switch (n) {
+		case 1:
+			writeb(*buf, pciBaseAddr + off);
+			break;
+		case 2:
+			writew(*(short *)buf, pciBaseAddr + off);
+			break;
+		case 4:
 			writel(*(long *)buf, pciBaseAddr + off);
-			buf += 4;
-			off += 4;
+			break;
+		default:
+			return 0;
 		}
-		return n-i;
+		return n;
 	case Qvideo:
 	case Qjframe:
 		return vwrite(c, buf, n, off);
