@@ -290,9 +290,6 @@ trap(Ureg *ur)
 	}
 
 	if(v>=256 || (h = halloc.ivec[v]) == 0){
-		/* an old 386 generates these fairly often, no idea why */
-		if(v == 13)
-			goto out;
 
 		/* a processor or coprocessor error */
 		if(v <= 16){
