@@ -127,12 +127,18 @@ boot(int argc, char *argv[])
 	rp = getenv("rootdir");
 	if(rp == nil)
 		rp = rootdir;
-	if(strncmp(rp, "/root", 5) != 0){
+	if(bind(rp, "/", MAFTER|MCREATE) < 0){
+		if(strncmp(rp, "/root", 5) == 0){
+			fprint(2, "boot: couldn't bind $rootdir=%s to root: %r\n", rp);
+			fatal("second bind /");
+		}
 		snprint(rootbuf, sizeof rootbuf, "/root/%s", rp);
 		rp = rootbuf;
+		if(bind(rp, "/", MAFTER|MCREATE) < 0){
+			fprint(2, "boot: couldn't bind $rootdir=%s to root: %r\n", rp);
+			fatal("second bind /");
+		}
 	}
-	if(bind(rp, "/", MAFTER|MCREATE) < 0)
-		fatal("second bind /");
 	close(fd);
 	setenv("rootdir", rp);
 
