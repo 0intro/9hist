@@ -1166,16 +1166,12 @@ void
 pcireset(void)
 {
 	Pcidev *p;
-	int pcr;
 
 	if(pcicfgmode == -1)
 		pcicfginit();
 
-	for(p = pcilist; p != nil; p = p->list){
-		pcr = pcicfgr16(p, PciPCR);
-		pcr &= ~0x0004;
-		pcicfgw16(p, PciPCR, pcr);
-	}
+	for(p = pcilist; p != nil; p = p->list)
+		pciclrbme(p);
 }
 
 void
