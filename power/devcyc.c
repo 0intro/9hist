@@ -204,7 +204,6 @@ cycclose(Chan *c)
 	}
 }
 
-
 int
 cycmsgintr(Cycmsg *hm)
 {

@@ -4,7 +4,7 @@
 enum
 {
 	MAGIC		= 0xDEADBABE,
-	MAX2SIZE	= 20
+	MAXPOW		= 20
 };
 
 typedef struct Bucket Bucket;
@@ -20,9 +20,8 @@ typedef struct Arena Arena;
 struct Arena
 {
 	Lock;
-	Bucket	*btab[MAX2SIZE];	
+	Bucket	*btab[MAXPOW];
 };
-
 static Arena arena;
 #define datoff		((int)&((Bucket*)0)->data)
 
@@ -32,14 +31,15 @@ malloc(uint size)
 	int pow;
 	Bucket *bp;
 
-	for(pow = 1; pow < MAX2SIZE; pow++) {
+	size += sizeof(Bucket);
+
+	for(pow = 1; pow < MAXPOW; pow++)
 		if(size <= (1<<pow))
 			goto good;
-	}
 
-	return nil;
+	return 0;
+
 good:
-	/* Allocate off this list */
 	lock(&arena);
 	bp = arena.btab[pow];
 	if(bp) {
@@ -47,7 +47,7 @@ good:
 		arena.unlock();
 
 		if(bp->magic != 0)
-			abort();
+			panic("malloc");
 
 		bp->magic = MAGIC;
 
@@ -55,14 +55,13 @@ good:
 		return  bp->data;
 	}
 	unlock(&arena);
+
 	size = sizeof(Bucket)+(1<<pow);
-	bp = sbrk(size);
+	bp = xbrk(size);
 	if((int)bp < 0)
 		return nil;
 
-	bp->size = pow;
-	bp->magic = MAGIC;
-
+	memset(bp->data, 0,  size);
 	return bp->data;
 }
 

@@ -66,11 +66,14 @@ Region region[Nregion];
 void
 addsplit(Region *r, ulong start, ulong end)
 {
-	Region *rr;
-	int len = end - start;
+	int len;
+	Region *rr, *eregion;
+
+	len = end - start;
+	eregion = &region[Nregion];
 
 	/* first look for an unused one */
-	for(rr = region; rr < &region[Nregion]; rr++){
+	for(rr = region; rr < eregion; rr++){
 		if(rr == r)
 			continue;
 		if(rr->end - rr->start == 0){
@@ -81,7 +84,7 @@ addsplit(Region *r, ulong start, ulong end)
 	}
 
 	/* then look for a smaller one */
-	for(rr = region; rr < &region[Nregion]; rr++){
+	for(rr = region; rr < eregion; rr++){
 		if(rr == r)
 			continue;
 		if(rr->end - rr->start < len){
@@ -105,19 +108,21 @@ addsplit(Region *r, ulong start, ulong end)
 void*
 iallocspan(ulong n, int align, ulong crevasse)
 {
+	int m;
 	ulong p;
 	Region *r;
-	int m;
 	int ledge;
 
 	if(palloc.active && n!=0)
 		print("ialloc bad\n");
 
 	if(palloc.addr0 == 0){
-		region[Nregion-2].start = (((ulong)end)&~KZERO) + conf.base0;
-		region[Nregion-2].end = conf.base0 + (conf.npage0<<PGSHIFT);
-		region[Nregion-1].start = conf.base1;
-		region[Nregion-1].end = conf.base1 + (conf.npage1<<PGSHIFT);
+		r = &region[Nregion-2];
+		r->start = (((ulong)end)&~KZERO) + conf.base0;
+		r->end = conf.base0 + (conf.npage0<<PGSHIFT);
+		r++;
+		r->start = conf.base1;
+		r->end = conf.base1 + (conf.npage1<<PGSHIFT);
 
 		palloc.addr0 = region[Nregion-2].start;
 		palloc.addr1 = region[Nregion-1].start;
@@ -174,7 +179,6 @@ iallocspan(ulong n, int align, ulong crevasse)
 	 *  zero it
 	 */
 	memset((void*)(p|KZERO), 0, n);
-
 	return (void*)(p|KZERO);
 }
 
