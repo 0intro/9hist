@@ -99,7 +99,7 @@ enum
 
 	Fmono		= 1,
 	Fin			= 2,
-	Fout		= 4,
+	Fout			= 4,
 
 	Aclosed		= 0,
 	Aread,
@@ -115,10 +115,10 @@ enum
 	Nvol,
 
 	Bufsize		= 4* 1024,	/* 46 ms each */
-	Nbuf		= 10,		/* 1.5 seconds total */
+	Nbuf			= 10,			/* 1.5 seconds total */
 
 	Speed		= 44100,
-	Ncmd		= 50,		/* max volume command words */
+	Ncmd		= 50,			/* max volume command words */
 };
 
 enum {
@@ -137,13 +137,13 @@ enum {
 
 /* Format */
 enum {
-	LSB16 = 1 << 1,
-	LSB18 = 2 << 1,
-	LSB20 = 3 << 1,
-	MSB = 4 << 1,
-	MSB16 = 5 << 1,
-	MSB18 = 6 << 1,
-	MSB20 = 7 << 1,
+	LSB16 =	1 << 1,
+	LSB18 =	2 << 1,
+	LSB20 =	3 << 1,
+	MSB =	4 << 1,
+	MSB16 =	5 << 1,
+	MSB18 =	6 << 1,
+	MSB20 =	7 << 1,
 };
 
 Dirtab
@@ -1064,7 +1064,7 @@ audioclose(Chan *c)
 static long
 audioread(Chan *c, void *v, long n, vlong off)
 {
-	int liv, riv, lov, rov;
+	int liv, riv, lov, rov, nsendb, nbufs;
 	long m, n0;
 	char buf[300];
 	int j;
@@ -1126,8 +1126,12 @@ audioread(Chan *c, void *v, long n, vlong off)
 		return readstr(offset, p, n, buf);
 
 	case Qspeed:
+		s = &audio.o;
+		nbufs = s->filling - s->current;
+		if (nbufs < 0) nbufs = Nbuf + nbufs;
+		nsendb = (nbufs - 1) * bufsize + s->current->nbytes;
 		buf[0] = '\0';
-		snprint(buf, sizeof(buf), "speed %d\ndmasize %d\n", rate, bufsize);
+		snprint(buf, sizeof(buf), "speed %d\ndmasize %d\nsendbytes %d\n", rate, bufsize, nsendb);
 		return readstr(offset, p, n, buf);
 
 	case Qvolume:

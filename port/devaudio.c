@@ -144,6 +144,7 @@ sbcmd(int val)
 		s = inb(blaster.wstatus);
 		if((s & 0x80) == 0) {
 			outb(blaster.write, val);
+			delay(1);
 			return 0;
 		}
 	}
@@ -189,7 +190,9 @@ mxcmd(int addr, int val)
 {
 
 	outb(blaster.mixaddr, addr);
+	delay(1);
 	outb(blaster.mixdata, val);
+	delay(1);
 	return 1;
 }
 
