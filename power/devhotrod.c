@@ -50,8 +50,7 @@ struct Hotrod{
 	Hot		*addr;		/* address of the device */
 	int		vec;		/* vme interrupt vector */
 	int		wi;		/* where to write next cmd */
-	ulong		rq[NRQ];	/* read this queue to receive replies */
-	int		ri;		/* where to read next response */
+	int		ri;		/* where to read next reply */
 	uchar		buf[MAXFDATA+MAXMSG];
 };
 
@@ -71,7 +70,7 @@ hotsend(Hotrod *h, Hotmsg *m)
 	long l;
 
 /* print("hotsend send %d %d %lux %lux\n", h->wi, m->cmd, m, m->param[0]); /**/
-	mp = (Hotmsg**)&h->addr->hostrq[h->wi];
+	mp = (Hotmsg**)&h->addr->reqstq[h->wi];
 	*mp = (Hotmsg*)MP2VME(m);
 	h->wi++;
 	if(h->wi >= NRQ)
@@ -165,8 +164,10 @@ hotrodopen(Chan *c, int omode)
 		/*
 		 * Clear communications region
 		 */
-		memset(hp->addr->hostrq, 0, NRQ*sizeof(ulong));
-		hp->addr->hostrp = 0;
+		memset(hp->addr->reqstq, 0, NRQ*sizeof(ulong));
+		hp->addr->reqstp = 0;
+		memset(hp->addr->replyq, 0, NRQ*sizeof(ulong));
+		hp->addr->replyp = 0;
 
 		/*
 		 * Issue reset
@@ -175,8 +176,6 @@ hotrodopen(Chan *c, int omode)
 		hp->ri = 0;
 		mp = &u->khot;
 		mp->cmd = Ureset;
-		mp->param[0] = MP2VME(hp->rq);
-		mp->param[1] = NRQ;
 		hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->khot);
 		delay(100);
 		print("reset\n");
@@ -441,9 +440,9 @@ hotrodintr(int vec)
 		return;
 	}
 	h->addr->lcsr3 &= ~INT_VME;
-	while(l = h->rq[h->ri]){	/* assign = */
+	while(l = h->addr->replyq[h->ri]){	/* assign = */
 		hm = (Hotmsg*)(VME2MP(l));
-		h->rq[h->ri] = 0;
+		h->addr->replyq[h->ri] = 0;
 		h->ri++;
 		if(h->ri >= NRQ)
 			h->ri = 0;

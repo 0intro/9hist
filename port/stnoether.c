@@ -206,7 +206,7 @@ noetheriput(Queue *q, Block *bp)
 	circuit = (h->circuit[2]<<16) | (h->circuit[1]<<8) | h->circuit[0];
 	s = (h->sum[1]<<8) | h->sum[0];
 	if(s && s!=nonetcksum(bp, 14)){
-		print("checksum error %ux %ux\n", s, (h->sum[1]<<8) | h->sum[0]); /**/
+/*		print("checksum error %ux %ux\n", s, (h->sum[1]<<8) | h->sum[0]); /**/
 		freeb(bp);
 		return;
 	}

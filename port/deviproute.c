@@ -4,8 +4,16 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"errno.h"
+#include	"arp.h"
+#include	"ipdat.h"
 
 #include	"devtab.h"
+
+/*
+ *  All ip numbers and masks are stored as ulongs.
+ *  All interfaces to this code uses the standard byte
+ *  string representation.
+ */
 
 typedef	struct Iproute	Iproute;
 typedef	struct Iprtab	Iprtab;
@@ -16,26 +24,12 @@ enum
 };
 
 /*
- *  Standard ip masks for the 3 classes
- */
-uchar classmask[4][4] = {
-	0xff,	0,	0,	0,
-	0xff,	0,	0,	0,
-	0xff,	0xff,	0,	0,
-	0xff,	0xff,	0xff,	0,
-};
-#define CLASSMASK(x)	classmask[(*x>>6) & 3]
-
-uchar netbytes[4] = { 1, 1, 2, 3 };
-#define NETBYTES(x)	netbytes[(*x>>6) & 3]
-
-/*
  *  routes
  */
 struct Iproute {
-	uchar	dst[4];
-	uchar	gate[4];
-	uchar	mask[4];
+	ulong	dst;
+	ulong	gate;
+	ulong	mask;
 	Iproute	*next;
 	int	inuse;
 };
@@ -48,80 +42,41 @@ struct Iprtab {
 Iprtab	iprtab;
 
 /*
- *  Convert string to ip address.  This is rediculously difficult because
- *  the designers of ip decided to allow any leading zero bytes in the
- *  host part to be left out.
- */
-void
-strtoip(char *s, uchar *addr)
-{
-	int i, off, first;
-	char *rptr = s;
-
-	/* convert the bytes */
-	for(i = 0; i<4 & *rptr; i++)
-		addr[i] = strtoul(rptr, &rptr, 0);
-
-	/* move host bytes to the right place */
-	first = NETBYTES(addr);
-	off = 4 - i;
-	if(off)
-		while(i != first){
-			--i;
-			addr[i+off] = addr[i];
-		}
-}
-
-/*
  *  The chosen route is the one obeys the constraint
- *		r->mask[x] & dst[x] == r->dst[x] for x in 0 1 2 3
+ *		r->mask & dst == r->dst
  *
  *  If there are several matches, the one whose mask has the most
- *  leading ones (and hence is the most specific) wins.
- *
- *  If there is no match, the default gateway is chosen.
+ *  leading ones (and hence is the most specific) wins.  This is
+ *  forced by storing the routes in decreasing number of ones order
+ *  and returning the first match.  The default gateway has no ones
+ *  in the mask and is thus the last matched.
  */
 void
 iproute(uchar *dst, uchar *gate)
 {
 	Iproute *r;
+	ulong udst;
+
+	udst = nhgetl(dst);
+	if((udst&Mymask) == (Myip&Mymask)){
+		memmove(gate, dst, 4);
+		return;
+	}
 
 	/*
 	 *  first check routes
 	 */
-	lock(&iprtab);
 	for(r = iprtab.first; r; r = r->next){
-		if((r->mask[0]&dst[0]) == r->dst[0]
-		&& (r->mask[1]&dst[1]) == r->dst[1]
-		&& (r->mask[2]&dst[2]) == r->dst[2]
-		&& (r->mask[3]&dst[3]) == r->dst[3]){
-			memmove(gate, r->gate, 4);
-			unlock(&iprtab);
+		if((r->mask&udst) == r->dst){
+			hnputl(gate, r->gate);
 			return;
 		}
 	}
-	unlock(&iprtab);
 
 	/*
-	 *  else just return what we got
+	 *  else just return the same address
 	 */	
 	memmove(gate, dst, 4);
-}
-
-/*
- *  Compares 2 subnet masks and returns an integer less than, equal to,
- *  or greater than 0, according as m1 is numericly less than,
- *  equal to, or greater than m2.
- */
-ipmaskcmp(uchar *m1, uchar *m2)
-{
-	int a, i;
-
-	for(i = 0; i < 4; i++){
-		if(a = *m1++ - *m2++)
-			return a;
-	}
-	return 0;
 }
 
 /*
@@ -133,20 +88,16 @@ ipmaskcmp(uchar *m1, uchar *m2)
  *  NOTE: A default route has an all zeroes mask and dst.
  */
 void
-ipaddroute(uchar *dst, uchar *mask, uchar *gate)
+ipaddroute(ulong dst, ulong mask, ulong gate)
 {
 	Iproute *r, *e, *free;
 	int i;
 
-	if(mask==0)
-		mask = CLASSMASK(dst);
-
 	/*
 	 *  filter out impossible requests
 	 */
-	for(i = 0; i < 4; i++)
-		if((dst[i]&mask[i]) != dst[i])
-			errors("bad ip route");
+	if((dst&mask) != dst)
+		errors("bad ip route");
 
 	/*
 	 *  see if we already have a route for
@@ -159,24 +110,26 @@ ipaddroute(uchar *dst, uchar *mask, uchar *gate)
 			free = r;
 			continue;
 		}
-		if(memcmp(dst, r->dst, 4)==0 && memcmp(mask, r->mask, 4)==0){
-			memmove(r->gate, gate, 4);
+		if(dst==r->dst && mask==r->mask){
+			r->gate = gate;
 			unlock(&iprtab);
 			return;
 		}
 	}
-	if(free == 0)
+	if(free == 0){
+		unlock(&iprtab);
 		errors("no free ip routes");
+	}
 
 	/*
 	 *  add the new route in sorted order
 	 */
-	memmove(free->dst, dst, 4);
-	memmove(free->mask, mask, 4);
-	memmove(free->gate, gate, 4);
+	free->dst = dst;
+	free->mask = mask;
+	free->gate = gate;
 	free->inuse = 1;
-	for(r = iprtab.first; r; r = r->next){
-		if(ipmaskcmp(free->mask, r->mask) > 0)
+	for(r = e = iprtab.first; r; r = r->next){
+		if(mask > r->mask)
 			break;
 		e = r;
 	}
@@ -193,13 +146,13 @@ ipaddroute(uchar *dst, uchar *mask, uchar *gate)
  *  remove a route
  */
 void
-ipremroute(uchar *dst, uchar *mask)
+ipremroute(ulong dst, ulong mask)
 {
 	Iproute *r, *e;
 
 	lock(&iprtab);
-	for(r = iprtab.first; r; r = r->next){
-		if(memcmp(dst, r->dst, 4)==0 && memcmp(mask, r->mask, 4)==0){
+	for(r = e = iprtab.first; r; r = r->next){
+		if(dst==r->dst && mask==r->mask){
 			if(r == iprtab.first)
 				iprtab.first = r->next;
 			else
@@ -317,9 +270,10 @@ iprouteclose(Chan *c)
 long
 iprouteread(Chan *c, void *a, long n)
 {
-	char	buf[IPR_ENTRYLEN*2];
+	char	buf[IPR_ENTRYLEN*3];
 	Iproute	*r;
 	int	part, bytes, size;
+	uchar	dst[4], mask[4], gate[4];
 
 	switch((int)(c->qid.path&~CHDIR)){
 	case Qdir:
@@ -328,26 +282,31 @@ iprouteread(Chan *c, void *a, long n)
 		lock(&iprtab);
 		part = c->offset/IPR_ENTRYLEN;
 		for(r = iprtab.first; part && r; r = r->next)
-			;
+			part--;
 		bytes = c->offset;
-		while(bytes < iprtab.n*IPR_ENTRYLEN && n){
+		while(r && bytes < iprtab.n*IPR_ENTRYLEN && n){
 			part = bytes%IPR_ENTRYLEN;
 
+			hnputl(dst, r->dst);
+			hnputl(mask, r->mask);
+			hnputl(gate, r->gate);
 			sprint(buf,"%d.%d.%d.%d & %d.%d.%d.%d -> %d.%d.%d.%d%s",
-				r->dst[0], r->dst[1], r->dst[2], r->dst[3],
-				r->mask[0], r->mask[1], r->mask[2], r->mask[3],
-				r->gate[0], r->gate[1], r->gate[2], r->gate[3],
+				dst[0], dst[1], dst[2], dst[3],
+				mask[0], mask[1], mask[2], mask[3],
+				gate[0], gate[1], gate[2], gate[3],
 				PAD); 
 			
 			buf[IPR_ENTRYLEN-1] = '\n';
 
 			size = IPR_ENTRYLEN - part;
-			size = MIN(n, size);
+			if(size > n)
+				size = n;
 			memmove(a, buf+part, size);
 
 			a = (void *)((int)a + size);
 			n -= size;
 			bytes += size;
+			r = r->next;
 		}
 		unlock(&iprtab);
 		return bytes - c->offset;
@@ -364,7 +323,7 @@ iproutewrite(Chan *c, char *a, long n)
 {
 	char buf[IPR_ENTRYLEN];
 	char *field[4];
-	uchar mask[4], dst[4], gate[4];
+	Ipaddr mask, dst, gate;
 	int m;
 
 	switch((int)(c->qid.path&~CHDIR)){
@@ -377,15 +336,15 @@ iproutewrite(Chan *c, char *a, long n)
 		else if(strcmp(field[0], "add") == 0){
 			switch(m){
 			case 4:
-				strtoip(field[1], dst);
-				strtoip(field[2], mask);
-				strtoip(field[3], gate);
+				dst = ipparse(field[1]);
+				mask = ipparse(field[2]);
+				gate = ipparse(field[3]);
 				ipaddroute(dst, mask, gate);
 				break;
 			case 3:
-				strtoip(field[1], dst);
-				strtoip(field[2], gate);
-				ipaddroute(dst, 0, gate);
+				dst = ipparse(field[1]);
+				gate = ipparse(field[2]);
+				ipaddroute(dst, classmask[dst>>30], gate);
 				break;
 			default:
 				error(Ebadarg);
@@ -393,13 +352,13 @@ iproutewrite(Chan *c, char *a, long n)
 		} else if(strcmp(field[0], "delete") == 0){
 			switch(m){
 			case 3:
-				strtoip(field[1], dst);
-				strtoip(field[2], mask);
+				dst = ipparse(field[1]);
+				mask = ipparse(field[2]);
 				ipremroute(dst, mask);
 				break;
 			case 2:
-				strtoip(field[1], dst);
-				ipremroute(dst, 0);
+				dst = ipparse(field[1]);
+				ipremroute(dst, classmask[dst>>30]);
 				break;
 			default:
 				error(Ebadarg);

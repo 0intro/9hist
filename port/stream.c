@@ -712,6 +712,8 @@ streamparse(char *name, Block *bp)
 			return 0;
 		else
 			bp->rptr += len;
+		while(*bp->rptr==' ' && bp->wptr>bp->rptr)
+			bp->rptr++;
 		return 1;
 	}
 	return 0;
