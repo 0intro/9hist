@@ -391,3 +391,19 @@ kbdinit(void)
 
 	return 1;
 }
+
+void
+mousectl(char *cmd)
+{
+	int s;
+
+	if(strncmp(cmd, "reset", 5) == 0){
+		s = splhi();
+		mousecmd(0xF6);
+		mousecmd(0xEA);	/* streaming */
+		mousecmd(0xE8);	/* set resolution */
+		mousecmd(3);
+		mousecmd(0xF4);	/* enabled */
+		splx(s);
+	}
+}

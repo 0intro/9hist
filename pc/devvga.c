@@ -1108,7 +1108,15 @@ tridentpage(int page)
 static void
 et4000page(int page)
 {
-	outb(0x3cd, (page<<4)|page);
+	uchar p;
+
+	p = page & 0x0F;
+	p |= p<<4;
+	outb(0x3CD, p);
+
+	p = (page & 0x30);
+	p |= p>>4;
+	outb(0x3CB, p);
 }
 static void
 cirruspage(int page)

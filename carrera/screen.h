@@ -11,6 +11,5 @@ extern Cursorinfo	cursor;
 extern void	mouseupdate(int);
 extern int	cursoron(int);
 #define		cursoroff(x)
-#define		mousectl(s)
 extern Point	mousexy(void);
 void			setcursor(Cursor*);
