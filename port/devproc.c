@@ -28,6 +28,24 @@ enum
 	Qprofile,
 };
 
+enum
+{
+	PCclose,
+	PCclosefiles,
+	PCfixedpri,
+	PChang,
+	PCkill,
+	PCnohang,
+	PCpri,
+	PCprivate,
+	PCprofile,
+	PCstart,
+	PCstartstop,
+	PCstop,
+	PCwaitstop,
+	PCwired,
+};
+
 #define	STATSIZE	(2*KNAMELEN+12+9*12)
 /*
  * Status, fd, and ns are left fully readable (0444) because of their use in debugging,
@@ -53,6 +71,23 @@ Dirtab procdir[] =
 	"text",		{Qtext},	0,			0000,
 	"wait",		{Qwait},	0,			0400,
 	"profile",	{Qprofile},	0,			0400,
+};
+
+Cmdtab proccmd[] = {
+	PCclose,		"close",		2,
+	PCclosefiles,	"closefiles",	1,
+	PCfixedpri,	"fixedpri",		2,
+	PChang,		"hang",		1,
+	PCnohang,	"nohang",		1,
+	PCkill,		"kill",		1,
+	PCpri,		"pri",			2,
+	PCprivate,		"private",		1,
+	PCprofile,		"profile",		1,
+	PCstart,		"start",		1,
+	PCstartstop,	"startstop",	1,
+	PCstop,		"stop",		1,
+	PCwaitstop,	"waitstop",	1,
+	PCwired,		"wired",		2,
 };
 
 /* Segment type from portdat.h */
@@ -1013,17 +1048,45 @@ procctlreq(Proc *p, char *va, int n)
 {
 	Segment *s;
 	int i, npc;
-	char buf[64];
+	Cmdbuf *cb;
+	Cmdtab *ct;
 
 	if(p->kp)	/* no ctl requests to kprocs */
 		error(Eperm);
 
-	kstrcpy(buf, va, sizeof buf);
+	cb = parsecmd(va, n);
+	if(waserror()){
+		free(cb);
+		nexterror();
+	}
 
-	if(strncmp(buf, "stop", 4) == 0)
-		procstopwait(p, Proc_stopme);
-	else
-	if(strncmp(buf, "kill", 4) == 0) {
+	if(cb->nf <= 0)
+		error(Ebadctl);
+
+	ct = lookupcmd(cb, proccmd, nelem(proccmd));
+
+	switch(ct->index){
+	case PCclose:
+		procctlclosefiles(p, 0, atoi(cb->f[1]));
+		break;
+	case PCclosefiles:
+		procctlclosefiles(p, 1, 0);
+		break;
+	case PCfixedpri:
+		i = atoi(cb->f[1]);
+		if(i < 0)
+			i = 0;
+		if(i >= Nrq)
+			i = Nrq - 1;
+		if(i > p->basepri && !iseve())
+			error(Eperm);
+		p->basepri = i;
+		p->fixedpri = 1;
+		break;
+	case PChang:
+		p->hang = 1;
+		break;
+	case PCkill:
 		switch(p->state) {
 		case Broken:
 			unbreak(p);
@@ -1037,46 +1100,12 @@ procctlreq(Proc *p, char *va, int n)
 			postnote(p, 0, "sys: killed", NExit);
 			p->procctl = Proc_exitme;
 		}
-	}
-	else
-	if(strncmp(buf, "hang", 4) == 0)
-		p->hang = 1;
-	else
-	if(strncmp(buf, "nohang", 6) == 0)
+		break;
+	case PCnohang:
 		p->hang = 0;
-	else
-	if(strncmp(buf, "waitstop", 8) == 0)
-		procstopwait(p, 0);
-	else
-	if(strncmp(buf, "startstop", 9) == 0) {
-		if(p->state != Stopped)
-			error(Ebadctl);
-		p->procctl = Proc_traceme;
-		ready(p);
-		procstopwait(p, Proc_traceme);
-	}
-	else
-	if(strncmp(buf, "start", 5) == 0) {
-		if(p->state != Stopped)
-			error(Ebadctl);
-		ready(p);
-	}
-	else
-	if(strncmp(buf, "closefiles", 10) == 0)
-		procctlclosefiles(p, 1, 0);
-	else
-	if(strncmp(buf, "close", 5) == 0){
-		if(n < 6)
-			error(Ebadctl);
-		procctlclosefiles(p, 0, atoi(buf+6));
-	}else
-	if(strncmp(buf, "private", 7) == 0)
-		p->privatemem = 1;
-	else
-	if(strncmp(buf, "pri", 3) == 0) {
-		if(n < 4)
-			error(Ebadctl);
-		i = atoi(buf+4);
+		break;
+	case PCpri:
+		i = atoi(cb->f[1]);
 		if(i < 0)
 			i = 0;
 		if(i >= Nrq)
@@ -1085,30 +1114,11 @@ procctlreq(Proc *p, char *va, int n)
 			error(Eperm);
 		p->basepri = i;
 		p->fixedpri = 0;
-	}
-	else
-	if(strncmp(buf, "fixedpri", 8) == 0) {
-		if(n < 9)
-			error(Ebadctl);
-		i = atoi(buf+9);
-		if(i < 0)
-			i = 0;
-		if(i >= Nrq)
-			i = Nrq - 1;
-		if(i > p->basepri && !iseve())
-			error(Eperm);
-		p->basepri = i;
-		p->fixedpri = 1;
-	}
-	else
-	if(strncmp(buf, "wired", 5) == 0) {
-		if(n < 6)
-			error(Ebadctl);
-		i = atoi(buf+6);
-		procwired(p, i);
-	}
-	else
-	if(strncmp(buf, "profile", 7) == 0) {
+		break;
+	case PCprivate:
+		p->privatemem = 1;
+		break;
+	case PCprofile:
 		s = p->seg[TSEG];
 		if(s == 0 || (s->type&SG_TYPE) != SG_TEXT)
 			error(Ebadctl);
@@ -1118,9 +1128,32 @@ procctlreq(Proc *p, char *va, int n)
 		s->profile = malloc(npc*sizeof(*s->profile));
 		if(s->profile == 0)
 			error(Enomem);
+		break;
+	case PCstart:
+		if(p->state != Stopped)
+			error(Ebadctl);
+		ready(p);
+		break;
+	case PCstartstop:
+		if(p->state != Stopped)
+			error(Ebadctl);
+		p->procctl = Proc_traceme;
+		ready(p);
+		procstopwait(p, Proc_traceme);
+		break;
+	case PCstop:
+		procstopwait(p, Proc_stopme);
+		break;
+	case PCwaitstop:
+		procstopwait(p, 0);
+		break;
+	case PCwired:
+		procwired(p, atoi(cb->f[1]));
+		break;
 	}
-	else
-		error(Ebadctl);
+
+	poperror();
+	free(cb);
 }
 
 int

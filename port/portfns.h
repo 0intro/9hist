@@ -153,6 +153,7 @@ char*		logctl(Log*, int, char**, Logflag*);
 void		logn(Log*, int, void*, int);
 long		logread(Log*, void*, ulong, long);
 void		log(Log*, int, char*, ...);
+Cmdtab*	lookupcmd(Cmdbuf*, Cmdtab*, int);
 void		vlog(Log*, int, char*, va_list);
 Page*		lookpage(Image*, ulong);
 void		machinit(void);

@@ -67,3 +67,24 @@ parsecmd(char *p, int n)
 	return cb;
 }
 
+/*
+ * Look up entry in table
+ */
+Cmdtab*
+lookupcmd(Cmdbuf *cb, Cmdtab *ct, int nct)
+{
+	int i;
+
+	if(cb->nf == 0)
+		error(Ebadctl);
+
+	for(i=0; i<nct; i++, ct++){
+		if(strcmp(cb->f[0], ct->cmd) != 0)
+			continue;
+		if(ct->narg!=0 && ct->narg!=cb->nf)
+			error(Eargctl);
+		return ct;
+	}
+	error(Ebadctl);
+	return nil;
+}

@@ -2,6 +2,7 @@ typedef struct Alarms	Alarms;
 typedef struct Block	Block;
 typedef struct Chan	Chan;
 typedef struct Cmdbuf	Cmdbuf;
+typedef struct Cmdtab	Cmdtab;
 typedef struct Cname	Cname;
 typedef struct Crypt	Crypt;
 typedef struct Dev	Dev;
@@ -719,6 +720,13 @@ struct Cmdbuf
 	char	*buf;
 	char	**f;
 	int	nf;
+};
+
+struct Cmdtab
+{
+	int	index;	/* used by client to switch on result */
+	char	*cmd;	/* command name */
+	int	narg;	/* expected #args; 0 ==> variadic */
 };
 
 /*

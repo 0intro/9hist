@@ -1161,10 +1161,8 @@ if(c->umh != nil){
 		 */
 		e.nelems++;
 		if(walk(&c, e.elems+e.nelems-1, 1, nomount) == 0){
-			if(omode&OEXCL){
-				cclose(c);
+			if(omode&OEXCL)
 				error(Eexist);
-			}
 			omode |= OTRUNC;
 			goto Open;
 		}

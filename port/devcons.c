@@ -801,8 +801,13 @@ consread(Chan *c, void *buf, long n, vlong off)
 				*bp++ = '\n';
 			}
 		}
+		if(waserror()){
+			free(b);
+			nexterror();
+		}
 		n = readstr((ulong)offset, buf, n, b);
 		free(b);
+		poperror();
 		return n;
 
 	case Qswap:
@@ -827,8 +832,13 @@ consread(Chan *c, void *buf, long n, vlong off)
 		n = 0;
 		for(i = 0; devtab[i] != nil; i++)
 			n += snprint(b+n, READSTR-n, "#%C %s\n", devtab[i]->dc,  devtab[i]->name);
+		if(waserror()){
+			free(b);
+			nexterror();
+		}
 		n = readstr((ulong)offset, buf, n, b);
 		free(b);
+		poperror();
 		return n;
 
 	case Qzero:

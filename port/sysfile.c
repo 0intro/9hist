@@ -820,7 +820,7 @@ syscreate(ulong *arg)
 	int fd;
 	Chan *c = 0;
 
-	openmode(arg[1]);	/* error check only */
+	openmode(arg[1]&~OEXCL);	/* error check only; OEXCL okay here */
 	if(waserror()) {
 		if(c)
 			cclose(c);
