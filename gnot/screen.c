@@ -4,6 +4,7 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"io.h"
+#include	"ureg.h"
 
 #include	"gnot.h"
 
@@ -201,8 +202,35 @@ duartinit(void)
 	duart[0].data = 0x02;
 }
 
+enum{
+	Kptime=200		/* about once per ms */
+};
 void
-duartintr(void)
+duartstarttimer(void)
+{
+	Duart *duart;
+	char x;
+
+	duart = DUARTREG;
+	duart[0].ctur = (Kptime)>>8;
+	duart[0].ctlr = (Kptime)&255;
+	duart[0].is_imr = IM_IPC|IM_RRDYB|IM_XRDYB|IM_RRDYA|IM_CRDY;
+	x = duart[1].scc_sopbc;
+}
+
+void
+duartstoptimer(void)
+{
+	Duart *duart;
+	char x;
+
+	duart = DUARTREG;
+	x = duart[1].scc_ropbc;
+	duart[0].is_imr = IM_IPC|IM_RRDYB|IM_XRDYB|IM_RRDYA;
+}
+
+void
+duartintr(Ureg *ur)
 {
 	int cause, status, c;
 	Duart *duart;
@@ -212,6 +240,17 @@ duartintr(void)
 	/*
 	 * I can guess your interrupt.
 	 */
+	/*
+	 * Is it 0?
+	 */
+	if(cause & IM_CRDY){
+		kproftimer(ur->pc);
+		c = duart[1].scc_ropbc;
+		duart[0].ctur = (Kptime)>>8;
+		duart[0].ctlr = (Kptime)&255;
+		c = duart[1].scc_sopbc;
+		return;
+	}
 	/*
 	 * Is it 1?
 	 */

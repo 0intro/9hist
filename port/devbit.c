@@ -199,18 +199,19 @@ bitread(Chan *c, void *va, long n)
 		/*
 		 * init:
 		 *	'I'		1
-		 *	ldepth		2
+		 *	ldepth		1
 		 * 	rectangle	16
 		 */
-		if(n < 19)
+		if(n < 18)
 			error(0, Ebadblt);
 		p[0] = 'I';
-		PSHORT(p+1, screen.ldepth);
-		PLONG(p+3, screen.r.min.x);
-		PLONG(p+7, screen.r.min.y);
-		PLONG(p+11, screen.r.max.x);
-		PLONG(p+15, screen.r.max.y);
+		p[1] = screen.ldepth;
+		PLONG(p+2, screen.r.min.x);
+		PLONG(p+6, screen.r.min.y);
+		PLONG(p+10, screen.r.max.x);
+		PLONG(p+14, screen.r.max.y);
 		bit.init = 0;
+		n = 18;
 		goto done;
 	}
 	if(bit.lastid > 0){
@@ -450,6 +451,8 @@ bitwrite(Chan *c, void *va, long n)
 				error(0, Ebadbitmap);
 			miny = GLONG(p+3);
 			maxy = GLONG(p+7);
+			if(miny>maxy || miny<dst->r.min.y || maxy>dst->r.max.y)
+				error(0, Ebadblt);
 			ws = 1<<(3-dst->ldepth);	/* pixels per byte */
 			/* set l to number of bytes of incoming data per scan line */
 			if(dst->r.min.x >= 0)

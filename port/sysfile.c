@@ -406,10 +406,6 @@ syspipe(ulong *arg)
 	c[1] = (*d->clone)(c[0], 0);
 	c[0] = (*d->open)(c[0], ORDWR);
 	c[1] = (*d->open)(c[1], ORDWR);
-	c[0]->mode = 2;
-	c[1]->mode = 2;
-	c[0]->flag |= COPEN;
-	c[1]->flag |= COPEN;
 	fd[0] = newfd();
 	u->fd[fd[0]] = c[0];
 	fd[1] = newfd();

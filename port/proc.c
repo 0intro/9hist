@@ -518,7 +518,7 @@ proctab(int i)
 #include <ureg.h>
 DEBUG()
 {
-	int i, j;
+	int i;
 	Proc *p;
 	Orig *o;
 
@@ -529,11 +529,6 @@ DEBUG()
 			print("%d:%s upc %lux %s ut %ld st %ld\n",
 				p->pid, p->text, p->pc, statename[p->state],
 				p->time[0], p->time[1]);
-			for(j=0; j<NSEG; j++){
-				o = p->seg[j].o;
-				if(o)
-					print("	s%d %d %d\n", j, o->nmod, o->npte);
-			}
 		}
 	}
 }

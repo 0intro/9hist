@@ -6,7 +6,7 @@
 #include	"ureg.h"
 #include	"errno.h"
 
-#include	<v.out.h>
+#include	<a.out.h>
 
 int	shargs(char*, int, char**);
 

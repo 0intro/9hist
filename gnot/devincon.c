@@ -264,7 +264,7 @@ inconreset(void)
 	incon[0].dev = INCON;
 	incon[0].state = Selected;
 	incon[0].ri = incon[0].wi = 0;
-	inconset(&incon[0], 8, 9);
+/*	inconset(&incon[0], 8, 9); /**/
 	for(i=1; i<Nincon; i++){
 		incon[i].dev = INCON+i;
 		incon[i].state = Dead;

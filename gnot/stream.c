@@ -627,7 +627,6 @@ streamnew(Chan *c, Qinfo *qi)
 	if(qi->open)
 		(*qi->open)(RD(s->devq), s);
 
-	c->flag |= COPEN;
 	unlock(s);
 	poperror();
 	return s;
@@ -681,7 +680,7 @@ streamclose(Chan *c)
 	/*
 	 *  if not open, ignore it
 	 */
-	if(!(c->flag & COPEN))
+	if(!c->stream)
 		return;
 
 	/*

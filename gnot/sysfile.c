@@ -126,7 +126,7 @@ unionread(Chan *c, void *va, long n)
 	mnt = c->mnt;
 	lock(pg);
 	if(c->mountid != mnt->mountid){
-		print("unionread: changed underfoot?\n");
+		pprint("unionread: changed underfoot?\n");
 		unlock(pg);
 		return 0;
 	}
@@ -406,10 +406,6 @@ syspipe(ulong *arg)
 	c[1] = (*d->clone)(c[0], 0);
 	c[0] = (*d->open)(c[0], ORDWR);
 	c[1] = (*d->open)(c[1], ORDWR);
-	c[0]->mode = 2;
-	c[1]->mode = 2;
-	c[0]->flag |= COPEN;
-	c[1]->flag |= COPEN;
 	fd[0] = newfd();
 	u->fd[fd[0]] = c[0];
 	fd[1] = newfd();

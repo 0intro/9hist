@@ -51,7 +51,7 @@ static Lock garbagelock;
 typedef struct {
 	int	size;
 	Blist;
-	QLock	q;	/* qlock for sleepers on r */
+	QLock;		/* qlock for sleepers on r */
 	Rendez	r;	/* sleep here waiting for blocks */
 } Bclass;
 Bclass bclass[Nclass]={
@@ -123,12 +123,11 @@ allocb(ulong size)
 	lock(bcp);
 	while(bcp->first == 0){
 		unlock(bcp);
-		print("waiting for block %d\n", size);
 		if(loop++ > 10)
-			panic("waiting for blocks");
-		qlock(&bcp->q);
+			panic("waiting for blocks\n");
+		qlock(bcp);
 		tsleep(&bcp->r, isblock, (void *)bcp, 250);
-		qunlock(&bcp->q);
+		qunlock(bcp);
 		lock(bcp);
 	}
 	bp = bcp->first;
@@ -628,7 +627,6 @@ streamnew(Chan *c, Qinfo *qi)
 	if(qi->open)
 		(*qi->open)(RD(s->devq), s);
 
-	c->flag |= COPEN;
 	unlock(s);
 	poperror();
 	return s;
@@ -682,7 +680,7 @@ streamclose(Chan *c)
 	/*
 	 *  if not open, ignore it
 	 */
-	if(!(c->flag & COPEN))
+	if(!c->stream)
 		return;
 
 	/*
