@@ -102,6 +102,9 @@ todget(vlong *ticksp)
 		ticks = fastticks((uvlong*)&tod.hz);
 	else
 		ticks = fastticks(nil);
+
+	/* since 64 bit ops are not atomix, we have to lock around them */
+	ilock(&tod);
 	diff = ticks - tod.last;
 
 	// convert to epoch
@@ -109,7 +112,6 @@ todget(vlong *ticksp)
 	x = x + tod.off;
 
 	if(m->machno == 0){
-		ilock(&tod);
 
 		// add in correction
 		if(tod.sstart != tod.send){
@@ -125,7 +127,6 @@ todget(vlong *ticksp)
 			tod.last = ticks;
 			tod.off = x;
 		}
-		iunlock(&tod);
 	}
 
 	// time can't go backwards
@@ -133,6 +134,7 @@ todget(vlong *ticksp)
 		x = tod.lasttime;
 	else
 		tod.lasttime = x;
+	iunlock(&tod);
 
 	if(ticksp != nil)
 		*ticksp = ticks;
