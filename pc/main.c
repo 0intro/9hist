@@ -314,7 +314,7 @@ bootargs(ulong base)
 	} else if(strncmp(cp, "sd", 2) == 0){
 		sprint(buf, "local!#S/sd%c%c/fs", *(cp+2), *(cp+3));
 		av[ac++] = pusharg(buf);
-	} else if(strncmp(cp, "e!", 2) == 0)
+	} else if(strncmp(cp, "ether", 5) == 0)
 		av[ac++] = pusharg("-n");
 	if(buf[0]){
 		cp = strchr(buf, '!');

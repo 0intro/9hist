@@ -32,7 +32,7 @@ typedef struct SDunit {
 	int	nopen;			/* of partitions on this unit */
 	int	changed;
 
-	Lock	rawinuse;
+	Lock	rawinuse;		/* really just a test-and-set */
 	int	state;
 	SDreq*	req;
 } SDunit;

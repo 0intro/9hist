@@ -495,8 +495,10 @@ sdopen(Chan* c, int omode)
 		break;
 	case Qraw:
 		unit = sdunit[UNIT(c->qid)];
-		if(!canlock(&unit->rawinuse))
+		if(!canlock(&unit->rawinuse)){
+			c->flag &= ~COPEN;
 			error(Einuse);
+		}
 		unit->state = Rawcmd;
 		break;
 	case Qpart:
