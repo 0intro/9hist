@@ -139,8 +139,11 @@ mntattach(char *muxattach)
 	m->rip = 0;
 	m->c = c;
 	m->c->flag |= CMSG;
-	if(strcmp(bogus.spec, "16k") == 0) {
-		m->blocksize = 16*1024;
+	if(strncmp(bogus.spec, "mntblk=", 7) == 0) {
+		m->blocksize = strtoul(bogus.spec+7, 0, 0);
+		if(m->blocksize > MAXFDATA)
+			m->blocksize = MAXFDATA;
+		print("mount blk %d\n", m->blocksize);
 		bogus.spec = "";
 	}
 	else

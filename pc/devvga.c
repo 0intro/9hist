@@ -99,12 +99,14 @@ enum
 	Qvgaiow		= 2,
 	Qvgaiol		= 3,
 	Qvgactl		= 4,
-	Nvga		= Qvgactl,
+	Qvgaiosl	= 5,
+	Nvga		= Qvgaiosl,
 };
 Dirtab vgadir[]={
 	"vgaiob",	{ Qvgaiob },	0,	0666,
 	"vgaiow",	{ Qvgaiow },	0,	0666,
 	"vgaiol",	{ Qvgaiol },	0,	0666,
+	"vgaiosl",	{ Qvgaiosl },	0,	0666,	/* Debugging: philw */
 	"vgactl",	{ Qvgactl },	0,	0666,
 };
 
@@ -413,6 +415,11 @@ vgawrite(Chan *c, void *buf, long n, ulong offset)
 		for (lp = buf, port=offset; port<offset+n; port+=4)
 			outl(port, *lp++);
 		return n*4;
+	case Qvgaiosl:
+		if((n & 03) || (offset & 03))
+			error(Ebadarg);
+		outsl(offset, buf, n/4);
+		return n;
 	}
 	error(Eperm);
 	return 0;
