@@ -412,11 +412,14 @@ qbread(Queue *q, int len)
 	nb = b;
 	if(n > len){
 		if((q->state&Qmsg) == 0){
+			iunlock(q);
+
 			n -= len;
 			b = allocb(n);
 			memmove(b->wp, nb->rp+len, n);
 			b->wp += n;
 
+			ilock(q);
 			b->next = q->bfirst;
 			if(q->bfirst == 0)
 				q->blast = b;
