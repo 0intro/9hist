@@ -1058,6 +1058,8 @@ bitcompact(void)
 		p1 += 2 + p1[0];
 	}
 	bit.wfree = p1;
+	if(p1<bit.words || p1>=bit.words+bit.nwords)
+		panic("bitcompact");
 	qunlock(&bitlock);
 }
 
