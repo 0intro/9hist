@@ -347,7 +347,8 @@ interrupt(Ureg *ur, void *arg)
 
 	/*
 	 * Panic if there are any interrupt bits on we haven't
-	 * dealt with other than Latch.
+	 * dealt with other than Latch. Should deal with UP (Update
+	 * Statistics) for happier coexistence with Windows drivers.
 	 * Otherwise, acknowledge the interrupt.
 	 */
 	if(status & AllIntr)
