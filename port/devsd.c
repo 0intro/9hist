@@ -11,7 +11,7 @@
 
 enum
 {
-	LogNpart	= 3,
+	LogNpart	= 4,
 	Npart		= 1<<LogNpart,
 	Ndisk		= 32,
 	Nlun		= 8,
@@ -145,6 +145,7 @@ sdinit(void)
 			break;
 		}
 	}
+	print("sd out\n");
 }
 
 Chan*
@@ -276,6 +277,8 @@ sdrdpart(Disk *d)
 					strncpy(d->vol, field[1], NAMELEN);
 				break;	
 			case 3:
+				if(p >= &d->table[Npart])
+					break;
 				strncpy(p->name, field[0], NAMELEN);
 				p->beg = strtoul(field[1], 0, 0);
 				p->end = strtoul(field[2], 0, 0);
