@@ -406,6 +406,12 @@ TEXT	intr16(SB),$0
 	PUSHL	$0
 	PUSHL	$16
 	JMP	intrcommon
+TEXT	intr17(SB),$0
+	PUSHL	$17
+	JMP	intrscommon
+TEXT	intr18(SB),$0
+	PUSHL	$16
+	JMP	intrscommon
 TEXT	intr24(SB),$0
 	PUSHL	$0
 	PUSHL	$24
@@ -585,6 +591,10 @@ TEXT	x86(SB),$0
 	/* CPUID */
 	 BYTE $0x0F
 	 BYTE $0xA2
+
+	MOVL	AX, cpuidax(SB)
+	MOVL	DX, cpuiddx(SB)
+
 	SHLL	$20,AX
 	SHRL	$28,AX
 	CMPL	AX, $4

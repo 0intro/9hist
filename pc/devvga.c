@@ -106,7 +106,6 @@ static void	cgascreenputc(int);
 static void	cgascreenputs(char*, int);
 static void	screenputc(char*);
 static void	scroll(void);
-static ulong	xnto32(uchar, int);
 static void	workinit(Bitmap*, int, int);
 extern void	screenload(Rectangle, uchar*, int, int, int);
 extern void	screenunload(Rectangle, uchar*, int, int, int);
@@ -585,6 +584,21 @@ setmode(VGAmode *vga)
 	vgaxo(Seqx, 0x01, vga->sequencer[1]);
 }
 
+static ulong
+xnto32(uchar x, int n)
+{
+	int s;
+	ulong y;
+
+	x &= (1<<n)-1;
+	y = 0;
+	for(s = 32 - n; s > 0; s -= n)
+		y |= x<<s;
+	if(s < 0)
+		y |= x>>(-s);
+	return y;
+}
+
 /*
  *  reconfigure screen shape
  */
@@ -1046,25 +1060,9 @@ screenputs(char *s, int n)
 	unlock(&screenlock);
 }
 
-
 /*
  *  expand n bits of color to 32
  */
-static ulong
-xnto32(uchar x, int n)
-{
-	int s;
-	ulong y;
-
-	x &= (1<<n)-1;
-	y = 0;
-	for(s = 32 - n; s > 0; s -= n)
-		y |= x<<s;
-	if(s < 0)
-		y |= x>>(-s);
-	return y;
-}
-
 /*
  *  paging routines for different cards
  */

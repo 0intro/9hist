@@ -31,6 +31,7 @@ static int cpufreq = 66000000;
 static int cpumhz = 66;
 static int cputype = 486;
 static int loopconst = 100;
+ulong cpuidax, cpuiddx;
 
 static void
 clock(Ureg *ur, void *arg)
@@ -84,7 +85,8 @@ delay(int l)
 void
 printcpufreq(void)
 {
-	print("CPU is a %ud MHz (%ud Hz) %d\n", cpumhz, cpufreq, cputype);
+	print("CPU is a %ud Hz %d (CPUID: AX=0x%8.8lux, DX=0x%8.8lux)\n",
+		cpufreq, cputype, cpuidax, cpuiddx);
 }
 
 void

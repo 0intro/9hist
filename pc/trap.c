@@ -13,7 +13,7 @@ void	intr0(void), intr1(void), intr2(void), intr3(void);
 void	intr4(void), intr5(void), intr6(void), intr7(void);
 void	intr8(void), intr9(void), intr10(void), intr11(void);
 void	intr12(void), intr13(void), intr14(void), intr15(void);
-void	intr16(void);
+void	intr16(void), intr17(void), intr18(void);
 void	intr24(void), intr25(void), intr26(void), intr27(void);
 void	intr28(void), intr29(void), intr30(void), intr31(void);
 void	intr32(void), intr33(void), intr34(void), intr35(void);
@@ -143,6 +143,8 @@ trapinit(void)
 	sethvec(14, intr14, SEGIG, 0);	/* page fault */
 	sethvec(15, intr15, SEGIG, 0);
 	sethvec(16, intr16, SEGIG, 0);	/* math coprocessor */
+	sethvec(17, intr17, SEGIG, 0);
+	sethvec(18, intr18, SEGIG, 0);
 
 	/*
 	 *  device interrupts
@@ -227,7 +229,12 @@ char *excname[] = {
 	[14]	"page fault",
 	[15]	"15 (reserved)",
 	[16]	"coprocessor error",
+	[17]	"alignment check",
+	[18]	"something bad happened",
 };
+
+Ureg lastur;
+Ureg scndlastur;
 
 /*
  *  All traps come here.  It is slower to have all traps call trap() rather than
@@ -251,7 +258,7 @@ trap(Ureg *ur)
 	else if(ur->pc <= (ulong)end && *(uchar*)ur->pc == 0xCF) {
 		if(iret_traps++ > 10)
 			panic("iret trap");
-		return;
+		goto out;
 	}
 	iret_traps = 0;
 
@@ -270,16 +277,18 @@ trap(Ureg *ur)
 	if(v>=256 || (h = halloc.ivec[v]) == 0){
 		/* an old 386 generates these fairly often, no idea why */
 		if(v == 13)
-			return;
+			goto out;
 
 		/* a processor or coprocessor error */
 		if(v <= 16){
 			if(user){
 				sprint(buf, "sys: trap: %s", excname[v]);
 				postnote(up, 1, buf, NDebug);
-				return;
+				goto out;
 			} else {
 				dumpregs(ur);
+print("%s pc=0x%lux", excname[v], ur->pc);
+for(;;);
 				panic("%s pc=0x%lux", excname[v], ur->pc);
 			}
 		}
@@ -294,7 +303,7 @@ trap(Ureg *ur)
 			/* unimplemented traps */
 			print("illegal trap %d pc=0x%lux\n", v, ur->pc);
 		}
-		return;
+		goto out;
 	}
 
 	/* there may be multiple handlers on one interrupt level */
@@ -309,6 +318,9 @@ trap(Ureg *ur)
 	splhi();
 	if(v != Syscallvec && user && (up->procctl || up->nnote))
 		notify(ur);
+out:
+	scndlastur = lastur;
+	lastur = *ur;
 }
 
 /*
@@ -346,6 +358,8 @@ dumpregs(Ureg *ur)
 
 
 	x = (ulong*)(ur+1);
+	dumpregs2(&scndlastur);
+	dumpregs2(&lastur);
 	dumpregs2(ur);
 	print("  CR0 %8.8lux CR2 %8.8lux\n", getcr0(), getcr2());
 	print("  magic %lux %lux %lux\n", x[0], x[1], x[2]);

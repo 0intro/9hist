@@ -368,14 +368,6 @@ intr(Ureg *ur)
 
 	if(cause & INTR4) {
 		devint = IO(uchar, I386ack);
-		vec = devint&~0x7;
-		/* reenable the 8259 interrupt */
-		if(vec == Int0vec || vec == Int1vec){
-			EISAOUTB(Int0ctl, EOI);
-			if(vec == Int1vec)
-				EISAOUTB(Int1ctl, EOI);
-		}
-
 		switch(devint) {
 		default:
 			iprint("i386ACK #%lux\n", devint);
@@ -389,6 +381,13 @@ intr(Ureg *ur)
 		case 13:
 			eisadmaintr();
 			break;
+		}
+		/* reenable the 8259 interrupt */
+		vec = devint&~0x7;
+		if(vec == Int0vec || vec == Int1vec){
+			EISAOUTB(Int0ctl, EOI);
+			if(vec == Int1vec)
+				EISAOUTB(Int1ctl, EOI);
 		}
 		cause &= ~INTR4;
 	}
