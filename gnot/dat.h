@@ -80,7 +80,7 @@ struct Conf
 	int	nisdn;		/* number of isdn interfaces */
 	int	nlapd;		/* number of dragnet protocol modules */
 	int	copymode;	/* 0 is copy on write, 1 is copy on reference */
-	int	portispaged;	/* ??? */
+	int	portispaged;	/* 1 if extended I/O port addresses */
 	int	nconc;		/* number of datakit concentrators */
 };
 
@@ -129,14 +129,12 @@ struct Mach
 
 struct Portpage
 {
-	union {
+	union{
 		Lock;
 		QLock;
 	};
 	int	 select;
 };
-
-extern int	portispaged;
 
 #define	NERR	25
 #define	NNOTE	5

@@ -738,7 +738,7 @@ dp8390init(Ctlr *cp)
 
 	OUT(hw, w.cr, 0x21);			/* Page0|RD2|STP */
 	if(hw->bt16)
-		OUT(hw, w.dcr, 0x61);		/* 16 bit interface */
+		OUT(hw, w.dcr, 0x01);		/* 16 bit interface */
 	else
 		OUT(hw, w.dcr, 0x48);		/* FT1|LS */
 	OUT(hw, w.rbcr0, 0);

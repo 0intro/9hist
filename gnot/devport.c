@@ -11,10 +11,16 @@
 #define	ROMADDR	0x40000000
 #define	ROMSIZE	((256*1024)/8)
 
-#define	P_oper(sel, inst)	(P_qlock(sel), inst, P_qunlock(sel))
-#define	P_qlock(sel)		(sel >= 0 ? (qlock(&portpage), \
-				PORTSELECT = portpage.select = sel) : -1)
-#define	P_qunlock(sel)		(sel >= 0 ? (qunlock(&portpage),0) : -1)
+#define	P_qlock(sel)	if(sel >= 0){\
+				qlock(&portpage);\
+				PORTSELECT = portpage.select = sel;\
+			}else
+
+#define	P_qunlock(sel)	if(sel >= 0){\
+				qunlock(&portpage);\
+			}else
+
+#define	P_oper(sel, inst)		P_qlock(sel); inst; P_qunlock(sel)
 #define	P_read(sel, addr, val, type)	P_oper(sel, val = *(type *)(PORT+addr))
 #define	P_write(sel, addr, val, type)	P_oper(sel, *(type *)(PORT+addr) = val)
 
