@@ -124,10 +124,10 @@ clock(Ureg *ur)
 	}
 }
 
-uvlong
+vlong
 fastticks(uvlong *hz)
 {
 	if(hz)
-		*hz = HZ;
-	return m->ticks;
+		*hz = HZ*100;
+	return (vlong)m->ticks*100;
 }

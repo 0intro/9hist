@@ -176,7 +176,6 @@ _rtctime(void)
 long
 rtctime(void)
 {
-#ifdef notdef
 	int i;
 	long t, ot;
 
@@ -193,9 +192,6 @@ rtctime(void)
 	iunlock(&rtclock);
 
 	return t;
-#else
-	return boottime+TK2SEC(MACHP(0)->ticks);
-#endif /* notdef */
 }
 
 static long	 
@@ -264,8 +260,6 @@ rtcwrite(Chan *c, void *buf, long n, vlong off)
 			rtc.year = PUTBCD(rtc.year);
 		}
 
-/* disgusting hack because RTC doesn't work and m->ticks drifts */
-if(boottime == 0){
 		ilock(&rtclock);
 		/* set clock values */
 		x = (*(uchar*)Rtcindex)&~0x7f;
@@ -282,11 +276,6 @@ if(boottime == 0){
 		*(uchar*)Rtcindex = x|Year;
 		*(uchar*)Rtcdata = rtc.year;
 		iunlock(&rtclock);
-}else{
-		splhi();
-		MACHP(0)->ticks = HZ*(secs - boottime);	/* inverse of SEC2TK() */
-		spllo();
-}
 
 		return n;
 	case Qnvram:

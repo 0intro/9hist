@@ -131,12 +131,12 @@ i8253enable(void)
 
 /*
  *  return time elapsed since clock start in
- *  10ths of nanoseconds
+ *  100 times hz
  */
 uvlong
 i8253read(uvlong *hz)
 {
 	if(hz)
-		*hz = HZ;
-	return m->ticks;
+		*hz = HZ*100;
+	return m->ticks*100;
 }

@@ -132,12 +132,12 @@ sdinit(void)
 			type = scratch[0] & 0x1F;
 
 			/*
-			 * Read-capacity is mandatory for TypeDA, TypeMO and TypeCD.
-			 * It may return 'not ready' if TypeDA is not spun up,
-			 * TypeMO or TypeCD are not loaded or just plain slow getting
-			 * their act together after a reset.
-			 * If 'not ready' comes back, try starting a TypeDA and punt
-			 * the get capacity until the drive is attached.
+			 * Read-capacity is mandatory for TypeDA, TypeMO and
+			 * TypeCD. It may return 'not ready' if TypeDA is not
+			 * spun up, TypeMO or TypeCD are not loaded or just
+			 * plain slow getting their act together after a reset.
+			 * If 'not ready' comes back, try starting a TypeDA and
+			 * punt the get capacity until the drive is attached.
 			 */
 			if(scsicap(d->t, d->lun, &d->size, &d->bsize) != STok) {
 				nbytes = 0xFF;
@@ -150,9 +150,9 @@ sdinit(void)
 				case 0x02:
 					break;
 				case 0x06:
-					if(scratch[12] == 0x28 && scratch[13] == 0)
+					if(scratch[12] == 0x28 && !scratch[13])
 						break;
-					if(scratch[12] == 0x29 && scratch[13] == 0)
+					if(scratch[12] == 0x29 && !scratch[13])
 						break;
 					/*FALLTHROUGH*/
 				default:

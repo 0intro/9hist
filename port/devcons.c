@@ -394,12 +394,41 @@ static Dirtab consdir[]={
 	"user",		{Quser},	NAMELEN,	0666,
 };
 
+uvlong billion = 1000000000ULL;
+uvlong bilbil = 1000000000ULL*1000000000ULL;
+
+//
+//  this routine is a hack till we get 64 bit ops faster
+//
 int
 readvlnum(ulong off, char *buf, ulong n, uvlong val, int size)
 {
 	char tmp[64];
+	char num[64];
+	ulong y;
+	int i;
 
-	snprint(tmp, sizeof(tmp), "%*.0ulld", size-1, val);
+	i = 0;
+	if(val > bilbil){
+		y = val/bilbil;
+		i += sprint(num+i, "%lud", y);
+		val -= y*bilbil;
+		y = val/billion;
+		i += sprint(num+i, "%9.9lud", y);
+		val -= y*billion;
+		y = val;
+		sprint(num+i,  "%9.9lud", y);
+	} else if(val > billion){
+		y = val/billion;
+		i += sprint(num+i, "%lud", y);
+		val -= y*billion;
+		y = val;
+		sprint(num+i, "%9.9lud", y);
+	} else {
+		y = val;
+		sprint(num+i, "%lud", y);
+	}
+	snprint(tmp, sizeof(tmp), "%*s", size-1, num);
 	tmp[size-1] = ' ';
 	if(off >= size)
 		return 0;
