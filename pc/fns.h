@@ -13,7 +13,6 @@ void	fault386(Ureg*);
 void	faultinit(void);
 void	fclock(Ureg*);
 void	fclockinit(void);
-#define	flushvirt();
 void	fpinit(void);
 void	fpoff(void);
 void	fprestore(FPsave*);

@@ -35,6 +35,7 @@ clock(Ureg *ur)
 	kbdclock();
 	mouseclock();
 	duartclock();
+	kproftimer(ur->pc);
 	if((ur->sr&SPL(7)) == 0 && p && p->state==Running){
 		if(anyready()){
 			if(p->hasspin)

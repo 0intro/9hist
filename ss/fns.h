@@ -10,7 +10,6 @@ void	faultasync(Ureg*);
 void	faultsparc(Ureg*);
 void	flushcpucache(void);
 #define	flushpage(x)
-#define	flushvirt()	flushmmu()
 int	fpcr(int);
 void	fpregrestore(char*);
 void	fpregsave(char*);

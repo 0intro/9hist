@@ -17,7 +17,6 @@ void	fault68020(Ureg*, FFrame*);
 #define	flushapage(x)
 void	flushcpucache(void);
 #define	flushpage(x) if(x)
-#define	flushvirt()
 int	fpcr(int);
 void	fpregrestore(char*);
 void	fpregsave(char*);

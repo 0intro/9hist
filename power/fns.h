@@ -22,7 +22,6 @@ void	faultmips(Ureg*, int, int);
 ulong	fcr31(void);
 void	flushmmu(void);
 #define	flushpage(s)	icflush((void*)(s), BY2PG)
-#define	flushvirt()
 void	gettlb(int, ulong*);
 ulong	gettlbvirt(int);
 void	gotopc(ulong);

@@ -560,7 +560,6 @@ pexit(char *exitstr, int freemem)
 	if(!freemem)
 		addbroken(c);
 
-	flushvirt();
 	es = &c->seg[NSEG];
 	for(s = c->seg; s < es; s++)
 		if(os = *s) {

@@ -23,6 +23,7 @@ struct
 int	newpid(Proc*);
 void	purgepid(int);
 void	flushcontext(void);
+void	putpmegnf(ulong, ulong);
 
 int	pidtime[NTLBPID];	/* should be per m */
 
@@ -36,12 +37,7 @@ mapstack(Proc *p)
 	ulong tlbphys;
 
 	if(p->newtlb) {
-		flushcontext();
-		tp = u->p->pidonmach[m->machno];
-		if(tp)
-			pidtime[tp] = 0;
-		/* easiest is to forget what pid we had.... */
-		memset(u->p->pidonmach, 0, sizeof u->p->pidonmach);
+		mmurelease(p);
 		p->newtlb = 0;
 	}
 
@@ -55,16 +51,22 @@ mapstack(Proc *p)
 	tlbphys = PPN(p->upage->pa)|PTEVALID|PTEWRITE|PTEKERNEL|PTEMAINMEM;
 	putcontext(tp-1);
 	/*
-	 * shouldn't need putpmeg because nothing has been mapped at
-	 * USERADDR in this context except this page.  however, it crashes.
+	 * Don't need to flush cache because no other page has been
+	 * mapped at USERADDR in this context; can call putpmegnf.
 	 */
-	putpmeg(USERADDR, tlbphys);
+	putpmegnf(USERADDR, tlbphys);
 	u = (User*)USERADDR;
 }
 
 void
 mmurelease(Proc *p)
 {
+	int tp;
+
+	tp = p->pidonmach[m->machno];
+	if(tp)
+		pidtime[tp] = 0;
+	/* easiest is to forget what pid we had.... */
 	memset(p->pidonmach, 0, sizeof p->pidonmach);
 }
 
@@ -80,7 +82,7 @@ newpid(Proc *p)
 
 	t = ~0;
 	i = 1+((m->ticks)&(NCONTEXT-1));	/* random guess */
-	for(j=1; j<NTLBPID; j++)
+	for(j=1; t && j<NTLBPID; j++)
 		if(pidtime[j] < t){
 			i = j;
 			t = pidtime[j];
@@ -105,7 +107,7 @@ newpid(Proc *p)
 		putsegm(UZERO+j*BY2SEGM, INVALIDPMEG);
 	putsegm(TSTKTOP-BY2SEGM, kmapalloc.lowpmeg+NKLUDGE*i+(NKLUDGE-1));
 	for(j=0; j<PG2SEGM; j++)
-		putpmeg((TSTKTOP-BY2SEGM)+j*BY2PG, INVALIDPTE);
+		putpmegnf((TSTKTOP-BY2SEGM)+j*BY2PG, INVALIDPTE);
 	return i+1;
 }
 
@@ -242,7 +244,7 @@ print("putmmu %lux %d %s\n", tlbvirt, seg, p->text);
 	for(j=p->nmmuseg; j<=seg; j++){
 		putsegm(l, kmapalloc.lowpmeg+tp+j);
 		for(k=0; k<PG2SEGM; k++,l+=BY2PG)
-			putpmeg(l, INVALIDPTE);
+			putpmegnf(l, INVALIDPTE);
 	}
 	p->nmmuseg = seg+1;
     put:
@@ -267,18 +269,22 @@ putpmeg(ulong virt, ulong phys)
 }
 
 void
+putpmegnf(ulong virt, ulong phys)	/* no need to flush */
+{
+	virt &= VAMASK;
+	virt &= ~(BY2PG-1);
+	putw4(virt, phys);
+}
+
+int nflushmmu;
+void
 flushmmu(void)
 {
 	int tp;
 
+nflushmmu++;
 	splhi();
-	flushcontext();
-	tp = u->p->pidonmach[m->machno];
-	if(tp)
-		pidtime[tp] = 0;
-	/* easiest is to forget what pid we had.... */
-	memset(u->p->pidonmach, 0, sizeof u->p->pidonmach);
-	/* ....then get a new one by trying to map our stack */
+	u->p->newtlb = 1;
 	mapstack(u->p);
 	spllo();
 }
