@@ -850,6 +850,8 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 		break;
 
 	case Qswap:
+		if(conf.cntrlp && strcmp(u->p->user, eve) != 0)
+			error(Eperm);
 		if(n >= sizeof buf)
 			error(Egreg);
 		memmove(buf, va, n);	/* so we can NUL-terminate */

@@ -12,6 +12,7 @@ enum{
 	Qdev,
 	Qenv,
 	Qproc,
+	Qnet,
 
 	Qboot,
 	Qcfs,
@@ -31,6 +32,7 @@ Dirtab rootdir[]={
 	"dev",		{Qdev|CHDIR},	0,			0777,
 	"env",		{Qenv|CHDIR},	0,			0777,
 	"proc",		{Qproc|CHDIR},	0,			0777,
+	"net",		{Qnet|CHDIR},	0,			0777,
 };
 #define	NROOT	(sizeof rootdir/sizeof(Dirtab))
 Dirtab rootpdir[]={

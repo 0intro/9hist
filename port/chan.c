@@ -669,28 +669,25 @@ nameok(char *elem)
 char*
 nextelem(char *name, char *elem)
 {
-	int i, user, c;
+	int i, user, w;
 	char *end, *e;
+	Rune r;
 
 	if(*name == '/')
 		error(Efilename);
-	end = memchr(name, 0, NAMELEN);
-	if(end == 0){
-		end = memchr(name, '/', NAMELEN);
-		if(end == 0)
-			error(Efilename);
-	}else{
-		e = memchr(name, '/', end-name);
-		if(e)
-			end = e;
-	}
+	end = utfrune(name, '/');
+	if(end == 0)
+		end = strchr(name, 0);
+	w = end-name;
+	if(w >= NAMELEN)
+		error(Efilename);
+	memmove(elem, name, w);
+	elem[w] = 0;
 	while(name < end){
-		c = *(uchar*)name++;
-		if(isfrog[c])
+		name += chartorune(&r, name);
+		if(r<sizeof(isfrog) && isfrog[r])
 			error(Ebadchar);
-		*elem++ = c;
 	}
-	*elem = 0;
 	return skipslash(name);
 }
 

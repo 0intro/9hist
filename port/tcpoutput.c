@@ -129,7 +129,7 @@ tcp_output(Ipconv *s)
 
 		/* Fill in fields of pseudo IP header */
 		hnputl(ph.tcpdst, s->dst);
-		hnputl(ph.tcpsrc, Myip);
+		hnputl(ph.tcpsrc, Myip[Myself]);
 		hnputs(ph.tcpsport, s->psrc);
 		hnputs(ph.tcpdport, s->pdst);
 

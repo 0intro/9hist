@@ -154,7 +154,7 @@ iloput(Queue *q, Block *bp)
 	/* Ip fields */
 	ih->frag[0] = 0;
 	ih->frag[1] = 0;
-	hnputl(ih->src, Myip);
+	hnputl(ih->src, Myip[Myself]);
 	hnputl(ih->dst, ipc->dst);
 	ih->proto = IP_ILPROTO;
 	/* Il fields */
@@ -633,7 +633,7 @@ ilsendctl(Ipconv *ipc, Ilhdr *inih, int type, ulong id, ulong ack)
 
 	/* Ip fields */
 	ih->proto = IP_ILPROTO;
-	hnputl(ih->src, Myip);
+	hnputl(ih->src, Myip[Myself]);
 	hnputs(ih->illen, IL_HDRSIZE);
 	ih->frag[0] = 0;
 	ih->frag[1] = 0;

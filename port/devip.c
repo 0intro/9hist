@@ -433,7 +433,7 @@ udpstoput(Queue *q, Block *bp)
 	uh->frag[1] = 0;
 	hnputs(uh->udpplen, ptcllen);
 	hnputl(uh->udpdst, ipc->dst);
-	hnputl(uh->udpsrc, Myip);
+	hnputl(uh->udpsrc, Myip[Myself]);
 	hnputs(uh->udpsport, ipc->psrc);
 	hnputs(uh->udpdport, ipc->pdst);
 	hnputs(uh->udplen, ptcllen);
@@ -583,7 +583,7 @@ iplocalfill(Chan *c, char *buf, int len)
 
 	connection = STREAMID(c->qid.path);
 	cp = &ipconv[c->dev][connection];
-	sprint(buf, "%d.%d.%d.%d %d\n", fmtaddr(Myip), cp->psrc);
+	sprint(buf, "%d.%d.%d.%d %d\n", fmtaddr(Myip[Myself]), cp->psrc);
 }
 
 void

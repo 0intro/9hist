@@ -53,17 +53,41 @@ char *padstr = "                                           ";
 
 enum{
 	arpdirqid,
+	arpdir2qid,
 	arpstatqid,
 	arpctlqid,
 	arpdataqid,
 };
 
 Dirtab arptab[]={
-	"stats",	{arpstatqid},		0,	0666,
-	"ctl",		{arpctlqid},		0,	0666,
-	"data",		{arpdataqid},		0,	0666,
+	"stats",	{arpstatqid},		0,	0444,
+	"ctl",		{arpctlqid},		0,	0664,
+	"data",		{arpdataqid},		0,	0664,
 };
 #define Narptab (sizeof(arptab)/sizeof(Dirtab))
+
+/*
+ *  create a 2-level directory
+ */
+int
+arpgen(Chan *c, void *vp, int ntab, int i, Dir *dp)
+{
+	Qid q;
+
+	q.vers = 0;
+
+	/* top level directory contains the directory arp */
+	if(c->qid.path == CHDIR){
+		if(i)
+			return -1;
+		q.path = CHDIR | arpdir2qid;
+		devdir(c, q, "arp", 0, eve, 0555, dp);
+		return 1;
+	}
+
+	/* next level uses table */
+	return devgen(c, arptab, Narptab, i, dp);
+}
 
 void
 arpreset(void)
@@ -109,13 +133,13 @@ arpclone(Chan *c, Chan *nc)
 int
 arpwalk(Chan *c, char *name)
 {
-	return devwalk(c, name, arptab, (long)Narptab, devgen);
+	return devwalk(c, name, 0, 0, arpgen);
 }
 
 void
 arpstat(Chan *c, char *db)
 {
-	devstat(c, db, arptab, (long)Narptab, devgen);
+	devstat(c, db, 0, 0, arpgen);
 }
 
 Chan *
@@ -182,7 +206,7 @@ arpread(Chan *c, void *a, long n, ulong offset)
 
 	switch((int)(c->qid.path&~CHDIR)){
 	case arpdirqid:
-		return devdirread(c, a, n, arptab, Narptab, devgen);
+		return devdirread(c, a, n, 0, 0, arpgen);
 	case arpdataqid:
 		bytes = c->offset;
 		while(bytes < conf.arp*ARP_ENTRYLEN && n) {
@@ -283,6 +307,8 @@ arpoput(Queue *q, Block *bp)
 {
 	uchar ip[4];
 	Etherhdr *eh;
+	Ipaddr addr;
+	static int dropped;
 
 	if(bp->type != M_DATA) {
 		if(Servq == 0 && streamparse("arpd", bp)) {
@@ -295,7 +321,8 @@ arpoput(Queue *q, Block *bp)
 	}
 
 	if(!Servq) {
-		print("arp: No server, packet dropped\n");
+		if((dropped++ % 1000) == 0)
+			print("arp: No server, packet dropped\n");
 		freeb(bp);
 		return;
 	}
@@ -308,8 +335,16 @@ arpoput(Queue *q, Block *bp)
 
 	iproute(eh->dst, ip);
 
-	/* Send downstream to the ethernet */
+	/* if a known ip addr, send downstream to the ethernet */
 	if(arplookup(ip, eh->d)) {
+		PUTNEXT(q, bp);
+		return;
+	}
+
+	/* if ip broadcast, use ether bcast address */
+	addr = nhgetl(eh->dst);
+	if(addr == Myip[Mybcast] || addr == Myip[Mynet] || addr == Myip[Mysubnet]){
+		memset(eh->d, 0xff, sizeof(eh->d));
 		PUTNEXT(q, bp);
 		return;
 	}
@@ -443,6 +478,7 @@ arplinkhead(Arpcache *ap)
 		
 		ap->frwd = arplruhead;
 		ap->prev = 0;
+
 		arplruhead = ap;
 	}
 }

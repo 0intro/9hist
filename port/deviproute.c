@@ -58,7 +58,7 @@ iproute(uchar *dst, uchar *gate)
 	ulong udst;
 
 	udst = nhgetl(dst);
-	if((udst&Mymask) == (Myip&Mymask)){
+	if((udst&Mymask) == (Myip[Myself]&Mymask)){
 		memmove(gate, dst, 4);
 		return;
 	}

@@ -1,3 +1,6 @@
+/*
+ *  this file used by (at least) the kernel, arpd, snoopy, tboot
+ */
 typedef struct Arppkt	Arppkt;
 typedef struct Arpentry	Arpentry;
 typedef struct Arpstats	Arpstats;

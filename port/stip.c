@@ -26,17 +26,19 @@ QLock		fraglock;
 
 Queue 		*Etherq;
 
-Ipaddr		Myip;
+Ipaddr		Myip[4];
 Ipaddr		Mymask;
 Ipaddr		Mynetmask;
 uchar		Netmyip[4];	/* In Network byte order */
 uchar		bcast[4] = { 0xff, 0xff, 0xff, 0xff };
+Ipaddr		Me[7];		/* possible addresses for me */
 
 /* Predeclaration */
 static void	ipetherclose(Queue*);
 static void	ipetheriput(Queue*, Block*);
 static void	ipetheropen(Queue*, Stream*);
 static void	ipetheroput(Queue*, Block*);
+static void	ipsetaddrs(void);
 
 /*
  *  the ethernet multiplexor stream module definition
@@ -79,6 +81,7 @@ ipetheropen(Queue *q, Stream *s)
 		Etherq = WR(q);
 		s->opens++;		/* Hold this queue in place */
 		s->inuse++;
+		ipsetaddrs();
 	} else {
 		ipc = &ipconv[s->dev][s->id];
 		RD(q)->ptr = (void *)ipc;
@@ -179,18 +182,20 @@ ipetheroput(Queue *q, Block *bp)
 			if(strncmp(eve, u->p->user, sizeof(eve)) != 0)
 				error(Eperm);
 			ptr = bp->rptr;
-			Myip = ipparse((char *)ptr);
-			Netmyip[0] = (Myip>>24)&0xff;
-			Netmyip[1] = (Myip>>16)&0xff;
-			Netmyip[2] = (Myip>>8)&0xff;
-			Netmyip[3] = Myip&0xff;
-			Mymask = classmask[Myip>>30];
+			Myip[Myself] = ipparse((char *)ptr);
+			Netmyip[0] = (Myip[Myself]>>24)&0xff;
+			Netmyip[1] = (Myip[Myself]>>16)&0xff;
+			Netmyip[2] = (Myip[Myself]>>8)&0xff;
+			Netmyip[3] = Myip[Myself]&0xff;
+			Mymask = classmask[Myip[Myself]>>30];
 			while(*ptr != ' ' && *ptr)
 				ptr++;
 			if(*ptr)
-				Mymask = ipparse((char *)ptr);
-			Mynetmask = Mymask;
+				Mynetmask = ipparse((char *)ptr);
+			else
+				Mynetmask = Mymask;
 			freeb(bp);
+			ipsetaddrs();
 		}
 		else
 			PUTNEXT(Etherq, bp);
@@ -353,34 +358,37 @@ drop:
 	freeb(bp);
 }
 
+void
+ipsetaddrs(void)
+{
+	Myip[1] = ~0;					/* local broadcast */
+	Myip[2] = 0;					/* local broadcast - old */
+	Myip[Mysubnet] = Myip[Myself] | ~Mynetmask;	/* subnet broadcast */
+	Myip[Mysubnet+1] = Myip[Myself] & Mynetmask;	/* subnet broadcast - old */
+	Myip[Mynet] = Myip[Myself] | ~Mymask;		/* net broadcast */
+	Myip[Mynet+1] = Myip[Myself] & Mymask;		/* net broadcast - old */
+}
+
 int
 ipforme(uchar *addr)
 {
 	Ipaddr haddr;
-
-	if(memcmp(addr, Netmyip, sizeof(Netmyip)) == 0)
-		return 1;
+	Ipaddr *p;
 
 	haddr = nhgetl(addr);
 
-	/* My subnet broadcast */
-	if((haddr&Mymask) == (Myip&Mymask))
-		return 1;
+	/* try my address plus all the forms of ip broadcast */
+	for(p = Myip; p < &Myip[7]; p++)
+		if(haddr == *p);
+			return 1;
 
-	/* My network broadcast */
-	if((haddr&Mynetmask) == (Myip&Mynetmask))
-		return 1;
-
-	/* Real ip broadcast */
-	if(haddr == 0)
-		return 1;
-
-	/* Old style 255.255.255.255 address */
-	if(haddr == ~0)
+	/* if we haven't set an address yet, accept anything we get */
+	if(Myip[Myself] == 0)
 		return 1;
 
 	return 0;
 }
+
 Block *
 ip_reassemble(int offset, Block *bp, Etherhdr *ip)
 {

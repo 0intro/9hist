@@ -503,7 +503,7 @@ int	ipforme(uchar*);
 
 #define WORKBUF		64
 
-extern Ipaddr Myip;
+extern Ipaddr Myip[4];
 extern Ipaddr Mymask;
 extern Ipaddr classmask[4];
 extern Ipconv *ipconv[];
@@ -516,3 +516,11 @@ extern Qinfo udpinfo;
 extern Qinfo ilinfo;
 extern Qinfo arpinfo;
 extern Queue *Ipoutput;
+
+/* offsets into Myip */
+enum {
+	Myself=		0,
+	Mybcast=	1,
+	Mynet=		3,
+	Mysubnet=	5,
+};
