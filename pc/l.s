@@ -251,6 +251,15 @@ TEXT	tas(SB),$0
 	RET
 
 /*
+ *  xchgw(v, *p) short for the avanstar stargate driver
+ */
+TEXT	xchgw(SB),$0
+	MOVL	v+4(FP),AX
+	MOVL	p+0(FP),BX
+	XCHGW	AX,(BX)
+	RET
+
+/*
  *  routines to load/read various system registers
  */
 GLOBL	idtptr(SB),$6

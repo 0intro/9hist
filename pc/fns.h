@@ -92,6 +92,7 @@ void	vgasavecrash(uchar*, int);
 void	vgarestorecrash(uchar*, int);
 int	x86(void);
 int	x86cpuid(int*, int*);
+int	xchgw(ushort*, int);
 
 #define	waserror()	(up->nerrlab++, setlabel(&up->errlab[up->nerrlab-1]))
 #define	kmapperm(x)	kmap(x)
