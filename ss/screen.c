@@ -26,24 +26,27 @@ GBitmap gscreen;
 
 struct screens
 {
-	ulong	type;
+	char	*type;
 	int	x;
 	int	y;
 	int	ld;
 }screens[] = {
-	{ 0xFE010104, 1152, 900, 0 },
+	{ "bwtwo", 1152, 900, 0 },
+	{ "cgsix", 1152, 900, 3 },
+	{ "cgthree", 1152, 900, 3 },
 	0
 };
 
 Lock screenlock;
 
 void
-screeninit(void)
+screeninit(char *str)
 {
 	struct screens *s;
+	ulong n;
 
 	for(s=screens; s->type; s++)
-		if(s->type == conf.monitor)
+		if(strcmp(s->type, str) == 0)
 			goto found;
 	/* default is 0th element of table */
 	if(conf.monitor){
@@ -54,9 +57,10 @@ screeninit(void)
 	return;
 
     found:
-	gscreen.base = (ulong*)SCREENSEGM;
 	gscreen.zero = 0;
-	gscreen.width = (s->x<<s->ld)/32;
+	gscreen.width = (s->x<<s->ld)/(8*sizeof(ulong));
+	n = sizeof(ulong) * gscreen.width * s->y;
+	gscreen.base = (ulong*)kmapregion(DISPLAYRAM, n, PTENOCACHE|PTEIO);
 	gscreen.ldepth = s->ld;
 	gscreen.r = Rect(0, 0, s->x, s->y);
 	gscreen.clipr = gscreen.r;

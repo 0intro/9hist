@@ -56,7 +56,7 @@ int		eqqid(Qid, Qid);
 void		error(char*);
 long		execregs(ulong, ulong, ulong);
 void		exhausted(char*);
-void		exit(void);
+void		exit(int);
 Block*		expandb(Block*, int);
 int		fault(ulong, int);
 void		fdclose(int, int);

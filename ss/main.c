@@ -16,21 +16,20 @@ int	cpuserver;
 ulong	romputcxsegm;
 ulong	bank[2];
 char	mempres[256];
-ulong	fbsz;
 char	fbstr[32];
-char	fbcrap[BY2PG];
 Label	catch;
+int	NKLUDGE;
 
 typedef struct Sysparam Sysparam;
 struct Sysparam
 {
 	int	id;		/* Model type from id prom */
 	char	*name;		/* System name */
-	char	ss2;		/* Is sparcstation 2 ? */
+	char	ss2;		/* Is Sparcstation 2? */
 	int	vacsize;	/* Cache size */
 	int	vacline;	/* Cache line size */
 	int	ncontext;	/* Number of MMU contexts */
-	int	npmeg;		/* Number of process maps */
+	int	npmeg;		/* Number of page map entry groups */
 	char	cachebug;	/* Machine needs cache bug work around */
 	int	memscan;	/* Number of Meg to scan looking for memory */
 }
@@ -60,9 +59,10 @@ main(void)
 	confinit();
 	xinit();
 	mmuinit();
-	screeninit();
-	printinit();
 	kmapinit();
+	if(conf.monitor)
+		screeninit(fbstr);
+	printinit();
 	ioinit();
 	if(conf.monitor == 0)
 		sccspecial(2, &printq, &kbdq, 9600);
@@ -138,7 +138,8 @@ init0(void)
 
 	print("Sun Sparcstation %s\n", sparam->name);
 	print("bank 0: %dM  1: %dM\n", bank[0], bank[1]);
-	print("frame buffer id %lux %lux %s\n", conf.monitor, fbsz, fbstr);
+	print("frame buffer id %lux %s\n", conf.monitor, fbstr);
+	print("NKLUDGE %d\n", NKLUDGE);
 
 	u->slash = (*devtab[0].attach)(0);
 	u->dot = clone(u->slash, 0);
@@ -223,7 +224,7 @@ userinit(void)
 }
 
 void
-exit(void)
+exit(int ispanic)
 {
 	int i;
 
@@ -234,6 +235,8 @@ exit(void)
 		for(i=0; i<1000; i++)
 			;
 	splhi();
+	if(ispanic)
+		for(;;);
 	systemreset();
 }
 
@@ -282,36 +285,44 @@ confinit(void)
 
 	/* map id prom */
 	va = 1*MB-BY2PG;
-	putw4(va, PPN(EEPROM)|PTEVALID|PTEKERNEL|PTENOCACHE|PTEIO);
+	putw4(va, PPN(EEPROM)|PTEPROBEIO);
 	memmove(idprom, (char*)(va+0x7d8), 32);
 	if(idprom[0]!=1 || (idprom[1]&0xF0)!=0x50)
 		*(ulong*)va = 0;
 	putw4(va, INVALIDPTE);
 
 	/* map frame buffer id; we expect it to be in SBUS slot 3 */
-	putw4(va, ((FRAMEBUFID>>PGSHIFT)&0xFFFF)|PTEVALID|PTEKERNEL|PTENOCACHE|PTEIO);
+	putw4(va, ((FRAMEBUFID>>PGSHIFT)&0xFFFF)|PTEPROBEIO);
 	conf.monitor = 0;
 	/* if frame buffer not present, we will trap, so prepare to catch it */
 	if(setlabel(&catch) == 0){
 		conf.monitor = *(ulong*)va;
-putw4(va, (((FRAMEBUFID+BY2PG)>>PGSHIFT)&0xFFFF)|PTEVALID|PTEKERNEL|PTENOCACHE|PTEIO);
-memmove(fbcrap, (void*)va, BY2PG);
-		j = *(ulong*)(va+4);
-		fbsz = j;
-		j = BY2PG - 8;	/* for safety */
-		for(i=0; i<j && fbstr[0]==0; i++)
-			switch(*(uchar*)(va+i)){
-			case 'b':
-				if(strncmp((char*)(va+i), "bwtwo", 5) == 0)
-					strcpy(fbstr, "bwtwo");
-				break;
-			case 'c':
-				if(strncmp((char*)(va+i), "cgthree", 7) == 0)
-					strcpy(fbstr, "cgthree");
-				if(strncmp((char*)(va+i), "cgsix", 5) == 0)
-					strcpy(fbstr, "cgsix");
-				break;
-			}
+		switch(conf.monitor){
+		case 0xFE010101:
+			strcpy(fbstr, "cgthree");
+			break;
+		case 0xFE010104:
+			strcpy(fbstr, "bwtwo");
+			break;
+		}
+		if(fbstr[0] == 0){
+			j = *(ulong*)(va+4);
+			if(j > BY2PG-8)
+				j = BY2PG - 8;	/* -8 for safety */
+			for(i=0; i<j && fbstr[0]==0; i++)
+				switch(*(uchar*)(va+i)){
+				case 'b':
+					if(strncmp((char*)(va+i), "bwtwo", 5) == 0)
+						strcpy(fbstr, "bwtwo");
+					break;
+				case 'c':
+					if(strncmp((char*)(va+i), "cgthree", 7) == 0)
+						strcpy(fbstr, "cgthree");
+					if(strncmp((char*)(va+i), "cgsix", 5) == 0)
+						strcpy(fbstr, "cgsix");
+					break;
+				}
+		}
 	}
 	catch.pc = 0;
 	putw4(va, INVALIDPTE);
@@ -328,6 +339,8 @@ memmove(fbcrap, (void*)va, BY2PG);
 	conf.vacsize = sparam->vacsize;
 	conf.vaclinesize = sparam->vacline;
 	conf.ncontext = sparam->ncontext;
+	if(conf.ncontext > 8)
+		conf.ncontext = 8;	/* BUG to enlarge NKLUDGE */
 	conf.npmeg = sparam->npmeg;
 	conf.ss2cachebug = sparam->cachebug;
 
@@ -353,7 +366,22 @@ memmove(fbcrap, (void*)va, BY2PG);
 
 	bank[0] = conf.npage0*BY2PG/MB;
 	bank[1] = conf.npage1*BY2PG/MB;
-	
+
+	if(bank[1] == 0){
+		/*
+		 * This split of memory into 2 banks fools the allocator into
+		 * allocating low memory pages from bank 0 for the ethernet since
+		 * it has only a 24bit address counter.
+		 * NB. Suns must have at LEAST 8Mbytes.
+		 */
+		conf.npage1 = conf.npage0 - (4*MB)/BY2PG;
+		conf.base1 = 4*MB;
+		conf.npage0 = (4*MB)/BY2PG;
+		conf.base0 = 0;
+		bank[1] = bank[0]-4;
+		bank[0] = 4;
+	}
+
 	conf.npage = conf.npage0+conf.npage1;
 	conf.upages = (conf.npage*70)/100;
 	if(cpuserver){

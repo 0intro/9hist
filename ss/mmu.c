@@ -24,10 +24,10 @@ struct
 	Lock;
 	int	lowpmeg;
 	KMap	*free;
-	KMap	arena[(IOEND-IOSEGM)/BY2PG];
+	KMap	arena[(IOEND-IOSEGM0)/BY2PG];
 }kmapalloc;
 
-#define	NKLUDGE	11		/* <= ((TOPPMEG-kmap.lowpmeg)/NCONTEXT) */
+int	NKLUDGE;
 
 /*
  * On SPARC, tlbpid i == context i-1 so that 0 means unallocated
@@ -163,6 +163,8 @@ mmuinit(void)
 			putcxsegm(c, KZERO+i*BY2SEGM, i);
 
 	kmapalloc.lowpmeg = i;
+	if(PADDR(ktop) & (BY2SEGM-1))
+		kmapalloc.lowpmeg++;
 
 	/*
 	 * Make sure cache is turned on for kernel
@@ -189,19 +191,9 @@ mmuinit(void)
 			putsegm(l, INVALIDPMEG);
 
 		/*
-		 * One segment for screen
+		 * Map ROM
 		 */
-		putsegm(SCREENSEGM, SCREENPMEG);
-		if(c == 0){
-			pte = PTEVALID|PTEWRITE|PTEKERNEL|PTENOCACHE|
-				PTEIO|((DISPLAYRAM>>PGSHIFT)&0xFFFF);
-			for(i=0; i<PG2SEGM; i++)
-				putpmeg(SCREENSEGM+i*BY2PG, pte+i);
-		}
-		/*
-		 * First page of IO space includes ROM; be careful
-		 */
-		putsegm(IOSEGM0, IOPMEG0);	/* IOSEGM == ROMSEGM */
+		putsegm(ROMSEGM, ROMPMEG);
 		if(c == 0){
 			pte = PTEVALID|PTEKERNEL|PTENOCACHE|
 				PTEIO|((EPROM>>PGSHIFT)&0xFFFF);
@@ -211,9 +203,9 @@ mmuinit(void)
 				putpmeg(IOSEGM0+i*BY2PG, INVALIDPTE);
 		}
 		/*
-		 * Remaining segments for IO and kmap
+		 * Segments for IO and kmap
 		 */
-		for(j=1; j<NIOSEGM; j++){
+		for(j=0; j<NIOSEGM; j++){
 			putsegm(IOSEGM0+j*BY2SEGM, IOPMEG0+j);
 			if(c == 0)
 				for(i=0; i<PG2SEGM; i++)
@@ -221,6 +213,8 @@ mmuinit(void)
 		}
 	}
 	putcontext(0);
+	NKLUDGE = ((TOPPMEG-kmapalloc.lowpmeg)/conf.ncontext);
+if(NKLUDGE>11)NKLUDGE=11;
 }
 
 void
@@ -331,8 +325,8 @@ kmapinit(void)
 
 	kmapalloc.free = 0;
 	k = kmapalloc.arena;
-	for(i=0; i<(IOEND-IOSEGM)/BY2PG; i++,k++){
-		k->va = IOSEGM+i*BY2PG;
+	for(i=0; i<(IOEND-IOSEGM0)/BY2PG; i++,k++){
+		k->va = IOSEGM0+i*BY2PG;
 		kunmap(k);
 	}
 }
@@ -356,6 +350,27 @@ kmappa(ulong pa, ulong flag)
 	putpmeg(k->va, PPN(pa)|PTEVALID|PTEKERNEL|PTEWRITE|flag);
 	splx(s);
 	return k;
+}
+
+ulong
+kmapregion(ulong pa, ulong n, ulong flag)
+{
+	KMap *k;
+	ulong va;
+	int i, j;
+
+	/*
+	 * kmap's are initially in reverse order so rearrange them.
+	 */
+	i = (n+(BY2PG-1))/BY2PG;
+	va = 0;
+	for(j=i-1; j>=0; j--){
+		k = kmappa(pa+j*BY2PG, flag);
+		if(va && va != k->va+BY2PG)
+			systemreset();
+		va = k->va;
+	}
+	return va;
 }
 
 KMap*

@@ -42,7 +42,7 @@ rebootiput(Queue *q, Block *bp)
 {
 	if(bp->type == M_HANGUP){
 		print("lost connection to fs, rebooting");
-		exit();
+		exit(0);
 	}
 	PUTNEXT(q, bp);
 }

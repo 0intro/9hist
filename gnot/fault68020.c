@@ -99,7 +99,6 @@ fault68020(Ureg *ur, FFrame *f)
 		}
 		dumpregs(ur);
 		panic("fault: 0x%lux", badvaddr);
-		exit();
 	}
 	u->p->insyscall = insyscall;
 }

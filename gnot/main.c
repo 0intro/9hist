@@ -259,7 +259,7 @@ bootargs(ulong base)
 }
 
 void
-exit(void)
+exit(int ispanic)
 {
 	int i;
 
@@ -269,6 +269,8 @@ exit(void)
 		for(i=0; i<1000; i++)
 			;
 	splhi();
+	if(ispanic)
+		for(;;);
 	firmware();
 }
 
@@ -332,7 +334,7 @@ confinit(void)
 	conf.nimage = 50;
 	conf.copymode = 0;		/* copy on write */
 	conf.portispaged = 0;
-	conf.nconc = 2;
+	confinit1(mul);
 }
 
 /*

@@ -15,6 +15,7 @@ TEXT	start(SB), $-4
 	MOVB	R9, (R7, 3)
 	/* now mapped correctly.  jmpl to where we want to be */
 	MOVW	$setSB(SB), R2
+
 	MOVW	$startvirt(SB), R7
 	JMPL	(R7)
 	MOVW	$_mul(SB), R0	/* touch _mul etc.; doesn't need to execute */
@@ -24,6 +25,12 @@ TEXT	startvirt(SB), $-4
 
 	MOVW	$rom(SB), R7
 	MOVW	R8, (R7)	/* romvec passed in %i0==R8 */
+
+	/* turn off the cache */
+	MOVW	$ENAB, R7
+	MOVB	(R7, 2), R8
+	ANDN	$ENABCACHE, R8
+	MOVB	R8, (R7, 2)
 
 	MOVW	$BOOTSTACK, R1
 
@@ -461,8 +468,9 @@ GLOBL	mach0+0(SB), $MACHSIZE
 GLOBL	fsr+0(SB), $BY2WD
 
 /*
- * Interface to ROM.  Must save and restore state because
- * of different calling conventions.
+ * Interface to OPEN BOOT ROM.  Must save and restore state because
+ * of different calling conventions.  We don't use it, but it's here
+ * for reference..
  */
 
 TEXT	call(SB), $16

@@ -171,10 +171,7 @@ panic(char *fmt, ...)
 	buf[n] = '\n';
 	putstrn(buf, n+1);
 	dumpstack();
-	if(cpuserver)
-		exit();
-	else
-		for(;;);
+	exit(1);
 }
 int
 pprint(char *fmt, ...)
@@ -218,7 +215,7 @@ echo(Rune r, char *buf, int n)
 	 * ^p hack
 	 */
 	if(r==0x10 && cpuserver)
-		panic("^p");
+		exit(0);
 
 	/*
 	 * ^t hack BUG
@@ -241,7 +238,7 @@ echo(Rune r, char *buf, int n)
 			procdump();
 			return;
 		case 'r':
-			exit();
+			exit(0);
 			break;
 		}
 	}else if(r == 0x14){

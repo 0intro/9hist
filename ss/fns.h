@@ -34,6 +34,7 @@ KMap*	kmap(Page*);
 void	kmapinit(void);
 KMap*	kmappa(ulong, ulong);
 KMap*	kmapperm(Page*);
+ulong	kmapregion(ulong, ulong, ulong);
 int	kprint(char*, ...);
 void	kproftimer(ulong);
 void	kunmap(KMap*);
@@ -55,7 +56,7 @@ void	puttbr(ulong);
 void	putw4(ulong, ulong);	/* needed only at boot time */
 void	systemreset(void);
 void	restfpregs(FPsave*, ulong);
-void	screeninit(void);
+void	screeninit(char*);
 void	screenputc(int);
 void	screenputs(char*, int);
 void	scsiintr(void);

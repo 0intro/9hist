@@ -110,7 +110,7 @@ clock(Ureg *ur)
 		duartslave();
 		if(active.exiting && active.machs&(1<<m->machno)){
 			print("someone's exiting\n");
-			exit();
+			exit(0);
 		}
 		checkalarms();
 		kproftimer(ur->pc);

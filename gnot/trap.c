@@ -121,7 +121,7 @@ trap(Ureg *ur)
 	}else{
 		print("kernel trap %s pc=0x%lux\n", excname(ur->vo, ur->pc), ur->pc);
 		dumpregs(ur);
-		exit();
+		exit(1);
 	}
 
 	if(user)

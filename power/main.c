@@ -328,10 +328,11 @@ online(void)
 }
 
 void
-exit(void)
+exit(int ispanic)
 {
 	int i;
 
+	USED(ispanic);
 	u = 0;
 	lock(&active);
 	active.machs &= ~(1<<m->machno);

@@ -411,10 +411,12 @@ meminit(void)
  *  reset the i387 chip
  */
 void
-exit(void)
+exit(int ispanic)
 {
 	u = 0;
 	print("exiting\n");
+	if(ispanic)
+		for(;;);
 	switch(machtype){
 	case Attnsx:
 		headreset();		/* via headland chip */

@@ -52,7 +52,6 @@ faultsparc(Ureg *ur)
 		}
 		dumpregs(ur);
 		panic("fault: 0x%lux", badvaddr);
-		exit();
 	}
 	splhi();
 }

@@ -89,7 +89,9 @@ resetscsi(void)
 	dma = ioaddr.dma;
 
 	dev->cmd = Reset;
-	dev->cmd = Nop;
+	dev->cmd = Dma|Nop;			/* 2 are necessary */
+	dev->cmd = Dma|Nop;
+
 	dev->countlo = 0;
 	dev->counthi = 0;
 	dev->timeout = 146;
@@ -106,7 +108,6 @@ resetscsi(void)
 	dmatype = (dma->csr>>28) & 0xF;
 
 	putenab(getenab()|ENABDMA); /**/
-print("scsi config #%2.2ux\n", dev->config);
 }
 
 void

@@ -67,16 +67,14 @@
  */
 #define	INVALIDSEGM	0xFFFC0000	/* highest seg of VA reserved as invalid */
 #define	INVALIDPMEG	(conf.npmeg-1)
-#define	SCREENSEGM	0xFFF80000
-#define	SCREENPMEG	(conf.npmeg-2)
+#define	ROMPMEG		(conf.npmeg-2)
 #define	ROMSEGM		0xFFE80000
 #define	ROMEND		0xFFEC0000
 #define	PG2ROM		((ROMEND-ROMSEGM)/BY2PG)
-#define	IOSEGM0		ROMSEGM		/* see mmuinit() */
-#define	NIOSEGM		((SCREENSEGM-ROMSEGM)/BY2SEGM)
-#define	IOPMEG0		(SCREENPMEG-NIOSEGM)
-#define	IOSEGM		ROMEND
-#define	IOEND		SCREENSEGM
+#define	NIOSEGM		((MB/BY2SEGM) + 4)	/* 1M for screen + overhead */
+#define	IOSEGM0		(ROMSEGM-NIOSEGM*BY2SEGM)
+#define	IOPMEG0		(ROMPMEG-NIOSEGM)
+#define	IOEND		ROMSEGM
 #define	TOPPMEG		IOPMEG0
 
 /*
@@ -92,6 +90,7 @@
 #define	PTEACCESS	(1<<25)
 #define	PTEMODIFY	(1<<24)
 #define PTEPROBEMEM	(PTEVALID|PTEKERNEL|PTENOCACHE|PTEWRITE|PTEMAINMEM)
+#define PTEPROBEIO	(PTEVALID|PTEKERNEL|PTENOCACHE|PTEWRITE|PTEIO)
 #define PTEUNCACHED	0
 
 #define PTEMAPMEM	(1024*1024)	
@@ -102,15 +101,15 @@
 #define	PPN(pa)		((pa>>12)&0xFFFF)
 
 /*
- * Weird addresses in various ASI's
+ * Weird addresses etc. in System ASI (2)
  */
-#define	CACHETAGS	0x80000000		/* ASI 2 */
-#define	CACHEDATA	0x90000000		/* ASI 2 */
-#define	SER		0x60000000		/* ASI 2 */
-#define	SEVAR		0x60000004		/* ASI 2 */
-#define	ASER		0x60000008		/* ASI 2 */
-#define	ASEVAR		0x6000000C		/* ASI 2 */
-#define	ENAB		0x40000000		/* ASI 2 */
+#define	CACHETAGS	0x80000000
+#define	CACHEDATA	0x90000000
+#define	SER		0x60000000
+#define	SEVAR		0x60000004
+#define	ASER		0x60000008
+#define	ASEVAR		0x6000000C
+#define	ENAB		0x40000000
 #define	ENABRESET	0x04
 #define	ENABCACHE	0x10
 #define ENABDMA		0x20
