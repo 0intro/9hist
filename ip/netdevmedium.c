@@ -24,10 +24,10 @@ struct Netdevrock
 Medium netdevmedium =
 {
 .name=		"netdev",
-.hsize=		14,		//ZZZ what should these be?
-.minmtu=	60,
-.maxmtu=	1514,
-.maclen=	6,
+.hsize=		0,
+.minmtu=	0,
+.maxmtu=	64000,
+.maclen=	0,
 .bind=		netdevbind,
 .unbind=	netdevunbind,
 .bwrite=	netdevbwrite,

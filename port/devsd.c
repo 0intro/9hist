@@ -211,6 +211,8 @@ sdgetunit(SDev* sdev, int subno)
 		sdev->enabled = 1;
 
 		snprint(unit->name, NAMELEN, "%s%d", sdev->name, subno);
+		strncpy(unit->user, eve, NAMELEN);
+		unit->perm = 0555;
 		unit->subno = subno;
 		unit->dev = sdev;
 
@@ -314,17 +316,28 @@ sd2gen(Chan* c, int i, Dir* dp)
 	Qid q;
 	vlong l;
 	SDpart *pp;
+	SDperm *perm;
 	SDunit *unit;
 
 	unit = sdunit[UNIT(c->qid)];
 	switch(i){
 	case Qctl:
 		q = (Qid){QID(UNIT(c->qid), PART(c->qid), Qctl), unit->vers};
-		devdir(c, q, "ctl", 0, eve, 0640, dp);
+		perm = &unit->ctlperm;
+		if(perm->user[0] == '\0'){
+			strncpy(perm->user, eve, NAMELEN);
+			perm->perm = 0640;
+		}
+		devdir(c, q, "ctl", 0, perm->user, perm->perm, dp);
 		return 1;
 	case Qraw:
 		q = (Qid){QID(UNIT(c->qid), PART(c->qid), Qraw), unit->vers};
-		devdir(c, q, "raw", 0, eve, CHEXCL|0600, dp);
+		perm = &unit->rawperm;
+		if(perm->user[0] == '\0'){
+			strncpy(perm->user, eve, NAMELEN);
+			perm->perm = CHEXCL|0600;
+		}
+		devdir(c, q, "raw", 0, perm->user, perm->perm, dp);
 		return 1;
 	case Qpart:
 		pp = &unit->part[PART(c->qid)];
@@ -367,10 +380,14 @@ sdgen(Chan* c, Dirtab*, int, int s, Dir* dp)
 			return 1;
 		}
 		if(s < sdnunit){
-			if(sdunit[s] == nil && sdindex2unit(s) == nil)
-				return 0;
+			if((unit = sdunit[s]) == nil){
+				if((unit = sdindex2unit(s)) == nil)
+					return 0;
+			}
 			q = (Qid){QID(s, 0, Qunitdir)|CHDIR, 0};
-			devdir(c, q, sdunit[s]->name, 0, eve, 0555, dp);
+			if(unit->user[0] == '\0')
+				strncpy(unit->user, eve, NAMELEN);
+			devdir(c, q, unit->name, 0, unit->user, unit->perm, dp);
 			return 1;
 		}
 		s -= sdnunit;
@@ -388,10 +405,12 @@ sdgen(Chan* c, Dirtab*, int, int s, Dir* dp)
 		/*
 		 * Check for media change.
 		 * If one has already been detected, sectors will be zero.
-		 * If there is one waiting to be detected, online will return > 1.
+		 * If there is one waiting to be detected, online
+		 * will return > 1.
 		 * Online is a bit of a large hammer but does the job.
 		 */
-		if(unit->sectors == 0 || (unit->dev->ifc->online && unit->dev->ifc->online(unit) > 1))
+		if(unit->sectors == 0
+		|| (unit->dev->ifc->online && unit->dev->ifc->online(unit) > 1))
 			sdinitpart(unit);
 
 		i = s+Qunitbase;
@@ -858,9 +877,10 @@ sdwstat(Chan* c, char* dp)
 {
 	Dir d;
 	SDpart *pp;
+	SDperm *perm;
 	SDunit *unit;
 
-	if((c->qid.path & CHDIR) || TYPE(c->qid) != Qpart)
+	if(c->qid.path & CHDIR)
 		error(Eperm);
 
 	unit = sdunit[UNIT(c->qid)];
@@ -870,15 +890,28 @@ sdwstat(Chan* c, char* dp)
 		nexterror();
 	}
 
-	pp = &unit->part[PART(c->qid)];
-	if(unit->vers+pp->vers != c->qid.vers)
-		error(Enonexist);
-	if(strncmp(up->user, pp->user, NAMELEN) && !iseve())
+	switch(TYPE(c->qid)){
+	default:
 		error(Eperm);
+	case Qctl:
+		perm = &unit->ctlperm;
+		break;
+	case Qraw:
+		perm = &unit->rawperm;
+		break;
+	case Qpart:
+		pp = &unit->part[PART(c->qid)];
+		if(unit->vers+pp->vers != c->qid.vers)
+			error(Enonexist);
+		perm = &pp->SDperm;
+		break;
+	}
 
+	if(strncmp(up->user, perm->user, NAMELEN) && !iseve())
+		error(Eperm);
 	convM2D(dp, &d);
-	strncpy(pp->user, d.uid, NAMELEN);
-	pp->perm = d.mode&0777;
+	strncpy(perm->user, d.uid, NAMELEN);
+	perm->perm = (perm->perm & ~0777) | (d.mode & 0777);
 
 	qunlock(&unit->ctl);
 	poperror();

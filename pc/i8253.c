@@ -47,6 +47,8 @@ enum
 
 	Freq=	1193182,	/* Real clock frequency */
 
+	Minusec=20,		/* minimum cycles for a clock interrupt */
+
 	FreqMul=16,		/* extra accuracy in fastticks/Freq calculation; ok up to ~8ghz */
 };
 
@@ -187,8 +189,8 @@ clockintrsched0(vlong next)
 			i8253.mode = Trigger;
 			set--;
 		}
-		if(set < 3)
-			set = 5;
+		if(set < Minusec)
+			set = Minusec;
 		outb(T0cntr, set);	/* low byte */
 		outb(T0cntr, set>>8);	/* high byte */
 	}else if(i8253.mode != Square){

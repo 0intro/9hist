@@ -196,25 +196,46 @@ struct Tcpctl
 int	tcp_irtt = DEF_RTT;	/* Initial guess at round trip time */
 ushort	tcp_mss  = DEF_MSS;	/* Maximum segment size to be sent */
 
-/* MIB II counters */
-typedef struct Tcpstats Tcpstats;
-struct Tcpstats
+enum {
+	/* MIB stats */
+	MaxConn,
+	ActiveOpens,
+	PassiveOpens,
+	EstabResets,
+	CurrEstab,
+	InSegs,
+	OutSegs,
+	RetransSegs,
+	RetransTimeouts,
+	InErrs,
+	OutRsts,
+
+	/* non-MIB stats */
+	CsumErrs,
+	HlenErrs,
+	LenErrs,
+	OutOfOrder,
+
+	Nstats
+};
+
+static char *statnames[] =
 {
-	ulong	tcpRtoAlgorithm;
-	ulong	tcpRtoMin;
-	ulong	tcpRtoMax;
-	ulong	tcpMaxConn;
-	ulong	tcpActiveOpens;
-	ulong	tcpPassiveOpens;
-	ulong	tcpAttemptFails;
-	ulong	tcpEstabResets;
-	ulong	tcpCurrEstab;
-	ulong	tcpInSegs;
-	ulong	tcpOutSegs;
-	ulong	tcpRetransSegs;
-        ulong   tcpRetransTimeouts;
-	ulong	InErrs;
-	ulong	OutRsts;
+[MaxConn]	"MaxConn",
+[ActiveOpens]	"ActiveOpens",
+[PassiveOpens]	"PassiveOpens",
+[EstabResets]	"EstabResets",
+[CurrEstab]	"CurrEstab",
+[InSegs]	"InSegs",
+[OutSegs]	"OutSegs",
+[RetransSegs]	"RetransSegs",
+[RetransTimeouts]	"RetransTimeouts",
+[InErrs]	"InErrs",
+[OutRsts]	"OutRsts",
+[CsumErrs]	"CsumErrs",
+[HlenErrs]	"HlenErrs",
+[LenErrs]	"LenErrs",
+[OutOfOrder]	"OutOfOrder",
 };
 
 typedef struct Tcppriv Tcppriv;
@@ -224,14 +245,7 @@ struct Tcppriv
 	QLock 	tl;			/* Protect timer list */
 	Rendez	tcpr;			/* used by tcpackproc */
 
-	/* MIB stats */
-	Tcpstats tstats;
-
-	/* non-MIB stats */
-	ulong		csumerr;		/* checksum errors */
-	ulong		hlenerr;		/* header length error */
-	ulong		lenerr;			/* short packet */
-	ulong		order;			/* out of order */
+	ulong	stats[Nstats];
 
 	/* for keeping track of tcpackproc */
 	int	ackprocstarted;
@@ -270,9 +284,9 @@ tcpsetstate(Conv *s, uchar newstate)
 		return;
 
 	if(oldstate == Established)
-		tpriv->tstats.tcpCurrEstab--;
+		tpriv->stats[CurrEstab]--;
 	if(newstate == Established)
-		tpriv->tstats.tcpCurrEstab++;
+		tpriv->stats[CurrEstab]++;
 
 	/**
 	print( "%d/%d %s->%s CurrEstab=%d\n", s->lport, s->rport,
@@ -691,13 +705,13 @@ tcpstart(Conv *s, int mode, ushort window)
 
 	switch(mode) {
 	case TCP_LISTEN:
-		tpriv->tstats.tcpPassiveOpens++;
+		tpriv->stats[PassiveOpens]++;
 		tcb->flags |= CLONE;
 		tcpsetstate(s, Listen);
 		break;
 
 	case TCP_CONNECT:
-		tpriv->tstats.tcpActiveOpens++;
+		tpriv->stats[ActiveOpens]++;
 		/* Send SYN, go into SYN_SENT state */
 		qlock(s);
 		if(waserror()){
@@ -895,7 +909,7 @@ sndrst(Proto *tcp, uchar *source, uchar *dest, ushort length, Tcp *seg)
 	hnputs(ph.tcpsport, seg->dest);
 	hnputs(ph.tcpdport, seg->source);
 
-	tpriv->tstats.OutRsts++;
+	tpriv->stats[OutRsts]++;
 	rflags = RST;
 
 	/* convince the other end that this reset is in band */
@@ -1207,7 +1221,7 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 	f = tcp->f;
 	tpriv = tcp->priv;
 	
-	tpriv->tstats.tcpInSegs++;
+	tpriv->stats[InSegs]++;
 
 	h = (Tcphdr*)(bp->rp);
 
@@ -1218,7 +1232,8 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 	h->Unused = 0;
 	hnputs(h->tcplen, length-TCP_PKT);
 	if(ptclcsum(bp, TCP_IPLEN, length-TCP_IPLEN)) {
-		tpriv->csumerr++;
+		tpriv->stats[CsumErrs]++;
+		tpriv->stats[InErrs]++;
 		netlog(f, Logtcp, "bad tcp proto cksum\n");
 		freeblist(bp);
 		return;
@@ -1226,7 +1241,8 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 
 	hdrlen = ntohtcp(&seg, &bp);
 	if(hdrlen < 0){
-		tpriv->hlenerr++;
+		tpriv->stats[HlenErrs]++;
+		tpriv->stats[InErrs]++;
 		netlog(f, Logtcp, "bad tcp hdr len\n");
 		return;
 	}
@@ -1235,7 +1251,8 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 	length -= hdrlen+TCP_PKT;
 	bp = trimblock(bp, hdrlen+TCP_PKT, length);
 	if(bp == nil){
-		tpriv->lenerr++;
+		tpriv->stats[LenErrs]++;
+		tpriv->stats[InErrs]++;
 		netlog(f, Logtcp, "tcp len < 0 after trim\n");
 		return;
 	}
@@ -1424,7 +1441,7 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 	if(seg.seq != tcb->rcv.nxt)
 	if(length != 0 || (seg.flags & (SYN|FIN))) {
 		update(s, &seg);
-		tpriv->order++;
+		tpriv->stats[OutOfOrder]++;
 		if(addreseq(tcb, &seg, bp, length) < 0)
 			print("reseq %I.%d -> %I.%d\n", s->raddr, s->rport, s->laddr, s->lport);
 		tcb->flags |= FORCE;
@@ -1438,7 +1455,7 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 	for(;;) {
 		if(seg.flags & RST) {
 			if(tcb->state == Established)
-				tpriv->tstats.tcpEstabResets++;
+				tpriv->stats[EstabResets]++;
 			localclose(s, Econrefused);
 			goto raise;
 		}
@@ -1771,7 +1788,7 @@ tcpoutput(Conv *s)
 			if(ssize < n)
 				n = ssize;
 			tcb->resent += n;
-			tpriv->tstats.tcpRetransSegs++;
+			tpriv->stats[RetransSegs]++;
 		}
 
 		tcb->snd.ptr += ssize;
@@ -1820,7 +1837,7 @@ tcpoutput(Conv *s)
 			}
 		}
 
-		tpriv->tstats.tcpOutSegs++;
+		tpriv->stats[OutSegs]++;
 		if(tcb->kacounter > 0)
 			tcpgo(tpriv, &tcb->katimer);
 		ipoput(f, hbp, 0, s->ttl, s->tos);
@@ -1982,7 +1999,7 @@ tcptimeout(void *arg)
 			break;
 		}
 		tcprxmit(s);
-		tpriv->tstats.tcpRetransTimeouts++;
+		tpriv->stats[RetransTimeouts]++;
 		tcb->snd.dupacks = 0;
 		break;
 	case Time_wait:
@@ -2219,28 +2236,16 @@ tcpctl(Conv* c, char** f, int n)
 int
 tcpstats(Proto *tcp, char *buf, int len)
 {
-	Tcppriv *tpriv;
+	Tcppriv *priv;
+	char *p, *e;
+	int i;
 
-	tpriv = tcp->priv;
-
-
-
-	return snprint(buf, len, "%lud %lud %lud %lud %lud %lud %lud %lud %lud %lud %lud %lud %lud %lud %lud",
-		tpriv->tstats.tcpRtoAlgorithm,
-		tpriv->tstats.tcpRtoMin,
-		tpriv->tstats.tcpRtoMax,
-		tpriv->tstats.tcpMaxConn,
-		tpriv->tstats.tcpActiveOpens,
-		tpriv->tstats.tcpPassiveOpens,
-		tpriv->tstats.tcpAttemptFails,
-		tpriv->tstats.tcpEstabResets,
-		tpriv->tstats.tcpCurrEstab,
-		tpriv->tstats.tcpInSegs,
-		tpriv->tstats.tcpOutSegs,
-		tpriv->tstats.tcpRetransSegs,
-		tpriv->tstats.tcpRetransTimeouts,
-		tpriv->tstats.InErrs,
-		tpriv->tstats.OutRsts);
+	priv = tcp->priv;
+	p = buf;
+	e = p+len;
+	for(i = 0; i < Nstats; i++)
+		p = seprint(p, e, "%s: %lud\n", statnames[i], priv->stats[i]);
+	return p - buf;
 }
 
 /*
@@ -2312,7 +2317,7 @@ tcpinit(Fs *fs)
 	tcp->ipproto = IP_TCPPROTO;
 	tcp->nc = Nchans;
 	tcp->ptclsize = sizeof(Tcpctl);
-	tpriv->tstats.tcpMaxConn = Nchans;
+	tpriv->stats[MaxConn] = Nchans;
 
 	Fsproto(fs, tcp);
 }
