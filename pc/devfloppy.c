@@ -284,7 +284,7 @@ floppystat(Chan *c, char *dp)
 Chan*
 floppyopen(Chan *c, int omode)
 {
-	devopen(c, omode, floppydir, conf.nfloppy*NFDIR, devgen);
+	return devopen(c, omode, floppydir, conf.nfloppy*NFDIR, devgen);
 }
 
 void

@@ -18,7 +18,8 @@
 #define ARPHASH(p)	arphash[((p[2]^p[3])%Arphashsize)]
 
 typedef struct Arpcache Arpcache;
-struct Arpcache {
+struct Arpcache
+{
 	uchar	status;
 	uchar	type;
 	uchar	eip[4];

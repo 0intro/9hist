@@ -42,7 +42,7 @@ struct Drive
 static Drive	wren[Ndisk];
 
 static void	wrenpart(int);
-static long	wrenio(Drive *, Partition *, int, char *, ulong, ulong);
+static long	wrenio(Chan*, int, char*, ulong, ulong);
 
 /*
  *  accepts [0-7].[0-7], or abbreviation
@@ -173,66 +173,72 @@ wrenwstat(Chan *c, char *dp)
 long
 wrenread(Chan *c, char *a, long n, ulong offset)
 {
-	Drive *d;
-	Partition *p;
-
-
 	if(c->qid.path == CHDIR)
 		return devdirread(c, a, n, 0, 0, wrengen);
-
-	d = &wren[DRIVE(c->qid.path)];
-	if(d->npart == 0)
-		errors("drive repartitioned");
-	p = &d->p[PART(c->qid.path)];
-	return wrenio(d, p, 0, a, n, offset);
+	return wrenio(c, 0, a, n, offset);
 }
 
 long
 wrenwrite(Chan *c, char *a, long n, ulong offset)
 {
+	return wrenio(c, 1, a, n, offset);
+}
+
+static long
+wrenio(Chan *c, int write, char *a, ulong len, ulong offset)
+{
 	Drive *d;
 	Partition *p;
+	Scsibuf *b;
+	ulong block, n, max, x;
 
 	d = &wren[DRIVE(c->qid.path)];
 	if(d->npart == 0)
 		errors("drive repartitioned");
 	p = &d->p[PART(c->qid.path)];
-	return wrenio(d, p, 1, a, n, offset);
-}
 
-static long
-wrenio(Drive *d, Partition *p, int write, char *a, ulong n, ulong offset)
-{
-	Scsibuf *b;
-	ulong block;
-
-	if(n % d->bytes || offset % d->bytes)
-		errors("io not block aligned");
 	block = offset / d->bytes + p->start;
-	if(block >= p->end)
-		return 0;
-	if(n > DATASIZE)
-		n = DATASIZE;
-	n /= d->bytes;
+	n = (offset + len + d->bytes - 1) / d->bytes + p->start - block;
+	max = DATASIZE / d->bytes;
+	if(n > max)
+		n = max;
 	if(block + n > p->end)
 		n = p->end - block;
-	if(n == 0)
+	if(block >= p->end || n == 0)
 		return 0;
 	b = scsibuf();
 	if(waserror()){
 		scsifree(b);
 		nexterror();
 	}
+	offset %= d->bytes;
 	if(write){
-		memmove(b->virt, a, n*d->bytes);
-		n = scsibwrite(d->drive, b, n, d->bytes, block);
+		if(offset || len % d->bytes){
+			x = scsibread(d->drive, b, n, d->bytes, block);
+			if(x < n * d->bytes){
+				n = x / d->bytes;
+				x = n * d->bytes - offset;
+				if(len > x)
+					len = x;
+			}
+		}
+		memmove((char*)b->virt + offset, a, len);
+		x = scsibwrite(d->drive, b, n, d->bytes, block);
+		if(x < offset)
+			len = 0;
+		else if(len > x - offset)
+			len = x - offset;
 	}else{
-		n = scsibread(d->drive, b, n, d->bytes, block);
-		memmove(a, b->virt, n);
+		x = scsibread(d->drive, b, n, d->bytes, block);
+		if(x < offset)
+			len = 0;
+		else if(len > x - offset)
+			len = x - offset;
+		memmove(a, (char*)b->virt + offset, len);
 	}
 	poperror();
 	scsifree(b);
-	return n;
+	return len;
 }
 
 /*
