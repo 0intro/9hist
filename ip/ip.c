@@ -312,9 +312,12 @@ ipoput4(Fs *f, Block *bp, int gating, int ttl, int tos)
 		return;
 	}
 
+if((eh->frag[0] & (IP_DF>>8)) && !gating) print("%V: DF set\n", eh->dst);
+
 	if(eh->frag[0] & (IP_DF>>8)){
 		ip->stats[FragFails]++;
 		ip->stats[OutDiscards]++;
+		icmpcantfrag(f, bp);
 		netlog(f, Logip, "%V: eh->frag[0] & (IP_DF>>8)\n", eh->dst);
 		goto raise;
 	}
