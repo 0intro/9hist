@@ -65,19 +65,17 @@ pipeattach(char *spec)
 		exhausted("memory");
 	p->ref = 1;
 
-	p->q[0] = qopen(64*1024, 0, 0);
+	p->q[0] = qopen(64*1024, 0, 0, 0);
 	if(p->q[0] == 0){
 		free(p);
 		exhausted("memory");
 	}
-	p->q[0]->state &= ~Qmsg;
-	p->q[1] = qopen(32*1024, 0, 0);
+	p->q[1] = qopen(32*1024, 0, 0, 0);
 	if(p->q[1] == 0){
 		free(p->q[0]);
 		free(p);
 		exhausted("memory");
 	}
-	p->q[1]->state &= ~Qmsg;
 
 	lock(&pipealloc);
 	p->path = ++pipealloc.path;
@@ -139,10 +137,10 @@ pipestat(Chan *c, char *db)
 		devdir(c, c->qid, ".", 2*DIRLEN, eve, CHDIR|0555, &dir);
 		break;
 	case Qdata0:
-		devdir(c, c->qid, "data", p->q[0]->len, eve, 0660, &dir);
+		devdir(c, c->qid, "data", qlen(p->q[0]), eve, 0660, &dir);
 		break;
 	case Qdata1:
-		devdir(c, c->qid, "data1", p->q[1]->len, eve, 0660, &dir);
+		devdir(c, c->qid, "data1", qlen(p->q[1]), eve, 0660, &dir);
 		break;
 	default:
 		panic("pipestat");

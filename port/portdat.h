@@ -636,56 +636,6 @@ struct Proc
 	PMMU;
 };
 
-/*
- *  IO queues
- */
-struct Block
-{
-	Block	*next;
-
-	uchar	*rp;			/* first unconsumed byte */
-	uchar	*wp;			/* first empty byte */
-	uchar	*lim;			/* 1 past the end of the buffer */
-	uchar	*base;			/* start of the buffer */
-	uchar	flag;
-
-	Rendez	r;			/* waiting reader */
-};
-#define BLEN(b)		((b)->wp - (b)->rp)
-
-struct Queue
-{
-	Lock;
-
-	Block	*bfirst;	/* buffer */
-	Block	*blast;
-
-	int	len;		/* bytes in queue */
-	int	limit;		/* max bytes in queue */
-	int	state;
-
-	void	(*kick)(void*);	/* restart output */
-	void	*arg;		/* argument to kick */
-
-	QLock	rlock;		/* mutex for reading processes */
-	Rendez	rr;		/* process waiting to read */
-	QLock	wlock;		/* mutex for writing processes */
-	Rendez	wr;		/* process waiting to write */
-};
-
-enum
-{
-	/* Block.flag */
-	Bfilled=1,		/* block filled */
-
-	/* Queue.state */	
-	Qstarve=	(1<<0),		/* consumer starved */
-	Qmsg=		(1<<1),		/* message stream */
-	Qclosed=	(1<<2),
-	Qflow=		(1<<3),
-};
-
-
 enum
 {
 	PRINTSIZE =	256,

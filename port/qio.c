@@ -5,6 +5,9 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
+/*
+ *  interrupt level memory allocation
+ */
 typedef struct Chunk	Chunk;
 typedef	struct Chunkl	Chunkl;
 typedef	struct Arena	Arena;
@@ -37,6 +40,56 @@ struct Arena
 };
 
 static Arena arena;
+
+/*
+ *  IO queues
+ */
+typedef struct Block	Block;
+typedef struct Queue	Queue;
+
+struct Block
+{
+	Block	*next;
+
+	uchar	*rp;			/* first unconsumed byte */
+	uchar	*wp;			/* first empty byte */
+	uchar	*lim;			/* 1 past the end of the buffer */
+	uchar	*base;			/* start of the buffer */
+	uchar	flag;
+};
+#define BLEN(b)		((b)->wp - (b)->rp)
+
+struct Queue
+{
+	Lock;
+
+	Block	*bfirst;	/* buffer */
+	Block	*blast;
+
+	int	len;		/* bytes in queue */
+	int	limit;		/* max bytes in queue */
+	int	state;
+
+	void	(*kick)(void*);	/* restart output */
+	void	*arg;		/* argument to kick */
+
+	QLock	rlock;		/* mutex for reading processes */
+	Rendez	rr;		/* process waiting to read */
+	QLock	wlock;		/* mutex for writing processes */
+	Rendez	wr;		/* process waiting to write */
+};
+
+enum
+{
+	/* Block.flag */
+	Bfilled=1,		/* block filled */
+
+	/* Queue.state */	
+	Qstarve=	(1<<0),		/* consumer starved */
+	Qmsg=		(1<<1),		/* message stream */
+	Qclosed=	(1<<2),
+	Qflow=		(1<<3),
+};
 
 /*
  *  Manage interrupt level memory allocation.
@@ -297,7 +350,7 @@ qproduce(Queue *q, uchar *p, int len)
  *  called by non-interrupt code
  */
 Queue*
-qopen(int limit, void (*kick)(void*), void *arg)
+qopen(int limit, int msg, void (*kick)(void*), void *arg)
 {
 	Queue *q;
 
@@ -309,7 +362,7 @@ qopen(int limit, void (*kick)(void*), void *arg)
 	q->limit = limit;
 	q->kick = kick;
 	q->arg = arg;
-	q->state = Qmsg;
+	q->state = msg ? Qmsg : 0;
 
 	return q;
 }
@@ -517,4 +570,13 @@ void
 qreopen(Queue *q)
 {
 	q->state &= ~Qclosed;
+}
+
+/*
+ *  return bytes queued
+ */
+int
+qlen(Queue *q)
+{
+	return q->len;
 }

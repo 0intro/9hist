@@ -24,7 +24,7 @@ netifinit(Netif *nif, char *name, int nfile, ulong limit)
 	nif->f = xalloc(nfile*sizeof(Netfile*));
 	memset(nif->f, 0, nfile*sizeof(Netfile*));
 	nif->limit = limit;
-	nif->out = qopen(limit, 0, 0);
+	nif->out = qopen(limit, 1, 0, 0);
 }
 
 /*
@@ -339,7 +339,7 @@ openfile(Netif *nif, int id)
 				error(Enodev);
 			}
 			*fp = f;
-			f->in = qopen(nif->limit, 0, 0);
+			f->in = qopen(nif->limit, 1, 0, 0);
 			qlock(f);
 		} else {
 			qlock(f);
