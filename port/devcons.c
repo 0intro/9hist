@@ -17,6 +17,8 @@ Queue*	kprintoq;		/* console output, for /dev/kprint */
 ulong	kprintinuse;		/* test and set whether /dev/kprint is open */
 int		iprintscreenputs = 1;
 
+int		panicking;
+
 static struct
 {
 	QLock;
@@ -198,7 +200,6 @@ panic(char *fmt, ...)
 	int n;
 	va_list arg;
 	char buf[PRINTSIZE];
-	static int panicking;
 
 	kprintoq = nil;	/* don't try to write to /dev/kprint */
 

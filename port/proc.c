@@ -91,10 +91,12 @@ schedinit(void)		/* never returns */
 void
 sched(void)
 {
+	int x[1];
+
 	if(m->ilockdepth)
-		panic("ilockdepth %d, last lock 0x%p at 0x%lux",
+		panic("ilockdepth %d, last lock 0x%p at 0x%lux, sched called from 0x%lux",
 			m->ilockdepth, up?up->lastilock:nil,
-			(up && up->lastilock)?up->lastilock->pc:0);
+			(up && up->lastilock)?up->lastilock->pc:0, getcallerpc(x+3));
 
 	if(up){
 		if(up->nlocks && up->state != Moribund){
