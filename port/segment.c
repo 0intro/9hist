@@ -148,6 +148,7 @@ dupseg(Segment *s)
 	case SG_TEXT:			/* New segment shares pte set */
 	case SG_SHARED:
 	case SG_PHYSICAL:
+	case SG_SHDATA:
 		incref(s);
 		return s;
 
@@ -369,7 +370,8 @@ ibrk(ulong addr, int seg)
 		ns = u->p->seg[i];
 		if(ns == 0 || ns == s)
 			continue;
-		if(newtop >= ns->base && newtop < ns->top) {
+		if(newtop >= ns->base)
+		if(newtop < ns->top) {
 			qunlock(&s->lk);
 			pprint("segments overlap\n");
 			error(Enovmem);
@@ -431,7 +433,8 @@ segattach(Proc *p, ulong attr, char *name, ulong va, ulong len)
 	vmemchr(name, 0, ~0);
 
 	for(sno = 0; sno < NSEG; sno++)
-		if(u->p->seg[sno] == 0 && sno != ESEG)
+		if(u->p->seg[sno] == 0)
+		if(sno != ESEG)
 			break;
 
 	if(sno == NSEG)

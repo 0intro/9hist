@@ -604,8 +604,9 @@ ipstatusfill(Chan *c, char *buf, int len)
 			tcpstate[cp->tcpctl.state],
 			cp->tcpctl.flags & CLONE ? "listen" : "connect");
 	else if(cp->stproto == &ilinfo)
-		sprint(buf, "il/%d %d %s rtt %d ms\n", connection, cp->ref,
-			ilstate[cp->ilctl.state], cp->ilctl.rtt);
+		sprint(buf, "il/%d %d %s rtt %d ms %d csum\n", connection, cp->ref,
+			ilstate[cp->ilctl.state], cp->ilctl.rtt,
+			cp->ipinterface ? cp->ipinterface->chkerrs : 0);
 	else
 		sprint(buf, "%s/%d %d\n", cp->stproto->name, connection, cp->ref);
 }
@@ -652,7 +653,7 @@ iplisten(Chan *c)
 				return new - base;
 			}
 		}
-		print("no newcon\n");
+		print("iplisten: no newcon\n");
 	}
 }
 

@@ -263,6 +263,7 @@ pagepte(int type, Segment *s, Page **pg)
 	case SG_BSS:
 	case SG_STACK:
 	case SG_SHARED:
+	case SG_SHDATA:
 		lockpage(outp);
 		outp->ref++;
 		uncachepage(outp);

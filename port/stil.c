@@ -257,6 +257,7 @@ ilrcvmsg(Ipconv *ipc, Block *bp)
 	dst = nhgetl(ih->src);
 
 	if(ilcksum && ptcl_csum(bp, IL_EHSIZE, illen) != 0) {
+		ipc->ipinterface->chkerrs++;
 /*		st = (ih->iltype < 0 || ih->iltype > Ilclose) ? "?" : iltype[ih->iltype];
 		print("il: cksum error, pkt(%s id %lud ack %lud %d.%d.%d.%d/%d->%d)\n",
 			st, nhgetl(ih->ilid), nhgetl(ih->ilack), fmtaddr(dst), sp, dp); /**/
@@ -712,6 +713,7 @@ ilackproc(void *a)
 				ic->acktime -= Iltickms;
 				if(ic->acktime <= 0)
 					ilsendctl(s, 0, Ilack, ic->next, ic->recvd);
+
 				ic->querytime -= Iltickms;
 				if(ic->querytime <= 0){
 					ic->deathtime -= Querytime;

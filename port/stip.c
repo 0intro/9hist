@@ -387,6 +387,16 @@ ipforme(uchar *addr)
 	return 0;
 }
 
+typedef struct Fragstat	Fragstat;
+struct Fragstat
+{
+	ulong	prev;
+	ulong	prevall;
+	ulong	succ;
+	ulong	succall;
+};
+Fragstat fragstat;
+
 Block *
 ip_reassemble(int offset, Block *bp, Etherhdr *ip)
 {
@@ -451,7 +461,9 @@ ip_reassemble(int offset, Block *bp, Etherhdr *ip)
 	if(prev) {
 		ovlap = BLKFRAG(prev)->foff + BLKFRAG(prev)->flen - BLKFRAG(bp)->foff;
 		if(ovlap > 0) {
-			if(ovlap > BLKFRAG(bp)->flen) {
+			fragstat.prev++;
+			if(ovlap >= BLKFRAG(bp)->flen) {
+				fragstat.prevall++;
 				freeb(bp);
 				qunlock(f);
 				return 0;
@@ -469,8 +481,13 @@ ip_reassemble(int offset, Block *bp, Etherhdr *ip)
 		l = &bp->next;
 		end = BLKFRAG(bp)->foff + BLKFRAG(bp)->flen;
 		/* Take completely covered segements out */
-		while(*l && (ovlap = (end - BLKFRAG(*l)->foff)) > 0) {
+		while(*l){
+			ovlap = end - BLKFRAG(*l)->foff;
+			if(ovlap <= 0)
+				break;
+			fragstat.succ++;
 			if(ovlap < BLKFRAG(*l)->flen) {
+				fragstat.succall++;
 				BLKFRAG(*l)->flen -= ovlap;
 				(*l)->rptr += ovlap;
 				break;

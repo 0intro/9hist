@@ -56,7 +56,7 @@ rfork(ulong flag)
 	/* Save time: only copy u-> data and useful stack */
 	memmove((void*)upa, u, sizeof(User));
 	n = USERADDR+BY2PG - (ulong)&lastvar;
-	n = (n+32) & ~(BY2WD-1);	/* be safe & word align */
+	n = (n+32) & ~(BY2WD-1);
 	memmove((void*)(upa+BY2PG-n), (void*)(USERADDR+BY2PG-n), n);
 	((User *)upa)->p = p;
 	kunmap(k);
@@ -67,7 +67,7 @@ rfork(ulong flag)
 			p->seg[i] = dupseg(u->p->seg[i]);
 
 	/* Refs */
-	incref(u->dot);				/* File descriptors etc. */
+	incref(u->dot);					/* File descriptors etc. */
 
 	if(flag & Forkfd)
 		p->fgrp = dupfgrp(u->p->fgrp);
@@ -97,15 +97,10 @@ rfork(ulong flag)
 	p->hang = u->p->hang;
 	p->procmode = u->p->procmode;
 
-	/*
-	 * Sched
-	 */
 	if(setlabel(&p->sched)){
 		/*
-		 *  use u->p instead of p, because we
-		 *  don't trust the compiler, after a
-		 *  gotolabel, to find the correct contents
-		 *  of a local variable.
+		 *  use u->p instead of p, because we don't trust the compiler, after a
+		 *  gotolabel, to find the correct contents of a local variable.
 		 */
 		p = u->p;
 		p->state = Running;

@@ -36,8 +36,7 @@ typedef struct RWlock	RWlock;
 typedef struct Segment	Segment;
 typedef struct Stream	Stream;
 typedef struct Waitq	Waitq;
-
-typedef int Devgen(Chan*, Dirtab*, int, int, Dir*);
+typedef int    Devgen(Chan*, Dirtab*, int, int, Dir*);
 
 struct List
 {
@@ -240,6 +239,7 @@ struct IOQ
 	};
 	void	*ptr;
 };
+
 struct KIOQ
 {
 	QLock;
@@ -248,6 +248,7 @@ struct KIOQ
 	int	c;
 	int	count;
 };
+
 extern IOQ	lineq;
 extern IOQ	printq;
 extern IOQ	mouseq;
@@ -268,7 +269,8 @@ struct Mhead
 	Mhead	*hash;			/* Hash chain */
 };
 
-enum{
+enum
+{
 	NUser,				/* note provided externally */
 	NExit,				/* deliver note quietly */
 	NDebug,				/* print debug message */
@@ -337,13 +339,15 @@ struct Pte
 };
 
 /* Segment types */
-#define SG_TYPE		007		/* Mask type of segment */
-#define SG_TEXT		000
-#define SG_DATA		001
-#define SG_BSS		002
-#define SG_STACK	003
-#define SG_SHARED	004
-#define SG_PHYSICAL	005
+#define SG_TYPE		07		/* Mask type of segment */
+#define SG_TEXT		00
+#define SG_DATA		01
+#define SG_BSS		02
+#define SG_STACK	03
+#define SG_SHARED	04
+#define SG_PHYSICAL	05
+#define SG_SHDATA	06
+
 /* Segment flags */
 #define SG_RONLY	040			/* Segment is read only */
 
@@ -648,11 +652,13 @@ struct Netprot
 	ulong	mode;
 	char	owner[NAMELEN];
 };
+
 struct Netinf
 {
 	char	*name;
 	void	(*fill)(Chan*, char*, int);
 };
+
 struct Network
 {
 	Lock;

@@ -375,6 +375,9 @@ struct Ipifc
 	int		maxmtu;			/* Maximum transfer unit */
 	int		minmtu;			/* Minumum tranfer unit */
 	int		hsize;			/* Media header size */	
+	ulong		chkerrs;		/* checksum errors */
+	ulong		tx;
+	ulong		rx;
 	Lock;	
 };
 

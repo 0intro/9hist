@@ -282,7 +282,7 @@ lanceoput(Queue *q, Block *bp )
 			qlock(&l);
 			l.prom++;
 			if(l.prom == 1)
-				lancestart(PROM, 1);
+/*				lancestart(PROM, 1);/**/
 			qunlock(&l);
 		}
 		freeb(bp);
@@ -309,7 +309,7 @@ lanceoput(Queue *q, Block *bp )
 		}
 		return;
 	}
-	if(memcmp(l.bcast, p->d, sizeof(l.bcast)) == 0){
+	if(memcmp(l.bcast, p->d, sizeof(l.bcast)) == 0 || l.prom){
 		len = blen(bp);
 		nbp = copyb(bp, len);
 		nbp = expandb(nbp, len >= ETHERMINTU ? len : ETHERMINTU);

@@ -64,6 +64,9 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 		etp->last = pg;
 
 	switch(type) {
+	default:
+		panic("fault");
+
 	case SG_TEXT:
 		if(pagedout(*pg)) 			/* Demand load */
 			pio(s, addr, soff, pg);
@@ -71,6 +74,12 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 		mmuphys = PPN((*pg)->pa) | PTERONLY|PTEVALID;
 		(*pg)->modref = PG_REF;
 		break;
+
+	case SG_SHDATA:					/* Shared data */
+		if(pagedout(*pg))
+			pio(s, addr, soff, pg);
+
+		goto done;
 
 	case SG_SHARED:					/* Zero fill on demand */
 	case SG_BSS:
@@ -80,15 +89,16 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 			if(new = newpage(1, &s, addr))
 			if(s == 0)
 				return -1;
+
 			*pg = new;
 			new = 0;
 		}
 		/* NO break */
 
-	case SG_DATA:					/* Demand load/page in/copy on write */
+	case SG_DATA:					/* Demand load/pagein/copy on write */
 		if(pagedout(*pg))
 			pio(s, addr, soff, pg);
-		
+
 		if(type == SG_SHARED)
 			goto done;
 
@@ -130,9 +140,6 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 		mmuphys = PPN((*pg)->pa) | PTEWRITE|PTEUNCACHED|PTEVALID;
 		(*pg)->modref = PG_MOD|PG_REF;
 		break;
-
-	default:
-		panic("fault");
 	}
 
 	if(s->flushme)
