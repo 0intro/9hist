@@ -12,11 +12,14 @@ authentication(int cpuflag)
 	char *argv[16], **av;
 	int ac;
 
+	/* make capabilities available to factotum */
+	bind("#¤", "/dev", MAFTER);
+
 	/* start agent */
 	ac = 0;
 	av = argv;
 	av[ac++] = "factotum";
-av[ac++] = "-dt";
+//av[ac++] = "-d";
 	if(cpuflag)
 		av[ac++] = "-s";
 	else

@@ -24,13 +24,13 @@ int debug = 0;
 enum{
 	Qdir,
 	Qjpg,
-//	Qraw,
+	Qraw,
 };
 
 static Dirtab lmldir[]={
 	".",		{Qdir, 0, QTDIR},	0,	DMDIR|0555,
 	"lmljpg",	{Qjpg},			0,	0444,
-//	"lmlraw",	{Qraw},			0,	0444,
+	"lmlraw",	{Qraw},			0,	0444,
 };
 
 static CodeData *	codeData;
@@ -51,35 +51,40 @@ Rendez	sleepjpg;
 //Rendez		sleepraw;
 int		singleFrame;
 int		jpgopens;
+int		jpgmode;
 //int		rawopens;
 
 #define writel(v, a) *(ulong *)(a) = (v)
 #define readl(a) *(ulong*)(a)
 
 static int
-getbuffer(void){
+getbuffer(void *){
 	static last = NBUF-1;
 	int l = last;
 
 	for (;;) {
 		last = (last+1) % NBUF;
 		if (codeData->statCom[last] & STAT_BIT)
-			return last;
+			return last + 1;
 		if (last == l)
-			sleep(&sleepjpg, return0, 0);
+			return 0;
 	}
 	return 0;
 }
 
 static long
-jpgread(Chan *, void *va, long nbytes, vlong) {
+jpgread(Chan *, void *va, long nbytes, vlong, int dosleep) {
 	int bufno;
 	FrameHeader *jpgheader;
 
 	// reads should be of size 1 or sizeof(FrameHeader)
 	// Frameno is the number of the buffer containing the data
-	bufno = getbuffer();
-	jpgheader = (FrameHeader*)codeData->frag[bufno].hdr;
+	while ((bufno = getbuffer(nil)) == 0 && dosleep)
+		sleep(&sleepjpg, getbuffer, 0);
+	if (--bufno < 0)
+		return 0;
+
+	jpgheader = (FrameHeader*)(codeData->frag[bufno].hdr+2);
 	if (nbytes == sizeof(FrameHeader)) {
 		memmove(va, jpgheader, sizeof(FrameHeader));
 		return sizeof(FrameHeader);
@@ -90,19 +95,6 @@ jpgread(Chan *, void *va, long nbytes, vlong) {
 	}
 	return 0;
 }
-
-/*
-static long
-rawread(Chan *, void *va, long nbytes, vlong) {
-
-	// reads should be at least sizeof(FrameHeader) long
-	// Frameno is the number of the buffer containing the data
-	if (nbytes < sizeof(FrameHeader)) return 0;
-	sleep(&sleepraw, return0, 0);
-	memmove(va, &rawheader, sizeof rawheader);
-	return sizeof rawheader;
-}
-*/
 
 static void lmlintr(Ureg *, void *);
 
@@ -115,7 +107,7 @@ prepbuf(void) {
 		codeData->fragdesc[i].addr = PADDR(codeData->frag[i].fb);
 		// Length is in double words, in position 1..20
 		codeData->fragdesc[i].leng = (FRAGSIZE >> 1) | FRAGM_FINAL_B;
-		memmove(codeData->frag[i].hdr, &jpgheader, sizeof(FrameHeader)-2);
+		memmove(codeData->frag[i].hdr+2, &jpgheader, sizeof(FrameHeader)-2);
 	}
 }
 
@@ -236,21 +228,15 @@ lmlopen(Chan *c, int omode) {
 	c->aux = 0;
 	switch((ulong)c->qid.path){
 	case Qjpg:
+	case Qraw:
 		// allow one open
 		if (jpgopens)
 			error(Einuse);
 		jpgopens = 1;
 		jpgframeno = 0;
+		jpgmode = omode;
 		prepbuf();
 		break;
-/*	case Qraw:
-		// allow one open
-		if (rawopens)
-			error(Einuse);
-		rawopens = 1;
-		rawframeno = 0;
-		break;
-*/
 	}
 	return devopen(c, omode, lmldir, nelem(lmldir), devgen);
 }
@@ -260,12 +246,9 @@ lmlclose(Chan *c) {
 
 	switch((ulong)c->qid.path){
 	case Qjpg:
+	case Qraw:
 		jpgopens = 0;
 		break;
-/*	case Qraw:
-		rawopens = 0;
-		break;
-*/
 	}
 }
 
@@ -278,10 +261,9 @@ lmlread(Chan *c, void *va, long n, vlong voff) {
 	case Qdir:
 		return devdirread(c, (char *)buf, n, lmldir, nelem(lmldir), devgen);
 	case Qjpg:
-		return jpgread(c, buf, n, off);
-/*	case Qraw:
-		return rawread(c, buf, n, off);
-*/
+		return jpgread(c, buf, n, off, 1);
+	case Qraw:
+		return jpgread(c, buf, n, off, 0);
 	}
 }
 
@@ -338,12 +320,14 @@ lmlintr(Ureg *, void *) {
 				return;
 			}
 		}
-		jpgheader = (FrameHeader *)codeData->frag[fno].hdr;
-		jpgheader->ftime  = todget(nil);
-		jpgheader->frameSize =
-			(codeData->statCom[fno] & 0x00ffffff) >> 1;
-		jpgheader->frameSeqNo = codeData->statCom[fno] >> 24;
-		jpgheader->frameNo = jpgframeno;
+		if (jpgopens && jpgmode == OREAD){
+			jpgheader = (FrameHeader *)(codeData->frag[fno].hdr+2);
+			jpgheader->frameNo = jpgframeno;
+			jpgheader->ftime  = todget(nil);
+			jpgheader->frameSize =
+				(codeData->statCom[fno] & 0x00ffffff) >> 1;
+			jpgheader->frameSeqNo = codeData->statCom[fno] >> 24;
+		}
 		wakeup(&sleepjpg);
 	}
 	return;

@@ -61,7 +61,7 @@ typedef struct	FragmentTable		FragmentTable;
 typedef struct	CodeData		CodeData;
 
 //If we're on the little endian architecture, then 0xFF, 0xD8 byte sequence is
-#define MRK_SOI		0xD8FF
+#define MRK_SOI	0xD8FF
 #define MRK_APP3	0xE3FF
 #define APP_NAME	"LML"
 
@@ -84,7 +84,7 @@ union Fragment {
 };
 
 struct HdrFragment {
-	uchar	hdr[sizeof(FrameHeader)-2];
+	uchar	hdr[sizeof(FrameHeader)];
 	Fragment;
 };
 
