@@ -158,6 +158,7 @@ struct Chan
 		Qid	pgrpid;		/* for #p/notepg */
 		Mnt*	mntptr;		/* for devmnt */
 		ulong	mid;		/* for ns in devproc */
+		char	tag[4];		/* for iproute */
 	};
 	Chan*	mchan;			/* channel to mounted server */
 	Qid	mqid;			/* qid of root of mount point */

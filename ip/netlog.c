@@ -7,7 +7,8 @@
 #include	"../ip/ip.h"
 
 int logmask;				/* mask of things to debug */
-Ipaddr iponly;				/* ip address to print debugging for */
+uchar iponly[IPaddrlen];		/* ip address to print debugging for */
+int iponlyset;
 
 enum {
 	Nlog		= 4*1024,
@@ -62,11 +63,8 @@ netlogopen(void)
 		nexterror();
 	}
 	if(alog.opens == 0){
-		if(alog.buf == nil){
+		if(alog.buf == nil)
 			alog.buf = malloc(Nlog);
-			if(alog.buf == nil)
-				error(Enomem);
-		}
 		alog.rptr = alog.buf;
 		alog.end = alog.buf + Nlog;
 	}
@@ -175,7 +173,11 @@ netlogctl(char* s, int len)
 	else if(strcmp("clear", fields[0]) == 0)
 		set = 0;
 	else if(strcmp("only", fields[0]) == 0){
-		iponly = parseip(addr, fields[1]);
+		parseip(iponly, fields[1]);
+		if(ipcmp(iponly, IPnoaddr) == 0)
+			iponlyset = 0;
+		else
+			iponlyset = 1;
 		return nil;
 	} else
 		return Ebadnetctl;
@@ -206,12 +208,14 @@ netlog(int mask, char *fmt, ...)
 	int i, n;
 	va_list arg;
 
-	if(alog.opens == 0 || !(logmask & mask))
+	if(!(logmask & mask))
 		return;
 
 	va_start(arg, fmt);
 	n = doprint(buf, buf+sizeof(buf), fmt, arg) - buf;
 	va_end(arg);
+
+print("%s", buf);
 
 	if(alog.opens == 0)
 		return;

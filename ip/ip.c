@@ -18,29 +18,29 @@ enum
 	IP_HLEN		= 0x05,		/* Header length in characters */
 	IP_DF		= 0x4000,	/* Don't fragment */
 	IP_MF		= 0x2000,	/* More fragments */
-	IP_MAX		= (64*1024),	/* Maximum Internet packet size */
+	IP_MAX		= (32*1024),	/* Maximum Internet packet size */
 };
 
 struct Iphdr
 {
-	byte	vihl;		/* Version and header length */
-	byte	tos;		/* Type of service */
-	byte	length[2];	/* packet length */
-	byte	id[2];		/* Identification */
-	byte	frag[2];	/* Fragment information */
-	byte	ttl;		/* Time to live */
-	byte	proto;		/* Protocol */
-	byte	cksum[2];	/* Header checksum */
-	byte	src[4];		/* Ip source */
-	byte	dst[4];		/* Ip destination */
+	uchar	vihl;		/* Version and header length */
+	uchar	tos;		/* Type of service */
+	uchar	length[2];	/* packet length */
+	uchar	id[2];		/* Identification */
+	uchar	frag[2];	/* Fragment information */
+	uchar	ttl;		/* Time to live */
+	uchar	proto;		/* Protocol */
+	uchar	cksum[2];	/* Header checksum */
+	uchar	src[4];		/* Ip source */
+	uchar	dst[4];		/* Ip destination */
 };
 
 struct Fragment
 {
 	Block*	blist;
 	Fragment* next;
-	Ipaddr 	src;
-	Ipaddr 	dst;
+	ulong 	src;
+	ulong 	dst;
 	ushort	id;
 	ulong 	age;
 };
@@ -57,8 +57,8 @@ Fragment*	fragfree;
 ulong		Id;
 int		iprouting;	/* true if we route like a gateway */
 ulong		ipcsumerr;
-ulong		ipin, ippin;		/* bytes, packets in */
-ulong		ipout, ippout;		/* bytes, packets out */
+ulong		ipin, ippin;		/* uchars, packets in */
+ulong		ipout, ippout;		/* uchars, packets out */
 
 #define BLKIP(xp)	((Iphdr*)((xp)->rp))
 /*
@@ -73,7 +73,7 @@ static struct Stats
 	ulong	droppedfrag;
 } stats;
 
-ushort		ipcsum(byte*);
+ushort		ipcsum(uchar*);
 Block*		ipreassemble(int, Block*, Iphdr*);
 void		ipfragfree(Fragment*);
 Fragment*	ipfragallo(void);
@@ -81,17 +81,18 @@ Fragment*	ipfragallo(void);
 void
 ipoput(Block *bp, int gating, int ttl)
 {
-	Media *m;
-	byte gate[4];
+	Ipifc *ifc;
+	uchar *gate;
 	ushort fragoff;
 	Block *xp, *nb;
 	Iphdr *eh, *feh;
 	int lid, len, seglen, chunk, dlen, blklen, offset, medialen;
+	Route *r;
 
 	/* Fill out the ip header */
 	eh = (Iphdr *)(bp->rp);
 
-	/* Number of bytes in data and ip header to write */
+	/* Number of uchars in data and ip header to write */
 	len = blocklen(bp);
 	ipout += len;
 	ippout++;
@@ -104,30 +105,30 @@ ipoput(Block *bp, int gating, int ttl)
 		if(chunk < len)
 			len = chunk;
 	}
-	if(len >= IP_MAX) {
-		netlog(Logip, "exceeded ip max size %I\n", eh->dst);
+	if(len >= IP_MAX){
+		netlog(Logip, "exceeded ip max size %V\n", eh->dst);
 		goto raise;
 	}
 
-	if(isbmcast(eh->dst)){
-		m = Mediaroute(eh->src, nil);
-		memmove(gate, eh->dst, IPaddrlen);
-	} else
-		m = Mediaroute(eh->dst, gate);
-	if(m == nil){
+	r = v4lookup(eh->dst);
+	if(r == nil){
 		stats.noroute++;
-		netlog(Logip, "no interface %I\n", eh->dst);
+		netlog(Logip, "no interface %V\n", eh->dst);
 		goto raise;
 	}
-
+	if(r->type & (Rifc|Runi|Rbcast|Rmulti))
+		gate = eh->dst;
+	else
+		gate = r->v4.gate;
 	if(!gating){
 		eh->vihl = IP_VER|IP_HLEN;
 		eh->tos = 0;
 		eh->ttl = ttl;
 	}
+	ifc = r->ifc;
 
 	/* If we dont need to fragment just send it */
-	medialen = m->maxmtu-m->hsize;
+	medialen = ifc->m->maxmtu - ifc->m->hsize;
 	if(len <= medialen) {
 		if(!gating)
 			hnputs(eh->id, Id++);
@@ -138,18 +139,19 @@ ipoput(Block *bp, int gating, int ttl)
 		eh->cksum[1] = 0;
 		hnputs(eh->cksum, ipcsum(&eh->vihl));
 
-		Mediawrite(m, bp, gate);
+/*print("ipoput %V->%V via %V\n", eh->src, eh->dst, gate);*/
+		ifc->m->bwrite(ifc, bp, V4, gate);
 		return;
 	}
 
 	if(eh->frag[0] & (IP_DF>>8)){
-		netlog(Logip, "%I: eh->frag[0] & (IP_DF>>8)\n", eh->dst);
+		netlog(Logip, "%V: eh->frag[0] & (IP_DF>>8)\n", eh->dst);
 		goto raise;
 	}
 
 	seglen = (medialen - IPHDR) & ~7;
 	if(seglen < 8){
-		netlog(Logip, "%I seglen < 8\n", eh->dst);
+		netlog(Logip, "%V seglen < 8\n", eh->dst);
 		goto raise;
 	}
 
@@ -206,7 +208,7 @@ ipoput(Block *bp, int gating, int ttl)
 		feh->cksum[0] = 0;
 		feh->cksum[1] = 0;
 		hnputs(feh->cksum, ipcsum(&feh->vihl));
-		Mediawrite(m, nb, gate);
+		ifc->m->bwrite(ifc, nb, V4, gate);
 	}
 
 raise:
@@ -218,7 +220,7 @@ initfrag(int size)
 {
 	Fragment *fq, *eq;
 
-	fragfree = malloc(sizeof(Fragment) * size);
+	fragfree = (Fragment*)malloc(sizeof(Fragment) * size);
 	if(fragfree == nil)
 		panic("initfrag");
 
@@ -234,12 +236,13 @@ void (*ipextprotoiput)(Block*);
 //#define DBG(x)	if((logmask & Logipmsg) && (iponly == 0 || x == iponly))netlog
 
 void
-ipiput(Media *m, Block *bp)
+ipiput(uchar *ia, Block *bp)
 {
 	Iphdr *h;
 	Proto *p;
 	ushort frag;
 	int notforme;
+	uchar v6dst[IPaddrlen];
 
 //	h = (Iphdr *)(bp->rp);
 //	DBG(nhgetl(h->src))(Logipmsg, "ipiput %I %I len %d proto %d\n", h->src, h->dst, BLEN(bp), h->proto);
@@ -252,18 +255,26 @@ ipiput(Media *m, Block *bp)
 	}
 	h = (Iphdr *)(bp->rp);
 
-	/* Look to see if its for me before we waste time checksumming it */
-	notforme = Mediaforme(h->dst) == 0;
-	if(notforme && !iprouting) {
-		netlog(Logip, "ip: pkt not for me\n");
-		freeblist(bp);
-		return;
-	}
-
+	/* dump anything that whose header doesn't checksum */
 	if(ipcsum(&h->vihl)) {
 		ipcsumerr++;
 		netlog(Logip, "ip: checksum error %I\n", h->src);
 		freeblist(bp);
+		return;
+	}
+
+	/* route */
+	v4tov6(v6dst, h->dst);
+	notforme = ipforme(v6dst) == 0;
+	if(notforme) {
+		if(iprouting) {
+			/* gate */
+			if(h->ttl <= 1)
+				freeblist(bp);
+			else
+				ipoput(bp, 1, h->ttl - 1);
+		} else
+			useriprouter(ia, bp);
 		return;
 	}
 
@@ -287,20 +298,9 @@ ipiput(Media *m, Block *bp)
 	ipin += blocklen(bp);
 	ippin++;
 
-	if(iprouting) {
-		/* gate */
-		if(notforme){
-			if(h->ttl == 0)
-				freeblist(bp);
-			else
-				ipoput(bp, 1, h->ttl - 1);
-			return;
-		}
-	}
-
 	p = Fsrcvpcol(&fs, h->proto);
 	if(p != nil && p->rcv != nil)
-		(*p->rcv)(m, bp);
+		(*p->rcv)(ia, bp);
 	else if(ipextprotoiput != nil)
 		ipextprotoiput(bp);
 	else
@@ -325,7 +325,7 @@ ipreassemble(int offset, Block *bp, Iphdr *ip)
 	int fend;
 	ushort id;
 	Fragment *f, *fnext;
-	Ipaddr src, dst;
+	ulong src, dst;
 	Block *bl, **l, *last, *prev;
 	int ovlap, len, fragsize, pktposn;
 
@@ -532,7 +532,7 @@ ipfragallo(void)
 }
 
 ushort
-ipcsum(byte *addr)
+ipcsum(uchar *addr)
 {
 	int len;
 	ulong sum;

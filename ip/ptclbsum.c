@@ -8,11 +8,11 @@
 #include	"ip.h"
 
 static	short	endian	= 1;
-static	byte*	aendian	= (byte*)&endian;
+static	uchar*	aendian	= (uchar*)&endian;
 #define	LITTLE	*aendian
 
 ushort
-ptclbsum(byte *addr, int len)
+ptclbsum(uchar *addr, int len)
 {
 	ulong losum, hisum, mdsum, x;
 	ulong t1, t2;

@@ -23,20 +23,20 @@ enum
 typedef struct GREhdr
 {
 	/* ip header */
-	byte	vihl;		/* Version and header length */
-	byte	tos;		/* Type of service */
-	byte	len[2];		/* packet length (including headers) */
-	byte	id[2];		/* Identification */
-	byte	frag[2];	/* Fragment information */
-	byte	Unused;	
-	byte	proto;		/* Protocol */
-	byte	cksum[2];	/* checksum */
-	byte	src[4];		/* Ip source */
-	byte	dst[4];		/* Ip destination */
+	uchar	vihl;		/* Version and header length */
+	uchar	tos;		/* Type of service */
+	uchar	len[2];		/* packet length (including headers) */
+	uchar	id[2];		/* Identification */
+	uchar	frag[2];	/* Fragment information */
+	uchar	Unused;	
+	uchar	proto;		/* Protocol */
+	uchar	cksum[2];	/* checksum */
+	uchar	src[4];		/* Ip source */
+	uchar	dst[4];		/* Ip destination */
 
 	/* gre header */
-	byte	flags[2];
-	byte	eproto[2];	/* encapsulation protocol */
+	uchar	flags[2];
+	uchar	eproto[2];	/* encapsulation protocol */
 } GREhdr;
 
 	Proto	gre;
@@ -56,7 +56,7 @@ greconnect(Conv *c, char **argv, int argc)
 
 	/* make sure noone's already connected to this other sys */
 	p = c->p;
-	lock(p);
+	qlock(p);
 	ecp = &p->conv[p->nc];
 	for(cp = p->conv; cp < ecp; cp++){
 		tc = *cp;
@@ -66,12 +66,12 @@ greconnect(Conv *c, char **argv, int argc)
 			continue;
 		if(tc->rport == c->rport && tc->raddr == c->raddr){
 			err = "already connected to that addr/proto";
-			c->rport = 0;
-			c->raddr = 0;
+			ipmove(c->laddr, IPnoaddr);
+			ipmove(c->raddr, IPnoaddr);
 			break;
 		}
 	}
-	unlock(p);
+	qunlock(p);
 
 	if(err != nil)
 		return err;
@@ -81,11 +81,10 @@ greconnect(Conv *c, char **argv, int argc)
 }
 
 static int
-grestate(char **msg, Conv *c)
+grestate(Conv *c, char *state, int n)
 {
 	USED(c);
-	*msg = "Datagram";
-	return 1;
+	return snprint(state, n, "%s", "Datagram");
 }
 
 static void
@@ -107,8 +106,8 @@ greclose(Conv *c)
 	qclose(c->rq);
 	qclose(c->wq);
 	qclose(c->eq);
-	c->laddr = 0;
-	c->raddr = 0;
+	ipmove(c->laddr, IPnoaddr);
+	ipmove(c->raddr, IPnoaddr);
 	c->lport = 0;
 	c->rport = 0;
 
@@ -122,7 +121,7 @@ grekick(Conv *c, int l)
 {
 	GREhdr *ghp;
 	Block *bp;
-	ulong raddr, laddr;
+	uchar laddr[IPaddrlen], raddr[IPaddrlen];
 
 	USED(l);
 
@@ -142,16 +141,17 @@ grekick(Conv *c, int l)
 
 	ghp = (GREhdr *)(bp->rp);
 
-	raddr = nhgetl(ghp->dst);
-	laddr = nhgetl(ghp->src);
-	if(raddr == 0)
-		raddr = c->raddr;
-	if(laddr == 0 || Mediaforme(ghp->src) <= 0)
-		laddr = c->laddr;
+	v4tov6(raddr, ghp->dst);
+	if(ipcmp(raddr, v4prefix) == 0)
+		memmove(ghp->dst, c->raddr + IPv4off, IPv4addrlen);
+	v4tov6(laddr, ghp->src);
+	if(ipcmp(laddr, v4prefix) == 0){
+		if(ipcmp(c->laddr, IPnoaddr) == 0)
+			findlocalip(c->laddr, raddr); /* pick interface closest to dest */
+		memmove(ghp->src, c->laddr + IPv4off, IPv4addrlen);
+	}
 
 	ghp->proto = IP_GREPROTO;
-	hnputl(ghp->dst, raddr);
-	hnputl(ghp->src, laddr);
 	hnputs(ghp->eproto, c->rport);
 	ghp->frag[0] = 0;
 	ghp->frag[1] = 0;
@@ -160,19 +160,18 @@ grekick(Conv *c, int l)
 }
 
 static void
-greiput(Media *m, Block *bp)
+greiput(uchar*, Block *bp)
 {
 	int len;
 	GREhdr *ghp;
-	Ipaddr addr;
 	Conv *c, **p;
 	ushort eproto;
+	uchar raddr[IPaddrlen];
 
-	USED(m);
 	ghp = (GREhdr*)(bp->rp);
 
+	v4tov6(raddr, ghp->src);
 	eproto = nhgets(ghp->eproto);
-	addr = nhgetl(ghp->src);
 
 	/* Look for a conversation structure for this port and address */
 	c = nil;
@@ -180,7 +179,7 @@ greiput(Media *m, Block *bp)
 		c = *p;
 		if(c->inuse == 0)
 			continue;
-		if(c->raddr == addr && c->rport == eproto)
+		if(c->rport == eproto && ipcmp(c->raddr, raddr) == 0)
 			break;
 	}
 
@@ -216,6 +215,14 @@ greiput(Media *m, Block *bp)
 	}
 }
 
+int
+grestats(char *buf, int len)
+{
+	return snprint(buf, len,
+		"gre: csum %d hlen %d len %d order %d rexmit %d\n",
+		gre.csumerr, gre.hlenerr, gre.lenerr, gre.order, gre.rexmit);
+}
+
 void
 greinit(Fs *fs)
 {
@@ -229,6 +236,7 @@ greinit(Fs *fs)
 	gre.rcv = greiput;
 	gre.ctl = nil;
 	gre.advise = nil;
+	gre.stats = grestats;
 	gre.ipproto = IP_GREPROTO;
 	gre.nc = 64;
 	gre.ptclsize = 0;

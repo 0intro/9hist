@@ -14,6 +14,7 @@ enum
 	TCP_IPLEN	= 8,
 	TCP_PHDRSIZE	= 12,
 	TCP_HDRSIZE	= 20,
+	TCP_TCBPHDRSZ	= 40,
 	TCP_PKT		= TCP_IPLEN+TCP_PHDRSIZE,
 	TimerOFF	= 0,
 	TimerON		= 1,
@@ -85,27 +86,27 @@ struct Timer
 typedef struct Tcphdr Tcphdr;
 struct Tcphdr
 {
-	byte	vihl;		/* Version and header length */
-	byte	tos;		/* Type of service */
-	byte	length[2];	/* packet length */
-	byte	id[2];		/* Identification */
-	byte	frag[2];	/* Fragment information */
-	byte	Unused;
-	byte	proto;
-	byte	tcplen[2];
-	byte	tcpsrc[4];
-	byte	tcpdst[4];
-	byte	tcpsport[2];
-	byte	tcpdport[2];
-	byte	tcpseq[4];
-	byte	tcpack[4];
-	byte	tcpflag[2];
-	byte	tcpwin[2];
-	byte	tcpcksum[2];
-	byte	tcpurg[2];
+	uchar	vihl;		/* Version and header length */
+	uchar	tos;		/* Type of service */
+	uchar	length[2];	/* packet length */
+	uchar	id[2];		/* Identification */
+	uchar	frag[2];	/* Fragment information */
+	uchar	Unused;
+	uchar	proto;
+	uchar	tcplen[2];
+	uchar	tcpsrc[4];
+	uchar	tcpdst[4];
+	uchar	tcpsport[2];
+	uchar	tcpdport[2];
+	uchar	tcpseq[4];
+	uchar	tcpack[4];
+	uchar	tcpflag[2];
+	uchar	tcpwin[2];
+	uchar	tcpcksum[2];
+	uchar	tcpurg[2];
 	/* Options segment */
-	byte	tcpopt[2];
-	byte	tcpmss[2];
+	uchar	tcpopt[2];
+	uchar	tcpmss[2];
 };
 
 typedef struct Tcp Tcp;
@@ -115,7 +116,7 @@ struct	Tcp
 	ushort	dest;
 	ulong	seq;
 	ulong	ack;
-	byte	flags;
+	uchar	flags;
 	ushort	wnd;
 	ushort	urg;
 	ushort	mss;
@@ -134,9 +135,9 @@ typedef struct Tcpctl Tcpctl;
 struct Tcpctl
 {
 	QLock;
-	byte	state;			/* Connection state */
-	byte	type;			/* Listening or active connection */
-	byte	code;			/* Icmp code */
+	uchar	state;			/* Connection state */
+	uchar	type;			/* Listening or active connection */
+	uchar	code;			/* Icmp code */
 	struct {
 		ulong	una;		/* Unacked data pointer */
 		ulong	nxt;		/* Next sequence expected */
@@ -147,7 +148,7 @@ struct Tcpctl
 		ulong	wl2;
 	} snd;
 	struct {
-		ulong	nxt;		/* Receive pointer to next byte slot */
+		ulong	nxt;		/* Receive pointer to next uchar slot */
 		ushort	wnd;		/* Receive window incoming */
 		ulong	urg;		/* Urgent pointer */
 		int	blocked;
@@ -162,8 +163,8 @@ struct Tcpctl
 	ushort	window;			/* Recevive window */
 	int	max_snd;		/* Max send */
 	ulong	last_ack;		/* Last acknowledege received */
-	byte	backoff;		/* Exponential backoff counter */
-	byte	flags;			/* State flags */
+	uchar	backoff;		/* Exponential backoff counter */
+	uchar	flags;			/* State flags */
 	ulong	sndcnt;			/* Amount of data in send queue */
 	Reseq	*reseq;			/* Resequencing queue */
 	Timer	timer;			/* Activity timer */
@@ -175,10 +176,11 @@ struct Tcpctl
 	int	kacounter;		/* count down for keep alive */
 	int	f2counter;		/* count down for finwait2 state */
 	uint	sndsyntime;		/* time syn sent */
-	char	ascstate[128];
+
+	Tcphdr	protohdr;		/* prototype header */
 };
 
-#define DBG(x)	if((logmask & Logtcpmsg) && (iponly == 0 || x == iponly))netlog
+#define DBG(x)	if((logmask & Logtcpmsg) && (iponlyset == 0 || memcmp(x, iponly+12, 4) == 0))netlog
 
 Proto	tcp;
 int	tcp_irtt = DEF_RTT;	/* Initial guess at round trip time */
@@ -189,14 +191,14 @@ QLock 	tl;			/* Protect timer list */
 static struct Tcpstats
 {
 	ulong	dup;		/* (partially) duplicated packets */
-	ulong	dupb;		/* duplicated bytes */
+	ulong	dupb;		/* duplicated uchars */
 } tstats;
 
 void	addreseq(Tcpctl*, Tcp*, Block*, ushort);
 void	getreseq(Tcpctl*, Tcp*, Block**, ushort*);
 void	localclose(Conv*, char*);
 void	procsyn(Conv*, Tcp*);
-void	tcpiput(Media*, Block*);
+void	tcpiput(uchar*, Block*);
 void	tcpoutput(Conv*);
 int	tcptrim(Tcpctl*, Tcp*, Block**, ushort*);
 void	tcpstart(Conv*, int, ushort);
@@ -206,10 +208,10 @@ void	tcprcvwin(Conv*);
 void	tcpacktimer(Conv*);
 
 void
-tcpsetstate(Conv *s, byte newstate)
+tcpsetstate(Conv *s, uchar newstate)
 {
 	Tcpctl *tcb;
-	byte oldstate;
+	uchar oldstate;
 
 	tcb = (Tcpctl*)s->ptcl;
 
@@ -231,7 +233,7 @@ tcpsetstate(Conv *s, byte newstate)
 		qclose(s->eq);
 		s->lport = 0;		/* This connection is toast */
 		s->rport = 0;
-		s->raddr = 0;
+		ipmove(s->raddr, IPnoaddr);
 
 	case Close_wait:		/* Remote closes */
 		qhangup(s->rq, nil);
@@ -255,29 +257,26 @@ tcpconnect(Conv *c, char **argv, int argc)
 	return nil;
 }
 
-int
-tcpstate(char **msg, Conv *c)
+static int
+tcpstate(Conv *c, char *state, int n)
 {
 	Tcpctl *s;
-	int isclose;
 
 	s = (Tcpctl*)(c->ptcl);
 
-	isclose = 0;
-	if(s->state == Closed)
-		isclose = 1;
-
-/*	snprint(s->ascstate, sizeof(s->ascstate),
-		"tcnt %d tnxt %lux tuna %lux twnd %d rack %lux rnxt %lux rwnd %d",
-		s->sndcnt, s->snd.nxt, s->snd.una, s->snd.wnd,
-		s->last_ack, s->rcv.nxt, s->rcv.wnd);*/
-	snprint(s->ascstate, sizeof(s->ascstate),
+	return snprint(state, n,
 		"%s srtt %d mdev %d timer.start %d timer.count %d\n",
 		tcpstates[s->state], s->srtt, s->mdev,
 		s->timer.start, s->timer.count);
+}
 
-	*msg = s->ascstate;
-	return isclose;
+static int
+tcpinuse(Conv *c)
+{
+	Tcpctl *s;
+
+	s = (Tcpctl*)(c->ptcl);
+	return s->state != Closed;
 }
 
 static char*
@@ -533,6 +532,7 @@ void
 inittcpctl(Conv *s)
 {
 	Tcpctl *tcb;
+	Tcphdr *h;
 
 	tcb = (Tcpctl*)s->ptcl;
 
@@ -550,21 +550,30 @@ inittcpctl(Conv *s)
 	tcb->acktimer.start = TCP_ACK / MSPTICK;
 	tcb->acktimer.func = tcpacktimer;
 	tcb->acktimer.arg = s;
+
+	/* create a prototype(pseudo) header */
+	if(ipcmp(s->laddr, IPnoaddr) == 0)
+		findlocalip(s->laddr, s->raddr);
+	h = &tcb->protohdr;
+	memset(h, 0, sizeof(*h));
+	h->proto = IP_TCPPROTO;
+	hnputs(h->tcpsport, s->lport);
+	hnputs(h->tcpdport, s->rport);
+	v6tov4(h->tcpsrc, s->laddr);
+	v6tov4(h->tcpdst, s->raddr);
 }
 
 /* mtu (- TCP + IP hdr len) of 1st hop */
 int
 tcpmtu(Conv *s)
 {
-	Media *m;
-	byte dst[4], dummy[4];
+	Ipifc *ifc;
 	int mtu;
 
 	mtu = 0;
-	hnputl(dst, s->raddr);
-	m = Mediaroute(dst, dummy);
-	if(m != nil)
-		mtu = m->maxmtu - m->hsize - (TCP_PKT + TCP_HDRSIZE);
+	ifc = findipifc(s->raddr, 0);
+	if(ifc != nil)
+		mtu = ifc->maxmtu - ifc->m->hsize - (TCP_PKT + TCP_HDRSIZE);
 	if(mtu < 4)
 		mtu = DEF_MSS;
 	return mtu;
@@ -647,23 +656,16 @@ htontcp(Tcp *tcph, Block *data, Tcphdr *ph)
 		data->wp += hdrlen + TCP_PKT;
 	}
 
-
-	memmove(data->rp, ph, TCP_PKT);
-
+	/* copy in pseudo ip header plus port numbers */
 	h = (Tcphdr *)(data->rp);
-	h->proto = IP_TCPPROTO;
-	h->frag[0] = 0;
-	h->frag[1] = 0;
+	memmove(h, ph, TCP_TCBPHDRSZ);
+
+	/* copy in variable bits */
 	hnputs(h->tcplen, hdrlen + dlen);
-	hnputs(h->tcpsport, tcph->source);
-	hnputs(h->tcpdport, tcph->dest);
 	hnputl(h->tcpseq, tcph->seq);
 	hnputl(h->tcpack, tcph->ack);
 	hnputs(h->tcpflag, (hdrlen<<10) | tcph->flags);
 	hnputs(h->tcpwin, tcph->wnd);
-	h->tcpcksum[0] = 0;
-	h->tcpcksum[1] = 0;
-	h->Unused = 0;
 	hnputs(h->tcpurg, tcph->urg);
 
 	if(tcph->mss != 0){
@@ -674,7 +676,7 @@ htontcp(Tcp *tcph, Block *data, Tcphdr *ph)
 	csum = ptclcsum(data, TCP_IPLEN, hdrlen+dlen+TCP_PHDRSIZE);
 	hnputs(h->tcpcksum, csum);
 
-	DBG(nhgetl(h->tcpdst))(Logtcpmsg, "%d > %d s %l8.8ux a %8.8lux %s w %.4ux l %d\n",
+	DBG(h->tcpdst)(Logtcpmsg, "%d > %d s %l8.8ux a %8.8lux %s w %.4ux l %d\n",
 		tcph->source, tcph->dest,
 		tcph->seq, tcph->ack, tcpflag((hdrlen<<10)|tcph->flags),
 		tcph->wnd, dlen);
@@ -686,7 +688,7 @@ int
 ntohtcp(Tcp *tcph, Block **bpp)
 {
 	Tcphdr *h;
-	byte *optr;
+	uchar *optr;
 	ushort hdrlen;
 	ushort i, optlen;
 
@@ -715,7 +717,7 @@ ntohtcp(Tcp *tcph, Block **bpp)
 	if(*bpp == nil)
 		return -1;
 
-	DBG(nhgetl(h->tcpsrc))(Logtcpmsg, "%d > %d s %l8.8ux a %8.8lux %s w %.4ux l %d\n",
+	DBG(h->tcpsrc)(Logtcpmsg, "%d > %d s %l8.8ux a %8.8lux %s w %.4ux l %d\n",
 		tcph->source, tcph->dest,
 		tcph->seq, tcph->ack, tcpflag((hdrlen<<10)|tcph->flags),
 		tcph->wnd, nhgets(h->length)-hdrlen-TCP_PKT);
@@ -754,27 +756,28 @@ tcpsndsyn(Tcpctl *tcb)
 	tcb->sndsyntime = msec;
 }
 
+
+/*
+ *  called with v4 (4 byte) addresses
+ */
 void
-sndrst(Ipaddr source, Ipaddr dest, ushort length, Tcp *seg)
+sndrst(uchar *source, uchar *dest, ushort length, Tcp *seg)
 {
-	ushort tmp;
 	Tcphdr ph;
 	Block *hbp;
-	byte rflags;
+	uchar rflags;
 
 	if(seg->flags & RST)
 		return;
 
-
-	hnputl(ph.tcpsrc, dest);
-	hnputl(ph.tcpdst, source);
+	/* make pseudo header */
+	memset(&ph, 0, sizeof(ph));
+	v6tov4(ph.tcpsrc, dest);
+	v6tov4(ph.tcpdst, source);
 	ph.proto = IP_TCPPROTO;
 	hnputs(ph.tcplen, TCP_HDRSIZE);
-
-	/* Swap port numbers */
-	tmp = seg->dest;
-	seg->dest = seg->source;
-	seg->source = tmp;
+	hnputs(ph.tcpsport, seg->dest);
+	hnputs(ph.tcpdport, seg->source);
 
 	rflags = RST;
 
@@ -811,7 +814,6 @@ char*
 tcphangup(Conv *s)
 {
 	Tcp seg;
-	byte dst[4];
 	Tcpctl *tcb;
 	Tcphdr ph;
 	Block *hbp;
@@ -823,8 +825,6 @@ tcphangup(Conv *s)
 	}
 	qlock(tcb);
 	if(s->raddr != 0) {
-		seg.source = s->lport;
-		seg.dest = s->rport;
 		seg.flags = RST | ACK;
 		seg.ack = tcb->rcv.nxt;
 		seg.seq = tcb->snd.ptr;
@@ -832,15 +832,8 @@ tcphangup(Conv *s)
 		seg.urg = 0;
 		seg.mss = 0;
 		tcb->last_ack = tcb->rcv.nxt;
-		if(s->laddr == 0) {
-			hnputl(dst, s->raddr);
-			s->laddr = Mediagetsrc(dst);
-		}
-		hnputl(ph.tcpsrc, s->laddr);
-		hnputl(ph.tcpdst, s->raddr);
-		ph.proto = IP_TCPPROTO;
 		hnputs(ph.tcplen, TCP_HDRSIZE);
-		hbp = htontcp(&seg, nil, &ph);
+		hbp = htontcp(&seg, nil, &tcb->protohdr);
 		ipoput(hbp, 0, s->ttl);
 	}
 	localclose(s, nil);
@@ -850,10 +843,11 @@ tcphangup(Conv *s)
 }
 
 Conv*
-tcpincoming(Conv *s, Tcp *segp, Ipaddr src, Ipaddr dst)
+tcpincoming(Conv *s, Tcp *segp, uchar *src, uchar *dst)
 {
 	Conv *new;
 	Tcpctl *tcb;
+	Tcphdr *h;
 
 	new = Fsnewcall(&fs, s, src, segp->source, dst, segp->dest);
 	if(new == nil)
@@ -866,6 +860,14 @@ tcpincoming(Conv *s, Tcp *segp, Ipaddr src, Ipaddr dst)
 	tcb->timer.state = TimerOFF;
 	tcb->acktimer.arg = new;
 	tcb->acktimer.state = TimerOFF;
+
+	h = &tcb->protohdr;
+	memset(h, 0, sizeof(*h));
+	h->proto = IP_TCPPROTO;
+	hnputs(h->tcpsport, new->lport);
+	hnputs(h->tcpdport, new->rport);
+	v6tov4(h->tcpsrc, dst);
+	v6tov4(h->tcpdst, src);
 
 	return new;
 }
@@ -1030,21 +1032,20 @@ update(Conv *s, Tcp *seg)
 }
 
 void
-tcpiput(Media *m, Block *bp)
+tcpiput(uchar*, Block *bp)
 {
 	Tcp seg;
 	Tcphdr *h;
 	int hdrlen;
 	Tcpctl *tcb;
 	ushort length;
-	Ipaddr source, dest;
+	uchar source[IPaddrlen], dest[IPaddrlen];
 	Conv *spec, *gen, *s, **p;
 
-	USED(m);
 	h = (Tcphdr*)(bp->rp);
 
-	dest = nhgetl(h->tcpdst);
-	source = nhgetl(h->tcpsrc);
+	v4tov6(dest, h->tcpdst);
+	v4tov6(source, h->tcpsrc);
 	length = nhgets(h->length);
 
 	h->Unused = 0;
@@ -1076,8 +1077,9 @@ tcpiput(Media *m, Block *bp)
 	/* Look for a connection. failing that look for a listener. */
 	for(p = tcp.conv; *p; p++) {
 		s = *p;
-		if(s->rport == seg.source &&
-		   s->lport == seg.dest && s->raddr == source)
+		if(s->rport == seg.source)
+		if(s->lport == seg.dest)
+		if(ipcmp(s->raddr, source) == 0)
 			break;
 	}
 	s = *p;
@@ -1116,7 +1118,7 @@ tcpiput(Media *m, Block *bp)
 				continue;
 			if(tcb->state != Listen)
 				continue;
-			if(s->rport == 0 && s->raddr == 0) {
+			if(s->rport == 0 && ipcmp(s->raddr, IPnoaddr) == 0) {
 				if(s->lport == seg.dest){
 					spec = s;
 					break;
@@ -1414,7 +1416,6 @@ tcpoutput(Conv *s)
 	int x;
 	Tcp seg;
 	int msgs;
-	Tcphdr ph;
 	Tcpctl *tcb;
 	Block *hbp, *bp;
 	int sndcnt, n, first;
@@ -1547,17 +1548,8 @@ tcpoutput(Conv *s)
 		if(seq_gt(tcb->snd.ptr,tcb->snd.nxt))
 			tcb->snd.nxt = tcb->snd.ptr;
 
-		/* Fill in fields of pseudo IP header */
-		hnputl(ph.tcpdst, s->raddr);
-		if(s->laddr == 0)
-			s->laddr = Mediagetsrc(ph.tcpdst);
-
-		hnputl(ph.tcpsrc, s->laddr);
-		hnputs(ph.tcpsport, s->lport);
-		hnputs(ph.tcpdport, s->rport);
-
 		/* Build header, link data and compute cksum */
-		hbp = htontcp(&seg, bp, &ph);
+		hbp = htontcp(&seg, bp, &tcb->protohdr);
 		if(hbp == nil) {
 			freeblist(bp);
 			return;
@@ -1588,13 +1580,12 @@ tcpoutput(Conv *s)
 }
 
 /*
- *  the BSD convention (hack?) for keep alives.  resend last byte acked.
+ *  the BSD convention (hack?) for keep alives.  resend last uchar acked.
  */
 void
 tcpkeepalive(Conv *s)
 {
 	Tcp seg;
-	Tcphdr ph;
 	Tcpctl *tcb;
 	Block *hbp,*dbp;
 
@@ -1618,16 +1609,8 @@ tcpkeepalive(Conv *s)
 		dbp->wp++;
 	}
 
-	/* Fill in fields of pseudo IP header */
-	hnputl(ph.tcpdst, s->raddr);
-	if(s->laddr == 0)
-		s->laddr = Mediagetsrc(ph.tcpdst);
-	hnputl(ph.tcpsrc, s->laddr);
-	hnputs(ph.tcpsport, s->lport);
-	hnputs(ph.tcpdport, s->rport);
-
 	/* Build header, link data and compute cksum */
-	hbp = htontcp(&seg, dbp, &ph);
+	hbp = htontcp(&seg, dbp, &tcb->protohdr);
 	if(hbp == nil) {
 		freeblist(dbp);
 		return;
@@ -1792,7 +1775,7 @@ tcptrim(Tcpctl *tcb, Tcp *seg, Block **bp, ushort *length)
 {
 	ushort len;
 	Block *nbp;
-	byte accept;
+	uchar accept;
 	int dupcnt, excess;
 
 	accept = 0;
@@ -1866,22 +1849,25 @@ tcpadvise(Block *bp, char *msg)
 {
 	Tcphdr *h;
 	Tcpctl *tcb;
-	Ipaddr source, dest;
+	uchar source[IPaddrlen];
+	uchar dest[IPaddrlen];
 	ushort psource, pdest;
 	Conv *s, **p;
 
 	h = (Tcphdr*)(bp->rp);
 
-	dest = nhgetl(h->tcpdst);
-	source = nhgetl(h->tcpsrc);
+	v4tov6(dest, h->tcpdst);
+	v4tov6(source, h->tcpsrc);
 	psource = nhgets(h->tcpsport);
 	pdest = nhgets(h->tcpdport);
 
 	/* Look for a connection */
 	for(p = tcp.conv; *p; p++) {
 		s = *p;
-		if(s->rport == pdest && s->lport == psource)
-		if(s->raddr == dest && s->laddr == source){
+		if(s->rport == pdest)
+		if(s->lport == psource)
+		if(ipcmp(s->raddr, dest) == 0)
+		if(ipcmp(s->laddr, source) == 0){
 			tcb = (Tcpctl*)s->ptcl;
 			qlock(tcb);
 			switch(tcb->state){
@@ -1896,6 +1882,7 @@ tcpadvise(Block *bp, char *msg)
 	freeblist(bp);
 }
 
+/* called with c->car qlocked */
 char*
 tcpctl(Conv* c, char** f, int n)
 {
@@ -1907,7 +1894,14 @@ tcpctl(Conv* c, char** f, int n)
 int
 tcpstats(char *buf, int len)
 {
-	return snprint(buf, len, "\tdupp %d dupb %d\n", tstats.dup, tstats.dupb);
+	int n;
+
+	n = snprint(buf, len,
+		"tcp: csum %d hlen %d len %d order %d rexmit %d",
+		tcp.csumerr, tcp.hlenerr, tcp.lenerr, tcp.order, tcp.rexmit);
+	n += snprint(buf+n, len-n, " dupp %d dupb %d\n",
+		tstats.dup, tstats.dupb);
+	return n;
 }
 
 void
@@ -1924,6 +1918,7 @@ tcpinit(Fs *fs)
 	tcp.rcv = tcpiput;
 	tcp.advise = tcpadvise;
 	tcp.stats = tcpstats;
+	tcp.inuse = tcpinuse;
 	tcp.ipproto = IP_TCPPROTO;
 	tcp.nc = Nchans;
 	tcp.ptclsize = sizeof(Tcpctl);
@@ -1932,3 +1927,4 @@ tcpinit(Fs *fs)
 
 	Fsproto(fs, &tcp);
 }
+

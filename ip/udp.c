@@ -15,7 +15,7 @@ enum
 	UDP_HDRSIZE	= 20,
 	UDP_IPHDR	= 8,
 	IP_UDPPROTO	= 17,
-	UDP_USEAD	= 12,
+	UDP_USEAD	= 36,
 
 	Udprxms		= 200,
 	Udptickms	= 100,
@@ -26,22 +26,22 @@ typedef struct Udphdr Udphdr;
 struct Udphdr
 {
 	/* ip header */
-	byte	vihl;		/* Version and header length */
-	byte	tos;		/* Type of service */
-	byte	length[2];	/* packet length */
-	byte	id[2];		/* Identification */
-	byte	frag[2];	/* Fragment information */
-	byte	Unused;	
-	byte	udpproto;	/* Protocol */
-	byte	udpplen[2];	/* Header plus data length */
-	byte	udpsrc[4];	/* Ip source */
-	byte	udpdst[4];	/* Ip destination */
+	uchar	vihl;		/* Version and header length */
+	uchar	tos;		/* Type of service */
+	uchar	length[2];	/* packet length */
+	uchar	id[2];		/* Identification */
+	uchar	frag[2];	/* Fragment information */
+	uchar	Unused;	
+	uchar	udpproto;	/* Protocol */
+	uchar	udpplen[2];	/* Header plus data length */
+	uchar	udpsrc[4];	/* Ip source */
+	uchar	udpdst[4];	/* Ip destination */
 
 	/* udp header */
-	byte	udpsport[2];	/* Source port */
-	byte	udpdport[2];	/* Destination port */
-	byte	udplen[2];	/* data length */
-	byte	udpcksum[2];	/* Checksum */
+	uchar	udpsport[2];	/* Source port */
+	uchar	udpdport[2];	/* Destination port */
+	uchar	udplen[2];	/* data length */
+	uchar	udpcksum[2];	/* Checksum */
 };
 
 /*
@@ -51,7 +51,7 @@ typedef struct Udpcb Udpcb;
 struct Udpcb
 {
 	QLock;
-	byte	headers;
+	uchar	headers;
 };
 
 	Proto	udp;
@@ -71,12 +71,11 @@ udpconnect(Conv *c, char **argv, int argc)
 	return e;
 }
 
-int
-udpstate(char **s, Conv *c)
+static int
+udpstate(Conv *c, char *state, int n)
 {
 	USED(c);
-	*s = "Datagram";
-	return 1;
+	return snprint(state, n, "%s", "Datagram");
 }
 
 static char*
@@ -107,8 +106,8 @@ udpclose(Conv *c)
 	qclose(c->rq);
 	qclose(c->wq);
 	qclose(c->eq);
-	c->laddr = 0;
-	c->raddr = 0;
+	ipmove(c->laddr, IPnoaddr);
+	ipmove(c->raddr, IPnoaddr);
 	c->lport = 0;
 	c->rport = 0;
 
@@ -119,17 +118,16 @@ udpclose(Conv *c)
 }
 
 void
-udpkick(Conv *c, int l)
+udpkick(Conv *c, int)
 {
 	Udphdr *uh;
 	ushort rport;
-	Ipaddr laddr, raddr;
+	uchar laddr[IPaddrlen], raddr[IPaddrlen];
 	Block *bp;
 	Udpcb *ucb;
 	int dlen, ptcllen;
 
-	USED(l);
-
+	netlog(Logudp, "udp: kick\n");
 	bp = qget(c->wq);
 	if(bp == nil)
 		return;
@@ -138,24 +136,20 @@ udpkick(Conv *c, int l)
 	if(ucb->headers) {
 		/* get user specified addresses */
 		bp = pullupblock(bp, UDP_USEAD);
-		if(bp == nil) {
-			freeblist(bp);
+		if(bp == nil)
 			return;
-		}
-		raddr = nhgetl(bp->rp);
-		bp->rp += 4;
-		laddr = nhgetl(bp->rp);
-		if(laddr != 0 && Mediaforme(bp->rp) <= 0)
-			laddr = 0;
-		bp->rp += 4;
+		ipmove(raddr, bp->rp);
+		bp->rp += IPaddrlen;
+		ipmove(laddr, bp->rp);
+		bp->rp += IPaddrlen;
+		if(ipforme(laddr) != Runi)
+			findlocalip(laddr, raddr);	/* pick interface closest to dest */
 		rport = nhgets(bp->rp);
 		bp->rp += 2;
 		/* ignore local port number */
 		bp->rp += 2;
 	} else {
-		raddr = 0;
 		rport = 0;
-		laddr = 0;
 	}
 
 	dlen = blocklen(bp);
@@ -174,16 +168,15 @@ udpkick(Conv *c, int l)
 	uh->frag[1] = 0;
 	hnputs(uh->udpplen, ptcllen);
 	if(ucb->headers) {
-		hnputl(uh->udpdst, raddr);
+		v6tov4(uh->udpdst, raddr);
 		hnputs(uh->udpdport, rport);
-		if(laddr)
-			hnputl(uh->udpsrc, laddr);
-		else
-			hnputl(uh->udpsrc, Mediagetsrc(uh->udpdst));
+		v6tov4(uh->udpsrc, laddr);
 	} else {
-		hnputl(uh->udpdst, c->raddr);
+		v6tov4(uh->udpdst, c->raddr);
 		hnputs(uh->udpdport, c->rport);
-		hnputl(uh->udpsrc, c->laddr);
+		if(ipcmp(c->laddr, IPnoaddr) == 0)
+			findlocalip(c->laddr, c->raddr);	/* pick interface closest to dest */
+		v6tov4(uh->udpsrc, c->laddr);
 	}
 	hnputs(uh->udpsport, c->lport);
 	hnputs(uh->udplen, ptcllen);
@@ -196,18 +189,15 @@ udpkick(Conv *c, int l)
 }
 
 void
-udpiput(Media *m, Block *bp)
+udpiput(uchar *ia, Block *bp)
 {
 	int len, olen, ottl;
 	Udphdr *uh;
 	Conv *c, **p;
 	Udpcb *ucb;
-	Ipaddr raddr, laddr;
+	uchar raddr[IPaddrlen], laddr[IPaddrlen];
 	ushort rport, lport;
-	uchar dst[IPaddrlen];
-	uchar src[IPaddrlen];
 
-	USED(m);
 	uh = (Udphdr*)(bp->rp);
 
 	/* Put back pseudo header for checksum (remember old values for icmpnoconv()) */
@@ -217,17 +207,15 @@ udpiput(Media *m, Block *bp)
 	olen = nhgets(uh->udpplen);
 	hnputs(uh->udpplen, len);
 
-	raddr = nhgetl(uh->udpsrc);
-	laddr = nhgetl(uh->udpdst);
+	v4tov6(raddr, uh->udpsrc);
+	v4tov6(laddr, uh->udpdst);
 	lport = nhgets(uh->udpdport);
 	rport = nhgets(uh->udpsport);
-	memmove(src, uh->udpsrc, IPaddrlen);
-	memmove(dst, uh->udpdst, IPaddrlen);
 
 	if(udpsum && nhgets(uh->udpcksum)) {
 		if(ptclcsum(bp, UDP_IPHDR, len+UDP_PHDRSIZE)) {
 			udp.csumerr++;
-			netlog(Logudp, "udp: checksum error %I\n", src);
+			netlog(Logudp, "udp: checksum error %I\n", raddr);
 			freeblist(bp);
 			return;
 		}
@@ -244,10 +232,10 @@ udpiput(Media *m, Block *bp)
 	}
 
 	if(*p == nil) {
-		netlog(Logudp, "udp: no conv %I.%d -> %I.%d\n", src, rport,
-			dst, lport);
+		netlog(Logudp, "udp: no conv %I.%d -> %I.%d\n", raddr, rport,
+			laddr, lport);
 		/* don't complain about broadcasts... */
-		if(Mediaforme(dst) > 0){
+		if(ipforme(raddr) == 0){
 			uh->Unused = ottl;
 			hnputs(uh->udpplen, olen);
 			icmpnoconv(bp);
@@ -262,51 +250,47 @@ udpiput(Media *m, Block *bp)
 	len -= (UDP_HDRSIZE-UDP_PHDRSIZE);
 	bp = trimblock(bp, UDP_IPHDR+UDP_HDRSIZE, len);
 	if(bp == nil){
-		netlog(Logudp, "udp: len err %I.%d -> %I.%d\n", src, rport,
-			dst, lport);
+		netlog(Logudp, "udp: len err %I.%d -> %I.%d\n", raddr, rport,
+			laddr, lport);
 		udp.lenerr++;
 		return;
 	}
 
-	netlog(Logudpmsg, "udp: %I.%d -> %I.%d l %d\n", src, rport,
-		dst, lport, len);
+	netlog(Logudpmsg, "udp: %I.%d -> %I.%d l %d\n", raddr, rport,
+		laddr, lport, len);
 
 	ucb = (Udpcb*)c->ptcl;
 
 	if(ucb->headers) {
 		/* pass the src address */
 		bp = padblock(bp, UDP_USEAD);
-		hnputl(bp->rp, raddr);
-		if(Mediaforme(dst) > 0)
-			hnputl(bp->rp+4, laddr);
-		else if(m != 0)
-			hnputl(bp->rp+4, m->myip[0]);
-		else if(media != 0)
-			hnputl(bp->rp+4, media->myip[0]);
+		ipmove(bp->rp, raddr);
+		if(ipforme(laddr) == Runi)
+			ipmove(bp->rp+IPaddrlen, laddr);
 		else
-			hnputl(bp->rp+4, laddr);
-		hnputs(bp->rp+8, rport);
-		hnputs(bp->rp+10, lport);
+			ipmove(bp->rp+IPaddrlen, ia);
+		hnputs(bp->rp+2*IPaddrlen, rport);
+		hnputs(bp->rp+2*IPaddrlen+2, lport);
 	} else {
 		/* connection oriented udp */
 		if(c->raddr == 0){
 			/* save the src address in the conversation */
-		 	c->raddr = raddr;
+		 	ipmove(c->raddr, raddr);
 			c->rport = rport;
 
 			/* reply with the same ip address (if not broadcast) */
-			if(Mediaforme(dst) > 0)
-				c->laddr = laddr;
+			if(ipforme(laddr) == Runi)
+				ipmove(c->laddr, laddr);
 			else
-				c->laddr = m->myip[0];
+				ipmove(c->laddr, ia);
 		}
 	}
 	if(bp->next)
 		bp = concatblock(bp);
 
 	if(qfull(c->rq)){
-		netlog(Logudp, "udp: qfull %I.%d -> %I.%d\n", src, rport,
-			dst, lport);
+		netlog(Logudp, "udp: qfull %I.%d -> %I.%d\n", raddr, rport,
+			laddr, lport);
 		freeblist(bp);
 	}else
 		qpass(c->rq, bp);
@@ -333,28 +317,38 @@ void
 udpadvise(Block *bp, char *msg)
 {
 	Udphdr *h;
-	Ipaddr source, dest;
+	uchar source[IPaddrlen], dest[IPaddrlen];
 	ushort psource, pdest;
 	Conv *s, **p;
 
 	h = (Udphdr*)(bp->rp);
 
-	dest = nhgetl(h->udpdst);
-	source = nhgetl(h->udpsrc);
+	v4tov6(dest, h->udpdst);
+	v4tov6(source, h->udpsrc);
 	psource = nhgets(h->udpsport);
 	pdest = nhgets(h->udpdport);
 
 	/* Look for a connection */
 	for(p = udp.conv; *p; p++) {
 		s = *p;
-		if(s->rport == pdest && s->lport == psource)
-		if(s->raddr == dest && s->laddr == source){
+		if(s->rport == pdest)
+		if(s->lport == psource)
+		if(ipcmp(s->raddr, dest) == 0)
+		if(ipcmp(s->laddr, source) == 0){
 			qhangup(s->rq, msg);
 			qhangup(s->wq, msg);
 			break;
 		}
 	}
 	freeblist(bp);
+}
+
+int
+udpstats(char *buf, int len)
+{
+	return snprint(buf, len,
+		"udp: csum %d hlen %d len %d order %d rexmit %d\n",
+		udp.csumerr, udp.hlenerr, udp.lenerr, udp.order, udp.rexmit);
 }
 
 void
@@ -370,6 +364,7 @@ udpinit(Fs *fs)
 	udp.close = udpclose;
 	udp.rcv = udpiput;
 	udp.advise = udpadvise;
+	udp.stats = udpstats;
 	udp.ipproto = IP_UDPPROTO;
 	udp.nc = 16;
 	udp.ptclsize = sizeof(Udpcb);
