@@ -813,6 +813,7 @@ ataprobe(Drive *dp, int cyl, int sec, int head)
 	cp->status = 0;
 	cp->nsecs = 1;
 	cp->sofar = 0;
+	cp->buf = buf;
 
 	outb(cp->pbase+Pcount, 1);
 	outb(cp->pbase+Psector, sec+1);
@@ -1120,6 +1121,10 @@ ataintr(Ureg *ur, void *arg)
 		if(addr){
 			addr += cp->sofar*dp->bytes;
 			inss(cp->pbase+Pdata, addr, dp->bytes/2);
+		} else {
+			/* old drives/controllers hang unless the buffer is emptied */
+			for(loop = dp->bytes/2; --loop >= 0;)
+				ins(cp->pbase+Pdata);
 		}
 		cp->sofar++;
 		if(cp->sofar > cp->nsecs)

@@ -946,11 +946,11 @@ floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 	if(off + n > dp->t->cap)
 		n = dp->t->cap - off;
 
-	/* retry on error 3 times */
+	/* retry on error */
 	tries = 0;
 	while(waserror()){
 		DPRINT("floppyxfer: retrying\n");
-		if(tries++ >= 3)
+		if(tries++ > 20)
 			nexterror();
 	}
 
@@ -973,9 +973,9 @@ floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 	/*
 	 *  start operation
 	 */
-	cmd = cmd | (dp->t->heads > 1 ? Fmulti : 0);
+	cmd = cmd;
 	fl.ncmd = 0;
-	fl.cmd[fl.ncmd++] = cmd;
+	fl.cmd[fl.ncmd++] = cmd | (dp->t->heads > 1 ? Fmulti : 0);
 	fl.cmd[fl.ncmd++] = (dp->thead<<2) | dp->dev;
 	fl.cmd[fl.ncmd++] = dp->tcyl;
 	fl.cmd[fl.ncmd++] = dp->thead;
