@@ -228,7 +228,7 @@ dumpregs(Ureg *ur)
 int
 notify(Ureg *ur)
 {
-	int l;
+	int l, sent;
 	ulong s, sp;
 	Note *n;
 
@@ -254,9 +254,11 @@ notify(Ureg *ur)
 		qunlock(&u->p->debug);
 		pexit(n->msg, n->flag!=NDebug);
 	}
+	sent = 0;
 	if(!u->notified){
 		if(!u->notify)
 			goto Die;
+		sent = 1;
 		u->svpsr = ur->psr;
 		sp = ur->usp;
 		sp -= sizeof(Ureg);
@@ -287,7 +289,7 @@ notify(Ureg *ur)
 	}
 	qunlock(&u->p->debug);
 	splx(s);
-	return 1;
+	return sent;
 }
 
 /*

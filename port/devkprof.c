@@ -184,7 +184,7 @@ kproftimer(ulong pc)
 	if(kprof.time == 0)
 		return;
 	/*
-	 *  if the pc is coming out of slplo pr splx,
+	 *  if the pc is coming out of spllo or splx,
 	 *  use the pc saved when we went splhi.
 	 */
 	if(pc>=(ulong)spllo && pc<=(ulong)spldone)
