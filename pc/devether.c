@@ -124,6 +124,8 @@ etherrloop(Ether *ctlr, Etherpkt *pkt, long len)
 					continue;
 				memmove(bp->wp, pkt->d, len);
 				i = TK2MS(m->ticks);
+				bp->wp[58] = len>>8;
+				bp->wp[59] = len;
 				bp->wp[60] = i>>24;
 				bp->wp[61] = i>>16;
 				bp->wp[62] = i>>8;
@@ -141,7 +143,7 @@ etherwloop(Ether *ctlr, Etherpkt *pkt, long len)
 	int s, different;
 
 	different = memcmp(pkt->d, ctlr->ea, sizeof(pkt->d));
-	if(different && memcmp(pkt->d, ctlr->bcast, sizeof(pkt->d)))
+	if(!ctlr->prom && different && memcmp(pkt->d, ctlr->bcast, sizeof(pkt->d)))
 		return 0;
 
 	s = splhi();
