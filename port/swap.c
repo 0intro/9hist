@@ -38,8 +38,11 @@ newswap(void)
 	uchar *look;
 
 	lock(&swapalloc);
-	if(swapalloc.free == 0)
-		panic("out of swap space");
+
+	if(swapalloc.free == 0){
+		unlock(&swapalloc);
+		return ~0;
+	}
 
 	look = memchr(swapalloc.last, 0, swapalloc.top-swapalloc.last);
 	if(look == 0)
@@ -285,6 +288,8 @@ pagepte(int type, Page **pg)
 		 *  referring to it from the cache
 		 */
 		daddr = newswap();
+		if(daddr == ~0)
+			break;
 		cachedel(&swapimage, daddr);
 
 		lock(outp);
@@ -395,4 +400,10 @@ setswapchan(Chan *c)
 	}
 
 	swapimage.c = c;
+}
+
+int
+swapfull(void)
+{
+	return swapalloc.free < conf.nswap/10;
 }

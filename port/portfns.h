@@ -295,6 +295,7 @@ void		splx(int);
 void		splxpc(int);
 void		srvrecover(Chan*, Chan*);
 int		swapcount(ulong);
+int		swapfull(void);
 void		swapinit(void);
 Block*		trimblock(Block*, int, int);
 void		tsleep(Rendez*, int (*)(void*), void*, int);

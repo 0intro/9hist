@@ -53,6 +53,9 @@ newseg(int type, ulong base, ulong size)
 	if(size > (SEGMAPSIZE*PTEPERTAB))
 		error(Enovmem);
 
+	if(swapfull())
+		error(Enoswap);
+
 	s = smalloc(sizeof(Segment));
 	s->ref = 1;
 	s->type = type;
@@ -157,7 +160,12 @@ dupseg(Segment **seg, int segno, int share)
 
 	case SG_STACK:
 		qlock(&s->lk);
+		if(waserror()){
+			qunlock(&s->lk);
+			nexterror();
+		}
 		n = newseg(s->type, s->base, s->size);
+		poperror();
 		break;
 
 	case SG_BSS:		/* Just copy on write */
@@ -169,7 +177,12 @@ dupseg(Segment **seg, int segno, int share)
 			qunlock(&s->lk);
 			return s;
 		}
+		if(waserror()){
+			qunlock(&s->lk);
+			nexterror();
+		}
 		n = newseg(s->type, s->base, s->size);
+		poperror();
 		break;
 
 	case SG_DATA:		/* Copy on write plus demand load info */
@@ -183,7 +196,12 @@ dupseg(Segment **seg, int segno, int share)
 			qunlock(&s->lk);
 			return s;
 		}
+		if(waserror()){
+			qunlock(&s->lk);
+			nexterror();
+		}
 		n = newseg(s->type, s->base, s->size);
+		poperror();
 
 		incref(s->image);
 		n->image = s->image;
@@ -436,6 +454,11 @@ ibrk(ulong addr, int seg)
 		qunlock(&s->lk);
 		flushmmu();
 		return 0;
+	}
+
+	if(swapfull()){
+		qunlock(&s->lk);
+		error(Enoswap);
 	}
 
 	for(i = 0; i < NSEG; i++) {

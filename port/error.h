@@ -46,6 +46,7 @@ extern char Enetunreach[];	/* network unreachable */
 extern char Eintr[];		/* interrupted */
 extern char Eneedservice[];	/* service required for tcp/udp/il calls */
 extern char Enomem[];		/* kernel allocate failed */
+extern char Enoswap[];		/* swap space full */
 extern char Esfnotcached[];	/* subfont not cached */
 extern char Esoverlap[];	/* segments overlap */
 extern char Emouseset[];	/* mouse type already set */
