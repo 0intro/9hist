@@ -55,7 +55,7 @@ sdaddpart(SDunit* unit, char* name, ulong start, ulong end)
 	 */
 	if(unit->part != nil){
 		partno = -1;
-		for(i = 0; i < SDnpart; i++){
+		for(i = 0; i < unit->npart; i++){
 			pp = &unit->part[i];
 			if(!pp->valid){
 				if(partno == -1)
@@ -72,14 +72,27 @@ sdaddpart(SDunit* unit, char* name, ulong start, ulong end)
 	else{
 		if((unit->part = malloc(sizeof(SDpart)*SDnpart)) == nil)
 			error(Enomem);
+		unit->npart = SDnpart;
 		partno = 0;
 	}
 
 	/*
-	 * Check there is a free slot and size and extent are valid.
+	 * If no free slot found then increase the
+	 * array size (can't get here with unit->part == nil).
 	 */
-	if(partno == -1)
-		error(Ebadctl);
+	if(partno == -1){
+		if((pp = malloc(sizeof(SDpart)*(unit->npart+SDnpart))) == nil)
+			error(Enomem);
+		memmove(pp, unit->part, sizeof(SDpart)*unit->npart);
+		free(unit->part);
+		unit->part = pp;
+		partno = unit->npart;
+		unit->npart += SDnpart;
+	}
+
+	/*
+	 * Check size and extent are valid.
+	 */
 	if(start > end || end > unit->sectors)
 		error(Eio);
 	pp = &unit->part[partno];
@@ -102,12 +115,12 @@ sddelpart(SDunit* unit,  char* name)
 	 * Can't delete if someone still has it open.
 	 */
 	pp = unit->part;
-	for(i = 0; i < SDnpart; i++){
+	for(i = 0; i < unit->npart; i++){
 		if(strncmp(name, pp->name, NAMELEN) == 0)
 			break;
 		pp++;
 	}
-	if(i >= SDnpart)
+	if(i >= unit->npart)
 		error(Ebadctl);
 	if(strncmp(up->user, pp->user, NAMELEN) && !iseve())
 		error(Eperm);
@@ -125,7 +138,7 @@ sdinitpart(SDunit* unit)
 	unit->vers++;
 	unit->sectors = unit->secsize = 0;
 	if(unit->part){
-		for(i = 0; i < SDnpart; i++){
+		for(i = 0; i < unit->npart; i++){
 			unit->part[i].valid = 0;
 			unit->part[i].vers++;
 		}
@@ -420,7 +433,7 @@ sdgen(Chan* c, Dirtab*, int, int s, Dir* dp)
 			return r;
 		}
 		i -= Qpart;
-		if(unit->part == nil || i >= SDnpart){
+		if(unit->part == nil || i >= unit->npart){
 			qunlock(&unit->ctl);
 			break;
 		}
@@ -749,7 +762,7 @@ sdread(Chan *c, void *a, long n, vlong off)
 					"geometry %ld %ld\n",
 					unit->sectors, unit->secsize);
 			pp = unit->part;
-			for(i = 0; i < SDnpart; i++){
+			for(i = 0; i < unit->npart; i++){
 				if(pp->valid)
 					l += snprint(p+l, READSTR-l,
 						"part %.*s %lud %lud\n",

@@ -32,7 +32,8 @@ typedef struct SDunit {
 	QLock	ctl;
 	ulong	sectors;
 	ulong	secsize;
-	SDpart*	part;			/* nil or array of size SDnpart */
+	SDpart*	part;			/* nil or array of size npart */
+	int	npart;
 	ulong	vers;
 	SDperm	ctlperm;
 

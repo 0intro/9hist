@@ -193,7 +193,7 @@ s3load(VGAscr* scr, Cursor* curs)
 
 	opage = 0;
 	p = KADDR(scr->aperture);
-	id = (vgaxi(Crtx, 0x30)<<8)|vgaxi(Crtx, 0x2E);
+	id = (vgaxi(Crtx, 0x2D)<<8)|vgaxi(Crtx, 0x2E);
 	switch(id){
 
 	case 0x5631:				/* ViRGE */
@@ -531,7 +531,7 @@ s3drawinit(VGAscr *scr)
 {
 	ulong id;
 
-	id = (vgaxi(Crtx, 0x30)<<8)|vgaxi(Crtx, 0x2E);
+	id = (vgaxi(Crtx, 0x2D)<<8)|vgaxi(Crtx, 0x2E);
 	scr->id = id;
 
 	/*
