@@ -5,9 +5,6 @@
 #include	"fns.h"
 #include	"errno.h"
 
-/* BUG mips only TAKE IT OUT */
-#include	"io.h"
-
 #include	"devtab.h"
 
 enum{
@@ -34,7 +31,7 @@ Dirtab procdir[]={
 /*
  * Qids are, in path:
  *	 4 bits of file type (qids above)
- *	24 bits of process slot number + 1
+ *	23 bits of process slot number + 1
  *	     in vers,
  *	32 bits of pid, for consistency checking
  * If notepg, c->pgrpid.path is pgrp slot, .vers is pgrpid.
@@ -42,7 +39,7 @@ Dirtab procdir[]={
 #define	NPROC	(sizeof procdir/sizeof(Dirtab))
 #define	QSHIFT	4	/* location in qid of proc slot # */
 #define	QID(q)	(((q).path&0x0000000F)>>0)
-#define	SLOT(q)	((((q).path&0x0FFFFFFF0)>>QSHIFT)-1)
+#define	SLOT(q)	((((q).path&0x07FFFFFF0)>>QSHIFT)-1)
 #define	PID(q)	((q).vers)
 
 int
