@@ -860,6 +860,19 @@ struct Edfinterface {
 	void		(*edfdeadline)(Proc *p);
 };
 
+/* queue state bits,  Qmsg, Qcoalesce, and Qkick can be set in qopen */
+enum
+{
+	/* Queue.state */
+	Qstarve		= (1<<0),	/* consumer starved */
+	Qmsg		= (1<<1),	/* message stream */
+	Qclosed		= (1<<2),	/* queue has been closed/hungup */
+	Qflow		= (1<<3),	/* producer flow controlled */
+	Qcoalesce	= (1<<4),	/* coallesce packets on read */
+	Qkick		= (1<<5),	/* always call the kick routine after qwrite */
+};
+
+
 extern Edfinterface *edf;
 
 #define DEVDOTDOT -1

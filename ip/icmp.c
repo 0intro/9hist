@@ -127,7 +127,7 @@ icmpstate(Conv *c, char *state, int n)
 extern void
 icmpcreate(Conv *c)
 {
-	c->rq = qopen(64*1024, 1, 0, c);
+	c->rq = qopen(64*1024, Qmsg, 0, c);
 	c->wq = qopen(64*1024, 0, 0, 0);
 }
 

@@ -534,6 +534,12 @@ tcpkick(Conv *s)
 }
 
 void
+tcpqkick(void *x)
+{
+	tcpkick((Conv*)x);
+}
+
+void
 tcprcvwin(Conv *s)				/* Call with tcb locked */
 {
 	int w;
@@ -574,8 +580,8 @@ tcpacktimer(void *v)
 static void
 tcpcreate(Conv *c)
 {
-	c->rq = qopen(QMAX, -1, tcpacktimer, c);
-	c->wq = qopen(2*QMAX, 0, 0, 0);
+	c->rq = qopen(QMAX, Qcoalesce, tcpacktimer, c);
+	c->wq = qopen(2*QMAX, Qkick, tcpqkick, c);
 }
 
 static void
@@ -1312,22 +1318,7 @@ sndsynack(Proto *tcp, Limbo *lp)
 	return 0;
 }
 
-/*
- *  hash an address, walk the permutation
- */
-static int
-limbohash(uchar *perm, uchar *addr)
-{
-	int i;
-	uchar x;
-
-	x = 0;
-	for(i = 0; i < IPaddrlen; i++)
-		x = perm[(addr[i]+x) & 0xff];
-	return x;
-}
-
-#define hashipa(a) ( ( (a)[IPaddrlen-2] + (a)[IPaddrlen-1] )&LHTMASK )
+#define hashipa(a, p) ( ( (a)[IPaddrlen-2] + (a)[IPaddrlen-1] + p )&LHTMASK )
 
 /*
  *  put a call into limbo and respond with a SYN ACK
@@ -1342,7 +1333,7 @@ limbo(Conv *s, uchar *source, uchar *dest, Tcp *seg, int version)
 	int h;
 
 	tpriv = s->p->priv;
-	h = hashipa(source);
+	h = hashipa(source, seg->source);
 
 	for(l = &tpriv->lht[h]; *l != nil; l = &lp->next){
 		lp = *l;
@@ -1438,6 +1429,41 @@ limborexmit(Proto *tcp)
 }
 
 /*
+ *  lookup call in limbo.  if found, throw it out.
+ *
+ *  called with proto locked
+ */
+static void
+limborst(Conv *s, Tcp *segp, uchar *src, uchar *dst, uchar version)
+{
+	Limbo *lp, **l;
+	int h;
+	Tcppriv *tpriv;
+
+	tpriv = s->p->priv;
+
+	/* find a call in limbo */
+	h = hashipa(src, segp->source);
+	for(l = &tpriv->lht[h]; *l != nil; l = &lp->next){
+		lp = *l;
+		if(lp->lport != segp->dest || lp->rport != segp->source || lp->version != version)
+			continue;
+		if(ipcmp(lp->laddr, dst) != 0)
+			continue;
+		if(ipcmp(lp->raddr, src) != 0)
+			continue;
+
+		/* RST can only follow the SYN */
+		if(segp->seq == lp->irs+1){
+			tpriv->nlimbo--;
+			*l = lp->next;
+			free(lp);
+		}
+		break;
+	}
+}
+
+/*
  *  lookup call in limbo.  if found, create a new conversation
  *
  *  called with proto locked
@@ -1461,7 +1487,7 @@ tcpincoming(Conv *s, Tcp *segp, uchar *src, uchar *dst, uchar version)
 
 	/* find a call in limbo */
 	lp = nil;
-	h = hashipa(src);
+	h = hashipa(src, segp->source);
 	for(l = &tpriv->lht[h]; *l != nil; l = &lp->next){
 		lp = *l;
 		if(lp->lport != segp->dest || lp->rport != segp->source || lp->version != version)
@@ -1800,7 +1826,6 @@ tcpiput(Proto *tcp, Ipifc*, Block *bp)
 			ptclcsum(bp, TCP4_IPLEN, length-TCP4_IPLEN)) {
 			tpriv->stats[CsumErrs]++;
 			tpriv->stats[InErrs]++;
-print("cksum is %ux\n", ptclcsum(bp, TCP4_IPLEN, length-TCP4_IPLEN));
 			netlog(f, Logtcp, "bad tcp proto cksum\n");
 			freeblist(bp);
 			return;
@@ -1884,6 +1909,7 @@ reset:
 	tcb = (Tcpctl*)s->ptcl;
 	if(tcb->state == Listen){
 		if(seg.flags & RST){
+			limborst(s, &seg, source, dest, version);
 			qunlock(tcp);
 			freeblist(bp);
 			return;
@@ -2952,7 +2978,7 @@ tcpinit(Fs *fs)
 	tcp = smalloc(sizeof(Proto));
 	tpriv = tcp->priv = smalloc(sizeof(Tcppriv));
 	tcp->name = "tcp";
-	tcp->kick = tcpkick;
+	tcp->kick = nil;
 	tcp->connect = tcpconnect;
 	tcp->announce = tcpannounce;
 	tcp->ctl = tcpctl;

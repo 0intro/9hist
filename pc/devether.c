@@ -416,12 +416,12 @@ etherprobe(int cardno, int ctlrno)
 	if(ether->mbps >= 100){
 		netifinit(ether, name, Ntypes, 512*1024);
 		if(ether->oq == 0)
-			ether->oq = qopen(256*1024, 1, 0, 0);
+			ether->oq = qopen(256*1024, Qmsg, 0, 0);
 	}
 	else{
 		netifinit(ether, name, Ntypes, 128*1024);
 		if(ether->oq == 0)
-			ether->oq = qopen(128*1024, 1, 0, 0);
+			ether->oq = qopen(128*1024, Qmsg, 0, 0);
 	}
 	if(ether->oq == 0)
 		panic("etherreset %s", name);

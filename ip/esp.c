@@ -198,7 +198,7 @@ espstate(Conv *c, char *state, int n)
 static void
 espcreate(Conv *c)
 {
-	c->rq = qopen(64*1024, 1, 0, 0);
+	c->rq = qopen(64*1024, Qmsg, 0, 0);
 	c->wq = qopen(64*1024, 0, 0, 0);
 }
 

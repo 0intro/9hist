@@ -141,13 +141,10 @@ timerintr(Ureg *u, uvlong)
 	Timers *tt;
 	uvlong when, now;
 	int callhzclock;
-	static int intimer;
+	ulong pc;
+	static int sofar;
 
-	if(intimer){
-		print("!");
-		return;
-	}
-	intimer = 1;
+	pc = m->splpc;	/* remember last splhi pc for kernel profiling */
 
 	intrcount[m->machno]++;
 	callhzclock = 0;
@@ -159,9 +156,9 @@ timerintr(Ureg *u, uvlong)
 		if(when > now){
 			iunlock(tt);
 			timerset(when);
+			m->splpc = pc;	/* for kernel profiling */
 			if(callhzclock)
 				hzclock(u);
-			intimer = 0;
 			return;
 		}
 		tt->head = t->next;
@@ -179,7 +176,6 @@ timerintr(Ureg *u, uvlong)
 		}
 	}
 	iunlock(tt);
-	intimer = 0;
 }
 
 uvlong hzperiod;

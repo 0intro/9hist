@@ -50,13 +50,6 @@ struct Queue
 
 enum
 {
-	/* Queue.state */
-	Qstarve		= (1<<0),	/* consumer starved */
-	Qmsg		= (1<<1),	/* message stream */
-	Qclosed		= (1<<2),
-	Qflow		= (1<<3),
-	Qcoalesce	= (1<<4),	/* coallesce packets on read */
-
 	Maxatomic	= 64*1024,
 };
 
@@ -798,11 +791,7 @@ qopen(int limit, int msg, void (*kick)(void*), void *arg)
 	q->limit = q->inilim = limit;
 	q->kick = kick;
 	q->arg = arg;
-	q->state = 0;
-	if(msg > 0)
-		q->state |= Qmsg;
-	else if(msg < 0)
-		q->state |= Qcoalesce;
+	q->state = msg;
 	
 	q->state |= Qstarve;
 	q->eof = 0;
@@ -1192,9 +1181,12 @@ qbwrite(Queue *q, Block *b)
 	}
 	iunlock(q);
 
+	/*  get output going again */
+	if(q->kick && (dowakeup || (q->state&Qkick)))
+		q->kick(q->arg);
+
+	/* wakeup anyone consuming at the other end */
 	if(dowakeup){
-		if(q->kick)
-			q->kick(q->arg);
 		p = wakeup(&q->rr);
 
 		/* if we just wokeup a higher priority process, let it run */

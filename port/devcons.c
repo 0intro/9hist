@@ -603,7 +603,7 @@ consopen(Chan *c, int omode)
 			error(Einuse);
 		}
 		if(kprintoq == nil){
-			kprintoq = qopen(8*1024, -1, 0, 0);
+			kprintoq = qopen(8*1024, Qcoalesce, 0, 0);
 			if(kprintoq == nil){
 				c->flag &= ~COPEN;
 				error(Enomem);
