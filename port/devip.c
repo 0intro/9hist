@@ -388,7 +388,7 @@ ipwrite(Chan *c, char *a, long n, ulong offset)
 		qunlock(&ipalloc);
 
 	}
-	else if(strcmp(field[0], "announce") == 0 || strcmp(field[0], "reserve") == 0) {
+	else if(strcmp(field[0], "announce") == 0) {
 		if((cp->stproto == &tcpinfo && cp->tcpctl.state != CLOSED) ||
 		   (cp->stproto == &ilinfo && cp->ilctl.state != Ilclosed))
 				error(Edevbusy);
@@ -404,7 +404,6 @@ ipwrite(Chan *c, char *a, long n, ulong offset)
 			error(Einuse);
 		}
 		cp->psrc = port;
-		cp->ptype = *field[0];
 		qunlock(&ipalloc);
 	}
 	else if(strcmp(field[0], "backlog") == 0) {
@@ -489,7 +488,12 @@ udpstoput(Queue *q, Block *bp)
 {
 	Ipconv *ipc;
 	Udphdr *uh;
-	int	dlen, ptcllen, newlen;
+	int dlen, ptcllen, newlen;
+
+	if(bp->type == M_CTL) {
+		PUTNEXT(q, bp);
+		return;
+	}
 
 	/* Prepend udp header to packet and pass on to ip layer */
 	ipc = (Ipconv *)(q->ptr);
@@ -545,10 +549,12 @@ udpstclose(Queue *q)
 
 	ipc = (Ipconv *)(q->ptr);
 
-	/* If the port was bound rather than reserved, clear the allocation */
 	qlock(ipc);
-	if(--ipc->ref == 0 && ipc->ptype == 'b')
+	if(--ipc->ref == 0) {
 		ipc->psrc = 0;
+		ipc->pdst = 0;
+		ipc->dst = 0;
+	}
 	qunlock(ipc);
 
 	closeipifc(ipc->ipinterface);
@@ -583,11 +589,16 @@ tcpstoput(Queue *q, Block *bp)
 {
 	Ipconv *s;
 	Tcpctl *tcb; 
-	int len, errnum, oob = 0;
+	int len, errnum;
 
 	s = (Ipconv *)(q->ptr);
 	len = blen(bp);
 	tcb = &s->tcpctl;
+
+	if(bp->type == M_CTL) {
+		PUTNEXT(q, bp);
+		return;
+	}
 
 	if(s->psrc == 0)
 		error(Enoport);
@@ -607,17 +618,8 @@ tcpstoput(Queue *q, Block *bp)
 	case ESTABLISHED:
 	case CLOSE_WAIT:
 		qlock(tcb);
-		if(oob == 0) {
-			appendb(&tcb->sndq, bp);
-			tcb->sndcnt += len;
-		}
-		else {
-			if(tcb->snd.up == tcb->snd.una)
-				tcb->snd.up = tcb->snd.ptr;
-			appendb(&tcb->sndoobq, bp);
-			tcb->sndoobcnt += len;
-		}
-
+		appendb(&tcb->sndq, bp);
+		tcb->sndcnt += len;
 		tcprcvwin(s);
 		tcp_output(s);
 		qunlock(tcb);

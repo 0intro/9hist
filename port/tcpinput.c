@@ -57,14 +57,11 @@ tcp_input(Ipconv *ipc, Block *bp)
 			print("tcpin: allocb failure.");
 			return;
 		}
-		DPRINT("tcpin: Duplicate packet %lux\n", bp);
 	}
 
 	h->Unused = 0;
 	hnputs(h->tcplen, length - (TCP_IPLEN+TCP_PHDRSIZE));
-
 	if(ptcl_csum(bp, TCP_EHSIZE+TCP_IPLEN, length - TCP_IPLEN)) {
-		DPRINT("tcpin: Bad checksum.\n");
 		freeb(bp);
 		return;
 	}
@@ -74,21 +71,12 @@ tcp_input(Ipconv *ipc, Block *bp)
 
 	/* Adjust the data length */
 	length -= (hdrlen+TCP_IPLEN+TCP_PHDRSIZE);
-	
-	DPRINT("tcpin: lport = %d, rport = %d hdrlen %d",
-		seg.dest, seg.source, hdrlen);
-	DPRINT(" flags = 0x%lux, seqo = %d, seqi = %d len %d\n", 
-		seg.flags, seg.seq, seg.ack, length);
-
-	/* Trim the packet down to just the data */
 	bp = btrim(bp, hdrlen+TCP_PKT, length);
 	if(bp == 0)
 		return;
 
 	s = ip_conn(ipc, seg.dest, seg.source, source, IP_TCPPROTO);
 	if (s == 0) {
-		LPRINT("tcpin: look for listen on %d\n", seg.dest);
-
 		if((seg.flags & SYN) == 0)
 			goto clear;
 
@@ -105,7 +93,6 @@ tcp_input(Ipconv *ipc, Block *bp)
 					goto clear;
 
 				s->curlog++;
-				LPRINT("tcpin: cloning socket\n");
 				new->psrc = seg.dest;
 				new->pdst = seg.source;
 				new->dst = source;
@@ -115,18 +102,16 @@ tcp_input(Ipconv *ipc, Block *bp)
 				new->tcpctl.timer.state = TIMER_STOP;
 				new->tcpctl.acktimer.arg = new;
 				new->tcpctl.acktimer.state = TIMER_STOP;
-
 				new->newcon = 1;
 				new->ipinterface = s->ipinterface;
+
 				s->ipinterface->ref++;
 				wakeup(&s->listenr);
-
 				s = new;
 				goto process;
 			}
 		}
 	clear:
-		LPRINT("tcpin: call cleared\n");
 		freeb(bp);   
 		reset(source, dest, tos, length, &seg);
 		return;
@@ -219,8 +204,7 @@ process:
 		goto done;
 	}
 
-	if(seg.seq != tcb->rcv.nxt
-	 && (length != 0 || (seg.flags & (SYN|FIN)) )) {
+	if(seg.seq != tcb->rcv.nxt && (length != 0 || (seg.flags & (SYN|FIN)) )) {
 		add_reseq(tcb, tos, &seg, bp, length);
 		tcb->flags |= FORCE;
 		goto output;
@@ -301,9 +285,6 @@ process:
 		else if (seq_gt(tcb->rcv.nxt, tcb->rcv.up))
 			tcb->rcv.up = tcb->rcv.nxt;
 
-		DPRINT("tcpin: Append pkt len=%d state=%s\n", 
-			length, tcpstate[tcb->state]);
-
 		if(length != 0){
 			switch(tcb->state){
 			case SYN_RECEIVED:
@@ -366,8 +347,7 @@ process:
 				break;
 			}
 		}
-		while(tcb->reseq != 0 &&
-		      seq_ge(tcb->rcv.nxt, tcb->reseq->seg.seq)){
+		while(tcb->reseq != 0 && seq_ge(tcb->rcv.nxt, tcb->reseq->seg.seq)) {
 			get_reseq(tcb, &tos, &seg, &bp, &length);
 			if(trim(tcb, &seg, &bp, &length) == 0)
 				goto gotone;
@@ -466,9 +446,6 @@ reset(Ipaddr source, Ipaddr dest, char tos, ushort length, Tcp *seg)
 	seg->mss = 0;
 	if((hbp = htontcp(seg, 0, &ph)) == 0)
 		return;
-
-	DPRINT("Reset: seq = %lux ack = %d flags = %lux\n",
-	       seg->seq, seg->ack, seg->flags);
 
 	PUTNEXT(Ipoutput, hbp);
 }

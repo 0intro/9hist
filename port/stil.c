@@ -277,7 +277,6 @@ ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 	Block *nb;
 	Ilcb *ic;
 	Ilhdr *oh;
-	int sendack = 0;
 	ulong id, ack, oid, dlen;
 
 	id = nhgetl(h->ilid);

@@ -258,7 +258,7 @@ struct Reseq
 	char	tos;
 };
 
-/* An ip interface used for UDP/TCP/ARP/ICMP */
+/* An ip interface used for UDP/TCP/IL */
 struct Ipconv
 {
 	QLock;				/* Ref count lock */
@@ -267,7 +267,6 @@ struct Ipconv
 	Ipaddr	dst;			/* Destination from connect */
 	Port	psrc;			/* Source port */
 	Port	pdst;			/* Destination port */
-	char	ptype;			/* Port type */
 
 	Ipifc	*ipinterface;		/* Ip protocol interface */
 	Queue	*readq;			/* Pointer to upstream read q */
