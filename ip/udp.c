@@ -465,7 +465,7 @@ udpinit(Fs *fs)
 	udp->advise = udpadvise;
 	udp->stats = udpstats;
 	udp->ipproto = IP_UDPPROTO;
-	udp->nc = 16;
+	udp->nc = Nchans;
 	udp->ptclsize = sizeof(Udpcb);
 
 	Fsproto(fs, udp);

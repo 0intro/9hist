@@ -12,6 +12,7 @@ typedef struct Sdp Sdp;
 typedef struct Conv Conv;
 typedef struct Out Out;
 typedef struct In In;
+typedef struct ConPkt ConPkt;
 
 enum
 {
@@ -32,6 +33,7 @@ enum
 
 	Maxconv=	256,		// power of 2
 	Nfs=		4,			// number of file systems
+	Maxretries=	4,
 };
 
 #define TYPE(x) 	((x).path & 0xff)
@@ -45,8 +47,6 @@ struct Out
 
 	Block	*controlpkt;		// control channel
 	ulong	*controlseq;
-	ulong	controltimeout;		// timeout when it will be resent
-	int		controlretries;
 
 	void	*cipherstate;	// state cipher
 	int		ivlen;			// in bytes
@@ -82,25 +82,37 @@ struct In
 };
 
 enum {
-	CClosed,
+	CInit,
 	COpening,
 	COpen,
 	CClosing,
+	CClosed,
 };
 
 struct Conv {
 	QLock;
 	int	id;
-	int ref;
+	int ref;	// number of times the conv is opened
 	Sdp	*sdp;
 
 	int state;
-	ulong session;
+	int dataopen;
+
+	Proc *readproc;
+
+	ulong	timeout;
+	int		retries;
+
+	// the following pair uniquely define conversation on this port
+	ulong dialid;
+	ulong acceptid;
 
 	Chan *chan;	// packet channel
 
 	char	user[NAMELEN];		/* protections */
 	int	perm;
+
+	int drop;
 
 	In	in;
 	Out	out;
@@ -109,8 +121,36 @@ struct Conv {
 struct Sdp {
 	QLock;
 	Log;
+	Rendez	vous;			/* used by sdpackproc */
 	int	nconv;
 	Conv *conv[Maxconv];
+	int ackproc;
+};
+
+enum {
+	TConnect,
+	TControl,
+	TControlAck,
+	TData,
+	TThwackC,
+	TThwackU,
+};
+
+enum {
+	ConOpen,
+	ConOpenAck,
+	ConOpenNack,
+	ConClose,
+	ConCloseAck,
+};
+
+struct ConPkt
+{
+	uchar type;		// always zero = connection packet
+	uchar op;
+	uchar pad[2];
+	uchar dialid[4];
+	uchar acceptid[4];
 };
 
 static Dirtab sdpdirtab[]={
@@ -151,6 +191,9 @@ static Sdp sdptab[Nfs];
 
 static int sdpgen(Chan *c, Dirtab*, int, int s, Dir *dp);
 static Conv *sdpclone(Sdp *sdp);
+static void convsetstate(Conv *c, int state);
+static void sendconnect(Conv *c, int op, ulong dialid, ulong acceptid);
+static void sdpackproc(void *a);
 
 static void
 sdpinit(void)
@@ -168,6 +211,7 @@ sdpinit(void)
 		dt = convdirtab + i;
 		dirtab[TYPE(dt->qid)] = dt;
 	}
+
 }
 
 static Chan*
@@ -175,6 +219,9 @@ sdpattach(char* spec)
 {
 	Chan *c;
 	int dev;
+	char buf[100];
+	Sdp *sdp;
+	int start;
 
 	dev = atoi(spec);
 	if(dev<0 || dev >= Nfs)
@@ -184,6 +231,17 @@ sdpattach(char* spec)
 	c->qid = (Qid){QID(0, Qtopdir)|CHDIR, 0};
 	c->dev = dev;
 
+	sdp = sdptab + dev;
+	qlock(sdp);
+	start = sdp->ackproc == 0;
+	sdp->ackproc = 1;
+	qunlock(sdp);
+
+	if(start) {
+		snprint(buf, sizeof(buf), "sdpackproc%d", dev);
+		kproc(buf, sdpackproc, sdp);
+	}
+	
 	return c;
 }
 
@@ -336,16 +394,19 @@ sdpwrite(Chan *ch, void *a, long n, vlong off)
 	Cmdbuf *cb;
 	char *arg0;
 	char *p;
+	Conv *c;
 	
 	USED(off);
 	switch(TYPE(ch->qid)) {
 	default:
 		error(Eperm);
 	case Qctl:
+		c = sdp->conv[CONV(ch->qid)];
+print("Qctl write : conv->id = %d\n", c->id);
 		cb = parsecmd(a, n);
-		qlock(sdp);
+		qlock(c);
 		if(waserror()) {
-			qunlock(sdp);
+			qunlock(c);
 			free(cb);
 			nexterror();
 		}
@@ -353,12 +414,29 @@ sdpwrite(Chan *ch, void *a, long n, vlong off)
 			error("short write");
 		arg0 = cb->f[0];
 print("cmd = %s\n", arg0);
-		if(strcmp(arg0, "xxx") == 0) {
-			print("xxx\n");
+		if(strcmp(arg0, "chan") == 0) {
+			if(cb->nf != 2)
+				error("usage: chan file");
+			if(c->chan != nil)
+				error("chan already set");
+			c->chan = namec(cb->f[1], Aopen, ORDWR, 0);
+		} else if(strcmp(arg0, "accept") == 0) {
+			if(cb->nf != 2)
+				error("usage: accect id");
+			c->dialid = atoi(cb->f[1]);
+			convsetstate(c, COpen);
+		} else if(strcmp(arg0, "dial") == 0) {
+			if(cb->nf != 1)
+				error("usage: dial");
+			convsetstate(c, COpening);
+		} else if(strcmp(arg0, "drop") == 0) {
+			if(cb->nf != 2)
+				error("usage: drop permil");
+			c->drop = atoi(cb->f[1]);
 		} else
 			error("unknown control request");
 		poperror();
-		qunlock(sdp);
+		qunlock(c);
 		free(cb);
 		return n;
 	case Qlog:
@@ -458,7 +536,7 @@ sdpclone(Sdp *sdp)
 		return nil;
 
 	c->ref++;
-	c->state = COpening;
+	c->state = CInit;
 
 	strncpy(c->user, up->user, sizeof(c->user));
 	c->perm = 0660;
@@ -467,26 +545,70 @@ sdpclone(Sdp *sdp)
 	return c;
 }
 
-static void
-sdpconvfree(Conv *c)
+// assume c is locked
+static int
+convretry(Conv *c)
 {
-	qlock(c);
-	c->ref--;
-	if(c->ref < 0)
-		panic("convfree: bad ref");
-	if(c->ref > 0) {
-		qunlock(c);
-		return;
+	c->retries++;
+	if(c->retries > Maxretries) {
+print("convretry: giving up\n");
+		convsetstate(c, CClosed);
+		return 0;
 	}
+	c->timeout = TK2SEC(m->ticks) + (1<<c->retries);
+	return 1;
+}
 
-	memset(&c->in, 0, sizeof(c->in));
-	memset(&c->out, 0, sizeof(c->out));
-
-	if(c->chan) {
-		cclose(c->chan);
-		c->chan = 0;
+static void
+convtimer(Conv *c, ulong sec)
+{
+	if(c->timeout == 0 || c->timeout > sec)
+		return;
+	qlock(c);
+	if(waserror()) {
+		qunlock(c);
+		nexterror();
+	}
+	switch(c->state) {
+	case COpening:
+print("COpening timeout\n");
+		if(convretry(c))
+			sendconnect(c, ConOpen, c->dialid, 0);
+		break;
+	case COpen:
+		// check for control packet
+		break;
+	case CClosing:
+print("CClosing timeout\n");
+		if(convretry(c))
+			sendconnect(c, ConClose, c->dialid, c->acceptid);
+		break;
 	}
 	qunlock(c);
+}
+
+
+static void
+sdpackproc(void *a)
+{
+	Sdp *sdp = a;
+	ulong sec;
+	int i;
+	Conv *c;
+
+	for(;;) {
+		tsleep(&sdp->vous, return0, 0, 1000);
+		sec = TK2SEC(m->ticks);
+		qlock(sdp);
+		for(i=0; i<sdp->nconv; i++) {
+			c = sdp->conv[i];
+			if(!waserror()) {
+				convtimer(c, sec);
+				poperror();
+			}
+		}
+		qunlock(sdp);
+	}
 }
 
 Dev sdpdevtab = {
@@ -509,3 +631,62 @@ Dev sdpdevtab = {
 	devremove,
 	devwstat,
 };
+
+// assume hold lock on c
+static void
+convsetstate(Conv *c, int state)
+{
+	switch(state) {
+	default:
+		panic("setstate: bad state: %d", state);
+	case COpening:
+		if(c->state != CInit)
+			error("convsetstate: illegal transition");
+		c->dialid = (rand()<<16) + rand();
+		c->timeout = TK2SEC(m->ticks) + 2;
+		c->retries = 0;
+		sendconnect(c, ConOpen, c->dialid, 0);
+		break;
+	case COpen:
+		switch(c->state) {
+		default:
+			error("convsetstate: illegal transition");
+		case CInit:
+			c->acceptid = (rand()<<16) + rand();
+			sendconnect(c, ConOpenAck, c->dialid, c->acceptid);
+			break;
+		case COpening:
+			break;
+		}
+		// setup initial key and auth method
+		break;
+	case CClosing:
+		c->timeout = TK2SEC(m->ticks) + 2;
+		c->retries = 0;
+		break;
+	case CClosed:
+		break;
+	}
+	c->state = state;
+}
+
+static void
+sendconnect(Conv *c, int op, ulong dialid, ulong acceptid)
+{
+	ConPkt con;
+
+	if(c->chan == nil) {
+print("chan = nil\n");
+		error("no channel attached");
+	}
+	memset(&con, 0, sizeof(con));
+	con.type = TConnect;
+	con.op = op;
+	hnputl(con.dialid, dialid);
+	hnputl(con.acceptid, acceptid);
+
+	// simulated errors
+	if(c->drop && c->drop > nrand(c->drop))
+		return;
+	devtab[c->chan->type]->write(c->chan, &con, sizeof(con), 0);
+}
