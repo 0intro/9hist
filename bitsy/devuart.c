@@ -17,10 +17,7 @@ enum
 /* hardware registers */
 struct Uartregs
 {
-	ulong	ctl0;
-	ulong	ctl1;
-	ulong	ctl2;
-	ulong	ctl3;
+	ulong	ctl[4];
 	ulong	dummya;
 	ulong	data;
 	ulong	dummyb;
@@ -28,36 +25,70 @@ struct Uartregs
 	ulong	status1;
 };
 
-Uartregs *uart3regs = UART3REGS;
-
-/* ctl0 bits */
 enum
 {
-	/* status register 1 bits */
-	XmitBusy = (1 << 0),
-	XmitNotFull = (1 << 2),
+	/* ctl[0] bits */
+	Parity=		1<<0,
+	Even=		1<<1,
+	Stop1=		0<<2,
+	Stop2=		1<<2,
+	Bits7=		0<<3,
+	Bits8=		1<<3,
+	SCE=		1<<4,	/* synchronous clock enable */
+	RCE=		1<<5,	/* rx on falling edge of clock */
+	TCE=		1<<6,	/* tx on falling edge of clock */
+
+	/* ctl[3] bits */
+	Rena=		1<<0,	/* receiver enable */
+	Tena=		1<<1,	/* transmitter enable */
+	Break=		1<<2,	/* force TXD3 low */
+	Rintena=	1<<3,	/* enable receive interrupt */
+	Tintena=	1<<4,	/* enable transmitter interrupt */
+	Loopback=	1<<5,	/* loop back data */
+
+	/* data bits */
+	DEparity=	1<<8,	/* parity error */
+	DEframe=		1<<9,	/* framing error */
+	DEoverrun=	1<<10,	/* overrun error */
+
+	/* status0 bits */
+	Tint=		1<<0,	/* transmit fifo half full interrupt */
+	Rint0=		1<<1,	/* receiver fifo 1/3-2/3 full */
+	Rint1=		1<<2,	/* receiver fifo not empty and receiver idle */
+	Breakstart=	1<<3,
+	Breakend=	1<<4,
+	Fifoerror=	1<<5,	/* fifo error */
+
+	/* status1 bits */
+	Tbusy=		1<<0,	/* transmitting */
+	Rnotempty=	1<<1,	/* receive fifo not empty */
+	Tnotfull=	1<<2,	/* transmit fifo not full */
+	ParityError=	1<<3,
+	FrameError=	1<<4,
+	Overrun=	1<<5,
 };
+
+Uartregs *uart3regs = UART3REGS;
 
 /* software representation */
 typedef struct Uart Uart;
 struct Uart
 {
 	QLock;
+	int	dev;
 	int	opens;
+	Uartregs	*regs;
 
 	int	enabled;
 	Uart	*elist;			/* next enabled interface */
 	char	name[NAMELEN];
 
-	uchar	sticky[8];		/* sticky write register values */
-	uchar	osticky[8];		/* kernel saved sticky write register values */
-	ulong	port;			/* io ports */
+	uchar	sticky[4];		/* sticky write register values */
 	ulong	freq;			/* clock frequency */
 	uchar	mask;			/* bits/char */
-	int	dev;
 	int	baud;			/* baud rate */
 
-	uchar	istat;			/* last istat read */
+	int	parity;			/* parity errors */
 	int	frame;			/* framing errors */
 	int	overrun;		/* rcvr overruns */
 
@@ -65,10 +96,6 @@ struct Uart
 	int	(*putc)(Queue*, int);
 	Queue	*iq;
 	Queue	*oq;
-
-	Lock	flock;			/* fifo */
-	uchar	fifoon;			/* fifo's enabled */
-	uchar	type;			/* chip version */
 
 	Lock	rlock;			/* receive */
 	uchar	istage[Stagesize];
@@ -101,47 +128,17 @@ static Dirtab *uartdir;
 static int uartndir;
 
 /*
- * means the kernel is using this for debugging output
+ * means the kernel is using this as a console
  */
 static char	Ekinuse[] = "device in use by kernel";
 
+static void	uartsetbaud(Uart *p, int rate);
+
 /*
- *  default is 9600 baud, 1 stop bit, 8 bit chars, no interrupts,
- *  transmit and receive enabled, interrupts disabled.
+ *  define a Uart.
  */
 static void
-uartsetup0(Uart *p)
-{
-	memset(p->sticky, 0, sizeof(p->sticky));
-	/*
-	 *  set rate to 9600 baud.
-	 *  8 bits/character.
-	 *  1 stop bit.
-	 *  interrupts enabled.
-	 */
-//	p->sticky[Format] = Bits8;
-//	uartwrreg(p, Format, 0);
-//	p->sticky[Mctl] |= Inton;
-//	uartwrreg(p, Mctl, 0x0);
-
-//	uartsetbaud(p, 9600);
-
-//	p->iq = qopen(4*1024, 0, uartflow, p);
-//	p->oq = qopen(4*1024, 0, uartkick, p);
-	if(p->iq == nil || p->oq == nil)
-		panic("uartsetup0");
-
-	p->ip = p->istage;
-	p->ie = &p->istage[Stagesize];
-	p->op = p->ostage;
-	p->oe = p->ostage;
-}
-
-/*
- *  called by main() to create a new duart
- */
-void
-uartsetup(ulong port, ulong freq, char *name, int type)
+uartsetup(Uartregs *regs, ulong freq, char *name)
 {
 	Uart *p;
 
@@ -151,24 +148,54 @@ uartsetup(ulong port, ulong freq, char *name, int type)
 	p = xalloc(sizeof(Uart));
 	uart[nuart] = p;
 	strcpy(p->name, name);
-	p->dev = nuart;
-	nuart++;
+	p->dev = nuart++;
 	p->port = port;
 	p->freq = freq;
-	p->type = type;
-	uartsetup0(p);
+	p->regs = regs;
+
+	memset(p->sticky, 0, sizeof(p->sticky));
+
+	/*
+	 *  set rate to 115200 baud.
+	 *  8 bits/character.
+	 *  1 stop bit.
+	 *  interrupts disabled.
+	 */
+	p->sticky[0] = Bits8;
+	p->regs->ctl[0] = p->sticky[0];
+	p->sticky[3] = Rena|Tena;
+	p->regs->ctl[3] = p->sticky[3];
+	uartsetbaud(p, 115200);
+
+	p->iq = qopen(4*1024, 0, uartflow, p);
+	p->oq = qopen(4*1024, 0, uartkick, p);
+	if(p->iq == nil || p->oq == nil)
+		panic("uartsetup");
+
+	p->ip = p->istage;
+	p->ie = &p->istage[Stagesize];
+	p->op = p->ostage;
+	p->oe = p->ostage;
 }
 
+/*
+ *  enable a port's interrupts.  set DTR and RTS
+ */
 static void
 uartenable(Uart *p)
 {
-	USED(p);
+	p->sticky[3] |= Rintena|Tintena;
+	p->regs->ctl[3] = p->sticky[3];
 }
 
+/*
+ *  disable interrupts. clear DTR, and RTS
+ */
 static void
 uartdisable(Uart *p)
 {
-	USED(p);
+	p->sticky[3] &= ~(Rintena|Tintena);
+	p->regs->ctl[3] = p->sticky[3];
 }
 
 static long
@@ -196,13 +223,16 @@ setlength(int i)
 	}
 }
 
+/*
+ *  setup the '#t' directory
+ */
 static void
 uartreset(void)
 {
 	int i;
 	Dirtab *dp;
 
-	nuart = Nuart;
+	uartsetup(uart3regs, ;
 
 	uartndir = 3*nuart;
 	uartdir = xalloc(uartndir * sizeof(Dirtab));
@@ -492,6 +522,21 @@ Dev uartdevtab = {
 	uartwstat,
 };
 
+static void
+uartsetbaud(Uart *p, int rate)
+{
+	ulong brconst;
+
+	if(rate <= 0)
+		return;
+
+	brconst = (p->freq+8*rate-1)/(16*rate) - 1;
+	p->regs->ctl[1] = (brconst>>8) & 0xf;
+	p->regs->ctl[2] = brconst;
+
+	p->baud = rate;
+}
+
 void
 serialputs(char *str, int n)
 {
@@ -500,10 +545,10 @@ serialputs(char *str, int n)
 	ur = uart3regs;
 	while(n-- > 0){
 		/* wait for output ready */
-		while((ur->status1 & XmitNotFull) == 0)
+		while((ur->status1 & Tnotfull) == 0)
 			;
 		ur->data = *str++;
 	}
-	while((ur->status1 & XmitBusy))
+	while((ur->status1 & Tbusy))
 		;
 }
