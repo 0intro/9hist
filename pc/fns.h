@@ -25,6 +25,7 @@ int	dmadone(int);
 void	dmaend(int);
 int	dmainit(int, int);
 long	dmasetup(int, void*, long, int);
+void	(*doze)(void);
 #define	evenaddr(x)				/* x86 doesn't care */
 void	fpenv(FPsave*);
 void	fpinit(void);
@@ -38,6 +39,7 @@ ulong	getcr3(void);
 ulong	getcr4(void);
 char*	getconf(char*);
 int	havecycintr(void);
+void	halt(void);	/* x86 HLT */
 int	i8042auxcmd(int);
 void	i8042auxenable(void (*)(int, int));
 void	i8042reset(void);
@@ -47,7 +49,7 @@ uvlong	i8253read(uvlong*);
 void	i8259init(void);
 int	i8259enable(Vctl*);
 void	idle(void);
-#define	idlehands()			/* nothing to do in the runproc */
+#define	idlehands()		if(doze==0);else doze()	/* nothing to do in the runproc */
 int	inb(int);
 void	insb(int, void*, int);
 ushort	ins(int);

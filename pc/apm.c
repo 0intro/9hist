@@ -162,6 +162,7 @@ apmlink(void)
 	loadgdt();
 
 	addarchfile("apm", 0660, apmread, apmwrite);
+	doze = halt;
 
 print("apm0: configured cbase %.8lux off %.8lux\n", ax<<4, ebx);
 

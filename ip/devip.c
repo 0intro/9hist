@@ -799,11 +799,16 @@ connectctlmsg(Proto *x, Conv *c, Cmdbuf *cb)
 	p = x->connect(c, cb->f, cb->nf);
 	if(p != nil)
 		error(p);
+
 	qunlock(c);
-
+	if(waserror()){
+		qlock(c);
+		nexterror();
+	}
 	sleep(&c->cr, connected, c);
-
 	qlock(c);
+	poperror();
+
 	if(c->cerr[0] != '\0')
 		error(c->cerr);
 }
@@ -846,11 +851,16 @@ announcectlmsg(Proto *x, Conv *c, Cmdbuf *cb)
 	p = x->announce(c, cb->f, cb->nf);
 	if(p != nil)
 		error(p);
+
 	qunlock(c);
-
+	if(waserror()){
+		qlock(c);
+		nexterror();
+	}
 	sleep(&c->cr, announced, c);
-
 	qlock(c);
+	poperror();
+
 	if(c->cerr[0] != '\0')
 		error(c->cerr);
 }

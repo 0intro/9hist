@@ -1649,7 +1649,9 @@ raise:
 }
 
 /*
- *  always enters and exits with the tcb locked
+ *  always enters and exits with the s locked.  We drop
+ *  the lock to ipoput the packet so some care has to be
+ *  taken by callers.
  */
 void
 tcpoutput(Conv *s)
@@ -1667,22 +1669,22 @@ tcpoutput(Conv *s)
 	f = s->p->f;
 	tpriv = s->p->priv;
 
-	tcb = (Tcpctl*)s->ptcl;
-
-	switch(tcb->state) {
-	case Listen:
-	case Closed:
-	case Finwait2:
-		return;
-	}
-
-	/* force an ack when a window has opened up */
-	if(tcb->rcv.blocked && tcb->rcv.wnd > 0){
-		tcb->rcv.blocked = 0;
-		tcb->flags |= FORCE;
-	}
-
 	for(msgs = 0; msgs < 100; msgs++) {
+		tcb = (Tcpctl*)s->ptcl;
+	
+		switch(tcb->state) {
+		case Listen:
+		case Closed:
+		case Finwait2:
+			return;
+		}
+	
+		/* force an ack when a window has opened up */
+		if(tcb->rcv.blocked && tcb->rcv.wnd > 0){
+			tcb->rcv.blocked = 0;
+			tcb->flags |= FORCE;
+		}
+	
 		sndcnt = tcb->sndcnt;
 		sent = tcb->snd.ptr - tcb->snd.una;
 
@@ -1850,7 +1852,14 @@ tcpoutput(Conv *s)
 		tpriv->stats[OutSegs]++;
 		if(tcb->kacounter > 0)
 			tcpgo(tpriv, &tcb->katimer);
+		qunlock(s);
+		if(waserror()){
+			qlock(s);
+			nexterror();
+		}
 		ipoput(f, hbp, 0, s->ttl, s->tos);
+		qlock(s);
+		poperror();
 	}
 }
 
