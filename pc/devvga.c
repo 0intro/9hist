@@ -61,19 +61,31 @@ vgastat(Chan* c, char* dp)
 static Chan*
 vgaopen(Chan* c, int omode)
 {
+	VGAscr *scr;
+	static char *openctl = "openctl\n";
+
+	scr = &vgascreen[0];
+	if ((c->qid.path & ~CHDIR) == Qvgaovlctl) {
+		if (scr->dev->ovlctl)
+			scr->dev->ovlctl(scr, c, openctl, strlen(openctl));
+		else 
+			error(Enonexist);
+	}
 	return devopen(c, omode, vgadir, nelem(vgadir), devgen);
 }
 
 static void
-vgaclose(Chan*)
+vgaclose(Chan* c)
 {		
 	VGAscr *scr;
+	static char *closectl = "closectl\n";
 
 	scr = &vgascreen[0];
-	if (scr && scr->dev && scr->dev->ovlctl) {
-		static char disable[] = "disable\n"; 
-
-		scr->dev->ovlctl(scr, disable, strlen(disable));
+	if ((c->qid.path & ~CHDIR) == Qvgaovlctl) {
+		if (scr->dev->ovlctl)
+			scr->dev->ovlctl(scr, c, closectl, strlen(closectl));
+		else 
+			error(Enonexist);
 	}
 }
 
@@ -397,8 +409,8 @@ vgawrite(Chan* c, void* a, long n, vlong off)
 			error(Enooverlay);
 			break;
 		}
-		pprint("vgawrite: Calling ovlctl (%p) (%s)\n", scr->dev->ovlctl, a);
-		return scr->dev->ovlctl(scr, a, n);
+		scr->dev->ovlctl(scr, c, a, n);
+		return n;
 
 	default:
 		error(Egreg);

@@ -19,7 +19,7 @@
 #include	"io.h"
 #include	"sa1110dma.h"
 
-static int debug = 0;
+static int debug = 2;
 
 /*
  * GPIO based L3 bus support.
@@ -442,6 +442,7 @@ audioinit(void)
 	mcpregs->status &= ~(1<<16);
 
 	sspregs = mapspecial(SSPREGS, 32);
+
 }
 
 uchar	status0[1]		= {0x22};

@@ -7,7 +7,7 @@
 #include	"../port/error.h"
 #include	"sa1110dma.h"
 
-static int debug = 0;
+static int debug = 2;
 
 /*
  *	DMA helper routines
