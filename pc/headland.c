@@ -5,9 +5,7 @@
 #include	"fns.h"
 
 /*
- *  headland hip set for the safari.
- *  
- *  serious magic!!!
+ *  headland chip set for the safari.
  */
 
 enum
@@ -18,10 +16,24 @@ enum
 };
 
 /*
- *  ports used by the DMA controllers
+ *  state of a dma transfer
  */
-typedef struct DMA	DMA;
-struct DMA {
+typedef struct DMAxfer	DMAxfer;
+struct DMAxfer
+{
+	Page	pg;		/* page used by dma */
+	void	*va;		/* virtual address destination/src */
+	long	len;		/* bytes to be transferred */
+	int	isread;
+};
+
+/*
+ *  the dma controllers.  the first half of this structure specifies
+ *  the I/O ports used by the DMA controllers.
+ */
+typedef struct DMAport	DMAport;
+struct DMAport
+{
 	uchar	addr[4];	/* current address (4 channels) */
 	uchar	count[4];	/* current count (4 channels) */
 	uchar	page[4];	/* page registers (4 channels) */
@@ -33,6 +45,16 @@ struct DMA {
 	uchar	mc;		/* master clear */
 	uchar	cmask;		/* clear mask register */
 	uchar	wam;		/* write all mask register bit */
+
+	Lock;
+};
+
+typdef struct DMA	DMA;
+struct DMA
+{
+	DMAport;
+	Lock;
+	DMAxfer	x[4];
 };
 
 DMA dma[2] = {
@@ -69,25 +91,83 @@ exit(void)
 }
 
 /*
- *  setup a dma transfer.  return count actually set up.  we DMA up
- *  to a page.
+ *  setup a dma transfer.  if the destination is not in kernel
+ *  memory, allocate a page for the transfer.
+ *
+ *  we assume BIOS has set up the command register before we
+ *  are booted.
  */
 long
-dmasetup(int d, int chan, Page *pg, long len, int isread)
+dmasetup(int chan, void *va, long len, int isread)
 {
 	DMA *dp;
-	ulong addr;
+	DMAxfer *xp;
+	ulong pa;
+	uchar mode;
 
-	dp = &dma[d];
-	addr = (ulong)a;
-	addr &= ~KZERO;
+	dp = &dma[(chan>>2)&1];
+	chan &= 3;
+	xp = &dp->x[chan];
 
-	outb(dp->cbp, isread ? 0x46 : 0x4a);
-	outb(dp->mode, isread ? 0x46 : 0x4a);
-	outb(dp->addr, addr);
-	outb(dp->addr, addr>>8);
-	outb(dp->page, addr>>16);
-	outb(dp->count, len-1);
+	/*
+	 *  if this isn't kernel memory, we can't count on it being
+	 *  there during the DMA.  Allocate a page for the DMA.
+	 */
+	if(isphys(va)){
+		pa = va & ~KZERO;
+	} else {
+		xp->pg = newpage(1, 0, 0);
+		if(len > BY2PG)
+			len = BY2PG;
+		if(!isread)
+			memmove(KZERO|xp->pg->pa, a, len);
+		xp->va = va;
+		xp->len = len;
+		xp->isread = isread;
+		pa = xp->pg->pa;
+	}
+
+	/*
+	 * this setup must be atomic
+	 */
+	lock(dp);
+	outb(dp->cbp, 0);		/* set count & address to their first byte */
+	mode = (isread ? 0x44 : 0x48) | chan;
+	outb(dp->mode, mode);		/* single mode dma (give CPU a chance at mem) */
+	outb(dp->addr, pa);		/* set address */
+	outb(dp->addr, pa>>8);
+	outb(dp->page, pa>>16);
+	outb(dp->count, len-1);		/* set count */
 	outb(dp->count, (len-1)>>8);
-	outb(dp->sbm, 2);
+	outb(dp->sbm, chan);		/* enable the channel */
+	unlock(dp);
+
+	return n;
+}
+
+/*
+ *  this must be called after a dma has been completed.
+ *
+ *  if a page has been allocated for the dma,
+ *  copy the data into the actual destination
+ *  and free the page.
+ */
+void
+dmaend(int chan)
+{
+	DMA *dp;
+	DMAxfer *xp;
+	ulong addr;
+	uchar mode;
+
+	dp = &dma[(chan>>2)&1];
+	chan &= 3;
+	outb(dp->sbm, 4|chan);		/* disable the channel */
+	xp = &dp->x[chan];
+	if(xp->pg == 0)
+		return;
+
+	memmove(a, KZERO|xp->pg->pa, xp->len);
+	putpage(xp->pg);
+	xp->pg = 0;
 }

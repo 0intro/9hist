@@ -29,14 +29,9 @@ enum
 	 Fwrite=	 0x47,	/* write cmd */
 	 Fmulti=	 0x80,	/* or'd with Fread or Fwrite for multi-head */
 
-	DMAmode0=	0xb,
-	DMAmode1=	0xc,
-	DMAaddr=	0x4,
-	DMAtop=		0x81,
-	DMAinit=	0xa,
-	DMAcount=	0x5,
-
 	Nfloppy=	4,	/* floppies/controller */
+
+	DMAchan=	2,	/* floppy dma channel */
 
 	/* sector size encodings */
 	S128=		0,
@@ -48,6 +43,11 @@ enum
 	Drivemask=	3<<0,
 	Seekend=	1<<5,
 	Codemask=	(3<<6)|(3<<3),
+
+	/* file types */
+	Qdir=		0,
+	Qdata=		16,
+	Qstruct=	32,
 };
 
 /*
@@ -117,7 +117,7 @@ struct Controller
 	int	confused;
 };
 
-Controller	floppy[1];
+Controller	floppy;
 
 /*
  *  start a floppy drive's motor.  set an alarm for 1 second later to
@@ -151,8 +151,6 @@ floppystop(Drive *dp)
 {
 	int cmd;
 
-	if(!canqlock(dp))
-		return;
 	cmd = Fintena | Fena | dp->dev;
 	outb(Fmotor, cmd);
 	dp->motoron = 0;	
@@ -162,14 +160,13 @@ floppykproc(Alarm* a)
 {
 	Drive *dp;
 
-	if(waserror())
 	for(dp = floppy.d; dp < &floppy.d[Nfloppy]; dp++){
-		if(dp->motoron && TK2SEC(m->ticks - dp->lasttouched) > 5)
+		if(dp->motoron && TK2SEC(m->ticks - dp->lasttouched) > 5
+		&& canqlock(dp)){
 			floppystop(dp);
+			qunlock(dp);
+		}
 	}
-		
-	alarm(5*1000, floppyalarm, 0);
-	cancel(a);
 }
 
 int
@@ -341,18 +338,23 @@ floppyrecal(Drive *dp)
 }
 
 void
-floppyinit(void)
+floppyreset(void)
 {
 	Drive *dp;
 
 	for(dp = floppy.d; dp < &floppy.d[Nfloppy]; dp++){
-		dp->t = &floppytype[0];
-		dp->cyl = -1;
+		dp->dev = dp - floppy.d;
+		dp->t = &floppytype[0];		/* default type */
 		dp->motoron = 1;
+		dp->cyl = -1;
 		floppystop(dp);
 	}
-	setvec(22, floppyintr);
-	alarm(5*1000, floppyalarm, (void *)0);
+}
+
+void
+floppyinit(void)
+{
+	kproc(floppykproc, 0);
 }
 
 void
