@@ -62,6 +62,7 @@ Cursorinfo	cursor;
 int		mouseshifted;
 int		mousetype;
 int		hwcurs;
+Cursor	curs;
 
 Cursor	arrow =
 {
@@ -116,11 +117,13 @@ int	mousechanged(void*);
 
 enum{
 	Qdir,
+	Qcursor,
 	Qmouse,
 	Qmousectl,
 };
 
 Dirtab mousedir[]={
+	"cursor",	{Qcursor},	0,			0666,
 	"mouse",	{Qmouse},	0,			0666,
 	"mousectl",	{Qmousectl},	0,			0220,
 };
@@ -141,6 +144,7 @@ mousereset(void)
 	if(r == 0)
 		flipping = 1;
 	flipping = 0;	/* howard, why is this necessary to get a black arrow on carrera? */
+	curs = arrow;
 	Cursortocursor(&arrow);
 }
 
@@ -244,6 +248,12 @@ mouseclose(Chan *c)
 		lock(&mouse);
 		if(c->qid.path == Qmouse)
 			mouse.open = 0;
+		if(--mouse.ref == 0){
+			cursoroff(1);
+			curs = arrow;
+			Cursortocursor(&arrow);
+			cursoron(1);
+		}
 		unlock(&mouse);
 	}
 }
@@ -252,12 +262,28 @@ long
 mouseread(Chan *c, void *va, long n, ulong offset)
 {
 	char buf[4*12+1];
+	uchar *p;
 
-	USED(offset);
-	if(c->qid.path & CHDIR)
+	p = va;
+	switch(c->qid.path){
+	case CHDIR:
 		return devdirread(c, va, n, mousedir, NMOUSE, devgen);
 
-	if(c->qid.path == Qmouse){
+	case Qcursor:
+		if(offset != 0)
+			return 0;
+		if(n < 2*4+2*2*16)
+			error(Eshort);
+		n = 2*4+2*2*16;
+		lock(&cursor);
+		BPLONG(p+0, curs.offset.x);
+		BPLONG(p+4, curs.offset.y);
+		memmove(p+8, curs.clr, 2*16);
+		memmove(p+40, curs.set, 2*16);
+		unlock(&cursor);
+		return n;
+
+	case Qmouse:
 		while(mousechanged(0) == 0)
 			sleep(&mouse.r, mousechanged, 0);
 		lock(&cursor);
@@ -281,11 +307,26 @@ mousewrite(Chan *c, void *va, long n, ulong offset)
 	Point pt;
 	char buf[64];
 
-	USED(offset);
-
+	p = va;
 	switch(c->qid.path){
 	case CHDIR:
 		error(Eisdir);
+
+	case Qcursor:
+		cursoroff(1);
+		if(n < 2*4+2*2*16){
+			curs = arrow;
+			Cursortocursor(&arrow);
+		}else{
+			n = 2*4+2*2*16;
+			curs.offset.x = BGLONG(p+0);
+			curs.offset.y = BGLONG(p+4);
+			memmove(curs.clr, p+8, 2*16);
+			memmove(curs.set, p+40, 2*16);
+			Cursortocursor(&curs);
+		}
+		cursoron(1);
+		return n;
 
 	case Qmousectl:
 		if(n >= sizeof(buf))

@@ -430,15 +430,16 @@ isoutbuf(void *x)
 	return l.wedged || (MPus(m->flags)&LANCEOWNER) == 0;
 }
 
-static void
+static int
 etherloop(Etherpkt *p, long n)
 {
-	int s;
+	int s, different;
 	ushort t;
 	Netfile *f, **fp;
 
-	if(memcmp(p->d, p->s, sizeof(p->d)) && memcmp(p->d, l.bcast, sizeof(p->d)))
-		return;
+	different = memcmp(p->d, p->s, sizeof(p->d));
+	if(different && memcmp(p->d, l.bcast, sizeof(p->d)))
+		return 0;
 
 	s = splhi();
 	t = (p->type[0]<<8) | p->type[1];
@@ -450,6 +451,7 @@ etherloop(Etherpkt *p, long n)
 			qproduce(f->in, p->d, n);
 	}
 	splx(s);
+	return !different;
 }
 
 long
@@ -468,13 +470,15 @@ lancewrite(Chan *c, void *buf, long n, ulong offset)
 		return netifwrite(&l, c, buf, n);
 
 	/* we handle data */
+	if(etherloop(buf, n))
+		return n;
+
 	qlock(&l.tlock);
 	m = &(LANCEMEM->tmr[l.tc]);
 	tsleep(&l.tr, isoutbuf, m, 10000);
 	if(!isoutbuf(m) || l.wedged)
 		print("lance transmitter jammed\n");
 	else {
-		etherloop(buf, n);
 		p = &l.tp[l.tc];
 		memmove(p->d, buf, n);
 		if(n < 60) {
