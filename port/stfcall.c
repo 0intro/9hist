@@ -7,7 +7,7 @@
 
 #include	"fcall.h"
 
-#define DPRINT 	if(fcalldebug)kprint
+#define DPRINT 	if(fcalldebug)print
 
 int fcalldebug = 0;
 

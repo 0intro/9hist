@@ -152,7 +152,7 @@ sysexec(ulong *arg)
 	char **argv, **argp;
 	char *a, *charp, *file;
 	char *progarg[sizeof(Exec)/2+1], elem[NAMELEN];
-	ulong ssize, spage, nargs, nbytes, n, bssend;
+	ulong sbase, ssize, spage, nargs, nbytes, n, bssend;
 	ulong *sp;
 	int indir;
 	Exec exec;
@@ -239,13 +239,16 @@ sysexec(ulong *arg)
 	}
 	ssize = BY2WD*(nargs+1) + ((nbytes+(BY2WD-1)) & ~(BY2WD-1));
 	spage = (ssize+(BY2PG-1)) >> PGSHIFT;
-
+	sbase = TSTKTOP-(spage<<PGSHIFT);
 	/*
 	 * Build the stack segment, putting it in kernel virtual for the moment
 	 */
+	if(sbase <= USERADDR)
+		errors("not enough argument stack space");
+
 	s = &p->seg[ESEG];
 	s->proc = p;
-	s->o = neworig(TSTKTOP-(spage<<PGSHIFT), spage, OWRPERM, 0);
+	s->o = neworig(sbase, spage, OWRPERM, 0);
 	s->minva = s->o->va;
 	s->maxva = TSTKTOP;
 
