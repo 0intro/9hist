@@ -55,7 +55,7 @@ chandevreset(void)
 {
 	int i;
 
-	for(i=0; i<devchar[i]; i++)
+	for(i=0; devchar[i]; i++)
 		(*devtab[i].reset)();
 }
 
@@ -64,7 +64,7 @@ chandevinit(void)
 {
 	int i;
 
-	for(i=0; i<devchar[i]; i++)
+	for(i=0; devchar[i]; i++)
 		(*devtab[i].init)();
 }
 

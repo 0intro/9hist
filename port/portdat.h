@@ -654,6 +654,8 @@ struct Block
 struct Queue
 {
 	Lock;
+	QLock	rlock;		/* mutex for reading processes */
+	QLock	wlock;		/* mutex for writing processes */
 
 	Block	*rfirst;	/* waiting readers */
 	Block	*rlast;
@@ -668,7 +670,6 @@ struct Queue
 	void	(*kick)(void*);	/* restart output */
 	void	*arg;		/* argument to kick */
 
-	QLock	wlock;		/* mutex for r */
 	Rendez	r;
 };
 

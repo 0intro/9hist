@@ -128,13 +128,15 @@ iallocinit(void)
 	kproc("iallockproc", iallockproc, 0);
 }
 
-void*
-ialloc(int size)
+Block*
+iallocb(int size)
 {
 	int pow;
 	Chunkl *cl;
 	Chunk *p;
+	Block *b;
 
+	size += sizeof(Block);
 	for(pow = Minpow; pow <= Maxpow; pow++)
 		if(size <= (1<<pow)){
 			cl = &arena.alloc[pow];
@@ -145,9 +147,13 @@ ialloc(int size)
 				cl->first = p->next;
 			}
 			unlock(cl);
-			return (void*)p;
+			b = (Block *)p;
+			b->base = (uchar*)(b+1);
+			b->wp = b->rp = b->base;
+			b->lim = b->base + (1<<pow) - sizeof(Block);
+			return b;
 		}
-	panic("ialloc %d\n", size);
+	panic("iallocb %d\n", size);
 	return 0;			/* not reached */
 }
 
@@ -223,8 +229,8 @@ qconsume(Queue *q, uchar *p, int len)
 	return len;
 }
 
-int
-qproduce(Queue *q, uchar *p, int len)
+static int
+qproduce0(Queue *q, uchar *p, int len)
 {
 	Block *b;
 	int n;
@@ -256,14 +262,12 @@ qproduce(Queue *q, uchar *p, int len)
 		memmove(b->wp, p, len);
 		b->wp += len;
 	} else {
-		b = ialloc(sizeof(Block)+len);
+		b = iallocb(len);
 		if(b == 0){
 			unlock(q);
 			return -1;
 		}
-		b->base = (uchar*)(b+1);
-		b->rp = b->base;
-		b->wp = b->lim = b->base + len;
+		b->wp += len;
 		memmove(b->rp, p, len);
 		if(q->bfirst)
 			q->blast->next = b;
@@ -274,6 +278,22 @@ qproduce(Queue *q, uchar *p, int len)
 	q->len += len;
 	unlock(q);
 	return len;
+}
+
+int
+qproduce(Queue *q, uchar *p, int len)
+{
+	int n, sofar;
+
+	if(q->state&Qmsg)
+		return qproduce0(q, p, len);
+
+	for(sofar = 0; sofar < len; sofar += n){
+		n = qproduce0(q, p+sofar, len-sofar);
+		if(n < 0)
+			break;
+	}
+	return sofar;
 }
 
 /*
@@ -309,6 +329,8 @@ qread(Queue *q, char *p, int len)
 	Block *b, *bb;
 	int x, n;
 
+	qlock(&q->rlock);
+
 	/* ... to be replaced by a kmapping if need be */
 	b = allocb(len);
 
@@ -324,6 +346,7 @@ qread(Queue *q, char *p, int len)
 		q->rlast = b;
 		unlock(q);
 		splx(x);
+		qunlock(&q->rlock);
 		sleep(&b->r, bfilled, b);
 		n = BLEN(b);
 		memmove(p, b->rp, n);
@@ -353,6 +376,7 @@ qread(Queue *q, char *p, int len)
 		unlock(q);
 		splx(x);
 	}
+	qunlock(&q->rlock);
 	free(b);
 	return n;
 }
@@ -365,23 +389,41 @@ qnotfull(void *a)
 	return q->len < q->limit;
 }
 
-long
-qwrite(Queue *q, char *p, int len)
+static long
+qwrite0(Queue *q, char *p, int len)
 {
-	Block *b;
-	int x;
+	Block *b, *bb;
+	int x, n;
 
 	b = allocb(len);
+
+	x = splhi();
+	lock(q);
+	bb = q->rfirst;
+	if(bb){
+		/* hand to waiting receiver */
+		n = bb->lim - bb->wp;
+		q->rfirst = bb->next;
+		unlock(q);
+		splx(x);
+
+		if(n < len)
+			len = n;
+		memmove(bb->wp, p, len);
+		bb->wp += len;
+		wakeup(&bb->r);
+
+		free(b);
+		return len;
+	}
+		
 	memmove(b->rp, p, len);
 	b->wp += len;
 
 	/* flow control */
-	if(!qnotfull(q)){
-		qlock(&q->wlock);
+	if(!qnotfull(q))
 		sleep(&q->r, qnotfull, q);
-		qunlock(&q->wlock);
-	}
-		
+
 	x = splhi();
 	lock(q);
 	if(q->bfirst)
@@ -398,4 +440,30 @@ qwrite(Queue *q, char *p, int len)
 	splx(x);
 
 	return len;
+}
+
+long
+qwrite(Queue *q, char *p, int len)
+{
+	int n, sofar;
+
+	qlock(&q->wlock);
+	if(waserror()){
+		qunlock(&q->wlock);
+		nexterror();
+	}
+
+	if(q->state&Qmsg){
+		sofar = qwrite0(q, p, len);
+	} else {
+		for(sofar = 0; sofar < len; sofar += n){
+			n = qwrite0(q, p+sofar, len-sofar);
+			if(n < 0)
+				break;
+		}
+	}
+
+	poperror();
+	qunlock(&q->wlock);
+	return sofar;
 }
