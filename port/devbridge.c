@@ -9,6 +9,8 @@
 typedef struct Bridge 	Bridge;
 typedef struct Port 	Port;
 typedef struct Centry	Centry;
+typedef struct Iphdr	Iphdr;
+typedef struct Tcphdr	Tcphdr;
 
 enum
 {
@@ -33,6 +35,8 @@ enum
 	CacheLook=	5,		// how many cache entries to examine
 	CacheSize=	(CacheHash+CacheLook-1),
 	CacheTimeout=	5*60,		// timeout for cache entry in seconds
+
+	TcpMssMax = 1400,			// max desirable Tcp MSS value
 
 	Addrlen=	16,		// must be long enough of IP addr and ether addr
 };
@@ -92,6 +96,7 @@ struct Bridge
 	Centry	cache[CacheSize];
 	int	hit;
 	int	miss;
+	int tcpmss;		// modify tcpmss value
 
 	Log;
 };
@@ -106,6 +111,7 @@ struct Port
 	Chan	*data[2];	// channel to data
 
 	int	mcast;		// send multi cast packets
+
 	Proc	*readp;		// read proc
 	
 	// the following uniquely identifies the port
@@ -123,6 +129,43 @@ struct Port
 	int	outmulti;	// multicast or broadcast
 	int	outunknown;	// unknown address
 	int	nentry;		// number of cache entries for this port
+};
+
+enum {
+	IP_VER		= 0x40,		/* Using IP version 4 */
+	IP_HLEN		= 0x05,		/* Header length in characters */
+	IP_TCPPROTO = 6,
+	MSSOPT		= 2,
+	MSS_LENGTH	= 4,		/* Mean segment size */
+};
+
+struct Iphdr
+{
+	uchar	vihl;		/* Version and header length */
+	uchar	tos;		/* Type of service */
+	uchar	length[2];	/* packet length */
+	uchar	id[2];		/* ip->identification */
+	uchar	frag[2];	/* Fragment information */
+	uchar	ttl;		/* Time to live */
+	uchar	proto;		/* Protocol */
+	uchar	cksum[2];	/* Header checksum */
+	uchar	src[4];		/* IP source */
+	uchar	dst[4];		/* IP destination */
+};
+
+struct Tcphdr
+{
+	uchar	sport[2];
+	uchar	dport[2];
+	uchar	seq[4];
+	uchar	ack[4];
+	uchar	flag[2];
+	uchar	win[2];
+	uchar	cksum[2];
+	uchar	urg[2];
+	/* Options segment */
+	uchar	opt[2];
+	uchar	mss[2];
 };
 
 static Bridge bridgetab[Maxbridge];
@@ -310,6 +353,16 @@ bridgeread(Chan *c, void *a, long n, vlong off)
 	}
 }
 
+static void
+bridgeoption(Bridge *b, char *option, int value)
+{
+	if(strcmp(option, "tcpmss") == 0)
+		b->tcpmss = value;
+	else
+		error("unknown bridge option");
+}
+
+
 static long
 bridgewrite(Chan *c, void *a, long n, vlong off)
 {
@@ -333,13 +386,21 @@ bridgewrite(Chan *c, void *a, long n, vlong off)
 		if(cb->nf == 0)
 			error("short write");
 		arg0 = cb->f[0];
-		if(strcmp(arg0, "bind") == 0)
+		if(strcmp(arg0, "bind") == 0) {
 			portbind(b, cb->nf-1, cb->f+1);
-		else if(strcmp(arg0, "unbind") == 0)
+		} else if(strcmp(arg0, "unbind") == 0) {
 			portunbind(b, cb->nf-1, cb->f+1);
-		else if(strcmp(arg0, "cacheflush") == 0) {
+		} else if(strcmp(arg0, "cacheflush") == 0) {
 			log(b, Logcache, "cache flush\n");
 			memset(b->cache, 0, CacheSize*sizeof(Centry));
+		} else if(strcmp(arg0, "set") == 0) {
+			if(cb->nf != 2)
+				error("usage: set option");
+			bridgeoption(b, cb->f[1], 1);
+		} else if(strcmp(arg0, "clear") == 0) {
+			if(cb->nf != 2)
+				error("usage: clear option");
+			bridgeoption(b, cb->f[1], 0);
 		} else
 			error("unknown control request");
 		poperror();
@@ -788,6 +849,56 @@ ethermultiwrite(Bridge *b, Block *bp, Port *port)
 	poperror();
 }
 
+static void
+tcpmsshack(Block *bp)
+{
+	int n = BLEN(bp);
+	int hl;
+	Etherpkt *epkt;
+	Iphdr *iphdr;
+	Tcphdr *tcphdr;
+
+	epkt = (Etherpkt*)bp->rp;
+	// check it is an ip packet
+	if(nhgets(epkt->type) != 0x800)
+		return;
+print("tcpmsshack is IP\n");
+	iphdr = (Iphdr*)(bp->rp + ETHERHDRSIZE);
+	n -= ETHERHDRSIZE;
+	if(n < sizeof(Iphdr))
+		return;
+
+	// check it is ok IP packet
+	if(iphdr->vihl != (IP_VER|IP_HLEN)) {
+		hl = (iphdr->vihl&0xF)<<2;
+		if((iphdr->vihl&0xF0) != IP_VER || hl < (IP_HLEN<<2))
+			return;
+	} else {
+		hl = IP_HLEN<<2;
+	}
+print("tcpmsshack is ok IP\n");
+
+	// check TCP
+	if(iphdr->proto != IP_TCPPROTO)
+		return;
+print("tcpmsshack is TCP\n");
+	tcphdr = (Tcphdr*)((uchar*)(iphdr) + hl);
+	n -= hl;
+	if(n < sizeof(Tcphdr))
+		return;
+	hl = (tcphdr->flag[0] & 0xf0)>>2;
+	if(hl < sizeof(Tcphdr))
+		return;
+print("tcpmsshack is big enough\n");
+	// check for MSS option
+	// for the momment, assume MSS is the first option
+	// we could do better, but since options are not aligned,
+	// this would make the checksum correction code tougher
+	if(tcphdr->opt[0] != MSSOPT || tcphdr->opt[1] != MSS_LENGTH)
+			return;
+print("got mss = %d\n", nhgets(tcphdr->mss));
+}
+
 /*
  *  process to read from the ethernet
  */
@@ -799,7 +910,6 @@ etherread(void *a)
 	Block *bp, *bp2;
 	Etherpkt *ep;
 	Centry *ce;
-static uchar tribble[Eaddrlen] = {0x00, 0xd1, 0x80, 0xaa, 0xbb, 0x07};
 	
 	qlock(b);
 	port->readp = up;	/* hide identity under a rock for unbind */
@@ -811,9 +921,9 @@ static uchar tribble[Eaddrlen] = {0x00, 0xd1, 0x80, 0xaa, 0xbb, 0x07};
 			qlock(b);
 			break;
 		}
-//print("devbridge: etherread: reading\n");
+if(0)print("devbridge: etherread: reading\n");
 		bp = devtab[port->data[0]->type]->bread(port->data[0], ETHERMAXTU, 0);
-//print("devbridge: etherread: blocklen = %d\n", blocklen(bp));
+if(0)print("devbridge: etherread: blocklen = %d\n", blocklen(bp));
 		poperror();
 		qlock(b);
 
@@ -841,12 +951,14 @@ static uchar tribble[Eaddrlen] = {0x00, 0xd1, 0x80, 0xaa, 0xbb, 0x07};
 			if(ce == nil) {
 				b->miss++;
 				port->inunknown++;
-				if(1 || port->type != Tether || memcmp(ep->s, tribble, Eaddrlen) == 0) {
-					bp2 = bp; bp = nil;
-					ethermultiwrite(b, bp2, port);
-				}	
+				if(b->tcpmss)
+					tcpmsshack(bp);
+				bp2 = bp; bp = nil;
+				ethermultiwrite(b, bp2, port);
 			} else if (ce->port != port->id) {
 				b->hit++;
+				if(b->tcpmss)
+					tcpmsshack(bp);
 				bp2 = bp; bp = nil;
 				oport = b->port[ce->port];
 				oport->out++;
