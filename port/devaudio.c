@@ -894,8 +894,6 @@ audioopen(Chan *c, int omode)
 		}
 		audio.amode = amode;
 		setempty();
-		if (amode == Aread)
-			audio.totcount -= Bufsize;
 		audio.curcount = 0;
 		qunlock(&audio);
 		mxvolume();
@@ -1017,7 +1015,7 @@ audioread(Chan *c, void *v, long n, vlong off)
 	case Qstatus:
 		buf[0] = 0;
 		snprint(buf, sizeof(buf), "bufsize %6d buffered %6d offset  %10lud time %19lld\n",
-			Bufsize, audio.buffered, audio.totcount<0?0:audio.totcount, audio.tottime);
+			Bufsize, audio.buffered, audio.totcount, audio.tottime);
 		return readstr(offset, a, n, buf);
 
 	case Qvolume:
