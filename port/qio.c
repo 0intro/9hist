@@ -1220,9 +1220,10 @@ qwrite(Queue *q, void *vp, int len)
 	QDEBUG if(!islo())
 		print("qwrite hi %lux\n", getcallerpc(&q));
 
+	next = nil;
 	b = mem2bl(vp, len);
 	if(waserror()){
-		freeblist(b);
+		freeblist(next);
 		nexterror();
 	}
 	for(; b != nil; b = next){
