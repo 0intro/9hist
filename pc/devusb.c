@@ -116,7 +116,7 @@ enum {
 	DevicePresent = 1<<0,
 
 	FRAMESIZE=	4096,	/* fixed by hardware; aligned to same */
-	NFRAME = 	FRAMESIZE/4,
+	NFRAME = 	(FRAMESIZE/4),
 	NISOTD = 4,			/* number of TDs for isochronous io per frame */
 
 	Vf = 1<<2,	/* TD only */
@@ -146,6 +146,8 @@ enum {
 
 	/* TD.flags (software) */
 	CancelTD=	1<<0,
+	IsoLock=		1<<1,
+	IsoClean=		1<<2,
 };
 
 #define	GET2(p)	((((p)[1]&0xFF)<<8)|((p)[0]&0xFF))
@@ -207,9 +209,11 @@ struct Endpt {
 	byte		isopen;	/* ep operations forbidden on open endpoints */
 	byte		mode;	/* OREAD, OWRITE, ORDWR */
 	byte		nbuf;	/* number of buffers allowed */
-	byte		iso;
+	volatile byte	iso;
 	byte		debug;
 	byte		active;	/* listed for examination by interrupts */
+	byte *	tdalloc;
+	byte *	bpalloc;
 	int		hz;
 	int		remain;
 	int		samplesz;
@@ -217,14 +221,16 @@ struct Endpt {
 	int		setin;
 	int		pollms;	/* polling interval in msec */
 	int		psize;	/* size of this packet */
-	Block	*curblock;	/* half full block between iso writes */
 	int		curbytes;		/* # of bytes in that block */
 	QH*		epq;		/* queue of TDs for this endpoint */
-	TD*		etd;		/* pointer into circular list of TDs for isochronous ept */
+	TD*		td0;		/* pointer to list of TDs for isochronous ept */
+	volatile TD*	etd;	/* reader/writer pointer into list of TDs for isochronous ept */
+	volatile TD*	xtd;	/* next td to be cleaned */
 	QLock	rlock;
 	Rendez	rr;
 	Queue*	rq;
 	QLock	wlock;
+	int		isolock;
 	Rendez	wr;
 	Queue*	wq;
 
@@ -675,79 +681,6 @@ queueqh(QH *qh) {
 	ub->recvq->entries = PADDR(qh) | IsQH;
 }
 
-static int
-tdisready(void *arg)
-{
-	return (((TD*)arg)->status & Active) == 0;
-}
-
-static Block *
-isoxmit(Endpt *e, Block *b, int pid)
-{
-	Block *ob;
-	static int ioc, n, id;
-	TD *td;
-
-	td = e->etd;
-	if (td == nil)
-		panic("usb: isoxmit");
-	while(td->status & Active){
-		XPRINT("isoxmit: sleep %lux\n", &e->wr);
-		sleep(&e->wr, tdisready, e->etd);
-		XPRINT("isoxmit: awake\n");
-	}
-	if (td->status & AnyError)
-		iprint("usbisoerror 0x%lux\n", td->status);
-	ob = td->bp;
-	if (ob == nil)
-		panic("isoxmit: null block");
-	td->buffer = PADDR(b->rp);
-	td->bp = b;
-	n = BLEN(b);
-	id = (e->x<<7)|(e->dev->x&0x7F);
-	td->dev = ((n-1)<<21) | ((id&0x7FF)<<8) | pid;
-	if ((ioc++ & 0xff) == 0)
-		td->status = ErrLimit3 | Active | IsoSelect | IOC;
-	else
-		td->status = ErrLimit3 | Active | IsoSelect;
-	e->etd = td->next;
-	return ob;
-}
-
-static Block*
-isorecv(Endpt *e, Block *b, int pid)
-{
-	TD *td;
-	int n, id;
-	Block *ob;
-	static int ioc;
-
-	td = e->etd;
-	if (td == nil)
-		panic("usb: isorecv");
-	while(td->status & Active){
-		XPRINT("isorecv: sleep %lux\n", &e->wr);
-		sleep(&e->wr, tdisready, e->etd);
-		XPRINT("isorecv: awake\n");
-	}
-	if (td->status & AnyError)
-		iprint("usbisoerror 0x%lux\n", td->status);
-	ob = td->bp;
-	if (ob == nil)
-		panic("isorecv: null block");
-	n = (td->status + 1) & 0x7FF;
-	if(n > ob->lim - b->wp)
-		n = 0;
-	ob->wp = ob->rp + n;
-	td->buffer = PADDR(b->rp);
-	td->bp = b;
-	id = (e->x<<7)|(e->dev->x&0x7F);
-	td->dev = ((e->maxpkt-1)<<21) | ((id&0x7FF)<<8) | pid;
-	td->status = ErrLimit3 | Active | IsoSelect | IOC;
-	e->etd = td->next;
-	return ob;
-}
-
 static QH*
 qxmit(Endpt *e, Block *b, int pid)
 {
@@ -836,7 +769,7 @@ flog2(int n)
 static int
 usbsched(	Ctlr *ub, int pollms, ulong load)
 {
-	int i, j, d, q;
+	int i, d, q;
 	ulong best, worst;
 
 	best = 1000000;
@@ -844,13 +777,6 @@ usbsched(	Ctlr *ub, int pollms, ulong load)
 	for (d = 0; d < pollms; d++){
 		worst = 0;
 		for (i = d; i < NFRAME; i++){
-			for(j = 0; j < NISOTD; j++)
-				if(ub->tdpool[NISOTD*i + j].ep == nil)
-					break;
-			if(j == NISOTD){
-				worst = 1000000;	/* No free TDs */
-				break;
-			}
 			if (ub->frameld[i] + load > worst)
 				worst = ub->frameld[i] + load;
 		}
@@ -866,8 +792,9 @@ static int
 schedendpt(Endpt *e)
 {
 	Ctlr *ub;
-	TD *td, **prev, *first;
-	int i, j;
+	TD *td;
+	uchar *bp;
+	int i, id, ix, size, frnum;
 
 	if(!e->iso || e->sched >= 0)
 		return 0;
@@ -876,10 +803,6 @@ schedendpt(Endpt *e)
 	if (e->isopen){
 		return -1;
 	}
-	if (e->curblock == nil)
-		e->curblock = allocb(e->maxpkt);
-	if (e->curblock == nil)
-		panic("schedept: allocb");
 	e->curbytes = 0;
 	e->sched = usbsched(ub, e->pollms, e->maxpkt);
 	if(e->sched < 0){
@@ -887,45 +810,48 @@ schedendpt(Endpt *e)
 		return -1;
 	}
 
-	/* Allocate TDs from the NISOTD entries on each of the
-	 * frames.  Link them circularly so they can be walked easily
-	 */
-
-	prev = nil;
-	first = nil;
-	td = nil;
+	if (e->tdalloc || e->bpalloc)
+		panic("usb: tdalloc/bpalloc");
+	e->tdalloc = mallocz(0x10 + NFRAME*sizeof(TD), 1);
+	e->bpalloc = mallocz(0x10 + e->maxpkt*NFRAME/e->pollms, 1);
+	e->td0 = (TD*)(((ulong)e->tdalloc + 0xf) & ~0xf);
+	bp = (byte *)(((ulong)e->bpalloc + 0xf) & ~0xf);
+	frnum = (IN(Frnum) + 1) & 0x3ff;
+	frnum = (frnum & ~(e->pollms - 1)) + e->sched;
+	e->isolock = 1;
+	e->xtd = &e->td0[frnum];	/* Next td to finish */
+	e->etd = nil;	/* Writer is idle */
+	e->remain = 0;
+	td = e->td0;
 	for(i = e->sched; i < NFRAME; i += e->pollms){
-		for(j = 0; j < NISOTD; j++){
-			td = &ub->tdpool[i*NISOTD + j];
-			if(td->ep == nil)
-				break;
-		}
-		if(j == NISOTD)
-			panic("usb: no td entries despite schedulability test");
+		td->bp = (Block *)(bp + e->maxpkt*i/e->pollms);
+		td->buffer = PADDR(td->bp);
 		td->ep = e;
-		if(td->bp)
-			panic("usb: schedendpt: block not empty");
-		td->bp = allocb(e->maxpkt);
-		if(td->bp == nil)
-			panic("schedept: allocb");
-		if (e->mode == OREAD){
-			int id;
-			/* enable receive on this entry */
-			td->buffer = PADDR(td->bp->rp);
-			id = (e->x<<7)|(e->dev->x&0x7F);
-			td->dev = ((e->maxpkt-1)<<21) | ((id&0x7FF)<<8) | TokIN;
-			td->status = ErrLimit3 | Active | IsoSelect | IOC;
-		}
-		if(i == e->sched){
-			first = td;
-			e->etd = td;
-		}else{
-			*prev = td;
-		}
-		prev = &td->next;
+		td->next = &td[1];
 		ub->frameld[i] += e->maxpkt;
+		td++;
 	}
-	*prev = first;		/* complete circular link */
+	td[-1].next = e->td0;
+	for(i = e->sched; i < NFRAME; i += e->pollms){
+		ix = (frnum+i)%NFRAME;
+		td = &e->td0[ix];
+
+		id = (e->x<<7)|(e->dev->x&0x7F);
+		if (e->mode == OREAD)
+			/* enable receive on this entry */
+			td->dev = ((e->maxpkt-1)<<21) | ((id&0x7FF)<<8) | TokIN;
+		else{
+			size = (e->hz + e->remain)*e->pollms/1000;
+			e->remain = (e->hz + e->remain)*e->pollms%1000;
+			size *= e->samplesz;
+			memset((byte*)td->bp, 0, size);
+			td->dev = ((size-1)<<21) | ((id&0x7FF)<<8) | TokOUT;
+		}
+		td->status = ErrLimit3 | Active | IsoSelect | IOC;
+		td->link = ub->frames[ix];
+		ub->frames[ix] = PADDR(td);
+	}
+	e->isolock = 0;
 	return 0;
 }
 
@@ -933,23 +859,33 @@ static void
 unschedendpt(Endpt *e)
 {
 	Ctlr *ub;
-	TD *td, *next;
+	TD *td;
+	ulong *addr;
 	int q;
 
 	ub = &ubus;
-	if(!e->iso || (q = e->sched) < 0)
+	if(!e->iso || e->sched < 0)
 		return;
 
-	for (td = e->etd; q < NFRAME; q += e->pollms){
+	if (e->tdalloc == nil)
+		panic("tdalloc");
+	for (q = e->sched; q < NFRAME; q += e->pollms){
+		td = e->td0++;
+		addr = &ub->frames[q];
+		while (*addr != PADDR(td)){
+			if (*addr & IsQH)
+				panic("usb: TD expected");
+			addr = &TFOL(*addr)->link;
+		}
+		*addr = td->link;
 		ub->frameld[q] -= e->maxpkt;
-		next = td->next;
-		td->ep = nil;
-		td->next = nil;
-		freeb(td->bp);
-		td->bp = nil;
-		td = next;
 	}
-	freeb(e->curblock);
+	free(e->tdalloc);
+	free(e->bpalloc);
+	e->tdalloc = nil;
+	e->bpalloc = nil;
+	e->etd = nil;
+	e->td0 = nil;
 	e->sched = -1;
 }
 
@@ -1002,9 +938,9 @@ freept(Endpt *e)
 {
 	if(e != nil && decref(e) == 0){
 		XPRINT("freept(%d,%d)\n", e->dev->x, e->x);
+		eptdeactivate(e);
 		unschedendpt(e);
 		e->dev->ep[e->x] = nil;
-		eptdeactivate(e);
 		if(e->epq != nil)
 			freeqh(&ubus, e->epq);
 		free(e);
@@ -1128,11 +1064,52 @@ portinfo(Ctlr *ub, int *p0, int *p1)
 }
 
 static void
+cleaniso(Endpt *e, int frnum)
+{
+	TD *td;
+	int tok, id, size;
+
+	if (e->xtd->status & Active){
+		td = e->td0 + ((frnum -1)&0x3ff);
+		if (td->status & Active)
+			return;
+		iprint("%ld active -> %ld", e->xtd - e->td0, td - e->td0);
+		e->xtd = td;
+	}
+	tok = (e->mode == OREAD)?TokIN:TokOUT;
+	id = (e->x<<7)|(e->dev->x&0x7F);
+	for(td = e->xtd; (td->status & Active) == 0; td = td->next){
+		if (td->flags & IsoLock)
+			iprint("usbinterrupt: locked?\n");
+		if (e->isolock == 0 && td == e->etd){
+			/* if isolock is set, don't touch e->etd */
+			if (e->xtd == e->etd)
+				wakeup(&e->wr);	/* writer had to wait */
+			else
+				e->etd = nil;		/* writer was overtaken */
+		}
+		if (td->status & AnyError)
+			iprint("usbisoerror 0x%lux\n", td->status);
+		size = (e->hz + e->remain)*e->pollms/1000;
+		e->remain = (e->hz + e->remain)*e->pollms%1000;
+		size *= e->samplesz;
+		if ((td->flags & IsoClean) == 0){
+			memset((byte*)td->bp, 0, e->maxpkt);
+			td->flags |= IsoClean;
+		}
+		td->dev = ((size-1)<<21) | ((id&0x7FF)<<8) | tok;
+		td->status = ErrLimit3 | Active | IsoSelect | IOC;
+	}
+	e->xtd = td;
+	if (e->etd) wakeup(&e->wr);
+}
+
+static void
 interrupt(Ureg*, void *a)
 {
 	Ctlr *ub;
 	Endpt *e;
-	int s;
+	int s, frnum;
 	QH *q;
 
 	ub = a;
@@ -1140,7 +1117,8 @@ interrupt(Ureg*, void *a)
 	OUT(Status, s);
 	if ((s & 0x1f) == 0)
 		return;
-	XPRINT("usbint: #%x f%d\n", s, IN(Frnum));
+	frnum = IN(Frnum) & 0x3ff;
+	XPRINT("usbint: #%x f%d\n", s, frnum);
 	if (s & 0x1a) {
 		XPRINT("cmd #%x sofmod #%x\n", IN(Cmd), inb(ub->io+SOFMod));
 		XPRINT("sc0 #%x sc1 #%x\n", IN(Portsc0), IN(Portsc1));
@@ -1161,8 +1139,9 @@ interrupt(Ureg*, void *a)
 			XPRINT("cleanq(e->epq, 0, 0)\n");
 			cleanq(e->epq, 0, 0);
 		}
-		if(e->iso && e->etd != nil) {
-			wakeup(&e->wr);
+		if(e->iso) {
+			XPRINT("cleaniso(e)\n");
+			cleaniso(e, frnum);
 		}
 	}
 	iunlock(&activends);
@@ -1268,7 +1247,7 @@ static void
 usbreset(void)
 {
 	Pcidev *cfg;
-	int i, j;
+	int i;
 	ulong port;
 	TD *t;
 	Ctlr *ub;
@@ -1314,8 +1293,8 @@ usbreset(void)
 	intrenable(cfg->intl, interrupt, ub, cfg->tbdf, "usb");
 
 	ub->io = port;
-	ub->tdpool = xspanalloc((NFRAME*NISOTD+128)*sizeof(TD), 16, 0);
-	for(i=NFRAME*NISOTD+128; --i>=NFRAME*NISOTD;){
+	ub->tdpool = xspanalloc(128*sizeof(TD), 16, 0);
+	for(i=128; --i>=0;){
 		ub->tdpool[i].next = ub->freetd;
 		ub->freetd = &ub->tdpool[i];
 	}
@@ -1352,26 +1331,8 @@ usbreset(void)
 	ub->frames = xspanalloc(FRAMESIZE, FRAMESIZE, 0);
 	ub->frameld = mallocz(FRAMESIZE, 1);
 
-	for (i = 0; i < NFRAME; i++){
-		j = NISOTD*i;
-		ub->frames[i] = PADDR(&ub->tdpool[j]);	/* breadth 1st, is TD, no termin. */
-		ub->tdpool[j+0].link = PADDR(&ub->tdpool[j+1]);
-		ub->tdpool[j+0].status = IsoSelect;
-		ub->tdpool[j+0].dev = 0;
-		ub->tdpool[j+0].buffer = 0;
-		ub->tdpool[j+1].link = PADDR(&ub->tdpool[j+2]);
-		ub->tdpool[j+1].status = IsoSelect;
-		ub->tdpool[j+1].dev = 0;
-		ub->tdpool[j+1].buffer = 0;
-		ub->tdpool[j+2].link = PADDR(&ub->tdpool[j+3]);
-		ub->tdpool[j+2].status = IsoSelect;
-		ub->tdpool[j+2].dev = 0;
-		ub->tdpool[j+2].buffer = 0;
-		ub->tdpool[j+3].link = PADDR(ub->ctlq) | IsQH;
-		ub->tdpool[j+3].status = IsoSelect;
-		ub->tdpool[j+3].dev = 0;
-		ub->tdpool[j+3].buffer = 0;
-	}
+	for (i = 0; i < NFRAME; i++)
+		ub->frames[i] = PADDR(ub->ctlq) | IsQH;
 
 	outl(port+Flbaseadd, PADDR(ub->frames));
 	OUT(Frnum, 0);
@@ -1613,6 +1574,10 @@ usbclose(Chan *c)
 			error(Enodev);
 		}
 		e->isopen--;
+		if (e->isopen == 0){
+			eptdeactivate(e);
+			unschedendpt(e);
+		}
 	}
 	if(QID(c->qid) == Qctl)
 		d->busy = 0;
@@ -1631,12 +1596,43 @@ eptinput(void *arg)
 	return e->eof || e->err || qcanread(e->rq);
 }
 
+static int
+isorready(void *arg)
+{
+	int frnum;
+	Ctlr *ub;
+	Endpt *e;
+
+	e = arg;
+	e->isolock = 1;
+	ub = &ubus;
+	frnum = IN(Frnum) & 0x3ff;
+	if (e->etd == nil){
+		/* reader was idle, find a place to start */
+		e->etd = e->td0 + (frnum & 0x3ff);
+	}
+	if (e->etd->status & Active){
+		/* not yet ready */
+		e->isolock = 0;
+		return 0;
+	}
+	/* leave locked if succesful */
+	e->psize = (e->etd->status + 1) & 0x7FF;
+	e->curbytes = 0;
+	e->nbytes += e->psize;
+	e->nblocks++;
+	if (e->psize > e->maxpkt)
+		panic("packet size > maximum");
+	return 1;
+}
+
 static long
 readusb(Endpt *e, void *a, long n)
 {
 	Block *b;
-	uchar *p;
-	long l, i;
+	uchar *p, *q;
+	long l, i, id;
+	TD *td;
 
 	XPRINT("qlock(%p)\n", &e->rlock);
 	qlock(&e->rlock);
@@ -1647,37 +1643,52 @@ readusb(Endpt *e, void *a, long n)
 		nexterror();
 	}
 	p = a;
-	do {
-		if(e->eof) {
-			XPRINT("e->eof\n");
-			break;
-		}
-		if(e->err)
-			error(e->err);
-		if (e->iso){
-			if (e->curbytes == 0){
-				/* calculate size of next receive buffer */
-				/* put empty buffer on receive queue and get next full one */
-				b = isorecv(e, e->curblock, TokIN);
-				/* bytes to consume in b: */
-				e->curbytes = BLEN(b);
-				b->wp = b->rp;
-				e->nbytes += e->curbytes;
-				e->nblocks++;
-			}else{
-				b = e->curblock;
+	if (e->iso){
+		do {
+			if (e->psize == 0){
+				while(isorready(e) == 0){
+					XPRINT("readusb: sleep %lux\n", &e->wr);
+					sleep(&e->wr, isorready, e);
+					XPRINT("readusb: awake\n");
+				}
 			}
-			if (b == nil)
-				panic("readusb: block");
-			if((i = n) >= e->curbytes)
-				i = e->curbytes;
-			memmove(p, b->wp, i);
-			b->wp += i;
-			p += i;
-			n -= i;
-			e->curbytes -= i;
-			e->curblock = b;
-		}else{
+			td = e->etd;
+			e->isolock = 0;
+
+			if (e->psize > 0){
+				q = (byte*)td->bp + e->curbytes;
+				if((i = n) >= e->psize)
+					i = e->psize;
+				memmove(p, q, i);
+				p += i;
+				n -= i;
+				e->curbytes += i;
+				e->psize -= i;
+				if (e->psize > 0){
+					/* Read done, return */
+					if (n != 0)
+						panic("usb iso: can't happen");
+					break;
+				}
+			}
+			e->isolock = 1;
+			/* Finished a packet */
+			id = (e->x<<7)|(e->dev->x&0x7F);
+			td->dev = ((e->maxpkt-1)<<21) | ((id&0x7FF)<<8) | TokIN;
+			td->status = ErrLimit3 | Active | IsoSelect | IOC;
+			if (e->xtd == td)
+				e->xtd = td->next;
+			/* Get next buffer, wait for it to become ready */
+			e->etd = td->next;
+		} while (n > 0);
+	}else{
+		do {
+			if(e->eof) {
+				XPRINT("e->eof\n");
+				break;
+			}
+			if(e->err)
+				error(e->err);
 			qrcv(e);
 			if(!e->iso)
 				e->data01 ^= 1;
@@ -1705,8 +1716,8 @@ readusb(Endpt *e, void *a, long n)
 			n -= i;
 			if (l != e->maxpkt)
 				break;
-		}
-	} while (n > 0);
+		} while (n > 0);
+	}
 	poperror();
 	qunlock(&e->rlock);
 	return p-(uchar*)a;
@@ -1790,13 +1801,41 @@ qisempty(void *arg)
 	return ((QH*)arg)->entries & Terminate;
 }
 
+static int
+isowready(void *arg)
+{
+	int frnum;
+	Ctlr *ub;
+	Endpt *e;
+
+	e = arg;
+	e->isolock = 1;
+	ub = &ubus;
+	frnum = IN(Frnum) & 0x3ff;
+	if (e->etd == nil){
+		/* writer was idle, find a place to start */
+		e->etd = e->td0 + ((frnum + 4) & 0x3ff);
+		e->curbytes = 0;
+		e->psize = ((e->etd->dev >> 21) & 0x7ff) + 1;
+		if (e->psize > e->maxpkt)
+			panic("packet size > maximum");
+	}	
+	if (e->etd != e->xtd && e->etd->next != e->xtd){
+		/* leave locked if succesful */
+		return 1;
+	}
+	e->isolock = 0;
+	return 0;
+}
+
 static long
 writeusb(Endpt *e, void *a, long n, int tok)
 {
-	long i;
+	int i;
 	Block *b;
-	uchar *p;
+	uchar *p, *q;
 	QH *qh;
+	TD *td;
 
 	p = a;
 	qlock(&e->wlock);
@@ -1805,45 +1844,52 @@ writeusb(Endpt *e, void *a, long n, int tok)
 		eptcancel(e);
 		nexterror();
 	}
-	do {
-		if(e->err)
-			error(e->err);
-		if (e->iso){
-			if (e->curbytes == 0){
-				e->psize = (e->hz + e->remain)*e->pollms/1000;
-				e->remain = (e->hz + e->remain)*e->pollms%1000;
-				e->psize *= e->samplesz;
+	e->td0 = (TD*)(((ulong)e->tdalloc + 0xf) & ~0xf);
+	if (e->iso){
+		if(waserror()){
+			e->isolock = 0;
+			if (td = e->etd)
+				td->flags &= ~IsoLock;
+			nexterror();
+		}
+		do {
+			while (isowready(e) == 0){
+				XPRINT("writeusb: sleep %lux\n", &e->wr);
+				sleep(&e->wr, isowready, e);
+				XPRINT("writeusb: awake\n");
 			}
-			if (e->psize > e->maxpkt)
-				panic("packet size > maximum");
-			b = e->curblock;
-			if (b == nil)
-				panic("writeusb: block");
+			td = e->etd;
+			e->isolock = 0;
+			td->flags |= IsoLock;
+			td->flags &= ~IsoClean;
+			q = (uchar*)td->bp + e->curbytes;
 			if((i = n) >= e->psize - e->curbytes)
 				i = e->psize - e->curbytes;
-			if (e->curbytes != BLEN(b))
-				iprint("mismatch: curbytes %d, blen %ld\n", e->curbytes, BLEN(b));
-			memmove(b->wp, p, i);
-			b->wp += i;
+			memmove(q, p, i);
 			p += i;
 			n -= i;
 			e->curbytes += i;
+			td->flags &= ~IsoLock;
 			if (e->curbytes < e->psize){
-				e->curblock = b;
 				if (n != 0)
 					panic("usb iso: can't happen");
 				break;
 			}
-			if (BLEN(b) != e->psize)
-				panic("usbwrite: length mismatch");
-			e->curblock = isoxmit(e, b, TokOUT);
+			e->etd = td->next;
 			e->curbytes = 0;
-			e->curblock->wp = e->curblock->rp;
+			e->psize = ((e->etd->dev >> 21) & 0x7ff) + 1;
+			if (e->psize > e->maxpkt)
+				panic("packet size > maximum");
 			e->nbytes += e->psize;
 			e->nblocks++;
-		}else{
+		} while(n > 0);
+		poperror();
+	}else{
+		do {
 			int j;
 
+			if(e->err)
+				error(e->err);
 			if((i = n) >= e->maxpkt)
 				i = e->maxpkt;
 			b = allocb(i);
@@ -1851,7 +1897,7 @@ writeusb(Endpt *e, void *a, long n, int tok)
 				freeb(b);
 				nexterror();
 			}
-			XPRINT("out [%ld]", i);
+			XPRINT("out [%d]", i);
 			for (j = 0; j < i; j++) XPRINT(" %.2x", p[j]);
 			XPRINT("\n");
 			memmove(b->wp, p, i);
@@ -1868,8 +1914,8 @@ writeusb(Endpt *e, void *a, long n, int tok)
 				sleep(&e->wr, qisempty, qh);
 				XPRINT("writeusb: awake\n");
 			}
-		}
-	} while(n > 0);
+		} while(n > 0);
+	}
 	poperror();
 	qunlock(&e->wlock);
 	return p-(uchar*)a;
@@ -1964,7 +2010,7 @@ usbwrite(Chan *c, void *a, long n, vlong)
 			e->err = nil;
 		}else if(nf == 6 && strcmp(fields[0], "ep") == 0){
 			/* ep n `bulk' mode maxpkt nbuf     OR
-			 * ep n period mode samplesize hz
+			 * ep n period mode samplesize KHz
 			 */
 			i = strtoul(fields[1], nil, 0);
 			if(i < 0 || i >= nelem(d->ep)) {
