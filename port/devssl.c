@@ -456,7 +456,7 @@ sslbwrite(Chan *c, Block *b, ulong offset)
 		if(pad){
 			nb = padblock(nb, -pad);
 			memset(nb->wp, 0, pad);
-			b->wp += pad;
+			nb->wp += pad;
 			m += pad;
 
 			p = nb->rp;

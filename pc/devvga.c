@@ -547,7 +547,6 @@ screeninit(void)
 	 *  start in CGA mode
 	 */
 	cga = 1;
-	vgaxo(Crtx, 0x0A, 0xFF);		/* turn off cursor */
 	memset(CGASCREEN, 0, CGAWIDTH*CGAHEIGHT);
 }
 
@@ -1021,15 +1020,28 @@ nopage(int page)
 	USED(page);
 }
 
-/*
- *  character mode console
- */
+static int pos;
+
+static void
+cgaregw(uchar index, uchar data)
+{
+	outb(0x03D4, index);
+	outb(0x03D4+1, data);
+}
+
+static void
+movecursor(void)
+{
+	cgaregw(0x0E, (pos/2>>8) & 0xFF);
+	cgaregw(0x0F, pos/2 & 0xFF);
+	CGASCREEN[pos+1] = 2;
+}
+
 static void
 cgascreenputc(int c)
 {
 	int i;
 	static int color;
-	static int pos;
 
 	if(c == '\n'){
 		pos = pos/CGAWIDTH;
@@ -1052,6 +1064,7 @@ cgascreenputc(int c)
 		memset(&CGASCREEN[CGAWIDTH*(CGAHEIGHT-1)], 0, CGAWIDTH);
 		pos = CGAWIDTH*(CGAHEIGHT-1);
 	}
+	movecursor();
 }
 
 static void
