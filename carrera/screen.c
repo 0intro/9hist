@@ -190,6 +190,10 @@ screeninit(void)
 	int i, j;
 	uchar *scr;
 
+	EISAOUTB(0x3c3, 1);
+	delay(1);
+	EISAOUTB(0x46e8, 0x8);
+
 	setmode(&dfltmode);
 	getvmode(&x);
 	writeregisters(&x);
@@ -445,9 +449,6 @@ setmode(VGAmode *v)
 {
 	int i;
 
-	for(i = 0; i < sizeof(v->general); i++)
-		genout(i, v->general[i]);
-
 	/* turn screen off (to avoid damage) */
 	srout(1, 0x21);
 
@@ -456,6 +457,9 @@ setmode(VGAmode *v)
 	EISAOUTB(0x3cd, 0x00);		/* segment select */
 
 	srout(0x00, srin(0x00) & 0xFD);	/* synchronous reset*/
+
+	for(i = 0; i < sizeof(v->general); i++)
+		genout(i, v->general[i]);
 
 	for(i = 0; i < sizeof(v->sequencer); i++)
 		if(i == 1)

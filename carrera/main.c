@@ -47,7 +47,7 @@ main(void)
 	serialinit();
 	vecinit();
 	iprint("\n\nBrazil\n");
- screeninit(); /**/
+screeninit(); 
 	pageinit();
 	procinit0();
 	initseg();
