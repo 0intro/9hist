@@ -151,7 +151,6 @@ slotinfo(PCMslot *pp)
 	pp->wrprot = isr & (1<<4);
 	pp->busy = isr & (1<<5);
 	pp->msec = TK2MS(MACHP(0)->ticks);
-print("isr %2.2uX misc1 %2.2uX\n", isr, rdreg(pp, Rmisc1));
 }
 
 static int

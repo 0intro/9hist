@@ -3,6 +3,7 @@
 #include	"mem.h"
 #include	"dat.h"
 #include	"fns.h"
+#include	"io.h"
 #include	"../port/error.h"
 
 typedef struct Pnp Pnp;
@@ -319,10 +320,10 @@ bad:
 }
 
 static int
-pnpgen1(Chan *c, int t, int csn, Card *cp, Dir *dp)
+csngen(Chan *c, int t, int csn, Card *cp, Dir *dp)
 {
 	Qid q;
-	char buf[20];
+	static char buf[20];
 
 	switch(t) {
 	case Qcsnctl:
@@ -340,12 +341,33 @@ pnpgen1(Chan *c, int t, int csn, Card *cp, Dir *dp)
 }
 
 static int
+pcigen(Chan *c, int t, int tbdf, Dir *dp)
+{
+	Qid q;
+	static char name[KNAMELEN];
+
+	q = (Qid){BUSBDF(tbdf)|t, 0, 0};
+	switch(t) {
+	case Qpcictl:
+		snprint(name, KNAMELEN, "%d.%d.%dctl", BUSBNO(tbdf), BUSDNO(tbdf), BUSFNO(tbdf));
+		devdir(c, q, name, 0, eve, 0444, dp);
+		return 1;
+	case Qpciraw:
+		snprint(name, KNAMELEN, "%d.%d.%draw", BUSBNO(tbdf), BUSDNO(tbdf), BUSFNO(tbdf));
+		devdir(c, q, name, 128, eve, 0444, dp);
+		return 1;
+	}
+	return -1;
+}
+
+static int
 pnpgen(Chan *c, char *, Dirtab*, int, int s, Dir *dp)
 {
 	Qid q;
-	int csn;
 	Card *cp;
-	char name[KNAMELEN];
+	Pcidev *p;
+	int csn, tbdf;
+	static char name[KNAMELEN];
 
 	switch(TYPE(c->qid)){
 	case Qtopdir:
@@ -375,7 +397,7 @@ pnpgen(Chan *c, char *, Dirtab*, int, int s, Dir *dp)
 		iunlock(&pnp);
 		if(cp == nil)
 			return -1;
-		return pnpgen1(c, s+Qcsnctl, cp->csn, cp, dp);
+		return csngen(c, s+Qcsnctl, cp->csn, cp, dp);
 	case Qpnpctl:
 		return devgen(c, nil, pnpdir, nelem(pnpdir), s, dp);
 	case Qcsnctl:
@@ -386,7 +408,29 @@ pnpgen(Chan *c, char *, Dirtab*, int, int s, Dir *dp)
 		iunlock(&pnp);
 		if(cp == nil)
 			return -1;
-		return pnpgen1(c, TYPE(c->qid), csn, cp, dp);
+		return csngen(c, TYPE(c->qid), csn, cp, dp);
+	case Qpcidir:
+		if(s == DEVDOTDOT){
+			q = (Qid){QID(0, Qtopdir), 0, QTDIR};
+			snprint(name, KNAMELEN, "#%C", pnpdevtab.dc);
+			devdir(c, q, name, 0, eve, 0555, dp);
+			return 1;
+		}
+		p = pcimatch(nil, 0, 0);
+		while(s >= 2 && p != nil) {
+			p = pcimatch(p, 0, 0);
+			s -= 2;
+		}
+		if(p == nil)
+			return -1;
+		return pcigen(c, s+Qpcictl, p->tbdf, dp);
+	case Qpcictl:
+	case Qpciraw:
+		tbdf = MKBUS(BusPCI, 0, 0, 0)|BUSBDF((ulong)c->qid.path);
+		p = pcimatchtbdf(tbdf);
+		if(p == nil)
+			return -1;
+		return pcigen(c, TYPE(c->qid), tbdf, dp);
 	default:
 		break;
 	}
@@ -430,9 +474,10 @@ pnpclose(Chan*)
 static long
 pnpread(Chan *c, void *va, long n, vlong offset)
 {
-	int csn, i;
 	Card *cp;
-	char *a = va, buf[20];
+	Pcidev *p;
+	int csn, i, tbdf;
+	char *a = va, buf[256];
 
 	switch(TYPE(c->qid)){
 	case Qtopdir:
@@ -474,6 +519,20 @@ pnpread(Chan *c, void *va, long n, vlong offset)
 			error(Egreg);
 		sprint(buf, "%s\n", serial(cp->id1, cp->id2));
 		return readstr(offset, a, n, buf);
+	case Qpcictl:
+		tbdf = MKBUS(BusPCI, 0, 0, 0)|BUSBDF((ulong)c->qid.path);
+		p = pcimatchtbdf(tbdf);
+		if(p == nil)
+			error(Egreg);
+		snprint(buf, sizeof(buf), "class %.2x subclass %.2x piclass %.2x vid %.4x did %.4x intl %d\n",
+			p->ccrb, p->ccru, p->ccrp, p->vid, p->did, p->intl);
+		return readstr(offset, a, n, buf);
+	case Qpciraw:
+		tbdf = MKBUS(BusPCI, 0, 0, 0)|BUSBDF((ulong)c->qid.path);
+		p = pcimatchtbdf(tbdf);
+		if(p == nil)
+			error(Egreg);
+		break;
 	default:
 		error(Egreg);
 	}

@@ -320,6 +320,21 @@ pcimatch(Pcidev* prev, int vid, int did)
 	return prev;
 }
 
+Pcidev*
+pcimatchtbdf(int tbdf)
+{
+	Pcidev *pcidev;
+
+	if(pcicfgmode == -1)
+		pcicfginit();
+
+	for(pcidev = pcilist; pcidev != nil; pcidev = pcidev->list) {
+		if(pcidev->tbdf == tbdf)
+			break;
+	}
+	return pcidev;
+}
+
 void
 pcihinv(Pcidev* p)
 {

@@ -75,6 +75,7 @@ void	pcicfgw16(Pcidev*, int, int);
 void	pcicfgw32(Pcidev*, int, int);
 void	pcihinv(Pcidev*);
 Pcidev* pcimatch(Pcidev*, int, int);
+Pcidev* pcimatchtbdf(int);
 void	pcireset(void);
 void	pcisetbme(Pcidev*);
 void		prflush(void);
