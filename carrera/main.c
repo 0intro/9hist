@@ -204,7 +204,7 @@ ioinit(int mapeisa)
 	puttlbx(2, Intctlvirt, intphys, isamphys, PGSZ1M);
 
 	/* Enable all device interrupts */
-	IO(ushort, Intenareg) = 0xfff7;
+	IO(ushort, Intenareg) = 0xffff;
 
 	/* Map the rom back into Promvirt to allow NMI handling */
 	promphys = IOPTE|PPN(Promphys);

@@ -29,7 +29,7 @@ ilock(Lock *l)
 		l->sr = x;
 		return;
 	}
-/* print("ilock loop %lux\n", getcallerpc(0)); */
+ print("ilock loop %lux\n", getcallerpc(0));
 	for(;;){
 		while(l->key)
 			;
