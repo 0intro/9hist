@@ -56,6 +56,9 @@ extern void	bboot(int, char **);
 extern void	doauthenticate(int, Method*);
 
 /* methods */
+extern void	configppp(Method*);
+extern int	authppp(void);
+extern int	connectppp(void);
 extern void	config9600(Method*);
 extern int	auth9600(void);
 extern int	connect9600(void);
