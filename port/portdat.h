@@ -347,8 +347,12 @@ struct Proc
 	int	wokeup;			/* whether sleep was interrupted */
 	ulong	pc;			/* DEBUG only */
 	int	kp;			/* true if a kernel process */
-	union {
-		int	pidonmach[MAXMACH];	/* !!Compatability with mips!! */
+	/*
+	 *  MMU goo.  which of the fillowing fields gets used depends on the
+	 *  processor.
+	 */
+	struct {
+		int	pidonmach[MAXMACH];
 		MMU	*mmu;
 		int	nmmuseg;		/* number of segments active in mmu */
 	};

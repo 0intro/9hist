@@ -602,7 +602,7 @@ tcpstopen(Queue *q, Stream *s)
 		Tcpoutput = WR(q);
 		/* This never goes away - we use this queue to send acks/rejects */
 		s->opens++;
-
+		s->inuse++;
 		/* Flow control and tcp timer processes */
 		kproc("tcpack", tcpackproc, 0);
 		kproc("tcpflow", tcpflow, &ipconv[s->dev]);

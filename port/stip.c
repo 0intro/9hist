@@ -73,6 +73,7 @@ ipetheropen(Queue *q, Stream *s)
 	if(!Etherq) {
 		Etherq = WR(q);
 		s->opens++;		/* Hold this queue in place */
+		s->inuse++;
 	}
 
 	DPRINT("ipetheropen EQ %lux dev=%d id=%d RD %lux WR %lux\n",

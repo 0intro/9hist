@@ -808,6 +808,7 @@ streamnew(ushort type, ushort dev, ushort id, Qinfo *qi, int noopen)
 	/*
  	 *  hang a device and process q off the stream
 	 */
+	s->forcedelim = 0;
 	s->inuse = 1;
 	if(noopen)
 		s->opens = 0;

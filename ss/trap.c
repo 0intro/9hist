@@ -214,7 +214,6 @@ notify(Ureg *ur)
 		unlock(&u->p->debug);
 		return;
 	}
-print("suicide: %s\n", u->note[0].msg);
 	if(u->note[0].flag!=NUser && (u->notified || u->notify==0)){
 		if(u->note[0].flag == NDebug)
 			pprint("suicide: %s\n", u->note[0].msg);
@@ -337,7 +336,6 @@ syscall(Ureg *aur)
 
 	u->nerrlab = 0;
 	ret = -1;
-print("syscall %s %d %d\n", u->p->text, u->p->pid, r7);
 	if(!waserror()){
 		if(r7 >= sizeof systab/BY2WD){
 			pprint("bad sys call number %d pc %lux\n", r7, ((Ureg*)UREGADDR)->pc);
