@@ -550,7 +550,6 @@ syscall(Ureg *aur)
 	}
 	ur->pc += 4;
 	u->nerrlab = 0;
-	
 	if(u->p->procctl)
 		procctl(u->p);
 

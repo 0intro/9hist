@@ -358,10 +358,10 @@ syscall(Ureg *aur)
 	ur->pc += 4;
 	ur->npc = ur->pc+4;
 	if(u->nerrlab){
-		print("unbalanced error stack: %d extra\n", u->nerrlab);
+		print("bad error stack [%d]: %d extra\n", r7, u->nerrlab);
 		for(i = 0; i < NERR; i++)
 			print("sp=%lux pc=%lux\n", u->errlab[i].sp, u->errlab[i].pc);
-		panic("bad rob");
+		panic("error stack");
 	}
 	u->p->insyscall = 0;
 	if(r7 == NOTED)	/* ugly hack */

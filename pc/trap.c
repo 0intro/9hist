@@ -7,6 +7,22 @@
 #include	"ureg.h"
 
 /*
+ *  8259 interrupt controllers
+ */
+enum
+{
+	Int0ctl=	0x20,		/* control port (ICW1, OCW2, OCW3) */
+	Int0aux=	0x21,		/* everything else (ICW2, ICW3, ICW4, OCW1) */
+	Int1ctl=	0xA0,		/* control port */
+	Int1aux=	0xA1,		/* everything else (ICW2, ICW3, ICW4, OCW1) */
+
+	EOI=		0x20,		/* non-specific end of interrupt */
+};
+
+int	int0mask = 7;		/* interrupts enabled for first 8259 */
+int	int1mask = 7;		/* interrupts enabled for second 8259 */
+
+/*
  *  trap/interrupt gates
  */
 Segdesc ilt[256];
@@ -25,6 +41,14 @@ setvec(int v, void (*r)(Ureg*), int type)
 	ilt[v].d1 &= ~SEGTYPE;
 	ilt[v].d1 |= type;
 	ivec[v] = r;
+
+	/*
+	 *  enable corresponding interrupt in 8259
+	 */
+	if((v&~0x7) == Int0vec){
+		int0mask &= ~(1<<(v&7));
+		outb(Int0aux, int0mask);
+	}
 }
 
 /*
@@ -75,20 +99,17 @@ trapinit(void)
 	lidt(ilt, sizeof(ilt));
 
 	/*
-	 *  Set up the 8259 interrupt processor #1.
-	 *  Make 8259 interrupts starting at vector I8259vec.
-	 *
-	 *  N.B. This is all magic to me.  It comes from the 
-	 *	 IBM technical reference manual.  I just
-	 *	 changed the vector.
+	 *  Set up the first 8259 interrupt processor.
+	 *  Make 8259 interrupts start at CPU vector Int0vec.
+	 *  Set the 8259 as master with edge triggered
+	 *  input with fully nested interrupts.
 	 */
-	outb(Int0ctl, 0x11);		/* ICW1 - edge, master, ICW4 */
-	outb(Int0aux, Int0vec);		/* ICW2 - interrupt vector */
+	outb(Int0ctl, 0x11);		/* ICW1 - edge triggered, master,
+					   ICW4 will be sent */
+	outb(Int0aux, Int0vec);		/* ICW2 - interrupt vector offset */
 	outb(Int0aux, 0x04);		/* ICW3 - master level 2 */
-	outb(Int0aux, 0x01);		/* ICW4 - master, 8086 mode */
-	outb(Int0aux, 0x00);		/* mask - all enabled */
+	outb(Int0aux, 0x01);		/* ICW4 - 8086 mode, not buffered */
 }
-
 
 /*
  *  All traps
@@ -98,6 +119,14 @@ trap(Ureg *ur)
 	if(ur->trap>=256 || ivec[ur->trap] == 0)
 		panic("bad trap type %d\n", ur->trap);
 
+	/*
+	 *  call the trap routine
+	 */
 	(*ivec[ur->trap])(ur);
-	INT0ENABLE;
+
+	/*
+	 *  tell the 8259 that we're done with the
+	 *  highest level interrupt
+	 */
+	outb(Int0ctl, EOI);
 }

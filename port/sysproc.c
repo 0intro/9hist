@@ -28,9 +28,7 @@ sysfork(ulong *arg)
 	KMap *k;
 	int n, on, i;
 	int lastvar;	/* used to compute stack address */
-	/*
-	 * Kernel stack
-	 */
+
 	p = newproc();
 
 	/* Page va of upage used as check in mapstack */
@@ -204,7 +202,7 @@ sysexec(ulong *arg)
 	 * Build the stack segment, putting it in kernel virtual for the moment
 	 */
 	if(spage > TSTKSIZ)
-		errors("not enough argument stack space");
+		errors("too many arguments");
 
 	 
 	p->seg[ESEG] = newseg(SG_STACK, TSTKTOP-USTKSIZE, USTKSIZE/BY2PG);
@@ -238,14 +236,10 @@ sysexec(ulong *arg)
 	/*
 	 * Committed.  Free old memory. Special segments are maintained accross exec
 	 */
-	putseg(p->seg[TSEG]);
-	p->seg[TSEG] = 0;	/* prevent a second free if we have an error */
-	putseg(p->seg[DSEG]);
-	p->seg[DSEG] = 0;
-	putseg(p->seg[BSEG]);
-	p->seg[BSEG] = 0;
-	putseg(p->seg[SSEG]);
-	p->seg[SSEG] = 0;
+	for(i = SSEG; i <= BSEG; i++) {
+		putseg(p->seg[i]);
+		p->seg[i] = 0;	    /* prevent a second free if we have an error */
+	}
 
 	/*
 	 * Close on exec

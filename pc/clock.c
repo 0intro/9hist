@@ -11,23 +11,39 @@
  */
 enum
 {
-	Timerctl=	0x43,		/* control port */
-	Timercnt=	0x40,		/* timer count port (outb count-1) */
-	Timericnt=	0x41,		/* timer count input port */
+	T0cntr=	0x40,		/* counter ports */
+	T1cntr=	0x41,		/* ... */
+	T2cntr=	0x42,		/* ... */
+	Tmode=	0x43,		/* mode port */
 
-	Timerlatch=	0x40,		/* latch count into Timericnt */
+	Load0square=	0x36,		/*  load counter 0 with 2 bytes,
+					 *  output a square wave whose
+					 *  period is the counter period
+					 */
+	Freq=		1193182,	/* Real clock frequency */
 };
 
 void
 clockinit(void)
 {
+	/*
+	 *  set vector for clock interrupts
+	 */
 	setvec(Clockvec, clock, SEGIG);
+
+	/*
+	 *  make clock output a square wave with a 1/HZ period
+	 */
+	outb(Tmode, Load0square);
+	outb(T0cntr, (Freq/HZ));	/* low byte */
+	outb(T0cntr, (Freq/HZ)>>8);	/* high byte */
 }
 
 void
 clock(Ureg *ur)
 {
 	Proc *p;
+	static int last;
 
 	m->ticks++;
 	p = m->proc;
@@ -36,9 +52,4 @@ clock(Ureg *ur)
 		if (p->state==Running)
 			p->time[p->insyscall]++;
 	}
-
-	if((m->ticks%185) == 92)
-		floppystart();
-	else if((m->ticks%185) == 0)
-		floppystop();
 }

@@ -14,6 +14,7 @@ main(void)
 	mmuinit();
 	floppyinit();
 	spllo();
+	floppystart(0);
 	for(;;){
 		int c;
 
@@ -21,6 +22,11 @@ main(void)
 		if(c!=-1)
 			screenputc(c);
 		idle();
+		if((TK2SEC(m->ticks)%5)==0)
+			if((TK2SEC(m->ticks)%10)==0)
+				floppystop(0);
+			else
+				floppystart(0);
 	}
 }
 
@@ -62,7 +68,6 @@ panic(char *fmt, ...)
 	n = doprint(buf, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
 	screenputs(buf, n);
 	screenputs("\n", 1);
-	INT0ENABLE;
 	spllo();
 	for(;;)
 		idle();

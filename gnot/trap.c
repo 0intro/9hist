@@ -306,14 +306,12 @@ syscall(Ureg *aur)
 		poperror();
 	}
 
-#ifdef Check
 	if(u->nerrlab){
 		print("bad errstack [%d]: %d extra\n", r0, u->nerrlab);
 		for(i = 0; i < NERR; i++)
 			print("sp=%lux pc=%lux\n", u->errlab[i].sp, u->errlab[i].pc);
-		panic("bad rob");
+		panic("error stack");
 	}
-#endif
 
 	u->p->insyscall = 0;
 

@@ -123,7 +123,7 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 
 	loadrec = *p;
 	if(loadrec == 0) {
-		daddr = s->fstart+soff;			/* Compute disc address */
+		daddr = s->fstart+soff;		/* Compute disc address */
 		new = lookpage(s->image, daddr);
 	}
 	else {
@@ -133,7 +133,7 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 			putswap(loadrec);
 	}
 
-	if(new) {			/* Page found from cache */
+	if(new) {				/* Page found from cache */
 		*p = new;
 		return;
 	}
