@@ -708,8 +708,13 @@ mntxmit(Mnt *m, Mnthdr *mh)
 	/*
 	 * Read response
 	 */
+	if(waserror()){		/* 3 */
+		mntflush(m, mh);
+		nexterror();
+	}
 	mh->mbr = mballoc();
 	n = (*devtab[q->msg->type].read)(q->msg, mh->mbr->buf, BUFSIZE);
+	poperror();		/* 3 */
 	mqfree(q);
 	poperror();		/* 2 */
 

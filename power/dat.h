@@ -68,6 +68,12 @@ struct QLock
 	Lock	queue;			/* to access list */
 };
 
+struct Rendez
+{
+	Lock;
+	Proc	*p;
+};
+
 struct Label
 {
 	ulong	pc;
@@ -96,6 +102,9 @@ struct Hotmsg
 {
 	ulong	cmd;
 	ulong	param[5];
+	Rendez	r;
+	short	intr;			/* flag: interrupt has occurred */
+	short	abort;			/* flag: don't interrupt */
 };
 
 #define	CHDIR	0x80000000L
@@ -298,12 +307,6 @@ struct PTE
 	Page	*page;
 };
 
-struct Rendez
-{
-	Lock;
-	Proc	*p;
-};
-
 struct Seg
 {
 	Proc	*proc;			/* process owning this segment */
@@ -367,13 +370,17 @@ struct User
 	 * This is the easiest way to allocate
 	 * them, but not the prettiest or most general.
 	 */
-	union{
+	union{				/* for i/o from kernel */
 		Bit3msg	kbit3;
 		Hotmsg	khot;
 	};
-	union{
+	union{				/* for i/o from user */
 		Bit3msg	ubit3;
 		Hotmsg	uhot;
+	};
+	union{				/* special location for Tflush */
+		Bit3msg	fbit3;
+		Hotmsg	fhot;
 	};
 	/*
 	 * Rest of structure controlled by devproc.c and friends.

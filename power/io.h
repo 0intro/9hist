@@ -74,11 +74,12 @@ struct MODE {
 /*
  * VME addressing.
  * MP2VME takes a physical MP bus address and returns an address
- * usable by a VME device through A32 space
+ * usable by a VME device through A32 space.  VME2MP is its inverse
  */
 #define	MASTER	0x0
 #define	SLAVE	0x4
 #define	MP2VME(addr)	(((ulong)(addr) & 0x0fffffff) | (SLAVE<<28))
+#define	VME2MP(addr)	(((ulong)(addr) & 0x0fffffff) | KZERO)
 
 
 struct INTVEC {

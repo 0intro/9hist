@@ -10,31 +10,27 @@
 #include	"io.h"
 #include	"hrod.h"
 
+/*
+ * If defined, causes memory test to be run at device open
+ */
+#ifdef	ENABMEMTEST
 void	mem(Hot*, ulong*, ulong);
+#endif
 
 /*
  * If set, causes data transfers to have checksums
  */
-#define	ENABCKSUM	0
+#define	ENABCKSUM	1
 
 typedef struct Hotrod	Hotrod;
-typedef struct HotQ	HotQ;
 
-enum {
+enum{
 	Vmevec=		0xd2,		/* vme vector for interrupts */
 	Intlevel=	5,		/* level to interrupt on */
 	Qdir=		0,		/* Qid's */
 	Qhotrod=	1,
-	NhotQ=		NRQ,		/* size of communication queues */
 	Nhotrod=	1,
 };
-
-struct HotQ{
-	ulong	i;			/* index into queue */
-	Hotmsg	*msg[NhotQ];		/* pointer to command buffer */
-	ulong	pad[3];			/* unused; for hotrod prints */
-};
-
 
 struct Hotrod{
 	QLock;
@@ -42,11 +38,9 @@ struct Hotrod{
 	Lock		busy;
 	Hot		*addr;		/* address of the device */
 	int		vec;		/* vme interrupt vector */
-	HotQ		*wq;		/* write this queue to send cmds */
 	int		wi;		/* where to write next cmd */
-	HotQ		rq;		/* read this queue to receive replies */
+	ulong		rq[NRQ];	/* read this queue to receive replies */
 	int		ri;		/* where to read next response */
-	Rendez		r;
 	uchar		buf[MAXFDATA+MAXMSG];
 };
 
@@ -74,10 +68,10 @@ hotsend(Hotrod *h, Hotmsg *m)
 	long l;
 
 /* print("hotsend send %d %d %lux %lux\n", h->wi, m->cmd, m, m->param[0]); /**/
-	mp = &h->wq->msg[h->wi];
+	mp = (Hotmsg**)&h->addr->hostrq[h->wi];
 	*mp = (Hotmsg*)MP2VME(m);
 	h->wi++;
-	if(h->wi >= NhotQ)
+	if(h->wi >= NRQ)
 		h->wi = 0;
 	l = 0;
 	while(*mp){
@@ -103,7 +97,6 @@ hotrodreset(void)
 		/*
 		 * Write queue is at end of hotrod memory
 		 */
-		hp->wq = (HotQ*)(&hp->addr->hostrp);
 		hp->vec = Vmevec+i;
 		setvmevec(hp->vec, hotrodintr);
 	}	
@@ -181,8 +174,8 @@ hotrodopen(Chan *c, int omode)
 		/*
 		 * Clear communications region
 		 */
-		memset(hp->wq->msg, 0, sizeof(hp->wq->msg));
-		hp->wq->i = 0;
+		memset(hp->addr->hostrq, 0, NRQ*sizeof(ulong));
+		hp->addr->hostrp = 0;
 
 		/*
 		 * Issue reset
@@ -191,13 +184,13 @@ hotrodopen(Chan *c, int omode)
 		hp->ri = 0;
 		mp = &u->khot;
 		mp->cmd = RESET;
-		mp->param[0] = MP2VME(&hp->rq);
-		mp->param[1] = NhotQ;
+		mp->param[0] = MP2VME(hp->rq);
+		mp->param[1] = NRQ;
 		hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->khot);
 		delay(100);
 		print("reset\n");
 
-#ifdef asdf
+#ifdef ENABMEMTEST
 		/*
 		 * Issue test
 		 */
@@ -253,6 +246,12 @@ hotsum(ulong *p, int n, ulong doit)
 	return sum;
 }
 
+int
+hotmsgintr(Hotmsg *hm)
+{
+	return hm->intr;
+}
+
 /*
  * Read and write use physical addresses if they can, which they usually can.
  * Most I/O is from devmnt, which has local buffers.  Therefore just check
@@ -264,7 +263,7 @@ hotrodread(Chan *c, void *buf, long n)
 {
 	Hotrod *hp;
 	Hotmsg *mp;
-	ulong l, m;
+	ulong l, m, isflush;
 
 	hp = &hotrod[c->dev];
 	switch(c->qid.path){
@@ -277,19 +276,35 @@ hotrodread(Chan *c, void *buf, long n)
 			/*
 			 *  use supplied buffer, no need to lock for reply
 			 */
-			mp = &u->khot;
+			isflush = 0;
+			mp = &((User*)(u->p->upage->pa|KZERO))->khot;
+			if(mp->abort){	/* use reserved flush msg */
+				mp = &((User*)(u->p->upage->pa|KZERO))->fhot;
+				isflush = 1;
+			}
 			mp->param[2] = 0;	/* checksum */
 			mp->param[3] = 0;	/* reply count */
 			qlock(hp);
 			mp->cmd = READ;
 			mp->param[0] = MP2VME(buf);
 			mp->param[1] = n;
-			hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->khot);
+			mp->abort = isflush;
+			mp->intr = 0;
+			hotsend(hp, mp);
 			qunlock(hp);
-			l = 100*1000*1000;
-			do
+			if(isflush){		/* busy loop */
+				l = 100*1000*1000;
+				do
+					m = mp->param[3];
+				while(m==0 && --l>0);
+			}else{
+				if(waserror()){
+					mp->abort = 1;
+					nexterror();
+				}
+				sleep(&mp->r, hotmsgintr, mp);
 				m = mp->param[3];
-			while(m==0 && --l>0);
+			}
 			if(m==0 || m>n){
 				print("devhotrod: count %ld %ld\n", m, n);
 				error(Egreg);
@@ -299,11 +314,13 @@ hotrodread(Chan *c, void *buf, long n)
 					hotsum(buf, n, 1), mp->param[2]);
 				error(Eio);
 			}
+			if(!isflush)
+				poperror();
 		}else{
 			/*
-			 *  use hotrod buffer.  lock the buffer until the reply
+			 * use hotrod buffer. lock the buffer until the reply
 			 */
-			mp = &u->uhot;
+			mp = &((User*)(u->p->upage->pa|KZERO))->uhot;
 			mp->param[2] = 0;	/* checksum */
 			mp->param[3] = 0;	/* reply count */
 			qlock(&hp->buflock);
@@ -311,7 +328,9 @@ hotrodread(Chan *c, void *buf, long n)
 			mp->cmd = READ;
 			mp->param[0] = MP2VME(hp->buf);
 			mp->param[1] = n;
-			hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->uhot);
+			mp->abort = 1;
+			mp->intr = 0;
+			hotsend(hp, mp);
 			qunlock(hp);
 			l = 100*1000*1000;
 			do
@@ -338,9 +357,6 @@ hotrodread(Chan *c, void *buf, long n)
 	return 0;
 }
 
-/*
- *  write hotrod memory
- */
 long	 
 hotrodwrite(Chan *c, void *buf, long n)
 {
@@ -356,21 +372,23 @@ hotrodwrite(Chan *c, void *buf, long n)
 		}
 		if((((ulong)buf)&(KSEGM|3)) == KSEG0){
 			/*
-			 *  use supplied buffer, no need to lock for reply
+			 * use supplied buffer, no need to lock for reply
 			 */
-			mp = &u->khot;
+			mp = &((User*)(u->p->upage->pa|KZERO))->khot;
+			if(mp->abort)	/* use reserved flush msg */
+				mp = &((User*)(u->p->upage->pa|KZERO))->fhot;
 			qlock(hp);
 			mp->cmd = WRITE;
 			mp->param[0] = MP2VME(buf);
 			mp->param[1] = n;
 			mp->param[2] = hotsum(buf, n, ENABCKSUM);
-			hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->khot);
+			hotsend(hp, mp);
 			qunlock(hp);
 		}else{
 			/*
-			 *  use hotrod buffer.  lock the buffer until the reply
+			 * use hotrod buffer.  lock the buffer until the reply
 			 */
-			mp = &u->uhot;
+			mp = &((User*)(u->p->upage->pa|KZERO))->uhot;
 			qlock(&hp->buflock);
 			qlock(hp);
 			memcpy(hp->buf, buf, n);
@@ -378,7 +396,7 @@ hotrodwrite(Chan *c, void *buf, long n)
 			mp->param[0] = MP2VME(hp->buf);
 			mp->param[1] = n;
 			mp->param[2] = hotsum((ulong*)hp->buf, n, ENABCKSUM);
-			hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->uhot);
+			hotsend(hp, mp);
 			qunlock(hp);
 			qunlock(&hp->buflock);
 		}
@@ -404,17 +422,27 @@ hotrodwstat(Chan *c, char *dp)
 void
 hotrodintr(int vec)
 {
-	Hotrod *hp;
+	Hotrod *h;
+	Hotmsg *hm;
 
-/*	print("hotrod%d interrupt\n", vec - Vmevec); /**/
-	hp = &hotrod[vec - Vmevec];
-	if(hp < hotrod || hp > &hotrod[Nhotrod]){
+	h = &hotrod[vec - Vmevec];
+	if(h < hotrod || h > &hotrod[Nhotrod]){
 		print("bad hotrod vec\n");
 		return;
 	}
-	hp->addr->lcsr3 &= ~INT_VME;
+	h->addr->lcsr3 &= ~INT_VME;
+	hm = (Hotmsg*)VME2MP(h->rq[h->ri]);
+	h->rq[h->ri] = 0;
+	h->ri++;
+	if(h->ri >= NRQ)
+		h->ri = 0;
+	hm->intr = 1;
+	if(hm->abort)
+		return;
+	wakeup(&hm->r);
 }
 
+#ifdef	ENABMEMTEST
 void
 mem(Hot *hot, ulong *buf, ulong size)
 {
@@ -504,3 +532,4 @@ part4:
 		}
 	}
 }
+#endif
