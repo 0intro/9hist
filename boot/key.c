@@ -47,7 +47,6 @@ key(int islocal, Method *mp)
 					close(fd);
 					fd = -1;
 				}
-print("safeoff = %d\n", safeoff);
 				safelen = 512;
 			}
 		}
