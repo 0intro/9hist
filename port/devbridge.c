@@ -95,7 +95,9 @@ struct Bridge
 	Centry	cache[CacheSize];
 	ulong	hit;
 	ulong	miss;
-	ulong copy;
+	ulong	copy;
+	long	delay0;		// constant microsecond delay per packet
+	long	delayn;		// microsecond delay per byte
 	int tcpmss;		// modify tcpmss value
 
 	Log;
@@ -188,7 +190,7 @@ static void	etherread(void *a);
 static char	*cachedump(Bridge *b);
 static void	portfree(Port *port);
 static void	cacheflushport(Bridge *b, int port);
-static void etherwrite(Port *port, Block *bp);
+static void	etherwrite(Port *port, Block *bp);
 
 extern ulong	parseip(uchar*, char*);
 extern ushort	ipcsum(uchar *addr);
@@ -398,6 +400,11 @@ bridgewrite(Chan *c, void *a, long n, vlong off)
 			if(cb->nf != 2)
 				error("usage: clear option");
 			bridgeoption(b, cb->f[1], 0);
+		} else if(strcmp(arg0, "delay") == 0) {
+			if(cb->nf != 3)
+				error("usage: delay delay0 delayn");
+			b->delay0 = strtol(cb->f[1], nil, 10);
+			b->delayn = strtol(cb->f[2], nil, 10);
 		} else
 			error("unknown control request");
 		poperror();
@@ -972,6 +979,7 @@ etherread(void *a)
 	Block *bp, *bp2;
 	Etherpkt *ep;
 	Centry *ce;
+	long md;
 	
 	qlock(b);
 	port->readp = up;	/* hide identity under a rock for unbind */
@@ -1005,6 +1013,15 @@ if(0)print("devbridge: etherread: blocklen = %d\n", blocklen(bp));
 		cacheupdate(b, ep->s, port->id);
 		if(b->tcpmss)
 			tcpmsshack(ep, BLEN(bp));
+
+		/*
+		 * delay packets to simulate a slow link
+		 */
+		if(b->delay0 || b->delayn){
+			md = b->delay0 + b->delayn * BLEN(bp);
+			if(md > 0)
+				microdelay(md);
+		}
 
 		if(ep->d[0] & 1) {
 			log(b, Logmcast, "mulitcast: port=%d src=%E dst=%E type=%#.4ux\n",

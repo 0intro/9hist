@@ -52,6 +52,7 @@ microdelay(int l)
 	ulong i;
 
 	l *= m->delayloop;
+	l += 500;
 	l /= 1000;
 	if(l <= 0)
 		l = 1;
