@@ -40,7 +40,9 @@ enum
 	ILgain		= 8,
 };
 
-#define Starttimer(s)	{(s)->timeout = 0; (s)->fasttime = (Fasttime*(s)->rtt)/Iltickms; (s)->slowtime = (Slowtime*(s)->rtt)/Iltickms; }
+#define Starttimer(s)	{(s)->timeout = 0; \
+			 (s)->fasttime = (Fasttime*(s)->rtt)/Iltickms; \
+			 (s)->slowtime = (Slowtime*(s)->rtt)/Iltickms; }
 
 void	ilrcvmsg(Ipconv*, Block*);
 void	ilackproc(void*);
@@ -224,7 +226,7 @@ ilackto(Ilcb *ic, ulong ackto)
 
 	if(ic->rttack == ackto) {
 		t = TK2MS(MACHP(0)->ticks - ic->ackms);
-		/* Guard against the ulong zero wrap */
+		/* Guard against the ulong zero wrap if MACP->ticks */
 		if(t < 100*ic->rtt)
 			ic->rtt = (ic->rtt*(ILgain-1)+t)/ILgain;
 		if(ic->rtt < Iltickms)
