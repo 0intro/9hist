@@ -81,8 +81,7 @@ struct PMMU
 struct Notsave
 {
 	ulong	svstatus;
-	long	svr1;
-	long	svhr1;
+	ulong	svr1;
 };
 
 #include "../port/portdat.h"
