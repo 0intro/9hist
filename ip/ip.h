@@ -8,7 +8,6 @@ typedef struct	Ipselftab	Ipselftab;
 typedef struct	Iplink	Iplink;
 typedef struct	Iplifc	Iplifc;
 typedef struct	Ipmulti	Ipmulti;
-typedef struct	Iproute	Iproute;
 typedef struct	IProuter IProuter;
 typedef struct	Ipifc	Ipifc;
 typedef struct	Log	Log;

@@ -263,7 +263,15 @@ addnode(Fs *f, Route **cur, Route *new)
 		addqueue(&f->queue, p);
 		break;
 	case Requals:
-		copygate(p, new);
+		/*
+		 *  supercede the old entry if the old one isn't
+		 *  a local interface.
+		 */
+		if((p->type & Rifc) == 0){
+			p->type = new->type;
+			p->ifcid = -1;
+			copygate(p, new);
+		}
 		freeroute(new);
 		break;
 	case Rcontained:
@@ -471,7 +479,11 @@ v4lookup(Fs *f, uchar *a)
 			p = p->left;
 
 	if(q && (q->ifc == nil || q->ifcid != q->ifc->ifcid)){
-		v4tov6(gate, q->v4.gate);
+		if(q->type & Rifc) {
+			hnputl(gate+IPv4off, q->v4.address);
+			memmove(gate, v4prefix, IPv4off);
+		} else
+			v4tov6(gate, q->v4.gate);
 		q->ifc = findipifc(f, gate, q->type);
 		if(q->ifc == nil)
 			return nil;
@@ -488,6 +500,7 @@ v6lookup(Fs *f, uchar *a)
 	ulong la[IPllen];
 	int h;
 	ulong x, y;
+	uchar gate[IPaddrlen];
 
 	if(memcmp(a, v4prefix, 12) == 0){
 		q = v4lookup(f, a+12);
@@ -527,12 +540,18 @@ v6lookup(Fs *f, uchar *a)
 next:		;
 	}
 
-	if(q && q->ifc == nil){
-		q->ifc = findipifc(f, q->v6.gate, q->type);
+	if(q && (q->ifc == nil || q->ifcid != q->ifc->ifcid)){
+		if(q->type & Rifc) {
+			hnputl(gate, q->v6.gate[0]);
+			hnputl(gate+4, q->v6.gate[1]);
+			hnputl(gate+8, q->v6.gate[2]);
+			hnputl(gate+12, q->v6.gate[3]);
+			q->ifc = findipifc(f, gate, q->type);
+		} else
+			q->ifc = findipifc(f, q->v6.gate, q->type);
 		if(q->ifc == nil)
 			return nil;
-		if(q->ifcid != q->ifc->ifcid)
-			return nil;
+		q->ifcid = q->ifc->ifcid;
 	}
 	
 	return q;

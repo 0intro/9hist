@@ -360,7 +360,7 @@ ipifcadd(Ipifc *ifc, char **argv, int argc)
 	if(isv4(ip))
 		v4addroute(f, tifc, rem+IPv4off, mask+IPv4off, ip+IPv4off, type);
 	else
-		v6addroute(f, tifc, ip, mask, rem, type);
+		v6addroute(f, tifc, rem, mask, ip, type);
 
 	addselfcache(f, ifc, lifc, ip, Runi);
 
@@ -860,11 +860,15 @@ ipforme(Fs *f, uchar *addr)
 Ipifc*
 findipifc(Fs *f, uchar *remote, int type)
 {
-	Ipifc *ifc;
+	Ipifc *ifc, *x;
 	Iplifc *lifc;
 	Conv **cp, **e;
 	uchar gnet[IPaddrlen];
+	uchar xmask[IPaddrlen];
 
+	x = nil;
+
+	/* find most specific match */
 	e = &f->ipifc->conv[f->ipifc->nc];
 	for(cp = f->ipifc->conv; cp < e; cp++){
 		if(*cp == 0)
@@ -872,12 +876,18 @@ findipifc(Fs *f, uchar *remote, int type)
 		ifc = (Ipifc*)(*cp)->ptcl;
 		for(lifc = ifc->lifc; lifc; lifc = lifc->next){
 			maskip(remote, lifc->mask, gnet);
-			if(ipcmp(gnet, lifc->net) == 0)
-				return ifc;
+			if(ipcmp(gnet, lifc->net) == 0){
+				if(x == nil || ipcmp(lifc->mask, xmask) > 0){
+					x = ifc;
+					ipmove(xmask, lifc->mask);
+				}
+			}
 		}
 	}
+	if(x != nil)
+		return x;
 
-	/* for now for broadcast and mutlicast, just use first interface */
+	/* for now for broadcast and multicast, just use first interface */
 	if(type & (Rbcast|Rmulti)){
 		for(cp = f->ipifc->conv; cp < e; cp++){
 			if(*cp == 0)
