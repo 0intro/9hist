@@ -33,6 +33,7 @@ enum
 
 /* imported */
 extern	GSubfont defont0;
+extern Cursor arrow;
 
 /* exported */
 GSubfont *defont;
@@ -347,7 +348,9 @@ vgawrite(Chan *c, void *buf, long n, ulong offset)
 		|| maxx > 1280 || maxy > 1024
 		|| ldepth > 3 || ldepth < 0)
 			error(Ebadarg);
+		cursoroff(1);
 		setscreen(maxx, maxy, ldepth);
+		cursoron(1);
 		return n;
 	case Qvgaport:
 		for (cp = buf, port=offset; port<offset+n; port++)
@@ -387,6 +390,12 @@ screeninit(void)
 {
 	int i;
 	ulong *l;
+
+	/*
+	 *  arrow is defined as a big endian
+	 */
+	pixreverse(arrow.set, 2*16, 0);
+	pixreverse(arrow.clr, 2*16, 0);
 
 	/*
 	 *  swizzle the font longs.  we do both byte and bit swizzling
@@ -1104,7 +1113,7 @@ setcolor(ulong p, ulong r, ulong g, ulong b)
  *
  *	if the bits in uchar x are labeled
  *		76543210
- *	then l1revsep[x] yields a ushort with bits
+ *	then l1revsep[x] yields a ulong with bits
  *		________1357________0246
  *	where _ represents a bit whose value is 0.
  *
@@ -1154,7 +1163,7 @@ ulong l1revsep[] = {
  *
  *	if the bits in uchar x are labeled
  *		76543210
- *	then l1revsep[x] yields a ushort with bits
+ *	then l1revsep[x] yields a ulongt with bits
  *		______37______26______15______04
  *	where _ represents a bit whose value is 0.
  *
@@ -1198,7 +1207,7 @@ ulong l2revsep[] = {
 };
 
 /*
- *  reverse pixels into little endian order
+ *  reverse pixels into little endian order (also used by l0update)
  */
 uchar revtab0[] = {
  0x00, 0x80, 0x40, 0xc0, 0x20, 0xa0, 0x60, 0xe0,

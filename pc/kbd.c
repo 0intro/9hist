@@ -133,7 +133,7 @@ enum
 static void	kbdintr(Ureg*);
 static void	ctps2intr(Ureg*);
 
-extern int m3mouseputc(IOQ*, int);
+extern int m3mouseputc(IOQ*, int), mouseputc(IOQ*, int);
 
 /*
  *  wait for output no longer busy
@@ -286,9 +286,9 @@ serialmouse(int port, char *type, int setspeed)
 	if(setspeed)
 		setspeed = 1200;
 	if(type && *type == 'M')
-		NS16552special(port, setspeed, 0, 0, m3mouseputc);
+		NS16552special(port, setspeed, &mouseq, 0, m3mouseputc);
 	else
-		NS16552special(port, setspeed, 0, 0, 0);
+		NS16552special(port, setspeed, &mouseq, 0, mouseputc);
 	mousetype = Mouseserial;
 }
 
