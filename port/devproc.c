@@ -737,10 +737,10 @@ procctlreq(Proc *p, char *va, int n)
 		ready(p);
 	}
 	else
-	if(strncmp(buf, "pri", 3) == 0){
-		if(n < 4)
+	if(strncmp(buf, "nice", 4) == 0){
+		if(n < 5)
 			error(Ebadctl);
-		i = NiceNormal+atoi(buf+4);
+		i = NiceNormal+atoi(buf+5);
 		if(i < 0)
 			i = 0;
 		if(i >= NiceMax)

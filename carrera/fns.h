@@ -120,11 +120,6 @@ void		enetaddr(uchar*);
 #define KADDR1(a)	((void*)((ulong)(a)|KSEG1))
 #define PADDR(a)	((ulong)(a)&~KSEGM)
 
-void	hnputl(void*, ulong v);
-void	hnputs(void*, ushort v);
-ulong	nhgetl(void*);
-ushort	nhgets(void*);
-
 void	ifwrite(void*, Block*, int);
 void*	ifinit(int);
 void	ifjab(void);
