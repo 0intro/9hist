@@ -176,7 +176,8 @@ etheriq(Ether* ether, Block* bp, int fromwire)
 				else if(xbp = iallocb(len)){
 					memmove(xbp->wp, pkt, len);
 					xbp->wp += len;
-					qpass(f->in, xbp);
+					if(qpass(f->in, xbp) < 0)
+						ether->soverflows++;
 				}
 				else
 					ether->soverflows++;
