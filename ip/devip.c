@@ -14,7 +14,6 @@ enum
 	Qbootp,
 	Qndb,
 	Qiproute,
-	Qiprouter,
 	Qipselftab,
 	Qlog,
 
@@ -158,10 +157,6 @@ ip1gen(Chan *c, int i, Dir *dp)
 		prot = 0444;
 		q = (Qid){QID(0, 0, Qipselftab), 0};
 		break;
-	case Qiprouter:
-		p = "iprouter";
-		q = (Qid){QID(0, 0, Qiprouter), 0};
-		break;
 	case Qlog:
 		p = "log";
 		q = (Qid){QID(0, 0, Qlog), 0};
@@ -203,7 +198,6 @@ ipgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 	case Qndb:
 	case Qlog:
 	case Qiproute:
-	case Qiprouter:
 	case Qipselftab:
 		return ip1gen(c, TYPE(c->qid), dp);
 	case Qprotodir:
@@ -364,9 +358,6 @@ ipopen(Chan* c, int omode)
 	case Qlog:
 		netlogopen(f);
 		break;
-	case Qiprouter:
-		iprouteropen(f);
-		break;
 	case Qiproute:
 		memmove(c->tag, "none", sizeof(c->tag));
 		break;
@@ -526,10 +517,6 @@ ipclose(Chan* c)
 	case Qlog:
 		if(c->flag & COPEN)
 			netlogclose(f);
-		break;
-	case Qiprouter:
-		if(c->flag & COPEN)
-			iprouterclose(f);
 		break;
 	case Qdata:
 	case Qctl:

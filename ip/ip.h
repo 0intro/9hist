@@ -232,15 +232,6 @@ struct Proto
 };
 
 /*
- *  Stream for sending packets to user level
- */
-struct IProuter {
-	QLock;
-	int	opens;
-	Queue	*q;
-};
-
-/*
  *  one per IP protocol stack
  */
 struct Fs
@@ -257,7 +248,6 @@ struct Fs
 	IP	*ip;
 	Ipselftab	*self;
 	Arp	*arp;
-	IProuter iprouter;
 
 	Route	*v4root[1<<Lroot];	/* v4 routing forest */
 	Route	*v6root[1<<Lroot];	/* v6 routing forest */
@@ -506,14 +496,6 @@ extern void	ip_init(Fs*);
  */
 extern char*	bootp(Ipifc*);
 extern int	bootpread(char*, ulong, int);
-
-/*
- *  iprouter.c
- */
-void	useriprouter(Fs*, uchar*, Block*);
-void	iprouteropen(Fs*);
-void	iprouterclose(Fs*);
-long	iprouterread(Fs*, void*, int);
 
 /*
  *  resolving inferno/plan9 differences

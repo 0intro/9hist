@@ -214,6 +214,7 @@ ipoput(Fs *f, Block *bp, int gating, int ttl, int tos)
 	}
 
 	if(eh->frag[0] & (IP_DF>>8)){
+		ip->istats.ipFragFails++;
 		ip->istats.ipOutDiscards++;
 		netlog(f, Logip, "%V: eh->frag[0] & (IP_DF>>8)\n", eh->dst);
 		goto raise;
@@ -221,6 +222,7 @@ ipoput(Fs *f, Block *bp, int gating, int ttl, int tos)
 
 	seglen = (medialen - IPHDR) & ~7;
 	if(seglen < 8){
+		ip->istats.ipFragFails++;
 		ip->istats.ipOutDiscards++;
 		netlog(f, Logip, "%V seglen < 8\n", eh->dst);
 		goto raise;
@@ -262,6 +264,7 @@ ipoput(Fs *f, Block *bp, int gating, int ttl, int tos)
 		while(chunk) {
 			if(!xp) {
 				ip->istats.ipOutDiscards++;
+				ip->istats.ipFragFails++;
 				freeblist(nb);
 				netlog(f, Logip, "!xp: chunk %d\n", chunk);
 				goto raise;
@@ -283,6 +286,7 @@ ipoput(Fs *f, Block *bp, int gating, int ttl, int tos)
 		ifc->m->bwrite(ifc, nb, V4, gate);
 		ip->istats.ipFragCreates++;
 	}
+	ip->istats.ipFragOKs++;
 raise:
 	runlock(ifc);
 	poperror();
@@ -377,7 +381,7 @@ ipiput(Fs *f, uchar *ia, Block *bp)
 	/* route */
 	if(notforme) {
 		if(!ip->iprouting){
-			useriprouter(f, ia, bp);
+			freeb(bp);
 			return;
 		}
 
