@@ -21,7 +21,7 @@ enum
 
 	MAXTTL=		255,
 
-	Ipaddrlen=	4,
+	IPaddrlen=	4,
 	Ipbcast=	0xffffffff,	/* ip broadcast address */
 	Ipbcastobs=	0,		/* obsolete (but still used) ip broadcast addr */
 	Ipallsys=	0xe0000001,	/* multicast for all systems */

@@ -105,7 +105,7 @@ ipoput(Block *bp, int gating, int ttl)
 
 	if(isbmcast(eh->dst)){
 		m = Mediaroute(eh->src, nil);
-		memmove(gate, eh->dst, Ipaddrlen);
+		memmove(gate, eh->dst, IPaddrlen);
 	} else
 		m = Mediaroute(eh->dst, gate);
 	if(m == nil){

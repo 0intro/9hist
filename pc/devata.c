@@ -11,7 +11,7 @@
 #include	"../port/error.h"
 
 
-#define DPRINT if(0)print
+#define DPRINT if(1)print
 #define XPRINT if(0)print
 #define ILOCK(x)
 #define IUNLOCK(x)
@@ -156,7 +156,6 @@ struct Controller
 	int	pbase;		/* base port */
 	uchar	ctlrno;
 	int	tbdf;
-	uchar	resetok;
 
 	/*
 	 *  current operation
@@ -343,7 +342,7 @@ atadrivealloc(Controller* ctlr, int driveno, int atapi)
 }
 
 static int
-atactlrprobe(int ctlrno, int irq)
+atactlrprobe(int ctlrno, int irq, int resetok)
 {
 	Controller *ctlr;
 	int atapi, mask, port;
@@ -359,8 +358,9 @@ atactlrprobe(int ctlrno, int irq)
 	port = pbase[ctlrno];
 	outb(port+Pdh, DHmagic);
 	microdelay(1);
-	if((inb(port+Pdh) & 0xFF) != DHmagic){
-		DPRINT("ata%d: DHmagic not ok\n", ctlrno);
+	status = inb(port+Pdh) & 0xFF;
+	if(status != DHmagic){
+		DPRINT("ata%d: DHmagic not ok == %ux\n", ctlrno, status);
 		return -1;
 	}
 	DPRINT("ata%d: DHmagic ok\n", ctlrno);
@@ -387,7 +387,7 @@ atactlrprobe(int ctlrno, int irq)
 	 * ATAPI signature straight off. If we find it there will be no probe
 	 * done for a slave. Tough.
 	 */
-	if(ctlr->resetok){
+	if(resetok){
 		outb(port+Pctrl, Srst|nIEN);
 		delay(10);
 		outb(port+Pctrl, 0);
@@ -487,7 +487,7 @@ skipedd:
 static void
 atactlrreset(void)
 {
-	int ctlrno, driveno, i, slave, spindown;
+	int ctlrno, driveno, i, resetok, slave, spindown;
 	ISAConf isa;
 
 	cmd640b();
@@ -500,9 +500,7 @@ atactlrreset(void)
 		if(isa.irq == 0 && (isa.irq = defirq[ctlrno]) == 0)
 			continue;
 
-		if(atactlrprobe(ctlrno, VectorPIC+isa.irq))
-			continue;
-	
+		driveno = resetok = spindown = 0;
 		for(i = 0; i < isa.nopt; i++){
 			DPRINT("ata%d: opt %s\n", ctlrno, isa.opt[i]);
 			if(strncmp(isa.opt[i], "spindown", 8) == 0){
@@ -514,21 +512,24 @@ atactlrreset(void)
 					slave = 1;
 				else
 					continue;
-				driveno = ctlrno*2+slave;
-				if(atadrive[driveno] == 0)
-					continue;
 				if((spindown = strtol(&isa.opt[i][10], 0, 0)) == 0)
 					continue;
 				if(spindown < (Hardtimeout+2000)/1000)
 					spindown = (Hardtimeout+2000)/1000;
-				atadrive[driveno]->spindown = spindown;
-				spindownmask |= (1<<driveno);
-				DPRINT("ata%d: opt spindownmask %ux\n",
-					ctlrno, spindownmask);
+				driveno = ctlrno*2+slave;
 			}
 			else if(strcmp(isa.opt[i], "reset") == 0)
-				atactlr[ctlrno]->resetok = 1;
+				resetok = 1;
 		}
+
+		if(atactlrprobe(ctlrno, VectorPIC+isa.irq, resetok))
+			continue;
+
+		if(spindown == 0 || atadrive[driveno] == 0)
+			continue;
+		atadrive[driveno]->spindown = spindown;
+		spindownmask |= (1<<driveno);
+		DPRINT("ata%d: opt spindownmask %ux\n", ctlrno, spindownmask);
 	}
 
 	if(spindownmask)

@@ -542,7 +542,7 @@ static void
 setladdrport(Conv* c, char* str)
 {
 	char *p;
-	uchar addr[Ipaddrlen];
+	uchar addr[IPaddrlen];
 
 	p = strchr(str, '!');
 	if(p == nil) {
@@ -567,7 +567,7 @@ static char*
 setraddrport(Conv* c, char* str)
 {
 	char *p;
-	uchar addr[Ipaddrlen];
+	uchar addr[IPaddrlen];
 
 	p = strchr(str, '!');
 	if(p == nil)

@@ -204,6 +204,8 @@ udpiput(Media *m, Block *bp)
 	Udpcb *ucb;
 	Ipaddr raddr, laddr;
 	ushort rport, lport;
+	uchar dst[IPaddrlen];
+	uchar src[IPaddrlen];
 
 	USED(m);
 	uh = (Udphdr*)(bp->rp);
@@ -217,11 +219,13 @@ udpiput(Media *m, Block *bp)
 	laddr = nhgetl(uh->udpdst);
 	lport = nhgets(uh->udpdport);
 	rport = nhgets(uh->udpsport);
+	memmove(src, uh->udpsrc, IPaddrlen);
+	memmove(dst, uh->udpdst, IPaddrlen);
 
 	if(udpsum && nhgets(uh->udpcksum)) {
 		if(ptclcsum(bp, UDP_IPHDR, len+UDP_PHDRSIZE)) {
 			udp.csumerr++;
-			netlog(Logudp, "udp: checksum error %I\n", uh->udpsrc);
+			netlog(Logudp, "udp: checksum error %I\n", src);
 			freeblist(bp);
 			return;
 		}
@@ -238,8 +242,8 @@ udpiput(Media *m, Block *bp)
 	}
 
 	if(*p == nil) {
-		netlog(Logudp, "udp: no conv %I.%d -> %I.%d\n", uh->udpsrc, rport,
-			uh->udpdst, lport);
+		netlog(Logudp, "udp: no conv %I.%d -> %I.%d\n", src, rport,
+			dst, lport);
 		freeblist(bp);
 		return;
 	}
@@ -250,14 +254,14 @@ udpiput(Media *m, Block *bp)
 	len -= (UDP_HDRSIZE-UDP_PHDRSIZE);
 	bp = trimblock(bp, UDP_IPHDR+UDP_HDRSIZE, len);
 	if(bp == nil){
-		netlog(Logudp, "udp: len err %I.%d -> %I.%d\n", uh->udpsrc, rport,
-			uh->udpdst, lport);
+		netlog(Logudp, "udp: len err %I.%d -> %I.%d\n", src, rport,
+			dst, lport);
 		udp.lenerr++;
 		return;
 	}
 
-	netlog(Logudpmsg, "udp: %I.%d -> %I.%d l %d\n", uh->udpsrc, rport,
-		uh->udpdst, lport, len);
+	netlog(Logudpmsg, "udp: %I.%d -> %I.%d l %d\n", src, rport,
+		dst, lport, len);
 
 	ucb = (Udpcb*)c->ptcl;
 
@@ -265,7 +269,7 @@ udpiput(Media *m, Block *bp)
 		/* pass the src address */
 		bp = padblock(bp, UDP_USEAD);
 		hnputl(bp->rp, raddr);
-		if(Mediaforme(uh->udpdst) > 0)
+		if(Mediaforme(dst) > 0)
 			hnputl(bp->rp+4, laddr);
 		else
 			hnputl(bp->rp+4, m->myip[0]);
@@ -279,7 +283,7 @@ udpiput(Media *m, Block *bp)
 			c->rport = rport;
 
 			/* reply with the same ip address (if not broadcast) */
-			if(Mediaforme(uh->udpdst) > 0)
+			if(Mediaforme(dst) > 0)
 				c->laddr = laddr;
 			else
 				c->laddr = m->myip[0];
@@ -289,8 +293,8 @@ udpiput(Media *m, Block *bp)
 		bp = concatblock(bp);
 
 	if(qfull(c->rq)){
-		netlog(Logudp, "udp: qfull %I.%d -> %I.%d\n", uh->udpsrc, rport,
-			uh->udpdst, lport);
+		netlog(Logudp, "udp: qfull %I.%d -> %I.%d\n", src, rport,
+			dst, lport);
 		freeblist(bp);
 	}else
 		qpass(c->rq, bp);

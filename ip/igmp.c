@@ -32,14 +32,14 @@ struct IGMPpkt
 	byte	Unused;	
 	byte	proto;		/* Protocol */
 	byte	cksum[2];	/* checksum of ip portion */
-	byte	src[Ipaddrlen];		/* Ip source */
-	byte	dst[Ipaddrlen];		/* Ip destination */
+	byte	src[IPaddrlen];		/* Ip source */
+	byte	dst[IPaddrlen];		/* Ip destination */
 
 	/* igmp header */
 	byte	vertype;	/* version and type */
 	byte	unused;
 	byte	igmpcksum[2];		/* checksum of igmp portion */
-	byte	group[Ipaddrlen];	/* multicast group */
+	byte	group[IPaddrlen];	/* multicast group */
 };
 
 /*
@@ -84,7 +84,7 @@ igmpsendreport(Media *m, byte *addr)
 	hnputl(p->dst, Ipallsys);
 	p->vertype = (1<<4) | IGMPreport;
 	p->proto = IP_IGMPPROTO;
-	memmove(p->group, addr, Ipaddrlen);
+	memmove(p->group, addr, IPaddrlen);
 	hnputs(p->igmpcksum, ptclcsum(bp, IGMP_IPHDRSIZE, IGMP_HDRSIZE));
 	netlog(Logigmp, "igmpreport %I\n", p->group);
 	ipoput(bp, 0, 1);	/* TTL of 1 */
@@ -103,7 +103,7 @@ igmpproc(void *a)
 {
 	IGMPrep *rp, **lrp;
 	Multicast *mp, **lmp;
-	byte ip[Ipaddrlen];
+	byte ip[IPaddrlen];
 
 	USED(a);
 
