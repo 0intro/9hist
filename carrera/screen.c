@@ -9,181 +9,238 @@
 
 #include	<libg.h>
 #include	<gnot.h>
+#include	"screen.h"
 
-enum
+#define	MINX	8
+
+#define DAC	((Dac*)BTDac)
+typedef struct Dac Dac;
+struct Dac
 {
-	EMISCR=		0x3CC,		/* control sync polarity */
-	EMISCW=		0x3C2,
-	EFCW=		0x3DA,		/* feature control */
-	EFCR=		0x3CA,
-	GRX=		0x3CE,		/* index to graphics registers */
-	GR=		0x3CF,		/* graphics registers */
-	 Grms=		 0x04,		/*  read map select register */
-	SRX=		0x3C4,		/* index to sequence registers */
-	SR=		0x3C5,		/* sequence registers */
-	 Smmask=	 0x02,		/*  map mask */
-	CRX=		0x3D4,		/* index to crt registers */
-	CR=		0x3D5,		/* crt registers */
-	 Cvre=		 0x11,		/*  vertical retrace end */
-	ARW=		0x3C0,		/* attribute registers (writing) */
-	ARR=		0x3C1,		/* attribute registers (reading) */
-	CMRX=		0x3C7,		/* color map read index */
-	CMWX=		0x3C8,		/* color map write index */
-	CM=		0x3C9,		/* color map data reg */
+	uchar	pad0[7];
+	uchar	cr0;
+	uchar	pad1[7];
+	uchar	cr1;
+	uchar	pad2[7];
+	uchar	cr2;
+	uchar	pad3[7];
+	uchar	cr3;
 };
 
-typedef struct VGAmode	VGAmode;
-struct VGAmode
-{
-	uchar	general[2];
-	uchar	sequencer[5];
-	uchar	crt[0x19];
-	uchar	graphics[9];
-	uchar	attribute[0x15];
-	struct {
-		uchar viden;
-		uchar sr6;
-		uchar sr7;
-		uchar ar16;
-		uchar ar17;
-		uchar crt31;
-		uchar crt32;
-		uchar crt33;
-		uchar crt34;
-		uchar crt35;
-		uchar crt36;
-		uchar crt37;
-	} tseng;
-};
+char s1[] = { 0x40, 0x00, 0xC0, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
-void	setmode(VGAmode*);
-
-extern	struct GBitmap	gscreen;
-
-VGAmode dfltmode = 
-{
-	0xef, 0x00, 
-	/* sequence */
-	0x03, 0x01, 0x0f, 0x00, 0x06, 
-	/* crt */
-	0xa1, 0x7f, 0x7f, 0x85, 0x85, 0x96, 0x24, 0xf5, 
-	0x00, 0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
-	0x02, 0x88, 0xff, 0x40, 0x00, 0xff, 0x25, 0xc3, 
-	0xff, 
-	/* graphics */
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x0f, 
-	0xff, 
-	/* attribute */
-	0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 
-	0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 
-	0x01, 0x00, 0x0f, 0x00, 0x00, 
-	/* special */
-	0x00, 0x00, 0xbc, 0x00, 0x00, 0x00, 0x28, 0x00, 
-	0x0a, 0x00, 0x43, 0x1f, 
-};
-
-	Lock		screenlock;
 	GSubfont*	defont;
 extern	GSubfont	defont0;
+static	ulong		rep(ulong, int);
+
+struct{
+	Point	pos;
+	int	bwid;
+}out;
+
+Lock	screenlock;
 
 GBitmap	gscreen =
 {
+	Screenvirt+0x00017924,
 	0,
-	0,
-	(1024*(1<<0))/32,
-	0,
-	{ 0, 0, 1024, 768 },
-	{ 0, 0, 1024, 768 },
+	512,
+	3,
+	{ 0, 0, 1599, 1239 },
+	{ 0, 0, 1599, 1239 },
 	0
 };
 
-GBitmap	vgascreen =
+static GBitmap hwcursor=
 {
-	EISA(0xA0000),
+	0,		/* base filled in by malloc when needed */
 	0,
-	(1024*(1<<0))/32,
+	4,
+	1,
+	{0, 0, 64, 64},
+	{0, 0, 64, 64}
+};
+
+uchar bdata[] =
+{
+	0xC0,
+};
+
+GBitmap bgrnd =
+{
+	(ulong*)bdata,
 	0,
-	{ 0, 0, 1024, 768 },
-	{ 0, 0, 1024, 768 },
+	4,
+	3,
+	{ 0, 0, 1, 1 },
+	{ 0, 0, 1, 1 },
 	0
+};
+
+Cursor fatarrow = {
+	{ -1, -1 },
+	{
+		0xff, 0xff, 0x80, 0x01, 0x80, 0x02, 0x80, 0x0c, 
+		0x80, 0x10, 0x80, 0x10, 0x80, 0x08, 0x80, 0x04, 
+		0x80, 0x02, 0x80, 0x01, 0x80, 0x02, 0x8c, 0x04, 
+		0x92, 0x08, 0x91, 0x10, 0xa0, 0xa0, 0xc0, 0x40, 
+	},
+	{
+		0x00, 0x00, 0x7f, 0xfe, 0x7f, 0xfc, 0x7f, 0xf0, 
+		0x7f, 0xe0, 0x7f, 0xe0, 0x7f, 0xf0, 0x7f, 0xf8, 
+		0x7f, 0xfc, 0x7f, 0xfe, 0x7f, 0xfc, 0x73, 0xf8, 
+		0x61, 0xf0, 0x60, 0xe0, 0x40, 0x40, 0x00, 0x00, 
+	},
 };
 
 static Rectangle window;
 static Point cursor;
 static int h, w;
 extern Cursor arrow;
-static ulong colormap[256][3];
-static Rectangle mbb;
-static Rectangle NULLMBB = {10000, 10000, -10000, -10000};
-static int isscroll;
+
+void
+gborder(GBitmap *l, Rectangle r, int i, Fcode c)
+{
+	if(i < 0){
+		r = inset(r, i);
+		i = -i;
+	}
+	gbitblt(l, r.min, l, Rect(r.min.x, r.min.y, r.max.x, r.min.y+i), c);
+	gbitblt(l, Pt(r.min.x, r.max.y-i),
+		l, Rect(r.min.x, r.max.y-i, r.max.x, r.max.y), c);
+	gbitblt(l, Pt(r.min.x, r.min.y+i),
+		l, Rect(r.min.x, r.min.y+i, r.min.x+i, r.max.y-i), c);
+	gbitblt(l, Pt(r.max.x-i, r.min.y+i),
+		l, Rect(r.max.x-i, r.min.y+i, r.max.x, r.max.y-i), c);
+}
 
 void
 screenwin(void)
 {
-	int i;
+	Dac *d;
+	ulong zbuf[16];
 
-	for(i = 0; i < 768; i += 2) {
-		memset(gscreen.base+(i*gscreen.width), 0xCC, 160);
-		memset(gscreen.base+((i+1)*gscreen.width), 0xCC^0xff, 160);
-	}
+	gtexture(&gscreen, gscreen.r, &bgrnd, S);
 	w = defont0.info[' '].width;
 	h = defont0.height;
-	defont = &defont0;	
 
-	window.min = Pt(50, 50);
-	window.max = add(window.min, Pt(10+w*100, 10+h*40));
+	window.min = Pt(100, 100);
+	window.max = add(window.min, Pt(10+w*120, 10+h*60));
 
 	gbitblt(&gscreen, window.min, &gscreen, window, Zero);
 	window = inset(window, 5);
 	cursor = window.min;
 	window.max.y = window.min.y+((window.max.y-window.min.y)/h)*h;
-	hwcurs = 0;
 
-	mbb = gscreen.r;
-	screenupdate();
+	hwcurs = 1;
+	d = DAC;
+	/* cursor color 1: white */
+	d->cr1 = 0x01;
+	d->cr0 = 0x81;
+	d->cr2 = 0xFF;
+	d->cr2 = 0xFF;
+	d->cr2 = 0xFF;
+	/* cursor color 2: noir */
+	d->cr1 = 0x01;
+	d->cr0 = 0x82;
+	d->cr2 = 0;
+	d->cr2 = 0;
+	d->cr2 = 0;
+	/* cursor color 3: schwarz */
+	d->cr1 = 0x01;
+	d->cr0 = 0x83;
+	d->cr2 = 0;
+	d->cr2 = 0;
+	d->cr2 = 0;
+	/* initialize with all-transparent cursor */
+	memset(zbuf, 0, sizeof zbuf);
+	hwcursset(zbuf, zbuf, 0, 0);
+	/* enable both planes of cursor */
+	d->cr1 = 0x03;
+	d->cr0 = 0x00;
+	d->cr2 = 0xc0;
 }
 
-/*
- *  expand 3 and 6 bits of color to 32
- */
-static ulong
-x3to32(uchar x)
+void
+dacinit(void)
 {
-	ulong y;
+	Dac *d;
+	int i;
+	ulong r, g, b;
 
-	x = x&7;
-	x= (x<<3)|x;
-	y = (x<<(32-6))|(x<<(32-12))|(x<<(32-18))|(x<<(32-24))|(x<<(32-30));
-	return y;
-}
+	d = DAC;
 
-static ulong
-x6to32(uchar x)
-{
-	ulong y;
+	/* Control registers */
+	d->cr0 = 0x01;
+	d->cr1 = 0x02;
+	for(i = 0; i < sizeof s1; i++)
+		d->cr2 = s1[i];
 
-	x = x&0x3f;
-	y = (x<<(32-6))|(x<<(32-12))|(x<<(32-18))|(x<<(32-24))|(x<<(32-30));
-	return y;
+	/* Cursor programming */
+	d->cr0 = 0x00;
+	d->cr1 = 0x03;
+	d->cr2 = 0xC0;
+	for(i = 0; i < 12; i++)
+		d->cr2 = 0;
+
+	/* Load Cursor Ram */
+	d->cr0 = 0x00;
+	d->cr1 = 0x04;
+	for(i = 0; i < 0x400; i++)
+		d->cr2 = 0xff;
+
+	for(i = 0; i<256; i++) {
+		r = ~rep((i>>5) & 7, 3);
+		g = ~rep((i>>2) & 7, 3);
+		b = ~rep(i & 3, 2);
+		setcolor(i, r, g, b);
+	}
+	setcolor(85, 0xAAAAAAAA, 0xAAAAAAAA, 0xAAAAAAAA);
+	setcolor(170, 0x55555555, 0x55555555, 0x55555555);
+
+	/* Overlay Palette Ram */
+	d->cr0 = 0x00;
+	d->cr1 = 0x01;
+	for(i = 0; i < 0x10; i++) {
+		d->cr2 = 0xff;
+		d->cr2 = 0xff;
+		d->cr2 = 0xff;
+	}
+
+	/* Overlay Palette Ram */
+	d->cr0 = 0x81;
+	d->cr1 = 0x01;
+	for(i = 0; i < 3; i++) {
+		d->cr2 = 0xff;
+		d->cr2 = 0xff;
+		d->cr2 = 0xff;
+	}
 }
 
 void
 screeninit(void)
 {
-	int i, x;
+	int i;
+	ulong r, g, b;
 
-	gscreen.ldepth = 0;
+	dacinit();
 
-	setmode(&dfltmode);
+	memmove(&arrow, &fatarrow, sizeof(fatarrow));
 
-	for(i = 0; i < 16; i++){
-		x = x6to32((i*63)/15);
-		setcolor(i, x, x, x);
-	}
-
-	/* allocate a new soft bitmap area */
-	gscreen.base = xalloc(1024*1024);
+	defont = &defont0;	
 	gbitblt(&gscreen, Pt(0, 0), &gscreen, gscreen.r, 0);
+	out.pos.x = MINX;
+	out.pos.y = 0;
+	out.bwid = defont0.info[' '].width;
+
+	for(i = 0; i<256; i++) {
+		r = ~rep((i>>5) & 7, 3);
+		g = ~rep((i>>2) & 7, 3);
+		b = ~rep(i & 3, 2);
+		setcolor(i, r, g, b);
+	}
+	setcolor(85, 0xAAAAAAAA, 0xAAAAAAAA, 0xAAAAAAAA);
+	setcolor(170, 0x55555555, 0x55555555, 0x55555555);
 
 	screenwin();
 }
@@ -200,33 +257,6 @@ scroll(void)
 	r = Rpt(Pt(window.min.x, window.max.y-o), window.max);
 	gbitblt(&gscreen, r.min, &gscreen, r, Zero);
 	cursor.y -= o;
-	isscroll = 1;
-}
-
-void
-mbbrect(Rectangle r)
-{
-	if (r.min.x < mbb.min.x)
-		mbb.min.x = r.min.x;
-	if (r.min.y < mbb.min.y)
-		mbb.min.y = r.min.y;
-	if (r.max.x > mbb.max.x)
-		mbb.max.x = r.max.x;
-	if (r.max.y > mbb.max.y)
-		mbb.max.y = r.max.y;
-}
-
-void
-mbbpt(Point p)
-{
-	if (p.x < mbb.min.x)
-		mbb.min.x = p.x;
-	if (p.y < mbb.min.y)
-		mbb.min.y = p.y;
-	if (p.x >= mbb.max.x)
-		mbb.max.x = p.x+1;
-	if (p.y >= mbb.max.y)
-		mbb.max.y = p.y+1;
 }
 
 static void
@@ -234,7 +264,6 @@ screenputc(char *buf)
 {
 	int pos;
 
-	mbbpt(cursor);
 	switch(buf[0]) {
 	case '\n':
 		if(cursor.y+h >= window.max.y)
@@ -251,16 +280,14 @@ screenputc(char *buf)
 		cursor.x += pos*w;
 		break;
 	case '\b':
-		if(cursor.x-w >= window.min.x)
+		if(cursor.x-w >= 0)
 			cursor.x -= w;
 		break;
 	default:
 		if(cursor.x >= window.max.x-w)
 			screenputc("\n");
-
 		cursor = gsubfstring(&gscreen, cursor, &defont0, buf, S);
 	}
-	mbbpt(Pt(cursor.x, cursor.y+h));
 }
 
 void
@@ -278,7 +305,7 @@ screenputs(char *s, int n)
 	else
 		lock(&screenlock);
 
-	while(n > 0) {
+	while(n > 0){
 		i = chartorune(&r, s);
 		if(i == 0){
 			s++;
@@ -291,288 +318,163 @@ screenputs(char *s, int n)
 		s += i;
 		screenputc(buf);
 	}
-	if(isscroll) {
-		mbb = window;
-		isscroll = 0;
-	}
-
-	screenupdate();
 	unlock(&screenlock);
 }
+
+uchar revtab0[] = {
+ 0x00, 0x80, 0x40, 0xc0, 0x20, 0xa0, 0x60, 0xe0,
+ 0x10, 0x90, 0x50, 0xd0, 0x30, 0xb0, 0x70, 0xf0,
+ 0x08, 0x88, 0x48, 0xc8, 0x28, 0xa8, 0x68, 0xe8,
+ 0x18, 0x98, 0x58, 0xd8, 0x38, 0xb8, 0x78, 0xf8,
+ 0x04, 0x84, 0x44, 0xc4, 0x24, 0xa4, 0x64, 0xe4,
+ 0x14, 0x94, 0x54, 0xd4, 0x34, 0xb4, 0x74, 0xf4,
+ 0x0c, 0x8c, 0x4c, 0xcc, 0x2c, 0xac, 0x6c, 0xec,
+ 0x1c, 0x9c, 0x5c, 0xdc, 0x3c, 0xbc, 0x7c, 0xfc,
+ 0x02, 0x82, 0x42, 0xc2, 0x22, 0xa2, 0x62, 0xe2,
+ 0x12, 0x92, 0x52, 0xd2, 0x32, 0xb2, 0x72, 0xf2,
+ 0x0a, 0x8a, 0x4a, 0xca, 0x2a, 0xaa, 0x6a, 0xea,
+ 0x1a, 0x9a, 0x5a, 0xda, 0x3a, 0xba, 0x7a, 0xfa,
+ 0x06, 0x86, 0x46, 0xc6, 0x26, 0xa6, 0x66, 0xe6,
+ 0x16, 0x96, 0x56, 0xd6, 0x36, 0xb6, 0x76, 0xf6,
+ 0x0e, 0x8e, 0x4e, 0xce, 0x2e, 0xae, 0x6e, 0xee,
+ 0x1e, 0x9e, 0x5e, 0xde, 0x3e, 0xbe, 0x7e, 0xfe,
+ 0x01, 0x81, 0x41, 0xc1, 0x21, 0xa1, 0x61, 0xe1,
+ 0x11, 0x91, 0x51, 0xd1, 0x31, 0xb1, 0x71, 0xf1,
+ 0x09, 0x89, 0x49, 0xc9, 0x29, 0xa9, 0x69, 0xe9,
+ 0x19, 0x99, 0x59, 0xd9, 0x39, 0xb9, 0x79, 0xf9,
+ 0x05, 0x85, 0x45, 0xc5, 0x25, 0xa5, 0x65, 0xe5,
+ 0x15, 0x95, 0x55, 0xd5, 0x35, 0xb5, 0x75, 0xf5,
+ 0x0d, 0x8d, 0x4d, 0xcd, 0x2d, 0xad, 0x6d, 0xed,
+ 0x1d, 0x9d, 0x5d, 0xdd, 0x3d, 0xbd, 0x7d, 0xfd,
+ 0x03, 0x83, 0x43, 0xc3, 0x23, 0xa3, 0x63, 0xe3,
+ 0x13, 0x93, 0x53, 0xd3, 0x33, 0xb3, 0x73, 0xf3,
+ 0x0b, 0x8b, 0x4b, 0xcb, 0x2b, 0xab, 0x6b, 0xeb,
+ 0x1b, 0x9b, 0x5b, 0xdb, 0x3b, 0xbb, 0x7b, 0xfb,
+ 0x07, 0x87, 0x47, 0xc7, 0x27, 0xa7, 0x67, 0xe7,
+ 0x17, 0x97, 0x57, 0xd7, 0x37, 0xb7, 0x77, 0xf7,
+ 0x0f, 0x8f, 0x4f, 0xcf, 0x2f, 0xaf, 0x6f, 0xef,
+ 0x1f, 0x9f, 0x5f, 0xdf, 0x3f, 0xbf, 0x7f, 0xff,
+};
 
 void
 getcolor(ulong p, ulong *pr, ulong *pg, ulong *pb)
 {
-	ulong x;
+	Dac *d;
+	uchar r, g, b;
+	extern uchar revtab0[];
 
-	switch(gscreen.ldepth){
-	default:
-		x = 0xf;
-		break;
-	case 3:
-		x = 0xff;
-		break;
-	}
-	p &= x;
-	p ^= x;
-	*pr = colormap[p][0];
-	*pg = colormap[p][1];
-	*pb = colormap[p][2];
+	d = DAC;
+
+	d->cr0 = revtab0[p & 0xFF];
+	d->cr1 = 0;
+	r = d->cr3;
+	g = d->cr3;
+	b = d->cr3;
+	*pr = (r<<24) | (r<<16) | (r<<8) | r;
+	*pg = (g<<24) | (g<<16) | (g<<8) | g;
+	*pb = (b<<24) | (b<<16) | (b<<8) | b;
 }
 
 int
 setcolor(ulong p, ulong r, ulong g, ulong b)
 {
-	ulong x;
+	Dac *d;
+	extern uchar revtab0[];
 
-	switch(gscreen.ldepth){
-	default:
-		x = 0xf;
-		break;
-	case 3:
-		x = 0xff;
-		break;
-	}
-	p &= x;
-	p ^= x;
-	colormap[p][0] = r;
-	colormap[p][1] = g;
-	colormap[p][2] = b;
-	EISAOUTB(CMWX, p);
-	EISAOUTB(CM, r>>(32-6));
-	EISAOUTB(CM, g>>(32-6));
-	EISAOUTB(CM, b>>(32-6));
-	return ~0;
+	d = DAC;
+
+	d->cr0 = revtab0[p & 0xFF];
+	d->cr1 = 0;
+	d->cr3 = r >> 24;
+	d->cr3 = g >> 24;
+	d->cr3 = b >> 24;
+	return 1;
+}
+
+/* replicate (from top) value in v (n bits) until it fills a ulong */
+static ulong
+rep(ulong v, int n)
+{
+	int o;
+	ulong rv;
+
+	rv = 0;
+	for(o = 32 - n; o >= 0; o -= n)
+		rv |= (v << o);
+	return rv;
 }
 
 void
-hwcursset(ulong *s, ulong *c, int ox, int oy)
+hwcursset(ulong *s, ulong *c, int offx, int offy)
 {
-	USED(s, c, ox, oy);
+	Dac *d;
+	int x, y;
+	Point org;
+	uchar ylow, yhigh;
+	ulong spix, cpix, dpix;
+
+	hwcursor.base = (ulong *)malloc(1024);
+	if(hwcursor.base == 0)
+		error(Enomem);
+	/* hw cursor is 64x64 with hot point at (32,32) */
+	org = add(Pt(32,32), Pt(offx,offy)); 
+	for(x = 0; x < 16; x++)
+		for(y = 0; y < 16; y++) {
+			spix = (s[y]>>(31-(x&0x1F)))&1;
+			cpix = (c[y]>>(31-(x&0x1F)))&1;
+			dpix = (spix<<1) | cpix;
+			gpoint(&hwcursor, add(Pt(x,y), org), dpix, S);
+		}
+
+	d = DAC;
+	/* have to set y offscreen before writing cursor bits */
+	d->cr1 = 0x03;
+	d->cr0 = 0x03;
+	ylow = d->cr2;
+	yhigh = d->cr2;
+	d->cr1 = 0x03;
+	d->cr0 = 0x03;
+	d->cr2 = 0xFF;
+	d->cr2 = 0xFF;
+	/* now set the bits */
+	d->cr1 = 0x04;
+	d->cr0 = 0x00;
+	for(x = 0; x < 1024; x++)
+		d->cr2 = ((uchar *)hwcursor.base)[x];
+	/* set y back */
+	d->cr1 = 0x03;
+	d->cr0 = 0x03;
+	d->cr2 = ylow;
+	d->cr2 = yhigh;
+	free(hwcursor.base);
 }
 
 void
 hwcursmove(int x, int y)
 {
-	USED(x, y);
+	Dac *d;
+
+	d = DAC;
+
+	x += 379;		/* adjusted by experiment */
+	y += 11;		/* adjusted by experiment */
+	d->cr1 = 03;
+	d->cr0 = 01;
+	d->cr2 = x&0xFF;
+	d->cr2 = (x>>8)&0xF;
+	d->cr2 = y&0xFF;
+	d->cr2 = (y>>8)&0xF;
 }
 
-/* only 1 flavor mouse */
-void
-mousectl(char *x)
-{
-	USED(x);
-}
-
-/* bits per pixel */
 int
 screenbits(void)
 {
 	return 1<<gscreen.ldepth;
 }
 
-void
-srout(int reg, int val)
-{
-	EISAOUTB(SRX, reg);
-	EISAOUTB(SR, val);
-}
-
-uchar
-srin(ushort i)
-{
-        EISAOUTB(SRX, i);
-        return EISAINB(SR);
-}
-
-void
-grout(int reg, int val)
-{
-	EISAOUTB(GRX, reg);
-	EISAOUTB(GR, val);
-}
-
-void
-genout(int reg, int val)
-{
-	if(reg == 0)
-		EISAOUTB(EMISCW, val);
-	else
-	if (reg == 1)
-		EISAOUTB(EFCW, val);
-}
-
-void
-arout(int reg, int val)
-{
-	uchar junk;
-
-	junk = EISAINB(0x3DA);
-	USED(junk);
-
-	if (reg <= 0xf) {
-		EISAOUTB(ARW, reg | 0x0);
-		EISAOUTB(ARW, val);
-		junk = EISAINB(0x3DA);
-		USED(junk);
-		EISAOUTB(ARW, reg | 0x20);
-	}
-	else {
-		EISAOUTB(ARW, reg | 0x20);
-		EISAOUTB(ARW, val);
-	}
-}
-
-void
-crout(int reg, int val)
-{
-	EISAOUTB(CRX, reg);
-	EISAOUTB(CR, val);
-}
-
-void
-setmode(VGAmode *v)
-{
-	int i;
-
-	/* turn screen off (to avoid damage) */
-	srout(1, 0x21);
-
-	EISAOUTB(0x3bf, 0x03);		/* hercules compatibility reg */
-	EISAOUTB(0x3d8, 0xa0);		/* display mode control register */
-	EISAOUTB(0x3cd, 0x00);		/* segment select */
-
-	srout(0x00, srin(0x00) & 0xFD);	/* synchronous reset*/
-
-	for(i = 0; i < sizeof(v->general); i++)
-		genout(i, v->general[i]);
-
-	for(i = 0; i < sizeof(v->sequencer); i++)
-		if(i == 1)
-			srout(i, v->sequencer[i]|0x20);
-		else
-			srout(i, v->sequencer[i]);
-
-	/* allow writes to CRT registers 0-7 */
-	crout(Cvre, 0);
-	for(i = 0; i < sizeof(v->crt); i++)
-		crout(i, v->crt[i]);
-
-	for(i = 0; i < sizeof(v->graphics); i++)
-		grout(i, v->graphics[i]);
-
-	for(i = 0; i < sizeof(v->attribute); i++)
-		arout(i, v->attribute[i]);
-
-	switch(gscreen.ldepth){
-	case 3:
-		EISAOUTB(0x3C6, 0xFF);	/* pel mask */
-		break;
-	default:
-		EISAOUTB(0x3C6, 0x0F);	/* pel mask */
-		break;
-	}
-	EISAOUTB(0x3C8, 0x00);	/* pel write address */
-
-	EISAOUTB(0x3bf, 0x03);	/* hercules compatibility reg */
-	EISAOUTB(0x3d8, 0xa0);	/* display mode control register */
-
-	srout(0x06, v->tseng.sr6);
-	srout(0x07, v->tseng.sr7);
-	i = EISAINB(0x3da); /* reset flip-flop. inp stat 1*/
-	USED(i);
-	arout(0x16, v->tseng.ar16);	/* misc */
-	arout(0x17, v->tseng.ar17);	/* misc 1*/
-	crout(0x31, v->tseng.crt31);	/* extended start. */
-	crout(0x32, v->tseng.crt32);	/* extended start. */
-	crout(0x33, v->tseng.crt33);	/* extended start. */
-	crout(0x34, v->tseng.crt34);	/* stub: 46ee + other bits */
-	crout(0x35, v->tseng.crt35);	/* overflow bits */
-	crout(0x36, v->tseng.crt36);	/* overflow bits */
-	crout(0x37, v->tseng.crt37);	/* overflow bits */
-	EISAOUTB(0x3c3, v->tseng.viden);/* video enable */
-
-	/* turn screen on */
-	srout(1, v->sequencer[1]);
-}
-
-#define swiz(s)	(s<<24)|((s>>8)&0xff00)|((s<<8)&0xff0000)|(s>>24)
-
-void
-screenupdate(void)
-{
-	Rectangle r;
-	ulong *s, *h, in1, in2;
-	uchar *sp, *hp, *edisp;
-	int i, y, len, off, page, inc, pixshft;
-
-	r = mbb;
-	mbb = NULLMBB;
-
-	if(Dy(r) < 0)
-		return;
-
-	if(r.min.x < 0)
-		r.min.x = 0;
-	if(r.min.y < 0)
-		r.min.y = 0;
-	if(r.max.x > gscreen.r.max.x)
-		r.max.x = gscreen.r.max.x;
-	if(r.max.y > gscreen.r.max.y)
-		r.max.y = gscreen.r.max.y;
-
-	r.min.x &= ~7;
-	len = r.max.x - r.min.x;
-	len = (len+7)&~7;
-	if(len <= 0)
-		return;
-
-	pixshft = 3-gscreen.ldepth;
-	len = (len>>pixshft)+8;
-	r.min.x = (r.min.x>>pixshft) & ~7;
-	
-	inc = gscreen.width*4;
-	off = r.min.y * inc + r.min.x;
-
-	sp = ((uchar*)gscreen.base) + off;
-
-	page = off>>16;
-	off &= (1<<16)-1;
-	hp = 0;
-	edisp = 0;
-	for(y = r.min.y; y < r.max.y; y++) {
-		if(hp >= edisp) {
-			hp = ((uchar*)vgascreen.base) + off;
-			edisp = ((uchar*)vgascreen.base) + 64*1024;
-			EISAOUTB(0x3cd, (page<<4) | page);
-			off = r.min.x;
-			page++;
-		}
-		for(i = 0; i < len; i += 8) {
-			s = (ulong*)(sp+i);
-			h = (ulong*)(hp+i);
-			in1 = s[0];
-			in2 = s[1];
-			h[0] = swiz(in2);
-			h[1] = swiz(in1);
-		}
-		hp += inc;
-		sp += inc;
-	}
-}
-
-void
-mousescreenupdate(void)
-{
-	if(canlock(&screenlock) == 0)
-		return;
-
-	screenupdate();
-	unlock(&screenlock);
-}
-
 extern	cursorlock(Rectangle);
 extern	cursorunlock(void);
+
 /*
  * paste tile into screen.
  * tile is at location r, first pixel in *data. 
@@ -582,14 +484,14 @@ extern	cursorunlock(void);
 void
 screenload(Rectangle r, uchar *data, int tl, int l)
 {
-	int y, lpart, rpart, mx, m, mr;
 	uchar *q;
+	int y, lpart, rpart, mx, m, mr;
 
 	if(!rectclip(&r, gscreen.r) || tl<=0)
 		return;
+
 	lock(&screenlock);
-	cursorlock(r);
-	screenupdate();
+
 	q = gbaddr(&gscreen, r.min);
 	mx = 7>>gscreen.ldepth;
 	lpart = (r.min.x & mx) << gscreen.ldepth;
@@ -635,9 +537,5 @@ screenload(Rectangle r, uchar *data, int tl, int l)
 			q += gscreen.width*sizeof(ulong);
 			data += l;
 		}
-	mbbrect(r);
-	screenupdate();
-	cursorunlock();
-	screenupdate();
 	unlock(&screenlock);
 }

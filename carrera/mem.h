@@ -96,7 +96,8 @@
  * Fundamental addresses
  */
 #define	MACHADDR	(KTZERO-MAXMACH*BY2PG)	/* warning: rdbg is near here */
-#define	UREGSIZE	0xC0		/* Sizeof(Ureg)+R5,R6+16 bytes slop+retpc & ur */
+/* Sizeof(Ureg)+R5,R6+16 bytes slop+retpc & ur */
+#define	UREGSIZE	0xC0		
 #define	MACHP(n)	((Mach *)(MACHADDR+(n)*BY2PG))
 
 /*
@@ -106,7 +107,8 @@
 #define	PGSZ64K		(0x0F<<13)
 #define	PGSZ256K	(0x3F<<13)
 #define	PGSZ1M		(0xFF<<13)
-	
+#define	PGSZ4M		(0x3FF<<13)
+
 #define	KUSEG	0x00000000
 #define	KSEG0	0x80000000
 #define	KSEG1	0xA0000000
@@ -116,7 +118,7 @@
 
 #define	PIDXSHFT	12
 #define	PIDX		(0x7<<PIDXSHFT)
-#define	KMAPADDR	0xE2000000
+#define	KMAPADDR	0xE4000000
 #define	KMAPMASK	0xFF000000
 #define	KMAPSHIFT	15
 #define	NCOLOR		8
@@ -146,7 +148,7 @@
 
 #define	NTLBPID	256	/* number of pids */
 #define	NTLB	48	/* number of entries */
-#define	TLBROFF	4	/* offset of first randomly indexed entry */
+#define	TLBROFF	5	/* offset of first randomly indexed entry */
 
 /*
  * Address spaces

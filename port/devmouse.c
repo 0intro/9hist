@@ -8,6 +8,7 @@
 #include	"../port/error.h"
 
 #include	"devtab.h"
+#include	"screen.h"
 
 /*
  * Some monochrome screens are reversed from what we like:

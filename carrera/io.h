@@ -35,6 +35,8 @@ enum
 	Diag		= 0xE000F000,
 	VideoCTL	= 0x60000000,	
 	VideoMEM	= 0x40000000, 	
+	   Screenvirt	= 0xE2000000,
+	   BTDac	= 0xE2400000,
 	I386ack		= 0xE000023f,
 	EisaControl	= 0xE0010000,	/* Second 64K Page from Devicevirt */
 	  Eisanmi	= EisaControl+0x77,

@@ -172,7 +172,7 @@ serialinit(void)
 void
 ioinit(int mapeisa)
 {
-	ulong devphys, isaphys, intphys, isamphys, promphys;
+	ulong devphys, isaphys, intphys, isamphys, promphys, ptec, ptes, v;
 
 	/*
 	 * If you want to segattach the eisa space these
@@ -192,14 +192,12 @@ ioinit(int mapeisa)
 	 * Map devices and the Eisa control space
 	 */
 	devphys = IOPTE|PPN(Devicephys);
-
 	puttlbx(1, Devicevirt, devphys, isaphys, PGSZ64K);
 
 	/*
 	 * Map Interrupt control & Eisa memory
 	 */
 	intphys  = IOPTE|PPN(Intctlphys);
-
 	puttlbx(2, Intctlvirt, intphys, isamphys, PGSZ1M);
 
 	/* Enable all device interrupts */
@@ -207,8 +205,18 @@ ioinit(int mapeisa)
 
 	/* Map the rom back into Promvirt to allow NMI handling */
 	promphys = IOPTE|PPN(Promphys);
-
 	puttlbx(3, Promvirt, promphys, PTEGLOBL, PGSZ1M);
+
+	/* 8 MB video ram config */
+	v = IO(ulong, 0xE0000004);
+	v &= ~(3<<8);
+	v |= (2<<8);
+	IO(ulong, 0xE0000004) = v;
+
+	/* Map the display hardware */
+	ptec = PPN(VideoCTL)|PTEGLOBL|PTEVALID|PTEWRITE|PTEUNCACHED;
+	ptes = PPN(VideoMEM)|PTEGLOBL|PTEVALID|PTEWRITE|PTEUNCACHED;
+	puttlbx(4, Screenvirt, ptes, ptec, PGSZ4M);
 }
 
 /*
@@ -271,7 +279,6 @@ void
 init0(void)
 {
 	char buf[2*NAMELEN];
-
 
 	spllo();
 
