@@ -441,7 +441,7 @@ setcursor(Cursor *curs)
 	free(hwcursor.base);
 }
 
-void
+int
 cursoron(int dolock)
 {
 	Dac *d;
@@ -465,6 +465,7 @@ cursoron(int dolock)
 
 	if(dolock)
 		unlock(&cursor);
+	return 0;
 }
 
 int

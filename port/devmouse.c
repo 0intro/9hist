@@ -321,7 +321,7 @@ mouseclock(void)
 	if(mouse.redraw && canlock(&cursor)){
 		mouse.redraw = 0;
 		cursoroff(0);
-		cursoron(0);
+		mouse.redraw = cursoron(0);
 		unlock(&cursor);
 	}
 }

@@ -14,7 +14,7 @@ struct Cursorinfo
 };
 
 Cursorinfo	cursor;
-extern void	cursoron(int);
+extern int	cursoron(int);
 extern void	cursoroff(int);
 extern Point	mousexy(void);
 extern void	cursorinit(void);

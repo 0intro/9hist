@@ -1,29 +1,49 @@
-enum
-{
-	EMISCR=		0x3CC,		/* control sync polarity */
-	EMISCW=		0x3C2,
-	EFCW=		0x3DA,		/* feature control */
-	EFCR=		0x3CA,
-	GRX=		0x3CE,		/* index to graphics registers */
-	GR=		0x3CF,		/* graphics registers */
-	 Grms=		 0x04,		/*  read map select register */
-	SRX=		0x3C4,		/* index to sequence registers */
-	SR=		0x3C5,		/* sequence registers */
-	 Smmask=	 0x02,		/*  map mask */
-	CRX=		0x3D4,		/* index to crt registers */
-	CR=		0x3D5,		/* crt registers */
-	 Cvre=		 0x11,		/*  vertical retrace end */
-	ARW=		0x3C0,		/* attribute registers (writing) */
-	ARR=		0x3C1,		/* attribute registers (reading) */
-	CMRX=		0x3C7,		/* color map read index */
-	CMWX=		0x3C8,		/* color map write index */
-	CM=		0x3C9,		/* color map data reg */
+/*
+ * Generic VGA registers.
+ */
+enum {
+	MiscW		= 0x03C2,	/* Miscellaneous Output (W) */
+	MiscR		= 0x03CC,	/* Miscellaneous Output (R) */
+	Status0		= 0x03C2,	/* Input status 0 (R) */
+	Status1		= 0x03DA,	/* Input Status 1 (R) */
+	FeatureR	= 0x03CA,	/* Feature Control (R) */
+	FeatureW	= 0x03DA,	/* Feature Control (W) */
+
+	Seqx		= 0x03C4,	/* Sequencer Index, Data at Seqx+1 */
+	NSeqx		= 0x05,
+
+	Crtx		= 0x03D4,	/* CRT Controller Index, Data at Crtx+1 */
+	NCrtx		= 0x19,
+
+	Grx		= 0x03CE,	/* Graphics Controller Index, Data at Grx+1 */
+	NGrax		= 0x09,
+
+	Attrx		= 0x03C0,	/* Attribute Controller Index and Data */
+	NAttrx		= 0x15,
+
+	DACMask		= 0x03C6,	/* DAC Mask */
+	DACRx		= 0x03C7,	/* DAC Read Index (W) */
+	DACSts		= 0x03C7,	/* DAC Status (R) */
+	DACWx		= 0x03C8,	/* DAC Write Index */
+	DACData		= 0x03C9,	/* DAC Data */
+	NDACx		= 0x100,
 };
 
-#define SCREENMEM	(0xA0000 | KZERO)
-#define CGASCREEN	((uchar*)(0xB8000 | KZERO))
-#define	CGAWIDTH	160
-#define	CGAHEIGHT	24
+#define vgai(port)		inb(port)
+#define vgao(port, data)	outb(port, data)
 
-extern	void setscreen(int, int, int);
-extern	struct GBitmap	gscreen;
+extern int vgaxi(long, uchar);
+extern int vgaxo(long, uchar, uchar);
+
+/*
+ * Definitions of known hardware graphics cursors.
+ */
+typedef struct Hwgc {
+	char	*name;
+	void	(*enable)(void);
+	void	(*load)(Cursor*);
+	int	(*move)(Point);
+	void	(*disable)(void);
+} Hwgc;
+
+extern Lock pallettelock;

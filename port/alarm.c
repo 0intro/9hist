@@ -3,7 +3,6 @@
 #include	"mem.h"
 #include	"dat.h"
 #include	"fns.h"
-#include	"io.h"
 
 Alarms	alarms;
 Rendez	alarmr;

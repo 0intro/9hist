@@ -9,7 +9,7 @@ struct Cursorinfo
 extern Cursorinfo	cursor;
 
 extern void	mouseupdate(int);
-extern void	cursoron(int);
+extern int	cursoron(int);
 #define		cursoroff(x)
 #define		mousectl(s)
 extern Point	mousexy(void);
