@@ -585,6 +585,8 @@ struct Proc
 	Mach	*mp;		/* machine this process last ran on */
 	ulong	priority;	/* priority level */
 	ulong	basepri;	/* base priority level */
+	ulong	rt;		/* # ticks used since last blocked */
+	ulong	art;		/* avg # ticks used since last blocked */
 	ulong	movetime;	/* last time process switched processors */
 	ulong	readyticks;	/* time process went ready */
 

@@ -124,19 +124,24 @@ anyhigher(void)
 	return nrdy && x >= up->priority;
 }
 
+enum
+{
+	Squantum = (HZ+Nrq-1)/Nrq,
+};
+
 void
 ready(Proc *p)
 {
-	int s;
+	int s, pri;
 	Schedq *rq;
 
 	s = splhi();
 
-	if(p->state == Running){
-		if(p->priority > 0)
-			p->priority--;
-	} else
-		p->priority = p->basepri;
+	if(p->state == Running)
+		p->rt++;
+	pri = p->basepri - (((p->art + p->rt)>>1)/Squantum);
+	if(pri < 0)
+		pri = 0;
 	rq = &runq[p->priority];
 
 	lock(runq);
@@ -330,6 +335,8 @@ sleep1(Rendez *r, int (*f)(void*), void *arg)
 		dumpstack();
 	}
 	up->state = Wakeme;
+	up->art = (up->art + up->rt)>>1;
+	up->rt = 0;
 	r->p = up;
 	unlock(r);
 }
