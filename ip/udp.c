@@ -113,9 +113,11 @@ udpconnect(Conv *c, char **argv, int argc)
 	upriv = c->p->priv;
 	e = Fsstdconnect(c, argv, argc);
 	Fsconnected(c, e);
-	iphtadd(&upriv->ht, c);
+	if(e != nil)
+		return e;
 
-	return e;
+	iphtadd(&upriv->ht, c);
+	return nil;
 }
 
 
