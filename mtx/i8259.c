@@ -166,6 +166,20 @@ i8259enable(Vctl* v)
 }
 
 int
+i8259intack(void)
+{
+	int irq;
+
+	outb(Int0ctl, Ocw3|0x07);			/* intr ack on first 8259 */
+	irq = inb(Int0ctl) & 7;
+	if(irq == 2) {					/* cascade */
+		outb(Int1ctl, Ocw3|0x07);		/* intr ack on second 8259 */
+		irq = (inb(Int1ctl) & 7) + 8;
+	}
+	return irq+VectorPIC;
+}
+
+int
 i8259vecno(int irq)
 {
 	return VectorPIC+irq;

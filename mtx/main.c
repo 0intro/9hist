@@ -16,7 +16,7 @@ main(void)
 	memset(edata, 0, (ulong)end-(ulong)edata);
 	conf.nmach = 1;
 	machinit();
-	clockinit();
+	ioinit();
 	i8250console();
 	print("\nPlan 9\n");
 	confinit();
@@ -25,14 +25,17 @@ main(void)
 	trapinit();
 	printinit();
 	cpuidprint();
-pcihinv(nil);
-firmware();
 	mmuinit();
+	hwintrinit();
+	clockinit();
+	kbdinit();
 	procinit0();
 	initseg();
 	links();
 	chandevreset();
 	pageinit();
+spllo();
+for(;;);
 	swapinit();
 	userinit();
 	schedinit();

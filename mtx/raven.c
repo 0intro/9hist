@@ -120,7 +120,7 @@ raveninit(void)
 }
 
 void
-mpicenable(int vec)
+mpicenable(int vec, Vctl *v)
 {
 	ulong x;
 
@@ -128,6 +128,14 @@ mpicenable(int vec)
 	if(vec == 0)
 		x |= (1<<23);
 	mpic32w(0x10000+0x20*vec, x);
+	if(vec != 0)
+		v->eoi = mpiceoi;
+}
+
+void
+mpicdisable(int vec)
+{
+	mpic32w(0x10000+0x20*vec, (1<<31));
 }
 
 int
@@ -136,8 +144,10 @@ mpicintack(void)
 	return mpic32r(0x200A0 + (m->machno<<12));
 }
 
-void
-mpiceoi(void)
+int
+mpiceoi(int vec)
 {
+	USED(vec);
 	mpic32w(0x200B0 + (m->machno<<12), 0);
+	return 0;
 }

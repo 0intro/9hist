@@ -480,10 +480,7 @@ sleep(Rendez *r, int (*f)(void*), void *arg)
 	if(up->notepending) {
 		up->notepending = 0;
 		splx(s);
-		if(up->kp)
-			print("attempt to interrupt %ld %s\n", up->pid, up->text);
-		else
-			error(Eintr);
+		error(Eintr);
 	}
 
 	splx(s);

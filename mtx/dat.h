@@ -6,6 +6,7 @@ typedef struct Lock	Lock;
 typedef struct Mach	Mach;
 typedef struct Notsave	Notsave;
 typedef struct Page	Page;
+typedef struct PCArch	PCArch;
 typedef struct Pcidev	Pcidev;
 typedef struct PMMU	PMMU;
 typedef struct Proc	Proc;
@@ -163,6 +164,21 @@ struct
 	short	exiting;
 	short	ispanic;
 }active;
+
+/*
+ *	Implementation-dependant functions (outside of PPC architecture proper).
+ *	Called PCArch because that's what mkdevc calls it (for the PC).
+ */
+struct PCArch
+{
+	char*	id;
+	int	(*ident)(void);		/* this should be in the model */
+
+	void	(*intrinit)(void);
+	int	(*intrenable)(Vctl*);
+	int	(*intrvecno)(int);
+	int	(*intrdisable)(int);
+};
 
 /*
  *  a parsed plan9.ini line

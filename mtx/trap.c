@@ -7,31 +7,141 @@
 #include	"io.h"
 #include	"../port/error.h"
 
-enum 
-{
-	Maxhandler=	32+16,		/* max number of interrupt handlers */
-};
+static Lock vctllock;
+static Vctl *vctl[256];
 
-typedef struct Handler	Handler;
-struct Handler
+void
+hwintrinit(void)
 {
-	void	(*r)(Ureg*, void*);
-	void	*arg;
-	Handler	*next;
-	int	edge;
-	int	nintr;
-	ulong	ticks;
-	int	maxtick;
-};
+	i8259init();
+	mpicenable(0, nil);	/* 8259 interrupts are routed through MPIC intr 0 */
+}
 
-struct
+static int
+hwintrenable(Vctl *v)
 {
-	Handler	*ivec[MaxVectorPIC+1];
-	Handler	h[Maxhandler];
-	int	free;
-} halloc;
+	int vec, irq;
 
-Lock	veclock;
+	irq = v->irq;
+	if(BUSTYPE(v->tbdf) == BusPCI) {	/* MPIC? */
+		if(irq > 15) {
+			print("intrenable: pci irq %d out of range\n", v->irq);
+			return -1;
+		}
+		vec = irq;
+		mpicenable(vec, v);
+	}
+	else {
+		if(irq > MaxIrqPIC) {
+			print("intrenable: irq %d out of range\n", v->irq);
+			return -1;
+		}
+		vec = irq+VectorPIC;
+		if(i8259enable(v) == -1)
+			return -1;
+	}
+	return vec;
+}
+
+static int
+hwintrdisable(Vctl *v)
+{
+	int vec, irq;
+
+	irq = v->irq;
+	if(BUSTYPE(v->tbdf) == BusPCI) {	/* MPIC? */
+		if(irq > 15) {
+			print("intrdisable: pci irq %d out of range\n", v->irq);
+			return -1;
+		}
+		vec = irq;
+		mpicdisable(vec);
+	}
+	else {
+		if(irq > MaxIrqPIC) {
+			print("intrdisable: irq %d out of range\n", v->irq);
+			return -1;
+		}
+		vec = irq+VectorPIC;
+		if(i8259disable(irq) == -1)
+			return -1;
+	}
+	return vec;
+}
+
+static int
+hwvecno(int irq, int tbdf)
+{
+	if(BUSTYPE(tbdf) == BusPCI) 	/* MPIC? */
+		return irq;
+	else
+		return irq+VectorPIC;
+}
+
+void
+intrenable(int irq, void (*f)(Ureg*, void*), void* a, int tbdf, char *name)
+{
+	int vno;
+	Vctl *v;
+
+	if(f == nil){
+		print("intrenable: nil handler for %d, tbdf 0x%uX for %s\n",
+			irq, tbdf, name);
+		return;
+	}
+
+	v = xalloc(sizeof(Vctl));
+	v->isintr = 1;
+	v->irq = irq;
+	v->tbdf = tbdf;
+	v->f = f;
+	v->a = a;
+	strncpy(v->name, name, KNAMELEN-1);
+	v->name[KNAMELEN-1] = 0;
+
+	ilock(&vctllock);
+	vno = hwintrenable(v);
+	if(vno == -1){
+		iunlock(&vctllock);
+		print("intrenable: couldn't enable irq %d, tbdf 0x%uX for %s\n",
+			irq, tbdf, v->name);
+		xfree(v);
+		return;
+	}
+	if(vctl[vno]){
+		if(vctl[vno]->isr != v->isr || vctl[vno]->eoi != v->eoi)
+			panic("intrenable: handler: %s %s %luX %luX %luX %luX\n",
+				vctl[vno]->name, v->name,
+				vctl[vno]->isr, v->isr, vctl[vno]->eoi, v->eoi);
+		v->next = vctl[vno];
+	}
+	vctl[vno] = v;
+	iunlock(&vctllock);
+}
+
+void
+intrdisable(int irq, void (*f)(Ureg *, void *), void *a, int tbdf, char *name)
+{
+	Vctl **pv, *v;
+	int vno;
+
+	vno = hwvecno(irq, tbdf);
+	ilock(&vctllock);
+	pv = &vctl[vno];
+	while (*pv && 
+		  ((*pv)->irq != irq || (*pv)->tbdf != tbdf || (*pv)->f != f || (*pv)->a != a ||
+		   strcmp((*pv)->name, name)))
+		pv = &((*pv)->next);
+	assert(*pv);
+
+	v = *pv;
+	*pv = (*pv)->next;	/* Link out the entry */
+	
+	if(vctl[vno] == nil)
+		hwintrdisable(v);
+	iunlock(&vctllock);
+	xfree(v);
+}
 
 void	faultpower(Ureg *ur, ulong addr, int read);
 void	syscall(Ureg* ureg);
@@ -108,26 +218,20 @@ trap(Ureg *ur)
 	ecode = (ur->cause >> 8) & 0xff;
 	user = (ur->srr1 & MSR_PR) != 0;
 
-if(ur->status & MSR_RI == 0)
-print("double fault?: ecode = %d\n", ecode);
-	switch(ecode){
+	if(ur->status & MSR_RI == 0)
+		print("double fault?: ecode = %d\n", ecode);
+
+	switch(ecode) {
 	case CEI:
-print("intr\n");
 		intr(ur);
 		break;
-
 	case CDEC:
-print("clock\n");
 		clockintr(ur);
 		break;
-
 	case CSYSCALL:
-print("syscall\n");
 		syscall(ur);
 		break;
-
 	case CPROG:
-print("program\n");
 		if(ur->status & (1<<19))
 			s = "floating point exception";
 		else if(ur->status & (1<<18))
@@ -145,9 +249,7 @@ print("program\n");
 		dumpregs(ur);
 		panic(s);
 		break;
-
 	default:
-print("trap: default\n");
 		if(ecode <= nelem(excname) && user){
 			spllo();
 			sprint(buf, "sys: trap: %s", excname[ecode]);
@@ -173,7 +275,6 @@ faultpower(Ureg *ureg, ulong addr, int read)
 	char buf[ERRMAX];
 
 	user = (ureg->srr1 & MSR_PR) != 0;
-if(0)print("fault: pid=%ld pc = %lux, addr = %lux read = %d user = %d stack=%ulx\n", up->pid, ureg->pc, addr, read, user, &ureg);
 	insyscall = up->insyscall;
 	up->insyscall = 1;
 	spllo();
@@ -183,21 +284,10 @@ if(0)print("fault: pid=%ld pc = %lux, addr = %lux read = %d user = %d stack=%ulx
 			dumpregs(ureg);
 			panic("fault: 0x%lux\n", addr);
 		}
-print("fault: pid=%ld pc = %lux, addr = %lux read = %d user = %d stack=%ulx\n", up->pid, ureg->pc, addr, read, user, &ureg);
-dumpregs(ureg);
 		sprint(buf, "sys: trap: fault %s addr=0x%lux", read? "read" : "write", addr);
 		postnote(up, 1, buf, NDebug);
 	}
 	up->insyscall = insyscall;
-}
-
-void
-spurious(Ureg *ur, void *a)
-{
-	USED(a);
-	print("SPURIOUS interrupt pc=0x%lux cause=0x%lux\n",
-		ur->pc, ur->cause);
-	panic("bad interrupt");
 }
 
 void
@@ -237,58 +327,47 @@ trapinit(void)
 }
 
 void
-intrenable(int v, void (*r)(Ureg*, void*), void *arg, int, char *name)
+intr(Ureg *ureg)
 {
-	Handler *h;
+	int vno;
+	Vctl *ctl, *v;
 
-	if(halloc.free >= Maxhandler)
-		panic("out of interrupt handlers");
-	if(v < 0 || v >= nelem(halloc.ivec))
-		panic("intrenable(%d)", v);
-	ilock(&veclock);
-	h = &halloc.h[halloc.free++];
-	h->next = halloc.ivec[v];
-	halloc.ivec[v] = h;
-	h->r = r;
-	h->arg = arg;
-
-	eieio();
-	eieio();
-	iunlock(&veclock);
-}
-
-void
-intr(Ureg *ur)
-{
-	int b, v;
-	Handler *h;
-
-	v = mpicintack();
-	if(v == 0) {			/* 8259 */
+	vno = mpicintack();
+	if(vno == 0) {			/* 8259, wired through MPIC vec 0 */
+		vno = i8259intack();
+		mpiceoi(0);
 	}
 
-	/*
-	 *  call the interrupt handlers
+	if(vno > nelem(vctl) || (ctl = vctl[vno]) == 0) {
+		panic("spurious intr %d", vno);
+		return;
+	}
+
+	if(ctl->isr)
+		ctl->isr(vno);
+	for(v = ctl; v != nil; v = v->next){
+		if(v->f)
+			v->f(ureg, v->a);
+	}
+	if(ctl->eoi)
+		ctl->eoi(vno);
+
+	/* 
+	 *  preemptive scheduling.  to limit stack depth,
+	 *  make sure process has a chance to return from
+	 *  the current interrupt before being preempted a
+	 *  second time.
 	 */
-/*	do {
-		h->nintr++;
-		(*h->r)(ur, h->arg);
-		h = h->next;
-	} while(h != nil);
-*/
-}
-
-int
-intrstats(char *buf, int bsize)
-{
-	Handler *h;
-	int i, n;
-
-	n = 0;
-	for(i=0; i<nelem(halloc.ivec) && n < bsize; i++)
-		if((h = halloc.ivec[i]) != nil && h->nintr)
-			n += snprint(buf+n, bsize-n, "%3d %ud %uld %ud\n", i, h->nintr, h->ticks, h->maxtick);
-	return n;
+	if(up && up->state == Running)
+	if(anyhigher())
+	if(up->preempted == 0)
+	if(!active.exiting){
+		up->preempted = 1;
+		sched();
+		splhi();
+		up->preempted = 0;
+		return;
+	}
 }
 
 char*
