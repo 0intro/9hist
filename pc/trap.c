@@ -26,9 +26,7 @@ intrenable(int v, void (*f)(Ureg*, void*), void* a, int tbdf)
 		ctl = xalloc(sizeof(Irqctl));
 		if(v >= VectorINTR && arch->intrenable(v, tbdf, ctl) == -1){
 			unlock(&irqctllock);
-			/*
-			print("intrenable: didn't find v %d, tbdf 0x%uX\n", v, tbdf);
-			 */
+			//print("intrenable: didn't find v %d, tbdf 0x%uX\n", v, tbdf);
 			xfree(ctl);
 			return;
 		}
@@ -77,7 +75,7 @@ trapinit(void)
 			break;
 
 		case VectorSYSCALL:
-			d1 |= SEGPL(3)|SEGTG;
+			d1 |= SEGPL(3)|SEGIG;
 			break;
 
 		default:
@@ -157,6 +155,11 @@ trap(Ureg* ureg)
 
 		if(ctl->eoi)
 			ctl->eoi(v);
+
+		/* preemptive scheduling */
+		if(ctl->isintr && v != VectorTIMER && v != VectorCLOCK)
+			if(up && up->state == Running && anyhigher())
+				sched();
 	}
 	else if(v <= 16 && user){
 		spllo();
@@ -188,9 +191,11 @@ trap(Ureg* ureg)
 	}
 	else{
 		if(v == VectorNMI){
-			if(m->machno != 0)
+			nmienable();
+			if(m->machno != 0){
+				print("cpu%d: PC %8.8uX\n", m->machno, ureg->pc);
 				for(;;);
-			//nmienable();
+			}
 		}
 		dumpregs(ureg);
 		if(v < nelem(excname))
@@ -230,7 +235,7 @@ void
 dumpregs(Ureg* ureg)
 {
 	extern ulong etext;
-	ulong mca[2], mct[2];
+	vlong mca, mct;
 
 	dumpregs2(ureg);
 
@@ -245,10 +250,9 @@ dumpregs(Ureg* ureg)
 	if(m->cpuiddx & 0x9A){
 		print(" CR4 %8.8luX", getcr4());
 		if((m->cpuiddx & 0xA0) == 0xA0){
-			rdmsr(0x00, &mca[1], &mca[0]);
-			rdmsr(0x01, &mct[1], &mct[0]);
-			print("\n  MCA %8.8luX:%8.8luX MCT %8.8luX",
-				mca[1], mca[0], mct[0]);
+			rdmsr(0x00, &mca);
+			rdmsr(0x01, &mct);
+			print("\n  MCA %8.8lluX MCT %8.8lluX", mca, mct);
 		}
 	}
 	print("\n  ur %luX up %luX\n", ureg, up);
@@ -353,11 +357,10 @@ syscall(Ureg* ureg)
 	scallnr = ureg->ax;
 	up->scallnr = scallnr;
 	if(scallnr == RFORK && up->fpstate == FPactive){
-		splhi();
 		fpsave(&up->fpsave);
 		up->fpstate = FPinactive;
-		spllo();
 	}
+	spllo();
 
 	sp = ureg->usp;
 	up->nerrlab = 0;

@@ -59,12 +59,13 @@ struct Ipmux
 {
 	Ipmux	*yes;
 	Ipmux	*no;
-	uchar	type;
+	uchar	type;		/* type of field (Txxxx) */
 	uchar	len;		/* length in bytes of item to compare */
+	uchar	n;		/* number of items val points to */
 	short	off;		/* offset of comparison */
-	int	n;		/* number of items val points to */
 	uchar	*val;
 	uchar	*mask;
+	uchar	*e;		/* val + n*len */
 
 	int	ref;		/* so we can garbage collect */
 	Conv	*conv;
@@ -269,6 +270,7 @@ parsemux(char *p)
 		v += f->len;
 	}
 
+	f->e = f->val + f->n*f->len;
 	return f;
 
 parseerror:
@@ -370,6 +372,7 @@ ipmuxcopy(Ipmux *f)
 	nf->no = ipmuxcopy(f->no);
 	nf->yes = ipmuxcopy(f->yes);
 	nf->val = smalloc(f->n*f->len);
+	nf->e = nf->val + f->n*f->len;
 	memmove(nf->val, f->val, f->n*f->len);
 	return nf;
 }
@@ -629,13 +632,14 @@ ipmuxiput(Proto *p, uchar *ia, Block *bp)
 	rlock(f);
 	c = nil;
 	mux = f->ipmux->priv;
+match:
 	while(mux != nil){
 		if(mux->len + mux->off > len){
 			mux = mux->no;
 			continue;
 		}
 		v = mux->val;
-		for(e = v + mux->n*mux->len; v < e; v = ve){
+		for(e = mux->e; v < e; v = ve){
 			m = mux->mask;
 			hp = h + mux->off;
 			for(ve = v + mux->len; v < ve; v++){
@@ -650,7 +654,6 @@ ipmuxiput(Proto *p, uchar *ia, Block *bp)
 			}
 		}
 		mux = mux->no;
-match:;
 	}
 	runlock(f);
 

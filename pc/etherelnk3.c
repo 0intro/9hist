@@ -1525,6 +1525,7 @@ scanphy(Ether* ether)
 		x <<= 6;
 		x |= miir(ether, i, 3)>>10;
 		XCVRDEBUG("phy%d: oui %uX reg1 %uX\n", i, x, miir(ether, i, 1));
+		USED(x);
 	}
 }
 

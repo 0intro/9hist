@@ -131,10 +131,10 @@ tvp3026load(VGAscr* scr, Cursor* curs)
 	 * Write to the indirect control register to make sure
 	 * direct register is enabled and upper 2 bits of cursor
 	 * RAM address are 0.
-	 * The LSBs of the cursor RAM address are in PaddrW.
+	 * Put 0 in index register for lower 8 bits of cursor RAM address.
 	 */
 	tvp3026disable(scr);
-	vgao(PaddrW, 0x00);
+	*(tvp3026+Index) = 0;
 
 	/*
 	 * Initialise the 64x64 cursor RAM array. There are 2 planes,

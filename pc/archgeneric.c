@@ -88,7 +88,8 @@ cpuidentify(void)
 {
 	int family, model;
 	X86type *t;
-	ulong cr4, mct[2];
+	ulong cr4;
+	vlong mct;
 
 	cpuid(m->cpuidid, &m->cpuidax, &m->cpuiddx);
 	family = X86FAMILY(m->cpuidax);
@@ -115,7 +116,7 @@ cpuidentify(void)
 			cr4 |= 0x40;		/* machine check enable */
 		putcr4(cr4);
 		if(m->cpuiddx & 0x80)
-			rdmsr(0x01, &mct[1], &mct[0]);
+			rdmsr(0x01, &mct);
 	}
 
 	return t->family;

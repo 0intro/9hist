@@ -68,7 +68,7 @@ greconnect(Conv *c, char **argv, int argc)
 			break;
 		if(tc == c)
 			continue;
-		if(tc->rport == c->rport && tc->raddr == c->raddr){
+		if(tc->rport == c->rport && ipcmp(tc->raddr, c->raddr) == 0){
 			err = "already connected to that addr/proto";
 			ipmove(c->laddr, IPnoaddr);
 			ipmove(c->raddr, IPnoaddr);

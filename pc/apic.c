@@ -121,17 +121,19 @@ lapiconline(int clkin)
 static int
 lapictimerinit(void)
 {
-	ulong hi, lo, v;
+	ulong lo, v;
+	vlong tsc;
 
 	v = m->cpumhz*1000;
 	lapicw(LapicTDCR, LapicX1);
 	lapicw(LapicTIMER, ApicIMASK|LapicCLKIN|LapicONESHOT|VectorTIMER);
 
 	lapicw(LapicTICR, v);
-	wrmsr(0x10, 0, 0);
+	wrmsr(0x10, 0);
 
 	do{
-		rdmsr(0x10, &hi, &lo);
+		rdmsr(0x10, &tsc);
+		lo = (ulong)tsc;
 	}while(lo < v);
 
 	return ((v-lapicr(LapicTCCR)+500)/1000)*1000*1000;
@@ -160,7 +162,7 @@ lapicinit(Apic* apic)
 	case 0x526:				/* stepping cB1 */
 	case 0x52B:				/* stepping E0 */
 	case 0x52C:				/* stepping cC0 */
-		wrmsr(0x0E, 0, 1<<14);		/* TR12 */
+		wrmsr(0x0E, 1<<14);		/* TR12 */
 		break;
 	}
 	lapicw(LapicLINT0, apic->lintr[0]);

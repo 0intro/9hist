@@ -284,16 +284,15 @@ TEXT putcr4(SB), $0
 TEXT rdmsr(SB), $0				/* model-specific register */
 	MOVL	index+0(FP), CX
 	RDMSR
-	MOVL	hi+4(FP), CX
-	MOVL	DX, (CX)
-	MOVL	lo+8(FP), CX
-	MOVL	AX, (CX)
+	MOVL	vlong+4(FP), CX			/* &vlong */
+	MOVL	AX, (CX)			/* lo */
+	MOVL	DX, 4(CX)			/* hi */
 	RET
 	
 TEXT wrmsr(SB), $0
 	MOVL	index+0(FP), CX
-	MOVL	hi+4(FP), DX
-	MOVL	lo+8(FP), AX
+	MOVL	lo+4(FP), AX
+	MOVL	hi+8(FP), DX
 	WRMSR
 	RET
 

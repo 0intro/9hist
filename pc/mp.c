@@ -4,6 +4,7 @@
 #include "dat.h"
 #include "fns.h"
 #include "io.h"
+#include "ureg.h"
 
 #include "mp.h"
 #include "apbootstrap.h"
@@ -287,6 +288,58 @@ mklintr(PCMPintr* p)
 	return v;
 }
 
+static void
+checkmtrr(void)
+{
+	int i, vcnt;
+	Mach *mach0;
+
+	/*
+	 * If there are MTRR registers, snarf them for validation.
+	 */
+	if(!(m->cpuiddx & 0x1000))
+		return;
+
+	rdmsr(0x0FE, &m->mtrrcap);
+	rdmsr(0x2FF, &m->mtrrdef);
+	if(m->mtrrcap & 0x0100){
+		rdmsr(0x250, &m->mtrrfix[0]);
+		rdmsr(0x258, &m->mtrrfix[1]);
+		rdmsr(0x259, &m->mtrrfix[2]);
+		for(i = 0; i < 8; i++)
+			rdmsr(0x268+i, &m->mtrrfix[(i+3)]);
+	}
+	vcnt = m->mtrrcap & 0x00FF;
+	if(vcnt > nelem(m->mtrrvar))
+		vcnt = nelem(m->mtrrvar);
+	for(i = 0; i < vcnt; i++)
+		rdmsr(0x200+i, &m->mtrrvar[i]);
+
+	/*
+	 * If not the bootstrap processor, compare.
+	 */
+	if(m->machno == 0)
+		return;
+
+	mach0 = MACHP(0);
+	if(mach0->mtrrcap != m->mtrrcap)
+		print("mtrrcap%d: %lluX %lluX\n",
+			m->machno, mach0->mtrrcap, m->mtrrcap);
+	if(mach0->mtrrdef != m->mtrrdef)
+		print("mtrrdef%d: %lluX %lluX\n",
+			m->machno, mach0->mtrrdef, m->mtrrdef);
+	for(i = 0; i < 11; i++){
+		if(mach0->mtrrfix[i] != m->mtrrfix[i])
+			print("mtrrfix%d: i%d: %lluX %lluX\n",
+				m->machno, i, mach0->mtrrfix[i], m->mtrrfix[i]);
+	}
+	for(i = 0; i < vcnt; i++){
+		if(mach0->mtrrvar[i] != m->mtrrvar[i])
+			print("mtrrvar%d: i%d: %lluX %lluX\n",
+				m->machno, i, mach0->mtrrvar[i], m->mtrrvar[i]);
+	}
+}
+
 #define PDX(va)		((((ulong)(va))>>22) & 0x03FF)
 #define PTX(va)		((((ulong)(va))>>12) & 0x03FF)
 
@@ -301,6 +354,7 @@ squidboy(Apic* apic)
 
 	cpuidentify();
 	cpuidprint();
+	checkmtrr();
 
 	lock(&mprdthilock);
 	mprdthi |= (1<<apic->apicno)<<24;
@@ -390,6 +444,21 @@ mpstartap(Apic* apic)
 		microdelay(10);
 	}
 	nvramwrite(0x0F, 0x00);
+}
+
+static void
+senddbgnmi(void)
+{
+	/*
+	 * NMI all excluding self.
+	 */
+	lapicicrw(0, 0x000C0000|ApicNMI);
+}
+
+static void
+mpdbg(Ureg* ureg, void*)
+{
+	iprint("MPDBG: cpu%d: PC 0x%uX\n", m->machno, ureg->pc);
 }
 
 void
@@ -482,6 +551,8 @@ mpinit(void)
 	intrenable(VectorSPURIOUS, lapicspurious, 0, BUSUNKNOWN);
 	lapiconline(clkin);
 
+	checkmtrr();
+
 	/*
 	 * Initialise the application processors.
 	 */
@@ -493,10 +564,13 @@ mpinit(void)
 
 	/*
 	 * Remember to set conf.copymode here if nmach > 1.
-	 * Look for an ExtINT line and enable it.
+	 * Should look for an ExtINT line and enable it.
 	 */
 	if(conf.nmach > 1)
 		conf.copymode = 1;
+
+	consdebug = senddbgnmi;
+	intrenable(VectorNMI, mpdbg, 0, BUSUNKNOWN);
 }
 
 static int
@@ -624,6 +698,8 @@ mpintrenable(int v, int tbdf, Irqctl* irqctl)
 void
 mpshutdown(void)
 {
+	int apicno, machno;
+
 	/*
 	 * To be done...
 	 */
@@ -639,6 +715,14 @@ mpshutdown(void)
 	}
 
 	print("apshutdown: active = 0x%2.2uX\n", active.machs);
+	if(active.machs){
+		for(machno = 1; machno < conf.nmach; machno++){
+			if(!(active.machs & (1<<machno)))
+				continue;
+			apicno = machno2apicno[machno];
+			lapicicrw(1<<apicno, ApicNMI);
+		}
+	}
 	delay(1000);
 	splhi();
 

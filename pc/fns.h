@@ -91,7 +91,7 @@ void	procsave(Proc*);
 void	procsetup(Proc*);
 void	putcr3(ulong);
 void	putcr4(ulong);
-void	rdmsr(int, ulong*, ulong*);
+void	rdmsr(int, vlong*);
 void	screeninit(void);
 int	screenprint(char*, ...);			/* debugging */
 void	(*screenputs)(char*, int);
@@ -105,7 +105,7 @@ void	umbrwfree(ulong, int);
 ulong	upamalloc(ulong, int, int);
 void	upafree(ulong, int);
 void	vectortable(void);
-void	wrmsr(int, ulong, ulong);
+void	wrmsr(int, vlong);
 void	wbflush(void);
 int	xchgw(ushort*, int);
 

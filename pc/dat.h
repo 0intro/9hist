@@ -178,6 +178,11 @@ struct Mach
 	char	cpuidid[16];
 	char*	cpuidtype;
 
+	vlong	mtrrcap;
+	vlong	mtrrdef;
+	vlong	mtrrfix[11];
+	vlong	mtrrvar[32];		/* 256 max. */
+
 	int	stack[1];
 };
 
