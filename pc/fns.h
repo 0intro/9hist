@@ -38,6 +38,7 @@ ushort	ins(int);
 void	inss(int, void*, int);
 ulong	inl(int);
 void	insl(int, void*, int);
+int	iprint(char*, ...);
 int	isaconfig(char*, int, ISAConf*);
 ulong	isamem(int);
 void	kbdinit(void);

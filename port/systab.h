@@ -26,7 +26,7 @@ Syscall sysrfork;
 Syscall syswrite;
 Syscall syspipe;
 Syscall syscreate;
-Syscall syspath;
+Syscall sysfd2path;
 Syscall sysbrk_;
 Syscall sysremove;
 Syscall syswstat;
@@ -41,7 +41,6 @@ Syscall sysrendezvous;
 Syscall sysunmount;
 Syscall syswait;
 Syscall ;
-Syscall /* make sure port/portdat.h has nsyscall defined correctly!!! */;
 Syscall	sysdeath;
 
 Syscall *systab[]={
@@ -68,7 +67,7 @@ Syscall *systab[]={
 	[WRITE]		syswrite,
 	[PIPE]		syspipe,
 	[CREATE]	syscreate,
-	[PATH]		syspath,
+	[FD2PATH]	sysfd2path,
 	[BRK_]		sysbrk_,
 	[REMOVE]	sysremove,
 	[WSTAT]		syswstat,
@@ -83,7 +82,6 @@ Syscall *systab[]={
 	[UNMOUNT]	sysunmount,
 	[WAIT]		syswait,
 
-/* make sure port/portdat.h has NSYSCALL defined correctly!!! */
 };
 
 char *sysctab[]={
@@ -110,7 +108,7 @@ char *sysctab[]={
 	[WRITE]		"Write",
 	[PIPE]		"Pipe",
 	[CREATE]	"Create",
-	[PATH]		"Path",
+	[FD2PATH]	"Fd2path",
 	[BRK_]		"Brk",
 	[REMOVE]	"Remove",
 	[WSTAT]		"Wstat",
@@ -125,5 +123,4 @@ char *sysctab[]={
 	[UNMOUNT]	"Unmount",
 	[WAIT]		"Wait",
 
-/* make sure port/portdat.h has NSYSCALL defined correctly!!! */
 };

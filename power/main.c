@@ -190,7 +190,6 @@ init0(void)
 	up->slash = namec("#/", Atodir, 0, 0);
 	up->dot = clone(up->slash, 0);
 
-	iallocinit();
 	chandevinit();
 
 	if(!waserror()){

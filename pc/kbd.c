@@ -505,7 +505,7 @@ kbdintr(Ureg *ur, void *arg)
  *  set up a ps2 mouse
  */
 static void
-ps2mouse(int frominit)
+ps2mouse(void)
 {
 	int x;
 
@@ -566,7 +566,7 @@ mousectl(char *arg)
 			break;
 		}
 	} else if(strcmp(field[0], "ps2") == 0){
-		ps2mouse(0);
+		ps2mouse();
 	} else if(strcmp(field[0], "accelerated") == 0){
 		switch(mousetype){
 		case MousePS2:
@@ -623,6 +623,7 @@ kbdinit(void)
 		ccc = inb(Data);
 
 	/* enable kbd xfers and interrupts */
+	/* disable mouse */
 	ccc &= ~Ckbddis;
 	ccc |= Csf | Ckbdint | Cscs1 | Cmousedis;
 	if(outready() < 0)

@@ -118,9 +118,6 @@ xinit(void)
 	conf.base1 = (ulong)KADDR(conf.base1);
 	conf.npage0 = (ulong)KADDR(conf.npage0);
 	conf.npage1 = (ulong)KADDR(conf.npage1);
-
-	/* setup initial memory allocations for interrupt time */
-	qinit();
 }
 
 /*
@@ -162,7 +159,7 @@ xallocz(ulong size, int zero)
 	size += BY2V + sizeof(Xhdr);
 	size &= ~(BY2V-1);
 
-	lock(&xlists);
+	ilock(&xlists);
 	l = &xlists.table;
 	for(h = *l; h; h = h->link) {
 		if(h->size >= size) {
@@ -174,7 +171,7 @@ xallocz(ulong size, int zero)
 				h->link = xlists.flist;
 				xlists.flist = h;
 			}
-			unlock(&xlists);
+			iunlock(&xlists);
 			p = KADDR(p);
 			if(zero)
 				memset(p, 0, size);
@@ -184,14 +181,8 @@ xallocz(ulong size, int zero)
 		}
 		l = &h->link;
 	}
-	unlock(&xlists);
+	iunlock(&xlists);
 	return nil;
-}
-
-void*
-xalloc(ulong size)
-{
-	return xallocz(size, 1);
 }
 
 void
@@ -217,7 +208,7 @@ xhole(ulong addr, ulong size)
 		return;
 
 	top = addr + size;
-	lock(&xlists);
+	ilock(&xlists);
 	l = &xlists.table;
 	for(h = *l; h; h = h->link) {
 		if(h->top == addr) {
@@ -231,7 +222,7 @@ xhole(ulong addr, ulong size)
 				c->link = xlists.flist;
 				xlists.flist = c;
 			}
-			unlock(&xlists);
+			iunlock(&xlists);
 			return;
 		}
 		if(h->addr > addr)
@@ -241,12 +232,12 @@ xhole(ulong addr, ulong size)
 	if(h && top == h->addr) {
 		h->addr -= size;
 		h->size += size;
-		unlock(&xlists);
+		iunlock(&xlists);
 		return;
 	}
 
 	if(xlists.flist == nil) {
-		unlock(&xlists);
+		iunlock(&xlists);
 		print("xfree: no free holes, leaked %d bytes\n", size);
 		return;
 	}
@@ -258,11 +249,11 @@ xhole(ulong addr, ulong size)
 	h->size = size;
 	h->link = *l;
 	*l = h;
-	unlock(&xlists);
+	iunlock(&xlists);
 }
 
 void*
-malloc(ulong size)
+mallocz(ulong size, int zero)
 {
 	ulong next;
 	int pow, n;
@@ -275,21 +266,22 @@ malloc(ulong size)
 	return nil;
 good:
 	/* Allocate off this list */
-	lock(&arena);
+	ilock(&arena);
 	bp = arena.btab[pow];
 	if(bp) {
 		arena.btab[pow] = bp->next;
-		unlock(&arena);
+		iunlock(&arena);
 
 		if(bp->magic != 0)
 			panic("malloc %lux %lux", bp->magic, bp->pc);
 
 		bp->magic = Magic2n;
-		bp->pc = getcallerpc(((uchar*)&size) - sizeof(size));
-		memset(bp->data, 0,  size);
+
+		if(zero)
+			memset(bp->data, 0,  size);
 		return  bp->data;
 	}
-	unlock(&arena);
+	iunlock(&arena);
 
 	size = sizeof(Bucket)+(1<<pow);
 	size += BY2V;
@@ -303,7 +295,7 @@ good:
 
 		next = (ulong)bp+size;
 		nbp = (Bucket*)next;
-		lock(&arena);
+		ilock(&arena);
 		arena.btab[pow] = nbp;
 		arena.nbuck[pow] += n;
 		for(n -= 2; n; n--) {
@@ -313,7 +305,7 @@ good:
 			nbp = nbp->next;
 		}
 		nbp->size = pow;
-		unlock(&arena);
+		iunlock(&arena);
 	}
 	else {
 		bp = xalloc(size);
@@ -325,7 +317,7 @@ good:
 
 	bp->size = pow;
 	bp->magic = Magic2n;
-	bp->pc = getcallerpc(((uchar*)&size) - sizeof(size));
+
 	return bp->data;
 }
 
@@ -335,15 +327,11 @@ smalloc(ulong size)
 	char *s;
 	void *p;
 	int attempt;
-	Bucket *bp;
 
 	for(attempt = 0; attempt < 1000; attempt++) {
 		p = malloc(size);
-		if(p != nil) {
-			bp = (Bucket*)((ulong)p - bdatoff);
-			bp->pc = getcallerpc(((uchar*)&size) - sizeof(size));
+		if(p != nil)
 			return p;
-		}
 		s = up->psstate;
 		up->psstate = "Malloc";
 		qlock(&arena.rq);
@@ -379,11 +367,11 @@ free(void *ptr)
 		panic("free %lux %lux", bp->magic, bp->pc);
 
 	bp->magic = 0;
-	lock(&arena);
+	ilock(&arena);
 	l = &arena.btab[bp->size];
 	bp->next = *l;
 	*l = bp;
-	unlock(&arena);
+	iunlock(&arena);
 	if(arena.r.p)
 		wakeup(&arena.r);
 }

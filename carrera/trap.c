@@ -102,6 +102,8 @@ ptlb(ulong phys)
 	return buf[k];
 }
 
+ulong *XDBG = (ulong*)0x80020018;
+
 static void
 kpteprint(Ureg *ur)
 {
@@ -271,17 +273,20 @@ trap(Ureg *ur)
 		}
 	}
 
-
+XDBG[0] = 7;
 	splhi();
 	if(!user)
 		return;
+XDBG[0] = 8;
 
 	notify(ur);
+XDBG[0] = 9;
 	if(up->fpstate == FPinactive) {
 		restfpregs(&up->fpsave, up->fpsave.fpstatus&~FPEXPMASK);
 		up->fpstate = FPactive;
 		ur->status |= CU1;
 	}
+XDBG[0] = 10;
 }
 
 void
@@ -291,9 +296,11 @@ intr(Ureg *ur)
 	ulong cause = ur->cause;
 	ulong isr, vec;
 
+XDBG[0] = 0;
 	m->intr++;
 	cause &= INTR7|INTR6|INTR5|INTR4|INTR3|INTR2|INTR1|INTR0;
 
+XDBG[0] = 1;
 	if(cause & INTR3) {
 		devint = IO(uchar, Intcause);
 		switch(devint) {
@@ -320,6 +327,7 @@ intr(Ureg *ur)
 		}
 		cause &= ~INTR3;
 	}
+XDBG[0] = 2;
 	if(cause & INTR2) {
 		isr = IO(ulong, R4030Isr);
 		if(isr) {
@@ -331,6 +339,7 @@ intr(Ureg *ur)
 		}
 		cause &= ~INTR2;
 	}
+XDBG[0] = 3;
 	if(cause & INTR4) {
 		devint = IO(uchar, I386ack);
 		vec = devint&~0x7;
@@ -355,15 +364,17 @@ intr(Ureg *ur)
 		}
 		cause &= ~INTR4;
 	}
+XDBG[0] = 4;
 	if(cause & INTR7) {
 		clock(ur);
 		cause &= ~INTR7;
 	}
-
+XDBG[0] = 5;
 	if(cause) {
 		iprint("cause %lux\n", cause);
 		exit(1);
 	}
+XDBG[0] = 6;
 }
 
 char*

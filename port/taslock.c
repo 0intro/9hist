@@ -10,6 +10,22 @@ lock(Lock *l)
 {
 	if(tas(&l->key) == 0)
 		return;
+
+	for(;;){
+		while(l->key)
+			;
+		if(tas(&l->key) == 0)
+			return;
+	}
+}
+
+void
+ilock(Lock *l)
+{
+	l->sr = splhi();
+	if(tas(&l->key) == 0)
+		return;
+
 	for(;;){
 		while(l->key)
 			;
@@ -23,13 +39,22 @@ canlock(Lock *l)
 {
 	if(tas(&l->key))
 		return 0;
-	l->pc = getcallerpc(((uchar*)&l) - sizeof(l));
+
 	return 1;
 }
 
 void
 unlock(Lock *l)
 {
-	l->pc = 0;
 	l->key = 0;
+}
+
+void
+iunlock(Lock *l)
+{
+	ulong sr;
+
+	sr = l->sr;
+	l->key = 0;
+	splx(sr);
 }

@@ -5,23 +5,11 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
-
-enum
-{
-	Minpow	= 7,
-	Maxpow	= 16,
-};
-
-struct Pool
+struct
 {
 	Lock;
-	Block*	list;
-	int	had;
-	int	have;
-	int	want;
-	int	goal;
-};
-Pool	pool[Maxpow];
+	ulong	bytes;
+} ialloc;
 
 /*
  *  IO queues
@@ -79,143 +67,65 @@ checkb(Block *b, char *msg)
 		panic("checkb 4 %s %lux %lux", msg, b->wp, b->lim);
 }
 
-void
-poison(Block *b)
-{
-	b->next = (void*)0xdeadbabe;
-	b->rp = (void*)0xdeadbabe;
-	b->wp = (void*)0xdeadbabe;
-	b->lim = (void*)0xdeadbabe;
-	b->base = (void*)0xdeadbabe;
-}
-
-/*
- *  Manage interrupt level memory allocation.
- */
-static void
-iallocmgr(void)
-{
-	int pow;
-
-	attention = 0;
-	spllo();
-	for(pow = Minpow; pow <= Maxpow; pow++) {
-		p = &pool[pow];
-
-		/* Low pass filter */
-		delta = 3 * (p->had - p->have);
-		delta = (delta/2) + p->want;
-
-		if(delta < 0) {
-			lock(p);
-			p->have -= delta;
-			bp = p->list;
-			while(delta--)
-				p->list = p->list->next;
-			unlock(p);
-			spllo();
-			while(bp) {
-				next = bp->next;
-				free(bp);
-				bp = next;
-			}
-			splhi();
-		}
-		else {
-			spllo();
-			n = 0;
-			s = sizeof(Block)+(1<<pow)+(BY2V-1);
-			while(delta--) {
-				b = malloc(s);
-				if(b == 0)
-					break;
-				addr = (ulong)b;
-				addr = (addr+sizeof(Block)+(BY2V-1)) & ~(BY2V-1);
-				b->base = (uchar*)addr;
-				b->rp = b->base;
-				b->wp = b->base;
-				b->lim = ((uchar*)b)+size;
-				b->size = pow;
-				n++;
-			}
-			spllo();
-			lock(p);
-			unlock(p);
-			splhi();
-		}
-		p->had = p->have;
-		p->want = 0;		
-	}
-}
-
-void
-qinit(void)
-{
-}
-
-void
-ixsummary(void)
-{
-	int pow;
-	Pool *p;
-
-	print("size	have/goal\n");
-	for(pow = Minpow; pow <= Maxpow; pow++){
-		cl = &pool[pow];
-		print("%d	%d/%d\n", 1<<pow, p->have, p->goal);
-	}
-	print("\n");
-}
-
 /*
  *  interrupt time allocation
  */
 Block*
 iallocb(int size)
 {
-	int pow;
-	Block *bp;
+	Block *b;
+	ulong addr;
 
-	for(pow = Minpow; pow < Maxpow; pow++)
-		if(size >= (1<<pow))
-			break;
-
-	if(pow == Maxpow)
-		return 0;
-
-	p = &pool[pow];
-	lock(p);
-	bp = p->list;
-	if(p == 0) {
-		p->want++;
-		unlock(p);
-		if(attention == 0) {
-			attention++;
-			newcallback(iallocmgr);
-		}
+	size = sizeof(Block) + size + (BY2V-1);
+	if(ialloc.bytes > conf.ialloc){
+iprint("whoops %d/%d\n", ialloc.bytes, conf.ialloc);
 		return 0;
 	}
-	p->have--;
-	p->list = bp->next;
-	unlock(p);
-	bp->wp = b->base;
-	bp->rp = b->base;
-	bp->list = 0;
-	bp->next = 0;
-	return bp;
+	b = mallocz(size, 0);
+	if(b == 0){
+iprint("malloc %d/%d\n", ialloc.bytes, conf.ialloc);
+		return 0;
+	}
+	memset(b, 0, sizeof(Block));
+
+	addr = (ulong)b;
+	addr = ROUND(addr + sizeof(Block), BY2V);
+	b->base = (uchar*)addr;
+	b->rp = b->base;
+	b->wp = b->base;
+	b->lim = ((uchar*)b) + size;
+	b->intr = 1;
+
+	lock(&ialloc);
+	ialloc.bytes += b->lim - b->base;
+	unlock(&ialloc);
+
+	return b;
 }
 
 void
-ifreeb(Block *bp)
+freeb(Block *b)
 {
-	Pool *p;
+	if(b->intr){
+		ilock(&ialloc);
+		ialloc.bytes -= b->lim - b->base;
+		iunlock(&ialloc);
+	}
 
-	p = &pool[bp->size];
-	lock(p);
-	bp->next = p->list;
-	p->list = bp;
-	p->have++;
-	unlock(p);
+	/* poison the block in case someone is still holding onto it */
+	b->next = (void*)0xdeadbabe;
+	b->rp = (void*)0xdeadbabe;
+	b->wp = (void*)0xdeadbabe;
+	b->lim = (void*)0xdeadbabe;
+	b->base = (void*)0xdeadbabe;
+
+	free(b);
+}
+
+void
+ixsummary(void)
+{
+	print("ialloc %d/%d\n", ialloc.bytes, conf.ialloc);
 }
 
 /*
@@ -227,13 +137,14 @@ allocb(int size)
 	Block *b;
 	ulong addr;
 
-	size += sizeof(Block) + 7;
-	b = malloc(size);
+	size = sizeof(Block) + size + (BY2V-1);
+	b = mallocz(size, 0);
 	if(b == 0)
 		exhausted("Blocks");
+	memset(b, 0, sizeof(Block));
 
 	addr = (ulong)b;
-	addr = (addr + sizeof(Block) + 7) & ~7;
+	addr = ROUND(addr + sizeof(Block), BY2V);
 	b->base = (uchar*)addr;
 	b->rp = b->base;
 	b->wp = b->base;
@@ -243,8 +154,7 @@ allocb(int size)
 }
 
 /*
- *  Interrupt level copy out of a queue, return # bytes copied.  If drop is
- *  set, any bytes left in a block afer a consume are discarded.
+ *  Interrupt level copy out of a queue, return # bytes copied.
  */
 int
 qconsume(Queue *q, void *vp, int len)
@@ -287,10 +197,8 @@ checkb(b, "qconsume 1");
 
 checkb(b, "qconsume 2");
 	/* discard the block if we're done with it */
-	if((q->state & Qmsg) || len == n) {
-		poison(b);
-		ifree(b);
-	}
+	if((q->state & Qmsg) || len == n)
+		freeb(b);
 	return len;
 }
 
@@ -300,9 +208,7 @@ qpass(Queue *q, Block *b)
 	int s, i, len, dowakeup;
 
 	s = splhi();
-
 	len = BLEN(b);
-
 	/* sync with qread */
 	dowakeup = 0;
 	lock(q);
@@ -318,21 +224,13 @@ qpass(Queue *q, Block *b)
 		if(len <= 0 || (q->state & Qmsg)){
 			unlock(q);
 			wakeup(&q->rr);
-			free(b);
+			freeb(b);
 			splx(s);
 			return i;
 		}
-
 		/* queue anything that's left */
 		dowakeup = 1;
 		b->rp += i;
-	}
-
-	/* no waiting receivers, room in buffer? */
-	if(q->len >= q->limit){
-		unlock(q);
-		splx(s);
-		return -1;
 	}
 
 	/* save in buffer */
@@ -519,7 +417,8 @@ qread(Queue *q, void *vp, int len)
 			q->syncbuf = vp;
 			unlock(q);
 			splx(x);
-			sleep(&q->rr, filled, q);
+			while(q->syncbuf != 0)
+				sleep(&q->rr, filled, q);
 			len = q->synclen;
 			poperror();
 			qunlock(&q->rlock);
@@ -528,7 +427,8 @@ qread(Queue *q, void *vp, int len)
 			q->state |= Qstarve;
 			unlock(q);
 			splx(x);
-			sleep(&q->rr, notempty, q);
+			while(q->bfirst == 0)
+				sleep(&q->rr, notempty, q);
 		}
 	}
 checkb(b, "qread 1");
@@ -556,8 +456,7 @@ checkb(b, "qread 1");
 checkb(b, "qread 2");
 	/* free it or put what's left on the queue */
 	if(b->rp >= b->wp || (q->state&Qmsg)) {
-		poison(b);
-		free(b);
+		freeb(b);
 	} else {
 		x = splhi();
 		lock(q);
@@ -637,7 +536,7 @@ qwrite(Queue *q, void *vp, int len, int nowait)
 		/* flow control */
 		while(!qnotfull(q)){
 			if(nowait){
-				free(b);
+				freeb(b);
 				qunlock(&q->wlock);
 				poperror();
 				return len;
@@ -664,7 +563,7 @@ checkb(b, "qwrite");
 			q->synclen = n;
 			q->syncbuf = 0;
 			dowakeup = 1;
-			free(b);
+			freeb(b);
 		} else {
 			/* we guessed right, queue it */
 			if(q->bfirst)
@@ -720,8 +619,7 @@ qclose(Queue *q)
 	/* free queued blocks */
 	while(bfirst){
 		b = bfirst->next;
-		poison(bfirst);
-		free(bfirst);
+		freeb(bfirst);
 		bfirst = b;
 	}
 

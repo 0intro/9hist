@@ -122,12 +122,12 @@ struct Block
 {
 	Block*	next;
 	Block*	list;
-	int	size;			/* power of 2 allocation list */
 	uchar*	rp;			/* first unconsumed byte */
 	uchar*	wp;			/* first empty byte */
 	uchar*	lim;			/* 1 past the end of the buffer */
 	uchar*	base;			/* start of the buffer */
 	uchar	flag;
+	uchar	intr;
 };
 #define BLEN(s)	((s)->wp - (s)->rp)
 

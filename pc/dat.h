@@ -25,7 +25,7 @@ extern  void	(*kprofp)(ulong);
 struct Lock
 {
 	ulong	key;
-	ulong	pc;
+	ulong	sr;
 };
 
 struct Label
@@ -82,6 +82,7 @@ struct Conf
 	ulong	ldepth;		/* screen depth */
 	ulong	maxx;		/* screen width */
 	ulong	maxy;		/* screen length */
+	ulong	ialloc;		/* max interrupt time allocation in bytes */
 };
 
 /*

@@ -24,8 +24,7 @@ typedef struct Ureg	Ureg;
 struct Lock
 {
 	ulong	key;			/* semaphore (non-zero = locked) */
-	ulong	pc;
-	void	*upa;
+	ulong	sr;
 };
 
 struct Label
@@ -48,6 +47,7 @@ struct Conf
 	ulong	base1;		/* base of bank 1 */
 	ulong	copymode;	/* 0 is copy on write, 1 is copy on reference */
 	int	monitor;
+	ulong	ialloc;		/* bytes available for interrupt time allocation */
 };
 
 /*

@@ -8,7 +8,7 @@
 #define	WAIT		NOOP; NOOP
 #define	NOOP4		NOOP; NOOP; NOOP; NOOP
 
-#define	ERET		NOOP4;NOOP4;WORD	$0x42000018;NOOP4;NOOP4
+#define	ERET		NOOP4;NOOP4;NOOP4;WORD $0x42000018;NOOP4;NOOP4;NOOP4
 
 #define	CONST(x,r)	MOVW $((x)&0xffff0000), r; OR  $((x)&0xffff), r
 
@@ -103,7 +103,6 @@ TEXT	touser(SB), $-4
 	WAIT
 	MOVW	R1, SP
 	MOVW	R2, M(EPC)
-	NOOP4
 	ERET
 
 TEXT	firmware(SB), $0
@@ -358,12 +357,10 @@ utlbcom:
 	NOOP4
 	BGEZ	R26, utlindex
 	TLBWR
-	NOOP4
 	ERET
 utlindex:
 	MOVW	R0,(R0)
 	TLBWI
-	NOOP4
 	ERET
 
 stlbm:
@@ -426,12 +423,11 @@ sysrestore:
 	MOVW	0x0C(SP), R26		/* old pc */
 	MOVW	0x10(SP), SP
 	MOVW	R26, M(EPC)
-	NOOP4
 	ERET
 
 notsys:
 	JAL	trap(SB)
-
+	RDBGSV
 restore:
 	JAL	restregs(SB)
 	MOVW	0x28(SP), R31
@@ -440,7 +436,6 @@ restore:
 	MOVW	0x40(SP), R(USER)
 	MOVW	0x10(SP), SP
 	MOVW	R26, M(EPC)
-	NOOP4
 	ERET
 
 waskernel:
@@ -455,7 +450,6 @@ waskernel:
 	MOVW	0x28(SP), R31
 	ADDU	$UREGSIZE, SP
 	MOVW	R26, M(EPC)
-	NOOP4
 	ERET
 
 TEXT	forkret(SB), $0

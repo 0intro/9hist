@@ -42,6 +42,7 @@ main(void)
 {
 	tlbinit();
 	ioinit(1);		/* Very early to establish IO mappings */
+	rdbginit();
 	arginit();
 	confinit();
 	savefpregs(&initfp);
@@ -61,7 +62,6 @@ main(void)
 	chandevreset();
 	swapinit();
 	userinit();
-	rdbginit();
 	schedinit();
 }
 
@@ -155,6 +155,11 @@ machinit(void)
 
 	active.exiting = 0;
 	active.machs = 1;
+
+	/* Setup call back ring buffer */
+	m->cbin = m->calls;
+	m->cbout = m->calls;
+	m->cbend = &m->calls[NCALLBACK];
 }
 
 /*
@@ -331,7 +336,6 @@ init0(void)
 	up->slash = namec("#/", Atodir, 0, 0);
 	up->dot = clone(up->slash, 0);
 
-	iallocinit();
 	chandevinit();
 
 	if(!waserror()){
@@ -440,6 +444,7 @@ confinit(void)
 	conf.base1 = 0;
 
 	conf.upages = (conf.npage*70)/100;
+	conf.ialloc = ((conf.npage-conf.upages)/2)*BY2PG;
 
 	conf.nmach = 1;
 
@@ -498,8 +503,6 @@ rdbginit(void)
 {
 	uchar *vec;
 	ulong jba;
-
-	return;	/* Not installed now */
 
 	/* Only interested in the PC */
 	Mipsjmpbuf.pc = 0x8001C020;

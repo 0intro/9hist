@@ -119,7 +119,6 @@ init0(void)
 	up->slash = namec("#/", Atodir, 0, 0);
 	up->dot = clone(up->slash, 0);
 
-	iallocinit();
 	chandevinit();
 
 	if(!waserror()){
@@ -387,6 +386,7 @@ confinit(void)
 	if(pcnt < 10)
 		pcnt = 70;
 	conf.upages = (conf.npage*pcnt)/100;
+	conf.ialloc = ((conf.npage-conf.upages)/2)*BY2PG;
 
 	conf.nproc = 30 + ((conf.npage*BY2PG)/MB)*5;
 	conf.monitor = 1;

@@ -44,10 +44,6 @@ char *statename[] =
 void
 schedinit(void)		/* never returns */
 {
-	m->cbin = m->calls;
-	m->cbout = m->calls;
-	m->cbend = &m->calls[NCALLBACK];
-
 	setlabel(&m->sched);
 	if(up) {
 		m->proc = 0;
