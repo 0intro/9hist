@@ -316,6 +316,7 @@ faultpower(Ureg *ureg, ulong addr, int read)
 		}
 		sprint(buf, "sys: trap: fault %s addr=0x%lux", read? "read" : "write", addr);
 		postnote(up, 1, buf, NDebug);
+dumpregs(ureg);
 	}
 	up->insyscall = insyscall;
 }
@@ -720,6 +721,7 @@ notify(Ureg* ur)
 		qunlock(&up->debug);
 		pexit(n->msg, n->flag!=NDebug);
 	}
+print("notify: old usp %lux\n", ur->usp);
 	sp = ur->usp & ~(BY2V-1);
 	sp -= sizeof(Ureg);
 
@@ -746,6 +748,7 @@ notify(Ureg* ur)
 	up->nnote--;
 	memmove(&up->lastnote, &up->note[0], sizeof(Note));
 	memmove(&up->note[0], &up->note[1], up->nnote*sizeof(Note));
+print("notify: usp %lux\n", ur->usp);
 
 	qunlock(&up->debug);
 	splx(s);
