@@ -14,6 +14,12 @@ static void fault386(Ureg*, void*);
 
 static Lock vctllock;
 static Vctl *vctl[256];
+ulong *intrtimes[256];
+
+enum
+{
+	Ntimevec = 1000		/* number of time buckets for each intr */
+};
 
 void
 intrenable(int irq, void (*f)(Ureg*, void*), void* a, int tbdf, char *name)
@@ -241,6 +247,25 @@ static char* excname[32] = {
 };
 
 /*
+ *  keep histogram of interrupt service times (tops off at 1/100 second)
+ */
+void
+intrtime(Mach *m, int vno)
+{
+	uvlong now;
+	ulong diff;
+
+	rdtsc(&now);
+	diff = now - m->intrts;
+	diff /= m->cpumhz;
+	if(diff >= 1000)
+		diff = 999;
+	if(intrtimes[vno] == nil)
+		intrtimes[vno] = xalloc(Ntimevec*sizeof(ulong));
+	intrtimes[vno][diff]++;
+}
+
+/*
  *  All traps come here.  It is slower to have all traps call trap()
  *  rather than directly vectoring the handler.  However, this avoids a
  *  lot of code duplication and possible bugs.  The only exception is
@@ -255,7 +280,8 @@ trap(Ureg* ureg)
 	Vctl *ctl, *v;
 	Mach *mach;
 
-	m->intrts = fastticks(nil);
+	if(m->havetsc)
+		 rdtsc(&m->intrts);
 	user = 0;
 	if((ureg->cs & 0xFFFF) == UESEL){
 		user = 1;
@@ -278,6 +304,8 @@ trap(Ureg* ureg)
 		}
 		if(ctl->eoi)
 			ctl->eoi(vno);
+		if(ctl->isintr && m->havetsc)
+			intrtime(m, vno);
 
 		/* 
 		 *  preemptive scheduling.  to limit stack depth,

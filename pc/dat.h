@@ -175,7 +175,7 @@ struct Mach
 	int	syscall;
 	int	load;
 	int	intr;
-	vlong	intrts;			/* time stamp of last interrupt */
+	uvlong	intrts;			/* time stamp of last interrupt */
 	int	flushmmu;		/* make current proc flush it's mmu state */
 	int	ilockdepth;
 
