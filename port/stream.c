@@ -1249,7 +1249,7 @@ streamwrite(Chan *c, void *a, long n, int docopy)
 	if(q->other->flag & QHUNGUP)
 		error(Ehungup);
 
-	if(!docopy && GLOBAL(a)){
+	if(!docopy && isphys(a)){
 		/*
 		 *  `a' is global to the whole system, just create a
 		 *  pointer to it and pass it on.

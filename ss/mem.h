@@ -131,3 +131,5 @@
 
 #define	NSEG		5
 #define	MACHSIZE	4096
+
+#define isphys(x) ((((ulong)(x)&0xF0000000) == KZERO)
