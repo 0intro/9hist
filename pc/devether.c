@@ -20,6 +20,7 @@ struct Hw {
 	void	(*receive)(Ctlr*);
 	void	(*transmit)(Ctlr*);
 	void	(*intr)(Ureg*);
+	void	(*tweek)(Ctlr*);
 	int	addr;			/* interface address */
 	uchar	*ram;			/* interface shared memory address */
 	int	bt16;			/* true if a 16 bit interface */
@@ -464,7 +465,8 @@ etherkproc(void *arg)
 	}
 	cp->kproc = 1;
 	for(;;){
-		sleep(&cp->rr, isinput, cp);
+		tsleep(&cp->rr, isinput, cp, 500);
+		(*cp->hw->tweek)(cp);
 
 		/*
 		 * process any internal loopback packets
@@ -660,10 +662,12 @@ wd8013reset(Ctlr *cp)
 	uchar irr;
 	ulong ram;
 
-	cp->rb = xspanalloc(sizeof(Buffer)*Nrb, BY2PG, 0);
-	cp->nrb = Nrb;
-	cp->tb = xspanalloc(sizeof(Buffer)*Ntb, BY2PG, 0);
-	cp->ntb = Ntb;
+	if(cp->rb == 0){
+		cp->rb = xspanalloc(sizeof(Buffer)*Nrb, BY2PG, 0);
+		cp->nrb = Nrb;
+		cp->tb = xspanalloc(sizeof(Buffer)*Ntb, BY2PG, 0);
+		cp->ntb = Ntb;
+	}
 
 	msr = IN(hw, msr);
 	icr = IN(hw, icr);
@@ -698,13 +702,13 @@ wd8013reset(Ctlr *cp)
 	hw->pstart = HOWMANY(sizeof(Etherpkt), 256);
 	hw->pstop = HOWMANY(hw->size, 256);
 
-print("ether width %d addr %lux size %d lvl %d\n", hw->bt16?16:8,
-	hw->ram, hw->size, hw->lvl);
+/* print("ether width %d addr %lux size %d lvl %d\n", hw->bt16?16:8,
+	hw->ram, hw->size, hw->lvl);/**/
 
 	/* enable interface RAM, set interface width */
 	OUT(hw, msr, MENB|msr);
 	if(hw->bt16)
-		OUT(hw, laar, laar|L16EN);
+		OUT(hw, laar, laar|L16EN|M16EN);
 
 	(*hw->init)(cp);
 	setvec(Int0vec + hw->lvl, hw->intr);
@@ -734,12 +738,15 @@ dp8390init(Ctlr *cp)
 
 	OUT(hw, w.cr, 0x21);			/* Page0|RD2|STP */
 	if(hw->bt16)
-		OUT(hw, w.dcr, 0x49);		/* 16 bit interface, DMA burst size 8 */
+		OUT(hw, w.dcr, 0x61);		/* 16 bit interface */
 	else
 		OUT(hw, w.dcr, 0x48);		/* FT1|LS */
 	OUT(hw, w.rbcr0, 0);
 	OUT(hw, w.rbcr1, 0);
-	OUT(hw, w.rcr, 0x04);			/* AB */
+	if(cp->prom)
+		OUT(hw, w.rcr, 0x14);		/* PRO|AB */
+	else
+		OUT(hw, w.rcr, 0x04);		/* AB */
 	OUT(hw, w.tcr, 0x20);			/* LB0 */
 
 	OUT(hw, w.bnry, hw->pstart);
@@ -782,6 +789,28 @@ wd8013online(Ctlr *cp, int on)
 }
 
 static void
+wd8013tweek(Ctlr *cp)
+{
+	uchar msr;
+	Hw *hw = cp->hw;
+	int s;
+
+	s = splhi();
+	msr = IN(hw, msr);
+	if((msr & MENB) == 0){
+		/* board has reset itself, start again */
+		delay(100);
+
+		(*hw->reset)(cp);
+		etherinit();
+
+		wakeup(&cp->tr);
+		wakeup(&cp->rr);
+	}
+	splx(s);
+}
+
+static void
 wd8013receive(Ctlr *cp)
 {
 	Hw *hw = cp->hw;
@@ -804,8 +833,9 @@ wd8013receive(Ctlr *cp)
 		p = &((Ring*)hw->ram)[next];
 		len = ((p->len1<<8)|p->len0)-4;
 		if(p->next < hw->pstart || p->next >= hw->pstop || len < 60){
-			print("%d/%d : #%2.2ux #%2.2ux  #%2.2ux #%2.2ux\n", next, len,
+/*			print("%d/%d : #%2.2ux #%2.2ux  #%2.2ux #%2.2ux\n", next, len,
 				p->status, p->next, p->len0, p->len1);/**/
+			delay(100);
 			dp8390rinit(cp);
 			break;
 		}
@@ -830,6 +860,7 @@ wd8013receive(Ctlr *cp)
 		if(bnry < hw->pstart)
 			bnry = hw->pstop-1;
 		OUT(hw, w.bnry, bnry);
+		break;
 	}
 }
 
@@ -839,26 +870,16 @@ wd8013transmit(Ctlr *cp)
 	Hw *hw;
 	Buffer *tb;
 	int s;
-	uchar laar;
 
 	s = splhi();
 	hw = cp->hw;
 	tb = &cp->tb[cp->ti];
 	if(tb->busy == 0 && tb->owner == Interface){
-		if(hw->bt16){
-			OUT(hw, w.imr, 0x0);
-			laar = IN(hw, laar);
-			OUT(hw, laar, laar|M16EN);
-		}
 		memmove(hw->ram, tb->pkt, tb->len);
 		OUT(hw, w.tbcr0, tb->len & 0xFF);
 		OUT(hw, w.tbcr1, (tb->len>>8) & 0xFF);
 		OUT(hw, w.cr, 0x26);		/* Page0|RD2|TXP|STA */
 		tb->busy = 1;
-		if(hw->bt16 && (laar&M16EN)==0){
-			OUT(hw, laar, laar);
-			OUT(hw, w.imr, 0x1F);
-		}
 	}
 	splx(s);
 }
@@ -869,13 +890,8 @@ wd8013intr(Ureg *ur)
 	Ctlr *cp = &ctlr[0];
 	Hw *hw = cp->hw;
 	Buffer *tb;
-	uchar isr, laar;
+	uchar isr;
 
-	if(hw->bt16){
-		laar = IN(hw, laar);
-		OUT(hw, w.imr, 0x0);
-		OUT(hw, laar, laar|M16EN);
-	}
 	USED(ur);
 	while(isr = IN(hw, r.isr)){
 		OUT(hw, w.isr, isr);
@@ -911,10 +927,6 @@ wd8013intr(Ureg *ur)
 			wakeup(&cp->rr);
 		}
 	}
-	if(hw->bt16){
-		OUT(hw, laar, laar);
-		OUT(hw, w.imr, 0x1F);
-	}
 }
 
 static Hw wd8013 =
@@ -926,5 +938,6 @@ static Hw wd8013 =
 	wd8013receive,
 	wd8013transmit,
 	wd8013intr,
+	wd8013tweek,
 	0x360,					/* I/O base address */
 };

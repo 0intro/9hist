@@ -137,7 +137,7 @@ mntattach(char *muxattach)
 	m->rip = 0;
 	m->c = c;
 	m->c->flag |= CMSG;
-	m->blocksize = MAXFDATA;
+	m->blocksize = MAXFDATA;/**/
 
 	switch(devchar[m->c->type]) {
 	default:

@@ -266,7 +266,7 @@ confinit(void)
 	conf.base1 = 1*MB;
 	conf.npage1 = ((i-1)*MB - conf.base1)/BY2PG;
 	conf.npage = conf.npage0 + conf.npage1;
-	conf.upages = (conf.npage*70)/100;
+	conf.upages = (conf.npage*60)/100;
 
 	ktop = PGROUND((ulong)end);
 	ktop = PADDR(ktop);
