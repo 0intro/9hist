@@ -5,6 +5,8 @@
 
 static long lusertime(char*);
 
+char *timeserver = "#s/boot";
+
 void
 settime(int islocal)
 {
@@ -35,7 +37,7 @@ settime(int islocal)
 		/*
 		 *  set the time from the access time of the root
 		 */
-		f = open("#s/boot", ORDWR);
+		f = open(timeserver, ORDWR);
 		if(f < 0)
 			return;
 		if(mount(f, "/n/boot", MREPL, "", sauth) < 0){

@@ -78,3 +78,6 @@ extern int	connectlocal(void);
 extern void	configbri(Method*);
 extern int	authbri(void);
 extern int	connectbri(void);
+extern void	confighybrid(Method*);
+extern int	authhybrid(void);
+extern int	connecthybrid(void);

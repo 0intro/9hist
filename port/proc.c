@@ -359,6 +359,9 @@ tsleep(Rendez *r, int (*fn)(void*), void *arg, int ms)
 	p->twhen = 0;
 }
 
+/*
+ * Expects that only one process can call wakeup for any given Rendez
+ */
 void
 wakeup(Rendez *r)
 {
@@ -422,14 +425,16 @@ postnote(Proc *p, int dolock, char *n, int flag)
 
 	if(r = p->r){		/* assign = */
 		/* wake up; can't call wakeup itself because we're racing with it */
-		s = splhi();
-		lock(r);
-		if(p->r==r && r->p==p){	/* check we won the race */
-			if(p->state == Wakeme){
-				r->p = 0;
-				p->r = 0;
-				ready(p);
-			}
+		for(;;) {
+			s = splhi();
+			if(canlock(r))
+				break;
+			splx(s);
+		}
+		if(p->r==r && r->p==p && p->state==Wakeme){	/* check we won the race */
+			r->p = 0;
+			p->r = 0;
+			ready(p);
 		}
 		unlock(r);
 		splx(s);

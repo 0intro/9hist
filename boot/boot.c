@@ -32,7 +32,7 @@ boot(int argc, char *argv[])
 	Method *mp;
 	char cmd[64];
 	char flags[6];
-	int islocal;
+	int islocal, ishybrid;
 
 	sleep(1000);
 
@@ -76,6 +76,7 @@ boot(int argc, char *argv[])
 	mp = rootserver(argc ? *argv : 0);
 	(*mp->config)(mp);
 	islocal = strcmp(mp->name, "local") == 0;
+	ishybrid = strcmp(mp->name, "hybrid") == 0;
 
 	/*
 	 *  get/set key or password
@@ -88,7 +89,7 @@ boot(int argc, char *argv[])
 	fd = (*mp->connect)();
 	if(fd < 0)
 		fatal("can't connect to file server");
-	if(!islocal){
+	if(!islocal && !ishybrid){
 		nop(fd);
 		session(fd);
 		if(cfs)
@@ -115,7 +116,7 @@ boot(int argc, char *argv[])
 	 *  if a local file server exists and it's not
 	 *  running, start it and mount it onto /n/kfs
 	 */
-	if(!islocal){
+	if(!islocal && !ishybrid){
 		for(mp = method; mp->name; mp++){
 			if(strcmp(mp->name, "local") != 0)
 				continue;

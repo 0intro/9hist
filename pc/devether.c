@@ -13,6 +13,14 @@ typedef struct Type Type;
 typedef struct Ctlr Ctlr;
 
 struct Hw {
+	void	(*reset)(Ctlr*);
+	void	(*init)(Ctlr*);
+	void	(*mode)(Ctlr*, int);
+	void	(*online)(Ctlr*, int);
+	void	(*receive)(Ctlr*);
+	void	(*transmit)(Ctlr*);
+	void	(*intr)(Ureg*);
+	void	(*tweek)(Ctlr*);
 	int	addr;			/* interface address */
 	uchar	*ram;			/* interface shared memory address */
 	int	bt16;			/* true if a 16 bit interface */
@@ -21,13 +29,6 @@ struct Hw {
 	uchar	tstart;
 	uchar	pstart;
 	uchar	pstop;
-	void	(*reset)(Ctlr*);
-	void	(*init)(Ctlr*);
-	void	(*mode)(Ctlr*, int);
-	void	(*online)(Ctlr*, int);
-	void	(*receive)(Ctlr*);
-	void	(*transmit)(Ctlr*);
-	void	(*intr)(Ureg*);
 };
 static Hw wd8013;
 
@@ -464,7 +465,8 @@ etherkproc(void *arg)
 	}
 	cp->kproc = 1;
 	for(;;){
-		sleep(&cp->rr, isinput, cp);
+		tsleep(&cp->rr, isinput, cp, 1000);
+		(*cp->hw->tweek)(cp);
 
 		/*
 		 * process any internal loopback packets
@@ -620,7 +622,6 @@ typedef struct {
 	uchar	data[256-4];
 } Ring;
 
-
 static void
 wd8013dumpregs(Hw *hw)
 {
@@ -696,6 +697,7 @@ wd8013reset(Ctlr *cp)
 		hw->size = 8*1024;
 	if(hw->bt16)
 		hw->size <<= 1;
+	hw->pstart = HOWMANY(sizeof(Etherpkt), 256);
 	hw->pstop = HOWMANY(hw->size, 256);
 
 print("ether width %d addr %lux size %d lvl %d\n", hw->bt16?16:8,
@@ -704,10 +706,44 @@ print("ether width %d addr %lux size %d lvl %d\n", hw->bt16?16:8,
 	/* enable interface RAM, set interface width */
 	OUT(hw, msr, MENB|msr);
 	if(hw->bt16)
-		OUT(hw, laar, laar|L16EN|M16EN);
+		OUT(hw, laar, laar|L16EN);
 
 	(*hw->init)(cp);
 	setvec(Int0vec + hw->lvl, hw->intr);
+}
+
+static void
+wd8013tweek(Ctlr *cp)
+{
+	uchar laar, msr;
+	Hw *hw = cp->hw;
+	Buffer *tb;
+	int s;
+
+	s = splhi();
+	msr = IN(hw, msr);
+	if(msr & MENB){
+		splx(s);
+		return;
+	}
+	print("TWEEK\n");
+	delay(500);
+
+	/* reset the hardware */
+	OUT(hw, msr, MENB|msr);
+	laar = IN(hw, laar);
+	if(hw->bt16)
+		OUT(hw, laar, laar|L16EN);
+	(*hw->init)(cp);
+	(*cp->hw->online)(cp, 1);
+
+	/* retransmit the current packet */
+	tb = &cp->tb[cp->ti];
+	if(tb->owner == Interface){
+		tb->busy = 0;
+		(*cp->hw->transmit)(cp);
+	}
+	splx(s);
 }
 
 static void
@@ -727,7 +763,7 @@ dp8390rinit(Ctlr *cp)
  * and pointing to Page0.
  */
 static void
-wd8013init(Ctlr *cp)
+dp8390init(Ctlr *cp)
 {
 	Hw *hw = cp->hw;
 	int i;
@@ -805,7 +841,7 @@ wd8013receive(Ctlr *cp)
 		len = ((p->len1<<8)|p->len0)-4;
 		if(p->next < hw->pstart || p->next >= hw->pstop || len < 60){
 			print("%d/%d : #%2.2ux #%2.2ux  #%2.2ux #%2.2ux\n", next, len,
-				p->status, p->next, p->len0, p->len1);
+				p->status, p->next, p->len0, p->len1);/**/
 			dp8390rinit(cp);
 			break;
 		}
@@ -839,16 +875,26 @@ wd8013transmit(Ctlr *cp)
 	Hw *hw;
 	Buffer *tb;
 	int s;
+	uchar laar;
 
 	s = splhi();
 	hw = cp->hw;
 	tb = &cp->tb[cp->ti];
 	if(tb->busy == 0 && tb->owner == Interface){
+		if(hw->bt16){
+			OUT(hw, w.imr, 0x0);
+			laar = IN(hw, laar);
+			OUT(hw, laar, laar|M16EN);
+		}
 		memmove(hw->ram, tb->pkt, tb->len);
 		OUT(hw, w.tbcr0, tb->len & 0xFF);
 		OUT(hw, w.tbcr1, (tb->len>>8) & 0xFF);
 		OUT(hw, w.cr, 0x26);		/* Page0|RD2|TXP|STA */
 		tb->busy = 1;
+		if(hw->bt16 && (laar&M16EN)==0){
+			OUT(hw, laar, laar);
+			OUT(hw, w.imr, 0x1F);
+		}
 	}
 	splx(s);
 }
@@ -859,8 +905,13 @@ wd8013intr(Ureg *ur)
 	Ctlr *cp = &ctlr[0];
 	Hw *hw = cp->hw;
 	Buffer *tb;
-	uchar isr;
+	uchar isr, laar;
 
+	if(hw->bt16){
+		laar = IN(hw, laar);
+		OUT(hw, w.imr, 0x0);
+		OUT(hw, laar, laar|M16EN);
+	}
 	USED(ur);
 	while(isr = IN(hw, r.isr)){
 		OUT(hw, w.isr, isr);
@@ -896,22 +947,21 @@ wd8013intr(Ureg *ur)
 			wakeup(&cp->rr);
 		}
 	}
+	if(hw->bt16){
+		OUT(hw, laar, laar);
+		OUT(hw, w.imr, 0x1F);
+	}
 }
 
-static Hw wd8013 = {
-	0x360,					/* I/O base address */
-	0,
-	0,
-	0,
-	0,
-	0,
-	HOWMANY(sizeof(Etherpkt), 256),
-	0,
+static Hw wd8013 =
+{
 	wd8013reset,
-	wd8013init,
+	dp8390init,
 	wd8013mode,
 	wd8013online,
 	wd8013receive,
 	wd8013transmit,
 	wd8013intr,
+	wd8013tweek,
+	0x360,					/* I/O base address */
 };
