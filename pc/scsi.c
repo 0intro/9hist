@@ -17,6 +17,7 @@ enum {
 	CMDwrite6	= 0x0A,
 	CMDinquire	= 0x12,
 	CMDstart	= 0x1B,
+	CMDcapacity	= 0x25,
 	CMDread10	= 0x28,
 	CMDwrite10	= 0x2A,
 };
@@ -97,11 +98,12 @@ scsiexec(Target *t, int rw, uchar *cmd, int cbytes, void *data, int *dbytes)
 
 	default:
 		/*
-		 * It's more complicated than this. There are conditions which
-		 * are 'ok' but for which the returned status code is not 'STok'.
-		 * Also, not all conditions require a reqsense, there may be a
-		 * need to do a reqsense here when necessary and making it
-		 * available to the caller somehow.
+		 * It's more complicated than this. There are conditions
+		 * which are 'ok' but for which the returned status code
+		 * is not 'STok'.
+		 * Also, not all conditions require a reqsense, might
+		 * need to do a reqsense here and make it available to the
+		 * caller somehow.
 		 *
 		 * Later.
 		 */
@@ -145,7 +147,8 @@ scsiprobe(Ctlr *ctlr)
 		nbytes = Nscratch;
 		s = scsireqsense(t, 0, t->scratch, &nbytes, 0);
 		if(s != STok){
-			print("scsi#%d: unit %d unavailable, status %d\n", t->ctlrno, i, s);
+			print("scsi#%d: unit %d unavailable, status %d\n",
+				t->ctlrno, i, s);
 			continue;
 		}
 
@@ -157,10 +160,12 @@ scsiprobe(Ctlr *ctlr)
 		nbytes = Ninq;
 		s = scsiinquiry(t, 0, t->inq, &nbytes);
 		if(s != STok) {
-			print("scsi#%d: unit %d inquire failed, status %d\n", t->ctlrno, i, s);
+			print("scsi#%d: unit %d inquire failed, status %d\n",
+				t->ctlrno, i, s);
 			continue;
 		}
-		print("scsi#%d: unit %d: %s\n", t->ctlrno, i, (char*)(t->inq+8));
+		print("scsi#%d: unit %d: %s\n",
+			t->ctlrno, i, (char*)(t->inq+8));
 		t->ok = 1;
 	}
 }
@@ -209,7 +214,8 @@ scsiinv(int devno, int *type, Target **rt, uchar **inq, char *id)
 				*rt = t;
 				*inq = t->inq;
 				if(id)
-					sprint(id, "scsi%d: unit %d", ctlr, unit);
+					sprint(id, "scsi%d: unit %d",
+						ctlr, unit);
 				return devno;
 			}
 		}
@@ -259,7 +265,7 @@ scsicap(Target *t, char lun, ulong *size, ulong *bsize)
 	uchar cmd[10], *d;
 
 	memset(cmd, 0, sizeof(cmd));
-	cmd[0] = 0x25;
+	cmd[0] = CMDcapacity;
 	cmd[1] = lun<<5;
 
 	nbytes = 8;
@@ -354,17 +360,17 @@ scsireqsense(Target *t, char lun, void *data, int *nbytes, int quiet)
 
 		switch(sense[2] & 0x0F){
 
-		case 6:						/* unit attention */
-			if(sense[12] != 0x29)			/* power on, reset */
+		case 6:					/* unit attention */
+			if(sense[12] != 0x29)		/* power on, reset */
 				goto buggery;
 			/*FALLTHROUGH*/
-		case 0:						/* no sense */
-		case 1:						/* recovered error */
+		case 0:					/* no sense */
+		case 1:					/* recovered error */
 			free(sense);
 			return STok;
 
-		case 2:						/* not ready */
-			if(sense[12] == 0x3A)			/* medium not present */
+		case 2:					/* not ready */
+			if(sense[12] == 0x3A)		/* medium not present */
 				goto buggery;
 			/*FALLTHROUGH*/
 

@@ -6,10 +6,9 @@
 #include	"../port/error.h"
 
 #define	Image	IMAGE
-#define	mouse	moose
 #include	<draw.h>
-#undef	mouse
 #include	<memdraw.h>
+#include	<cursor.h>
 #include	"screen.h"
 
 typedef struct Mouseinfo	Mouseinfo;
@@ -19,7 +18,8 @@ struct Mouseinfo
 	int	dx;
 	int	dy;
 	int	track;		/* dx & dy updated */
-	Mouse;
+	Point	xy;			/* mouse.xy */
+	int	buttons;		/* mouse.buttons */
 	int	redraw;		/* update cursor on screen */
 	ulong	counter;	/* increments every update */
 	ulong	lastcounter;	/* value when /dev/mouse read */

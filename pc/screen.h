@@ -1,3 +1,4 @@
+typedef struct Cursor Cursor;
 typedef struct Cursorinfo Cursorinfo;
 struct Cursorinfo {
 	Cursor;

@@ -9,6 +9,7 @@
 #define	Image	IMAGE
 #include <draw.h>
 #include <memdraw.h>
+#include <cursor.h>
 #include "screen.h"
 
 /*

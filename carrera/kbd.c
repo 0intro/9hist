@@ -8,6 +8,7 @@
 
 #define	Image	IMAGE
 #include	<draw.h>
+#include	<cursor.h>
 #include	"screen.h"
 
 enum

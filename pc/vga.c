@@ -8,6 +8,7 @@
 #define	Image	IMAGE
 #include <draw.h>
 #include <memdraw.h>
+#include <cursor.h>
 #include "screen.h"
 
 static ulong backbits = (Backgnd<<24)|(Backgnd<<16)|(Backgnd<<8)|Backgnd;
