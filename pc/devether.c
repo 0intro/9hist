@@ -108,9 +108,10 @@ struct Ctlr {
 };
 static Ctlr ctlr[Nctlr];
 
-void
-etherinit(void)
+Chan*
+etherattach(char *spec)
 {
+	return devattach('l', spec);
 }
 
 Chan*
@@ -179,7 +180,7 @@ isobuf(void *arg)
 {
 	Ctlr *cp = arg;
 
-	cp->tb[cp->th].owner == Host;
+	return cp->tb[cp->th].owner == Host;
 }
 
 static void
@@ -246,7 +247,6 @@ etheroput(Queue *q, Block *bp)
 	 * wait till we get an output buffer.
 	 * should try to restart.
 	 */
-print("oput sleep\n");
 	sleep(&cp->tr, isobuf, cp);
 
 	tb = &cp->tb[cp->th];
@@ -291,7 +291,6 @@ print("oput sleep\n");
 
 	freeb(bp);
 	qunlock(&cp->tlock);
-print("oput done\n");
 	poperror();
 }
 
@@ -509,8 +508,8 @@ etherreset(void)
 	cp->net.info[1].fill = typefill;
 }
 
-Chan*
-etherattach(char *spec)
+void
+etherinit(void)
 {
 	int ctlrno = 0;
 	Ctlr *cp = &ctlr[ctlrno];
@@ -536,7 +535,6 @@ etherattach(char *spec)
 		sprint(cp->name, "ether%dkproc", ctlrno);
 		kproc(cp->name, etherkproc, cp);
 	}
-	return devattach('l', spec);
 }
 
 typedef struct {
@@ -610,7 +608,6 @@ wd8013reset(Ctlr *cp)
 	int i;
 	uchar msr;
 
-print("reset\n");
 	cp->rb = ialloc(sizeof(Buffer)*Nrb, 0);
 	cp->nrb = Nrb;
 	cp->tb = ialloc(sizeof(Buffer)*Ntb, 0);
@@ -705,7 +702,7 @@ wd8013receive(Ctlr *cp)
 		uchar	data[256-4];
 	} Ring;
 	Ring *p;
-	int len;
+	int len0, len1;
 
 	bnry = IN(hw, r.bnry);
 	next = NEXT(bnry, HOWMANY(hw->ramsz, 256));
@@ -719,12 +716,22 @@ wd8013receive(Ctlr *cp)
 			break;
 		cp->inpackets++;
 		p = &((Ring*)hw->ram)[next];
-		len = (p->len1<<8)|p->len0;
+		len0 = (p->len1<<8)|p->len0-4;
+		len1 = 0;
 
 		rb = &cp->rb[cp->ri];
 		if(rb->owner == Interface){
-			rb->len = len;
+			rb->len = len0;
 			/*copy in packet*/
+			if(p->data+len0 >= (uchar*)hw->ram+hw->ramsz){
+				len1 = p->data+len0 - (uchar*)hw->ram+hw->ramsz;
+				len0 = (uchar*)hw->ram+hw->ramsz - p->data;
+			}
+			memmove((uchar*)&rb->pkt, p->data, len0);
+			if(len1)
+				memmove((uchar*)&rb->pkt+len0,
+					(uchar*)hw->ram+ROUNDUP(sizeof(Etherpkt), 256),
+					len1);
 			rb->owner = Host;
 			cp->ri = NEXT(cp->ri, Nrb);
 		}

@@ -128,6 +128,7 @@ struct Controller
 	 *  current operation
 	 */
 	int	cmd;		/* current command */
+	int	lastcmd;	/* debugging info */
 	Rendez	r;		/* wait here for command termination */
 	char	*buf;		/* xfer buffer */
 	int	tcyl;		/* target cylinder */
@@ -201,6 +202,7 @@ hardreset(void)
 		dp->cp = cp;
 		if((drive&1) == 0){
 			cp->buf = ialloc(Maxxfer, 0);
+			cp->lastcmd = cp->cmd;
 			cp->cmd = 0;
 			cp->pbase = Pbase + (cp-hardc)*8;	/* BUG!! guessing */
 			setvec(Hardvec + (cp-hardc)*8, hardintr); /* BUG!! guessing */
@@ -674,11 +676,15 @@ hardintr(Ureg *ur)
 
 	loop = 0;
 	while((cp->status = inb(cp->pbase+Pstatus)) & Sbusy)
-		if(++loop > 10000)
-			panic("hardintr 0");
+		if(++loop > 10000) {
+			print("cmd=%lux status=%lux\n",
+				cp->cmd, inb(cp->pbase+Pstatus));
+			panic("hardintr: wait busy");
+		}
 	switch(cp->cmd){
 	case Cwrite:
 		if(cp->status & Serr){
+			cp->lastcmd = cp->cmd;
 			cp->cmd = 0;
 			cp->error = inb(cp->pbase+Perror);
 			wakeup(&cp->r);
@@ -688,18 +694,30 @@ hardintr(Ureg *ur)
 		if(cp->sofar < cp->nsecs){
 			loop = 0;
 			while((inb(cp->pbase+Pstatus) & Sdrq) == 0)
-				if(++loop > 10000)
-					panic("hardintr 1");
+				if(++loop > 10000) {
+					print("cmd=%lux status=%lux\n",
+						cp->cmd, inb(cp->pbase+Pstatus));
+					panic("hardintr: write");
+				}
 			outss(cp->pbase+Pdata, &cp->buf[cp->sofar*dp->bytes],
 				dp->bytes/2);
 		} else{
+			cp->lastcmd = cp->cmd;
 			cp->cmd = 0;
 			wakeup(&cp->r);
 		}
 		break;
 	case Cread:
 	case Cident:
+		loop = 0;
+		while((inb(cp->pbase+Pstatus) & Sbusy) != 0)
+			if(++loop > 10000) {
+				print("cmd=%lux status=%lux\n",
+					cp->cmd, inb(cp->pbase+Pstatus));
+				panic("hardintr: wait busy");
+		}
 		if(cp->status & Serr){
+			cp->lastcmd = cp->cmd;
 			cp->cmd = 0;
 			cp->error = inb(cp->pbase+Perror);
 			wakeup(&cp->r);
@@ -707,23 +725,28 @@ hardintr(Ureg *ur)
 		}
 		loop = 0;
 		while((inb(cp->pbase+Pstatus) & Sdrq) == 0)
-			if(++loop > 10000)
-				panic("hardintr 2");
+			if(++loop > 10000) {
+				print("cmd=%lux status=%lux\n",
+					cp->cmd, inb(cp->pbase+Pstatus));
+				panic("hardintr: read/ident");
+		}
 		inss(cp->pbase+Pdata, &cp->buf[cp->sofar*dp->bytes],
 			dp->bytes/2);
 		cp->sofar++;
 		if(cp->sofar >= cp->nsecs){
+			cp->lastcmd = cp->cmd;
 			cp->cmd = 0;
 			wakeup(&cp->r);
 		}
 		break;
 	case Csetbuf:
+		cp->lastcmd = cp->cmd;
 		cp->cmd = 0;
 		wakeup(&cp->r);
 		break;
-	case 0:	/*
-		 * These don't seem to mean anything.  Should we wakeup?
-		 */
+	case 0:
+		print("interrupt cmd=0, lastcmd=%02x status=%02x\n",
+			cp->lastcmd, cp->status);
 		break;
 	default:
 		print("weird disk interrupt, cmd=%02x, status=%02x\n",

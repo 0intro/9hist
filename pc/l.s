@@ -54,7 +54,7 @@ TEXT	lowcore(SB),$0
 	MOVL	AX,CR0
 
 /*
- *	clear prefetch queue (wierd code to avoid optimizations)
+ *	clear prefetch queue (weird code to avoid optimizations)
  */
 	CLC
 	JCC	flush
