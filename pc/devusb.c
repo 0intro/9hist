@@ -170,18 +170,18 @@ struct QTree {
 struct Udev {
 	Ref;
 	Lock;
-	int	x;	/* index in usbdev[] */
-	int	busy;
-	int	state;
-	int	id;
+	int		x;	/* index in usbdev[] */
+	int		busy;
+	int		state;
+	int		id;
 	byte	port;		/* port number on connecting hub */
 	byte	class;
 	byte	subclass;
 	byte	proto;
-	int	ls;
-	int	npt;
+	int		ls;
+	int		npt;
 	Endpt*	ep[16];		/* active end points */
-	Udev*	ports;	/* active ports, if hub */
+	Udev*	ports;		/* active ports, if hub */
 	Udev*	next;		/* next device on this hub */
 };
 
@@ -200,11 +200,11 @@ enum {
 };
 
 static char *devstates[] = {
-	[Disabled]	"Disabled",
-	[Attached] "Attached",
-	[Enabled] "Enabled",
-	[Assigned] "Assigned",
-	[Configured] "Configured",
+	[Disabled]		"Disabled",
+	[Attached]		"Attached",
+	[Enabled]		"Enabled",
+	[Assigned]		"Assigned",
+	[Configured]	"Configured",
 };
 
 /*
@@ -1685,7 +1685,7 @@ usbread(Chan *c, void *a, long n, vlong offset)
 		l = snprint(s, READSTR, "%s %d %d %d\n", devstates[d->state], d->class, d->subclass, d->proto);
 		for(i=0; i<nelem(d->ep); i++)
 			if((e = d->ep[i]) != nil)	/* TO DO: freeze e */
-				l += snprint(s+l, READSTR-l, "%d bytes %lud blocks %lud\n", i, e->nbytes, e->nblocks);
+				l += snprint(s+l, READSTR-l, "%2d class 0x%2.2ux subclass 0x%2.2ux proto 0x%2.2ux bytes %10lud blocks %10lud\n", i, e->class, e->subclass, e->proto, e->nbytes, e->nblocks);
 		n = readstr(offset, a, n, s);
 		poperror();
 		free(s);
@@ -1836,11 +1836,23 @@ usbwrite(Chan *c, void *a, long n, vlong)
 		nf = getfields(cmd, fields, nelem(fields));
 		if(nf > 1 && strcmp(fields[0], "speed") == 0){
 			d->ls = strtoul(fields[1], nil, 0) == 0;
-		} else if(nf > 3 && strcmp(fields[0], "class") == 0){
-			/* class class subclass proto */
-			d->class = strtoul(fields[1], nil, 0);
-			d->subclass = strtoul(fields[2], nil, 0);
-			d->proto = strtoul(fields[3], nil, 0);
+		} else if(nf > 5 && strcmp(fields[0], "class") == 0){
+			i = strtoul(fields[2], nil, 0);
+			d->npt = strtoul(fields[1], nil, 0);
+			/* class config# class subclass proto */
+			if (i < 0 || i >= nelem(d->ep)
+			 || d->npt > nelem(d->ep) || i >= d->npt)
+				error(Ebadarg);
+			if (i == 0) {
+				d->class = strtoul(fields[3], nil, 0);
+				d->subclass = strtoul(fields[4], nil, 0);
+				d->proto = strtoul(fields[5], nil, 0);
+			}
+			if(d->ep[i] == nil)
+				d->ep[i] = devendpt(d, i, 1);
+			d->ep[i]->class = strtoul(fields[3], nil, 0);
+			d->ep[i]->subclass = strtoul(fields[4], nil, 0);
+			d->ep[i]->proto = strtoul(fields[5], nil, 0);
 		}else if(nf > 2 && strcmp(fields[0], "data") == 0){
 			i = strtoul(fields[1], nil, 0);
 			if(i < 0 || i >= nelem(d->ep) || d->ep[i] == nil)
@@ -1879,9 +1891,8 @@ usbwrite(Chan *c, void *a, long n, vlong)
 				XPRINT("field 1: 0 <= %d < %d\n", i, nelem(d->ep));
 				error(Ebadarg);
 			}
-			if(d->ep[i] != nil)
-				error(Einuse);
-			e = devendpt(d, i, 1);
+			if((e = d->ep[i]) == nil)
+				e = devendpt(d, i, 1);
 			if(waserror()){
 				freept(e);
 				nexterror();
