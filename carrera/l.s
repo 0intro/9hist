@@ -837,6 +837,11 @@ TEXT	frblock(SB), $-4	/* frblock(void*port, void *block, csum) */
 
 	MOVW	$64, R4
 frloop:
+
+	MOVW	$50, R10
+xx:	SUB	$1, R10
+	BNE	R10, xx
+
 	MOVV	0(R1), R5
 	MOVV	R5, 0(R2)
 	XOR	R5, R3
