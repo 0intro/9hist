@@ -1199,8 +1199,10 @@ reset(Ether* ether)
 	}
 
 	if ((ctlr->slot = pcmspecial("WaveLAN/IEEE", ether))<0){
-		DEBUG("no wavelan found\n");
-		goto abort;
+		if ((ctlr->slot = pcmspecial("TrueMobile 1150", ether))<0){
+			DEBUG("no wavelan found\n");
+			goto abort;
+		}
 	}
 	// DEBUG("#l%d: port=0x%lx irq=%ld\n",
 	//		ether->ctlrno, ether->port, ether->irq);

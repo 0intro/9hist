@@ -114,7 +114,7 @@ enum
 	Vinvert,
 	Nvol,
 
-	Bufsize		= 4*1024,	/* 46 ms each */
+	Bufsize		= /* 4* */ 1024,	/* 46 ms each */
 	Nbuf		= 32,		/* 1.5 seconds total */
 
 	Speed		= 44100,
@@ -125,17 +125,25 @@ enum {
 	Flushbuf = 0xe0000000,
 };
 
-/* System Clock */
+/* System Clock -- according to the manual, it seems that when the UDA is
+    configured in non MSB/I2S mode, it uses a divisor of 256 to the 12.288MHz
+    clock.  The other rates are only supported in MSB mode, which should be 
+    implemented at some point */
 enum {
-	SC512FS = 0,
-	SC384FS = 1,
-	SC256FS = 2,
+	SC512FS = 0 << 2,
+	SC384FS = 1 << 2,
+	SC256FS = 2 << 2,
 };
 
 /* Format */
 enum {
-	LSB16 = 1,
-	LSB18 = 2,
+	LSB16 = 1 << 1,
+	LSB18 = 2 << 1,
+	LSB20 = 3 << 1,
+	MSB = 4 << 1,
+	MSB16 = 5 << 1,
+	MSB18 = 6 << 1,
+	MSB20 = 7 << 1,
 };
 
 Dirtab
@@ -469,7 +477,7 @@ audioinit(void)
 
 }
 
-uchar	status0[1]		= {0x22};
+uchar	status0[1]		= {0x02};
 uchar	status1[1]		= {0x80};
 uchar	data00[1]		= {0x00};		/* volume control, bits 0 – 5 */
 uchar	data01[1]		= {0x40};
@@ -483,12 +491,9 @@ uchar	data0e5[2]	= {0xc5, 0xe0};
 uchar	data0e6[2]	= {0xc6, 0xe3};
 
 static void
-mxspeed(int _rate);
-
-static void
 enable(void)
 {
-	uchar	data[1];
+	uchar	data[1], clock;
 
 	L3_init();
 
@@ -504,57 +509,6 @@ enable(void)
 	egpiobits(EGPIO_audio_ic_power | EGPIO_codec_reset, 1);
 
 	/* external clock configured for 44100 samples/sec */
-	gpioregs->set	= GPIO_CLK_SET0_o;
-	gpioregs->clear	= GPIO_CLK_SET1_o;
-
-	/* Wait for the UDA1341 to wake up */
-	delay(100);
-
-	/* Reset the chip */
-	data[0] = status0[0] | 1<<UdaStatusRST;
-	L3_write(UDA1341_L3Addr | UDA1341_STATUS, data, 1 );
-	gpioregs->clear = EGPIO_codec_reset;
-	gpioregs->set = EGPIO_codec_reset;
-	/* write uda 1341 status[0] */
-	L3_write(UDA1341_L3Addr | UDA1341_STATUS, status0, 1 );
-	L3_write(UDA1341_L3Addr | UDA1341_STATUS, status1, 1);
-	L3_write(UDA1341_L3Addr | UDA1341_DATA0, data02, 1);
-	L3_write(UDA1341_L3Addr | UDA1341_DATA0, data0e2, 2);
-	L3_write(UDA1341_L3Addr | UDA1341_DATA0, data0e6, 2 );
-
-	if (debug) {
-		print("enable:	status0	= 0x%2.2ux\n", status0[0]);
-		print("enable:	status1	= 0x%2.2ux\n", status1[0]);
-		print("enable:	data02	= 0x%2.2ux\n", data02[0]);
-		print("enable:	data0e2	= 0x%4.4ux\n", data0e2[0] | data0e2[1]<<8);
-		print("enable:	data0e4	= 0x%4.4ux\n", data0e4[0] | data0e4[1]<<8);
-		print("enable:	data0e6	= 0x%4.4ux\n", data0e6[0] | data0e6[1]<<8);
-		print("enable:	sspregs->control0 = 0x%lux\n", sspregs->control0);
-		print("enable:	sspregs->control1 = 0x%lux\n", sspregs->control1);
-	}
-}
-
-static	void
-resetlevel(void)
-{
-	int i;
-
-	for(i=0; volumes[i].name; i++) {
-		audio.lovol[i] = volumes[i].ilval;
-		audio.rovol[i] = volumes[i].irval;
-		audio.livol[i] = volumes[i].ilval;
-		audio.rivol[i] = volumes[i].irval;
-	}
-}
-
-static void
-mxspeed(int _rate)
-{
-	uchar data;
-
-	egpiobits(EGPIO_audio_ic_power | EGPIO_codec_reset, 1);
-	/* set the external clock generator */
-	rate = _rate;
 	switch (rate) {
 	case 32000:
 	case 48000:
@@ -580,27 +534,66 @@ mxspeed(int _rate)
 		gpioregs->set = GPIO_CLK_SET0_o|GPIO_CLK_SET1_o;
 		break;
 	}
+
+	/* Wait for the UDA1341 to wake up */
 	delay(100);
 
+	/* Reset the chip */
 	switch (rate) {
 	case 8000:
 	case 11025:
-		data = SC512FS;
+		clock = SC512FS;	/* Only works in MSB mode! */
 		break;
+	default:
 	case 16000:
 	case 22050:
 	case 44100:
 	case 48000:
-		data = SC256FS;
+		clock = SC256FS;
 		break;
 	case 32000:
-		data = SC384FS;
+		clock = SC384FS;	/* Only works in MSB mode! */
 		break;
 	}
-	data |= (LSB16 << 4)|0x2;
-	L3_write(UDA1341_L3Addr | UDA1341_STATUS, &data, 1);
+	data[0] = status0[0] | 1<<UdaStatusRST | clock;
+	L3_write(UDA1341_L3Addr | UDA1341_STATUS, data, 1 );
+	if (debug)
+		print("enable:	status0	= 0x%2.2ux\n", data[0]);
+
+	gpioregs->clear = EGPIO_codec_reset;
+	gpioregs->set = EGPIO_codec_reset;
+	/* write uda 1341 status[0] */
+	data[0] = status0[0] | clock;
+	L3_write(UDA1341_L3Addr | UDA1341_STATUS, data, 1);
+	L3_write(UDA1341_L3Addr | UDA1341_STATUS, status1, 1);
+	L3_write(UDA1341_L3Addr | UDA1341_DATA0, data02, 1);
+	L3_write(UDA1341_L3Addr | UDA1341_DATA0, data0e2, 2);
+	L3_write(UDA1341_L3Addr | UDA1341_DATA0, data0e6, 2 );
+
+	if (debug) {
+		print("enable:	status0	= 0x%2.2ux\n", data[0]);
+		print("enable:	status1	= 0x%2.2ux\n", status1[0]);
+		print("enable:	data02	= 0x%2.2ux\n", data02[0]);
+		print("enable:	data0e2	= 0x%4.4ux\n", data0e2[0] | data0e2[1]<<8);
+		print("enable:	data0e4	= 0x%4.4ux\n", data0e4[0] | data0e4[1]<<8);
+		print("enable:	data0e6	= 0x%4.4ux\n", data0e6[0] | data0e6[1]<<8);
+		print("enable:	sspregs->control0 = 0x%lux\n", sspregs->control0);
+		print("enable:	sspregs->control1 = 0x%lux\n", sspregs->control1);
+	}
 }
-	
+
+static	void
+resetlevel(void)
+{
+	int i;
+
+	for(i=0; volumes[i].name; i++) {
+		audio.lovol[i] = volumes[i].ilval;
+		audio.rovol[i] = volumes[i].irval;
+		audio.livol[i] = volumes[i].ilval;
+		audio.rivol[i] = volumes[i].irval;
+	}
+}
 
 static void
 mxvolume(void) {
@@ -972,7 +965,6 @@ audioopen(Chan *c, int mode)
 			audio.amode |= Awrite;
 			outenable();
 		}
-		mxspeed(Speed);
 		mxvolume();
 		qunlock(&audio);
 		if (audio.amode & Aread)
@@ -1212,7 +1204,17 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 		}
 		else
 			i = 0;
-		mxspeed((int)strtol(field[i], (char **)nil, 0));
+		i = (int)strtol(field[i], (char **)nil, 0);
+		switch (i) {
+		case 16000:
+		case 22050:
+		case 44100:
+		case 48000:
+			volumes[Vspeed].ilval = volumes[Vspeed].irval = rate = i;
+			break;
+		default:
+			error(Ebadarg);
+		}
 		break;
 		
 	case Qvolume:
