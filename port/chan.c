@@ -134,7 +134,7 @@ mountsplit(Mount *omnt)
 	nmnt->mountid = omnt->mountid;
 	nmnt->next = omnt->next;
 	if(nmnt->next)
-		incref(nmnt);
+		incref(nmnt->next);
 	nmnt->c = omnt->c;
 	incref(nmnt->c);
 	omnt->ref--;
@@ -207,14 +207,12 @@ mount(Chan *new, Chan *old, int flag)
 		/* fall through */
 
 	case MREPL:
-		omnt = mt->mnt;
-		if(omnt)
-			incref(omnt);
-		mnt->next = omnt;
+		mnt->next = mt->mnt;
 		mt->mnt = mnt;
-		mnt->term = 1;
 		if((flag&MORDER) == MBEFORE)
 			mnt->term = 0;
+		else
+			mnt->term = 1;
 		break;
 
 	/*

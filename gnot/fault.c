@@ -51,11 +51,14 @@ fault(Ureg *ur, FFrame *f)
 	Orig *o;
 	char *l;
 	Page *pg;
+	KMap *k, *k1;
 	int zeroed = 0, head = 1;
 	int i, user, read, insyscall;
 
-	if(u == 0)
-		panic("fault");
+	if(u == 0){
+		dumpregs(ur);
+		panic("fault u==0 pc=%lux", ur->pc);
+	}
 	insyscall = u->p->insyscall;
 	u->p->insyscall = 1;
 	if(f->ssw & DF)
@@ -149,24 +152,27 @@ fault(Ureg *ur, FFrame *f)
 			if(n > BY2PG)
 				n = BY2PG;
 			pg = newpage(1, o, addr);
+			k = kmap(pg);
 			qlock(o->chan);
 			if(waserror()){
 				print("demand load i/o error %d\n", u->error.code);
+				kunmap(k);
 				qunlock(o->chan);
 				pg->o = 0;
 				pg->ref--;
 				goto cant;
 			}
 			o->chan->offset = (addr-o->va) + o->minca;
-			l = (char*)(pg->pa|KZERO);
+			l = (char*)k->va;
 			if((*devtab[o->chan->type].read)(o->chan, l, n) != n)
 				error(0, Eioload);
 			qunlock(o->chan);
-			poperror();
 			/* BUG: if was first page of bss, move to data */
 			if(n<BY2PG)
 				memset(l+n, 0, BY2PG-n);
 			lock(o);
+			kunmap(k);
+			poperror();
 			opte = &o->pte[(addr-s->minva)>>PGSHIFT];	/* could move */
 			pte = opte;
 			if(pte->page == 0){
@@ -231,7 +237,11 @@ fault(Ureg *ur, FFrame *f)
 			opte->page = 0;
 		}else{		/* copy page */
 			pte->page = newpage(1, o, addr);
-			memcpy((void*)(pte->page->pa|KZERO), (void*)(pg->pa|KZERO), BY2PG);
+			k = kmap(pte->page);
+			k1 = kmap(pg);
+			memcpy((void*)k->va, (void*)k1->va, BY2PG);
+			kunmap(k);
+			kunmap(k1);
 			if(pg->ref <= 1)
 				panic("pg->ref <= 1");
 			pg->ref--;

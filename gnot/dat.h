@@ -12,6 +12,7 @@ typedef struct Envval	Envval;
 typedef struct Error	Error;
 typedef struct FFrame	FFrame;
 typedef struct FPsave	FPsave;
+typedef struct KMap	KMap;
 typedef struct Label	Label;
 typedef struct List	List;
 typedef struct Lock	Lock;
@@ -112,6 +113,10 @@ struct Conf
 	int	nmach;		/* processors */
 	int	nproc;		/* processes */
 	int	npgrp;		/* process groups */
+	ulong	npage0;		/* total physical pages of memory, bank 0 */
+	ulong	npage1;		/* total physical pages of memory, bank 1 */
+	ulong	base0;		/* base of bank 0 */
+	ulong	base1;		/* base of bank 1 */
 	ulong	npage;		/* total physical pages of memory */
 	ulong	norig;		/* origins */
 	ulong	npte;		/* contiguous page table entries */
@@ -174,6 +179,13 @@ struct Envp
 {
 	Env	*env;
 	int	chref;			/* # chans from pgrp pointing here */
+};
+
+struct KMap
+{
+	KMap	*next;
+	ulong	pa;
+	ulong	va;
 };
 
 struct Mach
@@ -298,7 +310,7 @@ struct Proc
 	Proc	*sib;			/* non-ascendant relatives (circular list) */
 	int	nchild;
 	QLock	wait;			/* exiting children to be waited for */
-	Waitmsg	*waitmsg;
+	ulong	waitmsg;
 	Proc	*child;
 	Proc	*parent;
 	Pgrp	*pgrp;

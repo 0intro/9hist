@@ -10,7 +10,7 @@ struct
 	Lock;
 	ulong	addr;
 	int	active;
-	Page	*page;		/* base of Page structures, indexed by phys addr */
+	Page	*page;		/* base of Page structures, indexed by phys page number */
 	ulong	minppn;		/* index of first usable page */
 	Page	*head;		/* most recently used */
 	Page	*tail;		/* least recently used */
@@ -54,10 +54,12 @@ ialloc(ulong n, int align)
 {
 	ulong p;
 
-	if(palloc.active)
-		print("ialloc bad\n");
 	if(palloc.addr == 0)
 		palloc.addr = ((ulong)&end)&~KZERO;
+	if(n == 0)	/* done by kmapinit */
+		return (void*)(palloc.addr|KZERO);
+	if(palloc.active)
+		print("ialloc bad\n");
 	if(align){
 		palloc.addr += BY2PG-1;
 		palloc.addr &= ~(BY2PG-1);
@@ -150,7 +152,10 @@ pageinit(void)
 	for(p=palloc.head; p<=palloc.tail; p++,ppn++){
 		p->next = p+1;
 		p->prev = p-1;
-		p->pa = ppn<<PGSHIFT;
+		if(ppn < conf.npage0)
+			p->pa = conf.base0+(ppn<<PGSHIFT);
+		else
+			p->pa = conf.base1+((ppn-conf.npage0)<<PGSHIFT);
 	}
 	palloc.head->prev = 0;
 	palloc.tail->next = 0;
@@ -161,6 +166,7 @@ newpage(int noclear, Orig *o, ulong va)
 {
 	Page *p;
 	Orig *o1;
+	KMap *k;
 
 	if(palloc.active == 0)
 		print("newpage inactive\n");
@@ -205,8 +211,11 @@ loop:
 	p->ref = 1;
 	usepage(p, 0);
 	unlock(&palloc);
-	if(!noclear)
-		memset((void*)(p->pa|KZERO), 0, BY2PG);
+	if(!noclear){
+		k = kmap(p);
+		memset((void*)k->va, 0, BY2PG);
+		kunmap(k);
+	}
 	p->o = o;
 	p->va = va;
 

@@ -17,6 +17,7 @@ typedef struct Boot{
 #define BOOT ((Boot*)0)
 
 char protouser[NAMELEN];
+int bank[2];
 
 void unloadboot(void);
 
@@ -27,7 +28,9 @@ main(void)
 	machinit();
 	mmuinit();
 	confinit();
+	kmapinit();
 	printinit();
+	print("bank 0: %dM  bank 1: %dM\n", bank[0], bank[1]);
 	flushmmu();
 	procinit0();
 	pgrpinit();
@@ -36,6 +39,7 @@ main(void)
 	chandevreset();
 	streaminit();
 	pageinit();
+	kmapinit();
 	userinit();
 	schedinit();
 }
@@ -102,6 +106,7 @@ userinit(void)
 	Proc *p;
 	Seg *s;
 	User *up;
+	KMap *k;
 
 	p = newproc();
 	p->pgrp = newpgrp();
@@ -121,8 +126,10 @@ userinit(void)
 	/*
 	 * User
 	 */
-	up = (User*)(p->upage->pa|KZERO);
+	k = kmap(p->upage);
+	up = (User*)k->va;
 	up->p = p;
+	kunmap(k);
 
 	/*
 	 * User Stack
@@ -140,7 +147,9 @@ userinit(void)
 	s->proc = p;
 	s->o = neworig(UTZERO, 1, 0, 0);
 	s->o->pte[0].page = newpage(0, 0, UTZERO);
-	memcpy((ulong*)(s->o->pte[0].page->pa|KZERO), initcode, sizeof initcode);
+	k = kmap(s->o->pte[0].page);
+	memcpy((ulong*)k->va, initcode, sizeof initcode);
+	kunmap(k);
 	s->minva = UTZERO;
 	s->maxva = UTZERO+BY2PG;
 
@@ -225,34 +234,67 @@ delete(List **head, List *where, List *old)
 	where->next = old->next;
 }
 
+banksize(int base)
+{
+	ulong va;
+
+	if(&end > (int *)((KZERO|1024L*1024L)-BY2PG))
+		return 0;
+	va = UZERO;	/* user page 1 is free to play with */
+	putmmu(va, PTEVALID|(base+0)*1024L*1024L/BY2PG);
+	*(ulong*)va=0;	/* 0 at 0M */
+	putmmu(va, PTEVALID|(base+1)*1024L*1024L/BY2PG);
+	*(ulong*)va=1;	/* 1 at 1M */
+	putmmu(va, PTEVALID|(base+4)*1024L*1024L/BY2PG);
+	*(ulong*)va=4;	/* 4 at 4M */
+	putmmu(va, PTEVALID|(base+0)*1024L*1024L/BY2PG);
+	if(*(ulong*)va==0)
+		return 16;
+	putmmu(va, PTEVALID|(base+1)*1024L*1024L/BY2PG);
+	if(*(ulong*)va==1)
+		return 4;
+	putmmu(va, PTEVALID|(base+4)*1024L*1024L/BY2PG);
+	if(*(ulong*)va==2)
+		return 1;
+	return 0;
+}
+
 Conf	conf;
 
 void
 confinit(void)
 {
+	int mul;
 	conf.nmach = 1;
 	if(conf.nmach > MAXMACH)
 		panic("confinit");
-	conf.nproc = 32;
-	conf.npgrp = 15;
-	conf.npage = (4*1024*1024-256*1024)/BY2PG;
-	conf.npte = 500;
-	conf.nmod = 200;
+	bank[0] = banksize(0);
+	bank[1] = banksize(16);
+	conf.npage0 = (bank[0]*1024*1024)/BY2PG;
+	conf.base0 = 0;
+	conf.npage1 = (bank[1]*1024*1024)/BY2PG;
+	conf.base1 = 16*1024*1024;
+	conf.npage = conf.npage0+conf.npage1;
+	mul = 1 + (conf.npage0>0);
+	conf.nproc = 32*mul;
+	conf.npgrp = 15*mul;
+	conf.npte = 700*mul;
+	conf.nmod = 400*mul;
 	conf.nalarm = 1000;
-	conf.norig = 100;
-	conf.nchan = 200;
-	conf.nenv = 100;
-	conf.nenvchar = 8000;
-	conf.npgenv = 200;
-	conf.nmtab = 50;
-	conf.nmount = 100;
-	conf.nmntdev = 20;
+	conf.norig = 150*mul;
+	conf.nchan = 150*mul;
+	conf.nenv = 100*mul;
+	conf.nenvchar = 8000*mul;
+	conf.npgenv = 200*mul;
+	conf.nmtab = 50*mul;
+	conf.nmount = 100*mul;
+	conf.nmntdev = 10*mul;
 	conf.nmntbuf = 2*conf.nmntdev;
 	conf.nmnthdr = 2*conf.nmntdev;
-	conf.nstream = 64;
+	conf.nstream = 64*mul;
 	conf.nqueue = 5 * conf.nstream;
 	conf.nblock = 12 * conf.nstream;
-	conf.nsrv = 32;
-	conf.nbitmap = 100;
-	conf.nbitbyte = 400*1024;
+	conf.nsrv = 32*mul;
+	conf.nbitmap = 100*mul;
+	conf.nbitbyte = 300*1024*mul;
 }

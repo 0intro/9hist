@@ -303,18 +303,23 @@ int
 postnote(Proc *p, int dolock, char *n, int flag)
 {
 	User *up;
+	KMap *k;
 	int s;
 	Rendez *r;
 
 	if(dolock)
 		lock(&p->debug);
-	up = (User*)(p->upage->pa|KZERO);
+	k = kmap(p->upage);
+	up = (User*)k->va;
 	if(flag!=NUser && (up->notify==0 || up->notified))
 		up->nnote = 0;	/* force user's hand */
-	else if(up->nnote == NNOTE-1)
+	else if(up->nnote == NNOTE-1){
+		kunmap(k);
 		return 0;
+	}
 	strcpy(up->note[up->nnote].msg, n);
 	up->note[up->nnote++].flag = flag;
+	kunmap(k);
 	if(dolock)
 		unlock(&p->debug);
 	if(r = p->r){	/* assign = */
@@ -398,7 +403,7 @@ pexit(char *s, int freemem)
 		/*
 		 * Pass info through back door, to avoid huge Proc's
 		 */
-		p->waitmsg = (Waitmsg*)(c->upage->pa|(((ulong)&w)&(BY2PG-1))|KZERO);
+		p->waitmsg = (((ulong)&w)&(BY2PG-1));
 		c->state = Exiting;
 		if(p->state == Inwait)
 			ready(p);
@@ -499,6 +504,7 @@ ulong
 pwait(Waitmsg *w)
 {
 	Proc *c, *p;
+	KMap *k;
 	ulong cpid;
 
 	p = u->p;
@@ -521,9 +527,11 @@ again:
 		goto again;
 	}
 	p->child = 0;
+	k = kmap(c->upage);
 	if(w)
-		*w = *p->waitmsg;
-	cpid = p->waitmsg->pid;
+		*w = *(Waitmsg*)(p->waitmsg|k->va);
+	cpid = ((Waitmsg*)(p->waitmsg|k->va))->pid;
+	kunmap(k);
 	p->time[TCUser] += c->time[TUser] + c->time[TCUser];
 	p->time[TCSys] += c->time[TSys] + c->time[TCSys];
 	p->time[TCReal] += c->time[TReal];
@@ -564,23 +572,25 @@ kproc(char *name, void (*func)(void *), void *arg)
 	ulong upa;
 	int lastvar;	/* used to compute stack address */
 	User *up;
+	KMap *k;
 
 	/*
 	 * Kernel stack
 	 */
 	p = newproc();
 	p->upage = newpage(1, 0, USERADDR|(p->pid&0xFFFF));
-	upa = p->upage->pa|KZERO;
-	up = (User *)upa;
+	k = kmap(p->upage);
+	upa = k->va;
+	up = (User*)upa;
+	up->p = p;
 
 	/*
 	 * Save time: only copy u-> data and useful stack
 	 */
-	memcpy((void*)upa, u, sizeof(User));
+	memcpy(up, u, sizeof(User));
 	n = USERADDR+BY2PG - (ulong)&lastvar;
 	n = (n+32) & ~(BY2WD-1);	/* be safe & word align */
-	memcpy((void*)(upa+BY2PG-n), (void*)((u->p->upage->pa|KZERO)+BY2PG-n), n);
-	((User *)upa)->p = p;
+	memcpy((void*)(upa+BY2PG-n), (void*)(USERADDR+BY2PG-n), n);
 
 	/*
 	 * Refs
@@ -589,6 +599,7 @@ kproc(char *name, void (*func)(void *), void *arg)
 	for(n=0; n<=up->maxfd; n++)
 		up->fd[n] = 0;
 	up->maxfd = 0;
+	kunmap(k);
 
 	/*
 	 * Sched

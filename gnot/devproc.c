@@ -201,6 +201,7 @@ procread(Chan *c, void *va, long n)
 	Seg *s;
 	Orig *o;
 	Page *pg;
+	KMap *k;
 	PTE *pte, *opte;
 	int i;
 	long l;
@@ -253,8 +254,10 @@ procread(Chan *c, void *va, long n)
 				pprint("nonresident page addr %lux (complain to rob)\n", c->offset);
 				memset(a, 0, n);
 			}else{
-				b = (char*)(pg->pa|KZERO);
+				k = kmap(pg);
+				b = (char*)k->va;
 				memcpy(a, b+(c->offset&(BY2PG-1)), n);
+				kunmap(k);
 			}
 			return n;
 		}
@@ -266,15 +269,17 @@ procread(Chan *c, void *va, long n)
 			pg = p->upage;
 			if(pg==0 || (p->pid&PIDMASK)!=PID(c->qid))
 				error(0, Eprocdied);
-			b = (char*)(pg->pa|KZERO);
+			k = kmap(pg);
+			b = (char*)k->va;
 			memcpy(a, b+(c->offset-USERADDR), n);
+			kunmap(k);
 			return n;
 		}
 
 		/* kernel memory.  BUG: shouldn't be so easygoing. BUG: mem mapping? */
-		if(c->offset>=KZERO && c->offset<KZERO+conf.npage*BY2PG){
-			if(c->offset+n > KZERO+conf.npage*BY2PG)
-				n = KZERO+conf.npage*BY2PG - c->offset;
+		if(c->offset>=KZERO && c->offset<KZERO+conf.npage0*BY2PG){
+			if(c->offset+n > KZERO+conf.npage0*BY2PG)
+				n = KZERO+conf.npage0*BY2PG - c->offset;
 			memcpy(a, (char*)c->offset, n);
 			return n;
 		}
@@ -289,8 +294,10 @@ procread(Chan *c, void *va, long n)
 		}
 		if((p->pid&PIDMASK) != PID(c->qid))
 			error(0, Eprocdied);
-		up = (User*)(p->upage->pa|KZERO);
+		k = kmap(p->upage);
+		up = (User*)k->va;
 		if(up->p != p){
+			kunmap(k);
 			pprint("note read u/p mismatch");
 			error(0, Egreg);
 		}
@@ -304,6 +311,7 @@ procread(Chan *c, void *va, long n)
 			memcpy(&up->note[0], &up->note[1], up->nnote*sizeof(Note));
 			n = ERRLEN;
 		}
+		kunmap(k);
 		unlock(&p->debug);
 		return n;
 
@@ -340,6 +348,7 @@ procwrite(Chan *c, void *va, long n)
 {
 	Proc *p;
 	User *up;
+	KMap *k;
 	char buf[ERRLEN];
 
 	if(c->qid & CHDIR)
@@ -362,11 +371,14 @@ procwrite(Chan *c, void *va, long n)
 			error(0, Ebadctl);
 		break;
 	case Qnote:
-		up = (User*)(p->upage->pa|KZERO);
+		k = kmap(p->upage);
+		up = (User*)k->va;
 		if(up->p != p){
+			kunmap(k);
 			pprint("note write u/p mismatch");
 			error(0, Egreg);
 		}
+		kunmap(k);
 		if(n >= ERRLEN-1)
 			error(0, Etoobig);
 		if(n>=4 && strncmp(va, "sys:", 4)==0)
