@@ -354,9 +354,7 @@ ibrk(ulong addr, int seg)
 
 	if(newsize > (PTEMAPMEM*SEGMAPSIZE)/BY2PG) {
 		qunlock(&s->lk);
-		pprint("exceeded max segment size\n");
-		pexit("Suicide", 0);
-		error(Esegaddr);
+		return -1;
 	}
 
 	for(i = 0; i < NSEG; i++) {

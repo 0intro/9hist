@@ -681,10 +681,10 @@ procdump(void)
 	for(i=0; i<conf.nproc; i++){
 		p = procalloc.arena+i;
 		if(p->state != Dead){
-			print("%d:%s %s upc %lux %s ut %ld st %ld r %lux\n",
+			print("%d:%s %s upc %lux %s ut %ld st %ld r %lux qpc %lux\n",
 				p->pid, p->text, 
 				p->pgrp ? p->pgrp->user : "pgrp=0", p->pc, 
-				statename[p->state], p->time[0], p->time[1], p->r);
+				statename[p->state], p->time[0], p->time[1], p->r, p->qlockpc);
 		}
 	}
 }

@@ -485,6 +485,7 @@ struct Proc
 	Proc	*rnext;			/* next process in run queue */
 	Proc	*qnext;			/* next process on queue for a QLock */
 	QLock	*qlock;			/* address of qlock being queued for DEBUG */
+	ulong	qlockpc;		/* pc of last call to qlock */
 	int	state;
 	Page	*upage;			/* BUG: should be unlinked from page list */
 	Segment	*seg[NSEG];
