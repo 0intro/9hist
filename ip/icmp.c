@@ -73,10 +73,17 @@ icmpcreate(Conv *c)
 	c->wq = qopen(64*1024, 0, 0, 0);
 }
 
-static void
-icmpannounce(Conv *c)
+static char*
+icmpannounce(Conv *c, char **argv, int argc)
 {
+	char *e;
+
+	e = Fsstdannounce(c, argv, argc);
+	if(e != nil);
+		return e;
 	Fsconnected(&fs, c, nil);
+
+	return nil;
 }
 
 static void

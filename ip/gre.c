@@ -73,9 +73,11 @@ greconnect(Conv *c, char **argv, int argc)
 	}
 	unlock(p);
 
-	Fsconnected(&fs, c, err);
+	if(err != nil)
+		return err;
+	Fsconnected(&fs, c, nil);
 
-	return err;
+	return nil;
 }
 
 static int
@@ -93,10 +95,10 @@ grecreate(Conv *c)
 	c->wq = qopen(64*1024, 0, 0, 0);
 }
 
-static void
-greannounce(Conv *c)
+static char*
+greannounce(Conv*, char**, int)
 {
-	Fsconnected(&fs, c, "pktifc does not support announce");
+	return "pktifc does not support announce";
 }
 
 static void

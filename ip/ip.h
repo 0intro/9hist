@@ -140,7 +140,7 @@ struct Proto
 
 	void		(*kick)(Conv*, int);
 	char*		(*connect)(Conv*, char**, int);
-	void		(*announce)(Conv*);
+	char*		(*announce)(Conv*, char**, int);
 	int		(*state)(char**, Conv*);
 	void		(*create)(Conv*);
 	void		(*close)(Conv*);
@@ -179,6 +179,7 @@ int	Fsbuiltinproto(Fs*, byte);
 Conv*	Fsprotoclone(Proto*, char*);
 Proto*	Fsrcvpcol(Fs*, byte);
 char*	Fsstdconnect(Conv*, char**, int);
+char*	Fsstdannounce(Conv*, char**, int);
 
 /* log flags */
 enum

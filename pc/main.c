@@ -32,27 +32,84 @@ extern void ns16552install(void);	/* botch: config */
 
 static int isoldbcom;
 
+static int
+getcfields(char* lp, char** fields, int n, char* sep)
+{
+	int i;
+
+	for(i = 0; lp && *lp && i < n; i++){
+		while(*lp && strchr(sep, *lp) != 0)
+			*lp++ = 0;
+		if(*lp == 0)
+			break;
+		fields[i] = lp;
+		while(*lp && strchr(sep, *lp) == 0){
+			if(*lp == '\\' && *(lp+1) == '\n')
+				*lp++ = ' ';
+			lp++;
+		}
+	}
+
+	return i;
+}
+
 static void
-bcompatibility(void)
+options(void)
 {
 	uchar *bda;
+	long i, n;
+	char *cp, *line[MAXCONF], *p, *q;
 
-	if(strncmp(BOOTARGS, "ZORT 0\r\n", 8) == 0)
-		return;
-	isoldbcom = 1;
+	if(strncmp(BOOTARGS, "ZORT 0\r\n", 8)){
+		isoldbcom = 1;
 
-	memmove(BOOTARGS, KADDR(1024), BOOTARGSLEN);
-	memmove(BOOTLINE, KADDR(0x100), BOOTLINELEN);
+		memmove(BOOTARGS, KADDR(1024), BOOTARGSLEN);
+		memmove(BOOTLINE, KADDR(0x100), BOOTLINELEN);
 
-	bda = KADDR(0x400);
-	bda[0x13] = 639;
-	bda[0x14] = 639>>8;
+		bda = KADDR(0x400);
+		bda[0x13] = 639;
+		bda[0x14] = 639>>8;
+	}
+
+	/*
+	 *  parse configuration args from dos file plan9.ini
+	 */
+	cp = BOOTARGS;	/* where b.com leaves its config */
+	cp[BOOTARGSLEN-1] = 0;
+
+	/*
+	 * Strip out '\r', change '\t' -> ' '.
+	 */
+	p = cp;
+	for(q = cp; *q; q++){
+		if(*q == '\r')
+			continue;
+		if(*q == '\t')
+			*q = ' ';
+		*p++ = *q;
+	}
+	*p = 0;
+
+	n = getcfields(cp, line, MAXCONF, "\n");
+	for(i = 0; i < n; i++){
+		if(*line[i] == '#')
+			continue;
+		cp = strchr(line[i], '=');
+		if(cp == 0)
+			continue;
+		*cp++ = 0;
+		if(cp - line[i] >= NAMELEN+1)
+			*(line[i]+NAMELEN-1) = 0;
+		confname[nconf] = line[i];
+		confval[nconf] = cp;
+		nconf++;
+	}
 }
 
 void
 main(void)
 {
-	outb(0x3F2, 0x00);		/* botch: turn off the floppy motor */
+	outb(0x3F2, 0x00);			/* botch: turn off the floppy motor */
 
 	/*
 	 * There is a little leeway here in the ordering but care must be
@@ -60,7 +117,7 @@ main(void)
 	 *	function		dependencies
 	 *	========		============
 	 *	machinit		depends on: m->machno, m->pdb
-	 *	cpuidentify		depends on :m
+	 *	cpuidentify		depends on: m
 	 *	confinit		calls: meminit
 	 *	meminit			depends on: cpuidentify (needs to know processor
 	 *				  type for caching, etc.)
@@ -75,9 +132,9 @@ main(void)
 	machinit();
 	active.machs = 1;
 	active.exiting = 0;
+	options();
 	screeninit();
 	cpuidentify();
-	bcompatibility();
 	confinit();
 	archinit();
 	xinit();
@@ -303,85 +360,31 @@ getconf(char *name)
 	int i;
 
 	for(i = 0; i < nconf; i++)
-		if(strcmp(confname[i], name) == 0)
+		if(cistrcmp(confname[i], name) == 0)
 			return confval[i];
 	return 0;
-}
-
-static int
-getcfields(char* lp, char** fields, int n, char* sep)
-{
-	int i;
-
-	for(i = 0; lp && *lp && i < n; i++){
-		while(*lp && strchr(sep, *lp) != 0)
-			*lp++ = 0;
-		if(*lp == 0)
-			break;
-		fields[i] = lp;
-		while(*lp && strchr(sep, *lp) == 0){
-			if(*lp == '\\' && *(lp+1) == '\n')
-				*lp++ = ' ';
-			lp++;
-		}
-	}
-
-	return i;
 }
 
 void
 confinit(void)
 {
-	long i, j, n;
-	int pcnt;
-	char *cp;
-	char *line[MAXCONF], *p, *q;
-	extern int defmaxmsg;
+	char *p;
+	int i, pcnt;
 	ulong maxmem;
+	extern int defmaxmsg;
 
-	/*
-	 *  parse configuration args from dos file plan9.ini
-	 */
-	cp = BOOTARGS;	/* where b.com leaves its config */
-	cp[BOOTARGSLEN-1] = 0;
-
-	/*
-	 * Strip out '\r', change '\t' -> ' '.
-	 */
-	p = cp;
-	for(q = cp; *q; q++){
-		if(*q == '\r')
-			continue;
-		if(*q == '\t')
-			*q = ' ';
-		*p++ = *q;
-	}
-	*p = 0;
-
-	maxmem = 0;
-	pcnt = 0;
-	n = getcfields(cp, line, MAXCONF, "\n");
-	for(j = 0; j < n; j++){
-		if(*line[j] == '#')
-			continue;
-		cp = strchr(line[j], '=');
-		if(cp == 0)
-			continue;
-		*cp++ = 0;
-		if(cp - line[j] >= NAMELEN+1)
-			*(line[j]+NAMELEN-1) = 0;
-		confname[nconf] = line[j];
-		confval[nconf] = cp;
-		if(cistrcmp(confname[nconf], "*maxmem") == 0)
-			maxmem = strtoul(confval[nconf], 0, 0);
-		if(cistrcmp(confname[nconf], "*kernelpercent") == 0)
-			pcnt = 100 - strtol(confval[nconf], 0, 0);
-		if(cistrcmp(confname[nconf], "*defmaxmsg") == 0){
-			i = strtol(confval[nconf], 0, 0);
-			if(i < defmaxmsg && i >=128)
-				defmaxmsg = i;
-		}
-		nconf++;
+	if(p = getconf("*maxmem"))
+		maxmem = strtoul(p, 0, 0);
+	else
+		maxmem = 0;
+	if(p = getconf("*kernelpercent"))
+		pcnt = 100 - strtol(p, 0, 0);
+	else
+		pcnt = 0;
+	if(p = getconf("*defmaxmsg")){
+		i = strtol(p, 0, 0);
+		if(i < defmaxmsg && i >=128)
+			defmaxmsg = i;
 	}
 
 	meminit(maxmem);

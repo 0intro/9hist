@@ -61,6 +61,9 @@ identify(void)
 	uchar *p, sum;
 	ulong length;
 
+	if(getconf("*nomp"))
+		return 1;
+
 	/*
 	 * Search for an MP configuration table. For now,
 	 * don't accept the default configurations (physaddr == 0).

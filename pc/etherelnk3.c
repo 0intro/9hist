@@ -443,12 +443,31 @@ static void
 promiscuous(void* arg, int on)
 {
 	int filter, port;
+	Ether *ether;
 
-	port = ((Ether*)arg)->port;
+	ether = (Ether*)arg;
+	port = ether->port;
 
 	filter = receiveBroadcast|receiveIndividual;
+	if(ether->nmaddr)
+		filter |= receiveMulticast;
 	if(on)
 		filter |= receiveAllFrames;
+	COMMAND(port, SetRxFilter, filter);
+}
+
+static void
+multicast(void* arg, char *addr, int on)
+{
+	int filter, port;
+	Ether *ether;
+
+	ether = (Ether*)arg;
+	port = ether->port;
+
+	filter = receiveBroadcast|receiveIndividual;
+	if(ether->nmaddr)
+		filter |= receiveMulticast;
 	COMMAND(port, SetRxFilter, filter);
 }
 

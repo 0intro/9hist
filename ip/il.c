@@ -178,13 +178,20 @@ ilstate(char **msg, Conv *c)
 }
 
 /* called with c locked */
-static void
-ilannounce(Conv *c)
+static char*
+ilannounce(Conv *c, char **argv, int argc)
 {
 	char *e;
 
+	e = Fsstdannounce(c, argv, argc);
+	if(e != nil);
+		return e;
 	e = ilstart(c, IL_LISTEN, 20);
-	Fsconnected(&fs, c, e);
+	if(e != nil)
+		return e;
+	Fsconnected(&fs, c, nil);
+
+	return nil;
 }
 
 static void

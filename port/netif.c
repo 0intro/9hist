@@ -9,7 +9,7 @@
 static int netown(Netfile*, char*, int);
 static int openfile(Netif*, int);
 static char* matchtoken(char*, char*);
-static void netmulti(Netif*, char*, int);
+static void netmulti(Netif*, Netfile*, char*, int);
 
 /*
  *  set up a new network interface
@@ -226,7 +226,7 @@ netifwrite(Netif *nif, Chan *c, void *a, long n)
 
 	qlock(nif);
 	f = nif->f[NETID(c->qid.path)];
-	if(p = matchtoken(buf, "connect")){
+	if((p = matchtoken(buf, "connect")) != 0){
 		f->type = atoi(p);
 		if(f->type < 0)
 			nif->all++;
@@ -235,10 +235,10 @@ netifwrite(Netif *nif, Chan *c, void *a, long n)
 		nif->prom++;
 		if(nif->prom == 1 && nif->promiscuous != nil)
 			nif->promiscuous(nif->arg, 1);
-	} else if(p = matchtoken(buf, "addmulti")){
-		netmulti(nif, p, 1);
-	} else if(p = matchtoken(buf, "remmulti")){
-		netmulti(nif, p, 0);
+	} else if((p = matchtoken(buf, "addmulti")) != 0){
+		netmulti(nif, f, p, 1);
+	} else if((p = matchtoken(buf, "remmulti")) != 0){
+		netmulti(nif, f, p, 0);
 	}
 	qunlock(nif);
 	return n;
@@ -273,6 +273,7 @@ netifclose(Netif *nif, Chan *c)
 {
 	Netfile *f;
 	int t;
+	Netaddr *ap;
 
 	if((c->flag & COPEN) == 0)
 		return;
@@ -290,6 +291,16 @@ netifclose(Netif *nif, Chan *c)
 				nif->promiscuous(nif->arg, 0);
 			qunlock(nif);
 			f->prom = 0;
+		}
+		if(f->nmaddr){
+			qlock(nif);
+			t = 0;
+			for(ap = nif->maddr; ap; ap = ap->next){
+				if(f->maddr[t/8] & (1<<(t%8)))
+					netmulti(nif, f, ap->addr, 0);
+			}
+			qunlock(nif);
+			f->nmaddr = 0;
 		}
 		if(f->type < 0){
 			qlock(nif);
@@ -450,40 +461,62 @@ nhgets(void *p)
 	return (a[0]<<8)|(a[1]<<0);
 }
 
-/* called with nif locked */
+/*
+ *  keep track of multicast addresses
+ */
 static void
-netmulti(Netif *nif, char *addr, int add)
+netmulti(Netif *nif, Netfile *f, char *addr, int add)
 {
 	Netaddr **l, *ap;
+	int i;
+	uchar hexaddr[Nmaxaddr];
 
 	if(nif->multicast == nil)
 		return;
 
+	if(strlen(addr) != 2*nif->alen)
+		return;
+
 	l = &nif->maddr;
+	i = 0;
 	for(ap = *l; ap; ap = *l){
 		if(strcmp(addr, ap->addr) == 0)
 			break;
+		i++;
 		l = &ap->next;
 	}
 
 	if(add){
 		if(ap == 0){
-			ap = smalloc(sizeof(*ap));
+			*l = ap = smalloc(sizeof(*ap));
 			ap->addr = smalloc(strlen(addr)+1);
 			strcpy(ap->addr, addr);
-			ap->next = nif->maddr;
+			ap->next = 0;
 			ap->ref = 1;
-			nif->maddr = ap;
 		} else {
 			ap->ref++;
 		}
-		if(ap->ref == 1)
+		if(ap->ref == 1){
+			nif->nmaddr++;
 			nif->multicast(nif->arg, addr, 1);
+		}
+		if(i < 8*sizeof(f->maddr)){
+			if((f->maddr[i/8] & (1<<(i%8))) == 0)
+				f->nmaddr++;
+			f->maddr[i/8] |= 1<<(i%8);
+		}
 	} else {
 		if(ap == 0 || ap->ref == 0)
 			return;
 		ap->ref--;
-		if(ap->ref == 0)
+		if(ap->ref == 0){
+			nif->nmaddr--;
 			nif->multicast(nif->arg, addr, 0);
+		}
+		if(i < 8*sizeof(f->maddr)){
+			if((f->maddr[i/8] & (1<<(i%8))) != 0)
+				f->nmaddr--;
+			f->maddr[i/8] &= ~(1<<(i%8));
+		}
 	}
 }

@@ -37,6 +37,8 @@ struct Netfile
 
 	int	type;			/* multiplexor type */
 	int	prom;			/* promiscuous mode */
+	uchar	maddr[8];		/* bitmask of multicast addresses requested */
+	int	nmaddr;			/* number of multicast addresses */
 
 	Queue	*in;			/* input buffer */
 };
@@ -69,6 +71,7 @@ struct Netif
 	uchar	addr[Nmaxaddr];
 	uchar	bcast[Nmaxaddr];
 	Netaddr	*maddr;			/* multicast addresses */
+	int	nmaddr;			/* number of multicast addresses */
 	int	prom;			/* number of promiscuous opens */
 	int	all;			/* number of -1 multiplexors */
 

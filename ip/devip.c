@@ -648,16 +648,11 @@ ipwrite(Chan* ch, char* a, long n, ulong)
 				qunlock(&c->car);
 				nexterror();
 			}
-			switch(nfield){
-			default:
-				error("bad args to announce");
-			case 2:
-				setladdrport(c, fields[1]);
-				break;
-			}
 			c->state = Announcing;
 			c->cerr[0] = '\0';
-			x->announce(c);
+			p = x->announce(c, fields, nfield);
+			if(p != nil)
+				error(p);
 			sleep(&c->cr, announced, c);
 			if(c->cerr[0] != '\0')
 				error(c->cerr);
@@ -934,6 +929,19 @@ Fsstdconnect(Conv *c, char *argv[], int argc)
 			return p;
 		setladdr(c);
 		c->lport = atoi(argv[2]);
+		break;
+	}
+	return nil;
+}
+
+char*
+Fsstdannounce(Conv* c, char* argv[], int argc)
+{
+	switch(argc){
+	default:
+		return "bad args to announce";
+	case 2:
+		setladdrport(c, argv[1]);
 		break;
 	}
 	return nil;

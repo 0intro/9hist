@@ -80,10 +80,12 @@ udpstate(char **s, Conv *c)
 	return 1;
 }
 
-static void
-udpannounce(Conv *c)
+static char*
+udpannounce(Conv *c, char**, int)
 {
 	Fsconnected(&fs, c, nil);
+
+	return nil;
 }
 
 static void

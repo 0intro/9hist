@@ -239,13 +239,14 @@ tcpsetstate(Conv *s, byte newstate)
 static char*
 tcpconnect(Conv *c, char **argv, int argc)
 {
-	char *rv;
+	char *e;
 
-	rv = Fsstdconnect(c, argv, argc);
-	if(rv)
-		return rv;
+	e = Fsstdconnect(c, argv, argc);
+	if(e != nil)
+		return e;
 	tcpstart(c, TCP_CONNECT, QMAX);
-	return rv;
+
+	return nil;
 }
 
 int
@@ -273,11 +274,18 @@ tcpstate(char **msg, Conv *c)
 	return isclose;
 }
 
-static void
-tcpannounce(Conv *c)
+static char*
+tcpannounce(Conv *c, char **argv, int argc)
 {
+	char *e;
+
+	e = Fsstdannounce(c, argv, argc);
+	if(e != nil)
+		return e;
 	tcpstart(c, TCP_LISTEN, QMAX);
 	Fsconnected(&fs, c, nil);
+
+	return nil;
 }
 
 static void
