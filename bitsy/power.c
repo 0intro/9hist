@@ -19,6 +19,7 @@ ulong	powerflag = 0;	/* set to start power-off sequence */
 
 extern void	sa1100_power_resume(void);
 extern int		setpowerlabel(void);
+extern void	_start(void);
 extern Uart	sa1110uart[];
 
 GPIOregs savedgpioregs;
@@ -71,29 +72,40 @@ gpiocpy(GPIOregs *to, GPIOregs *from)
 	to->direction = from->direction;
 }
 
+void	(*restart)(void) = nil;
+
 static void
 sa1100_power_off(void)
 {
+	cacheflush();
+	mmuinvalidate();
+	mmudisable();
+
 	/* enable wakeup by µcontroller, on/off switch or real-time clock alarm */
 	powerregs->pwer =  1 << IRQrtc | 1 << IRQgpio0 | 1 << IRQgpio1;
 
 	/* clear previous reset status */
 	resetregs->rcsr =  RCSR_all;
 
+sa1100_power_resume();
+
 	/* disable internal oscillator, float CS lines */
 	powerregs->pcfr = PCFR_opde | PCFR_fp | PCFR_fs;
 	powerregs->pgsr = 0;
 	/* set resume address. The loader jumps to it */
-	powerregs->pspr = (ulong)sa1100_power_resume;
+//	powerregs->pspr = (ulong)sa1100_power_resume;
+//	powerregs->pspr = (ulong)_start;
 	/* set lowest clock; delay to avoid resume hangs on fast sa1110 */
+
 	delay(90);
-	powerregs->ppcr = 0;
+//	powerregs->ppcr = 0;
 	delay(90);
 
 	/* set all GPIOs to input mode  */
 	gpioregs->direction = 0;
 	delay(100);
 	/* enter sleep mode */
+
 	powerregs->pmcr = PCFR_suspend;
 	for(;;);
 }
@@ -109,28 +121,6 @@ bitno(ulong x)
 	return i;
 }
 
-void
-onoffintr(Ureg* , void*)
-{
-	int i;
-
-	/* Power down interrupt comes on power button release.
-	 * Act only after button has been released a full 100 ms
-	 */
-
-	if (powerflag)
-		return;
-
-	for (i = 0; i < 100; i++) {
-		delay(1);
-		if ((gpioregs->level & GPIO_PWR_ON_i) == 0)
-			return;	/* bounced */
-	}
-
-	powerflag = 1;
-	wakeup(&powerr);
-}
-
 int
 powerdown(void *)
 {
@@ -140,8 +130,13 @@ powerdown(void *)
 void
 deepsleep(void) {
 	static int power_pl;
+	void *xsp, *xlink;
 
 	power_pl = splhi();
+	xsp = getsp();
+	xlink = getlink();
+	iprint("starting power down, sp = %lux, link = %lux\n", xsp, xlink);
+	delay(1000);
 	cachewb();
 	delay(500);
 	if (setpowerlabel()) {
@@ -167,6 +162,11 @@ deepsleep(void) {
 		iprint("\nresuming execution\n");
 //		dumpitall();
 		delay(800);
+		delay(1000);
+		xsp = getsp();
+		xlink = getlink();
+		iprint("power restored, sp = %lux, link = %lux\n", xsp, xlink);
+
 		splx(power_pl);
 		return;
 	}
@@ -189,33 +189,48 @@ deepsleep(void) {
 void
 powerkproc(void*)
 {
-	void *xsp, *xlink;
 
 	for(;;){
 		while(powerflag == 0)
 			sleep(&powerr, powerdown, 0);
 
-		powerflag = 0;
-
-		xsp = getsp();
-		xlink = getlink();
-		iprint("starting power down, sp = %lux, link = %lux\n", xsp, xlink);
-		delay(1000);
 
 		deepsleep();
 
-		delay(1000);
-		xsp = getsp();
-		xlink = getlink();
-		iprint("power restored, sp = %lux, link = %lux\n", xsp, xlink);
+		delay(2000);
+
+		powerflag = 0;
 
 	}
 }
 
 void
+onoffintr(Ureg* , void*)
+{
+	int i;
+
+	/* Power down interrupt comes on power button release.
+	 * Act only after button has been released a full 100 ms
+	 */
+
+	if (powerflag)
+		return;
+
+	for (i = 0; i < 100; i++) {
+		delay(1);
+		if ((gpioregs->level & GPIO_PWR_ON_i) == 0)
+			return;	/* bounced */
+	}
+
+	deepsleep();
+//	powerflag = 1;
+//	wakeup(&powerr);
+}
+
+void
 powerinit(void)
 {
-	intrenable(GPIOrising, bitno(GPIO_PWR_ON_i), onoffintr, (void*)0x12344321, "on/off");
+	intrenable(GPIOrising, bitno(GPIO_PWR_ON_i), onoffintr, nil, "on/off");
 }
 
 void

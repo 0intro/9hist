@@ -191,6 +191,10 @@ struct Pcidev
 		int	size;
 	} mem[6];
 
+	struct {
+		ulong	bar;	
+		int	size;
+	} rom;
 	uchar	intl;			/* interrupt line */
 
 	Pcidev*	list;

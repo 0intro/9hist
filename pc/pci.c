@@ -57,7 +57,7 @@ enum
 };
 
 static Lock pcicfglock;
-static Lock pcicfginitlock;
+static QLock pcicfginitlock;
 static int pcicfgmode = -1;
 static int pcimaxbno = 7;
 static int pcimaxdno;
@@ -359,7 +359,7 @@ pcibusmap(Pcidev *root, ulong *pmema, ulong *pioa, int wrreg)
 }
 
 static int
-pciscan(int bno, Pcidev** list)
+pcilscan(int bno, Pcidev** list)
 {
 	Pcidev *p, *head, *tail;
 	int dno, fno, i, hdt, l, maxfno, maxubn, rno, sbn, tbdf, ubn;
@@ -482,18 +482,29 @@ pciscan(int bno, Pcidev** list)
 			l = (MaxUBN<<16)|(sbn<<8)|bno;
 			pcicfgw32(p, PciPBN, l);
 			pcicfgw16(p, PciSPSR, 0xFFFF);
-			maxubn = pciscan(sbn, &p->bridge);
+			maxubn = pcilscan(sbn, &p->bridge);
 			l = (maxubn<<16)|(sbn<<8)|bno;
 
 			pcicfgw32(p, PciPBN, l);
 		}
 		else {
 			maxubn = ubn;
-			pciscan(sbn, &p->bridge);
+			pcilscan(sbn, &p->bridge);
 		}
 	}
 
 	return maxubn;
+}
+
+int
+pciscan(int bno, Pcidev **list)
+{
+	int ubn;
+
+	qlock(&pcicfginitlock);
+	ubn = pcilscan(bno, list);
+	qunlock(&pcicfginitlock);
+	return ubn;
 }
 
 static void
@@ -504,7 +515,7 @@ pcicfginit(void)
 	Pcidev **list;
 	ulong mema, ioa;
 
-	lock(&pcicfginitlock);
+	qlock(&pcicfginitlock);
 	if(pcicfgmode != -1)
 		goto out;
 
@@ -543,7 +554,7 @@ pcicfginit(void)
 
 	list = &pciroot;
 	for(bno = 0; bno <= pcimaxbno; bno++) {
-		bno = pciscan(bno, list);
+		bno = pcilscan(bno, list);
 		while(*list)
 			list = &(*list)->link;
 	}
@@ -573,11 +584,12 @@ pcicfginit(void)
 		pcibusmap(pciroot, &mema, &ioa, 1);
 		DBG("Sizes2: mem=%lux io=%lux\n", mema, ioa);
 	
-		unlock(&pcicfginitlock);
+		qunlock(&pcicfginitlock);
 		return;
 	}
 out:
-	unlock(&pcicfginitlock);
+	qunlock(&pcicfginitlock);
+	cbinit();
 }
 
 static int
@@ -785,8 +797,8 @@ pcimatchtbdf(int tbdf)
 	return pcidev;
 }
 
-void
-pcihinv(Pcidev* p)
+static void
+pcilhinv(Pcidev* p)
 {
 	int i;
 	Pcidev *t;
@@ -819,7 +831,15 @@ pcihinv(Pcidev* p)
 		if(p->bridge != nil)
 			pcihinv(p->bridge);
 		p = p->link;
-	}
+	}	
+}
+
+void
+pcihinv(Pcidev* p)
+{
+	qlock(&pcicfginitlock);
+	pcilhinv(p);
+	qunlock(&pcicfginitlock);
 }
 
 void

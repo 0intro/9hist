@@ -11,6 +11,7 @@ typedef struct IOMap IOMap;
 struct IOMap
 {
 	IOMap	*next;
+	int		reserved;
 	char	tag[13];
 	ulong	start;
 	ulong	end;
@@ -103,6 +104,54 @@ ioinit(void)
 
 	// a dummy entry at 2^16
 	ioalloc(0x10000, 1, 0, "dummy");
+	ioalloc(0x1000, 1, 0, "dummy");
+}
+
+// Reserve a range to be ioalloced later.  This is in particular useful for exchangable cards, such
+// as pcmcia and cardbus cards.
+int
+ioreserve(int port, int size, int align, char *tag)
+{
+	IOMap *m, **l;
+	int i;
+
+	lock(&iomap);
+	// find a free port above 0x400 and below 0x1000
+	port = 0x400;
+	for(l = &iomap.m; *l; l = &(*l)->next){
+		m = *l;
+		if (m->start < 0x400) continue;
+		i = m->start - port;
+		if(i > size)
+			break;
+		if(align > 0)
+			port = ((port+align-1)/align)*align;
+		else
+			port = m->end;
+	}
+	if(*l == nil){
+		unlock(&iomap);
+		return -1;
+	}
+	m = iomap.free;
+	if(m == nil){
+		print("ioalloc: out of maps");
+		unlock(&iomap);
+		return port;
+	}
+	iomap.free = m->next;
+	m->next = *l;
+	m->start = port;
+	m->end = port + size;
+	m->reserved = 1;
+	strncpy(m->tag, tag, sizeof(m->tag));
+	m->tag[sizeof(m->tag)-1] = 0;
+	*l = m;
+
+	archdir[0].qid.vers++;
+
+	unlock(&iomap);
+	return m->start;
 }
 
 //
@@ -121,6 +170,7 @@ ioalloc(int port, int size, int align, char *tag)
 		port = 0x400;
 		for(l = &iomap.m; *l; l = &(*l)->next){
 			m = *l;
+			if (m->start < 0x400) continue;
 			i = m->start - port;
 			if(i > size)
 				break;
@@ -144,6 +194,11 @@ ioalloc(int port, int size, int align, char *tag)
 			m = *l;
 			if(m->end <= port)
 				continue;
+			if(m->reserved && m->start == port && m->end == port + size) {
+				m->reserved = 0;
+				unlock(&iomap);
+				return m->start;
+			}
 			if(m->start >= port+size)
 				break;
 			unlock(&iomap);

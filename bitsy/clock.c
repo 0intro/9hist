@@ -30,6 +30,7 @@ clockpower(int on)
 		timerregs->oier = 1<<0;
 		timerregs->osmr[0] = timerregs->oscr + ClockFreq/HZ;
 	}
+	clockinited = on;
 }
 
 void
