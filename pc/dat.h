@@ -128,11 +128,6 @@ struct Mach
 	Schedq	hiq;
 	Schedq	loq;
 
-	Callbk*	cbin;
-	Callbk*	cbout;
-	Callbk*	cbend;
-	Callbk	calls[NCALLBACK];
-
 	int	tlbfault;
 	int	tlbpurge;
 	int	pfault;

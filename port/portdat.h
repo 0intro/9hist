@@ -599,15 +599,6 @@ struct Schedq
 	int	n;
 };
 
-#define NCALLBACK	32
-
-typedef struct Callbk Callbk;
-struct Callbk
-{
-	void	(*func)(void*);
-	void*	arg;
-};
-
 enum
 {
 	PRINTSIZE =	256,

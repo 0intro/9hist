@@ -155,11 +155,6 @@ machinit(void)
 
 	active.exiting = 0;
 	active.machs = 1;
-
-	/* Setup call back ring buffer */
-	m->cbin = m->calls;
-	m->cbout = m->calls;
-	m->cbend = &m->calls[NCALLBACK];
 }
 
 /*

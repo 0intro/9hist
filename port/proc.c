@@ -87,7 +87,6 @@ sched(void)
 		procsave(up);
 		if(setlabel(&up->sched)) {
 			procrestore(up);
-			callbacks();
 			spllo();
 			return;
 		}
@@ -105,33 +104,6 @@ int
 anyready(void)
 {
 	return m->hiq.head != 0 || m->loq.head != 0;
-}
-
-void
-newcallback(void (*func)(void*), void *a)
-{
-	Callbk *c;
-
-	c = m->cbin;
-	if(++m->cbin >= m->cbend)
-		m->cbin = m->calls;
-
-	c->func = func;
-	c->arg = a;
-}
-
-void
-callbacks(void)
-{
-	Callbk *c;
-
-	while(m->cbin != m->cbout) {
-		c = m->cbout;
-		if(++m->cbout >= m->cbend)
-			m->cbout = m->calls;
-
-		c->func(c->arg);
-	}
 }
 
 void

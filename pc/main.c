@@ -91,11 +91,6 @@ machinit(void)
 	memset(m, 0, sizeof(Mach));
 	m->machno = n;
 	m->mmask = 1<<m->machno;
-
-	/* Setup call back ring buffer */
-	m->cbin = m->calls;
-	m->cbout = m->calls;
-	m->cbend = &m->calls[NCALLBACK];
 }
 
 void

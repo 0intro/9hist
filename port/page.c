@@ -118,7 +118,6 @@ retry:
 			break;
 
 	if(p == 0) {
-print("! ");
 		p = palloc.head;
 		memset(p->cachectl, PG_NEWCOL, sizeof(p->cachectl));
 		p->color = color;
