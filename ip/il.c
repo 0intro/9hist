@@ -191,6 +191,7 @@ void	iladvise(Proto*, Block*, char*);
 int	ilnextqt(Ilcb*);
 void	ilcbinit(Ilcb*);
 int	later(ulong, ulong, char*);
+void	ilreject(Fs*, Ilhdr*);
 
 	int 	ilcksum = 1;
 static 	int 	initseq = 25001;
@@ -543,6 +544,7 @@ iliput(Proto *il, uchar*, Block *bp)
 			st = "?";
 		else
 			st = iltype[ih->iltype];
+		ilreject(il->f, ih);		/* no channel and not sync */
 		netlog(il->f, Logil, "il: no channel, pkt(%s id %lud ack %lud %I/%ud->%ud)\n",
 			st, nhgetl(ih->ilid), nhgetl(ih->ilack), raddr, sp, dp); 
 		goto raise;
@@ -573,6 +575,7 @@ iliput(Proto *il, uchar*, Block *bp)
 		s = gen;
 	else {
 		qunlock(il);
+		ilreject(il->f, ih);		/* no listener */
 		goto raise;
 	}
 
@@ -646,7 +649,7 @@ _ilprocess(Conv *s, Ilhdr *h, Block *bp)
 			break;
 		case Ilclose:
 			if(ack == ic->start)
-				ilhangup(s, "remote close");
+				ilhangup(s, "connection rejected");
 			break;
 		}
 		freeblist(bp);
@@ -728,6 +731,7 @@ _ilprocess(Conv *s, Ilhdr *h, Block *bp)
 			freeblist(bp);
 			if(ack < ic->start || ack > ic->next) 
 				break;
+			ic->recvd = id;
 			ilsendctl(s, nil, Ilclose, ic->next, ic->recvd, 0);
 			ic->state = Ilclosing;
 			ilsettimeout(ic);
@@ -991,6 +995,39 @@ ilsendctl(Conv *ipc, Ilhdr *inih, int type, ulong id, ulong ack, int ilspec)
 		nhgets(ih->ilsrc), nhgets(ih->ildst));
 
 	ipoput(ipc->p->f, bp, 0, ttl, tos);
+}
+
+void
+ilreject(Fs *f, Ilhdr *inih)
+{
+	Ilhdr *ih;
+	Block *bp;
+
+	bp = allocb(IL_IPSIZE+IL_HDRSIZE);
+	bp->wp += IL_IPSIZE+IL_HDRSIZE;
+
+	ih = (Ilhdr *)(bp->rp);
+
+	/* Ip fields */
+	ih->proto = IP_ILPROTO;
+	hnputs(ih->illen, IL_HDRSIZE);
+	ih->frag[0] = 0;
+	ih->frag[1] = 0;
+	hnputl(ih->dst, nhgetl(inih->src));
+	hnputl(ih->src, nhgetl(inih->dst));
+	hnputs(ih->ilsrc, nhgets(inih->ildst));
+	hnputs(ih->ildst, nhgets(inih->ilsrc));
+	hnputl(ih->ilid, nhgetl(inih->ilack));
+	hnputl(ih->ilack, nhgetl(inih->ilid));
+	ih->iltype = Ilclose;
+	ih->ilspec = 0;
+	ih->ilsum[0] = 0;
+	ih->ilsum[1] = 0;
+
+	if(ilcksum)
+		hnputs(ih->ilsum, ptclcsum(bp, IL_IPSIZE, IL_HDRSIZE));
+
+	ipoput(f, bp, 0, MAXTTL, DFLTTOS);
 }
 
 void
