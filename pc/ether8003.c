@@ -131,7 +131,7 @@ reset(Ctlr *ctlr)
 	board->pstop = HOWMANY(board->ramstop-board->ramstart, Dp8390BufSz);
 	board->tstart = 0;
 
-	print("WD80x3 I/O addr %lux width %d addr %lux size %d irq %d:",
+	print("WD8003 I/O addr %lux width %d addr %lux size %d irq %d:",
 		board->io, board->bit16 ? 16: 8, board->ramstart,
 		board->ramstop-board->ramstart, board->irq);
 	for(i = 0; i < sizeof(ctlr->ea); i++)
@@ -194,7 +194,7 @@ Board ether8003 = {
 	dp8390intr,
 	watch,
 
-	0x280,			/* addr */
+	0x280,			/* io */
 	3,			/* irq */
 	0,			/* bit16 */
 
