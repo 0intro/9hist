@@ -113,6 +113,12 @@ newcallback(void (*func)(void))
 		m->cbin = m->calls;
 }
 
+int
+anyready(void)
+{
+	return m->hiq.head != 0 || m->loq.head != 0;
+}
+
 void
 callbacks(void)
 {
@@ -124,12 +130,6 @@ callbacks(void)
 			m->cbout = m->calls;
 		func();
 	}
-}
-
-int
-anyready(void)
-{
-	return m->hiq.head != 0 || m->loq.head != 0;
 }
 
 void

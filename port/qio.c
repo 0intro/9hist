@@ -165,6 +165,8 @@ iallockproc(void *arg)
 				else
 					cl->goal += i;
 				cl->wanted = 0;
+				if(cl->goal > 5000)
+					cl->goal = 5000;
 			}
 
 			first = 0;
@@ -202,10 +204,9 @@ qinit(void)
 	/* start with a bunch of initial blocks */
 	for(pow = Minpow; pow <= Maxpow; pow++){
 		cl = &arena.alloc[pow];
-		cl->goal = 0;
+		cl->goal = 4;
 		if(pow < 12)
 			cl->goal = Maxpow-pow + 32;
-
 		cl->first = 0;
 		for(; cl->have < cl->goal; cl->have++){
 			p = malloc(1<<pow);
@@ -397,7 +398,7 @@ qpass(Queue *q, Block *b)
 		if(len <= 0 || (q->state & Qmsg)){
 			unlock(q);
 			wakeup(&q->rr);
-			ifree(b);
+			free(b);
 			splx(s);
 			return i;
 		}
