@@ -543,6 +543,30 @@ getq(Queue *q)
 }
 
 /*
+ *  grab all the blocks in a queue
+ */
+Block *
+grabq(Queue *q)
+{
+	Block *bp;
+
+	lock(q);
+	bp = q->first;
+	if(bp){
+		q->first = 0;
+		q->last = 0;
+		q->len = 0;
+		q->nb = 0;
+		if(q->flag&QHIWAT){
+			wakeup(q->other->next->other->rp);
+			q->flag &= ~QHIWAT;
+		}
+	}
+	unlock(q);
+	return bp;
+}
+
+/*
  *  remove the first block from a list of blocks
  */
 Block *

@@ -343,7 +343,15 @@ syscall(Ureg *ur)
 
 	u->p->insyscall = 0;
 	u->p->psstate = 0;
+
+	/*
+	 *  Put return value in frame.  On the safari the syscall is
+	 *  just another trap and the return value from syscall is
+	 *  ignored.  On other machines the return value is put into
+	 *  the results register by caller of syscall.
+	 */
 	ur->ax = ret;
+
 	if(ax == NOTED)
 		noted(ur, *(ulong*)(sp+BY2WD));
 
@@ -432,9 +440,7 @@ noted(Ureg *ur, ulong arg0)
 {
 	Ureg *nur;
 
-	nur = u->ureg;
-	validaddr(nur->pc, 1, 0);
-	validaddr(nur->usp, BY2WD, 0);
+	nur = u->ureg;		/* pointer to user returned Ureg struct */
 	if(nur->cs!=u->svcs || nur->ss!=u->svss
 	|| (nur->flags&0xff00)!=(u->svflags&0xff00)){
 		pprint("bad noted ureg cs %ux ss %ux flags %ux\n", nur->cs, nur->ss,
@@ -449,8 +455,8 @@ noted(Ureg *ur, ulong arg0)
 		return;
 	}
 	u->notified = 0;
-	nur->flags = (u->svflags&0xffffff00) | (ur->flags&0xff);
-	memmove(ur, u->ureg, sizeof(Ureg));
+	nur->flags = (u->svflags&0xffffff00) | (nur->flags&0xff);
+	memmove(ur, nur, sizeof(Ureg));
 	switch(arg0){
 	case NCONT:
 		if(waserror()){
@@ -458,7 +464,7 @@ noted(Ureg *ur, ulong arg0)
 			qunlock(&u->p->debug);
 			goto Die;
 		}
-		validaddr(nur->pc, 1, 0);
+		validaddr(nur->pc, 1, 0);	/* check for valid pc & usp */
 		validaddr(nur->usp, BY2WD, 0);
 		poperror();
 		qunlock(&u->p->debug);

@@ -730,6 +730,10 @@ kproc(char *name, void (*func)(void *), void *arg)
 	flushmmu();
 }
 
+/*
+ *  called splhi() by notify().  See comment in notify for the
+ *  reasoning.
+ */
 void
 procctl(Proc *p)
 {
@@ -737,6 +741,7 @@ procctl(Proc *p)
 
 	switch(p->procctl) {
 	case Proc_exitme:
+		spllo();	/* pexit has locks in it */
 		pexit("Killed", 1);
 	case Proc_traceme:
 		if(u->nnote == 0)
@@ -754,7 +759,8 @@ procctl(Proc *p)
 		}
 		qunlock(&p->debug);
 		p->state = Stopped;
-		sched();
+		sched();		/* sched returns spllo() */
+		splhi();
 		p->psstate = state;
 		return;
 	}

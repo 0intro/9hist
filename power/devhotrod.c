@@ -75,9 +75,9 @@ hotwait(Hotmsg **mp)
 	l = 0;
 	while(*mp){
 		delay(0);	/* just a subroutine call; stay off VME */
-		if(++l > 1000*1000){
+		if(++l > 10*1000*1000){
 			l = 0;
-			print("hotsend blocked\n");
+			panic("hotsend blocked");
 		}
 	}
 	return;
@@ -412,11 +412,9 @@ hotrodintr(int vec)
 	Hotmsg *hm;
 	ulong l;
 
-	LEDON(LEDhotintr);
 	h = &hotrod[vec - Vmevec];
 	if(h<hotrod || h>&hotrod[Nhotrod]){
 		print("bad hotrod vec\n");
-		LEDOFF(LEDhotintr);
 		return;
 	}
 	while(l = h->addr->replyq[h->ri]){	/* assign = */
@@ -429,5 +427,4 @@ hotrodintr(int vec)
 		if(!hm->abort)
 			wakeup(&hm->r);
 	}
-	LEDOFF(LEDhotintr);
 }

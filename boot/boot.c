@@ -104,7 +104,8 @@ boot(int argc, char *argv[])
 			fatal("mount");
 	}
 	close(fd);
-	newkernel();
+	if(cpuflag == 0)
+		newkernel();
 
 	/*
 	 *  if a local file server exists and it's not the

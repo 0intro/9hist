@@ -7,7 +7,6 @@ void	bootargs(ulong);
 void	clock(Ureg*);
 void	clockinit(void);
 void	config(int);
-void	confinit1(void);
 int	cpuspeed(int);
 void	delay(int);
 void	dmaend(int);

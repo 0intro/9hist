@@ -21,6 +21,8 @@ faultmips(Ureg *ur, int user, int code)
 
 	LEDON(LEDfault);
 	addr = ur->badvaddr;
+	if(addr & KZERO)
+		LEDON(LEDkfault);
 	addr &= ~(BY2PG-1);
 	read = !(code==CTLBM || code==CTLBS);
 

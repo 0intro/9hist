@@ -278,7 +278,7 @@ confinit(void)
 	conf.nfloppy = 2;
 	conf.nhard = 1;
 	conf.dkif = 1;
-	confinit1();
+	confinit1(mul);
 }
 
 char *mathmsg[] =
