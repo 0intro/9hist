@@ -15,7 +15,7 @@ enum
 {
 	IPHDR		= 20,		/* sizeof(Iphdr) */
 	IP_VER		= 0x40,		/* Using IP version 4 */
-	IP_HLEN		= 0x05,		/* Header length in characters */
+	IP_HLEN		= 0x05,		/* Header length in words */
 	IP_DF		= 0x4000,	/* Don't fragment */
 	IP_MF		= 0x2000,	/* More fragments */
 	IP_MAX		= (32*1024),	/* Maximum Internet packet size */

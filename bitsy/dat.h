@@ -52,7 +52,6 @@ struct Conf
 {
 	ulong	nmach;		/* processors */
 	ulong	nproc;		/* processes */
-	ulong	monitor;	/* has monitor? */
 	ulong	npage0;		/* total physical pages of memory */
 	ulong	npage1;		/* total physical pages of memory */
 	ulong	npage;		/* total physical pages of memory */
@@ -63,7 +62,8 @@ struct Conf
 	ulong	base0;		/* base of bank 0 */
 	ulong	base1;		/* base of bank 1 */
 	ulong	copymode;	/* 0 is copy on write, 1 is copy on reference */
-	ulong	ialloc;		/* max interrupt time allocation in bytes */
+	int	monitor;
+	ulong	ialloc;		/* bytes available for interrupt time allocation */
 	ulong	pipeqsize;	/* size in bytes of pipe queues */
 };
 

@@ -49,5 +49,7 @@ clockintr(Ureg*, void*)
 void
 delay(int ms)
 {
-	USED(ms);
+	ms *= 1000;
+	while(ms-->0)
+		;
 }

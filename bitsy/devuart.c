@@ -22,9 +22,9 @@ struct Uartregs
 	ulong	ctl1;
 	ulong	ctl2;
 	ulong	ctl3;
-	uchar	dummyd[4];
+	ulong	dummya;
 	ulong	data;
-	uchar	dummyf[4];
+	ulong	dummyb;
 	ulong	status0;
 	ulong	status1;
 };
@@ -33,6 +33,8 @@ struct Uartregs
 /* ctl0 bits */
 enum
 {
+	/* status register 1 bits */
+	XmitBusy = (1 << 0),
 	XmitNotFull = (1 << 2),
 };
 
@@ -491,16 +493,15 @@ Dev uartdevtab = {
 };
 
 void
-putuartstr(char *str)
+serialputs(char *str, int n)
 {
 	Uartregs *ur;
 
 	ur = UART3REGS;
-	while(*str){
+	while(n-- > 0){
 		/* wait for output ready */
-		while(ur->status1 & XmitNotFull)
+		while((ur->status1 & XmitNotFull) == 0)
 			;
 		ur->data = *str++;
-
 	}
 }

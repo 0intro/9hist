@@ -8,13 +8,17 @@
 #include	"init.h"
 #include	"pool.h"
 
+#include	"sa1110.h"
+
 Mach *m;
 Conf conf;
 
 void
 main(void)
 {
-	putuartstr("hello ken");
+	iprint("bitsy kernel\n");
+	confinit();
+	mmuinit();
 }
 
 /*
@@ -24,6 +28,9 @@ void
 exit(int ispanic)
 {
 	void (*f)();
+
+	USED(ispanic);
+	delay(1000);
 
 	f = nil;
 	(*f)();
@@ -48,15 +55,118 @@ procsave(Proc *p)
 }
 
 /* place holder */
-void
-serialputs(char*, int)
-{
-}
-
 /*
  *  dummy since rdb is not included 
  */
 void
 rdb(void)
 {
+}
+
+enum
+{
+	OneMeg=	1024*1024,
+};
+
+/*
+ *  probe the last location in a meg of memory, make sure it's not
+ *  reflected into something else we've already found.
+ */
+int
+probemem(ulong addr)
+{
+	ulong *p;
+	ulong a;
+
+	addr += OneMeg - sizeof(ulong);
+	p = (ulong*)addr;
+	*p = addr;
+	for(a = conf.base0+OneMeg-sizeof(ulong); a < conf.npage0; a += OneMeg){
+		p = (ulong*)a;
+		*p = 0;
+	}
+	for(a = conf.base1+OneMeg-sizeof(ulong); a < conf.npage1; a += OneMeg){
+		p = (ulong*)a;
+		*p = 0;
+	}
+	p = (ulong*)addr;
+	iprint("%lux @ %lux\n", *p, addr);
+	if(*p != addr)
+		return -1;
+	return 0;
+}
+
+/*
+ *  we assume that the kernel is at the beginning of one of the
+ *  contiguous chunks of memory.
+ */
+void
+confinit(void)
+{
+	int i;
+	ulong addr;
+	ulong ktop;
+
+	/* find first two contiguous sections of available memory */
+	addr = PHYSDRAM0;
+	conf.base0 = conf.npage0 = addr;
+	conf.base1 = conf.npage1 = addr;
+	for(i = 0; i < 512; i++){
+		if(probemem(addr) == 0)
+			break;
+		addr += OneMeg;
+	}
+	for(; i < 512; i++){
+		if(probemem(addr) < 0)
+			break;
+		addr += OneMeg;
+		conf.npage0 = addr;
+	}
+
+	conf.base1 = conf.npage1 = addr;
+	for(; i < 512; i++){
+		if(probemem(addr) == 0)
+			break;
+		addr += OneMeg;
+	}
+	for(; i < 512; i++){
+		if(probemem(addr) < 0)
+			break;
+		addr += OneMeg;
+		conf.npage1 = addr;
+	}
+
+	/* take kernel out of allocatable space */
+	ktop = PGROUND((ulong)end);
+	if(ktop >= conf.base0 && ktop <= conf.npage0)
+		conf.base0 = ktop;
+	else if(ktop >= conf.base1 && ktop <= conf.npage1)
+		conf.base1 = ktop;
+	else
+		iprint("kernel not in allocatable space\n");
+	iprint("%lux-%lux %lux-%lux\n", conf.base0, conf.npage0, conf.base1, conf.npage1);
+
+	/* make npages the right thing */
+	conf.npage0 = (conf.npage0 - conf.base0)/BY2PG;
+	conf.npage1 = (conf.npage1 - conf.base1)/BY2PG;
+	conf.npage = conf.npage0+conf.npage1;
+
+	if(conf.npage > 16*MB/BY2PG){
+		conf.upages = (conf.npage*60)/100;
+		imagmem->minarena = 4*1024*1024;
+	}else
+		conf.upages = (conf.npage*40)/100;
+	conf.ialloc = ((conf.npage-conf.upages)/2)*BY2PG;
+
+	conf.nmach = 1;
+
+	/* set up other configuration parameters */
+	conf.nproc = 100;
+	conf.nswap = conf.npage*3;
+	conf.nswppo = 4096;
+	conf.nimage = 200;
+
+	conf.monitor = 1;
+
+	conf.copymode = 0;		/* copy on write */
 }

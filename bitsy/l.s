@@ -12,13 +12,20 @@ _main:
 	MOVW	$(PsrDirq|PsrDfiq|PsrMsvc), R1
 	MOVW	R1, CPSR
 
-	/* turn on caches and write buffer */
-	MRC	CpMMU, 0, R1, C(CpControl), C(0x0)
-	ORR	$(CpCdcache|CpCwb), R1
-	MCR     CpMMU, 0, R1, C(CpControl), C(0x0)
+	/* flush TLB's */
+	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0x0)
+	/* drain prefetch */
+	MOVW	R0,R0						
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
 
-	/* turn off interrupts */
-	BL	splhi(SB)
+	/* drain write buffer */
+	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0x0), 4
+
+	/* disable the MMU */
+	MOVW	$0x130, R1
+	MCR     CpMMU, 0, R1, C(CpControl), C(0x0)
 
 	MOVW	$(MACHADDR+BY2PG), R13		/* stack */
 	SUB	$4, R13				/* link */

@@ -8,6 +8,11 @@
 #include	"../port/error.h"
 
 void
+mmuinit(void)
+{
+}
+
+void
 putmmu(ulong va, ulong pa, Page*)
 {
 	USED(va, pa);

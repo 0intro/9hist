@@ -12,6 +12,8 @@ void	evenaddr(ulong);
 void	idle(void);
 #define	idlehands()			/* nothing to do in the runproc */
 int	iprint(char*, ...);
+void	meminit(void);
+void	mmuinit(void);
 #define	procrestore(p)
 void	procsave(Proc*);
 void	procsetup(Proc*);
