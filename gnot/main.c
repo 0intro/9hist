@@ -31,6 +31,7 @@ void unloadboot(void);
 void
 main(void)
 {
+	u = 0;
 	unloadboot();
 	machinit();
 	mmuinit();
@@ -154,6 +155,7 @@ userinit(void)
 	k = kmap(p->upage);
 	up = (User*)VA(k);
 	up->p = p;
+	up->mc.next = 0;
 	kunmap(k);
 
 	/*

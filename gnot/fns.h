@@ -51,6 +51,7 @@ void	firmware(void);
 void	flowctl(Queue*);
 void	flushcpucache(void);
 void	flushmmu(void);
+void	flushmmucache(void);
 void	forkmod(Seg*, Seg*, Proc*);
 int	fpcr(int);
 void	fpsave(FPsave*);

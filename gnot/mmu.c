@@ -12,6 +12,17 @@ struct
 	KMap	arena[4*1024*1024/BY2PG];	/* kernel mmu maps up to 4MB */
 }kmapalloc;
 
+void
+putxmmu(ulong tlbvirt, ulong tlbphys, int pid)
+{
+	if(pid != u->p->pid)
+		panic("putxmmu %ld %ld\n", pid, u->p->pid);
+	if(tlbvirt&KZERO)
+		panic("putmmu");
+	tlbphys |= VTAG(tlbvirt)<<24;
+	UMAP[(tlbvirt&0x003FE000L)>>2] = tlbphys;
+}
+
 /*
  * Called splhi, not in Running state
  */
@@ -19,6 +30,7 @@ void
 mapstack(Proc *p)
 {
 	ulong tlbvirt, tlbphys;
+	ulong i;
 
 	if(p->upage->va != (USERADDR|(p->pid&0xFFFF)))
 		panic("mapstack %d 0x%lux 0x%lux", p->pid, p->upage->pa, p->upage->va);
@@ -27,6 +39,14 @@ mapstack(Proc *p)
 	putkmmu(tlbvirt, tlbphys);
 	flushmmu();
 	u = (User*)USERADDR;
+
+	if(u->mc.next >= NMMU){
+		u->mc.next &= NMMU - 1;
+		for(i = u->mc.next; i < NMMU; i++)
+			putxmmu(u->mc.mmu[i].va, u->mc.mmu[i].pa, u->mc.mmu[i].pid);
+	}
+	for(i = 0; i < u->mc.next; i++)
+		putxmmu(u->mc.mmu[i].va, u->mc.mmu[i].pa, u->mc.mmu[i].pid);/**/
 }
 
 void
@@ -43,6 +63,14 @@ putmmu(ulong tlbvirt, ulong tlbphys)
 {
 	if(tlbvirt&KZERO)
 		panic("putmmu");
+	if(u){
+		MMU *mp;
+		mp = &(u->mc.mmu[u->mc.next&(NMMU-1)]);
+		mp->pa = tlbphys;
+		mp->va = tlbvirt;
+		mp->pid = u->p->pid;
+		u->mc.next++;
+	}/**/
 	tlbphys |= VTAG(tlbvirt)<<24;
 	UMAP[(tlbvirt&0x003FE000L)>>2] = tlbphys;
 }
@@ -53,6 +81,22 @@ flushmmu(void)
 	flushcpucache();
 	*PARAM &= ~TLBFLUSH_;
 	*PARAM |= TLBFLUSH_;
+}
+
+void
+flushmmucache(void)
+{
+	if(u == 0)
+		panic("flushmmucache");
+	u->mc.next = 0;
+}
+
+void
+clearmmucache(void)
+{
+	if(u == 0)
+		panic("clearmmucache");
+	memset(&u->mc, 0, sizeof u->mc);
 }
 
 void
