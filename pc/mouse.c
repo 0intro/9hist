@@ -115,7 +115,10 @@ mousectl(char* arg)
 			i8042auxcmd(0xE7);
 			break;
 		default:
-			mouseaccelerate(field[1]);
+			if(n == 1)
+				mouseaccelerate("1");
+			else
+				mouseaccelerate(field[1]);
 			break;
 		}
 	} else if(strcmp(field[0], "linear") == 0){

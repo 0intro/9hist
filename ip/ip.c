@@ -305,7 +305,7 @@ ipstats(char *buf, int len)
 {
 	int n;
 
-	n = snprint(buf, len, "ip: csum %d inb %d outb %d inp %d outp %d\n",
+	n = snprint(buf, len, "ip: csum %lud inb %lud outb %lud inp %lud outp %lud\n",
 		ipcsumerr, ipin, ipout, ippin, ippout);
 	return n;
 }

@@ -117,7 +117,7 @@ etherrtrace(Netfile* f, Etherpkt* pkt, int len)
 	if(bp == 0)
 		return;
 	memmove(bp->wp, pkt->d, n);
-	i = TK2MS(m->ticks);
+	i = TK2MS(MACHP(0)->ticks);
 	bp->wp[58] = len>>8;
 	bp->wp[59] = len;
 	bp->wp[60] = i>>24;
@@ -146,7 +146,7 @@ etheriq(Ether* ether, Block* bp, int freebp)
 	ep = &ether->f[Ntypes];
 
 	/* check for valid multcast addresses */
-	if((pkt->d[0] & 1) && memcmp(pkt->d, ether->bcast, sizeof(pkt->d)) != 0 && ether->prom == 0){
+	if((pkt->d[0] & 1) && memcmp(pkt->d, ether->bcast, sizeof(pkt->d)) && ether->prom == 0){
 		if(!activemulti(ether, pkt->d, sizeof(pkt->d))){
 			if(freebp){
 				freeb(bp);
@@ -209,8 +209,8 @@ etheroq(Ether* ether, Block* bp)
 	 */
 	pkt = (Etherpkt*)bp->rp;
 	len = BLEN(bp);
-	loopback = !memcmp(pkt->d, ether->ea, sizeof(pkt->d));
-	if(loopback || !memcmp(pkt->d, ether->bcast, sizeof(pkt->d)) || ether->prom){
+	loopback = (memcmp(pkt->d, ether->ea, sizeof(pkt->d)) == 0);
+	if(loopback || memcmp(pkt->d, ether->bcast, sizeof(pkt->d)) == 0 || ether->prom){
 		s = splhi();
 		etheriq(ether, bp, loopback);
 		splx(s);
