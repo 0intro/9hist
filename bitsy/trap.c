@@ -82,6 +82,11 @@ trapinit(void)
 	/* make all interrupts IRQ (i.e. not FIQ) and disable all interrupts */
 	intrregs->iclr = 0;
 	intrregs->icmr = 0;
+
+	/* turn off all gpio interrupts */
+	gpioregs->rising = 0;
+	gpioregs->falling = 0;
+	gpioregs->edgestatus = gpioregs->edgestatus;
 }
 
 void
@@ -245,6 +250,14 @@ trap(Ureg *ureg)
 	int user, x, rv;
 	ulong va, fsr;
 	char buf[ERRLEN];
+	int rem;
+
+	if(up != nil)
+		rem = ((char*)ureg)-up->kstack;
+	else
+		rem = ((char*)ureg)-((char*)(MACHADDR+sizeof(Mach)));
+	if(rem < 256)
+		panic("trap %d bytes remaining", rem);
 
 	user = (ureg->psr & PsrMask) == PsrMusr;
 
@@ -623,6 +636,7 @@ setkernur(Ureg *ureg, Proc *p)
 {
 	ureg->pc = p->sched.pc;
 	ureg->sp = p->sched.sp+4;
+	ureg->r14 = (ulong)sched;
 }
 
 /*
@@ -739,7 +753,7 @@ _dumpstack(Ureg *ureg)
 	if(up == 0)
 		return;
 
-	print("ktrace /kernel/path %.8lux %.8lux\n", ureg->pc, ureg->sp);
+	print("ktrace /kernel/path %.8lux %.8lux %.8lux\n", ureg->pc, ureg->sp, ureg->r14);
 	i = 0;
 	for(l=(ulong)&l; l<(ulong)(up->kstack+KSTACK); l+=4){
 		v = *(ulong*)l;

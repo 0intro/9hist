@@ -326,6 +326,10 @@ confinit(void)
 	else
 		iprint("kernel not in allocatable space\n");
 
+	/* zero memory */
+	memset((void*)conf.base0, 0, conf.npage0 - conf.base0);
+	memset((void*)conf.base1, 0, conf.npage1 - conf.base1);
+
 	/* make npage the right thing */
 	conf.npage0 = (conf.npage0 - conf.base0)/BY2PG;
 	conf.npage1 = (conf.npage1 - conf.base1)/BY2PG;

@@ -76,5 +76,5 @@ idlehands(void)
 void
 idlehands(void)
 {
-	doze();
+//	doze();
 }

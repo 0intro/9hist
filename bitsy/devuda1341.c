@@ -181,16 +181,14 @@ static	struct
 	int	irval;
 } volumes[] =
 {
-[Vaudio]	"audio",	Fout|Fmono,		 80,	 80,
-[Vmic]		"mic",		Fin|Fmono,		  0,	  0,
-
-[Vtreb]		"treb",		Fout|Fmono,		 50,	 50,
-[Vbass]		"bass",		Fout|Fmono, 	 50,	 50,
-[Vfilter]	"filter",	Fout|Fmono,		  0,	  0,
-[Vinvert]	"invert",	Fin|Fout|Fmono,	  0,	  0,
-
-[Vspeed]	"speed",	Fin|Fout|Fmono,	Speed,	Speed,
-		0
+[Vaudio]	{"audio",	Fout|Fmono,	 80,	 80},
+[Vmic]		{"mic",		Fin|Fmono,	  0,	  0},
+[Vtreb]		{"treb",	Fout|Fmono,	 50,	 50},
+[Vbass]		{"bass",	Fout|Fmono, 	 50,	 50},
+[Vspeed]	{"speed",	Fin|Fout|Fmono,	Speed,	Speed},
+[Vfilter]	{"filter",	Fout|Fmono,	  0,	  0},
+[Vinvert]	{"invert",	Fin|Fout|Fmono,	  0,	  0},
+[Nvol]		{0}
 };
 
 /*

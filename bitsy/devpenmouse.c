@@ -28,10 +28,21 @@ struct Calibration
 	-23
 };
 
+/* The pen goes down, tracks some and goes up again.  The pen alone can
+ * only simulate a one-button mouse.
+ * To simulate a more-button (five, in this case) mouse, we use the four
+ * keys along the the bottom of the iPaq as modifiers.
+ * When one (or more) of the modifier keys is (are) down, a pen-down event
+ * causes the corresponding bottons to go down.  If no modifier key is
+ * depressed, a pen-down event is translated into a button-one down event.
+ * Releasing the modifier keys has no direct effect.  The pen-up event is
+ * the one that triggers mouse-up events.
+ */
 struct Mousestate
 {
 	Point	xy;			/* mouse.xy */
 	int		buttons;	/* mouse.buttons */
+	int		modifiers;	/* state of physical buttons 2, 3, 4, 5 */
 	ulong	counter;	/* increments every update */
 	ulong	msec;		/* time of last event */
 };
@@ -79,23 +90,34 @@ extern	Memimage*	gscreen;
 
 void
 penbutton(int up, int b) {
-	if (up)
-		mouse.buttons &= ~b;
-	else
-		mouse.buttons |= b;
-	penmousetrack(mouse.buttons, -1, -1);
+	if (b & 0x20) {
+		if (up)
+			mouse.buttons &= ~b;
+		else
+			mouse.buttons |= b;
+		penmousetrack(mouse.buttons, -1, -1);
+	} else {
+		if (up)
+			mouse.modifiers &= ~b;
+		else
+			mouse.modifiers |= b;
+	}
 }
 
 void
 pentrackxy(int x, int y) {
 	if (x == -1) {
-		/* pen up. associate with button 1, 2, 3 up */
-		mouse.buttons &= ~0x7;
+		/* pen up. associate with button 1 through 5 up */
+		mouse.buttons &= ~0x1f;
 	} else {
 		x = ((x*calibration.scalex)>>16) + calibration.transx;
 		y = ((y*calibration.scaley)>>16) + calibration.transy;
-		if ((mouse.buttons & 0x7) == 0)
-			mouse.buttons |= 0x1;
+		if ((mouse.buttons & 0x1f) == 0) {
+			if (mouse.modifiers)
+				mouse.buttons |= mouse.modifiers;
+			else
+				mouse.buttons |= 0x1;
+		}
 	}
 	penmousetrack(mouse.buttons, x, y);
 }

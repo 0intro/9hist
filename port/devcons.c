@@ -327,7 +327,7 @@ echo(char *buf, int n)
 	for(p = buf; p < e; p++){
 		switch(*p){
 		case 0x10:	/* ^P */
-			if(cpuserver && !kbd.ctlpoff && !kbd.raw){
+			if(cpuserver && !kbd.ctlpoff){
 				active.exiting = 1;
 				return;
 			}

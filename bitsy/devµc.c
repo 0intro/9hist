@@ -24,12 +24,27 @@ enum{
 	BLbacklight=	0xd,	/* backlight control */
 
 	SOF=	0x2,		/* start of frame */
+};
 
-	/* key definitions */
-	Up=		0xFF0E,
-	Left=		0xFF11,
-	Right=		0xFF12,
-	Down=		0x8000,
+/* from /sys/include/keyboard.h */
+enum {
+	KF=	0xF000,	/* Rune: beginning of private Unicode space */
+	/* KF|1, KF|2, ..., KF|0xC is F1, F2, ..., F12 */
+	Khome=	KF|0x0D,
+	Kup=	KF|0x0E,
+	Kpgup=	KF|0x0F,
+	Kprint=	KF|0x10,
+	Kleft=	KF|0x11,
+	Kright=	KF|0x12,
+	Kdown=	0x80,
+	Kview=	0x80,
+	Kpgdown=	KF|0x13,
+	Kins=	KF|0x14,
+	Kend=	'\r',	/* [sic] */
+
+	Kalt=		KF|0x15,
+	Kshift=	KF|0x16,
+	Kctl=		KF|0x17,
 };
 
 Dirtab µcdir[]={
@@ -66,7 +81,7 @@ static struct µcontroller
 /* button map */
 Rune bmap[4] = 
 {
-	Up, Right, Down, Left
+	Kup, Kright, Kdown, Kleft
 };
 
 int
@@ -76,6 +91,8 @@ int
 	uchar cksum;
 	uchar *p;
 	static int samseq;
+	static int touching;		/* guard against something we call going spllo() */
+	static int buttoning;		/* guard against something we call going spllo() */
 
 	if(ctlr.n > sizeof(ctlr.buf))
 		panic("µcputc");
@@ -118,8 +135,9 @@ int
 			wakeup(&ctlr.r);
 			break;
 		case BLbuttons:
-			if(len < 1)
+			if(len < 1 || buttoning)
 				break;
+			buttoning = 1;
 			b = p[0] & 0x7f;
 			up = p[0] & 0x80;
 
@@ -133,8 +151,12 @@ int
 					b = 5;
 				penbutton(up, 1<<b);
 			}
+			buttoning = 0;
 			break;
 		case BLtouch:
+			if(touching)
+				break;
+			touching = 1;
 			if(len == 4) {
 				if (samseq++ > 10)
 					pentrackxy((p[2]<<8)|p[3], (p[0]<<8)|p[1]);
@@ -142,6 +164,7 @@ int
 				samseq = 0;
 				pentrackxy(-1, -1);
 			}
+			touching = 0;
 			break;
 		case BLled:
 			wakeup(&ctlr.r);

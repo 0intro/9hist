@@ -25,7 +25,7 @@ _main:
 	/* drain write buffer */
 	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0xa), 4
 
-	MOVW	$(MACHADDR+2*BY2PG), R13		/* stack */
+	MOVW	$(MACHADDR+4*BY2PG), R13		/* stack */
 	SUB	$4, R13				/* link */
 	BL	main(SB)
 	BL	exit(SB)
@@ -54,9 +54,9 @@ _cfloop:
 	CMP.S	R0,R1
 	BNE	_cfloop
 	
-	/* drain write buffer and invalidate i&d cache contents */
+	/* drain write buffer and invalidate i cache contents */
 	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0xa), 4
-	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0x7), 0
+	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0x5), 0
 
 	/* drain prefetch */
 	MOVW	R0,R0						
@@ -367,13 +367,13 @@ TEXT splhi(SB), $-4
 	MOVW	R14,0(R2)
 	/* turn off interrupts */
 	MOVW	CPSR, R0
-	ORR	$(PsrDfiq|PsrDirq), R0, R1
+	ORR	$(PsrDirq), R0, R1
 	MOVW	R1, CPSR
 	RET
 
 TEXT spllo(SB), $-4
 	MOVW	CPSR, R0
-	BIC	$(PsrDfiq|PsrDirq), R0, R1
+	BIC	$(PsrDirq), R0, R1
 	MOVW	R1, CPSR
 	RET
 
@@ -398,8 +398,8 @@ TEXT spldone(SB), $0
 
 TEXT islo(SB), $-4
 	MOVW	CPSR, R0
-	AND	$(PsrDfiq|PsrDirq), R0
-	EOR	$(PsrDfiq|PsrDirq), R0
+	AND	$(PsrDirq), R0
+	EOR	$(PsrDirq), R0
 	RET
 
 TEXT cpsrr(SB), $-4
@@ -417,7 +417,15 @@ TEXT getcallerpc(SB), $-4
 TEXT tas(SB), $-4
 	MOVW	R0, R1
 	MOVW	$0xDEADDEAD, R2
+	MOVW	R2, R3
 	SWPW	R2, (R1), R0
+	CMP.S	R0, R3
+	BEQ	_tasout
+	EOR	R3, R3
+	CMP.S	R0, R3
+	BEQ	_tasout
+	MOVW	$1,R15
+_tasout:
 	RET
 
 TEXT setlabel(SB), $-4

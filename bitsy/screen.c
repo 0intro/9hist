@@ -12,6 +12,7 @@
 #include <memdraw.h>
 #include <cursor.h>
 #include "screen.h"
+#include "gamma.h"
 
 #define	MINX	8
 
@@ -262,7 +263,7 @@ flushmemscreen(Rectangle r)
 		if (r.max.y >  Ht) r.max.y = Ht;
 		for (x = r.min.x; x < r.max.x; x++)
 			for (y = r.min.y; y < r.max.y; y++)
-				framebuf->pixel[(x+1)*Ht-1-y] = vscreen[y*Wid+x];
+				framebuf->pixel[(x+1)*Ht-1-y] = gamma[vscreen[y*Wid+x]];
 		start = (ulong)&framebuf->pixel[(r.min.x+1)*Ht-1-(r.max.y-1)];
 		end = (ulong)&framebuf->pixel[(r.max.x-1+1)*Ht-1-(r.min.y)];
 	} else {
