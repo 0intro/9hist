@@ -11,8 +11,8 @@
 #include	"../port/error.h"
 
 
-#define DPRINT if(1)print
-#define XPRINT if(1)print
+#define DPRINT if(0)print
+#define XPRINT if(0)print
 #define ILOCK(x)
 #define IUNLOCK(x)
 
@@ -408,7 +408,8 @@ atactlrprobe(int ctlrno, int irq, int resetok)
 		intrenable(irq, ataintr, ctlr, ctlr->tbdf);
 		atapi |= 0x01;
 		mask |= 0x01;
-		goto skipedd;
+//		goto skipedd;
+goto atapislave;
 	}
 	if(atactlrwait(ctlr, DHmagic, 0, MS2TK(1)) || waserror()){
 		DPRINT("ata%d: Cedd status %ux/%ux/%ux\n", ctlrno,
@@ -446,6 +447,7 @@ atactlrprobe(int ctlrno, int irq, int resetok)
 	if((error & ~0x80) == 0x01)
 		mask |= 0x01;
 
+atapislave:
 	outb(port+Pdh, DHmagic|DHslave);
 	microdelay(1);
 	status = inb(port+Pstatus);
@@ -1837,6 +1839,8 @@ retry:
 	}
 	dp->lbasecs = (cp->buf[0]<<24)|(cp->buf[1]<<16)|(cp->buf[2]<<8)|cp->buf[3];
 	dp->bytes = (cp->buf[4]<<24)|(cp->buf[5]<<16)|(cp->buf[6]<<8)|cp->buf[7];
+	if(dp->bytes > 2048 && dp->bytes <= 2352)
+		dp->bytes = 2048;
 	dp->cap = dp->lbasecs*dp->bytes;
 	DPRINT("%s: atapipart secs %ud, bytes %ud, cap %ud\n",
 		dp->vol, dp->lbasecs, dp->bytes, dp->cap);

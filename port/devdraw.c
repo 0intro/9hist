@@ -966,7 +966,12 @@ drawread(Chan *c, void *a, long n, ulong offset)
 			if(cl->refreshme || cl->refresh)
 				break;
 			qunlock(&sdraw);
+			if(waserror()){
+				qlock(&sdraw);	/* restore lock for waserror() above */
+				nexterror();
+			}
 			sleep(&cl->refrend, drawrefactive, cl);
+			poperror();
 			qlock(&sdraw);
 		}
 		p = a;

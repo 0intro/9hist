@@ -99,6 +99,7 @@ clgd542xenable(VGAscr* scr)
 	case 0xA0:				/* CL-GD5430 */
 	case 0xA8:				/* CL-GD5434 */
 	case 0xAC:				/* CL-GD5436 */
+	case 0xB8:				/* CL-GD5446 */
 		/*
 		 * Attempt to intuit the memory size from the DRAM control
 		 * register. Minimum is 512KB.
