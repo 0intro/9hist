@@ -174,19 +174,19 @@ fpunimp(ulong iw)
 	return 0;
 }
 
-long*
+ulong*
 reg(Ureg *ur, int regno)
 {
 	/* regs go from R31 down in ureg, R29 is missing */
 	switch(regno) {
 	case 31:
-		return &ur->r31;
+		return (ulong*)&ur->r31;
 	case 30:
-		return &ur->r30;
+		return (ulong*)&ur->r30;
 	case 29:
-		return &ur->sp;
+		return (ulong*)&ur->sp;
 	}
-	return (&ur->r28) + (28-regno)*(&ur->r27-&ur->r28);
+	return (ulong*)((&ur->r28) + (28-regno)*(&ur->r27-&ur->r28));
 }
 
 static ulong

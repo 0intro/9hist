@@ -402,7 +402,7 @@ userinit(void)
 }
 
 void
-exit(long type)
+exit(int type)
 {
 	uchar *vec;
 

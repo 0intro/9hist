@@ -335,9 +335,11 @@ intr(Ureg *ur)
 		case 0x24:		/* Serial 2 */
 			ns16552intr(1);
 			break;
+/*
 		case 0x10:
 			fiberint(0);
 			break;
+ */
 		case 0x14:
 			etherintr();
 			break;

@@ -309,4 +309,4 @@ void		hnputl(void*, ulong);
 void		hnputs(void*, ushort);
 ulong		nhgetl(void*);
 ushort		nhgets(void*);
-void		filsetalloc(void* (*)(long), void* (*)(long));
+void		filsetalloc(void* (*)(int), void* (*)(int));

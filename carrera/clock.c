@@ -54,9 +54,9 @@ clock(Ureg *ur)
 		m->proc->pc = ur->pc;
 
 	accounttime();
-
+/*
 	ifjab();
-
+*/
 	kproftimer(ur->pc);
 
 	kmapinval();

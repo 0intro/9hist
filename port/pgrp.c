@@ -93,24 +93,22 @@ closepgrp(Pgrp *p)
 void
 pgrpinsert(Mount **order, Mount *m)
 {
-	Mount *f, **l;
+	Mount *f;
 
 	m->order = 0;
-	if(*order == nil) {
+	if(*order == 0) {
 		*order = m;
 		return;
 	}
-
-	l = order;
 	for(f = *order; f; f = f->order) {
 		if(m->mountid < f->mountid) {
 			m->order = f;
-			*l = f;
+			*order = m;
 			return;
 		}
-		l = &f->order;
+		order = &f->order;
 	}
-	*l = m->order;
+	*order = m;
 }
 
 /*
