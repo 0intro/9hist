@@ -10,10 +10,13 @@
 
 #include	<libsec.h>
 
-typedef struct OneWay OneWay;
-typedef struct Secret Secret;
+typedef struct OneWay	OneWay;
+typedef struct Secret	Secret;
+typedef struct TlsRec	TlsRec;
+typedef struct TlsErrs	TlsErrs;
 
 enum {
+	Statlen=	1024,		/* max. length of status or stats message */
 	/* buffer limits */
 	MaxRecLen	= 1<<14,	/* max payload length of a record layer message */
 	MaxCipherRecLen	= MaxRecLen + 2048,
@@ -73,6 +76,8 @@ enum {
 
 struct Secret
 {
+	char		*encalg;	/* name of encryption alg */
+	char		*hashalg;	/* name of hash alg */
 	int		(*enc)(Secret*, uchar*, int);
 	int		(*dec)(Secret*, uchar*, int);
 	int		(*unpad)(uchar*, int, int);
@@ -92,7 +97,6 @@ struct OneWay
 	Secret		*new;		/* cipher waiting for enable */
 };
 
-typedef struct TlsRec TlsRec;
 struct TlsRec
 {
 	Chan		*c;		/* io channel */
@@ -101,6 +105,10 @@ struct TlsRec
 	char		verset;		/* version has been set */
 	char		opened;		/* opened command every issued? */
 	char		err[ERRLEN];	/* error message to return to handshake requests */
+	vlong		handin;		/* bytes communicated by the record layer */
+	vlong		handout;
+	vlong		datain;
+	vlong		dataout;
 
 	Lock		statelk;
 	int		state;
@@ -128,7 +136,6 @@ struct TlsRec
 	int		perm;
 };
 
-typedef struct TlsErrs	TlsErrs;
 struct TlsErrs{
 	int	err;
 	int	sslerr;
@@ -205,12 +212,14 @@ enum{
 	Qtopdir		= 1,	/* top level directory */
 	Qprotodir,
 	Qclonus,
+	Qencalgs,
+	Qhashalgs,
 	Qconvdir,		/* directory for a conversation */
 	Qdata,
 	Qctl,
 	Qhand,
-	Qencalgs,
-	Qhashalgs,
+	Qstatus,
+	Qstats,
 };
 
 #define TYPE(x) 	((x).path & 0xf)
@@ -248,17 +257,22 @@ static int	noenc(Secret *sec, uchar *buf, int n);
 static int	sslunpad(uchar *buf, int n, int block);
 static int	tlsunpad(uchar *buf, int n, int block);
 static void	freeSec(Secret *sec);
+static char	*tlsstate(int s);
 
 #pragma	varargck	argpos	rcvError	3
 
 static char *tlsnames[] = {
 [Qclonus]	"clone",
+[Qencalgs]	"encalgs",
+[Qhashalgs]	"hashalgs",
 [Qdata]		"data",
 [Qctl]		"ctl",
 [Qhand]		"hand",
-[Qencalgs]	"encalgs",
-[Qhashalgs]	"hashalgs",
+[Qstatus]	"status",
+[Qstats]	"stats",
 };
+
+static int convdir[] = { Qctl, Qdata, Qhand, Qstatus, Qstats };
 
 static int
 tlsgen(Chan *c, Dirtab *d, int nd, int s, Dir *dp)
@@ -266,12 +280,13 @@ tlsgen(Chan *c, Dirtab *d, int nd, int s, Dir *dp)
 	Qid q;
 	TlsRec *tr;
 	char name[16], *nm;
-	int perm;
+	int perm, t;
 
 	USED(nd);
 	USED(d);
 	q.vers = 0;
-	switch(TYPE(c->qid)) {
+	t = TYPE(c->qid);
+	switch(t) {
 	case Qtopdir:
 		if(s == DEVDOTDOT){
 			q.path = QID(0, Qtopdir)|CHDIR;
@@ -329,6 +344,8 @@ tlsgen(Chan *c, Dirtab *d, int nd, int s, Dir *dp)
 			devdir(c, q, "tls", 0, eve, CHDIR|0555, dp);
 			return 1;
 		}
+		if(s < 0 || s >= nelem(convdir))
+			return -1;
 		lock(&tdlock);
 		tr = tlsdevs[CONV(c->qid)];
 		if(tr != nil){
@@ -338,35 +355,34 @@ tlsgen(Chan *c, Dirtab *d, int nd, int s, Dir *dp)
 			perm = 0;
 			nm = eve;
 		}
-		switch(s) {
-		default:
-			unlock(&tdlock);
-			return -1;
-		case 0:
-			q.path = QID(CONV(c->qid), Qctl);
-			break;
-		case 1:
-			q.path = QID(CONV(c->qid), Qdata);
-			break;
-		case 2:
-			q.path = QID(CONV(c->qid), Qhand);
-			break;
-		}
-		devdir(c, q, tlsnames[TYPE(q)], 0, nm, perm, dp);
+		t = convdir[s];
+		if(t == Qstatus || t == Qstats)
+			perm &= 0444;
+		q.path = QID(CONV(c->qid), t);
+		devdir(c, q, tlsnames[t], 0, nm, perm, dp);
 		unlock(&tdlock);
 		return 1;
 	case Qclonus:
 	case Qencalgs:
 	case Qhashalgs:
 		perm = 0444;
-		if(TYPE(c->qid) == Qclonus)
+		if(t == Qclonus)
 			perm = 0555;
-		devdir(c, c->qid, tlsnames[TYPE(c->qid)], 0, eve, perm, dp);
+		devdir(c, c->qid, tlsnames[t], 0, eve, perm, dp);
 		return 1;
 	default:
 		lock(&tdlock);
 		tr = tlsdevs[CONV(c->qid)];
-		devdir(c, c->qid, tlsnames[TYPE(c->qid)], 0, tr->user, tr->perm, dp);
+		if(tr != nil){
+			nm = tr->user;
+			perm = tr->perm;
+		}else{
+			perm = 0;
+			nm = eve;
+		}
+		if(t == Qstatus || t == Qstats)
+			perm &= 0444;
+		devdir(c, c->qid, tlsnames[t], 0, nm, perm, dp);
 		unlock(&tdlock);
 		return 1;
 	}
@@ -434,6 +450,10 @@ tlsopen(Chan *c, int omode)
 	case Qctl:
 	case Qdata:
 	case Qhand:
+	case Qstatus:
+	case Qstats:
+		if((t == Qstatus || t == Qstats) && omode != OREAD)
+			error(Eperm);
 		if(waserror()) {
 			unlock(&tdlock);
 			nexterror();
@@ -530,6 +550,8 @@ tlsclose(Chan *c)
 	case Qctl:
 	case Qdata:
 	case Qhand:
+	case Qstatus:
+	case Qstats:
 		if((c->flag & COPEN) == 0)
 			break;
 
@@ -1012,6 +1034,7 @@ tlsbread(Chan *c, long n, ulong offset)
 		b = qremove(&tr->processed, n, 0);
 		qunlock(&tr->in.io);
 		poperror();
+		tr->datain += BLEN(b);
 	}else{
 		checkstate(tr, 1, SOpen|SHandshake|SLClose);
 
@@ -1044,6 +1067,7 @@ tlsbread(Chan *c, long n, ulong offset)
 		b = qremove(&tr->hprocessed, n, 0);
 		poperror();
 		qunlock(&tr->hqread);
+		tr->handin += BLEN(b);
 	}
 
 	return b;
@@ -1056,18 +1080,54 @@ tlsread(Chan *c, void *a, long n, vlong off)
 	Block *nb;
 	uchar *va;
 	int i;
-	char buf[16];
+	char *buf, *s, *e;
 	ulong offset = off;
+	TlsRec * tr;
 
 	if(c->qid.path & CHDIR)
 		return devdirread(c, a, n, 0, 0, tlsgen);
 
+	tr = tlsdevs[CONV(c->qid)];
 	switch(TYPE(c->qid)) {
 	default:
 		error(Ebadusefd);
+	case Qstatus:
+		buf = smalloc(Statlen);
+		qlock(&tr->in.seclock);
+		qlock(&tr->out.seclock);
+		e = buf + Statlen;
+		s = seprint(buf, e, "%s version 0x%lux", tlsstate(tr->state), tr->version);
+		if(tr->in.sec != nil)
+			s = seprint(s, e, " EncIn %s HashIn %s", tr->in.sec->encalg, tr->in.sec->hashalg);
+		if(tr->in.new != nil)
+			s = seprint(s, e, " NewEncIn %s NewHashIn %s", tr->in.new->encalg, tr->in.new->hashalg);
+		if(tr->out.sec != nil)
+			s = seprint(s, e, " EncOut %s HashOut %s", tr->out.sec->encalg, tr->out.sec->hashalg);
+		if(tr->out.new != nil)
+			s = seprint(s, e, " NewEncOut %s NewHashOut %s", tr->out.new->encalg, tr->out.new->hashalg);
+		seprint(s, e, "\n");
+		qunlock(&tr->in.seclock);
+		qunlock(&tr->out.seclock);
+		n = readstr(offset, a, n, buf);
+		free(buf);
+		return n;
+	case Qstats:
+		buf = smalloc(Statlen);
+		s = buf;
+		e = buf + Statlen;
+		s = seprint(s, e, "DataIn: %d\n", tr->datain);
+		s = seprint(s, e, "DataOut: %d\n", tr->dataout);
+		s = seprint(s, e, "HandIn: %d\n", tr->handin);
+		seprint(s, e, "HandOut: %d\n", tr->handout);
+		n = readstr(offset, a, n, buf);
+		free(buf);
+		return n;
 	case Qctl:
-		snprint(buf, sizeof(buf), "%lud", CONV(c->qid));
-		return readstr(offset, a, n, buf);
+		buf = smalloc(Statlen);
+		snprint(buf, Statlen, "%lud", CONV(c->qid));
+		n = readstr(offset, a, n, buf);
+		free(buf);
+		return n;
 	case Qdata:
 	case Qhand:
 		b = tlsbread(c, n, offset);
@@ -1221,10 +1281,12 @@ tlsbwrite(Chan *c, Block *b, ulong offset)
 		return devbwrite(c, b, offset);
 	case Qhand:
 		tlsrecwrite(tr, RHandshake, b);
+		tr->handout += n;
 		break;
 	case Qdata:
 		checkstate(tr, 0, SOpen);
 		tlsrecwrite(tr, RApplication, b);
+		tr->dataout += n;
 		break;
 	}
 
@@ -1497,6 +1559,10 @@ tlswrite(Chan *c, void *a, long n, vlong off)
 			toc->unpad = tlsunpad;
 			tos->unpad = tlsunpad;
 		}
+		toc->encalg = ea->name;
+		toc->hashalg = ha->name;
+		tos->encalg = ea->name;
+		tos->hashalg = ha->name;
 
 		free(x);
 		poperror();
@@ -1777,6 +1843,28 @@ mktlsrec(void)
 	strncpy(tr->user, up->user, sizeof(tr->user));
 	tr->perm = 0660;
 	return tr;
+}
+
+static char*
+tlsstate(int s)
+{
+	switch(s){
+	case SHandshake:
+		return "Handshaking";
+	case SOpen:
+		return "Established";
+	case SRClose:
+		return "RemoteHangup";
+	case SLClose:
+		return "LocalHangup";
+	case SAlert:
+		return "Alerting";
+	case SError:
+		return "Errored";
+	case SClosed:
+		return "Closed";
+	}
+	return "Unknown";
 }
 
 static void

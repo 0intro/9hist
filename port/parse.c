@@ -35,7 +35,7 @@ parsecmd(char *p, int n)
 	if(n > 0 && cb->buf[n-1] == '\n')
 		n--;
 	cb->buf[n] = '\0';
-	cb->nf = getfields(cb->buf, cb->f, nelem(cb->f), 1, " ");
+	cb->nf = tokenize(cb->buf, cb->f, nelem(cb->f));
 	return cb;
 }
 

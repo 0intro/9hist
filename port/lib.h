@@ -25,6 +25,7 @@ extern	int	strncmp(char*, char*, long);
 extern	long	strlen(char*);
 extern	char*	strstr(char*, char*);
 extern	int	atoi(char*);
+extern	int	tokenize(char*, char**, int);
 
 enum
 {
