@@ -39,10 +39,8 @@ enum
 
 /* imported */
 extern	Subfont defont0;
-extern Cursor arrow;
 
 /* exported */
-Subfont *defont;
 Bitmap	gscreen;
 
 /* vga screen */
@@ -72,65 +70,6 @@ static	Point	curpos;
  */
 #define SCREENMEM	(0xA0000 | KZERO)
 #define CGASCREEN	((uchar*)(0xB8000 | KZERO))
-
-/*
- *  VGA modes
- */
-typedef struct VGAmode	VGAmode;
-struct VGAmode
-{
-	uchar	general[2];
-	uchar	sequencer[5];
-	uchar	crt[0x19];
-	uchar	graphics[9];
-	uchar	attribute[0x15];
-};
-
-/*
- *  640x480 display, 1, 2, or 4 bit color.
- */
-VGAmode mode12 = 
-{
-	/* general */
-	0xe7, 0x00,
-	/* sequence */
-	0x03, 0x01, 0x0f, 0x00, 0x06,
-	/* crt */
-	0x65, 0x4f, 0x50, 0x88, 0x55, 0x9a, 0x09, 0x3e,
-	0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	0xe8, 0x8b, 0xdf, 0x28, 0x00, 0xe7, 0x04, 0xe3,
-	0xff,
-	/* graphics */
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x0f,
-	0xff,
-	/* attribute */
-	0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-	0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
-	0x01, 0x10, 0x0f, 0x00, 0x00,
-};
-
-/*
- *  320x200 display, 8 bit color.
- */
-VGAmode mode13 = 
-{
-	/* general */
-	0x63, 0x00,
-	/* sequence */
-	0x03, 0x01, 0x0f, 0x00, 0x0e,
-	/* crt */
-	0x5f, 0x4f, 0x50, 0x82, 0x54, 0x80, 0xbf, 0x1f,
-	0x00, 0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x28,
-	0x9c, 0x8e, 0x8f, 0x28, 0x40, 0x96, 0xb9, 0xa3,
-	0xff,
-	/* graphics */
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x05, 0x0f,
-	0xff,
-	/* attribute */
-	0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-	0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
-	0x41, 0x10, 0x0f, 0x00, 0x00,
-};
 
 /*
  *  definitions of known cards
@@ -192,10 +131,38 @@ static void	scroll(void);
 static ulong	x3to32(uchar);
 static ulong	x6to32(uchar);
 static void	workinit(Bitmap*, int, int);
+extern void	screenload(Rectangle, uchar*, int, int, int);
+extern void	screenunload(Rectangle, uchar*, int, int, int);
+static void	cursorlock(Rectangle);
+static void	cursorunlock(void);
 
-static void cursorlock(Rectangle);
-static void cursorunlock(void);
-extern int graphicssubtile(uchar*, int, int, Rectangle, Rectangle, uchar**);
+extern int	graphicssubtile(uchar*, int, int, Rectangle, Rectangle, uchar**);
+
+
+/*
+ *  start the screen in CGA mode.  Create the fonts for VGA.  Called by
+ *  main().
+ */
+void
+screeninit(void)
+{
+	int i;
+	ulong *l;
+
+	/*
+	 *  swizzle the font longs.
+	 */
+	l = defont0.bits->base;
+	for(i = defont0.bits->width*Dy(defont0.bits->r); i > 0; i--, l++)
+		*l = (*l<<24) | ((*l>>8)&0x0000ff00) | ((*l<<8)&0x00ff0000) | (*l>>24);
+
+	/*
+	 *  start in CGA mode
+	 */
+	cga = 1;
+	crout(0x0a, 0xff);		/* turn off cursor */
+	memset(CGASCREEN, 0, CGAWIDTH*CGAHEIGHT);
+}
 
 /*
  *  vga device
@@ -395,28 +362,112 @@ vgawstat(Chan *c, char *dp)
 }
 
 /*
- *  start the screen in CGA mode.  Create the fonts for VGA.
+ *  accessing card registers
  */
-void
-screeninit(void)
-{
-	int i;
-	ulong *l;
-
-	/*
-	 *  swizzle the font longs.
-	 */
-	l = defont0.bits->base;
-	for(i = defont0.bits->width*Dy(defont0.bits->r); i > 0; i--, l++)
-		*l = (*l<<24) | ((*l>>8)&0x0000ff00) | ((*l<<8)&0x00ff0000) | (*l>>24);
-
-	/*
-	 *  start in CGA mode
-	 */
-	cga = 1;
-	crout(0x0a, 0xff);		/* turn off cursor */
-	memset(CGASCREEN, 0, CGAWIDTH*CGAHEIGHT);
+static uchar
+srin(int i) {
+	outb(SRX, i);
+	return inb(SR);
 }
+static void
+genout(int reg, int val)
+{
+	if(reg == 0)
+		outb(EMISCW, val);
+	else if (reg == 1)
+		outb(EFCW, val);
+}
+static void
+srout(int reg, int val)
+{
+	outb(SRX, reg);
+	outb(SR, val);
+}
+static void
+grout(int reg, int val)
+{
+	outb(GRX, reg);
+	outb(GR, val);
+}
+static void
+arout(int reg, int val)
+{
+	inb(0x3DA);
+	if (reg <= 0xf) {
+		outb(ARW, reg | 0x0);
+		outb(ARW, val);
+		inb(0x3DA);
+		outb(ARW, reg | 0x20);
+	} else {
+		outb(ARW, reg | 0x20);
+		outb(ARW, val);
+	}
+}
+static void
+crout(int reg, int val)
+{
+	outb(CRX, reg);
+	outb(CR, val);
+}
+
+/*
+ *  a few well known VGA modes and the code to set them
+ */
+typedef struct VGAmode	VGAmode;
+struct VGAmode
+{
+	uchar	general[2];
+	uchar	sequencer[5];
+	uchar	crt[0x19];
+	uchar	graphics[9];
+	uchar	attribute[0x15];
+};
+
+/*
+ *  640x480 display, 1, 2, or 4 bit color.
+ */
+VGAmode mode12 = 
+{
+	/* general */
+	0xe7, 0x00,
+	/* sequence */
+	0x03, 0x01, 0x0f, 0x00, 0x06,
+	/* crt */
+	0x65, 0x4f, 0x50, 0x88, 0x55, 0x9a, 0x09, 0x3e,
+	0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0xe8, 0x8b, 0xdf, 0x28, 0x00, 0xe7, 0x04, 0xe3,
+	0xff,
+	/* graphics */
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x0f,
+	0xff,
+	/* attribute */
+	0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+	0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+	0x01, 0x10, 0x0f, 0x00, 0x00,
+};
+
+/*
+ *  320x200 display, 8 bit color.
+ */
+VGAmode mode13 = 
+{
+	/* general */
+	0x63, 0x00,
+	/* sequence */
+	0x03, 0x01, 0x0f, 0x00, 0x0e,
+	/* crt */
+	0x5f, 0x4f, 0x50, 0x82, 0x54, 0x80, 0xbf, 0x1f,
+	0x00, 0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x28,
+	0x9c, 0x8e, 0x8f, 0x28, 0x40, 0x96, 0xb9, 0xa3,
+	0xff,
+	/* graphics */
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x05, 0x0f,
+	0xff,
+	/* attribute */
+	0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+	0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+	0x41, 0x10, 0x0f, 0x00, 0x00,
+};
 
 static void
 setmode(VGAmode *v)
@@ -455,7 +506,9 @@ setmode(VGAmode *v)
 static void
 setscreen(int maxx, int maxy, int ldepth)
 {
-	int i, x;
+	int i, x, l, tl;
+	uchar *a;
+	Rectangle r;
 
 	if(waserror()){
 		unlock(&screenlock);
@@ -463,6 +516,7 @@ setscreen(int maxx, int maxy, int ldepth)
 	}
 	lock(&screenlock);
 
+	/* set default mode, a user program sets more complicated ones */
 	switch(ldepth){
 	case 0:
 		setmode(&mode12);
@@ -474,9 +528,7 @@ setscreen(int maxx, int maxy, int ldepth)
 		error(Ebadarg);
 	}
 
-	/*
-	 *  setup a bitmap for the new size
-	 */
+	/* setup a bitmap for the new size */
 	gscreen.ldepth = ldepth;
 	gscreen.width = (maxx*(1<<gscreen.ldepth)+31)/32;
 	gscreen.base = (void*)SCREENMEM;
@@ -488,35 +540,37 @@ setscreen(int maxx, int maxy, int ldepth)
 		memset(gscreen.base, 0xff, Footprint);
 	}
 
-	/*
-	 *  set up inset system window
-	 */
+	/* get size for a system window */
 	h = defont0.height;
 	w = defont0.info[' '].width;
-
 	window.min = Pt(48, 48);
 	window.max = add(window.min, Pt(10+w*64, 36*h));
 	if(window.max.y >= gscreen.r.max.y)
 		window.max.y = gscreen.r.max.y-1;
 	if(window.max.x >= gscreen.r.max.x)
 		window.max.x = gscreen.r.max.x-1;
-
-	vgacard->setpage(0);
 	window.max.y = window.min.y+((window.max.y-window.min.y)/h)*h;
-	bitblt(&gscreen, window.min, &gscreen, window, Zero);
 	curpos = window.min;
 
-	/* work areas */
+	/* work areas change when dimensions change */
 	workinit(&chwork, w, h);
 	workinit(&scrollwork, 64*w, 1);
+	workinit(&scrollwork, Dx(window), 1);
 	cursorinit();
+
+	/* clear the system window */
+	l = scrollwork.width * BY2WD;
+	memset(scrollwork.base, 0, l);
+	tl = graphicssubtile(0, l, gscreen.ldepth, gscreen.r, window, &a);
+	for(i = window.min.y; i < window.max.y; i++){
+		r = Rect(window.min.x, i, window.max.x, i + 1);
+		screenload(r, (uchar*)scrollwork.base, tl, l, 1);
+	}
 
 	unlock(&screenlock);
 	poperror();
 
-	/*
-	 *  default color map (has to be outside the lock)
-	 */
+	/* default color map (has to be outside the lock) */
 	switch(ldepth){
 	case 3:
 		for(i = 0; i < 256; i++)
@@ -532,7 +586,7 @@ setscreen(int maxx, int maxy, int ldepth)
 		break;
 	}
 
-	/* stop character mode changes */
+	/* switch software to graphics mode */
 	cga = 0;
 }
 
@@ -903,54 +957,6 @@ screenputs(char *s, int n)
 	unlock(&screenlock);
 }
 
-/*
- *  accessing registers
- */
-static uchar
-srin(int i) {
-	outb(SRX, i);
-	return inb(SR);
-}
-static void
-genout(int reg, int val)
-{
-	if(reg == 0)
-		outb(EMISCW, val);
-	else if (reg == 1)
-		outb(EFCW, val);
-}
-static void
-srout(int reg, int val)
-{
-	outb(SRX, reg);
-	outb(SR, val);
-}
-static void
-grout(int reg, int val)
-{
-	outb(GRX, reg);
-	outb(GR, val);
-}
-static void
-arout(int reg, int val)
-{
-	inb(0x3DA);
-	if (reg <= 0xf) {
-		outb(ARW, reg | 0x0);
-		outb(ARW, val);
-		inb(0x3DA);
-		outb(ARW, reg | 0x20);
-	} else {
-		outb(ARW, reg | 0x20);
-		outb(ARW, val);
-	}
-}
-static void
-crout(int reg, int val)
-{
-	outb(CRX, reg);
-	outb(CR, val);
-}
 
 /*
  *  expand 3 and 6 bits of color to 32
@@ -1104,23 +1110,30 @@ cgascreenputs(char *s, int n)
 static void
 scroll(void)
 {
-	int from, to, tl, l;
+	int from, tl, l, diff;
 	uchar *a;
 	Rectangle r;
 
-	l = gscreen.width * BY2WD;
+	diff = h*LINE2SCROLL;
+	l = scrollwork.width * BY2WD;
 	tl = graphicssubtile(0, l, gscreen.ldepth, gscreen.r, window, &a);
 
-	from = window.min.y + LINE2SCROLL*h;
-	to = window.min.y;
-	for(; from < window.max.y; from++){
-		r = Rpt(Pt(window.min.x, from), Pt(window.max.x, from + 1));
+	/* move lines up */
+	for(from = window.min.y + diff; from < window.max.y; from++){
+		r = Rect(window.min.x, from, window.max.x, from + 1);
 		screenunload(r, (uchar*)scrollwork.base, tl, l, 1);
-		r = Rpt(Pt(window.min.x, to), Pt(window.max.x, to+1));
+		r = Rect(window.min.x, from - diff, window.max.x, from - diff + 1);
 		screenload(r, (uchar*)scrollwork.base, tl, l, 1);
 	}
-		
-	curpos.y -= LINE2SCROLL*h;
+
+	/* clear bottom */
+	memset(scrollwork.base, 0, l);
+	for(from = window.max.y - diff; from < window.max.y; from++){
+		r = Rect(window.min.x, from, window.max.x, from + 1);
+		screenload(r, (uchar*)scrollwork.base, tl, l, 1);
+	}
+	
+	curpos.y -= diff;
 }
 
 static void
@@ -1292,7 +1305,7 @@ setcursor(ulong *setbits, ulong *clrbits, int offx, int offy)
 void
 cursoron(int dolock)
 {
-	int off;
+	int xoff, yoff;
 	Rectangle r;
 	uchar *a;
 	struct {
@@ -1313,15 +1326,23 @@ cursoron(int dolock)
 		cursor.r.max = add(cursor.r.min, Pt(16, 16));
 		cursor.r = raddp(cursor.r, cursor.offset);
 	
-		/* bit offset into backup area */
-		if(cursor.r.min.x < 0)
-			off = cursor.r.min.x;
-		else
-			off = ((1<<gscreen.ldepth)*cursor.r.min.x) & 7;
+		/* offsets into backup area and clr/set bitmaps */
+		r.min = Pt(0, 0);
+		if(cursor.r.min.x < 0){
+			xoff = cursor.r.min.x;
+			r.min.x = -xoff;
+		} else
+			xoff = ((1<<gscreen.ldepth)*cursor.r.min.x) & 7;
+		if(cursor.r.min.y < 0){
+			yoff = cursor.r.min.y;
+			r.min.y = -yoff;
+		} else
+			yoff = 0;
+		r.max = add(r.min, Pt(16, 16));
 	
 		/* clip the cursor rectangle */
 		xx.dm = &cursorwork;
-		xx.p = Pt(off, 0);
+		xx.p = Pt(xoff, yoff);
 		xx.sm = &gscreen;
 		xx.r = cursor.r;
 		bitbltclip(&xx);
@@ -1337,7 +1358,6 @@ cursoron(int dolock)
 			memmove(backbits, cursorwork.base, cursor.l*16);
 	
 			/* add mouse into work area */
-			r = Rect(0, 0, Dx(xx.r), Dy(xx.r));
 			bitblt(&cursorwork, xx.p, &clr, r, D&~S);
 			bitblt(&cursorwork, xx.p, &set, r, S|D);
 	
