@@ -35,7 +35,6 @@ static Qinfo *lds;
  */
 Stream *slist;
 Queue *qlist;
-Block *blist;
 static Lock garbagelock;
 
 /*
@@ -44,6 +43,8 @@ static Lock garbagelock;
  */
 typedef struct {
 	int	size;
+	int	lim;
+	int	made;
 	Blist;
 	QLock;		/* qlock for sleepers on r */
 	Rendez	r;	/* sleep here waiting for blocks */
@@ -66,29 +67,24 @@ void
 streaminit(void)
 {
 	int class, i, n;
-	Block *bp;
 	Bclass *bcp;
 
 	/*
-	 *  allocate blocks, queues, and streams
+	 *  allocate queues, streams
 	 */
 	slist = (Stream *)ialloc(conf.nstream * sizeof(Stream), 0);
 	qlist = (Queue *)ialloc(conf.nqueue * sizeof(Queue), 0);
-	blist = (Block *)ialloc(conf.nblock * sizeof(Block), 0);
-	bp = blist;
+
+	/*
+	 *  set limits on blocks
+	 */
 	n = conf.nblock;
 	for(class = 0; class < Nclass; class++){
 		if(class < Nclass-1)
 			n = n/2;
 		bcp = &bclass[class];
-		for(i = 0; i < n; i++) {
-			if(bcp->size)
-				bp->base = (uchar *)ialloc(bcp->size, 0);
-			bp->lim = bp->base + bcp->size;
-			bp->flags = class;
-			freeb(bp);
-			bp++;
-		}
+		bcp->lim = n;
+		bcp->made = 0;
 	}
 
 	/*
@@ -108,6 +104,74 @@ newqinfo(Qinfo *qi)
 	lds = qi;
 	if(qi->reset)
 		(*qi->reset)();
+}
+
+/*
+ *  upgrade a block 0 block to another class (called with bcp qlocked)
+ */
+newblock(Bclass *bcp)
+{
+	Page *page;
+	int n;
+	Block *bp;
+	uchar *cp;
+
+	if(bcp->made > bcp->lim)
+		return;
+
+	if(bcp == bclass){
+		/*
+		 *  create some level zero blocks and return
+		 */
+		page = newpage(1, 0, 0);
+		page->va = VA(kmap(page));
+		n = BY2PG/sizeof(Block);
+		bp = (Block *)(page->va);
+		while(n-- > 0){
+			bp->flags = 0;
+			bp->base = bp->lim = bp->rptr = bp->wptr = 0;
+			if(bcp->first)
+				bcp->last->next = bp;
+			else
+				bcp->first = bp;
+			bcp->last = bp;
+			bcp->made++;
+			bp++;
+		}
+	} else {
+		/*
+		 *  create a page worth of new blocks
+		 */
+		page = newpage(1, 0, 0);
+		page->va = VA(kmap(page));
+		n = BY2PG/bcp->size;
+		cp = (uchar *)(page->va);
+		
+		while(n-- > 0){
+			/*
+			 *  upgrade a level 0 block
+			 */
+			bp = allocb(0);
+			qlock(bclass);
+			bclass->made--;
+			bcp->made++;
+			bp->flags = bcp - bclass;
+			qunlock(bclass);
+
+			/*
+			 *  tack on the data area
+			 */
+			bp->base = bp->rptr = bp->wptr = cp;
+			cp += bcp->size;
+			bp->lim = cp;
+			if(bcp->first)
+				bcp->last->next = bp;
+			else
+				bcp->first = bp;
+			bcp->last = bp;
+		}
+	}
+	return;
 }
 
 /*
@@ -138,6 +202,8 @@ allocb(ulong size)
 	 */
 	lock(bcp);
 	while(bcp->first == 0){
+		if(newblock(bcp) == 0)
+			continue;
 		unlock(bcp);
 		qlock(bcp);
 		if(waserror()){
@@ -846,7 +912,7 @@ streamclose(Chan *c)
 	 *  if no stream, ignore it
 	 */
 	if(!c->stream)
-		return 1;
+		return;
 	return streamclose1(c->stream);
 }
 

@@ -91,10 +91,10 @@ trap(Ureg *ur)
 	if(u)
 		u->p->pc = ur->pc;		/* BUG */
 	if(user){
-		sprint(buf, "sys: trap: %s", ur->pc, excname(ur->vo));
+		sprint(buf, "sys: trap: pc=0x%lux %s", ur->pc, excname(ur->vo));
 		postnote(u->p, 1, buf, NDebug);
 	}else{
-		print("kernel trap vo=0x%ux pc=%lux\n", ur->vo, ur->pc);
+		print("kernel trap vo=0x%ux pc=0x%lux\n", ur->vo, ur->pc);
 		dumpregs(ur);
 		exit();
 	}

@@ -669,15 +669,16 @@ void
 mntxmit(Mnt *m, Mnthdr *mh)
 {
 	ulong n;
-	Mntbuf *mbw, *t;
+	Mntbuf *mbw;
 	Mnthdr *w, *ow;
 	MntQ *q;
 	int qlocked, tag, written;
 
-	mh->mbr = mballoc();
+	mh->mbr = 0;
 	mbw = mballoc();
 	if(waserror()){			/* 1 */
-		mbfree(mh->mbr);
+		if(mh->mbr)
+			mbfree(mh->mbr);
 		mbfree(mbw);
 		nexterror();
 	}
@@ -706,6 +707,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 	/*
 	 * Read response
 	 */
+	mh->mbr = mballoc();
 	n = (*devtab[q->msg->type].read)(q->msg, mh->mbr->buf, BUFSIZE);
 	mqfree(q);
 	poperror();		/* 2 */
@@ -772,6 +774,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 			mnterrdequeue(m, mh);
 			nexterror();
 		}
+		mh->mbr = mballoc();
 		n = (*devtab[q->msg->type].read)(q->msg, mh->mbr->buf, BUFSIZE);
 		poperror();		/* 3 */
 		if(convM2S(mh->mbr->buf, &mh->rhdr, n) == 0){
@@ -808,9 +811,8 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		w = &mnthdralloc.arena[tag];
 		if(w->flushing || !w->active)	/* nothing to do; mntflush will clean up */
 			goto Read;
-		t = mh->mbr;
-		mh->mbr = w->mbr;
-		w->mbr = t;
+		w->mbr = mh->mbr;
+		mh->mbr = 0;
 		memcpy(&w->rhdr, &mh->rhdr, sizeof mh->rhdr);
 		mntwunlink(q, w);
 		w->readreply = 1;

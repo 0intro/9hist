@@ -600,7 +600,7 @@ confinit(void)
 	/*
 	 *  set minimal default values
 	 */
-	conf.nmach = 2;
+	conf.nmach = 1;
 	conf.nmod = 10000;
 	conf.nalarm = 10000;
 	conf.norig = 500;

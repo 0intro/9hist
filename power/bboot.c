@@ -4,7 +4,7 @@
 #include <fcall.h>
 
 #define DEFFILE "/mips/9"
-#define DEFSYS "bitbootes"
+#define DEFSYS "bit!bootes"
 
 Fcall	hdr;
 char	*sys;
@@ -23,16 +23,14 @@ typedef
 struct address {
 	char *name;
 	char *cmd;
-	char *srvname;
 } Address;
 
 Address addr[] = {
-	{ "bitbootes", "bitconnect", "bit!bootes" },
-	{ "ross", "connect 020701005eff", "nonet!ross" },
-	{ "bootes", "connect 080069020205", "nonet!bootes" },
-	{ "helix", "connect 080069020427", "nonet!helix" },
-	{ "spindle", "connect 0800690202df", "nonet!spindle" },
-	{ "r70", "connect 08002b04265d", "nonet!r70" },
+	{ "ross", "connect 020701005eff" },
+	{ "bootes", "connect 080069020205" },
+	{ "helix", "connect 080069020427" },
+	{ "spindle", "connect 0800690202df" },
+	{ "r70", "connect 08002b04265d" },
 	{ 0 }
 };
 
@@ -62,7 +60,9 @@ struct a_out_h {
 /*
  *  predeclared
  */
-Address* lookup(char *);
+int	dkdial(char *);
+int	nonetdial(char *);
+int	bitdial(char *);
 int	readseg(int, int, long, long, int);
 int	readkernel(int);
 int	readconf(int);
@@ -115,19 +115,148 @@ main(int argc, char *argv[])
 			close(fd);
 		if(cfd > 0)
 			close(cfd);
-		if(efd > 0)
-			close(efd);
-		fd = cfd = efd = 0;
+		fd = cfd = 0;
 		boot(1, sysname);
 	}
+}
+
+int
+bitdial(char *arg)
+{
+	return open("#3/bit3", ORDWR);
+}
+
+int
+nonetdial(char *arg)
+{
+	int efd, cfd, fd;
+	Address *a;
+	static int mounted;
+
+	for(a = addr; a->name; a++){
+		if(strcmp(a->name, arg) == 0)
+			break;
+	}
+	if(a->name == 0){
+		print("can't convert nonet address to ether address\n");
+		return -1;
+	}
+
+	if(!mounted){
+		/*
+		 *  grab a lance channel, make it recognize ether type 0x900,
+		 *  and push the nonet ethernet multiplexor onto it.
+		 */
+		efd = open("#l/1/ctl", 2);
+		if(efd < 0){
+			prerror("opening #l/1/ctl");
+			return -1;
+		}
+		if(write(efd, "connect 0x900", sizeof("connect 0x900")-1)<0){
+			close(efd);
+			prerror("connect 0x900");
+			return -1;
+		}
+		if(write(efd, "push noether", sizeof("push noether")-1)<0){
+			close(efd);
+			prerror("push noether");
+			return -1;
+		}
+		if(write(efd, "config nonet", sizeof("config nonet")-1)<0){
+			close(efd);
+			prerror("config nonet");
+			return -1;
+		}
+		mounted = 1;
+	}
+
+	/*
+	 *  grab a nonet channel and call up the file server
+	 */
+	fd = open("#nnonet/2/data", 2);
+	if(fd < 0) {
+		prerror("opening #nnonet/2/data");
+		return -1;
+	}
+	cfd = open("#nnonet/2/ctl", 2);
+	if(cfd < 0){
+		close(fd);
+		fd = -1;
+		prerror("opening #nnonet/2/ctl");
+		return -1;
+	}
+	if(write(cfd, a->cmd, strlen(a->cmd))<0){
+		close(cfd);
+		close(fd);
+		cfd = fd = -1;
+		prerror(a->cmd);
+		return -1;
+	}
+	return fd;
+}
+
+int
+dkdial(char *arg)
+{
+	int fd;
+	char cmd[64];
+	static int mounted;
+
+	if(!mounted){
+		/*
+		 *  grab the hsvme and configure it for a datakit
+		 */
+		efd = open("#h/ctl", 2);
+		if(efd < 0){
+			prerror("opening #h/ctl");
+			return -1;
+		}
+		if(write(efd, "push dkmux", sizeof("push dkmux")-1)<0){
+			close(efd);
+			prerror("push dkmux");
+			return -1;
+		}
+		if(write(efd, "config 4 256 restart dk", sizeof("config 4 256 restart dk")-1)<0){
+			close(efd);
+			prerror("config 4 256 restart dk");
+			return -1;
+		}
+		mounted = 1;
+		sleep(2000);		/* wait for things to settle down */
+	}
+
+	/*
+	 *  grab a datakit channel and call up the file server
+	 */
+	fd = open("#kdk/5/data", 2);
+	if(fd < 0) {
+		prerror("opening #kdk/5/data");
+		return -1;
+	}
+	cfd = open("#kdk/5/ctl", 2);
+	if(cfd < 0){
+		close(fd);
+		fd = -1;
+		prerror("opening #kdk/5/ctl");
+		return -1;
+	}
+	sprint(cmd, "connect %s", arg);
+	if(write(cfd, cmd, strlen(cmd))<0){
+		close(cfd);
+		close(fd);
+		cfd = fd = -1;
+		prerror(cmd);
+		return -1;
+	}
+	return fd;
 }
 
 void
 boot(int ask, char *addr)
 {
-	int n;
+	int n, tries;
 	char conffile[128];
-	Address *a;
+	char *srvname;
 
 	if(ask){
 		outin("bootfile", bootfile, bbuf, sizeof(bbuf));
@@ -136,78 +265,43 @@ boot(int ask, char *addr)
 		sys = sbuf;
 	}
 
-	a = lookup(sys);
-	if(a == 0){
-		fprint(2, "boot: %s unknown\n", sys);
-		return;
+	for(tries = 0; tries < 5; tries++){
+		fd = -1;
+		if(strncmp(sys, "bit!", 4) == 0)
+			fd = bitdial(srvname = &sys[4]);
+		else if(strncmp(sys, "dk!", 3) == 0)
+			fd = dkdial(srvname = &sys[3]);
+		else if(strncmp(sys, "nonet!", 5) == 0)
+			fd = nonetdial(srvname = &sys[5]);
+		else
+			fd = nonetdial(srvname = sys);
+		if(fd >= 0)
+			break;
+		print("can't connect, retrying...\n");
+		sleep(1000);
 	}
-	scmd = a->cmd;
-
-	/*
-	 *  for the bit, we skip all the ether goo
-	 */
-	if(strcmp(scmd, "bitconnect") == 0){
-		fd = open("#3/bit3", ORDWR);
-		if(fd < 0){
-			prerror("opening #3/bit3");
-			return;
-		}
-		goto Mesg;
-	}
-
-	/*
-	 *  grab a lance channel, make it recognize ether type 0x900,
-	 *  and push the nonet ethernet multiplexor onto it.
-	 */
-	cfd = open("#l/1/ctl", 2);
-	if(cfd < 0){
-		prerror("opening #l/1/ctl");
-		return;
-	}
-	if(write(cfd, "connect 0x900", sizeof("connect 0x900")-1)<0){
-		prerror("connect 0x900");
-		return;
-	}
-	if(write(cfd, "push noether", sizeof("push noether")-1)<0){
-		prerror("push noether");
-		return;
-	}
-	if(write(cfd, "config nonet", sizeof("config nonet")-1)<0){
-		prerror("config nonet");
+	if(fd < 0){
+		print("can't connect\n");
 		return;
 	}
 
-	/*
-	 *  grab a nonet channel and call up the ross file server
-	 */
-	fd = open("#nnonet/2/data", 2);
-	if(fd < 0) {
-		prerror("opening #n/2/data");
-		return;
-	}
-	cfd = open("#nnonet/2/ctl", 2);
-	if(cfd < 0){
-		prerror("opening #n/2/ctl");
-		return;
-	}
-	if(write(cfd, scmd, strlen(scmd))<0){
-		prerror(scmd);
-		return;
-	}
-
-    Mesg:
 	print("nop...");
 	hdr.type = Tnop;
+	hdr.tag = ~0;
 	n = convS2M(&hdr, buf);
 	if(write(fd, buf, n) != n){
+		print("n = %d\n", n);
 		prerror("write nop");
 		return;
 	}
+  reread:
 	n = read(fd, buf, sizeof buf);
 	if(n <= 0){
 		prerror("read nop");
 		return;
 	}
+	if(n == 2)
+		goto reread;
 	if(convM2S(buf, &hdr, n) == 0) {
 		print("n = %d; buf = %.2x %.2x %.2x %.2x\n",
 			n, buf[0], buf[1], buf[2], buf[3]);
@@ -218,10 +312,14 @@ boot(int ask, char *addr)
 		prerror("not Rnop");
 		return;
 	}
+	if(hdr.tag != ~0){
+		prerror("tag not ~0");
+		return;
+	}
 
 	print("session...");
 	hdr.type = Tsession;
-	hdr.lang = 'v';
+	hdr.tag = ~0;
 	n = convS2M(&hdr, buf);
 	if(write(fd, buf, n) != n){
 		prerror("write session");
@@ -236,13 +334,16 @@ boot(int ask, char *addr)
 		prerror("format session");
 		return;
 	}
-	if(hdr.type != Rsession){
-		prerror("not Rsession");
+	if(hdr.tag != ~0){
+		prerror("tag not ~0");
 		return;
 	}
-	if(hdr.err){
-		print("error %d;", hdr.err);
-		prerror("remote error");
+	if(hdr.type == Rerror){
+		fprint(2, "boot: error %s\n", hdr.ename);
+		return;
+	}
+	if(hdr.type != Rsession){
+		prerror("not Rsession");
 		return;
 	}
 
@@ -251,7 +352,7 @@ boot(int ask, char *addr)
 		prerror("bind");
 		return;
 	}
-	if(mount(fd, "/", MAFTER|MCREATE, "") < 0){
+	if(mount(fd, "/", MAFTER|MCREATE, "", "") < 0){
 		prerror("mount");
 		return;
 	}
@@ -283,7 +384,7 @@ prerror(char *s)
 {
 	char buf[64];
 
-	errstr(0, buf);
+	errstr(buf);
 	fprint(2, "boot: %s: %s\n", s, buf);
 }
 
@@ -295,7 +396,7 @@ error(char *s)
 {
 	char buf[64];
 
-	errstr(0, buf);
+	errstr(buf);
 	fprint(2, "boot: %s: %s\n", s, buf);
 	exits(0);
 }

@@ -314,11 +314,11 @@ confinit(void)
 	conf.nmtab = 50*mul;
 	conf.nmount = 80*mul;
 	conf.nmntdev = 10*mul;
-	conf.nmntbuf = 2*conf.nmntdev;
+	conf.nmntbuf = conf.nmntdev;
 	conf.nmnthdr = 2*conf.nmntdev;
-	conf.nstream = 40 + 16*mul;		/* was 64 */
+	conf.nstream = 40 + 32*mul;
 	conf.nqueue = 5 * conf.nstream;
-	conf.nblock = 24 * conf.nstream;	/* was 32 */
+	conf.nblock = 24 * conf.nstream;
 	conf.nsrv = 16*mul;			/* was 32 */
 	conf.nbitmap = 300*mul;
 	conf.nbitbyte = 300*1024*mul;

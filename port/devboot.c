@@ -13,8 +13,8 @@ enum{
 };
 
 Dirtab bootdir[]={
-	"boot",		Qboot,		0,			0666,
-	"mem",		Qmem,		0,			0666,
+	"boot",		{Qboot},	0,	0666,
+	"mem",		{Qmem},		0,	0666,
 };
 
 #define	NBOOT	(sizeof bootdir/sizeof(Dirtab))
@@ -76,7 +76,7 @@ bootclose(Chan *c)
 long	 
 bootread(Chan *c, void *buf, long n)
 {
-	switch(c->qid & ~CHDIR){
+	switch(c->qid.path & ~CHDIR){
 	case Qdir:
 		return devdirread(c, buf, n, bootdir, NBOOT, devgen);
 	}
@@ -89,7 +89,7 @@ bootwrite(Chan *c, void *buf, long n)
 {
 	ulong pc;
 
-	switch(c->qid & ~CHDIR){
+	switch(c->qid.path & ~CHDIR){
 	case Qmem:
 		/* kernel memory.  BUG: shouldn't be so easygoing. BUG: mem mapping? */
 		if(c->offset>=KZERO && c->offset<KZERO+conf.npage*BY2PG){
@@ -99,6 +99,7 @@ bootwrite(Chan *c, void *buf, long n)
 			memcpy((char*)c->offset, buf, n);
 			return n;
 		}
+		print("bootwrite: bad addr %lux\n", c->offset);
 		error(Ebadarg);
 
 	case Qboot:
@@ -106,6 +107,7 @@ bootwrite(Chan *c, void *buf, long n)
 		splhi();
 		gotopc(pc);
 	}
+	print("bootwrite: bad path %d\n", c->qid.path);
 	error(Ebadarg);
 }
 
