@@ -126,20 +126,26 @@ trap(Ureg *ur)
 		break;
 
 	case CCPU:
-		if(u->p->fpstate == FPinit) {
+		if(u && u->p && u->p->fpstate == FPinit) {
 			restfpregs(&initfp);
 			u->p->fpstate = FPactive;
 			ur->status |= CU1;
 			break;
 		}
-		if(u->p->fpstate == FPinactive) {
+		if(u && u->p && u->p->fpstate == FPinactive) {
 			restfpregs(&u->fpsave);
 			u->p->fpstate = FPactive;
 			ur->status |= CU1;
 			break;
 		}
+		goto Default;
 
 	default:
+		if(u && u->p && u->p->fpstate == FPactive){
+			savefpregs(&u->fpsave);
+			u->p->fpstate = FPinactive;
+			ur->status &= ~CU1;
+		}
 	Default:
 		/*
 		 * This isn't good enough; can still deadlock because we may hold print's locks
@@ -433,7 +439,7 @@ syscall(Ureg *aur)
 	 * guarantee anything about registers,
 	 */
 	if(u->p->fpstate == FPactive) {
-		u->p->fpstate = FPinit;		/* BUG */
+		u->p->fpstate = FPinit;
 		ur->status &= ~CU1;
 	}
 	spllo();

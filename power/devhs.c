@@ -260,7 +260,7 @@ hsvmestopen(Queue *q, Stream *s)
 	char name[32];
 
 	hp = &hsvme[s->dev];
-	sprint(name, "**hsvme%d**", s->dev);
+	sprint(name, "hsvme%d", s->dev);
 	q->ptr = q->other->ptr = hp;
 	hp->rq = q;
 	kproc(name, hsvmekproc, hp);

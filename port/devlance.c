@@ -589,7 +589,7 @@ lanceattach(char *spec)
 	Chan *c;
 
 	if(l.kstarted == 0){
-		kproc("**lancekproc**", lancekproc, 0);
+		kproc("lancekproc", lancekproc, 0);
 		l.kstarted = 1;
 		lancestart();
 	}

@@ -172,6 +172,7 @@ loop:
 		p->nchild = 0;
 		p->child = 0;
 		p->exiting = 0;
+		p->fpstate = FPinit;
 		memset(p->seg, 0, sizeof p->seg);
 		lock(&pidalloc);
 		p->pid = ++pidalloc.pid;

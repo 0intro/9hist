@@ -755,6 +755,38 @@ bitwrite(Chan *c, void *va, long n)
 			p += 22;
 			break;
 
+		case 'p':
+			/*
+			 * point
+			 *
+			 *	'p'		1
+			 *	id		2
+			 *	pt		8
+			 *	value		1
+			 *	code		2
+			 */
+			if(m < 14)
+				error(0, Ebadblt);
+			v = GSHORT(p+1);
+			dst = &bit.map[v];
+			if(v<0 || v>=conf.nbitmap || dst->ldepth<0)
+				error(0, Ebadbitmap);
+			off = 0;
+			if(v == 0)
+				off = 1;
+			pt1.x = GLONG(p+3);
+			pt1.y = GLONG(p+7);
+			t = p[11];
+			v = GSHORT(p+12);
+			if(off && !isoff){
+				cursoroff(1);
+				isoff = 1;
+			}
+			point(dst, pt1, t, v);
+			m -= 14;
+			p += 14;
+			break;
+
 		case 'r':
 			/*
 			 * read

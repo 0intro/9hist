@@ -36,7 +36,7 @@ enum{
 	Etoosmall,	/* read or write too small */
 	Ehungup,	/* write to hungup stream */
 	Ebadnet,	/* illegal network address */
-	Enoifc,		/* no free interface slots */
+	Enoifc,		/* bad interface or no free interface slots */
 	Enodev,		/* no free devices */
 	Ebadctl,	/* bad process or stream control request */
 	Enonote,	/* note overflow */

@@ -159,12 +159,12 @@ boot(int ask)
 	 */
 	fd = open("#nnonet/2/data", 2);
 	if(fd < 0) {
-		prerror("opening #n/2/data");
+		prerror("opening #nnonet/2/data");
 		return;
 	}
 	cfd = open("#nnonet/2/ctl", 2);
 	if(cfd < 0){
-		prerror("opening #n/2/ctl");
+		prerror("opening #nnonet/2/ctl");
 		return;
 	}
 	if(write(cfd, scmd, strlen(scmd))<0){

@@ -162,7 +162,7 @@ urpopen(Queue *q, Stream *s)
 	 */
 	if(up->kstarted == 0){
 		up->kstarted = 1;
-		sprint(name, "**urp%d**", up - urp);
+		sprint(name, "urp%d", up - urp);
 		kproc(name, urpkproc, up);
 	}
 }
