@@ -98,42 +98,45 @@ todget(vlong *ticksp)
 	vlong ticks, diff;
 	ulong t;
 
-	ilock(&tod);
-
 	if(tod.hz == 0)
 		ticks = fastticks((uvlong*)&tod.hz);
 	else
 		ticks = fastticks(nil);
 	diff = ticks - tod.last;
 
-	// add in correction
-	if(tod.sstart != tod.send){
-		t = MACHP(0)->ticks;
-		if(t >= tod.send)
-			t = tod.send;
-		tod.off = tod.off + tod.delta*(t - tod.sstart);
-		tod.sstart = t;
-	}
-
 	// convert to epoch
 	x = (diff * tod.multiplier) >> 31;
 	x = x + tod.off;
 
-	// protect against overflows
-	if(diff > tod.hz){
-		tod.last = ticks;
-		tod.off = x;
+	if(m->machno == 0){
+		ilock(&tod);
+
+		// add in correction
+		if(tod.sstart != tod.send){
+			t = MACHP(0)->ticks;
+			if(t >= tod.send)
+				t = tod.send;
+			tod.off = tod.off + tod.delta*(t - tod.sstart);
+			tod.sstart = t;
+		}
+
+		// protect against overflows
+		if(diff > tod.hz){
+			tod.last = ticks;
+			tod.off = x;
+		}
+		iunlock(&tod);
 	}
 
 	// time can't go backwards
 	if(x < tod.lasttime)
 		x = tod.lasttime;
-	tod.lasttime = x;
+	else
+		tod.lasttime = x;
 
 	if(ticksp != nil)
 		*ticksp = ticks;
 
-	iunlock(&tod);
 	return x;
 }
 

@@ -1971,7 +1971,7 @@ void
 addreseq(Tcpctl *tcb, Tcp *seg, Block *bp, ushort length)
 {
 	Reseq *rp, *rp1;
-	int i;
+	int i, x;
 
 	rp = malloc(sizeof(Reseq));
 	if(rp == nil){
@@ -1991,9 +1991,9 @@ addreseq(Tcpctl *tcb, Tcp *seg, Block *bp, ushort length)
 		return;
 	}
 
+	length = 0;
 	for(i = 0;; i++) {
-		if(i > 100)
-			print("very long tcp resequence queue\n");
+		length += rp1->length;
 		if(rp1->next == nil || seq_lt(seg->seq, rp1->next->seg.seq)) {
 			rp->next = rp1->next;
 			rp1->next = rp;
@@ -2001,6 +2001,8 @@ addreseq(Tcpctl *tcb, Tcp *seg, Block *bp, ushort length)
 		}
 		rp1 = rp1->next;
 	}
+	if(i > 100)
+		print("very long tcp resequence queue: %d\n", length);
 }
 
 void

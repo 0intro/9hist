@@ -3,7 +3,6 @@
 
 enum
 {
-	SIZE	= 1024,
 	IDIGIT	= 30,
 	MAXCONV	= 40,
 	FDIGIT	= 30,

@@ -102,6 +102,10 @@ lockstats.locks++;
 	}
 
 lockstats.glare++;
+if(l->glare++ > 10000){
+print("glare %lux\n", l);
+l->glare = 0;
+}
 	cansched = up != nil && up->state == Running;
 	if(cansched){
 		oldpri = up->priority;

@@ -16,6 +16,7 @@ extern	void	*memchr(void*, int, long);
  */
 extern	char	*strcat(char*, char*);
 extern	char	*strchr(char*, char);
+extern	char	*strrchr(char*, char);
 extern	int	strcmp(char*, char*);
 extern	char	*strcpy(char*, char*);
 extern	char	*strncat(char*, char*, long);
