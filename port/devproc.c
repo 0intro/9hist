@@ -295,7 +295,9 @@ procwstat(Chan *c, uchar *db, int n)
 
 	p = proctab(SLOT(c->qid));
 	nonone(p);
+	d = nil;
 	if(waserror()){
+		free(d);
 		qunlock(&p->debug);
 		nexterror();
 	}
@@ -320,6 +322,7 @@ procwstat(Chan *c, uchar *db, int n)
 	}
 
 	poperror();
+	free(d);
 	qunlock(&p->debug);
 	return n;
 }
