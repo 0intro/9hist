@@ -14,7 +14,7 @@ static void punlock(Pool*);
 typedef struct Private	Private;
 struct Private {
 	Lock		lk;
-	char		msg[128];	/* a rock for messages to be printed at unlock */
+	char		msg[256];	/* a rock for messages to be printed at unlock */
 };
 
 static Private pmainpriv;
@@ -69,13 +69,8 @@ poolprint(Pool *p, char *fmt, ...)
 
 	pv = p->private;
 	va_start(v, fmt);
-	n = doprint(pv->msg, pv->msg+sizeof pv->msg, fmt, v)-pv->msg;
+	doprint(pv->msg+strlen(pv->msg), pv->msg+sizeof pv->msg, fmt, v);
 	va_end(v);
-	if(n >= sizeof pv->msg);
-		n = sizeof(pv->msg)-1;
-	if(n < 0)
-		n = 0;
-	pv->msg[n] = 0;
 }
 
 static void
@@ -84,18 +79,15 @@ ppanic(Pool *p, char *fmt, ...)
 	va_list v;
 	int n;
 	Private *pv;
+	char msg[sizeof pv->msg];
 
 	pv = p->private;
 	va_start(v, fmt);
-	n = doprint(pv->msg, pv->msg+sizeof pv->msg, fmt, v)-pv->msg;
+	doprint(pv->msg+strlen(pv->msg), pv->msg+sizeof pv->msg, fmt, v);
 	va_end(v);
-	if(n >= sizeof pv->msg);
-		n = sizeof(pv->msg)-1;
-	if(n < 0)
-		n = 0;
-	pv->msg[n] = 0;
+	memmove(msg, pv->msg, sizeof msg);
 	iunlock(&pv->lk);
-	panic("%s", pv->msg);
+	panic("%s", msg);
 }
 
 static void

@@ -819,6 +819,15 @@ conswrite(Chan *c, void *va, long n, vlong off)
 			print("conswrite: reboot\n");
 			exit(0);
 		}
+		if(strncmp(a, "malloc", 6) == 0){	/* rsc bug */
+			a = malloc(2);
+			strcpy(a, "hi");
+			free(a);
+			a = malloc(2);
+			strcpy(a, "helo");
+			free(a);
+			panic("not reached conswrite");
+		}
 		if(strncmp(a, "panic", 5) == 0)
 			panic("/dev/reboot");
 		break;
