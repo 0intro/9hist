@@ -27,6 +27,3 @@ extern Mouseinfo	mouse;
 extern Cursorinfo	cursor;
 
 extern void		mouseupdate(int);
-
-#define kbitblt 	gbitblt
-#define	ubitblt		gbitblt

@@ -652,7 +652,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 				cursoroff(1);
 				isoff = 1;
 			}
-			ubitblt(dst, pt, src, rect, fc);
+			gbitblt(dst, pt, src, rect, fc);
 			m -= 31;
 			p += 31;
 			break;
@@ -1164,10 +1164,10 @@ cursoron(int dolock)
 		cursor.r.min = mouse.xy;
 		cursor.r.max = add(mouse.xy, Pt(16, 16));
 		cursor.r = raddp(cursor.r, cursor.offset);
-		kbitblt(&cursorback, Pt(0, 0), &gscreen, cursor.r, S);
-		kbitblt(&gscreen, add(mouse.xy, cursor.offset),
+		gbitblt(&cursorback, Pt(0, 0), &gscreen, cursor.r, S);
+		gbitblt(&gscreen, add(mouse.xy, cursor.offset),
 			&clr, Rect(0, 0, 16, 16), flipping? flipD[D&~S] : D&~S);
-		kbitblt(&gscreen, add(mouse.xy, cursor.offset),
+		gbitblt(&gscreen, add(mouse.xy, cursor.offset),
 			&set, Rect(0, 0, 16, 16), flipping? flipD[S|D] : S|D);
 	}
 	if(dolock)
@@ -1180,7 +1180,7 @@ cursoroff(int dolock)
 	if(dolock)
 		lock(&cursor);
 	if(--cursor.visible == 0)
-		kbitblt(&gscreen, cursor.r.min, &cursorback, Rect(0, 0, 16, 16), S);
+		gbitblt(&gscreen, cursor.r.min, &cursorback, Rect(0, 0, 16, 16), S);
 	if(dolock)
 		unlock(&cursor);
 }

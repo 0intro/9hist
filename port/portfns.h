@@ -195,7 +195,7 @@ Proc*	runproc(void);
 void	savefpregs(FPsave*);
 void	sccclock(void);
 void	sccintr(void);
-void	sccsetup(void*);
+void	sccsetup(void*, ulong);
 void	sccspecial(int, IOQ*, IOQ*, int);
 void	sched(void);
 void	schedinit(void);

@@ -89,6 +89,7 @@ struct SCC
 	uchar	*ptr;		/* command/pointer register in Z8530 */
 	uchar	*data;		/* data register in Z8530 */
 	int	printing;	/* true if printing */
+	ulong	freq;		/* clock frequency */
 
 	/* console interface */
 	int	nostream;	/* can't use the stream interface */
@@ -101,7 +102,9 @@ struct SCC
 	Alarm	*a;		/* alarm for waking the kernel process */
  	int	kstarted;	/* kproc started */
 };
-SCC	scc[2];
+
+int	nscc;
+SCC	*scc[8];	/* up to 4 8530's */
 
 void
 onepointseven(void)
@@ -145,7 +148,10 @@ sccsetbaud(SCC *sp, int rate)
 {
 	int brconst;
 
-	brconst = (SCCFREQ+16*rate-1)/(2*16*rate) - 2;
+	if(rate == 0)
+		errors("bad baud rate");
+
+	brconst = (sp->freq+16*rate-1)/(2*16*rate) - 2;
 
 	sccwrreg(sp, 12, brconst & 0xff);
 	sccwrreg(sp, 13, (brconst>>8) & 0xff);
@@ -183,6 +189,8 @@ sccrts(SCC *sp, int n)
 void
 sccbreak(SCC *sp, int ms)
 {
+	if(ms == 0)
+		ms = 100;
 	sp->sticky[1] &=~TxIntEna;
 	sccwrreg(sp, 1, 0);
 	sccwrreg(sp, 5, TxBreak|TxEna);
@@ -198,51 +206,57 @@ sccbreak(SCC *sp, int ms)
  *  default is 9600 baud, 1 stop bit, 8 bit chars, no interrupts,
  *  transmit and receive enabled, interrupts disabled.
  */
+static void
+sccsetup0(SCC *sp)
+{
+	memset(sp->sticky, 0, sizeof(sp->sticky));
+
+	/*
+	 *  turn on baud rate generator and set rate to 9600 baud.
+	 *  use 1 stop bit.
+	 */
+	sp->sticky[14] = BRSource;
+	sccwrreg(sp, 14, 0);
+	sccsetbaud(sp, 9600);
+	sp->sticky[4] = Rx1stop | X16;
+	sccwrreg(sp, 4, 0);
+	sp->sticky[11] = TxClockBR | RxClockBR | TRxCOutBR | TRxCOI;
+	sccwrreg(sp, 11, 0);
+	sp->sticky[14] = BREna | BRSource;
+	sccwrreg(sp, 14, 0);
+
+	/*
+	 *  enable I/O, 8 bits/character
+	 */
+	sp->sticky[3] = RxEna | Rx8bits;
+	sccwrreg(sp, 3, 0);
+	sp->sticky[5] = TxEna | Tx8bits;
+	sccwrreg(sp, 5, 0);
+}
 void
-sccsetup(void *addr)
+sccsetup(void *addr, ulong freq)
 {
 	SCCdev *dev;
 	SCC *sp;
-	static int already;
 
-	if(already)
-		return;
-	already = 1;
 	dev = addr;
 
 	/*
-	 *  get port addresses
+	 *  allocate a structure, set port addresses, and setup the line
 	 */
-	scc[0].ptr = &dev->ptra;
-	scc[0].data = &dev->dataa;
-	scc[1].ptr = &dev->ptrb;
-	scc[1].data = &dev->datab;
-
-	for(sp = scc; sp < &scc[2]; sp++){
-		memset(sp->sticky, 0, sizeof(sp->sticky));
-
-		/*
-		 *  turn on baud rate generator and set rate to 9600 baud.
-		 *  use 1 stop bit.
-		 */
-		sp->sticky[14] = BRSource;
-		sccwrreg(sp, 14, 0);
-		sccsetbaud(sp, 9600);
-		sp->sticky[4] = Rx1stop | X16;
-		sccwrreg(sp, 4, 0);
-		sp->sticky[11] = TxClockBR | RxClockBR | TRxCOutBR | TRxCOI;
-		sccwrreg(sp, 11, 0);
-		sp->sticky[14] = BREna | BRSource;
-		sccwrreg(sp, 14, 0);
-
-		/*
-		 *  enable I/O, 8 bits/character
-		 */
-		sp->sticky[3] = RxEna | Rx8bits;
-		sccwrreg(sp, 3, 0);
-		sp->sticky[5] = TxEna | Tx8bits;
-		sccwrreg(sp, 5, 0);
-	}
+	sp = ialloc(sizeof(SCC), 0);
+	scc[nscc] = sp;
+	sp->ptr = &dev->ptra;
+	sp->data = &dev->dataa;
+	sp->freq = freq;
+	sccsetup0(sp);
+	sp = ialloc(sizeof(SCC), 0);
+	scc[nscc+1] = sp;
+	sp->ptr = &dev->ptrb;
+	sp->data = &dev->datab;
+	sp->freq = freq;
+	sccsetup0(sp);
+	nscc += 2;
 }
 
 /*
@@ -313,10 +327,16 @@ void
 sccintr(void)
 {
 	uchar x;
+	int i;
 
-	x = sccrdreg(&scc[0], 3);
-	sccintr0(&scc[1], x);
-	sccintr0(&scc[0], x>>3);
+	for(i = 0; i < nscc; i += 2){
+		x = sccrdreg(scc[i], 3);
+		if(x & (ExtPendB|RxPendB|TxPendB))
+			sccintr0(scc[i+1], x);
+		x = x >> 3;
+		if(x & (ExtPendB|RxPendB|TxPendB))
+			sccintr0(scc[i], x);
+	}
 }
 
 void
@@ -324,8 +344,10 @@ sccclock(void)
 {
 	SCC *sp;
 	IOQ *cq;
+	int i;
 
-	for(sp = scc; sp < &scc[2]; sp++){
+	for(i = 0; i < nscc; i++){
+		sp = scc[i];
 		cq = sp->iq;
 		if(sp->wq && cangetc(cq))
 			wakeup(&cq->r);
@@ -371,7 +393,7 @@ sccenable(SCC *sp)
 void
 sccspecial(int port, IOQ *oq, IOQ *iq, int baud)
 {
-	SCC *sp = &scc[port];
+	SCC *sp = scc[port];
 
 	sp->nostream = 1;
 	sp->oq = oq;
@@ -410,7 +432,7 @@ sccstopen(Queue *q, Stream *s)
 
 	kprint("sccstopen: q=0x%ux, inuse=%d, type=%d, dev=%d, id=%d\n",
 		q, s->inuse, s->type, s->dev, s->id);
-	sp = &scc[s->id];
+	sp = scc[s->id];
 	qlock(sp);
 	sp->wq = WR(q);
 	WR(q)->ptr = sp;
@@ -430,7 +452,6 @@ sccstclose(Queue *q)
 	SCC *sp = q->ptr;
 
 	qlock(sp);
-	kprint("sccstclose: q=0x%ux, id=%d\n", q, sp-scc);
 	sp->wq = 0;
 	sp->iq->putc = 0;
 	WR(q)->ptr = 0;
@@ -461,7 +482,10 @@ sccoput(Queue *q, Block *bp)
 		switch(*bp->rptr){
 		case 'B':
 		case 'b':
-			sccsetbaud(sp, n);
+			if(BLEN(bp)>4 && strncmp((char*)(bp->rptr+1), "reak", 4) == 0)
+				sccbreak(sp, 0);
+			else
+				sccsetbaud(sp, n);
 			break;
 		case 'D':
 		case 'd':
@@ -522,32 +546,34 @@ loop:
 	goto loop;
 }
 
-enum{
-	Qdir=		0,
-	Qeia0=		STREAMQID(0, Sdataqid),
-	Qeia0ctl=	STREAMQID(0, Sctlqid),
-	Qeia1=		STREAMQID(1, Sdataqid),
-	Qeia1ctl=	STREAMQID(1, Sctlqid),
-};
-
-Dirtab sccdir[]={
-	"eia0",		{Qeia0},	0,		0666,
-	"eia0ctl",	{Qeia0ctl},	0,		0666,
-	"eia1",		{Qeia1},	0,		0666,
-	"eia1ctl",	{Qeia1ctl},	0,		0666,
-};
-
-#define	NSCC	(sizeof sccdir/sizeof(Dirtab))
+Dirtab *sccdir;
 
 /*
- *  allocate the queues if no one else has
+ *  create 2 directory entries for each 'sccsetup' ports.
+ *  allocate the queues if no one else has.
  */
 void
 sccreset(void)
 {
 	SCC *sp;
+	int i;
+	Dirtab *dp;
 
-	for(sp = scc; sp < &scc[2]; sp++){
+	sccdir = ialloc(2 * nscc * sizeof(Dirtab), 0);
+	dp = sccdir;
+	for(i = 0; i < nscc; i++){
+		/* 2 directory entries per port */
+		sprint(dp->name, "eia%d", i);
+		dp->qid.path = STREAMQID(i, Sdataqid);
+		dp->perm = 0666;
+		dp++;
+		sprint(dp->name, "eia%dctl", i);
+		dp->qid.path = STREAMQID(i, Sctlqid);
+		dp->perm = 0666;
+		dp++;
+
+		/* set up queues if a stream port */
+		sp = scc[i];
 		if(sp->nostream)
 			continue;
 		sp->iq = ialloc(sizeof(IOQ), 0);
@@ -578,21 +604,21 @@ sccclone(Chan *c, Chan *nc)
 int
 sccwalk(Chan *c, char *name)
 {
-	return devwalk(c, name, sccdir, NSCC, devgen);
+	return devwalk(c, name, sccdir, 2*nscc, devgen);
 }
 
 void
 sccstat(Chan *c, char *dp)
 {
-	switch(c->qid.path){
-	case Qeia0:
-		streamstat(c, dp, "eia0");
-		break;
-	case Qeia1:
-		streamstat(c, dp, "eia1");
+	int i;
+
+	i = STREAMID(c->qid.path);
+	switch(STREAMTYPE(c->qid.path)){
+	case Sdataqid:
+		streamstat(c, dp, sccdir[2*i].name);
 		break;
 	default:
-		devstat(c, dp, sccdir, NSCC, devgen);
+		devstat(c, dp, sccdir, 2*nscc, devgen);
 		break;
 	}
 }
@@ -602,26 +628,13 @@ sccopen(Chan *c, int omode)
 {
 	SCC *sp;
 
-	switch(c->qid.path){
-	case Qeia0:
-	case Qeia0ctl:
-		sp = &scc[0];
-		break;
-	case Qeia1:
-	case Qeia1ctl:
-		sp = &scc[1];
-		break;
-	default:
-		sp = 0;
-		break;
-	}
-
-	if(sp && sp->nostream)
-		errors("in use");
-
-	if((c->qid.path & CHDIR) == 0)
+	if(c->qid.path != CHDIR){
+		sp = scc[STREAMID(c->qid.path)];
+		if(sp->nostream)
+			errors("in use");
 		streamopen(c, &sccinfo);
-	return devopen(c, omode, sccdir, NSCC, devgen);
+	}
+	return devopen(c, omode, sccdir, 2*nscc, devgen);
 }
 
 void
@@ -641,23 +654,20 @@ sccclose(Chan *c)
 long
 sccread(Chan *c, void *buf, long n, ulong offset)
 {
-	SCC *sp = &scc[0]; int s;
+	SCC *sp;
+	char b[8];
 
-	switch(c->qid.path&~CHDIR){
-	case Qdir:
-		return devdirread(c, buf, n, sccdir, NSCC, devgen);
-	case Qeia1ctl:
-		++sp;
-		/* fall through */
-	case Qeia0ctl:
-		if(offset)
-			return 0;
-		s = splhi();
-		*(uchar *)buf = *sp->ptr;
-		splx(s);
-		return 1;
+	if(c->qid.path == CHDIR)
+		return devdirread(c, buf, n, sccdir, 2*nscc, devgen);
+
+	switch(STREAMTYPE(c->qid.path)){
+	case Sdataqid:
+		return streamread(c, buf, n);
+	case Sctlqid:
+		sprint(b, "%d", STREAMID(c->qid.path));
+		return stringread(buf, n, b, offset);
 	}
-	return streamread(c, buf, n);
+	errors("bad qid");
 }
 
 long
