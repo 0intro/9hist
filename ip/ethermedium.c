@@ -431,7 +431,8 @@ recvarp(Ipifc *ifc)
 	case ARPREPLY:
 		if(iplocalonifc(ifc, ip) || ipproxyifc(er->f, ifc, ip)){
 			if(memcmp(e->sha, ifc->mac, sizeof(e->sha)) != 0){
-				print("arp: 0x%E also has ip addr %V\n", e->sha, e->spa);
+				print("arprep: 0x%E/0x%E also has ip addr %V\n",
+					e->s, e->sha, e->spa);
 				break;
 			}
 		}
@@ -447,7 +448,8 @@ recvarp(Ipifc *ifc)
 		v4tov6(ip, e->spa);
 		if(iplocalonifc(ifc, ip) || ipproxyifc(er->f, ifc, ip)){
 			if(memcmp(e->sha, ifc->mac, sizeof(e->sha)) != 0){
-				print("arp: 0x%E also has ip addr %V\n", e->sha, e->spa);
+				print("arpreq: 0x%E/0x%E also has ip addr %V\n",
+					e->s, e->sha, e->spa);
 				break;
 			}
 		} else {

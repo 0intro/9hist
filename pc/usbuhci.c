@@ -966,8 +966,8 @@ cleaniso(Endpt *e, int frnum)
 	id = (e->x<<7)|(e->dev->x&0x7F);
 	do {
 //shut up!
-		if (td->status & AnyError)
-			iprint("usbisoerror 0x%lux\n", td->status);
+//		if (td->status & AnyError)
+//			iprint("usbisoerror 0x%lux\n", td->status);
 		n = (td->status + 1) & 0x3ff;
 		e->nbytes += n;
 		if ((td->flags & IsoClean) == 0)
