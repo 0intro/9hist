@@ -494,6 +494,7 @@ if(up == nil) {print("what? up is zero pc %8lux\n", ureg->pc); for(;;);}
 void
 syscall(Ureg* ureg)
 {
+	char *e;
 	ulong	sp;
 	long	ret;
 	int	i, scallnr;
@@ -535,7 +536,9 @@ syscall(Ureg* ureg)
 		poperror();
 	}else{
 		/* failure: save the error buffer for errstr */
-		kstrcpy(up->syserror, up->error, sizeof up->syserror);
+		e = up->syserrstr;
+		up->syserrstr = up->errstr;
+		up->errstr = e;
 	}
 	if(up->nerrlab){
 		print("bad errstack [%d]: %d extra\n", scallnr, up->nerrlab);

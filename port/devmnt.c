@@ -776,7 +776,7 @@ mountio(Mnt *m, Mntrpc *r)
 	while(waserror()) {
 		if(m->rip == up)
 			mntgate(m);
-		if(strcmp(up->error, Eintr) != 0){
+		if(strcmp(up->errstr, Eintr) != 0){
 			mntflushfree(m, r);
 			nexterror();
 		}

@@ -611,8 +611,10 @@ struct Proc
 	Sargs	s;		/* address of this is known by db */
 	int	nerrlab;
 	Label	errlab[NERR];
-	char	syserror[ERRMAX];	/* last error from a system call */
-	char	error[ERRMAX];		/* reason we're unwinding the error stack */
+	char *syserrstr;			/* last error from a system call, errbuf0 or 1 */
+	char *errstr;			/* reason we're unwinding the error stack, errbuf1 or 0 */
+	char errbuf0[ERRMAX];
+	char errbuf1[ERRMAX];
 	char	genbuf[128];	/* buffer used e.g. for last name element from namec */
 	Chan	*slash;
 	Chan	*dot;

@@ -776,6 +776,9 @@ walk(Chan **cp, char **names, int nnames, int nomount)
 				runlock(&mh->lock);
 				nexterror();
 			}
+			/*
+			 * mh->mount == c, so start at mh->mount->next
+			 */
 			for(f = mh->mount->next; f; f = f->next)
 				if((wq = devtab[f->to->type]->walk(f->to, nil, names, ntry)) != nil)
 					break;
@@ -974,7 +977,7 @@ namec(char *aname, int amode, int omode, ulong perm)
 	Elemlist e;
 	Rune r;
 	Mhead *m;
-	char createerr[ERRMAX];
+	char *createerr, tmperrbuf[ERRMAX];
 	char *name;
 
 	name = aname;
@@ -1039,11 +1042,11 @@ namec(char *aname, int amode, int omode, ulong perm)
 	e.name = nil;
 	e.elems = nil;
 	if(waserror()){
-		if(strcmp(up->error, Enonexist) == 0){
+		if(strcmp(up->errstr, Enonexist) == 0){
 			if(strlen(aname) < ERRMAX/3 || (name=strrchr(aname, '/'))==nil || name==aname)
-				snprint(up->error, sizeof up->error, "\"%s\" does not exist", aname);
+				snprint(up->errstr, ERRMAX, "\"%s\" does not exist", aname);
 			else
-				snprint(up->error, sizeof up->error, "file \"...%s\" does not exist", name);
+				snprint(up->errstr, ERRMAX, "file \"...%s\" does not exist", name);
 		}
 		cclose(c);
 		free(e.name);
@@ -1246,9 +1249,14 @@ if(c->umh != nil){
 			if(omode & OEXCL)
 				nexterror();
 			/* save error */
-			kstrcpy(createerr, up->error, sizeof createerr);
-			if(walk(&c, e.elems+e.nelems-1, 1, nomount) < 0)
+			createerr = up->errstr;
+			up->errstr = tmperrbuf;
+			/* note: we depend that walk does not error */
+			if(walk(&c, e.elems+e.nelems-1, 1, nomount) < 0){
+				up->errstr = createerr;
 				error(createerr);	/* report true error */
+			}
+			up->errstr = createerr;
 			omode |= OTRUNC;
 			goto Open;
 		}

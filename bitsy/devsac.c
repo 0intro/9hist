@@ -231,7 +231,7 @@ sacwalk(Chan *c, Chan *nc, char **name, int nname)
 		if(sac == nil) {
 			if(j == 0)
 				error(Enonexist);
-			strncpy(up->error, Enonexist, ERRMAX);
+			kstrcpy(up->errstr, Enonexist, ERRMAX);
 			break;
 		}
 		pathtoqid(getl(sac->qid), &nc->qid);

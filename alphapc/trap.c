@@ -651,6 +651,7 @@ print("unknown noted arg 0x%lux\n", arg0);
 long
 syscall(Ureg *aur)
 {
+	char *e;
 	long ret;
 	ulong sp;
 	Ureg *ur;
@@ -704,7 +705,10 @@ print("bad sys call %d pc %lux\n", up->scallnr, (ulong)ur->pc);
 
 error:
 	/* failure: save the error buffer for errstr */
-	kstrcpy(up->syserror, up->error, sizeof up->syserror);
+	e = up->syserrstr;
+	up->syserrstr = up->errstr;
+	up->errstr = e;
+
 	up->nerrlab = 0;
 	up->psstate = 0;
 	up->insyscall = 0;

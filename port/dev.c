@@ -175,7 +175,7 @@ devwalk(Chan *c, Chan *nc, char **name, int nname, Dirtab *tab, int ntab, Devgen
 			Notfound:
 				if(j == 0)
 					error(Enonexist);
-				strncpy(up->error, Enonexist, ERRMAX);
+				kstrcpy(up->errstr, Enonexist, ERRMAX);
 				goto Done;
 			case 0:
 				continue;

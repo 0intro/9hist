@@ -727,7 +727,7 @@ sdbio(Chan* c, int write, char* a, long len, vlong off)
 	qlock(&unit->ctl);
 	while(waserror()){
 		/* notification of media change; go around again */
-		if(strcmp(up->error, Eio) == 0 && unit->sectors == 0 && nchange++ == 0){
+		if(strcmp(up->errstr, Eio) == 0 && unit->sectors == 0 && nchange++ == 0){
 			sdinitpart(unit);
 			continue;
 		}

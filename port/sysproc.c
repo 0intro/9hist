@@ -629,14 +629,14 @@ werrstr(char *fmt, ...)
 		return;
 
 	va_start(va, fmt);
-	doprint(up->error, up->error+ERRMAX, fmt, va);
+	doprint(up->syserrstr, up->syserrstr+ERRMAX, fmt, va);
 	va_end(va);
 }
 
 static long
 generrstr(char *buf, uint nbuf)
 {
-	char tmp[sizeof up->syserror];
+	char tmp[ERRMAX];
 
 	validaddr((ulong)buf, nbuf, 1);
 	if(nbuf > sizeof tmp)
@@ -644,9 +644,9 @@ generrstr(char *buf, uint nbuf)
 	memmove(tmp, buf, nbuf);
 	/* make sure it's NUL-terminated */
 	tmp[nbuf-1] = '\0';
-	memmove(buf, up->syserror, nbuf);
+	memmove(buf, up->syserrstr, nbuf);
 	buf[nbuf-1] = '\0';
-	memmove(up->syserror, tmp, nbuf);
+	memmove(up->syserrstr, tmp, nbuf);
 	return 0;
 }
 

@@ -43,7 +43,7 @@ faulterror(char *s, Chan *c, int freemem)
 	char buf[ERRMAX];
 
 	if(c && c->name){
-		snprint(buf, sizeof buf, "%s accessing %s: %s", s, c->name->s, up->error);
+		snprint(buf, sizeof buf, "%s accessing %s: %s", s, c->name->s, up->errstr);
 		s = buf;
 	}
 	if(up->nerrlab) {
@@ -219,7 +219,7 @@ retry:
 	if(loadrec == 0) {			/* This is demand load */
 		c = s->image->c;
 		while(waserror()) {
-			if(strcmp(up->error, Eintr) == 0)
+			if(strcmp(up->errstr, Eintr) == 0)
 				continue;
 			kunmap(k);
 			putpage(new);

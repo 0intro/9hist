@@ -338,8 +338,10 @@ newproc(void)
 	p->movetime = 0;
 	p->wired = 0;
 	p->ureg = 0;
-	p->error[0] = '\0';
-	p->syserror[0] = '\0';
+	p->errstr = p->errbuf0;
+	p->syserrstr = p->errbuf1;
+	p->errbuf0[0] = '\0';
+	p->errbuf1[0] = '\0';
 	kstrdup(&p->user, "*nouser");
 	kstrdup(&p->text, "*notext");
 	kstrdup(&p->args, "");
@@ -1109,7 +1111,7 @@ void
 error(char *err)
 {
 	spllo();
-	kstrcpy(up->error, err, sizeof up->error);
+	kstrcpy(up->errstr, err, ERRMAX);
 	nexterror();
 }
 
