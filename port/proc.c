@@ -21,13 +21,6 @@ struct
 	Waitq	*free;
 }waitqalloc;
 
-typedef struct
-{
-	Lock;
-	Proc	*head;
-	Proc	*tail;
-}Schedq;
-
 Schedq	runhiq, runloq;
 int	nrdy;
 
@@ -109,7 +102,7 @@ m->otlbfault = m->tlbfault;
 int
 anyready(void)
 {
-	return runloq.head != 0 || runhiq.head != 0;
+	return runloq.head != 0 || runhiq.head != 0 || m->runq.head != 0;
 }
 
 void
@@ -121,6 +114,9 @@ ready(Proc *p)
 	s = splhi();
 
 	rq = &runhiq;
+	if(p->mp)
+		rq = &p->mp->runq;
+	else
 	if(p->state == Running)
 		rq = &runloq;
 
@@ -146,12 +142,16 @@ runproc(void)
 
 loop:
 	spllo();
-	while(runhiq.head == 0 && runloq.head == 0)
+	while(runhiq.head == 0 && runloq.head == 0 && m->runq.head == 0)
 		;
 
 	splhi();
 
 	lock(&runhiq);
+
+	if(m->runq.head)
+		rq = &m->runq;
+	else
 	if(runhiq.head)
 		rq = &runhiq;
 	else
@@ -225,6 +225,7 @@ newproc(void)
 	p->kp = 0;
 	p->procctl = 0;
 	p->notepending = 0;
+	p->mp = 0;
 	memset(p->seg, 0, sizeof p->seg);
 	p->pid = incref(&pidalloc);
 	p->noteid = incref(&noteidalloc);

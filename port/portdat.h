@@ -31,6 +31,7 @@ typedef struct Ref	Ref;
 typedef struct Rendez	Rendez;
 typedef struct RWlock	RWlock;
 typedef struct Sargs	Sargs;
+typedef struct Schedq	Schedq;
 typedef struct Segment	Segment;
 typedef struct Session	Session;
 typedef struct Talarm	Talarm;
@@ -553,6 +554,8 @@ struct Proc
 	Note	lastnote;
 	int	(*notify)(void*, char*);
 
+	Mach	*mp;		/* machine this process is tied to */
+
 	void	*ureg;		/* User registers for notes */
 	void	*dbgreg;	/* User registers for devproc */
 	Notsave;
@@ -566,6 +569,14 @@ struct Proc
 	 */
 	PMMU;
 };
+
+struct Schedq
+{
+	Lock;
+	Proc	*head;
+	Proc	*tail;
+};
+
 
 enum
 {

@@ -160,6 +160,7 @@ sysrfork(ulong *arg)
 	p->time[TReal] = MACHP(0)->ticks;
 	memmove(p->text, up->text, NAMELEN);
 	memmove(p->user, up->user, NAMELEN);
+	p->mp = up->mp;
 	/*
 	 *  since the bss/data segments are now shareable,
 	 *  any mmu info about this process is now stale

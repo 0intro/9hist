@@ -8,6 +8,8 @@
 void
 lock(Lock *l)
 {
+	if(tas(&l->key) == 0)
+		return;
 	for(;;){
 		while(l->key)
 			;

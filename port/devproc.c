@@ -697,6 +697,7 @@ procstopwait(Proc *p, int ctl)
 void
 procctlreq(Proc *p, char *va, int n)
 {
+	int i;
 	char buf[NAMELEN];
 
 	if(n > NAMELEN)
@@ -743,6 +744,13 @@ procctlreq(Proc *p, char *va, int n)
 		if(p->state != Stopped)
 			error(Ebadctl);
 		ready(p);
+	}
+	else
+	if(strncmp(buf, "cpu ", 4) == 0) {
+		i = strtoul(buf+4, 0, 0);
+		if(i < 0 || i >= conf.nmach)
+			error(Ebadctl);
+		p->mp = MACHP(i);
 	}
 	else
 		error(Ebadctl);
