@@ -1247,14 +1247,11 @@ usbreset(void)
 	memset(&cfg, 0, sizeof(cfg));
 	cfg = pcimatch(0, 0x8086, 0x7112);	/* Intel chipset PIIX 4*/
 	if(cfg == nil) {
-//		cfg = pcimatch(0, 0x8086, 0x7112);	/* Intel chipset PIIX 3*/
-//		if(cfg == nil) {
-			cfg = pcimatch(0, 0x1106, 0x0586);	/* Via chipset */
-			if(cfg == nil) {
-				DPRINT("No USB device found\n");
-				return;
-			}
-//		}
+		cfg = pcimatch(0, 0x1106, 0x0586);	/* Via chipset */
+		if(cfg == nil) {
+			DPRINT("No USB device found\n");
+			return;
+		}
 	}
 	port = cfg->mem[4].bar & ~0x0F;
 	if (port == 0) {
