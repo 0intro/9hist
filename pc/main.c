@@ -523,6 +523,8 @@ confinit(void)
 	conf.ialloc = ((conf.npage-conf.upages)/2)*BY2PG;
 
 	conf.nproc = 100 + ((conf.npage*BY2PG)/MB)*5;
+	if(cpuserver)
+		conf.nproc *= 2;
 	conf.monitor = 1;
 	conf.nswap = conf.nproc*80;
 	conf.nimage = 50;

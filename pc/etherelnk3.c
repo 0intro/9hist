@@ -409,6 +409,7 @@ attach(Ether* ether)
 	x = interruptMask|interruptLatch;
 	if(ctlr->busmaster)
 		x &= ~(rxEarly|rxComplete);
+x &= ~rxEarly;
 	COMMAND(port, SetIndicationEnable, x);
 	COMMAND(port, SetInterruptEnable, x);
 
