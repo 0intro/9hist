@@ -27,11 +27,10 @@ void		(*kprofp)(ulong);
 typedef struct	DAC DAC;
 struct DAC
 {
-	uchar	pad[16];
-	ulong	dacaddr;	/* DAC address register */
-	ulong	daccolor;	/* DAC color palette */
-	ulong	daccntrl;	/* DAC control register */
-	ulong	dacovrl;	/* DAC overlay palette */
+uchar pad[3];	uchar	dacaddr;	/* DAC address register */
+uchar pad[3];	uchar	daccolor;	/* DAC color palette */
+uchar pad[3];	uchar	daccntrl;	/* DAC control register */
+uchar pad[3];	uchar	dacovrl;	/* DAC overlay palette */
 }*dac;
 
 GBitmap gscreen;
@@ -45,7 +44,7 @@ struct screens
 	ulong	dacaddr;
 }screens[] = {
 	{ "bwtwo", 1152, 900, 0, 0x400000 },
-	{ "cgsix", 1152, 900, 3, 0x400000 },
+	{ "cgsix", 1152, 900, 3, 0x200000 },
 	{ "cgthree", 1152, 900, 3, 0x200000 },
 	0
 };
@@ -85,7 +84,7 @@ screeninit(char *str)
 	out.pos.x = MINX;
 	out.pos.y = 0;
 	out.bwid = defont0.info[' '].width;
-	dac = (DAC*)kmappa(FRAMEBUF+s->dacaddr, PTENOCACHE|PTEIO);
+	dac = (DAC*)kmappa(FRAMEBUF+s->dacaddr, PTENOCACHE|PTEMAINMEM);
 	if(gscreen.ldepth == 3){
 		havecol = 0;	
 		if(havecol) {
@@ -114,13 +113,12 @@ dac->daccntrl = 0x40;
 dac->dacaddr = 7;
 dac->daccntrl = 0x00;
 
-			dac->dacaddr = 0;
-			for(i=0; i<252; i+=4) {
-				dac->daccolor = ~rep(i,8);
-				dac->daccolor = ~rep(i,8);
-				dac->daccolor = ~rep(i,8);
+			for(i=0; i<255; i++) {
+				dac->dacaddr = i;
+				dac->daccolor = i;
+				dac->daccolor = i;
+				dac->daccolor = i;
 			}
-
 /*
 			for(i = 0; i<256; i++)
 				setcolor(i, ~rep(i,8), ~rep(i,8), ~rep(i,8));
@@ -133,9 +131,14 @@ void
 mapdump(void)
 {
 	int i;
-	dac->dacaddr = 0;
-	for(i=0; i<100; i++)
-		print("%lux ", dac->daccolor);
+	for(i=0; i<100; i++) {
+		dac->dacaddr = i;
+		dac->daccolor = i;
+		dac->daccolor = i;
+		dac->daccolor = i;
+		dac->dacaddr = i;
+		print("%ux.%ux.%ux ", dac->daccolor, dac->daccolor, dac->daccolor);
+	}
 }
 
 void

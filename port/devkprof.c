@@ -36,26 +36,31 @@ void kproftimer(ulong);
 void
 kprofreset(void)
 {
-	ulong n;
-
-	kprof.minpc = KTZERO;
-	kprof.maxpc = (ulong)etext;
-	kprof.nbuf = (kprof.maxpc-kprof.minpc) >> LRES;
-	n = kprof.nbuf*SZ;
-	kprof.buf = xalloc(n);
-	kproftab[0].length = n;
-	if(SZ != sizeof kprof.buf[0])
-		panic("kprof size");
 }
 
 void
 kprofinit(void)
 {
+	if(SZ != sizeof kprof.buf[0])
+		panic("kprof size");
 }
 
 Chan *
 kprofattach(char *spec)
 {
+	ulong n;
+
+	/* allocate when first used */
+	kprof.minpc = KTZERO;
+	kprof.maxpc = (ulong)etext;
+	kprof.nbuf = (kprof.maxpc-kprof.minpc) >> LRES;
+	n = kprof.nbuf*SZ;
+	if(kprof.buf == 0) {
+		kprof.buf = xalloc(n);
+		if(kprof.buf == 0)
+			error(Enomem);
+	}
+	kproftab[0].length = n;
 	return devattach('T', spec);
 }
 Chan *

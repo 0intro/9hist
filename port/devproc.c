@@ -20,7 +20,7 @@ enum{
 	Qtext,
 };
 
-#define	STATSIZE	(2*NAMELEN+12+6*12)
+#define	STATSIZE	(2*NAMELEN+12+7*12)
 Dirtab procdir[]={
 	"ctl",		{Qctl},		0,			0000,
 	"mem",		{Qmem},		0,			0000,
@@ -233,6 +233,7 @@ procread(Chan *c, void *va, long n, ulong offset)
 	Proc *p;
 	Page *pg;
 	KMap *k;
+	Segment *s;
 	int i, j;
 	long l;
 	User *up;
@@ -345,6 +346,14 @@ if((p->state < Dead) || (p->state > Rendezvous))
 			l = TK2MS(l);
 			readnum(0, statbuf+j+NUMSIZE*i, NUMSIZE, l, NUMSIZE);
 		}
+		/* ignore stack, which is mostly non-existent */
+		l = 0;
+		for(i=1; i<NSEG; i++){
+			s = p->seg[i];
+			if(s)
+				l += s->top - s->base;
+		}
+		readnum(0, statbuf+j+NUMSIZE*6, NUMSIZE, l>>10, NUMSIZE);
 		memmove(a, statbuf+offset, n);
 		return n;
 

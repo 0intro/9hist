@@ -39,7 +39,7 @@ boot(int argc, char *argv[])
 	open("#c/cons", OREAD);
 	open("#c/cons", OWRITE);
 	open("#c/cons", OWRITE);
-/**/	print("argc=%d\n", argc);
+/*	print("argc=%d\n", argc);
 	for(fd = 0; fd < argc; fd++)
 		print("%s ", argv[fd]);
 	print("\n");/**/

@@ -484,12 +484,12 @@ consclose(Chan *c)
 long
 consread(Chan *c, void *buf, long n, ulong offset)
 {
-	int ch, i, j, k, id;
+	int ch, i, k, id;
 	ulong l;
 	char *cbuf = buf;
-	char *chal;
+	char *chal, *b, *bp;
 	Block *cb;
-	char tmp[6*NUMSIZE], xbuf[512];
+	char tmp[128];	/* must be >= 6*NUMSIZE */
 	Mach *mp;
 
 	if(n <= 0)
@@ -648,24 +648,40 @@ consread(Chan *c, void *buf, long n, ulong offset)
 		return readnum(offset, buf, n, HZ, NUMSIZE);
 
 	case Qsysstat:
-		j = 0;
-		xbuf[0] = 0;
+		b = smalloc(conf.nmach*(NUMSIZE*8+1) + 1);	/* +1 for NUL */
+		bp = b;
 		for(id = 0; id < 32; id++) {
 			if(active.machs & (1<<id)) {
 				mp = MACHP(id);
-				j += sprint(&xbuf[j], "%d %d %d %d %d %d %d %d\n",
-					id, mp->cs, mp->intr, mp->syscall, mp->pfault,
-					    mp->tlbfault, mp->tlbpurge, mp->load);
+				readnum(0, bp, NUMSIZE, id, NUMSIZE);
+				bp += NUMSIZE;
+				readnum(0, bp, NUMSIZE, mp->cs, NUMSIZE);
+				bp += NUMSIZE;
+				readnum(0, bp, NUMSIZE, mp->intr, NUMSIZE);
+				bp += NUMSIZE;
+				readnum(0, bp, NUMSIZE, mp->syscall, NUMSIZE);
+				bp += NUMSIZE;
+				readnum(0, bp, NUMSIZE, mp->pfault, NUMSIZE);
+				bp += NUMSIZE;
+				readnum(0, bp, NUMSIZE, mp->tlbfault, NUMSIZE);
+				bp += NUMSIZE;
+				readnum(0, bp, NUMSIZE, mp->tlbpurge, NUMSIZE);
+				bp += NUMSIZE;
+				readnum(0, bp, NUMSIZE, mp->load, NUMSIZE);
+				bp += NUMSIZE;
+				*bp++ = '\n';
 			}
 		}
-		return readstr(offset, buf, n, xbuf);
+		n = readstr(offset, buf, n, b);
+		free(b);
+		return n;
 
 	case Qswap:
-		sprint(xbuf, "%d/%d memory %d/%d swap\n",
+		sprint(tmp, "%d/%d memory %d/%d swap\n",
 				palloc.user-palloc.freecount, palloc.user, 
 				conf.nswap-swapalloc.free, conf.nswap);
 
-		return readstr(offset, buf, n, xbuf);
+		return readstr(offset, buf, n, tmp);
 
 	case Qsysname:
 		return readstr(offset, buf, n, sysname);

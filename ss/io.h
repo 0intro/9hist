@@ -1,6 +1,6 @@
 #define	FRAMEBUF	0xFE000000
-#define	FRAMEBUFID	0xFE000000
-#define	DISPLAYRAM	0xFE800000
+#define	FRAMEBUFID	(FRAMEBUF+0x000000)
+#define	DISPLAYRAM	(FRAMEBUF+0x800000)
 #define	EPROM		0xF6000000
 #define	CLOCK		0xF3000000
 #define	CLOCKFREQ	1000000		/* one microsecond increments */
@@ -36,7 +36,7 @@ struct SCCdev
 #define NVWRITE	(2048-8-32)	/* minus RTC, minus ID prom */
 
 /*
- * real-time clock (every 4th location)
+ * real-time clock
  */
 typedef struct RTCdev	RTCdev;
 struct RTCdev
