@@ -828,8 +828,9 @@ txstart(Uart *p)
  *  (re)start output
  */
 static void
-uartkick(Uart *p)
+uartkick(void *arg)
 {
+	Uart *p = arg;
 	ilock(&p->plock);
 	if(p->outb == nil)
 		txstart(p);
@@ -843,8 +844,9 @@ uartkick(Uart *p)
  *  restart input if its off
  */
 static void
-uartflow(Uart *p)
+uartflow(void *arg)
 {
+	Uart *p = arg;
 	if(p->modem)
 		uartrts(p, 1);
 }
@@ -1033,6 +1035,7 @@ uartintr(Uart *p, int events)
 			iunlock(&p->plock);
 		}
 	}
+	USED(dokick);
 #ifdef XXX
 	eieio();
 	/* TO DO: modem status isn't available on 82xFADS */
@@ -1290,7 +1293,7 @@ uartctl(Uart *p, char *cmd)
 
 	/* let output drain for a while */
 	for(i = 0; i < 16 && qlen(p->oq); i++)
-		tsleep(&p->r, qlen, p->oq, 125);
+		tsleep(&p->r, (int (*)(void*))qlen, p->oq, 125);
 
 	if(strncmp(cmd, "break", 5) == 0){
 		uartbreak(p, 0);

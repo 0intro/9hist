@@ -576,3 +576,17 @@ enum {
 	BusXPRESS,			/* Express System Bus */
 };
 
+/*
+ * PCMCIA support code.
+ */
+/*
+ * Map between ISA memory space and PCMCIA card memory space.
+ */
+struct PCMmap {
+	ulong	ca;			/* card address */
+	ulong	cea;			/* card end address */
+	ulong	isa;			/* ISA address */
+	int	len;			/* length of the ISA area */
+	int	attr;			/* attribute memory */
+	int	ref;
+};

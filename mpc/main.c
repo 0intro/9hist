@@ -309,7 +309,7 @@ getcfields(char* lp, char** fields, int n, char* sep)
 }
 
 static char BOOTARGS[] = 
-		"ether0=type=SCC port=1 ea=08003e27df94\r\n"
+		"ether0=type=SCC port=1 ea=000086353a6b\r\n"
 		"ether1=type=589E port=0x300\r\n";
 
 static void

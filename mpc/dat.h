@@ -7,6 +7,7 @@ typedef struct Label	Label;
 typedef struct Lock	Lock;
 typedef struct Mach	Mach;
 typedef struct Notsave	Notsave;
+typedef struct PCMmap	PCMmap;
 typedef struct PMMU	PMMU;
 typedef struct Map	Map;
 typedef struct PCArch	PCArch;

@@ -475,7 +475,7 @@ tinyfsinit(void)
  *  specifier is an open file descriptor
  */
 static Chan*
-tinyfsattach(void *spec)
+tinyfsattach(char *spec)
 {
 	Tfs *fs;
 	Chan *c;

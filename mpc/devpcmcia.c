@@ -11,7 +11,6 @@
  *
  */
 
-typedef struct PCMmap	PCMmap;
 typedef struct Slot	Slot;
 typedef struct Conftab	Conftab;
 
@@ -93,18 +92,6 @@ struct Conftab
 	ulong	otherwait;
 };
 
-/*
- * Map between ISA memory space and PCMCIA card memory space.
- */
-struct PCMmap {
-	ulong	ca;			/* card address */
-	ulong	cea;			/* card end address */
-	ulong	isa;			/* ISA address */
-	int	len;			/* length of the ISA area */
-	int	attr;			/* attribute memory */
-	int	ref;
-};
-
 /* a card slot */
 struct Slot
 {
@@ -160,8 +147,6 @@ enum
 static void pcmciaintr(Ureg *, void *);
 static void increfp(Slot *pp);
 static void decrefp(Slot *pp);
-static PCMmap*	pcmmap(Slot*, ulong, int, int);
-static void	pcmunmap(Slot*, PCMmap*);
 
 static Slot	*slot;
 static nslot;
@@ -243,7 +228,7 @@ pcmciareset(void)
 	// 64K io 
 	io->pcmr[1].base = ISAMEM+0x300;
 	io->pcmr[1].option = (0x6<<27) | (2<<16) | (4<<12) | (8<<7)
-		| Rport16 | Rio | Rvalid;
+		| Rport8 | Rio | Rvalid;
 
 //	intrenable(VectorPIC+PCMCIAlevel, pcmciaintr, 0, BUSUNKNOWN);
 	io->pscr = 0xFEF0FEF0;	/* reset status */
@@ -318,13 +303,13 @@ pcmread(int slotno, int attr, void *a, long n, vlong offset)
 	m = 0;
 	if(waserror()){
 		if(m)
-			pcmunmap(pp, m);
+			pcmunmap(pp->slotno, m);
 		nexterror();
 	}
 
 	ac = a;
 	for(len = n; len > 0; len -= i){
-		m = pcmmap(pp, offset, 0, attr);
+		m = pcmmap(pp->slotno, offset, 0, attr);
 		if(m == 0)
 			error("can't map PCMCIA card");
 		if(offset + len > m->cea)
@@ -333,7 +318,7 @@ pcmread(int slotno, int attr, void *a, long n, vlong offset)
 			i = len;
 		ka = KZERO|(m->isa + offset - m->ca);
 		memmoveb(ac, (void*)ka, i);
-		pcmunmap(pp, m);
+		pcmunmap(pp->slotno, m);
 		offset += i;
 		ac += i;
 	}
@@ -502,12 +487,14 @@ pcmciaintr(Ureg *, void *)
 /*
  *  get a map for pc card region, return corrected len
  */
-static PCMmap*
-pcmmap(Slot *pp, ulong offset, int len, int attr)
+PCMmap*
+pcmmap(int slotno, ulong offset, int len, int attr)
 {
 	PCMmap *m;
 	ulong e;
+	Slot *pp;
 
+	pp = slot + slotno;
 	if(attr == 0)
 		panic("pcmmap");
 
@@ -530,9 +517,10 @@ pcmmap(Slot *pp, ulong offset, int len, int attr)
 	return m;
 }
 
-static void
-pcmunmap(Slot *pp, PCMmap *m)
+void
+pcmunmap(int slotno, PCMmap *m)
 {
+	USED(slotno, m);
 }
 
 static int
@@ -612,19 +600,21 @@ pcmio(int slotno, ISAConf *isa)
 		return -1;
 
 	if(pp->cpresent & (1<<Rconfig)){
+print("devpcmcia: reset caddr = %x!\n", pp->caddr);
 		/*  Reset adapter */
-		m = pcmmap(pp, pp->caddr + Rconfig, 1, 1);
+		m = pcmmap(pp->slotno, pp->caddr + Rconfig, 1, 1);
 		p = KADDR(m->isa + pp->caddr + Rconfig - m->ca);
 
 		/* set configuration and interrupt type */
 		x = 1;
-		x |= ct->index<<1;
+//		x |= ct->index<<1;
 		if((ct->irqtype & 0x20) && ((ct->irqtype & 0x40)==0 || isa->irq>7)) {
 			x |= Clevel;
 		}
+print("devpcmcia: x = %ux!\n", x);
 		*p = x;
 		delay(5);
-		pcmunmap(pp, m);
+		pcmunmap(pp->slotno, m);
 	}
 	return 0;
 }
@@ -722,7 +712,7 @@ cisread(Slot *pp)
 	pp->configed = 0;
 	pp->nctab = 0;
 
-	m = pcmmap(pp, 0, 0, 1);
+	m = pcmmap(pp->slotno, 0, 0, 1);
 	if(m == 0)
 		return;
 	pp->cisbase = KADDR(m->isa);
@@ -743,7 +733,7 @@ cisread(Slot *pp)
 			break;
 		pp->cispos = this + (2+link);
 	}
-	pcmunmap(pp, m);
+	pcmunmap(pp->slotno, m);
 }
 
 static ulong

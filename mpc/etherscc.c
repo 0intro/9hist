@@ -241,12 +241,13 @@ transmit(Ether* ether)
 }
 
 static void
-interrupt(Ureg*, Ether *ether)
+interrupt(Ureg*, void *arg)
 {
 	int len, events, status;
 	Ctlr *ctlr;
 	BD *dre;
 	Block *b;
+	Ether *ether = arg;
 
 	ctlr = ether->ctlr;
 	if(!ctlr->active)

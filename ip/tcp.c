@@ -38,7 +38,7 @@ enum
 	MSPTICK		= 50,		/* Milliseconds per timer tick */
 	DEF_MSS		= 1460,		/* Default mean segment */
 	DEF_RTT		= 1000,		/* Default round trip */
-	DEF_KAT		= 10000,	/* Default time ms) between keep alives */
+	DEF_KAT		= 30000,	/* Default time ms) between keep alives */
 	TCP_LISTEN	= 0,		/* Listen connection */
 	TCP_CONNECT	= 1,		/* Outgoing connection */
 

@@ -70,6 +70,8 @@ void	outs(int, ushort);
 void	outss(int, void*, int);
 void	outl(int, ulong);
 void	outsl(int, void*, int);
+PCMmap*	pcmmap(int, ulong, int, int);
+void	pcmunmap(int, PCMmap*);
 int		pcmspecial(char*, ISAConf*);
 void	pcmspecialclose(int);
 #define	procrestore(p)
