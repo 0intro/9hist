@@ -540,6 +540,7 @@ struct Nohdr {
 #define NO_HANGUP	0x2	/* flag bit requesting hangup */
 #define NO_ACKME	0x4	/* acknowledge this message */
 #define NO_SERVICE	0x8	/* message includes a service name */
+#define NO_RESET	0x10	/* reset the connection */
 
 /*
  *  a buffer describing a nonet message

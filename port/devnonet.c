@@ -27,21 +27,22 @@ enum {
 };
 
 /* predeclared */
-static void	hangup(Noconv*);
-static Block*	mkhdr(Noconv*, int);
-static void	listen(Chan*, Noifc*);
-static void	announce(Chan*, char*);
-static void	connect(Chan*, char*);
-static void	rcvack(Noconv*, int);
-static void	sendctlmsg(Noconv*, int, int);
-static void	sendmsg(Noconv*, Nomsg*);
-static void	startconv(Noconv*, int, char*, int);
-static void	queueack(Noconv*, int);
-static void	nonetkproc(void*);
-static void	nonetiput(Queue*, Block*);
-static void	nonetoput(Queue*, Block*);
-static void	nonetstclose(Queue*);
-static void	nonetstopen(Queue*, Stream*);
+static void	nohangup(Noconv*);
+static void	noreset(Noconv*);
+static Block*	nohdr(Noconv*, int);
+static void	nolisten(Chan*, Noifc*);
+static void	noannounce(Chan*, char*);
+static void	noconnect(Chan*, char*);
+static void	norack(Noconv*, int);
+static void	nosendctl(Noconv*, int, int);
+static void	nosend(Noconv*, Nomsg*);
+static void	nostartconv(Noconv*, int, char*, int);
+static void	noqack(Noconv*, int);
+static void	nokproc(void*);
+static void	noiput(Queue*, Block*);
+static void	nooput(Queue*, Block*);
+static void	noclose(Queue*);
+static void	noopen(Queue*, Stream*);
 
 extern Qinfo	noetherinfo;
 extern Qinfo	nonetinfo;
@@ -85,8 +86,7 @@ enum {
 	Cconnected,
 	Cconnecting,
 	Chungup,
-	Cclosing,
-	Csuperceded,
+	Creset,
 };
 
 /*
@@ -249,7 +249,7 @@ nonetopen(Chan *c, int omode)
 	int line;
 
 	if(!kstarted){
-		kproc("nonetack", nonetkproc, 0);
+		kproc("nonetack", nokproc, 0);
 		kstarted = 1;
 	}
 
@@ -276,7 +276,7 @@ nonetopen(Chan *c, int omode)
 		ifc = &noifc[c->dev];
 		if(ifc->conv[line].state != Cannounced)
 			error(Enoannounce);
-		listen(c, ifc);
+		nolisten(c, ifc);
 		break;
 	case Nraddrqid:
 		/*
@@ -311,7 +311,7 @@ nonetclose(Chan *c)
 	Noifc *ifc;
 
 	/*
-	 *  real closing happens in nonetstclose
+	 *  real closing happens in noclose
 	 */
 	if(c->qid.path != CHDIR)
 		streamclose(c);
@@ -374,7 +374,7 @@ nonetwrite(Chan *c, void *a, long n)
 		return streamwrite(c, a, n, 0);
 
 	/*
-	 *  easier to do here than in nonetoput
+	 *  easier to do here than in nooput
 	 */
 	if(t == Sctlqid){
 		strncpy(buf, a, sizeof buf);
@@ -382,9 +382,9 @@ nonetwrite(Chan *c, void *a, long n)
 		if(strcmp(field[0], "connect")==0){
 			if(m < 2)
 				error(Ebadarg);
-			connect(c, field[1]);
+			noconnect(c, field[1]);
 		} else if(strcmp(field[0], "announce")==0){
-			announce(c, field[1]);
+			noannounce(c, field[1]);
 		} else if(strcmp(field[0], "accept")==0){
 			/* ignore */;
 		} else if(strcmp(field[0], "reject")==0){
@@ -414,19 +414,21 @@ nonetwstat(Chan *c, char *dp)
  */
 Qinfo nonetinfo =
 {
-	nonetiput,
-	nonetoput,
-	nonetstopen,
-	nonetstclose,
+	noiput,
+	nooput,
+	noopen,
+	noclose,
 	"nonet"
 };
 
 /*
  *  store the device end of the stream so that the multiplexor can
  *  send blocks upstream.
+ *
+ *	State Transition:	Cclosed -> Copen
  */
 static void
-nonetstopen(Queue *q, Stream *s)
+noopen(Queue *q, Stream *s)
 {
 	Noifc *ifc;
 	Noconv *cp;
@@ -443,6 +445,8 @@ nonetstopen(Queue *q, Stream *s)
 /*
  *  wait until a hangup is received.
  *  then send a hangup message (until one is received).
+ *
+ *	State Transitions:	* -> Cclosed
  */
 static int
 ishungup(void *a)
@@ -450,10 +454,16 @@ ishungup(void *a)
 	Noconv *cp;
 
 	cp = (Noconv *)a;
-	return cp->state == Chungup;
+	switch(cp->state){
+	case Chungup:
+	case Creset:
+	case Cclosed:
+		return 1;
+	}
+	return 0;
 }
 static void
-nonetstclose(Queue *q)
+noclose(Queue *q)
 {
 	Noconv *cp;
 	Nomsg *mp;
@@ -471,12 +481,23 @@ nonetstclose(Queue *q)
 	 *  send hangup messages to the other side
 	 *  until it hangs up or we get tired.
 	 */
-	if(cp->state>=Cconnected && cp->state!=Csuperceded){
-		sendctlmsg(cp, NO_HANGUP, 1);
+	switch(cp->state){
+	case Cconnected:
+		/*
+		 *  send close till we get one back
+		 */
+		nosendctl(cp, NO_HANGUP, 1);
 		for(i=0; i<10 && !ishungup(cp); i++){
-			sendctlmsg(cp, NO_HANGUP, 1);
+			nosendctl(cp, NO_HANGUP, 1);
 			tsleep(&cp->r, ishungup, cp, MSrexmit);
 		}
+		break;
+	case Chungup:
+		/*
+		 *  ack any close
+		 */
+		nosendctl(cp, NO_HANGUP, 1);
+		break;
 	}
 
 	qlock(cp);
@@ -488,9 +509,11 @@ nonetstclose(Queue *q)
 
 /*
  *  send all messages up stream.  this should only be control messages
+ *
+ *	State Transition:	(on M_HANGUP) * -> Chungup
  */
 static void
-nonetiput(Queue *q, Block *bp)
+noiput(Queue *q, Block *bp)
 {
 	Noconv *cp;
 
@@ -521,7 +544,7 @@ acked(void *a)
 	return mp->inuse;
 }
 static void
-nonetoput(Queue *q, Block *bp)
+nooput(Queue *q, Block *bp)
 {
 	Noconv *cp;
 	int next;
@@ -594,7 +617,7 @@ nonetoput(Queue *q, Block *bp)
 	/*
 	 *  send the message, the kproc will retry
 	 */
-	sendmsg(cp, mp);
+	nosend(cp, mp);
 	qunlock(&cp->mlock);
 	poperror();
 }
@@ -604,7 +627,7 @@ nonetoput(Queue *q, Block *bp)
  *  none already exists for this circuit.
  */
 void
-startconv(Noconv *cp, int circuit, char *raddr, int state)
+nostartconv(Noconv *cp, int circuit, char *raddr, int state)
 {
 	int i;
 	char name[32];
@@ -647,7 +670,8 @@ startconv(Noconv *cp, int circuit, char *raddr, int state)
 	cp->out[0].acked = 1;
 	cp->out[0].rem = 0;
 	cp->first = cp->next = 1;
-	cp->rexmit = cp->bad = cp->sent = cp->rcvd = cp->lastacked = 0;
+	cp->rexmit = cp->bad = cp->sent = cp->rcvd = 0;
+	cp->lastacked = Nnomsg|(Nnomsg-1);
 
 	/*
 	 *  used for demultiplexing
@@ -668,9 +692,11 @@ startconv(Noconv *cp, int circuit, char *raddr, int state)
 
 /*
  *  announce willingness to take calls
+ *
+ *	State Transition:	Copen -> Chungup
  */
 static void
-announce(Chan *c, char *addr)
+noannounce(Chan *c, char *addr)
 {
 	Noconv *cp;
 
@@ -684,9 +710,11 @@ announce(Chan *c, char *addr)
  *  connect to the destination whose name is pointed to by bp->rptr.
  *
  *  a service is separated from the destination system by a '!'
+ *
+ *	State Transition:	Copen -> Cconnecting
  */
 static void
-connect(Chan *c, char *addr)
+noconnect(Chan *c, char *addr)
 {
 	Noifc *ifc;
 	Noconv *cp;
@@ -706,7 +734,7 @@ connect(Chan *c, char *addr)
 			error(Ebadctl);
 	}
 
-	startconv(cp, 2*(cp - ifc->conv), addr, Cconnecting);
+	nostartconv(cp, 2*(cp - ifc->conv), addr, Cconnecting);
 
 	if(service){
 		/*
@@ -715,9 +743,7 @@ connect(Chan *c, char *addr)
 		cp->hdr->flag |= NO_SERVICE;
 		sprint(buf, "%s %s", service, u->p->pgrp->user);
 		c->qid.path = STREAMQID(STREAMID(c->qid.path), Sdataqid);
-		DPRINT("sending request\n");
 		streamwrite(c, buf, strlen(buf), 1);
-		DPRINT("request sent\n");
 		c->qid.path = STREAMQID(STREAMID(c->qid.path), Sctlqid);
 	}
 }
@@ -726,6 +752,8 @@ connect(Chan *c, char *addr)
  *  listen for a call.  There can be many listeners, but only one can sleep
  *  on the circular queue at a time.  ifc->listenl lets only one at a time into
  *  the sleep.
+ *
+ *	State Transition:	Cclosed -> Copen -> Cconnecting
  */
 static int
 iscall(void *a)
@@ -736,7 +764,7 @@ iscall(void *a)
 	return ifc->rptr != ifc->wptr;
 }
 static void
-listen(Chan *c, Noifc *ifc)
+nolisten(Chan *c, Noifc *ifc)
 {
 	Noconv *cp, *ep;
 	Nocall call;
@@ -795,7 +823,7 @@ listen(Chan *c, Noifc *ifc)
 		 */
 		f = ((Nohdr *)(call.msg->rptr))->flag;
 		DPRINT("call from %d %s\n", call.circuit, call.raddr);
-		startconv(cp, call.circuit, call.raddr, Cconnecting);
+		nostartconv(cp, call.circuit, call.raddr, Cconnecting);
 		DPRINT("rcving %d byte message\n", call.msg->wptr - call.msg->rptr);
 		nonetrcvmsg(cp, call.msg);
 		call.msg = 0;
@@ -828,18 +856,51 @@ listen(Chan *c, Noifc *ifc)
 /*
  *  send a hangup signal up the stream to get all line disciplines
  *  to cease and desist
+ *
+ *	State Transition:	{Cconnected, Cconnecting} -> Chungup
  */
 static void
-hangup(Noconv *cp)
+nohangup(Noconv *cp)
 {
 	Block *bp;
 	Queue *q;
 
-	cp->state = Chungup;
-	bp = allocb(0);
-	bp->type = M_HANGUP;
-	q = cp->rq;
-	PUTNEXT(q, bp);
+	switch(cp->state){
+	case Cconnected:
+	case Cconnecting:
+		cp->state = Chungup;
+		bp = allocb(0);
+		bp->type = M_HANGUP;
+		q = cp->rq;
+		PUTNEXT(q, bp);
+		break;
+	}
+	wakeup(&cp->r);
+}
+
+/*
+ *  send a hangup signal up the stream to get all line disciplines
+ *  to cease and desist.  The Creset state makes any subsequent close not
+ *  send hangup messages.
+ *
+ *	State Transition:	{Cconnected, Cconnecting} -> Creset
+ */
+static void
+noreset(Noconv *cp)
+{
+	Block *bp;
+	Queue *q;
+
+	switch(cp->state){
+	case Cconnected:
+	case Cconnecting:
+		cp->state = Creset;
+		bp = allocb(0);
+		bp->type = M_HANGUP;
+		q = cp->rq;
+		PUTNEXT(q, bp);
+		break;
+	}
 	wakeup(&cp->r);
 }
 
@@ -848,7 +909,7 @@ hangup(Noconv *cp)
  *  has any xmit buffers queued, free them.
  */
 static void
-rcvack(Noconv *cp, int mid)
+norack(Noconv *cp, int mid)
 {
 	Nomsg *mp;
 	Block *bp;
@@ -889,7 +950,7 @@ rcvack(Noconv *cp, int mid)
  *  acknowledgements queued.
  */
 static void
-queueack(Noconv *cp, int mid)
+noqack(Noconv *cp, int mid)
 {
 	int next;
 
@@ -904,7 +965,7 @@ queueack(Noconv *cp, int mid)
  *  make a packet header
  */
 Block *
-mkhdr(Noconv *cp, int rem)
+nohdr(Noconv *cp, int rem)
 {
 	Block *bp;
 	Nohdr *hp;
@@ -923,11 +984,11 @@ mkhdr(Noconv *cp, int rem)
  *  transmit a message.  this involves breaking a possibly multi-block message into
  *  a train of packets on the media.
  *
- *  called by nonetoput().  the qlock(mp) synchronizes these two
+ *  called by nooput().  the qlock(mp) synchronizes these two
  *  processes.
  */
 static void
-sendmsg(Noconv *cp, Nomsg *mp)
+nosend(Noconv *cp, Nomsg *mp)
 {
 	Noifc *ifc;
 	Queue *wq;
@@ -971,7 +1032,7 @@ sendmsg(Noconv *cp, Nomsg *mp)
 		 *  short message:
 		 *  copy the whole message into the header block
 		 */
-		last = pkt = mkhdr(cp, mp->len);
+		last = pkt = nohdr(cp, mp->len);
 		for(bp = mp->first; bp; bp = bp->next){
 			memcpy(pkt->wptr, bp->rptr, n = BLEN(bp));
 			pkt->wptr += n;
@@ -993,7 +1054,7 @@ sendmsg(Noconv *cp, Nomsg *mp)
 		SET(rptr);
 		if(bp)
 			rptr = bp->rptr;
-		last = pkt = mkhdr(cp, msgrem);
+		last = pkt = nohdr(cp, msgrem);
 		n = 0;
 		while(bp){
 			/*
@@ -1003,7 +1064,7 @@ sendmsg(Noconv *cp, Nomsg *mp)
 				nonetcksum(pkt, ifc->hsize);
 				last->flags |= S_DELIM;
 				(*wq->put)(wq, pkt);
-				last = pkt = mkhdr(cp, -msgrem);
+				last = pkt = nohdr(cp, -msgrem);
 				pktrem = msgrem > ifc->maxtu ? ifc->maxtu : msgrem;
 			}
 			n = bp->wptr - rptr;
@@ -1036,7 +1097,6 @@ sendmsg(Noconv *cp, Nomsg *mp)
 		mp->time = NOW + 10*MSrexmit;
 	else
 		mp->time = NOW + (cp->rexmit+1)*MSrexmit;
-	DPRINT("xmit %d %lud %lud\n", cp->rexmit, NOW, mp->time);
 	(*wq->put)(wq, pkt);
 	qunlock(&cp->xlock);
 	poperror();
@@ -1046,7 +1106,7 @@ sendmsg(Noconv *cp, Nomsg *mp)
  *  send a control message (hangup or acknowledgement).
  */
 static void
-sendctlmsg(Noconv *cp, int flag, int new)
+nosendctl(Noconv *cp, int flag, int new)
 {
 	Nomsg ctl;
 
@@ -1058,11 +1118,13 @@ sendctlmsg(Noconv *cp, int flag, int new)
 	else
 		ctl.mid = cp->lastacked;
 	cp->hdr->flag |= flag;
-	sendmsg(cp, &ctl);
+	nosend(cp, &ctl);
 }
 
 /*
  *  receive a message (called by the multiplexor; noetheriput, nofddiiput, ...)
+ *
+ *	State Transition:	(no NO_NEWCALL in msg) Cconnecting -> Cconnected
  */
 void
 nonetrcvmsg(Noconv *cp, Block *bp)
@@ -1089,14 +1151,10 @@ nonetrcvmsg(Noconv *cp, Block *bp)
 	/*
 	 *  if a new call request comes in on a connected channel, hang up the call
 	 */
-	if(h->mid==0 && (f & NO_NEWCALL)
-	&& (cp->state==Cconnected || cp->state==Csuperceded)){
+	if((f&NO_NEWCALL) && cp->state==Cconnected){
 		DPRINT("new call on connected channel\n"); 
 		freeb(bp);
-		if(cp->state != Csuperceded){
-			cp->state = Csuperceded;
-			hangup(cp);
-		}
+		noreset(cp);
 		return;
 	}
 
@@ -1106,13 +1164,15 @@ nonetrcvmsg(Noconv *cp, Block *bp)
 	if(h->mid != mp->mid){
 		DPRINT("old msg %d instead of %d r==%d\n", h->mid, mp->mid, r);
 		if(r == 0){
-			rcvack(cp, h->ack);
-			if(f & NO_HANGUP)
-				hangup(cp);
+			norack(cp, h->ack);
+			if(f & NO_RESET)
+				noreset(cp);
+			else if(f & NO_HANGUP)
+				nohangup(cp);
 		} else {
 			if(r>0){
-				rcvack(cp, h->ack);
-				queueack(cp, h->mid);
+				norack(cp, h->ack);
+				noqack(cp, h->mid);
 			}
 			cp->bad++;
 		}
@@ -1163,9 +1223,10 @@ nonetrcvmsg(Noconv *cp, Block *bp)
 	 *  if not, strip off the delimiter.
 	 */
 	if(mp->rem == 0){
-		rcvack(cp, h->ack);
+		cp->hdr->flag &= ~(NO_NEWCALL|NO_SERVICE);
+		norack(cp, h->ack);
 		if(f & NO_ACKME)
-			queueack(cp, h->mid);
+			noqack(cp, h->mid);
 		mp->last->flags |= S_DELIM;
 		PUTNEXT(q, mp->first);
 		mp->first = mp->last = 0;
@@ -1178,14 +1239,26 @@ nonetrcvmsg(Noconv *cp, Block *bp)
 		mp->mid ^= Nnomsg;
 
 		/*
-		 *  stop xmitting the NO_NEWCALL flag
+		 *  any NO_NEWCALL after this is another call
 		 */
-		if(cp->state==Cconnecting && !(f & NO_NEWCALL))
+		if(cp->state==Cconnecting && !(f&NO_NEWCALL))
 			cp->state = Cconnected;
+
+		/*
+		 *  hangup (after processing message)
+		 */
+		if(f & NO_RESET){
+			DPRINT("reset with message\n");
+			noreset(cp);
+		} else if(f & NO_HANGUP){
+			DPRINT("hangup with message\n");
+			nohangup(cp);
+		}
 	} else
 		mp->last->flags &= ~S_DELIM;
 
 }
+
 
 /*
  *  noifc
@@ -1291,7 +1364,7 @@ nonetcksum(Block *bp, int offset)
  *  the retransmission interval.
  */
 static void
-nonetkproc(void *arg)
+nokproc(void *arg)
 {
 	Noifc *ifc;
 	Noconv *cp, *ep;
@@ -1332,10 +1405,10 @@ loop:
 			if(cp->first!=cp->next && NOW>=cp->out[cp->first].time){
 				if(cp->rexmit++ > 60){
 					print("hanging up\n");
-					hangup(cp);
+					nohangup(cp);
 				} else {
 					mp = &(cp->out[cp->first]);
-					sendmsg(cp, mp);
+					nosend(cp, mp);
 				}
 			}
 
@@ -1344,7 +1417,7 @@ loop:
 			 */
 			if(cp->afirst != cp->anext){
 				DPRINT("sending ack %d\n", cp->ack[cp->afirst]);
-				sendctlmsg(cp, 0, 0);
+				nosendctl(cp, 0, 0);
 			}
 			qunlock(cp);
 		}

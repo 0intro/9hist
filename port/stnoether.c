@@ -112,6 +112,47 @@ noetheroput(Queue *q, Block *bp)
 }
 
 /*
+ *  respond to a misaddressed message with a close
+ */
+void
+noetherbad(Noifc *ifc, Block *bp)
+{
+	Etherhdr *eh, *neh;
+	int circuit;
+	Block *nbp;
+
+	/*
+	 *  crack the packet header
+	 */
+	eh = (Etherhdr *)bp->rptr;
+	print("bad c %d m %d f %d\n", eh->circuit[0], eh->mid, eh->flag);
+	if(eh->flag & NO_RESET)
+		goto out;
+
+	/*
+	 *  craft an error reply
+	 */
+	print("sending reset\n");
+	nbp = allocb(60);
+	nbp->flags |= S_DELIM;
+	nbp->wptr = nbp->rptr + 60;
+	memset(bp->rptr, 0, 60);
+	neh = (Etherhdr *)nbp->rptr;
+	memcpy(neh, eh, sizeof(Etherhdr));
+	neh->circuit[0] ^= 1;
+	neh->remain[0] = neh->remain[1] = 0;
+	neh->flag = NO_HANGUP | NO_RESET;
+	neh->ack = eh->mid;
+	neh->mid = eh->ack;
+	memcpy(neh->s, eh->d, sizeof(neh->s));
+	memcpy(neh->d, eh->s, sizeof(neh->d));
+	nonetcksum(nbp, 14);
+	PUTNEXT(ifc->wq, nbp);
+out:
+	freeb(bp);
+}
+
+/*
  *  Input a packet and use the ether address to select the correct
  *  nonet device to pass it to.
  *
@@ -155,7 +196,6 @@ noetheriput(Queue *q, Block *bp)
 			ph = (Etherhdr *)(cp->media->rptr);
 			if(circuit == cp->rcvcircuit
 			&& memcmp(ph->d, h->s, sizeof(h->s)) == 0){
-				cp->hdr->flag &= ~NO_NEWCALL;
 				bp->rptr += ifc->hsize;
 				nonetrcvmsg(cp, bp);
 				qunlock(cp);
@@ -168,9 +208,8 @@ noetheriput(Queue *q, Block *bp)
 	/*
 	 *  if not a new call, then its misaddressed
 	 */
-	if((h->flag & NO_NEWCALL) == 0) {
-		DPRINT("misaddressed nonet packet %d %.2ux %.2ux %.2ux %.2ux %.2ux %.2ux\n", circuit, h->s[0], h->s[1], h->s[2], h->s[3], h->s[4], h->s[5]);
-		freeb(bp);
+	if((h->flag & NO_NEWCALL) == 0){
+		noetherbad(ifc, bp);
 		return;
 	}
 
