@@ -28,6 +28,11 @@
 #include "etherif.h"
 #include "wavelan.h"
 
+enum
+{
+	MSperTick=	50,	/* ms between ticks of kproc */
+};
+
 /*
  * When we're using a PCI device and memory-mapped I/O, 
  * the registers are spaced out as though each takes 32 bits,
@@ -528,6 +533,7 @@ w_txdone(Ctlr* ctlr, int sts)
 		ctlr->ntx++;
 }
 
+/* save the stats info in the ctlr struct */
 static void
 w_stats(Ctlr* ctlr, int len)
 {
@@ -543,18 +549,45 @@ w_stats(Ctlr* ctlr, int len)
 	}
 }
 
+/* send the base station scan info to any readers */
 static void
-w_scan(Ctlr* ctlr, int len)
+w_scaninfo(Ether* ether, Ctlr *ctlr, int len)
 {
-	int i;
+	int i, j;
+	Netfile **ep, *f, **fp;
+	Block *bp;
+	WScan *wsp;
 
-	for (i = 0; i < len && i < nelem(ctlr->wscan); i++)
-		ctlr->wscan[i] = csr_ins(ctlr, WR_Data1);
-	ctlr->nwscan = i;
+	for (i = 0; i < len ; i++)
+		ctlr->scanbuf[i] = csr_ins(ctlr, WR_Data1);
+
+	len *= 2;
+	i = ether->scan;
+	ep = &ether->f[Ntypes];
+	for(fp = ether->f; fp < ep && i > 0; fp++){
+		f = *fp;
+		if(f == nil || f->scan == 0)
+			continue;
+
+		bp = iallocb(2048);
+		if(bp == nil)
+			break;
+		for(j = 0; j < len/(2*25); j++){
+			wsp = (WScan*)(&ctlr->scanbuf[j*25]);
+			if(wsp->ssid_len > 32)
+				wsp->ssid_len = 32;
+			bp->wp += snprint((char*)bp->wp, 2048,
+				"ssid=%.*s;bssid=%E;signal=%d;noise=%d;chan=%d%s\n",
+				wsp->ssid_len, wsp->ssid, wsp->bssid, wsp->signal,
+				wsp->noise, wsp->chan, (wsp->capinfo&(1<<4))?";wep":"");
+		}
+		qpass(f->in, bp);
+		i--;
+	}
 }
 
 static int
-w_info(Ctlr* ctlr)
+w_info(Ether *ether, Ctlr* ctlr)
 {
 	int sp;
 	Wltv ltv;
@@ -568,12 +601,20 @@ w_info(Ctlr* ctlr)
 		w_stats(ctlr, ltv.len);
 		return 0;
 	case WTyp_Scan:
-		print("calling w_scan %d\n", ltv.len);
-		w_scan(ctlr, ltv.len);
+		w_scaninfo(ether, ctlr, ltv.len);
 		return 0;
 	}
-	print("got type %d\n", ltv.type);
 	return -1;
+}
+
+/* set scanning interval */
+static void
+w_scanbs(void *a, uint secs)
+{
+	Ether *ether = a;
+	Ctlr* ctlr = (Ctlr*) ether->ctlr;
+
+	ctlr->scanticks = secs*(1000/MSperTick);
 }
 
 static void
@@ -593,7 +634,6 @@ w_intr(Ether *ether)
 
 	rc = csr_ins(ctlr, WR_EvSts);
 	csr_ack(ctlr, ~WEvs);	// Not interested in them
-print("intr %ux\n", rc);
 	if(rc & WRXEv){
 		w_rxdone(ether);
 		csr_ack(ctlr, WRXEv);
@@ -613,7 +653,7 @@ print("intr %ux\n", rc);
 	}
 	if(rc & WInfoEv){
 		ctlr->ninfo++;
-		w_info(ctlr);
+		w_info(ether, ctlr);
 		csr_ack(ctlr, WInfoEv);
 	}
 	if(rc & WTxErrEv){
@@ -639,7 +679,7 @@ w_timer(void* arg)
 
 	ctlr->timerproc = up;
 	for(;;){
-		tsleep(&ctlr->timer, return0, 0, 50);
+		tsleep(&ctlr->timer, return0, 0, MSperTick);
 		ctlr = (Ctlr*)ether->ctlr;
 		if(ctlr == 0)
 			break;
@@ -664,10 +704,10 @@ w_timer(void* arg)
 		// the card frames in the wrong way; due to the
 		// lack of documentation I cannot know.
 
-//		if(csr_ins(ctlr, WR_EvSts)&WEvs){
-//			ctlr->tickintr++;
-//			w_intr(ether);
-//		}
+		if(csr_ins(ctlr, WR_EvSts)&WEvs){
+			ctlr->tickintr++;
+			w_intr(ether);
+		}
 
 		if((ctlr->ticks % 10) == 0) {
 			if(ctlr->txtmout && --ctlr->txtmout == 0){
@@ -681,6 +721,10 @@ w_timer(void* arg)
 			if((ctlr->ticks % 120) == 0)
 			if(ctlr->txbusy == 0)
 				w_cmd(ctlr, WCmdEnquire, WTyp_Stats);
+			if(ctlr->scanticks > 0)
+			if((ctlr->ticks % ctlr->scanticks) == 0)
+			if(ctlr->txbusy == 0)
+				w_cmd(ctlr, WCmdEnquire, WTyp_Scan);
 		}
 		iunlock(ctlr);
 	}
@@ -796,7 +840,7 @@ w_ifstat(Ether* ether, void* a, long n, ulong offset)
 	if(n == 0 || offset != 0)
 		return 0;
 
-	p = malloc(2*READSTR);
+	p = malloc(READSTR);
 	l = 0;
 
 	PRINTSTAT("Signal: %d\n", ctlr->signal-149);
@@ -874,11 +918,6 @@ w_ifstat(Ether* ether, void* a, long n, ulong offset)
 			txid = ltv_ins(ctlr, WTyp_TxKey);
 			PRINTSTAT("Transmit key id: %d\n", txid);
 		}
-	}
-	if(ctlr->nwscan){
-		for(i = 0; i < ctlr->nwscan; i++)
-			PRINTSTAT("ws: %4.4ux\n", ctlr->wscan[i]);
-		ctlr->nwscan = 0;
 	}
 	iunlock(ctlr);
 
@@ -1110,7 +1149,7 @@ wavelanreset(Ether* ether, Ctlr *ctlr)
 	ctlr->keys.len = sizeof(WKey)*WNKeys/2 + 1;
 	ctlr->keys.type = WTyp_Keys;
 	if(ctlr->hascrypt = ltv_ins(ctlr, WTyp_HasCrypt))
-		ctlr->crypt = 0;
+		ctlr->crypt = 1;
 	*ctlr->netname = *ctlr->wantname = 0;
 	strcpy(ctlr->nodename, "Plan 9 STA");
 
@@ -1155,6 +1194,7 @@ wavelanreset(Ether* ether, Ctlr *ctlr)
 	ether->power = w_power;
 	ether->promiscuous = w_promiscuous;
 	ether->multicast = w_multicast;
+	ether->scanbs = w_scanbs;
 	ether->arg = ether;
 
 	DEBUG("#l%d: irq %ld port %lx type %s",

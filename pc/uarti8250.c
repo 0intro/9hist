@@ -10,32 +10,32 @@
  * 8250 UART and compatibles.
  */
 enum {
-	Uart0		= 0x3F8,	/* COM1 */
+	Uart0	= 0x3F8,		/* COM1 */
 	Uart0IRQ	= 4,
-	Uart1		= 0x2F8,	/* COM2 */
+	Uart1	= 0x2F8,		/* COM2 */
 	Uart1IRQ	= 3,
 
 	UartFREQ	= 1843200,
 };
 
 enum {					/* I/O ports */
-	Rbr		= 0,		/* Receiver Buffer (RO) */
-	Thr		= 0,		/* Transmitter Holding (WO) */
-	Ier		= 1,		/* Interrupt Enable */
-	Iir		= 2,		/* Interrupt Identification (RO) */
-	Fcr		= 2,		/* FIFO Control (WO) */
-	Lcr		= 3,		/* Line Control */
-	Mcr		= 4,		/* Modem Control */
-	Lsr		= 5,		/* Line Status */
-	Msr		= 6,		/* Modem Status */
-	Scr		= 7,		/* Scratch Pad */
-	Dll		= 0,		/* Divisor Latch LSB */
-	Dlm		= 1,		/* Divisor Latch MSB */
+	Rbr		= 0,			/* Receiver Buffer (RO) */
+	Thr		= 0,			/* Transmitter Holding (WO) */
+	Ier		= 1,			/* Interrupt Enable */
+	Iir		= 2,			/* Interrupt Identification (RO) */
+	Fcr		= 2,			/* FIFO Control (WO) */
+	Lcr		= 3,			/* Line Control */
+	Mcr		= 4,			/* Modem Control */
+	Lsr		= 5,			/* Line Status */
+	Msr		= 6,			/* Modem Status */
+	Scr		= 7,			/* Scratch Pad */
+	Dll		= 0,			/* Divisor Latch LSB */
+	Dlm		= 1,			/* Divisor Latch MSB */
 };
 
 enum {					/* Ier */
 	Erda		= 0x01,		/* Enable Received Data Available */
-	Ethre		= 0x02,		/* Enable Thr Empty */
+	Ethre	= 0x02,		/* Enable Thr Empty */
 	Erls		= 0x04,		/* Enable Receiver Line Status */
 	Ems		= 0x08,		/* Enable Modem Status */
 };
@@ -47,18 +47,18 @@ enum {					/* Iir */
 	Irda		= 0x04,		/* Received Data Available */
 	Irls		= 0x06,		/* Receiver Line Status */
 	Ictoi		= 0x0C,		/* Character Time-out Indication */
-	IirMASK		= 0x3F,
+	IirMASK	= 0x3F,
 	Ife		= 0xC0,		/* FIFOs enabled */
 };
 
 enum {					/* Fcr */
-	FIFOena		= 0x01,		/* FIFO enable */
+	FIFOena	= 0x01,		/* FIFO enable */
 	FIFOrclr	= 0x02,		/* clear Rx FIFO */
 	FIFOtclr	= 0x04,		/* clear Tx FIFO */
-	FIFO1		= 0x00,		/* Rx FIFO trigger level 1 byte */
-	FIFO4		= 0x40,		/*	4 bytes */
-	FIFO8		= 0x80,		/*	8 bytes */
-	FIFO14		= 0xC0,		/*	14 bytes */
+	FIFO1	= 0x00,		/* Rx FIFO trigger level 1 byte */
+	FIFO4	= 0x40,		/*	4 bytes */
+	FIFO8	= 0x80,		/*	8 bytes */
+	FIFO14	= 0xC0,		/*	14 bytes */
 };
 
 enum {					/* Lcr */
@@ -66,7 +66,7 @@ enum {					/* Lcr */
 	Wls6		= 0x01,		/*	6 bits/byte */
 	Wls7		= 0x02,		/*	7 bits/byte */
 	Wls8		= 0x03,		/*	8 bits/byte */
-	WlsMASK		= 0x03,
+	WlsMASK	= 0x03,
 	Stb		= 0x04,		/* 2 stop bits */
 	Pen		= 0x08,		/* Parity Enable */
 	Eps		= 0x10,		/* Even Parity Select */
@@ -90,15 +90,15 @@ enum {					/* Lsr */
 	Fe		= 0x08,		/* Framing Error */
 	Bi		= 0x10,		/* Break Interrupt */
 	Thre		= 0x20,		/* Thr Empty */
-	Temt		= 0x40,		/* Tramsmitter Empty */
-	FIFOerr		= 0x80,		/* error in receiver FIFO */
+	Temt	= 0x40,		/* Tramsmitter Empty */
+	FIFOerr	= 0x80,		/* error in receiver FIFO */
 };
 
 enum {					/* Msr */
 	Dcts		= 0x01,		/* Delta Cts */
 	Ddsr		= 0x02,		/* Delta Dsr */
 	Teri		= 0x04,		/* Trailing Edge of Ri */
-	Ddcd		= 0x08,		/* Delta Dcd */
+	Ddcd	= 0x08,		/* Delta Dcd */
 	Cts		= 0x10,		/* Clear To Send */
 	Dsr		= 0x20,		/* Data Set Ready */
 	Ri		= 0x40,		/* Ring Indicator */
@@ -445,7 +445,6 @@ i8250interrupt(Ureg*, void* arg)
 	Ctlr *ctlr;
 	Uart *uart;
 	int iir, lsr, old, r;
-int nin;
 
 	uart = arg;
 
@@ -487,7 +486,6 @@ int nin;
 			 * overrun is an indication that something has
 			 * already been tossed.
 			 */
-nin = 0;
 			while((lsr = csr8r(ctlr, Lsr)) & Dr){
 				if(lsr & Oe)
 					uart->oerr++;
@@ -498,9 +496,7 @@ nin = 0;
 				r = csr8r(ctlr, Rbr);
 				if(!(lsr & (Bi|Fe|Pe)))
 					uartrecv(uart, r);
-				nin++;
 			}
-if(nin == 0) print("%ux but no data\n", iir);
 			break;
 
 		default:

@@ -8,6 +8,7 @@ enum
 {
 	WTyp_Stats	= 0xf100,
 	WTyp_Scan	= 0xf101,
+	WTyp_Link	= 0xf200,
 	WTyp_Ptype	= 0xfc00,
 	WTyp_Mac	= 0xfc01,
 	WTyp_WantName	= 0xfc02,
@@ -173,7 +174,7 @@ struct WScan
 	ushort	interval;		/* beacon transmit interval */
 	ushort	capinfo;		/* capability bits (0-ess, 1-ibss, 4-privacy [wep]) */
 	ushort	ssid_len;		/* ssid length */
-	uchar	ssid[WNameLen];		/* ssid (ap name) */
+	char	ssid[WNameLen];		/* ssid (ap name) */
 };
 
 struct WFrame
@@ -280,6 +281,7 @@ struct Ctlr
 	int	pmwait;
 
 	Proc	*timerproc;
+	int	scanticks;
 
 	char	netname[WNameLen];
 	char	wantname[WNameLen];
@@ -304,8 +306,7 @@ struct Ctlr
 	Stats;
 	WStats;
 
-	int	nwscan;
-	ushort	wscan[128];
+	ushort	scanbuf[25*4];		// buffer for base station scan info
 };
 
 extern char* wavenames[];
