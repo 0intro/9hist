@@ -93,14 +93,14 @@ int
 	uchar cksum;
 	uchar *p;
 	static int samseq;
-	static int touching;		/* guard against something we call going spllo() */
-	static int buttoning;		/* guard against something we call going spllo() */
+	static int touching;	/* guard against something we call going spllo() */
+	static int buttoning;	/* guard against something we call going spllo() */
 
 	if(ctlr.n > sizeof(ctlr.buf))
 		panic("µcputc");
 
 	ctlr.buf[ctlr.n++] = (uchar)ch;
-		
+
 	for(;;){
 		/* message hasn't started yet? */
 		if(ctlr.buf[0] != SOF){

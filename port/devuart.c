@@ -183,11 +183,15 @@ uartreset(void)
 
 		uart[i] = p;
 		p->dev = i;
-		if(p->console && uartenable(p) != nil){
-			kbdq = p->iq;
-			serialoq = p->oq;
-			p->putc = kbdcr2nl;
-			p->opens++;
+		if(p->console || p->special){
+			if(uartenable(p) != nil){
+				if(p->console){
+					kbdq = p->iq;
+					serialoq = p->oq;
+					p->putc = kbdcr2nl;
+				}
+				p->opens++;
+			}
 		}
 		p = p->next;
 	}

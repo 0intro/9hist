@@ -73,6 +73,7 @@ static Uart sa1110uart[2] = {
 	.parity	= 'n',
 	.baud	= 115200,
 	.phys	= &sa1110physuart,
+	.putc		= µcputc,
 	.special	= 0,
 	.next		= nil, },
 };
@@ -484,6 +485,7 @@ sa1110_uartsetup(int console)
 	p->regs = mapspecial(UART1REGS, 64);
 	uartctl(p, "b115200 l8 pn s1");
 	µcuart = p;
+	p->special = 1;
 	(*p->phys->enable)(p, 0);
 	intrenable(IRQ, IRQuart1b, sa1110_uartintr, p, p->name);
 }
