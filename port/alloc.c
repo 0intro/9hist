@@ -63,6 +63,7 @@ struct Bucket
 	int	size;
 	int	magic;
 	Bucket	*next;
+	ulong	pc;
 	char	data[1];
 };
 
@@ -260,6 +261,8 @@ malloc(ulong size)
 	ulong next;
 	int pow, n;
 	Bucket *bp, *nbp;
+ulong pc;
+pc = getcallerpc(0);
 
 	for(pow = 3; pow <= Maxpow; pow++)
 		if(size <= (1<<pow))
@@ -278,7 +281,7 @@ good:
 			panic("malloc");
 
 		bp->magic = Magic2n;
-
+bp->pc = pc;
 		memset(bp->data, 0,  size);
 		return  bp->data;
 	}
@@ -318,6 +321,7 @@ good:
 
 	bp->size = pow;
 	bp->magic = Magic2n;
+bp->pc = pc;
 	return bp->data;
 }
 

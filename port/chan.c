@@ -550,7 +550,7 @@ namec(char *name, int amode, int omode, ulong perm)
 		if(r == 'M') {
 			if(amode != Aopen || omode != ORDWR)
 				error(Eperm);
-			name = skipslash(name);
+			skipslash(name);
 			return mchan(elem+n);
 		}
 		t = devno(r, 1);

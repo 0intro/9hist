@@ -276,6 +276,8 @@ struct Mnt
 	ushort	flushtag;	/* Tag to send flush on */
 	ushort	flushbase;	/* Base tag of flush window for this buffer */
 	Pthash	tree;		/* Path names from this mount point */
+	char	*partial;	/* Outstanding read data */
+	int	npart;		/* Sizeof remains */
 };
 
 enum
