@@ -27,7 +27,9 @@ enum
 	Pstatus=	7,	/* status port (read) */
 	 Sbusy=		 (1<<7),
 	 Sready=	 (1<<6),
+	 Sdwf=		 (1<<5),
 	 Sdrq=		 (1<<3),
+	 Scorr=		 (1<<2),
 	 Serr=		 (1<<0),
 	Pcmd=		7,	/* cmd port (write) */
 
@@ -521,16 +523,16 @@ retry:
 		len = pp->end - lblk;
 	cp->nsecs = len;
 
-	cmdreadywait(cp);
+	cp->cmd = cmd;
+	cp->dp = dp;
 
 	/*
 	 *  start the transfer
 	 */
-	cp->cmd = cmd;
-	cp->dp = dp;
 	cp->status = 0;
+	cmdreadywait(cp);
 
-	outb(cp->pbase+Pcount, cp->nsecs-cp->sofar);
+	outb(cp->pbase+Pcount, cp->nsecs);
 	outb(cp->pbase+Psector, sec);
 	outb(cp->pbase+Pdh, 0x20 | head);
 	outb(cp->pbase+Pcyllsb, cyl);
@@ -543,6 +545,7 @@ retry:
 			if(++loop > 10000)
 				panic("hardxfer");
 		outss(cp->pbase+Pdata, cp->buf, dp->bytes/2);
+		cp->nsecs--;
 	}
 
 	sleep(&cp->r, cmddone, cp);
@@ -773,6 +776,8 @@ hardintr(Ureg *ur)
 				cp->cmd, inb(cp->pbase+Pstatus));
 			panic("hardintr: wait busy");
 		}
+	if(cp->status & (Sdwf|Scorr))
+		print("hardintr: cmd=#%lux, status=#%lux\n", cp->cmd, cp->status);
 	switch(cp->cmd){
 	case Cwrite:
 		if(cp->status & Serr){
@@ -783,7 +788,7 @@ hardintr(Ureg *ur)
 			return;
 		}
 		cp->sofar++;
-		if(cp->sofar < cp->nsecs){
+		if(cp->nsecs){
 			loop = 0;
 			while((inb(cp->pbase+Pstatus) & Sdrq) == 0)
 				if(++loop > 10000) {
@@ -793,7 +798,8 @@ hardintr(Ureg *ur)
 				}
 			outss(cp->pbase+Pdata, &cp->buf[cp->sofar*dp->bytes],
 				dp->bytes/2);
-		} else{
+			cp->nsecs--;
+		} else {
 			cp->lastcmd = cp->cmd;
 			cp->cmd = 0;
 			wakeup(&cp->r);
@@ -825,7 +831,8 @@ hardintr(Ureg *ur)
 		inss(cp->pbase+Pdata, &cp->buf[cp->sofar*dp->bytes],
 			dp->bytes/2);
 		cp->sofar++;
-		if(cp->sofar >= cp->nsecs){
+		cp->nsecs--;
+		if(cp->nsecs == 0){
 			cp->lastcmd = cp->cmd;
 			if (cp->cmd == Cread)
 				cp->cmd = 0;
