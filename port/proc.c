@@ -394,6 +394,9 @@ postnote(Proc *p, int dolock, char *n, int flag)
 	if(dolock)
 		qlock(&p->debug);
 
+	if(p->kp)
+		print("sending %s to kproc %d %s\n", n, p->pid, p->text);
+
 	if(p->upage == 0){
 		if(dolock)
 			qunlock(&p->debug);
