@@ -155,10 +155,10 @@ ilconnect(Conv *c, char **argv, int argc)
 {
 	char *e;
 
-	e = ilstart(c, IL_CONNECT, 20);
+	e = Fsstdconnect(c, argv, argc);
 	if(e != nil)
 		return e;
-	return Fsstdconnect(c, argv, argc);
+	return ilstart(c, IL_CONNECT, 20);
 }
 
 int

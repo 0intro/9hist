@@ -359,8 +359,15 @@ mpstartap(Apic* apic)
 
 	nvramwrite(0x0F, 0x0A);
 	lapicstartap(apic, PADDR(APBOOTSTRAP));
-	for(i = 0; i < 100000 && (active.machs & (1<<machno)) == 0; i++)
+	for(i = 0; i < 100000; i++){
+		lock(&mprdthilock);
+		if(mprdthi & ((1<<apic->apicno)<<24)){
+			unlock(&mprdthilock);
+			break;
+		}
+		unlock(&mprdthilock);
 		microdelay(10);
+	}
 	nvramwrite(0x0F, 0x00);
 }
 

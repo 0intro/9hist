@@ -91,10 +91,8 @@ i8259init(void)
 			elcr = (inb(Elcr2)<<8)|elcr1;
 	}
 	outb(Elcr1, elcr1);
-	/*
-	if(elcr)
-		print("ELCR: %4.4uX\n", elcr);
-	 */
+//	if(elcr)
+//		print("ELCR: %4.4uX\n", elcr);
 }
 
 int

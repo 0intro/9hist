@@ -168,7 +168,7 @@ typedef struct Apic {
 } Apic;
 
 enum {
-	MaxAPICNO	= 7,
+	MaxAPICNO	= 31,
 };
 
 enum {					/* I/O APIC registers */
