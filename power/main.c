@@ -121,7 +121,7 @@ ioboardinit(void)
 		maxlevel = 8;
 		noforce = 0;
 	}
-
+	print("IO %d\n", ioid);
 
 	/*
 	 *  reset VME bus (MODEREG is on the IO2)

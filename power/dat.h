@@ -107,7 +107,10 @@ struct Chan
 	Mount	*mnt;			/* mount point that derived Chan */
 	ulong	mountid;
 	int	fid;			/* for devmnt */
-	Stream	*stream;		/* for stream channels */
+	union{
+		Stream	*stream;	/* for stream channels */
+		void	*aux;
+	};
 	Chan	*mchan;			/* channel to mounted server */
 	ulong	mqid;			/* qid of root of mount point */
 };
