@@ -15,16 +15,8 @@ static void fault386(Ureg*, void*);
 static Lock vctllock;
 static Vctl *vctl[256];
 
-/* interrupt timestamps, l.s knows fills intrts each interupt */
-	uvlong	intrts;
-static	struct {
-	Lock;
-	int	vno;		/* vector to save timestamps for */
-	int	n;		/* number of valid timestamps in ts[] */
-	uvlong	ts[128];	/* time stamps */
-} tsalloc;
-
-static void	savets(void);
+/* interrupt timestamps, l.s fills intrts each interupt */
+uvlong	intrts;
 
 void
 intrenable(int irq, void (*f)(Ureg*, void*), void* a, int tbdf)
@@ -41,8 +33,6 @@ intrenable(int irq, void (*f)(Ureg*, void*), void* a, int tbdf)
 
 	ilock(&vctllock);
 	vno = arch->intrenable(v);
-	if(irq == IrqUART0)
-		tsalloc.vno = vno;
 	if(vno == -1){
 		iunlock(&vctllock);
 		print("intrenable: couldn't enable irq %d, tbdf 0x%uX\n",
@@ -192,8 +182,6 @@ trap(Ureg* ureg)
 	}
 
 	vno = ureg->trap;
-	if(vno == tsalloc.vno)
-		savets();
 	if(ctl = vctl[vno]){
 		if(ctl->isintr){
 			m->intr++;
@@ -751,30 +739,4 @@ dbgpc(Proc *p)
 		return 0;
 
 	return ureg->pc;
-}
-
-/* called with interrupts off */
-static void
-savets(void)
-{
-	lock(&tsalloc);
-	if(tsalloc.n < nelem(tsalloc.ts))
-		tsalloc.ts[tsalloc.n++] = intrts;
-	unlock(&tsalloc);
-}
-
-/* read interrupt timestamps */
-long
-readintrts(void *buf, int n)
-{
-	n /= sizeof(uvlong);
-	if(n <= 0)
-		return 0;
-	ilock(&tsalloc);
-	if(n > tsalloc.n)
-		n = tsalloc.n;
-	memmove(buf, tsalloc.ts, n*sizeof(uvlong));
-	tsalloc.n = 0;
-	iunlock(&tsalloc);
-	return n*sizeof(uvlong);
 }

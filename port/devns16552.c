@@ -131,7 +131,7 @@ struct Uart
 	int	modem;			/* hardware flow control on */
 	int	xonoff;			/* software flow control on */
 	int	blocked;
-	int	cts, dsr, dcd;		/* keep track of modem status */ 
+	int	cts, dsr, dcd, dcdts;		/* keep track of modem status */ 
 	int	ctsbackoff;
 	int	hup_dsr, hup_dcd;	/* send hangup upstream? */
 	int	dohup;
@@ -148,6 +148,41 @@ struct Uartalloc {
 } uartalloc;
 
 void ns16552intr(int);
+
+/* interrupt timestamps, l.s fills intrts each interupt */
+uvlong	intrts;
+static	struct {
+	Lock;
+	int	vno;		/* vector to save timestamps for */
+	int	n;		/* number of valid timestamps in ts[] */
+	uvlong	ts[128];	/* time stamps */
+} tsalloc;
+
+/* called with interrupts off by interrupt routine */
+static void
+savets(void)
+{
+	lock(&tsalloc);
+	if(tsalloc.n < nelem(tsalloc.ts))
+		tsalloc.ts[tsalloc.n++] = intrts;
+	unlock(&tsalloc);
+}
+
+/* read interrupt timestamps */
+long
+readintrts(void *buf, int n)
+{
+	n /= sizeof(uvlong);
+	if(n <= 0)
+		return 0;
+	ilock(&tsalloc);
+	if(n > tsalloc.n)
+		n = tsalloc.n;
+	memmove(buf, tsalloc.ts, n*sizeof(uvlong));
+	tsalloc.n = 0;
+	iunlock(&tsalloc);
+	return n*sizeof(uvlong);
+}
 
 /*
  *  pick up architecture specific routines and definitions
@@ -251,6 +286,15 @@ ns16552rts(Uart *p, int n)
 		p->sticky[Mctl] &= ~Rts;
 
 	uartwrreg(p, Mctl, 0);
+}
+
+/*
+ *  save dcd timestamps for gps clock
+ */
+static void
+ns16552dcdts(Uart *p, int n)
+{
+	p->dcdts = n;
 }
 
 /*
@@ -669,6 +713,8 @@ ns16552intr(int dev)
 			}
 	 		if (ch & Dcdc) {
 				l = ch & Dcd;
+				if(l == 0 && p->dcd != 0 && p->dcdts)
+					savets();
 				if(p->hup_dcd && p->dcd && !l){
 					ilock(&p->rlock);
 					p->dohup = 1;
@@ -996,6 +1042,10 @@ ns16552ctl(Uart *p, char *cmd)
 	case 'q':
 		qsetlimit(p->iq, n);
 		qsetlimit(p->oq, n);
+		break;
+	case 'T':
+	case 't':
+		ns16552dcdts(p, n);
 		break;
 	case 'W':
 	case 'w':
