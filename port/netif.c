@@ -58,7 +58,7 @@ netifgen(Chan *c, Dirtab *vp, int, int i, Dir *dp)
 
 	/* second level contains clone plus all the conversations */
 	t = NETTYPE(c->qid.path);
-	if(t == N2ndqid || t == Ncloneqid){
+	if(t == N2ndqid || t == Ncloneqid || t == Naddrqid){
 		switch(i) {
 		case 0:
 			q.path = Ncloneqid;
