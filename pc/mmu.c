@@ -88,6 +88,7 @@ static ulong	*kpt;		/* 2nd level page tables for kernel mem */
 #define MAXUMEG 64	/* maximum memory per user process in megabytes */
 #define ONEMEG (1024*1024)
 
+/* unallocated ISA space */
 enum {
 	Nisa=	256,
 };
@@ -97,6 +98,14 @@ struct
 	ulong s[Nisa];
 	ulong e[Nisa];
 } isaalloc;
+
+/* unallocated space */
+struct
+{
+	Lock;
+	ulong s;
+	ulong e;
+} msalloc;
 
 /*
  *  Change current page table and the stack to use for exceptions
@@ -170,6 +179,15 @@ mmuinit(void)
 	memset(&tss, 0, sizeof(tss));
 	taskswitch(ktoppg.pa, BY2PG + (ulong)m);
 	puttr(TSSSEL);/**/
+
+	/*
+	 *  allocatable, non ISA memory
+	 */
+	if(conf.topofmem > 16*1024*1024)
+		msalloc.s = conf.topofmem;
+	else
+		msalloc.s = 16*1024*1024;
+	msalloc.e = 128*1024*1024;
 }
 
 /*
@@ -440,4 +458,26 @@ mapaddr(ulong addr)
 	putcr3((ulong)top);
 
 	return (long*)(KZERO | 4*1024*1024-BY2PG | off);
+}
+
+/*
+ *  get non-ISA memory space
+ */
+ulong
+getspace(int len, int span)
+{
+	ulong x;
+
+	lock(&msalloc);
+	x = msalloc.s;
+	if(span)
+		x = ROUND(x, span);
+	if(len > msalloc.e - x){
+		unlock(&msalloc);
+		return 0;
+	}
+	msalloc.s = x + len;
+	unlock(&msalloc);
+
+	return x | KZERO;
 }

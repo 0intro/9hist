@@ -12,9 +12,24 @@
 
 enum
 {
+	/* default footprint is 64k */
 	Footshift=	16,
 	Footprint=	1<<Footshift,
-};
+
+	/*  CGA screen dimensions */
+	CGAWIDTH=	160,
+	CGAHEIGHT=	24,
+}; 
+/*
+ *  screen memory addresses
+ */
+#define SCREENMEM	(0xA0000 | KZERO)
+#define CGASCREEN	((uchar*)(0xB8000 | KZERO))
+
+static	ulong	screenmem = SCREENMEM;
+static	int	footprint = Footprint;
+static	int	footshift = Footshift;
+static	int	screendisabled;
 
 /* imported */
 extern	Subfont defont0;
@@ -36,18 +51,6 @@ static	int	cga = 1;		/* true if in cga mode */
 static	Rectangle window;
 static	int	h, w;
 static	Point	curpos;
-
-/*
- *  screen dimensions
- */
-#define	CGAWIDTH	160
-#define	CGAHEIGHT	24
-
-/*
- *  screen memory addresses
- */
-#define SCREENMEM	(0xA0000 | KZERO)
-#define CGASCREEN	((uchar*)(0xB8000 | KZERO))
 
 static void nopage(int);
 
@@ -174,7 +177,7 @@ vgaread(Chan *c, void *buf, long n, ulong offset)
 {
 	int port;
 	uchar *cp;
-	char cbuf[64];
+	char cbuf[128];
 	ushort *sp;
 	ulong *lp;
 	Vgac *vgacp;
@@ -192,9 +195,10 @@ vgaread(Chan *c, void *buf, long n, ulong offset)
 			1<<gscreen.ldepth, interlaced);
 		port += sprint(cbuf+port, "hwgc: ");
 		if(hwgc)
-			sprint(cbuf+port, "%s\n", hwgc->name);
+			port += sprint(cbuf+port, "%s\n", hwgc->name);
 		else
-			sprint(cbuf+port, "off\n");
+			port += sprint(cbuf+port, "off\n");
+		sprint(cbuf+port, "addr: 0x%lux\n", screenmem&~KZERO);
 		return readstr(offset, buf, n, cbuf);
 	case Qvgaiob:
 		port = offset;
@@ -231,15 +235,25 @@ vgabread(Chan *c, long n, ulong offset)
 static void
 vgactl(char *arg)
 {
-	int x, y, z;
-	char *cp, *field[3];
+	int n;
+	ulong x, y, z;
+	char *cp, *field[4];
 	Hwgc *hwgcp;
 	Vgac *vgacp;
 
-	if(getfields(arg, field, 3, " ") != 2)
+	n = getfields(arg, field, 4, " ");
+	if(n < 2)
 		error(Ebadarg);
 
-	if(strcmp(field[0], "hwgc") == 0){
+	if(strcmp(field[0], "disable") == 0){
+		screendisabled = 1;
+	}
+	else if(strcmp(field[0], "enable") == 0){
+		screendisabled = 0;
+	}
+	else if(strcmp(field[0], "hwgc") == 0){
+		if(n < 2)
+			error(Ebadarg);
 		if(strcmp(field[1], "off") == 0){
 			if(hwgc){
 				(*hwgc->disable)();
@@ -264,6 +278,8 @@ vgactl(char *arg)
 		}
 	}
 	else if(strcmp(field[0], "type") == 0){
+		if(n < 2)
+			error(Ebadarg);
 		for(vgacp = vgactlr; vgacp; vgacp = vgacp->link){
 			if(strcmp(field[1], vgacp->name) == 0){
 				vgac = vgacp;
@@ -272,6 +288,8 @@ vgactl(char *arg)
 		}
 	}
 	else if(strcmp(field[0], "size") == 0){
+		if(n < 2)
+			error(Ebadarg);
 		x = strtoul(field[1], &cp, 0);
 		if(x == 0 || x > 2048)
 			error(Ebadarg);
@@ -298,6 +316,47 @@ vgactl(char *arg)
 		cursoroff(1);
 		setscreen(x, y, z);
 		cursoron(1);
+		return;
+	}
+	else if(strcmp(field[0], "linear") == 0){
+		if(n < 2)
+			error(Ebadarg);
+		x = strtoul(field[1], 0, 0);
+		if(n < 3)
+			y = 0;
+		else
+			y = strtoul(field[2], 0, 0);
+
+		/* see if it fits in the usual place */
+		if(x <= 2*Footprint){
+			screenmem = SCREENMEM;
+			if(x == 0)
+				footprint = Footprint;
+			else
+				footprint = x;
+			gscreen.base = (void*)screenmem;
+			return;
+		}
+
+		/* grab new space */
+		if(y == 0){
+			if(footprint >= x)
+				return;
+		} else {
+			int s, e;
+
+			s = screenmem & ~KZERO;
+			e = s + footprint;
+			s = ROUND(s, y);
+			if(e > s + x)
+				return;
+		}
+		y = getspace(x, y);
+		if(y == 0)
+			error("not enough free address space");
+		screenmem = y;
+		gscreen.base = (void*)y;
+		footprint = x;
 		return;
 	}
 
@@ -476,109 +535,6 @@ screeninit(void)
 	memset(CGASCREEN, 0, CGAWIDTH*CGAHEIGHT);
 }
 
-/*
- *  a few well known VGA modes and the code to set them
- */
-typedef struct VGAmode	VGAmode;
-struct VGAmode
-{
-	uchar	misc;
-	uchar	sequencer[5];
-	uchar	crt[0x19];
-	uchar	graphics[9];
-	uchar	attribute[0x15];
-};
-
-/*
- *  640x480 display, 1, 2, or 4 bit color.
- */
-VGAmode mode12 = 
-{
-	/* general */
-	0xe7,
-	/* sequence */
-	0x03, 0x01, 0x0f, 0x00, 0x06,
-	/* crt */
-	0x65, 0x4f, 0x50, 0x88, 0x55, 0x9a, 0x09, 0x3e,
-	0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	0xe8, 0x8b, 0xdf, 0x28, 0x00, 0xe7, 0x04, 0xe3,
-	0xff,
-	/* graphics */
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x0f,
-	0xff,
-	/* attribute */
-	0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-	0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
-	0x01, 0x10, 0x0f, 0x00, 0x00,
-};
-
-/*
- *  320x200 display, 8 bit color.
- */
-VGAmode mode13 = 
-{
-	/* general */
-	0x63,
-	/* sequence */
-	0x03, 0x01, 0x0f, 0x00, 0x0e,
-	/* crt */
-	0x5f, 0x4f, 0x50, 0x82, 0x54, 0x80, 0xbf, 0x1f,
-	0x00, 0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x28,
-	0x9c, 0x8e, 0x8f, 0x28, 0x40, 0x96, 0xb9, 0xa3,
-	0xff,
-	/* graphics */
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x05, 0x0f,
-	0xff,
-	/* attribute */
-	0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-	0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
-	0x41, 0x10, 0x0f, 0x00, 0x00,
-};
-
-static void
-setmode(VGAmode *vga)
-{
-	uchar seq00, seq01;
-	int i;
-
-	/*
-	 * Turn off the screen and
-	 * reset the sequencer and leave it off.
-	 * Load the generic VGA registers:
-	 *	misc;
-	 *	sequencer;
-	 *	restore the sequencer reset state;
-	 *	take off write-protect on crt[0x00-0x07];
-	 *	crt;
-	 *	graphics;
-	 *	attribute;
-	 * Restore the screen state.
-	 */
-	seq00 = vgaxi(Seqx, 0x00);
-	vgaxo(Seqx, 0x00, 0x00);
-
-	seq01 = vgaxi(Seqx, 0x01)|0x01;
-	vgaxo(Seqx, 0x01, seq01|0x20);
-
-	vgao(MiscW, vga->misc);
-
-	for(i = 2; i < sizeof(vga->sequencer); i++)
-		vgaxo(Seqx, i, vga->sequencer[i]);
-	vgaxo(Seqx, 0x00, seq00);
-
-	vgaxo(Crtx, 0x11, vga->crt[0x11] & ~0x80);
-	for(i = 0; i < sizeof(vga->crt); i++)
-		vgaxo(Crtx, i, vga->crt[i]);
-
-	for(i = 0; i < sizeof(vga->graphics); i++)
-		vgaxo(Grx, i, vga->graphics[i]);
-
-	for(i = 0; i < sizeof(vga->attribute); i++)
-		vgaxo(Attrx, i, vga->attribute[i]);
-
-	vgaxo(Seqx, 0x01, seq01);
-}
-
 static ulong
 xnto32(uchar x, int n)
 {
@@ -610,28 +566,16 @@ setscreen(int maxx, int maxy, int ldepth)
 	}
 	lock(&screenlock);
 
-	/* set default mode, a user program sets more complicated ones */
-	switch(ldepth){
-	case 0:
-		setmode(&mode12);
-		break;
-	case 3:
-		setmode(&mode13);
-		break;
-	default:
-		error(Ebadarg);
-	}
-
 	/* setup a bitmap for the new size */
 	gscreen.ldepth = ldepth;
 	gscreen.width = (maxx*(1<<gscreen.ldepth)+31)/32;
-	gscreen.base = (void*)SCREENMEM;
+	gscreen.base = (void*)screenmem;
 	gscreen.r.min = Pt(0, 0);
 	gscreen.r.max = Pt(maxx, maxy);
 	gscreen.clipr = gscreen.r;
-	for(i = 0; i < gscreen.width*BY2WD*maxy; i += Footprint){
-		vgac->page(i>>Footshift);
-		memset(gscreen.base, 0xff, Footprint);
+	for(i = 0; i < gscreen.width*BY2WD*maxy; i += footprint){
+		vgac->page(i>>footshift);
+		memset(gscreen.base, 0xff, footprint);
 	}
 
 	/* get size for a system window */
@@ -717,8 +661,8 @@ byteload(uchar *q, uchar *data, int m, int *page, uchar *e)
 	if(q >= e){
 		pg = ++*page;
 		vgac->page(pg);
-		q -= Footprint;
-		diff -= Footprint;
+		q -= footprint;
+		diff -= footprint;
 	}
 	*q ^= (*data^*q) & m;
 	return diff;
@@ -738,8 +682,8 @@ lineload(uchar *q, uchar *data, int len, int *page, uchar *e)
 	if(q >= e){
 		pg = ++*page;
 		vgac->page(pg);
-		q -= Footprint;
-		diff -= Footprint;
+		q -= footprint;
+		diff -= footprint;
 	}
 
 	rem = e - q;
@@ -748,8 +692,8 @@ lineload(uchar *q, uchar *data, int len, int *page, uchar *e)
 		memmove(q, data, rem);
 		pg = ++*page;
 		vgac->page(pg);
-		q -= Footprint;
-		diff -= Footprint;
+		q -= footprint;
+		diff -= footprint;
 		memmove(q+rem, data+rem, len-rem);
 	} else
 		memmove(q, data, len);
@@ -769,7 +713,7 @@ screenload(Rectangle r, uchar *data, int tl, int l, int dolock)
 	ulong off;
 	uchar *q, *e;
 
-	if(cga || !rectclip(&r, gscreen.r) || tl<=0)
+	if(screendisabled || cga || !rectclip(&r, gscreen.r) || tl<=0)
 		return;
 
 	if(dolock && hwgc == 0)
@@ -784,12 +728,12 @@ screenload(Rectangle r, uchar *data, int tl, int l, int dolock)
 	mr = 0xFF ^ (0xFF >> rpart);
 
 	off = q - (uchar*)gscreen.base;
-	page = off>>Footshift;
+	page = off>>footshift;
 	vgac->page(page);
-	q = ((uchar*)gscreen.base) + (off&(Footprint-1));
+	q = ((uchar*)gscreen.base) + (off&(footprint-1));
 
 	sw = gscreen.width*sizeof(ulong);
-	e = ((uchar*)gscreen.base) + Footprint;
+	e = ((uchar*)gscreen.base) + footprint;
 
 	/* may need to do bit insertion on edges */
 	if(tl <= 0){
@@ -873,8 +817,8 @@ byteunload(uchar *q, uchar *data, int m, int *page, uchar *e)
 	if(q >= e){
 		pg = ++*page;
 		vgac->page(pg);
-		q -= Footprint;
-		diff -= Footprint;
+		q -= footprint;
+		diff -= footprint;
 	}
 	*data ^= (*q^*data) & m;
 	return diff;
@@ -894,8 +838,8 @@ lineunload(uchar *q, uchar *data, int len, int *page, uchar *e)
 	if(q >= e){
 		pg = ++*page;
 		vgac->page(pg);
-		q -= Footprint;
-		diff -= Footprint;
+		q -= footprint;
+		diff -= footprint;
 	}
 
 	rem = e - q;
@@ -904,8 +848,8 @@ lineunload(uchar *q, uchar *data, int len, int *page, uchar *e)
 		memmove(data, q, rem);
 		pg = ++*page;
 		vgac->page(pg);
-		q -= Footprint;
-		diff -= Footprint;
+		q -= footprint;
+		diff -= footprint;
 		memmove(data+rem, q+rem, len-rem);
 	} else
 		memmove(data, q, len);
@@ -926,7 +870,7 @@ screenunload(Rectangle r, uchar *data, int tl, int l, int dolock)
 	ulong off;
 	uchar *q, *e;
 
-	if(cga || !rectclip(&r, gscreen.r) || tl<=0)
+	if(screendisabled || cga || !rectclip(&r, gscreen.r) || tl<=0)
 		return;
 
 	if(dolock && hwgc == 0)
@@ -941,12 +885,12 @@ screenunload(Rectangle r, uchar *data, int tl, int l, int dolock)
 	mr = 0xFF ^ (0xFF >> rpart);
 
 	off = q - (uchar*)gscreen.base;
-	page = off>>Footshift;
+	page = off>>footshift;
 	vgac->page(page);
-	q = ((uchar*)gscreen.base) + (off&(Footprint-1));
+	q = ((uchar*)gscreen.base) + (off&(footprint-1));
 
 	sw = gscreen.width*sizeof(ulong);
-	e = ((uchar*)gscreen.base) + Footprint;
+	e = ((uchar*)gscreen.base) + footprint;
 
 	/* may need to do bit insertion on edges */
 	if(tl <= 0){

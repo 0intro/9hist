@@ -45,6 +45,7 @@ int	iprint(char*, ...);
 int	isaconfig(char*, int, ISAConf*);
 ulong	getisa(ulong, int, int);
 void	putisa(ulong, int);
+ulong	getspace(int, int);
 void	kbdinit(void);
 long*	mapaddr(ulong);
 void	mathinit(void);
