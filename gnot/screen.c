@@ -5,6 +5,7 @@
 #include	"fns.h"
 #include	"io.h"
 #include	"ureg.h"
+#include	"errno.h"
 
 #include	"gnot.h"
 
@@ -20,6 +21,7 @@ struct{
 }out;
 
 void	duartinit(void);
+int	duartacr;
 
 Bitmap	screen =
 {
@@ -132,9 +134,13 @@ enum{
 	PAR_ERR		=0x20,
 	FRM_ERR		=0x40,
 	RCVD_BRK	=0x80,
-	BD9600		=0xBB,
-	BD4800		=0x99,
-	BD2400		=0x88,
+	BD38400		=0xCC|0x0000,
+	BD19200		=0xCC|0x0100,
+	BD9600		=0xBB|0x0000,
+	BD4800		=0x99|0x0000,
+	BD2400		=0x88|0x0000,
+	BD1200		=0x66|0x0000,
+	BD300		=0x44|0x0000,
 	IM_IPC		=0x80,	/* IMRx/ISRx - Interrupt Mask/Interrupt Status */
 	IM_DBB		=0x40,
 	IM_RRDYB	=0x20,
@@ -196,7 +202,7 @@ duartinit(void)
 	/*
 	 * Output port
 	 */
-	duart[0].ipc_acr = 0xB7;	/* allow change	of state interrupt */
+	duart[0].ipc_acr = duartacr = 0xB7;	/* allow change	of state interrupt */
 	duart[1].ip_opcr = 0x00;
 	duart[1].scc_ropbc = 0xFF;	/* make sure the port is reset first */
 	duart[1].scc_sopbc = 0x04;	/* dtr = 1, pp = 01 */
@@ -210,6 +216,46 @@ duartinit(void)
 	while (!(duart[0].sr_csr & (XMT_EMT|XMT_RDY)))
 		;
 	duart[0].data = 0x02;
+}
+
+void
+duartbaud(int b)
+{
+	int x;
+	Duart *duart;
+
+	duart = DUARTREG;
+
+	switch(b){
+	case 38400:
+		x = BD38400;
+		break;
+	case 19200:
+		x = BD19200;
+		break;
+	case 9600:
+		x = BD9600;
+		break;
+	case 4800:
+		x = BD4800;
+		break;
+	case 2400:
+		x = BD2400;
+		break;
+	case 1200:
+		x = BD1200;
+		break;
+	case 300:
+		x = BD300;
+		break;
+	default:
+		error(0, Ebadarg);
+	}
+	if(x & 0x0100)
+		duart[0].ipc_acr = duartacr |= 0x80;
+	else
+		duart[0].ipc_acr = duartacr &= ~0x80;
+	duart[1].sr_csr = x;
 }
 
 enum{

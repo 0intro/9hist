@@ -31,6 +31,7 @@ int	devno(int, int);
 Chan*	devopen(Chan*, int, Dirtab*, int, Devgen*);
 void	devstat(Chan*, char*, Dirtab*, int, Devgen*);
 int	devwalk(Chan*, char*, Dirtab*, int, Devgen*);
+void	duartbaud(int);
 void	duartstartrs232o(void);
 void	duartstarttimer(void);
 void	duartstoptimer(void);
