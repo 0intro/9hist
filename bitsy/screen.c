@@ -15,6 +15,8 @@
 
 #define	MINX	8
 
+int landscape;	/* orientation of the screen, default is 0: portait */
+
 enum {
 	Wid		= 240,
 	Ht		= 320,
@@ -170,17 +172,33 @@ lcdinit(void)
 }
 
 void
+flipscreen(int ls) {
+	if (ls == landscape)
+		return;
+	if (ls) {
+		gscreen->r = Rect(0, 0, Ht, Wid);
+		gscreen->clipr = gscreen->r;
+		xgdata.bdata = (uchar *)framebuf->pixel;
+	} else {
+		gscreen->r = Rect(0, 0, Wid, Ht);
+		gscreen->clipr = gscreen->r;
+		xgdata.bdata = (uchar *)vscreen;
+	}
+	landscape = ls;
+}
+
+void
 lcdtweak(Cmdbuf *cmd)
 {
 	if(cmd->nf < 4)
 		return;
 	if(*cmd->f[0] == 'h')
-		lcd->lccr1 = ((Wid-16)<<PPL)
+		lcd->lccr1 = ((Ht-16)<<PPL)
 			| (atoi(cmd->f[1])<<HSW)
 			| (atoi(cmd->f[2])<<ELW)
 			| (atoi(cmd->f[3])<<BLW);
 	if(*cmd->f[0] == 'v')
-		lcd->lccr2 = ((Ht-1)<<LPP)
+		lcd->lccr2 = ((Wid-1)<<LPP)
 			| (atoi(cmd->f[1])<<VSW)
 			| (atoi(cmd->f[2])<<EFW)
 			| (atoi(cmd->f[3])<<BFW);
@@ -205,16 +223,20 @@ screeninit(void)
 	lcdinit();
 
 	gscreen = &xgscreen;
-	xgdata.bdata = (uchar *)vscreen;
 	xgdata.ref = 1;
-
 	i = 0;
-	while (i < Wid*Ht*1/3)	vscreen[i++] = 0xf800;	/* red */
-	while (i < Wid*Ht*2/3)	vscreen[i++] = 0xffff;	/* white */
-	while (i < Wid*Ht*3/3)	vscreen[i++] = 0x001f;	/* blue */
-
-	flushmemscreen(gscreen->r);
-
+	if (landscape) {
+		xgdata.bdata = (uchar *)framebuf->pixel;
+		while (i < Wid*Ht*1/3)	framebuf->pixel[i++] = 0xf800;	/* red */
+		while (i < Wid*Ht*2/3)	framebuf->pixel[i++] = 0xffff;	/* white */
+		while (i < Wid*Ht*3/3)	framebuf->pixel[i++] = 0x001f;	/* blue */
+	} else {
+		xgdata.bdata = (uchar *)vscreen;
+		while (i < Wid*Ht*1/3)	vscreen[i++] = 0xf800;	/* red */
+		while (i < Wid*Ht*2/3)	vscreen[i++] = 0xffff;	/* white */
+		while (i < Wid*Ht*3/3)	vscreen[i++] = 0x001f;	/* blue */
+		flushmemscreen(gscreen->r);
+	}
 	memimageinit();
 	memdefont = getmemdefont();
 
@@ -230,9 +252,10 @@ flushmemscreen(Rectangle r)
 {
 	int x, y;
 
-	for (x = r.min.x; x < r.max.x; x++)
-		for (y = r.min.y; y < r.max.y; y++)
-			framebuf->pixel[(x+1)*Ht-y-1] = vscreen[y*Wid+x];
+	if (landscape == 0)
+		for (x = r.min.x; x < r.max.x; x++)
+			for (y = r.min.y; y < r.max.y; y++)
+				framebuf->pixel[(x+1)*Ht-y-1] = vscreen[y*Wid+x];
 	cachewb();
 }
 
@@ -246,9 +269,9 @@ attachscreen(Rectangle *r, ulong *chan, int* d, int *width, int *softscreen)
 	*d = gscreen->depth;
 	*chan = gscreen->chan;
 	*width = gscreen->width;
-	*softscreen = 1;
+	*softscreen = landscape == 0;
 
-	return (uchar*)vscreen;
+	return (uchar*)gscreen->data->bdata;
 }
 
 void
@@ -324,7 +347,8 @@ screenwin(void)
 	w = memdefont->info[' '].width;
 	h = memdefont->height;
 
-	r = Rect(4, 4, Wid-4, Ht-60);
+	r = insetrect(gscreen->r, 4);
+	r.max.y -= 56;
 
 	memimagedraw(gscreen, r, memblack, ZP, memopaque, ZP);
 	window = insetrect(r, 4);

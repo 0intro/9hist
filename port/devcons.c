@@ -323,15 +323,11 @@ echo(char *buf, int n)
 	int x;
 	char *e, *p;
 
-	if(kbd.raw){
-		qproduce(kbdq, buf, n);
-		return;
-	}
 	e = buf+n;
 	for(p = buf; p < e; p++){
 		switch(*p){
 		case 0x10:	/* ^P */
-			if(cpuserver && !kbd.ctlpoff){
+			if(cpuserver && !kbd.ctlpoff && !kbd.raw){
 				active.exiting = 1;
 				return;
 			}
@@ -388,6 +384,8 @@ print("procdump temporarily disabled\n");
 	}
 
 	qproduce(kbdq, buf, n);
+	if(kbd.raw)
+		return;
 	echoscreen(buf, n);
 	if(printq)
 		echoprintq(buf, n);
@@ -397,7 +395,7 @@ print("procdump temporarily disabled\n");
  *  Called by a uart interrupt for console input.
  *
  *  turn '\r' into '\n' before putting it into the queue.  we
- *  can't type runs on alternate consoles, so don't worry about it.
+ *  can't type runes on alternate consoles, so don't worry about it.
  */
 int
 kbdcr2nl(Queue*, int ch)
