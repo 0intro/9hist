@@ -97,6 +97,18 @@ enum
 
 typedef struct I82365	I82365;
 
+enum {
+	Ricoh_vid = 0x1180,
+	Ricoh_476_did = 0x476,
+};
+
+static struct {
+	ushort	r_did;
+	char		*r_name;
+} variant[] = {
+{	Ricoh_476_did,	"Ricoh 476 PCI/Cardbus bridge",	}
+};
+
 /* a controller */
 enum
 {
@@ -581,6 +593,7 @@ static void
 i82365reset(void)
 {
 	static int already;
+	Pcidev *p;
 	int i, j;
 	I82365 *cp;
 	PCMslot *pp;
@@ -589,6 +602,24 @@ i82365reset(void)
 	if(already)
 		return;
 	already = 1;
+
+	/* First find Ricoh controllers on the PCI bus */
+	p = nil;
+	while ((p = pcimatch(p, Ricoh_vid, 0)) != nil) {
+		for (i = 0; i != nelem(variant); i++)
+			if (p->did == variant[i].r_did)
+				break;
+		if (i == nelem(variant)) {
+			print("No match on %.4X/%.4X\n", p->vid, p->did);
+			continue;
+		}
+
+		print("#y: %s, intl %d\n", variant[i].r_name, p->intl);
+
+		for (i = 0; i != 0xE4 / 4; i++)
+			iprint("pci[%.2X] %.8ulX\n", i * 4, pcicfgr32(p, i * 4));
+		break;
+	}
 
 	/* look for controllers if the ports aren't already taken */
 	if(ioalloc(0x3E0, 2, 0, "i82365.0") >= 0){
