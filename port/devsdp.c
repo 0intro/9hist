@@ -7,6 +7,7 @@
 #include "../port/error.h"
 
 #include	<libcrypt.h>
+#include "../port/thwack.h"
 
 /*
  * sdp - secure datagram protocol
@@ -18,6 +19,7 @@ typedef struct OneWay OneWay;
 typedef struct Stats Stats;
 typedef struct ConnectPkt ConnectPkt;
 typedef struct AckPkt AckPkt;
+typedef struct Algorithm Algorithm;
 
 enum
 {
@@ -39,9 +41,11 @@ enum
 
 	Maxconv= 256,		// power of 2
 	Nfs= 4,				// number of file systems
-	MaxRetries=	4,
+	MaxRetries=	8,
 	KeepAlive = 60,		// keep alive in seconds
 	KeyLength= 32,
+	SeqMax = (1<<24),
+	SeqWindow = 32,
 };
 
 #define TYPE(x) 	((x).path & 0xff)
@@ -115,7 +119,8 @@ struct Conv {
 
 	Stats	lstats;
 	Stats	rstats;
-
+	
+	ulong	lastrecv;	// time last packet was received 
 	ulong	timeout;
 	int		retries;
 
@@ -133,6 +138,9 @@ struct Conv {
 	int	perm;
 
 	uchar	masterkey[KeyLength];
+	char *authname;
+	char *ciphername;
+	char *compname;
 
 	int drop;
 
@@ -193,6 +201,12 @@ struct AckPkt
 	uchar	inBadSeq[4];
 };
 
+struct Algorithm
+{
+	char 	*name;
+	int		keylen;		// in bytes
+	void	(*init)(Conv*, char* name, int keylen);
+};
 
 static Dirtab sdpdirtab[]={
 	"log",		{Qlog},		0,	0666,
@@ -207,6 +221,31 @@ static Dirtab convdirtab[]={
 	"stats",	{Qstats},	0,	0444,
 	"rstats",	{Qrstats},	0,	0444,
 };
+
+#ifdef XXX
+static Algorithm cipheralg[] =
+{
+	"null",			0,	nullcipherinit,
+	"des_56_cbc",	7,	descipherinit,
+	"rc4_128",		16,	rc4cipherinit,
+	nil,			0,	nil,
+};
+
+static Algorithm authalg[] =
+{
+	"null",			0,	nullauthinit,
+	"hmac_sha_96",	16,	shaauthinit,
+	"hmac_md5_96",	16,	md5authinit,
+	nil,			0,	nil,
+};
+
+static Algorithm compalg[] =
+{
+	"null",			0,	nullcompinit,
+	"thwack",		0,	thwackcompinit,
+	nil,			0,	nil,
+};
+#endif
 
 static int m2p[] = {
 	[OREAD]		4,
@@ -572,7 +611,6 @@ sdpwrite(Chan *ch, void *a, long n, vlong off)
 			error(p);
 		return n;
 	case Qcontrol:
-print("writecontrol %ld\n", n);
 		writecontrol(sdp->conv[CONV(ch->qid)], a, n, 0);
 		return n;
 	case Qdata:
@@ -660,6 +698,7 @@ sdpclone(Sdp *sdp)
 			c = malloc(sizeof(Conv));
 			if(c == nil)
 				error(Enomem);
+			memset(c, 0, sizeof(Conv));
 			qlock(c);
 			c->sdp = sdp;
 			c->id = pp - sdp->conv;
@@ -681,6 +720,11 @@ sdpclone(Sdp *sdp)
 
 	c->ref++;
 	c->state = CInit;
+	c->in.window = ~0;
+	c->in.compstate = malloc(sizeof(Unthwack));
+	unthwackinit(c->in.compstate);
+	c->out.compstate = malloc(sizeof(Thwack));
+	thwackinit(c->out.compstate);
 	strncpy(c->owner, up->user, sizeof(c->owner));
 	c->perm = 0660;
 	qunlock(c);
@@ -719,7 +763,7 @@ convtimer(Conv *c, ulong sec)
 {
 	Block *b;
 
-	if(c->timeout == 0 || c->timeout > sec)
+	if(c->timeout > sec)
 		return;
 	qlock(c);
 	if(waserror()) {
@@ -740,10 +784,27 @@ convtimer(Conv *c, ulong sec)
 		if(b != nil) {
 			if(convretry(c, 1))
 				convoput(c, TControl, copyblock(b, blocklen(b)));
-		} else {
-			c->timeout = 0;
+			break;
 		}
-		// keepalive
+
+		c->timeout = c->lastrecv + KeepAlive;
+		if(c->timeout > sec)
+			break;
+		// keepalive - randomly spaced between KeepAlive and 2*KeepAlive
+		if(c->timeout + KeepAlive > sec && nrand(c->lastrecv + 2*KeepAlive - sec) > 0)
+			break;
+print("sending keep alive: %ld\n", sec - c->lastrecv);
+		// can not use writecontrol
+		b = allocb(4);
+		c->out.controlseq++;
+		hnputl(b->wp, c->out.controlseq);
+		b->wp += 4;
+		c->out.controlpkt = b;
+		convretryinit(c);
+		if(!waserror()) {
+			convoput(c, TControl, copyblock(b, blocklen(b)));
+			poperror();
+		}
 		break;
 	case CLocalClose:
 		if(convretry(c, 0))
@@ -751,7 +812,7 @@ convtimer(Conv *c, ulong sec)
 		break;
 	case CRemoteClose:
 	case CClosed:
-		c->timeout = 0;
+		c->timeout = ~0;
 		break;
 	}
 	poperror();
@@ -858,16 +919,30 @@ print("CClosed -> ref = %d\n", c->ref);
 			free(c->channame);
 			c->channame = nil;
 		}
-		strcpy(c->owner, "network");
+		if(c->ciphername) {
+			free(c->ciphername);
+			c->ciphername = nil;
+		}
+		if(c->authname) {
+			free(c->authname);
+			c->authname = nil;
+		}
+			if(c->compname) {
+			free(c->compname);
+			c->compname = nil;
+		}
+	strcpy(c->owner, "network");
 		c->perm = 0660;
 		c->dialid = 0;
 		c->acceptid = 0;
-		c->timeout = 0;
+		c->timeout = ~0;
 		c->retries = 0;
 		c->drop = 0;
 		memset(c->masterkey, 0, sizeof(c->masterkey));
 		onewaycleanup(&c->in);
 		onewaycleanup(&c->out);
+		memset(&c->lstats, 0, sizeof(Stats));
+		memset(&c->rstats, 0, sizeof(Stats));
 		break;
 	}
 	c->state = state;
@@ -979,9 +1054,12 @@ convack(Conv *c)
 static Block *
 conviput(Conv *c, Block *b, int control)
 {
-	int type;
-	ulong seq, cseq;
+	int type, n;
+	ulong seq, seqwrap, cseq;
+	long seqdiff;
 	AckPkt *ack;
+	ulong mseq, mask;
+	Block *bb;
 
 	c->lstats.inPackets++;
 
@@ -999,12 +1077,58 @@ conviput(Conv *c, Block *b, int control)
 	seq = (b->rp[1]<<16) + (b->rp[2]<<8) + b->rp[3];
 	b->rp += 4;
 
-	USED(seq);
+	seqwrap = c->in.seqwrap;
+	seqdiff = seq - c->in.seq;
+	if(seqdiff < -(SeqMax*3/4)) {
+		seqwrap++;
+		seqdiff += SeqMax;
+	} else if(seqdiff > SeqMax*3/4) {
+		seqwrap--;
+		seqdiff -= SeqMax;
+	}
+
+	if(seqdiff <= 0) {
+		if(seqdiff <= -SeqWindow) {
+print("old sequence number: %ld (%ld %ld)\n", seq, c->in.seqwrap, seqdiff);
+			c->lstats.inBadSeq++;
+			freeb(b);
+			return nil;
+		}
+
+		if(c->in.window & (1<<-seqdiff)) {
+print("dup sequence number: %ld (%ld %ld)\n", seq, c->in.seqwrap, seqdiff);
+			c->lstats.inDup++;
+			freeb(b);
+			return nil;
+		}
+
+		c->lstats.inReorder++;
+	}
+
+	// ok the sequence number looks ok
 if(0) print("coniput seq=%ulx\n", seq);
 	// auth
 	// decrypt
 
 	// ok the packet is good
+	if(seqdiff > 0) {
+		while(seqdiff > 0 && c->in.window != 0) {
+			if((c->in.window & (1<<(SeqWindow-1))) == 0) {
+print("missing packet: %ld\n", seq - seqdiff);
+				c->lstats.inMissing++;
+			}
+			c->in.window <<= 1;
+			seqdiff--;
+		}
+		if(seqdiff > 0) {
+print("missing packets: %ld-%ld\n", seq - SeqWindow - seqdiff+1, seq-SeqWindow);
+			c->lstats.inMissing += seqdiff;
+		}
+		c->in.seq = seq;
+		c->in.seqwrap = seqwrap;
+		c->in.window |= 1;
+	}
+	c->lastrecv = TK2SEC(m->ticks);
 
 	switch(type) {
 	case TControl:
@@ -1059,12 +1183,42 @@ print("ControlAck expected %ulx got %ulx\n", c->out.controlseq, cseq);
 		freeb(b);
 		freeb(c->out.controlpkt);
 		c->out.controlpkt = nil;
+		c->timeout = c->lastrecv + KeepAlive;
 		wakeup(&c->out.controlready);
 		return nil;
 	case TData:
 		c->lstats.inDataPackets++;
 		c->lstats.inDataBytes += BLEN(b);
 		c->lstats.inCompDataBytes += BLEN(b);
+		if(control)
+			break;
+		return b;
+	case TThwackU:
+		c->lstats.inDataPackets++;
+		c->lstats.inCompDataBytes += BLEN(b);
+		mask = b->rp[0];
+		mseq = (b->rp[1]<<16) | (b->rp[2]<<8) | b->rp[3];
+		b->rp += 4;
+		thwackack(c->out.compstate, mseq, mask);
+		c->lstats.inDataBytes += BLEN(b);
+		if(control)
+			break;
+		return b;
+	case TThwackC:
+		c->lstats.inDataPackets++;
+		c->lstats.inCompDataBytes += BLEN(b);
+		bb = b;
+		b = allocb(ThwMaxBlock);
+		n = unthwack(c->in.compstate, b->wp, ThwMaxBlock, bb->rp, BLEN(bb), seq);
+		freeb(bb);
+		if(n < 0)
+			break;
+		b->wp += n;
+		mask = b->rp[0];
+		mseq = (b->rp[1]<<16) | (b->rp[2]<<8) | b->rp[3];
+		thwackack(c->out.compstate, mseq, mask);
+		b->rp += 4;
+		c->lstats.inDataBytes += BLEN(b);
 		if(control)
 			break;
 		return b;
@@ -1111,7 +1265,6 @@ print("conviput2: %s: %d %uld %uld\n", convstatename[c->state], con->op, dialid,
 	case CClosed:
 		goto Reset;
 	}
-
 
 	switch(con->op) {
 	case ConOpenRequest:
@@ -1189,7 +1342,7 @@ static void
 convwriteblock(Conv *c, Block *b)
 {
 	// simulated errors
-	if(c->drop && c->drop > nrand(c->drop))
+	if(c->drop && nrand(c->drop) == 0)
 		return;
 
 	if(waserror()) {
@@ -1388,12 +1541,9 @@ writecontrol(Conv *c, void *p, int n, int wait)
 	b->wp += 4+n;
 	c->out.controlpkt = b;
 	convretryinit(c);
-print("send %ld size=%ld\n", c->out.controlseq, BLEN(b));	
 	convoput(c, TControl, copyblock(b, blocklen(b)));
-	if(wait) {
-print("writecontrol wait!\n");
+	if(wait)
 		writewait(c);
-	}
 	poperror();
 	qunlock(c);
 	qunlock(&c->out.controllk);
@@ -1424,7 +1574,9 @@ readdata(Conv *c, int n)
 static long
 writedata(Conv *c, Block *b)
 {
-	int n;
+	int n, nn;
+	ulong seq;
+	Block *bb;
 
 	qlock(c);
 	if(waserror()) {
@@ -1440,8 +1592,36 @@ writedata(Conv *c, Block *b)
 	n = BLEN(b);
 	c->lstats.outDataPackets++;
 	c->lstats.outDataBytes += n;
-	c->lstats.outCompDataBytes += n;
-	convoput(c, TData, b);
+
+	if(0) {
+		c->lstats.outCompDataBytes += n;
+		convoput(c, TData, b);
+		poperror();
+		qunlock(c);
+		return n;
+	}
+	b = padblock(b, 4);
+	b->rp[0] = (c->in.window>>1) & 0xff;
+	b->rp[1] = c->in.seq>>16;
+	b->rp[2] = c->in.seq>>8;
+	b->rp[3] = c->in.seq;
+
+	// must generate same value as convoput
+	seq = (c->out.seq + 1) & (SeqMax-1);
+
+	bb = allocb(BLEN(b));
+	nn = thwack(c->out.compstate, bb->wp, b->rp, BLEN(b), seq);
+	if(nn < 0) {
+		c->lstats.outCompDataBytes += BLEN(b);
+		convoput(c, TThwackU, b);
+		freeb(bb);
+	} else {
+		c->lstats.outCompDataBytes += nn;
+		bb->wp += nn;
+		convoput(c, TThwackC, bb);
+		freeb(b);
+	}
+
 	poperror();
 	qunlock(c);
 	return n;

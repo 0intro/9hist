@@ -409,6 +409,7 @@ static X86type x86intel[] =
 	{ 6,	1,	16,	"PentiumPro", },/* determined by trial and error */
 	{ 6,	3,	16,	"PentiumII", },
 	{ 6,	5,	16,	"PentiumII/Xeon", },
+	{ 6,	7,	16,	"PentiumIII/Xeon", },
 
 	{ 3,	-1,	32,	"386", },	/* family defaults */
 	{ 4,	-1,	22,	"486", },
