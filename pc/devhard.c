@@ -113,7 +113,9 @@ struct Drive
  */
 struct Controller
 {
-	QLock;			/* exclusive access to the drive */
+	QLock;			/* exclusive access to the controller */
+
+	Lock;			/* exclusive access to the registers */
 
 	int	confused;	/* needs to be recalibrated (or worse) */
 	int	pbase;		/* base port */
@@ -190,10 +192,6 @@ hardreset(void)
 	hard = xalloc(conf.nhard * sizeof(Drive));
 	hardc = xalloc(((conf.nhard+1)/2) * sizeof(Controller));
 	
-	p = getconf("spindowntime");
-	if(p)
-		spindowntime = atoi(p);
-	
 	/*
 	 *  read nvram for number of hard drives (2 max)
 	 */
@@ -217,6 +215,9 @@ hardreset(void)
 			setvec(Hardvec + (cp-hardc)*8, hardintr, 0); /* BUG!! guessing */
 		}
 	}
+	
+	if(conf.nhard && (p = getconf("spindowntime")))
+		spindowntime = atoi(p);
 }
 
 void
@@ -241,6 +242,11 @@ hardattach(char *spec)
 		}
 		qlock(dp);
 		if(!dp->online){
+			/*
+			 * Make sure hardclock() doesn't
+			 * interfere.
+			 */
+			dp->usetime = m->ticks;
 			hardparams(dp);
 			dp->online = 1;
 			hardsetbuf(dp, 1);
@@ -447,7 +453,9 @@ cmddone(void *a)
 }
 
 /*
- *  wait for the controller to be ready to accept a command
+ * Wait for the controller to be ready to accept a command.
+ * This is protected from intereference by hardclock() by
+ * setting dp->usetime before it is called.
  */
 static void
 cmdreadywait(Drive *dp)
@@ -493,7 +501,7 @@ hardxfer(Drive *dp, Partition *pp, int cmd, long start, long len, char *buf)
 	Controller *cp;
 	long lblk;
 	int cyl, sec, head;
-	int loop, s, stat;
+	int loop, stat;
 
 	if(dp->online == 0)
 		error(Eio);
@@ -528,24 +536,28 @@ hardxfer(Drive *dp, Partition *pp, int cmd, long start, long len, char *buf)
 		nexterror();
 	}
 
+	/*
+	 * Make sure hardclock() doesn't
+	 * interfere.
+	 */
+	dp->usetime = m->ticks;
 	cmdreadywait(dp);
 
-	/*
-	 *  splhi to make command atomic
-	 */
-	s = splhi();
+	ilock(cp);
 	cp->sofar = 0;
 	cp->buf = buf;
 	cp->nsecs = len;
 	cp->cmd = cmd;
 	cp->dp = dp;
 	cp->status = 0;
+
 	outb(cp->pbase+Pcount, cp->nsecs);
 	outb(cp->pbase+Psector, sec);
 	outb(cp->pbase+Pdh, 0x20 | (dp->drive<<4) | head);
 	outb(cp->pbase+Pcyllsb, cyl);
 	outb(cp->pbase+Pcylmsb, cyl>>8);
 	outb(cp->pbase+Pcmd, cmd);
+
 	if(cmd == Cwrite){
 		loop = 0;
 		while((stat = inb(cp->pbase+Pstatus) & (Serr|Sdrq)) == 0)
@@ -554,7 +566,8 @@ hardxfer(Drive *dp, Partition *pp, int cmd, long start, long len, char *buf)
 		outss(cp->pbase+Pdata, cp->buf, dp->bytes/2);
 	} else
 		stat = 0;
-	splx(s);
+	iunlock(cp);
+
 	if(stat & Serr)
 		error(Eio);
 
@@ -610,10 +623,12 @@ hardsetbuf(Drive *dp, int on)
 
 	cmdreadywait(dp);
 
+	ilock(cp);
 	cp->cmd = Csetbuf;
 	outb(cp->pbase+Pprecomp, on ? 0xAA : 0x55);
 	outb(cp->pbase+Pdh, 0x20 | (dp->drive<<4));
 	outb(cp->pbase+Pcmd, Csetbuf);
+	iunlock(cp);
 
 	sleep(&cp->r, cmddone, cp);
 
@@ -672,7 +687,6 @@ hardident(Drive *dp)
 	Controller *cp;
 	char *buf;
 	Ident *ip;
-	int s;
 
 	cp = dp->cp;
 	buf = smalloc(Maxxfer);
@@ -684,7 +698,7 @@ hardident(Drive *dp)
 
 	cmdreadywait(dp);
 
-	s = splhi();
+	ilock(cp);
 	cp->nsecs = 1;
 	cp->sofar = 0;
 	cp->cmd = Cident;
@@ -692,7 +706,7 @@ hardident(Drive *dp)
 	cp->buf = buf;
 	outb(cp->pbase+Pdh, 0x20 | (dp->drive<<4));
 	outb(cp->pbase+Pcmd, Cident);
-	splx(s);
+	iunlock(cp);
 
 	sleep(&cp->r, cmddone, cp);
 	if(cp->status & Serr){
@@ -744,6 +758,7 @@ hardprobe(Drive *dp, int cyl, int sec, int head)
 
 	cmdreadywait(dp);
 
+	ilock(cp);
 	cp->cmd = Cread;
 	cp->dp = dp;
 	cp->status = 0;
@@ -756,6 +771,7 @@ hardprobe(Drive *dp, int cyl, int sec, int head)
 	outb(cp->pbase+Pcyllsb, cyl);
 	outb(cp->pbase+Pcylmsb, cyl>>8);
 	outb(cp->pbase+Pcmd, Cread);
+	iunlock(cp);
 
 	sleep(&cp->r, cmddone, cp);
 
@@ -980,6 +996,8 @@ hardintr(Ureg *ur, void *arg)
 	cp = &hardc[0];
 	dp = cp->dp;
 
+	ilock(cp);
+
 	loop = 0;
 	while((cp->status = inb(cp->pbase+Pstatus)) & Sbusy){
 		if(++loop > 100) {
@@ -988,6 +1006,7 @@ hardintr(Ureg *ur, void *arg)
 			panic("hardintr: wait busy");
 		}
 	}
+
 	switch(cp->cmd){
 	case Cwrite:
 		if(cp->status & Serr){
@@ -995,7 +1014,7 @@ hardintr(Ureg *ur, void *arg)
 			cp->cmd = 0;
 			cp->error = inb(cp->pbase+Perror);
 			wakeup(&cp->r);
-			return;
+			break;
 		}
 		cp->sofar++;
 		if(cp->sofar < cp->nsecs){
@@ -1033,7 +1052,7 @@ hardintr(Ureg *ur, void *arg)
 			cp->cmd = 0;
 			cp->error = inb(cp->pbase+Perror);
 			wakeup(&cp->r);
-			return;
+			break;
 		}
 		addr = cp->buf;
 		if(addr){
@@ -1070,6 +1089,8 @@ hardintr(Ureg *ur, void *arg)
 			cp->cmd, cp->lastcmd, cp->status);
 		break;
 	}
+
+	iunlock(cp);
 }
 
 void
@@ -1086,21 +1107,16 @@ hardclock(void)
 	for(drive = 0; drive < conf.nhard; drive++){
 		dp = &hard[drive];
 		cp = dp->cp;
-		if(canqlock(cp) == 0)
-			continue;
 
 		diff = TK2SEC(m->ticks - dp->usetime);
-		switch(dp->state){
-		case Sspinning:
-			if(diff >= spindowntime){
-				cp->cmd = Cstandby;
-				outb(cp->pbase+Pcount, 0);
-				outb(cp->pbase+Pdh, 0x20 | (dp->drive<<4) | 0);
-				outb(cp->pbase+Pcmd, cp->cmd);
-				dp->state = Sstandby;
-			}
-			break;
+		if((dp->state == Sspinning) && (diff >= spindowntime)){
+			ilock(cp);
+			cp->cmd = Cstandby;
+			outb(cp->pbase+Pcount, 0);
+			outb(cp->pbase+Pdh, 0x20 | (dp->drive<<4) | 0);
+			outb(cp->pbase+Pcmd, cp->cmd);
+			iunlock(cp);
+			dp->state = Sstandby;
 		}
-		qunlock(dp->cp);
 	}
 }

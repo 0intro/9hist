@@ -115,9 +115,10 @@ anyhigher(void)
 	Proc *p;
 	int pri;
 
+	return runq.n;
 	pri = up->pri;
 	for(p=runq.head; p; p=p->rnext)
-		if(p->pri < pri)
+		if(p->pri <= pri)
 			if(p->wired == 0 || p->wired == m)
 				return 1;
 	return 0;

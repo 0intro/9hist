@@ -264,11 +264,14 @@ slotena(Slot *pp)
 static void
 slotdis(Slot *pp)
 {
+	int x;
+
 	/* disable the windows into the card */
 	wrreg(pp, Rwe, 0);
 
 	/* disable the card */
-	wrreg(pp, Rpc, 5|Fautopower);
+	x = vcode(5) | (vcode(5)<<2);
+	wrreg(pp, Rpc, x|Fautopower);
 	pp->enabled = 0;
 }
 

@@ -8,13 +8,13 @@
 
 struct Mntrpc
 {
-	Chan	*c;		/* Channel for whom we are working */
-	Mntrpc	*list;		/* Free/pending list */
+	Chan*	c;		/* Channel for whom we are working */
+	Mntrpc*	list;		/* Free/pending list */
 	Fcall	request;	/* Outgoing file system protocol message */
 	Fcall	reply;		/* Incoming reply */
-	Mnt	*m;		/* Mount device during rpc */
+	Mnt*	m;		/* Mount device during rpc */
 	Rendez	r;		/* Place to hang out */
-	char	*rpc;		/* I/O Data buffer */
+	char*	rpc;		/* I/O Data buffer */
 	char	done;		/* Rpc completed */
 	char	flushed;	/* Flush was sent */
 	ushort	flushtag;	/* Tag flush sent on */
@@ -24,9 +24,9 @@ struct Mntrpc
 struct Mntalloc
 {
 	Lock;
-	Mnt	*list;		/* Mount devices in use */
-	Mnt	*mntfree;	/* Free list */
-	Mntrpc	*rpcfree;
+	Mnt*	list;		/* Mount devices in use */
+	Mnt*	mntfree;	/* Free list */
+	Mntrpc*	rpcfree;
 	ulong	id;
 	int	rpctag;
 }mntalloc;

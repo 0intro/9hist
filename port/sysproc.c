@@ -465,12 +465,12 @@ syssleep(ulong *arg)
 	int n;
 
 	n = arg[0];
-	if(n == 0) {
+	if(n <= 0) {
 		up->yield = 1;
 		sched();
 		return 0;
 	} 
-	if(MS2TK(n) == 0)
+	if(n < TK2MS(1))
 		n = TK2MS(1);
 	tsleep(&up->sleep, return0, 0, n);
 	return 0;
