@@ -479,7 +479,11 @@ sseek(ulong *arg)
 		ulong u[2];
 	} o;
 
-	c = fdtochan(arg[1], -1, 1, 0);
+	c = fdtochan(arg[1], -1, 1, 1);
+	if(waserror()){
+		cclose(c);
+		nexterror();
+	}
 	if(c->qid.path & CHDIR)
 		error(Eisdir);
 
@@ -510,6 +514,8 @@ sseek(ulong *arg)
 		break;
 	}
 	*(vlong*)arg[0] = off;
+	cclose(c);
+	poperror();
 }
 
 long

@@ -817,7 +817,7 @@ conswrite(Chan *c, void *va, long n, vlong off)
 		if(buf[0]<'0' || '9'<buf[0])
 			error(Ebadarg);
 		fd = strtoul(buf, 0, 0);
-		swc = fdtochan(fd, -1, 1, 0);
+		swc = fdtochan(fd, -1, 1, 1);
 		setswapchan(swc);
 		break;
 

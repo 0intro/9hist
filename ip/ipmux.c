@@ -717,6 +717,11 @@ yes:
 			c = mux->conv;
 		mux = mux->yes;
 	}
+	if(c != nil){
+		qpass(c->rq, bp);
+		return;
+	}
+	runlock(f);
 nomatch:
 	/* doesn't match any filter, hand it to the specific protocol handler */
 	ip = (Iphdr*)bp->rp;

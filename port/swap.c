@@ -330,10 +330,11 @@ void
 setswapchan(Chan *c)
 {
 	if(swapimage.c) {
-		if(swapalloc.free != conf.nswap)
+		if(swapalloc.free != conf.nswap){
+			cclose(c);
 			error(Einuse);
+		}
 		cclose(swapimage.c);
 	}
-	incref(c);
 	swapimage.c = c;
 }
