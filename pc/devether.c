@@ -241,17 +241,25 @@ etherwrite(Chan* chan, void* buf, long n, vlong)
 {
 	Ether *ether;
 	Block *bp;
-	int nn;
+	int nn, onoff;
+	Cmdbuf *cb;
 
 	ether = etherxx[chan->dev];
 	if(NETTYPE(chan->qid.path) != Ndataqid) {
 		nn = netifwrite(ether, chan, buf, n);
 		if(nn >= 0)
 			return nn;
-		if(n == sizeof("nonblocking")-1 && strncmp((char*)buf, "nonblocking", n) == 0){
-			qnoblock(ether->oq, 1);
+		cb = parsecmd(buf, n);
+		if(strcmp(cb->f[0], "nonblocking") == 0){
+			if(cb->nf <= 1)
+				onoff = 1;
+			else
+				onoff = atoi(cb->f[1]);
+			qnoblock(ether->oq, onoff);
+			free(cb);
 			return n;
 		}
+		free(cb);
 		if(ether->ctl!=nil)
 			return ether->ctl(ether,buf,n);
 			
