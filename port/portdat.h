@@ -218,7 +218,7 @@ struct Dirtab
 {
 	char	name[KNAMELEN];
 	Qid	qid;
-	vlong length;
+	vlong	length;
 	long	perm;
 };
 
@@ -441,8 +441,8 @@ struct Egrp
 	Ref;
 	RWlock;
 	Evalue	**ent;
-	int nent;
-	int ment;
+	int	nent;
+	int	ment;
 	ulong	path;	/* qid.path of next Evalue to be allocated */
 	ulong	vers;	/* of Egrp */
 };
@@ -648,9 +648,9 @@ struct Proc
 	Note	lastnote;
 	int	(*notify)(void*, char*);
 
-	Lock		*lockwait;
-	Lock		*lastlock;	/* debugging */
-	Lock		*lastilock;	/* debugging */
+	Lock	*lockwait;
+	Lock	*lastlock;	/* debugging */
+	Lock	*lastilock;	/* debugging */
 
 	Mach	*wired;
 	Mach	*mp;		/* machine this process last ran on */
@@ -666,7 +666,7 @@ struct Proc
 	int	preempted;	/* true if this process hasn't finished the interrupt
 				 *  that last preempted it
 				 */
-	Task		*task;	/* if non-null, real-time proc, task contains scheduling params */
+	Task	*task;		/* if non-null, real-time proc, task contains scheduling params */
 
 	ulong	qpc;		/* pc calling last blocking qlock */
 
@@ -860,18 +860,18 @@ struct Timer
 };
 
 struct Edfinterface {
-	int		(*isedf)(Proc*);
-	void		(*edfbury)(Proc*);
-	int		(*edfanyready)(void);
-	void		(*edfready)(Proc*);
+	int	(*isedf)(Proc*);
+	void	(*edfbury)(Proc*);
+	int	(*edfanyready)(void);
+	void	(*edfready)(Proc*);
 	Proc*	(*edfrunproc)(void);
-	void		(*edfblock)(Proc*);
-	void		(*edfinit)(void);
-	void		(*edfexpel)(Task*);
+	void	(*edfblock)(Proc*);
+	void	(*edfinit)(void);
+	void	(*edfexpel)(Task*);
 	char *	(*edfadmit)(Task*);
-	void		(*edfdeadline)(Proc*);
-	void		(*resacquire)(Task*, CSN*);
-	void		(*resrelease)(Task*);
+	void	(*edfdeadline)(Proc*);
+	void	(*resacquire)(Task*, CSN*);
+	void	(*resrelease)(Task*);
 };
 
 /*
