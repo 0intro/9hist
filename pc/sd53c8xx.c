@@ -1807,12 +1807,17 @@ cribbios(Controller *c)
 {
 	c->bios.scntl3 = c->n->scntl3;
 	c->bios.stest2 = c->n->stest2;
-	print("sd53c8xx: bios scntl3(%.2x) stest2(%.2x)\n", c->bios.scntl3, c->bios.stest2);
+	KPRINT("sd53c8xx: bios scntl3(%.2x) stest2(%.2x)\n",
+		c->bios.scntl3, c->bios.stest2);
 }
 
 static int
 bios_set_differential(Controller *c)
 {
+	/* rsc: this fails on the 825 */
+	if(strcmp(c->v->name, "NCR53C825") == 0)
+		return 0;
+
 	/* Concept lifted from FreeBSD - thanks Gerard */
 	/* basically, if clock conversion factors are set, then there is
  	 * evidence the bios had a go at the chip, and if so, it would
@@ -1961,8 +1966,11 @@ sympnp(void)
 			ba++;
 		}
 		regpa = upamalloc(regpa & ~0x0F, p->mem[1].size, 0);
-		if(regpa == 0)
+		if(regpa == 0) {
+			print("sd53c8xx: failed to allocate register space (%d bytes at %.8lux)\n",
+				p->mem[1].size, regpa & ~0x0F);
 			continue;
+		}
 
 		script = nil;
 		scriptpa = 0;
