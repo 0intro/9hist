@@ -91,13 +91,20 @@ mmuinit(void)
 }
 
 /*
- *  map special use space
+ *  map special space, assume that the space isn't already mapped
  */
 ulong*
 mapspecial(ulong physaddr, int len)
 {
 	ulong *t;
-	ulong virtaddr, i;
+	ulong virtaddr, i, base, end, off, entry, candidate;
+
+	base = physaddr & ~(BY2PG-1);
+	end = (physaddr+len-1) & ~(BY2PG-1);
+	if(len > 128*1024)
+		usemeg = 1;
+	off = 0;
+	candidate = 0;
 
 	/* first see if we've mapped it somewhere, the first hole means we're done */
 	for(virtaddr = REGZERO; virtaddr < REGTOP; virtaddr += OneMeg){
@@ -105,14 +112,34 @@ mapspecial(ulong physaddr, int len)
 			/* create a page table and break */
 			t = xspanalloc(BY2PG, 1024, 0);
 			memzero(t, BY2PG, 0);
-			l1table[virtaddr>>20] = L1PageTable | L1Domain0 | (((ulong)t) & L1PTBaseMask);
+			l1table[virtaddr>>20] = L1PageTable | L1Domain0 |
+						(((ulong)t) & L1PTBaseMask);
 			break;
 		}
 		t = (ulong*)(l1table[virtaddr>>20] & L1PTBaseMask);
 		for(i = 0; i < OneMeg; i += BY2PG){
-			if((t[(virtaddr+i)>>20] & L2TypeMask) != L2SmallPage)
+			entry = t[(virtaddr+i)>>20];
+
+			/* first hole means nothing left, add map */
+			if((entry & L2TypeMask) != L2SmallPage)
 				break;
-			
+
+			if(candidate == 0){
+				/* look for start of range */
+				if((entry & L2PageBaseMask) != base)
+					continue;
+				candidate = virtaddr+i;
+			} else {
+				/* look for contiunued range */
+				if((entry & L2PageBaseMask) != base + off)
+					candidate = 0;
+					continue;
+				}
+			}
+
+			/* if we're at the end of the range, area is already mapped */
+			if((entry & L2PageBaseMask) == end)
+				return candidate + (physaddr-base);
 		}
 		if(i < OneMeg){
 			virtaddr += i;

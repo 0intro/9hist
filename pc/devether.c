@@ -258,9 +258,9 @@ etherwrite(Chan* chan, void* buf, long n, vlong)
 		error(Ebadctl);
 	}
 
-	if(n > ETHERMAXTU)
+	if(n > ether->maxmtu)
 		error(Etoobig);
-	if(n < ETHERMINTU)
+	if(n < ether->minmtu)
 		error(Etoosmall);
 
 	bp = allocb(n);
@@ -284,16 +284,17 @@ etherbwrite(Chan* chan, Block* bp, ulong)
 			nexterror();
 		}
 		n = etherwrite(chan, bp->rp, n, 0);
+		poperror();
 		freeb(bp);
 		return n;
 	}
 	ether = etherxx[chan->dev];
 
-	if(n > ETHERMAXTU){
+	if(n > ether->maxmtu){
 		freeb(bp);
-		error(Ebadarg);
+		error(Etoobig);
 	}
-	if(n < ETHERMINTU){
+	if(n < ether->minmtu){
 		freeb(bp);
 		error(Etoosmall);
 	}
@@ -355,6 +356,8 @@ etherreset(void)
 		ether->ctlrno = ctlrno;
 		ether->tbdf = BUSUNKNOWN;
 		ether->mbps = 10;
+		ether->minmtu = ETHERMINTU;
+		ether->maxmtu = ETHERMAXTU;
 		if(isaconfig("ether", ctlrno, ether) == 0)
 			continue;
 		for(n = 0; cards[n].type; n++){
@@ -396,7 +399,7 @@ etherreset(void)
 			sprint(buf+i, "\n");
 			print(buf);
 
-			if(ether->mbps == 100){
+			if(ether->mbps >= 100){
 				netifinit(ether, name, Ntypes, 256*1024);
 				if(ether->oq == 0)
 					ether->oq = qopen(256*1024, 1, 0, 0);

@@ -10,6 +10,8 @@ struct Ether {
 	int	ctlrno;
 	int	tbdf;			/* type+busno+devno+funcno */
 	int	mbps;			/* Mbps */
+	int	minmtu;
+	int 	maxmtu;
 	uchar	ea[Eaddrlen];
 	int	encry;
 
