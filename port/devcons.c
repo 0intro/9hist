@@ -796,7 +796,7 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 		break;
 
 	case Qtime:
-		if(n<=0 || boottime!=0)	/* write once file */
+		if(n<=0 || (boottime != 0 && !iseve()))	/* write once file */
 			return 0;
 		if(n >= sizeof cbuf)
 			n = sizeof cbuf - 1;
