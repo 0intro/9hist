@@ -318,6 +318,7 @@ ipiput(Fs *f, uchar *ia, Block *bp)
 	int notforme;
 	uchar *dp, v6dst[IPaddrlen];
 	IP *ip;
+	Route *r, *sr;
 
 	ip = f->ip;
 	ip->istats.ipInReceives++;
@@ -375,18 +376,31 @@ ipiput(Fs *f, uchar *ia, Block *bp)
 
 	/* route */
 	if(notforme) {
-		if(ip->iprouting) {
-			/* gate */
-			if(h->ttl <= 1){
-				ip->istats.ipInHdrErrors++;
-				icmpttlexceeded(f, ia, bp);
-				freeblist(bp);
-			} else {
-				ip->istats.ipForwDatagrams++;
-				ipoput(f, bp, 1, h->ttl - 1);
-			}
-		} else
+		if(!ip->iprouting){
 			useriprouter(f, ia, bp);
+			return;
+		}
+
+		/* don't forward to source's network */
+		sr = v4lookup(f, h->src);
+		r = v4lookup(f, h->dst);
+		if(r == nil || sr == r){
+			ip->istats.ipOutDiscards++;
+			freeblist(bp);
+			return;
+		}
+
+		/* don't forward if packet has timed out */
+		if(h->ttl <= 1){
+			ip->istats.ipInHdrErrors++;
+			icmpttlexceeded(f, ia, bp);
+			freeblist(bp);
+			return;
+		}
+
+		ip->istats.ipForwDatagrams++;
+		ipoput(f, bp, 1, h->ttl - 1);
+
 		return;
 	}
 
