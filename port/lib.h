@@ -75,7 +75,7 @@ extern	long	end;
 #define	ORCLOSE	64	/* or'ed in, remove on close */
 
 #define	NCONT	0	/* continue after note */
-#define	NTERM	1	/* terminate after note */
+#define	NDFLT	1	/* terminate after note */
 
 typedef struct Qid	Qid;
 typedef struct Dir	Dir;

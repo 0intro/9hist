@@ -27,23 +27,28 @@
 /*
  * Fundamental addresses
  */
-#define	USERADDR	0xC0000000
-#define	UREGADDR	(USERADDR+BY2PG-4*16)
 
 /*
- * Address spaces
+ *  Address spaces
  *
- * User is at 0-2GB
- * Kernel is at 2GB-4GB
+ *  User is at 0-2GB
+ *  Kernel is at 2GB-4GB
+ *
+ *  To avoid an extra page map, both the user stack (USTKTOP) and
+ *  the temporary user stack (TSTKTOP) should be in the the same
+ *  4 meg.
  */
-#define	UZERO	0			/* base of user address space */
-#define	UTZERO	(UZERO+BY2PG)		/* first address in user text */
-#define	TSTKTOP	USERADDR		/* end of new stack in sysexec */
+#define	UZERO		0			/* base of user address space */
+#define	UTZERO		(UZERO+BY2PG)		/* first address in user text */
+#define	KZERO		0x80000000		/* base of kernel address space */
+#define	KTZERO		KZERO			/* first address in kernel text */
+#define	USERADDR	0xC0000000		/* struct User */
+#define	UREGADDR	(USERADDR+BY2PG-4*16)	
+#define	TSTKTOP		USERADDR		/* end of new stack in sysexec */
 #define TSTKSIZ 10
-#define	USTKTOP	(TSTKTOP-TSTKSIZ*BY2PG)	/* byte just beyond user stack */
-#define	KZERO	0x80000000		/* base of kernel address space */
-#define	KTZERO	KZERO			/* first address in kernel text */
-#define	USTKSIZE	(4*1024*1024)	/* size of user stack */
+#define	USTKTOP		(TSTKTOP-TSTKSIZ*BY2PG)	/* byte just beyond user stack */
+#define	USTKSIZE	(4*1024*1024 - TSTKSIZ*BY2PG)	/* size of user stack */
+#define USTKBTM		USTKTOP - USTKSIZE
 
 #define	MACHSIZE	4096
 

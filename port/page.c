@@ -296,7 +296,7 @@ copypage(Page *f, Page *t)
 }
 
 void
-uncachepage(Page *p)				/* Alway called with a locked page */
+uncachepage(Page *p)				/* Always called with a locked page */
 {
 	Page **l, *f;
 

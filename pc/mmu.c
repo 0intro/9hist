@@ -76,6 +76,17 @@ static ulong	*kpt;		/* kernel level page tables */
 static ulong	*upt;		/* page table for struct User */
 
 #define ROUNDUP(s,v)	(((s)+(v-1))&~(v-1))
+/*
+ *  offset of virtual address into
+ *  top level page table
+ */
+#define TOPOFF(v)	((v)>>(2*PGSHIFT-2))
+
+/*
+ *  offset of virtual address into
+ *  bottom level page table
+ */
+#define BTMOFF(v)	(((v)>>(PGSHIFT))&(BY2PG-1))
 
 void
 mmuinit(void)
@@ -90,10 +101,10 @@ mmuinit(void)
 	x = (ulong)systrap;
 	gdt[SYSGATE].d0 = (x&0xFFFF)|(KESEL<<16);
 	gdt[SYSGATE].d1 = (x&0xFFFF0000)|SEGP|SEGPL(3)|SEGCG;
-	x = (long)&tss;
+	x = (ulong)&tss;
 	gdt[TSSSEG].d0 = (x<<16)|sizeof(Tss);
 	gdt[TSSSEG].d1 = (x&0xFF000000)|((x>>16)&0xFF)|SEGTSS|SEGPL(0)|SEGP;
-	lgdt(gdt, sizeof gdt);
+	putgdt(gdt, sizeof gdt);
 
 	/*
 	 *  set up system page tables.
@@ -107,59 +118,142 @@ mmuinit(void)
 	kpt = ialloc(nkpt*BY2PG, 1);
 	n = ROUNDUP(conf.npage0+conf.npage1, 1*1024*1024);
 	n = n/(4*1024);
-	for(i = 0; i < n; i++){
-		kpt[i] = (i<<PGSHIFT)|PTEVALID|PTEKERNEL|PTEWRITE;
-	}
+	for(i = 0; i < n; i++)
+		kpt[i] = (i<<PGSHIFT) | PTEVALID | PTEKERNEL | PTEWRITE;
 
 	/*  allocate page table for u-> */
 	upt = ialloc(BY2PG, 1);
 
 	/*  allocate top level table and put pointers to lower tables in it */
 	toppt = ialloc(BY2PG, 1);
-	x = KZERO>>(2*PGSHIFT-2);
+	x = TOPOFF(KZERO);
 	y = ((ulong)kpt)&~KZERO;
-	for(i = 0; i < nkpt; i++){
-/*		toppt[i] = (y+i*BY2PG)|PTEVALID|PTEKERNEL|PTEWRITE;/**/
-		toppt[x+i] = (y+i*BY2PG)|PTEVALID|PTEKERNEL|PTEWRITE;
-	}
-	x = USERADDR>>(2*PGSHIFT-2);
+	for(i = 0; i < nkpt; i++)
+		toppt[x+i] = (y+i*BY2PG) | PTEVALID | PTEKERNEL | PTEWRITE;
+	x = TOPOFF(USERADDR);
 	y = ((ulong)upt)&~KZERO;
-	toppt[x] = y|PTEVALID|PTEKERNEL|PTEWRITE;
-	lcr3(((ulong)toppt)&~KZERO);
+	toppt[x] = y | PTEVALID | PTEKERNEL | PTEWRITE;
+	putcr3(((ulong)toppt)&~KZERO);
 
 	/*
 	 *  set up the task segment
 	 */
-	tss.sp0 = USERADDR;
+	tss.sp0 = USERADDR+BY2PG;
 	tss.ss0 = KDSEL;
 	tss.cr3 = (ulong)toppt;
-	ltr(TSSSEL);
+	puttr(TSSSEL);
 }
 
 void
 mapstack(Proc *p)
 {
-	
+	ulong tlbphys;
+	int i;
+
+print("mapstack\n");
+
+	if(p->upage->va != (USERADDR|(p->pid&0xFFFF)))
+		panic("mapstack %d 0x%lux 0x%lux", p->pid, p->upage->pa, p->upage->va);
+
+	/*
+ 	 *  dump any invalid mappings
+	 */
+	if(p->mmuvalid == 0){
+		for(i = 0; i < MAXMMU+MAXSMMU; i++){
+			if(p->mmu[i]==0)
+				continue;
+			memset(kmap(p->mmu[i]), 0, BY2PG);
+		}
+		p->mmuvalid = 1;
+	}
+
+	/*
+	 *  point top level page table to bottom level ones
+	 */
+	memmove(toppt, p->mmu, MAXMMU*sizeof(ulong));
+	memmove(&toppt[TOPOFF(USTKBTM)], &p->mmu[MAXMMU], MAXSMMU*sizeof(ulong));
+
+	/* map in u area */
+	upt[0] = PPN(p->upage->pa) | PTEVALID | PTEKERNEL | PTEWRITE;
+
+	/* flush cached mmu entries */
+	putcr3(((ulong)toppt)&~KZERO);
+
+	u = (User*)USERADDR;
 }
 
 void
 flushmmu(void)
 {
+	int s;
+
+	if(u == 0)
+		return;
+
+	u->p->mmuvalid = 0;
+	s = splhi();
+	mapstack(u->p);
+	splx(s);
 }
 
 void
 mmurelease(Proc *p)
 {
+	p->mmuvalid = 0;
 }
 
 void
-putmmu(ulong x, ulong y, Page *z)
+putmmu(ulong va, ulong pa, Page *pg)
 {
+	int topoff;
+	ulong *pt;
+	Proc *p;
+	int i;
+
+print("putmmu %lux %lux USTKTOP %lux\n", va, pa, USTKTOP); /**/
+	if(u==0)
+		panic("putmmu");
+	p = u->p;
+
+	/*
+	 *  check for exec/data vs stack vs illegal
+	 */
+	topoff = TOPOFF(va);
+	if(topoff < TOPOFF(TSTKTOP) && topoff >= TOPOFF(USTKBTM))
+		i = MAXMMU + topoff - TOPOFF(USTKBTM);
+	else if(topoff < MAXMMU)
+		i = topoff;
+	else
+		panic("putmmu bad addr %lux", va);
+
+	/*
+	 *  if bottom level page table missing, allocate one
+	 */
+	pg = p->mmu[i];
+	if(pg == 0){
+		pg = p->mmu[i] = newpage(1, 0, 0);
+		p->mmue[i] = PPN(pg->pa) | PTEVALID | PTEKERNEL | PTEWRITE;
+		toppt[topoff] = p->mmue[i];
+	}
+
+	/*
+	 *  fill in the bottom level page table
+	 */
+	pt = (ulong*)(p->mmu[i]->pa|KZERO);
+	pt[BTMOFF(va)] = pa | PTEUSER;
+
+	/* flush cached mmu entries */
+	putcr3(((ulong)toppt)&~KZERO);
 }
 
 void
 invalidateu(void)
 {
+	/* unmap u area */
+	upt[0] = 0;
+
+	/* flush cached mmu entries */
+	putcr3(((ulong)toppt)&~KZERO);
 }
 
 void
@@ -177,5 +271,5 @@ exit(void)
 	print("exiting\n");
 	for(i = 0; i < WD2PG; i++)
 		toppt[i] = 0;
-	lcr3(((ulong)toppt)&~KZERO);
+	putcr3(((ulong)toppt)&~KZERO);
 }

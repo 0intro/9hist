@@ -215,10 +215,10 @@ TEXT	tas(SB),$0
 	RET
 
 /*
- *  routines to load various system registers
+ *  routines to load/read various system registers
  */
 GLOBL	idtptr(SB),$6
-TEXT	lidt(SB),$0
+TEXT	putidt(SB),$0		/* interrupt descriptor table */
 	MOVL	t+0(FP),AX
 	MOVL	AX,idtptr+2(SB)
 	MOVL	l+4(FP),AX
@@ -227,7 +227,7 @@ TEXT	lidt(SB),$0
 	RET
 
 GLOBL	gdtptr(SB),$6
-TEXT	lgdt(SB),$0
+TEXT	putgdt(SB),$0		/* global descriptor table */
 	MOVL	t+0(FP),AX
 	MOVL	AX,gdtptr+2(SB)
 	MOVL	l+4(FP),AX
@@ -235,14 +235,18 @@ TEXT	lgdt(SB),$0
 	MOVL	gdtptr(SB),GDTR
 	RET
 
-TEXT	lcr3(SB),$0
+TEXT	putcr3(SB),$0		/* top level page table pointer */
 	MOVL	t+0(FP),AX
 	MOVL	AX,CR3
 	RET
 
-TEXT	ltr(SB),$0
+TEXT	puttr(SB),$0		/* task register */
 	MOVL	t+0(FP),AX
 	MOVW	AX,TASK
+	RET
+
+TEXT	getcr2(SB),$0		/* fault address */
+	MOVL	CR2,AX
 	RET
 
 /*
@@ -350,6 +354,8 @@ TEXT	intrbad(SB),$0
 intrcommon:
 	PUSHL	DS
 	PUSHAL
+	MOVL	$(KDSEL),AX
+	MOVW	AX,DS
 	LEAL	0(SP),AX
 	PUSHL	AX
 	CALL	trap(SB)
@@ -358,11 +364,12 @@ intrcommon:
 	POPL	DS
 	ADDL	$8,SP	/* error code and trap type */
 	IRETL
-	RET		/* this has to be here because of ken */
 
 intrscommon:
 	PUSHL	DS
 	PUSHAL
+	MOVL	$(KDSEL),AX
+	MOVW	AX,DS
 	LEAL	0(SP),AX
 	PUSHL	AX
 	CALL	trap(SB)
@@ -371,7 +378,6 @@ intrscommon:
 	POPL	DS
 	ADDL	$8,SP	/* error code and trap type */
 	IRETL
-	RET		/* this has to be here because of ken */
 
 /*
  *  interrupt level is interrupts on or off
@@ -409,6 +415,7 @@ TEXT	gotolabel(SB),$0
 	MOVL	0(AX),SP	/* restore sp */
 	MOVL	4(AX),AX	/* put return pc on the stack */
 	MOVL	AX,0(SP)
+	MOVL	$1,AX		/* return 1 */
 	RET
 
 TEXT	setlabel(SB),$0
@@ -416,17 +423,20 @@ TEXT	setlabel(SB),$0
 	MOVL	SP,0(AX)	/* store sp */
 	MOVL	0(SP),BX	/* store return pc */
 	MOVL	BX,4(AX)
+	MOVL	$0,AX		/* return 0 */
 	RET
 
+/*
+ *  Used to get to the first process.
+ *  Set up an interrupt return frame and IRET to user level.
+ */
 TEXT	touser(SB),$0
-	MOVL	$(USERADDR+BY2PG-6*BY2WD),AX
-	MOVL	$(UTZERO+32),0(AX)	/* header is in text */
-	MOVL	$(UESEL),4(AX)
-	MOVL	$(IFLAG|2),8(AX)
-	MOVL	$(USTKTOP-4*BY2WD),12(AX)
-	MOVL	$(UDSEL),16(AX)
-	MOVL	AX,SP
-	MOVL	$(UDSEL),AX		/* set up data segment */
+	PUSHL	$(UDSEL)			/* old ss */
+	PUSHL	$(USTKTOP-4*BY2WD)		/* old sp */
+	PUSHFL					/* old flags */
+	PUSHL	$(UESEL)			/* old cs */
+	PUSHL	$(UTZERO+32)			/* old pc */
+	MOVL	$(UDSEL),AX		/* set up user's data segment */
 	MOVW	AX,DS
 	IRETL
 

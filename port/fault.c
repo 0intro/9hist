@@ -103,8 +103,8 @@ again:
 	}
 
 	qunlock(&s->lk);
-	if(new)
-		putpage(new);
+	if(new)				/* A race may provide a page we never used when
+		putpage(new);		 * a fault is fixed while process slept in newpage */
 
 	putmmu(addr, mmuphys, *pg);
 	return 0;

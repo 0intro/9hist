@@ -216,7 +216,7 @@ noted(Ureg *ur, ulong arg0)
 		u->lastnote.flag = NDebug;
 		/* fall through */
 		
-	case NTERM:
+	case NDFLT:
 		if(u->lastnote.flag == NDebug)
 			pprint("suicide: %s\n", u->lastnote.msg);
 		unlock(&u->p->debug);

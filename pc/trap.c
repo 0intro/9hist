@@ -86,7 +86,7 @@ trapinit(void)
 	sethvec(23, intr23, SEGTG, 0);
 
 	/*
-	 *  set all others to unknown
+	 *  set all others to unknown interrupts
 	 */
 	for(i = 24; i < 256; i++)
 		sethvec(i, intrbad, SEGIG, 0);
@@ -100,7 +100,7 @@ trapinit(void)
 	/*
 	 *  tell the hardware where the table is (and how long)
 	 */
-	lidt(ilt, sizeof(ilt));
+	putidt(ilt, sizeof(ilt));
 
 	/*
 	 *  Set up the first 8259 interrupt processor.
@@ -137,11 +137,33 @@ trap(Ureg *ur)
 }
 
 /*
+ *  dump registers
+ */
+void
+dumpregs(Ureg *ur)
+{
+	if(u)
+		print("registers for %s %d\n", u->p->text, u->p->pid);
+	else
+		print("registers for kernel\n");
+	print("FLAGS=%lux ECODE=%lux CS=%lux PC=%lux SS=%lux USP=%lux\n", ur->flags,
+		ur->ecode, ur->cs, ur->pc, ur->ss, ur->usp);
+
+	print("  AX %8.8lux  BX %8.8lux  CX %8.8lux  DX %8.8lux\n",
+		ur->ax, ur->bx, ur->cx, ur->dx);
+	print("  SI %8.8lux  DI %8.8lux  BP %8.8lux  DS %8.8lux\n",
+		ur->si, ur->di, ur->bp, ur->ds);
+}
+
+/*
  *  system calls
  */
 long
 syscall(Ureg *ur)
 {
+	u->p->insyscall = 1;
+	u->p->pc = ur->pc;
+
 	panic("syscall");
 }
 

@@ -17,19 +17,17 @@ main(void)
 	confinit();
 	screeninit();
 	printinit();
-	print("%d pages in bank0, %d pages in bank1\n", conf.npage0, conf.npage1);
-	print("edata == %lux, end == %lux\n", &edata, &end);
 	mmuinit();
-print("mmu inited\n");
+	trapinit();
+	clockinit();
+	faultinit();
 	procinit0();
-print("proc inited\n");
 	initseg();
 	grpinit();
 	chaninit();
 	alarminit();
 	chandevreset();
 	streaminit();
-	trapinit();
 	swapinit();
 	pageinit();
 	userinit();
@@ -54,6 +52,8 @@ machinit(void)
 	active.machs = 1;
 }
 
+long useless;
+
 void
 init0(void)
 {
@@ -65,6 +65,7 @@ init0(void)
 	u->p->mach = m;
 
 	spllo();
+print("interrupts on\n");
 
 	/*
 	 * These are o.k. because rootinit is null.
@@ -74,8 +75,13 @@ init0(void)
 	u->dot = clone(u->slash, 0);
 
 	chandevinit();
+print("going to user\n");
 
-/*	kickpager();	/* BUG */
+	/*
+	 *  fault in the first executable page
+	 */
+	useless = *((ulong *)UTZERO);
+
 	touser();
 }
 

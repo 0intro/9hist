@@ -98,10 +98,12 @@ struct Conf
  *  MMU stuff in proc
  */
 #define MAXMMU	4
+#define MAXSMMU	1
 struct PMMU
 {
-	ulong	mmuent[MAXMMU];	/* a process' mmu entries */
-	Page	*mmupg[MAXMMU];	/* mmu pages */
+	int	mmuvalid;
+	Page	*mmu[MAXMMU+MAXSMMU];	/* bottom level page tables */
+	ulong	mmue[MAXMMU+MAXSMMU];	/* top level pointers to mmup pages */
 };
 
 #include "../port/portdat.h"
@@ -138,7 +140,7 @@ struct Mach
  */
 typedef void		KMap;
 #define	VA(k)		((ulong)(k))
-#define	kmap(p)		(KMap*)(p->pa|KZERO)
+#define	kmap(p)		(KMap*)((p)->pa|KZERO)
 #define	kunmap(k)
 
 #define	NERR	15
