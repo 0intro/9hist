@@ -521,6 +521,10 @@ pexit(char *exitstr, int freemem)
 
 	if(c->fgrp)
 		closefgrp(c->fgrp);
+	closepgrp(c->pgrp);
+	close(u->dot);
+	if(c->egrp)
+		closeegrp(c->egrp);
 
 	if(c->kp == 0) {
 		wq = newwaitq();
@@ -566,10 +570,6 @@ pexit(char *exitstr, int freemem)
 			*s = 0;
 			putseg(os);
 		}
-	closepgrp(c->pgrp);
-	if(c->egrp)
-		closeegrp(c->egrp);
-	close(u->dot);
 
 	lock(&c->exl);		/* Prevent my children from leaving waits */
 	c->pid = 0;

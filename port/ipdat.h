@@ -46,6 +46,7 @@ struct Udphdr
 	uchar	d[6];		/* Ethernet destination */
 	uchar	s[6];		/* Ethernet source */
 	uchar	type[2];	/* Ethernet packet type */
+
 	uchar	vihl;		/* Version and header length */
 	uchar	tos;		/* Type of service */
 	uchar	length[2];	/* packet length */
@@ -72,6 +73,7 @@ struct Ilhdr
 	uchar	d[6];		/* Ethernet destination */
 	uchar	s[6];		/* Ethernet source */
 	uchar	type[2];	/* Ethernet packet type */
+
 	uchar	vihl;		/* Version and header length */
 	uchar	tos;		/* Type of service */
 	uchar	length[2];	/* packet length */
@@ -265,6 +267,7 @@ struct Ipconv
 	Ipaddr	dst;			/* Destination from connect */
 	Port	psrc;			/* Source port */
 	Port	pdst;			/* Destination port */
+	char	ptype;			/* Port type */
 
 	Ipifc	*ipinterface;		/* Ip protocol interface */
 	Queue	*readq;			/* Pointer to upstream read q */

@@ -391,6 +391,8 @@ evfree(Envval *ev)
 
 	if(ev->prev)
 		ev->prev->next = ev->next;
+	else
+		panic("evfree");
 	if(ev->next)
 		ev->next->prev = ev->prev;
 	n = (ev->len + ALIGN - 1) & ~(ALIGN - 1);
@@ -399,6 +401,7 @@ evfree(Envval *ev)
 	if(n > EVFREE)
 		n = EVFREE;
 	ev->next = envalloc.free[n];
+	ev->prev = 0;
 	envalloc.free[n] = ev;
 }
 

@@ -265,20 +265,21 @@ imagereclaim(void)
 	if(!canqlock(&ireclaim))	/* Somebody is already cleaning the page cache */
 		return;
 
-	lock(&palloc);
-	for(p = palloc.head; p; p = p->next) {
-		if(p->image == 0)
-			continue;
+	for(;;) {
+		lock(&palloc);
+		for(p = palloc.head; p; p = p->next)
+			if(p->image && p->ref == 0 && p->image != &swapimage)
+				break;
 
 		unlock(&palloc);
+		if(p == 0)
+			break;
+
 		lockpage(p);
 		if(p->ref == 0 && p->image != &swapimage)
 			uncachepage(p);
 		unlockpage(p);
-		lock(&palloc);
 	}
-
-	unlock(&palloc);
 
 	qunlock(&ireclaim);
 }

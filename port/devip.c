@@ -181,7 +181,7 @@ ipopen(Chan *c, int omode)
 			error(Eprotonosup);
 
 		if(cp->backlog == 0)
-			cp->backlog = 1;
+			cp->backlog = 3;
 
 		streamopen(c, &ipinfo);
 		if(c->stream->devq->next->info != cp->stproto)
@@ -226,7 +226,7 @@ ipclonecon(Chan *c)
 	base = ipconv[c->dev];
 	etab = &base[conf.ip];
 	for(new = base; new < etab; new++) {
-		new = ipincoming(c->dev);
+		new = ipincoming(base);
 		if(new == 0)
 			error(Enodev);
 
@@ -243,11 +243,10 @@ ipclonecon(Chan *c)
 }
 
 Ipconv *
-ipincoming(int dev)
+ipincoming(Ipconv *base)
 {
-	Ipconv *base, *new, *etab;
+	Ipconv *new, *etab;
 
-	base = ipconv[dev];
 	etab = &base[conf.ip];
 	for(new = base; new < etab; new++) {
 		if(new->ref == 0 && canqlock(new)) {
@@ -335,86 +334,93 @@ long
 ipwrite(Chan *c, char *a, long n, ulong offset)
 {
 	int 	m, backlog, type;
-	char 	*field[5], buf[256];
-	Ipconv  *cp;
+	char 	*field[5], *ctlarg[5], buf[256];
 	Port	port, base;
+	Ipconv  *cp;
 
 	type = STREAMTYPE(c->qid.path);
 	if (type == Sdataqid)
 		return streamwrite(c, a, n, 0); 
 
-	if (type == Sctlqid) {
-		cp = &ipconv[c->dev][STREAMID(c->qid.path)];
+	if (type != Sctlqid)
+		error(Eperm);
 
-		strncpy(buf, a, sizeof buf);
-		m = getfields(buf, field, 5, ' ');
+	cp = &ipconv[c->dev][STREAMID(c->qid.path)];
 
-		if(strcmp(field[0], "connect") == 0) {
-			if((cp->stproto == &tcpinfo && cp->tcpctl.state != CLOSED) ||
-			   (cp->stproto == &ilinfo && cp->ilctl.state != Ilclosed))
-					error(Edevbusy);
+	m = n;
+	if(m > sizeof(buf)-1)
+		m = sizeof(buf)-1;
+	strncpy(buf, a, m);
+	buf[m] = '\0';
 
-			if(m != 2)
-				error(Ebadarg);
+	m = getfields(buf, field, 5, ' ');
+	if(m < 1)
+		errors("bad ip control");
 
-			switch(getfields(field[1], field, 5, '!')) {
-			default:
-				error(Ebadarg);
-			case 2:
-				base = PORTALLOC;
-				break;
-			case 3:
-				if(strcmp(field[2], "r") != 0)
-					error(Eperm);
-				base = PRIVPORTALLOC;
-				break;
-			}
-			cp->dst = ipparse(field[0]);
-			cp->pdst = atoi(field[1]);
+	if(strcmp(field[0], "connect") == 0) {
+		if((cp->stproto == &tcpinfo && cp->tcpctl.state != CLOSED) ||
+		   (cp->stproto == &ilinfo && cp->ilctl.state != Ilclosed))
+				error(Edevbusy);
 
-			/* If we have no local port assign one */
-			qlock(&ipalloc);
-			if(cp->psrc == 0)
-				cp->psrc = nextport(ipconv[c->dev], base);
-			qunlock(&ipalloc);
+		if(m != 2)
+			error(Ebadarg);
 
+		switch(m = getfields(field[1], ctlarg, 5, '!')) {
+		default:
+			error(Ebadarg);
+		case 2:
+			base = PORTALLOC;
+			break;
+		case 3:
+			if(strcmp(ctlarg[2], "r") != 0)
+				error(Eperm);
+			base = PRIVPORTALLOC;
+			break;
 		}
-		else if(strcmp(field[0], "announce") == 0 ||
-			strcmp(field[0], "reserve") == 0) {
-			if((cp->stproto == &tcpinfo && cp->tcpctl.state != CLOSED) ||
-			   (cp->stproto == &ilinfo && cp->ilctl.state != Ilclosed))
-					error(Edevbusy);
+		cp->dst = ipparse(ctlarg[0]);
+		cp->pdst = atoi(ctlarg[1]);
 
-			if(m != 2)
-				error(Ebadarg);
-			port = atoi(field[1]);
+		/* If we have no local port assign one */
+		qlock(&ipalloc);
+		if(cp->psrc == 0)
+			cp->psrc = nextport(ipconv[c->dev], base);
+		qunlock(&ipalloc);
 
-			qlock(&ipalloc);
-			if(portused(ipconv[c->dev], port)) {
-				qunlock(&ipalloc);	
-				error(Einuse);
-			}
-			cp->psrc = port;
-			cp->ptype = *field[0];
-			qunlock(&ipalloc);
-		}
-		else if(strcmp(field[0], "backlog") == 0) {
-			if(m != 2)
-				error(Ebadarg);
-			backlog = atoi(field[1]);
-			if(backlog == 0)
-				error(Ebadarg);
-			if(backlog > 5)
-				backlog = 5;
-			cp->backlog = backlog;
-		}
-		else
-			return streamwrite(c, a, n, 0);
-
-		return n;
 	}
+	else if(strcmp(field[0], "announce") == 0 ||
+		strcmp(field[0], "reserve") == 0) {
+		if((cp->stproto == &tcpinfo && cp->tcpctl.state != CLOSED) ||
+		   (cp->stproto == &ilinfo && cp->ilctl.state != Ilclosed))
+				error(Edevbusy);
 
-	error(Eperm);
+		if(m != 2)
+			error(Ebadarg);
+
+		port = atoi(field[1]);
+
+		qlock(&ipalloc);
+		if(portused(ipconv[c->dev], port)) {
+			qunlock(&ipalloc);	
+			error(Einuse);
+		}
+		cp->psrc = port;
+		cp->ptype = *field[0];
+		qunlock(&ipalloc);
+	}
+	else if(strcmp(field[0], "backlog") == 0) {
+		if(m != 2)
+			error(Ebadarg);
+		backlog = atoi(field[1]);
+		if(backlog == 0)
+			error(Ebadarg);
+		if(backlog > 5)
+			backlog = 5;
+		cp->backlog = backlog;
+	}
+	else
+		return streamwrite(c, a, n, 0);
+
+	return n;
 }
 
 
@@ -690,7 +696,7 @@ iplisten(Chan *c, Ipconv *s, Ipconv *base)
 				pushq(c->stream, new->stproto);
 				new->ref--;
 				qunlock(&s->listenq);
-
+print("ip listener!\n");
 				return;
 			}
 		}

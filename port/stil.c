@@ -187,8 +187,9 @@ ilrcvmsg(Ipconv *ipc, Block *bp)
 	int plen;
 	Ipconv *s, *etab, *new;
 	short sp, dp;
+	Ipaddr dst;
 
-	ih = (Ilhdr *)bp;
+	ih = (Ilhdr *)bp->rptr;
 
 	plen = blen(bp);
 	if(plen < IL_EHSIZE+IL_HDRSIZE)
@@ -201,17 +202,26 @@ ilrcvmsg(Ipconv *ipc, Block *bp)
 
 	sp = nhgets(ih->ildst);
 	dp = nhgets(ih->ilsrc);
+	dst = nhgetl(ih->src);
+
+print("got packet from %d.%d.%d.%d %d %d\n", fmtaddr(dst), sp, dp);
+
 	etab = &ipc[conf.ip];
 	for(s = ipc; s < etab; s++) {
-		if(s->psrc == sp && s->pdst == dp) {
+		if(s->psrc == sp && s->pdst == dp && s->dst == dst) {
 			ilprocess(s, ih, bp);
 			return;
 		}
 			
 	}
 
+	if(s->curlog > s->backlog) {
+print("Backlog\n");
+		goto reset;
+	}
+
 	for(s = ipc; s < etab; s++) {
-		if(s->ilctl.state == Illistening && s->psrc == 0) {
+		if(s->ilctl.state == Illistening && s->pdst == 0) {
 			/* Do the listener stuff */
 			new = ipincoming(ipc);
 			if(new == 0) 
@@ -222,6 +232,7 @@ ilrcvmsg(Ipconv *ipc, Block *bp)
 			new->newcon = 1;
 			new->ipinterface = s->ipinterface;
 			s->ipinterface->ref++;
+			s->curlog++;
 			new->psrc = sp;
 			new->pdst = dp;
 			new->dst = nhgetl(ih->src);
@@ -240,6 +251,8 @@ drop:
 void
 ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 {
+	Block *nb;
+
 	switch(s->ilctl.state) {
 	case Ilclosed:
 	case Ilclosing:
@@ -265,10 +278,14 @@ ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 	case Ildata:
 		ilackto(&s->ilctl, nhgetl(h->ilack));
 		bp->rptr += IL_EHSIZE+IL_HDRSIZE;
+/* Check and trim to length */
 		PUTNEXT(s->readq, bp);
 		break;
 	case Ilreset:
 		s->ilctl.state = Ilclosed;
+		nb = allocb(0);
+		nb->type = M_HANGUP;
+		PUTNEXT(s->readq, nb);
 		freeb(bp);
 	}
 }
@@ -287,17 +304,18 @@ ilsendctl(Ipconv *ipc, Ilhdr *inih, int type, int ack)
 	ic = &ipc->ilctl;
 
 	/* Ip fields */
-	hnputl(ih->src, Myip);
-	hnputl(ih->dst, ipc->dst);
 	ih->proto = IP_ILPROTO;
+	hnputl(ih->src, Myip);
 	hnputs(ih->illen, IL_HDRSIZE);
 	if(inih) {
+		hnputl(ih->dst, nhgetl(inih->src));
 		hnputs(ih->ilsrc, nhgets(inih->ildst));
 		hnputs(ih->ildst, nhgets(inih->ilsrc));
 		hnputl(ih->ilid, nhgetl(inih->ilack));
 		hnputl(ih->ilack, nhgetl(inih->ilid));
 	}
 	else {
+		hnputl(ih->dst, ipc->dst);
 		hnputs(ih->ilsrc, ipc->psrc);
 		hnputs(ih->ildst, ipc->pdst);
 		hnputl(ih->ilid, ic->sent);
@@ -311,7 +329,7 @@ ilsendctl(Ipconv *ipc, Ilhdr *inih, int type, int ack)
 	if(ilcksum)
 		hnputs(ih->ilsum, ptcl_csum(bp, IL_EHSIZE, IL_HDRSIZE));
 
-	if(!ack) {
+	if(!ack && ipc) {
 		ic->sent++;			/* Maybe needs locking */
 		ilackq(&ipc->ilctl, bp);
 	}
