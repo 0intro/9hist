@@ -363,7 +363,6 @@ lookpage(Image *i, ulong daddr)
 {
 	Page *f;
 
-return 0;
 	lock(&palloc.hashlock);
 	for(f = pghash(daddr); f; f = f->hash) {
 		if(f->image == i && f->daddr == daddr) {
@@ -396,6 +395,7 @@ return 0;
 		}
 	}
 	unlock(&palloc.hashlock);
+print("#");
 	return 0;
 }
 

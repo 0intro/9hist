@@ -150,11 +150,6 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 		break;
 	}
 
-	if(s->flushme) {
-		for(i = 0; i < MAXMACH; i++)
-			(*pg)->cachectl[i] = PG_TXTFLUSH;
-	}
-
 	qunlock(&s->lk);
 
 	if(doputmmu)
@@ -196,6 +191,11 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 	new = newpage(0, 0, addr);
 	k = kmap(new);
 	kaddr = (char*)VA(k);
+
+	if(s->flushme) {
+		for(n = 0; n < MAXMACH; n++)
+			new->cachectl[n] = PG_TXTFLUSH;
+	}
 	
 	if(loadrec == 0) {			/* This is demand load */
 		c = s->image->c;
