@@ -47,6 +47,7 @@ main(void)
 	chandevreset();
 	streaminit();
 	serviceinit();
+	filsysinit();
 	pageinit();
 	kmapinit();
 	userinit();
@@ -328,4 +329,5 @@ confinit(void)
 	conf.nasync = 1;
 	conf.npipe = conf.nstream/2;
 	conf.nservice = conf.nproc/5;
+	conf.nfsyschan = 31 + conf.nchan/20;
 }

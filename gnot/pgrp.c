@@ -116,6 +116,7 @@ closepgrp(Pgrp *p)
 	Envp *ep;
 
 	if(decref(p) == 0){
+		lock(&p->debug);
 		p->pgrpid = -1;
 		m = p->mtab;
 		for(i=0; i<p->nmtab; i++,m++)
@@ -130,6 +131,7 @@ closepgrp(Pgrp *p)
 		lock(&pgrpalloc);
 		p->next = pgrpalloc.free;
 		pgrpalloc.free = p;
+		unlock(&p->debug);
 		unlock(&pgrpalloc);
 	}
 }
@@ -144,6 +146,7 @@ loop:
 	if(m = mountalloc.free){		/* assign = */
 		mountalloc.free = m->next;
 		m->ref = 1;
+		m->next = 0;
 		m->mountid = ++mountalloc.mountid;
 		unlock(&mountalloc);
 		return m;

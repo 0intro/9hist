@@ -91,7 +91,7 @@ trap(Ureg *ur)
 	if(u)
 		u->p->pc = ur->pc;		/* BUG */
 	if(user){
-		sprint(buf, "pc=%lux trap: %s", ur->pc, excname(ur->vo));
+		sprint(buf, "sys: trap: %s", ur->pc, excname(ur->vo));
 		postnote(u->p, 1, buf, NDebug);
 	}else{
 		print("kernel trap vo=0x%ux pc=%lux\n", ur->vo, ur->pc);
@@ -271,14 +271,14 @@ syscall(Ureg *aur)
 	if(!waserror()){
 		if(r0 >= sizeof systab/BY2WD){
 			pprint("bad sys call number %d pc %lux\n", r0, ((Ureg*)UREGADDR)->pc);
-			msg = "bad sys call";
+			msg = "sys: bad sys call";
 	    Bad:
 			postnote(u->p, 1, msg, NDebug);
 			error(0, Ebadarg);
 		}
 		if(sp & (BY2WD-1)){
 			pprint("odd sp in sys call pc %lux sp %lux\n", ((Ureg*)UREGADDR)->pc, ((Ureg*)UREGADDR)->sp);
-			msg = "odd stack";
+			msg = "sys: odd stack";
 			goto Bad;
 		}
 		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-4*BY2WD))

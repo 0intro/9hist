@@ -136,6 +136,7 @@ hotrodopen(Chan *c, int omode)
 	Device *dp;
 	Hotrod *hp;
 
+#ifdef asdf
 	/*
 	 *  Remind hotrod where the print buffer is.  The address we store
 	 *  is the address of the printbuf in VME A32 space.
@@ -143,6 +144,7 @@ hotrodopen(Chan *c, int omode)
 	hp = &hotrod[c->dev];
 	dp = hp->addr;
 	dp->mem[256*1024/sizeof(ulong)] = (((ulong)&hp->pbuf) - KZERO) | (SLAVE<<28);
+#endif
 
 	if(c->qid == CHDIR){
 		if(omode != OREAD)

@@ -80,6 +80,7 @@ loop:
 		c->flag = 0;
 		c->ref = 1;
 		unlock(&chanalloc);
+		c->dev = 0;
 		c->offset = 0;
 		c->mnt = 0;
 		c->stream = 0;

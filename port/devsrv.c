@@ -7,21 +7,22 @@
 #include	"devtab.h"
 #include	"fcall.h"
 
-void *calloc(unsigned int, unsigned int);
+void *calloc(unsigned, unsigned);
 void free(void *);
 
 /* This structure holds the contents of a directory entry.  Entries are kept
  * in a linked list.
  */
-struct entry {
+typedef struct Entry Entry;
+struct Entry {
 	Lock;
-	struct entry *next;	/* next entry */
-	struct entry **back;	/* entry pointer */
-	struct entry *parent;	/* parent directory */
+	Entry *next;		/* next entry */
+	Entry **back;		/* entry pointer */
+	Entry *parent;		/* parent directory */
 	Dir dir;		/* dir structure */
-	union {
-		Chan *chan;		/* if not a subdirectory */
-		struct entry *entries;	/* directory entries */
+	union{
+		Chan *chan;	/* if not a subdirectory */
+		Entry *entries;	/* directory entries */
 	};
 };
 
@@ -35,11 +36,13 @@ srvreset(void)
 {
 }
 
-struct entry *srv_alloc(int mode){
-	struct entry *e = calloc(1, sizeof(*e));
+Entry *
+srvalloc(int mode){
+	Entry *e;
 	static Lock qidlock;
 	static nextqid;
 
+	e = calloc(1, sizeof(Entry));
 	e->dir.atime = e->dir.mtime = seconds();
 	lock(&qidlock);	/* for qid allocation */
 	e->dir.qid = mode | nextqid++;
@@ -52,11 +55,11 @@ srvattach(char *spec)
 {
 	Chan *c;
 	static Lock rootlock;
-	static struct entry *root;
+	static Entry *root;
 
 	lock(&rootlock);
-	if (root == 0) {
-		root = srv_alloc(CHDIR);
+	if(root==0){
+		root = srvalloc(CHDIR);
 		root->dir.mode = CHDIR | 0777;
 	}
 	unlock(&rootlock);
@@ -77,23 +80,23 @@ srvclone(Chan *c, Chan *nc)
 int
 srvwalk(Chan *c, char *name)
 {
-	struct entry *dir, *e;
+	Entry *dir, *e;
 
 	isdir(c);
-	if (strcmp(name, ".") == 0)
+	if(strcmp(name, ".") == 0)
 		return 1;
-	if ((dir = c->aux) == 0)
+	if((dir=c->aux) == 0)
 		panic("bad aux pointer in srvwalk");
-	if (strcmp(name, "..") == 0)
+	if(strcmp(name, "..") == 0)
 		e = dir->parent;
-	else {
+	else{
 		lock(dir);
-		for (e = dir->entries; e != 0; e = e->next)
+		for(e=dir->entries; e; e=e->next)
 			if (strcmp(name, e->dir.name) == 0)
 				break;
 		unlock(dir);
 	}
-	if (e == 0) {
+	if(e==0){
 		u->error.code = Enonexist;
 		u->error.type = 0;
 		u->error.dev = 0;
@@ -107,32 +110,33 @@ srvwalk(Chan *c, char *name)
 void
 srvstat(Chan *c, char *db)
 {
-	struct entry *e = c->aux;
+	Entry *e;
 
+	e = c->aux;
 	convD2M(&e->dir, db);
 }
 
 Chan *
 srvopen(Chan *c, int omode)
 {
-	struct entry *e;
+	Entry *e;
 	Chan *f;
 
-	if (c->qid & CHDIR) {
-		if (omode != OREAD)
+	if(c->qid & CHDIR){
+		if(omode != OREAD)
 			error(0, Eisdir);
 		c->mode = omode;
 		c->flag |= COPEN;
 		c->offset = 0;
 		return c;
 	}
-	if ((e = c->aux) == 0)
-		panic("bad aux pointer in srvopen");
-	if ((f = e->chan) == 0)
+	if((e=c->aux) == 0)
+		error(0, Egreg);
+	if((f=e->chan) == 0)
 		error(0, Eshutdown);
-	if (omode & OTRUNC)
+	if(omode & OTRUNC)
 		error(0, Eperm);
-	if (omode != f->mode && f->mode != ORDWR)
+	if(omode!=f->mode && f->mode!=ORDWR)
 		error(0, Eperm);
 	close(c);
 	incref(f);
@@ -142,25 +146,27 @@ srvopen(Chan *c, int omode)
 void
 srvcreate(Chan *c, char *name, int omode, ulong perm)
 {
-	struct entry *parent = c->aux, *e;
+	Entry *parent, *e;
 
+	parent = c->aux;
 	isdir(c);
 	lock(parent);
-	if (waserror()) {
+	if (waserror()){
 		unlock(parent);
 		nexterror();
 	}
-	for (e = parent->entries; e != 0; e = e->next)
-		if (strcmp(name, e->dir.name) == 0)
+	for(e=parent->entries; e; e=e->next)
+		if(strcmp(name, e->dir.name) == 0)
 			error(0, Einuse);
-	e = srv_alloc(perm & CHDIR);
+	e = srvalloc(perm & CHDIR);
 	e->parent = parent;
 	strcpy(e->dir.name, name);
 	e->dir.mode = perm & parent->dir.mode;
 	e->dir.gid = parent->dir.gid;
-	if ((e->next = parent->entries) != 0)
+	if(e->next = parent->entries)	/* assign = */
 		e->next->back = &e->next;
-	*(e->back = &parent->entries) = e;
+	e->back = &parent->entries;
+	*e->back = e;
 	parent->dir.mtime = e->dir.mtime;
 	unlock(parent);
 	poperror();
@@ -173,25 +179,25 @@ srvcreate(Chan *c, char *name, int omode, ulong perm)
 void
 srvremove(Chan *c)
 {
-	struct entry *e = c->aux;
+	Entry *e;
 
-	if (e->parent == 0)
+	e = c->aux;
+	if(e->parent == 0)
 		error(0, Eperm);
 	lock(e->parent);
-	if (waserror()) {
+	if(waserror()){
 		unlock(e->parent);
 		nexterror();
 	}
-	if (e->dir.mode & CHDIR) {
+	if(e->dir.mode & CHDIR){
 		if (e->entries != 0)
 			error(0, Eperm);
-	}
-	else {
-		if (e->chan == 0)
+	}else{
+		if(e->chan == 0)
 			error(0, Eshutdown);
 		close(e->chan);
 	}
-	if ((*e->back = e->next) != 0)
+	if(*e->back = e->next)	/* assign = */
 		e->next->back = e->back;
 	unlock(e->parent);
 	poperror();
@@ -213,11 +219,13 @@ srvclose(Chan *c)
  * to a list of entries in this directory.  Count is the size to be
  * read.
  */
-int srv_direntry(struct entry *e, char *a, long count){
+int
+srvdirentry(Entry *e, char *a, long count){
 	Dir dir;
-	int n = 0;
+	int n;
 
-	while (n != count && e != 0) {
+	n = 0;
+	while(n!=count && e!=0){
 		n += convD2M(&e->dir, a + n);
 		e = e->next;
 	}
@@ -227,23 +235,24 @@ int srv_direntry(struct entry *e, char *a, long count){
 long
 srvread(Chan *c, void *va, long n)
 {
-	struct entry *dir = c->aux, *e;
-	int offset = c->offset;
+	Entry *dir, *e;
+	int offset;
 
+	dir = c->aux;
+	offset = c->offset;
 	isdir(c);
-	if (n <= 0)
+	if(n <= 0)
 		return 0;
-	if ((offset % DIRLEN) != 0 || (n % DIRLEN) != 0)
-		error(0, Egreg);
+	if(offset%DIRLEN || n%DIRLEN)
+		error(0, Ebaddirread);
 	lock(dir);
-	for (e = dir->entries; e != 0; e = e->next)
-		if (offset <= 0) {
-			n = srv_direntry(e, va, n);
+	for(e=dir->entries; e; e=e->next)
+		if(offset <= 0){
+			n = srvdirentry(e, va, n);
 			unlock(dir);
 			c->offset += n;
 			return n;
-		}
-		else
+		}else
 			offset -= DIRLEN;
 	unlock(dir);
 	return 0;
@@ -252,20 +261,21 @@ srvread(Chan *c, void *va, long n)
 long
 srvwrite(Chan *c, void *va, long n)
 {
-	struct entry *e = c->aux;
+	Entry *e;
 	int i, fd;
 	char buf[32];
 
-	if (e->dir.mode & CHDIR)
+	e = c->aux;
+	if(e->dir.mode & CHDIR)
 		panic("write to directory");
 	lock(e);
-	if (waserror()) {
+	if(waserror()){
 		unlock(e);
 		nexterror();
 	}
-	if (e->chan != 0)
+	if(e->chan)
 		error(0, Egreg);
-	if (n >= sizeof buf)
+	if(n >= sizeof buf)
 		error(0, Egreg);
 	memcpy(buf, va, n);	/* so we can NUL-terminate */
 	buf[n] = 0;

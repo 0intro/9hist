@@ -109,6 +109,7 @@ struct Chan
 	union{
 		Stream	*stream;	/* for stream channels */
 		void	*aux;
+		ulong	pgrpid;		/* for #p/notepg */
 	};
 	Chan	*mchan;			/* channel to mounted server */
 	ulong	mqid;			/* qid of root of mount point */
@@ -273,10 +274,12 @@ struct Pgrp
 {
 	Ref;				/* also used as a lock when mounting */
 	Pgrp	*next;
+	int	index;			/* index in pgrp table */
 	ulong	pgrpid;
 	char	user[NAMELEN];
 	int	nmtab;			/* highest active mount table entry, +1 */
 	int	nenv;			/* highest active env table entry, +1 */
+	Lock	debug;			/* single access via devproc.c */
 	Mtab	*mtab;
 	Envp	*etab;
 };

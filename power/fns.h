@@ -125,6 +125,8 @@ void	panic(char*, ...);
 void	pexit(char*, int);
 void	pgrpcpy(Pgrp*, Pgrp*);
 void	pgrpinit(void);
+void	pgrpnote(Pgrp*, char*, long, int);
+Pgrp	*pgrptab(int);
 int	postnote(Proc*, int, char*, int);
 int	pprint(char*, ...);
 Block	*prepend(Block*, int);

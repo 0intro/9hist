@@ -155,9 +155,9 @@ trap(Ureg *ur)
 		if(user){
 			spllo();
 			if(ecode == FPEXC)
-				sprint(buf, "fp: %s FCR31 %lux", fpexcname(x), x);
+				sprint(buf, "sys: fp: %s FCR31 %lux", fpexcname(x), x);
 			else
-				sprint(buf, "trap: %s[%d]", excname[ecode], m->machno);
+				sprint(buf, "sys: trap: %s[%d]", excname[ecode], m->machno);
 			postnote(u->p, 1, buf, NDebug);
 		}else{
 			print("%s %s pc=%lux\n", user? "user": "kernel", excname[ecode], ur->pc);
@@ -463,14 +463,14 @@ syscall(Ureg *aur)
 	if(!waserror()){
 		if(r1 >= sizeof systab/BY2WD){
 			pprint("bad sys call number %d pc %lux\n", r1, ((Ureg*)UREGADDR)->pc);
-			msg = "bad sys call";
+			msg = "sys: bad sys call";
 	    Bad:
 			postnote(u->p, 1, msg, NDebug);
 			error(0, Ebadarg);
 		}
 		if(sp & (BY2WD-1)){
 			pprint("odd sp in sys call pc %lux sp %lux\n", ((Ureg*)UREGADDR)->pc, ((Ureg*)UREGADDR)->sp);
-			msg = "odd stack";
+			msg = "sys: odd stack";
 			goto Bad;
 		}
 		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-4*BY2WD))

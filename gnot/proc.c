@@ -135,7 +135,7 @@ save(Balu *balu)
 		m->fpstate = FPdirty;
 	}
 	if(BALU->cr0 != 0xFFFFFFFF)	/* balu busy */
-		memcpy(balu, BALU, sizeof *balu);
+		memcpy(balu, BALU, sizeof(Balu));
 	else{
 		balu->cr0 = 0xFFFFFFFF;
 		BALU->cr0 = 0xFFFFFFFF;
@@ -699,6 +699,7 @@ Proc *
 kproc(char *name, void (*func)(void *), void *arg)
 {
 	Proc *p;
+	Chan *c;
 	int n;
 	ulong upa;
 	int lastvar;	/* used to compute stack address */
@@ -730,8 +731,12 @@ kproc(char *name, void (*func)(void *), void *arg)
 	 */
 	incref(up->dot);
 	for(n=0; n<=up->maxfd; n++)
-		up->fd[n] = 0;
-	up->maxfd = 0;
+		if(func)
+			up->fd[n] = 0;
+		else if(c = u->fd[n])		/* assign = */
+			incref(c);
+	if(!func)
+		up->maxfd = 0;
 	up->p = p;
 	kunmap(k);
 

@@ -133,6 +133,10 @@ allocb(ulong size)
 	while(bcp->first == 0){
 		unlock(bcp);
 		qlock(bcp);
+		if(waserror()){
+			qunlock(bcp);
+			nexterror();
+		}
 		tsleep(&bcp->r, isblock, (void *)bcp, 250);
 		qunlock(bcp);
 		lock(bcp);

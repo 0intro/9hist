@@ -166,6 +166,8 @@ fault(Ureg *ur, FFrame *f)
 				qunlock(o->chan);
 				pg->o = 0;
 				pg->ref--;
+				if(user)
+					pexit("Interrupt", 0);
 				goto cant;
 			}
 			o->chan->offset = (addr-o->va) + o->minca;
@@ -290,7 +292,7 @@ validaddr(ulong addr, ulong len, int write)
 	if((long)len < 0){
     Err:
 		pprint("invalid address in sys call pc %lux sp %lux\n", ((Ureg*)UREGADDR)->pc, ((Ureg*)UREGADDR)->sp);
-		postnote(u->p, 1, "bad address", NDebug);
+		postnote(u->p, 1, "sys: bad address", NDebug);
 		error(0, Ebadarg);
 	}
     Again:

@@ -152,6 +152,7 @@ struct Conf
 	int	nasync;		/* number of async protocol modules */
 	int	npipe;		/* number of pipes */
 	int	nservice;	/* number of services */
+	int	nfsyschan;	/* number of filsys open channels */
 };
 
 struct Dev
