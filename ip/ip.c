@@ -87,7 +87,6 @@ struct IP
 
 	Ref		id;
 	int		iprouting;			/* true if we route like a gateway */
-	void 		(*ipextprotoiput)(Block*);
 };
 
 #define BLKIP(xp)	((Iphdr*)((xp)->rp))

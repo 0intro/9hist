@@ -483,7 +483,6 @@ extern void	icmpnoconv(Fs*, Block*);
 extern void	icmpttlexceeded(Fs*, uchar*, Block*);
 extern void	initfrag(IP*, int);
 extern ushort	ipcsum(uchar*);
-extern void	(*ipextprotoiput)(Block*);
 extern void	ipiput(Fs*, uchar*, Block*);
 extern void	ipoput(Fs*, Block*, int, int, int);
 extern int	ipstats(Fs*, char*, int);
