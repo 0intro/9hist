@@ -251,7 +251,7 @@ void	tcprcvwin(Conv*);
 void	tcpacktimer(void*);
 void	tcpkeepalive(void*);
 void	tcpsetkacounter(Tcpctl*);
-void    tcprxmit(Conv*, int);
+void    tcprxmit(Conv*);
 
 void
 tcpsetstate(Conv *s, uchar newstate)
@@ -407,14 +407,21 @@ tcpkick(Conv *s, int len)
 		/*
 		 * Push data
 		 */
+		if(waserror()){
+			qunlock(s);
+			nexterror();
+		}
 		qlock(s);
 		tcb->sndcnt += len;
 		tcprcvwin(s);
 		tcpoutput(s);
 		qunlock(s);
+		poperror();
 		break;
 	default:
+		qlock(s);
 		localclose(s, "Hangup");
+		qunlock(s);
 	}
 }
 
@@ -442,11 +449,18 @@ tcpacktimer(void *v)
 	s = v;
 	tcb = (Tcpctl*)s->ptcl;
 
+	if(waserror()){
+		qunlock(s);
+		nexterror();
+	}
 	qlock(s);
-	tcb->flags |= FORCE;
-	tcprcvwin(s);
-	tcpoutput(s);
+	if(tcb->state != Closed){
+		tcb->flags |= FORCE;
+		tcprcvwin(s);
+		tcpoutput(s);
+	}
 	qunlock(s);
+	poperror();
 }
 
 static void
@@ -583,6 +597,7 @@ localclose(Conv *s, char *reason)	 /*  called with tcb locked */
 		freeblist(rp->bp);
 		free(rp);
 	}
+	tcb->reseq = nil;
 
 	if(tcb->state == Syn_sent)
 		Fsconnected(s, reason);
@@ -592,7 +607,6 @@ localclose(Conv *s, char *reason)	 /*  called with tcb locked */
 	qhangup(s->rq, reason);
 	qhangup(s->wq, reason);
 
-	tcb->reseq = nil;
 	tcpsetstate(s, Closed);
 }
 
@@ -685,11 +699,16 @@ tcpstart(Conv *s, int mode, ushort window)
 		tpriv->tstats.tcpActiveOpens++;
 		/* Send SYN, go into SYN_SENT state */
 		qlock(s);
+		if(waserror()){
+			qunlock(s);
+			nexterror();
+		}
 		tcb->flags |= ACTIVE;
 		tcpsndsyn(tcb);
 		tcpsetstate(s, Syn_sent);
 		tcpoutput(s);
 		qunlock(s);
+		poperror();
 		break;
 	}
 }
@@ -1065,7 +1084,7 @@ update(Conv *s, Tcp *seg)
 			tcb->snd.recovery = 1;
 			tcb->snd.rxt = tcb->snd.nxt;
 //			print("fast rxt %lud, nxt %lud\n", tcb->snd.una, tcb->snd.nxt);
-			tcprxmit(s, 0);
+			tcprxmit(s);
 		} else {
 			/* do reno tcp here. */
 		}
@@ -1301,6 +1320,10 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 	 * Out-of-band data is ignored - it was always a bad idea.
 	 */
 	tcb = (Tcpctl*)s->ptcl;
+	if(waserror()){
+		qunlock(s);
+		nexterror();
+	}
 	qlock(s);
 	qunlock(tcp);
 
@@ -1355,6 +1378,7 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 			freeblist(bp);
 
 		qunlock(s);
+		poperror();
 		return;
 	case Syn_received:
 		/* doesn't matter if it's the correct ack, we're just trying to set timing */
@@ -1380,6 +1404,7 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 			goto output;
 		}
 		qunlock(s);
+		poperror();
 		return;
 	}
 
@@ -1522,6 +1547,7 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 					freeblist(bp);
 				sndrst(tcp, source, dest, length, &seg);
 				qunlock(s);
+				poperror();
 				return;
 			}
 		}
@@ -1587,9 +1613,11 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 output:
 	tcpoutput(s);
 	qunlock(s);
+	poperror();
 	return;
 raise:
 	qunlock(s);
+	poperror();
 	freeblist(bp);
 	tcpkick(s, 0);
 }
@@ -1853,14 +1881,21 @@ tcpkeepalive(void *v)
 
 	s = v;
 	tcb = (Tcpctl*)s->ptcl;
-	if(--(tcb->kacounter) <= 0)
-		localclose(s, Etimedout);
-	else {
-		qlock(s);
-		tcpsendka(s);
+	if(waserror()){
 		qunlock(s);
-		tcpgo(s->p->priv, &tcb->katimer);
+		nexterror();
 	}
+	qlock(s);
+	if(tcb->state != Closed){
+		if(--(tcb->kacounter) <= 0) {
+			localclose(s, Etimedout);
+		} else {
+			tcpsendka(s);
+			tcpgo(s->p->priv, &tcb->katimer);
+		}
+	}
+	qunlock(s);
+	poperror();
 }
 
 /*
@@ -1885,14 +1920,12 @@ tcpstartka(Conv *s, char **f, int n)
 }
 
 void
-tcprxmit(Conv *s, int dolock)
+tcprxmit(Conv *s)
 {
 	Tcpctl *tcb;
 
 	tcb = (Tcpctl*)s->ptcl;
 
-	if(dolock)
-		qlock(s);
 	tcb->flags |= RETRAN|FORCE;
 	tcb->snd.ptr = tcb->snd.una;
 
@@ -1912,9 +1945,6 @@ tcprxmit(Conv *s, int dolock)
 	 */
 	tcb->cwind = tcb->mss;
 	tcpoutput(s);
-
-	if(dolock)
-		qunlock(s);
 }
 
 void
@@ -1929,7 +1959,11 @@ tcptimeout(void *arg)
 	tpriv = s->p->priv;
 	tcb = (Tcpctl*)s->ptcl;
 
-
+	if(waserror()){
+		qunlock(s);
+		nexterror();
+	}
+	qlock(s);
 	switch(tcb->state){
 	default:
 		tcb->backoff++;
@@ -1942,14 +1976,18 @@ tcptimeout(void *arg)
 			localclose(s, Etimedout);
 			break;
 		}
-		tcprxmit(s, 1);
+		tcprxmit(s);
 		tpriv->tstats.tcpRetransTimeouts++;
 		tcb->snd.dupacks = 0;
 		break;
 	case Time_wait:
 		localclose(s, nil);
 		break;
+	case Closed:
+		break;
 	}
+	qunlock(s);
+	poperror();
 }
 
 int

@@ -615,7 +615,7 @@ mountrpc(Mnt *m, Mntrpc *r)
 	int t;
 
 	r->reply.tag = 0;
-	r->reply.type = 4;
+	r->reply.type = Tmax;	/* can't ever be a valid message type */
 
 	mountio(m, r);
 
@@ -750,8 +750,6 @@ mountmux(Mnt *m, Mntrpc *r)
 		if((q->flushed==0 && q->request.tag == r->reply.tag)
 		|| (q->flushed && q->flushtag == r->reply.tag)) {
 			*l = q->list;
-			q->done = 1;
-			unlock(m);
 			if(q != r) {
 				/*
 				 * Completed someone else.
@@ -762,6 +760,8 @@ mountmux(Mnt *m, Mntrpc *r)
 				r->rpc = dp;
 				q->reply = r->reply;
 			}
+			q->done = 1;
+			unlock(m);
 			if(mntstats != nil)
 				(*mntstats)(q->request.type,
 					m->c, q->stime,
