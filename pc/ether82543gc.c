@@ -377,7 +377,6 @@ typedef struct Ctlr {
 	Block*	tb[Ntdesc];		/* transmit buffers */
 	int	tdh;			/* transmit descriptor head */
 	int	tdt;			/* transmit descriptor tail */
-	Rendez	timer;			/* watchdog timer */
 	int	txstalled;		/* count of times unable to send */
 
 	int	txcw;
@@ -1228,8 +1227,7 @@ gc82543watchdog(void* arg)
 
 	edev = arg;
 	for(;;){
-		ctlr = edev->ctlr;
-		tsleep(&ctlr->timer, return0, 0, 1000);
+		tsleep(&up->sleep, return0, 0, 1000);
 
 		ctlr = edev->ctlr;
 		if(ctlr == nil){

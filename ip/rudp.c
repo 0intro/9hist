@@ -146,7 +146,6 @@ struct Rudpstats
 typedef struct Rudppriv Rudppriv;
 struct Rudppriv
 {
-	Rendez	vous;
 	Ipht	ht;
 
 	/* MIB counters */
@@ -766,7 +765,7 @@ relackproc(void *a)
 	upriv = rudp->priv;
 
 loop:
-	tsleep(&upriv->vous, return0, 0, Rudptickms);
+	tsleep(&up->sleep, return0, 0, Rudptickms);
 
 	for(s = rudp->conv; *s; s++) {
 		c = *s;
