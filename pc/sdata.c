@@ -91,6 +91,7 @@ enum {					/* Command */
 	Cidpkt		= 0xA1,		/* Identify Packet Device */
 	Crsm		= 0xC4,		/* Read Multiple */
 	Cwsm		= 0xC5,		/* Write Multiple */
+	Csm		= 0xC6,		/* Set Multiple */
 	Crdq		= 0xC7,		/* Read DMA queued */
 	Crd		= 0xC8,		/* Read DMA */
 	Cwd		= 0xCA,		/* Write DMA */
@@ -225,11 +226,12 @@ typedef struct Drive {
 	int	s;			/* sector */
 	int	sectors;		/* total */
 	int	secsize;		/* sector size */
+
+	int	dma;			/* DMA R/W possible */
+
 	int	block;			/* R/W multiple size */
 	int	pior;			/* PIO read command */
 	int	piow;			/* PIO write command */
-	int	dma;			/* DMA R/W possible */
-	int	pkt;			/* PACKET device, length of pktcmd */
 
 	uchar	sense[18];
 	uchar	inquiry[48];
@@ -244,6 +246,7 @@ typedef struct Drive {
 	int	status;
 	int	error;
 
+	int	pkt;			/* PACKET device, length of pktcmd */
 	uchar	pktcmd[16];
 	int	pktdma;
 } Drive;
@@ -411,6 +414,40 @@ atacsfenabled(Drive* drive, vlong csf)
 	return 0;
 }
 
+static int
+atasetrwmode(Drive* drive, int cmdport, int ctlport, int dev)
+{
+	int as, block;
+
+	drive->block = drive->secsize;
+	drive->pior = Crs;
+	drive->piow = Cws;
+	if((block = drive->info[Imaxrwm] & 0xFF) == 0)
+		return 0;
+
+	/*
+	 * Prior to ATA-4 there was no way to determine the
+	 * current block count (now in Irwm).
+	 * Sometimes drives come up with the current count set
+	 * to 0, so always set a suitable value.
+	 */
+	if(ataready(cmdport, ctlport, dev, Bsy|Drq, Drdy, 100*1000) < 0)
+		return 0;
+	outb(cmdport+Sector, block);
+	outb(cmdport+Command, Csf);
+	microdelay(1);
+	as = ataready(cmdport, ctlport, dev, Bsy, Drdy|Df|Err, 1000);
+	if(as < 0 || (as & (Df|Err)))
+		return -1;
+
+	drive->info[Irwm] = 0x100|block;
+	drive->block = block*drive->secsize;
+	drive->pior = Crsm;
+	drive->piow = Cwsm;
+
+	return block;
+}
+
 static Drive*
 ataidentify(int cmdport, int ctlport, int dev)
 {
@@ -471,6 +508,8 @@ retry:
 		*p++ = *sp>>8;
 		*p++ = *sp++;
 	}
+
+	drive->secsize = 512;
 	if((drive->info[Iconfig] & 0xC000) == 0x8000){
 		if(drive->info[Iconfig] & 0x01)
 			drive->pkt = 16;
@@ -495,20 +534,8 @@ retry:
 		}
 		else
 			drive->sectors = drive->c*drive->h*drive->s;
+		atasetrwmode(drive, cmdport, ctlport, dev);
 	}	
-	drive->secsize = 512;
-
-	if((drive->info[Imaxrwm] & 0xFF) && (drive->info[Irwm] & 0x0100)){
-		drive->block = drive->info[Imaxrwm] & 0x00FF;
-		drive->pior = Crsm;
-		drive->piow = Cwsm;
-	}
-	else{
-		drive->block = 1;
-		drive->pior = Crs;
-		drive->piow = Cws;
-	}
-	drive->block *= drive->secsize;
 
 	/*
 	 * Check if any DMA mode enabled.

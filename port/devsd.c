@@ -328,7 +328,7 @@ sd2gen(Chan* c, int i, Dir* dp)
 		return 1;
 	case Qraw:
 		q = (Qid){QID(UNIT(c->qid), PART(c->qid), Qraw), c->qid.vers};
-		devdir(c, q, "raw", 0, eve, 0600, dp);
+		devdir(c, q, "raw", 0, eve, CHEXCL|0600, dp);
 		return 1;
 	case Qpart:
 		unit = sdunit[UNIT(c->qid)];
@@ -492,6 +492,12 @@ sdopen(Chan* c, int omode)
 	switch(TYPE(c->qid)){
 	default:
 		break;
+	case Qraw:
+		unit = sdunit[UNIT(c->qid)];
+		if(!canlock(&unit->rawinuse))
+			error(Einuse);
+		unit->state = Rawcmd;
+		break;
 	case Qpart:
 		unit = sdunit[UNIT(c->qid)];
 		qlock(&unit->ctl);
@@ -528,11 +534,7 @@ sdclose(Chan* c)
 		break;
 	case Qraw:
 		unit = sdunit[UNIT(c->qid)];
-		if(canqlock(&unit->raw) || unit->pid == up->pid){
-			unit->pid = 0;
-			unit->state = Rawcmd;
-			qunlock(&unit->raw);
-		}
+		unlock(&unit->rawinuse);
 		break;
 	case Qpart:
 		unit = sdunit[UNIT(c->qid)];
@@ -744,23 +746,15 @@ sdread(Chan *c, void *a, long n, vlong off)
 		return l;
 	case Qraw:
 		unit = sdunit[UNIT(c->qid)];
-		if(canqlock(&unit->raw)){
-			qunlock(&unit->raw);
-			error(Ebadusefd);
-		}
-		if(unit->pid != up->pid)
-			error(Eperm);
 		if(unit->state == Rawdata){
 			unit->state = Rawstatus;
 			return sdrio(unit->req, a, n);
 		}
 		else if(unit->state == Rawstatus){
 			status = unit->req->status;
-			unit->pid = 0;
 			unit->state = Rawcmd;
 			free(unit->req);
 			unit->req = nil;
-			qunlock(&unit->raw);
 			return readnum(0, a, n, status, NUMSIZE);
 		}
 		break;
@@ -819,21 +813,15 @@ sdwrite(Chan *c, void *a, long n, vlong off)
 		poperror();
 		free(cb);
 		break;
+
 	case Qraw:
 		unit = sdunit[UNIT(c->qid)];
-		if(canqlock(&unit->raw)){
-			if(unit->state != Rawcmd){
-				qunlock(&unit->raw);
-				error(Ebadusefd);
-			}
-			if(n < 6 || n > sizeof(req->cmd)){
-				qunlock(&unit->raw);
+		switch(unit->state){
+		case Rawcmd:
+			if(n < 6 || n > sizeof(req->cmd))
 				error(Ebadarg);
-			}
-			if((req = malloc(sizeof(SDreq))) == nil){
-				qunlock(&unit->raw);
+			if((req = malloc(sizeof(SDreq))) == nil)
 				error(Enomem);
-			}
 			req->unit = unit;
 			memmove(req->cmd, a, n);
 			req->clen = n;
@@ -841,12 +829,16 @@ sdwrite(Chan *c, void *a, long n, vlong off)
 			req->status = ~0;
 
 			unit->req = req;
-			unit->pid = up->pid;
 			unit->state = Rawdata;
-		}
-		else{
-			if(unit->pid != up->pid)
-				error(Eperm);
+			break;
+
+		case Rawstatus:
+			unit->state = Rawcmd;
+			free(unit->req);
+			unit->req = nil;
+			error(Ebadusefd);
+
+		case Rawdata:
 			if(unit->state != Rawdata)
 				error(Ebadusefd);
 			unit->state = Rawstatus;

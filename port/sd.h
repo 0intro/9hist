@@ -32,9 +32,8 @@ typedef struct SDunit {
 	int	nopen;			/* of partitions on this unit */
 	int	changed;
 
-	QLock	raw;
+	Lock	rawinuse;
 	int	state;
-	ulong	pid;
 	SDreq*	req;
 } SDunit;
 
