@@ -11,7 +11,7 @@ enum {
 	Nmask=		0x7,
 };
 
-#define DPRINT /*if(q->flag&QDEBUG)kprint*/
+#define DPRINT if(q->flag&QDEBUG)kprint
 
 typedef struct Urp	Urp;
 
@@ -947,6 +947,7 @@ todo(void *arg)
 	return (up->state&INITING)
 	? NOW>up->timer					/* time to INIT1 */
 	: ((up->unacked!=up->next && NOW>up->timer)	/* time to ENQ */
+	  || WINDOW(up)>0 && up->next!=up->nxb
 	  || (!QFULL(up->rq->next) && up->iseq!=(up->lastecho&7))); /* time to ECHO */
 }
 static void
