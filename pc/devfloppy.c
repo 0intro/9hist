@@ -245,14 +245,18 @@ floppyreset(void)
 	Drive *dp;
 	Type *t;
 	uchar equip;
+	ulong maxtsize;
 
 	/*
 	 *  init dependent parameters
 	 */
+	maxtsize = 0;
 	for(t = floppytype; t < &floppytype[NTYPES]; t++){
 		t->cap = t->bytes * t->heads * t->sectors * t->tracks;
 		t->bcode = b2c[t->bytes/128];
 		t->tsize = t->bytes * t->sectors;
+		if(maxtsize < t->tsize)
+			maxtsize = t->tsize;
 	}
 
 	/*
@@ -277,7 +281,7 @@ floppyreset(void)
 		dp->dt = T1440kb;
 		setdef(dp);
 		dp->cyl = -1;			/* because we don't know */
-		dp->cache = (uchar*)xspanalloc(dp->t->tsize, BY2PG, 64*1024);
+		dp->cache = (uchar*)xspanalloc(maxtsize, BY2PG, 64*1024);
 		dp->ccyl = -1;
 		dp->vers = 1;
 	}
@@ -612,6 +616,7 @@ floppyon(Drive *dp)
 		tsleep(&dp->r, return0, 0, 750);
 
 		/* clear any pending interrupts */
+		setvec(Floppyvec, floppyintr);
 		floppysense();
 	}
 
@@ -780,8 +785,10 @@ static void
 floppywait(void)
 {
 	tsleep(&fl.r, cmddone, 0, 5000);
-	if(!cmddone(0))
+	if(!cmddone(0)){
 		floppyintr(0);
+		fl.confused = 1;
+	}
 }
 
 /*
@@ -842,8 +849,9 @@ floppyrevive(void)
 		fl.ncmd = 1;
 		fl.cmd[0] = 0;
 		outb(Pdor, 0);
-		delay(1);
+		delay(10);
 		outb(Pdor, Fintena|Fena);
+		delay(10);
 		spllo();
 		fl.motor = 0;
 		fl.confused = 0;
