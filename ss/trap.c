@@ -426,6 +426,12 @@ execregs(ulong entry, ulong ssize, ulong nargs)
 	return USTKTOP-BY2WD;			/* address of user-level clock */
 }
 
+ulong
+userpc(void)
+{
+	return ((Ureg*)UREGADDR)->pc;
+}
+
 /* This routine must save the values of registers the user is not permitted to write
  * from devproc and the restore the saved values before returning
  */

@@ -63,17 +63,16 @@ bbfree(void *p, int n)
 	splx(s);
 }
 
-void *
+void
 flushvirtpage(void *p)
 {
 	flushcpucache();
 }
 
-void *
+void
 bbdflush(void *p, int n)
 {
 	flushcpucache();
-	return (void *)(((ulong)p));
 }
 
 int

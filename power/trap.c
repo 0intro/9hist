@@ -564,6 +564,12 @@ execregs(ulong entry, ulong ssize, ulong nargs)
 	return USTKTOP-BY2WD;			/* address of user-level clock */
 }
 
+ulong
+userpc(void)
+{
+	return ((Ureg*)UREGADDR)->pc;
+}
+
 void
 novme(int v)
 {

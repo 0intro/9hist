@@ -640,7 +640,6 @@ proctab(int i)
 	return &procalloc.arena[i];
 }
 
-#include <ureg.h>
 void
 procdump(void)
 {

@@ -3,7 +3,6 @@
 #include	"mem.h"
 #include	"dat.h"
 #include	"fns.h"
-#include	"ureg.h"
 #include	"../port/error.h"
 
 #define PGHFUN(x, y)	(((ulong)x^(ulong)y)%PGHSIZE)

@@ -3,7 +3,6 @@
 #include	"mem.h"
 #include	"dat.h"
 #include	"fns.h"
-#include	"ureg.h"
 #include	"../port/error.h"
 
 #define DPRINT
@@ -280,7 +279,7 @@ validaddr(ulong addr, ulong len, int write)
 		}
 	}
 
-	pprint("invalid address 0x%lux in sys call pc=0x%lux", addr, ((Ureg*)UREGADDR)->pc);
+	pprint("invalid address 0x%lux in sys call pc=0x%lux", addr, userpc());
 	postnote(u->p, 1, "sys: bad address", NDebug);
 	error(Ebadarg);
 }

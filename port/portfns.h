@@ -240,6 +240,7 @@ void	unlock(Lock*);
 void	unlockpage(Page*);
 long	unicode(uchar*);
 void	userinit(void);
+ulong	userpc(void);
 void	validaddr(ulong, ulong, int);
 void*	vmemchr(void*, int, int);
 void	wakeme(Alarm*);
