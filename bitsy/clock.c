@@ -20,6 +20,7 @@ OSTimer *timerregs = (OSTimer*)OSTIMERREGS;
 static int clockinited;
 
 static void	clockintr(Ureg*, void*);
+static uvlong when;	/* scheduled time of next interrupt */
 
 enum
 {
@@ -34,7 +35,7 @@ clockpower(int on)
 	if (on){
 		timerregs->ossr |= 1<<0;
 		timerregs->oier = 1<<0;
-		timerregs->osmr[0] = timerregs->oscr + ClockFreq/HZ;
+		timerregs->osmr[0] = timerregs->oscr + Minfreq;
 	}
 	clockinited = on;
 }
@@ -65,7 +66,8 @@ clockinit(void)
 		(id>>16)&0xff, (id>>4)&0xfff, id&0xf);
 
 	/* post interrupt 1/HZ secs from now */
-	timerregs->osmr[0] = timerregs->oscr + ClockFreq/HZ;
+	when = timerregs->oscr + Minfreq;
+	timerregs->osmr[0] = when;
 
 	timersinit();
 
@@ -95,35 +97,29 @@ fastticks(uvlong *hz)
 void
 timerset(uvlong v)
 {
-	ulong when, tics;	/* Must be unsigned! */
+	ulong next, tics;	/* Must be unsigned! */
 	static int count;
 
-	if (v == 0LL)
-		when = timerregs->oscr + Minfreq;
-	else {
-		when = v;
+	next = v;
 
-		/* post next interrupt: calculate # of tics from now */
-		tics = when - timerregs->oscr - Maxfreq;
-		if (tics > Minfreq){
-			iprint("%lud %lud %lud %d\n", when, tics, timerregs->oscr, Minfreq);
-			when = timerregs->oscr + Maxfreq;
-		}
+	/* post next interrupt: calculate # of tics from now */
+	tics = next - timerregs->oscr - Maxfreq;
+	if (tics > Minfreq){
+		iprint("%lud %lud %lud %d\n", next, tics, timerregs->oscr, Minfreq);
+		next = timerregs->oscr + Maxfreq;
 	}
-	timerregs->osmr[0] = when;
+	timerregs->osmr[0] = next;
 }
 
 static void
 clockintr(Ureg *ureg, void*)
 {
-	static ulong count;
-
 	/* reset previous interrupt */
 	timerregs->ossr |= 1<<0;
+	when += Minfreq;
+	timerregs->osmr[0] = when;	/* insurance */
 
-	timerset(timerintr(ureg, nil));
-	if ((count++ % 100) == 0)
-		iprint("%lud ", timerregs->osmr[0] - timerregs->oscr);
+	timerintr(ureg, when);
 }
 
 void

@@ -103,7 +103,7 @@ uchar*	tarlookup(uchar*, char*, int*);
 void	timersinit(void);
 void	timeradd(Timer*);
 void	timerdel(Timer*);
-uvlong	timerintr(Ureg *, void*);
+void	timerintr(Ureg *, uvlong);
 void	timerset(uvlong);
 void	touser(void*);
 void	trapdump(char *tag);
