@@ -47,7 +47,10 @@ ulong	mmu_paddr(ulong);
 int	µcputc(Queue*, int);
 void	noted(Ureg*, ulong);
 int	notify(Ureg*);
+void	pcmcisread(PCMslot*);
 int	pcmcistuple(int, int, int, void*, int);
+PCMmap*	pcmmap(int, ulong, int, int);
+void	pcmunmap(int, PCMmap*);
 void	penbutton(int, int);
 void	pentrackxy(int x, int y);
 #define	procrestore(p)

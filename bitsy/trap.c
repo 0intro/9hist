@@ -236,7 +236,7 @@ trap(Ureg *ureg)
 		va = intrregs->icip;
 
 		/* clear any gpio edge interrupt */
-		gpioregs->irqbit = va & 0xFFF;
+		gpioregs->edgestatus = va & 0xFFF;
 
 		for(v = vctl; v != nil; v = v->next){
 			if(v->irqbit & va){

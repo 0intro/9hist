@@ -336,6 +336,7 @@ struct PCMslot
 	uchar	busy;
 
 	/* cis info */
+	int	cisread;	/* set when the cis has been read */
 	ulong	msec;		/* time of last slotinfo call */
 	char	verstr[512];	/* version string */
 	uchar	cpresent;	/* config registers present */

@@ -31,6 +31,7 @@ static void increfp(PCMslot*);
 static void decrefp(PCMslot*);
 static void slotmap(int, ulong, ulong, ulong);
 static void slottiming(int, int, int, int, int);
+static void slotinfo(Ureg*, void*);
 
 static int
 pcmgen(Chan *c, Dirtab *, int , int i, Dir *dp)
@@ -87,8 +88,9 @@ pcmciareset(void)
 	slottiming(0, 300, 300, 300, 0);
 	slottiming(1, 300, 300, 300, 0);
 
-	/* interrupt on card insertion */
-	gpiointrenable(
+	/* interrupt on card insertion/removal */
+	gpiointrenable(GPIO_CARD_IND1_i, GPIOboth, slotinfo, nil, "pcmcia slot1 status");
+	gpiointrenable(GPIO_CARD_IND0_i, GPIOboth, slotinfo, nil, "pcmcia slot0 status");
 }
 
 static Chan*
@@ -319,7 +321,7 @@ increfp(PCMslot *pp)
 		egpiobits(EGPIO_pcmcia_reset, 0);
 		delay(200);	/* time to power up */
 	}
-	incref(pp);
+	incref(&pp->ref);
 	if(pp->occupied && pp->cisread == 0)
 		pcmcisread(pp);
 }
@@ -327,7 +329,7 @@ increfp(PCMslot *pp)
 static void
 decrefp(PCMslot *pp)
 {
-	decref(pp);
+	decref(&pp->ref);
 	if(decref(&pcmcia) == 0)
 		egpiobits(EGPIO_exp_nvram_power|EGPIO_exp_full_power, 0);
 }
