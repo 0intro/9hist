@@ -287,7 +287,7 @@ ul2user(uchar *a, ulong x)
  *  look for a floppy change
  */
 void
-floppychange(Drive *dp)
+floppychanged(Drive *dp)
 {
 	if((inb(Fchanged) & Fchange) == 0)
 		return;
