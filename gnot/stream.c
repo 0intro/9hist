@@ -531,8 +531,12 @@ prepend(Block *bp, int n)
 void
 nullput(Queue *q, Block *bp)
 {
-	freeb(bp);
-	error(0, Ehungup);
+	if(bp->type == M_HANGUP)
+		freeb(bp);
+	else {
+		freeb(bp);
+		error(0, Ehungup);
+	}
 }
 
 /*
@@ -757,21 +761,17 @@ streamexit(Stream *s, int locked)
 
 	if(!locked)
 		lock(s);
+	if(s->inuse == 1){
+		/*
+		 *  ascend the stream freeing the queues
+		 */
+		for(q = s->devq; q; q = nq){
+			nq = q->next;
+			freeq(q);
+		}
+		s->id = s->dev = s->type = 0;
+	}
 	s->inuse--;
-	if(s->inuse != 0){
-		if(!locked)
-			unlock(s);
-		return;
-	}
-
-	/*
-	 *  ascend the stream freeing the queues
-	 */
-	for(q = s->devq; q; q = nq){
-		nq = q->next;
-		freeq(q);
-	}
-	s->id = s->dev = s->type = 0;
 	if(!locked)
 		unlock(s);
 }
@@ -797,29 +797,27 @@ streamclose(Chan *c)
 	 *  decrement the reference count
 	 */
 	lock(s);
-	if(s->opens != 1){
-		s->opens--;
-		unlock(c->stream);
-		return;
+	if(s->opens == 1){
+		/*
+		 *  descend the stream closing the queues
+		 */
+		for(q = s->procq; q; q = q->next){
+			if(q->info->close)
+				(*q->info->close)(q->other);
+			/* this may be 2 streams joined device end to device end */
+			if(q == s->devq->other)
+				break;
+		}
+	
+		/*
+		 *  ascend the stream flushing the queues
+		 */
+		for(q = s->devq; q; q = nq){
+			nq = q->next;
+			flushq(q);
+		}
 	}
-
-	/*
-	 *  descend the stream closing the queues
-	 */
-	for(q = s->procq; q; q = q->next){
-		if(q->info->close)
-			(*q->info->close)(q->other);
-		if(q == s->devq->other)
-			break;
-	}
-
-	/*
-	 *  ascend the stream flushing the queues
-	 */
-	for(q = s->devq; q; q = nq){
-		nq = q->next;
-		flushq(q);
-	}
+	s->opens--;
 
 	/*
 	 *  leave it and free it

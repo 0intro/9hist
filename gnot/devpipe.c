@@ -70,8 +70,10 @@ pipeclone(Chan *c, Chan *nc)
 	 *  up the inuse count of each stream to reflect the
 	 *  pointer from the other stream.
 	 */
-	streamenter(c->stream);
-	streamenter(nc->stream);
+	if(streamenter(c->stream)<0)
+		panic("pipeattach");
+	if(streamenter(nc->stream)<0)
+		panic("pipeattach");
 	return nc;
 }
 
@@ -131,6 +133,7 @@ pipeclose(Chan *c)
 	}
 	streamclose(c);		/* close this stream */
 	streamexit(other, 0);	/* release stream for other half of pipe */
+	poperror();
 }
 
 long
@@ -206,9 +209,7 @@ pipestclose(Queue *q)
 	 *  send a hangup
 	 */
 	q = q->other;
-	if(q->next){
-		bp = allocb(0);
-		bp->type = M_HANGUP;
-		pipeiput(q->next, bp);
-	}
+	bp = allocb(0);
+	bp->type = M_HANGUP;
+	PUTNEXT(q, bp);
 }

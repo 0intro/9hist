@@ -327,7 +327,7 @@ struct Proc
 	ulong	pc;			/* DEBUG only */
 };
 
-#define	NERR	10
+#define	NERR	15
 #define	NNOTE	5
 #define	NFD	100
 struct User
