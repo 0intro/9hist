@@ -9,6 +9,7 @@ int		anyhigher(void);
 int		anyready(void);
 Image*		attachimage(int, Chan*, ulong, ulong);
 long		authcheck(Chan*, char*, int);
+long		authcheckread(Chan*, char*, int n);
 void		authclose(Chan*);
 long		authentread(Chan*, char*, int);
 long		authentwrite(Chan*, char*, int);

@@ -478,6 +478,24 @@ authcheck(Chan *c, char *a, int n)
 }
 
 /*
+ *  reading authcheck after writing into it yields the
+ *  nonce key
+ */
+long
+authcheckread(Chan *c, char *a, int n)
+{
+	Crypt *cp;
+
+	cp = c->aux;
+	if(cp == nil)
+		error(Ebadarg);
+	if(n < TICKETLEN))
+		error(Ebadarg);
+	convT2M(&cp->t, a, nil);
+	return sizeof(cp->t);
+}
+
+/*
  *  called by devcons() for #c/authenticator
  *
  *  a read after a write of a ticket (or ticket+id) returns an authenticator
@@ -522,7 +540,11 @@ authentread(Chan *c, char *a, int n)
 	cp->a.num = AuthAc;
 	memmove(cp->a.chal, cp->t.chal, CHALLEN);
 	convA2M(&cp->a, cp->tbuf, cp->t.key);
-	memmove(a, cp->tbuf, AUTHENTLEN);
+
+	if(n >= AUTHENTLEN)
+		memmove(a, cp->tbuf, AUTHENTLEN);
+	if(n >= AUTHENTLEN + TICKETLEN)
+		convT2M(&cp->t, a+AUTHENTLEN, nil);
 
 	return n;
 }

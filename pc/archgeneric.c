@@ -60,6 +60,7 @@ static X86type x86type[] =
 	{ 5,	7,	23,	"P54C VRT", },
 	{ 6,	1,	16,	"PentiumPro", },/* determined by trial and error */
 	{ 6,	3,	16,	"PentiumII", },	/* determined by trial and error */
+	{ 6,	5,	16,	"PentiumII", },	/* determined by trial and error */
 
 	{ 3,	-1,	32,	"386", },	/* family defaults */
 	{ 4,	-1,	22,	"486", },
