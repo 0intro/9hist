@@ -4,6 +4,7 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"io.h"
+#include	"../port/error.h"
 
 #include	<libg.h>
 #include	<gnot.h>
@@ -49,6 +50,10 @@ enum {
 	Pgdown=	View,
 	Ins=	KF|20,
 	Del=	0x7F,
+
+	Rbutton=4,
+	Mbutton=2,
+	Lbutton=1,
 };
 
 uchar kbtab[] = 
@@ -107,11 +112,10 @@ KIOQ	kbdq;
 static int mousebuttons;
 static int keybuttons;
 static uchar ccc;
+static int mousetype;
+static int mouseport;
+static int shift;
 
-/*
- *  predeclared
- */
-static void	kbdintr(Ureg*);
 
 enum
 {
@@ -128,9 +132,10 @@ enum
 	Mouseserial=	1,
 	MousePS2=	2,
 };
-static int mousetype;
 
-static int	mymouseputc(IOQ*, int);
+static void	kbdintr(Ureg*);
+static int	ps2mouseputc(IOQ*, int);
+static int	m3mouseputc(IOQ*, int);
 
 /*
  *  wait for output no longer busy
@@ -238,6 +243,7 @@ kbdinit(void)
 	int c;
 
 	setvec(Kbdvec, kbdintr);
+	bigcursor();
 
 	/* wait for a quiescent controller */
 	while((c = inb(Status)) & (Outbusy | Inready))
@@ -267,29 +273,33 @@ kbdinit(void)
 /*
  *  setup a serial mouse
  */
-void
-mouseserial(int port)
+static void
+serialmouse(int port, char *type, int setspeed)
 {
 	if(mousetype)
-		return;
+		error(Emouseset);
 
 	/* set up /dev/eia0 as the mouse */
-	uartspecial(port, 0, &mouseq, 1200);
+	uartspecial(port, 0, &mouseq, setspeed ? 1200 : 0);
+	if(type && *type == 'M')
+		mouseq.putc = m3mouseputc;
+	mouseport = port;
 	mousetype = Mouseserial;
 }
 
 /*
  *  set up a ps2 mouse
  */
-void
-mouseps2(void)
+static void
+ps2mouse(void)
 {
 	int x;
 
-	bigcursor();
-	setvec(Mousevec, kbdintr);
+	if(mousetype)
+		error(Emouseset);
 
 	/* enable kbd/mouse xfers and interrupts */
+	setvec(Mousevec, kbdintr);
 	x = splhi();
 	ccc &= ~Cmousedis;
 	ccc |= Cmouseint;
@@ -306,7 +316,7 @@ mouseps2(void)
 		print("mouse init failed\n");
 
 	/* make mouse streaming, enabled */
-	mousecmd(0xF6);
+	mousecmd(0xEA);
 	mousecmd(0xF4);
 	splx(x);
 
@@ -314,47 +324,7 @@ mouseps2(void)
 }
 
 /*
- *  turn mouse acceleration on/off
- */
-void
-mouseaccelerate(int on)
-{
-	int x;
-
-	switch(mousetype){
-	case MousePS2:
-		x = splhi();
-		if(on)
-			mousecmd(0xE7);
-		else
-			mousecmd(0xE6);
-		splx(x);
-		break;
-	}
-}
-
-/*
- *  set mouse resolution
- */
-void
-mouseres(int res)
-{
-	int x;
-
-	switch(mousetype){
-	case MousePS2:
-		x = splhi();
-		mousecmd(0xE8);
-		mousecmd(res);
-		splx(x);
-		break;
-	}
-}
-
-static int shift;
-
-/*
- *  mouse message is three bytes
+ *  ps/2 mouse message is three bytes
  *
  *	byte 0 -	0 0 SDY SDX 1 M R L
  *	byte 1 -	DX
@@ -363,12 +333,11 @@ static int shift;
  *  shift & left button is the same as middle button
  */
 static int
-mymouseputc(IOQ *q, int c)
+ps2mouseputc(IOQ *q, int c)
 {
 	static short msg[3];
 	static int nb;
 	static uchar b[] = {0, 1, 4, 5, 2, 3, 6, 7, 0, 1, 2, 5, 2, 3, 6, 7 };
-	static lastdx, lastdy;
 	extern Mouseinfo mouse;
 
 	USED(q);		/* not */
@@ -395,6 +364,105 @@ mymouseputc(IOQ *q, int c)
 		mouseclock();
 	}
 	return 0;
+}
+
+/*
+ *  microsoft 3 button, 7 bit bytes
+ *
+ *	byte 0 -	1  L  R Y7 Y6 X7 X6
+ *	byte 1 -	0 X5 X4 X3 X2 X1 X0
+ *	byte 2 -	0 Y5 Y4 Y3 Y2 Y1 Y0
+ *	byte 3 -	0  M  x  x  x  x  x	(optional)
+ *
+ *  shift & left button is the same as middle button (for 2 button mice)
+ */
+static int
+m3mouseputc(IOQ *q, int c)
+{
+	static uchar msg[3];
+	static int nb;
+	static uchar b[] = { 0, 4, 1, 5, 0, 4, 3, 7 };
+	extern Mouseinfo mouse;
+
+	USED(q);		/* not */
+
+	/* 
+	 *  check bit 6 for consistency
+	 */
+	if(nb==0){
+		if((c&0x40) != 0){
+			/* must be 4th (M button) byte */
+			mousebuttons = (mousebuttons & ~Mbutton) | ((c&0x2)?Mbutton:0);
+			mouse.newbuttons = mousebuttons | keybuttons;
+			mouse.dx = 0;
+			mouse.dy = 0;
+			mouse.track = 0;
+			mouseclock();
+			return 0;
+		}
+	}
+	msg[nb] = c;
+	if(++nb == 3){
+		nb = 0;
+		mousebuttons = b[(msg[0]>>4)&3 | (shift ? 4 : 0)];
+		mouse.newbuttons = mousebuttons | keybuttons;
+		mouse.dx = (((msg[0]&3)<<7) | msg[1]) - 128;
+		mouse.dy = (((msg[0]&0xc)<<5) | msg[2]) - 128;
+		mouse.track = 1;
+		mouseclock();
+	}
+	return 0;
+}
+
+/*
+ *  set/change mouse configuration
+ */
+void
+mousectl(char *arg)
+{
+	int n, x;
+	char *field[3];
+
+	n = getfields(arg, field, 3, ' ');
+	if(n < 1)
+		return;
+	if(strncmp(field[0], "serial", 6) == 0){
+		if(n > 1)
+			serialmouse(atoi(field[1]), field[2], 0);
+		else
+			serialmouse(atoi(field[0]+6), 0, 1);
+	} else if(strcmp(field[0], "ps2") == 0){
+		ps2mouse();
+	} else if(strcmp(field[0], "accelerated") == 0){
+		switch(mousetype){
+		case MousePS2:
+			x = splhi();
+			mousecmd(0xE7);
+			splx(x);
+			break;
+		}
+	} else if(strcmp(field[0], "linear") == 0){
+		switch(mousetype){
+		case MousePS2:
+			x = splhi();
+			mousecmd(0xE6);
+			splx(x);
+			break;
+		}
+	} else if(strcmp(field[0], "res") == 0){
+		if(n < 2)
+			n = 1;
+		else
+			n = atoi(field[1]);
+		switch(mousetype){
+		case MousePS2:
+			x = splhi();
+			mousecmd(0xE8);
+			mousecmd(n);
+			splx(x);
+			break;
+		}
+	}
 }
 
 /*
@@ -454,7 +522,7 @@ kbdintr0(void)
 	 *  if it's the mouse...
 	 */
 	if(s & Minready){
-		mymouseputc(&mouseq, c);
+		ps2mouseputc(&mouseq, c);
 		return 0;
 	}
 
@@ -502,13 +570,13 @@ kbdintr0(void)
 			ctl = 0;
 			break;
 		case KF|1:
-			mboff(4);
+			mboff(Rbutton);
 			break;
 		case KF|2:
-			mboff(2);
+			mboff(Mbutton);
 			break;
 		case KF|3:
-			mboff(1);
+			mboff(Lbutton);
 			break;
 		}
 		return 0;
@@ -572,13 +640,13 @@ kbdintr0(void)
 			ctl = 1;
 			return 0;
 		case KF|1:
-			mbon(4);
+			mbon(Rbutton);
 			return 0;
 		case KF|2:
-			mbon(2);
+			mbon(Mbutton);
 			return 0;
 		case KF|3:
-			mbon(1);
+			mbon(Lbutton);
 			return 0;
 		}
 	}

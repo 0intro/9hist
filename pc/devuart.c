@@ -63,7 +63,7 @@ struct Uart
 	int	enabled;
 
 	/* console interface */
-	int	nostream;	/* can't use the stream interface */
+	int	special;	/* can't use the stream interface */
 	IOQ	*iq;		/* input character queue */
 	IOQ	*oq;		/* output character queue */
 
@@ -234,9 +234,6 @@ uartsetup(void)
 		uartwrreg(up, Format, 0);
 		up->sticky[Mctl] |= Inton;
 		uartwrreg(up, Mctl, 0x0);
-
-		uartdtr(up, 1);
-		uartrts(up, 1);
 	}
 }
 
@@ -409,10 +406,16 @@ uartdisable(Uart *up)
 	uartwrreg(up, Iena, 0);
 
 	/*
+	 *  revert to default settings
+	 */
+	up->sticky[Format] = Bits8;
+	uartwrreg(up, Format, 0);
+
+	/*
 	 *  turn off DTR and RTS
+	 */
 	uartdtr(up, 0);
 	uartrts(up, 0);
-	 */
 	up->enabled = 0;
 
 	/*
@@ -425,11 +428,6 @@ uartdisable(Uart *up)
 		if(modem(0) < 0)
 			print("can't turn off modem speaker\n");
 	}
-
-	/*
-	 *  slow the clock down again
-	 */
-	clockinit();
 }
 
 /*
@@ -441,11 +439,12 @@ uartspecial(int port, IOQ *oq, IOQ *iq, int baud)
 	Uart *up = &uart[port];
 
 	uartsetup();
-	up->nostream = 1;
+	up->special = 1;
 	up->oq = oq;
 	up->iq = iq;
 	uartenable(up);
-	uartsetbaud(up, baud);
+	if(baud)
+		uartsetbaud(up, baud);
 
 	if(iq){
 		/*
@@ -497,6 +496,9 @@ static void
 uartstclose(Queue *q)
 {
 	Uart *up = q->ptr;
+
+	if(up->special)
+		return;
 
 	uartdisable(up);
 
@@ -644,7 +646,7 @@ uartreset(void)
 
 	uartsetup();
 	for(up = uart; up < &uart[2]; up++){
-		if(up->nostream)
+		if(up->special)
 			continue;
 		up->iq = xalloc(sizeof(IOQ));
 		initq(up->iq);
@@ -711,7 +713,7 @@ uartopen(Chan *c, int omode)
 		break;
 	}
 
-	if(up && up->nostream)
+	if(up && up->special)
 		error(Einuse);
 
 	if((c->qid.path & CHDIR) == 0)
