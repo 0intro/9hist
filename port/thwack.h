@@ -5,10 +5,11 @@ typedef struct UnthwBlock	UnthwBlock;
 
 enum
 {
+	ThwStats	= 8,
 	ThwMaxBlock	= 1600,		/* max size of compressible block */
 
 	MinMatch	= 3,		/* shortest match possible */
-	HashLog		= 10,
+	HashLog		= 12,
 	HashSize	= 1<<HashLog,
 	HashMask	= HashSize - 1,
 
@@ -19,7 +20,7 @@ enum
 	MaxOff		= 8,
 	OffBase		= 6,
 
-	MinDecode	= 9,		/* minimum bits to decode a match or lit */
+	MinDecode	= 8,		/* minimum bits to decode a match or lit; >= 8 */
 	MaxOffDecode	= 4 + MaxOff + OffBase - 1,
 	MaxLenDecode	= 16,
 
@@ -28,7 +29,7 @@ enum
 	CompBlocks	= 5,		/* max blocks used to encode data */
 
 	MaxSeqMask	= 8,		/* number of bits in coding block mask */
-	MaxSeqStart	= 256,		/* max offset of initial coding block */
+	MaxSeqStart	= 256		/* max offset of initial coding block */
 };
 
 struct ThwBlock
@@ -44,11 +45,6 @@ struct ThwBlock
 
 struct Thwack
 {
-	ulong		nbits;		/* output bit buffer */
-	ulong		bits;
-	uchar		*dst;		/* output buffer */
-	uchar		*dmax;
-
 	int		slot;		/* next block to use */
 	ThwBlock	blocks[EWinBlocks];
 	ushort		hash[EWinBlocks][HashSize];
@@ -71,6 +67,6 @@ struct Unthwack
 
 void	thwackinit(Thwack*);
 void	unthwackinit(Unthwack*);
-int	thwack(Thwack*, uchar *dst, uchar *src, int nsrc, ulong seq);
+int	thwack(Thwack*, uchar *dst, uchar *src, int nsrc, ulong seq, ulong stats[ThwStats]);
 void	thwackack(Thwack*, ulong seq, ulong mask);
 int	unthwack(Unthwack*, uchar *dst, int ndst, uchar *src, int nsrc, ulong seq);

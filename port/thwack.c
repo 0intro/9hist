@@ -1,5 +1,5 @@
 #include "u.h"
-#include "lib.h"
+#include "../port/lib.h"
 #include "mem.h"
 #include "dat.h"
 #include "fns.h"
@@ -7,6 +7,23 @@
 #include "thwack.h"
 
 typedef struct Huff	Huff;
+
+enum
+{
+	StatBytes,
+	StatOutBytes,
+	StatLits,
+	StatMatches,
+	StatLitBits,
+	StatOffBits,
+	StatLenBits,
+
+	StatProbe,
+	StatProbeMiss,
+
+	MaxStat
+};
+
 struct Huff
 {
 	short	bits;				/* length of the code */
@@ -25,9 +42,6 @@ static	Huff	lentab[MaxFastLen] =
 	{7,	0x78},		/* 1111000 */
 	{7,	0x79},		/* 1111001 */
 };
-
-static	void	bitput(Thwack *tw, int c, int n);
-static	int	iomegaput(Thwack *tw, ulong v);
 
 void
 thwackinit(Thwack *tw)
@@ -81,7 +95,7 @@ thwackack(Thwack *tw, ulong seq, ulong mask)
 static int
 thwmatch(ThwBlock *b, ThwBlock *eblocks, uchar **ss, uchar *esrc, ulong h)
 {
-	int then, toff, w;
+	int then, toff, w, ok;
 	uchar *s, *t;
 
 	s = *ss;
@@ -90,12 +104,13 @@ thwmatch(ThwBlock *b, ThwBlock *eblocks, uchar **ss, uchar *esrc, ulong h)
 
 	toff = 0;
 	for(; b < eblocks; b++){
-		then = b->hash[h];
+		then = b->hash[(h ^ b->seq) & HashMask];
 		toff += b->maxoff;
 		w = (ushort)(then - b->begin);
 
 		if(w >= b->maxoff)
 			continue;
+
 
 		/*
 		 * don't need to check for the end because
@@ -105,8 +120,9 @@ thwmatch(ThwBlock *b, ThwBlock *eblocks, uchar **ss, uchar *esrc, ulong h)
 		t = w + b->data;
 		if(s[0] != t[0] || s[1] != t[1] || s[2] != t[2])
 			continue;
-		if(esrc - s > b->edata - t)
-			esrc = s + (b->edata - t);
+		ok = b->edata - t;
+		if(esrc - s > ok)
+			esrc = s + ok;
 
 		t += 3;
 		for(s += 3; s < esrc; s++){
@@ -129,27 +145,27 @@ thwmatch(ThwBlock *b, ThwBlock *eblocks, uchar **ss, uchar *esrc, ulong h)
  * the 3 byte value appears to be as almost good as the 4 byte value,
  * and might be faster on some machines
  */
-//#define hashit(c)	(((((ulong)(c) & 0xffffff) * 0x6b43a9b5) >> (32 - HashLog)) & HashMask)
-#define hashit(c)	((((ulong)(c) * 0x6b43a9) >> (24 - HashLog)) & HashMask)
+/*
+#define hashit(c)	(((ulong)(c) * 0x6b43a9) >> (24 - HashLog))
+*/
+#define hashit(c)	((((ulong)(c) & 0xffffff) * 0x6b43a9b5) >> (32 - HashLog))
 
 /*
  * lz77 compression with single lookup in a hash table for each block
  */
 int
-thwack(Thwack *tw, uchar *dst, uchar *src, int n, ulong seq)
+thwack(Thwack *tw, uchar *dst, uchar *src, int n, ulong seq, ulong stats[ThwStats])
 {
 	ThwBlock *eblocks, *b, blocks[CompBlocks];
-	uchar *s, *ss, *sss, *esrc, *half;
-	ulong cont, cseq, bseq, cmask, code;
-	int now, toff;
-	int h, m, slot, bits, use, totmatched;
+	uchar *s, *ss, *sss, *esrc, *half, *twdst, *twdmax;
+	ulong cont, cseq, bseq, cmask, code, twbits;
+	int now, toff, lithist, h, len, slot, bits, use, twnbits, lits, matches, offbits, lenbits;
 
-	if(n > ThwMaxBlock || n < MinMatch || waserror())
+	if(n > ThwMaxBlock || n < MinMatch)
 		return -1;
 
-	tw->dst = dst;
-	tw->dmax = dst + n;
-	tw->nbits = 0;
+	twdst = dst;
+	twdmax = dst + n;
 
 	/*
 	 * add source to the coding window
@@ -196,13 +212,20 @@ thwack(Thwack *tw, uchar *dst, uchar *src, int n, ulong seq)
 		b++;
 	}
 	eblocks = b;
-	bitput(tw, ((seq - cseq) << MaxSeqMask) | cmask, 16);
+	*twdst++ = seq - cseq;
+	*twdst++ = cmask;
 
-	cont = (s[0] << 16) | (s[2] << 8) | s[2];
+	cont = (s[0] << 16) | (s[1] << 8) | s[2];
 
-	totmatched = 0;
 	esrc = s + n;
 	half = s + (n >> 1);
+	twnbits = 0;
+	twbits = 0;
+	lits = 0;
+	matches = 0;
+	offbits = 0;
+	lenbits = 0;
+	lithist = ~0;
 	while(s < esrc){
 		h = hashit(cont);
 
@@ -210,53 +233,102 @@ thwack(Thwack *tw, uchar *dst, uchar *src, int n, ulong seq)
 		toff = thwmatch(blocks, eblocks, &sss, esrc, h);
 		ss = sss;
 
-		m = ss - s;
-		if(m < MinMatch){
-			bitput(tw, 0x100|*s, 9);
-			ss = s + 1;
-		}else{
-			totmatched += m;
-
-			toff--;
-			for(bits = OffBase; toff >= (1 << bits); bits++)
-				;
-			if(bits >= MaxOff+OffBase)
-				error("thwack offset");
-			bitput(tw, bits - OffBase, 4);
-			if(bits != OffBase)
-				bits--;
-			bitput(tw, toff & ((1 << bits) - 1), bits);
-
-			m -= MinMatch;
-			if(m < MaxFastLen){
-				bitput(tw, lentab[m].encode, lentab[m].bits);
-			}else{
-				code = BigLenCode;
-				bits = BigLenBits;
-				use = BigLenBase;
-				m -= MaxFastLen;
-				while(m >= use){
-					m -= use;
-					code = (code + use) << 1;
-					use <<= bits & 1;
-					bits++;
-				}
-				bitput(tw, (code + m), bits);
-			}
+		len = ss - s;
+		for(; twnbits >= 8; twnbits -= 8){
+			if(twdst >= twdmax)
+				return -1;
+			*twdst++ = twbits >> (twnbits - 8);
 		}
-		blocks->maxoff += ss - s;
+		if(len < MinMatch){
+			toff = *s;
+			lithist = (lithist << 1) | toff < 32 | toff > 127;
+			if(lithist & 0x1e){
+				twbits = (twbits << 9) | toff;
+				twnbits += 9;
+			}else if(lithist & 1){
+				toff = (toff + 64) & 0xff;
+				if(toff < 96){
+					twbits = (twbits << 10) | toff;
+					twnbits += 10;
+				}else{
+					twbits = (twbits << 11) | toff;
+					twnbits += 11;
+				}
+			}else{
+				twbits = (twbits << 8) | toff;
+				twnbits += 8;
+			}
+			lits++;
+			blocks->maxoff++;
 
-		/*
-		 * speed hack
-		 * check for compression progress, bail if none achieved
-		 */
-		if(s < half && ss >= half && totmatched * 10 < n)
-			error("thwack likely expanding");
+			/*
+			 * speed hack
+			 * check for compression progress, bail if none achieved
+			 */
+			if(s > half){
+				if(4 * blocks->maxoff < 5 * lits)
+					return -1;
+				half = esrc;
+			}
+
+			if(s + MinMatch <= esrc){
+				blocks->hash[(h ^ blocks->seq) & HashMask] = now;
+				if(s + MinMatch < esrc)
+					cont = (cont << 8) | s[MinMatch];
+			}
+			now++;
+			s++;
+			continue;
+		}
+
+		blocks->maxoff += len;
+		matches++;
+
+		toff--;
+		for(bits = OffBase; toff >= (1 << bits); bits++)
+			;
+		if(bits >= MaxOff+OffBase)
+			panic("thwack offset");
+		twbits = (twbits << 4) | 0x8 | (bits - OffBase);
+		if(bits != OffBase)
+			bits--;
+		twbits = (twbits << bits) | toff & ((1 << bits) - 1);
+		twnbits += bits + 4;
+		offbits += bits + 4;
+
+		len -= MinMatch;
+		if(len < MaxFastLen){
+			bits = lentab[len].bits;
+			twbits = (twbits << bits) | lentab[len].encode;
+			twnbits += bits;
+			lenbits += bits;
+		}else{
+			for(; twnbits >= 8; twnbits -= 8){
+				if(twdst >= twdmax)
+					return -1;
+				*twdst++ = twbits >> (twnbits - 8);
+			}
+			code = BigLenCode;
+			bits = BigLenBits;
+			use = BigLenBase;
+			len -= MaxFastLen;
+			while(len >= use){
+				len -= use;
+				code = (code + use) << 1;
+				use <<= bits & 1;
+				bits++;
+			}
+			if(bits > MaxLenDecode + BigLenBits)
+				panic("length too big");
+			twbits = (twbits << bits) | (code + len);
+			twnbits += bits;
+			lenbits += bits;
+		}
 
 		for(; s != ss; s++){
 			if(s + MinMatch <= esrc){
 				h = hashit(cont);
-				blocks->hash[h] = now;
+				blocks->hash[(h ^ blocks->seq) & HashMask] = now;
 				if(s + MinMatch < esrc)
 					cont = (cont << 8) | s[MinMatch];
 			}
@@ -264,23 +336,28 @@ thwack(Thwack *tw, uchar *dst, uchar *src, int n, ulong seq)
 		}
 	}
 
-	if(tw->nbits)
-		bitput(tw, 0, 8 - tw->nbits);
+	stats[StatBytes] += blocks->maxoff;
+	stats[StatLits] += lits;
+	stats[StatMatches] += matches;
+	stats[StatLitBits] += (twdst - (dst + 2)) * 8 + twnbits - offbits - lenbits;
+	stats[StatOffBits] += offbits;
+	stats[StatLenBits] += lenbits;
+
+	if(twnbits & 7){
+		twbits <<= 8 - (twnbits & 7);
+		twnbits += 8 - (twnbits & 7);
+	}
+	for(; twnbits >= 8; twnbits -= 8){
+		if(twdst >= twdmax)
+			return -1;
+		*twdst++ = twbits >> (twnbits - 8);
+	}
+
 	tw->slot++;
 	if(tw->slot >= EWinBlocks)
 		tw->slot = 0;
 
-	poperror();
-	return tw->dst - dst;
-}
+	stats[StatOutBytes] += twdst - dst;
 
-static void
-bitput(Thwack *tw, int c, int n)
-{
-	tw->bits = (tw->bits << n) | c;
-	for(tw->nbits += n; tw->nbits >= 8; tw->nbits -= 8){
-		if(tw->dst >= tw->dmax)
-			error("thwack expanding");
-		*tw->dst++ = tw->bits >> (tw->nbits - 8);
-	}
+	return twdst - dst;
 }

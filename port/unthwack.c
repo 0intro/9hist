@@ -1,5 +1,5 @@
 #include "u.h"
-#include "lib.h"
+#include "../port/lib.h"
 #include "mem.h"
 #include "dat.h"
 #include "fns.h"
@@ -44,8 +44,8 @@ int
 unthwack(Unthwack *ut, uchar *dst, int ndst, uchar *src, int nsrc, ulong seq)
 {
 	UnthwBlock blocks[CompBlocks], *b, *eblocks;
-	uchar *s, *es, *d, *dmax, *smax;
-	ulong cmask, cseq, bseq, utbits;
+	uchar *s, *es, *d, *dmax, *smax, lit;
+	ulong cmask, cseq, bseq, utbits, lithist;
 	int off, len, bits, slot, tslot, use, code, utnbits, overbits;
 
 	if(nsrc < 4 || nsrc > ThwMaxBlock)
@@ -113,8 +113,9 @@ unthwack(Unthwack *ut, uchar *dst, int ndst, uchar *src, int nsrc, ulong seq)
 	utnbits = 0;
 	utbits = 0;
 	overbits = 0;
+	lithist = ~0;
 	while(src < smax || utnbits - overbits >= MinDecode){
-		while(utnbits < MaxOffDecode + BigLenBits){
+		while(utnbits <= 24){
 			utbits <<= 8;
 			if(src < smax)
 				utbits |= *src++;
@@ -122,26 +123,47 @@ unthwack(Unthwack *ut, uchar *dst, int ndst, uchar *src, int nsrc, ulong seq)
 				overbits += 8;
 			utnbits += 8;
 		}
-		utnbits -= 9;
-		off = (utbits >> utnbits) & ((1 << 9) - 1);
 
 		/*
 		 * literal
 		 */
-		bits = off >> 5;
-		if(bits >= MaxOff){
-			*d++ = off;
+		if(((utbits >> (utnbits - 1)) & 1) == 0){
+			if(lithist & 0xf){
+				utnbits -= 9;
+				lit = (utbits >> utnbits) & 0xff;
+				lit &= 255;
+			}else{
+				utnbits -= 8;
+				lit = (utbits >> utnbits) & 0x7f;
+				if(lit < 32){
+					if(lit < 24){
+						utnbits -= 2;
+						lit = (lit << 2) | ((utbits >> utnbits) & 3);
+					}else{
+						utnbits -= 3;
+						lit = (lit << 3) | ((utbits >> utnbits) & 7);
+					}
+					lit = (lit - 64) & 0xff;
+				}
+			}
+			*d++ = lit;
+			lithist = (lithist << 1) | lit < 32 | lit > 127;
 			blocks->maxoff++;
 			continue;
 		}
-		off &= (1 << 5) - 1;
-		if(bits){
-			bits--;
-			off |= 1 << 5;
-		}
-		bits += OffBase - 5;
-		off <<= bits;
 
+		/*
+		 * match; next 3 bits decode offset range
+		 */
+		utnbits -= 4;
+		bits = (utbits >> utnbits) & ((1 << 3) - 1);
+		if(bits){
+			bits += OffBase - 1;
+			off = 1 << bits;
+		}else{
+			bits = OffBase;
+			off = 0;
+		}
 		utnbits -= bits;
 		off |= (utbits >> utnbits) & ((1 << bits) - 1);
 		off++;

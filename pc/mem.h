@@ -111,10 +111,10 @@
 #define	PTEVALID	(1<<0)
 #define	PTEWT		(1<<3)
 #define	PTEUNCACHED	(1<<4)
-#define PTEWRITE	(1<<1)
+#define 	PTEWRITE	(1<<1)
 #define	PTERONLY	(0<<1)
 #define	PTEKERNEL	(0<<2)
 #define	PTEUSER		(1<<2)
-#define PTESIZE		(1<<7)
+#define	PTESIZE		(1<<7)
 
 #define getpgcolor(a)	0

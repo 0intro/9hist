@@ -19,6 +19,7 @@ typedef struct OneWay OneWay;
 typedef struct Stats Stats;
 typedef struct AckPkt AckPkt;
 typedef struct Algorithm Algorithm;
+typedef struct CipherRc4 CipherRc4;
 
 enum
 {
@@ -70,6 +71,7 @@ struct Stats
 	ulong	inBadComp;
 	ulong	inBadAuth;
 	ulong	inBadSeq;
+	ulong	inBadOther;
 };
 
 struct OneWay
@@ -141,9 +143,9 @@ struct Conv {
 	char owner[NAMELEN];		/* protections */
 	int	perm;
 
-	char *authname;
-	char *ciphername;
-	char *compname;
+	Algorithm *auth;
+	Algorithm *cipher;
+	Algorithm *comp;
 
 	int drop;
 
@@ -203,13 +205,30 @@ struct AckPkt
 	uchar	inBadComp[4];
 	uchar	inBadAuth[4];
 	uchar	inBadSeq[4];
+	uchar	inBadOther[4];
 };
 
 struct Algorithm
 {
 	char 	*name;
 	int		keylen;		// in bytes
-	void	(*init)(Conv*, char* name, int keylen);
+	void	(*init)(Conv*);
+};
+
+enum {
+	RC4forward	= 10*1024*1024,	// maximum skip forward
+	RC4back = 100*1024,		// maximum look back
+};
+
+struct CipherRc4
+{
+	ulong cseq;	// current byte sequence number
+	RC4state current;
+
+	int ovalid;	// old is valid
+	ulong lgseq; // last good sequence
+	ulong oseq;	// old byte sequence number
+	RC4state old;
 };
 
 static Dirtab sdpdirtab[]={
@@ -279,23 +298,24 @@ static void convreader(void *a);
 static void convopenchan(Conv *c, char *path);
 static void convstats(Conv *c, int local, char *buf, int n);
 
-static void setalg(Conv *c, char *name, Algorithm *tab);
+static void setalg(Conv *c, char *name, Algorithm *tab, Algorithm **);
 static void setsecret(OneWay *cc, char *secret);
 
-static void nullcipherinit(Conv*c, char *name, int keylen);
-static void descipherinit(Conv*c, char *name, int keylen);
-static void rc4cipherinit(Conv*c, char *name, int keylen);
-static void nullauthinit(Conv*c, char *name, int keylen);
-static void shaauthinit(Conv*c, char *name, int keylen);
-static void md5authinit(Conv*c, char *name, int keylen);
-static void nullcompinit(Conv*c, char *name, int keylen);
-static void thwackcompinit(Conv*c, char *name, int keylen);
+static void nullcipherinit(Conv*c);
+static void descipherinit(Conv*c);
+static void rc4cipherinit(Conv*c);
+static void nullauthinit(Conv*c);
+static void shaauthinit(Conv*c);
+static void md5authinit(Conv*c);
+static void nullcompinit(Conv*c);
+static void thwackcompinit(Conv*c);
 
 static Algorithm cipheralg[] =
 {
 	"null",			0,	nullcipherinit,
 	"des_56_cbc",	7,	descipherinit,
 	"rc4_128",		16,	rc4cipherinit,
+	"rc4_256",		32,	rc4cipherinit,
 	nil,			0,	nil,
 };
 
@@ -617,23 +637,31 @@ sdpwrite(Chan *ch, void *a, long n, vlong off)
 		} else if(strcmp(arg0, "cipher") == 0) {
 			if(cb->nf != 2)
 				error("usage: cipher alg");
-			setalg(c, cb->f[1], cipheralg);
+			setalg(c, cb->f[1], cipheralg, &c->cipher);
 		} else if(strcmp(arg0, "auth") == 0) {
 			if(cb->nf != 2)
 				error("usage: auth alg");
-			setalg(c, cb->f[1], authalg);
+			setalg(c, cb->f[1], authalg, &c->auth);
 		} else if(strcmp(arg0, "comp") == 0) {
 			if(cb->nf != 2)
 				error("usage: comp alg");
-			setalg(c, cb->f[1], compalg);
+			setalg(c, cb->f[1], compalg, &c->comp);
 		} else if(strcmp(arg0, "insecret") == 0) {
 			if(cb->nf != 2)
 				error("usage: insecret secret");
 			setsecret(&c->in, cb->f[1]);
+			if(c->cipher)
+				c->cipher->init(c);
+			if(c->auth)
+				c->auth->init(c);
 		} else if(strcmp(arg0, "outsecret") == 0) {
 			if(cb->nf != 2)
 				error("usage: outsecret secret");
 			setsecret(&c->out, cb->f[1]);
+			if(c->cipher)
+				c->cipher->init(c);
+			if(c->auth)
+				c->auth->init(c);
 		} else
 			error("unknown control request");
 		poperror();
@@ -934,7 +962,7 @@ print("convsetstate %s -> %s\n", convstatename[c->state], convstatename[state]);
 			hnputl(c->out.secret, c->acceptid);
 			hnputl(c->out.secret+4, c->dialid);
 		}
-		md5authinit(c, "hmac_md5_96", 16);
+		setalg(c, "hmac_md5_96", authalg, &c->auth);
 		break;
 	case CLocalClose:
 		assert(c->state == CAccept || c->state == COpen);
@@ -961,9 +989,9 @@ print("CClosed -> ref = %d\n", c->ref);
 			free(c->channame);
 			c->channame = nil;
 		}
-		c->ciphername = nil;
-		c->authname = nil;
-		c->compname = nil;
+		c->cipher = nil;
+		c->auth = nil;
+		c->comp = nil;
 	strcpy(c->owner, "network");
 		c->perm = 0660;
 		c->dialid = 0;
@@ -1045,7 +1073,6 @@ convstats(Conv *c, int local, char *buf, int n)
 			continue;
 		p += snprint(p, ep-p, "outCompStats[%d]: %lud\n", i, stats->outCompStats[i]);
 	}
-	p += snprint(p, ep-p, "outCompDataBytes: %lud\n", stats->outCompDataBytes);
 	p += snprint(p, ep-p, "inPackets: %lud\n", stats->inPackets);
 	p += snprint(p, ep-p, "inDataPackets: %lud\n", stats->inDataPackets);
 	p += snprint(p, ep-p, "inDataBytes: %lud\n", stats->inDataBytes);
@@ -1056,6 +1083,7 @@ convstats(Conv *c, int local, char *buf, int n)
 	p += snprint(p, ep-p, "inBadComp: %lud\n", stats->inBadComp);
 	p += snprint(p, ep-p, "inBadAuth: %lud\n", stats->inBadAuth);
 	p += snprint(p, ep-p, "inBadSeq: %lud\n", stats->inBadSeq);
+	p += snprint(p, ep-p, "inBadOther: %lud\n", stats->inBadOther);
 	USED(p);
 	qunlock(c);
 }
@@ -1090,6 +1118,7 @@ convack(Conv *c)
 	hnputl(ack->inBadComp, s->inBadComp);
 	hnputl(ack->inBadAuth, s->inBadAuth);
 	hnputl(ack->inBadSeq, s->inBadSeq);
+	hnputl(ack->inBadOther, s->inBadOther);
 	convoput(c, TControl, ControlAck, b);
 }
 
@@ -1101,10 +1130,12 @@ conviput(Conv *c, Block *b, int control)
 	int type, subtype;
 	ulong seq, seqwrap;
 	long seqdiff;
+	int pad;
 
 	c->lstats.inPackets++;
 
 	if(BLEN(b) < 4) {
+		c->lstats.inBadOther++;
 		freeb(b);
 		return nil;
 	}
@@ -1160,7 +1191,25 @@ print("bad auth\n");
 		b->wp -= c->in.authlen;
 	}
 
-	// decrypt
+	if(c->in.cipher != 0) {
+		if(!(*c->in.cipher)(&c->in, b->rp, BLEN(b))) {
+print("bad cipher\n");
+			c->lstats.inBadOther++;
+			freeb(b);
+			return nil;
+		}
+		b->rp += c->in.cipherivlen;
+		if(c->in.cipherblklen > 1) {
+			pad = b->wp[-1];
+			if(pad > BLEN(b)) {
+print("pad too big\n");
+				c->lstats.inBadOther++;
+				freeb(b);
+				return nil;
+			}
+			b->wp -= pad;
+		}
+	}
 
 	// ok the packet is good
 	if(seqdiff > 0) {
@@ -1206,6 +1255,7 @@ print("missing packets: %ld-%ld\n", seq - SeqWindow - seqdiff+1, seq-SeqWindow);
 		return b;
 	}
 print("droping packet %d n=%ld\n", type, BLEN(b));
+	c->lstats.inBadOther++;
 	freeb(b);
 	return nil;
 }
@@ -1324,6 +1374,7 @@ convicontrol(Conv *c, int subtype, Block *b)
 {
 	ulong cseq;
 	AckPkt *ack;
+	int i;
 
 	if(BLEN(b) < 4)
 		return;
@@ -1366,6 +1417,8 @@ print("ControlAck expected %ulx got %ulx\n", c->out.controlseq, cseq);
 		c->rstats.outDataPackets = nhgetl(ack->outDataPackets);
 		c->rstats.outDataBytes = nhgetl(ack->outDataBytes);
 		c->rstats.outCompDataBytes = nhgetl(ack->outCompDataBytes);
+		for(i=0; i<NCompStats; i++)
+			c->rstats.outCompStats[i] = nhgetl(ack->outCompStats + 4*i);
 		c->rstats.inPackets = nhgetl(ack->inPackets);
 		c->rstats.inDataPackets = nhgetl(ack->inDataPackets);
 		c->rstats.inDataBytes = nhgetl(ack->inDataBytes);
@@ -1376,6 +1429,7 @@ print("ControlAck expected %ulx got %ulx\n", c->out.controlseq, cseq);
 		c->rstats.inBadComp = nhgetl(ack->inBadComp);
 		c->rstats.inBadAuth = nhgetl(ack->inBadAuth);
 		c->rstats.inBadSeq = nhgetl(ack->inBadSeq);
+		c->rstats.inBadOther = nhgetl(ack->inBadOther);
 		freeb(b);
 		freeb(c->out.controlpkt);
 		c->out.controlpkt = nil;
@@ -1418,8 +1472,23 @@ convwriteblock(Conv *c, Block *b)
 static void
 convoput(Conv *c, int type, int subtype, Block *b)
 {
-	// try and compress
+	int pad;
+	
 	c->lstats.outPackets++;
+	/* Make room for sdp trailer */
+	if(c->out.cipherblklen > 1)
+		pad = c->out.cipherblklen - (BLEN(b) + c->out.cipherivlen) % c->out.cipherblklen;
+	else
+		pad = 0;
+
+	b = padblock(b, -(pad+c->out.authlen));
+
+	if(pad) {
+		memset(b->wp, 0, pad-1);
+		b->wp[pad-1] = pad;
+		b->wp += pad;
+	}
+
 	/* Make space to fit sdp header */
 	b = padblock(b, 4 + c->out.cipherivlen);
 	b->rp[0] = (type << 4) | subtype;
@@ -1432,10 +1501,11 @@ convoput(Conv *c, int type, int subtype, Block *b)
 	b->rp[2] = c->out.seq>>8;
 	b->rp[3] = c->out.seq;
 	
-	// encrypt
+	if(c->out.cipher)
+		(*c->out.cipher)(&c->out, b->rp+4, BLEN(b)-4);
+
 	// auth
 	if(c->out.auth) {
-		b = padblock(b, -c->out.authlen);
 		b->wp += c->out.authlen;
 		(*c->out.auth)(&c->out, b->rp, BLEN(b));
 	}
@@ -1710,7 +1780,7 @@ print("convreader exiting\n");
 /* ciphers, authenticators, and compressors  */
 
 static void
-setalg(Conv *c, char *name, Algorithm *alg)
+setalg(Conv *c, char *name, Algorithm *alg, Algorithm **p)
 {
 	for(; alg->name; alg++)
 		if(strcmp(name, alg->name) == 0)
@@ -1718,7 +1788,8 @@ setalg(Conv *c, char *name, Algorithm *alg)
 	if(alg->name == nil)
 		error("unknown algorithm");
 
-	alg->init(c, alg->name, alg->keylen);
+	*p = alg;
+	alg->init(c);
 }
 
 static void
@@ -1771,7 +1842,6 @@ setkey(uchar *key, int n, OneWay *ow, char *prefix)
 static void
 cipherfree(Conv *c)
 {
-	c->ciphername = nil;
 	if(c->in.cipherstate) {
 		free(c->in.cipherstate);
 		c->in.cipherstate = nil;
@@ -1781,12 +1851,15 @@ cipherfree(Conv *c)
 		c->out.cipherstate = nil;
 	}
 	c->in.cipher = nil;
+	c->in.cipherblklen = 0;
+	c->out.cipherblklen = 0;
+	c->in.cipherivlen = 0;
+	c->out.cipherivlen = 0;
 }
 
 static void
 authfree(Conv *c)
 {
-	c->authname = nil;
 	if(c->in.authstate) {
 		free(c->in.authstate);
 		c->in.authstate = nil;
@@ -1796,12 +1869,13 @@ authfree(Conv *c)
 		c->out.authstate = nil;
 	}
 	c->in.auth = nil;
+	c->in.authlen = 0;
+	c->out.authlen = 0;
 }
 
 static void
 compfree(Conv *c)
 {
-	c->compname = nil;
 	if(c->in.compstate) {
 		free(c->in.compstate);
 		c->in.compstate = nil;
@@ -1814,7 +1888,7 @@ compfree(Conv *c)
 }
 
 static void
-nullcipherinit(Conv *c, char *, int)
+nullcipherinit(Conv *c)
 {
 	cipherfree(c);
 }
@@ -1825,6 +1899,8 @@ desencrypt(OneWay *ow, uchar *p, int n)
 	uchar *pp, *ip, *eip, *ep;
 	DESstate *ds = ow->cipherstate;
 
+	if(n < 8 || (n & 0x7 != 0))
+		return 0;
 	ep = p + n;
 	memmove(p, ds->ivec, 8);
 	for(p += 8; p < ep; p += 8){
@@ -1845,6 +1921,8 @@ desdecrypt(OneWay *ow, uchar *p, int n)
 	uchar *tp, *ip, *eip, *ep;
 	DESstate *ds = ow->cipherstate;
 
+	if(n < 8 || (n & 0x7 != 0))
+		return 0;
 	ep = p + n;
 	memmove(ds->ivec, p, 8);
 	p += 8;
@@ -1862,14 +1940,14 @@ desdecrypt(OneWay *ow, uchar *p, int n)
 }
 
 static void
-descipherinit(Conv *c, char *name, int n)
+descipherinit(Conv *c)
 {
 	uchar key[8];
 	uchar ivec[8];
 	int i;
+	int n = c->cipher->keylen;
 
 	cipherfree(c);
-	c->ciphername = name;
 	
 	if(n > sizeof(key))
 		n = sizeof(key);
@@ -1896,20 +1974,126 @@ descipherinit(Conv *c, char *name, int n)
 	setupDESstate(c->out.cipherstate, key, ivec);
 }
 
-static void
-rc4cipherinit(Conv *c, char *name, int keylen)
+static int
+rc4encrypt(OneWay *ow, uchar *p, int n)
 {
-	cipherfree(c);
+	CipherRc4 *cr = ow->cipherstate;
+
+	if(n < 4)
+		return 0;
+
+	hnputl(p, cr->cseq);
+	p += 4;
+	n -= 4;
+	rc4(&cr->current, p, n);
+	cr->cseq += n;
+	return 1;
+}
+
+static int
+rc4decrypt(OneWay *ow, uchar *p, int n)
+{
+	CipherRc4 *cr = ow->cipherstate;
+	RC4state tmpstate;
+	ulong seq;
+	long d, dd;
+
+	if(n < 4)
+		return 0;
+
+	seq = nhgetl(p);
+	p += 4;
+	n -= 4;
+	d = seq-cr->cseq;
+	if(d == 0) {
+		rc4(&cr->current, p, n);
+		cr->cseq += n;
+		if(cr->ovalid) {
+			dd = cr->cseq - cr->lgseq;
+			if(dd > RC4back)
+				cr->ovalid = 0;
+		}
+	} else if(d > 0) {
+print("missing packet: %uld %ld\n", seq, d);
+		// this link is hosed 
+		if(d > RC4forward)
+			return 0;
+		cr->lgseq = seq;
+		if(!cr->ovalid) {
+			cr->ovalid = 1;
+			cr->oseq = cr->cseq;
+			memmove(&cr->old, &cr->current, sizeof(RC4state));
+		}
+		rc4skip(&cr->current, d);
+		rc4(&cr->current, p, n);
+		cr->cseq = seq+n;
+	} else {
+print("reordered packet: %uld %ld\n", seq, d);
+		dd = seq - cr->oseq;
+		if(!cr->ovalid || -d > RC4back || dd < 0)
+			return 0;
+		memmove(&tmpstate, &cr->old, sizeof(RC4state));
+		rc4skip(&tmpstate, dd);
+		rc4(&tmpstate, p, n);
+		return 1;
+	}
+
+	// move old state up
+	if(cr->ovalid) {
+		dd = cr->cseq - RC4back - cr->oseq;
+		if(dd > 0) {
+			rc4skip(&cr->old, dd);
+			cr->oseq += dd;
+		}
+	}
+
+	return 1;
 }
 
 static void
-nullauthinit(Conv *c, char *name, int keylen)
+rc4cipherinit(Conv *c)
+{
+	uchar key[32];
+	CipherRc4 *cr;
+	int n;
+
+	cipherfree(c);
+
+	n = c->cipher->keylen;
+	if(n > sizeof(key))
+		n = sizeof(key);
+
+	/* in */
+	memset(key, 0, sizeof(key));
+	setkey(key, n, &c->in, "cipher");
+	c->in.cipherblklen = 1;
+	c->in.cipherivlen = 4;
+	c->in.cipher = rc4decrypt;
+	cr = smalloc(sizeof(CipherRc4));
+	memset(cr, 0, sizeof(*cr));
+	setupRC4state(&cr->current, key, n);
+	c->in.cipherstate = cr;
+
+	/* out */
+	memset(key, 0, sizeof(key));
+	setkey(key, n, &c->out, "cipher");
+	c->out.cipherblklen = 1;
+	c->out.cipherivlen = 4;
+	c->out.cipher = rc4encrypt;
+	cr = smalloc(sizeof(CipherRc4));
+	memset(cr, 0, sizeof(*cr));
+	setupRC4state(&cr->current, key, n);
+	c->out.cipherstate = cr;
+}
+
+static void
+nullauthinit(Conv *c)
 {
 	authfree(c);
 }
 
 static void
-shaauthinit(Conv *c, char *name, int keylen)
+shaauthinit(Conv *c)
 {
 	authfree(c);
 }
@@ -1957,12 +2141,13 @@ md5auth(OneWay *ow, uchar *t, int tlen)
 }
 
 static void
-md5authinit(Conv *c, char *name, int keylen)
+md5authinit(Conv *c)
 {
+	int keylen;
+
 	authfree(c);
 
-	c->authname = name;
-
+	keylen = c->auth->keylen;
 	if(keylen > 16)
 		keylen = 16;
 
@@ -1982,7 +2167,7 @@ md5authinit(Conv *c, char *name, int keylen)
 }
 
 static void
-nullcompinit(Conv *c, char*, int)
+nullcompinit(Conv *c)
 {
 	compfree(c);
 }
@@ -2001,7 +2186,7 @@ thwackcomp(Conv *c, int, ulong seq, Block **bp)
 	b->rp[3] = c->in.seq;
 
 	bb = allocb(BLEN(b));
-	nn = thwack(c->out.compstate, bb->wp, b->rp, BLEN(b), seq);
+	nn = thwack(c->out.compstate, bb->wp, b->rp, BLEN(b), seq, c->lstats.outCompStats);
 	if(nn < 0) {
 		freeb(bb);
 		*bp = b;
@@ -2053,11 +2238,10 @@ print("unthwack failed: %r!\n");
 }
 
 static void
-thwackcompinit(Conv *c, char *name, int keylen)
+thwackcompinit(Conv *c)
 {
 	compfree(c);
 
-	c->compname = name;
 	c->in.compstate = malloc(sizeof(Unthwack));
 	unthwackinit(c->in.compstate);
 	c->out.compstate = malloc(sizeof(Thwack));

@@ -312,7 +312,7 @@ struct Swapalloc
 struct Image
 {
 	Ref;
-	Chan	*c;			/* channl to text file */
+	Chan	*c;			/* channel to text file */
 	Qid 	qid;			/* Qid for page cache coherence */
 	Qid	mqid;
 	Chan	*mchan;
