@@ -1411,6 +1411,8 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			v = BGSHORT(p+1);
 			if(v<0 || v>=bit.nfont || (ff=bit.font[v])==0)
 				error(Ebadblt);
+			if(ff->b == 0)
+				error(Ebadbitmap);
 			l = BGSHORT(p+3);
 			if(l >= ff->ncache)
 				error(Ebadblt);

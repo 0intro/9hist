@@ -130,12 +130,12 @@ xspanalloc(ulong size, int align, ulong span)
 	ulong a, p, sinc;
 	ulong ptr[Spanlist];
 
-	sinc = span/8;
+	sinc = size/8;
 	span = ~(span-1);
 	for(i = 0; i < Spanlist; i++) {
 		p = (ulong)xalloc(size+align);
 		if(p == 0)
-			panic("xspanalloc: %d %d %lux", size, align, span);
+			break;
 
 		a = p+align;
 		a &= ~(align-1);
@@ -150,7 +150,8 @@ xspanalloc(ulong size, int align, ulong span)
 		ptr[i] = (ulong)xalloc(sinc);
 	}
 	USED(sinc);
-	panic("xspanalloc: spanlist");		
+	xsummary();
+	panic("xspanalloc: %d %d %lux\n", size, align, span);	
 	return 0;
 }
 
