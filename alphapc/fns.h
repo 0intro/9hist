@@ -47,7 +47,6 @@ int		ioalloc(int, int, int, char*);
 void		iofree(int);
 void		ioinit(void);
 int		iounused(int, int);
-int		iprint(char*, ...);
 int		irqallocread(char*, long, vlong);
 int		isaconfig(char*, int, ISAConf*);
 void		kbdinit(void);

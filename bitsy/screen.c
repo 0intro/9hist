@@ -40,8 +40,6 @@ struct sa1110fb {
 	ushort	pixel[Wid*Ht];		/* Pixel data */
 } *framebuf;
 
-short savedpalette[16];	/* saved during suspend mode */
-
 enum {
 /* LCD Control Register 0, lcd->lccr0 */
 	LEN	=  0,	/*  1 bit */
@@ -156,14 +154,6 @@ static	void	screenwin(void);
 static	void	screenputc(char *buf);
 static	void	bitsyscreenputs(char *s, int n);
 static	void	scroll(void);
-
-static void
-lcdstop(void) {
-	lcd->lccr0 &= ~(0<<LEN);	/* disable the LCD */
-	while((lcd->lcsr & LDD) == 0)
-		delay(10);
-	lcdpower(0);
-}
 
 static void
 lcdinit(void)
@@ -315,6 +305,8 @@ void
 blankscreen(int blank)
 {
 	if (blank) {
+		lcd->lccr0 &= ~(0<<LEN);	/* disable the LCD */
+		delay(100);
 		lcdpower(0);
 	} else {
 		lcdpower(1);

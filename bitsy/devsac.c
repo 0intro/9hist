@@ -136,10 +136,10 @@ sacinit(void)
 	uchar *p;
 	int i;
 
-	p = (uchar*)Flash_tar+4;
+	p = (uchar*)Flash_tar;
 	data = tarlookup(p, sacfs, &i);
 	if(data == 0) {
-		p = (uchar*)Flash_tar;
+		p = (uchar*)Flash_tar+4;
 		data = tarlookup(p, sacfs, &i);
 		if(data == 0) {
 			print("devsac: could not find file: %s\n", sacfs);

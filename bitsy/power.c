@@ -94,6 +94,7 @@ sa1100_power_off(void)
 	powerregs->pspr = 0;
 	/* set lowest clock; delay to avoid resume hangs on fast sa1110 */
 
+sa1100_power_resume();
 	delay(90);
 	powerregs->ppcr = 0;
 	delay(90);
@@ -130,10 +131,6 @@ deepsleep(void) {
 	void *xsp, *xlink;
 
 	power_pl = splhi();
-xsp = getsp();
-xlink = getlink();
-iprint("starting power down, sp = %lux, link = %lux\n", xsp, xlink);
-delay(1000);
 	cachewb();
 	delay(500);
 	if (setpowerlabel()) {
@@ -142,8 +139,9 @@ delay(1000);
 		cacheflush();
 		trapresume();
 		rs232power(1);
-		irpower(1);
-		audiopower(1);
+		uartpower(1);
+//		irpower(1);
+//		audiopower(1);
 		clockpower(1);
 		gpclkregs->r0 = 1<<0;
 		gpiocpy(gpioregs, &savedgpioregs);
@@ -153,17 +151,11 @@ delay(1000);
 			gpioregs->edgestatus = (1<<IRQgpio0);
 			intrregs->icip = (1<<IRQgpio0);
 		}
-		uartpower(1);
 		µcpower(1);
 		screenpower(1);
 		iprint("\nresuming execution\n");
 //		dumpitall();
 		delay(800);
-xsp = getsp();
-xlink = getlink();
-iprint("power restored, sp = %lux, link = %lux\n", xsp, xlink);
-delay(1000);
-
 		splx(power_pl);
 		return;
 	}

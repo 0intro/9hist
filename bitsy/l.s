@@ -451,6 +451,16 @@ TEXT gotolabel(SB), $-4
 	MOVW	$1, R0
 	RET
 
+/* Debugging print routine */
+TEXT _PrChar(SB), $-4
+	MOVW	UART3REGS, R1
+prloop:
+	MOVW	0x20(R1), R2
+	AND		$0x4, R2
+	BEQ		prloop
+	MOVB	R0,0x14(R1)
+	RET
+
 /* save the state machine in power_resume[] for an upcoming suspend
  */
 TEXT setpowerlabel(SB), $-4
@@ -552,9 +562,15 @@ TEXT sa1100_power_resume(SB), $-4
 	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0xa), 4
 	/* gotopowerlabel() */
 	/* svc */
+/* Debug
+	MOVW	$0x25, R0
+	BL		_PrChar(SB)
+ */
 	MOVW	$power_resume+0(SB), R0
 	MOVW	56(R0), R1		/* R1: SPSR, R2: CPSR */
 	MOVW	60(R0), R2
+	MOVW	R1, SPSR
+	MOVW	R2, CPSR
 	/* copro */
 	MOVW	148(R0), R3
 	MCR		CpMMU, 0, R3, C(CpTTB), C(0x0)

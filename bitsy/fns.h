@@ -41,7 +41,6 @@ ushort	ins(ulong);
 void	inss(ulong, void*, int);
 ulong	inl(ulong);
 void	intrenable(int, int, void (*)(Ureg*, void*), void*, char*);
-int	iprint(char*, ...);
 void	irpower(int);
 #define	kmapinval()
 void	lcdpower(int);

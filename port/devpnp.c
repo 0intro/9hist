@@ -1,3 +1,14 @@
+/*
+ *	ISA PNP 1.0 support + access to PCI configuration space
+ *
+ *	TODO
+ *		- implement PNP card configuration (setting io bases etc)
+ *		- implement PCI raw access to configuration space
+ *		- implement PCI access to memory/io space/BIOS ROM
+ *		- use c->aux instead of performing lookup on each read/write
+ *
+ *	I also need to write the user program that'll drive the PNP configuration...
+ */
 #include	"u.h"
 #include	"../port/lib.h"
 #include	"mem.h"
@@ -11,7 +22,7 @@ typedef struct Card Card;
 
 struct Pnp
 {
-	Lock;
+	QLock;
 	int		rddata;
 	int		debug;
 	Card		*cards;
@@ -167,26 +178,31 @@ serial(ulong id1, ulong id2)
 	return buf;
 }
 
-/* called with pnp locked */
 static Card *
-findcsn(int csn, int create)
+findcsn(int csn, int create, int dolock)
 {
 	Card *c, *nc, **l;
 
+	if(dolock)
+		qlock(&pnp);
 	l = &pnp.cards;
 	for(c = *l; c != nil; c = *l) {
 		if(c->csn == csn)
-			return c;
+			goto done;
 		if(c->csn > csn)
 			break;
 		l = &c->next;
 	}
-	if(!create)
-		return nil;
-	*l = nc = malloc(sizeof(Card));
-	nc->next = c;
-	nc->csn = csn;
-	return nc;
+	if(create) {
+		*l = nc = malloc(sizeof(Card));
+		nc->next = c;
+		nc->csn = csn;
+		c = nc;
+	}
+done:
+	if(dolock)
+		qunlock(&pnp);
+	return c;
 }
 
 static int
@@ -236,11 +252,9 @@ static int
 pnpscan(int rddata, int dawn)
 {
 	Card *c;
-	int csn, ok;
+	int csn;
 	ulong id1, id2;
 
-	ilock(&pnp);
-	pnp.rddata = rddata;
 	initiation();				/* upsilon sigma */
 	cmd(0x02, 0x04+0x01);		/* reset CSN on all cards and reset logical devices */
 	delay(1);					/* delay after resetting cards */
@@ -253,7 +267,7 @@ pnpscan(int rddata, int dawn)
 				break;
 		if(c == nil) {
 			csn = newcsn();
-			c = findcsn(csn, 1);
+			c = findcsn(csn, 1, 0);
 			c->id1 = id1;
 			c->id2 = id2;
 		}
@@ -269,9 +283,11 @@ pnpscan(int rddata, int dawn)
 		cmd(0x03, 0);		/* Wake all cards with a CSN of 0, putting this card to sleep */
 	}
 	cmd(0x02, 0x02);			/* return cards to Wait for Key state */
-	ok = (pnp.cards != 0);
-	iunlock(&pnp);
-	return ok;
+	if(pnp.cards != 0) {
+		pnp.rddata = rddata;
+		return 1;
+	}
+	return 0;
 }
 
 static void
@@ -311,7 +327,7 @@ bad:
 			p = nil;
 		else
 			goto bad;
-		c = findcsn(csn, 1);
+		c = findcsn(csn, 1, 0);
 		c->id1 = id1;
 		c->id2 = id2;
 		c->cfgstr = p;
@@ -323,18 +339,17 @@ static int
 csngen(Chan *c, int t, int csn, Card *cp, Dir *dp)
 {
 	Qid q;
-	static char buf[20];
 
 	switch(t) {
 	case Qcsnctl:
 		q = (Qid){QID(csn, Qcsnctl), 0, 0};
-		sprint(buf, "csn%dctl", csn);
-		devdir(c, q, buf, 0, eve, 0664, dp);
+		sprint(up->genbuf, "csn%dctl", csn);
+		devdir(c, q, up->genbuf, 0, eve, 0664, dp);
 		return 1;
 	case Qcsnraw:
 		q = (Qid){QID(csn, Qcsnraw), 0, 0};
-		sprint(buf, "csn%draw", csn);
-		devdir(c, q, buf, cp->ncfg, eve, 0444, dp);
+		sprint(up->genbuf, "csn%draw", csn);
+		devdir(c, q, up->genbuf, cp->ncfg, eve, 0444, dp);
 		return 1;
 	}
 	return -1;
@@ -344,17 +359,16 @@ static int
 pcigen(Chan *c, int t, int tbdf, Dir *dp)
 {
 	Qid q;
-	static char name[KNAMELEN];
 
 	q = (Qid){BUSBDF(tbdf)|t, 0, 0};
 	switch(t) {
 	case Qpcictl:
-		snprint(name, KNAMELEN, "%d.%d.%dctl", BUSBNO(tbdf), BUSDNO(tbdf), BUSFNO(tbdf));
-		devdir(c, q, name, 0, eve, 0444, dp);
+		sprint(up->genbuf, "%d.%d.%dctl", BUSBNO(tbdf), BUSDNO(tbdf), BUSFNO(tbdf));
+		devdir(c, q, up->genbuf, 0, eve, 0444, dp);
 		return 1;
 	case Qpciraw:
-		snprint(name, KNAMELEN, "%d.%d.%draw", BUSBNO(tbdf), BUSDNO(tbdf), BUSFNO(tbdf));
-		devdir(c, q, name, 128, eve, 0444, dp);
+		sprint(up->genbuf, "%d.%d.%draw", BUSBNO(tbdf), BUSDNO(tbdf), BUSFNO(tbdf));
+		devdir(c, q, up->genbuf, 128, eve, 0444, dp);
 		return 1;
 	}
 	return -1;
@@ -367,34 +381,33 @@ pnpgen(Chan *c, char *, Dirtab*, int, int s, Dir *dp)
 	Card *cp;
 	Pcidev *p;
 	int csn, tbdf;
-	static char name[KNAMELEN];
 
 	switch(TYPE(c->qid)){
 	case Qtopdir:
 		if(s == DEVDOTDOT){
 			q = (Qid){QID(0, Qtopdir), 0, QTDIR};
-			snprint(name, KNAMELEN, "#%C", pnpdevtab.dc);
-			devdir(c, q, name, 0, eve, 0555, dp);
+			sprint(up->genbuf, "#%C", pnpdevtab.dc);
+			devdir(c, q, up->genbuf, 0, eve, 0555, dp);
 			return 1;
 		}
 		return devgen(c, nil, topdir, nelem(topdir), s, dp);
 	case Qpnpdir:
 		if(s == DEVDOTDOT){
 			q = (Qid){QID(0, Qtopdir), 0, QTDIR};
-			snprint(name, KNAMELEN, "#%C", pnpdevtab.dc);
-			devdir(c, q, name, 0, eve, 0555, dp);
+			sprint(up->genbuf, "#%C", pnpdevtab.dc);
+			devdir(c, q, up->genbuf, 0, eve, 0555, dp);
 			return 1;
 		}
 		if(s < nelem(pnpdir)-1)
 			return devgen(c, nil, pnpdir, nelem(pnpdir), s, dp);
 		s -= nelem(pnpdir)-1;
-		ilock(&pnp);
+		qlock(&pnp);
 		cp = pnp.cards;
 		while(s >= 2 && cp != nil) {
 			s -= 2;
 			cp = cp->next;
 		}
-		iunlock(&pnp);
+		qunlock(&pnp);
 		if(cp == nil)
 			return -1;
 		return csngen(c, s+Qcsnctl, cp->csn, cp, dp);
@@ -403,17 +416,15 @@ pnpgen(Chan *c, char *, Dirtab*, int, int s, Dir *dp)
 	case Qcsnctl:
 	case Qcsnraw:
 		csn = CSN(c->qid);
-		ilock(&pnp);
-		cp = findcsn(csn, 0);
-		iunlock(&pnp);
+		cp = findcsn(csn, 0, 1);
 		if(cp == nil)
 			return -1;
 		return csngen(c, TYPE(c->qid), csn, cp, dp);
 	case Qpcidir:
 		if(s == DEVDOTDOT){
 			q = (Qid){QID(0, Qtopdir), 0, QTDIR};
-			snprint(name, KNAMELEN, "#%C", pnpdevtab.dc);
-			devdir(c, q, name, 0, eve, 0555, dp);
+			sprint(up->genbuf, "#%C", pnpdevtab.dc);
+			devdir(c, q, up->genbuf, 0, eve, 0555, dp);
 			return 1;
 		}
 		p = pcimatch(nil, 0, 0);
@@ -477,7 +488,7 @@ pnpread(Chan *c, void *va, long n, vlong offset)
 	Card *cp;
 	Pcidev *p;
 	int csn, i, tbdf;
-	char *a = va, buf[256];
+	char *a = va;
 
 	switch(TYPE(c->qid)){
 	case Qtopdir:
@@ -486,20 +497,18 @@ pnpread(Chan *c, void *va, long n, vlong offset)
 		return devdirread(c, a, n, (Dirtab *)0, 0L, pnpgen);
 	case Qpnpctl:
 		if(pnp.rddata > 0)
-			sprint(buf, "enabled 0x%x\n", pnp.rddata);
+			sprint(up->genbuf, "enabled 0x%x\n", pnp.rddata);
 		else
-			sprint(buf, "disabled\n");
-		return readstr(offset, a, n, buf);
+			sprint(up->genbuf, "disabled\n");
+		return readstr(offset, a, n, up->genbuf);
 	case Qcsnraw:
 		csn = CSN(c->qid);
-		ilock(&pnp);
-		cp = findcsn(csn, 0);
-		iunlock(&pnp);
+		cp = findcsn(csn, 0, 1);
 		if(cp == nil)
 			error(Egreg);
 		if(offset+n > cp->ncfg)
 			n = cp->ncfg - offset;
-		ilock(&pnp);
+		qlock(&pnp);
 		initiation();
 		cmd(0x03, csn);				/* Wake up the card */
 		for (i = 0; i < offset+9; i++)		/* 9 == skip serial + csum */
@@ -508,25 +517,23 @@ pnpread(Chan *c, void *va, long n, vlong offset)
 			a[i] = getresbyte(pnp.rddata);
 		cmd(0x03, 0);					/* Wake all cards with a CSN of 0, putting this card to sleep */
 		cmd(0x02, 0x02);				/* return cards to Wait for Key state */
-		iunlock(&pnp);
+		qunlock(&pnp);
 		break;
 	case Qcsnctl:
 		csn = CSN(c->qid);
-		ilock(&pnp);
-		cp = findcsn(csn, 0);
-		iunlock(&pnp);
+		cp = findcsn(csn, 0, 1);
 		if(cp == nil)
 			error(Egreg);
-		sprint(buf, "%s\n", serial(cp->id1, cp->id2));
-		return readstr(offset, a, n, buf);
+		sprint(up->genbuf, "%s\n", serial(cp->id1, cp->id2));
+		return readstr(offset, a, n, up->genbuf);
 	case Qpcictl:
 		tbdf = MKBUS(BusPCI, 0, 0, 0)|BUSBDF((ulong)c->qid.path);
 		p = pcimatchtbdf(tbdf);
 		if(p == nil)
 			error(Egreg);
-		snprint(buf, sizeof(buf), "class %.2x subclass %.2x piclass %.2x vid %.4x did %.4x intl %d\n",
+		sprint(up->genbuf, "class %.2x subclass %.2x piclass %.2x vid %.4x did %.4x intl %d\n",
 			p->ccrb, p->ccru, p->ccrp, p->vid, p->did, p->intl);
-		return readstr(offset, a, n, buf);
+		return readstr(offset, a, n, up->genbuf);
 	case Qpciraw:
 		tbdf = MKBUS(BusPCI, 0, 0, 0)|BUSBDF((ulong)c->qid.path);
 		p = pcimatchtbdf(tbdf);
@@ -558,8 +565,16 @@ pnpwrite(Chan *c, void *a, long n, vlong)
 			port = strtoul(buf+5, 0, 0);
 			if(port < 0x203 || port > 0x3ff)
 				error("bad value for rddata port");
+			qlock(&pnp);
+			if(waserror()) {
+				qunlock(&pnp);
+				nexterror();
+			}
+			if(pnp.rddata > 0)
+				error("pnp port already set");
 			if(!pnpscan(port, 0))
 				error("no cards found");
+			qunlock(&pnp);
 		}
 		else if(strncmp(buf, "debug ", 6) == 0)
 			pnp.debug = strtoul(buf+6, 0, 0);
@@ -568,9 +583,7 @@ pnpwrite(Chan *c, void *a, long n, vlong)
 		break;
 	case Qcsnctl:
 		csn = CSN(c->qid);
-		ilock(&pnp);
-		cp = findcsn(csn, 0);
-		iunlock(&pnp);
+		cp = findcsn(csn, 0, 1);
 		if(cp == nil)
 			error(Egreg);
 		if(!wrconfig(cp, buf))

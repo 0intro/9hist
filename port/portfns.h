@@ -121,6 +121,7 @@ void		ilock(Lock*);
 void		iunlock(Lock*);
 int		incref(Ref*);
 void		initseg(void);
+int		iprint(char*, ...);
 void		isdir(Chan*);
 int		iseve(void);
 int		islo(void);
@@ -348,3 +349,5 @@ void		hnputs(void*, ushort);
 vlong		nhgetv(void*);
 ulong		nhgetl(void*);
 ushort		nhgets(void*);
+
+#pragma varargck argpos iprint 1
