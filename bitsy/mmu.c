@@ -94,30 +94,33 @@ mmuinit(void)
  *  map special use space 
  */
 ulong*
-mapspecial(ulong addr, int len)
+mapspecial(ulong physaddr, int len)
 {
 	ulong *t;
-	ulong a, i;
+	ulong virtaddr, i;
 
 	/* first see if we've mapped it somewhere, the first hole means we're done */
-	for(a = REGZERO; a < REGTOP; a += OneMeg){
-		if((l1table[a>>20] & L1TypeMask) != L1PageTable){
+	for(virtaddr = REGZERO; virtaddr < REGTOP; virtaddr += OneMeg){
+		if((l1table[virtaddr>>20] & L1TypeMask) != L1PageTable){
 			/* create a page table and break */
 			t = xspanalloc(BY2PG, 1024, 0);
 			memzero(t, BY2PG, 0);
-			l1table[a>>20] = L1PageTable | L1Domain0 | (((ulong)t) & L1PTBaseMask);
+			l1table[virtaddr>>20] = L1PageTable | L1Domain0 | (((ulong)t) & L1PTBaseMask);
 			break;
 		}
-		t = (ulong*)(l1table[a>>20] & L1PTBaseMask);
+		t = (ulong*)(l1table[virtaddr>>20] & L1PTBaseMask);
 		for(i = 0; i < OneMeg; i += BY2PG){
-			if((t[a>>20] & L2TypeMask) != L2SmallPage)
+			if((t[virtaddr>>20] & L2TypeMask) != L2SmallPage)
 				break;
 		}
 		if(i < OneMeg){
-			a += i;
+			virtaddr += i;
 			break;
 		}
 	}
+
+	/* we get here if no entry was found mapping this physical address */
+	
 }
 
 void
