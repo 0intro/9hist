@@ -328,11 +328,199 @@ t2r4curenable(VGAscr* scr)
 	t2r4xo(scr, CursorCtl, CursorMode);
 }
 
+enum {
+	Flow		= 0x08/4,
+	Busy		= 0x0C/4,
+	BufCtl		= 0x20/4,
+	DeSorg		= 0x28/4,
+	DeDorg		= 0x2C/4,
+	DeSptch		= 0x40/4,
+	DeDptch		= 0x44/4,
+	CmdOpc		= 0x50/4,
+	CmdRop		= 0x54/4,
+	CmdStyle 	= 0x58/4,
+	CmdPatrn 	= 0x5C/4,
+	CmdClp		= 0x60/4,
+	CmdPf		= 0x64/4,
+	Fore		= 0x68/4,
+	Back		= 0x6C/4,
+	Mask		= 0x70/4,
+	DeKey		= 0x74/4,
+	Lpat		= 0x78/4,
+	Pctrl 		= 0x7C/4,
+	Clptl		= 0x80/4,
+	Clpbr		= 0x84/4,
+	XY0		= 0x88/4,
+	XY1		= 0x8C/4,
+	XY2		= 0x90/4,
+	XY3		= 0x94/4,
+	XY4		= 0x98/4,
+	Alpha 		= 0x128/4,
+	ACtl 		= 0x16C/4,
+
+	RBaseD 		= 0x4000/4,
+};
+
+/* wait until pipeline ready for new command */
+static void
+waitforfifo(VGAscr *scr)
+{
+	int x;
+	ulong *d;
+	x = 0;
+
+	d = scr->mmio + RBaseD;
+	while((d[Busy]&1) && x++ < 1000000)
+		;
+	if(x >= 1000000)	/* shouldn't happen */
+		iprint("busy %8lux\n", d[Busy]);
+}
+
+/* wait until command has finished executing */
+static void
+waitforcmd(VGAscr *scr)
+{
+	int x;
+	ulong *d;
+	x = 0;
+
+	d = scr->mmio + RBaseD;
+	while((d[Flow]&1) && x++ < 1000000)
+		;
+	if(x >= 1000000)	/* shouldn't happen */
+		iprint("flow %8lux\n", d[Busy]);
+}
+
+/* wait until memory controller not busy (i.e. wait for writes to flush) */
+static void
+waitformem(VGAscr *scr)
+{
+	int x;
+	ulong *d;
+	x = 0;
+
+	d = scr->mmio + RBaseD;
+	while((d[Flow]&2)&& x++ < 1000000)
+		;
+	if(x >= 1000000)	/* shouldn't happen */
+		iprint("mem %8lux\n", d[Busy]);
+}
+
+static int
+t2r4hwscroll(VGAscr *scr, Rectangle r, Rectangle sr)
+{
+	int ctl;
+	Point dp, sp;
+	ulong *d;
+
+	waitformem(scr);
+	waitforfifo(scr);
+	d = scr->mmio + RBaseD;
+	ctl = 0;
+	if(r.min.x <= sr.min.x){
+		dp.x = r.min.x;
+		sp.x = sr.min.x;
+	}else{
+		ctl |= 2;
+		dp.x = r.max.x-1;
+		sp.x = sr.max.x-1;
+	}
+
+	if(r.min.y <= sr.min.y){
+		dp.y = r.min.y;
+		sp.y = sr.min.y;
+	}else{
+		ctl |= 1;
+		dp.y = r.max.y-1;
+		sp.y = sr.max.y-1;
+	}
+
+	d[CmdOpc] = 0x1;	/* bitblt */
+	d[CmdRop] = 0xC;	/* copy source */
+	d[CmdStyle] = 0;
+	d[CmdPatrn] = 0;
+
+	/* writing XY1 executes cmd */
+	d[XY3] = ctl;
+	d[XY0] = (sp.x<<16)|sp.y;
+	d[XY2] = (Dx(r)<<16)|Dy(r);
+	d[XY4] = 0;
+	d[XY1] = (dp.x<<16)|dp.y;
+	waitforcmd(scr);
+
+	return 1;
+}
+
+static int
+t2r4hwfill(VGAscr *scr, Rectangle r, ulong sval)
+{
+	ulong *d;
+
+	d = scr->mmio + RBaseD;
+
+	waitformem(scr);
+	waitforfifo(scr);
+	d[CmdOpc] = 0x1;	/* bitblt */
+	d[CmdRop] = 0xC;	/* copy source */
+	d[CmdStyle] = 1;	/* use source from Fore register */
+	d[CmdPatrn] = 0;	/* no stipple */
+	d[Fore] = sval;
+
+	/* writing XY1 executes cmd */
+	d[XY3] = 0;
+	d[XY0] = (r.min.x<<16)|r.min.y;
+	d[XY2] = (Dx(r)<<16)|Dy(r);
+	d[XY4] = 0;
+	d[XY1] = (r.min.x<<16)|r.min.y;
+	waitforcmd(scr);
+
+	return 1;
+}
+
 static void
 t2r4drawinit(VGAscr *scr)
 {
-	scr->fill = nil;
-	scr->scroll = nil;
+	ulong pitch;
+	int depth;
+	int fmt;
+	ulong *d;
+
+	pitch = Dx(scr->gscreen->r);
+	depth = scr->gscreen->depth;
+
+	switch(scr->gscreen->chan){
+	case RGB16:
+		fmt = 3;
+		break;
+	case XRGB32:
+		fmt = 2;
+		break;
+	case RGB15:
+		fmt = 1;
+		break;
+	default:
+		scr->fill = nil;
+		scr->scroll = nil;
+		return;
+	}
+
+	d = scr->mmio + RBaseD;
+
+	d[BufCtl] = fmt<<24;
+	d[DeSorg] = 0;
+	d[DeDorg] = 0;
+	d[DeSptch] = (pitch*depth)/8;
+	d[DeDptch] = (pitch*depth)/8;
+	d[CmdClp] = 0;	/* 2 = inside rectangle */
+	d[Mask] = ~0;
+	d[DeKey] = 0;
+	d[Clptl] = 0; 
+	d[Clpbr] = 0xFFF0FFF0;
+	d[Alpha] = 0;
+	d[ACtl] = 0;
+
+	scr->fill = t2r4hwfill;
+	scr->scroll = t2r4hwscroll;
 }
 
 VGAdev vgat2r4dev = {
@@ -353,3 +541,4 @@ VGAcur vgat2r4cur = {
 	t2r4curload,
 	t2r4curmove,
 };
+

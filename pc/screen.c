@@ -491,8 +491,9 @@ hwdraw(Memdrawparam *par)
 		return 0;
 
 	/*
-	 * If we have an opaque mask and source is one opaque pixel we can convert to the
-	 * destination format and just replicate with memset.
+	 * If we have an opaque mask and source is one opaque
+	 * pixel we can convert to the destination format and just
+	 * replicate with memset.
 	 */
 	if(scr->fill && (par->state&(Simplemask|Simplesrc|Fullmask))==(Simplemask|Simplesrc|Fullmask))
 		return scr->fill(scr, par->r, par->sdval);
@@ -505,11 +506,11 @@ hwdraw(Memdrawparam *par)
 	src = par->src;
 	if(scr->scroll && src->data->bdata==dst->data->bdata && !(src->flags&Falpha)
 	&& (par->state&(Simplemask|Fullmask))==(Simplemask|Fullmask)){
-		if(src->zero != dst->zero){
-			lastbadsrc = src;
-			lastbaddst = dst;
-			iprint("#");
-		}
+//		if(src->zero != dst->zero){
+//			lastbadsrc = src;
+//			lastbaddst = dst;
+//			iprint("#");
+//		}
 		return scr->scroll(scr, par->r, par->sr);
 	}
 
