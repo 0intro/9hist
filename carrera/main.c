@@ -409,7 +409,7 @@ exit(long type)
 	USED(type);
 
 	spllo();
-	print("cpu %d exiting\n", m->machno);
+	print("cpu%d exiting\n", m->machno);
 	while(consactive())
 		delay(10);
 
@@ -417,8 +417,8 @@ exit(long type)
 	/* Turn off the NMI hander for the debugger */
 	vec = (uchar*)0xA0000420;
 	vec[0] = 0;
-	/* Call the prom */
-	((void(*)(void))0xBFC00000)();
+
+	firmware(type);
 }
 
 void

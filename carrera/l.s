@@ -2,7 +2,6 @@
 
 #define	SP		R29
 
-#define	PROM		(KSEG1+0x1C000000)
 #define	NOOP		WORD	$0x27
 #define	FCRNOOP		NOOP; NOOP; NOOP
 #define	WAIT		NOOP; NOOP
@@ -102,9 +101,10 @@ TEXT	touser(SB), $-4
 	ERET
 
 TEXT	firmware(SB), $0
-	SLL	$3, R1
-	MOVW	$(PROM+0x774), R1
-	JMP	(R1)
+	MOVW	$0xE000D004, R1
+	MOVW	R0, 0(R1)
+firm:
+	JMP	firm
 
 TEXT	splhi(SB), $0
 	MOVW	R31, 12(R(MACH))	/* save PC in m->splpc */
