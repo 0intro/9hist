@@ -48,6 +48,7 @@
 #define TSTKSIZ 10
 #define	USTKTOP		(TSTKTOP-TSTKSIZ*BY2PG)	/* byte just beyond user stack */
 #define	USTKSIZE	(16*1024*1024 - TSTKSIZ*BY2PG)	/* size of user stack */
+#define ROMBIOS		(KZERO|0xF0000)
 
 #define	MACHSIZE	4096
 

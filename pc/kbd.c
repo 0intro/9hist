@@ -169,6 +169,32 @@ mousecmd(int cmd)
 	return 0;
 }
 
+/*
+ *  ask 8042 to enable the use of address bit 20
+ */
+void
+i8042a20(void)
+{
+	outready();
+	outb(Cmd, 0xD1);
+	outready();
+	outb(Data, 0xDF);
+	outready();
+}
+
+/*
+ *  ask 8042 to reset the 386
+ */
+void
+i8042reset(void)
+{
+	outready();
+	outb(Cmd, 0xD1);
+	outready();
+	outb(Data, 0xDE);
+	outready();
+}
+
 void
 kbdinit(void)
 {
@@ -185,19 +211,30 @@ kbdinit(void)
 		if(c & Inready)
 			inb(Data);
 
-	/* enable kbd/mouse xfers and interrupts */
-	outb(Cmd, 0x60);
-	if(outready() < 0)
-		print("kbd init failed\n");
-	outb(Data, 0x47);	/* BUG -- on 6300 0x65 */
-	if(outready() < 0)
-		print("kbd init failed\n");
-	outb(Cmd, 0xA8);	/* BUG -- should this be AE? */
-
-	/* make mouse streaming, enabled */
-	if(mousecmd(0xEA) < 0
-	|| mousecmd(0xF4) < 0)
-		print("can't initialize mouse\n");
+	switch(machtype){
+	case Attnsx:
+		/* enable kbd/mouse xfers and interrupts */
+		outb(Cmd, 0x60);
+		if(outready() < 0)
+			print("kbd init failed\n");
+		outb(Data, 0x47);
+		if(outready() < 0)
+			print("kbd init failed\n");
+		outb(Cmd, 0xA8);
+	
+		/* make mouse streaming, enabled */
+		if(mousecmd(0xEA) < 0
+		|| mousecmd(0xF4) < 0)
+			print("can't initialize mouse\n");
+		break;
+	case At:
+		/* enable kbd xfers and interrupts */
+		outb(Cmd, 0x60);
+		if(outready() < 0)
+			print("kbd init failed\n");
+		outb(Data, 0x65);
+		break;
+	}
 }
 
 /*

@@ -193,3 +193,10 @@ extern Mach	*m;
 extern User	*u;
 
 extern int	flipD[];	/* for flipping bitblt destination polarity */
+
+enum
+{
+	At=		0,
+	Attnsx=		1,
+};
+extern int machtype;

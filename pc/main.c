@@ -8,10 +8,12 @@
 #include	"init.h"
 
 extern long edata;
+int machtype;
 
 void
 main(void)
 {
+	ident();
 	meminit();
 	machinit();
 	active.exiting = 0;
@@ -39,6 +41,18 @@ main(void)
 	userinit();
 
 	schedinit();
+}
+
+void
+ident(void)
+{
+	char *id = (char*)(ROMBIOS + 0xFF40);
+
+	/* check for a safari (tres special) */
+	if(strncmp(id, "AT&TNSX", 7) == 0)
+		machtype = Attnsx;
+	else
+		machtype = At;
 }
 
 void
@@ -342,42 +356,26 @@ firmware(void)
 }
 
 /*
- *  special stuff for 80c51 power management and headland system controller
+ *  the following functions all are slightly different from
+ *  PC to PC.
  */
-enum
-{
-	/*
-	 *  system control port
-	 */
-	Head=		0x92,		/* control port */
-	 Reset=		(1<<0),		/* reset the 386 */
-	 A20ena=	(1<<1),		/* enable address line 20 */
 
-	/*
-	 *  power management unit ports
-	 */
-	Pmudata=	0x198,
-
-	Pmucsr=		0x199,
-	 Busy=		0x1,
-
-	/*
-	 *  configuration port
-	 */
-	Pconfig=	0x3F3,
-};
-
-/*
- *  enable address bit 20
- */
+/* enable address bit 20 (extended memory) */
 void
 meminit(void)
 {
-	outb(Head, A20ena);		/* enable memory address bit 20 */
+	switch(machtype){
+	case Attnsx:
+		heada20();		/* via headland chip */
+		break;
+	case At:
+		i8042a20();		/* via keyboard controller */
+		break;
+	}
 }
 
 /*
- *  reset the chip
+ *  reset the i387 chip
  */
 void
 exit(void)
@@ -386,128 +384,91 @@ exit(void)
 
 	u = 0;
 	print("exiting\n");
-	outb(Head, Reset);
-}
-
-/*
- *  return when pmu ready
- */
-static int
-pmuready(void)
-{
-	int tries;
-
-	for(tries = 0; (inb(Pmucsr) & Busy); tries++)
-		if(tries > 1000)
-			return -1;
-	return 0;
-}
-
-/*
- *  return when pmu busy
- */
-static int
-pmubusy(void)
-{
-	int tries;
-
-	for(tries = 0; !(inb(Pmucsr) & Busy); tries++)
-		if(tries > 1000)
-			return -1;
-	return 0;
-}
-
-/*
- *  set a bit in the PMU
- */
-Lock pmulock;
-int
-pmuwrbit(int index, int bit, int pos)
-{
-	lock(&pmulock);
-	outb(Pmucsr, 0x02);		/* next is command request */
-	if(pmuready() < 0){
-		unlock(&pmulock);
-		return -1;
+	switch(machtype){
+	case Attnsx:
+		headreset();		/* via headland chip */
+		break;
+	case At:
+		i8042reset();			/* via keyboard controller */
+		break;
 	}
-	outb(Pmudata, (2<<4) | index);	/* send write bit command */
-	outb(Pmucsr, 0x01);		/* send available */
-	if(pmubusy() < 0){
-		unlock(&pmulock);
-		return -1;
-	}
-	outb(Pmucsr, 0x01);		/* next is data */
-	if(pmuready() < 0){
-		unlock(&pmulock);
-		return -1;
-	}
-	outb(Pmudata, (bit<<3) | pos);	/* send bit to write */
-	outb(Pmucsr, 0x01);		/* send available */
-	if(pmubusy() < 0){
-		unlock(&pmulock);
-		return -1;
-	}
-	unlock(&pmulock);
-	return 0;
 }
 
 /*
- *  power to serial port
- *	onoff == 0 means on
- *	onoff == 1 means off
- */
-int
-serial(int onoff)
-{
-	return pmuwrbit(1, onoff, 6);
-}
-
-/*
- *  power to modem
- *	onoff == 0 means on
- *	onoff == 1 means off
- */
-int
-modem(int onoff)
-{
-	if(pmuwrbit(1, onoff, 0)<0)
-		return -1;
-	return pmuwrbit(1, 1^onoff, 5);
-}
-
-/*
- *  CPU speed
- *	onoff == 0 means 2 MHZ
- *	onoff == 1 means 20 MHZ
+ *  set cpu speed
+ *	0 == low speed
+ *	1 == high speed
  */
 int
 cpuspeed(int speed)
 {
-	return pmuwrbit(0, speed, 0);
+	switch(machtype){
+	case Attnsx:
+		return pmucpuspeed(speed);
+	default:
+		return 0;
+	}
 }
 
+/*
+ *  f == frequency (Hz)
+ *  d == duration (ms)
+ */
 void
 buzz(int f, int d)
 {
-	static Rendez br;
-	static QLock bl;
-
-	qlock(&bl);
-	pmuwrbit(0, 0, 6);
-	tsleep(&br, return0, 0, d);
-	pmuwrbit(0, 1, 6);
-	qunlock(&bl);
+	switch(machtype){
+	case Attnsx:
+		pmubuzz(f, d);
+		break;
+	default:
+		break;
+	}
 }
 
+/*
+ *  each bit in val stands for a light
+ */
 void
 lights(int val)
 {
-	pmuwrbit(0, (val&1), 4);		/* owl */
-	pmuwrbit(0, ((val>>1)&1), 1);		/* mail */
+	switch(machtype){
+	case Attnsx:
+		pmulights(val);
+		break;
+	default:
+		break;
+	}
 }
 
-void
-owl(int val)
+/*
+ *  power to serial port
+ *	onoff == 1 means on
+ *	onoff == 0 means off
+ */
+int
+serial(int onoff)
 {
-	pmuwrbit(0, (val&1), 4);		/* owl */
+	switch(machtype){
+	case Attnsx:
+		return pmuserial(onoff);
+	default:
+		return 0;
+	}
+}
+
+/*
+ *  power to modem
+ *	onoff == 1 means on
+ *	onoff == 0 means off
+ */
+int
+modem(int onoff)
+{
+	switch(machtype){
+	case Attnsx:
+		return pmumodem(onoff);
+	default:
+		return 0;
+	}
 }

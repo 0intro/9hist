@@ -150,23 +150,27 @@ wrenopen(Chan *c, int omode)
 void
 wrencreate(Chan *c, char *name, int omode, ulong perm)
 {
+	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
 void
 wrenclose(Chan *c)
 {
+	USED(c);
 }
 
 void
 wrenremove(Chan *c)
 {
+	USED(c);
 	error(Eperm);
 }
 
 void
 wrenwstat(Chan *c, char *dp)
 {
+	USED(c, dp);
 	error(Eperm);
 }
 

@@ -303,10 +303,10 @@ uartenable(Uart *up)
 	 *  turn on power to the port
 	 */
 	if(up == &uart[Serial]){
-		if(serial(0) < 0)
+		if(serial(1) < 0)
 			print("can't turn on serial port power\n");
 	} else {
-		if(modem(0) < 0)
+		if(modem(1) < 0)
 			print("can't turn on modem speaker\n");
 	}
 
@@ -358,8 +358,11 @@ uartdisable(Uart *up)
 	 *  turn off power
 	 */
 	if(up == &uart[Serial]){
-		if(serial(1) < 0)
+		if(serial(0) < 0)
 			print("can't turn off serial power\n");
+	} else {
+		if(modem(0) < 0)
+			print("can't turn off modem speaker\n");
 	}
 
 	/*
@@ -532,7 +535,7 @@ uartkproc(void *a)
 	for(;;){
 		sleep(&cq->r, cangetc, cq);
 		if((ints++ & 0x1f) == 0)
-			owl(ints>>5);
+			lights((ints>>5)&1);
 		qlock(up);
 		if(up->wq == 0){
 			cq->out = cq->in;

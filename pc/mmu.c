@@ -128,33 +128,33 @@ mmuinit(void)
 	/*
 	 *  set up system page tables.
 	 *  map all of physical memory to start at KZERO.
+	 *  map ROM BIOS at the usual place (F0000000).
 	 *  leave a map entry for a user area.
 	 */
 
-	/*  allocate and fill low level page tables for kernel mem */
+	/*  allocate top level table */
+	top = ialloc(BY2PG, 1);
+	ktoppg.va = (ulong)top;
+	ktoppg.pa = ktoppg.va & ~KZERO;
+
+	/*  map all memory to KZERO */
 	npage = conf.base1/BY2PG + conf.npage1;
 	nbytes = PGROUND(npage*BY2WD);		/* words of page map */
 	nkpt = nbytes/BY2PG;			/* pages of page map */
 	kpt = ialloc(nbytes, 1);
 	for(i = 0; i < npage; i++)
-		kpt[i] = (i<<PGSHIFT) | PTEVALID | PTEKERNEL | PTEWRITE;
-
-print("%d low level pte's, %d high level pte's\n", npage, nkpt);
-
-	/*  allocate page table for u-> */
-	upt = ialloc(BY2PG, 1);
-
-	/*  allocate top level table and put pointers to lower tables in it */
-	top = ialloc(BY2PG, 1);
-	ktoppg.va = (ulong)top;
-	ktoppg.pa = ktoppg.va & ~KZERO;
+		kpt[i] = (0+i*BY2PG) | PTEVALID | PTEKERNEL | PTEWRITE;
 	x = TOPOFF(KZERO);
 	y = ((ulong)kpt)&~KZERO;
 	for(i = 0; i < nkpt; i++)
 		top[x+i] = (y+i*BY2PG) | PTEVALID | PTEKERNEL | PTEWRITE;
+
+	/*  page table for u-> */
+	upt = ialloc(BY2PG, 1);
 	x = TOPOFF(USERADDR);
 	y = ((ulong)upt)&~KZERO;
 	top[x] = y | PTEVALID | PTEKERNEL | PTEWRITE;
+
 	putcr3(ktoppg.pa);
 
 	/*
