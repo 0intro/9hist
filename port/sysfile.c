@@ -711,11 +711,10 @@ bindmount(int ismount, int fd, int afd, char* arg0, char* arg1, ulong flag, char
 		bogus.authchan = ac;
 
 		validaddr((ulong)spec, 1, 0);
-		validname(spec, 1);
-
 		bogus.spec = spec;
 		if(waserror())
 			error(Ebadspec);
+		validname(spec, 1);
 		poperror();
 
 		ret = devno('M', 0);
