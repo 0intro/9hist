@@ -81,25 +81,10 @@ tstbadvaddr(Ureg *ur, int read)
 		off |= ~0xffff;
 
 	rn = (iw>>21) & 0x1f;
-	switch(rn) {
-	case 0:
-		ea = off;
-		break;
-	case 31:
-		ea = ur->r31 + off;
-		break;
-	case 30:
-		ea = ur->r30 + off;
-		break;
-	case 29:
-		ea = ur->sp + off;
-		break;
-	default:
-		/* depends horribly on ureg.h */
-		ea = ((ulong*)&ur->r1)[1-rn];
-		ea += off;
-		break;
-	}
+	ea = *reg(ur, rn);
+	if(rn == 0)
+		ea = 0;
+	ea += off;
 
 	/* print("ea %lux 0x%lux(R%d) bv 0x%lux pc 0x%lux\n",
 		ea, off, rn, ur->badvaddr, ur->pc); /**/

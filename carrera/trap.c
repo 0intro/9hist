@@ -283,6 +283,14 @@ trap(Ureg *ur)
 	}
 }
 
+struct
+{
+	ulong cause;
+	ulong devint3;
+	ulong devint4;
+	ulong state;
+}sisr;
+
 void
 intr(Ureg *ur)
 {
@@ -292,9 +300,11 @@ intr(Ureg *ur)
 
 	m->intr++;
 	cause &= INTR7|INTR6|INTR5|INTR4|INTR3|INTR2|INTR1|INTR0;
-
+sisr.cause = cause;
 	if(cause & INTR3) {
 		devint = IO(uchar, Intcause);
+sisr.devint3 = devint;
+sisr.state = 0;
 		switch(devint) {
 		default:
 			panic("unknown devint=#%lux", devint);
@@ -318,9 +328,11 @@ intr(Ureg *ur)
 			break;
 		}
 		cause &= ~INTR3;
+sisr.state = 1;
 	}
 
 	if(cause & INTR2) {
+sisr.state = 2;
 		isr = IO(ulong, R4030Isr);
 		if(isr) {
 			iprint("R4030 Interrupt\n");
@@ -330,12 +342,14 @@ intr(Ureg *ur)
 			iprint(" MFA #%lux\n", IO(ulong, R4030Mfa));
 		}
 		cause &= ~INTR2;
+sisr.state = 3;
 	}
 
 	if(cause & INTR4) {
 		devint = IO(uchar, I386ack);
 		vec = devint&~0x7;
-
+sisr.devint4 = devint;
+sisr.state = 4;
 		/* reenable the 8259 interrupt */
 		if(vec == Int0vec || vec == Int1vec){
 			EISAOUTB(Int0ctl, EOI);
@@ -348,13 +362,18 @@ intr(Ureg *ur)
 			iprint("i386ACK #%lux\n", devint);
 			break;
 		case 7:
+sisr.state = 5;
 			audiosbintr();
+sisr.state = 6;
 			break;
 		case 13:
+sisr.state = 7;
 			audiodmaintr();
+sisr.state = 8;
 			break;
 		}
 		cause &= ~INTR4;
+sisr.state = 9;
 	}
 
 	if(cause & INTR7) {
@@ -490,10 +509,11 @@ notify(Ureg *ur)
 		pexit(n->msg, n->flag!=NDebug);
 	}
 	up->svstatus = ur->status;
-	sp = ur->usp - sizeof(Ureg);
+	sp = ur->usp & ~(BY2V-1);
+	sp -= sizeof(Ureg);
 
-	if(sp&0x3 || !okaddr((ulong)up->notify, BY2WD, 0)
-	|| !okaddr(sp-ERRLEN-3*BY2WD, sizeof(Ureg)+ERRLEN-3*BY2WD, 1)) {
+	if(!okaddr((ulong)up->notify, BY2WD, 0) ||
+	   !okaddr(sp-ERRLEN-3*BY2WD, sizeof(Ureg)+ERRLEN-3*BY2WD, 1)) {
 		pprint("suicide: bad address or sp in notify\n");
 		qunlock(&up->debug);
 		pexit("Suicide", 0);
@@ -506,9 +526,13 @@ notify(Ureg *ur)
 	sp -= 3*BY2WD;
 	*(ulong*)(sp+2*BY2WD) = sp+3*BY2WD;	/* arg 2 is string */
 	up->svr1 = ur->r1;			/* save away r1 */
-	ur->r1 = (ulong)up->ureg;		/* arg 1 is ureg* */
-	*(ulong*)(sp+1*BY2WD) = (ulong)up->ureg;	/* arg 1 0(FP) is ureg* */
-	*(ulong*)(sp+0*BY2WD) = 0;		/* arg 0 is pc */
+	up->svhr1 = ur->hr1;			/* save away r1 */
+	ur->r1 = (long)up->ureg;		/* arg 1 is ureg* */
+	ur->hr1 = 0;
+	if(ur->r1 < 0)
+		ur->hr1 = ~0;
+	((ulong*)sp)[1] = (ulong)up->ureg;	/* arg 1 0(FP) is ureg* */
+	((ulong*)sp)[0] = 0;			/* arg 0 is pc */
 	ur->usp = sp;
 	ur->pc = (ulong)up->notify;
 	up->notified = 1;
@@ -546,6 +570,7 @@ noted(Ureg **urp, ulong arg0)
 
 	memmove(*urp, up->ureg, sizeof(Ureg));
 	(*urp)->r1 = up->svr1;
+	(*urp)->hr1 = up->svhr1;
 	switch(arg0) {
 	case NCONT:
 		if(!okaddr(nur->pc, 1, 0) || !okaddr(nur->usp, BY2WD, 0)){
@@ -638,6 +663,9 @@ error:
 	splhi();
 	if(up->scallnr!=RFORK && (up->procctl || up->nnote)){
 		ur->r1 = ret;			/* load up for noted() */
+		ur->hr1 = 0;
+		if(ur->r1 < 0)
+			ur->hr1 = ~0;
 		if(notify(ur))
 			return ur->r1;
 	}

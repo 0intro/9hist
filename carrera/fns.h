@@ -81,6 +81,7 @@ void*		pxspanalloc(ulong, int, ulong);
 void		rdbginit(void);
 ulong		rdcount(void);
 int		readlog(ulong, char*, ulong);
+long*		reg(Ureg*, int);
 void		restfpregs(FPsave*, ulong);
 void		screeninit(void);
 void		screenputs(char*, int);
