@@ -1314,7 +1314,7 @@ tcm509isa(void)
 	 */
 	while(port = activate()){
 		if(ioalloc(port, 0x10, 0, "tcm509isa") < 0){
-			print("tcm509isa:port %d in use\n", port);
+			print("tcm509isa: port 0x%uX in use\n", port);
 			continue;
 		}
 
@@ -1376,7 +1376,7 @@ tcm5XXeisa(void)
 	for(slot = 1; slot < MaxEISA; slot++){
 		port = slot*0x1000;
 		if(ioalloc(port, 0x1000, 0, "tcm5XXeisa") < 0){
-			print("tcm5XXeisa: port %d in use\n", port);
+			print("tcm5XXeisa: port 0x%uX in use\n", port);
 			continue;
 		}
 		if(ins(port+0xC80+ManufacturerID) != 0x6D50){
@@ -1410,7 +1410,7 @@ tcm59Xpci(void)
 	while(p = pcimatch(p, 0x10B7, 0)){
 		port = p->mem[0].bar & ~0x01;
 		if(ioalloc(port, p->mem[0].size, 0, "tcm59Xpci") < 0){
-			print("tcm59Xpci: port %d in use\n", port);
+			print("tcm59Xpci: port 0x%uX in use\n", port);
 			continue;
 		}
 		irq = p->intl;

@@ -1305,7 +1305,7 @@ dec2114xpci(void)
 		ctlr->pcidev = p;
 
 		if(ioalloc(ctlr->port, p->mem[0].size, 0, "dec2114x") < 0){
-			print("dec2114x: port %d in use\n", ctlr->port);
+			print("dec2114x: port 0x%uX in use\n", ctlr->port);
 			free(ctlr);
 			continue;
 		}
