@@ -12,14 +12,10 @@
 #include	"../../fs/cyc/comm.h"
 
 
-/*
- * If 1, ENABCKSUM causes data transfers to have checksums
- */
-#define	ENABCKSUM	0
-
 typedef struct Commrod	Commrod;
 
-enum{
+enum
+{
 	Vmevec=		0xd2,		/* vme vector for interrupts */
 	Intlevel=	5,		/* level to interrupt on */
 	Qdir=		0,		/* Qid's */
@@ -368,7 +364,7 @@ hotrodwrite(Chan *c, void *buf, long n, ulong offset)
 			mp->cmd = Uwrite;
 			mp->param[0] = MP2VME(buf);
 			mp->param[1] = n;
-			mp->param[2] = hotsum(buf, n, ENABCKSUM);
+			mp->param[2] = 0;
 			hmp = hotsend(hp, mp);
 			hotwait(hmp);
 		}else{
@@ -382,7 +378,7 @@ hotrodwrite(Chan *c, void *buf, long n, ulong offset)
 			mp->cmd = Uwrite;
 			mp->param[0] = MP2VME(hp->buf);
 			mp->param[1] = n;
-			mp->param[2] = hotsum((ulong*)hp->buf, n, ENABCKSUM);
+			mp->param[2] = 0;
 			hmp = hotsend(hp, mp);
 			hotwait(hmp);
 			qunlock(&hp->buflock);

@@ -173,6 +173,7 @@ ipincoming(Ipconv *base, Ipconv *from)
 				/* current user becomes owner */
 				netown(new->net, new->index, u->p->user, 0);
 			new->ref = 1;
+			new->newcon = 0;
 			qunlock(new);
 			return new;
 		}	
@@ -643,7 +644,9 @@ iplisten(Chan *c)
 		new = base;
  		for(etab = &base[conf.ip]; new < etab; new++) {
 			if(new->newcon) {
+				qlock(s);
 				s->curlog--;
+				qunlock(s);
 				new->newcon = 0;
 				qunlock(&s->listenq);
 				return new - base;

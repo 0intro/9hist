@@ -2,7 +2,7 @@
 #include <libc.h>
 #include <fcall.h>
 
-#define DEFSYS "bit!bootes"
+#define DEFSYS "cyc!bootes"
 #define DEFFILE "/mips/9"
 
 Fcall	hdr;
@@ -153,47 +153,7 @@ dkdial(char *arg)
 int
 hotdial(char *arg)
 {
-	int fd;
-	char srvdir[100];
-	Waitmsg m;
-
-	return open("#H/hotrod", ORDWR);
-
-	/*
-	 * The killer: gotta get a hotrodboot running, so dial up
-	 * on datakit and load it.
-	 */
-	fd = dkdial(arg);
-	if(fd < 0)
-		return -1;
-	if(!preamble(fd)){
-		close(fd);
-		return -1;
-	}
-	/*
-	 * use /dev; it's local
-	 */
-	if(mount(fd, "/dev", MREPL, "", "") < 0)
-		error("mount");
-	switch(fork()){
-	case 0:
-		/*
-		 * child: get hotrodboot running
-		 */
-		execl("/dev/mips/bin/hotrodboot", "hotrodboot", "/dev/hobbit/hot", 0);
-		error("execl hotrodboot");
-	case -1:
-		error("fork");
-	}
-	/*
-	 * parent: wait, then sleep a while
-	 */
-	wait(&m);
-	if(m.msg[0])
-		error(m.msg);
-	fprint(2, "sleep 3 seconds\n");
-	sleep(3*1000);
-	fprint(2, "go for it....\n");
+	USED(arg);
 	return open("#H/hotrod", ORDWR);
 }
 
@@ -278,7 +238,7 @@ boot(int ask)
 		fd = -1;
 		if(strncmp(sys, "bit!", 4) == 0)
 			fd = bitdial(&sys[4]);
-		else if(strncmp(sys, "hot!", 4) == 0)
+		else if(strncmp(sys, "cyc!", 4) == 0)
 			fd = hotdial(&sys[4]);
 		else if(strncmp(sys, "dk!", 3) == 0)
 			fd = dkdial(&sys[3]);

@@ -85,7 +85,9 @@ tcp_input(Ipconv *ipc, Block *bp)
 				if(new == 0)
 					goto clear;
 
+				qlock(s);
 				s->curlog++;
+				qunlock(s);
 				new->psrc = seg.dest;
 				new->pdst = seg.source;
 				new->dst = source;
