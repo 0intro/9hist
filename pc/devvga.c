@@ -17,10 +17,14 @@
 enum {
 	Qdir,
 	Qvgactl,
+	Qvgaovl,
+	Qvgaovlctl,
 };
 
 static Dirtab vgadir[] = {
-	"vgactl",	{ Qvgactl, 0 },		0,	0660,
+	"vgactl",		{ Qvgactl, 0 },		0,	0660,
+	"vgaovl",		{ Qvgaovl, 0 },		0,	0660,
+	"vgaovlctl",	{ Qvgaovlctl, 0 },	0, 	0660,
 };
 
 static void
@@ -130,6 +134,11 @@ vgaread(Chan* c, void* a, long n, vlong off)
 		free(p);
 
 		return n;
+
+	case Qvgaovl:
+	case Qvgaovlctl:
+		error(Ebadusefd);
+		break;
 
 	default:
 		error(Egreg);
@@ -337,11 +346,14 @@ vgactl(char* a)
 	error(Ebadarg);
 }
 
+char Enooverlay[] = "No overlay support";
+
 static long
 vgawrite(Chan* c, void* a, long n, vlong off)
 {
 	char *p;
 	ulong offset = off;
+	VGAscr *scr;
 
 	switch(c->qid.path & ~CHDIR){
 
@@ -362,6 +374,19 @@ vgawrite(Chan* c, void* a, long n, vlong off)
 		poperror();
 		free(p);
 		return n;
+
+	case Qvgaovl:
+		scr = &vgascreen[0];
+		pprint("vgawrite: Qvgaovl %d (%s)\n", Qvgaovl, scr->dev->name);
+		return 0;
+
+	case Qvgaovlctl:
+		scr = &vgascreen[0];
+		if (scr->dev->ovlctl == nil) {
+			error(Enooverlay);
+			break;
+		}
+		return scr->dev->ovlctl(scr, a, n);
 
 	default:
 		error(Egreg);

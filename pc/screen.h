@@ -68,6 +68,7 @@ struct VGAdev {
 	ulong	(*linear)(VGAscr*, int*, int*);
 	void	(*drawinit)(VGAscr*);
 	int	(*fill)(VGAscr*, Rectangle, ulong);
+	int	(*ovlctl)(VGAscr*, void*, int);
 };
 
 struct VGAcur {
