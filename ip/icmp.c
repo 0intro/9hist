@@ -350,6 +350,7 @@ icmpiput(Proto *icmp, Ipifc*, Block *bp)
 		break;
 	case Unreachable:
 		code = p->code;
+		x = 0;
 		switch(code){
 		default:
 			msg = unreachcode[1];
@@ -401,6 +402,7 @@ icmpiput(Proto *icmp, Ipifc*, Block *bp)
 				(*pr->advise)(pr, bp, m2);
 				return;
 			}
+			bp->rp -= ICMP_IPSIZE+ICMP_HDRSIZE;
 		}
 
 		goticmpkt(icmp, bp);

@@ -92,7 +92,7 @@ FController	fl;
  *  predeclared
  */
 static int	cmddone(void*);
-static void	floppyformat(FDrive*, char*);
+static void	floppyformat(FDrive*, Cmdbuf*);
 static void	floppykproc(void*);
 static void	floppypos(FDrive*,long);
 static int	floppyrecal(FDrive*);
@@ -100,12 +100,12 @@ static int	floppyresult(void);
 static void	floppyrevive(void);
 static long	floppyseek(FDrive*, long);
 static int	floppysense(void);
-static void	floppywait(void);
+static void	floppywait(int);
 static long	floppyxfer(FDrive*, int, void*, long, long);
 
 Dirtab floppydir[]={
 	".",		{Qdir, 0, QTDIR},	0,	0550,
-	"fd0disk",		{Qdata + 0},	0,	0666,
+	"fd0disk",		{Qdata + 0},	0,	0660,
 	"fd0ctl",		{Qctl + 0},	0,	0660,
 	"fd1disk",		{Qdata + 1},	0,	0660,
 	"fd1ctl",		{Qctl + 1},	0,	0660,
@@ -115,6 +115,22 @@ Dirtab floppydir[]={
 	"fd3ctl",		{Qctl + 3},	0,	0660,
 };
 #define NFDIR	2	/* directory entries/drive */
+
+enum
+{
+	CMdebug,
+	CMeject,
+	CMformat,
+	CMreset,
+};
+
+static Cmdtab floppyctlmsg[] =
+{
+	CMdebug,	"debug",	1,
+	CMeject,	"eject",	1,
+	CMformat,	"format",	0,
+	CMreset,	"reset",	1,
+};
 
 static void
 fldump(void)
@@ -147,6 +163,8 @@ floppyreset(void)
 	ulong maxtsize;
 	
 	floppysetup0(&fl);
+	if(fl.ndrive == 0)
+		return;
 
 	/*
 	 *  init dependent parameters
@@ -201,6 +219,9 @@ static Chan*
 floppyattach(char *spec)
 {
 	static int kstarted;
+
+	if(fl.ndrive == 0)
+		error(Enodev);
 
 	if(kstarted == 0){
 		/*
@@ -268,12 +289,24 @@ changed(Chan *c, FDrive *dp)
 		DPRINT("changed\n");
 		fldump();
 		dp->vers++;
-		floppysetdef(dp);
 		start = dp->t;
+		dp->maxtries = 3;	/* limit it when we're probing */
+
+		/* floppyon will fail if there's a controller but no drive */
 		dp->confused = 1;	/* make floppyon recal */
-		floppyon(dp);
+		if(floppyon(dp) < 0)
+			error(Eio);
+
+		/* seek to the first track */
 		floppyseek(dp, dp->t->heads*dp->t->tsize);
 		while(waserror()){
+			/*
+			 *  if first attempt doesn't reset changed bit, there's
+			 *  no floppy there
+			 */
+			if(inb(Pdir)&Fchange)
+				nexterror();
+
 			while(++dp->t){
 				if(dp->t == &floppytype[nelem(floppytype)])
 					dp->t = floppytype;
@@ -281,14 +314,21 @@ changed(Chan *c, FDrive *dp)
 					break;
 			}
 			floppydir[1+NFDIR*dp->dev].length = dp->t->cap;
-			floppyon(dp);
+
+			/* floppyon will fail if there's a controller but no drive */
+			if(floppyon(dp) < 0)
+				error(Eio);
+
 			DPRINT("changed: trying %s\n", dp->t->name);
 			fldump();
 			if(dp->t == start)
 				nexterror();
 		}
+
+		/* if the read succeeds, we've got the density right */
 		floppyxfer(dp, Fread, dp->cache, 0, dp->t->tsize);
 		poperror();
+		dp->maxtries = 20;
 	}
 
 	old = c->qid.vers;
@@ -372,14 +412,14 @@ floppyread(Chan *c, void *a, long n, vlong off)
 	return rv;
 }
 
-#define SNCMP(a, b) strncmp(a, b, sizeof(b)-1)
 static long
 floppywrite(Chan *c, void *a, long n, vlong off)
 {
 	FDrive *dp;
 	long rv, i;
 	char *aa = a;
-	char ctlmsg[64];
+	Cmdbuf *cb;
+	Cmdtab *ct;
 	ulong offset = off;
 
 	rv = 0;
@@ -409,28 +449,36 @@ floppywrite(Chan *c, void *a, long n, vlong off)
 		break;
 	case Qctl:
 		rv = n;
+		cb = parsecmd(a, n);
+		if(waserror()){
+			free(cb);
+			nexterror();
+		}
 		qlock(&fl);
 		if(waserror()){
 			qunlock(&fl);
 			nexterror();
 		}
-		if(n >= sizeof(ctlmsg))
-			n = sizeof(ctlmsg) - 1;
-		memmove(ctlmsg, aa, n);
-		ctlmsg[n] = 0;
-		if(SNCMP(ctlmsg, "eject") == 0){
+		ct = lookupcmd(cb, floppyctlmsg, nelem(floppyctlmsg));
+		switch(ct->index){
+		case CMeject:
 			floppyeject(dp);
-		} else if(SNCMP(ctlmsg, "reset") == 0){
+			break;
+		case CMformat:
+			floppyformat(dp, cb);
+			break;
+		case CMreset:
 			fl.confused = 1;
 			floppyon(dp);
-		} else if(SNCMP(ctlmsg, "format") == 0){
-			floppyformat(dp, ctlmsg);
-		} else if(SNCMP(ctlmsg, "debug") == 0){
+			break;
+		case CMdebug:
 			floppydebug = 1;
-		} else
-			error(Ebadctl);
+			break;
+		}
 		poperror();
 		qunlock(&fl);
+		poperror();
+		free(cb);
 		break;
 	default:
 		panic("floppywrite: bad qid");
@@ -463,7 +511,7 @@ floppykproc(void *)
 /*
  *  start a floppy drive's motor.
  */
-static void
+static int
 floppyon(FDrive *dp)
 {
 	int alreadyon;
@@ -497,6 +545,11 @@ floppyon(FDrive *dp)
 				break;
 	dp->lasttouched = m->ticks;
 	fl.selected = dp;
+
+	/* return -1 if this didn't work */
+	if(dp->confused)
+		return -1;
+	return 0;
 }
 
 /*
@@ -635,9 +688,9 @@ cmddone(void *)
  *  routine to try to clear any conditions.
  */
 static void
-floppywait(void)
+floppywait(int slow)
 {
-	tsleep(&fl.r, cmddone, 0, 5000);
+	tsleep(&fl.r, cmddone, 0, slow ? 5000 : 1000);
 	if(!cmddone(0)){
 		floppyintr(0);
 		fl.confused = 1;
@@ -658,7 +711,7 @@ floppyrecal(FDrive *dp)
 	fl.cmd[fl.ncmd++] = dp->dev;
 	if(floppycmd() < 0)
 		return -1;
-	floppywait();
+	floppywait(1);
 	if(fl.nstat < 2){
 		DPRINT("recalibrate: confused %ux\n", inb(Pmsr));
 		fl.confused = 1;
@@ -679,39 +732,6 @@ floppyrecal(FDrive *dp)
 
 	dp->confused = 0;
 	return 0;
-}
-
-static void
-dumpreg(void)
-{
-	int i;
-
-	fl.ncmd = 0;
-	fl.cmd[fl.ncmd++] = Fdumpreg;
-	if(floppycmd() < 0)
-		return;
-	floppywait();
-	if(fl.nstat < 0){
-		print("dumpreg bad %d\n", fl.nstat);
-		fldump();
-		return;
-	}
-	for(i = 0; i < fl.nstat; i++)
-		print(" %2.2uX", fl.stat[i]);
-	print("\n");
-}
-
-static void
-specify(void)
-{
-	fl.ncmd = 0;
-	fl.cmd[fl.ncmd++] = Fspec;
-	fl.cmd[fl.ncmd++] = 0;
-	fl.cmd[fl.ncmd++] = 1;
-	if(floppycmd() < 0)
-		return;
-	floppywait();
-	fldump();
 }
 
 /*
@@ -741,7 +761,7 @@ floppyrevive(void)
 		spllo();
 		fl.motor = 0;
 		fl.confused = 0;
-		floppywait();
+		floppywait(0);
 
 		/* mark all drives in an unknown state */
 		for(dp = fl.d; dp < &fl.d[fl.ndrive]; dp++)
@@ -775,7 +795,7 @@ floppyseek(FDrive *dp, long off)
 	fl.cmd[fl.ncmd++] = dp->tcyl * dp->t->steps;
 	if(floppycmd() < 0)
 		return -1;
-	floppywait();
+	floppywait(1);
 	if(fl.nstat < 2){
 		DPRINT("seek: confused\n");
 		fl.confused = 1;
@@ -804,16 +824,13 @@ floppyxfer(FDrive *dp, int cmd, void *a, long off, long n)
 		return 0;
 	if(off + n > dp->t->cap)
 		n = dp->t->cap - off;
-if(cmd == Fread)
-    memset(a, 0x55, n);
 
 	/* retry on error (until it gets ridiculous) */
 	tries = 0;
 	while(waserror()){
-		if(tries++ > 20)
+		if(tries++ >= dp->maxtries)
 			nexterror();
 		DPRINT("floppyxfer: retrying\n");
-		/*floppyon(dp);*/
 	}
 
 	dp->len = n;
@@ -856,7 +873,7 @@ if(cmd == Fread)
 	/*
 	 *  give bus to DMA, floppyintr() will read result
 	 */
-	floppywait();
+	floppywait(0);
 	dmaend(DMAchan);
 	poperror();
 
@@ -900,20 +917,19 @@ if(cmd == Fread)
  *  format a track
  */
 static void
-floppyformat(FDrive *dp, char *params)
+floppyformat(FDrive *dp, Cmdbuf *cb)
 {
  	int cyl, h, sec;
 	ulong track;
 	uchar *buf, *bp;
 	FType *t;
-	char *f[3];
 
 	/*
 	 *  set the type
 	 */
-	if(tokenize(params, f, 3) > 1){
+	if(cb->nf == 2){
 		for(t = floppytype; t < &floppytype[nelem(floppytype)]; t++){
-			if(strcmp(f[1], t->name)==0 && t->dt==dp->dt){
+			if(strcmp(cb->f[1], t->name)==0 && t->dt==dp->dt){
 				dp->t = t;
 				floppydir[1+NFDIR*dp->dev].length = dp->t->cap;
 				break;
@@ -921,9 +937,12 @@ floppyformat(FDrive *dp, char *params)
 		}
 		if(t >= &floppytype[nelem(floppytype)])
 			error(Ebadarg);
-	} else {
+	} else if(cb->nf == 1){
 		floppysetdef(dp);
 		t = dp->t;
+	} else {
+		cmderror(cb, "invalid floppy format command");
+		SET(t);
 	}
 
 	/*
@@ -992,7 +1011,7 @@ floppyformat(FDrive *dp, char *params)
 		/*
 		 *  give bus to DMA, floppyintr() will read result
 		 */
-		floppywait();
+		floppywait(1);
 		dmaend(DMAchan);
 		poperror();
 

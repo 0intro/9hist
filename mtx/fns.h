@@ -61,6 +61,7 @@ int	isaconfig(char*, int, ISAConf*);
 void	kbdinit(void);
 void	kbdreset(void);
 void	kernelmmu(void);
+#define	kmapinval()
 void	links(void);
 void	mathinit(void);
 void	mmuinit(void);
@@ -98,7 +99,7 @@ void	tlbflushall(void);
 void	uartinstall(void);
 void	uartwait(void);	/* debugging */
 int unsac(uchar *dst, uchar *src, int n, int nsrc);
-#define	userureg(ur) ((ur)->status & KUSER)
+#define	userureg(ur) (((ur)->status & MSR_PR) != 0)
 void	wbflush(void);
 
 #define	waserror()	(up->nerrlab++, setlabel(&up->errlab[up->nerrlab-1]))

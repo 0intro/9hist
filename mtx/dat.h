@@ -79,9 +79,10 @@ struct Conf
 /*
  *  mmu goo in the Proc structure
  */
+#define NCOLOR 1
 struct PMMU
 {
-int dummy;
+	int	pidonmach[MAXMACH];
 };
 
 /*
@@ -219,8 +220,8 @@ struct ISAConf {
 
 extern PCArch	*arch;
 
-#define	MACHP(n)	((Mach *)((int)&mach0+n*BY2PG))
-extern Mach		mach0;
+//#define	MACHP(n)	((Mach *)((int)&mach0+n*BY2PG))
+//extern Mach		mach0;
 
 extern register Mach	*m;
 extern register Proc	*up;

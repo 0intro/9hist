@@ -1,5 +1,4 @@
 #include	"mem.h"
-#include	"mpc60x.h"
 
 #define	BDNZ	BC	16,0,
 #define	BDNE	BC	0,2,

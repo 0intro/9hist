@@ -4,7 +4,6 @@ typedef struct Chan	Chan;
 typedef struct Cmdbuf	Cmdbuf;
 typedef struct Cmdtab	Cmdtab;
 typedef struct Cname	Cname;
-typedef struct Crypt	Crypt;
 typedef struct Dev	Dev;
 typedef struct Dirtab	Dirtab;
 typedef struct Egrp	Egrp;
@@ -41,10 +40,9 @@ typedef struct Sargs	Sargs;
 typedef struct Segment	Segment;
 typedef struct Session	Session;
 typedef struct Talarm	Talarm;
-typedef struct Target	Target;
 typedef struct Uart	Uart;
 typedef struct Waitq	Waitq;
-typedef struct Walkqid Walkqid;
+typedef struct Walkqid	Walkqid;
 typedef int    Devgen(Chan*, char*, Dirtab*, int, int, Dir*);
 
 

@@ -1351,14 +1351,14 @@ usbreset(void)
 		 */
 		if(cfg->ccrb != 0x0C || cfg->ccru != 0x03)
 			continue;
-		switch(cfg->vid | cfg->did<<16){
-		default:
-			continue;
-		case 0x8086 | 0x7112<<16:	/* 82371[AE]B (PIIX4[E]) */
-		case 0x8086 | 0x719A<<16:	/* 82443MX */
-		case 0x0586 | 0x1106<<16:	/* VIA 82C586 */
-			break;
-		}
+// 		switch(cfg->vid | cfg->did<<16){
+// 		default:
+// 			continue;
+// 		case 0x8086 | 0x7112<<16:	/* 82371[AE]B (PIIX4[E]) */
+// 		case 0x8086 | 0x719A<<16:	/* 82443MX */
+// 		case 0x0586 | 0x1106<<16:	/* VIA 82C586 */
+// 			break;
+// 		}
 		if((cfg->mem[4].bar & ~0x0F) != 0)
 			break;
 	}

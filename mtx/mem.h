@@ -1,5 +1,3 @@
-/* none of this is meant to be correct yet */
-
 /*
  * Memory and machine-specific definitions.  Used in C and assembler.
  */
@@ -12,17 +10,22 @@
 #define	BI2WD		32			/* bits per word */
 #define	BY2WD		4			/* bytes per word */
 #define 	BY2V		8			/* bytes per vlong */
-#define	BY2PG		8192		/* bytes per page */
+#define	BY2PG		4096		/* bytes per page */
 #define	WD2PG		(BY2PG/BY2WD)	/* words per page */
-#define	PGSHIFT		13			/* log(BY2PG) */
+#define	PGSHIFT		12			/* log(BY2PG) */
 #define 	ROUND(s, sz)	(((s)+(sz-1))&~(sz-1))
 #define 	PGROUND(s)	ROUND(s, BY2PG)
-#define BLOCKALIGN	8
+#define	CACHELINELOG	4
+#define CACHELINESZ	(1<<CACHELINELOG)
+#define BLOCKALIGN	CACHELINESZ
 
-#define	BY2PTE		8			/* bytes per pte entry */
-#define	PTE2PG		(BY2PG/BY2PTE)	/* pte entries per page */
+#define	MHz	1000000
+
+//#define	BY2PTE		8			/* bytes per pte entry */
+//#define	PTE2PG		(BY2PG/BY2PTE)	/* pte entries per page */
 
 #define	MAXMACH		1			/* max # cpus system can run */
+#define	MACHSIZE	BY2PG
 #define	KSTACK		4096			/* Size of kernel stack */
 
 /*
@@ -31,7 +34,50 @@
 #define	HZ		100			/* clock frequency */
 #define	MS2HZ	(1000/HZ)
 #define	TK2SEC(t)	((t)/HZ)		/* ticks to seconds */
+#define	TK2MS(t)	((t)*MS2HZ)		/* ticks to milliseconds */
 #define	MS2TK(t)	(((t)*HZ+500)/1000)	/* milliseconds to closest tick */
+
+/* Bit encodings for Machine State Register (MSR) */
+#define MSR_POW		(1<<18)		/* Enable Power Management */
+#define MSR_TGPR	(1<<17)		/* TLB Update registers in use */
+#define MSR_ILE		(1<<16)		/* Interrupt Little-Endian enable */
+#define MSR_EE		(1<<15)		/* External Interrupt enable */
+#define MSR_PR		(1<<14)		/* Supervisor/User privelege */
+#define MSR_FP		(1<<13)		/* Floating Point enable */
+#define MSR_ME		(1<<12)		/* Machine Check enable */
+#define MSR_FE0		(1<<11)		/* Floating Exception mode 0 */
+#define MSR_SE		(1<<10)		/* Single Step */
+#define MSR_BE		(1<<9)		/* Branch Trace */
+#define MSR_FE1		(1<<8)		/* Floating Exception mode 1 */
+#define MSR_IP		(1<<6)		/* Exception prefix 0x000/0xFFF */
+#define MSR_IR		(1<<5)		/* Instruction MMU enable */
+#define MSR_DR		(1<<4)		/* Data MMU enable */
+#define MSR_RI		(1<<1)		/* Recoverable Exception */
+#define MSR_LE		(1<<0)		/* Little-Endian enable */
+
+#define MSR_		MSR_FP|MSR_FE0|MSR_FE1|MSR_ME
+
+/*
+ * Exception codes (trap vectors)
+ */
+#define	CRESET	0x01
+#define	CMCHECK 0x02
+#define	CDSI	0x03
+#define	CISI	0x04
+#define	CEI	0x05
+#define	CALIGN	0x06
+#define	CPROG	0x07
+#define	CFPU	0x08
+#define	CDEC	0x09
+#define	CSYSCALL 0x0C
+#define	CTRACE	0x0D
+// #define	CFPA	0x0E
+/* rest are power-implementation dependent */
+#define	CIMISS	0x10
+#define	CDLMISS	0x11
+#define	CDSMISS	0x12
+#define	CIBREAK	0x13
+#define	CSMI	0x14
 
 /*
  * Magic registers
@@ -42,14 +88,24 @@
 
 
 /*
+ *  virtual MMU
+ */
+#define PTEMAPMEM	(1024*1024)	
+#define	PTEPERTAB	(PTEMAPMEM/BY2PG)
+#define SEGMAPSIZE	1984
+#define SSEGMAPSIZE	16
+#define PPN(x)		((x)&~(BY2PG-1))
+
+/*
  * Fundamental addresses
  */
+#define	MACHADDR	(KTZERO-MAXMACH*MACHSIZE)
+#define	MACHP(n)	((Mach *)(MACHADDR+(n)*MACHSIZE))
 
 #define	UREGSIZE	((8+32)*4)
 
 /*
  * MMU
- *
  */
 
 /* L1 table entry and Mx_TWC flags */
@@ -64,17 +120,35 @@
 #define PTECI		(1<<1)	/*  cache inhibit */
 #define PTESH		(1<<2)	/* page is shared; ASID ignored */
 #define PTELPS		(1<<3)	/* large page size */
-#define PTEWRITE	0x9F0
+//#define PTEWRITE	0x9F0
+
+#define	PTEKERNEL	(0<<2)
+#define	PTEUSER		(1<<2)
+#define PTESIZE		(1<<7)
+
+#define	NTLBPID		16
+#define	TLBPID(n)	((n)&(NTLBPID-1))
+
+/* soft tlb */
+#define	STLBLOG		12
+#define	STLBSIZE	(1<<STLBLOG)
+
+/*
+ *  portable MMU bits for fault.c - though still machine specific
+ */
+//#define PTEVALID	(MMUPP|MMUV)
+#define PTEWRITE	(2<<10)
+#define	PTERONLY	(3<<10)
+#define	PTEUNCACHED	(1<<4)
+
+/*
+ * physical MMU bits
+ */
 
 /* TLB and MxEPN flag */
 #define	TLBVALID	(1<<9)
 
 #define	TLBSETS	32	/* number of tlb sets (603/603e) */
-
-#define	PTEMAPMEM	(1024*1024)	
-#define	PTEPERTAB	(PTEMAPMEM/BY2PG)
-#define	SEGMAPSIZE	512
-#define SSEGMAPSIZE	16
 
 /*
  * Address spaces
@@ -99,3 +173,21 @@
 #define	FLASHAorB	0xfff00000
 
 #define isphys(x) (((ulong)x&KZERO)!=0)
+
+/*
+ * standard ppc special purpose registers
+ */
+#define DSISR	18
+#define DAR	19	/* Data Address Register */
+#define DEC	22	/* Decrementer */
+#define SRR0	26	/* Saved Registers (exception) */
+#define SRR1	27
+#define SPRG0	272	/* Supervisor Private Registers */
+#define SPRG1	273
+#define SPRG2	274
+#define SPRG3	275
+#define	TBRU	269	/* Time base Upper/Lower (Reading) */
+#define	TBRL	268
+#define TBWU	284	/* Time base Upper/Lower (Writing) */
+#define TBWL	285
+#define PVR	287	/* Processor Version */

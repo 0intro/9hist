@@ -157,9 +157,9 @@ trap(Ureg *ur)
 
 	m->intrts = fastticks(nil);
 	ecode = (ur->cause >> 8) & 0xff;
-//	user = (ur->srr1 & MSR_PR) != 0;
+	user = (ur->srr1 & MSR_PR) != 0;
 
-/* if(ur->status & MSR_RI == 0)
+if(ur->status & MSR_RI == 0)
 print("double fault?: ecode = %d\n", ecode);
 	switch(ecode){
 	case CEI:
@@ -169,6 +169,7 @@ print("double fault?: ecode = %d\n", ecode);
 	case CDEC:
 		clockintr(ur);
 		break;
+/*
 	case CIMISS:
 		faultpower(ur, ur->pc, 1);
 		break;
@@ -182,12 +183,7 @@ if(0) print("CDMISS: %lux %lux\n", m->epn, m->cmp1);
 	case CDTLBE:
 		faultpower(ur, m->dar, !(m->dsisr & (1<<25)));
 		break;
-
-	case CEMU:
-		print("CEMU: pc=#%lux op=#%8.8lux\n", ur->pc, *(ulong*)ur->pc);
-		sprint(buf, "sys: trap: illegal op addr=0x%lux", ur->pc);
-		postnote(up, 1, buf, NDebug);
-		break;
+*/
 
 	case CSYSCALL:
 		syscall(ur);
@@ -214,7 +210,6 @@ if(0) print("CDMISS: %lux %lux\n", m->epn, m->cmp1);
 		delay(100);
 		reset();
 	}
-*/
 	splhi();
 	if(user)
 		notify(ur);
@@ -226,7 +221,7 @@ faultpower(Ureg *ureg, ulong addr, int read)
 	int user, insyscall, n;
 	char buf[ERRMAX];
 
-//	user = (ureg->srr1 & MSR_PR) != 0;
+	user = (ureg->srr1 & MSR_PR) != 0;
 if(0)print("fault: pid=%ld pc = %lux, addr = %lux read = %d user = %d stack=%ulx\n", up->pid, ureg->pc, addr, read, user, &ureg);
 	insyscall = up->insyscall;
 	up->insyscall = 1;
@@ -633,8 +628,8 @@ syscall(Ureg* ureg)
 	long	ret;
 	int	i, scallnr;
 
-//	if((ureg->srr1 & MSR_PR) == 0)
-//		panic("syscall: srr1 0x%4.4uX\n", ureg->srr1);
+	if((ureg->srr1 & MSR_PR) == 0)
+		panic("syscall: srr1 0x%4.4uX\n", ureg->srr1);
 
 	m->syscall++;
 	up->insyscall = 1;
