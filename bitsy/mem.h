@@ -24,7 +24,6 @@
 #define	HZ		(20)				/* clock frequency */
 #define	MS2HZ	(1000/HZ)		/* millisec per clock tick */
 #define	TK2SEC(t)	((t)/HZ)			/* ticks to seconds */
-#define	TK2MS(t)	((((ulong)(t))*1000)/HZ)	/* ticks to milliseconds */
 #define	MS2TK(t)	((((ulong)(t))*HZ)/1000)	/* milliseconds to ticks */
 
 /*

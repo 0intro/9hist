@@ -101,6 +101,7 @@ int	unsac(uchar*, uchar*, int, int);
 void	vectors(void);
 void	vtable(void);
 void	wbflush(void);
+ulong	TK2MS(ulong);				/* ticks to milliseconds */
 #define KADDR(a) (void*)mmu_kaddr((ulong)(a))
 #define PADDR(a) mmu_paddr((ulong)(a))
 
