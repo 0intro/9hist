@@ -28,7 +28,7 @@ enum
 	TcptimerON	= 1,
 	TcptimerDONE	= 2,
 	MAX_TIME 	= (1<<20),	/* Forever */
-	TCP_ACK		= 200,		/* Timed ack sequence in ms */
+	TCP_ACK		= 50,		/* Timed ack sequence in ms */
 
 	URG		= 0x20,		/* Data marked urgent */
 	ACK		= 0x10,		/* Acknowledge is valid */
@@ -213,6 +213,7 @@ struct Tcpctl
 		ulong	urg;		/* Urgent pointer */
 		ulong	lastacked;	/* Last ack sent */
 		int	blocked;
+		int	una;		/* unacked data segs */
 	} rcv;
 	ulong	iss;			/* Initial sequence number */
 	ushort	cwind;			/* Congestion window */
@@ -2170,6 +2171,10 @@ reset:
 						panic("tcp packblock");
 					qpassnolim(s->rq, bp);
 					bp = nil;
+
+					/* force an ack every 2 data messages */
+					if(++(tcb->rcv.una) >= 2)
+						tcb->flags |= FORCE;
 				}
 				tcb->rcv.nxt += length;
 
@@ -2358,6 +2363,7 @@ tcpoutput(Conv *s)
 		tcprcvwin(s);
 
 		/* By default we will generate an ack */
+		tcb->rcv.una = 0;
 		seg.source = s->lport;
 		seg.dest = s->rport;
 		seg.flags = ACK;
