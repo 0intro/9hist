@@ -91,8 +91,10 @@ mmuinit(void)
 }
 
 /*
- *  map special space, assume that the space isn't already mapped
+ *  map special space uncached, assume that the space isn't already mapped
  */
+ulong*
+mapspecmeg(ulong physaddr, int len)
 ulong*
 mapspecial(ulong physaddr, int len)
 {
@@ -131,7 +133,7 @@ mapspecial(ulong physaddr, int len)
 				candidate = virtaddr+i;
 			} else {
 				/* look for contiunued range */
-				if((entry & L2PageBaseMask) != base + off)
+				if((entry & L2PageBaseMask) != base + off){
 					candidate = 0;
 					continue;
 				}
