@@ -32,9 +32,10 @@ main(void)
 	gpioinit();
 	trapinit();
 	clockinit();
-	spllo();
-	delay(1000);
-	exit(1);
+	chandevreset();
+	pageinit();
+	userinit();
+	schedinit();
 }
 
 /*
@@ -52,6 +53,93 @@ exit(int ispanic)
 	mmudisable();
 	f = nil;
 	(*f)();
+}
+
+/*
+ *  starting place for first process
+ */
+void
+init0(void)
+{
+	up->nerrlab = 0;
+
+	spllo();
+
+	/*
+	 * These are o.k. because rootinit is null.
+	 * Then early kproc's will have a root and dot.
+	 */
+	up->slash = namec("#/", Atodir, 0, 0);
+	cnameclose(up->slash->name);
+	up->slash->name = newcname("/");
+	up->dot = cclone(up->slash, 0);
+
+	chandevinit();
+
+	if(!waserror()){
+		ksetenv("terminal", "bitsy");
+		ksetenv("cputype", "arm");
+		if(cpuserver)
+			ksetenv("service", "cpu");
+		else
+			ksetenv("service", "terminal");
+		poperror();
+	}
+	kproc("alarm", alarmkproc, 0);
+
+	touser();
+}
+
+/*
+ *  create the first process
+ */
+void
+userinit(void)
+{
+	Proc *p;
+	Segment *s;
+	KMap *k;
+	Page *pg;
+
+	p = newproc();
+	p->pgrp = newpgrp();
+	p->egrp = smalloc(sizeof(Egrp));
+	p->egrp->ref = 1;
+	p->fgrp = dupfgrp(nil);
+	p->rgrp = newrgrp();
+	p->procmode = 0640;
+
+	strcpy(p->text, "*init*");
+	strcpy(p->user, eve);
+
+	/*
+	 * Kernel Stack
+	 */
+	p->sched.pc = (ulong)init0;
+	p->sched.sp = (ulong)p->kstack+KSTACK-(1+MAXSYSARG)*BY2WD;
+
+	/*
+	 * User Stack
+	 */
+	s = newseg(SG_STACK, USTKTOP-USTKSIZE, USTKSIZE/BY2PG);
+	p->seg[SSEG] = s;
+	pg = newpage(1, 0, USTKTOP-BY2PG);
+	segpage(s, pg);
+
+	/*
+	 * Text
+	 */
+	s = newseg(SG_TEXT, UTZERO, 1);
+	s->flushme++;
+	p->seg[TSEG] = s;
+	pg = newpage(1, 0, UTZERO);
+	memset(pg->cachectl, PG_TXTFLUSH, sizeof(pg->cachectl));
+	segpage(s, pg);
+	k = kmap(s->map[0]->pages[0]);
+	memmove((ulong*)VA(k), initcode, sizeof initcode);
+	kunmap(k);
+
+	ready(p);
 }
 
 /*

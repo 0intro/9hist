@@ -45,11 +45,16 @@
 #define	UTZERO		(UZERO+BY2PG)		/* first address in user text */
 #define	KZERO		0xC0000000		/* base of kernel address space */
 #define	KTZERO		0xC0008000		/* first address in kernel text */
-#define	REGZERO		0xA0000000		/* 256 meg for special regs */
-#define	REGTOP		0xB0000000		/* 256 meg for special regs */
-#define	FLASHZERO	0xB0000000		/* 256 meg for flash */
-#define	USTKTOP		(REGZERO-BY2PG)		/* byte just beyond user stack */
-#define	USTKSIZE	(16*1024*1024)		/* size of user stack */
+#define	REGZERO		0xA0000000		/* 256 meg for mapspecial regs */
+#define	REGTOP		0xB0000000		/* ... */
+#define	FLASHZERO	0xB0000000		/* 128 meg for flash */
+#define	FLASHTOP	0xB8000000		/* ... */
+#define	DRAMZERO	0xC0000000		/* 128 meg for memory */
+#define DRAMTOP		0xC8000000		/* ... */
+#define	NULLZERO	0xE0000000		/* 128 meg for cache flush zeroes */
+#define NULLTOP		0xE8000000		/* ... */
+#define	USTKTOP		0x2000000		/* byte just beyond user stack */
+#define	USTKSIZE	(8*1024*1024)		/* size of user stack */
 #define	TSTKTOP		(USTKTOP-USTKSIZE)	/* end of new stack in sysexec */
 #define TSTKSIZ 	100
 #define MACHADDR	(KZERO+0x00001000)

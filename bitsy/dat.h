@@ -72,10 +72,16 @@ struct Conf
 /*
  *  MMU stuff in proc
  */
-#define NCOLOR 1
+enum
+{
+	NCOLOR=	1,	/* 1 level cache, don't worry about VCE's */
+	Nmeg=	32,	/* maximum size of user space */
+};
+
 struct PMMU
 {
-	int dummy;
+	ulong	pid;		/* current pid (0 if none) */
+	Page	*l1[Nmeg];	/* this's process' level 1 entries */
 };
 
 /*
@@ -159,11 +165,11 @@ struct Cycintr
 };
 
 /*
- * Fake kmap
+ * Fake kmap since we direct map dram
  */
 typedef void		KMap;
 #define	VA(k)		((ulong)(k))
-#define	kmap(p)		(KMap*)((p)->pa|KZERO)
+#define	kmap(p)		(KMap*)((p)->pa)
 #define	kunmap(k)
 
 struct
