@@ -16,7 +16,8 @@
 #define PGROUND(s)	ROUND(s, BY2PG)
 
 #define	MAXMACH		8			/* max # cpus system can run */
-#define KSTACK		4096			/* Size of kernel stack */
+#define KSTACK		4096-16			/* Size of kernel stack */
+						/* the -16 is room for the 2n allocator header */
 
 /*
  * Time
