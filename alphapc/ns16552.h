@@ -5,6 +5,7 @@
 
 void ns16552setup(ulong, ulong, char*, int);
 void ns16552intr(int);
+void uartclock(void);
 
 /*
  *  handle an interrupt to a single uart
@@ -28,6 +29,7 @@ ns16552install(void)
 	intrenable(VectorUART0, ns16552intrx, (void*)0, BUSUNKNOWN);
 	ns16552setup(Uart1, UartFREQ, "eia1", Ns550);
 	intrenable(VectorUART1, ns16552intrx, (void*)0, BUSUNKNOWN);
+	addclock0link(uartclock);
 }
 
 #define RD(r)	inb(Uart0+(r))
@@ -43,21 +45,3 @@ ns16552iputc(char c)
 		mb();
 }
 
-int
-iprint(char *fmt, ...)
-{
-	int n, i, s;
-	char buf[512];
-	va_list arg;
-
-	va_start(arg, fmt);
-	n = doprint(buf, buf+sizeof(buf), fmt, arg) - buf;
-	va_end(arg);
-
-	s = splhi();
-	for(i = 0; i < n; i++)
-		ns16552iputc(buf[i]);
-	splx(s);
-
-	return n;
-}

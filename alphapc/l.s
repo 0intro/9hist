@@ -80,6 +80,9 @@ GLOBL	init_ptbr(SB), $8
 TEXT	firmware(SB), $-8
 	CALL_PAL $PALhalt
 
+TEXT	xxfirmware(SB), $-8
+	CALL_PAL $PALhalt
+
 TEXT	splhi(SB), $0
 
 	MOVL	R26, 4(R(MACH))		/* save PC in m->splpc */

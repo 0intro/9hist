@@ -25,7 +25,7 @@ enum {
 
 	PF=		Spec|0x20,	/* num pad function key */
 	View=		Spec|0x00,	/* view (shift window up) */
-	KF=		Spec|0x40,	/* function key */
+	KF=		0xF000,	/* function key (begin Unicode private space) */
 	Shift=		Spec|0x60,
 	Break=		Spec|0x61,
 	Ctrl=		Spec|0x62,
@@ -39,16 +39,21 @@ enum {
 	Up=		KF|14,
 	Pgup=		KF|15,
 	Print=		KF|16,
-	Left=		View,
-	Right=		View,
+	Left=		KF|17,
+	Right=		KF|18,
 	End=		'\r',
 	Down=		View,
-	Pgdown=		View,
+	Pgdown=		KF|19,
 	Ins=		KF|20,
+	Scroll=	KF|21,
 	Del=		0x7F,
 };
 
-uchar kbtab[] = 
+/*
+ * The codes at 0x79 and 0x81 are produed by the PFU Happy Hacking keyboard.
+ * A 'standard' keyboard doesn't produce anything above 0x58.
+ */
+Rune kbtab[] = 
 {
 [0x00]	No,	0x1b,	'1',	'2',	'3',	'4',	'5',	'6',
 [0x08]	'7',	'8',	'9',	'0',	'-',	'=',	'\b',	'\t',
@@ -58,17 +63,17 @@ uchar kbtab[] =
 [0x28]	'\'',	'`',	Shift,	'\\',	'z',	'x',	'c',	'v',
 [0x30]	'b',	'n',	'm',	',',	'.',	'/',	Shift,	'*',
 [0x38]	Latin,	' ',	Ctrl,	KF|1,	KF|2,	KF|3,	KF|4,	KF|5,
-[0x40]	KF|6,	KF|7,	KF|8,	KF|9,	KF|10,	Num,	KF|12,	'7',
+[0x40]	KF|6,	KF|7,	KF|8,	KF|9,	KF|10,	Num,	Scroll,	'7',
 [0x48]	'8',	'9',	'-',	'4',	'5',	'6',	'+',	'1',
 [0x50]	'2',	'3',	'0',	'.',	No,	No,	No,	KF|11,
 [0x58]	KF|12,	No,	No,	No,	No,	No,	No,	No,
 [0x60]	No,	No,	No,	No,	No,	No,	No,	No,
 [0x68]	No,	No,	No,	No,	No,	No,	No,	No,
 [0x70]	No,	No,	No,	No,	No,	No,	No,	No,
-[0x78]	No,	View,	No,	KF|14,	No,	No,	No,	No,
+[0x78]	No,	View,	No,	Up,	No,	No,	No,	No,
 };
 
-uchar kbtabshift[] =
+Rune kbtabshift[] =
 {
 [0x00]	No,	0x1b,	'!',	'@',	'#',	'$',	'%',	'^',
 [0x08]	'&',	'*',	'(',	')',	'_',	'+',	'\b',	'\t',
@@ -78,17 +83,17 @@ uchar kbtabshift[] =
 [0x28]	'"',	'~',	Shift,	'|',	'Z',	'X',	'C',	'V',
 [0x30]	'B',	'N',	'M',	'<',	'>',	'?',	Shift,	'*',
 [0x38]	Latin,	' ',	Ctrl,	KF|1,	KF|2,	KF|3,	KF|4,	KF|5,
-[0x40]	KF|6,	KF|7,	KF|8,	KF|9,	KF|10,	Num,	KF|12,	'7',
+[0x40]	KF|6,	KF|7,	KF|8,	KF|9,	KF|10,	Num,	Scroll,	'7',
 [0x48]	'8',	'9',	'-',	'4',	'5',	'6',	'+',	'1',
 [0x50]	'2',	'3',	'0',	'.',	No,	No,	No,	KF|11,
 [0x58]	KF|12,	No,	No,	No,	No,	No,	No,	No,
 [0x60]	No,	No,	No,	No,	No,	No,	No,	No,
 [0x68]	No,	No,	No,	No,	No,	No,	No,	No,
 [0x70]	No,	No,	No,	No,	No,	No,	No,	No,
-[0x78]	No,	KF|14,	No,	KF|14,	No,	No,	No,	No,
+[0x78]	No,	Up,	No,	Up,	No,	No,	No,	No,
 };
 
-uchar kbtabesc1[] =
+Rune kbtabesc1[] =
 {
 [0x00]	No,	No,	No,	No,	No,	No,	No,	No,
 [0x08]	No,	No,	No,	No,	No,	No,	No,	No,
@@ -105,7 +110,7 @@ uchar kbtabesc1[] =
 [0x60]	No,	No,	No,	No,	No,	No,	No,	No,
 [0x68]	No,	No,	No,	No,	No,	No,	No,	No,
 [0x70]	No,	No,	No,	No,	No,	No,	No,	No,
-[0x78]	No,	KF|14,	No,	No,	No,	No,	No,	No,
+[0x78]	No,	Up,	No,	No,	No,	No,	No,	No,
 };
 
 enum
@@ -231,7 +236,7 @@ i8042intr(Ureg*, void*)
 	static int esc1, esc2;
 	static int alt, caps, ctl, num, shift;
 	static int collecting, nk;
-	static uchar kc[5];
+	static Rune kc[5];
 	int keyup;
 
 	/*
@@ -314,7 +319,7 @@ i8042intr(Ureg*, void*)
 	/*
  	 *  normal character
 	 */
-	if(!(c & Spec)){
+	if(!(c & (Spec|KF))){
 		if(ctl){
 			if(alt && c == Del)
 				exit(0);

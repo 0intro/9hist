@@ -280,6 +280,15 @@ dumpstack(void)
 }
 
 void
+callwithureg(void (*fn)(Ureg*))
+{
+	Ureg ureg;
+	ureg.pc = getcallerpc(&fn);
+	ureg.sp = (ulong)&fn;
+	fn(&ureg);
+}
+
+void
 dumpregs(Ureg *ur)
 {
 	int i, col;

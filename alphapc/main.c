@@ -29,13 +29,19 @@ main(void)
 	archinit();
 	mmuinit();
 	xinit();
-	printinit();
 	if (arch->coreinit)
 		arch->coreinit();
 	trapinit();
+	screeninit();
+screenputs("Hello Squidboy\n", 15);
+{ static Lock l;
+  ilock(&l);
+xxfirmware();
+  iunlock(&l);
+}
+	printinit();
 
 	/* console */
-	screeninit();
 	ns16552install();
 	ns16552special(0, 9600, 0, &printq, kbdcr2nl);
 	kbdinit();

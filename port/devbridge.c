@@ -420,7 +420,7 @@ bridgegen(Chan *c, Dirtab*, int, int s, Dir *dp)
 		switch(TYPE(c->qid)){
 		case Qtopdir:
 		case Qbridgedir:
-			snprint(buf, "#B%d", c->dev);
+			snprint(buf, sizeof(buf), "#B%ld", c->dev);
 			devdir(c, (Qid){CHDIR|Qtopdir, 0}, buf, 0, eve, 0555, dp);
 			break;
 		case Qportdir:

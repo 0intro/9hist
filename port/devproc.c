@@ -374,7 +374,7 @@ procread(Chan *c, void *va, long n, vlong off)
 			return procctlmemio(p, offset, n, va, 1);
 
 		/* Protect crypt key memory */
-		if(offset >= palloc.cmembase&&offset < palloc.cmemtop)
+		if(offset+n >= palloc.cmembase && offset < palloc.cmemtop)
 			error(Eperm);
 
 		/* validate physical kernel addresses */
