@@ -114,6 +114,12 @@ retry:
 		unlock(p);
 		goto retry;
 	}
+
+if(p->log == 0) {
+	p->log = smalloc(8192);
+	p->lptr = 0;
+}
+
 	uncachepage(p);
 	p->ref++;
 	p->va = va;
@@ -228,6 +234,10 @@ duppage(Page *p)				/* Always call with p locked */
 		unlock(np);
 		return;
 	}
+if(np->log == 0) {
+	np->log = smalloc(8192);
+	np->lptr = 0;
+}
 	
 	uncachepage(np);
 	np->va = p->va;
