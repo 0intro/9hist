@@ -687,7 +687,7 @@ enum
 	SCSIread	= 0,
 	SCSIwrite,
 
-	SCSImaxxfer	= 1024*1024,
+	SCSImaxxfer	= 2048*1024,
 };
 
 /*
