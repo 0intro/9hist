@@ -820,6 +820,7 @@ setladdrport(Conv* c, char* str, int announcing)
 	char *p;
 	char *rv;
 	ushort lport;
+	uchar addr[IPaddrlen];
 
 	rv = nil;
 
@@ -844,8 +845,13 @@ setladdrport(Conv* c, char* str, int announcing)
 	} else {
 		if(strcmp(str, "*") == 0)
 			ipmove(c->laddr, IPnoaddr);
-		else
-			parseip(c->laddr, str);
+		else {
+			parseip(addr, str);
+			if(ipforme(c->p->f, addr))
+				ipmove(c->laddr, addr);
+			else
+				return "not a local IP address";
+		}
 	}
 
 	/* one process can get all connections */
