@@ -52,14 +52,6 @@ settime(int islocal)
 		convM2D(dirbuf, &dir);
 		sprint(dirbuf, "%ld", dir.atime);
 		unmount(0, "/n/boot");
-		/*
-		 *  set real time clock if there is one
-		 */
-		f = open("#r/rtc", ORDWR);
-		if(f > 0){
-			write(f, dirbuf, strlen(dirbuf));
-			close(f);
-		}
 	}
 
 	f = open("#c/time", OWRITE);
