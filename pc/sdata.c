@@ -19,7 +19,7 @@ enum {
 	DbgDEBUG	= 0x80,		/* the current problem... */
 	DbgINL		= 0x100,		/* That Inil20+ message we hate */
 };
-#define DEBUG		(DbgDEBUG|DbgSTATE|DbgCONFIG)
+#define DEBUG		(DbgDEBUG|DbgSTATE)
 
 enum {					/* I/O ports */
 	Data		= 0,
