@@ -104,14 +104,17 @@ struct VGAscr {
 	ulong	colormap[Pcolours][3];
 	int	palettedepth;
 
+	ulong	*mmio;
 	Memimage* gscreen;
 	Memdata* gscreendata;
 	Memsubfont* memdefont;
 
 	int	(*fill)(VGAscr*, Rectangle, ulong);
 	int	(*scroll)(VGAscr*, Rectangle, Rectangle);
+	void	(*blank)(VGAscr*, int);
 	ulong	id;	/* internal identifier for driver use */
 };
+
 extern VGAscr vgascreen[];
 
 enum {
@@ -123,6 +126,7 @@ extern void mousectl(char*[], int);
 
 /* screen.c */
 extern int		hwaccel;	/* use hw acceleration; default on */
+extern int		hwblank;	/* use hw blanking; default on */
 extern void	flushmemscreen(Rectangle);
 extern int	cursoron(int);
 extern void	cursoroff(int);
@@ -130,6 +134,7 @@ extern void	setcursor(Cursor*);
 extern int	screensize(int, int, int, ulong);
 extern int	screenaperture(int, int);
 extern Rectangle physgscreenr;	/* actual monitor size */
+extern void	blankscreen(int);
 
 /* devdraw.c */
 extern void	deletescreenimage(void);
@@ -138,5 +143,7 @@ extern int		drawhasclients(void);
 /* vga.c */
 extern void	vgascreenwin(VGAscr*);
 extern void	vgaimageinit(ulong);
+extern ulong	vgapcilinear(VGAscr*, int*, int*, int, int);
 
 extern void	drawblankscreen(int);
+extern void	vgablank(VGAscr*, int);

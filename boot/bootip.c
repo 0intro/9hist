@@ -42,7 +42,8 @@ configip(void)
 	case 'b':
 	case 'h':
 	case 'm':
-		ARGF();
+		p = ARGF();
+		USED(p);
 		break;
 	} ARGEND;
 

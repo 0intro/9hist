@@ -51,7 +51,7 @@ screensize(int x, int y, int z, ulong chan)
 	 * be given back if aperture is set.
 	 */
 	if(scr->aperture == 0){
-		int width = (x*(1<<z))/BI2WD;
+		int width = (x*z)/BI2WD;
 
 		gscreendata.bdata = xalloc(width*BY2WD*y);
 		if(gscreendata.bdata == 0)
@@ -73,10 +73,15 @@ screensize(int x, int y, int z, ulong chan)
 	if(gscreen == nil)
 		return -1;
 
+/*	memset(gscreen->data->bdata, 0x15, (x*y*z+7)/8);	/* RSC BUG */
+	memfillcolor(gscreen, DRed);
+
 	scr->palettedepth = 6;	/* default */
 	scr->gscreendata = &gscreendata;
 	scr->memdefont = getmemdefont();
 	scr->gscreen = gscreen;
+
+	physgscreenr = gscreen->r;
 
 	drawcmap();
 	return 0;
@@ -101,8 +106,7 @@ screenaperture(int size, int align)
 		aperture = scr->dev->linear(scr, &size, &align);
 		if(aperture == 0)
 			return 1;
-	}
-	else{
+	}else{
 		aperture = upamalloc(0, size, align);
 		if(aperture == 0)
 			return 1;
@@ -460,6 +464,7 @@ Memimage *lastbadi;
 Memdata *lastbad;
 Memimage *lastbadsrc, *lastbaddst;
 int hwaccel = 1;
+int hwblank = 1;
 
 int
 hwdraw(Memdrawparam *par)
@@ -512,4 +517,14 @@ hwdraw(Memdrawparam *par)
 	}
 
 	return 0;	
+}
+
+void
+blankscreen(int blank)
+{
+	VGAscr *scr;
+
+	scr = &vgascreen[0];
+	if(hwblank && scr->blank)
+		scr->blank(scr, blank);
 }

@@ -16,6 +16,7 @@ enum {
 	IrqAUX		= 12,		/* PS/2 port */
 	IrqIRQ13	= 13,		/* coprocessor on 386 */
 	IrqATA0		= 14,
+	IrqATA1		= 15,
 	MaxIrqPIC	= 15,
 
 	VectorPIC	= 64,

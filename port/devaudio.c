@@ -1188,8 +1188,10 @@ swab(uchar *a)
 {
 	ulong *p, *ep, b;
 
-	if(!SBswab)
+	if(!SBswab){
+		USED(a);
 		return;
+	}
 	p = (ulong*)a;
 	ep = p + (Bufsize>>2);
 	while(p < ep) {

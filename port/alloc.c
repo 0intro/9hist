@@ -76,7 +76,6 @@ static void
 ppanic(Pool *p, char *fmt, ...)
 {
 	va_list v;
-	int n;
 	Private *pv;
 	char msg[sizeof pv->msg];
 
