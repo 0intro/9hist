@@ -421,7 +421,7 @@ struct Ipfrag
 /* Protocol numbers */
 #define IP_UDPPROTO	17
 #define IP_TCPPROTO	6
-#define	IP_ILPROTO	190		/* I have no idea */
+#define	IP_ILPROTO	40
 
 /* Protocol port numbers */
 #define PORTALLOC	5000		/* First automatic allocated port */

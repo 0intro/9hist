@@ -37,11 +37,10 @@ enum
 	Querytime	= 60*Iltickms,		/* time between queries */
 	Keepalivetime	= 10*Querytime,		/* keep alive time */
 	Defaultwin	= 20,
+	ILgain		= 8,
 };
 
-#define Starttimer(s)	{(s)->timeout = 0; (s)->fasttime = Fasttime; }
-/* Packet dropping putnext for testing */
-#define DPUTNEXT(q, b)	if((MACHP(0)->ticks&7) != 3)PUTNEXT(q, b);else{freeb(b);print(".");}
+#define Starttimer(s)	{(s)->timeout = 0; (s)->fasttime = (Fasttime*(s)->rtt)/Iltickms; (s)->slowtime = (Slowtime*(s)->rtt)/Iltickms; }
 
 void	ilrcvmsg(Ipconv*, Block*);
 void	ilackproc(void*);
@@ -185,6 +184,12 @@ iloput(Queue *q, Block *bp)
 	if(ilcksum)
 		hnputs(ih->ilsum, ptcl_csum(bp, IL_EHSIZE, dlen+IL_HDRSIZE));
 	ilackq(ic, bp);
+
+	/* Start the round trip timer for this packet if the timer is free */
+	if(ic->rttack == 0) {
+		ic->rttack = id;
+		ic->ackms = MACHP(0)->ticks;
+	}
 	ic->acktime = Ackkeepalive;
 
 	PUTNEXT(q, bp);
@@ -215,7 +220,20 @@ ilackto(Ilcb *ic, ulong ackto)
 {
 	Ilhdr *h;
 	Block *bp;
-	ulong id;
+	ulong id, t;
+
+	if(ic->rttack == ackto) {
+		t = TK2MS(MACHP(0)->ticks - ic->ackms);
+		/* Guard against the ulong zero wrap */
+		if(t < 100*ic->rtt)
+			ic->rtt = (ic->rtt*(ILgain-1)+t)/ILgain;
+		if(ic->rtt < Iltickms)
+			ic->rtt = Iltickms;
+	}
+
+	/* Cancel if we lost the packet we were interested in */
+	if(ic->rttack <= ackto)
+		ic->rttack = 0;
 
 	qlock(&ic->ackq);
 	while(ic->unacked) {
@@ -308,6 +326,7 @@ ilrcvmsg(Ipconv *ipc, Block *bp)
 			ic->recvd = 0;
 			ic->rstart = nhgetl(ih->ilid);
 			ic->slowtime = Slowtime;
+			ic->rtt = Iltickms;
 			ic->querytime = Keepalivetime;
 			ic->deathtime = Keepalivetime;
 			ic->window = Defaultwin;
@@ -770,11 +789,11 @@ ilstart(Ipconv *ipc, int type, int window)
 	if(ic->state != Ilclosed)
 		return;
 
-	Starttimer(ic);
 	ic->unacked = 0;
 	ic->outoforder = 0;
 	ic->slowtime = Slowtime;
-
+	ic->rtt = Iltickms;
+	Starttimer(ic);
 
 	initseq += TK2MS(MACHP(0)->ticks);
 	ic->start = initseq & 0xffffff;
