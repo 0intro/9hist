@@ -25,10 +25,12 @@ main(void)
 	machinit();
 	confinit();
 	mmuinit();
+	screeninit();
 	printinit();
 	print("sparc plan 9\n");
 	trapinit();
 	kmapinit();
+	ioinit();
 	cacheinit();
 	intrinit();
 	procinit0();
@@ -72,6 +74,18 @@ machinit(void)
 	m->machno = n;
 	m->mmask = 1<<m->machno;
 	m->fpstate = FPinit;
+}
+
+void
+ioinit(void)
+{
+	KMap *k;
+
+	k = kmappa(KMDUART, PTEIO|PTENOCACHE);
+	sccsetup((void*)(k->va));
+	sccspecial(0, 0, &kbdq, 2400);		/* scc port 0 is the keyboard */
+	kbdq.putc = kbdstate;
+	sccspecial(1, 0, &mouseq, 2400);	/* scc port 1 is the mouse */
 }
 
 void
@@ -342,4 +356,10 @@ print("%d lance buffers\n", i);
 	lp->rp = (Etherpkt*)k->va;
 	lp->ltp = lp->lrp+lp->nrrb;
 	lp->tp = lp->rp+lp->nrrb;
+}
+
+void
+firmware(void)
+{
+	reset();
 }

@@ -9,9 +9,11 @@
 void
 initq(IOQ *q)
 {
+	lock(q);
 	q->in = q->out = q->buf;
 	q->puts = puts;
 	q->putc = putc;
+	unlock(q);
 }
 
 int

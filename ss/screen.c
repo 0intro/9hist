@@ -20,11 +20,7 @@ struct{
 	int	bwid;
 }out;
 
-int	duartacr;
-int	duartimr;
-
 void	(*kprofp)(ulong);
-void	kbdstate(int);
 
 GBitmap	gscreen =
 {
@@ -78,220 +74,11 @@ screenputc(int c)
 	}
 }
 
-/*
- *  Driver for the Z8530.
- */
-enum
-{
-	/* wr 0 */
-	ResExtPend=	2<<3,
-	ResTxPend=	5<<3,
-	ResErr=		6<<3,
-
-	/* wr 1 */
-	TxIntEna=	1<<1,
-	RxIntDis=	0<<3,
-	RxIntFirstEna=	1<<3,
-	RxIntAllEna=	2<<3,
-
-	/* wr 3 */
-	RxEna=		1,
-	Rx5bits=	0<<6,
-	Rx7bits=	1<<6,
-	Rx6bits=	2<<6,
-	Rx8bits=	3<<6,
-
-	/* wr 4 */
-	SyncMode=	0<<2,
-	Rx1stop=	1<<2,
-	Rx1hstop=	2<<2,
-	Rx2stop=	3<<2,
-	X16=		1<<6,
-
-	/* wr 5 */
-	TxRTS=		1<<1,
-	TxEna=		1<<3,
-	TxBreak=	1<<4,
-	TxDTR=		1<<7,
-	Tx5bits=	0<<5,
-	Tx7bits=	1<<5,
-	Tx6bits=	2<<5,
-	Tx8bits=	3<<5,
-
-	/* wr 9 */
-	IntEna=		1<<3,
-	ResetB=		1<<6,
-	ResetA=		2<<6,
-	HardReset=	3<<6,
-
-	/* wr 11 */
-	TRxCOutBR=	2,
-	TxClockBR=	2<<3,
-	RxClockBR=	2<<5,
-	TRxCOI=		1<<2,
-
-	/* wr 14 */
-	BREna=		1,
-	BRSource=	2,
-
-	/* rr 0 */
-	RxReady=	1,
-	TxReady=	1<<2,
-	RxDCD=		1<<3,
-	RxCTS=		1<<5,
-	RxBreak=	1<<7,
-
-	/* rr 3 */
-	ExtPendB=	1,	
-	TxPendB=	1<<1,
-	RxPendB=	1<<2,
-	ExtPendA=	1<<3,	
-	TxPendA=	1<<4,
-	RxPendA=	1<<5,
-};
-
-typedef struct Z8530	Z8530;
-struct Z8530
-{
-	uchar	ptrb;
-	uchar	dummy1;
-	uchar	datab;
-	uchar	dummy2;
-	uchar	ptra;
-	uchar	dummy3;
-	uchar	dataa;
-	uchar	dummy4;
-};
-
-#define NDELIM 5
-typedef struct Duart	Duart;
-struct Duart
-{
-	QLock;
-	ushort	sticky[16];	/* sticky write register values */
-	uchar	*ptr;		/* command/pointer register in Z8530 */
-	uchar	*data;		/* data register in Z8530 */
-};
-Duart	duart[2];
-
-#define PRINTING	0x4
-#define MASK		0x1
-
-/*
- *  Access registers using the pointer in register 0.
- */
 void
-duartwrreg(Duart *dp, int addr, int value)
+screenputs(char *s, int n)
 {
-	*dp->ptr = addr;
-	*dp->ptr = dp->sticky[addr] | value;
-}
-
-ushort
-duartrdreg(Duart *dp, int addr)
-{
-	*dp->ptr = addr;
-	return *dp->ptr;
-}
-
-/*
- *  set the baud rate by calculating and setting the baudrate
- *  generator constant.  This will work with fairly non-standard
- *  baud rates.
- */
-void
-duartsetbaud(Duart *dp, int rate)
-{
-	int brconst;
-
-	brconst = 10000000/(16*2*rate) - 2;
-	duartwrreg(dp, 12, brconst & 0xff);
-	duartwrreg(dp, 13, (brconst>>8) & 0xff);
-}
-
-/*
- * Initialize just keyboard and mouse for now
- */
-void
-duartinit(void)
-{
-	Duart *dp;
-	Z8530 *zp;
-	KMap *k;
-
-	k = kmappa(KMDUART, PTEIO|PTENOCACHE);
-	zp = (Z8530*)k->va;
-
-	/*
-	 *  get port addresses
-	 */
-	duart[0].ptr = &zp->ptra;
-	duart[0].data = &zp->dataa;
-	duart[1].ptr = &zp->ptrb;
-	duart[1].data = &zp->datab;
-
-	for(dp=duart; dp < &duart[2]; dp++){
-		memset(dp->sticky, 0, sizeof(dp->sticky));
-
-		/*
-		 *  enable I/O, 8 bits/character
-		 */
-		dp->sticky[3] = RxEna | Rx8bits;
-		duartwrreg(dp, 3, 0);
-		dp->sticky[5] = TxEna | Tx8bits;
-		duartwrreg(dp, 5, 0);
-
-		/*
-	 	 *  turn on interrupts
-		 */
-		dp->sticky[1] |= TxIntEna | RxIntAllEna;
-		duartwrreg(dp, 1, 0);
-		dp->sticky[9] |= IntEna;
-		duartwrreg(dp, 9, 0);
-	}
-
-	/*
-	 *  turn on DTR and RTS
-	 */
-	dp = &duart[1];
-	dp->sticky[5] |= TxRTS | TxDTR;
-	duartwrreg(dp, 5, 0);
-}
-
-void
-duartintr(void)
-{
-	char ch;
-	int cause;
-	Duart *dp;
-
-	cause = duartrdreg(&duart[0], 3);
-
-	/*
-	 * Keyboard
-	 */
-	dp = &duart[0];
-	if(cause & ExtPendA)
-		duartwrreg(dp, 0, ResExtPend);
-	if(cause & RxPendA){
-		ch = *dp->data;
-		kbdstate(ch);
-	}
-	if(cause & TxPendA)
-		duartwrreg(dp, 0, ResTxPend);
-	/*
-	 * Mouse
-	 */
-	dp = &duart[1];
-	if(cause & ExtPendB)
-		duartwrreg(dp, 0, ResExtPend);
-	if(cause & RxPendB){
-		ch = *dp->data;
-		mousechar(ch);
-	}
-	if(cause & TxPendB)
-		duartwrreg(dp, 0, ResTxPend);
-	cause = duartrdreg(&duart[0], 3);
+	while(n-- > 0)
+		screenputc(*s++);
 }
 
 /*
@@ -589,8 +376,8 @@ latin1(int k1, int k2)
 	return 0;
 }
 
-void
-kbdstate(int c)
+int
+kbdstate(IOQ *q, int c)
 {
 	static shift = 0x00;
 	static caps = 0;
@@ -664,13 +451,23 @@ kbdstate(int c)
 			k2 = tc;
 			tc = latin1(k1, k2);
 			if(c == 0){
-				kbdchar(k1);
+				kbdputc(&kbdq, k1);
 				tc = k2;
 			}
 			/* fall through */
 		default:
 			kbdstate = 0;
-			kbdchar(tc);
+			kbdputc(&kbdq, tc);
 		}
 	}
+}
+
+void
+buzz(int freq, int dur)
+{
+}
+
+void
+lights(int mask)
+{
 }

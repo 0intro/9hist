@@ -1,6 +1,8 @@
 #include "../port/portfns.h"
 
 void	cacheinit(void);
+int	cangetc(void*);
+int	canputc(void*);
 void	clearfpintr(void);
 #define	clearmmucache()
 void	clockinit(void);
@@ -25,11 +27,16 @@ void	fpregrestore(char*);
 void	fpregsave(char*);
 void	fprestore(FPsave*);
 void	fpsave(FPsave*);
+int	getc(IOQ*);
+int	gets(IOQ*, void*, int);
 int	getb2(ulong);
 int	getrs232o(void);
 int	getw2(ulong);
+void	initq(IOQ*);
 void	intrinit(void);
-void	kbdchar(int);
+void	ioinit(void);
+int	kbdputc(IOQ*, int);
+int	kbdstate(IOQ*, int);
 void	kbdclock(void);
 void	kbdrepeat(int);
 KMap*	kmap(Page*);
@@ -42,12 +49,14 @@ void	lancesetup(Lance*);
 void	lancetoggle(void);
 void	mmuinit(void);
 void	mousebuttons(int);
-void	mousechar(int);
+int	mouseputc(IOQ*, int);
 void	mouseclock(void);
 void	printinit(void);
 #define	procrestore(x,y)
 #define	procsave(x,y)
 #define	procsetup(x)	((p)->fpstate = FPinit)
+int	putc(IOQ*, int);
+void	puts(IOQ*, void*, int);
 void	putb2(ulong, int);
 void	putcontext(int);
 void	putcxreg(int);

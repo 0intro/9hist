@@ -77,7 +77,7 @@ trap(Ureg *ur)
 			clock(ur);
 			break;
 		case 12:			/* keyboard and mouse */
-			duartintr();
+			sccintr();
 			break;
 		case 5:				/* lance */
 			lanceintr();

@@ -197,26 +197,28 @@ sccbreak(SCC *sp, int ms)
 }
 
 /*
- *  9600 baud, 1 stop bit, 8 bit chars, no interrupts,
+ *  default is 9600 baud, 1 stop bit, 8 bit chars, no interrupts,
  *  transmit and receive enabled, interrupts disabled.
  */
 void
-sccsetup(void)
+sccsetup(void *addr)
 {
+	SCCdev *dev;
 	SCC *sp;
 	static int already;
 
 	if(already)
 		return;
 	already = 1;
+	dev = addr;
 
 	/*
 	 *  get port addresses
 	 */
-	scc[0].ptr = &SCCADDR->ptra;
-	scc[0].data = &SCCADDR->dataa;
-	scc[1].ptr = &SCCADDR->ptrb;
-	scc[1].data = &SCCADDR->datab;
+	scc[0].ptr = &dev->ptra;
+	scc[0].data = &dev->dataa;
+	scc[1].ptr = &dev->ptrb;
+	scc[1].data = &dev->datab;
 
 	for(sp = scc; sp < &scc[2]; sp++){
 		memset(sp->sticky, 0, sizeof(sp->sticky));
@@ -331,11 +333,6 @@ sccintr(void)
 void
 sccdevice(SCC *sp)
 {
-	/*
-	 *  turn on both ports
-	 */
-	sccsetup();
-
 	/*
 	 *  set up i/o routines
 	 */

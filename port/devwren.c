@@ -235,6 +235,7 @@ wrenread(Chan *c, char *a, long n, ulong offset)
 		n = cmd->data.ptr - cmd->data.base;
 		memmove(a, cmd->data.base, n);
 		qunlock(cmd);
+		poperror();
 		break;
 	case Qstruct:
 		if (n < 2*sizeof(ulong))
@@ -286,6 +287,7 @@ wrenwrite(Chan *c, char *a, long n, ulong offset)
 		scsiexec(cmd, 0);
 		n = cmd->data.ptr - cmd->data.base;
 		qunlock(cmd);
+		poperror();
 		break;
 	default:
 		panic("wrenwrite");

@@ -1457,10 +1457,10 @@ loop:
 			 */
 			if(cp->first!=cp->next && NOW>=cp->out[cp->first].time){
 				mp = &(cp->out[cp->first]);
-				if(cp->rexmit++ > 15){
+/*				if(cp->rexmit++ > 15){
 					norack(cp, mp->mid);
 					noreset(cp);
-				} else
+				} else /**/
 					nosend(cp, mp);
 			}
 
