@@ -530,8 +530,11 @@ namec(char *name, int amode, int omode, ulong perm)
 
 	name = nextelem(name, elem);
 
-	if(mntok && !isdot)
-	if(!(amode==Amount && elem[0]==0))	/* don't domount on slash */
+	/*
+	 *  If mounting, don't follow the mount entry for root or the
+	 *  current directory.
+	 */
+	if(mntok && !isdot && !(amode==Amount && elem[0]==0))
 		c = domount(c);			/* see case Atodir below */
 
 	/*
@@ -548,7 +551,6 @@ namec(char *name, int amode, int omode, ulong perm)
 	/*
 	 * Last element; act according to type of access.
 	 */
-
 	switch(amode){
 	case Aaccess:
 		if(isdot)
