@@ -1414,6 +1414,8 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 				p += l;
 				m -= l;
 			}
+			if(v == 0)
+				hwscreenwrite(miny, maxy);
 			break;
 
 		case 'x':

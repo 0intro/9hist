@@ -27,3 +27,5 @@ extern Mouseinfo	mouse;
 extern Cursorinfo	cursor;
 
 extern void		mouseupdate(int);
+
+#define	hwscreenwrite(a, b)
