@@ -250,7 +250,7 @@ upamalloc(ulong pa, int size, int align)
 }
 
 void
-upafree(...)
+upafree(ulong, int)
 {
-	panic("upafree");
+	print("upafree: virtual mapping not freed\n");
 }

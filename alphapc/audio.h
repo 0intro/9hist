@@ -12,5 +12,5 @@ enum
 #define UNCACHED(type, v)	(type*)((ulong)(v))
 #define dcflush(a, b)
 
-#define Int0vec			VectorPIC
-#define setvec(v, f, a)		intrenable(v, f, a, BUSUNKNOWN)
+#define Int0vec
+#define setvec(v, f, a)		intrenable(v, f, a, BUSUNKNOWN, "audio")

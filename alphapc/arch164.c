@@ -164,100 +164,26 @@ pcimem2117x(int addr, int len)
 	return kmapio(0x88, addr, len);
 }
 
-/*
- *	interrupts -- adapted from PC, needs work.
- */
-
-static Lock irqctllock;
-static Irqctl *irqctl[256];
-static char irqmask[3];
-
-static void
-intr164(Ureg *ur)
-{
-	int i, v;
-	Irqctl *ctl;
-	Irq *irq;
-	Mach *mach;
-
-	v = (ulong)ur->a1>>4;
-	if (v < 0x80) {
-		iprint("unknown device intr v %d\n", v);
-		return;
-	}
-	v -= 0x80;
-	if(v < 256 && (ctl = irqctl[v])){
-		if(ctl->isintr){
-			m->intr++;
-			if(ctl->isr)
-				ctl->isr(v);
-/*				if(v >= VectorPIC && v <= MaxVectorPIC)
-				m->lastintr = v-VectorPIC; */
-		}
-
-		for(irq = ctl->irq; irq; irq = irq->next)
-			irq->f(ur, irq->a);
-
-		if(ctl->eoi)
-			ctl->eoi(v);
-	}
-	else if(v >= VectorPIC && v <= MaxVectorPIC){
-		/*
-		 * An unknown interrupt.
-		 * Check for a default IRQ7. This can happen when
-		 * the IRQ input goes away before the acknowledge.
-		 * In this case, a 'default IRQ7' is generated, but
-		 * the corresponding bit in the ISR isn't set.
-		 * In fact, just ignore all such interrupts.
-		 */
-		iprint("cpu%d: spurious interrupt %d, last %d",
-			m->machno, v-VectorPIC, 0 /*m->lastintr*/);
-		for(i = 0; i < 32; i++){
-			if(!(active.machs & (1<<i)))
-				continue;
-			mach = MACHP(i);
-			if(m->machno == mach->machno)
-				continue;
-			iprint(": cpu%d: last %d", mach->machno, 0 /*mach->lastintr*/);
-		}
-		iprint("\n");
-/*			m->spuriousintr++; */
-		return;
-	}
-	else{
-		dumpregs(ur);
-		panic("unknown intr: %d\n", v); /* */
-	}
-}
-
 static int
-intrenable164(int v, void (*f)(Ureg*, void*), void*a, int tbdf)
+intrenable164(Vctl *v)
 {
-	Irq * irq;
-	Irqctl *ctl;
+	int vec, irq;
 
-	lock(&irqctllock);
-	if(irqctl[v] == 0){
-		ctl = xalloc(sizeof(Irqctl));
-/* this is all wrong; FIXME! */
-		if(BUSTYPE(tbdf) == BusPCI)
-			cserve(52, v-VectorPCI);
-		else if(v >= VectorPIC && i8259enable(v, tbdf, ctl) == -1){
-			unlock(&irqctllock);
-			iprint("intrenable: didn't find v %d, tbdf 0x%uX\n", v, tbdf);
-			xfree(ctl);
-			return -1;
-		}
-		irqctl[v] = ctl;
+	irq = v->irq;
+	if(irq > MaxIrqPIC) {
+		print("intrenable: irq %d out of range\n", v->irq);
+		return -1;
 	}
-	ctl = irqctl[v];
-	irq = xalloc(sizeof(Irq));
-	irq->f = f;
-	irq->a = a;
-	irq->next = ctl->irq;
-	ctl->irq = irq;
-	unlock(&irqctllock);
-	return 0;
+	if(BUSTYPE(v->tbdf) == BusPCI) {
+		vec = irq+VectorPCI;
+		cserve(52, irq);
+	}
+	else {
+		vec = irq+VectorPIC;
+		if(i8259enable(irq, v->tbdf, v) == -1)
+			return -1;
+	}
+	return vec;
 }
 
 /*
@@ -405,7 +331,6 @@ PCArch arch164 = {
 	coredetach,
 	pcicfg2117x,
 	pcimem2117x,
-	intr164,
 	intrenable164,
 
 	inb2117x,

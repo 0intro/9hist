@@ -35,6 +35,8 @@ i8259init(void)
 {
 	int /*elcr1, */ x;
 
+	ioalloc(Int0ctl, 2, 0, "i8259.0");
+	ioalloc(Int1ctl, 2, 0, "i8259.1");
 	int0mask = 0xFF;
 	int1mask = 0xFF;
 
@@ -121,13 +123,12 @@ i8259isr(int v)
 }
 
 int
-i8259enable(int v, int, Irqctl* irqctl)
+i8259enable(int v, int, Vctl* vctl)
 {
-	if(v < VectorPIC || v > MaxVectorPIC){
-		iprint("i8259enable: vector %d out of range\n", v);
+	if(v > MaxIrqPIC){
+		print("i8259enable: vector %d out of range\n", v);
 		return -1;
 	}
-	v -= VectorPIC;
 
 	/*
 	 *  enable corresponding interrupt in 8259
@@ -142,10 +143,10 @@ i8259enable(int v, int, Irqctl* irqctl)
 	}
 
 	if(elcr & (1<<v))
-		irqctl->eoi = i8259isr;
+		vctl->eoi = i8259isr;
 	else
-		irqctl->isr = i8259isr;
-	irqctl->isintr = 1;
+		vctl->isr = i8259isr;
+	vctl->isintr = 1;
 
 	return v;
 }

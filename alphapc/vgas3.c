@@ -19,7 +19,7 @@ s3pageset(VGAscr* scr, int page)
 	int opage;
 
 	crt35 = vgaxi(Crtx, 0x35);
-	if(scr->gscreen->ldepth == 3){
+	if(scr->gscreen->depth >= 8){
 		/*
 		 * The S3 registers need to be unlocked for this.
 		 * Let's hope they are already:
@@ -127,7 +127,7 @@ s3disable(VGAscr*)
 static void
 s3enable(VGAscr* scr)
 {
-	int i, id;
+	int i;
 	ulong storage;
 
 	s3disable(scr);
@@ -135,30 +135,16 @@ s3enable(VGAscr* scr)
 	/*
 	 * Cursor colours. Set both the CR0[EF] and the colour
 	 * stack in case we are using a 16-bit RAMDAC.
-	 * This stuff is just a mystery for the ViRGE/GX2.
 	 */
 	vgaxo(Crtx, 0x0E, Pwhite);
 	vgaxo(Crtx, 0x0F, Pblack);
 	vgaxi(Crtx, 0x45);
-	id = (vgaxi(Crtx, 0x30)<<8)|vgaxi(Crtx, 0x2E);
-	switch(id){
 
-	case 0xE110:				/* ViRGE/GX2 */
-		for(i = 0; i < 3; i++)
-			vgaxo(Crtx, 0x4A, Pblack);
-		vgaxi(Crtx, 0x45);
-		for(i = 0; i < 3; i++)
-			vgaxo(Crtx, 0x4B, Pwhite);
-		break;
-
-	default:
-		for(i = 0; i < 3; i++)
-			vgaxo(Crtx, 0x4A, Pwhite);
-		vgaxi(Crtx, 0x45);
-		for(i = 0; i < 3; i++)
-			vgaxo(Crtx, 0x4B, Pblack);
-		break;
-	}
+	for(i = 0; i < 3; i++)
+		vgaxo(Crtx, 0x4A, Pblack);
+	vgaxi(Crtx, 0x45);
+	for(i = 0; i < 3; i++)
+		vgaxo(Crtx, 0x4B, Pwhite);
 
 	/*
 	 * Find a place for the cursor data in display memory.
@@ -195,7 +181,10 @@ s3load(VGAscr* scr, Cursor* curs)
 	id = (vgaxi(Crtx, 0x30)<<8)|vgaxi(Crtx, 0x2E);
 	switch(id){
 
+	case 0xE131:				/* ViRGE */
+	case 0xE18A:				/* ViRGE/[DG]X */
 	case 0xE110:				/* ViRGE/GX2 */
+	case 0xE13D:				/* ViRGE/VX */
 		p += scr->storage;
 		break;
 
@@ -238,7 +227,10 @@ s3load(VGAscr* scr, Cursor* curs)
 
 	switch(id){
 
+	case 0xE131:				/* ViRGE */
+	case 0xE18A:				/* ViRGE/[DG]X */
 	case 0xE110:				/* ViRGE/GX2 */
+	case 0xE13D:				/* ViRGE/VX */
 		break;
 
 	default:

@@ -96,6 +96,10 @@ dmainit(int chan, int maxtransfer)
 	static int once;
 
 	if(once == 0){
+		if(ioalloc(0x00, 0x10, 0, "dma") < 0
+		|| ioalloc(0x80, 0x10, 0, "dma") < 0
+		|| ioalloc(0xd0, 0x10, 0, "dma") < 0)
+			panic("dmainit");
 		outb(dma[0].mc, 0);
 		outb(dma[1].mc, 0);
 		outb(dma[0].cmask, 0);

@@ -14,24 +14,27 @@
 #include <cursor.h>
 #include "screen.h"
 
+extern uchar	*vgabios;
+
 enum {
 	Qdir,
-	Qvgaiob,
-	Qvgaiow,
-	Qvgaiol,
 	Qvgactl,
+	Qvgabios,
 };
 
 static Dirtab vgadir[] = {
-	"vgaiob",	{ Qvgaiob, 0 },		0,	0660,
-	"vgaiow",	{ Qvgaiow, 0 },		0,	0660,
-	"vgaiol",	{ Qvgaiol, 0 },		0,	0660,
 	"vgactl",	{ Qvgactl, 0 },		0,	0660,
+	"vgabios",	{ Qvgabios, 0 },		0x10000,	0440,
 };
 
 static void
 vgareset(void)
 {
+	/* reserve the 'standard' vga registers */
+	if(ioalloc(0x2b0, 0x2df-0x2b0+1, 0, "vga") < 0)
+		panic("vga ports already allocated"); 
+	if(ioalloc(0x3c0, 0x3da-0x3c0+1, 0, "vga") < 0)
+		panic("vga ports already allocated"); 
 	conf.monitor = 1;
 }
 
@@ -69,10 +72,8 @@ vgaclose(Chan*)
 static long
 vgaread(Chan* c, void* a, long n, vlong off)
 {
-	int len, port;
+	int len;
 	char *p, *s;
-	ushort *sp;
-	ulong *lp;
 	VGAscr *scr;
 	ulong offset = off;
 
@@ -93,21 +94,21 @@ vgaread(Chan* c, void* a, long n, vlong off)
 			s = scr->dev->name;
 		else
 			s = "cga";
-		len = snprint(p, READSTR, "type %s\n", s);
+		len = snprint(p, READSTR, "type: %s\n", s);
 		if(scr->gscreen)
-			len += snprint(p+len, READSTR-len, "size %dx%dx%d\n",
+			len += snprint(p+len, READSTR-len, "size: %dx%dx%d\n",
 				scr->gscreen->r.max.x, scr->gscreen->r.max.y,
-				1<<scr->gscreen->ldepth);
+				scr->gscreen->depth);
 		if(scr->cur)
 			s = scr->cur->name;
 		else
 			s = "off";
-		len += snprint(p+len, READSTR-len, "hwgc %s\n", s);
+		len += snprint(p+len, READSTR-len, "hwgc: %s\n", s);
 		if(scr->pciaddr)
-			snprint(p+len, READSTR-len, "addr 0x%lux\n",
+			snprint(p+len, READSTR-len, "addr: 0x%lux\n",
 				scr->pciaddr);
 		else
-			snprint(p+len, READSTR-len, "addr 0x%lux\n",
+			snprint(p+len, READSTR-len, "addr: 0x%lux\n",
 				scr->aperture);
 
 		n = readstr(offset, a, n, p);
@@ -116,29 +117,17 @@ vgaread(Chan* c, void* a, long n, vlong off)
 
 		return n;
 
-	case Qvgaiob:
-		port = offset;
-		for(p = a; port < offset+n; port++)
-			*p++ = inb(port);
+	case Qvgabios:
+		if(vgabios == nil)
+			error(Egreg);
+		if(offset&0x80000000)
+			offset &= ~0x800E0000;
+		if(offset+n > 0x10000)
+			n = 0x10000-offset;
+		if(n < 0)
+			return 0;
+		memmove(a, vgabios+offset, n);
 		return n;
-
-	case Qvgaiow:
-		if((n & 0x01) || (offset & 0x01))
-			error(Ebadarg);
-		n /= 2;
-		sp = a;
-		for(port = offset; port < offset+n; port += 2)
-			*sp++ = ins(port);
-		return n*2;
-
-	case Qvgaiol:
-		if((n & 0x03) || (offset & 0x03))
-			error(Ebadarg);
-		n /= 4;
-		lp = a;
-		for(port = offset; port < offset+n; port += 4)
-			*lp++ = inl(port);
-		return n*4;
 
 	default:
 		error(Egreg);
@@ -148,23 +137,32 @@ vgaread(Chan* c, void* a, long n, vlong off)
 	return 0;
 }
 
+static char Ebusy[] = "vga already configured";
+
 static void
 vgactl(char* a)
 {
 	int align, i, n, size, x, y, z;
-	char *field[4], *p;
+	char *chanstr, *field[6], *p;
+	ulong chan;
 	VGAscr *scr;
 	extern VGAdev *vgadev[];
 	extern VGAcur *vgacur[];
+	Rectangle r;
 
-	n = getfields(a, field, 4, 1, " ");
-	if(n < 2)
+	n = getfields(a, field, nelem(field), 1, " ");
+	if(n < 1)
 		error(Ebadarg);
 
 	scr = &vgascreen[0];
 	if(strcmp(field[0], "hwgc") == 0){
 		if(n < 2)
 			error(Ebadarg);
+
+		/* BUG: drawinit should become a different message rather than piggybacking */
+		if(scr && scr->dev && scr->dev->drawinit)
+			scr->dev->drawinit(scr);
+
 		if(strcmp(field[1], "off") == 0){
 			lock(&cursor);
 			if(scr->cur){
@@ -205,8 +203,11 @@ vgactl(char* a)
 		}
 	}
 	else if(strcmp(field[0], "size") == 0){
-		if(n < 2)
+		if(n < 3)
 			error(Ebadarg);
+		if(drawhasclients())
+			error(Ebusy);
+
 		x = strtoul(field[1], &p, 0);
 		if(x == 0 || x > 2048)
 			error(Ebadarg);
@@ -219,21 +220,74 @@ vgactl(char* a)
 		if(*p)
 			p++;
 
-		switch(strtoul(p, &p, 0)){
-		case 8:
-			z = 3;
-			break;
+		z = strtoul(p, &p, 0);
 
-		default:
-			z = 0;
-			error(Ebadarg);
-		}
+		chanstr = field[2];
+		if((chan = strtochan(chanstr)) == 0)
+			error("bad channel");
+
+		if(chantodepth(chan) != z)
+			error("depth, channel do not match");
 
 		cursoroff(1);
-		if(screensize(x, y, z))
+		deletescreenimage();
+		if(screensize(x, y, z, chan))
 			error(Egreg);
 		vgascreenwin(scr);
 		cursoron(1);
+		return;
+	}
+	else if(strcmp(field[0], "actualsize") == 0){
+		if(scr->gscreen == nil)
+			error("set the screen size first");
+
+		if(n < 2)
+			error(Ebadarg);
+		x = strtoul(field[1], &p, 0);
+		if(x == 0 || x > 2048)
+			error(Ebadarg);
+		if(*p)
+			p++;
+
+		y = strtoul(p, nil, 0);
+		if(y == 0 || y > 2048)
+			error(Ebadarg);
+
+		if(x > scr->gscreen->r.max.x || y > scr->gscreen->r.max.y)
+			error("physical screen bigger than virtual");
+
+		r = Rect(0,0,x,y);
+		if(!eqrect(r, scr->gscreen->r)){
+			if(scr->cur == nil || scr->cur->doespanning == 0)
+				error("virtual screen not supported");
+		}
+
+		physgscreenr = r;
+		return;
+	}
+	else if(strcmp(field[0], "palettedepth") == 0){
+		if(n < 2)
+			error(Ebadarg);
+
+		x = strtoul(field[1], &p, 0);
+		if(x != 8 && x != 6)
+			error(Ebadarg);
+
+		scr->palettedepth = x;
+		return;
+	}
+	else if(strcmp(field[0], "drawinit") == 0){
+		/*
+		 * This is a separate message, but first we need to make
+		 * aux/vga send it; once everyone has the new vga, we
+		 * can take the drawinit stuff out of hwgc.
+		 */
+
+		/*
+		if(scr && scr->dev && scr->dev->drawinit)
+			scr->dev->drawinit(scr);
+		*/
+
 		return;
 	}
 	else if(strcmp(field[0], "linear") == 0){
@@ -249,6 +303,28 @@ vgactl(char* a)
 			error("not enough free address space");
 		return;
 	}
+/*	else if(strcmp(field[0], "memset") == 0){
+		if(n < 4)
+			error(Ebadarg);
+		memset((void*)strtoul(field[1], 0, 0), atoi(field[2]), atoi(field[3]));
+		return;
+	}
+*/
+	else if(strcmp(field[0], "blank") == 0){
+		if(n < 2)
+			error(Ebadarg);
+		drawblankscreen(atoi(field[1]));
+		return;
+	}
+	else if(strcmp(field[0], "hwaccel") == 0){
+		if(n < 2)
+			error(Ebadarg);
+		if(strcmp(field[1], "on") == 0)
+			hwaccel = 1;
+		else if(strcmp(field[1], "off") == 0)
+			hwaccel = 0;
+		return;
+	}
 
 	error(Ebadarg);
 }
@@ -256,10 +332,7 @@ vgactl(char* a)
 static long
 vgawrite(Chan* c, void* a, long n, vlong off)
 {
-	int port;
 	char *p;
-	ushort *sp;
-	ulong *lp;
 	ulong offset = off;
 
 	switch(c->qid.path & ~CHDIR){
@@ -281,30 +354,6 @@ vgawrite(Chan* c, void* a, long n, vlong off)
 		poperror();
 		free(p);
 		return n;
-
-	case Qvgaiob:
-		p = a;
-		for(port = offset; port < offset+n; port++)
-			outb(port, *p++);
-		return n;
-
-	case Qvgaiow:
-		if((n & 01) || (offset & 01))
-			error(Ebadarg);
-		n /= 2;
-		sp = a;
-		for(port = offset; port < offset+n; port += 2)
-			outs(port, *sp++);
-		return n*2;
-
-	case Qvgaiol:
-		if((n & 0x03) || (offset & 0x03))
-			error(Ebadarg);
-		n /= 4;
-		lp = a;
-		for(port = offset; port < offset+n; port += 4)
-			outl(port, *lp++);
-		return n*4;
 
 	default:
 		error(Egreg);

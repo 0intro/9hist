@@ -29,10 +29,87 @@ char *regname[]={
 	"R18",
 };
 
+static Lock vctllock;
+static Vctl *vctl[256];
+
 void
-intrenable(int irq, void (*f)(Ureg*, void*), void* a, int tbdf)
+intrenable(int irq, void (*f)(Ureg*, void*), void* a, int tbdf, char *name)
 {
-	arch->intrenable(irq, f, a, tbdf);
+	int vno;
+	Vctl *v, *p;
+
+	v = xalloc(sizeof(Vctl));
+	v->isintr = 1;
+	v->irq = irq;
+	v->tbdf = tbdf;
+	v->f = f;
+	v->a = a;
+	strncpy(v->name, name, NAMELEN-1);
+	v->name[NAMELEN-1] = 0;
+
+	ilock(&vctllock);
+	vno = arch->intrenable(v);
+	if(vno == -1){
+		iunlock(&vctllock);
+		print("intrenable: couldn't enable irq %d, tbdf 0x%uX for %s\n",
+			irq, tbdf, v->name);
+		if(p=vctl[vno]){
+			print("intrenable: irq %d is already used by", irq);
+			for(; p; p=p->next)
+				print(" %s", p->name);
+			print("\n");
+		}
+		xfree(v);
+		return;
+	}
+	if(vctl[vno]){
+		if(vctl[vno]->isr != v->isr || vctl[vno]->eoi != v->eoi)
+			panic("intrenable: handler: %s %s %luX %luX %luX %luX\n",
+				vctl[vno]->name, v->name,
+				vctl[vno]->isr, v->isr, vctl[vno]->eoi, v->eoi);
+		v->next = vctl[vno];
+	}
+	vctl[vno] = v;
+	iunlock(&vctllock);
+}
+
+int
+irqallocread(char *buf, long n, vlong offset)
+{
+	int vno;
+	Vctl *v;
+	long oldn;
+	char str[11+1+NAMELEN+1], *p;
+	int m;
+
+	if(n < 0 || offset < 0)
+		error(Ebadarg);
+
+	oldn = n;
+	for(vno=0; vno<nelem(vctl); vno++){
+		for(v=vctl[vno]; v; v=v->next){
+			m = snprint(str, sizeof str, "%11d %11d %.*s\n", vno, v->irq, NAMELEN, v->name);
+			if(m <= offset)	/* if do not want this, skip entry */
+				offset -= m;
+			else{
+				/* skip offset bytes */
+				m -= offset;
+				p = str+offset;
+				offset = 0;
+
+				/* write at most max(n,m) bytes */
+				if(m > n)
+					m = n;
+				memmove(buf, p, m);
+				n -= m;
+				buf += m;
+
+				if(n == 0)
+					return oldn;
+			}	
+		}
+	}
+	return oldn - n;
 }
 
 typedef struct Mcheck Mcheck;
@@ -100,6 +177,79 @@ mcheck(void *x)
 }
 
 void
+intr(Ureg *ur)
+{
+	int i, vno;
+	Vctl *ctl, *v;
+	Mach *mach;
+
+	vno = (ulong)ur->a1>>4;
+	vno -= 0x80;
+	if(vno < nelem(vctl) && (ctl = vctl[vno])){
+		if(ctl->isintr){
+			m->intr++;
+			if(vno >= VectorPIC && vno <= MaxVectorPIC)
+				m->lastintr = vno-VectorPIC;
+		}
+
+		if(ctl->isr)
+			ctl->isr(vno);
+		for(v = ctl; v != nil; v = v->next) {
+			if(v->f)
+				v->f(ur, v->a);
+		}
+
+		if(ctl->eoi)
+			ctl->eoi(vno);
+
+		/* 
+		 *  preemptive scheduling.  to limit stack depth,
+		 *  make sure process has a chance to return from
+		 *  the current interrupt before being preempted a
+		 *  second time.
+		 */
+		if(ctl->isintr)
+		if(up && up->state == Running)
+		if(anyhigher())
+		if(up->preempted == 0)
+		if(!active.exiting){
+			up->preempted = 1;
+			sched();
+			splhi();
+			up->preempted = 0;
+			return;
+		}
+	}
+	else if(vno >= VectorPIC && vno <= MaxVectorPIC){
+		/*
+		 * An unknown interrupt.
+		 * Check for a default IRQ7. This can happen when
+		 * the IRQ input goes away before the acknowledge.
+		 * In this case, a 'default IRQ7' is generated, but
+		 * the corresponding bit in the ISR isn't set.
+		 * In fact, just ignore all such interrupts.
+		 */
+		iprint("cpu%d: spurious interrupt %d, last %d",
+			m->machno, vno-VectorPIC, m->lastintr);
+		for(i = 0; i < 32; i++){
+			if(!(active.machs & (1<<i)))
+				continue;
+			mach = MACHP(i);
+			if(m->machno == mach->machno)
+				continue;
+			iprint(": cpu%d: last %d", mach->machno, mach->lastintr);
+		}
+		iprint("\n");
+		m->spuriousintr++;
+		return;
+	}
+	else{
+		dumpregs(ur);
+		panic("unknown intr: %d\n", vno); /* */
+	}
+}
+
+void
 trap(Ureg *ur)
 {
 	char buf[ERRLEN];
@@ -133,23 +283,7 @@ trap(Ureg *ur)
 			mcheck((void*)(KZERO|(ulong)ur->a2));
 			break;
 		case 3:	/* device */
-			arch->intr(ur);
-			/* 
-			 *  preemptive scheduling.  to limit stack depth,
-			 *  make sure process has a chance to return from
-			 *  the current interrupt before being preempted a
-			 *  second time.
-			 */
-			if(up && up->state == Running)
-			if(anyhigher())
-			if(up->preempted == 0)
-			if(!active.exiting){
-				up->preempted = 1;
-				sched();
-				splhi();
-				up->preempted = 0;
-				return;
-			}
+			intr(ur);
 			break;
 		case 4:	/* perf counter */
 			panic("perf count");

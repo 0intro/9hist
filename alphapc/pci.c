@@ -26,6 +26,8 @@ static Pcidev* pcitail;
 
 static int pcicfgrw32(int, int, int, int);
 
+uchar	*vgabios;
+
 static int
 pciscan(int bno, Pcidev** list)
 {
@@ -89,9 +91,16 @@ pciscan(int bno, Pcidev** list)
 			 */
 			switch(p->ccrb){
 
+			case 0x03:		/* display controller */
+				if(vgabios == nil) {
+					v = pcicfgr32(p, PciROM);
+					pcicfgw32(p, PciROM, v|1);	/* enable decode */
+					vgabios = kmapv(((uvlong)0x88<<32LL)|(v&~0xffff), 0x10000);
+					// print("VGA BIOS %lux -> %lux\n", v, vgabios);
+				}
+				/* fall through */
 			case 0x01:		/* mass storage controller */
 			case 0x02:		/* network controller */
-			case 0x03:		/* display controller */
 			case 0x04:		/* multimedia device */
 			case 0x07:		/* simple communication controllers */
 			case 0x08:		/* base system peripherals */

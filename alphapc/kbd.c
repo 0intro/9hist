@@ -389,8 +389,28 @@ i8042auxenable(void (*putc)(int, int))
 		return;
 	}
 	auxputc = putc;
-	intrenable(VectorAUX, i8042intr, 0, BUSUNKNOWN);
+	intrenable(IrqAUX, i8042intr, 0, BUSUNKNOWN, "kbdaux");
 	iunlock(&i8042lock);
+}
+
+static void
+setscan(int code)
+{
+	char *err = "setscan: set scan code failed\n";
+
+	outb(Data, 0xF0);
+	if(inready() < 0 || inb(Data) != 0xFA || outready() < 0) {
+		print(err);
+		return;
+	}
+	outb(Data, code);
+	if(inready() < 0) {
+		print(err);
+		return;
+	}
+	inb(Data);
+	if(outready() < 0)
+		print(err);
 }
 
 void
@@ -403,7 +423,10 @@ kbdinit(void)
 		panic("kbdinit");
 	qnoblock(kbdq, 1);
 
-	intrenable(VectorKBD, i8042intr, 0, BUSUNKNOWN);
+	ioalloc(Data, 1, 0, "kbd");
+	ioalloc(Cmd, 1, 0, "kbd");
+
+	intrenable(IrqKBD, i8042intr, 0, BUSUNKNOWN, "kbd");
 
 	/* wait for a quiescent controller */
 	while((c = inb(Status)) & (Outbusy | Inready))
@@ -429,4 +452,5 @@ kbdinit(void)
 		print("kbd init failed\n");
 	outb(Data, ccc);
 	outready();
+	setscan(0x02);
 }

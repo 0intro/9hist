@@ -37,7 +37,7 @@ key(int islocal, Method *mp)
 	if(strcmp(cputype, "sparc") == 0){
 		fd = open("#r/nvram", ORDWR);
 		safeoff = 1024+850;
-	} else if(strcmp(cputype, "386") == 0){
+	} else if(strcmp(cputype, "386") == 0 || strcmp(cputype, "alpha") == 0){
 		fd = open("#H/hd0nvram", ORDWR);
 		if(fd < 0)
 			fd = open("#w/sd0nvram", ORDWR);
@@ -82,9 +82,6 @@ key(int islocal, Method *mp)
 			warning("can't write key to nvram");
 	}
 	close(fd);
-
-//fprint(2, "hostowner = %s\n", safe->authid);
-//fprint(2, "hostdomain = %s\n", safe->authdom);
 
 	/* set host's key */
 	if(writefile("#c/key", safe->machkey, DESKEYLEN) < 0)

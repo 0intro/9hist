@@ -25,10 +25,14 @@ ns16552install(void)
 		return;
 	already = 1;
 
+	if(ioalloc(Uart0, 8, 0, "eia0") < 0)
+		print("eia0: port %d in use\n", Uart0);
 	ns16552setup(Uart0, UartFREQ, "eia0", Ns550);
-	intrenable(VectorUART0, ns16552intrx, (void*)0, BUSUNKNOWN);
+	intrenable(IrqUART0, ns16552intrx, (void*)0, BUSUNKNOWN, "eia0");
+	if(ioalloc(Uart1, 8, 0, "eia1") < 0)
+		print("eia1: port %d in use\n", Uart1);
 	ns16552setup(Uart1, UartFREQ, "eia1", Ns550);
-	intrenable(VectorUART1, ns16552intrx, (void*)0, BUSUNKNOWN);
+	intrenable(IrqUART1, ns16552intrx, (void*)0, BUSUNKNOWN, "eia1");
 	addclock0link(uartclock);
 }
 

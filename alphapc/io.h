@@ -5,7 +5,6 @@ enum {
 };
 
 enum {
-/*	VectorPIC	= 32,		/* external i8259 interrupts */
 	IrqCLOCK	= 0,
 	IrqKBD		= 1,
 	IrqUART1	= 3,
@@ -19,37 +18,24 @@ enum {
 	IrqATA0		= 14,
 	MaxIrqPIC	= 15,
 
-/* deprecated: */
-	VectorPIC	= 128,		/* external [A]PIC interrupts */
-	VectorCLOCK	= VectorPIC+0,
-	VectorKBD	= VectorPIC+1,
-	VectorUART1	= VectorPIC+3,
-	VectorUART0	= VectorPIC+4,
-	VectorPCMCIA	= VectorPIC+5,
-	VectorFLOPPY	= VectorPIC+6,
-	VectorLPT	= VectorPIC+7,
-	VectorIRQ7	= VectorPIC+7,
-	VectorAUX	= VectorPIC+12,	/* PS/2 port */
-	VectorIRQ13	= VectorPIC+13,	/* coprocessor on x386 */
-	VectorATA0	= VectorPIC+14,
-	MaxVectorPIC	= VectorPIC+15,
+	VectorPIC	= 64,
+	MaxVectorPIC	= VectorPIC+MaxIrqPIC,
 	VectorPCI	= 16,		/* PCI bus (PLD) */
 };
 
-typedef struct Irq {
-	void	(*f)(Ureg*, void*);	/* handler to call */
-	void*	a;			/* argument to call it with */
+typedef struct Vctl {
+	Vctl*	next;			/* handlers on this vector */
 
-	Irq*	next;			/* link to next handler */
-} Irq;
-
-typedef struct Irqctl {
+	char	name[NAMELEN];	/* of driver */
+	int	isintr;			/* interrupt or fault/trap */
+	int	irq;
+	int	tbdf;
 	int	(*isr)(int);		/* get isr bit for this irq */
 	int	(*eoi)(int);		/* eoi */
-	int	isintr;
 
-	Irq*	irq;			/* handlers on this IRQ */
-} Irqctl;
+	void	(*f)(Ureg*, void*);	/* handler to call */
+	void*	a;			/* argument to call it with */
+} Vctl;
 
 enum {
 	BusCBUS		= 0,		/* Corollary CBUS */
@@ -105,6 +91,7 @@ enum {					/* type 0 and type 1 pre-defined header */
 
 	PciBAR0		= 0x10,		/* base address */
 	PciBAR1		= 0x14,
+	PciROM		= 0x30,
 
 	PciINTL		= 0x3C,		/* interrupt line */
 	PciINTP		= 0x3D,		/* interrupt pin */

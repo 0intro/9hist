@@ -66,6 +66,9 @@ struct VGAdev {
 	void	(*disable)(VGAscr*);
 	void	(*page)(VGAscr*, int);
 	ulong	(*linear)(VGAscr*, int*, int*);
+	void	(*drawinit)(VGAscr*);
+	int	(*fill)(VGAscr*, Rectangle, ulong);
+
 };
 
 struct VGAcur {
@@ -75,6 +78,8 @@ struct VGAcur {
 	void	(*disable)(VGAscr*);
 	void	(*load)(VGAscr*, Cursor*);
 	int	(*move)(VGAscr*, Point);
+
+	int	doespanning;
 };
 
 /*
@@ -97,27 +102,41 @@ struct VGAscr {
 	ulong	io;				/* device specific registers */
 
 	ulong	colormap[Pcolours][3];
+	int	palettedepth;
 
 	Memimage* gscreen;
 	Memdata* gscreendata;
 	Memsubfont* memdefont;
+
+	int	(*fill)(VGAscr*, Rectangle, ulong);
+	int	(*scroll)(VGAscr*, Rectangle, Rectangle);
+	ulong	id;	/* internal identifier for driver use */
 };
 extern VGAscr vgascreen[];
 
 enum {
-	Backgnd		= Pwhite,
+	Backgnd		= 0,	/* black */
 };
 
 /* mouse.c */
 extern void mousectl(char*[], int);
 
 /* screen.c */
+extern int		hwaccel;	/* use hw acceleration; default on */
 extern void	flushmemscreen(Rectangle);
 extern int	cursoron(int);
 extern void	cursoroff(int);
 extern void	setcursor(Cursor*);
-extern int	screensize(int, int, int);
+extern int	screensize(int, int, int, ulong);
 extern int	screenaperture(int, int);
+extern Rectangle physgscreenr;	/* actual monitor size */
+
+/* devdraw.c */
+extern void	deletescreenimage(void);
+extern int		drawhasclients(void);
 
 /* vga.c */
 extern void	vgascreenwin(VGAscr*);
+extern void	vgaimageinit(ulong);
+
+extern void	drawblankscreen(int);

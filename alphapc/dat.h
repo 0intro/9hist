@@ -1,7 +1,5 @@
 typedef struct Conf	Conf;
 typedef struct FPsave	FPsave;
-typedef struct Irq	Irq;
-typedef struct Irqctl	Irqctl;
 typedef struct ISAConf	ISAConf;
 typedef struct Label	Label;
 typedef struct Lock	Lock;
@@ -12,9 +10,10 @@ typedef struct PCArch	PCArch;
 typedef struct PCB	PCB;
 typedef struct Pcidev	Pcidev;
 typedef struct PMMU	PMMU;
+typedef struct Proc	Proc;
 typedef struct Sys	Sys;
 typedef struct Ureg	Ureg;
-typedef struct Proc	Proc;
+typedef struct Vctl	Vctl;
 
 /*
  *  parameters for sysproc.c
@@ -72,8 +71,6 @@ struct Conf
 	ulong	nswap;		/* number of swap pages */
 	int	nswppo;		/* max # of pageouts per segment pass */
 	ulong	copymode;	/* 0 is copy on write, 1 is copy on reference */
-	ulong	ptebase;
-	ulong	mbytes;
 	int	monitor;		/* has display? */
 	ulong	ialloc;		/* bytes available for interrupt time allocation */
 	ulong	pipeqsize;	/* size in bytes of pipe queues */
@@ -144,6 +141,7 @@ struct Mach
 	Page	*ufreeme;		/* address of upage of exited process */
 	int	nrdy;
 	ulong	fairness;		/* for runproc */
+	int	lastintr;
 
 	ulong	cpuhz;			/* hwrpb->cfreq */
 	ulong	pcclast;
@@ -155,6 +153,7 @@ struct Mach
 	int	syscall;
 	int	load;
 	int	intr;
+	int	spuriousintr;
 	int	flushmmu;		/* make current proc flush it's mmu state */
 
 	PCB;
@@ -185,8 +184,7 @@ struct PCArch
 	void	(*coredetach)(void);		/* restore core logic before return to console */
 	void	*(*pcicfg)(int, int);		/* map and point to PCI cfg space */
 	void	*(*pcimem)(int, int);		/* map and point to PCI memory space */
-	void	(*intr)(Ureg*);
-	int	(*intrenable)(int, void (*)(Ureg*, void*), void*, int);
+	int	(*intrenable)(Vctl*);
 
 	int		(*_inb)(int);
 	ushort	(*_ins)(int);

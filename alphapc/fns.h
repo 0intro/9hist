@@ -26,6 +26,7 @@ void		firmware(void);
 #define	flushpage(s)	icflush()
 void		fpenab(int);
 void		fptrap(Ureg*);
+int		getcfields(char*, char**, int, char*);
 char		*getconf(char*);
 ulong	getfcr(void);
 ulong	getstatus(void);
@@ -34,13 +35,17 @@ int		i8042auxcmd(int);
 void		i8042auxenable(void (*)(int, int));
 void		i8042reset(void);
 void		i8259init(void);
-int		i8259enable(int, int, Irqctl*);
+int		i8259enable(int, int, Vctl*);
 #define	idlehands()			/* nothing to do in the runproc */
 void		icflush(void);
 void		illegal0(void);
 void		intr0(void);
-void		intrenable(int, void (*)(Ureg*, void*), void*, int);
+void		intrenable(int, void (*)(Ureg*, void*), void*, int, char*);
+int		ioalloc(int, int, int, char*);
+void		iofree(int);
+void		ioinit(void);
 int		iprint(char*, ...);
+int		irqallocread(char*, long, vlong);
 int		isaconfig(char*, int, ISAConf*);
 void		kbdinit(void);
 void		*kmapv(uvlong, int);
@@ -49,6 +54,7 @@ void		launchinit(void);
 void		launch(int);
 void		links(void);
 void		mb(void);
+void 		memholes(void);
 ulong 	meminit(void);
 void		mmuinit(void);
 #define	mmunewpage(x)
@@ -83,6 +89,8 @@ void		tlbflush(int, ulong);
 void		touser(void*);
 void		trapinit(void);
 void		unaligned(void);
+ulong	upamalloc(ulong, int, int);
+void	upafree(ulong, int);
 void		wrent(int, void*);
 void		wrvptptr(uvlong);
 
