@@ -1,6 +1,7 @@
 // Lml 22 driver
 
 #define MJPG_VERSION "LML33 v0.2"
+#define NLML 2
 
 // The following values can be modified to tune/set default behaviour of the
 // driver.
@@ -42,9 +43,9 @@ typedef struct {
 
 // The PCI vendor and device ids of the zoran chipset on the dc30
 // these really belong in pci.h
-#define PCI_VENDOR_ZORAN		0x11de
-#define PCI_DEVICE_ZORAN_36057		0x6057
-#define PCI_DEVICE_ZORAN_36067		PCI_DEVICE_ZORAN_36057
+#define VENDOR_ZORAN		0x11de
+#define ZORAN_36057		0x6057
+#define ZORAN_36067		ZORAN_36057
 
 #define BT819Addr 0x8a
 #define BT856Addr 0x88
@@ -73,7 +74,8 @@ struct FrameHeader {	// Don't modify this struct, used by h/w
 	ushort frameNo;
 	vlong ftime;
 	ulong frameSize;
-	ulong frameSeqNo;
+	ushort frameSeqNo;
+	ushort SOIfiller;
 };
 
 #define FRAGSIZE (128*1024)
@@ -101,8 +103,10 @@ struct CodeData {	// Don't modify this struct, used by h/w
 	HdrFragment	frag[4];
 };
 
-#define CODEDATASIZE ((sizeof(CodeData) + BY2PG - 1) & ~(BY2PG - 1))
-#define GRABDATASIZE ((730 * 568 * 2 * 2 + BY2PG - 1) & ~(BY2PG - 1))
+enum{
+	Codedatasize = (sizeof(CodeData) + BY2PG - 1) & ~(BY2PG - 1),
+	Grabdatasize = (730 * 568 * 2 * 2 + BY2PG - 1) & ~(BY2PG - 1),
+};
 
 #define POST_OFFICE		0x200
 #define POST_PEND		0x02000000

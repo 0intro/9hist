@@ -8,10 +8,6 @@
 
 #include	"devlml.h"
 
-static void *		pciPhysBaseAddr;
-static ulong		pciBaseAddr;
-static Pcidev *		pcidev;
-
 #define DBGREAD	0x01
 #define DBGWRIT	0x02
 #define DBGINTR	0x04
@@ -23,22 +19,43 @@ int debug = 0;
 
 enum{
 	Qdir,
-	Qjpg,
-	Qraw,
+	Qctl0,
+	Qjpg0,
+	Qraw0,
+	Qctl1,
+	Qjpg1,
+	Qraw1,
 };
+
+#define	QID(q)		((ulong)(q).path)
+#define	QIDLML(q)	((((ulong)(q).path)-1)>>1)
 
 static Dirtab lmldir[]={
-	".",		{Qdir, 0, QTDIR},	0,	DMDIR|0555,
-	"lmljpg",	{Qjpg},			0,	0444,
-	"lmlraw",	{Qraw},			0,	0444,
+	".",			{Qdir, 0, QTDIR},	0,	DMDIR|0555,
+	"lml0ctl",		{Qctl0},			0,	0666,
+	"lml0jpg",		{Qjpg0},			0,	0444,
+	"lml0raw",	{Qraw0},			0,	0444,
+	"lml1ctl",		{Qctl1},			0,	0666,
+	"lml1jpg",		{Qjpg1},			0,	0444,
+	"lml1raw",	{Qraw1},			0,	0444,
 };
 
-static CodeData *	codeData;
+typedef struct LML LML;
 
-static ulong		jpgframeno;
-//static ulong		rawframeno;
+struct LML {
+	// Hardware
+	Pcidev *		pcidev;
+	ulong		pciBaseAddr;
+	// Allocated memory
+	CodeData *	codedata;
+	// Software state
+	ulong		jpgframeno;
+	int			frameNo;
+	Rendez		sleepjpg;
+	int			jpgopens;
+} lmls[NLML];
 
-//static FrameHeader	rawheader;
+int nlml;
 
 static FrameHeader	jpgheader = {
 	MRK_SOI, MRK_APP3, (sizeof(FrameHeader)-4) << 8,
@@ -46,25 +63,19 @@ static FrameHeader	jpgheader = {
 	-1, 0, 0,  0
 };
 
-int		frameNo;
-Rendez	sleepjpg;
-//Rendez		sleepraw;
-int		singleFrame;
-int		jpgopens;
-int		jpgmode;
-//int		rawopens;
-
 #define writel(v, a) *(ulong *)(a) = (v)
 #define readl(a) *(ulong*)(a)
 
 static int
-getbuffer(void *){
+getbuffer(void *x){
 	static last = NBUF-1;
 	int l = last;
+	LML *lml;
 
+	lml = x;
 	for (;;) {
 		last = (last+1) % NBUF;
-		if (codeData->statCom[last] & STAT_BIT)
+		if (lml->codedata->statCom[last] & STAT_BIT)
 			return last + 1;
 		if (last == l)
 			return 0;
@@ -73,18 +84,18 @@ getbuffer(void *){
 }
 
 static long
-jpgread(Chan *, void *va, long nbytes, vlong, int dosleep) {
+jpgread(LML *lml, void *va, long nbytes, vlong, int dosleep) {
 	int bufno;
 	FrameHeader *jpgheader;
-
+	
 	// reads should be of size 1 or sizeof(FrameHeader)
 	// Frameno is the number of the buffer containing the data
-	while ((bufno = getbuffer(nil)) == 0 && dosleep)
-		sleep(&sleepjpg, getbuffer, 0);
+	while ((bufno = getbuffer(lml)) == 0 && dosleep)
+		sleep(&lml->sleepjpg, getbuffer, lml);
 	if (--bufno < 0)
 		return 0;
 
-	jpgheader = (FrameHeader*)(codeData->frag[bufno].hdr+2);
+	jpgheader = (FrameHeader*)(lml->codedata->frag[bufno].hdr+2);
 	if (nbytes == sizeof(FrameHeader)) {
 		memmove(va, jpgheader, sizeof(FrameHeader));
 		return sizeof(FrameHeader);
@@ -99,15 +110,15 @@ jpgread(Chan *, void *va, long nbytes, vlong, int dosleep) {
 static void lmlintr(Ureg *, void *);
 
 static void
-prepbuf(void) {
+prepbuf(LML *lml) {
 	int i;
 
 	for (i = 0; i < NBUF; i++) {
-		codeData->statCom[i] = PADDR(&(codeData->fragdesc[i]));
-		codeData->fragdesc[i].addr = PADDR(codeData->frag[i].fb);
+		lml->codedata->statCom[i] = PADDR(&(lml->codedata->fragdesc[i]));
+		lml->codedata->fragdesc[i].addr = PADDR(lml->codedata->frag[i].fb);
 		// Length is in double words, in position 1..20
-		codeData->fragdesc[i].leng = (FRAGSIZE >> 1) | FRAGM_FINAL_B;
-		memmove(codeData->frag[i].hdr+2, &jpgheader, sizeof(FrameHeader)-2);
+		lml->codedata->fragdesc[i].leng = (FRAGSIZE >> 1) | FRAGM_FINAL_B;
+		memmove(lml->codedata->frag[i].hdr+2, &jpgheader, sizeof(FrameHeader)-2);
 	}
 }
 
@@ -115,92 +126,70 @@ static void
 lmlreset(void)
 {
 	Physseg segbuf;
-	Physseg segreg;
-	Physseg seggrab;
 	ulong regpa;
-	ulong cdsize;
-	void *grabbuf;
-	ulong grablen;
 	ISAConf isa;
+	char name[32];
+	Pcidev *pcidev;
+	LML *lml;
 
-	if(isaconfig("lml", 0, &isa) == 0) {
-		if (debug) print("lml not in plan9.ini\n");
-		return;
+	pcidev = nil;
+	
+	for (nlml = 0; nlml < NLML && (pcidev = pcimatch(pcidev, VENDOR_ZORAN, ZORAN_36067)); nlml++){
+		if(isaconfig("lml", nlml, &isa) == 0) {
+			if (debug) print("lml %d not in plan9.ini\n", nlml);
+			break;
+		}
+		lml = &lmls[nlml];
+		lml->pcidev = pcidev;
+		lml->codedata = (CodeData*)(((ulong)xalloc(Codedatasize+ BY2PG) + BY2PG-1) & ~(BY2PG-1));
+		if (lml->codedata == nil) {
+			print("devlml: xalloc(%ux, %ux, 0)\n", Codedatasize, BY2PG);
+			return;
+		}
+
+		print("Installing Motion JPEG driver %s, irq %d\n", MJPG_VERSION, pcidev->intl); 
+		print("MJPG buffer at 0x%.8lux, size 0x%.8ux\n", lml->codedata, Codedatasize); 
+
+		// Get access to DMA memory buffer
+		lml->codedata->pamjpg = PADDR(lml->codedata->statCom);
+
+		prepbuf(lml);
+
+		print("zr36067 found at 0x%.8lux", pcidev->mem[0].bar & ~0x0F);
+
+		regpa = upamalloc(pcidev->mem[0].bar & ~0x0F, pcidev->mem[0].size, 0);
+		if (regpa == 0) {
+			print("lml: failed to map registers\n");
+			return;
+		}
+		lml->pciBaseAddr = (ulong)KADDR(regpa);
+		print(", mapped at 0x%.8lux\n", lml->pciBaseAddr);
+
+		memset(&segbuf, 0, sizeof(segbuf));
+		segbuf.attr = SG_PHYSICAL;
+		sprint(name, "lml%d.mjpg", nlml);
+		kstrdup(&segbuf.name, name);
+		segbuf.pa = PADDR(lml->codedata);
+		segbuf.size = Codedatasize;
+		if (addphysseg(&segbuf) == -1) {
+			print("lml: physsegment: %s\n", name);
+			return;
+		}
+
+		memset(&segbuf, 0, sizeof(segbuf));
+		segbuf.attr = SG_PHYSICAL;
+		sprint(name, "lml%d.regs", nlml);
+		kstrdup(&segbuf.name, name);
+		segbuf.pa = (ulong)regpa;
+		segbuf.size = pcidev->mem[0].size;
+		if (addphysseg(&segbuf) == -1) {
+			print("lml: physsegment: %s\n", name);
+			return;
+		}
+
+		// Interrupt handler
+		intrenable(pcidev->intl, lmlintr, lml, pcidev->tbdf, "lml");
 	}
-	pcidev = pcimatch(nil, PCI_VENDOR_ZORAN, PCI_DEVICE_ZORAN_36067);
-	if (pcidev == nil) {
-		return;
-	}
-
-	cdsize = CODEDATASIZE;
-	codeData = (CodeData*)(((ulong)xalloc(cdsize+ BY2PG) + BY2PG-1) & ~(BY2PG-1));
-	if (codeData == nil) {
-		print("devlml: xalloc(%lux, %ux, 0)\n", cdsize, BY2PG);
-		return;
-	}
-
-	grablen = GRABDATASIZE;
-	grabbuf = (void*)(((ulong)xalloc(grablen+ BY2PG) + BY2PG-1) & ~(BY2PG-1));
-	if (grabbuf == nil) {
-		print("devlml: xalloc(%lux, %ux, 0)\n", grablen, BY2PG);
-		return;
-	}
-
-	print("Installing Motion JPEG driver %s, irq %d\n", MJPG_VERSION, pcidev->intl); 
-	print("MJPG buffer at 0x%.8lux, size 0x%.8lux\n", codeData, cdsize); 
-	print("Grab buffer at 0x%.8lux, size 0x%.8lux\n", grabbuf, grablen); 
-
-	// Get access to DMA memory buffer
-	codeData->pamjpg = PADDR(codeData->statCom);
-	codeData->pagrab = PADDR(grabbuf);
-
-	prepbuf();
-
-	pciPhysBaseAddr = (void *)(pcidev->mem[0].bar & ~0x0F);
-
-	print("zr36067 found at 0x%.8lux", pciPhysBaseAddr);
-
-	regpa = upamalloc(pcidev->mem[0].bar & ~0x0F, pcidev->mem[0].size, 0);
-	if (regpa == 0) {
-		print("lml: failed to map registers\n");
-		return;
-	}
-	pciBaseAddr = (ulong)KADDR(regpa);
-	print(", mapped at 0x%.8lux\n", pciBaseAddr);
-
-	memset(&segbuf, 0, sizeof(segbuf));
-	segbuf.attr = SG_PHYSICAL;
-	kstrdup(&segbuf.name, "lmlmjpg");
-	segbuf.pa = PADDR(codeData);
-	segbuf.size = cdsize;
-	if (addphysseg(&segbuf) == -1) {
-		print("lml: physsegment: lmlmjpg\n");
-		return;
-	}
-
-	memset(&segreg, 0, sizeof(segreg));
-	segreg.attr = SG_PHYSICAL;
-	kstrdup(&segreg.name, "lmlregs");
-	segreg.pa = (ulong)regpa;
-	segreg.size = pcidev->mem[0].size;
-	if (addphysseg(&segreg) == -1) {
-		print("lml: physsegment: lmlregs\n");
-		return;
-	}
-
-	memset(&seggrab, 0, sizeof(seggrab));
-	seggrab.attr = SG_PHYSICAL;
-	kstrdup(&seggrab.name, "lmlgrab");
-	seggrab.pa = PADDR(grabbuf);
-	seggrab.size = grablen;
-	if (addphysseg(&seggrab) == -1) {
-		print("lml: physsegment: lmlgrab\n");
-		return;
-	}
-
-	// Interrupt handler
-	intrenable(pcidev->intl, lmlintr, nil, pcidev->tbdf, "lml");
-
 	return;
 }
 
@@ -224,18 +213,34 @@ lmlstat(Chan *c, uchar *db, int n)
 
 static Chan*
 lmlopen(Chan *c, int omode) {
+	int i;
+	LML *lml;
 
+	if (omode != OREAD)
+		error(Eperm);
 	c->aux = 0;
+	i = 0;
 	switch((ulong)c->qid.path){
-	case Qjpg:
-	case Qraw:
+	case Qctl1:
+		i++;
+	case Qctl0:
+		if (i >= nlml)
+			error(Eio);
+		break;
+	case Qjpg1:
+	case Qraw1:
+		i++;
+	case Qjpg0:
+	case Qraw0:
 		// allow one open
-		if (jpgopens)
+		if (i >= nlml)
+			error(Eio);
+		lml = lmls+i;
+		if (lml->jpgopens)
 			error(Einuse);
-		jpgopens = 1;
-		jpgframeno = 0;
-		jpgmode = omode;
-		prepbuf();
+		lml->jpgopens = 1;
+		lml->jpgframeno = 0;
+		prepbuf(lml);
 		break;
 	}
 	return devopen(c, omode, lmldir, nelem(lmldir), devgen);
@@ -243,27 +248,61 @@ lmlopen(Chan *c, int omode) {
 
 static void
 lmlclose(Chan *c) {
+	int i;
 
+	i = 0;
 	switch((ulong)c->qid.path){
-	case Qjpg:
-	case Qraw:
-		jpgopens = 0;
+	case Qjpg1:
+	case Qraw1:
+		i++;
+	case Qjpg0:
+	case Qraw0:
+		lmls[i].jpgopens = 0;
 		break;
 	}
 }
 
 static long
 lmlread(Chan *c, void *va, long n, vlong voff) {
+	int i;
 	uchar *buf = va;
 	long off = voff;
+	LML *lml;
+	static char lmlinfo[1024];
+	int len;
 
+	i = 0;
 	switch((ulong)c->qid.path){
 	case Qdir:
 		return devdirread(c, (char *)buf, n, lmldir, nelem(lmldir), devgen);
-	case Qjpg:
-		return jpgread(c, buf, n, off, 1);
-	case Qraw:
-		return jpgread(c, buf, n, off, 0);
+	case Qctl1:
+		i++;
+	case Qctl0:
+		if (i >= nlml)
+			error(Eio);
+		lml = lmls+i;
+		len = snprint(lmlinfo, sizeof lmlinfo, "lml%djpg	lml%draw\nlml%d.regs	0x%lux	0x%ux\nlml%d.mjpg	0x%lux	0x%ux\n",
+			i, i,
+			i, lml->pcidev->mem[0].bar & ~0x0F, lml->pcidev->mem[0].size,
+			i, PADDR(lml->codedata), Codedatasize);
+		if (voff > len)
+			return 0;
+		if (n > len - voff)
+			n = len - voff;
+		memmove(va, lmlinfo+voff, n);
+		return n;
+	case Qjpg1:
+		i++;
+	case Qjpg0:
+		if (i >= nlml)
+			error(Eio);
+		return jpgread(lmls+i, buf, n, off, 1);
+	case Qraw1:
+		i++;
+	case Qraw0:
+		if (i >= nlml)
+			error(Eio);
+		return jpgread(lmls+i, buf, n, off, 0);
 	}
 }
 
@@ -295,24 +334,26 @@ Dev lmldevtab = {
 };
 
 static void
-lmlintr(Ureg *, void *) {
-	ulong fstart, fno;
-	ulong flags = readl(pciBaseAddr+INTR_STAT);
+lmlintr(Ureg *, void *x) {
 	FrameHeader *jpgheader;
-	
+	ulong fstart, fno, flags, statcom;
+	LML *lml;
+
+	lml = x;
+	flags = readl(lml->pciBaseAddr+INTR_STAT);
 	// Reset all interrupts from 067
-	writel(0xff000000, pciBaseAddr + INTR_STAT);
+	writel(0xff000000, lml->pciBaseAddr + INTR_STAT);
 
 	if(flags & INTR_JPEGREP) {
 
 		if(debug&(DBGINTR))
 			print("MjpgDrv_intrHandler stat=0x%.8lux\n", flags);
 
-		fstart = jpgframeno & 0x00000003;
+		fstart = lml->jpgframeno & 0x00000003;
 		for (;;) {
-			jpgframeno++;
-			fno = jpgframeno & 0x00000003;
-			if (codeData->statCom[fno] & STAT_BIT)
+			lml->jpgframeno++;
+			fno = lml->jpgframeno & 0x00000003;
+			if (lml->codedata->statCom[fno] & STAT_BIT)
 				break;
 			if (fno == fstart) {
 				if (debug & DBGINTR)
@@ -320,15 +361,13 @@ lmlintr(Ureg *, void *) {
 				return;
 			}
 		}
-		if (jpgopens && jpgmode == OREAD){
-			jpgheader = (FrameHeader *)(codeData->frag[fno].hdr+2);
-			jpgheader->frameNo = jpgframeno;
-			jpgheader->ftime  = todget(nil);
-			jpgheader->frameSize =
-				(codeData->statCom[fno] & 0x00ffffff) >> 1;
-			jpgheader->frameSeqNo = codeData->statCom[fno] >> 24;
-		}
-		wakeup(&sleepjpg);
+		statcom = lml->codedata->statCom[fno];
+		jpgheader = (FrameHeader *)(lml->codedata->frag[fno].hdr+2);
+		jpgheader->frameNo = lml->jpgframeno;
+		jpgheader->ftime  = todget(nil);
+		jpgheader->frameSize = (statcom & 0x00ffffff) >> 1;
+		jpgheader->frameSeqNo = statcom >> 24;
+		wakeup(&lml->sleepjpg);
 	}
 	return;
 }

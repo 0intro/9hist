@@ -12,11 +12,16 @@ Cmdbuf*
 parsecmd(char *p, int n)
 {
 	Cmdbuf *volatile cb;
+	int nf;
+	char *sp;
 
-	cb = smalloc(sizeof(*cb));
-	
-	if(n > sizeof(cb->buf)-1)
-		n = sizeof(cb->buf)-1;
+	/* count fields and allocate a big enough cmdbuf */
+	for(nf = 1, sp = p; sp != nil && *sp; nf++, sp = strchr(sp+1, ' '))
+		;
+	sp = smalloc(sizeof(*cb) + n + 1 + nf*sizeof(char*));
+	cb = (Cmdbuf*)sp;
+	cb->buf = sp+sizeof(*cb);
+	cb->f = (char**)(cb->buf + n + 1);
 
 	if(up!=nil && waserror()){
 		free(cb);
@@ -26,10 +31,12 @@ parsecmd(char *p, int n)
 	if(up != nil)
 		poperror();
 
+	/* dump new line and null terminate */
 	if(n > 0 && cb->buf[n-1] == '\n')
 		n--;
 	cb->buf[n] = '\0';
-	cb->nf = getfields(cb->buf, cb->f, nelem(cb->f), 1, " ");
+
+	cb->nf = getfields(cb->buf, cb->f, nf, 1, " ");
 	return cb;
 }
 

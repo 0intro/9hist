@@ -108,35 +108,36 @@ enum {
 typedef struct {
 	ushort 	m64_id;			/* Chip ID */
 	int 		m64_vtgt;		/* Is this a VT or GT chipset? */
-	double	m64_ovlclock;		/* Max. overlay clock frequency */
+	ulong	m64_ovlclock;		/* Max. overlay clock frequency */
 	int		m64_pro;			/* Is this a PRO? */
 } mach64types;
 
-static double mach64refclock;
+static ulong mach64refclock;
 static mach64types *mach64type;
 static int mach64revb;			/* Revision B or greater? */
 static ulong mach64overlay;		/* Overlay buffer */
 
 static mach64types mach64s[] = {
-	('C'<<8)|'T',	0,	0.,		0,	/* 4354: CT */
-	('E'<<8)|'T',	0,	0.,		0,	/* 4554: ET */
-	('G'<<8)|'B',	1,	125.,		1, 	/* 4742: 264GT PRO */
-	('G'<<8)|'D',	1,	125.,		1, 	/* 4744: 264GT PRO */
-	('G'<<8)|'I',	1,	125.,		1, 	/* 4749: 264GT PRO */
-	('G'<<8)|'M',	0,	135.,		0,	/* 474D: Rage XL */
-	('G'<<8)|'P',	1,	125.,		1, 	/* 4750: 264GT PRO */
-	('G'<<8)|'Q',	1,	125.,		1,	/* 4751: 264GT PRO */
-	('G'<<8)|'T',	1,	80.,		0,	/* 4754: 264GT[B] */
-	('G'<<8)|'U',	1,	100.,		0,	/* 4755: 264GT DVD */
-	('G'<<8)|'V',	1,	100.,		0,	/* 4756: Rage2C */
-	('G'<<8)|'Z',	1,	100.,		0,	/* 475A: Rage2C */
-	('V'<<8)|'T',	1,	80.,		0,	/* 5654: 264VT/GT/VTB */
-	('V'<<8)|'U',	1,	80.,		0,	/* 5655: 264VT3 */
-	('V'<<8)|'V',	1,	100.,		0,	/* 5656: 264VT4 */
-	('L'<<8)|'B',	0,	135.,		1,	/* 4C42: Rage LTPro AGP */
-	('L'<<8)|'I',		0,	135.,		0,	/* 4C49: Rage LTPro AGP */
-	('L'<<8)|'M',	0,	135.,		0,	/* 4C4D: Rage Mobility */
-	('L'<<8)|'P',	0,	135.,		1,	/* 4C50: 264LT PRO */
+	('C'<<8)|'T',	0,	0,		0,	/* 4354: CT */
+	('E'<<8)|'T',	0,	0,		0,	/* 4554: ET */
+	('G'<<8)|'B',	1,	1250000,		1, 	/* 4742: 264GT PRO */
+	('G'<<8)|'D',	1,	1250000,		1, 	/* 4744: 264GT PRO */
+	('G'<<8)|'I',	1,	1250000,		1, 	/* 4749: 264GT PRO */
+	('G'<<8)|'M',	0,	1350000,		0,	/* 474D: Rage XL */
+	('G'<<8)|'P',	1,	1250000,		1, 	/* 4750: 264GT PRO */
+	('G'<<8)|'Q',	1,	1250000,		1,	/* 4751: 264GT PRO */
+	('G'<<8)|'R',	1,	1250000,		1,	/* 4752: */
+	('G'<<8)|'T',	1,	800000,		0,	/* 4754: 264GT[B] */
+	('G'<<8)|'U',	1,	1000000,		0,	/* 4755: 264GT DVD */
+	('G'<<8)|'V',	1,	1000000,		0,	/* 4756: Rage2C */
+	('G'<<8)|'Z',	1,	1000000,		0,	/* 475A: Rage2C */
+	('V'<<8)|'T',	1,	800000,		0,	/* 5654: 264VT/GT/VTB */
+	('V'<<8)|'U',	1,	800000,		0,	/* 5655: 264VT3 */
+	('V'<<8)|'V',	1,	1000000,		0,	/* 5656: 264VT4 */
+	('L'<<8)|'B',	0,	1350000,		1,	/* 4C42: Rage LTPro AGP */
+	('L'<<8)|'I',		0,	1350000,		0,	/* 4C49: Rage LTPro AGP */
+	('L'<<8)|'M',	0,	1350000,		0,	/* 4C4D: Rage Mobility */
+	('L'<<8)|'P',	0,	1350000,		1,	/* 4C50: 264LT PRO */
 };
 
 
@@ -692,7 +693,7 @@ init_overlayclock(VGAscr *scr)
 	uchar *cc, save, pll_ref_div, pll_vclk_cntl, vclk_post_div, 
 			vclk_fb_div, ecp_div;
 	int i;
-	double dotclock;
+	ulong dotclock;
 
 	/* Taken from GLX */
 	/* Get monitor dotclock, check for Overlay Scaler clock limit */
@@ -703,7 +704,7 @@ init_overlayclock(VGAscr *scr)
   	cc[1] = 6<<2; vclk_post_div = (cc[2]>>(i+i)) & 3;
   	cc[1] = (7+i)<<2; vclk_fb_div = cc[2];
 
-  	dotclock = 2.0 * mach64refclock * vclk_fb_div / 
+	dotclock = 2 * mach64refclock * vclk_fb_div / 
 			(pll_ref_div * (1 << vclk_post_div));
 	/* ecp_div: 0=dotclock, 1=dotclock/2, 2=dotclock/4 */
   	ecp_div = dotclock / mach64type->m64_ovlclock;
@@ -711,7 +712,8 @@ init_overlayclock(VGAscr *scr)
 
   	/* Force a scaler clock factor of 1 if refclock *
    	  * is unknown (VCLK_SRC not PLLVCLK)  */
-  	if ((pll_vclk_cntl & 0x03) != 0x03) dotclock = ecp_div = 0;
+  	if ((pll_vclk_cntl & 0x03) != 0x03) 
+		ecp_div = 0;
   	if ((pll_vclk_cntl & 0x30) != ecp_div<<4) {
     		cc[1] = (5<<2)|2;
     		cc[2] = (pll_vclk_cntl&0xCF) | (ecp_div<<4);
@@ -792,18 +794,18 @@ initengine(VGAscr *scr)
 	table = *(ushort *)(bios + table + 0x10);
 	switch (*(ushort *)(bios + table + 0x08)) {
       	case 2700: 
-		mach64refclock = 27.0; 
+		mach64refclock = 270000; 
 		break;
       	case 2863: 
       	case 2864: 
-		mach64refclock = 28.63636; 
+		mach64refclock = 286363; 
 		break;
       	case 2950: 
-		mach64refclock = 29.498928713; 
+		mach64refclock = 294989; 
 		break;
     	case 1432: 
 	default:
-		mach64refclock = 14.31818; 
+		mach64refclock = 143181; 
 		break ;	
 	}
 	
@@ -1010,13 +1012,15 @@ ovl_configure(VGAscr *scr, Chan *c, int nfields, char **field)
 	int w, h;
 	char *format;
 
-	if (nfields != 4) error(Ebadarg);
+	if (nfields != 4) 
+		error(Ebadarg);
 
 	w = (int)strtol(field[1], nil, 0);
 	h = (int)strtol(field[2], nil, 0);
 	format = field[3];
 
-	if (c != ovl_chan) error(Einuse);
+	if (c != ovl_chan) 
+		error(Einuse);
 	if (strcmp(format, "YUYV"))
 		error(Eunsupportedformat);
 	
@@ -1072,7 +1076,8 @@ ovl_enable(VGAscr *scr, Chan *c, int nfields, char **field)
 	int x, y, w, h;
 	long h_inc, v_inc;
 
-	if (nfields != 5) error(Ebadarg);
+	if (nfields != 5) 
+		error(Ebadarg);
 
 	x = (int)strtol(field[1], nil, 0);
 	y = (int)strtol(field[2], nil, 0);
@@ -1083,7 +1088,8 @@ ovl_enable(VGAscr *scr, Chan *c, int nfields, char **field)
 	     y < 0 || y + h > physgscreenr.max.y)
 		error(Ebadarg);
 
-	if (c != ovl_chan) error(Einuse);
+	if (c != ovl_chan) 
+		error(Einuse);
 	if (scr->mmio[mmoffset[CrtcGenCntl]] & 1) {	/* double scan enable */
 		y *= 2;
 		h *= 2;
@@ -1110,15 +1116,16 @@ ovl_enable(VGAscr *scr, Chan *c, int nfields, char **field)
 static void
 ovl_status(VGAscr *scr, Chan *, int nfields, char **field)
 {
-	if (nfields != 1) error(Ebadarg);
+	if (nfields != 1) 
+		error(Ebadarg);
 
-	pprint("%s: %s %.4uX, VT/GT %s, PRO %s, ovlclock %d, rev B %s, refclock %d\n",
+	pprint("%s: %s %.4uX, VT/GT %s, PRO %s, ovlclock %d, rev B %s, refclock %ld\n",
 		   scr->dev->name, field[0], mach64type->m64_id,
 		   mach64type->m64_vtgt? "yes": "no",
 		   mach64type->m64_pro? "yes": "no",
-		   (int)(mach64type->m64_ovlclock  * 10000.),
+		   mach64type->m64_ovlclock,
 		   mach64revb? "yes": "no",
-		   (int)(mach64refclock * 10000.));
+		   mach64refclock);
 	pprint("%s: storage @%.8luX, aperture @%8.ulX, ovl buf @%.8ulX\n",
 		   scr->dev->name, scr->storage, scr->aperture,
 		   mach64overlay);
@@ -1127,8 +1134,10 @@ ovl_status(VGAscr *scr, Chan *, int nfields, char **field)
 static void
 ovl_openctl(VGAscr *, Chan *c, int nfields, char **)
 {
-	if (nfields != 1) error(Ebadarg);
-	if (ovl_chan) error(Einuse);
+	if (nfields != 1) 
+		error(Ebadarg);
+	if (ovl_chan) 
+		error(Einuse);
 	ovl_chan = c;
 }
 
@@ -1162,10 +1171,12 @@ mach64xxovlctl(VGAscr *scr, Chan *c, void *a, int)
 	char *field[MAXARGS];
 	int nfields, i;
 
-	if (!mach64type->m64_vtgt) error(Enodev);
+	if (!mach64type->m64_vtgt) 
+		error(Enodev);
 
 	nfields = getfields(a, field, nelem(field), 1, "\t\n\r ");
-	if (nfields < 1) error(Ebadarg);
+	if (nfields < 1) 
+		error(Ebadarg);
 
 	for (i = 0; i != nelem(ovl_cmds); i++)
 		if (!strcmp(field[0], ovl_cmds[i].ovl_command))

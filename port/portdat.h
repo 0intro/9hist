@@ -712,8 +712,8 @@ struct Logflag {
 
 struct Cmdbuf
 {
-	char	buf[256];
-	char	*f[16];
+	char	*buf;
+	char	**f;
 	int	nf;
 };
 
