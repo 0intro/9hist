@@ -549,19 +549,13 @@ uartclock(void)
 		if(p->iw != p->ir){
 			iw = p->iw;
 			if(iw < p->ir){
-				if(qproduce(p->iq, p->ir, p->ie-p->ir) < 0){
+				if(qproduce(p->iq, p->ir, p->ie-p->ir) < 0)
 					(*p->phys->rts)(p, 0);
-					p->ir = p->istage;
-				} else {
-					if(qproduce(p->iq, p->istage, iw-p->istage) < 0)
-						(*p->phys->rts)(p, 0);
-					p->ir = iw;
-				}
-			} else {
-				if(qproduce(p->iq, p->ir, iw-p->ir) < 0)
-					(*p->phys->rts)(p, 0);
-				p->ir = iw;
+				p->ir = p->istage;
 			}
+			if(qproduce(p->iq, p->ir, iw-p->ir) < 0)
+				(*p->phys->rts)(p, 0);
+			p->ir = iw;
 		}
 
 		/* hang up if requested */

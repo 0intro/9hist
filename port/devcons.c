@@ -20,10 +20,16 @@ static struct
 	int	x;		/* index into line */
 	char	line[1024];	/* current input line */
 
-	Rune	c;
 	int	count;
 	int	repeat;
 	int	ctlpoff;
+
+	/* someplace to save up characters at interrupt time before dumping them in the q */
+	Lock	lockputc;
+	char	istage[128];
+	char	*iw;
+	char	*ir;
+	char	*ie;
 } kbd;
 
 char	sysname[NAMELEN];
@@ -251,29 +257,35 @@ pprint(char *fmt, ...)
 }
 
 void
-echo(Rune r, char *buf, int n)
+echo(char *buf, int n)
 {
 	static int ctrlt, pid;
 	extern ulong etext;
 	int x;
+	char *e, *p;
+	char ebuf[128];
 
-	/*
-	 * ^p hack
-	 */
-	if(r==0x10 && cpuserver && !kbd.ctlpoff){
-		lock(&active);
-		active.exiting = 1;
-		unlock(&active);
-	}
+	e = buf+n;
+	for(p = buf; p < e; p++){
+		switch(*p){
+		case 0x10:	/* ^P */
+			if(cpuserver && !kbd.ctlpoff){
+				active.exiting = 1;
+				return;
+			}
+			break;
+		case 0x14:	/* ^T */
+			ctrlt++;
+			continue;
+		}
 
-	/*
-	 * ^t hack BUG
-	 */
-	if(ctrlt == 2){
-		ctrlt = 0;
-		switch(r){
-		case 0x14:
-			break;	/* pass it on */
+		if(ctrlt != 2){
+			ctrlt = 0;
+			continue;
+		}
+
+		/* ^T escapes */
+		switch(*p){
 		case 's':
 			dumpstack();
 			break;
@@ -311,28 +323,41 @@ echo(Rune r, char *buf, int n)
 			exit(0);
 			break;
 		}
+		ctrlt = 0;
 	}
-	else if(r == 0x14){
-		ctrlt++;
-		return;
-	}
-	ctrlt = 0;
+
+	qproduce(kbdq, buf, n);
 	if(kbd.raw)
 		return;
 
 	/*
 	 *  finally, the actual echoing
 	 */
-	if(r == '\n'){
-		if(printq)
-			qiwrite(printq, "\r", 1);
-	} else if(r == 0x15){
-		buf = "^U\n";
-		n = 3;
+	p = ebuf;
+	e = ebuf + sizeof(ebuf) - 4;
+	while(n-- > 0){
+		if(p >= e){
+			screenputs(ebuf, p - ebuf);
+			if(printq)
+				qiwrite(printq, ebuf, p - ebuf);
+			p = ebuf;
+		}
+		x = *buf++;
+		if(x == '\n'){
+			*p++ = '\r';
+			*p++ = '\n';
+		} else if(x == 0x15){
+			*p++ = '^';
+			*p++ = 'U';
+			*p++ = '\n';
+		} else
+			*p++ = x;
 	}
-	screenputs(buf, n);
+	if(p == ebuf)
+		return;
+	screenputs(ebuf, p - ebuf);
 	if(printq)
-		qiwrite(printq, buf, n);
+		qiwrite(printq, ebuf, p - ebuf);
 }
 
 /*
@@ -355,39 +380,54 @@ kbdcr2nl(Queue *q, int ch)
 int
 kbdputc(Queue*, int ch)
 {
-	int n;
+	int i, n;
 	char buf[3];
 	Rune r;
+	char *next;
 
+	ilock(&kbd.lockputc);		/* just a mutex */
 	r = ch;
 	n = runetochar(buf, &r);
-	if(n == 0)
-		return 0;
-	echo(r, buf, n);
-	kbd.c = r;
-	qproduce(kbdq, buf, n);
+	for(i = 0; i < n; i++){
+		next = kbd.iw+1;
+		if(next >= kbd.ie)
+			next = kbd.istage;
+		if(next == kbd.ir)
+			break;
+		*kbd.iw = buf[i];
+		kbd.iw = next;
+	}
+	iunlock(&kbd.lockputc);
 	return 0;
 }
 
-void
-kbdrepeat(int rep)
+/*
+ *  we save up input characters till clock time to reduce
+ *  per character interrupt overhead.
+ */
+static void
+kbdputcclock(void)
 {
-	kbd.repeat = rep;
-	kbd.count = 0;
+	char *iw;
+
+	/* this amortizes cost of qproduce */
+	if(kbd.iw != kbd.ir){
+		iw = kbd.iw;
+		if(iw < kbd.ir){
+			echo(kbd.ir, kbd.ie-kbd.ir);
+			kbd.ir = kbd.istage;
+		}
+		echo(kbd.ir, iw-kbd.ir);
+		kbd.ir = iw;
+	}
 }
 
-void
-kbdclock(void)
+static void
+kbdputcinit(void)
 {
-	if(kbd.repeat == 0)
-		return;
-	if(kbd.repeat==1 && ++kbd.count>HZ){
-		kbd.repeat = 2;
-		kbd.count = 0;
-		return;
-	}
-	if(++kbd.count&1)
-		kbdputc(kbdq, kbd.c);
+	kbd.ir = kbd.iw = kbd.istage;
+	kbd.ie = kbd.istage + sizeof(kbd.istage);
+	addclock0link(kbdputcclock);
 }
 
 enum{
@@ -482,6 +522,7 @@ consinit(void)
 {
 	todinit();
 	randominit();
+	kbdputcinit();
 }
 
 static Chan*

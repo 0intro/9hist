@@ -180,6 +180,7 @@ lcdinit(void)
 void
 screeninit(void)
 {
+	int i;
 
 	/* map the lcd regs into the kernel's virtual space */
 	lcd = (struct sa1110regs*)mapspecial(LCDREGS, sizeof(struct sa1110regs));;
@@ -196,6 +197,11 @@ screeninit(void)
 
 	gscreen = &xgscreen;
 	xgdata.bdata = (uchar *)framebuf->pixel;
+
+	i = 0;
+	while (i < Wid*Ht*1/3)	framebuf->pixel[i++] = 0xf800;	/* red */
+	while (i < Wid*Ht*2/3)	framebuf->pixel[i++] = 0xffff;	/* white */
+	while (i < Wid*Ht*3/3)	framebuf->pixel[i++] = 0x001f;	/* blue */
 
 	memimageinit();
 	memdefont = getmemdefont();
@@ -290,24 +296,23 @@ screenwin(void)
 	back = memwhite;
 	conscol = memblack;
 
-	memfillcolor(gscreen, 0x444488FF);
-
-	w = memdefont->info[' '].width;
-	h = memdefont->height;
-
-	window.min = Pt(8, 8);
-	window.max = addpt(window.min, Pt(8+w*32, 8+h*14));
-
-	memimagedraw(gscreen, window, memblack, ZP, memopaque, ZP);
-	window = insetrect(window, 4);
-	memimagedraw(gscreen, window, memwhite, ZP, memopaque, ZP);
-
 	/* a lot of work to get a grey color */
 	grey = allocmemimage(Rect(0,0,1,1), RGB16);
 	grey->flags |= Frepl;
 	grey->clipr = gscreen->r;
 	grey->data->bdata[0] = 0x77;
 	grey->data->bdata[1] = 0x77;
+
+	w = memdefont->info[' '].width;
+	h = memdefont->height;
+
+	window.min = Pt(4, 4);
+	window.max = addpt(window.min, Pt(4+w*33, 4+h*15));
+
+	memimagedraw(gscreen, window, memblack, ZP, memopaque, ZP);
+	window = insetrect(window, 4);
+	memimagedraw(gscreen, window, memwhite, ZP, memopaque, ZP);
+
 	memimagedraw(gscreen, Rect(window.min.x, window.min.y,
 			window.max.x, window.min.y+h+5+6), grey, ZP, nil, ZP);
 	freememimage(grey);

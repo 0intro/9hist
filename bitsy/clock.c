@@ -75,6 +75,7 @@ static void
 clockintr(Ureg *ureg, void*)
 {
 	Clock0link *lp;
+	static int inclockintr;
 
 	/* reset previous interrupt */
 	timerregs->ossr |= 1<<0;
@@ -87,6 +88,11 @@ clockintr(Ureg *ureg, void*)
 	if(m->proc)
 		m->proc->pc = ureg->pc;
 
+	if(inclockintr)
+		return;		/* interrupted ourself */
+
+	inclockintr = 1;
+
 	accounttime();
 	if(kproftimer != nil)
 		kproftimer(ureg->pc);
@@ -96,6 +102,10 @@ clockintr(Ureg *ureg, void*)
 	for(lp = clock0link; lp; lp = lp->link)
 		lp->clock();
 	iunlock(&clock0lock);
+
+	if(active.exiting && (active.machs & (1<<m->machno)))
+		exit(0);
+	inclockintr = 0;
 
 	if(up == 0 || up->state != Running)
 		return;
