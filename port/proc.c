@@ -617,8 +617,8 @@ postnote(Proc *p, int dolock, char *n, int flag)
 	if(dolock)
 		qlock(&p->debug);
 
-	if(p->kp)
-		print("sending %s to kproc %lud %s\n", n, p->pid, p->text);
+//	if(p->kp)
+//		print("sending %s to kproc %lud %s\n", n, p->pid, p->text);
 
 	if(flag != NUser && (p->notify == 0 || p->notified))
 		p->nnote = 0;
