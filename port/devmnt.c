@@ -250,7 +250,7 @@ mntclone(Chan *c, Chan *nc)
 		nc = newchan();
 		alloc = 1;
 	}
-	if(waserror()){
+	if(waserror()) {
 		mntfree(r);
 		if(alloc)
 			close(nc);

@@ -179,23 +179,24 @@ struct Crypt
 {
 	char	key[DESKEYLEN];		/* des encryption key */
 	char	chal[8];		/* challenge for setting user name */
+	Crypt	*next;
 };
 
 struct Dev
 {
-	void	 (*reset)(void);
-	void	 (*init)(void);
-	Chan	*(*attach)(char*);
-	Chan	*(*clone)(Chan*, Chan*);
-	int	 (*walk)(Chan*, char*);
-	void	 (*stat)(Chan*, char*);
-	Chan	*(*open)(Chan*, int);
-	void	 (*create)(Chan*, char*, int, ulong);
-	void	 (*close)(Chan*);
-	long	 (*read)(Chan*, void*, long, ulong);
-	long	 (*write)(Chan*, void*, long, ulong);
-	void	 (*remove)(Chan*);
-	void	 (*wstat)(Chan*, char*);
+	void	(*reset)(void);
+	void	(*init)(void);
+	Chan*	(*attach)(char*);
+	Chan*	(*clone)(Chan*, Chan*);
+	int	(*walk)(Chan*, char*);
+	void	(*stat)(Chan*, char*);
+	Chan*	(*open)(Chan*, int);
+	void	(*create)(Chan*, char*, int, ulong);
+	void	(*close)(Chan*);
+	long	(*read)(Chan*, void*, long, ulong);
+	long	(*write)(Chan*, void*, long, ulong);
+	void	(*remove)(Chan*);
+	void	(*wstat)(Chan*, char*);
 };
 
 struct Dirtab
@@ -211,19 +212,21 @@ struct Dirtab
  */
 struct Etherpkt
 {
-	uchar d[6];
-	uchar s[6];
-	uchar type[2];
-	uchar data[1500];
-	uchar crc[4];
+	uchar	d[6];
+	uchar	s[6];
+	uchar	type[2];
+	uchar	data[1500];
+	uchar	crc[4];
 };
-#define	ETHERMINTU	60		/* minimum transmit size */
-#define	ETHERMAXTU	1514		/* maximum transmit size */
-#define ETHERHDRSIZE	14		/* size of an ethernet header */
 
-/*
- *  SCSI devices.
- */
+enum
+{
+	ETHERMINTU =	60,		/* minimum transmit size */
+	ETHERMAXTU =	1514,		/* maximum transmit size */
+	ETHERHDRSIZE =	14,		/* size of an ethernet header */
+};
+
+/* SCSI devices. */
 enum
 {
 	ScsiTestunit	= 0x00,
@@ -233,44 +236,41 @@ enum
 	ScsiRead	= 0x08,
 	ScsiWrite	= 0x0a,
 
-	/*
-	 * data direction
-	 */
+	/* data direction */
 	ScsiIn		= 1,
 	ScsiOut		= 0,
 };
 
 struct Scsibuf
 {
-	void *	virt;
-	void *	phys;
-	Scsibuf *next;
+	void*		virt;
+	void*		phys;
+	Scsibuf*	next;
 };
 
 struct Scsidata
 {
-	uchar *	base;
-	uchar *	lim;
-	uchar *	ptr;
+	uchar*		base;
+	uchar*		lim;
+	uchar*		ptr;
 };
 
 struct Scsi
 {
 	QLock;
-	ulong	pid;
-	ushort	target;
-	ushort	lun;
-	ushort	rflag;
-	ushort	status;
-	Scsidata cmd;
-	Scsidata data;
-	Scsibuf	*b;
-	uchar	*save;
-	uchar	cmdblk[16];
+	ulong		pid;
+	ushort		target;
+	ushort		lun;
+	ushort		rflag;
+	ushort		status;
+	Scsidata 	cmd;
+	Scsidata 	data;
+	Scsibuf*	b;
+	uchar*		save;
+	uchar		cmdblk[16];
 };
-/*
- *  character based IO (mouse, keyboard, console screen)
- */
+
+/* character based IO (mouse, keyboard, console screen) */
 #define NQ	4096
 struct IOQ
 {
@@ -362,7 +362,7 @@ struct Swapalloc
 	char	*top;			/* Top of swap map */
 	Rendez	r;			/* Pager kproc idle sleep */
 	ulong	highwater;		/* Threshold beyond which we must page */
-	ulong	headroom;		/* Space pager attempts to clear below highwater */
+	ulong	headroom;		/* Space pager keeps free under highwater */
 }swapalloc;
 
 struct Image
@@ -373,7 +373,7 @@ struct Image
 	Qid	mqid;
 	Chan	*mchan;
 	ushort	type;			/* Device type of owning channel */
-	Segment *s;			/* TEXT segment for image if running, may be null */
+	Segment *s;			/* TEXT segment for image if running */
 	Image	*hash;			/* Qid hash chains */
 	Image	*next;			/* Free list */
 };
@@ -421,22 +421,26 @@ struct Segment
 	ulong	fstart;			/* start address in file for demand load */
 	ulong	flen;			/* length of segment in file */
 	int	flushme;		/* maintain consistent icache for this segment */
-	Image	*image;			/* image in file system attached to this segment */
+	Image	*image;			/* text in file attached to this segment */
 	Page	*(*pgalloc)(ulong addr);/* SG_PHYSICAL page allocator */
 	void	(*pgfree)(Page *);	/* SG_PHYSICAL page free */
 	Pte	*map[SEGMAPSIZE];	/* segment pte map */
 };
 
-#define RENDHASH	32
+enum
+{
+	RENDHASH =	32,		/* Hash to lookup rendezvous tags */
+	MNTHASH	=	32,		/* Hash to walk mount table */
+	NFD =		100,		/* Number of per process file descriptors */
+	PGHSIZE	=	512,		/* Page hash for image lookup */
+};
 #define REND(p,s)	((p)->rendhash[(s)%RENDHASH])
-#define MNTHASH		32
 #define MOUNTH(p,s)	((p)->mnthash[(s)->qid.path%MNTHASH])
 
 struct Pgrp
 {
 	Ref;				/* also used as a lock when mounting */
 	Pgrp	*next;			/* free list */
-	int	index;			/* index in pgrp table */
 	ulong	pgrpid;
 	Crypt	*crypt;			/* encryption key and challenge */
 	QLock	debug;			/* single access via devproc.c */
@@ -462,7 +466,6 @@ struct Evalue
 	Evalue	*link;
 };
 
-#define	NFD	100
 struct Fgrp
 {
 	Ref;
@@ -470,7 +473,6 @@ struct Fgrp
 	int	maxfd;			/* highest fd in use */
 };
 
-#define PGHSIZE	512
 struct Palloc
 {
 	Lock;
@@ -485,16 +487,8 @@ struct Palloc
 	Rendez	r;			/* Sleep for free mem */
 	QLock	pwait;			/* Queue of procs waiting for memory */
 	int	wanted;			/* Do the wakeup at free */
-};
-
-struct Pgrps
-{
-	Lock;
-	Pgrp	*arena;
-	Pgrp	*free;
-	ulong	pgrpid;
-	ulong	cryptbase;
-	ulong	crypttop;
+	ulong	cmembase;		/* Key memory protected from read by devproc */
+	ulong	cmemtop;
 };
 
 struct Waitq
@@ -609,7 +603,7 @@ struct Proc
 	int	(*tfn)(void*);
 
 	/*
-	 *  machine specific MMU goo
+	 *  machine specific MMU
 	 */
 	PMMU;
 };
@@ -629,13 +623,14 @@ struct Qinfo
 	Qinfo		*next;
 };
 
-/*
- *  Queue.flag
- */
-#define QHUNGUP	0x1			/* flag bit meaning the stream has been hung up */
-#define QINUSE	0x2
-#define QHIWAT	0x4			/* queue has gone past the high water mark */	
-#define QDEBUG	0x8
+/* Queue.flag */
+enum
+{
+	QHUNGUP	=	0x1,	/* stream has been hung up */
+	QINUSE =	0x2,	/* allocation check */
+	QHIWAT =	0x4,	/* queue has gone past the high water mark */	
+	QDEBUG =	0x8,
+};
 
 struct Queue
 {
@@ -686,12 +681,12 @@ struct Stream
  */
 enum
 {
-	Shighqid = STREAMQID(1,0) - 1,
-	Sdataqid = Shighqid,
-	Sctlqid = Sdataqid-1,
-	Slowqid = Sctlqid,
-	Streamhi= (32*1024),		/* byte count high water mark */
-	Streambhi= 128,			/* block count high water mark */
+	Shighqid	= STREAMQID(1,0) - 1,
+	Sdataqid	= Shighqid,
+	Sctlqid		= Sdataqid-1,
+	Slowqid		= Sctlqid,
+	Streamhi	= (32*1024),	/* byte count high water mark */
+	Streambhi	= 128,		/* block count high water mark */
 };
 
 /*
@@ -725,9 +720,12 @@ struct Network
 	Netprot	*prot;			/* linked list of protections */
 };
 
-#define	PRINTSIZE	256
-#define	NUMSIZE		12		/* size of formatted number */
-#define MB		(1024*1024)
+enum
+{
+	PRINTSIZE =	256,
+	NUMSIZE	=	12,		/* size of formatted number */
+	MB =		(1024*1024),
+};
 
 extern	Conf	conf;
 extern	char*	conffile;
@@ -748,12 +746,14 @@ extern  Image	swapimage;
 extern	char	sysname[NAMELEN];
 extern	Talarm	talarm;
 extern	Palloc 	palloc;
-extern	Pgrps 	pgrpalloc;
 extern	int	cpuserver;
 
-#define	CHDIR		0x80000000L
-#define	CHAPPEND 	0x40000000L
-#define	CHEXCL		0x20000000L
+enum
+{
+	CHDIR =		0x80000000L,
+	CHAPPEND = 	0x40000000L,
+	CHEXCL =	0x20000000L,
+};
 
 /*
  * auth messages

@@ -62,9 +62,7 @@ putseg(Segment *s)
 		return;
 
 	i = s->image;
-	if(i)
-	if(i->s == s)
-	if(s->ref == 1) {
+	if(i && i->s == s && s->ref == 1) {
 		lock(i);
 		if(s->ref == 1)
 			i->s = 0;
@@ -94,22 +92,24 @@ relocateseg(Segment *s, ulong offset)
 	Page **pg, **endpages;
 
 	endpte = &s->map[SEGMAPSIZE];
-	for(p = s->map; p < endpte; p++)
+	for(p = s->map; p < endpte; p++) {
 		if(*p) {
 			endpages = &((*p)->pages[PTEPERTAB]);
 			for(pg = (*p)->pages; pg < endpages; pg++)
 				if(*pg)
 					(*pg)->va += offset;
 		}
+	}
 }
 
 Segment*
 dupseg(Segment *s, int share)
 {
+	int i;
 	Pte *pte;
 	Segment *n;
-	int i;
 
+	SET(n);
 	switch(s->type&SG_TYPE) {
 	case SG_TEXT:			/* New segment shares pte set */
 	case SG_SHARED:
@@ -121,7 +121,7 @@ dupseg(Segment *s, int share)
 	case SG_STACK:
 		qlock(&s->lk);
 		n = newseg(s->type, s->base, s->size);
-		goto copypte;
+		break;
 
 	case SG_BSS:			/* Just copy on write */
 		qlock(&s->lk);
@@ -132,7 +132,7 @@ dupseg(Segment *s, int share)
 			return s;
 		}
 		n = newseg(s->type, s->base, s->size);
-		goto copypte;
+		break;
 
 	case SG_DATA:			/* Copy on write plus demand load info */
 		qlock(&s->lk);
@@ -148,19 +148,15 @@ dupseg(Segment *s, int share)
 		n->image = s->image;
 		n->fstart = s->fstart;
 		n->flen = s->flen;
-
-	copypte:
-		for(i = 0; i < SEGMAPSIZE; i++)
-			if(pte = s->map[i])
-				n->map[i] = ptecpy(pte);
-
-		n->flushme = s->flushme;
-		qunlock(&s->lk);
-		return n;	
+		break;
 	}
+	for(i = 0; i < SEGMAPSIZE; i++)
+		if(pte = s->map[i])
+			n->map[i] = ptecpy(pte);
 
-	panic("dupseg");
-	return 0;		/* not reached */
+	n->flushme = s->flushme;
+	qunlock(&s->lk);
+	return n;	
 }
 
 void
@@ -320,8 +316,8 @@ ibrk(ulong addr, int seg)
 
 	qlock(&s->lk);
 
+	/* We may start with the bss overlapping the data */
 	if(addr < s->base) {
-		/* We may start with the bss overlapping the data */
 		if(seg != BSEG || u->p->seg[DSEG] == 0 || addr < u->p->seg[DSEG]->base) {
 			qunlock(&s->lk);
 			error(Enovmem);
@@ -337,21 +333,19 @@ ibrk(ulong addr, int seg)
 		return 0;
 	}
 
-	if(newsize > (PTEMAPMEM*SEGMAPSIZE)/BY2PG) {
-		qunlock(&s->lk);
-		return -1;
-	}
-
 	for(i = 0; i < NSEG; i++) {
 		ns = u->p->seg[i];
 		if(ns == 0 || ns == s)
 			continue;
-		if(newtop >= ns->base)
-		if(newtop < ns->top) {
+		if(newtop >= ns->base && newtop < ns->top) {
 			qunlock(&s->lk);
-			pprint("segments overlap\n");
-			error(Enovmem);
+			error(Esoverlap);
 		}
+	}
+
+	if(newsize > (PTEMAPMEM*SEGMAPSIZE)/BY2PG) {
+		qunlock(&s->lk);
+		return -1;
 	}
 
 	s->top = newtop;
@@ -424,7 +418,7 @@ segattach(Proc *p, ulong attr, char *name, ulong va, ulong len)
 			continue;	
 		if((newtop > ns->base && newtop <= ns->top) ||
 		   (va >= ns->base && va < ns->top))
-			error(Enovmem);
+			error(Esoverlap);
 	}
 
 	for(ps = physseg; ps->name; ps++)

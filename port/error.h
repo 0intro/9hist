@@ -53,3 +53,4 @@ extern char Eneedservice[];	/* service required for tcp/udp/il calls */
 extern char Enomem[];		/* kernel allocate failed */
 extern char Esfnotcached[];	/* subfont not cached */
 extern char Egreg[];		/* it's a thermal problem */
+extern char Esoverlap[];	/* segments overlap */

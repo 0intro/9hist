@@ -100,13 +100,13 @@ screeninit(char *str)
 		dac->cntrl = 0x00;	/* no tests */
 		havecol = 0;	
 		if(havecol) {
-			/*
-			 * For now, just use a fixed colormap, where pixel i is
-			 * regarded as 3 bits of red, 3 bits of green, and 2 bits of blue.
-			 * Intensities are inverted so that 0 means white, 255 means black.
-			 * Exception: pixels 85 and 170 are set to intermediate grey values
-			 * so that 2-bit grey scale images will look ok on this screen.
-			 */
+		/*
+		 * For now, just use a fixed colormap, where pixel i is
+		 * regarded as 3 bits of red, 3 bits of green, and 2 bits of blue.
+		 * Intensities are inverted so that 0 means white, 255 means black.
+		 * Exception: pixels 85 and 170 are set to intermediate grey values
+		 * so that 2-bit grey scale images will look ok on this screen.
+		 */
 			for(i = 0; i<256; i++) {
 				r = ~rep((i>>5) & 7, 3);
 				g = ~rep((i>>2) & 7, 3);
@@ -124,18 +124,6 @@ screeninit(char *str)
 			}
 		}
 	}
-}
-
-mapdump(void)
-{
-	dac->addr = 4;
-	print("cntrl4 %.2ux\n", dac->cntrl);
-	dac->addr = 5;
-	print("cntrl5 %.2ux\n", dac->cntrl);
-	dac->addr = 6;
-	print("cntrl6 %.2ux\n", dac->cntrl);
-	dac->addr = 7;
-	print("cntrl7 %.2ux\n", dac->cntrl);
 }
 
 void

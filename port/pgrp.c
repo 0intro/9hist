@@ -8,6 +8,52 @@
 static Ref pgrpid;
 static Ref mountid;
 
+struct
+{
+	Lock;
+	Crypt	*free;
+} cryptalloc;
+
+/*
+ * crypt entries are allocated from a pool rather than allocated using malloc so
+ * the memory can be protected from reading by devproc. The base and top of the
+ * crypt arena is stored in palloc for devproc.
+ */
+Crypt*
+newcrypt(void)
+{
+	Crypt *c;
+
+	lock(&cryptalloc);
+	if(cryptalloc.free) {
+		c = cryptalloc.free;
+		cryptalloc.free = c->next;
+		unlock(&cryptalloc);
+		return c;
+	}
+
+	cryptalloc.free = malloc(sizeof(Crypt)*conf.nproc);
+	if(cryptalloc.free == 0)
+		panic("newcrypt");
+
+	for(c = cryptalloc.free+1; c < cryptalloc.free+conf.nproc-1; c++)
+		c->next = c+1;
+
+	palloc.cmembase = (ulong)cryptalloc.free;
+	palloc.cmembase = palloc.cmembase+(sizeof(Crypt)*conf.nproc);
+	unlock(&cryptalloc);
+	return newcrypt();
+}
+
+void
+freecrypt(Crypt *c)
+{
+	lock(&cryptalloc);
+	c->next = cryptalloc.free;
+	cryptalloc.free = c;
+	unlock(&cryptalloc);
+}
+
 void
 pgrpnote(ulong noteid, char *a, long n, int flag)
 {
@@ -26,11 +72,11 @@ pgrpnote(ulong noteid, char *a, long n, int flag)
 			continue;
 		if(p->noteid == noteid && p->kp == 0) {
 			qlock(&p->debug);
-			if(p->pid==0 || p->noteid != noteid){
+			if(p->pid == 0 || p->noteid != noteid){
 				qunlock(&p->debug);
 				continue;
 			}
-			if(!waserror()){
+			if(!waserror()) {
 				postnote(p, 0, buf, flag);
 				poperror();
 			}
@@ -44,51 +90,11 @@ newpgrp(void)
 {
 	Pgrp *p;
 
-	p = smalloc(sizeof(Pgrp)+sizeof(Crypt));
+	p = smalloc(sizeof(Pgrp));
 	p->ref = 1;
-	/* This needs to have its own arena for protection */
-	p->crypt = (Crypt*)((uchar*)p+sizeof(Pgrp));
+	p->crypt = newcrypt();
 	p->pgrpid = incref(&pgrpid);
 	return p;
-}
-
-Fgrp*
-dupfgrp(Fgrp *f)
-{
-	Fgrp *new;
-	Chan *c;
-	int i;
-
-	new = smalloc(sizeof(Fgrp));
-	new->ref = 1;
-
-	lock(f);
-	new->maxfd = f->maxfd;
-	for(i = 0; i <= f->maxfd; i++)
-		if(c = f->fd[i]){
-			incref(c);
-			new->fd[i] = c;
-		}
-	unlock(f);
-
-	return new;
-}
-
-void
-resrcwait(char *reason)
-{
-	char *p;
-
-	p = u->p->psstate;
-	if(reason) {
-		u->p->psstate = reason;
-		print("%s\n", reason);
-	}
-	if(u == 0)
-		panic("resrcwait");
-
-	tsleep(&u->p->sleep, return0, 0, 1000);
-	u->p->psstate = p;
 }
 
 void
@@ -110,37 +116,9 @@ closepgrp(Pgrp *p)
 			}
 		}
 		qunlock(&p->debug);
+		freecrypt(p->crypt);
 		free(p);
 	}
-}
-
-void
-closefgrp(Fgrp *f)
-{
-	int i;
-	Chan *c;
-
-	if(decref(f) == 0) {
-		for(i = 0; i <= f->maxfd; i++)
-			if(c = f->fd[i])
-				close(c);
-
-		free(f);
-	}
-}
-
-
-Mount*
-newmount(Mhead *mh, Chan *to)
-{
-	Mount *m;
-
-	m = smalloc(sizeof(Mount));
-	m->to = to;
-	m->head = mh;
-	incref(to);
-	m->mountid = incref(&mountid);
-	return m;
 }
 
 void
@@ -173,6 +151,58 @@ pgrpcpy(Pgrp *to, Pgrp *from)
 	runlock(&from->ns);
 }
 
+Fgrp*
+dupfgrp(Fgrp *f)
+{
+	Fgrp *new;
+	Chan *c;
+	int i;
+
+	new = smalloc(sizeof(Fgrp));
+	new->ref = 1;
+
+	lock(f);
+	new->maxfd = f->maxfd;
+	for(i = 0; i <= f->maxfd; i++) {
+		if(c = f->fd[i]){
+			incref(c);
+			new->fd[i] = c;
+		}
+	}
+	unlock(f);
+
+	return new;
+}
+
+void
+closefgrp(Fgrp *f)
+{
+	int i;
+	Chan *c;
+
+	if(decref(f) == 0) {
+		for(i = 0; i <= f->maxfd; i++)
+			if(c = f->fd[i])
+				close(c);
+
+		free(f);
+	}
+}
+
+
+Mount*
+newmount(Mhead *mh, Chan *to)
+{
+	Mount *m;
+
+	m = smalloc(sizeof(Mount));
+	m->to = to;
+	m->head = mh;
+	incref(to);
+	m->mountid = incref(&mountid);
+	return m;
+}
+
 void
 mountfree(Mount *m)
 {
@@ -184,4 +214,21 @@ mountfree(Mount *m)
 		free(m);
 		m = f;
 	}
+}
+
+void
+resrcwait(char *reason)
+{
+	char *p;
+
+	p = u->p->psstate;
+	if(reason) {
+		u->p->psstate = reason;
+		print("%s\n", reason);
+	}
+	if(u == 0)
+		panic("resrcwait");
+
+	tsleep(&u->p->sleep, return0, 0, 1000);
+	u->p->psstate = p;
 }

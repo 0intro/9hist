@@ -21,7 +21,8 @@ enum{
 };
 
 #define	STATSIZE	(2*NAMELEN+12+7*12)
-Dirtab procdir[]={
+Dirtab procdir[] =
+{
 	"ctl",		{Qctl},		0,			0000,
 	"mem",		{Qmem},		0,			0000,
 	"note",		{Qnote},	0,			0000,
@@ -53,13 +54,14 @@ char *sname[]={ "Text", "Data", "Bss", "Stack", "Shared", "Phys", "Shdata" };
 
 void	procctlreq(Proc*, char*, int);
 int	procctlmemio(Proc*, ulong, int, void*, int);
-Chan   *proctext(Chan*, Proc*);
-Segment *txt2data(Proc*, Segment*);
+Chan*	proctext(Chan*, Proc*);
+Segment* txt2data(Proc*, Segment*);
 int	procstopped(void*);
 
 int
 procgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 {
+	Qid qid;
 	Proc *p;
 	char buf[NAMELEN];
 	ulong pid, path, perm;
@@ -73,13 +75,15 @@ procgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 		if(pid == 0)
 			return 0;
 		sprint(buf, "%d", pid);
-		devdir(c, (Qid){CHDIR|((s+1)<<QSHIFT), pid}, buf, 0, p->user, CHDIR|0555, dp);
+		qid = (Qid){CHDIR|((s+1)<<QSHIFT), pid};
+		devdir(c, qid, buf, 0, p->user, CHDIR|0555, dp);
 		return 1;
 	}
 	if(s >= NPROC)
 		return -1;
 	if(tab)
 		panic("procgen");
+
 	tab = &procdir[s];
 	path = c->qid.path&~(CHDIR|((1<<QSHIFT)-1));	/* slot component */
 
@@ -88,7 +92,8 @@ procgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 	if(perm == 0)
 		perm = p->procmode;
 
-	devdir(c, (Qid){path|tab->qid.path, c->qid.vers}, tab->name, tab->length, p->user, perm, dp);
+	qid = (Qid){path|tab->qid.path, c->qid.vers};
+	devdir(c, qid, tab->name, tab->length, p->user, perm, dp);
 	return 1;
 }
 
@@ -156,7 +161,6 @@ procopen(Chan *c, int omode)
 			error(Eperm);
 		tc = proctext(c, p);
 		tc->offset = 0;
-
 		return tc;
 
 	case Qctl:
@@ -168,11 +172,12 @@ procopen(Chan *c, int omode)
 		break;
 
 	case Qnotepg:
-		if(omode!=OWRITE || pg->pgrpid==1)	/* easy to do by mistake */
+		if(omode!=OWRITE || pg->pgrpid == 1)
 			error(Eperm);
-		c->pgrpid.path = pg->index+1;
+		c->pgrpid.path = pg->pgrpid+1;
 		c->pgrpid.vers = p->noteid;
 		break;
+
 	default:
 		pprint("procopen %lux\n", c->qid);
 		error(Egreg);
@@ -263,6 +268,10 @@ procread(Chan *c, void *va, long n, ulong offset)
 		}
 
 		if(offset >= KZERO) {
+			/* Protect crypt key memory */
+			if(offset >= palloc.cmembase && offset < palloc.cmemtop)
+				error(Eperm);
+
 			/* validate physical kernel addresses */
 			if(offset < (ulong)end) {
 				if(offset+n > (ulong)end)
@@ -331,11 +340,6 @@ procread(Chan *c, void *va, long n, ulong offset)
 			return 0;
 		if(offset+n > STATSIZE)
 			n = STATSIZE - offset;
-
-/* Assertion for deref of psstate which causes faults */
-if((p->state < Dead) || (p->state > Rendezvous))
-	panic("p->state=#%lux, p->psstate=#%lux\n", p->state, p->psstate);
-
 
 		j = sprint(statbuf, "%-27s %-27s %-11s ",
 			p->text, p->user, p->psstate ? p->psstate : statename[p->state]);
@@ -424,7 +428,8 @@ procwrite(Chan *c, void *va, long n, ulong offset)
 			pxu = (User*)b;
 			hi = offset+n;
 			/* Check for floating point registers */
-			if(offset >= (ulong)&u->fpsave && hi <= (ulong)&u->fpsave+sizeof(FPsave)){
+			if(offset >= (ulong)&u->fpsave &&
+			   hi <= (ulong)&u->fpsave+sizeof(FPsave)){
 				memmove(b+(offset-USERADDR), a, n);
 				break;
 			}
@@ -598,9 +603,9 @@ procstopped(void *a)
 int
 procctlmemio(Proc *p, ulong offset, int n, void *va, int read)
 {
+	KMap *k;
 	Pte *pte;
 	Page *pg;
-	KMap *k;
 	Segment *s;
 	ulong soff, l;
 	char *a = va, *b;
@@ -660,8 +665,8 @@ procctlmemio(Proc *p, ulong offset, int n, void *va, int read)
 Segment *
 txt2data(Proc *p, Segment *s)
 {
-	Segment *ps;
 	int i;
+	Segment *ps;
 
 	ps = newseg(SG_DATA, s->base, s->size);
 	ps->image = s->image;
