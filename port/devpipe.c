@@ -125,12 +125,6 @@ pipewalk(Chan *c, char *name)
 	return devwalk(c, name, pipedir, NPIPEDIR, pipegen);
 }
 
-Chan*
-pipeclwalk(Chan *c, char *name)
-{
-	return devclwalk(c, name);
-}
-
 void
 pipestat(Chan *c, char *db)
 {

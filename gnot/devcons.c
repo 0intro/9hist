@@ -495,12 +495,6 @@ conswalk(Chan *c, char *name)
 	return devwalk(c, name, consdir, NCONS, consgen);
 }
 
-Chan*
-consclwalk(Chan *c, char *name)
-{
-	return devclwalk(c, name);
-}
-
 void
 consstat(Chan *c, char *dp)
 {

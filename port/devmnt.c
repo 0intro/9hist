@@ -353,6 +353,7 @@ mntclone(Chan *c, Chan *nc)
 	nc->flag = c->flag;
 	nc->offset = c->offset;
 	nc->mnt = c->mnt;
+	nc->mountid = c->mountid;
 	nc->aux = c->aux;
 	nc->mntindex = c->mntindex;
 	nc->mchan = c->mchan;
@@ -388,50 +389,6 @@ mntwalk(Chan *c, char *name)
     Out:
 	mhfree(mh);
 	return found;
-}
-
-Chan *
-mntclwalk(Chan *c, char *name)
-{
-	Mnt *m;
-	Mnthdr *mh;
-	Chan *nc;
-
-	nc = newchan();
-	mh = 0;
-	if(waserror()){
-		close(nc);
-		if(mh)
-			mhfree(mh);
-		return 0;
-	}
-	m = mntdev(c, 0);
-	mh = mhalloc();
-	mh->thdr.type = Tclwalk;
-	mh->thdr.fid = c->fid;
-	mh->thdr.newfid = nc->fid;
-	strcpy(mh->thdr.name, name);
-	mntxmit(m, mh);
-	if(mh->rhdr.fid == mh->thdr.fid){
-		/*
-		 *  hack to indicate the most common error
-		 */
-		errors("directory entry not found");
-	}
-	nc->type = c->type;
-	nc->dev = c->dev;
-	nc->mode = c->mode;
-	nc->flag = c->flag;
-	nc->offset = c->offset;
-	nc->mnt = c->mnt;
-	nc->aux = c->aux;
-	nc->mchan = c->mchan;
-	nc->mqid = c->qid;
-	nc->qid = mh->rhdr.qid;
-	incref(m);
-	poperror();
-	mhfree(mh);
-	return nc;
 }
 
 void	 
@@ -784,7 +741,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		print("type mismatch %d %d\n", mh->rhdr.type, mh->thdr.type+1);
 		error(Ebadmsg);
 	}
-	if(mh->rhdr.fid!=mh->thdr.fid && mh->thdr.type!=Tclwalk){
+	if(mh->rhdr.fid != mh->thdr.fid){
 		print("fid mismatch %d %d type %d\n", mh->rhdr.fid, mh->thdr.fid, mh->rhdr.type);
 		error(Ebadmsg);
 	}

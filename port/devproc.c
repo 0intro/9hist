@@ -101,12 +101,6 @@ procwalk(Chan *c, char *name)
 	return devwalk(c, name, 0, 0, procgen);
 }
 
-Chan*
-procclwalk(Chan *c, char *name)
-{
-	return devclwalk(c, name);
-}
-
 void
 procstat(Chan *c, char *db)
 {

@@ -359,12 +359,6 @@ inconwalk(Chan *c, char *name)
 	return devwalk(c, name, 0, 0, streamgen);
 }
 
-Chan*
-inconclwalk(Chan *c, char *name)
-{
-	return devclwalk(c, name);
-}
-
 void	 
 inconstat(Chan *c, char *dp)
 {

@@ -77,6 +77,7 @@ devclone(Chan *c, Chan *nc)
 	nc->offset = c->offset;
 	nc->flag = c->flag;
 	nc->mnt = c->mnt;
+	nc->mountid = c->mountid;
 	nc->aux = c->aux;
 	nc->mchan = c->mchan;
 	nc->mqid = c->mqid;
@@ -106,26 +107,6 @@ devwalk(Chan *c, char *name, Dirtab *tab, int ntab, Devgen *gen)
 			}
 			continue;
 		}
-}
-
-Chan*
-devclwalk(Chan *c, char *name)
-{
-	Chan *nc;
-
-	nc = 0;
-	if(waserror()){
-		if(nc)
-			close(nc);
-		return 0;
-	}
-	nc = (*devtab[c->type].clone)(c, 0);
-	if((*devtab[nc->type].walk)(nc, name) == 0){
-		close(nc);
-		nc = 0;
-	}
-	poperror();
-	return nc;
 }
 
 void

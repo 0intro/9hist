@@ -61,12 +61,6 @@ rootwalk(Chan *c, char *name)
 	return devwalk(c, name, rootdir, nroot, devgen);
 }
 
-Chan*
-rootclwalk(Chan *c, char *name)
-{
-	return devclwalk(c, name);
-}
-
 void	 
 rootstat(Chan *c, char *dp)
 {

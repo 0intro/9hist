@@ -111,6 +111,7 @@ struct Chan
 		Stream	*stream;	/* for stream channels */
 		void	*aux;
 		Qid	pgrpid;		/* for #p/notepg */
+		int	mntindex;	/* for devmnt */
 	};
 	Chan	*mchan;			/* channel to mounted server */
 	Qid	mqid;			/* qid of root of mount point */
@@ -178,7 +179,6 @@ struct Dev
 	long	 (*write)(Chan*, void*, long, ulong );
 	void	 (*remove)(Chan*);
 	void	 (*wstat)(Chan*, char*);
-	Chan	*(*clwalk)(Chan*, char*);
 };
 
 struct Dirtab
@@ -227,6 +227,15 @@ struct Mach
 	char	pidhere[NTLBPID];	/* is this tlbpid possibly in this mmu? */
 	int	lastpid;		/* last pid allocated on this machine */
 	Proc	*pidproc[NTLBPID];	/* process that owns this pid on this mach */
+
+	int	tlbfault;
+	int	tlbpurge;
+	int	pfault;
+	int	cs;
+	int	syscall;
+	int	spinlock;
+	int	intr;
+
 	int	stack[1];
 };
 

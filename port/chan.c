@@ -11,18 +11,6 @@ struct{
 	Chan	*free;
 }chanalloc;
 
-/*
- *  used by namec, domount, and walk to point
- *  to the current mount entry during name resolution
- */
-typedef struct Finger	Finger;
-struct Finger {
-	Chan	*c;		/* channel we're walking */
-	int	needcl;		/* true if we need to clone c before using it */
-	Mount	*mnt;		/* last mount point we ran traversed */
-	ulong	mountid;	/* id of that mount point */
-};
-
 int
 incref(Ref *r)
 {
@@ -95,7 +83,9 @@ loop:
 		c->dev = 0;
 		c->offset = 0;
 		c->mnt = 0;
+		c->stream = 0;
 		c->aux = 0;
+		c->mntindex = 0;
 		c->mchan = 0;
 		c->mqid = (Qid){0, 0};
 		return c;
@@ -292,13 +282,15 @@ clone(Chan *c, Chan *nc)
 	return (*devtab[c->type].clone)(c, nc);
 }
 
-void
-domount(Finger *f)
+Chan*
+domount(Chan *c)
 {
 	int i;
+	ulong mntid;
 	Mtab *mt;
+	Mount *mnt;
 	Pgrp *pg;
-	Chan *mc;
+	Chan *nc, *mc;
 
 	pg = u->p->pgrp;
 	/*
@@ -306,101 +298,110 @@ domount(Finger *f)
 	 */
 	mt = pg->mtab;
 	for(i=0; i<pg->nmtab; i++,mt++)
-		if(mt->c && eqchan(mt->c, f->c, 1))
+		if(mt->c && eqchan(mt->c, c, 1))
 			goto Found;
 	/*
 	 * No; c is unaffected
 	 */
-	return;
+	return c;
 
 	/*
 	 * Yes; move c through table
 	 */
     Found:
 	lock(pg);
-	if(!eqchan(mt->c, f->c, 1)){	/* table changed underfoot */
+	if(!eqchan(mt->c, c, 1)){	/* table changed underfoot */
 		pprint("domount: changed underfoot?\n");
 		unlock(pg);
-		return;
+		return c;
 	}
-	f->mnt = mt->mnt;
-	f->mountid = f->mnt->mountid;
-	mc = mt->mnt->c;
+	mnt = mt->mnt;
+	mntid = mnt->mountid;
+	mc = mnt->c;
 	incref(mc);
 	unlock(pg);
-	close(f->c);
-	f->c = mc;
-	f->needcl = 1;
+	if(waserror()){
+		close(mc);
+		nexterror();
+	}
+	nc = clone(mc, 0);
+	close(mc);
+	poperror();
+	close(c);
+	nc->mnt = mnt;
+	nc->mountid = mntid;
+	return nc;
 }
 
-int
-walk(Finger *f, char *name, int domnt)
+Chan*
+walk(Chan *ac, char *name, int domnt)
 {
+	Mount *mnt;
 	int first = 1;
-	Mount *mnt = f->mnt;
-	ulong mountid = f->mountid;
-	Chan *c = f->c;
-	Chan *mc;
+	Chan *c = ac;
+	Chan *nc, *mc;
 	Pgrp *pg = u->p->pgrp;
 
 	/*
 	 * name may be empty if the file name is "/", "#c" etc.
 	 */
-	if(name[0]){
-		for(;;){
-			if(!first || f->needcl){
-				mc = (*devtab[c->type].clwalk)(c, name);
-				if(mc){
-					close(c);
-					c = mc;
-					break;
-				}
-			} else {
-				if((*devtab[c->type].walk)(c, name) != 0){
-					break;
-				}
-			}
-			if(!(c->flag&CMOUNT))
-				goto Notfound;
-			if(mnt == 0)
-				panic("walk");	/* ??? is this safe ??? */
-			lock(pg);
-			if(mnt->term){
-				unlock(pg);
-				goto Notfound;
-			}
-			if(mountid != mnt->mountid){
-				pprint("walk: changed underfoot? '%s'\n", name);
-				unlock(pg);
-				goto Notfound;
-			}
-			mnt = mnt->next;
-			mountid = mnt->mountid;
-			mc = mnt->c;
-			incref(mc);
+    Again:
+	if(name[0] && (*devtab[c->type].walk)(c, name)==0){
+		if(!(c->flag&CMOUNT))
+			goto Notfound;
+		mnt = c->mnt;
+		if(mnt == 0)
+			panic("walk");
+		lock(pg);
+		if(mnt->term){
 			unlock(pg);
-			if(!first)
-				close(c);
-			c = mc;
-			first = 0;
+			goto Notfound;
 		}
-
-		/*
-		 *  we get here only if we have a cloned and walked
-		 *  channel
-		 */
+		if(c->mountid != mnt->mountid){
+			pprint("walk: changed underfoot? '%s'\n", name);
+			unlock(pg);
+			goto Notfound;
+		}
+		mnt = mnt->next;
+		mc = mnt->c;
+		incref(mc);
+		unlock(pg);
+		if(waserror()){
+			close(mc);
+			nexterror();
+		}
+		if(mnt == 0)
+			panic("walk 1");
+		nc = clone(mc, 0);
+		close(mc);
+		poperror();
 		if(!first)
-			close(f->c);
-		f->c = c;
-		f->needcl = 0;
-		f->mnt = 0;
-		c->flag &= ~CMOUNT;
+			close(c);
+		nc->mnt = mnt;
+		nc->mountid = mnt->mountid;
+		c = nc;
+		first = 0;
+		goto Again;
 	}
 
-	if(domnt)
-		domount(f);
+	if(name[0])			/* walk succeeded */
+		c->flag &= ~CMOUNT;
 
-	return 1;
+	if(domnt){
+		if(waserror()){
+			if(!first)
+				close(c);
+			return 0;
+		}
+		c = domount(c);
+		poperror();
+	}
+
+	if(!first)
+		close(ac);
+
+
+	return c;
 
     Notfound:
 	if(!first)
@@ -409,22 +410,22 @@ walk(Finger *f, char *name, int domnt)
 }
 
 /*
- * f->c is a mounted non-creatable directory.  find a creatable one.
+ * c is a mounted non-creatable directory.  find a creatable one.
  */
-void
-createdir(Finger *f)
+Chan*
+createdir(Chan *c)
 {
 	Mount *mnt;
 	Pgrp *pg = u->p->pgrp;
-	Chan *mc;
+	Chan *mc, *nc;
 
 	lock(pg);
 	if(waserror()){
 		unlock(pg);
 		nexterror();
 	}
-	mnt = f->mnt;
-	if(f->mountid != mnt->mountid){
+	mnt = c->mnt;
+	if(c->mountid != mnt->mountid){
 		pprint("createdir: changed underfoot?\n");
 		error(Enocreate);
 	}
@@ -436,28 +437,21 @@ createdir(Finger *f)
 	mc = mnt->c;
 	incref(mc);
 	unlock(pg);
+	if(waserror()){
+		close(mc);
+		nexterror();
+	}
+	nc = clone(mc, 0);
 	poperror();
-	close(f->c);
-	f->needcl = 1;
-	f->c = mc;
+	close(c);
+	close(mc);
+	nc->mnt = mnt;
+	return nc;
 }
 
 void
 saveregisters(void)
 {
-}
-
-void
-doclone(Finger *f)
-{
-	Chan *nc;
-
-	if(f->needcl == 0)
-		return;
-	nc = clone(f->c, 0);
-	close(f->c);
-	f->c = nc;
-	f->needcl = 0;
 }
 
 /*
@@ -467,11 +461,11 @@ doclone(Finger *f)
 Chan*
 namec(char *name, int amode, int omode, ulong perm)
 {
+	Chan *c, *nc, *cc;
 	int t;
 	int mntok, isdot;
 	char *p;
 	char *elem;
-	Finger f;
 
 	if(name[0] == 0)
 		error(Enonexist);
@@ -492,11 +486,8 @@ namec(char *name, int amode, int omode, ulong perm)
 	elem = u->elem;
 	mntok = 1;
 	isdot = 0;
-	f.mnt = 0;
 	if(name[0] == '/'){
-		f.c = u->slash;
-		incref(f.c);
-		f.needcl = 1;
+		c = clone(u->slash, 0);
 		/*
 		 * Skip leading slashes.
 		 */
@@ -514,19 +505,16 @@ namec(char *name, int amode, int omode, ulong perm)
 			elem[0]=0;
 		}else
 			name = nextelem(name, elem);
-		f.c = (*devtab[t].attach)(elem);
-		f.needcl = 0;
+		c = (*devtab[t].attach)(elem);
 	}else{
-		f.c = u->dot;
-		incref(f.c);
-		f.needcl = 1;
+		c = clone(u->dot, 0);
 		name = skipslash(name);	/* eat leading ./ */
 		if(*name == 0)
 			isdot = 1;
 	}
 
 	if(waserror()){
-		close(f.c);
+		close(c);
 		nexterror();
 	}
 
@@ -537,15 +525,16 @@ namec(char *name, int amode, int omode, ulong perm)
 	 *  current directory.
 	 */
 	if(mntok && !isdot && !(amode==Amount && elem[0]==0))
-		domount(&f);		/* see case Atodir below */
+		c = domount(c);			/* see case Atodir below */
 
 	/*
 	 * How to treat the last element of the name depends on the operation.
 	 * Therefore do all but the last element by the easy algorithm.
 	 */
 	while(*name){
-		if(walk(&f, elem, mntok) == 0)
+		if((nc=walk(c, elem, mntok)) == 0)
 			error(Enonexist);
+		c = nc;
 		name = nextelem(name, elem);
 	}
 
@@ -555,10 +544,11 @@ namec(char *name, int amode, int omode, ulong perm)
 	switch(amode){
 	case Aaccess:
 		if(isdot)
-			domount(&f);
+			c = domount(c);
 		else{
-			if(walk(&f, elem, mntok) == 0)
+			if((nc=walk(c, elem, mntok)) == 0)
 				error(Enonexist);
+			c = nc;
 		}
 		break;
 
@@ -567,26 +557,26 @@ namec(char *name, int amode, int omode, ulong perm)
 		 * Directories (e.g. for cd) are left before the mount point,
 		 * so one may mount on / or . and see the effect.
 		 */
-		if(walk(&f, elem, 0) == 0)
+		if((nc=walk(c, elem, 0)) == 0)
 			error(Enonexist);
-		if(!(f.c->qid.path & CHDIR))
+		c = nc;
+		if(!(c->qid.path & CHDIR))
 			error(Enotdir);
 		break;
 
 	case Aopen:
 		if(isdot)
-			domount(&f);
+			c = domount(c);
 		else{
-			if(walk(&f, elem, mntok) == 0)
+			if((nc=walk(c, elem, mntok)) == 0)
 				error(Enonexist);
+			c = nc;
 		}
 	Open:
-		saveregisters(); /* else error() in open has wrong value of c saved */
-		if(f.needcl)
-			doclone(&f);
-		f.c = (*devtab[f.c->type].open)(f.c, omode);
+		saveregisters();	/* else error() in open has wrong value of c saved */
+		c = (*devtab[c->type].open)(c, omode);
 		if(omode & OCEXEC)
-			f.c->flag |= CCEXEC;
+			c->flag |= CCEXEC;
 		break;
 
 	case Amount:
@@ -595,37 +585,51 @@ namec(char *name, int amode, int omode, ulong perm)
 		 * the second mount to be attached to the original directory, not
 		 * the replacement.
 		 */
-		if(walk(&f, elem, 0) == 0)
+		if((nc=walk(c, elem, 0)) == 0)
 			error(Enonexist);
+		c = nc;
 		break;
 
 	case Acreate:
 		if(isdot)
 			error(Eisdir);
-		if(walk(&f, elem, 1) != 0){
+
+		/*
+		 *  Walk the element before trying to create it
+		 *  to see if it exists.  We clone the channel
+		 *  first, just in case someone is trying to
+		 *  use clwalk outside the kernel.
+		 */
+		cc = clone(c, 0);
+		if(waserror()){
+			close(cc);
+			nexterror();
+		}
+		if((nc=walk(cc, elem, 1)) != 0){
+			poperror();
+			close(c);
+			c = nc;
 			omode |= OTRUNC;
 			goto Open;
 		}
-		if((f.c->flag&(CMOUNT|CCREATE)) == CMOUNT)
-			createdir(&f);
-		if(f.needcl)
-			doclone(&f);
-		(*devtab[f.c->type].create)(f.c, elem, omode, perm);
+		close(cc);
+		poperror();
+
+		/*
+		 *  the file didn't exist, try the create
+		 */
+		if((c->flag&(CMOUNT|CCREATE)) == CMOUNT)
+			c = createdir(c);
+		(*devtab[c->type].create)(c, elem, omode, perm);
 		if(omode & OCEXEC)
-			f.c->flag |= CCEXEC;
+			c->flag |= CCEXEC;
 		break;
 
 	default:
 		panic("unknown namec access %d\n", amode);
 	}
-	if(f.needcl)
-		doclone(&f);
 	poperror();
-	if(f.c->flag & CMOUNT){
-		f.c->mnt = f.mnt;
-		f.c->mountid = f.mountid;
-	}
-	return f.c;
+	return c;
 }
 
 /*

@@ -135,12 +135,6 @@ ipwalk(Chan *c, char *name)
 		return devwalk(c, name, ipsubdir, Nipsubdir, streamgen);
 }
 
-Chan*
-ipclwalk(Chan *c, char *name)
-{
-	return devclwalk(c, name);
-}
-
 void
 ipstat(Chan *c, char *db)
 {

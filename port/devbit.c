@@ -194,12 +194,6 @@ bitwalk(Chan *c, char *name)
 	return devwalk(c, name, bitdir, NBIT, devgen);
 }
 
-Chan*
-bitclwalk(Chan *c, char *name)
-{
-	return devclwalk(c, name);
-}
-
 void
 bitstat(Chan *c, char *db)
 {

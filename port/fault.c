@@ -19,6 +19,7 @@ fault(ulong addr, int read)
 	int i, touched = 0;
 	KMap *k, *k1;
 
+	m->pfault++;
 	s = seg(u->p, addr);
 	if(s == 0){
 		if(addr > USTKTOP)

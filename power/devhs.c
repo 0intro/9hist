@@ -184,12 +184,6 @@ hsvmewalk(Chan *c, char *name)
 	return devwalk(c, name, 0, 0, streamgen);
 }
 
-Chan*
-hsvmeclwalk(Chan *c, char *name)
-{
-	return devclwalk(c, name);
-}
-
 void	 
 hsvmestat(Chan *c, char *dp)
 {

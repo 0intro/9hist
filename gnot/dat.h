@@ -177,7 +177,6 @@ struct Dev
 	long	 (*write)(Chan*, void*, long, ulong);
 	void	 (*remove)(Chan*);
 	void	 (*wstat)(Chan*, char*);
-	Chan	*(*clwalk)(Chan*, char*);
 };
 
 struct Dirtab

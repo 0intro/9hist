@@ -222,12 +222,6 @@ iproutewalk(Chan *c, char *name)
 	return devwalk(c, name, iproutetab, (long)Niproutetab, devgen);
 }
 
-Chan*
-iprouteclwalk(Chan *c, char *name)
-{
-	return devclwalk(c, name);
-}
-
 void
 iproutestat(Chan *c, char *db)
 {

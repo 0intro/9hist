@@ -46,12 +46,6 @@ dupclone(Chan *c, Chan *nc)
 	return devclone(c, nc);
 }
 
-Chan*
-dupclwalk(Chan *c, char *name)
-{
-	return devclwalk(c, name);
-}
-
 int
 dupwalk(Chan *c, char *name)
 {

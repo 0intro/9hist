@@ -63,12 +63,6 @@ kprofwalk(Chan *c, char *name)
 	return devwalk(c, name, kproftab, (long)Nkproftab, devgen);
 }
 
-Chan*
-kprofclwalk(Chan *c, char *name)
-{
-	return devclwalk(c, name);
-}
-
 void
 kprofstat(Chan *c, char *db)
 {

@@ -81,12 +81,6 @@ arpwalk(Chan *c, char *name)
 	return devwalk(c, name, arptab, (long)Narptab, devgen);
 }
 
-Chan*
-arpclwalk(Chan *c, char *name)
-{
-	return devclwalk(c, name);
-}
-
 void
 arpstat(Chan *c, char *db)
 {

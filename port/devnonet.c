@@ -202,12 +202,6 @@ nonetwalk(Chan *c, char *name)
 		return devwalk(c, name, nosubdir, Nsubdir, streamgen);
 }
 
-Chan*
-nonetclwalk(Chan *c, char *name)
-{
-	return devclwalk(c, name);
-}
-
 void	 
 nonetstat(Chan *c, char *dp)
 {

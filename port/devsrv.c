@@ -104,12 +104,6 @@ srvwalk(Chan *c, char *name)
 	return 1;
 }
 
-Chan*
-srvclwalk(Chan *c, char *name)
-{
-	return devclwalk(c, name);
-}
-
 void
 srvstat(Chan *c, char *db)
 {
