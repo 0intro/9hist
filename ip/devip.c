@@ -180,6 +180,8 @@ ip1gen(Chan *c, int i, Dir *dp)
 		break;
 	}
 	devdir(c, q, p, len, network, prot, dp);
+	if(i == Qndb)
+		dp->mtime = f->ndbmtime;
 	return 1;
 }
 
@@ -1374,6 +1376,7 @@ ndbwrite(Fs *f, char *a, ulong off, int n)
 	memmove(f->ndb+off, a, n);
 	f->ndb[off+n] = 0;
 	f->ndbvers++;
+	f->ndbmtime = seconds();
 	return n;
 }
 

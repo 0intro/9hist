@@ -294,6 +294,7 @@ struct Fs
 
 	char	ndb[1024];		/* an ndb entry for this interface */
 	int	ndbvers;
+	long	ndbmtime;
 };
 
 int	Fsconnected(Conv*, char*);
