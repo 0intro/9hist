@@ -90,9 +90,9 @@ wrengen(Chan *c, Dirtab *tab, long ntab, long s, Dir *dirp)
 
 	pp = &dp->p[s];
 	if(drive & 7)
-		sprint(name, "hd%d.%d%s", drive>>3, drive&7, pp->name);
+		sprint(name, "sd%d.%d%s", drive>>3, drive&7, pp->name);
 	else
-		sprint(name, "hd%d%s", drive>>3, pp->name);
+		sprint(name, "sd%d%s", drive>>3, pp->name);
 	name[NAMELEN] = 0;
 	qid.path = MKQID(drive, s);
 	l = (pp->end - pp->start) * dp->bytes;

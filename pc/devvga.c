@@ -495,6 +495,7 @@ setscreen(int maxx, int maxy, int ldepth)
 	p = xalloc(len);
 	if(p == 0)
 		error(Enobitstore);
+	memset(p, 0xff, len);
 	mbb = NULLMBB;
 
 	/*

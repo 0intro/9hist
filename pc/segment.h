@@ -2,6 +2,8 @@
  * Attach segment types
  */
 
+#define PCMEM (KZERO|0xd0000)
+
 typedef struct Physseg Physseg;
 struct Physseg
 {
@@ -14,7 +16,7 @@ struct Physseg
 }physseg[] = {
 	{ SG_SHARED,	"lock",		0,	SEGMAXSIZE,	snewpage, 	putpage },
 	{ SG_SHARED,	"shared",	0,	SEGMAXSIZE,	snewpage, 	putpage },
-	{ SG_PHYSICAL,	"kmem",		KZERO,	SEGMAXSIZE,	0,		0 	},
+	{ SG_PHYSICAL,	"pcmem",	PCMEM,	64*1024,	0,		0,	},
 	{ SG_BSS,	"memory",	0,	SEGMAXSIZE,	snewpage,	putpage },
 	{ 0,		0,		0,	0,		0,		0 	},
 };

@@ -14,7 +14,6 @@ struct Physseg
 }physseg[] = {
 	{ SG_SHARED,	"lock",		0,	SEGMAXSIZE,	snewpage, 	putpage },
 	{ SG_SHARED,	"shared",	0,	SEGMAXSIZE,	snewpage, 	putpage },
-	{ SG_PHYSICAL,	"kmem",		KZERO,	SEGMAXSIZE,	0,		0 	},
 	{ SG_BSS,	"memory",	0,	SEGMAXSIZE,	snewpage,	putpage },
 	{ 0,		0,		0,	0,		0,		0 	},
 };
