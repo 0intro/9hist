@@ -562,14 +562,12 @@ overflow(Ether *ether)
 }
 
 static void
-interrupt(Ureg *ur, void *arg)
+interrupt(Ureg*, void *arg)
 {
 	Ether *ether;
 	Dp8390 *dp8390;
 	ulong port;
 	uchar isr, r;
-
-	USED(ur);
 
 	ether = arg;
 	dp8390 = ether->ctlr;
@@ -580,7 +578,7 @@ interrupt(Ureg *ur, void *arg)
 	 * clear all the interrupts and process.
 	 */
 	slowoutb(port+Imr, 0x00);
-	while(isr = slowinb(port+Isr)){
+	while(isr = (slowinb(port+Isr) & (Cnte|Ovwe|Txee|Rxee|Ptxe|Prxe))){
 
 		if(isr & Ovw){
 			overflow(ether);
@@ -657,7 +655,7 @@ attach(Ether *ether)
 	x = Ab;
 	if(ether->prom)
 		x |= Pro;
-	slowoutb(dp8390->dp8390+Rcr, Ab);
+	slowoutb(dp8390->dp8390+Rcr, x);
 	slowinb(dp8390->dp8390+Cntr2);
 }
 
