@@ -162,7 +162,7 @@
 #define	TSTKTOP	(0xC0000000+USTKSIZE-BY2PG) /* top of temporary stack */
 #define	TSTKSIZ 100
 #define	KZERO	KSEG0			/* base of kernel address space */
-#define	KTZERO	(KZERO+0x2000)		/* first address in kernel text */
+#define	KTZERO	(KZERO+0x12000)		/* first address in kernel text */
 #define	USTKSIZE	(4*1024*1024)	/* size of user stack */
 #define globalmem(x)	(((ulong)x)&KZERO)	/* addresses valid in all contexts */
 /*

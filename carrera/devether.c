@@ -570,7 +570,10 @@ initbufs(Ether *c)
 	int i;
 	uchar *mem, *base;
 
-	mem = xspanalloc(64*1024, 8, 64*1024);
+	/* Put the ethernet buffers in the same place
+	 * as the bootrom
+	 */
+	mem = (void*)(KZERO|0x2000);
 	base = mem;
 	mem = CACHELINE(uchar, mem);
 
