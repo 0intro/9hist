@@ -121,7 +121,7 @@ vgascreenputc(VGAscr* scr, char* buf, Rectangle *flushr)
 		*xp++ = curpos.x;
 		r = Rect(curpos.x, curpos.y, curpos.x+w, curpos.y+h);
 		memimagedraw(scr->gscreen, r, back, back->r.min, nil, back->r.min);
-		memimagestring(scr->gscreen, curpos, conscol, scr->memdefont, buf);
+		memimagestring(scr->gscreen, curpos, conscol, ZP, scr->memdefont, buf);
 		combinerect(flushr, r);
 		curpos.x += w;
 	}

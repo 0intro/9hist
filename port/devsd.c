@@ -71,7 +71,6 @@ static int types[] =
 static int
 sdgen(Chan *c, Dirtab*, int, int s, Dir *dirp)
 {
-
 	Qid qid;
 	Disk *d;
 	Part *p;
@@ -335,18 +334,38 @@ sdrdpart(Disk *d)
 
 	p++;
 	strcpy(p->name, "partition");
-	p->beg = d->table[0].end - 1;
-	p->end = d->table[0].end;
+	p->beg = d->table[0].end - 2;
+	p->end = d->table[0].end - 1;
 	p++;
 	d->npart = 2;
 
-	scsibio(d->t, d->lun, SCSIread, b, 1, d->bsize, d->table[0].end-1);
+	/*
+	 *  Read second last sector from disk, null terminate.
+	 *  The last sector used to hold the partition tables.
+	 *  However, this sector is special on some PC's so we've
+	 *  started to use the second last sector as the partition
+	 *  table instead.  To avoid reconfiguring all our old systems
+	 *  we still check if there is a valid partition table in
+	 *  the last sector if none is found in the second last.
+	 */
+	scsibio(d->t, d->lun, SCSIread, b, 1, d->bsize, d->table[0].end-2);
 	b[d->bsize-1] = '\0';
+	n = parsefields(b, line, nelem(line), "\n");
+	if(n <= 0 || strncmp(line[0], MAGIC, sizeof(MAGIC)-1) != 0){
+		/* try the last */
+		scsibio(d->t, d->lun, SCSIread, b, 1, d->bsize, d->table[0].end-1);
+		b[d->bsize-1] = '\0';
+		n = parsefields(b, line, nelem(line), "\n");
+		/* only point partition file at last sector if there is one there */
+		if(n > 0 && strncmp(line[0], MAGIC, sizeof(MAGIC)-1) == 0){
+			d->table[1].beg++;
+			d->table[1].end++;
+		}
+	}
 
 	/*
 	 *  parse partition table.
 	 */
-	n = parsefields(b, line, nelem(line), "\n");
 	if(n > 0 && strncmp(line[0], MAGIC, sizeof(MAGIC)-1) == 0) {
 		for(i = 1; i < n; i++) {
 			if(parsefields(line[i], field, nelem(field), " ") != 3)

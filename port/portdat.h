@@ -246,8 +246,6 @@ struct Mnt
 	Mnt	*list;		/* Free list */
 	int	flags;		/* cache */
 	int	blocksize;	/* read/write block size */
-	ushort	flushtag;	/* Tag to send flush on */
-	ushort	flushbase;	/* Base tag of flush window for this buffer */
 	char	*partial;	/* Outstanding read data */
 	int	npart;		/* Sizeof remains */
 };

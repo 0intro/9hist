@@ -133,7 +133,7 @@ screenwin(void)
 	greet = " Plan 9 Console ";
 	p = addpt(window.min, Pt(10, 0));
 	q = memsubfontwidth(memdefont, greet);
-	memimagestring(gscreen, p, conscol, memdefont, greet);
+	memimagestring(gscreen, p, conscol, ZP, memdefont, greet);
 	window.min.y += h+6;
 	curpos = window.min;
 	window.max.y = window.min.y+((window.max.y-window.min.y)/h)*h;
@@ -335,7 +335,7 @@ screenputc(char *buf)
 		*xp++ = curpos.x;
 		r = Rect(curpos.x, curpos.y, curpos.x+w, curpos.y + h);
 		memimagedraw(gscreen, r, back, back->r.min, nil, back->r.min);
-		memimagestring(gscreen, curpos, conscol, memdefont, buf);
+		memimagestring(gscreen, curpos, conscol, ZP, memdefont, buf);
 		curpos.x += w;
 	}
 }

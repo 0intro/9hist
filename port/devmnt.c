@@ -15,9 +15,6 @@ struct Mntrpc
 	Rendez	r;		/* Place to hang out */
 	char*	rpc;		/* I/O Data buffer */
 	char	done;		/* Rpc completed */
-	char	flushed;	/* Flush was sent */
-	ushort	flushtag;	/* Tag flush sent on */
-	char	flush[MAXMSG];	/* Somewhere to build flush */
 	uvlong	stime;		/* start time for mnt statistics */
 	ulong	reqlen;		/* request length for mnt statistics */
 	ulong	replen;		/* reply length for mnt statistics */
@@ -39,7 +36,7 @@ void	mattach(Mnt*, Chan*, char*);
 void	mntauth(Mnt*, Mntrpc*, char*, ushort);
 Mnt*	mntchk(Chan*);
 void	mntdirfix(uchar*, Chan*);
-int	mntflush(Mnt*, Mntrpc*);
+void	mntflush(Mnt*, Mntrpc*);
 void	mntfree(Mntrpc*);
 void	mntgate(Mnt*);
 void	mntpntfree(Mnt*);
@@ -60,8 +57,6 @@ void (*mntstats)(int, Chan*, uvlong, ulong);
 enum
 {
 	Tagspace	= 1,
-	Tagfls		= 0x8000,
-	Tagend		= 0xfffe,
 };
 
 static void
@@ -120,8 +115,6 @@ mntattach(char *muxattach)
 			unlock(&mntalloc);
 			exhausted("mount devices");
 		}
-		m->flushbase = Tagfls;
-		m->flushtag = Tagfls;
 	}
 	m->list = mntalloc.list;
 	mntalloc.list = m;
@@ -402,7 +395,6 @@ mclose(Mnt *m, Chan*)
 
 	for(q = m->queue; q; q = r) {
 		r = q->list;
-		q->flushed = 0;
 		mntfree(q);
 	}
 	m->id = 0;
@@ -628,10 +620,10 @@ mountrpc(Mnt *m, Mntrpc *r)
 	default:
 		if(t == r->request.type+1)
 			break;
-		print("mnt: proc %s %lud: mismatch rep 0x%lux tag %d fid %d T%d R%d fls %d rp %d\n",
+		print("mnt: proc %s %lud: mismatch rep 0x%lux tag %d fid %d T%d R%d rp %d\n",
 			up->text, up->pid,
 			r, r->request.tag, r->request.fid, r->request.type, r->reply.type,
-			r->flushtag, r->reply.tag);
+			r->reply.tag);
 		error(Emountrpc);
 	}
 }
@@ -642,7 +634,6 @@ mountio(Mnt *m, Mntrpc *r)
 	int n;
 
 	lock(m);
-	r->flushed = 0;
 	r->m = m;
 	r->list = m->queue;
 	m->queue = r;
@@ -653,21 +644,22 @@ mountio(Mnt *m, Mntrpc *r)
 	if(n < 0)
 		panic("bad message type in mountio");
 	if(waserror()) {
-		if(mntflush(m, r) == 0)
+		if(m->rip == up)
+			mntgate(m);
+		if(strcmp(up->error, Eintr) != 0)
 			nexterror();
+		mntflush(m, r);
+		return;
 	}
-	else {
-		if(devtab[m->c->type]->dc == L'M'){
-			if(mnt9prdwr(Twrite, m->c, r->rpc, n, 0) != n)
-				error(Emountrpc);
-		}else{
-			if(devtab[m->c->type]->write(m->c, r->rpc, n, 0) != n)
-				error(Emountrpc);
-		}
-		r->stime = fastticks(nil);
-		r->reqlen = n;
-		poperror();
+	if(devtab[m->c->type]->dc == L'M'){
+		if(mnt9prdwr(Twrite, m->c, r->rpc, n, 0) != n)
+			error(Emountrpc);
+	}else{
+		if(devtab[m->c->type]->write(m->c, r->rpc, n, 0) != n)
+			error(Emountrpc);
 	}
+	r->stime = fastticks(nil);
+	r->reqlen = n;
 
 	/* Gate readers onto the mount point one at a time */
 	for(;;) {
@@ -675,15 +667,11 @@ mountio(Mnt *m, Mntrpc *r)
 		if(m->rip == 0)
 			break;
 		unlock(m);
-		if(waserror()) {
-			if(mntflush(m, r) == 0)
-				nexterror();
-			continue;
-		}
 		sleep(&r->r, rpcattn, r);
-		poperror();
-		if(r->done)
+		if(r->done){
+			poperror();
 			return;
+		}
 	}
 	m->rip = up;
 	unlock(m);
@@ -692,6 +680,7 @@ mountio(Mnt *m, Mntrpc *r)
 		mountmux(m, r);
 	}
 	mntgate(m);
+	poperror();
 }
 
 void
@@ -700,20 +689,12 @@ mntrpcread(Mnt *m, Mntrpc *r)
 	int n;
 
 	for(;;) {
-		if(waserror()) {
-			if(mntflush(m, r) == 0) {
-				mntgate(m);
-				nexterror();
-			}
-			continue;
-		}
 		r->reply.type = 0;
 		r->reply.tag = 0;
 		if(devtab[m->c->type]->dc == L'M')
 			n = mnt9prdwr(Tread, m->c, r->rpc, MAXRPC, 0);
 		else
 			n = devtab[m->c->type]->read(m->c, r->rpc, MAXRPC, 0);
-		poperror();
 		if(n == 0)
 			continue;
 
@@ -747,8 +728,8 @@ mountmux(Mnt *m, Mntrpc *r)
 	lock(m);
 	l = &m->queue;
 	for(q = *l; q; q = q->list) {
-		if((q->flushed==0 && q->request.tag == r->reply.tag)
-		|| (q->flushed && q->flushtag == r->reply.tag)) {
+		// look for a reply to a message
+		if(q->request.tag == r->reply.tag) {
 			*l = q->list;
 			if(q != r) {
 				/*
@@ -775,41 +756,26 @@ mountmux(Mnt *m, Mntrpc *r)
 	unlock(m);
 }
 
-int
+void
 mntflush(Mnt *m, Mntrpc *r)
 {
-	int n, l;
-	Fcall flush;
+	Mntrpc *fr;
 
-	lock(m);
-	if(r->done){
-		unlock(m);
-		return 1;
-	}
-	r->flushtag = m->flushtag++;
-	if(m->flushtag == Tagend)
-		m->flushtag = m->flushbase;
-	r->flushed = 1;
-	unlock(m);
+	fr = mntralloc(0);
 
-	flush.type = Tflush;
-	flush.tag = r->flushtag;
-	flush.oldtag = r->request.tag;
-	n = convS2M(&flush, r->flush);
-	if(n < 0)
-		panic("bad message type in mntflush");
+	fr->request.type = Tflush;
+	if(r->request.type == Tflush)
+		fr->request.oldtag = r->request.oldtag;
+	else
+		fr->request.oldtag = r->request.tag;
 
-	if(waserror()) {
-		if(strcmp(up->error, Eintr) == 0)
-			return 1;
+	mountio(m, fr);
+	mntfree(fr);
+
+	if(!r->done){
+		r->reply.type = Rflush;
 		mntqrm(m, r);
-		return 0;
 	}
-	l = devtab[m->c->type]->write(m->c, r->flush, n, 0);
-	if(l != n)
-		error(Ehungup);
-	poperror();
-	return 1;
 }
 
 Mntrpc*
@@ -845,8 +811,6 @@ mntralloc(Chan *c)
 	unlock(&mntalloc);
 	new->c = c;
 	new->done = 0;
-	new->flushed = 0;
-	new->flushtag = 0;
 	return new;
 }
 
@@ -874,7 +838,6 @@ mntqrm(Mnt *m, Mntrpc *r)
 
 	lock(m);
 	r->done = 1;
-	r->flushed = 0;
 
 	l = &m->queue;
 	for(f = *l; f; f = f->list) {
