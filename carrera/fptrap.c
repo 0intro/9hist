@@ -32,7 +32,7 @@ fptrap(Ureg *ur)
 	if((up->fpsave.fpstatus&(1<<17)) == 0)
 		return;
 
-print("fpt: %d %s %lux\n", up->pid, up->text, up->fpsave.fpstatus);
+/*print("fpt: %d %s %lux\n", up->pid, up->text, up->fpsave.fpstatus);/**/
 
 	iw = ur->pc;
 	if(ur->cause & (1<<31))
