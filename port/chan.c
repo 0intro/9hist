@@ -348,9 +348,10 @@ domount(Chan *c)
 Chan*
 undomount(Chan *c)
 {
+	Chan *nc;
 	Pgrp *pg;
-	Mhead **h, **he, *f;
 	Mount *t;
+	Mhead **h, **he, *f;
 
 	pg = up->pgrp;
 	rlock(&pg->ns);
@@ -364,8 +365,9 @@ undomount(Chan *c)
 		for(f = *h; f; f = f->hash) {
 			for(t = f->mount; t; t = t->next) {
 				if(eqchan(c, t->to, 1)) {
+					nc = cclone(t->head->from, 0);
 					cclose(c);
-					c = cclone(t->head->from, 0);
+					c = nc;
 					break;
 				}
 			}
