@@ -70,7 +70,7 @@ clockinit(void)
 {
 	long x, est;
 
-	est = m->cpuhz/1000;	/* initial estimate */
+	est = m->clockgen/1000;	/* initial estimate */
 	m->delayloop = est;
 	do {
 		x = gettbl();
@@ -105,9 +105,13 @@ clockintr(Ureg *ur)
 	}
 	putdec(clkreload-v);
 
+	// keep alive for watchdog
+	m->iomem->swsr = 0x556c;
+	m->iomem->swsr = 0xaa39;
+	
 	m->ticks++;
 //	if(m->ticks%MS2TK(1000) == 0)
-//		m->bcsr[4] ^= DisableLamp;
+//		*(uchar*)(NIMMEM+0x2200) = (m->ticks/MS2TK(1000))&2;
 
 	if(up)
 		up->pc = ur->pc;
@@ -128,12 +132,6 @@ clockintr(Ureg *ur)
 		if(nrdy > 0)
 			sched();
 	}
-}
-
-void
-clockcheck(void)
-{
-	/* called by ../port/taslock.c: reset watchdog here, if it's enabled */
 }
 
 void

@@ -30,21 +30,24 @@ flash(void)
 void
 main(void)
 {
+	int i;
+
 	machinit();
+	clockinit();
 	confinit();
 	xinit();
+	trapinit();
 	printinit();
 	cpminit();
 	uartinstall();
-	print("hello world\n");
-
-	delay(100);
+delay(500);
+	spllo();
+	for(i=0; ; i++) {
+		print("hello again %d\n", i);
+		delay(100);
+	}
 
 	reset();
-
-	*(uchar*)0 = 0;
-	for(;;)
-		;
 }
 
 void
@@ -133,7 +136,8 @@ iprint(char *fmt, ...)
 	n = doprint(buf, buf+sizeof(buf), fmt, arg) - buf;
 	va_end(arg);
 
-	print("%s", buf);
+//	putstrn(buf, n);
+//	uartwait();
 
 	return n;
 }

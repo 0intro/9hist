@@ -50,8 +50,30 @@
 #define MSR_LE		(1<<0)		/* Little-Endian enable */
 
 /*
- * Traps
+ * Exception codes (trap vectors)
  */
+#define	CRESET	0x01
+#define	CMCHECK 0x02
+#define	CDSI	0x03
+#define	CISI	0x04
+#define	CEI	0x05
+#define	CALIGN	0x06
+#define	CPROG	0x07
+#define	CFPU	0x08
+#define	CDEC	0x09
+#define	CSYSCALL 0x0C
+#define	CTRACE	0x0D
+#define	CFPA	0x0E
+/* rest are power-implementation dependent */
+#define	CEMU	0x10
+#define	CIMISS	0x11
+#define	CDMISS	0x12
+#define	CITLBE	0x13
+#define	CDTLBE	0x14
+#define	CDBREAK	0x1C
+#define	CIBREAK	0x1D
+#define	CPBREAK	0x1E
+#define	CDPORT	0x1F
 
 /*
  * Magic registers

@@ -297,7 +297,7 @@ smcsetup(Uart *up)
 	smc->smcm = BSY|RXB|TXB;	/* enable all possible interrupts */
 	up->smc = smc;
 	smc->smcmr = ((1+8+1-1)<<11)|(2<<4);	/* 8-bit, 1 stop, no parity; UART mode */
-//	intrenable(VectorCPIC+4, smcuintr, up, BUSUNKNOWN);
+	intrenable(VectorCPIC+4, smcuintr, up, BUSUNKNOWN);
 	smc->smcmr |= 3;	/* enable rx/tx */
 }
 
@@ -763,10 +763,12 @@ static void
 txstart(Uart *p)
 {
 	Block *b;
-	int n, flags;
+	int n, flags, s;
+
 
 	if(!p->cts || p->blocked || p->txb->status & BDReady)
 		return;
+
 	if((b = p->outb) == nil){
 		if((b = qget(p->oq)) == nil)
 			return;
@@ -785,8 +787,8 @@ txstart(Uart *p)
 		}
 	}
 	n = BLEN(b);
-	if(n <= 0)
-		print("txstart: 0\n");
+//	if(n <= 0)
+//		print("txstart: 0\n");
 	if(p->bpc > 8){
 		/* half-word alignment and length if chars are long */
 		if(PADDR(b->rp)&1){	/* must be even if chars are long */
@@ -810,11 +812,8 @@ txstart(Uart *p)
 	p->txb->addr = PADDR(b->rp);
 	p->txb->length = n;
 	eieio();
-	p->txb->status = (p->txb->status & BDWrap) | flags | BDReady/*|BDInt */;
+	p->txb->status = (p->txb->status & BDWrap) | flags | BDReady | BDInt;
 	eieio();
-
-	while(p->txb->status & BDReady)
-		flash();
 }
 
 /*
@@ -991,11 +990,11 @@ uartintr(Uart *p, int events)
 	int dokick;
 	BD *bd;
 	Block *b;
-
 	if(events & BSY)
 		p->overrun++;
 	p->interrupts++;
 	dokick = 0;
+/*
 	while(p->rxb != nil && ((bd = &p->rxb[p->rdrx])->status & BDEmpty) == 0){
 		if(p->mode)
 			framedinput(p, bd);
@@ -1006,6 +1005,7 @@ uartintr(Uart *p, int events)
 		bd->status = (bd->status & BDWrap) | BDEmpty|BDInt;
 		p->rdrx ^= 1;
 	}
+*/
 	if((bd = p->txb) != nil){
 		if((bd->status & BDReady) == 0){
 			ilock(&p->plock);

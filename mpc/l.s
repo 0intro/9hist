@@ -131,6 +131,9 @@ clrmach:
 	CMP	R3, R4
 	BNE	clrmach
 
+	MOVW	R0, R(USER)
+	MOVW	R0, 0(R(MACH))
+
 	MOVW	$edata(SB), R3
 	MOVW	$end(SB), R4
 	ADD	$4, R4
@@ -295,10 +298,10 @@ TEXT	saveureg(SB), $-4
 	MOVW	$0, R0	/* compiler/linker expect R0 to be zero */
 
 	MOVW	MSR, R5
-	OR	$(MSR_IR|MSR_DR), R5	/* enable MMU */
+/*	OR	$(MSR_IR|MSR_DR), R5	/* enable MMU */
 	MOVW	R5, SPR(SRR1)
 	MOVW	LR, R31
-	OR	$KZERO, R31	/* return PC in KSEG0 */
+/*	OR	$KZERO, R31	/* return PC in KSEG0 */
 	MOVW	R31, SPR(SRR0)
 	SYNC
 	ISYNC
@@ -527,22 +530,9 @@ TEXT	trapvec(SB), $-4
 traps:
 	MOVW	LR, R0
 
-pagefault:
-
-/*
- * map data virtually and make space to save
- */
 	MOVW	R0, SPR(SAVEXX)	/* vector */
 	MOVW	R1, SPR(SAVER1)
-	SYNC
-	ISYNC
-	MOVW	MSR, R0
-	OR	$(MSR_DR|MSR_ME), R0		/* make data space usable */
-	SYNC
-	MOVW	R0, MSR
-	MSRSYNC
 	SUB	$UREGSPACE, R1
-
 	MOVW	SPR(SRR0), R0	/* save SRR0/SRR1 now, since DLTB might be missing stack page */
 	MOVW	R0, LR
 	MOVW	SPR(SRR1), R0
@@ -613,20 +603,6 @@ restoreureg:
 	MOVW	R0, LR
 	MOVW	SPR(SAVER0), R0
 	RFI
-
-TEXT	powerdownled(SB), $0
-
-	MOVW	$0x10002200,R11
-	MOVW	$0,R7
-	MOVW	R7,0(R11)
-	RETURN
-
-TEXT	powerupled(SB), $0
-
-	MOVW	$0x10002200,R11
-	MOVW	$2,R7
-	MOVW	R7,0(R11)
-	RETURN
 
 GLOBL	mach0+0(SB), $MACHSIZE
 GLOBL	spltbl+0(SB), $4
