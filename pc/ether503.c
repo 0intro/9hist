@@ -338,3 +338,9 @@ Card ether503 = {
 	(RamOffset+0x600)/Dp8390BufSz,	/* pstart */
 	(RamOffset+8*1024)/Dp8390BufSz,	/* pstop */
 };
+
+void
+ether503link(void)
+{
+	addethercard("3C503",  ccc503reset);
+}

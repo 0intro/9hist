@@ -98,12 +98,12 @@ debugbpt(Ureg *ur)
 {
 	char buf[ERRLEN];
 
-	if(u == 0)
+	if(up == 0)
 		panic("kernel bpt");
 	/* restore pc to instruction that caused the trap */
 	ur->pc--;
 	sprint(buf, "sys: breakpoint");
-	postnote(u->p, 1, buf, NDebug);
+	postnote(up->p, 1, buf, NDebug);
 }
 
 /*
@@ -218,6 +218,9 @@ char *excname[] =
 [13]	"general protection violation",
 };
 
+Ureg lasttrap, *lastur;
+
+
 /*
  *  All traps
  */
@@ -233,7 +236,7 @@ trap(Ureg *ur)
 
 	user = ((ur->cs)&0xffff)!=KESEL && v!=Syscallvec;
 	if(user)
-		u->dbgreg = ur;
+		up->dbgreg = ur;
 
 	/*
 	 *  tell the 8259 that we're done with the
@@ -248,6 +251,8 @@ trap(Ureg *ur)
 	}
 
 	if(v>=256 || (h = halloc.ivec[v]) == 0){
+lasttrap = *ur;
+lastur = ur;
 		/* an old 386 generates these fairly often, no idea why */
 		if(v == 13)
 			return;
@@ -256,7 +261,7 @@ trap(Ureg *ur)
 		if(v <= 16){
 			if(user){
 				sprint(buf, "sys: trap: %s", excname[v]);
-				postnote(u->p, 1, buf, NDebug);
+				postnote(up->p, 1, buf, NDebug);
 				return;
 			} else {
 				dumpregs(ur);
@@ -267,7 +272,7 @@ trap(Ureg *ur)
 		if(v >= Int0vec || v < Int0vec+16){
 			/* an unknown interrupts */
 			v -= Int0vec;
-			if(badintr[v]++ == 0 || (badintr[v]%1000) == 0)
+			if(badintr[v]++ == 0 || (badintr[v]%100000) == 0)
 				print("unknown interrupt %d pc=0x%lux: total %d\n", v,
 					ur->pc, badintr[v]);
 		} else {
@@ -284,21 +289,24 @@ trap(Ureg *ur)
 	} while(h);
 
 	/* check user since syscall does its own notifying */
-	if(user && (u->p->procctl || u->nnote))
+	splhi();
+	if(user && (up->procctl || up->nnote))
 		notify(ur);
+lasttrap = *ur;
+lastur = ur;
 }
 
 /*
  *  dump registers
  */
 void
-dumpregs(Ureg *ur)
+dumpregs2(Ureg *ur)
 {
-	if(u)
-		print("registers for %s %d\n", u->p->text, u->p->pid);
+	if(up)
+		print("registers for %s %d\n", up->text, up->pid);
 	else
 		print("registers for kernel\n");
-	print("FLAGS=%lux ECODE=%lux CS=%lux PC=%lux", ur->flags,
+	print("FLAGS=%lux TRAP=%lux ECODE=%lux CS=%lux PC=%lux", ur->flags, ur->trap,
 		ur->ecode, ur->cs&0xff, ur->pc);
 	if(ur == (Ureg*)UREGADDR)
 		print(" SS=%lux USP=%lux\n", ur->ss&0xff, ur->usp);
@@ -310,6 +318,16 @@ dumpregs(Ureg *ur)
 		ur->si, ur->di, ur->bp);
 	print("  DS %4.4ux  ES %4.4ux  FS %4.4ux  GS %4.4ux\n",
 		ur->ds&0xffff, ur->es&0xffff, ur->fs&0xffff, ur->gs&0xffff);
+
+}
+
+void
+dumpregs(Ureg *ur)
+{
+	dumpregs2(ur);
+	print("  ur %lux\n", ur);
+	dumpregs2(&lasttrap);
+	print("  lastur %lux\n", lastur);
 }
 
 void
@@ -318,11 +336,11 @@ dumpstack(void)
 	ulong l, v, i;
 	extern ulong etext;
 
-	if(u == 0)
+	if(up == 0)
 		return;
 
 	i = 0;
-	for(l=(ulong)&l; l<USERADDR+BY2PG; l+=4){
+	for(l=(ulong)&l; l<up->kstack+BY2PG; l+=4){
 		v = *(ulong*)l;
 		if(KTZERO < v && v < (ulong)&etext){
 			print("%lux ", v);
@@ -369,52 +387,52 @@ syscall(Ureg *ur)
 	long	ret;
 	int	i;
 
-	u->p->insyscall = 1;
-	u->p->pc = ur->pc;
+	up->insyscall = 1;
+	up->pc = ur->pc;
 	if((ur->cs)&0xffff == KESEL)
 		panic("recursive system call");
 
-	u->scallnr = ur->ax;
-	if(u->scallnr == RFORK && u->p->fpstate == FPactive){
+	up->scallnr = ur->ax;
+	if(up->scallnr == RFORK && up->fpstate == FPactive){
 		/*
 		 *  so that the child starts out with the
 		 *  same registers as the parent
 		 */
 		splhi();
-		if(u->p->fpstate == FPactive){
-			fpsave(&u->fpsave);
-			u->p->fpstate = FPinactive;
+		if(up->fpstate == FPactive){
+			fpsave(&up->fpsave);
+			up->fpstate = FPinactive;
 		}
 		spllo();
 	}
 	sp = ur->usp;
-	u->nerrlab = 0;
+	up->nerrlab = 0;
 	ret = -1;
 	if(!waserror()){
-		if(u->scallnr >= sizeof systab/BY2WD){
-			pprint("bad sys call number %d pc %lux\n", u->scallnr, ur->pc);
-			postnote(u->p, 1, "sys: bad sys call", NDebug);
+		if(up->scallnr >= sizeof systab/BY2WD){
+			pprint("bad sys call number %d pc %lux\n", up->scallnr, ur->pc);
+			postnote(up->p, 1, "sys: bad sys call", NDebug);
 			error(Ebadarg);
 		}
 
 		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-(1+MAXSYSARG)*BY2WD))
 			validaddr(sp, (1+MAXSYSARG)*BY2WD, 0);
 
-		u->s = *((Sargs*)(sp+1*BY2WD));
-		u->p->psstate = sysctab[u->scallnr];
+		up->s = *((Sargs*)(sp+1*BY2WD));
+		up->psstate = sysctab[up->scallnr];
 
-		ret = (*systab[u->scallnr])(u->s.args);
+		ret = (*systab[up->scallnr])(up->s.args);
 		poperror();
 	}
-	if(u->nerrlab){
-		print("bad errstack [%d]: %d extra\n", u->scallnr, u->nerrlab);
+	if(up->nerrlab){
+		print("bad errstack [%d]: %d extra\n", up->scallnr, up->nerrlab);
 		for(i = 0; i < NERR; i++)
-			print("sp=%lux pc=%lux\n", u->errlab[i].sp, u->errlab[i].pc);
+			print("sp=%lux pc=%lux\n", up->errlab[i].sp, up->errlab[i].pc);
 		panic("error stack");
 	}
 
-	u->p->insyscall = 0;
-	u->p->psstate = 0;
+	up->insyscall = 0;
+	up->psstate = 0;
 
 	/*
 	 *  Put return value in frame.  On the safari the syscall is
@@ -424,11 +442,11 @@ syscall(Ureg *ur)
 	 */
 	ur->ax = ret;
 
-	if(u->scallnr == NOTED)
+	if(up->scallnr == NOTED)
 		noted(ur, *(ulong*)(sp+BY2WD));
 
 	splhi(); /* avoid interrupts during the iret */
-	if(u->scallnr!=RFORK && (u->p->procctl || u->nnote))
+	if(up->scallnr!=RFORK && (up->procctl || up->nnote))
 		notify(ur);
 
 	return ret;
@@ -445,61 +463,61 @@ notify(Ureg *ur)
 	ulong s, sp;
 	Note *n;
 
-	if(u->p->procctl)
-		procctl(u->p);
-	if(u->nnote == 0)
+	if(up->procctl)
+		procctl(up->p);
+	if(up->nnote == 0)
 		return 0;
 
 	s = spllo();
-	qlock(&u->p->debug);
-	u->p->notepending = 0;
-	n = &u->note[0];
+	qlock(&up->debug);
+	up->notepending = 0;
+	n = &up->note[0];
 	if(strncmp(n->msg, "sys:", 4) == 0){
 		l = strlen(n->msg);
 		if(l > ERRLEN-15)	/* " pc=0x12345678\0" */
 			l = ERRLEN-15;
 		sprint(n->msg+l, " pc=0x%.8lux", ur->pc);
 	}
-	if(n->flag!=NUser && (u->notified || u->notify==0)){
+	if(n->flag!=NUser && (up->notified || up->notify==0)){
+		qunlock(&up->debug);
 		if(n->flag == NDebug)
 			pprint("suicide: %s\n", n->msg);
-		qunlock(&u->p->debug);
 		pexit(n->msg, n->flag!=NDebug);
 	}
 	sent = 0;
-	if(!u->notified){
-		if(!u->notify){
-			qunlock(&u->p->debug);
+	if(!up->notified){
+		if(!up->notify){
+			qunlock(&up->debug);
 			pexit(n->msg, n->flag!=NDebug);
 		}
 		sent = 1;
-		u->svcs = ur->cs;
-		u->svss = ur->ss;
-		u->svflags = ur->flags;
+		up->svcs = ur->cs;
+		up->svss = ur->ss;
+		up->svflags = ur->flags;
 		sp = ur->usp;
 		sp -= sizeof(Ureg);
-		if(!okaddr((ulong)u->notify, 1, 0)
+		if(!okaddr((ulong)up->notify, 1, 0)
 		|| !okaddr(sp-ERRLEN-3*BY2WD, sizeof(Ureg)+ERRLEN-3*BY2WD, 0)){
+			qunlock(&up->debug);
 			pprint("suicide: bad address in notify\n");
-			qunlock(&u->p->debug);
 			pexit("Suicide", 0);
 		}
-		u->ureg = (void*)sp;
+		up->ureg = (void*)sp;
 		memmove((Ureg*)sp, ur, sizeof(Ureg));
 		sp -= ERRLEN;
-		memmove((char*)sp, u->note[0].msg, ERRLEN);
+		memmove((char*)sp, up->note[0].msg, ERRLEN);
 		sp -= 3*BY2WD;
 		*(ulong*)(sp+2*BY2WD) = sp+3*BY2WD;	/* arg 2 is string */
-		*(ulong*)(sp+1*BY2WD) = (ulong)u->ureg;	/* arg 1 is ureg* */
+		*(ulong*)(sp+1*BY2WD) = (ulong)up->ureg;	/* arg 1 is ureg* */
 		*(ulong*)(sp+0*BY2WD) = 0;		/* arg 0 is pc */
 		ur->usp = sp;
-		ur->pc = (ulong)u->notify;
-		u->notified = 1;
-		u->nnote--;
-		memmove(&u->lastnote, &u->note[0], sizeof(Note));
-		memmove(&u->note[0], &u->note[1], u->nnote*sizeof(Note));
+		ur->pc = (ulong)up->notify;
+		up->notified = 1;
+		up->nnote--;
+		memmove(&up->lastnote, &up->note[0], sizeof(Note));
+		memmove(&up->note[0], &up->note[1], up->nnote*sizeof(Note));
 	}
-	qunlock(&u->p->debug);
+	qunlock(&up->debug);
 	splx(s);
 	return sent;
 }
@@ -512,43 +530,43 @@ noted(Ureg *ur, ulong arg0)
 {
 	Ureg *nur;
 
-	nur = u->ureg;		/* pointer to user returned Ureg struct */
-	if(nur->cs!=u->svcs || nur->ss!=u->svss
-	|| (nur->flags&0xff00)!=(u->svflags&0xff00)){
+	nur = up->ureg;		/* pointer to user returned Ureg struct */
+	if(nur->cs!=up->svcs || nur->ss!=up->svss
+	|| (nur->flags&0xff00)!=(up->svflags&0xff00)){
 		pprint("bad noted ureg cs %ux ss %ux flags %ux\n", nur->cs, nur->ss,
 			nur->flags);
     Die:
 		pexit("Suicide", 0);
 	}
-	qlock(&u->p->debug);
-	if(!u->notified){
+	qlock(&up->debug);
+	if(!up->notified){
 		pprint("call to noted() when not notified\n");
-		qunlock(&u->p->debug);
+		qunlock(&up->debug);
 		return;
 	}
-	u->notified = 0;
-	nur->flags = (u->svflags&0xffffff00) | (nur->flags&0xff);
+	up->notified = 0;
+	nur->flags = (up->svflags&0xffffff00) | (nur->flags&0xff);
 	memmove(ur, nur, sizeof(Ureg));
 	switch(arg0){
 	case NCONT:
 		if(!okaddr(nur->pc, 1, 0) || !okaddr(nur->usp, BY2WD, 0)){
 			pprint("suicide: trap in noted\n");
-			qunlock(&u->p->debug);
+			qunlock(&up->debug);
 			goto Die;
 		}
-		qunlock(&u->p->debug);
+		qunlock(&up->debug);
 		return;
 
 	default:
 		pprint("unknown noted arg 0x%lux\n", arg0);
-		u->lastnote.flag = NDebug;
+		up->lastnote.flag = NDebug;
 		/* fall through */
 		
 	case NDFLT:
-		if(u->lastnote.flag == NDebug)
-			pprint("suicide: %s\n", u->lastnote.msg);
-		qunlock(&u->p->debug);
-		pexit(u->lastnote.msg, u->lastnote.flag!=NDebug);
+		if(up->lastnote.flag == NDebug)
+			pprint("suicide: %s\n", up->lastnote.msg);
+		qunlock(&up->debug);
+		pexit(up->lastnote.msg, up->lastnote.flag!=NDebug);
 	}
 }
 

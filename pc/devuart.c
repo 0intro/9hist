@@ -7,7 +7,7 @@
 #include	"../port/error.h"
 
 #include	"devtab.h"
-
+#define		nelem(x)	(sizeof(x)/sizeof(x[0]))
 /*
  *  Driver for an NS16450 serial port
  */
@@ -17,12 +17,12 @@ enum
 	 *  register numbers
 	 */
 	Data=	0,		/* xmit/rcv buffer */
-	Iena=	1,		/* interrupt enable */
+	Iena=	1,		/* interrdpt enable */
 	 Ircv=	(1<<0),		/*  for char rcv'd */
 	 Ixmt=	(1<<1),		/*  for xmit buffer empty */
 	 Irstat=(1<<2),		/*  for change in rcv'er status */
 	 Imstat=(1<<3),		/*  for change in modem status */
-	Istat=	2,		/* interrupt flag (read) */
+	Istat=	2,		/* interrdpt flag (read) */
 	Tctl=	2,		/* test control (write) */
 	Format=	3,		/* byte format */
 	 Bits8=	(3<<0),		/*  8 bits/byte */
@@ -36,7 +36,7 @@ enum
 	 Dtr=	(1<<0),		/*  data terminal ready */
 	 Rts=	(1<<1),		/*  request to send */
 	 Ri=	(1<<2),		/*  ring */
-	 Inton=	(1<<3),		/*  turn on interrupts */
+	 Inton=	(1<<3),		/*  turn on interrdpts */
 	 Loop=	(1<<4),		/*  loop back */
 	Lstat=	5,		/* line status */
 	 Inready=(1<<0),	/*  receive buffer full */
@@ -86,9 +86,12 @@ struct Uart
 	ulong	overrun;
 };
 
-Uart uart[2];
+Uart	uart[34];
+int	Nuart;		/* total no of uarts in the machine */
+int	Nscard;		/* number of serial cards */
+ISAConf	scard[5];	/* configs for the serial card */
 
-#define UartFREQ 1846200
+#define UartFREQ 1843200
 
 #define uartwrreg(u,r,v)	outb((u)->port + r, (u)->sticky[r] | (v))
 #define uartrdreg(u,r)		inb((u)->port + r)
@@ -96,6 +99,7 @@ Uart uart[2];
 void	uartintr(Uart*);
 void	uartintr0(Ureg*);
 void	uartintr1(Ureg*);
+void	uartintr2(Ureg*);
 void	uartsetup(void);
 
 /*
@@ -104,135 +108,136 @@ void	uartsetup(void);
  *  baud rates.
  */
 void
-uartsetbaud(Uart *up, int rate)
+uartsetbaud(Uart *dp, int rate)
 {
 	ulong brconst;
 
 	brconst = (UartFREQ+8*rate-1)/(16*rate);
 
-	uartwrreg(up, Format, Dra);
-	outb(up->port+Dmsb, (brconst>>8) & 0xff);
-	outb(up->port+Dlsb, brconst & 0xff);
-	uartwrreg(up, Format, 0);
+	uartwrreg(dp, Format, Dra);
+	outb(dp->port+Dmsb, (brconst>>8) & 0xff);
+	outb(dp->port+Dlsb, brconst & 0xff);
+	uartwrreg(dp, Format, 0);
 }
 
 /*
  *  toggle DTR
  */
 void
-uartdtr(Uart *up, int n)
+uartdtr(Uart *dp, int n)
 {
 	if(n)
-		up->sticky[Mctl] |= Dtr;
+		dp->sticky[Mctl] |= Dtr;
 	else
-		up->sticky[Mctl] &= ~Dtr;
-	uartwrreg(up, Mctl, 0);
+		dp->sticky[Mctl] &= ~Dtr;
+	uartwrreg(dp, Mctl, 0);
 }
 
 /*
  *  toggle RTS
  */
 void
-uartrts(Uart *up, int n)
+uartrts(Uart *dp, int n)
 {
 	if(n)
-		up->sticky[Mctl] |= Rts;
+		dp->sticky[Mctl] |= Rts;
 	else
-		up->sticky[Mctl] &= ~Rts;
-	uartwrreg(up, Mctl, 0);
+		dp->sticky[Mctl] &= ~Rts;
+	uartwrreg(dp, Mctl, 0);
 }
 
 /*
  *  send break
  */
 void
-uartbreak(Uart *up, int ms)
+uartbreak(Uart *dp, int ms)
 {
 	if(ms == 0)
 		ms = 200;
-	uartwrreg(up, Format, Break);
-	tsleep(&u->p->sleep, return0, 0, ms);
-	uartwrreg(up, Format, 0);
+	uartwrreg(dp, Format, Break);
+	tsleep(&dp->sleep, return0, 0, ms);
+	uartwrreg(dp, Format, 0);
 }
 
 /*
  *  set bits/char
  */
 void
-uartbits(Uart *up, int bits)
+uartbits(Uart *dp, int bits)
 {
 	if(bits < 5 || bits > 8)
 		error(Ebadarg);
-	up->sticky[Format] &= ~3;
-	up->sticky[Format] |= bits-5;
-	uartwrreg(up, Format, 0);
+	dp->sticky[Format] &= ~3;
+	dp->sticky[Format] |= bits-5;
+	uartwrreg(dp, Format, 0);
 }
 
 /*
  *  set parity
  */
 void
-uartparity(Uart *up, int c)
+uartparity(Uart *dp, int c)
 {
 	switch(c&0xff){
 	case 'e':
-		up->sticky[Format] |= Pena|Peven;
+		dp->sticky[Format] |= Pena|Peven;
 		break;
 	case 'o':
-		up->sticky[Format] &= ~Peven;
-		up->sticky[Format] |= Pena;
+		dp->sticky[Format] &= ~Peven;
+		dp->sticky[Format] |= Pena;
 		break;
 	default:
-		up->sticky[Format] &= ~(Pena|Peven);
+		dp->sticky[Format] &= ~(Pena|Peven);
 		break;
 	}
-	uartwrreg(up, Format, 0);
+	uartwrreg(dp, Format, 0);
 }
 
 /*
  *  set stop bits
  */
 void
-uartstop(Uart *up, int n)
+uartstop(Uart *dp, int n)
 {
 	switch(n){
 	case 1:
-		up->sticky[Format] &= ~Stop2;
+		dp->sticky[Format] &= ~Stop2;
 		break;
 	case 2:
 	default:
-		up->sticky[Format] |= Stop2;
+		dp->sticky[Format] |= Stop2;
 		break;
 	}
-	uartwrreg(up, Format, 0);
+	uartwrreg(dp, Format, 0);
 }
 
 /*
  *  modem flow control on/off (rts/cts)
  */
 void
-uartmflow(Uart *up, int n)
+uartmflow(Uart *dp, int n)
 {
 	if(n){
-		up->sticky[Iena] |= Imstat;
-		uartwrreg(up, Iena, 0);
-		up->cts = uartrdreg(up, Mstat) & Cts;
+		dp->sticky[Iena] |= Imstat;
+		uartwrreg(dp, Iena, 0);
+		dp->cts = uartrdreg(dp, Mstat) & Cts;
 	} else {
-		up->sticky[Iena] &= ~Imstat;
-		uartwrreg(up, Iena, 0);
-		up->cts = 1;
+		dp->sticky[Iena] &= ~Imstat;
+		uartwrreg(dp, Iena, 0);
+		dp->cts = 1;
 	}
 }
 
 
 /*
- *  default is 9600 baud, 1 stop bit, 8 bit chars, no interrupts,
- *  transmit and receive enabled, interrupts disabled.
+ *  default is 9600 baud, 1 stop bit, 8 bit chars, no interrdpts,
+ *  transmit and receive enabled, interrdpts disabled.
  */
 void
 uartsetup(void)
 {
-	Uart *up;
+	Uart	*dp;
+	int	i, j, baddr;
 	static int already;
 
 	if(already)
@@ -246,21 +251,34 @@ uartsetup(void)
 	uart[1].port = 0x2F8;
 	setvec(Uart0vec, uartintr0);
 	setvec(Uart1vec, uartintr1);
-
-	for(up = uart; up < &uart[2]; up++){
-		memset(up->sticky, 0, sizeof(up->sticky));
-
+	Nuart = 2;
+	for(i = 0; isaconfig("serial", i, &scard[i]) && i < nelem(scard); i++) {
+		/*
+		 * mem gives base port address for uarts
+		 * irq is interrdpt
+		 * port is the polling port
+		 * size is the number of serial ports on the same polling port
+		 */
+		setvec(Int0vec + scard[i].irq, uartintr2);
+		baddr = scard[i].mem;
+		for(j=0, dp = &uart[Nuart]; j < scard[i].size; baddr += 8, j++, dp++)
+			dp->port = baddr;
+		Nuart += scard[i].size;
+	}
+	Nscard = i;
+	for(dp = uart; dp < &uart[Nuart]; dp++){
+		memset(dp->sticky, 0, sizeof(dp->sticky));
 		/*
 		 *  set rate to 9600 baud.
 		 *  8 bits/character.
 		 *  1 stop bit.
-		 *  interrupts enabled.
+		 *  interrdpts enabled.
 		 */
-		uartsetbaud(up, 9600);
-		up->sticky[Format] = Bits8;
-		uartwrreg(up, Format, 0);
-		up->sticky[Mctl] |= Inton;
-		uartwrreg(up, Mctl, 0x0);
+		uartsetbaud(dp, 9600);
+		dp->sticky[Format] = Bits8;
+		uartwrreg(dp, Format, 0);
+		dp->sticky[Mctl] |= Inton;
+		uartwrreg(dp, Mctl, 0x0);
 	}
 }
 
@@ -271,7 +289,7 @@ uartsetup(void)
 void
 uartputs(IOQ *cq, char *s, int n)
 {
-	Uart *up = cq->ptr;
+	Uart *dp = cq->ptr;
 	int ch, x, multiprocessor;
 	int tries;
 
@@ -280,14 +298,14 @@ uartputs(IOQ *cq, char *s, int n)
 	if(multiprocessor)
 		lock(cq);
 	puts(cq, s, n);
-	if(up->printing == 0){
+	if(dp->printing == 0){
 		ch = getc(cq);
 		if(ch >= 0){
-			up->printing = 1;
-			for(tries = 0; tries<10000 && !(uartrdreg(up, Lstat)&Outready);
+			dp->printing = 1;
+			for(tries = 0; tries<10000 && !(uartrdreg(dp, Lstat)&Outready);
 				tries++)
 				;
-			outb(up->port + Data, ch);
+			outb(dp->port + Data, ch);
 		}
 	}
 	if(multiprocessor)
@@ -296,10 +314,10 @@ uartputs(IOQ *cq, char *s, int n)
 }
 
 /*
- *  a uart interrupt (a damn lot of work for one character)
+ *  a uart interrdpt (a damn lot of work for one character)
  */
 void
-uartintr(Uart *up)
+uartintr(Uart *dp)
 {
 	int ch;
 	IOQ *cq;
@@ -307,19 +325,19 @@ uartintr(Uart *up)
 
 	multiprocessor = active.machs > 1;
 	for(;;){
-		s = uartrdreg(up, Istat);
+		s = uartrdreg(dp, Istat);
 		switch(s){
 		case 6:	/* receiver line status */
-			l = uartrdreg(up, Lstat);
+			l = uartrdreg(dp, Lstat);
 			if(l & Ferror)
-				up->frame++;
+				dp->frame++;
 			if(l & Oerror)
-				up->overrun++;
+				dp->overrun++;
 			break;
 	
 		case 4:	/* received data available */
-			ch = uartrdreg(up, Data) & 0xff;
-			cq = up->iq;
+			ch = uartrdreg(dp, Data) & 0xff;
+			cq = dp->iq;
 			if(cq == 0)
 				break;
 			if(cq->putc)
@@ -329,41 +347,41 @@ uartintr(Uart *up)
 			break;
 	
 		case 2:	/* transmitter empty */
-			cq = up->oq;
+			cq = dp->oq;
 			if(cq == 0)
 				break;
 			if(multiprocessor)
 				lock(cq);
-			if(up->cts == 0)
-				up->printing = 0;
+			if(dp->cts == 0)
+				dp->printing = 0;
 			else {
 				ch = getc(cq);
 				if(ch < 0){
-					up->printing = 0;
-					wakeup(&cq->r);
+					dp->printing = 0;
+					wakedp(&cq->r);
 				}else
-					outb(up->port + Data, ch);
+					outb(dp->port + Data, ch);
 			}
 			if(multiprocessor)
 				unlock(cq);
 			break;
 	
 		case 0:	/* modem status */
-			ch = uartrdreg(up, Mstat);
+			ch = uartrdreg(dp, Mstat);
 			if(ch & Ctsc){
-				up->cts = ch & Cts;
-				cq = up->oq;
+				dp->cts = ch & Cts;
+				cq = dp->oq;
 				if(cq == 0)
 					break;
 				if(multiprocessor)
 					lock(cq);
-				if(up->cts && up->printing == 0){
+				if(dp->cts && dp->printing == 0){
 					ch = getc(cq);
 					if(ch >= 0){
-						up->printing = 1;
-						outb(up->port + Data, getc(cq));
+						dp->printing = 1;
+						outb(dp->port + Data, getc(cq));
 					} else
-						wakeup(&cq->r);
+						wakedp(&cq->r);
 				}
 				if(multiprocessor)
 					unlock(cq);
@@ -373,7 +391,7 @@ uartintr(Uart *up)
 		default:
 			if(s&1)
 				return;
-			print("weird modem interrupt\n");
+			print("weird modem interrdpt #%2.2ux\n", s);
 			break;
 		}
 	}
@@ -390,125 +408,142 @@ uartintr1(Ureg *ur)
 	USED(ur);
 	uartintr(&uart[1]);
 }
+void
+uartintr2(Ureg *ur)
+{
+	uchar	i, j, nuart, n;
+
+	USED(ur);
+	for(nuart=2, j = 0; j < Nscard; nuart += scard[j].size, j++) {
+		n = ~inb(scard[j].port);
+		if(n == 0)
+			continue;
+		for(i = 0; n; i++){
+			if(n & 1)
+				uartintr(&uart[nuart + i]);
+			n >>= 1;
+		}
+	}
+}
 
 void
 uartclock(void)
 {
-	Uart *up;
+	Uart *dp;
 	IOQ *cq;
 
-	for(up = uart; up < &uart[2]; up++){
-		cq = up->iq;
-		if(up->wq && cangetc(cq))
-			wakeup(&cq->r);
+	for(dp = uart; dp < &uart[Nuart]; dp++){
+		cq = dp->iq;
+		if(dp->wq && cangetc(cq))
+			wakedp(&cq->r);
 	}
 }
 
 
 /*
- *  turn on a port's interrupts.  set DTR and RTS
+ *  turn on a port's interrdpts.  set DTR and RTS
  */
 void
-uartenable(Uart *up)
+uartenable(Uart *dp)
 {
 	/*
 	 *  turn on power to the port
 	 */
-	if(up == &uart[Serial]){
-		if(serial(1) < 0)
-			print("can't turn on serial port power\n");
-	} else {
+	if(dp == &uart[Modem]){
 		if(modem(1) < 0)
 			print("can't turn on modem speaker\n");
+	} else {
+		if(serial(1) < 0)
+			print("can't turn on serial port power\n");
 	}
 
 	/*
-	 *  set up i/o routines
+	 *  set dp i/o routines
 	 */
-	if(up->oq){
-		up->oq->puts = uartputs;
-		up->oq->ptr = up;
+	if(dp->oq){
+		dp->oq->puts = uartputs;
+		dp->oq->ptr = dp;
 	}
-	if(up->iq){
-		up->iq->ptr = up;
+	if(dp->iq){
+		dp->iq->ptr = dp;
 	}
-	up->enabled = 1;
+	dp->enabled = 1;
 
 	/*
- 	 *  turn on interrupts
+ 	 *  turn on interrdpts
 	 */
-	up->sticky[Iena] = Ircv | Ixmt | Irstat;
-	uartwrreg(up, Iena, 0);
+	dp->sticky[Iena] = Ircv | Ixmt | Irstat;
+	uartwrreg(dp, Iena, 0);
 
 	/*
 	 *  turn on DTR and RTS
 	 */
-	uartdtr(up, 1);
-	uartrts(up, 1);
+	uartdtr(dp, 1);
+	uartrts(dp, 1);
 
 	/*
 	 *  assume we can send
 	 */
-	up->cts = 1;
+	dp->cts = 1;
 }
 
 /*
  *  turn off the uart
  */
 void
-uartdisable(Uart *up)
+uartdisable(Uart *dp)
 {
 
 	/*
- 	 *  turn off interrupts
+ 	 *  turn off interrdpts
 	 */
-	up->sticky[Iena] = 0;
-	uartwrreg(up, Iena, 0);
+	dp->sticky[Iena] = 0;
+	uartwrreg(dp, Iena, 0);
 
 	/*
 	 *  revert to default settings
 	 */
-	up->sticky[Format] = Bits8;
-	uartwrreg(up, Format, 0);
+	dp->sticky[Format] = Bits8;
+	uartwrreg(dp, Format, 0);
 
 	/*
 	 *  turn off DTR and RTS
 	 */
-	uartdtr(up, 0);
-	uartrts(up, 0);
-	up->enabled = 0;
+	uartdtr(dp, 0);
+	uartrts(dp, 0);
+	dp->enabled = 0;
 
 	/*
 	 *  turn off power
 	 */
-	if(up == &uart[Serial]){
-		if(serial(0) < 0)
-			print("can't turn off serial power\n");
-	} else {
+	if(dp == &uart[Modem]){
 		if(modem(0) < 0)
 			print("can't turn off modem speaker\n");
+	} else {
+		if(serial(0) < 0)
+			print("can't turn off serial power\n");
 	}
 }
 
 /*
- *  set up an uart port as something other than a stream
+ *  set dp an uart port as something other than a stream
  */
 void
 uartspecial(int port, IOQ *oq, IOQ *iq, int baud)
 {
-	Uart *up = &uart[port];
+	Uart *dp = &uart[port];
 
 	uartsetup();
-	up->special = 1;
-	up->oq = oq;
-	up->iq = iq;
-	uartenable(up);
+	dp->special = 1;
+	dp->oq = oq;
+	dp->iq = iq;
+	uartenable(dp);
 	if(baud)
-		uartsetbaud(up, baud);
+		uartsetbaud(dp, baud);
 
 	if(iq){
 		/*
-		 *  Stupid HACK to undo a stupid hack
+		 *  Stdpid HACK to undo a stdpid hack
 		 */ 
 		if(iq == &kbdq)
 			kbdq.putc = kbdcr2nl;
@@ -532,57 +567,57 @@ Qinfo uartinfo =
 static void
 uartstopen(Queue *q, Stream *s)
 {
-	Uart *up;
+	Uart *dp;
 	char name[NAMELEN];
 
-	up = &uart[s->id];
-	up->iq->putc = 0;
-	uartenable(up);
+	dp = &uart[s->id];
+	dp->iq->putc = 0;
+	uartenable(dp);
 
-	qlock(up);
-	up->wq = WR(q);
-	WR(q)->ptr = up;
-	RD(q)->ptr = up;
-	qunlock(up);
+	qlock(dp);
+	dp->wq = WR(q);
+	WR(q)->ptr = dp;
+	RD(q)->ptr = dp;
+	qunlock(dp);
 
-	if(up->kstarted == 0){
-		up->kstarted = 1;
+	if(dp->kstarted == 0){
+		dp->kstarted = 1;
 		sprint(name, "uart%d", s->id);
-		kproc(name, uartkproc, up);
+		kproc(name, uartkproc, dp);
 	}
 }
 
 static void
 uartstclose(Queue *q)
 {
-	Uart *up = q->ptr;
+	Uart *dp = q->ptr;
 
-	if(up->special)
+	if(dp->special)
 		return;
 
-	uartdisable(up);
+	uartdisable(dp);
 
-	qlock(up);
-	kprint("uartstclose: q=0x%ux, id=%d\n", q, up-uart);
-	up->wq = 0;
-	up->iq->putc = 0;
+	qlock(dp);
+	kprint("uartstclose: q=0x%ux, id=%d\n", q, dp-uart);
+	dp->wq = 0;
+	dp->iq->putc = 0;
 	WR(q)->ptr = 0;
 	RD(q)->ptr = 0;
-	qunlock(up);
+	qunlock(dp);
 }
 
 static void
 uartoput(Queue *q, Block *bp)
 {
-	Uart *up = q->ptr;
+	Uart *dp = q->ptr;
 	IOQ *cq;
 	int n, m;
 
-	if(up == 0){
+	if(dp == 0){
 		freeb(bp);
 		return;
 	}
-	cq = up->oq;
+	cq = dp->oq;
 	if(waserror()){
 		freeb(bp);
 		nexterror();
@@ -594,35 +629,37 @@ uartoput(Queue *q, Block *bp)
 		switch(*bp->rptr){
 		case 'B':
 		case 'b':
-			uartsetbaud(up, n);
+			if(n <= 0)
+				error(Ebadctl);
+			uartsetbaud(dp, n);
 			break;
 		case 'D':
 		case 'd':
-			uartdtr(up, n);
+			uartdtr(dp, n);
 			break;
 		case 'K':
 		case 'k':
-			uartbreak(up, n);
+			uartbreak(dp, n);
 			break;
 		case 'L':
 		case 'l':
-			uartbits(up, n);
+			uartbits(dp, n);
 			break;
 		case 'm':
 		case 'M':
-			uartmflow(up, n);
+			uartmflow(dp, n);
 			break;
 		case 'P':
 		case 'p':
-			uartparity(up, *(bp->rptr+1));
+			uartparity(dp, *(bp->rptr+1));
 			break;
 		case 'R':
 		case 'r':
-			uartrts(up, n);
+			uartrts(dp, n);
 			break;
 		case 'S':
 		case 's':
-			uartstop(up, n);
+			uartstop(dp, n);
 			break;
 		}
 	}else while((m = BLEN(bp)) > 0){
@@ -639,13 +676,13 @@ uartoput(Queue *q, Block *bp)
 }
 
 /*
- *  process to send bytes upstream for a port
+ *  process to send bytes dpstream for a port
  */
 static void
 uartkproc(void *a)
 {
-	Uart *up = a;
-	IOQ *cq = up->iq;
+	Uart *dp = a;
+	IOQ *cq = dp->iq;
 	Block *bp;
 	int n;
 	ulong frame, overrun;
@@ -661,44 +698,33 @@ uartkproc(void *a)
 		sleep(&cq->r, cangetc, cq);
 		if((ints++ & 0x1f) == 0)
 			lights((ints>>5)&1);
-		qlock(up);
-		if(up->wq == 0){
+		qlock(dp);
+		if(dp->wq == 0){
 			cq->out = cq->in;
 		}else{
 			n = cangetc(cq);
 			bp = allocb(n);
 			bp->flags |= S_DELIM;
 			bp->wptr += gets(cq, bp->wptr, n);
-			PUTNEXT(RD(up->wq), bp);
+			PUTNEXT(RD(dp->wq), bp);
 		}
-		qunlock(up);
-		if(up->frame != frame){
-			kprint("uart%d: %d framing\n", up-uart, up->frame);
-			frame = up->frame;
+		qunlock(dp);
+		if(dp->frame != frame){
+			kprint("uart%d: %d framing\n", dp-uart, dp->frame);
+			frame = dp->frame;
 		}
-		if(up->overrun != overrun){
-			kprint("uart%d: %d overruns\n", up-uart, up->overrun);
-			overrun = up->overrun;
+		if(dp->overrun != overrun){
+			kprint("uart%d: %d overruns\n", dp-uart, dp->overrun);
+			overrun = dp->overrun;
 		}
 	}
 }
 
 enum{
 	Qdir=		0,
-	Qeia0=		STREAMQID(0, Sdataqid),
-	Qeia0ctl=	STREAMQID(0, Sctlqid),
-	Qeia1=		STREAMQID(1, Sdataqid),
-	Qeia1ctl=	STREAMQID(1, Sctlqid),
 };
 
-Dirtab uartdir[]={
-	"eia0",		{Qeia0},	0,		0666,
-	"eia0ctl",	{Qeia0ctl},	0,		0666,
-	"eia1",		{Qeia1},	0,		0666,
-	"eia1ctl",	{Qeia1ctl},	0,		0666,
-};
-
-#define	NUart	(sizeof uartdir/sizeof(Dirtab))
+Dirtab uartdir[2*nelem(uart)];
 
 /*
  *  allocate the queues if no one else has
@@ -706,28 +732,41 @@ Dirtab uartdir[]={
 void
 uartreset(void)
 {
-	Uart *up;
+	Uart *dp;
 
 	uartsetup();
-	for(up = uart; up < &uart[2]; up++){
-		if(up->special)
+	for(dp = uart; dp < &uart[Nuart]; dp++){
+		if(dp->special)
 			continue;
-		up->iq = xalloc(sizeof(IOQ));
-		initq(up->iq);
-		up->oq = xalloc(sizeof(IOQ));
-		initq(up->oq);
+		dp->iq = xalloc(sizeof(IOQ));
+		initq(dp->iq);
+		dp->oq = xalloc(sizeof(IOQ));
+		initq(dp->oq);
 	}
 }
 
 void
 uartinit(void)
 {
+	int	i;
+
+	for(i=0; i < 2*Nuart; ++i) {
+		if(i & 1 != 0) {
+			sprint(uartdir[i].name, "eia%dctl", i/2);
+			uartdir[i].qid.path = STREAMQID(i/2, Sctlqid);
+		} else {
+			sprint(uartdir[i].name, "eia%d", i/2);
+			uartdir[i].qid.path = STREAMQID(i/2, Sdataqid);
+		}
+		uartdir[i].length = 0;
+		uartdir[i].perm = 0666;
+	}
 }
 
 Chan*
-uartattach(char *upec)
+uartattach(char *dpec)
 {
-	return devattach('t', upec);
+	return devattach('t', dpec);
 }
 
 Chan*
@@ -739,50 +778,40 @@ uartclone(Chan *c, Chan *nc)
 int
 uartwalk(Chan *c, char *name)
 {
-	return devwalk(c, name, uartdir, NUart, devgen);
+	return devwalk(c, name, uartdir, Nuart * 2, devgen);
 }
 
 void
-uartstat(Chan *c, char *dp)
+uartstat(Chan *c, char *dir)
 {
-	switch(c->qid.path){
-	case Qeia0:
-		streamstat(c, dp, uartdir[0].name, uartdir[0].perm);
-		break;
-	case Qeia1:
-		streamstat(c, dp, uartdir[2].name, uartdir[2].perm);
-		break;
-	default:
-		devstat(c, dp, uartdir, NUart, devgen);
-		break;
-	}
+	int	i;
+
+	for(i=0; i < 2*Nuart; i += 2)
+		if(c->qid.path == uartdir[i].qid.path) {
+			streamstat(c, dir, uartdir[i].name, uartdir[i].perm);
+			return;
+		}
+	devstat(c, dir, uartdir, Nuart * 2, devgen);
 }
 
 Chan*
 uartopen(Chan *c, int omode)
 {
-	Uart *up;
+	Uart *dp;
+	int	i;
 
-	switch(c->qid.path){
-	case Qeia0:
-	case Qeia0ctl:
-		up = &uart[0];
-		break;
-	case Qeia1:
-	case Qeia1ctl:
-		up = &uart[1];
-		break;
-	default:
-		up = 0;
-		break;
-	}
+	dp = 0;
+	for(i=0; i < 2*Nuart; ++i)
+		if(c->qid.path == uartdir[i].qid.path) {
+			dp = &uart[i/2];
+			break;
+		}
 
-	if(up && up->special)
+	if(dp && dp->special)
 		error(Einuse);
-
 	if((c->qid.path & CHDIR) == 0)
 		streamopen(c, &uartinfo);
-	return devopen(c, omode, uartdir, NUart, devgen);
+	return devopen(c, omode, uartdir, Nuart * 2, devgen);
 }
 
 void
@@ -800,15 +829,15 @@ uartclose(Chan *c)
 }
 
 long
-uartstatus(Uart *up, void *buf, long n, ulong offset)
+uartstatus(Uart *dp, void *buf, long n, ulong offset)
 {
 	uchar mstat;
 	uchar tstat;
 	char str[128];
 
 	str[0] = 0;
-	tstat = up->sticky[Mctl];
-	mstat = uartrdreg(up, Mstat);
+	tstat = dp->sticky[Mctl];
+	mstat = uartrdreg(dp, Mstat);
 	if(mstat & Cts)
 		strcat(str, " cts");
 	if(mstat & Dsr)
@@ -827,15 +856,16 @@ uartstatus(Uart *up, void *buf, long n, ulong offset)
 long
 uartread(Chan *c, void *buf, long n, ulong offset)
 {
+	int i;
+	long qpath;
+
 	USED(offset);
-	switch(c->qid.path&~CHDIR){
-	case Qdir:
-		return devdirread(c, buf, n, uartdir, NUart, devgen);
-	case Qeia1ctl:
-		return uartstatus(&uart[1], buf, n, offset);
-	case Qeia0ctl:
-		return uartstatus(&uart[0], buf, n, offset);
-	}
+	qpath = c->qid.path & ~CHDIR;
+	if(qpath == Qdir)
+		return devdirread(c, buf, n, uartdir, Nuart * 2, devgen);
+	for(i=1; i < 2*Nuart; i += 2)
+		if(qpath == uartdir[i].qid.path)
+			return uartstatus(&uart[i/2], buf, n, offset);
 	return streamread(c, buf, n);
 }
 
@@ -854,8 +884,8 @@ uartremove(Chan *c)
 }
 
 void
-uartwstat(Chan *c, char *dp)
+uartwstat(Chan *c, char *dir)
 {
-	USED(c, dp);
+	USED(c, dir);
 	error(Eperm);
 }

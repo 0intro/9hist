@@ -440,12 +440,33 @@ changed(Chan *c, Drive *dp)
 		error(Eio);
 }
 
+static int
+readtrack(Drive *dp, int cyl, int head)
+{
+	int i, nn, sofar;
+	ulong pos;
+
+	nn = dp->t->tsize;
+	if(dp->ccyl==cyl && dp->chead==head)
+		return nn;
+	pos = (cyl*dp->t->heads+head) * nn;
+	for(sofar = 0; sofar < nn; sofar += i){
+		dp->ccyl = -1;
+		i = floppyxfer(dp, Fread, dp->cache + sofar, pos + sofar, nn - sofar);
+		if(i <= 0)
+			return -1;
+	}
+	dp->ccyl = cyl;
+	dp->chead = head;
+	return nn;
+}
+
 long
 floppyread(Chan *c, void *a, long n, ulong offset)
 {
 	Drive *dp;
-	long rv, i;
-	int nn, sec, head, cyl;
+	long rv;
+	int sec, head, cyl;
 	long len;
 	uchar *aa;
 
@@ -468,7 +489,7 @@ floppyread(Chan *c, void *a, long n, ulong offset)
 		changed(c, dp);
 		for(rv = 0; rv < n; rv += len){
 			/*
-			 *  truncate xfer at track boundary
+			 *  all xfers come out of the track cache
 			 */
 			dp->len = n - rv;
 			floppypos(dp, offset+rv);
@@ -476,24 +497,8 @@ floppyread(Chan *c, void *a, long n, ulong offset)
 			head = dp->thead;
 			len = dp->len;
 			sec = dp->tsec;
-			nn = dp->t->tsize;
-
-			/*
-			 *  read the track
-			 */
-			if(dp->ccyl!=cyl || dp->chead!=head){
-				dp->ccyl = -1;
-				i = floppyxfer(dp, Fread, dp->cache,
-					(cyl*dp->t->heads+head)*nn, nn);
-				if(i != nn){
-					if(i == 0)
-						break;
-					len = 0;
-					continue;
-				}
-				dp->ccyl = cyl;
-				dp->chead = head;
-			}
+			if(readtrack(dp, cyl, head) < 0)
+				break;
 			memmove(aa+rv, dp->cache + (sec-1)*dp->t->bytes, len);
 		}
 		qunlock(&fl);

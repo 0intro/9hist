@@ -155,7 +155,7 @@ hardgen(Chan *c, Dirtab *tab, long ntab, long s, Dir *dirp)
 	name[NAMELEN] = 0;
 	qid.path = MKQID(drive, s);
 	l = (pp->end - pp->start) * dp->bytes;
-	devdir(c, qid, name, l, eve, 0666, dirp);
+	devdir(c, qid, name, l, eve, 0660, dirp);
 	return 1;
 }
 
@@ -447,7 +447,7 @@ hardxfer(Drive *dp, Partition *pp, int cmd, long start, long len, char *buf)
 	Controller *cp;
 	long lblk;
 	int cyl, sec, head;
-	int loop, s;
+	int loop, s, stat;
 
 	if(dp->online == 0)
 		error(Eio);
@@ -502,12 +502,15 @@ hardxfer(Drive *dp, Partition *pp, int cmd, long start, long len, char *buf)
 	outb(cp->pbase+Pcmd, cmd);
 	if(cmd == Cwrite){
 		loop = 0;
-		while((inb(cp->pbase+Pstatus) & Sdrq) == 0)
+		while((stat = inb(cp->pbase+Pstatus) & (Serr|Sdrq)) == 0)
 			if(++loop > 10000)
 				panic("hardxfer");
 		outss(cp->pbase+Pdata, cp->buf, dp->bytes/2);
-	}
+	} else
+		stat = 0;
 	splx(s);
+	if(stat & Serr)
+		error(Eio);
 
 	/*
 	 *  wait for command to complete.  if we get a note,
@@ -856,15 +859,30 @@ hardpart(Drive *dp)
 	}
 
 	/*
-	 *  read partition table from disk, null terminate
+	 *  read last sector from disk, null terminate.  This used
+	 *  to be the sector we used for the partition tables.
+	 *  However, this sector is special on some PC's so we've
+	 *  started to use the second last sector as the partition
+	 *  table instead.  To avoid reconfiguring all our old systems
+	 *  we first look to see if there is a valid partition
+	 *  table in the last sector.  If so, we use it.  Otherwise
+	 *  we switch to the second last.
 	 */
 	hardxfer(dp, pp, Cread, 0, dp->bytes, buf);
 	buf[dp->bytes-1] = 0;
+	n = getfields(buf, line, Npart+1, '\n');
+	if(n == 0 || strncmp(line[0], PARTMAGIC, sizeof(PARTMAGIC)-1)){
+		dp->p[0].end--;
+		dp->p[1].start--;
+		dp->p[1].end--;
+		hardxfer(dp, pp, Cread, 0, dp->bytes, buf);
+		buf[dp->bytes-1] = 0;
+		n = getfields(buf, line, Npart+1, '\n');
+	}
 
 	/*
 	 *  parse partition table.
 	 */
-	n = getfields(buf, line, Npart+1, '\n');
 	if(n && strncmp(line[0], PARTMAGIC, sizeof(PARTMAGIC)-1) == 0){
 		for(i = 1; i < n; i++){
 			pp++;
@@ -946,19 +964,19 @@ hardintr(Ureg *ur)
 		break;
 	case Cread:
 	case Cident:
-		loop = 0;
-		while((inb(cp->pbase+Pstatus) & Sdrq) == 0)
-			if(++loop > 10000) {
-				DPRINT("cmd=%lux status=%lux\n",
-					cp->cmd, inb(cp->pbase+Pstatus));
-				panic("hardintr: read/ident");
-		}
 		if(cp->status & Serr){
 			cp->lastcmd = cp->cmd;
 			cp->cmd = 0;
 			cp->error = inb(cp->pbase+Perror);
 			wakeup(&cp->r);
 			return;
+		}
+		loop = 0;
+		while((inb(cp->pbase+Pstatus) & Sdrq) == 0)
+			if(++loop > 10000) {
+				DPRINT("cmd=%lux status=%lux\n",
+					cp->cmd, inb(cp->pbase+Pstatus));
+				panic("hardintr: read/ident");
 		}
 		addr = cp->buf;
 		if(addr){

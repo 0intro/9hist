@@ -1,88 +1,15 @@
 #include "mem.h"
 
 #define OP16	BYTE	$0x66
+#define NOP	XCHGL	AX,AX
 
 /*
- *	about to walk all over ms/dos - turn off interrupts
+ *	We assume that b.com got us into 32 bit mode already.  We are now
+ *	running with a PC == origin & ~KZERO.
  */
 TEXT	origin(SB),$0
 
 	CLI
-
-#ifdef BOOT
-/*
- *	This part of l.s is used only in the boot kernel.
- *	It assumes that we are in real address mode, i.e.,
- *	that we look like an 8086.
- */
-/*
- *	relocate everything to a half meg and jump there
- *	- looks wierd because it is being assembled by a 32 bit
- *	  assembler for a 16 bit world
- */
-	MOVL	$0,BX
-	INCL	BX
-	SHLL	$15,BX
-	MOVL	BX,CX
-	MOVW	BX,ES
-	MOVL	$0,SI
-	MOVL	SI,DI
-	CLD; REP; MOVSL
-/*	JMPFAR	0X8000:$lowcore(SB) /**/
-	 BYTE	$0xEA
-	 WORD	$lowcore(SB)
-	 WORD	$0X8000
-
-TEXT	lowcore(SB),$0
-
-/*
- *	now that we're in low core, update the DS
- */
-
-	MOVW	BX,DS
-
-/*
- * 	goto protected mode
- */
-/*	MOVL	tgdtptr(SB),GDTR /**/
-	 BYTE	$0x0f
-	 BYTE	$0x01
-	 BYTE	$0x16
-	 WORD	$tgdtptr(SB)
-	MOVL	CR0,AX
-	ORL	$1,AX
-	MOVL	AX,CR0
-
-/*
- *	clear prefetch queue (weird code to avoid optimizations)
- */
-	CLC
-	JCC	flush
-	MOVL	AX,AX
-flush:
-
-/*
- *	set all segs
- */
-/*	MOVW	$SELECTOR(1, SELGDT, 0),AX	/**/
-	 BYTE	$0xc7
-	 BYTE	$0xc0
-	 WORD	$SELECTOR(1, SELGDT, 0)
-	MOVW	AX,DS
-	MOVW	AX,SS
-	MOVW	AX,ES
-	MOVW	AX,FS
-	MOVW	AX,GS
-
-/*	JMPFAR	SELECTOR(2, SELGDT, 0):$mode32bit(SB) /**/
-	 BYTE	$0x66
-	 BYTE	$0xEA
-	 LONG	$mode32bit-KZERO(SB)
-	 WORD	$SELECTOR(2, SELGDT, 0)
-
-TEXT	mode32bit(SB),$0
-
-#endif BOOT
 
 	/*
 	 * Clear BSS
@@ -104,8 +31,8 @@ TEXT	mode32bit(SB),$0
 	LEAL	tpt-KZERO(SB),AX	/* get phys addr of temporary page table */
 	ADDL	$(BY2PG-1),AX		/* must be page alligned */
 	ANDL	$(~(BY2PG-1)),AX	/* ... */
-	MOVL	$(4*1024),CX		/* pte's per page */
-	MOVL	$((((4*1024)-1)<<PGSHIFT)|PTEVALID|PTEKERNEL|PTEWRITE),BX
+	MOVL	$(1024),CX		/* pte's per page */
+	MOVL	$((((1024)-1)<<PGSHIFT)|PTEVALID|PTEKERNEL|PTEWRITE),BX
 setpte:
 	MOVL	BX,-4(AX)(CX*4)
 	SUBL	$(1<<PGSHIFT),BX
@@ -116,19 +43,10 @@ setpte:
 	 *  16 meg of memory to 0 thru 16meg and to KZERO thru KZERO+16meg
 	 */
 	MOVL	AX,BX
-	ADDL	$(4*BY2PG),AX
+	ADDL	$(BY2PG),AX
 	ADDL	$(PTEVALID|PTEKERNEL|PTEWRITE),BX
 	MOVL	BX,0(AX)
 	MOVL	BX,((((KZERO>>1)&0x7FFFFFFF)>>(2*PGSHIFT-1-4))+0)(AX)
-	ADDL	$BY2PG,BX
-	MOVL	BX,4(AX)
-	MOVL	BX,((((KZERO>>1)&0x7FFFFFFF)>>(2*PGSHIFT-1-4))+4)(AX)
-	ADDL	$BY2PG,BX
-	MOVL	BX,8(AX)
-	MOVL	BX,((((KZERO>>1)&0x7FFFFFFF)>>(2*PGSHIFT-1-4))+8)(AX)
-	ADDL	$BY2PG,BX
-	MOVL	BX,12(AX)
-	MOVL	BX,((((KZERO>>1)&0x7FFFFFFF)>>(2*PGSHIFT-1-4))+12)(AX)
 
 	/*
 	 *  point processor to top level page & turn on paging
@@ -155,7 +73,7 @@ TEXT	tokzero(SB),$0
 	MOVL	SP,m(SB)
 	MOVL	$0,0(SP)
 	ADDL	$(MACHSIZE-4),SP	/* start stack under machine struct */
-	MOVL	$0, u(SB)
+	MOVL	$0, up(SB)
 
 	/*
 	 *  clear flags
@@ -172,7 +90,7 @@ loop:
 GLOBL	mach0+0(SB), $MACHSIZE
 GLOBL	u(SB), $4
 GLOBL	m(SB), $4
-GLOBL	tpt(SB), $(BY2PG*6)
+GLOBL	tpt(SB), $(BY2PG*3)
 
 /*
  *  gdt to get us to 32-bit/segmented/unpaged mode
@@ -251,7 +169,6 @@ TEXT	ins(SB), $0
 	OP16; INL
 	RET
 
-
 /*
  *  input a string of shorts from a port
  */
@@ -261,6 +178,16 @@ TEXT	inss(SB),$0
 	MOVL	a+4(FP),DI
 	MOVL	c+8(FP),CX
 	CLD; REP; OP16; INSL
+	RET
+
+/*
+ * input a long from a port
+ */
+TEXT	inl(SB), $0
+
+	MOVL	p+0(FP), DX
+	XORL	AX, AX
+	INL
 	RET
 
 /*
@@ -292,6 +219,15 @@ TEXT	outss(SB),$0
 	MOVL	a+4(FP),SI
 	MOVL	c+8(FP),CX
 	CLD; REP; OP16; OUTSL
+	RET
+
+/*
+ * output a long to a port
+ */
+TEXT	outl(SB), $0
+	MOVL	p+0(FP), DX
+	MOVL	s+4(FP), AX
+	OUTL
 	RET
 
 /*
@@ -553,10 +489,12 @@ intrcommon:
 	CALL	trap(SB)
 	POPL	AX
 	POPAL
+	NOP
 	POPL	GS
 	POPL	FS
 	POPL	ES
 	POPL	DS
+	NOP
 	ADDL	$8,SP	/* error code and trap type */
 	IRETL
 
@@ -574,10 +512,12 @@ intrscommon:
 	CALL	trap(SB)
 	POPL	AX
 	POPAL
+	NOP
 	POPL	GS
 	POPL	FS
 	POPL	ES
 	POPL	DS
+	NOP
 	ADDL	$8,SP	/* error code and trap type */
 	IRETL
 
@@ -793,4 +733,40 @@ TEXT dp8390outb(SB), $0
 	MOVL	AX,AX
 
 _dp8390outb0:
+	RET
+
+/*
+ * dsp outb string called from devdsp.c
+ */
+	TEXT	dspoutb+0(SB), $0
+
+	MOVL	a+4(FP), BX
+	MOVL	n+8(FP), CX
+
+	MOVL	base+0(FP), DX
+	ADDL	$2, DX			/* Pcontrol */
+
+	MOVL	c2+12(FP), DI
+	MOVL	c3+16(FP), SI
+
+dsploop:
+	MOVL	DI, AX			/* normal */
+	OUTB
+
+	SUBL	$1, CX
+	CMPL	CX, $0
+	JLT	dspout
+
+	SUBL	$2, DX			/* Pdata */
+	MOVB	(BX), AX
+	ADDL	$1, BX
+	OUTB
+
+	ADDL	$2, DX			/* Pcontrol */
+	MOVL	SI, AX			/* strobe */
+	OUTB
+
+	JMP	dsploop
+
+dspout:
 	RET

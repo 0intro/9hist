@@ -42,12 +42,11 @@
 #define	UTZERO		(UZERO+BY2PG)		/* first address in user text */
 #define	KZERO		0x80000000		/* base of kernel address space */
 #define	KTZERO		KZERO			/* first address in kernel text */
-#define	USERADDR	0xC0000000		/* struct User */
-#define	UREGADDR	(USERADDR+BY2PG-4*19)	
-#define	TSTKTOP		USERADDR		/* end of new stack in sysexec */
+#define	TSTKTOP		0xC0000000		/* end of new stack in sysexec */
 #define TSTKSIZ 10
 #define	USTKTOP		(TSTKTOP-TSTKSIZ*BY2PG)	/* byte just beyond user stack */
 #define	USTKSIZE	(16*1024*1024 - TSTKSIZ*BY2PG)	/* size of user stack */
+#define KSTACK		4096			/* Size of kernel stack */
 #define ROMBIOS		(KZERO|0xF0000)
 #define	ISAMEMSIZE	(4*MB)			/* mem space reserved for ISA */
 

@@ -72,7 +72,7 @@ clockinit(void)
 	x -= y;
 
 	/*
-	 *  fix count, the factor of 2 is a hack
+	 *  fix count
 	 */
 	delayloop = (delayloop*1193*10)/x;
 	if(delayloop == 0)
@@ -104,20 +104,14 @@ clock(Ureg *ur)
 	nrun = (nrdy+nrun)*1000;
 	MACHP(0)->load = (MACHP(0)->load*19+nrun)/20;
 
-	if(u && p && p->state==Running){
-		/*
-		 *  preemption
-		 */
-		if(anyready()){
-			if(p->hasspin)
-				p->hasspin = 0;
-			else
-				sched();
-		}
-		if((ur->cs&0xffff) == UESEL){
-			spllo();		/* in case we fault */
-			(*(ulong*)(USTKTOP-BY2WD)) += TK2MS(1);	/* profiling clock */
-			splhi();
-		}
-	}
+	if(up == 0 || (ur->cs&0xffff) != UESEL || up->state != Running)
+		return;
+
+	if(anyready())
+		sched();
+
+	/* user profiling clock */
+	spllo();		/* in case we fault */
+	(*(ulong*)(USTKTOP-BY2WD)) += TK2MS(1);
+	splhi();
 }

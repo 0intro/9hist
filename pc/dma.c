@@ -33,7 +33,7 @@ enum
  */
 struct DMAxfer
 {
-	Page	*pg;		/* page used by dma */
+	Page	pg;		/* page used by dma */
 	void	*va;		/* virtual address destination/src */
 	long	len;		/* bytes to be transferred */
 	int	isread;
@@ -79,6 +79,27 @@ DMA dma[2] = {
 };
 
 /*
+ *  DMA must be in the first 16 meg.  This gets called early by main() to
+ *  ensure that.
+ */
+void
+dmainit(void)
+{
+	int i, chan;
+	DMA *dp;
+	DMAxfer *xp;
+
+	for(i = 0; i < 2; i++){
+		dp = &dma[i];
+		for(chan = 0; chan < 4; chan++){
+			xp = &dp->x[chan];
+			xp->pg.pa = (ulong)xspanalloc(BY2PG, BY2PG, 0);
+			xp->pg.va = KZERO|xp->pg.pa;
+		}
+	}
+}
+
+/*
  *  setup a dma transfer.  if the destination is not in kernel
  *  memory, allocate a page for the transfer.
  *
@@ -101,22 +122,21 @@ dmasetup(int chan, void *va, long len, int isread)
 	xp = &dp->x[chan];
 
 	/*
-	 *  if this isn't kernel memory (or crossing 64k boundary),
-	 *  allocate a page for the DMA.
+	 *  if this isn't kernel memory or crossing 64k boundary or above 16 meg
+	 *  use the allocated low memory page.
 	 */
-	pa = ((ulong)va) & ~KZERO;
+	pa = PADDR(va);
 	if((((ulong)va)&0xF0000000) != KZERO
-	|| (pa&0xFFFF0000) != ((pa+len)&0xFFFF0000)){
-		if(xp->pg == 0)
-			xp->pg = newpage(1, 0, 0);
+	|| (pa&0xFFFF0000) != ((pa+len)&0xFFFF0000)
+	|| pa > 16*MB){
 		if(len > BY2PG)
 			len = BY2PG;
 		if(!isread)
-			memmove((void*)(KZERO|xp->pg->pa), va, len);
+			memmove((void*)(xp->pg.va), va, len);
 		xp->va = va;
 		xp->len = len;
 		xp->isread = isread;
-		pa = xp->pg->pa;
+		pa = xp->pg.pa;
 	} else
 		xp->len = 0;
 
@@ -168,6 +188,6 @@ dmaend(int chan)
 	/*
 	 *  copy out of temporary page
 	 */
-	memmove(xp->va, (void*)(KZERO|xp->pg->pa), xp->len);
+	memmove(xp->va, (void*)(xp->pg.va), xp->len);
 	xp->len = 0;
 }

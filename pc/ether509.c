@@ -84,7 +84,243 @@ enum {
 	RxReceiving	= 0x8000,	/* RX Receiving */
 };
 
-#define COMMAND(ctlr, cmd, a)	outs(ctlr->card.io+Command, ((cmd)<<11)|(a))
+#define COMMAND(port, cmd, a)	outs(port+Command, ((cmd)<<11)|(a))
+
+static void
+attach(Ctlr *ctlr)
+{
+	ulong port;
+
+	port = ctlr->card.port;
+	/*
+	 * Set the receiver packet filter for our own and
+	 * and broadcast addresses, set the interrupt masks
+	 * for all interrupts, and enable the receiver and transmitter.
+	 * The only interrupt we should see under normal conditions
+	 * is the receiver interrupt. If the transmit FIFO fills up,
+	 * we will also see TxAvailable interrupts.
+	 */
+	COMMAND(port, SetRxFilter, Broadcast|MyEtherAddr);
+	COMMAND(port, SetReadZeroMask, AllIntr|Latch);
+	COMMAND(port, SetIntrMask, AllIntr|Latch);
+	COMMAND(port, RxEnable, 0);
+	COMMAND(port, TxEnable, 0);
+}
+
+static void
+mode(Ctlr *ctlr, int on)
+{
+	ulong port;
+
+	port = ctlr->card.port;
+	if(on)
+		COMMAND(port, SetRxFilter, Promiscuous|Broadcast|MyEtherAddr);
+	else
+		COMMAND(port, SetRxFilter, Broadcast|MyEtherAddr);
+}
+
+static void
+receive(Ctlr *ctlr)
+{
+	ushort status;
+	RingBuf *rb;
+	int len;
+	ulong port;
+
+	port = ctlr->card.port;
+	while(((status = ins(port+RxStatus)) & RxEmpty) == 0){
+		/*
+		 * If we had an error, log it and continue
+		 * without updating the ring.
+		 */
+		if(status & RxError){
+			switch(status & RxErrMask){
+
+			case RxErrOverrun:	/* Overrrun */
+				ctlr->overflows++;
+				break;
+
+			case RxErrOversize:	/* Oversize Packet (>1514) */
+			case RxErrRunt:		/* Runt Packet */
+				ctlr->buffs++;
+				break;
+			case RxErrFraming:	/* Alignment (Framing) */
+				ctlr->frames++;
+				break;
+
+			case RxErrCRC:		/* CRC */
+				ctlr->crcs++;
+				break;
+			}
+		}
+		else {
+			/*
+			 * We have a packet. Read it into the next
+			 * free ring buffer, if any.
+			 * The CRC is already stripped off.
+			 */
+			rb = &ctlr->rb[ctlr->ri];
+			if(rb->owner == Interface){
+				len = (status & RxByteMask);
+				rb->len = len;
+	
+				/*
+				 * Must read len bytes padded to a
+				 * doubleword. We can pick them out 16-bits
+				 * at a time (can try 32-bits at a time
+				 * later).
+				insl(port+Fifo, rb->pkt, HOWMANY(len, 4));
+				 */
+				inss(port+Fifo, rb->pkt, HOWMANY(len, 2));
+
+				/*
+				 * Update the ring.
+				 */
+				rb->owner = Host;
+				ctlr->ri = NEXT(ctlr->ri, ctlr->nrb);
+			}
+		}
+
+		/*
+		 * Discard the packet as we're done with it.
+		 * Wait for discard to complete.
+		 */
+		COMMAND(port, RxDiscard, 0);
+		while(ins(port+Status) & CmdInProgress)
+			;
+	}
+}
+
+static void
+transmit(Ctlr *ctlr)
+{
+	RingBuf *tb;
+	ushort len;
+	ulong port;
+
+	port = ctlr->card.port;
+	for(tb = &ctlr->tb[ctlr->ti]; tb->owner == Interface; tb = &ctlr->tb[ctlr->ti]){
+		/*
+		 * If there's no room in the FIFO for this packet,
+		 * set up an interrupt for when space becomes available.
+		 * Output packet must be a multiple of 4 in length and
+		 * we need 4 bytes for the preamble.
+		 */
+		len = ROUNDUP(tb->len, 4);
+		if(len+4 > ins(port+TxFreeBytes)){
+			COMMAND(port, SetTxAvailable, len);
+			break;
+		}
+
+		/*
+		 * There's room, copy the packet to the FIFO and free
+		 * the buffer back to the host.
+		 */
+		outs(port+Fifo, tb->len);
+		outs(port+Fifo, 0);
+		outss(port+Fifo, tb->pkt, len/2);
+		tb->owner = Host;
+		ctlr->ti = NEXT(ctlr->ti, ctlr->ntb);
+	}
+}
+
+static ushort
+getdiag(Ctlr *ctlr)
+{
+	ushort bytes;
+	ulong port;
+
+	port = ctlr->card.port;
+	COMMAND(port, SelectWindow, 4);
+	bytes = ins(port+FIFOdiag);
+	COMMAND(port, SelectWindow, 1);
+	return bytes & 0xFFFF;
+}
+
+static void
+interrupt(Ctlr *ctlr)
+{
+	ushort status, diag;
+	uchar txstatus, x;
+	ulong port;
+
+	port = ctlr->card.port;
+	status = ins(port+Status);
+
+	if(status & Failure){
+		/*
+		 * Adapter failure, try to find out why.
+		 * Reset if necessary.
+		 * What happens if Tx is active and we reset,
+		 * need to retransmit?
+		 * This probably isn't right.
+		 */
+		diag = getdiag(ctlr);
+		print("ether509: status #%ux, diag #%ux\n", status, diag);
+
+		if(diag & TxOverrun){
+			COMMAND(port, TxReset, 0);
+			COMMAND(port, TxEnable, 0);
+		}
+
+		if(diag & RxUnderrun){
+			COMMAND(port, RxReset, 0);
+			attach(ctlr);
+		}
+
+		if(diag & TxOverrun)
+			transmit(ctlr);
+
+		return;
+	}
+
+	if(status & RxComplete){
+		receive(ctlr);
+		wakeup(&ctlr->rr);
+		status &= ~RxComplete;
+	}
+
+	if(status & TxComplete){
+		/*
+		 * Pop the TX Status stack, accumulating errors.
+		 * If there was a Jabber or Underrun error, reset
+		 * the transmitter. For all conditions enable
+		 * the transmitter.
+		 */
+		txstatus = 0;
+		do{
+			if(x = inb(port+TxStatus))
+				outb(port+TxStatus, 0);
+			txstatus |= x;
+		}while(ins(port+Status) & TxComplete);
+
+		if(txstatus & (TxJabber|TxUnderrun))
+			COMMAND(port, TxReset, 0);
+		COMMAND(port, TxEnable, 0);
+		ctlr->oerrs++;
+	}
+
+	if(status & (TxAvailable|TxComplete)){
+		/*
+		 * Reset the Tx FIFO threshold.
+		 */
+		if(status & TxAvailable)
+			COMMAND(port, AckIntr, TxAvailable);
+		transmit(ctlr);
+		wakeup(&ctlr->tr);
+		status &= ~(TxAvailable|TxComplete);
+	}
+
+	/*
+	 * Panic if there are any interrupt bits on we haven't
+	 * dealt with other than Latch.
+	 * Otherwise, acknowledge the interrupt.
+	 */
+	if(status & AllIntr)
+		panic("ether509 interrupt: #%lux, #%ux\n", status, getdiag(ctlr));
+
+	COMMAND(port, AckIntr, Latch);
+}
 
 /*
  * Write two 0 bytes to identify the IDport and then reset the
@@ -113,11 +349,12 @@ idseq(void)
 /*
  * Get configuration parameters.
  */
-static int
-reset(Ctlr *ctlr)
+int
+ccc509reset(Ctlr *ctlr)
 {
 	int i, ea;
 	ushort x, acr;
+	ulong port;
 
 	/*
 	 * Do the little configuration dance. We only look
@@ -171,8 +408,9 @@ reset(Ctlr *ctlr)
 	 *
 	 *    Enable the adapter. 
 	 */
-	ctlr->card.io = (acr & 0x1F)*0x10 + 0x200;
-	outb(ctlr->card.io+ConfigControl, 0x01);
+	ctlr->card.port = (acr & 0x1F)*0x10 + 0x200;
+	port = ctlr->card.port;
+	outb(port+ConfigControl, 0x01);
 
 	/*
 	 * Read the IRQ from the Resource Configuration Register
@@ -180,14 +418,14 @@ reset(Ctlr *ctlr)
 	 * The EEPROM command is 8bits, the lower 6 bits being
 	 * the address offset.
 	 */
-	ctlr->card.irq = (ins(ctlr->card.io+ResourceConfig)>>12) & 0x0F;
+	ctlr->card.irq = (ins(port+ResourceConfig)>>12) & 0x0F;
 	for(ea = 0, i = 0; i < 3; i++, ea += 2){
-		while(ins(ctlr->card.io+EEPROMcmd) & 0x8000)
+		while(ins(port+EEPROMcmd) & 0x8000)
 			;
-		outs(ctlr->card.io+EEPROMcmd, (2<<6)|i);
-		while(ins(ctlr->card.io+EEPROMcmd) & 0x8000)
+		outs(port+EEPROMcmd, (2<<6)|i);
+		while(ins(port+EEPROMcmd) & 0x8000)
 			;
-		x = ins(ctlr->card.io+EEPROMdata);
+		x = ins(port+EEPROMdata);
 		ctlr->ea[ea] = (x>>8) & 0xFF;
 		ctlr->ea[ea+1] = x & 0xFF;
 	}
@@ -198,264 +436,40 @@ reset(Ctlr *ctlr)
 	 * Commands have the format 'CCCCCAAAAAAAAAAA' where C
 	 * is a bit in the command and A is a bit in the argument.
 	 */
-	COMMAND(ctlr, SelectWindow, 2);
+	COMMAND(port, SelectWindow, 2);
 	for(i = 0; i < 6; i++)
-		outb(ctlr->card.io+i, ctlr->ea[i]);
+		outb(port+i, ctlr->ea[i]);
 
 	/*
 	 * Finished with window 2.
 	 * Set window 1 for normal operation.
 	 */
-	COMMAND(ctlr, SelectWindow, 1);
+	COMMAND(port, SelectWindow, 1);
 
 	/*
 	 * If we have a 10BASE2 transceiver, start the DC-DC
 	 * converter. Wait > 800 microseconds.
 	 */
 	if(((acr>>14) & 0x03) == 0x03){
-		COMMAND(ctlr, StartCoax, 0);
+		COMMAND(port, StartCoax, 0);
 		delay(1);
 	}
+
+	/*
+	 * Set up the software configuration.
+	 */
+	ctlr->card.reset = ccc509reset;
+	ctlr->card.attach = attach;
+	ctlr->card.mode = mode;
+	ctlr->card.transmit = transmit;
+	ctlr->card.intr = interrupt;
+	ctlr->card.bit16 = 1;
 
 	return 0;
 }
 
-static void
-attach(Ctlr *ctlr)
+void
+ether509link(void)
 {
-	/*
-	 * Set the receiver packet filter for our own and
-	 * and broadcast addresses, set the interrupt masks
-	 * for all interrupts, and enable the receiver and transmitter.
-	 * The only interrupt we should see under normal conditions
-	 * is the receiver interrupt. If the transmit FIFO fills up,
-	 * we will also see TxAvailable interrupts.
-	 */
-	COMMAND(ctlr, SetRxFilter, Broadcast|MyEtherAddr);
-	COMMAND(ctlr, SetReadZeroMask, AllIntr|Latch);
-	COMMAND(ctlr, SetIntrMask, AllIntr|Latch);
-	COMMAND(ctlr, RxEnable, 0);
-	COMMAND(ctlr, TxEnable, 0);
+	addethercard("3C509",  ccc509reset);
 }
-
-static void
-mode(Ctlr *ctlr, int on)
-{
-	if(on)
-		COMMAND(ctlr, SetRxFilter, Promiscuous|Broadcast|MyEtherAddr);
-	else
-		COMMAND(ctlr, SetRxFilter, Broadcast|MyEtherAddr);
-}
-
-static void
-receive(Ctlr *ctlr)
-{
-	ushort status;
-	RingBuf *rb;
-	int len;
-
-	while(((status = ins(ctlr->card.io+RxStatus)) & RxEmpty) == 0){
-		/*
-		 * If we had an error, log it and continue
-		 * without updating the ring.
-		 */
-		if(status & RxError){
-			switch(status & RxErrMask){
-
-			case RxErrOverrun:	/* Overrrun */
-				ctlr->overflows++;
-				break;
-
-			case RxErrOversize:	/* Oversize Packet (>1514) */
-			case RxErrRunt:		/* Runt Packet */
-				ctlr->buffs++;
-				break;
-			case RxErrFraming:	/* Alignment (Framing) */
-				ctlr->frames++;
-				break;
-
-			case RxErrCRC:		/* CRC */
-				ctlr->crcs++;
-				break;
-			}
-		}
-		else {
-			/*
-			 * We have a packet. Read it into the next
-			 * free ring buffer, if any.
-			 * The CRC is already stripped off.
-			 */
-			rb = &ctlr->rb[ctlr->ri];
-			if(rb->owner == Interface){
-				len = (status & RxByteMask);
-				rb->len = len;
-	
-				/*
-				 * Must read len bytes padded to a
-				 * doubleword. We can pick them out 16-bits
-				 * at a time (can try 32-bits at a time
-				 * later).
-				insl(ctlr->card.io+Fifo, rb->pkt, HOWMANY(len, 4));
-				 */
-				inss(ctlr->card.io+Fifo, rb->pkt, HOWMANY(len, 2));
-
-				/*
-				 * Update the ring.
-				 */
-				rb->owner = Host;
-				ctlr->ri = NEXT(ctlr->ri, ctlr->nrb);
-			}
-		}
-
-		/*
-		 * Discard the packet as we're done with it.
-		 * Wait for discard to complete.
-		 */
-		COMMAND(ctlr, RxDiscard, 0);
-		while(ins(ctlr->card.io+Status) & CmdInProgress)
-			;
-	}
-}
-
-static void
-transmit(Ctlr *ctlr)
-{
-	RingBuf *tb;
-	ushort len;
-
-	for(tb = &ctlr->tb[ctlr->ti]; tb->owner == Interface; tb = &ctlr->tb[ctlr->ti]){
-		/*
-		 * If there's no room in the FIFO for this packet,
-		 * set up an interrupt for when space becomes available.
-		 * Output packet must be a multiple of 4 in length and
-		 * we need 4 bytes for the preamble.
-		 */
-		len = ROUNDUP(tb->len, 4);
-		if(len+4 > ins(ctlr->card.io+TxFreeBytes)){
-			COMMAND(ctlr, SetTxAvailable, len);
-			break;
-		}
-
-		/*
-		 * There's room, copy the packet to the FIFO and free
-		 * the buffer back to the host.
-		 */
-		outs(ctlr->card.io+Fifo, tb->len);
-		outs(ctlr->card.io+Fifo, 0);
-		outss(ctlr->card.io+Fifo, tb->pkt, len/2);
-		tb->owner = Host;
-		ctlr->ti = NEXT(ctlr->ti, ctlr->ntb);
-	}
-}
-
-static ushort
-getdiag(Ctlr *ctlr)
-{
-	ushort bytes;
-
-	COMMAND(ctlr, SelectWindow, 4);
-	bytes = ins(ctlr->card.io+FIFOdiag);
-	COMMAND(ctlr, SelectWindow, 1);
-	return bytes & 0xFFFF;
-}
-
-static void
-interrupt(Ctlr *ctlr)
-{
-	ushort status, diag;
-	uchar txstatus, x;
-
-	status = ins(ctlr->card.io+Status);
-
-	if(status & Failure){
-		/*
-		 * Adapter failure, try to find out why.
-		 * Reset if necessary.
-		 * What happens if Tx is active and we reset,
-		 * need to retransmit?
-		 * This probably isn't right.
-		 */
-		diag = getdiag(ctlr);
-		print("ether509: status #%ux, diag #%ux\n", status, diag);
-
-		if(diag & TxOverrun){
-			COMMAND(ctlr, TxReset, 0);
-			COMMAND(ctlr, TxEnable, 0);
-		}
-
-		if(diag & RxUnderrun){
-			COMMAND(ctlr, RxReset, 0);
-			attach(ctlr);
-		}
-
-		if(diag & TxOverrun)
-			transmit(ctlr);
-
-		return;
-	}
-
-	if(status & RxComplete){
-		receive(ctlr);
-		wakeup(&ctlr->rr);
-		status &= ~RxComplete;
-	}
-
-	if(status & TxComplete){
-		/*
-		 * Pop the TX Status stack, accumulating errors.
-		 * If there was a Jabber or Underrun error, reset
-		 * the transmitter. For all conditions enable
-		 * the transmitter.
-		 */
-		txstatus = 0;
-		do{
-			if(x = inb(ctlr->card.io+TxStatus))
-				outb(ctlr->card.io+TxStatus, 0);
-			txstatus |= x;
-		}while(ins(ctlr->card.io+Status) & TxComplete);
-
-		if(txstatus & (TxJabber|TxUnderrun))
-			COMMAND(ctlr, TxReset, 0);
-		COMMAND(ctlr, TxEnable, 0);
-		ctlr->oerrs++;
-	}
-
-	if(status & (TxAvailable|TxComplete)){
-		/*
-		 * Reset the Tx FIFO threshold.
-		 */
-		if(status & TxAvailable)
-			COMMAND(ctlr, AckIntr, TxAvailable);
-		transmit(ctlr);
-		wakeup(&ctlr->tr);
-		status &= ~(TxAvailable|TxComplete);
-	}
-
-	/*
-	 * Panic if there are any interrupt bits on we haven't
-	 * dealt with other than Latch.
-	 * Otherwise, acknowledge the interrupt.
-	 */
-	if(status & AllIntr)
-		panic("ether509 interrupt: #%lux, #%ux\n", status, getdiag(ctlr));
-
-	COMMAND(ctlr, AckIntr, Latch);
-}
-
-Card ether509 = {
-	"3Com509",			/* ident */
-
-	reset,				/* reset */
-	0,				/* init */
-	attach,				/* attach */
-	mode,				/* mode */
-
-	0,				/* read */
-	0,				/* write */
-
-	0,				/* receive */
-	transmit,			/* transmit */
-	interrupt,			/* interrupt */
-	0,				/* watch */
-	0,				/* overflow */
-};

@@ -1,5 +1,6 @@
 typedef struct Conf	Conf;
 typedef struct FPsave	FPsave;
+typedef struct ISAConf	ISAConf;
 typedef struct Label	Label;
 typedef struct Lock	Lock;
 typedef struct MMU	MMU;
@@ -9,7 +10,6 @@ typedef struct Page	Page;
 typedef struct PMMU	PMMU;
 typedef struct Segdesc	Segdesc;
 typedef struct Ureg	Ureg;
-typedef struct User	User;
 
 #define	MACHP(n)	(n==0? &mach0 : *(Mach**)0)
 
@@ -88,6 +88,7 @@ struct Conf
  */
 #define MAXMMU	4
 #define MAXSMMU	1
+#define NCOLOR 1
 struct PMMU
 {
 	Page	*mmutop;	/* 1st level table */
@@ -131,36 +132,6 @@ typedef void		KMap;
 #define	kmap(p)		(KMap*)((p)->pa|KZERO)
 #define	kunmap(k)
 
-#define	NERR	15
-#define	NNOTE	5
-struct User
-{
-	Proc	*p;
-	FPsave	fpsave;			/* address of this is known by vdb */
-	int	scallnr;		/* sys call number - known by db */
-	Sargs	s;			/* address of this is known by db */
-	int	nerrlab;
-	Label	errlab[NERR];
-	char	error[ERRLEN];
-	char	elem[NAMELEN];		/* last name element from namec */
-	Chan	*slash;
-	Chan	*dot;
-	/*
-	 * Rest of structure controlled by devproc.c and friends.
-	 * lock(&p->debug) to modify.
-	 */
-	Note	note[NNOTE];
-	short	nnote;
-	short	notified;		/* sysnoted is due */
-	Note	lastnote;
-	int	(*notify)(void*, char*);
-	void	*ureg;
-	void	*dbgreg;		/* User registers for debugging in proc */
-	ulong	svcs;		/* cs before a notify */
-	ulong	svss;		/* ss before a notify */
-	ulong	svflags;		/* flags before a notify */
-};
-
 /*
  *  segment descriptor/gate
  */
@@ -192,11 +163,20 @@ struct PCArch
 	int	(*extvga)(int);		/* 1 == external, 0 == internal */
 };
 
+struct ISAConf {
+	char	type[NAMELEN];
+	ulong	port;
+	ulong	irq;
+	ulong	mem;
+	ulong	size;
+	uchar	ea[6];
+};
+
+#define MAXPCMCIA 8			/* maximum number of PCMCIA cards */
+#define BOOTLINE ((char *)0x80000100)	/*  bootline passed by boot program */
+
+extern int	flipD[];		/* for flipping bitblt destination polarity */
+extern PCArch	*arch;			/* PC architecture */
+
 extern Mach	*m;
-extern User	*u;
-
-extern int	flipD[];	/* for flipping bitblt destination polarity */
-
-#define BOOTLINE ((char *)0x80000100) /*  bootline passed by boot program */
-
-extern PCArch *arch;			/* PC architecture */
+extern Proc	*up;

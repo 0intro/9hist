@@ -103,7 +103,7 @@ VGAmode mode13 =
 static	Rectangle mbb;
 static	Rectangle NULLMBB = {10000, 10000, -10000, -10000};
 static	void nopage(int), tsengpage(int), tridentpage(int), parapage(int);
-static	void atipage(int);
+static	void atipage(int), cirruspage(int);
 static	void vgaupdate(void);
 
 /*
@@ -122,6 +122,7 @@ enum
 	Pvga1a,		/* paradise */
 	Trident,	/* Trident 8900 */
 	Tseng,		/* tseng labs te4000 */
+	Cirrus,		/* Cirrus CLGD542X */
 	Generic,
 };
 
@@ -131,6 +132,7 @@ Vgacard vgachips[] =
 [Pvga1a]	{ "pvga1a", parapage, },
 [Trident]	{ "trident", tridentpage, },
 [Tseng]		{ "tseng", tsengpage, },
+[Cirrus]	{ "cirrus", cirruspage, },
 [Generic]	{ "generic", nopage, },
 		{ 0, 0, },
 };
@@ -659,7 +661,7 @@ atipage(int page)
 static void
 tridentpage(int page)
 {
-	srout(0x0e, (srin(0x0e)&0xf0) | page^0x02);
+	srout(0xe, (srin(0xe)&0xf0) | page^0x2);
 }
 static void
 tsengpage(int page)
@@ -667,9 +669,14 @@ tsengpage(int page)
 	outb(0x3cd, (page<<4)|page);
 }
 static void
+cirruspage(int page)
+{
+	grout(0x9, page<<4);
+}
+static void
 parapage(int page)
 {
-	grout(9, page<<4);
+	grout(0x9, page<<4);
 }
 
 /*
@@ -918,18 +925,16 @@ setcolor(ulong p, ulong r, ulong g, ulong b)
 	return ~0;
 }
 
-int
-hwcursset(uchar *s, uchar *c, int ox, int oy)
+void
+hwcursset(ulong *s, ulong *c, int ox, int oy)
 {
 	USED(s, c, ox, oy);
-	return 0;
 }
 
-int
+void
 hwcursmove(int x, int y)
 {
 	USED(x, y);
-	return 0;
 }
 
 /*

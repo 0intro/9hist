@@ -25,6 +25,17 @@ enum {
 
 	Cmd=		0x64,	/* command port (write only) */
 
+	CTdata=		0x0,	/* chips & Technologies ps2 data port */
+	CTstatus=	0x1,	/* chips & Technologies ps2 status port */
+	 Enable=	1<<7,
+	 Clear=		1<<6,
+	 Error=		1<<5,
+	 Intenable=	1<<4,
+	 Reset=		1<<3,
+	 Tready=	1<<2,
+	 Rready=	1<<1,
+	 Idle=		1<<0,
+
 	Spec=	0x80,
 
 	PF=	Spec|0x20,	/* num pad function key */
@@ -112,6 +123,7 @@ KIOQ	kbdq;
 static int keybuttons;
 static uchar ccc;
 static int shift;
+ulong ctport;
 
 enum
 {
@@ -125,6 +137,7 @@ enum
 };
 
 static void	kbdintr(Ureg*);
+static void	ctps2intr(Ureg*);
 static int	ps2mouseputc(IOQ*, int);
 
 /*
@@ -171,7 +184,7 @@ mousecmd(int cmd)
 	c = 0;
 	tries = 0;
 	do{
-		if(tries++ > 5)
+		if(tries++ > 2)
 			break;
 		if(outready() < 0)
 			break;
@@ -227,6 +240,7 @@ i8042reset(void)
 	outready();
 }
 
+
 void
 kbdinit(void)
 {
@@ -279,6 +293,54 @@ serialmouse(int port, char *type, int setspeed)
 	mousetype = Mouseserial;
 }
 
+static void nop(void){};
+
+/*
+ *  look for a chips & technologies 82c710 ps2 mouse on a TI travelmate
+ */
+static int
+ct82c710(void)
+{
+	int c;
+
+	/* on non-C&T 2fa and 3fa are input only ports */
+	/* get chips attention */
+	outb(0x2fa, 0x55); nop(); nop();
+	outb(0x3fa, ~0x55); nop(); nop();
+	outb(0x3fa, 0x36); nop(); nop();
+
+	/* tell it where its config register should be */
+	outb(0x3fa, 0x390>>2); nop(); nop();
+	outb(0x2fa, ~(0x390>>2)); nop(); nop();
+
+	/* see if this is really a 710 */
+	outb(0x390, 0xf); nop(); nop();
+	if(inb(0x391) != (0x390>>2))
+		return -1;
+
+	/* get data port address */
+	outb(0x390, 0xd); nop(); nop();
+	c = inb(0x391);
+	if(c == 0 || c == 0xff)
+		return -1;
+	ctport = c<<2;
+
+	/* turn off config mode */
+	outb(0x390, 0xf); nop(); nop();
+	outb(0x391, 0xf);
+
+	setvec(Mousevec, ctps2intr);
+
+	/* enable for interrupts */
+	c = inb(ctport + CTstatus);
+	c &= ~(Clear|Reset);
+	c |= Enable|Intenable;
+	outb(ctport + CTstatus, c);
+
+	mousetype = MousePS2;
+	return 0;
+}
+
 /*
  *  set up a ps2 mouse
  */
@@ -289,6 +351,9 @@ ps2mouse(void)
 
 	if(mousetype)
 		error(Emouseset);
+
+	if(ct82c710() == 0)
+		return;
 
 	/* enable kbd/mouse xfers and interrupts */
 	setvec(Mousevec, kbdintr);
@@ -562,4 +627,19 @@ kbdintr(Ureg *ur)
 {
 	USED(ur);
 	kbdintr0();
+}
+
+void
+ctps2intr(Ureg *ur)
+{
+	uchar c;
+
+	USED(ur);
+	c = inb(ctport + CTstatus);
+	if(c & Error)
+		return;
+	if((c & Rready) == 0)
+		return;
+	c = inb(ctport + CTdata);
+	ps2mouseputc(&mouseq, c);
 }

@@ -26,9 +26,14 @@ PCArch *knownarch[] =
 #define	BOOTARGSLEN	1024
 #define	MAXCONF		32
 
+char bootdisk[NAMELEN];
 char *confname[MAXCONF];
 char *confval[MAXCONF];
 int nconf;
+
+/* memory map */
+#define MAXMEG 64
+char mmap[MAXMEG+2];
 
 void
 main(void)
@@ -40,6 +45,7 @@ main(void)
 	active.machs = 1;
 	confinit();
 	xinit();
+	dmainit();
 	screeninit();
 	printinit();
 	mmuinit();
@@ -51,8 +57,8 @@ main(void)
 	kbdinit();
 	procinit0();
 	initseg();
+	links();
 	chandevreset();
-	streaminit();
 	swapinit();
 	userinit();
 	schedinit();
@@ -94,10 +100,10 @@ init0(void)
 	int i;
 	char tstr[32];
 
-	u->nerrlab = 0;
-	m->proc = u->p;
-	u->p->state = Running;
-	u->p->mach = m;
+	up->nerrlab = 0;
+	m->proc = up->p;
+	up->state = Running;
+	up->mach = m;
 
 	spllo();
 
@@ -105,21 +111,23 @@ init0(void)
 	 * These are o.k. because rootinit is null.
 	 * Then early kproc's will have a root and dot.
 	 */
-	u->slash = (*devtab[0].attach)(0);
-	u->dot = clone(u->slash, 0);
+	up->slash = namec("#/", Atodir, 0, 0);
+	up->dot = clone(up->slash, 0);
 
-	kproc("alarm", alarmkproc, 0);
+	iallocinit();
 	chandevinit();
 
 	if(!waserror()){
-		for(i = 0; i < nconf; i++)
-			ksetenv(confname[i], confval[i]);
 		strcpy(tstr, arch->id);
 		strcat(tstr, " %s");
 		ksetterm(tstr);
 		ksetenv("cputype", "386");
+		for(i = 0; i < nconf; i++)
+			if(confname[i])
+				ksetenv(confname[i], confval[i]);
 		poperror();
 	}
+	kproc("alarm", alarmkproc, 0);
 	touser(sp);
 }
 
@@ -152,21 +160,12 @@ userinit(void)
 	 *	4 bytes for gotolabel's return PC
 	 */
 	p->sched.pc = (ulong)init0;
-	p->sched.sp = USERADDR + BY2PG - 4;
-	p->upage = newpage(1, 0, USERADDR|(p->pid&0xFFFF));
-
-	/*
-	 * User
-	 */
-	k = kmap(p->upage);
-	up = (User*)VA(k);
-	up->p = p;
-	kunmap(k);
+	p->sched.sp = (ulong)p->kstack+KSTACK-(1+MAXSYSARG)*BY2WD;
 
 	/*
 	 * User Stack
 	 */
-	s = newseg(SG_STACK, USTKTOP-BY2PG, 1);
+	s = newseg(SG_STACK, USTKTOP-USTKSIZE, USTKSIZE/BY2PG);
 	p->seg[SSEG] = s;
 	pg = newpage(1, 0, USTKTOP-BY2PG);
 	segpage(s, pg);
@@ -178,8 +177,11 @@ userinit(void)
 	 * Text
 	 */
 	s = newseg(SG_TEXT, UTZERO, 1);
+	s->flushme++;
 	p->seg[TSEG] = s;
-	segpage(s, newpage(1, 0, UTZERO));
+	pg = newpage(1, 0, UTZERO);
+	memset(pg->cachectl, PG_TXTFLUSH, sizeof(pg->cachectl));
+	segpage(s, pg);
 	k = kmap(s->map[0]->pages[0]);
 	memmove((ulong*)VA(k), initcode, sizeof initcode);
 	kunmap(k);
@@ -213,12 +215,29 @@ bootargs(ulong base)
 	av[ac++] = pusharg("/386/9safari");
 	av[ac++] = pusharg("-p");
 	cp[64] = 0;
+	buf[0] = 0;
 	if(strncmp(cp, "fd!", 3) == 0){
 		sprint(buf, "local!#f/fd%ddisk", atoi(cp+3));
 		av[ac++] = pusharg(buf);
-	} else if(strncmp(cp, "hd!", 3) == 0){
-		sprint(buf, "local!#h/hd%ddisk", atoi(cp+3));
+	} else if(strncmp(cp, "h!", 2) == 0){
+		sprint(buf, "local!#H/hd%dfs", atoi(cp+2));
 		av[ac++] = pusharg(buf);
+	} else if(strncmp(cp, "hd!", 3) == 0){
+		sprint(buf, "local!#H/hd%ddisk", atoi(cp+3));
+		av[ac++] = pusharg(buf);
+	} else if(strncmp(cp, "s!", 2) == 0){
+		sprint(buf, "local!#w/sd%dfs", atoi(cp+2));
+		av[ac++] = pusharg(buf);
+	} else if(strncmp(cp, "sd!", 3) == 0){
+		sprint(buf, "local!#w/sd%ddisk", atoi(cp+3));
+		av[ac++] = pusharg(buf);
+	}
+	if(buf[0]){
+		cp = strchr(buf, '!');
+		if(cp){
+			strcpy(bootdisk, cp+1);
+			addconf("bootdisk", bootdisk);
+		}
 	}
 
 	/* 4 byte word align stack */
@@ -236,9 +255,30 @@ bootargs(ulong base)
 Conf	conf;
 
 void
+addconf(char *name, char *val)
+{
+	if(nconf >= MAXCONF)
+		return;
+	confname[nconf] = name;
+	confval[nconf] = val;
+	nconf++;
+}
+
+char*
+getconf(char *name)
+{
+	int i;
+
+	for(i = 0; i < nconf; i++)
+		if(strcmp(confname[i], name) == 0)
+			return confval[i];
+	return 0;
+}
+
+void
 confinit(void)
 {
-	long x, i, j, n, *l;
+	long x, i, j, n;
 	int pcnt;
 	ulong ktop;
 	char *cp;
@@ -249,7 +289,7 @@ confinit(void)
 	/*
 	 *  parse configuration args from dos file p9rc
 	 */
-	cp = BOOTARGS;	/* where b.com leaves it's config */
+	cp = BOOTARGS;	/* where b.com leaves its config */
 	cp[BOOTARGSLEN-1] = 0;
 	n = getfields(cp, line, MAXCONF, '\n');
 	for(j = 0; j < n; j++){
@@ -268,60 +308,83 @@ confinit(void)
 			pcnt = 100 - atoi(confval[nconf]);
 		nconf++;
 	}
-
 	/*
-	 *  the first 640k is the standard useful memory
-	 *  the next 128K is the display, I/O mem, and BIOS
-	 *  the last 256k belongs to the roms and other devices
+	 *  size memory above 1 meg. Kernel sits at 1 meg.  We
+	 *  only recognize MB size chunks.
 	 */
-	conf.npage0 = 640/4;
-	conf.base0 = 0;
-
-	/*
-	 *  size the non-standard memory
-	 */
+	memset(mmap, ' ', sizeof(mmap));
 	x = 0x12345678;
-	for(i=2; i<17; i++){
+	for(i = 1; i <= MAXMEG; i++){
 		/*
-		 *  write the word
+		 *  write the first & last word in a megabyte of memory
 		 */
-		l = (long*)(KZERO|(i*MB));
-		l--;
-		*l = x;
+		*mapaddr(KZERO|(i*MB)) = x;
+		*mapaddr(KZERO|((i+1)*MB-BY2WD)) = x;
+
 		/*
-		 *  take care of wraps
+		 *  write the first and last word in all previous megs to
+		 *  handle address wrap around
 		 */
 		for(j = 1; j < i; j++){
-			l = (long*)(KZERO|(j*MB));
-			l--;
-			*l = ~x;
+			*mapaddr(KZERO|(j*MB)) = ~x;
+			*mapaddr(KZERO|((j+1)*MB-BY2WD)) = ~x;
 		}
+
 		/*
-		 *  check
+		 *  check for correct value
 		 */
-		l = (long*)(KZERO|(i*MB));
-		l--;
-		if(*l != x)
-			break;
-		memset((char*)(KZERO|((i-1)*MB)), 0, MB);
+		if(*mapaddr(KZERO|(i*MB)) == x && *mapaddr(KZERO|((i+1)*MB-BY2WD)) == x){
+			mmap[i] = 'x';
+			/*
+			 *  zero memory to set ECC but skip over the kernel
+			 */
+			if(i != 1)
+				for(j = 0; j < MB/BY2PG; j += BY2PG)
+					memset(mapaddr(KZERO|(i*MB+j)), 0, BY2PG);
+		}
 		x += 0x3141526;
 	}
-	i--;
-	conf.base1 = 1*MB;
-	conf.npage1 = (i*MB - conf.base1)/BY2PG;
+	/*
+	 *  bank0 usually goes from the end of kernel bss to the end of memory
+	 */
+	ktop = PGROUND((ulong)end);
+	ktop = PADDR(ktop);
+	conf.base0 = ktop;
+	for(i = 1; mmap[i] == 'x'; i++)
+		;
+	conf.npage0 = (i*MB - ktop)/BY2PG;
+	conf.topofmem = i*MB;
+
+	/*
+	 *  bank1 usually goes from the end of BOOTARGS to 640k
+	 */
+	conf.base1 = (ulong)(BOOTARGS+BOOTARGSLEN);
+	conf.base1 = PGROUND(conf.base1);
+	conf.base1 = PADDR(conf.base1);
+	conf.npage1 = (640*1024-conf.base1)/BY2PG;
+
+	/*
+	 *  if there is a hole in memory (due to a shadow BIOS) make the
+	 *  memory after the hole be bank 1. The memory from 0 to 640k
+	 *  is lost.
+	 */
+	for(; i <= MAXMEG; i++)
+		if(mmap[i] == 'x'){
+			conf.base1 = i*MB;
+			for(j = i+1; mmap[j] == 'x'; j++)
+				;
+			conf.npage1 = (j - i)*MB/BY2PG;
+			conf.topofmem = j*MB;
+			break;
+		}
+
 	conf.npage = conf.npage0 + conf.npage1;
 	conf.ldepth = 0;
 	if(pcnt < 10)
 		pcnt = 70;
 	conf.upages = (conf.npage*pcnt)/100;
 
-	ktop = PGROUND((ulong)end);
-	ktop = PADDR(ktop);
-	conf.npage0 -= ktop/BY2PG;
-	conf.base0 += ktop;
-
-	conf.topofmem = i*MB;
-	conf.nproc = 30 + i*5;
+	conf.nproc = 30 + ((conf.npage*BY2PG)/MB)*5;
 	conf.monitor = 1;
 	conf.nswap = conf.nproc*80;
 	conf.nimage = 50;
@@ -363,24 +426,24 @@ matherror(Ureg *ur)
 	/*
 	 *  save floating point state to check out error
 	 */
-	fpenv(&u->fpsave);
-	status = u->fpsave.status;
+	fpenv(&up->fpsave);
+	status = up->fpsave.status;
 
 	msg = 0;
 	for(i = 0; i < 8; i++)
 		if((1<<i) & status){
 			msg = mathmsg[i];
-			sprint(note, "sys: fp: %s fppc=0x%lux", msg, u->fpsave.pc);
-			postnote(u->p, 1, note, NDebug);
+			sprint(note, "sys: fp: %s fppc=0x%lux", msg, up->fpsave.pc);
+			postnote(up->p, 1, note, NDebug);
 			break;
 		}
 	if(msg == 0){
-		sprint(note, "sys: fp: unknown fppc=0x%lux", u->fpsave.pc);
-		postnote(u->p, 1, note, NDebug);
+		sprint(note, "sys: fp: unknown fppc=0x%lux", up->fpsave.pc);
+		postnote(up->p, 1, note, NDebug);
 	}
 	if(ur->pc & KZERO)
 		panic("fp: status %lux fppc=0x%lux pc=0x%lux", status,
-			u->fpsave.pc, ur->pc);
+			up->fpsave.pc, ur->pc);
 }
 
 /*
@@ -390,14 +453,14 @@ void
 mathemu(Ureg *ur)
 {
 	USED(ur);
-	switch(u->p->fpstate){
+	switch(up->fpstate){
 	case FPinit:
 		fpinit();
-		u->p->fpstate = FPactive;
+		up->fpstate = FPactive;
 		break;
 	case FPinactive:
-		fprestore(&u->fpsave);
-		u->p->fpstate = FPactive;
+		fprestore(&up->fpsave);
+		up->fpstate = FPactive;
 		break;
 	case FPactive:
 		panic("math emu", 0);
@@ -412,7 +475,7 @@ void
 mathover(Ureg *ur)
 {
 	USED(ur);
-print("sys: fp: math overrun pc 0x%lux pid %d\n", ur->pc, u->p->pid);
+print("sys: fp: math overrun pc 0x%lux pid %d\n", ur->pc, up->pid);
 	pexit("math overrun", 0);
 }
 
@@ -445,7 +508,7 @@ procsave(Proc *p)
 		if(p->state == Moribund)
 			fpoff();
 		else
-			fpsave(&u->fpsave);
+			fpsave(&up->fpsave);
 		p->fpstate = FPinactive;
 	}
 }
@@ -473,8 +536,12 @@ exit(int ispanic)
 {
 	u = 0;
 	print("exiting\n");
-	if(ispanic)
-		for(;;);
+	if(ispanic){
+		if(cpuflag)
+			delay(10000);
+		else
+			for(;;);
+	}
 
 	(*arch->reset)();
 }
@@ -540,4 +607,70 @@ modem(int onoff)
 		return (*arch->modempower)(onoff);
 	else
 		return 0;
+}
+
+static int
+parseether(uchar *to, char *from)
+{
+	char nip[4];
+	char *p;
+	int i;
+
+	p = from;
+	for(i = 0; i < 6; i++){
+		if(*p == 0)
+			return -1;
+		nip[0] = *p++;
+		if(*p == 0)
+			return -1;
+		nip[1] = *p++;
+		nip[2] = 0;
+		to[i] = strtoul(nip, 0, 16);
+		if(*p == ':')
+			p++;
+	}
+	return 0;
+}
+
+int
+isaconfig(char *class, int ctlrno, ISAConf *isa)
+{
+	char cc[NAMELEN], *p, *q;
+	int n;
+
+	sprint(cc, "%s%d", class, ctlrno);
+	for(n = 0; n < nconf; n++){
+		if(strncmp(confname[n], cc, NAMELEN))
+			continue;
+		p = confval[n];
+		while(*p){
+			while(*p == ' ' || *p == '\t')
+				p++;
+			if(*p == '\0')
+				break;
+			if(strncmp(p, "type=", 5) == 0){
+				p += 5;
+				for(q = isa->type; q < &isa->type[NAMELEN-1]; q++){
+					if(*p == '\0' || *p == ' ' || *p == '\t')
+						break;
+					*q = *p++;
+				}
+				*q = '\0';
+			}
+			else if(strncmp(p, "port=", 5) == 0)
+				isa->port = strtoul(p+5, &p, 0);
+			else if(strncmp(p, "irq=", 4) == 0)
+				isa->irq = strtoul(p+4, &p, 0);
+			else if(strncmp(p, "mem=", 4) == 0)
+				isa->mem = strtoul(p+4, &p, 0);
+			else if(strncmp(p, "size=", 5) == 0)
+				isa->size = strtoul(p+5, &p, 0);
+			else if(strncmp(p, "ea=", 3) == 0)
+				parseether(isa->ea, p+3);
+			while(*p && *p != ' ' && *p != '\t')
+				p++;
+		}
+		return 1;
+	}
+	return 0;
 }

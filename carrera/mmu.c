@@ -3,6 +3,7 @@
 #include	"mem.h"
 #include	"dat.h"
 #include	"fns.h"
+#include	"io.h"
 
 /*
  *  tlb entry 0 is used only by mmuswitch() to set the current tlb pid.
@@ -258,16 +259,24 @@ newtlbpid(Proc *p)
 void
 putmmu(ulong tlbvirt, ulong tlbphys, Page *pg)
 {
+	int s;
 	short tp;
 	char *ctl;
 	Softtlb *entry;
-	int s;
 
 	s = splhi();
 	tp = up->pidonmach[m->machno];
 	if(tp == 0)
 		tp = newtlbpid(up);
 
+	/*
+	 * Fix up EISA memory address which are greater
+	 * than 32 bits physical: 0x100000000
+	 */
+	if((tlbphys&0xffff0000) == PPN(Eisamphys)) {
+		tlbphys &= ~PPN(Eisamphys);
+		tlbphys |= 0x04000000;
+	}
 	tlbvirt |= PTEPID(tp);
 	if((tlbphys & PTEALGMASK) != PTEUNCACHED) {
 		tlbphys &= ~PTEALGMASK;

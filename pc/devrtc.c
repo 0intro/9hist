@@ -23,7 +23,7 @@ enum {
 	Status=		0x0A,
 
 	Nvoff=		128,	/* where usable nvram lives */
-	Nvsize=		128,
+	Nvsize=		256,
 
 	Nbcd=		6,
 };
@@ -48,8 +48,8 @@ enum{
 
 #define	NRTC	2
 Dirtab rtcdir[]={
-	"nvram",	{Qnvram, 0},	Nvsize,	0666,
-	"rtc",		{Qrtc, 0},	0,	0666,
+	"nvram",	{Qnvram, 0},	Nvsize,	0664,
+	"rtc",		{Qrtc, 0},	0,	0664,
 };
 
 ulong rtc2sec(Rtc*);
@@ -96,11 +96,11 @@ rtcopen(Chan *c, int omode)
 	omode = openmode(omode);
 	switch(c->qid.path){
 	case Qrtc:
-		if(strcmp(u->p->user, eve)!=0 && omode!=OREAD)
+		if(strcmp(up->user, eve)!=0 && omode!=OREAD)
 			error(Eperm);
 		break;
 	case Qnvram:
-		if(strcmp(u->p->user, eve)!=0)
+		if(strcmp(up->user, eve)!=0)
 			error(Eperm);
 	}
 	return devopen(c, omode, rtcdir, NRTC, devgen);

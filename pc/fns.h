@@ -1,6 +1,6 @@
 #include "../port/portfns.h"
 
-void	meminit(void);
+void	addconf(char*, char*);
 void	bbinit(void);
 void	bigcursor(void);
 void	bootargs(ulong);
@@ -11,6 +11,7 @@ void	config(int);
 int	cpuspeed(int);
 void	delay(int);
 void	dmaend(int);
+void	dmainit(void);
 long	dmasetup(int, void*, long, int);
 #define	evenaddr(x)		/* 386 doesn't care */
 void	fault386(Ureg*);
@@ -25,6 +26,7 @@ void	fpsave(FPsave*);
 ulong	fpstatus(void);
 ulong	getcr0(void);
 ulong	getcr2(void);
+char*	getconf(char*);
 void	i8042a20(void);
 void	i8042reset(void);
 void	ident(void);
@@ -33,13 +35,17 @@ int	inb(int);
 void	insb(int, void*, int);
 ushort	ins(int);
 void	inss(int, void*, int);
+ulong	inl(int);
 void	insl(int, void*, int);
+int	isaconfig(char*, int, ISAConf*);
 ulong	isamem(int);
 void	kbdinit(void);
 void*	l0update(uchar*, uchar*, long);
 void*	l1update(uchar*, uchar*, long);
 void*	l2update(uchar*, uchar*, long);
+long*	mapaddr(ulong);
 void	mathinit(void);
+void	meminit(void);
 void	mmuinit(void);
 #define	mmunewpage(x)
 int	modem(int);
@@ -49,12 +55,19 @@ void	outb(int, int);
 void	outsb(int, void*, int);
 void	outs(int, ushort);
 void	outss(int, void*, int);
+void	outl(int, ulong);
 void	outsl(int, void*, int);
 void	pcicreset(void);
+int	pcmio(int, ISAConf*);
+long	pcmread(int, int, void*, long, ulong);
+int	pcmspecial(int);
+void	pcmspecialclose(int);
+long	pcmwrite(int, int, void*, long, ulong);
 void	prhex(ulong);
 void	procrestore(Proc*);
 void	procsave(Proc*);
 void	procsetup(Proc*);
+void	ps2poll(void);
 void	putgdt(Segdesc*, int);
 void	putidt(Segdesc*, int);
 void	putcr3(ulong);
@@ -73,7 +86,7 @@ void	uartclock(void);
 void	uartintr0(Ureg*);
 void	uartspecial(int, IOQ*, IOQ*, int);
 void	vgainit(void);
-#define	waserror()	(u->nerrlab++, setlabel(&u->errlab[u->nerrlab-1]))
+#define	waserror()	(up->nerrlab++, setlabel(&up->errlab[up->nerrlab-1]))
 #define	kmapperm(x)	kmap(x)
 #define getcallerpc(x)	(*(ulong*)(x))
 #define KADDR(a)	((void*)((ulong)(a)|KZERO))

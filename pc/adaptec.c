@@ -1,5 +1,9 @@
 /*
- * Adaptec AHA-154[02]B Intelligent Host Adapter.
+ * Adaptec AHA-154[02][BC] Intelligent Host Adapter.
+ * Needs work:
+ *	handle multiple controllers;
+ *	set options from user-level;
+ *	split out to handle ultrastor too;
  */
 #include "u.h"
 #include "../port/lib.h"
@@ -10,12 +14,6 @@
 #include "../port/error.h"
 
 #include "ureg.h"
-
-/*
- * Uniprocessors can't (don't need to) lock.
- */
-#define lock(l)
-#define unlock(l)
 
 enum {
 	NCtlr		= 1,
@@ -314,7 +312,8 @@ scsiio(int bus, Scsi *p, int rw)
 	 * requests off the queue in any order.
 	 */
 	s = splhi();
-	lock(ctlr);
+	if(active.machs > 1)
+		lock(ctlr);
 
 	tp->done = 0;
 	tp->active = ctlr->active;
@@ -334,7 +333,8 @@ scsiio(int bus, Scsi *p, int rw)
 	if(ctlr->mbox >= &ctlr->mb[NTarget])
 		ctlr->mbox = ctlr->mb;
 
-	unlock(ctlr);
+	if(active.machs > 1)
+		unlock(ctlr);
 	splx(s);
 
 	/*
@@ -364,8 +364,8 @@ scsiio(int bus, Scsi *p, int rw)
 	return status;
 }
 
-int
-scsiexec(Scsi *p, int rw)
+static int
+aha1542exec(Scsi *p, int rw)
 {
 	Ctlr *ctlr = &softctlr[0];
 
@@ -387,7 +387,8 @@ interrupt(Ureg *ur)
 
 	USED(ur);
 
-	lock(ctlr);
+	if(active.machs > 1)
+		lock(ctlr);
 
 	/*
 	 * Save and clear the interrupt(s). The only
@@ -430,7 +431,8 @@ interrupt(Ureg *ur)
 			ctlr->mbix = &ctlr->mb[NTarget];
 	}
 
-	unlock(ctlr);
+	if(active.machs > 1)
+		unlock(ctlr);
 }
 
 static void
@@ -465,83 +467,39 @@ reset(Ctlr *ctlr, ulong port, ulong id)
 	issue(ctlr);
 }
 
-void
-resetscsi(void)
+static ISAConf aha1542 = {
+	"aha1542",
+	Port,
+	Irq,
+	0,
+	0,
+};
+
+int (*
+aha1542reset(void))(Scsi*, int)
 {
-	ulong port;
+	ISAConf *isa = &aha1542;
 
 	/*
-	 * For the moment assume the factory default settings.
+	 * See if we have any configuration info.
+	 * Only one controller for now.
 	 */
-	port = Port;
+	if(isaconfig("scsi", 0, &aha1542) == 0)
+		return 0;
 
 	/*
-	 * Attempt to soft-reset the board and reset
+	 * Attempt to hard-reset the board and reset
 	 * the SCSI bus. If the board state doesn't settle to
 	 * idle with mailbox initialisation required, either
 	 * it isn't an Adaptec or it's broken.
 	 */
-	outb(port+Rc, Srst|Scrst);
+	outb(isa->port+Rc, Hrst|Scrst);
 	delay(500);
-	if(inb(port+Rs) != (Init|Idle))
-		return;
+	if(inb(isa->port+Rs) != (Init|Idle))
+		return 0;
 
-	setvec(Int0vec+Irq, interrupt);
-	reset(&softctlr[0], port, CtlrID);
-}
+	setvec(Int0vec+isa->irq, interrupt);
+	reset(&softctlr[0], isa->port, CtlrID);
 
-/*
- * Known to devscsi.c.
- */
-int scsidebugs[8];
-int scsiownid = CtlrID;
-
-void
-initscsi(void)
-{
-}
-
-/*
- * Quick hack. Need to do a better job of dynamic initialisation
- * for machines with peculiar memory/cache restictions.
- * Also, what about 16Mb address limit on the Adaptec?
- */
-static ulong bufdatasize;
-
-void
-scsibufreset(ulong datasize)
-{
-	bufdatasize = datasize;
-}
-
-Scsibuf *
-scsibuf(void)
-{
-	Scsibuf *b;
-
-	b = smalloc(sizeof(*b));
-	b->virt = smalloc(bufdatasize);
-	b->phys = (void *)(PADDR(b->virt));
-	return b;
-}
-
-void
-scsifree(Scsibuf *b)
-{
-	free(b->virt);
-	free(b);
-}
-
-/*
- * Hack for devvid
- */
-Scsibuf *
-scsialloc(ulong n)
-{
-	Scsibuf *b;
-
-	b = smalloc(sizeof(*b));
-	b->virt = smalloc(n);
-	b->phys = (void *)(PADDR(b->virt));
-	return b;
+	return aha1542exec;
 }

@@ -1,5 +1,8 @@
 /*
  * These register addresses have already been adjusted for BE operation
+ *
+ * The EISA memory address is completely fictional. Look at mmu.c for
+ * a translation of Eisamphys into a 33 bit address.
  */
 enum
 {
@@ -35,6 +38,7 @@ enum
 	I386ack		= 0xE000023f,
 	EisaControl	= 0xE0010000,	/* Second 64K Page from Devicevirt */
 	Eisamphys	= 0x91000000,
+	  Eisavgaphys	= Eisamphys+0xA0000,
 	Eisamvirt	= 0xE0300000,	/* Second 1M page entry from Intctl */
 	Intctlphys	= 0xF0000000,	
 	Intctlvirt	= 0xE0200000,

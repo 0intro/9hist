@@ -38,8 +38,8 @@ main(void)
 	initseg();
 	clockinit();
 	ioboardinit();
+	links();
 	chandevreset();
-	rootfiles();
 	swapinit();
 	userinit();
 	launchinit();

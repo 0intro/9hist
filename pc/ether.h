@@ -10,7 +10,7 @@ typedef struct Ctlr Ctlr;
  * Hardware interface.
  */
 struct Card {
-	char	id[NAMELEN];		/* type of card */
+	ISAConf;
 
 	int	(*reset)(Ctlr*);
 	void	(*init)(Ctlr*);
@@ -26,13 +26,8 @@ struct Card {
 	void	(*watch)(Ctlr*);
 	void	(*overflow)(Ctlr*);
 
-	ulong	io;			/* card I/O base address */
-	uchar	irq;			/* interrupt level */
 	uchar	bit16;			/* true if a 16 bit interface */
-
 	uchar	ram;			/* true if card has shared memory */
-	ulong	ramstart;		/* card shared memory address start */
-	ulong	ramstop;		/* card shared memory address end */
 
 	ulong	dp8390;			/* I/O address of 8390 (if any) */
 	ulong	data;			/* I/O data port if no shared memory */
@@ -85,6 +80,8 @@ enum {
  */
 struct Ctlr {
 	QLock;
+	int	ctlrno;
+	Ctlr	*next;
 
 	Card	card;			/* hardware info */
 	int	present;
@@ -140,6 +137,7 @@ struct Ctlr {
 extern void dp8390reset(Ctlr*);
 extern void dp8390attach(Ctlr*);
 extern void dp8390mode(Ctlr*, int);
+extern void dp8390getea(Ctlr*);
 extern void dp8390setea(Ctlr*);
 extern void *dp8390read(Ctlr*, void*, ulong, ulong);
 extern void *dp8390write(Ctlr*, ulong, void*, ulong);
@@ -166,3 +164,6 @@ extern void dp8390outb(ulong, uchar);
 enum {
 	Dp8390BufSz	= 256,		/* hardware ring buffer size */
 };
+
+
+extern void	addethercard(char*, int	(*)(Ctlr*));

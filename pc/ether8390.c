@@ -149,8 +149,10 @@ typedef struct {
 static void
 dp8390disable(Ctlr *ctlr)
 {
+	ulong dp8390;
 	int timo;
 
+	dp8390 = ctlr->card.dp8390;
 	/*
 	 * Stop the chip. Set the Stp bit and wait for the chip
 	 * to finish whatever was on its tiny mind before it sets
@@ -159,23 +161,26 @@ dp8390disable(Ctlr *ctlr)
 	 * chip there if this is called when probing for a device
 	 * at boot.
 	 */
-	dp8390outb(ctlr->card.dp8390+Cr, Page0|RDMAabort|Stp);
-	dp8390outb(ctlr->card.dp8390+Rbcr0, 0);
-	dp8390outb(ctlr->card.dp8390+Rbcr1, 0);
-	for(timo = 10000; (dp8390inb(ctlr->card.dp8390+Isr) & Rst) == 0 && timo; timo--)
+	dp8390outb(dp8390+Cr, Page0|RDMAabort|Stp);
+	dp8390outb(dp8390+Rbcr0, 0);
+	dp8390outb(dp8390+Rbcr1, 0);
+	for(timo = 10000; (dp8390inb(dp8390+Isr) & Rst) == 0 && timo; timo--)
 			;
 }
 
 static void
 dp8390ring(Ctlr *ctlr)
 {
-	dp8390outb(ctlr->card.dp8390+Pstart, ctlr->card.pstart);
-	dp8390outb(ctlr->card.dp8390+Pstop, ctlr->card.pstop);
-	dp8390outb(ctlr->card.dp8390+Bnry, ctlr->card.pstop-1);
+	ulong dp8390;
 
-	dp8390outb(ctlr->card.dp8390+Cr, Page1|RDMAabort|Stp);
-	dp8390outb(ctlr->card.dp8390+Curr, ctlr->card.pstart);
-	dp8390outb(ctlr->card.dp8390+Cr, Page0|RDMAabort|Stp);
+	dp8390 = ctlr->card.dp8390;
+	dp8390outb(dp8390+Pstart, ctlr->card.pstart);
+	dp8390outb(dp8390+Pstop, ctlr->card.pstop);
+	dp8390outb(dp8390+Bnry, ctlr->card.pstop-1);
+
+	dp8390outb(dp8390+Cr, Page1|RDMAabort|Stp);
+	dp8390outb(dp8390+Curr, ctlr->card.pstart);
+	dp8390outb(dp8390+Cr, Page0|RDMAabort|Stp);
 
 	ctlr->card.nxtpkt = ctlr->card.pstart;
 }
@@ -183,6 +188,9 @@ dp8390ring(Ctlr *ctlr)
 void
 dp8390reset(Ctlr *ctlr)
 {
+	ulong dp8390;
+
+	dp8390 = ctlr->card.dp8390;
 	/*
 	 * This is the initialisation procedure described
 	 * as 'mandatory' in the datasheet, with references
@@ -190,15 +198,15 @@ dp8390reset(Ctlr *ctlr)
 	 */ 
 	dp8390disable(ctlr);
 	if(ctlr->card.bit16)
-		dp8390outb(ctlr->card.dp8390+Dcr, Ft4|Ls|Wts);
+		dp8390outb(dp8390+Dcr, Ft4|Ls|Wts);
 	else
-		dp8390outb(ctlr->card.dp8390+Dcr, Ft4|Ls);
+		dp8390outb(dp8390+Dcr, Ft4|Ls);
 
-	dp8390outb(ctlr->card.dp8390+Rbcr0, 0);
-	dp8390outb(ctlr->card.dp8390+Rbcr1, 0);
+	dp8390outb(dp8390+Rbcr0, 0);
+	dp8390outb(dp8390+Rbcr1, 0);
 
-	dp8390outb(ctlr->card.dp8390+Tcr, 0);
-	dp8390outb(ctlr->card.dp8390+Rcr, Mon);
+	dp8390outb(dp8390+Tcr, 0);
+	dp8390outb(dp8390+Rcr, Mon);
 
 	/*
 	 * Init the ring hardware and software ring pointers.
@@ -206,16 +214,16 @@ dp8390reset(Ctlr *ctlr)
 	 * it yet.
 	 */
 	dp8390ring(ctlr);
-	dp8390outb(ctlr->card.dp8390+Tpsr, ctlr->card.tstart);
+	dp8390outb(dp8390+Tpsr, ctlr->card.tstart);
 
-	dp8390outb(ctlr->card.dp8390+Isr, 0xFF);
-	dp8390outb(ctlr->card.dp8390+Imr, Cnte|Ovwe|Txee|Rxee|Ptxe|Prxe);
+	dp8390outb(dp8390+Isr, 0xFF);
+	dp8390outb(dp8390+Imr, Cnte|Ovwe|Txee|Rxee|Ptxe|Prxe);
 
 	/*
 	 * Leave the chip initialised,
 	 * but in monitor mode.
 	 */
-	dp8390outb(ctlr->card.dp8390+Cr, Page0|RDMAabort|Sta);
+	dp8390outb(dp8390+Cr, Page0|RDMAabort|Sta);
 }
 
 void
@@ -246,9 +254,11 @@ dp8390mode(Ctlr *ctlr, int on)
 void
 dp8390setea(Ctlr *ctlr)
 {
+	ulong dp8390;
 	uchar cr;
 	int i;
 
+	dp8390 = ctlr->card.dp8390;
 	/*
 	 * Set the ethernet address into the chip.
 	 * Take care to restore the command register
@@ -256,43 +266,67 @@ dp8390setea(Ctlr *ctlr)
 	 * addresses as we never set the multicast
 	 * enable.
 	 */
-	cr = dp8390inb(ctlr->card.dp8390+Cr) & ~Txp;
-	dp8390outb(ctlr->card.dp8390+Cr, Page1|(~(Ps1|Ps0) & cr));
+	cr = dp8390inb(dp8390+Cr) & ~Txp;
+	dp8390outb(dp8390+Cr, Page1|(~(Ps1|Ps0) & cr));
 	for(i = 0; i < sizeof(ctlr->ea); i++)
-		dp8390outb(ctlr->card.dp8390+Par0+i, ctlr->ea[i]);
-	dp8390outb(ctlr->card.dp8390+Cr, cr);
+		dp8390outb(dp8390+Par0+i, ctlr->ea[i]);
+	dp8390outb(dp8390+Cr, cr);
+}
+
+void
+dp8390getea(Ctlr *ctlr)
+{
+	ulong dp8390;
+	uchar cr;
+	int i;
+
+	dp8390 = ctlr->card.dp8390;
+	/*
+	 * Set the ethernet address into the chip.
+	 * Take care to restore the command register
+	 * afterwards. We don't care about multicast
+	 * addresses as we never set the multicast
+	 * enable.
+	 */
+	cr = dp8390inb(dp8390+Cr) & ~Txp;
+	dp8390outb(dp8390+Cr, Page1|(~(Ps1|Ps0) & cr));
+	for(i = 0; i < sizeof(ctlr->ea); i++)
+		ctlr->ea[i] = dp8390inb(dp8390+Par0+i);
+	dp8390outb(dp8390+Cr, cr);
 }
 
 void*
 dp8390read(Ctlr *ctlr, void *to, ulong from, ulong len)
 {
+	ulong dp8390;
 	uchar cr;
 	int timo;
 
+	dp8390 = ctlr->card.dp8390;
 	/*
 	 * Read some data at offset 'from' in the card's memory
 	 * using the DP8390 remote DMA facility, and place it at
 	 * 'to' in main memory, via the I/O data port.
 	 */
-	cr = dp8390inb(ctlr->card.dp8390+Cr) & ~Txp;
-	dp8390outb(ctlr->card.dp8390+Cr, Page0|RDMAabort|Sta);
-	dp8390outb(ctlr->card.dp8390+Isr, Rdc);
+	cr = dp8390inb(dp8390+Cr) & ~Txp;
+	dp8390outb(dp8390+Cr, Page0|RDMAabort|Sta);
+	dp8390outb(dp8390+Isr, Rdc);
 
 	/*
 	 * Set up the remote DMA address and count.
 	 */
 	if(ctlr->card.bit16)
 		len = ROUNDUP(len, 2);
-	dp8390outb(ctlr->card.dp8390+Rbcr0, len & 0xFF);
-	dp8390outb(ctlr->card.dp8390+Rbcr1, (len>>8) & 0xFF);
-	dp8390outb(ctlr->card.dp8390+Rsar0, from & 0xFF);
-	dp8390outb(ctlr->card.dp8390+Rsar1, (from>>8) & 0xFF);
+	dp8390outb(dp8390+Rbcr0, len & 0xFF);
+	dp8390outb(dp8390+Rbcr1, (len>>8) & 0xFF);
+	dp8390outb(dp8390+Rsar0, from & 0xFF);
+	dp8390outb(dp8390+Rsar1, (from>>8) & 0xFF);
 
 	/*
 	 * Start the remote DMA read and suck the data
 	 * out of the I/O port.
 	 */
-	dp8390outb(ctlr->card.dp8390+Cr, Page0|RDMAread|Sta);
+	dp8390outb(dp8390+Cr, Page0|RDMAread|Sta);
 	if(ctlr->card.bit16)
 		inss(ctlr->card.data, to, len/2);
 	else
@@ -305,28 +339,29 @@ dp8390read(Ctlr *ctlr, void *to, ulong from, ulong len)
 	 * to the miracles of the bus, we could get this far
 	 * and still be talking to a slot full of nothing.
 	 */
-	for(timo = 10000; (dp8390inb(ctlr->card.dp8390+Isr) & Rdc) == 0 && timo; timo--)
+	for(timo = 10000; (dp8390inb(dp8390+Isr) & Rdc) == 0 && timo; timo--)
 			;
 
-	dp8390outb(ctlr->card.dp8390+Isr, Rdc);
-	dp8390outb(ctlr->card.dp8390+Cr, cr);
+	dp8390outb(dp8390+Isr, Rdc);
+	dp8390outb(dp8390+Cr, cr);
 	return to;
 }
 
 void*
 dp8390write(Ctlr *ctlr, ulong to, void *from, ulong len)
 {
+	ulong dp8390, crda;
 	uchar cr;
-	ulong crda;
 
+	dp8390 = ctlr->card.dp8390;
 	/*
 	 * Write some data to offset 'to' in the card's memory
 	 * using the DP8390 remote DMA facility, reading it at
 	 * 'from' in main memory, via the I/O data port.
 	 */
-	cr = dp8390inb(ctlr->card.dp8390+Cr) & ~Txp;
-	dp8390outb(ctlr->card.dp8390+Cr, Page0|RDMAabort|Sta);
-	dp8390outb(ctlr->card.dp8390+Isr, Rdc);
+	cr = dp8390inb(dp8390+Cr) & ~Txp;
+	dp8390outb(dp8390+Cr, Page0|RDMAabort|Sta);
+	dp8390outb(dp8390+Isr, Rdc);
 
 	if(ctlr->card.bit16)
 		len = ROUNDUP(len, 2);
@@ -337,24 +372,24 @@ dp8390write(Ctlr *ctlr, ulong to, void *from, ulong len)
 	 * the initial set up for read.
 	 */
 	crda = to-1-ctlr->card.bit16;
-	dp8390outb(ctlr->card.dp8390+Rbcr0, (len+1+ctlr->card.bit16) & 0xFF);
-	dp8390outb(ctlr->card.dp8390+Rbcr1, ((len+1+ctlr->card.bit16)>>8) & 0xFF);
-	dp8390outb(ctlr->card.dp8390+Rsar0, crda & 0xFF);
-	dp8390outb(ctlr->card.dp8390+Rsar1, (crda>>8) & 0xFF);
-	dp8390outb(ctlr->card.dp8390+Cr, Page0|RDMAread|Sta);
+	dp8390outb(dp8390+Rbcr0, (len+1+ctlr->card.bit16) & 0xFF);
+	dp8390outb(dp8390+Rbcr1, ((len+1+ctlr->card.bit16)>>8) & 0xFF);
+	dp8390outb(dp8390+Rsar0, crda & 0xFF);
+	dp8390outb(dp8390+Rsar1, (crda>>8) & 0xFF);
+	dp8390outb(dp8390+Cr, Page0|RDMAread|Sta);
 
 	for(;;){
-		crda = dp8390inb(ctlr->card.dp8390+Crda0);
-		crda |= dp8390inb(ctlr->card.dp8390+Crda1)<<8;
+		crda = dp8390inb(dp8390+Crda0);
+		crda |= dp8390inb(dp8390+Crda1)<<8;
 		if(crda == to){
 			/*
 			 * Start the remote DMA write and make sure
 			 * the registers are correct.
 			 */
-			dp8390outb(ctlr->card.dp8390+Cr, Page0|RDMAwrite|Sta);
+			dp8390outb(dp8390+Cr, Page0|RDMAwrite|Sta);
 
-			crda = dp8390inb(ctlr->card.dp8390+Crda0);
-			crda |= dp8390inb(ctlr->card.dp8390+Crda1)<<8;
+			crda = dp8390inb(dp8390+Crda0);
+			crda |= dp8390inb(dp8390+Crda1)<<8;
 			if(crda != to)
 				panic("crda write %d to %d\n", crda, to);
 
@@ -375,28 +410,28 @@ dp8390write(Ctlr *ctlr, ulong to, void *from, ulong len)
 	 * a timeout here if this ever gets called before
 	 * we know there really is a chip there.
 	 */
-	while((dp8390inb(ctlr->card.dp8390+Isr) & Rdc) == 0)
+	while((dp8390inb(dp8390+Isr) & Rdc) == 0)
 			;
 
-	dp8390outb(ctlr->card.dp8390+Isr, Rdc);
-	dp8390outb(ctlr->card.dp8390+Cr, cr);
+	dp8390outb(dp8390+Isr, Rdc);
+	dp8390outb(dp8390+Cr, cr);
 	return (void*)to;
 }
 
 static uchar
-getcurr(Ctlr *ctlr)
+getcurr(ulong dp8390)
 {
 	uchar cr, curr;
 
-	cr = dp8390inb(ctlr->card.dp8390+Cr) & ~Txp;
-	dp8390outb(ctlr->card.dp8390+Cr, Page1|(~(Ps1|Ps0) & cr));
-	curr = dp8390inb(ctlr->card.dp8390+Curr);
-	dp8390outb(ctlr->card.dp8390+Cr, cr);
+	cr = dp8390inb(dp8390+Cr) & ~Txp;
+	dp8390outb(dp8390+Cr, Page1|(~(Ps1|Ps0) & cr));
+	curr = dp8390inb(dp8390+Curr);
+	dp8390outb(dp8390+Cr, cr);
 	return curr;
 }
 
 static void
-cldaquiet(Ctlr *ctlr)
+cldaquiet(ulong dp8390)
 {
 	uchar a, b, c;
 
@@ -409,11 +444,11 @@ cldaquiet(Ctlr *ctlr)
 	 */
 	
 	for(;;delay(10)){
-		a = dp8390inb(ctlr->card.dp8390+Clda0);
-		b = dp8390inb(ctlr->card.dp8390+Clda0);
+		a = dp8390inb(dp8390+Clda0);
+		b = dp8390inb(dp8390+Clda0);
 		if(a != b)
 			continue;
-		c = dp8390inb(ctlr->card.dp8390+Clda0);
+		c = dp8390inb(dp8390+Clda0);
 		if(c != b)
 			continue;
 		break;
@@ -426,11 +461,12 @@ dp8390receive(Ctlr *ctlr)
 	RingBuf *ring;
 	uchar curr, len1, *pkt;
 	Hdr hdr;
-	ulong data, len;
+	ulong dp8390, data, len;
 
-	for(curr = getcurr(ctlr); ctlr->card.nxtpkt != curr; curr = getcurr(ctlr)){
+	dp8390 = ctlr->card.dp8390;
+	for(curr = getcurr(dp8390); ctlr->card.nxtpkt != curr; curr = getcurr(dp8390)){
 		if(strcmp(arch->id, "NCRD.0") == 0)
-			cldaquiet(ctlr);
+			cldaquiet(dp8390);
 
 		ctlr->inpackets++;
 
@@ -458,9 +494,9 @@ dp8390receive(Ctlr *ctlr)
 		  || len < 60 || len > sizeof(Etherpkt)){
 			print("H#%2.2ux#%2.2ux#%2.2ux#%2.2ux,%d|",
 				hdr.status, hdr.next, hdr.len0, hdr.len1, len);
-			dp8390outb(ctlr->card.dp8390+Cr, Page0|RDMAabort|Stp);
+			dp8390outb(dp8390+Cr, Page0|RDMAabort|Stp);
 			dp8390ring(ctlr);
-			dp8390outb(ctlr->card.dp8390+Cr, Page0|RDMAabort|Sta);
+			dp8390outb(dp8390+Cr, Page0|RDMAabort|Sta);
 			return;
 		}
 
@@ -500,7 +536,7 @@ dp8390receive(Ctlr *ctlr)
 		hdr.next--;
 		if(hdr.next < ctlr->card.pstart)
 			hdr.next = ctlr->card.pstop-1;
-		dp8390outb(ctlr->card.dp8390+Bnry, hdr.next);
+		dp8390outb(dp8390+Bnry, hdr.next);
 	}
 }
 
@@ -510,8 +546,10 @@ dp8390receive(Ctlr *ctlr)
 void
 dp8390transmit(Ctlr *ctlr)
 {
+	ulong dp8390;
 	RingBuf *ring;
 
+	dp8390 = ctlr->card.dp8390;
 	ring = &ctlr->tb[ctlr->ti];
 	if(ctlr->tbusy == 0 && ring->owner == Interface){
 
@@ -519,41 +557,43 @@ dp8390transmit(Ctlr *ctlr)
 
 		(*ctlr->card.write)(ctlr, ctlr->card.tstart*Dp8390BufSz, ring->pkt, ring->len);
 
-		dp8390outb(ctlr->card.dp8390+Tbcr0, ring->len & 0xFF);
-		dp8390outb(ctlr->card.dp8390+Tbcr1, (ring->len>>8) & 0xFF);
-		dp8390outb(ctlr->card.dp8390+Cr, Page0|RDMAabort|Txp|Sta);
+		dp8390outb(dp8390+Tbcr0, ring->len & 0xFF);
+		dp8390outb(dp8390+Tbcr1, (ring->len>>8) & 0xFF);
+		dp8390outb(dp8390+Cr, Page0|RDMAabort|Txp|Sta);
 	}
 }
 
 void
 dp8390overflow(Ctlr *ctlr)
 {
+	ulong dp8390;
 	uchar txp;
 	int resend;
 
+	dp8390 = ctlr->card.dp8390;
 	/*
 	 * The following procedure is taken from the DP8390[12D] datasheet,
 	 * it seems pretty adamant that this is what has to be done.
 	 */
-	txp = dp8390inb(ctlr->card.dp8390+Cr) & Txp;
-	dp8390outb(ctlr->card.dp8390+Cr, Page0|RDMAabort|Stp);
+	txp = dp8390inb(dp8390+Cr) & Txp;
+	dp8390outb(dp8390+Cr, Page0|RDMAabort|Stp);
 	delay(2);
-	dp8390outb(ctlr->card.dp8390+Rbcr0, 0);
-	dp8390outb(ctlr->card.dp8390+Rbcr1, 0);
+	dp8390outb(dp8390+Rbcr0, 0);
+	dp8390outb(dp8390+Rbcr1, 0);
 
 	resend = 0;
-	if(txp && (dp8390inb(ctlr->card.dp8390+Isr) & (Txe|Ptx)) == 0)
+	if(txp && (dp8390inb(dp8390+Isr) & (Txe|Ptx)) == 0)
 		resend = 1;
 
-	dp8390outb(ctlr->card.dp8390+Tcr, Lb);
-	dp8390outb(ctlr->card.dp8390+Cr, Page0|RDMAabort|Sta);
+	dp8390outb(dp8390+Tcr, Lb);
+	dp8390outb(dp8390+Cr, Page0|RDMAabort|Sta);
 	(*ctlr->card.receive)(ctlr);
-	dp8390outb(ctlr->card.dp8390+Isr, Ovw);
+	dp8390outb(dp8390+Isr, Ovw);
 	wakeup(&ctlr->rr);
-	dp8390outb(ctlr->card.dp8390+Tcr, 0);
+	dp8390outb(dp8390+Tcr, 0);
 
 	if(resend)
-		dp8390outb(ctlr->card.dp8390+Cr, Page0|RDMAabort|Txp|Sta);
+		dp8390outb(dp8390+Cr, Page0|RDMAabort|Txp|Sta);
 }
 
 void
@@ -577,20 +617,22 @@ dp8390watch(Ctlr *ctlr)
 void
 dp8390intr(Ctlr *ctlr)
 {
+	ulong dp8390;
 	RingBuf *ring;
 	uchar isr, r;
 
+	dp8390 = ctlr->card.dp8390;
 	/*
 	 * While there is something of interest,
 	 * clear all the interrupts and process.
 	 */
-	dp8390outb(ctlr->card.dp8390+Imr, 0x00);
-	while(isr = dp8390inb(ctlr->card.dp8390+Isr)){
+	dp8390outb(dp8390+Imr, 0x00);
+	while(isr = dp8390inb(dp8390+Isr)){
 
 		if(isr & Ovw){
 			if(ctlr->card.overflow)
 				(*ctlr->card.overflow)(ctlr);
-			dp8390outb(ctlr->card.dp8390+Isr, Ovw);
+			dp8390outb(dp8390+Isr, Ovw);
 			ctlr->overflows++;
 		}
 
@@ -601,7 +643,7 @@ dp8390intr(Ctlr *ctlr)
 		 */
 		if(isr & (Rxe|Prx)){
 			(*ctlr->card.receive)(ctlr);
-			dp8390outb(ctlr->card.dp8390+Isr, Rxe|Prx);
+			dp8390outb(dp8390+Isr, Rxe|Prx);
 			wakeup(&ctlr->rr);
 		}
 
@@ -611,14 +653,14 @@ dp8390intr(Ctlr *ctlr)
 		 * and wake the output routine.
 		 */
 		if(isr & (Txe|Ptx)){
-			r = dp8390inb(ctlr->card.dp8390+Tsr);
+			r = dp8390inb(dp8390+Tsr);
 			if(isr & Txe){
 				if((r & (Cdh|Fu|Crs|Abt)) && ctlr->debug)
 					print("Tsr#%2.2ux|", r);
 				ctlr->oerrs++;
 			}
 
-			dp8390outb(ctlr->card.dp8390+Isr, Txe|Ptx);
+			dp8390outb(dp8390+Isr, Txe|Ptx);
 
 			if(isr & Ptx)
 				ctlr->outpackets++;
@@ -632,11 +674,11 @@ dp8390intr(Ctlr *ctlr)
 		}
 
 		if(isr & Cnt){
-			ctlr->frames += dp8390inb(ctlr->card.dp8390+Cntr0);
-			ctlr->crcs += dp8390inb(ctlr->card.dp8390+Cntr1);
-			ctlr->buffs += dp8390inb(ctlr->card.dp8390+Cntr2);
-			dp8390outb(ctlr->card.dp8390+Isr, Cnt);
+			ctlr->frames += dp8390inb(dp8390+Cntr0);
+			ctlr->crcs += dp8390inb(dp8390+Cntr1);
+			ctlr->buffs += dp8390inb(dp8390+Cntr2);
+			dp8390outb(dp8390+Isr, Cnt);
 		}
 	}
-	dp8390outb(ctlr->card.dp8390+Imr, Cnte|Ovwe|Txee|Rxee|Ptxe|Prxe);
+	dp8390outb(dp8390+Imr, Cnte|Ovwe|Txee|Rxee|Ptxe|Prxe);
 }

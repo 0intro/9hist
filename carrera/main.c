@@ -51,8 +51,8 @@ main(void)
 	pageinit();
 	procinit0();
 	initseg();
+	links();
 	chandevreset();
-	rootfiles();
 	swapinit();
 	userinit();
 	schedinit();
@@ -179,7 +179,7 @@ ioinit(void)
 	 * Map Interrupt control & Eisa memory
 	 */
 	intphys  = IOPTE|PPN(Intctlphys);
-	isamphys = IOPTE|PPN(Eisamphys);
+	isamphys = /* IOPTE|PPN(Eisamphys) */ PTEGLOBL;
 
 	puttlbx(2, Intctlvirt, intphys, isamphys, PGSZ1M);
 
