@@ -308,12 +308,12 @@ arpenter(Fs *fs, int version, uchar *ip, uchar *mac, int n, int refresh)
 
 	switch(version){
 	case V4:
-		r = v4lookup(fs, ip);
+		r = v4lookup(fs, ip, nil);
 		v4tov6(v6ip, ip);
 		ip = v6ip;
 		break;
 	case V6:
-		r = v6lookup(fs, ip);
+		r = v6lookup(fs, ip, nil);
 		break;
 	default:
 		panic("arpenter: version %d", version);
@@ -441,9 +441,9 @@ arpwrite(Fs *fs, char *s, int len)
 		case 3:
 			parseip(ip, f[1]);
 			if(isv4(ip))
-				r = v4lookup(fs, ip+IPv4off);
+				r = v4lookup(fs, ip+IPv4off, nil);
 			else
-				r = v6lookup(fs, ip);
+				r = v6lookup(fs, ip, nil);
 			if(r == nil)
 				error("Destination unreachable");
 			m = r->ifc->m;
