@@ -1,4 +1,5 @@
 typedef struct Etherpkt	Etherpkt;
+typedef struct Netaddr	Netaddr;
 typedef struct Netfile	Netfile;
 typedef struct Netif	Netif;
 
@@ -41,6 +42,16 @@ struct Netfile
 };
 
 /*
+ *  a network address
+ */
+struct Netaddr
+{
+	Netaddr	*next;
+	char	*addr;
+	int	ref;
+};
+
+/*
  *  a network interface
  */
 struct Netif
@@ -57,6 +68,7 @@ struct Netif
 	int	alen;			/* address length */
 	uchar	addr[Nmaxaddr];
 	uchar	bcast[Nmaxaddr];
+	Netaddr	*maddr;			/* multicast addresses */
 	int	prom;			/* number of promiscuous opens */
 	int	all;			/* number of -1 multiplexors */
 
@@ -74,6 +86,7 @@ struct Netif
 	/* routines for touching the hardware */
 	void	*arg;
 	void	(*promiscuous)(void*, int);
+	void	(*multicast)(void*, char*, int);
 };
 
 void	netifinit(Netif*, char*, int, ulong);

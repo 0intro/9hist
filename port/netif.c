@@ -9,6 +9,7 @@
 static int netown(Netfile*, char*, int);
 static int openfile(Netif*, int);
 static char* matchtoken(char*, char*);
+static void netmulti(Netif*, char*, int);
 
 /*
  *  set up a new network interface
@@ -234,6 +235,10 @@ netifwrite(Netif *nif, Chan *c, void *a, long n)
 		nif->prom++;
 		if(nif->prom == 1 && nif->promiscuous != nil)
 			nif->promiscuous(nif->arg, 1);
+	} else if(p = matchtoken(buf, "addmulti")){
+		netmulti(nif, p, 1);
+	} else if(p = matchtoken(buf, "remmulti")){
+		netmulti(nif, p, 0);
 	}
 	qunlock(nif);
 	return n;
@@ -443,4 +448,42 @@ nhgets(void *p)
 
 	a = p;
 	return (a[0]<<8)|(a[1]<<0);
+}
+
+/* called with nif locked */
+static void
+netmulti(Netif *nif, char *addr, int add)
+{
+	Netaddr **l, *ap;
+
+	if(nif->multicast == nil)
+		return;
+
+	l = &nif->maddr;
+	for(ap = *l; ap; ap = *l){
+		if(strcmp(addr, ap->addr) == 0)
+			break;
+		l = &ap->next;
+	}
+
+	if(add){
+		if(ap == 0){
+			ap = smalloc(sizeof(*ap));
+			ap->addr = smalloc(strlen(addr)+1);
+			strcpy(ap->addr, addr);
+			ap->next = nif->maddr;
+			ap->ref = 1;
+			nif->maddr = ap;
+		} else {
+			ap->ref++;
+		}
+		if(ap->ref == 1)
+			nif->multicast(nif->arg, addr, 1);
+	} else {
+		if(ap == 0 || ap->ref == 0)
+			return;
+		ap->ref--;
+		if(ap->ref == 0)
+			nif->multicast(nif->arg, addr, 0);
+	}
 }

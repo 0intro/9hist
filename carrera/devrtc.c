@@ -98,38 +98,68 @@ bcd2binary(int reg)
 	return (x&0xf) + 10*(x>>4);
 }
 
-long	 
-rtctime(void)
+static long	 
+_rtctime(void)
 {
 	Rtc rtc;
-	int x;
+	int i, x;
 
-	/*
-	 *  read and convert from bcd
-	 */
-	x = splhi();
-	rtc.sec = bcd2binary(Seconds);
-	rtc.min = bcd2binary(Minutes);
-	rtc.hour = bcd2binary(Hours);
-	rtc.mday = bcd2binary(Mday);
-	rtc.mon = bcd2binary(Month);
-	rtc.year = bcd2binary(Year);
-	splx(x);
+	for(i = 0; i < 10000; i++){
+		x = (*(uchar*)Rtcindex)&~0x7f;
+		*(uchar*)Rtcindex = x|Status;
+		x = *(uchar*)Rtcdata;
+		if(x & 0x80)
+			continue;
 
-	/*
-	 *  the world starts jan 1 1970
-	 */
-	if(rtc.year < 70)
-		rtc.year += 2000;
-	else
-		rtc.year += 1900;
+		/*
+		 *  read and convert from bcd
+		 */
+		rtc.sec = bcd2binary(Seconds);
+		rtc.min = bcd2binary(Minutes);
+		rtc.hour = bcd2binary(Hours);
+		rtc.mday = bcd2binary(Mday);
+		rtc.mon = bcd2binary(Month);
+		rtc.year = bcd2binary(Year)+1970;
+
+		x = (*(uchar*)Rtcindex)&~0x7f;
+		*(uchar*)Rtcindex = x|Status;
+		x = *(uchar*)Rtcdata;
+		if((x & 0x80) == 0)
+			break;
+	}
+
 	return rtc2sec(&rtc);
+}
+
+static Lock rtlock;
+
+long
+rtctime(void)
+{
+	int i;
+	long t, ot;
+
+	ilock(&rtlock);
+
+	/* loop till we get two reads in a row the same */
+	t = _rtctime();
+	for(i = 0; i < 100; i++){
+		ot = t;
+		t = _rtctime();
+		if(ot == t)
+			break;
+	}
+	if(i == 100) print("we are boofheads\n");
+
+	iunlock(&rtlock);
+
+	return t;
 }
 
 static long	 
 rtcread(Chan *c, void *buf, long n, ulong offset)
 {
-	ulong t, ot;
+	ulong t;
 	uchar *f, *to, *e;
 
 	if(c->qid.path & CHDIR)
@@ -137,11 +167,9 @@ rtcread(Chan *c, void *buf, long n, ulong offset)
 
 	switch(c->qid.path){
 	case Qrtc:
+		qlock(&rtclock);
 		t = rtctime();
-		do{
-			ot = t;
-			t = rtctime();	/* make sure there's no skew */
-		}while(t != ot);
+		qunlock(&rtclock);
 		n = readnum(offset, buf, n, t, 12);
 		return n;
 	case Qnvram:
@@ -204,7 +232,7 @@ rtcwrite(Chan *c, void *buf, long n, ulong offset)
 		binary2bcd(Hours, rtc.hour);
 		binary2bcd(Mday, rtc.mday);
 		binary2bcd(Month, rtc.mon);
-		binary2bcd(Year, rtc.year);
+		binary2bcd(Year, rtc.year-1970);
 		splx(s);
 
 		return n;

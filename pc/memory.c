@@ -74,7 +74,6 @@ static RMap rmapumbrw = {
 	&mapumbrw[7],
 };
 
-#define notdef
 #ifdef notdef
 void
 dumpmembank(void)
@@ -438,7 +437,6 @@ meminit(ulong maxmem)
 	mmuflushtlb(PADDR(m->pdb));
 
 	umbscan();
-dumpmembank();
 	ramscan(maxmem);
 	upainit();
 

@@ -34,6 +34,7 @@ extern Cursor curs;			/* barf */
 Bitmap	gscreen;
 Lock palettelock;			/* access to DAC registers */
 Cursor curcursor;			/* current cursor */
+static Lock vgaxlock;			/* access to index registers */
 
 /* vga screen */
 extern	QLock	screenlock;
@@ -431,6 +432,7 @@ vgaxi(long port, uchar index)
 {
 	uchar data;
 
+	ilock(&vgaxlock);
 	switch(port){
 
 	case Seqx:
@@ -464,8 +466,10 @@ vgaxi(long port, uchar index)
 		break;
 
 	default:
+		iunlock(&vgaxlock);
 		return -1;
 	}
+	iunlock(&vgaxlock);
 
 	return data & 0xFF;
 }
@@ -473,6 +477,7 @@ vgaxi(long port, uchar index)
 int
 vgaxo(long port, uchar index, uchar data)
 {
+	ilock(&vgaxlock);
 	switch(port){
 
 	case Seqx:
@@ -502,8 +507,10 @@ vgaxo(long port, uchar index, uchar data)
 		break;
 
 	default:
+		iunlock(&vgaxlock);
 		return -1;
 	}
+	iunlock(&vgaxlock);
 
 	return 0;
 }
