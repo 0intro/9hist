@@ -71,11 +71,8 @@ reset(Ether *ether)
 		ether->port = 0x240;
 	port = ether->port;
 
-	if((slot = pcmspecial("3C589", ether)) < 0){
-		if((slot = pcmspecial("3C562", ether)) < 0)
-			return -1;
-		strcpy(ether->type, "3C562");
-	}
+	if((slot = pcmspecial(ether->type, ether)) < 0)
+		return -1;
 
 	/* try configuring as a 10baseT */
 	if(configASIC(ether, port, Xcvr10BaseT) < 0){
@@ -105,4 +102,5 @@ void
 ether589link(void)
 {
 	addethercard("3C589", reset);
+	addethercard("3C562", reset);
 }
