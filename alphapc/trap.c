@@ -245,7 +245,7 @@ intr(Ureg *ur)
 	}
 	else{
 		dumpregs(ur);
-		panic("unknown intr: %d\n", vno); /* */
+		print("unknown intr: %d\n", vno); /* */
 	}
 }
 
@@ -375,7 +375,50 @@ kernfault(Ureg *ur, int code)
 }
 
 void
-dumpstack(void)
+dumpregs(Ureg *ur)
+{
+	int i, col;
+	uvlong *l;
+
+	if(up)
+		print("registers for %s %ld\n", up->text, up->pid);
+	else
+		print("registers for kernel\n");
+
+	l = &ur->type;
+	col = 0;
+	for (i = 0; i < sizeof regname/sizeof(char*); i++, l++) {
+		print("%-7s%.16llux%s", regname[i], *l, col == 2 ? "\n" : "     ");
+		if (col++ == 2)
+			col = 0;
+	}
+	print("\n");
+}
+
+
+/*
+ * Fill in enough of Ureg to get a stack trace, and call a function.
+ * Used by debugging interface rdb.
+ */
+static void
+getpcsp(ulong *pc, ulong *sp)
+{
+	*pc = getcallerpc(&pc);
+	*sp = (ulong)&pc-8;
+}
+
+void
+callwithureg(void (*fn)(Ureg*))
+{
+	Ureg ureg;
+
+	getpcsp((ulong*)&ureg.pc, (ulong*)&ureg.sp);
+	ureg.r26 = getcallerpc(&fn);
+	fn(&ureg);
+}
+
+void
+_dumpstack(Ureg *ureg)
 {
 	ulong l, sl, el, v, i, instr, op;
 	extern ulong etext;
@@ -392,15 +435,12 @@ dumpstack(void)
 		el = sl + KSTACK;
 	}
 	if(l > el || l < sl){
-		iprint("dumpstack: l %lux sl %lux el %lux m %lux up %lux\n",
-			l, sl, el, m, up);
 		el = (ulong)m+BY2PG;
 		sl = el-KSTACK;
 	}
-	iprint("dumpstack: l %lux sl %lux el %lux m %lux\n", l, sl, el, m);
-	if(l > el || l < sl){
+	if(l > el || l < sl)
 		return;
-	}
+	print("ktrace /kernel/path %.8lux %.8lux %.8lux\n", (ulong)ureg->pc, (ulong)ureg->sp, (ulong)ureg->r26);
 
 	i = 0;
 	for(; l<el; l+=8){
@@ -412,48 +452,23 @@ dumpstack(void)
 			instr = *(ulong*)v;
 			op = (instr>>26);
 			if(op == 26 || op == 52){
-				iprint("%lux ", v);
+				print("%lux=%lux ", l, v);
 				i++;
 			}
 		}
-		if(i == 8){
+		if(i == 4){
 			i = 0;
-			iprint("\n");
+			print("\n");
 		}
 	}
+	if(i)
+		print("\n");
 }
 
 void
-callwithureg(void (*fn)(Ureg*))
+dumpstack(void)
 {
-	Ureg ureg;
-	ureg.pc = getcallerpc(&fn);
-	ureg.sp = (ulong)&fn;
-	fn(&ureg);
-}
-
-void
-dumpregs(Ureg *ur)
-{
-	int i, col;
-	uvlong *l;
-
-	spllo();
-	prflush(); 
-	if(up)
-		iprint("registers for %s %d\n", up->text, up->pid);
-	else
-		iprint("registers for kernel\n");
-
-	l = &ur->type;
-	col = 0;
-	for (i = 0; i < sizeof regname/sizeof(char*); i++, l++) {
-		iprint("%-7s%.16llux%s", regname[i], *l, col == 2 ? "\n" : "     ");
-		if (col++ == 2)
-			col = 0;
-	}
-	iprint("\n");
-//	prflush();
+	callwithureg(_dumpstack);
 }
 
 int

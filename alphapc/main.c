@@ -29,9 +29,9 @@ options(void)
 	long i, n;
 	char *cp, *line[MAXCONF], *p, *q;
 
-	cp = bootconf->bootargs;
+	cp = bootargs;
+	strncpy(cp, bootconf->bootargs, BOOTARGSLEN);
 	cp[BOOTARGSLEN-1] = 0;
-	strcpy(bootargs, cp);
 
 	/*
 	 * Strip out '\r', change '\t' -> ' '.
@@ -88,16 +88,6 @@ main(void)
 	if(arch->corehello)
 		arch->corehello();
 
-#ifdef	NEVER
-	percpu = hwrpb + (hwrpb[40]>>2);
-//	percpu[32] |= 2;		/* restart capable */
-	percpu[32] &= ~1;		/* boot in progress - not */
-//	percpu[32] |= (3<<16);		/* warm boot requested */
-//	percpu[32] |= (2<<16);		/* cold boot requested */
-//	percpu[32] |= (4<<16);		/* stay halted */
-	percpu[32] |= (0<<16);		/* default action */
-#endif
-
 	procinit0();
 	initseg();
 	links();
@@ -118,6 +108,7 @@ void
 machinit(void)
 {
 	int n;
+	Hwcpu *cpu;
 
 	icflush();
 	n = m->machno;
@@ -126,6 +117,10 @@ machinit(void)
 
 	active.exiting = 0;
 	active.machs = 1;
+
+	cpu = (Hwcpu*) ((ulong)hwrpb + hwrpb->cpuoff + n*hwrpb->cpulen);
+	cpu->state &= ~1;			/* boot in progress - not */
+/*	cpu->state |= (4<<16);		/* stay halted */
 }
 
 void

@@ -817,6 +817,8 @@ qwait(Queue *q)
 		if(q->state & Qclosed){
 			if(++q->eof > 3)
 				return -1;
+			if(*q->err && strcmp(q->err, Ehungup) != 0)
+				return -1;
 			return 0;
 		}
 

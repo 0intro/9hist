@@ -17,6 +17,7 @@ int	dmadone(int);
 void	dmaend(int);
 int	dmainit(int, int);
 long	dmasetup(int, void*, long, int);
+void _dumpstack(Ureg *);
 void		evenaddr(ulong);
 void		fataltrap(Ureg *, char *);
 void		fault0(void);

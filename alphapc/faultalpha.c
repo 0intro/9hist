@@ -45,7 +45,8 @@ faultalpha(Ureg *ur)
 	if(0)
 		mmudump();
 	dumpregs(ur);
-	panic("fault");
+	_dumpstack(ur);
+	exit(1);
 }
 
 /*

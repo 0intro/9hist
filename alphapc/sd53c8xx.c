@@ -200,20 +200,12 @@ typedef enum State {
 } State;
 
 typedef struct Dsa {
-	union {
-		uchar state[4];
-		struct {
-			uchar stateb;
-			uchar result;
-			uchar dmablks;
-			uchar flag;	/* setbyte(state,3,...) */
-		};
-	};
+	uchar stateb;
+	uchar result;
+	uchar dmablks;
+	uchar flag;	/* setbyte(state,3,...) */
 
-	union {
-		ulong dmancr;		/* For block transfer: NCR order (little-endian) */
-		uchar dmaaddr[4];
-	};
+	uchar dmaaddr[4];
 
 	uchar target;			/* Target */
 	uchar pad0[3];
@@ -397,7 +389,7 @@ dsaalloc(Controller *c, int target, int lun)
 		if (DEBUG(1))
 			KPRINT(PRINTPREFIX "%d/%d: allocated new dsa %lux\n", target, lun, (ulong)d);
 		lesetl(d->next, 0);
-		lesetl(d->state, A_STATE_ALLOCATED);
+		lesetl(&d->stateb, A_STATE_ALLOCATED);
 		if (legetl(c->dsalist.head) == 0)
 			lesetl(c->dsalist.head, DMASEG(d));	/* ATOMIC?!? */
 		else
@@ -408,7 +400,7 @@ dsaalloc(Controller *c, int target, int lun)
 		if (DEBUG(1))
 			KPRINT(PRINTPREFIX "%d/%d: reused dsa %lux\n", target, lun, (ulong)d);
 		c->dsalist.freechain = d->freechain;
-		lesetl(d->state, A_STATE_ALLOCATED);
+		lesetl(&d->stateb, A_STATE_ALLOCATED);
 	}
 	iunlock(&c->dsalist);
 	d->target = target;
@@ -422,7 +414,7 @@ dsafree(Controller *c, Dsa *d)
 	ilock(&c->dsalist);
 	d->freechain = c->dsalist.freechain;
 	c->dsalist.freechain = d;
-	lesetl(d->state, A_STATE_FREE);
+	lesetl(&d->stateb, A_STATE_FREE);
 	iunlock(&c->dsalist);
 }
 
@@ -1204,7 +1196,7 @@ interrupt(Ureg *ur, void *a)
 				    dsa->dmablks, legetl(dsa->dmaaddr),
 				    legetl(dsa->data_buf.pa), legetl(dsa->data_buf.dbc));
 				n->scratcha[2] = dsa->dmablks;
-				lesetl(n->scratchb, dsa->dmancr);
+				lesetl(n->scratchb, *(ulong*)dsa->dmaaddr);
 				cont = E_data_block_mismatch_recover;
 			}
 			else if (sa == E_data_out_mismatch) {
@@ -1231,7 +1223,7 @@ interrupt(Ureg *ur, void *a)
 				    dmablks * A_BSIZE - tbc + legetl(dsa->data_buf.dbc));
 				/* copy changes into scratch registers */
 				n->scratcha[2] = dsa->dmablks;
-				lesetl(n->scratchb, dsa->dmancr);
+				lesetl(n->scratchb, *(ulong*)dsa->dmaaddr);
 				cont = E_data_block_mismatch_recover;
 			}
 			else if (sa == E_id_out_mismatch) {
@@ -1441,6 +1433,12 @@ interrupt(Ureg *ur, void *a)
 				IPRINT(PRINTPREFIX "%d/%d: reselected during select\n",
 				    dsa->target, dsa->lun);
 				cont = -2;
+				break;
+			case A_error_reselected:		/* dsa isn't valid here */
+				print(PRINTPREFIX "reselection error\n");
+				dumpncrregs(c, 1);
+				for (dsa = KPTR(legetl(c->dsalist.head)); dsa; dsa = KPTR(legetl(dsa->next)))
+					IPRINT(PRINTPREFIX "dsa target %d lun %d state %d\n", dsa->target, dsa->lun, dsa->stateb);
 				break;
 			default:
 				IPRINT(PRINTPREFIX "%d/%d: script error %ld\n",
@@ -1752,7 +1750,7 @@ docheck:
 		 * Clear out the microcode state
 		 * so the Dsa can be re-used.
 		 */
-		lesetl(d->state, A_STATE_ALLOCATED);
+		lesetl(&d->stateb, A_STATE_ALLOCATED);
 		goto docheck;
 	}
 	qunlock(&c->q[target]);

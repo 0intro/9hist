@@ -452,7 +452,7 @@ cputyperead(Chan*, void *a, long n, vlong offset)
 	Hwcpu *cpu;
 
 	mhz = (m->cpuhz+999999)/1000000;
-	cpu = (Hwcpu*) ((ulong)hwrpb + hwrpb->cpuoff);
+	cpu = (Hwcpu*) ((ulong)hwrpb + hwrpb->cpuoff);	/* NB CPU 0 */
 	cputype = "unknown";
 	maj = (ulong)cpu->cputype;
 	if (maj < nelem(cpunames))

@@ -417,6 +417,7 @@ syspread(ulong *arg)
 	uvlong v;
 	va_list list;
 
+	/* use varargs to guarantee alignment of vlong */
 	va_start(list, arg[2]);
 	v = va_arg(list, uvlong);
 	va_end(list);
@@ -489,6 +490,7 @@ syspwrite(ulong *arg)
 	uvlong v;
 	va_list list;
 
+	/* use varargs to guarantee alignment of vlong */
 	va_start(list, arg[2]);
 	v = va_arg(list, uvlong);
 	va_end(list);
