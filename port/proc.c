@@ -507,18 +507,22 @@ tfn(void *arg)
 	return MACHP(0)->ticks >= up->twhen || up->tfn(arg);
 }
 
+ulong
+ms2tk(ulong ms)
+{
+	/* avoid overflows at the cost of precision */
+	if(ms >= 1000000000/HZ)
+		return (ms/1000)*HZ;
+	return (ms+500)*HZ/1000;
+}
+
 void
 tsleep(Rendez *r, int (*fn)(void*), void *arg, int ms)
 {
 	ulong when;
 	Proc *f, **l;
 
-	/* avoid overflows at the cost of precision */
-	if(ms >= 1000000)
-		when = ms/(1000/HZ);
-	else
-		when = MS2TK(ms);
-	when += MACHP(0)->ticks;
+	when = ms2tk(ms) + MACHP(0)->ticks;
 
 	lock(&talarm);
 	/* take out of list if checkalarm didn't */

@@ -955,7 +955,7 @@ static void
 convsetstate(Conv *c, int state)
 {
 
-if(1)print("convsetstate %d: %s -> %s\n", c->id, convstatename[c->state], convstatename[state]);
+if(0)print("convsetstate %d: %s -> %s\n", c->id, convstatename[c->state], convstatename[state]);
 
 	switch(state) {
 	default:
@@ -1224,14 +1224,14 @@ conviput(Conv *c, Block *b, int control)
 
 	if(seqdiff <= 0) {
 		if(seqdiff <= -SeqWindow) {
-print("old sequence number: %ld (%ld %ld)\n", seq, c->in.seqwrap, seqdiff);
+if(0)print("old sequence number: %ld (%ld %ld)\n", seq, c->in.seqwrap, seqdiff);
 			c->lstats.inBadSeq++;
 			freeb(b);
 			return nil;
 		}
 
 		if(c->in.window & (1<<-seqdiff)) {
-print("dup sequence number: %ld (%ld %ld)\n", seq, c->in.seqwrap, seqdiff);
+if(0)print("dup sequence number: %ld (%ld %ld)\n", seq, c->in.seqwrap, seqdiff);
 			c->lstats.inDup++;
 			freeb(b);
 			return nil;
@@ -1244,7 +1244,7 @@ print("dup sequence number: %ld (%ld %ld)\n", seq, c->in.seqwrap, seqdiff);
 if(0) print("coniput seq=%ulx\n", seq);
 	if(c->in.auth != 0) {
 		if(!(*c->in.auth)(&c->in, b->rp-4, BLEN(b)+4)) {
-print("bad auth %ld\n", BLEN(b)+4);
+if(0)print("bad auth %ld\n", BLEN(b)+4);
 			c->lstats.inBadAuth++;
 			freeb(b);
 			return nil;
@@ -1254,7 +1254,7 @@ print("bad auth %ld\n", BLEN(b)+4);
 
 	if(c->in.cipher != 0) {
 		if(!(*c->in.cipher)(&c->in, b->rp, BLEN(b))) {
-print("bad cipher\n");
+if(0)print("bad cipher\n");
 			c->lstats.inBadOther++;
 			freeb(b);
 			return nil;
@@ -1263,7 +1263,7 @@ print("bad cipher\n");
 		if(c->in.cipherblklen > 1) {
 			pad = b->wp[-1];
 			if(pad > BLEN(b)) {
-print("pad too big\n");
+if(0)print("pad too big\n");
 				c->lstats.inBadOther++;
 				freeb(b);
 				return nil;
@@ -1314,7 +1314,7 @@ print("pad too big\n");
 			break;
 		return b;
 	}
-print("dropping packet id=%d: type=%d n=%ld control=%d\n", c->id, type, BLEN(b), control);
+if(0)print("dropping packet id=%d: type=%d n=%ld control=%d\n", c->id, type, BLEN(b), control);
 	c->lstats.inBadOther++;
 	freeb(b);
 	return nil;
@@ -1441,7 +1441,7 @@ convicontrol(Conv *c, int subtype, Block *b)
 	switch(subtype){
 	case ControlMesg:
 		if(cseq == c->in.controlseq) {
-print("duplicate control packet: %ulx\n", cseq);
+if(0)print("duplicate control packet: %ulx\n", cseq);
 			// duplicate control packet
 			freeb(b);
 			if(c->in.controlpkt == nil)
@@ -2285,7 +2285,7 @@ thwackuncomp(Conv *c, int subtype, ulong seq, Block **bp)
 		n = unthwack(c->in.compstate, b->wp, ThwMaxBlock, bb->rp, BLEN(bb), seq);
 		freeb(bb);
 		if(n < 0) {
-print("unthwack failed: %d\n", n);
+if(0)print("unthwack failed: %d\n", n);
 			freeb(b);
 			return 0;
 		}

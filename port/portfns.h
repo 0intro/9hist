@@ -171,6 +171,7 @@ Chan*		mntauth(Chan*, char*);
 void		mntdump(void);
 long		mntversion(Chan*, char*, int, int);
 void		mountfree(Mount*);
+ulong	ms2tk(ulong);
 ulong		msize(void*);
 void		muxclose(Mnt*);
 Chan*		namec(char*, int, int, ulong);
