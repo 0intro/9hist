@@ -108,7 +108,7 @@ outb(dp->mc, 0);
 }
 
 static void
-dmastatus(DMA *dp, int chan)
+dmastatus(DMA *dp, int chan, char c)
 {
 	int a, l, s;
 
@@ -123,7 +123,7 @@ dmastatus(DMA *dp, int chan)
 	l |= inb(dp->count[chan])<<8;
 	s = inb(dp->cmd);
 	iunlock(dp);
-	print("addr %uX len %uX stat %uX\n", a, l, s);
+	print("%c: addr %uX len %uX stat %uX\n", c, a, l, s);
 }
 
 void
@@ -134,7 +134,7 @@ xdmastatus(int chan)
 	dp = &dma[(chan>>2)&1];
 	chan = chan & 3;
 
-	dmastatus(dp, chan);
+	dmastatus(dp, chan, 'X');
 }
 
 /*
@@ -209,7 +209,7 @@ dmasetup(int chan, void *va, long len, int isread)
 	outb(dp->count[chan], ((len>>dp->shift)-1)>>8);
 	outb(dp->sbm, chan);		/* enable the channel */
 	iunlock(dp);
-dmastatus(dp, chan);
+dmastatus(dp, chan, 'S');
 
 	return len;
 }
@@ -241,7 +241,7 @@ dmaend(int chan)
 	dp = &dma[(chan>>2)&1];
 	chan = chan & 3;
 
-dmastatus(dp, chan);
+dmastatus(dp, chan, 'E');
 	/*
 	 *  disable the channel
 	 */
