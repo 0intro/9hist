@@ -5,12 +5,12 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
-int	canflush(Proc *p, Segment*);
-void	executeio(void);
-int	needpages(void*);
-void	pageout(Proc *p, Segment*);
-void	pagepte(int, Page**);
-void	pager(void*);
+static int	canflush(Proc*, Segment*);
+static void	executeio(void);
+static int	needpages(void*);
+static void	pageout(Proc*, Segment*);
+static void	pagepte(int, Page**);
+static void	pager(void*);
 
 enum
 {
@@ -93,7 +93,7 @@ kickpager(void)
 	}
 }
 
-void
+static void
 pager(void *junk)
 {
 	int i;
@@ -159,7 +159,7 @@ loop:
 	goto loop;
 }
 
-void			
+static void			
 pageout(Proc *p, Segment *s)
 {
 	int type, i;
@@ -214,7 +214,7 @@ out:
 	putseg(s);
 }
 
-int
+static int
 canflush(Proc *p, Segment *s)
 {
 	int i;
@@ -230,7 +230,7 @@ canflush(Proc *p, Segment *s)
 	unlock(s);
 
 	/* Now we must do hardwork to ensure all processes which have tlb
-	 * entries for this segment will be flushed if we suceed in pageing it out
+	 * entries for this segment will be flushed if we succeed in paging it out
 	 */
 	p = proctab(0);
 	ep = &p[conf.nproc];
@@ -246,7 +246,7 @@ canflush(Proc *p, Segment *s)
 	return 1;						
 }
 
-void
+static void
 pagepte(int type, Page **pg)
 {
 	ulong daddr;
@@ -284,7 +284,7 @@ pagepte(int type, Page **pg)
 	}
 }
 
-void
+static void
 executeio(void)
 {
 	Page *out;
@@ -319,7 +319,7 @@ executeio(void)
 	ioptr = 0;
 }
 
-int
+static int
 needpages(void*)
 {
 	return palloc.freecount < swapalloc.headroom;

@@ -21,7 +21,7 @@ static struct
 	int	x;		/* index into line */
 	char	line[1024];	/* current input line */
 
-	char	c;
+	Rune	c;
 	int	count;
 	int	repeat;
 	int	ctlpoff;
@@ -276,6 +276,7 @@ kbdputc(Queue*, int ch)
 	if(n == 0)
 		return 0;
 	echo(r, buf, n);
+	kbd.c = r;
 	qproduce(kbdq, buf, n);
 	return 0;
 }

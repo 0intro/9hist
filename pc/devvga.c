@@ -734,7 +734,7 @@ screenload(Rectangle r, uchar *data, int tl, int l, int dolock)
 
 	if(dolock && hwgc == 0)
 		cursorlock(r);
-	ilock(&palettelock);
+	lock(&palettelock);
 
 	q = byteaddr(&gscreen, r.min);
 	mx = 7>>gscreen.ldepth;
@@ -814,7 +814,7 @@ screenload(Rectangle r, uchar *data, int tl, int l, int dolock)
 		data += l;
 	}
 
-	iunlock(&palettelock);
+	unlock(&palettelock);
 	if(dolock && hwgc == 0)
 		cursorunlock();
 }
@@ -891,7 +891,7 @@ screenunload(Rectangle r, uchar *data, int tl, int l, int dolock)
 
 	if(dolock && hwgc == 0)
 		cursorlock(r);
-	ilock(&palettelock);
+	lock(&palettelock);
 
 	q = byteaddr(&gscreen, r.min);
 	mx = 7>>gscreen.ldepth;
@@ -971,7 +971,7 @@ screenunload(Rectangle r, uchar *data, int tl, int l, int dolock)
 		data += l;
 	}
 
-	iunlock(&palettelock);
+	unlock(&palettelock);
 	if(dolock && hwgc == 0)
 		cursorunlock();
 }
@@ -1165,11 +1165,11 @@ getcolor(ulong p, ulong *pr, ulong *pg, ulong *pb)
 	}
 	p &= x;
 	p ^= x;
-	ilock(&palettelock);
+	lock(&palettelock);
 	*pr = colormap[p][Pred];
 	*pg = colormap[p][Pgreen];
 	*pb = colormap[p][Pblue];
-	iunlock(&palettelock);
+	unlock(&palettelock);
 }
 
 int
@@ -1187,7 +1187,7 @@ setcolor(ulong p, ulong r, ulong g, ulong b)
 	}
 	p &= x;
 	p ^= x;
-	ilock(&palettelock);
+	lock(&palettelock);
 	colormap[p][Pred] = r;
 	colormap[p][Pgreen] = g;
 	colormap[p][Pblue] = b;
@@ -1195,7 +1195,7 @@ setcolor(ulong p, ulong r, ulong g, ulong b)
 	vgao(Pdata, r>>(32-6));
 	vgao(Pdata, g>>(32-6));
 	vgao(Pdata, b>>(32-6));
-	iunlock(&palettelock);
+	unlock(&palettelock);
 	return ~0;
 }
 
