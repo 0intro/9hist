@@ -41,7 +41,7 @@ intrenable(int irq, void (*f)(Ureg*, void*), void* a, int tbdf)
 		if(vctl[vno]->isr != v->isr || vctl[vno]->eoi != v->eoi)
 			panic("intrenable: irq handler botch: %luX %luX %luX %luX\n",
 				vctl[vno]->isr, v->isr, vctl[vno]->eoi, v->eoi);
-		v->next = vctl[vno]->next;
+		v->next = vctl[vno];
 	}
 	vctl[vno] = v;
 	iunlock(&vctllock);
