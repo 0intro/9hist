@@ -120,6 +120,7 @@ char *lapderrors[] = {
 };
 
 Lapd	*lapd;
+Lapd	*lapdN;
 
 /*
  *  predeclared
@@ -164,7 +165,10 @@ lapderror(Lapd *lp, int code)
 static void
 lapdreset(void)
 {
-	lapd = xalloc(conf.nlapd*sizeof(Lapd));
+	int nlapd = 3; /* formerly conf.nlapd */
+
+	lapd = xalloc(nlapd*sizeof(Lapd));
+	lapdN = lapd + nlapd;
 }
 
 static void
@@ -174,13 +178,13 @@ lapdopen(Queue *q, Stream *s)
 	char name[32];
 
 	USED(s);
-	for(lp=lapd; lp<&lapd[conf.nlapd]; lp++){
+	for(lp=lapd; lp<lapdN; lp++){
 		qlock(lp);
 		if(lp->state == 0)
 			break;
 		qunlock(lp);
 	}
-	if(lp>=&lapd[conf.nlapd])
+	if(lp>=lapdN)
 		error(Enoifc);
 
 	/*q->flag |= QDEBUG;

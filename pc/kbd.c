@@ -10,8 +10,6 @@
 #include	<gnot.h>
 #include	"screen.h"
 
-extern Mouseinfo mouse;
-
 enum {
 	Data=		0x60,	/* data port */
 
@@ -332,6 +330,7 @@ ps2mouseputc(IOQ *q, int c)
 	static short msg[3];
 	static int nb;
 	static uchar b[] = {0, 1, 4, 5, 2, 3, 6, 7, 0, 1, 2, 5, 2, 3, 6, 7 };
+	int buttons, dx, dy;
 
 	USED(q);		/* not */
 	/* 
@@ -348,11 +347,10 @@ ps2mouseputc(IOQ *q, int c)
 		if(msg[0] & 0x20)
 			msg[2] |= 0xFF00;
 
-		mouse.newbuttons = b[(msg[0]&7) | (shift ? 8 : 0)] | keybuttons;
-		mouse.dx = msg[1];
-		mouse.dy = -msg[2];
-		mouse.track = 1;
-		mouseclock();
+		buttons = b[(msg[0]&7) | (shift ? 8 : 0)] | keybuttons;
+		dx = msg[1];
+		dy = -msg[2];
+		mousetrack(buttons, dx, dy);
 	}
 	return 0;
 }
@@ -412,22 +410,6 @@ mousectl(char *arg)
 			break;
 		}
 	}
-}
-
-/*
- *  Ctrl key used as middle button pressed
- */
-static void
-mbon(int val)
-{
-	keybuttons |= val;
-	mousebuttons(keybuttons);
-}
-static void
-mboff(int val)
-{
-	keybuttons &= ~val;
-	mousebuttons(keybuttons);
 }
 
 /*
@@ -508,15 +490,6 @@ kbdintr0(void)
 		case Ctrl:
 			ctl = 0;
 			break;
-		case KF|1:
-			mboff(Rbutton);
-			break;
-		case KF|2:
-			mboff(Mbutton);
-			break;
-		case KF|3:
-			mboff(Lbutton);
-			break;
 		}
 		return 0;
 	}
@@ -577,15 +550,6 @@ kbdintr0(void)
 			return 0;
 		case Ctrl:
 			ctl = 1;
-			return 0;
-		case KF|1:
-			mbon(Rbutton);
-			return 0;
-		case KF|2:
-			mbon(Mbutton);
-			return 0;
-		case KF|3:
-			mbon(Lbutton);
 			return 0;
 		}
 	}

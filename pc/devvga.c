@@ -931,13 +931,6 @@ hwcursmove(int x, int y)
 	return 0;
 }
 
-void
-mouseclock(void)
-{
-	spllo();	/* so we don't cause lost chars on the uart */
-	mouseupdate(1);
-}
-
 /*
  *  a fatter than usual cursor for the safari
  */

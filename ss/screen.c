@@ -526,12 +526,6 @@ hwcursmove(int x, int y)
 	return 0;
 }
 
-void
-mouseclock(void)	/* called splhi */
-{
-	mouseupdate(1);
-}
-
 /* replicate (from top) value in v (n bits) until it fills a ulong */
 static ulong
 rep(ulong v, int n)

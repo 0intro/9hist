@@ -158,26 +158,6 @@ hwcursmove(int x, int y)
 	return 0;
 }
 
-void
-mouseclock(void)	/* called spl6 */
-{
-	++mouse.clock;
-}
-
-void
-mousetry(Ureg *ur)
-{
-	int s;
-
-	if(mouse.clock && mouse.track && (ur->sr&SPL(7)) == 0 && canlock(&cursor)){
-		s = spl1();
-		mouseupdate(0);
-		splx(s);
-		unlock(&cursor);
-		wakeup(&mouse.r);
-	}
-}
-
 /* only 1 flavor mouse */
 void
 mousectl(char *x)

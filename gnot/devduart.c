@@ -427,7 +427,7 @@ duartintr(Ureg *ur)
 	 * Is it 5?
 	 */
 	if(cause & IM_IPC)
-		mousebuttons((~duart[0].ipc_acr) & 7);
+		mousetrack((~duart[0].ipc_acr) & 7, 0, 0);
 }
 
 

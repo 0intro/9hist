@@ -89,6 +89,7 @@ clock(Ureg *ur)
 
 	checkalarms();
 	uartclock();
+	mouseclock();
 
 	/*
 	 *  process time accounting
