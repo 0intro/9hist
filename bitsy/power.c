@@ -27,9 +27,62 @@ Intrregs savedintrregs;
 
 #define R(p) ((Uartregs*)((p)->regs))
 
+uchar *savedtext;
+
+static void
+checkflash(void)
+{
+	ulong *p;
+	ulong s;
+
+	s = 0;
+	for (p = (ulong*)FLASHZERO; p < (ulong*)(FLASHZERO+8*1024*1024); p++)
+		s += *p;
+	iprint("flash checksum is 0x%lux\n", s);
+}
+
+static void
+checkpagetab(void)
+{
+	extern ulong l1table;
+	ulong *p;
+	ulong s;
+
+	s = 0;
+	for (p = (ulong*)l1table; p < (ulong*)(l1table+16*1024); p++)
+		s += *p;
+	iprint("page table checksum is 0x%lux\n", s);
+}
+
+static void
+checkktext(void)
+{
+	/* check the kernel text */
+	ulong *p, *q;
+	ulong s;
+
+	s = 0;
+	if (savedtext == nil){
+		savedtext=malloc((ulong)etext-(ulong)_start);
+		if (savedtext == nil)
+			iprint("can't malloc savedtext\n");
+		memmove(savedtext, _start, (ulong)etext-(ulong)_start);
+	}else{
+		for (p = (ulong*)_start, q = (ulong*)savedtext; p < (ulong*)(etext); p++,q++) {
+			if (*p != *q) {
+				iprint("0x%lux: 0x%lux != 0x%lux\n", p, *p, *q);
+				s++;
+			}
+		}
+		if (s == 0) iprint("ktext ok\n");
+	}
+}
+
 static void
 dumpitall(void)
 {
+	extern ulong l1table;
+
 	iprint("intr: icip %lux iclr %lux iccr %lux icmr %lux\n",
 		intrregs->icip,
 		intrregs->iclr, intrregs->iccr, intrregs->icmr );
@@ -51,11 +104,15 @@ dumpitall(void)
 	iprint("dram: mdcnfg msc %lux %lux %lux mecr %lux\n",
 		memconfregs->msc0, memconfregs->msc1,memconfregs->msc2,
 		memconfregs->mecr);
-	iprint("mmu: CpControl %lux CpTTB %lux CpDAC %lux\n",
-		getcontrol(), getttb(), getdac());
+	iprint("mmu: CpControl %lux CpTTB %lux CpDAC %lux l1table 0x%lux\n",
+		getcontrol(), getttb(), getdac(), l1table);
 	iprint("powerregs: pmcr %lux pssr %lux pcfr %lux ppcr %lux pwer %lux pspr %lux pgsr %lux posr %lux\n",
 		powerregs->pmcr, powerregs->pssr, powerregs->pcfr, powerregs->ppcr,
 		powerregs->pwer, powerregs->pspr, powerregs->pgsr, powerregs->posr);
+	checkpagetab();
+	checkflash();
+//	checkktext();
+	iprint("\n\n");
 }
 
 static void
@@ -111,9 +168,11 @@ sa1100_power_off(void)
 //sa1100_power_resume();
 
 	/* set lowest clock; delay to avoid resume hangs on fast sa1110 */
-//	delay(90);
-//	powerregs->ppcr = 0;
-//	delay(90);
+/*	Doesn't work [sjm]
+	delay(90);
+	powerregs->ppcr = 0;
+	delay(90);
+*/
 
 	/* set all GPIOs to input mode  */
 	gpioregs->direction = 0;
@@ -144,24 +203,16 @@ powerdown(void *)
 void
 deepsleep(void) {
 	static int power_pl;
-	ulong xsp, xlink;
-	int i;
-	extern ulong l1table;
+	ulong xsp, xlink, mecr;
 
+	power_pl = splhi();
 	xlink = getcallerpc(&xlink);
-	iprint("l1table at 0x%8.8lux\n", l1table);
-	setpowerlabel();
-	for (i = 0; i < 168/4; i++){
-		if (i % 4 == 0) iprint("\n");
-		iprint("%3d: 0x%8.8lux	", i*4, power_resume[i]);
-	}
 	/* Power down */
 	irpower(0);
 	audiopower(0);
 	screenpower(0);
 	µcpower(0);
-	power_pl = splhi();
-	iprint("entering suspend mode, sp = 0x%lux, pc = 0x%lux, psw = 0x%lux\n\n", &xsp, xlink, power_pl);
+	iprint("entering suspend mode, sp = 0x%lux, pc = 0x%lux, psw = 0x%ux\n", &xsp, xlink, power_pl);
 	dumpitall();
 	delay(100);
 	uartpower(0);
@@ -171,9 +222,14 @@ deepsleep(void) {
 	intrcpy(&savedintrregs, intrregs);
 	cacheflush();
 	delay(50);
+	mecr = memconfregs->mecr;
 	if(setpowerlabel()){
+		/* return here with mmu back on */
+
 		/* Turn off memory auto power */
-		memconfregs->mdrefr &= ~0x30000000;
+//		memconfregs->mdrefr &= ~0x30000000;
+		memconfregs->mecr = mecr;
+
 		gpiorestore(gpioregs, &savedgpioregs);
 		delay(50);
 		intrcpy(intrregs, &savedintrregs);
@@ -183,7 +239,6 @@ deepsleep(void) {
 			intrregs->icip = (1<<IRQgpio0);
 		}
 		trapresume();
-//		mmurestart();
 		clockpower(1);
 		gpclkregs->r0 = 1<<0;
 		rs232power(1);
@@ -191,18 +246,16 @@ deepsleep(void) {
 		dumpitall();
 		delay(100);
 		xlink = getcallerpc(&xlink);
-		iprint("\nresuming execution, sp = 0x%lux, pc = 0x%lux, psw = 0x%lux\n", &xsp, xlink, splhi());
-		splx(power_pl);
+		iprint("\nresuming execution, sp = 0x%lux, pc = 0x%lux, psw = 0x%ux\n", &xsp, xlink, splhi());
 //		irpower(1);
 //		audiopower(1);
 		µcpower(1);
 		screenpower(1);
+		splx(power_pl);
 		return;
 	}
-	wbflush();
+	cacheflush();
 	delay(50);
-	mmuinvalidate();
-	delay(10);
 	sa1100_power_off();
 	/* no return */
 }

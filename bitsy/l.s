@@ -563,15 +563,6 @@ TEXT sa1100_power_resume(SB), $-4
 	/* SVC mode, interrupts disabled */
 	MOVW	$(PsrDirq|PsrDfiq|PsrMsvc), R1
 	MOVW	R1, CPSR
-	/* flush caches */
-	MCR		CpMMU, 0, R0, C(CpCacheFlush), C(0x7), 0
-	/* drain prefetch */
-	MOVW	R0,R0						
-	MOVW	R0,R0
-	MOVW	R0,R0
-	MOVW	R0,R0
-	/* drain write buffer */
-	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0xa), 4
 	/* gotopowerlabel() */
 	/* svc */
 
@@ -581,23 +572,45 @@ TEXT sa1100_power_resume(SB), $-4
 	MOVW	R1, SPSR
 	MOVW	R2, CPSR
 	/* copro */
-	MOVW	148(R0), R3
-	MCR		CpMMU, 0, R3, C(CpTTB), C(0x0)
+	/* flush caches */
+	MCR		CpMMU, 0, R0, C(CpCacheFlush), C(0x7), 0
+	/* drain prefetch */
+	MOVW	R0,R0						
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
+	/* drain write buffer */
+	MCR		CpMMU, 0, R0, C(CpCacheFlush), C(0xa), 4
+	MCR		CpMMU, 0, R0, C(CpTLBFlush), C(0x7)
 	MOVW	144(R0), R3
 	MCR		CpMMU, 0, R3, C(CpDAC), C(0x0)
-	MOVW	152(R0), R3
-	MCR		CpMMU, 0, R3, C(CpControl), C(0x0)	/* Enable cache */
-	MOVW	R0, R0
-	MOVW	R0, R0
-	MOVW	R0, R0
-	MOVW	R0, R0
+	MOVW	148(R0), R3
+	MCR		CpMMU, 0, R3, C(CpTTB), C(0x0)
 	MOVW	156(R0), R3
 	MCR		CpMMU, 0, R3, C(CpFSR), C(0x0)
 	MOVW	160(R0), R3
 	MCR		CpMMU, 0, R3, C(CpFAR), C(0x0)
 	MOVW	164(R0), R3
 	MCR		CpMMU, 0, R3, C(CpPID), C(0x0)
-	MCR		CpMMU, 0, R0, C(CpTLBFlush), C(0x7)
+	MOVW	152(R0), R3
+	MCR		CpMMU, 0, R3, C(CpControl), C(0x0)	/* Enable cache */
+	MOVW	R0,R0						
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
+	/* flush i&d caches */
+	MCR		CpMMU, 0, R0, C(CpCacheFlush), C(0x7), 0
+	/* drain prefetch */
+	MOVW	R0,R0						
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
+	/* flush tlb */
+	MCR		CpMMU, 0, R0, C(CpTLBFlush), C(0x7), 0
+	MOVW	R0,R0						
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
 	/* irq */
 	BIC		$(PsrMask), R2, R3
 	ORR		$(PsrDirq|PsrMirq), R3

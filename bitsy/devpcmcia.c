@@ -495,6 +495,7 @@ slotmap(int slotno, ulong regs, ulong attr, ulong mem)
 
 	sp->regs = mapspecial(regs, 32*1024);
 }
+
 PCMmap*
 pcmmap(int slotno, ulong, int, int attr)
 {
@@ -505,6 +506,7 @@ pcmmap(int slotno, ulong, int, int attr)
 	else
 		return &slot[slotno].memmap;
 }
+
 void
 pcmunmap(int, PCMmap*)
 {

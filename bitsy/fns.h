@@ -23,6 +23,7 @@ void	(*doze)(void);
 void	egpiobits(ulong, int);
 void	evenaddr(ulong);
 void	exppackpower(int);
+ulong findva(ulong, ulong, ulong);
 void	flashprogpower(int);
 void	flushmmu(void);
 int	fpiarm(Ureg *ur);

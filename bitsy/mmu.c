@@ -260,7 +260,7 @@ mmu_paddr(ulong va)
 }
 
 /* map a physical address to a virtual one */
-static ulong
+ulong
 findva(ulong pa, ulong zero, ulong top)
 {
 	int i;
