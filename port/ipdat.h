@@ -96,18 +96,31 @@ struct Ilhdr
 
 struct Ilcb				/* Control block */
 {
-	Lock;
-	int	state;
+	int	state;			/* Connection state */
+
+	QLock	ackq;			/* Unacknowledged queue */
 	Block	*unacked;
 	Block	*unackedtail;
+
+	QLock	outo;			/* Out of order packet queue */
 	Block	*outoforder;
-	ulong	next;
-	ulong	recvd;
-	ulong	start;
-	ulong	rstart;
-	ulong	lastack;
-	int	timeout;
-	int	window;
+	int	oblks;			/* Number of blocks in queue */
+
+	ulong	next;			/* Id of next to send */
+	ulong	recvd;			/* Last packet received */
+	ulong	start;			/* Local start id */
+	ulong	rstart;			/* Remote start id */
+
+	int	timeout;		/* Time out counter */
+	int	slowtime;		/* Slow time counter */
+	int	fasttime;		/* Retransmission timer */
+	int	acktime;		/* Acknowledge timer */
+
+	int	rtt;			/* Average round trip time */
+	ulong	rttack;			/* The ack we are waiting for */
+	ulong	ackms;			/* Time we issued */
+
+	int	window;			/* Maximum receive window */
 };
 
 enum					/* Packet types */
@@ -400,7 +413,7 @@ struct Ipfrag
 #define	ICMP_IREQREPLY		16	/* Information Reply */
 
 /* Sizes */
-#define IP_MAX		8192			/* Maximum Internet packet size */
+#define IP_MAX		(32*1024)		/* Maximum Internet packet size */
 #define UDP_MAX		(IP_MAX-ETHER_IPHDR)	/* Maximum UDP datagram size */
 #define UDP_DATMAX	(UDP_MAX-UDP_HDRSIZE)	/* Maximum amount of udp data */
 #define IL_DATMAX	(IP_MAX-IL_HDRSIZE)	/* Maximum IL data in one ip packet */

@@ -249,8 +249,9 @@ procread(Chan *c, void *va, long n, ulong offset)
 
 	switch(QID(c->qid)){
 	case Qmem:
-		if(offset >= USERADDR && offset < USERADDR+BY2PG) {
-			if(offset+n > USERADDR+BY2PG)
+		/* ugly math: USERADDR+BY2PG may be == 0 */
+		if(offset >= USERADDR && offset <= USERADDR+BY2PG-1) {
+			if(offset+n >= USERADDR+BY2PG-1)
 				n = USERADDR+BY2PG - offset;
 			pg = p->upage;
 			if(pg==0 || p->pid!=PID(c->qid))
@@ -393,7 +394,7 @@ procwrite(Chan *c, void *va, long n, ulong offset)
 		if(p->state != Stopped)
 			errors("not stopped");
 
-		if(offset >= USERADDR && offset < USERADDR+BY2PG) {
+		if(offset >= USERADDR && offset <= USERADDR+BY2PG-1) {
 			pg = p->upage;
 			if(pg==0 || p->pid!=PID(c->qid))
 				error(Eprocdied);

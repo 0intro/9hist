@@ -268,7 +268,7 @@ ipwrite(Chan *c, char *a, long n, ulong offset)
 		if(cp->stproto == &tcpinfo)
 			tcpstart(cp, TCP_ACTIVE, Streamhi, 0);
 		else if(cp->stproto == &ilinfo)
-			ilstart(cp, IL_ACTIVE, 10);
+			ilstart(cp, IL_ACTIVE, 20);
 
 	}
 	else if(strcmp(field[0], "announce") == 0) {
@@ -557,6 +557,7 @@ ipremotefill(Chan *c, char *buf, int len)
 	cp = &ipconv[c->dev][connection];
 	sprint(buf, "%d.%d.%d.%d %d\n", fmtaddr(cp->dst), cp->pdst);
 }
+
 void
 iplocalfill(Chan *c, char *buf, int len)
 {
@@ -567,6 +568,7 @@ iplocalfill(Chan *c, char *buf, int len)
 	cp = &ipconv[c->dev][connection];
 	sprint(buf, "%d.%d.%d.%d %d\n", fmtaddr(Myip), cp->psrc);
 }
+
 void
 ipstatusfill(Chan *c, char *buf, int len)
 {
@@ -580,8 +582,8 @@ ipstatusfill(Chan *c, char *buf, int len)
 			tcpstate[cp->tcpctl.state],
 			cp->tcpctl.flags & CLONE ? "listen" : "connect");
 	else if(cp->stproto == &ilinfo)
-		sprint(buf, "il/%d %d %s\n", connection, cp->ref,
-			ilstate[cp->ilctl.state]);
+		sprint(buf, "il/%d %d %s rtt %d ms\n", connection, cp->ref,
+			ilstate[cp->ilctl.state], cp->ilctl.rtt);
 	else
 		sprint(buf, "%s/%d %d\n", cp->stproto->name, connection, cp->ref);
 }
@@ -616,7 +618,6 @@ iplisten(Chan *c)
 
 	for(;;) {
 		sleep(&s->listenr, iphavecon, s);
-		print("listen wakes\n");
 		poperror();
 		new = base;
  		for(etab = &base[conf.ip]; new < etab; new++) {
