@@ -329,8 +329,8 @@ engine(cb_t *cb, int message)
 			powerdown(cb);
 			break;
 		default:
-			print("#Y%d: Invalid message %s in SlotFull state\n",
-				(int)(cb - cbslots), messages[message]);
+			//print("#Y%d: Invalid message %s in SlotFull state\n",
+			//	(int)(cb - cbslots), messages[message]);
 			break;
 		}
 		break;
@@ -453,8 +453,12 @@ interrupt(Ureg *, void *)
 
 		if (event & SE_CCD) {
 			cb->cb_regs[SocketEvent] |= SE_CCD;	/* Ack interrupt */
-			if (state & SE_CCD)
-				iengine(cb, CardEjected);
+			if (state & SE_CCD) {
+				if (cb->cb_state != SlotEmpty) {
+					print("#Y: take cardejected interrupt\n");
+					iengine(cb, CardEjected);
+				}
+			}
 			else
 				iengine(cb, CardDetected);
 		}
@@ -525,11 +529,8 @@ devpccardlink(void)
 		/* Don't really know what to do with this... */
 		i82365probe(cb, LegacyAddr, LegacyAddr + 1);
 
-		print("#Y%ld: %s, %.8ulX intl %d (%s%s)\n", cb - cbslots, 
-			 variant[i].r_name, baddr, pci->intl,
-			 states[cb->cb_state], 
-			 (cb->cb_state == SlotEmpty)? "": 
-			 (cb->cb_type == PC16)? "PCMCIA": "CB");
+		print("#Y%ld: %s, %.8ulX intl %d\n", cb - cbslots, 
+			 variant[i].r_name, baddr, pci->intl);
 	}
 
 	if (nslots == 0)
@@ -564,7 +565,7 @@ powerup(cb_t *cb)
 
 	if ((state = cb->cb_regs[SocketState]) & SS_PC16) {
 	
-		print("#Y%ld: Probed a PC16 card, powering up card\n", cb - cbslots);
+		// print("#Y%ld: Probed a PC16 card, powering up card\n", cb - cbslots);
 		cb->cb_type = PC16;
 		memset(&cb->cb_linfo, 0, sizeof(pcminfo_t));
 
@@ -600,9 +601,9 @@ powerup(cb_t *cb)
 		return 0;
 	}
 
-	print("#Y%ld: card %spowered at %d volt\n", cb - cbslots, 
-		(state & SS_POWER)? "": "not ", 
-		(state & SS_3V)? 3: (state & SS_5V)? 5: -1);
+	//print("#Y%ld: card %spowered at %d volt\n", cb - cbslots, 
+	//	(state & SS_POWER)? "": "not ", 
+	//	(state & SS_3V)? 3: (state & SS_5V)? 5: -1);
 
 	/* Power up the card
 	 * and make sure the secondary bus is not in reset.
@@ -645,7 +646,7 @@ configure(cb_t *cb)
 	int i;
 	Pcidev *pci;
 
-	print("configuring slot %d (%s)\n", (int)(cb - cbslots), states[cb->cb_state]);
+	//print("configuring slot %d (%s)\n", (int)(cb - cbslots), states[cb->cb_state]);
 	if (cb->cb_state == SlotConfigured)
 		return;
 	engine(cb, CardConfigured);
@@ -882,7 +883,7 @@ pccard_pcmspecial(char *idstr, ISAConf *isa)
 	}
 
 	if (i == nslots) {
-		print("#Y: %s not found\n", idstr);
+		// print("#Y: %s not found\n", idstr);
 		return -1;
 	}
 

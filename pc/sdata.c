@@ -756,21 +756,6 @@ tryedd1:
 		goto release;
 	}
 	memset(sdev, 0, sizeof(SDev));
-	if ((sdev->unit = (SDunit **)malloc(2 * sizeof(SDunit *))) == nil) {
-		free(sdev);
-		free(ctlr);
-		free(drive);
-		goto release;
-	}
-	memset(sdev->unit, 0, sizeof(SDunit *) * 2);
-	if ((sdev->unitflg = (int *)malloc(2 * sizeof(int))) == nil) {
-		free(sdev->unit);
-		free(sdev);
-		free(ctlr);
-		free(drive);
-		goto release;
-	}
-	memset(sdev->unitflg, 0, sizeof(int) * 2);
 	drive->ctlr = ctlr;
 	if(dev == Dev0){
 		ctlr->drive[0] = drive;
@@ -825,8 +810,10 @@ ataclear(SDev *sdev)
 		free(ctlr->drive[1]);
 	if (sdev->name)
 		free(sdev->name);
-	free(sdev->unitflg);
-	free(sdev->unit);
+	if (sdev->unitflg)
+		free(sdev->unitflg);
+	if (sdev->unit)
+		free(sdev->unit);
 	free(ctlr);
 	free(sdev);
 }

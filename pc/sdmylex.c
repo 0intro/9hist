@@ -831,7 +831,7 @@ mylexprobe(int port, int irq)
 	if(ioalloc(port, 0x3, 0, "mylex") < 0)
 		return nil;
 	ctlr = nil;
-
+	sdev = nil;
 	/*
 	 * Attempt to hard-reset the board and reset
 	 * the SCSI bus. If the board state doesn't settle to
@@ -852,6 +852,8 @@ mylexprobe(int port, int irq)
 buggery:
 		if(ctlr != nil)
 			free(ctlr);
+		if (sdev != nil)
+			free(sdev);
 		iofree(port);
 		return nil;
 	}

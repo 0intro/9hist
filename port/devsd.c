@@ -323,8 +323,14 @@ sdreset(void)
 			tail->next = sdev;
 		else
 			sdlist = sdev;
-		for(tail = sdev; tail->next != nil; tail = tail->next)
+		for(tail = sdev; tail->next != nil; tail = tail->next) {
+			tail->unit = (SDunit **)malloc(tail->nunit * sizeof(SDunit *));
+			tail->unitflg = (int *)malloc(tail->nunit * sizeof(int));
+			assert(tail->unit && tail->unitflg);
 			ndevs++;
+		}
+		tail->unit = (SDunit **)malloc(tail->nunit * sizeof(SDunit *));
+		tail->unitflg = (int *)malloc(tail->nunit * sizeof(int));
 		ndevs++;
 	}
 	
@@ -566,6 +572,9 @@ sdgen(Chan* c, char*, Dirtab*, int, int s, Dir* dp)
 		qunlock(&unit->ctl);
 		decref(&sdev->r);
 		return r;
+	case Qtopctl:
+	case Qtopstat:
+		return sd1gen(c, TYPE(c->qid), dp);
 	default:
 		break;
 	}

@@ -29,7 +29,7 @@
 
 #define DEBUG	if(1)print
 
-#define SEEKEYS 1
+#define SEEKEYS 0
 
 typedef struct Ctlr	Ctlr;
 typedef struct Wltv	Wltv;
@@ -114,7 +114,9 @@ enum
 	WTyp_Prom	= 0xfc85,
 	WTyp_Keys	= 0xfcb0,
 	WTyp_TxKey	= 0xfcb1,
+	WTyp_StationID	= 0xfd20,
 	WTyp_CurName	= 0xfd41,
+	WTyp_BaseID	= 0xfd42,	// ID of the currently connected-to base station
 	WTyp_CurTxRate	= 0xfd44,	// Current TX rate
 	WTyp_HasCrypt	= 0xfd4f,
 };
@@ -432,7 +434,10 @@ ltv_outstr(Ctlr* ctlr, int type, char* val)
 	memset(&ltv, 0, sizeof(ltv));
 	ltv.len = (sizeof(ltv.type)+sizeof(ltv.slen)+sizeof(ltv.s))/2;
 	ltv.type = type;
+
+//	This should be ltv.slen = len; according to Axel Belinfante
 	ltv.slen = (len+1) & ~1;
+
 	strncpy(ltv.s, val, len);
 	w_outltv(ctlr, &ltv);
 }
@@ -912,7 +917,7 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 	k = ((ctlr->txbusy)? ", txbusy" : "");
 	PRINTSTAT("%s\n", k);
 
-	if (ctlr->txkey){
+	if (ctlr->hascrypt){
 		PRINTSTR("Keys: ");
 		for (i = 0; i < WNKeys; i++){
 			if (ctlr->keys.keys[i].len == 0)
@@ -940,8 +945,16 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 	PRINTSTAT("Promiscuous mode: %d\n", ltv_ins(ctlr, WTyp_Prom));
 	if(i == 3)
 		PRINTSTAT("SSID name: %s\n", ltv_inname(ctlr, WTyp_NetName));
-	else
+	else {
+		Wltv ltv;
 		PRINTSTAT("Current name: %s\n", ltv_inname(ctlr, WTyp_CurName));
+		ltv.type = WTyp_BaseID;
+		ltv.len = 4;
+		if (w_inltv(ctlr, &ltv))
+			print("#l%d: unable to read base station mac addr\n", ether->ctlrno);
+		l += snprint(p+l, READSTR-l, "Base station: %2.2x%2.2x%2.2x%2.2x%2.2x%2.2x\n",
+			ltv.addr[0], ltv.addr[1], ltv.addr[2], ltv.addr[3], ltv.addr[4], ltv.addr[5]);
+	}
 	PRINTSTAT("Net name: %s\n", ltv_inname(ctlr, WTyp_WantName));
 	PRINTSTAT("Node name: %s\n", ltv_inname(ctlr, WTyp_NodeName));
 	if (ltv_ins(ctlr, WTyp_HasCrypt) == 0)
@@ -1168,11 +1181,6 @@ reset(Ether* ether)
 	Ctlr* ctlr;
 	char *p;
 
-	if (ether->ctlr){
-		print("#l%d: only one card supported\n", ether->ctlrno);
-		return -1;
-	}
-
 	if((ctlr = malloc(sizeof(Ctlr))) == nil)
 		return -1;
 
@@ -1191,11 +1199,13 @@ reset(Ether* ether)
 	}
 
 	if ((ctlr->slot = pcmspecial("WaveLAN/IEEE", ether))<0){
-		DEBUG("no wavelan found\n");
-		goto abort;
+		if ((ctlr->slot = pcmspecial("TrueMobile 1150", ether))<0){
+			DEBUG("no wavelan found\n");
+			goto abort;
+		}
 	}
-//	DEBUG("#l%d: port=0x%lx irq=%ld\n",
-//			ether->ctlrno, ether->port, ether->irq);
+	// DEBUG("#l%d: port=0x%lx irq=%ld\n",
+	//		ether->ctlrno, ether->port, ether->irq);
 
 	w_intdis(ctlr);
 	if (w_cmd(ctlr,WCmdIni,0)){
