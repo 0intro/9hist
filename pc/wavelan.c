@@ -1127,8 +1127,8 @@ wavelanreset(Ether* ether, Ctlr *ctlr)
 	ether->multicast = w_multicast;
 	ether->arg = ether;
 
-	DEBUG("#l%d: intnum %ld port %lx type %s",
-		ether->ctlrno, ether->intnum, ether->port,	ether->type);
+	DEBUG("#l%d: irq %ld port %lx type %s",
+		ether->ctlrno, ether->irq, ether->port,	ether->type);
 	DEBUG(" %2.2uX%2.2uX%2.2uX%2.2uX%2.2uX%2.2uX\n",
 		ether->ea[0], ether->ea[1], ether->ea[2],
 		ether->ea[3], ether->ea[4], ether->ea[5]);

@@ -834,7 +834,7 @@ ataprobew(DevConf *cf)
 	if (cf->nports != 2)
 		error(Ebadarg);
 
-	return ataprobe(cf->ports[0].port, cf->ports[1].port, cf->interrupt);
+	return ataprobe(cf->ports[0].port, cf->ports[1].port, cf->intnum);
 }
 
 static int

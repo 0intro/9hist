@@ -110,7 +110,7 @@ etherconfig(int on, char *spec, DevConf *cf)
 		ether->maxmtu = ETHERMAXTU;
 
 		if(ether->interrupt != nil)
-			intrenable(cf->itype, cf->intnum, ether->interrupt, ether, name);
+			intrenable(cf->itype, cf->irq, ether->interrupt, ether, name);
 
 		p = buf;
 		e = buf+sizeof(buf);

@@ -24,11 +24,11 @@ Mach *m;
 #define	MAXCONF		64
 
 char bootdisk[KNAMELEN];
-Conf	conf;
+Conf conf;
 char *confname[MAXCONF];
 char *confval[MAXCONF];
 int nconf;
-uchar	*sp;	/* user stack of init proc */
+uchar *sp;	/* user stack of init proc */
 
 
 static void

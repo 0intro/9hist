@@ -328,7 +328,7 @@ parseether(uchar *to, char *from)
 	int i;
 
 	p = from;
-	for(i = 0; i < 6; i++){
+	for(i = 0; i < Eaddrlen; i++){
 		if(*p == 0)
 			return -1;
 		nip[0] = *p++;

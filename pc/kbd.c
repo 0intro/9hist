@@ -469,4 +469,3 @@ kbdenable(void)
 
 	intrenable(IrqKBD, i8042intr, 0, BUSUNKNOWN, "kbd");
 }
-

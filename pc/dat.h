@@ -29,7 +29,7 @@ struct Lock
 	ulong	key;
 	ulong	sr;
 	ulong	pc;
-	Proc	*	p;
+	Proc	*p;
 	ushort	isilock;
 };
 
@@ -177,7 +177,7 @@ struct Mach
 	int	intr;
 	vlong	intrts;			/* time stamp of last interrupt */
 	int	flushmmu;		/* make current proc flush it's mmu state */
-	int		ilockdepth;
+	int	ilockdepth;
 
 	ulong	spuriousintr;
 	int	lastintr;
@@ -247,7 +247,7 @@ struct PCArch
 #define NISAOPT		8
 
 struct ISAConf {
-	char		*type;
+	char	*type;
 	ulong	port;
 	ulong	irq;
 	ulong	dma;
@@ -279,13 +279,13 @@ extern Mach	*m;
  */
 typedef struct {
 	ulong	port;	
-	int		size;
+	int	size;
 } port_t;
 
 struct DevConf
 {
-	ulong	interrupt;	/* interrupt number */
-	char		*type;	/* card type, malloced */
-	int		nports;	/* Number of ports */
-	port_t	*ports;	/* The ports themselves */
+	ulong	intnum;	/* interrupt number */
+	char	*type;		/* card type, malloced */
+	int	nports;		/* Number of ports */
+	port_t	*ports;		/* The ports themselves */
 };

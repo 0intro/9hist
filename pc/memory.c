@@ -266,19 +266,6 @@ umbscan(void)
 	}
 }
 
-int
-touch(uchar *p, int n)
-{
-	int x;
-	int i;
-
-	x = 0;
-	for(i=0; i<n; i++)
-		x += p[i];
-	return x;
-}
-
-
 static void
 ramscan(ulong maxmem)
 {
@@ -302,7 +289,7 @@ ramscan(ulong maxmem)
 	bda = (uchar*)KADDR(0x400);
 	n = ((bda[0x14]<<8)|bda[0x13])*KB-x;
 	mapfree(&rmapram, x, n);
-	memset(KADDR(x), 0, n);		/* keep us honest */
+	memset(KADDR(x), 0, n);			/* keep us honest */
 
 	x = PADDR(PGROUND((ulong)end));
 	pa = MemMinMB*MB;

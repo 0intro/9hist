@@ -210,7 +210,7 @@ i8253timerset(uvlong next)
 			period = MaxPeriod;
 	}
 
-	/* histeresis */
+	/* hysteresis */
 	if(i8253.period != period){
 		ilock(&i8253);
 		/* load new value */
