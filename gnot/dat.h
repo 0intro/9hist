@@ -138,6 +138,7 @@ struct Conf
 	int	nbitmap;	/* bitmap structs (devbit.c) */
 	int	nbitbyte;	/* bytes of bitmap data (devbit.c) */
 	int	nfont;		/* font structs (devbit.c) */
+	int	nurp;		/* max urp conversations */
 };
 
 struct Dev

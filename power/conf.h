@@ -23,6 +23,7 @@ Conftab conftab[] = {
 	{"nsrv", &conf.nsrv },
 	{"nnoifc", &conf.nnoifc },
 	{"nnoconv", &conf.nnoconv },
+	{"nurp", &conf.nurp },
 	{ 0, 0 },
 };
 

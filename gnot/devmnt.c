@@ -54,6 +54,7 @@ struct Mnthdr
 	Rendez	r;
 	Proc	*p;
 	Mntbuf	*mbr;
+	int	readreply;	/* true if we are reader or our reply has come */
 };
 
 struct
@@ -670,6 +671,11 @@ mnterrdequeue(MntQ *q, Mnthdr *mh)		/* queue is unlocked */
 	qunlock(q);
 
 }
+int
+mntreadreply(void *a)
+{
+	return ((Mnthdr *)a)->readreply;
+}
 void
 mntxmit(Mnt *m, Mnthdr *mh)
 {
@@ -760,6 +766,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		mqfree(q);
 		nexterror();
 	}
+	mh->readreply = 0;
 	if((*devtab[q->msg->type].write)(q->msg, mbw->buf, n) != n){
 		print("short write in mntxmit\n");
 		error(0, Eshortmsg);
@@ -790,6 +797,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 			if(w = q->writer){	/* advance a writer to reader */
 				q->reader = w->p;
 				q->writer = w->next;
+				w->readreply = 1;
 				wakeup(&w->r);
 			}
 			qunlock(q);
@@ -812,6 +820,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 					q->writer = w->next;
 				else
 					ow->next = w->next;
+				w->readreply = 1;
 				wakeup(&w->r);
 				goto Read;
 			}
@@ -827,7 +836,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 			mnterrdequeue(q, mh);
 			nexterror();
 		}
-		sleep(&mh->r, return0, 0);
+		sleep(&mh->r, mntreadreply, mh);
 		poperror();
 		qlock(q);
 		qlocked = 1;

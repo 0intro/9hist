@@ -551,7 +551,7 @@ void
 dkreset(void)
 {
 	newqinfo(&dkmuxinfo);
-	newqinfo(&urpinfo);
+	urpreset();
 }
 
 /*

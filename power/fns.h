@@ -179,6 +179,7 @@ void	twakeme(Alarm*);
 void	unlock(Lock*);
 void	usepage(Page*, int);
 void	userinit(void);
+void	urpreset(void);
 void	validaddr(ulong, ulong, int);
 void	vecinit(void);
 void	vector80(void);

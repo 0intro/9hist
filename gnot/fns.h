@@ -155,6 +155,7 @@ void	touser(void);
 void	tsleep(Rendez*, int (*)(void*), void*, int);
 void	twakeme(Alarm*);
 void	unlock(Lock*);
+void	urpreset(void);
 void	usepage(Page*, int);
 void	userinit(void);
 void	validaddr(ulong, ulong, int);

@@ -144,6 +144,7 @@ struct Conf
 	ulong	nsrv;		/* public servers (devsrv.c) */
 	ulong	nnoifc;		/* number of nonet interfaces */
 	ulong	nnoconv;	/* number of nonet conversations/ifc */
+	ulong	nurp;		/* max urp conversations */
 };
 
 struct Dev

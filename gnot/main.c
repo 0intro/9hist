@@ -313,4 +313,5 @@ confinit(void)
 	if(*(uchar*)MOUSE & (1<<4))
 		conf.nbitbyte *= 2;	/* ldepth 1 */
 	conf.nfont = 10*mul;
+	conf.nurp = 32;
 }

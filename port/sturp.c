@@ -7,7 +7,6 @@
 #include	"errno.h"
 
 enum {
-	Nurp=		32,
 	MSrexmit=	1000,
 	Nmask=		0x7,
 };
@@ -97,7 +96,7 @@ struct Urp {
 #define	OPEN		0x8
 #define CLOSING		0x10
 
-Urp	urp[Nurp];
+Urp	*urp;
 
 /*
  *  predeclared
@@ -121,6 +120,13 @@ static void	urpvomit(char*, Urp*);
 
 Qinfo urpinfo = { urpciput, urpoput, urpopen, urpclose, "urp" };
 
+void
+urpreset(void)
+{
+	newqinfo(&urpinfo);
+	urp = (Urp *)ialloc(conf.nurp*sizeof(Urp), 0);
+}
+
 static void
 urpopen(Queue *q, Stream *s)
 {
@@ -131,14 +137,17 @@ urpopen(Queue *q, Stream *s)
 	/*
 	 *  find a free urp structure
 	 */
-	for(up = urp; up < &urp[Nurp]; up++){
+	for(up = urp; up < &urp[conf.nurp]; up++){
 		qlock(up);
 		if(up->state == 0)
 			break;
 		qunlock(up);
 	}
-	if(up == &urp[Nurp])
+	if(up == &urp[conf.nurp]){
+		q->ptr = 0;
+		WR(q)->ptr = 0;
 		error(0, Egreg);
+	}
 
 	q->ptr = q->other->ptr = up;
 	up->rq = q;
@@ -177,6 +186,8 @@ urpclose(Queue *q)
 	int i;
 
 	up = (Urp *)q->ptr;
+	if(up == 0)
+		return;
 
 	/*
 	 *  wait for all outstanding messages to drain, tell kernel
@@ -967,7 +978,7 @@ urpdump(void)
 {
 	Urp *up;
 
-	for(up = urp; up < &urp[Nurp]; up++)
+	for(up = urp; up < &urp[conf.nurp]; up++)
 		if(up->rq)
 			urpvomit("", up);
 }
