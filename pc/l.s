@@ -1,41 +1,97 @@
 #include "mem.h"
 
-/*
- *  pointer to initial gdt (must be in first 64K of program)
- */
-GLOBL	gdtptr(SB),$6
-
-	DATA	gdtptr+0(SB)/2, $(5*8)
-	DATA	gdtptr+2(SB)/4, $gdt(SB)
-
-/*
- *  pointer to idt (must be in first 64K of program)
- */
-GLOBL	idtptr(SB),$6
-
-	DATA	idtptr+0(SB)/2, $(6*8)
-	DATA	idtptr+2(SB)/4, $idt(SB)
-
-/*
- *  boot processor
- */
 TEXT	start(SB),$0
 
-	CLI			/* disable interrupts */
+	JMP	start16
 
-	/* point CPU at the interrupt/trap table */
-	LEAL	idtptr(SB),AX
-/*	MOVL	(AX),IDTR /**/
+/*
+ *  gdt to get us to 32-bit/segmented/unpaged mode
+ */
+TEXT	tgdt(SB),$0
+
+	/* null descriptor */
+	LONG	$0
+	LONG	$0
+
+	/* data segment descriptor for 4 gigabytes (PL 0) */
+	LONG	SEGG|SEGB|(0xF<<16)|SEGP|SEGPL(0)|SEGDATA|SEGW
+	LONG	0xFFFF
+
+	/* exec segment descriptor for 4 gigabytes (PL 0) */
+	LONG	SEGG|SEGD|(0xF<<16)|SEGP|SEGPL(p)|SEGEXEC|SEGR
+	LONG	0xFFFF
+
+/*
+ *  pointer to initial gdt
+ */
+TEXT	tgdtptr(SB),$0
+
+	WORD	$(3*8)
+	LONG	$tgdt(SB)
+
+/*
+ *  come here in (16bit) real-address mode
+ */
+start16:
+	CLI			/* disable interrupts */
 
 	/* point data segment at low memory */
 	XORL	AX,AX
-/*	MOVW	AX,DS /**/
+	MOVW	AX,DS
 
-	/* point CPU at the interrupt/trap table */
-	LEAL	gdtptr(SB),AX
-/*	MOVL	(AX),GDTR /**/
+	/* point CPU at the interrupt descriptor table */
+	MOVL	tgdt(SB),IDTR
 
-	CALL	main(SB)
+	/* point CPU at the global descriptor table */
+	MOVL	gdtptr(SB),GDTR
+
+	/* switch to protected mode */
+	MOVL	CR0,AX
+	ORL	$1,AX
+	MOVL	AX,CR0
+
+	/* clear prefetch buffer */
+	JMP	flush
+
+/*
+ *  come here in USE16 protected mode
+ */
+flush:
+	/* map data and stack address to physical memory */
+	MOVW	$SELECTOR(1, SELGDT, 0),AX
+	MOVW	AX,DS
+	MOVW	AX,ES
+	MOVW	AX,SS
+
+	/* switch to 32 bit code */
+	JMPFAR	SELECTOR(2, SELGDT, 0):start32
+
+/*
+ *  come here in USE32 protected mode
+ */
+TEXT	start32(SB),$0
+
+	/* clear bss (should use REP) */
+	MOVL	$edata(SB),SI
+	MOVL	$edata+4(SB),DI
+	MOVL	$end(SB),CX
+	SUBL	DI,CX
+	SHRL	$2,CX
+	XORL	AX,AX
+	MOVL	AX,edata(SB)
+	CLD
+	REP
+	MOVSL	(SI),(DI)
+
+	/* set up stack */
+	MOVL	$mach0(SB),AX
+	MOVL	A0, m(SB)
+	MOVL	$0, 0(A0)
+	MOVL	A0, A7
+	ADDL	$(MACHSIZE-4), A7	/* start stack under machine struct */
+	MOVL	$0, u(SB)
+
+	CALL	main(SB),$0
 	/* never returns */
 
 /*

@@ -78,3 +78,20 @@
 #define UDSEL	SELECTOR(UDSEG, SELGDT, 3)
 #define USSEL	SELECTOR(UDSEG, SELGDT, 3)
 
+/*
+ *  fields in segment descriptors
+ */
+#define SEGDATA	(0x10<<8)	/* data/stack segment */
+#define SEGEXEC	(0x18<<8)	/* executable segment */
+#define SEGCG	(0x0C<<8)	/* call gate */
+#define	SEGIG	(0x0E<<8)	/* interrupt gate */
+#define SEGTG	(0x0F<<8)	/* task gate */
+
+#define SEGP	(1<<15)		/* segment present */
+#define SEGPL(x) ((x)<<13)	/* priority level */
+#define SEGB	(1<<22)		/* granularity 1==4k (for expand-down) */
+#define SEGG	(1<<23)		/* granularity 1==4k (for other) */
+#define SEGE	(1<<10)		/* expand down */
+#define SEGW	(1<<9)		/* writable (for data/stack) */
+#define	SEGR	(1<<9)		/* readable (for code) */
+#define SEGD	(1<<22)		/* default 1==32bit (for code) */
