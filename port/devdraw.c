@@ -12,7 +12,7 @@
 
 enum
 {
-	Qtopdir		= 1,
+	Qtopdir		= 0,
 	Q2nd,
 	Qnew,
 	Q3rd,
@@ -808,11 +808,14 @@ drawattach(char *spec)
 int
 drawwalk(Chan *c, char *name)
 {
+	Path *op;
+
 	if(screendata.data == nil)
 		error("no frame buffer");
 	if(strcmp(name, "..") == 0){
 		switch(QID(c->qid)){
 		case Qtopdir:
+			return 1;
 		case Q2nd:
 			c->qid = (Qid){CHDIR|Qtopdir, 0};
 			break;
@@ -822,6 +825,9 @@ drawwalk(Chan *c, char *name)
 		default:
 			panic("drawwalk %lux", c->qid.path);
 		}
+		op = c->path;
+		c->path = ptenter(&syspt, op, name);
+		decref(op);
 		return 1;
 	}
 	return devwalk(c, name, 0, 0, drawgen);
