@@ -401,6 +401,8 @@ netifclose(Netif *nif, Chan *c)
 		}
 		f->owner[0] = 0;
 		f->type = 0;
+		f->bridge = 0;
+		f->headersonly = 0;
 		qclose(f->in);
 	}
 	qunlock(f);
