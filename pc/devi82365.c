@@ -898,6 +898,11 @@ pcmio(int slotno, ISAConf *isa)
 	Slot *pp;
 	Conftab *ct;
 	PCMmap *m;
+	int irq;
+
+	irq = isa->irq;
+	if(irq == 2)
+		irq = 9;
 
 	if(slotno > nslot)
 		return -1;
@@ -908,23 +913,22 @@ pcmio(int slotno, ISAConf *isa)
 
 	/* find a configuration with the right port */
 	for(ct = pp->ctab; ct < &pp->ctab[pp->nctab]; ct++){
-		if(ct->nioregs && ct->port == isa->port)
+		if(ct->nioregs && ct->port == isa->port && ((1<<irq) & ct->irqs))
 			break;
 	}
 
 	/* if non found, settle for one with the some ioregs */
 	if(ct == &pp->ctab[pp->nctab])
 		for(ct = pp->ctab; ct < &pp->ctab[pp->nctab]; ct++)
-			if(ct->nioregs)
+			if(ct->nioregs && ((1<<irq) & ct->irqs))
 				break;
 
 	if(ct == &pp->ctab[pp->nctab])
 		return -1;
 
 	/* route interrupts */
-	if(isa->irq == 2)
-		isa->irq = 9;
-	wrreg(pp, Rigc, isa->irq | Fnotreset | Fiocard);
+	isa->irq = irq;
+	wrreg(pp, Rigc, irq | Fnotreset | Fiocard);
 	
 	/* set power and enable device */
 	x = vcode(ct->vpp1);
@@ -957,7 +961,7 @@ pcmio(int slotno, ISAConf *isa)
 		x = ct->index;
 		if((ct->irqtype & 0x20) && ((ct->irqtype & 0x40)==0 || isa->irq>7))
 			x |= Clevel;
-		*p = x|ct->index;
+		*p = x;
 		delay(5);
 
 		pcmunmap(slotno, m);
@@ -1218,6 +1222,7 @@ irq(Slot *pp, Conftab *ct)
 		ct->irqs = getlong(pp, 2);
 	else
 		ct->irqs = 1<<(c&0xf);
+	ct->irqs &= 0xDEB8;		/* levels available to card */
 }
 
 static void

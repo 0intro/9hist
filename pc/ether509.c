@@ -581,7 +581,7 @@ ether509reset(Ether *ether)
 		}
 	}
 	if(strcmp(ether->type, "3C589") == 0)
-		port = ether->port;
+		port = ether->card.port;
 	if(port == 0)
 		port = tcm579(ether);
 	if(port == 0)

@@ -38,7 +38,7 @@ reset(Ether *ether)
 	if(ether->irq == 0)
 		ether->irq = 10;
 	if(ether->port == 0)
-		ether->port = 0x3F0;
+		ether->port = 0x240;
 	port = ether->port;
 
 	slot = pcmspecial("3C589", ether);
@@ -55,7 +55,7 @@ reset(Ether *ether)
 
 	/* IRQ must be 3 on 3C589 */
 	x = ins(port + ResourceConfig);
-	outs(port + ResourceConfig, 0x3000 | (x&0xfff));
+	outs(port + ResourceConfig, 0x3f00 | (x&0xfff));
 
 	/* move product ID to register */
 	while(ins(port+EEPROMcmd) & 0x8000)
