@@ -155,7 +155,8 @@ struct Chan
 	Ref;
 	Chan*	next;			/* allocation */
 	Chan*	link;
-	vlong	offset;			/* in file */
+	vlong	offset;			/* in fd */
+	vlong	devoffset;			/* in underlying device; see read */
 	ushort	type;
 	ulong	dev;
 	ushort	mode;			/* read/write */
@@ -168,6 +169,11 @@ struct Chan
 	QLock	umqlock;		/* serialize unionreads */
 	int	uri;			/* union read index */
 	int	dri;			/* devdirread index */
+	uchar*	dirrock;	/* directory entry rock for translations */
+	int	nrock;
+	int	mrock;
+	QLock	rockqlock;
+	int	ismtpt;
 	ulong	mountid;
 	Mntcache *mcp;			/* Mount cache pointer */
 	Mnt		*mux;		/* Mnt for clients using me for messages */
