@@ -37,27 +37,14 @@ ulong
 newswap(void)
 {
 	char *look;
-	int n;
 
 	lock(&swapalloc);
 	if(swapalloc.free == 0)
 		panic("out of swap space");
 
-	n = swapalloc.top - swapalloc.alloc;
-	look = swapalloc.alloc;
-	while(n && *look) {
-		n--;
-		look++;
-	}
-	if(n == 0) {
-		look = swapalloc.swmap;
-		while(*look)
-			look++;
-	}
-	if(look == swapalloc.top)
-		swapalloc.alloc = swapalloc.swmap;
-	else
-		swapalloc.alloc = look+1;
+	look = memchr(swapalloc.swmap, 0, conf.nswap);
+	if(look == 0)
+		panic("inconsistant swap");
 
 	*look = 1;
 	swapalloc.free--;
@@ -116,7 +103,7 @@ loop:
 
 	for(;;) {
 		p++;
-		if(p > ep)
+		if(p >= ep)
 			p = proctab(0);
 
 		if(p->state == Dead || p->kp)
@@ -126,6 +113,7 @@ loop:
 			for(i = 0; i < NSEG; i++) {
 				if(!needpages(junk))
 					goto loop;
+
 				if(s = p->seg[i]) {
 					type = s->type&SG_TYPE;
 					switch(type) {
@@ -264,18 +252,18 @@ pagepte(int type, Segment *s, Page **pg)
 	case SG_STACK:
 	case SG_SHARED:
 	case SG_SHDATA:
+		daddr = newswap();
+
 		lock(outp);
 		outp->ref++;
 		uncachepage(outp);
 		unlock(outp);
 
-		daddr = newswap();
-		outp->daddr = daddr;
-
 		/* Enter swap page into cache before segment is unlocked so that
 		 * a fault will cause a cache recovery rather than a pagein on a
 		 * partially written block.
 		 */
+		outp->daddr = daddr;
 		cachepage(outp, &swapimage);
 		*pg = (Page*)(daddr|PG_ONSWAP);
 

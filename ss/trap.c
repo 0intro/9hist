@@ -349,7 +349,6 @@ syscall(Ureg *aur)
 	int i;
 	long ret;
 	ulong sp;
-	ulong r7;
 	Ureg *ur;
 
 	ur = aur;
@@ -368,14 +367,14 @@ syscall(Ureg *aur)
 	}
 	spllo();
 
-	r7 = ur->r7;
+	u->scallnr = ur->r7;
 	sp = ur->usp;
 
 	u->nerrlab = 0;
 	ret = -1;
 	if(!waserror()){
-		if(r7 >= sizeof systab/BY2WD){
-			pprint("bad sys call number %d pc %lux\n", r7, ur->pc);
+		if(u->scallnr >= sizeof systab/BY2WD){
+			pprint("bad sys call number %d pc %lux\n", u->scallnr, ur->pc);
 			postnote(u->p, 1, "sys: bad sys call", NDebug);
 			error(Ebadarg);
 		}
@@ -390,9 +389,9 @@ syscall(Ureg *aur)
 			validaddr(sp, sizeof(Sargs), 0);
 
 		u->s = *((Sargs*)(sp+1*BY2WD));
-		u->p->psstate = sysctab[r7];
+		u->p->psstate = sysctab[u->scallnr];
 
-		ret = (*systab[r7])(u->s.args);
+		ret = (*systab[u->scallnr])(u->s.args);
 		poperror();
 	}
 
@@ -404,11 +403,11 @@ syscall(Ureg *aur)
 
 	u->p->insyscall = 0;
 	u->p->psstate = 0;
-	if(r7 == NOTED)	/* ugly hack */
+	if(u->scallnr == NOTED)	/* ugly hack */
 		noted(&aur, *(ulong*)(sp+1*BY2WD));	/* doesn't return */
 
 	splhi();
-	if(r7!=RFORK && (u->p->procctl || u->nnote)){
+	if(u->scallnr!=RFORK && (u->p->procctl || u->nnote)){
 		ur->r7 = ret;				/* load up for noted() */
 		if(notify(ur))
 			return ur->r7;

@@ -55,6 +55,14 @@ struct Arena
 	int	nbusy;		/* number of busy blocks */
 };
 
+typedef struct	BSubfont BSubfont;
+struct BSubfont
+{
+	GSubfont;
+	int	ref;		/* number of times this subfont is open */
+	ulong	qid[2];		/* unique id used as a cache tag */
+};
+
 struct
 {
 	Ref;
@@ -63,12 +71,13 @@ struct
 	int	nmap;		/* number allocated */
 	GFont	**font;		/* indexed array */
 	int	nfont;		/* number allocated */
-	GSubfont**subfont;	/* indexed array */
+	BSubfont**subfont;	/* indexed array */
 	int	nsubfont;	/* number allocated */
 	Arena	*arena;		/* array */
 	int	narena;		/* number allocated */
 	int	lastid;		/* last allocated bitmap id */
 	int	lastsubfid;	/* last allocated subfont id */
+	int	lastcachesf;	/* last cached subfont id */
 	int	lastfid;	/* last allocated font id */
 	int	init;		/* freshly opened; init message pending */
 	int	rid;		/* read bitmap id */
@@ -84,7 +93,7 @@ void	bitcompact(void);
 int	bitalloc(Rectangle, int);
 void	bitfree(GBitmap*);
 void	fontfree(GFont*);
-void	subfontfree(GSubfont*);
+void	subfontfree(BSubfont*);
 void	arenafree(Arena*);
 void	bitstring(GBitmap*, Point, GFont*, uchar*, long, Fcode);
 void	bitloadchar(GFont*, int, GSubfont*, int);
@@ -160,7 +169,7 @@ Dirtab bitdir[]={
 };
 
 #define	NBIT	(sizeof bitdir/sizeof(Dirtab))
-#define	NINFO	8192
+#define	NINFO	8192	/* max chars per subfont; sanity check only */
 #define	HDR	3
 
 void
@@ -181,7 +190,7 @@ bitreset(void)
 	bit.lastfid = -1;
 	bit.font = smalloc(DMAP*sizeof(GFont*));
 	bit.nfont = DMAP;
-	bit.subfont = smalloc(DMAP*sizeof(GSubfont*));
+	bit.subfont = smalloc(DMAP*sizeof(BSubfont*));
 	bit.nsubfont = DMAP;
 	bit.arena = smalloc(DMAP*sizeof(Arena));
 	bit.narena = DMAP;
@@ -257,10 +266,14 @@ bitopen(Chan *c, int omode)
 		b = smalloc(sizeof(GBitmap));
 		*b = gscreen;
 		bit.map[0] = b;			/* bitmap 0 is screen */
-		bit.subfont[0] = defont;	/* subfont 0 is default */
+		bit.subfont[0] = (BSubfont*)defont;	/* subfont 0 is default */
+		bit.subfont[0]->ref = 1;
+		bit.subfont[0]->qid[0] = 0;
+		bit.subfont[0]->qid[1] = 0;
 		bit.lastid = -1;
 		bit.lastfid = -1;
 		bit.lastsubfid = -1;
+		bit.lastcachesf = -1;
 		bit.rid = -1;
 		bit.mid = -1;
 		bit.init = 0;
@@ -300,7 +313,7 @@ void
 bitclose(Chan *c)
 {
 	GBitmap *b, **bp, **ebp;
-	GSubfont *s, **sp, **esp;
+	BSubfont *s, **sp, **esp;
 	GFont *f, **fp, **efp;
 
 	if(c->qid.path!=CHDIR && (c->flag&COPEN)){
@@ -308,7 +321,8 @@ bitclose(Chan *c)
 		if(--bit.ref == 0){
 			/* 0th bitmap, screen, has no special storage */
 			bp = bit.map;
-			free(*bp);
+			if(*bp)
+				free(*bp);
 			*bp = 0;
 			ebp = &bit.map[bit.nmap];
 			bp++;
@@ -323,10 +337,8 @@ bitclose(Chan *c)
 			esp = &bit.subfont[bit.nsubfont];
 			for(sp=&bit.subfont[1]; sp<esp; sp++){
 				s = *sp;
-				if(s){
+				if(s)
 					subfontfree(s);
-					*sp = 0;
-				}
 			}
 			efp = &bit.font[bit.nfont];
 			for(fp=bit.font; fp<efp; fp++){
@@ -355,6 +367,7 @@ bitread(Chan *c, void *va, long n, ulong offset)
 	int off, j;
 	Fontchar *i;
 	GBitmap *src;
+	BSubfont *s;
 
 	if(c->qid.path & CHDIR)
 		return devdirread(c, va, n, bitdir, NBIT, devgen);
@@ -365,8 +378,9 @@ bitread(Chan *c, void *va, long n, ulong offset)
 		 *	'm'		1
 		 *	buttons		1
 		 * 	point		8
+		 * 	msec		4
 		 */
-		if(n < 10)
+		if(n < 14)
 			error(Ebadblt);
 	    Again:
 		while(mouse.changed == 0)
@@ -381,9 +395,10 @@ bitread(Chan *c, void *va, long n, ulong offset)
 		p[1] = mouse.buttons;
 		PLONG(p+2, mouse.xy.x);
 		PLONG(p+6, mouse.xy.y);
+		PLONG(p+10, TK2MS(MACHP(0)->ticks));
 		mouse.changed = 0;
 		unlock(&cursor);
-		return 10;
+		return 14;
 	}
 	if(c->qid.path == Qscreen){
 		if(offset==0){
@@ -492,6 +507,32 @@ bitread(Chan *c, void *va, long n, ulong offset)
 		PSHORT(p+1, bit.lastsubfid);
 		bit.lastsubfid = -1;
 		n = 3;
+	}else if(bit.lastcachesf > 0){
+		/*
+		 * allocate subfont:
+		 *	'J'		1
+		 *	subfont id	2
+		 *	font info	3*12
+		 *	fontchars	6*(subfont->n+1)
+		 */
+		p[0] = 'J';
+		PSHORT(p+1, bit.lastcachesf);
+		s = bit.subfont[bit.lastcachesf];
+		if(s==0 || n<3+3*12+6*(s->n+1))
+			error(Ebadblt);
+		p += 3;
+		sprint((char*)p, "%11d %11d %11d ", s->n,
+			s->height, s->ascent);
+		p += 3*12;
+		for(i=s->info,j=0; j<=s->n; j++,i++,p+=6){
+			PSHORT(p, i->x);
+			p[2] = i->top;
+			p[3] = i->bottom;
+			p[4] = i->left;
+			p[5] = i->width;
+		}
+		n = 3+3*12+6*(s->n+1);
+		bit.lastcachesf = -1;
 	}else if(bit.lastfid >= 0){
 		/*
 		 * allocate font:
@@ -589,7 +630,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 {
 	uchar *p, *q;
 	long m, v, miny, maxy, minx, maxx, t, x, y;
-	ulong l, nw, ws, rv;
+	ulong l, nw, ws, rv, q0, q1;
 	int off, isoff, i, j, ok;
 	Point pt, pt1, pt2;
 	Rectangle rect;
@@ -597,7 +638,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 	Fcode fc;
 	Fontchar *fcp;
 	GBitmap *b, *src, *dst, *bp;
-	GSubfont *f, **fp;
+	BSubfont *f, **fp;
 	GFont *ff, **ffp;
 
 	if(c->qid.path == CHDIR)
@@ -745,17 +786,16 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 
 		case 'g':
 			/*
-			 * free subfont (free bitmap separately)
+			 * free subfont
 			 *	'g'		1
 			 *	id		2
 			 */
 			if(m < 3)
 				error(Ebadblt);
 			v = GSHORT(p+1);
-			if(v<0 || v>=bit.nsubfont || (f=bit.subfont[v])==0)
+			if(v<0 || v>=bit.nsubfont || (f=bit.subfont[v])==0 || f->ref==0)
 				error(Ebadfont);
 			subfontfree(f);
-			bit.subfont[v] = 0;
 			m -= 3;
 			p += 3;
 			break;
@@ -788,6 +828,31 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			p += 1;
 			break;
 
+		case 'j':
+			/*
+			 * subfont cache check
+			 *
+			 *	'j'		1
+			 *	qid		8	BUG: ignored
+			 */
+			if(m < 9)
+				error(Ebadblt);
+			q0 = GLONG(p+1);
+			q1 = GLONG(p+5);
+			for(i=0; i<bit.nsubfont; i++){
+				f = bit.subfont[i];
+				if(f && f->qid[0]==q0 && f->qid[1]==q1)
+					goto sfcachefound;
+			}
+			error(Esfnotcached);
+
+		sfcachefound:
+			f->ref++;
+			bit.lastcachesf = i;
+			m -= 9;
+			p += 9;
+			break;
+
 		case 'k':
 			/*
 			 * allocate subfont
@@ -796,34 +861,40 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			 *	height		1
 			 *	ascent		1
 			 *	bitmap id	2
+			 *	qid		8
 			 *	fontchars	6*(n+1)
 			 * next read returns allocated font id
 			 */
-			if(m < 7)
+			if(m < 15)
 				error(Ebadblt);
 			v = GSHORT(p+1);
-			if(v<0 || v>NINFO || m<7+6*(v+1))	/* BUG */
+			if(v<0 || v>NINFO || m<15+6*(v+1))
 				error(Ebadblt);
 			for(i=1; i<bit.nsubfont; i++)
 				if(bit.subfont[i] == 0)
 					goto subfontfound;
 			fp = bit.subfont;
-			bit.subfont = smalloc((bit.nsubfont+DMAP)*sizeof(GSubfont*));
-			memmove(bit.subfont, fp, bit.nsubfont*sizeof(GSubfont*));
+			bit.subfont = smalloc((bit.nsubfont+DMAP)*sizeof(BSubfont*));
+			memmove(bit.subfont, fp, bit.nsubfont*sizeof(BSubfont*));
 			free(fp);
 			bit.nsubfont += DMAP;
 		subfontfound:
-			f = smalloc(sizeof(GSubfont));
+			f = smalloc(sizeof(BSubfont));
 			bit.subfont[i] = f;
 			f->info = smalloc((v+1)*sizeof(Fontchar));
 			f->n = v;
 			f->height = p[3];
 			f->ascent = p[4];
+			f->qid[0] = GLONG(p+7);
+			f->qid[1] = GLONG(p+11);
+			f->ref = 1;
 			v = GSHORT(p+5);
 			if(v<0 || v>=bit.nmap || (dst=bit.map[v])==0)
 				error(Ebadbitmap);
-			m -= 7;
-			p += 7;
+			f->bits = dst;
+			bit.map[v] = 0;	/* subfont now owns bitmap */
+			m -= 15;
+			p += 15;
 			fcp = f->info;
 			for(j=0; j<=f->n; j++,fcp++){
 				fcp->x = GSHORT(p);
@@ -836,7 +907,6 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 				m -= 6;
 			}
 			bit.lastsubfid = i;
-			f->bits = dst;
 			break;
 
 		case 'l':
@@ -1099,28 +1169,36 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			 * clear font cache and bitmap
 			 *	'v'		1
 			 *	id		2
+			 *	ncache		2
 			 *	width		2
 			 */
-			if(m < 5)
+			if(m < 7)
 				error(Ebadblt);
 			v = GSHORT(p+1);
-			if(v<0 || v>=bit.nfont || (ff=bit.font[v])==0)
+			t = GSHORT(p+3);
+			if(t<0 || v<0 || v>=bit.nfont || (ff=bit.font[v])==0)
 				error(Ebadblt);
 			/*
 			 * memset not necessary but helps avoid
 			 * confusion if the cache is mishandled by the
 			 * user.
 			 */
-			memset(ff->cache, 0, (NFCACHE+NFLOOK)*sizeof(ff->cache[0]));
+			if(t == ff->ncache)
+				memset(ff->cache, 0, t*sizeof(ff->cache[0]));
+			else{
+				free(ff->cache);
+				ff->cache = smalloc(t*sizeof(ff->cache[0]));
+				ff->ncache = t;
+			}
 			if(ff->b)
 				bitfree(ff->b);
-			ff->width = GSHORT(p+3);
+			ff->width = GSHORT(p+5);
 			ff->b = 0;
-			i = bitalloc(Rect(0, 0, (NFCACHE+NFLOOK)*ff->width, ff->height), ff->ldepth);
+			i = bitalloc(Rect(0, 0, t*ff->width, ff->height), ff->ldepth);
 			ff->b = bit.map[i];
 			bit.map[i] = 0;	/* disconnect it from GBitmap space */
-			p += 5;
-			m -= 5;
+			p += 7;
+			m -= 7;
 			break;
 
 		case 'w':
@@ -1212,8 +1290,8 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			if(l >= NFCACHE+NFLOOK)
 				error(Ebadblt);
 			v = GSHORT(p+5);
-			if(v<0 || v>=bit.nsubfont || (f=bit.subfont[v])==0)
-				error(Ebadblt);
+			if(v<0 || v>=bit.nsubfont || (f=bit.subfont[v])==0 || f->ref==0)
+				error(Ebadfont);
 			nw = GSHORT(p+7);
 			if(nw >= f->n)
 				error(Ebadblt);
@@ -1267,6 +1345,7 @@ bitalloc(Rectangle rect, int ld)
 {
 	Arena *a, *ea, *na, *aa;
 	GBitmap *b, **bp, **ep;
+	BSubfont *s;
 	ulong l, ws, nw;
 	long t;
 	int i, try;
@@ -1319,10 +1398,31 @@ bitalloc(Rectangle rect, int ld)
 	if(a->nwords < HDR+nw)
 		a->nwords = HDR+nw;
 	a->words = xalloc(a->nwords*sizeof(ulong));
-	if(a->words == 0)
+	if(a->words){
+		a->wfree = a->words;
+		a->nbusy = 0;
+		goto found;
+	}
+
+	/* free unused subfonts, compact, and try again */
+	for(i=0; i<bit.nsubfont; i++){
+		s = bit.subfont[i];
+		if(s && s->ref==0){
+			bitfree(s->bits);
+			free(s->info);
+			free(s);
+			bit.subfont[i] = 0;
+		}
+	}
+	bitcompact();
+	for(a=bit.arena; a<ea; a++){
+		if(a->words == 0)
+			continue;
+		if(a->wfree+HDR+nw <= a->words+a->nwords)
+			goto found;
+	}
+	if(a == ea)
 		error(Enobitstore);
-	a->wfree = a->words;
-	a->nbusy = 0;
 	
     found:
 	b = smalloc(sizeof(GBitmap));
@@ -1384,10 +1484,10 @@ fontfree(GFont *f)
 }
 
 void
-subfontfree(GSubfont *s)
+subfontfree(BSubfont *s)
 {
-	free(s->info);
-	free(s);
+	s->ref--;
+	return;
 }
 
 void

@@ -305,7 +305,6 @@ userpc(void)
 long
 syscall(Ureg *ur)
 {
-	ulong	ax;
 	ulong	sp;
 	long	ret;
 	int	i;
@@ -318,13 +317,13 @@ syscall(Ureg *ur)
 	/*
 	 *  do something about floating point!!!
 	 */
-	ax = ur->ax;
+	u->scallnr = ur->ax;
 	sp = ur->usp;
 	u->nerrlab = 0;
 	ret = -1;
 	if(!waserror()){
-		if(ax >= sizeof systab/BY2WD){
-			pprint("bad sys call number %d pc %lux\n", ax, ur->pc);
+		if(u->scallnr >= sizeof systab/BY2WD){
+			pprint("bad sys call number %d pc %lux\n", u->scallnr, ur->pc);
 			postnote(u->p, 1, "sys: bad sys call", NDebug);
 			error(Ebadarg);
 		}
@@ -333,13 +332,13 @@ syscall(Ureg *ur)
 			validaddr(sp, (1+MAXSYSARG)*BY2WD, 0);
 
 		u->s = *((Sargs*)(sp+1*BY2WD));
-		u->p->psstate = sysctab[ax];
+		u->p->psstate = sysctab[u->scallnr];
 
-		ret = (*systab[ax])(u->s.args);
+		ret = (*systab[u->scallnr])(u->s.args);
 		poperror();
 	}
 	if(u->nerrlab){
-		print("bad errstack [%d]: %d extra\n", ax, u->nerrlab);
+		print("bad errstack [%d]: %d extra\n", u->scallnr, u->nerrlab);
 		for(i = 0; i < NERR; i++)
 			print("sp=%lux pc=%lux\n", u->errlab[i].sp, u->errlab[i].pc);
 		panic("error stack");
@@ -356,11 +355,11 @@ syscall(Ureg *ur)
 	 */
 	ur->ax = ret;
 
-	if(ax == NOTED)
+	if(u->scallnr == NOTED)
 		noted(ur, *(ulong*)(sp+BY2WD));
 
 	splhi(); /* avoid interrupts during the iret */
-	if(ax!=RFORK && (u->p->procctl || u->nnote))
+	if(u->scallnr!=RFORK && (u->p->procctl || u->nnote))
 		notify(ur);
 	return ret;
 }

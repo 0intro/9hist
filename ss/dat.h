@@ -131,13 +131,14 @@ struct User
 	Proc	*p;
 					/* &fpsave must be 4 mod 8 */
 	FPsave	fpsave;			/* address of this is known by db */
+	int	scallnr;		/* sys call number - known by db */
+	Sargs	s;			/* address of this is known by db */
 	int	nerrlab;
 	Label	errlab[NERR];
 	char	error[ERRLEN];
 	char	elem[NAMELEN];		/* last name element from namec */
 	Chan	*slash;
 	Chan	*dot;
-	Sargs	s;
 	/*
 	 * Rest of structure controlled by devproc.c and friends.
 	 * lock(&p->debug) to modify.

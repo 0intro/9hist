@@ -184,6 +184,7 @@ struct User
 	char	elem[NAMELEN];		/* last name element from namec */
 	Chan	*slash;
 	Chan	*dot;
+	int	scallnr;		/* sys call number */
 	Sargs	s;
 	/*
 	 * Rest of structure controlled by devproc.c and friends.

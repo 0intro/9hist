@@ -498,7 +498,7 @@ long
 sysdeath(ulong *arg)
 {
 	USED(arg);
-	pprint("deprecated system call");
+	pprint("deprecated system call\n");
 	pexit("Suicide", 0);
 	return 0;	/* not reached */
 }

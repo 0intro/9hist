@@ -264,15 +264,21 @@ procread(Chan *c, void *va, long n, ulong offset)
 
 		if(offset >= KZERO) {
 			/* validate physical kernel addresses */
-			if(offset < KZERO+conf.npage0*BY2PG){
-				if(offset+n > KZERO+conf.npage0*BY2PG)
-					n = KZERO+conf.npage0*BY2PG - offset;
+			if(offset < (ulong)end) {
+				if(offset+n > (ulong)end)
+					n = (ulong)end - offset;
 				memmove(a, (char*)offset, n);
 				return n;
 			}
-			if(offset < KZERO+conf.base1+conf.npage1*BY2PG){
-				if(offset+n > KZERO+conf.base1+conf.npage1*BY2PG)
-					n = KZERO+conf.base1+conf.npage1*BY2PG - offset;
+			if(offset >= conf.base0 && offset < conf.npage0){
+				if(offset+n > conf.npage0)
+					n = conf.npage0 - offset;
+				memmove(a, (char*)offset, n);
+				return n;
+			}
+			if(offset >= conf.base1 && offset < conf.npage1){
+				if(offset+n > conf.npage1)
+					n = conf.npage1 - offset;
 				memmove(a, (char*)offset, n);
 				return n;
 			}

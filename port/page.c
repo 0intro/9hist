@@ -193,11 +193,13 @@ duppage(Page *p)				/* Always call with p locked */
 {
 	Page *np;
 
+	if(p->image == &swapimage)
+		return;
+
 	lock(&palloc);
 
 	/* No freelist cache when memory is very low, No dup for swap pages */
-	if(palloc.freecount < swapalloc.highwater || 
-	   p->image == &swapimage) {
+	if(palloc.freecount < swapalloc.highwater) {
 		unlock(&palloc);
 		uncachepage(p);	
 		return;
