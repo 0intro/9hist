@@ -157,6 +157,7 @@ void		pgrpcpy(Pgrp*, Pgrp*);
 void		pgrpnote(ulong, char*, long, int);
 Pgrp*		pgrptab(int);
 void		pio(Segment *, ulong, ulong, Page **);
+void		pixreverse(uchar*, int, int);
 #define		poperror()		u->nerrlab--
 int		postnote(Proc*, int, char*, int);
 int		pprint(char*, ...);

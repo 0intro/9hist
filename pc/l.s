@@ -646,7 +646,7 @@ TEXT	l0update(SB),$0
 	MOVL	to+4(FP),DI
 l00:
 	MOVB	-1(SI)(CX*1),AL
-	MOVB	bitrevtab(SB)(AX*1),AL
+	MOVB	revtab0(SB)(AX*1),AL
 	MOVB	AL,-1(DI)(CX*1)
 	LOOP	l00
 	RET
