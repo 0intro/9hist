@@ -571,6 +571,11 @@ urpctloput(Urp *up, Queue *q, Block *bp)
 
 	switch(bp->type){
 	case M_CTL:
+		if(streamparse("break", bp)){
+			sendctl(up, BREAK);
+			freeb(bp);
+			return;
+		}
 		if(streamparse("init", bp)){
 			outwin = strtoul((char*)bp->rptr, 0, 0);
 			initoutput(up, outwin);

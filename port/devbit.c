@@ -1104,12 +1104,12 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			f = bitmalloc(sizeof(BSubfont));
 			if(f == 0)
 				error(Enomem);
-			bit.subfont[i] = f;
 			f->info = bitmalloc((v+1)*sizeof(Fontchar));
 			if(f->info == 0){
 				free(f);
 				error(Enomem);
 			}
+			bit.subfont[i] = f;
 			f->n = v;
 			f->height = p[3];
 			f->ascent = p[4];
