@@ -1938,17 +1938,23 @@ na_fixup(Controller *c, ulong pa_reg,
 static SDev*
 sympnp(void)
 {
-	int ba;
+	char *cp;
 	Pcidev *p;
 	Variant *v;
+	int ba, nctlr;
 	void *scriptma;
 	Controller *ctlr;
 	SDev *sdev, *head, *tail;
 	ulong regpa, *script, scriptpa;
 
+	if(cp = getconf("*maxsd53c8xx"))
+		nctlr = strtoul(cp, 0, 0);
+	else
+		nctlr = 32;
+
 	p = nil;
 	head = tail = nil;
-	while(p = pcimatch(p, NCR_VID, 0)){
+	while((p = pcimatch(p, NCR_VID, 0)) != nil && nctlr > 0){
 		for(v = variant; v < &variant[nelem(variant)]; v++){
 			if(p->did == v->did && p->rid <= v->maxrid)
 				break;
@@ -2045,6 +2051,8 @@ buggery:
 		else
 			head = sdev;
 		tail = sdev;
+
+		nctlr--;
 	}
 
 	return head;

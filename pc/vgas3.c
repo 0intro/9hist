@@ -240,6 +240,7 @@ s3load(VGAscr* scr, Cursor* curs)
 	case 0xE18A:				/* ViRGE/[DG]X */
 	case 0xE110:				/* ViRGE/GX2 */
 	case 0xE13D:				/* ViRGE/VX */
+	case 0xE112:				/* Savage4/MX */
 	case 0xE122:				/* Savage4 */
 		p += scr->storage;
 		break;
@@ -287,6 +288,7 @@ s3load(VGAscr* scr, Cursor* curs)
 	case 0xE18A:				/* ViRGE/[DG]X */
 	case 0xE110:				/* ViRGE/GX2 */
 	case 0xE13D:				/* ViRGE/VX */
+	case 0xE112:				/* Savage4/MX */
 	case 0xE122:				/* Savage4 */
 		break;
 

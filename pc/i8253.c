@@ -53,6 +53,7 @@ enum
 static struct
 {
 	Lock;
+	int	enabled;
 	int	mode;
 	vlong	when;		/* next fastticks a clock interrupt should occur */
 	vlong	cycwhen;	/* next fastticks a cycintr happens; 0 == infinity */
@@ -198,15 +199,23 @@ clockintrsched0(vlong next)
 	}
 }
 
+int
+havecycintr(void)
+{
+	return i8253.enabled;
+}
+
 void
 clockintrsched(void)
 {
 	vlong next;
 
 	ilock(&i8253);
-	next = cycintrnext();
-	if(next != i8253.cycwhen)
-		clockintrsched0(next);
+	if(i8253.enabled){
+		next = cycintrnext();
+		if(next != i8253.cycwhen)
+			clockintrsched0(next);
+	}
 	iunlock(&i8253);
 }
 
@@ -233,6 +242,7 @@ i8253enable(void)
 	i8253.when = fastticks(nil);
 	i8253.fastperiod = (m->cpuhz + HZ/2) / HZ;
 	i8253.fast2freq = (vlong)m->cpuhz * FreqMul / Freq;
+	i8253.enabled = 1;
 	intrenable(IrqCLOCK, clockintr0, 0, BUSUNKNOWN, "clock");
 }
 
