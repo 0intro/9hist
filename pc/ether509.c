@@ -54,6 +54,7 @@ enum {
 
 	TxFreeBytes	= 0x0C,		/* window 1 */
 	TxStatus	= 0x0B,
+	Timer		= 0x0A,
 	RxStatus	= 0x08,
 	Fifo		= 0x00,
 
@@ -388,23 +389,23 @@ activate(Ether *ether)
 	idseq();
 
 	/*
-	 * 3. Read the Product ID from the EEPROM.
-	 *    This is done by writing the IDPort with 0x83 (0x80
-	 *    is the 'read EEPROM command, 0x03 is the offset of
-	 *    the Product ID field in the EEPROM).
+	 * 3. Read the Manufacturer ID from the EEPROM.
+	 *    This is done by writing the IDPort with 0x87 (0x80
+	 *    is the 'read EEPROM command, 0x07 is the offset of
+	 *    the Manufacturer ID field in the EEPROM).
 	 *    The data comes back 1 bit at a time.
 	 *    We seem to need a delay here between reading the bits.
 	 *
 	 * If the ID doesn't match the 3C509 ID code, the adapter
 	 * probably isn't there, so barf.
 	 */
-	outb(IDport, 0x83);
+	outb(IDport, 0x87);
 	for(x = 0, i = 0; i < 16; i++){
 		delay(5);
 		x <<= 1;
 		x |= inb(IDport) & 0x01;
 	}
-	if((x & 0xF0FF) != 0x9050)
+	if((x & 0xF0FF) != 0x6D50)
 		return -1;
 
 	/*
@@ -430,7 +431,7 @@ activate(Ether *ether)
 	ether->port = (acr & 0x1F)*0x10 + 0x200;
 	outb(ether->port+ConfigControl, 0x01);
 
-	return 0;
+	return ether->port;
 }
 
 /*
@@ -447,13 +448,17 @@ reset(Ether *ether)
 	/*
 	 * Switch out to 509 activation code if a port is supplied and is
 	 * not in the EISA slot space, otherwise check the EISA card is there.
+	 * Port is set to either the newly activated ISA card address or
+	 * the EISA slot configuration info where Window0 is always mapped.
 	 */
-	if(ether->port < 0x1000 && activate(ether) < 0)
+	if(ether->port < 0x1000){
+		if((port = activate(ether)) < 0)
+			return -1;
+	}
+	else if(ins(ether->port+ManufacturerID) == 0x6D50)
+		port = ether->port+0xC80;
+	else
 		return -1;
-	else if((ins(ether->port+ProductID) & 0xF0FF) != 0x9050)
-		return -1;
-
-	port = ether->port;
 
 	/*
 	 * Read the IRQ from the Resource Configuration Register,
@@ -473,6 +478,8 @@ reset(Ether *ether)
 		ea[eax+1] = x & 0xFF;
 	}
 	acr = ins(port+AddressConfig);
+
+	port = ether->port;
 
 	/*
 	 * Finished with window 0. Now set the ethernet address

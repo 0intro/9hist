@@ -1,10 +1,10 @@
 #include "mem.h"
 
-#define SP		R29
+#define	SP		R29
 
-#define PROM		(KSEG1+0x1C000000)
+#define	PROM		(KSEG1+0x1C000000)
 #define	NOOP		WORD	$0x27
-#define FCRNOOP		NOOP; NOOP; NOOP
+#define	FCRNOOP		NOOP; NOOP; NOOP
 #define	WAIT		NOOP; NOOP
 #define	NOOP4		NOOP; NOOP; NOOP; NOOP
 
@@ -27,8 +27,8 @@
 /*
  *  R4000 instructions
  */
-#define	LD(base, rt)		WORD	$((067<<26)|((base)<<21)|((rt)<<16))
-#define	STD(rt, base)		WORD	$((077<<26)|((base)<<21)|((rt)<<16))
+#define	LD(offset, base, rt)		WORD	$((067<<26)|((base)<<21)|((rt)<<16)|((offset)&0xFFFF))
+#define	STD(rt, offset, base)		WORD	$((077<<26)|((base)<<21)|((rt)<<16)|((offset)&0xFFFF))
 #define	DSLL(sa, rt, rd)	WORD	$(((rt)<<16)|((rd)<<11)|((sa)<<6)|070)
 #define	DSRA(sa, rt, rd)	WORD	$(((rt)<<16)|((rd)<<11)|((sa)<<6)|073)
 #define	LL(base, rt)		WORD	$((060<<26)|((base)<<21)|((rt)<<16))
@@ -491,6 +491,12 @@ TEXT	forkret(SB), $0
 TEXT	saveregs(SB), $-4
 	MOVW	R1, 0x9C(SP)
 	MOVW	R2, 0x98(SP)
+	/* save R5, R6 as 64 bits */
+	ADDU	$(UREGSIZE-16), SP, R1
+	MOVW	$~7, R2	/* don't let him use R28 */
+	AND		R2, R1
+	STD		(5, 0,(1))
+	STD		(6, 8,(1))
 	ADDU	$8, SP, R1
 	MOVW	R1, 0x04(SP)		/* arg to base of regs */
 	MOVW	M(STATUS), R1
@@ -567,14 +573,23 @@ TEXT	restregs(SB), $-4
 	MOVW	0x7C(SP), R9
 	MOVW	0x80(SP), R8
 	MOVW	0x84(SP), R7
-	MOVW	0x88(SP), R6
-	MOVW	0x8C(SP), R5
+	/*
+	 * restored below
+	 * MOVW	0x88(SP), R6
+	 * MOVW	0x8C(SP), R5
+	 */
 	MOVW	0x90(SP), R4
 	MOVW	0x94(SP), R3
 	MOVW	0x24(SP), R2
 	MOVW	0x20(SP), R1
 	MOVW	R2, LO
 	MOVW	R1, HI
+	/* restore 64-bit R5, R6 */
+	ADDU	$(UREGSIZE-16), SP, R1
+	MOVW	$~7, R2	/* don't let him use R28 */
+	AND		R2, R1
+	LD		(0,(1), 5)
+	LD		(8,(1), 6)
 	MOVW	0x08(SP), R1
 	MOVW	0x98(SP), R2
 	MOVW	R1, M(STATUS)
@@ -842,7 +857,7 @@ TEXT	uvmove(SB), $-4
 	BNE	R2, uvgetuna
 
 	/* aligned load */
-	LD	(1,2)
+	LD	(0,(1), 2)
 	WAIT
 	MOVW	R2, R1
 	DSLL	(16,1,1)
@@ -854,7 +869,7 @@ uvput:
 	BNE	R4, uvputuna
 
 	/* aligned store */
-	STD	(2,3)
+	STD	(2, 0,(3))
 	NOP
 	RET
 

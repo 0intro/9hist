@@ -1,7 +1,6 @@
 /*
  * R4000 double-word version.  Only works in kernel mode.
- * Must have interrupts disabled because we save and restore R5 in a 32-bit hole.
- * Here for reference...
+ * Requires low-core support to save R5 in a 64-bit hole.
  */
 
 /*
@@ -9,19 +8,9 @@
  */
 #define	LD(base, rt)		WORD	$((067<<26)|((base)<<21)|((rt)<<16))
 #define	STD(rt, offset, base)		WORD	$((077<<26)|((base)<<21)|((rt)<<16)|((offset)&0xFFFF))
-#define	DSLL(sa, rt, rd)	WORD	$(((rt)<<16)|((rd)<<11)|((sa)<<6)|070)
-#define	DSLL32(sa, rt, rd)	WORD	$(((rt)<<16)|((rd)<<11)|((sa)<<6)|070)
-#define	DSRA(sa, rt, rd)	WORD	$(((rt)<<16)|((rd)<<11)|((sa)<<6)|074)
-#define	LL(base, rt)		WORD	$((060<<26)|((base)<<21)|((rt)<<16))
-#define	SC(base, rt)		WORD	$((070<<26)|((base)<<21)|((rt)<<16))
 
 	TEXT	memset(SB),$16	/* $16 for hole to build temporary */
 	MOVW R1, 0(FP)
-
-/*
- * performance:
- *	about 1us/call and 28mb/sec  (on what machine, ken? huh? -rob)
- */
 
 	MOVW	n+8(FP), R3		/* R3 is count */
 	MOVW	p+0(FP), R4		/* R4 is pointer */
