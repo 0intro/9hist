@@ -266,7 +266,7 @@ found:
 
 	p->state = Scheding;
 	if(p->mp != MACHP(m->machno))
-		p->movetime = m->ticks + HZ/2;
+		p->movetime = m->ticks + HZ/10;
 	p->mp = MACHP(m->machno);
 	return p;
 }

@@ -879,6 +879,18 @@ audioclose(Chan *c)
 	case Qaudio:
 		if(c->flag & COPEN) {
 			qlock(&audio);
+			if (audio.amode == Awrite) {
+				/* flush out last partial buffer */
+				Buf *b = audio.filling;
+				if (b) {
+					audio.filling = 0;
+					memset(b->virt, 0, Bufsize-audio.curcount);
+					swab(b->virt);
+					putbuf(&audio.full, b);
+				}
+				if (!audio.active && audio.full.first)
+					pokeaudio();
+			}
 			audio.amode = Aclosed;
 			if(waserror()){
 				qunlock(&audio);

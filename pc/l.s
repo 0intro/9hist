@@ -504,7 +504,7 @@ TEXT setlabel(SB), $0
 /*
  * Interrupt/exception handling.
  * Each entry in the vector table calls either _strayintr or _strayintrx depending
- * on whether an error code has beemn automatically pushed onto the stack
+ * on whether an error code has been automatically pushed onto the stack
  * (_strayintrx) or not, in which case a dummy entry must be pushed before retrieving
  * the trap type from the vector table entry and placing it on the stack as part
  * of the Ureg structure.

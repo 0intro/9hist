@@ -111,6 +111,9 @@ iunlock(Lock *l)
 {
 	ulong sr;
 
+	if(l->key == 0)
+		print("iunlock: not locked: pc %uX\n", getcallerpc(l));
+
 	sr = l->sr;
 	l->pc = 0;
 	l->key = 0;
