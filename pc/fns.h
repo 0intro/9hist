@@ -2,7 +2,7 @@
 
 void	aamloop(int);
 void	addconf(char*, char*);
-void	addscsicard(char*, Scsiio (*)(int, ISAConf*));
+void	addscsilink(char*, Scsiio (*)(int, ISAConf*));
 void	bbinit(void);
 void	bigcursor(void);
 void	bootargs(ulong);
@@ -125,3 +125,7 @@ ulong	ifunroute(ulong);
 void	parseip(char*, char*);
 
 #define	dcflush(a, b)
+
+int scsibtissue(int, int, uchar*, int, uchar*, int);
+Scsiio scsibt24(int, int, ISAConf*);
+Scsiio scsibt32(int, int, ISAConf*);

@@ -25,28 +25,38 @@ typedef struct {
 
 static Ctlr *scsi[MaxScsi];
 
-static struct {
+typedef struct Link Link;
+typedef struct Link {
 	char	*type;
 	Scsiio	(*reset)(int, ISAConf*);
-} cards[MaxScsi+1];
+
+	Link*	link;
+} Link;
+
+static Link *link;
+static int linkcount;
 
 void
-addscsicard(char *t, Scsiio (*r)(int, ISAConf*))
+addscsilink(char *t, Scsiio (*r)(int, ISAConf*))
 {
-	static int ncard;
+	Link *lp;
 
-	if(ncard == MaxScsi)
-		panic("too many scsi cards\n");
-	cards[ncard].type = t;
-	cards[ncard].reset = r;
-	ncard++;
+	if((lp = xalloc(sizeof(Link))) == 0)
+		return;
+	lp->type = t;
+	lp->reset = r;
+
+	lp->link = link;
+	link = lp;
+	linkcount++;
 }
 
 void
 scsireset(void)
 {
 	Ctlr *ctlr;
-	int ctlrno, n, t;
+	int ctlrno, t;
+	Link *lp;
 
 	for(ctlr = 0, ctlrno = 0; ctlrno < MaxScsi; ctlrno++){
 		if(ctlr == 0)
@@ -54,15 +64,18 @@ scsireset(void)
 		memset(ctlr, 0, sizeof(Ctlr));
 		if(isaconfig("scsi", ctlrno, ctlr) == 0)
 			continue;
-		for(n = 0; cards[n].type; n++){
-			if(strcmp(cards[n].type, ctlr->type))
+		for(lp = link; lp; lp = lp->link){
+			if(strcmp(lp->type, ctlr->type))
 				continue;
-			if((ctlr->io = (*cards[n].reset)(ctlrno, ctlr)) == 0)
+			if((ctlr->io = (*lp->reset)(ctlrno, ctlr)) == 0)
 				break;
 
-			print("scsi%d: %s: port %lux irq %d addr %lux size %d\n",
+			print("scsi%d: %s: port %lux irq %d",
 				ctlrno, ctlr->type, ctlr->port,
 				ctlr->irq, ctlr->mem, ctlr->size);
+			if(ctlr->mem)
+				print(" addr %lux size %d\n", ctlr->mem, ctlr->size);
+			print("\n");
 
 			for(t = 0; t < NTarget; t++){
 				ctlr->target[t].ctlrno = ctlrno;

@@ -559,6 +559,19 @@ i82386probe(int x, int d, int dev)
 	return cp;
 }
 
+static void
+i82365dump(Slot *pp)
+{
+	int i;
+
+	for(i = 0; i < 0x40; i++){
+		if((i&0x7) == 0)
+			print("\n%ux:	", i);
+		print("%ux ", rdreg(pp, i));
+	}
+	print("\n");
+}
+
 /*
  *  set up for slot cards
  */
@@ -593,7 +606,10 @@ i82365reset(void)
 			pp->memlen = 64*MB;
 			pp->base = (cp->dev<<7) | (j<<6);
 			pp->cp = cp;
+if(pp == slot)i82365dump(pp);
+/*
 			slotdis(pp);
+*/
 
 			/* interrupt on status change */
 			wrreg(pp, Rcscic, ((PCMCIAvec-Int0vec)<<4) | Fchangeena);
@@ -780,18 +796,6 @@ i82365read(Chan *c, void *a, long n, ulong offset)
 		if(pp->busy)
 			cp += sprint(cp, "busy\n");
 		cp += sprint(cp, "battery lvl %d\n", pp->battery);
-{
-	int i;
-
-	cp += sprint(cp, "x %x d %x b %x\n", pp->cp->xreg, pp->cp->dreg, pp->base);
-	for(i = 0; i < 0x40; i++){
-		cp += sprint(cp, "%2.2ux ", rdreg(pp, i));
-		if((i%8) == 7)
-			cp += sprint(cp, "\n");
-	}
-	if(i%8)
-		cp += sprint(cp, "\n");
-}
 		*cp = 0;
 		return readstr(offset, a, n, buf);
 	default:
@@ -934,21 +938,21 @@ pcmio(int slotno, ISAConf *isa)
 		/*  Reset adapter */
 		m = pcmmap(slotno, pp->caddr + Rconfig, 1, 1);
 		p = (uchar*)(KZERO|(m->isa + pp->caddr + Rconfig - m->ca));
+if(strstr(pp->verstr, "KeepInTouch") == 0){
 		*p = Creset;
 		delay(5);
 		*p = 0;
 		delay(5);
-	
-		/*
-		 *  Set level sensitive (not pulsed) interrupts and
-		 *  configuration number 1.
-		 *  Setting the configuration number enables IO port access.
-		 */
+}
+
+		/* set configuration */
+if(strstr(pp->verstr, "KeepInTouch") == 0){
 		if(isa->irq > 7)
 			*p = Clevel | ct->index;
 		else
 			*p = ct->index;
 		delay(5);
+} else i82365dump(pp);
 		pcmunmap(slotno, m);
 	}
 	return 0;
@@ -1306,3 +1310,4 @@ tvers1(Slot *pp, int ttype)
 	}
 	pp->verstr[i] = 0;
 }
+
