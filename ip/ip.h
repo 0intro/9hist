@@ -322,7 +322,8 @@ enum
 	Rmulti=		(1<<5),		/* a multicast self address */
 };
 
-struct Routewalk {
+struct Routewalk
+{
 	int	n;
 	int	o;
 	int	h;
