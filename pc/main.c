@@ -67,7 +67,7 @@ main(void)
 
 /*
  *  This tries to capture architecture dependencies since things
- *  like power management/reseting/mouse are outside the hardware
+ *  like power management/resetting/mouse are outside the hardware
  *  model.
  */
 void

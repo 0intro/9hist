@@ -1268,7 +1268,9 @@ setcolor(ulong p, ulong r, ulong g, ulong b)
 /*
  *  area to store the bits that are behind the cursor
  */
-ulong backbits[16*4];
+static ulong backbits[16*4];
+static ulong clrbits[16];
+static ulong setbits[16];
 
 /*
  *  the white border around the cursor
@@ -1278,7 +1280,7 @@ Bitmap	clr =
 	{0, 0, 16, 16},
 	{0, 0, 16, 16},
 	0,
-	0,
+	clrbits,
 	0,
 	1,
 };
@@ -1291,7 +1293,7 @@ Bitmap	set =
 	{0, 0, 16, 16},
 	{0, 0, 16, 16},
 	0,
-	0,
+	setbits,
 	0,
 	1,
 };
@@ -1307,10 +1309,6 @@ cursorinit(void)
 	cursor.l = cursorwork.width*BY2WD;
 
 	if(!already){
-		set.base = malloc(16*sizeof(ulong));
-		clr.base = malloc(16*sizeof(ulong));
-		if(set.base == 0 || clr.base == 0)
-			panic("cursorinit");
 		cursor.disable--;
 		already = 1;
 	}
