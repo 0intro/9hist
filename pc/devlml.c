@@ -61,7 +61,7 @@ static FrameHeader	jpgheader[NBUF] = {
 };
 
 int		frameNo;
-Rendez		sleepjpg;
+Rendez	sleepjpg;
 //Rendez		sleepraw;
 int		singleFrame;
 int		jpgopens;
@@ -151,14 +151,14 @@ lmlreset(void)
 		return;
 	}
 	cdsize = CODEDATASIZE;
-	codeData = (CodeData*)(((ulong)xalloc(cdsize+ BY2PG) +BY2PG-1)&~(BY2PG-1));
+	codeData = (CodeData*)(((ulong)xalloc(cdsize+ BY2PG) + BY2PG-1) & ~(BY2PG-1));
 	if (codeData == nil) {
 		print("devlml: xalloc(%lux, %ux, 0)\n", cdsize, BY2PG);
 		return;
 	}
 
 	grablen = GRABDATASIZE;
-	grabbuf = (void*)(((ulong)xalloc(grablen+ BY2PG) +BY2PG-1)&~(BY2PG-1));
+	grabbuf = (void*)(((ulong)xalloc(grablen+ BY2PG) + BY2PG-1) & ~(BY2PG-1));
 	if (grabbuf == nil) {
 		print("devlml: xalloc(%lux, %ux, 0)\n", grablen, BY2PG);
 		return;

@@ -97,7 +97,7 @@ struct CodeData {	// Don't modify this struct, used by h/w
 };
 
 #define CODEDATASIZE ((sizeof(CodeData) + BY2PG - 1) & ~(BY2PG - 1))
-#define GRABDATASIZE ((720 * 480 * 2 * 2 + BY2PG - 1) & ~(BY2PG - 1))
+#define GRABDATASIZE ((730 * 568 * 2 * 2 + BY2PG - 1) & ~(BY2PG - 1))
 
 #define POST_OFFICE		0x200
 #define POST_PEND		0x02000000

@@ -23,7 +23,7 @@ enum
 {
 	IP_ESPPROTO	= 50,
 	EsphdrSize	= 28,	// includes IP header
-	IphdrSize	= 20,	// options have been striped
+	IphdrSize	= 20,	// options have been stripped
 	EsptailSize	= 2,	// does not include pad or auth data
 	UserhdrSize	= 4,	// user visable header size - if enabled
 };
