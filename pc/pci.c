@@ -142,6 +142,7 @@ pcicfgw(int busno, int devno, int funcno, int regno, void* data, int nbytes)
 void
 pcicfgw8(int busno, int devno, int funcno, int regno, void* data, int nbytes)
 {
+	ulong addr;
 	uchar *p;
 	int base, len;
 
@@ -152,7 +153,17 @@ pcicfgw8(int busno, int devno, int funcno, int regno, void* data, int nbytes)
 	switch(pcicfgmode){
 
 	default:
-		panic("pcicfgw8: pcicfgmode %d\n", pcicfgmode);
+		addr = 0x80000000|((busno & 0xFF)<<16)|((devno & 0x1F)<<11)|((funcno & 0x03)<<8);
+		p = data;
+		for(len = nbytes/sizeof(*p); len > 0; len--){
+			outl(PCIaddr, addr|(regno & 0xFF));
+			outb(PCIdata, *p);
+			p++;
+			regno += sizeof(*p);
+		}
+	
+		outl(PCIaddr, 0);
+		break;
 		break;
 
 	case 2:

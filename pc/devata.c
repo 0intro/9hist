@@ -62,6 +62,8 @@ enum
 
 	Cpktcmd=	0xA0,
 	Cidentd=	0xA1,
+	Ctur=		0x00,
+	Creqsense=	0x03,
 	Ccapacity=	0x25,
 	Cread2=		0x28,
 
@@ -1073,7 +1075,10 @@ ataident(Drive *dp)
 		nexterror();
 	}
 
-	cmd = Cident;
+	if(dp->atapi)
+		cmd = Cidentd;
+	else
+		cmd = Cident;
 retryatapi:
 	ILOCK(&cp->reglock);
 	cp->nsecs = 1;
@@ -1803,6 +1808,7 @@ atapipart(Drive *dp)
 	retrycount = 2;
 retry:
 	if(waserror()){
+		DPRINT("atapipart: cmd %uX error %uX\n", cp->cmd, cp->error);
 		if((cp->status & Serr) && (cp->error & 0xF0) == 0x60){
 			dp->vers++;
 			if(retrycount){
@@ -1824,6 +1830,19 @@ retry:
 
 	cp->buf = buf;
 	cp->dp = dp;
+
+	cp->len = 18;
+	cp->count = 0;
+	memset(cp->cmdblk, 0, sizeof(cp->cmdblk));
+	cp->cmdblk[0] = Creqsense;
+	cp->cmdblk[4] = 18;
+	atapiexec(dp);
+	if(cp->count != 18){
+		print("cmd=%2.2uX, lastcmd=%2.2uX ", cp->cmd, cp->lastcmd);
+		print("cdsize count %d, status 0x%2.2uX, error 0x%2.2uX\n",
+			cp->count, cp->status, cp->error);
+		error(Eio);
+	}
 
 	cp->len = 8;
 	cp->count = 0;
