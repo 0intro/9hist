@@ -86,9 +86,7 @@ struct FragmentTable {	// Don't modify this struct, used by h/w
 };
 
 struct CodeData {	// Don't modify this struct, used by h/w
-	char		idString[16];
 	ulong		statCom[4];		// Physical address
-	ulong		statComInitial[4];	// Physical address
 	FragmentTable	fragdesc[4];
 	Fragment	frag[4];
 };

@@ -17,7 +17,7 @@ int debug = DBGREAD|DBGWRIT|DBGREGS;
 
 struct {
 	ulong pci;
-	ulong dma;
+	ulong statcom;
 	ulong codedata;
 } lmlmap;
 
@@ -27,6 +27,7 @@ enum{
 	Q856,
 	Qreg,
 	Qmap,
+	Qbuf,
 	Qjvideo,
 	Qjframe,
 };
@@ -37,6 +38,7 @@ static Dirtab lmldir[]={
 	"lml856",	{Q856},		0,		0644,
 	"lmlreg",	{Qreg},		0x400,		0644,
 	"lmlmap",	{Qmap},		sizeof lmlmap,	0444,
+	"lmlbuf",	{Qbuf},		0,		0644,
 	"jvideo",	{Qjvideo},	0,		0666,
 	"jframe",	{Qjframe},	0,		0666,
 };
@@ -327,37 +329,36 @@ i2c_wr8(uchar addr, uchar sub, uchar msb) {
 }
 
 static int
-prepareBuffer(CodeData * this, int bufferNo) {
-  if(bufferNo >= 0 && bufferNo < NBUF && (this->statCom[bufferNo] & STAT_BIT)) {
-    this->statCom[bufferNo] = this->statComInitial[bufferNo];
-    return this->fragdesc[bufferNo].leng;
-  } else
-    return -1;
+prepareBuffer(int i) {
+	if (i >= 0 && i < NBUF && (codeData->statCom[i] & STAT_BIT)) {
+		codeData->statCom[i] = PADDR(&(codeData->fragdesc[i]));
+    		return codeData->fragdesc[i].leng;
+	} else
+		return -1;
 }
 
 static int
-getProcessedBuffer(CodeData* this){
-	static lastBuffer=NBUF-1;
-	int lastBuffer0 = lastBuffer;
+getProcessedBuffer(void){
+	static lastBuffer = NBUF-1;
+	int l = lastBuffer;
 
 	while (1) { 
 		lastBuffer = (lastBuffer+1) % NBUF;
-		if(this->statCom[lastBuffer]&STAT_BIT)
+		if (codeData->statCom[lastBuffer] & STAT_BIT)
 			return lastBuffer;
-		if(lastBuffer==lastBuffer0)
+		if (lastBuffer == l)
 			break;
 	}
 	return -1;
 }
 
 static int
-getBuffer(CodeData *this, int bufferNo, void** bufferPtr, int* frameNo) {
-	int codeLength;
-	if(this->statCom[bufferNo] & STAT_BIT) {
-		*bufferPtr = (void*)this->fragdesc[bufferNo].addr;
-		*frameNo = this->statCom[bufferNo] >> 24;
-		codeLength=((this->statCom[bufferNo] & 0x00FFFFFF) >> 1);
-		return codeLength;
+getBuffer(int i, void** bufferPtr, int* frameNo) {
+
+	if(codeData->statCom[i] & STAT_BIT) {
+		*bufferPtr = (void*)(&codeData->frag[i]);
+		*frameNo = codeData->statCom[i] >> 24;
+		return (codeData->statCom[i] & 0x00FFFFFF) >> 1;
 	} else
 		return -1;
 }
@@ -393,17 +394,17 @@ vread(Chan *, void *va, long count, vlong pos) {
 	if(hdrPos == -1 && pos >= currentBufferLength) {
 		if(debug&DBGREAD)
 			pprint("devlml::prepareBuffer\n");
-		prepareBuffer(codeData, currentBuffer);
+		prepareBuffer(currentBuffer);
 		// if not the first buffer read and single frame mode - return EOF
 		if (currentBuffer != -1 && singleFrame)
 			return 0;
 		if(debug&DBGREAD)
 			pprint("devlml::sleep\n");
-		while((currentBuffer = getProcessedBuffer(codeData)) == -1)
+		while((currentBuffer = getProcessedBuffer()) == -1)
 			sleep(&sleeper, return0, 0);
 		if(debug&DBGREAD)
 			pprint("devlml::wokeup\n");
-		currentBufferLength = getBuffer(codeData, currentBuffer,
+		currentBufferLength = getBuffer(currentBuffer,
 			&currentBufferPtr, &frameNo);
 
 		pos = 0; // ??????????????
@@ -466,11 +467,11 @@ vwrite(Chan *, void *va, long count, vlong pos) {
 	// We need next buffer to fill (either because we're done with the
 	// current buffer) of because we're just beginning (but not into the header)
 	if (hdrPos == -1 && pos >= currentBufferLength) {
-		while((currentBuffer = getProcessedBuffer(codeData)) == -1)
+		while((currentBuffer = getProcessedBuffer()) == -1)
 			sleep(&sleeper, return0, 0);
 		// print("current buffer %d\n",currentBuffer);
 
-		getBuffer(codeData, currentBuffer, &currentBufferPtr, &frameNo);
+		getBuffer(currentBuffer, &currentBufferPtr, &frameNo);
 		// We need to receive the header now
 		hdrPos = 0;
 	}
@@ -526,7 +527,7 @@ vwrite(Chan *, void *va, long count, vlong pos) {
 	if(pos >= currentBufferLength) {
 		// We have written the frame, time to display it
 		//print("Passing written buffer to 067\n");
-		prepareBuffer(codeData, currentBuffer);
+		prepareBuffer(currentBuffer);
 		bufferPrepared = 1;
 	}
 	//print("return 0x%lx 0x%x 0x%x 0x%x\n",pos,count,hdrLeft+count,currentBufferLength);
@@ -557,14 +558,11 @@ lmlreset(void)
 
 	// Get access to DMA memory buffer
 	memset(codeData, 0xAA, sizeof(CodeData));
-	strncpy(codeData->idString, MJPG_VERSION, strlen(MJPG_VERSION));
-
 	for(i = 0; i < NBUF; i++) {
 		codeData->statCom[i] = PADDR(&(codeData->fragdesc[i]));
-		codeData->statComInitial[i] = codeData->statCom[i];
 		codeData->fragdesc[i].addr = PADDR(&(codeData->frag[i]));
 		// Length is in double words, in position 1..20
-		codeData->fragdesc[i].leng = (FRAGSIZE >> 1) | FRAGM_FINAL_B;
+		codeData->fragdesc[i].leng = ((sizeof codeData->frag[i]) >> 1) | FRAGM_FINAL_B;
 	}
 
 	print("initializing LML33 board...");
@@ -592,7 +590,7 @@ lmlreset(void)
 	intrenable(pcidev->intl, lmlintr, nil, pcidev->tbdf);
 
 	lmlmap.pci = pciBaseAddr;
-	lmlmap.dma = PADDR(codeData);
+	lmlmap.statcom = PADDR(codeData->statCom);
 	lmlmap.codedata = (ulong)codeData;
 
 	return; 
@@ -617,9 +615,7 @@ lmlstat(Chan *c, char *dp)
 }
 
 static Chan*
-lmlopen(Chan *c, int omode)
-{
-	int i;
+lmlopen(Chan *c, int omode) {
 
 	c->aux = 0;
 	switch(c->qid.path){
@@ -627,6 +623,7 @@ lmlopen(Chan *c, int omode)
 	case Q856:
 	case Qreg:
 	case Qmap:
+	case Qbuf:
 		break;
 	case Qjvideo:
 	case Qjframe:
@@ -641,26 +638,21 @@ lmlopen(Chan *c, int omode)
 		bufferPrepared = 0;
 		hdrPos = -1;
 
-		for (i = 0; i < 4; i++) {
-			codeData->statCom[i] = codeData->statComInitial[i];
-			// Also memset the buffer with some fill value
-			memset(&(codeData->frag[i]),0x55,sizeof codeData->frag[i]);
-		}
 		// allow one open total for these two
-		intrenable(pcidev->intl, lmlintr, nil, pcidev->tbdf);
 		break;
 	}
 	return devopen(c, omode, lmldir, nelem(lmldir), devgen);
 }
 
 static void
-lmlclose(Chan *c)
-{
+lmlclose(Chan *c) {
+
 	switch(c->qid.path){
 	case Q819:
 	case Q856:
 	case Qreg:
 	case Qmap:
+	case Qbuf:
 		authclose(c);
 		break;
 	case Qjvideo:
@@ -721,7 +713,7 @@ lmlread(Chan *c, void *va, long n, vlong voff) {
 		}
 		return i;
 	case Qreg:
-		if (off < 0 || off + n > 0x400)
+		if (off < 0 || off + n >= 0x400)
 			return 0;
 		switch(n) {
 		case 1:
@@ -734,6 +726,25 @@ lmlread(Chan *c, void *va, long n, vlong voff) {
 		case 4:
 			if (off & (n-1)) return 0;
 			*(long *)buf = readl(pciBaseAddr + off);
+			break;
+		default:
+			return 0;
+		}
+		return n;
+	case Qbuf:
+		if (off < 0 || off + n >= sizeof *codeData)
+			return 0;
+		switch(n) {
+		case 1:
+			*buf = readb((ulong)codeData + off);
+			break;
+		case 2:
+			if (off & (n-1)) return 0;
+			*(short *)buf = readw((ulong)codeData + off);
+			break;
+		case 4:
+			if (off & (n-1)) return 0;
+			*(long *)buf = readl((ulong)codeData + off);
 			break;
 		default:
 			return 0;
@@ -781,7 +792,7 @@ lmlwrite(Chan *c, void *va, long n, vlong voff) {
 		}
 		return 1;
 	case Qreg:
-		if (off < 0 || off + n > 0x400)
+		if (off < 0 || off + n >= 0x400)
 			return 0;
 		switch (n) {
 		case 1:
@@ -796,6 +807,27 @@ lmlwrite(Chan *c, void *va, long n, vlong voff) {
 			if (off & 0x3)
 				return 0;
 			writel(*(long *)buf, pciBaseAddr + off);
+			break;
+		default:
+			return 0;
+		}
+		return n;
+	case Qbuf:
+		if (off < 0 || off + n >= sizeof *codeData)
+			return 0;
+		switch (n) {
+		case 1:
+			writeb(*buf, (ulong)codeData + off);
+			break;
+		case 2:
+			if (off & 0x1)
+				return 0;
+			writew(*(short *)buf, (ulong)codeData + off);
+			break;
+		case 4:
+			if (off & 0x3)
+				return 0;
+			writel(*(long *)buf, (ulong)codeData + off);
 			break;
 		default:
 			return 0;
