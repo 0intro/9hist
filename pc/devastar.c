@@ -278,8 +278,12 @@ struct Astarchan
 	int	baud;		/* baud rate */
 	int	framing;	/* framing errors */
 	int	overrun;	/* overruns */
+	int	hup_dsr;	/* hangup when dsr goes away */
+	int	hup_dcd;	/* hangup when dcd goes away */
 	int	dtr;		/* non-zero means dtr on */
 	int	rts;		/* non-zero means rts on */
+	int	dsr;		/* non-zero means dsr on */
+	int	dcd;		/* non-zero means dcd on */
 
 	Queue	*iq;
 	Queue	*oq;
@@ -761,31 +765,37 @@ bctlread(Astar *a, void *buf, long n, ulong offset)
 static long
 statread(Astarchan *ac, void *buf, long n, ulong offset)
 {
-	char s[128];
-	int mstat, bstat;
+	char s[256];
+	int mstat, bstat, fstat;
 
 	LOCKPAGE(ac->a, 0);
 	mstat = LEUS(ac->ccb->mstat);
 	bstat = LEUS(ac->ccb->bstat);
+	fstat = LEUS(ac->ccb->format);
 	UNLOCKPAGE(ac->a);
 
-	/* CCB.mstat fields */
-	sprint(s, "opens %d ferr %d oerr %d baud %d", ac->opens, ac->framing,
-		ac->overrun, ac->baud);
-	if(mstat & Cctsstat)
-		strcat(s, " cts");
-	if(mstat & Cdsrstat)
-		strcat(s, " dsr");
-	if(mstat & Cristat)
-		strcat(s, " ring");
-	if(mstat & Cdcdstat)
-		strcat(s, " dcd");
-	if(ac->dtr)
-		strcat(s, " dtr");
-	if(ac->rts && (bstat & Crbrts) == 0)
-		strcat(s, " rts");
-	strcat(s, "\n");
+	snprint(s, sizeof s,
+		"b%d c%d d%d e%d l%d m%d p%c r%d s%d\n"
+		"%ld %d %d%s%s%s%s\n",
 
+		ac->baud,
+		ac->hup_dcd,
+		ac->dtr,
+		ac->hup_dsr,
+		(fstat & Clenmask),
+		0, 	/* change in modem status? */
+		(fstat & Cparmask) ? ((fstat & Cevenpar) == Cevenpar ? 'e' : 'o') : 'n',
+		(bstat & Crbrts) ? 1 : 0,
+		(fstat & C2stop) ? 2 : 1,
+
+		ac - ac->a->c,
+		ac->framing,
+		ac->overrun,
+		(mstat & Cctsstat)    ? " cts"  : "",
+		(mstat & Cdsrstat)    ? " dsr"  : "",
+		(mstat & Cdcdstat)    ? " dcd"  : "",
+		(mstat & Cristat)   ? " ring" : ""
+	);
 	return readstr(offset, buf, n, s);
 }
 
@@ -1184,6 +1194,7 @@ disable(Astarchan *ac)
 	ac->ccb->proto = LEUS(n);
 	UNLOCKPAGE(ac->a);
 	chancmd(ac, Crcvdis|Cxmtdis|Cflushin|Cflushout|Cconfall);
+	ac->dsr = ac->dcd = 0;
 }
 
 /*
@@ -1543,6 +1554,24 @@ astarkickin(Astarchan *ac)
 	iunlock(&ac->a->pagelock);
 }
 
+static void
+astarmodemchange(Astarchan *ac)
+{
+	Astar *a = ac->a;
+	int mstat;
+
+	if(a->needpage)
+		setpage(a, 0);
+	mstat = LEUS(ac->ccb->mstat);
+	if(ac->hup_dsr && ac->dsr == 1 && (mstat & Cdsrstat) == 0
+	|| ac->hup_dcd && ac->dcd == 1 && (mstat & Cdcdstat) == 0){
+		qhangup(ac->iq, nil);
+		qhangup(ac->oq, nil);
+	}
+	ac->dsr = mstat & Cdsrstat;
+	ac->dcd = mstat & Cdcdstat;
+}
+
 /*
  *  handle an interrupt
  */
@@ -1571,7 +1600,6 @@ astarintr(Ureg *ur, void *arg)
 	errvec = LEUS(xchgw(&a->gcb->errserv, 0));
 	mvec = LEUS(xchgw(&a->gcb->modemserv, 0));
 	cmdvec = LEUS(xchgw(&a->gcb->cmdserv, 0));
-	USED(mvec);
 
 	/* reenable interrupts */
 	if(a->pci){
@@ -1603,6 +1631,12 @@ astarintr(Ureg *ur, void *arg)
 	for(vec = cmdvec; vec; vec >>= 1){
 		if(vec&1)
 			wakeup(&ac->r);
+		ac++;
+	}
+	ac = a->c;
+	for(vec = mvec; vec; vec >>= 1){
+		if(vec&1)
+			astarmodemchange(ac);
 		ac++;
 	}
 	ac = a->c;

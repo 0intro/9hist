@@ -113,8 +113,10 @@ struct Uart
 	int	modem;			/* hardware flow control on */
 	int	xonoff;			/* software flow control on */
 	int	blocked;
-	int	cts;
+	int	cts, dsr, dcd;		/* keep track of modem status */ 
 	int	ctsbackoff;
+	int	hup_dsr, hup_dcd;	/* send hangup upstream? */
+	int	dohup;
 
 	Rendez	r;
 };
@@ -155,6 +157,21 @@ ns16552setbaud(Uart *p, int rate)
 	uartwrreg(p, Format, 0);
 
 	p->baud = rate;
+}
+
+/*
+ * decide if we should hangup when dsr or dcd drops.
+ */
+static void
+ns16552dsrhup(Uart *p, int n)
+{
+	p->hup_dsr = n;
+}
+
+static void
+ns16552dcdhup(Uart *p, int n)
+{
+	p->hup_dcd = n;
 }
 
 static void
@@ -310,6 +327,9 @@ ns16552enable(Uart *p)
 		return;
 
 	uartpower(p->dev, 1);
+
+	p->hup_dsr = p->hup_dcd = 0;
+	p->cts = p->dsr = p->dcd = 0;
 
 	/*
  	 *  turn on interrupts
@@ -594,6 +614,24 @@ ns16552intr(int dev)
 					p->ctsbackoff = 2; /* clock gets output going again */
 				iunlock(&p->tlock);
 			}
+	 		if (ch & Dsrc) {
+				l = ch & Dsr;
+				if(p->hup_dsr && p->dsr && !l){
+					ilock(&p->rlock);
+					p->dohup = 1;
+					iunlock(&p->rlock);
+				}
+				p->dsr = l;
+			}
+	 		if (ch & Dcdc) {
+				l = ch & Dcd;
+				if(p->hup_dcd && p->dcd && !l){
+					ilock(&p->rlock);
+					p->dohup = 1;
+					iunlock(&p->rlock);
+				}
+				p->dcd = l;
+			}
 			break;
 
 		default:
@@ -639,6 +677,15 @@ uartclock(void)
 				}
 				p->haveinput = 0;
 			}
+			iunlock(&p->rlock);
+		}
+		if(p->dohup){
+			ilock(&p->rlock);
+			if(p->dohup){
+				qhangup(p->iq, 0);
+				qhangup(p->oq, 0);
+			}
+			p->dohup = 0;
 			iunlock(&p->rlock);
 		}
 
@@ -767,6 +814,7 @@ ns16552close(Chan *c)
 			qclose(p->iq);
 			qclose(p->oq);
 			p->ip = p->istage;
+			p->dcd = p->dsr = p->dohup = 0;
 		}
 		qunlock(p);
 		break;
@@ -776,34 +824,37 @@ ns16552close(Chan *c)
 static long
 uartstatus(Chan*, Uart *p, void *buf, long n, long offset)
 {
-	uchar mstat;
-	uchar tstat;
+	uchar mstat, fstat, istat, tstat;
 	char str[256];
 
 	str[0] = 0;
 	tstat = p->sticky[Mctl];
 	mstat = uartrdreg(p, Mstat);
-	sprint(str, "opens %d ferr %d oerr %d baud %d", p->opens,
-		p->frame, p->overrun, p->baud);
-	if(mstat & Cts)
-		strcat(str, " cts");
-	if(mstat & Dsr)
-		strcat(str, " dsr");
-	if(mstat & Ring)
-		strcat(str, " ring");
-	if(mstat & Dcd)
-		strcat(str, " dcd");
-	if(tstat & Dtr)
-		strcat(str, " dtr");
-	if(tstat & Rts)
-		strcat(str, " rts");
-{
-int i, j;
+	istat = p->sticky[Iena];
+	fstat = p->sticky[Format];
+	snprint(str, sizeof str,
+		"b%d c%d d%d e%d l%d m%d p%c r%d s%d\n"
+		"%d %d %d%s%s%s%s%s\n",
 
-i = strlen(str);
-for(j = 0; j < 8; j++) i+=sprint(str+i, " %ux", uartrdreg(p, j));
-}
-	strcat(str, "\n");
+		p->baud,
+		p->hup_dcd, 
+		(tstat & Dtr) != 0,
+		p->hup_dsr,
+		(fstat & Bits8) + 5,
+		(istat & Imstat) != 0, 
+		(fstat & Pena) ? ((fstat & Peven) ? 'e' : 'o') : 'n',
+		(tstat & Rts) != 0,
+		(fstat & Stop2) ? 2 : 1,
+
+		p->dev,
+		p->frame,
+		p->overrun, 
+		p->fifoon       ? " fifo" : "",
+		(mstat & Cts)    ? " cts"  : "",
+		(mstat & Dsr)    ? " dsr"  : "",
+		(mstat & Dcd)    ? " dcd"  : "",
+		(mstat & Ring)   ? " ring" : ""
+	);
 	return readstr(offset, buf, n, str);
 }
 
@@ -852,9 +903,17 @@ ns16552ctl(Uart *p, char *cmd)
 	case 'b':
 		ns16552setbaud(p, n);
 		break;
+	case 'C':
+	case 'c':
+		ns16552dcdhup(p, n);
+		break;
 	case 'D':
 	case 'd':
 		ns16552dtr(p, n);
+		break;
+	case 'E':
+	case 'e':
+		ns16552dsrhup(p, n);
 		break;
 	case 'f':
 	case 'F':
