@@ -239,6 +239,7 @@ tcprcvwin(Ipconv *s)
 	Tcpctl *tcb = &s->tcpctl;
 
 	/* Calculate new window */
+	qlock(s);
 	if(s->readq) {
 		tcb->rcv.wnd = Streamhi - s->readq->next->len;
 		if(tcb->rcv.wnd < 0)
@@ -246,6 +247,7 @@ tcprcvwin(Ipconv *s)
 	}
 	else
 		tcb->rcv.wnd = Streamhi;
+	qunlock(s);
 }
 
 /*

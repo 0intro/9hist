@@ -663,7 +663,9 @@ tcpstclose(Queue *q)
 	tcb = &s->tcpctl;
 
 	/* Not interested in data anymore */
+	qlock(s);
 	s->readq = 0;
+	qunlock(s);
 
 	switch(tcb->state){
 	case Closed:

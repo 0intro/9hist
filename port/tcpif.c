@@ -29,9 +29,6 @@ state_upcall(Ipconv *s, char oldstate, char newstate)
 		s->dst = 0;
 		/* NO break */
 	case Close_wait:		/* Remote closes */
-		if(s->readq == 0)
-			break;
-
 		if(s->err) {
 			len = strlen(s->err);
 			bp = allocb(len);
@@ -43,7 +40,12 @@ state_upcall(Ipconv *s, char oldstate, char newstate)
 
 		bp->flags |= S_DELIM;
 		bp->type = M_HANGUP;
-		PUTNEXT(s->readq, bp);
+		qlock(s);
+		if(s->readq == 0)
+			freeb(bp);
+		else
+			PUTNEXT(s->readq, bp);
+		qunlock(s);
 		break;
 	}
 }

@@ -308,8 +308,7 @@ dkalloc(char *name, int ncsc, int lines)
 }
 
 /*
- *  a new dkmux.  find a free dk structure and assign it to this queue.
- *  when we get though here dp->s is meaningful and the name is set to "/".
+ *  a new dkmux.  hold the stream in place so it can never be closed down.
  */
 static void
 dkmuxopen(Queue *q, Stream *s)
@@ -322,7 +321,7 @@ dkmuxopen(Queue *q, Stream *s)
 }
 
 /*
- *  close down a dkmux
+ *  close down a dkmux, this shouldn't happen
  */
 static void
 dkmuxclose(Queue *q)
