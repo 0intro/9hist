@@ -241,15 +241,17 @@ allocb(ulong size)
 void
 freeb(Block *bp)
 {
+	ulong mark[1];
 	Block *nbp;
 	Bclass *bcp;
 	int x;
 
 	if((bp->flags&S_CLASS) >= Nclass)
 		panic("freeb class");
+
 	for(; bp; bp = nbp){
 		bcp = &bclass[bp->flags & S_CLASS];
-		bp->flags = S_CLASS;			/* Check for doulbe free */
+		bp->flags = bp->flags|S_CLASS;		/* Check for doulbe free */
 		lock(bcp);
 		bp->rptr = bp->wptr = 0;
 		if(bcp->first)

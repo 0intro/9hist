@@ -18,12 +18,14 @@ struct
 	Proc	*free;
 }procalloc;
 
-struct
+typedef struct
 {
 	Lock;
 	Proc	*head;
 	Proc	*tail;
-}runq;
+}Schedq;
+
+Schedq runhiq, runloq;
 
 char *statename[]={	/* BUG: generate automatically */
 	"Dead",
@@ -75,7 +77,7 @@ schedinit(void)		/* never returns */
 void
 sched(void)
 {
-	uchar procstate[64];		/* sleeze for portability */
+	uchar procstate[64];		/* sleaze for portability */
 	Proc *p;
 	ulong tlbvirt, tlbphys;
 	void (*f)(ulong, ulong);
@@ -104,24 +106,31 @@ sched(void)
 int
 anyready(void)
 {
-	return runq.head != 0;
+	return runloq.head != 0 || runhiq.head != 0;
 }
 
 void
 ready(Proc *p)
 {
+	Schedq *rq;
 	int s;
 
 	s = splhi();
-	lock(&runq);
-	p->rnext = 0;
-	if(runq.tail)
-		runq.tail->rnext = p;
+	if(p->state == Running)
+		rq = &runloq;
 	else
-		runq.head = p;
-	runq.tail = p;
+		rq = &runhiq;
+
+	lock(&runhiq);
+	p->rnext = 0;
+	if(rq->tail)
+		rq->tail->rnext = p;
+	else
+		rq->head = p;
+	rq->tail = p;
+
 	p->state = Ready;
-	unlock(&runq);
+	unlock(&runhiq);
 	splx(s);
 }
 
@@ -131,27 +140,33 @@ ready(Proc *p)
 Proc*
 runproc(void)
 {
+	Schedq *rq;
 	Proc *p;
 	int i;
 
 loop:
-	while(runq.head == 0)
+	while(runhiq.head==0 && runloq.head==0)
 		for(i=0; i<10; i++)	/* keep out of shared memory for a while */
 			;
 	splhi();
-	lock(&runq);
-	p = runq.head;
+	lock(&runhiq);
+	if(runhiq.head)
+		rq = &runhiq;
+	else
+		rq = &runloq;
+
+	p = rq->head;
 	if(p==0 || p->mach){	/* p->mach==0 only when process state is saved */
-		unlock(&runq);
+		unlock(&runhiq);
 		spllo();
 		goto loop;
 	}
 	if(p->rnext == 0)
-		runq.tail = 0;
-	runq.head = p->rnext;
+		rq->tail = 0;
+	rq->head = p->rnext;
 	if(p->state != Ready)
 		print("runproc %s %d %s\n", p->text, p->pid, statename[p->state]);
-	unlock(&runq);
+	unlock(&runhiq);
 	p->state = Scheding;
 	spllo();
 	return p;
