@@ -11,6 +11,8 @@ struct
 	ulong	bytes;
 } ialloc;
 
+static int debuging;
+
 /*
  *  IO queues
  */
@@ -125,7 +127,8 @@ freeb(Block *b)
 void
 ixsummary(void)
 {
-	print("ialloc %d/%d\n", ialloc.bytes, conf.ialloc);
+	debuging ^= 1;
+	print("ialloc %d/%d %d\n", ialloc.bytes, conf.ialloc, debuging);
 }
 
 /*
@@ -205,13 +208,12 @@ checkb(b, "qconsume 2");
 int
 qpass(Queue *q, Block *b)
 {
-	int s, i, len, dowakeup;
+	int i, len, dowakeup;
 
-	s = splhi();
 	len = BLEN(b);
 	/* sync with qread */
 	dowakeup = 0;
-	lock(q);
+	ilock(q);
 
 	if(q->syncbuf){
 		/* synchronous communications, just copy into buffer */
@@ -222,10 +224,9 @@ qpass(Queue *q, Block *b)
 		q->syncbuf = 0;		/* tell reader buffer is full */
 		len -= i;
 		if(len <= 0 || (q->state & Qmsg)){
-			unlock(q);
+			iunlock(q);
 			wakeup(&q->rr);
 			freeb(b);
-			splx(s);
 			return i;
 		}
 		/* queue anything that's left */
@@ -246,14 +247,13 @@ checkb(b, "qpass");
 		q->state &= ~Qstarve;
 		dowakeup = 1;
 	}
-	unlock(q);
+	iunlock(q);
 
 	if(dowakeup){
 		if(q->kick)
 			(*q->kick)(q->arg);
 		wakeup(&q->rr);
 	}
-	splx(s);
 
 	return len;
 }
@@ -265,6 +265,7 @@ qproduce(Queue *q, void *vp, int len)
 	int i, dowakeup;
 	uchar *p = vp;
 
+if(debuging) print("qproduce %d\n", len);
 	/* sync with qread */
 	dowakeup = 0;
 	lock(q);
@@ -361,7 +362,7 @@ notempty(void *a)
 {
 	Queue *q = a;
 
-	return q->bfirst != 0;
+	return (q->state & Qclosed) || q->bfirst != 0;
 }
 
 /*
@@ -372,7 +373,7 @@ long
 qread(Queue *q, void *vp, int len)
 {
 	Block *b;
-	int x, n, dowakeup;
+	int n, dowakeup;
 	uchar *p = vp;
 
 	qlock(&q->rlock);
@@ -380,11 +381,9 @@ qread(Queue *q, void *vp, int len)
 		/* can't let go if the buffer is in use */
 		if(q->syncbuf){
 			qlock(&q->wlock);
-			x = splhi();
-			lock(q);
+			ilock(q);
 			q->syncbuf = 0;
-			unlock(q);
-			splx(x);
+			iunlock(q);
 			qunlock(&q->wlock);
 		}
 		qunlock(&q->rlock);
@@ -394,16 +393,14 @@ qread(Queue *q, void *vp, int len)
 	/* wait for data */
 	for(;;){
 		/* sync with qwrite/qproduce */
-		x = splhi();
-		lock(q);
+		ilock(q);
 
 		b = q->bfirst;
 		if(b)
 			break;
 
 		if(q->state & Qclosed){
-			unlock(q);
-			splx(x);
+			iunlock(q);
 			poperror();
 			qunlock(&q->rlock);
 			if(++q->eof > 3)
@@ -415,8 +412,7 @@ qread(Queue *q, void *vp, int len)
 			/* just let the writer fill the buffer directly */
 			q->synclen = len;
 			q->syncbuf = vp;
-			unlock(q);
-			splx(x);
+			iunlock(q);
 			while(q->syncbuf != 0)
 				sleep(&q->rr, filled, q);
 			len = q->synclen;
@@ -425,10 +421,8 @@ qread(Queue *q, void *vp, int len)
 			return len;
 		} else {
 			q->state |= Qstarve;
-			unlock(q);
-			splx(x);
-			while(q->bfirst == 0)
-				sleep(&q->rr, notempty, q);
+			iunlock(q);
+			sleep(&q->rr, notempty, q);
 		}
 	}
 checkb(b, "qread 1");
@@ -444,8 +438,7 @@ checkb(b, "qread 1");
 		dowakeup = 1;
 	} else
 		dowakeup = 0;
-	unlock(q);
-	splx(x);
+	iunlock(q);
 
 	/* do this outside of the lock(q)! */
 	if(n > len)
@@ -458,13 +451,11 @@ checkb(b, "qread 2");
 	if(b->rp >= b->wp || (q->state&Qmsg)) {
 		freeb(b);
 	} else {
-		x = splhi();
-		lock(q);
+		ilock(q);
 		b->next = q->bfirst;
 		q->bfirst = b;
 		q->len += BLEN(b);
-		unlock(q);
-		splx(x);
+		iunlock(q);
 	}
 
 	/* wakeup flow controlled writers (with a bit of histeresis) */
@@ -488,12 +479,12 @@ qnotfull(void *a)
  *  write to a queue.  if no reader blocks are posted
  *  queue the data.
  *
- *  all copies should be outside of spl since they can fault.
+ *  all copies should be outside of ilock since they can fault.
  */
 long
 qwrite(Queue *q, void *vp, int len, int nowait)
 {
-	int n, sofar, x, dowakeup;
+	int n, sofar, dowakeup;
 	Block *b;
 	uchar *p = vp;
 
@@ -545,12 +536,10 @@ qwrite(Queue *q, void *vp, int len, int nowait)
 			sleep(&q->wr, qnotfull, q);
 		}
 	
-		x = splhi();
-		lock(q);
+		ilock(q);
 	
 		if(q->state & Qclosed){
-			unlock(q);
-			splx(x);
+			iunlock(q);
 			error(Ehungup);
 		}
 
@@ -579,8 +568,7 @@ checkb(b, "qwrite");
 			}
 		}
 
-		unlock(q);
-		splx(x);
+		iunlock(q);
 
 		if(dowakeup){
 			if(q->kick)
@@ -603,18 +591,15 @@ checkb(b, "qwrite");
 void
 qclose(Queue *q)
 {
-	int x;
 	Block *b, *bfirst;
 
 	/* mark it */
-	x = splhi();
-	lock(q);
+	ilock(q);
 	q->state |= Qclosed;
 	bfirst = q->bfirst;
 	q->bfirst = 0;
 	q->len = 0;
-	unlock(q);
-	splx(x);
+	iunlock(q);
 
 	/* free queued blocks */
 	while(bfirst){
@@ -635,14 +620,10 @@ qclose(Queue *q)
 void
 qhangup(Queue *q)
 {
-	int x;
-
 	/* mark it */
-	x = splhi();
-	lock(q);
+	ilock(q);
 	q->state |= Qclosed;
-	unlock(q);
-	splx(x);
+	iunlock(q);
 
 	/* wake up readers/writers */
 	wakeup(&q->rr);

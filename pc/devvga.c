@@ -971,18 +971,25 @@ s3page(int page)
 	uchar crt51;
 
 	/*
-	 * The S3 registers need to be unlocked for this.
-	 * Let's hope they are already:
-	 *	crout(0x38, 0x48);
-	 *	crout(0x39, 0xA0);
-	 *
-	 * The page is 6 bits, the lower 4 bits in Crt35<3:0>,
-	 * the upper 2 in Crt51<3:2>.
+	 * I don't understand why these are different.
 	 */
-	crout(0x35, page & 0x0F);
-	outb(CRX, 0x51);
-	crt51 = (0xF3 & inb(CR))|((page & 0x30)>>2);
-	outb(CR, crt51);
+	if(vgascreen.ldepth == 3){
+		/*
+		 * The S3 registers need to be unlocked for this.
+		 * Let's hope they are already:
+		 *	crout(0x38, 0x48);
+		 *	crout(0x39, 0xA0);
+		 *
+		 * The page is 6 bits, the lower 4 bits in Crt35<3:0>,
+		 * the upper 2 in Crt51<3:2>.
+		 */
+		crout(0x35, page & 0x0F);
+		outb(CRX, 0x51);
+		crt51 = (0xF3 & inb(CR))|((page & 0x30)>>2);
+		outb(CR, crt51);
+	}
+	else
+		crout(0x35, (page<<2) & 0x0C);
 }
 
 void

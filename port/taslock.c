@@ -22,15 +22,21 @@ lock(Lock *l)
 void
 ilock(Lock *l)
 {
-	l->sr = splhi();
-	if(tas(&l->key) == 0)
+	ulong x;
+
+	x = splhi();
+	if(tas(&l->key) == 0){
+		l->sr = x;
 		return;
+	}
 
 	for(;;){
 		while(l->key)
 			;
-		if(tas(&l->key) == 0)
+		if(tas(&l->key) == 0){
+			l->sr = x;
 			return;
+		}
 	}
 }
 
