@@ -170,7 +170,7 @@ srvcreate(Chan *c, char *name, int omode, ulong perm)
 	parent->dir.mtime = e->dir.mtime;
 	unlock(parent);
 	poperror();
-	c->qid = e->dir.gid;
+	c->qid = e->dir.qid;
 	c->aux = e;
 	c->flag |= COPEN;
 	c->mode = omode;
