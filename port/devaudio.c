@@ -512,7 +512,7 @@ audioinit(void)
 	int i;
 
 	sbconf.port = 0x220;
-	sbconf.dma = 5;
+	sbconf.dma = Dma;
 	sbconf.irq = 7;
 	if(isaconfig("audio", 0, &sbconf) == 0)
 		return;

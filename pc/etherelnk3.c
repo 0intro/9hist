@@ -1056,7 +1056,7 @@ tcm59Xpci(Ether* ether)
 static int
 tcm5XXpcmcia(Ether* ether)
 {
-	if(cistrcmp(ether->type, "3C589") == 0 || cistrcmp(ether->type, "3C562") == 0)
+	if(!cistrcmp(ether->type, "3C589") || !cistrcmp(ether->type, "3C562"))
 		return ether->port;
 
 	return 0;
