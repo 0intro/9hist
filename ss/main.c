@@ -140,7 +140,6 @@ init0(void)
 	print("bank 0: %dM  1: %dM\n", bank[0], bank[1]);
 	print("frame buffer id %lux %s\n", conf.monitor, fbstr);
 	print("NKLUDGE %d\n", NKLUDGE);
-mapdump();
 
 	u->slash = (*devtab[0].attach)(0);
 	u->dot = clone(u->slash, 0);

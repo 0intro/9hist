@@ -27,10 +27,14 @@ void		(*kprofp)(ulong);
 typedef struct	DAC DAC;
 struct DAC
 {
-uchar pad[3];	uchar	dacaddr;	/* DAC address register */
-uchar pad[3];	uchar	daccolor;	/* DAC color palette */
-uchar pad[3];	uchar	daccntrl;	/* DAC control register */
-uchar pad[3];	uchar	dacovrl;	/* DAC overlay palette */
+	uchar	addr;	/* DAC address register */
+	uchar	pad0[3];
+	uchar	color;	/* DAC color palette */
+	uchar	pad1[3];
+	uchar	cntrl;	/* DAC control register */
+	uchar	pad2[3];
+	uchar	ovrl;	/* DAC overlay palette */
+	uchar	pad3[3];
 }*dac;
 
 GBitmap gscreen;
@@ -84,7 +88,7 @@ screeninit(char *str)
 	out.pos.x = MINX;
 	out.pos.y = 0;
 	out.bwid = defont0.info[' '].width;
-	dac = (DAC*)kmappa(FRAMEBUF+s->dacaddr, PTENOCACHE|PTEMAINMEM);
+	dac = (DAC*)(kmappa(FRAMEBUF+s->dacaddr, PTENOCACHE|PTEIO)->va);
 	if(gscreen.ldepth == 3){
 		havecol = 0;	
 		if(havecol) {
@@ -104,40 +108,24 @@ screeninit(char *str)
 			setcolor(85, 0xAAAAAAAA, 0xAAAAAAAA, 0xAAAAAAAA);
 			setcolor(170, 0x55555555, 0x55555555, 0x55555555);
 		} else {
-dac->dacaddr = 4;
-dac->daccntrl = 0xFF;
-dac->dacaddr = 5;
-dac->daccntrl = 0x00;
-dac->dacaddr = 6;
-dac->daccntrl = 0x40;
-dac->dacaddr = 7;
-dac->daccntrl = 0x00;
-
-			for(i=0; i<255; i++) {
-				dac->dacaddr = i;
-				dac->daccolor = i;
-				dac->daccolor = i;
-				dac->daccolor = i;
-			}
 /*
-			for(i = 0; i<256; i++)
-				setcolor(i, ~rep(i,8), ~rep(i,8), ~rep(i,8));
+			dac->addr = 4;
+			dac->cntrl = 0xFF;
+			dac->addr = 5;
+			dac->cntrl = 0x00;
+			dac->addr = 6;
+			dac->cntrl = 0x40;
+			dac->addr = 7;
+			dac->cntrl = 0x00;
 */
-		}
-	}
-}
 
-void
-mapdump(void)
-{
-	int i;
-	for(i=0; i<100; i++) {
-		dac->dacaddr = i;
-		dac->daccolor = i;
-		dac->daccolor = i;
-		dac->daccolor = i;
-		dac->dacaddr = i;
-		print("%ux.%ux.%ux ", dac->daccolor, dac->daccolor, dac->daccolor);
+			dac->addr = 0;
+			for(i=255; i>=0; i--){
+				dac->color = i;
+				dac->color = i;
+				dac->color = i;
+			}
+		}
 	}
 }
 
@@ -467,19 +455,19 @@ getcolor(ulong p, ulong *pr, ulong *pg, ulong *pb)
 	ulong ans;
 
 	/*
-	 * The slc monochrome says 0 is white (max intensity)
+	 * The slc monochrome says 0 is white (max intensity).
 	 */
-	if(1 || gscreen.ldepth == 0) {
+	if(gscreen.ldepth == 0) {
 		if(p == 0)
 			ans = ~0;
 		else
 			ans = 0;
 		*pr = *pg = *pb = ans;
 	} else {
-		*(uchar *)&dac->dacaddr = p & 0xFF;
-		r = *(uchar *)&dac->daccolor;
-		g = *(uchar *)&dac->daccolor;
-		b = *(uchar *)&dac->daccolor;
+		*(uchar *)&dac->addr = p & 0xFF;
+		r = dac->color;
+		g = dac->color;
+		b = dac->color;
 		*pr = (r<<24) | (r<<16) | (r<<8) | r;
 		*pg = (g<<24) | (g<<16) | (g<<8) | g;
 		*pb = (b<<24) | (b<<16) | (b<<8) | b;
@@ -490,16 +478,13 @@ getcolor(ulong p, ulong *pr, ulong *pg, ulong *pb)
 int
 setcolor(ulong p, ulong r, ulong g, ulong b)
 {
-	if(1 || gscreen.ldepth == 0)
+	if(gscreen.ldepth == 0)
 		return 0;	/* can't change mono screen colormap */
-	else {
-		/* perhaps not reliable unless done while vertical blanking ? */
-		*(uchar *)&dac->dacaddr = p & 0xFF;
-/*
-		*(uchar *)&dac->daccolor = r >> 24;
-		*(uchar *)&dac->daccolor = g >> 24;
-		*(uchar *)&dac->daccolor = b >> 24;
-*/
+	else{
+		dac->addr = p & 0xFF;
+		dac->color = r >> 24;
+		dac->color = g >> 24;
+		dac->color = b >> 24;
 		return 1;
 	}
 }
