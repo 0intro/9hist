@@ -5,7 +5,7 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
-void (*mntstats)(int, Chan*, uvlong);
+void (*mntstats)(int, Chan*, uvlong, ulong);
 
 enum
 {
@@ -22,10 +22,13 @@ struct Mntstats
 	Mntstats *next;
 	int	inuse;
 	Chan	c;
-	uvlong	hi[Nrpc];		/* high water time spent/msg type */
-	uvlong	tot[Nrpc];		/* cumulative time spent/msg type */
+	uvlong	hi[Nrpc];		/* high water time spent */
+	uvlong	tot[Nrpc];		/* cumulative time spent */
 	uvlong	bytes[Nrpc];		/* cumulative bytes xfered */
 	ulong	n[Nrpc];		/* number of messages/msg type */
+	uvlong	bigtot[Nrpc];		/* cumulative time spent in big messages */
+	uvlong	bigbytes[Nrpc];		/* cumulative bytes xfered in big messages */
+	ulong	bign[Nrpc];		/* number of big messages */
 	ulong	last100[Nrpc];		/* avg time for last 100 */
 };
 
@@ -38,7 +41,7 @@ static struct
 } msalloc;
 
 static void
-_mntstats(int type, Chan *c, uvlong start)
+_mntstats(int type, Chan *c, uvlong start, ulong bytes)
 {
 	uint h;
 	Mntstats **l, *m;
@@ -82,6 +85,13 @@ _mntstats(int type, Chan *c, uvlong start)
 	m->n[type]++;
 	x = elapsed;
 	m->last100[type] = (m->last100[type]*127 + x)>>7;
+	m->bytes[type] += bytes;
+
+	if(bytes >= 8*1024){
+		m->bigtot[type] += elapsed;
+		m->bign[type]++;
+		m->bigbytes[type] += bytes;
+	}
 }
 
 static int
@@ -139,7 +149,7 @@ mntstatsclose(Chan*)
 
 enum
 {
-	Nline=	80,
+	Nline=	141,
 };
 
 char *rpcname[Nrpc] =
@@ -193,9 +203,10 @@ mntstatsread(Chan *c, void *buf, long n, vlong off)
 			avg = m->tot[o]/m->n[o];
 		else
 			avg = 0;
-		sprint(xbuf, "%-8.8s %16.0llud %16.0llud %9.0lud %16.0llud %9.0lud\n",
-				rpcname[o],  m->hi[o],
-				m->tot[o], m->n[o], avg, m->last100[o]);
+		sprint(xbuf, "%-8.8s %16.0llud %16.0llud %16.0llud %9.0lud %16.0llud %16.0llud %9.0lud %16.0llud %9.0lud\n",
+			rpcname[o], m->hi[o], m->tot[o], m->bytes[o], m->n[o],
+			m->bigtot[o], m->bigbytes[o], m->bign[o],
+			avg, m->last100[o]);
 		memmove(a, xbuf, Nline);
 		a += Nline;
 		o++;

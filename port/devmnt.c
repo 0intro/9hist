@@ -11,7 +11,6 @@ struct Mntrpc
 	Mntrpc*	list;		/* Free/pending list */
 	Fcall	request;	/* Outgoing file system protocol message */
 	Fcall	reply;		/* Incoming reply */
-	uvlong	stime;		/* start time */
 	Mnt*	m;		/* Mount device during rpc */
 	Rendez	r;		/* Place to hang out */
 	char*	rpc;		/* I/O Data buffer */
@@ -19,6 +18,9 @@ struct Mntrpc
 	char	flushed;	/* Flush was sent */
 	ushort	flushtag;	/* Tag flush sent on */
 	char	flush[MAXMSG];	/* Somewhere to build flush */
+	uvlong	stime;		/* start time for mnt statistics */
+	ulong	reqlen;		/* request length for mnt statistics */
+	ulong	replen;		/* reply length for mnt statistics */
 };
 
 struct Mntalloc
@@ -56,7 +58,7 @@ void	mntrecover(Mnt*, Mntrpc*);
 Chan*	mntchan(void);
 
 int defmaxmsg = MAXFDATA;
-extern void (*mntstats)(int, Chan*, uvlong);
+void (*mntstats)(int, Chan*, uvlong, ulong);
 
 enum
 {
@@ -679,7 +681,7 @@ mountio(Mnt *m, Mntrpc *r)
 				error(Emountrpc);
 		}
 		r->stime = fastticks(nil);
-		r->bytes = n;
+		r->reqlen = n;
 		poperror();
 	}
 
@@ -731,6 +733,7 @@ mntrpcread(Mnt *m, Mntrpc *r)
 		if(n == 0)
 			continue;
 
+		r->replen = n;
 		if(convM2S(r->rpc, &r->reply, n) != 0)
 			return;
 	}
@@ -765,17 +768,20 @@ mountmux(Mnt *m, Mntrpc *r)
 			*l = q->list;
 			unlock(m);
 			if(q != r) {		/* Completed someone else */
+				/* trade pointers to receive buffer */
 				dp = q->rpc;
 				q->rpc = r->rpc;
 				r->rpc = dp;
 				q->reply = r->reply;
 				q->done = 1;
 				if(mntstats != nil)
-					(*mntstats)(q->request.type, m->c, q->stime);
+					(*mntstats)(q->request.type, m->c, q->stime,
+							q->reqlen + r->replen);
 				wakeup(&q->r);
 			}else {
 				if(mntstats != nil)
-					(*mntstats)(r->request.type, m->c, q->stime);
+					(*mntstats)(r->request.type, m->c, r->stime,
+						r->reqlen + r->replen);
 				q->done = 1;
 			}
 			return;
