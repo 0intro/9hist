@@ -29,7 +29,7 @@ void
 pcmciamodemlink(void)
 {
 	ISAConf isa;
-	int i, slot;
+	int i, j, slot;
 
 	i = 0;
 	for(;;){
@@ -49,7 +49,11 @@ pcmciamodemlink(void)
 		if(isa.port == 0)
 			isa.port = 0x2F8;
 
-		slot = pcmspecial(modems[0], &isa);
+		for(j = 0; modems[j]; j++){
+			slot = pcmspecial(modems[0], &isa);
+			if(slot >= 0)
+				break;
+		}
 		if(slot < 0)
 			break;
 	}

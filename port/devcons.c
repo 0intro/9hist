@@ -714,7 +714,7 @@ consread(Chan *c, void *buf, long n, vlong off)
 		return n;
 
 	default:
-		print("consread %lux\n", c->qid);
+		print("consread %lux\n", c->qid.path);
 		error(Egreg);
 	}
 	return -1;		/* never reached */

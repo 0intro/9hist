@@ -76,6 +76,7 @@ closepgrp(Pgrp *p)
 		return;
 
 	qlock(&p->debug);
+	wlock(&p->ns);
 	p->pgrpid = -1;
 
 	e = &p->mnthash[MNTHASH];
@@ -87,6 +88,7 @@ closepgrp(Pgrp *p)
 			free(f);
 		}
 	}
+	wunlock(&p->ns);
 	qunlock(&p->debug);
 	free(p);
 }

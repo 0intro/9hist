@@ -191,7 +191,7 @@ int		proccounter(char *name);
 void		procctl(Proc*);
 void		procdump(void);
 void		procinit0(void);
-void		procsegflush(Segment*);
+void		procflushseg(Segment*);
 Proc*		proctab(int);
 void		procwired(Proc*);
 void		ptclone(Chan*, int, int);

@@ -461,6 +461,8 @@ enum
 	Qmem,
 	Qattr,
 	Qctl,
+
+	Nents = 3,
 };
 
 #define SLOTNO(c)	((c->qid.path>>8)&0xff)
@@ -476,12 +478,12 @@ pcmgen(Chan *c, Dirtab *, int , int i, Dir *dp)
 	Slot *pp;
 	char name[NAMELEN];
 
-	if(i >= 3*nslot)
+	if(i >= Nents*nslot)
 		return -1;
-	slotno = i/3;
+	slotno = i/Nents;
 	pp = slot + slotno;
 	len = 0;
-	switch(i%3){
+	switch(i%Nents){
 	case 0:
 		qid.path = QID(slotno, Qmem);
 		sprint(name, "pcm%dmem", slotno);

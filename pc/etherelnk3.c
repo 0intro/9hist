@@ -1761,7 +1761,7 @@ else
 		anlpar = miir(port, phyaddr, 0x05) & 0x03E0;
 		anar &= anlpar;
 		miir(port, phyaddr, 0x00);
-		XCVRDEBUG("mii an: %uX r0:%uX r1:%uX\n",
+		XCVRDEBUG("mii an: %uX anlp: %uX r0:%uX r1:%uX\n",
 			anar, anlpar, miir(port, phyaddr, 0x00), miir(port, phyaddr, 0x01));
 		for(i = 0; i < ether->nopt; i++){
 			if(cistrcmp(ether->opt[i], "fullduplex") == 0)

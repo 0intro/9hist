@@ -80,7 +80,7 @@ scsireset(void)
 
 			print("scsi#%d: %s: port 0x%luX irq %d",
 				ctlrno, ctlr->type, ctlr->port,
-				ctlr->irq, ctlr->mem, ctlr->size);
+				ctlr->irq);
 			if(ctlr->mem)
 				print(" addr 0x%luX", PADDR(ctlr->mem));
 			if(ctlr->size)
@@ -188,7 +188,7 @@ scsiprobe(Ctlr *ctlr)
 			print("scsi#%d: unit %d inquire failed, status %d\n", t->ctlrno, i, s);
 			continue;
 		}
-		print("scsi#%d: unit %d: %s\n", t->ctlrno, i, t->inq+8);
+		print("scsi#%d: unit %d: %s\n", t->ctlrno, i, (char*)(t->inq+8));
 		t->ok = 1;
 	}
 }

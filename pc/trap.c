@@ -235,12 +235,12 @@ dumpregs2(Ureg* ureg)
 		print("cpu%d: registers for %s %d\n", m->machno, up->text, up->pid);
 	else
 		print("cpu%d: registers for kernel\n", m->machno);
-	print("FLAGS=%luX TRAP=%luX ECODE=%luX PC=%luX", ureg->flags, ureg->trap,
+	print("FLAGS=%lux TRAP=%lux ECODE=%lux PC=%lux", ureg->flags, ureg->trap,
 		ureg->ecode, ureg->pc);
-	print(" SS=%4.4luX USP=%luX\n", ureg->ss & 0xFFFF, ureg->usp);
-	print("  AX %8.8luX  BX %8.8luX  CX %8.8luX  DX %8.8luX\n",
+	print(" SS=%4.4lux USP=%lux\n", ureg->ss & 0xFFFF, ureg->usp);
+	print("  AX %8.8lux  BX %8.8lux  CX %8.8lux  DX %8.8lux\n",
 		ureg->ax, ureg->bx, ureg->cx, ureg->dx);
-	print("  SI %8.8luX  DI %8.8luX  BP %8.8luX\n",
+	print("  SI %8.8lux  DI %8.8lux  BP %8.8lux\n",
 		ureg->si, ureg->di, ureg->bp);
 	print("  CS %4.4uX  DS %4.4uX  ES %4.4uX  FS %4.4uX  GS %4.4uX\n",
 		ureg->cs & 0xFFFF, ureg->ds & 0xFFFF, ureg->es & 0xFFFF,
@@ -264,14 +264,14 @@ dumpregs(Ureg* ureg)
 	 */
 	print("  CR0 %8.8lux CR2 %8.8lux CR3 %8.8lux", getcr0(), getcr2(), getcr3());
 	if(m->cpuiddx & 0x9A){
-		print(" CR4 %8.8luX", getcr4());
+		print(" CR4 %8.8lux", getcr4());
 		if((m->cpuiddx & 0xA0) == 0xA0){
 			rdmsr(0x00, &mca);
 			rdmsr(0x01, &mct);
-			print("\n  MCA %8.8lluX MCT %8.8lluX", mca, mct);
+			print("\n  MCA %8.8llux MCT %8.8llux", mca, mct);
 		}
 	}
-	print("\n  ur %luX up %luX\n", ureg, up);
+	print("\n  ur %lux up %lux\n", ureg, up);
 }
 
 void
