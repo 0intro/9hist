@@ -238,11 +238,36 @@ Conf	conf;
 void
 confinit(void)
 {
-	long x, i, j, *l;
+	long x, i, j, n, *l;
 	int pcnt;
 	ulong ktop;
 	char *cp;
 	char *line[MAXCONF];
+
+	pcnt = 0;
+
+	/*
+	 *  parse configuration args from dos file p9rc
+	 */
+	cp = BOOTARGS;	/* where b.com leaves it's config */
+	cp[BOOTARGSLEN-1] = 0;
+	n = getfields(cp, line, MAXCONF, '\n');
+	for(j = 0; j < n; j++){
+		cp = strchr(line[j], '\r');
+		if(cp)
+			*cp = 0;
+		cp = strchr(line[j], '=');
+		if(cp == 0)
+			continue;
+		*cp++ = 0;
+		if(cp - line[j] >= NAMELEN+1)
+			*(line[j]+NAMELEN-1) = 0;
+		confname[nconf] = line[j];
+		confval[nconf] = cp;
+		if(strcmp(confname[nconf], "kernelpercent") == 0)
+			pcnt = 100 - atoi(confval[nconf]);
+		nconf++;
+	}
 
 	/*
 	 *  the first 640k is the standard useful memory
@@ -285,10 +310,9 @@ confinit(void)
 	conf.base1 = 1*MB;
 	conf.npage1 = (i*MB - conf.base1)/BY2PG;
 	conf.npage = conf.npage0 + conf.npage1;
-
 	conf.ldepth = 0;
-	pcnt = (1<<conf.ldepth)-1;		/* Calculate % of memory for page pool */
-	pcnt = 70 - (pcnt*10);
+	if(pcnt < 10)
+		pcnt = 70;
 	conf.upages = (conf.npage*pcnt)/100;
 
 	ktop = PGROUND((ulong)end);
@@ -305,28 +329,6 @@ confinit(void)
 	conf.nfloppy = 2;
 	conf.nhard = 2;
 	conf.nmach = 1;
-
-	/*
-	 *  parse configuration args from dos file p9rc
-	 */
-	cp = BOOTARGS;	/* where b.com leaves it's config */
-	cp[BOOTARGSLEN-1] = 0;
-	i = getfields(cp, line, MAXCONF, '\n');
-	for(j = 0; j < i; j++){
-		cp = strchr(line[j], '\r');
-		if(cp)
-			*cp = 0;
-		cp = strchr(line[j], '=');
-		if(cp == 0)
-			continue;
-		*cp++ = 0;
-		if(cp - line[j] >= NAMELEN+1)
-			*(line[j]+NAMELEN-1) = 0;
-		confname[nconf] = line[j];
-		confval[nconf] = cp;
-		nconf++;
-	}
-
 }
 
 char *mathmsg[] =

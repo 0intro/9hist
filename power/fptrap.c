@@ -28,10 +28,12 @@ void
 fptrap(Ureg *ur)
 {
 	ulong iw, iw_4, npc;
+	static int counter;
 
 	if((u->fpsave.fpstatus&(1<<17)) == 0)
 		return;
 
+if((counter&0xff) == 0)
 print("fpt: %d %s %lux %lux\n", u->p->pid, u->p->text, u->fpsave.fpstatus, ur->pc);
 
 	if(tlbp(ur->pc) == 0)

@@ -343,6 +343,7 @@ confinit(void)
 	 * keyboard, too.
 	 */
 	switch(idprom[1]){
+	case 0x52:	/* IPC */
 	case 0x54:	/* SLC */
 		conf.monitor = 1;
 		fbslot = 3;
@@ -418,6 +419,7 @@ confinit(void)
 	for(i=0; i<sparam->memscan; i++)
 		if(mempres[i]){
 			v = mempres[i];
+			i = v-'0';
 			for(j=i+1; j<sparam->memscan && mempres[j]>v; j++)
 				v = mempres[j];
 			npg = (j-i)*MB/BY2PG;
@@ -442,9 +444,8 @@ confinit(void)
 		 * NB. Suns must have at LEAST 8Mbytes.
 		 */
 		conf.npage1 = conf.npage0 - (8*MB)/BY2PG;
-		conf.base1 = 8*MB;
+		conf.base1 = conf.base0 + 8*MB;
 		conf.npage0 = (8*MB)/BY2PG;
-		conf.base0 = 0;
 		bank[1] = bank[0]-8;
 		bank[0] = 8;
 	}

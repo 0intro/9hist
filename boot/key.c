@@ -26,16 +26,21 @@ getsafe(char *field, int len, uchar *sum, char *file, int pass)
 void
 key(int islocal, Method *mp)
 {
-	int fd;
+	int fd, safeoff;
 	Nvrsafe safe;
 	char password[20];
 
 	USED(islocal);
 	USED(mp);
 
+	if(strcmp(cputype, "sparc") == 0)
+		safeoff = 1024+850;
+	else
+		safeoff = 1024+900;
+
 	fd = open("#r/nvram", ORDWR);
 	if(fd < 0
-	|| seek(fd, 1024+900, 0) < 0
+	|| seek(fd, safeoff, 0) < 0
 	|| read(fd, &safe, sizeof safe) != sizeof safe){
 		memset(&safe, 0, sizeof(safe));
 		warning("can't read nvram");
@@ -55,7 +60,7 @@ key(int islocal, Method *mp)
 		safe.machsum = nvcsum(safe.machkey, DESKEYLEN);
 		safe.authidsum = nvcsum(safe.authid, sizeof(safe.authid));
 		safe.authdomsum = nvcsum(safe.authdom, sizeof(safe.authdom));
-		if(seek(fd, 1024+900, 0) < 0
+		if(seek(fd, safeoff, 0) < 0
 		|| write(fd, &safe, sizeof safe) != sizeof safe)
 			warning("can't write key to nvram");
 	}
