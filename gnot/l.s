@@ -178,20 +178,18 @@ TEXT	dkintr(SB), $0			/* level 2 */
 
 TEXT	mouseintr(SB), $0		/* level 4 */
 
-	MOVEM	$0x8082, -(A7)		/* D0, A0, A6 */
+	MOVEM	$0x80C2, -(A7)		/* D0, A0, A1, A6 */
 	MOVL	$a6base(SB), A6
 	MOVL	$15, R0			/* mask off hex switch */
 	ANDB	MOUSE,R0		/* clears quadrature interrupt */
 	LEA	mousetab(SB)(R0.W*8), A0
-#ifdef asdf
+	LEA	mouse(SB), A1
 	MOVL	(A0)+, R0
-	ADDL	R0, mousedx(SB)
+	ADDL	R0, (A1)+		/* dx */
 	MOVL	(A0), R0
-	ADDL	R0, mousedy(SB)
-	ADDL	$1, mousechanged(SB)
-	ADDL	$1, dotrack(SB)
-#endif
-	MOVEM	(A7)+, $0x4101
+	ADDL	R0, (A1)+		/* dy */
+	ADDL	$1, (A1)		/* track */
+	MOVEM	(A7)+, $0x4301
 	RTE
 
 TEXT	uartintr(SB), $0		/* level 5 */

@@ -18,7 +18,6 @@ int fd;
 int cfd;
 int efd;
 
-
 typedef
 struct address {
 	char *name;
@@ -47,7 +46,7 @@ void	boot(int);
 /*
  *  usage: 9b [-a] [server] [file]
  *
- *  default server is `bitbootes', default file is `/sys/src/9/mips/9'
+ *  default server is `bitbootes', default file is `/mips/9'
  */
 main(int argc, char *argv[])
 {
@@ -58,6 +57,12 @@ main(int argc, char *argv[])
 	open("#c/cons", 1);
 	open("#c/cons", 1);
 
+	i = create("#e/sysname", 1, 0666);
+	if(i < 0)
+		error("sysname");
+	if(write(i, argv[0], strlen(argv[0])) <= 0)
+		error("sysname");
+	close(i);
 
 	argv++;
 	argc--;	
@@ -113,8 +118,6 @@ boot(int ask)
 		fprint(2, "boot: %s unknown\n", sys);
 		return;
 	}
-
-	print("Connecting to server %s\n", sys);
 
 	/*
 	 *  for the bit, we skip all the ether goo
@@ -239,7 +242,12 @@ boot(int ask)
 	if(mount(fd, "/", MAFTER|MCREATE, "") < 0)
 		error("mount");
 	print("success\n");
-	execl("/mips/init", "init", 0);
+	close(fd);
+
+	if(ask)
+		execl("/mips/init", "init", 0);
+	else
+		execl("/mips/init", "init", "-m", 0);
 	error("/mips/init");
 }
 

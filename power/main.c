@@ -12,19 +12,39 @@
  */
 int _argc; char **_argv; char **_env;
 
+/*
+ *  arguments passed to initcode
+ */
 char argbuf[512];
 int argsize;
+
+/*
+ *  environment passed to any kernel started by this kernel
+ */
+char envbuf[64];
+char *env[2];
+
+/*
+ *  configuration file read by boot program
+ */
+char confbuf[4*1024];
+
+/*
+ *  system name
+ */
+char sysname[64];
 
 void
 main(void)
 {
 	int i;
 
+	icflush(0, 64*1024);
 	active.exiting = 0;
 	active.machs = 1;
-	arginit();
 	machinit();
 	confinit();
+	arginit();
 	lockinit();
 	printinit();
 	tlbinit();
@@ -41,49 +61,6 @@ main(void)
 	userinit();
 	launchinit();
 	schedinit();
-}
-
-/*
- *  copy arguments into a temporary buffer.  we do this because the arguments
- *  are in memory that may be allocated to processes or kernel buffers.
- */
-void
-arginit(void)
-{
-	int i, n;
-	int nbytes;
-	int ssize;
-	char *p;
-	char **argv;
-	char *charp;
-
-	/*
-	 *  trim arguments to make them fit in the buffer
-	 */
-	for(nbytes = i = 0; i < _argc; i++){
-		n = strlen(_argv[i]) + 1;
-		ssize = BY2WD*(i+2) + ((nbytes+n+(BY2WD-1)) & ~(BY2WD-1));
-		if(ssize > sizeof(argbuf))
-			break;
-		nbytes += n;
-	}
-	_argc = i;
-	ssize = BY2WD*(i+1) + ((nbytes+(BY2WD-1)) & ~(BY2WD-1));
-
-	/*
-	 *  copy arguments into the buffer
-	 */
-	argv = (char**)(argbuf + sizeof(argbuf) - ssize);
-	charp = (char*)(argbuf + sizeof(argbuf) - nbytes);
-	for(i=0; i<_argc; i++){
-		argv[i] = charp;
-		n = strlen(_argv[i]) + 1;
-		memcpy(charp, _argv[i], n);
-		charp += n;
-	}
-	_argv = argv;
-
-	argsize = ssize;
 }
 
 void
@@ -413,18 +390,152 @@ delete(List **head, List *where, List *old)
 	where->next = old->next;
 }
 
+typedef struct Conftab {
+	char *sym;
+	ulong *x;
+} Conftab;
+
+#include "conf.h"
+
 Conf	conf;
+
+ulong
+confeval(char *exp)
+{
+	char *op;
+	Conftab *ct;
+
+	/* crunch leading white */
+	while(*exp==' ' || *exp=='\t')
+		exp++;
+
+	op = strchr(exp, '+');
+	if(op != 0){
+		*op++ = 0;
+		return confeval(exp) + confeval(op);
+	}
+
+	op = strchr(exp, '*');
+	if(op != 0){
+		*op++ = 0;
+		return confeval(exp) * confeval(op);
+	}
+
+	if(*exp >= '0' && *exp <= '9')
+		return strtoul(exp, 0, 0);
+
+	/* crunch trailing white */
+	op = strchr(exp, ' ');
+	if(op)
+		*op = 0;
+	op = strchr(exp, '\t');
+	if(op)
+		*op = 0;
+
+	/* lookup in symbol table */
+	for(ct = conftab; ct->sym; ct++)
+		if(strcmp(exp, ct->sym) == 0)
+			return *(ct->x);
+
+	return 0;
+}
+
+/*
+ *  each line of the configuration is of the form `param = expression'.
+ */
+void
+confset(char *sym)
+{
+	char *val, *p;
+	Conftab *ct;
+	ulong x;
+
+	/*
+ 	 *  parse line
+	 */
+
+	/* comment */
+	if(p = strchr(sym, '#'))
+		*p = 0;
+
+	/* skip white */
+	for(p = sym; *p==' ' || *p=='\t'; p++)
+		;
+	sym = p;
+
+	/* skip sym */
+	for(; *p && *p!=' ' && *p!='\t' && *p!='='; p++)
+		;
+	if(*p)
+		*p++ = 0;
+
+	/* skip white */
+	for(; *p==' ' || *p=='\t' || *p=='='; p++)
+		;
+	val = p;
+
+	/*
+	 *  lookup value
+	 */
+	for(ct = conftab; ct->sym; ct++)
+		if(strcmp(sym, ct->sym) == 0){
+			*(ct->x) = confeval(val);
+			return;
+		}
+
+	if(strcmp(sym, "sysname")==0){
+		p = strchr(val, ' ');
+		if(p)
+			*p = 0;
+		strcpy(sysname, val);
+	}
+}
+
+/*
+ *  read the ascii configuration left by the boot kernel
+ */
+void
+confread(void)
+{
+	char *line;
+	char *end;
+
+	/*
+	 *  process configuration file
+	 */
+	line = confbuf;
+	while(end = strchr(line, '\n')){
+		*end = 0;
+		confset(line);
+		line = end+1;
+	}
+}
+
+void
+confprint(void)
+{
+	Conftab *ct;
+
+	/*
+	 *  lookup value
+	 */
+	for(ct = conftab; ct->sym; ct++)
+		print("%s == %d\n", ct->sym, *ct->x);
+}
 
 void
 confinit(void)
 {
-	long x, i, j, *l, *e;
+	long x, i, j, *l;
 
-#include  "conf.h"
+	/*
+	 *  copy configuration down from high memory
+	 */
+	strcpy(confbuf, (char *)(0x80000000 + 4*1024*1024 - 4*1024));
 
-	if(conf.nmach > MAXMACH)
-		panic("confinit");
-
+	/*
+	 *  size memory
+	 */
 	x = 0x12345678;
 	for(i=4; i<128; i+=4){
 		l = (long*)(KSEG1|(i*1024L*1024L));
@@ -436,14 +547,96 @@ confinit(void)
 		x += 0x3141526;
 	}
 	conf.npage = i*1024/4;
+
+	/*
+	 *  set minimal default values
+	 */
+	conf.nmach = 1;
+	conf.nmod = 2000;
+	conf.nalarm = 1000;
+	conf.norig = 9;
+	conf.nchan = 64;
+	conf.nenv = 4;
+	conf.nenvchar = 1000;
+	conf.npgenv = 400;
+	conf.nmtab = 4;
+	conf.nmount = 4;
+	conf.nmntdev = 4;
+	conf.nmntbuf = 4;
+	conf.nmnthdr = 4;
+	conf.nstream = 4;
+	conf.nsrv = 0;
+	conf.nproc = 4;
+	conf.npgrp = 4;
 	conf.npte = 4 * conf.npage;
 	conf.nqueue = 5 * conf.nstream;
 	conf.nblock = 16 * conf.nstream;
 
+	confread();
+
+	if(conf.nmach > MAXMACH)
+		panic("confinit");
+
+}
+
+/*
+ *  copy arguments passed by the boot kernel (or ROM) into a temporary buffer.
+ *  we do this because the arguments are in memory that may be allocated
+ *  to processes or kernel buffers.
+ */
+#define SYSENV "netaddr="
+void
+arginit(void)
+{
+	int i, n;
+	int nbytes;
+	int ssize;
+	char *p;
+	char **argv;
+	char *charp;
+
 	/*
-	 *  zero memory from bss up
+	 *  get the system name from the environment
 	 */
-	e = (long *)(i*1024*1024);
-	for(l = &end; l < e; l++)
-		*l = 0;
+	if(*sysname == 0){
+		for(argv = _env; *argv; argv++){
+			if(strncmp(*argv, SYSENV, sizeof(SYSENV)-1)==0){
+				strcpy(sysname, (*argv) + sizeof(SYSENV)-1);
+				break;
+			}
+		}
+	}
+	strcpy(envbuf, SYSENV);
+	strcat(envbuf, sysname);
+	env[0] = envbuf;
+	env[1] = 0;
+
+	/*
+	 *  trim arguments to make them fit in the buffer (argv[0] is sysname)
+	 */
+	nbytes = 0;
+	_argv[0] = sysname;
+	for(i = 0; i < _argc; i++){
+		n = strlen(_argv[i]) + 1;
+		ssize = BY2WD*(i+2) + ((nbytes+n+(BY2WD-1)) & ~(BY2WD-1));
+		if(ssize > sizeof(argbuf))
+			break;
+		nbytes += n;
+	}
+	_argc = i;
+	ssize = BY2WD*(i+1) + ((nbytes+(BY2WD-1)) & ~(BY2WD-1));
+
+	/*
+	 *  copy arguments into the buffer
+	 */
+	argv = (char**)(argbuf + sizeof(argbuf) - ssize);
+	charp = (char*)(argbuf + sizeof(argbuf) - nbytes);
+	for(i=0; i<_argc; i++){
+		argv[i] = charp;
+		n = strlen(_argv[i]) + 1;
+		memcpy(charp, _argv[i], n);
+		charp += n;
+	}
+	_argv = argv;
+	argsize = ssize;
 }

@@ -115,27 +115,27 @@ struct	FPsave
 
 struct Conf
 {
-	int	nmach;		/* processors */
-	int	nproc;		/* processes */
-	int	npgrp;		/* process groups */
+	ulong	nmach;		/* processors */
+	ulong	nproc;		/* processes */
+	ulong	npgrp;		/* process groups */
 	ulong	npage;		/* total physical pages of memory */
 	ulong	norig;		/* origins */
 	ulong	npte;		/* contiguous page table entries */
 	ulong	nmod;		/* single (modifying) page table entries */
-	int	nalarm;		/* alarms */
-	int	nchan;		/* channels */
-	int	nenv;		/* distinct environment values */
-	int	nenvchar;	/* environment text storage */
-	int	npgenv;		/* environment files per process group */
-	int	nmtab;		/* mounted-upon channels per process group */
-	int	nmount;		/* mounts */
-	int	nmntdev;	/* mounted devices (devmnt.c) */
-	int	nmntbuf;	/* buffers for devmnt.c messages */
-	int	nmnthdr;	/* headers for devmnt.c messages */
-	int	nstream;	/* streams */
-	int	nqueue;		/* stream queues */
-	int	nblock;		/* stream blocks */
-	int	nsrv;		/* public servers (devsrv.c) */
+	ulong	nalarm;		/* alarms */
+	ulong	nchan;		/* channels */
+	ulong	nenv;		/* distinct environment values */
+	ulong	nenvchar;	/* environment text storage */
+	ulong	npgenv;		/* environment files per process group */
+	ulong	nmtab;		/* mounted-upon channels per process group */
+	ulong	nmount;		/* mounts */
+	ulong	nmntdev;	/* mounted devices (devmnt.c) */
+	ulong	nmntbuf;	/* buffers for devmnt.c messages */
+	ulong	nmnthdr;	/* headers for devmnt.c messages */
+	ulong	nstream;	/* streams */
+	ulong	nqueue;		/* stream queues */
+	ulong	nblock;		/* stream blocks */
+	ulong	nsrv;		/* public servers (devsrv.c) */
 };
 
 struct Dev

@@ -175,18 +175,14 @@ sysexec(ulong *arg)
 	if(!indir)
 		strcpy(elem, u->elem);
 	n = (*devtab[tc->type].read)(tc, &exec, sizeof(Exec));
-	if(n < 2){
-		print("short read\n");
+	if(n < 2)
     Err:
 		error(0, Ebadexec);
-	}
 	if(n==sizeof(Exec) && exec.magic==A_MAGIC){
 		if((exec.text&KZERO)
 		|| (ulong)exec.entry < UTZERO+sizeof(Exec)
-		|| (ulong)exec.entry >= UTZERO+sizeof(Exec)+exec.text){
-			print("bad header sizes\n");
+		|| (ulong)exec.entry >= UTZERO+sizeof(Exec)+exec.text)
 			goto Err;
-		}
 		goto Binary;
 	}
 

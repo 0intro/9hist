@@ -382,7 +382,6 @@ mntclose(Chan *c)
 	if(c == m->mntpt)
 		m->mntpt = 0;
 	if(decref(m) == 0){		/* BUG: need to hang up all pending i/o */
-print("close mount table %d\n", m->mntid);
 		qlock(m);
 		close(m->msg);
 		m->msg = 0;

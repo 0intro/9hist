@@ -73,6 +73,7 @@ void	mapstack(Proc*);
 void	mmuinit(void);
 int	mount(Chan*, Chan*, int);
 void	mousebuttons(int);
+void	mouseclock(void);
 Chan	*namec(char*, int, int, ulong);
 void	nexterror(void);
 Alarm	*newalarm(void);

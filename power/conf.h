@@ -1,18 +1,25 @@
-	conf.nmach = 4 ;
-	conf.nmod = 2000 ;
-	conf.nalarm = 10000 ;
-	conf.norig = 500 ;
-	conf.nchan = 500 ;
-	conf.nenv = 400 ;
-	conf.nenvchar = 20000 ;
-	conf.npgenv = 400 ;
-	conf.nmtab = 100 ;
-	conf.nmount = 500 ;
-	conf.nmntdev = 30 ;
-	conf.nmntbuf = 60 ;
-	conf.nmnthdr = 60 ;
-	conf.nstream = 512 ;
-	conf.nsrv = 32 ;
-	conf.nproc = 193 ;
-	conf.npgrp = 100 ;
+Conftab conftab[] = {
+	{"nmach", &conf.nmach },
+	{"nproc", &conf.nproc },
+	{"npgrp", &conf.npgrp },
+	{"npage", &conf.npage },
+	{"norig", &conf.norig },
+	{"npte", &conf.npte },
+	{"nmod", &conf.nmod },
+	{"nalarm", &conf.nalarm },
+	{"nchan", &conf.nchan },
+	{"nenv", &conf.nenv },
+	{"nenvchar", &conf.nenvchar },
+	{"npgenv", &conf.npgenv },
+	{"nmtab", &conf.nmtab },
+	{"nmount", &conf.nmount },
+	{"nmntdev", &conf.nmntdev },
+	{"nmntbuf", &conf.nmntbuf },
+	{"nmnthdr", &conf.nmnthdr },
+	{"nstream", &conf.nstream },
+	{"nqueue", &conf.nqueue },
+	{"nblock", &conf.nblock },
+	{"nsrv", &conf.nsrv },
+	{ 0, 0 },
+};
 

@@ -118,6 +118,7 @@ clock(Ureg *ur)
 		unlock(&m->alarmlock);
 	}
 	kbdclock();
+	mouseclock();
 	if((ur->sr&SPL(7)) == 0){
 		spllo();
 		if(p && p->state==Running)

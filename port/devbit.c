@@ -40,7 +40,72 @@ struct{
 void	bitcompact(void);
 void	bitfree(Bitmap*);
 extern	Bitmap	screen;
-Mouse	mouse;
+
+struct{
+	/*
+	 * First three fields are known in l.s
+	 */
+	int	dx;		/* interrupt-time delta */
+	int	dy;
+	int	track;		/* update cursor on screen */
+	Mouse;
+	int	changed;	/* mouse structure changed since last read */
+	Rendez	r;
+}mouse;
+
+struct{
+	Cursor;
+	Lock;
+	int	visible;	/* on screen */
+	Rectangle r;		/* location */
+}cursor =
+{
+	{{0, 0},
+	{0xFFE0, 0xFFE0, 0xFFC0, 0xFF00,
+	 0xFF00, 0xFF80, 0xFFC0, 0xFFE0,
+	 0xE7F0, 0xE3F8, 0xC1FC, 0x00FE,
+	 0x007F, 0x003E, 0x001C, 0x0008,
+	},
+	{0x0000, 0x7FC0, 0x7F00, 0x7C00,
+	 0x7E00, 0x7F00, 0x6F80, 0x67C0,
+	 0x43E0, 0x41F0, 0x00F8, 0x007C,
+	 0x003E, 0x001C, 0x0008, 0x0000,
+	}},
+};
+
+ulong setbits[16];
+Bitmap	set =
+{
+	setbits,
+	0,
+	1,
+	0,
+	{0, 0, 16, 16}
+};
+
+ulong clrbits[16];
+Bitmap	clr =
+{
+	clrbits,
+	0,
+	1,
+	0,
+	{0, 0, 16, 16}
+};
+
+ulong cursorbackbits[16];
+Bitmap cursorback =
+{
+	cursorbackbits,
+	0,
+	1,
+	0,
+	{0, 0, 16, 16}
+};
+
+void	cursortobitmap(void);
+void	cursoron(int);
+void	cursoroff(int);
 
 enum{
 	Qdir,
@@ -74,6 +139,7 @@ bitreset(void)
 	bit.words = ialloc(conf.nbitbyte, 0);
 	bit.nwords = conf.nbitbyte/sizeof(ulong);
 	bit.wfree = bit.words;
+	cursortobitmap();
 }
 
 void
@@ -82,6 +148,7 @@ bitinit(void)
 	lock(&bit);
 	bit.bltuse = 0;
 	unlock(&bit);
+	cursoron(1);
 }
 
 Chan*
@@ -241,6 +308,7 @@ bitwrite(Chan *c, void *va, long n)
 	uchar *p, *q;
 	long m, v, miny, maxy, t, x, y;
 	ulong l, nw, ws;
+	int off;
 	Point pt;
 	Rectangle rect;
 	Bitmap *bp, *src, *dst;
@@ -330,18 +398,27 @@ bitwrite(Chan *c, void *va, long n)
 			dst = &bit.map[v];
 			if(v<0 || v>=conf.nbitmap || dst->ldepth < 0)
 				error(0, Ebadbitmap);
+			off = 0;
+			if(v == 0)
+				off = 1;
 			pt.x = GLONG(p+3);
 			pt.y = GLONG(p+7);
 			v = GSHORT(p+11);
 			src = &bit.map[v];
 			if(v<0 || v>=conf.nbitmap || src->ldepth < 0)
 				error(0, Ebadbitmap);
+			if(v == 0)
+				off = 1;
 			rect.min.x = GLONG(p+13);
 			rect.min.y = GLONG(p+17);
 			rect.max.x = GLONG(p+21);
 			rect.max.y = GLONG(p+25);
 			v = GSHORT(p+29);
+			if(off)
+				cursoroff(1);
 			bitblt(dst, pt, src, rect, v);
+			if(off)
+				cursoron(1);
 			m -= 31;
 			p += 31;
 			break;
@@ -379,6 +456,9 @@ bitwrite(Chan *c, void *va, long n)
 			dst = &bit.map[v];
 			if(v>=conf.nbitmap || dst->ldepth<0)
 				error(0, Ebadbitmap);
+			off = 0;
+			if(v == 0)
+				off = 1;
 			pt.x = GLONG(p+3);
 			pt.y = GLONG(p+7);
 			v = GSHORT(p+11);
@@ -390,7 +470,11 @@ bitwrite(Chan *c, void *va, long n)
 			q = memchr(p, 0, m);
 			if(q == 0)
 				error(0, Ebadblt);
+			if(off)
+				cursoroff(1);
 			string(dst, pt, &defont0/*BUG*/, (char*)p, v);
+			if(off)
+				cursoron(1);
 			q++;
 			m -= q-p;
 			p = q;
@@ -411,6 +495,9 @@ bitwrite(Chan *c, void *va, long n)
 			dst = &bit.map[v];
 			if(v>=conf.nbitmap || dst->ldepth<0)
 				error(0, Ebadbitmap);
+			off = 0;
+			if(v == 0)
+				off = 1;
 			rect.min.x = GLONG(p+3);
 			rect.min.y = GLONG(p+7);
 			rect.max.x = GLONG(p+11);
@@ -428,7 +515,11 @@ bitwrite(Chan *c, void *va, long n)
 
 				for(i=0; i<16; i++)
 					t.bits[i] = src->base[i]>>16;
+				if(off)
+					cursoroff(1);
 				texture(dst, rect, &t, v);
+				if(off)
+					cursoron(1);
 			}
 			m -= 23;
 			p += 23;
@@ -449,6 +540,9 @@ bitwrite(Chan *c, void *va, long n)
 			dst = &bit.map[v];
 			if(v>=conf.nbitmap || dst->ldepth<0)
 				error(0, Ebadbitmap);
+			off = 0;
+			if(v == 0)
+				off = 1;
 			miny = GLONG(p+3);
 			maxy = GLONG(p+7);
 			if(miny>maxy || miny<dst->r.min.y || maxy>dst->r.max.y)
@@ -466,6 +560,8 @@ bitwrite(Chan *c, void *va, long n)
 			m -= 11;
 			if(m < l*(maxy-miny))
 				error(0, Ebadblt);
+			if(off)
+				cursoroff(1);
 			for(y=miny; y<maxy; y++){
 				q = (uchar*)addr(dst, Pt(dst->r.min.x, y));
 				q += (dst->r.min.x&((sizeof(ulong))*ws-1))/8;
@@ -473,6 +569,8 @@ bitwrite(Chan *c, void *va, long n)
 					*q++ = U2K(*p++);
 				m -= l;
 			}
+			if(off)
+				cursoron(1);
 			break;
 		}
 
@@ -524,10 +622,80 @@ print("bitcompact done\n");
 }
 
 void
-mousebuttons(int b)
+cursortobitmap(void)
 {
-	if(mouse.buttons != b){
-		print("buttons %x\n", b);
-		mouse.buttons = b;
+	int i;
+
+	lock(&cursor);
+	for(i=0; i<16; i++){
+		setbits[i] = cursor.set[i]<<16;
+		clrbits[i] = cursor.clr[i]<<16;
+	}
+	unlock(&cursor);
+}
+
+void
+cursoron(int dolock)
+{
+	if(dolock)
+		lock(&cursor);
+	if(cursor.visible++ == 0){
+		cursor.r.min = mouse.xy;
+		cursor.r.max = add(mouse.xy, Pt(16, 16));
+		cursor.r = raddp(cursor.r, cursor.offset);
+		bitblt(&cursorback, Pt(0, 0), &screen, cursor.r, S);
+		bitblt(&screen, add(mouse.xy, cursor.offset),
+			&clr, Rect(0, 0, 16, 16), D&~S);
+		bitblt(&screen, add(mouse.xy, cursor.offset),
+			&set, Rect(0, 0, 16, 16), S|D);
+	}
+	if(dolock)
+		unlock(&cursor);
+}
+
+void
+cursoroff(int dolock)
+{
+	if(dolock)
+		lock(&cursor);
+	if(--cursor.visible == 0)
+		bitblt(&screen, cursor.r.min, &cursorback, Rect(0, 0, 16, 16), S);
+	if(dolock)
+		unlock(&cursor);
+}
+
+void
+mousebuttons(int b)	/* called splhi */
+{
+	mouse.buttons = b;
+	mouse.changed = 1;
+	wakeup(&mouse.r);
+}
+
+void
+mouseclock(void)	/* called splhi */
+{
+	int x, y;
+
+	if(mouse.track && canlock(&cursor)){
+		x = mouse.xy.x + mouse.dx;
+		if(x < screen.r.min.x)
+			x = screen.r.min.x;
+		if(x >= screen.r.max.x)
+			x = screen.r.max.x;
+		y = mouse.xy.y + mouse.dy;
+		if(y < screen.r.min.y)
+			y = screen.r.min.y;
+		if(y >= screen.r.max.y)
+			y = screen.r.max.y;
+		cursoroff(0);
+		mouse.xy = Pt(x, y);
+		cursoron(0);
+		mouse.dx = 0;
+		mouse.dy = 0;
+		mouse.track = 0;
+		mouse.changed = 1;
+		unlock(&cursor);
+		wakeup(&mouse.r);
 	}
 }

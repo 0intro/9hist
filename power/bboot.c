@@ -19,7 +19,6 @@ int fd;
 int cfd;
 int efd;
 
-
 typedef
 struct address {
 	char *name;
@@ -65,10 +64,11 @@ struct a_out_h {
 char	*lookup(char *);
 int	readseg(int, int, long, long, int);
 int	readkernel(int);
+int	readconf(int);
 int	outin(char *, char *, char *, int);
 void	prerror(char *);
 void	error(char *);
-void	boot(int);
+void	boot(int, char *);
 
 /*
  *  usage: 9b [-a] [server] [file]
@@ -78,10 +78,13 @@ void	boot(int);
 main(int argc, char *argv[])
 {
 	int i;
+	char *sysname;
 
 	open("#c/cons", 0);
 	open("#c/cons", 1);
 	open("#c/cons", 1);
+
+	sysname = argv[0];
 
 	argv++;
 	argc--;	
@@ -105,7 +108,7 @@ main(int argc, char *argv[])
 		break;
 	}
 
-	boot(0);
+	boot(0, sysname);
 	for(;;){
 		if(fd > 0)
 			close(fd);
@@ -114,14 +117,15 @@ main(int argc, char *argv[])
 		if(efd > 0)
 			close(efd);
 		fd = cfd = efd = 0;
-		boot(1);
+		boot(1, sysname);
 	}
 }
 
 void
-boot(int ask)
+boot(int ask, char *addr)
 {
 	int n;
+	char conffile[128];
 
 	if(ask){
 		outin("bootfile", bootfile, bbuf, sizeof(bbuf));
@@ -140,7 +144,6 @@ boot(int ask)
 		return;
 	}
 
-	print("Booting %s from server %s\n", bootfile, sys);
 
 	/*
 	 *  for the bit, we skip all the ether goo
@@ -252,9 +255,18 @@ boot(int ask)
 	}
 	close(fd);
 
-	print("open file...");
+	sprint(conffile, "/mips/conf/%s", addr);
+	print("%s...", conffile);
+	while((fd = open(conffile, OREAD)) < 0){
+		outin("conffile", conffile, conffile, sizeof(conffile));
+	}
+	if(readconf(fd) < 0)
+		prerror("readconf");
+	close(fd);
+
+	print("%s...", bootfile);
 	while((fd = open(bootfile, OREAD)) < 0){
-		outin("bootfile", DEFFILE, bbuf, sizeof(bbuf));
+		outin("bootfile", bootfile, bbuf, sizeof(bbuf));
 		bootfile = bbuf;
 	}
 	readkernel(fd);
@@ -336,6 +348,50 @@ readseg(int in, int out, long inoff, long outoff, int len)
 }
 
 /*
+ *  set a configuration value
+ */
+
+
+/*
+ *  read the configuration
+ */
+int
+readconf(int fd)
+{
+	int bfd;
+	int n;
+	long x;
+
+	/*
+ 	 *  read the config file
+	 */
+	n = read(fd, buf, sizeof(buf)-1);
+	if(n <= 0)
+		return -1;
+	buf[n] = 0;
+
+	/*
+	 *  write into 4 meg - 4k
+	 */
+	bfd = open("#b/mem", OWRITE);
+	if(bfd < 0){
+		prerror("can't open #b/mem");
+		return;
+	}
+	x = 0x80000000 | 4*1024*1024 - 4*1024;
+	if(seek(bfd, x, 0) != x){
+		close(bfd);
+		return -1;
+	}
+	if(write(bfd, buf, n+1) != n+1){
+		close(bfd);
+		return -1;
+	}
+
+	close(bfd);
+	return 0;
+}
+/*
  *  read the kernel into memory and jump to it
  */
 int
@@ -369,7 +425,7 @@ readkernel(int fd)
 		close(bfd);
 		return;
 	}
-	print("+%d\n", a_out.bss);
+	print("+%d", a_out.bss);
 
 	close(bfd);
 	bfd = open("#b/boot", OWRITE);
@@ -378,7 +434,7 @@ readkernel(int fd)
 		return;
 	}
 	
-	print("entry: %ux\n", a_out.entryva);
+	print(" entry: 0x%ux\n", a_out.entryva);
 	sleep(1000);
 	if(write(bfd, &a_out.entryva, sizeof a_out.entryva) != sizeof a_out.entryva){
 		prerror("can't start kernel");

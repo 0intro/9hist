@@ -239,6 +239,8 @@ echo(int c)
 		DEBUG();
 	if(c == 0x15)
 		putstrn("^U\n", 3);
+	if(c == 0x16)
+		dumpqueues();
 	else{
 		ch = c;
 		putstrn(&ch, 1);
