@@ -36,6 +36,8 @@ main(void)
 	xinit();
 	mmuinit();
 	gpioinit();
+	ppcinit();
+	sspinit();
 	trapinit();
 	sa1100_uartsetup(1);
 	rs232power(1);
@@ -374,6 +376,20 @@ gpioinit(void)
 	egpioreg = mapspecial(EGPIOREGS, 4);
 }
 
+PPCregs *ppcregs;
+
+static void
+ppcinit(void) {
+	ppcregs = mapspecial(PPCREGS, 32);
+}
+
+SSPregs *sspregs;
+
+static void
+sspinit(void) {
+	sspregs = mapspecial(SSPREGS, 32);
+}
+
 static ulong egpiosticky;
 
 void
@@ -403,5 +419,35 @@ lcdpower(int on)
 		egpiosticky |= EGPIO_lcd_3v|EGPIO_lcd_ic_power|EGPIO_lcd_5v|EGPIO_lcd_9v;
 	else
 		egpiosticky &= ~(EGPIO_lcd_3v|EGPIO_lcd_ic_power|EGPIO_lcd_5v|EGPIO_lcd_9v);
+	*egpioreg = egpiosticky;
+}
+
+void
+audiopower(int on)
+{
+	if(on)
+		egpiosticky |= EGPIO_audio_ic_power | EGPIO_codec_reset;
+	else
+		egpiosticky &= ~(EGPIO_audio_ic_power | EGPIO_codec_reset);
+	*egpioreg = egpiosticky;
+}
+
+void
+amplifierpower(int on)
+{
+	if(on)
+		egpiosticky |= EGPIO_audio_power;
+	else
+		egpiosticky &= ~(EGPIO_audio_power);
+	*egpioreg = egpiosticky;
+}
+
+void
+audiomute(int on)
+{
+	if(on)
+		egpiosticky |= EGPIO_audio_mute;
+	else
+		egpiosticky &= ~(EGPIO_audio_mute);
 	*egpioreg = egpiosticky;
 }

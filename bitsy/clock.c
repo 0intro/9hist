@@ -66,3 +66,20 @@ delay(int ms)
 		}
 	}
 }
+
+void
+µdelay(int µs)
+{
+	ulong start;
+	int i;
+
+	if(clockinited){
+		start = timerregs->oscr;
+		while(timerregs->oscr - start < µs∗ClockFreq/1000000);
+	} else {
+		while(µs-- > 0){
+			for(i = 0; i < 10; i++)
+				;
+		}
+	}
+}

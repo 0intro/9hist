@@ -199,3 +199,26 @@ enum
 	EGPIO_lcd_9v=		1<<15,
 };
 extern ulong *egpioreg;
+
+/* Peripheral pin controller registers */
+typedef struct PPCregs PPCregs;
+struct PPCregs {
+	ulong	direction;
+	ulong	state;
+	ulong	assignment;
+	ulong	sleepdir;
+	ulong	flags;
+};
+extern PPCregs *ppcregs;
+
+/* Synchronous Serial Port controller registers */
+typedef struct SSPregs SSPregs;
+struct SSPregs {
+	ulong	control0;
+	ulong	control1;
+	ulong	dummy0;
+	ulong	data;
+	ulong	dummy1;
+	ulong	status;
+};
+extern SSPregs *sspregs;

@@ -382,7 +382,7 @@ etherreset(void)
 			snprint(name, sizeof(name), "ether%d", ctlrno);
 
 			/* If ether->irq is less than 0, it is a hack to indicate no interrupt
-			 * used for the seocnd logical ethernet for the wavelan card
+			 * used for the second logical ethernet for the wavelan card
 			 */
 			if(ether->irq >= 0)
 				intrenable(ether->irq, ether->interrupt, ether, ether->tbdf, name);

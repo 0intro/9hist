@@ -17,6 +17,7 @@
 #include	"fns.h"
 #include	"../port/error.h"
 #include	"io.h"
+#include	"sa1110dma.h"
 
 /*
  * GPIO based L3 bus support.
@@ -122,7 +123,6 @@ audiodir[] =
 
 struct	Buf
 {
-	int		active;			/* dma running */
 	uchar*	virt;
 	uint	nbytes;
 };
@@ -130,11 +130,15 @@ struct	Buf
 struct	IOstate
 {
 	QLock;
-	Rendez	vous;
-	int		bufinit;		/* boolean, if buffers allocated */
-	Buf		buf[Nbuf];		/* buffers and queues */
-	Buf		*current;		/* next candidate for dma */
-	Buf		*filling;		/* buffer being filled */
+	Rendez			vous;
+	Chan			*chan;			/* chan of open */
+	int				dma;			/* dma chan, alloc on open, free on close */
+	int				bufinit;		/* boolean, if buffers allocated */
+	Buf				buf[Nbuf];		/* buffers and queues */
+	int				active;			/* # of dmas in progress */
+	volatile Buf	*current;		/* next dma to finish */
+	volatile Buf	*next;			/* next candidate for dma */
+	volatile Buf	*filling;		/* buffer being filled */
 };
 
 static	struct
@@ -177,29 +181,32 @@ static	struct
 /*
  * Grab control of the IIC/L3 shared pins
  */
-static void L3_acquirepins(void)
+static void
+L3_acquirepins(void)
 {
-	GPSR = (GPIO_L3_SCLK_o | GPIO_L3_SDA_io);
-	GPDR |=  (GPIO_L3_SCLK_o | GPIO_L3_SDA_io);
+	gpioregs->set = (GPIO_L3_SCLK_o | GPIO_L3_SDA_io);
+	gpioregs->direction |=  (GPIO_L3_SCLK_o | GPIO_L3_SDA_io);
 }
 
 /*
  * Release control of the IIC/L3 shared pins
  */
-static void L3_releasepins(void)
+static void
+L3_releasepins(void)
 {
-	GPDR &= ~(GPIO_L3_SCLK_o | GPIO_L3_SDA_io);
-	GPCR = (GPIO_L3_SCLK_o | GPIO_L3_SDA_io);
+	gpioregs->direction &= ~(GPIO_L3_SCLK_o | GPIO_L3_SDA_io);
+	gpioregs->clear = (GPIO_L3_SCLK_o | GPIO_L3_SDA_io);
 }
 
 /*
  * Initialize the interface
  */
-static void __init L3_init(void)
+static void 
+L3_init(void)
 {
-	GAFR &= ~(GPIO_L3_SDA_io | GPIO_L3_SCLK_o | GPIO_L3_MODE_o);
-	GPSR = GPIO_L3_MODE_o;
-	GPDR |= GPIO_L3_MODE_o;
+	gpioregs->altfunc &= ~(GPIO_L3_SDA_io | GPIO_L3_SCLK_o | GPIO_L3_MODE_o);
+	gpioregs->set = GPIO_L3_MODE_o;
+	gpioregs->direction |= GPIO_L3_MODE_o;
 	L3_releasepins();
 }
 
@@ -207,17 +214,18 @@ static void __init L3_init(void)
  * Get a bit. The clock is high on entry and on exit. Data is read after
  * the clock low time has expired.
  */
-static int L3_getbit(void)
+static int
+L3_getbit(void)
 {
 	int data;
 
-	GPCR = GPIO_L3_SCLK_o;
-	udelay(L3_ClockLowTime);
+	gpioregs->clear = GPIO_L3_SCLK_o;
+	µdelay(L3_ClockLowTime);
 
-	data = (GPLR & GPIO_L3_SDA_io) ? 1 : 0;
+	data = (gpioregs->level & GPIO_L3_SDA_io) ? 1 : 0;
 
- 	GPSR = GPIO_L3_SCLK_o;
-	udelay(L3_ClockHighTime);
+ 	gpioregs->set = GPIO_L3_SCLK_o;
+	µdelay(L3_ClockHighTime);
 
 	return data;
 }
@@ -226,20 +234,21 @@ static int L3_getbit(void)
  * Send a bit. The clock is high on entry and on exit. Data is sent only
  * when the clock is low (I2C compatibility).
  */
-static void L3_sendbit(int bit)
+static void
+L3_sendbit(int bit)
 {
-	GPCR = GPIO_L3_SCLK_o;
+	gpioregs->clear = GPIO_L3_SCLK_o;
 
 	if (bit & 1)
-		GPSR = GPIO_L3_SDA_io;
+		gpioregs->set = GPIO_L3_SDA_io;
 	else
-		GPCR = GPIO_L3_SDA_io;
+		gpioregs->clear = GPIO_L3_SDA_io;
 
 	/* Assumes L3_DataSetupTime < L3_ClockLowTime */
-	udelay(L3_ClockLowTime);
+	µdelay(L3_ClockLowTime);
 
-	GPSR = GPIO_L3_SCLK_o;
-	udelay(L3_ClockHighTime);
+	gpioregs->set = GPIO_L3_SCLK_o;
+	µdelay(L3_ClockHighTime);
 }
 
 /*
@@ -247,34 +256,35 @@ static void L3_sendbit(int bit)
  * count. The mode line is high on entry and exit. The mod line is pulsed
  * before the second data byte and before ech byte thereafter.
  */
-static void L3_sendbyte(char data, int mode)
+static void
+L3_sendbyte(char data, int mode)
 {
 	int i;
 
 	L3_acquirepins();
 
 	switch(mode) {
-	    case 0: /* Address mode */
-		GPCR = GPIO_L3_MODE_o;
+	case 0: /* Address mode */
+		gpioregs->clear = GPIO_L3_MODE_o;
 		break;
-	    case 1: /* First data byte */
+	case 1: /* First data byte */
 		break;
-	    default: /* Subsequent bytes */
-		GPCR = GPIO_L3_MODE_o;
-		udelay(L3_HaltTime);
-		GPSR = GPIO_L3_MODE_o;
+	default: /* Subsequent bytes */
+		gpioregs->clear = GPIO_L3_MODE_o;
+		µdelay(L3_HaltTime);
+		gpioregs->set = GPIO_L3_MODE_o;
 		break;
 	}
 
-	udelay(L3_ModeSetupTime);
+	µdelay(L3_ModeSetupTime);
 
 	for (i = 0; i < 8; i++)
 		L3_sendbit(data >> i);
 
 	if (mode == 0)  /* Address mode */
-		GPSR = GPIO_L3_MODE_o;
+		gpioregs->set = GPIO_L3_MODE_o;
 
-	udelay(L3_ModeHoldTime);
+	µdelay(L3_ModeHoldTime);
 
 	L3_releasepins();
 }
@@ -286,32 +296,33 @@ static void L3_sendbyte(char data, int mode)
  * function is never valid with mode == 0 (address cycle) as the address
  * is always sent on the bus, not read.
  */
-static char L3_getbyte(int mode)
+static char
+L3_getbyte(int mode)
 {
 	char data = 0;
 	int i;
 
 	L3_acquirepins();
-	GPDR &= ~(GPIO_L3_SDA_io);
+	gpioregs->direction &= ~(GPIO_L3_SDA_io);
 
 	switch(mode) {
-	    case 0: /* Address mode - never valid */
+	case 0: /* Address mode - never valid */
 		break;
-	    case 1: /* First data byte */
+	case 1: /* First data byte */
 		break;
-	    default: /* Subsequent bytes */
-		GPCR = GPIO_L3_MODE_o;
-		udelay(L3_HaltTime);
-		GPSR = GPIO_L3_MODE_o;
+	default: /* Subsequent bytes */
+		gpioregs->clear = GPIO_L3_MODE_o;
+		µdelay(L3_HaltTime);
+		gpioregs->set = GPIO_L3_MODE_o;
 		break;
 	}
 
-	udelay(L3_ModeSetupTime);
+	µdelay(L3_ModeSetupTime);
 
 	for (i = 0; i < 8; i++)
 		data |= (L3_getbit() << i);
 
-	udelay(L3_ModeHoldTime);
+	µdelay(L3_ModeHoldTime);
 
 	L3_releasepins();
 
@@ -324,7 +335,8 @@ static char L3_getbyte(int mode)
  * is encoded in the address (low two bits are set and device address is
  * in the upper 6 bits).
  */
-static int L3_write(char addr, char *data, int len)
+static int
+L3_write(char addr, char *data, int len)
 {
 	int mode = 0;
 	int bytes = len;
@@ -342,7 +354,8 @@ static int L3_write(char addr, char *data, int len)
  * is encoded in the address (low two bits are set and device address is
  * in the upper 6 bits).
  */
-static int L3_read(char addr, char * data, int len)
+static int
+L3_read(char addr, char * data, int len)
 {
 	int mode = 0;
 	int bytes = len;
@@ -378,27 +391,70 @@ setempty(IOstate *b)
 	}
 	b->filling = b->buf;
 	b->current = b->buf;
+	b->next = b->buf;
+}
+
+static int
+audioqnotfull(IOstate *s)
+{
+	/* called with lock */
+	return s->active == 0 || s->filling != s->current;
+}
+
+static int
+audioqnotempty(IOstate *s)
+{
+	/* called with lock */
+	return s->next != s->filling;
+}
+
+static int
+audioidle(IOstate *s)
+{
+	/* called with lock */
+	return s->active == 0;
 }
 
 static void
 audioinit(void)
 {
+	/* do nothing */
+}
+
+static void
+audioenable(void)
+{
 	int err;
-   
-	/* Acquire and initialize DMA */
-	if( audio_init_dma( &output_stream, "UDA1341 DMA out" ) ||
-	    audio_init_dma( &input_stream, "UDA1341 DMA in" ) ){
-		audio_clear_dma( &output_stream );
-		audio_clear_dma( &input_stream );
-		return -EBUSY;
-	}
 
 	L3_init();
-	audio_ssp_init();
 
-        audio_uda1341_reset();
+	/* Setup the uarts */
+    ppcregs->assignment &= ~(1<<18);	/* Could be the other way round! */
 
-	init_waitqueue_head(&audio_waitq);
+    gpioregs->altfunc &= ~(GPIO_SSP_TXD | GPIO_SSP_RXD | GPIO_SSP_SCLK | GPIO_SSP_SFRM);
+	gpioregs->altfunc |= (GPIO_SSP_CLK);
+	gpioregs->direction &= ~(GPIO_SSP_CLK);
+
+	sspregs->control0 = 0x10<<0 | 0x1<<4 | 1<<7 | 0x8<<8;
+	sspregs->control1 = 0<<3 + 0<<4 + 1<<5;
+
+	/* Enable the audio power */
+          set_bitsy_egpio(EGPIO_BITSY_CODEC_NRESET|EGPIO_BITSY_AUD_AMP_ON|EGPIO_BITSY_AUD_PWR_ON);
+          clr_bitsy_egpio(EGPIO_BITSY_QMUTE);
+	  gpioregs->direction |=  (GPIO_BITSY_CLK_SET0|GPIO_BITSY_CLK_SET1);
+	  /* external clock configured for 44100 samples/sec */
+          GPSR =   GPIO_BITSY_CLK_SET0;
+          GPCR =   GPIO_BITSY_CLK_SET1;
+
+ 
+        printk("gpioregs->altfunc=%08x gpioregs->direction=%08x GPLR=%08x\n", gpioregs->altfunc, gpioregs->direction, GPLR);
+        printk("PPDR=%08x PPSR=%08x PPAR=%08x PPFR=%08x\n", PPDR, PPSR, PPAR, PPFR);
+
+	/* Wait for the UDA1341 to wake up */
+	mdelay(100);
+        printk("Ser4SSSR=%08x\n", Ser4SSSR);
+
+    audio_uda1341_reset();
 
 	/* Set some default mixer values... */
 	STATUS_1.DAC_gain = 1;
@@ -416,23 +472,42 @@ audioinit(void)
 	DATA0_ext6.AGC_level = 3;
 	L3_write( (UDA1341_L3Addr<<2)|UDA1341_DATA0, (char*)&DATA0_ext6, 2 );
 
-	/* register devices */
-	audio_dev_dsp = register_sound_dsp(&UDA1341_dsp_fops, -1);
-	audio_dev_mixer = register_sound_mixer(&UDA1341_mixer_fops, -1);
-
-	printk( AUDIO_NAME_VERBOSE " initialized\n" );
+	print("audio enabled\n");
 
 	return 0;
 }
 
 static void
 sendaudio(IOstat *b) {
-	if (dmastart(b->chan, b->current->virt, b->current->nbytes)) {
-		b->current->active++;
-		b->current++;
+	/* call this with lock held */
+	while (b->next != b->filling) {
+		assert(b->next->nbytes);
+		if (dmastart(b->dma, b->next->virt, b->next->nbytes) == 0)
+			break;
+		incref(&b->active);
+		b->next++;
+		if (b->next == &b->buf[Nbuf])
+			b->next == &b->buf[0];
+	}
+}
+
+static void
+audiointr(void *x, ulong state) {
+	IOstate *s = x;
+
+	if (s == &audio.o) {
+		decref(&s->active);
+		/* Only interrupt routine touches s->current */
+		s->current->nbytes = 0;
+		s->current++;
 		if (b->current == &b->buf[Nbuf])
 			b->current == &b->buf[0];
+		if (canlock(s)) {
+			sendaudio(s);
+			unlock(s);
+		}
 	}
+	wakeup(s->vous);
 }
 
 static Chan*
@@ -471,26 +546,33 @@ audioopen(Chan *c, int omode)
 
 	case Qaudio:
 		omode = (omode & 0x7) + 1;
-		if (omode & ~(Aread | Awrite))
+//		if (omode & ~(Aread | Awrite))
+		if (omode & ~(Awrite))
 			error(Ebadarg);
 		qlock(&audio);
 		if(audio.amode & omode){
 			qunlock(&audio);
 			error(Einuse);
 		}
+		audiopower(1);
 		if (omode & Aread) {
 			/* read */
 			audio.amode |= Aread;
 			if(audio.i.bufinit == 0)
 				bufinit(&audio.i);
+			audio.i.chan = c;
 			setempty(&audio.i);
 		}
 		if (omode & 0x2) {
 			/* write */
+			amplifierpower(1);
+			audiomute(0);
 			audio.amode |= Awrite;
 			if(audio.o.bufinit == 0)
 				bufinit(&audio.o);
 			setempty(&audio.o);
+			audio.o.chan = c;
+			&audio.o.dma = dmaalloc(0, 0, 8, 2, AudioDMA, void *port, void (*f)(int, ulong))
 		}
 		qunlock(&audio);
 //		mxvolume();
@@ -507,7 +589,7 @@ audioopen(Chan *c, int omode)
 static void
 audioclose(Chan *c)
 {
-	Buf *b;
+	IOstate *b;
 
 	switch(c->qid.path & ~CHDIR) {
 	default:
@@ -522,22 +604,38 @@ audioclose(Chan *c)
 	case Qaudio:
 		if(c->flag & COPEN) {
 			qlock(&audio);
-			if(audio.amode & Awrite) {
-				/* flush out last partial buffer */
-				b = audio.o.filling;
-				if(audio.o.buf[b].count) {
-					putbuf(&audio.full, b);
-				}
-			}
-			audio.amode = Aclosed;
+			qlock(&audio.o);
 			if(waserror()){
+				qunlock(&audio.o);
 				qunlock(&audio);
 				nexterror();
 			}
-			while(audio.active)
-				waitaudio();
-			setempty();
+			if (audio.o.chan == c) {
+				/* closing the write end */
+				audio.amode &= ~Awrite;
+
+				while (audio.o.filling->nbytes) {
+					audio.o.filling++;
+					if (audio.o.filling == &audio.o.buf[Nbuf])
+						audio.o.filling = &audio.o.buf[0];
+					sendaudio(&audio.o);
+				}
+				while(!audioidle(&audio.o))
+					sleep(&audio.o.vous, audioidle, &audio.o);
+				audioamplifier(0);
+				setempty(&audio.o);
+			}
+			if (audio.i.chan == c) {
+				/* closing the read end */
+				audio.amode &= ~Aread;
+				setempty(&audio.i);
+			}
+			if (audio.amode == 0) {
+				/* turn audio off */
+				audiopower(0);
+			}
 			poperror();
+			qunlock(&audio.o);
 			qunlock(&audio);
 		}
 		break;
@@ -566,40 +664,6 @@ audioread(Chan *c, void *v, long n, vlong off)
 		return devdirread(c, a, n, audiodir, nelem(audiodir), devgen);
 
 	case Qaudio:
-		if(audio.amode != Aread)
-			error(Emode);
-		qlock(&audio);
-		if(waserror()){
-			qunlock(&audio);
-			nexterror();
-		}
-		while(n > 0) {
-			b = audio.filling;
-			if(b == 0) {
-				b = getbuf(&audio.full);
-				if(b == 0) {
-					waitaudio();
-					continue;
-				}
-				audio.filling = b;
-				swab(b->virt);
-				audio.curcount = 0;
-			}
-			m = Bufsize-audio.curcount;
-			if(m > n)
-				m = n;
-			memmove(a, b->virt+audio.curcount, m);
-
-			audio.curcount += m;
-			n -= m;
-			a += m;
-			if(audio.curcount >= Bufsize) {
-				audio.filling = 0;
-				putbuf(&audio.empty, b);
-			}
-		}
-		poperror();
-		qunlock(&audio);
 		break;
 
 	case Qstatus:
@@ -752,8 +816,8 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 		}
 		while(n > 0) {
 			/* wait if dma in progress */
-			while (a->filling->active)
-				waitaudio(a);
+			while (a->active && a->filling == a->current)
+				sleep(&a->vous, audioqnotfull, a);
 
 			m = Bufsize - a->filling->nbytes;
 			if(m > n)
@@ -764,10 +828,10 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 			n -= m;
 			p += m;
 			if(a->filling->nbytes >= Bufsize) {
-				sendaudio(a);
 				a->filling++;
 				if (a->filling == &a->buf[Nbuf])
 					a->filling = a->buf;
+				sendaudio(a);
 			}
 		}
 		poperror();

@@ -5,6 +5,7 @@
 #include	"fns.h"
 #include	"io.h"
 #include	"../port/error.h"
+#include	"sa1110dma.h"
 
 /*
  *	DMA helper routines
@@ -40,7 +41,8 @@ enum {
 typedef struct Chan {
 	int		inuse;
 	Rendez	r;
-	void	(*f)(void);
+	void	(*intr)(int, ulong);
+	void	*param;
 } Chan;
 
 struct {
@@ -66,7 +68,7 @@ dmainit(void) {
 }
 
 int
-dmaalloc(int rd, int bigendian, int burstsize, int datumsize, int device, void *port) {
+dmaalloc(int rd, int bigendian, int burstsize, int datumsize, int device, void *port, void (*intr)(int, ulong), void *param) {
 	int i;
 
 	lock(&dma);
@@ -82,6 +84,8 @@ dmaalloc(int rd, int bigendian, int burstsize, int datumsize, int device, void *
 			((datumsize==2)?1:0)<<DW |
 			device<<DS |
 			0x80000000 | ((ulong)port << 6);
+		dma.chan[i].intr = intr;
+		dma.chan[i].param = param;
 		return i;
 	}
 	unlock(&dma);
@@ -91,6 +95,7 @@ dmaalloc(int rd, int bigendian, int burstsize, int datumsize, int device, void *
 void
 dmafree(int i) {
 	dma.chan[i].inuse = 0;
+	dma.chan[i].intr = nil;
 }
 
 static int
@@ -132,6 +137,16 @@ dmadone(int chan, ulong op) {
 	return dcsr & (op | 1<<ERROR);
 }
 
+int
+dmaidle(int chan) {
+	ulong dcsr;
+
+	dcsr = dmaregs[chan].dcsr_rd;
+	if (dcsr & 1<<ERROR)
+		pprint("DMA error, chan %d, status 0x%lux\n", chan, dcsr);
+	return (dcsr & (1<<DONEA | 1<<DONEB)) == (1<<DONEA | 1<<DONEB);
+}
+
 void
 dmawait(int chan, ulong op) {
 	ulong dcsr;
@@ -154,7 +169,7 @@ dmaintr(Ureg*, void *x)
 	for (i = 0; i < NDMA; i++) {
 		if ((dcsr = dmaregs[i].dcsr_rd) & (1<<DONEA | 1<<DONEB | 1<<ERROR))
 			wakeup(&dma.chan[i].r);
-			if (dma.chan[i].f)
-				(*dma.chan[i].f)(dcsr);
+			if (dma.chan[i].intr)
+				(*dma.chan[i].intr)(dma.chan[i].param, dcsr);
 	}
 }

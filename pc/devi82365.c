@@ -1498,6 +1498,5 @@ tvers1(Slot *pp, Cisdat *cis, int )
 			break;
 		pp->verstr[i] = c;
 	}
-print("pcmcia: %s\n", pp->verstr);
 	pp->verstr[i] = 0;
 }
