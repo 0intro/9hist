@@ -25,7 +25,7 @@ _main:
 	/* drain write buffer */
 	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0xa), 4
 
-	MOVW	$(MACHADDR+BY2PG), R13		/* stack */
+	MOVW	$(MACHADDR+2*BY2PG), R13		/* stack */
 	SUB	$4, R13				/* link */
 	BL	main(SB)
 	BL	exit(SB)

@@ -445,35 +445,29 @@ void
 outb(ulong a, uchar v)
 {
 	*(uchar*)a = v;
-	µdelay(2);
 }
 void
 outs(ulong a, ushort v)
 {
 	*(ushort*)a = v;
-	µdelay(2);
 }
 void
 outl(ulong a, ulong v)
 {
 	*(ulong*)a = v;
-	µdelay(2);
 }
 uchar
 inb(ulong a)
 {
-	µdelay(2);
 	return *(uchar*)a;
 }
 ushort
 ins(ulong a)
 {
-	µdelay(2);
 	return *(ushort*)a;
 }
 ulong
 inl(ulong a)
 {
-	µdelay(2);
 	return *(ulong*)a;
 }

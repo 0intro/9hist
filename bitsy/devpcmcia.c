@@ -316,7 +316,6 @@ pcmctlwrite(char *p, long n, ulong, PCMslot *sp)
 		if(sp->cpresent & (1<<Rconfig)){
 			cp = sp->attr;
 			cp += sp->caddr + Rconfig;
-print("writing configuration register (%lux) with index %d\n", cp, index);
 			*cp = index;
 		}
 

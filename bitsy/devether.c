@@ -51,11 +51,9 @@ etherconfig(int on, char *spec, DevConf *cf)
 	memset(ether, 0, sizeof(Ether));
 	*(DevConf*)ether = *cf;
 
-print("looking for card type %s\n", ether->type);
 	for(n = 0; cards[n].type; n++){
 		if(strcmp(cards[n].type, ether->type) != 0)
 			continue;
-print("found card type %s\n", ether->type);
 		if(cards[n].reset(ether))
 			break;
 		sprint(name, "ether%d", ctlrno);
@@ -75,6 +73,9 @@ print("found card type %s\n", ether->type);
 		ether->alen = Eaddrlen;
 		memmove(ether->addr, ether->ea, Eaddrlen);
 		memset(ether->bcast, 0xFF, Eaddrlen);
+		ether->mbps = 10;
+		ether->minmtu = ETHERMINTU;
+		ether->maxmtu = ETHERMAXTU;
 
 		if(ether->interrupt != nil)
 			intrenable(cf->itype, cf->interrupt, ether->interrupt, ether, name);
@@ -91,7 +92,7 @@ print("found card type %s\n", ether->type);
 			ether->ea[0], ether->ea[1], ether->ea[2],
 			ether->ea[3], ether->ea[4], ether->ea[5]);
 		seprint(p, e, "\n");
-		print(buf);
+		pprint(buf);
 
 		etherxx[ctlrno] = ether;
 		return 0;

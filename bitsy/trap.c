@@ -406,7 +406,7 @@ syscall(Ureg* ureg)
 	int	i, scallnr;
 
 	if((ureg->psr & PsrMask) != PsrMusr)
-		panic("syscall: cs 0x%4.4uX\n", ureg->psr);
+		panic("syscall: pc 0x%lux r14 0x%lux cs 0x%ux\n", ureg->pc, ureg->r14, ureg->psr);
 
 	m->syscall++;
 	up->insyscall = 1;

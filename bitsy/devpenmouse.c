@@ -223,7 +223,7 @@ penmouseread(Chan *c, void *va, long n, vlong)
 		mouse.qfull = 0;
 
 		/*
-		 * No lock of the indicies is necessary here, because ri is only
+		 * No lock of the indices is necessary here, because ri is only
 		 * updated by us, and there is only one mouse reader
 		 * at a time.  I suppose that more than one process
 		 * could try to read the fd at one time, but such behavior

@@ -61,12 +61,12 @@ portclock(Ureg *ur)
 
 	checkalarms();
 	if(m->machno == 0){
-		ilock(&clock0lock);
-		for(lp = clock0link; lp; lp = lp->link){
-			lp->clock();
-			splhi();
-		}
-		iunlock(&clock0lock);
+		if(canlock(&clock0lock))
+			for(lp = clock0link; lp; lp = lp->link){
+				lp->clock();
+				splhi();
+			}
+		unlock(&clock0lock);
 	}
 
 	m->inclockintr = 0;
