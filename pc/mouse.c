@@ -52,7 +52,7 @@ serialmouse(int port, char *type, int setspeed)
  *	byte 1 -	DX
  *	byte 2 -	DY
  *
- *  shift & left button is the same as middle button
+ *  shift & right button is the same as middle button
  */
 static void
 ps2mouseputc(int c, int shift)
