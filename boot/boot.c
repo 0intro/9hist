@@ -116,9 +116,9 @@ boot(int argc, char *argv[])
 	 *  create the name space, mount the root fs
 	 */
 	if(bind("/", "/", MREPL) < 0)
-		fatal("bind");
+		fatal("bind /");
 	if(mount(fd, "/", MAFTER|MCREATE, "") < 0)
-		fatal("mount");
+		fatal("mount /");
 	close(fd);
 
 	/*

@@ -190,7 +190,7 @@ static int defirq[NCtlr] = {
 };
 
 static void	ataintr(Ureg*, void*);
-static long	ataxfer(Drive*, Partition*, int, long, long, uchar*);
+static long	ataxfer(Drive*, Partition*, int, ulong, long, uchar*);
 static void	ataident(Drive*);
 static void	atafeature(Drive*, uchar);
 static void	ataparams(Drive*);
@@ -820,7 +820,7 @@ atasleep(Controller *cp, int ms)
  *  parts.
  */
 static long
-ataxfer(Drive *dp, Partition *pp, int cmd, long start, long len, uchar *buf)
+ataxfer(Drive *dp, Partition *pp, int cmd, ulong start, long len, uchar *buf)
 {
 	Controller *cp;
 	long lblk;
