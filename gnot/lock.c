@@ -12,6 +12,8 @@
  *  	if(l->key >= 0){
  *		l->key |= 0x80;
  *		...
+ *
+ *	DO NOT TAKE THE ADDRESS OF l->key or the TAS will disappear.
  */
 void
 lock(Lock *l)
@@ -31,7 +33,7 @@ lock(Lock *l)
 			l->key |= 0x80;
 			l->pc = ((ulong*)&i)[PCOFF];
 			return;
-	}
+		}
 	l->key = 0;
 	panic("lock loop %lux pc %lux held by pc %lux\n", l, ((ulong*)&i)[PCOFF], l->pc);
 }
@@ -76,6 +78,7 @@ qlock(QLock *q)
 	q->tail = u->p;
 	u->p->qnext = 0;
 	u->p->state = Queueing;
+	u->p->qlock = q;	/* DEBUG */
 	unlock(&q->queue);
 	sched();
 }

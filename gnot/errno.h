@@ -50,5 +50,7 @@ enum{
 	Enobitmap,	/* out of bitmap descriptors */
 	Enobitstore,	/* out of bitmap storage */
 	Ebadbitmap,	/* unallocated bitmap */
+	Eshortmsg,	/* short message */
+	Ebadmsg,	/* format error or mismatch in message */
 	Egreg,		/* it's all greg's fault */
 };

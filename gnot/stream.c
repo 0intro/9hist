@@ -58,7 +58,7 @@ Bclass bclass[Nclass]={
 	{ 0 },
 	{ 68 },
 	{ 260 },
-	{ 1024 },
+	{ 4096 },
 };
 
 /*
@@ -70,17 +70,29 @@ dumpqueues(void)
 	Queue *q;
 	int count;
 	Block *bp;
+	Bclass *bcp;
 
+	print("\n");
 	for(q = qlist; q < qlist + conf.nqueue; q++, q++){
 		if(!(q->flag & QINUSE))
 			continue;
 		for(count = 0, bp = q->first; bp; bp = bp->next)
 			count++;
-		print("%s %ux  RD count %d len %d", q->info->name, q, count, q->len);
+		print("%s %ux  R c %d l %d f %ux", q->info->name, q, count,
+			q->len, q->flag);
 		for(count = 0, bp = WR(q)->first; bp; bp = bp->next)
 			count++;
-		print("  WR count %d len %d\n", count, WR(q)->len);
+		print("  W c %d l %d f %ux\n", count, WR(q)->len, WR(q)->flag);
 	}
+	print("\n");
+	for(bcp=bclass; bcp<&bclass[Nclass]; bcp++){
+		lock(bcp);
+		for(count = 0, bp = bcp->first; bp; count++, bp = bp->next)
+			;
+		unlock(bcp);
+		print("%d blocks of size %d\n", count, bcp->size);
+	}
+	print("\n");
 }
 
 /*
@@ -180,6 +192,8 @@ freeb(Block *bp)
 	Bclass *bcp;
 	int tries;
 
+	if((bp->flags&S_CLASS) >= Nclass)
+		panic("freeb class");
 	bcp = &bclass[bp->flags & S_CLASS];
 	lock(bcp);
 	bp->rptr = bp->wptr = 0;

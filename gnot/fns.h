@@ -109,6 +109,7 @@ void	putstrn(char*, long);
 ulong	pwait(Waitmsg*);
 int	readnum(ulong, char*, ulong, ulong, int);
 void	ready(Proc*);
+int	return0(void*);
 void	rooterrstr(Error*, char*);
 void	qlock(QLock*);
 void	qunlock(QLock*);

@@ -11,6 +11,8 @@
 #define	MINX	8
 
 extern	Font	defont0;
+extern	Font	defont1;
+Font		*defont;
 
 struct{
 	Point	pos;
@@ -33,6 +35,14 @@ void
 screeninit(void)
 {
 	duartinit();
+	/*
+	 * Read HEX switch to set ldepth
+	 */
+	if(*(uchar*)MOUSE & (1<<4)){
+		screen.ldepth = 1;
+		defont = &defont1;
+	}else
+		defont = &defont0;
 	bitblt(&screen, Pt(0, 0), &screen, screen.r, 0);
 	out.pos.x = MINX;
 	out.pos.y = 0;
@@ -68,7 +78,7 @@ screenputc(int c)
 			screenputc('\n');
 		buf[0] = c&0x7F;
 		buf[1] = 0;
-		out.pos = string(&screen, out.pos, &defont0, buf, S);
+		out.pos = string(&screen, out.pos, defont, buf, S);
 	}
 }
 
@@ -186,7 +196,7 @@ duartinit(void)
 	/*
 	 * Output port
 	 */
-	duart[0].ipc_acr = 0xBF;	/* allow change	of state interrupt */
+	duart[0].ipc_acr = 0xB7;	/* allow change	of state interrupt */
 	duart[1].ip_opcr = 0x00;
 	duart[1].scc_ropbc = 0xFF;	/* make sure the port is reset first */
 	duart[1].scc_sopbc = 0x04;	/* dtr = 1, pp = 01 */
@@ -275,12 +285,18 @@ duartintr(Ureg *ur)
 	if(cause & IM_RRDYB)		/* pen input */
 		c = duart[1].data;
 	/*
+	 * Is it 3?
+	 */
+	if(cause & IM_XRDYB){
+		duart[1].cmnd = DIS_TX;
+	}
+	/*
 	 * Is it 4?
 	 */
-	if(cause & IM_XRDYB)
-		duart[1].cmnd = DIS_TX;
+	if(cause & IM_XRDYA)
+		duart[0].cmnd = DIS_TX;
 	/*
-	 * Is it 3?
+	 * Is it 5?
 	 */
 	if(cause & IM_IPC)
 		mousebuttons((~duart[0].ipc_acr) & 7);

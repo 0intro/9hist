@@ -757,6 +757,8 @@ rdpackets(Incon *ip)
 		}
 	}	
 	bp->wptr = p;
+	if(bp->wptr != bp->base+3)
+		nextin(ip, 0);
 
 	if(first != ip->wi)/**/
 		wakeup(&ip->kr);

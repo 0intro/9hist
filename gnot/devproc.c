@@ -201,6 +201,7 @@ procread(Chan *c, void *va, long n)
 	Seg *s;
 	Orig *o;
 	Page *pg;
+	PTE *pte, *opte;
 	int i;
 	long l;
 	long pid;
@@ -237,10 +238,19 @@ procread(Chan *c, void *va, long n)
 				unlock(o);
 				error(0, Egreg);
 			}
-			pg = o->pte[(c->offset-o->va)>>PGSHIFT].page;
+			pte = &o->pte[(c->offset-o->va)>>PGSHIFT];
+			if(s->mod){
+				opte = pte;
+				while(pte = pte->nextmod)	/* assign = */
+					if(pte->proc == p)
+						break;
+				if(pte == 0)
+					pte = opte;
+			}
+			pg = pte->page;
 			unlock(o);
 			if(pg == 0){
-				pprint("nonresident page (complain to rob)\n");
+				pprint("nonresident page addr %lux (complain to rob)\n", c->offset);
 				memset(a, 0, n);
 			}else{
 				b = (char*)(pg->pa|KZERO);

@@ -287,8 +287,8 @@ struct Proc
 	char	text[NAMELEN];
 	Proc	*rnext;			/* next process in run queue */
 	Proc	*qnext;			/* next process on queue for a QLock */
+	QLock	*qlock;			/* address of qlock being queued for DEBUG */
 	int	state;
-	short	pidonmach[MAXMACH];	/* TLB pid on each mmu */
 	Page	*upage;			/* BUG: should be unlinked from page list */
 	Seg	seg[NSEG];
 	ulong	pid;
@@ -320,8 +320,8 @@ struct Proc
 struct User
 {
 	Proc	*p;
-	Label	errlab[NERR];
 	int	nerrlab;
+	Label	errlab[NERR];
 	Error	error;
 	FPsave	fpsave;			/* address of this is known by vdb */
 	char	elem[NAMELEN];		/* last name element from namec */

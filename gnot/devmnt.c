@@ -9,18 +9,27 @@
 
 #include	"fcall.h"
 
-/*
- * Easy version: multiple sessions but no intra-session multiplexing, copy the data
- */
 
 typedef struct Mnt	Mnt;
+typedef struct Mnthdr	Mnthdr;
+typedef struct MntQ	MntQ;
+
 struct Mnt
 {
 	Ref;			/* for number of chans, incl. mntpt but not msg */
-	QLock;			/* for access */
 	ulong	mntid;		/* serial # */
-	Chan	*msg;		/* for reading and writing messages */
 	Chan	*mntpt;		/* channel in user's name space */
+	MntQ	*q;
+};
+
+struct MntQ
+{
+	Ref;
+	QLock;			/* for access */
+	MntQ	*next;		/* for allocation */
+	Chan	*msg;		/* for reading and writing messages */
+	Proc	*reader;	/* process reading response */
+	Mnthdr	*writer;	/* queue of headers of written messages */
 };
 
 #define	BUFSIZE	(MAXFDATA+500) 	/* BUG */
@@ -37,12 +46,14 @@ struct
 	Mntbuf	*free;
 }mntbufalloc;
 
-typedef struct Mnthdr Mnthdr;
-struct Mnthdr		/* next only meaningful when buffer isn't being used */
+struct Mnthdr
 {
-	Mnthdr	*next;
+	Mnthdr	*next;	/* in free list or writers list */
 	Fcall	thdr;
 	Fcall	rhdr;
+	Rendez	r;
+	Proc	*p;
+	Mntbuf	*mbr;
 };
 
 struct
@@ -50,6 +61,13 @@ struct
 	Lock;
 	Mnthdr	*free;
 }mnthdralloc;
+
+struct
+{
+	Lock;
+	MntQ	*arena;
+	MntQ	*free;
+}mntqalloc;
 
 struct
 {
@@ -106,7 +124,7 @@ loop:
 	unlock(&mnthdralloc);
 	print("no mnthdrs\n");
 	if(u == 0)
-		panic("mballoc");
+		panic("mhalloc");
 	u->p->state = Wakeme;
 	alarm(1000, wakeme, u->p);
 	sched();
@@ -122,6 +140,45 @@ mhfree(Mnthdr *mh)
 	unlock(&mnthdralloc);
 }
 
+MntQ*
+mqalloc(void)
+{
+	MntQ *q;
+
+	lock(&mntqalloc);
+	if(q = mntqalloc.free){		/* assign = */
+		mntqalloc.free = q->next;
+		unlock(&mntqalloc);
+		lock(q);
+		q->ref = 1;
+		q->writer = 0;
+		q->reader = 0;
+		unlock(q);
+		return q;
+	}
+	unlock(&mntqalloc);
+	panic("no mntqs\n");			/* there MUST be enough */
+}
+
+void
+mqfree(MntQ *mq)
+{
+	Chan *msg = 0;
+
+	lock(mq);
+	if(--mq->ref == 0){
+		msg = mq->msg;
+		mq->msg = 0;
+		lock(&mntqalloc);
+		mq->next = mntqalloc.free;
+		mntqalloc.free = mq;
+		unlock(&mntqalloc);
+	}
+	unlock(mq);
+	if(msg)		/* after locks are down */
+		close(msg);
+}
+
 Mnt*
 mntdev(int dev, int noerr)
 {
@@ -130,7 +187,7 @@ mntdev(int dev, int noerr)
 
 	for(m=mnt,i=0; i<conf.nmntdev; i++,m++)		/* use a hash table some day */
 		if(m->mntid == dev){
-			if(m->msg == 0)
+			if(m->q == 0)
 				break;
 			return m;
 		}
@@ -145,6 +202,7 @@ mntreset(void)
 	int i;
 	Mntbuf *mb;
 	Mnthdr *mh;
+	MntQ *mq;
 
 	mnt = ialloc(conf.nmntdev*sizeof(Mnt), 0);
 
@@ -159,6 +217,13 @@ mntreset(void)
 		mh[i].next = &mh[i+1];
 	mh[i].next = 0;
 	mnthdralloc.free = mh;
+
+	mq = ialloc(conf.nmntdev*sizeof(MntQ), 0);
+	for(i=0; i<conf.nmntdev-1; i++)
+		mq[i].next = &mq[i+1];
+	mq[i].next = 0;
+	mntqalloc.arena = mq;
+	mntqalloc.free = mq;
 }
 
 void
@@ -170,8 +235,9 @@ Chan*
 mntattach(char *spec)
 {
 	int i;
-	Mnt *m;
+	Mnt *m, *mm;
 	Mnthdr *mh;
+	MntQ *q;
 	Chan *c, *cm;
 	struct bogus{
 		Chan	*chan;
@@ -189,6 +255,7 @@ mntattach(char *spec)
 		unlock(m);
 	}
 	error(0, Enomntdev);
+
     Found:
 	m->ref = 1;
 	unlock(m);
@@ -199,11 +266,31 @@ mntattach(char *spec)
 	c->dev = m->mntid;
 	m->mntpt = c;
 	cm = bogus.chan;
-	m->msg = cm;
+
+	/*
+	 * Look for queue to same msg channel
+	 */
+	q = mntqalloc.arena;
+	for(i=0; i<conf.nmntdev; i++,q++)
+		if(q->msg==cm){
+			lock(q);
+			if(q->ref && q->msg==cm){
+				m->q = q;
+				q->ref++;
+				unlock(q);
+				goto out;
+			}
+			unlock(q);
+		}
+	m->q = mqalloc();
+	m->q->msg = cm;
 	incref(cm);
+
+    out:
 	mh = mhalloc();
 	if(waserror()){
 		mhfree(mh);
+		mqfree(q);
 		close(c);
 		nexterror();
 	}
@@ -213,7 +300,7 @@ mntattach(char *spec)
 	strcpy(mh->thdr.aname, spec);
 	mntxmit(m, mh);
 	c->qid = mh->rhdr.qid;
-	c->mchan = m->msg;
+	c->mchan = m->q->msg;
 	c->mqid = c->qid;
 	mhfree(mh);
 	poperror();
@@ -255,10 +342,10 @@ mntclone(Chan *c, Chan *nc)
 	nc->mnt = c->mnt;
 	nc->mchan = c->mchan;
 	nc->mqid = c->qid;
-	if(new)
-		poperror();
 	mhfree(mh);
 	poperror();
+	if(new)
+		poperror();
 	incref(m);
 	return nc;
 }
@@ -364,30 +451,44 @@ mntcreate(Chan *c, char *name, int omode, ulong perm)
 }
 
 void	 
-mntclose(Chan *c)
+mntclunk(Chan *c, int t)
 {
 	Mnt *m;
 	Mnthdr *mh;
+	MntQ *q;
+	int waserr;
+int ne = u->nerrlab;
 
 	m = mntdev(c->dev, 0);
 	mh = mhalloc();
-	if(waserror()){
-		mhfree(mh);
-		nexterror();
-	}
-	mh->thdr.type = Tclunk;
+	mh->thdr.type = t;
 	mh->thdr.fid = c->fid;
-	mntxmit(m, mh);
+	waserr = 0;
+	if(waserror())		/* gotta clean up as if there wasn't */
+		waserr = 1;
+	else
+		mntxmit(m, mh);
 	mhfree(mh);
 	if(c == m->mntpt)
 		m->mntpt = 0;
-	if(decref(m) == 0){		/* BUG: need to hang up all pending i/o */
-		qlock(m);
-		close(m->msg);
-		m->msg = 0;
-		qunlock(m);
-	}
+	lock(m);
+	if(--m->ref == 0){		/* BUG: need to hang up all pending i/o */
+		q = m->q;
+		m->q = 0;
+		m->mntid = 0;
+		unlock(m);		/* mqfree can take time */
+		mqfree(q);
+	}else
+		unlock(m);
+	if(waserr)
+		nexterror();
 	poperror();
+}
+
+void
+mntclose(Chan *c)
+{
+	mntclunk(c, Tclunk);
 }
 
 long
@@ -458,21 +559,7 @@ mntwrite(Chan *c, void *buf, long n)
 void	 
 mntremove(Chan *c)
 {
-	Mnt *m;
-	Mnthdr *mh;
-
-	m = mntdev(c->dev, 0);
-	mh = mhalloc();
-	if(waserror()){
-		mhfree(mh);
-		nexterror();
-	}
-	decref(m);
-	mh->thdr.type = Tremove;
-	mh->thdr.fid = c->fid;
-	mntxmit(m, mh);
-	mhfree(mh);
-	poperror();
+	mntclunk(c, Tremove);
 }
 
 void
@@ -550,11 +637,48 @@ mntuserstr(Error *e, char *buf)
 }
 
 void
+mnterrdequeue(MntQ *q, Mnthdr *mh)		/* queue is unlocked */
+{
+	Mnthdr *w;
+
+	qlock(q);
+	/* take self from queue if necessary */
+	if(q->reader == u->p){	/* advance a writer to reader */
+		w = q->writer;
+		if(w){
+			q->reader = w->p;
+			q->writer = w->next;
+			wakeup(&w->r);
+		}else{
+			q->reader = 0;
+			q->writer = 0;
+		}
+	}else{
+		w = q->writer;
+		if(w == mh)
+			q->writer = w->next;
+		else{
+			while(w){
+				if(w->next == mh){
+					w->next = mh->next;
+					break;
+				}
+				w = w->next;
+			}
+		}
+	}
+	qunlock(q);
+
+}
+void
 mntxmit(Mnt *m, Mnthdr *mh)
 {
 	ulong n;
 	Mntbuf *mbr, *mbw;
-	Chan *mntpt, *msg;
+	Mnthdr *w, *ow;
+	Chan *mntpt;
+	MntQ *q;
+	int qlocked;
 
 	mbr = mballoc();
 	mbw = mballoc();
@@ -564,6 +688,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		nexterror();
 	}
 	n = convS2M(&mh->thdr, mbw->buf);
+#ifdef	bit3
 	/*
 	 * Bit3 does its own multiplexing.  (Well, the file server does.)
 	 * The code is different enough that it's broken out separately here.
@@ -582,8 +707,8 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		nexterror();
 	}
 	if((*devtab[msg->type].write)(msg, mbw->buf, n) != n){
-		pprint("short write in mntxmit\n");
-		error(0, Egreg);
+		print("short write in mntxmit\n");
+		error(0, Eshortmsg);
 	}
 
 	/*
@@ -594,20 +719,20 @@ mntxmit(Mnt *m, Mnthdr *mh)
 	poperror();
 
 	if(convM2S(mbr->buf, &mh->rhdr, n) == 0){
-		pprint("format error in mntxmit\n");
-		error(0, Egreg);
+		print("format error in mntxmit\n");
+		error(0, Ebadmsg);
 	}
 
 	/*
 	 * Various checks
 	 */
 	if(mh->rhdr.type != mh->thdr.type+1){
-		pprint("type mismatch %d %d\n", mh->rhdr.type, mh->thdr.type+1);
-		error(0, Egreg);
+		print("type mismatch %d %d\n", mh->rhdr.type, mh->thdr.type+1);
+		error(0, Ebadmsg);
 	}
 	if(mh->rhdr.fid != mh->thdr.fid){
-		pprint("fid mismatch %d %d type %d\n", mh->rhdr.fid, mh->thdr.fid, mh->rhdr.type);
-		error(0, Egreg);
+		print("fid mismatch %d %d type %d\n", mh->rhdr.fid, mh->thdr.fid, mh->rhdr.type);
+		error(0, Ebadmsg);
 	}
 	if(mh->rhdr.err){
 		mntpt = m->mntpt;	/* unsafe, but Errors are unsafe anyway */
@@ -627,46 +752,100 @@ mntxmit(Mnt *m, Mnthdr *mh)
 	return;
 
     Normal:
-	qlock(m);
-	if((msg = m->msg) == 0){
-		qunlock(m);
+#endif
+	q = m->q;
+	if(q == 0)
 		error(0, Eshutdown);
-	}
-	qlock(msg);
+	incref(q);
+	qlock(q);
+	qlocked = 1;
 	if(waserror()){
-		qunlock(m);
-		qunlock(msg);
+		if(qlocked)
+			qunlock(q);
+		mqfree(q);
 		nexterror();
 	}
-	if((*devtab[msg->type].write)(msg, mbw->buf, n) != n){
-		pprint("short write in mntxmit\n");
-		error(0, Egreg);
+	if((*devtab[q->msg->type].write)(q->msg, mbw->buf, n) != n){
+		print("short write in mntxmit\n");
+		error(0, Eshortmsg);
+	}
+	if(q->reader == 0){		/* i will read */
+		q->reader = u->p;
+    Read:
+		qunlock(q);
+		qlocked = 0;
+		n = (*devtab[q->msg->type].read)(q->msg, mbr->buf, BUFSIZE);
+		if(convM2S(mbr->buf, &mh->rhdr, n) == 0){
+			print("format error in mntxmit\n");
+			mnterrdequeue(q, mh);
+			error(0, Ebadmsg);
+		}
+		/*
+		 * Response might not be mine
+		 */
+		qlock(q);
+		qlocked = 1;
+		if(mh->rhdr.fid == mh->thdr.fid
+		&& mh->rhdr.type == mh->thdr.type+1){	/* it's mine */
+			q->reader = 0;
+			if(w = q->writer){	/* advance a writer to reader */
+				q->reader = w->p;
+				q->writer = w->next;
+				wakeup(&w->r);
+			}
+			qunlock(q);
+			qlocked = 0;
+			goto Respond;
+		}
+		/*
+		 * Hand response to correct recipient
+		 */
+if(q->writer == 0) print("response with empty queue\n");
+		for(ow=0,w=q->writer; w; ow=w,w=w->next)
+			if(mh->rhdr.fid == w->thdr.fid
+			&& mh->rhdr.type == w->thdr.type+1){
+				Mntbuf *t;
+				t = mbr;
+				mbr = w->mbr;
+				w->mbr = t;
+				memcpy(&w->rhdr, &mh->rhdr, sizeof mh->rhdr);
+				/* take recipient from queue */
+				if(ow == 0)
+					q->writer = w->next;
+				else
+					ow->next = w->next;
+				wakeup(&w->r);
+				goto Read;
+			}
+		goto Read;
+	}else{
+		mh->mbr = mbr;
+		mh->p = u->p;
+		/* put self in queue */
+		mh->next = q->writer;
+		q->writer = mh;
+		qunlock(q);
+		qlocked = 0;
+		if(waserror()){		/* interrupted sleep */
+			print("interrupted i/o\n");
+			mnterrdequeue(q, mh);
+			nexterror();
+		}
+		sleep(&mh->r, return0, 0);
+		poperror();
+		qlock(q);
+		qlocked = 1;
+		if(q->reader == u->p)	/* i got promoted */
+			goto Read;
+		mbr = mh->mbr;		/* pick up my buffer */
+		qunlock(q);
+		qlocked = 0;
+		goto Respond;
 	}
 
-	/*
-	 * Read response
-	 */
-	n = (*devtab[msg->type].read)(msg, mbr->buf, BUFSIZE);
-	qunlock(m);
-	qunlock(msg);
+    Respond:
+	mqfree(q);
 	poperror();
-
-	if(convM2S(mbr->buf, &mh->rhdr, n) == 0){
-		pprint("format error in mntxmit\n");
-		error(0, Egreg);
-	}
-
-	/*
-	 * Various checks
-	 */
-	if(mh->rhdr.type != mh->thdr.type+1){
-		pprint("type mismatch %d %d\n", mh->rhdr.type, mh->thdr.type+1);
-		error(0, Egreg);
-	}
-	if(mh->rhdr.fid != mh->thdr.fid){
-		pprint("fid mismatch %d %d type %d\n", mh->rhdr.fid, mh->thdr.fid, mh->rhdr.type);
-		error(0, Egreg);
-	}
 	if(mh->rhdr.err){
 		mntpt = m->mntpt;	/* unsafe, but Errors are unsafe anyway */
 		if(mntpt)

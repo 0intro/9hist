@@ -31,6 +31,21 @@ main(int argc, char *argv[])
 	sendmsg(cfd, "config 1 16");
 
 	/*
+	 *  fork a process to hold the incon channel open
+	 */
+	switch(fork()){
+	case -1:
+		break;
+	case 0:
+		for(;;)
+			sleep(60*1000);
+		exit(0);
+	default:
+		close(cfd);
+		break;
+	}
+
+	/*
 	 *  open a datakit channel and call ken via r70, leave the
 	 *  incon ctl channel open
 	 */

@@ -261,9 +261,10 @@ urpciput(Queue *q, Block *bp)
 	/*
 	 *  take care of any data
 	 */
-	if(BLEN(bp)>0 && !QFULL(q->next))
+	if(BLEN(bp)>0  && q->next->len<2*Streamhi && q->next->nb<2*Streambhi){
+		bp->flags |= S_DELIM;
 		PUTNEXT(q, bp);
-	else
+	} else
 		freeb(bp);
 
 	/*

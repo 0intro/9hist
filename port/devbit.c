@@ -9,7 +9,7 @@
 
 #include	"gnot.h"
 
-extern Font	defont0;	/* BUG */
+extern Font	*defont;
 
 /*
  * Device (#b/bitblt) is exclusive use on open, so no locks are necessary
@@ -24,7 +24,8 @@ extern Font	defont0;	/* BUG */
  * followed by N blocks.  The bitmap pointer is zero if block is free. 
  */
 
-struct{
+struct
+{
 	Ref;
 	Bitmap	*map;		/* arena */
 	Bitmap	*free;		/* free list */
@@ -53,25 +54,27 @@ struct{
 	Rendez	r;
 }mouse;
 
+Cursor	arrow =
+{
+	{0, 0},
+	{0xFF, 0xE0, 0xFF, 0xE0, 0xFF, 0xC0, 0xFF, 0x00,
+	 0xFF, 0x00, 0xFF, 0x80, 0xFF, 0xC0, 0xFF, 0xE0,
+	 0xE7, 0xF0, 0xE3, 0xF8, 0xC1, 0xFC, 0x00, 0xFE,
+	 0x00, 0x7F, 0x00, 0x3E, 0x00, 0x1C, 0x00, 0x08,
+	},
+	{0x00, 0x00, 0x7F, 0xC0, 0x7F, 0x00, 0x7C, 0x00,
+	 0x7E, 0x00, 0x7F, 0x00, 0x6F, 0x80, 0x67, 0xC0,
+	 0x43, 0xE0, 0x41, 0xF0, 0x00, 0xF8, 0x00, 0x7C,
+	 0x00, 0x3E, 0x00, 0x1C, 0x00, 0x08, 0x00, 0x00,
+	}
+};
+
 struct{
 	Cursor;
 	Lock;
 	int	visible;	/* on screen */
 	Rectangle r;		/* location */
-}cursor =
-{
-	{{0, 0},
-	{0xFFE0, 0xFFE0, 0xFFC0, 0xFF00,
-	 0xFF00, 0xFF80, 0xFFC0, 0xFFE0,
-	 0xE7F0, 0xE3F8, 0xC1FC, 0x00FE,
-	 0x007F, 0x003E, 0x001C, 0x0008,
-	},
-	{0x0000, 0x7FC0, 0x7F00, 0x7C00,
-	 0x7E00, 0x7F00, 0x6F80, 0x67C0,
-	 0x43E0, 0x41F0, 0x00F8, 0x007C,
-	 0x003E, 0x001C, 0x0008, 0x0000,
-	}},
-};
+}cursor;
 
 ulong setbits[16];
 Bitmap	set =
@@ -103,7 +106,7 @@ Bitmap cursorback =
 	{0, 0, 16, 16}
 };
 
-void	cursortobitmap(void);
+void	Cursortocursor(Cursor*);
 void	cursoron(int);
 void	cursoroff(int);
 int	mousechanged(void*);
@@ -140,7 +143,7 @@ bitreset(void)
 	bit.words = ialloc(conf.nbitbyte, 0);
 	bit.nwords = conf.nbitbyte/sizeof(ulong);
 	bit.wfree = bit.words;
-	cursortobitmap();
+	Cursortocursor(&arrow);
 }
 
 void
@@ -148,6 +151,9 @@ bitinit(void)
 {
 	lock(&bit);
 	unlock(&bit);
+	if(screen.ldepth > 1)
+		panic("bitinit ldepth>1");
+	cursorback.ldepth = screen.ldepth;
 	cursoron(1);
 }
 
@@ -192,6 +198,7 @@ bitopen(Chan *c, int omode)
 		bit.lastid = -1;
 		bit.init = 1;
 		bit.ref = 1;
+		Cursortocursor(&arrow);
 		unlock(&bit);
 	}else
 		incref(&bit);
@@ -341,6 +348,7 @@ bitwrite(Chan *c, void *va, long n)
 	int off;
 	Point pt;
 	Rectangle rect;
+	Cursor curs;
 	Bitmap *bp, *src, *dst;
 
 	if(c->qid == CHDIR)
@@ -368,7 +376,7 @@ bitwrite(Chan *c, void *va, long n)
 			if(m < 18)
 				error(0, Ebadblt);
 			v = *(p+1);
-			if(v != 0)	/* BUG */
+			if(v!=0 && v!=1)	/* BUG */
 				error(0, Ebadblt);
 			ws = 1<<(5-v);	/* pixels per word */
 			if(bit.free == 0)
@@ -385,9 +393,9 @@ bitwrite(Chan *c, void *va, long n)
 				l = (t+rect.max.x+ws-1)/ws;
 			}
 			nw = l*Dy(rect);
-			if(bit.wfree+l+2 > bit.words+bit.nwords){
+			if(bit.wfree+2+nw > bit.words+bit.nwords){
 				bitcompact();
-				if(bit.wfree+l+1 > bit.words+bit.nwords)
+				if(bit.wfree+2+nw > bit.words+bit.nwords)
 					error(0, Enobitstore);
 			}
 			bp = bit.free;
@@ -453,6 +461,36 @@ bitwrite(Chan *c, void *va, long n)
 			p += 31;
 			break;
 
+		case 'c':
+			/*
+			 * cursorswitch
+			 *	'c'		1
+			 * nothing more: return to arrow; else
+			 * 	Point		8
+			 *	clr		32
+			 *	set		32
+			 */
+			if(m == 1){
+				cursoroff(1);
+				Cursortocursor(&arrow);
+				cursoron(1);
+				m -= 1;
+				p += 1;
+				break;
+			}
+			if(m < 73)
+				error(0, Ebadblt);
+			curs.offset.x = GLONG(p+1);
+			curs.offset.y = GLONG(p+5);
+			memcpy(curs.clr, p+9, 2*16);
+			memcpy(curs.set, p+41, 2*16);
+			cursoroff(1);
+			Cursortocursor(&curs);
+			cursoron(1);
+			m -= 73;
+			p += 73;
+			break;
+
 		case 'f':
 			/*
 			 * free
@@ -502,7 +540,7 @@ bitwrite(Chan *c, void *va, long n)
 				error(0, Ebadblt);
 			if(off)
 				cursoroff(1);
-			string(dst, pt, &defont0/*BUG*/, (char*)p, v);
+			string(dst, pt, defont/*BUG*/, (char*)p, v);
 			if(off)
 				cursoron(1);
 			q++;
@@ -622,7 +660,7 @@ biterrstr(Error *e, char *buf)
 void
 bitfree(Bitmap *bp)
 {
-	bp->base[1] = 0;
+	bp->base[-1] = 0;
 	bp->ldepth = -1;
 	bp->base = (ulong*)bit.free;
 	bit.free = bp;
@@ -633,7 +671,6 @@ bitcompact(void)
 {
 	ulong *p1, *p2;
 
-print("bitcompact\n");
 	p1 = p2 = bit.words;
 	while(p2 < bit.wfree){
 		if(p2[1] == 0){
@@ -648,18 +685,18 @@ print("bitcompact\n");
 		p1 += 2 + p1[0];
 	}
 	bit.wfree = p1;
-print("bitcompact done\n");
 }
 
 void
-cursortobitmap(void)
+Cursortocursor(Cursor *c)
 {
 	int i;
 
 	lock(&cursor);
+	memcpy(&cursor, c, sizeof(Cursor));
 	for(i=0; i<16; i++){
-		setbits[i] = cursor.set[i]<<16;
-		clrbits[i] = cursor.clr[i]<<16;
+		setbits[i] = (c->set[2*i]<<24) + (c->set[2*i+1]<<16);
+		clrbits[i] = (c->clr[2*i]<<24) + (c->clr[2*i+1]<<16);
 	}
 	unlock(&cursor);
 }
@@ -711,7 +748,6 @@ void
 mouseclock(void)	/* called spl6 */
 {
 	int x, y;
-
 	if(mouse.track && canlock(&cursor)){
 		x = mouse.xy.x + mouse.dx;
 		if(x < screen.r.min.x)
