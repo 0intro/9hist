@@ -260,8 +260,10 @@ v4tov6(uchar *v6, uchar *v4)
 int
 v6tov4(uchar *v4, uchar *v6)
 {
-	if(memcmp(v6, v4prefix, IPv4off) != 0)
+	if(memcmp(v6, v4prefix, IPv4off) != 0){
+		memset(v4, 0, 4);
 		return -1;
+	}
 	memmove(v4, v6 + IPv4off, IPv4addrlen);
 	return 0;
 }
