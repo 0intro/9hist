@@ -94,6 +94,9 @@ streaminit(void)
 void
 newqinfo(Qinfo *qi)
 {
+	if(qi->next)
+		panic("newqinfo: already configured");
+
 	qi->next = lds;
 	lds = qi;
 	if(qi->reset)

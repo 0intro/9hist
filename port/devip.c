@@ -9,9 +9,11 @@
 
 #include	"devtab.h"
 
-enum{
-	Nrprotocol = 2, /* Number of protocols supported by this driver */
-	Nipsubdir = 4,	/* Number of subdirectory entries per connection */
+
+enum
+{
+	Nrprotocol	= 3,		/* Number of protocols supported by this driver */
+	Nipsubdir	= 4,		/* Number of subdirectory entries per connection */
 };
 
 int udpsum = 1;
@@ -32,13 +34,20 @@ void	tcpstiput(Queue *, Block *);
 void	tcpstoput(Queue *, Block *);
 void	tcpstopen(Queue *, Stream *);
 void	tcpstclose(Queue *);
+/* Plan9 Reliable Datagram Protocol */
+void	iliput(Queue *, Block *);
+void	iloput(Queue *, Block *);
+void	ilopen(Queue *, Stream *);
+void	ilclose(Queue *);
 
 Qinfo tcpinfo = { tcpstiput, tcpstoput, tcpstopen, tcpstclose, "tcp" };
 Qinfo udpinfo = { udpstiput, udpstoput, udpstopen, udpstclose, "udp" };
+Qinfo ilinfo  = { iliput,    iloput,    ilopen,    ilclose,    "il"  };
 
-Qinfo *protocols[] = { &tcpinfo, &udpinfo, 0 };
+Qinfo *protocols[] = { &tcpinfo, &udpinfo, &ilinfo, 0 };
 
-enum{
+enum
+{
 	ipdirqid,
 	iplistenqid,
 	iplportqid,
@@ -63,7 +72,7 @@ ipreset(void)
 
 	ipifc = (Ipifc *)ialloc(sizeof(Ipifc) * conf.ip, 0);
 
-	for(i = 0; i < Nrprotocol; i++) {
+	for(i = 0; protocols[i]; i++) {
 		ipconv[i] = (Ipconv *)ialloc(sizeof(Ipconv) * conf.ip, 0);
 		ipdir[i] = (Dirtab *)ialloc(sizeof(Dirtab) * (conf.ip+1), 0);
 		ipmkdir(protocols[i], ipdir[i], ipconv[i]);

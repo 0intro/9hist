@@ -12,8 +12,11 @@ typedef struct Tcp	Tcp;
 typedef struct Tcpctl	Tcpctl;
 typedef struct Tcphdr	Tcphdr;
 typedef struct Timer	Timer;
+typedef struct Ilhdr	Ilhdr;
+typedef struct Ilcb	Ilcb;
 
-struct Etherhdr {
+struct Etherhdr
+{
 #define ETHER_HDR	14
 	uchar	d[6];
 	uchar	s[6];
@@ -37,7 +40,8 @@ struct Etherhdr {
 #define ET_IP	0x0800
 
 /* A userlevel data gram */
-struct Udphdr {
+struct Udphdr
+{
 #define UDP_EHSIZE	22
 	uchar	d[6];		/* Ethernet destination */
 	uchar	s[6];		/* Ethernet source */
@@ -62,9 +66,54 @@ struct Udphdr {
 	uchar	udpcksum[2];	/* Checksum */
 };
 
+struct Ilhdr
+{
+#define IL_EHSIZE	22
+	uchar	d[6];		/* Ethernet destination */
+	uchar	s[6];		/* Ethernet source */
+	uchar	type[2];	/* Ethernet packet type */
+	uchar	vihl;		/* Version and header length */
+	uchar	tos;		/* Type of service */
+	uchar	length[2];	/* packet length */
+	uchar	id[2];		/* Identification */
+	uchar	frag[2];	/* Fragment information */
+#define IL_HDRSIZE	16	
+	uchar	ilsum[2];	/* Checksum including header */
+	uchar	illen[2];	/* Packet length */
+	uchar	iltype;		/* Packet type */
+	uchar	ilspec;		/* Special */
+	uchar	ilsrc[2];	/* Src port */
+	uchar	ildst[2];	/* Dst port */
+	uchar	ilid[4];	/* Sequence id */
+	uchar	ilack[4];	/* Acked sequence */
+};
+
+struct Ilcb
+{
+	int	state;
+	Block	*unacked;
+	Block	*unackedtail;
+	Block	*outoforder;
+	Block	*outofordertail;
+	ulong	sent;
+	ulong	recvd;
+	ulong	lastack;
+};
+
+enum
+{
+	Ilsync,
+	Ildata,
+	Ildataquery,
+	Ilack,
+	Ilquerey,
+	Ilstate,
+};
+
 #define TCP_PKT	(TCP_EHSIZE+TCP_IPLEN+TCP_PHDRSIZE)
 
-struct Tcphdr {
+struct Tcphdr
+{
 #define TCP_EHSIZE	14
 	uchar	d[6];		/* Ethernet destination */
 	uchar	s[6];		/* Ethernet source */
@@ -96,11 +145,12 @@ struct Tcphdr {
 	/* Options segment */
 	uchar	tcpopt[2];
 	uchar	tcpmss[2];
-	};
+};
 
 
 
-struct Timer {
+struct Timer
+{
 	Timer	*next;
 	Timer	*prev;
 	int	state;
@@ -108,9 +158,10 @@ struct Timer {
 	int	count;
 	void	(*func)(void*);
 	void	*arg;
-	};
+};
 
-struct Tcpctl {
+struct Tcpctl
+{
 	QLock;
 	uchar	state;		/* Connection state */
 	uchar	type;		/* Listening or active connection */
@@ -166,7 +217,8 @@ struct Tcpctl {
 	int	mdev;			/* Mean deviation of round trip */
 };
 
-struct	Tcp {
+struct	Tcp
+{
 	Port	source;
 	Port	dest;
 	int	seq;
@@ -175,18 +227,20 @@ struct	Tcp {
 	ushort	wnd;
 	ushort	up;
 	ushort	mss;
-	};
+};
 
-struct Reseq {
+struct Reseq
+{
 	Reseq 	*next;
 	Tcp	seg;
 	Block	*bp;
 	ushort	length;
 	char	tos;
-	};
+};
 
 /* An ip interface used for UDP/TCP/ARP/ICMP */
-struct Ipconv {
+struct Ipconv
+{
 	QLock;				/* Ref count lock */
 	int 	ref;
 	Qinfo	*stproto;		/* Stream protocol for this device */
@@ -207,7 +261,10 @@ struct Ipconv {
 	int	backlog;		/* Maximum number of waiting connections */
 	int	curlog;			/* Number of waiting connections */
 	int 	contype;
-	Tcpctl	tcpctl;			/* Tcp control block */
+	union {
+		Tcpctl	tcpctl;			/* Tcp control block */
+		Ilcb	ilctl;			/* Il control block */
+	};
 };
 
 #define	MAX_TIME	100000000	/* Forever */
@@ -255,7 +312,8 @@ struct Ipconv {
 #define	read_timer(t)	((t)->count)
 #define	run_timer(t)	((t)->state == TIMER_RUN)
 
-enum {
+enum
+{
 	CLOSED = 0,
 	LISTEN,
 	SYN_SENT,
@@ -267,12 +325,13 @@ enum {
 	CLOSING,
 	LAST_ACK,
 	TIME_WAIT
-	};
+};
 
 /*
  * Ip interface structure. We have one for each active protocol driver
  */
-struct Ipifc {
+struct Ipifc 
+{
 	QLock;
 	int 		ref;
 	uchar		protocol;		/* Ip header protocol number */
@@ -285,21 +344,24 @@ struct Ipifc {
 	Lock;	
 };
 
-struct Fragq {
+struct Fragq
+{
 	QLock;
 	Block  *blist;
 	Fragq  *next;
 	Ipaddr src;
 	Ipaddr dst;
 	ushort id;
-	};
+};
 
-struct Ipfrag {
+struct Ipfrag
+{
 	ushort	foff;
 	ushort	flen;
-	};
+};
 
-struct Arpcache {
+struct Arpcache
+{
 	uchar	status;		/* Entry status */
 	uchar	type;		/* Entry type */
 	Ipaddr	ip;		/* Host byte order */
@@ -311,6 +373,7 @@ struct Arpcache {
 	Arpcache *frwd;
 	Arpcache *prev;
 };
+
 #define ARP_FREE	0
 #define ARP_OK		1
 #define ARP_ASKED	2
@@ -341,10 +404,12 @@ struct Arpcache {
 #define IP_MAX		8192			/* Maximum Internet packet size */
 #define UDP_MAX		(IP_MAX-ETHER_IPHDR)	/* Maximum UDP datagram size */
 #define UDP_DATMAX	(UDP_MAX-UDP_HDRSIZE)	/* Maximum amount of udp data */
+#define IL_DATMAX	(IP_MAX-IL_HDRSIZE)	/* Maximum IL data in one ip packet */
 
 /* Protocol numbers */
 #define IP_UDPPROTO	17
 #define IP_TCPPROTO	6
+#define	IP_ILPROTO	190		/* I have no idea */
 
 /* Protocol port numbers */
 #define PORTALLOC	5000		/* First automatic allocated port */
@@ -440,3 +505,4 @@ extern Rendez tcpflowr;
 extern Qinfo tcpinfo;
 extern Qinfo ipinfo;
 extern Qinfo udpinfo;
+extern Qinfo ilinfo;
