@@ -462,7 +462,7 @@ confinit(void)
 	conf.npage1 = 0;
 	conf.base1 = 0;
 
-	if(top > 16*MB){
+	if(top > 16*MB/BY2PG){
 		conf.upages = (conf.npage*60)/100;
 		poolsetparam("Image", 0, 0, 4*1024*1024);
 	}else
