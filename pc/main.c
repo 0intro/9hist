@@ -271,7 +271,7 @@ confinit(void)
 	conf.npage1 = (i*MB - conf.base1)/BY2PG;
 	conf.npage = conf.npage0 + conf.npage1;
 
-	conf.ldepth = 1;
+	conf.ldepth = 2;
 	pcnt = screenbits()-1;		/* Calculate % of memory for page pool */
 	pcnt = 70 - (pcnt*10);
 	conf.upages = (conf.npage*pcnt)/100;

@@ -659,25 +659,85 @@ l00:
  *  same as l0update but for ldepth 1 (2 bit plane) screens
  */
 TEXT	l1update(SB),$0
+	XORL	AX,AX
 	MOVL	from+0(FP),SI
 	MOVL	to+4(FP),DI
 	MOVL	len+8(FP),CX
 	MOVB	$(Smmask),AL
 	MOVW	$(SRX),DX
 	OUTB
-	MOVW	$(SR),DX
 l10:
-	XORL	AX,AX
-	MOVB	-2(SI)(CX*2),AL		/* high order nibbles */
-	MOVW	l1revsep(SB)(AX*2),BX
-	SHLW	$4,BX
-	MOVB	-1(SI)(CX*2),AL		/* low order nibbles */
-	ORW	l1revsep(SB)(AX*2),BX
-	MOVB	$0xA,AL			/* write hi order bits to bit planes 0 & 2 */
-	OUTB
-	MOVB	BH,-1(DI)(CX*1)
+	MOVL	-4(SI)(CX*2),DX
+	MOVB	DL,AL
+	MOVL	l1revsep(SB)(AX*4),BX
+	SHLL	$4,BX
+	RORL	$8,DX
+	MOVB	DL,AL
+	ORL	l1revsep(SB)(AX*4),BX
+	RORL	$12,BX
+	RORL	$8,DX
+	MOVB	DL,AL
+	ORL	l1revsep(SB)(AX*4),BX
+	SHLL	$4,BX
+	RORL	$8,DX
+	MOVB	DL,AL
+	ORL	l1revsep(SB)(AX*4),BX
+	ROLL	$8,BX
+	MOVW	$(SR),DX
 	MOVB	$0x5,AL			/* write lo order bits to bit planes 1 & 3 */
 	OUTB
-	MOVB	BL,-1(DI)(CX*1)
-	LOOP	l10
+	MOVW	BX,-2(DI)(CX*1)
+	SHRL	$16,BX			/* write hi order bits to bit planes 1 & 3 */
+	MOVB	$0xA,AL
+	OUTB
+	MOVW	BX,-2(DI)(CX*1)
+	LOOP	l11
+	RET
+l11:	LOOP	l10
+	RET
+
+/*
+ *  same as l0update but for ldepth 2 (4 bit plane) screens
+ */
+TEXT	l2update(SB),$0
+	XORL	AX,AX
+	MOVL	from+0(FP),SI
+	MOVL	to+4(FP),DI
+	MOVL	len+8(FP),CX
+	MOVB	$(Smmask),AL
+	MOVW	$(SRX),DX
+	OUTB
+l20:
+	MOVL	-4(SI)(CX*4),DX
+	MOVB	DL,AL
+	MOVL	l2revsep(SB)(AX*4),BX
+	SHLL	$2,BX
+	SHRL	$8,DX
+	MOVB	DL,AL
+	ORL	l2revsep(SB)(AX*4),BX
+	SHLL	$2,BX
+	SHRL	$8,DX
+	MOVB	DL,AL
+	ORL	l2revsep(SB)(AX*4),BX
+	SHLL	$2,BX
+	SHRL	$8,DX
+	MOVB	DL,AL
+	ORL	l2revsep(SB)(AX*4),BX
+	MOVW	$(SR),DX
+	MOVB	$0x1,AL			/* plane 3 */
+	OUTB
+	MOVB	BX,-1(DI)(CX*1)
+	MOVB	$0x2,AL			/* plane 2 */
+	OUTB
+	SHRL	$8,BX
+	MOVB	BX,-1(DI)(CX*1)
+	MOVB	$0x4,AL			/* plane 1 */
+	OUTB
+	SHRL	$8,BX
+	MOVB	BX,-1(DI)(CX*1)
+	MOVB	$0x8,AL			/* plane 0*/
+	OUTB
+	SHRL	$8,BX
+	MOVB	BX,-1(DI)(CX*1)
+	LOOP	l20
 	RET

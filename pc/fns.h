@@ -36,6 +36,7 @@ ulong	isamem(int);
 void	kbdinit(void);
 void	l0update(uchar*, uchar*, int);
 void	l1update(uchar*, uchar*, int);
+void	l2update(uchar*, uchar*, int);
 void	mathinit(void);
 void	mmuinit(void);
 int	modem(int);
