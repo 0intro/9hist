@@ -520,7 +520,7 @@ sseek(ulong *arg)
 }
 
 long
-sysvseek(ulong *arg)
+sysseek(ulong *arg)
 {
 	validaddr(arg[0], BY2V, 1);
 	sseek(arg);
@@ -528,7 +528,7 @@ sysvseek(ulong *arg)
 }
 
 long
-sysseek(ulong *arg)
+sysoseek(ulong *arg)
 {
 	union {
 		vlong v;
