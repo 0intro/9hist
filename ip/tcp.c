@@ -1391,7 +1391,7 @@ limborexmit(Proto *tcp)
 		return;
 	seen = 0;
 	now = NOW;
-	for(h = 0; h < nelem(tpriv->lht) && seen < tpriv->nlimbo; h++){
+	for(h = 0; h < NLHT && seen < tpriv->nlimbo; h++){
 		for(l = &tpriv->lht[h]; *l != nil && seen < tpriv->nlimbo; ){
 			lp = *l;
 			seen++;
@@ -1481,10 +1481,8 @@ tcpincoming(Conv *s, Tcp *segp, uchar *src, uchar *dst, uchar version)
 	tpriv = s->p->priv;
 
 	/* find a call in limbo */
-	lp = nil;
 	h = hashipa(src, segp->source);
-	for(l = &tpriv->lht[h]; *l != nil; l = &lp->next){
-		lp = *l;
+	for(l = &tpriv->lht[h]; (lp = *l) != nil; l = &lp->next){
 		if(lp->lport != segp->dest || lp->rport != segp->source || lp->version != version)
 			continue;
 		if(ipcmp(lp->laddr, dst) != 0)
