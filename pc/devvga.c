@@ -315,6 +315,8 @@ vgactl(char *arg)
 
 		/* see if it fits in the usual place */
 		if(size <= Footprint){
+			if(screenmem != SCREENMEM)
+				upafree(screenmem, footprint);
 			screenmem = SCREENMEM;
 			if(size == 0){
 				footprint = Footprint;
@@ -351,6 +353,9 @@ vgactl(char *arg)
 			mem = upamalloc(0, size, align);
 		if(mem == 0)
 			error("not enough free address space");
+
+		if(screenmem != SCREENMEM)
+			upafree(screenmem, footprint);
 		screenmem = mem;
 		gscreen.base = (void*)screenmem;
 		footprint = size;
