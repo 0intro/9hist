@@ -38,7 +38,6 @@ struct Etherhdr
 /* Ethernet packet types */
 #define ET_IP	0x0800
 
-/* A userlevel data gram */
 struct Udphdr
 {
 #define UDP_EHSIZE	22
@@ -185,7 +184,12 @@ struct Tcphdr
 	uchar	tcpmss[2];
 };
 
-
+enum
+{
+	TimerOFF	= 0,
+	TimerON		= 1,
+	TimerDONE	= 2,
+};
 
 struct Timer
 {
@@ -200,50 +204,50 @@ struct Timer
 
 struct Tctl
 {
-	uchar	state;		/* Connection state */
-	uchar	type;		/* Listening or active connection */
-	uchar	code;		/* Icmp code */		
+	uchar	state;			/* Connection state */
+	uchar	type;			/* Listening or active connection */
+	uchar	code;			/* Icmp code */		
 	struct {
-		int	una;	/* Unacked data pointer */
-		int	nxt;	/* Next sequence expected */
-		int	ptr;	/* Data pointer */
-		ushort	wnd;	/* Tcp send window */
-		int	up;	/* Urgent data pointer */
+		int	una;		/* Unacked data pointer */
+		int	nxt;		/* Next sequence expected */
+		int	ptr;		/* Data pointer */
+		ushort	wnd;		/* Tcp send window */
+		int	up;		/* Urgent data pointer */
 		int	wl1;
 		int	wl2;
 	} snd;
 	struct {
-		int	nxt;
-		ushort	wnd;
-		int	up;
+		int	nxt;		/* Receive pointer to next byte slot */
+		ushort	wnd;		/* Receive window incoming */
+		int	up;		/* Urgent pointer */
 	} rcv;
-	int	iss;
-	ushort	cwind;
-	ushort	ssthresh;
-	int	resent;
-	int	irs;
-	ushort	mss;
-	int	rerecv;
-	ushort	window;
-	int	max_snd;
-	int	last_ack;	/* Last acknowledege received */
-	char	backoff;
-	char	flags;		/* State flags */
-	char	tos;		/* Type of service */
+	int	iss;			/* Initial sequence number */
+	ushort	cwind;			/* Congestion window */
+	ushort	ssthresh;		/* Slow start threshold */
+	int	resent;			/* Bytes just resent */
+	int	irs;			/* Initial received squence */
+	ushort	mss;			/* Mean segment size */
+	int	rerecv;			/* Overlap of data rerecevived */
+	ushort	window;			/* Recevive window */
+	int	max_snd;		/* Max send */
+	int	last_ack;		/* Last acknowledege received */
+	char	backoff;		/* Exponential backoff counter */
+	char	flags;			/* State flags */
+	char	tos;			/* Type of service */
 
-	Blist	rcvq;		/* Received data */
-	ulong	rcvcnt;
+	Blist	rcvq;			/* Received data */
+	ulong	rcvcnt;			/* Bytes queued for upstream */
 
-	Block	*sndq;		/* List of data going out */
-	ulong	sndcnt;		/* Amount of data in send queue */
+	Block	*sndq;			/* List of data going out */
+	ulong	sndcnt;			/* Amount of data in send queue */
 
-	Reseq	*reseq;		/* Resequencing queue */
-	Timer	timer;			 
-	Timer	acktimer;	/* Acknoledge timer */
-	Timer	rtt_timer;	/* Round trip timer */
-	int	rttseq;		/* Round trip sequence */
-	int	srtt;		/* Shortened round trip */
-	int	mdev;		/* Mean deviation of round trip */
+	Reseq	*reseq;			/* Resequencing queue */
+	Timer	timer;			/* Activity timer */
+	Timer	acktimer;		/* Acknoledge timer */
+	Timer	rtt_timer;		/* Round trip timer */
+	int	rttseq;			/* Round trip sequence */
+	int	srtt;			/* Shortened round trip */
+	int	mdev;			/* Mean deviation of round trip */
 };
 
 struct Tcpctl
@@ -277,53 +281,54 @@ struct Reseq
 /* An ip interface used for UDP/TCP/IL */
 struct Ipconv
 {
-	QLock;			/* Ref count lock */
-	Netprot;		/* stat info */
+	QLock;				/* Ref count lock */
+	Netprot;			/* stat info */
 	int 	ref;
-	Ipaddr	dst;		/* Destination from connect */
-	Port	psrc;		/* Source port */
-	Port	pdst;		/* Destination port */
+	Ipaddr	dst;			/* Destination from connect */
+	Port	psrc;			/* Source port */
+	Port	pdst;			/* Destination port */
 
-	Ipifc	*ifc;	/* Ip protocol interface */
-	Queue	*readq;		/* Pointer to upstream read q */
-	QLock	listenq;	/* List of people waiting incoming cons */
-	Rendez	listenr;	/* Some where to sleep while waiting */
+	Ipifc	*ifc;			/* Ip protocol interface */
+	Queue	*readq;			/* Pointer to upstream read q */
+	QLock	listenq;		/* List of people waiting incoming cons */
+	Rendez	listenr;		/* Some where to sleep while waiting */
 		
-	char	*err;		/* Async protocol error */
-	int	backlog;	/* Maximum number of waiting connections */
-	int	headers;	/* include header in packet */
-	int	curlog;		/* Number of waiting connections */
-	Ipconv 	*newcon;	/* This is the start of a connection */
+	char	*err;			/* Async protocol error */
+	int	backlog;		/* Maximum number of waiting connections */
+	int	headers;		/* include header in packet */
+	int	curlog;			/* Number of waiting connections */
+	Ipconv 	*newcon;		/* This is the start of a connection */
 
 	union {
-		Tcpctl	tcpctl;	/* Tcp control block */
-		Ilcb	ilctl;	/* Il control block */
+		Tcpctl	tcpctl;		/* Tcp control block */
+		Ilcb	ilctl;		/* Il control block */
 	};
 };
 
-enum {
-	MAX_TIME 	= (1<<20),/* Forever */
-	TCP_ACK		= 200,	/* Timed ack sequence every 200ms */
+enum
+{
+	MAX_TIME 	= (1<<20),	/* Forever */
+	TCP_ACK		= 200,		/* Timed ack sequence every 200ms */
 
-	URG		= 0x20,	/* Data marked urgent */
-	ACK		= 0x10,	/* Aknowledge is valid */
-	PSH		= 0x08,	/* Whole data pipe is pushed */
-	RST		= 0x04,	/* Reset connection */
-	SYN		= 0x02,	/* Pkt. is synchronise */
-	FIN		= 0x01,	/* Start close down */
+	URG		= 0x20,		/* Data marked urgent */
+	ACK		= 0x10,		/* Aknowledge is valid */
+	PSH		= 0x08,		/* Whole data pipe is pushed */
+	RST		= 0x04,		/* Reset connection */
+	SYN		= 0x02,		/* Pkt. is synchronise */
+	FIN		= 0x01,		/* Start close down */
 
 	EOL_KIND	= 0,
 	NOOP_KIND	= 1,
 	MSS_KIND	= 2,
 
-	MSS_LENGTH	= 4,	/* Mean segment size */
+	MSS_LENGTH	= 4,		/* Mean segment size */
 	MSL2		= 10,
-	MSPTICK		= 100,	/* Milliseconds per timer tick */
-	DEF_MSS		= 1024,	/* Default mean segment */
-	DEF_RTT		= 1000,	/* Default round trip */
+	MSPTICK		= 100,		/* Milliseconds per timer tick */
+	DEF_MSS		= 1024,		/* Default mean segment */
+	DEF_RTT		= 1000,		/* Default round trip */
 
-	TCP_PASSIVE	= 0,	/* Listen connection */
-	TCP_ACTIVE	= 1,	/* Outgoing connection */
+	TCP_PASSIVE	= 0,		/* Listen connection */
+	TCP_ACTIVE	= 1,		/* Outgoing connection */
 	IL_PASSIVE	= 0,
 	IL_ACTIVE	= 1,
 
@@ -335,16 +340,12 @@ enum {
 	SYNACK		= 16,
 	AGAIN		= 8,
 	DGAIN		= 4,
-
-	TIMER_STOP	= 0,
-	TIMER_RUN	= 1,
-	TIMER_EXPIRE	= 2,
 };
 
 #define	set_timer(t,x)	(((t)->start) = (x)/MSPTICK)
-#define	run_timer(t)	((t)->state == TIMER_RUN)
+#define	run_timer(t)	((t)->state == TimerON)
 
-enum				/* Tcp connection states */
+enum					/* Tcp connection states */
 {
 	Closed		= 0,
 	Listen,
@@ -380,7 +381,6 @@ struct Ipifc
 	int		minmtu;			/* Minumum tranfer unit */
 	int		hsize;			/* Media header size */	
 	ulong		chkerrs;		/* checksum errors */
-	Lock;
 	Ipconv		**conv;			/* conversations */
 };
 

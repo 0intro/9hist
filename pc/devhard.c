@@ -831,7 +831,7 @@ hardpart(Drive *dp)
 	 *  parse partition table.
 	 */
 	n = getfields(buf, line, Npart+1, '\n');
-	if(strncmp(line[0], PARTMAGIC, sizeof(PARTMAGIC)-1) == 0){
+	if(n && strncmp(line[0], PARTMAGIC, sizeof(PARTMAGIC)-1) == 0){
 		for(i = 1; i < n; i++){
 			pp++;
 			if(getfields(line[i], field, 3, ' ') != 3)

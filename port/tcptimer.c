@@ -57,33 +57,34 @@ tcpflow(void *x)
 void
 tcpackproc(void *junk)
 {
-	Timer *t,*tp;
-	Timer *expired;
+	Timer *t, *tp, *timeo;
 
 	USED(junk);
 	for(;;) {
-		expired = 0;
+		timeo = 0;
 
 		qlock(&tl);
 		for(t = timers;t != 0; t = tp) {
 			tp = t->next;
- 			if(t->state == TIMER_RUN)
-			if(--(t->count) == 0){
-				deltimer(t);
-				t->state = TIMER_EXPIRE;
-				t->next = expired;
-				expired = t;
+ 			if(t->state == TimerON) {
+				t->count--;
+				if(t->count == 0) {
+					deltimer(t);
+					t->state = TimerDONE;
+					t->next = timeo;
+					timeo = t;
+				}
 			}
 		}
 		qunlock(&tl);
 
 		for(;;) {
-			t = expired;
+			t = timeo;
 			if(t == 0)
 				break;
 
-			expired = t->next;
-			if(t->state == TIMER_EXPIRE)
+			timeo = t->next;
+			if(t->state == TimerDONE)
 			if(t->func)
 				(*t->func)(t->arg);
 		}
@@ -99,8 +100,8 @@ tcpgo(Timer *t)
 
 	qlock(&tl);
 	t->count = t->start;
-	if(t->state != TIMER_RUN) {
-		t->state = TIMER_RUN;
+	if(t->state != TimerON) {
+		t->state = TimerON;
 		t->prev = 0;
 		t->next = timers;
 		if(t->next)
@@ -117,8 +118,8 @@ tcphalt(Timer *t)
 		return;
 
 	qlock(&tl);
-	if(t->state == TIMER_RUN)
+	if(t->state == TimerON)
 		deltimer(t);
-	t->state = TIMER_STOP;
+	t->state = TimerOFF;
 	qunlock(&tl);
 }

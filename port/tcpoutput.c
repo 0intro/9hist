@@ -16,12 +16,12 @@ extern	ushort tcp_mss;
 void
 tcpoutput(Ipconv *s)
 {
-	Block *hbp,*dbp, *sndq;
-	ushort ssize, dsize, usable, sent;
+	Tcp seg;
 	int qlen;
 	Tcphdr ph;
-	Tcp seg;
 	Tcpctl *tcb;
+	Block *hbp,*dbp, *sndq;
+	ushort ssize, dsize, usable, sent;
 
 	tcb = &s->tcpctl;
 
@@ -157,11 +157,12 @@ tcprxmit(Ipconv *s)
 	tcb->flags |= RETRAN|FORCE;
 	tcb->snd.ptr = tcb->snd.una;
 
-	/* Reduce slowstart threshold to half current window */
+	/* Pull window down to a single packet and halve the slow
+	 * start threshold
+	 */
 	tcb->ssthresh = tcb->cwind / 2;
-	tcb->ssthresh = MAX(tcb->ssthresh,tcb->mss);
+	tcb->ssthresh = MAX(tcb->ssthresh, tcb->mss);
 
-	/* Shrink congestion window to 1 packet */
 	tcb->cwind = tcb->mss;
 	tcpoutput(s);
 	qunlock(tcb);
@@ -197,12 +198,11 @@ backoff(int n)
 {
 	if(tcptimertype == 1) 
 		return n+1;
-	else {
-		if(n <= 4)
-			return 1 << n;
-		else
-			return n * n;
-	}
+
+	if(n <= 4)
+		return 1 << n;
+
+	return n*n;
 }
 
 void
@@ -220,13 +220,12 @@ tcpacktimer(Ipconv *s)
 void
 tcprcvwin(Ipconv *s)				/* Call with tcb locked */
 {
-	Tcpctl *tcb = &s->tcpctl;
 	int w;
+	Tcpctl *tcb;
 
-	/* Calculate new window */
+	tcb = &s->tcpctl;
 	qlock(s);
 	if(s->readq) {
-		/* use w because rcv.wnd is unsigned */
 		w = Streamhi - s->readq->next->len;
 		if(w < 0)
 			tcb->rcv.wnd = 0;

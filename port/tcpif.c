@@ -15,11 +15,12 @@ tcpxstate(Ipconv *s, char oldstate, char newstate)
 {
 	int len;
 	Block *bp;
-	Tcpctl *tcb = &s->tcpctl;
+	Tcpctl *tcb;
 
 	if(oldstate == newstate)
 		return;
 
+	tcb = &s->tcpctl;
 	switch(newstate) {
 	case Closed:
 		s->psrc = 0;		/* This connection is toast */
@@ -68,14 +69,16 @@ notsyner(void *ic)
 void
 tcpstart(Ipconv *s, int mode, ushort window, char tos)
 {
-	Tcpctl *tcb = &s->tcpctl;
+	Tcpctl *tcb;
 
+	tcb = &s->tcpctl;
 	if(tcb->state != Closed)
 		return;
 
 	init_tcpctl(s);
 
-	tcb->window = tcb->rcv.wnd = window;
+	tcb->window = window;
+	tcb->rcv.wnd = window;
 	tcb->tos = tos;
 
 	switch(mode){

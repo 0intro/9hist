@@ -7,7 +7,10 @@
 #include 	"arp.h"
 #include 	"ipdat.h"
 
-int tcpdbg = 0;
+int	tcpdbg = 0;
+ushort	tcp_mss = DEF_MSS;	/* Maximum segment size to be sent with SYN */
+int	tcp_irtt = DEF_RTT;	/* Initial guess at round trip time */
+
 #define DPRINT	if(tcpdbg) print
 #define LPRINT  if(tcpdbg) print
 
@@ -118,9 +121,9 @@ tcpincoming(Ipifc *ifc, Ipconv *s, Tcp *segp, Ipaddr source)
 	tcpmove(&new->tcpctl, &s->tcpctl);
 	new->tcpctl.flags &= ~CLONE;
 	new->tcpctl.timer.arg = new;
-	new->tcpctl.timer.state = TIMER_STOP;
+	new->tcpctl.timer.state = TimerOFF;
 	new->tcpctl.acktimer.arg = new;
-	new->tcpctl.acktimer.state = TIMER_STOP;
+	new->tcpctl.acktimer.state = TimerOFF;
 	new->newcon = s;
 
 	wakeup(&s->listenr);
@@ -130,15 +133,15 @@ tcpincoming(Ipifc *ifc, Ipconv *s, Tcp *segp, Ipaddr source)
 void
 tcpinput(Ipifc *ifc, Block *bp)
 {
-	Ipconv *s, **p, **etab;
-	Ipconv *spec, *gen;
-	Tcpctl *tcb;		
-	Tcphdr *h;
 	Tcp seg;
-	int hdrlen;	
-	Ipaddr source, dest;
 	char tos;
+	Tcphdr *h;
+	int hdrlen;	
+	Tcpctl *tcb;		
 	ushort length;
+	Ipconv *spec, *gen;
+	Ipaddr source, dest;
+	Ipconv *s, **p, **etab;
 
 	h = (Tcphdr *)(bp->rptr);
 	dest = nhgetl(h->tcpdst);
@@ -202,7 +205,8 @@ tcpinput(Ipifc *ifc, Block *bp)
 	}
 
 	/* The rest of the input state machine is run with the control block
-	 * locked
+	 * locked and implements the state machine directly out of the RFC
+	 * Out-of-band data is ignored - it was always a bad idea.
 	 */
 	tcb = &s->tcpctl;
 	qlock(tcb);
@@ -681,10 +685,10 @@ trim(Tcpctl *tcb, Tcp *seg, Block **bp, ushort *length)
 	}
 	else {
 		/* Some part of the segment should be in the window */
-		if(in_window(tcb,seg->seq)) {
+		if(in_window(tcb,seg->seq))
 			accept++;
-		}
-		else if(len != 0) {
+		else
+		if(len != 0) {
 			if(in_window(tcb, (int)(seg->seq+len-1)) || 
 			seq_within(tcb->rcv.nxt, seg->seq,(int)(seg->seq+len-1)))
 				accept++;
@@ -794,9 +798,6 @@ dupb(Block **hp, Block *bp, int offset, int count)
 	return bytes;
 }
 
-ushort tcp_mss = DEF_MSS;	/* Maximum segment size to be sent with SYN */
-int tcp_irtt = DEF_RTT;		/* Initial guess at round trip time */
-
 static void
 cleartcp(struct Tctl *a)
 {
@@ -895,8 +896,10 @@ seq_ge(int x, int y)
 void
 tcpsetstate(Ipconv *s, char newstate)
 {
+	Tcpctl *tcb;
 	char oldstate;
-	Tcpctl *tcb = &s->tcpctl;
+
+	tcb = &s->tcpctl;
 
 	oldstate = tcb->state;
 	tcb->state = newstate;
@@ -906,11 +909,11 @@ tcpsetstate(Ipconv *s, char newstate)
 Block *
 htontcp(Tcp *tcph, Block *data, Tcphdr *ph)
 {
-	ushort hdrlen;
 	int dlen;
-	ushort csum;
 	Tcphdr *h;
 	Block *bp;
+	ushort csum;
+	ushort hdrlen;
 
 	hdrlen = TCP_HDRSIZE;
 	if(tcph->mss)

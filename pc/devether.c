@@ -15,6 +15,8 @@ typedef struct Ctlr Ctlr;
 struct Hw {
 	int	addr;			/* interface address */
 	uchar	*ram;			/* interface shared memory address */
+	int	bt16;			/* true if a 16 bit interface */
+	int	lvl;			/* interrupt level */
 	int	size;
 	uchar	tstart;
 	uchar	pstart;
@@ -639,7 +641,14 @@ wd8013dumpregs(Hw *hw)
 	print("id=#%2.2ux\n", IN(hw, id));
 }
 
+/* mapping from configuration bits to interrupt level */
+int intrmap[] =
+{
+	9, 3, 5, 7, 10, 11, 15, 4,
+};
+
 /*
+ *  get configuration parameters, enable memory
  */
 static void
 wd8013reset(Ctlr *cp)
@@ -647,6 +656,9 @@ wd8013reset(Ctlr *cp)
 	Hw *hw = cp->hw;
 	int i;
 	uchar msr;
+	uchar icr;
+	uchar laar;
+	uchar irr;
 	ulong ram;
 
 	cp->rb = xspanalloc(sizeof(Buffer)*Nrb, BY2PG, 0);
@@ -655,19 +667,47 @@ wd8013reset(Ctlr *cp)
 	cp->ntb = Ntb;
 
 	msr = IN(hw, msr);
-	OUT(hw, msr, MENB|msr);
+	icr = IN(hw, icr);
+	irr = IN(hw, irr);
+	laar = IN(hw, laar);
 
+	/* ethernet address */
 	for(i = 0; i < sizeof(cp->ea); i++)
 		cp->ea[i] = IN(hw, lan[i]);
 
-	/* get configuration info from card */
-	ram = (IN(hw, msr) & 0x3f) << 13;
-	ram |= KZERO|0x80000;
+	/* 16 bit operation? */
+	hw->bt16 = icr & 0x1;
+
+	/* address of interface RAM */
+	ram = KZERO | ((msr & 0x3f) << 13);
+	if(hw->bt16)
+		ram |= (laar & 0x3f)<<19;
+	else
+		ram |= 0x80000;
 	hw->ram = (uchar*)ram;
-print("ether ram is at %lux\n", ram);
+
+	/* interrupt level */
+	hw->lvl = intrmap[((irr>>5) & 0x3) | (icr & 0x4)];
+
+	/* ram size */
+	if(icr&(1<<3))
+		hw->size = 32*1024;
+	else
+		hw->size = 8*1024;
+	if(hw->bt16)
+		hw->size <<= 1;
+	hw->pstop = HOWMANY(hw->size, 256);
+
+print("ether width %d addr %lux size %d lvl %d\n", hw->bt16?16:8,
+	hw->ram, hw->size, hw->lvl);
+
+	/* enable interface RAM, set interface width */
+	OUT(hw, msr, MENB|msr);
+	if(hw->bt16)
+		OUT(hw, laar, laar|L16EN|M16EN);
 
 	(*hw->init)(cp);
-	setvec(Ethervec, hw->intr);
+	setvec(Int0vec + hw->lvl, hw->intr);
 }
 
 static void
@@ -693,7 +733,10 @@ wd8013init(Ctlr *cp)
 	int i;
 
 	OUT(hw, w.cr, 0x21);			/* Page0|RD2|STP */
-	OUT(hw, w.dcr, 0x48);			/* FT1|LS */
+	if(hw->bt16)
+		OUT(hw, w.dcr, 0x49);		/* 16 bit interface, DMA burst size 8 */
+	else
+		OUT(hw, w.dcr, 0x48);		/* FT1|LS */
 	OUT(hw, w.rbcr0, 0);
 	OUT(hw, w.rbcr1, 0);
 	OUT(hw, w.rcr, 0x04);			/* AB */
@@ -739,17 +782,6 @@ wd8013online(Ctlr *cp, int on)
 }
 
 static void
-bmemmove(void *a, void *b, int n)
-{
-	uchar *to, *from;
-
-	to = a;
-	from = b;
-	while(n-- > 0)
-		*to++ = *from++;
-}
-
-static void
 wd8013receive(Ctlr *cp)
 {
 	Hw *hw = cp->hw;
@@ -769,16 +801,11 @@ wd8013receive(Ctlr *cp)
 		if(next == curr)
 			break;
 		cp->inpackets++;
-print("*");
-OUT(hw, laar, 0xC1);
-print("!");
 		p = &((Ring*)hw->ram)[next];
-{ int ii; for(ii = 0; ii < 30; ii++) print("%2.2ux ", p->data[ii]); for(;;); }
 		len = ((p->len1<<8)|p->len0)-4;
 		if(p->next < hw->pstart || p->next >= hw->pstop || len < 60){
 			print("%d/%d : #%2.2ux #%2.2ux  #%2.2ux #%2.2ux\n", next, len,
 				p->status, p->next, p->len0, p->len1);
-OUT(hw, laar, 0x01);
 			dp8390rinit(cp);
 			break;
 		}
@@ -788,25 +815,22 @@ OUT(hw, laar, 0x01);
 			rb->len = len;
 			if((p->data+len) >= (hw->ram+hw->size)){
 				len = (hw->ram+hw->size) - p->data;
-				bmemmove(rb->pkt+len,
+				memmove(rb->pkt+len,
 					&((Ring*)hw->ram)[hw->pstart],
 					(p->data+rb->len) - (hw->ram+hw->size));
 			}
-			bmemmove(rb->pkt, p->data, len);
+			memmove(rb->pkt, p->data, len);
 			rb->owner = Host;
 			cp->ri = NEXT(cp->ri, cp->nrb);
 		}
 
 		p->status = 0;
 		next = p->next;
-OUT(hw, laar, 0x01);
-print("?");
 		bnry = next-1;
 		if(bnry < hw->pstart)
 			bnry = hw->pstop-1;
 		OUT(hw, w.bnry, bnry);
 	}
-print(">");
 }
 
 static void
@@ -817,10 +841,10 @@ wd8013transmit(Ctlr *cp)
 	int s;
 
 	s = splhi();
+	hw = cp->hw;
 	tb = &cp->tb[cp->ti];
 	if(tb->busy == 0 && tb->owner == Interface){
-		hw = cp->hw;
-		bmemmove(hw->ram, tb->pkt, tb->len);
+		memmove(hw->ram, tb->pkt, tb->len);
 		OUT(hw, w.tbcr0, tb->len & 0xFF);
 		OUT(hw, w.tbcr1, (tb->len>>8) & 0xFF);
 		OUT(hw, w.cr, 0x26);		/* Page0|RD2|TXP|STA */
@@ -876,11 +900,13 @@ wd8013intr(Ureg *ur)
 
 static Hw wd8013 = {
 	0x360,					/* I/O base address */
-	KZERO|0xF0000,				/* shared memory address */
-	8*1024,
+	0,
+	0,
+	0,
+	0,
 	0,
 	HOWMANY(sizeof(Etherpkt), 256),
-	HOWMANY(8*1024, 256),
+	0,
 	wd8013reset,
 	wd8013init,
 	wd8013mode,

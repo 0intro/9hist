@@ -7,11 +7,11 @@
 
 enum
 {
-	Qlisten=	1,
-	Qclone=		2,
-	Q2nd=		3,
-	Q3rd=		4,
-	Qinf=		5,
+	Qlisten	= 1,
+	Qclone	= 2,
+	Q2nd	= 3,
+	Q3rd	= 4,
+	Qinf	= 5,
 };
 
 /*
