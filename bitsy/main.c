@@ -14,10 +14,14 @@ Conf conf;
 void
 main(void)
 {
+	int i;
+
 	iprint("bitsy kernel\n");
 	confinit();
 	xinit();
 	mmuinit();
+	delay(100000);
+	exit(1);
 }
 
 /*
