@@ -100,6 +100,7 @@ void	pcicfgw16(Pcidev*, int, int);
 void	pcicfgw32(Pcidev*, int, int);
 void pciclrbme(Pcidev*);
 void	pcihinv(Pcidev*);
+uchar pciipin(Pcidev *, uchar);
 Pcidev* pcimatch(Pcidev*, int, int);
 Pcidev* pcimatchtbdf(int);
 void	pcireset(void);

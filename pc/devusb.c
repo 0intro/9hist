@@ -1965,7 +1965,7 @@ usbwrite(Chan *c, void *a, long n, vlong)
 			e->err = nil;
 		}else if(nf == 6 && strcmp(fields[0], "ep") == 0){
 			/* ep n `bulk' mode maxpkt nbuf     OR
-			 * ep n period mode samplesize KHz
+			 * ep n period mode samplesize hz
 			 */
 			i = strtoul(fields[1], nil, 0);
 			if(i < 0 || i >= nelem(d->ep)) {

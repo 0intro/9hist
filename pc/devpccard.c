@@ -18,6 +18,7 @@ enum {
 
 	Ricoh_vid = 0x1180,
 	Ricoh_476_did = 0x0476,
+	Ricoh_478_did = 0x0478,
 
 	Nslots = 4,		/* Maximum number of CardBus slots to use */
 
@@ -36,6 +37,7 @@ typedef struct {
 
 static variant_t variant[] = {
 {	Ricoh_vid,	Ricoh_476_did,	"Ricoh 476 PCI/Cardbus bridge",	},
+{	Ricoh_vid,	Ricoh_478_did,	"Ricoh 478 PCI/Cardbus bridge",	},
 {	TI_vid,		TI_1450_did,		"TI PCI-1450 Cardbus Controller",	},
 {	TI_vid,		TI_1251A_did,		"TI PCI-1251A Cardbus Controller",	},
 };
@@ -506,6 +508,7 @@ devpccardlink(void)
 		ulong baddr;
 		cb_t *cb;
 		int slot;
+		uchar pin;
 
 		for (i = 0; i != nelem(variant); i++)
 			if (pci->vid == variant[i].r_vid && pci->did == variant[i].r_did)
@@ -523,9 +526,35 @@ devpccardlink(void)
 		if (intl != -1 && intl != pci->intl)
 			intrenable(pci->intl, interrupt, cb, pci->tbdf, "cardbus");
 		intl = pci->intl;
-		baddr = pcicfgr32(cb->cb_pci, PciBAR0);
 
-		cb->cb_regs = (ulong *)KADDR(upamalloc(baddr, 4096, 0));
+		// Set up PCI bus numbers if needed.
+		if (pcicfgr8(pci, PciSBN) == 0) {
+			static int busbase = 0x20;
+
+			pcicfgw8(pci, PciSBN, busbase);
+			pcicfgw8(pci, PciUBN, busbase + 2);
+			busbase += 3;
+		}
+
+		// Patch up intl if needed.
+		if ((pin = pcicfgr8(pci, PciINTP)) != 0 && 
+		    (pci->intl == 0xff || pci->intl == 0)) {
+			pci->intl = pciipin(nil, pin);
+			pcicfgw8(pci, PciINTL, pci->intl);
+
+			if (pci->intl == 0xff || pci->intl == 0)
+				print("#Y%d: No interrupt?\n", (int)(cb - cbslots));
+		}
+	
+		if ((baddr = pcicfgr32(cb->cb_pci, PciBAR0)) == 0) {
+			int align = (pci->did == Ricoh_478_did)? 0x10000: 0x1000;
+
+			baddr = upamalloc(baddr, align, align);
+			pcicfgw32(cb->cb_pci, PciBAR0, baddr);
+			cb->cb_regs = (ulong *)KADDR(baddr);
+		}
+		else
+			cb->cb_regs = (ulong *)KADDR(upamalloc(baddr, 4096, 0));
 		cb->cb_state = SlotEmpty;
 
 		/* Don't really know what to do with this... */

@@ -819,6 +819,26 @@ pcimatchtbdf(int tbdf)
 	return pcidev;
 }
 
+uchar
+pciipin(Pcidev *pci, uchar pin)
+{
+	if (pci == nil)
+		pci = pcilist;
+
+	while (pci) {
+		uchar intl;
+
+		if (pcicfgr8(pci, PciINTP) == pin && pci->intl != 0 && pci->intl != 0xff)
+			return pci->intl;
+
+		if (pci->bridge && (intl = pciipin(pci->bridge, pin)) != 0)
+			return intl;
+
+		pci = pci->list;
+	}
+	return 0;
+}
+
 static void
 pcilhinv(Pcidev* p)
 {
