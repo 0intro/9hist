@@ -38,9 +38,9 @@ key(int islocal, Method *mp)
 		fd = open("#r/nvram", ORDWR);
 		safeoff = 1024+850;
 	} else if(strcmp(cputype, "386") == 0 || strcmp(cputype, "alpha") == 0){
-		fd = open("#H/hd0nvram", ORDWR);
+		fd = open("#S/sdC0/nvram", ORDWR);
 		if(fd < 0)
-			fd = open("#w/sd0nvram", ORDWR);
+			fd = open("#S/sd00/nvram", ORDWR);
 		if(fd < 0){
 			fd = open("#f/fd0disk", ORDWR);
 			if(fd < 0)
