@@ -18,6 +18,7 @@ pageinit(void)
 
 	np = palloc.np0+palloc.np1;
 	palloc.head = xalloc(np*sizeof(Page));
+print("pageinit: allocated %p to %p\n", palloc.head, (uchar*)palloc.head+np*sizeof(Page));
 	if(palloc.head == 0)
 		panic("pageinit");
 
