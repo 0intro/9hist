@@ -93,7 +93,7 @@ void	procsave(Proc*);
 void	procsetup(Proc*);
 void	putdec(ulong);
 void	putmsr(ulong);
-void	putcasid(ulong);
+void	putsdr1(ulong);
 void	raveninit(void);
 void	screeninit(void);
 int	screenprint(char*, ...);			/* debugging */

@@ -93,7 +93,7 @@ struct Conf
 #define NCOLOR 1
 struct PMMU
 {
-	int	pidonmach[MAXMACH];
+	int	mmupid;
 };
 
 /*
@@ -168,21 +168,6 @@ struct
 	short	exiting;
 	short	ispanic;
 }active;
-
-/*
- *	Implementation-dependant functions (outside of PPC architecture proper).
- *	Called PCArch because that's what mkdevc calls it (for the PC).
- */
-struct PCArch
-{
-	char*	id;
-	int	(*ident)(void);		/* this should be in the model */
-
-	void	(*intrinit)(void);
-	int	(*intrenable)(Vctl*);
-	int	(*intrvecno)(int);
-	int	(*intrdisable)(int);
-};
 
 /*
  *  a parsed plan9.ini line

@@ -5,9 +5,26 @@
 #include	"fns.h"
 #include	"io.h"
 
+void *ptab;
+ulong ptabsize;
+
 void
 mmuinit(void)
 {
+	int lhash, mem;
+	extern ulong memsize;	/* passed in from ROM monitor */
+
+	/* heuristically size the hash table */
+	lhash = 10;			/* log of hash table size */
+	mem = (1<<23);
+	while(mem < memsize) {
+		lhash++;
+		mem <<= 1;
+	}
+
+	ptabsize = (1<<(lhash+6));
+	ptab = xspanalloc(ptabsize, 0, ptabsize);
+	putsdr1(PADDR(ptab) | ((1<<(lhash-10))-1));
 }
 
 void
@@ -27,23 +44,33 @@ flushmmu(void)
 void
 mmuswitch(Proc *p)
 {
-	int tp;
+	int mp;
 
 	if(p->newtlb) {
-		memset(p->pidonmach, 0, sizeof p->pidonmach);
+		p->mmupid = 0;
 		p->newtlb = 0;
 	}
-	tp = p->pidonmach[m->machno];
-//	putcasid(tp);
+	mp = p->mmupid;
+	if(mp == 0)
+		mp = newmmupid();
+
+//	for(i = 0; i < 8; i++)
+//		putsr(i, 
 }
 
 void
 mmurelease(Proc* p)
 {
-	memset(p->pidonmach, 0, sizeof p->pidonmach);
+	p->mmupid = 0;
 }
 
 void
 putmmu(ulong va, ulong pa, Page *pg)
 {
+}
+
+int
+newmmupid(void)
+{
+	return -1;
 }

@@ -277,6 +277,10 @@ TEXT	putmsr(SB), $0
 	MSRSYNC
 	RETURN
 
+TEXT	putsdr1(SB), $0
+	MOVW	R3, SPR(SDR1)
+	RETURN
+
 TEXT	eieio(SB), $0
 	EIEIO
 	RETURN
