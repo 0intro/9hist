@@ -78,35 +78,30 @@ int
 	ctlr.buf[ctlr.n++] = (uchar)ch;
 		
 	for(;;){
-		/* message hasn't started yet */
+		/* message hasn't started yet? */
 		if(ctlr.buf[0] != SOF){
-			ctlr.n = 0;
-			break;
-		}
-	
-		/* if it's too short, wait */
-		len = ctlr.buf[1] & 0xf;
-		if(ctlr.n < 3 || ctlr.n < len+3)
-			break;
-	
-		/* check the sum */
-		ctlr.buf[0] = ~SOF;
-		cksum = 0;
-		for(i = 1; i < len+2; i++)
-			cksum += ctlr.buf[i];
-	
-		/* ignore bad checksums */
-		if(ctlr.buf[len+2] != cksum){
-			p = memchr(ctlr.buf+1, SOF, ctlr.n);
+			p = memchr(ctlr.buf, SOF, ctlr.n);
 			if(p == nil){
 				ctlr.n = 0;
 				break;
 			} else {
 				ctlr.n -= p-ctlr.buf;
 				memmove(ctlr.buf, p, ctlr.n);
-				continue;
 			}
 		}
+	
+		/* whole msg? */
+		len = ctlr.buf[1] & 0xf;
+		if(ctlr.n < 3 || ctlr.n < len+3)
+			break;
+	
+		/* check the sum */
+		ctlr.buf[0] = ~SOF;	/* make sure we process this msg exactly once */
+		cksum = 0;
+		for(i = 1; i < len+2; i++)
+			cksum += ctlr.buf[i];
+		if(ctlr.buf[len+2] != cksum)
+			continue;
 	
 		/* parse resulting message */
 		p = ctlr.buf+2;
@@ -190,6 +185,7 @@ _sendmsg(uchar id, uchar *data, int len)
 	serialµcputs(buf, p-buf);
 }
 
+/* the tsleep takes care of lost acks */
 static void
 sendmsgwithack(uchar id, uchar *data, int len)
 {
