@@ -568,9 +568,9 @@ i82365dump(PCMslot *pp)
 	for(i = 0; i < 0x40; i++){
 		if((i&0x0F) == 0)
 			print("\n%2.2uX:	", i);
+		print("%2.2uX ", rdreg(pp, i));
 		if(((i+1) & 0x0F) == 0x08)
 			print(" - ");
-		print("%2.2uX ", rdreg(pp, i));
 	}
 	print("\n");
 }
