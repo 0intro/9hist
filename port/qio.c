@@ -485,45 +485,6 @@ qdiscard(Queue *q, int len)
 }
 
 /*
- *  Return length that next qconsume will return
- */
-long
-qblen(Queue *q)
-{
-	Block *b;
-	int n;
-	Block *tofree = nil;
-
-	ilock(q);
-
-	for(;;) {
-		b = q->bfirst;
-		if(b == 0){
-			q->state |= Qstarve;
-			iunlock(q);
-			return -1;
-		}
-		QDEBUG checkb(b, "qblen 1");
-
-		n = BLEN(b);
-		if(n > 0)
-			break;
-		q->bfirst = b->next;
-		q->len -= BALLOC(b);
-
-		/* remember to free this */
-		b->next = tofree;
-		tofree = b;
-	};
-	iunlock(q);
-
-	if(tofree != nil)
-		freeblist(tofree);
-
-	return n;
-}
-
-/*
  *  Interrupt level copy out of a queue, return # bytes copied.
  */
 int

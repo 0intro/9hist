@@ -240,7 +240,6 @@ void		putswap(Page*);
 ulong		pwait(Waitmsg*);
 void		qaddlist(Queue*, Block*);
 Block*		qbread(Queue*, int);
-long		qblen(Queue*);
 long		qbwrite(Queue*, Block*);
 int		qcanread(Queue*);
 void		qclose(Queue*);
