@@ -1,4 +1,4 @@
-/*
+/*
  * stil - Internet link protocol
  */
 #include	"u.h"
@@ -15,7 +15,7 @@
 int 		ilcksum = 1;
 static 	int 	initseq = 25000;
 static	Rendez	ilackr;
-Rendez poor;	/* DEBUG */
+
 char	*ilstate[] = { "Closed", "Syncer", "Syncee", "Established", "Listening", "Closing" };
 char	*iltype[] =  { "sync", "data", "dataquerey", "ack", "querey", "state", "close" };
 
