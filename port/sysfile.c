@@ -29,6 +29,7 @@ fdtochan(int fd, int mode)
 {
 	Chan *c;
 
+	c = 0;	/* set */
 	if(fd<0 || NFD<=fd || (c=u->fd[fd])==0)
 		error(Ebadfd);
 	if(mode<0 || c->mode==ORDWR)
@@ -329,16 +330,6 @@ sysstat(ulong *arg)
 	(*devtab[c->type].stat)(c, (char*)arg[1]);
 	poperror();
 	close(c);
-	return 0;
-}
-
-long
-sysaccess(ulong *arg)
-{
-	Chan *c;
-	long mode;
-
-	postnote(u->p, 1, "access is deprecated", NDebug);
 	return 0;
 }
 

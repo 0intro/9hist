@@ -61,6 +61,7 @@ fault(Ureg *ur, FFrame *f)
 	}
 	insyscall = u->p->insyscall;
 	u->p->insyscall = 1;
+	addr = 0;	/* set */
 	if(f->ssw & DF)
 		addr = f->addr;
 	else if(FORMAT(ur) == 0xA){

@@ -469,7 +469,6 @@ mntclunk(Chan *c, int t)
 	Mnthdr *mh;
 	MntQ *q;
 	int waserr;
-int ne = u->nerrlab;
 
 	m = mntdev(c->dev, 0);
 	mh = mhalloc();

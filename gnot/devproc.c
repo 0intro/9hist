@@ -371,6 +371,7 @@ procwrite(Chan *c, void *va, long n)
 	if(c->qid.path & CHDIR)
 		error(Eisdir);
 
+	p = proctab(SLOT(c->qid));
 	/*
 	 * Special case: don't worry about process, just use remembered group
 	 */
@@ -390,7 +391,6 @@ procwrite(Chan *c, void *va, long n)
 		return n;
 	}
 
-	p = proctab(SLOT(c->qid));
 	lock(&p->debug);
 	if(waserror()){
 		unlock(&p->debug);

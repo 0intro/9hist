@@ -230,6 +230,7 @@ duartbaud(int b)
 	int x;
 	Duart *duart = DUARTREG;
 
+	x = 0;		/* set */
 	switch(b){
 	case 38400:
 		x = BD38400;

@@ -744,6 +744,8 @@ dkstat(Chan *c, char *dp)
 {
 	if(c->qid.path == CHDIR)
 		devstat(c, dp, dkdir, dk[c->dev].lines, devgen);
+	else if(c->qid.path == Dcloneqid)
+		devstat(c, dp, dkdir, 1, devgen);
 	else
 		devstat(c, dp, dksubdir, Nsubdir, streamgen);
 }
@@ -776,7 +778,7 @@ dkopen(Chan *c, int omode)
 	case Dcloneqid:
 		dp = &dk[c->dev];
 		/*
-		 *  get an unused device and open it's control file
+		 *  get an unused device and open its control file
 		 */
 		end = &dp->line[dp->lines];
 		for(lp = &dp->line[dp->ncsc+1]; lp < end; lp++){

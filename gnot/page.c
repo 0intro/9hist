@@ -306,7 +306,7 @@ loop:
 			o->mqid = c->mqid;
 			incref(c);
 		}else{
-			o->type = -1;
+			o->type = ~0;
 			o->qid.path = -1;
 			o->qid.vers = 0;
 			o->mqid.path = -1;
