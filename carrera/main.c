@@ -322,16 +322,6 @@ init0(void)
 	char buf[2*NAMELEN];
 
 	spllo();
-{
-	uchar *p;
-	int x;
-
-	for(p = (uchar*)(0xA0000000|16*MB); p<(uchar*)(0xA0000000|32*MB); p+=16){
-		if((((ulong)p) & 0x3FFF)==0)
-			print("%lux ", p);
-		x = *p;
-	}
-}
 
 	/*
 	 * These are o.k. because rootinit is null.
