@@ -34,7 +34,6 @@ mmuinit(void)
 {
 	int lhash, mem;
 	extern ulong memsize;	/* passed in from ROM monitor */
-	ulong v;
 
 	if(ptabsize == 0) {
 		/* heuristically size the hash table */
@@ -51,11 +50,6 @@ mmuinit(void)
 	m->ptabbase = (ulong)xspanalloc(ptabsize, 0, ptabsize);
 	putsdr1(PADDR(m->ptabbase) | (ptabmask>>10));
 	m->mmupid = PIDBASE;
-
-	v = getdec();
-	memset((void*)m->ptabbase, 0, ptabsize);
-	v -= getdec();
-	print("memset took %lud cycles, dechz %lud\n", v, m->dechz);
 }
 
 void

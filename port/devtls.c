@@ -1626,10 +1626,8 @@ tlsinit(void)
 	int n;
 	char *cp;
 
-	if((tlsdevs = smalloc(sizeof(TlsRec*) * maxtlsdevs)) == 0)
-		panic("tlsinit");
-	if((trnames = smalloc((sizeof *trnames) * maxtlsdevs)) == 0)
-		panic("tlsinit");
+	tlsdevs = smalloc(sizeof(TlsRec*) * maxtlsdevs);
+	trnames = smalloc((sizeof *trnames) * maxtlsdevs);
 
 	n = 1;
 	for(e = encrypttab; e->name != nil; e++)

@@ -277,12 +277,12 @@ procopen(Chan *c, int omode)
 		break;
 
 	case Qmem:
+	case Qnote:
+	case Qctl:
 		if(p->privatemem)
 			error(Eperm);
 		/* fall through */
 	case Qargs:
-	case Qctl:
-	case Qnote:
 	case Qnoteid:
 	case Qstatus:
 	case Qwait:
