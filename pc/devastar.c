@@ -374,6 +374,7 @@ astargen(Chan *c, Dirtab *, int , int i, Dir *db)
 				sprint(db->name, "eia%d%2.2d", astar[dev]->id, ch);
 				db->mode = astar[dev]->c[ch].perm;
 				db->qid.path = QID(dev, ch, Qdata);
+				db->length = qlen(astar[dev]->c[ch].iq);
 				break;
 			case 1:
 				sprint(db->name, "eia%d%2.2dctl", astar[dev]->id, ch);
