@@ -141,6 +141,7 @@ lmlreset(void)
 	void *grabbuf;
 	ulong grablen;
 	ISAConf isa;
+	uchar ipin, intl;
 
 	if(isaconfig("lml", 0, &isa) == 0) {
 		if (debug) print("lml not in plan9.ini\n");
@@ -150,6 +151,7 @@ lmlreset(void)
 	if (pcidev == nil) {
 		return;
 	}
+
 	cdsize = CODEDATASIZE;
 	codeData = (CodeData*)(((ulong)xalloc(cdsize+ BY2PG) + BY2PG-1) & ~(BY2PG-1));
 	if (codeData == nil) {
@@ -215,6 +217,9 @@ lmlreset(void)
 		print("lml: physsegment: lmlgrab\n");
 		return;
 	}
+
+	iprint("%.8uX: %.8uX\n", pciBaseAddr + INTR_STAT,
+			*((unsigned long *)(pciBaseAddr + INTR_STAT)));
 
 	// Interrupt handler
 	intrenable(pcidev->intl, lmlintr, nil, pcidev->tbdf, "lml");
