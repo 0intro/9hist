@@ -6,6 +6,8 @@
 #include	"io.h"
 #include	"init.h"
 
+int	junk[32];
+
 /*
  *  args passed by boot process
  */

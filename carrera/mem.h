@@ -95,7 +95,7 @@
 /*
  * Fundamental addresses
  */
-#define	MACHADDR	0x80005000	/* Mach structures */
+#define	MACHADDR	0x8008e000	/* Mach structures */
 #define UREGSIZE	0xA0		/* Sizeof(Ureg)+retpc & ur */
 #define	MACHP(n)	((Mach *)(MACHADDR+(n)*BY2PG))
 

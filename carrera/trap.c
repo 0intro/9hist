@@ -201,6 +201,13 @@ trap(Ureg *ur)
 	case CTLBM:
 	case CTLBL:
 	case CTLBS:
+{
+((ulong*)0xA0090000)[0] = ur->pc;
+((ulong*)0xA0090000)[1] = ur->badvaddr;
+((ulong*)0xA0090000)[2] = ur->cause;
+((ulong*)0xA0090000)[3] = 0x12345678;
+((ulong*)0xA0090000)[4] = 0x87654321;
+}
 		if(up == 0)
 			kernfault(ur, ecode);
 
