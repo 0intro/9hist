@@ -169,7 +169,7 @@ void
 intr(Ureg *ur)
 {
 	long v;
-	int i, any;
+	int i, any, limit;
 	ulong cause;
 	static int bogies;
 	uchar pend, xxx;
@@ -182,7 +182,7 @@ intr(Ureg *ur)
 		cause &= ~INTR1;
 	}
 
-	while(cause & INTR5) {
+	for(limit = 50; (cause&INTR5) && limit; limit--) {
 		any = 0;
 		if(!(*MPBERR1 & (1<<8))){
 			print("MP bus error %lux %lux\n", *MPBERR0, *MPBERR1);
@@ -285,11 +285,13 @@ intr(Ureg *ur)
 		if(any == 0)
 			cause &= ~INTR5;
 	}
+	if(limit == 0) {
+		print("intr: unable to identify and clear level5\n");
+		cause &= ~INTR5;
+	}
 
 	if(cause & (INTR2|INTR4)) {
-		LEDON(LEDclock);
 		clock(ur);
-		LEDOFF(LEDclock);
 		cause &= ~(INTR2|INTR4);
 	}
 

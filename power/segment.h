@@ -2,7 +2,7 @@
  * Attach segment types
  */
 
-#define VME16IO3	0x17C10000	
+#define VME16IO3	0x17C00000	
 #define VME32TDFB	(0x30000000+128*MB)
 
 Physseg physseg[] =

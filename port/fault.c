@@ -146,6 +146,7 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 
 		mmuphys = PPN((*pg)->pa) |PTEWRITE|PTEUNCACHED|PTEVALID;
 		(*pg)->modref = PG_MOD|PG_REF;
+/*		print("v %lux p %lux\n", addr, mmuphys);	/**/
 		break;
 	}
 
