@@ -88,6 +88,7 @@ enum {					/* LapicTDCR */
 };
 
 static ulong* lapicbase;
+static int clkin;
 
 static int
 lapicr(int r)
@@ -104,7 +105,7 @@ lapicw(int r, int data)
 }
 
 void
-lapiconline(int clkin)
+lapiconline(void)
 {
 	/*
 	 * Reload the timer to de-synchronise the processors,
@@ -118,7 +119,7 @@ lapiconline(int clkin)
 	lapicw(LapicTPR, 0);
 }
 
-static int
+static void
 lapictimerinit(void)
 {
 	ulong lo, v;
@@ -128,21 +129,23 @@ lapictimerinit(void)
 	lapicw(LapicTDCR, LapicX1);
 	lapicw(LapicTIMER, ApicIMASK|LapicCLKIN|LapicONESHOT|VectorTIMER);
 
-	lapicw(LapicTICR, v);
-	wrmsr(0x10, 0);
+	if(clkin == 0){
+		lapicw(LapicTICR, v);
+		wrmsr(0x10, 0);
 
-	do{
-		rdmsr(0x10, &tsc);
-		lo = (ulong)tsc;
-	}while(lo < v);
+		do{
+			rdmsr(0x10, &tsc);
+			lo = (ulong)tsc;
+		}while(lo < v);
 
-	return ((v-lapicr(LapicTCCR)+500)/1000)*1000*1000;
+		clkin = ((v-lapicr(LapicTCCR)+500)/1000)*1000*1000;
+	}
 }
 
-int
+void
 lapicinit(Apic* apic)
 {
-	ulong clkin, r, lvt;
+	ulong r, lvt;
 
 	if(lapicbase == 0)
 		lapicbase = apic->addr;
@@ -153,7 +156,7 @@ lapicinit(Apic* apic)
 	lapicw(LapicTPR, 0xFF);
 	lapicw(LapicSVR, LapicENABLE|VectorSPURIOUS);
 
-	clkin = lapictimerinit();
+	lapictimerinit();
 
 	/*
 	 * Some Pentium revisions have a bug whereby spurious
@@ -200,8 +203,6 @@ lapicinit(Apic* apic)
 	 * interrupts.
 	lapicw(LapicTPR, 0);
 	 */
-
-	return clkin;
 }
 
 void

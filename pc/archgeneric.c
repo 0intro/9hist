@@ -210,6 +210,7 @@ static uvlong fasthz;
 void
 cycletimerinit(void)
 {
+	wrmsr(0x10, 0);
 	fasthz = 1000000LL*m->cpumhz;
 }
 

@@ -354,9 +354,11 @@ checkmtrr(void)
 static void
 squidboy(Apic* apic)
 {
-	int clkin;
-
 //	iprint("Hello Squidboy\n");
+
+	/* synchronize cycle clocks */
+	wrmsr(0x10, m->clockstart);
+
 	machinit();
 	mmuinit();
 
@@ -374,8 +376,8 @@ squidboy(Apic* apic)
 	while(MACHP(0)->ticks == 0)
 		;
 
-	clkin = lapicinit(apic);
-	lapiconline(clkin);
+	lapicinit(apic);
+	lapiconline();
 
 	lock(&active);
 	active.machs |= 1<<m->machno;
@@ -441,6 +443,7 @@ mpstartap(Apic* apic)
 	*p = i>>8;
 
 	nvramwrite(0x0F, 0x0A);
+	rdmsr(0x10, &mach->clockstart);
 	lapicstartap(apic, PADDR(APBOOTSTRAP));
 	for(i = 0; i < 100000; i++){
 		lock(&mprdthilock);
@@ -460,7 +463,6 @@ mpinit(void)
 	PCMP *pcmp;
 	uchar *e, *p;
 	Apic *apic, *bpapic;
-	int clkin;
 
 	i8259init();
 
@@ -529,7 +531,7 @@ mpinit(void)
 	if(bpapic == 0)
 		return;
 
-	clkin = lapicinit(bpapic);
+	lapicinit(bpapic);
 	lock(&mprdthilock);
 	mprdthi |= (1<<bpapic->apicno)<<24;
 	unlock(&mprdthilock);
@@ -542,7 +544,7 @@ mpinit(void)
 	intrenable(VectorTIMER, clockintr, 0, BUSUNKNOWN);
 	intrenable(VectorERROR, lapicerror, 0, BUSUNKNOWN);
 	intrenable(VectorSPURIOUS, lapicspurious, 0, BUSUNKNOWN);
-	lapiconline(clkin);
+	lapiconline();
 
 	checkmtrr();
 

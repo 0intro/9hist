@@ -210,8 +210,8 @@ enum {
 extern void ioapicrdtr(Apic*, int, int*, int*);
 extern void ioapicrdtw(Apic*, int, int, int);
 extern void ioapicinit(Apic*, int);
-extern void lapiconline(int);
-extern int lapicinit(Apic*);
+extern void lapiconline(void);
+extern void lapicinit(Apic*);
 extern void lapicstartap(Apic*, int);
 extern void lapicerror(Ureg*, void*);
 extern void lapicspurious(Ureg*, void*);
