@@ -177,14 +177,16 @@ enum
 	Qvgatype=	2,
 	Qvgaport=	3,
 	Qvgaportw=	4,
-	Qvgactl=	5,
-	Nvga=		5,
+	Qvgaportl=	5,
+	Qvgactl=	6,
+	Nvga=		6,
 };
 Dirtab vgadir[]={
 	"vgasize",	{Qvgasize},	0,		0666,
 	"vgatype",	{Qvgatype},	0,		0666,
 	"vgaport",	{Qvgaport},	0,		0666,
 	"vgaportw",	{Qvgaportw},	0,		0666,
+	"vgaportl",	{Qvgaportl},	0,		0666,
 	"vgactl",	{Qvgactl},	0,		0666,
 };
 
@@ -250,6 +252,7 @@ vgaread(Chan *c, void *buf, long n, ulong offset)
 	uchar *cp;
 	char cbuf[64];
 	ushort *sp;
+	ulong *lp;
 
 	switch(c->qid.path&~CHDIR){
 	case Qdir:
@@ -271,6 +274,13 @@ vgaread(Chan *c, void *buf, long n, ulong offset)
 		for (sp = buf, port=offset; port<offset+n; port+=2)
 			*sp++ = ins(port);
 		return n*2;
+	case Qvgaportl:
+		if((n & 03) || (offset & 03))
+			error(Ebadarg);
+		n /= 4;
+		for (lp = buf, port=offset; port<offset+n; port+=4)
+			*lp++ = inl(port);
+		return n*4;
 	}
 	error(Eperm);
 	return 0;
@@ -283,6 +293,7 @@ vgawrite(Chan *c, void *buf, long n, ulong offset)
 	Vgacard *vp;
 	int port, maxx, maxy, ldepth;
 	ushort *sp;
+	ulong *lp;
 
 	switch(c->qid.path&~CHDIR){
 	case Qdir:
@@ -355,6 +366,13 @@ vgawrite(Chan *c, void *buf, long n, ulong offset)
 		for (sp = buf, port=offset; port<offset+n; port+=2)
 			outs(port, *sp++);
 		return n*2;
+	case Qvgaportl:
+		if((n & 03) || (offset & 03))
+			error(Ebadarg);
+		n /= 4;
+		for (lp = buf, port=offset; port<offset+n; port+=4)
+			outl(port, *lp++);
+		return n*4;
 	}
 	error(Eperm);
 	return 0;

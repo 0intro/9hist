@@ -52,13 +52,6 @@ clock(Ureg *ur, void *arg)
 
 	USED(arg);
 
-	/*
-	 *  set clock for 1/HZ seconds
-	 */
-	outb(Tmode, Load0|Trigger);
-	outb(T0cntr, (Freq/HZ));	/* low byte */
-	outb(T0cntr, (Freq/HZ)>>8);	/* high byte */
-
 	m->ticks++;
 
 	uartclock();
@@ -145,7 +138,7 @@ clockinit(void)
 	/*
 	 *  set clock for 1/HZ seconds
 	 */
-	outb(Tmode, Load0|Trigger);
+	outb(Tmode, Load0|Square);
 	outb(T0cntr, (Freq/HZ));	/* low byte */
 	outb(T0cntr, (Freq/HZ)>>8);	/* high byte */
 

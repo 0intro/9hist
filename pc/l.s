@@ -186,7 +186,6 @@ TEXT	inss(SB),$0
 TEXT	inl(SB), $0
 
 	MOVL	p+0(FP), DX
-	XORL	AX, AX
 	INL
 	RET
 
@@ -205,6 +204,7 @@ TEXT	insl(SB),$0
  * output a short to a port
  */
 TEXT	outs(SB), $0
+
 	MOVL	p+0(FP), DX
 	MOVL	s+4(FP), AX
 	OP16; OUTL
@@ -557,13 +557,6 @@ TEXT	splx(SB),$0
 TEXT	getstatus(SB),$0
 	PUSHFL
 	POPL	AX
-	RET
-
-/*
- *  do nothing whatsoever till interrupt happens
- */
-TEXT	idle(SB),$0
-	HLT
 	RET
 
 /*
