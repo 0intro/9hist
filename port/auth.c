@@ -96,58 +96,71 @@ sysfsession(ulong *arg)
 {
 	int i, n;
 	Chan *c;
-	Fcall *f;
-	char *buf;
 	Crypt *cp;
 	Session *s;
 	Ticketreq tr;
+	Fcall f;
+	char buf[MAXMSG];
 
 	validaddr(arg[1], TICKREQLEN, 1);
-	f = malloc(sizeof(Fcall));
-	if(f == 0)
-		error(Enomem);
-	buf = malloc(MAXMSG);
-	if(buf == 0){
-		free(f);
-		error(Enomem);
-	}
 	c = fdtochan(arg[0], OWRITE, 0, 1);
-	s = 0;
-	if(waserror()) {
-		if(s)
-			free(s);
+	if(waserror()){
 		close(c);
-		free(buf);
-		free(f);
 		nexterror();
 	}
+
+	/*
+	 *  if two processes get here at the same
+	 *  time with no session exchanged, we have
+	 *  a race.
+	 */
 	s = c->session;
 	if(s == 0){
-		/*  exchange a session message with the server */
+		/*
+		 *  no session exchanged yet
+		 */
 		s = malloc(sizeof(Session));
 		if(s == 0)
 			error(Enomem);
 		memset(s, 0, sizeof(Session));
-		for(i = 0; i < CHALLEN; i++)
-			s->cchal[i] = nrand(256);
-		f->tag = NOTAG;
-		f->type = Tsession;
-		memmove(f->chal, s->cchal, CHALLEN);
-		n = convS2M(f, buf);
-		if((*devtab[c->type].write)(c, buf, n, 0) != n)
-			error(Emountrpc);
-	dkhack:
-		n = (*devtab[c->type].read)(c, buf, MAXMSG, 0);
-		if(n == 2 && buf[0] == 'O' && buf[1] == 'K')
-			goto dkhack;
-		if(convM2S(buf, f, n) == 0)
-			error(Emountrpc);
-		if(f->type == Rsession){
-			memmove(s->schal, f->chal, CHALLEN);
-			memmove(s->authid, f->authid, NAMELEN);
-			memmove(s->authdom, f->authdom, DOMLEN);
+
+		/*
+		 *  Exchange a session message with the server.
+		 *  If an error occurs reading or writing,
+		 *  assume this is a mount of a mount and turn off
+		 *  authentication.
+		 */
+		if(!waserror()){
+			for(i = 0; i < CHALLEN; i++)
+				s->cchal[i] = nrand(256);
+			f.tag = NOTAG;
+			f.type = Tsession;
+			memmove(f.chal, s->cchal, CHALLEN);
+			n = convS2M(&f, buf);
+			if((*devtab[c->type].write)(c, buf, n, 0) != n)
+				error(Emountrpc);
+			n = (*devtab[c->type].read)(c, buf, sizeof buf, 0);
+			if(n == 2 && buf[0] == 'O' && buf[1] == 'K')
+				n = (*devtab[c->type].read)(c, buf, sizeof buf, 0);
+			poperror();
+			if(convM2S(buf, &f, n) == 0){
+				free(s);
+				error(Emountrpc);
+			}
+			switch(f.type){
+			case Rsession:
+				memmove(s->schal, f.chal, CHALLEN);
+				memmove(s->authid, f.authid, NAMELEN);
+				memmove(s->authdom, f.authdom, DOMLEN);
+				break;
+			case Rerror:
+				free(s);
+				error(f.ename);
+			default:
+				free(s);
+				error(Emountrpc);
+			}
 		}
-		s->cid = 0;
 		c->session = s;
 	}
 
@@ -172,10 +185,8 @@ sysfsession(ulong *arg)
 	memmove(tr.hostid, eve, NAMELEN);
 	convTR2M(&tr, (char*)arg[1]);
 
-	poperror();
 	close(c);
-	free(buf);
-	free(f);
+	poperror();
 	return 0;
 }
 

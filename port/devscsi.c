@@ -297,6 +297,7 @@ scsicmd(int dev, int cmdbyte, Scsibuf *b, long size)
 	cmd->cmd.ptr = cmd->cmd.base;
 	memset(cmd->cmdblk, 0, sizeof cmd->cmdblk);
 	cmd->cmdblk[0] = cmdbyte;
+	cmd->cmdblk[1] = cmd->lun << 5;
 	switch(cmdbyte >> 5){
 	case 0:
 		cmd->cmd.lim = &cmd->cmdblk[6];
@@ -497,16 +498,34 @@ int
 scsibread(int dev, Scsibuf *b, long n, long blocksize, long blockno)
 {
 	Scsi *cmd;
+	int cmdbyte;
 
-	cmd = scsicmd(dev, ScsiRead, b, n*blocksize);
+	if(blockno <= 0x1fffff && n <= 256)
+		cmdbyte = ScsiRead;
+	else
+		cmdbyte = ScsiExtread;
+
+	cmd = scsicmd(dev, cmdbyte, b, n*blocksize);
 	if(waserror()){
 		qunlock(cmd);
 		nexterror();
 	}
-	cmd->cmdblk[1] = blockno >> 16;
-	cmd->cmdblk[2] = blockno >> 8;
-	cmd->cmdblk[3] = blockno;
-	cmd->cmdblk[4] = n;
+	switch(cmdbyte){
+	case ScsiRead:
+		cmd->cmdblk[1] |= blockno >> 16;
+		cmd->cmdblk[2] = blockno >> 8;
+		cmd->cmdblk[3] = blockno;
+		cmd->cmdblk[4] = n;
+		break;
+	default:
+		cmd->cmdblk[2] = blockno >> 24;
+		cmd->cmdblk[3] = blockno >> 16;
+		cmd->cmdblk[4] = blockno >> 8;
+		cmd->cmdblk[5] = blockno;
+		cmd->cmdblk[7] = n>>8;
+		cmd->cmdblk[8] = n;
+		break;
+	}
 	scsiexec(cmd, ScsiIn);
 	n = cmd->data.ptr - cmd->data.base;
 	poperror();
@@ -519,15 +538,34 @@ scsibwrite(int dev, Scsibuf *b, long n, long blocksize, long blockno)
 {
 	Scsi *cmd;
 
-	cmd = scsicmd(dev, ScsiWrite, b, n*blocksize);
+	int cmdbyte;
+
+	if(blockno <= 0x1fffff && n <= 256)
+		cmdbyte = ScsiWrite;
+	else
+		cmdbyte = ScsiExtwrite;
+
+	cmd = scsicmd(dev, cmdbyte, b, n*blocksize);
 	if(waserror()){
 		qunlock(cmd);
 		nexterror();
 	}
-	cmd->cmdblk[1] = blockno >> 16;
-	cmd->cmdblk[2] = blockno >> 8;
-	cmd->cmdblk[3] = blockno;
-	cmd->cmdblk[4] = n;
+	switch(cmdbyte){
+	case ScsiWrite:
+		cmd->cmdblk[1] |= blockno >> 16;
+		cmd->cmdblk[2] = blockno >> 8;
+		cmd->cmdblk[3] = blockno;
+		cmd->cmdblk[4] = n;
+		break;
+	default:
+		cmd->cmdblk[2] = blockno >> 24;
+		cmd->cmdblk[3] = blockno >> 16;
+		cmd->cmdblk[4] = blockno >> 8;
+		cmd->cmdblk[5] = blockno;
+		cmd->cmdblk[7] = n>>8;
+		cmd->cmdblk[8] = n;
+		break;
+	}
 	scsiexec(cmd, ScsiOut);
 	n = cmd->data.ptr - cmd->data.base;
 	poperror();

@@ -231,6 +231,8 @@ enum
 	ScsiGetcap	= 0x25,
 	ScsiRead	= 0x08,
 	ScsiWrite	= 0x0a,
+	ScsiExtread	= 0x28,
+	ScsiExtwrite	= 0x2a,
 
 	/* data direction */
 	ScsiIn		= 1,
