@@ -111,8 +111,11 @@ configASIC(Ether* ether, int port, int xcvr)
 static int
 reset(Ether* ether)
 {
-	int slot;
+	int i, slot;
 	int port;
+	enum { WantAny, Want10BT, Want10B2 };
+	int want;
+	char *p;
 
 	if(ether->irq == 0)
 		ether->irq = 10;
@@ -128,30 +131,48 @@ reset(Ether* ether)
 		return -1;
 	}
 
-	/* try configuring as a 10BaseT */
-	if(configASIC(ether, port, xcvr10BaseT) < 0){
-		pcmspecialclose(slot);
-		iofree(port);
-		return -1;
+	/*
+	 * Allow user to specify desired media in plan9.ini
+	 */
+	want = WantAny;
+	for(i = 0; i < ether->nopt; i++){
+		if(cistrncmp(ether->opt[i], "media=", 6) != 0)
+			continue;
+		p = ether->opt[i]+6;
+		if(cistrcmp(p, "10base2") == 0)
+			want = Want10B2;
+		else if(cistrcmp(p, "10baseT") == 0)
+			want = Want10BT;
 	}
-	delay(100);
-	COMMAND(port, SelectRegisterWindow, Wdiagnostic);
-	if(ins(port+MediaStatus) & linkBeatDetect){
-		COMMAND(port, SelectRegisterWindow, Wop);
-		print("#l%d: xcvr10BaseT %s\n", ether->ctlrno, ether->type);
-		return 0;
+	
+	/* try configuring as a 10BaseT */
+	if(want==WantAny || want==Want10BT){
+		if(configASIC(ether, port, xcvr10BaseT) < 0){
+			pcmspecialclose(slot);
+			iofree(port);
+			return -1;
+		}
+		delay(100);
+		COMMAND(port, SelectRegisterWindow, Wdiagnostic);
+		if((ins(port+MediaStatus)&linkBeatDetect) || want==Want10BT){
+			COMMAND(port, SelectRegisterWindow, Wop);
+			print("#l%d: xcvr10BaseT %s\n", ether->ctlrno, ether->type);
+			return 0;
+		}
 	}
 
 	/* try configuring as a 10base2 */
-	COMMAND(port, GlobalReset, 0);
-	if(configASIC(ether, port, xcvr10Base2) < 0){
-		pcmspecialclose(slot);
-		iofree(port);
-		return -1;
+	if(want==WantAny || want==Want10B2){
+		COMMAND(port, GlobalReset, 0);
+		if(configASIC(ether, port, xcvr10Base2) < 0){
+			pcmspecialclose(slot);
+			iofree(port);
+			return -1;
+		}
+		print("#l%d: xcvr10Base2 %s\n", ether->ctlrno, ether->type);
+		return 0;
 	}
-	print("#l%d: xcvr10Base2 %s\n", ether->ctlrno, ether->type);
-
-	return 0;
+	return -1;		/* not reached */
 }
 
 void

@@ -1584,11 +1584,23 @@ static struct xxx {
 };
 #endif /* notdef */
 
+static struct {
+	char *name;
+	int avail;
+	int xcvr;
+} media[] = {
+	"10BaseT",	base10TAvailable,	xcvr10BaseT,
+	"10Base2",	coaxAvailable,		xcvr10Base2,
+	"100BaseTX",	baseTXAvailable,	xcvr100BaseTX,
+	"100BaseFX",	baseFXAvailable,	xcvr100BaseFX,
+	"aui",		auiAvailable,		xcvrAui,
+	"mii",		miiConnector,		xcvrMii
+};
+
 static int
 autoselect(int port, int xcvr, int is9)
 {
 	int media, x;
-
 	USED(xcvr);
 
 	/*
@@ -1671,12 +1683,13 @@ eepromdata(int port, int offset)
 int
 etherelnk3reset(Ether* ether)
 {
-	int anar, anlpar, busmaster, did, i, phyaddr, port, rxearly, rxstatus9, x, xcvr;
+	int anar, anlpar, busmaster, did, i, j, phyaddr, port, rxearly, rxstatus9, x, xcvr;
 	Block *bp, **bpp;
 	Adapter *ap;
 	uchar ea[Eaddrlen];
 	Ctlr *ctlr;
 	static int scandone;
+	char *p;
 
 	/*
 	 * Scan for adapter on PCI, EISA and finally
@@ -1780,6 +1793,19 @@ etherelnk3reset(Ether* ether)
 	 * of the 3C59[05], don't use busmastering at 10Mbps.
 	 */
 	XCVRDEBUG("reset: xcvr %uX\n", xcvr);
+
+	/*
+	 * Allow user to specify desired media in plan9.ini
+	 */
+	for(i = 0; i < ether->nopt; i++){
+		if(cistrncmp(ether->opt[i], "media=", 6) != 0)
+			continue;
+		p = ether->opt[i]+6;
+		for(j = 0; j < nelem(media); j++)
+			if(cistrcmp(p, media[j].name) == 0)
+				xcvr = media[j].xcvr;
+	}
+	
 /*
  * forgive me, but i am weak
  */

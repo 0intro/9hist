@@ -133,6 +133,7 @@ transact(SMBus *s, int type, int addr, int cmd, uchar *data)
 	outb(s->base+Hostcontrol, Start|proto[type].proto);
 
 	// wait for completion
+	status = 0;
 	for(tries = 0; tries < 1000000; tries++){
 		status = inb(s->base+Hoststatus);
 		if(status & (Failed|Bus_error|Dev_error|Host_complete))

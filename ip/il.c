@@ -669,6 +669,12 @@ _ilprocess(Conv *s, Ilhdr *h, Block *bp)
 				ilpullup(s);
 			}
 			break;
+		case Ildata:
+			if(ack == ic->start) {
+				ic->state = Ilestablished;
+				goto established;
+			}
+			break;
 		case Ilclose:
 			if(ack == ic->start)
 				ilhangup(s, "remote close");
@@ -677,6 +683,7 @@ _ilprocess(Conv *s, Ilhdr *h, Block *bp)
 		freeblist(bp);
 		break;
 	case Ilestablished:
+	established:
 		switch(h->iltype) {
 		case Ilsync:
 			if(id != ic->rstart)
