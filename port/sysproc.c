@@ -534,6 +534,19 @@ sysdeath(ulong*)
 	return 0;	/* not reached */
 }
 
+void
+werrstr(char *fmt, ...)
+{
+	va_list va;
+
+	if(up == nil)
+		return;
+
+	va_start(va, fmt);
+	doprint(up->error, up->error+ERRLEN, fmt, va);
+	va_end(va);
+}
+
 long
 syserrstr(ulong *arg)
 {

@@ -97,6 +97,7 @@ struct Uart
 	char	name[NAMELEN];
 
 	uchar	sticky[8];		/* sticky write register values */
+	uchar	osticky[8];		/* kernel saved sticky write register values */
 	ulong	port;			/* io ports */
 	ulong	freq;			/* clock frequency */
 	uchar	mask;			/* bits/char */
@@ -136,6 +137,8 @@ struct Uart
 	int	hup_dsr, hup_dcd;	/* send hangup upstream? */
 	int	dohup;
 
+	int	kinuse;		/* device in use by kernel */
+
 	Rendez	r;
 };
 
@@ -148,6 +151,11 @@ struct Uartalloc {
 } uartalloc;
 
 void ns16552intr(int);
+
+/*
+ * means the kernel is using this for debugging output
+ */
+static char	Ekinuse[] = "device in use by kernel";
 
 /*
  *  pick up architecture specific routines and definitions
@@ -318,7 +326,6 @@ ns16552fifoon(Uart *p)
 static void
 ns16552mflow(Uart *p, int n)
 {
-
 
 	ilock(&p->tlock);
 	if(n){
@@ -827,6 +834,8 @@ ns16552open(Chan *c, int omode)
 	case Nctlqid:
 	case Ndataqid:
 		p = uart[NETID(c->qid.path)];
+		if(p->kinuse)
+			error(Ekinuse);
 		qlock(p);
 		if(p->opens++ == 0){
 			ns16552enable(p);
@@ -853,6 +862,8 @@ ns16552close(Chan *c)
 	case Ndataqid:
 	case Nctlqid:
 		p = uart[NETID(c->qid.path)];
+		if(p->kinuse)
+			error(Ekinuse);
 		qlock(p);
 		if(--(p->opens) == 0){
 			ns16552disable(p);
@@ -915,6 +926,8 @@ ns16552read(Chan *c, void *buf, long n, vlong off)
 	}
 
 	p = uart[NETID(c->qid.path)];
+	if(p->kinuse)
+		error(Ekinuse);
 	switch(NETTYPE(c->qid.path)){
 	case Ndataqid:
 		return qread(p->iq, buf, n);
@@ -1025,6 +1038,8 @@ ns16552write(Chan *c, void *buf, long n, vlong)
 		error(Eperm);
 
 	p = uart[NETID(c->qid.path)];
+	if(p->kinuse)
+		error(Ekinuse);
 
 	/*
 	 *  The fifo's turn themselves off sometimes.
@@ -1087,3 +1102,107 @@ Dev ns16552devtab = {
 	devremove,
 	ns16552wstat,
 };
+
+/*
+ * Polling I/O routines for kernel debugging helps.
+ */
+static void
+ns16552setuppoll(Uart *p, int rate)
+{
+	ulong brconst;
+
+	/*
+	 * 8 bits/character, 1 stop bit;
+	 * set rate to rate baud;
+	 * turn on Rts and Dtr.
+	 */
+	memmove(p->osticky, p->sticky, sizeof p->osticky);
+	
+	p->sticky[Format] = Bits8;
+	uartwrreg(p, Format, 0);
+
+	brconst = (UartFREQ+8*rate-1)/(16*rate);
+	uartwrreg(p, Format, Dra);
+	outb(p->port+Dmsb, (brconst>>8) & 0xff);
+	outb(p->port+Dlsb, brconst & 0xff);
+	uartwrreg(p, Format, 0);
+
+	p->sticky[Mctl] = Rts|Dtr;
+	uartwrreg(p, Mctl, 0);
+
+	p->kinuse = 1;
+}
+
+/*
+ * Restore serial state from before kernel took over.
+ */
+static void
+ns16552restore(Uart *p)
+{
+	ulong brconst;
+
+	memmove(p->sticky, p->osticky, sizeof p->sticky);
+	uartwrreg(p, Format, 0);
+
+	brconst = (UartFREQ+8*p->baud-1)/(16*p->baud);
+	uartwrreg(p, Format, Dra);
+	outb(p->port+Dmsb, (brconst>>8) & 0xff);
+	outb(p->port+Dlsb, brconst & 0xff);
+	uartwrreg(p, Format, 0);
+
+	uartwrreg(p, Mctl, 0);
+	p->kinuse = 0;
+}
+
+/* BUG should be configurable */
+enum {
+	WHICH = 0,
+	RATE = 9600,
+};
+
+int
+serialgetc(void)
+{
+	Uart *p;
+	int c;
+
+	if((p=uart[WHICH]) == nil)
+		return -1;
+	if(!p->kinuse)
+		ns16552setuppoll(p, RATE);
+
+	while((uartrdreg(p, Lstat)&Inready) == 0)
+		;
+	c = inb(p->port+Data) & 0xFF;
+	return c;
+	// there should be a restore here but i think it will slow things down too much.
+}
+
+static void
+serialputc(Uart *p, int c)
+{
+	while((uartrdreg(p, Lstat)&Outready) == 0)
+		;
+	outb(p->port+Data, c);
+	while((uartrdreg(p, Lstat)&Outready) == 0)
+		;
+}
+
+void
+serialputs(char *s, int n)
+{
+	Uart *p;
+
+	if((p=uart[WHICH]) == nil)
+		return;
+	if(!p->kinuse)
+		ns16552setuppoll(p, RATE);
+
+	while(n-- > 0){
+		serialputc(p, *s);
+		if(*s == '\n')
+			serialputc(p, '\r');
+		s++;
+	}
+	ns16552restore(p);
+}

@@ -709,6 +709,7 @@ isaconfig(char *class, int ctlrno, ISAConf *isa)
 	return 0;
 }
 
+/*
 int
 iprint(char *fmt, ...)
 {
@@ -724,6 +725,7 @@ iprint(char *fmt, ...)
 
 	return n;
 }
+*/
 
 int
 cistrcmp(char *a, char *b)

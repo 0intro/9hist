@@ -517,7 +517,7 @@ walk(Chan **cp, char *name, int domnt)
 			*cp = undomount(c);
 		}
 		if(domnt)
-			*cp = domount(c);
+			*cp = domount(*cp);
 		return 0;
 	}
 

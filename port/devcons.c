@@ -156,6 +156,23 @@ print(char *fmt, ...)
 	return n;
 }
 
+int
+iprint(char *fmt, ...)
+{
+	int n, s;
+	va_list arg;
+	char buf[PRINTSIZE];
+
+	s = splhi();
+	va_start(arg, fmt);
+	n = doprint(buf, buf+sizeof(buf), fmt, arg) - buf;
+	va_end(arg);
+	serialputs(buf, n);
+	splx(s);
+
+	return n;
+}
+
 void
 panic(char *fmt, ...)
 {
@@ -243,6 +260,9 @@ echo(Rune r, char *buf, int n)
 		case 'd':
 			if(consdebug != nil)
 				consdebug();
+			return;
+		case 'D':
+			consdebug = rdb;
 			return;
 		case 'p':
 			x = spllo();
