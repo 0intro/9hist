@@ -11,9 +11,6 @@
 #include	<gnot.h>
 #include	"screen.h"
 
-/* gnot screen.h defines gbitblt to use balu; doesn't work here */
-#undef gbitblt
-
 #define	MINX	8
 
 extern	GFont	defont0;
@@ -43,7 +40,7 @@ screeninit(void)
 	if(*(uchar*)MOUSE & (1<<4))
 		gscreen.ldepth = 1;
 	defont = &defont0;	/* save space; let bitblt do the conversion work */
-	gbitblt(&gscreen, Pt(0, 0), &gscreen, gscreen.r, 0);
+	kbitblt(&gscreen, Pt(0, 0), &gscreen, gscreen.r, 0);
 	out.pos.x = MINX;
 	out.pos.y = 0;
 	out.bwid = defont0.info[' '].width;
@@ -60,7 +57,7 @@ screenputc(int c)
 		out.pos.y += defont0.height;
 		if(out.pos.y > gscreen.r.max.y-defont0.height)
 			out.pos.y = gscreen.r.min.y;
-		gbitblt(&gscreen, Pt(0, out.pos.y), &gscreen,
+		kbitblt(&gscreen, Pt(0, out.pos.y), &gscreen,
 		    Rect(0, out.pos.y, gscreen.r.max.x, out.pos.y+2*defont0.height), 0);
 	}else if(c == '\t'){
 		out.pos.x += (8-((out.pos.x-MINX)/out.bwid&7))*out.bwid;

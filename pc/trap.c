@@ -29,10 +29,10 @@ Segdesc ilt[256];
 void	(*ivec[256])(void*);
 
 void
-sethvec(int v, void (*r)(void), int type)
+sethvec(int v, void (*r)(void), int type, int pri)
 {
 	ilt[v].d0 = ((ulong)r)&0xFFFF|(KESEL<<16);
-	ilt[v].d1 = ((ulong)r)&0xFFFF0000|SEGP|SEGPL(3)|type;
+	ilt[v].d1 = ((ulong)r)&0xFFFF0000|SEGP|SEGPL(pri)|type;
 }
 
 void
@@ -62,36 +62,42 @@ trapinit(void)
 	/*
 	 *  set the standard traps
 	 */
-	sethvec(0, intr0, SEGTG);
-	sethvec(1, intr1, SEGTG);
-	sethvec(2, intr2, SEGTG);
-	sethvec(3, intr3, SEGTG);
-	sethvec(4, intr4, SEGTG);
-	sethvec(5, intr5, SEGTG);
-	sethvec(6, intr6, SEGTG);
-	sethvec(7, intr7, SEGTG);
-	sethvec(8, intr8, SEGTG);
-	sethvec(9, intr9, SEGTG);
-	sethvec(10, intr10, SEGTG);
-	sethvec(11, intr11, SEGTG);
-	sethvec(12, intr12, SEGTG);
-	sethvec(13, intr13, SEGTG);
-	sethvec(14, intr14, SEGTG);
-	sethvec(15, intr15, SEGTG);
-	sethvec(16, intr16, SEGTG);
-	sethvec(17, intr17, SEGTG);
-	sethvec(18, intr18, SEGTG);
-	sethvec(19, intr19, SEGTG);
-	sethvec(20, intr20, SEGTG);
-	sethvec(21, intr21, SEGTG);
-	sethvec(22, intr22, SEGTG);
-	sethvec(23, intr23, SEGTG);
+	sethvec(0, intr0, SEGTG, 0);
+	sethvec(1, intr1, SEGTG, 0);
+	sethvec(2, intr2, SEGTG, 0);
+	sethvec(3, intr3, SEGTG, 0);
+	sethvec(4, intr4, SEGTG, 0);
+	sethvec(5, intr5, SEGTG, 0);
+	sethvec(6, intr6, SEGTG, 0);
+	sethvec(7, intr7, SEGTG, 0);
+	sethvec(8, intr8, SEGTG, 0);
+	sethvec(9, intr9, SEGTG, 0);
+	sethvec(10, intr10, SEGTG, 0);
+	sethvec(11, intr11, SEGTG, 0);
+	sethvec(12, intr12, SEGTG, 0);
+	sethvec(13, intr13, SEGTG, 0);
+	sethvec(14, intr14, SEGTG, 0);
+	sethvec(15, intr15, SEGTG, 0);
+	sethvec(16, intr16, SEGTG, 0);
+	sethvec(17, intr17, SEGTG, 0);
+	sethvec(18, intr18, SEGTG, 0);
+	sethvec(19, intr19, SEGTG, 0);
+	sethvec(20, intr20, SEGTG, 0);
+	sethvec(21, intr21, SEGTG, 0);
+	sethvec(22, intr22, SEGTG, 0);
+	sethvec(23, intr23, SEGTG, 0);
 
 	/*
 	 *  set all others to unknown
 	 */
 	for(i = 24; i < 256; i++)
-		sethvec(i, intrbad, SEGIG);
+		sethvec(i, intrbad, SEGIG, 0);
+
+	/*
+	 *  system calls
+	 */
+	sethvec(64, intr64, SEGTG, 3);
+/*	setvec(64, syscall, SEGTG);	/**/
 
 	/*
 	 *  tell the hardware where the table is (and how long)
@@ -114,6 +120,7 @@ trapinit(void)
 /*
  *  All traps
  */
+void
 trap(Ureg *ur)
 {
 	if(ur->trap>=256 || ivec[ur->trap] == 0)
@@ -129,4 +136,36 @@ trap(Ureg *ur)
 	 *  highest level interrupt
 	 */
 	outb(Int0ctl, EOI);
+}
+
+/*
+ *  system calls
+ */
+long
+syscall(Ureg *ur)
+{
+	panic("syscall");
+}
+
+#include "errstr.h"
+
+void
+error(int code)
+{
+	strncpy(u->error, errstrtab[code], ERRLEN);
+	nexterror();
+}
+
+void
+errors(char *err)
+{
+	strncpy(u->error, err, ERRLEN);
+	nexterror();
+}
+
+
+void
+nexterror(void)
+{
+	gotolabel(&u->errlab[--u->nerrlab]);
 }

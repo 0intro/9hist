@@ -3,6 +3,7 @@
  */
 enum
 {
+	Faultvec=	14,		/* page fault */
 	Int0vec=	16,		/* first interrupt vector used by the 8259 */
 	Clockvec=	Int0vec+0,	/* clock interrupts */
 	Kbdvec=		Int0vec+1,	/* keyboard interrupts */

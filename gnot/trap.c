@@ -207,7 +207,7 @@ noted(Ureg *ur)
 }
 
 #undef	CHDIR	/* BUG */
-#include "/sys/src/libc/680209sys/sys.h"
+#include "/sys/src/libc/9syscall/sys.h"
 
 typedef long Syscall(ulong*);
 Syscall	sysr1, sysfork, sysexec, sysgetpid, syssleep, sysexits, sysdeath, syswait;
@@ -328,27 +328,4 @@ void
 execpc(ulong entry)
 {
 	((Ureg*)UREGADDR)->pc = entry;
-}
-
-#include "errstr.h"
-
-void
-error(int code)
-{
-	strncpy(u->error, errstrtab[code], ERRLEN);
-	nexterror();
-}
-
-void
-errors(char *err)
-{
-	strncpy(u->error, err, ERRLEN);
-	nexterror();
-}
-
-
-void
-nexterror(void)
-{
-	gotolabel(&u->errlab[--u->nerrlab]);
 }

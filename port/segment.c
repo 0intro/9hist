@@ -214,7 +214,7 @@ attachimage(int type, Chan *c, ulong base, ulong len)
 	while(!(i = imagealloc.free)) {
 		unlock(&imagealloc);
 		imagereclaim();
-		resrcwait("no images");
+		resrcwait(0);
 		lock(&imagealloc);
 	}
 

@@ -28,4 +28,8 @@ extern Cursorinfo	cursor;
 
 extern void		mouseupdate(int);
 
-#define gbitblt(d,p,s,r,f) balubitblt(d,p,s,r,f)
+/*
+ * kernel mustn't use balu; user (/dev/bitblt) can
+ */
+#define kbitblt 	gbitblt
+#define	ubitblt		balubitblt

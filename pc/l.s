@@ -24,7 +24,7 @@ TEXT	origin(SB),$0
 	MOVSL
 /*	JMPFAR	00:$lowcore(SB) /**/
 	 BYTE	$0xEA
-	 WORD	$lowcore(SB)
+	 WORD	$lowcore-KZERO(SB)
 	 WORD	$0
 
 TEXT	lowcore(SB),$0
@@ -56,7 +56,7 @@ TEXT	lowcore(SB),$0
 	 BYTE	$0x0f
 	 BYTE	$0x01
 	 BYTE	$0x16
-	 WORD	$tgdtptr(SB)
+	 WORD	$tgdtptr-KZERO(SB)
 	MOVL	CR0,AX
 	ORL	$1,AX
 	MOVL	AX,CR0
@@ -82,7 +82,7 @@ flush:
 
 /*	JMPFAR	SELECTOR(2, SELGDT, 0):$mode32bit(SB) /**/
 	 BYTE	$0xEA
-	 WORD	$mode32bit(SB)
+	 WORD	$mode32bit-KZERO(SB)
 	 WORD	$SELECTOR(2, SELGDT, 0)
 
 TEXT	mode32bit(SB),$0
@@ -90,15 +90,47 @@ TEXT	mode32bit(SB),$0
 	/*
 	 * Clear BSS
 	 */
-	LEAL	edata(SB),SI
-	LEAL	edata+4(SB),DI
+	LEAL	edata-KZERO(SB),SI
+	MOVL	SI,DI
+	ADDL	$4,DI
 	MOVL	$0,AX
 	MOVL	AX,(SI)
-	LEAL	end(SB),CX
+	LEAL	end-KZERO(SB),CX
 	SUBL	DI,CX
 	SHRL	$2,CX
 	REP
 	MOVSL
+
+	/*
+	 *  make a bottom level page table page that maps the first
+	 *  4 meg of physical memory
+	 */
+	LEAL	tpt-KZERO(SB),AX	/* get phys addr of temporary page table */
+	ADDL	$(BY2PG-1),AX		/* must be page alligned */
+	ANDL	$(~(BY2PG-1)),AX	/* ... */
+	MOVL	$1024,CX		/* pte's per page */
+	MOVL	$(((1024-1)<<12)|PTEVALID|PTEKERNEL|PTEWRITE),BX
+setpte:
+	MOVL	BX,-4(AX)(CX*4)
+	SUBL	$(1<<12),BX
+	LOOP	setpte
+
+	/*
+	 *  make a top level page table page that maps the first
+	 *  4 meg of memory to 0 thru 4meg and to KZERO thru KZERO+4meg
+	 */
+	MOVL	AX,BX
+	ADDL	$BY2PG,AX
+	MOVL	BX,0(AX)
+	MOVL	BX,((KZERO>>22)&(BY2PG-1))(AX)
+
+	/*
+	 *  point processor to top level page & turn on paging
+	 */
+	MOVL	AX,CR3
+	MOVL	CR0,AX
+	ORL	$1,AX
+	MOVL	AX,CR0
 
 	/*
 	 *  stack and mach
@@ -117,6 +149,7 @@ loop:
 GLOBL	mach0+0(SB), $MACHSIZE
 GLOBL	u(SB), $4
 GLOBL	m(SB), $4
+GLOBL	tpt(SB), $(BY2PG*3)
 
 /*
  *  gdt to get us to 32-bit/segmented/unpaged mode
@@ -141,7 +174,7 @@ TEXT	tgdt(SB),$0
 TEXT	tgdtptr(SB),$0
 
 	WORD	$(3*8)
-	LONG	$tgdt(SB)
+	LONG	$tgdt-KZERO(SB)
 
 /*
  *  input a byte
@@ -289,6 +322,10 @@ TEXT	intr23(SB),$0
 	PUSHL	$0
 	PUSHL	$23
 	JMP	intrcommon
+TEXT	intr64(SB),$0
+	PUSHL	$0
+	PUSHL	$64
+	JMP	intrcommon
 TEXT	intrbad(SB),$0
 	PUSHL	$0
 	PUSHL	$0x1ff
@@ -324,6 +361,8 @@ intrscommon:
  *  turn interrupts and traps on
  */
 TEXT	spllo(SB),$0
+	PUSHFL
+	POPL	AX
 	STI
 	RET
 
@@ -331,6 +370,8 @@ TEXT	spllo(SB),$0
  *  turn interrupts and traps off
  */
 TEXT	splhi(SB),$0
+	PUSHFL
+	POPL	AX
 	CLI
 	RET
 
@@ -338,10 +379,31 @@ TEXT	splhi(SB),$0
  *  set interrupt level
  */
 TEXT	splx(SB),$0
+	MOVL	s+0(FP),AX
+	PUSHL	AX
+	POPFL
 	RET
 
 /*
- *	
+ *  do nothing whatsoever till interrupt happens
  */
 TEXT	idle(SB),$0
 	HLT
+	RET
+
+/*
+ *  label consists of a stack pointer and a PC
+ */
+TEXT	gotolabel(SB),$0
+	MOVL	l+0(FP),AX
+	MOVL	0(AX),SP	/* restore sp */
+	MOVL	4(AX),AX	/* put return pc on the stack */
+	MOVL	AX,0(SP)
+	RET
+
+TEXT	setlabel(SB),$0
+	MOVL	l+0(FP),AX
+	MOVL	SP,0(AX)	/* store sp */
+	MOVL	0(SP),BX	/* store return pc */
+	MOVL	BX,4(AX)
+	RET

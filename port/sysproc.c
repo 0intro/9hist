@@ -175,7 +175,7 @@ sysexec(ulong *arg)
 	/*
 	 * Args: pass 1: count
 	 */
-	nbytes = 0;
+	nbytes = BY2WD;		/* hole for profiling clock at top of stack */
 	nargs = 0;
 	if(indir){
 		argp = progarg;
@@ -298,7 +298,7 @@ sysexec(ulong *arg)
 	u->notified = 0;
 	procsetup(p);
 	unlock(&p->debug);
-	return 0;
+	return (USTKTOP-BY2WD);	/* address of user-level clock */
 }
 
 int

@@ -3,6 +3,7 @@
 void	clock(Ureg*);
 void	clockinit(void);
 void	delay(int);
+void	fault386(Ureg*);
 void	floppyinit(void);
 void	floppyintr(Ureg*);
 void	floppystart(int);
@@ -33,6 +34,7 @@ void	intr20(void);
 void	intr21(void);
 void	intr22(void);
 void	intr23(void);
+void	intr64(void);
 void	intrbad(void);
 void	kbdinit(void);
 void	kbdintr(Ureg*);
@@ -48,3 +50,4 @@ void	setvec(int, void (*)(Ureg*), int);
 void	systrap(void);
 void	trapinit(void);
 int	tas(Lock*);
+#define	waserror()	(u->nerrlab++, setlabel(&u->errlab[u->nerrlab-1]))

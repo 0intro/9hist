@@ -189,9 +189,10 @@ dupfgrp(Fgrp *f)
 void
 resrcwait(char *reason)
 {
-	print("%s\n", reason);
+	if(reason)
+		print("%s\n", reason);
 	if(u == 0)
-		panic("resched");
+		panic("resrcwait");
 	u->p->state = Wakeme;
 	alarm(1000, wakeme, u->p);
 	sched();

@@ -89,7 +89,7 @@ fault68020(Ureg *ur, FFrame *f)
 	if(fault(addr, read) < 0){
 		if(user){
 			pprint("user %s error addr=0x%lux\n", read? "read" : "write", badvaddr);
-			pprint("status=0x%lux pc=0x%lux sp=0x%lux\n", ur->sr, ur->pc, ur->sp);
+			pprint("status=0x%lux pc=0x%lux sp=0x%lux\n", ur->sr, ur->pc, ur->usp);
 			pexit("Suicide", 0);
 		}
 		u->p->state = MMUing;

@@ -261,7 +261,7 @@ userinit(void)
 	 * Kernel Stack
 	 */
 	p->sched.pc = (ulong)init0;
-	p->sched.sp = USERADDR+BY2PG-20;
+	p->sched.sp = USERADDR+BY2PG-24;	/* BUG */
 	p->upage = newpage(0, 0, USERADDR|(p->pid&0xFFFF));
 
 	/*
@@ -379,72 +379,6 @@ exit(void)
 		;
 	duartenable0();
 	firmware();
-}
-
-/*
- * Insert new into list after where
- */
-void
-insert(List **head, List *where, List *new)
-{
-	if(where == 0){
-		new->next = *head;
-		*head = new;
-	}else{
-		new->next = where->next;
-		where->next = new;
-	}
-		
-}
-
-/*
- * Insert new into list at end
- */
-void
-append(List **head, List *new)
-{
-	List *where;
-
-	where = *head;
-	if(where == 0)
-		*head = new;
-	else{
-		while(where->next)
-			where = where->next;
-		where->next = new;
-	}
-	new->next = 0;
-}
-
-/*
- * Delete old from list
- */
-void
-delete0(List **head, List *old)
-{
-	List *l;
-
-	l = *head;
-	if(l == old){
-		*head = old->next;
-		return;
-	}
-	while(l->next != old)
-		l = l->next;
-	l->next = old->next;
-}
-
-/*
- * Delete old from list.  where->next is known to be old.
- */
-void
-delete(List **head, List *where, List *old)
-{
-	if(where == 0){
-		*head = old->next;
-		return;
-	}
-	where->next = old->next;
 }
 
 typedef struct Conftab {

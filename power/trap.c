@@ -449,7 +449,7 @@ noted(Ureg **urp)
 
 
 #undef	CHDIR	/* BUG */
-#include "/sys/src/libc/mips9sys/sys.h"
+#include "/sys/src/libc/9syscall/sys.h"
 
 typedef long Syscall(ulong*);
 Syscall sysbind, sysbrk_, syschdir, sysclose, syscreate, sysdeath;
@@ -542,11 +542,13 @@ syscall(Ureg *aur)
 			msg = "sys: odd stack";
 			goto Bad;
 		}
-		if(((ulong*)ur->pc)[-2] != 0x23bdfffc)	/* new calling convention: look for ADD $-4, SP */
-			sp -= BY2WD;
-		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-5*BY2WD))
-			validaddr(sp, 5*BY2WD, 0);
-		ret = (*systab[r1])((ulong*)(sp+2*BY2WD));
+		if(((ulong*)ur->pc)[-2] == 0x23bdfffc){	/* old calling convention: look for ADD $-4, SP */
+			pprint("old system call linkage; recompile\n");
+			sp += BY2WD;
+		}
+		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-6*BY2WD))
+			validaddr(sp, 6*BY2WD, 0);
+		ret = (*systab[r1])((ulong*)(sp+BY2WD));
 	}
 	ur->pc += 4;
 	u->nerrlab = 0;
@@ -569,28 +571,6 @@ void
 execpc(ulong entry)
 {
 	((Ureg*)UREGADDR)->pc = entry - 4;		/* syscall advances it */
-}
-
-#include "errstr.h"
-
-void
-error(int code)
-{
-	strncpy(u->error, errstrtab[code], ERRLEN);
-	nexterror();
-}
-
-void
-errors(char *err)
-{
-	strncpy(u->error, err, ERRLEN);
-	nexterror();
-}
-
-void
-nexterror(void)
-{
-	gotolabel(&u->errlab[--u->nerrlab]);
 }
 
 void

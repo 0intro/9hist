@@ -96,8 +96,19 @@
 #define SEGD	(1<<22)		/* default 1==32bit (for code) */
 
 /*
- *  virtual MMU entries
+ *  virtual MMU
  */
 #define PTEMAPMEM	(1024*1024)	/* ??? */	
 #define SEGMAPSIZE	16		/* ??? */
 #define	PTEPERTAB	(PTEMAPMEM/BY2PG)	/* ??? */
+
+/*
+ *  physical MMU
+ */
+#define PPN(x)		((x)&~(BY2PG-1))
+#define	PTEVALID	(1<<0)
+#define	PTEUNCACHED	0		/* everything is uncached */
+#define PTEWRITE	(1<<1)
+#define	PTERONLY	(0<<1)
+#define	PTEKERNEL	(0<<2)
+#define	PTEUSER		(1<<2)

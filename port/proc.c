@@ -726,3 +726,26 @@ procctl(Proc *p)
 		return;
 	}
 }
+
+#include "errstr.h"
+
+void
+error(int code)
+{
+	strncpy(u->error, errstrtab[code], ERRLEN);
+	nexterror();
+}
+
+void
+errors(char *err)
+{
+	strncpy(u->error, err, ERRLEN);
+	nexterror();
+}
+
+void
+nexterror(void)
+{
+	gotolabel(&u->errlab[--u->nerrlab]);
+}
+

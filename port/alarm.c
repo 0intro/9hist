@@ -175,3 +175,33 @@ done:
 
 	return TK2MS(old);			
 }
+
+/*
+ * Insert new into list after where
+ */
+void
+insert(List **head, List *where, List *new)
+{
+	if(where == 0){
+		new->next = *head;
+		*head = new;
+	}else{
+		new->next = where->next;
+		where->next = new;
+	}
+		
+}
+
+/*
+ * Delete old from list.  where->next is known to be old.
+ */
+void
+delete(List **head, List *where, List *old)
+{
+	if(where == 0){
+		*head = old->next;
+		return;
+	}
+	where->next = old->next;
+}
+
