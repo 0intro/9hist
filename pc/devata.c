@@ -76,7 +76,7 @@ enum
 	Npart=		20+2,		/* 8 sub partitions, disk, and partition */
 	Nrepl=		64,		/* maximum replacement blocks */
 
-	Hardtimeout=	30000,		/* disk access timeout (ms) */
+	Hardtimeout=	6000,		/* disk access timeout (ms) */
 
 	NCtlr=		4,
 	NDrive=		NCtlr*2,
@@ -339,8 +339,10 @@ atadrivealloc(Controller* ctlr, int driveno, int atapi)
 	if(driveno & 0x01)
 		drive->dh |= DHslave;
 	drive->vers = 1;
-	if(atapi)
+	if(atapi){
+		sprint(drive->vol, "atapi%d", drive->driveno);
 		drive->atapi = 1;
+	}
 
 	atadrive[driveno] = drive;
 }
@@ -384,7 +386,7 @@ atactlrprobe(int ctlrno, int irq)
 	 * will be left on the interrupt call chain even if there are no
 	 * drives found.
 	 * At least one controller/ATAPI-drive combination doesn't respond
-	 * to the Edd (Micronics M54Li + Sanyo CDR-XXX) so let's check for the
+	 * to the Cedd (Micronics M54Li + Sanyo CRD-254P) so let's check for the
 	 * ATAPI signature straight off. If we find it there will be no probe
 	 * done for a slave. Tough.
 	 */
@@ -401,6 +403,8 @@ atactlrprobe(int ctlrno, int irq)
 		goto skipedd;
 	}
 	if(atactlrwait(ctlr, DHmagic, 0, MS2TK(1)) || waserror()){
+		DPRINT("ata%d: Cedd status %ux/%ux/%ux\n",
+			ctlrno, inb(port+Pstatus), inb(port+Pcylmsb), inb(port+Pcyllsb));
 		xfree(ctlr);
 		return -1;
 	}
@@ -1069,18 +1073,7 @@ ataident(Drive *dp)
 		nexterror();
 	}
 
-	if(dp->atapi || isatapi(dp))
-		cmd = Cidentd;
-	else{
-		cmd = Cident;
-		if(cmdreadywait(dp)){
-			dp->atapi = 1;
-			if(isatapi(dp) == 0)
-				error(Eio);
-			cmd = Cidentd;
-		}
-	}
-
+	cmd = Cident;
 retryatapi:
 	ILOCK(&cp->reglock);
 	cp->nsecs = 1;
@@ -1092,12 +1085,12 @@ retryatapi:
 	outb(cp->pbase+Pcmd, cmd);
 	IUNLOCK(&cp->reglock);
 
+	DPRINT("%s: ident command %ux sent\n", dp->vol, cmd);
 	atasleep(cp);
 
 	if(cp->status & Serr){
 		DPRINT("%s: bad disk ident status\n", dp->vol);
-		if(dp->atapi == 0 && (cp->error & Eabort)){
-			dp->atapi = 1;
+		if(cp->error & Eabort){
 			if(isatapi(dp)){
 				cmd = Cidentd;
 				goto retryatapi;
@@ -1134,7 +1127,7 @@ retryatapi:
 	dp->cyl = ip->cyls;
 	dp->heads = ip->heads;
 	dp->sectors = ip->s2t;
-	DPRINT("%s: %s %d/%d/%d CHS %d bytes\n",
+	XPRINT("%s: %s %d/%d/%d CHS %d bytes\n",
 		dp->vol, id, dp->cyl, dp->heads, dp->sectors, dp->cap);
 
 	if(ip->cvalid&(1<<0)){
@@ -1142,7 +1135,7 @@ retryatapi:
 		dp->cyl = ip->ccyls;
 		dp->heads = ip->cheads;
 		dp->sectors = ip->cs2t;
-		DPRINT("%s: changed to %d cyl %d head %d sec\n",
+		XPRINT("%s: changed to %d cyl %d head %d sec\n",
 			dp->vol, dp->cyl, dp->heads, dp->sectors);
 	}
 
@@ -1151,7 +1144,7 @@ retryatapi:
 		dp->lba = 1;
 		dp->lbasecs = lbasecs;
 		dp->cap = dp->bytes * dp->lbasecs;
-		DPRINT("%s: LBA: %s %d sectors %d bytes\n",
+		XPRINT("%s: LBA: %s %d sectors %d bytes\n",
 			dp->vol, id, dp->lbasecs, dp->cap);
 	} else {
 		dp->lba = 0;
@@ -1534,15 +1527,18 @@ ataintr(Ureg*, void* arg)
 			print("%s: intr %d %d\n", dp->vol, cp->sofar, cp->nsecs);
 		if(cp->sofar >= cp->nsecs){
 			cp->lastcmd = cp->cmd;
+#ifdef notdef
 			if(cp->cmd == Cidentd)
 				cp->cmd = Cident2;
 			else if(cp->cmd == Cident && (cp->status & Sready) == 0)
 				cp->cmd = Cident2;
+#else
+			if(cp->cmd != Cread && (cp->status & (Sbusy|Sready)) != Sready)
+				cp->cmd = Cident2;
+#endif /* notdef */
 			else
 				cp->cmd = 0;
 			inb(cp->pbase+Pstatus);
-			DPRINT("status %uX, alt %uX\n",
-				inb(cp->pbase+Pstatus), inb(cp->pbase+0x206));
 			wakeup(&cp->r);
 		}
 		break;
@@ -1614,9 +1610,10 @@ isatapi(Drive *dp)
 	cp = dp->cp;
 	outb(cp->pbase+Pdh, dp->dh);
 	DPRINT("%s: isatapi %d\n", dp->vol, dp->atapi);
-	if(dp->atapi){
-		outb(cp->pbase+Pcmd, 0x08);
-		delay(20);
+	outb(cp->pbase+Pcmd, 0x08);
+	if(atactlrwait(dp->cp, DHmagic, 0, MS2TK(100))){
+		DPRINT("%s: isatapi ctlrwait status %ux\n", dp->vol, inb(cp->pbase+Pstatus));
+		return 0;
 	}
 	dp->atapi = 0;
 	dp->bytes = 512;
@@ -1688,7 +1685,7 @@ atapiexec(Drive *dp)
 		nexterror();
 
 	if(cp->status & Serr){
-		DPRINT("%s: Bad packet command %ux\n", dp->vol, cp->error);
+		DPRINT("%s: Bad packet command %ux, error %ux\n", dp->vol, cp->cmdblk[0], cp->error);
 		error(Eio);
 	}
 }
@@ -1705,7 +1702,7 @@ atapiio(Drive *dp, char *a, ulong len, ulong offset)
 
 	buf = smalloc(Maxxfer);
 	qlock(cp->ctlrlock);
-	retrycount = 1;
+	retrycount = 2;
 retry:
 	if(waserror()){
 		dp->partok = 0;
@@ -1804,7 +1801,7 @@ atapipart(Drive *dp)
 
 	buf = smalloc(Maxxfer);
 	qlock(cp->ctlrlock);
-	retrycount = 1;
+	retrycount = 2;
 retry:
 	if(waserror()){
 		if((cp->status & Serr) && (cp->error & 0xF0) == 0x60){
@@ -1817,7 +1814,7 @@ retry:
 		cp->dp = 0;
 		free(buf);
 		if((cp->status & Serr) && (cp->error & 0xF0) == 0x20)
-			err = cp->error;
+			err = cp->error & 0xF0;
 		else
 			err = 0;
 		qunlock(cp->ctlrlock);
