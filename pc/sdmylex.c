@@ -18,7 +18,7 @@
 #include "ureg.h"
 #include "../port/error.h"
 
-#include "sd.h"
+#include "../port/sd.h"
 
 #define K2BPA(va, tbdf)	PADDR(va)
 #define BPA2K(pa, tbdf)	KADDR(pa)

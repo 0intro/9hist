@@ -37,10 +37,13 @@ typedef struct SDunit {
 	ulong	vers;
 	SDperm	ctlperm;
 
+	QLock	raw;		/* raw read or write in progress */
 	Lock	rawinuse;		/* really just a test-and-set */
 	int	state;
 	SDreq*	req;
 	SDperm	rawperm;
+
+	Log log;
 } SDunit;
 
 typedef struct SDev {

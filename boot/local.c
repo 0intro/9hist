@@ -98,11 +98,6 @@ connectlocal(void)
 			*argp++ = bargv[i];
 		*argp = 0;
 
-		print("kfs");
-		for(argp=arg; *argp; argp++)
-			print(" %s", *argp);
-		print("\n");
-
 		dup(p[0], 0);
 		dup(p[1], 1);
 		close(p[0]);

@@ -60,7 +60,7 @@
 #include "fns.h"
 #include "io.h"
 
-#include "sd.h"
+#include "../port/sd.h"
 extern SDifc sd53c8xxifc;
 
 /**********************************/
