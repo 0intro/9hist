@@ -799,7 +799,6 @@ lancekproc(void *arg)
 					break;
 				qunlock(e);
 			}
-	
 			/*
 			 *  If no match, see if any stream has type -1.
 			 *  It matches all packets.
