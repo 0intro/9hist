@@ -253,7 +253,7 @@ trap(Ureg *ur)
 			postnote(up, 1, buf, NDebug);
 			break;
 		}
-		print("kernel %s pc=%llux\n", excname[ecode], ur->pc);
+		print("kernel %s pc=%lux\n", excname[ecode], ur->pc);
 		dumpregs(ur);
 		dumpstack();
 		if(m->machno == 0)
@@ -283,14 +283,6 @@ trap(Ureg *ur)
 	}
 }
 
-struct
-{
-	ulong cause;
-	ulong devint3;
-	ulong devint4;
-	ulong state;
-}sisr;
-
 void
 intr(Ureg *ur)
 {
@@ -300,11 +292,9 @@ intr(Ureg *ur)
 
 	m->intr++;
 	cause &= INTR7|INTR6|INTR5|INTR4|INTR3|INTR2|INTR1|INTR0;
-sisr.cause = cause;
+
 	if(cause & INTR3) {
 		devint = IO(uchar, Intcause);
-sisr.devint3 = devint;
-sisr.state = 0;
 		switch(devint) {
 		default:
 			panic("unknown devint=#%lux", devint);
@@ -328,11 +318,9 @@ sisr.state = 0;
 			break;
 		}
 		cause &= ~INTR3;
-sisr.state = 1;
 	}
 
 	if(cause & INTR2) {
-sisr.state = 2;
 		isr = IO(ulong, R4030Isr);
 		if(isr) {
 			iprint("R4030 Interrupt\n");
@@ -342,14 +330,12 @@ sisr.state = 2;
 			iprint(" MFA #%lux\n", IO(ulong, R4030Mfa));
 		}
 		cause &= ~INTR2;
-sisr.state = 3;
 	}
 
 	if(cause & INTR4) {
 		devint = IO(uchar, I386ack);
 		vec = devint&~0x7;
-sisr.devint4 = devint;
-sisr.state = 4;
+
 		/* reenable the 8259 interrupt */
 		if(vec == Int0vec || vec == Int1vec){
 			EISAOUTB(Int0ctl, EOI);
@@ -362,18 +348,13 @@ sisr.state = 4;
 			iprint("i386ACK #%lux\n", devint);
 			break;
 		case 7:
-sisr.state = 5;
 			audiosbintr();
-sisr.state = 6;
 			break;
 		case 13:
-sisr.state = 7;
 			audiodmaintr();
-sisr.state = 8;
 			break;
 		}
 		cause &= ~INTR4;
-sisr.state = 9;
 	}
 
 	if(cause & INTR7) {
@@ -392,7 +373,7 @@ fpexcname(Ureg *ur, ulong fcr31, char *buf)
 {
 	int i;
 	char *s;
-	uvlong fppc;
+	ulong fppc;
 
 	fppc = ur->pc;
 	if(ur->cause & (1<<31))	/* branch delay */
@@ -411,7 +392,7 @@ fpexcname(Ureg *ur, ulong fcr31, char *buf)
 	if(s == 0)
 		return "no floating point exception";
 
-	sprint(buf, "%s fppc=0x%llux", s, fppc);
+	sprint(buf, "%s fppc=0x%lux", s, fppc);
 	return buf;
 }
 
@@ -421,7 +402,7 @@ void
 kernfault(Ureg *ur, int code)
 {
 	print("kfault %s badvaddr=0x%lux\n", excname[code], ur->badvaddr);
-	print("UP=0x%lux SR=0x%lux PC=0x%llux R31=%llux SP=0x%llux\n",
+	print("UP=0x%lux SR=0x%lux PC=0x%lux R31=%lux SP=0x%lux\n",
 				up, ur->status, ur->pc, ur->r31, ur->sp);
 
 	dumpregs(ur);
@@ -484,10 +465,10 @@ notify(Ureg *ur)
 	n = &up->note[0];
 	if(strncmp(n->msg, "sys:", 4) == 0) {
 		l = strlen(n->msg);
-		if(l > ERRLEN-23)	/* " pc=0x12345678\0" */
-			l = ERRLEN-23;
+		if(l > ERRLEN-15)	/* " pc=0x12345678\0" */
+			l = ERRLEN-15;
 
-		sprint(n->msg+l, " pc=0x%llux", ur->pc);
+		sprint(n->msg+l, " pc=0x%lux", ur->pc);
 	}
 
 	if(n->flag != NUser && (up->notified || up->notify==0)) {
@@ -509,11 +490,10 @@ notify(Ureg *ur)
 		pexit(n->msg, n->flag!=NDebug);
 	}
 	up->svstatus = ur->status;
-	sp = ur->usp & ~(BY2V-1);
-	sp -= sizeof(Ureg);
+	sp = ur->usp - sizeof(Ureg);
 
-	if(!okaddr((ulong)up->notify, BY2WD, 0) ||
-	   !okaddr(sp-ERRLEN-3*BY2WD, sizeof(Ureg)+ERRLEN-3*BY2WD, 1)) {
+	if(sp&0x3 || !okaddr((ulong)up->notify, BY2WD, 0)
+	|| !okaddr(sp-ERRLEN-3*BY2WD, sizeof(Ureg)+ERRLEN-3*BY2WD, 1)) {
 		pprint("suicide: bad address or sp in notify\n");
 		qunlock(&up->debug);
 		pexit("Suicide", 0);
@@ -527,8 +507,8 @@ notify(Ureg *ur)
 	*(ulong*)(sp+2*BY2WD) = sp+3*BY2WD;	/* arg 2 is string */
 	up->svr1 = ur->r1;			/* save away r1 */
 	ur->r1 = (ulong)up->ureg;		/* arg 1 is ureg* */
-	((ulong*)sp)[1] = (ulong)up->ureg;	/* arg 1 0(FP) is ureg* */
-	((ulong*)sp)[0] = 0;			/* arg 0 is pc */
+	*(ulong*)(sp+1*BY2WD) = (ulong)up->ureg;	/* arg 1 0(FP) is ureg* */
+	*(ulong*)(sp+0*BY2WD) = 0;		/* arg 0 is pc */
 	ur->usp = sp;
 	ur->pc = (ulong)up->notify;
 	up->notified = 1;
@@ -627,13 +607,13 @@ syscall(Ureg *aur)
 		goto error;
 
 	if(up->scallnr >= nsyscall){
-		pprint("bad sys call %d pc %llux\n", up->scallnr, ur->pc);
+		pprint("bad sys call %d pc %lux\n", up->scallnr, ur->pc);
 		postnote(up, 1, "sys: bad sys call", NDebug);
 		error(Ebadarg);
 	}
 
 	if(sp & (BY2WD-1)){
-		pprint("odd sp in sys call pc %llux sp %llux\n", ur->pc, ur->sp);
+		pprint("odd sp in sys call pc %lux sp %lux\n", ur->pc, ur->sp);
 		postnote(up, 1, "sys: odd stack", NDebug);
 		error(Ebadarg);
 	}

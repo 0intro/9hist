@@ -34,10 +34,10 @@ fptrap(Ureg *ur)
 
 print("fpt: %d %s %lux\n", up->pid, up->text, up->fpsave.fpstatus);
 
-	iw = ur->pc;
 	if(ur->cause & (1<<31))
-		iw += 4;
-	iw = *(ulong*)iw;
+		iw = *(ulong*)(ur->pc+4);
+	else
+		iw = *(ulong*)ur->pc;
 
 	if(fpunimp(iw) == 0)
 		return;
@@ -174,19 +174,17 @@ fpunimp(ulong iw)
 	return 0;
 }
 
-static long*
+static ulong*
 reg(Ureg *ur, int regno)
 {
 	/* regs go from R31 down in ureg, R29 is missing */
-	switch(regno) {
-	case 31:
+	if(regno == 31)
 		return &ur->r31;
-	case 30:
+	if(regno == 30)
 		return &ur->r30;
-	case 29:
+	if(regno == 29)
 		return &ur->sp;
-	}
-	return (&ur->r28) + (28-regno)*(&ur->r27-&ur->r28);
+	return (&ur->r28) + (28-regno);
 }
 
 static ulong
@@ -194,8 +192,7 @@ branch(Ureg *ur, ulong fcr31)
 {
 	ulong iw, npc, rs, rt, rd, offset;
 
-	iw = ur->pc;
-	iw = *(ulong*)iw;
+	iw = *(ulong*)ur->pc;
 	rs = (iw>>21) & 0x1F;
 	if(rs)
 		rs = *reg(ur, rs);

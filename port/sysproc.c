@@ -215,7 +215,7 @@ sysexec(ulong *arg)
 	magic = l2be(exec.magic);
 	text = l2be(exec.text);
 	entry = l2be(exec.entry);
-	if(n==sizeof(Exec) && EXEC_MAGIC(magic)){
+	if(n==sizeof(Exec) && magic == AOUT_MAGIC){
 		if((text&KZERO)
 		|| entry < UTZERO+sizeof(Exec)
 		|| entry >= UTZERO+sizeof(Exec)+text)
