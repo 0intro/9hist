@@ -13,7 +13,7 @@ typedef	struct Controller	Controller;
 enum
 {
 	/* ports */
-	Pbase=		0x10,
+	Pbase=		0x1F0,
 	Pdata=		Pbase+0,	/* data port (16 bits) */
 	Perror=		Pbase+1,	/* error port */
 	Pcount=		Pbase+2,	/* sector count port */
@@ -164,9 +164,11 @@ hardattach(char *spec)
 			dp->bytes = 512;
 			dp->cap = dp->bytes * dp->cyl * dp->heads * dp->sectors;
 			dp->online = 1;
+			poperror();
 		}
 	}
-	return devattach('f', spec);
+	qunlock(&hard);
+	return devattach('h', spec);
 }
 
 Chan*
@@ -301,17 +303,11 @@ interrupted(void *a)
 static long
 hardident(Drive *dp)
 {
-print("identify hard drive\n");
 	hard.intr = 0;
 	outb(Pdh, dp->dev<<4);
 	outb(Pcmd, Cident);
-print("waiting for hard drive interupt\n");
 	sleep(&hard.r, interrupted, 0);
-print("getting hard drive ident\n");
 	inss(Pdata, &hard.id, 512/2);
-print(" magic %lux lcyls %d rcyl %d lheads %d b2t %d b2s %d ls2t %d\n",
-  hard.id.magic, hard.id.lcyls, hard.id.rcyl, hard.id.lheads,
-  hard.id.b2t, hard.id.b2s, hard.id.ls2t);
 }
 
 static long
@@ -374,7 +370,6 @@ hardintr(Ureg *ur)
 	if(hard.status & Sbusy)
 		panic("disk busy");
 	hard.intr = 1;
-print("hardintr\n");
 	wakeup(&hard.r);
 }
 

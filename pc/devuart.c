@@ -32,7 +32,7 @@ enum
 	 Dtr=	(1<<0),		/*  data terminal ready */
 	 Rts=	(1<<1),		/*  request to send */
 	 Ri=	(1<<2),		/*  ring */
-	 Dcd=	(1<<3),		/*  carrier */
+	 Inton=	(1<<3),		/*  turn on interrupts */
 	 Loop=	(1<<4),		/*  loop bask */
 	Lstat=	5,		/* line status */
 	 Inready=(1<<0),	/*  receive buffer full */
@@ -164,10 +164,13 @@ uartsetup(void)
 		 *  set rate to 9600 baud.
 		 *  8 bits/character.
 		 *  1 stop bit.
+		 *  interrupts enabled.
 		 */
 		uartsetbaud(up, 9600);
 		up->sticky[Format] = Bits8;
 		uartwrreg(up, Format, 0);
+		up->sticky[Mctl] |= Inton;
+		uartwrreg(up, Mctl, 0x0);
 	}
 }
 
@@ -209,48 +212,58 @@ uartintr(Uart *up)
 	IOQ *cq;
 	int s, l;
 
-	l = uartrdreg(up, Lstat);
-	s = uartrdreg(up, Istat);
-
-	cq = up->iq;
-	while(l & Inready){
-		ch = uartrdreg(up, Data) & 0xff;
-		if(cq->putc)
-			(*cq->putc)(cq, ch);
-		else {
-			putc(cq, ch);
-			if(up->delim[ch/8] & (1<<(ch&7)) )
+	for(;;){
+		s = uartrdreg(up, Istat);
+		switch(s){
+		case 6:	/* receiver line status */
+			l = uartrdreg(up, Lstat);
+			break;
+	
+		case 4:	/* received data available */
+			cq = up->iq;
+			ch = uartrdreg(up, Data) & 0xff;
+			if(cq->putc)
+				(*cq->putc)(cq, ch);
+			else {
+				putc(cq, ch);
+				if(up->delim[ch/8] & (1<<(ch&7)) )
+					wakeup(&cq->r);
+			}
+			break;
+	
+		case 2:	/* transmitter empty */
+			cq = up->oq;
+			lock(cq);
+			ch = getc(cq);
+			if(ch < 0){
+				up->printing = 0;
 				wakeup(&cq->r);
+			}else
+				outb(up->port + Data, ch);
+			unlock(cq);
+			break;
+	
+		case 0:	/* modem status */
+			l = uartrdreg(up, Mstat);
+			break;
+	
+		default:
+			if(s&1)
+				return;
+			print("weird modem interrupt\n");
+			break;
 		}
-		l = uartrdreg(up, Lstat);
-	}
-
-	/*
-	 *  send next output character
-	 */
-	if(up->printing && (l&Outready)){
-		cq = up->oq;
-		lock(cq);
-		ch = getc(cq);
-		if(ch < 0){
-			up->printing = 0;
-			wakeup(&cq->r);
-		}else
-			outb(up->port + Data, ch);
-		unlock(cq);
 	}
 }
 void
 uartintr0(Ureg *ur)
 {
-	if(uart[0].enabled)
-		uartintr(&uart[0]);
+	uartintr(&uart[0]);
 }
 void
 uartintr1(Ureg *ur)
 {
-	if(uart[1].enabled)
-		uartintr(&uart[1]);
+	uartintr(&uart[1]);
 }
 
 /*
@@ -271,8 +284,8 @@ uartenable(Uart *up)
 
 	/*
 	 *  speed up the clock to poll the uart
-	 */
 	fclockinit();
+	 */
 
 	/*
 	 *  set up i/o routines
@@ -285,21 +298,18 @@ uartenable(Uart *up)
 		up->iq->ptr = up;
 	}
 	up->enabled = 1;
-	up->sticky[Iena] = 0xf;
 
 	/*
  	 *  turn on interrupts
 	 */
+	up->sticky[Iena] = 0x7;
 	uartwrreg(up, Iena, 0);
-	uartwrreg(up, Tctl, 0x0);
 
 	/*
 	 *  turn on DTR and RTS
 	 */
 	uartdtr(up, 1);
 	uartrts(up, 1);
-
-print("uart enabled: Iena=%lux\n", uartrdreg(up, Iena));
 }
 
 /*
@@ -392,9 +402,6 @@ uartstopen(Queue *q, Stream *s)
 {
 	Uart *up;
 	char name[NAMELEN];
-
-print("uartstopen: q=0x%ux, inuse=%d, type=%d, dev=%d, id=%d\n",
-		q, s->inuse, s->type, s->dev, s->id);
 
 	up = &uart[s->id];
 	up->iq->putc = 0;

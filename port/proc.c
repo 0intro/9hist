@@ -401,8 +401,11 @@ postnote(Proc *p, int dolock, char *n, int flag)
 	if(dolock)
 		lock(&p->debug);
 
-	if(p->upage == 0)
+	if(p->upage == 0){
+		if(dolock)
+			unlock(&p->debug);
 		errors("noted process disappeared");
+	}
 
 	if(u == 0 || p != u->p){
 		k = kmap(p->upage);
@@ -416,6 +419,8 @@ postnote(Proc *p, int dolock, char *n, int flag)
 	else if(up->nnote == NNOTE-1){
 		if(up != u)
 			kunmap(k);
+		if(dolock)
+			unlock(&p->debug);
 		return 0;
 	}
 	p->notepending = 1;

@@ -374,6 +374,7 @@ pmuwrbit(int index, int bit, int pos)
 		return -1;
 	}
 	unlock(&pmulock);
+	return 0;
 }
 
 /*

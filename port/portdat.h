@@ -220,6 +220,10 @@ struct IOQ
 		void	(*puts)(IOQ*, void*, int);	/* output */
 		int	(*putc)(IOQ*, int);		/* input */
 	};
+	union{
+		int	(*gets)(IOQ*, void*, int);	/* input */
+		int	(*getc)(IOQ*);			/* output */
+	};
 	void	*ptr;
 };
 struct KIOQ

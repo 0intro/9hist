@@ -180,6 +180,7 @@ floppyreset(void)
 {
 	Drive *dp;
 	Type *t;
+	int n;
 
 	/*
 	 *  init dependent parameters
@@ -211,8 +212,9 @@ floppyreset(void)
 	 */
 	for(dp = floppy.d; dp < &floppy.d[conf.nfloppy]; dp++){
 		do {
-			dp->ccache = ialloc(dp->t->cap, 1);
-		} while(k64(dp->ccache) != k64(dp->ccache+dp->t->cap));
+			n = 512 * 18 * 2;	/* MF2HD cylinder size */
+			dp->ccache = ialloc(n, 1);
+		} while(k64(dp->ccache) != k64(dp->ccache+n));
 		dp->ccyl = -1;
 	}
 	setvec(Floppyvec, floppyintr);

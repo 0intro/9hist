@@ -178,9 +178,6 @@ trap(Ureg *ur)
 		return;
 	}
 
-	if(v==19 || v==20)
-		print("trap = %d\n", v);
-
 	/*
 	 *  tell the 8259 that we're done with the
 	 *  highest level interrupt (interrupts are still

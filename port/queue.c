@@ -13,21 +13,22 @@ initq(IOQ *q)
 	q->in = q->out = q->buf;
 	q->puts = puts;
 	q->putc = putc;
+	q->gets = gets;
+	q->getc = getc;
 }
 
 int
 putc(IOQ *q, int c)
 {
-	uchar *next;
-
-	if(q->in ==  &q->buf[NQ-1])
-		next = q->buf;
+	uchar *nextin;
+	if(q->in >= &q->buf[sizeof(q->buf)-1])
+		nextin = q->buf;
 	else
-		next = q->in+1;
-	if(next == q->out)
+		nextin = q->in+1;
+	if(nextin == q->out)
 		return -1;
 	*q->in = c;
-	q->in = next;
+	q->in = nextin;
 	return 0;
 }
 
@@ -39,7 +40,7 @@ getc(IOQ *q)
 	if(q->in == q->out)
 		return -1;
 	c = *q->out;
-	if(q->out == &q->buf[NQ-1])
+	if(q->out == q->buf+sizeof(q->buf)-1)
 		q->out = q->buf;
 	else
 		q->out++;
@@ -49,44 +50,61 @@ getc(IOQ *q)
 void
 puts(IOQ *q, void *buf, int n)
 {
-	uchar *next;
-	uchar *p = buf;
+	int m; uchar *nextin;
+	uchar *s = buf;
 
-	for(; n; n--){
-		if(q->in == &q->buf[NQ-1])
-			next = q->buf;
-		else
-			next = q->in + 1;
-		if(next == q->out)
+	while(n){
+		m = q->out - q->in - 1;
+		if(m < 0)
+			m = &q->buf[NQ] - q->in;
+		if(m == 0)
 			break;
-		*q->in = *p++;
-		q->in = next;
+		if(m > n)
+			m = n;
+		memmove(q->in, s, m);
+		n -= m;
+		s += m;
+		nextin = q->in + m;
+		if(nextin >= &q->buf[NQ])
+			q->in = q->buf;
+		else
+			q->in = nextin;
 	}
 }
 
 int
 gets(IOQ *q, void *buf, int n)
 {
-	uchar *p = buf;
+	int m, k = 0; uchar *nextout;
+	uchar *s = buf;
 
-	for(; n && q->out != q->in; n--){
-		*p++ = *q->out;
-		if(q->out == &q->buf[NQ-1])
+	while(n){
+		m = q->in - q->out;
+		if(m < 0)
+			m = &q->buf[NQ] - q->out;
+		if(m == 0)
+			return k;
+		if(m > n)
+			m = n;
+		if(buf)
+			memmove(s, q->out, m);
+		s += m;
+		k += m;
+		n -= m;
+		nextout = q->out + m;
+		if(nextout >= &q->buf[NQ])
 			q->out = q->buf;
 		else
-			q->out++;
+			q->out = nextout;
 	}
-	return p - (uchar*)buf;
+	return k;
 }
 
 int
 cangetc(void *arg)
 {
-	IOQ *q;
-	int n;
-
-	q = (IOQ *)arg;
-	n = q->in - q->out;
+	IOQ *q = (IOQ *)arg;
+	int n = q->in - q->out;
 	if (n < 0)
 		n += sizeof(q->buf);
 	return n;
@@ -95,12 +113,6 @@ cangetc(void *arg)
 int
 canputc(void *arg)
 {
-	IOQ *q;
-	int n;
-
-	q = (IOQ *)arg;
-	n = q->out - q->in - 1;
-	if (n < 0)
-		n += sizeof(q->buf);
-	return n;
+	IOQ *q = (IOQ *)arg;
+	return sizeof(q->buf)-cangetc(q)-1;
 }
