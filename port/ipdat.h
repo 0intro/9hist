@@ -108,6 +108,7 @@ enum
 	Ilack,
 	Ilquerey,
 	Ilstate,
+	Ilreset,
 };
 
 #define TCP_PKT	(TCP_EHSIZE+TCP_IPLEN+TCP_PHDRSIZE)

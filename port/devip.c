@@ -9,7 +9,6 @@
 
 #include	"devtab.h"
 
-
 enum
 {
 	Nrprotocol	= 3,		/* Number of protocols supported by this driver */
@@ -605,7 +604,6 @@ void
 tcpstopen(Queue *q, Stream *s)
 {
 	Ipconv *ipc;
-	static int donekproc;
 
 	/* Start tcp service processes */
 	if(!Tcpoutput) {
@@ -719,7 +717,7 @@ tcpstclose(Queue *q)
 
 
 /* 
- * ptcl_csum - protcol cecksum routine
+ * ptcl_csum - protcol checksum routine
  */
 ushort
 ptcl_csum(Block *bp, int offset, int len)
@@ -858,4 +856,3 @@ ip_conn(Ipconv *ic, Port dst, Port src, Ipaddr dest, char proto)
 
 	return 0;
 }
-
