@@ -290,7 +290,25 @@ hardcreate(Chan *c, char *name, int omode, ulong perm)
 void
 hardclose(Chan *c)
 {
-	USED(c);
+	Drive *d;
+	Partition *p;
+
+	if(c->mode != OWRITE && c->mode != ORDWR)
+		return;
+
+	d = &hard[DRIVE(c->qid.path)];
+	p = &d->p[PART(c->qid.path)];
+	if(strcmp(p->name, "partition") != 0)
+		return;
+
+	if(waserror()){
+		qunlock(d);
+		nexterror();
+	}
+	qlock(d);
+	hardpart(d);
+	qunlock(d);
+	poperror();
 }
 
 void

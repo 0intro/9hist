@@ -88,6 +88,7 @@ void		freesession(Session*);
 void		getcolor(ulong, ulong*, ulong*, ulong*);
 int		getfields(char*, char**, int, char);
 void		gotolabel(Label*);
+void		graphicsactive(int);
 int		haswaitq(void*);
 long		hostdomainwrite(char*, int);
 long		hostownerwrite(char*, int);
@@ -225,8 +226,14 @@ void		sccsetup(void*, ulong, int);
 void		sched(void);
 void		schedinit(void);
 int		screenbits(void);
+#define		scsialloc(n)	mallocz((n)+512, 0)
+int		scsibio(Target*, char, int, void*, long, long, long);
+int		scsicap(Target*, char, ulong*, ulong*);
 int		scsiexec(Target*, int, uchar*, int, void*, int*);
+#define		scsifree(p)	free(p)
 int		scsiinv(int, int, Target**, uchar**, char*);
+int		scsireqsense(Target*, char, int);
+int		scsistart(Target*, char, int);
 Target*		scsiunit(int, int);
 long		seconds(void);
 ulong		segattach(Proc*, ulong, char *, ulong, ulong);

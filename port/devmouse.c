@@ -324,6 +324,7 @@ mouseclock(void)
 		mouse.redraw = cursoron(0);
 		unlock(&cursor);
 	}
+	graphicsactive(0);
 }
 
 /*
@@ -350,6 +351,7 @@ mousetrack(int b, int dx, int dy)
 	mouse.buttons = b;
 	mouse.redraw = 1;
 	wakeup(&mouse.r);
+	graphicsactive(1);
 }
 
 /*
