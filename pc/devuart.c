@@ -45,6 +45,14 @@ enum
 	 Ferror=(1<<3),		/*  rcv framing error */
 	 Outready=(1<<5),	/*  output buffer full */
 	Mstat=	6,		/* modem status */
+	 Ctsc=	(1<<0),		/*  clear to send changed */
+	 Dsrc=	(1<<1),		/*  data set ready changed */
+	 Rire=	(1<<2),		/*  rising edge of ring indicator */
+	 Dcdc=	(1<<3),		/*  data carrier detect changed */
+	 Cts=	(1<<4),		/*  complement of clear to send line */
+	 Dsr=	(1<<5),		/*  complement of data set ready line */
+	 Ring=	(1<<6),		/*  complement of ring indicator line */
+	 Dcd=	(1<<7),		/*  complement of data carrier detect line */
 	Scratch=7,		/* scratchpad */
 	Dlsb=	0,		/* divisor lsb */
 	Dmsb=	1,		/* divisor msb */
@@ -61,6 +69,7 @@ struct Uart
 	uchar	sticky[8];	/* sticky write register values */
 	int	printing;	/* true if printing */
 	int	enabled;
+	int	cts;
 
 	/* console interface */
 	int	special;	/* can't use the stream interface */
@@ -199,6 +208,24 @@ uartstop(Uart *up, int n)
 }
 
 /*
+ *  modem flow control on/off (rts/cts)
+ */
+void
+uartmflow(Uart *up, int n)
+{
+	if(n){
+		up->sticky[Iena] |= Imstat;
+		uartwrreg(up, Iena, 0);
+		up->cts = uartrdreg(up, Mstat) & Cts;
+	} else {
+		up->sticky[Iena] &= ~Imstat;
+		uartwrreg(up, Iena, 0);
+		up->cts = 1;
+	}
+}
+
+
+/*
  *  default is 9600 baud, 1 stop bit, 8 bit chars, no interrupts,
  *  transmit and receive enabled, interrupts disabled.
  */
@@ -245,11 +272,13 @@ void
 uartputs(IOQ *cq, char *s, int n)
 {
 	Uart *up = cq->ptr;
-	int ch, x;
+	int ch, x, multiprocessor;
 	int tries;
 
+	multiprocessor = active.machs > 1;
 	x = splhi();
-	lock(cq);
+	if(multiprocessor)
+		lock(cq);
 	puts(cq, s, n);
 	if(up->printing == 0){
 		ch = getc(cq);
@@ -261,7 +290,8 @@ uartputs(IOQ *cq, char *s, int n)
 			outb(up->port + Data, ch);
 		}
 	}
-	unlock(cq);
+	if(multiprocessor)
+		unlock(cq);
 	splx(x);
 }
 
@@ -273,8 +303,9 @@ uartintr(Uart *up)
 {
 	int ch;
 	IOQ *cq;
-	int s, l;
+	int s, l, multiprocessor;
 
+	multiprocessor = active.machs > 1;
 	for(;;){
 		s = uartrdreg(up, Istat);
 		switch(s){
@@ -301,18 +332,42 @@ uartintr(Uart *up)
 			cq = up->oq;
 			if(cq == 0)
 				break;
-			lock(cq);
-			ch = getc(cq);
-			if(ch < 0){
+			if(multiprocessor)
+				lock(cq);
+			if(up->cts == 0)
 				up->printing = 0;
-				wakeup(&cq->r);
-			}else
-				outb(up->port + Data, ch);
-			unlock(cq);
+			else {
+				ch = getc(cq);
+				if(ch < 0){
+					up->printing = 0;
+					wakeup(&cq->r);
+				}else
+					outb(up->port + Data, ch);
+			}
+			if(multiprocessor)
+				unlock(cq);
 			break;
 	
 		case 0:	/* modem status */
-			uartrdreg(up, Mstat);
+			ch = uartrdreg(up, Mstat);
+			if(ch & Ctsc){
+				up->cts = ch & Cts;
+				cq = up->oq;
+				if(cq == 0)
+					break;
+				if(multiprocessor)
+					lock(cq);
+				if(up->cts && up->printing == 0){
+					ch = getc(cq);
+					if(ch >= 0){
+						up->printing = 1;
+						outb(up->port + Data, getc(cq));
+					} else
+						wakeup(&cq->r);
+				}
+				if(multiprocessor)
+					unlock(cq);
+			}
 			break;
 	
 		default:
@@ -390,6 +445,11 @@ uartenable(Uart *up)
 	 */
 	uartdtr(up, 1);
 	uartrts(up, 1);
+
+	/*
+	 *  assume we can send
+	 */
+	up->cts = 1;
 }
 
 /*
@@ -547,6 +607,10 @@ uartoput(Queue *q, Block *bp)
 		case 'L':
 		case 'l':
 			uartbits(up, n);
+			break;
+		case 'm':
+		case 'M':
+			uartmflow(up, n);
 			break;
 		case 'P':
 		case 'p':

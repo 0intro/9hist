@@ -210,6 +210,20 @@ done(void *arg)
 	return (((Target*)arg)->flags & Fbusy) == 0;
 }
 
+static void
+scsiregs(Target *ctlr)
+{
+	int x;
+
+	print("scsi aux status #%.2ux\n", *ctlr->addr & 0xFF);
+	for(*ctlr->addr = 0x00, x = 0x00; x < 0x19; x++){
+		if((x & 0x07) == 0x07)
+			print("#%.2ux: #%.2ux\n", x, *ctlr->data & 0xFF);
+		else
+			print("#%.2ux: #%.2ux ", x, *ctlr->data & 0xFF);
+	}
+}
+
 static int
 scsiio(int nbus, Scsi *p, int rw)
 {
@@ -257,7 +271,12 @@ scsiio(int nbus, Scsi *p, int rw)
 	 * Wait for the request to complete
 	 * and return the status.
 	 */
-	sleep(tp, done, tp);
+	tsleep(tp, done, tp, 60*5*1000);
+
+	if(!done(tp)) {
+		print("scsi%d: Timeout! cmd=#%2.2lux\n", nbus, tp->cdb[0]);
+		scsiregs(ctlr);
+	}
 
 	status = tp->status;
 	p->data.ptr += tp->dmatx;
