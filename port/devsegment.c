@@ -84,7 +84,8 @@ putgseg(Globalseg *g)
 {
 	if(decref(g) > 0)
 		return;
-	putseg(g->s);
+	if(g->s != nil)
+		putseg(g->s);
 	if(g->kproc)
 		docmd(g, Cdie);
 	free(g);
@@ -290,12 +291,11 @@ segmentcreate(Chan *c, char *name, int omode, ulong perm)
 	if(xfree < 0)
 		error("too many global segments");
 	g = smalloc(sizeof(Globalseg));
-	g->ref = 2;
+	g->ref = 1;
 	strncpy(g->name, name, sizeof(g->name));
 	strncpy(g->uid, up->user, sizeof(g->uid));
 	g->perm = 0660; 
 	globalseg[xfree] = g;
-	c->aux = g;
 	unlock(&globalseglock);
 	poperror();
 
@@ -353,8 +353,7 @@ segmentwrite(Chan *c, void *a, long n, vlong voff)
 {
 	Cmdbuf *cb;
 	Globalseg *g;
-	ulong va;
-	ulong len;
+	ulong va, len, top;
 
 	if(c->qid.path&CHDIR)
 		error(Eperm);
@@ -369,9 +368,10 @@ segmentwrite(Chan *c, void *a, long n, vlong voff)
 			if(cb->nf < 3)
 				error(Ebadarg);
 			va = strtoul(cb->f[1], 0, 0);
-			va = va&~(BY2PG-1);
 			len = strtoul(cb->f[2], 0, 0);
-			len = ROUND(len, BY2PG)/BY2PG;
+			top = PGROUND(va + len);
+			va = va&~(BY2PG-1);
+			len = (top - va) / BY2PG;
 			if(len == 0)
 				error(Ebadarg);
 			g->s = newseg(SG_SHARED, va, len);
@@ -474,10 +474,11 @@ globalsegattach(Proc *p, char *name)
 	s = g->s;
 	if(s == nil)
 		error("global segment not assigned a virtual address");
-	if(isoverlap(p, s->base, s->top-s->base) != nil)
+	if(isoverlap(p, s->base, s->top) != nil)
 		error("overlaps existing segment");
 	incref(s);
 	unlock(&globalseglock);
+	poperror();
 	return s;
 }
 

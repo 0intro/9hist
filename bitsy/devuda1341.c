@@ -94,6 +94,7 @@ enum
 	Qdir		= 0,
 	Qaudio,
 	Qvolume,
+	Qspeed,
 	Qstatus,
 
 	Fmono		= 1,
@@ -120,11 +121,29 @@ enum
 	Ncmd		= 50,		/* max volume command words */
 };
 
+enum {
+	Flushbuf = 0xe0000000,
+};
+
+/* System Clock */
+enum {
+	SC512FS = 0,
+	SC384FS = 1,
+	SC256FS = 2,
+};
+
+/* Format */
+enum {
+	LSB16 = 1,
+	LSB18 = 2,
+};
+
 Dirtab
 audiodir[] =
 {
-	"audio",	{Qaudio},		0,	0666,
+	"audio",	{Qaudio},			0,	0666,
 	"volume",	{Qvolume},		0,	0666,
+	"speed",	{Qspeed},			0,	0666,
 	"audiostat",{Qstatus},		0,	0444,
 };
 
@@ -166,7 +185,6 @@ static	struct
 	IOstate	o;
 } audio;
 
-Buf	zeroes;
 int	zerodma;	/* dma buffer used for sending zero */
 
 static struct
@@ -197,6 +215,7 @@ static	struct
 [Nvol]	{0}
 };
 
+static int rate = Speed;		/* Current sample rate */
 static void	setreg(char *name, int val, int n);
 
 /*
@@ -404,12 +423,6 @@ bufinit(IOstate *b)
 		memset(b->buf[i].virt, 0xAA, Bufsize);
 	}
 	b->bufinit = 1;
-
-	if (b == &audio.o) {
-		zeroes.virt = xalloc(Bufsize);
-		zeroes.phys = PADDR(b->buf[i].virt);
-		memset(zeroes.virt, 0, Bufsize);
-	}
 };
 
 static void
@@ -468,6 +481,9 @@ uchar	data0e2[2]	= {0xc2, 0xf2};
 uchar	data0e4[2]	= {0xc4, 0xe0};
 uchar	data0e5[2]	= {0xc5, 0xe0};
 uchar	data0e6[2]	= {0xc6, 0xe3};
+
+static void
+mxspeed(int _rate);
 
 static void
 enable(void)
@@ -530,6 +546,61 @@ resetlevel(void)
 		audio.rivol[i] = volumes[i].irval;
 	}
 }
+
+static void
+mxspeed(int _rate)
+{
+	uchar data;
+
+	egpiobits(EGPIO_audio_ic_power | EGPIO_codec_reset, 1);
+	/* set the external clock generator */
+	rate = _rate;
+	switch (rate) {
+	case 32000:
+	case 48000:
+		/* 00 */
+		gpioregs->clear = GPIO_CLK_SET0_o|GPIO_CLK_SET1_o;
+		break;
+	default:
+		rate = 44100;
+	case 44100:
+		/* 01 */
+		gpioregs->set = GPIO_CLK_SET0_o;
+		gpioregs->clear = GPIO_CLK_SET1_o;
+		break;
+	case 8000:
+	case 16000:
+		/* 10 */
+		gpioregs->set = GPIO_CLK_SET1_o;
+		gpioregs->clear = GPIO_CLK_SET0_o;
+		break;
+	case 11025:
+	case 22050:
+		/* 11 */
+		gpioregs->set = GPIO_CLK_SET0_o|GPIO_CLK_SET1_o;
+		break;
+	}
+	delay(100);
+
+	switch (rate) {
+	case 8000:
+	case 11025:
+		data = SC512FS;
+		break;
+	case 16000:
+	case 22050:
+	case 44100:
+	case 48000:
+		data = SC256FS;
+		break;
+	case 32000:
+		data = SC384FS;
+		break;
+	}
+	data |= (LSB16 << 4)|0x2;
+	L3_write(UDA1341_L3Addr | UDA1341_STATUS, &data, 1);
+}
+	
 
 static void
 mxvolume(void) {
@@ -694,7 +765,7 @@ sendaudio(IOstate *s) {
 	ilock(&s->ilock);
 	if ((audio.amode &  Aread) && s->next == s->filling && dmaidle(s->dma)) {
 		// send an empty buffer to provide an input clock
-		zerodma |= dmastart(s->dma, zeroes.phys, Bufsize) & 0xff;
+		zerodma |= dmastart(s->dma, Flushbuf, Bufsize) & 0xff;
 		if (zerodma == 0)
 			if (debug) print("emptyfail\n");
 		iostats.empties++;
@@ -863,6 +934,7 @@ audioopen(Chan *c, int mode)
 		if((omode&7) != OREAD)
 			error(Eperm);
 	case Qvolume:
+	case Qspeed:
 	case Qdir:
 		break;
 
@@ -900,6 +972,7 @@ audioopen(Chan *c, int mode)
 			audio.amode |= Awrite;
 			outenable();
 		}
+		mxspeed(Speed);
 		mxvolume();
 		qunlock(&audio);
 		if (audio.amode & Aread)
@@ -928,6 +1001,7 @@ audioclose(Chan *c)
 
 	case Qdir:
 	case Qvolume:
+	case Qspeed:
 	case Qstatus:
 		break;
 
@@ -1059,6 +1133,11 @@ audioread(Chan *c, void *v, long n, vlong off)
 			audio.totcount, audio.tottime);
 		return readstr(offset, p, n, buf);
 
+	case Qspeed:
+		buf[0] = '\0';
+		snprint(buf, sizeof(buf), "speed %d\n", rate);
+		return readstr(offset, p, n, buf);
+
 	case Qvolume:
 		j = 0;
 		buf[0] = 0;
@@ -1119,6 +1198,23 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 		error(Eperm);
 		break;
 
+	case Qspeed:
+		if(n > sizeof(buf)-1)
+			n = sizeof(buf)-1;
+		memmove(buf, p, n);
+		buf[n] = '\0';
+		nf = getfields(buf, field, Ncmd, 1, " \t\n");
+		if (nf != 2 && nf != 1) error(Ebadarg);
+		if (nf == 2) {
+			if (strcmp(field[0], "speed")) 
+				error(Ebadarg);
+			i = 1;
+		}
+		else
+			i = 0;
+		mxspeed((int)strtol(field[i], (char **)nil, 0));
+		break;
+		
 	case Qvolume:
 		v = Vaudio;
 		left = 1;
@@ -1214,11 +1310,10 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 		}
 		while(n > 0) {
 			/* wait if dma in progress */
-			while (!dmaidle(a->dma) && a->filling == a->current) {
+			while (!dmaidle(a->dma) && !zerodma && a->filling == a->current) {
 				if (debug > 1) print("#A: sleep\n");
 				sleep(&a->vous, audioqnotfull, a);
 			}
-
 			m = Bufsize - a->filling->nbytes;
 			if(m > n)
 				m = n;

@@ -541,13 +541,11 @@ out:
 }
 
 Segment*
-isoverlap(Proc *p, ulong va, int len)
+isoverlap(Proc *p, ulong va, int newtop)
 {
 	int i;
 	Segment *ns;
-	ulong newtop;
 
-	newtop = va+len;
 	for(i = 0; i < NSEG; i++) {
 		ns = p->seg[i];
 		if(ns == 0)
@@ -609,6 +607,7 @@ ulong
 segattach(Proc *p, ulong attr, char *name, ulong va, ulong len)
 {
 	int sno;
+	ulong top;
 	Segment *s, *os;
 	Physseg *ps;
 
@@ -626,7 +625,7 @@ segattach(Proc *p, ulong attr, char *name, ulong va, ulong len)
 		error(Enovmem);
 
 	/*
- 	 *  first look for a global segment with the
+	 *  first look for a global segment with the
 	 *  same name
 	 */
 	if(_globalsegattach != nil){
@@ -637,7 +636,6 @@ segattach(Proc *p, ulong attr, char *name, ulong va, ulong len)
 		}
 	}
 
-	len = PGROUND(len);
 	if(len == 0)
 		error(Ebadarg);
 
@@ -649,9 +647,10 @@ segattach(Proc *p, ulong attr, char *name, ulong va, ulong len)
 	 * or the address space is exhausted.
 	 */
 	if(va == 0) {
+		len = PGROUND(len);
 		va = p->seg[SSEG]->base - len;
 		for(;;) {
-			os = isoverlap(p, va, len);
+			os = isoverlap(p, va, va+len);
 			if(os == nil)
 				break;
 			va = os->base;
@@ -661,8 +660,10 @@ segattach(Proc *p, ulong attr, char *name, ulong va, ulong len)
 		}
 	}
 
+	top = PGROUND(va + len);
 	va = va&~(BY2PG-1);
-	if(isoverlap(p, va, len) != nil)
+	len = top - va;
+	if(isoverlap(p, va, top) != nil)
 		error(Esoverlap);
 
 	for(ps = physseg; ps->name; ps++)
@@ -701,9 +702,9 @@ long
 syssegflush(ulong *arg)
 {
 	Segment *s;
-	ulong addr, l;
+	ulong addr, l, ps, pe;
 	Pte *pte;
-	int chunk, ps, pe, len;
+	int chunk, len;
 
 	addr = arg[0];
 	len = arg[1];
