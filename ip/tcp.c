@@ -215,7 +215,6 @@ struct Tcpctl
 		ulong	nxt;		/* Receive pointer to next uchar slot */
 		ulong	wnd;		/* Receive window incoming */
 		ulong	urg;		/* Urgent pointer */
-		ulong	lastacked;	/* Last ack sent */
 		int	blocked;
 		int	una;		/* unacked data segs */
 		int	scale;		/* how much to left shift window in rcved packets */
@@ -362,7 +361,7 @@ struct Tcppriv
  *  it that number gets acked by the other end, we shut down the connection.
  *  Look for tcpporthogedefense in the code.
  */
-int tcpporthogdefense = 0;
+int tcpporthogdefense = 1;
 
 int	addreseq(Tcpctl*, Tcppriv*, Tcp*, Block*, ushort);
 void	getreseq(Tcpctl*, Tcp*, Block**, ushort*);
@@ -1322,7 +1321,7 @@ tcphangup(Conv *s)
 	if(s->raddr != 0) {
 		seg.flags = RST | ACK;
 		seg.ack = tcb->rcv.nxt;
-		tcb->rcv.lastacked = tcb->rcv.nxt;
+		tcb->rcv.una = 0;
 		seg.seq = tcb->snd.ptr;
 		seg.wnd = 0;
 		seg.urg = 0;
@@ -2275,6 +2274,20 @@ reset:
 						panic("tcp packblock");
 					qpassnolim(s->rq, bp);
 					bp = nil;
+
+					/* 
+					 *  Force an ack every 2 data messages.  This is
+					 *  a hack for rob to make his home system run
+					 *  faster.
+					 *
+					 *  this also keeps the standard TCP congestion
+					 *  control working since it needs an ack every
+					 *  2 max segs worth.  This is not quite that,
+					 *  but under a real stream is equivalent since
+					 *  every packet has a max seg in it.
+					 */
+					if(++(tcb->rcv.una) >= 2)
+						tcb->flags |= FORCE;
 				}
 				tcb->rcv.nxt += length;
 
@@ -2282,13 +2295,6 @@ reset:
 				 *  update our rcv window
 				 */
 				tcprcvwin(s);
-
-				/*
-				 *  force an ack if we've got 2 segs since we
-				 *  last acked.
-				 */
-				if(tcb->rcv.nxt - tcb->rcv.lastacked >= 2*tcb->mss)
-					tcb->flags |= FORCE;
 
 				/*
 				 *  turn on the acktimer if there's something
@@ -2457,19 +2463,17 @@ tcpoutput(Conv *s)
 		if((tcb->flags&FORCE) == 0)
 			break;
 
-		tcphalt(tpriv, &tcb->acktimer);
-
 		tcb->flags &= ~FORCE;
 		tcprcvwin(s);
 
 		/* By default we will generate an ack */
+		tcphalt(tpriv, &tcb->acktimer);
 		tcb->rcv.una = 0;
 		seg.source = s->lport;
 		seg.dest = s->rport;
 		seg.flags = ACK;
 		seg.mss = 0;
 		seg.ws = 0;
-
 		switch(tcb->state){
 		case Syn_sent:
 			seg.flags = 0;
@@ -2497,7 +2501,6 @@ tcpoutput(Conv *s)
 		}
 		seg.seq = tcb->snd.ptr;
 		seg.ack = tcb->rcv.nxt;
-		tcb->rcv.lastacked = tcb->rcv.nxt;
 		seg.wnd = tcb->rcv.wnd;
 
 		/* Pull out data to send */
@@ -2619,7 +2622,7 @@ tcpsendka(Conv *s)
 	else
 		seg.seq = tcb->snd.una-1;
 	seg.ack = tcb->rcv.nxt;
-	tcb->rcv.lastacked = tcb->rcv.nxt;
+	tcb->rcv.una = 0;
 	seg.wnd = tcb->rcv.wnd;
 	if(tcb->state == Finwait2){
 		seg.flags |= FIN;
