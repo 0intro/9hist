@@ -69,21 +69,21 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 		break;
 
 	case SG_TEXT:
-		if(pagedout(*pg)) 			/* Demand load */
+		if(pagedout(*pg)) 		/* Demand load */
 			pio(s, addr, soff, pg);
 		
 		mmuphys = PPN((*pg)->pa) | PTERONLY|PTEVALID;
 		(*pg)->modref = PG_REF;
 		break;
 
-	case SG_SHDATA:					/* Shared data */
+	case SG_SHDATA:				/* Shared data */
 		if(pagedout(*pg))
 			pio(s, addr, soff, pg);
 
 		goto done;
 
-	case SG_SHARED:					/* Zero fill on demand */
 	case SG_BSS:
+	case SG_SHARED:				/* Zero fill on demand */
 	case SG_STACK:	
 		if(*pg == 0) {
 			if(new == 0)
@@ -96,14 +96,15 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 		}
 		/* NO break */
 
-	case SG_DATA:					/* Demand load/pagein/copy on write */
+	case SG_DATA:				/* Demand load/pagein/copy on write */
 		if(pagedout(*pg))
 			pio(s, addr, soff, pg);
 
 		if(type == SG_SHARED)
 			goto done;
 
-		if(read && conf.copymode == 0) {
+		if(read)
+		if(conf.copymode == 0) {
 			mmuphys = PPN((*pg)->pa) | PTERONLY|PTEVALID;
 			(*pg)->modref |= PG_REF;
 			break;

@@ -348,7 +348,7 @@ syscall(Ureg *ur)
 		noted(ur, *(ulong*)(sp+BY2WD));
 
 	splhi(); /* avoid interrupts during the iret */
-	if(ax!=FORK && (u->p->procctl || u->nnote))
+	if(ax!=RFORK && (u->p->procctl || u->nnote))
 		notify(ur);
 	return ret;
 }

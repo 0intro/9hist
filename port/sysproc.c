@@ -17,8 +17,17 @@ sysr1(ulong *arg)
 	return 0;
 }
 
+enum					/* Argument to forkpgrp call */
+{
+	FPall 	  = 0,			/* Concession to back portablility */
+	FPnote 	  = 1,
+	FPnamespc = 2,
+	FPenv	  = 4,
+	FPclear	  = 8,
+};
+
 long
-sysfork(ulong *arg)
+sys__fork__(ulong *arg)
 {
 	USED(arg);
 	return rfork(FORKFDG|FORKPCS);
@@ -40,7 +49,7 @@ sysrfork(ulong *arg)
 long
 rfork(ulong flag)
 {
-	Proc *p;
+	Proc *p, *parent;
 	Segment *s;
 	ulong usp, upa, pid;
 	int n, on, i;
@@ -63,6 +72,8 @@ rfork(ulong flag)
 			p->pgrp = newpgrp();
 			if(flag & FORKNSG)
 				pgrpcpy(p->pgrp, opg);
+			else
+				*p->pgrp->crypt = *opg->crypt;
 			closepgrp(opg);
 		}
 		if(flag & (FORKEVG|FORKCEVG)) {
@@ -83,12 +94,20 @@ rfork(ulong flag)
 		}
 		if(flag & FORKNTG)
 			p->noteid = incref(&noteidalloc);
-		if(flag & FORKMEM)
+		if(flag & (FORKMEM|FORKNOW))
 			error(Ebadarg);
 		return 0;
 	}
+	/* Check flags before we commit */
+	if((flag & (FORKFDG|FORKCFDG)) == (FORKFDG|FORKCFDG))
+		error(Ebadarg);
+	if((flag & (FORKNSG|FORKCNSG)) == (FORKNSG|FORKCNSG))
+		error(Ebadarg);
+	if((flag & (FORKEVG|FORKCEVG)) == (FORKEVG|FORKCEVG))
+		error(Ebadarg);
 
 	p = newproc();
+	parent = u->p;
 
 	/* Page va of upage used as check in mapstack */
 	p->upage = newpage(0, 0, USERADDR|(p->pid&0xFFFF));
@@ -104,67 +123,61 @@ rfork(ulong flag)
 	kunmap(k);
 
 	/* Make a new set of memory segments */
+	n = flag & FORKMEM;
 	for(i = 0; i < NSEG; i++)
-		if(u->p->seg[i])
-			p->seg[i] = dupseg(u->p->seg[i]);
+		if(parent->seg[i])
+			p->seg[i] = dupseg(parent->seg[i], n);
 
 	/* Refs */
 	incref(u->dot);	
 
-	if(flag & FORKMEM)
-		error(Egreg);
-
 	/* File descriptors */
 	if(flag & (FORKFDG|FORKCFDG)) {
-		if((flag & (FORKFDG|FORKCFDG)) == (FORKFDG|FORKCFDG))
-			error(Ebadarg);
 		if(flag & FORKFDG)
-			p->fgrp = dupfgrp(u->p->fgrp);
+			p->fgrp = dupfgrp(parent->fgrp);
 		else
 		if(flag & FORKCFDG)
 			p->fgrp = newfgrp();
 	}
 	else {
-		p->fgrp = u->p->fgrp;
+		p->fgrp = parent->fgrp;
 		incref(p->fgrp);
 	}
 
 	/* Process groups */
 	if(flag & (FORKNSG|FORKCNSG)) {	
-		if((flag & (FORKNSG|FORKCNSG)) == (FORKNSG|FORKCNSG))
-			error(Ebadarg);
 		if(flag & FORKNSG) {
 			p->pgrp = newpgrp();
-			pgrpcpy(p->pgrp, u->p->pgrp);
+			pgrpcpy(p->pgrp, parent->pgrp);
 		}
 		else
-		if(flag & FORKCNSG)
+		if(flag & FORKCNSG) {
 			p->pgrp = newpgrp();
+			*p->pgrp->crypt = *parent->pgrp->crypt;
+		}
 	}
 	else {
-		p->pgrp = u->p->pgrp;
+		p->pgrp = parent->pgrp;
 		incref(p->pgrp);
 	}
 
 	/* Environment group */
 	if(flag & (FORKEVG|FORKCEVG)) {
-		if((flag & (FORKEVG|FORKCEVG)) == (FORKEVG|FORKCEVG))
-			error(Ebadarg);
 		if(flag & FORKEVG) {
 			p->egrp = newegrp();
-			envcpy(p->egrp, u->p->egrp);
+			envcpy(p->egrp, parent->egrp);
 		}
 		else
 		if(flag & FORKCEVG)
 			p->egrp = newegrp();
 	}
 	else {
-		p->egrp = u->p->egrp;
+		p->egrp = parent->egrp;
 		incref(p->egrp);
 	}
 
-	p->hang = u->p->hang;
-	p->procmode = u->p->procmode;
+	p->hang = parent->hang;
+	p->procmode = parent->procmode;
 
 	if(setlabel(&p->sched)){
 		/*
@@ -179,20 +192,22 @@ rfork(ulong flag)
 		return 0;
 	}
 
-	p->parent = u->p;
-	p->parentpid = u->p->pid;
+	p->parent = parent;
+	p->parentpid = parent->pid;
+	if(flag&FORKNOW)
+		p->parentpid = 1;
 	if((flag&FORKNTG) == 0)
-		p->noteid = u->p->noteid;
+		p->noteid = parent->noteid;
 
-	p->fpstate = u->p->fpstate;
-	lock(&u->p->exl);
-	u->p->nchild++;
-	unlock(&u->p->exl);
+	p->fpstate = parent->fpstate;
+	lock(&parent->exl);
+	parent->nchild++;
+	unlock(&parent->exl);
 	pid = p->pid;
 	memset(p->time, 0, sizeof(p->time));
 	p->time[TReal] = MACHP(0)->ticks;
-	memmove(p->text, u->p->text, NAMELEN);
-	memmove(p->user, u->p->user, NAMELEN);
+	memmove(p->text, parent->text, NAMELEN);
+	memmove(p->user, parent->user, NAMELEN);
 	/*
 	 *  since the bss/data segments are now shareable,
 	 *  any mmu info about this process is now stale

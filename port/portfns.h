@@ -52,7 +52,7 @@ void	dumpregs(Ureg*);
 void	dumpstack(void);
 Fgrp*	dupfgrp(Fgrp*);
 void	duppage(Page*);
-Segment*	dupseg(Segment*);
+Segment*	dupseg(Segment*, int);
 void	dupswap(Page*);
 int	encrypt(void*, void*, int);
 void	envcpy(Egrp*, Egrp*);

@@ -140,7 +140,7 @@ relocateseg(Segment *s, ulong offset)
 }
 
 Segment*
-dupseg(Segment *s)
+dupseg(Segment *s, int share)
 {
 	Pte *pte;
 	Segment *n;
@@ -154,14 +154,30 @@ dupseg(Segment *s)
 		incref(s);
 		return s;
 
-	case SG_BSS:			/* Just copy on write */
 	case SG_STACK:
 		qlock(&s->lk);
 		n = newseg(s->type, s->base, s->size);
 		goto copypte;
 
+	case SG_BSS:			/* Just copy on write */
+		qlock(&s->lk);
+		if(share && s->ref == 1) {
+			s->type = (s->type&~SG_TYPE)|SG_SHARED;
+			incref(s);
+			qunlock(&s->lk);
+			return s;
+		}
+		n = newseg(s->type, s->base, s->size);
+		goto copypte;
+
 	case SG_DATA:			/* Copy on write plus demand load info */
 		qlock(&s->lk);
+		if(share && s->ref == 1) {
+			s->type = (s->type&~SG_TYPE)|SG_SHDATA;
+			incref(s);
+			qunlock(&s->lk);
+			return s;
+		}
 		n = newseg(s->type, s->base, s->size);
 
 		incref(s->image);

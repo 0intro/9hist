@@ -410,7 +410,7 @@ syscall(Ureg *aur)
 		noted(&aur, *(ulong*)(sp+1*BY2WD));	/* doesn't return */
 
 	splhi();
-	if(r7!=FORK && (u->p->procctl || u->nnote)){
+	if(r7!=RFORK && (u->p->procctl || u->nnote)){
 		ur->r7 = ret;				/* load up for noted() */
 		if(notify(ur))
 			return ur->r7;

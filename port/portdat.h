@@ -447,15 +447,6 @@ struct Waitq
 	Waitq	*next;
 };
 
-enum					/* Argument to forkpgrp call */
-{
-	FPall 	  = 0,			/* Concession to back portablility */
-	FPnote 	  = 1,
-	FPnamespc = 2,
-	FPenv	  = 4,
-	FPclear	  = 8,
-};
-
 enum
 {
 	FORKNSG		= (1<<0),
@@ -464,6 +455,7 @@ enum
 	FORKNTG		= (1<<3),
 	FORKPCS		= (1<<4),
 	FORKMEM		= (1<<5),
+	FORKNOW		= (1<<6),
 	FORKCNSG	= (1<<10),
 	FORKCEVG	= (1<<11),
 	FORKCFDG	= (1<<12)

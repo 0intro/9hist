@@ -12,7 +12,7 @@ Syscall sysdup;
 Syscall sysalarm;
 Syscall sysexec;
 Syscall sysexits;
-Syscall sysfork;
+Syscall sys__fork__;
 Syscall sysforkpgrp;
 Syscall sysfstat;
 Syscall syssegbrk;
@@ -51,7 +51,7 @@ Syscall *systab[]={
 	[ALARM]		sysalarm,
 	[EXEC]		sysexec,
 	[EXITS]		sysexits,
-	[FORK]		sysfork,
+	[__FORK__]	sys__fork__,
 	[FORKPGRP]	sysforkpgrp,
 	[FSTAT]		sysfstat,
 	[SEGBRK]	syssegbrk,
@@ -91,7 +91,7 @@ char *sysctab[]={
 	[ALARM]		"Alarm",
 	[EXEC]		"Exec",
 	[EXITS]		"Exits",
-	[FORK]		"Fork",
+	[__FORK__]	"__fork_",
 	[FORKPGRP]	"Forkpgrp",
 	[FSTAT]		"Fstat",
 	[SEGBRK]	"Segbrk",

@@ -341,7 +341,7 @@ syscall(Ureg *aur)
 	if(r0 == NOTED)		/* ugly hack */
 		noted(aur, *(ulong*)(sp+BY2WD));	/* doesn't return */
 	splhi();
-	if(r0!=FORK && (u->p->procctl || u->nnote)){
+	if(r0!=RFORK && (u->p->procctl || u->nnote)){
 		ur->r0 = ret;
 		notify(ur);
 	}
