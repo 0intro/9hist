@@ -216,7 +216,7 @@ icmpttlexceeded(Fs *f, uchar *ia, Block *bp)
 }
 
 static void
-icmpunreachable(Fs *f, Block *bp, int code)
+icmpunreachable(Fs *f, Block *bp, int code, int seq)
 {
 	Block	*nbp;
 	Icmp	*p, *np;
@@ -247,7 +247,7 @@ icmpunreachable(Fs *f, Block *bp, int code)
 	np->code = code;
 	np->proto = IP_ICMPPROTO;
 	hnputs(np->icmpid, 0);
-	hnputs(np->seq, 0);
+	hnputs(np->seq, seq);
 	memset(np->cksum, 0, sizeof(np->cksum));
 	hnputs(np->cksum, ptclcsum(nbp, ICMP_IPSIZE, blocklen(nbp) - ICMP_IPSIZE));
 	ipoput4(f, nbp, 0, MAXTTL, DFLTTOS);
@@ -256,13 +256,13 @@ icmpunreachable(Fs *f, Block *bp, int code)
 extern void
 icmpnoconv(Fs *f, Block *bp)
 {
-	icmpunreachable(f, bp, 3);
+	icmpunreachable(f, bp, 3, 0);
 }
 
 extern void
-icmpcantfrag(Fs *f, Block *bp)
+icmpcantfrag(Fs *f, Block *bp, int mtu)
 {
-	icmpunreachable(f, bp, 4);
+	icmpunreachable(f, bp, 4, mtu);
 }
 
 static void
