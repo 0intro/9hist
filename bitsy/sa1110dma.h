@@ -10,7 +10,8 @@ enum {
 void	dmainit(void);
 int		dmaalloc(int, int, int, int, int, ulong, void (*)(void*, ulong), void*);
 void	dmafree(int);
+
 ulong	dmastart(int, void *, int);
-ulong	dmadone(int, ulong);
-void	dmawait(int, ulong);
-int		dmaidle(int chan);
+
+void	dmawait(int);
+int		dmaidle(int);

@@ -661,14 +661,14 @@ i82365reset(void)
 
 	/* look for controllers if the ports aren't already taken */
 	if(ioalloc(0x3E0, 2, 0, "i82365.0") >= 0){
-		i82365probe(0x3E0, 0x3E1, 0);
+		i82365probe(0x3E0, 0x3E1, 0) ||
 		i82365probe(0x3E0, 0x3E1, 1);
 		if(ncontroller == 0)
 			iofree(0x3E0);
 	}
 	if(ioalloc(0x3E2, 2, 0, "i82365.1") >= 0){
 		i = ncontroller;
-		i82365probe(0x3E2, 0x3E3, 0);
+		i82365probe(0x3E2, 0x3E3, 0) ||
 		i82365probe(0x3E2, 0x3E3, 1);
 		if(ncontroller == i)
 			iofree(0x3E2);

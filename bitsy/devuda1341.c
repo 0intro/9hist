@@ -132,6 +132,7 @@ struct	Buf
 struct	IOstate
 {
 	QLock;
+	Lock			ilock;
 	Rendez			vous;
 	Chan			*chan;			/* chan of open */
 	int				dma;			/* dma chan, alloc on open, free on close */
@@ -435,14 +436,16 @@ audioenable(void)
 	L3_init();
 
 	/* Setup the uarts */
-    ppcregs->assignment &= ~(1<<18);	/* Could be the other way round! */
+    ppcregs->assignment &= (1<<18);	/* Could be the other way round! */
 
     gpioregs->altfunc &= ~(GPIO_SSP_TXD_o | GPIO_SSP_RXD_i | GPIO_SSP_SCLK_o | GPIO_SSP_SFRM_o);
 	gpioregs->altfunc |= (GPIO_SSP_CLK_i);
 	gpioregs->direction &= ~(GPIO_SSP_CLK_i);
 
-	sspregs->control0 = 0x10<<0 | 0x1<<4 | 1<<7 | 0x8<<8;
+	sspregs->control0 = 0xf<<0 | 0x1<<4 | 0x3<<8;
 	sspregs->control1 = 0<<3 + 0<<4 + 1<<5;
+
+	sspregs->control0 |= 1<<7;	/* enable */
 
 	/* Enable the audio power */
 	audiopower(1);
@@ -458,12 +461,14 @@ audioenable(void)
 	delay(100);
     print("Ser4SSSR=0x%lux\n", sspregs->status);
 
+    gpioregs->clear = EGPIO_codec_reset;
+    gpioregs->set = EGPIO_codec_reset;
+
 	/* Reset the chip */
 	data[0] = 2<<4 /* system clock */ | 1<<1 /* lsb16 */ | 1<<6 /* reset */;
 	L3_write(UDA1341_L3Addr<<2 | UDA1341_STATUS, data, 1 );
 
-    gpioregs->clear = EGPIO_codec_reset;
-    gpioregs->set = EGPIO_codec_reset;
+	delay(10);
 
 	data[0] = 2<<4 /* system clock */ | 1<<1 /* lsb16 */;
 	L3_write( (UDA1341_L3Addr<<2)|UDA1341_STATUS, data, 1 );
@@ -496,22 +501,38 @@ audioenable(void)
 	data[1] = 0xe0 | 0<<2 | 3;	/* agc time constant and output level */
 	L3_write(UDA1341_L3Addr<<2 | UDA1341_DATA0, data, 2 );
 
+	/* Reset the chip */
+	data[0] = 2<<4 /* system clock */ | 1<<1 /* lsb16 */ | 1<<6 /* reset */;
+	L3_write(UDA1341_L3Addr<<2 | UDA1341_STATUS, data, 1 );
+
+	delay(10);
+
+	data[0] = 2<<4 /* system clock */ | 1<<1 /* lsb16 */;
+	L3_write( (UDA1341_L3Addr<<2)|UDA1341_STATUS, data, 1 );
+	/* Reset done */
+
 	if (debug) print("#A: audio enabled\n");
 }
 
 static void
 sendaudio(IOstate *b) {
-	/* call this with lock held */
-	if (debug) print("#A: sendaudio\n");
+	/* interrupt routine calls this too */
+	if (debug > 1) print("#A: sendaudio\n");
+	ilock(&b->ilock);
 	while (b->next != b->filling) {
 		assert(b->next->nbytes);
-		if (dmastart(b->dma, b->next->virt, b->next->nbytes) == 0)
-			break;
 		incref(&b->active);
+		if (dmastart(b->dma, b->next->virt, b->next->nbytes) == 0) {
+			decref(&b->active);
+			break;
+		}
+		if (debug > 1) print("#A: dmastart @%p\n", b->next);
+		b->next->nbytes = 0;
 		b->next++;
 		if (b->next == &b->buf[Nbuf])
 			b->next = &b->buf[0];
 	}
+	iunlock(&b->ilock);
 }
 
 static void
@@ -519,16 +540,13 @@ audiointr(void *x, ulong) {
 	IOstate *s = x;
 
 	if (s == &audio.o) {
-		decref(&s->active);
 		/* Only interrupt routine touches s->current */
-		s->current->nbytes = 0;
+		if (debug > 1) iprint("#A: audio interrupt @%p\n", s->current);
 		s->current++;
 		if (s->current == &s->buf[Nbuf])
 			s->current = &s->buf[0];
-		if (canlock((Lock*)s)) {
-			sendaudio(s);
-			unlock((Lock*)s);
-		}
+		decref(&s->active);
+		sendaudio(s);
 	}
 	wakeup(&s->vous);
 }
@@ -598,8 +616,8 @@ audioopen(Chan *c, int omode)
 			audio.o.chan = c;
 			audio.o.dma = dmaalloc(0, 0, 8, 2, SSPXmitDMA, Port4SSP, audiointr, (void*)&audio.o);
 		}
-		qunlock(&audio);
 //		mxvolume();
+		qunlock(&audio);
 		if (debug) print("#A: open done\n");
 		break;
 	}
@@ -626,6 +644,7 @@ audioclose(Chan *c)
 		break;
 
 	case Qaudio:
+		if (debug > 1) print("#A: close\n");
 		if(c->flag & COPEN) {
 			qlock(&audio);
 			qlock(&audio.o);
@@ -638,7 +657,7 @@ audioclose(Chan *c)
 				/* closing the write end */
 				audio.amode &= ~Awrite;
 
-				while (audio.o.filling->nbytes) {
+				if (audio.o.filling->nbytes) {
 					audio.o.filling++;
 					if (audio.o.filling == &audio.o.buf[Nbuf])
 						audio.o.filling = &audio.o.buf[0];
@@ -827,7 +846,7 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 		break;
 
 	case Qaudio:
-		if (debug) print("#A: write %ld\n", n);
+		if (debug > 1) print("#A: write %ld\n", n);
 		if((audio.amode & Awrite) == 0)
 			error(Emode);
 		a = &audio.o;
@@ -838,8 +857,10 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 		}
 		while(n > 0) {
 			/* wait if dma in progress */
-			while (a->active.ref && a->filling == a->current)
+			while (a->active.ref && a->filling == a->current) {
+				if (debug > 1) print("#A: sleep\n");
 				sleep(&a->vous, audioqnotfull, a);
+			}
 
 			m = Bufsize - a->filling->nbytes;
 			if(m > n)
@@ -850,6 +871,7 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 			n -= m;
 			p += m;
 			if(a->filling->nbytes >= Bufsize) {
+				if (debug > 1) print("#A: filled @%p\n", a->filling);
 				a->filling++;
 				if (a->filling == &a->buf[Nbuf])
 					a->filling = a->buf;
