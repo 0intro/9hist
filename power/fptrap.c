@@ -7,27 +7,13 @@
 #include	"io.h"
 #include	"../port/error.h"
 
-typedef struct	FPinstr	FPinstr;
-struct FPinstr
-{
-	ulong	op;
-	ulong	load;
-	ulong	store;
-	ulong	branch;
-	ulong	fmt;
-	ulong	fs;
-	ulong	fd;
-	ulong	ft;
-	ulong	cft;
-};
-
 enum	/* op */
 {
 	ABS =	5,
 	ADD =	0,
-	CVTD = 	65,
-	CVTS =	64,
-	CVTW =	68,
+	CVTD = 	33,
+	CVTS =	32,
+	CVTW =	36,
 	DIV =	3,
 	MOV =	6,
 	MUL =	2,
@@ -35,44 +21,22 @@ enum	/* op */
 	SUB =	1,
 };
 
-static int	fpunimp(Ureg*, ulong, ulong);
+static int	fpunimp(ulong);
 static ulong	branch(Ureg*, ulong);
 
 int
 fptrap(Ureg *ur, ulong fcr31)
 {
-	ulong iw, x, npc;
-	int i, ret;
+	ulong iw, npc;
 
 	savefpregs(&u->fpsave);
+	if((fcr31&(1<<17)) == 0)
+		return 0;
 	if(ur->cause & (1<<31))
 		iw = *(ulong*)(ur->pc+4);
 	else
 		iw = *(ulong*)ur->pc;
-	ret = 0;
-	x = fcr31>>12;
-	fcr31 &= ~(0x3F<<12);
-	for(i=0; i<6; i++,x>>=1)
-		if(x & 1)
-			switch(i){
-			case 0:	/* inexact */
-pprint("inexact\n");
-return 0;
-			case 1: /* underflow */
-pprint("underflow\n");
-return 0;
-			case 2:	/* overflow */
-pprint("overflow\n");
-return 0;
-			case 3: /* division by zero */
-				return 0;
-			case 4: /* invalid operation */
-pprint("invalid op\n");
-return 0;
-			case 5:	/* unimplemented operation */
-				ret = fpunimp(ur, fcr31, iw);
-			}
-	if(ret){
+	if(fpunimp(iw)){
 		if(ur->cause & (1<<31)){
 			npc = branch(ur, fcr31);
 			if(npc)
@@ -83,23 +47,7 @@ return 0;
 			ur->pc += 4;
 		restfpregs(&u->fpsave, fcr31);
 	}
-	return ret;
-}
-
-static int
-fpdas(ulong iw, FPinstr *fp)
-{
-	memset(fp, ~0, sizeof(*fp));
-	if((iw>>25) == 0x23){
-		fp->op = iw & ((1<<5)-1);
-		fp->fmt = (iw>>21) & ((1<<4)-1);
-		fp->ft = (iw>>16) & ((1<<5)-1);
-		fp->fs = (iw>>11) & ((1<<5)-1);
-		fp->fd = (iw>>6) & ((1<<5)-1);
-		fp->cft = (iw>>21) & ((1<<5)-1);
-		return 1;
-	}
-	return 0;
+	return 1;
 }
 
 static void
@@ -113,11 +61,8 @@ unpack(FPsave *f, int fmt, int reg, int *sign, int *exp)
 		*exp = ((f->fpreg[reg]>>23)&0xFF) - ((1<<7)-2);
 		break;
 	case 1:
-		if(reg & 1){
-			pprint("unaligned double fp register\n");
+		if(reg & 1)	/* shouldn't happen */
 			reg &= ~1;
-		}
-pprint("%lux %lux\n", f->fpreg[reg], f->fpreg[reg+1]);
 		*exp = ((f->fpreg[reg]>>20)&0x7FF) - ((1<<10)-2);
 		break;
 	}
@@ -145,25 +90,26 @@ zeroreg(FPsave *f, int fmt, int reg, int sign)
 }
 
 static int
-fpunimp(Ureg *ur, ulong fcr31, ulong iw)
+fpunimp(ulong iw)
 {
-	FPinstr instr;
 	int ss, st, sd;
 	int es, et, ed;
 	int maxe, maxm;
+	ulong op, fmt, ft, fs, fd;
 
-pprint("fpunimp %lux %lux\n", iw, iw>>25);
-	if(!fpdas(iw, &instr))
+	if((iw>>25) != 0x23)
 		return 0;
-pprint("%d\n", instr.op);
-	if(instr.op == ~0)
-		return 0;
-	unpack(&u->fpsave, instr.fmt, instr.fs, &ss, &es);
-	unpack(&u->fpsave, instr.fmt, instr.ft, &st, &et);
+	op = iw & ((1<<6)-1);
+	fmt = (iw>>21) & ((1<<4)-1);
+	ft = (iw>>16) & ((1<<5)-1);
+	fs = (iw>>11) & ((1<<5)-1);
+	fd = (iw>>6) & ((1<<5)-1);
+	unpack(&u->fpsave, fmt, fs, &ss, &es);
+	unpack(&u->fpsave, fmt, ft, &st, &et);
 	ed = 0;
 	maxe = 0;
 	maxm = 0;
-	switch(instr.fmt){
+	switch(fmt){
 	case 0:
 		maxe = 1<<7;
 		maxm = 24;
@@ -173,7 +119,15 @@ pprint("%d\n", instr.op);
 		maxm = 53;
 		break;
 	}
-	switch(instr.op){
+	switch(op){
+	case ABS:
+		u->fpsave.fpreg[fd] &= ~0x80000000;
+		return 1;
+
+	case NEG:
+		u->fpsave.fpreg[fd] ^= 0x80000000;
+		return 1;
+
 	case SUB:
 		st = -st;
 	case ADD:
@@ -193,13 +147,22 @@ pprint("%d\n", instr.op);
 			sd = -1;
 		ed = es + et;
 		break;
+
+	case CVTS:
+		if(fmt != 1)
+			return 0;
+		fmt = 0;	/* convert FROM double TO single */
+		maxe = 1<<7;
+		ed = es;
+		sd = ss;
+		break;
+
 	default:
-		pprint("unknown unimplemented fp op\n");
+		/* shouldn't get here */
 		return 0;
 	}
 	if(ed <= -(maxe-4)){	/* guess: underflow */
-pprint("guess underflow\n");
-		zeroreg(&u->fpsave, instr.fmt, instr.fd, sd);
+		zeroreg(&u->fpsave, fmt, fd, sd);
 		return 1;
 	}
 	return 0;
@@ -309,7 +272,6 @@ branch(Ureg *ur, ulong fcr31)
 				return ur->pc+4 + offset;
 			return ur->pc + 8;
 		}
-	pprint("fptrap: can't do jump %lux\n", iw);
+	/* shouldn't get here */
 	return 0;
-
 }

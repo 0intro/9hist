@@ -41,9 +41,9 @@ char *excname[] =
 	"trap: arithmetic overflow",
 	"trap: undefined 13",
 	"trap: undefined 14",
-	"trap: undefined 15",				/* used as sys call for debugger */
+	"trap: undefined 15",			/* used as sys call for debugger */
 	/* the following is made up */
-	"trap: floating point exception"		/* FPEXC */
+	"trap: floating point exception"	/* FPEXC */
 };
 char	*fpexcname(ulong);
 
@@ -146,7 +146,7 @@ trap(Ureg *ur)
 		}
 	Default:
 		/*
-		 * This isn't good enough; can still deadlock because we may 
+		 * This isn't good enough; can still deadlock because we may
 		 * hold print's locks in this processor.
 		 */
 		if(user){
@@ -319,8 +319,8 @@ intr(Ureg *ur)
 		panic("cause %lux %lux\n", u, cause);
 }
 
-char *
-fpexcname(ulong x)
+char*
+fpexcname(ulong fcr31)
 {
 	static char *str[]={
 		"inexact operation",
@@ -328,13 +328,15 @@ fpexcname(ulong x)
 		"overflow",
 		"division by zero",
 		"invalid operation",
-		"unimplemented operation",
 	};
 	int i;
 
-	x >>= 12;
-	for(i=0; i<6; i++, x>>=1)
-		if(x & 1)
+	if(fcr31 & (1<<17))
+		return "unimplemented operation";
+	fcr31 >>= 7;		/* trap enable bits */
+	fcr31 &= (fcr31>>5);	/* anded with exceptions */
+	for(i=0; i<5; i++)
+		if(fcr31 & (1<<i))
 			return str[i];
 	return "no floating point exception";
 }
@@ -518,6 +520,9 @@ syscall(Ureg *aur)
 	}
 	spllo();
 
+	if(p->procctl)
+		procctl(p);
+
 	u->scallnr = ur->r1;
 	sp = ur->sp;
 	u->nerrlab = 0;
@@ -542,13 +547,13 @@ syscall(Ureg *aur)
 		p->psstate = sysctab[u->scallnr];
 
 		ret = (*systab[u->scallnr])(u->s.args);
+		poperror();
 	}
 	ur->pc += 4;
 	u->nerrlab = 0;
-
 	p->psstate = 0;
 	p->insyscall = 0;
-	if(u->scallnr == NOTED)					/* ugly hack */
+	if(u->scallnr == NOTED)				/* ugly hack */
 		noted(&aur, *(ulong*)(sp+BY2WD));	/* doesn't return */
 	splhi();
 	if(u->scallnr!=RFORK && (p->procctl || u->nnote)){

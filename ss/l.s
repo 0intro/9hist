@@ -27,7 +27,7 @@ TEXT	startvirt(SB), $-4
 	MOVW	$(SPL(0xF)|PSREF|PSRSUPER), R7
 	MOVW	R7, PSR
 
-	MOVW	$(0x35<<22), R7		/* NVM OFM DZM AU */
+	MOVW	$(0x35<<22), R7		/* NVM OFM DZM NS */
 	MOVW	R7, fsr+0(SB)
 	MOVW	fsr+0(SB), FSR
 	FMOVD	$0.5, F26		/* 0.5 -> F26 */

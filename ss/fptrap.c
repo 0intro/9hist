@@ -173,7 +173,7 @@ unfinished(FPsave *f)
 static void
 fixq(FPsave *f, int n)
 {
-	ulong instr, fsr;
+	ulong instr;
 	ulong *ip;
 
 	while(n > 1){

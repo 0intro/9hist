@@ -536,6 +536,9 @@ syscall(Ureg *aur)
 	}
 	spllo();
 
+	if(u->p->procctl)
+		procctl(u->p);
+
 	u->scallnr = ur->r7;
 	sp = ur->usp;
 
@@ -567,9 +570,6 @@ syscall(Ureg *aur)
 	ur->pc += 4;
 	ur->npc = ur->pc+4;
 	u->nerrlab = 0;
-	if(u->p->procctl)
-		procctl(u->p);
-
 	u->p->insyscall = 0;
 	u->p->psstate = 0;
 	if(u->scallnr == NOTED)	/* ugly hack */
