@@ -72,16 +72,29 @@ cinit(void)
 void
 cprint(Chan *c, Mntcache *m, char *s)
 {
+	ulong o;
+	int nb, ct;
 	Extent *e;
 	char buf[128];
-
+return;
 	ptpath(c->path, buf, sizeof(buf));
-	pprint("%s: 0x%lux.0x%lux %d %d %s\n",
-			s, m->path, m->vers, m->type, m->dev, buf);
+	nb = 0;
+	ct = 1;
+	if(m->list)
+		o = m->list->start;
+	for(e = m->list; e; e = e->next) {
+		nb += e->len;
+		if(o != e->start)
+			ct = 0;
+		o = e->start+e->len;
+	}
+	pprint("%s: 0x%lux.0x%lux %d %d %s (%d %c)\n",
+	s, m->path, m->vers, m->type, m->dev, buf, nb, ct ? 'C' : 'N');
 
-	for(e = m->list; e; e = e->next)
-		pprint("\t%4d %5d %4d %lux\n",
+	for(e = m->list; e; e = e->next) {
+		if(0) pprint("\t%4d %5d %4d %lux\n",
 			e->bid, e->start, e->len, e->cache);
+	}
 }
 
 Page*
@@ -130,21 +143,26 @@ ctail(Mntcache *m)
 		cache.tail = m;
 	}
 	else {
-		cache.head = cache.tail = m;
-		m->prev = m->next = 0;
+		cache.head = m;
+		cache.tail = m;
+		m->prev = 0;
+		m->next = 0;
 	}
 }
 
 void
 copen(Chan *c)
 {
+	int h;
+	Extent *e, *next;
 	Mntcache *m, *f, **l;
 
-	if((c->qid.path&CHDIR) || (c->flag&CTEXT))
+	if(c->qid.path&CHDIR)
 		return;
 
+	h = c->qid.path%NHASH;
 	lock(&cache);
-	for(m = cache.hash[c->qid.path%NHASH]; m; m = m->hash) {
+	for(m = cache.hash[h]; m; m = m->hash) {
 		if(m->path == c->qid.path)
 		if(m->dev == c->dev && m->type == c->type) {
 			c->mcp = m;
@@ -153,11 +171,14 @@ copen(Chan *c)
 
 			/* File was updated, invalidate cache */
 			if(m->vers != c->qid.vers) {
+				m->vers = c->qid.vers;
 				qlock(m);
 				cnodata(m);
-				m->vers = c->qid.vers;
 				qunlock(m);
+cprint(c, m, "open mod");
 			}
+else
+cprint(c, m, "open cached");
 			return;
 		}
 	}
@@ -167,25 +188,32 @@ copen(Chan *c)
 	l = &cache.hash[m->path%NHASH];
 	for(f = *l; f; f = f->hash) {
 		if(f == m) {
-			*l = f->hash;
+			*l = m->hash;
 			break;
 		}
 		l = &f->hash;
 	}
-	l = &cache.hash[c->qid.path%NHASH];
-	m->hash = *l;
-	*l = m;
-	ctail(m);
 
 	m->Qid = c->qid;
 	m->dev = c->dev;
 	m->type = c->type;
+
+	l = &cache.hash[h];
+	m->hash = *l;
+	*l = m;
+	ctail(m);
+
 	c->mcp = m;
+	e = m->list;
+	m->list = 0;
 	unlock(&cache);
 
-	qlock(m);
-	cnodata(m);
-	qunlock(m);
+	while(e) {
+		next = e->next;
+		free(e);
+		e = next;
+	}
+cprint(c, m, "open new");
 }
 
 static int
@@ -193,11 +221,11 @@ cdev(Mntcache *m, Chan *c)
 {
 	if(m->path != c->qid.path)
 		return 0;
-	if(m->vers != c->qid.vers)
-		return 0;
 	if(m->dev != c->dev)
 		return 0;
 	if(m->type != c->type)
+		return 0;
+	if(m->vers != c->qid.vers)
 		return 0;
 	return 1;
 }
@@ -211,9 +239,6 @@ cread(Chan *c, uchar *buf, int len, ulong offset)
 	Extent *e, **t;
 	int o, l, total;
 
-	if(c->qid.path & CHDIR)
-		return 0;
-
 	m = c->mcp;
 	if(m == 0)
 		return 0;
@@ -226,7 +251,7 @@ cread(Chan *c, uchar *buf, int len, ulong offset)
 
 	t = &m->list;
 	for(e = *t; e; e = e->next) {
-		if(offset > e->start && offset < e->start+e->len)
+		if(offset >= e->start && offset < e->start+e->len)
 			break;
 		t = &e->next;
 	}
@@ -274,7 +299,7 @@ cread(Chan *c, uchar *buf, int len, ulong offset)
 		if(e == 0 || e->start != offset)
 			break;
 	}
-if(len) print("P"); else print("F");
+
 	qunlock(m);
 	return total;
 }
@@ -307,10 +332,12 @@ cchain(uchar *buf, ulong offset, int len, Extent **tail)
 		e->cache = p;
 		e->start = offset;
 		e->len = l;
+
 		lock(&cache);
 		e->bid = cache.pgno;
 		cache.pgno += BY2PG;
 		unlock(&cache);
+
 		p->daddr = e->bid;
 		k = kmap(p);
 		memmove((void*)VA(k), buf, l);
@@ -350,7 +377,7 @@ cpgmove(Extent *e, uchar *buf, int boff, int len)
 }
 
 void
-cxupdate(Chan *c, uchar *buf, int len, ulong offset)
+cupdate(Chan *c, uchar *buf, int len, ulong offset)
 {
 	Mntcache *m;
 	Extent *tail;
@@ -458,12 +485,6 @@ cxupdate(Chan *c, uchar *buf, int len, ulong offset)
 }
 
 void
-cupdate(Chan *c, uchar *buf, int len, ulong offset)
-{
-	cxupdate(c, buf, len, offset);
-}
-
-void
 cwrite(Chan* c, uchar *buf, int len, ulong offset)
 {
 	int o;
@@ -502,6 +523,7 @@ cwrite(Chan* c, uchar *buf, int len, ulong offset)
 			if(p->len == 0)
 				panic("del empty extent");
 		}
+		/* Pack sequential write if there is space */
 		if(ee == offset && p->len < BY2PG) {
 			o = len;
 			if(o > BY2PG - p->len)

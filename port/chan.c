@@ -613,10 +613,13 @@ namec(char *name, int amode, int omode, ulong perm)
 		}
 	Open:
 		/* else error() in open has wrong value of c saved */
-		saveregisters();	
-		c = (*devtab[c->type].open)(c, omode);
+		saveregisters();
+
 		if(omode == OEXEC)
-			c->flag |= CTEXT;
+			c->flag &= ~CCACHE;
+	
+		c = (*devtab[c->type].open)(c, omode);
+
 		if(omode & OCEXEC)
 			c->flag |= CCEXEC;
 		if(omode & ORCLOSE)

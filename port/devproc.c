@@ -16,6 +16,7 @@ enum
 	Qkregs,
 	Qmem,
 	Qnote,
+	Qnoteid,
 	Qnotepg,
 	Qns,
 	Qproc,
@@ -34,6 +35,7 @@ Dirtab procdir[] =
 	"kregs",	{Qkregs},	sizeof(Ureg),		0000,
 	"mem",		{Qmem},		0,			0000,
 	"note",		{Qnote},	0,			0000,
+	"noteid",	{Qnoteid},	0,			0666,
 	"notepg",	{Qnotepg},	0,			0000,
 	"ns",		{Qns},		0,			0400,
 	"proc",		{Qproc},	0,			0400,
@@ -188,6 +190,7 @@ procopen(Chan *c, int omode)
 
 	case Qctl:
 	case Qnote:
+	case Qnoteid:
 	case Qmem:
 	case Qstatus:
 	case Qwait:
@@ -470,6 +473,8 @@ procread(Chan *c, void *va, long n, ulong offset)
 		}
 		a += ptpath(mw->cm->to->path, a, n);
 		return a - (char*)va;
+	case Qnoteid:
+		return readnum(offset, va, n, p->noteid, NUMSIZE);
 	}
 	error(Egreg);
 	return 0;		/* not reached */
@@ -516,7 +521,8 @@ mntscan(Mntwalk *mw)
 long
 procwrite(Chan *c, void *va, long n, ulong offset)
 {
-	Proc *p;
+	int id;
+	Proc *p, *t, *et;
 	char buf[ERRLEN];
 
 	if(c->qid.path & CHDIR)
@@ -578,7 +584,24 @@ procwrite(Chan *c, void *va, long n, ulong offset)
 		if(!postnote(p, 0, buf, NUser))
 			error("note not posted");
 		break;
-
+	case Qnoteid:
+		id = atoi((char*)va);
+		if(id == p->pid) {
+			p->noteid = id;
+			break;
+		}
+		t = proctab(0);
+		for(et = t+conf.nproc; t < et; t++) {
+			if(id == t->noteid) {
+				if(strcmp(p->user, t->user) != 0)
+					error(Eperm);
+				p->noteid = id;
+				break;
+			}
+		}
+		if(p->noteid != id)
+			error(Ebadarg);
+		break;
 	default:
 		pprint("unknown qid in procwrite\n");
 		error(Egreg);
