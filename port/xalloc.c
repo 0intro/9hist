@@ -81,7 +81,6 @@ xinit(void)
 	conf.base1 = (ulong)KADDR(conf.base1);
 	conf.npage0 = (ulong)KADDR(conf.npage0);
 	conf.npage1 = (ulong)KADDR(conf.npage1);
-iprint("xinit returning\n");
 }
 
 void*
@@ -219,7 +218,7 @@ xhole(ulong addr, ulong size)
 
 	if(xlists.flist == nil) {
 		iunlock(&xlists);
-		iprint("xfree: no free holes, leaked %lud bytes\n", size);
+		print("xfree: no free holes, leaked %lud bytes\n", size);
 		return;
 	}
 

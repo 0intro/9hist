@@ -76,11 +76,8 @@ clockintr(Ureg*, void*)
 
 	/* post interrupt 1/HZ secs from now */
 	timerregs->osmr[0] = timerregs->oscr + ClockFreq/HZ;
-	iprint("timer interrupt\n");
 
 	m->ticks++;
-	if(m->ticks >= 100)
-		exit(0);
 }
 
 void

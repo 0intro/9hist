@@ -11,6 +11,8 @@
 Mach *m;
 Conf conf;
 
+static void	gpioinit(void);
+
 void
 main(void)
 {
@@ -20,26 +22,18 @@ main(void)
 	/* point to Mach structure */
 	m = (Mach*)MACHADDR;
 
+	rs232power(1);
 	iprint("bitsy kernel\n");
 	confinit();
 	iprint("%d pages %lux(%lud) %lux(%lud)\n", conf.npage, conf.base0, conf.npage0, conf.base1, conf.npage1);
 	xinit();
-	iprint("after xinit\n");
-	iprint("testing 2 second delay\n");
-	delay(2000);
-	iprint("done\n");
 	mmuinit();
 	sa1100_uartsetup();
-	iprint("after mmuinit\n");
+	gpioinit();
 	trapinit();
-	iprint("after trapinit\n");
 	clockinit();
-	iprint("after clockinit\n");
-trapdump("before spllo");
 	spllo();
-	iprint("after spllo\n");
-	delay(10000);
-trapdump("after delay");
+	delay(1000);
 	exit(1);
 }
 
@@ -187,3 +181,53 @@ confinit(void)
 	conf.copymode = 0;		/* copy on write */
 }
 
+GPIOregs *gpioregs;
+ulong *egpioreg;
+
+static void
+gpioinit(void)
+{
+	gpioregs = mapspecial(GPIOREGS, 32);
+	gpioregs->direction = 
+		GPIO_LDD8_o|GPIO_LDD9_o|GPIO_LDD10_o|GPIO_LDD11_o
+		|GPIO_LDD12_o|GPIO_LDD13_o|GPIO_LDD14_o|GPIO_LDD15_o
+		|GPIO_CLK_SET0_o|GPIO_CLK_SET1_o
+		|GPIO_L3_SDA_io|GPIO_L3_MODE_o|GPIO_L3_SCLK_o
+		|GPIO_COM_RTS_o;
+	gpioregs->rising = 0;
+	gpioregs->falling = 0;
+
+	egpioreg = mapspecial(EGPIOREGS, 4);
+}
+
+static ulong egpiosticky;
+
+void
+rs232power(int on)
+{
+	if(on)
+		egpiosticky |= EGPIO_rs232_power;
+	else
+		egpiosticky &= ~EGPIO_rs232_power;
+	*egpioreg = egpiosticky;
+}
+
+void
+irpower(int on)
+{
+	if(on)
+		egpiosticky |= EGPIO_ir_power;
+	else
+		egpiosticky &= ~EGPIO_ir_power;
+	*egpioreg = egpiosticky;
+}
+
+void
+lcdpower(int on)
+{
+	if(on)
+		egpiosticky |= EGPIO_lcd_3v|EGPIO_lcd_ic_power|EGPIO_lcd_5v|EGPIO_lcd_9v;
+	else
+		egpiosticky &= ~(EGPIO_lcd_3v|EGPIO_lcd_ic_power|EGPIO_lcd_5v|EGPIO_lcd_9v);
+	*egpioreg = egpiosticky;
+}

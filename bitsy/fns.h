@@ -17,6 +17,8 @@ void	idle(void);
 #define	idlehands()			/* nothing to do in the runproc */
 void	intrenable(int, void (*)(Ureg*, void*), void*, char*);
 int	iprint(char*, ...);
+void	irpower(int);
+void	lcdpower(int);
 void	mappedIvecEnable(void);
 void	mappedIvecDisable(void);
 void*	mapspecial(ulong, int);
@@ -33,6 +35,7 @@ void	putdac(ulong);
 void	putttb(ulong);
 void	putpid(ulong);
 void	reset(void);
+void	rs232power(int);
 Uart*	uartsetup(PhysUart*, void*, ulong, char*);
 void	sa1100_uartsetup(void);
 void	screeninit(void);
