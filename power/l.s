@@ -1,0 +1,454 @@
+#include "mem.h"
+
+#define SP		R29
+
+#define PROM		(KSEG1+0x1FC00000)
+#define	NOOP		NOR R0,R0
+#define	WAIT		NOOP; NOOP
+
+/*
+ * Boot first processor
+ */
+TEXT	start(SB), $-4
+
+	MOVW	$setR30(SB), R30
+	MOVW	$(CU1|INTR5|INTR4|INTR3|INTR2|INTR1|SW1|SW0), R1
+	MOVW	R1, M(STATUS)
+	WAIT
+
+	MOVW	$(0x1C<<7), R1
+	MOVW	R1, FCR31	/* permit only inexact and underflow */
+	NOOP
+	MOVD	$0.5, F26
+	SUBD	F26, F26, F24
+	ADDD	F26, F26, F28
+	ADDD	F28, F28, F30
+
+	MOVD	F24, F0
+	MOVD	F24, F2
+	MOVD	F24, F4
+	MOVD	F24, F6
+	MOVD	F24, F8
+	MOVD	F24, F10
+	MOVD	F24, F12
+	MOVD	F24, F14
+	MOVD	F24, F16
+	MOVD	F24, F18
+	MOVD	F24, F20
+	MOVD	F24, F22
+
+	MOVW	$MACHADDR, R(MACH)
+	ADDU	$(BY2PG-4), R(MACH), SP
+	MOVW	$0, R(USER)
+	MOVW	R0, 0(R(MACH))
+
+	MOVW	$edata(SB), R1
+	MOVW	$end(SB), R2
+
+clrbss:
+	MOVB	$0, (R1)
+	ADDU	$1, R1
+	BNE	R1, R2, clrbss
+
+	JAL	main(SB)
+	JMP	(R0)
+
+/*
+ * Take first processor into user mode
+ */
+
+TEXT	touser(SB), $-4
+	MOVW	M(STATUS), R1
+	OR	$(KUP|IEP), R1
+	MOVW	R1, M(STATUS)
+	NOOP
+	MOVW	$(USTKTOP-20), SP
+	MOVW	$(UTZERO+32), R26	/* header appears in text */
+	RFE	(R26)
+
+/*
+ * Bring subsequent processors on line
+ */
+TEXT	newstart(SB), $0
+
+	MOVW	$setR30(SB), R30
+	MOVW	$(INTR5|INTR4|INTR3|INTR2|INTR1|SW1|SW0), R1
+	MOVW	R1, M(STATUS)
+	NOOP
+	MOVW	$MACHADDR, R(MACH)
+	MOVB	(MPID+3), R1
+	AND	$7, R1
+	SLL	$PGSHIFT, R1, R2
+	ADDU	R2, R(MACH)
+	ADDU	$(BY2PG-4), R(MACH), SP
+	MOVW	$0, R(USER)
+	MOVW	R1, 0(R(MACH))
+	JAL	online(SB)
+	JMP	(R0)
+
+TEXT	firmware(SB), $0
+
+	MOVW	$(PROM+0x18), R1 /**/
+/*	MOVW	$(PROM+0x00), R1 /**/
+	JMP	(R1)
+
+TEXT	splhi(SB), $0
+
+	MOVW	M(STATUS), R1
+	AND	$~IEC, R1, R2
+	MOVW	R2, M(STATUS)
+	NOOP
+	RET
+
+TEXT	spllo(SB), $0
+
+	MOVW	M(STATUS), R1
+	OR	$IEC, R1, R2
+	MOVW	R2, M(STATUS)
+	NOOP
+	RET
+
+TEXT	splx(SB), $0
+
+	MOVW	0(FP), R1
+	MOVW	M(STATUS), R2
+	AND	$IEC, R1
+	AND	$~IEC, R2
+	OR	R2, R1
+	MOVW	R1, M(STATUS)
+	NOOP
+	RET
+
+TEXT	wbflush(SB), $-4
+
+	MOVW	$WBFLUSH, R1
+	MOVW	0(R1), R1
+	RET
+
+TEXT	setlabel(SB), $0
+
+	MOVW	0(FP), R2
+	MOVW	$0, R1
+	MOVW	R31, 0(R2)
+	MOVW	R29, 4(R2)
+	RET
+
+TEXT	gotolabel(SB), $0
+
+	MOVW	0(FP), R2
+	MOVW	$1, R1
+	MOVW	0(R2), R31
+	MOVW	4(R2), R29
+	RET
+
+TEXT	puttlb(SB), $4
+
+	JAL	splhi(SB)
+	MOVW	0(FP), R2
+	MOVW	4(FP), R3
+	MOVW	R1, 4(SP)
+	MOVW	R2, M(TLBVIRT)
+	MOVW	R3, M(TLBPHYS)
+	NOOP
+	TLBP
+	NOOP
+	MOVW	M(INDEX), R4
+	BGEZ	R4, index
+	TLBWR
+	NOOP
+	JAL	splx(SB)
+	RET
+index:
+	TLBWI
+	NOOP
+	JAL	splx(SB)
+	RET
+
+TEXT	puttlbx(SB), $0
+
+	MOVW	0(FP), R4
+	MOVW	4(FP), R2
+	MOVW	8(FP), R3
+	SLL	$8, R4
+	MOVW	R2, M(TLBVIRT)
+	MOVW	R3, M(TLBPHYS)
+	MOVW	R4, M(INDEX)
+	NOOP
+	TLBWI
+	NOOP
+	RET
+
+TEXT	tlbp(SB), $0
+	TLBP
+	NOOP
+	MOVW	M(INDEX), R1
+	RET
+	
+TEXT	tlbvirt(SB), $0
+	TLBP
+	NOOP
+	MOVW	M(TLBVIRT), R1
+	RET
+	
+
+TEXT	gettlb(SB), $0
+
+	MOVW	0(FP), R3
+	MOVW	4(FP), R4
+	SLL	$8, R3
+	MOVW	R3, M(INDEX)
+	NOOP
+	TLBR
+	NOOP
+	MOVW	M(TLBVIRT), R1
+	MOVW	M(TLBPHYS), R2
+	NOOP
+	MOVW	R1, 0(R4)
+	MOVW	R2, 4(R4)
+	RET
+
+TEXT	gettlbvirt(SB), $0
+
+	MOVW	0(FP), R3
+	SLL	$8, R3
+	MOVW	R3, M(INDEX)
+	NOOP
+	TLBR
+	NOOP
+	MOVW	M(TLBVIRT), R1
+	NOOP
+	RET
+
+TEXT	vector80(SB), $-4
+
+	MOVW	$exception(SB), R26
+	JMP	(R26)
+
+TEXT	exception(SB), $-4
+
+	MOVW	M(STATUS), R26
+	AND	$KUP, R26
+	BEQ	R26, waskernel
+
+wasuser:
+	MOVW	SP, R26
+		/*
+		 * set kernel sp: ureg - ureg* - pc
+		 * done in 2 steps because R30 is not set
+		 * and the loader will make a literal
+		 */
+	MOVW	$((UREGADDR-2*BY2WD) & 0xffff0000), SP
+	OR	$((UREGADDR-2*BY2WD) & 0xffff), SP
+	MOVW	R26, 0x10(SP)			/* user SP */
+	MOVW	R31, 0x28(SP)
+	MOVW	R30, 0x2C(SP)
+	MOVW	M(CAUSE), R26
+	MOVW	R(MACH), 0x3C(SP)
+	MOVW	R(USER), 0x40(SP)
+	AND	$(0xF<<2), R26
+	SUB	$(CSYS<<2), R26
+
+	JAL	saveregs(SB)
+
+	MOVW	$setR30(SB), R30
+	SUBU	$(UREGADDR-2*BY2WD-USERADDR), SP, R(USER)
+	MOVW	$MPID, R1
+	MOVB	3(R1), R1
+	MOVW	$MACHADDR, R(MACH)		/* locn of mach 0 */
+	AND	$7, R1
+	SLL	$PGSHIFT, R1
+	ADDU	R1, R(MACH)			/* add offset for mach # */
+
+	BNE	R26, notsys
+
+	JAL	syscall(SB)
+
+	MOVW	0x28(SP), R31
+	MOVW	0x08(SP), R26
+	MOVW	0x2C(SP), R30
+	MOVW	R26, M(STATUS)
+	NOOP
+	MOVW	0x0C(SP), R26		/* old pc */
+	MOVW	0x10(SP), SP
+	RFE	(R26)
+
+notsys:
+	JAL	trap(SB)
+
+restore:
+	JAL	restregs(SB)
+	MOVW	0x28(SP), R31
+	MOVW	0x2C(SP), R30
+	MOVW	0x3C(SP), R(MACH)
+	MOVW	0x40(SP), R(USER)
+	MOVW	0x10(SP), SP
+	RFE	(R26)
+
+waskernel:
+	MOVW	$1, R26			/* not sys call */
+	MOVW	SP, -0x90(SP)		/* drop this if possible */
+	SUB	$0xA0, SP
+	MOVW	R31, 0x28(SP)
+	JAL	saveregs(SB)
+	JAL	trap(SB)
+	JAL	restregs(SB)
+	MOVW	0x28(SP), R31
+	ADD	$0xA0, SP
+	RFE	(R26)
+
+TEXT	saveregs(SB), $-4
+	MOVW	R1, 0x9C(SP)
+	MOVW	R2, 0x98(SP)
+	ADDU	$8, SP, R1
+	MOVW	R1, 0x04(SP)		/* arg to base of regs */
+	MOVW	M(STATUS), R1
+	MOVW	M(EPC), R2
+	MOVW	R1, 0x08(SP)
+	MOVW	R2, 0x0C(SP)
+
+	BEQ	R26, return		/* sys call, don't save */
+
+	MOVW	M(CAUSE), R1
+	MOVW	M(BADVADDR), R2
+	MOVW	R1, 0x14(SP)
+	MOVW	M(TLBVIRT), R1
+	MOVW	R2, 0x18(SP)
+	MOVW	R1, 0x1C(SP)
+	MOVW	HI, R1
+	MOVW	LO, R2
+	MOVW	R1, 0x20(SP)
+	MOVW	R2, 0x24(SP)
+					/* LINK,SB,SP missing */
+	MOVW	R28, 0x30(SP)
+					/* R27, R26 not saved */
+					/* R25, R24 missing */
+	MOVW	R23, 0x44(SP)
+	MOVW	R22, 0x48(SP)
+	MOVW	R21, 0x4C(SP)
+	MOVW	R20, 0x50(SP)
+	MOVW	R19, 0x54(SP)
+	MOVW	R18, 0x58(SP)
+	MOVW	R17, 0x5C(SP)
+	MOVW	R16, 0x60(SP)
+	MOVW	R15, 0x64(SP)
+	MOVW	R14, 0x68(SP)
+	MOVW	R13, 0x6C(SP)
+	MOVW	R12, 0x70(SP)
+	MOVW	R11, 0x74(SP)
+	MOVW	R10, 0x78(SP)
+	MOVW	R9, 0x7C(SP)
+	MOVW	R8, 0x80(SP)
+	MOVW	R7, 0x84(SP)
+	MOVW	R6, 0x88(SP)
+	MOVW	R5, 0x8C(SP)
+	MOVW	R4, 0x90(SP)
+	MOVW	R3, 0x94(SP)
+return:
+	RET
+
+TEXT	restregs(SB), $-4
+					/* LINK,SB,SP missing */
+	MOVW	0x30(SP), R28
+					/* R27, R26 not saved */
+					/* R25, R24 missing */
+	MOVW	0x44(SP), R23
+	MOVW	0x48(SP), R22
+	MOVW	0x4C(SP), R21
+	MOVW	0x50(SP), R20
+	MOVW	0x54(SP), R19
+	MOVW	0x58(SP), R18
+	MOVW	0x5C(SP), R17
+	MOVW	0x60(SP), R16
+	MOVW	0x64(SP), R15
+	MOVW	0x68(SP), R14
+	MOVW	0x6C(SP), R13
+	MOVW	0x70(SP), R12
+	MOVW	0x74(SP), R11
+	MOVW	0x78(SP), R10
+	MOVW	0x7C(SP), R9
+	MOVW	0x80(SP), R8
+	MOVW	0x84(SP), R7
+	MOVW	0x88(SP), R6
+	MOVW	0x8C(SP), R5
+	MOVW	0x90(SP), R4
+	MOVW	0x94(SP), R3
+	MOVW	0x24(SP), R2
+	MOVW	0x20(SP), R1
+	MOVW	R2, LO
+	MOVW	R1, HI
+	MOVW	0x08(SP), R1
+	MOVW	0x98(SP), R2
+	MOVW	R1, M(STATUS)
+	NOOP
+	MOVW	0x9C(SP), R1
+	MOVW	0x0C(SP), R26		/* old pc */
+	RET
+
+TEXT	rfnote(SB), $0
+	MOVW	0(FP), R26		/* 1st arg is &uregpointer */
+	SUBU	$(BY2WD), R26, SP	/* pc hole */
+	BNE	R26, restore
+	
+
+TEXT	clrfpintr(SB), $0
+	MOVW	FCR31, R1
+	MOVW	R1, R2
+	AND	$~(0x3F<<12), R2
+	MOVW	R2, FCR31
+	RET
+
+TEXT	savefpregs(SB), $0
+	MOVW	M(STATUS), R3
+	MOVW	0(FP), R1
+	MOVW	FCR31, R2
+
+	MOVD	F0, 0x00(R1)
+	MOVD	F2, 0x08(R1)
+	MOVD	F4, 0x10(R1)
+	MOVD	F6, 0x18(R1)
+	MOVD	F8, 0x20(R1)
+	MOVD	F10, 0x28(R1)
+	MOVD	F12, 0x30(R1)
+	MOVD	F14, 0x38(R1)
+	MOVD	F16, 0x40(R1)
+	MOVD	F18, 0x48(R1)
+	MOVD	F20, 0x50(R1)
+	MOVD	F22, 0x58(R1)
+	MOVD	F24, 0x60(R1)
+	MOVD	F26, 0x68(R1)
+	MOVD	F28, 0x70(R1)
+	MOVD	F30, 0x78(R1)
+
+	MOVW	R2, 0x80(R1)
+	AND	$~CU1, R3
+	MOVW	R3, M(STATUS)
+	RET
+
+TEXT	restfpregs(SB), $0
+	MOVW	M(STATUS), R3
+	MOVW	0(FP), R1
+	OR	$CU1, R3
+	MOVW	R3, M(STATUS)
+	MOVW	0x80(R1), R2
+
+	MOVD	0x00(R1), F0
+	MOVD	0x08(R1), F2
+	MOVD	0x10(R1), F4
+	MOVD	0x18(R1), F6
+	MOVD	0x20(R1), F8
+	MOVD	0x28(R1), F10
+	MOVD	0x30(R1), F12
+	MOVD	0x38(R1), F14
+	MOVD	0x40(R1), F16
+	MOVD	0x48(R1), F18
+	MOVD	0x50(R1), F20
+	MOVD	0x58(R1), F22
+	MOVD	0x60(R1), F24
+	MOVD	0x68(R1), F26
+	MOVD	0x70(R1), F28
+	MOVD	0x78(R1), F30
+
+	MOVW	R2, FCR31
+	AND	$~CU1, R3
+	MOVW	R3, M(STATUS)
+	RET
