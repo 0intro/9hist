@@ -43,6 +43,7 @@ void	lanceintr(void);
 void	lancesetup(Lance*);
 void	lancetoggle(void);
 void	mmuinit(void);
+#define	mmunewpage(x)
 void	mousebuttons(int);
 void	printinit(void);
 #define	procrestore(p)

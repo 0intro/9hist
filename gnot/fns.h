@@ -26,6 +26,7 @@ KMap*	kmap(Page*);
 void	kmapinit(void);
 void	kunmap(KMap*);
 void	mmuinit(void);
+#define	mmunewpage(x)
 void	mousebuttons(int);
 void	mouseclock(void);
 int	portprobe(char*, int, int, int, long);

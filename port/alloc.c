@@ -277,7 +277,7 @@ good:
 		unlock(&arena);
 
 		if(bp->magic != 0)
-			panic("malloc");
+			panic("malloc %lux", bp->magic);
 
 		bp->magic = Magic2n;
 
@@ -365,12 +365,12 @@ free(void *ptr)
 	Bucket *bp, **l;
 
 	bp = (Bucket*)((ulong)ptr - bdatoff);
+	l = &arena.btab[bp->size];
+
+	lock(&arena);
 	if(bp->magic != Magic2n)
 		panic("free");
-
 	bp->magic = 0;
-	lock(&arena);
-	l = &arena.btab[bp->size];
 	bp->next = *l;
 	*l = bp;
 	unlock(&arena);

@@ -40,6 +40,7 @@ void*	l1update(uchar*, uchar*, long);
 void*	l2update(uchar*, uchar*, long);
 void	mathinit(void);
 void	mmuinit(void);
+#define	mmunewpage(x)
 int	modem(int);
 void	mousectl(char*);
 uchar	nvramread(int);

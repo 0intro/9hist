@@ -39,6 +39,7 @@ void	lanceparity(void);
 void	lancesetup(Lance*);
 void	launchinit(void);
 void	launch(int);
+#define	mmunewpage(x)
 int	muxlock(int*, int*);
 void	newstart(void);
 int	newtlbpid(Proc*);

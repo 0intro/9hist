@@ -237,11 +237,14 @@ urpclose(Queue *q)
 	/*
 	 *  free all staged but unsent messages
 	 */
-	for(i = 0; i < 7; i++)
+	for(i = 0; i < 7; i++){
+		qlock(&up->xl[i]);
 		if(up->xb[i]){
 			freeb(up->xb[i]);
 			up->xb[i] = 0;
 		}
+		qunlock(&up->xl[i]);
+	}
 	qunlock(&up->xmit);
 
 	qlock(up);
@@ -890,8 +893,6 @@ rcvack(Urp *up, int msg)
 			qlock(&up->xl[i]);
 			if(up->xb[i])
 				freeb(up->xb[i]);
-			else
-				urpvomit("rcvack", up);
 			up->xb[i] = 0;
 			qunlock(&up->xl[i]);
 		}

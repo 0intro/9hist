@@ -122,6 +122,7 @@ retry:
 	p->modref = 0;
 	for(i = 0; i < MAXMACH; i++)
 		p->cachectl[i] = PG_NOFLUSH;
+	mmunewpage(p);
 	unlock(p);
 
 	if(clear){
@@ -248,6 +249,7 @@ duppage(Page *p)				/* Always call with p locked */
 	uncachepage(np);
 	np->va = p->va;
 	np->daddr = p->daddr;
+	mmunewpage(np);
 	copypage(p, np);
 	cachepage(np, p->image);
 	unlock(np);
