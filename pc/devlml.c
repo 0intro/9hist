@@ -8,10 +8,18 @@
 
 #include	"devlml.h"
 
-#define DBGREGS 0x1
-#define DBGREAD 0x2
-#define DBGWRIT 0x4
-int debug = DBGREAD|DBGWRIT;
+static void *		pciPhysBaseAddr;
+static ulong		pciBaseAddr;
+static Pcidev *		pcidev;
+
+#define DBGREGS 0x01
+#define DBGREAD 0x02
+#define DBGWRIT 0x04
+#define DBG819	0x08
+#define DBGINTR	0x10
+#define DBGINTS	0x20
+
+int debug = DBGREAD;
 
 // Lml 22 driver
 
@@ -23,6 +31,7 @@ struct {
 
 enum{
 	Qdir,
+	Q060,
 	Q819,
 	Q856,
 	Qreg,
@@ -34,6 +43,7 @@ enum{
 
 static Dirtab lmldir[]={
 //	 name,		 qid,		size,		mode
+	"lml060",	{Q060},		0x400,		0644,
 	"lml819",	{Q819},		0,		0644,
 	"lml856",	{Q856},		0,		0644,
 	"lmlreg",	{Qreg},		0x400,		0644,
@@ -45,6 +55,13 @@ static Dirtab lmldir[]={
 
 CodeData *	codeData;
 
+typedef enum {
+	New,
+	Header,
+	Body,
+	Error,
+} State;
+
 int		currentBuffer;
 int		currentBufferLength;
 void *		currentBufferPtr;
@@ -55,6 +72,7 @@ int		bufferPrepared;
 int		hdrPos;
 int		nopens;
 uchar		q856[3];
+State		state = New;
 
 static FrameHeader frameHeader = {
 	MRK_SOI, MRK_APP3, (sizeof(FrameHeader)-4) << 8,
@@ -128,61 +146,59 @@ i2c_pause(void) {
 static void
 i2c_waitscl(void) {
 	int i;
-	ulong a;
 
-	for(i=0;;i++) {
-		a = readl(pciBaseAddr + ZR36057_I2C_BUS);
-		if (a & ZR36057_I2C_SCL) break;
-		if (i>I2C_TIMEOUT) error(Eio);
-	}
+	for (i = 0; i < I2C_TIMEOUT; i++)
+		if (readl(pciBaseAddr + I2C_BUS) & I2C_SCL)
+			return;
+	error(Eio);
 }
 
 static void
 i2c_start(void) {
 
-	writel(ZR36057_I2C_SCL|ZR36057_I2C_SDA, pciBaseAddr + ZR36057_I2C_BUS);
+	writel(I2C_SCL|I2C_SDA, pciBaseAddr + I2C_BUS);
 	i2c_waitscl();
 	i2c_pause();
 
-	writel(ZR36057_I2C_SCL, pciBaseAddr + ZR36057_I2C_BUS);
+	writel(I2C_SCL, pciBaseAddr + I2C_BUS);
 	i2c_pause();
 
-	writel(0, pciBaseAddr + ZR36057_I2C_BUS);
+	writel(0, pciBaseAddr + I2C_BUS);
 	i2c_pause();
 }
 
 static void
 i2c_stop(void) {
 	// the clock should already be low, make sure data is
-	writel(0, pciBaseAddr + ZR36057_I2C_BUS);
+	writel(0, pciBaseAddr + I2C_BUS);
 	i2c_pause();
 
 	// set clock high and wait for device to catch up
-	writel(ZR36057_I2C_SCL, pciBaseAddr + ZR36057_I2C_BUS);
+	writel(I2C_SCL, pciBaseAddr + I2C_BUS);
 	i2c_waitscl();
 	i2c_pause();
 
 	// set the data high to indicate the stop bit
-	writel(ZR36057_I2C_SCL|ZR36057_I2C_SDA, pciBaseAddr + ZR36057_I2C_BUS);
+	writel(I2C_SCL|I2C_SDA, pciBaseAddr + I2C_BUS);
 	i2c_pause();
 }
 
 static void i2c_wrbit(int bit) {
 	if (bit){
-		writel(ZR36057_I2C_SDA, pciBaseAddr + ZR36057_I2C_BUS); // set data
+		writel(I2C_SDA, pciBaseAddr + I2C_BUS); // set data
 		i2c_pause();
-		writel(ZR36057_I2C_SDA|ZR36057_I2C_SCL, pciBaseAddr + ZR36057_I2C_BUS);
+		writel(I2C_SDA|I2C_SCL, pciBaseAddr + I2C_BUS);
 		i2c_waitscl();
 		i2c_pause();
-		writel(ZR36057_I2C_SDA, pciBaseAddr + ZR36057_I2C_BUS);
+		writel(I2C_SDA, pciBaseAddr + I2C_BUS);
 		i2c_pause();
 	} else {
-		writel(0, pciBaseAddr + ZR36057_I2C_BUS); // clr data
+		writel(0, pciBaseAddr + I2C_BUS); // clr data
 		i2c_pause();
-		writel(ZR36057_I2C_SCL, pciBaseAddr + ZR36057_I2C_BUS);
+		writel(I2C_SCL, pciBaseAddr + I2C_BUS);
 		i2c_waitscl();
 		i2c_pause();
-		writel(0, pciBaseAddr + ZR36057_I2C_BUS);
+		writel(0, pciBaseAddr + I2C_BUS);
 		i2c_pause();
 	}
 }
@@ -193,24 +209,24 @@ i2c_rdbit(void) {
 	// the clk line should be low
 
 	// ensure we are not asserting the data line
-	writel(ZR36057_I2C_SDA, pciBaseAddr + ZR36057_I2C_BUS);
+	writel(I2C_SDA, pciBaseAddr + I2C_BUS);
 	i2c_pause();
 
 	// set the clock high and wait for device to catch up
-	writel(ZR36057_I2C_SDA|ZR36057_I2C_SCL, pciBaseAddr + ZR36057_I2C_BUS);
+	writel(I2C_SDA|I2C_SCL, pciBaseAddr + I2C_BUS);
 	i2c_waitscl();
 	i2c_pause();
 
 	// the data line should be a valid bit
-	bit = readl(pciBaseAddr+ZR36057_I2C_BUS);
-	if (bit & ZR36057_I2C_SDA){
+	bit = readl(pciBaseAddr+I2C_BUS);
+	if (bit & I2C_SDA){
 		bit = 1;
 	} else {
 		bit = 0;
 	}
 
 	// set the clock low to indicate end of cycle
-	writel(ZR36057_I2C_SDA, pciBaseAddr + ZR36057_I2C_BUS);
+	writel(I2C_SDA, pciBaseAddr + I2C_BUS);
 	i2c_pause();
 
 	return bit;
@@ -222,7 +238,7 @@ i2c_rdbyte(uchar *v) {
 	uchar res;
 
 	res = 0;
-	for (i=0;i<8;i++){
+	for (i = 0; i < 8; i++) {
 		res  = res << 1;
 		res += i2c_rdbit();
 	}
@@ -238,7 +254,7 @@ static int
 i2c_wrbyte(uchar v) {
 	int i, ack;
 
-	for (i=0;i<8;i++){
+	for (i = 0; i < 8; i++) {
 		i2c_wrbit(v & 0x80);
 		v = v << 1;
 	}
@@ -261,7 +277,7 @@ i2c_write_bytes(uchar addr, uchar sub, uchar *bytes, long num) {
 	ack = i2c_wrbyte(sub);
 	if (ack == 1) error(Eio);
 
-	for(i=0;i<num;i+=1){
+	for (i = 0; i < num; i++) {
 		ack = i2c_wrbyte(bytes[i]);
 		if (ack == 1) error(Eio);
 	}
@@ -328,6 +344,100 @@ i2c_wr8(uchar addr, uchar sub, uchar msb) {
 	return 1;
 }
 
+/*
+ * The following mapping applies for the guests in the LML33
+ *
+ * Guest        Device
+ *   0          zr36060
+ *              uses subaddress GADR[0..1]
+ *   1          zr36060 START#
+ *   2          -
+ *   3          zr36060 RESET#
+ *   4          -
+ *   5          -
+ *   6          -
+ *   7          -
+ */
+
+// post_idle waits for the guest bus to become free
+static int
+post_idle(void) {
+	ulong a;
+	int timeout;
+
+	for (timeout = 0; timeout < GUEST_TIMEOUT; timeout++){
+		a = readl(pciBaseAddr + POST_OFFICE);
+		if ((a & POST_PEND) == 0) 
+			return a;
+	}
+	pprint("post_idle timeout\n");
+	return -1;
+}
+
+// post_write writes a byte to a guest using postoffice mechanism
+int
+post_write(unsigned int guest, unsigned int reg, unsigned int v) {
+	int w;
+
+	// wait for postoffice not busy
+	post_idle();
+
+	// Trim the values, just in case
+	guest &= 0x07;
+	reg   &= 0x07;
+	v     &= 0xFF;
+
+	// write postoffice operation
+	w = POST_DIR | (guest<<20) | (reg<<16) | v;
+	writel(w, pciBaseAddr + POST_OFFICE);
+
+	// wait for postoffice not busy
+	return post_idle() == -1;
+}
+
+// post_read reads a byte from a guest using postoffice mechanism
+int
+post_read(int guest, int reg) {
+	int w;
+
+	// wait for postoffice not busy
+	post_idle();
+
+	// Trim the values, just in case
+	guest &= 0x07;
+	reg   &= 0x07;
+
+	// write postoffice operation
+	w = (guest<<20) + (reg<<16);
+	writel(w, pciBaseAddr + POST_OFFICE);
+
+	// wait for postoffice not busy, get result
+	w = post_idle();
+
+	// decide if read went ok
+	if (w == -1) return -1;
+
+	return w & 0xFF;
+}
+
+static int
+zr060_write(int reg, int v) {
+  
+	if (post_write(GID060, 1, (reg>>8) & 0x03)
+	 || post_write(GID060, 2, reg & 0xff)
+	 || post_write(GID060, 3, v))
+		return -1;
+}
+
+static int
+zr060_read(int reg) {
+  
+	if (post_write(GID060, 1, (reg>>8) & 0x03)
+	 || post_write(GID060, 2, reg    & 0xff))
+		return -1;
+	return post_read(GID060, 3);
+}
+
 static int
 prepareBuffer(int i) {
 	if (i >= 0 && i < NBUF && (codeData->statCom[i] & STAT_BIT)) {
@@ -353,16 +463,91 @@ getProcessedBuffer(void){
 }
 
 static int
-getBuffer(int i, void** bufferPtr, int* frameNo) {
+getBuffer(int i, int* frameNo) {
 
 	if(codeData->statCom[i] & STAT_BIT) {
-		*bufferPtr = (void*)(&codeData->frag[i]);
 		*frameNo = codeData->statCom[i] >> 24;
 		return (codeData->statCom[i] & 0x00FFFFFF) >> 1;
 	} else
 		return -1;
 }
 
+static long
+vread(Chan *, void *va, long nbytes, vlong) {
+	static int bufpos;
+	static char *bufptr;
+	static int curbuf;
+	static int fragsize;
+	static int frameno;
+	static int frameprev;
+	char *p;
+	long count = nbytes;
+	int i;
+	vlong thetime;
+
+	p = (char *)va;
+	while (count > 0) {
+		switch (state) {
+		case New:
+			while((curbuf = getProcessedBuffer()) == -1)
+				sleep(&sleeper, return0, 0);
+			fragsize = getBuffer(curbuf, &frameno);
+			if (debug & DBGREAD)
+				pprint("devlml: got read buf %d, fr %d, size %d\n",
+					curbuf, frameNo, fragsize);
+			if(frameno != (frameprev + 1) % 256)
+				pprint("Frames out of sequence: %d %d\n",
+					frameno, frameprev);
+			frameprev = frameno;
+			// Fill in APP marker fields here
+			thetime = todget();
+			frameHeader.sec = (ulong)(thetime / 1000000000LL);
+			frameHeader.usec = (ulong)(thetime % 1000000000LL) / 1000;
+			frameHeader.frameSize = fragsize - 2 + sizeof(FrameHeader);
+			frameHeader.frameSeqNo++;
+			frameHeader.frameNo = frameno;
+			bufpos = 0;
+			state = Body;
+			bufptr = (char *)(&frameHeader);
+			// Fall through
+		case Header:
+			i = sizeof(FrameHeader) - bufpos;
+			if (count <= i) {
+				memmove(p, bufptr, count);
+				bufptr += count;
+				bufpos += count;
+				return nbytes;
+			}
+			memmove(p, bufptr, i);
+			count -= i;
+			p += i;
+			bufpos = 2;
+			bufptr = codeData->frag[curbuf].fb;
+			state = Body;
+			// Fall through
+		case Body:
+			i = fragsize - bufpos;
+			if (count <= i) {
+				memmove(p, bufptr, count);
+				bufptr += count;
+				bufpos += count;
+				return nbytes;
+			}
+			memmove(p, bufptr, i);
+			count -= i;
+			p += i;
+
+			// Allow reuse of current buffer
+			prepareBuffer(curbuf);
+			state = New;
+			break;
+		case Error:
+			return 0;
+		}
+	}
+}
+
+/*
 static long
 vread(Chan *, void *va, long count, vlong pos) {
 	int prevFrame;
@@ -404,14 +589,14 @@ vread(Chan *, void *va, long count, vlong pos) {
 			sleep(&sleeper, return0, 0);
 		if(debug&DBGREAD)
 			pprint("devlml::wokeup\n");
-		currentBufferLength = getBuffer(currentBuffer,
-			&currentBufferPtr, &frameNo);
+		currentBufferLength = getBuffer(currentBuffer, &frameNo);
+		currentBufferPtr = (void*)(&codeData->frag[currentBuffer]);
 
 		pos = 0; // ??????????????
 
-		// print("getBufffer %d -> %d 0x%x %d\n",currentBuffer, currentBufferLength, currentBufferPtr, frameNo);
+		// pprint("getBufffer %d -> %d 0x%x %d\n",currentBuffer, currentBufferLength, currentBufferPtr, frameNo);
 		if(frameNo != (prevFrame + 1) % 256)
-			print("Frames out of sequence: %d %d\n", prevFrame, frameNo);
+			pprint("Frames out of sequence: %d %d\n", prevFrame, frameNo);
 		// Fill in APP marker fields here
 		thetime = todget();
 		frameHeader.sec = (ulong)(thetime / 1000000000LL);
@@ -447,92 +632,92 @@ vread(Chan *, void *va, long count, vlong pos) {
 	//pr_debug&DBGREGS("return %d %d\n",cpcount,retcount);
 	return retcount;
 }
+*/
 
 static long
-vwrite(Chan *, void *va, long count, vlong pos) {
-	//  how much bytes left to transfer for the header
-	int hdrLeft;
-	char *buf = va;
+vwrite(Chan *, void *va, long nbytes, vlong) {
+	static int bufpos;
+	static char *bufptr;
+	static int curbuf;
+	static int fragsize;
+	char *p;
+	long count = nbytes;
+	int i;
 
-	//print("devlml::vwrite() count=0x%x pos=0x%x\n", count, pos);
-
-	// We just started writing, not into the header copy
-	if(pos==0 && hdrPos == -1) {
-		 currentBuffer=-1;
-		 currentBufferLength=0;
-		 frameNo=-1;
-		 bufferPrepared = 0;
-	}
-
-	// We need next buffer to fill (either because we're done with the
-	// current buffer) of because we're just beginning (but not into the header)
-	if (hdrPos == -1 && pos >= currentBufferLength) {
-		while((currentBuffer = getProcessedBuffer()) == -1)
-			sleep(&sleeper, return0, 0);
-		// print("current buffer %d\n",currentBuffer);
-
-		getBuffer(currentBuffer, &currentBufferPtr, &frameNo);
-		// We need to receive the header now
-		hdrPos = 0;
-	}
-	
-	// We're into the header processing 
-	if (hdrPos != -1) {
-		// Calculate how many bytes we need to receive to fill the header
-		hdrLeft = sizeof(FrameHeader) - hdrPos;
-	
-		// If we complete or go over the header with this count
-		if (count >= hdrLeft) {
-			// Adjust count of bytes that remain to be copied into video buffer
-			count = count - hdrLeft; 
-			memmove((char*)&frameHeader + hdrPos, buf, hdrLeft);
-			// Make sure we have a standard LML33 header
-			if (frameHeader.mrkSOI == MRK_SOI
-			 && frameHeader.mrkAPP3 == MRK_APP3
-			 && strcmp(frameHeader.nm, APP_NAME) == 0) {
-				//print("Starting new buffer len=0x%x frame=%d\n", frameHeader.frameSize, frameHeader.frameSeqNo);
-				// Obtain values we need for playback process from the header
-				currentBufferLength = frameHeader.frameSize;
-			} else if (singleFrame) {
-				currentBufferLength = FRAGSIZE;
-			} else {
-				// We MUST have header for motion video decompression
-				print("No frame size (APP3 marker) in MJPEG file\n");
-				error(Eio);
+	p = (char *)va;
+	while (count > 0) {
+		switch (state) {
+		case New:
+			while((curbuf = getProcessedBuffer()) == -1) {
+				if (debug&DBGWRIT)
+					pprint("devlml::sleep\n");
+				sleep(&sleeper, return0, 0);
 			}
-			// Finish header processing
-			hdrPos = -1;
-			// Copy the header into the playback buffer
-			memmove(currentBufferPtr, (char*)&frameHeader, sizeof(FrameHeader));
-			// And set position just behind header for playback buffer write
-			pos = sizeof(FrameHeader);
-		} else {
-			memmove((char*)&frameHeader + hdrPos, buf, count);
-			hdrPos += count;
-			return count;
+			if (debug&DBGWRIT)
+				pprint("current buffer %d\n", curbuf);
+			bufptr = codeData->frag[curbuf].fb;
+			bufpos = 0;
+			state = Header;
+			// Fall through
+		case Header:
+			if (count < sizeof(FrameHeader) - bufpos) {
+				memmove(bufptr, p, count);
+				bufptr += count;
+				bufpos += count;
+				return nbytes;
+			}
+			// Fill remainder of header
+			i = sizeof(FrameHeader) - bufpos;
+			memmove(bufptr, p, i);
+			bufptr += i;
+			bufpos += i;
+			p += i;
+			count -= i;
+			// verify header
+			if (codeData->frag[curbuf].fh.mrkSOI != MRK_SOI
+			 || codeData->frag[curbuf].fh.mrkAPP3 != MRK_APP3
+			 || strcmp(codeData->frag[curbuf].fh.nm, APP_NAME)) {
+				// Header is bad
+				pprint("devlml: header error: 0x%.4ux, 0x%.4ux, `%.4s'\n",
+					codeData->frag[curbuf].fh.mrkSOI,
+					codeData->frag[curbuf].fh.mrkAPP3,
+					codeData->frag[curbuf].fh.nm);
+				state = Error;
+				return p - (char *)va;
+			}
+			fragsize = codeData->frag[curbuf].fh.frameSize;
+			if (fragsize <= sizeof(FrameHeader)
+			 || fragsize  > sizeof(Fragment)) {
+				pprint("devlml: frame size error: 0x%.8ux\n",
+					fragsize);
+				state = Error;
+				return p - (char *)va;
+			}
+			state = Body;
+			// Fall through
+		case Body:
+			if (count < fragsize - bufpos) {
+				memmove(bufptr, p, count);
+				bufptr += count;
+				bufpos += count;
+				return nbytes;
+			}
+			i = fragsize - bufpos;
+			memmove(bufptr, p, i);
+			bufptr += i;
+			bufpos += i;
+			p += i;
+			count -= i;
+			// We have written the frame, time to display it
+			i = prepareBuffer(curbuf);
+			if (debug&DBGWRIT)
+				pprint("Sending buffer %d: %d\n", curbuf, i);
+			state = New;
+			break;
+		case Error:
+			return 0;
 		}
-	} else
-		hdrLeft = 0;
-
-	if(count + pos > currentBufferLength) {
-		count = currentBufferLength - pos;
 	}
-
-	memmove((char *)currentBufferPtr + pos, buf + hdrLeft, count);
-
-	pos += count;
-	// print("return 0x%x 0x%x\n",pos,count);
-
-	// Now is the right moment to initiate playback of the frame (if it's full)
-	if(pos >= currentBufferLength) {
-		// We have written the frame, time to display it
-		//print("Passing written buffer to 067\n");
-		prepareBuffer(currentBuffer);
-		bufferPrepared = 1;
-	}
-	//print("return 0x%lx 0x%x 0x%x 0x%x\n",pos,count,hdrLeft+count,currentBufferLength);
-
-	return hdrLeft + count;
 }
 
 static void lmlintr(Ureg *, void *);
@@ -558,7 +743,7 @@ lmlreset(void)
 
 	// Get access to DMA memory buffer
 	memset(codeData, 0xAA, sizeof(CodeData));
-	for(i = 0; i < NBUF; i++) {
+	for (i = 0; i < NBUF; i++) {
 		codeData->statCom[i] = PADDR(&(codeData->fragdesc[i]));
 		codeData->fragdesc[i].addr = PADDR(&(codeData->frag[i]));
 		// Length is in double words, in position 1..20
@@ -619,6 +804,7 @@ lmlopen(Chan *c, int omode) {
 
 	c->aux = 0;
 	switch(c->qid.path){
+	case Q060:
 	case Q819:
 	case Q856:
 	case Qreg:
@@ -637,6 +823,7 @@ lmlopen(Chan *c, int omode) {
 		frameNo = 0;
 		bufferPrepared = 0;
 		hdrPos = -1;
+		state = New;
 
 		// allow one open total for these two
 		break;
@@ -648,6 +835,7 @@ static void
 lmlclose(Chan *c) {
 
 	switch(c->qid.path){
+	case Q060:
 	case Q819:
 	case Q856:
 	case Qreg:
@@ -673,6 +861,14 @@ lmlread(Chan *c, void *va, long n, vlong voff) {
 	case Qdir:
 		return devdirread(c, (char *)buf, n, lmldir, nelem(lmldir), devgen);
 
+	case Q060:
+		if (off < 0 || off + n > 0x400)
+			return 0;
+		for (i = 0; i < n; i++) {
+			if ((d = zr060_read(off + i)) < 0) break;
+			*buf++ = d;
+		}
+		return i;
 	case Q819:
 		if (off < 0 || off + n > 0x20)
 			return 0;
@@ -767,11 +963,18 @@ lmlwrite(Chan *c, void *va, long n, vlong voff) {
 	case Qdir:
 		error(Eperm);
 
+	case Q060:
+		if (off < 0 || off + n > 0x400)
+			return 0;
+		for (i = 0; i < n; i++) {
+			if (zr060_write(off + i, *buf++) < 0) break;
+		}
+		return i;
 	case Q819:
 		if (off < 0 || off + n >= 0x20)
 			return 0;
-		for (i = n; i > 0; i--)
-			if (i2c_wr8(BT819Addr, off++, *buf++) == 0)
+		for (i = 0; i < n; i++)
+			if (i2c_wr8(BT819Addr, off + i, *buf++) == 0)
 				break;
 		return i;
 	case Q856:
@@ -862,16 +1065,17 @@ Dev lmldevtab = {
 
 static void
 lmlintr(Ureg *, void *) {
-	ulong flags = readl(pciBaseAddr+ZR36057_INTR_STAT);
+	static count;
+	ulong flags = readl(pciBaseAddr+INTR_STAT);
 	
-	if(debug&(DBGREAD|DBGWRIT))
+	if(debug&(DBGINTR))
 		print("MjpgDrv_intrHandler stat=0x%.8lux\n", flags);
 
 	// Reset all interrupts from 067
-	writel(0xff000000, pciBaseAddr + ZR36057_INTR_STAT);
+	writel(0xff000000, pciBaseAddr + INTR_STAT);
 
-	if(flags & ZR36057_INTR_JPEGREP) {
-		if(debug&(DBGREAD|DBGWRIT))
+	if(flags & INTR_JPEGREP) {
+		if ((debug&DBGINTR) || ((debug&DBGINTS) && (count++ % 128) == 0))
 			print("MjpgDrv_intrHandler wakeup\n");
 		wakeup(&sleeper);
 	}

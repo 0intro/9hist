@@ -36,12 +36,12 @@
 #define PAGES 32
 
 // The following are the datastructures needed by the device.
-#define ZR36057_I2C_BUS		0x044
-// which bit of ZR36057_I2C_BUS is which
-#define ZR36057_I2C_SCL		1
-#define ZR36057_I2C_SDA		2
-#define ZR36057_INTR_JPEGREP	0x08000000
-#define ZR36057_INTR_STAT	0x03c
+#define I2C_BUS		0x044
+// which bit of I2C_BUS is which
+#define I2C_SCL		1
+#define I2C_SDA		2
+#define INTR_JPEGREP	0x08000000
+#define INTR_STAT	0x03c
 
 // A Device records the properties of the various card types supported.
 typedef struct {
@@ -67,17 +67,35 @@ typedef struct {
 #define FRAGM_FINAL_B 1
 #define STAT_BIT 1
 
-typedef struct FrameHeader		FrameHeader;
-typedef struct MjpgDrv			MjpgDrv;
-typedef struct Fragment			Fragment;
-typedef struct FragmentTable		FragmentTable;
-typedef struct CodeData			CodeData;
-typedef struct ML33Board		LML33Board;
+typedef struct	FrameHeader		FrameHeader;
+typedef struct	MjpgDrv			MjpgDrv;
+typedef union	Fragment		Fragment;
+typedef struct	FragmentTable		FragmentTable;
+typedef struct	CodeData		CodeData;
+typedef struct	ML33Board		LML33Board;
+
+//If we're on the little endian architecture, then 0xFF, 0xD8 byte sequence is
+#define MRK_SOI		0xD8FF
+#define MRK_APP3	0xE3FF
+#define APP_NAME	"LML"
+
+struct FrameHeader {	// Don't modify this struct, used by h/w
+	ushort mrkSOI;
+	ushort mrkAPP3;
+	ushort lenAPP3;
+	char nm[4];
+	ushort frameNo;
+	ulong sec;
+	ulong usec;
+	ulong frameSize;
+	ulong frameSeqNo;
+};
 
 #define FRAGSIZE (MB/NBUF)
 
-struct Fragment {
-	uchar	fragbytes[FRAGSIZE];
+union Fragment {
+	FrameHeader	fh;
+	char		fb[FRAGSIZE];
 };
 
 struct FragmentTable {	// Don't modify this struct, used by h/w
@@ -91,24 +109,9 @@ struct CodeData {	// Don't modify this struct, used by h/w
 	Fragment	frag[4];
 };
 
-static void *		pciPhysBaseAddr;
-static ulong		pciBaseAddr;
-static Pcidev *		pcidev;
+#define POST_OFFICE		0x200
+#define POST_PEND		0x02000000
+#define POST_TIME		0x01000000
+#define POST_DIR		0x00800000
 
-//If we're on the little endian architecture, then 0xFF, 0xD8 byte sequence is
-#define MRK_SOI		0xD8FF
-#define MRK_APP3	0xE3FF
-#define APP_NAME	"LML"
-
-struct FrameHeader	// Don't modify this struct, used by h/w
-{
-	short mrkSOI;
-	short mrkAPP3;
-	short lenAPP3;
-	char nm[4];
-	short frameNo;
-	ulong sec;
-	ulong usec;
-	ulong frameSize;
-	ulong frameSeqNo;
-};
+#define GID060	0
