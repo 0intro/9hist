@@ -11,9 +11,11 @@
 
 enum {
 	TypeDA		= 0x00,		/* Direct Access */
+	TypeSA		= 0x01,		/* Sequential Access */
 	TypeWO		= 0x04,		/* Worm */
 	TypeCD		= 0x05,		/* CD-ROM */
 	TypeMO		= 0x07,		/* rewriteable Magneto-Optical */
+	TYpeMC		= 0x08,		/* Medium Changer */
 };
 
 enum
@@ -59,7 +61,7 @@ static	void	sdrdpart(Disk*);
 static	long	sdio(Chan*, int, char*, ulong, ulong);
 
 static int types[] = {
-	TypeDA, TypeWO, TypeCD, TypeMO,
+	TypeDA, TypeCD, TypeMO,
 	-1,
 };
 
@@ -109,14 +111,16 @@ sdinit(void)
 		if(dev < 0)
 			break;
 
-		if(scsistart(d->t, 0, 1) != STok)
-			continue;
+		if(scsitest(d->t, 0) < 0)
+			scsireqsense(d->t, 0, 0);
+		if(scsistart(d->t, 0, 1) < 0)
+			scsireqsense(d->t, 0, 0);
+print("sd1|");
 
 		/* Search for other lun's */
 		for(i = 0; i < Nlun; i++) {
 			d->lun = i;
-
-			scsireqsense(d->t, d->lun, 1);
+print("sd2|");
 
 			/*
 			 * A SCSI target does not support a lun if the
@@ -127,35 +131,25 @@ sdinit(void)
 			nbytes = sizeof(inq);
 			if(scsiinquiry(d->t, d->lun, inq, &nbytes) != STok || inq[0] == 0x7F)
 				continue;
-
-			/* NCR Raid only seems to answer second capacity
-			 * command if lun != 0
-			 */
-			if(scsicap(d->t, d->lun, &s, &b) != STok) {
-				scsireqsense(d->t, 0, 1);
-				continue;
-			}
-			scsireqsense(d->t, 0, 1);
+print("sd3|");
 
 			s = 0;
 			b = 0;
 			if(scsicap(d->t, d->lun, &s, &b) != STok) {
-				scsireqsense(d->t, 0, 1);
+				scsireqsense(d->t, 0, 0);
 				continue;
 			}
-
-			if(scsireqsense(d->t, d->lun, 1) != STok)
-				continue;
+print("sd4/%d/%d|", s, b);
 
 			if(s == 0 || b == 0)
 				continue;
+print("sd5/0x%2.2ux|", d->inquire[0]);
 
 			d->size = s;
 			d->bsize = b;
 			switch(d->inquire[0] & 0x1F){
 
 			case TypeDA:
-			case TypeWO:
 			case TypeMO:
 				sprint(d->vol, "sd%d", ndisk);
 				break;
@@ -167,6 +161,7 @@ sdinit(void)
 			default:
 				continue;
 			}
+print("sd6|");
 
 			if(++ndisk >= Ndisk)
 				break;

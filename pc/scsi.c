@@ -124,18 +124,12 @@ static void
 scsiprobe(Ctlr *ctlr)
 {
 	Target *t;
-	uchar cmd[6];
 	int i, s, nbytes;
 
 	for(i = 0; i < NTarget; i++) {
 		t = &ctlr->target[i];
 
-		/*
-		 * Test unit ready
-		 */
-		memset(cmd, 0, sizeof(cmd));
-		s = scsiexec(t, SCSIread, cmd, sizeof(cmd), 0, 0);
-		if(s < 0)
+		if(scsitest(t, 0) < 0)
 			continue;
 
 		/*
@@ -213,6 +207,18 @@ print("devno %d = %s\n", devno, id);
 		}
 	}
 	return -1;
+}
+
+
+int
+scsitest(Target *t, char lun)
+{
+	uchar cmd[6];
+
+	memset(cmd, 0, sizeof(cmd));
+	cmd[0] = CMDtest;
+	cmd[1] = lun<<5;
+	return scsiexec(t, SCSIread, cmd, sizeof(cmd), 0, 0);
 }
 
 int

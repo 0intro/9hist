@@ -243,6 +243,7 @@ int		scsiinquiry(Target*, char, void*, int*);
 int		scsiinv(int, int*, Target**, uchar**, char*);
 int		scsireqsense(Target*, char, int);
 int		scsistart(Target*, char, int);
+int		scsitest(Target*, char);
 Target*		scsiunit(int, int);
 long		seconds(void);
 ulong		segattach(Proc*, ulong, char *, ulong, ulong);
