@@ -484,7 +484,6 @@ qdiscard(Queue *q, int len)
 	return sofar;
 }
 
-#ifdef sape
 /*
  *  Return length that next qconsume will return
  */
@@ -521,9 +520,8 @@ qblen(Queue *q)
 	if(tofree != nil)
 		freeblist(tofree);
 
-	return len;
+	return n;
 }
-#endif sape
 
 /*
  *  Interrupt level copy out of a queue, return # bytes copied.
