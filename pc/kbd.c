@@ -387,7 +387,8 @@ kbdintr(Ureg *ur, void *arg)
 	 *  if it's the mouse...
 	 */
 	if(s & Minready){
-		ps2mouseputc(c);
+		if(mousetype == MousePS2)
+			ps2mouseputc(c);
 		return;
 	}
 

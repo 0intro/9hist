@@ -45,9 +45,15 @@ enum
 	Cinitparam=	0x91,
 
 	/* conner specific commands */
-	Cstandby=	0xE0,
+	Cstandby=	0xE2,
 	Cidle=		0xE1,
 	Cpowerdown=	0xE3,
+
+	/* disk states */
+	Sspinning,
+	Sstandby,
+	Sidle,
+	Spowerdown,
 
 	/* file types */
 	Qdir=		0,
@@ -99,14 +105,6 @@ struct Drive
 	int	sectors;	/* sectors/track */
 	int	heads;		/* heads/cyl */
 	long	cyl;		/* cylinders/drive */
-};
-
-enum
-{
-	Sspinning,
-	Sstandby,
-	Sidle,
-	Spowerdown,
 };
 
 /*
@@ -1057,6 +1055,7 @@ hardclock(void)
 		case Sspinning:
 			if(diff >= spindowntime){
 				cp->cmd = Cstandby;
+				outb(cp->pbase+Pcount, 0);
 				outb(cp->pbase+Pdh, 0x20 | (dp->drive<<4) | 0);
 				outb(cp->pbase+Pcmd, cp->cmd);
 				dp->state = Sstandby;

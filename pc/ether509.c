@@ -41,7 +41,16 @@ enum {
 	EEPROMdata	= 0x0C,		/* window 0 */
 	EEPROMcmd	= 0x0A,
 	ResourceConfig	= 0x08,
+	AddressConfig	= 0x06,
 	ConfigControl	= 0x04,
+	ProductID	= 0x02,
+	ManufacturerID	= 0x00,
+
+					/* AddressConfig Bits */
+	XcvrTypeMask	= 0xC000,	/* Transceiver Type Select */
+	Xcvr10BaseT	= 0x0000,
+	XcvrAUI		= 0x4000,
+	XcvrBNC		= 0xC000,
 
 	TxFreeBytes	= 0x0C,		/* window 1 */
 	TxStatus	= 0x0B,
@@ -129,8 +138,7 @@ receive(Ether *ether)
 	port = ether->port;
 	while(((status = ins(port+RxStatus)) & RxEmpty) == 0){
 		/*
-		 * If we had an error, log it and continue
-		 * without updating the ring.
+		 * If we had an error, log it and continue.
 		 */
 		if(status & RxError){
 			switch(status & RxErrMask){
@@ -157,13 +165,12 @@ receive(Ether *ether)
 			 * We have a packet. Read it into the
 			 * buffer. The CRC is already stripped off.
 			 * Must read len bytes padded to a
-			 * doubleword. We can pick them out 16-bits
-			 * at a time (can try 32-bits at a time
-			 * later).
-			insl(port+Fifo, ether->rpkt, HOWMANY(len, 4));
+			 * doubleword. We can pick them out 32-bits
+			 * at a time.
 			 */
+			ether->inpackets++;
 			len = (status & RxByteMask);
-			inss(port+Fifo, &ether->rpkt, HOWMANY(len, 2));
+			insl(port+Fifo, &ether->rpkt, HOWMANY(len, 4));
 
 			/*
 			 * Copy the packet to whoever wants it.
@@ -234,7 +241,8 @@ write(Ether *ether, void *buf, long n)
 	outs(port+Fifo, 0);
 	outss(port+Fifo, buf, Eaddrlen/2);
 	outss(port+Fifo, ether->ea, Eaddrlen/2);
-	outss(port+Fifo, (uchar*)buf+2*Eaddrlen, (len-2*Eaddrlen)/2);
+	outsl(port+Fifo, (uchar*)buf+2*Eaddrlen, (len-2*Eaddrlen)/4);
+	ether->outpackets++;
 
 	return n;
 }
@@ -363,15 +371,11 @@ idseq(void)
 	}
 }
 
-/*
- * Get configuration parameters.
- */
-static int
-reset(Ether *ether)
+static ulong
+activate(Ether *ether)
 {
-	int i, ea;
+	int i;
 	ushort x, acr;
-	ulong port;
 
 	/*
 	 * Do the little configuration dance:
@@ -424,26 +428,51 @@ reset(Ether *ether)
 	 *    Enable the adapter. 
 	 */
 	ether->port = (acr & 0x1F)*0x10 + 0x200;
-	port = ether->port;
-	outb(port+ConfigControl, 0x01);
+	outb(ether->port+ConfigControl, 0x01);
+
+	return 0;
+}
+
+/*
+ * Get configuration parameters.
+ */
+static int
+reset(Ether *ether)
+{
+	int i, eax;
+	uchar ea[Eaddrlen];
+	ushort x, acr;
+	ulong port;
 
 	/*
-	 * Read the IRQ from the Resource Configuration Register
-	 * and the ethernet address from the EEPROM.
+	 * Switch out to 509 activation code if a port is supplied and is
+	 * not in the EISA slot space, otherwise check the EISA card is there.
+	 */
+	if(ether->port < 0x1000 && activate(ether) < 0)
+		return -1;
+	else if((ins(ether->port+ProductID) & 0xF0FF) != 0x9050)
+		return -1;
+
+	port = ether->port;
+
+	/*
+	 * Read the IRQ from the Resource Configuration Register,
+	 * the ethernet address from the EEPROM, and the address configuration.
 	 * The EEPROM command is 8bits, the lower 6 bits being
 	 * the address offset.
 	 */
 	ether->irq = (ins(port+ResourceConfig)>>12) & 0x0F;
-	for(ea = 0, i = 0; i < 3; i++, ea += 2){
+	for(eax = 0, i = 0; i < 3; i++, eax += 2){
 		while(ins(port+EEPROMcmd) & 0x8000)
 			;
 		outs(port+EEPROMcmd, (2<<6)|i);
 		while(ins(port+EEPROMcmd) & 0x8000)
 			;
 		x = ins(port+EEPROMdata);
-		ether->ea[ea] = (x>>8) & 0xFF;
-		ether->ea[ea+1] = x & 0xFF;
+		ea[eax] = (x>>8) & 0xFF;
+		ea[eax+1] = x & 0xFF;
 	}
+	acr = ins(port+AddressConfig);
 
 	/*
 	 * Finished with window 0. Now set the ethernet address
@@ -451,8 +480,12 @@ reset(Ether *ether)
 	 * Commands have the format 'CCCCCAAAAAAAAAAA' where C
 	 * is a bit in the command and A is a bit in the argument.
 	 */
+	if((ether->ea[0]|ether->ea[1]|ether->ea[2]|ether->ea[3]|ether->ea[4]|ether->ea[5]) == 0){
+		for(i = 0; i < sizeof(ether->ea); i++)
+			ether->ea[i] = ea[i];
+	}
 	COMMAND(port, SelectWindow, 2);
-	for(i = 0; i < 6; i++)
+	for(i = 0; i < Eaddrlen; i++)
 		outb(port+i, ether->ea[i]);
 
 	/*
@@ -465,7 +498,7 @@ reset(Ether *ether)
 	 * If we have a 10BASE2 transceiver, start the DC-DC
 	 * converter. Wait > 800 microseconds.
 	 */
-	if(((acr>>14) & 0x03) == 0x03){
+	if((acr & XcvrTypeMask) == XcvrBNC){
 		COMMAND(port, StartCoax, 0);
 		delay(1);
 	}
