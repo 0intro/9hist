@@ -27,7 +27,14 @@ struct Pipealloc
 static void pipeiput(Queue*, Block*);
 static void pipeoput(Queue*, Block*);
 static void pipestclose(Queue *);
-Qinfo pipeinfo = { pipeiput, pipeoput, 0, pipestclose, "pipe" };
+Qinfo pipeinfo =
+{
+	pipeiput,
+	pipeoput,
+	0,
+	pipestclose,
+	"pipe"
+};
 
 Dirtab pipedir[]={
 	"data",		Sdataqid,	0,			0600,

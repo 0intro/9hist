@@ -405,7 +405,7 @@ TEXT	restregs(SB), $-4
 TEXT	rfnote(SB), $0
 	MOVW	0(FP), R26		/* 1st arg is &uregpointer */
 	SUBU	$(BY2WD), R26, SP	/* pc hole */
-	BNE	R26, restore
+	JMP	restore
 	
 
 TEXT	clrfpintr(SB), $0

@@ -139,6 +139,7 @@ allocb(ulong size)
 		}
 		tsleep(&bcp->r, isblock, (void *)bcp, 250);
 		qunlock(bcp);
+		poperror();
 		lock(bcp);
 	}
 	bp = bcp->first;
@@ -1061,8 +1062,13 @@ void
 flowctl(Queue *q)
 {
 	qlock(&q->rlock);
+	if(waserror()){
+		qunlock(&q->rlock);
+		nexterror();
+	}
 	sleep(&q->r, notfull, q->next);
 	qunlock(&q->rlock);
+	poperror();
 }
 
 /*

@@ -156,6 +156,7 @@ TEXT	rfnote(SB), $0
 	MOVL	A0, USP
 	MOVEM	(A7), $0x7FFF
 	ADDL	$((8+8+1)*BY2WD), A7
+	MOVL	$-1, R0			/* note causes error in sys call */
 	RTE
 
 TEXT	illegal(SB), $0

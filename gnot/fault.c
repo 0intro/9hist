@@ -166,9 +166,7 @@ fault(Ureg *ur, FFrame *f)
 				qunlock(o->chan);
 				pg->o = 0;
 				pg->ref--;
-				if(user)
-					pexit("Interrupt", 0);
-				goto cant;
+				pexit("load i/o error", 0);
 			}
 			o->chan->offset = (addr-o->va) + o->minca;
 			l = (char*)VA(k);

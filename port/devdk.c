@@ -202,7 +202,14 @@ static void dkmuxopen(Queue *, Stream *);
 static void dkmuxclose(Queue *);
 static void dkmuxoput(Queue *, Block *);
 static void dkmuxiput(Queue *, Block *);
-Qinfo dkmuxinfo = { dkmuxiput, dkmuxoput, dkmuxopen, dkmuxclose, "dkmux" };
+Qinfo dkmuxinfo =
+{
+	dkmuxiput,
+	dkmuxoput,
+	dkmuxopen,
+	dkmuxclose,
+	"dkmux"
+};
 
 /*
  *  Look for a dk struct with a name.  If none exists,  create one.
@@ -357,7 +364,14 @@ static void dkstopen(Queue *, Stream *);
 static void dkstclose(Queue *);
 static void dkoput(Queue *, Block *);
 static void dkiput(Queue *, Block *);
-Qinfo dkinfo = { dkiput, dkoput, dkstopen, dkstclose, "dk" };
+Qinfo dkinfo =
+{
+	dkiput,
+	dkoput,
+	dkstopen,
+	dkstclose,
+	"dk"
+};
 
 /*
  *  open and save a pointer to the conversation

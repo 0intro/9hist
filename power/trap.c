@@ -385,6 +385,7 @@ noted(Ureg **urp)
 	}
 	u->notified = 0;
 	memcpy(*urp, u->ureg, sizeof(Ureg));
+	(*urp)->r1 = -1;	/* return error from the interrupted call */
 	unlock(&u->p->debug);
 	splhi();
 	rfnote(urp);
