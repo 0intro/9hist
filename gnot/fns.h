@@ -148,6 +148,7 @@ long	streamwrite(Chan*, void*, long, int);
 Stream*	streamnew(Chan*, Qinfo*);
 void	streamopen(Chan*, Qinfo*);
 int	streamparse(char*, Block*);
+void	streamstat(Chan*, char*, char*);
 long	stringread(Chan*, void*, long, char*);
 long	syscall(Ureg*);
 int	tas(char*);

@@ -6,6 +6,7 @@
 #include	"io.h"
 #include	"errno.h"
 #include	"devtab.h"
+#include	"fcall.h"
 
 enum {
 	Nclass=4,	/* number of block classes */
@@ -72,7 +73,7 @@ dumpblocks(Queue *q, char c)
 
 	lock(q);
 	for(bp = q->first; bp; bp = bp->next){
-		print("%c%d%c", c, bp->wptr-bp->rptr, (bp->flags&S_DELIM)?'D':' ');
+		print("%c%d%c", c, bp->wptr-bp->rptr, (bp->flags&S_DELIM));
 		for(cp = bp->rptr; cp<bp->wptr && cp<bp->rptr+10; cp++)
 			print(" %uo", *cp);
 		print("\n");
@@ -1155,4 +1156,34 @@ getfields(char *lp,	/* to be parsed */
 			lp++;
 	}
 	return i;
+}
+
+/*
+ *  stat a stream.  the length is the number of bytes up to the
+ *  first delimiter.
+ */
+void
+streamstat(Chan *c, char *db, char *name)
+{
+	Dir dir;
+	Stream *s;
+	Queue *q;
+	Block *bp;
+	long n;
+
+	s = c->stream;
+	if(s == 0)
+		panic("streamstat");
+
+	q = RD(s->procq);
+	lock(q);
+	for(n=0, bp=q->first; bp; bp = bp->next){
+		n += BLEN(bp);
+		if(bp->flags&S_DELIM)
+			break;
+	}
+	unlock(q);
+
+	devdir(c, c->qid, name, n, 0, &dir);
+	convD2M(&dir, db);
 }

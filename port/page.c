@@ -251,6 +251,40 @@ usepage(Page *p, int dolock)
 		unlock(&palloc);
 }
 
+/*
+ * Move page to tail of list
+ */
+void
+unusepage(Page *p, int dolock)
+{
+return;
+	if(dolock)
+		lock(&palloc);
+	/*
+	 * Unlink
+	 */
+	if(p->prev)
+		p->prev->next = p->next;
+	else
+		palloc.head = p->next;
+	if(p->next)
+		p->next->prev = p->prev;
+	else
+		palloc.tail = p->prev;
+	/*
+	 * Link
+	 */
+	p->prev = palloc.tail;
+	p->next = 0;
+	if(p->prev)
+		p->prev->next = p;
+	else
+		palloc.head = p;
+	palloc.tail = p;
+	if(dolock)
+		unlock(&palloc);
+}
+
 Orig*
 lookorig(ulong va, ulong npte, int flag, Chan *c)
 {
@@ -493,7 +527,7 @@ segaddr(Seg *s, ulong min, ulong max)
 
 	if(max < min)
 		return 0;
-if(max > 20*1024*1024) pprint("segaddr %lux\n", max);
+if(max > 20*1024*1024) {pprint("segaddr %lux\n", max);print("segaddr %lux\n", max);}
 	if(min != s->minva)	/* can't grow down yet (stacks: fault.c) */
 		return 0;
 	max = (max+(BY2PG-1)) & ~(BY2PG-1);
@@ -531,6 +565,7 @@ freepage(Orig *o)
 	for(i=0; i<o->npte; i++,pte++)
 		if(pg = pte->page){	/* assign = */
 			if(pg->ref == 1){
+				unusepage(pg, 1);
 				pte->page = 0;
 				pg->o = 0;
 			}

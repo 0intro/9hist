@@ -509,12 +509,13 @@ struct Nohdr {
  *  a buffer describing a nonet message
  */
 struct Nomsg {
-	QLock;
 	Blist;
+	Rendez	r;
 	int	mid;		/* sequence number */
 	int	rem;		/* remaining */
 	long	time;
 	int	acked;
+	int	inuse;
 };
 
 /*
@@ -532,13 +533,13 @@ struct Noconv {
 	int	rcvcircuit;	/* circuit number of incoming packets */
 
 	uchar	ack[Nnomsg];	/* acknowledgements waiting to be sent */
-	long	atime[Nnomsg];
 	int	afirst;
 	int	anext;
 
 	QLock	xlock;		/* one trasmitter at a time */
 	Rendez	r;		/* process waiting for an output mid */
 	Nomsg	ctl;		/* for control messages */
+	QLock	mlock;		/* lock for out */
 	Nomsg	out[Nnomsg];	/* messages being sent */
 	int	first;		/* first unacknowledged message */
 	int	next;		/* next message buffer to use */
@@ -547,7 +548,6 @@ struct Noconv {
 	Nohdr	*hdr;		/* nonet header inside of media header */
 
 	Noifc	*ifc;
-	int	kstarted;
 	char	raddr[NAMELEN];	/* remote address */
 	char	ruser[NAMELEN];	/* remote user */
 	char	addr[NAMELEN];	/* local address */

@@ -39,10 +39,9 @@ main(void)
 {
 	int i;
 
-	icflush(0, 64*1024);
+	machinit();
 	active.exiting = 0;
 	active.machs = 1;
-	machinit();
 	confinit();
 	arginit();
 	lockinit();
@@ -69,6 +68,7 @@ machinit(void)
 {
 	int n;
 
+	icflush(0, 64*1024);
 	n = m->machno;
 	memset(m, 0, sizeof(Mach));
 	m->machno = n;

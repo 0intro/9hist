@@ -87,10 +87,7 @@ pipewalk(Chan *c, char *name)
 void
 pipestat(Chan *c, char *db)
 {
-	Dir dir;
-
-	devdir(c, c->qid, "pipe", 0, 0, &dir);
-	convD2M(&dir, db);
+	streamstat(c, db, "pipe");
 }
 
 Chan *

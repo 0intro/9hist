@@ -59,6 +59,7 @@ schedinit(void)		/* never returns */
 		else if(p->state == Moribund){
 			p->pid = 0;
 			unlock(&p->debug);
+			unusepage(p->upage, 1);
 			p->upage->ref--;
 			/* procalloc already locked */
 			p->qnext = procalloc.free;
