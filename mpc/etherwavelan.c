@@ -19,7 +19,7 @@
 #include "etherwavelan.h"
 
 
-static void wavelan_receive(Ether *ether);
+static int wavelan_receive(Ether *ether);
 static int txstart(Ether *ether);
 
 static void 
@@ -291,6 +291,8 @@ wavelan_hardware_send_packet(Ether *ether, void *buf, short length)
 	ctlr = ether->ctlr;
 	base = ctlr->port;
 
+print("%ld: send packet %d\n", m->ticks, length);
+
 	outb(PIORL(base), xmtdata_base & 0xff);
 	outb(PIORH(base), ((xmtdata_base >> 8) & PIORH_MASK) | PIORH_SEL_TX);
 	outb(PIOP(base), length & 0xff);		/* lsb */
@@ -396,7 +398,7 @@ static void wavelan_read(Ether *ether, int fd_p, int sksize)
 
 	ctlr->rx_packets++;
 
-	if ((bp = rbpalloc(allocb)) == 0){		
+	if ((bp = rbpalloc(iallocb)) == 0){		
  		print("wavelan: could not rbpalloc(%d).\n", sksize);
 		ctlr->rx_dropped++;
 		return;
@@ -415,7 +417,7 @@ static void wavelan_read(Ether *ether, int fd_p, int sksize)
 	}
 } /* wavelan_read */
 
-static void 
+static int 
 wavelan_receive(Ether *ether)
 {
 	Ctlr *ctlr;
@@ -442,12 +444,13 @@ wavelan_receive(Ether *ether)
 	newrfp |= inb(RPLH(base)) << 8;
 	newrfp %= RX_SIZE;
 
-// print("wavelan_cs: i593_rfp %d stop %d newrfp %d ctlr->rfp %d\n",
-// 	i593_rfp, ctlr->stop, newrfp, ctlr->rfp);
+if(0) print("before wavelan_cs: i593_rfp %d stop %d newrfp %d ctlr->rfp %d\n", i593_rfp, ctlr->stop, newrfp, ctlr->rfp);
 
-	if (newrfp == ctlr->rfp)
+	if (newrfp == ctlr->rfp) {
 		print("wavelan_cs: odd RFPs:  i593_rfp %d stop %d newrfp %d ctlr->rfp %d\n",
 			i593_rfp, ctlr->stop, newrfp, ctlr->rfp);
+		return 0;
+	}
 
 	while(newrfp != ctlr->rfp) {
 		rp = newrfp;
@@ -466,6 +469,7 @@ wavelan_receive(Ether *ether)
 		status = c[0] | (c[1] << 8);
 		len = c[2] | (c[3] << 8);
 
+print("%ld: len = %d status = %ux %ux %ux\n", m->ticks, len, status, newrfp, rp);
 		if(!(status & RX_RCV_OK)) {
 			if(status & RX_NO_SFD) ctlr->rx_no_sfd++;
 			if(status & RX_CRC_ERR) ctlr->rx_crc++;
@@ -483,9 +487,18 @@ wavelan_receive(Ether *ether)
 	* per packet.
 	*/
 	ctlr->stop = (i593_rfp + RX_SIZE - ((RX_SIZE / 64) * 3)) % RX_SIZE;
+//print("ctlr->stop = %ux\n", ctlr->stop);
 	outb(LCCR(base), OP0_SWIT_TO_PORT_1 | CR0_CHNL);
 	outb(LCCR(base), CR1_STOP_REG_UPDATE | (ctlr->stop >> RX_SIZE_SHIFT));
 	outb(LCCR(base), OP1_SWIT_TO_PORT_0);
+
+	newrfp = inb(RPLL(base));
+	newrfp |= inb(RPLH(base)) << 8;
+	newrfp %= RX_SIZE;
+
+if(newrfp != ctlr->rfp)
+print("after wavelan_cs: left over = %d\n", (newrfp - ctlr->rfp + RX_SIZE) % RX_SIZE);
+	return 1;
 } /* wavelan_receive */
 
 static void
@@ -505,7 +518,8 @@ interrupt(Ureg*, void* arg)
 
 	outb(LCCR(base), CR0_STATUS_0 | OP0_NOP);
 	interrupt_handler(ether, inb(LCSR(base)));
-		
+outb(LCCR(base), CR0_STATUS_0 | OP0_NOP);
+print("status = %ux\n", inb(LCSR(base)));
 	iunlock(&ctlr->wlock);
 
 }; /* wavelan interrupt */

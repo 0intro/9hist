@@ -676,7 +676,7 @@ notify(Ureg* ur)
 	ulong s, sp;
 	Note *n;
 
-print("***notify\n");
+print("***notify %ld\n", up->pid);
 
 	if(up->procctl)
 		procctl(up);
