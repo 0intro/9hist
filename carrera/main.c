@@ -47,7 +47,7 @@ main(void)
 	serialinit();
 	vecinit();
 	iprint("\n\nBrazil\n");
-screeninit(); 
+/* screeninit(); */
 	pageinit();
 	procinit0();
 	initseg();
@@ -171,7 +171,7 @@ ioinit(void)
 	 * Map devices and the Eisa control space
 	 */
 	devphys = IOPTE|PPN(Devicephys);
-	isaphys = IOPTE|PPN(Eisaphys);
+	isaphys = /* IOPTE|PPN(Eisaphys) */ PTEGLOBL;
 
 	puttlbx(1, Devicevirt, devphys, isaphys, PGSZ64K);
 
