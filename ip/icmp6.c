@@ -740,6 +740,8 @@ icmpiput6(Proto *icmp, Ipifc *ipifc, Block *bp)
 
 	if(p->type <= Maxtype6)
 		ipriv->in[p->type]++;
+	else
+		goto raise;
 
 	switch(p->type) {
 	case EchoRequestV6:
