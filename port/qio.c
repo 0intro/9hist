@@ -15,7 +15,7 @@ typedef	struct Arena	Arena;
 enum
 {
 	Minpow= 7,
-	Maxpow=	12,
+	Maxpow=	16,
 };
 
 struct Chunk
@@ -196,16 +196,21 @@ void
 qinit(void)
 {
 	int pow;
-	Chunkl *cl;
 	Chunk *p;
+	Chunkl *cl;
 
 	/* start with a bunch of initial blocks */
 	for(pow = Minpow; pow <= Maxpow; pow++){
 		cl = &arena.alloc[pow];
-		cl->goal = Maxpow-pow + 32;
+		cl->goal = 0;
+		if(pow < 12)
+			cl->goal = Maxpow-pow + 32;
+
 		cl->first = 0;
 		for(; cl->have < cl->goal; cl->have++){
 			p = malloc(1<<pow);
+			if(p == 0)
+				panic("qinit");
 			p->next = cl->first;
 			cl->first = p;
 		}

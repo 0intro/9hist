@@ -206,9 +206,6 @@ echo(Rune r, char *buf, int n)
 			xsummary();
 			ixsummary();
 			break;
-		case 'b':
-			bitdebug();
-			break;
 		case 'd':
 			consdebug();
 			return;
