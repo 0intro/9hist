@@ -25,6 +25,18 @@ static void	recover(Method*);
 static Method	*rootserver(char*);
 
 void
+intest(void)
+{
+	int n;
+	char buf[128];
+
+	print(">");
+	n = read(0, buf, sizeof(buf)-1);
+print("read %d bytes\n", n);
+	write(1, buf, n);
+}
+
+void
 pipetest(void)
 {
 	int i, n, p[2];
@@ -178,6 +190,7 @@ boot(int argc, char *argv[])
 	print("\n");
 #endif DEBUG
 
+	intest();
 	pipetest();
 	pipetest2();
 	ethertest();

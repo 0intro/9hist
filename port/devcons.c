@@ -8,35 +8,34 @@
 
 #include	"devtab.h"
 
-struct {
-	IOQ;			/* lock to klogputs */
-	QLock;			/* qlock to getc */
-}klogq;
+Queue	*mouseq;
+Queue	*kbdq;		/* unprocessed console input */
+Queue	*lineq;		/* processed console input */
+Queue	*printq;	/* console output */
+Queue	*klogq;
 
-IOQ	mouseq;
-IOQ	lineq;			/* lock to getc; interrupt putc's */
-IOQ	printq;
-KIOQ	kbdq;
+static struct
+{
+	QLock;
 
-static Ref	ctl;		/* number of opens to the control file */
-static int	raw;		/* true if ctl file is raw */
+	int	raw;		/* true if we shouldn't process input */
+	int	ctl;		/* number of opens to the control file */
+	int	x;		/* index into line */
+	char	line[1024];	/* current input line */
+
+	char	c;
+	int	count;
+	int	repeat;
+} kbd;
+
 
 char	sysname[NAMELEN];
 
-/*
- *  init the queues and set the output routine
- */
 void
 printinit(void)
 {
-	initq(&printq);
-	printq.puts = 0;
-	initq(&lineq);
-	initq(&kbdq);
-	kbdq.putc = kbdputc;
-	initq(&klogq);
-	initq(&mouseq);
-	mouseq.putc = mouseputc;
+	klogq = qopen(32*1024, 0, 0, 0);
+	lineq = qopen(2*1024, 0, 0, 0);
 }
 
 /*
@@ -65,7 +64,7 @@ putstrn(char *str, int n)
 	 *  put the message there.  Tack a carriage return
 	 *  before new lines.
 	 */
-	if(printq.puts == 0)
+	if(printq == 0)
 		return;
 	while(n > 0){
 		t = memchr(str, '\n', n);
@@ -74,60 +73,14 @@ putstrn(char *str, int n)
 			memmove(buf, str, m);
 			buf[m] = '\r';
 			buf[m+1] = '\n';
-			(*printq.puts)(&printq, buf, m+2);
+			qwrite(printq, buf, m+2, 1);
 			str = t + 1;
 			n -= m + 1;
 		} else {
-			(*printq.puts)(&printq, str, n);
+			qwrite(printq, str, n, 1);
 			break;
 		}
 	}
-}
-
-/*
- *   Print a string in the kernel log.  Ignore overflow.
- */
-void
-klogputs(char *str, long n)
-{
-	int s, m;
-	uchar *nextin;
-
-	s = splhi();
-	lock(&klogq);
-	while(n){
-		m = &klogq.buf[NQ] - klogq.in;
-		if(m > n)
-			m = n;
-		memmove(klogq.in, str, m);
-		n -= m;
-		str += m;
-		nextin = klogq.in + m;
-		if(nextin >= &klogq.buf[NQ])
-			klogq.in = klogq.buf;
-		else
-			klogq.in = nextin;
-	}
-	unlock(&klogq);
-	splx(s);
-	wakeup(&klogq.r);
-}
-
-int
-isbrkc(KIOQ *q)
-{
-	uchar *p;
-
-	for(p=q->out; p!=q->in; ){
-		if(raw)
-			return 1;
-		if(*p==0x04 || *p=='\n')
-			return 1;
-		p++;
-		if(p >= q->buf+sizeof(q->buf))
-			p = q->buf;
-	}
-	return 0;
 }
 
 int
@@ -154,7 +107,7 @@ kprint(char *fmt, ...)
 	int n;
 
 	n = doprint(buf, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
-	klogputs(buf, n);
+	qwrite(klogq, buf, n, 1);
 	return n;
 }
 
@@ -202,7 +155,7 @@ pprint(char *fmt, ...)
 void
 prflush(void)
 {
-	while(printq.in != printq.out) ;
+	while(qlen(printq) > 0) ;
 }
 
 void
@@ -245,8 +198,12 @@ echo(Rune r, char *buf, int n)
 		return;
 	}
 	ctrlt = 0;
-	if(raw)
+	if(kbd.raw)
 		return;
+
+	/*
+	 *  finally, the actual echoing
+	 */
 	if(r == 0x15)
 		putstrn("^U\n", 3);
 	else
@@ -254,10 +211,12 @@ echo(Rune r, char *buf, int n)
 }
 
 /*
- *  turn '\r' into '\n' before putting it into the queue
+ *  Called by a uart interrupt for console input.
+ *
+ *  turn '\r' into '\n' before putting it into the queue.
  */
 int
-kbdcr2nl(IOQ *q, int ch)
+kbdcr2nl(Queue *q, int ch)
 {
 	if(ch == '\r')
 		ch = '\n';
@@ -267,11 +226,13 @@ kbdcr2nl(IOQ *q, int ch)
 /*
  *  Put character, possibly a rune, into read queue at interrupt time.
  *  Always called splhi from processor 0.
+ *
+ *  Called at interrupt time to process a character.
  */
 int
-kbdputc(IOQ *q, int ch)
+kbdputc(Queue *q, int ch)
 {
-	int i, n;
+	int n;
 	char buf[3];
 	Rune r;
 
@@ -281,42 +242,35 @@ kbdputc(IOQ *q, int ch)
 	if(n == 0)
 		return 0;
 	echo(r, buf, n);
-	kbdq.c = r;
-	for(i=0; i<n; i++){
-		*kbdq.in++ = buf[i];
-		if(kbdq.in == kbdq.buf+sizeof(kbdq.buf))
-			kbdq.in = kbdq.buf;
-	}
-	if(raw || r=='\n' || r==0x04)
-		wakeup(&kbdq.r);
+	qproduce(kbdq, buf, n);
 	return 0;
 }
 
 void
 kbdrepeat(int rep)
 {
-	kbdq.repeat = rep;
-	kbdq.count = 0;
+	kbd.repeat = rep;
+	kbd.count = 0;
 }
 
 void
 kbdclock(void)
 {
-	if(kbdq.repeat == 0)
+	if(kbd.repeat == 0)
 		return;
-	if(kbdq.repeat==1 && ++kbdq.count>HZ){
-		kbdq.repeat = 2;
-		kbdq.count = 0;
+	if(kbd.repeat==1 && ++kbd.count>HZ){
+		kbd.repeat = 2;
+		kbd.count = 0;
 		return;
 	}
-	if(++kbdq.count&1)
-		kbdputc(&kbdq, kbdq.c);
+	if(++kbd.count&1)
+		kbdputc(kbdq, kbd.c);
 }
 
 int
 consactive(void)
 {
-	return printq.in != printq.out;
+	return qlen(printq) > 0;
 }
 
 enum{
@@ -456,7 +410,9 @@ consopen(Chan *c, int omode)
 	case Qconsctl:
 		if(!iseve())
 			error(Eperm);
-		incref(&ctl);
+		qlock(&kbd);
+		kbd.ctl++;
+		qunlock(&kbd);
 		break;
 	}
 	return devopen(c, omode, consdir, NCONS, devgen);
@@ -476,10 +432,10 @@ consclose(Chan *c)
 	switch(c->qid.path){
 	case Qconsctl:
 		if(c->flag&COPEN){
-			lock(&ctl);
-			if(--ctl.ref == 0)
-				raw = 0;
-			unlock(&ctl);
+			qlock(&kbd);
+			if(--kbd.ctl == 0)
+				kbd.raw = 0;
+			qunlock(&kbd);
 		}
 	case Qauth:
 	case Qauthcheck:
@@ -504,52 +460,41 @@ consread(Chan *c, void *buf, long n, ulong offset)
 		return devdirread(c, buf, n, consdir, NCONS, devgen);
 
 	case Qcons:
-		qlock(&kbdq);
+		qlock(&kbd);
 		if(waserror()){
-			qunlock(&kbdq);
+			qunlock(&kbd);
 			nexterror();
 		}
-		while(!cangetc(&lineq)){
-			sleep(&kbdq.r, isbrkc, &kbdq);
-			do{
-				lock(&lineq);
-				ch = getc(&kbdq);
-				if(raw)
-					goto Default;
-				switch(ch){
-				case '\b':
-					if(lineq.in != lineq.out){
-						if(lineq.in == lineq.buf)
-							lineq.in = lineq.buf+sizeof(lineq.buf);
-						lineq.in--;
-					}
-					break;
-				case 0x15:
-					lineq.in = lineq.out;
-					break;
-				Default:
-				default:
-					*lineq.in = ch;
-					if(lineq.in >= lineq.buf+sizeof(lineq.buf)-1)
-						lineq.in = lineq.buf;
-					else
-						lineq.in++;
-				}
-				unlock(&lineq);
-			}while(raw==0 && ch!='\n' && ch!=0x04);
-		}
-		i = 0;
-		while(n > 0){
-			ch = getc(&lineq);
-			if(ch==-1 || (raw==0 && ch==0x04))
+		while(!qcanread(lineq)){
+			qread(kbdq, &kbd.line[kbd.x], 1);
+			ch = kbd.line[kbd.x];
+			if(kbd.raw){
+				i = splhi();
+				qproduce(lineq, &kbd.line[kbd.x], 1);
+				splx(i);
+				continue;
+			}
+			switch(ch){
+			case '\b':
+				if(kbd.x)
+					kbd.x--;
 				break;
-			i++;
-			*cbuf++ = ch;
-			--n;
+			case 0x15:
+				kbd.x = 0;
+				break;
+			default:
+				kbd.line[kbd.x++] = ch;
+				break;
+			}
+			if(kbd.x == sizeof(kbd.line) || ch == '\n' || ch == 0x04){
+				if(ch == 0x04)
+					kbd.x--;
+				qwrite(lineq, kbd.line, kbd.x, 1);
+			}
 		}
-		poperror();
-		qunlock(&kbdq);
-		return i;
+		n = qread(lineq, buf, n);
+		qunlock(&kbd);
+		return n;
 
 	case Qcputime:
 		k = offset;
@@ -613,21 +558,7 @@ consread(Chan *c, void *buf, long n, ulong offset)
 		return 0;
 
 	case Qklog:
-		qlock(&klogq);
-		if(waserror()){
-			qunlock(&klogq);
-			nexterror();
-		}
-		while(!cangetc(&klogq))
-			sleep(&klogq.r, cangetc, &klogq);
-		for(i=0; i<n; i++){
-			if((ch=getc(&klogq)) == -1)
-				break;
-			*cbuf++ = ch;
-		}
-		poperror();
-		qunlock(&klogq);
-		return i;
+		return qread(klogq, buf, n);
 
 	case Qmsec:
 		return readnum(offset, buf, n, TK2MS(MACHP(0)->ticks), NUMSIZE);
@@ -730,7 +661,7 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 	long l, bp;
 	char *a = va;
 	Mach *mp;
-	int id, fd, ch;
+	int id, fd;
 	Chan *swc;
 
 	switch(c->qid.path){
@@ -757,20 +688,15 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 		buf[n] = 0;
 		for(a = buf; a;){
 			if(strncmp(a, "rawon", 5) == 0){
-				lock(&lineq);
-				while((ch=getc(&kbdq)) != -1){
-					*lineq.in++ = ch;
-					if(lineq.in == lineq.buf+sizeof(lineq.buf))
-						lineq.in = lineq.buf;
+				qlock(&kbd);
+				if(kbd.x){
+					qwrite(kbdq, kbd.line, kbd.x, 1);
+					kbd.x = 0;
 				}
-				unlock(&lineq);
-				lock(&ctl);
-				raw = 1;
-				unlock(&ctl);
+				kbd.raw = 1;
+				qunlock(&kbd);
 			} else if(strncmp(a, "rawoff", 6) == 0){
-				lock(&ctl);
-				raw = 0;
-				unlock(&ctl);
+				kbd.raw = 0;
 			}
 			if(a = strchr(a, ' '))
 				a++;

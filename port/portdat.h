@@ -218,36 +218,6 @@ struct Scsi
 	uchar		cmdblk[16];
 };
 
-/* character based IO (mouse, keyboard, console screen) */
-#define NQ	4096
-struct IOQ
-{
-	Lock;
-	uchar	buf[NQ];
-	uchar	*in;
-	uchar	*out;
-	int	state;
-	Rendez	r;
-	union{
-		void	(*puts)(IOQ*, void*, int);	/* output */
-		int	(*putc)(IOQ*, int);		/* input */
-	};
-	union{
-		int	(*gets)(IOQ*, void*, int);	/* input */
-		int	(*getc)(IOQ*);			/* output */
-	};
-	void	*ptr;
-};
-
-struct KIOQ
-{
-	QLock;
-	IOQ;
-	int	repeat;
-	int	c;
-	int	count;
-};
-
 enum
 {
 	NSMAX	=	1000,
@@ -654,13 +624,12 @@ extern  char	eve[];
 extern	char	hostdomain[];
 extern	uchar	initcode[];
 extern	FPsave	initfp;
-extern  KIOQ	kbdq;
-extern  IOQ	lineq;
-extern  IOQ	mouseq;
+extern  Queue	*kbdq;
+extern  Queue	*mouseq;
 extern  Ref	noteidalloc;
 extern	int	nrdy;
 extern	Palloc	palloc;
-extern  IOQ	printq;
+extern  Queue	*printq;
 extern	char*	statename[];
 extern  Image	swapimage;
 extern	char	sysname[NAMELEN];

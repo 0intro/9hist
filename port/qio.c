@@ -253,10 +253,11 @@ allocb(int size)
  *  set, any bytes left in a block afer a consume are discarded.
  */
 int
-qconsume(Queue *q, uchar *p, int len)
+qconsume(Queue *q, void *vp, int len)
 {
 	Block *b;
 	int n, dowakeup;
+	uchar *p = vp;
 
 	/* sync with qwrite */
 	lock(q);
@@ -298,10 +299,11 @@ qconsume(Queue *q, uchar *p, int len)
 }
 
 int
-qproduce(Queue *q, uchar *p, int len)
+qproduce(Queue *q, void *vp, int len)
 {
 	Block *b;
 	int dowakeup;
+	uchar *p = vp;
 
 	/* sync with qread */
 	lock(q);
@@ -340,8 +342,11 @@ qproduce(Queue *q, uchar *p, int len)
 		dowakeup = 0;
 	unlock(q);
 
-	if(dowakeup)
+	if(dowakeup){
+		if(q->kick)
+			(*q->kick)(q->arg);
 		wakeup(&q->rr);
+	}
 
 	return len;
 }
@@ -363,6 +368,7 @@ qopen(int limit, int msg, void (*kick)(void*), void *arg)
 	q->kick = kick;
 	q->arg = arg;
 	q->state = msg ? Qmsg : 0;
+	q->state |= Qstarve;
 
 	return q;
 }
@@ -380,10 +386,11 @@ notempty(void *a)
  *  and wait on its Rendez.
  */
 long
-qread(Queue *q, char *p, int len)
+qread(Queue *q, void *vp, int len)
 {
 	Block *b;
 	int x, n, dowakeup;
+	uchar *p = vp;
 
 	qlock(&q->rlock);
 	if(waserror()){
@@ -467,10 +474,11 @@ qnotfull(void *a)
  *  queue the data.
  */
 long
-qwrite(Queue *q, char *p, int len)
+qwrite(Queue *q, void *vp, int len, int nowait)
 {
 	int x, dowakeup;
 	Block *b;
+	uchar *p = vp;
 
 	b = allocb(len);
 	memmove(b->wp, p, len);
@@ -478,6 +486,8 @@ qwrite(Queue *q, char *p, int len)
 
 	/* flow control */
 	while(!qnotfull(q)){
+		if(nowait)
+			return len;
 		qlock(&q->wlock);
 		q->state |= Qflow;
 		sleep(&q->wr, qnotfull, q);
@@ -493,8 +503,11 @@ qwrite(Queue *q, char *p, int len)
 		error(Ehungup);
 	}
 
-	b->next = q->bfirst;
-	q->bfirst = b;
+	if(q->bfirst)
+		q->blast->next = b;
+	else
+		q->bfirst = b;
+	q->blast = b;
 	q->len += len;
 
 	if(q->state & Qstarve){
@@ -506,8 +519,11 @@ qwrite(Queue *q, char *p, int len)
 	unlock(q);
 	splx(x);
 
-	if(dowakeup)
+	if(dowakeup){
+		if(q->kick)
+			(*q->kick)(q->arg);
 		wakeup(&q->rr);
+	}
 
 	return len;
 }
@@ -570,6 +586,7 @@ void
 qreopen(Queue *q)
 {
 	q->state &= ~Qclosed;
+	q->state |= Qstarve;
 }
 
 /*
@@ -579,4 +596,13 @@ int
 qlen(Queue *q)
 {
 	return q->len;
+}
+
+/*
+ *  return true if we can read without blocking
+ */
+int
+qcanread(Queue *q)
+{
+	return q->bfirst!=0;
 }
