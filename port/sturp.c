@@ -503,6 +503,8 @@ urpiput(Queue *q, Block *bp)
 			sendrej(up);
 			break;
 		} else if(q->len != up->trbuf[1] + (up->trbuf[2]<<8)){
+			DPRINT("rej %d rcvd %d xpctd\n", q->len,
+				up->trbuf[1] + (up->trbuf[2]<<8));
 			urpstat.rjpks++;
 			sendrej(up);
 			break;
