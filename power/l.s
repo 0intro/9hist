@@ -50,6 +50,9 @@ clrbss:
 	ADDU	$1, R1
 	BNE	R1, R2, clrbss
 
+	MOVW	R4, _argc(SB)
+	MOVW	R5, _argv(SB)
+	MOVW	R6, _env(SB)
 	JAL	main(SB)
 	JMP	(R0)
 

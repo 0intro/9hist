@@ -539,8 +539,8 @@ kproc(char *name, void (*func)(void *), void *arg)
 	Proc *p;
 	int n;
 	ulong upa;
-	int lastvar;	/* used to compute stack address */
 	User *up;
+	int lastvar;	/* used to compute stack address */
 
 	/*
 	 * Kernel stack

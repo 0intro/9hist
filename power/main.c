@@ -7,11 +7,22 @@
 #include	"ureg.h"
 #include	"init.h"
 
+/*
+ *  args passed by boot process
+ */
+int _argc; char **_argv; char **_env;
+
+char *argv[5];
+char argx[4][64];
+
 void
 main(void)
 {
+	int i;
+
 	active.exiting = 0;
 	active.machs = 1;
+	arginit();
 	machinit();
 	confinit();
 	lockinit();
@@ -30,6 +41,20 @@ main(void)
 	userinit();
 	launchinit();
 	schedinit();
+}
+
+void
+arginit(void)
+{
+	int i;
+
+	if(_argc > 5)
+		_argc = 5;
+
+	for(i = 1; i < _argc; i++){
+		strcpy(argx[i-1], _argv[i]);
+		argv[i-1] = &(argx[i-1][0]);
+	}
 }
 
 void
@@ -142,12 +167,14 @@ launchinit(void)
 void
 init0(void)
 {
+	int i;
+
 	m->proc = u->p;
 	u->p->state = Running;
 	u->p->mach = m;
 	spllo();
 	chandevinit();
-	
+
 	u->slash = (*devtab[0].attach)(0);
 	u->dot = clone(u->slash, 0);
 
@@ -352,11 +379,10 @@ confinit(void)
 {
 	long x, i, j, *l;
 
-	conf.nmach = 4;
+#include  "conf.h"
+
 	if(conf.nmach > MAXMACH)
 		panic("confinit");
-	conf.nproc = 193;
-	conf.npgrp = 100;
 
 	x = 0x12345678;
 	for(i=4; i<128; i+=4){
@@ -369,22 +395,7 @@ confinit(void)
 		x += 0x3141526;
 	}
 	conf.npage = i*1024/4;
-
-	conf.npte = 4*conf.npage;
-	conf.nmod = 2000;
-	conf.nalarm = 10000;
-	conf.norig = 500;
-	conf.nchan = 500;
-	conf.nenv = 400;
-	conf.nenvchar = 20000;
-	conf.npgenv = 400;
-	conf.nmtab = 100;
-	conf.nmount = 500;
-	conf.nmntdev = 30;
-	conf.nmntbuf = 60;
-	conf.nmnthdr = 60;
-	conf.nstream = 512;
+	conf.npte = 4 * conf.npage;
 	conf.nqueue = 5 * conf.nstream;
 	conf.nblock = 16 * conf.nstream;
-	conf.nsrv = 32;
 }

@@ -147,9 +147,12 @@ procopen(Chan *c, int omode)
 	case Qnote:
 		break;
 	case Qdir:
-	case Qmem:
 	case Qproc:
 	case Qstatus:
+		if(omode!=OREAD)
+			error(0, Eperm);
+		break;
+	case Qmem:
 		if(omode!=OREAD)
 			error(0, Eperm);
 		break;

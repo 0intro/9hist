@@ -370,8 +370,8 @@ urpiput(Queue *q, Block *bp)
 	 *  queue the block(s)
 	 */
 	if(BLEN(bp) > 0){
+		bp->flags &= ~S_DELIM;
 		putq(q, bp);
-		q->last->flags &= ~S_DELIM;
 		if(q->len > 4*1024){
 			flushinput(up);
 			return;
@@ -472,7 +472,8 @@ urpiput(Queue *q, Block *bp)
 				PUTNEXT(q, bp);
 		} else {
 			bp = allocb(0);
-			bp->flags |= S_DELIM;
+			if(up->trbuf[0] != BOTM)
+				bp->flags |= S_DELIM;
 			PUTNEXT(q, bp);
 		}
 		up->trx = 0;
