@@ -92,10 +92,21 @@ lptattach(char *spec)
 	if(i < 1 || i > NDEV)
 		error(Ebadarg);
 	if(lptallocd[i-1] == 0){
+		int ecr;
 		sprint(name, "lpt%d", i-1);
 		if(ioalloc(lptbase[i-1], 3, 0, name) < 0)
 			error("lpt port space in use");
 		lptallocd[i-1] = 1;
+		// Detect ECP - if found, put into PS/2 mode to suit style of driver
+		ecr = lptbase[i-1] + 0x402;
+		if ((inb(ecr) & 3) == 1) {
+			outb(ecr, 0x34);
+			if (inb(ecr) == 0x35) {
+				outb(ecr, (inb(ecr) & 0x1f) | (1 << 5));
+				if(ioalloc(ecr, 1, 0, name) < 0)
+					error("lpt ecr port space in use");
+			}
+		}
 	}
 	c = devattach('L', spec);
 	c->dev = i-1;
