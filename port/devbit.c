@@ -173,6 +173,36 @@ Dirtab bitdir[]={
 #define	HDR	3
 
 void
+bitfreeup(void)
+{
+	int i;
+	BSubfont *s;
+
+	/* free unused subfonts and compact */
+	for(i=0; i<bit.nsubfont; i++){
+		s = bit.subfont[i];
+		if(s && s!=defont && s->ref==0){
+			s->ref = 1;
+			s->qid[0] = ~0;	/* force cleanup */
+			subfontfree(s, i);
+		}
+	}
+	bitcompact();
+}
+
+void*
+bitmalloc(ulong n)
+{
+	void *p;
+
+	p = malloc(n);
+	if(p)
+		return p;
+	bitfreeup();
+	return malloc(n);
+}
+
+void
 bitdebug(void)
 {
 	int i;
@@ -212,7 +242,7 @@ bitdebug(void)
 void
 bitreset(void)
 {
-	int i;
+	int i, ws;
 	GBitmap *bp;
 	ulong r;
 	Arena *a;
@@ -237,10 +267,17 @@ bitreset(void)
 	 * Somewhat of a heuristic: start with three screensful and
 	 * allocate single screensful dynamically if needed.
 	 */
-	a->nwords = 3*(gscreen.width*gscreen.r.max.y+HDR);
+	ws = BI2WD>>gscreen.ldepth;	/* pixels per word */
+	a->nwords = 3*(HDR + gscreen.r.max.y*gscreen.r.max.x/ws);
 	a->words = xalloc(a->nwords*sizeof(ulong));
-	if(a->words == 0)
-		panic("bitreset");
+	if(a->words == 0){
+		/* try again */
+		print("bitreset: allocating only 1 screenful\n");
+		a->nwords /= 3;
+		a->words = a->words = xalloc(a->nwords*sizeof(ulong));
+		if(a->words == 0)
+			panic("bitreset");
+	}
 	a->wfree = a->words;
 	a->nbusy = 1;	/* keep 0th arena from being freed */
 	Cursortocursor(&arrow);
@@ -674,6 +711,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 	GBitmap *b, *src, *dst, *bp;
 	BSubfont *f, *tf, **fp;
 	GFont *ff, **ffp;
+	GCacheinfo *gc;
 
 	if(c->qid.path == CHDIR)
 		error(Eisdir);
@@ -909,15 +947,23 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			for(i=1; i<bit.nsubfont; i++)
 				if(bit.subfont[i] == 0)
 					goto subfontfound;
-			fp = bit.subfont;
-			bit.subfont = smalloc((bit.nsubfont+DMAP)*sizeof(BSubfont*));
-			memmove(bit.subfont, fp, bit.nsubfont*sizeof(BSubfont*));
-			free(fp);
+			fp = bitmalloc((bit.nsubfont+DMAP)*sizeof(BSubfont*));
+			if(fp == 0)
+				error(Enomem);
+			memmove(fp, bit.subfont, bit.nsubfont*sizeof(BSubfont*));
+			free(bit.subfont);
+			bit.subfont = fp;
 			bit.nsubfont += DMAP;
 		subfontfound:
-			f = smalloc(sizeof(BSubfont));
+			f = bitmalloc(sizeof(BSubfont));
+			if(f == 0)
+				error(Enomem);
 			bit.subfont[i] = f;
-			f->info = smalloc((v+1)*sizeof(Fontchar));
+			f->info = bitmalloc((v+1)*sizeof(Fontchar));
+			if(f->info == 0){
+				free(f);
+				error(Enomem);
+			}
 			f->n = v;
 			f->height = p[3];
 			f->ascent = p[4];
@@ -1028,15 +1074,23 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			for(i=0; i<bit.nfont; i++)
 				if(bit.font[i] == 0)
 					goto fontfound;
-			ffp = bit.font;
-			bit.font = smalloc((bit.nfont+DMAP)*sizeof(GFont*));
-			memmove(bit.font, ffp, bit.nfont*sizeof(GFont*));
-			free(ffp);
+			ffp = bitmalloc((bit.nfont+DMAP)*sizeof(GFont*));
+			if(ffp == 0)
+				error(Enomem);
+			memmove(ffp, bit.font, bit.nfont*sizeof(GFont*));
+			free(bit.font);
+			bit.font = ffp;
 			bit.nfont += DMAP;
 		fontfound:
-			ff = smalloc(sizeof(GFont));
+			ff = bitmalloc(sizeof(GFont));
+			if(ff == 0)
+				error(Enomem);
 			ff->ncache = t;
-			ff->cache = smalloc(t*sizeof(GCacheinfo));
+			ff->cache = bitmalloc(t*sizeof(GCacheinfo));
+			if(ff->cache == 0){
+				free(ff);
+				error(Enomem);
+			}
 			bit.font[i] = ff;
 			ff = bit.font[i];
 			ff->height = p[1];
@@ -1227,24 +1281,29 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 				error(Ebadblt);
 			x = BGSHORT(p+5);
 			i = bitalloc(Rect(0, 0, t*x, ff->height), ff->ldepth);
-			/* now committed */
+			if(t != ff->ncache){
+				gc = bitmalloc(t*sizeof(ff->cache[0]));
+				if(gc == 0){
+					bitfree(bit.map[i]);
+					bit.map[i] = 0;
+					error(Enomem);
+				}
+				free(ff->cache);
+				ff->cache = gc;
+				ff->ncache = t;
+			}else{
+				/*
+				 * memset not necessary but helps avoid
+				 * confusion if the cache is mishandled by the
+				 * user.
+				 */
+				memset(ff->cache, 0, t*sizeof(ff->cache[0]));
+			}
 			if(ff->b)
 				bitfree(ff->b);
 			ff->b = bit.map[i];
 			bit.map[i] = 0;	/* disconnect it from GBitmap space */
 			ff->width = x;
-			/*
-			 * memset not necessary but helps avoid
-			 * confusion if the cache is mishandled by the
-			 * user.
-			 */
-			if(t == ff->ncache)
-				memset(ff->cache, 0, t*sizeof(ff->cache[0]));
-			else{
-				free(ff->cache);
-				ff->cache = smalloc(t*sizeof(ff->cache[0]));
-				ff->ncache = t;
-			}
 			p += 7;
 			m -= 7;
 			break;
@@ -1398,7 +1457,7 @@ bitalloc(Rectangle rect, int ld)
 	long t;
 	int i, try;
 
-	ws = 1<<(5-ld);	/* pixels per word */
+	ws = BI2WD>>ld;	/* pixels per word */
 	if(rect.min.x >= 0){
 		l = (rect.max.x+ws-1)/ws;
 		l -= rect.min.x/ws;
@@ -1434,7 +1493,7 @@ bitalloc(Rectangle rect, int ld)
 	/* need new arena */
 	if(aa){
 		a = aa;
-		a->nwords = gscreen.width*gscreen.r.max.y+HDR;
+		a->nwords = HDR + (gscreen.r.max.y*gscreen.r.max.x)/ws;
 		if(a->nwords < HDR+nw)
 			a->nwords = HDR+nw;
 		a->words = xalloc(a->nwords*sizeof(ulong));
@@ -1446,16 +1505,8 @@ bitalloc(Rectangle rect, int ld)
 	}
 	/* else can't grow list: bitmaps have backpointers */
 
-	/* free unused subfonts, compact, and try again */
-	for(i=0; i<bit.nsubfont; i++){
-		s = bit.subfont[i];
-		if(s && s!=defont && s->ref==0){
-			s->ref = 1;
-			s->qid[0] = ~0;	/* force cleanup */
-			subfontfree(s, i);
-		}
-	}
-	bitcompact();
+	bitfreeup();
+
 	for(a=bit.arena; a<ea; a++){
 		if(a->words == 0)
 			continue;
@@ -1466,11 +1517,13 @@ bitalloc(Rectangle rect, int ld)
 		error(Enobitstore);
 	
     found:
-	b = smalloc(sizeof(GBitmap));
+	b = bitmalloc(sizeof(GBitmap));
+	if(b == 0)
+		error(Enomem);
 	*a->wfree++ = nw;
 	*a->wfree++ = (ulong)a;
 	*a->wfree++ = (ulong)b;
-	memset(a->wfree, 0, (nw-HDR)*sizeof(ulong));
+	memset(a->wfree, 0, nw*sizeof(ulong));
 	b->base = a->wfree;
 	a->wfree += nw;
 	a->nbusy++;
@@ -1491,11 +1544,15 @@ bitalloc(Rectangle rect, int ld)
 		if(*bp == 0)
 			break;
 	if(bp == ep){
-		bp = bit.map;
-		bit.map = smalloc((bit.nmap+DMAP)*sizeof(GBitmap*));
-		memmove(bit.map, bp, bit.nmap*sizeof(GBitmap*));
-		free(bp);
-		bp = bit.map+bit.nmap;
+		bp = bitmalloc((bit.nmap+DMAP)*sizeof(GBitmap*));
+		if(bp == 0){
+			bitfree(b);
+			error(Enomem);
+		}
+		memmove(bp, bit.map, bit.nmap*sizeof(GBitmap*));
+		free(bit.map);
+		bit.map = bp;
+		bp += bit.nmap;
 		bit.nmap += DMAP;
 	}
 	*bp = b;
@@ -1509,7 +1566,6 @@ bitfree(GBitmap *b)
 
 	if(b->base != gscreen.base){	/* can't free screen memory */
 		a = (Arena*)(b->base[-2]);
-if(a<bit.arena || a>=bit.arena+bit.narena) panic("bitfree");
 		a->nbusy--;
 		if(a->nbusy == 0)
 			arenafree(a);
