@@ -272,6 +272,7 @@ init0(void)
 {
 	char buf[2*NAMELEN];
 
+
 	spllo();
 
 	/*

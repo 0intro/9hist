@@ -28,7 +28,7 @@
  *  R4000 instructions
  */
 #define	LD(base, rt)		WORD	$((067<<26)|((base)<<21)|((rt)<<16))
-#define STD(rt, base)		WORD	$((077<<26)|((base)<<21)|((rt)<<16))
+#define	STD(rt, base)		WORD	$((077<<26)|((base)<<21)|((rt)<<16))
 #define	DSLL(sa, rt, rd)	WORD	$(((rt)<<16)|((rd)<<11)|((sa)<<6)|070)
 #define	DSRA(sa, rt, rd)	WORD	$(((rt)<<16)|((rd)<<11)|((sa)<<6)|073)
 #define	LL(base, rt)		WORD	$((060<<26)|((base)<<21)|((rt)<<16))
@@ -841,7 +841,7 @@ TEXT	uvmove(SB), $-4
 	MOVW	4(FP), R3
 	BNE	R2, uvgetuna
 
-	/* alligned load */
+	/* aligned load */
 	LD	(1,2)
 	WAIT
 	MOVW	R2, R1
@@ -853,12 +853,12 @@ uvput:
 	AND	$7, R3, R4
 	BNE	R4, uvputuna
 
-	/* alligned store */
+	/* aligned store */
 	STD	(2,3)
 	NOP
 	RET
 
-	/* unalligned load */
+	/* unaligned load */
 uvgetuna:
 	MOVW	0(R1),R2
 	MOVW	4(R1),R1
