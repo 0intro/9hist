@@ -65,7 +65,7 @@ static ulong
 s3linear(VGAscr* scr, int* size, int* align)
 {
 	ulong aperture, oaperture;
-	int osize, oapsize, wasupamem;
+	int i, osize, oapsize, wasupamem;
 	Pcidev *p;
 	Physseg seg;
 
@@ -73,16 +73,25 @@ s3linear(VGAscr* scr, int* size, int* align)
 	oaperture = scr->aperture;
 	oapsize = scr->apsize;
 	wasupamem = scr->isupamem;
+
+	if(p = pcimatch(nil, 0x5333, 0)){
+		for(i=0; i<nelem(p->mem); i++){
+			if(p->mem[i].size >= *size
+			&& ((p->mem[i].bar & ~0x0F) & (*align-1)) == 0)
+				break;
+		}
+		if(i >= nelem(p->mem)){
+			print("vgas3: aperture not found\n");
+			return 0;
+		}
+		aperture = p->mem[i].bar & ~0x0F;
+		*size = p->mem[i].size;
+	}else
+		aperture = 0;
+
 	if(wasupamem)
 		upafree(oaperture, oapsize);
 	scr->isupamem = 0;
-
-	if(p = pcimatch(nil, 0x5333, 0)){
-		aperture = p->mem[0].bar & ~0x0F;
-		*size = p->mem[0].size;
-	}
-	else
-		aperture = 0;
 
 	aperture = upamalloc(aperture, *size, *align);
 	if(aperture == 0){
@@ -191,6 +200,7 @@ s3load(VGAscr* scr, Cursor* curs)
 	case 0xE18A:				/* ViRGE/[DG]X */
 	case 0xE110:				/* ViRGE/GX2 */
 	case 0xE13D:				/* ViRGE/VX */
+	case 0xE122:				/* Savage4 */
 		p += scr->storage;
 		break;
 
@@ -237,6 +247,7 @@ s3load(VGAscr* scr, Cursor* curs)
 	case 0xE18A:				/* ViRGE/[DG]X */
 	case 0xE110:				/* ViRGE/GX2 */
 	case 0xE13D:				/* ViRGE/VX */
+	case 0xE122:				/* Savage4 */
 		break;
 
 	default:
