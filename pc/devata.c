@@ -11,7 +11,7 @@
 #include	"../port/error.h"
 
 
-#define DPRINT if(1)print
+#define DPRINT if(0)print
 #define XPRINT if(0)print
 #define ILOCK(x)
 #define IUNLOCK(x)
