@@ -181,7 +181,7 @@ pooladd(Pool *p, Bhdr *q)
 }
 
 void*
-poolalloc(Pool *p, int size)
+poolalloc(Pool *p, long size)
 {
 	Bhdr *q, *t;
 	int alloc, ldr, ns, frag;
