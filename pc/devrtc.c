@@ -319,9 +319,9 @@ static	int	ldmsize[] =
  *  return the days/month for the given year
  */
 static int*
-yrsize(int yr)
+yrsize(int y)
 {
-	if((yr % 4) == 0)
+	if((y%4) == 0 && ((y%100) != 0 || (y%400) == 0))
 		return ldmsize;
 	else
 		return dmsize;
