@@ -36,7 +36,7 @@ tarlookup(uchar *addr, char *file, int *dlen)
 	Hblock *hp;
 	Dir dir;
 
-print("tarlookup: %x\n", addr);
+print("tarlookup: %p\n", addr);
 	hp = (Hblock*)addr;
 	while(getdir(hp, &dir) != 0) {
 print("name = %s\n", hp->dbuf.name);

@@ -77,6 +77,8 @@ void	pcmunmap(int, PCMmap*);
 int		pcmspecial(char*, ISAConf*);
 void	pcmspecialclose(int);
 #define	procrestore(p)
+void	powerdownled(void);
+void	powerupled(void);
 void	procsave(Proc*);
 void	procsetup(Proc*);
 void	putdec(ulong);

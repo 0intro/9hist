@@ -183,12 +183,12 @@ spdump(SPIparam *sp)
 	print("rptr = %lux\n", sp->rptr);
 	print("rbptr = %ux\n", sp->rbptr);
 	print("rcnt = %ux\n", sp->rcnt);
-	print("rtmp = %ux\n", sp->rtmp);
+	print("rtmp = %lux\n", sp->rtmp);
 	print("tstate = %lux\n", sp->tstate);
 	print("tptr = %lux\n", sp->tptr);
 	print("tbptr = %ux\n", sp->tbptr);
 	print("tcnt = %ux\n", sp->tcnt);
-	print("ttmp = %ux\n", sp->ttmp);
+	print("ttmp = %lux\n", sp->ttmp);
 }
 
 void
@@ -228,7 +228,7 @@ spdump(ctlr->sp);
 m->iomem->pbdat |= IBIT(31);
 microdelay(1);
 	ctlr->spi->spcom = 1<<7;	/* transmit now */
-print("cpcom = %ux\n", &ctlr->spi->spcom);
+print("cpcom = %p\n", &ctlr->spi->spcom);
 spdump(ctlr->sp);
 	eieio();
 	ctlr->ntq++;
@@ -243,7 +243,7 @@ delay(100);
 	dre = &ctlr->rdr[ctlr->rdrx];
 	status = dre->status;
 	len = dre->length;
-print("%d status = %ux len=%d\n", ctlr->rdrx, status, len);
+print("%d status = %lux len=%d\n", ctlr->rdrx, status, len);
 	b = iallocb(len);
 	memmove(b->wp, KADDR(dre->addr), len);
 	b->wp += len;

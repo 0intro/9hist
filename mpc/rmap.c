@@ -44,7 +44,7 @@ mapfree(RMap* rmap, ulong addr, int size)
 		}
 		else do{
 			if(mp >= rmap->mapend){
-				print("mapfree: %s: losing 0x%uX, %d\n",
+				print("mapfree: %s: losing 0x%luX, %d\n",
 					rmap->name, addr, size);
 				break;
 			}

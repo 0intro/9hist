@@ -1239,7 +1239,7 @@ uartstatus(Chan*, Uart *p, void *buf, long n, long offset)
 	IMM *io;
 	char str[256];
 
-	sprint(str, "opens %d ferr %lud oerr %lud crcerr %lud baud %lud perr %lud intr %lud lastc = %c", p->opens,
+	sprint(str, "opens %d ferr %lud oerr %lud crcerr %lud baud %ud perr %lud intr %lud lastc = %c", p->opens,
 		p->frame, p->overrun, p->crcerr, p->baud, p->perror, p->interrupts, lastc);
 	/* TO DO: cts, dsr, ring, dcd, dtr, rts aren't all available on 82xFADS */
 	io = m->iomem;

@@ -22,7 +22,7 @@ flushmmu(void)
 {
 	int x;
 
-if(0)print("flushmmu(%d)\n", up->pid);
+if(0)print("flushmmu(%ld)\n", up->pid);
 	x = splhi();
 	up->newtlb = 1;
 	mmuswitch(up);
@@ -49,7 +49,7 @@ if(0)print("mmuswitch()\n");
 void
 mmurelease(Proc* p)
 {
-if(0)print("mmurelease(%d)\n", p->pid);
+if(0)print("mmurelease(%ld)\n", p->pid);
 	memset(p->pidonmach, 0, sizeof p->pidonmach);
 }
 
@@ -125,7 +125,7 @@ newtlbpid(Proc *p)
 	m->pidproc[i] = p;
 	p->pidonmach[m->machno] = i;
 	m->lastpid = i;
-if(0)print("newtlbpid: pid=%d = tlbpid = %d\n", p->pid, i);
+if(0)print("newtlbpid: pid=%ld = tlbpid = %d\n", p->pid, i);
 	return i;
 }
 
@@ -152,7 +152,7 @@ putmmu(ulong va, ulong pa, Page *pg)
 	qunlock(&m->stlblk);
 
 	ctl = &pg->cachectl[m->machno];
-if(0)print("putmmu tp=%d h=%d va=%ux pa=%ux ctl=%x\n", tp, h,va, pa, *ctl);
+if(0)print("putmmu tp=%d h=%ld va=%lux pa=%lux ctl=%x\n", tp, h,va, pa, *ctl);
 	switch(*ctl) {
 	default:
 		panic("putmmu: %d\n", *ctl);
