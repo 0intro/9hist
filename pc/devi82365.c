@@ -104,6 +104,7 @@ enum
 typedef struct I82365	I82365;
 typedef struct Slot	Slot;
 typedef struct Conftab	Conftab;
+typedef struct Cisdat Cisdat;
 
 /* a controller */
 enum
@@ -144,6 +145,15 @@ struct Conftab
 	ulong	otherwait;
 };
 
+/* cis memory walking */
+struct Cisdat
+{
+	uchar	*cisbase;
+	int	cispos;
+	int	cisskip;
+	int	cislen;
+};
+
 /* a card slot */
 struct Slot
 {
@@ -175,8 +185,7 @@ struct Slot
 	Conftab	*def;		/* default conftab */
 
 	/* for walking through cis */
-	int	cispos;		/* current position scanning cis */
-	uchar	*cisbase;
+	Cisdat;
 
 	/* memory maps */
 	Lock	mlock;		/* lock down the maps */
@@ -1046,34 +1055,90 @@ pcmio(int slotno, ISAConf *isa)
  *  read and crack the card information structure enough to set
  *  important parameters like power
  */
-static void	tcfig(Slot*, int);
-static void	tentry(Slot*, int);
-static void	tvers1(Slot*, int);
+static void	tcfig(Slot*, Cisdat*, int);
+static void	tentry(Slot*, Cisdat*, int);
+static void	tvers1(Slot*, Cisdat*, int);
 
-static void (*parse[256])(Slot*, int) =
-{
-[0x15]	tvers1,
-[0x1A]	tcfig,
-[0x1B]	tentry,
+struct {
+	int n;
+	void (*parse)(Slot*, Cisdat*, int);
+} cistab[] = {
+	0x15, tvers1,
+	0x1A, tcfig,
+	0x1B, tentry,
 };
 
 static int
-readc(Slot *pp, uchar *x)
+readc(Cisdat *pp, uchar *x)
 {
-	if(pp->cispos >= Mchunk)
+	if(pp->cispos >= pp->cislen)
 		return 0;
-	*x = pp->cisbase[2*pp->cispos];
+	*x = pp->cisbase[pp->cisskip*pp->cispos];
 	pp->cispos++;
 	return 1;
+}
+
+static int
+xcistuple(int slotno, int tuple, void *v, int nv, int attr)
+{
+	PCMmap *m;
+	Cisdat cis;
+	int i, l;
+	uchar *p;
+	uchar type, link;
+	int this;
+
+	m = pcmmap(slotno, 0, 0, attr);
+	if(m == 0)
+		return -1;
+
+	cis.cisbase = KADDR(m->isa);
+	cis.cispos = 0;
+	cis.cisskip = attr ? 2 : 1;
+	cis.cislen = Mchunk;
+
+	/* loop through all the tuples */
+	for(i = 0; i < 1000; i++){
+		this = cis.cispos;
+		if(readc(&cis, &type) != 1)
+			break;
+		if(type == 0xFF)
+			break;
+		if(readc(&cis, &link) != 1)
+			break;
+		if(link == 0xFF)
+			break;
+		if(type == tuple) {
+			p = v;
+			for(l=0; l<nv && l<link; l++)
+				if(readc(&cis, p++) != 1)
+					break;
+			pcmunmap(slotno, m);
+			return nv;
+		}
+		cis.cispos = this + (2+link);
+	}
+	pcmunmap(slotno, m);
+	return -1;
+}
+
+int
+pcmcistuple(int slotno, int tuple, void *v, int nv)
+{
+	int n;
+
+	/* try attribute space, then memory */
+	if((n = xcistuple(slotno, tuple, v, nv, 1)) >= 0)
+		return n;
+	return xcistuple(slotno, tuple, v, nv, 0);
 }
 
 static void
 cisread(Slot *pp)
 {
-	uchar link;
-	uchar type;
-	int this, i;
-	PCMmap *m;
+	uchar v[256];
+	int i, nv;
+	Cisdat cis;
 
 	memset(pp->ctab, 0, sizeof(pp->ctab));
 	pp->caddr = 0;
@@ -1081,32 +1146,20 @@ cisread(Slot *pp)
 	pp->configed = 0;
 	pp->nctab = 0;
 
-	m = pcmmap(pp->slotno, 0, 0, 1);
-	if(m == 0)
-		return;
-	pp->cisbase = KADDR(m->isa);
-	pp->cispos = 0;
-
-	/* loop through all the tuples */
-	for(i = 0; i < 1000; i++){
-		this = pp->cispos;
-		if(readc(pp, &type) != 1)
-			break;
-		if(type == 0xFF)
-			break;
-		if(readc(pp, &link) != 1)
-			break;
-		if(parse[type])
-			(*parse[type])(pp, type);
-		if(link == 0xff)
-			break;
-		pp->cispos = this + (2+link);
+	for(i = 0; i < nelem(cistab); i++) {
+		if((nv = pcmcistuple(pp->slotno, cistab[i].n, v, sizeof(v))) >= 0) {
+			cis.cisbase = v;
+			cis.cispos = 0;
+			cis.cisskip = 1;
+			cis.cislen = nv;
+			
+			(*cistab[i].parse)(pp, &cis, cistab[i].n);
+		}
 	}
-	pcmunmap(pp->slotno, m);
 }
 
 static ulong
-getlong(Slot *pp, int size)
+getlong(Cisdat *cis, int size)
 {
 	uchar c;
 	int i;
@@ -1114,7 +1167,7 @@ getlong(Slot *pp, int size)
 
 	x = 0;
 	for(i = 0; i < size; i++){
-		if(readc(pp, &c) != 1)
+		if(readc(cis, &c) != 1)
 			break;
 		x |= c<<(i*8);
 	}
@@ -1122,19 +1175,19 @@ getlong(Slot *pp, int size)
 }
 
 static void
-tcfig(Slot *pp, int )
+tcfig(Slot *pp, Cisdat *cis, int )
 {
 	uchar size, rasize, rmsize;
 	uchar last;
 
-	if(readc(pp, &size) != 1)
+	if(readc(cis, &size) != 1)
 		return;
 	rasize = (size&0x3) + 1;
 	rmsize = ((size>>2)&0xf) + 1;
-	if(readc(pp, &last) != 1)
+	if(readc(cis, &last) != 1)
 		return;
-	pp->caddr = getlong(pp, rasize);
-	pp->cpresent = getlong(pp, rmsize);
+	pp->caddr = getlong(cis, rasize);
+	pp->cpresent = getlong(cis, rmsize);
 }
 
 static ulong vexp[8] =
@@ -1147,18 +1200,18 @@ static ulong vmant[16] =
 };
 
 static ulong
-microvolt(Slot *pp)
+microvolt(Cisdat *cis)
 {
 	uchar c;
 	ulong microvolts;
 	ulong exp;
 
-	if(readc(pp, &c) != 1)
+	if(readc(cis, &c) != 1)
 		return 0;
 	exp = vexp[c&0x7];
 	microvolts = vmant[(c>>3)&0xf]*exp;
 	while(c & 0x80){
-		if(readc(pp, &c) != 1)
+		if(readc(cis, &c) != 1)
 			return 0;
 		switch(c){
 		case 0x7d:
@@ -1176,16 +1229,16 @@ microvolt(Slot *pp)
 }
 
 static ulong
-nanoamps(Slot *pp)
+nanoamps(Cisdat *cis)
 {
 	uchar c;
 	ulong nanoamps;
 
-	if(readc(pp, &c) != 1)
+	if(readc(cis, &c) != 1)
 		return 0;
 	nanoamps = vexp[c&0x7]*vmant[(c>>3)&0xf];
 	while(c & 0x80){
-		if(readc(pp, &c) != 1)
+		if(readc(cis, &c) != 1)
 			return 0;
 		if(c == 0x7d || c == 0x7e || c == 0x7f)
 			nanoamps = 0;
@@ -1197,28 +1250,28 @@ nanoamps(Slot *pp)
  *  only nominal voltage is important for config
  */
 static ulong
-power(Slot *pp)
+power(Cisdat *cis)
 {
 	uchar feature;
 	ulong mv;
 
 	mv = 0;
-	if(readc(pp, &feature) != 1)
+	if(readc(cis, &feature) != 1)
 		return 0;
 	if(feature & 1)
-		mv = microvolt(pp);
+		mv = microvolt(cis);
 	if(feature & 2)
-		microvolt(pp);
+		microvolt(cis);
 	if(feature & 4)
-		microvolt(pp);
+		microvolt(cis);
 	if(feature & 8)
-		nanoamps(pp);
+		nanoamps(cis);
 	if(feature & 0x10)
-		nanoamps(pp);
+		nanoamps(cis);
 	if(feature & 0x20)
-		nanoamps(pp);
+		nanoamps(cis);
 	if(feature & 0x40)
-		nanoamps(pp);
+		nanoamps(cis);
 	return mv/1000000;
 }
 
@@ -1229,12 +1282,12 @@ static ulong exponent[8] =
 { 1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, };
 
 static ulong
-ttiming(Slot *pp, int scale)
+ttiming(Cisdat *cis, int scale)
 {
 	uchar unscaled;
 	ulong nanosecs;
 
-	if(readc(pp, &unscaled) != 1)
+	if(readc(cis, &unscaled) != 1)
 		return 0;
 	nanosecs = (mantissa[(unscaled>>3)&0xf]*exponent[unscaled&7])/10;
 	nanosecs = nanosecs * vexp[scale];
@@ -1242,31 +1295,31 @@ ttiming(Slot *pp, int scale)
 }
 
 static void
-timing(Slot *pp, Conftab *ct)
+timing(Cisdat *cis, Conftab *ct)
 {
 	uchar c, i;
 
-	if(readc(pp, &c) != 1)
+	if(readc(cis, &c) != 1)
 		return;
 	i = c&0x3;
 	if(i != 3)
-		ct->maxwait = ttiming(pp, i);		/* max wait */
+		ct->maxwait = ttiming(cis, i);		/* max wait */
 	i = (c>>2)&0x7;
 	if(i != 7)
-		ct->readywait = ttiming(pp, i);		/* max ready/busy wait */
+		ct->readywait = ttiming(cis, i);		/* max ready/busy wait */
 	i = (c>>5)&0x7;
 	if(i != 7)
-		ct->otherwait = ttiming(pp, i);		/* reserved wait */
+		ct->otherwait = ttiming(cis, i);		/* reserved wait */
 }
 
 static void
-iospaces(Slot *pp, Conftab *ct)
+iospaces(Cisdat *cis, Conftab *ct)
 {
 	uchar c;
 	int i, nio;
 
 	ct->nio = 0;
-	if(readc(pp, &c) != 1)
+	if(readc(cis, &c) != 1)
 		return;
 
 	ct->bit16 = ((c>>5)&3) >= 2;
@@ -1277,55 +1330,55 @@ iospaces(Slot *pp, Conftab *ct)
 		return;
 	}
 
-	if(readc(pp, &c) != 1)
+	if(readc(cis, &c) != 1)
 		return;
 
 	nio = (c&0xf)+1;
 	for(i = 0; i < nio; i++){
-		ct->io[i].start = getlong(pp, (c>>4)&0x3);
-		ct->io[0].len = getlong(pp, (c>>6)&0x3);
+		ct->io[i].start = getlong(cis, (c>>4)&0x3);
+		ct->io[0].len = getlong(cis, (c>>6)&0x3);
 	}
 	ct->nio = nio;
 }
 
 static void
-irq(Slot *pp, Conftab *ct)
+irq(Cisdat *cis, Conftab *ct)
 {
 	uchar c;
 
-	if(readc(pp, &c) != 1)
+	if(readc(cis, &c) != 1)
 		return;
 	ct->irqtype = c & 0xe0;
 	if(c & 0x10)
-		ct->irqs = getlong(pp, 2);
+		ct->irqs = getlong(cis, 2);
 	else
 		ct->irqs = 1<<(c&0xf);
 	ct->irqs &= 0xDEB8;		/* levels available to card */
 }
 
 static void
-memspace(Slot *pp, int asize, int lsize, int host)
+memspace(Cisdat *cis, int asize, int lsize, int host)
 {
 	ulong haddress, address, len;
 
-	len = getlong(pp, lsize)*256;
-	address = getlong(pp, asize)*256;
+	len = getlong(cis, lsize)*256;
+	address = getlong(cis, asize)*256;
 	USED(len, address);
 	if(host){
-		haddress = getlong(pp, asize)*256;
+		haddress = getlong(cis, asize)*256;
 		USED(haddress);
 	}
 }
 
 static void
-tentry(Slot *pp, int )
+tentry(Slot *pp, Cisdat *cis, int )
 {
 	uchar c, i, feature;
 	Conftab *ct;
 
 	if(pp->nctab >= Maxctab)
 		return;
-	if(readc(pp, &c) != 1)
+	if(readc(cis, &c) != 1)
 		return;
 	ct = &pp->ctab[pp->nctab++];
 
@@ -1341,65 +1394,65 @@ tentry(Slot *pp, int )
 
 	/* memory wait specified? */
 	if(c & 0x80){
-		if(readc(pp, &i) != 1)
+		if(readc(cis, &i) != 1)
 			return;
 		if(i&0x80)
 			ct->memwait = 1;
 	}
 
-	if(readc(pp, &feature) != 1)
+	if(readc(cis, &feature) != 1)
 		return;
 	switch(feature&0x3){
 	case 1:
-		ct->vpp1 = ct->vpp2 = power(pp);
+		ct->vpp1 = ct->vpp2 = power(cis);
 		break;
 	case 2:
-		power(pp);
-		ct->vpp1 = ct->vpp2 = power(pp);
+		power(cis);
+		ct->vpp1 = ct->vpp2 = power(cis);
 		break;
 	case 3:
-		power(pp);
-		ct->vpp1 = power(pp);
-		ct->vpp2 = power(pp);
+		power(cis);
+		ct->vpp1 = power(cis);
+		ct->vpp2 = power(cis);
 		break;
 	default:
 		break;
 	}
 	if(feature&0x4)
-		timing(pp, ct);
+		timing(cis, ct);
 	if(feature&0x8)
-		iospaces(pp, ct);
+		iospaces(cis, ct);
 	if(feature&0x10)
-		irq(pp, ct);
+		irq(cis, ct);
 	switch((feature>>5)&0x3){
 	case 1:
-		memspace(pp, 0, 2, 0);
+		memspace(cis, 0, 2, 0);
 		break;
 	case 2:
-		memspace(pp, 2, 2, 0);
+		memspace(cis, 2, 2, 0);
 		break;
 	case 3:
-		if(readc(pp, &c) != 1)
+		if(readc(cis, &c) != 1)
 			return;
 		for(i = 0; i <= (c&0x7); i++)
-			memspace(pp, (c>>5)&0x3, (c>>3)&0x3, c&0x80);
+			memspace(cis, (c>>5)&0x3, (c>>3)&0x3, c&0x80);
 		break;
 	}
 	pp->configed++;
 }
 
 static void
-tvers1(Slot *pp, int )
+tvers1(Slot *pp, Cisdat *cis, int )
 {
 	uchar c, major, minor;
 	int  i;
 
-	if(readc(pp, &major) != 1)
+	if(readc(cis, &major) != 1)
 		return;
-	if(readc(pp, &minor) != 1)
+	if(readc(cis, &minor) != 1)
 		return;
 	for(i = 0; i < sizeof(pp->verstr)-1; i++){
-		if(readc(pp, &c) != 1)
+		if(readc(cis, &c) != 1)
 			return;
 		if(c == 0)
 			c = '\n';

@@ -2,8 +2,6 @@
  * 3C589 and 3C562.
  * To do:
  *	check xcvr10Base2 still works (is GlobalReset necessary?).
- *	pull the station address out of the card space for the 3C562,
- *	it has no EEPROM.
  */
 #include "u.h"
 #include "../port/lib.h"
@@ -82,6 +80,13 @@ enum {						/* Window 4 - diagnostic */
 
 extern int etherelnk3reset(Ether*);
 
+static char *tcmpcmcia[] = {
+	"3C589",			/* 3COM 589[ABCD] */
+	"3C562",			/* 3COM 562 */
+	"589E",				/* 3COM Megahertz 589E */
+	nil,
+};
+
 static int
 configASIC(Ether* ether, int port, int xcvr)
 {
@@ -111,10 +116,12 @@ configASIC(Ether* ether, int port, int xcvr)
 static int
 reset(Ether* ether)
 {
-	int i, slot;
+	int i, t, slot;
+	char *type;
 	int port;
 	enum { WantAny, Want10BT, Want10B2 };
 	int want;
+	uchar ea[6];
 	char *p;
 
 	if(ether->irq == 0)
@@ -126,11 +133,34 @@ reset(Ether* ether)
 	if(ioalloc(port, 0x10, 0, "3C589") < 0)
 		return -1;
 
-	if((slot = pcmspecial(ether->type, ether)) < 0){
+	type = nil;
+	slot = -1;
+	for(i = 0; tcmpcmcia[i] != nil; i++){
+		type = tcmpcmcia[i];
+		if((slot = pcmspecial(type, ether)) >= 0)
+			break;
+	}
+	if(slot < 0){
 		iofree(port);
 		return -1;
 	}
 
+	/*
+	 * Read Ethernet address from card memory
+	 * on 3C562, but only if the user has not 
+	 * overridden it.
+	 */
+	memset(ea, 0, sizeof ea);
+	if(memcmp(ea, ether->ea, 6) == 0 && strcmp(type, "3C562") == 0) {
+		if(pcmcistuple(slot, 0x88, ea, 6) == 6) {
+			for(i = 0; i < 6; i += 2){
+				t = ea[i];
+				ea[i] = ea[i+1];
+				ea[i+1] = t;
+			}
+			memmove(ether->ea, ea, 6);
+		}
+	}
 	/*
 	 * Allow user to specify desired media in plan9.ini
 	 */
@@ -156,7 +186,7 @@ reset(Ether* ether)
 		COMMAND(port, SelectRegisterWindow, Wdiagnostic);
 		if((ins(port+MediaStatus)&linkBeatDetect) || want==Want10BT){
 			COMMAND(port, SelectRegisterWindow, Wop);
-			print("#l%d: xcvr10BaseT %s\n", ether->ctlrno, ether->type);
+			print("#l%d: xcvr10BaseT %s\n", ether->ctlrno, type);
 			return 0;
 		}
 	}
@@ -169,7 +199,7 @@ reset(Ether* ether)
 			iofree(port);
 			return -1;
 		}
-		print("#l%d: xcvr10Base2 %s\n", ether->ctlrno, ether->type);
+		print("#l%d: xcvr10Base2 %s\n", ether->ctlrno, type);
 		return 0;
 	}
 	return -1;		/* not reached */

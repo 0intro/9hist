@@ -79,13 +79,7 @@ reset(Ether* ether)
 	ctlr->pstart = ctlr->tstart + HOWMANY(sizeof(Etherpkt), Dp8390BufSz);
 	ctlr->pstop = ctlr->tstart + HOWMANY(ether->size, Dp8390BufSz);
 
-	ctlr->dummyrr = 1;
-	for(i = 0; i < ether->nopt; i++){
-		if(strcmp(ether->opt[i], "nodummyrr"))
-			continue;
-		ctlr->dummyrr = 0;
-		break;
-	}
+	ctlr->dummyrr = 0;
 
 	/*
 	 * Reset the board. This is done by doing a read

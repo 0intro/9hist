@@ -181,15 +181,16 @@ struct Rudpcb
 /*
  * local functions 
  */
-void	relsendack(Conv *, Reliable *, int);
-int	reliput(Conv *, Block *, uchar *, ushort);
-Reliable *relstate(Rudpcb *, uchar *, ushort, char *from);
-void	relput(Reliable *);
-void	relforget(Conv *, uchar *, int, int);
+void	relsendack(Conv*, Reliable*, int);
+int	reliput(Conv*, Block*, uchar*, ushort);
+Reliable *relstate(Rudpcb*, uchar*, ushort, char*);
+void	relput(Reliable*);
+void	relforget(Conv *, uchar*, int, int);
 void	relackproc(void *);
-void	relackq(Reliable *, Block *);
-void	relhangup(Conv *, Reliable *);
-void	relrexmit(Conv *, Reliable *);
+void	relackq(Reliable *, Block*);
+void	relhangup(Conv *, Reliable*);
+void	relrexmit(Conv *, Reliable*);
+void	relput(Reliable*);
 
 static void
 rudpstartackproc(Proto *rudp)
@@ -295,7 +296,6 @@ rudpclose(Conv *c)
 	ucb->r = 0;
 
 	qunlock(ucb);
-
 	qunlock(c);
 }
 
@@ -445,6 +445,12 @@ rudpkick(Conv *c, int)
 
 	doipoput(c, f, bp, 0, c->ttl, c->tos);
 
+	if(waserror()) {
+		relput(r);
+		qunlock(&r->lock);
+		nexterror();
+	}
+
 	/* flow control of sorts */
 	qlock(&r->lock);
 	if(UNACKED(r) > Maxunacked){
@@ -452,9 +458,10 @@ rudpkick(Conv *c, int)
 		sleep(&r->vous, flow, r);
 		r->blocked = 0;
 	}
-	qunlock(&r->lock);
 
+	qunlock(&r->lock);
 	relput(r);
+	poperror();
 }
 
 void
@@ -554,7 +561,7 @@ rudpiput(Proto *rudp, uchar *ia, Block *bp)
 
 	len -= (UDP_RHDRSIZE-UDP_PHDRSIZE);
 	bp = trimblock(bp, UDP_IPHDR+UDP_RHDRSIZE, len);
-	if(bp == nil){
+	if(bp == nil) {
 		netlog(f, Logrudp, "rudp: len err %I.%d -> %I.%d\n", 
 			raddr, rport, laddr, lport);
 		DPRINT("rudp: len err %I.%d -> %I.%d\n", 
@@ -607,7 +614,7 @@ rudpiput(Proto *rudp, uchar *ia, Block *bp)
 	if(bp->next)
 		bp = concatblock(bp);
 
-	if(qfull(c->rq)){
+	if(qfull(c->rq)) {
 		netlog(f, Logrudp, "rudp: qfull %I.%d -> %I.%d\n", raddr, rport,
 			laddr, lport);
 		freeblist(bp);
@@ -810,6 +817,7 @@ relstate(Rudpcb *ucb, uchar *addr, ushort port, char *from)
 	if(r == nil){
 		while(generation == 0)
 			generation = rand();
+
 		DPRINT("from %s new state %lud for %I!%ud\n", 
 		        from, generation, addr, port);
 
@@ -832,6 +840,7 @@ relstate(Rudpcb *ucb, uchar *addr, ushort port, char *from)
 
 		*l = r;
 	}
+
 	incref(r);
 	return r;
 }
