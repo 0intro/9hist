@@ -475,7 +475,8 @@ mntrdwr(int type, Chan *c, void *buf, long n, ulong offset)
 
 	m = mntchk(c);
 	uba = buf;
-	for(cnt = 0; n; n -= nr) {
+	cnt = 0;
+	for(;;) {
 		r = mntralloc();
 		if(waserror()) {
 			mntfree(r);
@@ -495,7 +496,8 @@ mntrdwr(int type, Chan *c, void *buf, long n, ulong offset)
 		offset += nr;
 		uba += nr;
 		cnt += nr;
-		if(nr != r->request.count)
+		n -= nr;
+		if(nr != r->request.count || n == 0)
 			break;
 	}
 	return cnt;

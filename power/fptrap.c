@@ -34,7 +34,6 @@ fptrap(Ureg *ur)
 		return;
 
 if((counter&0xff) == 0)
-print("fpt: %d %s %lux %lux\n", u->p->pid, u->p->text, u->fpsave.fpstatus, ur->pc);
 
 	if(tlbp(ur->pc) == 0)
 		panic("not in tlb %lux\n", ur->pc);
