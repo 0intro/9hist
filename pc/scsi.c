@@ -45,7 +45,7 @@ scsireset(void)
 		if(isaconfig("scsi", ctlrno, ctlr) == 0)
 			continue;
 		for(i = 0; scsidev[i]; i++){
-			if(strcmp(ctlr->type, scsidev[i]->type))
+			if(cistrcmp(ctlr->type, scsidev[i]->type))
 				continue;
 			if((ctlr->io = scsidev[i]->reset(ctlrno, ctlr)) == 0)
 				break;

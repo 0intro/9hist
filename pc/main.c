@@ -424,6 +424,7 @@ confinit(void)
 	if(conf.nproc > 2000)
 		conf.nproc = 2000;
 	conf.nswap = conf.nproc*80;
+	conf.nswppo = 4096;
 	conf.nimage = 200;
 }
 
@@ -439,44 +440,52 @@ static char* mathmsg[] =
 	"error",
 };
 
+static void
+mathnote(void)
+{
+	int i;
+	ulong status;
+	char *msg, note[ERRLEN];
+
+	status = up->fpsave.status;
+
+	/*
+	 * Some attention should probably be paid here to the
+	 * exception masks and error summary.
+	 */
+	msg = "unknown";
+	for(i = 0; i < 8; i++){
+		if(!((1<<i) & status))
+			continue;
+		msg = mathmsg[i];
+		break;
+	}
+	sprint(note, "sys: fp: %s fppc=0x%lux", msg, up->fpsave.pc);
+	postnote(up, 1, note, NDebug);
+}
+
 /*
  *  math coprocessor error
  */
 static void
 matherror(Ureg *ur, void*)
 {
-	ulong status;
-	int i;
-	char *msg;
-	char note[ERRLEN];
-
 	/*
 	 *  a write cycle to port 0xF0 clears the interrupt latch attached
 	 *  to the error# line from the 387
 	 */
-	outb(0xF0, 0xFF);
+	if(!(m->cpuiddx & 0x01))
+		outb(0xF0, 0xFF);
 
 	/*
 	 *  save floating point state to check out error
 	 */
 	fpenv(&up->fpsave);
-	status = up->fpsave.status;
+	mathnote();
 
-	msg = 0;
-	for(i = 0; i < 8; i++)
-		if((1<<i) & status){
-			msg = mathmsg[i];
-			sprint(note, "sys: fp: %s fppc=0x%lux", msg, up->fpsave.pc);
-			postnote(up, 1, note, NDebug);
-			break;
-		}
-	if(msg == 0){
-		sprint(note, "sys: fp: unknown fppc=0x%lux", up->fpsave.pc);
-		postnote(up, 1, note, NDebug);
-	}
 	if(ur->pc & KZERO)
-		panic("fp: status %lux fppc=0x%lux pc=0x%lux", status,
-			up->fpsave.pc, ur->pc);
+		panic("fp: status %lux fppc=0x%lux pc=0x%lux",
+			up->fpsave.status, up->fpsave.pc, ur->pc);
 }
 
 /*
@@ -491,6 +500,17 @@ mathemu(Ureg*, void*)
 		up->fpstate = FPactive;
 		break;
 	case FPinactive:
+		/*
+		 * Before restoring the state, check for any pending
+		 * exceptions, there's no way to restore the state without
+		 * generating an unmasked exception.
+		 * More attention should probably be paid here to the
+		 * exception masks and error summary.
+		 */
+		if((up->fpsave.status & ~up->fpsave.control) & 0x07F){
+			mathnote();
+			break;
+		}
 		fprestore(&up->fpsave);
 		up->fpstate = FPactive;
 		break;
@@ -538,8 +558,17 @@ procsave(Proc *p)
 	if(p->fpstate == FPactive){
 		if(p->state == Moribund)
 			fpoff();
-		else
+		else{
+			/*
+			 * Fpsave() stores without handling pending
+			 * unmasked exeptions. Postnote() can't be called
+			 * here as sleep() already has up->rlock, so
+			 * the handling of pending exceptions is delayed
+			 * until the process runs again and generates an
+			 * emulation fault to activate the FPU.
+			 */
 			fpsave(&up->fpsave);
+		}
 		p->fpstate = FPinactive;
 	}
 

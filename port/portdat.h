@@ -374,7 +374,6 @@ struct Segment
 	Ref;
 	QLock	lk;
 	ushort	steal;		/* Page stealer lock */
-	Segment	*next;		/* free list pointers */
 	ushort	type;		/* segment type */
 	ulong	base;		/* virtual base */
 	ulong	top;		/* virtual top */
@@ -385,7 +384,9 @@ struct Segment
 	Image	*image;		/* text in file attached to this segment */
 	Physseg *pseg;
 	ulong*	profile;	/* Tick profile area */
-	Pte	*map[SEGMAPSIZE];
+	Pte	**map;
+	int	mapsize;
+	Pte	*ssegmap[SSEGMAPSIZE];
 };
 
 enum

@@ -12,11 +12,6 @@ static void	pageout(Proc*, Segment*);
 static void	pagepte(int, Page**);
 static void	pager(void*);
 
-enum
-{
-	Maxpages = SEGMAXSIZE/BY2PG,	/* Max # of pageouts per segment pass */
-};
-
 	Image 	swapimage;
 static 	int	swopen;
 static	Page	**iolist;
@@ -30,7 +25,7 @@ swapinit(void)
 	swapalloc.alloc = swapalloc.swmap;
 	swapalloc.last = swapalloc.swmap;
 	swapalloc.free = conf.nswap;
-	iolist = xalloc(Maxpages*sizeof(Page*));
+	iolist = xalloc(conf.nswppo*sizeof(Page*));
 	if(swapalloc.swmap == 0 || iolist == 0)
 		panic("swapinit: not enough memory");
 
@@ -163,7 +158,7 @@ loop:
 static void
 pageout(Proc *p, Segment *s)
 {
-	int type, i;
+	int type, i, size;
 	Pte *l;
 	Page **pg, *entry;
 
@@ -189,7 +184,8 @@ pageout(Proc *p, Segment *s)
 
 	/* Pass through the pte tables looking for memory pages to swap out */
 	type = s->type&SG_TYPE;
-	for(i = 0; i < SEGMAPSIZE; i++) {
+	size = s->mapsize;
+	for(i = 0; i < size; i++) {
 		l = s->map[i];
 		if(l == 0)
 			continue;
@@ -205,7 +201,7 @@ pageout(Proc *p, Segment *s)
 
 			pagepte(type, pg);
 
-			if(ioptr >= Maxpages)
+			if(ioptr >= conf.nswppo)
 				goto out;
 		}
 	}

@@ -50,7 +50,7 @@
 #define	KZERO		0x80000000		/* base of kernel address space */
 #define	KTZERO		0x80100000		/* first address in kernel text */
 #define	USTKTOP		(KZERO-BY2PG)		/* byte just beyond user stack */
-#define	USTKSIZE	(4*1024*1024)		/* size of user stack */
+#define	USTKSIZE	(16*1024*1024)		/* size of user stack */
 #define	TSTKTOP		(USTKTOP-USTKSIZE)	/* end of new stack in sysexec */
 #define TSTKSIZ 	100
 
@@ -101,7 +101,8 @@
  */
 #define PTEMAPMEM	(1024*1024)	
 #define	PTEPERTAB	(PTEMAPMEM/BY2PG)
-#define SEGMAPSIZE	512
+#define SEGMAPSIZE	1984
+#define SSEGMAPSIZE	16
 #define PPN(x)		((x)&~(BY2PG-1))
 
 /*

@@ -482,6 +482,7 @@ confinit(void)
 	/* set up other configuration parameters */
 	conf.nproc = 100;
 	conf.nswap = conf.npage*3;
+	conf.nswppo = 4096;
 	conf.nimage = 200;
 
 	conf.monitor = 1;

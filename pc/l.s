@@ -397,8 +397,7 @@ TEXT fpinit(SB), $0				/* enable and init */
 
 TEXT fpsave(SB), $0				/* save state and disable */
 	MOVL	p+0(FP), AX
-	WAIT
-	FSAVE	0(AX)
+	FSAVE	0(AX)				/* no WAIT */
 	FPOFF
 	RET
 

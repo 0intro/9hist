@@ -11,6 +11,7 @@ struct Mntrpc
 	Mntrpc*	list;		/* Free/pending list */
 	Fcall	request;	/* Outgoing file system protocol message */
 	Fcall	reply;		/* Incoming reply */
+	uvlong	stime;		/* start time */
 	Mnt*	m;		/* Mount device during rpc */
 	Rendez	r;		/* Place to hang out */
 	char*	rpc;		/* I/O Data buffer */
@@ -55,6 +56,7 @@ void	mntrecover(Mnt*, Mntrpc*);
 Chan*	mntchan(void);
 
 int defmaxmsg = MAXFDATA;
+extern void (*mntstats)(int, Chan*, uvlong);
 
 enum
 {
@@ -676,6 +678,8 @@ mountio(Mnt *m, Mntrpc *r)
 			if(devtab[m->c->type]->write(m->c, r->rpc, n, 0) != n)
 				error(Emountrpc);
 		}
+		r->stime = fastticks(nil);
+		r->bytes = n;
 		poperror();
 	}
 
@@ -766,9 +770,14 @@ mountmux(Mnt *m, Mntrpc *r)
 				r->rpc = dp;
 				q->reply = r->reply;
 				q->done = 1;
+				if(mntstats != nil)
+					(*mntstats)(q->request.type, m->c, q->stime);
 				wakeup(&q->r);
-			}else
+			}else {
+				if(mntstats != nil)
+					(*mntstats)(r->request.type, m->c, q->stime);
 				q->done = 1;
+			}
 			return;
 		}
 		l = &q->list;

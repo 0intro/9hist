@@ -197,6 +197,7 @@
 #define	KPTELOG		7
 #define	KPTESIZE	(1<<KPTELOG)
 #define	SEGMAPSIZE	512
+#define SSEGMAPSIZE	16
 
 #define	NTLBPID	256	/* number of pids */
 #define	NTLB	48	/* number of entries */

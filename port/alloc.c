@@ -484,9 +484,10 @@ poolsummary(void)
 	int i;
 
 	for(i = 0; i < table.n; i++)
-		print("Arena: %s cursize=%lud; maxsize=%lud\n",
+		print("Arena: %s cursize=%lud; arenasize=%lud; maxsize=%lud\n",
 			table.pool[i].name,
 			table.pool[i].cursize,
+			table.pool[i].arenasize,
 			table.pool[i].maxsize);
 }
 

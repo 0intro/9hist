@@ -48,6 +48,7 @@ Segment *
 newseg(int type, ulong base, ulong size)
 {
 	Segment *s;
+	int mapsize;
 
 	if(size > (SEGMAPSIZE*PTEPERTAB))
 		error(Enovmem);
@@ -58,6 +59,17 @@ newseg(int type, ulong base, ulong size)
 	s->base = base;
 	s->top = base+(size*BY2PG);
 	s->size = size;
+
+	mapsize = ROUND(size, PTEPERTAB)/PTEPERTAB;
+	if(mapsize > nelem(s->ssegmap)){
+		s->map = smalloc(mapsize*sizeof(Pte*));
+		s->mapsize = mapsize;
+	}
+	else{
+		s->map = s->ssegmap;
+		s->mapsize = nelem(s->ssegmap);
+	}
+
 	return s;
 }
 
@@ -91,12 +103,14 @@ putseg(Segment *s)
 	if(i)
 		putimage(i);
 
-	emap = &s->map[SEGMAPSIZE];
+	emap = &s->map[s->mapsize];
 	for(pp = s->map; pp < emap; pp++)
 		if(*pp)
 			freepte(s, *pp);
 
 	qunlock(&s->lk);
+	if(s->map != s->ssegmap)
+		free(s->map);
 	if(s->profile != 0)
 		free(s->profile);
 	free(s);
@@ -108,7 +122,7 @@ relocateseg(Segment *s, ulong offset)
 	Page **pg, *x;
 	Pte *pte, **p, **endpte;
 
-	endpte = &s->map[SEGMAPSIZE];
+	endpte = &s->map[s->mapsize];
 	for(p = s->map; p < endpte; p++) {
 		if(*p == 0)
 			continue;
@@ -123,7 +137,7 @@ relocateseg(Segment *s, ulong offset)
 Segment*
 dupseg(Segment **seg, int segno, int share)
 {
-	int i;
+	int i, size;
 	Pte *pte;
 	Segment *n, *s;
 
@@ -174,7 +188,8 @@ dupseg(Segment **seg, int segno, int share)
 		n->flen = s->flen;
 		break;
 	}
-	for(i = 0; i < SEGMAPSIZE; i++)
+	size = s->mapsize;
+	for(i = 0; i < size; i++)
 		if(pte = s->map[i])
 			n->map[i] = ptecpy(pte);
 
@@ -374,7 +389,8 @@ ibrk(ulong addr, int seg)
 {
 	Segment *s, *ns;
 	ulong newtop, newsize;
-	int i;
+	int i, mapsize;
+	Pte **map;
 
 	s = up->seg[seg];
 	if(s == 0)
@@ -413,9 +429,18 @@ ibrk(ulong addr, int seg)
 		}
 	}
 
-	if(newsize > (PTEMAPMEM*SEGMAPSIZE)/BY2PG) {
+	if(newsize > (SEGMAPSIZE*PTEPERTAB)) {
 		qunlock(&s->lk);
 		error(Enovmem);
+	}
+	mapsize = ROUND(newsize, PTEPERTAB)/PTEPERTAB;
+	if(mapsize > s->mapsize){
+		map = smalloc(mapsize*sizeof(Pte*));
+		memmove(map, s->map, s->mapsize);
+		if(s->map != s->ssegmap)
+			free(s->map);
+		s->map = map;
+		s->mapsize = mapsize;
 	}
 
 	s->top = newtop;
@@ -430,7 +455,7 @@ ibrk(ulong addr, int seg)
 void
 mfreeseg(Segment *s, ulong start, int pages)
 {
-	int i, j;
+	int i, j, size;
 	ulong soff;
 	Page *pg;
 	Page *list;
@@ -438,8 +463,9 @@ mfreeseg(Segment *s, ulong start, int pages)
 	soff = start-s->base;
 	j = (soff&(PTEMAPMEM-1))/BY2PG;
 
+	size = s->mapsize;
 	list = nil;
-	for(i = soff/PTEMAPMEM; i < SEGMAPSIZE; i++) {
+	for(i = soff/PTEMAPMEM; i < size; i++) {
 		if(pages <= 0)
 			break;
 		if(s->map[i] == 0) {
@@ -477,7 +503,7 @@ out:
 	}
 }
 
-int
+Segment*
 isoverlap(Proc *p, ulong va, int len)
 {
 	int i;
@@ -491,9 +517,9 @@ isoverlap(Proc *p, ulong va, int len)
 			continue;
 		if((newtop > ns->base && newtop <= ns->top) ||
 		   (va >= ns->base && va < ns->top))
-			return 1;
+			return ns;
 	}
-	return 0;
+	return nil;
 }
 
 int
@@ -526,8 +552,8 @@ addphysseg(Physseg* new)
 ulong
 segattach(Proc *p, ulong attr, char *name, ulong va, ulong len)
 {
-	int i, sno;
-	Segment *s;
+	int sno;
+	Segment *s, *os;
 	Physseg *ps;
 
 	if(va != 0 && (va&KZERO) == KZERO)	/* BUG: Only ok for now */
@@ -537,7 +563,7 @@ segattach(Proc *p, ulong attr, char *name, ulong va, ulong len)
 	vmemchr(name, 0, ~0);
 
 	for(sno = 0; sno < NSEG; sno++)
-		if(p->seg[sno] == 0 && sno != ESEG)
+		if(p->seg[sno] == nil && sno != ESEG)
 			break;
 
 	if(sno == NSEG)
@@ -545,18 +571,28 @@ segattach(Proc *p, ulong attr, char *name, ulong va, ulong len)
 
 	len = PGROUND(len);
 
-	/* Find a hole in the address space */
+	/*
+	 * Find a hole in the address space.
+	 * Starting at the lowest possible stack address - len,
+	 * check for an overlapping segment, and repeat at the
+	 * base of that segment - len until either a hole is found
+	 * or the address space is exhausted.
+	 */
 	if(va == 0) {
 		va = p->seg[SSEG]->base - len;
-		for(i = 0; i < 20; i++) {
-			if(isoverlap(p, va, len) == 0)
+		for(;;) {
+			os = isoverlap(p, va, len);
+			if(os == nil)
 				break;
+			va = os->base;
+			if(len > va)
+				error(Enovmem);
 			va -= len;
 		}
 	}
 
 	va = va&~(BY2PG-1);
-	if(isoverlap(p, va, len))
+	if(isoverlap(p, va, len) != nil)
 		error(Esoverlap);
 
 	for(ps = physseg; ps->name; ps++)
@@ -568,7 +604,7 @@ found:
 	if(len > ps->size)
 		error(Enovmem);
 
-	attr &= ~SG_TYPE;		/* Turn off what we are not allowed */
+	attr &= ~SG_TYPE;		/* Turn off what is not allowed */
 	attr |= ps->attr;		/* Copy in defaults */
 
 	s = newseg(attr, va, len/BY2PG);
