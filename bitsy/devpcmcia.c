@@ -106,57 +106,6 @@ bitno(ulong x)
 }
 
 /*
- * power up/down pcmcia
- */
-void
-pcmciapower(int on)
-{
-	PCMslot *sp;
-
-	/* if there's no pcmcia sleave, no interrupts */
-	if(gpioregs->level & GPIO_OPT_IND_i)
-		return;
-	if (on){
-		/* set timing to the default, 300 */
-		slottiming(0, 300, 300, 300, 0);
-		slottiming(1, 300, 300, 300, 0);
-
-		/* if there's no pcmcia sleave, no interrupts */
-		if(gpioregs->level & GPIO_OPT_IND_i)
-			return;
-
-		egpiobits(EGPIO_exp_nvram_power|EGPIO_exp_full_power, 1);
-		delay(200);
-		egpiobits(EGPIO_pcmcia_reset, 1);
-		delay(100);
-		egpiobits(EGPIO_pcmcia_reset, 0);
-		delay(500);
-
-		slotinfo(nil, nil);	// See what's there
-		for (sp = slot; sp < slot + nslot; sp++){
-			if (sp->occupied == 0)
-				continue;
-			if(sp->cisread == 0)
-				pcmcisread(sp);
-			if (sp->dev){
-//				if (sp->dev->power)
-//					sp->dev->power(on);
-			}
-		}
-	}else{
-		for (sp = slot; sp < slot + nslot; sp++){
-			if (sp->occupied == 0)
-				continue;
-			if (sp->dev){
-				if (sp->dev->power)
-					sp->dev->power(on);
-			}
-		}
-		egpiobits(EGPIO_exp_nvram_power|EGPIO_exp_full_power, 0);
-	}
-}
-
-/*
  *  set up the cards, default timing is 300 ns
  */
 static void
@@ -448,6 +397,55 @@ pcmciawrite(Chan *c, void *a, long n, vlong off)
 	return -1;	/* not reached */
 }
 
+/*
+ * power up/down pcmcia
+ */
+void
+pcmciapower(int on)
+{
+	PCMslot *sp;
+
+	/* if there's no pcmcia sleave, no interrupts */
+iprint("pcmciapower %d\n", on);
+
+	if (on){
+		/* set timing to the default, 300 */
+		slottiming(0, 300, 300, 300, 0);
+		slottiming(1, 300, 300, 300, 0);
+
+		/* if there's no pcmcia sleave, no interrupts */
+		if(gpioregs->level & GPIO_OPT_IND_i){
+			iprint("pcmciapower: no sleeve\n");
+			return;
+		}
+
+		for (sp = slot; sp < slot + nslot; sp++){
+			if (sp->dev){
+				increfp(sp);
+				iprint("pcmciapower: %s\n", sp->verstr);
+				if (sp->dev->power)
+					sp->dev->power(on);
+			}
+		}
+	}else{
+		if(gpioregs->level & GPIO_OPT_IND_i){
+			iprint("pcmciapower: no sleeve\n");
+			return;
+		}
+
+		for (sp = slot; sp < slot + nslot; sp++){
+			if (sp->dev){
+				if (sp->dev->power)
+					sp->dev->power(on);
+				decrefp(sp);
+			}
+			sp->occupied = 0;
+			sp->cisread = 0;
+		}
+		egpiobits(EGPIO_exp_nvram_power|EGPIO_exp_full_power, 0);
+	}
+}
+
 Dev pcmciadevtab = {
 	'y',
 	"pcmcia",
@@ -510,7 +508,9 @@ increfp(PCMslot *sp)
 		nexterror();
 	}
 
+iprint("increfp %ld\n", sp - slot);
 	if(incref(&pcmcia) == 1){
+iprint("increfp full power\n");
 		egpiobits(EGPIO_exp_nvram_power|EGPIO_exp_full_power, 1);
 		delay(200);
 		egpiobits(EGPIO_pcmcia_reset, 1);
@@ -531,13 +531,16 @@ increfp(PCMslot *sp)
 static void
 decrefp(PCMslot *sp)
 {
+iprint("decrefp %ld\n", sp - slot);
 	decref(&sp->ref);
-	if(decref(&pcmcia) == 0)
+	if(decref(&pcmcia) == 0){
+iprint("increfp power down\n");
 		egpiobits(EGPIO_exp_nvram_power|EGPIO_exp_full_power, 0);
+	}
 }
 
 /*
- *  the regions are staticly masped
+ *  the regions are staticly mapped
  */
 static void
 slotmap(int slotno, ulong regs, ulong attr, ulong mem)

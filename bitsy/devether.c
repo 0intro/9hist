@@ -36,7 +36,7 @@ etherpower(int on)
 	Ether *ether;
 	/* Power all ether cards on or off */
 
-print("etherpower %d\n", on);
+iprint("etherpower %d\n", on);
 	for (i = 0; i < MaxEther; i++){
 		if ((ether = etherxx[i]) == nil)
 			continue;

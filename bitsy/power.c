@@ -212,7 +212,7 @@ deepsleep(void) {
 		audiopower(1);
 		µcpower(1);
 		screenpower(1);
-	//	pcmciapower(1);
+		pcmciapower(1);
 		splx(power_pl);
 		return;
 	}

@@ -88,7 +88,9 @@ void
 sched(void)
 {
 	if(m->ilockdepth)
-		panic("ilockdepth %d", m->ilockdepth);
+		panic("ilockdepth %d, last lock 0x%p at 0x%lux",
+			m->ilockdepth, up?up->lastilock:nil,
+			(up && up->lastilock)?up->lastilock->pc:0);
 
 	if(up){
 		if(up->nlocks && up->state != Moribund){

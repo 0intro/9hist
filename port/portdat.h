@@ -639,6 +639,7 @@ struct Proc
 
 	Lock		*lockwait;
 	Lock		*lastlock;	/* debugging */
+	Lock		*lastilock;	/* debugging */
 
 	Mach	*wired;
 	Mach	*mp;		/* machine this process last ran on */

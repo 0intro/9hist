@@ -471,7 +471,7 @@ w_txstart(Ether* ether)
 	Block *bp;
 	int len, off;
 
-	if((ctlr = ether->ctlr) == nil || (ctlr->state & (Attached|Power)) == 0 || ctlr->txbusy)
+	if((ctlr = ether->ctlr) == nil || (ctlr->state & (Attached|Power)) != (Attached|Power) || ctlr->txbusy)
 		return;
 
 	if((bp = qget(ether->oq)) == nil)
@@ -618,7 +618,7 @@ w_timer(void* arg)
 		ctlr = (Ctlr*)ether->ctlr;
 		if(ctlr == 0)
 			break;
-		if((ctlr->state & Attached) == 0)
+		if((ctlr->state & (Attached|Power)) != (Attached|Power))
 			continue;
 		ctlr->ticks++;
 
@@ -698,7 +698,7 @@ w_detach(Ether* ether)
 	Ctlr* ctlr;
 	char name[64];
 
-	if(ether->ctlr == 0)
+	if(ether->ctlr == nil)
 		return;
 
 	snprint(name, sizeof(name), "#l%dtimer", ether->ctlrno);
@@ -714,6 +714,7 @@ w_detach(Ether* ether)
 		ctlr->state &= ~Attached;
 		iunlock(ctlr);
 	}
+	ether->ctlr = nil;
 }
 
 void
@@ -723,8 +724,16 @@ w_power(Ether* ether, int on)
 
 	ctlr = (Ctlr*) ether->ctlr;
 	ilock(ctlr);
+iprint("w_power %d\n", on);
 	if(on){
 		if((ctlr->state & Power) == 0){
+			if (wavelanreset(ether, ctlr) < 0){
+				iprint("w_power: reset failed\n");
+				iunlock(ctlr);
+				w_detach(ether);
+				free(ctlr);
+				return;
+			}
 			if(ctlr->state & Attached)
 				w_enable(ether);
 			ctlr->state |= Power;
@@ -1055,9 +1064,10 @@ wavelanreset(Ether* ether, Ctlr *ctlr)
 {
 	Wltv ltv;
 
+	iprint("wavelanreset, iob 0x%ux\n", ctlr->iob);
 	w_intdis(ctlr);
 	if(w_cmd(ctlr,WCmdIni,0)){
-		print("#l%d: init failed\n", ether->ctlrno);
+		iprint("#l%d: init failed\n", ether->ctlrno);
 		return -1;
 	}
 	w_intdis(ctlr);
@@ -1081,7 +1091,7 @@ wavelanreset(Ether* ether, Ctlr *ctlr)
 	ltv.type = WTyp_Mac;
 	ltv.len	= 4;
 	if(w_inltv(ctlr, &ltv)){
-		print("#l%d: unable to read mac addr\n",
+		iprint("#l%d: unable to read mac addr\n",
 			ether->ctlrno);
 		return -1;
 	}
@@ -1100,7 +1110,7 @@ wavelanreset(Ether* ether, Ctlr *ctlr)
 	ctlr->state |= Power;
 
 	// free old Ctlr struct if resetting after suspend
-	if(ether->ctlr)
+	if(ether->ctlr && ether->ctlr != ctlr)
 		free(ether->ctlr);
 
 	// link to ether
@@ -1117,11 +1127,11 @@ wavelanreset(Ether* ether, Ctlr *ctlr)
 	ether->multicast = w_multicast;
 	ether->arg = ether;
 
-//	DEBUG("#l%d: irq %ld port %lx type %s",
-//		ether->ctlrno, ether->irq, ether->port,	ether->type);
-//	DEBUG(" %2.2uX%2.2uX%2.2uX%2.2uX%2.2uX%2.2uX\n",
-//		ether->ea[0], ether->ea[1], ether->ea[2],
-//		ether->ea[3], ether->ea[4], ether->ea[5]);
+	DEBUG("#l%d: intnum %ld port %lx type %s",
+		ether->ctlrno, ether->intnum, ether->port,	ether->type);
+	DEBUG(" %2.2uX%2.2uX%2.2uX%2.2uX%2.2uX%2.2uX\n",
+		ether->ea[0], ether->ea[1], ether->ea[2],
+		ether->ea[3], ether->ea[4], ether->ea[5]);
 
 	return 0;
 }
