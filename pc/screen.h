@@ -24,6 +24,8 @@ extern int cursoron(int);
 extern void cursoroff(int);
 extern void setcursor(Cursor*);
 
+extern Cursor arrow;
+
 /*
  * Generic VGA registers.
  */

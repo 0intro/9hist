@@ -7,6 +7,7 @@ struct Cursorinfo
 };
 
 extern Cursorinfo	cursor;
+extern Cursor		arrow;
 
 extern int	cursoron(int);
 #define		cursoroff(x)

@@ -71,39 +71,6 @@ cyber938xcurdisable(VGAscr*)
 }
 
 static void
-cyber938xcurenable(VGAscr* scr)
-{
-	int i;
-	ulong storage;
-
-	cyber938xcurdisable(scr);
-
-	/*
-	 * Cursor colours.
-	 */
-	for(i = 0x48; i < 0x4C; i++)
-		vgaxo(Crtx, i, Pwhite);
-	for(i = 0x4C; i < 0x50; i++)
-		vgaxo(Crtx, i, Pblack);
-
-	/*
-	 * Find a place for the cursor data in display memory.
-	 */
-	storage = ((scr->gscreen->width*BY2WD*scr->gscreen->r.max.y+1023)/1024)*2;
-	vgaxo(Crtx, 0x44, storage & 0xFF);
-	vgaxo(Crtx, 0x45, (storage>>8) & 0xFF);
-	storage *= 512;
-	scr->storage = storage;
-
-	/*
-	 * Enable the 32x32 cursor.
-	 * (64x64 is bit 0, X11 format is bit 6 and
-	 * cursor enable is bit 7).
-	 */
-	vgaxo(Crtx, 0x50, 0xC0);
-}
-
-static void
 cyber938xcurload(VGAscr* scr, Cursor* curs)
 {
 	uchar *p;
@@ -207,6 +174,41 @@ cyber938xcurmove(VGAscr* scr, Point p)
 	vgaxo(Crtx, 0x43, (y>>8) & 0xFF);
 
 	return 0;
+}
+
+static void
+cyber938xcurenable(VGAscr* scr)
+{
+	int i;
+	ulong storage;
+
+	cyber938xcurdisable(scr);
+
+	/*
+	 * Cursor colours.
+	 */
+	for(i = 0x48; i < 0x4C; i++)
+		vgaxo(Crtx, i, Pwhite);
+	for(i = 0x4C; i < 0x50; i++)
+		vgaxo(Crtx, i, Pblack);
+
+	/*
+	 * Find a place for the cursor data in display memory.
+	 */
+	storage = ((scr->gscreen->width*BY2WD*scr->gscreen->r.max.y+1023)/1024)*2;
+	vgaxo(Crtx, 0x44, storage & 0xFF);
+	vgaxo(Crtx, 0x45, (storage>>8) & 0xFF);
+	storage *= 512;
+	scr->storage = storage;
+
+	/*
+	 * Load, locate and enable the 32x32 cursor.
+	 * (64x64 is bit 0, X11 format is bit 6 and cursor
+	 * enable is bit 7).
+	 */
+	cyber938xcurload(scr, &arrow);
+	cyber938xcurmove(scr, ZP);
+	vgaxo(Crtx, 0x50, 0xC0);
 }
 
 VGAdev vgacyber938xdev = {
