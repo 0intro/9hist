@@ -143,6 +143,7 @@ printinfo(void)
 		l = (ulong)(mp->proc);
 		dprint("mach[%d]->proc/	%lux\r\n", i, l);
 		dprint("mach[%d]->splpc/	%lux\r\n", i, mp->splpc);
+
 		if(l & KZERO){
 			p = (Proc*)l;
 			l = (ulong)(p->upage);

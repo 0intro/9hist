@@ -109,6 +109,10 @@ struct Mach
 	int	load;
 	int	intr;
 	int	ledval;			/* value last written to LED */
+ulong cause;
+ulong status;
+ulong ur;
+ulong sp;
 
 	int	stack[1];
 };
