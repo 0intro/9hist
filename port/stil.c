@@ -325,6 +325,8 @@ ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 			oh = (Ilhdr*)bp->rptr;
 			oid = nhgetl(oh->ilid);
 print("recvd = %d outoforder = %d\n", ic->recvd, oid);
+			if(oid > ic->recvd)
+				break;
 			if(oid < ic->recvd) {
 				ic->outoforder = bp->next;
 				freeb(bp);

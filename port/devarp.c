@@ -310,9 +310,11 @@ arpsendpkt(uchar *unroutedip, uchar *ether, Queue *put, Block *bp)
 
 	iproute(unroutedip, ip);
 	if(arplookup(ip, ether)) {
+print("hit %d.%d.%d.%d\n", ip[0], ip[1], ip[2], ip[3]);
 		PUTNEXT(put, bp);
 		return;
 	}
+print("miss %d.%d.%d.%d\n", ip[0], ip[1], ip[2], ip[3]);
 
 	/* Send the request out to the user level arp daemon */
 	nbp = allocb(sizeof(ip));

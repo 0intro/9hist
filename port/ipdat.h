@@ -3,7 +3,6 @@ typedef struct Ipifc	Ipifc;
 typedef struct Fragq	Fragq;
 typedef struct Ipfrag	Ipfrag;
 typedef ulong		Ipaddr;
-typedef struct Arpcache	Arpcache;
 typedef ushort		Port;
 typedef struct Udphdr	Udphdr;
 typedef struct Etherhdr	Etherhdr;
@@ -379,29 +378,6 @@ struct Ipfrag
 	ushort	foff;
 	ushort	flen;
 };
-
-struct Arpcache
-{
-	uchar	status;		/* Entry status */
-	uchar	type;		/* Entry type */
-	Ipaddr	ip;		/* Host byte order */
-	uchar	eip[4];		/* Network byte order */
-	uchar	et[6];		/* Ethernet address for this ip */
-	int	age;		/* Entry timeout */
-	Arpcache *hash;
-	Arpcache **hashhd;
-	Arpcache *frwd;
-	Arpcache *prev;
-};
-
-#define ARP_FREE	0
-#define ARP_OK		1
-#define ARP_ASKED	2
-#define ARP_TEMP	0
-#define ARP_PERM	1
-#define Arphashsize	32
-#define ARPHASH(p)	arphash[((p[2]^p[3])%Arphashsize)]
-#define ARP_WAITMS	2500		/* Wait for arp replys */
 
 #define IP_VER	0x40			/* Using IP version 4 */
 #define IP_HLEN 0x05			/* Header length in characters */
