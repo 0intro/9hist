@@ -335,7 +335,7 @@ atactlrwait(Controller* ctlr, uchar pdh, uchar ready, ulong ticks)
 			return 0;
 	}while(m->ticks < ticks);
 
-	DPRINT("ata%d: ctlrwait failed %uX\n", ctlr->ctlrno, status);
+	DPRINT("ata%d: ctlrwait failed 0x%uX\n", ctlr->ctlrno, status);
 	outb(port+Pdh, DHmagic);
 	return 1;
 }
@@ -383,7 +383,7 @@ atactlrprobe(int ctlrno, int irq, int resetok)
 	microdelay(1);
 	status = inb(port+Pdh) & 0xFF;
 	if(status != DHmagic){
-		DPRINT("ata%d: DHmagic not ok == %ux\n", ctlrno, status);
+		DPRINT("ata%d: DHmagic not ok == 0x%uX\n", ctlrno, status);
 		return -1;
 	}
 	DPRINT("ata%d: DHmagic ok\n", ctlrno);
@@ -393,6 +393,7 @@ atactlrprobe(int ctlrno, int irq, int resetok)
 	ctlr->ctlrno = ctlrno;
 	ctlr->tbdf = BUSUNKNOWN;
 	ctlr->lastcmd = 0xFF;
+
 
 	/*
 	 * Attempt to check the existence of drives on the controller
@@ -414,7 +415,7 @@ atactlrprobe(int ctlrno, int irq, int resetok)
 		delay(10);
 		outb(port+Pctrl, 0);
 		if(atactlrwait(ctlr, DHmagic, 0, MS2TK(20))){
-			DPRINT("ata%d: Srst status %ux/%ux/%ux\n", ctlrno,
+			DPRINT("ata%d: Srst status 0x%uX/0x%uX/0x%uX\n", ctlrno,
 				inb(port+Pstatus), inb(port+Pcylmsb), inb(port+Pcyllsb));
 			xfree(ctlr);
 		}
@@ -424,7 +425,7 @@ atactlrprobe(int ctlrno, int irq, int resetok)
 retry:
 	atapi = 0;
 	mask = 0;
-	DPRINT("ata%d: ATAPI %uX %uX %uX\n", ctlrno, status,
+	DPRINT("ata%d: ATAPI 0x%uX 0x%uX 0x%uX\n", ctlrno, status,
 		inb(port+Pcylmsb), inb(port+Pcyllsb));
 	if(/*status == 0 &&*/ inb(port+Pcylmsb) == 0xEB && inb(port+Pcyllsb) == 0x14){
 		DPRINT("ata%d: ATAPI ok\n", ctlrno);
@@ -435,7 +436,7 @@ retry:
 		goto atapislave;
 	}
 	if(atactlrwait(ctlr, DHmagic, 0, MS2TK(1)) || waserror()){
-		DPRINT("ata%d: Cedd status %ux/%ux/%ux\n", ctlrno,
+		DPRINT("ata%d: Cedd status 0x%uX/0x%uX/0x%uX\n", ctlrno,
 			inb(port+Pstatus), inb(port+Pcylmsb), inb(port+Pcyllsb));
 		if(once){
 			once = 0;
@@ -473,7 +474,7 @@ retry:
 	 * When checking status, mask off the IDX bit.
 	 */
 	error = inb(port+Perror);
-	DPRINT("ata%d: master diag status %uX, error %ux\n",
+	DPRINT("ata%d: master diag status 0x%uX, error 0x%uX\n",
 		ctlr->ctlrno, inb(port+Pstatus), error);
 	if((error & ~0x80) == 0x01)
 		mask |= 0x01;
@@ -483,13 +484,14 @@ atapislave:
 	microdelay(1);
 	status = inb(port+Pstatus);
 	error = inb(port+Perror);
-	DPRINT("ata%d: slave diag status %ux, error %ux\n", ctlr->ctlrno, status, error);
+	DPRINT("ata%d: slave diag status 0x%uX, error 0x%uX\n",
+		ctlr->ctlrno, status, error);
 	if((status & ~0x02) && (status & (Sbusy|Serr)) == 0 && (error & ~0x80) == 0x01)
 		mask |= 0x02;
 	else if(status == 0){
 		msb = inb(port+Pcylmsb);
 		lsb = inb(port+Pcyllsb);
-		DPRINT("ata%d: ATAPI slave %uX %uX %uX\n", ctlrno, status,
+		DPRINT("ata%d: ATAPI slave 0x%uX 0x%uX 0x%uX\n", ctlrno, status,
 			inb(port+Pcylmsb), inb(port+Pcyllsb));
 		if(msb == 0xEB && lsb == 0x14){
 			atapi |= 0x02;
@@ -497,7 +499,7 @@ atapislave:
 		}
 	}
 
-skipedd:
+//skipedd:
 	if(mask == 0){
 		xfree(ctlr);
 		return -1;
@@ -562,7 +564,7 @@ atactlrreset(void)
 			continue;
 		atadrive[driveno]->spindown = spindown;
 		spindownmask |= (1<<driveno);
-		DPRINT("ata%d: opt spindownmask %ux\n", ctlrno, spindownmask);
+		DPRINT("ata%d: opt spindownmask 0x%uX\n", ctlrno, spindownmask);
 	}
 
 	if(spindownmask)
@@ -1045,9 +1047,11 @@ ataxfer(Drive *dp, Partition *pp, int cmd, vlong off, long len, uchar *buf)
 	if(cmd == Cwrite){
 		loop = 0;
 		microdelay(1);
-		while((stat = inb(cp->pbase+Pstatus) & (Serr|Sdrq)) == 0)
+		while((stat = inb(cp->pbase+Pstatus) & (Serr|Sdrq)) == 0){
+			microdelay(1);
 			if(++loop > 10000)
 				panic("%s: ataxfer", dp->vol);
+		}
 		outss(cp->pbase+Pdata, cp->buf, dp->bytes/2);
 	} else
 		stat = 0;
@@ -1077,7 +1081,7 @@ ataxfer(Drive *dp, Partition *pp, int cmd, vlong off, long len, uchar *buf)
 		nexterror();
 
 	if(cp->status & Serr){
-		DPRINT("%s err: lblk %ld status %ux, err %ux\n",
+		DPRINT("%s err: lblk %ld status 0x%uX, err 0x%uX\n",
 			dp->vol, lblk, cp->status, cp->error);
 		DPRINT("\tcyl %d, sec %d, head %d\n", cyl, sec, head);
 		DPRINT("\tnsecs %d, sofar %d\n", cp->nsecs, cp->sofar);
@@ -1126,7 +1130,7 @@ atafeature(Drive *dp, uchar arg)
 	atasleep(cp, Hardtimeout);
 
 	if(cp->status & Serr)
-		DPRINT("%s: setbuf err: status %ux, err %ux\n",
+		DPRINT("%s: setbuf err: status 0x%uX, err 0x%uX\n",
 			dp->vol, cp->status, cp->error);
 
 	cp->dp = 0;
@@ -1215,7 +1219,7 @@ retryatapi:
 	outb(cp->pbase+Pcmd, cmd);
 	IUNLOCK(&cp->reglock);
 
-	DPRINT("%s: ident command %ux sent\n", dp->vol, cmd);
+	DPRINT("%s: ident command 0x%uX sent\n", dp->vol, cmd);
 	if(cmd == Cident)
 		atasleep(cp, 3000);
 	else
@@ -1240,8 +1244,8 @@ retryatapi:
 	 * Otherwise, the interrupt may come during a subsequent read or write,
 	 * causing a panic and much confusion.
 	 */
-	if (cp->cmd == Cident2)
-		tsleep(&cp->r, return0, 0, Hardtimeout);
+	//if (cp->cmd == Cident2)
+	//	tsleep(&cp->r, return0, 0, Hardtimeout);
 
 	memmove(id, ip->model, sizeof(id)-1);
 	id[sizeof(id)-1] = 0;
@@ -1343,7 +1347,7 @@ ataprobe(Drive *dp, int cyl, int sec, int head)
 	atasleep(cp, Hardtimeout);
 
 	if(cp->status & Serr){
-		DPRINT("%s: probe err: status %ux, err %ux\n",
+		DPRINT("%s: probe err: status 0x%uX, err 0x%uX\n",
 			dp->vol, cp->status, cp->error);
 		rv = -1;
 	}
@@ -1609,10 +1613,11 @@ ataintr(Ureg*, void* arg)
 	loop = 0;
 	while((cp->status = inb(cp->pbase+Pstatus)) & Sbusy){
 		if(++loop > Maxloop){
-			print("ata%d: cmd=%ux, lastcmd=%ux status=%ux\n",
+			print("ata%d: cmd=0x%uX, lastcmd=0x%uX status=0x%uX\n",
 				cp->ctlrno, cp->cmd, cp->lastcmd, inb(cp->pbase+Pstatus));
-			panic("ata%d: wait busy\n", cp->ctlrno);
+			panic("%s: wait busy\n", dp->vol);
 		}
+		microdelay(1);
 	}
 
 	switch(cp->cmd){
@@ -1627,10 +1632,12 @@ ataintr(Ureg*, void* arg)
 		cp->sofar++;
 		if(cp->sofar < cp->nsecs){
 			loop = 0;
-			while(((cp->status = inb(cp->pbase+Pstatus)) & Sdrq) == 0)
+			while(((cp->status = inb(cp->pbase+Pstatus)) & Sdrq) == 0){
 				if(++loop > Maxloop)
 					panic("%s: write cmd=%lux status=%lux\n",
 						dp->vol, cp->cmd, inb(cp->pbase+Pstatus));
+				microdelay(1);
+			}
 			addr = cp->buf;
 			if(addr){
 				addr += cp->sofar*dp->bytes;
@@ -1648,11 +1655,12 @@ ataintr(Ureg*, void* arg)
 		loop = 0;
 		while((cp->status & (Serr|Sdrq)) == 0){
 			if(++loop > Maxloop){
-				print("%s: read/ident cmd=%ux status=%ux\n",
+				print("%s: read/ident cmd=0x%uX status=0x%uX\n",
 					dp->vol, cp->cmd, inb(cp->pbase+Pstatus));
 				cp->status |= Serr;
 				break;
 			}
+			microdelay(1);
 			cp->status = inb(cp->pbase+Pstatus);
 		}
 		if(cp->status & Serr){
@@ -1672,9 +1680,9 @@ ataintr(Ureg*, void* arg)
 			print("%s: intr %d %d\n", dp->vol, cp->sofar, cp->nsecs);
 		if(cp->sofar >= cp->nsecs){
 			cp->lastcmd = cp->cmd;
-			if(cp->cmd != Cread)
-				cp->cmd = Cident2;
-			else
+			//if(cp->cmd != Cread)
+			//	cp->cmd = Cident2;
+			//else
 				cp->cmd = 0;
 			inb(cp->pbase+Pstatus);
 			wakeup(&cp->r);
@@ -1688,6 +1696,7 @@ ataintr(Ureg*, void* arg)
 		wakeup(&cp->r);
 		break;
 	case Cident2:
+		DPRINT("Cident2\n");
 		cp->lastcmd = cp->cmd;
 		cp->cmd = 0;
 		break;
@@ -1750,18 +1759,18 @@ isatapi(Drive *dp)
 	DPRINT("%s: isatapi %d\n", dp->vol, dp->atapi);
 	outb(cp->pbase+Pcmd, 0x08);
 	if(atactlrwait(dp->cp, DHmagic, 0, MS2TK(100))){
-		DPRINT("%s: isatapi ctlrwait status %ux\n", dp->vol, inb(cp->pbase+Pstatus));
+		DPRINT("%s: isatapi ctlrwait status 0x%uX\n", dp->vol, inb(cp->pbase+Pstatus));
 		return 0;
 	}
 	dp->atapi = 0;
 	dp->bytes = 512;
 	microdelay(1);
 	if(inb(cp->pbase+Pstatus)){
-		DPRINT("%s: isatapi status %ux\n", dp->vol, inb(cp->pbase+Pstatus));
+		DPRINT("%s: isatapi status 0x%uX\n", dp->vol, inb(cp->pbase+Pstatus));
 		return 0;
 	}
 	if(inb(cp->pbase+Pcylmsb) != 0xEB || inb(cp->pbase+Pcyllsb) != 0x14){
-		DPRINT("%s: isatapi cyl %ux %ux\n",
+		DPRINT("%s: isatapi cyl 0x%uX 0x%uX\n",
 			dp->vol, inb(cp->pbase+Pcylmsb), inb(cp->pbase+Pcyllsb));
 		return 0;
 	}
@@ -1801,6 +1810,7 @@ atapiexec(Drive *dp)
 	if(dp->drqintr == 0){
 		microdelay(1);
 		for(loop = 0; (inb(cp->pbase+Pstatus) & (Serr|Sdrq)) == 0; loop++){
+			microdelay(1);
 			if(loop < 10000)
 				continue;
 			panic("%s: cmddrqwait: cmd=%lux status=%lux\n",
@@ -1824,7 +1834,7 @@ atapiexec(Drive *dp)
 		nexterror();
 
 	if(cp->status & Serr){
-		DPRINT("%s: Bad packet command 0x%ux, error 0x%ux\n",
+		DPRINT("%s: Bad packet command 0x%uX, error 0x%uX\n",
 			dp->vol, cp->cmdblk[0], cp->error);
 		error(Eio);
 	}
@@ -1886,7 +1896,7 @@ atapiio(Drive *dp, uchar *buf, ulong len, vlong off, int cmd)
 
 retry:
 	if(waserror()){
-		DPRINT("atapiio: cmd %uX error %uX\n", cp->cmdblk[0], cp->error);
+		DPRINT("atapiio: cmd 0x%uX error 0x%uX\n", cp->cmdblk[0], cp->error);
 		dp->partok = 0;
 		if((cp->status & Serr) && (cp->error & 0xF0) == 0x60){
 			atapireqsense(dp);
@@ -2056,7 +2066,7 @@ atapiintr(Controller *cp)
 
 	pbase = cp->pbase;
 	cause = inb(pbase+Pcount) & 0x03;
-	DPRINT("%s: atapiintr %uX\n", cp->dp->vol, cause);
+	DPRINT("%s: atapiintr 0x%uX\n", cp->dp->vol, cause);
 	switch(cause){
 
 	case 1:						/* command */
@@ -2086,13 +2096,14 @@ atapiintr(Controller *cp)
 				cp->status |= Serr;
 				break;
 			}
+			microdelay(1);
 			cp->status = inb(pbase+Pstatus);
 		}
 		if(cp->status & Serr){
 			cp->lastcmd = cp->cmd;
 			cp->cmd = 0;
 			cp->error = inb(pbase+Perror);
-			print("%s: Cpktcmd status=%uX, error=%uX\n",
+			print("%s: Cpktcmd status=0x%uX, error=0x%uX\n",
 				cp->dp->vol, cp->status, cp->error);
 			wakeup(&cp->r);
 			break;
