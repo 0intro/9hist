@@ -974,6 +974,7 @@ qwrite(Queue *q, void *vp, int len)
 			n = Maxatomic;
 
 		b = allocb(n);
+		tagwithpc(b, (up->text[0]<<24)|(up->text[1]<<16)|(up->text[2]<<8)|up->text[3]);
 		if(waserror()){
 			freeb(b);
 			nexterror();

@@ -360,7 +360,7 @@ poolread(char *va, int count, ulong offset)
 	return n;
 }
 
-static void
+void
 tagwithpc(void *v, ulong pc)
 {
 	Bhdr *h;

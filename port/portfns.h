@@ -304,6 +304,7 @@ void		srvrecover(Chan*, Chan*);
 int		swapcount(ulong);
 int		swapfull(void);
 void		swapinit(void);
+void		tagwithpc(void*, ulong);
 vlong		todget(vlong*);
 void		todfix(void);
 void		todsetfreq(vlong);
