@@ -21,7 +21,6 @@ void	idle(void);
 int	inb(int);
 void	inss(int, void*, int);
 void	kbdinit(void);
-void	kbdintr(Ureg*);
 int	mail(int);
 void	mmuinit(void);
 void	outb(int, int);

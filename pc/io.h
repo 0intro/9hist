@@ -3,7 +3,9 @@
  */
 enum
 {
+	Coprocvec=	7,		/* math coprocessor interrupt */
 	Faultvec=	14,		/* page fault */
+
 	Int0vec=	24,		/* first 8259 */
 	 Clockvec=	Int0vec+0,	/*  clock interrupts */
 	 Kbdvec=	Int0vec+1,	/*  keyboard interrupts */

@@ -43,10 +43,10 @@ enum
 	FPinactive,
 };
 
-struct	FPsave	/* ??? needs to be fixed ??? */
+struct	FPsave
 {
 	long	status;
-	char	reg[66];
+	uchar	reg[94];
 };
 
 struct Conf

@@ -226,7 +226,16 @@ struct latin
 	0,	0,
 };
 
+/*
+ *  keyboard input q
+ */
 KIOQ	kbdq;
+
+/*
+ *  predeclared
+ */
+static void	kbdintr(Ureg*);
+
 
 int
 latin1(int k1, int k2)

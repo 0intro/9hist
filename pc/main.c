@@ -10,6 +10,8 @@
 char	user[NAMELEN] = "bootes";
 extern long edata;
 
+
+
 void
 main(void)
 {
@@ -87,6 +89,8 @@ userinit(void)
 	Segment *s;
 	User *up;
 	KMap *k;
+
+	setvec(Coprocvec, coprocintr);
 
 	p = newproc();
 	p->pgrp = newpgrp();
