@@ -147,7 +147,7 @@ iallocb(int size)
 	int n;
 
 	if(ialloc.bytes > conf.ialloc){
-		print("iallocb: limited %d/%d\n",
+		print("iallocb: limited %lud/%lud\n",
 			ialloc.bytes, conf.ialloc);
 		return 0;
 	}
@@ -155,7 +155,7 @@ iallocb(int size)
 	n = sizeof(Block) + size + (BY2V-1);
 	b = mallocz(n+Hdrspc, 0);
 	if(b == nil){
-		print("iallocb: no memory %d/%d\n",
+		print("iallocb: no memory %lud/%lud\n",
 			ialloc.bytes, conf.ialloc);
 		return nil;
 	}
