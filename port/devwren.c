@@ -37,6 +37,8 @@ struct Disk
 
 static Disk	wren[Ndisk];
 
+void	wrenint(uchar*, ulong);
+
 #define	DATASIZE	(8*1024)	/* BUG */
 
 #define	BGLONG(p)	(((((((p)[0]<<8)|(p)[1])<<8)|(p)[2])<<8)|(p)[3])
@@ -195,8 +197,6 @@ void
 wrenclose(Chan *c)
 {}
 
-#define	PSHORT(p, v)		((p)[0]=(v), (p)[1]=((v)>>8))
-#define	PLONG(p, v)		(PSHORT(p, (v)), PSHORT(p+2, (v)>>16))
 long
 wrenread(Chan *c, char *a, long n, ulong offset)
 {
@@ -237,13 +237,13 @@ wrenread(Chan *c, char *a, long n, ulong offset)
 		qunlock(cmd);
 		break;
 	case Qstruct:
-		if (n < 8)
+		if (n < 2*sizeof(ulong))
 			error(Ebadarg);
-		if (offset >= 8)
+		if (offset >= 2*sizeof(ulong))
 			return 0;
-		n = 8;
-		PLONG((uchar *)&a[0], p->maxblock - p->firstblock);
-		PLONG((uchar *)&a[4], d->blocksize);
+		n = 2*sizeof(ulong);
+		wrenint((uchar*)a, p->maxblock - p->firstblock);
+		wrenint((uchar*)a+sizeof(ulong), d->blocksize);
 		break;
 	default:
 		panic("wrenread");
@@ -303,4 +303,13 @@ void
 wrenwstat(Chan *c, char *dp)
 {
 	error(Eperm);
+}
+
+void
+wrenint(uchar *a, ulong x)
+{
+	a[0] = x >> 24;
+	a[1] = x >> 16;
+	a[2] = x >> 8;
+	a[3] = x;
 }

@@ -73,6 +73,8 @@ alarminit(void)
 		lock(&alarmtab[i]);	/* allocate locks, as they are used at interrupt time */
 		unlock(&alarmtab[i]);
 	}
+	qlock(&alarms);
+	qunlock(&alarms);
 }
 
 #define NA 10		/* alarms per clock tick */
@@ -123,8 +125,8 @@ checkalarms(void)
 			}
 			alarms.head = rp->palarm;
 		}
+		qunlock(&alarms);
 	}
-	qunlock(&alarms);
 }
 
 ulong
