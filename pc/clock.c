@@ -156,7 +156,7 @@ clockinit(void)
 		cycles = 22;
 		break;
 	default:
-		cycles = 23;
+		cycles = 24;
 		break;
 	}
 	cpufreq = loops*((cycles*Freq)/x);

@@ -413,6 +413,9 @@ exit(long type)
 		delay(10);
 
 	splhi();
+	if(type == 1)
+		for(;;);
+
 	/* Turn off the NMI hander for the debugger */
 	vec = (uchar*)0xA0000420;
 	vec[0] = 0;
