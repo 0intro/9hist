@@ -765,6 +765,36 @@ memwrite(Astar *a, uchar *from, long n, ulong offset)
 }
 
 /*
+ *  put board into download mode
+ */
+static void
+downloadmode(Astar *a)
+{
+	int c, i;
+
+	/* put board in download mode */
+	c = inb(a->port+ISActl1);
+	outb(a->port+ISActl1, c & ~ISAnotdl);
+	a->memsize = Pramsize;
+	a->needpage = 1;
+
+	/* give it up to 5 seconds to reset */
+	for(i = 0; i < 21; i++){
+		if(!(inb(a->port+ISActl1) & ISAnotdl))
+			break;
+		tsleep(&a->r, return0, 0, 500);
+	}
+	if(inb(a->port+ISActl1) & ISAnotdl){
+		print("astar%d did not reset\n", a->id);
+		error(Eio);
+	}
+
+	/* enable ISA access to first 16k */
+	a->page = -1;
+	setpage(a, 0);
+}
+
+/*
  *  start control program
  */
 static void
@@ -884,14 +914,7 @@ bctlwrite(Astar *a, char *cmsg)
 
 	if(strncmp(cmsg, "download", 8) == 0){
 		/* put board in download mode */
-		c = inb(a->port+ISActl1);
-		outb(a->port+ISActl1, c & ~ISAnotdl);
-		a->memsize = Pramsize;
-		a->needpage = 1;
-
-		/* enable ISA access to first 16k */
-		a->page = -1;
-		setpage(a, 0);
+		downloadmode(a);
 
 	} else if(strncmp(cmsg, "sharedmem", 9) == 0){
 		/* map shared memory */
