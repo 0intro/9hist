@@ -47,9 +47,13 @@ struct Label
  */
 enum
 {
+	/* floating point states */
 	FPinit,
 	FPactive,
 	FPinactive,
+
+	/* bit or'd with the state */
+	FPillegal= 0x100,
 };
 
 struct	FPsave
@@ -243,7 +247,7 @@ typedef struct {
 
 struct DevConf
 {
-	ulong	interrupt;	/* interrupt number */
+	ulong	intnum;	/* interrupt number */
 	char		*type;	/* card type, malloced */
 	int		nports;	/* Number of ports */
 	port_t	*ports;	/* The ports themselves */

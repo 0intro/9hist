@@ -589,7 +589,7 @@ struct Proc
 
 	ulong	parentpid;
 	ulong	time[6];	/* User, Sys, Real; child U, S, R */
-	short	insyscall;
+	int	insyscall;
 	int	fpstate;
 
 	QLock	debug;		/* to access debugging elements of User */

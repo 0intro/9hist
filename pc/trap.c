@@ -652,6 +652,12 @@ notify(Ureg* ureg)
 	if(up->nnote == 0)
 		return 0;
 
+	if(user && up->fpstate == FPactive){
+		fpsave(&up->fpsave);
+		up->fpstate = FPinactive;
+	}
+	up->fpstate |= FPillegal;
+
 	s = spllo();
 	qlock(&up->debug);
 	up->notepending = 0;
@@ -697,9 +703,9 @@ notify(Ureg* ureg)
 	sp -= BY2WD+ERRMAX;
 	memmove((char*)sp, up->note[0].msg, ERRMAX);
 	sp -= 3*BY2WD;
-	*(ulong*)(sp+2*BY2WD) = sp+3*BY2WD;	/* arg 2 is string */
+	*(ulong*)(sp+2*BY2WD) = sp+3*BY2WD;		/* arg 2 is string */
 	*(ulong*)(sp+1*BY2WD) = (ulong)up->ureg;	/* arg 1 is ureg* */
-	*(ulong*)(sp+0*BY2WD) = 0;		/* arg 0 is pc */
+	*(ulong*)(sp+0*BY2WD) = 0;			/* arg 0 is pc */
 	ureg->usp = sp;
 	ureg->pc = (ulong)up->notify;
 	up->notified = 1;
@@ -730,6 +736,8 @@ noted(Ureg* ureg, ulong arg0)
 	up->notified = 0;
 
 	nureg = up->ureg;	/* pointer to user returned Ureg struct */
+
+	up->fpstate &= ~FPillegal;
 
 	/* sanity clause */
 	oureg = (ulong)nureg;
@@ -806,6 +814,9 @@ execregs(ulong entry, ulong ssize, ulong nargs)
 {
 	ulong *sp;
 	Ureg *ureg;
+
+	up->fpstate = FPinit;
+	fpoff();
 
 	sp = (ulong*)(USTKTOP - ssize);
 	*--sp = nargs;

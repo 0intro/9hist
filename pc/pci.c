@@ -762,19 +762,19 @@ pcicfginit(void)
 	 * Mode2 uses a byte at 0xCF8 and another at 0xCFA; Mode1 uses
 	 * a DWORD at 0xCF8 and another at 0xCFC and will pass through
 	 * any non-DWORD accesses as normal I/O cycles. There shouldn't be
-	 * a device behind these addresses so if Mode2 accesses fail try
-	 * for Mode1 (which is preferred, Mode2 is deprecated).
+	 * a device behind these addresses so if Mode1 accesses fail try
+	 * for Mode2 (Mode2 is deprecated).
 	 */
-	outb(PciCSE, 0);
-	if(inb(PciCSE) == 0){
-		pcicfgmode = 2;
-		pcimaxdno = 15;
+	outl(PciADDR, 0);
+	if(inl(PciADDR) == 0){
+		pcicfgmode = 1;
+		pcimaxdno = 31;
 	}
-	else {
-		outl(PciADDR, 0);
-		if(inl(PciADDR) == 0){
-			pcicfgmode = 1;
-			pcimaxdno = 31;
+	else{
+		outb(PciCSE, 0);
+		if(inb(PciCSE) == 0){
+			pcicfgmode = 2;
+			pcimaxdno = 15;
 		}
 	}
 	
@@ -853,6 +853,8 @@ pcicfginit(void)
 out:
 	unlock(&pcicfginitlock);
 
+	if(getconf("*pcihinv"))
+		pcihinv(nil);
 }
 
 static int

@@ -487,6 +487,11 @@ matherror(Ureg *ur, void*)
 static void
 mathemu(Ureg*, void*)
 {
+	if(up->fpstate & FPillegal){
+		/* someone did floating point in a note handler */
+		postnote(up, 1, "sys: floating point in note handler", NDebug);
+		return;
+	}
 	switch(up->fpstate){
 	case FPinit:
 		fpinit();
