@@ -39,7 +39,7 @@ enum {
 };
 
 #define DPRINT if(floppydebug)print
-int floppydebug = 1;
+int floppydebug = 0;
 
 /*
  *  types of drive (from PC equipment byte)
