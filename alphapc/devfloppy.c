@@ -118,10 +118,8 @@ Dirtab floppydir[]={
 static void
 fldump(void)
 {
-mb();
 	DPRINT("sra %ux srb %ux dor %ux msr %ux dir %ux\n", inb(Psra), inb(Psrb),
 		inb(Pdor), inb(Pmsr), inb(Pdir));
-mb();
 }
 
 /*
@@ -146,8 +144,6 @@ floppyreset(void)
 	FDrive *dp;
 	FType *t;
 	ulong maxtsize;
-
-	dmainit(DMAchan);
 	
 	floppysetup0(&fl);
 
@@ -163,6 +159,8 @@ floppyreset(void)
 			maxtsize = t->tsize;
 	}
 
+	dmainit(DMAchan, maxtsize);
+
 	/*
 	 *  allocate the drive storage
 	 */
@@ -174,9 +172,7 @@ floppyreset(void)
 	 */
 	fl.motor = 0;
 	delay(10);
-mb();
 	outb(Pdor, fl.motor | Fintena | Fena);
-mb();
 	delay(10);
 
 	/*
@@ -267,23 +263,15 @@ changed(Chan *c, FDrive *dp)
 	/*
 	 *  if floppy has changed or first time through
 	 */
-mb();
 	if((inb(Pdir)&Fchange) || dp->vers == 0){
-mb();
 		DPRINT("changed\n");
 		fldump();
 		dp->vers++;
 		floppysetdef(dp);
 		start = dp->t;
 		dp->confused = 1;	/* make floppyon recal */
-DPRINT("b4 floppyon:\n");
-fldump();
 		floppyon(dp);
-DPRINT("after floppyon:\n");
-fldump();
 		floppyseek(dp, dp->t->heads*dp->t->tsize);
-DPRINT("after floppyseek:\n");
-fldump();
 		while(waserror()){
 			while(++dp->t){
 				if(dp->t == &floppytype[nelem(floppytype)])
@@ -486,9 +474,7 @@ floppyon(FDrive *dp)
 	/* start motor and select drive */
 	alreadyon = fl.motor & MOTORBIT(dp->dev);
 	fl.motor |= MOTORBIT(dp->dev);
-mb();
 	outb(Pdor, fl.motor | Fintena | Fena | dp->dev);
-mb();
 	if(!alreadyon){
 		/* wait for drive to spin up */
 		tsleep(&dp->r, return0, 0, 750);
@@ -500,9 +486,7 @@ mb();
 	/* set transfer rate */
 	if(fl.rate != dp->t->rate){
 		fl.rate = dp->t->rate;
-mb();
 		outb(Pdsr, fl.rate);
-mb();
 	}
 
 	/* get drive to a known cylinder */
@@ -521,9 +505,7 @@ static void
 floppyoff(FDrive *dp)
 {
 	fl.motor &= ~MOTORBIT(dp->dev);
-mb();
 	outb(Pdor, fl.motor | Fintena | Fena | dp->dev);
-mb();
 }
 
 /*
@@ -538,10 +520,8 @@ floppycmd(void)
 	fl.nstat = 0;
 	for(i = 0; i < fl.ncmd; i++){
 		for(tries = 0; ; tries++){
-mb();
 			if((inb(Pmsr)&(Ffrom|Fready)) == Fready)
 				break;
-mb();
 			if(tries > 1000){
 				DPRINT("cmd %ux can't be sent (%d)\n", fl.cmd[0], i);
 				fldump();
@@ -552,9 +532,7 @@ mb();
 			}
 			microdelay(8);	/* for machine independence */
 		}
-mb();
 		outb(Pfdata, fl.cmd[i]);
-mb();
 	}
 	return 0;
 }
@@ -576,9 +554,7 @@ floppyresult(void)
 	for(i = 0; i < sizeof(fl.stat); i++){
 		/* wait for status byte */
 		for(tries = 0; ; tries++){
-mb();
 			s = inb(Pmsr)&(Ffrom|Fready);
-mb();
 			if(s == Fready){
 				fl.nstat = i;
 				return fl.nstat;
@@ -593,10 +569,7 @@ mb();
 			}
 			microdelay(8);	/* for machine independence */
 		}
-mb();
 		fl.stat[i] = inb(Pfdata);
-mb();
-// print("stat[%d]: %.2ux\n", i, fl.stat[i]);
 	}
 	fl.nstat = sizeof(fl.stat);
 	return fl.nstat;
@@ -686,9 +659,7 @@ floppyrecal(FDrive *dp)
 		return -1;
 	floppywait();
 	if(fl.nstat < 2){
-mb();
 		DPRINT("recalibrate: confused %ux\n", inb(Pmsr));
-mb();
 		fl.confused = 1;
 		return -1;
 	}
@@ -729,13 +700,9 @@ floppyrevive(void)
 		splhi();
 		fl.ncmd = 1;
 		fl.cmd[0] = 0;
-mb();
 		outb(Pdor, 0);
-mb();
 		delay(10);
-mb();
 		outb(Pdor, Fintena|Fena);
-mb();
 		delay(10);
 		spllo();
 		fl.motor = 0;
@@ -747,9 +714,7 @@ mb();
 			dp->confused = 1;
 
 		/* set rate to a known value */
-mb();
 		outb(Pdsr, 0);
-mb();
 		fl.rate = 0;
 
 		DPRINT("floppyrevive out\n");

@@ -9,23 +9,6 @@ typedef struct DMAport	DMAport;
 typedef struct DMA	DMA;
 typedef struct DMAxfer	DMAxfer;
 
-enum
-{
-	/*
-	 *  the byte registers for DMA0 are all one byte apart
-	 */
-	Dma0=		0x00,
-	Dma0status=	Dma0+0x8,	/* status port */
-	Dma0reset=	Dma0+0xD,	/* reset port */
-
-	/*
-	 *  the byte registers for DMA1 are all two bytes apart (why?)
-	 */
-	Dma1=		0xC0,
-	Dma1status=	Dma1+2*0x8,	/* status port */
-	Dma1reset=	Dma1+2*0xD,	/* reset port */
-};
-
 /*
  *  state of a dma transfer
  */
@@ -33,6 +16,7 @@ struct DMAxfer
 {
 	ulong	bpa;		/* bounce buffer physical address */
 	void*	bva;		/* bounce buffer virtual address */
+	int	blen;		/* bounce buffer length */
 	void*	va;		/* virtual address destination/src */
 	long	len;		/* bytes to be transferred */
 	int	isread;
@@ -84,29 +68,42 @@ DMA dma[2] = {
  *  initialisation routines of any devices which require DMA to ensure
  *  the allocated bounce buffers are below the 16MB limit.
  */
-void
-dmainit(int chan)
+int
+dmainit(int chan, int maxtransfer)
 {
 	DMA *dp;
 	DMAxfer *xp;
-	ulong v;
+
+	if(maxtransfer > 64*1024)
+		maxtransfer = 64*1024;
 
 	dp = &dma[(chan>>2)&1];
 	chan = chan & 3;
 	xp = &dp->x[chan];
-	if(xp->bva != nil)
-		return;
-
-	v = (ulong)xalloc(BY2PG+BY2PG);
-	if(v == 0 || PADDR(v) >= 16*MB){
-		print("dmainit: chan %d: 0x%luX out of range\n", chan, v);
-		xfree((void*)v);
-		v = 0;
+	if(xp->bva != nil){
+		if(xp->blen < maxtransfer)
+			return 1;
+		return 0;
 	}
-	xp->bva = (void*)ROUND(v, BY2PG);
+
+	xp->bva = xspanalloc(maxtransfer, BY2PG, 64*1024);
+	if(xp->bva == nil)
+		return 1;
 	xp->bpa = PADDR(xp->bva);
+	if(xp->bpa >= 16*MB){
+		/*
+		 * This will panic with the current
+		 * implementation of xspanalloc().
+		xfree(xp->bva);
+		 */
+		xp->bva = nil;
+		return 1;
+	}
+	xp->blen = maxtransfer;
 	xp->len = 0;
 	xp->isread = 0;
+
+	return 0;
 }
 
 /*
@@ -133,16 +130,17 @@ dmasetup(int chan, void *va, long len, int isread)
 
 	/*
 	 *  if this isn't kernel memory or crossing 64k boundary or above 16 meg
-	 *  use the allocated low memory page.
+	 *  use the bounce buffer.
 	 */
+#ifdef notdef
 	pa = PADDR(va);
 	if((((ulong)va)&0xF0000000) != KZERO
 	|| (pa&0xFFFF0000) != ((pa+len)&0xFFFF0000)
 	|| pa >= 16*MB) {
 		if(xp->bva == nil)
 			return -1;
-		if(len > BY2PG)
-			len = BY2PG;
+		if(len > xp->blen)
+			len = xp->blen;
 		if(!isread)
 			memmove(xp->bva, va, len);
 		xp->va = va;
@@ -152,17 +150,21 @@ dmasetup(int chan, void *va, long len, int isread)
 	}
 	else
 		xp->len = 0;
+#else
+	pa = PCIWADDR(va);
+#endif /* notdef */
 
 	/*
 	 * this setup must be atomic
 	 */
-	ilock(dp);
 	mode = (isread ? 0x44 : 0x48) | chan;
-	outb(dp->mode, mode);	/* single mode dma (give CPU a chance at mem) */
-	outb(dp->page[chan], pa>>16);
+	ilock(dp);
 	outb(dp->cbp, 0);		/* set count & address to their first byte */
+	outb(dp->mode, mode);	/* single mode dma (give CPU a chance at mem) */
 	outb(dp->addr[chan], pa>>dp->shift);		/* set address */
 	outb(dp->addr[chan], pa>>(8+dp->shift));
+	outb(dp->page[chan], pa>>16);
+outb(0x400|dp->page[chan], pa>>24);
 	outb(dp->count[chan], (len>>dp->shift)-1);		/* set count */
 	outb(dp->count[chan], ((len>>dp->shift)-1)>>8);
 	outb(dp->sbm, chan);		/* enable the channel */

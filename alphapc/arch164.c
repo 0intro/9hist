@@ -54,15 +54,17 @@ coreinit(void)
 	}
 	coresave[0] = core[0x140/4];
 
-	/* direct map bottom 2G PCI target space to KZERO in window 1 */
-	wind[0x500/4] = KZERO|1;
-	wind[0x540/4] = 0x7ff00000;
+#ifdef notdef
+	/* direct map bottom 1G PCI target space to KZERO in window 1 */
+	wind[0x500/4] = PCIWINDOW|1;
+	wind[0x540/4] = 0x3ff00000;
 	wind[0x580/4] = 0;
 
 	/* disable other windows */
 	wind[0x400/4] = 0;
 	wind[0x600/4] = 0;
 	wind[0x700/4] = 0;
+#endif /* notdef */
 
 	/* clear error state */
 	core[0x8200/4] = 0x7ff;
@@ -263,6 +265,7 @@ outb2117x(int port, int val)
 {
 	mb();
 	*(uchar*)(iobase(port)) = val;
+	mb();
 }
 
 void
@@ -270,6 +273,7 @@ outs2117x(int port, ushort val)
 {
 	mb();
 	*(ushort*)(iobase(port)) = val;
+	mb();
 }
 
 void
@@ -277,6 +281,7 @@ outl2117x(int port, ulong val)
 {
 	mb();
 	*(ulong*)(iobase(port)) = val;
+	mb();
 }
 
 void

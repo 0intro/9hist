@@ -54,11 +54,11 @@ main(void)
 	percpu[32] |= (0<<16);		/* default action */
 #endif
 
-	pageinit();
 	procinit0();
 	initseg();
 	links();
 	chandevreset();
+	pageinit();
 	swapinit();
 	userinit();
 	schedinit();

@@ -21,9 +21,6 @@
 
 /* nasty PCI DMA hack... */
 
-#undef	PADDR
-#define	PADDR(a) ((ulong)(a))
-
 #define DEBUG		0
 #define debug		if(DEBUG)print
 
@@ -380,7 +377,7 @@ txstart(Ether* ether)
 		ctlr->tdr[PREV(ctlr->tdrh, ctlr->ntdr)].control &= ~Ic;
 		des = &ctlr->tdr[ctlr->tdrh];
 		des->bp = bp;
-		des->addr = PADDR(bp->rp);
+		des->addr = PCIWADDR(bp->rp);
 		des->control |= control;
 		ctlr->ntq++;
 		coherence();
@@ -465,7 +462,7 @@ interrupt(Ureg*, void* arg)
 					des->bp->wp = des->bp->rp+len;
 					etheriq(ether, des->bp, 1);
 					des->bp = bp;
-					des->addr = PADDR(bp->rp);
+					des->addr = PCIWADDR(bp->rp);
 				}
 
 				des->control &= Er;
@@ -574,17 +571,17 @@ ctlrinit(Ether* ether)
 		des->bp = allocb(ROUNDUP(sizeof(Etherpkt)+4, 4));
 		des->status = Own;
 		des->control = ROUNDUP(sizeof(Etherpkt)+4, 4);
-		des->addr = PADDR(des->bp->rp);
+		des->addr = PCIWADDR(des->bp->rp);
 	}
 	ctlr->rdr[ctlr->nrdr-1].control |= Er;
 	ctlr->rdrx = 0;
-	csr32w(ctlr, 3, PADDR(ctlr->rdr));
+	csr32w(ctlr, 3, PCIWADDR(ctlr->rdr));
 
 	ctlr->tdr = xspanalloc(ctlr->ntdr*sizeof(Des), 8*sizeof(ulong), 0);
 	ctlr->tdr[ctlr->ntdr-1].control |= Er;
 	ctlr->tdrh = 0;
 	ctlr->tdri = 0;
-	csr32w(ctlr, 4, PADDR(ctlr->tdr));
+	csr32w(ctlr, 4, PCIWADDR(ctlr->tdr));
 
 	ctlr->mask = Nis|Ais|Fbe|Rwt|Rps|Ru|Ri|Unf|Tjt|Tps|Ti;
 	csr32w(ctlr, 7, ctlr->mask);

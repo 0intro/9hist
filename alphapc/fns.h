@@ -15,7 +15,7 @@ void		cserve(ulong, ulong);
 int	dmacount(int);
 int	dmadone(int);
 void	dmaend(int);
-void	dmainit(int);
+int	dmainit(int, int);
 long	dmasetup(int, void*, long, int);
 void		evenaddr(ulong);
 void		fataltrap(Ureg *, char *);

@@ -202,3 +202,6 @@ typedef struct SCSIdev {
 	char*	type;
 	Scsiio	(*reset)(int, ISAConf*);
 } SCSIdev;
+
+#define PCIWINDOW	0x40000000
+#define PCIWADDR(va)	(PADDR(va)+PCIWINDOW)
