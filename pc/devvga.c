@@ -518,9 +518,9 @@ setscreen(int maxx, int maxy, int ldepth)
 }
 
 /*
- * paste tile into soft screen.
- * tile is at location r, first pixel in *data.  tl is length of scan line to insert,
- * l is amount to advance data after each scan line.
+ *   paste tile into soft screen.
+ *   tile is at location r, first pixel in *data.  tl is length of scan line to insert,
+ *   l is amount to advance data after each scan line.
  */
 void
 screenload(Rectangle r, uchar *data, int tl, int l)
@@ -588,7 +588,7 @@ screenload(Rectangle r, uchar *data, int tl, int l)
 }
 
 /*
- *  copy litte endian soft screen to big endian hard screen
+ *  copy little endian soft screen to big endian hard screen
  */
 void
 screenupdate(void)

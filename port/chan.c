@@ -195,11 +195,20 @@ mount(Chan *new, Chan *old, int flag, char *spec)
 	}
 
 	if(m == 0) {
+		/*
+		 *  nothing mounted here yet.  create a mount
+		 *  head and add to the hash table.
+		 */
 		m = smalloc(sizeof(Mhead));
 		m->from = old;
 		incref(old);
 		m->hash = *l;
 		*l = m;
+
+		/*
+		 *  if this is a union mount, add the old
+		 *  node to the mount chain.
+		 */
 		if(order != MREPL) 
 			m->mount = newmount(m, old, 0, 0);
 	}

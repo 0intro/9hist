@@ -212,6 +212,12 @@ echo(Rune r, char *buf, int n)
 		case 'r':
 			exit(0);
 			break;
+case 'q':
+print("%lux\n", *(ulong*)0xe0000004);
+print("%lux\n", *(ulong*)0x80000420);
+print("%lux\n", *(ulong*)0x80000424);
+for(pid = 0; pid < 30; pid++)
+print(":%lux\n", ((ulong*)0xbfc00000)[pid]);
 		}
 		break;
 	case 3:

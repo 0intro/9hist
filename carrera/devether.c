@@ -15,8 +15,8 @@
 
 #define SONICADDR	((Sonic*)Sonicbase)
 
-#define RD(rn)		(delay(1), *(ulong*)((ulong)&SONICADDR->rn^4))
-#define WR(rn, v)	(delay(1), *(ulong*)((ulong)&SONICADDR->rn^4) = (v))
+#define RD(rn)		(delay(0), *(ulong*)((ulong)&SONICADDR->rn^4))
+#define WR(rn, v)	(delay(0), *(ulong*)((ulong)&SONICADDR->rn^4) = (v))
 #define ISquad(s)	if((ulong)s & 0x7) panic("sonic: Quad alignment");
 
 typedef struct Pbuf Pbuf;
@@ -74,8 +74,8 @@ typedef struct
 
 enum
 {
-	Nrb		= 16,		/* receive buffers */
-	Ntb		= 16,		/* transmit buffers */
+	Nrb		= 8,		/* receive buffers */
+	Ntb		= 8,		/* transmit buffers */
 };
 
 enum
@@ -530,8 +530,10 @@ etherintr(void)
 			status &= ~Hbl;
 		}
 		if(status & Br){
-			print("sonic: bus retry occurred\n");
+			WR(cr, 0);
+			iprint("sonic: bus retry occurred\n");
 			status &= ~Br;
+			for(;;);
 		}
 	
 		if(status & AllIntr)
@@ -560,9 +562,10 @@ static void
 initbufs(Ether *c)
 {
 	int i;
-	uchar *mem;
+	uchar *mem, *base;
 
 	mem = xspanalloc(64*1024, BY2PG, 0);
+	base = mem;
 	mem = CACHELINE(uchar, mem);
 
 	/*
@@ -595,6 +598,8 @@ initbufs(Ether *c)
 		mem += sizeof(Pbuf);
 		mem = QUAD(uchar, mem);
 	}
+	if(mem >= base+64*1024)
+		panic("sonic init");
 }
 
 void

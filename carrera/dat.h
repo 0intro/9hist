@@ -139,7 +139,6 @@ struct KMap
 	KMap*	next;
 	KMap*	konmach[MAXMACH];
 	Page*	pg;
-	char	inuse;			/* number of procs using kmap */
 };
 
 #define	VA(k)		((k)->virt)

@@ -12,7 +12,17 @@
 
 #define	CONST(x,r)	MOVW $((x)&0xffff0000), r; OR  $((x)&0xffff), r
 
-#define	RDBGSV		CONST(0x80020000, R26); MOVW R29, 0(R26); MOVW M(EPC), R27; MOVW R27, 4(R26); MOVW R31, 8(R26)
+#define	RDBGSV		CONST(0x80020000, R26);	\
+			MOVW R29, 0(R26); \
+			MOVW M(EPC), R27; \
+			MOVW R27, 4(R26); \
+			MOVW R31, 8(R26); \
+			MOVW M(CAUSE), R27; \
+			MOVW R27, 12(R26); \
+			MOVW M(STATUS), R27; \
+			MOVW R27, 16(R26); \
+			MOVW M(BADVADDR), R27; \
+			MOVW R27, 20(R26)
 
 /*
  *  R4000 instructions

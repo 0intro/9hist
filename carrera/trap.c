@@ -617,7 +617,6 @@ forkchild(Proc *p, Ureg *ur)
 	memmove(cur, ur, sizeof(Ureg));
 
 	cur->pc += 4;
-	cur->status |= CU0;
 
 	/* Things from bottom of syscall we never got to execute */
 	p->psstate = 0;

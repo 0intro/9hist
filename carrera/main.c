@@ -37,8 +37,9 @@ extern	ulong	rdbglen;
 void
 main(void)
 {
-	tlbinit();		/* Very early to establish IO mappings */
-	ioinit(1);
+	rdbginit();
+	tlbinit();
+	ioinit(1);		/* Very early to establish IO mappings */
 	arginit();
 	confinit();
 	savefpregs(&initfp);
@@ -61,6 +62,7 @@ main(void)
 	rdbginit();
 	schedinit();
 }
+
 
 /*
  *  copy arguments passed by the boot kernel (or ROM) into a temporary buffer.
@@ -398,24 +400,6 @@ confinit(void)
 	conf.copymode = 0;		/* copy on write */
 }
 
-
-/*
- *  for the sake of devcons
- */
-
-void
-buzz(int f, int d)
-{
-	USED(f);
-	USED(d);
-}
-
-void
-rdbginit(void)
-{
-	memmove((void*)0xA001C000, rdbgcode, rdbglen);
-}
-
 void
 procsave(Proc *p)
 {
@@ -424,4 +408,62 @@ procsave(Proc *p)
 	/* keep track of tlbfaults */
 	up->counter[TLBCNTR] += m->tlbfault - m->otlbfault;
 	m->otlbfault = m->tlbfault;
+}
+
+void
+buzz(int f, int d)
+{
+	USED(f);
+	USED(d);
+}
+
+/*
+	register offsets of ARCS prom jmpbuf
+		JB_PC		0
+		JB_SP		1
+		JB_FP		2
+		JB_S0		3
+		JB_S1		4
+		JB_S2		5
+		JB_S3		6
+		JB_S4		7
+		JB_S5		8
+		JB_S6		9
+		JB_S7		10
+*/
+
+struct 
+{
+	ulong	pc;
+	ulong	sp;
+	ulong	fp;
+	ulong	s[7];
+} Mipsjmpbuf;
+
+void
+rdbginit(void)
+{
+	uchar *vec;
+	ulong jba;
+
+	/* Only interested in the PC */
+	Mipsjmpbuf.pc = 0xA001C020;
+
+	/* Link an NMI handler to the debugger
+	 * - addresses from the ARCS rom source
+	 */
+	vec = (uchar*)0xA0000420;
+	jba = (ulong)UNCACHED(void, &Mipsjmpbuf);
+
+	vec[0] = 'N';
+	vec[1] = 'm';
+	vec[2] = 'i';
+	vec[3] = 's';
+	vec[4] = jba>>24;
+	vec[5] = jba>>16;
+	vec[6] = jba>>8;
+	vec[7] = jba;
+
+	/* Install the debugger code in a known place */
+	memmove((void*)0xA001C000, rdbgcode, rdbglen);
 }
