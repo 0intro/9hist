@@ -195,7 +195,7 @@ print("arp: len = %d\n", n);
 		r = v6lookup(fs, ip);
 
 	if(r == nil) {
-		print("arp: no route for entry\n");
+//		print("arp: no route for entry\n");
 		return;
 	}
 

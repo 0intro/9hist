@@ -66,6 +66,7 @@ neomagiclinear(VGAscr* scr, int* size, int* align)
 
 	return aperture;
 }
+
 static void
 neomagicenable(VGAscr* scr)
 {
@@ -110,6 +111,12 @@ neomagicenable(VGAscr* scr)
 	seg.size = p->mem[1].size;
 	addphysseg(&seg);
 
+	/*
+	 * Find a place for the cursor data in display memory.
+	 * 2 cursor images might be needed, 1KB each so use the
+	 * last 2KB of the framebuffer.
+	 */
+	scr->storage = vmsize-2*1024;
 	scr->io += curoff;
 
 	size = p->mem[0].size;
@@ -117,7 +124,7 @@ neomagicenable(VGAscr* scr)
 	aperture = neomagiclinear(scr, &size, &align);
 	if(aperture) {
 		scr->aperture = aperture;
-		scr->apsize = vmsize;
+		scr->apsize = size;
 		memset(&seg, 0, sizeof(seg));
 		seg.attr = SG_PHYSICAL;
 		seg.name = smalloc(NAMELEN);
@@ -253,14 +260,6 @@ neomagiccurenable(VGAscr* scr)
 	 */
 	cursornm->colour1 = (Pblack<<16)|(Pblack<<8)|Pblack;
 	cursornm->colour2 = (Pwhite<<16)|(Pwhite<<8)|Pwhite;
-
-	/*
-	 * Find a place for the cursor data in display memory.
-	 * 2 cursor images might be needed, 1KB each so use the last
-	 * 2KB of the framebuffer and initialise them to be
-	 * transparent.
-	 */
-	scr->storage = scr->apsize-2*1024;
 
 	/*
 	 * Load, locate and enable the 64x64 cursor.
