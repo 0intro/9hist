@@ -126,6 +126,7 @@ ip1gen(Chan *c, int i, Dir *dp)
 	int prot;
 	int len = 0;
 	Fs *f;
+	extern ulong	kerndate;
 
 	f = ipfs[c->dev];
 
@@ -161,7 +162,7 @@ ip1gen(Chan *c, int i, Dir *dp)
 		break;
 	}
 	devdir(c, q, p, len, network, prot, dp);
-	if(i == Qndb)
+	if(i == Qndb && f->ndbmtime > kerndate)
 		dp->mtime = f->ndbmtime;
 	return 1;
 }
