@@ -33,3 +33,40 @@ enum {
 	MaxEISA		= 16,
 	EISAconfig	= 0xC80,
 };
+
+/*
+ * PCI Local Bus support.
+ * Quick hack until we figure out how to
+ * deal with EISA, PCI, PCMCIA, PnP, etc.
+ */
+enum {					/* configuration mechanism #1 */
+	PCIaddr		= 0xCF8,	/* CONFIG_ADDRESS */
+	PCIdata		= 0xCFC,	/* CONFIG_DATA */
+
+					/* configuration mechanism #2 */
+	PCIcse		= 0xCF8,	/* configuration space enable */
+	PCIforward	= 0xCFA,	/* which bus */
+};
+
+typedef struct PCIcfg {
+	ushort	vid;			/* vendor ID */
+	ushort	did;			/* device ID */
+	ushort	command;	
+	ushort	status;	
+	uchar	rid;			/* revision ID */
+	uchar	loclass;		/* specific register-level programming interface */
+	uchar	subclass;	
+	uchar	baseclass;	
+	uchar	clsize;			/* cache line size */
+	uchar	latency;		/* latency timer */
+	uchar	header;			/* header type */
+	uchar	bist;			/* built-in self-test */
+	ulong	baseaddr[6];		/* memory or I/O base address registers */
+	ulong	reserved28[2];	
+	ulong	romaddr;		/* expansion ROM base address */
+	ulong	reserved34[2];	
+	uchar	irq;			/* interrupt line */
+	uchar	irp;			/* interrupt pin */
+	uchar	mingnt;			/* burst period length */
+	uchar	maxlat;			/* maximum latency between bursts */
+} PCIcfg;

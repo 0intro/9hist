@@ -369,8 +369,9 @@ interrupt(Ureg *ur, void *arg)
 
 typedef struct Adapter Adapter;
 struct Adapter {
-	Adapter	*next;
-	ulong	port;
+	Adapter*	next;
+	ulong		port;
+	PCIcfg*		pcicfg;
 };
 static Adapter *adapter;
 
@@ -562,6 +563,37 @@ tcm579(Ether *ether)
 	return 0;
 }
 
+static PCIcfg*
+tcm590(Ether *ether)
+{
+	PCIcfg* pcicfg;
+	static uchar devno = 0;
+	ulong port;
+	Adapter *ap;
+
+	pcicfg = malloc(sizeof(PCIcfg));
+	while(devno < 16){
+		pcicfg->vid = 0x10B7;
+		pcicfg->did = 0;
+		if(pcimatch(0, devno++, pcicfg) == 0)
+			continue;
+
+		port = pcicfg->baseaddr[0] & ~0x01;
+		if(ether->port == 0 || ether->port == port)
+			return pcicfg;
+
+		ap = malloc(sizeof(Adapter));
+		ap->pcicfg = pcicfg;
+		pcicfg = malloc(sizeof(PCIcfg));
+		ap->port = port;
+		ap->next = adapter;
+		adapter = ap;
+	}
+	free(pcicfg);
+
+	return 0;
+}
+
 /*
  * Get configuration parameters.
  */
@@ -573,6 +605,7 @@ ether509reset(Ether *ether)
 	ushort x, acr;
 	ulong port;
 	Adapter *ap, **app;
+	PCIcfg *pcicfg;
 
 	/*
 	 * Any adapter matches if no ether->port is supplied,
@@ -583,9 +616,11 @@ ether509reset(Ether *ether)
 	 * and finally for a PCMCIA card.
 	 */
 	port = 0;
+	pcicfg = 0;
 	for(app = &adapter, ap = *app; ap; app = &ap->next, ap = ap->next){
 		if(ether->port == 0 || ether->port == ap->port){
 			port = ap->port;
+			pcicfg = ap->pcicfg;
 			*app = ap->next;
 			free(ap);
 			break;
@@ -593,6 +628,8 @@ ether509reset(Ether *ether)
 	}
 	if(strcmp(ether->type, "3C589") == 0)
 		port = ether->port;
+	if(port == 0 && (pcicfg = tcm590(ether)))
+		port = pcicfg->baseaddr[0] & ~0x01;
 	if(port == 0)
 		port = tcm579(ether);
 	if(port == 0)
@@ -606,7 +643,7 @@ ether509reset(Ether *ether)
 	 * The EEPROM command is 8 bits, the lower 6 bits being
 	 * the address offset.
 	 */
-	if(strcmp(ether->type, "3C589") != 0)
+	if(strcmp(ether->type, "3C589") != 0 && pcicfg == 0)
 		ether->irq = (ins(port+ResourceConfig)>>12) & 0x0F;
 	for(eax = 0, i = 0; i < 3; i++, eax += 2){
 		while(ins(port+EEPROMcmd) & 0x8000)
@@ -618,7 +655,15 @@ ether509reset(Ether *ether)
 		ea[eax] = (x>>8) & 0xFF;
 		ea[eax+1] = x & 0xFF;
 	}
-	acr = ins(port+AddressConfig);
+	if(pcicfg == 0)
+		acr = ins(port+AddressConfig);
+	else{
+		ether->irq = pcicfg->irq;
+		acr = Xcvr10BaseT;
+		COMMAND(port, SelectWindow, 3);
+		print("internal config = 0x%8.8luX\n", inl(port+0x00));
+		free(pcicfg);
+	}
 
 	/*
 	 * Finished with window 0. Now set the ethernet address

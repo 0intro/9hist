@@ -7,6 +7,7 @@ typedef struct MMU	MMU;
 typedef struct Mach	Mach;
 typedef struct Notsave	Notsave;
 typedef struct PCArch	PCArch;
+typedef struct PCIcfg	PCIcfg;
 typedef struct PCMmap	PCMmap;
 typedef struct Page	Page;
 typedef struct PMMU	PMMU;
