@@ -310,32 +310,20 @@ scsibio(Target *t, char lun, int dir, void *b, long n, long bsize, long bno)
 	uchar cmd[10];
 	int s, cdbsiz, nbytes;
 
-	if(bno <= 0x1fffff && n < 256) {
-		cmd[0] = 0x0A;
-		if(dir == SCSIread)
-			cmd[0] = 0x08;
-		cmd[1] = (lun<<5) | bno >> 16;
-		cmd[2] = bno>>8;
-		cmd[3] = bno;
-		cmd[4] = n;
-		cmd[5] = 0;
-		cdbsiz = 6;
-	}
-	else {
-		cmd[0] = 0x2A;
-		if(dir == SCSIread)
-			cmd[0] = 0x28;
-		cmd[1] = (lun<<5);
-		cmd[2] = bno>>24;
-		cmd[3] = bno>>16;
-		cmd[4] = bno>>8;
-		cmd[5] = bno;
-		cmd[6] = 0;
-		cmd[7] = n>>8;
-		cmd[8] = n;
-		cmd[9] = 0;
-		cdbsiz = 10;
-	}
+	cmd[0] = CMDwrite10;
+	if(dir == SCSIread)
+		cmd[0] = CMDread10;
+	cmd[1] = (lun<<5);
+	cmd[2] = bno>>24;
+	cmd[3] = bno>>16;
+	cmd[4] = bno>>8;
+	cmd[5] = bno;
+	cmd[6] = 0;
+	cmd[7] = n>>8;
+	cmd[8] = n;
+	cmd[9] = 0;
+	cdbsiz = 10;
+
 	nbytes = n*bsize;
 	s = scsiexec(t, dir, cmd, cdbsiz, b, &nbytes);
 	if(s != STok) {
@@ -501,7 +489,6 @@ scsibufsize(Target *t, char lun, int size)
 	int s, nbytes;
 	uchar cmd[6], *d;
 
-
 	nbytes = 12;
 
 	memset(cmd, 0, sizeof(cmd));
@@ -528,7 +515,7 @@ scsibufsize(Target *t, char lun, int size)
 int
 scsireadcdda(Target *t, char lun, int, void *b, long n, long bsize, long bno)
 {
-	uchar cmd[10];
+	uchar cmd[12];
 	int s, nbytes;
 
 	memset(cmd, 0, sizeof(cmd));
