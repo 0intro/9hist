@@ -127,8 +127,8 @@ delay(int l)
 void
 printcpufreq(void)
 {
-	print("CPU is a %ud Hz %d (CPUID: AX=0x%8.8lux, DX=0x%8.8lux)\n",
-		cpufreq, cputype, cpuidax, cpuiddx);
+	print("CPU is a %d MHz %s (cpuid: ax %lux dx %lux)\n",
+		cpumhz, cputype->name, cpuidax, cpuiddx);
 }
 
 int
@@ -170,45 +170,46 @@ clockinit(void)
 	outb(T0cntr, (Freq/HZ)>>8);	/* high byte */
 
 	/* use biggest loop that works */
-	for(loops = 10000; ; loops += 5000) {
-		/*
-		 *  measure time for the loop
-		 *
-		 *			MOVL	loops,CX
-		 *	aaml1:	 	AAM
-		 *			LOOP	aaml1
-		 *
-		 *  the time for the loop should be independent of external
-		 *  cache and memory system since it fits in the execution
-		 *  prefetch buffer.
-		 *
-		 */
-		outb(Tmode, Latch0);
-		x = inb(T0cntr);
-		x |= inb(T0cntr)<<8;
-		aamloop(loops);
-		outb(Tmode, Latch0);
-		y = inb(T0cntr);
-		y |= inb(T0cntr)<<8;
-		x -= y;
+	if(t->family == 3)
+		loops = 10000;
+	else
+		loops = 30000;
 
-		if(x < 0)
-			x += 2^16;
-		if(x > (2^15))
-			break;
-	
-		/*
-		 *  counter  goes at twice the frequency, once per transition,
-		 *  i.e., twice per square wave
-		 */
-		x >>= 1;
+	/*
+	 *  measure time for the loop
+	 *
+	 *			MOVL	loops,CX
+	 *	aaml1:	 	AAM
+	 *			LOOP	aaml1
+	 *
+	 *  the time for the loop should be independent of external
+	 *  cache and memory system since it fits in the execution
+	 *  prefetch buffer.
+	 *
+	 */
+	outb(Tmode, Latch0);
+	x = inb(T0cntr);
+	x |= inb(T0cntr)<<8;
+	aamloop(loops);
+	outb(Tmode, Latch0);
+	y = inb(T0cntr);
+	y |= inb(T0cntr)<<8;
+	x -= y;
 
-		/*
-	 	 *  figure out clock frequency and a loop multiplier for delay().
-		 */
-		cpufreq = loops*((t->aalcycles*Freq)/x);
-		loopconst = (cpufreq/1000)/t->aalcycles;	/* AAM+LOOP's for 1 ms */
-	} while(x > 0);
+	if(x < 0)
+		x += 2^16;
+
+	/*
+	 *  counter  goes at twice the frequency, once per transition,
+	 *  i.e., twice per square wave
+	 */
+	x >>= 1;
+
+	/*
+ 	 *  figure out clock frequency and a loop multiplier for delay().
+	 */
+	cpufreq = loops*((t->aalcycles*Freq)/x);
+	loopconst = (cpufreq/1000)/t->aalcycles;	/* AAM+LOOP's for 1 ms */
 
 	/*
 	 *  add in possible .1% error and convert to MHz

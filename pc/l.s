@@ -600,10 +600,12 @@ is386:
 	MOVL	$(3<<8),AX
 	MOVL	$0,DX
 done:
-	MOVL	AX, a+0(FP)
-	MOVL	DX, d+4(FP)
-	POPL	BX
+	MOVL	a+0(FP),CX
+	MOVL	AX,0(CX)
+	MOVL	d+4(FP),CX
+	MOVL	DX,0(CX)
 	POPFL
+	POPL	BX
 	RET
 
 /*
