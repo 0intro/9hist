@@ -1802,8 +1802,13 @@ usbread(Chan *c, void *a, long n, vlong offset)
 		}
 		l = snprint(s, READSTR, "%s %#6.6lux\n", devstates[d->state], d->csp);
 		for(i=0; i<nelem(d->ep); i++)
-			if((e = d->ep[i]) != nil)	/* TO DO: freeze e */
-				l += snprint(s+l, READSTR-l, "%2d %#6.6lux %10lud bytes %10lud blocks\n", i, e->csp, e->nbytes, e->nblocks);
+			if((e = d->ep[i]) != nil){	/* TO DO: freeze e */
+				l += snprint(s+l, READSTR-l, "%2d %#6.6lux %10lud bytes %10lud blocks", i, e->csp, e->nbytes, e->nblocks);
+				if (e->iso){
+					l += snprint(s+l, READSTR-l, "iso ");
+				}
+				l += snprint(s+l, READSTR-l, "\n");
+			}
 		n = readstr(offset, a, n, s);
 		poperror();
 		free(s);
