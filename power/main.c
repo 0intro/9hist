@@ -218,7 +218,6 @@ init0(void)
 	 */
 	u->slash = (*devtab[0].attach)(0);
 	u->dot = clone(u->slash, 0);
-	kproc("alarm", alarmkproc, 0);
 	chandevinit();
 
 	if(!waserror()){
@@ -228,6 +227,7 @@ init0(void)
 		poperror();
 	}
 
+	kproc("alarm", alarmkproc, 0);
 	sp = (ulong*)(USTKTOP - argsize);
 	touser(sp);
 }

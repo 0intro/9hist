@@ -6,7 +6,7 @@
 #include	"io.h"
 
 struct {
-	QLock;
+	Lock;
 	Alarm	*tab;	/* table of all alarm structures */
 	void	*list;	/* busy alarms */
 	Rendez	r;
@@ -25,14 +25,14 @@ alarm(int ms, void (*f)(Alarm*), void *arg)
 	a->when = MACHP(0)->ticks+MS2TK(ms);
 	a->f = f;
 	a->arg = arg;
-	qlock(&alarmalloc);
+	lock(&alarmalloc);
 	pw = 0;
 	for(w=alarmalloc.list; w; pw=w, w=w->next){
 		if(w->when > a->when)
 			break;
 	}
 	insert(&alarmalloc.list, pw, a);
-	qunlock(&alarmalloc);
+	unlock(&alarmalloc);
 	return a;
 }
 
@@ -75,8 +75,8 @@ alarminit(void)
 		lock(&alarmalloc.tab[i]);
 		unlock(&alarmalloc.tab[i]);
 	}
-	qlock(&alarmalloc);
-	qunlock(&alarmalloc);
+	lock(&alarmalloc);
+	unlock(&alarmalloc);
 	qlock(&alarms);
 	qunlock(&alarms);
 }
@@ -97,7 +97,7 @@ alarmkproc(void *arg)
 	for(;;){
 		now = MACHP(0)->ticks;
 
-		qlock(&alarmalloc);
+		lock(&alarmalloc);
 		a = alarmalloc.list;
 		if(a){
 			for(n=0; a && a->when<=now && n<NA; n++){
@@ -105,7 +105,7 @@ alarmkproc(void *arg)
 				delete(&alarmalloc.list, 0, a);
 				a = alarmalloc.list;
 			}
-			qunlock(&alarmalloc);
+			unlock(&alarmalloc);
 
 			/*
 			 *  execute alarm functions outside the lock since they
@@ -124,7 +124,7 @@ alarmkproc(void *arg)
 				poperror();
 			}
 		}else
-			qunlock(&alarmalloc);
+			unlock(&alarmalloc);
 
 		qlock(&alarms);
 		while((rp = alarms.head) && rp->alarm <= now){
@@ -157,8 +157,6 @@ checkalarms(void)
 	Proc *p;
 	Alarm *a;
 
-	if(m != MACHP(0))
-		return;
 	a = alarmalloc.list;
 	p = alarms.head;
 	now = MACHP(0)->ticks;
