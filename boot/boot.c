@@ -25,6 +25,51 @@ static void	recover(Method*);
 static Method	*rootserver(char*);
 
 void
+ethertest(void)
+{
+	int cf, df, n, t;
+	char buf[64];
+	struct Etherpkt
+	{
+		uchar	d[6];
+		uchar	s[6];
+		uchar	type[2];
+	} p;
+
+	cf = open("#l/ether/clone", ORDWR);
+	if(cf < 0){
+		print("can't open #l/ether/clone: %r\n");
+		exits(0);
+	}
+	n = read(cf, buf, 12);
+	if(n < 0){
+		print("can't read #l/ether/clone: %r\n");
+		exits(0);
+	}
+	buf[n] = 0;
+	sprint(buf, "#l/ether/%d/data", atoi(buf));
+	df = open(buf, ORDWR);
+	if(df < 0){
+		print("can't open %s: %r\n", buf);
+		exits(0);
+	}
+	if(write(cf, "connect -1", sizeof("connect -1")-1) < 0){
+		print("can't connect -1: %r\n");
+		exits(0);
+	}
+	close(cf);
+	for(;;){
+		n = read(df, &p, sizeof(p));
+		if(n <= 0){
+			print("read returns %d: %r\n", n);
+			continue;
+		}
+		t = (p.type[0]<<8) | p.type[1];
+		print("%d %2.2ux%2.2ux%2.2ux%2.2ux%2.2ux%2.2ux -> %2.2ux%2.2ux%2.2ux%2.2ux%2.2ux%2.2ux %ux\n", n, p.s[0], p.s[1], p.s[2], p.s[3], p.s[4], p.s[5], p.d[0], p.d[1], p.d[2], p.d[3], p.d[4], p.d[5], t);
+	}
+}
+
+void
 boot(int argc, char *argv[])
 {
 	int fd;
@@ -38,10 +83,12 @@ boot(int argc, char *argv[])
 	open("#c/cons", OREAD);
 	open("#c/cons", OWRITE);
 	open("#c/cons", OWRITE);
-/*	print("argc=%d\n", argc);
+	print("argc=%d\n", argc);
 	for(fd = 0; fd < argc; fd++)
 		print("%s ", argv[fd]);
 	print("\n");/**/
+
+	ethertest();
 
 	if(argc <= 1)
 		pflag = 1;

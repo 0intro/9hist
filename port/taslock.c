@@ -19,9 +19,8 @@ lock(Lock *l)
 			return;
 		}
 	}
-	l->key = 0;
 	panic("lock loop 0x%lux key 0x%lux pc 0x%lux held by pc 0x%lux\n",
-			l->key, i, pc, l->pc);
+			i, l->key, pc, l->pc);
 }
 
 int

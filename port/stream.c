@@ -1,3 +1,4 @@
+#include	"u.h"
 #include	"../port/lib.h"
 #include	"mem.h"
 #include	"dat.h"
@@ -19,19 +20,20 @@ struct Chunk
 	Chunk	*next;
 };
 
-struct Alloc
+struct Chunkl
 {
 	Lock;
 	Chunk	*first;
-	int	had;
+	int	have;
 	int	goal;
-	int	last;
+	int	hist;
 };
 
 struct Arena
 {
-	Chunkl	alloc[Maxpow-Minpow+1];
+	Chunkl	alloc[Maxpow+1];
 	Chunkl	freed;
+	Rendez r;
 };
 
 static Arena arena;
@@ -48,17 +50,17 @@ iallockproc(void *arg)
 
 	USED(arg);
 	for(;;){
-		tsleep(&freed->r, return0, 0, 500);
+		tsleep(&arena.r, return0, 0, 500);
 
 		/* really free what was freed at interrupt level */
 		cl = &arena.freed;
 		if(cl->first){
-			x = slphi();
+			x = splhi();
 			lock(cl);
 			first = cl->first;
 			cl->first = 0;
 			unlock(cl);
-			spllo();
+			splx(x);
 	
 			for(; first; first = p){
 				p = first->next;
@@ -69,10 +71,18 @@ iallockproc(void *arg)
 		/* make sure we have blocks available for interrupt level */
 		for(pow = Minpow; pow <= Maxpow; pow++){
 			cl = &arena.alloc[pow];
+
+			/*
+			 *  if we've been ahead of the game for a while
+			 *  start giving blocks back to the general pool
+			 */
 			if(cl->have >= cl->goal){
-				cl->had = cl->have;
+				cl->hist = ((cl->hist<<1) | 1) & 0xff;
+				if(cl->hist == 0xff && cl->goal > 8)
+					cl->goal--;
 				continue;
-			}
+			} else
+				cl->hist <<= 1;
 
 			/*
 			 *  increase goal if we've been drained, decrease
@@ -80,13 +90,8 @@ iallockproc(void *arg)
 			 */
 			if(cl->have == 0)
 				cl->goal += cl->goal>>2;
-			else {
-				x = cl->goal/2;
-				if(cl->goal > 4 && cl->had > x && cl->have > x)
-					cl->goal--;
-			}
 
-			cl->had = cl->have;
+			first = 0;
 			l = &first;
 			for(i = x = cl->goal - cl->have; x > 0; x--){
 				p = malloc(1<<pow);
@@ -102,7 +107,7 @@ iallockproc(void *arg)
 				cl->first = first;
 				cl->have += i;
 				unlock(cl);
-				spllo(x);
+				splx(x);
 			}
 		}
 	}
@@ -130,7 +135,7 @@ ialloc(int size)
 	Chunkl *cl;
 	Chunk *p;
 
-	for(pow = Min; pow <= Maxpow; pow++)
+	for(pow = Minpow; pow <= Maxpow; pow++)
 		if(size <= (1<<pow)){
 			cl = &arena.alloc[pow];
 			lock(cl);
@@ -143,6 +148,7 @@ ialloc(int size)
 			return (void*)p;
 		}
 	panic("ialloc %d\n", size);
+	return 0;			/* not reached */
 }
 
 void
@@ -183,7 +189,7 @@ allocb(int size)
  *  set, any bytes left in a block afer a consume are discarded.
  */
 int
-consume(Queue *q, uchar *p, int len, int drop)
+qconsume(Queue *q, uchar *p, int len)
 {
 	Block *b;
 	int n;
@@ -199,28 +205,29 @@ consume(Queue *q, uchar *p, int len, int drop)
 	if(n < len)
 		len = n;
 	memmove(p, b->rp, len);
-	if(drop || len == n)
+	if((q->state&Qmsg) || len == n)
 		q->bfirst = b->next;
 	else
 		b->rp += len;
 	q->len -= len;
 
-	/* wakeup flow controlled writers */
-	if(q->len+len >= q->limit && q->len < q->limit)
+	/* wakeup flow controlled writers (with a bit of histeresis) */
+	if(q->len+len >= q->limit && q->len < q->limit/2)
 		wakeup(&q->r);
 
 	unlock(q);
 
-	if(drop || len == n)
+	if((q->state&Qmsg) || len == n)
 		ifree(b);
 
 	return len;
 }
 
 int
-produce(Queue *q, uchar *p, int len, int append)
+qproduce(Queue *q, uchar *p, int len)
 {
 	Block *b;
+	int n;
 
 	lock(q);
 	b = q->rfirst;
@@ -237,17 +244,23 @@ produce(Queue *q, uchar *p, int len, int append)
 		return len;
 	}
 
-	/* no waiting receivers, buffer */
-	if(q->len >= q->limit)
+	/* no waiting receivers, room in buffer? */
+	if(q->len >= q->limit){
+		unlock(q);
 		return -1;
-	b = q->first;
-	if(append && b && b->lim-b->wp <= len){
+	}
+
+	/* save in buffer */
+	b = q->bfirst;
+	if((q->state&Qmsg)==0 && b && b->lim-b->wp <= len){
 		memmove(b->wp, p, len);
 		b->wp += len;
 	} else {
 		b = ialloc(sizeof(Block)+len);
-		if(b == 0)
+		if(b == 0){
+			unlock(q);
 			return -1;
+		}
 		b->base = (uchar*)(b+1);
 		b->rp = b->base;
 		b->wp = b->lim = b->base + len;
@@ -256,7 +269,7 @@ produce(Queue *q, uchar *p, int len, int append)
 			q->blast->next = b;
 		else
 			q->bfirst = b;
-		q->last = b;
+		q->blast = b;
 	}
 	q->len += len;
 	unlock(q);
@@ -277,6 +290,9 @@ qopen(int limit, void (*kick)(void*), void *arg)
 	q->limit = limit;
 	q->kick = kick;
 	q->arg = arg;
+	q->state = Qmsg;
+
+	return q;
 }
 
 static int
@@ -288,12 +304,12 @@ bfilled(void *a)
 }
 
 long
-qread(Queue *q, char *p, int len, int drop)
+qread(Queue *q, char *p, int len)
 {
 	Block *b, *bb;
 	int x, n;
 
-	/* ... to be replaced by a mapping */
+	/* ... to be replaced by a kmapping if need be */
 	b = allocb(len);
 
 	x = splhi();
@@ -311,24 +327,31 @@ qread(Queue *q, char *p, int len, int drop)
 		sleep(&b->r, bfilled, b);
 		n = BLEN(b);
 		memmove(p, b->rp, n);
+		free(b);
 		return n;
 	}
 
-	/* grab a block from the buffer */
-	n = BLEN(b);
-	if(drop || n <= len){
-		q->bfirst = b->next;
-		q->len -= n;
-		unlock(q);
-		slpx(x);
-		memmove(p, b->rp, n);
-	} else {
+	/* copy from a buffered block */
+	q->bfirst = bb->next;
+	n = BLEN(bb);
+	if(n > len)
 		n = len;
-		q->len -= n;
-		memmove(p, b->rp, n);
-		b->rp += n;
+	q->len -= n;
+	unlock(q);
+	splx(x);
+	memmove(p, bb->rp, n);
+	bb->rp += n;
+
+	/* free it or put it back */
+	if(drop || bb->rp == bb->wp)
+		free(bb);
+	else {
+		x = splhi();
+		lock(q);
+		bb->next = q->bfirst;
+		q->bfirst = bb;
 		unlock(q);
-		slpx(x);
+		splx(x);
 	}
 	free(b);
 	return n;
@@ -346,7 +369,7 @@ long
 qwrite(Queue *q, char *p, int len)
 {
 	Block *b;
-	int x, n;
+	int x;
 
 	b = allocb(len);
 	memmove(b->rp, p, len);
@@ -368,7 +391,7 @@ qwrite(Queue *q, char *p, int len)
 	q->blast = b;
 	q->len += len;
 	if((q->state & Qstarve) && q->kick){
-		q->stat &= ~Qstarve;
+		q->state &= ~Qstarve;
 		(*q->kick)(q->arg);
 	}
 	unlock(q);

@@ -149,7 +149,7 @@ devstat(Chan *c, char *db, Dirtab *tab, int ntab, Devgen *gen)
 		 *  by namec.
 		 */
 			if(c->qid.path & CHDIR){
-				devdir(c, c->qid, c->path->elem, i*DIRLEN, eve, CHDIR|0700, &dir);
+				devdir(c, c->qid, c->path->elem, i*DIRLEN, eve, CHDIR|0555, &dir);
 				convD2M(&dir, db);
 				return;
 			}

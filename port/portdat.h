@@ -16,9 +16,6 @@ typedef struct Mntrpc	Mntrpc;
 typedef struct Mntwalk	Mntwalk;
 typedef struct Mnt	Mnt;
 typedef struct Mhead	Mhead;
-typedef struct Netinf	Netinf;
-typedef struct Netprot	Netprot;
-typedef struct Network	Network;
 typedef struct Note	Note;
 typedef struct Page	Page;
 typedef struct Path	Path;
@@ -678,53 +675,10 @@ struct Queue
 enum
 {
 	Qstarve=1,	/* consumer starved */
+	Qmsg=1,		/* message oriented */
 };
 #define BLEN(b)		((b)->wp - (b)->rp)
 
-/*
- *  Macros to manage Qid's used for multiplexed devices
- */
-#define NETTYPE(x)	((x)&0x1f)
-#define NETID(x)	(((x)&~CHDIR)>>5)
-#define NETQID(i,t)	(((i)<<5)|(t))
-enum
-{
-	Nhighqid	= NETQID(1,0) - 1,
-	Ndataqid	= Nhighqid,
-	Nctlqid		= Ndataqid-1,
-	Nlowqid		= Nctlqid,
-};
-
-/*
- *  a multiplexed network
- */
-struct Netprot
-{
-	int	id;
-	Netprot	*next;		/* linked list of protections */
-	ulong	mode;
-	char	owner[NAMELEN];
-	Network	*net;
-};
-
-struct Netinf
-{
-	char	*name;
-	void	(*fill)(Netprot*, char*, int);
-};
-
-struct Network
-{
-	Lock;
-	char	*name;
-	int	nconv;			/* max # of conversations */
-	int	(*listen)(Netprot*);
-	int	(*open)(Netprot*, int);
-	int	ninfo;
-	Netinf	info[5];
-	Netprot	*prot;			/* linked list of protections */
-	void	*ptr;
-};
 
 enum
 {
