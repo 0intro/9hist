@@ -44,16 +44,18 @@ boot(int argc, char *argv[])
 	char buf[32];
 	AuthInfo *ai;
 
-	sleep(1000);
-
-
 	fmtinstall('r', rconv);
 
 	open("#c/cons", OREAD);
 	open("#c/cons", OWRITE);
 	open("#c/cons", OWRITE);
 	bind("#c", "/dev", MAFTER);
-	bind("#e", "/env", MREPL|MCREATE);
+	/*
+	 * init will reinitialize its namespace.
+	 * #ec gets us plan9.ini settings.
+	 */
+	bind("#ec", "/env", MREPL|MCREATE);
+	bind("#e", "/env", MAFTER);
 	bind("#s", "/srv", MREPL|MCREATE);
 
 #ifdef DEBUG

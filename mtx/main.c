@@ -260,11 +260,15 @@ procsave(Proc *p)
 void
 confinit(void)
 {
-	ulong pa;
+	char *p;
+	int userpcnt;
+	ulong pa, kpages;
 	extern ulong memsize;	/* passed in from ROM monitor */
 
-	conf.nmach = 1;		/* processors */
-	conf.nproc = 60;		/* processes */
+	if(p = getconf("*kernelpercent"))
+		userpcnt = 100 - strtol(p, 0, 0);
+	else
+		userpcnt = 0;
 
 	pa = PGROUND(PADDR(end));
 
@@ -276,15 +280,76 @@ confinit(void)
 
 	conf.npage = conf.npage0 + conf.npage1;
 
-	conf.upages = (conf.npage*60)/100;
-	conf.ialloc = ((conf.npage-conf.upages)/2)*BY2PG;
+	conf.nmach = 1;
+	conf.nproc = 100 + ((conf.npage*BY2PG)/MB)*5;
+	if(cpuserver)
+		conf.nproc *= 3;
+	if(conf.nproc > 2000)
+		conf.nproc = 2000;
+	conf.nimage = 200;
+	conf.nswap = conf.nproc*80;
+	conf.nswppo = 4096;
+	conf.copymode = 0;			/* copy on write */
 
-	/* set up other configuration parameters */
-	conf.nswap = 0;
-	conf.nswppo = 0; 
-	conf.nimage = 20;
+	if(cpuserver) {
+		if(userpcnt < 10)
+			userpcnt = 70;
+		kpages = conf.npage - (conf.npage*userpcnt)/100;
 
-	conf.copymode = 0;		/* copy on write */
+		/*
+		 * Hack for the big boys. Only good while physmem < 4GB.
+		 * Give the kernel a max. of 16MB + enough to allocate the
+		 * page pool.
+		 * This is an overestimate as conf.upages < conf.npages.
+		 * The patch of nimage is a band-aid, scanning the whole
+		 * page list in imagereclaim just takes too long.
+		 */
+		if(kpages > (16*MB + conf.npage*sizeof(Page))/BY2PG){
+			kpages = (16*MB + conf.npage*sizeof(Page))/BY2PG;
+			conf.nimage = 2000;
+			kpages += (conf.nproc*KSTACK)/BY2PG;
+		}
+	} else {
+		if(userpcnt < 10) {
+			if(conf.npage*BY2PG < 16*MB)
+				userpcnt = 40;
+			else
+				userpcnt = 60;
+		}
+		kpages = conf.npage - (conf.npage*userpcnt)/100;
+
+		/*
+		 * Make sure terminals with low memory get at least
+		 * 4MB on the first Image chunk allocation.
+		 */
+		if(conf.npage*BY2PG < 16*MB)
+			imagmem->minarena = 4*1024*1024;
+	}
+	conf.upages = conf.npage - kpages;
+	conf.ialloc = (kpages/2)*BY2PG;
+
+	/*
+	 * Guess how much is taken by the large permanent
+	 * datastructures. Mntcache and Mntrpc are not accounted for
+	 * (probably ~300KB).
+	 */
+	kpages *= BY2PG;
+	kpages -= conf.upages*sizeof(Page)
+		+ conf.nproc*sizeof(Proc)
+		+ conf.nimage*sizeof(Image)
+		+ conf.nswap
+		+ conf.nswppo*sizeof(Page);
+	mainmem->maxsize = kpages;
+	if(!cpuserver){
+		/*
+		 * give terminals lots of image memory, too; the dynamic
+		 * allocation will balance the load properly, hopefully.
+		 * be careful with 32-bit overflow.
+		 */
+		imagmem->maxsize = kpages;
+	}
+
+//	conf.monitor = 1;	/* BUG */
 }
 
 static int

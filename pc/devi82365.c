@@ -1007,9 +1007,11 @@ pcmio(int slotno, ISAConf *isa)
 		m = pcmmap(slotno, pp->caddr + Rconfig, 1, 1);
 		p = KADDR(m->isa + pp->caddr + Rconfig - m->ca);
 
-		/* set configuration and interrupt type */
+		/*  set configuration and interrupt type.
+		 *  if level is possible on the card, use it.
+		 */
 		x = ct->index;
-		if((ct->irqtype & 0x20) && ((ct->irqtype & 0x40)==0 || isa->irq>7))
+		if(ct->irqtype & 0x20)
 			x |= Clevel;
 		*p = x;
 		delay(5);

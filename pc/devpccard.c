@@ -1059,7 +1059,7 @@ pccard_pcmspecial(char *idstr, ISAConf *isa)
 
 		/* set configuration and interrupt type */
 		x = ct->index;
-		if((ct->irqtype & 0x20) && ((ct->irqtype & 0x40)==0 || isa->irq>7))
+		if(ct->irqtype & 0x20)
 			x |= Clevel;
 		*p = x;
 		delay(5);

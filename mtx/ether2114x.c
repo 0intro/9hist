@@ -19,7 +19,7 @@
 
 #include "etherif.h"
 
-#define DEBUG		(1)
+#define DEBUG		(0)
 #define debug		if(DEBUG)print
 
 enum {
@@ -56,7 +56,7 @@ enum {					/* CSR[57] - Status and Interrupt Enable */
 	Rwt		= 0x00000200,	/* Receive Watchdog Timeout */
 	Eti		= 0x00000400,	/* Early Transmit Interrupt */
 	Gte		= 0x00000800,	/* General purpose Timer Expired */
-	Fbe		= 0x00002000,	/* Fatal Bit Error */
+	Fbe		= 0x00002000,	/* Fatal Bus Error */
 	Ais		= 0x00008000,	/* Abnormal Interrupt Summary */
 	Nis		= 0x00010000,	/* Normal Interrupt Summary */
 	Rs		= 0x000E0000,	/* Receive process State (field) */
@@ -419,7 +419,6 @@ interrupt(Ureg*, void* arg)
 	Des *des;
 	Block *bp;
 
-print("ether intr\n");
 	ether = arg;
 	ctlr = ether->ctlr;
 
@@ -800,7 +799,7 @@ softreset(Ctlr* ctlr)
 	 */
 	csr32w(ctlr, 0, Swr);
 	microdelay(10);
-	csr32w(ctlr, 0, Rml|Cal16);
+	csr32w(ctlr, 0, Rml|Cal16|Dbo);
 	delay(1);
 }
 
@@ -1596,7 +1595,8 @@ reset(Ether* ether)
 
 	ether->ctlr = ctlr;
 	ether->port = ctlr->port;
-	ether->irq = ctlr->pcidev->intl;
+//	ether->irq = ctlr->pcidev->intl;
+ether->irq = 2;		/* arrrrrgh */
 	ether->tbdf = ctlr->pcidev->tbdf;
 
 	/*

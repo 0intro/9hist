@@ -377,7 +377,7 @@ etherreset(void)
 			 * controllers together. A device set to IRQ2 will appear on
 			 * the second interrupt controller as IRQ9.
 			 */
-			if(ether->irq == 2)
+			if(ether->irq == 2 && BUSTYPE(ether->tbdf) != BusPCI)
 				ether->irq = 9;
 			snprint(name, sizeof(name), "ether%d", ctlrno);
 

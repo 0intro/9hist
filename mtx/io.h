@@ -180,5 +180,5 @@ typedef struct Pcidev {
 	ulong	pcr;
 };
 
-#define PCIWINDOW	0
+#define PCIWINDOW	0x80000000
 #define PCIWADDR(va)	(PADDR(va)+PCIWINDOW)
