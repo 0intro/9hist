@@ -37,7 +37,7 @@ enum
 	ISActl1=	1,		/* board control */
 	 ISAien=	 1<<7,		/*  interrupt enable */
 	 ISAirq=	 7<<4,		/*  mask for irq code */
-	 ISAdl=		 1<<1,		/*  download bit (1 == download) */
+	 ISAnotdl=	 1<<1,		/*  download bit (0 == download) */
 	 ISApr=		 1<<0,		/*  program ready */
 	ISActl2=	2,		/* board control */
 	 ISA186ien=	 1<<7,		/*  I186 irq enable bit state */
@@ -213,7 +213,6 @@ enum
 	Crtsctl=	1<<1,
 	Cbreakctl=	1<<4,
 
-
 	/* CCB.mstat fields */
 	Cctsstat=	1<<0,
 	Cdsrstat=	1<<1,
@@ -243,7 +242,7 @@ struct Astar
 	Astarchan	*c;		/* channels */
 	int		ramsize;	/* 16k or 256k */
 	int		memsize;	/* size of memory currently mapped */
-	GCB		*gbc;		/* global board comm area */
+	GCB		*gcb;		/* global board comm area */
 	uchar		*addr;		/* base of memory area */
 	int		running;
 
@@ -285,6 +284,7 @@ static void	astarintr(Ureg*, void*);
 static void	astarkick(Astarchan*);
 static void	enable(Astarchan*);
 static void	disable(Astarchan*);
+static void	astarctl(Astarchan*, char*);
 
 /*
  *  Only 16k maps into ISA space
@@ -310,20 +310,23 @@ astargen(Chan *c, Dirtab *tab, int ntab, int i, Dir *db)
 	int dev, sofar, ch, t;
 	extern ulong kerndate;
 
+	memset(db, 0, sizeof(Dir));
+
 	USED(tab, ntab);
 	sofar = 0;
 
 	for(dev = 0; dev < nastar; dev++){
 		if(sofar == i){
-			sprint(db->name, "atar%dmem", astar[dev]->id);
+			sprint(db->name, "astar%dmem", astar[dev]->id);
 			db->qid.path = QID(dev, 0, Qmem);
 			db->mode = 0660;
+			db->length = astar[dev]->memsize;
 			break;
 		}
 		sofar++;
 
 		if(sofar == i){
-			sprint(db->name, "atar%dctl", astar[dev]->id);
+			sprint(db->name, "astar%dctl", astar[dev]->id);
 			db->qid.path = QID(dev, 0, Qbctl);
 			db->mode = 0660;
 			break;
@@ -338,17 +341,17 @@ astargen(Chan *c, Dirtab *tab, int ntab, int i, Dir *db)
 			case 0:
 				sprint(db->name, "eia%d%2.2d", dev, ch);
 				db->mode = astar[dev]->c[ch].perm;
-				db->qid.path = QID(dev, 0, Qdata);
+				db->qid.path = QID(dev, ch, Qdata);
 				break;
 			case 1:
 				sprint(db->name, "eia%d%2.2dctl", dev, ch);
 				db->mode = astar[dev]->c[ch].perm;
-				db->qid.path = QID(dev, 0, Qctl);
+				db->qid.path = QID(dev, ch, Qctl);
 				break;
 			case 2:
 				sprint(db->name, "eia%d%2.2dstat", dev, ch);
 				db->mode = 0444;
-				db->qid.path = QID(dev, 0, Qstat);
+				db->qid.path = QID(dev, ch, Qstat);
 				break;
 			}
 			break;
@@ -359,10 +362,9 @@ astargen(Chan *c, Dirtab *tab, int ntab, int i, Dir *db)
 	if(dev == nastar)
 		return -1;
 
+	db->qid.vers = 0;
 	db->atime = seconds();
 	db->mtime = kerndate;
-	db->hlength = 0;
-	db->length = 0;				/* update ???? */
 	memmove(db->uid, eve, NAMELEN);
 	memmove(db->gid, eve, NAMELEN);
 	db->type = devchar[c->type];
@@ -376,7 +378,7 @@ astargen(Chan *c, Dirtab *tab, int ntab, int i, Dir *db)
 void
 astarreset(void)
 {
-	int i;
+	int i, c;
 	Astar *a;
 
 	for(i = 0; i < Maxcard; i++){
@@ -394,6 +396,10 @@ astarreset(void)
 		else
 			continue;
 
+		c = inb(a->port+ISActl1);
+		outb(a->port+ISActl1, c | ISAnotdl);
+		a->memsize = a->ramsize;
+
 		if(a->mem == 0)
 			a->mem = 0xD4000;
 		if(a->irq == 0)
@@ -406,7 +412,8 @@ astarreset(void)
 			astar[nastar] = 0;
 			continue;
 		}
-		print("serial%d avanstar addr %lux irq %d\n", i, a->addr, a->irq);
+		print("serial%d avanstar port %d addr %lux irq %d\n", i, a->port,
+			a->addr, a->irq);
 		nastar++;
 
 		setvec(Int0vec + a->irq, astarintr, a);
@@ -455,8 +462,8 @@ astarsetup(Astar *a)
 
 	/* set memory address */
 	outb(a->port+ISAmaddr, (a->mem>>12) & 0xfc);
-	a->gbc = (GCB*)(KZERO | a->mem);
-	a->addr = (char*)(KZERO | a->mem);
+	a->gcb = (GCB*)(KZERO | a->mem);
+	a->addr = (uchar*)(KZERO | a->mem);
 
 	/* set interrupt level */
 	if(isairqcode[a->irq] == -1){
@@ -475,7 +482,7 @@ astarinit(void)
 Chan*
 astarattach(char *spec)
 {
-	return devattach('g', spec);
+	return devattach('G', spec);
 }
 
 Chan*
@@ -500,8 +507,10 @@ Chan*
 astaropen(Chan *c, int omode)
 {
 	Astar *a;
+	Astarchan *ac;
 
 	c = devopen(c, omode, 0, 0, astargen);
+	a = astar[BOARD(c->qid.path)];
 
 	switch(TYPE(c->qid.path)){
 	case Qmem:
@@ -511,9 +520,10 @@ astaropen(Chan *c, int omode)
 		break;
 	case Qdata:
 	case Qctl:
+		ac = a->c + CHAN(c->qid.path);
 		qlock(ac);
 		if(waserror()){
-			qunlock(a);
+			qunlock(ac);
 			nexterror();
 		}
 		if(ac->opens++ == 0)
@@ -530,20 +540,26 @@ void
 astarclose(Chan *c)
 {
 	Astar *a;
-	int i;
+	Astarchan *ac;
+
+	a = astar[BOARD(c->qid.path)];
 
 	switch(TYPE(c->qid.path)){
 	case Qmem:
 		break;
 	case Qdata:
 	case Qctl:
+		ac = a->c + CHAN(c->qid.path);
 		qlock(ac);
 		if(waserror()){
-			qunlock(a);
+			qunlock(ac);
 			nexterror();
 		}
-		if(--ac->opens == 0)
+		if(--ac->opens == 0){
 			disable(ac);
+			qclose(ac->iq);
+			qclose(ac->oq);
+		}
 		qunlock(ac);
 		poperror();
 		break;
@@ -574,8 +590,8 @@ memread(Astar *a, uchar *to, long n, ulong offset)
 		i = Pagesize - i;
 		if(i > rem)
 			i = rem;
-		if(i > sizeof tmp)
-			i = sizeof tmp;
+		if(i > sizeof(tmp))
+			i = sizeof(tmp);
 
 		/*
 		 *  byte at a time so endian doesn't matter,
@@ -584,11 +600,13 @@ memread(Astar *a, uchar *to, long n, ulong offset)
 		tp = tmp;
 		ilock(&a->pagelock);
 		setpage(a, offset);
-		for(e = from + i; from < e;)
+		for(e = tp + i; tp < e;)
 			*tp++ = *from++;
 		iunlock(&a->pagelock);
 		memmove(to, tmp, i);
 		to += i;
+
+		offset += i;
 	}
 
 	return n;
@@ -598,7 +616,7 @@ memread(Astar *a, uchar *to, long n, ulong offset)
  *  read ISA status
  */
 static long
-bctlread(Chan *c, void *buf, long n, ulong offset)
+bctlread(Astar *a, void *buf, long n, ulong offset)
 {
 	char s[128];
 
@@ -613,6 +631,8 @@ bctlread(Chan *c, void *buf, long n, ulong offset)
 long
 astarread(Chan *c, void *buf, long n, ulong offset)
 {
+	Astar *a;
+	Astarchan *ac;
 
 	if(c->qid.path & CHDIR)
 		return devdirread(c, buf, n, 0, 0, astargen);
@@ -622,6 +642,10 @@ astarread(Chan *c, void *buf, long n, ulong offset)
 		return memread(astar[BOARD(c->qid.path)], buf, n, offset);
 	case Qbctl:
 		return bctlread(astar[BOARD(c->qid.path)], buf, n, offset);
+	case Qdata:
+		a = astar[BOARD(c->qid.path)];
+		ac = a->c + CHAN(c->qid.path);
+		return qread(ac->oq, buf, n);
 	}
 
 	return 0;
@@ -651,8 +675,8 @@ memwrite(Astar *a, uchar *from, long n, ulong offset)
 		i = Pagesize - i;
 		if(i > rem)
 			i = rem;
-		if(i > sizeof tmp)
-			i = sizeof tmp;
+		if(i > sizeof(tmp))
+			i = sizeof(tmp);
 		
 		/*
 		 *  byte at a time so endian doesn't matter,
@@ -662,10 +686,12 @@ memwrite(Astar *a, uchar *from, long n, ulong offset)
 		tp = tmp;
 		ilock(&a->pagelock);
 		setpage(a, offset);
-		for(e = from + i; from < e;)
+		for(e = tp + i; tp < e;)
 			*to++ = *tp++;
 		iunlock(&a->pagelock);
 		from += i;
+
+		offset += i;
 	}
 
 	return n;
@@ -746,16 +772,19 @@ startcp(Astar *a)
 		ac = &a->c[i];
 		ac->a = a;
 		ac->ccb = (CCB*)x;
+		ac->perm = 0660;
 		ac->iq = qopen(4*1024, 0, 0, 0);
 		ac->oq = qopen(4*1024, 0, astarkick, ac);
 		x += sz;
 	}
+
+	/* reenable interrupts */
+	a->gcb->cmd2 = LEUS(Gintack);
 }
 
-static long
-bctlwrite(Astar *a, char *msg)
+static void
+bctlwrite(Astar *a, char *cmsg)
 {
-	int i;
 	uchar c;
 
 	if(waserror()){
@@ -764,10 +793,10 @@ bctlwrite(Astar *a, char *msg)
 	}
 	qlock(a);
 
-	if(strncmp(cmsg, "download", 8) == 0){
-		if(a->running)
-			error(Eio);
+	if(a->running)
+		error(Eio);
 
+	if(strncmp(cmsg, "download", 8) == 0){
 		/* put board in download mode */
 		c = inb(a->port+ISActl1);
 		outb(a->port+ISActl1, c & ~ISAnotdl);
@@ -776,9 +805,17 @@ bctlwrite(Astar *a, char *msg)
 		/* enable ISA access to first 16k */
 		outb(a->port+ISActl2, ISAmen);
 
+	} else if(strncmp(cmsg, "sharedmem", 9) == 0){
+		/* map shared memory */
+		c = inb(a->port+ISActl1);
+		outb(a->port+ISActl1, c | ISAnotdl);
+		a->memsize = a->ramsize;
+
+		/* enable ISA access to first 16k */
+		outb(a->port+ISActl2, ISAmen);
+
 	} else if(strncmp(cmsg, "run", 3) == 0){
-		if(a->running)
-			error(Eio);
+		/* start up downloaded program */
 		startcp(a);
 
 	} else
@@ -786,7 +823,6 @@ bctlwrite(Astar *a, char *msg)
 
 	qunlock(a);
 	poperror();
-	return n;
 }
 
 /*
@@ -796,21 +832,21 @@ bctlwrite(Astar *a, char *msg)
 static int
 chancmddone(void *arg)
 {
-	CCB *ccb = arg;
+	Astarchan *ac = arg;
 	int x;
 
 	ilock(&ac->a->pagelock);
 	setpage(ac->a, 0);
-	x = ccb->cmd;
+	x = ac->ccb->cmd;
 	iunlock(&ac->a->pagelock);
 
-	return x;
+	return !x;
 }
 static void
 chancmd(Astarchan *ac, int cmd)
 {
-	int i;
 	CCB *ccb;
+	int status;
 
 	ccb = ac->ccb;
 
@@ -820,19 +856,21 @@ chancmd(Astarchan *ac, int cmd)
 	iunlock(&ac->a->pagelock);
 
 	/* wait outside of lock */
-	tsleep(&ac->r, chancmddone, ccb, 1000);
+	tsleep(&ac->r, chancmddone, ac, 1000);
 
 	ilock(&ac->a->pagelock);
 	setpage(ac->a, 0);
-	if(ccb->cmd){
+	status = ccb->status;
+	cmd = ccb->cmd;
+	iunlock(&ac->a->pagelock);
+	if(cmd){
 		print("astar%d cmd didn't terminate\n", ac->a->id);
 		error(Eio);
 	}
-	if(ccb->status){
-		print("astar%d cmd status %ux\n", ac->a->id, ccb->status);
+	if(status){
+		print("astar%d cmd status %ux\n", ac->a->id, status);
 		error(Eio);
 	}
-	iunlock(&ac->a->pagelock);
 }
 
 /*
@@ -842,21 +880,25 @@ chancmd(Astarchan *ac, int cmd)
 static void
 enable(Astarchan *ac)
 {
-	Astar qÍ*a = ac->a;
+	Astar *a = ac->a;
+	int n;
+
 	/* make sure we control RTS, DTR and break */
 	ilock(&a->pagelock);
 	setpage(a, 0);
 	n = LEUS(ac->ccb->proto) | Cmctl;
 	ac->ccb->proto = LEUS(n);
+	ac->ccb->outlow = 64;
 	iunlock(&a->pagelock);
-
-	chancmd(ac, Crcvena|Cxmtena|Cflushin|Cflushout|Confall);
+	chancmd(ac, Cconfall);
 
 	astarctl(ac, "b9600");
 	astarctl(ac, "l8");
 	astarctl(ac, "p0");
 	astarctl(ac, "d1");
 	astarctl(ac, "r1");
+
+	chancmd(ac, Crcvena|Cxmtena|Cconfall);
 }
 
 /*
@@ -871,8 +913,7 @@ disable(Astarchan *ac)
 
 	ilock(&ac->a->pagelock);
 	setpage(ac->a, 0);
-	ccb->intrigger = 8;
-	ccb->outlow = 32;
+	ac->ccb->intrigger = 0;
 	iunlock(&ac->a->pagelock);
 
 	chancmd(ac, Crcvdis|Cxmtdis|Cflushin|Cflushout|Cconfall);
@@ -900,9 +941,11 @@ astarctl(Astarchan *ac, char *cmd)
 	ccb = ac->ccb;
 	command = 0;
 	i = atoi(cmd+1);
+
 	a = ac->a;
 	ilock(&a->pagelock);
 	setpage(a, 0);
+
 	switch(*cmd){
 	case 'B':
 	case 'b':
@@ -914,7 +957,7 @@ astarctl(Astarchan *ac, char *cmd)
 			ccb->baud = LEUS(Cb115200);
 			break;
 		default:
-			ccb->baud = LEUS(n);
+			ccb->baud = LEUS(i);
 			break;
 		}
 		command = Cconfall;
@@ -939,7 +982,7 @@ astarctl(Astarchan *ac, char *cmd)
 		break;
 	case 'L':
 	case 'l':
-		n -= 5;
+		n = i - 5;
 		if(n < 0 || n > 3)
 			error(Ebadarg);
 		n |= LEUS(ccb->format) & ~Clenmask;
@@ -958,13 +1001,12 @@ astarctl(Astarchan *ac, char *cmd)
 
 		/* set fifo sizes */
 		ccb->intrigger = 8;
-		ccb->outlow = 32;
 
 		command = Cconfall;
 		break;
 	case 'n':
 	case 'N':
-		qnoblock(p->oq, n);
+		qnoblock(ac->oq, i);
 		break;
 	case 'P':
 	case 'p':
@@ -1009,8 +1051,8 @@ astarctl(Astarchan *ac, char *cmd)
 		break;
 	case 'Q':
 	case 'q':
-		qsetlimit(ac->iq, n);
-		qsetlimit(ac->oq, n);
+		qsetlimit(ac->iq, i);
+		qsetlimit(ac->oq, i);
 		break;
 	case 'X':
 	case 'x':
@@ -1048,7 +1090,8 @@ astarwrite(Chan *c, void *buf, long n, ulong offset)
 			n = sizeof(cmsg) - 1;
 		memmove(cmsg, buf, n);
 		cmsg[n] = 0;
-		return bctlwrite(a, cmsg);
+		bctlwrite(a, cmsg);
+		return n;
 	case Qdata:
 		ac = a->c + CHAN(c->qid.path);
 		return qwrite(ac->oq, buf, n);
@@ -1064,7 +1107,7 @@ astarwrite(Chan *c, void *buf, long n, ulong offset)
 			nexterror();
 		}
 		qlock(ac);
-		astarctl(ac, msg);
+		astarctl(ac, cmsg);
 		qunlock(ac);
 		poperror();
 	}
@@ -1089,8 +1132,20 @@ astarremove(Chan *c)
 void
 astarwstat(Chan *c, char *dp)
 {
-	USED(c, dp);
-	error(Eperm);
+	Dir d;
+	Astarchan *ac;
+
+	if(!iseve())
+		error(Eperm);
+	if(CHDIR & c->qid.path)
+		error(Eperm);
+	if(TYPE(c->qid.path) != Qdata && TYPE(c->qid.path) != Qctl)
+		error(Eperm);
+	ac = astar[BOARD(c->qid.path)]->c + CHAN(c->qid.path);
+
+	convM2D(dp, &d);
+	d.mode &= 0666;
+	ac->perm = d.mode;
 }
 
 /*
@@ -1100,20 +1155,84 @@ static void
 astarkick1(Astarchan *ac)
 {
 	Astar *a = ac->a;
-	CCB *ccb = a->ccb;
-	uchar tmp[256];
+	CCB *ccb = ac->ccb;
+	uchar buf[256];
+	uchar *rp, *wp, *bp, *ep, *p, *e;
 	int n;
 
+	setpage(a, 0);
+	ep = a->addr;
+	rp = ep + LEUS(ccb->outrp);
+	wp = ep + LEUS(ccb->outwp);
+	bp = ep + LEUS(ccb->outbase);
+	ep = ep + LEUS(ccb->outlim);
 	for(;;){
+		n = rp - wp - 1;
+		if(n < 0)
+			n += ep - bp + 1;
+		if(n == 0)
+			break;
+		if(n > sizeof(buf))
+			n = sizeof(buf);
+		n = qconsume(ac->oq, buf, n);
+		if(n <= 0)
+			break;
+		setpage(a, bp - a->addr);
+		e = buf + n;
+		for(p = buf; p < e;){
+			*wp++ = *p++;
+			if(wp > ep)
+				wp = bp;
+		}
 		setpage(a, 0);
+		ccb->outwp = LEUS(wp - a->addr);
 	}
 }
 static void
 astarkick(Astarchan *ac)
 {
 	ilock(&ac->a->pagelock);
-	astarkick(ac);
+	astarkick1(ac);
 	iunlock(&ac->a->pagelock);
+}
+
+/*
+ *  process input
+ */
+static void
+astarinput(Astarchan *ac)
+{
+	Astar *a = ac->a;
+	CCB *ccb = ac->ccb;
+	uchar buf[256];
+	uchar *rp, *wp, *bp, *ep, *p, *e;
+	int n;
+
+	setpage(a, 0);
+	ep = a->addr;
+	rp = ep + LEUS(ccb->inrp);
+	wp = ep + LEUS(ccb->inwp);
+	bp = ep + LEUS(ccb->inbase);
+	ep = ep + LEUS(ccb->inlim);
+	for(;;){
+		n = wp - rp;
+		if(n == 0)
+			break;
+		if(n < 0)
+			n += ep - bp + 1;
+		if(n > sizeof(buf))
+			n = sizeof(buf);
+		setpage(a, bp - a->addr);
+		e = buf + n;
+		for(p = buf; p < e;){
+			*p++ = *rp++;
+			if(rp > ep)
+				rp = bp;
+		}
+		qproduce(ac->iq, buf, n);
+	}
+	setpage(a, 0);
+	ccb->inrp = LEUS(rp - a->addr);
 }
 
 /*
@@ -1125,7 +1244,6 @@ astarintr(Ureg *ur, void *arg)
 	Astar *a = arg;
 	Astarchan *ac;
 	ulong vec, invec, outvec, errvec, mvec, cmdvec;
-	int i;
 
 	USED(ur);
 	lock(&a->pagelock);
@@ -1137,27 +1255,28 @@ astarintr(Ureg *ur, void *arg)
 	errvec = LEUS(xchgw(&a->gcb->errserv, 0));
 	mvec = LEUS(xchgw(&a->gcb->modemserv, 0));
 	cmdvec = LEUS(xchgw(&a->gcb->cmdserv, 0));
+	USED(mvec);
+	USED(cmdvec);
+	USED(errvec);
 
 	/* reenable interrupts */
-	a->cmd2 = LEUS(Gintack);
+	a->gcb->cmd2 = LEUS(Gintack);
 
 	/* service interrupts */
 	ac = a->c;
-	for(vec = LEUS(xchgw(&a->gcb->inserv, 0)); vec; vec >>= 1){
-		if(vec&1){
-		}
-		setpage(a, 0);
+	for(vec = invec; vec; vec >>= 1){
+		if(vec&1)
+			astarinput(ac);
 		ac++;
 	}
 	ac = a->c;
-	for(vec = LEUS(xchgw(&a->gcb->outserv, 0)); vec; vec >>= 1){
+	for(vec = outvec; vec; vec >>= 1){
 		if(vec&1)
 			astarkick1(ac);
-		setpage(a, 0);
 		ac++;
 	}
 	ac = a->c;
-	for(vec = LEUS(xchgw(&a->gcb->cmdserv, 0)); vec; vec >>= 1){
+	for(vec = cmdvec; vec; vec >>= 1){
 		if(vec&1)
 			wakeup(&ac->r);
 		ac++;
