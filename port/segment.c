@@ -5,9 +5,9 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
-Page *lkpage(Segment*, ulong);
-void lkpgfree(Page*);
-void imagereclaim(void);
+Page*	lkpage(Segment*, ulong);
+void	lkpgfree(Page*);
+void	imagereclaim(void);
 
 /* System specific segattach devices */
 #include "io.h"
