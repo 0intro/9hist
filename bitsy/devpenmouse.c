@@ -92,8 +92,8 @@ pentrackxy(int x, int y) {
 		/* pen up. associate with button 1, 2, 3 up */
 		mouse.buttons &= ~0x7;
 	} else {
-		x = (x<<16)/calibration.scalex + calibration.transx;
-		y = (y<<16)/calibration.scaley + calibration.transy;
+		x = ((x*calibration.scalex)>>16) + calibration.transx;
+		y = ((y*calibration.scaley)>>16) + calibration.transy;
 		if ((mouse.buttons & 0x7) == 0)
 			mouse.buttons |= 0x1;
 	}
@@ -325,8 +325,8 @@ penmousewrite(Chan *c, void *va, long n, vlong)
 		}
 		else if(strcmp(field[0], "calibrate") == 0){
 			if (nf == 1) {
-				calibration.scalex = 1;
-				calibration.scaley = 1;
+				calibration.scalex = 1<<16;
+				calibration.scaley = 1<<16;
 				calibration.transx = 0;
 				calibration.transy = 0;
 			} else if (nf == 5) {

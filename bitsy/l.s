@@ -144,13 +144,13 @@ TEXT putttb(SB), $-4
  */
 TEXT mmuenable(SB), $-4
 	MRC	CpMMU, 0, R0, C(CpControl), C(0x0)
-	ORR	$(CpCmmuena|CpCdcache|CpCwb), R0
+	ORR	$(CpCmmuena|CpCdcache|CpCicache|CpCwb), R0
 	MCR     CpMMU, 0, R0, C(CpControl), C(0x0)
 	RET
 
 TEXT mmudisable(SB), $-4
 	MRC	CpMMU, 0, R0, C(CpControl), C(0x0)
-	BIC	$(CpCmmuena|CpCdcache|CpCwb|CpCvivec), R0
+	BIC	$(CpCmmuena|CpCdcache|CpCicache|CpCwb|CpCvivec), R0
 	MCR     CpMMU, 0, R0, C(CpControl), C(0x0)
 	RET
 
@@ -360,6 +360,10 @@ TEXT forkret(SB),$-4
 	RFE				/* MOVM.IA.S.W (R13), [R15] */
 
 TEXT splhi(SB), $-4
+	/* save caller pc in Mach */
+	MOVW	$(MACHADDR+0x04),R2
+	MOVW	R14,0(R2)
+	/* turn off interrupts */
 	MOVW	CPSR, R0
 	ORR	$(PsrDfiq|PsrDirq), R0, R1
 	MOVW	R1, CPSR
@@ -372,6 +376,10 @@ TEXT spllo(SB), $-4
 	RET
 
 TEXT splx(SB), $-4
+	/* save caller pc in Mach */
+	MOVW	$(MACHADDR+0x04),R2
+	MOVW	R14,0(R2)
+	/* reset interrupt level */
 	MOVW	R0, R1
 	MOVW	CPSR, R0
 	MOVW	R1, CPSR
@@ -381,6 +389,9 @@ TEXT splxpc(SB), $-4				/* for iunlock */
 	MOVW	R0, R1
 	MOVW	CPSR, R0
 	MOVW	R1, CPSR
+	RET
+
+TEXT spldone(SB), $0
 	RET
 
 TEXT islo(SB), $-4

@@ -12,7 +12,7 @@ struct Rb
 	Rendez	producer;
 	Rendez	consumer;
 	ulong	randomcount;
-	uchar	buf[1024];
+	uchar	buf[128];
 	uchar	*ep;
 	uchar	*rp;
 	uchar	*wp;

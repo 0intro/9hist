@@ -95,7 +95,7 @@ clockintr(Ureg *ureg, void*)
 
 	accounttime();
 	if(kproftimer != nil)
-		kproftimer(ureg->pc);
+		(*kproftimer)(ureg->pc);
 
 	checkalarms();
 	ilock(&clock0lock);

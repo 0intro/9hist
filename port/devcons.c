@@ -26,7 +26,7 @@ static struct
 
 	/* someplace to save up characters at interrupt time before dumping them in the q */
 	Lock	lockputc;
-	char	istage[128];
+	char	istage[512];
 	char	*iw;
 	char	*ir;
 	char	*ie;
@@ -61,8 +61,12 @@ consactive(void)
 void
 prflush(void)
 {
+	ulong now;
+
+	now = m->ticks;
 	while(consactive())
-		;
+		if(m->ticks - now >= HZ)
+			break;
 }
 
 /*
@@ -76,7 +80,6 @@ putstrn0(char *str, int n, int usewrite)
 {
 	int m;
 	char *t;
-	char buf[PRINTSIZE+2];
 
 	/*
 	 *  if there's an attached bit mapped display,
@@ -95,17 +98,17 @@ putstrn0(char *str, int n, int usewrite)
 
 	while(n > 0) {
 		t = memchr(str, '\n', n);
-		if(t) {
-			m = t - str;
-			memmove(buf, str, m);
-			buf[m] = '\r';
-			buf[m+1] = '\n';
-			if(usewrite)
-				qwrite(printq, buf, m+2);
-			else
-				qiwrite(printq, buf, m+2);
-			str = t + 1;
-			n -= m + 1;
+		if(t && !kbd.raw) {
+			m = t-str;
+			if(usewrite){
+				qwrite(printq, str, m);
+				qwrite(printq, "\r\n", 2);
+			} else {
+				qiwrite(printq, str, m);
+				qiwrite(printq, "\r\n", 2);
+			}
+			n -= m+1;
+			str = t+1;
 		} else {
 			if(usewrite)
 				qwrite(printq, str, n);
@@ -211,9 +214,9 @@ panic(char *fmt, ...)
 	serialputs(buf, n+1);
 	if(consdebug)
 		consdebug();
-	putstrn(buf, n+1);
 	spllo();
 	prflush();
+	putstrn(buf, n+1);
 	dumpstack();
 
 	exit(1);
@@ -320,6 +323,10 @@ echo(char *buf, int n)
 	int x;
 	char *e, *p;
 
+	if(kbd.raw){
+		qproduce(kbdq, buf, n);
+		return;
+	}
 	e = buf+n;
 	for(p = buf; p < e; p++){
 		switch(*p){
@@ -382,9 +389,6 @@ echo(char *buf, int n)
 	}
 
 	qproduce(kbdq, buf, n);
-	if(kbd.raw)
-		return;
-
 	echoscreen(buf, n);
 	if(printq)
 		echoprintq(buf, n);
@@ -393,14 +397,26 @@ echo(char *buf, int n)
 /*
  *  Called by a uart interrupt for console input.
  *
- *  turn '\r' into '\n' before putting it into the queue.
+ *  turn '\r' into '\n' before putting it into the queue.  we
+ *  can't type runs on alternate consoles, so don't worry about it.
  */
 int
-kbdcr2nl(Queue *q, int ch)
+kbdcr2nl(Queue*, int ch)
 {
-	if(ch == '\r')
+	char *next;
+
+	ilock(&kbd.lockputc);		/* just a mutex */
+	if(ch == '\r' && !kbd.raw)
 		ch = '\n';
-	return kbdputc(q, ch);
+	next = kbd.iw+1;
+	if(next >= kbd.ie)
+		next = kbd.istage;
+	if(next != kbd.ir){
+		*kbd.iw = ch;
+		kbd.iw = next;
+	}
+	iunlock(&kbd.lockputc);
+	return 0;
 }
 
 /*
@@ -824,7 +840,7 @@ conswrite(Chan *c, void *va, long n, vlong off)
 			if(bp > sizeof buf)
 				bp = sizeof buf;
 			memmove(buf, a, bp);
-			putstrn0(a, bp, 1);
+			putstrn0(buf, bp, 1);
 			a += bp;
 			l -= bp;
 		}

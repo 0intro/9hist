@@ -17,6 +17,16 @@ lockloop(Lock *l, ulong pc)
 	Proc *p;
 
 	p = l->p;
+{
+ulong x = (ulong)p;
+uchar *cp;
+int i;
+if(x < KTZERO) {
+	cp = (uchar*)l;
+	for(i = 0; i < 64; i++) print("%2.2ux ", cp[i]);
+	print("\n");
+}
+}
 	print("lock loop key 0x%lux pc 0x%lux held by pc 0x%lux proc %lud\n",
 		l->key, pc, l->pc, p ? p->pid : 0);
 	dumpaproc(up);

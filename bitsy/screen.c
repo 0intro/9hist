@@ -286,33 +286,33 @@ screenwin(void)
 {
 	Point p, q;
 	char *greet;
-	Memimage *grey;
+	Memimage *orange;
 
 	memsetchan(gscreen, RGB16);
 
 	back = memwhite;
 	conscol = memblack;
 
-	/* a lot of work to get a grey color */
-	grey = allocmemimage(Rect(0,0,1,1), RGB16);
-	grey->flags |= Frepl;
-	grey->clipr = gscreen->r;
-	grey->data->bdata[0] = 0x40;
-	grey->data->bdata[1] = 0xfd;
+	/* a lot of work to get a orange color */
+	orange = allocmemimage(Rect(0,0,1,1), RGB16);
+	orange->flags |= Frepl;
+	orange->clipr = gscreen->r;
+	orange->data->bdata[0] = 0x40;
+	orange->data->bdata[1] = 0xfd;
 
 	w = memdefont->info[' '].width;
 	h = memdefont->height;
 
 	window.min = Pt(4, 4);
-	window.max = addpt(window.min, Pt(4+w*33, 4+h*15));
+	window.max = addpt(window.min, Pt(4+w*33, 4+h*12));
 
 	memimagedraw(gscreen, window, memblack, ZP, memopaque, ZP);
 	window = insetrect(window, 4);
 	memimagedraw(gscreen, window, memwhite, ZP, memopaque, ZP);
 
 	memimagedraw(gscreen, Rect(window.min.x, window.min.y,
-			window.max.x, window.min.y+h+5+6), grey, ZP, nil, ZP);
-	freememimage(grey);
+			window.max.x, window.min.y+h+5+6), orange, ZP, nil, ZP);
+	freememimage(orange);
 	window = insetrect(window, 5);
 
 	greet = " Plan 9 Console ";

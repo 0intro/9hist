@@ -312,8 +312,17 @@ static long
 	int i, j;
 	Rune r;
 
-	if(off != 0)
-		error(Ebadarg);
+	if(c->qid.path == Qkbdin){
+		if(n >= sizeof(str))
+			n = sizeof(str)-1;
+		memmove(str, a, n);
+		str[n] = 0;
+		for(i = 0; i < n; i += j){
+			j = chartorune(&r, &str[i]);
+			kbdcr2nl(nil, r);
+		}
+		return n;
+	}
 
 	cmd = parsecmd(a, n);
 	if(cmd->nf > 15)
@@ -322,16 +331,6 @@ static long
 		data[i] = atoi(cmd->f[i]);
 
 	switch(c->qid.path){
-	case Qkbdin:
-		if(n >= sizeof(str))
-			n = sizeof(str)-1;
-		memmove(str, a, n);
-		str[n] = 0;
-		for(i = 0; i < n; i += j){
-          		j = chartorune(&r, &str[i]);
-			kbdputc(nil, r);
-		}
-		break;
 	case Qled:
 		sendmsgwithack(BLled, data, cmd->nf);
 		break;

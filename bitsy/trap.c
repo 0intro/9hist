@@ -644,8 +644,10 @@ _dumpstack(Ureg *ureg)
 		if(KTZERO < v && v < (ulong)&etext && (v&3)==0){
 			v -= 4;
 			p = (ulong*)v;
-			if((*p & 0x0f000000) == 0x0b000000)
+			if((*p & 0x0f000000) == 0x0b000000){
 				print("%.8lux=%.8lux ", l, v);
+				i++;
+			}
 		}
 		if(i == 4){
 			i = 0;
