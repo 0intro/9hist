@@ -1197,7 +1197,7 @@ wavelanreset(Ether* ether, Ctlr *ctlr)
 	ether->scanbs = w_scanbs;
 	ether->arg = ether;
 
-	DEBUG("#l%d: irq %ld port %lx type %s",
+	DEBUG("#l%d: irq %d port %lx type %s",
 		ether->ctlrno, ether->irq, ether->port,	ether->type);
 	DEBUG(" %2.2uX%2.2uX%2.2uX%2.2uX%2.2uX%2.2uX\n",
 		ether->ea[0], ether->ea[1], ether->ea[2],

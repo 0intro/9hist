@@ -631,7 +631,7 @@ mpintrenablex(Vctl* v, int tbdf)
 			irq = (dno<<2)|(n-1);
 		else
 			irq = -1;
-		//print("pcidev %uX: irq %uX v->irq %uX\n", tbdf, irq, v->irq);
+		//print("pcidev %uX: irq %d v->irq %uX\n", tbdf, irq, v->irq);
 	}
 	else
 		irq = v->irq;

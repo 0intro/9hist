@@ -192,6 +192,20 @@ preempted(void)
 	return 0;
 }
 
+/*
+ *  ready(p) picks a new priority for a process and sticks it in the
+ *  runq for that priority.
+ *
+ *  - fixed priority processes never move
+ *  - a process that uses all its quanta before blocking goes down a
+ *    priority level
+ *  - a process that uses less than half its quanta before blocking
+ *    goes up a priority level
+ *  - a process that blocks after using up half or more of it's quanta
+ *    stays at the same level
+ *
+ *  new quanta are assigned each time a process blocks or changes level
+ */
 void
 ready(Proc *p)
 {
@@ -214,15 +228,8 @@ ready(Proc *p)
 	} else if(p->state == Running){
 		if(p->quanta <= 0){
 			/* degrade priority of anyone that used their whole quanta */
-
-			/* processes > PriNormal and those below don't mix */
-			if(p->basepri > PriNormal){
-				if(pri > PriNormal)
-					pri--;
-			} else {
-				if(pri > 0)
-					pri--;
-			}
+			if(pri > 0)
+				pri--;
 			p->quanta = quanta[pri];
 		}
 	} else {
@@ -256,7 +263,7 @@ Proc*
 runproc(void)
 {
 	Schedq *rq;
-	Proc *p, *l;
+	Proc *p, *l, *tp;
 	ulong start, now;
 	int i;
 
@@ -274,19 +281,21 @@ loop:
 	spllo();
 	for(i = 0;; i++){
 		/*
-		 *  get highest priority process that this
+		 *  find the highest priority target process that this
 		 *  processor can run given affinity constraints
 		 */
 		for(rq = &runq[Nrq-1]; rq >= runq; rq--){
-			p = rq->head;
-			if(p == 0)
+			tp = rq->head;
+			if(tp == 0)
 				continue;
-			for(; p; p = p->rnext){
-				if(p->mp == MACHP(m->machno) || (!p->wired && i > 0))
+			for(; tp; tp = tp->rnext){
+				if(tp->mp == nil || tp->mp == MACHP(m->machno)
+				|| (!tp->wired && i > 0))
 					goto found;
 			}
 		}
 
+		/* waste time or halt the CPU */
 		idlehands();
 
 		/* remember how much time we're here */
@@ -300,9 +309,13 @@ found:
 	if(!canlock(runq))
 		goto loop;
 
+	/*
+	 *  the queue may have changed before we locked runq,
+	 *  refind the target process.
+	 */
 	l = 0;
 	for(p = rq->head; p; p = p->rnext){
-		if(p->mp == MACHP(m->machno) || (!p->wired && i > 0))
+		if(p == tp)
 			break;
 		l = p;
 	}
