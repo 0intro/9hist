@@ -641,6 +641,27 @@ consclose(Chan *c)
 	}
 }
 
+/*
+ *  calculate duty cycle for a processor (100-(%time in idlehands()))
+ */
+static int
+dutycycle(Mach *mp)
+{
+	static ulong ticks;
+	uvlong hz;
+	int x;
+
+	if(ticks == 0){
+		fastticks(&hz);
+		ticks = hz/HZ;
+	}
+	x = ticks - mp->avginidle;
+	if(x < 0)
+		return 0;
+	x *= 100;
+	return x/ticks;
+}
+
 static long
 consread(Chan *c, void *buf, long n, vlong off)
 {
@@ -757,7 +778,7 @@ consread(Chan *c, void *buf, long n, vlong off)
 		return 0;
 
 	case Qsysstat:
-		b = smalloc(conf.nmach*(NUMSIZE*8+1) + 1);	/* +1 for NUL */
+		b = smalloc(conf.nmach*(NUMSIZE*9+1) + 1);	/* +1 for NUL */
 		bp = b;
 		for(id = 0; id < 32; id++) {
 			if(active.machs & (1<<id)) {
@@ -777,6 +798,8 @@ consread(Chan *c, void *buf, long n, vlong off)
 				readnum(0, bp, NUMSIZE, mp->tlbpurge, NUMSIZE);
 				bp += NUMSIZE;
 				readnum(0, bp, NUMSIZE, mp->load, NUMSIZE);
+				bp += NUMSIZE;
+				readnum(0, bp, NUMSIZE, dutycycle(mp), NUMSIZE);
 				bp += NUMSIZE;
 				*bp++ = '\n';
 			}

@@ -135,7 +135,7 @@ struct Block
 	uchar*	rp;			/* first unconsumed byte */
 	uchar*	wp;			/* first empty byte */
 	uchar*	lim;			/* 1 past the end of the buffer */
-	uchar*	base;			/* start of the buffer */
+	uchar*	base;		/* start of the buffer */
 	void	(*free)(Block*);
 	ulong	flag;
 };

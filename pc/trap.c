@@ -58,6 +58,8 @@ intrenable(int irq, void (*f)(Ureg*, void*), void* a, int tbdf, char *name)
 				vctl[vno]->isr, v->isr, vctl[vno]->eoi, v->eoi);
 		v->next = vctl[vno];
 	}
+	if(intrtimes[vno] == nil)
+		intrtimes[vno] = xalloc(Ntimevec*sizeof(ulong));
 	vctl[vno] = v;
 	iunlock(&vctllock);
 }
@@ -260,8 +262,6 @@ intrtime(Mach *m, int vno)
 	diff /= m->cpumhz;
 	if(diff >= 1000)
 		diff = 999;
-	if(intrtimes[vno] == nil)
-		intrtimes[vno] = xalloc(Ntimevec*sizeof(ulong));
 	intrtimes[vno][diff]++;
 }
 

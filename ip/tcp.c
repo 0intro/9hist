@@ -354,7 +354,7 @@ struct Tcppriv
  */
 int tcpporthogdefense = 0;
 
-int	addreseq(Tcpctl*, Tcp*, Block*, ushort);
+int	addreseq(Tcpctl*, Tcppriv*, Tcp*, Block*, ushort);
 void	getreseq(Tcpctl*, Tcp*, Block**, ushort*);
 void	localclose(Conv*, char*);
 void	procsyn(Conv*, Tcp*);
@@ -2064,8 +2064,7 @@ reset:
 	if(seg.seq != tcb->rcv.nxt)
 	if(length != 0 || (seg.flags & (SYN|FIN))) {
 		update(s, &seg);
-		tpriv->stats[OutOfOrder]++;
-		if(addreseq(tcb, &seg, bp, length) < 0)
+		if(addreseq(tcb, tpriv, &seg, bp, length) < 0)
 			print("reseq %I.%d -> %I.%d\n", s->raddr, s->rport, s->laddr, s->lport);
 		tcb->flags |= FORCE;
 		goto output;
@@ -2711,7 +2710,7 @@ procsyn(Conv *s, Tcp *seg)
 }
 
 int
-addreseq(Tcpctl *tcb, Tcp *seg, Block *bp, ushort length)
+addreseq(Tcpctl *tcb, Tcppriv *tpriv, Tcp *seg, Block *bp, ushort length)
 {
 	Reseq *rp, *rp1;
 	int i;
@@ -2732,6 +2731,8 @@ addreseq(Tcpctl *tcb, Tcp *seg, Block *bp, ushort length)
 	if(rp1 == nil || seq_lt(seg->seq, rp1->seg.seq)) {
 		rp->next = rp1;
 		tcb->reseq = rp;
+		if(rp->next != nil)
+			tpriv->stats[OutOfOrder]++;
 		return 0;
 	}
 
@@ -2741,6 +2742,8 @@ addreseq(Tcpctl *tcb, Tcp *seg, Block *bp, ushort length)
 		if(rp1->next == nil || seq_lt(seg->seq, rp1->next->seg.seq)) {
 			rp->next = rp1->next;
 			rp1->next = rp;
+			if(rp->next != nil)
+				tpriv->stats[OutOfOrder]++;
 			break;
 		}
 		rp1 = rp1->next;

@@ -211,6 +211,9 @@ runproc(void)
 	Schedq *rq, *xrq;
 	Proc *p, *l;
 	ulong rt;
+	uvlong start;
+
+	start = 0;
 
 	if ((p = edf->edfrunproc()) != nil)
 		return p;
@@ -262,6 +265,8 @@ loop:
 				}
 			}
 		}
+		if(start == 0)
+			start = fastticks(nil);
 		idlehands();
 	}
 
@@ -301,6 +306,8 @@ found:
 		p->movetime = MACHP(0)->ticks + HZ/10;
 	p->mp = MACHP(m->machno);
 
+	if(start)
+		m->inidle += fastticks(nil)-start;
 	return p;
 }
 
@@ -1228,8 +1235,8 @@ void
 accounttime(void)
 {
 	Proc *p;
-	int n;
-	static int nrun;
+	ulong n;
+	static ulong nrun;
 
 	p = m->proc;
 	if(p) {
@@ -1244,9 +1251,12 @@ accounttime(void)
 	/* calculate decaying load average */
 	n = nrun;
 	nrun = 0;
-
 	n = (nrdy+n)*1000;
 	m->load = (m->load*19+n)/20;
+
+	/* calculate decaying duty cycle average */
+	m->avginidle = (m->avginidle*(HZ-1)+m->inidle)/HZ;
+	m->inidle = 0;
 }
 
 static void

@@ -147,6 +147,8 @@ struct Mach
 	ulong	pcclast;
 	uvlong	fastclock;
 	vlong	intrts;			/* time stamp of last interrupt */
+	ulong	inidle;			/* fastticks in idlehands() since last slowtick */
+	ulong	avginidle;		/* avg fastticks in idlehands() per slowtick */
 
 	int	tlbfault;		/* only used by devproc; no access to tlb */
 	int	tlbpurge;		/* ... */

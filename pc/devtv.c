@@ -1517,7 +1517,6 @@ astart(Tv *tv, char *input, uint rate, uint nab, uint nasz)
 			break;
 
 	print("astart: sampleshift %d, decimation %d\n", s, d);
-	s = d = 0;
 
 	tv->narblocks = 0;
 	bt878->gpiodmactl = gpiodmactl_fifoenable | 

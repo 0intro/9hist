@@ -178,6 +178,8 @@ struct Mach
 	uvlong	intrts;			/* time stamp of last interrupt */
 	int	flushmmu;		/* make current proc flush it's mmu state */
 	int	ilockdepth;
+	ulong	inidle;			/* fastticks in idlehands() since last slowtick */
+	ulong	avginidle;		/* avg fastticks in idlehands() per slowtick */
 
 	ulong	spuriousintr;
 	int	lastintr;
