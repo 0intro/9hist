@@ -147,6 +147,7 @@ deepsleep(void) {
 	delay(50);
 	/* Power down */
 	iprint("entering suspend mode\n");
+	dumpitall();
 	uartpower(0);
 	clockpower(0);
 	irpower(0);
@@ -159,6 +160,8 @@ deepsleep(void) {
 	cacheflush();
 	delay(50);
 	if (setpowerlabel()) {
+		/* Turn off memory auto power */
+		memconfregs->mdrefr &= ~0x30000000;
 		mmurestart();
 		gpiorestore(gpioregs, &savedgpioregs);
 		delay(50);
@@ -178,7 +181,7 @@ deepsleep(void) {
 		µcpower(1);
 		screenpower(1);
 		iprint("\nresuming execution\n");
-//		dumpitall();
+		dumpitall();
 		delay(800);
 		splx(power_pl);
 		return;
@@ -195,7 +198,9 @@ powerkproc(void*)
 		while(powerflag == 0)
 			sleep(&powerr, powerdown, 0);
 
+		iprint("call deepsleep\n");
 		deepsleep();
+		iprint("deepsleep returned\n");
 
 		delay(2000);
 

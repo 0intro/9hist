@@ -562,10 +562,7 @@ TEXT sa1100_power_resume(SB), $-4
 	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0xa), 4
 	/* gotopowerlabel() */
 	/* svc */
-/* Debug
-	MOVW	$0x25, R0
-	BL		_PrChar(SB)
- */
+
 	MOVW	$power_resume+0(SB), R0
 	MOVW	56(R0), R1		/* R1: SPSR, R2: CPSR */
 	MOVW	60(R0), R2
