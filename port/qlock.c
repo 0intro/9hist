@@ -10,6 +10,8 @@ qlock(QLock *q)
 {
 	Proc *p, *mp;
 
+	if((getstatus()&IE)==0)
+		print("qlock hi %lux\n", getcallerpc(q));
 	lock(&q->use);
 	if(!q->locked) {
 		q->locked = 1;
@@ -48,6 +50,8 @@ qunlock(QLock *q)
 {
 	Proc *p;
 
+	if((getstatus()&IE)==0)
+		print("qunlock hi %lux\n", getcallerpc(q));
 	lock(&q->use);
 	p = q->head;
 	if(p) {

@@ -1,3 +1,4 @@
+void		accounttime(void);
 void		addrootfile(char*, uchar*, ulong);
 void		alarmkproc(void*);
 Block*		allocb(int);

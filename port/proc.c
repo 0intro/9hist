@@ -31,6 +31,7 @@ typedef struct
 
 int	nrdy;
 Schedq	runq;
+int	priconst[NiceMax];
 
 char *statename[] =
 {			/* BUG: generate automatically */
@@ -60,7 +61,6 @@ schedinit(void)		/* never returns */
 			ready(up);
 			break;
 		case Moribund:
-			up->pid = 0;
 			up->state = Dead;
 			/* 
 			 * Holding locks from pexit:
@@ -70,9 +70,6 @@ schedinit(void)		/* never returns */
 
 			up->qnext = procalloc.free;
 			procalloc.free = up;
-		
-			unlock(&palloc);
-			qunlock(&up->debug);
 			unlock(&procalloc);
 			break;
 		}
@@ -300,7 +297,6 @@ procwired(Proc *p)
 		if(nwired[i] < nwired[bm])
 			bm = i;
 	p->wired = MACHP(bm);
-print("pid %d wired to machine %d\n", p->pid, p->wired->machno);
 }
 
 void
@@ -316,6 +312,14 @@ procinit0(void)		/* bad planning - clashes with devproc.c */
 	for(i=0; i<conf.nproc-1; i++,p++)
 		p->qnext = p+1;
 	p->qnext = 0;
+
+	/*
+	 * set up priority increments
+	 * normal priority sb about 1000/HZ
+	 * highest pri (lowest number) sb about 0
+	 */
+	for(i=0; i<NiceMax; i++)
+		priconst[i] = (i*1000)/(NiceNormal*HZ);
 }
 
 void
@@ -468,7 +472,8 @@ postnote(Proc *p, int dolock, char *n, int flag)
 	if(dolock)
 		qunlock(&p->debug);
 
-	if(r = p->r) {
+	r = p->r;
+	if(r != 0) {
 		for(;;) {
 			s = splhi();
 			if(canlock(r))
@@ -649,9 +654,12 @@ pexit(char *exitstr, int freemem)
 		addbroken(up);
 
 	es = &up->seg[NSEG];
-	for(s = up->seg; s < es; s++)
-		if(*s)
+	for(s = up->seg; s < es; s++) {
+		if(*s) {
 			putseg(*s);
+			*s = 0;
+		}
+	}
 
 	lock(&up->exl);		/* Prevent my children from leaving waits */
 	up->pid = 0;
@@ -662,18 +670,16 @@ pexit(char *exitstr, int freemem)
 		free(f);
 	}
 
-	/*
-	 * sched() cannot wait on these locks
-	 */
-	qlock(&up->debug);
 	/* release debuggers */
+	qlock(&up->debug);
 	if(up->pdbg) {
 		wakeup(&up->pdbg->sleep);
 		up->pdbg = 0;
 	}
+	qunlock(&up->debug);
 
+	/* Sched must not loop for this lock */
 	lock(&procalloc);
-	lock(&palloc);
 
 	up->state = Moribund;
 	sched();
@@ -898,7 +904,7 @@ killbig(void)
 		l = 0;
 		for(i=1; i<NSEG; i++) {
 			s = p->seg[i];
-			if(s)
+			if(s != 0)
 				l += s->top - s->base;
 		}
 		if(l > max) {
@@ -906,8 +912,15 @@ killbig(void)
 			max = l;
 		}
 	}
-	print("%d: %s killed because no swap configured\n", kp->pid, kp->text);
 	kp->procctl = Proc_exitme;
+	for(i = 0; i < NSEG; i++) {
+		s = kp->seg[i];
+		if(s != 0 && canqlock(&s->lk)) {
+			mfreeseg(s, s->base, (s->top - s->base)/BY2PG);
+			qunlock(&s->lk);
+		}
+	}
+	print("%d: %s killed because no swap configured\n", kp->pid, kp->text);
 	postnote(kp, 1, "killed: proc too big", NExit);
 }
 
@@ -924,4 +937,50 @@ renameuser(char *old, char *new)
 	for(p = procalloc.arena; p < ep; p++)
 		if(strcmp(old, p->user) == 0)
 			memmove(p->user, new, NAMELEN);
+}
+
+/*
+ *  time accounting called by clock() splhi'd
+ */
+void
+accounttime(void)
+{
+	Proc *p;
+	int i, pri;
+	static int nrun, m0ticks;
+
+	p = m->proc;
+	if(p) {
+		nrun++;
+		p->time[p->insyscall]++;
+		p->pri += priconst[p->nice];
+	}
+
+	/* only one processor gets to compute system load averages */
+	if(m->machno != 0)
+		return;
+
+	/* calculate decaying load average */
+	pri = nrun;
+	nrun = 0;
+
+	pri = (nrdy+pri)*1000;
+	m->load = (m->load*19+pri)/20;
+
+	/*
+	 * decay per-process cpu usage
+	 *	pri = (7/8)*pri twice per second
+	 *	tc = (7/8)^2/(1-(7/8)^2) = 3.27 sec
+	 */
+	m0ticks--;
+	if(m0ticks <= 0) {
+		m0ticks = HZ/2;
+		p = proctab(0);
+		for(i=conf.nproc-1; i!=0; i--,p++)
+			if(p->state != Dead) {
+				pri = p->pri;
+				pri -= pri >> 3;
+				p->pri = pri;
+			}
+	}
 }

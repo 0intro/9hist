@@ -600,8 +600,8 @@ noted(Ureg **urp, ulong arg0)
 			qunlock(&up->debug);
 			pexit("Suicide", 0);
 		}
-		splhi();
 		qunlock(&up->debug);
+		splhi();
 		rfnote(urp);
 		break;
 

@@ -47,34 +47,13 @@ clockinit(void)
 void
 clock(Ureg *ur)
 {
-	Proc *p;
-	int i, nrun;
-
 	wrcompare(rdcount()+(m->speed*1000000)/HZ);
 
 	m->ticks++;
 	if(m->proc)
 		m->proc->pc = ur->pc;
 
-	nrun = 0;
-	if(m->machno == 0) {
-		p = m->proc;
-		if(p) {
-			nrun++;
-			p->time[p->insyscall]++;
-		}
-		for(i=1; i<conf.nmach; i++) {
-			if(active.machs & (1<<i)) {
-				p = MACHP(i)->proc;
-				if(p) {
-					p->time[p->insyscall]++;
-					nrun++;
-				}
-			}
-		}
-		nrun = (nrdy+nrun)*1000;
-		m->load = (m->load*19+nrun)/20;
-	}
+	accounttime();
 
 	ifjab();
 

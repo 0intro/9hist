@@ -11,7 +11,6 @@ Queue	*mouseq;
 Queue	*kbdq;		/* unprocessed console input */
 Queue	*lineq;		/* processed console input */
 Queue	*printq;	/* console output */
-Queue	*klogq;
 
 static struct
 {
@@ -33,8 +32,6 @@ char	sysname[NAMELEN];
 void
 printinit(void)
 {
-	klogq = qopen(32*1024, 0, 0, 0);
-	qnoblock(klogq, 1);
 	lineq = qopen(2*1024, 0, 0, 0);
 	qnoblock(lineq, 1);
 }
@@ -124,17 +121,6 @@ fprint(int fd, char *fmt, ...)	/* needed so we can use user-level libg */
 	n = doprint(buf, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
 	putstrn(buf, n);
 
-	return n;
-}
-
-int
-kprint(char *fmt, ...)
-{
-	char buf[PRINTSIZE];
-	int n;
-
-	n = doprint(buf, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
-	qwrite(klogq, buf, n);
 	return n;
 }
 
@@ -327,7 +313,6 @@ enum{
 	Qkey,
 	Qhostdomain,
 	Qhostowner,
-	Qklog,
 	Qlights,
 	Qmsec,
 	Qnoise,
@@ -354,7 +339,6 @@ Dirtab consdir[]={
 	"hostowner",	{Qhostowner},	NAMELEN,	0664,
 	"hz",		{Qhz},		NUMSIZE,	0666,
 	"key",		{Qkey},		DESKEYLEN,	0622,
-	"klog",		{Qklog},	0,		0444,
 	"lights",	{Qlights},	0,		0220,
 	"msec",		{Qmsec},	NUMSIZE,	0444,
 	"noise",	{Qnoise},	0,		0220,
@@ -603,9 +587,6 @@ consread(Chan *c, void *buf, long n, ulong offset)
 
 	case Qnull:
 		return 0;
-
-	case Qklog:
-		return qread(klogq, buf, n);
 
 	case Qmsec:
 		return readnum(offset, buf, n, TK2MS(MACHP(0)->ticks), NUMSIZE);

@@ -35,29 +35,14 @@ static int cpuidax, cpuiddx;
 static void
 clock(Ureg *ur, void *arg)
 {
-	Proc *p;
-	int nrun = 0;
-
 	USED(arg);
 
 	m->ticks++;
 
+	accounttime();
 	checkalarms();
 	hardclock();
 	uartclock();
-
-	/*
-	 *  process time accounting
-	 */
-	p = m->proc;
-	if(p){
-		nrun = 1;
-		p->pc = ur->pc;
-		if (p->state==Running)
-			p->time[p->insyscall]++;
-	}
-	nrun = (nrdy+nrun)*1000;
-	MACHP(0)->load = (MACHP(0)->load*19+nrun)/20;
 
 	if(up && up->state == Running){
 		if(anyready())

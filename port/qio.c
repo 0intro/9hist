@@ -520,6 +520,9 @@ qwrite(Queue *q, void *vp, int len)
 
 	dowakeup = 0;
 
+	if((getstatus()&IE) == 0)
+		print("qwrite hi %lux\n", getcallerpc(q));
+
 	if(waserror()){
 		qunlock(&q->wlock);
 		nexterror();

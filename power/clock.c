@@ -71,8 +71,7 @@ clockinit(void)
 void
 clock(Ureg *ur)
 {
-	Proc *p;
-	int i, nrun;
+	int i;
 
 	if((ur->cause&INTR2) == 0) {
 		if(ur->cause & INTR4) {
@@ -89,24 +88,7 @@ clock(Ureg *ur)
 	if(m->proc)
 		m->proc->pc = ur->pc;
 
-	if(m->machno == 0) {
-		p = m->proc;
-		if(p) {
-			nrun++;
-			p->time[p->insyscall]++;
-		}
-		for(i=1; i<conf.nmach; i++) {
-			if(active.machs & (1<<i)) {
-				p = MACHP(i)->proc;
-				if(p) {
-					p->time[p->insyscall]++;
-					nrun++;
-				}
-			}
-		}
-		nrun = (nrdy+nrun)*1000;
-		m->load = (m->load*19+nrun)/20;
-	}
+	accounttime();
 	duartslave();
 	if((active.machs&(1<<m->machno)) == 0)
 		return;
