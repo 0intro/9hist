@@ -13,16 +13,15 @@
 
 enum{
 	Qdir,
-	Qmedium,
-
 	Nfile=	32,
+	Qmedium,
 };
 
 
 struct {
 	QLock;
 	Chan	*c;
-	Dirtab	file[Nfile];
+	Dirtab	file[Nfile+1];
 	int	nfile;
 } tinyfs;
 
@@ -34,8 +33,9 @@ tinyfsreset(void)
 	d = tinyfs.file;
 	memmove(d->name, "medium");
 	d->qid.vers = 0;
-	d->qid.path = Qdata;
+	d->qid.path = Qmedium;
 	d->perm = 0666;
+	tinyfs.nfile = 1;
 }
 
 void
@@ -46,6 +46,8 @@ tinyfsinit(void)
 Chan *
 tinyfsattach(char *spec)
 {
+	c = namec((char*)arg[0], Aopen, arg[1], 0);
+
 	return devattach('E', spec);
 }
 
@@ -97,7 +99,7 @@ tinyfscreate(Chan *c, char *name, int omode, ulong perm)
 	d->qid.vers = 0;
 	d->qid.path = tinyfs.high++;
 	tinyfs.nfile++;
-			
+
 	qunlock(&tinyfs);
 
 	c->mode = openmode(omode);
