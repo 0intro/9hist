@@ -320,8 +320,7 @@ scsibio(Target *t, char lun, int dir, void *b, long n, long bsize, long bno)
 		cmd[4] = n;
 		cmd[5] = 0;
 		cdbsiz = 6;
-	}
-	else {
+	} else {
 		cmd[0] = 0x2A;
 		if(dir == SCSIread)
 			cmd[0] = 0x28;
