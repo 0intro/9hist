@@ -225,6 +225,7 @@ i8042reset(void)
 	outready();
 	outb(Cmd, 0xD1);
 	outready();
+	delay(100);
 	outb(Data, 0xDE);	/* set reset line high */
 	outready();
 }

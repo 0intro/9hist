@@ -47,14 +47,15 @@ clock(Ureg *ur, void *arg)
 {
 	Proc *p;
 	int nrun = 0;
+	extern int hwcursor;
 
 	USED(arg);
 
 	m->ticks++;
 
+	uartclock();
 	checkalarms();
 	hardclock();
-	uartclock();
 
 	/*
 	 *  process time accounting
@@ -80,7 +81,13 @@ clock(Ureg *ur, void *arg)
 	}
 
 	/* last because it could spllo() */
-	mouseclock();
+	if(hwcursor)
+		mouseclock();
+	else {
+		spllo();
+		mouseclock();
+		splhi();
+	}
 }
 
 /*

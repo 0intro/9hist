@@ -111,7 +111,7 @@ Vgacard vgachips[] =
 };
 
 Vgacard	*vgacard;	/* current vga card */
-static int hwcursor;
+int hwcursor;
 
 /*
  *  work areas for bitblting screen characters, scrolling, and cursor redraw
@@ -1325,7 +1325,7 @@ setcursor(ulong *setbits, ulong *clrbits, int offx, int offy)
 void
 cursoron(int dolock)
 {
-	int xoff, yoff, s;
+	int xoff, yoff;
 	Rectangle r;
 	uchar *a;
 	struct {
@@ -1338,11 +1338,8 @@ cursoron(int dolock)
 
 	if(cursor.disable)
 		return;
-	if(dolock){
-		s = 0;		/* to avoid compiler warning */
+	if(dolock)
 		lock(&cursor);
-	} else
-		s = spllo();	/* to avoid freezing out the eia ports */
 
 	if(hwcursor)
 		(*vgacard->mvcursor)(mousexy());
@@ -1394,30 +1391,23 @@ cursoron(int dolock)
 
 	if(dolock)
 		unlock(&cursor);
-	else
-		splx(s);
 }
 
 void
 cursoroff(int dolock)
 {
-	int s;
-
 	if(hwcursor)
 		return;
 	if(cursor.disable)
 		return;
-	if(dolock){
-		s = 0;		/* to avoid a compiler warning */
+	if(dolock)
 		lock(&cursor);
-	} else
-		s = spllo();	/* to avoid freezing out the eia ports */
+
 	if(--cursor.visible == 0 && cursor.tl > 0)
 		screenload(cursor.clipr, (uchar*)backbits, cursor.tl, cursor.l, 0);
+
 	if(dolock)
 		unlock(&cursor);
-	else
-		splx(s);
 }
 
 static void
