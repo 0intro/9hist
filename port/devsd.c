@@ -146,7 +146,7 @@ sdinit(void)
 				nbytes = sizeof(scratch);
 				memset(scratch, 0, nbytes);
 				scsireqsense(d->t, 0, scratch, &nbytes, 1);
-				if((scratch[2] & 0x0F) != 0x02)
+				if((scratch[2] & 0x0F) != 0x02 && (scratch[2] & 0x0F) != 0)
 					continue;
 				if(type == TypeDA)
 					scsistart(d->t, d->lun, 0);
