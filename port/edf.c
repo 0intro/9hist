@@ -514,7 +514,7 @@ edfdeadlineintr(Ureg*, Timer *)
 	}
 	iunlock(&edflock);
 	if (noted)
-		postnote(up, 1, buf, NUser);
+		postnote(up, 0, buf, NUser);
 	sched();
 	splhi();
 }
