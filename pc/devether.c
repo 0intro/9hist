@@ -246,6 +246,7 @@ etherreset(void)
 			memmove(ctlr->addr, ctlr->ea, sizeof(ctlr->ea));
 			memmove(ctlr->bcast, etherbcast, sizeof(etherbcast));
 
+			ctlr->ctlrno = ctlrno;
 			ether[ctlrno] = ctlr;
 			ctlr = 0;
 			break;

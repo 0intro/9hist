@@ -206,7 +206,8 @@ scsiinv(int devno, int *type, Target **rt, uchar **inq, char *id)
 					continue;
 				*rt = t;
 				*inq = t->inq;
-				sprint(id, "scsi%d: unit %d", ctlr, unit);
+				if(id)
+					sprint(id, "scsi%d: unit %d", ctlr, unit);
 				return devno;
 			}
 		}
