@@ -338,7 +338,7 @@ confinit(void)
 	conf.nmux = 10;
 	if(*(uchar*)MOUSE & (1<<4))
 		conf.nbitbyte *= 2;	/* ldepth 1 */
-	conf.nsubfont = 10*mul;
+	conf.nsubfont = 30*mul;
 	conf.nfont = 10*mul;
 	conf.nurp = 32;
 	conf.nasync = 1;
