@@ -15,7 +15,9 @@
 typedef struct Sdp Sdp;
 typedef struct Conv Conv;
 typedef struct OneWay OneWay;
+typedef struct Stats Stats;
 typedef struct ConnectPkt ConnectPkt;
+typedef struct AckPkt AckPkt;
 
 enum
 {
@@ -23,7 +25,6 @@ enum
 
 	Qsdpdir,			/* sdp directory */
 	Qclone,
-	Qstats,
 	Qlog,
 
 	Qconvdir,			/* directory per conversation */
@@ -31,6 +32,8 @@ enum
 	Qdata,				/* unreliable packet channel */
 	Qcontrol,			/* reliable control channel */
 	Qstatus,
+	Qstats,
+	Qrstats,
 
 	MaxQ,
 
@@ -45,8 +48,28 @@ enum
 #define CONV(x) 	(((x).path >> 8)&(Maxconv-1))
 #define QID(x, y) 	(((x)<<8) | (y))
 
+struct Stats
+{
+	ulong	outPackets;
+	ulong	outDataPackets;
+	ulong	outDataBytes;
+	ulong	outCompDataBytes;
+	ulong	outCompBytes;
+	ulong	inPackets;
+	ulong	inDataPackets;
+	ulong	inDataBytes;
+	ulong	inCompDataBytes;
+	ulong	inMissing;
+	ulong	inDup;
+	ulong	inReorder;
+	ulong	inBadAuth;
+	ulong	inBadSeq;
+};
+
 struct OneWay
 {
+	Rendez	statsready;
+
 	ulong	seqwrap;	// number of wraps of the sequence number
 	ulong	seq;
 	ulong	window;
@@ -89,6 +112,9 @@ struct Conv {
 	int state;
 	int dataopen;
 	int reader;		// reader proc has been started
+
+	Stats	lstats;
+	Stats	rstats;
 
 	ulong	timeout;
 	int		retries;
@@ -149,9 +175,26 @@ struct ConnectPkt
 	uchar acceptid[4];
 };
 
+struct AckPkt
+{
+	uchar	cseq[4];
+	uchar	outPackets[4];
+	uchar	outDataPackets[4];
+	uchar	outDataBytes[4];
+	uchar	outCompDataBytes[4];
+	uchar	inPackets[4];
+	uchar	inDataPackets[4];
+	uchar	inDataBytes[4];
+	uchar	inCompDataBytes[4];
+	uchar	inMissing[4];
+	uchar	inDup[4];
+	uchar	inReorder[4];
+	uchar	inBadAuth[4];
+	uchar	inBadSeq[4];
+};
+
 
 static Dirtab sdpdirtab[]={
-	"stats",	{Qstats},	0,	0444,
 	"log",		{Qlog},		0,	0666,
 	"clone",	{Qclone},		0,	0666,
 };
@@ -161,6 +204,8 @@ static Dirtab convdirtab[]={
 	"data",		{Qdata},	0,	0666,
 	"control",	{Qcontrol},	0,	0666,
 	"status",	{Qstatus},	0,	0444,
+	"stats",	{Qstats},	0,	0444,
+	"rstats",	{Qrstats},	0,	0444,
 };
 
 static int m2p[] = {
@@ -204,7 +249,7 @@ static int readready(void *a);
 static int controlread();
 static Block *conviput(Conv *c, Block *b, int control);
 static void conviput2(Conv *c, Block *b);
-static void writecontrol(Conv *c, void *p, int n);
+static void writecontrol(Conv *c, void *p, int n, int wait);
 static Block *readcontrol(Conv *c, int n);
 static Block *readdata(Conv *c, int n);
 static long writedata(Conv *c, Block *b);
@@ -212,7 +257,7 @@ static void convoput(Conv *c, int type, Block *b);
 static void convoput2(Conv *c, int op, ulong dialid, ulong acceptid);
 static void convreader(void *a);
 static void convopenchan(Conv *c, char *path);
-
+static void convstats(Conv *c, int local, char *buf, int n);
 
 static void
 sdpinit(void)
@@ -310,7 +355,6 @@ sdpopen(Chan* ch, int omode)
 	case Qtopdir:
 	case Qsdpdir:
 	case Qconvdir:
-	case Qstats:
 		if(omode != OREAD)
 			error(Eperm);
 		break;
@@ -327,6 +371,8 @@ sdpopen(Chan* ch, int omode)
 	case Qctl:
 	case Qstatus:
 	case Qcontrol:
+	case Qstats:
+	case Qrstats:
 		c = sdp->conv[CONV(ch->qid)];
 		qlock(c);
 		if(waserror()) {
@@ -407,9 +453,11 @@ static long
 sdpread(Chan *ch, void *a, long n, vlong off)
 {
 	char buf[256];
+	char *s;
 	Sdp *sdp = sdptab + ch->dev;
 	Conv *c;
 	Block *b;
+	int rv;
 
 	USED(off);
 	switch(TYPE(ch->qid)) {
@@ -450,6 +498,14 @@ print("readdata\n");
 		memmove(a, b->rp, n);
 		freeb(b);
 		return n;
+	case Qstats:
+	case Qrstats:
+		c = sdp->conv[CONV(ch->qid)];
+		s = smalloc(1000);
+		convstats(c, TYPE(ch->qid) == Qstats, s, 1000);
+		rv = readstr(off, a, n, s);
+		free(s);
+		return rv;
 	}
 }
 
@@ -518,7 +574,7 @@ sdpwrite(Chan *ch, void *a, long n, vlong off)
 		return n;
 	case Qcontrol:
 print("writecontrol %ld\n", n);
-		writecontrol(sdp->conv[CONV(ch->qid)], a, n);
+		writecontrol(sdp->conv[CONV(ch->qid)], a, n, 0);
 		return n;
 	case Qdata:
 		b = allocb(n);
@@ -854,6 +910,69 @@ convopenchan(Conv *c, char *path)
 	poperror();
 }
 
+static void
+convstats(Conv *c, int local, char *buf, int n)
+{
+	Stats *stats;
+	char *p, *ep;
+
+	qlock(c);
+	if(local) {
+		stats = &c->lstats;
+	} else {
+		if(!waserror()) {
+			writecontrol(c, 0, 0, 1);
+			poperror();
+		}
+		stats = &c->rstats;
+	}
+	p = buf;
+	ep = buf + n;
+	p += snprint(p, ep-p, "outPackets: %ld\n", stats->outPackets);
+	p += snprint(p, ep-p, "outDataPackets: %ld\n", stats->outDataPackets);
+	p += snprint(p, ep-p, "outDataBytes: %ld\n", stats->outDataBytes);
+	p += snprint(p, ep-p, "outCompDataBytes: %ld\n", stats->outCompDataBytes);
+	p += snprint(p, ep-p, "inPackets: %ld\n", stats->inPackets);
+	p += snprint(p, ep-p, "inDataPackets: %ld\n", stats->inDataPackets);
+	p += snprint(p, ep-p, "inCompDataBytes: %ld\n", stats->inCompDataBytes);
+	p += snprint(p, ep-p, "inMissing: %ld\n", stats->inMissing);
+	p += snprint(p, ep-p, "inDup: %ld\n", stats->inDup);
+	p += snprint(p, ep-p, "inReorder: %ld\n", stats->inReorder);
+	p += snprint(p, ep-p, "inBadAuth: %ld\n", stats->inBadAuth);
+	p += snprint(p, ep-p, "inBadSeq: %ld\n", stats->inBadSeq);
+	USED(p);
+	qunlock(c);
+}
+
+// c is locked
+static void
+convack(Conv *c)
+{
+	Block *b;
+	AckPkt *ack;
+	Stats *s;
+
+	b = allocb(sizeof(AckPkt));
+	ack = (Ack)b->wp;
+	b->wp += sizeof(AckPkt);
+	s = &c->lstats;
+	hnputl(ack->cseq, c->in.controlseq);
+	hnputl(ack->outPackets, s->outPackets);
+	hnputl(ack->outDataPackets, s->outDataPackets);
+	hnputl(ack->outDataBytes, s->outDataBytes);
+	hnputl(ack->outCompDataBytes, s->outCompDataBytes);
+	hnputl(ack->inPackets, s->inPackets);
+	hnputl(ack->inDataPackets, s->inDataPackets);
+	hnputl(ack->inDataBytes, s->inDataBytes);
+	hnputl(ack->inCompDataBytes, s->inCompDataBytes);
+	hnputl(ack->inMissing, s->inMissing);
+	hnputl(ack->inDup, s->inDup);
+	hnputl(ack->inReorder, s->inReorder);
+	hnputl(ack->inBadAuth, s->inBadAuth);
+	hnputl(ack->inBadSeq, s->inBadSeq);
+	convoput(c, TControlAck, b);
+}
+
 
 // assume we hold lock for c
 static Block *
@@ -861,6 +980,9 @@ conviput(Conv *c, Block *b, int control)
 {
 	int type;
 	ulong seq, cseq;
+	AckPkt *ack;
+
+	c->lstat.inPackets++;
 
 	if(BLEN(b) < 4) {
 		freeb(b);
@@ -885,18 +1007,15 @@ print("coniput seq=%ulx\n", seq);
 
 	switch(type) {
 	case TControl:
-		if(BLEN(b) <= 4)
+		if(BLEN(b) < 4)
 			break;
 		cseq = nhgetl(b->rp);
 		if(cseq == c->in.controlseq) {
 print("duplicate control packet: %ulx\n", cseq);
 			// duplicate control packet
-			if(c->in.controlpkt == nil) {
-				// send ack
-				b->wp = b->rp + 4;
-				convoput(c, TControlAck, b);
-			} else
-				freeb(b);
+			freeb(b);
+			if(c->in.controlpkt == nil)
+				convack(c);
 			return nil;
 		}
 
@@ -904,23 +1023,46 @@ print("duplicate control packet: %ulx\n", cseq);
 			break;
 		c->in.controlseq = cseq;
 		b->rp += 4;
-		c->in.controlpkt = b;
+		if(BLEN(b) == 0) {
+			// just a ping
+			freeb(b);
+			convack(c);
+		} else {
+			c->in.controlpkt = b;
 print("recv %ld size=%ld\n", cseq, BLEN(b));
-		wakeup(&c->in.controlready);
+			wakeup(&c->in.controlready);
+		}
 		return nil;
 	case TControlAck:
-		if(BLEN(b) != 4)
+		if(BLEN(b) != sizeof(AckPkt))
 			break;
-		cseq = nhgetl(b->rp);
+		ack = (AckPkt*)(b->rp);
+		cseq = nhgetl(ack->cseq);
 print("ControlAck expected %ulx got %ulx\n", c->out.controlseq, cseq);
 		if(cseq != c->out.controlseq)
 			break;
+		c->rstat.outPackets = nhgetl(ack->outPackets);
+		c->rstat.outDataPackets = nhgetl(ack->outDataPackets);
+		c->rstat.outDataBytes = nhgetl(ack->outDataBytes);
+		c->rstat.outCompDataBytes = nhgetl(ack->outCompDataBytes);
+		c->rstat.inPackets = nhgetl(ack->inPackets);
+		c->rstat.inDataPackets = nhgetl(ack->inDataPackets);
+		c->rstat.inDataBytes = nhgetl(ack->inDataBytes);
+		c->rstat.inCompDataBytes = nhgetl(ack->inCompDataBytes);
+		c->rstat.inMissing = nhgetl(ack->inMissing);
+		c->rstat.inDup = nhgetl(ack->inDup);
+		c->rstat.inReorder = nhgetl(ack->inReorder);
+		c->rstat.inBadAuth = nhgetl(ack->inBadAuth);
+		c->rstat.inBadSeq = nhgetl(ack->inBadSeq);
 		freeb(b);
 		freeb(c->out.controlpkt);
 		c->out.controlpkt = nil;
 		wakeup(&c->out.controlready);
 		return nil;
 	case TData:
+		c->lstats.inDataPackets++;
+		c->lstats.inDataBytes += BLEN(b);
+		c->lstats.inCompDataBytes += BLEN(b);
 		if(control)
 			break;
 		return b;
@@ -1045,7 +1187,7 @@ static void
 convoput(Conv *c, int type, Block *b)
 {
 	// try and compress
-
+	c->lstats.outPackets++;
 	/* Make space to fit sdp header */
 	b = padblock(b, 4 + c->out.cipherivlen);
 	b->rp[0] = type;
@@ -1074,6 +1216,7 @@ convoput2(Conv *c, int op, ulong dialid, ulong acceptid)
 {
 	ConnectPkt con;
 
+	c->lstats.outPackets++;
 	if(c->chan == nil) {
 print("chan = nil\n");
 		error("no channel attached");
@@ -1166,11 +1309,7 @@ print("readcontrol: return nil - state = %s\n", convstatename[c->state]);
 		qlock(c);
 	}
 
-	// send ack
-	b = allocb(4);
-	hnputl(b->wp, c->in.controlseq);
-	b->wp += 4;	
-	convoput(c, TControlAck, b);
+	convack(c);
 
 	b = c->in.controlpkt;
 	c->in.controlpkt = nil;
@@ -1189,21 +1328,12 @@ writeready(void *a)
 	return c->out.controlpkt == nil || (c->state == CClosed) || (c->state == CRemoteClose);
 }
 
+// c is locked
 static void
-writecontrol(Conv *c, void *p, int n)
+writewait(Conv *c)
 {
-	Block *b;
-
-
-	qlock(&c->out.controllk);
-	if(waserror()) {
-		qunlock(&c->out.controllk);
-		nexterror();
-	}
-	qlock(c);	// this lock is not held in the sleep below
 	for(;;) {
 		if(c->state == CInit || c->state == CClosed || c->state == CRemoteClose) {
-			qunlock(c);
 print("writecontrol: return error - state = %s\n", convstatename[c->state]);
 			error("conversation closed");
 		}
@@ -1212,9 +1342,30 @@ print("writecontrol: return error - state = %s\n", convstatename[c->state]);
 			break;
 
 		qunlock(c);
+		if(waserror()) {
+			qlock(c);
+			nexterror();
+		}
 		sleep(&c->out.controlready, writeready, c);
+		poperror();
 		qlock(c);
 	}
+}
+
+static void
+writecontrol(Conv *c, void *p, int n, int wait)
+{
+	Block *b;
+
+
+	qlock(&c->out.controllk);
+	qlock(c);
+	if(waserror()) {
+		qunlock(c);
+		qunlock(&c->out.controllk);
+		nexterror();
+	}
+	writewait(c);
 	b = allocb(4+n);
 	c->out.controlseq++;
 	hnputl(b->wp, c->out.controlseq);
@@ -1224,8 +1375,10 @@ print("writecontrol: return error - state = %s\n", convstatename[c->state]);
 	convretryinit(c);
 print("send %ld size=%ld\n", c->out.controlseq, BLEN(b));	
 	convoput(c, TControl, copyblock(b, blocklen(b)));
-	qunlock(c);
+	if(wait)
+		writewait(c);
 	poperror();
+	qunlock(c);
 	qunlock(&c->out.controllk);
 }
 
@@ -1267,6 +1420,9 @@ print("writedata %ulx state=%s\n", b, convstatename[c->state]);
 	}
 
 	n = BLEN(b);
+	c->outDataPackets++;
+	c->outDataBytes += n;
+	c->outCompDataBytes += n;
 	convoput(c, TData, b);
 	poperror();
 	qunlock(c);

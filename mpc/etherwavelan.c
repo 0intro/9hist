@@ -104,7 +104,8 @@ interrupt_handler(Ether *ether, uchar status)
 			outb(LCCR(base), CR0_INT_ACK | OP0_NOP);	/* Acknowledge the interrupt */
 			return;
 		}
-		wavelan_receive(ether);
+		while(wavelan_receive(ether))
+			;
 		if (status0 & SR0_EXECUTION)
 			print("wavelan_cs: interrupt is both rx and tx, status0 = %x\n",
 				status0);
@@ -260,6 +261,7 @@ read_ringbuf(Ether *ether, int addr, uchar *buf, int len)
 	uchar *buf_ptr = buf;
 	ctlr = ether->ctlr;
 	base = ctlr->port;
+print("read_ringbuf\n");
 
 	/* If buf is NULL, just increment the ring buffer pointer */
 	if (buf == 0)
@@ -268,12 +270,15 @@ read_ringbuf(Ether *ether, int addr, uchar *buf, int len)
 		/* Position the Program I/O Register at the ring buffer pointer */
 		outb(PIORL(base), ring_ptr & 0xff);
 		outb(PIORH(base), ((ring_ptr >> 8) & PIORH_MASK));
+		delay(1);
 		/* First, determine how much we can read without wrapping around the
  		ring buffer */
-		if ((addr + len) < (RX_BASE + RX_SIZE))
+		if ((ring_ptr + len) < (RX_BASE + RX_SIZE))
 			chunk_len = len;
 		else
-			chunk_len = RX_BASE + RX_SIZE - addr;
+			chunk_len = RX_BASE + RX_SIZE - ring_ptr;
+		if(chunk_len > 256)
+			chunk_len = 256;
 		insb(PIOP(base), buf_ptr, chunk_len);
 		buf_ptr += chunk_len;
 		len -= chunk_len;
@@ -403,6 +408,8 @@ static void wavelan_read(Ether *ether, int fd_p, int sksize)
 		ctlr->rx_dropped++;
 		return;
 	} else {
+//print("%d+%d = %d\n", fd_p, sksize, fd_p+sksize);
+//delay(100);
 		fd_p = read_ringbuf(ether, fd_p, ctlr->rbp->rp, sksize);
 		ctlr->rbp->wp = ctlr->rbp->rp + sksize;
 		/* read signal level, silence level and signal quality bytes */
@@ -447,7 +454,7 @@ wavelan_receive(Ether *ether)
 if(0) print("before wavelan_cs: i593_rfp %d stop %d newrfp %d ctlr->rfp %d\n", i593_rfp, ctlr->stop, newrfp, ctlr->rfp);
 
 	if (newrfp == ctlr->rfp) {
-		print("wavelan_cs: odd RFPs:  i593_rfp %d stop %d newrfp %d ctlr->rfp %d\n",
+		if(0) print("wavelan_cs: odd RFPs:  i593_rfp %d stop %d newrfp %d ctlr->rfp %d\n",
 			i593_rfp, ctlr->stop, newrfp, ctlr->rfp);
 		return 0;
 	}
@@ -470,6 +477,8 @@ if(0) print("before wavelan_cs: i593_rfp %d stop %d newrfp %d ctlr->rfp %d\n", i
 		len = c[2] | (c[3] << 8);
 
 print("%ld: len = %d status = %ux %ux %ux\n", m->ticks, len, status, newrfp, rp);
+//delay(100);
+
 		if(!(status & RX_RCV_OK)) {
 			if(status & RX_NO_SFD) ctlr->rx_no_sfd++;
 			if(status & RX_CRC_ERR) ctlr->rx_crc++;
@@ -491,6 +500,8 @@ print("%ld: len = %d status = %ux %ux %ux\n", m->ticks, len, status, newrfp, rp)
 	outb(LCCR(base), OP0_SWIT_TO_PORT_1 | CR0_CHNL);
 	outb(LCCR(base), CR1_STOP_REG_UPDATE | (ctlr->stop >> RX_SIZE_SHIFT));
 	outb(LCCR(base), OP1_SWIT_TO_PORT_0);
+
+//delay(100);
 
 	newrfp = inb(RPLL(base));
 	newrfp |= inb(RPLH(base)) << 8;
