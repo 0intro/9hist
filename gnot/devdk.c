@@ -206,7 +206,6 @@ static void
 dkmuxopen(Queue *q, Stream *s)
 {
 	Dk *dp;
-	Line *lp;
 	int i;
 
 	for(dp = dk; dp < &dk[Ndk]; dp++){
@@ -223,9 +222,6 @@ dkmuxopen(Queue *q, Stream *s)
 			dp->lines = 16;
 			dp->name[0] = 0;
 			dp->wq = WR(q);
-			for(lp = dp->line; lp < &dp->line[Nline]; lp++)
-				if(lp->state != 0)
-					panic("dkmuxopen l %d s %lux", lp-dp->line, lp->state);
 			qunlock(dp);
 			return;
 		}
