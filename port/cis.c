@@ -214,7 +214,8 @@ nanoamps(Cisdat *cis)
 }
 
 /*
- *  only nominal voltage is important for config
+ * only nominal voltage (feature 1) is important for config,
+ * other features must read card to stay in sync.
  */
 static ulong
 power(Cisdat *cis)
