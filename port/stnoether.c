@@ -148,7 +148,7 @@ noetherbad(Noifc *ifc, Block *bp, int circuit)
 	nnh->mid = nh->ack;
 	memmove(neh->s, eh->d, sizeof(neh->s));
 	memmove(neh->d, eh->s, sizeof(neh->d));
-	nonetcksum(nbp, 14);
+	nonetcksum(nbp, ETHERHDRSIZE);
 	PUTNEXT(ifc->wq, nbp);
 out:
 	freeb(bp);
