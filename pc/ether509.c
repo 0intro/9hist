@@ -417,6 +417,7 @@ interrupt(EtherCtlr *cp)
 		if(txstatus & (TxJabber|TxUnderrun))
 			COMMAND(hw, TxReset, 0);
 		COMMAND(hw, TxEnable, 0);
+		cp->oerrs++;
 	}
 
 	if(status & (TxAvailable|TxComplete)){

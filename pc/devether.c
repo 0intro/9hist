@@ -370,7 +370,7 @@ isinput(void *arg)
 {
 	EtherCtlr *cp = arg;
 
-	return cp->lbq.first || cp->rb[cp->ri].owner == Host;
+	return cp->lbq.first || cp->rb[cp->rh].owner == Host;
 }
 
 static void
