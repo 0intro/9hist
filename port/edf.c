@@ -412,7 +412,9 @@ edfreleaseintr(Ureg*, Cycintr*)
 
 	DPRINT("%d edfreleaseintr\n", m->machno);
 
+	cycintrdel(&cycrelease);
 	cycrelease.when = 0;
+	clockintrsched();
 
 	if(active.exiting)
 		return;
@@ -440,7 +442,9 @@ edfdeadlineintr(Ureg*, Cycintr*)
 
 	DPRINT("%d edfdeadlineintr\n", m->machno);
 
+	cycintrdel(&cycdeadline);
 	cycdeadline.when = 0;
+	clockintrsched();
 
 	if(active.exiting)
 		return;

@@ -1,6 +1,3 @@
-/*
- * Storage Device.
- */
 #include "u.h"
 #include "../port/lib.h"
 #include "mem.h"
@@ -11,6 +8,10 @@
 #include "../port/error.h"
 
 #include "../port/sd.h"
+
+/*
+ * Storage Device.
+ */
 
 extern Dev sddevtab;
 extern SDifc* sdifc[];
@@ -782,8 +783,6 @@ sdbio(Chan* c, int write, char* a, long len, vlong off)
 	}
 
 	offset = off%unit->secsize;
-	if(offset+len > nb*unit->secsize)
-		len = nb*unit->secsize - offset;
 	if(write){
 		if(offset || (len%unit->secsize)){
 			l = unit->dev->ifc->bio(unit, 0, 0, b, nb, bno);

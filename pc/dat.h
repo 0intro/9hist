@@ -31,7 +31,6 @@ struct Lock
 	ulong	pc;
 	Proc	*	p;
 	ushort	isilock;
-	Proc	*	edfwaiting;
 };
 
 struct Label

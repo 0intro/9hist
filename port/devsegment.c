@@ -20,9 +20,9 @@ enum
 	Cdie,
 };
 
-#define TYPE(x) 	( (c)->qid.path & 0x7 )
+#define TYPE(x) 	(int)( (c)->qid.path & 0x7 )
 #define SEG(x)	 	( ((c)->qid.path >> 3) & 0x3f )
-#define QID(s, t) 	( ((s)<<3) | (t) )
+#define PATH(s, t) 	( ((s)<<3) | (t) )
 
 typedef struct Globalseg Globalseg;
 struct Globalseg
@@ -30,8 +30,8 @@ struct Globalseg
 	Ref;
 	Segment	*s;
 
-	char	name[NAMELEN];
-	char	uid[NAMELEN];
+	char	*name;
+	char	*uid;
 	vlong	length;
 	long	perm;
 
@@ -44,7 +44,7 @@ struct Globalseg
 	long	off;
 	int	dlen;
 	int	cmd;	
-	char	err[ERRLEN];
+	char	err[64];
 };
 
 static Globalseg *globalseg[100];
@@ -88,11 +88,13 @@ putgseg(Globalseg *g)
 		putseg(g->s);
 	if(g->kproc)
 		docmd(g, Cdie);
+	free(g->name);
+	free(g->uid);
 	free(g);
 }
 
 static int
-segmentgen(Chan *c, Dirtab*, int, int s, Dir *dp)
+segmentgen(Chan *c, char*, Dirtab*, int, int s, Dir *dp)
 {
 	Qid q;
 	Globalseg *g;
@@ -102,8 +104,9 @@ segmentgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 	case Qtopdir:
 		if(s == DEVDOTDOT){
 			q.vers = 0;
-			q.path = CHDIR|QID(0, Qtopdir);
-			devdir(c, q, "#g", 0, eve, 0777, dp);
+			q.path = PATH(0, Qtopdir);
+			q.type = QTDIR;
+			devdir(c, q, "#g", 0, eve, DMDIR|0777, dp);
 			break;
 		}
 
@@ -117,16 +120,18 @@ segmentgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 			return 0;
 		}
 		q.vers = 0;
-		q.path = CHDIR|QID(s, Qsegdir);
-		devdir(c, q, g->name, 0, g->uid, 0777, dp);
+		q.path = PATH(s, Qsegdir);
+		q.type = QTDIR;
+		devdir(c, q, g->name, 0, g->uid, DMDIR|0777, dp);
 		unlock(&globalseglock);
 
 		break;
 	case Qsegdir:
 		if(s == DEVDOTDOT){
 			q.vers = 0;
-			q.path = CHDIR|QID(0, Qtopdir);
-			devdir(c, q, "#g", 0, eve, 0777, dp);
+			q.path = PATH(0, Qtopdir);
+			q.type = QTDIR;
+			devdir(c, q, "#g", 0, eve, DMDIR|0777, dp);
 			break;
 		}
 		/* fall through */
@@ -136,14 +141,16 @@ segmentgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 		case 0:
 			g = getgseg(c);
 			q.vers = 0;
-			q.path = QID(SEG(c), Qctl);
+			q.path = PATH(SEG(c), Qctl);
+			q.type = QTFILE;
 			devdir(c, q, "ctl", 0, g->uid, g->perm, dp);
 			putgseg(g);
 			break;
 		case 1:
 			g = getgseg(c);
 			q.vers = 0;
-			q.path = QID(SEG(c), Qdata);
+			q.path = PATH(SEG(c), Qdata);
+			q.type = QTFILE;
 			if(g->s != nil)
 				size = g->s->top - g->s->base;
 			else
@@ -171,16 +178,16 @@ segmentattach(char *spec)
 	return devattach('g', spec);
 }
 
-static int
-segmentwalk(Chan *c, char *name)
+static Walkqid*
+segmentwalk(Chan *c, Chan *nc, char **name, int nname)
 {
-	return devwalk(c, name, (Dirtab *)0, 0, segmentgen);
+	return devwalk(c, nc, name, nname, 0, 0, segmentgen);
 }
 
-static void
-segmentstat(Chan *c, char *db)
+static int
+segmentstat(Chan *c, uchar *db, int n)
 {
-	devstat(c, db, (Dirtab *)0, 0L, segmentgen);
+	return devstat(c, db, n, 0, 0, segmentgen);
 }
 
 static int
@@ -269,7 +276,7 @@ segmentcreate(Chan *c, char *name, int omode, ulong perm)
 	if(isphysseg(name))
 		error(Eexist);
 
-	if((perm & CHDIR) == 0)
+	if((perm & DMDIR) == 0)
 		error(Ebadarg);
 
 	if(waserror()){
@@ -292,14 +299,15 @@ segmentcreate(Chan *c, char *name, int omode, ulong perm)
 		error("too many global segments");
 	g = smalloc(sizeof(Globalseg));
 	g->ref = 1;
-	strncpy(g->name, name, sizeof(g->name));
-	strncpy(g->uid, up->user, sizeof(g->uid));
+	kstrdup(&g->name, name);
+	kstrdup(&g->uid, up->user);
 	g->perm = 0660; 
 	globalseg[xfree] = g;
 	unlock(&globalseglock);
 	poperror();
 
-	c->qid.path = CHDIR|QID(x, Qsegdir);
+	c->qid.path = PATH(x, Qsegdir);
+	c->qid.type = QTDIR;
 	c->qid.vers = 0;
 	c->mode = openmode(omode);
 	c->mode = OWRITE;
@@ -311,7 +319,7 @@ segmentread(Chan *c, void *a, long n, vlong voff)
 	Globalseg *g;
 	char buf[32];
 
-	if(c->qid.path&CHDIR)
+	if(c->qid.type == QTDIR)
 		return devdirread(c, a, n, (Dirtab *)0, 0L, segmentgen);
 
 	switch(TYPE(c)){
@@ -355,7 +363,7 @@ segmentwrite(Chan *c, void *a, long n, vlong voff)
 	Globalseg *g;
 	ulong va, len, top;
 
-	if(c->qid.path&CHDIR)
+	if(c->qid.type == QTDIR)
 		error(Eperm);
 
 	switch(TYPE(c)){
@@ -403,13 +411,13 @@ segmentwrite(Chan *c, void *a, long n, vlong voff)
 	return 0;	/* not reached */
 }
 
-static void
-segmentwstat(Chan *c, char *dp)
+static int
+segmentwstat(Chan *c, uchar *dp, int n)
 {
 	Globalseg *g;
-	Dir d;
+	Dir *d;
 
-	if(c->qid.path & CHDIR)
+	if(c->qid.type == QTDIR)
 		error(Eperm);
 
 	g = getgseg(c);
@@ -420,11 +428,15 @@ segmentwstat(Chan *c, char *dp)
 
 	if(strcmp(g->uid, up->user) && !iseve())
 		error(Eperm);
-	convM2D(dp, &d);
-	g->perm = d.mode & 0777;
+	d = smalloc(sizeof(Dir)+n);
+	n = convM2D(dp, n, &d[0], (char*)&d[1]);
+	g->perm = d->mode & 0777;
 
 	putgseg(g);
 	poperror();
+
+	free(d);
+	return n;
 }
 
 static void
@@ -521,7 +533,7 @@ segmentkproc(void *arg)
 	for(done = 0; !done;){
 		sleep(&g->cmdwait, cmdready, g);
 		if(waserror()){
-			strncpy(g->err, up->error, sizeof(g->err));
+			strncpy(g->err, up->errstr, sizeof(g->err));
 		} else {
 			switch(g->cmd){
 			case Cstart:
@@ -549,8 +561,8 @@ Dev segmentdevtab = {
 
 	devreset,
 	segmentinit,
+	devshutdown,
 	segmentattach,
-	devclone,
 	segmentwalk,
 	segmentstat,
 	segmentopen,
