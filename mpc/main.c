@@ -259,7 +259,7 @@ confinit(void)
 	ulong pa;
 
 	conf.nmach = 1;		/* processors */
-	conf.nproc = 30;	/* processes */
+	conf.nproc = 40;	/* processes */
 
 	// hard wire for now
 	pa = 0xffd00000;		// leave 1 Meg for kernel

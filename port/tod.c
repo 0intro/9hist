@@ -80,7 +80,7 @@ todset(vlong t, vlong delta, int n)
 			n = -delta;
 		if(delta > 0 && n > delta)
 			n = delta;
-		delta /= n;
+		delta = delta/n;
 		tod.sstart = MACHP(0)->ticks;
 		tod.send = tod.sstart + n;
 		tod.delta = delta;
@@ -111,13 +111,13 @@ todget(vlong *ticksp)
 		t = MACHP(0)->ticks;
 		if(t >= tod.send)
 			t = tod.send;
-		tod.off += tod.delta*(t - tod.sstart);
+		tod.off = tod.off + tod.delta*(t - tod.sstart);
 		tod.sstart = t;
 	}
 
 	// convert to epoch
 	x = (diff * tod.multiplier) >> 31;
-	x += tod.off;
+	x = x + tod.off;
 
 	// protect against overflows
 	if(diff > tod.hz){
@@ -159,7 +159,7 @@ seconds(void)
 	int i;
 
 	x = todget(nil);
-	x /= TODFREQ;
+	x = x/TODFREQ;
 	i = x;
 	return i;
 }

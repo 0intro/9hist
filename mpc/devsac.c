@@ -17,12 +17,14 @@ enum
 {
 	OPERM	= 0x3,		/* mask of all permission types in open mode */
 	Nram	= 512,
+	CacheSize = 20,
 };
 
 typedef struct SacPath SacPath;
 typedef struct Sac Sac;
 typedef struct SacHeader SacHeader;
 typedef struct SacDir SacDir;
+typedef struct Cache Cache;
 
 enum {
 	Magic = 0x5acf5,
@@ -64,6 +66,13 @@ struct SacPath
 	int entry;
 };
 
+struct Cache
+{
+	long block;
+	ulong age;
+	uchar *data;
+};
+
 enum
 {
 	Pexec =		1,
@@ -77,6 +86,8 @@ enum
 static uchar *data = SACMEM;
 static int blocksize;
 static Sac root;
+static Cache cache[CacheSize];
+static ulong cacheage;
 
 static void	sacdir(Chan *, SacDir*, char*);
 static ulong	getl(void *p);
@@ -91,6 +102,9 @@ static void
 sacinit(void)
 {
 	SacHeader *hdr;
+	uchar *p;
+	int i;
+
 print("sacinit\n");
 	hdr = (SacHeader*)data;
 	if(getl(hdr->magic) != Magic) {
@@ -99,6 +113,13 @@ print("devsac: bad magic\n");
 	}
 	blocksize = getl(hdr->blocksize);
 	root.SacDir = *(SacDir*)(data + sizeof(SacHeader));
+	p = malloc(CacheSize*blocksize);
+	if(p == nil)
+		error("allocating cache");
+	for(i=0; i<CacheSize; i++) {
+		cache[i].data = p;
+		p += blocksize;
+	}
 }
 
 static Chan*
@@ -310,16 +331,41 @@ static void
 loadblock(void *buf, uchar *offset, int blocksize)
 {
 	vlong block, n;
+	ulong age;
+	int i, j;
 
 	block = getv(offset);
 	if(block < 0) {
 		block = -block;
+		cacheage++;
+		// age has wraped
+		if(cacheage == 0) {
+			for(i=0; i<CacheSize; i++)
+				cache[i].age = 0;
+		}
+		j = 0;
+		age = cache[0].age;
+		for(i=0; i<CacheSize; i++) {
+			if(cache[i].age < age) {
+				age = cache[i].age;
+				j = i;
+			}
+			if(cache[i].block != block)
+				continue;
+			memmove(buf, cache[i].data, blocksize);
+			cache[i].age = cacheage;
+			return;
+		}
+
 		n = getv(offset+8);
 		if(n < 0)
 			n = -n;
 		n -= block;
 		if(unsac(buf, data+block, blocksize, n)<0)
 			panic("unsac failed!");
+		memmove(cache[j].data, buf, blocksize);
+		cache[j].age = cacheage;
+		cache[j].block = block;
 	} else {
 		memmove(buf, data+block, blocksize);
 	}
