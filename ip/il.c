@@ -58,6 +58,7 @@ struct Ilcb			/* Control block */
 	QLock	ackq;		/* Unacknowledged queue */
 	Block	*unacked;
 	Block	*unackedtail;
+	ulong	unackedbytes;
 	QLock	outo;		/* Out of order packet queue */
 	Block	*outoforder;
 	ulong	next;		/* Id of next to send */
@@ -70,10 +71,17 @@ struct Ilcb			/* Control block */
 	int	acktime;	/* Acknowledge timer */
 	int	querytime;	/* Query timer */
 	int	deathtime;	/* Time to kill connection */
-	int	rtt;		/* Average round trip time */
+	int	delay;		/* Average of the fixed rtt delay */
+	int	rate;		/* Average byte rate */
+	int	mdev;		/* Mean deviation of rtt */
 	ulong	rttack;		/* The ack we are waiting for */
-	ulong	ackms;		/* Time we issued */
+	int	rttlen;		/* Length of rttack packet */
+	ulong	rttms;		/* Time we issued rttack packet */
+	int	lrtt;		/* Last rtt seen */
+	int	lrttlen;	/* Length of the packet lrtt is for */
 	int	window;		/* Maximum receive window */
+	int	rexmit;
+	char	buf[128];
 };
 
 enum
@@ -124,7 +132,8 @@ enum
 	Deathtime	= 120*Seconds,	/* time between first query and hangup */
 
 	Defaultwin	= 20,
-	ILgain		= 8,
+	LogAGain	= 3,
+	LogDGain	= 2,
 };
 
 void	ilrcvmsg(Conv*, Block*);
@@ -173,7 +182,10 @@ ilstate(char **msg, Conv *c)
 	if(ic->state == Ilclosed) 
 		isclose = 1;
 
-	*msg = ilstates[ic->state];
+	sprint(ic->buf, "%s del %d Br %d md %d una %d rex %d", ilstates[ic->state],
+		ic->delay>>LogAGain, ic->rate>>LogAGain, ic->mdev>>LogDGain,
+		ic->unackedbytes, ic->rexmit);
+	*msg = ic->buf;
 	return isclose;
 }
 
@@ -289,7 +301,8 @@ ilkick(Conv *c, int l)
 	/* Start the round trip timer for this packet if the timer is free */
 	if(ic->rttack == 0) {
 		ic->rttack = id;
-		ic->ackms = msec;
+		ic->rttms = msec;
+		ic->rttlen = dlen + IL_IPSIZE + IL_HDRSIZE;
 	}
 	ic->acktime = Ackkeepalive;
 
@@ -329,9 +342,12 @@ void
 ilackq(Ilcb *ic, Block *bp)
 {
 	Block *np;
+	int n;
+
+	n = blocklen(bp);
 
 	/* Enqueue a copy on the unacked queue in case this one gets lost */
-	np = copyblock(bp, blocklen(bp));
+	np = copyblock(bp, n);
 	if(ic->unacked)
 		ic->unackedtail->list = np;
 	else {
@@ -341,6 +357,16 @@ ilackq(Ilcb *ic, Block *bp)
 	}
 	ic->unackedtail = np;
 	np->list = nil;
+	ic->unackedbytes += n;
+}
+
+void
+ilinitrtt(Ilcb *ic)
+{
+	ic->delay = Iltickms<<LogAGain;
+	ic->mdev = Iltickms<<LogDGain;
+	ic->rate = 10000<<LogAGain;		/* 10 meg ether */
+	ic->lrttlen = -1;
 }
 
 void
@@ -348,15 +374,45 @@ ilackto(Ilcb *ic, ulong ackto)
 {
 	Ilhdr *h;
 	Block *bp;
-	ulong id, t;
+	ulong id;
+	int x, t, pt;
 
 	if(ic->rttack == ackto) {
-		t = msec - ic->ackms;
+		t = msec - ic->rttms;
 		/* Guard against the ulong zero wrap of MACHP(0)->ticks */
-		if(t < 120000)
-			ic->rtt = (ic->rtt*(ILgain-1)+t)/ILgain;
-		if(ic->rtt < Iltickms)
-			ic->rtt = Iltickms;
+		if(t > 120000){
+			/* seed connection parameters with time of first ack */
+			if(ic->lrttlen < 0){
+				ic->rate = (ic->rttlen/t)<<LogAGain;
+				ic->delay = t<<LogAGain;
+				ic->mdev = t<<LogDGain;
+				ic->lrttlen = ic->rttlen;
+				ic->lrtt = t;
+			}
+
+			pt = ic->rttlen/(ic->rate>>LogAGain) + (ic->delay>>LogAGain);
+	
+			/* mdev */
+			ic->mdev += abs(t-pt) - (ic->mdev>>LogDGain);
+	
+			/*  fixed delay */
+			if(ic->rttlen != ic->lrttlen){
+				x = (ic->lrtt*ic->rttlen - t*ic->lrttlen)/(ic->rttlen-ic->lrttlen);
+				ic->delay += x - (ic->delay>>LogAGain);
+			}
+	
+			/* rate */
+			if(ic->lrtt != t){
+				x = (ic->lrttlen - ic->rttlen)/(ic->lrtt - t);
+				ic->rate += x - (ic->rate>>LogAGain);
+			}
+
+			ic->lrtt = t;
+			ic->lrttlen = ic->rttlen;
+		}
+
+		if(ic->delay < (Iltickms<<LogAGain))
+			ic->delay = Iltickms<<LogAGain;
 	}
 
 	/* Cancel if we lost the packet we were interested in */
@@ -373,6 +429,7 @@ ilackto(Ilcb *ic, ulong ackto)
 		bp = ic->unacked;
 		ic->unacked = bp->list;
 		bp->list = nil;
+		ic->unackedbytes -= blocklen(bp);
 		freeblist(bp);
 	}
 	qunlock(&ic->ackq);
@@ -480,7 +537,7 @@ iliput(Media *m, Block *bp)
 	ic->recvd = 0;
 	ic->rstart = nhgetl(ih->ilid);
 	ic->slowtime = Slowtime;
-	ic->rtt = Iltickms;
+	ilinitrtt(ic);
 	ic->querytime = Keepalivetime;
 	ic->deathtime = Deathtime;
 	ic->window = Defaultwin;
@@ -669,6 +726,7 @@ ilrexmit(Ilcb *ic)
 		hnputs(h->ilsum, ptclcsum(nb, IL_IPSIZE, nhgets(h->illen)));
 
 	il.rexmit++;
+	ic->rexmit++;
 	ipoput(nb, 0, ic->conv->ttl);
 }
 
@@ -928,10 +986,7 @@ loop:
 void
 ilbackoff(Ilcb *ic)
 {
-	if(ic->fasttime < Slowtime/2)
-		ic->fasttime += Fasttime;
-	else
-		ic->fasttime = (ic->fasttime)*3/2;
+	ic->fasttime = (ic->fasttime)*3/2;
 }
 
 char*
@@ -950,8 +1005,8 @@ ilstart(Conv *c, int type, int window)
 
 	ic->unacked = nil;
 	ic->outoforder = nil;
-	ic->slowtime = Slowtime;
-	ic->rtt = Iltickms;
+	ic->unackedbytes = 0;
+	ilinitrtt(ic);
 	iltimers(ic);
 
 	initseq += msec;
@@ -959,6 +1014,7 @@ ilstart(Conv *c, int type, int window)
 	ic->next = ic->start+1;
 	ic->recvd = 0;
 	ic->window = window;
+	ic->rexmit = 0;
 
 	switch(type) {
 	default:
@@ -1001,9 +1057,13 @@ ilfreeq(Ilcb *ic)
 void
 iltimers(Ilcb *ic)
 {
+	int pt;
+
 	ic->timeout = 0;
-	ic->fasttime = (Fasttime*ic->rtt)/Iltickms;
-	ic->slowtime = (Slowtime*ic->rtt)/Iltickms;
+	pt = ic->delay>>LogAGain;
+	pt += ic->unackedbytes/(ic->rate>>LogAGain);
+	ic->fasttime = (Fasttime*pt)/Iltickms;
+	ic->slowtime = (Slowtime*pt)/Iltickms;
 }
 
 void
