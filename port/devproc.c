@@ -285,6 +285,21 @@ procwstat(Chan *c, char *db)
 	qunlock(&p->debug);
 }
 
+static long
+procoffset(long offset, char *va, int *np)
+{
+	if(offset > 0) {
+		offset -= *np;
+		if(offset < 0) {
+			memmove(va, va+*np+offset, -offset);
+			*np = -offset;
+		}
+		else
+			*np = 0;
+	}
+	return offset;
+}
+
 static int
 procfds(Proc *p, char *va, int count, long offset)
 {
@@ -307,6 +322,7 @@ procfds(Proc *p, char *va, int count, long offset)
 
 	n = readstr(0, va, count, p->dot->name->s);
 	n += snprint(va+n, count-n, "\n");
+	offset = procoffset(offset, va, &n);
 	for(i = 0; i <= f->maxfd; i++) {
 		c = f->fd[i];
 		if(c == nil)
@@ -319,15 +335,7 @@ procfds(Proc *p, char *va, int count, long offset)
 			c->offset);
 		n += readstr(0, va+n, count-n, c->name->s);
 		n += snprint(va+n, count-n, "\n");
-		if(offset > 0) {
-			offset -= n;
-			if(offset < 0) {
-				memmove(va, va+n+offset, -offset);
-				n = -offset;
-			}
-			else
-				n = 0;
-		}
+		offset = procoffset(offset, va, &n);
 	}
 	unlock(f);
 	qunlock(&p->debug);
