@@ -15,7 +15,6 @@
  *  Driver for various VGA cards
  */
 
-char	monitor[NAMELEN];	/* monitor name and type */
 char	vgacard[NAMELEN];	/* vga card type */
 struct screeninfo {
 	int	maxx, maxy;	/* current bits per screen */
@@ -25,20 +24,16 @@ struct screeninfo {
 
 enum {
 	Qdir=		0,
-	Qvgamonitor=	1,
-	Qvgasize=	2,
-	Qvgatype=	3,
-	Qvgaport=	4,
-	Qvgamem=	5,
-	Nvga=		6,
+	Qvgasize=	1,
+	Qvgatype=	2,
+	Qvgaport=	3,
+	Nvga=		4,
 };
 
 Dirtab vgadir[]={
-	"vgamonitor",	{Qvgamonitor},	0,		0666,
 	"vgatype",	{Qvgatype},	0,		0666,
 	"vgasize",	{Qvgasize},	0,		0666,
 	"vgaport",	{Qvgaport},	0,		0666,
-	"vgamem",	{Qvgamem},	0,		0666,
 };
 
 /* a routine from ../port/devcons.c */
@@ -50,7 +45,6 @@ configsetup(void) {
 
 void
 configreset(void) {
-	strcpy(monitor, "generic");
 	strcpy(vgacard, "generic");
 	screeninfo.maxx = 640;
 	screeninfo.maxy = 480;
@@ -109,33 +103,19 @@ configclose(Chan *c)
 long
 configread(Chan *c, void *buf, long n, ulong offset)
 {
-	char obuf[60];
 	int port;
 	uchar *cp = buf;
 
 	switch(c->qid.path&~CHDIR){
 	case Qdir:
 		return devdirread(c, buf, n, vgadir, Nvga, devgen);
-	case Qvgamonitor:
-		return readstr(offset, buf, n, monitor);
 	case Qvgatype:
 		return readstr(offset, buf, n, vgacard);
-	case Qvgasize:
-		sprint(obuf, "%d %d",
-			gscreen.r.max.x, gscreen.r.max.y);
-		return readstr(offset, buf, n, obuf);
 	case Qvgaport:
 		if (offset + n >= 0x8000)
 			error(Ebadarg);
 		for (port=offset; port<offset+n; port++)
 			*cp++ = inb(port);
-		return n;
-	case Qvgamem:
-		if (offset > 0x10000)
-			return 0;
-		if (offset + n > 0x10000)
-			n = 0x10000 - offset;
-		memmove(cp, (void *)(SCREENMEM+offset), n);
 		return n;
 	}
 	error(Eperm);
@@ -150,8 +130,6 @@ configwrite(Chan *c, void *buf, long n, ulong offset)
 
 	switch(c->qid.path&~CHDIR){
 	case Qdir:
-		error(Eperm);
-	case Qvgamonitor:
 		error(Eperm);
 	case Qvgatype:
 		error(Eperm);
@@ -169,7 +147,22 @@ configwrite(Chan *c, void *buf, long n, ulong offset)
 		maxy = strtoul(cp, &cp, 0);
 		if(*cp!=0)
 			cp++;
-		ldepth = strtoul(cp, &cp, 0);
+		switch(strtoul(cp, &cp, 0)){
+		case 1:
+			ldepth = 0;
+			break;
+		case 2:
+			ldepth = 1;
+			break;
+		case 4:
+			ldepth = 2;
+			break;
+		case 8:
+			ldepth = 3;
+			break;
+		default:
+			ldepth = -1;
+		}
 		if(maxx == 0 || maxy == 0
 		|| maxx > 1280 || maxy > 1024
 		|| ldepth > 3 || ldepth < 0)
@@ -183,11 +176,6 @@ configwrite(Chan *c, void *buf, long n, ulong offset)
 		for (port=offset; port<offset+n; port++) {
 			outb(port, *cp++);
 		}
-		return n;
-	case Qvgamem:
-		if (offset + n > 0x10000)
-			error(Ebadarg);
-		memmove((void *)(SCREENMEM+offset), buf, n);
 		return n;
 	}
 	error(Eperm);

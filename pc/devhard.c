@@ -77,6 +77,8 @@ struct Repl
  */
 struct Drive
 {
+	QLock;
+
 	Controller *cp;
 	int	drive;
 	int	confused;	/* needs to be recalibrated (or worse) */
@@ -214,8 +216,10 @@ hardattach(char *spec)
 	for(dp = hard; dp < &hard[conf.nhard]; dp++){
 		if(waserror()){
 			dp->online = 0;
+			qunlock(dp);
 			continue;
 		}
+		qlock(dp);
 		if(!dp->online){
 			hardparams(dp);
 			dp->online = 1;
@@ -226,6 +230,7 @@ hardattach(char *spec)
 		 *  read Plan 9 partition table
 		 */
 		hardpart(dp);
+		qunlock(dp);
 		poperror();
 	}
 	return devattach('w', spec);
@@ -561,9 +566,9 @@ hardsetbuf(Drive *dp, int on)
 
 	sleep(&cp->r, cmddone, cp);
 
-	if(cp->status & Serr)
+/*	if(cp->status & Serr)
 		DPRINT("hd%d setbuf err: status %lux, err %lux\n",
-			dp-hard, cp->status, cp->error);
+			dp-hard, cp->status, cp->error);/**/
 
 	poperror();
 	qunlock(cp);
@@ -659,6 +664,7 @@ hardident(Drive *dp)
 	dp->heads = ip->lheads;
 	dp->sectors = ip->ls2t;
 	dp->cap = dp->bytes * dp->cyl * dp->heads * dp->sectors;
+	cp->lastcmd = cp->cmd;
 	cp->cmd = 0;
 	cp->buf = 0;
 	free(buf);
@@ -982,8 +988,8 @@ hardintr(Ureg *ur)
 		cp->cmd = 0;
 		break;
 	default:
-		print("weird disk interrupt, cmd=%.2ux, status=%.2ux\n",
-			cp->cmd, cp->status);
+		print("weird disk interrupt, cmd=%.2ux, lastcmd= %.2ux status=%.2ux\n",
+			cp->cmd, cp->lastcmd, cp->status);
 		break;
 	}
 }

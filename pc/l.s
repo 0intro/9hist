@@ -635,19 +635,24 @@ TEXT	config(SB),$0
 	RET
 
 /*
- *  copy bitmap changes to screen memory for ldepth 0 screen
+ *  copy bitmap changes to screen memory for ldepth 0 screen.
  *  reverse the bits since the screen is big-endian
  *  and the bitmaps are little.
  */
 TEXT	l0update(SB),$0
-	XORL	AX,AX
 	MOVL	len+8(FP),CX
+	SHRL	$1,CX
 	MOVL	from+4(FP),SI
 	MOVL	to+0(FP),DI
+	XORL	AX,AX
 l00:
-	MOVB	-1(SI)(CX*1),AL
-	MOVB	revtab0(SB)(AX*1),AL
-	MOVB	AL,-1(DI)(CX*1)
+	MOVW	-2(SI)(CX*2),DX
+	MOVB	DH,AL
+	MOVB	revtab0(SB)(AX*1),BX
+	SHLL	$8,BX
+	MOVB	DL,AL
+	ORB	revtab0(SB)(AX*1),BX
+	MOVW	BX,-2(DI)(CX*2)
 	LOOP	l00
 	RET
 
