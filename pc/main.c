@@ -227,7 +227,7 @@ confinit(void)
 void
 matherror(Ureg *ur)
 {
-	postnote(u->p, 1, "math: 837 error", 0);
+	pexit("Math error", 0);
 }
 
 /*
@@ -247,7 +247,7 @@ mathemu(Ureg *ur)
 		break;
 	case FPactive:
 print("emu actv 0x%lux\n", getcr0());
-		postnote(u->p, 1, "math: emulation", 0);
+		pexit("Math emu", 0);
 		break;
 	}
 }
@@ -258,7 +258,7 @@ print("emu actv 0x%lux\n", getcr0());
 void
 mathover(Ureg *ur)
 {
-	postnote(u->p, 1, "math: segment overrun", 0);
+	pexit("Math overrun", 0);
 }
 
 void

@@ -19,8 +19,9 @@ char 	bootdevice;
 int	authenticated;
 
 char	bootline[64];
-char	password[32];
-char	username[32];
+char	bootuser[NAMELEN];
+char	password[NAMELEN];
+char	username[NAMELEN];
 char	sys[NAMELEN];
 char	buf[4*1024];
 
@@ -44,7 +45,7 @@ void	kill(int);
 void	passwd(void);
 int	authenticate(int);
 void	termtype(char*);
-void	userpasswd(void);
+void	setuser(char*);
 int	fileserver(void);
 int	inconctl(void);
 int	asyncctl(char*);
@@ -77,8 +78,12 @@ main(int argc, char *argv[])
 	 */
 	if(!authenticated){
 		strcpy(username, "none");
-		userpasswd();
+		outin("user", username, sizeof(username));
+		passwd();
+	} else {
+		strcpy(username, bootuser);
 	}
+	setuser(username);
 
 	/*
 	 *  get the control channel for the network
@@ -161,6 +166,11 @@ bootparams(void)
 		read(f, &bootdevice, 1);
 		close(f);
 	}
+	f = open("#e/bootuser", OREAD);
+	if(f >= 0){
+		read(f, &bootuser, sizeof(bootuser));
+		close(f);
+	}
 	f = open("#e/bootserver", OREAD);
 	if(f >= 0){
 		read(f, sys, sizeof(sys));
@@ -196,12 +206,9 @@ termtype(char *t)
  *  boot rom didn't authenticate
  */
 void
-userpasswd(void)
+setuser(char *name)
 {
 	int fd;
-
-	outin("user", username, sizeof(username));
-	passwd();
 
 	/*
 	 *  set user id

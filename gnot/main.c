@@ -122,13 +122,13 @@ init0(void)
 	u->dot = clone(u->slash, 0);
 	if(!waserror()){
 		c = namec("#e/bootuser", Acreate, OWRITE, 0600);
-		(*devtab[c->type].write)(c, bootuser, 64, 0);
+		(*devtab[c->type].write)(c, bootuser, strlen(bootuser), 0);
 		close(c);
 		c = namec("#e/bootline", Acreate, OWRITE, 0600);
 		(*devtab[c->type].write)(c, bootline, 64, 0);
 		close(c);
 		c = namec("#e/bootserver", Acreate, OWRITE, 0600);
-		(*devtab[c->type].write)(c, bootserver, 64, 0);
+		(*devtab[c->type].write)(c, bootserver, strlen(bootuser), 0);
 		close(c);
 		c = namec("#e/bootdevice", Acreate, OWRITE, 0600);
 		(*devtab[c->type].write)(c, bootdevice, 2, 0);
