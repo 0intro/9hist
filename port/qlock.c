@@ -28,6 +28,8 @@ rwstats.qlock++;
 rwstats.qlockq++;
 	p = q->tail;
 	mp = up;
+	if(mp == nil)
+		panic("qlock");
 	if(p == 0)
 		q->head = mp;
 	else
@@ -90,6 +92,8 @@ rwstats.rlock++;
 rwstats.rlockq++;
 	p = q->tail;
 	mp = up;
+	if(mp == nil)
+		panic("rlock");
 	if(p == 0)
 		q->head = mp;
 	else
@@ -142,6 +146,8 @@ rwstats.wlock++;
 rwstats.wlockq++;
 	p = q->tail;
 	mp = up;
+	if(mp == nil)
+		panic("wlock");
 	if(p == nil)
 		q->head = mp;
 	else
