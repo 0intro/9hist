@@ -624,6 +624,24 @@ uartclock(void)
 }
 
 Dirtab *ns16552dir;
+int ndir;
+
+static void
+setlength(int i)
+{
+	Uart *p;
+
+	if(i > 0){
+		p = uart[i];
+		if(p && p->opens && p->iq)
+			ns16552dir[3*i].length = qlen(p->iq);
+	} else for(i = 0; i < nuart; i++){
+		p = uart[i];
+		if(p && p->opens && p->iq)
+			ns16552dir[3*i].length = qlen(p->iq);
+	}
+		
+}
 
 /*
  *  all uarts must be ns16552setup() by this point or inside of ns16552install()
@@ -636,17 +654,18 @@ ns16552reset(void)
 
 	ns16552install();	/* architecture specific */
 
-	ns16552dir = xalloc(3 * nuart * sizeof(Dirtab));
+	ndir = 3*nuart;
+	ns16552dir = xalloc(ndir * sizeof(Dirtab));
 	dp = ns16552dir;
 	for(i = 0; i < nuart; i++){
 		/* 3 directory entries per port */
 		sprint(dp->name, "eia%d", i);
 		dp->qid.path = NETQID(i, Ndataqid);
-		dp->perm = 0666;
+		dp->perm = 0660;
 		dp++;
 		sprint(dp->name, "eia%dctl", i);
 		dp->qid.path = NETQID(i, Nctlqid);
-		dp->perm = 0666;
+		dp->perm = 0660;
 		dp++;
 		sprint(dp->name, "eia%dstat", i);
 		dp->qid.path = NETQID(i, Nstatqid);
@@ -675,27 +694,15 @@ ns16552clone(Chan *c, Chan *nc)
 int
 ns16552walk(Chan *c, char *name)
 {
-	return devwalk(c, name, ns16552dir, 3*nuart, devgen);
+	return devwalk(c, name, ns16552dir, ndir, devgen);
 }
 
 void
 ns16552stat(Chan *c, char *dp)
 {
-	int i;
-	Uart *p;
-	Dir dir;
-
-	i = NETID(c->qid.path);
-	switch(NETTYPE(c->qid.path)){
-	case Ndataqid:
-		p = uart[i];
-		devdir(c, c->qid, ns16552dir[3*i].name, qlen(p->iq), eve, 0660, &dir);
-		convD2M(&dir, dp);
-		break;
-	default:
-		devstat(c, dp, ns16552dir, 3*nuart, devgen);
-		break;
-	}
+	if(NETTYPE(c->qid.path) == Ndataqid)
+		setlength(NETID(c->qid.path));
+	devstat(c, dp, ns16552dir, ndir, devgen);
 }
 
 Chan*
@@ -703,12 +710,11 @@ ns16552open(Chan *c, int omode)
 {
 	Uart *p;
 
-	if(c->qid.path & CHDIR){
-		if(omode != OREAD)
-			error(Ebadarg);
-	} else if(NETTYPE(c->qid.path) == Nstatqid){
-		;
-	} else {
+	c = devopen(c, omode, ns16552dir, ndir, devgen);
+
+	switch(NETTYPE(c->qid.path)){
+	case Nctlqid:
+	case Ndataqid:
 		p = uart[NETID(c->qid.path)];
 		qlock(p);
 		p->opens++;
@@ -718,9 +724,6 @@ ns16552open(Chan *c, int omode)
 		qunlock(p);
 	}
 
-	c->mode = omode&~OTRUNC;
-	c->flag |= COPEN;
-	c->offset = 0;
 	return c;
 }
 
@@ -792,8 +795,10 @@ ns16552read(Chan *c, void *buf, long n, ulong offset)
 {
 	Uart *p;
 
-	if(c->qid.path & CHDIR)
-		return devdirread(c, buf, n, ns16552dir, 3*nuart, devgen);
+	if(c->qid.path & CHDIR){
+		setlength(-1);
+		return devdirread(c, buf, n, ns16552dir, ndir, devgen);
+	}
 
 	p = uart[NETID(c->qid.path)];
 	switch(NETTYPE(c->qid.path)){
@@ -925,6 +930,18 @@ ns16552remove(Chan *c)
 void
 ns16552wstat(Chan *c, char *dp)
 {
-	USED(c, dp);
-	error(Eperm);
+	Dir d;
+	Dirtab *dt;
+
+	if(!iseve())
+		error(Eperm);
+	if(CHDIR & c->qid.path)
+		error(Eperm);
+	if(NETTYPE(c->qid.path) == Nstatqid)
+		error(Eperm);
+
+	dt = &ns16552dir[3 * NETID(c->qid.path)];
+	convM2D(dp, &d);
+	d.mode &= 0x666;
+	dt[0].perm = dt[1].perm = d.mode;
 }

@@ -206,14 +206,14 @@ static int	cmddone(void*);
 void Xdelay(int);
 
 Dirtab floppydir[]={
-	"fd0disk",		{Qdata + 0},	0,	0666,
-	"fd0ctl",		{Qctl + 0},	0,	0666,
-	"fd1disk",		{Qdata + 1},	0,	0666,
-	"fd1ctl",		{Qctl + 1},	0,	0666,
-	"fd2disk",		{Qdata + 2},	0,	0666,
-	"fd2ctl",		{Qctl + 2},	0,	0666,
-	"fd3disk",		{Qdata + 3},	0,	0666,
-	"fd3ctl",		{Qctl + 3},	0,	0666,
+	"fd0disk",		{Qdata + 0},	0,	0660,
+	"fd0ctl",		{Qctl + 0},	0,	0660,
+	"fd1disk",		{Qdata + 1},	0,	0660,
+	"fd1ctl",		{Qctl + 1},	0,	0660,
+	"fd2disk",		{Qdata + 2},	0,	0660,
+	"fd2ctl",		{Qctl + 2},	0,	0660,
+	"fd3disk",		{Qdata + 3},	0,	0660,
+	"fd3ctl",		{Qctl + 3},	0,	0660,
 };
 #define NFDIR	2	/* directory entries/drive */
 
@@ -374,8 +374,18 @@ floppyremove(Chan *c)
 void
 floppywstat(Chan *c, char *dp)
 {
-	USED(c, dp);
-	error(Eperm);
+	Dirtab *dt;
+	Dir d;
+
+	if(!iseve())
+		error(Eperm);
+	if(CHDIR & c->qid.path)
+		error(Eperm);
+
+	convM2D(dp, &d);
+	d.mode &= 0x666;
+	dt = &floppydir[2 * (c->qid.path & ~Qmask)];
+	dt[0].perm = dt[1].perm = d.mode;
 }
 
 static void
