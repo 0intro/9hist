@@ -839,11 +839,13 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 				error(Ebadblt);
 			q0 = GLONG(p+1);
 			q1 = GLONG(p+5);
-			for(i=0; i<bit.nsubfont; i++){
-				f = bit.subfont[i];
-				if(f && f->qid[0]==q0 && f->qid[1]==q1)
-					goto sfcachefound;
-			}
+			i = 0;
+			if(q0 != ~0)
+				for(; i<bit.nsubfont; i++){
+					f = bit.subfont[i];
+					if(f && f->qid[0]==q0 && f->qid[1]==q1)
+						goto sfcachefound;
+				}
 			error(Esfnotcached);
 
 		sfcachefound:

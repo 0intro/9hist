@@ -125,6 +125,32 @@ TEXT	spllo(SB), $0
 	NOOP
 	RET
 
+TEXT	muxlock(SB),$0
+
+	MOVW	R1, R2		/* sbsem */
+	MOVW	4(FP), R3	/* lk->val */
+
+	MOVW	M(STATUS), R5	/* splhi */
+	AND	$~IEC, R5, R4
+	MOVW	R4, M(STATUS)
+
+	MOVW	0(R2),R4	/* grab sbsem */
+	AND	$1, R4
+	BNE	R4, f1
+	MOVW	0(R3),R4
+	BNE	R4, f0
+
+	MOVW	$1, R1
+	MOVW	R1, 0(R3)	/* lk->val = 1 */
+	MOVW	R0, 0(R2)	/* *sbsem = 0 */
+	MOVW	R5, M(STATUS)	/* splx */
+	RET
+
+f0:	MOVW	R0, 0(R2)	/* *sbsem = 0 */
+f1:	MOVW	R5, M(STATUS)	/* splx */
+	MOVW	R0, R1		/* return 0 */
+	RET
+
 TEXT	spldone(SB), $0
 
 	RET

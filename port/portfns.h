@@ -5,6 +5,7 @@ Image*		attachimage(int, Chan*, ulong, ulong);
 int		blen(Block *);
 int		bround(Block *, int);
 void		buzz(int, int);
+void		cachedel(Image*, ulong);
 void		cachepage(Page*, Image*);
 int		cangetc(void*);
 int		canlock(Lock*);

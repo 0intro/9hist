@@ -37,6 +37,7 @@ void	lanceparity(void);
 void	lancesetup(Lance*);
 void	launchinit(void);
 void	launch(int);
+int	muxlock(int*, int*);
 void	newstart(void);
 int	newtlbpid(Proc*);
 void	novme(int);

@@ -193,12 +193,14 @@ duppage(Page *p)				/* Always call with p locked */
 {
 	Page *np;
 
-	if(p->image == &swapimage)
+	/* No dup for swap pages */
+	if(p->image == &swapimage) {
+		uncachepage(p);	
 		return;
+	}
 
 	lock(&palloc);
-
-	/* No freelist cache when memory is very low, No dup for swap pages */
+	/* No freelist cache when memory is very low */
 	if(palloc.freecount < swapalloc.highwater) {
 		unlock(&palloc);
 		uncachepage(p);	
@@ -285,6 +287,23 @@ cachepage(Page *p, Image *i)
 	l = &pghash(p);
 	p->hash = *l;
 	*l = p;
+	unlock(&palloc.hashlock);
+}
+
+void
+cachedel(Image *i, ulong daddr)
+{
+	Page *f, **l;
+
+	lock(&palloc.hashlock);
+	l = &palloc.hash[PGHFUN(i, daddr)];
+	for(f = *l; f; f = f->hash) {
+		if(f->image == i && f->daddr == daddr) {
+			*l = f->hash;
+			break;
+		}
+		l = &f->hash;
+	}
 	unlock(&palloc.hashlock);
 }
 

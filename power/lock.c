@@ -7,8 +7,8 @@
 #include "../port/error.h"
 
 /*
- * The hardware semaphores are strange.  64 per page, replicated 16 times
- * per page, 1024 pages of them.  Only the low bit is meaningful.
+ * The hardware semaphores are strange.  Only 64 per page can be used,
+ * 1024 pages of them.  Only the low bit is meaningful.
  * Reading an unset semaphore sets the semaphore and returns the old value.
  * Writing a semaphore sets the value, so writing 0 resets (clears) the semaphore.
  */
@@ -28,20 +28,25 @@ struct
 }semalloc;
 
 Page lkpgheader[NSEMPG];
-#define lhash(laddr)	((int)laddr>>2)&(((NSEMPG-ULOCKPG)*(BY2PG>>2))-1)
+#define lhash(laddr)	((int)laddr>>2)&(((NSEMPG-ULOCKPG)*(BY2PG>>2))-1)&~0x3c0
 
 void
 lockinit(void)
 {
-	memset(semalloc.bmap, 0, sizeof(semalloc.bmap));
+	int *sbsem, h, i;
+
 	/*
 	 * Initialise the system semaphore hardware
 	 */
-	memset(SBSEM, 0, (NSEMPG-ULOCKPG)*BY2PG);
+	for(i = 0; i < (NSEMPG-ULOCKPG)*BY2PG; i += 4) {
+		h = lhash(i);
+		sbsem = (int*)SBSEM+h;
+		*sbsem = 0;
+	}
 	semalloc.ulockpg = ULOCKPG;
 }
 
-/* Moral equivalent of newpage for pages of hardware locks */
+/* equivalent of newpage for pages of hardware locks */
 Page*
 lkpage(ulong va)
 {
@@ -56,9 +61,9 @@ lkpage(ulong va)
 		return 0;
 	}
 	top = &semalloc.bmap[NSEMPG];
-	for(p = semalloc.bmap; *p && p < top; p++)
+	for(p = semalloc.bmap; p < top && *p; p++)
 		;
-	if(p == top)
+	if(p >= top)
 		panic("lkpage");
 
 	*p = 1;
@@ -90,28 +95,16 @@ lkpgfree(Page *pg)
 void
 lock(Lock *lk)
 {
-	int *hwsem;
-	int i, hash;
+	int *hwsem, hash;
 
 	hash = lhash(lk);
 	hwsem = (int*)SBSEM+hash;
 
-	i = 1000000;
 	for(;;) {
-		if((*hwsem & 1) == 0) {
-			if(lk->val)
-				*hwsem = 0;
-			else {
-				lk->val = 1;
-				*hwsem = 0;
-				lk->pc = getcallerpc(lk);
-				return;
-			}
-		}
-		while(lk->val && i)
-			i--;
-		if(i <= 0)
-			break;
+		if(muxlock(hwsem, &lk->val))
+			return;
+		while(lk->val)
+			;
 	}
 	print("lock loop %lux pc %lux held by pc %lux\n", lk, getcallerpc(lk), lk->pc);
 	dumpstack();
@@ -120,26 +113,10 @@ lock(Lock *lk)
 int
 canlock(Lock *lk)
 {
-	int *hwsem;
-	int i, hash;
+	int hash;
 
 	hash = lhash(lk);
-	hwsem = (int*)SBSEM+hash;
-
-	for(;;) {
-		if((*hwsem & 1) == 0) {
-			if(lk->val)
-				*hwsem = 0;
-			else {
-				lk->val = 1;
-				*hwsem = 0;
-				lk->pc = getcallerpc(lk);
-				return 1;
-			}
-		}
-		if(lk->val)
-			return 0;
-	}
+	return muxlock((int*)SBSEM+hash, &lk->val);
 }
 
 void

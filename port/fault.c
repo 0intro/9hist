@@ -5,8 +5,6 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
-#define DPRINT
-
 void	faulterror(char*);
 
 int
@@ -104,8 +102,7 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 		if(type == SG_SHARED)
 			goto done;
 
-		if(read)
-		if(conf.copymode == 0) {
+		if(read && conf.copymode == 0) {
 			mmuphys = PPN((*pg)->pa) | PTERONLY|PTEVALID;
 			(*pg)->modref |= PG_REF;
 			break;
@@ -258,6 +255,7 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 			cachepage(new, &swapimage);
 			putswap(*p);
 			*p = new;
+/*			print("l %lux %d\n", addr, daddr);*/
 		}
 		else
 			putpage(new);

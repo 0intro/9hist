@@ -253,7 +253,7 @@ pagepte(int type, Segment *s, Page **pg)
 	case SG_SHARED:
 	case SG_SHDATA:
 		daddr = newswap();
-
+		cachedel(&swapimage, daddr);
 		lock(outp);
 		outp->ref++;
 		uncachepage(outp);
