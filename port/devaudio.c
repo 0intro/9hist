@@ -812,6 +812,7 @@ audioinit(void)
 		(sbconf.irq==2)? 1:
 		(sbconf.irq==5)? 2:
 		(sbconf.irq==7)? 4:
+		(sbconf.irq==9)? 1:
 		(sbconf.irq==10)? 8:
 		0);
 	mxcmd(0x81, 1<<blaster.dma);	/* dma */
