@@ -8,10 +8,14 @@
 
 #include	"io.h"
 
-typedef struct Rtc Rtc;
+typedef struct Rtc	Rtc;
+
+enum {
+	Nbcd = 8	/* number of bcd bytes in the clock */
+};
+
 struct Rtc
 {
-	QLock;
 	int	sec;
 	int	min;
 	int	hour;
@@ -19,9 +23,10 @@ struct Rtc
 	int	mon;
 	int	year;
 };
-Rtc rtc;
 
-Dirtab rtcdir[]={
+QLock rtclock;	/* mutex on clock operations */
+
+static Dirtab rtcdir[]={
 	"rtc",		{1},	0,	0600,
 };
 
@@ -29,6 +34,10 @@ static uchar pattern[] =
 {
 	0xc5, 0x3a, 0xa3, 0x5c, 0xc5, 0x3a, 0xa3, 0x5c
 };
+
+ulong rtc2sec(Rtc*);
+void sec2rtc(ulong, Rtc*);
+int *yrsize(int);
 
 /*
  *  issue pattern recognition bits to nv ram to address the
@@ -51,7 +60,7 @@ rtcpattern(void)
 	 *  stuff the pattern recognition codes one bit at
 	 *  a time into *nv.
 	 */
-	for(i = 0; i < sizeof(pattern); i++){
+	for(i = 0; i < Nbcd; i++){
 		ch = pattern[i];
 		for (j = 0; j < 8; j++){
 			*nv = ch & 0x1;
@@ -103,6 +112,10 @@ rtcstat(Chan *c, char *dp)
 Chan*
 rtcopen(Chan *c, int omode)
 {
+	if(c->qid.path==1 && (omode&(OWRITE|OTRUNC))){
+		if(strcmp(u->p->pgrp->user, "bootes"))	/* BUG */
+			error(Eperm);
+	}
 	c->mode = openmode(omode);
 	c->flag |= COPEN;
 	c->offset = 0;
@@ -120,7 +133,7 @@ rtcclose(Chan *c)
 {
 }
 
-#define GETBCD(o) ((clock[o]&0xf) + 10*(clock[o]>>4))
+#define GETBCD(o) ((bcdclock[o]&0xf) + 10*(bcdclock[o]>>4))
 
 long	 
 rtcread(Chan *c, void *buf, long n)
@@ -128,29 +141,38 @@ rtcread(Chan *c, void *buf, long n)
 	int i,j;
 	uchar ch;
 	uchar *nv;
-	uchar clock[8];
+	uchar bcdclock[Nbcd];
 	char atime[64];
+	Rtc rtc;
 
-	if(c->offset!=0)
-		error(Ebadarg); 
 	nv = RTC;
 
 	/*
 	 *  set up the pattern for the clock
 	 */
-	qlock(&rtc);
+	qlock(&rtclock);
 	rtcpattern();
 
 	/*
 	 *  read out the clock one bit at a time
 	 */
-	for (i = 0; i < 8; i++){
+	for (i = 0; i < Nbcd; i++){
 		ch = 0;
 		for (j = 0; j < 8; j++)
 			ch |= ((*nv & 0x1) << j);
-		clock[i] = ch;
+		bcdclock[i] = ch;
 	}
-	qunlock(&rtc);
+	qunlock(&rtclock);
+
+	/*
+	 *  see if the clock oscillator is on
+	 */
+	if(bcdclock[4] & 0x20)
+		return 0;		/* nope, time is bogus */
+
+	/*
+	 *  convert from BCD
+	 */
 	rtc.sec = GETBCD(1);
 	rtc.min = GETBCD(2);
 	rtc.hour = GETBCD(3);
@@ -166,80 +188,68 @@ rtcread(Chan *c, void *buf, long n)
 	else
 		rtc.year += 1900;
 
-	sprint(atime, "%.2d:%.2d:%.2d %d/%d/%d", rtc.hour, rtc.min, rtc.sec,
-		rtc.mon, rtc.mday, rtc.year);
-	i = strlen(atime);
-
-	if(c->offset >= i)
-		return 0;
-	if(c->offset + n > i)
-		n = i - c->offset;
-	strncpy(buf, &atime[c->offset], n);
-
-	return n;
+	return readnum(c->offset, buf, n, rtc2sec(&rtc), 12);
 }
 
-static int perm[] =
-{
-	3, 2, 1, 6, 5, 7
-};
+#define PUTBCD(n,o) bcdclock[o] = (n % 10) | (((n / 10) % 10)<<4)
 
 long	 
 rtcwrite(Chan *c, void *buf, long n)
 {
+	Rtc rtc;
+	ulong secs;
 	int i,j;
 	uchar ch;
-	uchar clock[8];
+	uchar bcdclock[Nbcd];
 	uchar *nv;
-	char *cp;
+	char *cp, *ep;
 
 	if(c->offset!=0)
 		error(Ebadarg);
 
 	/*
-	 *  parse (most any separator will do)
+	 *  read the time
 	 */
-	ch = 0;
-	j = 0;
-	clock[0] = clock[4] = 0;
-	cp = buf;
-	for(i = 0; i < n; i++){
-		switch(*cp){
-		case ':': case ' ': case '\t': case '/': case '-':
-			clock[perm[j++]] = ch;
-			ch = 0;
+	cp = ep = buf;
+	ep += n;
+	while(cp < ep){
+		if(*cp>='0' && *cp<='9')
 			break;
-		case '0': case '1': case '2': case '3': case '4':
-		case '5': case '6': case '7': case '8': case '9':
-			ch = (ch<<4) | (*cp - '0');
-			break;
-		default:
-			error(Ebadarg);
-		}
 		cp++;
 	}
-	clock[perm[j++]] = ch;
-	if(j != 6)
-		error(Ebadarg);
+	secs = strtoul(cp, 0, 0);
+
+	/*
+	 *  convert to bcd
+	 */
+	sec2rtc(secs, &rtc);
+	bcdclock[0] = bcdclock[4] = 0;
+	PUTBCD(rtc.sec, 1);
+	PUTBCD(rtc.min, 2);
+	PUTBCD(rtc.hour, 3);
+	PUTBCD(rtc.mday, 5);
+	PUTBCD(rtc.mon, 6);
+	PUTBCD(rtc.year, 7);
 
 	/*
 	 *  set up the pattern for the clock
 	 */
-	qlock(&rtc);
+	qlock(&rtclock);
 	rtcpattern();
 
 	/*
 	 *  write the clock one bit at a time
 	 */
 	nv = RTC;
-	for (i = 0; i < 8; i++){
-		ch = clock[i];
+	for (i = 0; i < Nbcd; i++){
+		ch = bcdclock[i];
 		for (j = 0; j < 8; j++){
 			*nv = ch & 1;
 			ch >>= 1;
 		}
 	}
-	qunlock(&rtc);
+	qunlock(&rtclock);
+
 	return n;
 }
 
@@ -255,45 +265,78 @@ rtcwstat(Chan *c, char *dp)
 	error(Eperm);
 }
 
-#define SEC2MIN 60
-#define SEC2HOUR (60*SEC2MIN)
-#define SEC2DAY (24*SEC2HOUR)
-#define SEC2YR (365*SEC2DAY)
+#define SEC2MIN 60L
+#define SEC2HOUR (60L*SEC2MIN)
+#define SEC2DAY (24L*SEC2HOUR)
 
-static	char	dmsize[12] =
+/*
+ *  days per month plus days/year
+ */
+static	int	dmsize[] =
 {
-	31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31
+	365, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31
 };
+static	int	ldmsize[] =
+{
+	366, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31
+};
+
+/*
+ *  return the days/month for the given year
+ */
+int *
+yrsize(int yr)
+{
+	if((yr % 4) == 0)
+		return ldmsize;
+	else
+		return dmsize;
+}
 
 /*
  *  compute seconds since Jan 1 1970
  */
 ulong
-rtc2sec(void)
+rtc2sec(Rtc *rtc)
 {
 	ulong secs;
 	int i;
+	int *d2m;
 
-	for(i = 1970; i < rtc.year; i++)
-		secs += dysize(i);
-	for(i = 0; i < rtc.mon-1; i++)
-		secs += dmsize[i] * SEC2DAY;
-	if(dysize(rtc.year)==366 && rtc.mon>2)
-		secs += SEC2DAY;
-	secs += (rtc.mday-1) * SEC2DAY;
-	secs += rtc.hour * SEC2HOUR;
-	secs += rtc.min * SEC2MIN;
-	secs += rtc.sec;
+	secs = 0;
+
+	/*
+	 *  seconds per year
+	 */
+	for(i = 1970; i < rtc->year; i++){
+		d2m = yrsize(i);
+		secs += d2m[0] * SEC2DAY;
+	}
+
+	/*
+	 *  seconds per month
+	 */
+	d2m = yrsize(rtc->year);
+	for(i = 1; i < rtc->mon; i++)
+		secs += d2m[i] * SEC2DAY;
+
+	secs += (rtc->mday-1) * SEC2DAY;
+	secs += rtc->hour * SEC2HOUR;
+	secs += rtc->min * SEC2MIN;
+	secs += rtc->sec;
+
 	return secs;
 }
 
 /*
  *  compute rtc from seconds since Jan 1 1970
  */
-sec2rtc(ulong secs)
+void
+sec2rtc(ulong secs, Rtc *rtc)
 {
-	int d0, d1;
+	int d;
 	long hms, day;
+	int *d2m;
 
 	/*
 	 * break initial number into days
@@ -308,45 +351,31 @@ sec2rtc(ulong secs)
 	/*
 	 * generate hours:minutes:seconds
 	 */
-	rtc.sec = hms % SEC2MIN;
-	d1 = hms / SEC2MIN;
-	rtc.min = d1 % SEC2MIN;
-	d1 /= SEC2MIN;
-	rtc.hour = d1;
+	rtc->sec = hms % 60;
+	d = hms / 60;
+	rtc->min = d % 60;
+	d /= 60;
+	rtc->hour = d;
 
 	/*
 	 * year number
 	 */
 	if(day >= 0)
-		for(d1 = 70; day >= dysize(d1); d1++)
-			day -= dysize(d1);
+		for(d = 1970; day >= *yrsize(d); d++)
+			day -= *yrsize(d);
 	else
-		for (d1 = 70; day < 0; d1--)
-			day += dysize(d1-1);
-	rtc.year = d1;
+		for (d = 1970; day < 0; d--)
+			day += *yrsize(d-1);
+	rtc->year = d;
 
 	/*
 	 * generate month
 	 */
-	if(dysize(d1) == 366)
-		dmsize[1] = 29;
-	for(d1 = 0; d0 >= dmsize[d1]; d1++)
-		d0 -= dmsize[d1];
-	dmsize[1] = 28;
-	rtc.mday = d0 + 1;
-	rtc.mon = d1;
+	d2m = yrsize(rtc->year);
+	for(d = 1; day >= d2m[d]; d++)
+		day -= d2m[d];
+	rtc->mday = day + 1;
+	rtc->mon = d;
+
 	return;
 }
-
-/*
- *  days to year
- */
-static
-dysize(int y)
-{
-
-	if((y%4) == 0)
-		return 366;
-	return 365;
-}
-

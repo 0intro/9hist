@@ -37,6 +37,7 @@ struct Mntbuf
 {
 	Mntbuf	*next;
 	char	buf[BUFSIZE];
+	int	n;
 };
 
 struct
@@ -665,6 +666,20 @@ mntreadreply(void *a)
 	return ((Mnthdr *)a)->readreply;
 }
 
+/*
+ *  print out first few bytes of the message
+ */
+dumpmsg(Mntbuf *mb)
+{
+	int i;
+	char *x;
+
+	x = mb->buf;
+	for(i = 0; i < mb->n; i++)
+		print("%.2ux ", *x++);
+	print("\n");
+}
+
 void
 mntxmit(Mnt *m, Mnthdr *mh)
 {
@@ -777,8 +792,10 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		mh->mbr = mballoc();
 		n = (*devtab[q->msg->type].read)(q->msg, mh->mbr->buf, BUFSIZE);
 		poperror();		/* 3 */
+		mh->mbr->n = n;
 		if(convM2S(mh->mbr->buf, &mh->rhdr, n) == 0){
 			print("bad reply message\n");
+			dumpmsg(mh->mbr);
 			mnterrdequeue(m, mh);
 			error(Ebadmsg);
 		}
@@ -806,6 +823,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		 */
 		if(tag<0 || tag>=conf.nmnthdr){
 			print("unknown tag %d\n", tag);
+			dumpmsg(mh->mbr);
 			goto Read;
 		}
 		w = &mnthdralloc.arena[tag];
@@ -853,6 +871,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		error(Eshutdown);
 	}else if(mh->rhdr.type != mh->thdr.type+1){
 		print("bad type %d not %d in mntxmit\n", mh->rhdr.type, mh->thdr.type+1);
+		dumpmsg(mh->mbr);
 		error(Ebadmsg);
 	}
 	/*

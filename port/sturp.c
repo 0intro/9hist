@@ -33,9 +33,9 @@ struct urpstat {
 } urpstat;
 
 struct Urp {
-	Lock;
+	QLock;
 	short	state;		/* flags */
-	Rendez	r;		/* process waiting for close */
+	Rendez	r;		/* process waiting for output to finish */
 
 	/* input */
 	QLock	ack;		/* ack lock */
@@ -59,9 +59,13 @@ struct Urp {
 	QLock	xl[8];
 	ulong	timer;		/* timeout for xmit */
 	int	rexmit;
-
-	int	kstarted;
 };
+Urp	*urp;
+
+Rendez	urpkr;
+QLock	urpkl;
+int	urpkstarted;
+
 #define WINDOW(u) ((u)->unechoed>(u)->next ? (u)->unechoed+(u)->maxout-(u)->next-8 :\
 			(u)->unechoed+(u)->maxout-(u)->next)
 #define IN(x, f, n) (f<=n ? (x>=f && x<n) : (x<n || x>=f))
@@ -96,8 +100,6 @@ struct Urp {
 #define	OPEN		0x8
 #define CLOSING		0x10
 
-Urp	*urp;
-
 /*
  *  predeclared
  */
@@ -117,7 +119,6 @@ static void	sendrej(Urp*);
 static void	initoutput(Urp*, int);
 static void	initinput(Urp*, int);
 static void	urpkproc(void *arg);
-static void	urptimer(Alarm*);
 static void	urpvomit(char*, Urp*);
 
 Qinfo urpinfo =
@@ -134,7 +135,6 @@ static void
 urpreset(void)
 {
 	urp = (Urp *)ialloc(conf.nurp*sizeof(Urp), 0);
-	alarm(500, urptimer, 0);
 }
 
 static void
@@ -144,14 +144,23 @@ urpopen(Queue *q, Stream *s)
 	int i;
 	char name[128];
 
+	if(!urpkstarted){
+		qlock(&urpkl);
+		if(!urpkstarted){
+			urpkstarted = 1;
+			kproc("urpkproc", urpkproc, 0);
+		}
+		qunlock(&urpkl);
+	}
+
 	/*
 	 *  find a free urp structure
 	 */
 	for(up = urp; up < &urp[conf.nurp]; up++){
-		lock(up);
+		qlock(up);
 		if(up->state == 0)
 			break;
-		unlock(up);
+		qunlock(up);
 	}
 	if(up == &urp[conf.nurp]){
 		q->ptr = 0;
@@ -163,28 +172,14 @@ urpopen(Queue *q, Stream *s)
 	up->rq = q;
 	up->wq = q->other;
 	up->state = OPEN;
-	unlock(up);
+	qunlock(up);
 	initinput(up, 0);
 	initoutput(up, 0);
-
-	/*
-	 *  start the ack/(re)xmit process
-	 */
-	sprint(name, "urp%d", up - urp);
-	kproc(name, urpkproc, up);
 }
 
 /*
  *  Shut down the connection and kill off the kernel process
  */
-static int
-isdead(void *a)
-{
-	Urp *up;
-
-	up = (Urp *)a;
-	return up->kstarted==0;
-}
 static int
 isflushed(void *a)
 {
@@ -212,12 +207,7 @@ urpclose(Queue *q)
 	 */
 	up->state |= CLOSING;
 	tsleep(&up->r, isflushed, up, 2*60*1000);
-
-	/*
-	 *  tell kernel process to die
-	 */
 	up->state |= HUNGUP;
-	wakeup(&up->rq->r);
 
 	qlock(&up->xmit);
 	/*
@@ -238,16 +228,9 @@ urpclose(Queue *q)
 		}
 	qunlock(&up->xmit);
 
-	/*
-	 *  wait for kernel process to die
-	 */
-	while(up->kstarted)
-		sleep(&up->r, isdead, up);
-
-	lock(up);
+	qlock(up);
 	up->state = 0;
-	up->rq = 0;
-	unlock(up);
+	qunlock(up);
 }
 
 /*
@@ -260,7 +243,6 @@ urpctliput(Urp *up, Queue *q, Block *bp)
 	case M_HANGUP:
 		up->state |= HUNGUP;
 		wakeup(&up->r);
-		wakeup(&up->rq->r);
 		break;
 	}
 	PUTNEXT(q, bp);
@@ -319,7 +301,7 @@ urpciput(Queue *q, Block *bp)
 	case AINIT:
 		up->state &= ~INITING;
 		flushinput(up);
-		wakeup(&up->rq->r);
+		wakeup(&urpkr);
 		break;
 
 	case INIT0:
@@ -440,7 +422,7 @@ urpiput(Queue *q, Block *bp)
 	case AINIT:
 		up->state &= ~INITING;
 		flushinput(up);
-		wakeup(&up->rq->r);
+		wakeup(&urpkr);
 		break;
 
 	case INIT0:
@@ -873,7 +855,7 @@ rcvack(Urp *up, int msg)
 		break;
 	}
 
-	wakeup(&up->rq->r);
+	wakeup(&urpkr);
 }
 
 /*
@@ -950,69 +932,29 @@ initinput(Urp *up, int window)
 	flushinput(up);
 }
 
-/*
- *  do retransmissions etc
- */
-static int
-todo(void *arg)
-{
-	Urp *up;
-
-	up = (Urp *)arg;
-
-	return (up->state&INITING)
-	? NOW>up->timer					/* time to INIT1 */
-	: ((up->unechoed!=up->next && NOW>up->timer)	/* time to ENQ */
-	  || (WINDOW(up)>0 && (up->next!=up->nxb || up->wq->first)) /* open xmit window */
-	  || (up->iseq!=(up->lastecho&7) && !QFULL(up->rq->next))); /* time to ECHO */
-}
 static void
 urpkproc(void *arg)
 {
-	Urp *up;
+	Urp *up, *eup;
 
-	up = (Urp *)arg;
-	up->kstarted = 1;
+	if(waserror())
+		;
 
-	if(waserror()){
-		print("urpkproc error %ux\n", up);
-		up->kstarted = 0;
-		wakeup(&up->r);
-		return;
-	}
+	eup = urp + conf.nurp;
 	for(;;){
-		if(up->state & HUNGUP)
-			break;
-		if(!QFULL(up->rq->next))
-			sendack(up);
-		output(up);
-		sleep(&up->rq->r, todo, up);
-	}
-	up->kstarted = 0;
-	wakeup(&up->r);
-	poperror();
-}
-
-/*
- *  timer to wakeup urpkproc's for retransmissions
- */
-static void
-urptimer(Alarm *a)
-{
-	Urp *up;
-	Urp *last;
-
-	cancel(a);
-	alarm(500, urptimer, 0);
-	for(up = urp, last = &urp[conf.nurp]; up < last; up++){
-		if(up->state==0)
-			continue;
-		if(up->rq && canlock(up)){
-			if(up->rq && NOW>up->timer
-			   && ((up->state&INITING) || up->unechoed!=up->next))
-				wakeup(&up->rq->r);
-			unlock(up);
+		for(up = urp; up < eup; up++){
+			if(up->state==0 || (up->state&HUNGUP))
+				break;
+			if(!canqlock(up))
+				continue;
+			if(up->state==0 || (up->state&HUNGUP))
+				break;
+			if(up->iseq!=(up->lastecho&7) && !QFULL(up->rq->next))
+				sendack(up);
+			output(up);
+			qunlock(up);
 		}
+		tsleep(&urpkr, return0, 0, 1000);
 	}
 }
 
