@@ -458,40 +458,57 @@ found:
 	return 0;
 }
 
+void
+pteflush(Pte *pte, int s, int e)
+{
+	int i;
+	Page *p;
+
+	if(pte == 0)
+		return;
+
+	for(i = s; i < e; i++) {
+		p = pte->pages[i];
+		if(p != 0)
+			memset(p->cachectl, PG_TXTFLUSH, sizeof(p->cachectl));
+	}
+}
+
 long
 syssegflush(ulong *arg)
 {
 	Segment *s;
-	int i, j, len;
-	ulong soff;
-	Page *pg;
+	ulong addr, ua, l;
+	int chunk, ps, pe, len;
 
-	s = seg(up, arg[0], 1);
-	if(s == 0)
-		error(Ebadarg);
+	addr = arg[0];
+	len = arg[1];
 
-	s->flushme = 1;
+	while(len > 0) {
+		s = seg(u->p, addr, 1);
+		if(s == 0)
+			error(Ebadarg);
 
-	soff = arg[0]-s->base;
-	j = (soff&(PTEMAPMEM-1))/BY2PG;
-	len = arg[1]+BY2PG;
+		s->flushme = 1;
 
-	for(i = soff/PTEMAPMEM; len > 0 && i < SEGMAPSIZE; i++) {
-		if(s->map[i] == 0) {
-			len -= PTEMAPMEM;
-			continue;
-		}
-		while(len > 0 && j < PTEPERTAB) {
-			pg = s->map[i]->pages[j];
-			if(pg != 0) 
-				memset(pg->cachectl, PG_TXTFLUSH, sizeof pg->cachectl);
-			j++;
-			len -= BY2PG;
-		}
-		j = 0;
+		l = len;
+		if(addr+l > s->top)
+			l = s->top - addr;
+		ua = addr-s->base;
+		ps = ua&(PTEMAPMEM-1);
+		pe = (ua+l)&(PTEMAPMEM-1);
+		pe = (pe+BY2PG-1)&~(BY2PG-1);
+		if(pe > PTEMAPMEM)
+			pe = PTEMAPMEM;
+	
+		pteflush(s->map[ua/PTEMAPMEM], ps/BY2PG, pe/BY2PG);
+
+		chunk = pe-ps;
+		len -= chunk;
+		addr += chunk;
+
+		qunlock(&s->lk);
 	}
-
-	qunlock(&s->lk);
 	flushmmu();
 	return 0;
 }
