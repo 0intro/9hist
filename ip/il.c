@@ -57,7 +57,7 @@ enum
 	Iltickms 	= 50,		/* time base */
 	AckDelay	= 2*Iltickms,	/* max time twixt message rcvd & ack sent */
 	MaxTimeout 	= 4*Seconds,	/* max time between rexmit */
-	QueryTime	= 5*Seconds,	/* time between subsequent queries */
+	QueryTime	= 10*Seconds,	/* time between subsequent queries */
 	DeathTime	= 5*QueryTime,
 
 	MaxRexmit 	= 16,		/* max retransmissions before hangup */
@@ -601,6 +601,7 @@ _ilprocess(Conv *s, Ilhdr *h, Block *bp)
 	ic = (Ilcb*)s->ptcl;
 
 	ic->lastrecv = msec;
+	ic->querytime = msec + QueryTime;
 
 	switch(ic->state) {
 	default:
@@ -741,8 +742,10 @@ ilrexmit(Ilcb *ic)
 		nb = copyblock(ic->unacked, blocklen(ic->unacked));
 	qunlock(&ic->ackq);
 
-	if(nb == nil)
+	if(nb == nil){
+		print("ilrexmit: copyblock returns nil\n");
 		return;
+	}
 
 	h = (Ilhdr*)nb->rp;
 
@@ -1200,11 +1203,11 @@ ilnextqt(Ilcb *ic)
 
 	qlock(&ic->ackq);
 	x = ic->qtx;
-	ic->qt[x] = ic->next-1;	/* highest xmitted packet */
-	ic->qt[0] = ic->qt[x];	/* compatibility with old implementations */
 	if(++x > Nqt)
 		x = 1;
 	ic->qtx = x;
+	ic->qt[x] = ic->next-1;	/* highest xmitted packet */
+	ic->qt[0] = ic->qt[x];	/* compatibility with old implementations */
 	qunlock(&ic->ackq);
 
 	return x;

@@ -182,7 +182,8 @@ etheriq(Ether* ether, Block* bp, int freebp)
 	}
 
 	if(fx){
-		qpass(fx->in, bp);
+		if(qpass(fx->in, bp) < 0)
+			ether->soverflows++;
 		return 0;
 	}
 	if(freebp){
