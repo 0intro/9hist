@@ -20,18 +20,23 @@
 #define	LL(base, rt)		WORD	$((060<<26)|((base)<<21)|((rt)<<16))
 #define	SC(base, rt)		WORD	$((070<<26)|((base)<<21)|((rt)<<16))
 
+#define DBG(S)	CONST(0xa0001000, R20);CONST(S, R21);MOVW	R21,(R20)
+
 /*
  * Boot first processor
  */
 TEXT	start(SB), $-4
 
+DBG(0x55aa0000)
 	MOVW	$setR30(SB), R30
-	MOVW	$(CU1|INTR7|INTR6|INTR5|INTR4|INTR3|INTR2|INTR1|INTR0), R1
+	MOVW	$(BEV|DE|CU1|INTR7|INTR6|INTR5|INTR4|INTR3|INTR2|INTR1|INTR0), R1
 	MOVW	R1, M(STATUS)
 	WAIT
+DBG(0x55aa0001)
 
 	MOVW	$TLBROFF, R1
 	MOVW	R1, M(WIRED)
+DBG(0x55aa0002)
 
 	MOVW	$((0x1C<<7)|(1<<24)), R1
 	MOVW	R1, FCR31	/* permit only inexact and underflow */
@@ -53,14 +58,19 @@ TEXT	start(SB), $-4
 	MOVD	F24, F18
 	MOVD	F24, F20
 	MOVD	F24, F22
+DBG(0x55aa0003)
 
 	MOVW	$MACHADDR, R(MACH)
 	ADDU	$(BY2PG-4), R(MACH), SP
 	MOVW	$0, R(USER)
+DBG(0x55aa0010)
+MOVW R(MACH),4(R20)
 	MOVW	R0, 0(R(MACH))
+DBG(0x55aa0011)
 
 	MOVW	$edata(SB), R1
 	MOVW	$end(SB), R2
+DBG(0x55aa0004)
 
 clrbss:
 	MOVB	$0, (R1)

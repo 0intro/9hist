@@ -75,8 +75,8 @@
 #define INTR5		0x00002000
 #define INTR6		0x00004000
 #define INTR7		0x00008000
-#define ISC		0x00010000
-#define SWC		0x00020000
+#define DE		0x00010000
+#define BEV		0x00400000
 #define CU0		0x10000000
 #define CU1		0x20000000
 
@@ -162,7 +162,7 @@
 #define	TSTKTOP	(0xC0000000+USTKSIZE-BY2PG) /* top of temporary stack */
 #define	TSTKSIZ 100
 #define	KZERO	KSEG0			/* base of kernel address space */
-#define	KTZERO	(KZERO+0x20000)		/* first address in kernel text */
+#define	KTZERO	(KZERO+0x2000)		/* first address in kernel text */
 #define	USTKSIZE	(4*1024*1024)	/* size of user stack */
 #define globalmem(x)	(((ulong)x)&KZERO)	/* addresses valid in all contexts */
 /*
