@@ -539,7 +539,7 @@ setlport(Conv* c)
 }
 
 static void
-setladdrport(Conv* c, char* str)
+setladdrport(Conv* c, char* str, int nodefault)
 {
 	char *p;
 	uchar addr[IPaddrlen];
@@ -547,7 +547,10 @@ setladdrport(Conv* c, char* str)
 	p = strchr(str, '!');
 	if(p == nil) {
 		p = str;
-		c->laddr = 0;
+		if(nodefault)
+			setladdr(c);
+		else
+			c->laddr = 0;
 	}
 	else {
 		*p++ = 0;
@@ -946,8 +949,7 @@ Fsstdconnect(Conv *c, char *argv[], int argc)
 		p = setraddrport(c, argv[1]);
 		if(p != nil)
 			return p;
-		setladdr(c);
-		c->lport = atoi(argv[2]);
+		setladdrport(c, argv[2], 1);
 		break;
 	}
 	return nil;
@@ -960,7 +962,7 @@ Fsstdannounce(Conv* c, char* argv[], int argc)
 	default:
 		return "bad args to announce";
 	case 2:
-		setladdrport(c, argv[1]);
+		setladdrport(c, argv[1], 0);
 		break;
 	}
 	return nil;
