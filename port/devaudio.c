@@ -13,6 +13,7 @@
 
 #define	NPORT		(sizeof audiodir/sizeof(Dirtab))
 
+typedef struct	AQueue	AQueue;
 typedef struct	Buf	Buf;
 typedef struct	Level	Level;
 
@@ -58,7 +59,7 @@ struct	Buf
 	ulong	phys;
 	Buf*	next;
 };
-struct	Queue
+struct	AQueue
 {
 	Lock;
 	Buf*	first;
@@ -83,8 +84,8 @@ static	struct
 	int	minor;		/* SB16 minor version number */
 
 	Buf	buf[Nbuf];	/* buffers and queues */
-	Queue	empty;
-	Queue	full;
+	AQueue	empty;
+	AQueue	full;
 	Buf*	current;
 	Buf*	filling;
 } audio;
@@ -265,7 +266,7 @@ mxvolume(void)
 }
 
 static	Buf*
-getbuf(Queue *q)
+getbuf(AQueue *q)
 {
 	Buf *b;
 
@@ -279,7 +280,7 @@ getbuf(Queue *q)
 }
 
 static	void
-putbuf(Queue *q, Buf *b)
+putbuf(AQueue *q, Buf *b)
 {
 
 	ilock(q);
