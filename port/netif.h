@@ -69,6 +69,7 @@ struct Netif
 	int	frames;		/* framing errors */
 	int	overflows;	/* packet overflows */
 	int	buffs;		/* buffering errors */
+	int	soverflows;	/* software overflow */
 
 	/* routines for touching the hardware */
 	void	*arg;

@@ -110,7 +110,8 @@ etherrloop(Ether *ctlr, Etherpkt *pkt, long len, int tome)
 	ep = &ctlr->f[Ntypes];
 	for(fp = ctlr->f; fp < ep; fp++){
 		if((f = *fp) && ((tome && f->type==type) || f->type < 0))
-			qproduce(f->in, pkt->d, len);
+			if(qproduce(f->in, pkt->d, len) < 0)
+				ctlr->soverflows++;
 	}
 }
 

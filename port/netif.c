@@ -159,7 +159,7 @@ netifread(Netif *nif, Chan *c, void *a, long n, ulong offset)
 {
 	int i, j;
 	Netfile *f;
-	char buf[512];
+	char buf[1024];
 
 	if(c->qid.path&CHDIR)
 		return devdirread(c, a, n, (Dirtab*)nif, 0, netifgen);
@@ -175,6 +175,7 @@ netifread(Netif *nif, Chan *c, void *a, long n, ulong offset)
 		j += sprint(buf+j, "out: %d\n", nif->outpackets);
 		j += sprint(buf+j, "crc errs: %d\n", nif->crcs);
 		j += sprint(buf+j, "overflows: %d\n", nif->overflows);
+		j += sprint(buf+j, "soft overflows: %d\n", nif->soverflows);
 		j += sprint(buf+j, "framing errs: %d\n", nif->frames);
 		j += sprint(buf+j, "buffer errs: %d\n", nif->buffs);
 		j += sprint(buf+j, "output errs: %d\n", nif->oerrs);
