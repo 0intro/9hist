@@ -21,6 +21,8 @@ struct{
 	int	bwid;
 }out;
 
+Lock	screenlock;
+
 GBitmap	gscreen =
 {
 	(ulong*)((4*1024*1024-256*1024)|KZERO),	/* BUG */
@@ -47,12 +49,24 @@ screeninit(void)
 }
 
 void
+screenputnl(void)
+{
+	out.pos.x = MINX;
+	out.pos.y += defont0.height;
+	if(out.pos.y > gscreen.r.max.y-defont0.height)
+		out.pos.y = gscreen.r.min.y;
+	gbitblt(&gscreen, Pt(0, out.pos.y), &gscreen,
+	    Rect(0, out.pos.y, gscreen.r.max.x, out.pos.y+2*defont0.height), 0);
+}
+
+void
 screenputs(char *s, int n)
 {
 	Rune r;
 	int i;
 	char buf[4];
 
+	lock(&screenlock);
 	while(n > 0){
 		i = chartorune(&r, s);
 		if(i == 0){
@@ -64,29 +78,24 @@ screenputs(char *s, int n)
 		buf[i] = 0;
 		n -= i;
 		s += i;
-		if(r == '\n'){
-			out.pos.x = MINX;
-			out.pos.y += defont0.height;
-			if(out.pos.y > gscreen.r.max.y-defont0.height)
-				out.pos.y = gscreen.r.min.y;
-			gbitblt(&gscreen, Pt(0, out.pos.y), &gscreen,
-			    Rect(0, out.pos.y, gscreen.r.max.x, out.pos.y+2*defont0.height), 0);
-		}else if(r == '\t'){
+		if(r == '\n')
+			screenputnl();
+		else if(r == '\t'){
 			out.pos.x += (8-((out.pos.x-MINX)/out.bwid&7))*out.bwid;
 			if(out.pos.x >= gscreen.r.max.x)
-				screenputs("\n", 1);
+				screenputnl();
 		}else if(r == '\b'){
 			if(out.pos.x >= out.bwid+MINX){
 				out.pos.x -= out.bwid;
-				screenputs(" ", 1);
-				out.pos.x -= out.bwid;
+				gstring(&gscreen, out.pos, defont, " ", S);
 			}
 		}else{
 			if(out.pos.x >= gscreen.r.max.x-out.bwid)
-				screenputs("\n", 1);
+				screenputnl();
 			out.pos = gstring(&gscreen, out.pos, defont, buf, S);
 		}
 	}
+	unlock(&screenlock);
 }
 
 int

@@ -3,6 +3,7 @@ typedef	unsigned char	uchar;
 typedef unsigned long	ulong;
 typedef	long		vlong;
 typedef union Length	Length;
+typedef ushort		Rune;
 
 union Length
 {
