@@ -45,6 +45,7 @@ Medium ethermedium =
 	nil,			/* flushroute */
 	nil,			/* joinmulti */
 	nil,			/* leavemulti */
+	arpenter,		/* ares */
 	0,			/* don't unbind on last close */
 };
 
@@ -389,7 +390,7 @@ recvarp(Ipifc *ifc)
 		break;
 
 	case ARPREPLY:
-		arpenter(er->f->arp, ifc, V4, e->spa, e->sha, &ethermedium, 0);
+		arpenter(er->f, V4, e->spa, e->sha, sizeof(e->sha), 0);
 		break;
 
 	case ARPREQUEST:
@@ -410,7 +411,7 @@ recvarp(Ipifc *ifc)
 		}
 
 		/* refresh what we know about sender */
-		arpenter(er->f->arp, ifc, V4, e->spa, e->sha, &ethermedium, 1);
+		arpenter(er->f, V4, e->spa, e->sha, sizeof(e->sha), 1);
 
 		/* answer only requests for our address or systems we're proxying for */
 		v4tov6(ip, e->tpa);

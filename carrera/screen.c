@@ -531,7 +531,7 @@ setcursor(Cursor *curs)
 	Point org;
 	uchar ylow, yhigh, *p;
 	ulong spix, cpix, dpix;
-	ulong s[16], c[16];
+	ushort s[16], c[16];
 
 	for(i=0; i<16; i++){
 		p = (uchar*)&s[i];
@@ -548,8 +548,8 @@ setcursor(Cursor *curs)
 	org = addpt(Pt(32,32), curs->offset); 
 	for(y = 0; y < 16; y++)
 		for(x = 0; x < 16; x++) {
-			spix = (s[y]>>(31-(x&0x1F)))&1;
-			cpix = (c[y]>>(31-(x&0x1F)))&1;
+			spix = (s[y]>>(15-x))&1;
+			cpix = (c[y]>>(15-x))&1;
 			dpix = (spix<<1) | cpix;
 			/* point(&hwcursor, addpt(Pt(x,y), org), dpix, S), by hand */
 			*byteaddr(&hwcursor, Pt(x+org.x, y+org.y)) |= dpix<<(6-(2*((x+org.x)&3)));
@@ -594,7 +594,7 @@ cursoron(int dolock)
 		lock(&cursor);
 
 	p.x += 296;		/* adjusted by experiment */
-	p.y += 11;		/* adjusted by experiment */
+	p.y += 9;		/* adjusted by experiment */
 	d->cr1 = 03;
 	d->cr0 = 01;
 	d->cr2 = p.x&0xFF;

@@ -37,7 +37,7 @@ enum
 	MSL2		= 10,
 	MSPTICK		= 50,		/* Milliseconds per timer tick */
 	DEF_MSS		= 1024,		/* Default mean segment */
-	DEF_RTT		= 500,		/* Default round trip */
+	DEF_RTT		= 150,		/* Default round trip */
 	TCP_LISTEN	= 0,		/* Listen connection */
 	TCP_CONNECT	= 1,		/* Outgoing connection */
 
@@ -254,10 +254,10 @@ tcpsetstate(Conv *s, uchar newstate)
 	if(newstate == Established)
 		tpriv->tstats.tcpCurrEstab++;
 
-	/*
-	  print("%d/%d %s->%s\n", s->lport, s->rport,
-			tcpstates[oldstate], tcpstates[newstate]);
-	/**/
+	/**
+	print( "%d/%d %s->%s CurrEstab=%d\n", s->lport, s->rport,
+		tcpstates[oldstate], tcpstates[newstate], tpriv->tstats.tcpCurrEstab );
+	**/
 
 	tcb->state = newstate;
 
@@ -583,7 +583,6 @@ inittcpctl(Conv *s)
 	tcb->mss = tcp_mss;
 	tcb->ssthresh = 65535;
 	tcb->srtt = 0;
-	tcb->mdev = tcp_irtt << LOGDGAIN;
 
 	tcb->timer.start = tcp_irtt / MSPTICK;
 	tcb->timer.func = tcptimeout;
@@ -1962,24 +1961,27 @@ tcpctl(Conv* c, char** f, int n)
 int
 tcpstats(Proto *tcp, char *buf, int len)
 {
-	Tcpstats *tstats;
+	Tcppriv *tpriv;
 
-	tstats = tcp->priv;
+	tpriv = tcp->priv;
+
+
+
 	return snprint(buf, len, "%d %d %d %d %d %d %d %d %d %d %d %d %d %d",
-		tstats->tcpRtoAlgorithm,
-		tstats->tcpRtoMin,
-		tstats->tcpRtoMax,
-		tstats->tcpMaxConn,
-		tstats->tcpActiveOpens,
-		tstats->tcpPassiveOpens,
-		tstats->tcpAttemptFails,
-		tstats->tcpEstabResets,
-		tstats->tcpCurrEstab,
-		tstats->tcpInSegs,
-		tstats->tcpOutSegs,
-		tstats->tcpRetransSegs,
-		tstats->InErrs,
-		tstats->OutRsts);
+		tpriv->tstats.tcpRtoAlgorithm,
+		tpriv->tstats.tcpRtoMin,
+		tpriv->tstats.tcpRtoMax,
+		tpriv->tstats.tcpMaxConn,
+		tpriv->tstats.tcpActiveOpens,
+		tpriv->tstats.tcpPassiveOpens,
+		tpriv->tstats.tcpAttemptFails,
+		tpriv->tstats.tcpEstabResets,
+		tpriv->tstats.tcpCurrEstab,
+		tpriv->tstats.tcpInSegs,
+		tpriv->tstats.tcpOutSegs,
+		tpriv->tstats.tcpRetransSegs,
+		tpriv->tstats.InErrs,
+		tpriv->tstats.OutRsts);
 }
 
 void

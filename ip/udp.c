@@ -265,6 +265,7 @@ udpiput(Proto *udp, uchar *ia, Block *bp)
 		if(ptclcsum(bp, UDP_IPHDR, len+UDP_PHDRSIZE)) {
 			upriv->ustats.udpInErrors++;
 			netlog(f, Logudp, "udp: checksum error %I\n", raddr);
+			DPRINT("udp: checksum error %I\n", raddr);
 			freeblist(bp);
 			return;
 		}

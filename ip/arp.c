@@ -167,16 +167,38 @@ arpresolve(Arp *arp, Arpent *a, Medium *type, uchar *mac)
 }
 
 void
-arpenter(Arp *arp, Ipifc *ifc, int version, uchar *ip, uchar *mac, Medium *type, int refresh)
+arpenter(Fs *fs, int version, uchar *ip, uchar *mac, int n, int refresh)
 {
+	Arp *arp;
+	Route *r;
 	Arpent *a;
+	Ipifc *ifc;
+	Medium *type;
 	Block *bp, *next;
 	uchar v6ip[IPaddrlen];
 
-	if(version == V4){
+	arp = fs->arp;
+
+	if(n != 6) {
+print("arp: len = %d\n", n);
+		return;
+	}
+
+	if(version == V4) {
+		r = v4lookup(fs, ip);
 		v4tov6(v6ip, ip);
 		ip = v6ip;
 	}
+	else
+		r = v6lookup(fs, ip);
+
+	if(r == nil) {
+		print("arp: no route for entry\n");
+		return;
+	}
+
+	ifc = r->ifc;
+	type = ifc->m;
 
 	qlock(arp);
 	for(a = arp->hash[haship(ip)]; a; a = a->hash) {
@@ -225,14 +247,18 @@ arpenter(Arp *arp, Ipifc *ifc, int version, uchar *ip, uchar *mac, Medium *type,
 }
 
 int
-arpwrite(Arp *arp, char *s, int len)
+arpwrite(Fs *fs, char *s, int len)
 {
 	int n;
+	Route *r;
+	Arp *arp;
 	Block *bp;
 	Arpent *a;
+	Medium *m;
 	char *f[4], buf[256];
 	uchar ip[IPaddrlen], mac[MAClen];
-	Medium *m;
+
+	arp = fs->arp;
 
 	if(len == 0)
 		error(Ebadarp);
@@ -260,15 +286,31 @@ arpwrite(Arp *arp, char *s, int len)
 		}
 		memset(arp->hash, 0, sizeof(arp->hash));
 		qunlock(arp);
-	} else if(strcmp(f[0], "add") == 0){
-		if(n != 4)
+	} else if(strcmp(f[0], "add") == 0) {
+		switch(n) {
+		default:
+			error(Ebadarg);
+		case 3:
+			parseip(ip, f[1]);
+			r = v4lookup(fs, ip+IPv4off);
+			if(r == nil)
+				error("Destination unreachable");
+			m = r->ifc->m;
+			n = parsemac(mac, f[2], m->maclen);
+			break;
+		case 4:
+			m = ipfindmedium(f[1]);
+			if(m == nil)
+				error(Ebadarp);
+			parseip(ip, f[2]);
+			n = parsemac(mac, f[3], m->maclen);
+			break;
+		}
+
+		if(m->ares == nil)
 			error(Ebadarp);
-		m = ipfindmedium(f[1]);
-		if(m == nil)
-			error(Ebadarp);
-		parseip(ip, f[2]);
-		parsemac(mac, f[3], m->maclen);
-		arpenter(arp, nil, V6, ip, mac, m, 0);
+
+		m->ares(fs, V6, ip, mac, n, 0);
 	} else
 		error(Ebadarp);
 

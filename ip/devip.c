@@ -871,7 +871,7 @@ ipwrite(Chan* ch, char* a, long n, vlong)
 		x->kick(c, n);
 		break;
 	case Qarp:
-		return arpwrite(f->arp, a, n);
+		return arpwrite(f, a, n);
 	case Qiproute:
 		return routewrite(f, ch, a, n);
 	case Qlog:

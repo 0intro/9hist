@@ -381,7 +381,7 @@ parsecmd(char *p, int n)
 }
 
 /*
- *  parse a hex mac address 
+ *  parse a hex mac address
  */
 int
 parsemac(uchar *to, char *from, int len)
@@ -393,16 +393,17 @@ parsemac(uchar *to, char *from, int len)
 	p = from;
 	memset(to, 0, len);
 	for(i = 0; i < len; i++){
-		if(*p == 0)
-			return -1;
-		nip[0] = *p++;
-		if(*p == 0)
-			return -1;
-		nip[1] = *p++;
-		nip[2] = 0;
+		if(p[0] == '\0' || p[1] == '\0')
+			break;
+
+		nip[0] = p[0];
+		nip[1] = p[1];
+		nip[2] = '\0';
+		p += 2;
+
 		to[i] = strtoul(nip, 0, 16);
 		if(*p == ':')
 			p++;
 	}
-	return 0;
+	return i;
 }

@@ -135,11 +135,7 @@ ipifcbind(Conv *c, char **argv, int argc)
 	ifc->m = m;
 	ifc->minmtu = ifc->m->minmtu;
 	ifc->maxmtu = ifc->m->maxmtu;
-	if(ifc->m->unbindonclose == 0){
-		lock(ifc->conv);
-		ifc->conv->inuse++;
-		unlock(ifc->conv);
-	}
+	ifc->conv->inuse++;
 	ifc->ifcid++;
 
 	wunlock(ifc);
@@ -165,16 +161,11 @@ ipifcunbind(Ipifc *ifc)
 	wlock(ifc);
 
 	/* dissociate routes */
-	if(ifc->m != nil && ifc->m->unbindonclose == 0){
-		lock(ifc->conv);
-		ifc->conv->inuse--;
-		unlock(ifc->conv);
-	}
+	ifc->conv->inuse--;
 	ifc->ifcid++;
 
 	/* disassociate device */
-	if(ifc->m != nil && ifc->m->unbind)
-		(*ifc->m->unbind)(ifc);
+	(*ifc->m->unbind)(ifc);
 	memset(ifc->dev, 0, sizeof(ifc->dev));
 	ifc->arg = nil;
 
@@ -196,7 +187,6 @@ ipifcunbind(Ipifc *ifc)
 	ifc->m = nil;
 	wunlock(ifc);
 	poperror();
-
 	return nil;
 }
 
@@ -209,15 +199,15 @@ ipifcstate(Conv *c, char *state, int n)
 
 	ifc = (Ipifc*)c->ptcl;
 
-	m = snprint(state, n, "%-12.12s %-5d", ifc->dev, ifc->maxmtu);
-
 	rlock(ifc);
-	for(lifc = ifc->lifc; lifc; lifc = lifc->next)
+	m = 0;
+	for(lifc = ifc->lifc; lifc; lifc = lifc->next) {
+		m += snprint(state, n, "%-12.12s %-5d", ifc->dev, ifc->maxmtu);
 		m += snprint(state+m, n - m,
-			" %-20.20I %-20.20M %-20.20I %-7d %-7d %-7d %-7d",
+			" %-20.20I %-20.20M %-20.20I %-7d %-7d %-7d %-7d\n",
 				lifc->local, lifc->mask, lifc->remote,
 				ifc->in, ifc->out, ifc->inerr, ifc->outerr);
-	m += snprint(state+m, n - m, "\n");
+	}
 	runlock(ifc);
 	return m;
 }
@@ -483,9 +473,9 @@ ipifcrem(Ipifc *ifc, char **argv, int argc, int dolock)
 
 	/* remove the route for this logical interface */
 	if(isv4(ip))
-		v4delroute(f, lifc->remote+IPv4off, lifc->mask+IPv4off);
+		v4delroute(f, lifc->remote+IPv4off, lifc->mask+IPv4off, 1);
 	else
-		v6delroute(f, lifc->remote, lifc->mask);
+		v6delroute(f, lifc->remote, lifc->mask, 1);
 
 	free(lifc);
 
@@ -834,9 +824,9 @@ remselfcache(Fs *f, Ipifc *ifc, Iplifc *lifc, uchar *a)
 
 	/* remove from routing table */
 	if(isv4(a))
-		v4delroute(f, a+IPv4off, IPallbits+IPv4off);
+		v4delroute(f, a+IPv4off, IPallbits+IPv4off, 1);
 	else
-		v6delroute(f, a, IPallbits);
+		v6delroute(f, a, IPallbits, 1);
 	
 	/* no more links, remove from hash and free */
 	*l = p->next;

@@ -385,7 +385,7 @@ looknode(Route **cur, Route *r)
 }
 
 void
-v4delroute(Fs *f, uchar *a, uchar *mask)
+v4delroute(Fs *f, uchar *a, uchar *mask, int dolock)
 {
 	Route **r, *p;
 	Route rt;
@@ -399,7 +399,8 @@ v4delroute(Fs *f, uchar *a, uchar *mask)
 
 	eh = V4H(rt.v4.endaddress);
 	for(h=V4H(rt.v4.address); h<=eh; h++) {
-		wlock(&routelock);
+		if(dolock)
+			wlock(&routelock);
 		r = looknode(&f->v4root[h], &rt);
 		if(r) {
 			p = *r;
@@ -414,14 +415,15 @@ v4delroute(Fs *f, uchar *a, uchar *mask)
 				freeroute(p);
 			}
 		}
-		wunlock(&routelock);
+		if(dolock)
+			wunlock(&routelock);
 	}
 
 	ipifcremroute(f, Rv4, a, mask);
 }
 
 void
-v6delroute(Fs *f, uchar *a, uchar *mask)
+v6delroute(Fs *f, uchar *a, uchar *mask, int dolock)
 {
 	Route **r, *p;
 	Route rt;
@@ -438,7 +440,8 @@ v6delroute(Fs *f, uchar *a, uchar *mask)
 
 	eh = V6H(rt.v6.endaddress);
 	for(h=V6H(rt.v6.address); h<=eh; h++) {
-		wlock(&routelock);
+		if(dolock)
+			wlock(&routelock);
 		r = looknode(&f->v6root[h], &rt);
 		if(r) {
 			p = *r;
@@ -453,7 +456,8 @@ v6delroute(Fs *f, uchar *a, uchar *mask)
 				freeroute(p);
 			}
 		}
-		wunlock(&routelock);
+		if(dolock)
+			wunlock(&routelock);
 	}
 
 	ipifcremroute(f, 0, a, mask);
@@ -708,7 +712,7 @@ routeread(Fs *f, char *p, ulong offset, int n)
  *  this code is not in routeflush to reduce stack size
  */
 void
-delroute(Fs *f, Route *r)
+delroute(Fs *f, Route *r, int dolock)
 {
 	uchar addr[IPaddrlen];
 	uchar mask[IPaddrlen];
@@ -718,9 +722,9 @@ delroute(Fs *f, Route *r)
 
 	convroute(r, addr, mask, gate, t, &nifc);
 	if(r->type & Rv4)
-		v4delroute(f, addr+IPv4off, mask+IPv4off);
+		v4delroute(f, addr+IPv4off, mask+IPv4off, dolock);
 	else
-		v6delroute(f, addr, mask);
+		v6delroute(f, addr, mask, dolock);
 }
 
 /*
@@ -728,18 +732,19 @@ delroute(Fs *f, Route *r)
  *    returns 0 if nothing is deleted, 1 otherwise
  */
 int
-routeflush(Fs *f, Route *r)
+routeflush(Fs *f, Route *r, char *tag)
 {
 	if(r == nil)
 		return 0;
-	if(routeflush(f, r->mid))
+	if(routeflush(f, r->mid, tag))
 		return 1;
-	if(routeflush(f, r->left))
+	if(routeflush(f, r->left, tag))
 		return 1;
-	if(routeflush(f, r->right))
+	if(routeflush(f, r->right, tag))
 		return 1;
 	if((r->type & Rifc) == 0){
-		delroute(f, r);
+		if(tag == nil || strncmp(tag, r->tag, sizeof(r->tag)) == 0)
+			delroute(f, r, 0);
 		return 1;
 	}
 	return 0;
@@ -748,7 +753,7 @@ routeflush(Fs *f, Route *r)
 long
 routewrite(Fs *f, Chan *c, char *p, int n)
 {
-	int h;
+	int h, changed;
 	char *tag;
 	Cmdbuf *cb;
 	uchar addr[IPaddrlen];
@@ -762,23 +767,28 @@ routewrite(Fs *f, Chan *c, char *p, int n)
 	}
 
 	if(strcmp(cb->f[0], "flush") == 0){
-		wlock(&routelock);
+		tag = cb->f[1];
 		for(h = 0; h < nelem(f->v4root); h++)
-			while(routeflush(f, f->v4root[h]) == 1)
-				;
+			for(changed = 1; changed;){
+				wlock(&routelock);
+				changed = routeflush(f, f->v4root[h], tag);
+				wunlock(&routelock);
+			}
 		for(h = 0; h < nelem(f->v6root); h++)
-			while(routeflush(f, f->v6root[h]) == 1)
-				;
-		wunlock(&routelock);
+			for(changed = 1; changed;){
+				wlock(&routelock);
+				changed = routeflush(f, f->v6root[h], tag);
+				wunlock(&routelock);
+			}
 	} else if(strcmp(cb->f[0], "remove") == 0){
 		if(cb->nf < 3)
 			error(Ebadarg);
 		parseip(addr, cb->f[1]);
 		parseipmask(mask, cb->f[2]);
 		if(memcmp(addr, v4prefix, IPv4off) == 0)
-			v4delroute(f, addr+IPv4off, mask+IPv4off);
+			v4delroute(f, addr+IPv4off, mask+IPv4off, 1);
 		else
-			v6delroute(f, addr, mask);
+			v6delroute(f, addr, mask, 1);
 	} else if(strcmp(cb->f[0], "add") == 0){
 		if(cb->nf < 4)
 			error(Ebadarg);

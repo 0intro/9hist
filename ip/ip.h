@@ -125,6 +125,8 @@ struct Medium
 	void	(*joinmulti)(Ipifc *ifc, uchar *a, uchar *ia);
 	void	(*leavemulti)(Ipifc *ifc, uchar *a, uchar *ia);
 
+	void	(*ares)(Fs*, int, uchar*, uchar*, int, int);
+
 	int	unbindonclose;	/* if non-zero, unbind on last close */
 };
 
@@ -288,6 +290,9 @@ enum
 	Logigmp=	1<<12,
 	Logudpmsg=	1<<13,
 	Logipmsg=	1<<14,
+	Logrudp=	1<<15,
+	Logrudpmsg=	1<<16,
+
 };
 
 void	netloginit(Fs*);
@@ -363,8 +368,8 @@ struct Route
 };
 extern void	v4addroute(Fs *f, char *tag, uchar *a, uchar *mask, uchar *gate, int type);
 extern void	v6addroute(Fs *f, char *tag, uchar *a, uchar *mask, uchar *gate, int type);
-extern void	v4delroute(Fs *f, uchar *a, uchar *mask);
-extern void	v6delroute(Fs *f, uchar *a, uchar *mask);
+extern void	v4delroute(Fs *f, uchar *a, uchar *mask, int dolock);
+extern void	v6delroute(Fs *f, uchar *a, uchar *mask, int dolock);
 extern Route*	v4lookup(Fs *f, uchar *a);
 extern Route*	v6lookup(Fs *f, uchar *a);
 extern long	routeread(Fs *f, char*, ulong, int);
@@ -391,11 +396,11 @@ struct Arpent
 
 extern void	arpinit(Fs*);
 extern int	arpread(Arp*, char*, ulong, int);
-extern int	arpwrite(Arp*, char*, int);
+extern int	arpwrite(Fs*, char*, int);
 extern Arpent*	arpget(Arp*, Block *bp, int version, Medium *type, uchar *ip, uchar *h);
 extern void	arprelease(Arp*, Arpent *a);
 extern Block*	arpresolve(Arp*, Arpent *a, Medium *type, uchar *mac);
-extern void	arpenter(Arp*, Ipifc *ifc, int version, uchar *ip, uchar *mac, Medium *type, int norefresh);
+extern void	arpenter(Fs*, int version, uchar *ip, uchar *mac, int len, int norefresh);
 
 /*
  * ipaux.c
