@@ -30,5 +30,4 @@ extern void		mouseupdate(int);
 
 #define	hwscreenwrite(a, b)
 
-#define	screenupdate(z)
 int	islcd;

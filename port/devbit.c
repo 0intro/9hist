@@ -107,6 +107,7 @@ extern	islcd;
 
 Mouseinfo	mouse;
 Cursorinfo	cursor;
+Rendez		lcdmouse;
 
 Cursor	arrow =
 {
@@ -160,6 +161,8 @@ void	Cursortocursor(Cursor*);
 void	cursoron(int);
 void	cursoroff(int);
 int	mousechanged(void*);
+
+static Rectangle mbb = {10000, 10000, -10000, -10000};
 
 enum{
 	Qdir,
@@ -245,6 +248,26 @@ bitdebug(void)
 	print("%d subfonts\n", l);
 }
 
+/*
+ * need a process to do scsi transactions to update mouse on LCD
+ */
+void
+lcdmousep(void *a)
+{
+	USED(a);
+	for(;;){
+		sleep(&lcdmouse, return0, 0);
+		qlock(&bit);
+		if(waserror()){
+			qunlock(&bit);
+			continue;
+		}
+		screenupdate(mbb);
+		qunlock(&bit);
+		poperror();
+	}
+}
+
 void
 bitreset(void)
 {
@@ -304,6 +327,8 @@ bitinit(void)
 		cursorback.width = ((16 << gscreen.ldepth) + 31) >> 5;
 	}
 	cursoron(1);
+	if(islcd)
+		kproc("lcdmouse", lcdmousep, 0);
 }
 
 Chan*
@@ -747,8 +772,6 @@ bitread(Chan *c, void *va, long n, ulong offset)
 	return n;
 }
 
-static Rectangle mbb = {10000, 10000, -10000, -10000};
-
 static void
 mbbrect(Rectangle r)
 {
@@ -814,7 +837,6 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 	BSubfont *f, *tf, **fp;
 	GFont *ff, **ffp;
 	GCacheinfo *gc;
-	extern void screenupdate(Rectangle);
 
 	if(!conf.monitor)
 		error(Egreg);
@@ -1989,6 +2011,8 @@ mouseupdate(int dolock)
 	cursoroff(0);
 	mouse.xy = Pt(x, y);
 	cursoron(0);
+	if(islcd)
+		wakeup(&lcdmouse);
 	mouse.dx = 0;
 	mouse.dy = 0;
 	mouse.clock = 0;

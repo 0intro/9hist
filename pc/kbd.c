@@ -106,6 +106,7 @@ KIOQ	kbdq;
 
 static int mousebuttons;
 static int keybuttons;
+static uchar ccc;
 
 /*
  *  predeclared
@@ -114,12 +115,22 @@ static void	kbdintr(Ureg*);
 
 enum
 {
+	/* controller command byte */
+	Cscs1=		(1<<6),		/* scan code set 1 */
+	Cmousedis=	(1<<5),		/* mouse disable */
+	Ckbddis=	(1<<4),		/* kbd disable */
+	Csf=		(1<<2),		/* system flag */
+	Cmouseint=	(1<<1),		/* mouse interrupt enable */
+	Ckbdint=	(1<<0),		/* kbd interrupt enable */
+
 	/* what kind of mouse */
 	Mouseother=	0,
 	Mouseserial=	1,
 	MousePS2=	2,
 };
 static int mousetype;
+
+static int	mymouseputc(IOQ*, int);
 
 /*
  *  wait for output no longer busy
@@ -129,9 +140,11 @@ outready(void)
 {
 	int tries;
 
-	for(tries = 0; (inb(Status) & Outbusy); tries++)
-		if(tries > 10000)
+	for(tries = 0; (inb(Status) & Outbusy); tries++){
+		if(tries > 500)
 			return -1;
+		delay(2);
+	}
 	return 0;
 }
 
@@ -143,9 +156,11 @@ inready(void)
 {
 	int tries;
 
-	for(tries = 0; !(inb(Status) & Inready); tries++)
-		if(tries > 1000)
+	for(tries = 0; !(inb(Status) & Inready); tries++){
+		if(tries > 500)
 			return -1;
+		delay(2);
+	}
 	return 0;
 }
 
@@ -159,21 +174,26 @@ mousecmd(int cmd)
 	int tries;
 
 	c = 0;
+	tries = 0;
 	do{
-		for(tries=0; tries < 100; tries++){
-			if(outready() < 0)
-				return -1;
-			outb(Cmd, 0xD4);
-			if(outready() < 0)
-				return -1;
-			outb(Data, cmd);
-			if(inready() < 0)
-				return -1;
-			c = inb(Data);
-		}
+		if(tries++ > 5)
+			break;
+		if(outready() < 0)
+			continue;
+		outb(Cmd, 0xD4);
+		if(outready() < 0)
+			continue;
+		outb(Data, cmd);
+		if(outready() < 0)
+			continue;
+		if(inready() < 0)
+			continue;
+		c = inb(Data);
 	} while(c == 0xFE);
-	if(c != 0xFA)
+	if(c != 0xFA){
+		print("mouse returns %2.2ux to the %2.2ux command\n", c, cmd);
 		return -1;
+	}
 	return 0;
 }
 
@@ -183,6 +203,7 @@ mousecmd(int cmd)
 void
 i8042a20(void)
 {
+	outready();
 	outb(Cmd, 0xD1);
 	outready();
 	outb(Data, 0xDF);
@@ -223,11 +244,24 @@ kbdinit(void)
 		if(c & Inready)
 			inb(Data);
 
+	/* get current controller command byte */
+	outb(Cmd, 0x20);
+	if(inready() < 0){
+		print("kbdinit: can't read ccc\n");
+		ccc = 0;
+	} else
+		ccc = inb(Data);
+
 	/* enable kbd xfers and interrupts */
+	ccc &= ~Ckbddis;
+	ccc |= Csf | Ckbdint | Cscs1;
+	if(outready() < 0)
+		print("kbd init failed\n");
 	outb(Cmd, 0x60);
 	if(outready() < 0)
 		print("kbd init failed\n");
-	outb(Data, 0x65);
+	outb(Data, ccc);
+	outready();
 }
 
 /*
@@ -236,7 +270,7 @@ kbdinit(void)
 void
 mouseserial(int port)
 {
-	if(mousetype)
+	if(mousetype == Mouseserial)
 		return;
 
 	/* set up /dev/eia0 as the mouse */
@@ -250,24 +284,32 @@ mouseserial(int port)
 void
 mouseps2(void)
 {
-	if(mousetype)
-		return;
+	int x;
 
 	bigcursor();
 	setvec(Mousevec, kbdintr);
 
 	/* enable kbd/mouse xfers and interrupts */
+	x = splhi();
+	ccc &= ~Cmousedis;
+	ccc |= Cmouseint;
+	if(outready() < 0)
+		print("mouse init failed\n");
 	outb(Cmd, 0x60);
 	if(outready() < 0)
-		print("kbd init failed\n");
-	outb(Data, 0x47);
+		print("mouse init failed\n");
+	outb(Data, ccc);
 	if(outready() < 0)
-		print("kbd init failed\n");
+		print("mouse init failed\n");
 	outb(Cmd, 0xA8);
+	if(outready() < 0)
+		print("mouse init failed\n");
 
 	/* make mouse streaming, enabled */
 	mousecmd(0xEA);
 	mousecmd(0xF4);
+	splx(x);
+
 	mousetype = MousePS2;
 }
 
@@ -314,8 +356,8 @@ static int shift;
  *
  *  shift & left button is the same as middle button
  */
-static void
-mymouseputc(int c)
+static int
+mymouseputc(IOQ *q, int c)
 {
 	static short msg[3];
 	static int nb;
@@ -323,11 +365,12 @@ mymouseputc(int c)
 	static lastdx, lastdy;
 	extern Mouseinfo mouse;
 
+	USED(q);		/* not */
 	/* 
 	 *  check byte 0 for consistency
 	 */
 	if(nb==0 && (c&0xc8)!=0x08)
-		return;
+		return 0;
 
 	msg[nb] = c;
 	if(++nb == 3){
@@ -345,6 +388,7 @@ mymouseputc(int c)
 		spllo();		/* mouse tracking kills uart0 */
 		mouseclock();
 	}
+	return 0;
 }
 
 /*
@@ -404,7 +448,7 @@ kbdintr0(void)
 	 *  if it's the mouse...
 	 */
 	if(s & Minready){
-		mymouseputc(c);
+		mymouseputc(&mouseq, c);
 		return 0;
 	}
 

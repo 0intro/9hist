@@ -353,14 +353,14 @@ etherup(EtherCtlr *cp, void *data, int len)
 			qunlock(tp);
 			continue;
 		}
-		if(waserror() == 0){
+		if(!waserror()){
 			bp = allocb(len);
 			memmove(bp->rptr, p, len);
 			bp->wptr += len;
 			bp->flags |= S_DELIM;
 			PUTNEXT(tp->q, bp);
+			poperror();
 		}
-		poperror();
 		qunlock(tp);
 	}
 }

@@ -295,7 +295,6 @@ receive(EtherCtlr *cp)
 		 * without updating the ring.
 		 */
 		if(status & RxError){
-			print("error #%ux, #%ux\n", status, getdiag(hw));
 			switch(status & RxErrMask){
 
 			case RxErrOverrun:	/* Overrrun */
@@ -392,7 +391,7 @@ interrupt(EtherCtlr *cp)
 {
 	EtherHw *hw = cp->hw;
 	ushort status;
-	uchar txstatus;
+	uchar txstatus, x;
 
 	status = ins(hw->addr+Status);
 
@@ -411,8 +410,10 @@ interrupt(EtherCtlr *cp)
 		 */
 		txstatus = 0;
 		while(ins(hw->addr+Status) & TxComplete){
-			txstatus |= inb(hw->addr+TxStatus);
-			outb(hw->addr+TxStatus, 0);
+			x = inb(hw->addr+TxStatus);
+			if(x)
+				outb(hw->addr+TxStatus, 0);
+			txstatus |= x;
 		}
 		if(txstatus & (TxJabber|TxUnderrun))
 			COMMAND(hw, TxReset, 0);

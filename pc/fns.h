@@ -70,6 +70,7 @@ void	uartclock(void);
 void	uartintr0(Ureg*);
 void	uartspecial(int, IOQ*, IOQ*, int);
 void	vgainit(void);
+#define	screenupdate(a)
 #define	waserror()	(u->nerrlab++, setlabel(&u->errlab[u->nerrlab-1]))
 #define	kmapperm(x)	kmap(x)
 #define getcallerpc(x)	(*(ulong*)(x))

@@ -184,45 +184,28 @@ Dirtab incondir[]={
 #define NINCON	(sizeof incondir/sizeof incondir[0])
 
 static void
-Xdelay(int n)
-{
-	while(--n >= 0) ;
-}
-#define	SDLY	1000
-
-/*#define	Xdelay(n)*/
-
-static void
 reset(int dev)				/* hardware reset */
 {
 	outb(dev+Qpcr, Finitbar);
-	Xdelay(10000);
 	outb(dev+Qpcr, 0);
-	Xdelay(10000);
 	outb(dev+Qpcr, Finitbar);
 }
 
 static void
 wrctl(int dev, int data)		/* write control character */
 {
-	Xdelay(SDLY);
 	outb(dev+Qpcr, Finitbar);	/* no interrupts, please */
 	outb(dev+Qdlr, data);
-	Xdelay(SDLY);
 	outb(dev+Qpcr, Finitbar|Fstrobe);
-	Xdelay(SDLY);
 	outb(dev+Qpcr, Finitbar|Fie);
 }
 
 static void
 wrdata(int dev, int data)		/* write data character */
 {
-	Xdelay(SDLY);
 	outb(dev+Qpcr, Finitbar|Fsi);
 	outb(dev+Qdlr, data);
-	Xdelay(SDLY);
 	outb(dev+Qpcr, Finitbar|Fsi|Fstrobe);
-	Xdelay(SDLY);
 	outb(dev+Qpcr, Finitbar|Fsi|Fie);
 }
 
@@ -231,9 +214,7 @@ wrcmd(int dev, int data)		/* write command */
 {
 	outb(dev+Qpcr, Finitbar|Faf);
 	outb(dev+Qdlr, data);
-	Xdelay(SDLY);
 	outb(dev+Qpcr, Finitbar|Faf|Fstrobe);
-	Xdelay(SDLY);
 	outb(dev+Qpcr, Finitbar|Faf|Fie);
 }
 
@@ -267,9 +248,7 @@ static void
 iwrcmd(int dev, int data)		/* write command at interrupt level */
 {
 	outb(dev+Qdlr, data);
-	Xdelay(SDLY);
 	outb(dev+Qpcr, Finitbar|Faf|Fstrobe);
-	Xdelay(SDLY);
 	outb(dev+Qpcr, Finitbar|Faf);
 }
 
@@ -326,9 +305,7 @@ static void
 irdnop(int dev, int pcr)		/* read nop (mux reset) */
 {
 	outb(dev+Qdlr, 0x03);
-	Xdelay(SDLY);
 	outb(dev+Qpcr, Finitbar|Faf|Fsi|Fstrobe);
-	Xdelay(SDLY);
 	outb(dev+Qpcr, pcr);
 }
 
@@ -753,8 +730,7 @@ inconoput(Queue *q, Block *bp)
 	int dev;
 	Incon *ip;
 	ulong end;
-	int chan;
-	int ctl;
+	int status, chan, ctl;
 	int n, size;
 
 	ip = (Incon *)q->ptr;
@@ -819,10 +795,10 @@ inconoput(Queue *q, Block *bp)
 		/*
 		 *  spin till there is room
 		 */
-		for(n=0, end = NOW+1000; (ctl=rdstatus(ip)) & TX_FULL; n++){
+		for(n=0, end = NOW+1000; (status=rdstatus(ip)) & TX_FULL; n++){
 			nop();	/* make sure we don't optimize too much */
 			if(NOW > end){
-				print("incon output stuck 0 %.2ux\n", ctl);
+				print("incon output stuck 0 %.2ux\n", status);
 				freemsg(q, bp);
 				qunlock(&ip->xmit);
 				return;
