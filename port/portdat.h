@@ -7,7 +7,6 @@ typedef struct Dev	Dev;
 typedef struct Dirtab	Dirtab;
 typedef struct Egrp	Egrp;
 typedef struct Evalue	Evalue;
-typedef struct Etherpkt	Etherpkt;
 typedef struct Fgrp	Fgrp;
 typedef struct Image	Image;
 typedef struct IOQ	IOQ;
@@ -212,25 +211,6 @@ struct Dirtab
 	Qid	qid;
 	long	length;
 	long	perm;
-};
-
-/*
- *  Ethernet packet buffers.
- */
-struct Etherpkt
-{
-	uchar	d[6];
-	uchar	s[6];
-	uchar	type[2];
-	uchar	data[1500];
-	uchar	crc[4];
-};
-
-enum
-{
-	ETHERMINTU =	60,		/* minimum transmit size */
-	ETHERMAXTU =	1514,		/* maximum transmit size */
-	ETHERHDRSIZE =	14,		/* size of an ethernet header */
 };
 
 /* SCSI devices. */
@@ -788,12 +768,13 @@ struct Netprot
 	Netprot	*next;		/* linked list of protections */
 	ulong	mode;
 	char	owner[NAMELEN];
+	Network	*net;
 };
 
 struct Netinf
 {
 	char	*name;
-	void	(*fill)(Chan*, char*, int);
+	void	(*fill)(Netprot*, char*, int);
 };
 
 struct Network
@@ -801,13 +782,12 @@ struct Network
 	Lock;
 	char	*name;
 	int	nconv;			/* max # of conversations */
-	Qinfo	*devp;			/* device end line disc */
-	Qinfo	*protop;		/* protocol line disc */
-	int	(*listen)(Chan*);
-	int	(*clone)(Chan*);
+	int	(*listen)(Netprot*);
+	int	(*open)(Netprot*, int);
 	int	ninfo;
 	Netinf	info[5];
 	Netprot	*prot;			/* linked list of protections */
+	void	*ptr;
 };
 
 enum

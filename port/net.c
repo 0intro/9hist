@@ -180,16 +180,15 @@ netopen(Chan *c, int omode, Network *np)
 		case Sdataqid:
 		case Sctlqid:
 			id = STREAMID(c->qid.path);
+			id = (*np->open)(c, id);
 			break;
 		case Qlisten:
-			streamopen(c, np->devp);
 			id = (*np->listen)(c);
-			streamclose(c);
 			c->qid.path = STREAMQID(id, Sctlqid);
 			ptclone(c, 1, id);
 			break;
 		case Qclone:
-			id = (*np->clone)(c);
+			id = (*np->open)(c, -1);
 			c->qid.path = STREAMQID(id, Sctlqid);
 			ptclone(c, 0, id);
 			break;
@@ -200,9 +199,6 @@ netopen(Chan *c, int omode, Network *np)
 		switch(STREAMTYPE(c->qid.path)){
 		case Sdataqid:
 		case Sctlqid:
-			streamopen(c, np->devp);
-			if(np->protop && c->stream->devq->next->info != np->protop)
-				pushq(c->stream, np->protop);
 			p = findprot(np, id);
 			if(netown(p, up->user, omode&7) < 0)
 				error(Eperm);
@@ -220,9 +216,6 @@ netread(Chan *c, void *a, long n, ulong offset, Network *np)
 {
 	int t;
 	char buf[256];
-
-	if(c->stream)
-		return streamread(c, a, n);
 
 	if(c->qid.path&CHDIR)
 		return devdirread(c, a, n, (Dirtab*)np, 0, netgen);
@@ -242,6 +235,7 @@ netadd(Network *np, Netprot *p, int id)
 
 	memset(p, 0, sizeof(Netprot));
 	p->id = id;
+	p->net = np;
 
 	l = &np->prot;
 	for(pp = np->prot; pp; pp = pp->next){
