@@ -330,17 +330,24 @@ romscan(void)
 		p[0] = 0x55;
 		p[1] = 0xAA;
 		p[2] = 4;
-		if(p[0] != 0x55 || p[1] != 0xAA){
-			putisa(PADDR(p), 2048);
-			p += 2048;
+		if(p[0] == 0x55 && p[1] == 0xAA){
+			p += p[2]*512;
 			continue;
 		}
-		p += p[2]*512;
+		p[0] = 0xff;
+		p[2048-1] = 0xff;
+		if(p[0] == 0xff && p[2048-1] == 0xff)
+			putisa(PADDR(p), 2048);
+		p += 2048;
 	}
 
 	p = (uchar*)(KZERO+0xE0000);
-	if(p[0] != 0x55 || p[1] != 0xAA)
-		putisa(PADDR(p), 64*1024);
+	if(p[0] != 0x55 || p[1] != 0xAA){
+		p[0] = 0xff;
+		p[64*1024-1] = 0xff;
+		if(p[0] == 0xff && p[64*1024-1] == 0xff)
+			putisa(PADDR(p), 64*1024);
+	}
 }
 
 void

@@ -53,11 +53,11 @@ configASIC(Ether *ether, int port, int xcvr)
 	/* ROM size & base - must be set before we can access ROM */
 	/* transceiver type is 2 for 'figure it out'  */
 	x = ins(port + AddressConfig);
-	outs(port + AddressConfig, (x & 0x20) | xcvr);
+	outs(port + AddressConfig, (x & 0xf0) | xcvr);
 
 	/* IRQ must be 3 on 3C589 */
 	x = ins(port + ResourceConfig);
-	outs(port + ResourceConfig, 0x3f00 | (x&0xfff));
+	outs(port + ResourceConfig, 0x3f00 | (x&0xff));
 
 	/* move product ID to register */
 	while(ins(port+EEPROMcmd) & 0x8000)

@@ -607,6 +607,21 @@ tcm590(Ether *ether)
 	return 0;
 }
 
+static ulong
+tcm589(ISAConf *isa)
+{
+	if(strcmp(isa->type, "3C589") != 0)
+		return 0;
+
+	/*
+	 *  The 3com manual register description says that this a noop for
+	 *  PCMCIA but the flow chart at the end shows it.
+	 */
+	COMMAND(isa->port, SelectWindow, 0);
+	outs(isa->port+ConfigControl, Ena);
+	return isa->port;
+}
+
 /*
  * Get configuration parameters.
  */
@@ -639,8 +654,8 @@ ether509reset(Ether *ether)
 			break;
 		}
 	}
-	if(strcmp(ether->type, "3C589") == 0)
-		port = ether->port;
+	if(port == 0)
+		port = tcm589(ether);
 	if(port == 0 && (pcicfg = tcm590(ether)))
 		port = pcicfg->baseaddr[0] & ~0x01;
 	if(port == 0)
