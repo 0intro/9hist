@@ -732,7 +732,7 @@ bitread(Chan *c, void *va, long n, ulong offset)
 			error(Ebadblt);
 		for(j = 0; j < nw; j++){
 			if(bit.mid == 0){
-				getcolor(flipping? ~j : j, &rv, &gv, &bv);
+				getcolor(flipping? nw-j-1 : j, &rv, &gv, &bv);
 			}else{
 				rv = j;
 				for(off = 32-l; off > 0; off -= l)
