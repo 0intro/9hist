@@ -369,10 +369,21 @@ ipifcadd(Ipifc *ifc, char **argv, int argc)
 		bcast[i] = (ip[i] & mask[i]) | ~mask[i];
 	addselfcache(f, ifc, lifc, bcast, Rbcast);
 
+	/* add old subnet directed broadcast addresses to the self cache */
+	for(i = 0; i < IPaddrlen; i++)
+		bcast[i] = (ip[i] & mask[i]) & mask[i];
+	addselfcache(f, ifc, lifc, bcast, Rbcast);
+
 	/* add network directed broadcast addresses to the self cache */
 	memmove(mask, defmask(ip), IPaddrlen);
 	for(i = 0; i < IPaddrlen; i++)
 		bcast[i] = (ip[i] & mask[i]) | ~mask[i];
+	addselfcache(f, ifc, lifc, bcast, Rbcast);
+
+	/* add old network directed broadcast addresses to the self cache */
+	memmove(mask, defmask(ip), IPaddrlen);
+	for(i = 0; i < IPaddrlen; i++)
+		bcast[i] = (ip[i] & mask[i]) & mask[i];
 	addselfcache(f, ifc, lifc, bcast, Rbcast);
 
 	addselfcache(f, ifc, lifc, IPv4bcast, Rbcast);
