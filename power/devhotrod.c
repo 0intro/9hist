@@ -10,6 +10,13 @@
 #include	"io.h"
 #include	"hrod.h"
 
+void	mem(Hot*, ulong*, ulong);
+
+/*
+ * If set, causes data transfers to have checksums
+ */
+#define	ENABCKSUM	1
+
 typedef struct Hotrod	Hotrod;
 typedef struct HotQ	HotQ;
 
@@ -55,8 +62,8 @@ void	hotrodintr(int);
 enum{
 	RESET=	0,	/* params: Q address, length of queue */
 	REBOOT=	1,	/* params: none */
-	READ=	2,	/* params: buffer, count, returned count */
-	WRITE=	3,	/* params: buffer, count */
+	READ=	2,	/* params: buffer, count, sum, returned count */
+	WRITE=	3,	/* params: buffer, count, sum */
 	TEST=	7,	/* params: none */
 };
 
@@ -192,7 +199,11 @@ hotrodopen(Chan *c, int omode)
 		mp->param[1] = NTESTBUF;
 		hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->khot);
 		delay(100);
-		print("tested\n");
+		print("testing addr %lux size %ld\n", mp->param[0], mp->param[1]);
+		for(;;){
+			print("-");
+			mem(hp->addr, &hp->addr->ram[(mp->param[0]-0x40000)/sizeof(ulong)], mp->param[1]);
+		}
 #endif
 	}
 	c->mode = openmode(omode);
@@ -220,6 +231,20 @@ hotrodclose(Chan *c)
 	}
 }
 
+ulong
+hotsum(ulong *p, int n, ulong doit)
+{
+	ulong sum;
+
+	if(!doit)
+		return 0;
+	sum = 0;
+	n = (n+sizeof(ulong)-1)/sizeof(ulong);
+	while(--n >= 0)
+		sum += *p++;
+	return sum;
+}
+
 /*
  * Read and write use physical addresses if they can, which they usually can.
  * Most I/O is from devmnt, which has local buffers.  Therefore just check
@@ -231,7 +256,7 @@ hotrodread(Chan *c, void *buf, long n)
 {
 	Hotrod *hp;
 	Hotmsg *mp;
-	ulong l;
+	ulong l, m;
 
 	hp = &hotrod[c->dev];
 	switch(c->qid.path){
@@ -245,7 +270,8 @@ hotrodread(Chan *c, void *buf, long n)
 			 *  use supplied buffer, no need to lock for reply
 			 */
 			mp = &u->khot;
-			mp->param[2] = 0;	/* reply count */
+			mp->param[2] = 0;	/* checksum */
+			mp->param[3] = 0;	/* reply count */
 			qlock(hp);
 			mp->cmd = READ;
 			mp->param[0] = MP2VME(buf);
@@ -254,18 +280,24 @@ hotrodread(Chan *c, void *buf, long n)
 			qunlock(hp);
 			l = 100*1000*1000;
 			do
-				n = mp->param[2];
-			while(n==0 && --l>0);
-			if(n == 0){
-				print("devhotrod: give up\n");
+				m = mp->param[3];
+			while(m==0 && --l>0);
+			if(m==0 || m>n){
+				print("devhotrod: count %ld %ld\n", m, n);
 				error(Egreg);
+			}
+			if(mp->param[2] != hotsum(buf, m, mp->param[2])){
+				print("hotrod cksum err is %lux sb %lux\n",
+					hotsum(buf, n, 1), mp->param[2]);
+				error(Eio);
 			}
 		}else{
 			/*
 			 *  use hotrod buffer.  lock the buffer until the reply
 			 */
 			mp = &u->uhot;
-			mp->param[2] = 0;	/* reply count */
+			mp->param[2] = 0;	/* checksum */
+			mp->param[3] = 0;	/* reply count */
 			qlock(&hp->buflock);
 			qlock(hp);
 			mp->cmd = READ;
@@ -275,16 +307,23 @@ hotrodread(Chan *c, void *buf, long n)
 			qunlock(hp);
 			l = 100*1000*1000;
 			do
-				n = mp->param[2];
-			while(n==0 && --l>0);
-			memcpy(buf, hp->buf, n);
-			qunlock(&hp->buflock);
-			if(n == 0){
-				print("devhotrod: give up\n");
+				m = mp->param[3];
+			while(m==0 && --l>0);
+			if(m==0 || m>n){
+				print("devhotrod: count %ld %ld\n", m, n);
+				qunlock(&hp->buflock);
 				error(Egreg);
 			}
+			if(mp->param[2] != hotsum((ulong*)hp->buf, m, mp->param[2])){
+				print("hotrod cksum err is %lux sb %lux\n",
+					hotsum((ulong*)hp->buf, n, 1), mp->param[2]);
+				qunlock(&hp->buflock);
+				error(Eio);
+			}
+			memcpy(buf, hp->buf, m);
+			qunlock(&hp->buflock);
 		}
-		return n;
+		return m;
 	}
 	print("hotrod read unk\n");
 	error(Egreg);
@@ -316,6 +355,7 @@ hotrodwrite(Chan *c, void *buf, long n)
 			mp->cmd = WRITE;
 			mp->param[0] = MP2VME(buf);
 			mp->param[1] = n;
+			mp->param[2] = hotsum(buf, n, ENABCKSUM);
 			hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->khot);
 			qunlock(hp);
 		}else{
@@ -329,6 +369,7 @@ hotrodwrite(Chan *c, void *buf, long n)
 			mp->cmd = WRITE;
 			mp->param[0] = MP2VME(hp->buf);
 			mp->param[1] = n;
+			mp->param[2] = hotsum((ulong*)hp->buf, n, ENABCKSUM);
 			hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->uhot);
 			qunlock(hp);
 			qunlock(&hp->buflock);
@@ -364,4 +405,94 @@ hotrodintr(int vec)
 		return;
 	}
 	hp->addr->lcsr3 &= ~INT_VME;
+}
+
+void
+mem(Hot *hot, ulong *buf, ulong size)
+{
+	long i, j, k, l;
+	ulong *p, bit, u;
+	int q;
+
+goto part4;
+	/* one bit */
+	bit = 0;
+	p = buf;
+	for(i=0; i<size; i++,p++) {
+		if(bit == 0)
+			bit = 1;
+		*p = bit;
+		bit <<= 1;
+	}
+	bit = 0;
+	p = buf;
+	for(i=0; i<size; i++,p++) {
+		if(bit == 0)
+			bit = 1;
+		if(*p != bit) {
+			print("A: %lux is %lux sb %lux\n", p, *p, bit);
+			hot->error++;
+			delay(500);
+		}
+		bit <<= 1;
+	}
+	/* all but one bit */
+	bit = 0;
+	p = buf;
+	for(i=0; i<size; i++,p++) {
+		if(bit == 0)
+			bit = 1;
+		*p = ~bit;
+		bit <<= 1;
+	}
+	bit = 0;
+	p = buf;
+	for(i=0; i<size; i++,p++) {
+		if(bit == 0)
+			bit = 1;
+		if(*p != ~bit) {
+			print("B: %lux is %lux sb %lux\n", p, *p, ~bit);
+			hot->error++;
+			delay(500);
+		}
+		bit <<= 1;
+	}
+	/* rand bit */
+	bit = 0;
+	p = buf;
+	for(i=0; i<size; i++,p++) {
+		if(bit == 0)
+			bit = 1;
+		*p = bit;
+		bit += PRIME;
+	}
+	bit = 0;
+	p = buf;
+	for(i=0; i<size; i++,p++) {
+		if(bit == 0)
+			bit = 1;
+		if(*p != bit) {
+			print("C: %lux is %lux sb %lux\n", p, *p, bit);
+			hot->error++;
+			delay(500);
+		}
+		bit += PRIME;
+	}
+part4:
+	/* address */
+	p = buf;
+	for(i=0; i<size; i++,p++)
+		*p = i;
+	for(j=0; j<200; j++) {
+		p = buf;
+		for(i=0; i<size; i++,p++) {
+			u = *p;
+			if(u != i+j) {
+				print("D: %lux is %lux sb %lux (%lux)\n", p, u, i+j, *p);
+			hot->error++;
+				delay(500);
+			}
+			*p = i+j+1;
+		}
+	}
 }
