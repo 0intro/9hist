@@ -295,6 +295,9 @@ uartenable(Uart *up)
 	if(up == &uart[Serial]){
 		if(serial(0) < 0)
 			print("can't turn on serial port power\n");
+	} else {
+		if(modem(0) < 0)
+			print("can't turn on modem speaker\n");
 	}
 
 	/*

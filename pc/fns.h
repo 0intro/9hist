@@ -27,6 +27,7 @@ void	inss(int, void*, int);
 void	kbdinit(void);
 void	mathinit(void);
 void	mmuinit(void);
+int	modem(int);
 void	outb(int, int);
 void	outss(int, void*, int);
 void	prhex(ulong);

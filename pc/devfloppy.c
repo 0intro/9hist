@@ -792,7 +792,7 @@ floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 	fl.cmd[fl.ncmd++] = dp->thead;
 	fl.cmd[fl.ncmd++] = dp->tsec;
 	fl.cmd[fl.ncmd++] = dp->t->bcode;
-	fl.cmd[fl.ncmd++] = dp->tsec + dp->len/dp->t->bytes - 1;
+	fl.cmd[fl.ncmd++] = dp->t->sectors;
 	fl.cmd[fl.ncmd++] = dp->t->gpl;
 	fl.cmd[fl.ncmd++] = 0xFF;
 	if(floppycmd() < 0){

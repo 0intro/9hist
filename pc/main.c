@@ -463,6 +463,19 @@ serial(int onoff)
 	return pmuwrbit(1, onoff, 6);
 }
 
+/*
+ *  power to modem
+ *	onoff == 0 means on
+ *	onoff == 1 means off
+ */
+int
+modem(int onoff)
+{
+	if(pmuwrbit(1, onoff, 0)<0)
+		return -1;
+	return pmuwrbit(1, 1^onoff, 5);
+}
+
 void
 buzz(int f, int d)
 {
