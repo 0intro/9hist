@@ -80,15 +80,16 @@ load(Cursor *c)
 	 * If it's the same as the last cursor we loaded,
 	 * just make sure it's enabled.
 	 */
-	seq20 = vgaxi(Seqx, 0x20);
 	lock(&ark2000pvlock);
+	seq20 = vgaxi(Seqx, 0x20);
 	if(memcmp(c, &curcursor, sizeof(Cursor)) == 0){
-		vgaxo(Seqx, 0x20, 0x80|seq20);
+		vgaxo(Seqx, 0x20, seq20|0x08);
 		unlock(&ark2000pvlock);
 		return;
 	}
 	memmove(&curcursor, c, sizeof(Cursor));
 
+	vgaxo(Seqx, 0x20, seq20 & ~0x08);
 	/*
 	 * Is linear addressing turned on? This will determine
 	 * how we access the cursor storage.
@@ -129,7 +130,7 @@ load(Cursor *c)
 	 * Set the cursor hotpoint and enable the cursor.
 	 */
 	hotpoint = c->offset;
-	vgaxo(Seqx, 0x20, 0x80|seq20);
+	vgaxo(Seqx, 0x20, seq20|0x08);
 
 	unlock(&ark2000pvlock);
 }
