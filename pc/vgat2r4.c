@@ -16,10 +16,12 @@
  * #9 Ticket to Ride IV.
  */
 enum {
-	IndexLo		= 4,
-	IndexHi		= 5,
-	Data		= 6,
-	IndexCtl	= 7,
+	IndexLo		= 0x10/4,
+	IndexHi		= 0x14/4,
+	Data		= 0x18/4,
+	IndexCtl	= 0x1C/4,
+
+	Zoom		= 0x54/4,
 };
 
 enum {						/* index registers */
@@ -42,6 +44,10 @@ enum {						/* index registers */
 	CursorB3	= 0x48,
 
 	CursorArray	= 0x100,
+
+	CursorMode32x32	= 0x03,
+	CursorMode64x64	= 0x07,
+	CursorMode	= CursorMode64x64,
 };
 
 static ulong
@@ -95,14 +101,14 @@ t2r4enable(VGAscr* scr)
 	Pcidev *p;
 	Physseg seg;
 	int size, align;
-	ulong aperture;
+	ulong aperture, mmio;
 
 	/*
 	 * Only once, can't be disabled for now.
-	 * scr->io holds the virtual address of
+	 * scr->mmio holds the virtual address of
 	 * the MMIO registers.
 	 */
-	if(scr->io)
+	if(scr->mmio)
 		return;
 	if(p = pcimatch(nil, 0x105D, 0)){
 		switch(p->did){
@@ -114,19 +120,19 @@ t2r4enable(VGAscr* scr)
 	}
 	else
 		return;
-	scr->io = upamalloc(p->mem[4].bar & ~0x0F, p->mem[4].size, 0);
-	if(scr->io == 0)
+	mmio = upamalloc(p->mem[4].bar & ~0x0F, p->mem[4].size, 0);
+	if(mmio == 0)
 		return;
 
 	memset(&seg, 0, sizeof(seg));
 	seg.attr = SG_PHYSICAL;
 	seg.name = smalloc(NAMELEN);
 	snprint(seg.name, NAMELEN, "t2r4mmio");
-	seg.pa = scr->io;
+	seg.pa = mmio;
 	seg.size = p->mem[4].size;
 	addphysseg(&seg);
 
-	scr->io = (ulong)KADDR(scr->io);
+	scr->mmio = KADDR(mmio);
 
 	size = p->mem[0].size;
 	align = 0;
@@ -144,12 +150,24 @@ t2r4enable(VGAscr* scr)
 	}
 }
 
+static uchar
+t2r4xi(VGAscr* scr, int index)
+{
+	ulong *mmio;
+
+	mmio = scr->mmio;
+	mmio[IndexLo] = index & 0xFF;
+	mmio[IndexHi] = (index>>8) & 0xFF;
+
+	return mmio[Data];
+}
+
 static void
 t2r4xo(VGAscr* scr, int index, uchar data)
 {
 	ulong *mmio;
 
-	mmio = (ulong*)scr->io;
+	mmio = scr->mmio;
 	mmio[IndexLo] = index & 0xFF;
 	mmio[IndexHi] = (index>>8) & 0xFF;
 
@@ -159,7 +177,7 @@ t2r4xo(VGAscr* scr, int index, uchar data)
 static void
 t2r4curdisable(VGAscr* scr)
 {
-	if(scr->io == 0)
+	if(scr->mmio == 0)
 		return;
 	t2r4xo(scr, CursorCtl, 0x00);
 }
@@ -169,11 +187,11 @@ t2r4curload(VGAscr* scr, Cursor* curs)
 {
 	int x, y;
 	ulong *mmio;
-	uchar p, p0, p1;
+	uchar *data, p, p0, p1;
 
-	if(scr->io == 0)
+	mmio = scr->mmio;
+	if(mmio == 0)
 		return;
-	mmio = (ulong*)scr->io;
 
 	/*
 	 * Make sure cursor is off by initialising the cursor
@@ -190,7 +208,7 @@ t2r4curload(VGAscr* scr, Cursor* curs)
 	mmio[IndexHi] = (CursorArray>>8) & 0xFF;
 
 	/*
-	 * Initialise the 32x32 cursor RAM array. There are 2 planes,
+	 * Initialise the cursor RAM array. There are 2 planes,
 	 * p0 and p1. Data is written 4 pixels per byte, with p1 the
 	 * MS bit of each pixel.
 	 * The cursor is set in X-Windows mode which gives the following
@@ -200,79 +218,60 @@ t2r4curload(VGAscr* scr, Cursor* curs)
 	 *	 0  1	underlying pixel colour
 	 *	 1  0	cursor colour 1
 	 *	 1  1	cursor colour 2
-	 * Put the cursor into the top-left of the 32x32 array.
+	 * Put the cursor into the top-left of the array.
 	 */
+	data = (uchar*)&mmio[Data];
 	for(y = 0; y < 32; y++){
-		for(x = 0; x < 32/8; x++){
-			if(x < 16/8 && y < 16){
-				p0 = curs->clr[x+y*2];
-				p1 = curs->set[x+y*2];
-
-				p = 0x00;
-				if(p1 & 0x80)
-					p |= 0xC0;
-				else if(p0 & 0x80)
-					p |= 0x80;
-				if(p1 & 0x40)
-					p |= 0x30;
-				else if(p0 & 0x40)
-					p |= 0x20;
-				if(p1 & 0x20)
-					p |= 0x0C;
-				else if(p0 & 0x20)
-					p |= 0x08;
-				if(p1 & 0x10)
-					p |= 0x03;
-				else if(p0 & 0x10)
-					p |= 0x02;
-				mmio[Data] = p;
-
-				p = 0x00;
-				if(p1 & 0x08)
-					p |= 0xC0;
-				else if(p0 & 0x08)
-					p |= 0x80;
-				if(p1 & 0x04)
-					p |= 0x30;
-				else if(p0 & 0x04)
-					p |= 0x20;
-				if(p1 & 0x02)
-					p |= 0x0C;
-				else if(p0 & 0x02)
-					p |= 0x08;
-				if(p1 & 0x01)
-					p |= 0x03;
-				else if(p0 & 0x01)
-					p |= 0x02;
-				mmio[Data] = p;
-			}
-			else{
-				mmio[Data] = 0x00;
-				mmio[Data] = 0x00;
-			}
-		}
+		*data = 0xFF;
+		*data = 0xAA;
+		*data = 0xFF;
+		*data = 0xAA;
+		*data = 0x00;
+		*data = 0x00;
+		*data = 0x00;
+		*data = 0x00;
+		*data = 0x00;
+		*data = 0x00;
+		*data = 0x00;
+		*data = 0x00;
+		*data = 0x00;
+		*data = 0x00;
+		*data = 0x00;
+		*data = 0x00;
 	}
+	while(y < 64){
+		for(x = 0; x < 64/8; x++){
+			*data = 0x00;
+			*data = 0x00;
+		}
+		y++;
+	}
+	mmio[IndexCtl] = 0x00;
 
 	/*
-	 * Initialise the cursor hotpoint,
-	 * enable the cursor and restore state.
+	 * Initialise the hotpoint and enable the cursor.
 	 */
 	t2r4xo(scr, CursorHotX, -curs->offset.x);
 	t2r4xo(scr, CursorHotY, -curs->offset.y);
 
-	t2r4xo(scr, CursorCtl, 0x23);
+	t2r4xo(scr, CursorCtl, CursorMode);
 }
 
 static int
 t2r4curmove(VGAscr* scr, Point p)
 {
-	if(scr->io == 0)
+	int y, zoom;
+
+	if(scr->mmio == 0)
 		return 1;
 
 	t2r4xo(scr, CursorXLo, p.x & 0xFF);
 	t2r4xo(scr, CursorXHi, (p.x>>8) & 0x0F);
-	t2r4xo(scr, CursorYLo, p.y & 0xFF);
-	t2r4xo(scr, CursorYHi, (p.y>>8) & 0x0F);
+
+	zoom = (scr->mmio[Zoom] & 0x0F)+1;
+	y = p.y*zoom;
+	t2r4xo(scr, CursorYLo, y & 0xFF);
+	t2r4xo(scr, CursorYHi, (y>>8) & 0x0F);
 
 	return 0;
 }
@@ -281,7 +280,7 @@ static void
 t2r4curenable(VGAscr* scr)
 {
 	t2r4enable(scr);
-	if(scr->io == 0)
+	if(scr->mmio == 0)
 		return;
 
 	/*
@@ -303,11 +302,11 @@ t2r4curenable(VGAscr* scr)
 	t2r4xo(scr, CursorB2, Pblack);
 
 	/*
-	 * Load, locate and enable the cursor, 32x32, mode 2.
+	 * Load, locate and enable the cursor, 64x64, mode 2.
 	 */
 	t2r4curload(scr, &arrow);
 	t2r4curmove(scr, ZP);
-	t2r4xo(scr, CursorCtl, 0x23);
+	t2r4xo(scr, CursorCtl, CursorMode);
 }
 
 VGAdev vgat2r4dev = {

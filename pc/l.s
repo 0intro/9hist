@@ -373,12 +373,13 @@ _aamloop:
 #define	FPOFF								;\
 	WAIT								;\
 	MOVL	CR0, AX							;\
-	ORL	$0x24, AX			/* EM=1, NE=1 */	;\
+	ANDL	$~0x4, AX			/* EM=0 */		;\
+	ORL	$0x28, AX			/* NE=1, TS=1 */	;\
 	MOVL	AX, CR0
 
 #define	FPON								;\
 	MOVL	CR0, AX							;\
-	ANDL	$~0x4, AX			/* EM=0 */		;\
+	ANDL	$~0xC, AX			/* EM=0, TS=0 */	;\
 	MOVL	AX, CR0
 	
 TEXT fpoff(SB), $0				/* disable */
