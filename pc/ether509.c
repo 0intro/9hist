@@ -104,6 +104,7 @@ enum {
 					/* MediaStatus bits */
 	JabberEna	= 0x0040,	/* Jabber Enabled (writeable) */
 	LinkBeatEna	= 0x0080,	/* Link Beat Enabled (writeable) */
+	LinkBeatOk	= 0x0800,	/* Valid link beat detected (ro) */
 };
 
 #define COMMAND(port, cmd, a)	outs(port+Command, ((cmd)<<11)|(a))
