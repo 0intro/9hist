@@ -55,7 +55,6 @@ rfork(ulong flag)
 	upa = VA(k);
 
 	/* Save time: only copy u-> data and useful stack */
-	clearmmucache();
 	memmove((void*)upa, u, sizeof(User));
 	n = USERADDR+BY2PG - (ulong)&lastvar;
 	n = (n+32) & ~(BY2WD-1);	/* be safe & word align */
@@ -135,7 +134,6 @@ rfork(ulong flag)
 	 *  (i.e. has bad properties) and has to be discarded.
 	 */
 	flushmmu();
-	clearmmucache();
 	ready(p);
 	return pid;
 }
@@ -344,7 +342,6 @@ sysexec(ulong *arg)
 	 *  space and needs to be flushed
 	 */
 	flushmmu();
-	clearmmucache();
 	qlock(&p->debug);
 	u->nnote = 0;
 	u->notify = 0;

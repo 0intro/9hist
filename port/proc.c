@@ -682,7 +682,6 @@ kproc(char *name, void (*func)(void *), void *arg)
 	/*
 	 * Save time: only copy u-> data and useful stack
 	 */
-	clearmmucache();	/* so child doesn't inherit any of your mappings */
 	memmove(up, u, sizeof(User));
 	n = USERADDR+BY2PG - (ulong)&lastvar;
 	n = (n+32) & ~(BY2WD-1);	/* be safe & word align */

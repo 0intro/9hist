@@ -5,7 +5,6 @@ typedef struct KMap	KMap;
 typedef struct Label	Label;
 typedef struct Lock	Lock;
 typedef struct MMU	MMU;
-typedef struct MMUCache	MMUCache;
 typedef struct Mach	Mach;
 typedef struct PMMU	PMMU;
 typedef struct Portpage	Portpage;
@@ -146,19 +145,6 @@ struct Mach
 	int	stack[1];
 };
 
-struct MMU
-{
-	ulong	va;
-	ulong	pa;
-};
-
-#define NMMU 16
-struct MMUCache
-{
-	ulong	next;
-	MMU	mmu[NMMU];
-};
-
 /*
  *  gnot bus ports
  */
@@ -211,11 +197,6 @@ struct User
 	void	*dbgreg;
 	ushort	svsr;
 	ushort	svvo;
-	/*
-	 *  mmu cache for preloading MMU.
-	 *  should be replaced by software TLB? -- presotto
-	 */
-	MMUCache mc;
 };
 
 struct

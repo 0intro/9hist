@@ -106,6 +106,7 @@ struct Ilcb				/* Control block */
 	Block	*outoforder;
 	int	oblks;			/* Number of blocks in queue */
 
+	Lock	nxl;
 	ulong	next;			/* Id of next to send */
 	ulong	recvd;			/* Last packet received */
 	ulong	start;			/* Local start id */

@@ -294,6 +294,9 @@ execregs(ulong entry, ulong ssize, ulong nargs)
  */
 #include "../port/systab.h"
 
+/*
+ *  syscall is called spllo()
+ */
 long
 syscall(Ureg *ur)
 {
@@ -310,7 +313,6 @@ syscall(Ureg *ur)
 	/*
 	 *  do something about floating point!!!
 	 */
-
 	ax = ur->ax;
 	sp = ur->usp;
 	u->nerrlab = 0;
@@ -340,7 +342,7 @@ syscall(Ureg *ur)
 	if(ax == NOTED)
 		noted(ur, *(ulong*)(sp+BY2WD));
 
-	splhi();
+	splhi(); /* avoid interrupts during the iret */
 	if(ax!=FORK && (u->p->procctl || u->nnote))
 		notify(ur);
 	return ret;

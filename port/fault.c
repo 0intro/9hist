@@ -76,7 +76,7 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 	case SG_BSS:
 	case SG_STACK:	
 			/* Zero fill on demand */
-		if(*pg == 0) {			
+		if(*pg == 0) {
 			if(new == 0 && (new = newpage(1, &s, addr)) && s == 0)
 				return -1;
 			*pg = new;

@@ -158,7 +158,9 @@ iloput(Queue *q, Block *bp)
 	hnputs(ih->illen, dlen+IL_HDRSIZE);
 	hnputs(ih->ilsrc, ipc->psrc);
 	hnputs(ih->ildst, ipc->pdst);
+	lock(&ic->nxl);
 	hnputl(ih->ilid, ic->next++);
+	unlock(&ic->nxl);
 	hnputl(ih->ilack, ic->recvd);
 	ih->iltype = Ildata;
 	ih->ilspec = 0;

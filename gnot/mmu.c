@@ -32,7 +32,6 @@ mapstack(Proc *p)
 
 	if(p->newtlb) {
 		flushmmu();
-		clearmmucache();
 		p->newtlb = 0;
 	}
 
@@ -42,20 +41,6 @@ mapstack(Proc *p)
 	 */
 	if(!p->kp && p!=m->lproc){
 		flushmmu();
-
-		/*
-		 *  preload the MMU with the last (up to) NMMU user entries
-		 *  previously faulted into it for this process.
-		 */
-		mn = &u->mc.mmu[u->mc.next&(NMMU-1)];
-		me = &u->mc.mmu[NMMU];
-		if(u->mc.next >= NMMU){
-			for(mm = mn; mm < me; mm++)
-				UMAP[mm->va] = mm->pa;
-		}
-		for(mm = u->mc.mmu; mm < mn; mm++)
-			UMAP[mm->va] = mm->pa;
-
 		m->lproc = p;
 	}
 }
@@ -82,17 +67,6 @@ putmmu(ulong tlbvirt, ulong tlbphys, Page *p)
 		panic("putmmu");
 	tlbphys |= VTAG(tlbvirt)<<24;
 	tlbvirt = (tlbvirt&0x003FE000L)>>2;
-	if(u){
-		MMU *mp;
-		int s;
-
-		s = splhi();
-		mp = &(u->mc.mmu[u->mc.next&(NMMU-1)]);
-		mp->pa = tlbphys;
-		mp->va = tlbvirt;
-		u->mc.next++;
-		splx(s);
-	}
 	UMAP[tlbvirt] = tlbphys;
 }
 
@@ -102,14 +76,6 @@ flushmmu(void)
 	flushcpucache();
 	*PARAM &= ~TLBFLUSH_;
 	*PARAM |= TLBFLUSH_;
-}
-
-void
-clearmmucache(void)
-{
-	if(u == 0)
-		panic("clearmmucache");
-	u->mc.next = 0;
 }
 
 void
