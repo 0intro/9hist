@@ -1,4 +1,6 @@
 typedef struct Conf	Conf;
+typedef struct FPU	FPU;
+typedef struct FPenv	FPenv;
 typedef struct FPsave	FPsave;
 typedef struct Label	Label;
 typedef struct Lock	Lock;
@@ -34,20 +36,19 @@ struct Label
 };
 
 /*
- *  no floating point, hence nothing to save
- */
-
-/*
  * FPsave.status
  */
 enum
 {
-	FPinit,
-	FPinactive,
+	FPINIT,
+	FPACTIVE,
+	FPINACTIVE,
 };
 struct	FPsave
 {
-	int	dummy;
+	ulong	status;
+	ulong	control;
+	ulong	regs[8][3];	/* emulated fp */	
 };
 
 struct Conf

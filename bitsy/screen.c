@@ -297,8 +297,8 @@ screenwin(void)
 	grey = allocmemimage(Rect(0,0,1,1), RGB16);
 	grey->flags |= Frepl;
 	grey->clipr = gscreen->r;
-	grey->data->bdata[0] = 0x77;
-	grey->data->bdata[1] = 0x77;
+	grey->data->bdata[0] = 0x40;
+	grey->data->bdata[1] = 0xfd;
 
 	w = memdefont->info[' '].width;
 	h = memdefont->height;

@@ -12,6 +12,7 @@ void	clockinit(void);
 void	delay(int);
 void	evenaddr(ulong);
 void	flushmmu(void);
+int		fpiarm(Ureg *ur);
 char*	getconf(char*);
 ulong	getfar(void);
 ulong	getfsr(void);

@@ -229,7 +229,7 @@ userinit(void)
 void
 procsetup(Proc *p)
 {
-	p->fpstate = FPinit;
+	p->fpstate = FPINIT;
 }
 
 /*
