@@ -130,16 +130,12 @@ mmuinit(void)
 	ktoppg.va = (ulong)top;
 	ktoppg.pa = ktoppg.va & ~KZERO;
 
-	/*  map all memory to KZERO (plus 1 meg for PCMCIA window) */
-	npage = conf.topofmem/BY2PG;
-	if(conf.topofmem < 64*MB){
-		/* for ISA bus memory */
-		isamemalloc.addr = conf.topofmem;
-		isamemalloc.end = conf.topofmem + 2*MB;
-		if(isamemalloc.end > 64*MB)
-			isamemalloc.end = 64*MB;
-		npage += (isamemalloc.end - isamemalloc.addr)/BY2PG;
-	}
+	/*  map all memory to KZERO (add some address space for ISA memory) */
+	isamemalloc.addr = conf.topofmem;
+	isamemalloc.end = conf.topofmem + ISAMEMSIZE;
+	if(isamemalloc.end > 64*MB)
+		isamemalloc.end = 64*MB;	/* ISA can only access 64 meg */
+	npage = isamemalloc.end/BY2PG;
 	nbytes = PGROUND(npage*BY2WD);		/* words of page map */
 	nkpt = nbytes/BY2PG;			/* pages of page map */
 	kpt = xspanalloc(nbytes, BY2PG, 0);
