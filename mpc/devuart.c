@@ -11,7 +11,7 @@
 enum {
 	FADS823 = 1,
 
-	Rbufsize=	512,
+	Rbufsize=	32,	// read buffer size
 	Nuart=	3,	/* max per machine (SMC1, SMC2, SCC2) */
 	CTLS=	's'&037,
 	CTLQ=	'q'&037,
@@ -188,8 +188,6 @@ struct Uart
 	Queue	*iq;
 	Queue	*oq;
 
-	/* staging areas to avoid some of the per character costs */
-	uchar	istage[Rbufsize][2];	/* double buffered */
 	int	rdrx;	/* last buffer read */
 
 	Lock	plock;		/* for output variables */
@@ -230,12 +228,22 @@ uartsetbuf(Uart *up)
 {
 	IOCparam *p;
 	BD *bd;
+	int n;
+	uchar *buf;
 
 	p = up->param;
 	p->rfcr = 0x18;
 	p->tfcr = 0x18;
 	p->mrblr = Rbufsize;
 
+	// allocate buffer for receive
+	// the buffers need to be CACHELINESZ aligned and
+	// a multiple of CACHELINESZ long in order for
+	// the manul cache coherence to work
+	n = 2*ROUND(Rbufsize, CACHELINESZ)+CACHELINESZ-1;
+	buf = malloc(n);
+	buf = (uchar*)ROUND((long)buf, CACHELINESZ);
+	
 	if((bd = up->rxb) == nil){
 		bd = bdalloc(2);
 		up->rxb = bd;
@@ -243,12 +251,12 @@ uartsetbuf(Uart *up)
 	p->rbase = (ushort)bd;
 	bd->status = BDEmpty|BDInt;
 	bd->length = 0;
-	bd->addr = PADDR(up->istage[0]);
+	bd->addr = PADDR(buf);
 	bd++;
 	bd->status = BDEmpty|BDInt|BDWrap;
 	bd->length = 0;
-	bd->addr = PADDR(up->istage[1]);
-	dcflush(up->istage, sizeof(up->istage));
+	bd->addr = PADDR(buf + ROUND(Rbufsize, CACHELINESZ));
+	dcflush(buf, 2*ROUND(Rbufsize, CACHELINESZ));
 	up->rdrx = 0;
 
 	if((bd = up->txb) == nil){
@@ -288,7 +296,7 @@ smcsetup(Uart *up)
 	/* SMC protocol parameters */
 	p = (Uartsmc*)up->param;
 	up->brkcr = &p->brkcr;
-	p->maxidl = 1;
+	p->maxidl = 10;
 	p->brkln = 0;
 	p->brkec = 0;
 	p->brkcr = 1;
@@ -892,6 +900,8 @@ uartspecial(int port, int baud, Queue **in, Queue **out, int (*putc)(Queue*, int
 	p->opens++;
 }
 
+int lastc = 'x';
+
 static int
 uartinput(Uart *p, BD *bd)
 {
@@ -922,8 +932,10 @@ uartinput(Uart *p, BD *bd)
 				}
 				/* BUG? should discard on/off char? */
 			}
-			if(p->putc)
+			if(p->putc) {
 				(*p->putc)(p->iq, ch);
+				lastc = ch;
+			}
 		}
 	}
 	if(p->putc == nil && l > 0)
@@ -1021,6 +1033,7 @@ uartintr(Uart *p, int events)
 			iunlock(&p->plock);
 		}
 	}
+#ifdef XXX
 	eieio();
 	/* TO DO: modem status isn't available on 82xFADS */
 	if(dokick && p->cts && !p->blocked){
@@ -1030,7 +1043,10 @@ uartintr(Uart *p, int events)
 			iunlock(&p->plock);
 		}
 		cpmop(RestartTx, p->cpmid, 0);
-	} else if (events & TXE)
+	} else 
+#endif
+
+	if (events & TXE)
 		cpmop(RestartTx, p->cpmid, 0);
 }
 
@@ -1215,8 +1231,8 @@ uartstatus(Chan*, Uart *p, void *buf, long n, long offset)
 	IMM *io;
 	char str[256];
 
-	sprint(str, "opens %d ferr %lud oerr %lud crcerr %lud baud %lud perr %lud intr %lud", p->opens,
-		p->frame, p->overrun, p->crcerr, p->baud, p->perror, p->interrupts);
+	sprint(str, "opens %d ferr %lud oerr %lud crcerr %lud baud %lud perr %lud intr %lud lastc = %c", p->opens,
+		p->frame, p->overrun, p->crcerr, p->baud, p->perror, p->interrupts, lastc);
 	/* TO DO: cts, dsr, ring, dcd, dtr, rts aren't all available on 82xFADS */
 	io = m->iomem;
 	if(p->scc){

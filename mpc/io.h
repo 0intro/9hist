@@ -324,8 +324,7 @@ struct IMM {
 			ulong	option;
 		} pcmr[8];
 		uchar	rsv3[0xe0-0xc0];
-		ulong	pgcra;
-		ulong	pgcrb;
+		ulong	pgcr[2];
 		ulong	pscr;
 		uchar	rsv4[0xf0-0xec];
 		ulong	pipr;
@@ -554,3 +553,26 @@ struct IMM {
 	uchar	siram[512];
 	ushort	lcdmap[256];
 };
+
+
+enum {
+	BusCBUS		= 0,		/* Corollary CBUS */
+	BusCBUSII,			/* Corollary CBUS II */
+	BusEISA,			/* Extended ISA */
+	BusFUTURE,			/* IEEE Futurebus */
+	BusINTERN,			/* Internal bus */
+	BusISA,				/* Industry Standard Architecture */
+	BusMBI,				/* Multibus I */
+	BusMBII,			/* Multibus II */
+	BusMCA,				/* Micro Channel Architecture */
+	BusMPI,				/* MPI */
+	BusMPSA,			/* MPSA */
+	BusNUBUS,			/* Apple Macintosh NuBus */
+	BusPCI,				/* Peripheral Component Interconnect */
+	BusPCMCIA,			/* PC Memory Card International Association */
+	BusTC,				/* DEC TurboChannel */
+	BusVL,				/* VESA Local bus */
+	BusVME,				/* VMEbus */
+	BusXPRESS,			/* Express System Bus */
+};
+

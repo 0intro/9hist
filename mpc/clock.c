@@ -112,26 +112,33 @@ clockintr(Ureg *ur)
 	m->iomem->swsr = 0xaa39;
 	
 	m->ticks++;
+	if(m->proc)
+		m->proc->pc = ur->pc;
 
-	if(up)
-		up->pc = ur->pc;
+	accounttime();
+	if(kproftimer != nil)
+		kproftimer(ur->pc);
+
 
 	checkalarms();
 	if(m->machno == 0) {
-		if(kproftick != nil)
-			(*kproftick)(ur->pc);
 		lock(&clock0lock);
 		for(lp = clock0link; lp; lp = lp->link)
 			lp->clock();
 		unlock(&clock0lock);
 	}
 
-	if(up && up->state == Running){
-//		if(up->type == Interp && tready())
-//			ur->cr |= 1<<(31-31);
-		if(nrdy > 0)
-			sched();
-	}
+	if(up == 0 || up->state != Running)
+		return;
+
+// user profiling clock 
+//	if(ur->status & KUSER) {
+//		(*(ulong*)(USTKTOP-BY2WD)) += TK2MS(1);
+//		segclock(ur->pc);
+//	}
+
+	if(anyready())
+		sched();
 }
 
 void

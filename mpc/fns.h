@@ -19,8 +19,8 @@ void	delay(int);
 ulong	draminit(ulong*);
 void	dtlbmiss(void);
 void	dumpregs(Ureg*);
-//void	eieio(void);
-#define	eieio()
+void	eieio(void);
+//#define	eieio()
 void	evenaddr(ulong);
 void	faultpower(Ureg*, ulong addr, int read);
 void	firmware(int);
@@ -42,11 +42,17 @@ void	gotopc(ulong);
 void	icflush(void*, ulong);
 void	idle(void);
 #define	idlehands()			/* nothing to do in the runproc */
-int	iprint(char*, ...);
+int	inb(int);
+void	insb(int, void*, int);
+ushort	ins(int);
+void	inss(int, void*, int);
+ulong	inl(int);
+void	insl(int, void*, int);
 void	intr(Ureg*);
 void	intrenable(int, void (*)(Ureg*, void*), void*, int);
 int	intrstats(char*, int);
 void	intrvec(void);
+int	iprint(char*, ...);
 void	itlbmiss(void);
 int	isaconfig(char*, int, ISAConf*);
 void	kbdinit(void);
@@ -58,6 +64,14 @@ void	mapinit(RMap*, Map*, int);
 void	mathinit(void);
 void	mmuinit(void);
 ulong*	mmuwalk(ulong*, ulong, int);
+void	outb(int, int);
+void	outsb(int, void*, int);
+void	outs(int, ushort);
+void	outss(int, void*, int);
+void	outl(int, ulong);
+void	outsl(int, void*, int);
+int		pcmspecial(char*, ISAConf*);
+void	pcmspecialclose(int);
 #define	procrestore(p)
 void	procsave(Proc*);
 void	procsetup(Proc*);
@@ -78,6 +92,7 @@ void	trapinit(void);
 void	trapvec(void);
 void	uartinstall(void);
 void	uartwait(void);	/* debugging */
+int unsac(uchar *dst, uchar *src, int n, int nsrc);
 void	wbflush(void);
 
 #define	waserror()	(up->nerrlab++, setlabel(&up->errlab[up->nerrlab-1]))

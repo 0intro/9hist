@@ -212,7 +212,7 @@ faultpower(Ureg *ureg, ulong addr, int read)
 	char buf[ERRLEN];
 
 	user = (ureg->srr1 & MSR_PR) != 0;
-//print("fault: pc = %ux, addr = %ux read = %d user = %d stack=%ux\n", ureg->pc, addr, read, user, &ureg);
+//print("fault: pid=%d pc = %ux, addr = %ux read = %d user = %d stack=%ux\n", up->pid, ureg->pc, addr, read, user, &ureg);
 	insyscall = up->insyscall;
 	up->insyscall = 1;
 	spllo();
@@ -222,6 +222,7 @@ faultpower(Ureg *ureg, ulong addr, int read)
 			dumpregs(ureg);
 			panic("fault: 0x%lux\n", addr);
 		}
+print("sys: trap: fault %s addr=0x%lux\n", read? "read" : "write", addr);
 		sprint(buf, "sys: trap: fault %s addr=0x%lux",
 			read? "read" : "write", addr);
 		postnote(up, 1, buf, NDebug);
@@ -674,6 +675,8 @@ notify(Ureg* ur)
 	ulong s, sp;
 	Note *n;
 
+print("***notify\n");
+
 	if(up->procctl)
 		procctl(up);
 	if(up->nnote == 0)
@@ -749,6 +752,7 @@ noted(Ureg* ureg, ulong arg0)
 	Ureg *nureg;
 	ulong oureg, sp;
 
+print("***noted\n");
 	qlock(&up->debug);
 	if(arg0!=NRSTR && !up->notified) {
 		qunlock(&up->debug);

@@ -7,16 +7,9 @@
 
 #include	"io.h"
 
-/*
- * MPC8xx real time clock
- * FADS board option switch
- * interrupt statistics
- */
-
 enum{
 	Qrtc = 1,
-	Qswitch,
-	Qintstat,
+	Qnvram,
 
 	/* sccr */
 	RTDIV=	1<<24,
@@ -25,14 +18,18 @@ enum{
 	/* rtcsc */
 	RTE=	1<<0,
 	R38K=	1<<4,
+
+	Nvoff=		4*1024,	/* where usable nvram lives */
+	Nvsize=		4*1024,
 };
 
 static	QLock	rtclock;		/* mutex on clock operations */
+static Lock nvrtlock;
+
 
 static Dirtab rtcdir[]={
 	"rtc",		{Qrtc, 0},	12,	0666,
-	"switch",	{Qswitch, 0}, 0, 0444,
-	"intstat",	{Qintstat, 0}, 0, 0444,
+	"nvram",	{Qnvram, 0},	Nvsize,	0664,
 };
 #define	NRTC	(sizeof(rtcdir)/sizeof(rtcdir[0]))
 
@@ -79,9 +76,8 @@ rtcopen(Chan *c, int omode)
 		if(strcmp(up->user, eve)!=0 && omode!=OREAD)
 			error(Eperm);
 		break;
-	case Qswitch:
-	case Qintstat:
-		if(omode!=OREAD)
+	case Qnvram:
+		if(strcmp(up->user, eve)!=0)
 			error(Eperm);
 		break;
 	}
@@ -97,7 +93,6 @@ static long
 rtcread(Chan *c, void *buf, long n, vlong offset)
 {
 	ulong t;
-//	char *b;
 
 	if(c->qid.path & CHDIR)
 		return devdirread(c, buf, n, rtcdir, NRTC, devgen);
@@ -107,8 +102,16 @@ rtcread(Chan *c, void *buf, long n, vlong offset)
 		t = m->iomem->rtc;
 		n = readnum(offset, buf, n, t, 12);
 		return n;
-	case Qswitch:
-		return readnum(offset, buf, n, 0xf/*(m->bcsr[2]>>19)&0xF*/, 12);
+	case Qnvram:
+		if(offset >= Nvsize)
+			return 0;
+		t = offset;
+		if(t + n > Nvsize)
+			n = Nvsize - t;
+		ilock(&nvrtlock);
+		memmove(buf, (uchar*)(NVRAMMEM + Nvoff + t), n);
+		iunlock(&nvrtlock);
+		return n;
 	}
 	error(Egreg);
 	return 0;		/* not reached */
@@ -120,6 +123,7 @@ rtcwrite(Chan *c, void *buf, long n, vlong offset)
 	ulong secs;
 	char *cp, *ep;
 	IMM *io;
+	ulong t;
 
 	switch(c->qid.path){
 	case Qrtc:
@@ -145,8 +149,16 @@ rtcwrite(Chan *c, void *buf, long n, vlong offset)
 		io->rtck = ~KEEP_ALIVE_KEY;
 		iopunlock();
 		return n;
-	case Qswitch:
-		return 0;
+	case Qnvram:
+		if(offset >= Nvsize)
+			return 0;
+		t = offset;
+		if(t + n > Nvsize)
+			n = Nvsize - t;
+		ilock(&nvrtlock);
+		memmove((uchar*)(NVRAMMEM + Nvoff + offset), buf, n);
+		iunlock(&nvrtlock);
+		return n;
 	}
 	error(Egreg);
 	return 0;		/* not reached */

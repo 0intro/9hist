@@ -123,7 +123,7 @@
 /*
  *  portable MMU bits for fault.c - though still machine specific
  */
-#define PTEVALID	(MMUPP|MMUSH|MMUCI|MMUV)
+#define PTEVALID	(MMUPP|MMUSH|MMUV)
 #define PTEWRITE	(2<<10)
 #define	PTERONLY	(3<<10)
 #define	PTEUNCACHED	(1<<4)
@@ -177,9 +177,10 @@
  * atlas board registers
  */
 #define	INTMEM		0x80000000
+#define	ISAMEM	0x80100000
 #define	FLASH0MEM	0x80200000
 #define	FLASH1MEM	0x80400000
-#define	SDRAMMEM	0x03000000
+#define	NVRAMMEM	0x80600000
 #define DRAMMEM		0xff000000		/* to 0xffffffff: 16 Meg */
 
 #define	SIRAM	(INTMEM+0xC00)

@@ -12,8 +12,6 @@
 
 static Ether *etherxx[MaxEther];
 
-void ethermediumlink(void);
-
 Chan*
 etherattach(char* spec)
 {
@@ -35,19 +33,6 @@ etherattach(char* spec)
 	if(etherxx[ctlrno]->attach)
 		etherxx[ctlrno]->attach(etherxx[ctlrno]);
 	return chan;
-}
-
-static void
-etherdetach(void)
-{
-	Ether **ether;
-
-	ether = etherxx;
-	while(*ether){
-		if((*ether)->detach)
-			(*ether)->detach(*ether);
-		ether++;
-	}
 }
 
 static int
@@ -76,18 +61,14 @@ ethercreate(Chan*, char*, int, ulong)
 static void
 etherclose(Chan* chan)
 {
-	Ether *ether;
-
-	ether = etherxx[chan->dev];
-	netifclose(ether, chan);
-	if(ether->closed)
-		ether->closed(ether);
+	netifclose(etherxx[chan->dev], chan);
 }
 
 static long
-etherread(Chan* chan, void* buf, long n, vlong offset)
+etherread(Chan* chan, void* buf, long n, vlong off)
 {
 	Ether *ether;
+	ulong offset = off;
 
 	ether = etherxx[chan->dev];
 	if((chan->qid.path & CHDIR) == 0 && ether->ifstat){
@@ -153,7 +134,7 @@ etheriq(Ether* ether, Block* bp, int freebp)
 {
 	Etherpkt *pkt;
 	ushort type;
-	int len;
+	int len, multi, forme;
 	Netfile **ep, *f, **fp, *fx;
 	Block *xbp;
 
@@ -165,8 +146,9 @@ etheriq(Ether* ether, Block* bp, int freebp)
 	fx = 0;
 	ep = &ether->f[Ntypes];
 
+	multi = pkt->d[0] & 1;
 	/* check for valid multcast addresses */
-	if((pkt->d[0] & 1) && memcmp(pkt->d, ether->bcast, sizeof(pkt->d)) != 0 && ether->prom == 0){
+	if(multi && memcmp(pkt->d, ether->bcast, sizeof(pkt->d)) && ether->prom == 0){
 		if(!activemulti(ether, pkt->d, sizeof(pkt->d))){
 			if(freebp){
 				freeb(bp);
@@ -176,6 +158,9 @@ etheriq(Ether* ether, Block* bp, int freebp)
 		}
 	}
 
+	// is it for me?
+	forme = memcmp(pkt->d, ether->ea, sizeof(pkt->d)) == 0;
+
 	/*
 	 * Multiplex the packet to all the connections which want it.
 	 * If the packet is not to be used subsequently (freebp != 0),
@@ -183,7 +168,7 @@ etheriq(Ether* ether, Block* bp, int freebp)
 	 * saving a copy of the data (usual case hopefully).
 	 */
 	for(fp = ether->f; fp < ep; fp++){
-		if((f = *fp) && (f->type == type || f->type < 0)){
+		if((f = *fp) && (f->type == type || f->type < 0) && (forme || multi || f->prom)){
 			if(f->type > -2){
 				if(freebp && fx == 0)
 					fx = f;
@@ -201,7 +186,8 @@ etheriq(Ether* ether, Block* bp, int freebp)
 	}
 
 	if(fx){
-		qpass(fx->in, bp);
+		if(qpass(fx->in, bp) < 0)
+			ether->soverflows++;
 		return 0;
 	}
 	if(freebp){
@@ -215,7 +201,7 @@ etheriq(Ether* ether, Block* bp, int freebp)
 static int
 etheroq(Ether* ether, Block* bp)
 {
-	int len, loopback, s;
+	int len, loopback, s, mine;
 	Etherpkt *pkt;
 
 	ether->outpackets++;
@@ -226,10 +212,14 @@ etheroq(Ether* ether, Block* bp)
 	 * in promiscuous mode.
 	 * If it's a loopback packet indicate to etheriq that the data isn't
 	 * needed and return, etheriq will pass-on or free the block.
+	 * To enable bridging to work, only packets that were originated
+	 * by this interface are fed back.
 	 */
 	pkt = (Etherpkt*)bp->rp;
 	len = BLEN(bp);
 	loopback = (memcmp(pkt->d, ether->ea, sizeof(pkt->d)) == 0);
+	mine = memcmp(pkt->s, ether->ea, sizeof(pkt->s)) == 0;
+	if(mine)
 	if(loopback || memcmp(pkt->d, ether->bcast, sizeof(pkt->d)) == 0 || ether->prom){
 		s = splhi();
 		etheriq(ether, bp, loopback);
@@ -256,8 +246,8 @@ etherwrite(Chan* chan, void* buf, long n, vlong)
 
 	if(n > ETHERMAXTU)
 		error(Etoobig);
-//	if(n < ETHERMINTU)
-//		error(Etoosmall);
+	if(n < ETHERMINTU)
+		error(Etoosmall);
 
 	bp = allocb(n);
 	if(waserror()){
@@ -279,7 +269,6 @@ etherbwrite(Chan* chan, Block* bp, ulong)
 	long n;
 
 	n = BLEN(bp);
-
 	ether = etherxx[chan->dev];
 	if(NETTYPE(chan->qid.path) != Ndataqid){
 		n = netifwrite(ether, chan, bp->rp, n);
@@ -290,6 +279,10 @@ etherbwrite(Chan* chan, Block* bp, ulong)
 	if(n > ETHERMAXTU){
 		freeb(bp);
 		error(Ebadarg);
+	}
+	if(n < ETHERMINTU){
+		freeb(bp);
+		error(Etoosmall);
 	}
 
 	return etheroq(ether, bp);
@@ -304,7 +297,7 @@ void
 addethercard(char* t, int (*r)(Ether*))
 {
 	static int ncard;
-print("addethercard\n");
+
 	if(ncard == MaxEther)
 		panic("too many ether cards");
 	cards[ncard].type = t;
@@ -342,8 +335,6 @@ etherreset(void)
 	int i, n, ctlrno;
 	char name[NAMELEN], buf[128];
 
-print("etherreset\n");
-	//ethermediumlink();
 	for(ether = 0, ctlrno = 0; ctlrno < MaxEther; ctlrno++){
 		if(ether == 0)
 			ether = malloc(sizeof(Ether));
@@ -353,9 +344,7 @@ print("etherreset\n");
 		ether->mbps = 10;
 		if(isaconfig("ether", ctlrno, ether) == 0)
 			continue;
-print("after isaconfig %d\n", n);
 		for(n = 0; cards[n].type; n++){
-print("card %d\n", n);
 			if(cistrcmp(cards[n].type, ether->type))
 				continue;
 			for(i = 0; i < ether->nopt; i++){
@@ -367,9 +356,16 @@ print("card %d\n", n);
 			if(cards[n].reset(ether))
 				break;
 
+			/*
+			 * IRQ2 doesn't really exist, it's used to gang the interrupt
+			 * controllers together. A device set to IRQ2 will appear on
+			 * the second interrupt controller as IRQ9.
+			 */
+			if(ether->irq == 2)
+				ether->irq = 9;
 			intrenable(ether->irq, ether->interrupt, ether, ether->tbdf);
 
-			i = sprint(buf, "#l%d: %s: %dMbps port 0x%luX irq %d",
+			i = sprint(buf, "#l%d: %s: %dMbps port 0x%luX irq %lud",
 				ctlrno, ether->type, ether->mbps, ether->port, ether->irq);
 			if(ether->mem)
 				i += sprint(buf+i, " addr 0x%luX", PADDR(ether->mem));
@@ -388,9 +384,9 @@ print("card %d\n", n);
 					ether->oq = qopen(256*1024, 1, 0, 0);
 			}
 			else{
-				netifinit(ether, name, Ntypes, 32*1024);
+				netifinit(ether, name, Ntypes, 65*1024);
 				if(ether->oq == 0)
-					ether->oq = qopen(64*1024, 1, 0, 0);
+					ether->oq = qopen(65*1024, 1, 0, 0);
 			}
 			if(ether->oq == 0)
 				panic("etherreset %s", name);
@@ -434,7 +430,6 @@ Dev etherdevtab = {
 	etherreset,
 	devinit,
 	etherattach,
-	/*etherdetach,*/
 	devclone,
 	etherwalk,
 	etherstat,

@@ -39,6 +39,11 @@ if(0) {
 		delay(1000);
 	}
 }
+// turn on pcmcia
+*(uchar*)(NVRAMMEM+0x100001) |= 0x60;
+//print("sr1=%ux sr2=%ux\n", *(uchar*)(NVRAMMEM+0x100000), *(uchar*)(NVRAMMEM+0x100001));
+
+//print("sccr=%ulx\n", m->iomem->sccr);
 	pageinit();
 	procinit0();
 	initseg();
@@ -46,7 +51,6 @@ if(0) {
 	links();
 	chandevreset();
 	swapinit();
-print("usrinit\n");
 	userinit();
 predawn = 0;
 	schedinit();
@@ -70,6 +74,8 @@ machinit(void)
 	m->speed = osc*(mf+1);
 	m->cpuhz = m->speed*MHz;	/* general system clock (cycles) */
 	m->clockgen = osc*MHz;		/* clock generator frequency (cycles) */
+
+	*(ushort*)&(io->memc[4].base) = 0x8060;
 }
 
 void
@@ -202,6 +208,8 @@ exit(int ispanic)
 	else
 		delay(1000);
 
+	for(;;)
+		;
 //	arch->reset();
 }
 
@@ -248,7 +256,7 @@ confinit(void)
 	ulong pa;
 
 	conf.nmach = 1;		/* processors */
-	conf.nproc = 200;	/* processes */
+	conf.nproc = 30;	/* processes */
 
 	// hard wire for now
 	pa = 0xffd00000;		// leave 1 Meg for kernel
@@ -257,8 +265,11 @@ confinit(void)
 	conf.npage0 = nbytes/BY2PG;
 	conf.base0 = pa;
 	
-	conf.npage1 = 0;
-	conf.base1 = 0;
+	pa = 0xfff04000;
+	nbytes = 1024*1024 - 0x4000;
+
+	conf.npage1 = nbytes/BY2PG;
+	conf.base1 = pa;
 
 	conf.npage = conf.npage0 + conf.npage1;
 
@@ -266,9 +277,9 @@ confinit(void)
 	conf.ialloc = ((conf.npage-conf.upages)/2)*BY2PG;
 
 	/* set up other configuration parameters */
-	conf.nswap = conf.npage*3;
-	conf.nswppo = 4096;
-	conf.nimage = 200;
+	conf.nswap = 0; // conf.npage*3;
+	conf.nswppo = 0; // 4096;
+	conf.nimage = 20;
 
 	conf.copymode = 0;		/* copy on write */
 }
@@ -296,6 +307,7 @@ getcfields(char* lp, char** fields, int n, char* sep)
 
 static char BOOTARGS[] = 
 		"ether0=type=SCC port=1 ea=08003e27df94\r\n"
+		"ether1=type=589E port=0x300\r\n"
 		"vgasize=640x480x8\r\n"
 		"kernelpercent=40\r\n"
 		"console=0 lcd\r\nbaud=9600\r\n";

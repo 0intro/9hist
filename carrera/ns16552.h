@@ -13,7 +13,7 @@ ns16552install(void)
 		return;
 	already = 1;
 
-	ns16552setup(Uart1, UartFREQ, "eia0");
+	ns16552setup(Uart1, UartFREQ, "eia0", Ns550);
 }
 
 #define RD(r)	(*(uchar*)((Uart1+r)^7))

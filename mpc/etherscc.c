@@ -394,8 +394,6 @@ sccsetup(Ctlr *ctlr, SCC *scc, uchar *ea)
 	Etherparam *p;
 	IMM *io;
 
-print("sccsetup\n");
-
 	io = ioplock();
 	p = (Etherparam*)KADDR(SCC1P);
 

@@ -484,6 +484,7 @@ convlookup(Proto *esp, ulong spi)
 		if(ecb->incoming && ecb->spi == spi)
 			return c;
 	}
+	return nil;
 }
 
 static char *

@@ -163,16 +163,16 @@ TEXT	kernelmmu(SB), $0
 	 * set:
 	 *  PowerPC mode
 	 *  Page protection mode - no 1K pages
-	 *  CI when MMU is disbaled - this will change
+	 *  ~CI when MMU is disbaled
 	 *  WT when DMMU is disbaled - this will change
 	 *  disable protected TLB for the momment
 	 *  ignore user/supervisor state when looking for TLB
 	 *  set first tlb entry to 28 - first lockable entry
 	 */
-	MOVW	$(MMUCIDEF|(31<<8)), R4
+	MOVW	$((31<<8)), R4
 	MOVW	R4, SPR(MI_CTR)	/* i-mmu control */
 	ISYNC
-	MOVW	$(MMUCIDEF|MMUWTDEF|(31<<8)), R4
+	MOVW	$((31<<8)), R4
 	MOVW	R4, SPR(MD_CTR)	/* d-mmu control */
 	ISYNC
 
@@ -197,14 +197,24 @@ ltlb:
 	BDNZ	ltlb
 
 	/* lock kernel entries in tlb - also reset tlb index*/
-	MOVW	$(MMUCIDEF|MMURSV4), R4
+	MOVW	$(MMURSV4), R4
 	MOVW	R4, SPR(MI_CTR)	/* i-mmu control */
 	ISYNC
-	MOVW	$(MMUCIDEF|MMUWTDEF|MMURSV4), R4
+	MOVW	$(MMURSV4), R4
 	MOVW	R4, SPR(MD_CTR)	/* d-mmu control */
 	ISYNC
 
-	/* enable MMU */
+	/* enable i-cache */
+	MOVW	$(1<<25), R4
+	MOVW	R4, SPR(IC_CST)
+	ISYNC
+
+ 	/* enable d-cache 	*/
+	MOVW	$(1<<25), R4
+	MOVW	R4, SPR(DC_CST)
+	ISYNC
+
+ 	/* enable MMU */
 	MOVW	MSR, R4
 	OR	$(MSR_IR|MSR_DR), R4
 	MOVW	R4, MSR
@@ -684,8 +694,8 @@ GLOBL	isavetbl+0(SB), $4
 
 TEXT	tlbtab(SB), $-4
 	/* epn, rpn, twc */
-	TLBE(DRAMMEM|MMUEV, MMUPS8M|MMUWT|MMUV, DRAMMEM|MMUPP|MMUSPS|MMUSH|MMUCI|MMUV)	/* DRAM, 8M */
-	TLBE((DRAMMEM+8*(1<<20))|MMUEV, MMUPS8M|MMUWT|MMUV, (DRAMMEM+8*(1<<20))|MMUPP|MMUSPS|MMUSH|MMUCI|MMUV)	/* DRAM, second 8M */
+	TLBE(DRAMMEM|MMUEV, MMUPS8M|MMUWT|MMUV, DRAMMEM|MMUPP|MMUSPS|MMUSH|MMUV)	/* DRAM, 8M */
+	TLBE((DRAMMEM+8*(1<<20))|MMUEV, MMUPS8M|MMUWT|MMUV, (DRAMMEM+8*(1<<20))|MMUPP|MMUSPS|MMUSH|MMUV)	/* DRAM, second 8M */
 	TLBE(INTMEM|MMUEV, MMUPS8M|MMUWT|MMUV, INTMEM|MMUPP|MMUSPS|MMUSH|MMUCI|MMUV)	/* IO space 8M */
 TEXT	tlbtabe(SB), $-4
 	RETURN
