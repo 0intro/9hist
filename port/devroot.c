@@ -13,6 +13,7 @@ enum{
 	Qenv,
 	Qproc,
 	Qnet,
+	Qnetalt,
 	Qrecover,
 	Qboot,		/* readable files */
 
@@ -28,6 +29,7 @@ Dirtab rootdir[Nfiles]={
 	"env",		{Qenv|CHDIR},	0,	0777,
 	"proc",		{Qproc|CHDIR},	0,	0777,
 	"net",		{Qnet|CHDIR},	0,	0777,
+	"net.alt",	{Qnetalt|CHDIR},	0,	0777,
 	"recover",	{Qrecover},	0,	0777,
 };
 
