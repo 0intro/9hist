@@ -38,7 +38,7 @@ newtlbpid(Proc *p)
 	int i, s;
 	Proc *sp;
 	char *h;
-/*
+
 	s = m->lastpid;
 	if(s >= NTLBPID)
 		s = 1;
@@ -51,26 +51,16 @@ newtlbpid(Proc *p)
 	}while(h[i] && i != s);
 	
 	if(i == s){
-		sp = m->pidproc[i];
-		if(sp){
-			if(sp->pidonmach[m->machno] == i)
-				sp->pidonmach[m->machno] = 0;
-			purgetlb(i);
-		}
+		i++;
+		if(i >= NTLBPID)
+			i = 1;
 	}
-*/
-	i = m->lastpid+1;
-	if(i >= NTLBPID)
-		i = 1;
 	sp = m->pidproc[i];
 	if(sp){
 		if(sp->pidonmach[m->machno] == i)
 			sp->pidonmach[m->machno] = 0;
-
-		sp->pidonmach[m->machno] = 0;
 		purgetlb(i);
 	}
-
 	m->lastpid = i;
 	m->pidproc[i] = p;
 	return i;
@@ -105,16 +95,16 @@ void
 purgetlb(int pid)
 {
 	Softtlb *entry, *etab;
-	char p[NTLBPID];
+	char *p;
 	Proc *sp;
 	int i, rpid;
 
-	if(m->pidproc[pid] == 0)
+	if(m->pidhere[pid] == 0)
 		return;
 
 	m->tlbpurge++;
-	m->pidproc[pid] = 0;
-	memset(p, 0, sizeof p);
+	p = m->pidhere;
+	memset(m->pidhere, 0, sizeof m->pidhere);
 	for(i=TLBROFF; i<NTLB; i++)
 		if(TLBPID(gettlbvirt(i)) == pid)
 			puttlbx(i, KZERO | PTEPID(i), 0);
@@ -128,14 +118,6 @@ purgetlb(int pid)
 		}else
 			p[rpid] = 1;
 	}
-	for(i = 0; i < NTLBPID; i++)
-		if(p[i] == 0){
-			sp = m->pidproc[i];
-			if(sp && sp->pidonmach[m->machno] == i)
-				sp->pidonmach[m->machno] = 0;
-			m->pidproc[i] = 0;
-			m->pidhere[i] = 0;
-		}
 }
 
 void

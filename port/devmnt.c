@@ -398,16 +398,6 @@ mntclwalk(Chan *c, char *name)
 	Chan *nc;
 
 	nc = newchan();
-	nc->type = c->type;
-	nc->dev = c->dev;
-	nc->qid = c->qid;
-	nc->mode = c->mode;
-	nc->flag = c->flag;
-	nc->offset = c->offset;
-	nc->mnt = c->mnt;
-	nc->aux = c->aux;
-	nc->mchan = c->mchan;
-	nc->mqid = c->qid;
 	mh = 0;
 	if(waserror()){
 		close(nc);
@@ -422,21 +412,24 @@ mntclwalk(Chan *c, char *name)
 	mh->thdr.newfid = nc->fid;
 	strcpy(mh->thdr.name, name);
 	mntxmit(m, mh);
-	poperror();
 	if(mh->rhdr.fid == mh->thdr.fid){
 		/*
-		 *  just free the chan, the other side has
-		 *  already clunked
+		 *  hack to indicate the most common error
 		 */
-		freechan(nc);
-		nc = 0;
-	} else {
-		/*
-		 *  it worked, keep the channel
-		 */
-		nc->qid = mh->rhdr.qid;
-		incref(m);
+		errors("directory entry not found");
 	}
+	nc->type = c->type;
+	nc->dev = c->dev;
+	nc->mode = c->mode;
+	nc->flag = c->flag;
+	nc->offset = c->offset;
+	nc->mnt = c->mnt;
+	nc->aux = c->aux;
+	nc->mchan = c->mchan;
+	nc->mqid = c->qid;
+	nc->qid = mh->rhdr.qid;
+	incref(m);
+	poperror();
 	mhfree(mh);
 	return nc;
 }
@@ -791,12 +784,10 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		print("type mismatch %d %d\n", mh->rhdr.type, mh->thdr.type+1);
 		error(Ebadmsg);
 	}
-#ifdef PHILW_HACK
-	if(mh->rhdr.fid != mh->thdr.fid){
+	if(mh->rhdr.fid!=mh->thdr.fid && mh->thdr.type!=Tclwalk){
 		print("fid mismatch %d %d type %d\n", mh->rhdr.fid, mh->thdr.fid, mh->rhdr.type);
 		error(Ebadmsg);
 	}
-#endif
 
 	/*
 	 * Copy out on read

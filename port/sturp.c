@@ -861,6 +861,7 @@ rcvack(Urp *up, int msg)
 	}
 
 	wakeup(&urpkr);
+	wakeup(&up->r);
 }
 
 /*

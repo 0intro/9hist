@@ -246,12 +246,13 @@ TEXT	vector0(SB), $-4
 
 	MOVW	$utlbmiss(SB), R26
 	MOVW	M(TLBVIRT), R27
-	SLL	$(STLBLOG-9), R27		/* delay slot fodder */
+	SRL	$(6-3), R27			/* delay slot fodder, right adjust */
 	JMP	(R26)
 
 TEXT	utlbmiss(SB), $-4
 
-	SRL	$(STLBLOG), R27, R26
+	SRL	$6, R27, R26			/* right adjusted vpn */
+	SLL	$(STLBLOG-6), R27		/* left adjusted pid */
 	XOR	R26, R27
 	AND	$((STLBSIZE-1)<<3), R27
 	MOVW	R27, M(TLBPHYS)			/* scratch register, store */
@@ -273,17 +274,10 @@ TEXT	utlbmiss(SB), $-4
 	MOVW	(R27), R27
 	BNE	R26, R27, stlbm
 
-	TLBP
-	MOVW	M(EPC), R27
-	MOVW	M(INDEX), R26
-	BGEZ	R26, uind
 	TLBWR
-	NOOP
+	MOVW	M(EPC), R27
 	RFE	(R27)
-uind:
-	TLBWI
-	NOOP
-	RFE	(R27)		
+
 stlbm:	
 	MOVW	$exception(SB), R26
 	JMP	(R26)

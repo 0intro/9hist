@@ -111,18 +111,6 @@ loop:
 }
 
 void
-freechan(Chan *c)
-{
-	if(decref(c) == 0){
-		c->flag = CFREE;
-		lock(&chanalloc);
-		c->next = chanalloc.free;
-		chanalloc.free = c;
-		unlock(&chanalloc);
-	}
-}
-
-void
 close(Chan *c)
 {
 	if(c->flag & CFREE)

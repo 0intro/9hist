@@ -106,7 +106,7 @@ vecinit(void)
 		*p++ = *q++;
 	p = (ulong*)UTLBMISS;
 	q = (ulong*)vector0;
-	for(size=0; size<4; size++)
+	for(size=0; size<0x80/sizeof(*q); size++)
 		*p++ = *q++;
 }
 
