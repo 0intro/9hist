@@ -113,6 +113,12 @@ ip_init(Fs *f)
 }
 
 void
+iprouting(Fs *f, int on)
+{
+	f->ip->iprouting = on;
+}
+
+void
 ipoput(Fs *f, Block *bp, int gating, int ttl)
 {
 	Ipifc *ifc;

@@ -439,7 +439,6 @@ extern Medium	ethermedium;
 extern Medium	nullmedium;
 extern Medium	pktmedium;
 extern Medium	tripmedium;
-extern Proto	ipifc;	
 
 /*
  *  ipifc.c
@@ -469,6 +468,7 @@ extern long	ipselftabread(Fs*, char *a, ulong offset, int n);
 /*
  *  ip.c
  */
+extern void	iprouting(Fs*, int);
 extern void	closeifcconv(Ifcconv*);
 extern void	icmpnoconv(Fs*, Block*);
 extern void	initfrag(IP*, int);
@@ -508,5 +508,4 @@ char*		commonerror(void);
  */
 extern int	debug;
 extern Fs	fs;
-extern int	iprouting;	/* true if routing turned on */
 extern void	(*igmpreportfn)(Ipifc*, uchar*);

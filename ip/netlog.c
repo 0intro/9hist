@@ -145,7 +145,7 @@ netlogread(Fs *f, void *a, ulong, long n)
 		else
 			unlock(f->alog);
 
-		sleep(f->alog, netlogready, 0);
+		sleep(f->alog, netlogready, f);
 	}
 
 	qunlock(f->alog);

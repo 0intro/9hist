@@ -540,6 +540,7 @@ static char*
 ipifcctl(Conv* c, char**argv, int argc)
 {
 	Ipifc *ifc;
+	int i;
 
 	ifc = (Ipifc*)c->ptcl;
 	if(strcmp(argv[0], "add") == 0)
@@ -554,6 +555,13 @@ ipifcctl(Conv* c, char**argv, int argc)
 		return ipifcjoinmulti(ifc, argv, argc);
 	else if(strcmp(argv[0], "leavemulti") == 0)
 		return ipifcleavemulti(ifc, argv, argc);
+	else if(strcmp(argv[0], "iprouting") == 0){
+		i = 1;
+		if(argc > 1)
+			i = atoi(argv[1]);
+		iprouting(c->p->f, i);
+		return nil;
+	}
 	return "unsupported ctl";
 }
 
