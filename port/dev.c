@@ -143,16 +143,14 @@ devstat(Chan *c, char *db, Dirtab *tab, int ntab, Devgen *gen)
 long
 devdirread(Chan *c, char *d, long n, Dirtab *tab, int ntab, Devgen *gen)
 {
-	long k, l, m;
+	long k, m;
 	Dir dir;
 
 	k = c->offset/DIRLEN;
-	l = (c->offset+n)/DIRLEN;
-	n = 0;
-	for(m=k; m<l; k++)
+	for(m=0; m<n; k++)
 		switch((*gen)(c, tab, ntab, k, &dir)){
 		case -1:
-			return n;
+			return m;
 
 		case 0:
 			c->offset += DIRLEN;
@@ -160,12 +158,11 @@ devdirread(Chan *c, char *d, long n, Dirtab *tab, int ntab, Devgen *gen)
 
 		case 1:
 			convD2M(&dir, d);
-			n += DIRLEN;
+			m += DIRLEN;
 			d += DIRLEN;
-			m++;
 			break;
 		}
-	return n;
+	return m;
 }
 
 Chan *

@@ -38,7 +38,7 @@ fault(Ureg *ur, int user, int code)
 			panic("fault");
 		}
 		s = &u->p->seg[SSEG];
-		if(s->o==0 || addr<s->maxva-4*1024*1024 || addr>=s->maxva)
+		if(s->o==0 || addr<s->maxva-USTACKSIZE || addr>=s->maxva)
 			goto cant;
 		/* grow stack */
 		o = s->o;
@@ -223,8 +223,11 @@ validaddr(ulong addr, ulong len, int write)
 	}
     Again:
 	s = seg(u->p, addr);
-	if(s==0)
-		goto Err;
+	if(s==0){
+		s = &u->p->seg[SSEG];
+		if(s->o==0 || addr<s->maxva-USTACKSIZE || addr>=s->maxva)
+			goto Err;
+	}
 	if(write && (s->o->flag&OWRPERM)==0)
 		goto Err;
 	if(addr+len > s->maxva){

@@ -148,6 +148,7 @@ unionread(Chan *c, void *va, long n)
 	nc = (*devtab[nc->type].open)(nc, OREAD);
 	nc->offset = c->offset;
 	nr = (*devtab[nc->type].read)(nc, va, n);
+	c->offset = nc->offset;		/* devdirread e.g. changes it */
 	close(nc);
 	poperror();
 	if(nr > 0)
@@ -192,7 +193,7 @@ sysread(ulong *arg)
 		if(c->offset%DIRLEN || n==0)
 			error(0, Ebaddirread);
 	}
-	if((c->qid&CHDIR) && c->flag&CMOUNT)
+	if((c->qid&CHDIR) && (c->flag&CMOUNT))
 		n = unionread(c, (void*)arg[1], n);
 	else
 		n = (*devtab[c->type].read)(c, (void*)arg[1], n);

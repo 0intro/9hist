@@ -432,10 +432,26 @@ namec(char *name, int amode, int omode, ulong perm)
 	Chan *c, *nc;
 	int t;
 	int mntok, isdot;
-	char *elem = u->elem;
+	char *p;
+	char *elem;
 
 	if(name[0] == 0)
 		error(0, Enonexist);
+
+	/*
+	 * Make sure all of name is o.k.  first byte is validated
+	 * externally so if it's a kernel address we know it's o.k.
+	 */
+	if(!((ulong)name & KZERO)){
+		p = name;
+		t = BY2PG-((ulong)p&(BY2PG-1));
+		while(vmemchr(p, 0, t) == 0){
+			p += t;
+			t = BY2PG;
+		}
+	}
+
+	elem = u->elem;
 	mntok = 1;
 	isdot = 0;
 	if(name[0] == '/'){
@@ -446,8 +462,6 @@ namec(char *name, int amode, int omode, ulong perm)
 		name = skipslash(name);
 	}else if(name[0] == '#'){
 		mntok = 0;
-		if(!((ulong)name & KZERO))
-			validaddr((ulong)(name+1), 2, 0);
 		if(name[1]=='|' || name[1]=='M')
 			error(0, Enonexist);
 		t = devno(name[1], 1);
@@ -570,18 +584,11 @@ char*
 skipslash(char *name)
 {
     Again:
-	while(*name == '/'){
-		if(((ulong)name&KZERO)==0 && (((ulong)name+1)&(BY2PG-1))==0)
-			validaddr((ulong)name+1, 1, 0);
+	while(*name == '/')
 		name++;
-	}
-	if(*name == '.'){
-		if(((ulong)name&KZERO)==0 && (((ulong)name+1)&(BY2PG-1))==0)
-			validaddr((ulong)name+1, 1, 0);
-		if(name[1]==0 || name[1]=='/'){
-			name++;
-			goto Again;
-		}
+	if(*name=='.' && (name[1]==0 || name[1]=='/')){
+		name++;
+		goto Again;
 	}
 	return name;
 }
@@ -600,7 +607,6 @@ char isfrog[]={
  * name[0] should not be a slash.
  * Advance name to next element in path, copying current element into elem.
  * Return pointer to next element, skipping slashes.
- * &name[0] is known to be a valid address.
  */
 char*
 nextelem(char *name, char *elem)
@@ -610,9 +616,9 @@ nextelem(char *name, char *elem)
 
 	if(*name == '/')
 		error(0, Efilename);
-	end = vmemchr(name, 0, NAMELEN);
+	end = memchr(name, 0, NAMELEN);
 	if(end == 0){
-		end = vmemchr(name, '/', NAMELEN);
+		end = memchr(name, '/', NAMELEN);
 		if(end == 0)
 			error(0, Efilename);
 	}else{
