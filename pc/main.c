@@ -19,10 +19,11 @@ main(void)
 	active.exiting = 0;
 	active.machs = 1;
 	confinit();
+	xinit();
 	screeninit();
 	printinit();
-	print("%ludK bytes of physical memory\n", (conf.base1 + conf.npage1*BY2PG)/1024);
 	mmuinit();
+	pageinit();
 	trapinit();
 	mathinit();
 	clockinit();
@@ -30,12 +31,9 @@ main(void)
 	kbdinit();
 	procinit0();
 	initseg();
-	grpinit();
-	chaninit();
 	chandevreset();
 	streaminit();
 	swapinit();
-	pageinit();
 	userinit();
 
 	schedinit();
@@ -107,8 +105,10 @@ userinit(void)
 
 	p = newproc();
 	p->pgrp = newpgrp();
-	p->egrp = newegrp();
-	p->fgrp = newfgrp();
+	p->egrp = smalloc(sizeof(Egrp));
+	p->egrp->ref = 1;
+	p->fgrp = smalloc(sizeof(Fgrp));
+	p->fgrp->ref = 1;
 	p->procmode = 0640;
 
 	strcpy(p->text, "*init*");
@@ -219,52 +219,35 @@ confinit(void)
 		/*
 		 *  write the word
 		 */
-		l = (long*)(KZERO|(i*1024L*1024L));
+		l = (long*)(KZERO|(i*MB));
 		*l = x;
 		/*
 		 *  take care of wraps
 		 */
 		for(j = 0; j < i; j++){
-			l = (long*)(KZERO|(j*1024L*1024L));
+			l = (long*)(KZERO|(j*MB));
 			*l = 0;
 		}
 		/*
 		 *  check
 		 */
-		l = (long*)(KZERO|(i*1024L*1024L));
+		l = (long*)(KZERO|(i*MB));
 		if(*l != x)
 			break;
 		x += 0x3141526;
 	}
-	conf.base1 = 0x100000;
-	conf.npage1 = ((i-1)*1024*1024 - conf.base1)/BY2PG;
-
+	conf.base1 = 1*MB;
+	conf.npage1 = ((i-1)*MB - conf.base1)/BY2PG;
 	conf.npage = conf.npage0 + conf.npage1;
+	conf.upages = (conf.npage*70)/100;
+
+	/* for meminit() */
+	conf.topofmem = i*MB;
 
 	mul = 1;
 	conf.nproc = 30 + i*5;
-	conf.npgrp = conf.nproc/2;
-	conf.nseg = conf.nproc*3;
-	conf.npagetab = (conf.nseg*14)/10;
 	conf.nswap = conf.nproc*80;
 	conf.nimage = 50;
-	conf.nalarm = 1000;
-	conf.nchan = 6*conf.nproc;
-	conf.nenv = 4*conf.nproc;
-	conf.nenvchar = 8000*mul;
-	conf.npgenv = 200*mul;
-	conf.nmtab = 50*mul;
-	conf.nmount = 80*mul;
-	conf.nmntdev = 15*mul;
-	conf.nmntbuf = conf.nmntdev+3;
-	conf.nmnthdr = 2*conf.nmntdev;
-	conf.nsrv = 16*mul;			/* was 32 */
-	conf.nurp = 32;
-	conf.nasync = 1;
-	conf.nstream = (conf.nproc*3)/2;
-	conf.nqueue = 5 * conf.nstream;
-	conf.nblock = 24 * conf.nstream;
-	conf.npipe = conf.nstream/2;
 	conf.copymode = 0;			/* copy on write */
 	conf.ipif = 8;
 	conf.ip = 64;
@@ -273,7 +256,7 @@ confinit(void)
 	conf.cntrlp = 0;
 	conf.nfloppy = 2;
 	conf.nhard = 1;
-	conf.dkif = 1;
+
 	confinit1(mul);
 }
 

@@ -497,7 +497,6 @@ syscall(Ureg *aur)
 	ulong sp;
 	ulong r1;
 	Ureg *ur;
-	char *msg;
 	Proc *p;
 
 	m->syscall++;
@@ -524,22 +523,25 @@ syscall(Ureg *aur)
 	u->nerrlab = 0;
 	ret = -1;
 	if(!waserror()){
-		if(r1 >= sizeof systab/sizeof systab[0]){
-			pprint("bad sys call number %d pc %lux\n", r1, ((Ureg*)UREGADDR)->pc);
-			msg = "sys: bad sys call";
-	    Bad:
-			postnote(p, 1, msg, NDebug);
+		if(r1 >= sizeof systab/sizeof systab[0]) {
+			pprint("bad sys call number %d pc %lux\n", r1, ur->pc);
+			postnote(p, 1, "sys: bad sys call", NDebug);
 			error(Ebadarg);
 		}
+
 		if(sp & (BY2WD-1)){
-			pprint("odd sp in sys call pc %lux sp %lux\n", ((Ureg*)UREGADDR)->pc, ((Ureg*)UREGADDR)->sp);
-			msg = "sys: odd stack";
-			goto Bad;
+			pprint("odd sp in sys call pc %lux sp %lux\n", ur->pc, ur->sp);
+			postnote(p, 1, "sys: odd stack", NDebug);
+			error(Ebadarg);
 		}
-		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-(1+MAXSYSARG)*BY2WD))
-			validaddr(sp, (1+MAXSYSARG)*BY2WD, 0);
+
+		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-sizeof(Sargs)))
+			validaddr(sp, sizeof(Sargs), 0);
+
+		u->s = *((Sargs*)(sp+BY2WD));
 		p->psstate = sysctab[r1];
-		ret = (*systab[r1])((ulong*)(sp+BY2WD));
+
+		ret = (*systab[r1])(u->s.args);
 	}
 	ur->pc += 4;
 	u->nerrlab = 0;

@@ -51,7 +51,6 @@ struct Conf
 	ulong	arp;		/* Arp table size */
 	ulong	frag;		/* Ip fragment assemble queue size */
 	ulong	cntrlp;		/* panic on ^P */
-	ulong	dkif;		/* number of datakit interfaces */
 };
 
 /*
@@ -185,6 +184,7 @@ struct User
 	char	elem[NAMELEN];		/* last name element from namec */
 	Chan	*slash;
 	Chan	*dot;
+	Sargs	s;
 	/*
 	 * Rest of structure controlled by devproc.c and friends.
 	 * qlock(&p->debug) to modify.

@@ -212,7 +212,7 @@ floppyreset(void)
 	/*
 	 *  allocate the drive storage
 	 */
-	fl.d = ialloc(conf.nfloppy*sizeof(Drive), 0);
+	fl.d = xalloc(conf.nfloppy*sizeof(Drive));
 	fl.selected = fl.d;
 
 	/*
@@ -231,7 +231,7 @@ floppyreset(void)
 		dp->t = &floppytype[0];		/* default type */
 		floppydir[NFDIR*dp->dev].length = dp->t->cap;
 		dp->cyl = -1;		/* because we don't know */
-		dp->cache = (uchar*)ialloc(dp->t->tsize, 1);
+		dp->cache = (uchar*)xspanalloc(dp->t->tsize, BY2PG, 0);
 		dp->ccyl = -1;
 		dp->vers = 1;
 	}

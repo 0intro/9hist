@@ -112,9 +112,9 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 		}
 
 		lkp = *pg;
-		lockpage(lkp);
+		lock(lkp);
 		if(lkp->ref > 1) {
-			unlockpage(lkp);
+			unlock(lkp);
 			if(new == 0)
 			if(new = newpage(0, &s, addr))
 			if(s == 0)
@@ -129,7 +129,7 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 			if(lkp->image)     
 				duppage(lkp);	
 		
-			unlockpage(lkp);
+			unlock(lkp);
 		}
 	done:
 		mmuphys = PPN((*pg)->pa) | PTEWRITE|PTEVALID;

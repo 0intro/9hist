@@ -81,8 +81,9 @@ flushmmu(void)
 void
 kmapinit(void)
 {
+	int i;
+	Page *p;
 	KMap *k;
-	int i, e;
 
 	if(kmapalloc.init == 0){
 		k = &kmapalloc.arena[0];
@@ -93,16 +94,17 @@ kmapinit(void)
 		return;
 	}
 
-	e = (MB4 - 256*1024)/BY2PG;	/* screen lives at top 256K */
-	i = PGROUND(palloc.addr0)/BY2PG;
-
-	print("%lud free map registers\n", e-i);
-
-	kmapalloc.free = 0;
-	for(k=&kmapalloc.arena[i]; i < e; i++){
-		k->va = i*BY2PG|KZERO;
-		kunmap(k++);
+	i = 0;
+	/* Reclaim map register for pages in bank0 */
+	for(p = palloc.head; p; p = p->next) {
+		if(p->pa < MB4) {
+			k = &kmapalloc.arena[p->pa/BY2PG];
+			k->va = p->pa|KZERO;
+			kunmap(k);
+			i++;
+		}
 	}
+	print("%lud free map registers\n", i);
 }
 
 KMap*

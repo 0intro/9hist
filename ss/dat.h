@@ -67,15 +67,12 @@ struct Conf
 	ulong	nimage;		/* number of page cache image headers */
 	ulong	nswap;		/* number of swap blocks */
 	ulong	upages;		/* number of user pages */
-	int	nurp;		/* max urp conversations */
-	int	nasync;		/* number of async protocol modules */
 	int	copymode;	/* 0 is copy on write, 1 is copy on reference */
 	ulong	ipif;		/* Ip protocol interfaces */
 	ulong	ip;		/* Ip conversations per interface */
 	ulong	arp;		/* Arp table size */
 	ulong	frag;		/* Ip fragment assemble queue size */
 	int	cntrlp;		/* panic on ^P */
-	int	dkif;		/* number of datakit interfaces */
 };
 
 /*
@@ -140,6 +137,7 @@ struct User
 	char	elem[NAMELEN];		/* last name element from namec */
 	Chan	*slash;
 	Chan	*dot;
+	Sargs	s;
 	/*
 	 * Rest of structure controlled by devproc.c and friends.
 	 * lock(&p->debug) to modify.

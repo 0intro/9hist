@@ -104,30 +104,27 @@ struct Line {
  *  a dkmux dk.  one exists for every stream that a 
  *  dkmux line discipline is pushed onto.
  */
-struct Dk {
+struct Dk
+{
 	QLock	netlock;
-	Network	net;
+	Network	net;		/* stat info */
+	Line	**linep;	/* array of line structures */
 
 	QLock	csclock;
 	Chan	*csc;
 
-	Lock;
-	int	opened;
-
 	char	name[64];	/* dk name */
 	Queue	*wq;		/* dk output queue */
-	Stream	*s;
 	int	ncsc;		/* csc line number */
 	int	lines;		/* number of lines */
-	Line	**linep;
 	int	restart;
 	int	urpwindow;
 	Rendez	timer;
 	int	closeall;	/* set when we receive a closeall message */
 	Rendez	closeallr;	/* wait here for a closeall */
 };
-static Dk *dk;
-static Lock dklock;
+Lock	dklock;
+Dk	*dk[Maxdk];
 
 /*
  *  conversation states (for Line.state)
@@ -207,9 +204,9 @@ extern Qinfo dkinfo;
 /*
  *  the datakit multiplexor stream module definition
  */
-static void dkmuxopen(Queue *, Stream *);
-static void dkmuxoput(Queue *, Block *);
-static void dkmuxiput(Queue *, Block *);
+static Streamopen dkmuxopen;
+static Streamput dkmuxoput;
+static Streamput dkmuxiput;
 Qinfo dkmuxinfo =
 {
 	dkmuxiput,
@@ -220,70 +217,6 @@ Qinfo dkmuxinfo =
 };
 
 /*
- *  Look for a dk struct with a name.  If none exists,  create one.
- */ 
-static Dk*
-dkalloc(char *name, int ncsc, int lines)
-{
-	Dk *dp;
-	Dk *freep;
-	int i, n;
-	Line *lp;
-
-	lock(&dklock);
-	freep = 0;
-	for(dp = dk; dp < &dk[Maxdk]; dp++){
-		if(strcmp(name, dp->name) == 0){
-			unlock(&dklock);
-			return dp;
-		}
-		if(dp->name[0] == 0)
-			freep = dp;
-	}
-	if(freep == 0 || lines == 0){
-		unlock(&dklock);
-		error(Enoifc);
-	}
-
-	dp = freep;
-	dp->opened = 0;
-	dp->s = 0;
-	dp->ncsc = ncsc;
-	dp->lines = lines;
-	strncpy(dp->name, name, sizeof(freep->name));
-
-	/*
-	 *  allocate memory for array of pointers to lines.
-	 *  line structures are allocated as needed.
-	 */
-	dp->linep = smalloc(sizeof(Line*) * dp->lines);
-
-	/*
-	 *  fill in the network structure
-	 */
-	dp->net.name = dp->name;
-	dp->net.nconv = dp->lines;
-	dp->net.devp = &dkinfo;
-	dp->net.protop = &urpinfo;
-	dp->net.listen = dklisten;
-	dp->net.clone = dkcloneline;
-	dp->net.ninfo = 5;
-	dp->net.info[0].name = "addr";
-	dp->net.info[0].fill = dkfilladdr;
-	dp->net.info[1].name = "raddr";
-	dp->net.info[1].fill = dkfillraddr;
-	dp->net.info[2].name = "ruser";
-	dp->net.info[2].fill = dkfillruser;
-	dp->net.info[3].name = "stats";
-	dp->net.info[3].fill = urpfillstats;
-	dp->net.info[4].name = "other";
-	dp->net.info[4].fill = dkfillother;
-
-	unlock(&dklock);
-	return dp;
-}
-
-/*
  *  allocate a line if it doesn't exist
  */
 static Line*
@@ -291,8 +224,6 @@ linealloc(Dk *dp, int lineno, int dolock)
 {
 	Line *lp;
 
-	if(dp->opened == 0)
-		error(Enoifc);
 	if(dolock)
 		qlock(&dp->netlock);
 	if(lineno > dp->lines)
@@ -315,11 +246,10 @@ linealloc(Dk *dp, int lineno, int dolock)
 static void
 dkmuxopen(Queue *q, Stream *s)
 {
-	RD(q)->ptr = s;
+	RD(q)->ptr = 0;
 	WR(q)->ptr = 0;
 
-	s->opens++;		/* Hold this queue in place */
-	s->inuse++;
+	naildownstream(s);
 }
 
 /*
@@ -395,10 +325,9 @@ dkmuxiput(Queue *q, Block *bp)
 /*
  *  the datakit line stream module definition
  */
-static void dkstopen(Queue *, Stream *);
-static void dkstclose(Queue *);
-static void dkoput(Queue *, Block *);
-static void dkiput(Queue *, Block *);
+static Streamopen dkstopen;
+static Streamclose dkstclose;
+static Streamput dkoput, dkiput;
 Qinfo dkinfo =
 {
 	dkiput,
@@ -417,7 +346,7 @@ dkstopen(Queue *q, Stream *s)
 	Dk *dp;
 	Line *lp;
 
-	dp = &dk[s->dev];
+	dp = dk[s->dev];
 	q->other->ptr = q->ptr = lp = dp->linep[s->id];
 	lp->dp = dp;
 	lp->rq = q;
@@ -498,8 +427,6 @@ out:
 	lp->rq = 0;
 	qunlock(lp);
 
-	if(lp->lineno == dp->ncsc)
-		dp->csc = 0;
 	netdisown(lp);
 	lp->window = 0;
 }
@@ -598,6 +525,7 @@ dkmuxconfig(Queue *q, Block *bp)
 		window = strtoul(fields[4], 0, 0);
 	case 4:
 		strncpy(name, fields[3], sizeof(name));
+		name[sizeof(name)-1] = 0;
 	case 3:
 		if(strcmp(fields[2], "restart")!=0)
 			restart = 0;
@@ -615,27 +543,62 @@ dkmuxconfig(Queue *q, Block *bp)
 		error(Ebadarg);
 
 	/*
-	 *  set up
+	 *  find a free dk slot.  it name is already configured
+	 *  or no slots are left, error.
 	 */
-	dp = dkalloc(name, ncsc, lines);
-	lock(dp);
-	if(dp->opened){
-		unlock(dp);
-		error(Ebadarg);
+	lock(&dklock);
+	if(waserror()){
+		unlock(&dklock);
+		nexterror();
 	}
+	for(n = 0; n < Maxdk; n++){
+		dp = dk[n];
+		if(dp == 0)
+			break;
+		if(strcmp(name, dp->name) == 0)
+			error(Einuse);
+	}
+	if(n == Maxdk)
+		error(Enoifc);
+
+	/*
+	 *  allocate both a dk structure and an array of pointers to line
+	 *  structures
+	 */
+	dp = smalloc(sizeof(Dk));
+	dp->ncsc = ncsc;
+	dp->lines = lines;
+	dp->linep = smalloc(sizeof(Line*) * dp->lines);
+	strcpy(dp->name, name);
+	dp->net.name = dp->name;
+	dp->net.nconv = dp->lines;
+	dp->net.devp = &dkinfo;
+	dp->net.protop = &urpinfo;
+	dp->net.listen = dklisten;
+	dp->net.clone = dkcloneline;
+	dp->net.ninfo = 5;
+	dp->net.info[0].name = "addr";
+	dp->net.info[0].fill = dkfilladdr;
+	dp->net.info[1].name = "raddr";
+	dp->net.info[1].fill = dkfillraddr;
+	dp->net.info[2].name = "ruser";
+	dp->net.info[2].fill = dkfillruser;
+	dp->net.info[3].name = "stats";
+	dp->net.info[3].fill = urpfillstats;
+	dp->net.info[4].name = "other";
+	dp->net.info[4].fill = dkfillother;
 	dp->restart = restart;
 	dp->urpwindow = window;
-	dp->s = RD(q)->ptr;
-	q->ptr = q->other->ptr = dp;
-	dp->opened = 1;
 	dp->wq = WR(q);
-	unlock(dp);
+	q->ptr = q->other->ptr = dp;
+	dk[n] = dp;
+	unlock(&dklock);
+	poperror();
 
 	/*
 	 *  open csc here so that boot, dktimer, and dkcsckproc aren't
 	 *  all fighting for it at once.
 	 */
-	dp->closeall = 0;
 	dkopencsc(dp);
 
 	/*
@@ -643,7 +606,6 @@ dkmuxconfig(Queue *q, Block *bp)
 	 */
 	sprint(buf, "csc.%s.%d", dp->name, dp->ncsc);
 	kproc(buf, dkcsckproc, dp);
-	tsleep(&dp->closeallr, haveca, dp, 5000);	/* wait for initial closeall */
 
 	/*
 	 *  tell datakit we've rebooted. It should close all channels.
@@ -653,8 +615,8 @@ dkmuxconfig(Queue *q, Block *bp)
 		DPRINT("dktimer: restart %s\n", dp->name);
 		dp->closeall = 0;
 		dkmesg(dp->csc, T_ALIVE, D_RESTART, 0, 0);
-		tsleep(&dp->closeallr, haveca, dp, 5000); /* wait for restart closeall */
 	}
+	tsleep(&dp->closeallr, haveca, dp, 15000);
 
 	/*
 	 *  start a keepalive process
@@ -666,9 +628,6 @@ dkmuxconfig(Queue *q, Block *bp)
 void
 dkreset(void)
 {
-	int i;
-
-	dk = (Dk*)xalloc(Maxdk*sizeof(Dk));
 	newqinfo(&dkmuxinfo);
 }
 
@@ -682,19 +641,26 @@ dkattach(char *spec)
 {
 	Chan *c;
 	Dk *dp;
+	int dev;
 
 	/*
 	 *  find a multiplexor with the same name (default dk)
 	 */
 	if(*spec == 0)
 		spec = "dk";
-	dp = dkalloc(spec, 0, 0);
+	for(dev = 0; dev < Maxdk; dev++){
+		dp = dk[dev];
+		if(dp && strcmp(dp->name, spec) == 0)
+			break;
+	}
+	if(dev == Maxdk)
+		error(Enoifc);
 
 	/*
 	 *  return the new channel
 	 */
 	c = devattach('k', spec);
-	c->dev = dp - dk;
+	c->dev = dev;
 	return c;
 }
 
@@ -707,13 +673,13 @@ dkclone(Chan *c, Chan *nc)
 int	 
 dkwalk(Chan *c, char *name)
 {
-	return netwalk(c, name, &dk[c->dev].net);
+	return netwalk(c, name, &dk[c->dev]->net);
 }
 
 void	 
 dkstat(Chan *c, char *dp)
 {
-	netstat(c, dp, &dk[c->dev].net);
+	netstat(c, dp, &dk[c->dev]->net);
 }
 
 Chan*
@@ -721,7 +687,7 @@ dkopen(Chan *c, int omode)
 {
 	Dk *dp;
 
-	dp = &dk[c->dev];
+	dp = dk[c->dev];
 	linealloc(dp, STREAMID(c->qid.path), 1);
 	return netopen(c, omode, &dp->net);
 }
@@ -743,7 +709,7 @@ dkclose(Chan *c)
 long	 
 dkread(Chan *c, void *a, long n, ulong offset)
 {
-	return netread(c, a, n, offset,  &dk[c->dev].net);
+	return netread(c, a, n, offset, &dk[c->dev]->net);
 }
 
 long	 
@@ -813,7 +779,7 @@ dkremove(Chan *c)
 void	 
 dkwstat(Chan *c, char *dp)
 {
-	netwstat(c, dp, &dk[c->dev].net);
+	netwstat(c, dp, &dk[c->dev]->net);
 }
 
 /*
@@ -826,7 +792,7 @@ dkcloneline(Chan *c)
 	Dk *dp;
 	int line;
 
-	dp = &dk[c->dev];
+	dp = dk[c->dev];
 	/*
 	 *  get an unused device and open its control file
 	 */
@@ -869,7 +835,7 @@ dkopenline(Dk *dp, int line)
 }
 
 /*
- *  open the common signalling channel
+ *  open the common signalling channel (dp->csc's reference count never goes below 1)
  */
 static Chan*
 dkopencsc(Dk *dp)
@@ -879,8 +845,7 @@ dkopencsc(Dk *dp)
 	qlock(&dp->csclock);
 	if(dp->csc == 0)
 		dp->csc = dkopenline(dp, dp->ncsc);
-	else
-		incref(dp->csc);
+	incref(dp->csc);
 	qunlock(&dp->csclock);
 	return dp->csc;
 }
@@ -891,22 +856,22 @@ dkopencsc(Dk *dp)
 void
 dkfilladdr(Chan *c, char *buf, int len)
 {
-	strncpy(buf, dk[c->dev].linep[STREAMID(c->qid.path)]->addr, len);
+	strncpy(buf, dk[c->dev]->linep[STREAMID(c->qid.path)]->addr, len);
 }
 void
 dkfillraddr(Chan *c, char *buf, int len)
 {
-	strncpy(buf, dk[c->dev].linep[STREAMID(c->qid.path)]->raddr, len);
+	strncpy(buf, dk[c->dev]->linep[STREAMID(c->qid.path)]->raddr, len);
 }
 void
 dkfillruser(Chan *c, char *buf, int len)
 {
-	strncpy(buf, dk[c->dev].linep[STREAMID(c->qid.path)]->ruser, len);
+	strncpy(buf, dk[c->dev]->linep[STREAMID(c->qid.path)]->ruser, len);
 }
 void
 dkfillother(Chan *c, char *buf, int len)
 {
-	strncpy(buf, dk[c->dev].linep[STREAMID(c->qid.path)]->other, len);
+	strncpy(buf, dk[c->dev]->linep[STREAMID(c->qid.path)]->other, len);
 }
 
 /*
@@ -963,7 +928,7 @@ dkcall(int type, Chan *c, char *addr, char *nuser, char *machine)
 	char *bang, *dot;
 	
 	line = STREAMID(c->qid.path);
-	dp = &dk[c->dev];
+	dp = dk[c->dev];
 	lp = linealloc(dp, line, 1);
 
 	/*
@@ -1139,7 +1104,7 @@ dklisten(Chan *c)
 	Chan *dc;
 	static int dts;
 
-	dp = &dk[c->dev];
+	dp = dk[c->dev];
 	from = STREAMID(c->qid.path);
 
 	/*
@@ -1309,7 +1274,7 @@ dkanswer(Chan *c, int line, int code)
 	Line *lp;
 	Dk *dp;
 
-	dp = &dk[c->dev];
+	dp = dk[c->dev];
 	lp = linealloc(dp, line, 1);
 
 	/*
@@ -1359,7 +1324,7 @@ dkwindow(Chan *c)
 	long wins;
 	Line *lp;
 
-	lp = linealloc(&dk[c->dev], STREAMID(c->qid.path), 1);
+	lp = linealloc(dk[c->dev], STREAMID(c->qid.path), 1);
 	if(lp->window == 0)
 		lp->window = 64;
 	sprint(buf, "init %d %d", lp->window, Streamhi);
@@ -1488,11 +1453,8 @@ dkchgmesg(Chan *c, Dk *dp, Dkmsg *dialp, int line)
 		break;
 	
 	case D_ISCLOSED:	/* acknowledging a local shutdown */
-		if (line <= 0 || line >= dp->lines || (lp = dp->linep[line]) == 0) {
-			/* tell controller this line is not in use */
-			dkmesg(c, T_CHG, D_CLOSE, line, 0);
+		if (line <= 0 || line >= dp->lines || (lp = dp->linep[line]) == 0)
 			return;
-		}
 		switch (lp->state) {
 		case Llclose:
 		case Lclosed:

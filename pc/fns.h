@@ -68,3 +68,5 @@ void	vgainit(void);
 #define	waserror()	(u->nerrlab++, setlabel(&u->errlab[u->nerrlab-1]))
 #define	kmapperm(x)	kmap(x)
 #define getcallerpc(x)	(*(ulong*)(x))
+#define KADDR(a)	((void*)((ulong)(a)|KZERO))
+#define PADDR(a)	((ulong)(a)&~KZERO)

@@ -222,8 +222,10 @@ userinit(void)
 
 	p = newproc();
 	p->pgrp = newpgrp();
-	p->egrp = newegrp();
-	p->fgrp = newfgrp();
+	p->egrp = smalloc(sizeof(Egrp));
+	p->egrp->ref = 1;
+	p->fgrp = smalloc(sizeof(Fgrp));
+	p->fgrp->ref = 1;
 	p->procmode = 0640;
 
 	strcpy(p->text, "*init*");
@@ -537,7 +539,6 @@ confinit(void)
 	conf.nproc = 100;
 	conf.nswap = 262144;
 	conf.nimage = 200;
-	conf.dkif = 1;
 	conf.ipif = 8;
 	conf.ip = 64;
 	conf.arp = 32;

@@ -40,20 +40,19 @@ main(void)
 	active.machs = 1;
 	mmuinit();
 	confinit();
+	xinit();
 	kmapinit();
 	duartinit();
 	screeninit();
 	printinit();
 	print("bank 0: %dM  bank 1: %dM\n", bank[0], bank[1]);
 	flushmmu();
+	pageinit();
 	procinit0();
 	initseg();
-	grpinit();
-	chaninit();
 	chandevreset();
 	streaminit();
 	swapinit();
-	pageinit();
 	kmapinit();
 	userinit();
 	schedinit();
@@ -318,18 +317,9 @@ confinit(void)
 	conf.nproc = 50*mul;
 	conf.nswap = 4096;
 	conf.nimage = 50;
-	conf.nenv = 100*mul;
-	conf.nenvchar = 8000*mul;
-	conf.npgenv = 200*mul;
-	conf.nstream = 40 + 32*mul;
-	conf.nqueue = 5 * conf.nstream;
-	conf.nmux = 10;
-	conf.nurp = 32;
-	conf.nasync = 1;
 	conf.copymode = 0;		/* copy on write */
 	conf.portispaged = 0;
 	conf.cntrlp = 0;
-	conf.dkif = 2;
 
 	confinit1(mul);
 }

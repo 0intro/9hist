@@ -117,15 +117,15 @@ mmuinit(void)
 	 */
 
 	/*  allocate top level table */
-	top = ialloc(BY2PG, 1);
+	top = xspanalloc(BY2PG, BY2PG, 0);
 	ktoppg.va = (ulong)top;
 	ktoppg.pa = ktoppg.va & ~KZERO;
 
 	/*  map all memory to KZERO */
-	npage = conf.base1/BY2PG + conf.npage1;
+	npage = conf.topofmem/BY2PG;
 	nbytes = PGROUND(npage*BY2WD);		/* words of page map */
 	nkpt = nbytes/BY2PG;			/* pages of page map */
-	kpt = ialloc(nbytes, 1);
+	kpt = xspanalloc(nbytes, BY2PG, 0);
 	for(i = 0; i < npage; i++)
 		kpt[i] = (0+i*BY2PG) | PTEVALID | PTEKERNEL | PTEWRITE;
 	x = TOPOFF(KZERO);
@@ -134,7 +134,7 @@ mmuinit(void)
 		top[x+i] = (y+i*BY2PG) | PTEVALID | PTEKERNEL | PTEWRITE;
 
 	/*  page table for u-> */
-	upt = ialloc(BY2PG, 1);
+	upt = xspanalloc(BY2PG, BY2PG, 0);
 	x = TOPOFF(USERADDR);
 	y = ((ulong)upt)&~KZERO;
 	top[x] = y | PTEVALID | PTEKERNEL | PTEWRITE;

@@ -229,7 +229,7 @@ pipeclose(Chan *c)
 				*l = p->next;
 				break;
 			}
-			l = &p->next;
+			l = &f->next;
 		}
 		unlock(&pipealloc);
 		free(p);
@@ -319,6 +319,6 @@ getpipe(ulong path)
 		}
 	}
 	unlock(&pipealloc);
-	error(Enonexist);
-	return 0;
+	panic("getpipe");
+	return 0;		/* not reached */
 }

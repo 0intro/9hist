@@ -59,6 +59,7 @@ enum {
  */
 struct Type {
 	QLock;
+	Netprot;			/* stat info */
 	int	type;			/* ethernet type */
 	int	prom;			/* promiscuous mode */
 	Queue	*q;
@@ -96,7 +97,6 @@ struct Ctlr {
 	uchar	kproc;		/* true if kproc started */
 	char	name[NAMELEN];	/* name of kproc */
 	Network	net;
-	Netprot	prot[NType];
 
 	Queue	lbq;		/* software loopback packet queue */
 
@@ -331,7 +331,7 @@ etherstclose(Queue *q)
 	tp->q = 0;
 	tp->prom = 0;
 	tp->inuse = 0;
-	netdisown(&tp->ctlr->net, tp - tp->ctlr->type);
+	netdisown(tp);
 	tp->ctlr = 0;
 	qunlock(tp);
 }
@@ -357,7 +357,7 @@ clonecon(Chan *c)
 			continue;
 		}
 		tp->inuse = 1;
-		netown(&cp->net, tp - cp->type, u->p->user, 0);
+		netown(tp, u->p->user, 0);
 		qunlock(tp);
 		return tp - cp->type;
 	}
@@ -483,8 +483,10 @@ etherkproc(void *arg)
 void
 etherreset(void)
 {
-	Ctlr *cp = &ctlr[0];
+	int i;
+	Ctlr *cp;
 
+	cp = &ctlr[0];
 	cp->hw = &wd8013;
 	(*cp->hw->reset)(cp);
 
@@ -497,11 +499,12 @@ etherreset(void)
 	cp->net.listen = 0;
 	cp->net.clone = clonecon;
 	cp->net.ninfo = 2;
-	cp->net.prot = cp->prot;
 	cp->net.info[0].name = "stats";
 	cp->net.info[0].fill = statsfill;
 	cp->net.info[1].name = "type";
 	cp->net.info[1].fill = typefill;
+	for(i = 0; i < NType; i++)
+		netadd(&cp->net, &cp->type[i], i);
 }
 
 void
@@ -611,9 +614,9 @@ wd8013reset(Ctlr *cp)
 	int i;
 	uchar msr;
 
-	cp->rb = ialloc(sizeof(Buffer)*Nrb, 1);
+	cp->rb = xspanalloc(sizeof(Buffer)*Nrb, BY2PG, 0);
 	cp->nrb = Nrb;
-	cp->tb = ialloc(sizeof(Buffer)*Ntb, 1);
+	cp->tb = xspanalloc(sizeof(Buffer)*Ntb, BY2PG, 0);
 	cp->ntb = Ntb;
 
 	msr = IN(hw, msr);

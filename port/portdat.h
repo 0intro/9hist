@@ -32,11 +32,16 @@ typedef struct Queue	Queue;
 typedef struct Ref	Ref;
 typedef struct Rendez	Rendez;
 typedef struct RWlock	RWlock;
+typedef struct Sargs	Sargs;
 typedef struct Segment	Segment;
 typedef struct Stream	Stream;
 typedef struct Talarm	Talarm;
 typedef struct Waitq	Waitq;
 typedef int    Devgen(Chan*, Dirtab*, int, int, Dir*);
+typedef	void   Streamput(Queue*, Block*);
+typedef	void   Streamopen(Queue*, Stream*);
+typedef	void   Streamclose(Queue*);
+typedef	void   Streamreset(void);
 
 #include "fcall.h"
 
@@ -78,6 +83,12 @@ struct Alarms
 {
 	QLock;
 	Proc	*head;
+};
+
+#define MAXSYSARG	5		/* for mount(fd, mpt, flag, arg, srv) */
+struct Sargs
+{
+	ulong	args[MAXSYSARG];
 };
 
 /* Block.flags */
@@ -238,11 +249,6 @@ struct KIOQ
 	int	count;
 };
 
-extern IOQ	lineq;
-extern IOQ	printq;
-extern IOQ	mouseq;
-extern KIOQ	kbdq;
-
 struct Mount
 {
 	ulong	mountid;
@@ -271,16 +277,18 @@ struct Note
 	int	flag;			/* whether system posted it */
 };
 
-/* Fields for cache control of pages */
-#define	PG_NOFLUSH	0
-#define PG_TXTFLUSH	1
-#define PG_DATFLUSH	2
-/* Simulated modified and referenced bits */
-#define PG_MOD		0x01
-#define PG_REF		0x02
+enum
+{
+	PG_NOFLUSH	= 0,		/* Fields for cache control of pages */
+	PG_TXTFLUSH	= 1,
+	PG_DATFLUSH	= 2,
+	PG_MOD		= 0x01,		/* Simulated modified and referenced bits */
+	PG_REF		= 0x02,
+};
 
 struct Page
 {
+	Lock;
 	ulong	pa;			/* Physical address in memory */
 	ulong	va;			/* Virtual address for user */
 	ulong	daddr;			/* Disc address on swap */
@@ -328,17 +336,19 @@ struct Pte
 };
 
 /* Segment types */
-#define SG_TYPE		07		/* Mask type of segment */
-#define SG_TEXT		00
-#define SG_DATA		01
-#define SG_BSS		02
-#define SG_STACK	03
-#define SG_SHARED	04
-#define SG_PHYSICAL	05
-#define SG_SHDATA	06
+enum
+{
+	SG_TYPE		= 07,		/* Mask type of segment */
+	SG_TEXT		= 00,
+	SG_DATA		= 01,
+	SG_BSS		= 02,
+	SG_STACK	= 03,
+	SG_SHARED	= 04,
+	SG_PHYSICAL	= 05,
+	SG_SHDATA	= 06,
 
-/* Segment flags */
-#define SG_RONLY	040			/* Segment is read only */
+	SG_RONLY	= 040,		/* Segment is read only */
+};
 
 #define PG_ONSWAP	1
 #define pagedout(s)	(((ulong)s)==0 || (((ulong)s)&PG_ONSWAP))
@@ -464,12 +474,9 @@ enum
 	SSEG, TSEG, DSEG, BSEG, ESEG, LSEG, SEG1, SEG2, NSEG
 };
 
-/*
- * Process states
- */
 enum
 {
-	Dead = 0,
+	Dead = 0,		/* Process states */
 	Moribund,
 	Ready,
 	Scheding,
@@ -479,24 +486,12 @@ enum
 	Broken,
 	Stopped,
 	Rendezvous,
-};
 
-/*
- * devproc requests
- */
-enum
-{
-	Proc_stopme = 1,
-	Proc_exitme = 2,
-	Proc_traceme = 3,
-};
+	Proc_stopme = 1, 	/* devproc requests */
+	Proc_exitme,
+	Proc_traceme,
 
-/*
- * Proc.time
- */
-enum
-{
-	TUser,
+	TUser = 0, 		/* Proc.time */
 	TSys,
 	TReal,
 	TCUser,
@@ -573,14 +568,14 @@ struct Proc
  */
 struct Qinfo
 {
-	void (*iput)(Queue*, Block*);	/* input routine */
-	void (*oput)(Queue*, Block*);	/* output routine */
-	void (*open)(Queue*, Stream*);
-	void (*close)(Queue*);
-	char *name;
-	void (*reset)(void);		/* initialization */
-	char nodelim;			/* True if stream does not preserve delimiters */
-	Qinfo *next;
+	Streamput	*iput;		/* input routine */
+	Streamput	*oput;		/* output routine */
+	Streamopen	*open;
+	Streamclose	*close;
+	char		*name;
+	Streamreset	*reset;		/* initialization */
+	char		nodelim;	/* True if stream does not preserve delimiters */
+	Qinfo		*next;
 };
 
 /*
@@ -678,30 +673,30 @@ struct Network
 	Netinf	info[5];
 	Netprot	*prot;			/* linked list of protections */
 };
-#define MAJOR(q) ((q) >> 8)
-#define MINOR(q) ((q) & 0xff)
-#define DEVICE(a,i) (((a)<<8) | (i))
 
-#define MAXSYSARG	5		/* for mount(fd, mpt, flag, arg, srv) */
 #define	PRINTSIZE	256
 #define	NUMSIZE		12		/* size of formatted number */
 
-extern	FPsave	initfp;
 extern	Conf	conf;
-extern	ulong	initcode[];
+extern	char*	conffile;
+extern	int	cpuserver;
+extern	char*	devchar;
 extern	Dev	devtab[];
-extern	char	*devchar;
-extern	char	*conffile;
-extern	char	*statename[];
+extern  char	eve[];
+extern	ulong	initcode[];
+extern	FPsave	initfp;
+extern  KIOQ	kbdq;
+extern  IOQ	lineq;
+extern  IOQ	mouseq;
+extern  Ref	noteidalloc;
+extern	int	nrdy;
+extern  IOQ	printq;
+extern	char*	statename[];
+extern  Image	swapimage;
+extern	char	sysname[NAMELEN];
+extern	Talarm	talarm;
 extern	Palloc 	palloc;
 extern	Pgrps 	pgrpalloc;
-extern  Image	swapimage;
-extern  char	eve[];
-extern	int	nrdy;
-extern	char	sysname[NAMELEN];
-extern	int	cpuserver;
-extern  Ref	noteidalloc;
-extern	Talarm	talarm;
 
 #define	CHDIR		0x80000000L
 #define	CHAPPEND 	0x40000000L
@@ -710,8 +705,8 @@ extern	Talarm	talarm;
 /*
  * auth messages
  */
-#define AUTHLEN		8
-enum{
+enum
+{
 	FScchal	= 1,
 	FSschal,
 	FSok,
@@ -721,4 +716,6 @@ enum{
 
 	RXschal	= 0,
 	RXstick	= 1,
+
+	AUTHLEN	= 8,
 };

@@ -115,23 +115,6 @@ closepgrp(Pgrp *p)
 }
 
 void
-closeegrp(Egrp *eg)
-{
-	Evalue *e, *next;
-
-	if(decref(eg) == 0) {
-		for(e = eg->entries; e; e = next) {
-			next = e->link;
-			free(e->name);
-			if(e->value)
-				free(e->value);
-			free(e);
-		}
-		free(eg);
-	}
-}
-
-void
 closefgrp(Fgrp *f)
 {
 	int i;
@@ -158,29 +141,6 @@ newmount(Mhead *mh, Chan *to)
 	incref(to);
 	m->mountid = incref(&mountid);
 	return m;
-}
-
-void
-envcpy(Egrp *to, Egrp *from)
-{
-	Evalue **l, *ne, *e;
-
-	l = &to->entries;
-	qlock(from);
-	for(e = from->entries; e; e = e->link) {
-		ne = smalloc(sizeof(Evalue));
-		ne->name = smalloc(strlen(e->name)+1);
-		strcpy(ne->name, e->name);
-		if(e->value) {
-			ne->value = smalloc(e->len);
-			memmove(ne->value, e->value, e->len);
-			ne->len = e->len;
-		}
-		ne->path = ++to->path;
-		*l = ne;
-		l = &ne->link;
-	}
-	qunlock(from);
 }
 
 void

@@ -52,32 +52,13 @@ struct Conf
 {
 	ulong	nmach;		/* processors */
 	ulong	nproc;		/* processes */
-	ulong	npgrp;		/* process groups */
-	ulong	npage0;		/* total physical pages in bank0 */
-	ulong	npage1;		/* total physical pages in bank1 */
+	ulong	npage0;		/* total physical pages of memory */
+	ulong	npage1;		/* total physical pages of memory */
+	ulong	topofmem;	/* highest physical address + 1 */
 	ulong	npage;		/* total physical pages of memory */
-	ulong	nseg;		/* number of segments */
+	ulong	upages;		/* user page pool */
 	ulong	nimage;		/* number of page cache image headers */
-	ulong 	npagetab;	/* number of pte tables */
 	ulong	nswap;		/* number of swap pages */
-	ulong	nalarm;		/* alarms */
-	ulong	nchan;		/* channels */
-	ulong	nenv;		/* distinct environment values */
-	ulong	nenvchar;	/* environment text storage */
-	ulong	npgenv;		/* environment files per process group */
-	ulong	nmtab;		/* mounted-upon channels per process group */
-	ulong	nmount;		/* mounts */
-	ulong	nmntdev;	/* mounted devices (devmnt.c) */
-	ulong	nmntbuf;	/* buffers for devmnt.c messages */
-	ulong	nmnthdr;	/* headers for devmnt.c messages */
-	ulong	nstream;	/* streams */
-	ulong	nqueue;		/* stream queues */
-	ulong	nblock;		/* stream blocks */
-	ulong	nsrv;		/* public servers (devsrv.c) */
-	ulong	nurp;		/* max urp conversations */
-	ulong	nasync;		/* number of async protocol modules */
-	ulong	npipe;		/* number of pipes */
-	ulong	maxialloc;	/* maximum bytes used by ialloc */
 	ulong	base0;		/* base of bank 0 */
 	ulong	base1;		/* base of bank 1 */
 	ulong	copymode;	/* 0 is copy on write, 1 is copy on reference */
@@ -88,7 +69,6 @@ struct Conf
 	ulong	cntrlp;		/* panic on ^P */
 	ulong	nfloppy;	/* number of floppy drives */
 	ulong	nhard;		/* number of hard drives */
-	int	dkif;		/* number of datakit interfaces */
 };
 
 /*
@@ -151,6 +131,7 @@ struct User
 	char	elem[NAMELEN];		/* last name element from namec */
 	Chan	*slash;
 	Chan	*dot;
+	Sargs	s;
 	/*
 	 * Rest of structure controlled by devproc.c and friends.
 	 * lock(&p->debug) to modify.

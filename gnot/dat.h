@@ -76,22 +76,12 @@ struct Conf
 	ulong	upages;		/* user page pool */
 	ulong	nimage;		/* number of page cache image headers */
 	ulong	nswap;		/* number of swap blocks */
-	int	nenv;		/* distinct environment values */
-	int	nenvchar;	/* environment text storage */
-	int	npgenv;		/* environment files per process group */
-	int	nmux;		/* number of mux devices */
-	int	nstream;	/* streams */
-	int	nqueue;		/* stream queues */
-	int	nsrv;		/* public servers (devsrv.c) */
-	int	nurp;		/* max urp conversations */
-	int	nasync;		/* number of async protocol modules */
 	int	nfsyschan;	/* number of filsys open channels */
 	int	nisdn;		/* number of isdn interfaces */
 	int	nlapd;		/* number of dragnet protocol modules */
 	int	copymode;	/* 0 is copy on write, 1 is copy on reference */
 	int	portispaged;	/* ??? */
 	int	cntrlp;		/* panic on ^P */
-	int	dkif;		/* number of datakit interfaces */
 	int	nconc;		/* number of datakit concentrators */
 };
 
@@ -147,15 +137,12 @@ struct Portpage
 	int	 select;
 };
 
-extern Portpage portpage;
 extern int	portispaged;
-extern int	(*portservice[])(void);
 
 struct Scsibuf
 {
 	void	*virt;
 	void	*phys;
-	Scsibuf	*next;
 };
 
 #define	NERR	25
@@ -171,6 +158,7 @@ struct User
 	char	elem[NAMELEN];		/* last name element from namec */
 	Chan	*slash;
 	Chan	*dot;
+	Sargs	s;
 	/*
 	 * Rest of structure controlled by devproc.c and friends.
 	 * lock(&p->debug) to modify.

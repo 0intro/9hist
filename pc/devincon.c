@@ -579,7 +579,7 @@ inconread(Chan *c, void *buf, long n, ulong offset)
 		sprint(b, "%d\n", incondebug);
 		break;
 	}
-	return stringread(buf, n, b, offset);
+	return readstr(offset, buf, n, b);
 }
 
 long	 

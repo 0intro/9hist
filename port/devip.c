@@ -23,26 +23,9 @@ Network	*ipnet[Nrprotocol];		/* User level interface for protocol */
 QLock	ipalloc;			/* Protocol port allocation lock */
 Ipconv	*tcpbase;			/* Base tcp connection */
 
-/* ARPA User Datagram Protocol */
-void	udpstiput(Queue *, Block *);
-void	udpstoput(Queue *, Block *);
-void	udpstopen(Queue *, Stream *);
-void	udpstclose(Queue *);
-/* ARPA Transmission Control Protocol */
-void	tcpstiput(Queue *, Block *);
-void	tcpstoput(Queue *, Block *);
-void	tcpstopen(Queue *, Stream *);
-void	tcpstclose(Queue *);
-/* Plan9 Reliable Datagram Protocol */
-void	iliput(Queue *, Block *);
-void	iloput(Queue *, Block *);
-void	ilopen(Queue *, Stream *);
-void	ilclose(Queue *);
-/* BSD authentication Protocol checker */
-void	bsdiput(Queue *, Block *);
-void	bsdoput(Queue *, Block *);
-void	bsdopen(Queue *, Stream *);
-void	bsdclose(Queue *);
+Streamput   udpstiput, udpstoput, tcpstiput, tcpstoput, iliput, iloput, bsdiput, bsdoput;
+Streamopen  udpstopen, tcpstopen, ilopen, bsdopen;
+Streamclose udpstclose, tcpstclose, ilclose, bsdclose;
 
 Qinfo tcpinfo = { tcpstiput, tcpstoput, tcpstopen, tcpstclose, "tcp", 0, 1 };
 Qinfo udpinfo = { udpstiput, udpstoput, udpstopen, udpstclose, "udp" };

@@ -76,8 +76,19 @@ long
 bootread(Chan *c, void *buf, long n, ulong offset)
 {
 	switch(c->qid.path & ~CHDIR){
+
 	case Qdir:
 		return devdirread(c, buf, n, bootdir, NBOOT, devgen);
+
+	case Qmem:
+		/* kernel memory */
+		if(offset>=KZERO && offset<KZERO+conf.npage*BY2PG){
+			if(offset+n > KZERO+conf.npage*BY2PG)
+				n = KZERO+conf.npage*BY2PG - offset;
+			memmove(buf, (char*)offset, n);
+			return n;
+		}
+		error(Ebadarg);
 	}
 
 	error(Egreg);
@@ -93,13 +104,11 @@ bootwrite(Chan *c, void *buf, long n, ulong offset)
 	case Qmem:
 		/* kernel memory */
 		if(offset>=KZERO && offset<KZERO+conf.npage*BY2PG){
-/* print("%ux, %d\n", c->offset, n);/**/
 			if(offset+n > KZERO+conf.npage*BY2PG)
 				n = KZERO+conf.npage*BY2PG - offset;
 			memmove((char*)offset, buf, n);
 			return n;
 		}
-		print("bootwrite: bad addr %lux\n", offset);
 		error(Ebadarg);
 
 	case Qboot:
@@ -107,7 +116,6 @@ bootwrite(Chan *c, void *buf, long n, ulong offset)
 		splhi();
 		gotopc(pc);
 	}
-	print("bootwrite: bad path %d\n", c->qid.path);
 	error(Ebadarg);
 	return 0;	/* not reached */
 }

@@ -68,6 +68,8 @@ struct Arena
 	Lock;
 	Bucket	*btab[Maxpow];
 	int	nbuck[Maxpow];
+	QLock	rq;
+	Rendez	r;
 };
 
 static Arena	arena;
@@ -100,6 +102,7 @@ xinit(void)
 	conf.base1 += np1*BY2PG;
 	conf.npage1 -= np1;
 	xhole(conf.base1, conf.npage1*BY2PG);
+	conf.npage1 = conf.base1+(conf.npage1*BY2PG);
 	up -= np1;
 
 	np0 = up;
@@ -110,9 +113,15 @@ xinit(void)
 	conf.base0 += np0*BY2PG;
 	conf.npage0 -= np0;
 	xhole(conf.base0, conf.npage0*BY2PG);
+	conf.npage0 = conf.base0+(conf.npage0*BY2PG);
 
 	palloc.np0 = np0;
 	palloc.np1 = np1;
+	/* Save the bounds of kernel alloc memory for kernel mmu mapping (NeXT) */
+	conf.base0 = (ulong)KADDR(conf.base0);
+	conf.base1 = (ulong)KADDR(conf.base1);
+	conf.npage0 = (ulong)KADDR(conf.npage0);
+	conf.npage1 = (ulong)KADDR(conf.npage1);
 }
 
 /*
@@ -287,13 +296,22 @@ good:
 void*
 smalloc(ulong size)
 {
+	char *s;
 	void *p;
 
-	p = malloc(size);
-	if(p == nil) {
-		print("asking for %d\n", size);
-		xsummary();
-		panic("smalloc should sleep");
+	for(;;) {
+		p = malloc(size);
+		if(p != nil)
+			return p;
+		s = u->p->psstate;
+		u->p->psstate = "Malloc";
+		qlock(&arena.rq);
+		while(waserror())
+			;
+		sleep(&arena.r, return0, nil);
+		poperror();
+		qunlock(&arena.rq);
+		u->p->psstate = s;
 	}
 	return p;
 }
@@ -324,6 +342,8 @@ free(void *ptr)
 	bp->next = *l;
 	*l = bp;
 	unlock(&arena);
+	if(arena.r.p)
+		wakeup(&arena.r);
 }
 
 void

@@ -15,14 +15,13 @@ void imagereclaim(void);
 
 #define IHASHSIZE	64
 #define ihash(s)	imagealloc.hash[s%IHASHSIZE]
-struct Imagealloc
+struct
 {
 	Lock;
 	Image	*free;
 	Image	*hash[IHASHSIZE];
+	QLock	ireclaim;
 }imagealloc;
-
-static QLock ireclaim;
 
 void
 initseg(void)
@@ -254,29 +253,28 @@ imagereclaim(void)
 {
 	Page *p;
 
-	if(!canqlock(&ireclaim))	/* Somebody is already cleaning the page cache */
+	/* Somebody is already cleaning the page cache */
+	if(!canqlock(&imagealloc.ireclaim))
 		return;
 
 	lock(&palloc);
 	for(p = palloc.head; p; p = p->next) {
-		if(p->image)
-		if(p->ref == 0)
-		if(p->image != &swapimage) {
-			lockpage(p);
+		if(p->image && p->ref == 0 && p->image != &swapimage) {
+			lock(p);
 			if(p->ref == 0)
 				uncachepage(p);
-			unlockpage(p);
+			unlock(p);
 		}
 	}
 	unlock(&palloc);
-	qunlock(&ireclaim);
+	qunlock(&imagealloc.ireclaim);
 }
 
 void
 putimage(Image *i)
 {
-	Image *f, **l;
 	Chan *c;
+	Image *f, **l;
 
 	if(i == &swapimage)
 		return;
@@ -301,7 +299,7 @@ putimage(Image *i)
 		imagealloc.free = i;
 		unlock(&imagealloc);
 
-		close(c);		/* Delay close because we could error */
+		close(c);
 		return;
 	}
 	unlock(i);

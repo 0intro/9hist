@@ -218,7 +218,6 @@ confinit(void)
 	conf.arp = 32;
 	conf.frag = 32;
 	conf.cntrlp = 0;
-	conf.dkif = 1;
 }
 
 /*

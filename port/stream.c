@@ -275,7 +275,7 @@ copyb(Block *bp, int count)
 /*
  *  process end line discipline
  */
-static void stputq(Queue*, Block*);
+static Streamput stputq;
 Qinfo procinfo =
 {
 	stputq,
@@ -626,15 +626,6 @@ static Sthash ht[Nhash];
 
 static void	hangup(Stream*);
 
-void
-streaminit(void)
-{
-	/*
-	 *  make stream modules available
-	 */
-	streaminit0();
-}
-
 /*
  *  A stream device consists of the contents of streamdir plus
  *  any directory supplied by the actual device.
@@ -835,6 +826,16 @@ streamexit(Stream *s, int locked)
 }
 
 /*
+ *  nail down a stream so that it can't be closed
+ */
+void
+naildownstream(Stream *s)
+{
+	s->opens++;
+	s->inuse++;
+}
+
+/*
  *  Decrement the open count.  When it goes to zero, call the close
  *  routines for each queue in the stream.
  */
@@ -902,7 +903,7 @@ streamclose(Chan *c)
 void
 stputq(Queue *q, Block *bp)
 {
-	int delim;
+	int awaken;
 	Stream *s;
 
 	if(bp->type == M_HANGUP){
@@ -914,7 +915,7 @@ stputq(Queue *q, Block *bp)
 		q->flag |= QHUNGUP;
 		q->other->flag |= QHUNGUP;
 		wakeup(q->other->rp);
-		delim = 1;
+		awaken = 1;
 	} else {
 		lock(q);
 		if(q->first)
@@ -923,21 +924,21 @@ stputq(Queue *q, Block *bp)
 			q->first = bp;
 		q->len += BLEN(bp);
 		q->nb++;
-		delim = bp->flags & S_DELIM;
+		awaken = bp->flags & S_DELIM;
 		while(bp->next) {
 			bp = bp->next;
 			q->len += BLEN(bp);
 			q->nb++;
-			delim |= bp->flags & S_DELIM;
+			awaken |= bp->flags & S_DELIM;
 		}
 		q->last = bp;
 		if(q->len >= Streamhi || q->nb >= Streambhi){
 			q->flag |= QHIWAT;
-			delim = 1;
+			awaken = 1;
 		}
 		unlock(q);
 	}
-	if(delim)
+	if(awaken)
 		wakeup(q->rp);
 }
 
@@ -1177,7 +1178,8 @@ streamwrite(Chan *c, void *a, long n, int docopy)
 	Queue *q;
 	long rem;
 	int i;
-	Block *bp, *first, *last;
+	Block *bp;
+	char *va;
 
 	s = c->stream;
 
@@ -1199,32 +1201,28 @@ streamwrite(Chan *c, void *a, long n, int docopy)
 	}
 
 	/*
-	 *  copy the whole write into kernel space
+	 *  Write the message using blocks <= Streamhi bytes longs
 	 */
-	first = last = 0;
-	for(rem = n; ; rem -= i) {
-		bp = allocb(rem);
-		i = bp->lim - bp->wptr;
-		if(i >= rem)
-			i = rem;
-		memmove(bp->wptr, a, i);
-		bp->wptr += i;
-		bp->type = M_DATA;
-		a = ((char*)a) + i;
-		if(first == 0)
-			first = bp;
+	va = a;
+	rem = n;
+	for(;;){
+		if(rem > Streamhi)
+			i = Streamhi;
 		else
-			last->next = bp;
-		last = bp;
-		if(i == rem)
+			i = rem;
+		bp = allocb(i);
+		memmove(bp->wptr, va, i);
+		bp->wptr += i;
+		va += i;
+		rem -= i;
+		if(rem > 0){
+			FLOWCTL(q, bp);
+		} else {
+			bp->flags |= S_DELIM;
+			FLOWCTL(q, bp);
 			break;
+		}
 	}
-
-	/*
-	 *  send it down stream
-	 */
-	last->flags |= S_DELIM;
-	FLOWCTL(q, first);
 	return n;
 }
 
@@ -1322,9 +1320,4 @@ getfields(char *lp, char **fields, int n, char sep)
 			lp++;
 	}
 	return i;
-}
-
-void
-dumpqueues(void)
-{
 }

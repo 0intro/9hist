@@ -264,10 +264,10 @@ pagepte(int type, Segment *s, Page **pg)
 	case SG_STACK:
 	case SG_SHARED:
 	case SG_SHDATA:
-		lockpage(outp);
+		lock(outp);
 		outp->ref++;
 		uncachepage(outp);
-		unlockpage(outp);
+		unlock(outp);
 
 		daddr = newswap();
 		outp->daddr = daddr;
@@ -314,9 +314,9 @@ executeio(void)
 		poperror();
 
 		/* Free up the page after I/O */
-		lockpage(out);
+		lock(out);
 		out->ref--;
-		unlockpage(out);
+		unlock(out);
 		putpage(out);
 	}
 	ioptr = 0;

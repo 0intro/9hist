@@ -148,7 +148,7 @@ outin(char *prompt, char *def, int len)
 
 /*
  *  get second word of the terminal environment variable.   If it
- *  ends in "boot", get work of that part.
+ *  ends in "boot", get rid of that part.
  */
 void
 getconffile(char *conffile, char *terminal)
@@ -169,7 +169,7 @@ getconffile(char *conffile, char *terminal)
 		*conffile++ = *p++;
 	*conffile = 0;
 
-	/* dump a trailig boot */
+	/* dump a trailing boot */
 	n = strlen(s);
 	if(n > 4 && strcmp(s + n - 4, "boot") == 0)
 		*(s+n-4) = 0;

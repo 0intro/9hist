@@ -201,8 +201,8 @@ hardreset(void)
 	Controller *cp;
 	int drive;
 
-	hard = ialloc(conf.nhard * sizeof(Drive), 0);
-	hardc = ialloc(((conf.nhard+1)/2 + 1) * sizeof(Controller), 0);
+	hard = xalloc(conf.nhard * sizeof(Drive));
+	hardc = xalloc(((conf.nhard+1)/2 + 1) * sizeof(Controller));
 	
 	for(drive = 0; drive < conf.nhard; drive++){
 		dp = &hard[drive];
@@ -211,7 +211,7 @@ hardreset(void)
 		dp->online = 0;
 		dp->cp = cp;
 		if((drive&1) == 0){
-			cp->buf = ialloc(Maxxfer, 0);
+			cp->buf = xalloc(Maxxfer);
 			cp->lastcmd = cp->cmd;
 			cp->cmd = 0;
 			cp->pbase = Pbase + (cp-hardc)*8;	/* BUG!! guessing */

@@ -65,6 +65,8 @@ netgen(Chan *c, void *vp, int ntab, int i, Dir *dp)
 			q.path = Qclone;
 			devdir(c, q, "clone", 0, eve, 0666, dp);
 		}else if(i <= np->nconv){
+			if(findprot(np, i-1) == 0)
+				return 0;
 			q.path = CHDIR|STREAMQID(i-1, Q3rd);
 			sprint(buf, "%d", i-1);
 			devdir(c, q, buf, 0, eve, 0555, dp);
@@ -75,7 +77,9 @@ netgen(Chan *c, void *vp, int ntab, int i, Dir *dp)
 
 	/* third level depends on the number of info files */
 	p = findprot(np, STREAMID(c->qid.path));
-	if(p && *p->owner){
+	if(p == 0)
+		return 0;
+	if(*p->owner){
 		o = p->owner;
 		perm = p->mode;
 	} else {
@@ -215,7 +219,6 @@ netopen(Chan *c, int omode, Network *np)
 			if(np->protop && c->stream->devq->next->info != np->protop)
 				pushq(c->stream, np->protop);
 			p = findprot(np, id);
-if(p == 0) print("netopen: can't find %d\n", id);
 			if(netown(p, u->p->user, omode&7) < 0)
 				error(Eperm);
 			break;

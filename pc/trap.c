@@ -328,10 +328,14 @@ syscall(Ureg *ur)
 			postnote(u->p, 1, "sys: bad sys call", NDebug);
 			error(Ebadarg);
 		}
+
 		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-(1+MAXSYSARG)*BY2WD))
 			validaddr(sp, (1+MAXSYSARG)*BY2WD, 0);
+
+		u->s = *((Sargs*)(sp+1*BY2WD));
 		u->p->psstate = sysctab[ax];
-		ret = (*systab[ax])((ulong*)(sp+BY2WD));
+
+		ret = (*systab[ax])(u->s.args);
 		poperror();
 	}
 	if(u->nerrlab){

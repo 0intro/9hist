@@ -51,11 +51,6 @@ struct Scsi
 	uchar	cmdblk[16];
 };
 
-struct{
-	Lock;
-	Scsibuf	*free;
-}scsibufalloc;
-
 static Scsi	staticcmd;	/* BUG: should be one per scsi device */
 
 enum
@@ -465,22 +460,6 @@ scsibwrite(int dev, Scsibuf *b, long n, long blocksize, long blockno)
 }
 
 /*
- * allocate a scsi buf of any length
- * must be called at ialloc time and never freed
- */
-Scsibuf *
-scsialloc(ulong n)
-{
-	Scsibuf *b;
-	uchar *x;
-	long m;
-
-	b = ialloc(sizeof *b, 0);
-	b->virt = b->phys = ialloc(n, 0);
-	return b;
-}
-
-/*
  * get a scsi io buffer of DATASIZE size
  */
 Scsibuf *
@@ -488,26 +467,16 @@ scsibuf(void)
 {
 	Scsibuf *b;
 
-	for(;;) {
-		lock(&scsibufalloc);
-		if(b = scsibufalloc.free) {
-			scsibufalloc.free = b->next;
-			unlock(&scsibufalloc);
-			return b;
-		}
-
-		unlock(&scsibufalloc);
-		resrcwait("no scsi buffers");
-	}
+	b = smalloc(sizeof(Scsibuf)+DATASIZE);
+	b->phys = (void*)(b + 1);
+	b->virt = b->phys;
+	return b;
 }
 
 void
 scsifree(Scsibuf *b)
 {
-	lock(&scsibufalloc);
-	b->next = scsibufalloc.free;
-	scsibufalloc.free = b;
-	unlock(&scsibufalloc);
+	free(b);
 }
 
 typedef struct Scsictl {
@@ -567,15 +536,7 @@ nop(void)
 void
 scsireset(void)
 {
-	static int alloced = 0;
-	int i;
-
 	addportintr(scsiintr);
-	if(!alloced){
-		for(i = 0; i < Nbuf; i++)
-			scsifree(scsialloc(DATASIZE));
-		alloced = 1;
-	}
 }
 
 void

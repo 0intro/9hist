@@ -578,9 +578,9 @@ uartreset(void)
 	for(up = uart; up < &uart[2]; up++){
 		if(up->nostream)
 			continue;
-		up->iq = ialloc(sizeof(IOQ), 0);
+		up->iq = xalloc(sizeof(IOQ));
 		initq(up->iq);
-		up->oq = ialloc(sizeof(IOQ), 0);
+		up->oq = xalloc(sizeof(IOQ));
 		initq(up->oq);
 	}
 }

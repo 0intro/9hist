@@ -101,7 +101,7 @@ newpage(int clear, Segment **s, ulong va)
 	palloc.freecount--;
 	unlock(&palloc);
 
-	lockpage(p);
+	lock(p);
 
 	if(p->ref != 0)
 		panic("newpage");
@@ -112,7 +112,7 @@ newpage(int clear, Segment **s, ulong va)
 	p->modref = 0;
 	for(i = 0; i < MAXMACH; i++)
 		p->cachectl[i] = PG_NOFLUSH;
-	unlockpage(p);
+	unlock(p);
 
 	if(clear){
 		k = kmap(p);
@@ -138,7 +138,7 @@ putpage(Page *p)
 		return;
 	}
 
-	lockpage(p);
+	lock(p);
 	if(--p->ref == 0) {
 		lock(&palloc);
 		if(p->image && p->image != &swapimage) {
@@ -169,7 +169,7 @@ putpage(Page *p)
 		palloc.freecount++;		/* Release people waiting for memory */
 		unlock(&palloc);
 	}
-	unlockpage(p);
+	unlock(p);
 }
 
 void
@@ -177,16 +177,15 @@ simpleputpage(Page *pg)			/* Always call with palloc locked */
 {
 	pg->ref = 0;
 	palloc.freecount++;
-	if(palloc.head) {
-		pg->next = palloc.head;
-		palloc.head->prev = pg;
-		pg->prev = 0;
-		palloc.head = pg;
-	}
-	else {
+	if(palloc.head == 0) {
 		palloc.head = palloc.tail = pg;
 		pg->prev = pg->next = 0;
+		return;
 	}
+	pg->next = palloc.head;
+	palloc.head->prev = pg;
+	pg->prev = 0;
+	palloc.head = pg;
 }
 
 void
@@ -223,10 +222,10 @@ duppage(Page *p)				/* Always call with p locked */
 
 	unlock(&palloc);
 
-	lockpage(np);				/* Cache the new version */
+	lock(np);				/* Cache the new version */
 	if(np->ref != 0) {			/* Stolen by new page */
 		uncachepage(p);
-		unlockpage(np);
+		unlock(np);
 		return;
 	}
 	
@@ -235,7 +234,7 @@ duppage(Page *p)				/* Always call with p locked */
 	np->daddr = p->daddr;
 	copypage(p, np);
 	cachepage(np, p->image);
-	unlockpage(np);
+	unlock(np);
 	uncachepage(p);
 }
 
@@ -256,20 +255,21 @@ uncachepage(Page *p)				/* Always called with a locked page */
 {
 	Page **l, *f;
 
-	if(p->image) {
-		lock(&palloc.hashlock);
-		l = &pghash(p);
-		for(f = *l; f; f = f->hash) {
-			if(f == p) {
-				*l = p->hash;
-				break;
-			}
-			l = &f->hash;
+	if(p->image == 0)
+		return;
+
+	lock(&palloc.hashlock);
+	l = &pghash(p);
+	for(f = *l; f; f = f->hash) {
+		if(f == p) {
+			*l = p->hash;
+			break;
 		}
-		unlock(&palloc.hashlock);
-		putimage(p->image);
-		p->image = 0;
+		l = &f->hash;
 	}
+	unlock(&palloc.hashlock);
+	putimage(p->image);
+	p->image = 0;
 }
 
 void
@@ -296,9 +296,9 @@ lookpage(Image *i, ulong daddr)
 		if(f->image == i && f->daddr == daddr) {
 			unlock(&palloc.hashlock);
 
-			lockpage(f);
+			lock(f);
 			if(f->image != i || f->daddr != daddr) {
-				unlockpage(f);
+				unlock(f);
 				return 0;
 			}
 
@@ -317,7 +317,7 @@ lookpage(Image *i, ulong daddr)
 			}
 			unlock(&palloc);
 
-			unlockpage(f);
+			unlock(f);
 			return f;	
 		}
 	}
@@ -328,8 +328,8 @@ lookpage(Image *i, ulong daddr)
 Pte*
 ptecpy(Pte *old)
 {
-	Page **src, **dst, **end;
 	Pte *new;
+	Page **src, **dst, **end;
 
 	new = ptealloc();
 	dst = &new->pages[old->first-old->pages];
@@ -339,9 +339,9 @@ ptecpy(Pte *old)
 			if(onswap(*src))
 				dupswap(*src);
 			else {
-				lockpage(*src);
+				lock(*src);
 				(*src)->ref++;
-				unlockpage(*src);
+				unlock(*src);
 			}
 			new->last = dst;
 			*dst = *src;
@@ -383,33 +383,4 @@ freepte(Segment *s, Pte *p)
 			}
 	}
 	free(p);
-}
-
-/* Multiplex a hardware lock for per page manipulations */
-void
-lockpage(Page *p)
-{	
-	int s;
-
-	for(;;) {
-		if(p->lock == 0) {
-			s = splhi();
-			lock(&pglock);
-			if(p->lock == 0) {
-				p->lock = 1;
-				unlock(&pglock);
-				splx(s);
-				return;
-			}
-			unlock(&pglock);
-			splx(s);
-		}
-		sched();
-	}
-}
-
-void
-unlockpage(Page *p)
-{
-	p->lock = 0;
 }

@@ -645,9 +645,9 @@ duartreset(void)
 
 	if(dp->nostream)
 		return;
-	dp->iq = ialloc(sizeof(IOQ), 0);
+	dp->iq = xalloc(sizeof(IOQ));
 	initq(dp->iq);
-	dp->oq = ialloc(sizeof(IOQ), 0);
+	dp->oq = xalloc(sizeof(IOQ));
 	initq(dp->oq);
 	duartenable(dp);
 }
