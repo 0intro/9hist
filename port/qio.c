@@ -24,7 +24,7 @@ struct Queue
 {
 	Lock;
 
-	Block*	bfirst;	/* buffer */
+	Block*	bfirst;		/* buffer */
 	Block*	blast;
 
 	int	len;		/* bytes in queue */
@@ -81,7 +81,7 @@ iallocb(int size)
 
 	size = sizeof(Block) + size + (BY2V-1);
 	if(ialloc.bytes > conf.ialloc){
-		iprint("ialloc limit %d/%d\n", ialloc.bytes, conf.ialloc);
+		iprint("iallocb: limited %d/%d\n", ialloc.bytes, conf.ialloc);
 		return 0;
 	}
 	b = mallocz(size, 0);
@@ -110,8 +110,8 @@ void
 freeb(Block *b)
 {
 	/*
-	 * drivers which perform non cache coherent DMA manage their
-	 * own buffer pool and provide their own free routine.
+	 * drivers which perform non cache coherent DMA manage their own buffer 
+	 * pool of uncached buffers and provide their own free routine.
 	 */
 	if(b->free) {
 		b->free(b);
@@ -485,7 +485,7 @@ qread(Queue *q, void *vp, int len)
 		iunlock(q);
 	}
 
-	/* wakeup flow controlled writers (with a bit of histeresis) */
+	/* wakeup flow controlled writers (with a bit of histeria) */
 	if(dowakeup){
 		if(q->kick)
 			(*q->kick)(q->arg);
