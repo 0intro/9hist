@@ -115,9 +115,10 @@ iallockproc(void *arg)
 			unlock(cl);
 			splx(x);
 	
-			for(; first; first = p){
+			while(first != 0) {
 				p = first->next;
 				free(first);
+				first = p;
 			}
 		}
 
@@ -146,10 +147,12 @@ iallockproc(void *arg)
 
 			first = 0;
 			l = &first;
-			for(i = x = cl->goal - cl->have; x > 0; x--){
+			i = cl->goal - cl->have;
+			for(x = i; x > 0; x--){
 				p = malloc(1<<pow);
 				if(p == 0)
 					break;
+
 				*l = p;
 				l = &p->next;
 			}
@@ -190,7 +193,7 @@ iallocb(int size)
 	Block *b;
 
 	size += sizeof(Block);
-	for(pow = Minpow; pow <= Maxpow; pow++)
+	for(pow = Minpow; pow <= Maxpow; pow++){
 		if(size <= (1<<pow)){
 			cl = &arena.alloc[pow];
 			lock(cl);
@@ -205,10 +208,13 @@ iallocb(int size)
 			b = (Block *)p;
 			memset(b, 0, sizeof(Block));
 			b->base = (uchar*)(b+1);
-			b->wp = b->rp = b->base;
+			b->wp = b->base;
+			b->rp = b->base;
 			b->lim = b->base + (1<<pow) - sizeof(Block);
 			return b;
 		}
+	}
+
 	panic("iallocb %d\n", size);
 	return 0;			/* not reached */
 }
@@ -239,9 +245,9 @@ allocb(int size)
 	if(b == 0)
 		exhausted("Blocks");
 
-	memset(b, 0, sizeof(Block));
 	b->base = (uchar*)(b+1);
-	b->rp = b->wp = b->base;
+	b->rp = b->base;
+	b->wp = b->base;
 	b->lim = b->base + size;
 	b->flag = 0;
 
@@ -549,9 +555,10 @@ qclose(Queue *q)
 	splx(x);
 
 	/* free queued blocks */
-	while(b = bfirst){
-		bfirst = b->next;
-		free(b);
+	while(bfirst){
+		b = bfirst->next;
+		free(bfirst);
+		bfirst = b;
 	}
 
 	/* wake up readers/writers */
