@@ -37,47 +37,96 @@
 #define	TK2MS(t)	((t)*MS2HZ)		/* ticks to milliseconds */
 #define	MS2TK(t)	(((t)*HZ+500)/1000)	/* milliseconds to closest tick */
 
-/* Bit encodings for Machine State Register (MSR) */
-#define MSR_POW		(1<<18)		/* Enable Power Management */
-#define MSR_TGPR	(1<<17)		/* TLB Update registers in use */
-#define MSR_ILE		(1<<16)		/* Interrupt Little-Endian enable */
-#define MSR_EE		(1<<15)		/* External Interrupt enable */
-#define MSR_PR		(1<<14)		/* Supervisor/User privelege */
-#define MSR_FP		(1<<13)		/* Floating Point enable */
-#define MSR_ME		(1<<12)		/* Machine Check enable */
-#define MSR_FE0		(1<<11)		/* Floating Exception mode 0 */
-#define MSR_SE		(1<<10)		/* Single Step */
-#define MSR_BE		(1<<9)		/* Branch Trace */
-#define MSR_FE1		(1<<8)		/* Floating Exception mode 1 */
-#define MSR_IP		(1<<6)		/* Exception prefix 0x000/0xFFF */
-#define MSR_IR		(1<<5)		/* Instruction MMU enable */
-#define MSR_DR		(1<<4)		/* Data MMU enable */
-#define MSR_RI		(1<<1)		/* Recoverable Exception */
-#define MSR_LE		(1<<0)		/* Little-Endian enable */
+/*
+ * Standard PPC Special Purpose Registers (OEA and VEA)
+ */
+#define DSISR	18
+#define DAR	19		/* Data Address Register */
+#define DEC	22		/* Decrementer */
+#define SDR1	25
+#define SRR0	26		/* Saved Registers (exception) */
+#define SRR1	27
+#define SPRG0	272		/* Supervisor Private Registers */
+#define SPRG1	273
+#define SPRG2	274
+#define SPRG3	275
+#define ASR	280		/* Address Space Register */
+#define EAR	282		/* External Access Register (optional) */
+#define TBRU	269		/* Time base Upper/Lower (Reading) */
+#define TBRL	268
+#define TBWU	284		/* Time base Upper/Lower (Writing) */
+#define TBWL	285
+#define PVR	287		/* Processor Version */
+#define IABR	1010	/* Instruction Address Breakpoint Register (optional) */
+#define DABR	1013	/* Data Address Breakpoint Register (optional) */
+#define FPECR	1022	/* Floating-Point Exception Cause Register (optional) */
+#define PIR	1023	/* Processor Identification Register (optional) */
 
-#define MSR_		MSR_FP|MSR_FE0|MSR_FE1|MSR_ME
+#define IBATU(i)	(528+2*(i))	/* Instruction BAT register (upper) */
+#define IBATL(i)	(529+2*(i))	/* Instruction BAT register (lower) */
+#define DBATU(i)	(536+2*(i))	/* Data BAT register (upper) */
+#define DBATL(i)	(537+2*(i))	/* Data BAT register (lower) */
+
+/*
+ * PPC604e-specific Special Purpose Registers (OEA)
+ */
+#define HID0		1008	/* Hardware Implementation Dependant Register 0 */
+#define HID1		1009	/* Hardware Implementation Dependant Register 1 */
+#define PMC1		953		/* Performance Monitor Counter 1 */
+#define PMC2		954		/* Performance Monitor Counter 2 */
+#define PMC3		957		/* Performance Monitor Counter 3 */
+#define PMC4		958		/* Performance Monitor Counter 4 */
+#define MMCR0	952		/* Monitor Control Register 0 */
+#define MMCR1	956		/* Monitor Control Register 0 */
+#define SIA		955		/* Sampled Instruction Address */
+#define SDA		959		/* Sampled Data Address */
+
+#define BIT(i)	(1<<(32-(i)))	/* Silly backwards register bit numbering scheme */
+
+/*
+ * Bit encodings for Machine State Register (MSR)
+ */
+#define MSR_POW		BIT(13)		/* Enable Power Management */
+#define MSR_ILE		BIT(15)		/* Interrupt Little-Endian enable */
+#define MSR_EE		BIT(16)		/* External Interrupt enable */
+#define MSR_PR		BIT(17)		/* Supervisor/User privelege */
+#define MSR_FP		BIT(18)		/* Floating Point enable */
+#define MSR_ME		BIT(19)		/* Machine Check enable */
+#define MSR_FE0		BIT(20)		/* Floating Exception mode 0 */
+#define MSR_SE		BIT(21)		/* Single Step (optional) */
+#define MSR_BE		BIT(22)		/* Branch Trace (optional) */
+#define MSR_FE1		BIT(23)		/* Floating Exception mode 1 */
+#define MSR_IP		BIT(25)		/* Exception prefix 0x000/0xFFF */
+#define MSR_IR		BIT(26)		/* Instruction MMU enable */
+#define MSR_DR		BIT(27)		/* Data MMU enable */
+#define MSR_RI		BIT(30)		/* Recoverable Exception */
+#define MSR_LE		BIT(31)		/* Little-Endian enable */
 
 /*
  * Exception codes (trap vectors)
  */
-#define	CRESET	0x01
-#define	CMCHECK 0x02
-#define	CDSI	0x03
-#define	CISI	0x04
-#define	CEI	0x05
-#define	CALIGN	0x06
-#define	CPROG	0x07
-#define	CFPU	0x08
-#define	CDEC	0x09
-#define	CSYSCALL 0x0C
-#define	CTRACE	0x0D
-// #define	CFPA	0x0E
-/* rest are power-implementation dependent */
-#define	CIMISS	0x10
-#define	CDLMISS	0x11
-#define	CDSMISS	0x12
-#define	CIBREAK	0x13
-#define	CSMI	0x14
+#define CRESET	0x01
+#define CMCHECK	0x02
+#define CDSI		0x03
+#define CISI		0x04
+#define CEI		0x05
+#define CALIGN	0x06
+#define CPROG		0x07
+#define CFPU		0x08
+#define CDEC		0x09
+#define CSYSCALL	0x0C
+#define CTRACE	0x0D	/* optional */
+#define CFPA		0x0E		/* optional */
+
+/* PPC604e-specific: */
+#define CPERF		0x0F		/* performance monitoring */
+#define CIBREAK	0x13
+#define CSMI		0x14
+
+// left over from 603?
+// #define CIMISS		0x10
+// #define CDLMISS	0x11
+// #define CDSMISS	0x12
 
 /*
  * Magic registers
@@ -91,7 +140,7 @@
  *  virtual MMU
  */
 #define PTEMAPMEM	(1024*1024)	
-#define	PTEPERTAB	(PTEMAPMEM/BY2PG)
+#define PTEPERTAB	(PTEMAPMEM/BY2PG)
 #define SEGMAPSIZE	1984
 #define SSEGMAPSIZE	16
 #define PPN(x)		((x)&~(BY2PG-1))
@@ -173,21 +222,3 @@
 #define	FLASHAorB	0xfff00000
 
 #define isphys(x) (((ulong)x&KZERO)!=0)
-
-/*
- * standard ppc special purpose registers
- */
-#define DSISR	18
-#define DAR	19	/* Data Address Register */
-#define DEC	22	/* Decrementer */
-#define SRR0	26	/* Saved Registers (exception) */
-#define SRR1	27
-#define SPRG0	272	/* Supervisor Private Registers */
-#define SPRG1	273
-#define SPRG2	274
-#define SPRG3	275
-#define	TBRU	269	/* Time base Upper/Lower (Reading) */
-#define	TBRL	268
-#define TBWU	284	/* Time base Upper/Lower (Writing) */
-#define TBWL	285
-#define PVR	287	/* Processor Version */
