@@ -652,6 +652,8 @@ etherattach(char *spec)
 		enable = 1;
 		WR(cr, Rxen);
 	}
+	if(*spec && strcmp(spec, "0") != 0)
+		error(Eio);
 	return devattach('l', spec);
 }
 
