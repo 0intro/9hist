@@ -84,7 +84,7 @@ mp008intr(Ureg *ur, void *arg)
 void
 ns16552install(void)
 {
-	int i, j, port;
+	int i, j, port, nscard;
 	char *p;
 	Scard *sc;
 	char name[NAMELEN];
@@ -106,11 +106,13 @@ ns16552install(void)
 		ns16552special(atoi(p), 9600, &kbdq, &printq, kbdcr2nl);
 
 	/* the rest come out of plan9.ini */
+	nscard = 0;
 	for(i = 0; i < Maxcard; i++){
-		sc = scard[i] = xalloc(sizeof(Scard));
+		sc = scard[nscard] = xalloc(sizeof(Scard));
 		if(isaconfig("serial", i, sc) == 0){
 			xfree(sc);
-			break;
+			scard[nscard] = 0;
+			continue;
 		}
 
 		if(strcmp(sc->type, "MP008") == 0 || strcmp(sc->type, "mp008") == 0){
@@ -129,7 +131,7 @@ ns16552install(void)
 			setvec(Int0vec+sc->irq, mp008intr, sc);
 			port = sc->port;
 			for(j=0; j < sc->size; j++){
-				sprint(name, "eia%d%2.2d", i, j);
+				sprint(name, "eia%d%2.2d", nscard, j);
 				ns16552setup(port, sc->freq, name);
 				port += 8;
 			}
@@ -141,10 +143,12 @@ ns16552install(void)
 			 */
 			if(sc->freq == 0)
 				sc->freq = UartFREQ;
-			sprint(name, "eia%d00", i);
+			sprint(name, "eia%d00", nscard);
 			ns16552setup(sc->port, sc->freq, name);
 			setvec(Int0vec+sc->irq, ns16552intrx, (void*)(nuart-1));
 		}
+
+		nscard++;
 	}
 }
 

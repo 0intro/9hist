@@ -344,17 +344,17 @@ astargen(Chan *c, Dirtab *tab, int ntab, int i, Dir *db)
 			t = i%3;
 			switch(t){
 			case 0:
-				sprint(db->name, "eia%d%2.2d", dev, ch+1);
+				sprint(db->name, "eia%d%2.2d", dev, ch);
 				db->mode = astar[dev]->c[ch].perm;
 				db->qid.path = QID(dev, ch, Qdata);
 				break;
 			case 1:
-				sprint(db->name, "eia%d%2.2dctl", dev, ch+1);
+				sprint(db->name, "eia%d%2.2dctl", dev, ch);
 				db->mode = astar[dev]->c[ch].perm;
 				db->qid.path = QID(dev, ch, Qctl);
 				break;
 			case 2:
-				sprint(db->name, "eia%d%2.2dstat", dev, ch+1);
+				sprint(db->name, "eia%d%2.2dstat", dev, ch);
 				db->mode = 0444;
 				db->qid.path = QID(dev, ch, Qstat);
 				break;
@@ -391,26 +391,24 @@ astarreset(void)
 		if(isaconfig("serial", i, a) == 0){
 			xfree(a);
 			astar[nastar] = 0;
-			break;
+			continue;
 		}
 
 		if(strcmp(a->type, "a100i") == 0 || strcmp(a->type,"A100I") == 0)
 			a->ramsize = 16*1024;
 		else if(strcmp(a->type, "a200i") == 0 || strcmp(a->type,"A200I") == 0)
 			a->ramsize = 256*1024;
-		else
+		else {
+			xfree(a);
+			astar[nastar] = 0;
 			continue;
-
-		c = inb(a->port+ISActl1);
-		outb(a->port+ISActl1, c | ISAnotdl);
-		a->memsize = a->ramsize;
+		}
 
 		if(a->mem == 0)
 			a->mem = 0xD4000;
 		if(a->irq == 0)
 			a->irq = 15;
 		a->id = i;
-		a->page = -1;
 
 		if(astarsetup(a) < 0){
 			xfree(a);
@@ -421,7 +419,13 @@ astarreset(void)
 			a->addr, a->irq);
 		nastar++;
 
-		setvec(Int0vec + a->irq, astarintr, a);
+		c = inb(a->port+ISActl1);
+		outb(a->port+ISActl1, c & ~ISAnotdl);
+		a->memsize = Pramsize;
+
+		c = inb(a->port+ISActl2);
+		outb(a->port+ISActl2, c & ~ISAmen);
+		a->page = -1;
 	}
 }
 
@@ -790,6 +794,7 @@ startcp(Astar *a)
 	}
 
 	/* enable control program interrupt generation */
+	setvec(Int0vec + a->irq, astarintr, a);
 	LOCKPAGE(a, 0);
 	a->gcb->cmd2 = LEUS(Gintack);
 	UNLOCKPAGE(a);

@@ -319,7 +319,6 @@ ns16552enable(Uart *p)
 	 */
 	ns16552dtr(p, 1);
 	ns16552rts(p, 1);
-	ns16552setbaud(p, 9600);
 
 	/*
 	 *  assume we can send
@@ -532,18 +531,12 @@ void
 ns16552intr(int dev)
 {
 	uchar ch;
-	int s, l, loops, shakes;
+	int s, l, loops;
 	Uart *p = uart[dev];
 
-	shakes = 0;
 	for(loops = 0;; loops++){
 		p->istat = s = uartrdreg(p, Istat);
-		if(loops > 100000){
-			if(shakes++ < 3){
-				/* try resetting the interface */
-				ns16552shake(p);
-				continue;
-			}
+		if(loops > 10000000){
 			print("lstat %ux mstat %ux istat %ux iena %ux ferr %d oerr %d",
 				uartrdreg(p, Lstat), uartrdreg(p, Mstat),
 				s, uartrdreg(p, Iena), p->frame, p->overrun);
@@ -744,11 +737,13 @@ ns16552open(Chan *c, int omode)
 	case Ndataqid:
 		p = uart[NETID(c->qid.path)];
 		qlock(p);
-		p->opens++;
-		ns16552enable(p);
-		qreopen(p->iq);
-		qreopen(p->oq);
+		if(p->opens++ == 0){
+			ns16552enable(p);
+			qreopen(p->iq);
+			qreopen(p->oq);
+		}
 		qunlock(p);
+		break;
 	}
 
 	return c;
@@ -768,21 +763,22 @@ ns16552close(Chan *c)
 
 	if(c->qid.path & CHDIR)
 		return;
-	if(NETTYPE(c->qid.path) == Nstatqid)
-		return;
 	if((c->flag & COPEN) == 0)
 		return;
-
-	p = uart[NETID(c->qid.path)];
-	qlock(p);
-	p->opens--;
-	if(p->opens == 0){
-		ns16552disable(p);
-		qclose(p->iq);
-		qclose(p->oq);
-		p->ip = p->istage;
+	switch(NETTYPE(c->qid.path)){
+	case Ndataqid:
+	case Nctlqid:
+		p = uart[NETID(c->qid.path)];
+		qlock(p);
+		if(--(p->opens) == 0){
+			ns16552disable(p);
+			qclose(p->iq);
+			qclose(p->oq);
+			p->ip = p->istage;
+		}
+		qunlock(p);
+		break;
 	}
-	qunlock(p);
 }
 
 static long
