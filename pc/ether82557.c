@@ -6,9 +6,7 @@
  *	the PCI scanning code could be made common to other adapters;
  *	PCI code needs rewritten to handle byte, word, dword accesses
  *	  and using the devno as a bus+dev+function triplet;
- *	tidy/fix locking;
- *	optionally use memory-mapped registers;
- *	stats.
+ *	optionally use memory-mapped registers.
  */
 #include "u.h"
 #include "../port/lib.h"
@@ -141,7 +139,7 @@ enum {					/* count */
 typedef struct Cb {
 	int	command;
 	ulong	link;
-	uchar	data[24];	/* CbIAS + CbConfigure */
+	uchar	data[24];		/* CbIAS + CbConfigure */
 } Cb;
 
 typedef struct TxCB {
@@ -185,16 +183,18 @@ typedef struct Ctlr {
 
 	uchar	configdata[24];
 
-	Lock	rlock;
+	Lock	rlock;			/* registers */
 
-	Block*	rfd[Nrfd];
+	Block*	rfd[Nrfd];		/* receive side */
 	int	rfdl;
 	int	rfdx;
 
-	Lock	cbqlock;
-	Block*	cbqhead;
+	Block*	cbqhead;		/* transmit side */
 	Block*	cbqtail;
 	int	cbqbusy;
+
+	Lock	dlock;		/* dump statistical counters */
+	ulong	dump[17];
 } Ctlr;
 
 static uchar configdata[24] = {
@@ -239,9 +239,9 @@ custart(Ctlr* ctlr)
 	}
 	ctlr->cbqbusy = 1;
 
-	csr32w(ctlr, General, PADDR(ctlr->cbqhead->rp));
 	while(csr8r(ctlr, Command))
 		;
+	csr32w(ctlr, General, PADDR(ctlr->cbqhead->rp));
 	csr8w(ctlr, Command, CUstart);
 }
 
@@ -250,7 +250,6 @@ action(Ctlr* ctlr, Block* bp)
 {
 	Cb *cb;
 
-	ilock(&ctlr->cbqlock);
 	cb = (Cb*)bp->rp;
 	cb->command |= CbEL;
 
@@ -266,8 +265,6 @@ action(Ctlr* ctlr, Block* bp)
 
 	if(ctlr->cbqbusy == 0)
 		custart(ctlr);
-
-	iunlock(&ctlr->cbqlock);
 }
 
 static void
@@ -280,22 +277,19 @@ attach(Ether* ether)
 	ilock(&ctlr->rlock);
 	status = csr16r(ctlr, Status);
 	if((status & RUstatus) == RUidle){
-		csr32w(ctlr, General, PADDR(ctlr->rfd[ctlr->rfdx]->rp));
 		while(csr8r(ctlr, Command))
 			;
+		csr32w(ctlr, General, PADDR(ctlr->rfd[ctlr->rfdx]->rp));
 		csr8w(ctlr, Command, RUstart);
 	}
 	iunlock(&ctlr->rlock);
 }
 
-static void
-configure(void* arg, int promiscuous)
+static Block*
+configure(Ctlr* ctlr, int promiscuous)
 {
-	Ctlr *ctlr;
 	Block *bp;
 	Cb *cb;
-
-	ctlr = ((Ether*)arg)->ctlr;
 
 	bp = allocb(sizeof(Cb));
 	cb = (Cb*)bp->rp;
@@ -306,12 +300,84 @@ configure(void* arg, int promiscuous)
 	memmove(cb->data, ctlr->configdata, sizeof(ctlr->configdata));
 	if(promiscuous)
 		cb->data[15] |= 0x01;
+
+	return bp;
+}
+
+static void
+promiscuous(void* arg, int on)
+{
+	Ctlr *ctlr;
+	Block *bp;
+
+	ctlr = ((Ether*)arg)->ctlr;
+	bp = configure(ctlr, on);
+
+	ilock(&ctlr->rlock);
 	action(ctlr, bp);
+	iunlock(&ctlr->rlock);
+}
+
+static long
+ifstat(Ether* ether, void* a, long n, ulong offset)
+{
+	Ctlr *ctlr;
+	char buf[512];
+	int len;
+
+	ctlr = ether->ctlr;
+	lock(&ctlr->dlock);
+	ctlr->dump[16] = 0;
+
+	ilock(&ctlr->rlock);
+	while(csr8r(ctlr, Command))
+		;
+	csr8w(ctlr, Command, DumpSC);
+	iunlock(&ctlr->rlock);
+
+	/*
+	 * Wait for completion status, should be 0xA005.
+	 */
+	while(ctlr->dump[16] == 0)
+		;
+
+	ether->oerrs = ctlr->dump[1]+ctlr->dump[2]+ctlr->dump[3];
+	ether->crcs = ctlr->dump[10];
+	ether->frames = ctlr->dump[11];
+	ether->buffs = ctlr->dump[12]+ctlr->dump[15];
+	ether->overflows = ctlr->dump[13];
+
+	if(n == 0){
+		unlock(&ctlr->dlock);
+		return 0;
+	}
+
+	len = sprint(buf, "transmit good frames: %ld\n", ctlr->dump[0]);
+	len += sprint(buf+len, "transmit maximum collisions errors: %ld\n", ctlr->dump[1]);
+	len += sprint(buf+len, "transmit late collisions errors: %ld\n", ctlr->dump[2]);
+	len += sprint(buf+len, "transmit underrun errors: %ld\n", ctlr->dump[3]);
+	len += sprint(buf+len, "transmit lost carrier sense: %ld\n", ctlr->dump[4]);
+	len += sprint(buf+len, "transmit deferred: %ld\n", ctlr->dump[5]);
+	len += sprint(buf+len, "transmit single collisions: %ld\n", ctlr->dump[6]);
+	len += sprint(buf+len, "transmit multiple collisions: %ld\n", ctlr->dump[7]);
+	len += sprint(buf+len, "transmit total collisions: %ld\n", ctlr->dump[8]);
+	len += sprint(buf+len, "receive good frames: %ld\n", ctlr->dump[9]);
+	len += sprint(buf+len, "receive CRC errors: %ld\n", ctlr->dump[10]);
+	len += sprint(buf+len, "receive alignment errors: %ld\n", ctlr->dump[11]);
+	len += sprint(buf+len, "receive resource errors: %ld\n", ctlr->dump[12]);
+	len += sprint(buf+len, "receive overrun errors: %ld\n", ctlr->dump[13]);
+	len += sprint(buf+len, "receive collision detect errors: %ld\n", ctlr->dump[14]);
+	sprint(buf+len, "receive short frame errors: %ld\n", ctlr->dump[15]);
+
+	unlock(&ctlr->dlock);
+
+	return readstr(offset, a, n, buf);
 }
 
 static long
 write(Ether* ether, void* buf, long n)
 {
+	Ctlr *ctlr;
 	Block *bp;
 	TxCB *txcb;
 
@@ -330,7 +396,10 @@ write(Ether* ether, void* buf, long n)
 	memmove(bp->wp+Eaddrlen, ether->ea, Eaddrlen);
 	bp->wp += n;
 
-	action(ether->ctlr, bp);
+	ctlr = ether->ctlr;
+	ilock(&ctlr->rlock);
+	action(ctlr, bp);
+	iunlock(&ctlr->rlock);
 
 	ether->outpackets++;
 
@@ -349,19 +418,23 @@ interrupt(Ureg*, void* arg)
 	ether = arg;
 	ctlr = ether->ctlr;
 
+	ilock(&ctlr->rlock);
 	for(;;){
 		status = csr16r(ctlr, Status);
 		csr8w(ctlr, Ack, (status>>8) & 0xFF);
 
-		if((status & (StatCX|StatFR|StatCNA|StatRNR)) == 0)
-			return;
+		if((status & (StatCX|StatFR|StatCNA|StatRNR|StatMDI|StatSWI)) == 0)
+			break;
 
 		if(status & StatFR){
 			bp = ctlr->rfd[ctlr->rfdx];
 			rfd = (Rfd*)bp->rp;
 			while(rfd->field & RfdC){
-				etherrloop(ether, rfd, rfd->count & 0x3FFF);
-				ether->inpackets++;
+				if(rfd->field & RfdOK){
+					etherrloop(ether, rfd, rfd->count & 0x3FFF);
+					ether->inpackets++;
+				}
+else print("%s#%d: rfd->field %uX\n", ctlr->type,  ctlr->ctlrno, rfd->field);
 
 				/*
 				 * Reinitialise the frame for reception and bump
@@ -390,12 +463,12 @@ interrupt(Ureg*, void* arg)
 			while(csr8r(ctlr, Command))
 				;
 			csr8w(ctlr, Command, RUresume);
+print("%s#%d: status %uX\n", ctlr->type,  ctlr->ctlrno, status);
 
 			status &= ~StatRNR;
 		}
 
 		if(status & StatCNA){
-			lock(&ctlr->cbqlock);
 			while(bp = ctlr->cbqhead){
 				if((((Cb*)bp->rp)->command & CbC) == 0)
 					break;
@@ -403,7 +476,6 @@ interrupt(Ureg*, void* arg)
 				freeb(bp);
 			}
 			custart(ctlr);
-			unlock(&ctlr->cbqlock);
 
 			status &= ~StatCNA;
 		}
@@ -411,6 +483,7 @@ interrupt(Ureg*, void* arg)
 		if(status & (StatCX|StatFR|StatCNA|StatRNR|StatMDI|StatSWI))
 			panic("%s#%d: status %uX\n", ctlr->type,  ctlr->ctlrno, status);
 	}
+	iunlock(&ctlr->rlock);
 }
 
 static void
@@ -612,20 +685,25 @@ reset(Ether* ether)
 	ctlr->type = ether->type;
 	ctlr->port = port;
 
+	ilock(&ctlr->rlock);
+
 	csr32w(ctlr, Port, 0);
 	delay(1);
 
-	pcicfgr(0, pcidevno, 0, 0x04, &x, 4);
-	if((x & 0x05) != 0x05)
-		print("PCI command = %uX\n", x);
-
-	csr32w(ctlr, General, 0);
 	while(csr8r(ctlr, Command))
 		;
+	csr32w(ctlr, General, 0);
 	csr8w(ctlr, Command, LoadRUB);
+
 	while(csr8r(ctlr, Command))
 		;
 	csr8w(ctlr, Command, LoadCUB);
+
+	while(csr8r(ctlr, Command))
+		;
+	csr32w(ctlr, General, PADDR(ctlr->dump));
+	csr8w(ctlr, Command, LoadDCA);
+
 
 	/*
 	 * Initialise the receive frame and configuration areas.
@@ -638,8 +716,8 @@ reset(Ether* ether)
 	 * configuration. However, should check for the existence of the PHY
 	 * and, if found, check whether to use 82503 (serial) or MII (nibble)
 	 * mode. Verify the PHY is a National Semiconductor DP83840 by looking
-	 * at the Organizationally Unique Identifier (OUI) in registers 2 and 3
-	 * which should be 0x80017.
+	 * at the Organizationally Unique Identifier (OUI) in registers 2 and
+	 * 3 which should be 0x80017.
 	 */
 	for(i = 1; i < 32; i++){
 		if((x = dp83840r(ctlr, i, 2)) == 0xFFFF)
@@ -661,7 +739,8 @@ reset(Ether* ether)
 	/*
 	 * Load the chip configuration
 	 */
-	configure(ether, 0);
+	bp = configure(ctlr, 0);
+	action(ctlr, bp);
 
 	/*
 	 * Check if the adapter's station address is to be overridden.
@@ -686,6 +765,8 @@ reset(Ether* ether)
 	memmove(cb->data, ether->ea, Eaddrlen);
 	action(ctlr, bp);
 
+	iunlock(&ctlr->rlock);
+
 	/*
 	 * Linkage to the generic ethernet driver.
 	 */
@@ -693,8 +774,9 @@ reset(Ether* ether)
 	ether->attach = attach;
 	ether->write = write;
 	ether->interrupt = interrupt;
+	ether->ifstat = ifstat;
 
-	ether->promiscuous = configure;
+	ether->promiscuous = promiscuous;
 	ether->arg = ether;
 
 	return 0;

@@ -47,6 +47,8 @@ struct Disk
 	char	vol[NAMELEN];
 
 	uchar*	inquire;
+	int	partok;
+	ulong	version;
 	ulong	size;
 	ulong	bsize;
 
@@ -57,7 +59,7 @@ struct Disk
 int	ndisk;
 Disk	disk[Ndisk];
 
-static	void	sdrdpart(Disk*);
+static	int	sdrdpart(Disk*);
 static	long	sdio(Chan*, int, char*, ulong, ulong);
 
 static int types[] =
@@ -137,9 +139,6 @@ sdinit(void)
 			 * their act together after a reset.
 			 * If 'not ready' comes back, try starting a TypeDA and punt
 			 * the get capacity until the drive is attached.
-			 * It might be possible to be smarter here, and look at the
-			 * response from a test-unit-ready which would show if the
-			 * target was in the process of becoming ready.
 			 */
 			if(scsicap(d->t, d->lun, &d->size, &d->bsize) != STok) {
 				nbytes = sizeof(scratch);
@@ -187,8 +186,12 @@ sdattach(char *spec)
 {
 	int i;
 
-	for(i = 0; i < ndisk; i++)
-		sdrdpart(&disk[i]);
+	for(i = 0; i < ndisk; i++){
+		qlock(&disk[i]);
+		if(disk[i].partok == 0)
+			sdrdpart(&disk[i]);
+		qunlock(&disk[i]);
+	}
 	
 	return devattach('w', spec);
 }
@@ -246,8 +249,12 @@ sdclose(Chan *c)
 
 	d = &disk[DRIVE(c->qid)];
 	p = &d->table[PART(c->qid)];
-	if((c->mode&3) != OREAD && strcmp(p->name, "partition") == 0)
+	if((c->mode&3) != OREAD && strcmp(p->name, "partition") == 0){
+		qlock(d);
+		d->partok = 0;
 		sdrdpart(d);
+		qunlock(d);
+	}
 }
 
 long
@@ -268,6 +275,12 @@ sdbread(Chan *c, long n, ulong offset)
 long
 sdwrite(Chan *c, char *a, long n, ulong offset)
 {
+	Disk *d;
+
+	d = &disk[DRIVE(c->qid)];
+
+	if((d->inquire[0] & 0x1F) == TypeCD)
+		error(Eperm);
 	return sdio(c, 1, a, n, offset);
 }
 
@@ -277,7 +290,7 @@ sdbwrite(Chan *c, Block *bp, ulong offset)
 	return devbwrite(c, bp, offset);
 }
 
-static void
+static int
 sdrdpart(Disk *d)
 {
 	Part *p;
@@ -285,42 +298,42 @@ sdrdpart(Disk *d)
 	char *b, *line[Npart+2], *field[3];
 	static char MAGIC[] = "plan9 partitions";
 
+	if(d->partok)
+		return STok;
+
+	p = d->table;
+	strcpy(p->name, "disk");
+	p->beg = 0;
+	p->end = 0;
+	d->npart = 1;
+
 	/*
-	 * If the drive wasn't ready when we tried to do a
-	 * read-capacity earlier (in sdinit()), try again.
-	 * It might be possible to be smarter here, and look at the
-	 * response from a test-unit-ready which would show if the
-	 * target was in the process of becoming ready.
+	 * If the drive wasn't ready when a read-capacity was tried
+	 * earlier (in sdinit()), try again.
 	 */
 	if(d->size == 0 || d->bsize == 0){
-		if(scsicap(d->t, d->lun, &d->size, &d->bsize) != STok){
+		n = scsicap(d->t, d->lun, &d->size, &d->bsize);
+		if(n != STok){
 			d->size = d->bsize = 0;
-			error(Eio);
+			return scsierrstr(n);
 		}
 	}
 
+	p->end = d->size + 1;
+
+	if((d->inquire[0] & 0x1F) == TypeCD)
+		return STok;
+
 	b = scsialloc(d->bsize);
 	if(b == 0)
-		error(Enomem);
-	qlock(d);
-	
-	p = d->table;
+		return scsierrstr(STnomem);
 
-	strcpy(p->name, "disk");
-	p->beg = 0;
-	p->end = d->size + 1;
 	p++;
 	strcpy(p->name, "partition");
 	p->beg = d->table[0].end - 1;
 	p->end = d->table[0].end;
 	p++;
 	d->npart = 2;
-
-	if((d->inquire[0] & 0x1F) == TypeCD){
-		scsifree(b);
-		qunlock(d);
-		return;
-	}
 
 	scsibio(d->t, d->lun, SCSIread, b, 1, d->bsize, d->table[0].end-1);
 	b[d->bsize-1] = '\0';
@@ -331,26 +344,24 @@ sdrdpart(Disk *d)
 	n = parsefields(b, line, Npart+2, "\n");
 	if(n > 0 && strncmp(line[0], MAGIC, sizeof(MAGIC)-1) == 0) {
 		for(i = 1; i < n; i++) {
-			switch(parsefields(line[i], field, 3, " ")) {
-			case 2:
-				if(strcmp(field[0], "unit") == 0)
-					strncpy(d->vol, field[1], NAMELEN);
-				break;	
-			case 3:
-				if(p >= &d->table[Npart])
-					break;
-				strncpy(p->name, field[0], NAMELEN);
-				p->beg = strtoul(field[1], 0, 0);
-				p->end = strtoul(field[2], 0, 0);
-				if(p->beg > p->end || p->beg >= d->table[0].end)
-					break;
-				p++;
-			}
+			if(parsefields(line[i], field, 3, " ") != 3)
+				break;
+			if(p >= &d->table[Npart])
+				break;
+			strncpy(p->name, field[0], NAMELEN);
+			p->beg = strtoul(field[1], 0, 0);
+			p->end = strtoul(field[2], 0, 0);
+			if(p->beg > p->end || p->beg >= d->table[0].end)
+				break;
+			p++;
 		}
 	}
 	d->npart = p - d->table;
 	scsifree(b);
-	qunlock(d);
+
+	d->partok = 1;
+
+	return STok;
 }
 
 static long
@@ -364,9 +375,6 @@ sdio(Chan *c, int write, char *a, ulong len, ulong offset)
 	d = &disk[DRIVE(c->qid)];
 	p = &d->table[PART(c->qid)];
 
-	if(write && (d->inquire[0] & 0x1F) == TypeCD)
-		error(Eperm);
-
 	block = (offset / d->bsize) + p->beg;
 	n = (offset + len + d->bsize - 1) / d->bsize + p->beg - block;
 	max = SCSImaxxfer / d->bsize;
@@ -379,15 +387,16 @@ sdio(Chan *c, int write, char *a, ulong len, ulong offset)
 
 	b = scsialloc(n*d->bsize);
 	if(b == 0)
-		error(Enomem);
-	if(waserror()) {
-		scsifree(b);
-		nexterror();
-	}
+		return scsierrstr(STnomem);
+
 	offset %= d->bsize;
 	if(write) {
 		if(offset || len % d->bsize) {
 			x = scsibio(d->t, d->lun, SCSIread, b, n, d->bsize, block);
+			if(x < 0){
+				len = -1;
+				goto buggery;
+			}
 			if(x < n * d->bsize) {
 				n = x / d->bsize;
 				x = n * d->bsize - offset;
@@ -397,6 +406,10 @@ sdio(Chan *c, int write, char *a, ulong len, ulong offset)
 		}
 		memmove(b + offset, a, len);
 		x = scsibio(d->t, d->lun, SCSIwrite, b, n, d->bsize, block);
+		if(x < 0){
+			len = -1;
+			goto buggery;
+		}
 		if(x < offset)
 			len = 0;
 		else
@@ -405,6 +418,10 @@ sdio(Chan *c, int write, char *a, ulong len, ulong offset)
 	}
 	else {
 		x = scsibio(d->t, d->lun, SCSIread, b, n, d->bsize, block);
+		if(x < 0){
+			len = -1;
+			goto buggery;
+		}
 		if(x < offset)
 			len = 0;
 		else
@@ -412,7 +429,8 @@ sdio(Chan *c, int write, char *a, ulong len, ulong offset)
 			len = x - offset;
 		memmove(a, b+offset, len);
 	}
-	poperror();
+
+buggery:
 	scsifree(b);
 	return len;
 }

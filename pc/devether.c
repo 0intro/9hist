@@ -78,7 +78,21 @@ etherclose(Chan *c)
 long
 etherread(Chan *c, void *buf, long n, ulong offset)
 {
-	return netifread(ether[c->dev], c, buf, n, offset);
+	Ether *ctlr;
+
+	ctlr = ether[c->dev];
+	if((c->qid.path & CHDIR) == 0 && ctlr->ifstat){
+		/*
+		 * With some controllers it is necessary to reach
+		 * into the chip to extract statistics.
+		 */
+		if(NETTYPE(c->qid.path) == Nifstatqid)
+			return (*ctlr->ifstat)(ctlr, buf, n, offset);
+		else if(NETTYPE(c->qid.path) == Nstatqid)
+			(*ctlr->ifstat)(ctlr, buf, 0, offset);
+	}
+
+	return netifread(ctlr, c, buf, n, offset);
 }
 
 Block*
@@ -233,7 +247,7 @@ etherreset(void)
 				ctlr->irq = 9;
 			setvec(Int0vec+ctlr->irq, ctlr->interrupt, ctlr);
 
-			print("ether%d: %s: %dMbps port 0x%luX irq %d",
+			print("ether#%d: %s: %dMbps port 0x%luX irq %d",
 				ctlrno, ctlr->type, ctlr->mbps, ctlr->port, ctlr->irq);
 			if(ctlr->mem)
 				print(" addr 0x%luX", ctlr->mem & ~KZERO);
@@ -245,7 +259,7 @@ etherreset(void)
 			print("\n");
 
 			if(ctlr->mbps == 100)
-				netifinit(ctlr, "ether", Ntypes, 100*1024);
+				netifinit(ctlr, "ether", Ntypes, 128*1024);
 			else
 				netifinit(ctlr, "ether", Ntypes, 32*1024);
 			ctlr->alen = Eaddrlen;

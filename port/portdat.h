@@ -670,19 +670,19 @@ enum
 /* Things scsi */
 enum
 {
-	STtimeout	=-3,
-	STownid		=-2,
-	STharderr	=-1,	/* Command status error returns */
-	STok		= 0,
-	STcheck		= 2,
-	STcondmet	= 4,
-	STbusy		= 8,
-	STintok		= 16,
-	STconflict	= 18,
-	STintcondmet	= 20,
-	STterminated	= 22,
-	STresconf	= 24,
-	STqfull		= 28,
+	STnomem		=-4,		/* buffer allocation failed */
+	STtimeout	=-3,		/* bus timeout */
+	STownid		=-2,		/* playing with myself */
+	STharderr	=-1,		/* controller error of some kind */
+	STok		= 0,		/* good */
+	STcheck		= 0x02,		/* check condition */
+	STcondmet	= 0x04,		/* condition met/good */
+	STbusy		= 0x08,		/* busy */
+	STintok		= 0x10,		/* intermediate/good */
+	STintcondmet	= 0x14,		/* intermediate/condition met/good */
+	STresconf	= 0x18,		/* reservation conflict */
+	STterminated	= 0x22,		/* command terminated */
+	STqfull		= 0x28,		/* queue full */
 
 	SCSIread	= 0,
 	SCSIwrite,

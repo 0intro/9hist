@@ -1,5 +1,5 @@
 enum {
-	MaxEther	= 8,
+	MaxEther	= 24,
 	Ntypes		= 8,
 };
 
@@ -12,6 +12,7 @@ struct Ether {
 	void	(*attach)(Ether*);	/* filled in by reset routine */
 	long	(*write)(Ether*, void*, long);
 	void	(*interrupt)(Ureg*, void*);
+	long	(*ifstat)(Ether*, void*, long, ulong);
 	void	*ctlr;
 
 	Etherpkt tpkt;			/* transmit buffer */

@@ -247,6 +247,7 @@ int		screenbits(void);
 #define		scsialloc(n)	mallocz((n)+512, 0)
 int		scsibio(Target*, char, int, void*, long, long, long);
 int		scsicap(Target*, char, ulong*, ulong*);
+int		scsierrstr(int);
 int		scsiexec(Target*, int, uchar*, int, void*, int*);
 #define		scsifree(p)	free(p)
 int		scsiinquiry(Target*, char, void*, int*);

@@ -78,7 +78,7 @@ scsireset(void)
 			if((ctlr->io = (*lp->reset)(ctlrno, ctlr)) == 0)
 				break;
 
-			print("scsi%d: %s: port 0x%luX irq %d",
+			print("scsi#%d: %s: port 0x%luX irq %d",
 				ctlrno, ctlr->type, ctlr->port,
 				ctlr->irq, ctlr->mem, ctlr->size);
 			if(ctlr->mem)
@@ -106,7 +106,29 @@ scsireset(void)
 int
 scsiexec(Target *t, int rw, uchar *cmd, int cbytes, void *data, int *dbytes)
 {
-	return (*scsi[t->ctlrno]->io)(t, rw, cmd, cbytes, data, dbytes);
+	int s;
+
+	/*
+	 * Call the device-specific I/O routine.
+	 * There should be no calls to 'error()' below this
+	 * which percolate back up.
+	 */
+	switch(s = (*scsi[t->ctlrno]->io)(t, rw, cmd, cbytes, data, dbytes)){
+
+	default:
+		/*
+		 * It's more complicated than this. There are conditions which
+		 * are 'ok' but for which the returned status code is not 'STok'.
+		 * Also, not all conditions require a reqsense, there may be a
+		 * need to do a reqsense here when necessary and making it
+		 * available to the caller somehow.
+		 *
+		 * Later.
+		 */
+		break;
+	}
+
+	return s;
 }
 
 Target*
@@ -143,7 +165,7 @@ scsiprobe(Ctlr *ctlr)
 		nbytes = Nscratch;
 		s = scsireqsense(t, 0, t->scratch, &nbytes, 0);
 		if(s != STok){
-			print("scsi%d: unit %d unavailable, status %d\n", t->ctlrno, i, s);
+			print("scsi#%d: unit %d unavailable, status %d\n", t->ctlrno, i, s);
 			continue;
 		}
 
@@ -154,11 +176,11 @@ scsiprobe(Ctlr *ctlr)
 		memset(t->inq, 0, Ninq);
 		nbytes = Ninq;
 		s = scsiinquiry(t, 0, t->inq, &nbytes);
-		if(s < 0) {
-			print("scsi%d: unit %d inquire failed, status %d\n", t->ctlrno, i, s);
+		if(s != STok) {
+			print("scsi#%d: unit %d inquire failed, status %d\n", t->ctlrno, i, s);
 			continue;
 		}
-		print("scsi%d: unit %d: %s\n", t->ctlrno, i, t->inq+8);
+		print("scsi#%d: unit %d: %s\n", t->ctlrno, i, t->inq+8);
 		t->ok = 1;
 	}
 }
@@ -264,7 +286,7 @@ scsicap(Target *t, char lun, ulong *size, ulong *bsize)
 	nbytes = 8;
 	d = scsialloc(nbytes);
 	if(d == 0)
-		error(Enomem);
+		return -1;
 
 	s = scsiexec(t, SCSIread, cmd, sizeof(cmd), d, &nbytes);
 	if(s == STok) {
@@ -302,10 +324,10 @@ scsibio(Target *t, char lun, int dir, void *b, long n, long bsize, long bno)
 	}
 	nbytes = n*bsize;
 	s = scsiexec(t, dir, cmd, cdbsiz, b, &nbytes);
-	if(s < 0) {
+	if(s != STok) {
 		nbytes = Nscratch;
 		scsireqsense(t, lun, t->scratch, &nbytes, 0);
-		return -1;
+		return scsierrstr(s);
 	}
 	return nbytes;
 }
@@ -391,7 +413,7 @@ scsireqsense(Target *t, char lun, void *data, int *nbytes, int quiet)
 buggery:
 	if(quiet == 0){
 		s = key[sense[2]&0x0F];
-		print("scsi%d: unit %d reqsense: '%s' code #%2.2ux #%2.2ux\n",
+		print("scsi#%d: unit %d reqsense: '%s' code #%2.2ux #%2.2ux\n",
 			t->ctlrno, t->target, s, sense[12], sense[13]);
 	}
 	free(sense);
@@ -414,7 +436,7 @@ scsidiskinfo(Target *t, char lun, int track, uchar *data)
 
 	d = scsialloc(nbytes);
 	if(d == 0)
-		error(Enomem);
+		return scsierrstr(STnomem);
 
 	memset(d, 0, nbytes);
 	s = scsiexec(t, SCSIread, cmd, sizeof(cmd), d, &nbytes);
@@ -439,7 +461,7 @@ scsitrackinfo(Target *t, char lun, int track, uchar *data)
 
 	d = scsialloc(nbytes);
 	if(d == 0)
-		error(Enomem);
+		return scsierrstr(STnomem);
 
 	memset(d, 0, nbytes);
 	s = scsiexec(t, SCSIread, cmd, sizeof(cmd), d, &nbytes);
@@ -465,7 +487,7 @@ scsibufsize(Target *t, char lun, int size)
 
 	d = scsialloc(nbytes);
 	if(d == 0)
-		error(Enomem);
+		return scsierrstr(STnomem);
 
 	memset(d, 0, nbytes);
 	d[3] = 8;
@@ -491,10 +513,65 @@ scsireadcdda(Target *t, char lun, int, void *b, long n, long bsize, long bno)
 
 	nbytes = n*bsize;
 	s = scsiexec(t, SCSIread, cmd, sizeof(cmd), b, &nbytes);
-	if(s < 0) {
+	if(s != STok) {
 		nbytes = Nscratch;
 		scsireqsense(t, lun, t->scratch, &nbytes, 0);
-		return -1;
+		return scsierrstr(s);
 	}
 	return nbytes;
+}
+
+int
+scsierrstr(int errno)
+{
+	char *p;
+
+	switch(errno){
+	case STnomem:
+		p = Enomem;
+		break;
+	case STtimeout:
+		p = "bus timeout";
+		break;
+	case STownid:
+		p = "playing with myself";
+		break;
+	case STharderr:
+		p = Eio;
+		break;
+	case STok:
+		p = Enoerror;
+		break;
+	case STcheck:
+		p = "check condition";
+		break;
+	case STcondmet:
+		p = "condition met/good";
+		break;
+	case STbusy:
+		p = "busy";
+		break;
+	case STintok:
+		p = "intermediate/good";
+		break;
+	case STintcondmet:
+		p = "intermediate/condition met/good";
+		break;
+	case STresconf:
+		p = "reservation conflict";
+		break;
+	case STterminated:
+		p = "command terminated";
+		break;
+	case STqfull:
+		p = "queue full";
+		break;
+
+	default:
+		p = "unknown SCSI error";
+		break;
+	}
+	strncpy(up->error, p, NAMELEN);
+
+	return -1;
 }

@@ -4,9 +4,6 @@
 #include	"dat.h"
 #include	"fns.h"
 
-/*
- *  headland chip set for the safari.
- */
 typedef struct DMAport	DMAport;
 typedef struct DMA	DMA;
 typedef struct DMAxfer	DMAxfer;
@@ -33,8 +30,9 @@ enum
  */
 struct DMAxfer
 {
-	Page	pg;		/* page used by dma */
-	void	*va;		/* virtual address destination/src */
+	ulong	bpa;		/* bounce buffer physical address */
+	void*	bva;		/* bounce buffer virtual address */
+	void*	va;		/* virtual address destination/src */
 	long	len;		/* bytes to be transferred */
 	int	isread;
 };
@@ -95,8 +93,8 @@ dmainit(void)
 		dp = &dma[i];
 		for(chan = 0; chan < 4; chan++){
 			xp = &dp->x[chan];
-			xp->pg.pa = (ulong)xspanalloc(BY2PG, BY2PG, 0);
-			xp->pg.va = KZERO|xp->pg.pa;
+			xp->bva = xspanalloc(BY2PG, BY2PG, 0);
+			xp->bpa = PADDR(xp->bva);
 			xp->len = 0;
 			xp->isread = 0;
 		}
@@ -117,9 +115,9 @@ long
 dmasetup(int chan, void *va, long len, int isread)
 {
 	DMA *dp;
-	DMAxfer *xp;
 	ulong pa;
 	uchar mode;
+	DMAxfer *xp;
 
 	dp = &dma[(chan>>2)&1];
 	chan = chan & 3;
@@ -132,16 +130,17 @@ dmasetup(int chan, void *va, long len, int isread)
 	pa = PADDR(va);
 	if((((ulong)va)&0xF0000000) != KZERO
 	|| (pa&0xFFFF0000) != ((pa+len)&0xFFFF0000)
-	|| pa > 16*MB){
+	|| pa > 16*MB) {
 		if(len > BY2PG)
 			len = BY2PG;
 		if(!isread)
-			memmove((void*)(xp->pg.va), va, len);
+			memmove(xp->bva, va, len);
 		xp->va = va;
 		xp->len = len;
 		xp->isread = isread;
-		pa = xp->pg.pa;
-	} else
+		pa = xp->bpa;
+	}
+	else
 		xp->len = 0;
 
 	/*
@@ -149,7 +148,7 @@ dmasetup(int chan, void *va, long len, int isread)
 	 */
 	ilock(dp);
 	mode = (isread ? 0x44 : 0x48) | chan;
-	outb(dp->mode, mode);		/* single mode dma (give CPU a chance at mem) */
+	outb(dp->mode, mode);	/* single mode dma (give CPU a chance at mem) */
 	outb(dp->page[chan], pa>>16);
 	outb(dp->cbp, 0);		/* set count & address to their first byte */
 	outb(dp->addr[chan], pa>>dp->shift);		/* set address */
@@ -203,16 +202,6 @@ dmaend(int chan)
 	/*
 	 *  copy out of temporary page
 	 */
-	memmove(xp->va, (void*)(xp->pg.va), xp->len);
+	memmove(xp->va, xp->bva, xp->len);
 	xp->len = 0;
-}
-
-void
-dmaemode(int chan, int value)
-{
-	if(chan < 4)
-		outb(0x40b, value|chan);
-	else
-		outb(0x4d6, value|chan);
-
 }

@@ -40,7 +40,7 @@ enum {
 
 #define COMMAND(port, cmd, a)	outs(port+Command, ((cmd)<<11)|(a))
 
-extern int ether509reset(Ether*);
+extern int etherelnk3reset(Ether*);
 
 static int
 configASIC(Ether *ether, int port, int xcvr)
@@ -50,25 +50,17 @@ configASIC(Ether *ether, int port, int xcvr)
 	/* set Window 0 configuration registers */
 	COMMAND(port, SelectWindow, 0);
 
+	x = ins(port+ConfigControl);
+	outs(port+ConfigControl, x|1);
+
 	/* ROM size & base - must be set before we can access ROM */
 	/* transceiver type is 2 for 'figure it out'  */
-	x = ins(port + AddressConfig);
-	outs(port + AddressConfig, (x & 0xf0) | xcvr);
+	outs(port + AddressConfig, xcvr);
 
 	/* IRQ must be 3 on 3C589 */
-	x = ins(port + ResourceConfig);
-	outs(port + ResourceConfig, 0x3f00 | (x&0xff));
+	outs(port + ResourceConfig, 0x3F00);
 
-	/* move product ID to register */
-	while(ins(port+EEPROMcmd) & 0x8000)
-		;
-	outs(port+EEPROMcmd, (2<<6)|3);
-	while(ins(port+EEPROMcmd) & 0x8000)
-		;
-	x = ins(port+EEPROMdata);
-	outs(port + ProductID, x);
-
-	return ether509reset(ether);
+	return etherelnk3reset(ether);
 }
 
 static int

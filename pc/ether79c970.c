@@ -2,6 +2,8 @@
  * AM79C970
  * PCnet-PCI Single-Chip Ethernet Controller for PCI Local Bus
  * To do:
+ *	bag the tsleep in write, buffer them up;
+ *	loop in interrupt routine until all done;
  *	only issue transmit interrupt if necessary?
  *	dynamically increase rings as necessary?
  *	use Block's as receive buffers?
@@ -236,9 +238,9 @@ write(Ether* ether, void* buf, long n)
 		return 0;
 
 	/*
-	 * Copy the packet to the transmit buffer and fill in our
+	 * Copy the packet to the transmit buffer and fill in the
 	 * source ethernet address. There's no need to pad to ETHERMINTU
-	 * here as we set ApadXmit in CSR4.
+	 * here as ApadXmit is set in CSR4.
 	 */
 	pkt = KADDR(tdre->tbadr);
 	memmove(pkt->d, buf, n);
@@ -324,38 +326,37 @@ typedef struct Adapter Adapter;
 struct Adapter {
 	Adapter*	next;
 	int		port;
-	PCIcfg*		pcicfg;
+	int		irq;
 };
 static Adapter *adapter;
 
-static PCIcfg*
+static int
 amd79c90(Ether* ether)
 {
-	PCIcfg *pcicfg;
+	PCIcfg pcicfg;
 	static int devno = 0;
-	int port;
+	int irq, port;
 	Adapter *ap;
 
-	pcicfg = malloc(sizeof(PCIcfg));
 	for(;;){
-		pcicfg->vid = 0x1022;
-		pcicfg->did = 0x2000;
-		if((devno = pcimatch(0, devno, pcicfg)) == -1)
+		pcicfg.vid = 0x1022;
+		pcicfg.did = 0x2000;
+		if((devno = pcimatch(0, devno, &pcicfg)) == -1)
 			break;
 
-		port = pcicfg->baseaddr[0] & ~0x01;
-		if(ether->port == 0 || ether->port == port)
-			return pcicfg;
+		port = pcicfg.baseaddr[0] & ~0x01;
+		irq = pcicfg.irq;
+		if(ether->port == 0 || ether->port == port){
+			ether->irq = irq;
+			return port;
+		}
 
 		ap = malloc(sizeof(Adapter));
-		ap->pcicfg = pcicfg;
 		ap->port = port;
+		ap->irq = irq;
 		ap->next = adapter;
 		adapter = ap;
-
-		pcicfg = malloc(sizeof(PCIcfg));
 	}
-	free(pcicfg);
 
 	return 0;
 }
@@ -364,7 +365,6 @@ static int
 reset(Ether* ether)
 {
 	int port, x;
-	PCIcfg *pcicfg;
 	Adapter *ap, **app;
 	uchar ea[Eaddrlen];
 	Ctlr *ctlr;
@@ -375,37 +375,29 @@ reset(Ether* ether)
 	 * the bill. If not then scan for another.
 	 */
 	port = 0;
-	pcicfg = 0;
 	for(app = &adapter, ap = *app; ap; app = &ap->next, ap = ap->next){
 		if(ether->port == 0 || ether->port == ap->port){
 			port = ap->port;
-			pcicfg = ap->pcicfg;
+			ether->irq = ap->irq;
 			*app = ap->next;
 			free(ap);
 			break;
 		}
 	}
-	if(port == 0 && (pcicfg = amd79c90(ether))){
-		port = pcicfg->baseaddr[0] & ~0x01;
-		ether->irq = pcicfg->irq;
-	}
-	if(port == 0)
+	if(port == 0 && (port = amd79c90(ether)) == 0)
 		return -1;
 
-	if(pcicfg)
-		free(pcicfg);
-
 	/*
-	 * How can we tell what mode we're in at this point - if we're in WORD
-	 * mode then the only 32-bit access we are allowed to make is a write to
-	 * the RDP, which forces the chip to DWORD mode; if we're in DWORD mode
-	 * then we're not allowed to make any non-DWORD accesses?
-	 * Assuming we do a DWORD write to the RDP, how can we tell what we're
-	 * about to overwrite as we can't reliably access the RAP?
+	 * How to tell what mode the chip is in at this point - if it's in WORD
+	 * mode then the only 32-bit access allowedis a write to the RDP, which
+	 * forces the chip to DWORD mode; if it's in DWORD mode then only DWORD
+	 * accesses are allowed?
+	 * Assuming a DWORD write is done to the RDP, what will be overwritten as
+	 * the RAP can't reliably be accessed?
 	 *
 	 * Force DWORD mode by writing to RDP, doing a reset then writing to RDP
-	 * again; at least we know what state we're in now. The value of RAP after
-	 * a reset is 0, so the second DWORD write will be to CSR0.
+	 * again. The value of RAP after a reset is 0, so the second DWORD write
+	 * will be to CSR0.
 	 * Set the software style in BCR20 to be PCnet-PCI to ensure 32-bit access.
 	 * Set the auto pad transmit in CSR4.
 	 */
@@ -423,7 +415,7 @@ reset(Ether* ether)
 	outl(port+Rap, 0);
 
 	/*
-	 * Check if we are going to override the adapter's station address.
+	 * Check if the adapter's station address is to be over-ridden.
 	 * If not, read it from the I/O-space and set in ether->ea prior to loading the
 	 * station address in the initialisation block.
 	 */
@@ -457,7 +449,7 @@ reset(Ether* ether)
 	/*
 	 * Point the chip at the initialisation block and tell it to go.
 	 * Mask the Idon interrupt and poll for completion. Strt and interrupt
-	 * enables will be set later when we're ready to attach to the network.
+	 * enables will be set later when attaching to the network.
 	 */
 	x = PADDR(&ctlr->iblock);
 	outl(port+Rap, 1);
