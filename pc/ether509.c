@@ -122,10 +122,11 @@ attach(Ether *ether)
 	 * The only interrupt we should see under normal conditions
 	 * is the receiver interrupt. If the transmit FIFO fills up,
 	 * we will also see TxAvailable interrupts.
+	 * Disable Update interrupts for now.
 	 */
 	COMMAND(port, SetRxFilter, Broadcast|MyEtherAddr);
-	COMMAND(port, SetReadZeroMask, AllIntr|Latch);
-	COMMAND(port, SetIntrMask, AllIntr|Latch);
+	COMMAND(port, SetReadZeroMask, (AllIntr|Latch) & ~Update);
+	COMMAND(port, SetIntrMask, (AllIntr|Latch) & ~Update);
 	COMMAND(port, RxEnable, 0);
 	COMMAND(port, TxEnable, 0);
 }
