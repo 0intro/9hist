@@ -73,10 +73,11 @@ enum {
 
 struct Secret
 {
-	DigestState	*(*mac)(uchar*, ulong, uchar*, ulong, uchar*, DigestState*);
 	int		(*enc)(Secret*, uchar*, int);
 	int		(*dec)(Secret*, uchar*, int);
 	int		(*unpad)(uchar*, int, int);
+	DigestState	*(*mac)(uchar*, ulong, uchar*, ulong, uchar*, DigestState*);
+	int		block;		/* encryption block len, 0 if none */
 	int		maclen;
 	void		*enckey;
 	uchar		mackey[MaxMacLen];
@@ -263,8 +264,9 @@ static int
 tlsgen(Chan *c, Dirtab *d, int nd, int s, Dir *dp)
 {
 	Qid q;
-	TlsRec *ds;
-	char name[16], *p, *nm;
+	TlsRec *tr;
+	char name[16], *nm;
+	int perm;
 
 	USED(nd);
 	USED(d);
@@ -287,21 +289,39 @@ tlsgen(Chan *c, Dirtab *d, int nd, int s, Dir *dp)
 			devdir(c, q, ".", 0, eve, CHDIR|0555, dp);
 			return 1;
 		}
-		if(s < tdhiwat) {
-			sprint(name, "%d", s);
-			q.path = QID(s, Qconvdir)|CHDIR;
-			ds = tlsdevs[s];
-			if(ds != 0)
-				nm = ds->user;
-			else
-				nm = eve;
-			devdir(c, q, name, 0, nm, CHDIR|0555, dp);
+		if(s < 3){
+			switch(s) {
+			default:
+				return -1;
+			case 0:
+				q.path = QID(0, Qclonus);
+				break;
+			case 1:
+				q.path = QID(0, Qencalgs);
+				break;
+			case 2:
+				q.path = QID(0, Qhashalgs);
+				break;
+			}
+			perm = 0444;
+			if(TYPE(q) == Qclonus)
+				perm = 0555;
+			devdir(c, q, tlsnames[TYPE(q)], 0, eve, perm, dp);
 			return 1;
 		}
-		if(s > tdhiwat)
+		s -= 3;
+		if(s >= tdhiwat)
 			return -1;
-		q.path = QID(0, Qclonus);
-		devdir(c, q, "clone", 0, eve, 0555, dp);
+		sprint(name, "%d", s);
+		q.path = QID(s, Qconvdir)|CHDIR;
+		lock(&tdlock);
+		tr = tlsdevs[s];
+		if(tr != nil)
+			nm = tr->user;
+		else
+			nm = eve;
+		devdir(c, q, name, 0, nm, CHDIR|0555, dp);
+		unlock(&tdlock);
 		return 1;
 	case Qconvdir:
 		if(s == DEVDOTDOT){
@@ -309,43 +329,45 @@ tlsgen(Chan *c, Dirtab *d, int nd, int s, Dir *dp)
 			devdir(c, q, "tls", 0, eve, CHDIR|0555, dp);
 			return 1;
 		}
-		ds = tlsdevs[CONV(c->qid)];
-		if(ds != 0)
-			nm = ds->user;
-		else
+		lock(&tdlock);
+		tr = tlsdevs[CONV(c->qid)];
+		if(tr != nil){
+			nm = tr->user;
+			perm = tr->perm;
+		}else{
+			perm = 0;
 			nm = eve;
+		}
 		switch(s) {
 		default:
+			unlock(&tdlock);
 			return -1;
 		case 0:
 			q.path = QID(CONV(c->qid), Qctl);
-			p = "ctl";
 			break;
 		case 1:
 			q.path = QID(CONV(c->qid), Qdata);
-			p = "data";
 			break;
 		case 2:
 			q.path = QID(CONV(c->qid), Qhand);
-			p = "hand";
-			break;
-		case 3:
-			q.path = QID(CONV(c->qid), Qencalgs);
-			p = "encalgs";
-			break;
-		case 4:
-			q.path = QID(CONV(c->qid), Qhashalgs);
-			p = "hashalgs";
 			break;
 		}
-		devdir(c, q, p, 0, nm, 0660, dp);
+		devdir(c, q, tlsnames[TYPE(q)], 0, nm, perm, dp);
+		unlock(&tdlock);
 		return 1;
 	case Qclonus:
-		devdir(c, c->qid, tlsnames[TYPE(c->qid)], 0, eve, 0555, dp);
+	case Qencalgs:
+	case Qhashalgs:
+		perm = 0444;
+		if(TYPE(c->qid) == Qclonus)
+			perm = 0555;
+		devdir(c, c->qid, tlsnames[TYPE(c->qid)], 0, eve, perm, dp);
 		return 1;
 	default:
-		ds = tlsdevs[CONV(c->qid)];
-		devdir(c, c->qid, tlsnames[TYPE(c->qid)], 0, ds->user, 0660, dp);
+		lock(&tdlock);
+		tr = tlsdevs[CONV(c->qid)];
+		devdir(c, c->qid, tlsnames[TYPE(c->qid)], 0, tr->user, tr->perm, dp);
+		unlock(&tdlock);
 		return 1;
 	}
 	return -1;
@@ -433,7 +455,6 @@ tlsopen(Chan *c, int omode)
 			lock(&tr->hqlock);
 			if(tr->handq != nil)
 				error(Einuse);
-//ZZZ what is the correct buffering here?
 			tr->handq = qopen(2 * MaxRecLen, 0, nil, nil);
 			if(tr->handq == nil)
 				error("can't allocate handshake queue");
@@ -465,6 +486,11 @@ tlswstat(Chan *c, char *dp)
 
 	convM2D(dp, &d);
 
+	if(waserror()){
+		unlock(&tdlock);
+		nexterror();
+	}
+	lock(&tdlock);
 	tr = tlsdevs[CONV(c->qid)];
 	if(tr == nil)
 		error(Ebadusefd);
@@ -473,6 +499,7 @@ tlswstat(Chan *c, char *dp)
 
 	memmove(tr->user, d.uid, NAMELEN);
 	tr->perm = d.mode;
+	unlock(&tdlock);
 }
 
 static void
@@ -754,7 +781,7 @@ tlsrecread(TlsRec *tr)
 		(*tr->packMac)(in->sec, in->sec->mackey, seq, header, p, len, hmac);
 		if(memcmp(hmac, p+len, in->sec->maclen) != 0)
 			rcvError(tr, EBadRecordMac, "record mac mismatch");
-		b->wp = b->rp + in->sec->maclen;
+		b->wp = b->rp + len;
 	}
 	qunlock(&in->seclock);
 	poperror();
@@ -1071,17 +1098,6 @@ tlsread(Chan *c, void *a, long n, vlong off)
 }
 
 /*
- *  this algorithm doesn't have to be great since we're just
- *  trying to obscure the block fill
- */
-static void
-randfill(uchar *buf, int len)
-{
-	while(len-- > 0)
-		*buf++ = nrand(256);
-}
-
-/*
  *  write a block in tls records
  */
 static void
@@ -1091,7 +1107,7 @@ tlsrecwrite(TlsRec *tr, int type, Block *b)
 	Block *nb;
 	uchar *p, seq[8];
 	OneWay *volatile out;
-	int n, maclen, ok;
+	int n, maclen, pad, ok;
 
 	out = &tr->out;
 	bb = b;
@@ -1111,7 +1127,8 @@ tlsrecwrite(TlsRec *tr, int type, Block *b)
 
 		/*
 		 * get at most one maximal record's input,
-		 * with padding on the front for header and back for mac
+		 * with padding on the front for header and
+		 * back for mac and maximal block padding.
 		 */
 		if(waserror()){
 			qunlock(&out->seclock);
@@ -1119,27 +1136,24 @@ tlsrecwrite(TlsRec *tr, int type, Block *b)
 		}
 		qlock(&out->seclock);
 		maclen = 0;
+		pad = 0;
 		if(out->sec != nil){
 			maclen = out->sec->maclen;
-			block = out->sec->block;
+			pad = maclen + out->sec->block;
 		}
 		n = BLEN(bb);
 		if(n > MaxRecLen){
 			n = MaxRecLen;
-			block = n + maclen + block;
-			block -= n % block;
-			nb = allocb(block + RecHdrLen);
+			nb = allocb(n + pad + RecHdrLen);
 			memmove(nb->wp + RecHdrLen, bb->rp, n);
 			bb->rp += n;
 		}else{
 			/*
 			 * carefully reuse bb so it will get freed if we're out of memory
 			 */
-			block = n + maclen + block;
-			block -= n % block;
 			bb = padblock(bb, RecHdrLen);
-			if(maclen)
-				nb = padblock(bb, -(block - n));
+			if(pad)
+				nb = padblock(bb, -pad);
 			else
 				nb = bb;
 			bb = nil;
@@ -1158,7 +1172,7 @@ tlsrecwrite(TlsRec *tr, int type, Block *b)
 
 			/* encrypt */
 			n = (*out->sec->enc)(out->sec, p + RecHdrLen, n);
-			nb->wp = nb->rp + n;
+			nb->wp = p + RecHdrLen + n;
 
 			/* update length */
 			put16(p+3, n);
@@ -1289,6 +1303,7 @@ initRC4key(Encalg *ea, Secret *s, uchar *p, uchar *)
 	s->enckey = smalloc(sizeof(RC4state));
 	s->enc = rc4enc;
 	s->dec = rc4enc;
+	s->block = 0;
 	setupRC4state(s->enckey, p, ea->keylen);
 }
 
@@ -1298,8 +1313,8 @@ initDES3key(Encalg *, Secret *s, uchar *p, uchar *iv)
 	s->enckey = smalloc(sizeof(DES3state));
 	s->enc = des3enc;
 	s->dec = des3dec;
-//ZZZ type hack
-	setupDES3state(s->enckey, (void*)p, iv);
+	s->block = 8;
+	setupDES3state(s->enckey, (uchar(*)[8])p, iv);
 }
 
 static void
@@ -1307,6 +1322,7 @@ initclearenc(Encalg *, Secret *s, uchar *, uchar *)
 {
 	s->enc = noenc;
 	s->dec = noenc;
+	s->block = 0;
 }
 
 static Encalg encrypttab[] =
@@ -1829,8 +1845,6 @@ static int
 des3enc(Secret *sec, uchar *buf, int n)
 {
 	n = blockpad(buf, n, 8);
-	if(n < 0 || (n & 7))
-		return -1;
 	des3CBCencrypt(buf, n, sec->enckey);
 	return n;
 }
@@ -1838,8 +1852,6 @@ des3enc(Secret *sec, uchar *buf, int n)
 static int
 des3dec(Secret *sec, uchar *buf, int n)
 {
-	if(n & 7)
-		return -1;
 	des3CBCdecrypt(buf, n, sec->enckey);
 	return (*sec->unpad)(buf, n, 8);
 }

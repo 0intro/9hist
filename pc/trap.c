@@ -378,7 +378,6 @@ static void
 _dumpstack(Ureg *ureg)
 {
 	ulong l, v, i;
-	uchar *p;
 	extern ulong etext;
 
 	if(up == 0)
@@ -487,7 +486,7 @@ syscall(Ureg* ureg)
 	up->nerrlab = 0;
 	ret = -1;
 	if(!waserror()){
-		if(scallnr >= nsyscall){
+		if(scallnr >= nsyscall || systab[scallnr] == 0){
 			pprint("bad sys call number %d pc %lux\n",
 				scallnr, ureg->pc);
 			postnote(up, 1, "sys: bad sys call", NDebug);

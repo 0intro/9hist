@@ -914,7 +914,7 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 	k = ((ctlr->txbusy)? ", txbusy" : "");
 	PRINTSTAT("%s\n", k);
 
-	if (ctlr->txkey){
+	if (ctlr->hascrypt){
 		PRINTSTR("Keys: ");
 		for (i = 0; i < WNKeys; i++){
 			if (ctlr->keys.keys[i].len == 0)
