@@ -186,6 +186,8 @@ poolalloc(Pool *p, int size)
 	Bhdr *q, *t;
 	int alloc, ldr, ns, frag;
 
+	if(size < 0 || size >= 1024*1024*1024)	/* for sanity and to avoid overflow */
+		return nil;
 	size = (size + BHDRSIZE + p->quanta) & ~(p->quanta);
 
 	ilock(&p->l);
