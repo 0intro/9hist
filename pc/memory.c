@@ -225,6 +225,14 @@ umbscan(void)
 	 */
 	p = KADDR(0xC0000);
 	while(p < (uchar*)KADDR(0xE0000)){
+		if (p[0] == 0x55 && p[1] == 0xAA) {
+			/* Skip p[2] chunks of 512 bytes.  Test for 0x55 AA before
+			     poking obtrusively, or else the Thinkpad X20 dies when
+			     setting up the cardbus (PB) */
+			p += p[2] * 512;
+			continue;
+		}
+
 		p[0] = 0xCC;
 		p[2*KB-1] = 0xCC;
 		if(p[0] != 0xCC || p[2*KB-1] != 0xCC){

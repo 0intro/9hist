@@ -140,6 +140,7 @@ extern void	blankscreen(int);
 extern void	deletescreenimage(void);
 extern int		drawhasclients(void);
 extern ulong	blanktime;
+extern uchar*	attachscreen(Rectangle*, ulong*, int*, int*, int*);
 
 /* vga.c */
 extern void	vgascreenwin(VGAscr*);
