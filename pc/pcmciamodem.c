@@ -21,7 +21,7 @@ enum {
 
 static char* modems[] = {
 	"IBM 33.6 Data/Fax/Voice Modem",
-	"CM-56G",				/* Xircom CreditCard Modem 56 - GlobalACCESS */
+	"CM-56G",			/* Xircom CreditCard Modem 56 - GlobalACCESS */
 	"KeepInTouch",
 	"CEM56",
 	0,
@@ -58,6 +58,8 @@ pcmciamodemlink(void)
 
 		slot = pcmspecial(modems[j], &isa);
 		if(slot >= 0){
+			if(ioalloc(isa.port, 8, 0, modems[j]) < 0)
+				print("%s port %lux already in use\n", modems[j], isa.port);
 			print("%s in pcmcia slot %d port 0x%lux irq %lud\n",
 				modems[j], slot, isa.port, isa.irq);
 		}

@@ -958,6 +958,7 @@ devendpt(Udev *d, int id, int add)
 	lock(d);
 	if((e = *p) != nil){
 		incref(e);
+		XPRINT("incref(0x%p) in devendpt, new value %ld\n", e, e->ref);
 		unlock(d);
 		return e;
 	}
@@ -980,6 +981,7 @@ devendpt(Udev *d, int id, int add)
 	lock(d);
 	if(*p != nil){
 		incref(*p);
+		XPRINT("incref(0x%p) in devendpt, new value %ld\n", *p, (*p)->ref);
 		unlock(d);
 		free(e);
 		return *p;
@@ -991,7 +993,7 @@ devendpt(Udev *d, int id, int add)
 	return e;
 }
 
-static void
+static int
 freept(Endpt *e)
 {
 	if(e != nil && decref(e) == 0){
@@ -1002,7 +1004,10 @@ freept(Endpt *e)
 		if(e->epq != nil)
 			freeqh(&ubus, e->epq);
 		free(e);
+		return 1;
 	}
+	if (e) XPRINT("decref(0x%p) in freept, new value %ld\n", e, e->ref);
+	return 0;
 }
 
 static void
@@ -1015,17 +1020,28 @@ usbdevreset(Udev *d)
 }
 
 static void
-freedev(Udev *d)
+freedev(Udev *d, int ept)
 {
 	int i;
+	Endpt *e;
 
 	if(d != nil && decref(d) == 0){
+		XPRINT("freedev 0x%p, 0\n", d);
 		for(i=0; i<nelem(d->ep); i++)
 			freept(d->ep[i]);
 		if(d->x >= 0)
 			usbdev[d->x] = nil;
 		free(d);
-	}
+	} else {
+		if(ept >= 0 && ept < nelem(d->ep)){
+			e = d->ep[ept];
+			XPRINT("freedev, freept 0x%p\n", e);
+			if(e != nil){
+				eptdeactivate(e);
+				unschedendpt(e);
+			}
+		}
+	}	
 }
 
 static void
@@ -1329,6 +1345,7 @@ usbnewdevice(void)
 			d->x = i;
 			d->id = (ubus.idgen << 8) | i;
 			d->state = Enabled;
+			XPRINT("calling devendpt in usbnewdevice\n");
 			e = devendpt(d, 0, 1);	/* always provide control endpoint 0 */
 			e->mode = ORDWR;
 			e->iso = 0;
@@ -1678,6 +1695,7 @@ void
 usbclose(Chan *c)
 {
 	Udev *d;
+	int ept;
 
 	if(c->qid.type == QTDIR || QID(c->qid) < Q3rd)
 		return;
@@ -1689,9 +1707,11 @@ usbclose(Chan *c)
 	d = usbdevice(c);
 	if(QID(c->qid) == Qctl)
 		d->busy = 0;
+	XPRINT("usbclose: dev 0x%p\n", d);
 	if(c->flag & COPEN){
+		ept = (QID(c->qid) != Qctl) ? QID(c->qid) - Qep0 : -1;
 		XPRINT("usbclose: freedev 0x%p\n", d);
-		freedev(d);
+		freedev(d, ept);
 	}
 	poperror();
 	qunlock(&usbstate);
@@ -1819,7 +1839,7 @@ isoio(Endpt *e, void *a, long n, ulong offset, int w)
 			memmove(p, q, i);
 			e->buffered -= i;
 			if (e->buffered < 0){
-				iprint("e->buffered %d?\n", e->buffered);
+				XPRINT("e->buffered %d?\n", e->buffered);
 				e->buffered = 0;
 			}
 		}
@@ -2121,8 +2141,10 @@ usbwrite(Chan *c, void *a, long n, vlong offset)
 				cmderror(cb, Ebadusbmsg);
 			if (i == 0)
 				d->csp = strtoul(cb->f[3], nil, 0);
-			if(d->ep[i] == nil)
+			if(d->ep[i] == nil){
+				XPRINT("calling devendpt in usbwrite (CMclass)\n");
 				d->ep[i] = devendpt(d, i, 1);
+			}
 			d->ep[i]->csp = strtoul(cb->f[3], nil, 0);
 			break;
 		case CMdata:
@@ -2169,8 +2191,10 @@ usbwrite(Chan *c, void *a, long n, vlong offset)
 				XPRINT("field 1: 0 <= %d < %d\n", i, nelem(d->ep));
 				error(Ebadarg);
 			}
-			if((e = d->ep[i]) == nil)
+			if((e = d->ep[i]) == nil){
+				XPRINT("calling devendpt in usbwrite (CMep)\n");
 				e = devendpt(d, i, 1);
+			}
 			qlock(&usbstate);
 			if(waserror()){
 				freept(e);
