@@ -21,7 +21,7 @@ static ulong qcopycnt;
 
 static int debuging;
 
-#define QDEBUG	if(1)
+#define QDEBUG	if(0)
 
 /*
  *  IO queues
@@ -115,8 +115,6 @@ allocb(int size)
 	ulong addr;
 	int n;
 
-	if(size < 0)
-		panic("allocb < 0");
 	n = sizeof(Block) + size + (BY2V-1);
 	b = mallocz(n+Hdrspc, 0);
 	if(b == 0)
@@ -150,8 +148,6 @@ iallocb(int size)
 		return 0;
 	}
 
-	if(size < 0)
-		panic("iallocb < 0");
 	n = sizeof(Block) + size + (BY2V-1);
 	b = mallocz(n+Hdrspc, 0);
 	if(b == nil){
@@ -797,7 +793,6 @@ qbread(Queue *q, int len)
 	Block *b, *nb;
 	int n, dowakeup;
 
-poot("QB start", len);
 	qlock(&q->rlock);
 	if(waserror()){
 		qunlock(&q->rlock);
@@ -826,12 +821,9 @@ poot("QB start", len);
 
 		q->state |= Qstarve;	/* flag requesting producer to wake me */
 		iunlock(q);
-poot("QB before sleep", len);
 		sleep(&q->rr, notempty, q);
-poot("QB after sleep", len);
 	}
 
-poot("QB 1", len);
 	/* remove a buffered block */
 	q->bfirst = b->next;
 	b->next = 0;
@@ -848,7 +840,6 @@ poot("QB 1", len);
 
 	/* split block if it's too big and this is not a message-oriented queue */
 	nb = b;
-poot("QB 2", len);
 	if(n > len){
 		if((q->state&Qmsg) == 0){
 			iunlock(q);
@@ -879,7 +870,6 @@ poot("QB 2", len);
 
 	poperror();
 	qunlock(&q->rlock);
-poot("QB end", nb);
 	return nb;
 }
 
@@ -892,17 +882,13 @@ qread(Queue *q, void *vp, int len)
 {
 	Block *b;
 
-poot("Q 1", 0);
 	b = qbread(q, len);
-poot("Q 2", 0);
 	if(b == 0)
 		return 0;
 
 	len = BLEN(b);
 	memmove(vp, b->rp, len);
-poot("Q 3", 0);
 	freeb(b);
-poot("Q 4", 0);
 	return len;
 }
 

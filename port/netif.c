@@ -387,17 +387,23 @@ openfile(Netif *nif, int id)
 	}
 
 	qlock(nif);
+	if(waserror()){
+		qunlock(nif);
+		nexterror();
+	}
 	efp = &nif->f[nif->nfile];
 	for(fp = nif->f; fp < efp; fp++){
 		f = *fp;
 		if(f == 0){
 			f = malloc(sizeof(Netfile));
-			if(f == 0){
-				qunlock(nif);
-				error(Enodev);
+			if(f == 0)
+				exhausted("memory");
+			f->in = qopen(nif->limit, 1, 0, 0);
+			if(f->in == nil){
+				free(f);
+				exhausted("memory");
 			}
 			*fp = f;
-			f->in = qopen(nif->limit, 1, 0, 0);
 			qlock(f);
 		} else {
 			qlock(f);
@@ -411,9 +417,9 @@ openfile(Netif *nif, int id)
 		netown(f, up->user, 0);
 		qunlock(f);
 		qunlock(nif);
+		poperror();
 		return fp - nif->f;
 	}
-	qunlock(nif);
 	error(Enodev);
 	return -1;	/* not reached */
 }

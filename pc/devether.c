@@ -378,6 +378,8 @@ etherreset(void)
 				if(ether->oq == 0)
 					ether->oq = qopen(64*1024, 1, 0, 0);
 			}
+			if(ether->oq == 0)
+				panic("etherreset %s", name);
 			ether->alen = Eaddrlen;
 			memmove(ether->addr, ether->ea, Eaddrlen);
 			memset(ether->bcast, 0xFF, Eaddrlen);

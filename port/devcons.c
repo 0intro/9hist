@@ -37,6 +37,8 @@ void
 printinit(void)
 {
 	lineq = qopen(2*1024, 0, 0, 0);
+	if(lineq == nil)
+		panic("printinit");
 	qnoblock(lineq, 1);
 }
 

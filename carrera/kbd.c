@@ -356,6 +356,8 @@ kbdinit(void)
 	int i;
 
 	kbdq = qopen(4*1024, 0, 0, 0);
+	if(kbdq == nil)
+		panic("kbdinit");
 	qnoblock(kbdq, 1);
 
 	/*

@@ -601,3 +601,21 @@ poolcompact(Pool *pool)
 
 	return compacted;
 }
+
+int
+recur(Bhdr *t)
+{
+	if(t == 0)
+		return 1;
+	if(((ulong)t) < 0x80000000)
+		return 0;
+	if(((ulong)t) > 0x90000000)
+		return 0;
+	return recur(t->right) && recur(t->left);
+}
+
+int
+poolok(void)
+{
+	return recur(mainmem->root);
+}

@@ -380,6 +380,8 @@ kbdinit(void)
 	int c;
 
 	kbdq = qopen(4*1024, 0, 0, 0);
+	if(kbdq == nil)
+		panic("kbdinit");
 	qnoblock(kbdq, 1);
 
 	intrenable(VectorKBD, i8042intr, 0, BUSUNKNOWN);

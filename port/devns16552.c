@@ -480,6 +480,8 @@ ns16552setup0(Uart *p)
 
 	p->iq = qopen(4*1024, 0, ns16552flow, p);
 	p->oq = qopen(4*1024, 0, ns16552kick, p);
+	if(p->iq == nil || p->oq == nil)
+		panic("ns16552setup0");
 
 	p->ip = p->istage;
 	p->ie = &p->istage[Stagesize];
