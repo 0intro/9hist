@@ -53,6 +53,7 @@ struct Op
 	int	f2;
 	int	f3;
 };
+typedef void*	Fconv;	/* to allow fcall.h to compile */
 extern	void	strconv(char*, Op*, int, int);
 extern	int	numbconv(Op*, int);
 extern	char	*doprint(char*, char*, char*, void*);
