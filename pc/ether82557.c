@@ -108,8 +108,6 @@ typedef struct Rfd {
 	ushort	size;
 
 	Etherpkt;
-
-	Block*	bp;
 } Rfd;
 
 enum {					/* field */
@@ -437,8 +435,6 @@ ctlrinit(Ctlr* ctlr)
 		rfd->rbd = NullPointer;
 		rfd->count = 0;
 		rfd->size = sizeof(Etherpkt);
-
-		rfd->bp = bp;
 	}
 	((Rfd*)ctlr->rfd[Nrfd-1]->rp)->link = PADDR(ctlr->rfd[0]->rp);
 
