@@ -47,10 +47,10 @@ s3page(VGAscr* scr, int page)
 {
 	int id;
 
-	id = (vgaxi(Crtx, 0x30)<<8)|vgaxi(Crtx, 0x2E);
+	id = (vgaxi(Crtx, 0x2D)<<8)|vgaxi(Crtx, 0x2E);
 	switch(id){
 
-	case 0xE110:				/* ViRGE/GX2 */
+	case 0x8A10:				/* ViRGE/GX2 */
 		break;
 
 	default:
@@ -91,8 +91,8 @@ s3linear(VGAscr* scr, int* size, int* align)
 		aperture = p->mem[i].bar & ~0x0F;
 		*size = p->mem[i].size;
 
-		id = (vgaxi(Crtx, 0x30)<<8)|vgaxi(Crtx, 0x2E);
-		if(id == 0xE122){		/* find Savage4 mmio */
+		id = (vgaxi(Crtx, 0x2D)<<8)|vgaxi(Crtx, 0x2E);
+		if(id == 0x8A22){		/* find Savage4 mmio */
 			/*
 			 * We could assume that the MMIO registers
 			 * will be in the screen segment and just use
@@ -196,12 +196,12 @@ s3load(VGAscr* scr, Cursor* curs)
 	id = (vgaxi(Crtx, 0x30)<<8)|vgaxi(Crtx, 0x2E);
 	switch(id){
 
-	case 0xE131:				/* ViRGE */
-	case 0xE101:				/* ViRGE/[DG]X */
-	case 0xE110:				/* ViRGE/GX2 */
-	case 0xE13D:				/* ViRGE/VX */
-	case 0xE112:				/* Savage4/IX-MV */
-	case 0xE122:				/* Savage4 */
+	case 0x5631:				/* ViRGE */
+	case 0x8A01:				/* ViRGE/[DG]X */
+	case 0x8A10:				/* ViRGE/GX2 */
+	case 0x883D:				/* ViRGE/VX */
+	case 0x8A12:				/* Savage4/IX-MV */
+	case 0x8A22:				/* Savage4 */
 		p += scr->storage;
 		break;
 
@@ -244,12 +244,12 @@ s3load(VGAscr* scr, Cursor* curs)
 
 	switch(id){
 
-	case 0xE131:				/* ViRGE */
-	case 0xE101:				/* ViRGE/[DG]X */
-	case 0xE110:				/* ViRGE/GX2 */
-	case 0xE13D:				/* ViRGE/VX */
-	case 0xE112:				/* Savage4/IX-MV */
-	case 0xE122:				/* Savage4 */
+	case 0x5631:				/* ViRGE */
+	case 0x8A01:				/* ViRGE/[DG]X */
+	case 0x8A10:				/* ViRGE/GX2 */
+	case 0x883D:				/* ViRGE/VX */
+	case 0x8A12:				/* Savage4/IX-MV */
+	case 0x8A22:				/* Savage4 */
 		break;
 
 	default:
@@ -386,12 +386,12 @@ waitforlinearfifo(VGAscr *scr)
 	switch(scr->id){
 	default:
 		panic("unknown scr->id in s3 waitforlinearfifo");
-	case 0xE131:	/* ViRGE */
-	case 0xE13D:	/* ViRGE/VX */
+	case 0x5631:	/* ViRGE */
+	case 0x883D:	/* ViRGE/VX */
 		mask = 0x0F<<6;
 		val = 0x08<<6;
 		break;
-	case 0xE110:	/* ViRGE/GX2 */
+	case 0x8A10:	/* ViRGE/GX2 */
 		mask = 0x1F<<6;
 		val = 0x10<<6;
 		break;
@@ -542,9 +542,9 @@ s3drawinit(VGAscr *scr)
 	 * above.
 	 */
 	switch(id){
-	case 0xE131:				/* ViRGE */
-	case 0xE13D:				/* ViRGE/VX */
-	case 0xE110:				/* ViRGE/GX2 */
+	case 0x5631:				/* ViRGE */
+	case 0x883D:				/* ViRGE/VX */
+	case 0x8A10:				/* ViRGE/GX2 */
 		scr->mmio = (ulong*)(scr->aperture+0x1000000);
 		scr->fill = hwfill;
 		scr->scroll = hwscroll;
