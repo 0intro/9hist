@@ -59,6 +59,7 @@ void	kbdinit(void);
 void	lgdt(ushort[3]);
 void	lidt(ushort[3]);
 void	links(void);
+void	loopbackintr(void);
 void	ltr(ulong);
 void	mathinit(void);
 void	meminit(ulong);

@@ -141,18 +141,18 @@ todget(vlong *ticksp)
 }
 
 //
-//  called every clock tick
+//  called every clock tick to avoid calculation overflows
 //
 void
 todfix(void)
 {
-	static ulong last;
+	vlong ticks, diff;
 
-	// once a second, make sure we don't overflow
-	if(MACHP(0)->ticks - last >= HZ){
-		last = MACHP(0)->ticks;
+	ticks = fastticks(nil);
+
+	diff = ticks - tod.last;
+	if(diff > tod.hz)
 		todget(nil);
-	}
 }
 
 long

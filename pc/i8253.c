@@ -124,10 +124,17 @@ i8253init(int aalcycles, int havecycleclock)
 	}
 }
 
+static void
+clockintr0(Ureg* ureg, void *v)
+{
+	loopbackintr();
+	clockintr(ureg, v);
+}
+
 void
 i8253enable(void)
 {
-	intrenable(IrqCLOCK, clockintr, 0, BUSUNKNOWN, "clock");
+	intrenable(IrqCLOCK, clockintr0, 0, BUSUNKNOWN, "clock");
 }
 
 /*
