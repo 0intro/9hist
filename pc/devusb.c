@@ -277,6 +277,11 @@ struct Ctlr {
 #define	IN(x)	ins(ub->io+(x))
 #define	OUT(x, v)	outs(ub->io+(x), (v))
 
+static	long usbints;
+static	long framenumber;
+static	long frameptr;
+static	long	usbbogus;
+
 static	Ctlr	ubus;
 static	char	Estalled[] = "usb endpoint stalled";
 static	char	Ebadusbmsg[] = "invalid parameters to USB ctl message";
@@ -500,7 +505,7 @@ dumpqh(QH *q)
 }
 
 static void
-queuetd(Ctlr *ub, QH *q, TD *t, int vf)
+queuetd(Ctlr *ub, QH *q, TD *t, int vf, char *why)
 {
 	TD *lt;
 
@@ -508,6 +513,8 @@ queuetd(Ctlr *ub, QH *q, TD *t, int vf)
 		lt->link = PADDR(lt->next) | vf;
 	lt->link = Terminate;
 	ilock(ub);
+	XPRINT("queuetd %s: t=%p lt=%p q=%p first=%p last=%p entries=%.8lux\n",
+		why, t, lt, q, q->first, q->last, q->entries);
 	if(q->first != nil){
 		q->last->link = PADDR(t) | vf;
 		q->last->next = t;
@@ -516,6 +523,8 @@ queuetd(Ctlr *ub, QH *q, TD *t, int vf)
 		q->entries = PADDR(t);
 	}
 	q->last = lt;
+	XPRINT("	t=%p q=%p first=%p last=%p entries=%.8lux\n",
+		t, q, q->first, q->last, q->entries);
 	dumpqh(q);
 	iunlock(ub);
 }
@@ -646,6 +655,10 @@ cleanq(QH *q, int discard, int vf)
 		XPRINT("t = %8.8lux\n", t);
 		dumpqh(q);
 	}
+	if(q->first && q->entries != PADDR(q->first)){
+		usbbogus++;
+		q->entries = PADDR(q->first);
+	}
 	iunlock(ub);
 }
 
@@ -757,7 +770,7 @@ qxmit(Endpt *e, Block *b, int pid)
 		qh = ub->bulkq;
 		vf = Vf;
 	}
-	queuetd(ub, qh, t, vf);
+	queuetd(ub, qh, t, vf, "qxmit");
 	return qh;
 }
 
@@ -782,7 +795,7 @@ qrcv(Endpt *e)
 		qh = ub->bulkq;
 		vf = Vf;
 	}
-	queuetd(ub, qh, t, vf);
+	queuetd(ub, qh, t, vf, "qrcv");
 	return qh;
 }
 
@@ -853,10 +866,8 @@ schedendpt(Endpt *e)
 	}
 	e->off = 0;
 	e->sched = usbsched(ub, e->pollms, e->maxpkt);
-	if(e->sched < 0){
-		qunlock(&usbstate);
+	if(e->sched < 0)
 		return -1;
-	}
 
 	if (e->tdalloc || e->bpalloc)
 		panic("usb: tdalloc/bpalloc");
@@ -1189,7 +1200,7 @@ cleaniso(Endpt *e, int frnum)
 }
 
 static void
-interrupt(Ureg*, void *a)
+usbinterrupt(Ureg*, void *a)
 {
 	Ctlr *ub;
 	Endpt *e;
@@ -1199,11 +1210,13 @@ interrupt(Ureg*, void *a)
 	ub = a;
 	s = IN(Status);
 
+	frameptr = inl(ub->io+Flbaseadd);
+	framenumber = IN(Frnum) & 0x3ff;
 	OUT(Status, s);
 	if ((s & 0x1f) == 0)
 		return;
+	usbints++;
 	frnum = IN(Frnum) & 0x3ff;
-//	iprint("usbint: #%x f%d\n", s, frnum);
 	if (s & 0x1a) {
 		XPRINT("cmd #%x sofmod #%x\n", IN(Cmd), inb(ub->io+SOFMod));
 		XPRINT("sc0 #%x sc1 #%x\n", IN(Portsc0), IN(Portsc1));
@@ -1351,6 +1364,8 @@ usbreset(void)
 		 */
 		if(cfg->ccrb != 0x0C || cfg->ccru != 0x03)
 			continue;
+		if(cfg->did == 0x2482 || cfg->did == 0x2487)
+			continue;
 // 		switch(cfg->vid | cfg->did<<16){
 // 		default:
 // 			continue;
@@ -1385,7 +1400,7 @@ if(0){
 	 */
 	if(cfg->intl == 0xFF || cfg->intl == 0)
 		return;
-	intrenable(cfg->intl, interrupt, ub, cfg->tbdf, "usb");
+	intrenable(cfg->intl, usbinterrupt, ub, cfg->tbdf, "usb");
 
 	ub->io = port;
 	ub->tdpool = (TD*)(((ulong)xalloc(128*sizeof(TD) + 0x10) + 0xf) & ~0xf);
@@ -2025,6 +2040,8 @@ writeusb(Endpt *e, void *a, long n, int tok)
 		tok = TokOUT;
 		e->data01 ^= 1;
 		if(e->ntd >= e->nbuf) {
+XPRINT("qh %s: q=%p first=%p last=%p entries=%.8lux\n",
+ "writeusb sleep", qh, qh->first, qh->last, qh->entries);
 			XPRINT("writeusb: sleep %lux\n", &e->wr);
 			sleep(&e->wr, qisempty, qh);
 			XPRINT("writeusb: awake\n");
@@ -2043,7 +2060,7 @@ usbwrite(Chan *c, void *a, long n, vlong offset)
 	Cmdbuf *cb;
 	Cmdtab *ct;
 	int id, nw, t, i;
-	char cmd[50], *fields[10];
+	char cmd[50];
 
 	if(c->qid.type == QTDIR)
 		error(Egreg);
@@ -2056,7 +2073,7 @@ usbwrite(Chan *c, void *a, long n, vlong offset)
 		}
 
 		ct = lookupcmd(cb, usbbusctlmsg, nelem(usbbusctlmsg));
-		id = strtol(fields[1], nil, 0);
+		id = strtol(cb->f[1], nil, 0);
 		if(id != 1 && id != 2)
 			cmderror(cb, "usb port number not 1 or 2 in");
 		switch(ct->index){

@@ -509,7 +509,7 @@ tlswstat(Chan *c, uchar *dp, int n)
 	rv = convM2D(dp, n, &d[0], (char*) &d[1]);
 	if(rv == 0)
 		error(Eshortstat);
-	if(!emptystr(d->uid)
+	if(!emptystr(d->uid))
 		kstrdup(&tr->user, d->uid);
 	if(d->mode != ~0UL)
 		tr->perm = d->mode;
