@@ -538,9 +538,15 @@ static int
 windowopen(void *a)
 {
 	Noconv *cp;
+	int i;
 
 	cp = (Noconv *)a;
-	return MSUCC(cp->next) != cp->first;	
+	i = cp->next - cp->first;
+	if(i>=0 && i<32)	
+		return 1;
+	if(i<0 && Nnomsg+i<32)
+		return 1;
+	return 0;	
 }
 static void
 nooput(Queue *q, Block *bp)
@@ -1413,7 +1419,7 @@ loop:
 			/*
 			 *  get the acknowledges out
 			 */
-			while(cp->afirst != cp->anext){
+			while(cp->afirst!=cp->anext && cp->rq->next->len<16*1024){
 				DPRINT("sending ack %d\n", cp->ack[cp->afirst]);
 				nosendctl(cp, 0, 0);
 			}
