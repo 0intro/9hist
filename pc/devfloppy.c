@@ -194,7 +194,7 @@ static long	floppyseek(Drive*, long);
 static int	floppysense(void);
 static void	floppywait(void);
 static long	floppyxfer(Drive*, int, void*, long, long);
-static int	floppyformat(Chan*, Drive*, int, char);
+static int	floppyformat(Drive*, ulong, ulong);
 static long	floppythrice(Drive*, int, void*, long, long);
 static int	cmddone(void*);
 void Xdelay(int);
@@ -460,7 +460,7 @@ floppyread(Chan *c, void *a, long n)
 
 		break;
 	case Qctl:
-		break;
+		return readstr(offset, a, n, dp->t->name);
 	default:
 		panic("floppyread: bad qid");
 	}
@@ -505,6 +505,10 @@ floppywrite(Chan *c, void *a, long n)
 		break;
 	case Qctl:
 		qlock(&fl);
+		if(waserror()){
+			qunlock(&fl);
+			nexterror();
+		}
 		if(n >= sizeof(ctlmsg))
 			n = sizeof(ctlmsg) - 1;
 		memmove(ctlmsg, aa, n);
@@ -517,8 +521,9 @@ floppywrite(Chan *c, void *a, long n)
 		} else if(SNCMP(ctlmsg, "format") == 0){
 			if(getfields(ctlmsg, f, 3, ' ') != 3)
 				error(Ebadarg);
-			rv = n*floppyformat(c, dp, atoi(f[1]), *f[2]);
+			rv = n*floppyformat(dp, strtoul(f[1], 0, 0), strtoul(f[2], 0, 0));
 		}
+		poperror();
 		qunlock(&fl);
 		break;
 	default:
@@ -952,7 +957,7 @@ floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
  *  format a track
  */
 static int
-floppyformat(Chan *c, Drive *dp, int track, char filler)
+floppyformat(Drive *dp, ulong track, ulong filler)
 {
  	int cyl, h, sec;
 	uchar *buf, *bp;
@@ -963,18 +968,19 @@ floppyformat(Chan *c, Drive *dp, int track, char filler)
 	h = track % t->heads;
 	if(track >= t->tracks * t->heads)
 		return 0;
+	setdef(dp);
 	buf = smalloc(t->sectors*4);
-
-	qlock(&fl);
 	if(waserror()){
-		qunlock(&fl);
 		free(buf);
 		nexterror();
 	}
-	floppyon(dp);
-	changed(c, dp);
-	if(floppyseek(dp, track*t->tsize) < 0)
-		error(Eio);
+	if(!waserror()){
+		floppyon(dp);
+		poperror();
+	}
+	floppyseek(dp, track*t->tsize);
+	dp->cyl = cyl;
+	dp->confused = 0;
 
 	/*
 	 *  set up the dma (dp->len may be trimmed)
@@ -1023,8 +1029,8 @@ floppyformat(Chan *c, Drive *dp, int track, char filler)
 		dp->confused = 1;
 		error(Eio);
 	}
-	qunlock(&fl);
 	free(buf);
+	poperror();
 	return 1;
 }
 
