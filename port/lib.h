@@ -47,7 +47,7 @@ extern	char	*doprint(char*, char*, char*, void*);
 extern	int	fmtinstall(char, int (*)(Op*));
 extern	int	sprint(char*, char*, ...);
 extern	int	print(char*, ...);
-
+extern  int	atoi(char *);
 /*
  * one-of-a-kind
  */

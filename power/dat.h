@@ -170,6 +170,11 @@ struct Conf
 	ulong	base0;		/* base of bank 0 */
 	ulong	base1;		/* base of bank 1 */
 	ulong	copymode;	/* 0 is copy on write, 1 is copy on reference */
+	ulong	ipif;		/* Ip protocol interfaces */
+	ulong	ip;		/* Ip conversations per interface */
+	ulong	arp;		/* Arp table size */
+	ulong	frag;		/* Ip fragment assemble queue size */
+
 };
 
 struct Dev

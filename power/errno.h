@@ -53,6 +53,15 @@ enum{
 	Enovmem,	/* virtual memory allocation failed */
 	Enoasync,	/* out of async stream modules */
 	Enopipe,	/* out of pipes */
+	Emsgsize,	/* message is too big for protocol */
+	Enoport,	/* network port not available */
+	Edevbusy,	/* network device is busy or allocated */
+	Eaddrnotfound,	/* network address not found */
+	Enetunreach,	/* network unreachable */
+	Etimedout,	/* connection timed out */
+	Econrefused,	/* connection refused */
+	Enoproto,	/* network protocol not supported */
+	Eprotonosup,	/* operation not supported by network protocol */
 	Eisstream,	/* seek on a stream */
 	Egreg,		/* ken has implemented datakit */
 };

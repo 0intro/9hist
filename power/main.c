@@ -634,6 +634,10 @@ confinit(void)
 	conf.nurp = 25;
 	conf.nqueue = 5 * conf.nstream;
 	conf.nblock = 10 * conf.nstream;
+	conf.ipif = 8;
+	conf.ip = 64;
+	conf.arp = 32;
+	conf.frag = 32;
 
 	confread();
 
