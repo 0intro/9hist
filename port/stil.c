@@ -24,15 +24,16 @@ static char *etime = "connection timed out";
 enum
 {
 	Iltickms 	= 100,
-	Slowtime 	= 20*Iltickms,
-	Fasttime 	= 5*Iltickms,
-	Acktime		= 3*Iltickms,
-	Ackkeepalive	= 1000*Iltickms,
+	Slowtime 	= 200*Iltickms,
+	Fasttime 	= 4*Iltickms,
+	Acktime		= 2*Iltickms,
+	Ackkeepalive	= 6000*Iltickms,
 	Defaultwin	= 20,
 };
 
-#define Backoff(s)	(s)*=2
 #define Starttimer(s)	{(s)->timeout = 0; (s)->fasttime = Fasttime;}
+/* Packet dropping putnext for testing */
+#define DPUTNEXT(q, b)	if((MACHP(0)->ticks&7) != 3)PUTNEXT(q, b);else{freeb(b);print(".");}
 
 void	ilrcvmsg(Ipconv*, Block*);
 void	ilackproc(void*);
@@ -43,6 +44,7 @@ void	ilpullup(Ipconv*);
 void	ilhangup(Ipconv*, char *);
 void	ilfreeq(Ilcb*);
 void	ilrexmit(Ilcb*);
+void	ilbackoff(Ilcb*);
 
 void
 ilopen(Queue *q, Stream *s)
@@ -183,8 +185,11 @@ ilackq(Ilcb *ic, Block *bp)
 	qlock(&ic->ackq);
 	if(ic->unacked)
 		ic->unackedtail->list = np;
-	else 
+	else {
+		/* Start timer since we may have been idle for some time */
+		Starttimer(ic);
 		ic->unacked = np;
+	}
 	ic->unackedtail = np;
 	qunlock(&ic->ackq);
 	np->list = 0;
@@ -673,7 +678,7 @@ ilackproc(void *a)
 			case Ilclosing:
 				if(ic->timeout >= ic->fasttime) {
 					ilsendctl(s, 0, Ilclose, ic->next, ic->recvd);
-					Backoff(ic->fasttime);
+					ilbackoff(ic);
 				}
 				if(ic->timeout >= ic->slowtime) {
 					ic->state = Ilclosed;
@@ -684,7 +689,7 @@ ilackproc(void *a)
 			case Ilsyncer:
 				if(ic->timeout >= ic->fasttime) {
 					ilsendctl(s, 0, Ilsync, ic->start, ic->recvd);
-					Backoff(ic->fasttime);
+					ilbackoff(ic);
 				}
 				if(ic->timeout >= ic->slowtime) {
 					ic->state = Ilclosed;
@@ -701,7 +706,7 @@ ilackproc(void *a)
 				}
 				if(ic->timeout >= ic->fasttime) {
 					ilrexmit(ic);
-					Backoff(ic->fasttime);
+					ilbackoff(ic);
 				}
 				if(ic->timeout >= ic->slowtime) {
 					ic->state = Ilclosed;
@@ -712,6 +717,15 @@ ilackproc(void *a)
 			}
 		}
 	}
+}
+
+void
+ilbackoff(Ilcb *ic)
+{
+	if(ic->fasttime < Slowtime/2)
+		ic->fasttime += Fasttime;
+	else
+		ic->fasttime = (ic->fasttime)*3/2;
 }
 
 void

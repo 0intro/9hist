@@ -29,6 +29,7 @@ Queue 		*Etherq;
 Ipaddr		Myip;
 Ipaddr		Mymask;
 uchar		Netmyip[4];	/* In Network byte order */
+uchar		bcast[4] = { 0xff, 0xff, 0xff, 0xff };
 
 /* Predeclaration */
 static void	ipetherclose(Queue*);
@@ -309,7 +310,8 @@ ipetheriput(Queue *q, Block *bp)
 	}
 
 	/* Look to see if its for me before we waste time checksuming it */
-	if(memcmp(h->dst, Netmyip, sizeof(Netmyip)) != 0)
+	if(memcmp(h->dst, Netmyip, sizeof(Netmyip)) != 0 &&
+	   memcmp(h->dst, bcast, sizeof(bcast)) != 0)
 		goto drop;
 
 	if(ipcksum && ip_csum(&h->vihl)) {

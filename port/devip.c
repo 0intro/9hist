@@ -271,6 +271,13 @@ ipwrite(Chan *c, char *a, long n, ulong offset)
 			ilstart(cp, IL_ACTIVE, 20);
 
 	}
+	else if(strcmp(field[0], "disconnect") == 0) {
+		if(cp->stproto != &udpinfo)
+			error(Eperm);
+
+		cp->dst = 0;
+		cp->pdst = 0;
+	}
 	else if(strcmp(field[0], "announce") == 0) {
 		if((cp->stproto == &tcpinfo && cp->tcpctl.state != CLOSED) ||
 		   (cp->stproto == &ilinfo && cp->ilctl.state != Ilclosed))
@@ -328,7 +335,7 @@ udprcvmsg(Ipconv *muxed, Block *bp)
 {
 	Ipconv *ifc, *etab;
 	Udphdr *uh;
-	Port   dport;
+	Port   dport, sport;
 	ushort sum, len;
 	Ipaddr addr;
 
@@ -352,11 +359,13 @@ udprcvmsg(Ipconv *muxed, Block *bp)
 	}
 
 	dport = nhgets(uh->udpdport);
+	sport = nhgets(uh->udpsport);
 
 	/* Look for a conversation structure for this port */
 	etab = &muxed[conf.ip];
 	for(ifc = muxed; ifc < etab; ifc++) {
-		if(ifc->psrc == dport && ifc->ref) {
+		if(ifc->psrc == dport && ifc->ref &&
+		   (ifc->pdst == 0 || ifc->pdst == sport)) {
 			/* Trim the packet down to data size */
 			len = len - (UDP_HDRSIZE-UDP_PHDRSIZE);
 			bp = btrim(bp, UDP_EHSIZE+UDP_HDRSIZE, len);
@@ -365,7 +374,7 @@ udprcvmsg(Ipconv *muxed, Block *bp)
 
 			/* Stuff the src address into the remote file */
 		 	ifc->dst = addr;
-			ifc->pdst = nhgets(uh->udpsport);
+			ifc->pdst = sport;
 			PUTNEXT(ifc->readq, bp);
 			return;
 		}

@@ -339,17 +339,17 @@ ibrk(ulong addr, int seg)
 	if(s == 0)
 		errors("no segment");
 
-	qlock(&s->lk);
-
 	if(addr == 0)
 		return s->base;
+
+	qlock(&s->lk);
 
 	if(addr < s->base) {
 		/* We may start with the bss overlapping the data */
 		if(seg != BSEG || u->p->seg[DSEG] == 0 || addr < u->p->seg[DSEG]->base) {
 			qunlock(&s->lk);
-			pprint("addr below segment\n");
- 		}
+			errors("addr below segment");
+		}
 		addr = s->base;
 	}
 		
