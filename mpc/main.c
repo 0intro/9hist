@@ -7,7 +7,7 @@
 #include	"init.h"
 #include	"pool.h"
 
-#define MAXCONF 1000
+#define MAXCONF 32
 
 char *confname[MAXCONF];
 char *confval[MAXCONF];
@@ -16,6 +16,8 @@ int nconf;
 int	predawn = 1;
 
 Conf	conf;
+
+static void options(void);
 
 void
 main(void)
@@ -40,9 +42,11 @@ if(0) {
 	pageinit();
 	procinit0();
 	initseg();
+	options();
 	links();
 	chandevreset();
 	swapinit();
+print("usrinit\n");
 	userinit();
 predawn = 0;
 	schedinit();
@@ -71,7 +75,7 @@ machinit(void)
 void
 bootargs(ulong base)
 {
-print("bootargs = %ux\n", base);
+print("bootargs = %ulx\n", base);
 	USED(base);
 }
 
@@ -267,6 +271,74 @@ confinit(void)
 	conf.nimage = 200;
 
 	conf.copymode = 0;		/* copy on write */
+}
+
+static int
+getcfields(char* lp, char** fields, int n, char* sep)
+{
+	int i;
+
+	for(i = 0; lp && *lp && i < n; i++){
+		while(*lp && strchr(sep, *lp) != 0)
+			*lp++ = 0;
+		if(*lp == 0)
+			break;
+		fields[i] = lp;
+		while(*lp && strchr(sep, *lp) == 0){
+			if(*lp == '\\' && *(lp+1) == '\n')
+				*lp++ = ' ';
+			lp++;
+		}
+	}
+
+	return i;
+}
+
+static char BOOTARGS[] = 
+		"ether0=type=SCC port=1 ea=08003e27df94\r\n"
+		"vgasize=640x480x8\r\n"
+		"kernelpercent=40\r\n"
+		"console=0 lcd\r\nbaud=9600\r\n";
+
+static void
+options(void)
+{
+	long i, n;
+	char *cp, *p, *q;
+	char *line[MAXCONF];
+
+	/*
+	 *  parse configuration args from dos file plan9.ini
+	 */
+	cp = BOOTARGS;	/* where b.com leaves its config */
+
+	/*
+	 * Strip out '\r', change '\t' -> ' '.
+	 */
+	p = cp;
+	for(q = cp; *q; q++){
+		if(*q == '\r')
+			continue;
+		if(*q == '\t')
+			*q = ' ';
+		*p++ = *q;
+	}
+	*p = 0;
+
+	n = getcfields(cp, line, MAXCONF, "\n");
+	for(i = 0; i < n; i++){
+		if(*line[i] == '#')
+			continue;
+		cp = strchr(line[i], '=');
+		if(cp == 0)
+			continue;
+		*cp++ = 0;
+		if(cp - line[i] >= NAMELEN+1)
+			*(line[i]+NAMELEN-1) = 0;
+		confname[nconf] = line[i];
+		confval[nconf] = cp;
+		nconf++;
+	}
 }
 
 int

@@ -5,13 +5,12 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
-Image	fscache;
-
 enum
 {
 	NHASH		= 128,
 	MAXCACHE	= 1024*1024,
 	NFILE		= 4096,
+	NEXTENT		= 200,		/* extent allocation size */
 };
 
 typedef struct Extent Extent;
@@ -46,7 +45,60 @@ struct Cache
 	Mntcache	*tail;
 	Mntcache	*hash[NHASH];
 };
-Cache cache;
+
+typedef struct Ecache Ecache;
+struct Ecache
+{
+	Lock;
+	int	total;
+	int	free;
+	Extent*	head;
+};
+
+static Image fscache;
+static Cache cache;
+static Ecache ecache;
+
+static void
+extentfree(Extent* e)
+{
+	lock(&ecache);
+	e->next = ecache.head;
+	ecache.head = e;
+	ecache.free++;
+	unlock(&ecache);
+}
+
+static Extent*
+extentalloc(void)
+{
+	Extent *e;
+	int i;
+
+	lock(&ecache);
+	if(ecache.head == nil){
+		e = xalloc(NEXTENT*sizeof(Extent));
+		if(e == nil){
+			unlock(&ecache);
+			return nil;
+		}
+		for(i = 0; i < NEXTENT; i++){
+			e->next = ecache.head;
+			ecache.head = e;
+			e++;
+		}
+		ecache.free += NEXTENT;
+		ecache.total += NEXTENT;
+	}
+
+	e = ecache.head;
+	ecache.head = e->next;
+	memset(e, 0, sizeof(Extent));
+	ecache.free--;
+	unlock(&ecache);
+
+	return e;
+}
 
 void
 cinit(void)
@@ -120,7 +172,7 @@ cnodata(Mntcache *m)
 	 */
 	for(e = m->list; e; e = n) {
 		n = e->next;
-		free(e);
+		extentfree(e);
 	}
 	m->list = 0;
 }
@@ -210,7 +262,7 @@ copen(Chan *c)
 
 	while(e) {
 		next = e->next;
-		free(e);
+		extentfree(e);
 		e = next;
 	}
 	qunlock(m);
@@ -271,7 +323,7 @@ cread(Chan *c, uchar *buf, int len, vlong off)
 		p = cpage(e);
 		if(p == 0) {
 			*t = e->next;
-			free(e);
+			extentfree(e);
 			qunlock(m);
 			return total;
 		}
@@ -322,13 +374,13 @@ cchain(uchar *buf, ulong offset, int len, Extent **tail)
 	*tail = 0;
 	t = &start;
 	while(len) {
-		e = malloc(sizeof(Extent));
+		e = extentalloc();
 		if(e == 0)
 			break;
 
 		p = auxpage();
 		if(p == 0) {
-			free(e);
+			extentfree(e);
 			break;
 		}
 		l = len;
@@ -583,7 +635,7 @@ cwrite(Chan* c, uchar *buf, int len, vlong off)
 	/* free the overlap - its a rare case */
 	while(f && f->start < eblock) {
 		e = f->next;
-		free(f);
+		extentfree(f);
 		f = e;
 	}
 

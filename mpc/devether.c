@@ -304,7 +304,7 @@ void
 addethercard(char* t, int (*r)(Ether*))
 {
 	static int ncard;
-
+print("addethercard\n");
 	if(ncard == MaxEther)
 		panic("too many ether cards");
 	cards[ncard].type = t;
@@ -342,6 +342,7 @@ etherreset(void)
 	int i, n, ctlrno;
 	char name[NAMELEN], buf[128];
 
+print("etherreset\n");
 	//ethermediumlink();
 	for(ether = 0, ctlrno = 0; ctlrno < MaxEther; ctlrno++){
 		if(ether == 0)
@@ -352,7 +353,9 @@ etherreset(void)
 		ether->mbps = 10;
 		if(isaconfig("ether", ctlrno, ether) == 0)
 			continue;
+print("after isaconfig %d\n", n);
 		for(n = 0; cards[n].type; n++){
+print("card %d\n", n);
 			if(cistrcmp(cards[n].type, ether->type))
 				continue;
 			for(i = 0; i < ether->nopt; i++){
