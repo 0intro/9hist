@@ -968,15 +968,15 @@ nextin(Incon *ip, unsigned int c)
 	int next;
 
 	bp = ip->inb[ip->wi];
-	bp->base[0] = ip->chan;
-	bp->base[1] = ip->chan>>8;
-	bp->base[2] = c;
+	bp->rptr[0] = ip->chan;
+	bp->rptr[1] = ip->chan>>8;
+	bp->rptr[2] = c;
 	if(incondebug)
 		showpkt("<-", ip->chan, c, bp, 3);
 
 	next = (ip->wi+1)%Nin;
 	if(next == ip->ri){
-		bp->wptr = bp->base+3;
+		bp->wptr = bp->rptr+3;
 		return bp;
 	}
 	ip->wi = next;
@@ -1052,7 +1052,7 @@ rdpackets(Incon *ip)
 		}
 	}	
 	bp->wptr = p;
-	if(bp->wptr != bp->base+3)
+	if(bp->wptr != bp->rptr+3)
 		nextin(ip, 0);
 
 	if(first != ip->wi)/**/
