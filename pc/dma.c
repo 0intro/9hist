@@ -106,7 +106,8 @@ dmasetup(int chan, void *va, long len, int isread)
 	 */
 	pa = ((ulong)va) & ~KZERO;
 	if(!isphys(va) || (pa&0xFFFF0000)!=((pa+len)&0xFFFF0000)){
-		xp->pg = newpage(1, 0, 0);
+		if(xp->pg == 0)
+			xp->pg = newpage(1, 0, 0);
 		if(len > BY2PG)
 			len = BY2PG;
 		if(!isread)
@@ -115,7 +116,8 @@ dmasetup(int chan, void *va, long len, int isread)
 		xp->len = len;
 		xp->isread = isread;
 		pa = xp->pg->pa;
-	}
+	} else
+		xp->len = 0;
 
 	/*
 	 * this setup must be atomic
@@ -161,13 +163,12 @@ dmaend(int chan)
 	unlock(dp);
 
 	xp = &dp->x[chan];
-	if(xp->pg == 0)
+	if(xp->len == 0)
 		return;
 
 	/*
 	 *  copy out of temporary page
 	 */
 	memmove(xp->va, (void*)(KZERO|xp->pg->pa), xp->len);
-	putpage(xp->pg);
-	xp->pg = 0;
+	xp->len = 0;
 }

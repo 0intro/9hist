@@ -258,6 +258,7 @@ lanceoput(Queue *q, Block *bp )
 	Etherpkt *p;
 	Ethertype *e;
 	Msg *m;
+	Block *nbp;
 
 	if(bp->type == M_CTL){
 		e = q->ptr;
@@ -276,16 +277,11 @@ lanceoput(Queue *q, Block *bp )
 	}
 
 	/*
-	 *  save up to a delim
-	 */
-	if(!putq(q, bp))
-		return;
-
-	/*
 	 *  only one transmitter at a time
 	 */
 	qlock(&l.tlock);
 	if(waserror()){
+		freeb(bp);
 		qunlock(&l.tlock);
 		nexterror();
 	}
@@ -300,17 +296,14 @@ lanceoput(Queue *q, Block *bp )
 	 *  copy message into lance RAM
 	 */
 	len = 0;
-	while(bp = getq(q)){
-		if(sizeof(Etherpkt) - len >= (n = BLEN(bp))){
-			memmove(((uchar *)p)+len, bp->rptr, n);
+	for(nbp = bp; nbp; nbp = nbp->next){
+		if(sizeof(Etherpkt) - len >= (n = BLEN(nbp))){
+			memmove(((uchar *)p)+len, nbp->rptr, n);
 			len += n;
 		} else
 			print("no room damn it\n");
-		if(bp->flags & S_DELIM){
-			freeb(bp);
+		if(bp->flags & S_DELIM)
 			break;
-		} else
-			freeb(bp);
 	}
 
 	/*
@@ -338,6 +331,7 @@ lanceoput(Queue *q, Block *bp )
 	l.tc = TSUCC(l.tc);
 	*l.rdp = INEA|TDMD; /**/
 	wbflush();
+	freeb(bp);
 	qunlock(&l.tlock);
 	poperror();
 }

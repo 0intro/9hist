@@ -623,19 +623,11 @@ nooput(Queue *q, Block *bp)
 	/*
 	 *  send the message, the kproc will retry
 	 */
-	if(waserror()){
-		/* throw out the message */
-		freeb(mp->first);
-		mp->first = 0;
-		mp->acked = 0;
-		if(MSUCC(cp->first) == cp->next)
-			cp->first = cp->next;
-		qunlock(cp);
-		nexterror();
+	if(!waserror()){
+		nosend(cp, mp);
+		poperror();
 	}
-	nosend(cp, mp);
 	qunlock(cp);
-	poperror();
 }
 
 /*

@@ -351,8 +351,11 @@ mntclunk(Chan *c, int t)
 	m = mntchk(c);
 	r = mntralloc();
 	if(waserror()){
+		mntfree(r);
 		if(decref(m) == 0) {
 			for(q = m->queue; q; q = r) {
+if(q->flushed == 0)
+print("mail philw: %lux: not flushed\n", q);
 				r = q->list;
 				q->flushed = 0;
 				mntfree(q);
@@ -364,7 +367,6 @@ mntclunk(Chan *c, int t)
 			mntalloc.mntfree = m;
 			unlock(&mntalloc);
 		}
-		mntfree(r);
 		return;
 	}
 
@@ -493,15 +495,16 @@ mountio(Mnt *m, Mntrpc *r)
 	n = convS2M(&r->request, r->rpc);
 	if(waserror()) {
 		qunlock(&m->c->wrl);
-		mntqrm(m, r);
-		nexterror();
+		if(mntflush(m, r) == 0)
+			nexterror();
 	}
-	qlock(&m->c->wrl);
-	if((*devtab[m->c->type].write)(m->c, r->rpc, n, 0) != n)
-		error(Eshortmsg);
-	qunlock(&m->c->wrl);
-	poperror();
-
+	else {
+		qlock(&m->c->wrl);
+		if((*devtab[m->c->type].write)(m->c, r->rpc, n, 0) != n)
+			error(Eshortmsg);
+		qunlock(&m->c->wrl);
+		poperror();
+	}
 	if(m->mux) {
 		mntqrm(m, r);
 		mntrpcread(m, r);
