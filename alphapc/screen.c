@@ -469,6 +469,7 @@ int hwblank = 1;
 int
 hwdraw(Memdrawparam *par)
 {
+	int m;
 	VGAscr *scr;
 	Memimage *dst, *src;
 

@@ -521,7 +521,7 @@ loopbackwrite(Chan *c, void *va, long n, vlong off)
 			iunlock(link);
 		}else if(strcmp(cb->f[0], "limit") == 0){
 			if(cb->nf != 2)
-				error("usage: droprate ofn");
+				error("usage: limit maxqsize");
 			ilock(link);
 			link->limit = strtol(cb->f[1], nil, 0);
 			qsetlimit(link->oq, link->limit);
