@@ -72,22 +72,23 @@ closepgrp(Pgrp *p)
 {
 	Mhead **h, **e, *f, *next;
 	
-	if(decref(p) == 0){
-		qlock(&p->debug);
-		p->pgrpid = -1;
+	if(decref(p) != 0)
+		return;
 
-		e = &p->mnthash[MNTHASH];
-		for(h = p->mnthash; h < e; h++) {
-			for(f = *h; f; f = next) {
-				cclose(f->from);
-				mountfree(f->mount);
-				next = f->hash;
-				free(f);
-			}
+	qlock(&p->debug);
+	p->pgrpid = -1;
+
+	e = &p->mnthash[MNTHASH];
+	for(h = p->mnthash; h < e; h++) {
+		for(f = *h; f; f = next) {
+			cclose(f->from);
+			mountfree(f->mount);
+			next = f->hash;
+			free(f);
 		}
-		qunlock(&p->debug);
-		free(p);
 	}
+	qunlock(&p->debug);
+	free(p);
 }
 
 void
@@ -187,13 +188,17 @@ closefgrp(Fgrp *f)
 	int i;
 	Chan *c;
 
-	if(decref(f) == 0) {
-		for(i = 0; i <= f->maxfd; i++)
-			if(c = f->fd[i])
-				cclose(c);
+	if(f == 0)
+		return;
 
-		free(f);
-	}
+	if(decref(f) != 0)
+		return;
+
+	for(i = 0; i <= f->maxfd; i++)
+		if(c = f->fd[i])
+			cclose(c);
+
+	free(f);
 }
 
 Mount*

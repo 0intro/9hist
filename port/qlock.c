@@ -4,7 +4,6 @@
 #include "dat.h"
 #include "fns.h"
 
-
 void
 qlock(QLock *q)
 {
