@@ -290,7 +290,7 @@ TEXT	getcr2(SB),$0		/* fault address */
 #define	FPOFF\
 	WAIT;\
 	MOVL	CR0,AX;\
-	ORL	$0x4,AX		/* EM=1 */;\
+	ORL	$0x24,AX	/* EM=1, NE=1 */;\
 	MOVL	AX,CR0
 
 #define	FPON\

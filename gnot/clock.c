@@ -24,8 +24,10 @@ clock(Ureg *ur)
 	int user, nrun = 0;
 
 	user = (ur->sr&SUPER) == 0;
-	if(user)
+	if(user){
 		u->dbgreg = ur;
+		u->p->pc = ur->pc;
+	}
 
 	SYNCREG[1] = 0x5F;	/* clear interrupt */
 	m->ticks++;

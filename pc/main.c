@@ -295,6 +295,7 @@ matherror(Ureg *ur)
 			break;
 		}
 	sprint(note, "sys: fp: %s, status 0x%ux, pc 0x%lux", msg, status, ur->pc);
+print("%s cr0 %lux\n", note, getcr0());
 	postnote(u->p, 1, note, NDebug);
 }
 
@@ -315,7 +316,7 @@ mathemu(Ureg *ur)
 		u->p->fpstate = FPactive;
 		break;
 	case FPactive:
-		pexit("Math emu", 0);
+		panic("math emu", 0);
 		break;
 	}
 }
@@ -327,7 +328,8 @@ void
 mathover(Ureg *ur)
 {
 	USED(ur);
-	pexit("Math overrun", 0);
+print("sys: fp: math overrun pc 0x%lux pid %d\n", ur->pc, u->p->pid);
+	pexit("math overrun", 0);
 }
 
 void
@@ -355,12 +357,12 @@ procsetup(Proc *p)
 void
 procsave(Proc *p)
 {
-	USED(p);
-	if(u->p->state == Moribund)
-		return;
-	if(u->p->fpstate == FPactive){
-		fpsave(&u->fpsave);
-		u->p->fpstate = FPinactive;
+	if(p->fpstate == FPactive){
+		if(p->state == Moribund)
+			fpoff();
+		else
+			fpsave(&u->fpsave);
+		p->fpstate = FPinactive;
 	}
 }
 

@@ -83,10 +83,9 @@ trap(Ureg *ur)
 	ecode = EXCCODE(ur->cause);
 	LEDON(ecode);
 	user = ur->status&KUP;
-	if(u) {
-		u->p->pc = ur->pc;		/* BUG */
+	if(u)
 		u->dbgreg = ur;
-	}
+
 	switch(ecode){
 	case CINT:
 		if(u && u->p->state==Running){
@@ -505,7 +504,7 @@ syscall(Ureg *aur)
 	p = u->p;
 	p->insyscall = 1;
 	ur = aur;
-	p->pc = ur->pc;		/* BUG */
+	p->pc = ur->pc;
 	u->dbgreg = aur;
 	ur->cause = 15<<2;		/* for debugging: system call is undef 15;
 	/*
@@ -574,6 +573,7 @@ execregs(ulong entry, ulong ssize, ulong nargs)
 	*--sp = nargs;
 	((Ureg*)UREGADDR)->usp = (ulong)sp;
 	((Ureg*)UREGADDR)->pc = entry - 4;	/* syscall advances it */
+	u->fpsave.fpstatus = initfp.fpstatus;
 	return USTKTOP-BY2WD;			/* address of user-level clock */
 }
 

@@ -23,6 +23,7 @@ fault386(Ureg *ur)
 	addr = getcr2();
 	read = !(ur->ecode & 2);
 	user = (ur->cs&0xffff) == UESEL;
+	spllo();
 	n = fault(addr, read);
 	if(n < 0){
 		if(user){

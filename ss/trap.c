@@ -102,10 +102,8 @@ trap(Ureg *ur)
 	char buf[64];
 	ulong tbr, iw;
 
-	if(u) {
-		u->p->pc = ur->pc;		/* BUG */
+	if(u)
 		u->dbgreg = ur;
-	}
 
 	fpunsafe = 0;
 	user = !(ur->psr&PSRPSUPER);
@@ -166,7 +164,7 @@ trap(Ureg *ur)
 		case 4:				/* floating point disabled */
 			if(u && u->p){
 				if(u->p->fpstate == FPinit)
-					restfpregs(initfpp, initfpp->fsr);
+					restfpregs(initfpp, u->fpsave.fsr);
 				else if(u->p->fpstate == FPinactive)
 					restfpregs(&u->fpsave, u->fpsave.fsr);
 				else
@@ -590,6 +588,7 @@ execregs(ulong entry, ulong ssize, ulong nargs)
 	*--sp = nargs;
 	((Ureg*)UREGADDR)->usp = (ulong)sp;
 	((Ureg*)UREGADDR)->pc = entry - 4;	/* syscall advances it */
+	u->fpsave.fsr = initfpp->fsr;
 	return USTKTOP-BY2WD;			/* address of user-level clock */
 }
 

@@ -99,9 +99,9 @@
 /*
  *  virtual MMU
  */
-#define PTEMAPMEM	(1024*1024)	/* ??? */	
-#define SEGMAPSIZE	16		/* ??? */
-#define	PTEPERTAB	(PTEMAPMEM/BY2PG)	/* ??? */
+#define PTEMAPMEM	(1024*1024)	
+#define SEGMAPSIZE	64
+#define	PTEPERTAB	(PTEMAPMEM/BY2PG)
 #define PPN(x)		((x)&~(BY2PG-1))
 
 /*

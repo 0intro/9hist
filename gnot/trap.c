@@ -105,10 +105,9 @@ trap(Ureg *ur)
 
 	user = !(ur->sr&SUPER);
 
-	if(u) {
-		u->p->pc = ur->pc;		/* BUG */
+	if(u)
 		u->dbgreg = ur;
-	}
+
 	if(user){
 		sprint(buf, "sys: %s", excname(ur->vo, ur->pc));
 		postnote(u->p, 1, buf, NDebug);
@@ -283,19 +282,13 @@ syscall(Ureg *aur)
 	u->p->pc = ur->pc;
 	if(ur->sr & SUPER)
 		panic("recursive system call");
-	/*
-	 * since the system call interface does not
-	 * guarantee anything about registers, but the fpcr is more than
-	 * just a register...  BUG
-	 */
-	splhi();
-	fpsave(&u->fpsave);
-	if(u->p->fpstate==FPactive || u->fpsave.type){
-		fprestore(&initfp);
-		u->p->fpstate = FPinit;
-		m->fpstate = FPinit;
+
+	/* must save FP registers before fork */
+	if(u->p->fpstate==FPactive && ur->r0==RFORK){
+		splhi();
+		procsave(u->p);
+		spllo();
 	}
-	spllo();
 
 	if(u->p->procctl)
 		procctl(u->p);

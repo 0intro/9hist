@@ -351,9 +351,9 @@ enum
 };
 
 #define PG_ONSWAP	1
-#define pagedout(s)	(((ulong)s)==0 || (((ulong)s)&PG_ONSWAP))
-#define swapaddr(s)	(((ulong)s)&~PG_ONSWAP)
 #define onswap(s)	(((ulong)s)&PG_ONSWAP)
+#define pagedout(s)	(((ulong)s)==0 || onswap(s))
+#define swapaddr(s)	(((ulong)s)&~PG_ONSWAP)
 
 #define SEGMAXSIZE	(SEGMAPSIZE*PTEMAPMEM)
 
@@ -511,7 +511,7 @@ struct Proc
 	ulong	qlockpc;		/* pc of last call to qlock */
 	int	state;
 	char	*psstate;		/* What /proc/#/status reports */
-	Page	*upage;			/* BUG: should be unlinked from page list */
+	Page	*upage;			/* page from palloc */
 	Segment	*seg[NSEG];
 	ulong	pid;
 	ulong	noteid;			/* Equivalent of note group */

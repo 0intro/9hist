@@ -21,7 +21,7 @@ enum
 Image 	swapimage;
 static 	int swopen;
 Page	*iolist[Maxpages];
-int	ioptr, npage;
+int	ioptr;
 
 void
 swapinit(void)
@@ -87,7 +87,7 @@ pager(void *junk)
 {
 	Proc *p, *ep;
 	Segment *s;
-	int i, type;
+	int i;
 
 	if(waserror()) 
 		panic("pager: os error\n");
@@ -99,9 +99,7 @@ pager(void *junk)
 loop:
 	u->p->psstate = "Idle";
 	sleep(&swapalloc.r, needpages, 0);
-	u->p->psstate = "Pageout";
 
-	npage = 0;
 	for(;;) {
 		p++;
 		if(p >= ep)
@@ -116,22 +114,28 @@ loop:
 					goto loop;
 
 				if(s = p->seg[i]) {
-					type = s->type&SG_TYPE;
-					switch(type) {
+					switch(s->type&SG_TYPE) {
 					default:
 						break;
 					case SG_TEXT:
+						pageout(p, s);
+						break;
 					case SG_DATA:
 					case SG_BSS:
 					case SG_STACK:
 					case SG_SHARED:
+						u->p->psstate = "Pageout";
 						pageout(p, s);
-						executeio();
+						if(ioptr != 0) {
+							u->p->psstate = "I/O";
+							executeio();
+						}
 					}
 				}
 			}
+			continue;
 		}
-		else 
+
 		if(palloc.freecount < swapalloc.highwater) {
 			if(!cpuserver)
 				freebroken();	/* can use the memory */
@@ -142,17 +146,15 @@ loop:
 			wakeup(&palloc.r);
 		}
 	}
-	if(npage == 0)
-		print("swap: pass took no pages\n");
 	goto loop;
 }
 
 void			
 pageout(Proc *p, Segment *s)
 {
-	Pte **sm, **endsm, *l;
+	int type, i;
+	Pte *l;
 	Page **pg, *entry;
-	int type;
 
 	if(!canqlock(&s->lk))	/* We cannot afford to wait, we will surely deadlock */
 		return;
@@ -177,9 +179,8 @@ pageout(Proc *p, Segment *s)
 
 	/* Pass through the pte tables looking for memory pages to swap out */
 	type = s->type&SG_TYPE;
-	endsm = &s->map[SEGMAPSIZE];
-	for(sm = s->map; sm < endsm; sm++) {
-		l = *sm;
+	for(i = 0; i < SEGMAPSIZE; i++) {
+		l = s->map[i];
 		if(l == 0)
 			continue;
 		for(pg = l->first; pg < l->last; pg++) {
@@ -187,10 +188,12 @@ pageout(Proc *p, Segment *s)
 			if(pagedout(entry))
 				continue;
 
-			if(entry->modref & PG_REF)
+			if(entry->modref & PG_REF) {
 				entry->modref &= ~PG_REF;
-			else 
-				pagepte(type, pg);
+				continue;
+			}
+
+			pagepte(type, pg);
 
 			if(ioptr >= Maxpages)
 				goto out;
@@ -206,8 +209,8 @@ out:
 int
 canflush(Proc *p, Segment *s)
 {
-	Proc *ep;
 	int i;
+	Proc *ep;
 
 	lock(s);
 	if(s->ref == 1) {		/* Easy if we are the only user */
@@ -232,7 +235,6 @@ canflush(Proc *p, Segment *s)
 		}
 		p++;
 	}
-
 	return 1;						
 }
 
@@ -272,7 +274,6 @@ pagepte(int type, Page **pg)
 		/* Add me to IO transaction list */
 		iolist[ioptr++] = outp;
 	}
-	npage++;
 }
 
 void

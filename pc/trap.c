@@ -110,7 +110,7 @@ trapinit(void)
 	sethvec(11, intr11, SEGTG, 0);
 	sethvec(12, intr12, SEGTG, 0);
 	sethvec(13, intr13, SEGTG, 0);
-	sethvec(14, intr14, SEGTG, 0);
+	sethvec(14, intr14, SEGIG, 0);
 	sethvec(15, intr15, SEGTG, 0);
 	sethvec(16, intr16, SEGTG, 0);
 
@@ -333,10 +333,19 @@ syscall(Ureg *ur)
 	if((ur->cs)&0xffff == KESEL)
 		panic("recursive system call");
 
-	/*
-	 *  do something about floating point!!!
-	 */
 	u->scallnr = ur->ax;
+	if(u->scallnr == RFORK && u->p->fpstate == FPactive){
+		/*
+		 *  so that the child starts out with the
+		 *  same registers as the parent
+		 */
+		splhi();
+		if(u->p->fpstate == FPactive){
+			fpsave(&u->fpsave);
+			u->p->fpstate = FPinactive;
+		}
+		spllo();
+	}
 	sp = ur->usp;
 	u->nerrlab = 0;
 	ret = -1;
@@ -353,10 +362,8 @@ syscall(Ureg *ur)
 		u->s = *((Sargs*)(sp+1*BY2WD));
 		u->p->psstate = sysctab[u->scallnr];
 
-if(u->p->fgrp->ref <= 0) print("before syscall %s\n", u->p->psstate);
 		ret = (*systab[u->scallnr])(u->s.args);
 		poperror();
-if(u->p->fgrp->ref <= 0) print("after syscall %s\n", u->p->psstate);
 	}
 	if(u->nerrlab){
 		print("bad errstack [%d]: %d extra\n", u->scallnr, u->nerrlab);

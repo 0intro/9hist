@@ -64,18 +64,19 @@ newpage(int clear, Segment **s, ulong va)
 {
 	Page *p;
 	KMap *k;
-	int i;
+	int hw, i, dontalloc;
 
 	lock(&palloc);
 
-	/* The kp test is a poor guard against the pager deadlocking */
-	while((palloc.freecount < swapalloc.highwater && u->p->kp == 0) ||
-	       palloc.freecount == 0) {
+	hw = swapalloc.highwater;
+	while((palloc.freecount < hw && u->p->kp == 0) || palloc.freecount == 0) {
 		palloc.wanted++;
 		unlock(&palloc);
+		dontalloc = 0;
 		if(s && *s) {
 			qunlock(&((*s)->lk));
 			*s = 0;
+			dontalloc = 1;
 		}
 		qlock(&palloc.pwait);			/* Hold memory requesters here */
 
@@ -88,6 +89,15 @@ newpage(int clear, Segment **s, ulong va)
 		poperror();
 
 		qunlock(&palloc.pwait);
+
+		/*
+		 * If called from fault and we lost the segment from underneath
+		 * don't waste time allocating and freeing a page. Fault will call
+		 * newpage again when it has reaquired the segment locks
+		 */
+		if(dontalloc)
+			return 0;
+
 		lock(&palloc);
 		palloc.wanted--;
 	}

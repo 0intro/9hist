@@ -31,6 +31,7 @@ extern	int	runetochar(char*, Rune*);
 extern	int	chartorune(Rune*, char*);
 extern	int	countrune(char*);
 extern	char*	utfrune(char*, long);
+extern	int	utflen(char*);
 
 /*
  * print routines

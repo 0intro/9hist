@@ -187,15 +187,8 @@ fixq(FPsave *f, int n)
 		instr = f->q[0].i;
 		/*
 		 * Sparc says you have to emulate.  To hell with that.
-		 * Let's compile!
-		 */
-		ip = bbmalloc(3*sizeof(ulong));
-		ip[0] = instr;
-		ip[1] = 0x81c3e008;	/* JMPL #8(R15), R0 [RETURN] */
-		ip[2] = 0x01000000;	/* SETHI #0, R0 [NOP] */
-		/*
-		 * You can always pump one instruction without immediate trap.
-		 * Therefore run one and wait for it to complete or trap.
+		 * We can compile on the fly instead.
+		 * Run one instruction and wait for it to complete or trap.
 		 * If it traps, we'll recurse but we won't overwrite
 		 * our own data structures because there will be only
 		 * one instruction uncompleted in the FPU.
@@ -206,8 +199,12 @@ fixq(FPsave *f, int n)
 		 * the trap by examining the non-zero members of the FPQ.
 		 * Tough.
 		 */
+		ip = bbmalloc(3*sizeof(ulong));
+		ip[0] = instr;
+		ip[1] = 0x81c3e008;	/* JMPL #8(R15), R0 [RETURN] */
+		ip[2] = 0x01000000;	/* SETHI #0, R0 [NOP] */
 		f->fppc = f->q[0].a;
-		(*(void(*)(void))ip)();
+		(*(void(*)(void))ip)();	 /* You are expected to understand this cast */
 		f->fppc = 0;
 		if(!fpquiet())
 			break;

@@ -43,7 +43,7 @@ int
 fixfault(Segment *s, ulong addr, int read, int doputmmu)
 {
 	ulong mmuphys=0, soff;
-	Page **pg, *lkp, *new = 0;
+	Page **pg, *lkp, *new;
 	Pte **p, *etp;
 	int type;
 
@@ -85,13 +85,11 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 	case SG_SHARED:				/* Zero fill on demand */
 	case SG_STACK:	
 		if(*pg == 0) {
-			if(new == 0)
-			if(new = newpage(1, &s, addr))
+			new = newpage(1, &s, addr);
 			if(s == 0)
 				return -1;
 
 			*pg = new;
-			new = 0;
 		}
 		/* NO break */
 
@@ -112,12 +110,10 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 		lock(lkp);
 		if(lkp->ref > 1) {
 			unlock(lkp);
-			if(new == 0)
-			if(new = newpage(0, &s, addr))
+			new = newpage(0, &s, addr);
 			if(s == 0)
 				return -1;
 			*pg = new;
-			new = 0;
 			copypage(lkp, *pg);
 			putpage(lkp);
 		}
@@ -146,13 +142,6 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 		memset((*pg)->cachectl, PG_TXTFLUSH, sizeof(new->cachectl));
 
 	qunlock(&s->lk);
-
-	/*
-	 * A race may provide a page we never used when	
-	 * a fault is fixed while process slept in newpage
-	 */
-	if(new)
-		putpage(new);
 
 	if(doputmmu)
 		putmmu(addr, mmuphys, *pg);
@@ -255,7 +244,6 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 			cachepage(new, &swapimage);
 			putswap(*p);
 			*p = new;
-/*			print("l %lux %d\n", addr, daddr);*/
 		}
 		else
 			putpage(new);

@@ -86,6 +86,8 @@ clock(Ureg *ur)
 			LEDON(LEDpulse);
 		else
 			LEDOFF(LEDpulse);
+		if(m->proc)
+			m->proc->pc = ur->pc;
 
 		if(m->machno == 0){
 			p = m->proc;

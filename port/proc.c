@@ -531,8 +531,12 @@ pexit(char *exitstr, int freemem)
 	if(c->kp == 0) {
 		if((p = c->parent) == 0)
 			panic("boot process died");
-			
+
+		while(waserror())
+			;	
 		wq = smalloc(sizeof(Waitq));
+		poperror();
+
 		readnum(0, wq->w.pid, NUMSIZE, c->pid, NUMSIZE);
 		utime = c->time[TUser] + c->time[TCUser];
 		stime = c->time[TSys] + c->time[TCSys];
@@ -657,15 +661,24 @@ void
 procdump(void)
 {
 	int i;
+	char *s;
 	Proc *p;
+	ulong bss;
 
 	for(i=0; i<conf.nproc; i++){
 		p = procalloc.arena+i;
 		if(p->state != Dead){
-			print("%d:%s %s upc %lux %s ut %ld st %ld r %lux qpc %lux\n",
+			bss = 0;
+			if(p->seg[BSEG])
+				bss = p->seg[BSEG]->top;
+
+			s = p->psstate;
+			if(s == 0)
+				s = "kproc";
+			print("%3d:%10s %10s pc %8lux %8s (%s) ut %ld st %ld r %lux qpc %lux bss %lux\n",
 				p->pid, p->text, p->user, p->pc, 
-				statename[p->state], p->time[0],
-				p->time[1], p->r, p->qlockpc);
+				s, statename[p->state], p->time[0],
+				p->time[1], p->r, p->qlockpc, bss);
 		}
 	}
 }

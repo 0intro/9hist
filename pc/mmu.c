@@ -180,24 +180,31 @@ flushmmu(void)
 void
 mapstack(Proc *p)
 {
-	Page *pg, **l;
+	Page *pg;
+	ulong *top;
 
 	if(p->upage->va != (USERADDR|(p->pid&0xFFFF)) && p->pid != 0)
 		panic("mapstack %d 0x%lux 0x%lux", p->pid, p->upage->pa, p->upage->va);
 
 	if(p->newtlb){
 		/*
-		 *  bin the current second level page tables.
 		 *  newtlb set means that they are inconsistent
 		 *  with the segment.c data structures.
+		 *
+		 *  bin the current second level page tables and
+		 *  the pointers to them in the top level page.
+		 *  pg->daddr is used by putmmu to save the offset into
+		 *  the top level page.
 		 */
-		if(p->mmutop)
-			memmove((void*)p->mmutop->va, (void*)ktoppg.va, BY2PG);
-		l = &p->mmufree;
-		for(pg = p->mmufree; pg; pg = pg->next)
-			l = &pg->next;
-		*l = p->mmuused;
-		p->mmuused = 0;
+		if(p->mmutop && p->mmuused){
+			top = (ulong*)p->mmutop->va;
+			for(pg = p->mmuused; pg->next; pg = pg->next)
+				top[pg->daddr] = 0;
+			top[pg->daddr] = 0;
+			pg->next = p->mmufree;
+			p->mmufree = p->mmuused;
+			p->mmuused = 0;
+		}
 		p->newtlb = 0;
 	}
 
@@ -289,6 +296,7 @@ putmmu(ulong va, ulong pa, Page *pg)
 			memset((void*)pg->va, 0, BY2PG);
 		}
 		top[topoff] = PPN(pg->pa) | PTEVALID | PTEUSER | PTEWRITE;
+		pg->daddr = topoff;
 		pg->next = p->mmuused;
 		p->mmuused = pg;
 	}
