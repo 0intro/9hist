@@ -16,6 +16,7 @@ static struct
 }bit;
 
 #define	BITADDR	((Bitmsg**)(KZERO+0x7C))
+#define	BITHOLD	((ulong*)(KZERO+0x78))
 #define	BITINTR	((char*)(UNCACHED|0x17c12001))
 
 enum
@@ -25,23 +26,27 @@ enum
 	WRITE,
 };
 
+long	hold, wait, hang;
+
 void
 bitsend(Bitmsg *bp, ulong cmd, void *addr, ulong count)
 {
+	do wait++; while(*BITADDR);
 	bp->cmd = cmd;
 	bp->addr = (ulong)addr;
 	bp->count = count;
-	if(*BITADDR)
-		panic("bitsend");
+/* print("%d %lux %d ", cmd, addr, count); /**/
 	*BITADDR = bp;
 	wbflush();
+	do hold++; while(*BITHOLD);
 	*BITINTR = 0x20;
-	do; while(*BITADDR);
+/* print("done\n");  /**/
 }
 
 void
 bitreset(void)
 {
+	*BITHOLD = 0;
 	*BITADDR = 0;
 	qlock(&bit);
 	qunlock(&bit);
@@ -94,7 +99,6 @@ bitopen(Chan *c, int omode)
 	qlock(&bit);
 	if(bit.open){
 		qunlock(&bit);
-print("multiple bit open\n");
 		error(0, Einuse);
 	}
 	bitsend(bp, RESET, 0, 0);
@@ -135,6 +139,7 @@ bitread(Chan *c, void *buf, long n)
 	int docpy;
 
 	bp = &((User*)(u->p->upage->pa|KZERO))->bit;
+	bp->rcount = 0;
 	switch(c->qid){
 	case 1:
 		if(n > sizeof bit.buf)
@@ -148,11 +153,21 @@ bitread(Chan *c, void *buf, long n)
 			docpy = 1;
 		}
 		qunlock(&bit);
-		do
-			n = bp->count;
-		while(n == 0);
+		do{
+			n = bp->rcount;
+			hang++;
+		}while(n == 0);
 		if(docpy)
 			memcpy(buf, bit.buf, n);
+if(0 && n > 512){
+	int i;
+	char *cp=buf;
+	for(i=9; i<n; i++)
+		if(cp[i] != cp[i-1]){
+			print("r %d %x %x\n", i, cp[i-1], cp[i]);
+			break;
+		}
+}
 		return n;
 	}
 	error(0, Egreg);
@@ -169,6 +184,15 @@ bitwrite(Chan *c, void *buf, long n)
 	case 1:
 		if(n > sizeof bit.buf)
 			error(0, Egreg);
+if(0 && n > 512){
+	int i;
+	char *cp=buf;
+	for(i=15; i<n; i++)
+		if(cp[i] != cp[i-1]){
+			print("w %d %x %x\n", i, cp[i-1], cp[i]);
+			break;
+		}
+}
 		qlock(&bit);
 		if((((ulong)buf)&(KSEGM|3)) == KSEG0)
 			bitsend(bp, WRITE, buf, n);

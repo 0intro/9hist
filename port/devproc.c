@@ -82,6 +82,7 @@ procreset(void)
 Chan*
 procattach(char *spec)
 {
+	Chan *c;
 	return devattach('p', spec);
 }
 
@@ -110,6 +111,11 @@ procopen(Chan *c, int omode)
 	Orig *o;
 	Chan *tc;
 
+	if(c->qid == CHDIR){
+		if(omode != OREAD)
+			error(0, Eperm);
+		goto done;
+	}
 	p = proctab(SLOT(c->qid));
 	if((p->pid&PIDMASK) != PID(c->qid))
     Died:
@@ -156,6 +162,7 @@ procopen(Chan *c, int omode)
 	 */
 	if(p->state != Dead)
 		c->qid |= (p->pid&PIDMASK)<<PIDSHIFT;
+   done:
 	c->mode = omode;
 	c->flag |= COPEN;
 	c->offset = 0;

@@ -553,7 +553,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 {
 	ulong n;
 	Mntbuf *mbr, *mbw;
-	Chan *mntpt;
+	Chan *mntpt, *msg;
 	int isbit;
 
 	mbr = mballoc();
@@ -564,23 +564,38 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		nexterror();
 	}
 	n = convS2M(&mh->thdr, mbw->buf);
-	qlock(m);
-	if(m->msg == 0){
-		qunlock(m);
-		error(0, Eshutdown);
-	}
 	isbit = 0;
 	if(devchar[m->msg->type] == 'b')
 		isbit = 1;
-	if(!isbit)
-		qlock(m->msg);
+	/*
+	 * Avoid qlock for bit, to maximize parallelism
+	 */
+	if(isbit){
+		lock(&m->use);		/* spin rather than sleep */
+		if((msg = m->msg) == 0){
+			unlock(&m->use);
+			error(0, Eshutdown);
+		}
+		incref(msg);
+		unlock(&m->use);
+	}else{
+		qlock(m);
+		if((msg = m->msg) == 0){
+			qunlock(m);
+			error(0, Eshutdown);
+		}
+		qlock(msg);
+	}
 	if(waserror()){
-		qunlock(m);
-		if(!isbit)
-			qunlock(m->msg);
+		if(isbit)
+			close(msg);
+		else{
+			qunlock(m);
+			qunlock(msg);
+		}
 		nexterror();
 	}
-	if((*devtab[m->msg->type].write)(m->msg, mbw->buf, n) != n){
+	if((*devtab[msg->type].write)(msg, mbw->buf, n) != n){
 		pprint("short write in mntxmit\n");
 		error(0, Egreg);
 	}
@@ -588,10 +603,13 @@ mntxmit(Mnt *m, Mnthdr *mh)
 	/*
 	 * Read response
 	 */
-	n = (*devtab[m->msg->type].read)(m->msg, mbr->buf, BUFSIZE);
-	qunlock(m);
-	if(!isbit)
-		qunlock(m->msg);
+	n = (*devtab[msg->type].read)(msg, mbr->buf, BUFSIZE);
+	if(isbit)
+		close(msg);
+	else{
+		qunlock(m);
+		qunlock(msg);
+	}
 	poperror();
 
 	if(convM2S(mbr->buf, &mh->rhdr, n) == 0){

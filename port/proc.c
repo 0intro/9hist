@@ -165,6 +165,9 @@ loop:
 		unlock(&procalloc);
 		p->mach = 0;
 		p->qnext = 0;
+		p->kid = 0;
+		p->sib = 0;
+		p->pop = 0;
 		p->nchild = 0;
 		p->child = 0;
 		p->exiting = 0;
@@ -339,65 +342,66 @@ pexit(char *s, int freemem)
 {
 	char status[64];
 	ulong mypid;
-	Proc *p;
+	Proc *p, *c, *k, *l;
 	Waitmsg w;
 	int n;
-	Chan *c;
+	Chan *ch;
 	ulong *up, *ucp, *wp;
 
-	mypid = u->p->pid;
+	c = u->p;
+	mypid = c->pid;
 	if(s)
 		strcpy(status, s);
 	else
 		status[0] = 0;
 	if(freemem){
 		freesegs(-1);
-		closepgrp(u->p->pgrp);
+		closepgrp(c->pgrp);
 		close(u->dot);
 	}
 	for(n=0; n<=u->maxfd; n++)
-		if(c = u->fd[n])	/* assign = */
-			close(c);
+		if(ch = u->fd[n])	/* assign = */
+			close(ch);
 	/*
 	 * Any of my children exiting?
 	 */
-	while(u->p->nchild){
-		lock(&u->p->wait.queue);
-		if(canlock(&u->p->wait.use)){	/* no child is exiting */
-			u->p->exiting = 1;
-			unlock(&u->p->wait.use);
-			unlock(&u->p->wait.queue);
+	while(c->nchild){
+		lock(&c->wait.queue);
+		if(canlock(&c->wait.use)){	/* no child is exiting */
+			c->exiting = 1;
+			unlock(&c->wait.use);
+			unlock(&c->wait.queue);
 			break;
 		}else{				/* must wait for child */
-			unlock(&u->p->wait.queue);
+			unlock(&c->wait.queue);
 			pwait(0);
 		}
 	}
 
-	u->p->time[TReal] = MACHP(0)->ticks - u->p->time[TReal];
+	c->time[TReal] = MACHP(0)->ticks - c->time[TReal];
 	/*
 	 * Tell my parent
 	 */
-	p = u->p->parent;
+	p = c->parent;
 	if(p == 0)
 		goto out;
 	qlock(&p->wait);
 	lock(&p->wait.queue);
-	if(p->pid==u->p->parentpid && !p->exiting){
+	if(p->pid==c->parentpid && !p->exiting){
 		w.pid = mypid;
 		strcpy(w.msg, status);
 		wp = &w.time[TUser];
-		up = &u->p->time[TUser];
-		ucp = &u->p->time[TCUser];
+		up = &c->time[TUser];
+		ucp = &c->time[TCUser];
 		*wp++ = (*up++ + *ucp++)*MS2HZ;
 		*wp++ = (*up++ + *ucp  )*MS2HZ;
 		*wp   = (*up           )*MS2HZ;
-		p->child = u->p;
+		p->child = c;
 		/*
 		 * Pass info through back door, to avoid huge Proc's
 		 */
-		p->waitmsg = (Waitmsg*)(u->p->upage->pa|(((ulong)&w)&(BY2PG-1))|KZERO);
-		u->p->state = Exiting;
+		p->waitmsg = (Waitmsg*)(c->upage->pa|(((ulong)&w)&(BY2PG-1))|KZERO);
+		c->state = Exiting;
 		if(p->state == Inwait)
 			ready(p);
 		unlock(&p->wait.queue);
@@ -408,15 +412,61 @@ pexit(char *s, int freemem)
 	}
    out:
 	if(!freemem){
-		u->p->state = Broken;
+		c->state = Broken;
 		sched();		/* until someone lets us go */
 		freesegs(-1);
-		closepgrp(u->p->pgrp);
+		closepgrp(c->pgrp);
 		close(u->dot);
 	}
+
+	/*
+	 * Rearrange inheritance hierarchy
+	 * 1. my children's pop is now my pop
+	 */
+	lock(&c->kidlock);
+	p = c->pop;
+	if(k = c->kid)		/* assign = */
+		do{
+			k->pop = p;
+			k = k->sib;
+		}while(k != c->kid);
+
+	/*
+	 * 2. cut me from pop's tree
+	 */
+	if(p == 0)	/* init process only; fix pops */
+		goto done;
+	lock(&p->kidlock);
+	k = p->kid;
+	while(k->sib != c)
+		k = k->sib;
+	if(k == c)
+		p->kid = 0;
+	else{
+		if(p->kid == c)
+			p->kid = c->sib;
+		k->sib = c->sib;
+	}
+
+	/*
+	 * 3. pass my children (pop's grandchildren) to pop
+	 */
+	if(k = c->kid){		/* assign = */
+		if(p->kid == 0)
+			p->kid = k;
+		else{
+			l = k->sib;
+			k->sib = p->kid->sib;
+			p->kid->sib = l;
+		}
+	}
+	unlock(&p->kidlock);
+    done:
+	unlock(&c->kidlock);
+
 	lock(&procalloc);	/* sched() can't do this */
-	lock(&u->p->debug);	/* sched() can't do this */
-	u->p->state = Moribund;
+	lock(&c->debug);	/* sched() can't do this */
+	c->state = Moribund;
 	sched();	/* never returns */
 }
 
