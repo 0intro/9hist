@@ -251,6 +251,6 @@ confinit(void)
 	conf.nmnthdr = 10;
 	conf.nstream = 64;
 	conf.nqueue = 5 * conf.nstream;
-	conf.nblock = 32 * conf.nstream;
+	conf.nblock = 12 * conf.nstream;
 	conf.nsrv = 32;
 }

@@ -109,8 +109,7 @@ allocb(ulong size)
 {
 	Block *bp;
 	Bclass *bcp;
-	int i;
-
+	int loop=0;
 
 	/*
 	 *  map size to class
@@ -124,9 +123,10 @@ allocb(ulong size)
 	lock(bcp);
 	while(bcp->first == 0){
 		unlock(bcp);
-		print("waiting for blocks\n");
+		if(loop++ > 10)
+			panic("waiting for blocks\n");
 		qlock(bcp);
-		sleep(&bcp->r, isblock, (void *)bcp);
+		tsleep(&bcp->r, isblock, (void *)bcp, 250);
 		qunlock(bcp);
 		lock(bcp);
 	}

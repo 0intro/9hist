@@ -54,10 +54,10 @@ struct Ref
 
 struct QLock
 {
+	Lock;				/* to use object */
 	Proc	*head;			/* next process waiting for object */
 	Proc	*tail;			/* last process waiting for object */
-	Lock	use;			/* to use object */
-	Lock	queue;			/* to access list */
+	int	locked;			/* flag; is locked */
 };
 
 struct Label
@@ -307,8 +307,7 @@ struct Proc
 	Proc	*pop;			/* some ascendant */
 	Proc	*kid;			/* some descendant */
 	Proc	*sib;			/* non-ascendant relatives (circular list) */
-	int	nchild;
-	QLock	wait;			/* exiting children to be waited for */
+	Rendez	exit;			/* child sleeps; parent wakes up */
 	Waitmsg	*waitmsg;
 	Proc	*child;
 	Proc	*parent;
@@ -451,7 +450,7 @@ enum {
 	Sdataqid = Shighqid,
 	Sctlqid = Sdataqid-1,
 	Slowqid = Sctlqid,
-	Streamhi= (32*1024),	/* stream high water mark */
+	Streamhi= (9*1024),	/* stream high water mark */
 };
 
 #define	PRINTSIZE	256

@@ -40,8 +40,8 @@ main(int argc, char *argv[])
 	cfd = open("#k/2/ctl", 2);
 	if(cfd < 0)
 		error("opening #k/2/ctl");
-	sendmsg(cfd, "connect r70.nonet!bootes!fs");
-	print("connected to r70.nonet!bootes!fs\n");
+	sendmsg(cfd, "connect helix.bootfs");
+	print("connected to helix.bootfs\n");
 	close(cfd);
 
 	/*

@@ -134,7 +134,6 @@ sysfork(ulong *arg)
 	p->parentpid = u->p->pid;
 	p->pgrp = u->p->pgrp;
 	incref(p->pgrp);
-	u->p->nchild++;
 	pid = p->pid;
 	memset(p->time, 0, sizeof(p->time));
 	p->time[TReal] = MACHP(0)->ticks;

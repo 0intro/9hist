@@ -23,7 +23,7 @@ enum {
 	Minstation=	2,	/* lowest station # to poll */
 	Maxstation=	15,	/* highest station # to poll */
 	Nincon=		1,	/* number of incons */
-	Nin=		64,	/* Blocks in the input ring */
+	Nin=		32,	/* Blocks in the input ring */
 	Bsize=		128,	/* size of an input ring block */
 	Mfifo=		0xff	/* a mask, must be 2^n-1, must be > Nin */
 };
@@ -587,8 +587,8 @@ static void
 inconkproc(void *arg)
 {
 	Incon *ip;
-	Block *bp;
-	int i;
+	Block *bp, *nbp;
+	int i, n;
 
 	ip = (Incon *)arg;
 	ip->kstarted = 1;
@@ -619,10 +619,21 @@ inconkproc(void *arg)
 		}
 
 		/*
-		 *  send blocks upstream and stage new blocks
+		 *  send blocks upstream and stage new blocks.  if the block is small
+		 *  (< 64 bytes) copy into a smaller buffer.
 		 */
 		while(ip->ri != ip->wi){
-			PUTNEXT(ip->rq, ip->inb[ip->ri]);
+			bp = ip->inb[ip->ri];
+			n = BLEN(bp);
+			if(n <= 64){
+				nbp = allocb(n);
+				memcpy(nbp->wptr, bp->rptr, n);
+				nbp->wptr += n;
+				freeb(bp);
+				PUTNEXT(ip->rq, nbp);
+			} else {
+				PUTNEXT(ip->rq, bp);
+			}
 			bp = ip->inb[ip->ri] = allocb(Bsize);
 			bp->wptr += 3;
 			ip->ri = (ip->ri+1)%Nin;

@@ -359,7 +359,7 @@ confinit(void)
 	conf.npgrp = 100;
 
 	x = 0x12345678;
-	for(i=4; i<64; i+=4){
+	for(i=4; i<128; i+=4){
 		l = (long*)(KSEG1|(i*1024L*1024L));
 		*l = x;
 		wbflush();
@@ -372,7 +372,7 @@ confinit(void)
 
 	conf.npte = 20000;
 	conf.nmod = 2000;
-	conf.nalarm = 1000;
+	conf.nalarm = 10000;
 	conf.norig = 500;
 	conf.nchan = 500;
 	conf.nenv = 400;

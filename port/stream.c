@@ -51,7 +51,7 @@ static Lock garbagelock;
 typedef struct {
 	int	size;
 	Blist;
-	QLock;		/* qlock for sleepers on r */
+	QLock	q;	/* qlock for sleepers on r */
 	Rendez	r;	/* sleep here waiting for blocks */
 } Bclass;
 Bclass bclass[Nclass]={
@@ -109,8 +109,7 @@ allocb(ulong size)
 {
 	Block *bp;
 	Bclass *bcp;
-	int i;
-
+	int loop=0;
 
 	/*
 	 *  map size to class
@@ -124,10 +123,12 @@ allocb(ulong size)
 	lock(bcp);
 	while(bcp->first == 0){
 		unlock(bcp);
-		print("waiting for blocks\n");
-		qlock(bcp);
-		sleep(&bcp->r, isblock, (void *)bcp);
-		qunlock(bcp);
+		print("waiting for block %d\n", size);
+		if(loop++ > 10)
+			panic("waiting for blocks");
+		qlock(&bcp->q);
+		tsleep(&bcp->r, isblock, (void *)bcp, 250);
+		qunlock(&bcp->q);
 		lock(bcp);
 	}
 	bp = bcp->first;
