@@ -33,7 +33,7 @@ Dirtab procdir[] =
 	"ctl",		{Qctl},		0,			0000,
 	"fd",		{Qfd},		0,			0000,
 	"fpregs",	{Qfpregs},	sizeof(FPsave),		0000,
-	"kregs",	{Qkregs},	sizeof(Ureg),		0000,
+	"kregs",	{Qkregs},	sizeof(Ureg),		0400,
 	"mem",		{Qmem},		0,			0000,
 	"note",		{Qnote},	0,			0000,
 	"noteid",	{Qnoteid},	0,			0666,
@@ -841,7 +841,6 @@ procctlfgrp(Fgrp *f)
 	closefgrp(f);
 }
 
-
 void
 procctlreq(Proc *p, char *va, int n)
 {
@@ -895,7 +894,7 @@ procctlreq(Proc *p, char *va, int n)
 		ready(p);
 	}
 	else
-	if(strncmp(buf, "closefgrp", 9) == 0)
+	if(strncmp(buf, "closefiles", 10) == 0)
 		procctlfgrp(p->fgrp);
 	else
 	if(strncmp(buf, "pri", 3) == 0) {
