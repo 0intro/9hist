@@ -60,6 +60,8 @@ enum
 	Qmsg		= (1<<1),	/* message stream */
 	Qclosed		= (1<<2),
 	Qflow		= (1<<3),
+
+	Hdrspc		= 64,		/* leave room for high-level headers */
 };
 
 void
@@ -90,6 +92,47 @@ checkb(Block *b, char *msg)
 	}
 }
 
+void
+ixsummary(void)
+{
+	debuging ^= 1;
+	print("ialloc %d/%d %d\n", ialloc.bytes, conf.ialloc, debuging);
+	print("pad %lud, concat %lud, pullup %lud, copy %lud\n",
+		padblockcnt, concatblockcnt, pullupblockcnt, copyblockcnt);
+	print("consume %lud, produce %lud, qcopy %lud\n",
+		consumecnt, producecnt, qcopycnt);
+}
+
+/*
+ *  allocate blocks (round data base address to 64 bit boundary).
+ *  if mallocz gives us more than we asked for, leave room at the front
+ *  for header.
+ */
+Block*
+allocb(int size)
+{
+	Block *b;
+	ulong addr;
+	int n;
+
+	n = sizeof(Block) + size + (BY2V-1);
+	b = mallocz(n+Hdrspc, 0);
+	if(b == 0)
+		exhausted("Blocks");
+	memset(b, 0, sizeof(Block));
+
+	addr = (ulong)b;
+	addr = ROUND(addr + sizeof(Block), BY2V);
+	b->base = (uchar*)addr;
+	b->lim = ((uchar*)b) + msize(b);
+	b->rp = b->base;
+	n = b->lim - b->base - size;
+	b->rp += n & ~(BY2V-1);
+	b->wp = b->rp;
+
+	return b;
+}
+
 /*
  *  interrupt time allocation
  */
@@ -98,25 +141,30 @@ iallocb(int size)
 {
 	Block *b;
 	ulong addr;
+	int n;
 
-	size = sizeof(Block) + size + (BY2V-1);
 	if(ialloc.bytes > conf.ialloc){
 		iprint("iallocb: limited %d/%d\n", ialloc.bytes, conf.ialloc);
 		return 0;
 	}
-	b = mallocz(size, 0);
-	if(b == 0){
+
+	n = sizeof(Block) + size + (BY2V-1);
+	b = mallocz(n, 0);
+	if(b == nil){
 		iprint("iallocb: no memory %d/%d\n", ialloc.bytes, conf.ialloc);
-		return 0;
+		return nil;
 	}
 	memset(b, 0, sizeof(Block));
 
 	addr = (ulong)b;
 	addr = ROUND(addr + sizeof(Block), BY2V);
 	b->base = (uchar*)addr;
+	b->lim = ((uchar*)b) + msize(b);
 	b->rp = b->base;
-	b->wp = b->base;
-	b->lim = ((uchar*)b) + size;
+	n = b->lim - b->base - size;
+	b->rp += n & ~(BY2V-1);
+	b->wp = b->rp;
+
 	b->flag = BINTR;
 
 	ilock(&ialloc);
@@ -184,7 +232,7 @@ padblock(Block *bp, int size)
 		}
 
 		n = BLEN(bp);
-		padblockcnt += n;
+		padblockcnt++;
 		nbp = allocb(size+n);
 		nbp->rp += size;
 		nbp->wp = nbp->rp;
@@ -199,7 +247,7 @@ padblock(Block *bp, int size)
 			return bp;
 
 		n = BLEN(bp);
-		padblockcnt += n;
+		padblockcnt++;
 		nbp = allocb(size+n);
 		memmove(nbp->wp, bp->rp, n);
 		nbp->wp += n;
@@ -282,14 +330,14 @@ pullupblock(Block *bp, int n)
 		i = BLEN(nbp);
 		if(i > n) {
 			memmove(bp->wp, nbp->rp, n);
-			pullupblockcnt += n;
+			pullupblockcnt++;
 			bp->wp += n;
 			nbp->rp += n;
 			return bp;
 		}
 		else {
 			memmove(bp->wp, nbp->rp, i);
-			pullupblockcnt += i;
+			pullupblockcnt++;
 			bp->wp += i;
 			bp->next = nbp->next;
 			nbp->next = 0;
@@ -365,10 +413,32 @@ copyblock(Block *bp, int count)
 		memset(nbp->wp, 0, count);
 		nbp->wp += count;
 	}
-	copyblockcnt += count;
+	copyblockcnt++;
 
 	return nbp;
 }
+
+Block*
+adjustblock(Block* bp, int len)
+{
+	int n;
+
+	if(len < 0){
+		freeb(bp);
+		return nil;
+	}
+
+	if(bp->rp+len > bp->lim)
+		return copyblock(bp, len);
+
+	n = BLEN(bp);
+	if(len > n)
+		memset(bp->wp, 0, len-n);
+	bp->wp = bp->rp+len;
+
+	return bp;
+}
+
 
 /*
  *  throw away up to count bytes from a
@@ -400,47 +470,6 @@ pullblock(Block **bph, int count)
 		}
 	}
 	return bytes;
-}
-
-void
-ixsummary(void)
-{
-	debuging ^= 1;
-	print("ialloc %d/%d %d\n", ialloc.bytes, conf.ialloc, debuging);
-	print("pad %lud, concat %lud, pullup %lud, copy %lud\n",
-		padblockcnt, concatblockcnt, pullupblockcnt, copyblockcnt);
-	print("consume %lud, produce %lud, qcopy %lud\n",
-		consumecnt, producecnt, qcopycnt);
-}
-
-/*
- *  allocate blocks (round data base address to 64 bit boundary).
- *  if mallocz gives us more than we asked for, leave room at the front
- *  for header.
- */
-Block*
-allocb(int size)
-{
-	Block *b;
-	ulong addr;
-	int n;
-
-	n = sizeof(Block) + size + (BY2V-1);
-	b = mallocz(n, 0);
-	if(b == 0)
-		exhausted("Blocks");
-	memset(b, 0, sizeof(Block));
-
-	addr = (ulong)b;
-	addr = ROUND(addr + sizeof(Block), BY2V);
-	b->base = (uchar*)addr;
-	b->lim = ((uchar*)b) + msize(b);
-	b->rp = b->base;
-	n = b->lim - b->base - size;
-	b->rp += n & ~(BY2V-1);
-	b->wp = b->rp;
-
-	return b;
 }
 
 /*
