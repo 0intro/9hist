@@ -152,7 +152,7 @@ putpage(Page *p)
 		return;
 	}
 
-	vcacheinval(p);
+	vcacheinval(p, p->va);
 	lock(&palloc);
 	if(p->image && p->image != &swapimage) {
 		if(palloc.tail) {

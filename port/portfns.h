@@ -252,7 +252,7 @@ void		userinit(void);
 ulong		userpc(void);
 long		userwrite(char*, int);
 void		validaddr(ulong, ulong, int);
-void		vcacheinval(Page*);
+void		vcacheinval(Page*, ulong);
 void*		vmemchr(void*, int, int);
 void		wakeup(Rendez*);
 Chan*		walk(Chan*, char*, int);
