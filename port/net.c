@@ -32,7 +32,7 @@ findprot(Network *np, int id)
  *  generate a 3 level directory
  */
 int
-netgen(Chan *c, void *vp, int ntab, int i, Dir *dp)
+netgen(Chan *c, void *vp, int, int i, Dir *dp)
 {
 	Qid q;
 	char buf[32];
@@ -42,7 +42,6 @@ netgen(Chan *c, void *vp, int ntab, int i, Dir *dp)
 	int perm;
 	char *o;
 
-	USED(ntab);
 	q.vers = 0;
 
 	/* top level directory contains the name of the network */

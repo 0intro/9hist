@@ -366,9 +366,8 @@ lanceintr(void)
  *  turn promiscuous mode on/off
  */
 static void
-promiscuous(void *arg, int on)
+promiscuous(void*, int on)
 {
-	USED(arg);
 	if(on)
 		lancestart(PROM);
 	else
@@ -408,9 +407,8 @@ lanceopen(Chan *c, int omode)
 }
 
 void
-lancecreate(Chan *c, char *name, int omode, ulong perm)
+lancecreate(Chan*, char*, int, ulong)
 {
-	USED(c, name, omode, perm);
 }
 
 void
@@ -465,12 +463,10 @@ etherloop(Etherpkt *p, long n)
 }
 
 long
-lancewrite(Chan *c, void *buf, long n, ulong offset)
+lancewrite(Chan *c, void *buf, long n, ulong)
 {
 	Msg *m;
 	Lancepkt *p;
-
-	USED(offset);
 
 	if(n > ETHERMAXTU)
 		error(Ebadarg);
@@ -522,9 +518,8 @@ lancebwrite(Chan *c, Block *bp, ulong offset)
 }
 
 void
-lanceremove(Chan *c)
+lanceremove(Chan*)
 {
-	USED(c);
 }
 
 void

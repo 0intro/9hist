@@ -95,30 +95,26 @@ kprofopen(Chan *c, int omode)
 }
 
 void
-kprofcreate(Chan *c, char *name, int omode, ulong perm)
+kprofcreate(Chan*, char*, int, ulong)
 {
-	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
 void
-kprofremove(Chan *c)
+kprofremove(Chan*)
 {
-	USED(c);
 	error(Eperm);
 }
 
 void
-kprofwstat(Chan *c, char *dp)
+kprofwstat(Chan*, char*)
 {
-	USED(c, dp);
 	error(Eperm);
 }
 
 void
 kprofclose(Chan *c)
 {
-	USED(c);
 }
 
 long
@@ -169,10 +165,8 @@ kprofbread(Chan *c, long n, ulong offset)
 }
 
 long
-kprofwrite(Chan *c, char *a, long n, ulong offset)
+kprofwrite(Chan *c, char *a, long n, ulong)
 {
-	USED(offset);
-
 	switch((int)(c->qid.path&~CHDIR)){
 	case Kprofctlqid:
 		if(strncmp(a, "startclr", 8) == 0){

@@ -9,12 +9,10 @@ Rendez	alarmr;
 Talarm	talarm;
 
 void
-alarmkproc(void *arg)
+alarmkproc(void*)
 {
 	Proc *rp;
 	ulong now;
-
-	USED(arg);
 
 	for(;;){
 		now = MACHP(0)->ticks;

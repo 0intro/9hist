@@ -131,9 +131,8 @@ rootopen(Chan *c, int omode)
 }
 
 void	 
-rootcreate(Chan *c, char *name, int omode, ulong perm)
+rootcreate(Chan*, char*, int, ulong)
 {
-	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
@@ -143,7 +142,6 @@ rootcreate(Chan *c, char *name, int omode, ulong perm)
 void	 
 rootclose(Chan *c)
 {
-	USED(c);
 	switch(c->qid.path) {
 	default:
 		break;
@@ -155,9 +153,8 @@ rootclose(Chan *c)
 }
 
 int
-rdrdy(void *a)
+rdrdy(void*)
 {
-	USED(a);
 	return reclist.q != 0;
 }
 
@@ -218,11 +215,10 @@ rootbread(Chan *c, long n, ulong offset)
 }
 
 long	 
-rootwrite(Chan *c, void *buf, long n, ulong offset)
+rootwrite(Chan *c, void *buf, long n, ulong)
 {
 	char tmp[256];
 
-	USED(offset);
 	switch(c->qid.path & ~CHDIR){
 	default:
 		error(Egreg);
@@ -245,16 +241,14 @@ rootbwrite(Chan *c, Block *bp, ulong offset)
 }
 
 void	 
-rootremove(Chan *c)
+rootremove(Chan*)
 {
-	USED(c);
 	error(Eperm);
 }
 
 void	 
-rootwstat(Chan *c, char *dp)
+rootwstat(Chan*, char*)
 {
-	USED(c, dp);
 	error(Eperm);
 }
 

@@ -420,9 +420,8 @@ audiosbintr(void)
 }
 
 void
-pcaudiosbintr(Ureg *ureg, void *rock)
+pcaudiosbintr(Ureg*, void*)
 {
-	USED(ureg, rock);
 /*	print("sb16 audio interrupt\n");	/**/
 	audiosbintr();
 }
@@ -434,9 +433,8 @@ audiodmaintr(void)
 }
 
 static int
-anybuf(void *p)
+anybuf(void*)
 {
-	USED(p);
 	return audio.intr;
 }
 
@@ -664,13 +662,8 @@ audioopen(Chan *c, int omode)
 }
 
 void
-audiocreate(Chan *c, char *name, int omode, ulong perm)
+audiocreate(Chan*, char*, int, ulong)
 {
-	USED(c);
-	USED(name);
-	USED(omode);
-	USED(perm);
-
 	error(Eperm);
 }
 
@@ -806,14 +799,12 @@ audiobread(Chan *c, long n, ulong offset)
 }
 
 long
-audiowrite(Chan *c, char *a, long n, ulong offset)
+audiowrite(Chan *c, char *a, long n, ulong)
 {
 	long m, n0;
 	int i, nf, v, left, right, in, out;
 	char buf[255], *field[Ncmd];
 	Buf *b;
-
-	USED(offset);
 
 	n0 = n;
 	switch(c->qid.path & ~CHDIR) {
@@ -941,19 +932,14 @@ audiobwrite(Chan *c, Block *bp, ulong offset)
 }
 
 void
-audioremove(Chan *c)
+audioremove(Chan*)
 {
-	USED(c);
-
 	error(Eperm);
 }
 
 void
-audiowstat(Chan *c, char *dp)
+audiowstat(Chan*, char*)
 {
-	USED(c);
-	USED(dp);
-
 	error(Eperm);
 }
 

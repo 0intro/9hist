@@ -23,13 +23,10 @@ envinit(void)
 }
 
 int
-envgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
+envgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 {
 	Egrp *eg;
 	Evalue *e;
-
-	USED(tab);
-	USED(ntab);
 
 	eg = up->egrp;
 	qlock(eg);
@@ -177,16 +174,14 @@ envremove(Chan *c)
 }
 
 void
-envwstat(Chan *c, char *db)
+envwstat(Chan*, char*)
 {
-	USED(c, db);
 	error(Eperm);
 }
 
 void
-envclose(Chan * c)
+envclose(Chan*)
 {
-	USED(c);
 }
 
 long

@@ -73,14 +73,13 @@ int	procstopped(void*);
 void	mntscan(Mntwalk*);
 
 int
-procgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
+procgen(Chan *c, Dirtab *tab, int, int s, Dir *dp)
 {
 	Qid qid;
 	Proc *p;
 	char buf[NAMELEN];
 	ulong pid, path, perm, len;
 
-	USED(ntab);
 	if(c->qid.path == CHDIR){
 		if(s >= conf.nproc)
 			return -1;
@@ -224,16 +223,14 @@ procopen(Chan *c, int omode)
 }
 
 void
-proccreate(Chan *c, char *name, int omode, ulong perm)
+proccreate(Chan*, char*, int, ulong)
 {
-	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
 void
-procremove(Chan *c)
+procremove(Chan*)
 {
-	USED(c);
 	error(Eperm);
 }
 

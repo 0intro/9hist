@@ -146,25 +146,22 @@ mouseopen(Chan *c, int omode)
 }
 
 void
-mousecreate(Chan *c, char *name, int omode, ulong perm)
+mousecreate(Chan*, char*, int, ulong)
 {
 	if(!conf.monitor)
 		error(Egreg);
-	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
 void
-mouseremove(Chan *c)
+mouseremove(Chan*)
 {
-	USED(c);
 	error(Eperm);
 }
 
 void
-mousewstat(Chan *c, char *db)
+mousewstat(Chan*, char*)
 {
-	USED(c, db);
 	error(Eperm);
 }
 
@@ -237,13 +234,12 @@ mousebread(Chan *c, long n, ulong offset)
 }
 
 long
-mousewrite(Chan *c, void *va, long n, ulong offset)
+mousewrite(Chan *c, void *va, long n, ulong)
 {
 	char *p;
 	Point pt;
 	char buf[64];
 
-	USED(offset);
 	p = va;
 	switch(c->qid.path){
 	case CHDIR:
@@ -377,7 +373,7 @@ mousetrack(int b, int dx, int dy)
  *  shift & right button is the same as middle button (for 2 button mice)
  */
 int
-m3mouseputc(void *q, int c)
+m3mouseputc(void*, int c)
 {
 	static uchar msg[3];
 	static int nb;
@@ -385,8 +381,6 @@ m3mouseputc(void *q, int c)
 	static uchar b[] = { 0, 4, 1, 5, 0, 2, 1, 5 };
 	short x;
 	int dx, dy, newbuttons;
-
-	USED(q);
 
 	/* 
 	 *  check bit 6 for consistency
@@ -419,14 +413,13 @@ m3mouseputc(void *q, int c)
  *  shift & right button is the same as middle button (for 2 button mice)
  */
 int
-mouseputc(void *q, int c)
+mouseputc(void*, int c)
 {
 	static short msg[5];
 	static int nb;
 	static uchar b[] = {0, 4, 2, 6, 1, 5, 3, 7, 0, 2, 2, 6, 1, 5, 3, 7};
 	int dx, dy, newbuttons;
 
-	USED(q);
 	if((c&0xF0) == 0x80)
 		nb=0;
 	msg[nb] = c;
@@ -443,9 +436,8 @@ mouseputc(void *q, int c)
 }
 
 int
-mousechanged(void *m)
+mousechanged(void*)
 {
-	USED(m);
 	return mouse.lastcounter - mouse.counter;
 }
 

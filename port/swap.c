@@ -103,7 +103,6 @@ pager(void *junk)
 	if(waserror()) 
 		panic("pager: os error\n");
 
-	USED(junk);
 	p = proctab(0);
 	ep = &p[conf.nproc];
 
@@ -321,9 +320,8 @@ executeio(void)
 }
 
 int
-needpages(void *p)
+needpages(void*)
 {
-	USED(p);
 	return palloc.freecount < swapalloc.headroom;
 }
 

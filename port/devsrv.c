@@ -23,12 +23,10 @@ static Srv	*srv;
 static int	qidpath;
 
 int
-srvgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
+srvgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 {
 	Srv *sp;
 
-	USED(tab);
-	USED(ntab);
 	qlock(&srvlk);
 	for(sp = srv; sp && s; sp = sp->link)
 		s--;
@@ -213,15 +211,13 @@ srvwstat(Chan *c, char *dp)
 }
 
 void
-srvclose(Chan *c)
+srvclose(Chan*)
 {
-	USED(c);
 }
 
 long
-srvread(Chan *c, void *va, long n, ulong offset)
+srvread(Chan *c, void *va, long n, ulong)
 {
-	USED(offset);
 	isdir(c);
 	return devdirread(c, va, n, 0, 0, srvgen);
 }
@@ -233,14 +229,13 @@ srvbread(Chan *c, long n, ulong offset)
 }
 
 long
-srvwrite(Chan *c, void *va, long n, ulong offset)
+srvwrite(Chan *c, void *va, long n, ulong)
 {
 	Srv *sp;
 	Chan *c1;
 	int fd;
 	char buf[32];
 
-	USED(offset);
 	if(n >= sizeof buf)
 		error(Egreg);
 	memmove(buf, va, n);	/* so we can NUL-terminate */

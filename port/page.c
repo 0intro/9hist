@@ -165,9 +165,8 @@ retry:
 }
 
 int
-ispages(void *p)
+ispages(void*)
 {
-	USED(p);
 	return palloc.freecount >= swapalloc.highwater;
 }
 

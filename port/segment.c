@@ -431,7 +431,6 @@ segattach(Proc *p, ulong attr, char *name, ulong va, ulong len)
 	Segment *s;
 	Physseg *ps;
 
-	USED(p);
 	if(va != 0 && (va&KZERO) == KZERO)	/* BUG: Only ok for now */
 		error(Ebadarg);
 

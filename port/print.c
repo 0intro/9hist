@@ -525,10 +525,9 @@ sconv(void *o, Fconv *fp)
 
 static
 int
-percent(void *o, Fconv *fp)
+percent(void*, Fconv *fp)
 {
 
-	USED(o);
 	if(fp->out < fp->eout)
 		*fp->out++ = '%';
 	return 0;
@@ -536,11 +535,9 @@ percent(void *o, Fconv *fp)
 
 static
 int
-flags(void *o, Fconv *fp)
+flags(void*, Fconv *fp)
 {
 	int f;
-
-	USED(o);
 
 	f = 0;
 	switch(fp->chr) {

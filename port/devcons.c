@@ -119,12 +119,11 @@ print(char *fmt, ...)
 }
 
 int
-fprint(int fd, char *fmt, ...)	/* needed so we can use user-level libg */
+fprint(int, char *fmt, ...)	/* needed so we can use user-level libg */
 {
 	char buf[PRINTSIZE];
 	int n;
 
-	USED(fd);
 	n = doprint(buf, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
 	putstrn(buf, n);
 
@@ -266,13 +265,12 @@ kbdcr2nl(Queue *q, int ch)
  *  Called at interrupt time to process a character.
  */
 int
-kbdputc(Queue *q, int ch)
+kbdputc(Queue*, int ch)
 {
 	int n;
 	char buf[3];
 	Rune r;
 
-	USED(q);
 	r = ch;
 	n = runetochar(buf, &r);
 	if(n == 0)
@@ -455,9 +453,8 @@ consopen(Chan *c, int omode)
 }
 
 void
-conscreate(Chan *c, char *name, int omode, ulong perm)
+conscreate(Chan*, char*, int, ulong)
 {
-	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
@@ -853,16 +850,14 @@ consbwrite(Chan *c, Block *bp, ulong offset)
 }
 
 void
-consremove(Chan *c)
+consremove(Chan*)
 {
-	USED(c);
 	error(Eperm);
 }
 
 void
-conswstat(Chan *c, char *dp)
+conswstat(Chan*, char*)
 {
-	USED(c, dp);
 	error(Eperm);
 }
 

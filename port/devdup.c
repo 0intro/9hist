@@ -9,15 +9,13 @@
 
 
 int
-dupgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
+dupgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 {
 	char buf[8];
 	Fgrp *fgrp = up->fgrp;
 	Chan *f;
 	static int perm[] = { 0400, 0200, 0600, 0 };
 
-	USED(tab);
-	USED(ntab);
 	if(s >= NFD)
 		return -1;
 	if((f=fgrp->fd[s]) == 0)
@@ -84,39 +82,33 @@ dupopen(Chan *c, int omode)
 }
 
 void
-dupcreate(Chan *c, char *name, int omode, ulong perm)
+dupcreate(Chan*, char*, int, ulong)
 {
-	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
 void
-dupremove(Chan *c)
+dupremove(Chan*)
 {
-	USED(c);
 	error(Eperm);
 }
 
 void
-dupwstat(Chan *c, char *dp)
+dupwstat(Chan*, char*)
 {
-	USED(c);
-	USED(dp);
 	error(Egreg);
 }
 
 void
-dupclose(Chan *c)
+dupclose(Chan*)
 {
-	USED(c);
 }
 
 long
-dupread(Chan *c, void *va, long n, ulong offset)
+dupread(Chan *c, void *va, long n, ulong)
 {
 	char *a = va;
 
-	USED(offset);
 	if(c->qid.path != CHDIR)
 		panic("dupread");
 	return devdirread(c, a, n, (Dirtab *)0, 0L, dupgen);
@@ -129,9 +121,8 @@ dupbread(Chan *c, long n, ulong offset)
 }
 
 long
-dupwrite(Chan *c, void *va, long n, ulong offset)
+dupwrite(Chan*, void*, long, ulong)
 {
-	USED(c, va, n, offset);
 	panic("dupwrite");
 	return 0;		/* not reached */
 }

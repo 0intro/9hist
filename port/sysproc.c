@@ -452,9 +452,8 @@ shargs(char *s, int n, char **ap)
 }
 
 int
-return0(void *a)
+return0(void*)
 {
-	USED(a);
 	return 0;
 }
 
@@ -519,9 +518,8 @@ syswait(ulong *arg)
 }
 
 long
-sysdeath(ulong *arg)
+sysdeath(ulong*)
 {
-	USED(arg);
 	pprint("deprecated system call\n");
 	pexit("Suicide", 0);
 	return 0;	/* not reached */
@@ -543,7 +541,6 @@ syserrstr(ulong *arg)
 long
 sysnotify(ulong *arg)
 {
-	USED(arg);
 	if(arg[0] != 0)
 		validaddr(arg[0], sizeof(ulong), 0);
 	up->notify = (int(*)(void*, char*))(arg[0]);

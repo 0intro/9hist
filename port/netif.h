@@ -13,6 +13,7 @@ enum
 	Nctlqid,
 	Nstatqid,
 	Ntypeqid,
+	Nifstatqid,
 };
 
 /*
@@ -65,7 +66,7 @@ struct Netif
 	int	inpackets;
 	int	outpackets;
 	int	crcs;		/* input crc errors */
-	int	oerrs;		/* output erros */
+	int	oerrs;		/* output errors */
 	int	frames;		/* framing errors */
 	int	overflows;	/* packet overflows */
 	int	buffs;		/* buffering errors */

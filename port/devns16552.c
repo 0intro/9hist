@@ -762,9 +762,8 @@ ns16552open(Chan *c, int omode)
 }
 
 void
-ns16552create(Chan *c, char *name, int omode, ulong perm)
+ns16552create(Chan*, char*, int, ulong)
 {
-	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
@@ -794,13 +793,11 @@ ns16552close(Chan *c)
 }
 
 static long
-uartstatus(Chan *c, Uart *p, void *buf, long n, long offset)
+uartstatus(Chan*, Uart *p, void *buf, long n, long offset)
 {
 	uchar mstat;
 	uchar tstat;
 	char str[256];
-
-	USED(c);
 
 	str[0] = 0;
 	tstat = p->sticky[Mctl];
@@ -933,12 +930,10 @@ ns16552ctl(Uart *p, char *cmd)
 }
 
 long
-ns16552write(Chan *c, void *buf, long n, ulong offset)
+ns16552write(Chan *c, void *buf, long n, ulong)
 {
 	Uart *p;
 	char cmd[32];
-
-	USED(offset);
 
 	if(c->qid.path & CHDIR)
 		error(Eperm);
@@ -972,9 +967,8 @@ ns16552bwrite(Chan *c, Block *bp, ulong offset)
 }
 
 void
-ns16552remove(Chan *c)
+ns16552remove(Chan*)
 {
-	USED(c);
 	error(Eperm);
 }
 

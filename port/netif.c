@@ -30,7 +30,7 @@ netifinit(Netif *nif, char *name, int nfile, ulong limit)
  *  generate a 3 level directory
  */
 static int
-netifgen(Chan *c, void *vp, int ntab, int i, Dir *dp)
+netifgen(Chan *c, void *vp, int, int i, Dir *dp)
 {
 	Qid q;
 	char buf[32];
@@ -40,7 +40,6 @@ netifgen(Chan *c, void *vp, int ntab, int i, Dir *dp)
 	int perm;
 	char *o;
 
-	USED(ntab);
 	q.vers = 0;
 
 	/* top level directory contains the name of the network */
@@ -101,6 +100,10 @@ netifgen(Chan *c, void *vp, int ntab, int i, Dir *dp)
 	case 3:
 		q.path = NETQID(NETID(c->qid.path), Ntypeqid);
 		devdir(c, q, "type", 0, eve, 0444, dp);
+		break;
+	case 4:
+		q.path = NETQID(NETID(c->qid.path), Nifstatqid);
+		devdir(c, q, "ifstats", 0, eve, 0444, dp);
 		break;
 	default:
 		return -1;
@@ -187,6 +190,8 @@ netifread(Netif *nif, Chan *c, void *a, long n, ulong offset)
 	case Ntypeqid:
 		f = nif->f[NETID(c->qid.path)];
 		return readnum(offset, a, n, f->type, NUMSIZE);
+	case Nifstatqid:
+		return 0;
 	}
 	error(Ebadarg);
 	return -1;	/* not reached */

@@ -60,16 +60,14 @@ bootopen(Chan *c, int omode)
 }
 
 void	 
-bootcreate(Chan *c, char *name, int omode, ulong perm)
+bootcreate(Chan*, char*, int, ulong)
 {
-	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
 void	 
-bootclose(Chan *c)
+bootclose(Chan*)
 {
-	USED(c);
 }
 
 long	 
@@ -133,15 +131,13 @@ bootbwrite(Chan *c, Block *bp, ulong offset)
 }
 
 void	 
-bootremove(Chan *c)
+bootremove(Chan*)
 {
-	USED(c);
 	error(Eperm);
 }
 
 void	 
-bootwstat(Chan *c, char *dp)
+bootwstat(Chan*, char*)
 {
-	USED(c, dp);
 	error(Eperm);
 }

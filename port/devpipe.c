@@ -209,9 +209,8 @@ piperemove(Chan*)
 }
 
 void
-pipewstat(Chan *c, char *db)
+pipewstat(Chan*, char*)
 {
-	USED(c, db);
 	error(Eperm);
 }
 
@@ -268,11 +267,9 @@ pipeclose(Chan *c)
 }
 
 long
-piperead(Chan *c, void *va, long n, ulong offset)
+piperead(Chan *c, void *va, long n, ulong)
 {
 	Pipe *p;
-
-	USED(offset);
 
 	p = c->aux;
 
@@ -294,8 +291,6 @@ pipebread(Chan *c, long n, ulong offset)
 {
 	Pipe *p;
 
-	USED(offset);
-
 	p = c->aux;
 
 	switch(NETTYPE(c->qid.path)){
@@ -313,11 +308,9 @@ pipebread(Chan *c, long n, ulong offset)
  *  the process.
  */
 long
-pipewrite(Chan *c, void *va, long n, ulong offset)
+pipewrite(Chan *c, void *va, long n, ulong)
 {
 	Pipe *p;
-
-	USED(offset);
 
 	if((getstatus()&IE) == 0)
 		print("pipewrite hi %lux\n", getcallerpc(c));
@@ -348,12 +341,10 @@ pipewrite(Chan *c, void *va, long n, ulong offset)
 }
 
 long
-pipebwrite(Chan *c, Block *bp, ulong offset)
+pipebwrite(Chan *c, Block *bp, ulong)
 {
 	long n;
 	Pipe *p;
-
-	USED(offset);
 
 	if(waserror()) {
 		/* avoid notes when pipe is a mounted queue */
@@ -373,6 +364,7 @@ pipebwrite(Chan *c, Block *bp, ulong offset)
 		break;
 
 	default:
+		n = 0;
 		panic("pipebwrite");
 	}
 
