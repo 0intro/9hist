@@ -310,11 +310,13 @@ lanceoput(Queue *q, Block *bp )
 {
 	int n, len;
 	Etherpkt *p;
+	Ethertype *e;
 	Msg *m;
 
 	if(bp->type == M_CTL){
 		if(streamparse("connect", bp)){
-			((Ethertype *)q->ptr)->type = strtoul((char *)bp->rptr, 0, 0);
+			n = strtoul((char *)bp->rptr, 0, 0);
+			((Ethertype *)q->ptr)->type = n;
 		}
 		freeb(bp);
 		return;

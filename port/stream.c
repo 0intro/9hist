@@ -382,10 +382,12 @@ pushq(Stream* s, Qinfo *qi)
 	/*
 	 *  push
 	 */
+	qlock(s);
 	RD(nq)->next = q;
 	RD(WR(q)->next)->next = RD(nq);
 	WR(nq)->next = WR(q)->next;
 	WR(q)->next = WR(nq);
+	qunlock(s);
 
 	if(qi->open)
 		(*qi->open)(RD(nq), s);
@@ -401,6 +403,11 @@ popq(Stream *s)
 {
 	Queue *q;
 
+	if(waserror()){
+		qunlock(s);
+		nexterror();
+	}
+	qlock(s);
 	if(s->procq->next == WR(s->devq))
 		error(Ebadld);
 	q = s->procq->next;
@@ -408,6 +415,7 @@ popq(Stream *s)
 		(*q->info->close)(RD(q));
 	s->procq->next = q->next;
 	RD(q->next)->next = RD(s->procq);
+	qunlock(s);
 	freeq(q);
 }
 
@@ -918,17 +926,22 @@ streamclose1(Stream *s)
 	Queue *q, *nq;
 	Block *bp;
 	int rv;
+	char err[ERRLEN];
 
 	/*
 	 *  decrement the reference count
 	 */
 	qlock(s);
+	*err = 0;
 	if(s->opens == 1){
 		/*
 		 *  descend the stream closing the queues
 		 */
 		for(q = s->procq; q; q = q->next){
-			if(!waserror()){
+			if(waserror()){
+				if(*err == 0)
+					strncpy(err, u->error, ERRLEN-1);
+			} else {
 				if(q->info->close)
 					(*q->info->close)(q->other);
 				poperror();
@@ -957,6 +970,8 @@ streamclose1(Stream *s)
 	 */
 	streamexit(s, 1);
 	qunlock(s);
+	if(*err)
+		errors(err);
 	return rv;
 }
 int

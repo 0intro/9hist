@@ -92,7 +92,8 @@ struct Alarm
 #define	CHEXCL	0x20000000L
 struct Chan
 {
-	QLock;				/* general access */
+	QLock	rdl;
+	QLock	wrl;
 	Ref;
 	union{
 		Chan	*next;		/* allocation */

@@ -62,6 +62,7 @@ noetherconnect(Noconv *cp, char *ea)
 static void
 noetheropen(Queue *q, Stream *s)
 {
+	streamenter(s);
 	nonetnewifc(q, s, ETHERMAXTU, ETHERMINTU, ETHERHDRSIZE, noetherconnect);
 }
 

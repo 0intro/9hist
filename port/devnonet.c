@@ -82,13 +82,13 @@ Dirtab nosubdir[]={
  *  Nonet conversation states (for Noconv.state)
  */
 enum {
-	Cclosed,
-	Copen,
-	Cannounced,
-	Cconnected,
-	Cconnecting,
-	Chungup,
-	Creset,
+	Cclosed=	0,
+	Copen=		1,
+	Cannounced=	2,
+	Cconnected=	3,
+	Cconnecting=	4,
+	Chungup=	5,
+	Creset=		6,
 };
 
 /*
@@ -680,6 +680,7 @@ nostartconv(Noconv *cp, int circuit, char *raddr, int state)
 	cp->out[0].mid = 0;
 	cp->out[0].acked = 1;
 	cp->out[0].rem = 0;
+	cp->afirst = cp->anext = 0;
 	cp->first = cp->next = 1;
 	cp->rexmit = cp->bad = cp->sent = cp->rcvd = 0;
 	cp->lastacked = Nnomsg|(Nnomsg-1);
@@ -1425,9 +1426,9 @@ loop:
 		 */
 		ep = ifc->conv + conf.nnoconv;
 		for(cp = ifc->conv; cp < ep; cp++){
-			if(cp->state==Cclosed || !canqlock(cp))
+			if(cp->state<=Copen || !canqlock(cp))
 				continue;
-			if(cp->state == Cclosed){
+			if(cp->state <= Copen){
 				qunlock(cp);
 				continue;
 			}
