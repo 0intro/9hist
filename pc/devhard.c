@@ -45,7 +45,7 @@ enum
 	Maxxfer=	4*1024,		/* maximum transfer size/cmd */
 	Maxread=	1*1024,		/* maximum transfer size/read */
 	Npart=		8+2,		/* 8 sub partitions, disk, and partition */
-	Nrepl=		16,		/* maximum replacement blocks */
+	Nrepl=		64,		/* maximum replacement blocks */
 };
 #define PART(x)		((x)&0xF)
 #define DRIVE(x)	(((x)>>4)&0x7)
@@ -145,12 +145,8 @@ struct Controller
 	int	lastcmd;	/* debugging info */
 	Rendez	r;		/* wait here for command termination */
 	char	*buf;		/* xfer buffer */
-	int	tcyl;		/* target cylinder */
-	int	thead;		/* target head */
-	int	tsec;		/* target sector */
-	int	tbyte;		/* target byte */
 	int	nsecs;		/* length of transfer (sectors) */
-	int	sofar;		/* bytes transferred so far */
+	int	sofar;		/* sectors transferred so far */
 	int	status;
 	int	error;
 	Drive	*dp;		/* drive being accessed */
@@ -463,6 +459,19 @@ print("cmdreadywait failed\n");
 		}
 }
 
+static void
+hardrepl(Drive *dp, long bblk)
+{
+	int i;
+
+	if(dp->repl.p == 0)
+		return;
+	for(i = 0; i < dp->repl.nrepl; i++){
+		if(dp->repl.blk[i] == bblk)
+			print("found bblk %ld at offset %ld\n", bblk, i);
+	}
+}
+
 /*
  *  transfer a number of sectors.  hardintr will perform all the iterative
  *  parts.
@@ -472,12 +481,15 @@ hardxfer(Drive *dp, Partition *pp, int cmd, long start, long len)
 {
 	Controller *cp;
 	int err;
-	long lsec;
-	int cyl;
+	long lblk;
+	int cyl, sec, head;
 	int loop;
 
 	if(dp->online == 0)
 		error(Eio);
+
+	cp = dp->cp;
+	cp->sofar = 0;
 
 	/*
 	 *  cut transfer size down to disk buffer size
@@ -489,22 +501,24 @@ hardxfer(Drive *dp, Partition *pp, int cmd, long start, long len)
 		len = Maxread;
 	len = (len + dp->bytes - 1) / dp->bytes;
 
+retry:
+	if(len == 0)
+		return cp->sofar*dp->bytes;
 	/*
 	 *  calculate physical address
 	 */
-	cp = dp->cp;
-	lsec = start + pp->start;
-	if(lsec >= pp->end)
+	lblk = start + pp->start;
+	if(lblk >= pp->end)
 		return 0;
-	cp->tcyl = lsec/(dp->sectors*dp->heads);
-	cp->tsec = (lsec % dp->sectors) + 1;
-	cp->thead = (lsec/dp->sectors) % dp->heads;
+	cyl = lblk/(dp->sectors*dp->heads);
+	sec = (lblk % dp->sectors) + 1;
+	head = (dp->drive<<4) | ((lblk/dp->sectors) % dp->heads);
 
 	/*
 	 *  can't xfer past end of disk
 	 */
-	if(lsec+len > pp->end)
-		len = pp->end - lsec;
+	if(lblk+len > pp->end)
+		len = pp->end - lblk;
 	cp->nsecs = len;
 
 	cmdreadywait(cp);
@@ -514,14 +528,13 @@ hardxfer(Drive *dp, Partition *pp, int cmd, long start, long len)
 	 */
 	cp->cmd = cmd;
 	cp->dp = dp;
-	cp->sofar = 0;
 	cp->status = 0;
 
-	outb(cp->pbase+Pcount, cp->nsecs);
-	outb(cp->pbase+Psector, cp->tsec);
-	outb(cp->pbase+Pdh, 0x20 | (dp->drive<<4) | cp->thead);
-	outb(cp->pbase+Pcyllsb, cp->tcyl);
-	outb(cp->pbase+Pcylmsb, cp->tcyl>>8);
+	outb(cp->pbase+Pcount, cp->nsecs-cp->sofar);
+	outb(cp->pbase+Psector, sec);
+	outb(cp->pbase+Pdh, 0x20 | head);
+	outb(cp->pbase+Pcyllsb, cyl);
+	outb(cp->pbase+Pcylmsb, cyl>>8);
 	outb(cp->pbase+Pcmd, cmd);
 
 	if(cmd == Cwrite){
@@ -535,13 +548,15 @@ hardxfer(Drive *dp, Partition *pp, int cmd, long start, long len)
 	sleep(&cp->r, cmddone, cp);
 
 	if(cp->status & Serr){
-print("hd%d err: lsec %ld status %lux, err %lux\n", dp-hard, lsec, cp->status, cp->error);
-print("\ttcyl %d, tsec %d, thead %d\n", cp->tcyl, cp->tsec, cp->thead);
-print("\tnsecs %d, sofar %d\n", cp->nsecs, cp->sofar);
+		print("hd%d err: lblk %ld status %lux, err %lux\n",
+			dp-hard, lblk, cp->status, cp->error);
+		print("\tcyl %d, sec %d, head %d\n", cyl, sec, head);
+		print("\tnsecs %d, sofar %d\n", cp->nsecs, cp->sofar);
+		hardrepl(dp, lblk+cp->sofar);
 		error(Eio);
 	}
 
-	return cp->nsecs*dp->bytes;
+	return cp->sofar*dp->bytes;
 }
 
 /*
@@ -655,7 +670,8 @@ hardreplinit(Drive *dp)
 	for(dp->repl.nrepl = 0, i = 1; i < n; i++, dp->repl.nrepl++){
 		if(getfields(line[i], field, 1, ' ') != 1)
 			break;
-		if((dp->repl.blk[dp->repl.nrepl] = strtoul(field[1], 0, 0)) <= 0)
+		dp->repl.blk[dp->repl.nrepl] = strtoul(field[0], 0, 0);
+		if(dp->repl.blk[dp->repl.nrepl] <= 0)
 			break;
 	}
 }
