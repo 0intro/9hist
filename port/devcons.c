@@ -240,7 +240,7 @@ echo(int c)
 	if(c == 0x15)
 		putstrn("^U\n", 3);
 	if(c == 0x16)
-		dumpqueues();
+		urpdump();
 	else{
 		ch = c;
 		putstrn(&ch, 1);

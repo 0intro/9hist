@@ -810,6 +810,10 @@ mntxmit(Mnt *m, Mnthdr *mh)
 				wakeup(&w->r);
 				goto Read;
 			}
+print("devmnt: undelivered response fid %d type %d\n", mh->rhdr.fid, mh->rhdr.type);
+print("reader pid %d fid %d type %d\n", u->p->pid, mh->thdr.fid, mh->thdr.type);
+for(w=q->writer; w; w=w->next)print("writer pid %d fid %d type %d\n",w->p->pid,w->thdr.fid,w->thdr.type);
+
 		goto Read;
 	}else{
 		mh->p = u->p;

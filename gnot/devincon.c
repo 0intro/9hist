@@ -133,6 +133,8 @@ static void inconstopen(Queue*, Stream*);
 static void inconstclose(Queue*);
 Qinfo inconinfo = { nullput, inconoput, inconstopen, inconstclose, "incon" };
 
+int incondebug;
+
 /*
  *  set the incon parameters
  */
@@ -492,6 +494,9 @@ inconoput(Queue *q, Block *bp)
 	ctl = bp->rptr[2];
 	bp->rptr += 3;
 
+	if(incondebug)
+		print("->(%d)%uo %d\n", chan, ctl, bp->wptr - bp->rptr);
+
 	/*
 	 *  make sure there's an incon out there
 	 */
@@ -677,6 +682,8 @@ nextin(Incon *ip, unsigned int c)
 	bp->base[0] = ip->chan;
 	bp->base[1] = ip->chan>>8;
 	bp->base[2] = c;
+	if(incondebug)
+		print("<-(%d)%uo %d\n", ip->chan, c, bp->wptr-bp->rptr)-3;
 
 	next = (ip->wi+3)%Nin;
 	if(next == ip->ri){
@@ -807,4 +814,9 @@ inconintr(Ureg *ur)
 		}
 		ip->state = Dead;
 	}
+}
+
+incontoggle()
+{
+	incondebug ^= 1;
 }

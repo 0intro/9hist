@@ -559,9 +559,9 @@ DEBUG()
 	for(i=0; i<conf.nproc; i++){
 		p = procalloc.arena+i;
 		if(p->state != Dead)
-			print("%d:%s upc %lux %s ut %ld st %ld %lux\n",
+			print("%d:%s upc %lux %s ut %ld st %ld q %lux r %lux\n",
 				p->pid, p->text, p->pc, statename[p->state],
-				p->time[0], p->time[1], p->qlock);
+				p->time[0], p->time[1], p->qlock, p->r);
 	}
 }
 

@@ -65,7 +65,7 @@ struct Urp {
 };
 #define WINDOW(u) ((u)->unechoed>(u)->next ? (u)->unechoed+(u)->maxout-(u)->next-8 :\
 			(u)->unechoed+(u)->maxout-(u)->next)
-#define IN(x, f, n) (f<=n ? x>=f && x<n : x<n || x>=f)
+#define IN(x, f, n) (f<=n ? (x>=f && x<n) : (x<n || x>=f))
 #define NEXT(x) (((x)+1)&Nmask)
 
 /*
@@ -117,6 +117,7 @@ static void	sendrej(Urp*);
 static void	initoutput(Urp*, int);
 static void	initinput(Urp*, int);
 static void	urpkproc(void *arg);
+static void	urpvomit(char*, Urp*);
 
 Qinfo urpinfo = { urpciput, urpoput, urpopen, urpclose, "urp" };
 
@@ -584,11 +585,14 @@ output(Urp *up)
 	}
 
 	/*
-	 *  fill the transmit buffers
+	 *  fill the transmit buffers, `nxb' can never overtake `unechoed'
 	 */
 	q = up->wq;
-	if(up->xb[up->nxb]==0) {
-		for(bp=getq(q); bp && up->xb[up->nxb]==0; up->nxb=NEXT(up->nxb)){
+	i = NEXT(up->nxb);
+	if(i != up->unechoed) {
+		for(bp = getq(q); bp && i!=up->unechoed; i = NEXT(i)){
+			if(up->xb[up->nxb] != 0)
+				urpvomit("output", up);
 			if(BLEN(bp) > up->maxblock){
 				nbp = up->xb[up->nxb] = allocb(0);
 				nbp->rptr = bp->rptr;
@@ -597,17 +601,27 @@ output(Urp *up)
 				up->xb[up->nxb] = bp;
 				bp = getq(q);
 			}
+			up->nxb = i;
 		}
 		if(bp)
 			putbq(q, bp);
 	}
-/*	print("output w(%d) up->xb[%d](%ux) up->nxb(%d) up->state(%ux)\n",
-		WINDOW(up), up->next, up->xb[up->next], up->nxb, up->state);
-/**/
+
 	/*
-	 *  if a retransmit time has elapsed since a transmit, send an ENQ
+	 *  retransmit cruft
 	 */
-	if(up->unechoed!=up->next && NOW>up->timer){
+	if(up->rexmit){
+		/*
+		 *  if a retransmit is requested, move next back to
+		 *  the unacked blocks
+		 */
+		up->rexmit = 0;
+		up->next = up->unacked;
+	} else if(up->unacked!=up->next && NOW>up->timer){
+		/*
+		 *  if a retransmit time has elapsed since a transmit,
+		 *  send an ENQ
+		 */
 		up->timer = NOW + MSrexmit;
 		up->state &= ~REJECTING;
 		sendctl(up, ENQ);
@@ -618,12 +632,11 @@ output(Urp *up)
 
 	/*
 	 *  if there's a window open, push some blocks out
+	 *
+	 *  the lock is to synchronize with acknowledges that free
+	 *  blocks.
 	 */
-	if(up->rexmit){
-		up->rexmit = 0;
-		up->next = up->unechoed;
-	}
-	while(WINDOW(up)>0 && up->xb[up->next]!=0){
+	while(WINDOW(up)>0 && up->next!=up->nxb){
 		i = up->next;
 		qlock(&up->xl[i]);
 		if(waserror()){
@@ -722,6 +735,10 @@ sendblock(Urp *up, int bn)
 	 *  message 1, the BOT and the data
 	 */
 	bp = up->xb[bn];
+	if(bp == 0){
+		urpvomit("sendblock", up);
+		return;
+	}
 	m = allocb(1);
 	m->rptr = m->lim - 1;
 	m->wptr = m->lim;
@@ -768,6 +785,8 @@ rcvack(Urp *up, int msg)
 			qlock(&up->xl[i]);
 			if(up->xb[i])
 				freeb(up->xb[i]);
+			else
+				urpvomit("rcvack", up);
 			up->xb[i] = 0;
 			qunlock(&up->xl[i]);
 		}
@@ -923,4 +942,32 @@ urpkproc(void *arg)
 	up->state = 0;
 	up->kstarted = 0;
 	DPRINT("urpkproc %ux\n", up);
+}
+
+/*
+ *  urp got very confused, complain
+ */
+static void
+urpvomit(char *msg, Urp* up)
+{
+	print("urpvomit: %s %ux next %d unechoed %d unacked %d nxb %d\n",
+		msg, up, up->next, up->unechoed, up->unacked, up->nxb);
+	print("\txb: %ux %ux %ux %ux %ux %ux %ux %ux\n",
+		up->xb[0], up->xb[1], up->xb[2], up->xb[3], up->xb[4], 
+		up->xb[5], up->xb[6], up->xb[7]);
+	print("\tiseq: %uo lastecho: %uo trx: %d trbuf: %uo %uo %uo\n",
+		up->iseq, up->lastecho, up->trx, up->trbuf[0], up->trbuf[1],
+		up->trbuf[2]);
+	print("\tupq: %ux %d %d\n", up->rq->next->first,  up->rq->next->nb,
+		up->rq->next->len);
+}
+
+int
+urpdump(void)
+{
+	Urp *up;
+
+	for(up = urp; up < &urp[Nurp]; up++)
+		if(up->rq)
+			urpvomit("", up);
 }

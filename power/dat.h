@@ -17,7 +17,12 @@ typedef struct Lock	Lock;
 typedef struct Mach	Mach;
 typedef struct Mount	Mount;
 typedef struct Mtab	Mtab;
+typedef struct Noconv	Noconv;
+typedef struct Nohdr	Nohdr;
+typedef struct Noifc	Noifc;
 typedef struct Note	Note;
+typedef struct Nomsg	Nomsg;
+typedef struct Nocall	Nocall;
 typedef struct Orig	Orig;
 typedef struct PTE	PTE;
 typedef struct Page	Page;
@@ -137,6 +142,8 @@ struct Conf
 	ulong	nqueue;		/* stream queues */
 	ulong	nblock;		/* stream blocks */
 	ulong	nsrv;		/* public servers (devsrv.c) */
+	ulong	nnoifc;		/* number of nonet interfaces */
+	ulong	nnoconv;	/* number of nonet conversations/ifc */
 };
 
 struct Dev
@@ -435,7 +442,8 @@ struct Queue {
  */
 struct Stream {
 	Lock;			/* structure lock */
-	int	inuse;		/* use count */
+	int	inuse;		/* number of processes in stream */
+	int	opens;		/* number of processes with stream open */
 	int	hread;		/* number of reads after hangup */
 	int	type;		/* correclation with Chan */
 	int	dev;		/* ... */
@@ -444,7 +452,6 @@ struct Stream {
 	QLock	wrlock;		/* write lock */
 	Queue	*procq;		/* write queue at process end */
 	Queue	*devq;		/* read queue at device end */
-	char	tag[32];	/* when reading the tag qid */
 };
 #define	RD(q)		((q)->other < (q) ? (q->other) : q)
 #define	WR(q)		((q)->other > (q) ? (q->other) : q)
@@ -467,6 +474,119 @@ enum {
 	Slowqid = Sctlqid,
 	Streamhi= (17*1024),	/* byte count high water mark */
 	Streambhi= 16,		/* block count high water mark */
+};
+
+/*
+ *  nonet constants
+ */
+enum {
+	Nnomsg = 128,		/* max number of outstanding messages */
+	Nnocalls = 5,		/* maximum queued incoming calls */
+};
+
+/*
+ *  generic nonet header
+ */
+struct Nohdr {
+	uchar	circuit[3];	/* circuit number */
+	uchar	flag;
+	uchar	mid;		/* message id */
+	uchar	ack;		/* piggy back ack */
+	uchar	remain[2];	/* count of remaing bytes of data */
+	uchar	sum[2];		/* checksum (0 means none) */
+};
+#define HDRSIZE 10
+#define NEWCALL	0x1		/* flag bit marking a new circuit */
+#define HANGUP 0x2		/* flag bit requesting hangup */
+#define ACKME 0x4		/* acknowledge this message */
+
+/*
+ *  a buffer describing a nonet message
+ */
+struct Nomsg {
+	QLock;
+	Blist;
+	int	mid;		/* sequence number */
+	int	rem;		/* remaining */
+	long	time;
+	int	acked;
+};
+
+/*
+ *  one exists for each Nonet conversation.
+ */
+struct Noconv {
+	QLock;
+
+	Queue	*rq;		/* input queue */
+	int	version;	/* incremented each time struct is changed */
+	int	state;		/* true if listening */
+
+	Nomsg	in[Nnomsg];	/* messages being received */
+	int	rcvcircuit;	/* circuit number of incoming packets */
+
+	uchar	ack[Nnomsg];	/* acknowledgements waiting to be sent */
+	long	atime[Nnomsg];
+	int	afirst;
+	int	anext;
+
+	QLock	xlock;		/* one trasmitter at a time */
+	Rendez	r;		/* process waiting for an output mid */
+	Nomsg	ctl;		/* for control messages */
+	Nomsg	out[Nnomsg];	/* messages being sent */
+	int	first;		/* first unacknowledged message */
+	int	next;		/* next message buffer to use */
+	int	lastacked;	/* last message acked */		
+	Block	*media;		/* prototype media output header */
+	Nohdr	*hdr;		/* nonet header inside of media header */
+
+	Noifc	*ifc;
+	int	kstarted;
+	char	raddr[64];	/* remote address */
+	int	rexmit;		/* statistics */
+	int	retry;
+	int	bad;
+	int	sent;
+	int	rcvd;
+};
+
+/*
+ *  an incoming call
+ */
+struct Nocall {
+	Block	*msg;
+	char	raddr[64];
+	long	circuit;
+};
+
+/*
+ *  a nonet interface.  one exists for every stream that a 
+ *  nonet multiplexor is pushed onto.
+ */
+struct Noifc {
+	Lock;
+	int	ref;
+	char	name[64];	/* interface name */		
+	Queue	*wq;		/* interface output queue */
+	Noconv	*conv;
+
+	/*
+	 *  media dependent
+	 */
+	int	maxtu;		/* maximum transfer unit */
+	int	mintu;		/* minimum transfer unit */
+	int	hsize;		/* media header size */
+	void	(*connect)(Noconv *, char *);
+
+	/*
+	 *  calls and listeners
+	 */
+	QLock	listenl;
+	Rendez	listenr;
+	Lock	lock;
+	Nocall	call[Nnocalls];
+	int	rptr;
+	int	wptr;
 };
 
 #define	PRINTSIZE	256

@@ -17,7 +17,7 @@ static struct
 
 typedef struct IOQ	IOQ;
 
-#define	NQ	4096
+#define	NQ	1024
 struct IOQ{
 	union{
 		Lock;
@@ -31,6 +31,8 @@ struct IOQ{
 };
 
 IOQ	lineq;
+IOQ	rs232iq;
+IOQ	rs232oq;
 
 struct{
 	IOQ;		/* qlock to getc; interrupt putc's */
@@ -50,12 +52,20 @@ printinit(void)
 
 	kbdq.in = kbdq.buf;
 	kbdq.out = kbdq.buf;
+	rs232iq.in = rs232iq.buf;
+	rs232iq.out = rs232iq.buf;
+	rs232oq.in = rs232oq.buf;
+	rs232oq.out = rs232oq.buf;
 	lineq.in = lineq.buf;
 	lineq.out = lineq.buf;
 	qlock(&kbdq);		/* allocate qlock */
 	qunlock(&kbdq);
 	lock(&lineq);		/* allocate lock */
 	unlock(&lineq);
+	lock(&rs232iq);		/* allocate lock */
+	unlock(&rs232iq);
+	lock(&rs232oq);		/* allocate lock */
+	unlock(&rs232oq);
 
 	screeninit();
 }
@@ -112,6 +122,14 @@ getc(IOQ *q)
 	if(q->out == q->buf+sizeof(q->buf))
 		q->out = q->buf;
 	return c;
+}
+
+void
+putc(IOQ *q, int c)
+{
+	*q->in++ = c;
+	if(q->in == q->buf+sizeof(q->buf))
+		q->in = q->buf;
 }
 
 int
@@ -184,12 +202,15 @@ echo(int c)
 	 */
 	if(c == 0x14)
 		DEBUG();
+	if(c == 0x16){
+		incontoggle();
+		urpdump();
+		dumpqueues();
+	}
 	if(raw.ref)
 		return;
 	if(c == 0x15)
 		putstrn("^U\n", 3);
-	if(c == 0x16)
-		dumpqueues();
 	else{
 		ch = c;
 		putstrn(&ch, 1);
@@ -235,6 +256,26 @@ kbdclock(void)
 		kbdchar(kbdq.c);
 }
 
+void
+rs232ichar(int c)
+{
+	*rs232iq.in++ = c;
+	if(rs232iq.in == rs232iq.buf+sizeof(rs232iq.buf))
+		rs232iq.in = rs232iq.buf;
+	wakeup(&rs232iq.r);
+}
+
+int
+getrs232o(void)
+{
+	int c;
+
+	c = getc(&rs232oq);
+	if(c == -1)
+		rs232oq.state = 0;
+	return c;
+}
+
 int
 consactive(void)
 {
@@ -253,6 +294,7 @@ enum{
 	Qpid,
 	Qppid,
 	Qrcons,
+	Qrs232,
 	Qtime,
 	Quser,
 };
@@ -265,6 +307,7 @@ Dirtab consdir[]={
 	"pid",		Qpid,		12,	0600,
 	"ppid",		Qppid,		12,	0600,
 	"rcons",	Qrcons,		0,	0600,
+	"rs232",	Qrs232,		0,	0600,
 	"time",		Qtime,		12,	0600,
 	"user",		Quser,		0,	0600,
 };
@@ -356,7 +399,7 @@ consopen(Chan *c, int omode)
 			error(0, Eperm);
 	}
 	if(c->qid == Qrcons)
-		if(incref(&raw) == 0){
+		if(incref(&raw) == 1){
 			lock(&lineq);
 			while((ch=getc(&kbdq)) != -1){
 				*lineq.in++ = ch;
@@ -446,6 +489,22 @@ consread(Chan *c, void *buf, long n)
 		qunlock(&kbdq);
 		return i;
 
+	case Qrs232:
+		qlock(&rs232iq);
+		if(waserror()){
+			qunlock(&rs232iq);
+			nexterror();
+		}
+		while(!cangetc(&rs232iq))
+			sleep(&rs232iq.r, (int(*)(void*))cangetc, &rs232iq);
+		for(i=0; i<n; i++){
+			if((ch=getc(&rs232iq)) == -1)
+				break;
+			*cbuf++ = ch;
+		}
+		qunlock(&rs232iq);
+		return i;
+
 	case Qcputime:
 		k = c->offset;
 		if(k >= sizeof tmp)
@@ -513,6 +572,20 @@ conswrite(Chan *c, void *va, long n)
 		}
 		break;
 
+	case Qrs232:
+		qlock(&rs232oq);
+		l = n;
+		while(--l >= 0)
+			putc(&rs232oq, *a++);
+		splhi();
+		if(rs232oq.state == 0){
+			rs232oq.state = 1;
+			duartstartrs232o();
+		}
+		spllo();
+		qunlock(&rs232oq);
+		break;
+
 	case Qtime:
 		if(n<=0 || boottime!=0)	/* only one write please */
 			return 0;
@@ -571,22 +644,3 @@ consuserstr(Error *e, char *buf)
 {
 	strcpy(buf, u->p->pgrp->user);
 }
-
-typedef struct Incon{
-	unsigned char	cdata;		unsigned char u0;
-	unsigned char	cstatus;	unsigned char u1;
-	unsigned char	creset;		unsigned char u2;
-	unsigned char	csend;		unsigned char u3;
-	unsigned short	data_cntl;	/* data is high byte, cntl is low byte */
-	unsigned char	status;		unsigned char u5;
-	unsigned char	reset;		unsigned char u6;
-	unsigned char	send;		unsigned char u7;
-}Incon;
-
-/*
-inconintr(Ureg *ur)
-{
-	int x;
-	x = ((Incon*)0x40700000)->status;
-}
-*/

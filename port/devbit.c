@@ -128,7 +128,7 @@ Dirtab bitdir[]={
 };
 
 #define	NBIT	(sizeof bitdir/sizeof(Dirtab))
-#define	NINFO	150
+#define	NINFO	257
 
 void
 bitreset(void)
@@ -277,7 +277,8 @@ bitread(Chan *c, void *va, long n)
 	uchar *p, *q;
 	long miny, maxy, t, x, y;
 	ulong l, nw, ws;
-	int off;
+	int off, j;
+	Fontchar *i;
 	Bitmap *src;
 
 	if(c->qid & CHDIR)
@@ -322,6 +323,9 @@ bitread(Chan *c, void *va, long n)
 			 *	'I'		1
 			 *	ldepth		1
 			 * 	rectangle	16
+			 * if count great enough, also
+			 *	font info	3*12
+			 *	fontchars	6*(defont->n+1)
 			 */
 			if(n < 18)
 				error(0, Ebadblt);
@@ -331,8 +335,22 @@ bitread(Chan *c, void *va, long n)
 			PLONG(p+6, screen.r.min.y);
 			PLONG(p+10, screen.r.max.x);
 			PLONG(p+14, screen.r.max.y);
+			if(n >= 18+3*12+6*(defont->n+1)){
+				p += 18;
+				sprint((char*)p, "%11d %11d %11d ", defont->n,
+					defont->height, defont->ascent);
+				p += 3*12;
+				for(i=defont->info,j=0; j<=defont->n; j++,i++,p+=6){
+					PSHORT(p, i->x);
+					p[2] = i->top;
+					p[3] = i->bottom;
+					p[4] = i->left;
+					p[5] = i->width;
+				}
+				n = 18+3*12+6*(defont->n+1);
+			}else
+				n = 18;
 			bit.init = 0;
-			n = 18;
 			break;
 		}
 		if(bit.lastid > 0){

@@ -32,6 +32,8 @@ Chan*
 pipeattach(char *spec)
 {
 	Chan *c;
+	int i;
+
 	/*
 	 *  make the first stream
 	 */
@@ -59,8 +61,19 @@ pipeclone(Chan *c, Chan *nc)
 	/*
 	 *  attach it to the first
 	 */
+	c->stream->devq->ptr = (Stream *)nc->stream;
+	nc->stream->devq->ptr = (Stream *)c->stream;
 	c->stream->devq->other->next = nc->stream->devq;
 	nc->stream->devq->other->next = c->stream->devq;
+
+	/*
+	 *  up the inuse count of each stream to reflect the
+	 *  pointer from the other stream.
+	 */
+	if(streamenter(c->stream)<0)
+		panic("pipeattach");
+	if(streamenter(nc->stream)<0)
+		panic("pipeattach");
 	return nc;
 }
 
@@ -110,7 +123,17 @@ pipewstat(Chan *c, char *db)
 void
 pipeclose(Chan *c)
 {
-	streamclose(c);
+	Stream *other;
+
+	other = (Stream *)c->stream->devq->ptr;
+
+	if(waserror()){
+		streamexit(other, 0);
+		nexterror();
+	}
+	streamclose(c);		/* close this stream */
+	streamexit(other, 0);	/* release stream for other half of pipe */
+	poperror();
 }
 
 long
@@ -164,14 +187,7 @@ pipeiput(Queue *q, Block *bp)
 static void
 pipeoput(Queue *q, Block *bp)
 {
-	lock(q);
-	if(q->next)
-		pipeiput(q->next, bp);
-	else{
-		print("pipeoput losing block\n");
-		freeb(bp);
-	}
-	unlock(q);
+	PUTNEXT(q, bp);
 }
 
 /*
@@ -193,29 +209,7 @@ pipestclose(Queue *q)
 	 *  send a hangup
 	 */
 	q = q->other;
-	lock(q);
-	if(q->next){
-		bp = allocb(0);
-		bp->type = M_HANGUP;
-		pipeiput(q->next, bp);
-	}
-	unlock(q);
-
-	/*
-	 *  disconnect (possible livelock?)
-	 */
-	for(;;){
-		lock(q);
-		if(q->next){
-			if(!canlock(q->next->other)){
-				unlock(q);
-				continue;
-			}
-			q->next->other->next = 0;
-			unlock(q->next->other);
-			q->next = 0;
-		}
-		unlock(q);
-		break;
-	}
+	bp = allocb(0);
+	bp->type = M_HANGUP;
+	PUTNEXT(q, bp);
 }

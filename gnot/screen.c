@@ -183,7 +183,7 @@ duartinit(void)
 	duart[0].sr_csr = BD4800;
 
 	/*
-	 * Pen
+	 * RS232
 	 */
 	duart[1].cmnd = RESET_RCV|DIS_TX|DIS_RX;
 	duart[1].cmnd = RESET_TRANS;
@@ -191,7 +191,7 @@ duartinit(void)
 	duart[1].cmnd = RESET_MR;
 	duart[1].mr1_2 = CHAR_ERR|NO_PAR|CBITS8;
 	duart[1].mr1_2 = NORM_OP|ONESTOPB;
-	duart[1].sr_csr = BD2400;
+	duart[1].sr_csr = BD9600;
 
 	/*
 	 * Output port
@@ -240,6 +240,27 @@ duartstoptimer(void)
 }
 
 void
+duartrs232intr(void)
+{
+	int c;
+	Duart *duart;
+
+	duart = DUARTREG;
+	c = getrs232o();
+	if(c == -1)
+		duart[1].cmnd = DIS_TX;
+	else
+		duart[1].data = c;
+}
+
+void
+duartstartrs232o(void)
+{
+	DUARTREG[1].cmnd = ENB_TX;
+	duartrs232intr();
+}
+
+void
 duartintr(Ureg *ur)
 {
 	int cause, status, c;
@@ -282,14 +303,19 @@ duartintr(Ureg *ur)
 	/*
 	 * Is it 2?
 	 */
-	if(cause & IM_RRDYB)		/* pen input */
+	if(cause & IM_RRDYB){		/* rs232 input */
+		status = duart[1].sr_csr;
 		c = duart[1].data;
+		if(status & (FRM_ERR|OVR_ERR|PAR_ERR))
+			duart[1].cmnd = RESET_ERR;
+		else
+			rs232ichar(c);
+	}
 	/*
 	 * Is it 3?
 	 */
-	if(cause & IM_XRDYB){
-		duart[1].cmnd = DIS_TX;
-	}
+	if(cause & IM_XRDYB)		/* rs232 output */
+		duartrs232intr();
 	/*
 	 * Is it 4?
 	 */

@@ -21,6 +21,8 @@ Conftab conftab[] = {
 	{"nqueue", &conf.nqueue },
 	{"nblock", &conf.nblock },
 	{"nsrv", &conf.nsrv },
+	{"nnoifc", &conf.nnoifc },
+	{"nnoconv", &conf.nnoconv },
 	{ 0, 0 },
 };
 
