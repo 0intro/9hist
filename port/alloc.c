@@ -15,7 +15,6 @@
  * be used for small frequently used structures.
  */
 
-#define	nil		((void*)0)
 #define datoff		((ulong)((Xhdr*)0)->data)
 #define bdatoff		((ulong)((Bucket*)0)->data)
 

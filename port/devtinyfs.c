@@ -160,7 +160,7 @@ validdir(Tfs *fs, uchar *p)
 }
 
 static Mdata*
-validdata(Tfs *fs, uchar *p)
+validdata(Tfs *fs, uchar *p, int *lenp)
 {
 	Mdata *md;
 	ulong x;
@@ -173,25 +173,31 @@ validdata(Tfs *fs, uchar *p)
 		x = GETS(md->bno);
 		if(x >= fs->nblocks)
 			return 0;
+		if(lenp)
+			*lenp = Dlen;
 		break;
 	case Tagend:
 		x = GETS(md->bno);
-		if(x > Blen - 4)
+		if(x > Dlen)
 			return 0;
+		if(lenp)
+			*lenp = x;
 		break;
 	}
 	return md;
 }
 
 static Mdata*
-readdata(Tfs *fs, ulong bno, uchar *buf)
+readdata(Tfs *fs, ulong bno, uchar *buf, int *lenp)
 {
+	Mdata *md;
+
 	if(bno >= fs->nblocks)
 		return 0;
 	n = devtab[fs->c->type].read(fs->c, buf, Blen, Blen*bno);
 	if(n != Blen)
 		return 0;
-	return validdata(fs, buf);
+	return validdata(fs, buf, lenp);
 }
 
 static int
@@ -230,7 +236,7 @@ freefile(Tfs *fs, Tfile *f, ulong bend)
 		n = devtab[fs->c->type].read(fs->c, buf, Blen, Blen*bno);
 		if(n != Blen)
 			break;
-		md = validdata(buf);
+		md = validdata(fs, buf, 0);
 		if(md == 0)
 			break;
 		if(md->type == Tagend)
@@ -259,7 +265,7 @@ expand(Tfs *fs)
 	fs->fsize += 8;
 	f = smalloc(fs->fsize*sizeof(*f));
 
-	memmove(f, fs->f, fs->nf*sizoef(f));
+	memmove(f, fs->f, fs->nf*sizeof(f));
 	free(fs->f);
 	fs->f = f;
 }
@@ -305,7 +311,8 @@ newfile(Tfs *fs, char *name)
 
 /*
  *  Read the whole medium and build a file table and used
- *  block bitmap.  Inconsistent files are purged.
+ *  block bitmap.  Inconsistent files are purged.  The medium
+ *  had better be small or this could take a while.
  */
 static void
 fsinit(Tfs *fs)
@@ -313,7 +320,7 @@ fsinit(Tfs *fs)
 	uchar buf[Blen+DIRLEN];
 	Dir d;
 	ulong x, bno;
-	int n;
+	int n, done;
 	Tfile *f;
 	Mdir *mdir;
 	Mdata *mdat;
@@ -341,7 +348,7 @@ fsinit(Tfs *fs)
 		if(mdir == 0)
 			continue;
 
-		if(fs->nfs <= fs->fsize)
+		if(fs->nfs >= fs->fsize)
 			expand(fs);
 
 		f = &fs->f[fs->nf++];
@@ -355,9 +362,9 @@ fsinit(Tfs *fs)
 	}
 
 	/* follow files */
-	for(f = fs->f; f; f = f->next){
+	for(f = fs->f; f < &(fs->f[fs->nf]); f++){
 		bno = fs->dbno;
-		for(;;) {
+		for(done = 0; !done;) {
 			if(isalloced(fs, bno)){
 				freefile(f, bno);
 				break;
@@ -367,7 +374,7 @@ fsinit(Tfs *fs)
 				freefile(fs, f, bno);
 				break;
 			}
-			mdata = validdata(fs, buf);
+			mdata = validdata(fs, buf, 0);
 			if(mdata == 0){
 				freefile(fs, f, bno);
 				break;
@@ -380,8 +387,11 @@ fsinit(Tfs *fs)
 				break;
 			case Tagend:
 				f->len += GETS(mdata->bno);
+				done = 1;
 				break;
 			}
+			if(done)
+				f->flag &= ~Fcreating;
 		}
 	}
 }
@@ -569,7 +579,7 @@ tinyfsclose(Chan *c)
 		f = &fs->f[c->qid.path];
 		f->r--;
 		if(f->r == 0){
-			if(f->creating){
+			if(f->flag & Fcreating){
 				/* remove all other files with this name */
 				for(i = 0; i < fs->fsize; i++){
 					nf = &fs->f[i];
@@ -601,7 +611,7 @@ tinyfsclose(Chan *c)
 			}
 			l = &(*l)->next;
 		}
-		free(fs-f);
+		free(fs->f);
 		free(fs->map);
 		close(fs->c);
 		memset(fs, 0, sizeof(*fs));
@@ -618,9 +628,10 @@ tinyfsread(Chan *c, void *a, long n, ulong offset)
 	ulong bno, tbno;
 	Mdata *md;
 	uchar buf[Blen];
+	uchar *p = a;
 
 	if(c->qid.path & CHDIR)
-		return devdirread(c, a, n, tinyfstab, Ntinyfstab, tinyfsgen);
+		return devdirread(c, a, n, 0, 0, tinyfsgen);
 
 	fs = tinyfs.fs[c->dev];
 	f = &fs->f[c->qid.path];
@@ -629,23 +640,33 @@ tinyfsread(Chan *c, void *a, long n, ulong offset)
 	if(n + offset >= f->length)
 		n = f->length - offset;
 
-	/* walk to first data block */
+	/* walk to starting data block */
 	bno = f->dbno;
-	for(sofar = 0; sofar < offset; sofar += Blen){
-		md = readdata(fs, bno, buf);
+	for(sofar = 0; sofar + Blen < offset; sofar += Blen){
+		md = readdata(fs, bno, buf, 0);
 		if(md == 0)
 			error(Eio);
 		bno = GETS(md->bno);
 	}
 
-	/* read first block */
-	i = offset%Blen;
-
 	/* read data */
-	for(sofar = 0; sofar+Blen < offset; sofar += Blen){
-	
+	offset = offset%Blen;
+	for(sofar = 0; sofar < n; sofar += i){
+		md = readdata(fs, bno, buf, &i);
+		if(md == 0)
+			error(Eio);
+		i -= offset;
+		if(i > n)
+			i = n;
+		if(i < 0)
+			break;
+		memmove(p, md->data, i);
+		p += i;
+		bno = GETS(md->bno);
+		offset = 0;
+	}
 
-	return n;
+	return sofar;
 }
 
 Block*
@@ -657,20 +678,44 @@ tinyfsbread(Chan *c, long n, ulong offset)
 long
 tinyfswrite(Chan *c, char *a, long n, ulong offset)
 {
-	if(waserror()){
-		qunlock(&tinyfs);
-		nexterror();
-	}
-	qlock(&tinyfs);
-	qunlock(&tinyfs);
+	Tfs *fs;
+	Tfile *f;
+	int sofar, i;
+	ulong bno, tbno;
+	Mdata *md;
+	uchar buf[Blen];
+	uchar *p = a;
 
-	switch(c->qid.path & ~CHDIR){
-	case Qdata:
-		break;
-	default:
-		error(Ebadusefd);
+	if(c->qid.path & CHDIR)
+		error(Eperm);
+
+	fs = tinyfs.fs[c->dev];
+	f = &fs->f[c->qid.path];
+
+	/* walk to first data block */
+	bno = f->dbno;
+	for(sofar = 0; sofar + Blen < offset; sofar += Blen){
+		md = readdata(fs, bno, buf, 0);
+		if(md == 0)
+			error(Eio);
+		bno = GETS(md->bno);
 	}
-	return n;
+
+	/* write data */
+	offset = offset%Blen;
+	for(sofar = 0; sofar < n; sofar += i){
+		md = readdata(fs, bno, buf, 0);
+		if(md == 0)
+			error(Eio);
+		i = Blen - offset;
+		if(i > n)
+			i = n;
+		memmove(p, a, i);
+		bno = GETS(md->bno);
+		offset = 0;
+	}
+
+	return sofar;
 }
 
 long
