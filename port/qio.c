@@ -149,7 +149,7 @@ iallocb(int size)
 	}
 
 	n = sizeof(Block) + size + (BY2V-1);
-	b = mallocz(n, 0);
+	b = mallocz(n+Hdrspc, 0);
 	if(b == nil){
 		iprint("iallocb: no memory %d/%d\n", ialloc.bytes, conf.ialloc);
 		return nil;

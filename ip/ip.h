@@ -129,6 +129,7 @@ struct Media
 
 	Media*	link;
 };
+int	Mediabooting(void);
 int	Mediaforme(byte*);
 int	Mediaforpt2pt(byte*);
 Ipaddr	Mediagetsrc(byte*);
@@ -266,6 +267,7 @@ Ifcconv* newifcconv(void);
 ulong	nhgetl(byte*);
 ushort	nhgets(byte*);
 void	(*pktifcrcv)(Conv*, Block*);
+ushort	ptclbsum(byte*, int);
 ushort	ptclcsum(Block*, int, int);
 int	pullblock(Block**, int);
 Block*	pullupblock(Block*, int);

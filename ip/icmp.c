@@ -137,6 +137,10 @@ icmpnoconv(Block *bp)
 	Block	*nbp;
 	Icmp	*p, *np;
 
+	/* don't bother if we haven't gotten any links up yet */
+	if(Mediabooting())
+		return;
+
 	p = (Icmp *)bp->rp;
 	nbp = allocb(ICMP_IPSIZE + ICMP_HDRSIZE + ICMP_IPSIZE + 8);
 	nbp->wp += ICMP_IPSIZE + ICMP_HDRSIZE + ICMP_IPSIZE + 8;
