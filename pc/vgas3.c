@@ -567,15 +567,20 @@ s3drawinit(VGAscr *scr)
 	 * above.
 	 */
 	switch(id){
-	case VIRGE:				/* ViRGE */
-	case VIRGEVX:				/* ViRGE/VX */
-	case VIRGEGX2:				/* ViRGE/GX2 */
+	case VIRGE:
+	case VIRGEVX:
+	case VIRGEGX2:
 		scr->mmio = (ulong*)(scr->aperture+0x1000000);
 		scr->fill = hwfill;
 		scr->scroll = hwscroll;
 		/* scr->blank = hwblank; */
 		break;
+	case SAVAGEIXMV:
+		scr->mmio = (ulong*)(scr->aperture+0x1000000);
+		savageinit(scr);	
+		break;
 	case SAVAGE4:
+		/* scr->mmio is set by s3linear */
 		savageinit(scr);
 		break;
 	}

@@ -69,7 +69,7 @@ enum {
  * 32-bit reads of the status registers seem just fine.
  */
 
-/* 2D graphics engine registers */
+/* 2D graphics engine registers for Savage4; others appear to be mostly the same */
 enum {
 	SubsystemStatus = 0x8504,	/* Subsystem Status: read only */
 	  /* read only: whether we get interrupts on various events */
@@ -344,21 +344,49 @@ enum {
 
 };
 
+struct {
+	ulong idletimeout;
+} savagestats;
+
 enum {
-	Maxloop = 1<<23
+	Maxloop = 1<<25
 };
 
 static void
 savagewaitidle(VGAscr *scr)
 {
 	long x;
-	ulong *statw;
+	ulong *statw, mask, goal;
 
-	statw = (ulong*)((uchar*)scr->mmio+AltStatus0);
+	switch(scr->id){
+	case SAVAGE4:
+		statw = (ulong*)((uchar*)scr->mmio+AltStatus0);
+		mask = Ge2Idle;
+		goal = 0;
+		break;
+	/* case SAVAGEMXMV: ? */
+	/* case SAVAGEMX: ? */
+	/* case SAVAGEIXMV: ? */
+	/* case SAVAGEIX: ? */
+	case SAVAGEIXMV:
+		/* wait for engine idle and FIFO empty */
+		statw = (ulong*)((uchar*)scr->mmio+XStatus0);
+		mask = 0x0008FFFF;
+		goal = 0x00080000;
+		break;
+	default:
+		/* 
+		 * best we can do: can't print or we'll call ourselves.
+		 * savageinit is supposed to not let this happen.
+		 */	
+		return;
+	}
 
 	for(x=0; x<Maxloop; x++)
-		if(*statw & Ge2Idle)
+		if((*statw & mask) == goal)
 			return;
+
+	savagestats.idletimeout++;
 }
 
 static int
@@ -429,12 +457,22 @@ savageinit(VGAscr *scr)
 	uchar *mmio;
 	ulong bd;
 
-	mmio = (uchar*)scr->mmio;
+	/* if you add chip IDs here be sure to update savagewaitidle */
+	switch(scr->id){
+	case SAVAGE4:
+	case SAVAGEIXMV:
+		break;
+	default:
+		print("unknown savage %.4lux\n", scr->id);
+		return;
+	}
 
+	mmio = (uchar*)scr->mmio;
 	if(mmio == nil) {
 		print("savageinit: no mmio\n");
 		return;
 	}
+
 	/* 2D graphics engine software reset */
 	*(ushort*)(mmio+SubsystemCtl) = GeSoftReset;
 	delay(2);

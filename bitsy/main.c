@@ -14,7 +14,7 @@ Conf conf;
 void
 main(void)
 {
-
+	putuartstr("hello ken");
 }
 
 /*
@@ -23,7 +23,10 @@ main(void)
 void
 exit(int ispanic)
 {
-	USED(ispanic);
+	void (*f)();
+
+	f = nil;
+	(*f)();
 }
 
 /*

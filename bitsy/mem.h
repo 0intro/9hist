@@ -33,13 +33,26 @@
 #define MACHADDR	(KZERO+0x00001000)
 
 /*
- *  Address spaces
+ *  Address spaces:
+ *
+ *  We've direct mapped the DRAM's and all the
+ *  special use space.  Since the DRAM's lie at
+ *  0xc0000000 and since the Compaq boot loader
+ *  copies the kernel to the start of DRAM, we've
+ *  made KZERO 0xc0000000.  We've also direct mapped
+ *  the special use io space between 0x8000000 and KZERO.
+ *  That means we can leave the MMU off till we're pretty
+ *  far into the boot.
+ *
+ *  Both these decisions can be changed by putting an MMU setup in
+ *  l.s and changing the definitions below.
  */
 #define	UZERO		0			/* base of user address space */
 #define	UTZERO		(UZERO+BY2PG)		/* first address in user text */
 #define	KZERO		0xC0000000		/* base of kernel address space */
 #define	KTZERO		0xC0008000		/* first address in kernel text */
-#define	USTKTOP		(KZERO-BY2PG)		/* byte just beyond user stack */
+#define	IOZERO		0x80000000		/* 1 gig of special regs */
+#define	USTKTOP		(IOZERO-BY2PG)		/* byte just beyond user stack */
 #define	USTKSIZE	(16*1024*1024)		/* size of user stack */
 #define	TSTKTOP		(USTKTOP-USTKSIZE)	/* end of new stack in sysexec */
 #define TSTKSIZ 	100

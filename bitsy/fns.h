@@ -15,6 +15,7 @@ int	iprint(char*, ...);
 #define	procrestore(p)
 void	procsave(Proc*);
 void	procsetup(Proc*);
+void	putuartstr(char*);
 void	screeninit(void);
 int	screenprint(char*, ...);			/* debugging */
 void	(*screenputs)(char*, int);
