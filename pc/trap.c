@@ -32,6 +32,8 @@ enum
 	Int1aux=	0xA1,		/* everything else (ICW2, ICW3, ICW4, OCW1) */
 
 	EOI=		0x20,		/* non-specific end of interrupt */
+
+	Maxhandler=	128,		/* max number of interrupt handlers */
 };
 
 int	int0mask = 0xff;	/* interrupts enabled for first 8259 */
@@ -41,7 +43,21 @@ int	int1mask = 0xff;	/* interrupts enabled for second 8259 */
  *  trap/interrupt gates
  */
 Segdesc ilt[256];
-void	(*ivec[256])(void*);
+
+typedef struct Handler	Handler;
+struct Handler
+{
+	void	(*r)(void*);
+	Handler	*next;
+};
+
+struct
+{
+	Lock;
+	Handler	*ivec[256];
+	Handler	h[Maxhandler];
+	int	free;
+} halloc;
 
 void
 sethvec(int v, void (*r)(void), int type, int pri)
@@ -53,7 +69,16 @@ sethvec(int v, void (*r)(void), int type, int pri)
 void
 setvec(int v, void (*r)(Ureg*))
 {
-	ivec[v] = r;
+	Handler *h;
+
+	lock(&halloc);
+	if(halloc.free >= Maxhandler)
+		panic("out of interrupt handlers");
+	h = &halloc.h[halloc.free++];
+	h->next = halloc.ivec[v];
+	h->r = r;
+	halloc.ivec[v] = h;
+	unlock(&halloc);
 
 	/*
 	 *  enable corresponding interrupt in 8259
@@ -201,6 +226,7 @@ trap(Ureg *ur)
 	int v, user;
 	int c;
 	char buf[ERRLEN];
+	Handler *h;
 
 	v = ur->trap;
 
@@ -222,7 +248,7 @@ trap(Ureg *ur)
 			uartintr0(ur);
 	}
 
-	if(v>=256 || ivec[v] == 0){
+	if(v>=256 || (h = halloc.ivec[v]) == 0){
 		if(v == 13)
 			return;
 		if(v <= 16){
@@ -239,7 +265,10 @@ trap(Ureg *ur)
 		return;
 	}
 
-	(*ivec[v])(ur);
+	do {
+		(*h->r)(ur);
+		h = h->next;
+	} while(h);
 
 	/*
 	 *  check user since syscall does its own notifying
