@@ -208,6 +208,8 @@ char *regname[]={
 	"R30",	"R31",
 };
 
+static int lastecode;
+
 void
 trap(Ureg *ur)
 {
@@ -272,6 +274,7 @@ trap(Ureg *ur)
 			panic("%s", excname[ecode]);
 		panic("unknown trap/intr: %d\n", ecode);
 	}
+lastecode = ecode;
 
 	if(user && (up->procctl || up->nnote)){
 		splhi();
@@ -295,6 +298,8 @@ faultpower(Ureg *ureg, ulong addr, int read)
 			dumpregs(ureg);
 			panic("fault: 0x%lux", addr);
 		}
+dumpregs(ureg);
+print("last ecode %x\n", lastecode);
 		sprint(buf, "sys: trap: fault %s addr=0x%lux", read? "read" : "write", addr);
 		postnote(up, 1, buf, NDebug);
 	}

@@ -349,6 +349,7 @@ TEXT	trapvec(SB), $-4
 	MOVW	R0, R2
 	BL	saveureg(SB)
 	BL	trap(SB)
+//	BL	splhi(SB)					/* BUG? */
 	BR	restoreureg
 ktrap:
 	MOVW	R1, CR
@@ -357,6 +358,7 @@ ktrap:
 	SUB	$UREGSPACE, R1
 	BL	saveureg(SB)
 	BL	trap(SB)
+//	BL	splhi(SB)					/* BUG? */
 	BR	restoreureg
 
 /*
