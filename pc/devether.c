@@ -103,15 +103,36 @@ etherwstat(Chan *c, char *dp)
 void
 etherrloop(Ether *ctlr, Etherpkt *pkt, long len, int tome)
 {
+	Block *bp;
 	ushort type;
+	int i;
 	Netfile *f, **fp, **ep;
 
 	type = (pkt->type[0]<<8)|pkt->type[1];
 	ep = &ctlr->f[Ntypes];
 	for(fp = ctlr->f; fp < ep; fp++){
-		if((f = *fp) && ((tome && f->type==type) || f->type < 0))
-			if(qproduce(f->in, pkt->d, len) < 0)
-				ctlr->soverflows++;
+		if((f = *fp) && ((tome && f->type==type) || f->type < 0)){
+			if(f->type > -2){
+				if(qproduce(f->in, pkt->d, len) < 0)
+					ctlr->soverflows++;
+			} else {
+				if(qwindow(f->in) <= 0)
+					continue;
+				if(len > 60)
+					len = 60;
+				bp = iallocb(len);
+				if(bp == 0)
+					continue;
+				memmove(bp->wp, pkt->d, len);
+				i = TK2MS(m->ticks);
+				bp->wp[60] = i>>24;
+				bp->wp[61] = i>>16;
+				bp->wp[62] = i>>8;
+				bp->wp[63] = i;
+				bp->wp += 64;
+				qpass(f->in, bp);
+			}
+		}
 	}
 }
 
