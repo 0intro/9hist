@@ -434,6 +434,7 @@ sa1100_uartsetup(int console)
 	gpclkregs = mapspecial(GPCLKREGS, 64);
 	gpclkregs->r0 = Gpclk_sus;	/* set uart mode */
 	uart1regs = mapspecial(UART1REGS, 64);
+
 	p = uartsetup(&sa1100_uart, uart1regs, ClockFreq, "serialport1");
 	uartspecial(p, 115200, 0, 0, µcputc);
 	intrenable(IRQ, IRQuart1b, sa1100_uartintr, p, p->name);

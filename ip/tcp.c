@@ -333,8 +333,9 @@ tcpstate(Conv *c, char *state, int n)
 	s = (Tcpctl*)(c->ptcl);
 
 	return snprint(state, n,
-		"%s srtt %d mdev %d timer.start %d timer.count %d\n",
+		"%s srtt %d mdev %d cwin %d swin %d timer.start %d timer.count %d\n",
 		tcpstates[s->state], s->srtt, s->mdev,
+		s->cwind, s->snd.wnd,
 		s->timer.start, s->timer.count);
 }
 
