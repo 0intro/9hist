@@ -198,7 +198,6 @@ void
 confinit(void)
 {
 	long x, i, j, *l;
-	int mul;
 	ulong ktop;
 
 	/*
@@ -247,7 +246,6 @@ confinit(void)
 	/* for meminit() */
 	conf.topofmem = i*MB;
 
-	mul = 1;
 	conf.nproc = 30 + i*5;
 	conf.nswap = conf.nproc*80;
 	conf.nimage = 50;
@@ -256,11 +254,8 @@ confinit(void)
 	conf.ip = 64;
 	conf.arp = 32;
 	conf.frag = 32;
-	conf.cntrlp = 0;
 	conf.nfloppy = 2;
 	conf.nhard = 1;
-
-	confinit1(mul);
 }
 
 char *mathmsg[] =

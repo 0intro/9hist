@@ -171,7 +171,7 @@ panic(char *fmt, ...)
 	buf[n] = '\n';
 	putstrn(buf, n+1);
 	dumpstack();
-	if(conf.cntrlp)
+	if(cpuserver)
 		exit();
 	else
 		for(;;);
@@ -217,7 +217,7 @@ echo(Rune r, char *buf, int n)
 	/*
 	 * ^p hack
 	 */
-	if(r==0x10 && conf.cntrlp)
+	if(r==0x10 && cpuserver)
 		panic("^p");
 
 	/*
@@ -616,7 +616,7 @@ consread(Chan *c, void *buf, long n, ulong offset)
 	case Qkey:
 		if(offset!=0 || n!=DESKEYLEN)
 			error(Ebadarg);
-		if(strcmp(u->p->user, eve)!=0 || conf.cntrlp==0)
+		if(strcmp(u->p->user, eve)!=0 || !cpuserver)
 			error(Eperm);
 		memmove(buf, evekey, DESKEYLEN);
 		return n;
@@ -818,16 +818,16 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 		break;
 
 	case Quser:
-		if(offset != 0 || n >= NAMELEN-1)
+		if(offset!=0 || n>=NAMELEN-1)
 			error(Ebadarg);
-		if(n==strlen("none") && strncmp(a, "none", n)==0
-		|| n==strlen(u->p->user) && strncmp(a, u->p->user, n)==0
-		|| strcmp(u->p->user, eve)==0){
-			memmove(u->p->user, a, n);
-			u->p->user[n] = '\0';
-		}else
+		strncpy(buf, a, NAMELEN);
+		if(strcmp(buf, "none")==0
+		|| strcmp(buf, u->p->user)==0
+		|| strcmp(u->p->user, eve)==0)
+			memmove(u->p->user, buf, NAMELEN);
+		else
 			error(Eperm);
-		if(!conf.cntrlp && strcmp(eve, "bootes") == 0)
+		if(!cpuserver && strcmp(eve, "bootes")==0)
 			memmove(eve, u->p->user, NAMELEN);
 		break;
 
@@ -878,7 +878,7 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 			kickpager();		/* start a pager if not already started */
 			break;
 		}
-		if(conf.cntrlp && strcmp(u->p->user, eve) != 0)
+		if(cpuserver && strcmp(u->p->user, eve) != 0)
 			error(Eperm);
 		if(buf[0]<'0' || '9'<buf[0])
 			error(Ebadarg);

@@ -72,7 +72,6 @@ struct Conf
 	ulong	ip;		/* Ip conversations per interface */
 	ulong	arp;		/* Arp table size */
 	ulong	frag;		/* Ip fragment assemble queue size */
-	int	cntrlp;		/* panic on ^P */
 };
 
 /*

@@ -81,7 +81,6 @@ struct Conf
 	int	nlapd;		/* number of dragnet protocol modules */
 	int	copymode;	/* 0 is copy on write, 1 is copy on reference */
 	int	portispaged;	/* ??? */
-	int	cntrlp;		/* panic on ^P */
 	int	nconc;		/* number of datakit concentrators */
 };
 

@@ -331,10 +331,7 @@ confinit(void)
 	conf.nimage = 50;
 	conf.copymode = 0;		/* copy on write */
 	conf.portispaged = 0;
-	conf.cntrlp = 0;
 	conf.nconc = 2;
-
-	confinit1(mul);
 }
 
 /*

@@ -697,6 +697,7 @@ extern	char	sysname[NAMELEN];
 extern	Talarm	talarm;
 extern	Palloc 	palloc;
 extern	Pgrps 	pgrpalloc;
+extern	int	cpuserver;
 
 #define	CHDIR		0x80000000L
 #define	CHAPPEND 	0x40000000L

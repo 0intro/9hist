@@ -85,7 +85,7 @@ Qinfo asyncinfo =
 };
 
 static int	debugcount = 6;
-int asyncdebug = 3;
+int asyncdebug;
 int asyncerror;
 
 static ushort crc_table[256] = {

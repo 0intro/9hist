@@ -346,7 +346,7 @@ exit(void)
 	for(i=0; i<2000000; i++)
 		;
 	duartenable0();
-	firmware(conf.cntrlp ? PROM_AUTOBOOT : PROM_REINIT);
+	firmware(cpuserver ? PROM_AUTOBOOT : PROM_REINIT);
 }
 
 typedef struct Conftab {
@@ -549,7 +549,6 @@ confinit(void)
 		panic("confinit");
 
 	conf.copymode = 1;		/* copy on reference */
-	conf.cntrlp = cpuserver;
 }
 
 /*

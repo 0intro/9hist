@@ -42,8 +42,10 @@ getp:
 	}
 	close(fd);
 	fd = open("#c/key", OWRITE);
-	if(fd < 0)
+	if(fd < 0){
 		warning("can't open #c/key");
+		return;
+	}
 	else if(write(fd, safe.machkey, DESKEYLEN) != DESKEYLEN)
 		warning("can't set #c/key");
 	close(fd);

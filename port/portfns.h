@@ -26,7 +26,6 @@ void		closemount(Mount*);
 void		closepgrp(Pgrp*);
 long		clrfpintr(void);
 void		confinit(void);
-void		confinit1(int);
 int		consactive(void);
 void		consdebug(void);
 Block*		copyb(Block*, int);

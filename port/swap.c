@@ -132,9 +132,8 @@ loop:
 		}
 		else 
 		if(palloc.freecount < swapalloc.highwater) {
-			/* Rob made me do it ! */
-			if(conf.cntrlp == 0)
-				freebroken();
+			if(!cpuserver)
+				freebroken();	/* can use the memory */
 
 			/* Emulate the old system if no swap channel */
 			print("no physical memory\n");

@@ -220,7 +220,6 @@ confinit(void)
 	conf.ip = 64;
 	conf.arp = 32;
 	conf.frag = 32;
-	conf.cntrlp = 0;
 }
 
 /*

@@ -66,7 +66,6 @@ struct Conf
 	ulong	ip;		/* Ip conversations per interface */
 	ulong	arp;		/* Arp table size */
 	ulong	frag;		/* Ip fragment assemble queue size */
-	ulong	cntrlp;		/* panic on ^P */
 	ulong	nfloppy;	/* number of floppy drives */
 	ulong	nhard;		/* number of hard drives */
 };
