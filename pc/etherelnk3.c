@@ -1776,7 +1776,7 @@ int
 etherelnk3reset(Ether* ether)
 {
 	int anar, anlpar, phyaddr, phystat, timeo, xcvr;
-	int busmaster, did, i, j, port, rxearly, rxstatus9, x;
+	int busmaster, did, i, ismii, j, port, rxearly, rxstatus9, x;
 	Block *bp, **bpp;
 	Adapter *ap;
 	uchar ea[Eaddrlen];
@@ -1828,19 +1828,25 @@ etherelnk3reset(Ether* ether)
 	 * Read the DeviceID from the EEPROM, it's at offset 0x03,
 	 * and do something depending on capabilities.
 	 */
+	ismii = 0;
 	switch(did = eepromdata(did, port, 0x03)){
 
+	case 0x9055:
+	case 0x9200:
+	case 0x7646:		/* 3CSOHO100-TX */
+	case 0x5157:		/* 3C575 Cyclone */
+	case 0x6056:
+		ismii = 1;
+		/*FALLTHROUGH*/
 	case 0x9000:
 	case 0x9001:
 	case 0x9005:
 	case 0x9050:
 	case 0x9051:
-	case 0x9055:
-	case 0x9200:
-	case 0x7646:		/* 3CSOHO100-TX */
-	case 0x5157:		/* 3C575 Cyclone */
-		if(BUSTYPE(ether->tbdf) != BusPCI)
+		if(BUSTYPE(ether->tbdf) != BusPCI){
+			ismii = 0;
 			goto buggery;
+		}
 		busmaster = 2;
 		goto vortex;
 
@@ -1914,7 +1920,7 @@ etherelnk3reset(Ether* ether)
 	/*
 	 * forgive me, but i am weak
 	 */
-	if(did == 0x9055 || did == 0x7646 || did == 0x9200 || did == 0x5157){
+	if(ismii){
 		xcvr = xcvrMii;
 		txrxreset(port);
 		XCVRDEBUG("905[BC] reset ops 0x%uX\n", ins(port+ResetOp905B));
