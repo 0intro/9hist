@@ -922,6 +922,8 @@ gc82543pci(void)
 			break;
 		case (0x1004<<16)|0x8086:	/* Intel PRO/1000 T */
 			break;
+		case (0x1008<<16)|0x8086:	/* Intel PRO/1000 XT */
+			break;
 		}
 
 		port = upamalloc(p->mem[0].bar & ~0x0F, p->mem[0].size, 0);
