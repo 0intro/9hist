@@ -29,7 +29,6 @@ struct Mntstats
 	uvlong	bigtot[Nrpc];		/* cumulative time spent in big messages */
 	uvlong	bigbytes[Nrpc];		/* cumulative bytes xfered in big messages */
 	ulong	bign[Nrpc];		/* number of big messages */
-	ulong	last100[Nrpc];		/* avg time for last 100 */
 };
 
 static struct
@@ -84,7 +83,6 @@ _mntstats(int type, Chan *c, uvlong start, ulong bytes)
 	m->tot[type] += elapsed;
 	m->n[type]++;
 	x = elapsed;
-	m->last100[type] = (m->last100[type]*127 + x)>>7;
 	m->bytes[type] += bytes;
 
 	if(bytes >= 8*1024){
@@ -149,7 +147,7 @@ mntstatsclose(Chan*)
 
 enum
 {
-	Nline=	141,
+	Nline=	136,
 };
 
 char *rpcname[Nrpc] =
@@ -182,7 +180,6 @@ mntstatsread(Chan *c, void *buf, long n, vlong off)
 	ulong o;
 	char xbuf[Nline+1];
 	Mntstats *m;
-	uvlong avg;
 
 	start = a = buf;
 
@@ -199,14 +196,10 @@ mntstatsread(Chan *c, void *buf, long n, vlong off)
 	n = n/Nline;
 	o = o/Nline;
 	while(n > 0 && o < Nrpc){
-		if(m->n[o] > 0)
-			avg = m->tot[o]/m->n[o];
-		else
-			avg = 0;
-		sprint(xbuf, "%-8.8s %16.0llud %16.0llud %16.0llud %9.0lud %16.0llud %16.0llud %9.0lud %16.0llud %9.0lud\n",
-			rpcname[o], m->hi[o], m->tot[o], m->bytes[o], m->n[o],
-			m->bigtot[o], m->bigbytes[o], m->bign[o],
-			avg, m->last100[o]);
+		snprint(xbuf, sizeof(xbuf), "%-8.8s\t%20.0llud\n\t%20.0llud %20.0llud %9.0lud\n\t%20.0llud %20.0llud %9.0lud\n",
+			rpcname[o], m->hi[o],
+			m->tot[o], m->bytes[o], m->n[o],
+			m->bigtot[o], m->bigbytes[o], m->bign[o]);
 		memmove(a, xbuf, Nline);
 		a += Nline;
 		o++;
