@@ -443,7 +443,7 @@ Syscall	sysdup, syserrstr, sysexec, sysexits, sysfork, sysforkpgrp;
 Syscall	sysfstat, sysfwstat, sysgetpid, sysmount, sysnoted;
 Syscall	sysnotify, sysopen, syspipe, sysr1, sysread, sysremove, sysseek;
 Syscall syssleep, sysstat, syswait, syswrite, syswstat, sysalarm, syslkbrk_;
-
+#define LKBRK_ 12
 Syscall *systab[]={
 	[SYSR1]		sysr1,
 	[ERRSTR]	syserrstr,

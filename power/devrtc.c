@@ -26,6 +26,7 @@ struct Rtc
 
 QLock rtclock;	/* mutex on clock operations */
 
+#define	NRTC	1
 static Dirtab rtcdir[]={
 	"rtc",		{1, 0},	0,	0600,
 };
@@ -95,19 +96,13 @@ rtcclone(Chan *c, Chan *nc)
 int	 
 rtcwalk(Chan *c, char *name)
 {
-	if(c->qid.path != CHDIR)
-		return 0;
-	if(strcmp(name, "rtc") == 0){
-		c->qid.path = 1;
-		return 1;
-	}
-	return 0;
+	return devwalk(c, name, rtcdir, NRTC, devgen);
 }
 
 void	 
 rtcstat(Chan *c, char *dp)
 {
-	devstat(c, dp, rtcdir, 1, devgen);
+	devstat(c, dp, rtcdir, NRTC, devgen);
 }
 
 Chan*
@@ -117,10 +112,7 @@ rtcopen(Chan *c, int omode)
 		if(strcmp(u->p->pgrp->user, "bootes"))	/* BUG */
 			error(Eperm);
 	}
-	c->mode = openmode(omode);
-	c->flag |= COPEN;
-	c->offset = 0;
-	return c;
+	return devopen(c, omode, rtcdir, NRTC, devgen);
 }
 
 void	 
@@ -137,7 +129,7 @@ rtcclose(Chan *c)
 #define GETBCD(o) ((bcdclock[o]&0xf) + 10*(bcdclock[o]>>4))
 
 long	 
-rtcread(Chan *c, void *buf, long n, ulong offset)
+rtctime(void)
 {
 	int i,j;
 	uchar ch;
@@ -146,15 +138,11 @@ rtcread(Chan *c, void *buf, long n, ulong offset)
 	char atime[64];
 	Rtc rtc;
 
-	if(c->qid.path & CHDIR)
-		return devdirread(c, buf, n, rtcdir, 1, devgen);
-
 	nv = RTC;
 
 	/*
 	 *  set up the pattern for the clock
 	 */
-	qlock(&rtclock);
 	rtcpattern();
 
 	/*
@@ -191,8 +179,27 @@ rtcread(Chan *c, void *buf, long n, ulong offset)
 		rtc.year += 2000;
 	else
 		rtc.year += 1900;
+	return rtc2sec(&rtc);
+}
 
-	return readnum(offset, buf, n, rtc2sec(&rtc), 12);
+long	 
+rtcread(Chan *c, void *buf, long n, ulong offset)
+{
+	ulong t, ot;
+
+	if(c->qid.path & CHDIR)
+		return devdirread(c, buf, n, rtcdir, NRTC, devgen);
+
+	qlock(&rtclock);
+	t = rtctime();
+	do{
+		ot = t;
+		t = rtctime();	/* make sure there's no skew */
+	}while(t != ot);
+	qunlock(&rtclock);
+	n = readnum(offset, buf, n, t, 12);
+	return n;
+
 }
 
 #define PUTBCD(n,o) bcdclock[o] = (n % 10) | (((n / 10) % 10)<<4)

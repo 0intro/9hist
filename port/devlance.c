@@ -8,17 +8,14 @@
 #include	"devtab.h"
 
 enum {
-	Ntypes=		8,		/* max number of ethernet packet types */
-	Ndir=		Ntypes+2,	/* entries in top level directory */
-	Ndpkt=		200,		/* number of debug packets */
+	Ntypes=		9,		/* max number of ethernet packet types */
+	Ndir=		Ntypes+1,	/* entries in top level directory */
 	Maxrb=		128,		/* max buffers in a ring */
 };
 #define RSUCC(x) (((x)+1)%l.nrrb)
 #define TSUCC(x) (((x)+1)%l.ntrb)
 
 #define NOW (MACHP(0)->ticks*MS2HZ)
-
-int plance;
 
 /*
  *  Communication with the lance is via a transmit and receive ring of
@@ -81,29 +78,10 @@ struct Lancemem
 typedef struct {
 	QLock;
 	int	type;		/* ethernet type */
+	int	prom;		/* promiscuous mode */
 	Queue	*q;
 } Ethertype;
 
-/*
- *  circular debug queue (first 44 bytes of the last Ndpkt packets)
- */
-typedef struct {
-	uchar d[6];
-	uchar s[6];
-	uchar type[2];
-	uchar data[60];
-} Dpkt;
-typedef struct {
-	ulong	ticks;
-	char	tag;
-	int	len;
-	Dpkt	p;
-} Trace;
-typedef struct {
-	Lock;
-	int	next;
-	Trace	t[Ndpkt];
-} Debqueue;
 
 /*
  *  lance state
@@ -112,11 +90,13 @@ typedef struct {
 	QLock;
 
 	Lance;			/* host dependent lance params */
+	int	prom;		/* number of promiscuous channels */
 
 	int	inited;
 	uchar	*lmp;		/* location of parity test */
 
 	Rendez	rr;		/* rendezvous for an input buffer */
+	QLock	rlock;		/* semaphore on tc */
 	ushort	rl;		/* first rcv Message belonging to Lance */	
 	ushort	rc;		/* first rcv Message belonging to CPU */
 
@@ -128,7 +108,6 @@ typedef struct {
 	Ethertype e[Ntypes];
 	int	debug;
 	int	kstarted;
-	Debqueue dq;
 
 	/* sadistics */
 
@@ -203,58 +182,8 @@ static SoftLance l;
 /*
  *  predeclared
  */
-void lancekproc(void *);
-
-/*
- *  mode used by restart
- */
-int	lancemode;
-
-/*
- *  print a packet preceded by a message
- */
-int
-sprintpacket(char *buf, Trace *t)
-{
-	Dpkt *p = &t->p;
-	int i, n;
-
-	n = sprint(buf, "%c: %.8ud %.4d d(%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux)s(%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux)t(%.2ux %.2ux)d(",
-		t->tag, t->ticks, t->len,
-		p->d[0], p->d[1], p->d[2], p->d[3], p->d[4], p->d[5],
-		p->s[0], p->s[1], p->s[2], p->s[3], p->s[4], p->s[5],
-		p->type[0], p->type[1]);
-	for(i=0; i<sizeof(p->data); i++)
-		n += sprint(buf+n, "%.2ux", p->data[i]);
-	n += sprint(buf+n, ")\n");
-	return n;
-}
-
-/*
- *  save a message in a circular queue for later debugging
- */
-void
-lancedebq(char tag, Etherpkt *p, int len)
-{
-	Trace *t;
-
-	lock(&l.dq);
-	t = &l.dq.t[l.dq.next];
-	t->ticks = NOW;
-	t->tag = tag;
-	t->len = len;
-	memmove(&(t->p), p, sizeof(Dpkt));
-	l.dq.next = (l.dq.next+1) % Ndpkt;
-	unlock(&l.dq);
-	if(plance){
-		char buf[1024];
-		if(p->d[0] != 0xff){
-			sprintpacket(buf, t);
-			print("%s\n", buf);
-		}
-	} /**/
-}
-
+static void lancekproc(void *);
+static void lancestart(int);
 /*
  *  lance stream module definition
  */
@@ -295,9 +224,17 @@ lancestclose(Queue *q)
 	Ethertype *et;
 
 	et = (Ethertype *)(q->ptr);
+	if(et->prom){
+		qlock(&l);
+		l.prom--;
+		if(l.prom == 0)
+			lancestart(0);
+		qunlock(&l);
+	}
 	qlock(et);
 	et->type = 0;
 	et->q = 0;
+	et->prom = 0;
 	qunlock(et);
 }
 
@@ -321,9 +258,16 @@ lanceoput(Queue *q, Block *bp )
 	Msg *m;
 
 	if(bp->type == M_CTL){
+		e = q->ptr;
 		if(streamparse("connect", bp)){
-			n = strtoul((char *)bp->rptr, 0, 0);
-			((Ethertype *)q->ptr)->type = n;
+			e->type = strtol((char *)bp->rptr, 0, 0);
+		} else if(streamparse("promiscuous", bp)) {
+			e->prom = 1;
+			qlock(&l);
+			l.prom++;
+			if(l.prom == 1)
+				lancestart(PROM);
+			qunlock(&l);
 		}
 		freeb(bp);
 		return;
@@ -378,8 +322,6 @@ lanceoput(Queue *q, Block *bp )
 		len = 60;
 	}
 
-	lancedebq('o', p, len);/**/
-
 	/*
 	 *  set up the ring descriptor and hand to lance
 	 */
@@ -400,8 +342,7 @@ lanceoput(Queue *q, Block *bp )
  */
 enum {
 	Lchanqid = 1,
-	Ltraceqid = 2,
-	Lstatsqid = 3,
+	Lstatsqid = 2,
 };
 Dirtab lancedir[Ndir];
 
@@ -436,19 +377,30 @@ lancereset(void)
  *  It may be used to restart a dead lance.
  */
 static void
-lancestart(void)
+lancestart(int mode)
 {
 	int i;
 	Etherpkt *p;
 	Lancemem *lm = LANCEMEM;
 	Msg *m;
 
+	/*
+	 *   wait till both receiver and transmitter are
+	 *   quiescent
+	 */
+	qlock(&l.tlock);
+	qlock(&l.rlock);
+
 	lancereset();
+	l.rl = 0;
+	l.rc = 0;
+	l.tl = 0;
+	l.tc = 0;
 
 	/*
 	 *  create the initialization block
 	 */
-	MPus(lm->mode) = lancemode;
+	MPus(lm->mode) = mode;
 
 	/*
 	 *  set ether addr from the value in the id prom.
@@ -527,8 +479,7 @@ lancestart(void)
 }
 
 /*
- *  set up the free list and lance directory.
- *  start the lance.
+ *  set up lance directory.
  */
 void
 lanceinit(void)
@@ -545,14 +496,10 @@ lanceinit(void)
 		lancedir[i].length = 0;
 		lancedir[i].perm = 0600;
 	}
-	strcpy(lancedir[Ntypes].name, "trace");
-	lancedir[Ntypes].qid.path = Ltraceqid;
+	strcpy(lancedir[Ntypes].name, "stats");
+	lancedir[Ntypes].qid.path = Lstatsqid;
 	lancedir[Ntypes].length = 0;
 	lancedir[Ntypes].perm = 0600;
-	strcpy(lancedir[Ntypes+1].name, "stats");
-	lancedir[Ntypes+1].qid.path = Lstatsqid;
-	lancedir[Ntypes+1].length = 0;
-	lancedir[Ntypes+1].perm = 0600;
 
 }
 
@@ -562,7 +509,7 @@ lanceattach(char *spec)
 	if(l.kstarted == 0){
 		kproc("lancekproc", lancekproc, 0);/**/
 		l.kstarted = 1;
-		lancestart();
+		lancestart(0);
 	}
 	return devattach('l', spec);
 }
@@ -589,7 +536,7 @@ lancewalk(Chan *c, char *name)
 void	 
 lancestat(Chan *c, char *dp)
 {
-	if(c->qid.path==CHDIR || c->qid.path==Ltraceqid || c->qid.path==Lstatsqid)
+	if(c->qid.path==CHDIR || c->qid.path==Lstatsqid)
 		devstat(c, dp, lancedir, Ndir, devgen);
 	else
 		devstat(c, dp, 0, 0, streamgen);
@@ -603,7 +550,6 @@ lanceopen(Chan *c, int omode)
 {
 	switch(c->qid.path){
 	case CHDIR:
-	case Ltraceqid:
 	case Lstatsqid:
 		if(omode != OREAD)
 			error(Eperm);
@@ -631,38 +577,6 @@ lanceclose(Chan *c)
 		streamclose(c);
 }
 
-static long
-lancetraceread(Chan *c, void *a, long n, ulong offset)
-{
-	char buf[1024];
-	long rv;
-	int i;
-	char *ca = a;
-	int off;
-	Trace *t;
-	int plen;
-
-	rv = 0;
-	plen = sprintpacket(buf, l.dq.t);
-	off = offset % plen;
-	for(t = &l.dq.t[offset/plen]; n && t < &l.dq.t[Ndpkt]; t++){
-		if(t->tag == 0)
-			break;
-		lock(&l.dq);
-		sprintpacket(buf, t);
-		unlock(&l.dq);
-		i = plen - off;
-		if(i > n)
-			i = n;
-		memmove(ca, buf + off, i);
-		n -= i;
-		ca += i;
-		rv += i;
-		off = 0;
-	}
-	return rv;
-}
-
 long	 
 lanceread(Chan *c, void *a, long n, ulong offset)
 {
@@ -677,8 +591,6 @@ lanceread(Chan *c, void *a, long n, ulong offset)
 		l.overflows, l.frames, l.buffs, l.oerrs,
 		l.ea[0], l.ea[1], l.ea[2], l.ea[3], l.ea[4], l.ea[5]);
 		return stringread(c, a, n, buf, offset);
-	case Ltraceqid:
-		return lancetraceread(c, a, n, offset);
 	default:
 		return streamread(c, a, n);
 	}
@@ -729,8 +641,9 @@ lanceintr(void)
 	}
 
 	if(csr & IDON){
-		print("lance inited\n");
 		l.inited = 1;
+		qunlock(&l.rlock);
+		qunlock(&l.tlock);
 	}
 
 	/*
@@ -753,6 +666,31 @@ lanceintr(void)
 }
 
 /*
+ *  send a packet upstream
+ */
+void
+lanceup(Ethertype *e, Etherpkt *p, int len)
+{
+	Block *bp;
+
+	/*
+	 *  only a trace channel gets packets destined for other machines
+	 */
+	if(e->type != -1){
+		if(!(p->d[0]&0x80) && memcmp(p->d, l.ea, sizeof(p->d))!=0)
+			return;
+	}
+	if(e->q && e->q->next->len<=Streamhi && !waserror()){
+		bp = allocb(len);
+		memmove(bp->rptr, (uchar *)p, len);
+		bp->wptr += len;
+		bp->flags |= S_DELIM;
+		PUTNEXT(e->q, bp);
+		poperror();
+	}
+}
+
+/*
  *  input process, awakened on each interrupt with rcv buffers filled
  */
 static int
@@ -761,19 +699,18 @@ isinput(void *arg)
 	Lancemem *lm = LANCEMEM;
 	return l.rl!=l.rc && (MPus(lm->rmr[l.rl].flags) & OWN)==0;
 }
-void
+static void
 lancekproc(void *arg)
 {
-	Block *bp;
 	Etherpkt *p;
 	Ethertype *e;
-	int t;
 	int len;
-	int i, last;
+	int t;
 	Lancemem *lm = LANCEMEM;
 	Msg *m;
 
 	for(;;){
+		qlock(&l.rlock);
 		for(; l.rl!=l.rc && (MPus(lm->rmr[l.rl].flags) & OWN)==0 ; l.rl=RSUCC(l.rl)){
 			l.inpackets++;
 			m = &(lm->rmr[l.rl]);
@@ -791,47 +728,19 @@ lancekproc(void *arg)
 			}
 	
 			/*
-			 *  See if a queue exists for this packet type.
+			 *  stuff packet up each queue that wants it
 			 */
 			p = &l.rp[l.rl];
 			t = (p->type[0]<<8) | p->type[1];
 			len = MPus(m->cntflags) - 4;
-			lancedebq('i', p, len);/**/
 			for(e = &l.e[0]; e < &l.e[Ntypes]; e++){
-				if(e->q==0 || t!=e->type || !canqlock(e))
-					continue;
-				if(e->q && t == e->type)
-					break;
-				qunlock(e);
-			}
-			/*
-			 *  If no match, see if any stream has type -1.
-			 *  It matches all packets.
-			 */
-			if(e == &l.e[Ntypes]){
-				for(e = &l.e[0]; e < &l.e[Ntypes]; e++){
-					if(e->q==0 || e->type!=-1 || !canqlock(e))
-						continue;
-					if(e->q && e->type == -1)
-						break;
+				if(e->q!=0 && (t==e->type||e->type==-1) && canqlock(e)){
+					if(t==e->type||e->type==-1)
+						lanceup(e, p, len);
 					qunlock(e);
 				}
 			}
-			/*
-			 *  The lock on e makes sure the queue is still there.
-			 */
-			if(e!=&l.e[Ntypes]){
-				if(e->q->next->len<=Streamhi && !waserror()){
-					bp = allocb(len);
-					memmove(bp->rptr, (uchar *)p, len);
-					bp->wptr += len;
-					bp->flags |= S_DELIM;
-					PUTNEXT(e->q, bp);
-					poperror();
-				}
-				qunlock(e);
-			}
-	
+
 stage:
 			/*
 			 *  stage the next input buffer
@@ -844,12 +753,7 @@ stage:
 			l.rc = RSUCC(l.rc);
 			wbflush();
 		}
+		qunlock(&l.rlock);
 		sleep(&l.rr, isinput, 0);
 	}
-}
-
-void
-lancetoggle(void)
-{
-	plance ^= 1;
 }
