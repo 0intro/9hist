@@ -189,7 +189,10 @@ ipifcunbind(Ipifc *ifc)
 	av[2] = mask;
 	av[3] = 0;
 	while(ifc->lifc){
-		sprint(ip, "%I", ifc->lifc->local);
+		if(ipcmp(ifc->lifc->mask, IPallbits) == 0)
+			sprint(ip, "%I", ifc->lifc->remote);
+		else
+			sprint(ip, "%I", ifc->lifc->local);
 		sprint(mask, "%M", ifc->lifc->mask);
 		ipifcrem(ifc, av, 3, 0);
 	}
@@ -595,8 +598,11 @@ ipifcconnect(Conv* c, char **argv, int argc)
 	}
 	wlock(ifc);
 	while(ifc->lifc){
-		sprint(ip, "%I", ifc->lifc->local);
-		sprint(mask, "%I", ifc->lifc->mask);
+		if(ipcmp(ifc->lifc->mask, IPallbits) == 0)
+			sprint(ip, "%I", ifc->lifc->remote);
+		else
+			sprint(ip, "%I", ifc->lifc->local);
+		sprint(mask, "%M", ifc->lifc->mask);
 		ipifcrem(ifc, av, 3, 0);
 	}
 	wunlock(ifc);

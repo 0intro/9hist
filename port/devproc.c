@@ -33,7 +33,7 @@ Dirtab procdir[] =
 	"ctl",		{Qctl},		0,			0000,
 	"fd",		{Qfd},		0,			0000,
 	"fpregs",	{Qfpregs},	sizeof(FPsave),		0000,
-	"kregs",	{Qkregs},	sizeof(Ureg),		0400,
+	"kregs",	{Qkregs},	sizeof(Ureg),		0440,
 	"mem",		{Qmem},		0,			0000,
 	"note",		{Qnote},	0,			0000,
 	"noteid",	{Qnoteid},	0,			0666,

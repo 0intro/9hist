@@ -70,6 +70,8 @@ struct RWlock
 	Lock	use;
 	Proc	*head;		/* list of waiting processes */
 	Proc	*tail;
+	ulong	wpc;		/* pc of writer */
+	Proc	*wproc;		/* writing proc */
 	int	readers;	/* number of readers */
 	int	writer;		/* number of writers */
 };

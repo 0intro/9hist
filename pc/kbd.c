@@ -49,6 +49,10 @@ enum {
 	Scroll=		KF|21,
 };
 
+/*
+ * The codes at 0x79 and 0x81 are produed by the PFU Happy Hacking keyboard.
+ * A 'standard' keyboard doesn't produce anything above 0x58.
+ */
 Rune kbtab[] = 
 {
 [0x00]	No,	0x1b,	'1',	'2',	'3',	'4',	'5',	'6',
@@ -66,7 +70,7 @@ Rune kbtab[] =
 [0x60]	No,	No,	No,	No,	No,	No,	No,	No,
 [0x68]	No,	No,	No,	No,	No,	No,	No,	No,
 [0x70]	No,	No,	No,	No,	No,	No,	No,	No,
-[0x78]	No,	No,	No,	No,	No,	No,	No,	No,
+[0x78]	No,	View,	No,	Up,	No,	No,	No,	No,
 };
 
 Rune kbtabshift[] =
@@ -86,7 +90,7 @@ Rune kbtabshift[] =
 [0x60]	No,	No,	No,	No,	No,	No,	No,	No,
 [0x68]	No,	No,	No,	No,	No,	No,	No,	No,
 [0x70]	No,	No,	No,	No,	No,	No,	No,	No,
-[0x78]	No,	No,	No,	No,	No,	No,	No,	No,
+[0x78]	No,	Up,	No,	Up,	No,	No,	No,	No,
 };
 
 Rune kbtabesc1[] =
@@ -106,7 +110,7 @@ Rune kbtabesc1[] =
 [0x60]	No,	No,	No,	No,	No,	No,	No,	No,
 [0x68]	No,	No,	No,	No,	No,	No,	No,	No,
 [0x70]	No,	No,	No,	No,	No,	No,	No,	No,
-[0x78]	No,	No,	No,	No,	No,	No,	No,	No,
+[0x78]	No,	Up,	No,	No,	No,	No,	No,	No,
 };
 
 enum

@@ -137,6 +137,8 @@ wlock(RWlock *q)
 rwstats.wlock++;
 	if(q->readers == 0 && q->writer == 0){
 		/* noone waiting, go for it */
+		q->wpc = getcallerpc(&q);
+		q->wproc = up;
 		q->writer = 1;
 		unlock(&q->use);
 		return;
