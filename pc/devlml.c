@@ -28,9 +28,9 @@ enum{
 };
 
 static Dirtab lmldir[]={
-//	 name,		qid,	size,	mode
-	"lmljpg",	{Qjpg},	0,	0444,
-//	"lmlraw",	{Qraw},	0,	0444,
+	".",		{Qdir, 0, QTDIR},	0,	DMDIR|0555,
+	"lmljpg",	{Qjpg},			0,	0444,
+//	"lmlraw",	{Qraw},			0,	0444,
 };
 
 static CodeData *	codeData;
@@ -183,8 +183,7 @@ lmlreset(void)
 
 	memset(&segbuf, 0, sizeof(segbuf));
 	segbuf.attr = SG_PHYSICAL;
-	segbuf.name = smalloc(NAMELEN);
-	snprint(segbuf.name, NAMELEN, "lmlmjpg");
+	kstrdup(&segbuf.name, "lmlmjpg");
 	segbuf.pa = PADDR(codeData);
 	segbuf.size = cdsize;
 	if (addphysseg(&segbuf) == -1) {
@@ -194,8 +193,7 @@ lmlreset(void)
 
 	memset(&segreg, 0, sizeof(segreg));
 	segreg.attr = SG_PHYSICAL;
-	segreg.name = smalloc(NAMELEN);
-	snprint(segreg.name, NAMELEN, "lmlregs");
+	kstrdup(&segreg.name, "lmlregs");
 	segreg.pa = (ulong)regpa;
 	segreg.size = pcidev->mem[0].size;
 	if (addphysseg(&segreg) == -1) {
@@ -205,8 +203,7 @@ lmlreset(void)
 
 	memset(&seggrab, 0, sizeof(seggrab));
 	seggrab.attr = SG_PHYSICAL;
-	seggrab.name = smalloc(NAMELEN);
-	snprint(seggrab.name, NAMELEN, "lmlgrab");
+	kstrdup(&seggrab.name, "lmlgrab");
 	seggrab.pa = PADDR(grabbuf);
 	seggrab.size = grablen;
 	if (addphysseg(&seggrab) == -1) {
@@ -226,23 +223,23 @@ lmlattach(char *spec)
 	return devattach('V', spec);
 }
 
-static int
-lmlwalk(Chan *c, char *name)
+static Walkqid*
+lmlwalk(Chan *c, Chan *nc, char **name, int nname)
 {
-	return devwalk(c, name, lmldir, nelem(lmldir), devgen);
+	return devwalk(c, nc, name, nname, lmldir, nelem(lmldir), devgen);
 }
 
-static void
-lmlstat(Chan *c, char *dp)
+static int
+lmlstat(Chan *c, uchar *db, int n)
 {
-	devstat(c, dp, lmldir, nelem(lmldir), devgen);
+	return devstat(c, db, n, lmldir, nelem(lmldir), devgen);
 }
 
 static Chan*
 lmlopen(Chan *c, int omode) {
 
 	c->aux = 0;
-	switch(c->qid.path){
+	switch((ulong)c->qid.path){
 	case Qjpg:
 		// allow one open
 		if (jpgopens)
@@ -266,7 +263,7 @@ lmlopen(Chan *c, int omode) {
 static void
 lmlclose(Chan *c) {
 
-	switch(c->qid.path){
+	switch((ulong)c->qid.path){
 	case Qjpg:
 		jpgopens = 0;
 		break;
@@ -275,7 +272,6 @@ lmlclose(Chan *c) {
 		break;
 */
 	}
-	authclose(c);
 }
 
 static long
@@ -283,8 +279,7 @@ lmlread(Chan *c, void *va, long n, vlong voff) {
 	uchar *buf = va;
 	long off = voff;
 
-	switch(c->qid.path & ~CHDIR){
-
+	switch((ulong)c->qid.path){
 	case Qdir:
 		return devdirread(c, (char *)buf, n, lmldir, nelem(lmldir), devgen);
 	case Qjpg:
@@ -309,7 +304,6 @@ Dev lmldevtab = {
 	lmlreset,
 	devinit,
 	lmlattach,
-	devclone,
 	lmlwalk,
 	lmlstat,
 	lmlopen,
