@@ -324,7 +324,7 @@ vgawrite(Chan *c, void *buf, long n, ulong offset)
 			ldepth = -1;
 		}
 		if(maxx == 0 || maxy == 0
-		|| maxx > 1600 || maxy > 1200
+		|| maxx > 1600 || maxy > 1280
 		|| ldepth > 3 || ldepth < 0)
 			error(Ebadarg);
 		cursoroff(1);
