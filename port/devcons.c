@@ -37,37 +37,48 @@ printinit(void)
 }
 
 /*
- *   Print a string on the console.  Convert \n to \r\n
+ *   Print a string on the console.  Convert \n to \r\n for serial
+ *   line consoles.  Locking of the queues is left up to the screen
+ *   or uart code.  Multi-line messages to serial consoles may get
+ *   interspersed with other messages.
  */
 void
 putstrn(char *str, int n)
 {
-	int s, c, m;
+	char buf[PRINTSIZE+2];
+	int m;
 	char *t;
-static Lock fuck;
 
-loop:
-s = splhi();
-if(!canlock(&fuck)){
-	splx(s);
-	goto loop;
-}
+	/*
+	 *  if there's an attached bit mapped display,
+	 *  put the message there.  screenputs is defined
+	 *  as a null macro for systems that have no such
+	 *  display.
+	 */
+	screenputs(str, n);
+
+	/*
+	 *  if there's a serial line being used as a console,
+	 *  put the message there.  Tack a carriage return
+	 *  before new lines.
+	 */
+	if(printq.puts == 0)
+		return;
 	while(n > 0){
-		if(printq.puts && *str=='\n')
-			(*printq.puts)(&printq, "\r", 1);
-		m = n;
-		t = memchr(str+1, '\n', m-1);
-		if(t)
-			if(t-str < m)
-				m = t - str;
-		if(printq.puts)
-			(*printq.puts)(&printq, str, m);
-		screenputs(str, m);
-		n -= m;
-		str += m;
+		t = memchr(str, '\n', n);
+		if(t){
+			m = t - str;
+			memmove(buf, str, m);
+			buf[m] = '\r';
+			buf[m+1] = '\n';
+			(*printq.puts)(&printq, buf, m+2);
+			str = t + 1;
+			n -= m + 1;
+		} else {
+			(*printq.puts)(&printq, str, n);
+			break;
+		}
 	}
-unlock(&fuck);
-splx(s);
 }
 
 /*

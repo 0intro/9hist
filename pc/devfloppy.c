@@ -29,8 +29,6 @@ enum
 	 Fwrite=	 0x47,	/* write cmd */
 	 Fmulti=	 0x80,	/* or'd with Fread or Fwrite for multi-head */
 
-	Ndrive=	4,	/* floppies/controller */
-
 	DMAchan=	2,	/* floppy dma channel */
 
 	/* sector size encodings */
@@ -123,6 +121,9 @@ struct Drive
 	long	len;		/* size of xfer */
 
 	Rendez	r;		/* waiting here for motor to spin up */
+
+	uchar	*ccache;	/* cylinder cache (always read a whole cyl) */
+	int	ccyl;		/* number of cached cylinder */
 };
 
 /*
@@ -132,7 +133,7 @@ struct Controller
 {
 	QLock;			/* exclusive access to the contoller */
 
-	Drive	d[Ndrive];	/* the floppy drives */
+	Drive	*d;		/* the floppy drives */
 	uchar	stat[8];	/* status of an operation */
 	int	confused;
 	int	intr;		/* true if interrupt occured */
@@ -173,6 +174,7 @@ Dirtab floppydir[]={
 };
 #define NFDIR	(sizeof(floppydir)/sizeof(Dirtab))
 
+#define k64(x) (((ulong)(x))>>16)
 void
 floppyreset(void)
 {
@@ -188,15 +190,30 @@ floppyreset(void)
 	}
 
 	/*
+	 *  allocate the drive storage
+	 */
+	floppy.d = ialloc(conf.nfloppy*sizeof(Drive), 0);
+
+	/*
 	 *  stop the motors
 	 */
-	for(dp = floppy.d; dp < &floppy.d[Ndrive]; dp++){
+	for(dp = floppy.d; dp < &floppy.d[conf.nfloppy]; dp++){
 		dp->dev = dp - floppy.d;
 		dp->t = &floppytype[0];		/* default type */
 		floppydir[2*dp->dev].length = dp->t->cap;
 		dp->motoron = 1;
 		dp->cyl = -1;		/* because we don't know */
 		motoroff(dp);
+	}
+
+	/*
+	 *  allocate cylinder caches that don't cross 64k boundaries
+	 */
+	for(dp = floppy.d; dp < &floppy.d[conf.nfloppy]; dp++){
+		do {
+			dp->ccache = ialloc(dp->t->cap, 1);
+		} while(k64(dp->ccache) != k64(dp->ccache+dp->t->cap));
+		dp->ccyl = -1;
 	}
 	setvec(Floppyvec, floppyintr);
 }
@@ -272,11 +289,16 @@ ul2user(uchar *a, ulong x)
 	a[3] = x;
 }
 
+/*
+ *  the floppy is so slow, we always read a cylinder
+ *  at a time and cache the extra bytes.
+ */
 long
 floppyread(Chan *c, void *a, long n)
 {
 	Drive *dp;
-	long rv, i;
+	long rv, nn, len, cyl;
+	int sec;
 	uchar *aa = a;
 
 	if(c->qid.path == CHDIR)
@@ -286,10 +308,31 @@ floppyread(Chan *c, void *a, long n)
 	dp = &floppy.d[c->qid.path & ~Qmask];
 	switch ((int)(c->qid.path & Qmask)) {
 	case Qdata:
-		for(rv = 0; rv < n; rv += i){
-			i = floppyxfer(dp, Fread, aa+rv, c->offset+rv, n-rv);
-			if(i <= 0)
-				break;
+		if(c->offset % dp->t->bytes)
+			errors("bad offset");
+		if(n % dp->t->bytes)
+			errors("bad len");
+		nn = dp->t->bytes * dp->t->sectors * dp->t->heads;
+		for(rv = 0; rv < n; rv += len){
+			/*
+			 *  truncate xfer at cylinder boundary
+			 */
+			dp->len = n - rv;
+			floppypos(dp, c->offset+rv);
+			cyl = dp->tcyl;
+			len = dp->len;
+			sec = dp->tsec + dp->thead * dp->t->sectors;
+
+			/*
+			 *  read the cylinder
+			 */
+			if(dp->ccyl != cyl){
+				dp->ccyl = -1;
+				if(floppyxfer(dp, Fread, dp->ccache, cyl * nn, nn) != nn)
+					errors("floppy read err");
+				dp->ccyl = cyl;
+			}
+			memmove(aa+rv, dp->ccache + (sec-1)*dp->t->bytes, len);
 		}
 		break;
 	case Qstruct:
@@ -371,7 +414,7 @@ floppykproc(void *a)
 
 	waserror();
 	for(;;){
-		for(dp = floppy.d; dp < &floppy.d[Ndrive]; dp++){
+		for(dp = floppy.d; dp < &floppy.d[conf.nfloppy]; dp++){
 			if(dp->motoron && TK2SEC(m->ticks - dp->lasttouched) > 5
 			&& canqlock(dp)){
 				if(TK2SEC(m->ticks - dp->lasttouched) > 5)
@@ -382,8 +425,6 @@ floppykproc(void *a)
 		disp++;
 		if(owl(disp&1) < 0)
 			print("owl failed\n");
-		if(mail((disp>>1)&1) < 0)
-			print("mail failed\n");
 		tsleep(&floppy.kr, return0, 0, 5*1000);
 		
 	}
@@ -592,7 +633,7 @@ floppyrevive(void)
 		delay(1);
 		outb(Fmotor, Fintena|Fena);
 		spllo();
-		for(dp = floppy.d; dp < &floppy.d[Ndrive]; dp++){
+		for(dp = floppy.d; dp < &floppy.d[conf.nfloppy]; dp++){
 			dp->motoron = 0;
 			dp->confused = 1;
 		}
@@ -603,7 +644,7 @@ floppyrevive(void)
 	/*
 	 *  recalibrate any confused drives
 	 */
-	for(dp = floppy.d; floppy.confused == 0 && dp < &floppy.d[Ndrive]; dp++){
+	for(dp = floppy.d; floppy.confused == 0 && dp < &floppy.d[conf.nfloppy]; dp++){
 		if(dp->confused == 0)
 			floppyrecal(dp);
 

@@ -20,11 +20,8 @@ fault386(Ureg *ur)
 	insyscall = u->p->insyscall;
 	u->p->insyscall = 1;
 	addr = getcr2();
-	if(faulting)
-		panic("double fault\n");
-	faulting = 1;
 	read = !(ur->ecode & 2);
-	user = (ur->ecode & 4);
+	user = (ur->cs&0xffff) == UESEL;
 	n = fault(addr, read);
 	if(n < 0){
 		if(user){
@@ -37,7 +34,6 @@ fault386(Ureg *ur)
 		dumpregs(ur);
 		panic("fault: 0x%lux", addr);
 	}
-	faulting = 0;
 	u->p->insyscall = insyscall;
 }
 

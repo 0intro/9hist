@@ -286,11 +286,7 @@ syscall(Ureg *ur)
 		}
 		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-(1+MAXSYSARG)*BY2WD))
 			validaddr(sp, (1+MAXSYSARG)*BY2WD, 0);
-		if(ax == EXITS)
-			print("%d exiting\n", u->p->pid);
 		ret = (*systab[ax])((ulong*)(sp+BY2WD));
-		if(ax == EXITS)
-			print("%d returned from sysexits!\n", u->p->pid);
 		poperror();
 	}
 	if(u->nerrlab){

@@ -336,7 +336,7 @@ mymouseputc(int c)
 {
 	static short msg[3];
 	static int nb;
-	static uchar b[] = {0, 4, 1, 5, 2, 6, 3, 7};
+	static uchar b[] = {0, 1, 4, 5, 2, 3, 6, 7};
 	static lastdx, lastdy;
 	int diff;
 	extern Mouseinfo mouse;

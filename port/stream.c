@@ -823,6 +823,7 @@ streamnew(ushort type, ushort dev, ushort id, Qinfo *qi, int noopen)
 	RD(s->procq)->next = 0;
 	RD(s->devq)->next = RD(s->procq);
 	WR(s->devq)->next = 0;
+	s->flushmsg = 0;
 
 	if(qi->open)
 		(*qi->open)(RD(s->devq), s);
@@ -1105,8 +1106,15 @@ streamread(Chan *c, void *vbuf, long n)
 	 *  one reader at a time
 	 */
 	s = c->stream;
+	left = n;
 	qlock(&s->rdlock);
 	if(waserror()){
+		/*
+		 *  notes will flush the rest of any partially
+		 *  read message.
+		 */
+		if(n != left)
+			s->flushmsg = 1;
 		qunlock(&s->rdlock);
 		nexterror();
 	}
@@ -1115,7 +1123,6 @@ streamread(Chan *c, void *vbuf, long n)
 	 *  sleep till data is available
 	 */
 	q = RD(s->procq);
-	left = n;
 	while(left){
 		bp = getq(q);
 		if(bp == 0){
@@ -1129,6 +1136,13 @@ streamread(Chan *c, void *vbuf, long n)
 			}
 			q->rp = &q->r;
 			sleep(q->rp, &isinput, (void *)q);
+			continue;
+		}
+
+		if(s->flushmsg){
+			if(bp->flags & S_DELIM)
+				s->flushmsg = 0;
+			freeb(bp);
 			continue;
 		}
 

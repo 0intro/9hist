@@ -28,9 +28,7 @@ main(void)
 	grpinit();
 	chaninit();
 	alarminit();
-print("chandevreset\n"); delay(1000);
 	chandevreset();
-print("streaminit\n"); delay(1000);
 	streaminit();
 	swapinit();
 	pageinit();
@@ -218,6 +216,8 @@ confinit(void)
 	conf.arp = 32;
 	conf.frag = 32;
 	conf.cntrlp = 0;
+	conf.nfloppy = 1;
+	conf.nhard = 1;
 }
 
 /*
@@ -346,23 +346,34 @@ pmubusy(void)
 /*
  *  set a bit in the PMU
  */
+Lock pmulock;
 int
 pmuwrbit(int index, int bit, int pos)
 {
+	lock(&pmulock);
 	outb(Pmucsr, 0x02);		/* next is command request */
-	if(pmuready() < 0)
+	if(pmuready() < 0){
+		unlock(&pmulock);
 		return -1;
+	}
 	outb(Pmudata, (2<<4) | index);	/* send write bit command */
 	outb(Pmucsr, 0x01);		/* send available */
-	if(pmubusy() < 0)
+	if(pmubusy() < 0){
+		unlock(&pmulock);
 		return -1;
+	}
 	outb(Pmucsr, 0x01);		/* next is data */
-	if(pmuready() < 0)
+	if(pmuready() < 0){
+		unlock(&pmulock);
 		return -1;
+	}
 	outb(Pmudata, (bit<<3) | pos);	/* send bit to write */
 	outb(Pmucsr, 0x01);		/* send available */
-	if(pmubusy() < 0)
+	if(pmubusy() < 0){
+		unlock(&pmulock);
 		return -1;
+	}
+	unlock(&pmulock);
 }
 
 /*

@@ -1,5 +1,7 @@
 #include "mem.h"
 
+#define OP16	BYTE	$0x66
+
 /*
  *	about to walk all over ms/dos - turn off interrupts
  */
@@ -208,6 +210,26 @@ TEXT	outb(SB),$0
 	MOVL	p+0(FP),DX
 	MOVL	b+4(FP),AX
 	OUTB
+	RET
+
+/*
+ *  input a string of shorts from a port
+ */
+TEXT	inss(SB),$0
+	MOVL	p+0(FP),DX
+	MOVL	a+4(FP),DI
+	MOVL	c+8(FP),CX
+	REP; OP16; INSL
+	RET
+
+/*
+ *  output a string of shorts to a port
+ */
+TEXT	outss(SB),$0
+	MOVL	p+0(FP),DX
+	MOVL	a+4(FP),SI
+	MOVL	c+8(FP),CX
+	REP; OP16; OUTSL
 	RET
 
 /*

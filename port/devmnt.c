@@ -759,6 +759,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 	if(mh->thdr.type == Tread)
 		memmove(mh->thdr.data, mh->rhdr.data, mh->rhdr.count);
 	mbfree(mh->mbr);
+	mh->mbr = 0;
 	mbfree(mbw);
 	poperror();		/* 1 */
 	return;
@@ -787,7 +788,6 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		qunlock(q);
 		qlocked = 0;
 		if(waserror()){		/* 3 */
-print("%d interrupted read %lux %lux\n", u->p->pid, mh, mh->mbr);
 			mnterrdequeue(m, mh);
 			nexterror();
 		}
@@ -797,9 +797,15 @@ print("%d interrupted read %lux %lux\n", u->p->pid, mh, mh->mbr);
 		}while(n == 0);
 		poperror();		/* 3 */
 		if(convM2S(mh->mbr->buf, &mh->rhdr, n) == 0){
-print("%d POO bad len %d %ux %lux %lux\n", u->p->pid, n, mh->mbr->buf[0], mh, mh->mbr);
-			mnterrdequeue(m, mh);
-			error(Ebadmsg);
+			if(1){	/* BUG? IS THIS RIGHT? IGNORE AND RETRY */
+				print(" MR ");
+				qlock(q);
+				qlocked = 1;
+				goto FreeRead;
+			}else{
+				mnterrdequeue(m, mh);
+				error(Ebadmsg);
+			}
 		}
 		/*
 		 * Response might not be mine
@@ -809,6 +815,11 @@ print("%d POO bad len %d %ux %lux %lux\n", u->p->pid, n, mh->mbr->buf[0], mh, mh
 		qlocked = 1;
 		tag = mh->rhdr.tag;
 		if(tag == mh->thdr.tag){	/* it's mine */
+			if(mh->rhdr.type != Rerror)
+			if(mh->rhdr.type != mh->thdr.type+1){
+				print(" T%c ", devchar[m->q->msg->type]);
+				goto FreeRead;
+			}
 			q->reader = 0;
 			if(w = q->writer){	/* advance a writer to reader */
 				mntwunlink(q, w);
@@ -835,6 +846,11 @@ print("%d POO bad len %d %ux %lux %lux\n", u->p->pid, n, mh->mbr->buf[0], mh, mh
 		w = &mnthdralloc.arena[tag];
 		if(w->flushing || !w->active)	/* nothing to do; mntflush will clean up */
 			goto FreeRead;
+		if(mh->rhdr.type != Rerror)
+		if(mh->rhdr.type != w->thdr.type+1){
+			print(" t%c ", devchar[m->q->msg->type]);
+			goto FreeRead;
+		}
 		w->mbr = mh->mbr;
 		mh->mbr = 0;
 		memmove(&w->rhdr, &mh->rhdr, sizeof mh->rhdr);
@@ -853,9 +869,7 @@ print("%d POO bad len %d %ux %lux %lux\n", u->p->pid, n, mh->mbr->buf[0], mh, mh
 		qunlock(q);
 		qlocked = 0;
 		if(waserror()){		/* interrupted sleep */
-print("%d interrupted queued sleep %lux %lux %d %d\n", u->p->pid, mh, mh->mbr, mh->active, mh->flushing);
 			mnterrdequeue(m, mh);
-print("%d after flush sleep %lux %lux %d %d\n", u->p->pid, mh, mh->mbr, mh->active, mh->flushing);
 			nexterror();
 		}
 		sleep(&mh->r, mntreadreply, mh);

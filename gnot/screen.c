@@ -81,8 +81,14 @@ screenputc(int c)
 void
 screenputs(char *s, int n)
 {
+	int x;
+
+	x = splhi();
+	lock(&printq);
 	while(n-- > 0)
 		screenputc(*s++);
+	unlock(&printq);
+	splx(x);
 }
 
 int

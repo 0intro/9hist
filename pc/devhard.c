@@ -22,6 +22,10 @@ enum
 	Pcylmsb=	Pbase+5,	/* most significant byte cylinder # */
 	Pdh=		Pbase+6,	/* drive/head port */
 	Pstatus=	Pbase+7,	/* status port */
+	 Sbusy=		 (1<<7),
+	 Sready=	 (1<<6),
+	 Sdrq=		 (1<<5),
+	 Serr=		 (1<<0),
 	Pcmd=		Pbase+7,	/* cmd port */
 
 	/* commands */
@@ -81,17 +85,19 @@ struct Ident
 struct Drive
 {
 	int	dev;
+	int	confused;	/* needs to be recalibrated (or worse) */
+	int	online;
+
 	ulong	cap;		/* drive capacity */
 	int	bytes;		/* bytes/sector */
-	int	cyl;		/* current cylinder */
-	int	confused;	/* needs to be recalibrated (or worse) */
+	int	sectors;	/* sectors/track */
+	int	heads;		/* heads/cyl */
+	long	cyl;		/* cylinders/drive */
 
 	int	tcyl;		/* target cylinder */
 	int	thead;		/* target head */
 	int	tsec;		/* target sector */
 	long	len;		/* size of xfer */
-
-	Ident	id;
 };
 
 /*
@@ -102,10 +108,12 @@ struct Controller
 	QLock;			/* exclusive access to the drive */
 
 	int	intr;		/* true if interrupt occured */
+	int	status;		/* status of last interupt */
 	Rendez	r;		/* wait here for command termination */
 	int	confused;	/* needs to be recalibrated (or worse) */
 
-	Drive	d[2];
+	Drive	*d;
+	Ident	id;
 };
 
 Controller	hard;
@@ -119,23 +127,45 @@ Dirtab harddir[]={
 static void	hardintr(Ureg*);
 static long	hardxfer(Drive*, int, void*, long, long);
 static long	hardident(Drive*);
+static void	hardpos(Drive*, long);
 
 void
 hardreset(void)
 {
-	hard.d[0].dev = 0;
-	hard.d[1].dev = 1;
+	Drive *dp;
+
+	hard.d = ialloc(conf.nhard * sizeof(Drive), 0);
+	for(dp = hard.d; dp < &hard.d[conf.nhard]; dp++){
+		dp->dev = dp - hard.d;
+		dp->online = 0;
+	}
+
 	setvec(Hardvec, hardintr);
 }
 
 void
 hardinit(void)
 {
+	qunlock(&hard);
 }
 
 Chan*
 hardattach(char *spec)
 {
+	Drive *dp;
+
+	qlock(&hard);
+	for(dp = hard.d; dp < &hard.d[conf.nhard]; dp++){
+		if(!waserror()){
+			hardident(dp);
+			dp->cyl = hard.id.lcyls;
+			dp->heads = hard.id.lheads;
+			dp->sectors = hard.id.ls2t;
+			dp->bytes = 512;
+			dp->cap = dp->bytes * dp->cyl * dp->heads * dp->sectors;
+			dp->online = 1;
+		}
+	}
 	return devattach('f', spec);
 }
 
@@ -210,15 +240,12 @@ hardread(Chan *c, void *a, long n)
 	switch ((int)(c->qid.path & Qmask)) {
 	case Qdata:
 		for(rv = 0; rv < n; rv += i){
-			i = hardxfer(dp, Fread, aa+rv, c->offset+rv, n-rv);
+			i = hardxfer(dp, Cread, aa+rv, c->offset+rv, n-rv);
 			if(i <= 0)
 				break;
 		}
 		break;
 	case Qstruct:
-		hardident(dp);
-		dp->cap = 512 * dp->id->lcyls * dp->id->lheads *dp->id->ls2t;
-		dp->bytes = 512;
 		if (n < 2*sizeof(ulong))
 			error(Ebadarg);
 		if (c->offset >= 2*sizeof(ulong))
@@ -245,7 +272,7 @@ hardwrite(Chan *c, void *a, long n)
 	switch ((int)(c->qid.path & Qmask)) {
 	case Qdata:
 		for(rv = 0; rv < n; rv += i){
-			i = hardxfer(dp, Fwrite, aa+rv, c->offset+rv, n-rv);
+			i = hardxfer(dp, Cwrite, aa+rv, c->offset+rv, n-rv);
 			if(i <= 0)
 				break;
 		}
@@ -274,19 +301,67 @@ interrupted(void *a)
 static long
 hardident(Drive *dp)
 {
-	qlock(&hard);
+print("identify hard drive\n");
 	hard.intr = 0;
 	outb(Pdh, dp->dev<<4);
 	outb(Pcmd, Cident);
+print("waiting for hard drive interupt\n");
 	sleep(&hard.r, interrupted, 0);
-	insw(Pdata, &hard.id, 512);
-	qunlock(&hard);
+print("getting hard drive ident\n");
+	inss(Pdata, &hard.id, 512/2);
+print(" magic %lux lcyls %d rcyl %d lheads %d b2t %d b2s %d ls2t %d\n",
+  hard.id.magic, hard.id.lcyls, hard.id.rcyl, hard.id.lheads,
+  hard.id.b2t, hard.id.b2s, hard.id.ls2t);
 }
 
 static long
 hardxfer(Drive *dp, int cmd, void *va, long off, long len)
 {
-	errors("not implemented");
+	int secs;
+	int i;
+	uchar *aa = va;
+
+	if(off % dp->bytes)
+		errors("bad offset");
+	if(len % dp->bytes)
+		errors("bad length");
+
+	if(waserror()){
+		qunlock(&hard);
+		nexterror();
+	}
+	qlock(&hard);
+	dp->len = len;
+	hardpos(dp, off);
+	secs = dp->len/dp->bytes;
+
+	outb(Pcount, secs);
+	outb(Psector, dp->tsec);
+	outb(Pdh, (1<<5) | (dp->dev<<4) | dp->thead);
+	outb(Pcyllsb, dp->tcyl);
+	outb(Pcylmsb, dp->tcyl>>8);
+	outb(Pcmd, cmd);
+
+	if(cmd == Cwrite)
+		outss(Pdata, aa, dp->bytes/2);
+	for(i = 0; i < secs; i++){
+		hard.intr = 0;
+		sleep(&hard.r, interrupted, 0);
+		if(hard.status & Serr)
+			errors("disk error");
+		if(cmd == Cread){
+			if((hard.status & Sdrq) == 0)
+				panic("disk read");
+			inss(Pdata, aa + i*dp->bytes, dp->bytes/2);
+		} else {
+			if((hard.status & Sdrq) == 0){
+				if(i+1 != secs)
+					panic("disk write");
+			} else
+				outss(Pdata, aa + (i+1)*dp->bytes, dp->bytes/2);
+		}
+	}
+	qunlock(&hard);
 }
 
 /*
@@ -296,8 +371,39 @@ static void
 hardintr(Ureg *ur)
 {
 	hard.status = inb(Pstatus);
+	if(hard.status & Sbusy)
+		panic("disk busy");
 	hard.intr = 1;
-	print("hardintr\n");
+print("hardintr\n");
 	wakeup(&hard.r);
+}
+
+/*
+ *  calculate physical address of a logical byte offset into the disk
+ *
+ *  truncate dp->len if it crosses a cylinder boundary
+ */
+static void
+hardpos(Drive *dp, long off)
+{
+	int lsec;
+	int end;
+	int cyl;
+
+	lsec = off/dp->bytes;
+	dp->tcyl = lsec/(dp->sectors*dp->heads);
+	dp->tsec = (lsec % dp->sectors) + 1;
+	dp->thead = (lsec/dp->sectors) % dp->heads;
+
+	/*
+	 *  can't read across cylinder boundaries.
+	 *  if so, decrement the bytes to be read.
+	 */
+	lsec = (off+dp->len)/dp->bytes;
+	cyl = lsec/(dp->sectors*dp->heads);
+	if(cyl != dp->tcyl){
+		dp->len -= (lsec % dp->sectors)*dp->bytes;
+		dp->len -= ((lsec/dp->sectors) % dp->heads)*dp->bytes*dp->sectors;
+	}
 }
 
