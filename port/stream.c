@@ -441,6 +441,49 @@ putq(Queue *q, Block *bp)
 	unlock(q);
 	return delim;
 }
+
+int
+blen(Block *bp)
+{
+	int len;
+
+	len = 0;
+	while(bp) {
+		len += BLEN(bp);
+		bp = bp->next;
+	}
+
+	return len;
+}
+
+/*
+ * bround - round a block to chain to some 2^n number of bytes
+ */
+int
+bround(Block *bp, int amount)
+{
+	Block *last;
+	int len, pad;
+
+	len = 0;
+	SET(last);
+	while(bp) {
+		len += BLEN(bp);
+		last = bp;
+		bp = bp->next;
+	}
+
+	pad = ((len + amount) & ~amount) - len;
+	if(pad) {
+		last->next = allocb(pad);
+		memset(last->next->rptr, 0, pad);
+		last->next->flags |= S_DELIM;
+		last->flags &= ~S_DELIM;
+	}
+
+	return len + pad;
+}
+
 int
 putb(Blist *q, Block *bp)
 {
@@ -596,6 +639,7 @@ prepend(Block *bp, int n)
 		return nbp;
 	}
 }
+
 
 /*
  *  put a block into the bit bucket

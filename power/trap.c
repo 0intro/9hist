@@ -176,6 +176,7 @@ void
 intr(Ureg *ur)
 {
 	int i, any;
+	uchar xxx;
 	uchar pend, npend;
 	long v;
 	ulong cause;
@@ -215,13 +216,28 @@ intr(Ureg *ur)
 		/*
 		 *  3. read pending interrupts
 		 */
-		npend = pend = SBCCREG->fintpending;
+		pend = SBCCREG->fintpending;
+		npend = pend;
 
 		/*
 		 *  4. clear pending register
 		 */
 		i = SBCCREG->flevel;
 		USED(i);
+
+		/*
+		 *  4a. attempt to fix problem
+		 */
+		if(!(*INTPENDREG & (1<<5)))
+			print("pause again\n");
+		while(!(*INTPENDREG & (1<<5)))
+			;
+		xxx = SBCCREG->fintpending;
+		if(xxx){
+			print("new pend %ux\n", xxx);
+			npend = pend |= xxx;
+			i = SBCCREG->flevel;
+		}
 
 		/*
 		 *  5a. process lance, scsi

@@ -276,7 +276,7 @@ nonetopen(Chan *c, int omode)
 		line = STREAMID(c->qid.path);
 		ifc = &noifc[c->dev];
 		if(ifc->conv[line].state != Cannounced)
-			error(Enoannounce);
+			errors("channel not announced");
 		nolisten(c, ifc);
 		break;
 	case Nraddrqid:

@@ -13,6 +13,7 @@
 /*
  * If defined, ENABMEMTEST causes memory test to be run at device open
  */
+#define	ENABMEMTEST
 #ifdef	ENABMEMTEST
 void	mem(Hot*, ulong*, ulong);
 #define	NTESTBUF	256

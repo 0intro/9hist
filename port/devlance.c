@@ -549,16 +549,12 @@ lanceinit(void)
 Chan*
 lanceattach(char *spec)
 {
-	Chan *c;
-
 	if(l.kstarted == 0){
 		kproc("lancekproc", lancekproc, 0);/**/
 		l.kstarted = 1;
 		lancestart();
 	}
-	c = devattach('l', spec);
-	c->dev = 0;
-	return c;
+	return devattach('l', spec);
 }
 
 Chan*
@@ -595,8 +591,6 @@ lancestat(Chan *c, char *dp)
 Chan*
 lanceopen(Chan *c, int omode)
 {
-	extern Qinfo nonetinfo;
-
 	switch(c->qid.path){
 	case CHDIR:
 	case Ltraceqid:
@@ -623,16 +617,8 @@ lancecreate(Chan *c, char *name, int omode, ulong perm)
 void	 
 lanceclose(Chan *c)
 {
-	/* real closing happens in lancestclose */
-	switch(c->qid.path){
-	case CHDIR:
-	case Ltraceqid:
-	case Lstatsqid:
-		break;
-	default:
+	if(c->stream)
 		streamclose(c);
-		break;
-	}
 }
 
 static long
