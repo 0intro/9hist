@@ -82,9 +82,9 @@ ip3gen(Chan *c, int i, Dir *dp)
 		devdir(c, q, "err", qlen(cv->eq), cv->owner, cv->perm, dp);
 		return 1;
 	case Qlisten:
-		p = "listen";
 		q = (Qid){QID(PROTO(c->qid), CONV(c->qid), Qlisten), 0};
-		break;
+		devdir(c, q, "listen", qlen(cv->eq), cv->owner, cv->perm, dp);
+		return 1;
 	case Qlocal:
 		p = "local";
 		q = (Qid){QID(PROTO(c->qid), CONV(c->qid), Qlocal), 0};
@@ -98,7 +98,7 @@ ip3gen(Chan *c, int i, Dir *dp)
 		q = (Qid){QID(PROTO(c->qid), CONV(c->qid), Qstatus), 0};
 		break;
 	}
-	devdir(c, q, p, 0, cv->owner, 0666, dp);
+	devdir(c, q, p, 0, cv->owner, 0444, dp);
 	return 1;
 }
 
@@ -419,6 +419,14 @@ ipopen(Chan* c, int omode)
 		break;
 	case Qlisten:
 		cv = f->p[PROTO(c->qid)]->conv[CONV(c->qid)];
+		if((perm & (cv->perm>>6)) != perm) {
+			if(strcmp(commonuser(), cv->owner) != 0)
+				error(Eperm);
+		 	if((perm & cv->perm) != perm)
+				error(Eperm); 
+
+		}
+
 		if(cv->state != Announced)
 			error("not announced");
 
@@ -470,9 +478,34 @@ ipremove(Chan*)
 }
 
 static void
-ipwstat(Chan*, char*)
+ipwstat(Chan *c, char *dp)
 {
-	error(Eperm);
+	Dir d;
+	Conv *cv;
+	Fs *f;
+	Proto *p;
+
+	f = ipfs[c->dev];
+	switch(TYPE(c->qid)) {
+	default:
+		error(Eperm);
+		break;
+	case Qctl:
+	case Qdata:
+		break;
+	}
+
+	convM2D(dp, &d);
+
+	p = f->p[PROTO(c->qid)];
+	cv = p->conv[CONV(c->qid)];
+	if(!iseve() && strcmp(commonuser(), cv->owner) != 0)
+		error(Eperm);
+	if(d.uid[0]){
+		strncpy(cv->owner, d.uid, sizeof(cv->owner));
+		cv->owner[sizeof(cv->owner)-1] = 0;
+	}
+	cv->perm = d.mode & 0777;
 }
 
 void
