@@ -36,6 +36,8 @@ enum {			/* Packet Types */
 	TimestampReply	= 14,
 	InfoRequest	= 15,
 	InfoReply	= 16,
+
+	Maxtype		= 16,
 };
 
 enum {
@@ -46,6 +48,12 @@ enum {
 
 	Proto	icmp;
 extern	Fs	fs;
+
+static struct Icmpstats
+{
+	ulong	in[Maxtype+1];
+	ulong	out[Maxtype+1];
+} stats;
 
 static char*
 icmpconnect(Conv *c, char **argv, int argc)
@@ -112,6 +120,8 @@ icmpkick(Conv *c, int l)
 		return;
 	}
 	p = (Icmp *)(bp->rp);
+	if(p->type <= Maxtype)
+		stats.out[p->type]++;
 	hnputl(p->dst, c->raddr);
 	hnputl(p->src, c->laddr);
 	p->proto = IP_ICMPPROTO;
@@ -141,6 +151,7 @@ icmpnoconv(Block *bp)
 	hnputs(np->seq, 0);
 	memset(np->cksum, 0, sizeof(np->cksum));
 	hnputs(np->cksum, ptclcsum(nbp, ICMP_IPSIZE, blocklen(nbp) - ICMP_IPSIZE));
+	stats.out[Unreachable]++;
 	ipoput(nbp, 0, MAXTTL);
 }
 
@@ -221,9 +232,12 @@ icmpiput(Media *m, Block *bp)
 		icmp.csumerr++;
 		goto raise;
 	}
+	if(p->type <= Maxtype)
+		stats.in[p->type]++;
 	switch(p->type) {
 	case EchoRequest:
 		r = mkechoreply(bp);
+		stats.out[EchoReply]++;
 		ipoput(r, 0, MAXTTL);
 		break;
 	case Unreachable:
@@ -299,6 +313,22 @@ icmpadvise(Block *bp, char *msg)
 	freeblist(bp);
 }
 
+int
+icmpstats(char *buf, int len)
+{
+	int i, n;
+
+	n = snprint(buf, len, "\trcvd ");
+	for(i = 0; i < Maxtype && len > n; i++)
+		n += snprint(buf+n, len-n, " %d", stats.in[i]);	
+	n += snprint(buf+n, len - n, "\n\tsent ");
+	for(i = 0; i < Maxtype && len > n; i++)
+		n += snprint(buf+n, len-n, " %d", stats.out[i]);
+	if(n < len)
+		n += snprint(buf+n, len-n, "\n");
+	return n;	
+}
+
 void
 icmpinit(Fs *fs)
 {
@@ -310,6 +340,7 @@ icmpinit(Fs *fs)
 	icmp.create = icmpcreate;
 	icmp.close = icmpclose;
 	icmp.rcv = icmpiput;
+	icmp.stats = icmpstats;
 	icmp.ctl = nil;
 	icmp.advise = icmpadvise;
 	icmp.ipproto = IP_ICMPPROTO;

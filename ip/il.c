@@ -122,6 +122,12 @@ struct Ilhdr
 	byte	ilack[4];	/* Acked sequence */
 };
 
+static struct Ilstats
+{
+	ulong	dup;
+	ulong	dupb;
+} ilstats;
+
 /* Always Acktime < Fasttime < Slowtime << Ackkeepalive */
 enum
 {
@@ -329,6 +335,12 @@ ilcreate(Conv *c)
 	c->wq = qopen(64*1024, 0, 0, 0);
 }
 
+int
+ilxstats(char *buf, int len)
+{
+	return snprint(buf, len, "\tdupp %d dupb %d\n", ilstats.dup, ilstats.dupb);
+}
+
 void
 ilinit(Fs *fs)
 {
@@ -342,6 +354,7 @@ ilinit(Fs *fs)
 	il.rcv = iliput;
 	il.ctl = nil;
 	il.advise = iladvise;
+	il.stats = ilxstats;
 	il.ipproto = IP_ILPROTO;
 	il.nc = Nchans;
 	il.ptclsize = sizeof(Ilcb);
@@ -819,8 +832,10 @@ ilpullup(Conv *s)
 			freeblist(bp);
 			continue;
 		}
-		if(oid != ic->recvd+1)
+		if(oid != ic->recvd+1){
+			il.order++;
 			break;
+		}
 
 		ic->recvd = oid;
 		ic->outoforder = bp->list;
@@ -871,6 +886,8 @@ iloutoforder(Conv *s, Ilhdr *h, Block *bp)
 			newid = nhgetl(lid);
 			if(id <= newid) {
 				if(id == newid) {
+					ilstats.dup++;
+					ilstats.dupb += blocklen(bp);
 					qunlock(&ic->outo);
 					freeblist(bp);
 					return;

@@ -186,6 +186,12 @@ ushort	tcp_mss  = DEF_MSS;	/* Maximum segment size to be sent */
 Timer 	*timers;		/* List of active timers */
 QLock 	tl;			/* Protect timer list */
 
+static struct Tcpstats
+{
+	ulong	dup;		/* (partially) duplicated packets */
+	ulong	dupb;		/* duplicated bytes */
+} tstats;
+
 void	addreseq(Tcpctl*, Tcp*, Block*, ushort);
 void	getreseq(Tcpctl*, Tcp*, Block**, ushort*);
 void	localclose(Conv*, char*);
@@ -1250,6 +1256,7 @@ tcpiput(Media *m, Block *bp)
 	if(seg.seq != tcb->rcv.nxt)
 	if(length != 0 || (seg.flags & (SYN|FIN))) {
 		update(s, &seg);
+		tcp.order++;
 		addreseq(tcb, &seg, bp, length);
 		tcb->flags |= FORCE;
 		goto output;
@@ -1469,7 +1476,6 @@ tcpoutput(Conv *s)
 		 * window probes to one
 		 */
 		if(tcb->snd.wnd == 0){
-			tcp.wclosed++;
 			if(sent != 0) {
 				if ((tcb->flags&FORCE) == 0)
 					break;
@@ -1846,6 +1852,8 @@ tcptrim(Tcpctl *tcb, Tcp *seg, Block **bp, ushort *length)
 	dupcnt = tcb->rcv.nxt - seg->seq;
 	if(dupcnt > 0){
 		tcb->rerecv += dupcnt;
+		tstats.dup++;
+		tstats.dupb += dupcnt;
 		if(seg->flags & SYN){
 			seg->flags &= ~SYN;
 			seg->seq++;
@@ -1924,6 +1932,12 @@ tcpctl(Conv* c, char** f, int n)
 	return "unknown control request";
 }
 
+int
+tcpstats(char *buf, int len)
+{
+	return snprint(buf, len, "\tdupp %d dupb %d\n", tstats.dup, tstats.dupb);
+}
+
 void
 tcpinit(Fs *fs)
 {
@@ -1937,6 +1951,7 @@ tcpinit(Fs *fs)
 	tcp.close = tcpclose;
 	tcp.rcv = tcpiput;
 	tcp.advise = tcpadvise;
+	tcp.stats = tcpstats;
 	tcp.ipproto = IP_TCPPROTO;
 	tcp.nc = Nchans;
 	tcp.ptclsize = sizeof(Tcpctl);

@@ -916,11 +916,14 @@ Fspcolstats(char *buf, int len)
 	int n;
 
 	n = 0;
-	for(p = fs.p; *p; p++)
+	for(p = fs.p; *p; p++){
 		n += snprint(buf + n, len - n,
-			"%s: csum %d hlen %d len %d order %d rexmit %d wc %d\n",
+			"%s: csum %d hlen %d len %d order %d rexmit %d\n",
 			(*p)->name, (*p)->csumerr, (*p)->hlenerr, (*p)->lenerr,
-			(*p)->order, (*p)->rexmit, (*p)->wclosed);
+			(*p)->order, (*p)->rexmit);
+		if((*p)->stats)
+			n += (*(*p)->stats)(buf + n, len - n);
+	}
 	return n;
 }
 

@@ -169,6 +169,7 @@ struct Proto
 	void		(*rcv)(Media*, Block*);
 	char*		(*ctl)(Conv*, char**, int);
 	void		(*advise)(Block*, char*);
+	int		(*stats)(char*, int);
 
 	Conv		**conv;		/* array of conversations */
 	int		ptclsize;	/* size of per protocol ctl block */
@@ -183,7 +184,6 @@ struct Proto
 	ulong		lenerr;			/* short packet */
 	ulong		order;			/* out of order */
 	ulong		rexmit;			/* retransmissions */
-	ulong		wclosed;		/* window closed */
 };
 
 struct Fs

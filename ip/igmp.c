@@ -68,6 +68,14 @@ IGMP igmpalloc;
 	Proto	igmp;
 extern	Fs	fs;
 
+static struct Stats
+{
+	ulong 	inqueries;
+	ulong	outqueries;
+	ulong	inreports;
+	ulong	outreports;
+} stats;
+
 void
 igmpsendreport(Media *m, byte *addr)
 {
@@ -87,6 +95,7 @@ igmpsendreport(Media *m, byte *addr)
 	memmove(p->group, addr, IPaddrlen);
 	hnputs(p->igmpcksum, ptclcsum(bp, IGMP_IPHDRSIZE, IGMP_HDRSIZE));
 	netlog(Logigmp, "igmpreport %I\n", p->group);
+	stats.outreports++;
 	ipoput(bp, 0, 1);	/* TTL of 1 */
 }
 
@@ -190,6 +199,7 @@ igmpiput(Media *m, Block *bp)
 		/*
 		 *  start reporting groups that we're a member of.
 		 */
+		stats.inqueries++;
 		for(rp = igmpalloc.reports; rp; rp = rp->next)
 			if(rp->m == m)
 				break;
@@ -219,6 +229,7 @@ igmpiput(Media *m, Block *bp)
 		/*
 		 *  find report list for this medium
 		 */
+		stats.inreports++;
 		lrp = &igmpalloc.reports;
 		for(rp = *lrp; rp; rp = *lrp){
 			if(rp->m == m)
@@ -250,6 +261,14 @@ error:
 	freeb(bp);
 }
 
+int
+igmpstats(char *buf, int len)
+{
+	return snprint(buf, len, "\trcvd %d %d\n\tsent %d %d\n",
+		stats.inqueries, stats.inreports,
+		stats.outqueries, stats.outreports);
+}
+
 void
 igmpinit(Fs *fs)
 {
@@ -261,6 +280,7 @@ igmpinit(Fs *fs)
 	igmp.state = nil;
 	igmp.close = nil;
 	igmp.rcv = igmpiput;
+	igmp.stats = igmpstats;
 	igmp.ipproto = IP_IGMPPROTO;
 	igmp.nc = 0;
 	igmp.ptclsize = 0;

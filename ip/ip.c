@@ -67,6 +67,12 @@ ulong		ipout, ippout;		/* bytes, packets out */
  */
 #define BKFG(xp)	((Ipfrag*)((xp)->base))
 
+static struct Stats
+{
+	ulong	noroute;
+	ulong	droppedfrag;
+} stats;
+
 ushort		ipcsum(byte*);
 Block*		ipreassemble(int, Block*, Iphdr*);
 void		ipfragfree(Fragment*);
@@ -109,6 +115,7 @@ ipoput(Block *bp, int gating, int ttl)
 	} else
 		m = Mediaroute(eh->dst, gate);
 	if(m == nil){
+		stats.noroute++;
 		netlog(Logip, "no interface %I\n", eh->dst);
 		goto raise;
 	}
@@ -307,6 +314,8 @@ ipstats(char *buf, int len)
 
 	n = snprint(buf, len, "ip: csum %lud inb %lud outb %lud inp %lud outp %lud\n",
 		ipcsumerr, ipin, ipout, ippin, ippout);
+	n += snprint(buf+n, len - n, "\tnoroute %lud droppedfrag %lud\n",
+		stats.noroute, stats.droppedfrag);
 	return n;
 }
 
@@ -341,8 +350,10 @@ ipreassemble(int offset, Block *bp, Iphdr *ip)
 		fnext = f->next;	/* because ipfragfree changes the list */
 		if(f->src == src && f->dst == dst && f->id == id)
 			break;
-		if(f->age < msec)
+		if(f->age < msec){
+			stats.droppedfrag++;
 			ipfragfree(f);
+		}
 	}
 
 	/*
