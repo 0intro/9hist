@@ -35,7 +35,8 @@ struct Queue
 	Block*	bfirst;		/* buffer */
 	Block*	blast;
 
-	int	len;		/* bytes in queue */
+	int	len;		/* bytes allocated to queue */
+	int	dlen;		/* data bytes in queue */
 	int	limit;		/* max bytes in queue */
 	int	inilim;		/* initial limit */
 	int	state;
@@ -531,6 +532,7 @@ qget(Queue *q)
 	q->bfirst = b->next;
 	b->next = 0;
 	q->len -= BALLOC(b);
+	q->dlen -= BLEN(b);
 	QDEBUG checkb(b, "qget");
 
 	/* if writer flow controlled, restart */
@@ -568,10 +570,12 @@ qdiscard(Queue *q, int len)
 			q->bfirst = b->next;
 			b->next = 0;
 			q->len -= BALLOC(b);
+			q->dlen -= BLEN(b);
 			freeb(b);
 		} else {
 			n = len - sofar;
 			b->rp += n;
+			q->dlen -= n;
 		}
 	}
 
@@ -625,6 +629,7 @@ qconsume(Queue *q, void *vp, int len)
 	if((q->state & Qmsg) || len == n)
 		q->bfirst = b->next;
 	b->rp += len;
+	q->dlen -= len;
 
 	/* if writer flow controlled, restart */
 	if((q->state & Qflow) && q->len < q->limit/2){
@@ -643,6 +648,7 @@ qconsume(Queue *q, void *vp, int len)
 	if((q->state & Qmsg) || len == n){
 		b->next = 0;
 		q->len -= BALLOC(b);
+		q->dlen -= BLEN(b);
 		freeb(b);
 	}
 	return len;
@@ -651,7 +657,7 @@ qconsume(Queue *q, void *vp, int len)
 int
 qpass(Queue *q, Block *b)
 {
-	int len, dowakeup;
+	int dlen, len, dowakeup;
 
 	/* sync with qread */
 	dowakeup = 0;
@@ -668,14 +674,17 @@ qpass(Queue *q, Block *b)
 	else
 		q->bfirst = b;
 	len = BALLOC(b);
+	dlen = BLEN(b);
 	QDEBUG checkb(b, "qpass");
 	while(b->next){
 		b = b->next;
 		QDEBUG checkb(b, "qpass");
 		len += BALLOC(b);
+		dlen += BLEN(b);
 	}
 	q->blast = b;
 	q->len += len;
+	q->dlen += dlen;
 
 	if(q->len >= q->limit/2)
 		q->state |= Qflow;
@@ -696,7 +705,7 @@ checkqlen(q);
 int
 qpassnolim(Queue *q, Block *b)
 {
-	int len, dowakeup;
+	int dlen, len, dowakeup;
 
 	/* sync with qread */
 	dowakeup = 0;
@@ -708,14 +717,17 @@ qpassnolim(Queue *q, Block *b)
 	else
 		q->bfirst = b;
 	len = BALLOC(b);
+	dlen = BLEN(b);
 	QDEBUG checkb(b, "qpass");
 	while(b->next){
 		b = b->next;
 		QDEBUG checkb(b, "qpass");
 		len += BALLOC(b);
+		dlen += BLEN(b);
 	}
 	q->blast = b;
 	q->len += len;
+	q->dlen += dlen;
 
 	if(q->len >= q->limit/2)
 		q->state |= Qflow;
@@ -792,6 +804,7 @@ qproduce(Queue *q, void *vp, int len)
 	q->blast = b;
 	/* b->next = 0; done by iallocb() */
 	q->len += BALLOC(b);
+	q->dlen += BLEN(b);
 	QDEBUG checkb(b, "qproduce");
 
 	if(q->state & Qstarve){
@@ -935,6 +948,7 @@ qbread(Queue *q, int len)
 	q->bfirst = b->next;
 	b->next = 0;
 	n = BLEN(b);
+	q->dlen -= n;
 	q->len -= BALLOC(b);
 	QDEBUG checkb(b, "qbread 1");
 
@@ -962,6 +976,7 @@ qbread(Queue *q, int len)
 				q->blast = b;
 			q->bfirst = b;
 			q->len += BALLOC(b);
+			q->dlen += n;
 		}
 		nb->wp = nb->rp + len;
 	}
@@ -1018,7 +1033,6 @@ qbwrite(Queue *q, Block *b)
 
 	dowakeup = 0;
 	n = BLEN(b);
-
 	qlock(&q->wlock);
 	if(waserror()){
 		qunlock(&q->wlock);
@@ -1058,6 +1072,7 @@ qbwrite(Queue *q, Block *b)
 	q->blast = b;
 	b->next = 0;
 	q->len += BALLOC(b);
+	q->dlen += n;
 	QDEBUG checkb(b, "qbwrite");
 
 	if(q->state & Qstarve){
@@ -1147,6 +1162,7 @@ qiwrite(Queue *q, void *vp, int len)
 			q->bfirst = b;
 		q->blast = b;
 		q->len += BALLOC(b);
+		q->dlen += n;
 
 		if(q->state & Qstarve){
 			q->state &= ~Qstarve;
@@ -1251,13 +1267,7 @@ qreopen(Queue *q)
 int
 qlen(Queue *q)
 {
-	int len;
-	Block *b;
-
-	len = 0;
-	for(b = q->bfirst; b; b= b->next)
-		len += BLEN(b);
-	return len;
+	return q->dlen;
 }
 
 /*
@@ -1314,6 +1324,7 @@ qflush(Queue *q)
 	bfirst = q->bfirst;
 	q->bfirst = 0;
 	q->len = 0;
+	q->dlen = 0;
 	iunlock(q);
 
 	/* free queued blocks */

@@ -378,14 +378,15 @@ sysread(ulong *arg)
 	long n;
 	Chan *c;
 
-	validaddr(arg[1], arg[2], 1);
+	n = arg[2];
+	validaddr(arg[1], n, 1);
 	c = fdtochan(arg[0], OREAD, 1, 1);
+
 	if(waserror()) {
 		cclose(c);
 		nexterror();
 	}
 
-	n = arg[2];
 	dir = c->qid.path&CHDIR;
 
 	if(dir) {
@@ -443,23 +444,35 @@ long
 syswrite(ulong *arg)
 {
 	Chan *c;
-	long n;
+	long m, n;
+	uvlong oo;
 
 	validaddr(arg[1], arg[2], 0);
+	n = arg[2];
 	c = fdtochan(arg[0], OWRITE, 1, 1);
 	if(waserror()) {
 		cclose(c);
+		lock(c);
+		c->offset -= n;
+		unlock(c);
 		nexterror();
 	}
 
 	if(c->qid.path & CHDIR)
 		error(Eisdir);
 
-	n = devtab[c->type]->write(c, (void*)arg[1], arg[2], c->offset);
-
 	lock(c);
+	oo = c->offset;
 	c->offset += n;
 	unlock(c);
+
+	m = devtab[c->type]->write(c, (void*)arg[1], n, oo);
+
+	if(m < n){
+		lock(c);
+		c->offset = oo + m;
+		unlock(c);
+	}
 
 	poperror();
 	cclose(c);

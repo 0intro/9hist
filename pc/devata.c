@@ -1825,7 +1825,8 @@ atapiexec(Drive *dp)
 		nexterror();
 
 	if(cp->status & Serr){
-		DPRINT("%s: Bad packet command %ux, error %ux\n", dp->vol, cp->cmdblk[0], cp->error);
+		DPRINT("%s: Bad packet command 0x%ux, error 0x%ux\n",
+			dp->vol, cp->cmdblk[0], cp->error);
 		error(Eio);
 	}
 }
@@ -1985,7 +1986,7 @@ atapipart(Drive *dp)
 	retrycount = 2;
 retry:
 	if(waserror()){
-		DPRINT("atapipart: cmd %uX error %uX\n", cp->cmdblk[0], cp->error);
+		DPRINT("atapipart: cmd 0x%uX error 0x%uX\n", cp->cmdblk[0], cp->error);
 		if((cp->status & Serr) && (cp->error & 0xF0) == 0x60){
 			dp->vers++;
 			if(retrycount){
@@ -2015,7 +2016,7 @@ retry:
 	cp->cmdblk[4] = 18;
 	atapiexec(dp);
 	if(cp->count != 18){
-		print("cmd=%2.2uX, lastcmd=%2.2uX ", cp->cmd, cp->lastcmd);
+		print("cmd=0x%2.2uX, lastcmd=0x%2.2uX ", cp->cmd, cp->lastcmd);
 		print("cdsize count %d, status 0x%2.2uX, error 0x%2.2uX\n",
 			cp->count, cp->status, cp->error);
 		error(Eio);
@@ -2027,7 +2028,7 @@ retry:
 	cp->cmdblk[0] = Ccapacity;
 	atapiexec(dp);
 	if(cp->count != 8){
-		print("cmd=%2.2uX, lastcmd=%2.2uX ", cp->cmd, cp->lastcmd);
+		print("cmd=0x%2.2uX, lastcmd=0x%2.2uX ", cp->cmd, cp->lastcmd);
 		print("cdsize count %d, status 0x%2.2uX, error 0x%2.2uX\n",
 			cp->count, cp->status, cp->error);
 		error(Eio);
