@@ -714,6 +714,44 @@ isoxmit(Endpt *e, Block *b, int pid)
 	return ob;
 }
 
+static Block*
+isorecv(Endpt *e, Block *b, int pid)
+{
+	TD *td;
+	int n, id;
+	Block *ob;
+	static int ioc;
+
+	td = e->etd;
+	if (td == nil)
+		panic("usb: isoxmit");
+	while(td->status & Active){
+		XPRINT("isorecv: sleep %lux\n", &e->wr);
+		sleep(&e->wr, tdisready, e->etd);
+		XPRINT("isorecv: awake\n");
+	}
+	if (td->status & AnyError)
+		iprint("usbisoerror 0x%lux\n", td->status);
+	ob = td->bp;
+	if (ob == nil)
+		panic("isorecv: null block");
+	n = (td->status + 1) & 0x7FF;
+	if(n > ob->lim - b->wp)
+		n = 0;
+	ob->wp = ob->rp + n;
+	td->buffer = PADDR(b->rp);
+	td->bp = b;
+	n = BLEN(b);
+	id = (e->x<<7)|(e->dev->x&0x7F);
+	td->dev = ((n-1)<<21) | ((id&0x7FF)<<8) | pid;
+	if ((ioc++ & 0xff) == 0)
+		td->status = ErrLimit3 | Active | IsoSelect | IOC;
+	else
+		td->status = ErrLimit3 | Active | IsoSelect;
+	e->etd = td->next;
+	return ob;
+}
+
 static QH*
 qxmit(Endpt *e, Block *b, int pid)
 {
@@ -835,14 +873,14 @@ schedendpt(Endpt *e)
 	TD *td, **prev, *first;
 	int i, j;
 
-	e->curblock = allocb(e->maxpkt);
-	if (e->curblock == nil)
-		panic("schedept: allocb");
-	e->curbytes = 0;
 	if(!e->iso || e->sched >= 0)
 		return 0;
 	ub = &ubus;
 	
+	e->curblock = allocb(e->maxpkt);
+	if (e->curblock == nil)
+		panic("schedept: allocb");
+	e->curbytes = 0;
 	ilock(ub);
 	e->sched = usbsched(ub, e->pollms, e->maxpkt);
 	if(e->sched < 0)
@@ -1602,32 +1640,65 @@ readusb(Endpt *e, void *a, long n)
 		}
 		if(e->err)
 			error(e->err);
-		qrcv(e);
-		if(!e->iso)
-			e->data01 ^= 1;
-		sleep(&e->rr, eptinput, e);
-		if(e->err)
-			error(e->err);
-		b = qget(e->rq);	/* TO DO */
-		if(b == nil) {
-			XPRINT("b == nil\n");
-			break;
-		}
-		if(waserror()){
-			freeb(b);
-			nexterror();
-		}
-		l = BLEN(b);
-		if((i = l) > n)
-			i = n;
-		if(i > 0){
-			memmove(p, b->rp, i);
+		if (e->iso){
+			if (e->curbytes == 0){
+				/* calculate size of next receive buffer */
+				e->psize = (e->hz + e->remain)*e->pollms/1000;
+				e->remain = (e->hz + e->remain)*e->pollms%1000;
+				e->psize *= e->samplesz;
+				if (e->psize > e->maxpkt)
+					panic("packet size > maximum");
+				e->curblock->wp = e->curblock->rp + e->psize;
+				/* put empty buffer on receive queue and get next full one */
+				b = isorecv(e, e->curblock, TokIN);
+				/* bytes to consume in b: */
+				e->curbytes = BLEN(b);
+				b->wp = b->rp;
+				e->nbytes += e->curbytes;
+				e->nblocks++;
+			}else{
+				b = e->curblock;
+			}
+			if (b == nil)
+				panic("readusb: block");
+			if((i = n) >= e->curbytes)
+				i = e->curbytes;
+			memmove(p, b->wp, i);
+			b->wp += i;
 			p += i;
+			n -= i;
+			e->curbytes -= i;
+			e->curblock = b;
+		}else{
+			qrcv(e);
+			if(!e->iso)
+				e->data01 ^= 1;
+			sleep(&e->rr, eptinput, e);
+			if(e->err)
+				error(e->err);
+			b = qget(e->rq);	/* TO DO */
+			if(b == nil) {
+				XPRINT("b == nil\n");
+				break;
+			}
+			if(waserror()){
+				freeb(b);
+				nexterror();
+			}
+			l = BLEN(b);
+			if((i = l) > n)
+				i = n;
+			if(i > 0){
+				memmove(p, b->rp, i);
+				p += i;
+			}
+			poperror();
+			freeb(b);
+			n -= i;
+			if (l != e->maxpkt)
+				break;
 		}
-		poperror();
-		freeb(b);
-		n -= i;
-	} while (l == e->maxpkt && n > 0);
+	} while (n > 0);
 	poperror();
 	qunlock(&e->rlock);
 	return p-(uchar*)a;
@@ -1727,7 +1798,6 @@ writeusb(Endpt *e, void *a, long n, int tok)
 		nexterror();
 	}
 	do {
-
 		if(e->err)
 			error(e->err);
 		if (e->iso){
