@@ -170,6 +170,7 @@ srvread(Chan *c, void *va, long n, ulong offset)
 long
 srvwrite(Chan *c, void *va, long n, ulong offset)
 {
+	Fgrp *f;
 	int i, fd;
 	char buf[32];
 
@@ -181,8 +182,11 @@ srvwrite(Chan *c, void *va, long n, ulong offset)
 	memmove(buf, va, n);	/* so we can NUL-terminate */
 	buf[n] = 0;
 	fd = strtoul(buf, 0, 0);
+	f = u->p->fgrp;
+	lock(f);
 	fdtochan(fd, -1, 0);	/* error check only */
-	srv.chan[i] = u->p->fgrp->fd[fd];
+	srv.chan[i] = f->fd[fd];
 	incref(srv.chan[i]);
+	unlock(f);
 	return n;
 }

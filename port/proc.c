@@ -399,6 +399,7 @@ postnote(Proc *p, int dolock, char *n, int flag)
 		up = (User*)VA(k);
 	}else
 		up = u;
+	USED(k);
 
 
 	if(flag!=NUser && (up->notify==0 || up->notified))

@@ -41,7 +41,12 @@ grpinit(void)
 	Fgrp *f, *fe;
 	Mount *m, *em;
 	Mhead *hm, *hem;
+	Crypt *cr;
 
+	/*
+	 * need to /dev/proc read protect crypt memory
+	 */
+	cr = ialloc(conf.npgrp*sizeof(Crypt), 0);
 	pgrpalloc.arena = ialloc(conf.npgrp*sizeof(Pgrp), 0);
 	pgrpalloc.free = pgrpalloc.arena;
 
@@ -49,6 +54,7 @@ grpinit(void)
 	for(i=0; i<conf.npgrp; i++,p++) {
 		p->index = i;
 		p->next = p+1;
+		p->crypt = cr++;
 	}
 	p[-1].next = 0;
 
@@ -114,6 +120,7 @@ newpgrp(void)
 			pgrpalloc.free = p->next;
 			p->ref = 1;
 			p->pgrpid = ++pgrpalloc.pgrpid;
+			memset(p->crypt, 0, sizeof *p->crypt);
 			memset(p->rendhash, 0, sizeof(p->rendhash));
 			memset(p->mnthash, 0, sizeof(p->mnthash));
 			unlock(&pgrpalloc);
@@ -318,6 +325,7 @@ pgrpcpy(Pgrp *to, Pgrp *from)
 
 	rlock(&from->ns);
 
+	*to->crypt = *from->crypt;
 	e = &from->mnthash[MNTHASH];
 	tom = to->mnthash;
 	for(h = from->mnthash; h < e; h++) {

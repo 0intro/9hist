@@ -3,6 +3,7 @@ typedef struct Alarms	Alarms;
 typedef struct Block	Block;
 typedef struct Blist	Blist;
 typedef struct Chan	Chan;
+typedef struct Crypt	Crypt;
 typedef struct Dev	Dev;
 typedef struct Dirtab	Dirtab;
 typedef struct Egrp	Egrp;
@@ -162,6 +163,13 @@ struct Chan
 	};
 	Chan	*mchan;			/* channel to mounted server */
 	Qid	mqid;			/* qid of root of mount point */
+};
+
+#define	KEYLEN	7
+struct Crypt
+{
+	char	key[KEYLEN];		/* des encryption key */
+	char	chal[8];		/* challenge for setting user name */
 };
 
 struct Dev
@@ -377,6 +385,7 @@ struct Pgrp
 	Pgrp	*next;			/* free list */
 	int	index;			/* index in pgrp table */
 	ulong	pgrpid;
+	Crypt	*crypt;			/* encryption key and challenge */
 	QLock	debug;			/* single access via devproc.c */
 	RWlock	ns;			/* Namespace many read/one write lock */
 	Mhead	*mnthash[MNTHASH];
@@ -652,7 +661,7 @@ struct Network
 #define MINOR(q) ((q) & 0xff)
 #define DEVICE(a,i) (((a)<<8) | (i))
 
-#define MAXSYSARG	6		/* for mount(fd, mpt, flag, arg, srv) */
+#define MAXSYSARG	6		/* for mount(fd, mpt, flag, arg, srv, crypt) */
 #define	PRINTSIZE	256
 #define	NUMSIZE		12		/* size of formatted number */
 

@@ -15,6 +15,7 @@ enum
 	 Uart1vec=	Int0vec+3,	/*  modem line */
 	 Uart0vec=	Int0vec+4,	/*  serial line */
 	 Floppyvec=	Int0vec+6,	/*  floppy interrupts */
+	 Parallelvec=	Int0vec+7,	/*  parallel port interrupts */
 	Int1vec=	Int0vec+8,	/* second 8259 */
 	 Mousevec=	Int1vec+4,	/*  mouse interrupt */
 	 Matherr2vec=	Int1vec+5,	/*  math coprocessor */

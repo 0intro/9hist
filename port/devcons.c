@@ -21,6 +21,7 @@ KIOQ	kbdq;
 Ref	raw;			/* whether kbd i/o is raw (rcons is open) */
 
 char	eve[NAMELEN] = "bootes";
+char	evekey[KEYLEN];
 
 /*
  *  init the queues and set the output routine
@@ -332,24 +333,30 @@ enum{
 	Qclock,
 	Qsysstat,
 	Qswap,
+	Qcrypt,
+	Qkey,
+	Qchal,
 };
 
 Dirtab consdir[]={
 	"cons",		{Qcons},	0,		0666,
-	"cputime",	{Qcputime},	6*NUMSIZE,	0666,
-	"lights",	{Qlights},	0,		0666,
-	"noise",	{Qnoise},	0,		0666,
-	"null",		{Qnull},	0,		0666,
-	"pgrpid",	{Qpgrpid},	NUMSIZE,	0666,
-	"pid",		{Qpid},		NUMSIZE,	0666,
-	"ppid",		{Qppid},	NUMSIZE,	0666,
-	"rcons",	{Qrcons},	0,		0666,
+	"cputime",	{Qcputime},	6*NUMSIZE,	0444,
 	"time",		{Qtime},	NUMSIZE,	0666,
-	"user",		{Quser},	0,		0644,
-	"klog",		{Qklog},	0,		0444,
-	"msec",		{Qmsec},	NUMSIZE,	0444,
 	"clock",	{Qclock},	2*NUMSIZE,	0444,
-	"sysstat",	{Qsysstat},	0,		0444,
+	"msec",		{Qmsec},	NUMSIZE,	0444,
+	"lights",	{Qlights},	0,		0222,
+	"noise",	{Qnoise},	0,		0222,
+	"null",		{Qnull},	0,		0666,
+	"pgrpid",	{Qpgrpid},	NUMSIZE,	0444,
+	"pid",		{Qpid},		NUMSIZE,	0444,
+	"ppid",		{Qppid},	NUMSIZE,	0444,
+	"rcons",	{Qrcons},	0,		0666,
+	"user",		{Quser},	0,		0666,
+	"chal",		{Qchal},	8,		0666,
+	"crypt",	{Qcrypt},	0,		0666,
+	"key",		{Qkey},		KEYLEN,		0222,
+	"klog",		{Qklog},	0,		0444,
+	"sysstat",	{Qsysstat},	0,		0666,
 	"swap",		{Qswap},	0,		0666,
 };
 
@@ -450,6 +457,7 @@ consopen(Chan *c, int omode)
 		kickpager();		/* start a pager if not already started */
 		break;
 	}
+	c->aux = 0;
 	return devopen(c, omode, consdir, NCONS, devgen);
 }
 
@@ -465,8 +473,10 @@ consclose(Chan *c)
 {
 	if(c->qid.path==Qrcons && (c->flag&COPEN))
 		decref(&raw);
+	if(c->qid.path == Qcrypt && c->aux)
+		freeb(c->aux);
+	c->aux = 0;
 }
-
 
 long
 consread(Chan *c, void *buf, long n, ulong offset)
@@ -475,8 +485,9 @@ consread(Chan *c, void *buf, long n, ulong offset)
 	ulong l;
 	uchar *out;
 	char *cbuf = buf;
-	char *user;
+	char *user, *chal;
 	int userlen;
+	Block *cb;
 	char tmp[6*NUMSIZE], xbuf[512];
 	Mach *mp;
 
@@ -577,6 +588,27 @@ consread(Chan *c, void *buf, long n, ulong offset)
 		memmove(buf, tmp+k, n);
 		return n;
 
+	case Qcrypt:
+		cb = c->aux;
+		if(!cb)
+			return 0;
+		if(n > cb->wptr - cb->base)
+			n = cb->wptr - cb->base;
+		memmove(buf, cb->base, n);
+		return n;
+
+	case Qchal:
+		if(offset != 0 || n != 8)
+			error(Ebadarg);
+		chal = u->p->pgrp->crypt->chal;
+		chal[0] = 0;
+		for(i=1; i<8; i++)
+			chal[i] = nrand(256);
+		memmove(buf, chal, 8);
+		encrypt(evekey, buf, 8);
+		chal[0] = 1;
+		return n;
+
 	case Quser:
 		return readstr(offset, buf, n, u->p->user);
 
@@ -622,13 +654,9 @@ consread(Chan *c, void *buf, long n, ulong offset)
 				conf.nswap-swapalloc.free, conf.nswap);
 
 		return readstr(offset, buf, n, xbuf);
-	case Qlights:
-		errors("write only");
-	case Qnoise:
-		return 0;
 	default:
-		panic("consread %lux\n", c->qid);
-		return 0;
+		print("consread %lux\n", c->qid);
+		error(Egreg);
 	}
 }
 
@@ -681,6 +709,7 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 	char buf[256];
 	long l, bp;
 	char *a = va;
+	Block *cb;
 	Mach *mp;
 	int id, fd;
 	Chan *swc;
@@ -713,20 +742,62 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 		boottime = strtoul(a, 0, 0);
 		break;
 
-	case Quser:
-		if(offset >= NAMELEN-1)
-			return 0;
-		if(offset+n >= NAMELEN-1)
-			n = NAMELEN-1 - offset;
-		memmove(u->p->user+offset, a, n);
-		u->p->user[offset+n] = 0;
+	case Qcrypt:
+		cb = c->aux;
+		if(!cb){
+			cb = c->aux = allocb(128);
+			cb->type = 'E';
+		}
+		if(n < 8){
+			if(n != 1 || a[0] != 'E' && a[0] != 'D')
+				error(Ebadarg);
+			cb->type = a[0];
+			return 1;
+		}
+		if(n > cb->lim - cb->base)
+			n = cb->lim - cb->base;
+		memmove(cb->base, a, n);
+		cb->wptr = cb->base + n;
+		if(cb->type == 'E')
+			encrypt(u->p->pgrp->crypt->key, cb->base, n);
+		else
+			decrypt(u->p->pgrp->crypt->key, cb->base, n);
 		break;
 
-	case Qcputime:
-	case Qpgrpid:
-	case Qpid:
-	case Qppid:
-		error(Eperm);
+	case Qkey:
+		if(n != KEYLEN)
+			error(Ebadarg);
+		memmove(u->p->pgrp->crypt->key, a, KEYLEN);
+		if(strcmp(u->p->user, eve) == 0)
+			memmove(evekey, a, KEYLEN);
+		break;
+
+	case Quser:
+		if(offset != 0 || n >= NAMELEN-1)
+			error(Ebadarg);
+		if(n==strlen("none") && strncmp(a, "none", n)==0
+		|| n==strlen(u->p->user) && strncmp(a, u->p->user, n)==0
+		|| strcmp(u->p->user, eve)==0){
+			memmove(u->p->user, a, n);
+			u->p->user[n] = '\0';
+		}else
+			error(Eperm);
+		if(!conf.cntrlp && strcmp(u->p->user, "none") != 0)
+			memmove(eve, u->p->user, NAMELEN);
+		break;
+
+	case Qchal:
+		if(offset != 0)
+			error(Ebadarg);
+		if(n != 8+NAMELEN+KEYLEN)
+			error(Ebadarg);
+		decrypt(evekey, a, n);
+		if(memcmp(u->p->pgrp->crypt->chal, a, 8) != 0)
+			errors("authentication failure");
+		strncpy(u->p->user, a+8, NAMELEN);
+		u->p->user[NAMELEN-1] = '\0';
+		memmove(u->p->pgrp->crypt->key, a+NAMELEN+KEYLEN, KEYLEN);
+		break;
 
 	case Qnull:
 		break;
@@ -764,6 +835,7 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 		return n;
 
 	default:
+		print("conswrite: %d\n", c->qid.path);
 		error(Egreg);
 	}
 	return n;
@@ -779,8 +851,27 @@ consremove(Chan *c)
 void
 conswstat(Chan *c, char *dp)
 {
-	USED(c);
+	USED(c, dp);
 	error(Eperm);
+}
+
+/*
+ * Rand is huge and not worth it here.  Be small.  Borrowed from the white book.
+ */
+ulong	randn;
+void
+srand(char *s)
+{
+	randn = MACHP(0)->ticks * boottime;
+	while(s && *s)
+		randn = (randn << 1) ^ *s++;
+}
+
+int
+nrand(int n)
+{
+	randn = randn*1103515245 + 12345;
+	return (randn>>16) % n;
 }
 
 void

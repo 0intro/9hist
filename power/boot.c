@@ -48,6 +48,7 @@ int	bitdial(char *);
 int	preamble(int);
 void	srvcreate(char*, int);
 void	settime(void);
+void	setpasswd(void);
 
 /*
  *  usage: 9b [-a] [server] [file]
@@ -88,6 +89,7 @@ main(int argc, char *argv[])
 		break;
 	}
 
+	setpasswd();
 	boot(manual);
 	for(;;){
 		if(fd > 0)
@@ -97,6 +99,33 @@ main(int argc, char *argv[])
 		fd = cfd = 0;
 		boot(1);
 	}
+}
+
+void
+setpasswd(void)
+{
+	char key[7];
+	int fd;
+
+	fd = open("#r/nvram", OREAD);
+	if(fd < 0){
+		prerror("can't open nvram");
+		return;
+	}
+	if(seek(fd, 1024+900, 0) < 0 || read(fd, key, 7) != 7){
+		close(fd);
+		prerror("can't read key from nvram");
+		return;
+	}
+	close(fd);
+	fd = open("#c/key", OWRITE);
+	if(fd < 0){
+		prerror("can't open key");
+		return;
+	}
+	if(write(fd, key, 7) != 7)
+		prerror("can't write key");
+	close(fd);
 }
 
 int

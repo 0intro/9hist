@@ -482,6 +482,11 @@ confset(char *sym)
 		if(p)
 			*p = 0;
 		strcpy(sysname, val);
+	} else if(strcmp(sym, "eve")==0){
+		p = strchr(val, ' ');
+		if(p)
+			*p = 0;
+		strcpy(eve, val);
 	}
 }
 
