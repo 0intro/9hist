@@ -66,7 +66,10 @@
 #define ERL		0x00000004
 #define KSUPER		0x00000008
 #define KUSER		0x00000010
+#define KSU		0x00000018
 #define UX		0x00000020
+#define SX		0x00000040
+#define KX		0x00000080
 #define INTMASK		0x0000ff00
 #define INTR0		0x00000100
 #define INTR1		0x00000200
@@ -93,7 +96,7 @@
  * Magic registers
  */
 #define	USER		24		/* R24 is up-> */
-#define	MACH		25		/* R25 is m-> */
+#define	MACH	25		/* R25 is m-> */
 
 /*
  * Fundamental addresses

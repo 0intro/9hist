@@ -93,6 +93,8 @@ extern	char	end[];
 
 #define	NCONT	0	/* continue after note */
 #define	NDFLT	1	/* terminate after note */
+#define	NSAVE	2	/* clear note but hold state */
+#define	NRSTR	3	/* restore saved state */
 
 typedef struct Qid	Qid;
 typedef struct Dir	Dir;

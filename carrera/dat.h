@@ -79,7 +79,7 @@ struct PMMU
  */
 struct Notsave
 {
-	ulong	svstatus;
+	ulong	UNUSED;
 };
 
 #include "../port/portdat.h"

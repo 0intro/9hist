@@ -92,7 +92,7 @@ sysrfork(ulong *arg)
 	p->notified = 0;
 	p->lastnote = up->lastnote;
 	p->notify = up->notify;
-	p->ureg = 0;
+	p->ureg = up->ureg;
 	p->dbgreg = 0;
 
 	/* Make a new set of memory segments */
@@ -126,10 +126,8 @@ sysrfork(ulong *arg)
 		incref(p->pgrp);
 	}
 
-	if(flag & RFREND) {
-		closergrp(up->rgrp);
-		up->rgrp = newrgrp();
-	}
+	if(flag & RFREND)
+		p->rgrp = newrgrp();
 	else {
 		incref(up->rgrp);
 		p->rgrp = up->rgrp;
@@ -549,8 +547,7 @@ sysnotify(ulong *arg)
 long
 sysnoted(ulong *arg)
 {
-	USED(arg);
-	if(up->notified == 0)
+	if(arg[0]!=NRSTR && !up->notified)
 		error(Egreg);
 	return 0;
 }

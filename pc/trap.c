@@ -472,6 +472,7 @@ syscall(Ureg *ur, void *arg)
 
 	if(up->scallnr!=RFORK && (up->procctl || up->nnote))
 		notify(ur);
+
 }
 
 /*

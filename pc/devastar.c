@@ -418,7 +418,7 @@ astarreset(void)
 		a->mem = getisa(a->mem, Pagesize, Pagesize);
 		if(a->mem == 0)
 			panic("astarreset: %lux", a->mem);
-		a->mem & ~KZERO;
+		a->mem &= ~KZERO;
 
 		if(astarsetup(a) < 0){
 			xfree(a);
