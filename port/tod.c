@@ -102,9 +102,9 @@ struct {
 	vlong	last;		// last reading of fast clock
 	vlong	off;		// offset from epoch to last
 	vlong	lasttime;	// last return value from gettod
-	vlong	delta;		// amount to add to bias each slow clock tick
-	int	n;		// number of times to add in delta
-	int	i;		// number of times we've added in delta
+	vlong	delta;		// add 'delta' each slow clock tick from sstart to send
+	ulong	sstart;		// ...
+	ulong	send;		// ...
 } tod;
 
 int
@@ -159,7 +159,6 @@ todsetfreq(vlong f)
 	tod.multiplier = (TODFREQ<<tod.s1)/f;
 	tod.maxdiff = 1LL<<(10 + lf);
 	iunlock(&tod);
-//print("hz %lld mult %lld s1 %d s2 %d maxdiff %lld\n", tod.hz, tod.multiplier, tod.s1, tod.s2, tod.maxdiff);
 }
 
 //
@@ -169,14 +168,23 @@ void
 todset(vlong t, vlong delta, int n)
 {
 	ilock(&tod);
-	tod.i = tod.n = 0;
+	tod.sstart = tod.send = 0;
 	if(t >= 0){
 		tod.off = t;
 		tod.last = fastticks(nil);
 		tod.lasttime = 0;
 	} else {
+		if(n <= 0)
+			n = 1;
+		n *= HZ;
+		if(delta < 0 && n > -delta)
+			n = -delta;
+		if(delta > 0 && n > delta)
+			n = delta;
+		delta /= n;
+		tod.sstart = MACHP(0)->ticks;
+		tod.send = tod.sstart + n;
 		tod.delta = delta;
-		tod.n = n;
 	}
 	iunlock(&tod);
 }
@@ -188,6 +196,7 @@ vlong
 todget(void)
 {
 	vlong ticks, x, diff;
+	ulong t;
 
 	ilock(&tod);
 
@@ -196,6 +205,15 @@ todget(void)
 	else
 		ticks = fastticks(nil);
 	diff = ticks - tod.last;
+
+	// add in correction
+	if(tod.sstart < tod.send){
+		t = MACHP(0)->ticks;
+		if(t >= tod.send)
+			t = tod.send;
+		tod.off += tod.delta*(t - tod.sstart);
+		tod.sstart = t;
+	}
 
 	// convert to epoch
 	x = ((diff>>tod.s2)*tod.multiplier)>>(tod.s1-tod.s2);
@@ -222,15 +240,6 @@ todget(void)
 void
 todfix(void)
 {
-	if((MACHP(0)->ticks % HZ) != 0)
-		return;
-
-	// once a second apply correction
-	ilock(&tod);
-	if(tod.n > tod.i++)
-		tod.off += tod.delta;
-	iunlock(&tod);
-
 	// once a minute, make sure we don't overflow
 	if((MACHP(0)->ticks % (60*HZ)) == 0)
 		todget();
