@@ -271,7 +271,7 @@ waitforidle(VGAscr *scr)
 		;
 
 	if(x >= 1000000)
-		iprint("idle stat %d scrio %.8lux scr %p pc %luX\n", *pgraph, scr->io, scr, getcallerpc(&scr));
+		iprint("idle stat %lud scrio %.8lux scr %p pc %luX\n", *pgraph, scr->io, scr, getcallerpc(&scr));
 }
 
 static void
@@ -339,7 +339,8 @@ nvidiablank(VGAscr*, int blank)
 
 	if(blank) {
 		seq1 |= 0x20;
-		crtc1A |= 0xC0;
+//		crtc1A |= 0xC0;
+		crtc1A |= 0x80;
 	}
 
 	vgaxo(Seqx, 1, seq1);
