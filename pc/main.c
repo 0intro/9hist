@@ -242,27 +242,31 @@ confinit(void)
 	 *  size the non-standard memory
 	 */
 	x = 0x12345678;
-	for(i=1; i<16; i++){
+	for(i=2; i<17; i++){
 		/*
 		 *  write the word
 		 */
 		l = (long*)(KZERO|(i*MB));
+		l--;
 		*l = x;
 		/*
 		 *  take care of wraps
 		 */
-		for(j = 0; j < i; j++){
+		for(j = 1; j < i; j++){
 			l = (long*)(KZERO|(j*MB));
-			*l = 0;
+			l--;
+			*l = ~x;
 		}
 		/*
 		 *  check
 		 */
 		l = (long*)(KZERO|(i*MB));
+		l--;
 		if(*l != x)
 			break;
 		x += 0x3141526;
 	}
+	i--;
 	conf.base1 = 1*MB;
 	conf.npage1 = (i*MB - conf.base1)/BY2PG;
 	conf.npage = conf.npage0 + conf.npage1;
