@@ -366,6 +366,11 @@ enum{
 	Qzero,
 };
 
+enum
+{
+	VLNUMSIZE=	22,
+};
+
 static Dirtab consdir[]={
 	"authenticate",	{Qauth},	0,		0666,
 	"authcheck",	{Qauthcheck},	0,		0666,
@@ -387,7 +392,7 @@ static Dirtab consdir[]={
 	"swap",		{Qswap},	0,		0664,
 	"sysname",	{Qsysname},	0,		0664,
 	"sysstat",	{Qsysstat},	0,		0666,
-	"time",		{Qtime},	7*NUMSIZE,	0664,
+	"time",		{Qtime},	NUMSIZE+3*VLNUMSIZE,	0664,
 	"user",		{Quser},	NAMELEN,	0666,
 	"zero",		{Qzero},	0,		0444,
 };
@@ -1088,9 +1093,9 @@ readtime(ulong off, char *buf, int n)
 	sec = nsec/1000000000ULL;
 	snprint(str, sizeof(str), "%*.0lud %*.0llud %*.0llud %*.0llud ",
 		NUMSIZE-1, sec,
-		2*NUMSIZE-1, nsec,
-		2*NUMSIZE-1, ticks,
-		2*NUMSIZE-1, fasthz);
+		VLNUMSIZE-1, nsec,
+		VLNUMSIZE-1, ticks,
+		VLNUMSIZE-1, fasthz);
 	return readstr(off, buf, n, str);
 }
 

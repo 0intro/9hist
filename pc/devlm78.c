@@ -169,10 +169,9 @@ lm78enable(void)
 		} else {
 			// start the sampling
 			config = lm78rdreg(Rconfig);
-pprint("config before %2.2ux\n", config);
 			config = (config | Bstart) & ~(Bintclr|Binit);
 			lm78wrreg(Rconfig, config);
-pprint("config after %2.2ux\n", lm78rdreg(Rconfig));
+pprint("Rvidfan %2.2ux\n", lm78rdreg(Rconfig), lm78rdreg(Rvidfan));
 		}
 		lm78.probed = 1;
 	}
