@@ -234,8 +234,7 @@ confinit(void)
 
 	if(cpuserver)
 		conf.nproc = 500;
-/*	else
-		conf.monitor = 1;	/* BUG */
+	conf.monitor = 1;	/* BUG */
 }
 
 void

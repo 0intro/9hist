@@ -44,9 +44,9 @@ sginit(void)
 
 	wind[0x400/4] = ISAWINDOW|2|1;
 	wind[0x440/4] = 0x00700000;
-	wind[0x480/4] = PADDR(sgmap)>>2;
+	wind[0x480/4] = PADDR(sgmap)>>2;	/* why the shift? */
 
-	wind[0x100/4] = 3;	/* invalidate tlb cache */
+	wind[0x100/4] = 3;			/* invalidate tlb cache */
 }
 
 static void *

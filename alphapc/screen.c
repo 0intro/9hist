@@ -70,7 +70,7 @@ screensize(int x, int y, int z)
 		memset(gscreendata.data, Backgnd, width*BY2WD*y);
 		scr->useflush = 1;
 
-		scr->aperture = (ulong)arch->pcimem(0xA0000, 1<<16);
+		scr->aperture = PADDR(arch->pcimem(0xA0000, 1<<16));
 		scr->apsize = 1<<16;
 	}
 	else

@@ -30,7 +30,7 @@ enum {
 	VectorLPT	= VectorPIC+7,
 	VectorIRQ7	= VectorPIC+7,
 	VectorAUX	= VectorPIC+12,	/* PS/2 port */
-	VectorIRQ13	= VectorPIC+13,	/* corocessor on x386 */
+	VectorIRQ13	= VectorPIC+13,	/* coprocessor on x386 */
 	VectorATA0	= VectorPIC+14,
 	MaxVectorPIC	= VectorPIC+15,
 	VectorPCI	= 16,		/* PCI bus (PLD) */
