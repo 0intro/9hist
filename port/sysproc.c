@@ -373,7 +373,7 @@ sysexec(ulong *arg)
 	up->seg[SSEG] = s;
 	s->base = USTKTOP-USTKSIZE;
 	s->top = USTKTOP;
-	relocateseg(s, TSTKTOP-USTKTOP);
+	relocateseg(s, USTKTOP-TSTKTOP);
 
 	close(tc);
 
