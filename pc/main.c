@@ -801,7 +801,7 @@ isaconfig(char *class, int ctlrno, ISAConf *isa)
 			else if(strncmp(p, "irq=", 4) == 0)
 				isa->irq = strtoul(p+4, &p, 0);
 			else if(strncmp(p, "dma=", 4) == 0)
-				isa->dma = strtoul(p+5, &p, 0);
+				isa->dma = strtoul(p+4, &p, 0);
 			else if(strncmp(p, "mem=", 4) == 0)
 				isa->mem = strtoul(p+4, &p, 0);
 			else if(strncmp(p, "size=", 5) == 0)
