@@ -188,7 +188,6 @@ pcibusmap(Pcidev *p, ulong *pmema, ulong *pioa, int wrreg)
 static int
 pciscan(int bno, Pcidev** list)
 {
-	ulong mema, ioa;
 	Pcidev *p, *head, *tail;
 	int dno, fno, i, hdt, l, maxfno, maxubn, rno, sbn, tbdf, ubn;
 
