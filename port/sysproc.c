@@ -702,6 +702,7 @@ sysrendezvous(ulong *arg)
 
 	tag = arg[0];
 	l = &REND(up->rgrp, tag);
+	up->rendval = ~0UL;
 
 	lock(up->rgrp);
 	for(p = *l; p; p = p->rendhash) {
