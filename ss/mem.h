@@ -25,47 +25,64 @@
 #define	MS2TK(t)	((((ulong)(t))*HZ)/1000)	/* milliseconds to ticks */
 
 /*
- * SR bits
+ * PSR bits
  */
-#define SUPER		0x2000
+#define	PSREC		0x00002000
+#define	PSREF		0x00001000
+#define PSRSUPER	0x00000080
+#define PSRPSUPER	0x00000040
+#define	PSRET		0x00000020
 #define SPL(n)		(n<<8)
-
-/*
- * CACR
- */
-#define	CCLEAR		0x08
-#define	CENABLE		0x01
 
 /*
  * Magic registers
  */
 
-#define	MACH		28		/* R28 is m-> */
-#define	USER		27		/* R27 is u-> */
+#define	MACH		6		/* R6 is m-> */
+#define	USER		5		/* R5 is u-> */
 
 /*
  * Fundamental addresses
  */
 
-#define	USERADDR	0x80000000
-#define	UREGADDR	(USERADDR+BY2PG-(2+4+2+(8+8+1)*BY2WD))
-
-/*
- * Devices poked during bootstrap
- */
-#define	TACADDR		0x40600000
-#define	MOUSE		0x40200000
+#define	USERADDR	0xE0000000
+#define	UREGADDR	(USERADDR+BY2PG-((32+5)*BY2WD))
+#define	BOOTSTACK	(KTZERO-0*BY2PG)
+#define	TRAPS		(KTZERO-2*BY2PG)
 
 /*
  * MMU
  */
 
-#define	VAMASK	0x1FFFFFFF
+#define	VAMASK		0x1FFFFFFF
+#define	NPMEG		(1<<12)
+#define	BY2SEGM		(1<<18)
+#define	PG2SEGM		(1<<6)
+#define	NTLBPID		(NCONTEXT+1)
+#define	NCONTEXT	8
+#define	CONTEXT		0x30000000	/* in ASI 2 */
+
+/*
+ * MMU regions
+ */
+#define	INVALIDSEGM	0xFFFC0000	/* highest seg of VA reserved as invalid */
+#define	INVALIDPMEG	0x7F
+#define	SCREENSEGM	0xFFF80000
+#define	SCREENPMEG	0x7E
+#define	ROMSEGM		0xFFE80000
+#define	ROMEND		0xFFEA0000
+#define	PG2ROM		((ROMEND-ROMSEGM)/BY2PG)
+#define	IOSEGM0		ROMSEGM		/* see mmuinit() */
+#define	NIOSEGM		((SCREENSEGM-ROMSEGM)/BY2SEGM)
+#define	IOPMEG0		(SCREENPMEG-NIOSEGM)
+#define	IOSEGM		ROMEND
+#define	IOEND		SCREENSEGM
 
 /*
  * MMU entries
  */
 #define	PTEVALID	(1<<31)
+#define	PTERONLY	(0<<30)
 #define	PTEWRITE	(1<<30)
 #define	PTEKERNEL	(1<<29)
 #define	PTENOCACHE	(1<<28)
@@ -74,12 +91,18 @@
 #define	PTEACCESS	(1<<25)
 #define	PTEMODIFY	(1<<24)
 
-#define	PTERONLY	0		/* BUG */
 #define	INVALIDPTE	0
 #define	PPN(pa)		((pa>>12)&0xFFFF)
 
 #define	KMAP	((unsigned long *)0xD0000000)
 #define	UMAP	((unsigned long *)0x50000000)
+
+/*
+ * Weird addresses in various ASI's
+ */
+#define	CACHETAGS	0x80000000		/* ASI 2 */
+#define	SER		0x60000000		/* ASI 2 */
+#define	SEVAR		0x60000004		/* ASI 2 */
 
 /*
  * Virtual addresses
@@ -94,11 +117,11 @@
  * Address spaces
  */
 
-#define	UZERO	0x00000000			/* base of user address space */
+#define	UZERO	0x00000000		/* base of user address space */
 #define	UTZERO	(UZERO+BY2PG)		/* first address in user text */
 #define	TSTKTOP	0x10000000		/* end of new stack in sysexec */
-#define	USTKTOP	(TSTKTOP-100*BY2PG)	/* byte just beyond user stack */
-#define	KZERO	0x10000000		/* base of kernel address space */
+#define	USTKTOP	(TSTKTOP-32*BY2PG)	/* byte just beyond user stack */
+#define	KZERO	0xE0000000		/* base of kernel address space */
 #define	KTZERO	(KZERO+4*BY2PG)		/* first address in kernel text */
 #define	USTACKSIZE	(4*1024*1024)	/* size of user stack */
 

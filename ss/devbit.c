@@ -139,6 +139,9 @@ bitreset(void)
 	int i;
 	GBitmap *bp;
 
+print("warning: mouse set\n");
+mouse.xy.x = 50;
+mouse.xy.y = 50;
 	bit.map = ialloc(conf.nbitmap * sizeof(GBitmap), 0);
 	for(i=0,bp=bit.map; i<conf.nbitmap; i++,bp++){
 		bp->ldepth = -1;
@@ -591,7 +594,7 @@ bitwrite(Chan *c, void *va, long n)
 				cursoroff(1);
 				isoff = 1;
 			}
-			balubitblt(dst, pt, src, rect, v);
+			gbitblt(dst, pt, src, rect, v);
 			m -= 31;
 			p += 31;
 			break;
@@ -1081,9 +1084,13 @@ cursoron(int dolock)
 	if(dolock)
 		lock(&cursor);
 	if(cursor.visible++ == 0){
+print("mouse %d %d\n", mouse.xy.x, mouse.xy.y);
 		cursor.r.min = mouse.xy;
+print("cursor.r %d %d\n", mouse.xy.x, mouse.xy.y);
 		cursor.r.max = add(mouse.xy, Pt(16, 16));
+print("cursor.r %d %d %d %d\n", cursor.r.min.x, cursor.r.min.y, cursor.r.max.x, cursor.r.max.y);
 		cursor.r = raddp(cursor.r, cursor.offset);
+print("cursor.r %d %d %d %d\n", cursor.r.min.x, cursor.r.min.y, cursor.r.max.x, cursor.r.max.y);
 		gbitblt(&cursorback, Pt(0, 0), &gscreen, cursor.r, S);
 		gbitblt(&gscreen, add(mouse.xy, cursor.offset),
 			&clr, Rect(0, 0, 16, 16), D&~S);

@@ -18,7 +18,7 @@
 void
 lock(Lock *l)
 {
-	Lock *ll = l;	/* do NOT take the address of l */
+	Lock *ll = l;	/* do NOT take the address of ll */
 	int i;
 
 	/*
@@ -43,7 +43,7 @@ dumpstack();
 int
 canlock(Lock *l)
 {
-	Lock *ll = l;	/* do NOT take the address of l */
+	Lock *ll = l;	/* do NOT take the address of ll */
 	if(ll->key >= 0){
 		ll->key |= 0x80;
 		ll->pc = ((ulong*)&l)[PCOFF];

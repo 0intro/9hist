@@ -56,6 +56,7 @@ void	envpgclose(Env*);
 void	error(int);
 void	errors(char*);
 void	evenaddr(ulong);
+void	execpc(ulong);
 void	exit(void);
 int	fault(ulong, int);
 void	faultmips(Ureg*, int, int);

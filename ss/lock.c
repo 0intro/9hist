@@ -6,32 +6,22 @@
 
 #define PCOFF -1
 
-/*
- *  N.B.  Ken's compiler generates a TAS instruction for the sequence:
- *
- *  	if(l->key >= 0){
- *		l->key |= 0x80;
- *		...
- *
- *	DO NOT TAKE THE ADDRESS OF l->key or the TAS will disappear.
- */
 void
 lock(Lock *l)
 {
-	Lock *ll = l;	/* do NOT take the address of l */
+	Lock *ll = l;		/* so can take address of l */
 	int i;
 
 	/*
 	 * Try the fast grab first
 	 */
-    	if(ll->key >= 0){
-		ll->key |= 0x80;
+    	if(swap1(&ll->key) == 0){
 		ll->pc = ((ulong*)&l)[PCOFF];
 		return;
 	}
+reset();
 	for(i=0; i<10000000; i++)
-    		if(ll->key >= 0){
-			ll->key |= 0x80;
+    		if(swap1(&ll->key) == 0){
 			ll->pc = ((ulong*)&l)[PCOFF];
 			return;
 		}
@@ -43,9 +33,9 @@ dumpstack();
 int
 canlock(Lock *l)
 {
-	Lock *ll = l;	/* do NOT take the address of l */
-	if(ll->key >= 0){
-		ll->key |= 0x80;
+	Lock *ll = l;		/* so can take address of l */
+
+	if(swap1(&ll->key) == 0){
 		ll->pc = ((ulong*)&l)[PCOFF];
 		return 1;
 	}
@@ -79,7 +69,7 @@ qlock(QLock *q)
 	q->tail = u->p;
 	u->p->qnext = 0;
 	u->p->state = Queueing;
-	u->p->qlock = q;	/* DEBUG */
+/*	u->p->qlock = q;	/* DEBUG */
 	unlock(&q->queue);
 	sched();
 }
@@ -96,7 +86,7 @@ qunlock(QLock *q)
 	Proc *p;
 
 	lock(&q->queue);
-	u->p->qlock = 0;
+/*	u->p->qlock = 0; /* DEBUG */
 	if(q->head){
 		p = q->head;
 		q->head = p->qnext;

@@ -710,4 +710,3 @@ extern	FPsave	initfp;
  *  parameters for sysproc.c
  */
 #define AOUT_MAGIC	V_MAGIC
-#define ENTRYOFFSET	(-4)

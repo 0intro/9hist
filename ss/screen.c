@@ -28,24 +28,19 @@ void	(*kprofp)(ulong);
 
 GBitmap	gscreen =
 {
-	(ulong*)((4*1024*1024-256*1024)|KZERO),	/* BUG */
+	(ulong*)SCREENSEGM,
 	0,
-	64,
+	1160/32,
 	0,
-	0, 0, 1024, 1024,
+	{0, 0, 1160, 900},
 	0
 };
 
 void
 screeninit(void)
 {
-	duartinit();
-	/*
-	 * Read HEX switch to set ldepth
-	 */
-	if(*(uchar*)MOUSE & (1<<4))
-		gscreen.ldepth = 1;
-	defont = &defont0;	/* save space; let bitblt do the conversion work */
+/*	duartinit(); /**/
+	defont = &defont0;
 	gbitblt(&gscreen, Pt(0, 0), &gscreen, gscreen.r, 0);
 	out.pos.x = MINX;
 	out.pos.y = 0;
@@ -80,7 +75,7 @@ screenputc(int c)
 			screenputc('\n');
 		buf[0] = c&0x7F;
 		buf[1] = 0;
-		out.pos = gbitbltstring(&gscreen, out.pos, defont, buf, S);
+		out.pos = gstring(&gscreen, out.pos, defont, buf, S);
 	}
 }
 

@@ -48,6 +48,7 @@ int	eqqid(Qid, Qid);
 void	envpgclose(Env *);
 void	error(int);
 void	errors(char*);
+void	execpc(ulong);
 void	exit(void);
 int	fault(ulong, int);
 void	fault68020(Ureg*, FFrame*);

@@ -6,87 +6,43 @@
 #include	"ureg.h"
 #include	"errno.h"
 
-#define	FORMAT(ur)	((((ur)->vo)>>12)&0xF)
-#define	OFFSET(ur)	(((ur)->vo)&0xFFF)
-
-
-struct FFrame
-{
-	ushort	ireg0;			/* internal register */
-	ushort	ssw;			/* special status word */
-	ushort	ipsc;			/* instr. pipe stage c */
-	ushort	ipsb;			/* instr. pipe stage b */
-	ulong	addr;			/* data cycle fault address */
-	ushort	ireg1;			/* internal register */
-	ushort	ireg2;			/* internal register */
-	ulong	dob;			/* data output buffer */
-	ushort	ireg3[4];		/* more stuff */
-	ulong	baddr;			/* stage b address */
-	ushort	ireg4[26];		/* more more stuff */
-};
-
-/*
- * SSW bits
- */
-#define	RW	0x0040		/* read/write for data cycle */
-#define	FC	0x8000		/* fault on stage C of instruction pipe */
-#define	FB	0x4000		/* fault on stage B of instruction pipe */
-#define	RC	0x2000		/* rerun flag for stage C of instruction pipe */
-#define	RB	0x1000		/* rerun flag for stage B of instruction pipe */
-#define	DF	0x0100		/* fault/rerun flag for data cycle */
-#define	RM	0x0080		/* read-modify-write on data cycle */
-#define	READ	0x0040
-#define	WRITE	0x0000
-#define	SIZ	0x0030		/* size code for data cycle */
-#define	FC2	0x0004		/* address space for data cycle */
-#define	FC1	0x0002
-#define	FC0	0x0001
 
 void
-fault68020(Ureg *ur, FFrame *f)
+faultsparc(Ureg *ur)
 {
 	ulong addr, badvaddr;
 	int user, read, insyscall;
+	ulong tbr;
 
+	tbr = ur->tbr&0xFFF;
+	addr = ur->pc;			/* assume instr. exception */
+	if(tbr == (9<<4))		/* data access exception */
+		addr = getw2(SEVAR);
+	else if(tbr != (1<<4)){		/* should be instruction access exception */
+		trap(ur);
+		panic("trap returns");
+	}
+	spllo();
+print("fault: %s pc=0x%lux addr %lux\n", excname(ur->tbr), ur->pc, addr);
 	if(u == 0){
 		dumpregs(ur);
 		panic("fault u==0 pc=%lux", ur->pc);
 	}
+	if(getw2(SER) & 0x8000)
+		read = 0;
+	else
+		read = 1;
 	insyscall = u->p->insyscall;
 	u->p->insyscall = 1;
-	addr = 0;	/* set */
-	if(f->ssw & DF)
-		addr = f->addr;
-	else if(FORMAT(ur) == 0xA){
-		if(f->ssw & FC)
-			addr = ur->pc+2;
-		else if(f->ssw & FB)
-			addr = ur->pc+4;
-		else
-			panic("prefetch pagefault");
-	}else if(FORMAT(ur) == 0xB){
-		if(f->ssw & FC)
-			addr = f->baddr-2;
-		else if(f->ssw & FB)
-			addr = f->baddr;
-		else
-			panic("prefetch pagefault");
-	}else
-		panic("prefetch format");
-	addr &= VAMASK;
+/*	addr &= VAMASK; /**/
 	badvaddr = addr;
 	addr &= ~(BY2PG-1);
-	user = !(ur->sr&SUPER);
-	if(f->ssw & DF)
-		read = (f->ssw&READ) && !(f->ssw&RM);
-	else
-		read = f->ssw&(FB|FC);
-/* print("fault pc=%lux addr=%lux read %d\n", ur->pc, badvaddr, read); /**/
+	user = !(ur->psr&PSRSUPER);
 
 	if(fault(addr, read) < 0){
 		if(user){
 			pprint("user %s error addr=0x%lux\n", read? "read" : "write", badvaddr);
-			pprint("status=0x%lux pc=0x%lux sp=0x%lux\n", ur->sr, ur->pc, ur->sp);
+			pprint("psr=0x%lux pc=0x%lux sp=0x%lux\n", ur->psr, ur->pc, ur->sp);
 			pexit("Suicide", 0);
 		}
 		u->p->state = MMUing;
@@ -95,4 +51,17 @@ fault68020(Ureg *ur, FFrame *f)
 		exit();
 	}
 	u->p->insyscall = insyscall;
+}
+
+/*
+ * called in sysfile.c
+ */
+void
+evenaddr(ulong addr)
+{
+	if(addr & 3){
+panic("evenaddr");
+		postnote(u->p, 1, "sys: odd address", NDebug);
+		error(Ebadarg);
+	}
 }

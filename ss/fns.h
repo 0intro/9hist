@@ -2,6 +2,7 @@ Alarm	*alarm(int, void (*)(Alarm*), void*);
 void	alarminit(void);
 Block	*allocb(ulong);
 void	append(List**, List*);
+void	cacheinit(void);
 void	cancel(Alarm*);
 int	canlock(Lock*);
 int	canqlock(QLock*);
@@ -9,7 +10,7 @@ void	chaninit(void);
 void	chandevreset(void);
 void	chandevinit(void);
 void	checkalarms(void);
-void	clearmmucache(void);
+#define	clearmmucache()
 void	clock(Ureg*);
 Chan	*clone(Chan*, Chan*);
 void	close(Chan*);
@@ -48,6 +49,9 @@ int	eqqid(Qid, Qid);
 void	envpgclose(Env *);
 void	error(int);
 void	errors(char*);
+void	evenaddr(ulong);
+char	*excname(ulong);
+void	execpc(ulong);
 void	exit(void);
 int	fault(ulong, int);
 void	fault68020(Ureg*, FFrame*);
@@ -73,9 +77,11 @@ void	freepte(Orig*);
 void	freesegs(int);
 void	freealarm(Alarm*);
 Block	*getb(Blist*);
+int	getb2(ulong);
 int	getfields(char*, char**, int, char);
 Block	*getq(Queue*);
 int	getrs232o(void);
+int	getw2(ulong);
 void	gotolabel(Label*);
 void	growpte(Orig*, ulong);
 void	*ialloc(ulong, int);
@@ -133,12 +139,20 @@ void	procsave(uchar*, int);
 void	procsetup(Proc*);
 Proc	*proctab(int);
 Queue	*pushq(Stream*, Qinfo*);
+void	putb2(ulong, int);
 void	putbq(Blist*, Block*);
-void	putkmmu(ulong, ulong);
+void	putcontext(int);
+void	putcxsegm(int, ulong, int);
 void	putmmu(ulong, ulong);
+void	putpmeg(ulong, ulong);
 int	putq(Queue*, Block*);
+void	putsegm(ulong, int);
 void	putstr(char*);
 void	putstrn(char*, long);
+void	puttbr(ulong);
+void	putw2(ulong, ulong);
+void	putwD(ulong, ulong);
+void	putwE(ulong, ulong);
 ulong	pwait(Waitmsg*);
 int	readnum(ulong, char*, ulong, ulong, int);
 void	ready(Proc*);
@@ -167,6 +181,7 @@ int	splhi(void);
 int	spllo(void);
 void	splx(int);
 void	spldone(void);
+ulong	swap1(ulong*);
 Devgen	streamgen;
 int	streamclose(Chan*);
 int	streamclose1(Stream*);
@@ -182,7 +197,9 @@ void	streamstat(Chan*, char*, char*);
 long	stringread(Chan*, void*, long, char*);
 long	syscall(Ureg*);
 int	tas(char*);
-void	touser(void);
+void	touser(ulong);
+void	trap(Ureg*);
+void	trapinit(void);
 void	tsleep(Rendez*, int (*)(void*), void*, int);
 void	twakeme(Alarm*);
 long	unionread(Chan*, void*, long);
@@ -198,7 +215,5 @@ Chan	*walk(Chan*, char*, int);
 
 #define	waserror()	(u->nerrlab++, setlabel(&u->errlab[u->nerrlab-1]))
 #define	poperror()	u->nerrlab--
-
-#define	evenaddr(x)	/* 68020 doesn't care */
 
 #define USED(x) if(x)

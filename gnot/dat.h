@@ -45,7 +45,7 @@ struct List
 
 struct Lock
 {
-	char	key;			/* addr of sync bus semaphore */
+	char	key;
 	ulong	pc;
 };
 
@@ -610,4 +610,3 @@ extern  void	(*kprofp)(ulong);
  *  parameters for sysproc.c
  */
 #define AOUT_MAGIC	A_MAGIC
-#define ENTRYOFFSET	0

@@ -493,6 +493,12 @@ syscall(Ureg *aur)
 	return ret;
 }
 
+void
+execpc(ulong entry)
+{
+	((Ureg*)UREGADDR)->pc = entry - 4;		/* syscall advances it */
+}
+
 #include "errstr.h"
 
 void

@@ -11,72 +11,44 @@ void	notify(Ureg*);
 void	noted(Ureg**);
 void	rfnote(Ureg**);
 
-char *regname[]={
-	"R0",
-	"R1",
-	"R2",
-	"R3",
-	"R4",
-	"R5",
-	"R6",
-	"R7",
-	"A0",
-	"A1",
-	"A2",
-	"A3",
-	"A4",
-	"A5",
-	"A6",
-	"A7",
-};
+extern	void traplink(void);
+extern	void syslink(void);
 
 long	ticks;
 
 char *trapname[]={
-	"reset isp",
-	"reset ipc",
-	"bus error",
-	"address error",
+	"reset",
+	"instruction access exception",
 	"illegal instruction",
-	"zero divide",
-	"chk, chk2 instruction",
-	"cptrapcc, trapcc, trapv instruction",
-	"privilege violation",
-	"trace",
-	"line 1010 emulator",
-	"line 1111 emulator",
-	"reserved",
-	"coprocessor protocol violation",
-	"format error",
-	"uninitialized interrupt",
-	"unassigned 0x40",
-	"unassigned 0x44",
-	"unassigned 0x48",
-	"unassigned 0x4C",
-	"unassigned 0x50",
-	"unassigned 0x54",
-	"unassigned 0x58",
-	"unassigned 0x5C",
-	"spurious interrupt",
-	"level 1 autovector (tac)",
-	"level 2 autovector (port)",
-	"level 3 autovector (incon)",
-	"level 4 autovector (mouse)",
-	"level 5 autovector (uart)",
-	"level 6 autovector (sync)",
-	"level 7 autovector",
+	"privileged instruction",
+	"fp disabled",
+	"window overflow",
+	"window underflow",
+	"unaligned address",
+	"fp exception",
+	"data access exception",
+	"tag overflow",
 };
 
 char*
-excname(unsigned vo)
+excname(ulong tbr)
 {
 	static char buf[32];	/* BUG: not reentrant! */
 
-	vo &= 0x0FFF;
-	vo >>= 2;
-	if(vo < sizeof trapname/sizeof(char*))
-		return trapname[vo];
-	sprint(buf, "offset 0x%ux", vo<<2);
+	tbr &= 0xFFF;
+	tbr >>= 4;
+	if(tbr < sizeof trapname/sizeof(char*))
+		return trapname[tbr];
+	if(tbr == 36)
+		return "cp disabled";
+	if(tbr == 40)
+		return "cp exception";
+	if(tbr >= 128)
+		sprint(buf, "trap instruction %d", tbr-128);
+	else if(17<=tbr && tbr<=31)
+		sprint(buf, "interrupt level %d", tbr-16);
+	else
+		sprint(buf, "unknown trap %d", tbr);
 	return buf;
 }
 
@@ -86,20 +58,50 @@ trap(Ureg *ur)
 	int user;
 	char buf[64];
 
-	user = !(ur->sr&SUPER);
+	user = !(ur->psr&PSRPSUPER);
 
-	if(u)
+/*	if(u)
 		u->p->pc = ur->pc;		/* BUG */
 	if(user){
-		sprint(buf, "sys: trap: pc=0x%lux %s", ur->pc, excname(ur->vo));
+		print("user trap: %s pc=0x%lux\n", excname(ur->tbr), ur->pc);
+dumpregs(ur);
+for(;;);
+		sprint(buf, "sys: trap: pc=0x%lux %s", ur->pc, excname(ur->tbr));
 		postnote(u->p, 1, buf, NDebug);
 	}else{
-		print("kernel trap vo=0x%ux pc=0x%lux\n", ur->vo, ur->pc);
+		print("kernel trap: %s pc=0x%lux\n", excname(ur->tbr), ur->pc);
 		dumpregs(ur);
+for(;;);
 		exit();
 	}
 	if(user && u->nnote)
 		notify(ur);
+}
+
+void
+trapinit(void)
+{
+	int i;
+	long t, a;
+
+	a = ((ulong)traplink-TRAPS)>>2;
+	a += 0x40000000;			/* CALL traplink(SB) */
+	t = TRAPS;
+	for(i=0; i<256; i++){
+		*(ulong*)t = a;			/* CALL traplink(SB) */
+		*(ulong*)(t+4) = 0xa7480000;	/* MOVW PSR, R19 */
+		a -= 16/4;
+		t += 16;
+	}
+	/*
+	 * Vector 128 goes directly to syslink
+	 */
+	t = TRAPS+128*16;
+	a = ((ulong)syslink-t)>>2;
+	a += 0x40000000;
+	*(ulong*)t = a;			/* CALL syscall(SB) */
+	*(ulong*)(t+4) = 0xa7480000;	/* MOVW PSR, R19 */
+	puttbr(TRAPS);
 }
 
 void
@@ -126,10 +128,10 @@ dumpregs(Ureg *ur)
 		print("registers for %s %d\n", u->p->text, u->p->pid);
 	else
 		print("registers for kernel\n");
-	print("SR=%ux PC=%lux VO=%lux, USP=%lux\n", ur->sr, ur->pc, ur->vo, ur->usp);
+	print("PSR=%ux PC=%lux TBR=%lux\n", ur->psr, ur->pc, ur->tbr);
 	l = &ur->r0;
-	for(i=0; i<sizeof regname/sizeof(char*); i+=2, l+=2)
-		print("%s\t%.8lux\t%s\t%.8lux\n", regname[i], l[0], regname[i+1], l[1]);
+	for(i=0; i<32; i+=2, l+=2)
+		print("R%d\t%.8lux\tR%d\t%.8lux\n", i, l[0], i+1, l[1]);
 	dumpstack();
 }
 
@@ -194,7 +196,7 @@ noted(Ureg **urp)
 }
 
 #undef	CHDIR	/* BUG */
-#include "/sys/src/libc/680209sys/sys.h"
+#include "/sys/src/libc/sparc9sys/sys.h"
 
 typedef long Syscall(ulong*);
 Syscall	sysr1, sysfork, sysexec, sysgetpid, syssleep, sysexits, sysdeath, syswait;
@@ -241,36 +243,37 @@ syscall(Ureg *aur)
 {
 	long ret;
 	ulong sp;
-	ulong r0;
+	ulong r7;
 	Ureg *ur;
 	char *msg;
 
 	u->p->insyscall = 1;
 	ur = aur;
 	u->p->pc = ur->pc;
-	if(ur->sr & SUPER)
+	if(ur->psr & PSRPSUPER)
 		panic("recursive system call");
+#ifdef asdf
 	/*
 	 * since the system call interface does not
 	 * guarantee anything about registers, but the fpcr is more than
 	 * just a register...  BUG
 	 */
-	splhi();
 	fpsave(&u->fpsave);
 	if(u->p->fpstate==FPactive || u->fpsave.type){
 		fprestore(&initfp);
 		u->p->fpstate = FPinit;
 		m->fpstate = FPinit;
 	}
+#endif
 	spllo();
-	r0 = ur->r0;
+	r7 = ur->r7;
 	sp = ur->usp;
 
 	u->nerrlab = 0;
 	ret = -1;
 	if(!waserror()){
-		if(r0 >= sizeof systab/BY2WD){
-			pprint("bad sys call number %d pc %lux\n", r0, ((Ureg*)UREGADDR)->pc);
+		if(r7 >= sizeof systab/BY2WD){
+			pprint("bad sys call number %d pc %lux\n", r7, ((Ureg*)UREGADDR)->pc);
 			msg = "sys: bad sys call";
 	    Bad:
 			postnote(u->p, 1, msg, NDebug);
@@ -283,17 +286,26 @@ syscall(Ureg *aur)
 		}
 		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-5*BY2WD))
 			validaddr(sp, 5*BY2WD, 0);
-		ret = (*systab[r0])((ulong*)(sp+BY2WD));
+		ret = (*systab[r7])((ulong*)(sp+2*BY2WD));
 	}
+	ur->pc += 4;
+	ur->npc = ur->pc+4;
 	u->nerrlab = 0;
 	u->p->insyscall = 0;
-	if(r0 == NOTED)	/* ugly hack */
+	if(r7 == NOTED)	/* ugly hack */
 		noted(&aur);	/* doesn't return */
 	if(u->nnote){
-		ur->r0 = ret;
+		ur->r7 = ret;
 		notify(ur);
 	}
 	return ret;
+}
+
+void
+execpc(ulong entry)
+{
+	((Ureg*)UREGADDR)->pc = entry - 4;		/* syscall advances it */
+	((Ureg*)UREGADDR)->npc = entry;
 }
 
 #include "errstr.h"

@@ -3,14 +3,23 @@
 #include	"mem.h"
 #include	"dat.h"
 #include	"fns.h"
+#include	"io.h"
 
 struct
 {
 	Lock;
 	int	init;
+	int	lowpmeg;
 	KMap	*free;
-	KMap	arena[4*1024*1024/BY2PG];	/* kernel mmu maps up to 4MB */
+	KMap	arena[(IOEND-IOSEGM)/BY2PG];
 }kmapalloc;
+
+/*
+ * On SPARC, tlbpid i == context i-1 so that 0 means unallocated
+ */
+
+int	newpid(Proc*);
+void	purgepid(int);
 
 /*
  * Called splhi, not in Running state
@@ -18,113 +27,223 @@ struct
 void
 mapstack(Proc *p)
 {
-	ulong tlbvirt, tlbphys;
-	ulong next;
-	MMU *mm, *mn, *me;
+	short tp;
+	ulong tlbphys;
 
+	tp = p->pidonmach[m->machno];
+	if(tp == 0){
+		tp = newpid(p);
+		p->pidonmach[m->machno] = tp;
+	}
 	if(p->upage->va != (USERADDR|(p->pid&0xFFFF)))
 		panic("mapstack %d 0x%lux 0x%lux", p->pid, p->upage->pa, p->upage->va);
-	tlbvirt = USERADDR;
-	tlbphys = PPN(p->upage->pa) | PTEVALID | PTEKERNEL;
-	putkmmu(tlbvirt, tlbphys);
+	/* don't set m->pidhere[*tp] because we're only writing U entry */
+	tlbphys = PPN(p->upage->pa)|PTEVALID|PTEWRITE|PTEKERNEL|PTEMAINMEM;
+	putcontext(tp-1);
+	putpmeg(USERADDR, tlbphys);
 	u = (User*)USERADDR;
+}
 
-	/*
-	 *  if not a kernel process and this process was not the 
-	 *  last process on this machine, flush & preload mmu
-	 */
-	if(!p->kp && p!=m->lproc){
-		flushmmu();
+/*
+ * Process must be non-interruptible
+ */
+int
+newpid(Proc *p)
+{
+	int i, j;
+	Proc *sp;
 
-		/*
-		 *  preload the MMU with the last (up to) NMMU user entries
-		 *  previously faulted into it for this process.
-		 */
-		mn = &u->mc.mmu[u->mc.next&(NMMU-1)];
-		me = &u->mc.mmu[NMMU];
-		if(u->mc.next >= NMMU){
-			for(mm = mn; mm < me; mm++)
-				UMAP[mm->va] = mm->pa;
-		}
-		for(mm = u->mc.mmu; mm < mn; mm++)
-			UMAP[mm->va] = mm->pa;
-
-		m->lproc = p;
+	i = m->lastpid+1;
+	if(i >= NCONTEXT+1)
+		i = 1;
+	sp = m->pidproc[i];
+	if(sp){
+		sp->pidonmach[m->machno] = 0;
+		purgepid(i);
 	}
+	m->pidproc[i] = p;
+	m->lastpid = i;
+print("new context %d\n", i);
+	/*
+	 * kludge: each context is allowed 2 pmegs, one for text and one for stack
+	 */
+	putsegm(UZERO, kmapalloc.lowpmeg+(2*i));
+	putsegm(TSTKTOP-BY2SEGM, kmapalloc.lowpmeg+(2*i)+1);
+	for(j=0; j<PG2SEGM; j++){
+		putpmeg(UZERO+j*BY2PG, INVALIDPTE);
+		putpmeg((TSTKTOP-BY2SEGM)+j*BY2PG, INVALIDPTE);
+	}
+	return i;
 }
 
 void
-putkmmu(ulong tlbvirt, ulong tlbphys)
+purgepid(int pid)
 {
-	if(!(tlbvirt&KZERO))
-		panic("putkmmu");
-	tlbvirt &= ~KZERO;
-	KMAP[(tlbvirt&0x003FE000L)>>2] = tlbphys;
+	int i, rpid;
+
+	if(m->pidhere[pid] == 0)
+		return;
+print("purge pid %d\n", pid);
+	memset(m->pidhere, 0, sizeof m->pidhere);
+	putcontext(pid-1);
+	/*
+	 * Clear context from cache
+	 */
+	for(i=0; i<0x1000; i++)
+		putwE((i<<4), 0);
+print("purge done\n");
 }
+
+
+void
+mmuinit(void)
+{
+	ulong l, i, j, c, pte;
+
+	/*
+	 * First map lots of memory as kernel addressable in all contexts
+	 */
+	i = 0;		/* used */
+	for(c=0; c<NCONTEXT; c++)
+		for(i=0; i<conf.maxialloc/BY2SEGM; i++)
+			putcxsegm(c, KZERO+i*BY2SEGM, i);
+	kmapalloc.lowpmeg = i;
+	/*
+	 * Make sure cache is turned on for kernel
+	 */
+	pte = PTEVALID|PTEWRITE|PTEKERNEL|PTEMAINMEM;
+	for(i=0; i<conf.maxialloc/BY2PG; i++)
+		putpmeg(KZERO+i*BY2PG, pte+i);
+		
+
+	/*
+	 * Create invalid pmeg; use highest segment
+	 */
+	putsegm(INVALIDSEGM, INVALIDPMEG);
+	for(i=0; i<PG2SEGM; i++)
+		putpmeg(INVALIDSEGM+i*BY2PG, INVALIDPTE);
+	for(c=0; c<NCONTEXT; c++){
+		putcontext(c);
+		putsegm(INVALIDSEGM, INVALIDPMEG);
+		/*
+		 * Invalidate user addresses
+		 */
+/*
+		for(l=UZERO; l<KZERO; l+=BY2SEGM)
+			putsegm(l, INVALIDPMEG);
+*/
+putsegm(0x0000, INVALIDPMEG);
+		/*
+		 * One segment for screen
+		 */
+		putsegm(SCREENSEGM, SCREENPMEG);
+		if(c == 0){
+			pte = PTEVALID|PTEWRITE|PTEKERNEL|PTENOCACHE|
+				PTEIO|((DISPLAYRAM>>PGSHIFT)&0xFFFF);
+			for(i=0; i<PG2SEGM; i++)
+				putpmeg(SCREENSEGM+i*BY2PG, pte+i);
+		}
+		/*
+		 * First page of IO space includes ROM; be careful
+		 */
+		putsegm(IOSEGM0, IOPMEG0);	/* IOSEGM == ROMSEGM */
+		if(c == 0){
+			pte = PTEVALID|PTEKERNEL|PTENOCACHE|
+				PTEIO|((EPROM>>PGSHIFT)&0xFFFF);
+			for(i=0; i<PG2ROM; i++)
+				putpmeg(IOSEGM0+i*BY2PG, pte+i);
+			for(; i<PG2SEGM; i++)
+				putpmeg(IOSEGM0+i*BY2PG, INVALIDPTE);
+		}
+		/*
+		 * Remaining segments for IO and kmap
+		 */
+		for(j=1; j<NIOSEGM; j++){
+			putsegm(IOSEGM0+j*BY2SEGM, IOPMEG0+j);
+			if(c == 0)
+				for(i=0; i<PG2SEGM; i++)
+					putpmeg(IOSEGM0+j*BY2SEGM+i*BY2PG, INVALIDPTE);
+		}
+	}
+	putcontext(0);
+}
+
+
+
 
 void
 putmmu(ulong tlbvirt, ulong tlbphys)
 {
-	if(tlbvirt&KZERO)
-		panic("putmmu");
-	tlbphys |= VTAG(tlbvirt)<<24;
-	tlbvirt = (tlbvirt&0x003FE000L)>>2;
-	if(u){
-		MMU *mp;
-		int s;
+	short tp;
+	Proc *p;
 
-		s = splhi();
-		mp = &(u->mc.mmu[u->mc.next&(NMMU-1)]);
-		mp->pa = tlbphys;
-		mp->va = tlbvirt;
-		u->mc.next++;
-		splx(s);
+	splhi();
+	p = u->p;
+/*	if(p->state != Running)
+		panic("putmmu state %lux %lux %s\n", u, p, statename[p->state]);
+*/
+	p->state = MMUing;
+	tp = p->pidonmach[m->machno];
+	if(tp == 0){
+		tp = newpid(p);
+		p->pidonmach[m->machno] = tp;
 	}
-	UMAP[tlbvirt] = tlbphys;
+	/*
+	 * kludge part 2: make sure we've got a valid segment
+	 */
+	if(tlbvirt>=TSTKTOP || (UZERO+BY2SEGM<=tlbvirt && tlbvirt<(TSTKTOP-BY2SEGM)))
+		panic("putmmu %lux", tlbvirt);
+	putpmeg(tlbvirt, tlbphys);
+	m->pidhere[tp] = 1;
+	p->state = Running;
+	spllo();
 }
 
 void
 flushmmu(void)
 {
-	flushcpucache();
-	*PARAM &= ~TLBFLUSH_;
-	*PARAM |= TLBFLUSH_;
+	splhi();
+	/* easiest is to forget what pid we had.... */
+	memset(u->p->pidonmach, 0, sizeof u->p->pidonmach);
+	/* ....then get a new one by trying to map our stack */
+	mapstack(u->p);
+	spllo();
 }
 
 void
-clearmmucache(void)
+cacheinit(void)
 {
-	if(u == 0)
-		panic("flushmmucache");
-	u->mc.next = 0;
+	int i;
+
+	/*
+	 * Initialize cache by clearing the valid bit
+	 * (along with the others) in all cache entries
+	 */
+	for(i=0; i<0x1000; i++)
+		putw2(CACHETAGS+(i<<4), 0);
+	/*
+	 * Turn cache on
+	 */
+	putb2(ENAB, getb2(ENAB)|ENABCACHE); /**/
 }
 
 void
 kmapinit(void)
 {
 	KMap *k;
-	int i, e;
+	int i;
 
-	if(kmapalloc.init == 0){
-		k = &kmapalloc.arena[0];
-		k->va = KZERO|(4*1024*1024-256*1024-BY2PG);
-		k->next = 0;
-		kmapalloc.free = k;
-		kmapalloc.init = 1;
-		return;
-	}
-	e = (4*1024*1024 - 256*1024)/BY2PG;	/* screen lives at top 256K */
-	i = (((ulong)ialloc(0, 0))&~KZERO)/BY2PG;
-	print("%lud free map registers\n", e-i);
+print("low pmeg %d\n", kmapalloc.lowpmeg);
 	kmapalloc.free = 0;
-	for(k=&kmapalloc.arena[i]; i<e; i++,k++){
-		k->va = i*BY2PG|KZERO;
+	k = kmapalloc.arena;
+	for(i=0; i<(IOEND-IOSEGM)/BY2PG; i++,k++){
+		k->va = IOSEGM+i*BY2PG;
 		kunmap(k);
 	}
 }
 
 KMap*
-kmap(Page *pg)
+kmap1(Page *pg, ulong flag)
 {
 	KMap *k;
 
@@ -137,23 +256,37 @@ kmap(Page *pg)
 	kmapalloc.free = k->next;
 	unlock(&kmapalloc);
 	k->pa = pg->pa;
-	putkmmu(k->va, PPN(k->pa) | PTEVALID | PTEKERNEL);
+	/*
+	 * Cache is virtual and a pain to deal with.
+	 * Must avoid having the same entry in the cache twice, so
+	 * must use NOCACHE or else extreme cleverness elsewhere.
+	 */
+	putpmeg(k->va, PPN(k->pa)|PTEVALID|PTEKERNEL|PTEWRITE|PTENOCACHE|flag);
 	return k;
+}
+
+KMap*
+kmap(Page *pg)
+{
+	return kmap1(pg, PTEMAINMEM);
 }
 
 void
 kunmap(KMap *k)
 {
+	ulong pte;
+	int i;
+
 	k->pa = 0;
 	lock(&kmapalloc);
 	k->next = kmapalloc.free;
 	kmapalloc.free = k;
-	putkmmu(k->va, INVALIDPTE);
+	putpmeg(k->va, INVALIDPTE);
 	unlock(&kmapalloc);
 }
 
 void
 invalidateu(void)
 {
-	putkmmu(USERADDR, INVALIDPTE);
+	putpmeg(USERADDR, INVALIDPTE);
 }

@@ -80,7 +80,7 @@ struct SCC
 	uchar	*data;		/* data register in Z8530 */
 };
 SCC	scc[2];
-#define	SCCV	(0x0F000000-0x1000)
+#define	SCCV	(0x0000)	/* was 0x0F000000-0x1000 */
 #define	SCCP	0xF1000000
 
 #define PRINTING	0x4

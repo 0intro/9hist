@@ -233,7 +233,7 @@ sysexec(ulong *arg)
 			validaddr((ulong)argp, BY2WD, 0);
 		validaddr((ulong)a, 1, 0);
 		nbytes += (vmemchr(a, 0, 0xFFFFFFFF) - a) + 1;
-			nargs++;
+		nargs++;
 	}
 	ssize = BY2WD*(nargs+1) + ((nbytes+(BY2WD-1)) & ~(BY2WD-1));
 	spage = (ssize+(BY2PG-1)) >> PGSHIFT;
@@ -349,7 +349,7 @@ sysexec(ulong *arg)
 
 	flushmmu();
 	clearmmucache();
-	((Ureg*)UREGADDR)->pc = exec.entry + ENTRYOFFSET;
+	execpc(exec.entry);
 	sp = (ulong*)(USTKTOP - ssize);
 	*--sp = nargs;
 	((Ureg*)UREGADDR)->usp = (ulong)sp;

@@ -13,7 +13,7 @@ delay(int ms)
 	ulong t, *p;
 	int i;
 
-	ms *= 1000;	/* experimentally determined */
+	ms *= 2000;	/* experimentally determined */
 	for(i=0; i<ms; i++)
 		;
 }
@@ -34,9 +34,9 @@ clock(Ureg *ur)
 	checkalarms();
 	kbdclock();
 	mouseclock();
-	if((ur->sr&SPL(7)) == 0 && p && p->state==Running){
+	if((ur->psr&SPL(7)) == 0 && p && p->state==Running){
 		sched();
-		if(u->nnote && (ur->sr&SUPER)==0)
+		if(u->nnote && (ur->psr&PSRSUPER)==0)
 			notify(ur);
 	}
 }

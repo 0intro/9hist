@@ -1,5 +1,6 @@
 #include <u.h>
 #include <libc.h>
+#include <libg.h>
 #include <fcall.h>
 
 Fcall	hdr;
@@ -20,6 +21,10 @@ main(int argc, char *argv[])
 	open("#c/cons", OREAD);
 	open("#c/cons", OWRITE);
 	open("#c/cons", OWRITE);
+write(1, "hello from boot\n", 16);
+bind("#c", "/dev", MREPL);
+binit(0, 0);
+bitblt(&screen, Pt(100, 100), &screen, Rect(100, 100, 300, 200), 0xF);
 
 	fd = open("#e/bootline", OREAD);
 	if(fd >= 0){
@@ -184,10 +189,10 @@ main(int argc, char *argv[])
 		error("mount");
 	print("success\n");
 	if(strchr(bootline, ' '))
-		execl("/68020/init", "init", "-m", 0);
+		execl("/sparc/init", "init", "-m", 0);
 	else
-		execl("/68020/init", "init", 0);
-	error("/68020/init");
+		execl("/sparc/init", "init", 0);
+	error("/sparc/init");
 }
 
 void

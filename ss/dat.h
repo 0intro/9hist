@@ -45,7 +45,7 @@ struct List
 
 struct Lock
 {
-	char	key;			/* addr of sync bus semaphore */
+	ulong	key;
 	ulong	pc;
 };
 
@@ -67,7 +67,6 @@ struct Label
 {
 	ulong	sp;
 	ulong	pc;
-	ushort	sr;
 };
 
 struct Alarm
@@ -216,9 +215,12 @@ struct Mach
 	Lock	alarmlock;		/* access to alarm list */
 	void	*alarm;			/* alarms bound to this clock */
 	int	fpstate;		/* state of fp registers on machine */
-	void	(*intr)(ulong, ulong);	/* !!Compatability with mips!! */
+	void	(*intr)(ulong, ulong);	/* !!Compatibility with mips!! */
 	ulong	cause;			/*	... */
 	ulong	pc;			/*	... */
+	char	pidhere[NCONTEXT];	/* is this tlbpid possibly in this mmu? */
+	int	lastpid;		/* last pid allocated on this machine */
+	Proc	*pidproc[NCONTEXT];	/* process that owns this pid on this mach */
 	int	stack[1];
 };
 
@@ -323,7 +325,6 @@ struct Proc
 	char	text[NAMELEN];
 	Proc	*rnext;			/* next process in run queue */
 	Proc	*qnext;			/* next process on queue for a QLock */
-	QLock	*qlock;			/* address of qlock being queued for DEBUG */
 	int	state;
 	int	spin;			/* spinning instead of unscheduled */
 	Page	*upage;			/* BUG: should be unlinked from page list */
@@ -347,7 +348,7 @@ struct Proc
 	int	wokeup;			/* whether sleep was interrupted */
 	ulong	pc;			/* DEBUG only */
 	int	kp;			/* true if a kernel process */
-	int	pidonmach[1];		/* !!Compatability with mips!! */
+	int	pidonmach[MAXMACH];	/* TLB pid on each mmu */
 };
 
 struct MMU
@@ -511,8 +512,8 @@ struct Service
 
 #define	PRINTSIZE	256
 
-extern register Mach	*m;
-extern register User	*u;
+extern register Mach	*m;		/* R6 */
+extern register User	*u;		/* R5 */
 
 /*
  * Process states
@@ -609,5 +610,5 @@ extern  void	(*kprofp)(ulong);
 /*
  *  parameters for sysproc.c
  */
-#define AOUT_MAGIC	A_MAGIC
+#define AOUT_MAGIC	K_MAGIC
 #define ENTRYOFFSET	0

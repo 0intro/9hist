@@ -698,6 +698,6 @@ compactpte(Orig *o, ulong n)
 	unlock(&ptealloc);
 	if(u && u->p)
 		print("%s: %s: ", u->p->text, u->p->pgrp->user);
-	print("compactpte fails addr %lux\n", o->va+n*BY2PG);
+	print("compactpte fails addr %lux %lux %d\n", o->va+n*BY2PG, o->va, n);
 	return 0;
 }

@@ -14,16 +14,21 @@ char user[NAMELEN];
 char bootline[64];
 char bootserver[64];
 char bootdevice[64];
-int bank[2];
 
 void unloadboot(void);
 
+#ifdef asdf
+static int ok;
 int
 Xprint(char *fmt, ...)
 {
 	char buf[PRINTSIZE];
 	int n;
 
+	if(!ok){
+		sccsetup();
+		ok = 1;
+	}
 	n = doprint(buf, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
 	sccputs(buf);
 	return n;
@@ -34,12 +39,17 @@ putx(ulong x)
 {
 	int i;
 
+	if(!ok){
+		sccsetup();
+		ok = 1;
+	}
 	for(i=0; i<8; i++){
 		sccputc("0123456789ABCDEF"[x>>28]);
 		x <<= 4;
 	}
 	sccputc('\n');
 }
+#endif
 
 void
 main(void)
@@ -51,17 +61,13 @@ main(void)
 
 	unloadboot();
 	machinit();
-#ifdef adsf
-	mmuinit();
 	confinit();
+	mmuinit();
+	printinit();
+	print("sparc plan 9\n");
+	trapinit();
 	kmapinit();
-#endif
-	sccsetup();
-	Xprint("hello world addr %lux pc %lux\n", &a, pc());
-	reset();
-#ifdef asdf
-	print("bank 0: %dM  bank 1: %dM\n", bank[0], bank[1]);
-	flushmmu();
+	cacheinit();
 	procinit0();
 	pgrpinit();
 	chaninit();
@@ -71,17 +77,15 @@ main(void)
 /*	serviceinit(); /**/
 /*	filsysinit(); /**/
 	pageinit();
-	kmapinit();
 	userinit();
 	schedinit();
-#endif
 }
 
 void
 reset(void)
 {
 	delay(100);
-	putb2(0x40000000, 4);
+	putb2(ENAB, ENABRESET);
 }
 
 void
@@ -90,7 +94,7 @@ unloadboot(void)
 	strncpy(user, "rob", sizeof user);
 	memcpy(bootline, "9s", sizeof bootline);
 	memcpy(bootserver, "bootes", sizeof bootserver);
-	memcpy(bootdevice, "parnfucky", sizeof bootserver);
+	memcpy(bootdevice, "parnfucky", sizeof bootdevice);
 }
 
 void
@@ -106,28 +110,6 @@ machinit(void)
 	m->fpstate = FPinit;
 	fprestore(&initfp);
 #endif
-}
-
-void
-mmuinit(void)
-{
-	ulong l, d, i;
-
-	/*
-	 * Invalidate user addresses
-	 */
-	for(l=0; l<4*1024*1024; l+=BY2PG)
-		putmmu(l, INVALIDPTE);
-	/*
-	 * Four meg of usable memory, with top 256K for screen
-	 */
-	for(i=1,l=KTZERO; i<(4*1024*1024-256*1024)/BY2PG; l+=BY2PG,i++)
-		putkmmu(l, PPN(l)|PTEVALID|PTEKERNEL);
-	/*
-	 * Screen at top of memory
-	 */
-	for(i=0,d=DISPLAYRAM; i<256*1024/BY2PG; d+=BY2PG,l+=BY2PG,i++)
-		putkmmu(l, PPN(d)|PTEVALID|PTEKERNEL);
 }
 
 void
@@ -157,7 +139,8 @@ init0(void)
 		close(c);
 	}
 	poperror();
-	touser();
+
+	touser(USTKTOP-5*BY2WD);
 }
 
 FPsave	initfp;
@@ -181,7 +164,6 @@ userinit(void)
 	 */
 	p->sched.pc = (ulong)init0;
 	p->sched.sp = USERADDR+BY2PG-20;	/* BUG */
-	p->sched.sr = SUPER|SPL(0);
 	p->upage = newpage(0, 0, USERADDR|(p->pid&0xFFFF));
 
 	/*
@@ -226,8 +208,9 @@ exit(void)
 	u = 0;
 	splhi();
 	print("exiting\n");
-	for(;;)
-		;
+for(;;)
+	delay(60*1000);
+	reset();
 }
 
 /*
@@ -296,49 +279,22 @@ delete(List **head, List *where, List *old)
 	where->next = old->next;
 }
 
-banksize(int base)
-{
-	ulong va;
-
-	if(&end > (int *)((KZERO|1024L*1024L)-BY2PG))
-		return 0;
-	va = UZERO;	/* user page 1 is free to play with */
-	putmmu(va, PTEVALID|(base+0)*1024L*1024L/BY2PG);
-	*(ulong*)va = 0;	/* 0 at 0M */
-	putmmu(va, PTEVALID|(base+1)*1024L*1024L/BY2PG);
-	*(ulong*)va = 1;	/* 1 at 1M */
-	putmmu(va, PTEVALID|(base+4)*1024L*1024L/BY2PG);
-	*(ulong*)va = 4;	/* 4 at 4M */
-	putmmu(va, PTEVALID|(base+0)*1024L*1024L/BY2PG);
-	if(*(ulong*)va == 0)
-		return 16;
-	putmmu(va, PTEVALID|(base+1)*1024L*1024L/BY2PG);
-	if(*(ulong*)va == 1)
-		return 4;
-	putmmu(va, PTEVALID|(base+0)*1024L*1024L/BY2PG);
-	if(*(ulong*)va == 4)
-		return 1;
-	return 0;
-}
-
 Conf	conf;
 
 void
 confinit(void)
 {
 	int mul;
+
 	conf.nmach = 1;
 	if(conf.nmach > MAXMACH)
 		panic("confinit");
-	bank[0] = banksize(0);
-	bank[1] = banksize(16);
-	conf.npage0 = (bank[0]*1024*1024)/BY2PG;
+	conf.npage0 = (8*1024*1024)/BY2PG;	/* BUG */
+	conf.npage = conf.npage0;
 	conf.base0 = 0;
-	conf.npage1 = (bank[1]*1024*1024)/BY2PG;
-	conf.base1 = 16*1024*1024;
 	conf.npage = conf.npage0+conf.npage1;
-	conf.maxialloc = (4*1024*1024-256*1024-BY2PG);
-	mul = 1 + (conf.npage1>0);
+	conf.maxialloc = 4*1024*1024;		/* BUG */
+	mul = 2;
 	conf.nproc = 50*mul;
 	conf.npgrp = 12*mul;
 	conf.npte = 700*mul;
@@ -360,8 +316,6 @@ confinit(void)
 	conf.nsrv = 16*mul;			/* was 32 */
 	conf.nbitmap = 300*mul;
 	conf.nbitbyte = 300*1024*mul;
-	if(*(uchar*)MOUSE & (1<<4))
-		conf.nbitbyte *= 2;	/* ldepth 1 */
 	conf.nfont = 10*mul;
 	conf.nurp = 32;
 	conf.nasync = 1;
@@ -387,7 +341,6 @@ procsetup(Proc *p)
 	fprestore((FPsave*)&fpnull);
 	spllo();
 #endif
-	panic("procsetup");
 }
 
 /*
@@ -396,13 +349,7 @@ procsetup(Proc *p)
 void
 procsave(uchar *state, int len)
 {
-	panic("procsave");
 #ifdef asdf
-	Balu *balu;
-
-	if(len < sizeof(Balu))
-		panic("save state too small");
-	balu = (Balu *)state;
 	fpsave(&u->fpsave);
 	if(u->fpsave.type){
 		if(u->fpsave.size > sizeof u->fpsave.junk)
@@ -410,12 +357,6 @@ procsave(uchar *state, int len)
 		fpregsave(u->fpsave.reg);
 		u->p->fpstate = FPactive;
 		m->fpstate = FPdirty;
-	}
-	if(BALU->cr0 != 0xFFFFFFFF)	/* balu busy */
-		memcpy(balu, BALU, sizeof(Balu));
-	else{
-		balu->cr0 = 0xFFFFFFFF;
-		BALU->cr0 = 0xFFFFFFFF;
 	}
 #endif
 }
@@ -428,11 +369,7 @@ procsave(uchar *state, int len)
 void
 procrestore(Proc *p, uchar *state)
 {
-	panic("procrestore");
 #ifdef asdf
-	Balu *balu;
-
-	balu = (Balu *)state;
 	if(p->fpstate != m->fpstate){
 		if(p->fpstate == FPinit){
 			u->p->fpstate = FPinit;
@@ -444,7 +381,5 @@ procrestore(Proc *p, uchar *state)
 			m->fpstate = FPdirty;
 		}
 	}
-	if(balu->cr0 != 0xFFFFFFFF)	/* balu busy */
-		memcpy(BALU, balu, sizeof balu);
 #endif
 }

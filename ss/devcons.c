@@ -95,7 +95,6 @@ Qinfo rs232info =
 void
 printinit(void)
 {
-
 	lock(&printq);		/* allocate lock */
 	unlock(&printq);
 
@@ -115,7 +114,6 @@ printinit(void)
 	unlock(&klogq);
 	lock(&klogq.put);	/* allocate lock */
 	unlock(&klogq.put);
-
 	screeninit();
 }
 
@@ -310,9 +308,6 @@ echo(int c)
 			return;
 		case 'm':
 			mntdump();
-			return;
-		case 'i':
-			incontoggle();
 			return;
 		}
 	}else if(c == 0x14){
