@@ -703,14 +703,15 @@ etherloop(Etherpkt *p, long n)
 	int s, different;
 	ushort t;
 	Netfile *f, **fp;
+	Ether *ctlr = ether[0];
 
-	different = memcmp(p->d, p->s, sizeof(p->s));
-	if(different && memcmp(p->d, ether[0]->bcast, sizeof(p->d)))
+	different = memcmp(p->d, ctlr->ea, sizeof(ctlr->ea));
+	if(different && memcmp(p->d, ctlr->bcast, sizeof(p->d)))
 		return 0;
 
 	s = splhi();
 	t = (p->type[0]<<8) | p->type[1];
-	for(fp = ether[0]->f; fp < &ether[0]->f[Ntypes]; fp++) {
+	for(fp = ctlr->f; fp < &ctlr->f[Ntypes]; fp++) {
 		f = *fp;
 		if(f == 0)
 			continue;
@@ -745,6 +746,9 @@ etherwrite(Chan *c, void *buf, long n, ulong offset)
 	if(n > ETHERMAXTU)
 		error(Ebadarg);
 
+	p = buf;
+	memmove(p->s, ctlr->ea, sizeof(ctlr->ea));
+
 	/* we handle data */
 	if(etherloop(buf, n))
 		return n;
@@ -767,7 +771,6 @@ etherwrite(Chan *c, void *buf, long n, ulong offset)
 			memset(p->d+n, 0, 60-n);
 			n = 60;
 		}
-		memmove(p->s, ctlr->ea, sizeof(ctlr->ea));
 		sonicswap(p, n);
 
 		txpkt = &ctlr->tda[ctlr->th];

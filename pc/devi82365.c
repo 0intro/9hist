@@ -1059,23 +1059,21 @@ iospaces(Slot *pp)
 	int i;
 	ulong address, len;
 
-	for(;;){
-		if(readc(pp, &c) != 1)
-			break;
+	if(readc(pp, &c) != 1)
+		return;
 
-		pp->nioregs = 1<<(c&0x1f);
-		pp->bit16 = ((c>>5)&3) >= 2;
-		if((c & 0x80) == 0)
-			break;
+	pp->nioregs = 1<<(c&0x1f);
+	pp->bit16 = ((c>>5)&3) >= 2;
+	if((c & 0x80) == 0)
+		return;
 
-		if(readc(pp, &c) != 1)
-			break;
+	if(readc(pp, &c) != 1)
+		return;
 
-		for(i = (c&0xf)+1; i; i--){
-			address = getlong(pp, (c>>4)&0x3);
-			len = getlong(pp, (c>>6)&0x3);
-			USED(address, len);
-		}
+	for(i = (c&0xf)+1; i; i--){
+		address = getlong(pp, (c>>4)&0x3);
+		len = getlong(pp, (c>>6)&0x3);
+		USED(address, len);
 	}
 }
 
