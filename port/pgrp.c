@@ -24,7 +24,7 @@ pgrpnote(ulong noteid, char *a, long n, int flag)
 	for(; p < ep; p++) {
 		if(p->state == Dead)
 			continue;
-		if(p->noteid == noteid && p->kp == 0) {
+		if(up != p && p->noteid == noteid && p->kp == 0) {
 			qlock(&p->debug);
 			if(p->pid == 0 || p->noteid != noteid){
 				qunlock(&p->debug);
