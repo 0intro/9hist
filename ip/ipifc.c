@@ -136,9 +136,9 @@ ipifcbind(Conv *c, char **argv, int argc)
 	ifc->minmtu = ifc->m->minmtu;
 	ifc->maxmtu = ifc->m->maxmtu;
 	if(ifc->m->unbindonclose == 0){
-		lock(ifc->conv);
+		qlock(ifc->conv);
 		ifc->conv->inuse++;
-		unlock(ifc->conv);
+		qunlock(ifc->conv);
 	}
 	ifc->ifcid++;
 
@@ -166,9 +166,9 @@ ipifcunbind(Ipifc *ifc)
 
 	/* dissociate routes */
 	if(ifc->m != nil && ifc->m->unbindonclose == 0){
-		lock(ifc->conv);
+		qlock(ifc->conv);
 		ifc->conv->inuse--;
-		unlock(ifc->conv);
+		qunlock(ifc->conv);
 	}
 	ifc->ifcid++;
 
@@ -305,7 +305,7 @@ ipifcclose(Conv *c)
 	m = ifc->m;
 	if(m != nil && m->unbindonclose)
 		ipifcunbind(ifc);
-	unlock(c);
+	qunlock(c);
 }
 
 /*

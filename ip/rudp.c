@@ -289,7 +289,7 @@ rudpclose(Conv *c)
 
 	qunlock(ucb);
 
-	unlock(c);
+	qunlock(c);
 }
 
 /*
@@ -490,6 +490,8 @@ rudpiput(Proto *rudp, uchar *ia, Block *bp)
 		}
 	}
 
+	qlock(rudp);
+
 	/* Look for a conversation structure for this port */
 	c = nil;
 	for(p = rudp->conv; *p; p++) {
@@ -512,6 +514,7 @@ rudpiput(Proto *rudp, uchar *ia, Block *bp)
 	}
 
 	if(*p == nil) {
+		qunlock(rudp);
 		upriv->ustats.rudpNoPorts++;
 		netlog(f, Logrudp, "rudp: no conv %I!%d -> %I!%d\n", raddr, rport,
 			laddr, lport);
@@ -525,8 +528,9 @@ rudpiput(Proto *rudp, uchar *ia, Block *bp)
 	}
 
 	ucb = (Rudpcb*)c->ptcl;
-
 	qlock(ucb);
+	qunlock(rudp);
+
 	if(reliput(c, bp, raddr, rport) < 0){
 		qunlock(ucb);
 		freeb(bp);

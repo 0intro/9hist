@@ -620,7 +620,7 @@ ipmuxclose(Conv *c)
 	ipmuxtreefree(r->chain);
 	r->chain = nil;
 
-	unlock(c);
+	qunlock(c);
 }
 
 /*

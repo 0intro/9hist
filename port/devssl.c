@@ -418,7 +418,7 @@ qremove(Block **l, int n, int discard)
 			} else
 				*l = b->next;
 			b->next = 0;
-			break;
+			return first;
 		} else if(i > n){
 			i -= n;
 			if(discard){

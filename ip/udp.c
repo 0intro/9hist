@@ -130,7 +130,7 @@ udpclose(Conv *c)
 	ucb = (Udpcb*)c->ptcl;
 	ucb->headers = 0;
 
-	unlock(c);
+	qunlock(c);
 }
 
 void
@@ -270,6 +270,8 @@ udpiput(Proto *udp, uchar *ia, Block *bp)
 		}
 	}
 
+	qlock(udp);
+
 	/* Look for a conversation structure for this port */
 	c = nil;
 	for(p = udp->conv; *p; p++) {
@@ -293,6 +295,7 @@ udpiput(Proto *udp, uchar *ia, Block *bp)
 
 	if(*p == nil) {
 		upriv->ustats.udpNoPorts++;
+		qunlock(udp);
 		netlog(f, Logudp, "udp: no conv %I!%d -> %I!%d\n", raddr, rport,
 			laddr, lport);
 		uh->Unused = ottl;
@@ -302,12 +305,17 @@ udpiput(Proto *udp, uchar *ia, Block *bp)
 		return;
 	}
 
+	ucb = (Udpcb*)c->ptcl;
+	qlock(c);
+	qunlock(udp);
+
 	/*
 	 * Trim the packet down to data size
 	 */
 	len -= (UDP_HDRSIZE-UDP_PHDRSIZE);
 	bp = trimblock(bp, UDP_IPHDR+UDP_HDRSIZE, len);
 	if(bp == nil){
+		qunlock(c);
 		netlog(f, Logudp, "udp: len err %I.%d -> %I.%d\n", raddr, rport,
 			laddr, lport);
 		upriv->lenerr++;
@@ -316,8 +324,6 @@ udpiput(Proto *udp, uchar *ia, Block *bp)
 
 	netlog(f, Logudpmsg, "udp: %I.%d -> %I.%d l %d\n", raddr, rport,
 		laddr, lport, len);
-
-	ucb = (Udpcb*)c->ptcl;
 
 	switch(ucb->headers){
 	case 6:
@@ -361,11 +367,16 @@ udpiput(Proto *udp, uchar *ia, Block *bp)
 		bp = concatblock(bp);
 
 	if(qfull(c->rq)){
+		qunlock(c);
 		netlog(f, Logudp, "udp: qfull %I.%d -> %I.%d\n", raddr, rport,
 			laddr, lport);
 		freeblist(bp);
-	}else
-		qpass(c->rq, bp);
+		return;
+	}
+
+	qpass(c->rq, bp);
+	qunlock(c);
+
 }
 
 char*
@@ -402,17 +413,23 @@ udpadvise(Proto *udp, Block *bp, char *msg)
 	pdest = nhgets(h->udpdport);
 
 	/* Look for a connection */
+	qlock(udp);
 	for(p = udp->conv; *p; p++) {
 		s = *p;
 		if(s->rport == pdest)
 		if(s->lport == psource)
 		if(ipcmp(s->raddr, dest) == 0)
 		if(ipcmp(s->laddr, source) == 0){
+			qlock(s);
+			qunlock(udp);
 			qhangup(s->rq, msg);
 			qhangup(s->wq, msg);
-			break;
+			qunlock(s);
+			freeblist(bp);
+			return;
 		}
 	}
+	qunlock(udp);
 	freeblist(bp);
 }
 

@@ -85,7 +85,7 @@ struct IP
 	Fragment*	flisthead;
 	Fragment*	fragfree;
 
-	ulong		id;
+	Ref		id;
 	int		iprouting;			/* true if we route like a gateway */
 	void 		(*ipextprotoiput)(Block*);
 };
@@ -186,11 +186,12 @@ ipoput(Fs *f, Block *bp, int gating, int ttl)
 		eh->ttl = ttl;
 	}
 
+	if(!canrlock(ifc))
+		goto free;
 	if(waserror()){
 		runlock(ifc);
 		nexterror();
 	}
-	rlock(ifc);
 	if(ifc->m == nil)
 		goto raise;
 
@@ -198,7 +199,7 @@ ipoput(Fs *f, Block *bp, int gating, int ttl)
 	medialen = ifc->m->maxmtu - ifc->m->hsize;
 	if(len <= medialen) {
 		if(!gating)
-			hnputs(eh->id, ip->id++);
+			hnputs(eh->id, incref(&ip->id));
 		hnputs(eh->length, len);
 		eh->frag[0] = 0;
 		eh->frag[1] = 0;
@@ -231,7 +232,7 @@ ipoput(Fs *f, Block *bp, int gating, int ttl)
 	if(gating)
 		lid = nhgets(eh->id);
 	else
-		lid = ip->id++;
+		lid = incref(&ip->id);
 
 	offset = IPHDR;
 	while(xp != nil && offset && offset >= BLEN(xp)) {

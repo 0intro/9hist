@@ -196,3 +196,19 @@ wunlock(RWlock *q)
 	q->writer = 0;
 	unlock(&q->use);
 }
+
+/* same as rlock but punts if there are any readers waiting */
+int
+canrlock(RWlock *q)
+{
+	lock(&q->use);
+rwstats.rlock++;
+	if(q->writer == 0 && q->head == nil){
+		/* no writer, go for it */
+		q->readers++;
+		unlock(&q->use);
+		return 1;
+	}
+	unlock(&q->use);
+	return 0;
+}

@@ -140,7 +140,7 @@ icmpclose(Conv *c)
 	ipmove(c->laddr, IPnoaddr);
 	ipmove(c->raddr, IPnoaddr);
 	c->lport = 0;
-	unlock(c);
+	qunlock(c);
 }
 
 static void
@@ -328,6 +328,7 @@ icmpiput(Proto *icmp, uchar*, Block *bp)
 	}
 	if(p->type <= Maxtype)
 		ipriv->in[p->type]++;
+
 	switch(p->type) {
 	case EchoRequest:
 		r = mkechoreply(bp);

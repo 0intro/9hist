@@ -115,7 +115,7 @@ greclose(Conv *c)
 	c->lport = 0;
 	c->rport = 0;
 
-	unlock(c);
+	qunlock(c);
 }
 
 int drop;
@@ -179,6 +179,8 @@ greiput(Proto *gre, uchar*, Block *bp)
 	v4tov6(raddr, ghp->src);
 	eproto = nhgets(ghp->eproto);
 
+	qlock(gre);
+
 	/* Look for a conversation structure for this port and address */
 	c = nil;
 	for(p = gre->conv; *p; p++) {
@@ -190,9 +192,12 @@ greiput(Proto *gre, uchar*, Block *bp)
 	}
 
 	if(*p == nil) {
+		qunlock(gre);
 		freeblist(bp);
 		return;
 	}
+
+	qunlock(gre);
 
 	/*
 	 * Trim the packet down to data size

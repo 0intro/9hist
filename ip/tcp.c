@@ -133,10 +133,12 @@ struct Reseq
 	ushort	length;
 };
 
+/*
+ *  the qlock in the Conv locks this structure
+ */
 typedef struct Tcpctl Tcpctl;
 struct Tcpctl
 {
-	QLock;
 	uchar	state;			/* Connection state */
 	uchar	type;			/* Listening or active connection */
 	uchar	code;			/* Icmp code */
@@ -343,8 +345,6 @@ tcpclose(Conv *c)
 	qhangup(c->wq, nil);
 	qhangup(c->eq, nil);
 
-	unlock(c);
-
 	switch(tcb->state) {
 	case Listen:
 		/*
@@ -352,31 +352,27 @@ tcpclose(Conv *c)
 		 */
 		Fsconnected(c, "Hangup");
 
-		qlock(tcb);
 		localclose(c, nil);
 		break;
 	case Closed:
 	case Syn_sent:
-		qlock(tcb);
 		localclose(c, nil);
 		break;
 	case Syn_received:
 	case Established:
-		qlock(tcb);
 		tcb->sndcnt++;
 		tcb->snd.nxt++;
 		tcpsetstate(c, Finwait1);
 		tcpoutput(c);
 		break;
 	case Close_wait:
-		qlock(tcb);
 		tcb->sndcnt++;
 		tcb->snd.nxt++;
 		tcpsetstate(c, Last_ack);
 		tcpoutput(c);
 		break;
 	}
-	qunlock(tcb);
+	qunlock(c);
 }
 
 void
@@ -400,11 +396,11 @@ tcpkick(Conv *s, int len)
 		/*
 		 * Push data
 		 */
-		qlock(tcb);
+		qlock(s);
 		tcb->sndcnt += len;
 		tcprcvwin(s);
 		tcpoutput(s);
-		qunlock(tcb);
+		qunlock(s);
 		break;
 	default:
 		localclose(s, "Hangup");
@@ -445,11 +441,11 @@ tcpacktimer(Conv *s)
 
 	tcb = (Tcpctl*)s->ptcl;
 
-	qlock(tcb);
+	qlock(s);
 	tcb->flags |= FORCE;
 	tcprcvwin(s);
 	tcpoutput(s);
-	qunlock(tcb);
+	qunlock(s);
 }
 
 static void
@@ -667,12 +663,12 @@ tcpstart(Conv *s, int mode, ushort window)
 	case TCP_CONNECT:
 		tpriv->tstats.tcpActiveOpens++;
 		/* Send SYN, go into SYN_SENT state */
-		qlock(tcb);
+		qlock(s);
 		tcb->flags |= ACTIVE;
 		tcpsndsyn(tcb);
 		tcpsetstate(s, Syn_sent);
 		tcpoutput(s);
-		qunlock(tcb);
+		qunlock(s);
 		break;
 	}
 }
@@ -893,10 +889,10 @@ tcphangup(Conv *s)
 
 	tcb = (Tcpctl*)s->ptcl;
 	if(waserror()){
-		qunlock(tcb);
+		qunlock(s);
 		return commonerror();
 	}
-	qlock(tcb);
+	qlock(s);
 	if(s->raddr != 0) {
 		seg.flags = RST | ACK;
 		seg.ack = tcb->rcv.nxt;
@@ -911,7 +907,7 @@ tcphangup(Conv *s)
 	}
 	localclose(s, nil);
 	poperror();
-	qunlock(tcb);
+	qunlock(s);
 	return nil;
 }
 
@@ -1159,6 +1155,8 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 		return;
 	}
 
+	/* lock protocol while searching for a conversation */
+	qlock(tcp);
 
 	/* Look for a connection. failing that look for a listener. */
 	for(p = tcp->conv; *p; p++) {
@@ -1175,6 +1173,7 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 		/* can't send packets to a listener */
 		tcb = (Tcpctl*)s->ptcl;
 		if(tcb->state == Listen){
+			qunlock(tcp);
 			freeblist(bp);
 			return;
 		}
@@ -1184,10 +1183,13 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 		 *  dump packets with bogus flags
 		 */
 		if(seg.flags & RST){
+			qunlock(tcp);
 			freeblist(bp);
 			return;
 		}
+
 		if(seg.flags & ACK) {
+			qunlock(tcp);
 			sndrst(tcp, source, dest, length, &seg);
 			freeblist(bp);
 			return;
@@ -1223,8 +1225,9 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 			s = tcpincoming(gen, &seg, source, dest);
 	}
 	if(s == nil) {
-		freeblist(bp);
+		qunlock(tcp);
 		sndrst(tcp, source, dest, length, &seg);
+		freeblist(bp);
 		return;
 	}
 
@@ -1233,7 +1236,8 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 	 * Out-of-band data is ignored - it was always a bad idea.
 	 */
 	tcb = (Tcpctl*)s->ptcl;
-	qlock(tcb);
+	qlock(s);
+	qunlock(tcp);
 
 	if(tcb->kacounter > 0)
 		tcb->kacounter = MAXBACKOFF;
@@ -1283,7 +1287,7 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 		else
 			freeblist(bp);
 
-		qunlock(tcb);
+		qunlock(s);
 		return;
 	case Syn_received:
 		/* doesn't matter if it's the correct ack, we're just trying to set timing */
@@ -1308,7 +1312,7 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 			tcb->flags |= FORCE;
 			goto output;
 		}
-		qunlock(tcb);
+		qunlock(s);
 		return;
 	}
 
@@ -1449,7 +1453,7 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 				if(bp != nil)
 					freeblist(bp);
 				sndrst(tcp, source, dest, length, &seg);
-				qunlock(tcb);
+				qunlock(s);
 				return;
 			}
 		}
@@ -1514,10 +1518,10 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 	}
 output:
 	tcpoutput(s);
-	qunlock(tcb);
+	qunlock(s);
 	return;
 raise:
-	qunlock(tcb);
+	qunlock(s);
 	freeblist(bp);
 	tcpkick(s, 0);
 }
@@ -1773,9 +1777,9 @@ tcpkeepalive(Conv *s)
 	if(--(tcb->kacounter) <= 0)
 		localclose(s, Etimedout);
 	else {
-		qlock(tcb);
+		qlock(s);
 		tcpsendka(s);
-		qunlock(tcb);
+		qunlock(s);
 		tcpgo(s->p->priv, &tcb->katimer);
 	}
 }
@@ -1810,7 +1814,7 @@ tcprxmit(Conv *s)
 	tpriv = s->p->priv;
 	tcb = (Tcpctl*)s->ptcl;
 
-	qlock(tcb);
+	qlock(s);
 	tcb->flags |= RETRAN|FORCE;
 	tcb->snd.ptr = tcb->snd.una;
 
@@ -1826,7 +1830,7 @@ tcprxmit(Conv *s)
 	tcpoutput(s);
 
 	tpriv->tstats.tcpRetransSegs++;
-	qunlock(tcb);
+	qunlock(s);
 }
 
 void
@@ -2035,6 +2039,7 @@ tcpadvise(Proto *tcp, Block *bp, char *msg)
 	pdest = nhgets(h->tcpdport);
 
 	/* Look for a connection */
+	qlock(tcp);
 	for(p = tcp->conv; *p; p++) {
 		s = *p;
 		tcb = (Tcpctl*)s->ptcl;
@@ -2043,16 +2048,19 @@ tcpadvise(Proto *tcp, Block *bp, char *msg)
 		if(tcb->state != Closed)
 		if(ipcmp(s->raddr, dest) == 0)
 		if(ipcmp(s->laddr, source) == 0){
-			qlock(tcb);
+			qlock(s);
+			qunlock(tcp);
 			switch(tcb->state){
 			case Syn_sent:
 				localclose(s, msg);
 				break;
 			}
-			qunlock(tcb);
-			break;
+			qunlock(s);
+			freeblist(bp);
+			return;
 		}
 	}
+	qunlock(tcp);
 	freeblist(bp);
 }
 

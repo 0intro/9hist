@@ -58,7 +58,7 @@ enum
  */
 struct Conv
 {
-	Lock;
+	QLock;
 
 	int	x;			/* conversation index */
 	Proto*	p;

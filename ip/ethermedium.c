@@ -265,27 +265,32 @@ etherread(void *a)
 	Ipifc *ifc;
 	Block *bp;
 	Etherrock *er;
-	int locked = 0;
 
 	ifc = a;
 	er = ifc->arg;
 	er->readp = up;	/* hide identity under a rock for unbind */
 	if(waserror()){
-		if(locked)
-			runlock(ifc);
 		er->readp = 0;
 		pexit("hangup", 1);
 	}
 	for(;;){
 		bp = devtab[er->mchan->type]->bread(er->mchan, ifc->maxmtu, 0);
-		rlock(ifc);	locked = 1;	USED(locked);
+		if(!canrlock(ifc)){
+			freeb(bp);
+			continue;
+		}
+		if(waserror()){
+			runlock(ifc);
+			nexterror();
+		}
 		ifc->in++;
 		bp->rp += ifc->m->hsize;
 		if(ifc->lifc == nil)
 			freeb(bp);
 		else
 			ipiput(er->f, ifc->lifc->local, bp);
-		runlock(ifc);	locked = 0;	USED(locked);
+		runlock(ifc);
+		poperror();
 	}
 }
 

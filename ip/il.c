@@ -274,7 +274,7 @@ ilclose(Conv *c)
 		break;
 	}
 	ilfreeq(ic);
-	unlock(c);
+	qunlock(c);
 }
 
 void
@@ -521,17 +521,28 @@ iliput(Proto *il, uchar*, Block *bp)
 		goto raise;
 	}
 
+	qlock(il);
+
 	for(p = il->conv; *p; p++) {
 		s = *p;
 		if(s->lport == sp)
 		if(s->rport == dp)
 		if(ipcmp(s->raddr, raddr) == 0) {
+			qlock(s);
+			qunlock(il);
+			if(waserror()){
+				qunlock(s);
+				nexterror();
+			}
 			ilprocess(s, ih, bp);
+			qunlock(s);
+			poperror();
 			return;
 		}
 	}
 
 	if(ih->iltype != Ilsync){
+		qunlock(il);
 		if(ih->iltype < 0 || ih->iltype > Ilclose)
 			st = "?";
 		else
@@ -564,24 +575,36 @@ iliput(Proto *il, uchar*, Block *bp)
 	else
 	if(gen)
 		s = gen;
-	else
+	else {
+		qunlock(il);
 		goto raise;
+	}
 
 	v4tov6(laddr, ih->dst);
 	new = Fsnewcall(s, raddr, dp, laddr, sp);
 	if(new == nil){
+		qunlock(il);
 		netlog(il->f, Logil, "il: bad newcall %I/%ud->%ud\n", raddr, sp, dp);
 		ilsendctl(nil, ih, Ilclose, 0, nhgetl(ih->ilid), 0);
 		goto raise;
 	}
 
 	ic = (Ilcb*)new->ptcl;
+
 	ic->conv = new;
 	ic->state = Ilsyncee;
 	ilcbinit(ic);
 	ic->rstart = nhgetl(ih->ilid);
 
+	qlock(new);
+	qunlock(il);
+	if(waserror()){
+		qunlock(new);
+		nexterror();
+	}
 	ilprocess(new, ih, bp);
+	qunlock(new);
+	poperror();
 	return;
 
 raise:
@@ -1179,20 +1202,24 @@ iladvise(Proto *il, Block *bp, char *msg)
 
 
 	/* Look for a connection, unfortunately the destination port is missing */
+	qlock(il);
 	for(p = il->conv; *p; p++) {
 		s = *p;
 		if(s->lport == psource)
 		if(ipcmp(s->laddr, source) == 0)
 		if(ipcmp(s->raddr, dest) == 0){
+			qunlock(il);
 			ic = (Ilcb*)s->ptcl;
 			switch(ic->state){
 			case Ilsyncer:
 				ilhangup(s, msg);
 				break;
 			}
-			break;
+			freeblist(bp);
+			return;
 		}
 	}
+	qunlock(il);
 	freeblist(bp);
 }
 

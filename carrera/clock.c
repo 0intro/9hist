@@ -78,15 +78,15 @@ clockinit(void)
 uvlong
 updatefastclock(ulong count)
 {
-	uvlong cyclecount;
+	vlong delta;
 
 	/* keep track of higher precision time */
-	cyclecount = count;
-	if(cyclecount < m->lastcyclecount)
-		m->fastclock += (0x100000000LL - m->lastcyclecount) + cyclecount;
-	else
-		m->fastclock += cyclecount - m->lastcyclecount;
-	m->lastcyclecount = cyclecount;
+	delta = count - m->lastcyclecount;
+	if(delta < 0)
+		delta += 0x100000000LL;
+	m->lastcyclecount = count;
+	m->fastclock += delta;
+
 	return m->fastclock;
 }
 

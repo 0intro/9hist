@@ -26,6 +26,7 @@ int		canlock(Lock*);
 int		canpage(Proc*);
 int		canputc(void*);
 int		canqlock(QLock*);
+int		canrlock(RWlock*);
 void		chandevinit(void);
 void		chandevreset(void);
 void		chanfree(Chan*);

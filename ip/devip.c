@@ -367,7 +367,14 @@ ipopen(Chan* c, int omode)
 		break;
 	case Qclone:
 		p = f->p[PROTO(c->qid)];
+		qlock(p);
+		if(waserror()){
+			qunlock(p);
+			nexterror();
+		}
 		cv = Fsprotoclone(p, commonuser());
+		qunlock(p);
+		poperror();
 		if(cv == nil) {
 			error(Enodev);
 			break;
@@ -380,9 +387,9 @@ ipopen(Chan* c, int omode)
 		p = f->p[PROTO(c->qid)];
 		qlock(p);
 		cv = p->conv[CONV(c->qid)];
-		lock(cv);
+		qlock(cv);
 		if(waserror()) {
-			unlock(cv);
+			qunlock(cv);
 			qunlock(p);
 			nexterror();
 		}
@@ -398,7 +405,7 @@ ipopen(Chan* c, int omode)
 			memmove(cv->owner, commonuser(), NAMELEN);
 			cv->perm = 0660;
 		}
-		unlock(cv);
+		qunlock(cv);
 		qunlock(p);
 		poperror();
 		break;
@@ -422,14 +429,14 @@ ipopen(Chan* c, int omode)
 			/* wait for a connect */
 			sleep(&cv->listenr, incoming, cv);
 
-			lock(cv);
+			qlock(cv);
 			nc = cv->incall;
 			if(nc != nil){
 				cv->incall = nc->next;
 				c->qid = (Qid){QID(PROTO(c->qid), nc->x, Qctl), 0};
 				memmove(cv->owner, commonuser(), NAMELEN);
 			}
-			unlock(cv);
+			qunlock(cv);
 
 			qunlock(&cv->listenq);
 			poperror();
@@ -466,10 +473,10 @@ closeconv(Conv *cv)
 	Conv *nc;
 	Ipmulti *mp;
 
-	lock(cv);
+	qlock(cv);
 
 	if(--cv->inuse > 0) {
-		unlock(cv);
+		qunlock(cv);
 		return;
 	}
 
@@ -1005,17 +1012,15 @@ Fsbuiltinproto(Fs* f, uchar proto)
 	return f->t2p[proto] != nil;
 }
 
+/*
+ *  called with protocol locked
+ */
 Conv*
 Fsprotoclone(Proto *p, char *user)
 {
 	Conv *c, **pp, **ep;
 
 	c = nil;
-	qlock(p);
-	if(waserror()) {
-		qunlock(p);
-		nexterror();
-	}
 	ep = &p->conv[p->nc];
 	for(pp = p->conv; pp < ep; pp++) {
 		c = *pp;
@@ -1023,7 +1028,7 @@ Fsprotoclone(Proto *p, char *user)
 			c = malloc(sizeof(Conv));
 			if(c == nil)
 				error(Enomem);
-			lock(c);
+			qlock(c);
 			c->p = p;
 			c->x = pp - p->conv;
 			c->ptcl = malloc(p->ptclsize);
@@ -1037,7 +1042,7 @@ Fsprotoclone(Proto *p, char *user)
 			(*p->create)(c);
 			break;
 		}
-		if(canlock(c)){
+		if(canqlock(c)){
 			/*
 			 *  make sure both processes and protocol
 			 *  are done with this Conv
@@ -1045,12 +1050,10 @@ Fsprotoclone(Proto *p, char *user)
 			if(c->inuse == 0 && (p->inuse == nil || (*p->inuse)(c) == 0))
 				break;
 
-			unlock(c);
+			qunlock(c);
 		}
 	}
 	if(pp >= ep) {
-		qunlock(p);
-		poperror();
 		return nil;
 	}
 
@@ -1068,9 +1071,7 @@ Fsprotoclone(Proto *p, char *user)
 	qreopen(c->wq);
 	qreopen(c->eq);
 
-	unlock(c);
-	qunlock(p);
-	poperror();
+	qunlock(c);
 	return c;
 }
 
@@ -1110,6 +1111,9 @@ Fsrcvpcolx(Fs *f, uchar proto)
 	return f->t2p[proto];
 }
 
+/*
+ *  called with protocol locked
+ */
 Conv*
 Fsnewcall(Conv *c, uchar *raddr, ushort rport, uchar *laddr, ushort lport)
 {
@@ -1117,19 +1121,19 @@ Fsnewcall(Conv *c, uchar *raddr, ushort rport, uchar *laddr, ushort lport)
 	Conv **l;
 	int i;
 
-	lock(c);
+	qlock(c);
 	i = 0;
 	for(l = &c->incall; *l; l = &(*l)->next)
 		i++;
 	if(i >= Maxincall) {
-		unlock(c);
+		qunlock(c);
 		return nil;
 	}
 
 	/* find a free conversation */
 	nc = Fsprotoclone(c->p, network);
 	if(nc == nil) {
-		unlock(c);
+		qunlock(c);
 		return nil;
 	}
 	ipmove(nc->raddr, raddr);
@@ -1138,7 +1142,7 @@ Fsnewcall(Conv *c, uchar *raddr, ushort rport, uchar *laddr, ushort lport)
 	nc->lport = lport;
 	nc->next = nil;
 	*l = nc;
-	unlock(c);
+	qunlock(c);
 
 	wakeup(&c->listenr);
 
