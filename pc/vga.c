@@ -240,7 +240,7 @@ getcolor(ulong p, ulong *pr, ulong *pg, ulong *pb)
 	ulong ans;
 
 	/*
-	 * The magnum monochrome says 0 is black (zero intensity)
+	 * The safari monochrome says 0 is black (zero intensity)
 	 */
 	if(p == 0)
 		ans = 0;

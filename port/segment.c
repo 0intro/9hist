@@ -442,7 +442,7 @@ segattach(Proc *p, ulong attr, char *name, ulong va, ulong len)
 			errors("segments overlap");
 	}
 
-	for(ps = physseg; *(ps->name); ps++)
+	for(ps = physseg; ps->name; ps++)
 		if(strcmp(name, ps->name) == 0)
 			goto found;
 

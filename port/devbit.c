@@ -1133,12 +1133,17 @@ void
 Cursortocursor(Cursor *c)
 {
 	int i;
+	uchar *p;
 
 	lock(&cursor);
 	memmove(&cursor, c, sizeof(Cursor));
 	for(i=0; i<16; i++){
-		setbits[i] = (c->set[2*i]<<24) + (c->set[2*i+1]<<16);
-		clrbits[i] = (c->clr[2*i]<<24) + (c->clr[2*i+1]<<16);
+		p = (uchar*)&setbits[i];
+		*p = c->set[2*i];
+		*(p+1) = c->set[2*i+1];
+		p = (uchar*)&clrbits[i];
+		*p = c->clr[2*i];
+		*(p+1) = c->clr[2*i+1];
 	}
 	unlock(&cursor);
 }

@@ -13,6 +13,20 @@ enum
 	Head=		0x92,		/* control port */
 	 Reset=		(1<<0),		/* reset the 386 */
 	 A20ena=	(1<<1),		/* enable address line 20 */
+
+	/*
+	 *  the byte registers for DMA0 are all one byte apart
+	 */
+	Dma0=		0x00,
+	Dma0status=	Dma0+0x8,	/* status port */
+	Dma0reset=	Dma0+0xD,	/* reset port */
+
+	/*
+	 *  the byte registers for DMA1 are all two bytes apart (why?)
+	 */
+	Dma1=		0xC0,
+	Dma1status=	Dma1+2*0x8,	/* status port */
+	Dma1reset=	Dma1+2*0xD,	/* reset port */
 };
 
 /*
@@ -96,6 +110,9 @@ exit(void)
  *
  *  we assume BIOS has set up the command register before we
  *  are booted.
+ *
+ *  return the updated transfer length (we can't transfer across 64k
+ *  boundaries)
  */
 long
 dmasetup(int chan, void *va, long len, int isread)

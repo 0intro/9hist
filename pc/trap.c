@@ -10,6 +10,17 @@
 void	noted(Ureg*, ulong);
 void	notify(Ureg*);
 
+void	intr0(void), intr1(void), intr2(void), intr3(void);
+void	intr4(void), intr5(void), intr6(void), intr7(void);
+void	intr8(void), intr9(void), intr10(void), intr11(void);
+void	intr12(void), intr13(void), intr14(void), intr15(void);
+void	intr16(void), intr17(void), intr18(void), intr19(void);
+void	intr20(void), intr21(void), intr22(void), intr23(void);
+void	intr24(void), intr25(void), intr26(void), intr27(void);
+void	intr28(void), intr29(void), intr30(void), intr31(void);
+void	intr64(void);
+void	intrbad(void);
+
 /*
  *  8259 interrupt controllers
  */
@@ -23,8 +34,8 @@ enum
 	EOI=		0x20,		/* non-specific end of interrupt */
 };
 
-int	int0mask = 7;		/* interrupts enabled for first 8259 */
-int	int1mask = 7;		/* interrupts enabled for second 8259 */
+int	int0mask = 0xff;	/* interrupts enabled for first 8259 */
+int	int1mask = 0xff;		/* interrupts enabled for second 8259 */
 
 /*
  *  trap/interrupt gates
@@ -50,6 +61,9 @@ setvec(int v, void (*r)(Ureg*))
 	if((v&~0x7) == Int0vec){
 		int0mask &= ~(1<<(v&7));
 		outb(Int0aux, int0mask);
+	} else if((v&~0x7) == Int1vec){
+		int1mask &= ~(1<<(v&7));
+		outb(Int1aux, int1mask);
 	}
 }
 
@@ -60,6 +74,12 @@ void
 trapinit(void)
 {
 	int i;
+
+	/*
+	 *  set all interrupts to panics
+	 */
+	for(i = 32; i < 256; i++)
+		sethvec(i, intrbad, SEGIG, 0);
 
 	/*
 	 *  set the standard traps
@@ -80,6 +100,10 @@ trapinit(void)
 	sethvec(13, intr13, SEGIG, 0);
 	sethvec(14, intr14, SEGIG, 0);
 	sethvec(15, intr15, SEGIG, 0);
+
+	/*
+	 *  set the standard devices
+	 */
 	sethvec(16, intr16, SEGIG, 0);
 	sethvec(17, intr17, SEGIG, 0);
 	sethvec(18, intr18, SEGIG, 0);
@@ -88,12 +112,14 @@ trapinit(void)
 	sethvec(21, intr21, SEGIG, 0);
 	sethvec(22, intr22, SEGIG, 0);
 	sethvec(23, intr23, SEGIG, 0);
-
-	/*
-	 *  set all others to unknown interrupts
-	 */
-	for(i = 24; i < 256; i++)
-		sethvec(i, intrbad, SEGIG, 0);
+	sethvec(24, intr24, SEGIG, 0);
+	sethvec(25, intr25, SEGIG, 0);
+	sethvec(26, intr26, SEGIG, 0);
+	sethvec(27, intr27, SEGIG, 0);
+	sethvec(28, intr28, SEGIG, 0);
+	sethvec(29, intr29, SEGIG, 0);
+	sethvec(30, intr30, SEGIG, 0);
+	sethvec(31, intr31, SEGIG, 0);
 
 	/*
 	 *  system calls
@@ -115,8 +141,26 @@ trapinit(void)
 	outb(Int0ctl, 0x11);		/* ICW1 - edge triggered, master,
 					   ICW4 will be sent */
 	outb(Int0aux, Int0vec);		/* ICW2 - interrupt vector offset */
-	outb(Int0aux, 0x04);		/* ICW3 - master level 2 */
+	outb(Int0aux, 0x04);		/* ICW3 - have slave on level 2 */
 	outb(Int0aux, 0x01);		/* ICW4 - 8086 mode, not buffered */
+
+	/*
+	 *  Set up the second 8259 interrupt processor.
+	 *  Make 8259 interrupts start at CPU vector Int0vec.
+	 *  Set the 8259 as master with edge triggered
+	 *  input with fully nested interrupts.
+	 */
+	outb(Int1ctl, 0x11);		/* ICW1 - edge triggered, master,
+					   ICW4 will be sent */
+	outb(Int1aux, Int1vec);		/* ICW2 - interrupt vector offset */
+	outb(Int1aux, 0x02);		/* ICW3 - I am a slave on level 2 */
+	outb(Int1aux, 0x01);		/* ICW4 - 8086 mode, not buffered */
+
+	/*
+	 *  pass #2 8259 interrupts to #1
+	 */
+	int0mask &= ~0x04;
+	outb(Int0aux, int0mask);
 }
 
 /*
@@ -125,19 +169,28 @@ trapinit(void)
 void
 trap(Ureg *ur)
 {
-	if(ur->trap>=256 || ivec[ur->trap] == 0)
-		panic("bad trap type %d %lux\n", ur->trap, ur->pc);
+	int v;
+	int c;
+
+	v = ur->trap;
+	if(v>=256 || ivec[v] == 0)
+		panic("bad trap type %d %lux\n", v, ur->pc);
 
 	/*
 	 *  call the trap routine
 	 */
-	(*ivec[ur->trap])(ur);
+	(*ivec[v])(ur);
 
 	/*
 	 *  tell the 8259 that we're done with the
 	 *  highest level interrupt
 	 */
-	outb(Int0ctl, EOI);
+	c = v&~0x7;
+	if(c==Int0vec || c==Int1vec){
+		outb(Int0ctl, EOI);
+		if(c == Int1vec)
+			outb(Int1ctl, EOI);
+	}
 }
 
 /*
@@ -173,48 +226,7 @@ execpc(ulong entry)
 /*
  *  system calls
  */
-#undef	CHDIR	/* BUG */
-#include "/sys/src/libc/9syscall/sys.h"
-
-typedef long Syscall(ulong*);
-Syscall	sysr1, sysfork, sysexec, sysgetpid, syssleep, sysexits, sysdeath, syswait;
-Syscall	sysopen, sysclose, sysread, syswrite, sysseek, syserrstr, sysaccess, sysstat, sysfstat;
-Syscall sysdup, syschdir, sysforkpgrp, sysbind, sysmount, syspipe, syscreate;
-Syscall	sysbrk_, sysremove, syswstat, sysfwstat, sysnotify, sysnoted, sysalarm;
-
-Syscall *systab[]={
-	sysr1,
-	syserrstr,
-	sysbind,
-	syschdir,
-	sysclose,
-	sysdup,
-	sysalarm,
-	sysexec,
-	sysexits,
-	sysfork,
-	sysforkpgrp,
-	sysfstat,
-	sysdeath,
-	sysmount,
-	sysopen,
-	sysread,
-	sysseek,
-	syssleep,
-	sysstat,
-	syswait,
-	syswrite,
-	syspipe,
-	syscreate,
-	sysdeath,
-	sysbrk_,
-	sysremove,
-	syswstat,
-	sysfwstat,
-	sysnotify,
-	sysnoted,
-	sysdeath,	/* sysfilsys */
-};
+#include "../port/systab.h"
 
 long
 syscall(Ureg *ur)

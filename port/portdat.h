@@ -582,7 +582,7 @@ enum {
 	Streambhi= 32,			/* block count high water mark */
 };
 
-#define MAXSYSARG	6		/* for mount(fd, mpt, flag, arg, srv, authfd) */
+#define MAXSYSARG	6		/* for mount(fd, mpt, flag, arg, srv) */
 #define	PRINTSIZE	256
 #define	NUMSIZE		12		/* size of formatted number */
 

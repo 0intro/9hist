@@ -306,48 +306,7 @@ noted(Ureg **urp, ulong arg0)
 	}
 }
 
-#undef	CHDIR	/* BUG */
-#include "/sys/src/libc/9syscall/sys.h"
-
-typedef long Syscall(ulong*);
-Syscall	sysr1, sysfork, sysexec, sysgetpid, syssleep, sysexits, sysdeath, syswait;
-Syscall	sysopen, sysclose, sysread, syswrite, sysseek, syserrstr, sysaccess, sysstat, sysfstat;
-Syscall sysdup, syschdir, sysforkpgrp, sysbind, sysmount, syspipe, syscreate;
-Syscall	sysbrk_, sysremove, syswstat, sysfwstat, sysnotify, sysnoted, sysalarm;
-
-Syscall *systab[]={
-	sysr1,
-	syserrstr,
-	sysbind,
-	syschdir,
-	sysclose,
-	sysdup,
-	sysalarm,
-	sysexec,
-	sysexits,
-	sysfork,
-	sysforkpgrp,
-	sysfstat,
-	sysdeath,
-	sysmount,
-	sysopen,
-	sysread,
-	sysseek,
-	syssleep,
-	sysstat,
-	syswait,
-	syswrite,
-	syspipe,
-	syscreate,
-	sysdeath,
-	sysbrk_,
-	sysremove,
-	syswstat,
-	sysfwstat,
-	sysnotify,
-	sysnoted,
-	sysdeath,	/* sysfilsys */
-};
+#include "../port/systab.h"
 
 long
 syscall(Ureg *aur)
