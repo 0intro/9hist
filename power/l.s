@@ -163,15 +163,15 @@ TEXT	wbflush(SB), $-4
 
 TEXT	setlabel(SB), $-4
 
-	MOVW	R31, 0(R1)
-	MOVW	R29, 4(R1)
+	MOVW	R29, 0(R1)
+	MOVW	R31, 4(R1)
 	MOVW	$0, R1
 	RET
 
 TEXT	gotolabel(SB), $-4
 
-	MOVW	0(R1), R31
-	MOVW	4(R1), R29
+	MOVW	0(R1), R29
+	MOVW	4(R1), R31
 	MOVW	$1, R1
 	RET
 

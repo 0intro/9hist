@@ -84,6 +84,16 @@ rtcstat(Chan *c, char *dp)
 Chan*
 rtcopen(Chan *c, int omode)
 {
+	omode = openmode(omode);
+	switch(c->qid.path){
+	case Qrtc:
+		if(omode == OREAD)
+			break;
+		/* fall through */
+	case Qnvram:
+		if(strcmp(u->p->user, eve)!=0 || !cpuserver)
+			error(Eperm);
+	}
 	return devopen(c, omode, rtcdir, NRTC, devgen);
 }
 

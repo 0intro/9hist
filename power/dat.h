@@ -29,8 +29,8 @@ struct Lock
 
 struct Label
 {
-	ulong	pc;
 	ulong	sp;
+	ulong	pc;
 };
 
 struct Conf

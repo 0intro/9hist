@@ -164,26 +164,6 @@ netstat(Chan *c, char *db, Network *np)
 		}
 }
 
-void
-netwstat(Chan *c, char *db, Network *np)
-{
-	Dir dir;
-	Netprot *p;
-
-	p = findprot(np, STREAMID(c->qid.path));
-	if(p == 0)
-		error(Enonexist);
-	lock(np);
-	if(strncmp(p->owner, u->p->user, NAMELEN)){
-		unlock(np);
-		error(Eperm);
-	}
-	convM2D(db, &dir);
-	strncpy(p->owner, dir.uid, NAMELEN);
-	p->mode = dir.mode;
-	unlock(np);
-}
-
 Chan *
 netopen(Chan *c, int omode, Network *np)
 {
@@ -305,4 +285,36 @@ void
 netdisown(Netprot *p)
 {
 	p->owner[0] = 0;
+}
+
+#undef	CHDIR	/* BUG */
+#include "/sys/src/libc/9syscall/sys.h"
+
+void
+netwstat(Chan *c, char *db, Network *np)
+{
+	Dir dir;
+	Netprot *p;
+
+	p = findprot(np, STREAMID(c->qid.path));
+	if(p == 0)
+		error(Enonexist);
+	lock(np);
+
+	/*
+	 *  A network channel's ownership/permissions can be changed only if the
+	 *  wstat is by the owner or (HACK!) if it is performed using an fwstat.
+	 *  The latter allows processes started by a network listener to gain
+	 *  ownership of the connection.  The open file descriptor is used as
+	 *  a capability for the connection.
+	 */
+	if(strncmp(p->owner, u->p->user, NAMELEN) != 0 && u->scallnr != FWSTAT){
+		unlock(np);
+		error(Eperm);
+	}
+	convM2D(db, &dir);
+	strncpy(p->owner, dir.uid, NAMELEN);
+	p->mode = dir.mode;
+
+	unlock(np);
 }

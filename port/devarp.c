@@ -148,8 +148,7 @@ arpstat(Chan *c, char *db)
 Chan *
 arpopen(Chan *c, int omode)
 {
-
-	if(c->qid.path == CHDIR){
+	if(c->qid.path&CHDIR){
 		if(omode != OREAD)
 			error(Eperm);
 	}
@@ -164,7 +163,6 @@ arpopen(Chan *c, int omode)
 	case arpctlqid:
 		break;
 	}
-
 
 	c->mode = openmode(omode);
 	c->flag |= COPEN;
@@ -207,9 +205,10 @@ arpread(Chan *c, void *a, long n, ulong offset)
 	int	 part, bytes, size;
 	char	 *ststr;
 
+	if(c->qid.path&CHDIR)
+		return devdirread(c, a, n, arptab, Narptab, arpgen);
+
 	switch((int)(c->qid.path&~CHDIR)){
-	case arpdirqid:
-		return devdirread(c, a, n, 0, 0, arpgen);
 	case arpdataqid:
 		bytes = c->offset;
 		while(bytes < conf.arp*ARP_ENTRYLEN && n) {
