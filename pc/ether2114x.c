@@ -1019,6 +1019,83 @@ typesymmode(Ctlr *ctlr, uchar *block, int wait)
 }
 
 static int
+type2mode(Ctlr* ctlr, uchar* block, int)
+{
+	uchar *p;
+	int csr6, csr13, csr14, csr15, gpc, gpd;
+
+	csr6 = Sc|Mbo|Ca|Sb|TrMODE;
+	debug("type2mode: medium 0x%2.2uX\n", block[2]);
+
+	/*
+	 * Don't attempt full-duplex
+	 * unless explicitly requested.
+	 */
+	if((block[2] & 0x3F) == 0x04){	/* 10BASE-TFD */
+		if(!ctlr->fd)
+			return -1;
+		csr6 |= Fd;
+	}
+
+	/*
+	 * Operating mode programming values from the datasheet
+	 * unless media specific data is explicitly given.
+	 */
+	p = &block[3];
+	if(block[2] & 0x40){
+		csr13 = (block[4]<<8)|block[3];
+		csr14 = (block[6]<<8)|block[5];
+		csr15 = (block[8]<<8)|block[7];
+		p += 6;
+	}
+	else switch(block[2] & 0x3F){
+	default:
+		return -1;
+	case 0x00:			/* 10BASE-T */
+		csr13 = 0x00000001;
+		csr14 = 0x00007F3F;
+		csr15 = 0x00000008;
+		break;
+	case 0x01:			/* 10BASE-2 */
+		csr13 = 0x00000009;
+		csr14 = 0x00000705;
+		csr15 = 0x00000006;
+		break;
+	case 0x02:			/* 10BASE-5 (AUI) */
+		csr13 = 0x00000009;
+		csr14 = 0x00000705;
+		csr15 = 0x0000000E;
+		break;
+	case 0x04:			/* 10BASE-TFD */
+		csr13 = 0x00000001;
+		csr14 = 0x00007F3D;
+		csr15 = 0x00000008;
+		break;
+	}
+	gpc = *p++<<16;
+	gpc |= *p++<<24;
+	gpd = *p++<<16;
+	gpd |= *p<<24;
+
+	csr32w(ctlr, 13, 0);
+	csr32w(ctlr, 14, csr14);
+	csr32w(ctlr, 15, gpc|csr15);
+	delay(10);
+	csr32w(ctlr, 15, gpd|csr15);
+	csr32w(ctlr, 13, csr13);
+
+	ctlr->csr6 = csr6;
+	csr32w(ctlr, 6, ctlr->csr6);
+
+	debug("type2mode: csr13 %8.8uX csr14 %8.8uX csr15 %8.8uX\n",
+		csr13, csr14, csr15);
+	debug("type2mode: gpc %8.8uX gpd %8.8uX csr6 %8.8uX\n",
+		gpc, gpd, csr6);
+
+	return 0;
+}
+
+static int
 type0link(Ctlr* ctlr, uchar* block)
 {
 	int m, polarity, sense;
@@ -1109,11 +1186,23 @@ mediaxx(Ether* ether, int wait)
 			if(typephymode(ctlr, block, wait))
 				return 0;
 			break;
+		case 2:
+			debug("type2: medium %d block[2] %d\n",
+				ctlr->medium, block[2]);
+			if(ctlr->medium >= 0 && ((block[2] & 0x3F) != ctlr->medium))
+				return 0;
+			if(type2mode(ctlr, block, wait))
+				return 0;
+			break;
 		case 3:
 			if(typephymode(ctlr, block, wait))
 				return 0;
 			break;
 		case 4:
+			debug("type4: medium %d block[2] %d\n",
+				ctlr->medium, block[2]);
+			if(ctlr->medium >= 0 && ((block[2] & 0x3F) != ctlr->medium))
+				return 0;
 			if(typesymmode(ctlr, block, wait))
 				return 0;
 			break;

@@ -17,7 +17,7 @@ static Pcidev *		pcidev;
 #define DBGINTR	0x04
 #define DBGINTS	0x08
 
-int debug = -1;
+int debug = 0;
 
 // Lml 22 driver
 
@@ -44,19 +44,19 @@ static FrameHeader	jpgheader[NBUF] = {
 	{
 		MRK_SOI, MRK_APP3, (sizeof(FrameHeader)-4) << 8,
 		{ 'L', 'M', 'L', '\0'},
-		-1, 0, 0, 0, 0
+		-1, 0, 0,  0
 	}, {
 		MRK_SOI, MRK_APP3, (sizeof(FrameHeader)-4) << 8,
 		{ 'L', 'M', 'L', '\0'},
-		-1, 0, 0, 0, 0
+		-1, 0, 0,  0
 	}, {
 		MRK_SOI, MRK_APP3, (sizeof(FrameHeader)-4) << 8,
 		{ 'L', 'M', 'L', '\0'},
-		-1, 0, 0, 0, 0
+		-1, 0, 0,  0
 	}, {
 		MRK_SOI, MRK_APP3, (sizeof(FrameHeader)-4) << 8,
 		{ 'L', 'M', 'L', '\0'},
-		-1, 0, 0, 0, 0
+		-1, 0, 0,  0
 	}
 };
 
@@ -331,7 +331,6 @@ lmlintr(Ureg *, void *) {
 	writel(0xff000000, pciBaseAddr + INTR_STAT);
 
 	if(flags & INTR_JPEGREP) {
-		vlong thetime;
 
 		if(debug&(DBGINTR))
 			print("MjpgDrv_intrHandler stat=0x%.8lux\n", flags);
@@ -348,9 +347,7 @@ lmlintr(Ureg *, void *) {
 				return;
 			}
 		}
-		thetime = todget(nil);
-		jpgheader[fno].sec  = (ulong)(thetime / 1000000000LL);
-		jpgheader[fno].nsec = (ulong)(thetime % 1000000000LL);
+		jpgheader[fno].ftime  = todget(nil);
 		jpgheader[fno].frameSize =
 			(codeData->statCom[fno] & 0x00ffffff) >> 1;
 		jpgheader[fno].frameSeqNo = codeData->statCom[fno] >> 24;

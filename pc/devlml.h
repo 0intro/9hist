@@ -70,8 +70,7 @@ struct FrameHeader {	// Don't modify this struct, used by h/w
 	ushort lenAPP3;
 	char nm[4];
 	ushort frameNo;
-	ulong sec;
-	ulong nsec;
+	vlong ftime;
 	ulong frameSize;
 	ulong frameSeqNo;
 };
