@@ -8,11 +8,13 @@
 Page*	lkpage(Segment*, ulong);
 void	lkpgfree(Page*);
 void	imagereclaim(void);
+void	imagechanreclaim(void);
 
 /* System specific segattach devices */
 #include "io.h"
 #include "segment.h"
 
+#define NFREECHAN	64
 #define IHASHSIZE	64
 #define ihash(s)	imagealloc.hash[s%IHASHSIZE]
 struct
@@ -20,7 +22,12 @@ struct
 	Lock;
 	Image	*free;
 	Image	*hash[IHASHSIZE];
-	QLock	ireclaim;
+	QLock	ireclaim;	/* mutex on reclaiming free images */
+
+	Chan	**freechan;	/* free image channels */
+	int	nfreechan;	/* number of free channels */
+	int	szfreechan;	/* size of freechan array */
+	QLock	fcreclaim;	/* mutex on reclaiming free channels */
 }imagealloc;
 
 void
@@ -33,6 +40,8 @@ initseg(void)
 	for(i = imagealloc.free; i < ie; i++)
 		i->next = i+1;
 	i->next = 0;
+	imagealloc.freechan = malloc(NFREECHAN * sizeof(Chan*));
+	imagealloc.szfreechan = NFREECHAN;
 }
 
 Segment *
@@ -201,6 +210,10 @@ attachimage(int type, Chan *c, ulong base, ulong len)
 {
 	Image *i, **l;
 
+	/* reclaim any free channels from reclaimed segments */
+	if(imagealloc.nfreechan)
+		imagechanreclaim();
+
 	lock(&imagealloc);
 
 	/*
@@ -285,10 +298,34 @@ imagereclaim(void)
 	qunlock(&imagealloc.ireclaim);
 }
 
+/*
+ *  since close can block, this has to be called outside of
+ *  spin locks.
+ */
+void
+imagechanreclaim(void)
+{
+	Chan *c;
+
+	/* Somebody is already cleaning the image chans */
+	if(!canqlock(&imagealloc.fcreclaim))
+		return;
+
+	while(imagealloc.nfreechan > 0){
+		lock(&imagealloc);
+		imagealloc.nfreechan--;
+		c = imagealloc.freechan[imagealloc.nfreechan];
+		unlock(&imagealloc);
+		close(c);
+	}
+
+	qunlock(&imagealloc.fcreclaim);
+}
+
 void
 putimage(Image *i)
 {
-	Chan *c;
+	Chan *c, **cp;
 	Image *f, **l;
 
 	if(i->notext)
@@ -312,9 +349,20 @@ putimage(Image *i)
 
 		i->next = imagealloc.free;
 		imagealloc.free = i;
+
+		/* defer freeing channel till we're out of spin lock's */
+		if(imagealloc.nfreechan == imagealloc.szfreechan){
+			imagealloc.szfreechan += NFREECHAN;
+			cp = malloc(imagealloc.szfreechan*sizeof(Chan*));
+			if(cp == nil)
+				panic("putimage");
+			memmove(cp, imagealloc.freechan, imagealloc.nfreechan*sizeof(Chan*));
+			free(imagealloc.freechan);
+			imagealloc.freechan = cp;
+		}
+		imagealloc.freechan[imagealloc.nfreechan++] = c;
 		unlock(&imagealloc);
 
-		close(c);
 		return;
 	}
 	unlock(i);
