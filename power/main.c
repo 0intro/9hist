@@ -23,22 +23,24 @@ main(void)
 	machinit();
 	active.exiting = 0;
 	active.machs = 1;
+iprint("Boot baby\n");
 	arginit();
 	confinit();
 	lockinit();
 	xinit();
+	duartinit();
 	printinit();
-	duartspecial(0, &printq, &kbdq, 9600);
-	print("\n\nBRAZIL\n");
+	duartspecial(0, 9600, &kbdq, &printq, kbdcr2nl);
+iprint("F:\n", printq);
+	print("\n\nBrazil\n");
 	pageinit();
 	tlbinit();
-	vecinit();
 	procinit0();
+	vecinit();
 	initseg();
 	clockinit();
 	ioboardinit();
 	chandevreset();
-	streaminit();
 	swapinit();
 	userinit();
 	launchinit();
@@ -55,7 +57,6 @@ machinit(void)
 	memset(m, 0, sizeof(Mach));
 	m->machno = n;
 	m->stb = &stlb[n][0];
-	duartinit();
 
 	m->ledval = 0xff;
 }
@@ -307,12 +308,12 @@ launch(int n)
 void
 online(void)
 {
-
 	machinit();
 	lock(&active);
 	active.machs |= 1<<m->machno;
 	unlock(&active);
 	tlbinit();
+	duartinit();
 	clockinit();
 	schedinit();
 }
@@ -636,9 +637,9 @@ lanceIO2setup(Lance *lp)
 	 *  Start at 4k to avoid the initialization block and
 	 *  descriptor rings.
 	 */
-	lp->lrp = (Etherpkt*)(4*1024);
+	lp->lrp = (Lancepkt*)(4*1024);
 	lp->ltp = lp->lrp + lp->nrrb;
-	lp->rp = (Etherpkt*)(((ulong)LANCERAM) + (ulong)lp->lrp);
+	lp->rp = (Lancepkt*)(((ulong)LANCERAM) + (ulong)lp->lrp);
 	lp->tp = lp->rp + lp->nrrb;
 }
 
@@ -670,11 +671,11 @@ lanceIO3setup(Lance *lp)
 	 *  allocate some host memory for buffers and map it into lance
 	 *  space
 	 */
-	len = (lp->nrrb + lp->ntrb)*sizeof(Etherpkt);
-	lp->rp = (Etherpkt*)xspanalloc(len , BY2PG, 0);
+	len = (lp->nrrb + lp->ntrb)*sizeof(Lancepkt);
+	lp->rp = (Lancepkt*)xspanalloc(len , BY2PG, 0);
 	lp->tp = lp->rp + lp->nrrb;
 	x = (ulong)lp->rp;
-	lp->lrp = (Etherpkt*)(x & 0xFFF);
+	lp->lrp = (Lancepkt*)(x & 0xFFF);
 	lp->ltp = lp->lrp + lp->nrrb;
 	index = LANCEINDEX;
 	for(y = x+len; x < y; x += 0x1000){

@@ -245,10 +245,12 @@ intr(Ureg *ur)
 					any = 1;
 				if(v & (1<<2))
 					lanceintr();
+/*
 				if(v & (1<<1))
 					scsiintr(1);
 				if(v & (1<<0))
 					scsiintr(0);
+*/
 			}
 		}
 		/*

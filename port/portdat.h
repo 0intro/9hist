@@ -68,7 +68,7 @@ struct RWlock
 {
 	Lock;				/* Lock modify lock */
 	QLock	x;			/* Mutual exclusion lock */
-	QLock	k;			/* Lock for waiting writers held for readers */
+	QLock	k;			/* Lock for waiting writers */
 	int	readers;		/* Count of readers in lock */
 };
 
@@ -84,7 +84,7 @@ struct Alarms
 	Proc	*head;
 };
 
-#define MAXSYSARG	5		/* for mount(fd, mpt, flag, arg, srv) */
+#define MAXSYSARG	5	/* for mount(fd, mpt, flag, arg, srv) */
 struct Sargs
 {
 	ulong	args[MAXSYSARG];
@@ -458,7 +458,7 @@ struct Palloc
 	Rendez	r;			/* Sleep for free mem */
 	QLock	pwait;			/* Queue of procs waiting for memory */
 	int	wanted;			/* Do the wakeup at free */
-	ulong	cmembase;		/* Key memory protected from read by devproc */
+	ulong	cmembase;		/* Key memory */
 	ulong	cmemtop;
 };
 
@@ -565,7 +565,7 @@ struct Proc
 	int	kp;		/* true if a kernel process */
 	Proc	*palarm;	/* Next alarm time */
 	ulong	alarm;		/* Time of call */
-	int	newtlb;		/* Pager has changed my pte's so I must flush */
+	int	newtlb;		/* Pager has changed my pte's, I must flush */
 
 	ulong	rendtag;	/* Tag for rendezvous */ 
 	ulong	rendval;	/* Value for rendezvous */

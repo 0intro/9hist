@@ -70,10 +70,10 @@ putmmu(ulong tlbvirt, ulong tlbphys, Page *pg)
 	splhi();
 
 	ctl = &pg->cachectl[m->machno]; 
-	if(*ctl == PG_TXTFLUSH) {
+	if(*ctl & PG_TXTFLUSH) {
 		dcflush((void*)pg->pa, BY2PG);
 		icflush((void*)pg->pa, BY2PG);
-		*ctl = PG_NOFLUSH;
+		*ctl &= ~PG_TXTFLUSH;
 	}
 
 	tp = up->pidonmach[m->machno];

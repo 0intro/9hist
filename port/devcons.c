@@ -47,9 +47,9 @@ printinit(void)
 void
 putstrn(char *str, int n)
 {
-	char buf[PRINTSIZE+2];
 	int m;
 	char *t;
+	char buf[PRINTSIZE+2];
 
 	/*
 	 *  if there's an attached bit mapped display,
@@ -66,9 +66,10 @@ putstrn(char *str, int n)
 	 */
 	if(printq == 0)
 		return;
-	while(n > 0){
+
+	while(n > 0) {
 		t = memchr(str, '\n', n);
-		if(t){
+		if(t) {
 			m = t - str;
 			memmove(buf, str, m);
 			buf[m] = '\r';
@@ -76,7 +77,8 @@ putstrn(char *str, int n)
 			qwrite(printq, buf, m+2, 1);
 			str = t + 1;
 			n -= m + 1;
-		} else {
+		}
+		else {
 			qwrite(printq, str, n, 1);
 			break;
 		}
@@ -97,6 +99,7 @@ print(char *fmt, ...)
 
 	n = doprint(buf, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
 	putstrn(buf, n);
+
 	return n;
 }
 

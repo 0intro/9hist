@@ -1,4 +1,5 @@
 typedef struct Conf	Conf;
+typedef struct Lancepkt Lancepkt;
 typedef struct FPsave	FPsave;
 typedef struct Cycmsg	Cycmsg;
 typedef struct Lance	Lance;
@@ -148,6 +149,15 @@ typedef void		KMap;
 #define ACON	0x2
 #define BCON	0x1
 
+struct Lancepkt
+{
+	uchar	d[6];
+	uchar	s[6];
+	uchar	type[2];
+	uchar	data[1500];
+	uchar	crc[4];
+};
+
 /*
  *  system dependent lance stuff
  *  filled by lancesetup() 
@@ -166,10 +176,10 @@ struct Lance
 				    as seen by host */
 	ushort	*lanceram;	/* start of lance ram as seen by host */
 	Lancemem *lm;		/* start of lance ram as seen by lance */
-	Etherpkt *rp;		/* receive buffers (host address) */
-	Etherpkt *tp;		/* transmit buffers (host address) */
-	Etherpkt *lrp;		/* receive buffers (lance address) */
-	Etherpkt *ltp;		/* transmit buffers (lance address) */
+	Lancepkt *rp;		/* receive buffers (host address) */
+	Lancepkt *tp;		/* transmit buffers (host address) */
+	Lancepkt *lrp;		/* receive buffers (lance address) */
+	Lancepkt *ltp;		/* transmit buffers (lance address) */
 };
 
 struct
