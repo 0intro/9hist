@@ -882,6 +882,10 @@ procctl(Proc *p)
 	ulong s;
 
 	switch(p->procctl) {
+	case Proc_exitbig:
+		spllo();
+		pexit("Killed: Insufficient physical memory", 1);
+
 	case Proc_exitme:
 		spllo();		/* pexit has locks in it */
 		pexit("Killed", 1);
@@ -962,7 +966,7 @@ killbig(void)
 			max = l;
 		}
 	}
-	kp->procctl = Proc_exitme;
+	kp->procctl = Proc_exitbig;
 	for(i = 0; i < NSEG; i++) {
 		s = kp->seg[i];
 		if(s != 0 && canqlock(&s->lk)) {
@@ -971,7 +975,6 @@ killbig(void)
 		}
 	}
 	print("%d: %s killed because no swap configured\n", kp->pid, kp->text);
-	postnote(kp, 1, "killed: proc too big", NExit);
 }
 
 /*

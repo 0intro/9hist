@@ -184,13 +184,17 @@ static void cisread(Slot*);
 static uchar
 rdreg(Slot *pp, int index)
 {
+	microdelay(10);
 	outb(pp->cp->xreg, pp->base + index);
+	microdelay(10);
 	return inb(pp->cp->dreg);
 }
 static void
 wrreg(Slot *pp, int index, uchar val)
 {
+	microdelay(10);
 	outb(pp->cp->xreg, pp->base + index);
+	microdelay(10);
 	outb(pp->cp->dreg, val);
 }
 
@@ -687,6 +691,7 @@ i82365read(Chan *c, void *a, long n, ulong offset)
 		return devdirread(c, a, n, 0, 0, pcmgen);
 	case Qmem:
 	case Qattr:
+		pp = slot + DEV(c);
 		qlock(&pp->mlock);
 		n = pcmread(DEV(c), p==Qattr, a, n, offset);
 		qunlock(&pp->mlock);

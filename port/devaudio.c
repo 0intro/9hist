@@ -81,7 +81,6 @@ static	struct
 	int	speed;		/* pcm sample rate, doesnt change w stereo */
 	int	major;		/* SB16 major version number (sb 4) */
 	int	minor;		/* SB16 minor version number */
-	char	place[20];	/* static place to decode words */
 
 	Buf	buf[Nbuf];	/* buffers and queues */
 	Queue	empty;

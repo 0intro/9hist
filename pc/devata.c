@@ -8,7 +8,7 @@
 
 #include	"devtab.h"
 
-#define DPRINT if(1)print
+#define DPRINT if(0)print
 
 typedef	struct Drive		Drive;
 typedef	struct Ident		Ident;
@@ -54,6 +54,9 @@ enum
 	Sstandby,
 	Sidle,
 	Spowerdown,
+
+	/* something we have to or into the drive/head reg */
+	DHmagic=	0xA0,
 
 	/* file types */
 	Qdir=		0,
@@ -167,7 +170,7 @@ atagen(Chan *c, Dirtab *tab, long ntab, long s, Dir *dirp)
 		return -1;
 	dp = &ata[drive];
 
-	if(s >= dp->npart)
+	if(dp->online == 0 || s >= dp->npart)
 		return 0;
 
 	pp = &dp->p[s];
@@ -179,47 +182,42 @@ atagen(Chan *c, Dirtab *tab, long ntab, long s, Dir *dirp)
 	return 1;
 }
 
-/*
- *  we assume drives 0 and 1 are on the first controller, 2 and 3 on the
- *  second, etc.
- */
 void
 atareset(void)
 {
 	Drive *dp;
 	Controller *cp;
-	int drive;
 	uchar equip;
 	char *p;
 
-	ata = xalloc(conf.nhard * sizeof(Drive));
-	atac = xalloc(((conf.nhard+1)/2) * sizeof(Controller));
-	
-	/*
-	 *  read nvram for number of ata drives (2 max)
-	 */
 	equip = nvramread(0x12);
-	if(conf.nhard > 0 && (equip>>4) == 0)
-		conf.nhard = 0;
-	if(conf.nhard > 1 && (equip&0xf) == 0)
-		conf.nhard = 1;
-	if(conf.nhard > 2)
-		conf.nhard = 2;
+	if(equip == 0)
+		equip = 0x10;		/* the Globalyst 250 lies */
 
-	for(drive = 0; drive < conf.nhard; drive++){
-		dp = &ata[drive];
-		cp = &atac[drive/2];
-		dp->drive = drive&1;
+	ata = xalloc(2 * sizeof(Drive));
+	atac = xalloc(sizeof(Controller));
+
+	cp = atac;
+	cp->buf = 0;
+	cp->lastcmd = cp->cmd;
+	cp->cmd = 0;
+	cp->pbase = Pbase;
+	setvec(Hardvec, ataintr, 0);
+
+	dp = ata;
+	if(equip & 0xf0){
+		dp->drive = 0;
 		dp->online = 0;
 		dp->cp = cp;
-		if((drive&1) == 0){
-			cp->buf = 0;
-			cp->lastcmd = cp->cmd;
-			cp->cmd = 0;
-			cp->pbase = Pbase;
-			setvec(Hardvec, ataintr, 0);
-		}
+		dp++;
 	}
+	if((equip & 0x0f)){
+		dp->drive = 1;
+		dp->online = 0;
+		dp->cp = cp;
+		dp++;
+	}
+	conf.nhard = dp - ata;
 	
 	if(conf.nhard && (p = getconf("spindowntime")))
 		spindowntime = atoi(p);
@@ -576,7 +574,7 @@ ataxfer(Drive *dp, Partition *pp, int cmd, long start, long len, char *buf)
 
 	outb(cp->pbase+Pcount, cp->nsecs);
 	outb(cp->pbase+Psector, sec);
-	outb(cp->pbase+Pdh, 0x20 | (dp->drive<<4) | (dp->lba<<6) | head);
+	outb(cp->pbase+Pdh, DHmagic | (dp->drive<<4) | (dp->lba<<6) | head);
 	outb(cp->pbase+Pcyllsb, cyl);
 	outb(cp->pbase+Pcylmsb, cyl>>8);
 	outb(cp->pbase+Pcmd, cmd);
@@ -649,7 +647,7 @@ atasetbuf(Drive *dp, int on)
 	ilock(&cp->reglock);
 	cp->cmd = Csetbuf;
 	outb(cp->pbase+Pprecomp, on ? 0xAA : 0x55);	/* read look ahead */
-	outb(cp->pbase+Pdh, 0x20 | (dp->drive<<4));
+	outb(cp->pbase+Pdh, DHmagic | (dp->drive<<4));
 	outb(cp->pbase+Pcmd, Csetbuf);
 	iunlock(&cp->reglock);
 
@@ -733,7 +731,7 @@ ataident(Drive *dp)
 	cp->cmd = Cident;
 	cp->dp = dp;
 	cp->buf = buf;
-	outb(cp->pbase+Pdh, 0x20 | (dp->drive<<4));
+	outb(cp->pbase+Pdh, DHmagic | (dp->drive<<4));
 	outb(cp->pbase+Pcmd, Cident);
 	iunlock(&cp->reglock);
 
@@ -761,8 +759,7 @@ ataident(Drive *dp)
 		dp->lba = 1;
 		dp->sectors = (ip->lbasecs[0]) | (ip->lbasecs[1]<<16);
 		dp->cap = dp->bytes * dp->sectors;
-		print("ata%d model %s with %d lba sectors\n", dp->drive,
-			id, dp->sectors);
+print("\nata%d model %s with %d lba sectors\n", dp->drive, id, dp->sectors);
 	} else {
 		dp->lba = 0;
 
@@ -770,16 +767,15 @@ ataident(Drive *dp)
 		dp->cyl = ip->cyls;
 		dp->heads = ip->heads;
 		dp->sectors = ip->s2t;
-		print("ata%d model %s with default %d cyl %d head %d sec\n", dp->drive,
-			id, dp->cyl, dp->heads, dp->sectors);
+/*print("\nata%d model %s with default %d cyl %d head %d sec\n", dp->drive,
+			id, dp->cyl, dp->heads, dp->sectors);/**/
 
 		if(ip->cvalid&(1<<0)){
 			/* use current settings */
 			dp->cyl = ip->ccyls;
 			dp->heads = ip->cheads;
 			dp->sectors = ip->cs2t;
-			print("\tchanged to %d cyl %d head %d sec\n", dp->cyl,
-				dp->heads, dp->sectors);
+/*print("\tchanged to %d cyl %d head %d sec\n", dp->cyl, dp->heads, dp->sectors);/**/
 		}
 		dp->cap = dp->bytes * dp->cyl * dp->heads * dp->sectors;
 	}
@@ -821,7 +817,7 @@ ataprobe(Drive *dp, int cyl, int sec, int head)
 
 	outb(cp->pbase+Pcount, 1);
 	outb(cp->pbase+Psector, sec+1);
-	outb(cp->pbase+Pdh, 0x20 | head | (dp->drive<<4));
+	outb(cp->pbase+Pdh, DHmagic | head | (dp->lba<<6) | (dp->drive<<4));
 	outb(cp->pbase+Pcyllsb, cyl);
 	outb(cp->pbase+Pcylmsb, cyl>>8);
 	outb(cp->pbase+Pcmd, Cread);
@@ -857,7 +853,7 @@ ataparams(Drive *dp)
 	ataident(dp);
 	if(dp->lba){
 		i = dp->sectors - 1;
-		if(ataprobe(dp, (i>>8)&0xffff, i&0xff, (i>>24)&0xf) == 0)
+		if(ataprobe(dp, (i>>8)&0xffff, (i&0xff)-1, (i>>24)&0xf) == 0)
 			return;
 	} else {
 		if(ataprobe(dp, dp->cyl-1, dp->sectors-1, dp->heads-1) == 0)
@@ -868,7 +864,7 @@ ataparams(Drive *dp)
 	 *  the drive lied, determine parameters by seeing which ones
 	 *  work to read sectors.
 	 */
-print("ata%d lied.  probing...\n", dp->drive);
+print("ata%d probing...\n", dp->drive);
 	dp->lba = 0;
 	for(i = 0; i < 32; i++)
 		if(ataprobe(dp, 0, 0, i) < 0)
@@ -1038,6 +1034,11 @@ atapart(Drive *dp)
 		atareplinit(dp);
 }
 
+enum
+{
+	Maxloop=	10000,
+};
+
 /*
  *  we get an interrupt for every sector transferred
  */
@@ -1062,7 +1063,7 @@ ataintr(Ureg *ur, void *arg)
 
 	loop = 0;
 	while((cp->status = inb(cp->pbase+Pstatus)) & Sbusy){
-		if(++loop > 100) {
+		if(++loop > Maxloop) {
 			DPRINT("cmd=%lux status=%lux\n",
 				cp->cmd, inb(cp->pbase+Pstatus));
 			panic("ataintr: wait busy");
@@ -1082,7 +1083,7 @@ ataintr(Ureg *ur, void *arg)
 		if(cp->sofar < cp->nsecs){
 			loop = 0;
 			while(((cp->status = inb(cp->pbase+Pstatus)) & Sdrq) == 0)
-				if(++loop > 100) {
+				if(++loop > Maxloop) {
 					DPRINT("cmd=%lux status=%lux\n",
 						cp->cmd, inb(cp->pbase+Pstatus));
 					panic("ataintr: write");
@@ -1102,7 +1103,7 @@ ataintr(Ureg *ur, void *arg)
 	case Cident:
 		loop = 0;
 		while((cp->status & (Serr|Sdrq)) == 0){
-			if(++loop > 10000) {
+			if(++loop > Maxloop) {
 				DPRINT("cmd=%lux status=%lux\n",
 					cp->cmd, inb(cp->pbase+Pstatus));
 				panic("ataintr: read/ident");
@@ -1175,7 +1176,7 @@ hardclock(void)
 			ilock(&cp->reglock);
 			cp->cmd = Cstandby;
 			outb(cp->pbase+Pcount, 0);
-			outb(cp->pbase+Pdh, 0x20 | (dp->drive<<4) | 0);
+			outb(cp->pbase+Pdh, DHmagic | (dp->drive<<4) | 0);
 			outb(cp->pbase+Pcmd, cp->cmd);
 			iunlock(&cp->reglock);
 			dp->state = Sstandby;

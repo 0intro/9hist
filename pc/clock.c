@@ -107,7 +107,23 @@ static X86type	*cputype;
 void
 delay(int l)
 {
-	aamloop(l*loopconst);
+	l *= loopconst;
+	if(l <= 0)
+		l = 1;
+	aamloop(l);
+}
+
+/*
+ *  microsecond delay
+ */
+void
+microdelay(int l)
+{
+	l *= loopconst;
+	l /= 1000;
+	if(l <= 0)
+		l = 1;
+	aamloop(l);
 }
 
 void

@@ -492,6 +492,7 @@ enum
 	Proc_stopme = 1, 	/* devproc requests */
 	Proc_exitme,
 	Proc_traceme,
+	Proc_exitbig,
 
 	TUser = 0, 		/* Proc.time */
 	TSys,

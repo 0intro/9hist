@@ -487,8 +487,6 @@ isaconfig(char *class, int ctlrno, ISAConf *isa)
 {
 	if(strcmp(class, "audio") == 0 && ctlrno == 0){
 		strcpy(isa->type, "sb16");
-		isa->port = 0x220;
-		isa->irq = 7;
 		return 1;
 	}
 	return 0;
