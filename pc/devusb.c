@@ -22,7 +22,7 @@
 
 #define Chatty	1
 #define DPRINT if(Chatty)print
-#define XPRINT if(debug)print
+#define XPRINT if(debug)iprint
 
 static int debug = 0;
 
@@ -50,7 +50,6 @@ typedef uchar byte;
 
 typedef struct Ctlr Ctlr;
 typedef struct Endpt Endpt;
-typedef struct QTree QTree;
 typedef struct Udev Udev;
 
 /*
@@ -118,6 +117,7 @@ enum {
 
 	FRAMESIZE=	4096,	/* fixed by hardware; aligned to same */
 	NFRAME = 	FRAMESIZE/4,
+	NISOTD = 4,			/* number of TDs for isochronous io per frame */
 
 	Vf = 1<<2,	/* TD only */
 	IsQH = 1<<1,
@@ -148,17 +148,6 @@ enum {
 	CancelTD=	1<<0,
 };
 
-/*
- * software structures
- */
-struct QTree {
-	QLock;
-	int	nel;
-	int	depth;
-	QH*	root;
-	ulong*	bw;
-};
-
 #define	GET2(p)	((((p)[1]&0xFF)<<8)|((p)[0]&0xFF))
 #define	PUT2(p,v)	(((p)[0] = (v)), ((p)[1] = (v)>>8))
 
@@ -168,16 +157,16 @@ struct QTree {
 struct Udev {
 	Ref;
 	Lock;
-	int		x;	/* index in usbdev[] */
+	int		x;		/* index in usbdev[] */
 	int		busy;
 	int		state;
 	int		id;
-	byte	port;		/* port number on connecting hub */
+	byte		port;		/* port number on connecting hub */
 	ulong	csp;
 	int		ls;
 	int		npt;
-	Endpt*	ep[16];		/* active end points */
-	Udev*	ports;		/* active ports, if hub */
+	Endpt*	ep[16];	/* active end points */
+	Udev*	ports;	/* active ports, if hub */
 	Udev*	next;		/* next device on this hub */
 };
 
@@ -209,7 +198,7 @@ static char *devstates[] = {
 struct Endpt {
 	Ref;
 	Lock;
-	int		x;	/* index in Udev.ep */
+	int		x;		/* index in Udev.ep */
 	int		id;		/* hardware endpoint address */
 	int		maxpkt;	/* maximum packet size (from endpoint descriptor) */
 	int		data01;	/* 0=DATA0, 1=DATA1 */
@@ -217,16 +206,20 @@ struct Endpt {
 	ulong	csp;
 	byte		mode;	/* OREAD, OWRITE, ORDWR */
 	byte		nbuf;	/* number of buffers allowed */
-	byte		periodic;
 	byte		iso;
 	byte		debug;
 	byte		active;	/* listed for examination by interrupts */
+	int		hz;
+	int		remain;
+	int		samplesz;
 	int		sched;	/* schedule index; -1 if undefined or aperiodic */
 	int		setin;
-	ulong	bw;	/* bandwidth requirement */
 	int		pollms;	/* polling interval in msec */
-	QH*		epq;	/* queue of TDs for this endpoint */
-
+	int		psize;	/* size of this packet */
+	Block	*curblock;	/* half full block between iso writes */
+	int		curbytes;		/* # of bytes in that block */
+	QH*		epq;		/* queue of TDs for this endpoint */
+	TD*		etd;		/* pointer into circular list of TDs for isochronous ept */
 	QLock	rlock;
 	Rendez	rr;
 	Queue*	rq;
@@ -247,21 +240,21 @@ struct Endpt {
 
 struct Ctlr {
 	Lock;	/* protects state shared with interrupt (eg, free list) */
-	int	io;
+	int		io;
 	ulong*	frames;	/* frame list */
-	int	idgen;	/* version number to distinguish new connections */
+	ulong*	frameld;	/* real time load on each of the frame list entries */
+	int		idgen;	/* version number to distinguish new connections */
 	QLock	resetl;	/* lock controller during USB reset */
 
-	TD*	tdpool;
-	TD*	freetd;
-	QH*	qhpool;
-	QH*	freeqh;
+	TD*		tdpool;	/* first NFRAMES*NISOTD entries are preallocated */
+	TD*		freetd;
+	QH*		qhpool;
+	QH*		freeqh;
 
-	QTree*	tree;	/* tree for periodic Endpt i/o */
-	QH*	ctlq;	/* queue for control i/o */
-	QH*	bwsop;	/* empty bandwidth sop (to PIIX4 errata specifications) */
-	QH*	bulkq;	/* queue for bulk i/o (points back to bandwidth sop) */
-	QH*	recvq;	/* receive queues for bulk i/o */
+	QH*		ctlq;	/* queue for control i/o */
+	QH*		bwsop;	/* empty bandwidth sop (to PIIX4 errata specifications) */
+	QH*		bulkq;	/* queue for bulk i/o (points back to bandwidth sop) */
+	QH*		recvq;	/* receive queues for bulk i/o */
 
 	Udev*	ports[2];
 };
@@ -681,6 +674,46 @@ queueqh(QH *qh) {
 	ub->recvq->entries = PADDR(qh) | IsQH;
 }
 
+static int
+tdisready(void *arg)
+{
+	return (((TD*)arg)->status & Active) == 0;
+}
+
+static Block *
+isoxmit(Endpt *e, Block *b, int pid)
+{
+	TD *td;
+	int n, id;
+	Block *ob;
+	static int ioc;
+
+	td = e->etd;
+	if (td == nil)
+		panic("usb: isoxmit");
+	while(td->status & Active){
+		XPRINT("isoxmit: sleep %lux\n", &e->wr);
+		sleep(&e->wr, tdisready, e->etd);
+		XPRINT("isoxmit: awake\n");
+	}
+	if (td->status & AnyError)
+		iprint("usbisoerror 0x%lux\n", td->status);
+	ob = td->bp;
+	if (ob == nil)
+		panic("isoxmit: null block");
+	td->buffer = PADDR(b->rp);
+	td->bp = b;
+	n = BLEN(b);
+	id = (e->x<<7)|(e->dev->x&0x7F);
+	td->dev = ((n-1)<<21) | ((id&0x7FF)<<8) | pid;
+	if ((ioc++ & 0xff) == 0)
+		td->status = ErrLimit3 | Active | IsoSelect | IOC;
+	else
+		td->status = ErrLimit3 | Active | IsoSelect;
+	e->etd = td->next;
+	return ob;
+}
+
 static QH*
 qxmit(Endpt *e, Block *b, int pid)
 {
@@ -766,113 +799,32 @@ flog2(int n)
 	return i;
 }
 
-/*
- * build the periodic scheduling tree:
- * framesize must be a multiple of the tree size
- */
-static QTree *
-mkqhtree(ulong *frame, int framesize, int maxms)
+static int
+usbsched(	Ctlr *ub, int pollms, ulong load)
 {
-	int i, n, d, o, leaf0, depth;
-	QH *tree, *qh;
-	QTree *qt;
+	int i, j, d, q;
+	ulong best, worst;
 
-	depth = flog2(maxms);
-	n = (1<<(depth+1))-1;
-	qt = mallocz(sizeof(*qt), 1);
-	if(qt == nil)
-		return nil;
-	qt->nel = n;
-	qt->depth = depth;
-	qt->bw = mallocz(n*sizeof(qt->bw), 1);
-	if(qt->bw == nil){
-		free(qt);
-		return nil;
-	}
-	tree = xspanalloc(n*sizeof(QH), 16, 0);
-	if(tree == nil){
-		free(qt);
-		return nil;
-	}
-	qt->root = tree;
-	tree->head = Terminate;	/* root */
-	tree->entries = Terminate;
-	for(i=1; i<n; i++){
-		qh = &tree[i];
-		qh->head = PADDR(&tree[(i-1)/2]) | IsQH;
-		qh->entries = Terminate;
-	}
-	/* distribute leaves evenly round the frame list */
-	leaf0 = n/2;
-	for(i=0; i<framesize; i++){
-		o = 0;
-		for(d=0; d<depth; d++){
-			o <<= 1;
-			if(i & (1<<d))
-				o |= 1;
-		}
-		if(leaf0+o >= n){
-			XPRINT("leaf0=%d o=%d i=%d n=%d\n", leaf0, o, i, n);
-			break;
-		}
-		frame[i] = PADDR(&tree[leaf0+o]) | IsQH;
-	}
-	return qt;
-}
-
-static void
-dumpframe(int f, int t)
-{
-	QH *q, *tree;
-	ulong p, *frame;
-	int i, n;
-
-	n = ubus.tree->nel;
-	tree = ubus.tree->root;
-	frame = ubus.frames;
-	if(f < 0)
-		f = 0;
-	if(t < 0)
-		t = 32;
-	for(i=f; i<t; i++){
-		XPRINT("F%.2d %8.8lux %8.8lux\n", i, frame[i], QFOL(frame[i])->head);
-		for(p=frame[i]; (p & IsQH) && (p &Terminate) == 0; p = q->head){
-			q = QFOL(p);
-			if(!(q >= tree && q < &tree[n])){
-				XPRINT("Q: p=%8.8lux out of range\n", p);
+	best = 1000000;
+	q = -1;
+	for (d = 0; d < pollms; d++){
+		worst = 0;
+		for (i = d; i < NFRAME; i++){
+			for(j = 0; j < NISOTD; j++)
+				if(ub->tdpool[NISOTD*i + j].ep == nil)
+					break;
+			if(j == NISOTD){
+				worst = 1000000;	/* No free TDs */
 				break;
 			}
-			XPRINT("  -> %8.8lux h=%8.8lux e=%8.8lux\n", p, q->head, q->entries);
+			if (ub->frameld[i] + load > worst)
+				worst = ub->frameld[i] + load;
+		}
+		if (worst < best){
+			best = worst;
+			q = d;
 		}
 	}
-}
-
-static int
-pickschedq(QTree *qt, int pollms, ulong bw, ulong limit)
-{
-	int i, j, d, ub, q;
-	ulong best, worst, total;
-
-	d = flog2(pollms);
-	if(d > qt->depth)
-		d = qt->depth;
-	q = -1;
-	worst = 0;
-	best = ~0;
-	ub = (1<<(d+1))-1;
-	for(i=(1<<d)-1; i<ub; i++){
-		total = qt->bw[0];
-		for(j=i; j > 0; j=(j-1)/2)
-			total += qt->bw[j];
-		if(total < best){
-			best = total;
-			q = i;
-		}
-		if(total > worst)
-			worst = total;
-	}
-	if(worst+bw >= limit)
-		return -1;
 	return q;
 }
 
@@ -880,28 +832,54 @@ static int
 schedendpt(Endpt *e)
 {
 	Ctlr *ub;
-	QH *qh;
-	int q;
+	TD *td, **prev, *first;
+	int i, j;
 
-	if(!e->periodic || e->sched >= 0)
+	e->curblock = allocb(e->maxpkt);
+	if (e->curblock == nil)
+		panic("schedept: allocb");
+	e->curbytes = 0;
+	if(!e->iso || e->sched >= 0)
 		return 0;
 	ub = &ubus;
-	if(e->epq == nil){
-		e->epq = allocqh(ub);
-		if(e->epq == nil)
-			return -1;
-	}
-	qlock(ub->tree);
-	q = pickschedq(ub->tree, e->pollms, e->bw, ~0);	/* TO DO: bus bandwidth limit */
-	if(q < 0)
+	
+	ilock(ub);
+	e->sched = usbsched(ub, e->pollms, e->maxpkt);
+	if(e->sched < 0)
 		return -1;
-	ub->tree->bw[q] += e->bw;
-	qh = &ub->tree->root[q];
-	e->sched = q;
-	e->epq->head = qh->entries;
-	e->epq->entries = Terminate;
-	qh->entries = PADDR(e->epq) | IsQH;
-	qunlock(ub->tree);
+
+	/* Allocate TDs from the NISOTD entries on each of the
+	 * frames.  Link them circularly so they can be walked easily
+	 */
+
+	prev = nil;
+	first = nil;
+	td = nil;
+	for(i = e->sched; i < NFRAME; i += e->pollms){
+		for(j = 0; j < NISOTD; j++){
+			td = &ub->tdpool[i*NISOTD + j];
+			if(td->ep == nil)
+				break;
+		}
+		if(j == NISOTD)
+			panic("usb: no td entries despite schedulability test");
+		td->ep = e;
+		if (td->bp)
+			panic("usb: schedendpt: block not empty");
+		td->bp = allocb(e->maxpkt);
+		if (td->bp == nil)
+			panic("schedept: allocb");
+		if (i == e->sched){
+			first = td;
+			e->etd = td;
+		}else{
+			*prev = td;
+		}
+		prev = &td->next;
+		ub->frameld[i] += e->maxpkt;
+	}
+	*prev = first;		/* complete circular link */
+	iunlock(ub);
 	return 0;
 }
 
@@ -909,25 +887,27 @@ static void
 unschedendpt(Endpt *e)
 {
 	Ctlr *ub;
-	ulong p;
-	QH *qh;
+	TD *td, *next;
 	int q;
 
 	ub = &ubus;
-	if(!e->periodic || (q = e->sched) < 0)
+	if(!e->iso || (q = e->sched) < 0)
 		return;
-	p = PADDR(e->epq) | IsQH;
-	qlock(ub->tree);
-	ub->tree->bw[q] -= e->bw;
-	qh = &ub->tree->root[q];
-	for(; qh->entries != p; qh = QFOL(qh->entries))
-		if(qh->entries & Terminate || (qh->entries & IsQH) == 0){
-			qunlock(ub->tree);
-			panic("usb: unschedendpt");
-		}
-	qh->entries = e->epq->head;
-	qunlock(ub->tree);
-	e->epq->head = Terminate;
+	ilock(ub);
+	
+	for (td = e->etd; q < NFRAME; q += e->pollms){
+		ub->frameld[q] -= e->maxpkt;
+		next = td->next;
+		td->ep = nil;
+		td->next = nil;
+		freeb(td->bp);
+		td->bp = nil;
+		td = next;
+	}
+	freeb(e->curblock);
+	e->sched = -1;
+
+	iunlock(ub);
 }
 
 static Endpt *
@@ -951,11 +931,10 @@ devendpt(Udev *d, int id, int add)
 	e->ref = 1;
 	e->x = id&0xF;
 	e->id = id;
-	e->periodic = 0;
+	e->iso = 0;
 	e->sched = -1;
 	e->maxpkt = 8;
 	e->pollms = 0;
-	e->bw = 0;
 	e->nbuf = 1;
 	e->dev = d;
 	e->active = 0;
@@ -1136,11 +1115,15 @@ interrupt(Ureg*, void *a)
 		cleanq(q, 0, Vf);
 	}
 	ilock(&activends);
-	for(e = activends.f; e != nil; e = e->activef)
-		if(e->epq != nil) {
+	for(e = activends.f; e != nil; e = e->activef){
+		if(!e->iso && e->epq != nil) {
 			XPRINT("cleanq(e->epq, 0, 0)\n");
 			cleanq(e->epq, 0, 0);
 		}
+		if(e->iso && e->etd != nil) {
+			wakeup(&e->wr);
+		}
+	}
 	iunlock(&activends);
 }
 
@@ -1230,7 +1213,7 @@ usbnewdevice(void)
 			d->state = Enabled;
 			e = devendpt(d, 0, 1);	/* always provide control endpoint 0 */
 			e->mode = ORDWR;
-			e->periodic = 0;
+			e->iso = 0;
 			e->sched = -1;
 			usbdev[i] = d;
 			break;
@@ -1244,9 +1227,8 @@ static void
 usbreset(void)
 {
 	Pcidev *cfg;
-	int i;
+	int i, j;
 	ulong port;
-	QTree *qt;
 	TD *t;
 	Ctlr *ub;
 	ISAConf isa;
@@ -1291,8 +1273,8 @@ usbreset(void)
 	intrenable(cfg->intl, interrupt, ub, cfg->tbdf, "usb");
 
 	ub->io = port;
-	ub->tdpool = xspanalloc(128*sizeof(TD), 16, 0);
-	for(i=128; --i>=0;){
+	ub->tdpool = xspanalloc((NFRAME*NISOTD+128)*sizeof(TD), 16, 0);
+	for(i=NFRAME*NISOTD+128; --i>=NFRAME*NISOTD;){
 		ub->tdpool[i].next = ub->freetd;
 		ub->freetd = &ub->tdpool[i];
 	}
@@ -1303,8 +1285,8 @@ usbreset(void)
 	}
 
 	/*
-	 * the root of the periodic (interrupt & isochronous) scheduling tree
-	 * points to the control queue and the bandwidth sop for bulk traffic.
+	 * the last entries of the periodic (interrupt & isochronous) scheduling TD entries
+	 * point to the control queue and the bandwidth sop for bulk traffic.
 	 * this is looped following the instructions in PIIX4 errata 29773804.pdf:
 	 * a QH links to a looped but inactive TD as its sole entry,
 	 * with its head entry leading on to the bulk traffic, the last QH of which
@@ -1327,15 +1309,28 @@ usbreset(void)
 		IN(Flbaseadd), inb(port+SOFMod), IN(Portsc0), IN(Portsc1));
 	OUT(Cmd, 0);	/* stop */
 	ub->frames = xspanalloc(FRAMESIZE, FRAMESIZE, 0);
-	qt = mkqhtree(ub->frames, NFRAME, 32);
-	if(qt == nil){
-		print("usb: can't allocate scheduling tree\n");
-		ub->io = 0;
-		return;
+	ub->frameld = mallocz(FRAMESIZE, 1);
+
+	for (i = 0; i < NFRAME; i++){
+		j = NISOTD*i;
+		ub->frames[i] = PADDR(&ub->tdpool[j]);	/* breadth 1st, is TD, no termin. */
+		ub->tdpool[j+0].link = PADDR(&ub->tdpool[j+1]);
+		ub->tdpool[j+0].status = IsoSelect;
+		ub->tdpool[j+0].dev = 0;
+		ub->tdpool[j+0].buffer = 0;
+		ub->tdpool[j+1].link = PADDR(&ub->tdpool[j+2]);
+		ub->tdpool[j+1].status = IsoSelect;
+		ub->tdpool[j+1].dev = 0;
+		ub->tdpool[j+1].buffer = 0;
+		ub->tdpool[j+2].link = PADDR(&ub->tdpool[j+3]);
+		ub->tdpool[j+2].status = IsoSelect;
+		ub->tdpool[j+2].dev = 0;
+		ub->tdpool[j+2].buffer = 0;
+		ub->tdpool[j+3].link = PADDR(ub->ctlq) | IsQH;
+		ub->tdpool[j+3].status = IsoSelect;
+		ub->tdpool[j+3].dev = 0;
+		ub->tdpool[j+3].buffer = 0;
 	}
-	qt->root->head = PADDR(ub->ctlq) | IsQH;
-	ub->tree = qt;
-	XPRINT("usb tree: nel=%d depth=%d\n", qt->nel, qt->depth);
 
 	outl(port+Flbaseadd, PADDR(ub->frames));
 	OUT(Frnum, 0);
@@ -1732,33 +1727,69 @@ writeusb(Endpt *e, void *a, long n, int tok)
 		nexterror();
 	}
 	do {
-		int j;
 
 		if(e->err)
 			error(e->err);
-		if((i = n) >= e->maxpkt)
-			i = e->maxpkt;
-		b = allocb(i);
-		if(waserror()){
-			freeb(b);
-			nexterror();
-		}
-		XPRINT("out [%ld]", i);
-		for (j = 0; j < i; j++) XPRINT(" %.2x", p[j]);
-		XPRINT("\n");
-		memmove(b->wp, p, i);
-		b->wp += i;
-		p += i;
-		n -= i;
-		poperror();
-		qh = qxmit(e, b, tok);
-		tok = TokOUT;
-		if(!e->iso)
-			e->data01 ^= 1;
-		if(e->ntd >= e->nbuf) {
-			XPRINT("writeusb: sleep %lux\n", &e->wr);
-			sleep(&e->wr, qisempty, qh);
-			XPRINT("writeusb: awake\n");
+		if (e->iso){
+			if (e->curbytes == 0){
+				e->psize = (e->hz + e->remain)*e->pollms/1000;
+				e->remain = (e->hz + e->remain)*e->pollms%1000;
+				e->psize *= e->samplesz;
+			}
+			if (e->psize > e->maxpkt)
+				panic("packet size > maximum");
+			b = e->curblock;
+			if (b == nil)
+				panic("writeusb: block");
+			if((i = n) >= e->psize - e->curbytes)
+				i = e->psize - e->curbytes;
+			if (e->curbytes != BLEN(b))
+				iprint("mismatch: curbytes %d, blen %ld\n", e->curbytes, BLEN(b));
+			memmove(b->wp, p, i);
+			b->wp += i;
+			p += i;
+			n -= i;
+			e->curbytes += i;
+			if (e->curbytes < e->psize){
+				e->curblock = b;
+				if (n != 0)
+					panic("usb iso: can't happen");
+				break;
+			}
+			if (BLEN(b) != e->psize)
+				panic("usbwrite: length mismatch");
+			e->curblock = isoxmit(e, b, TokOUT);
+			e->curbytes = 0;
+			e->curblock->wp = e->curblock->rp;
+			e->nbytes += e->psize;
+			e->nblocks++;
+		}else{
+			int j;
+
+			if((i = n) >= e->maxpkt)
+				i = e->maxpkt;
+			b = allocb(i);
+			if(waserror()){
+				freeb(b);
+				nexterror();
+			}
+			XPRINT("out [%ld]", i);
+			for (j = 0; j < i; j++) XPRINT(" %.2x", p[j]);
+			XPRINT("\n");
+			memmove(b->wp, p, i);
+			b->wp += i;
+			p += i;
+			n -= i;
+			poperror();
+			qh = qxmit(e, b, tok);
+			tok = TokOUT;
+			if(!e->iso)
+				e->data01 ^= 1;
+			if(e->ntd >= e->nbuf) {
+				XPRINT("writeusb: sleep %lux\n", &e->wr);
+				sleep(&e->wr, qisempty, qh);
+				XPRINT("writeusb: awake\n");
+			}
 		}
 	} while(n > 0);
 	poperror();
@@ -1783,10 +1814,6 @@ usbwrite(Chan *c, void *a, long n, vlong)
 		memmove(cmd, a, n);
 		cmd[n] = 0;
 		nf = getfields(cmd, fields, nelem(fields), 0, " \t\n");
-		if(nf==1 && strcmp(fields[0], "dump")==0){
-			dumpframe(-1, -1);
-			return n;
-		}
 		if(nf < 2)
 			error(Ebadarg);
 		id = strtol(fields[1], nil, 0);
@@ -1858,7 +1885,9 @@ usbwrite(Chan *c, void *a, long n, vlong)
 			e = d->ep[i];
 			e->err = nil;
 		}else if(nf == 6 && strcmp(fields[0], "ep") == 0){
-			/* ep n maxpkt mode poll nbuf */
+			/* ep n `bulk' mode maxpkt nbuf     OR
+			 * ep n period mode samplesize KHz
+			 */
 			i = strtoul(fields[1], nil, 0);
 			if(i < 0 || i >= nelem(d->ep)) {
 				XPRINT("field 1: 0 <= %d < %d\n", i, nelem(d->ep));
@@ -1870,17 +1899,14 @@ usbwrite(Chan *c, void *a, long n, vlong)
 				freept(e);
 				nexterror();
 			}
-			i = strtoul(fields[2], nil, 0);
-			if(i < 8 || i > 1023)
-				i = 8;
-			e->maxpkt = i;
-			e->mode = strcmp(fields[3],"r") == 0? OREAD :
-					  strcmp(fields[3],"w") == 0? OWRITE : ORDWR;
-			e->periodic = 0;
-			e->sched = -1;
-			if(strcmp(fields[4], "bulk") == 0){
+			if (e->iso && e->sched >= 0){
+				unschedendpt(e);
+			}
+			e->iso = 0;
+			if(strcmp(fields[2], "bulk") == 0){
 				Ctlr *ub;
 
+				/* ep n `bulk' mode maxpkt nbuf */
 				ub = &ubus;
 				/* Each bulk device gets a queue head hanging off the
 				 * bulk queue head
@@ -1891,19 +1917,45 @@ usbwrite(Chan *c, void *a, long n, vlong)
 						panic("usbwrite: allocqh");
 				}
 				queueqh(e->epq);
-			} else {
-				e->periodic = 1;
+				e->mode = strcmp(fields[3],"r") == 0? OREAD :
+					  	strcmp(fields[3],"w") == 0? OWRITE : ORDWR;
 				i = strtoul(fields[4], nil, 0);
-				if(i > 0 && i <= 1000)
+				if(i < 8 || i > 1023)
+					i = 8;
+				e->maxpkt = i;
+				i = strtoul(fields[5], nil, 0);
+				if(i >= 1 && i <= 32)
+					e->nbuf = i;
+			} else {
+				/* ep n period mode samplesize KHz */
+				i = strtoul(fields[2], nil, 0);
+				if(i > 0 && i <= 1000){
 					e->pollms = i;
-				else {
+				}else {
 					XPRINT("field 4: 0 <= %d <= 1000\n", i);
 					error(Ebadarg);
 				}
+				e->mode = strcmp(fields[3],"r") == 0? OREAD :
+					  	strcmp(fields[3],"w") == 0? OWRITE : ORDWR;
+				i = strtoul(fields[4], nil, 0);
+				if(i >= 1 && i <= 8){
+					e->samplesz = i;
+				}else {
+					XPRINT("field 4: 0 < %d <= 8\n", i);
+					error(Ebadarg);
+				}
+				i = strtoul(fields[5], nil, 0);
+				if(i >= 1 && i <= 100000){
+					/* Hz */
+					e->hz = i;
+					e->remain = 999/e->pollms;
+				}else {
+					XPRINT("field 5: 1 < %d <= 100000 Hz\n", i);
+					error(Ebadarg);
+				}
+				e->maxpkt = (e->hz * e->pollms + 999)/1000 * e->samplesz;
+				e->iso = 1;
 			}
-			i = strtoul(fields[5], nil, 0);
-			if(i >= 1 && i <= 32)
-				e->nbuf = i;
 			poperror();
 		}else {
 			XPRINT("command %s, fields %d\n", fields[0], nf);
