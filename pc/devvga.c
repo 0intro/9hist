@@ -134,6 +134,7 @@ static void	screenputc(char*);
 static void	scroll(void);
 static ulong	x3to32(uchar);
 static ulong	x6to32(uchar);
+static void	greyscale(void);
 static void	workinit(Bitmap*, int, int);
 extern void	screenload(Rectangle, uchar*, int, int, int);
 extern void	screenunload(Rectangle, uchar*, int, int, int);
@@ -308,6 +309,8 @@ vgawrite(Chan *c, void *buf, long n, ulong offset)
 		cbuf[n] = 0;
 		if(strncmp(cbuf, "hwcursor", 8) == 0)
 			hwcursor = 1;
+		else if(strncmp(cbuf, "grey", 4) == 0)
+			greyscale();
 		break;
 	case Qvgasize:
 		if(offset != 0 || n >= sizeof(cbuf))
@@ -588,7 +591,7 @@ setscreen(int maxx, int maxy, int ldepth)
 	switch(ldepth){
 	case 3:
 		for(i = 0; i < 256; i++)
-			setcolor(i, x3to32(i>>5), x3to32(i>>2), x3to32(i<<1));
+			setcolor(i, x3to32(i>>5), x3to32(i>>2), x3to32(i|(i<<1)));
 		break;
 	case 2:
 	case 1:
@@ -993,6 +996,39 @@ x6to32(uchar x)
 	x = x&0x3f;
 	y = (x<<(32-6))|(x<<(32-12))|(x<<(32-18))|(x<<(32-24))|(x<<(32-30));
 	return y;
+}
+static ulong
+x8to32(uchar x)
+{
+	ulong y;
+
+	x = x&0xff;
+	y = (x<<(32-8))|(x<<(32-16))|(x<<(32-24))|x;
+	return y;
+}
+static void
+greyscale(void)
+{
+	int i;
+	ulong x;
+
+	/* default color map (has to be outside the lock) */
+	switch(gscreen.ldepth){
+	case 3:
+		for(i = 0; i < 256; i++){
+			x = x8to32(i);
+			setcolor(i, x, x, x);
+		}
+		break;
+	case 2:
+	case 1:
+	case 0:
+		for(i = 0; i < 16; i++){
+			x = x6to32((i*63)/15);
+			setcolor(i, x, x, x);
+		}
+		break;
+	}
 }
 
 /*
