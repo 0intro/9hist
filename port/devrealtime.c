@@ -835,18 +835,14 @@ devrtwrite(Chan *c, void *va, long n, vlong)
 						error(e);
 				}
 			}else if (strcmp(a, "admit") == 0){
-				/* Do the admission test */
 				if (e = edfadmit(t))
 					error(e);
 			}else if (strcmp(a, "expel") == 0){
-				/* Do the admission test */
 				edfexpel(t);
 			}else if (strcmp(a, "remove") == 0){
-				/* Do the admission test */
 				removetask(t);
 				return n;	/* Ignore any subsequent commands */
 			}else if (strcmp(a, "verbose") == 0){
-				/* Do the admission test */
 				if (t->flags & Verbose)
 					t->flags &= ~Verbose;
 				else
@@ -966,14 +962,16 @@ parsetime(Time *rt, char *s)
 		l *= p10[e-p-1];
 	}else
 		l = 0;
-	if (*e == '\0' || strcmp(e, "s") == 0){
-		ticks = 1000000000 * ticks + l;
-	}else if (strcmp(e, "ms") == 0){
-		ticks = 1000000 * ticks + l/1000;
-	}else if (strcmp(e, "µs") == 0 || strcmp(e, "us") == 0){
-		ticks = 1000 * ticks + l/1000000;
-	}else if (strcmp(e, "ns") != 0)
-		return "unrecognized unit";
+	if (*e){
+		if(strcmp(e, "s") == 0)
+			ticks = 1000000000 * ticks + l;
+		else if (strcmp(e, "ms") == 0)
+			ticks = 1000000 * ticks + l/1000;
+		else if (strcmp(e, "µs") == 0 || strcmp(e, "us") == 0)
+			ticks = 1000 * ticks + l/1000000;
+		else if (strcmp(e, "ns") != 0)
+			return "unrecognized unit";
+	}
 	*rt = ticks;
 	return nil;
 }
