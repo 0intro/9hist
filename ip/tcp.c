@@ -175,6 +175,7 @@ struct Tcpctl
 	int	max_snd;		/* Max send */
 	ulong	last_ack;		/* Last acknowledege received */
 	uchar	backoff;		/* Exponential backoff counter */
+	int	backedoff;		/* ms we've backed off for rexmits */
 	uchar	flags;			/* State flags */
 	ulong	sndcnt;			/* Amount of data in send queue */
 	Reseq	*reseq;			/* Resequencing queue */
@@ -1112,6 +1113,7 @@ update(Conv *s, Tcp *seg)
 		tcphalt(tpriv, &tcb->rtt_timer);
 		if((tcb->flags&RETRAN) == 0) {
 			tcb->backoff = 0;
+			tcb->backedoff = 0;
 			rtt = tcb->rtt_timer.start - tcb->rtt_timer.count;
 			if(rtt == 0)
 				rtt = 1;	/* otherwise all close systems will rexmit in 0 time */
@@ -1150,6 +1152,7 @@ done:
 
 	tcb->flags &= ~RETRAN;
 	tcb->backoff = 0;
+	tcb->backedoff = 0;
 }
 
 void
@@ -1902,7 +1905,7 @@ tcptimeout(void *arg)
 {
 	Conv *s;
 	Tcpctl *tcb;
-	int back, maxback;
+	int maxback;
 	Tcppriv *tpriv;
 
 	s = (Conv*)arg;
@@ -1917,8 +1920,8 @@ tcptimeout(void *arg)
 			maxback = MAXBACKMS/2;
 		else
 			maxback = MAXBACKMS;
-		back = backoff(tcb->backoff) * (tcb->mdev + (tcb->srtt>>LOGAGAIN));
-		if(back >= maxback) {
+		tcb->backedoff += tcb->timer.start * MSPTICK;
+		if(tcb->backedoff >= maxback) {
 			localclose(s, Etimedout);
 			break;
 		}
