@@ -815,10 +815,8 @@ procctlmemio(Proc *p, ulong offset, int n, void *va, int read)
 	b += offset&(BY2PG-1);
 	if(read == 1)
 		memmove(a, b, n);
-	else {
+	else
 		memmove(b, a, n);
-		dcflush(b, n);
-	}
 	kunmap(k);
 
 	/* Ensure the process sees text page changes */

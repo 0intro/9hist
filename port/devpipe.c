@@ -302,6 +302,8 @@ pipewrite(Chan *c, void *va, long n, ulong offset)
 
 	USED(offset);
 
+	if((getstatus()&IE) == 0)
+		print("pipewrite hi %lux\n", getcallerpc(c));
 	if(waserror()) {
 		/* avoid notes when pipe is a mounted queue */
 		if((c->flag & CMSG) == 0)

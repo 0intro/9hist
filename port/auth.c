@@ -124,8 +124,10 @@ sysfsession(ulong *arg)
 	unlock(c);
 
 	/* back off if someone else is doing an fsession */
-	while(!canlock(&s->send))
+	while(!canlock(&s->send)) {
+		up->yield = 1;
 		sched();
+	}
 
 	if(s->valid == 0){
 		/*

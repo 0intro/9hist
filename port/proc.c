@@ -119,7 +119,7 @@ anyhigher(void)
 	for(p=runq.head; p; p=p->rnext)
 		if(p->pri < pri)
 			if(p->wired == 0 || p->wired == m)
-				return runq.n;
+				return 1;
 	return 0;
 }
 
@@ -152,18 +152,12 @@ loop:
 	spllo();
 
 	/* look for potential proc while not locked */
-	for(p=runq.head; p; p=p->rnext) {
+	for(p = runq.head; p; p=p->rnext) {
 		/*
-		 *  state is not saved
+		 *  state is not saved or wired to another machine
 		 */
-		if(p->mach)
-			continue;
-		/*
-		 *  wired to another machine
-		 */
-		if(p->wired && p->wired != m)
-			continue;
-		break;
+		if(!(p->mach || (p->wired && p->wired != m)))
+			break;
 	}
 	if(p == 0)
 		goto loop;
@@ -173,12 +167,14 @@ loop:
 
 	/* find best proc while locked */
 	bp = 0;
-	for(p=runq.head; p; p=p->rnext) {
-		if(p->mach)
+	for(p = runq.head; p; p=p->rnext) {
+		if(p->mach || (p->wired && p->wired != m))
 			continue;
-		if(p->wired && p->wired != m)
-			continue;
-		if(bp == 0 || p->pri < bp->pri)
+		if(bp == 0) {
+			p->yield = 0;
+			bp = p;
+		} else
+		if(p->yield == 0 && p->pri < bp->pri)
 			bp = p;
 	}
 	if(bp == 0) {
@@ -368,8 +364,10 @@ sleep(Rendez *r, int (*f)(void*), void *arg)
 	int s;
 
 	sleep1(r, f, arg);
-	if(up->notepending == 0)
+	if(up->notepending == 0) {
+		up->yield = 1;
 		sched();	/* notepending may go true while asleep */
+	}
 
 	if(up->notepending) {
 		up->notepending = 0;

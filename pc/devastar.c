@@ -411,14 +411,14 @@ astarreset(void)
 		}
 
 		/* defaults */
-		if(a->mem == 0)
-			a->mem = 0xD4000;
 		if(a->irq == 0)
 			a->irq = 15;
 		a->id = i;
 
-		if(getisa(a->mem, Pagesize, 0) == 0)
+		a->mem = getisa(a->mem, Pagesize, Pagesize);
+		if(a->mem == 0)
 			panic("astarreset: %lux", a->mem);
+		a->mem & ~KZERO;
 
 		if(astarsetup(a) < 0){
 			xfree(a);

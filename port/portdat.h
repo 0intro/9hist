@@ -586,7 +586,8 @@ struct Proc
 
 	Mach	*wired;		/* machine this process must run on */
 	int	pri;		/* scheduling priority - low is high priority */
-	int	nice;		/* time-passing algorithm - low is high priority */
+	short	nice;		/* time-passing algorithm - low is high priority */
+	short	yield;		/* force one lap in the runq */	
 
 	void	*ureg;		/* User registers for notes */
 	void	*dbgreg;	/* User registers for devproc */
