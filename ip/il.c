@@ -335,7 +335,7 @@ ilclose(Conv *c)
 }
 
 void
-ilkick(Conv *c, int l)
+ilkick(Conv *c)
 {
 	Ilhdr *ih;
 	Ilcb *ic;
@@ -344,9 +344,6 @@ ilkick(Conv *c, int l)
 	Block *bp;
 	Fs *f;
 	Ilpriv *priv;
-
-
-	USED(l);
 
 	f = c->p->f;
 	priv = c->p->priv;

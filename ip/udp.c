@@ -147,7 +147,7 @@ udpclose(Conv *c)
 }
 
 void
-udpkick(Conv *c, int)
+udpkick(Conv *c)
 {
 	Udphdr *uh;
 	ushort rport;

@@ -176,7 +176,6 @@ struct Tcpctl
 	uchar	backoff;		/* Exponential backoff counter */
 	int	backedoff;		/* ms we've backed off for rexmits */
 	uchar	flags;			/* State flags */
-	ulong	sndcnt;			/* Amount of data in send queue */
 	Reseq	*reseq;			/* Resequencing queue */
 	Timer	timer;			/* Activity timer */
 	Timer	acktimer;		/* Acknowledge timer */
@@ -189,6 +188,7 @@ struct Tcpctl
 	uint	sndsyntime;		/* time syn sent */
 	ulong	time;			/* time Finwait2 or Syn_received was sent */
 	int	nochecksum;		/* non-zero means don't send checksums */
+	int	flgcnt;			/* 1 when we're waiting for a SYN/FIN ACK */
 
 	Tcphdr	protohdr;		/* prototype header */
 };
@@ -393,13 +393,13 @@ tcpclose(Conv *c)
 		break;
 	case Syn_received:
 	case Established:
-		tcb->sndcnt++;
+		tcb->flgcnt++;
 		tcb->snd.nxt++;
 		tcpsetstate(c, Finwait1);
 		tcpoutput(c);
 		break;
 	case Close_wait:
-		tcb->sndcnt++;
+		tcb->flgcnt++;
 		tcb->snd.nxt++;
 		tcpsetstate(c, Last_ack);
 		tcpoutput(c);
@@ -408,7 +408,7 @@ tcpclose(Conv *c)
 }
 
 void
-tcpkick(Conv *s, int len)
+tcpkick(Conv *s)
 {
 	Tcpctl *tcb;
 
@@ -433,7 +433,6 @@ tcpkick(Conv *s, int len)
 		/*
 		 * Push data
 		 */
-		tcb->sndcnt += len;
 		tcprcvwin(s);
 		tcpoutput(s);
 		break;
@@ -888,7 +887,7 @@ tcpsndsyn(Tcpctl *tcb)
 	tcb->snd.una = tcb->iss;
 	tcb->snd.ptr = tcb->rttseq;
 	tcb->snd.nxt = tcb->rttseq;
-	tcb->sndcnt++;
+	tcb->flgcnt++;
 	tcb->flags |= FORCE;
 	tcb->sndsyntime = msec;
 }
@@ -1150,7 +1149,7 @@ update(Conv *s, Tcp *seg)
 	if((tcb->flags & SYNACK) == 0) {
 		tcb->flags |= SYNACK;
 		acked--;
-		tcb->sndcnt--;
+		tcb->flgcnt--;
 		goto done;
 	}
 
@@ -1200,9 +1199,9 @@ update(Conv *s, Tcp *seg)
 	}
 
 done:
-	qdiscard(s->wq, acked);
+	if(qdiscard(s->wq, acked) < acked)
+		tcb->flgcnt--;
 
-	tcb->sndcnt -= acked;
 	tcb->snd.una = seg->ack;
 	if(seq_gt(seg->ack, tcb->snd.urg))
 		tcb->snd.urg = seg->ack;
@@ -1380,7 +1379,7 @@ reset:
 	if(tcptrim(tcb, &seg, &bp, &length) == -1) {
 		netlog(f, Logtcp, "tcp len < 0, %lux\n", seg.seq);
 		update(s, &seg);
-		if(tcb->sndcnt == 0 && tcb->state == Closing) {
+		if(qlen(s->wq)+tcb->flgcnt == 0 && tcb->state == Closing) {
 			tcphalt(tpriv, &tcb->rtt_timer);
 			tcphalt(tpriv, &tcb->acktimer);
 			tcphalt(tpriv, &tcb->katimer);
@@ -1445,7 +1444,7 @@ reset:
 			break;
 		case Finwait1:
 			update(s, &seg);
-			if(tcb->sndcnt == 0){
+			if(qlen(s->wq)+tcb->flgcnt == 0){
 				tcphalt(tpriv, &tcb->rtt_timer);
 				tcphalt(tpriv, &tcb->acktimer);
 				tcpsetkacounter(tcb);
@@ -1460,7 +1459,7 @@ reset:
 			break;
 		case Closing:
 			update(s, &seg);
-			if(tcb->sndcnt == 0) {
+			if(qlen(s->wq)+tcb->flgcnt == 0) {
 				tcphalt(tpriv, &tcb->rtt_timer);
 				tcphalt(tpriv, &tcb->acktimer);
 				tcphalt(tpriv, &tcb->katimer);
@@ -1471,7 +1470,7 @@ reset:
 			break;
 		case Last_ack:
 			update(s, &seg);
-			if(tcb->sndcnt == 0) {
+			if(qlen(s->wq)+tcb->flgcnt == 0) {
 				localclose(s, nil);
 				goto raise;
 			}
@@ -1560,7 +1559,7 @@ reset:
 				break;
 			case Finwait1:
 				tcb->rcv.nxt++;
-				if(tcb->sndcnt == 0) {
+				if(qlen(s->wq)+tcb->flgcnt == 0) {
 					tcphalt(tpriv, &tcb->rtt_timer);
 					tcphalt(tpriv, &tcb->acktimer);
 					tcphalt(tpriv, &tcb->katimer);
@@ -1616,7 +1615,7 @@ raise:
 	qunlock(s);
 	poperror();
 	freeblist(bp);
-	tcpkick(s, 0);
+	tcpkick(s);
 }
 
 /*
@@ -1656,7 +1655,7 @@ tcpoutput(Conv *s)
 			tcb->flags |= FORCE;
 		}
 	
-		sndcnt = tcb->sndcnt;
+		sndcnt = qlen(s->wq)+tcb->flgcnt;
 		sent = tcb->snd.ptr - tcb->snd.una;
 
 		/* Don't send anything else until our SYN has been acked */

@@ -406,7 +406,7 @@ qget(Queue *q)
 /*
  *  throw away the next 'len' bytes in the queue
  */
-void
+int
 qdiscard(Queue *q, int len)
 {
 	Block *b;
@@ -443,6 +443,8 @@ qdiscard(Queue *q, int len)
 
 	if(dowakeup)
 		wakeup(&q->wr);
+
+	return sofar;
 }
 
 /*

@@ -119,13 +119,11 @@ greclose(Conv *c)
 int drop;
 
 static void
-grekick(Conv *c, int l)
+grekick(Conv *c)
 {
 	GREhdr *ghp;
 	Block *bp;
 	uchar laddr[IPaddrlen], raddr[IPaddrlen];
-
-	USED(l);
 
 	bp = qget(c->wq);
 	if(bp == nil)

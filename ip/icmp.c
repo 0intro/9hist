@@ -148,13 +148,12 @@ icmpclose(Conv *c)
 }
 
 static void
-icmpkick(Conv *c, int l)
+icmpkick(Conv *c)
 {
 	Icmp *p;
 	Block *bp;
 	Icmppriv *ipriv;
 
-	USED(l);
 	bp = qget(c->wq);
 	if(bp == nil)
 		return;

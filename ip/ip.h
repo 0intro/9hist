@@ -235,7 +235,7 @@ struct Proto
 	int		x;		/* protocol index */
 	int		ipproto;	/* ip protocol type */
 
-	void		(*kick)(Conv*, int);
+	void		(*kick)(Conv*);
 	char*		(*connect)(Conv*, char**, int);
 	char*		(*announce)(Conv*, char**, int);
 	char*		(*bind)(Conv*, char**, int);

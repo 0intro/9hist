@@ -233,7 +233,7 @@ int		qcanread(Queue*);
 void		qclose(Queue*);
 int		qconsume(Queue*, void*, int);
 Block*		qcopy(Queue*, int, ulong);
-void		qdiscard(Queue*, int);
+int		qdiscard(Queue*, int);
 void		qflush(Queue*);
 void		qfree(Queue*);
 int		qfull(Queue*);

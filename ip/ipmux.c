@@ -626,7 +626,7 @@ ipmuxclose(Conv *c)
  *  the stack
  */
 static void
-ipmuxkick(Conv *c, int)
+ipmuxkick(Conv *c)
 {
 	Block *bp;
 	Iphdr *ih;

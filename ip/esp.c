@@ -220,7 +220,7 @@ espclose(Conv *c)
 }
 
 void
-espkick(Conv *c, int)
+espkick(Conv *c)
 {
 	Esphdr *eh;
 	Esptail *et;

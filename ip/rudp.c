@@ -333,7 +333,7 @@ flow(void *v)
 }
 
 void
-rudpkick(Conv *c, int)
+rudpkick(Conv *c)
 {
 	Udphdr *uh;
 	ushort rport;

@@ -257,7 +257,7 @@ ipifcinuse(Conv *c)
  *  called when a process writes to an interface's 'data'
  */
 static void
-ipifckick(Conv *c, int)
+ipifckick(Conv *c)
 {
 	Block *bp;
 	Ipifc *ifc;
