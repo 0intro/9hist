@@ -207,27 +207,6 @@ dp8390setea(Ether *ether)
 	slowoutb(port+Cr, cr);
 }
 
-void
-dp8390getea(Ether *ether)
-{
-	ulong port = ((Dp8390*)ether->ctlr)->dp8390;
-	uchar cr;
-	int i;
-
-	/*
-	 * Get the ethernet address from the chip.
-	 * Take care to restore the command register
-	 * afterwards. We don't care about multicast
-	 * addresses as we never set the multicast
-	 * enable.
-	 */
-	cr = slowinb(port+Cr) & ~Txp;
-	slowoutb(port+Cr, Page1|(~(Ps1|Ps0) & cr));
-	for(i = 0; i < sizeof(ether->ea); i++)
-		ether->ea[i] = slowinb(port+Par0+i);
-	slowoutb(port+Cr, cr);
-}
-
 void*
 dp8390read(Dp8390 *dp8390, void *to, ulong from, ulong len)
 {
