@@ -184,8 +184,13 @@ pprint(char *fmt, ...)
 		return 0;
 
 	c = u->p->fgrp->fd[2];
-	if(c==0 || (c->mode!=OWRITE && c->mode!=ORDWR))
+	if(c == 0 || (c->mode!=OWRITE && c->mode!=ORDWR))
 		return 0;
+
+	/* Can't afford to take an error in notify */
+	if(waserror())
+		return 0;
+
 	n = sprint(buf, "%s %d: ", u->p->text, u->p->pid);
 	n = doprint(buf+n, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
 
@@ -194,7 +199,7 @@ pprint(char *fmt, ...)
 	lock(c);
 	c->offset += n;
 	unlock(c);
-
+	poperror();
 	return n;
 }
 

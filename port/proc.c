@@ -454,11 +454,11 @@ postnote(Proc *p, int dolock, char *n, int flag)
 		for(d = *l; d; d = d->rendhash) {
 			if(d == p) {
 				*l = p->rendhash;
+				ready(p);
 				break;
 			}
 			l = &d->rendhash;
 		}
-		ready(p);
 	}
 	unlock(p->pgrp);
 	return ret;

@@ -40,7 +40,9 @@ reset(Ctlr *ctlr)
 		 * Reset the board. This is done by doing a read
 		 * followed by a write to the Reset address.
 		 */
-		outb(ctlr->card.io+Reset, inb(ctlr->card.io+Reset));
+		buf[0] = inb(ctlr->card.io+Reset);
+		delay(2);
+		outb(ctlr->card.io+Reset, buf[0]);
 
 		/*
 		 * Init the (possible) chip, then use the (possible)
