@@ -213,6 +213,8 @@ enum {						/* Window 1 - operating set */
 
 enum {						/* Window 2 - station address */
 	Wstation		= 0x0002,
+
+	ResetOp905B		= 0x000C,
 };
 
 enum {						/* Window 3 - FIFO management */
@@ -223,6 +225,7 @@ enum {						/* Window 3 - FIFO management */
 	RomControl		= 0x0006,	/* 3C509B, 3C59[27] */
 	MacControl		= 0x0006,	/* 3C59[0257] */
 	ResetOptions		= 0x0008,	/* 3C59[0257] */
+	MediaOptions		= 0x0008,	/* 3C905B */
 	RxFree			= 0x000A,
 						/* InternalConfig bits */
 	disableBadSsdDetect	= 0x00000100,
@@ -1454,75 +1457,66 @@ setfullduplex(int port)
 }
 
 static int
-miir(int port, int phyad, int regad)
+miimdi(int port, int n)
 {
-	int data, i, w, x;
-
-	w = (STATUS(port)>>13) & 0x07;
-	COMMAND(port, SelectRegisterWindow, Wdiagnostic);
-
-	port += PhysicalMgmt;
+	int data, i;
 
 	/*
-	 * Taken from the Cyclone manual appendix describing
-	 * how to programme the MII Management Interface.
-	 */
-	/*
-	 * Preamble
-	 */
-	for(i = 0; i < 32; i++){
-		outs(port, mgmtDir|mgmtData);
-		microdelay(1);
-		outs(port, mgmtDir|mgmtData|mgmtClk);
-		microdelay(1);
-	}
-
-	/*
-	 * ST+OP+PHYAD+REGAD
-	 */
-	x = 0x1800|(phyad<<5)|regad;
-	for(i = 14-1; i >= 0; i--){
-		if(x & (1<<i))
-			data = mgmtDir|mgmtData;
-		else
-			data = mgmtDir;
-		outs(port, data);
-		microdelay(1);
-		outs(port, data|mgmtClk);
-		microdelay(1);
-	}
-
-	/*
-	 * "Z" cycle (turnaround) + one read (0 means there's a PHY responding).
+	 * Read n bits from the MII Management Register.
 	 */
 	data = 0;
-	outs(port, 0);
-	microdelay(1);
-	outs(port, mgmtClk);
-	x = ins(port);
-	if(x & mgmtData)
-		data |= (1<<16);
-
-	/*
-	 * 16 data read cycles.
-	 */
-	for(i = 16-1; i >= 0; i--){
-		outs(port, 0);
+	for(i = n-1; i >= 0; i--){
+		if(ins(port) & mgmtData)
+			data |= (1<<i);
 		microdelay(1);
 		outs(port, mgmtClk);
 		microdelay(1);
-		x = ins(port);
-		if(x & mgmtData)
-			data |= (1<<i);
+		outs(port, 0);
 		microdelay(1);
 	}
 
+	return data;
+}
+
+static void
+miimdo(int port, int bits, int n)
+{
+	int i, mdo;
+
 	/*
-	 * "Z" cycle (turnaround).
+	 * Write n bits to the MII Management Register.
 	 */
-	outs(port, 0);
-	microdelay(1);
-	outs(port, mgmtClk);
+	for(i = n-1; i >= 0; i--){
+		if(bits & (1<<i))
+			mdo = mgmtDir|mgmtData;
+		else
+			mdo = mgmtDir;
+		outs(port, mdo);
+		microdelay(1);
+		outs(port, mdo|mgmtClk);
+		microdelay(1);
+		outs(port, mdo);
+		microdelay(1);
+	}
+}
+
+static int
+miir(int port, int phyad, int regad)
+{
+	int data, w;
+
+	w = (STATUS(port)>>13) & 0x07;
+	COMMAND(port, SelectRegisterWindow, Wdiagnostic);
+	port += PhysicalMgmt;
+
+	/*
+	 * Preamble;
+	 * ST+OP+PHYAD+REGAD;
+	 * TA + 16 data bits.
+	 */
+	miimdo(port, 0xFFFFFFFF, 32);
+	miimdo(port, 0x1800|(phyad<<5)|regad, 14);
+	data = miimdi(port, 18);
 
 	port -= PhysicalMgmt;
 	COMMAND(port, SelectRegisterWindow, w);
@@ -1763,8 +1757,11 @@ etherelnk3reset(Ether* ether)
 /*
  * forgive me, but i am weak
  */
-if(did == 0x9055)
+if(did == 0x9055){
    xcvr = xcvrMii;
+   XCVRDEBUG("9055 reset ops 0x%uX\n",
+	ins(port+ResetOp905B));
+}
 else
 	if(xcvr & autoSelect)
 		xcvr = autoselect(port, xcvr, rxstatus9);
@@ -1777,12 +1774,29 @@ else
 		scanphy(port);
 		 */
 		phyaddr = 24;
+for(i = 0; i < 7; i++)
+    XCVRDEBUG(" %2.2uX", miir(port, phyaddr, i));
+XCVRDEBUG("\n");
+
+{	int phystat, timeo;
+	for(timeo = 0; timeo < 30; timeo++){
+		phystat = miir(port, phyaddr, 0x01);
+		if(phystat & 0x20)
+			break;
+		XCVRDEBUG(" %2.2uX", phystat);
+		delay(100);
+	}
+	XCVRDEBUG(" %2.2uX", miir(port, phyaddr, 0x01));
+	XCVRDEBUG("\n");
+}
+
 		anar = miir(port, phyaddr, 0x04);
 		anlpar = miir(port, phyaddr, 0x05) & 0x03E0;
 		anar &= anlpar;
 		miir(port, phyaddr, 0x00);
 		XCVRDEBUG("mii an: %uX anlp: %uX r0:%uX r1:%uX\n",
-			anar, anlpar, miir(port, phyaddr, 0x00), miir(port, phyaddr, 0x01));
+			anar, anlpar, miir(port, phyaddr, 0x00),
+			miir(port, phyaddr, 0x01));
 		for(i = 0; i < ether->nopt; i++){
 			if(cistrcmp(ether->opt[i], "fullduplex") == 0)
 				anar |= 0x0100;
