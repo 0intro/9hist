@@ -285,7 +285,7 @@ lanceoput(Queue *q, Block *bp )
 		if(streamparse("connect", bp)){
 			if(e->type == -1)
 				l.all--;
-			e->type = strtol((char *)bp->rptr, 0, 0);
+			e->type  = strtol((char *)bp->rptr, 0, 0);
 			if(e->type == -1)
 				l.all++;
 		} else if(streamparse("promiscuous", bp)) {
@@ -441,9 +441,6 @@ lancestart(int mode, int dolock)
 	Etherpkt *p;
 	Lancemem *lm = LANCEMEM;
 	Msg *m;
-
-if(mode == PROM)
-	print("setting promiscuous mode\n");
 
 	/*
 	 *   wait till both receiver and transmitter are

@@ -269,7 +269,7 @@ banksize(int base)
 {
 	ulong va;
 
-	if(&end > (int *)((KZERO|1024L*1024L)-BY2PG))
+	if(end > (char *)((KZERO|1024L*1024L)-BY2PG))
 		return 0;
 	va = UZERO;	/* user page 1 is free to play with */
 	putmmu(va, PTEVALID|(base+0)*1024L*1024L/BY2PG, 0);

@@ -263,19 +263,23 @@ arpwrite(Chan *c, char *a, long n, ulong offset)
 
 		if(strncmp(field[0], "flush", 5) == 0)
 			arpflush();
-		else if(strcmp(field[0], "delete") == 0) {
+		else
+		if(strcmp(field[0], "delete") == 0) {
 			if(m != 2)
 				error(Ebadarg);
 
 			if(arpdelete(field[1]) < 0)
 				error(Enetaddr);
 		}
+		break;
+
 	case arpdataqid:
 		if(n != sizeof(Arpentry))
 			error(Emsgsize);
 		memmove(&entry, a, sizeof(Arpentry));
 		arpenter(&entry, ARP_TEMP);
 		break;
+
 	default:
 		error(Ebadusefd);
 	}
@@ -286,8 +290,6 @@ arpwrite(Chan *c, char *a, long n, ulong offset)
 void
 arpopn(Queue *q, Stream *s)
 {
-	if(Myip[Myself])
-		error(Einuse);
 	USED(q, s);
 }
 

@@ -16,6 +16,7 @@ int	canputc(void*);
 int	canqlock(QLock*);
 void	chandevinit(void);
 void	chandevreset(void);
+void	chanfree(Chan*);
 void	chaninit(void);
 void	checkalarms(void);
 void	clock(Ureg*);

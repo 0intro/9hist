@@ -342,8 +342,7 @@ dumpstack(void)
 			v = *(ulong*)l;
 			if(KTZERO < v && v < (ulong)&etext){
 				print("%lux=%lux\n", l, v);
-				prflush();
-				delay(250);
+				delay(100);
 			}
 		}
 }

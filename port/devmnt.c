@@ -68,6 +68,7 @@ void	mntgate(Mnt*);
 void	mntrpcread(Mnt*, Mntrpc*);
 void	mntdoclunk(Mnt *, Mntrpc *);
 void	mntauth(Mnt *, Mntrpc *, char *, ushort);
+void	mntpntfree(Mnt*);
 
 enum
 {
@@ -126,6 +127,7 @@ mntattach(char *muxattach)
 	Mnt *m, *e;
 	Stream *s;
 	Qinfo *qi;
+	Chan *c;
 	struct bogus{
 		Chan	*chan;
 		char	*spec;
@@ -137,7 +139,7 @@ mntattach(char *muxattach)
 	for(m = mntalloc.mntarena; m < e; m++) {
 		if(m->c == bogus.chan && m->id) {
 			lock(m);
-			if(m->ref > 0 && m->id && m->c == bogus.chan) {
+			if(m->id && m->ref > 0 && m->c == bogus.chan) {
 				m->ref++;
 				unlock(m);
 				return mattach(m, bogus.spec, bogus.serv);
@@ -162,18 +164,6 @@ mntattach(char *muxattach)
 	m->c->flag |= CMSG;
 	m->blocksize = MAXFDATA;
 
-	/* If we have a stream based protocol (TCP/IP) we push fcall to block
-	 * up P9 protocol messages into single deliminted blocks
-	 */
-	s = m->c->stream;
-	qi = qinfofind("fcall");
-	if(s)
-	if(s->procq->next)
-	if(s->procq->next->info->nodelim) {
-		if(qi == 0)
-			error(Ebadctl);
-		pushq(s, qi);
-	}
 
 	switch(devchar[m->c->type]) {
 	default:
@@ -186,7 +176,27 @@ mntattach(char *muxattach)
 	incref(m->c);
 	unlock(m);
 
-	return mattach(m, bogus.spec, bogus.serv);
+	if(waserror()) {
+		close(m->c);
+		mntpntfree(m);
+		nexterror();
+	}
+
+	/* If we have a stream based protocol (TCP/IP) we push fcall to block
+	 * up P9 protocol messages into single deliminted blocks
+	 */
+	s = m->c->stream;
+	qi = qinfofind("fcall");
+	if(s)
+	if(s->procq->next)
+	if(s->procq->next->info->nodelim) {
+		if(qi == 0)
+			error(Ebadctl);
+		pushq(s, qi);
+	}
+	c = mattach(m, bogus.spec, bogus.serv);
+	poperror();
+	return c;
 }
 
 Chan *
@@ -204,14 +214,14 @@ mattach(Mnt *m, char *spec, char *serv)
 
 	if(waserror()){
 		mntfree(r);
-		close(c);
+		/* Close must not be called since it will call mnt recursively */
+		chanfree(c);
 		nexterror();
 	}
 
 	memset(r->request.auth, 0, sizeof r->request.auth);
 	if(*serv)
 		mntauth(m, r, serv, c->fid);
-
 
 	r->request.type = Tattach;
 	r->request.fid = c->fid;
@@ -439,11 +449,17 @@ mntdoclunk(Mnt *m, Mntrpc *r)
 		}
 		m->id = 0;
 		close(m->c);
-		lock(&mntalloc);
-		m->list = mntalloc.mntfree;
-		mntalloc.mntfree = m;
-		unlock(&mntalloc);
+		mntpntfree(m);
 	}
+}
+
+void
+mntpntfree(Mnt *m)
+{
+	lock(&mntalloc);
+	m->list = mntalloc.mntfree;
+	mntalloc.mntfree = m;
+	unlock(&mntalloc);
 }
 
 void

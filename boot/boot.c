@@ -89,6 +89,7 @@ main(int argc, char *argv[])
 	if(mount(fd, "/", MAFTER|MCREATE, "", "") < 0)
 		fatal("mount");
 	close(fd);
+	newkernel();
 
 	/*
 	 *  if a local file server exists and it's not the

@@ -109,7 +109,6 @@ upstream(Queue *q, ulong len)
 	for(bp = bl; bp->next; bp = bp->next)
 		;
 	bp->flags |= S_DELIM;
-if(bl->rptr[0] == 73) print("fcall Rclunk %d\n", blen(bl));
 	PUTNEXT(q, bl);
 }
 
@@ -131,34 +130,41 @@ fcalliput(Queue *q, Block *bp)
 	bp->flags &= ~S_DELIM;
 	putq(q, bp);
 
-	bp = q->first;
-	switch(bp->rptr[0]) {		/* This is the type */
-	default:
-		len = msglen[bp->rptr[0]];
-		if(len == 0)
-			error(Emountrpc);
-		if(q->len >= len)
+	for(;;) {
+		bp = q->first;
+		if(bp == 0)
+			return;
+		switch(bp->rptr[0]) {		/* This is the type */
+		default:
+			len = msglen[bp->rptr[0]];
+			if(len == 0)
+				error(Emountrpc);
+			if(q->len < len)
+				return;
+	
 			upstream(q, len);
+			continue;
 
-		return;
-	case Twrite:			/* Fmt: TGGFFOOOOOOOOCC */
-		len = Twritehdr;	/* T = type, G = tag, F = fid */
-		off = Twritecnt;	/* O = offset, C = count */
-		break;
-	case Rread:			/* Fmt: TGGFFCC */
-		len = Rreadhdr;
-		off = Rreadcnt;
-		break;
+		case Twrite:			/* Fmt: TGGFFOOOOOOOOCC */
+			len = Twritehdr;	/* T = type, G = tag, F = fid */
+			off = Twritecnt;	/* O = offset, C = count */
+			break;
+
+		case Rread:			/* Fmt: TGGFFCC */
+			len = Rreadhdr;
+			off = Rreadcnt;
+			break;
+		}
+	
+		if(q->len < len)
+			return;
+	
+		pullup(q->first, len);
+		bp = q->first;
+		need = len+bp->rptr[off]+(bp->rptr[off+1]<<8);
+		if(q->len < need)
+			return;
+	
+		upstream(q, need);
 	}
-
-	if(q->len < len)
-		return;
-
-	pullup(q->first, len);
-	bp = q->first;
-	need = len+bp->rptr[off]+(bp->rptr[off+1]<<8);
-	if(q->len < need)
-		return;
-
-	upstream(q, need);
 }

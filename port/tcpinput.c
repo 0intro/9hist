@@ -42,9 +42,6 @@ tcp_input(Ipconv *ipc, Block *bp)
 	Ipaddr source, dest;
 	char tos;
 	ushort length;
-	Block *f;
-
-	DPRINT("tcp_input.\n");
 
 	h = (Tcphdr *)(bp->rptr);
 	dest = nhgetl(h->tcpdst);
@@ -300,13 +297,6 @@ process:
 				tcb->rcvcnt += blen(bp);
 				if(bp)
 				if(s->readq) {
-					print("bl %d ty %d\n", blen(bp), bp->rptr[0]);
-					for(f = bp; bp->next; f = f->next)
-						;
-					if((f->flags&S_DELIM) == 0) {
-						print("No delim upstream rcp");
-						f->flags |= S_DELIM;
-					}		
 					PUTNEXT(s->readq, bp);
 					bp = 0;
 				}
@@ -467,21 +457,22 @@ update(Ipconv *s, Tcp *seg)
 	if(run_timer(&tcb->rtt_timer))
 	if(seq_ge(seg->ack, tcb->rttseq)) {
 		stop_timer(&tcb->rtt_timer);
-
-		if(!(tcb->flags & RETRAN)) {
+		if((tcb->flags&RETRAN) == 0) {
 			rtt = tcb->rtt_timer.start - tcb->rtt_timer.count;
 			rtt *= MSPTICK;	
 			if(rtt > tcb->srtt &&
 			  (tcb->state == Syn_sent || tcb->state == Syn_received))
 				tcb->srtt = rtt;
 			else {
-				abserr = (rtt > tcb->srtt) ? rtt - tcb->srtt : tcb->srtt - rtt;
+				if(rtt > tcb->srtt)
+					abserr = rtt - tcb->srtt;
+				else
+					abserr = tcb->srtt - rtt;
 				tcb->srtt = ((AGAIN-1)*tcb->srtt + rtt) / AGAIN;
 				tcb->mdev = ((DGAIN-1)*tcb->mdev + abserr) / DGAIN;
 				DPRINT("tcpout: rtt %d, srtt %d, mdev %d\n", 
 					rtt, tcb->srtt, tcb->mdev);
 			}
-
 			tcb->backoff = 0;
 		}
 	}
@@ -988,40 +979,4 @@ ntohtcp(Tcp *tcph, Block **bpp)
 		}
 	}
 	return hdrlen;
-}
-
-void
-tcpdumpconv(Ipconv *c)
-{
-	if(c->tcpctl.state == Closed)
-		return;
-
-	print("%s %d -> %d.%d.%d.%d/%d snd %d recv %d una %d nxt %d ptr %d wnd %d\n",
-	tcpstate[c->tcpctl.state],
-	c->psrc,
-	fmtaddr(c->dst),
-	c->pdst,
-	c->tcpctl.sndcnt,
-	c->tcpctl.rcvcnt,
-	c->tcpctl.snd.una,
-	c->tcpctl.snd.nxt,
-	c->tcpctl.snd.ptr,
-	c->tcpctl.snd.wnd);
-}
-
-void
-tcpdump(void)
-{
-	Ipifc *ep, *ifp;
-	Ipconv *cp, *ecp;
-	extern Ipifc *ipifc;
-
-	ep = &ipifc[conf.ipif];
-	for(ifp = ipifc; ifp < ep; ifp++)
-		if(strcmp(ifp->name, "TCP") == 0) {
-			ecp = &ifp->connections[conf.ip];
-			for(cp = ifp->connections; cp < ecp; cp++)
-				tcpdumpconv(cp);
-			break;
-		}
 }

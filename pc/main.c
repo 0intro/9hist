@@ -34,10 +34,12 @@ main(void)
 	chaninit();
 	alarminit();
 	bigcursor();
+print("chandevreset\n");
 	chandevreset();
 	streaminit();
 	swapinit();
 	pageinit();
+print("userinit\n");
 	userinit();
 
 	schedinit();

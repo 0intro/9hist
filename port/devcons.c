@@ -240,9 +240,6 @@ echo(Rune r, char *buf, int n)
 		case 'r':
 			exit();
 			break;
-		case 't':
-			tcpdump();
-			break;
 		}
 	}else if(r == 0x14){
 		ctrlt++;

@@ -63,7 +63,7 @@ tcp_output(Ipconv *s)
 
 		DPRINT("tcp_out: ssize = %lux\n", ssize);
 		if(ssize == 0)
-		if((tcb->flags & FORCE) == 0)
+		if((tcb->flags&FORCE) == 0)
 			break;
 
 		/* Stop ack timer if one will be piggy backed on data */
@@ -105,7 +105,7 @@ tcp_output(Ipconv *s)
 				seg.flags |= FIN;
 				dsize--;
 			}
-			print("dupb: %d\n", dbp->rptr[0]);
+			DPRINT("dupb: %d\n", dbp->rptr[0]);
 		}
 
 		if(sent+dsize == qlen)
@@ -154,7 +154,6 @@ tcp_output(Ipconv *s)
 				tcb->rttseq = tcb->snd.ptr;
 			}
 		}
-		print("snd: %d %x\n", blen(hbp), seg.seq);
 		PUTNEXT(Ipoutput, hbp);
 	}
 }
@@ -164,7 +163,6 @@ tcprxmit(Ipconv *s)
 {
 	Tcpctl *tcb;
 
-	print("tcp! rexmit\n");
 	tcb = &s->tcpctl;
 	qlock(tcb);
 	tcb->flags |= RETRAN|FORCE;
@@ -189,12 +187,9 @@ tcp_timeout(void *arg)
 	s = (Ipconv *)arg;
 	tcb = &s->tcpctl;
 
-	print("Timer %lux state = %d\n", s, tcb->state);
-
 	switch(tcb->state){
 	default:
 		tcb->backoff++;
-		DPRINT("tcp_timeout: retransmit %d %x\n", tcb->backoff, s);
 		if (tcb->backoff >= MAXBACKOFF)
 			close_self(s, Etimedout);
 		else 
@@ -203,12 +198,6 @@ tcp_timeout(void *arg)
 
 	case Time_wait:
 		close_self(s, 0);
-		break;
-
-	case Established:
-		if(tcb->backoff < MAXBACKOFF)
-			tcb->backoff++;
-		tcprxmit(s);
 		break;
 	}
 }

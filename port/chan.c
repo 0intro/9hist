@@ -102,6 +102,16 @@ newchan(void)
 }
 
 void
+chanfree(Chan *c)
+{
+	c->flag = CFREE;
+	lock(&chanalloc);
+	c->next = chanalloc.free;
+	chanalloc.free = c;
+	unlock(&chanalloc);
+}
+
+void
 close(Chan *c)
 {
 	if(c->flag & CFREE)
@@ -112,11 +122,7 @@ close(Chan *c)
 			(*devtab[c->type].close)(c);
 			poperror();
 		}
-		c->flag = CFREE;
-		lock(&chanalloc);
-		c->next = chanalloc.free;
-		chanalloc.free = c;
-		unlock(&chanalloc);
+		chanfree(c);
 	}
 }
 

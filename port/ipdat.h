@@ -318,7 +318,7 @@ struct Ipconv
 
 #define MSS_LENGTH	4
 #define MSL2		10
-#define MSPTICK		200
+#define MSPTICK		100
 #define DEF_MSS		1024
 #define DEF_RTT		1000
 
