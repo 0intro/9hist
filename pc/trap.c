@@ -199,7 +199,7 @@ trapinit(void)
 	/*
 	 *  Set up the second 8259 interrupt processor.
 	 *  Make 8259 interrupts start at CPU vector Int1vec.
-	 *  Set the 8259 as master with edge triggered
+	 *  Set the 8259 as master with level triggered
 	 *  input with fully nested interrupts.
 	 */
 	outb(Int1ctl, (1<<4)|(1<<3)|(1<<0));	/* ICW1 - master, level triggered,

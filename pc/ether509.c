@@ -279,7 +279,6 @@ interrupt(Ureg *ur, void *arg)
 	Ether *ether;
 
 	USED(ur);
-
 	ether = arg;
 	port = ether->port;
 
@@ -552,18 +551,11 @@ tcm579(Ether *ether)
 	return 0;
 }
 
-static ulong
-tcm589(Ether *ether)
-{
-	USED(ether);
-	return 0;
-}
-
 /*
  * Get configuration parameters.
  */
-static int
-reset(Ether *ether)
+int
+ether509reset(Ether *ether)
 {
 	int i, eax;
 	uchar ea[Eaddrlen];
@@ -588,12 +580,12 @@ reset(Ether *ether)
 			break;
 		}
 	}
+	if(strcmp(ether->type, "3C589") == 0)
+		port = ether->port;
 	if(port == 0)
 		port = tcm579(ether);
 	if(port == 0)
 		port = tcm509(ether);
-	if(port == 0)
-		port = tcm589(ether);
 	if(port == 0)
 		return -1;
 
@@ -603,7 +595,8 @@ reset(Ether *ether)
 	 * The EEPROM command is 8 bits, the lower 6 bits being
 	 * the address offset.
 	 */
-	ether->irq = (ins(port+ResourceConfig)>>12) & 0x0F;
+	if(strcmp(ether->type, "3C589") != 0)
+		ether->irq = (ins(port+ResourceConfig)>>12) & 0x0F;
 	for(eax = 0, i = 0; i < 3; i++, eax += 2){
 		while(ins(port+EEPROMcmd) & 0x8000)
 			;
@@ -680,5 +673,5 @@ reset(Ether *ether)
 void
 ether509link(void)
 {
-	addethercard("3C509",  reset);
+	addethercard("3C509",  ether509reset);
 }

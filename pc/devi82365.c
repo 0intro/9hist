@@ -246,14 +246,8 @@ slotena(Slot *pp)
 	/* power up and unreset, wait's are empirical (???) */
 	wrreg(pp, Rpc, Fautopower|Foutena|Fcardena);
 	delay(300);
-	wrreg(pp, Rigc, Fnotreset);
-	delay(500);
-
-	wrreg(pp, Rpc, 0);
-	delay(500);
-
-	wrreg(pp, Rpc, Fautopower|Foutena|Fcardena);
-	delay(300);
+	wrreg(pp, Rigc, 0);
+	delay(100);
 	wrreg(pp, Rigc, Fnotreset);
 	delay(500);
 
@@ -263,7 +257,7 @@ slotena(Slot *pp)
 		cisread(pp);
 		pp->enabled = 1;
 	} else
-		wrreg(pp, Rpc, 0);
+		wrreg(pp, Rpc, Fautopower);
 }
 
 /*
@@ -272,8 +266,8 @@ slotena(Slot *pp)
 static void
 slotdis(Slot *pp)
 {
-	wrreg(pp, Rwe, 0);		/* no windows */
-	wrreg(pp, Rpc, 0);		/* turn off card power */
+	wrreg(pp, Rpc, 0);	/* turn off card power */
+	wrreg(pp, Rwe, 0);	/* no windows */
 	pp->enabled = 0;
 }
 
@@ -1306,7 +1300,7 @@ tentry(Slot *pp, int ttype)
 	case 3:
 		if(readc(pp, &c) != 1)
 			return;
-		for(i = 0; i <= c&0x7; i++)
+		for(i = 0; i <= (c&0x7); i++)
 			memspace(pp, (c>>5)&0x3, (c>>3)&0x3, c&0x80);
 		break;
 	}
