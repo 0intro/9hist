@@ -980,6 +980,9 @@ procctlreq(Proc *p, char *va, int n)
 	int i, npc;
 	char buf[64];
 
+	if(p->kp)	/* no ctl requests to kprocs */
+		error(Eperm);
+
 	kstrcpy(buf, va, sizeof buf);
 
 	if(strncmp(buf, "stop", 4) == 0)
