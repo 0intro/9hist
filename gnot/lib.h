@@ -25,6 +25,13 @@ extern	long	strlen(char*);
 extern	int	atoi(char*);
 
 /*
+ * rune routines
+ */
+extern	int	runetochar(char*, Rune*);
+extern	int	chartorune(Rune*, char*);
+extern	int	countrune(char*);
+
+/*
  * print routines
  */
 

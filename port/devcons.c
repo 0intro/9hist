@@ -18,7 +18,8 @@ IOQ	printq;
 IOQ	mouseq;
 KIOQ	kbdq;
 
-Ref	raw;			/* whether kbd i/o is raw (rcons is open) */
+static Ref	ctl;			/* number of opens to the control file */
+static int	raw;			/* true if raw has been requested on a ctl file */
 
 char	eve[NAMELEN] = "bootes";
 char	evekey[DESKEYLEN];
@@ -119,7 +120,7 @@ isbrkc(KIOQ *q)
 	uchar *p;
 
 	for(p=q->out; p!=q->in; ){
-		if(raw.ref)
+		if(raw)
 			return 1;
 		if(*p==0x04 || *p=='\n')
 			return 1;
@@ -245,7 +246,7 @@ echo(Rune r, char *buf, int n)
 		return;
 	}
 	ctrlt = 0;
-	if(raw.ref)
+	if(raw)
 		return;
 	if(r == 0x15)
 		putstrn("^U\n", 3);
@@ -287,7 +288,7 @@ kbdputc(IOQ *q, int ch)
 		if(kbdq.in == kbdq.buf+sizeof(kbdq.buf))
 			kbdq.in = kbdq.buf;
 	}
-	if(raw.ref || r=='\n' || r==0x04)
+	if(raw || r=='\n' || r==0x04)
 		wakeup(&kbdq.r);
 	return 0;
 }
@@ -322,6 +323,7 @@ consactive(void)
 enum{
 	Qdir,
 	Qcons,
+	Qconsctl,
 	Qcputime,
 	Qlights,
 	Qnoise,
@@ -329,7 +331,6 @@ enum{
 	Qpgrpid,
 	Qpid,
 	Qppid,
-	Qrcons,
 	Qtime,
 	Quser,
 	Qklog,
@@ -344,6 +345,7 @@ enum{
 
 Dirtab consdir[]={
 	"cons",		{Qcons},	0,		0660,
+	"consctl",	{Qconsctl},	0,		0220,
 	"cputime",	{Qcputime},	6*NUMSIZE,	0444,
 	"time",		{Qtime},	NUMSIZE,	0664,
 	"clock",	{Qclock},	2*NUMSIZE,	0444,
@@ -354,7 +356,6 @@ Dirtab consdir[]={
 	"pgrpid",	{Qpgrpid},	NUMSIZE,	0444,
 	"pid",		{Qpid},		NUMSIZE,	0444,
 	"ppid",		{Qppid},	NUMSIZE,	0444,
-	"rcons",	{Qrcons},	0,		0660,
 	"user",		{Quser},	0,		0666,
 	"chal",		{Qchal},	8,		0666,
 	"crypt",	{Qcrypt},	0,		0666,
@@ -441,21 +442,11 @@ consstat(Chan *c, char *dp)
 Chan*
 consopen(Chan *c, int omode)
 {
-	int ch;
-
 	switch(c->qid.path){
-	case Qrcons:
+	case Qconsctl:
 		if(strcmp(u->p->user, eve) != 0)
 			error(Eperm);
-		if(incref(&raw) == 1){
-			lock(&lineq);
-			while((ch=getc(&kbdq)) != -1){
-				*lineq.in++ = ch;
-				if(lineq.in == lineq.buf+sizeof(lineq.buf))
-					lineq.in = lineq.buf;
-			}
-			unlock(&lineq);
-		}
+		incref(&ctl);
 		break;
 	case Qswap:
 		kickpager();		/* start a pager if not already started */
@@ -475,8 +466,13 @@ conscreate(Chan *c, char *name, int omode, ulong perm)
 void
 consclose(Chan *c)
 {
-	if(c->qid.path==Qrcons && (c->flag&COPEN))
-		decref(&raw);
+	/* last close of control file turns off raw */
+	if(c->qid.path==Qconsctl && (c->flag&COPEN)){
+		lock(&ctl);
+		if(--ctl.ref == 0)
+			raw = 0;
+		unlock(&ctl);
+	}
 	if(c->qid.path == Qcrypt && c->aux)
 		freeb(c->aux);
 	c->aux = 0;
@@ -501,7 +497,6 @@ consread(Chan *c, void *buf, long n, ulong offset)
 	case Qdir:
 		return devdirread(c, buf, n, consdir, NCONS, devgen);
 
-	case Qrcons:
 	case Qcons:
 		qlock(&kbdq);
 		if(waserror()){
@@ -513,7 +508,7 @@ consread(Chan *c, void *buf, long n, ulong offset)
 			do{
 				lock(&lineq);
 				ch = getc(&kbdq);
-				if(raw.ref){
+				if(raw){
 					unlock(&lineq);
 					goto Default;
 				}
@@ -537,12 +532,12 @@ consread(Chan *c, void *buf, long n, ulong offset)
 						lineq.in++;
 				}
 				unlock(&lineq);
-			}while(raw.ref==0 && ch!='\n' && ch!=0x04);
+			}while(raw==0 && ch!='\n' && ch!=0x04);
 		}
 		i = 0;
 		while(n > 0){
 			ch = getc(&lineq);
-			if(ch==-1 || (raw.ref==0 && ch==0x04))
+			if(ch==-1 || (raw==0 && ch==0x04))
 				break;
 			i++;
 			*cbuf++ = ch;
@@ -715,11 +710,10 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 	char *a = va;
 	Block *cb;
 	Mach *mp;
-	int id, fd;
+	int id, fd, ch;
 	Chan *swc;
 
 	switch(c->qid.path){
-	case Qrcons:
 	case Qcons:
 		/*
 		 * Can't page fault in putstrn, so copy the data locally.
@@ -733,6 +727,33 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 			putstrn(a, bp);
 			a += bp;
 			l -= bp;
+		}
+		break;
+
+	case Qconsctl:
+		if(n >= sizeof(buf))
+			n = sizeof(buf)-1;
+		strncpy(buf, a, n);
+		buf[n] = 0;
+		for(a = buf; a;){
+			if(strncmp(a, "rawon", 5) == 0){
+				lock(&lineq);
+				while((ch=getc(&kbdq)) != -1){
+					*lineq.in++ = ch;
+					if(lineq.in == lineq.buf+sizeof(lineq.buf))
+						lineq.in = lineq.buf;
+				}
+				unlock(&lineq);
+				lock(&ctl);
+				raw = 1;
+				unlock(&ctl);
+			} else if(strncmp(a, "rawoff", 6) == 0){
+				lock(&ctl);
+				raw = 0;
+				unlock(&ctl);
+			}
+			if(a = strchr(a, ' '))
+				a++;
 		}
 		break;
 

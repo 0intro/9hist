@@ -26,7 +26,7 @@ ulong	testbuf[NTESTBUF];
 /*
  * If 1, ENABCKSUM causes data transfers to have checksums
  */
-#define	ENABCKSUM	0
+#define	ENABCKSUM	1
 
 typedef struct Hotrod	Hotrod;
 
@@ -335,7 +335,7 @@ hotrodread(Chan *c, void *buf, long n, ulong offset)
 				error(Egreg);
 			}
 			if(mp->param[2] != hotsum(buf, m, mp->param[2])){
-				hp->addr->error++;
+				hp->addr->lcsr7 = 0xBEEF;
 				print("hotrod cksum err is %lux sb %lux\n",
 					hotsum(buf, m, 1), mp->param[2]);
 /*
