@@ -32,13 +32,12 @@ static Timer	releasetimer[MAXMACH];		/* Time of next release */
 static int		initialized;
 static uvlong	fasthz;	
 static Ticks	now;
+/* Edfschedlock protects modification of sched params, including resources */
 QLock		edfschedlock;
 Lock			edflock;
 
-Task			tasks[Maxtasks];
-int			ntasks;
-Resource		resources[Maxresources];
-int			nresources;
+Head		tasks;
+Head		resources;
 int			edfstateupdate;
 int			misseddeadlines;
 
@@ -301,6 +300,7 @@ edfadmit(Task *t)
 {
 	char *err;
 
+	/* Called with edfschedlock held */
 	if (t->state != EdfExpelled)
 		return "task state";	/* should never happen */
 
@@ -316,12 +316,11 @@ edfadmit(Task *t)
 	if (t->C > t->D)
 		return "C > D";
 
-	qlock(&edfschedlock);
 	if (err = edftestschedulability(t)){
-		qunlock(&edfschedlock);
 		return err;
 	}
 	ilock(&edflock);
+	qunlock(&edfschedlock);
 	DPRINT("%d edfadmit, %s, %d\n", m->machno, edfstatename[t->state], t->runq.n);
 	now = fastticks(nil);
 
@@ -358,7 +357,7 @@ edfadmit(Task *t)
 		}
 	}
 	iunlock(&edflock);
-	qunlock(&edfschedlock);
+	qlock(&edfschedlock);
 	return nil;
 }
 
@@ -367,7 +366,7 @@ edfexpel(Task *t)
 {
 	Task *tt;
 
-	qlock(&edfschedlock);
+	/* Called with edfschedlock held */
 	ilock(&edflock);
 	DPRINT("%d edfexpel, %s, %d\n", m->machno, edfstatename[t->state], t->runq.n);
 	now = fastticks(nil);
@@ -376,7 +375,6 @@ edfexpel(Task *t)
 	case EdfExpelled:
 		/* That was easy */
 		iunlock(&edflock);
-		qunlock(&edfschedlock);
 		return;
 	case EdfAdmitted:
 	case EdfIdle:
@@ -408,7 +406,6 @@ edfexpel(Task *t)
 	if(devrt) devrt(t, now, SExpel);
 	setdelta();
 	iunlock(&edflock);
-	qunlock(&edfschedlock);
 	return;
 }
 
@@ -497,7 +494,6 @@ static void
 edfbury(Proc *p)
 {
 	Task *t;
-	Proc **pp;
 
 	DPRINT("%d edfbury\n", m->machno);
 	ilock(&edflock);
@@ -509,16 +505,12 @@ edfbury(Proc *p)
 		return;
 	}
 	assert(edfstack[m->machno].head == t);
-	for (pp = t->procs; pp < t->procs + nelem(t->procs); pp++)
-		if (*pp == p){
-			t->nproc--;
-			*pp = nil;
-		}
+	delist(&t->procs, p);
 	if (t->runq.head == nil){
 		edfpop();
 		t->state = EdfBlocked;
 	}
-	if (t->nproc == 0){
+	if (t->procs.n == 0){
 		assert(t->runq.head == nil);
 		t->state = EdfIdle;
 	}
@@ -564,7 +556,7 @@ edfresched(Task *t)
 	Task *xt;
 
 	DPRINT("%d edfresched, %s, %d\n", m->machno, edfstatename[t->state], t->runq.n);
-	if (t->nproc == 0){
+	if (t->procs.n == 0){
 		/* No member processes */
 		if (t->state > EdfIdle){
 			t->state = EdfIdle;
@@ -788,48 +780,66 @@ runt:
 static void
 setdelta(void)
 {
-	Resource *r, **rr;
-	Task **tt, *t;
+	Resource *r;
+	Task *t;
+	List *lr, *lt;
 
-	for (r = resources; r < resources + nelem(resources); r++){
-		if (r->name == nil)
-			continue;
+	for (lr = resources.next; lr; lr = lr->next){
+		r = lr->i;
+		assert(r);
 		r->Delta = ~0LL;
-		for (tt = r->tasks; tt < r->tasks + nelem(r->tasks); tt++)
-			if (*tt && (*tt)->D < r->Delta)
-				r->Delta = (*tt)->D;
+		for (lt = r->tasks.next; lt; lt = lt->next){
+			t = lt->i;
+			assert(t);
+			if (t->D < r->Delta)
+				r->Delta = t->D;
+		}
 	}
-	for (t = tasks; t < tasks + nelem(tasks); t++){
+	for (lt = tasks.next; lt ; lt = lt->next){
+		t = lt->i;
+		assert(t);
 		if (t->state < EdfIdle)
 			continue;
 		t->Delta = t->D;
-		for (rr = t->res; rr < t->res + nelem(t->res); rr++)
-			if (*rr && (*rr)->Delta < t->Delta)
-				t->Delta = (*rr)->Delta;
+		for (lr = t->res.next; lr; lr = lr->next){
+			r = lr->i;
+			assert(r);
+			if (r->Delta < t->Delta)
+				t->Delta = r->Delta;
+		}
 	}
 }
 
 static void
 testdelta(Task *thetask)
 {
-	Resource *r, **rr;
-	Task **tt, *t;
+	Resource *r;
+	Task *t;
+	List *lr, *lt;
 
-	for (r = resources; r < resources + nelem(resources); r++){
-		if (r->name == nil)
-			continue;
+	for (lr = resources.next; lr; lr = lr->next){
+		r = lr->i;
+		assert(r);
 		r->testDelta = ~0ULL;
-		for (tt = r->tasks; tt < r->tasks + nelem(r->tasks); tt++)
-			if (*tt && (*tt)->D < r->testDelta)
-				r->testDelta = (*tt)->D;
+		for (lt = r->tasks.next; lt; lt = lt->next){
+			t = lt->i;
+			assert(t);
+			if (t->D < r->testDelta)
+				r->testDelta = t->D;
+		}
 	}
-	for (t = tasks; t < tasks + nelem(tasks); t++){
+	for (lt = tasks.next; lt ; lt = lt->next){
+		t = lt->i;
+		assert(t);
 		if (t->state <= EdfExpelled && t != thetask)
 			continue;
 		t->testDelta = t->D;
-		for (rr = t->res; rr < t->res + nelem(t->res); rr++)
-			if (*rr && (*rr)->testDelta < t->testDelta)
-				t->testDelta = (*rr)->testDelta;
+		for (lr = t->res.next; lr; lr = lr->next){
+			r = lr->i;
+			assert(r);
+			if (r->testDelta < t->testDelta)
+				t->testDelta = r->testDelta;
+		}
 	}
 }
 
@@ -838,9 +848,12 @@ blockcost(Ticks ticks, Task *thetask)
 {
 	Task *t;
 	Ticks Cb;
+	List *lt;
 
 	Cb = 0;
-	for (t = tasks; t < tasks + Maxtasks; t++){
+	for (lt = tasks.next; lt ; lt = lt->next){
+		t = lt->i;
+		assert(t);
 		if (t->state <= EdfExpelled && t != thetask)
 			continue;
 		if (t->testDelta <= ticks && ticks < t->D && Cb < t->C)
@@ -881,19 +894,22 @@ edftestschedulability(Task *thetask)
 	Task *t;
 	Ticks H, G, Cb, ticks;
 	int steps;
+	List *l;
 
 	/* initialize */
 	testdelta(thetask);
 	if (thetask && (thetask->flags & Verbose))
 		pprint("schedulability test\n");
 	qschedulability = nil;
-	for (t = tasks; t < tasks + Maxtasks; t++){
+	for (l = tasks.next; l; l = l->next){
+		t = l->i;
+		assert(t);
 		if (t->state <= EdfExpelled && t != thetask)
 			continue;
 		t->testtype = Release;
 		t->testtime = 0;
 		if (thetask && (thetask->flags & Verbose))
-			pprint("\tInit: enqueue task %lud\n", t - tasks);
+			pprint("\tInit: enqueue task %lud\n", t->taskno);
 		testenq(t);
 	}
 	H=0;
@@ -908,7 +924,7 @@ edftestschedulability(Task *thetask)
 			Cb = blockcost(ticks, thetask);
 			if (thetask && (thetask->flags & Verbose))
 				pprint("\tStep %3d, Ticks %T, task %lud, deadline, H += %T → %T, Cb = %T\n",
-					steps, ticks2time(ticks), t - tasks,
+					steps, ticks2time(ticks), t->taskno,
 					ticks2time(t->C), ticks2time(H), ticks2time(Cb));
 			if (H+Cb>ticks)
 				return "not schedulable";
@@ -919,7 +935,7 @@ edftestschedulability(Task *thetask)
 		case Release:
 			if (thetask && (thetask->flags & Verbose))
 				pprint("\tStep %3d, Ticks %T, task %lud, release, G  %T, C%T\n",
-					steps, ticks2time(ticks), t - tasks,
+					steps, ticks2time(ticks), t->taskno,
 					ticks2time(t->C), ticks2time(G));
 			if(ticks && G <= ticks)
 				return nil;

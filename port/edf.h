@@ -18,6 +18,8 @@ typedef struct Task			Task;
 typedef struct Resource		Resource;
 typedef struct Edf			Edf;
 typedef struct Taskq			Taskq;
+typedef struct List			List;
+typedef struct Head			Head;
 
 enum Edfstate {
 	EdfUnused,		/* task structure not in use */
@@ -34,6 +36,16 @@ enum Edfstate {
 	EdfDeadline,		/* none of the procs are runnable as a result of scheduling */
 };
 typedef enum Edfstate	Edfstate;
+
+struct List {
+	List	*	next;	/* next in list */
+	void	*	i;		/* item in list */
+};
+
+struct Head {
+	List	*next;	/* First item in list */
+	int	n;		/* number of items in list */
+};
 
 struct Edf {
 	/* time intervals */
@@ -63,13 +75,13 @@ struct Edf {
 
 struct Task {
 	QLock;
+	Ref;					/* ref count for farbage collection */
+	int		taskno;		/* task number in Qid  */
 	Edf;
 	Ticks	scheduled;
 	Schedq	runq;		/* Queue of runnable member procs */
-	Proc *	procs[Nproc];	/* List of member procs; may contain holes */
-	int		nproc;		/* number of them */
-	Resource*	res[Nres];		/* List of resources; may contain holes */
-	int		nres;			/* number of them */
+	Head	procs;		/* List of member procs */
+	Head	res;			/* List of resources */
 	char		*user;		/* mallocated */
 	Dirtab	dir;
 	int		flags;		/* e.g., Verbose */
@@ -85,18 +97,23 @@ struct Taskq
 
 struct Resource
 {
+	Ref;
 	char	*	name;
-	Task *	tasks[Ntask];	/* may contain holes */
-	int		ntasks;
+	Head	tasks;
 	Ticks	Delta;
 	/* for schedulability testing */
 	Ticks	testDelta;
 };
 
-extern Lock		edftestlock;	/* for atomic admitting/expelling */
-extern Task		tasks[Maxtasks];	/* may contain holes */
-extern int			ntasks;
-extern Resource	resources[Maxresources];	/* may contain holes */
+struct ResourceItem {
+	List;			/* links and identifies the resource (must be first) */
+	Ticks	C;	/* cost */
+	Head	h;	/* sub resource items */
+};
+
+extern QLock		edfschedlock;
+extern Head		tasks;
+extern Head		resources;
 extern int			nresources;
 extern Lock		edflock;
 extern Taskq		qwaitrelease;
@@ -112,3 +129,6 @@ extern char *		edfstatename[];
 
 Time		ticks2time(Ticks);
 Ticks	time2ticks(Time);
+int		putlist(Head*, List*);
+int		enlist(Head*, void*);
+int		delist(Head*, void*);
