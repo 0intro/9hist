@@ -7,60 +7,41 @@
 
 #include	"devtab.h"
 
-/*
- * An environment value is kept in some number of contiguous
- * Envvals, with the Env's val pointing at the first.
- * Envvals are allocated from the end of a fixed arena, which
- * is compacted when the arena end is reached.
- * A `piece' (number of contiguous Envvals) is free to be
- * reclaimed if its e pointer is 0.
- *
- * Locking: an env's val can change by compaction, so lock
- * an env before using its value.  A pgrp env[] slot can go
- * to 0 and the corresponding env freed (by envremove()), so
- * lock the pgrp around the use of a value retrieved from a slot.
- * Lock in order: pgrp, envalloc, env (but ok to skip envalloc
- * lock if there is no possibility of blocking).
- */
-
 struct Envval
 {
-	ulong	n;	/* number of Envval's (including this) in this piece */
-	ulong	len;	/* how much of dat[] is valid */
-	Env	*e;	/* the Env whose val points here */
-	char	dat[4]; /* possibly extends into further envvals after this */
+	Envval	*next;		/* for hashing & easy deletion from hash list */
+	Envval	*prev;
+	ulong	len;		/* length of val that is valid */
+	int	ref;
+	char	*val;
 };
 
-/* number of contiguous Envvals needed to hold n characters */
-#define EVNEEDED(n) ((n)<4? 1 : 1+((n)+(sizeof(Envval))-1-4)/(sizeof(Envval)))
+enum{
+	MAXENV	= (BY2PG - sizeof(Envval)),
+	EVHASH	= 64,
+	EVFREE	= 16,
+	ALIGN	= 16,
+};
 
 struct
 {
-	Lock;
-	Envval	*arena;
-	Envval	*vfree;
-	Envval	*end;
-	Env	*efree;
-	Env	*earena;
+	Envval	*free[EVFREE+1];
+	char	*block;			/* the free page we are allocating from */
+	char	*lim;			/* end of block */
 }envalloc;
 
-void	compactenv(Env *, ulong);
+QLock	evlock;
+Envval	evhash[EVHASH];
+char	*evscratch;		/* for constructing the contents of a file */
+
+Envval	*newev(char*, ulong);
+Envval	*evalloc(ulong);
+void	evfree(Envval*);
 
 void
 envreset(void)
 {
-	int i, n;
-
-	n = EVNEEDED(conf.nenvchar);
-	envalloc.arena = ialloc(n*sizeof(Envval), 0);
-	envalloc.vfree = envalloc.arena;
-	envalloc.end = envalloc.arena+n;
-
-	envalloc.earena = ialloc(conf.nenv*sizeof(Env), 0);
-	envalloc.efree = envalloc.earena;
-	for(i=0; i<conf.nenv-1; i++)
-		envalloc.earena[i].next = &envalloc.earena[i+1];
-	envalloc.earena[conf.nenv-1].next = 0;
+	evscratch = ialloc(BY2PG, 0);
 }
 
 void
@@ -68,168 +49,27 @@ envinit(void)
 {
 }
 
-/*
- * Make sure e->val points at a value big enough to hold nchars chars.
- * The caller should fix e->val->len.
- * envalloc and e should be locked
- */
-void
-growenval(Env *e, ulong nchars)
-{
-	Envval *p;
-	ulong n, nfree;
-
-	n = EVNEEDED(nchars);
-	if(p = e->val){		/* assign = */
-		if(p->n < n){
-			if(p+p->n == envalloc.vfree){
-				compactenv(e, n - p->n);
-				p = e->val;
-				envalloc.vfree += n - p->n;
-			}else{
-				compactenv(e, n);
-				p = envalloc.vfree;
-				envalloc.vfree += n;
-				memmove(p, e->val, e->val->n*sizeof(Envval));
-				p->e = e;
-				e->val->e = 0;
-				e->val = p;
-			}
-			p->n = n;
-		}
-	}else{
-		compactenv(e, n);
-		p = envalloc.vfree;
-		envalloc.vfree += n;
-		p->n = n;
-		p->e = e;
-		e->val = p;
-	}
-}
-
-/*
- * Make sure there is room for n Envval's at the end of envalloc.vfree.
- * Call this with envalloc and e locked.
- */
-void
-compactenv(Env *e, ulong n)
-{
-	Envval *p1, *p2;
-	Env *p2e;
-
-	if(envalloc.end-envalloc.vfree >= n)
-		return;
-	p1 = envalloc.arena;	/* dest */
-	p2 = envalloc.arena;	/* source */
-	while(p2 < envalloc.vfree){
-		p2e = p2->e;
-		if(p2e == 0){
-    Free:
-			p2 += p2->n;
-			continue;
-		}
-		if(p2e<envalloc.earena || p2e>=envalloc.earena+conf.nenv){
-			print("%lux not an env\n", p2e);
-			panic("compactenv");
-		}
-		if(p1 != p2){
-			if(p2e != e)
-				lock(p2e);
-			if(p2->e != p2e){	/* freed very recently */
-				print("compactenv p2e moved\n");
-				if(p2->e)
-					panic("compactenv p2->e %lux\n", p2->e);
-				unlock(p2e);
-				goto Free;
-			}
-			if(p2+p2->n > envalloc.end)
-				panic("compactenv copying too much");
-			memmove(p1, p2, p2->n*sizeof(Envval));
-			p2e->val = p1;
-			if(p2e != e)
-				unlock(p2e);
-		}
-		p2 += p1->n;
-		p1 += p1->n;
-	}
-	envalloc.vfree = p1;
-	if(envalloc.end-envalloc.vfree < n){
-		print("env compact failed\n");
-		error(Enoenv);
-	}
-}
-
-/*
- * Return an env with a copy of e's value.
- * envalloc and e should be locked,
- * and the value returned will be locked too.
- */
-Env *
-copyenv(Env *e, int trunc)
-{
-	Env *ne;
-	int n;
-
-	ne = envalloc.efree;
-	if(!ne){
-		print("out of envs\n");
-		error(Enoenv);
-	}
-	envalloc.efree = ne->next;
-	lock(ne);
-	if(waserror()){
-		unlock(ne);
-		nexterror();
-	}
-	ne->next = 0;
-	ne->pgref = 1;
-	strncpy(ne->name, e->name, NAMELEN);
-	if(e->val && !trunc){
-		n = e->val->len;
-		/*
-		 * growenval can't hold the lock on another env
-		 * because compactenv assumes only one is held
-		 */
-		unlock(e);
-		growenval(ne, n);
-		lock(e);
-		if(n != e->val->len){
-			print("e changed in copyenv\n");
-			if(n > ne->val->len)
-				n = ne->val->len;
-		}
-		if((char*)(ne->val+ne->val->n) < ne->val->dat+n)
-			panic("copyenv corrupt");
-		memmove(ne->val->dat, e->val->dat, n);
-		ne->val->len = n;
-	}
-	poperror();
-	return ne;
-}
-
 int
 envgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 {
-	Env *e;
 	Egrp *eg;
+	Env *e;
 	int ans;
 
 	eg = u->p->egrp;
-	lock(eg);
+	qlock(&eg->ev);
 	if(s >= eg->nenv)
 		ans = -1;
 	else{
-		e = eg->etab[s].env;
-		if(e == 0)
+		e = &eg->etab[s];
+		if(!e->name)
 			ans = 0;
 		else{
-			lock(e);
-			devdir(c, (Qid){s+1,0}, e->name, e->val? e->val->len : 0, 0666, dp);
-			unlock(e);
+			devdir(c, (Qid){s+1, (ulong)e->val}, e->name->val, e->val? e->val->len : 0, 0666, dp);
 			ans = 1;
 		}
 	}
-	unlock(eg);
+	qunlock(&eg->ev);
 	return ans;
 }
 
@@ -242,32 +82,14 @@ envattach(char *spec)
 Chan*
 envclone(Chan *c, Chan *nc)
 {
-	Egrp *eg;
-
-	if(!(c->qid.path&CHDIR)){
-		eg = u->p->egrp;
-		lock(eg);
-		eg->etab[c->qid.path-1].chref++;
-		unlock(eg);
-	}
 	return devclone(c, nc);
 }
 
 int
 envwalk(Chan *c, char *name)
 {
-	Egrp *eg;
 
-	if(devwalk(c, name, 0, 0, envgen)){
-		if(!(c->qid.path&CHDIR)){
-			eg = u->p->egrp;
-			lock(eg);
-			eg->etab[c->qid.path-1].chref++;
-			unlock(eg);
-			return 1;
-		}
-	}
-	return 0;
+	return devwalk(c, name, 0, 0, envgen);
 }
 
 void
@@ -279,48 +101,31 @@ envstat(Chan *c, char *db)
 Chan *
 envopen(Chan *c, int omode)
 {
-	Env *e, *ne;
-	Envp *ep;
 	Egrp *eg;
+	Env *e;
+	int mode;
 
-	if(omode & (OWRITE|OTRUNC)){
-		if(c->qid.path & CHDIR)
+	mode = openmode(omode);
+	if(c->qid.path & CHDIR){
+		if(omode != OREAD)
 			error(Eperm);
+	}else{
 		eg = u->p->egrp;
-		lock(eg);
-		ep = &eg->etab[c->qid.path-1];
-		e = ep->env;
-		if(!e){
-			unlock(eg);
-			error(Egreg);
+		qlock(&eg->ev);
+		e = &eg->etab[c->qid.path-1];
+		if(!e->name){
+			qunlock(&eg->ev);
+			error(Enonexist);
 		}
-		lock(&envalloc);
-		lock(e);
-		if(waserror()){
-			unlock(e);
-			unlock(&envalloc);
-			unlock(eg);
-			nexterror();
+		if(omode == (OWRITE|OTRUNC) && e->val){
+			qlock(&evlock);
+			evfree(e->val);
+			qunlock(&evlock);
+			e->val = 0;
 		}
-		if(e->pgref == 0)
-			panic("envopen");
-		if(e->pgref == 1){
-			if((omode&OTRUNC) && e->val){
-				e->val->e = 0;
-				e->val = 0;
-			}
-		}else{
-			ne = copyenv(e, omode&OTRUNC);
-			e->pgref--; /* it will still be positive */
-			ep->env = ne;
-			unlock(ne);
-		}
-		poperror();
-		unlock(e);
-		unlock(&envalloc);
-		unlock(eg);
+		qunlock(&eg->ev);
 	}
-	c->mode = openmode(omode);
+	c->mode = mode;
 	c->flag |= COPEN;
 	c->offset = 0;
 	return c;
@@ -329,219 +134,270 @@ envopen(Chan *c, int omode)
 void
 envcreate(Chan *c, char *name, int omode, ulong perm)
 {
-	Env *e;
 	Egrp *eg;
+	Env *e, *ne;
 	int i;
 
 	if(c->qid.path != CHDIR)
 		error(Eperm);
+	omode = openmode(omode);
 	eg = u->p->egrp;
-	lock(eg);
-	lock(&envalloc);
-	if(waserror()){
-		unlock(&envalloc);
-		unlock(eg);
-		nexterror();
-	}
-	e = envalloc.efree;
-	if(e == 0){
-		print("out of envs\n");
+	qlock(&eg->ev);
+	e = eg->etab;
+	ne = 0;
+	for(i = 0; i < eg->nenv; i++, e++)
+		if(e->name == 0)
+			ne = e;
+		else if(strcmp(e->name->val, name) == 0){
+			qunlock(&eg->ev);
+			error(Einuse);
+		}
+	if(ne)
+		e = ne;
+	else if(eg->nenv == conf.npgenv){
+		print("out of egroup envs\n");
+		qunlock(&eg->ev);
 		error(Enoenv);
 	}
-	envalloc.efree = e->next;
-	e->next = 0;
-	e->pgref = 1;
-	strncpy(e->name, name, NAMELEN);
-	if(eg->nenv == conf.npgenv){
-		for(i = 0; i<eg->nenv; i++)
-			if(eg->etab[i].chref == 0)
-				break;
-		if(i == eg->nenv){
-			print("out of egroup envs\n");
-			error(Enoenv);
-		}
-	}else
-		i = eg->nenv++;
-	c->qid.path = i+1;
-	eg->etab[i].env = e;
-	eg->etab[i].chref = 1;
-	unlock(&envalloc);
-	unlock(eg);
+	i = e - eg->etab + 1;
+	e->val = 0;
+	qlock(&evlock);
+	e->name = newev(name, strlen(name)+1);
+	qunlock(&evlock);
+	if(i > eg->nenv)
+		eg->nenv = i;
+	qunlock(&eg->ev);
+	c->qid = (Qid){i, 0};
 	c->offset = 0;
-	c->mode = openmode(omode);
-	poperror();
+	c->mode = omode;
 	c->flag |= COPEN;
 }
 
 void
 envremove(Chan *c)
 {
-	Env *e;
-	Envp *ep;
 	Egrp *eg;
+	Env *e;
 
 	if(c->qid.path & CHDIR)
 		error(Eperm);
 	eg = u->p->egrp;
-	lock(eg);
-	ep = &eg->etab[c->qid.path-1];
-	e = ep->env;
-	if(!e){
-		unlock(eg);
+	qlock(&eg->ev);
+	e = &eg->etab[c->qid.path-1];
+	if(!e->name){
+		qunlock(&eg->ev);
 		error(Enonexist);
 	}
-	ep->env = 0;
-	ep->chref--;
 	envpgclose(e);
-	unlock(eg);
+	qunlock(&eg->ev);
 }
 
 void
 envwstat(Chan *c, char *db)
-{	int dumpenv(void);
-	dumpenv();  /*DEBUG*/
-	print("envwstat\n");
-	error(Egreg);
+{
+	error(Eperm);
 }
 
 void
 envclose(Chan * c)
 {
-	Egrp *eg;
+}
 
-	if(c->qid.path & CHDIR)
-		return;
-	eg = u->p->egrp;
-	lock(eg);
-	eg->etab[c->qid.path-1].chref--;
-	unlock(eg);
+void
+envpgcopy(Env *t, Env *f)
+{
+	qlock(&evlock);
+	if(t->name = f->name)
+		t->name->ref++;
+	if(t->val = f->val)
+		t->val->ref++;
+	qunlock(&evlock);
 }
 
 void
 envpgclose(Env *e)
 {
-	lock(&envalloc);
-	lock(e);
-	if(--e->pgref <= 0){
-		if(e->val){
-			e->val->e = 0;
-			e->val = 0;
-		}
-		e->next = envalloc.efree;
-		envalloc.efree = e;
-	}
-	unlock(e);
-	unlock(&envalloc);
+	qlock(&evlock);
+	if(e->name)
+		evfree(e->name);
+	if(e->val)
+		evfree(e->val);
+	e->name = e->val = 0;
+	qunlock(&evlock);
 }
 
 long
-envread(Chan *c, void *va, long n, ulong offset)
+envread(Chan *c, void *a, long n, ulong offset)
 {
+	Egrp *eg;
 	Env *e;
 	Envval *ev;
-	char *p;
 	long vn;
-	Egrp *eg;
-	char *a = va;
 
 	if(c->qid.path & CHDIR)
 		return devdirread(c, a, n, 0, 0, envgen);
 	eg = u->p->egrp;
-	lock(eg);
-	e = eg->etab[c->qid.path-1].env;
-	if(!e){
-		unlock(eg);
-		error(Eio);
+	qlock(&eg->ev);
+	e = &eg->etab[c->qid.path-1];
+	if(!e->name){
+		qunlock(&eg->ev);
+		error(Enonexist);
 	}
-	lock(e);
 	ev = e->val;
-	vn = ev? e->val->len : 0;
-	if(offset+n > vn)
+	vn = ev ? ev->len : 0;
+	if(offset + n > vn)
 		n = vn - offset;
 	if(n <= 0)
 		n = 0;
 	else
-		memmove(a, ev->dat+offset, n);
-	unlock(e);
-	unlock(eg);
+		memmove(a, ev->val + offset, n);
+	qunlock(&eg->ev);
 	return n;
 }
 
 long
-envwrite(Chan *c, void *va, long n, ulong offset)
+envwrite(Chan *c, void *a, long n, ulong offset)
 {
-	Env *e;
-	char *p;
-	Envval *ev;
-	long vn;
 	Egrp *eg;
-	char *a = va;
+	Env *e;
+	Envval *ev;
+	ulong olen;
 
 	if(n <= 0)
 		return 0;
+	if(offset + n > MAXENV)
+		error(Etoobig);
 	eg = u->p->egrp;
-	lock(eg);
-	e = eg->etab[c->qid.path-1].env; /* caller checks for CHDIR */
-	if(!e){
-		unlock(eg);
-		error(Eio);
+	qlock(&eg->ev);
+	e = &eg->etab[c->qid.path-1];
+	if(!e->name){
+		qunlock(&eg->ev);
+		error(Enonexist);
 	}
-	lock(&envalloc);
-	lock(e);
-	if(waserror()){
-		unlock(e);
-		unlock(&envalloc);
-		unlock(eg);
-		nexterror();
-	}
-	if(e->pgref>1)
-		panic("envwrite to non-duped env");
-	growenval(e, offset+n);
 	ev = e->val;
-	vn = ev? ev->len : 0;
-	if(offset > vn)
-		error(Egreg); /* perhaps should zero fill */
-	memmove(ev->dat+offset, a, n);
-	e->val->len = offset+n;
-	poperror();
-	unlock(e);
-	unlock(&envalloc);
-	unlock(eg);
+	olen = ev ? ev->len : 0;
+	qlock(&evlock);
+	if(offset == 0 && n >= olen)
+		e->val = newev(a, n);
+	else{
+		if(olen > offset)
+			olen = offset;
+		if(ev)
+			memmove(evscratch, ev->val, olen);
+		if(olen < offset)
+			memset(evscratch + olen, '\0', offset - olen);
+		memmove(evscratch + offset, a, n);
+		e->val = newev(evscratch, offset + n);
+	}
+	if(ev)
+		evfree(ev);
+	qunlock(&evlock);
+	qunlock(&eg->ev);
 	return n;
 }
 
-void
-dumpenv(void)
+/*
+ * called with evlock qlocked
+ */
+Envval *
+newev(char *s, ulong n)
 {
-	Env *e;
-	Envp *ep;
 	Envval *ev;
-	Egrp *eg;
-	int i;
-	char hold;
+	uchar *t;
+	int h;
 
-	eg = u->p->egrp;
-	for(ep=eg->etab, i=0; i<eg->nenv; i++, ep++)
-		print("P%d(%lux %d)",i, ep->env, ep->chref);
-	for(e=envalloc.earena; e<&envalloc.earena[conf.nenv]; e++)
-		if(e->pgref){
-			print("E{%lux %d '%s'}[", e, e->pgref, e->name);
-			if(e->val){
-				hold = e->val->dat[e->val->len];
-				e->val->dat[e->val->len] = 0;
-				print("%s", e->val->dat);
-				e->val->dat[e->val->len] = hold;
-			}
-			print("]");
-		}else if(e->val)
-			print("whoops, free env %lux has val=%lux\n",e,e->val);
-	for(i=0, e=envalloc.efree; e; e=e->next)
-		i++;
-	print("\n%d free envs", i);
-	for(i=0, ev=envalloc.arena; ev<envalloc.vfree; ev+=ev->n)
-		if(!ev->e)
-			i += ev->n*sizeof(Envval);
-	print(" %d free enval chars\n", i+((char *)envalloc.end-(char*)envalloc.vfree));
+	h = 0;
+	for(t = (uchar*)s; t - (uchar*)s < n; t++)
+		h = (h << 1) ^ *t;
+	h &= EVHASH - 1;
+	for(ev = evhash[h].next; ev; ev = ev->next)
+		if(ev->len == n && memcmp(ev->val, s, n) == 0){
+			ev->ref++;
+			return ev;
+		}
+	ev = evalloc(n);
+	ev->len = n;
+	memmove(ev->val, s, n);
+	if(ev->next = evhash[h].next)
+		ev->next->prev = ev;
+	evhash[h].next = ev;
+	ev->prev = &evhash[h];
+	return ev;
+}
+
+/*
+ * called only from newev
+ */
+Envval *
+evalloc(ulong n)
+{
+	Envval *ev, **p;
+	char *b, *lim;
+	ulong size;
+
+	n = (n - 1) / ALIGN;
+	size = (n + 1) * ALIGN;
+	p = &envalloc.free[n < EVFREE ? n : EVFREE];
+	for(ev = *p; ev; ev = *p){
+		if(ev->len == size){
+			*p = ev->next;
+			ev->ref = 1;
+			return ev;
+		}
+		p = &ev->next;
+	}
+
+	/*
+	 * make sure we have enough space to allocate the buffer.
+	 * if not, use the remaining space for the smallest buffers
+	 */
+	if(size > MAXENV)
+		panic("evalloc");
+	b = envalloc.block;
+	lim = envalloc.lim;
+	if(!b || lim < b + size + sizeof *ev){
+		p = &envalloc.free[0];
+		while(lim >= b + ALIGN + sizeof *ev){
+			ev = (Envval*)b;
+			ev->len = ALIGN;
+			ev->val = b + sizeof *ev;
+			ev->next = *p;
+			*p = ev;
+			b += ALIGN + sizeof *ev;
+		}
+		b = (char*)VA(kmap(newpage(0, 0, 0)));
+		envalloc.lim = b + BY2PG;
+	}
+
+	ev = (Envval*)b;
+	ev->val = b + sizeof *ev;
+	ev->ref = 1;
+	envalloc.block = b + size + sizeof *ev;
+	return ev;
+}
+
+/*
+ * called with evlock qlocked
+ */
+void
+evfree(Envval *ev)
+{
+	int n;
+
+	if(--ev->ref > 0)
+		return;
+
+	if(ev->prev)
+		ev->prev->next = ev->next;
+	if(ev->next)
+		ev->next->prev = ev->prev;
+	n = (ev->len + ALIGN - 1) & ~(ALIGN - 1);
+	ev->len = n;
+	n = (n - 1) / ALIGN;
+	if(n > EVFREE)
+		n = EVFREE;
+	ev->next = envalloc.free[n];
+	envalloc.free[n] = ev;
 }
 
 /*

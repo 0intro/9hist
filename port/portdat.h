@@ -7,7 +7,6 @@ typedef struct Dev	Dev;
 typedef struct Dirtab	Dirtab;
 typedef struct Egrp	Egrp;
 typedef struct Env	Env;
-typedef struct Envp	Envp;
 typedef struct Envval	Envval;
 typedef struct Etherpkt	Etherpkt;
 typedef struct Fgrp	Fgrp;
@@ -187,17 +186,8 @@ struct Dirtab
 
 struct Env
 {
-	Lock;
+	Envval	*name;
 	Envval	*val;
-	char	name[NAMELEN];
-	Env	*next;			/* in chain of Envs for a egrp */
-	int	pgref;			/* # pgrps pointing here */
-};
-
-struct Envp
-{
-	Env	*env;
-	int	chref;			/* # chans from pgrp pointing here */
 };
 
 /*
@@ -392,7 +382,8 @@ struct Egrp
 	Ref;
 	Egrp	*next;
 	int	nenv;			/* highest active env table entry, +1 */
-	Envp	*etab;
+	QLock	ev;			/* for all of etab */
+	Env	*etab;
 };
 
 #define	NFD	100

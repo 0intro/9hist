@@ -56,7 +56,7 @@ grpinit(void)
 	ee = &egrpalloc.free[conf.npgrp];
 	for(e = egrpalloc.free; e < ee; e++) {
 		e->next = e+1;
-		e->etab = ialloc(conf.npgenv*sizeof(Envp*), 0);
+		e->etab = ialloc(conf.npgenv*sizeof(Env), 0);
 	}
 	e[-1].next = 0;
 
@@ -222,19 +222,18 @@ closepgrp(Pgrp *p)
 }
 
 void
-closeegrp(Egrp *e)
+closeegrp(Egrp *eg)
 {
-	Envp *ep;
+	Env *e;
 	int i;
 
-	if(decref(e) == 0) {
-		ep = e->etab;
-		for(i=0; i<e->nenv; i++,ep++)
-			if(ep->env)
-				envpgclose(ep->env);
+	if(decref(eg) == 0) {
+		e = eg->etab;
+		for(i=0; i<eg->nenv; i++, e++)
+			envpgclose(e);
 		lock(&egrpalloc);
-		e->next = egrpalloc.free;
-		egrpalloc.free = e;
+		eg->next = egrpalloc.free;
+		egrpalloc.free = eg;
 		unlock(&egrpalloc);
 	}
 }
@@ -292,41 +291,17 @@ newmount(Mhead *mh, Chan *to)
 void
 envcpy(Egrp *to, Egrp *from)
 {
-	Envp *ep;
-	Env *e;
-	int i;
+	Env *te, *fe;
+	int i, nenv;
 
-	lock(from);
-	to->nenv = from->nenv;
-	ep = to->etab;
-	for(i=0; i<from->nenv; i++,ep++){
-		ep->chref = 0;
-		e = ep->env = from->etab[i].env;
-		if(e){
-			lock(e);
-			if(waserror()){
-				unlock(e);
-				unlock(from);
-				ep->env = 0;
-				nexterror();
-			}
-			/*
-			 * If pgrp being forked has an open channel
-			 * on this env, it may write it after the fork
-			 * so make a copy now.
-			 * Don't worry about other pgrps, because they
-			 * will copy if they are about to write.
-			 */
-			if(from->etab[i].chref){
-				ep->env = copyenv(e, 0);
-				unlock(ep->env);
-			}else
-				e->pgref++;
-			poperror();
-			unlock(e);
-		}
-	}
-	unlock(from);
+	qlock(&from->ev);
+	nenv = from->nenv;
+	to->nenv = nenv;
+	te = to->etab;
+	fe = from->etab;
+	for(i=0; i < nenv; i++, te++, fe++)
+		envpgcopy(te, fe);
+	qunlock(&from->ev);
 }
 
 void

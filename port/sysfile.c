@@ -52,11 +52,10 @@ int
 openmode(ulong o)
 {
 	if(o >= (OTRUNC|OCEXEC|ORCLOSE|OEXEC))
-    Err:
 		error(Ebadarg);
 	o &= ~(OTRUNC|OCEXEC|ORCLOSE);
 	if(o > OEXEC)
-		goto Err;
+		error(Ebadarg);
 	if(o == OEXEC)
 		return OREAD;
 	return o;
