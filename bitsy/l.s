@@ -143,16 +143,19 @@ TEXT exceptionvectors(SB), $-4
 	MOVW	0x18(R15), R15		/* reserved */
 	MOVW	0x18(R15), R15		/* IRQ */
 	MOVW	0x18(R15), R15		/* FIQ */
-	WORD	$_vsvc(SB)		/* reset, in svc mode already */
+	WORD	$_vrst(SB)		/* reset, in svc mode already */
 	WORD	$_vund(SB)		/* undefined, switch to svc mode */
 	WORD	$_vsvc(SB)		/* swi, in svc mode already */
-	WORD	$_vpab(SB)		/* prefetch abort, switch to svc mode */
-	WORD	$_vdab(SB)		/* data abort, switch to svc mode */
-	WORD	$_vsvc(SB)		/* reserved */
+	WORD	$_vabt(SB)		/* prefetch abort, switch to svc mode */
+	WORD	$_vabt(SB)		/* data abort, switch to svc mode */
+	WORD	$_vrst(SB)		/* reserved, shouldn't happen */
 	WORD	$_virq(SB)		/* IRQ, switch to svc mode */
 	WORD	$_vfiq(SB)		/* FIQ, switch to svc mode */
 
-TEXT _vsvc(SB), $-4			/* reset or SWI or reserved */
+TEXT _vrst(SB), $-4
+	BL	reset
+
+TEXT _vsvc(SB), $-4			/* SWI */
 	SUB	$12, R13		/* make room for pc, psr, & type */
 	MOVW	R14, 8(R13)		/* ureg->pc = interupted PC */
 	MOVW	SPSR, R14		/* ureg->psr = SPSR */
@@ -167,14 +170,9 @@ TEXT _vund(SB), $-4			/* undefined */
 	MOVW	$PsrMund, R0
 	B	_vswitch
 
-TEXT _vpab(SB), $-4			/* prefetch abort */
+TEXT _vabt(SB), $-4			/* prefetch abort */
 	MOVM.IA	[R0-R3], (R13)		/* free some working space */
 	MOVW	$PsrMabt, R0		/* r0 = type */
-	B	_vswitch
-
-TEXT _vdab(SB), $-4			/* data abort */
-	MOVM.IA	[R0-R3], (R13)		/* free some working space */
-	MOVW	$(PsrMabt+1), R0	/* r0 = type */
 	B	_vswitch
 
 TEXT _virq(SB), $-4			/* IRQ */
@@ -204,13 +202,13 @@ _vswitch:				/* switch to svc, type in R0 */
 	 *  R13 and R14 are no longer accessible.  That's why R3 was left to point to where
 	 *  the old [r0-r3] are stored.
 	 */
-	MOVM.DB.W [R0-R2], (R13)	/* set ureg->{pc, psr, type}; r13 points to ureg->type  */
+	MOVM.DB.W [R0-R2], (R13)	/* set ureg->{type, psr, pc}; r13 points to ureg->type  */
 	MOVM.IA	  (R3), [R0-R3]		/* restore [R0-R3] from previous mode's stack */
 	MOVM.DB.W.S [R0-R14], (R13)	/* save user level registers, at end r13 points to ureg */
 
 	/*
-	 *  if the original interrupt happened while executing SVC mode, the User R14 in the Ureg is
-	 *  wrong.  We need to save the SVC one there.
+	 *  if the original interrupt happened while executing SVC mode,
+	 *  the User R14 in the Ureg is wrong.  We need to save the SVC one there.
 	 */
 	MOVW	0x40(R13), R1
 	AND.S	$0xf, R1
@@ -231,7 +229,7 @@ _vrfe:
 	MOVW	8(R13), R14		/* restore link */
 	MOVW	4(R13), R0		/* restore SPSR */
 	MOVW	R0, SPSR		/* ... */
-	MOVM.DB.S (R13), [R0-R14]	/* restore registers */
+	MOVM.DB.W.S (R13), [R0-R14]	/* restore registers */
 	ADD	$8, R13			/* pop past ureg->{type+psr} */
 	RFE				/* MOVM.IA.S.W (R13), [R15] */
 

@@ -91,6 +91,7 @@
 #define SSPREGS		0x80070060	/* serial port 4 - synchronous serial port */
 #define PPCREGS		0x90060000	/* peripheral pin controller */
 #define GPIOREGS	0x90040000	/* 28 general purpose IO pins */
+#define INTRREGS	0x90050000	/* interrupt registers */
 
 /*
  *  Program Status Registers

@@ -7,17 +7,32 @@
 #include	"ureg.h"
 #include	"../port/error.h"
 
-/*
- * called in sysfile.c
- */
-void
-evenaddr(ulong addr)
+struct Intrregs
 {
-	if(addr & 3){
-		postnote(up, 1, "sys: odd address", NDebug);
-		error(Ebadarg);
-	}
-}
+	ulong	icip;	/* pending IRQs */
+	ulong	icmr;	/* IRQ mask */
+	ulong	iclr;	/* IRQ if bit == 0, FRIQ if 1 */
+	ulong	iccr;	/* control register */
+	ulong	icfp;	/* pending FIQs */
+	ulong	dummy1[3]
+	ulong	icpr;	/* pending interrupts */
+	
+};
+
+struct Intrregs *intrregs;
+
+typedef struct Vctl {
+	Vctl*	next;			/* handlers on this vector */
+
+	char	name[NAMELEN];		/* of driver */
+	int	irq;
+
+	void	(*f)(Ureg*, void*);	/* handler to call */
+	void*	a;			/* argument to call it with */
+} Vctl;
+
+static Lock vctllock;
+static Vctl *vctl[32];
 
 /*
  *  set up for exceptioons
@@ -35,6 +50,35 @@ trapinit(void)
 	 */
 	memmove((void*)KZERO, exceptionvectors, 2*4*8);
 	wbflush();
+
+	/* map in interrupt registers */
+	intrregs = mapspecial(INTRREGS, sizeof(*intrregs));
+
+	/* make all interrupts irq and disable all interrupts */
+	intrregs->iclr = 0;
+	intrregs->icmr = 0;
+}
+
+/*
+ *  enable an interrupt and attach a function to i
+ */
+void
+intrenable(int irq, void (*f)(Ureg*, void*), void* a, char *name)
+{
+	int vno;
+	Vctl *v;
+
+	v = xalloc(sizeof(Vctl));
+	v->irq = irq;
+	v->f = f;
+	v->a = a;
+	strncpy(v->name, name, NAMELEN-1);
+	v->name[NAMELEN-1] = 0;
+
+	lock(&vctllock);
+	v->next = vctl[irq];
+	vctl[irq] = v;
+	unlock(&vctllock);
 }
 
 /*
@@ -43,6 +87,22 @@ trapinit(void)
 void
 trap(Ureg *ureg)
 {
+	switch(ureg->type){
+	case PsrMfiq:	/* fast interrupt */
+		panic("fiq can't happen");
+		break;
+	case PsrMabt:	/* fault */
+	case PsrMabt+1:	/* fault */
+		panic("faults not implemented");
+		break;
+	case PsrMund:	/* undefined instruction */
+		panic("undefined instruction");
+		break;
+	case PsrMirq:	/* device interrupt */
+		break;
+	case PsrMsvc:	/* system call */
+		break;
+	}
 }
 
 /* Give enough context in the ureg to produce a kernel stack for
