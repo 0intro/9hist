@@ -828,6 +828,10 @@ reliput(Conv *c, Block *bp, uchar *addr, ushort port)
 	DPRINT("rcvd %lud/%lud, %lud/%lud, r->sndgen = %lud\n", 
 		seq, sgen, ack, agen, r->sndgen);
 
+	/* if acking an incorrect generation, ignore */
+	if(ack && agen != r->sndgen)
+		return -1;
+
 	/* make sure we're not talking to a new remote side */
 	if(r->rcvgen != sgen){
 		if(seq != 1)

@@ -390,6 +390,16 @@ confinit(void)
 	meminit(maxmem);
 
 	conf.npage = conf.npage0 + conf.npage1;
+
+	conf.nproc = 100 + ((conf.npage*BY2PG)/MB)*5;
+	if(cpuserver)
+		conf.nproc *= 3;
+	if(conf.nproc > 2000)
+		conf.nproc = 2000;
+	conf.nimage = 200;
+	conf.nswap = conf.nproc*80;
+	conf.nswppo = 4096;
+
 	if(cpuserver) {
 		if(userpcnt < 10)
 			userpcnt = 70;
@@ -400,9 +410,13 @@ confinit(void)
 		 * Give the kernel a max. of 16MB + enough to allocate the
 		 * page pool.
 		 * This is an overestimate as conf.upages < conf.npages.
+		 * The patch of nimage is a band-aid, scanning the whole
+		 * page list in imagereclaim just takes too long.
 		 */
-		if(kpages > (16*MB + conf.npage*sizeof(Page))/BY2PG)
+		if(kpages > (16*MB + conf.npage*sizeof(Page))/BY2PG){
 			kpages = (16*MB + conf.npage*sizeof(Page))/BY2PG;
+			conf.nimage = 2000;
+		}
 	} else {
 		if(userpcnt < 10) {
 			if(conf.npage*BY2PG < 16*MB)
@@ -420,17 +434,7 @@ confinit(void)
 			poolsetparam("Image", 0, 0, 4*1024*1024);
 	}
 	conf.upages = conf.npage - kpages;
-
-	conf.ialloc = ((conf.npage-conf.upages)/2)*BY2PG;
-
-	conf.nproc = 100 + ((conf.npage*BY2PG)/MB)*5;
-	if(cpuserver)
-		conf.nproc *= 3;
-	if(conf.nproc > 2000)
-		conf.nproc = 2000;
-	conf.nimage = 200;
-	conf.nswap = conf.nproc*80;
-	conf.nswppo = 4096;
+	conf.ialloc = (kpages/2)*BY2PG;
 
 	/*
 	 * Guess how much is taken by the large permanent
