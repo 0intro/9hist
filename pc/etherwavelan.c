@@ -11,7 +11,11 @@
 	the driver keeps interrupts disabled for just too
 	long. When it gets robust, locks should be revisited.
 
-	BUGS: Endian, alignment and mem/io issues?
+	BUGS: check endian, alignment and mem/io issues.
+	TODO: automatic power management;
+	      improve locking;
+	      extract signal info;
+	      remove copy in transmit.
  */
 #include "u.h"
 #include "../port/lib.h"
