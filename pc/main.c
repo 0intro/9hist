@@ -58,6 +58,7 @@ main(void)
 	procinit0();
 	initseg();
 	links();
+	printcpufreq();
 	chandevreset();
 	swapinit();
 	userinit();
@@ -391,7 +392,15 @@ confinit(void)
 	conf.monitor = 1;
 	conf.nswap = conf.nproc*80;
 	conf.nimage = 50;
-	conf.copymode = 0;			/* copy on write */
+	switch(x86()){
+	case 386:
+		conf.copymode = 1;	/* copy on reference */
+		break;
+	default:
+	case 486:
+		conf.copymode = 0;	/* copy on write */
+		break;
+	}
 	conf.nfloppy = 2;
 	conf.nhard = 2;
 	conf.nmach = 1;

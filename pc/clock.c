@@ -82,6 +82,36 @@ clock(Ureg *ur, void *arg)
 	splhi();
 }
 
+/*
+ *  experimentally determined and justified by counting cycles in
+ *  delay()'s inner loop
+ */
+enum
+{
+	mul386=	380,
+	mul486=	121,
+};
+
+void
+printcpufreq(void)
+{
+	ulong freq;
+	int cpu;
+
+	switch(cpu = x86()){
+	default:
+	case 486:
+		freq = mul486;
+		break;
+	case 386:
+		freq = mul386;
+		break;
+	}
+	freq *= delayloop;
+	freq /= 10000;
+	print("CPU is a %ud MHz %d\n", freq, cpu);
+}
+
 void
 clockinit(void)
 {

@@ -66,6 +66,7 @@ void	pcmspecialclose(int);
 long	pcmwrite(int, int, void*, long, ulong);
 void	prflush(void);
 void	prhex(ulong);
+void	printcpufreq(void);
 void	procrestore(Proc*);
 void	procsave(Proc*);
 void	procsetup(Proc*);
@@ -86,6 +87,8 @@ void	trapinit(void);
 int	tas(void*);
 void	uartclock(void);
 void	vgainit(void);
+int	x86(void);
+
 #define	waserror()	(up->nerrlab++, setlabel(&up->errlab[up->nerrlab-1]))
 #define	kmapperm(x)	kmap(x)
 #define getcallerpc(x)	(*(ulong*)(x))

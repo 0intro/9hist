@@ -218,7 +218,7 @@ void		sched(void);
 void		schedinit(void);
 int		screenbits(void);
 void		screenupdate(void);
-int		scsiexec(Target*, int, uchar*, int, void*, int);
+int		scsiexec(Target*, int, uchar*, int, void*, int*);
 int		scsiinv(int, int, Target**, uchar**, char*);
 Target*		scsiunit(int, int);
 long		seconds(void);

@@ -54,7 +54,7 @@ setpte:
 	MOVL	AX,CR3
 	MOVL	CR0,AX
 	ORL	$0X80010000,AX
-	ANDL	$~(0x8|0x2),AX	/* TS=0, MP=0 */
+	ANDL	$~(0x40000000|0x20000000|0x8|0x2),AX	/* CD=0, NW=0, TS=0, MP=0 */
 	MOVL	AX,CR0
 
 	/*
@@ -564,6 +564,28 @@ TEXT	getstatus(SB),$0
  */
 TEXT	idle(SB),$0
 	HLT
+	RET
+
+/*
+ *  return cpu type (what is a pentium?)
+ */
+TEXT	x86(SB),$0
+
+	PUSHFL
+	MOVL	0(SP),AX
+	ORL	$0x40000,AX
+	PUSHL	AX
+	POPFL
+	PUSHFL
+	POPL	AX
+	ANDL	$0x40000,AX
+	JZ	is386
+	MOVL	$486,AX
+	JMP	done
+is386:
+	MOVL	$386,AX
+done:
+	POPFL
 	RET
 
 /*
