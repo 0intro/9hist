@@ -62,7 +62,7 @@ static Bitmap hwcursor=
 
 uchar bdata[] =
 {
-	0xC0,
+	0xa0,
 };
 
 Bitmap bgrnd =
