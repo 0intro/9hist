@@ -17,7 +17,7 @@ typedef struct Mnt	Mnt;
 struct Mnt
 {
 	Ref;			/* for number of chans, incl. mntpt but not msg */
-	QLock	q;		/* for access */
+	QLock;			/* for access */
 	ulong	mntid;		/* serial # */
 	Chan	*msg;		/* for reading and writing messages */
 	Chan	*mntpt;		/* channel in user's name space */
@@ -383,10 +383,10 @@ mntclose(Chan *c)
 		m->mntpt = 0;
 	if(decref(m) == 0){		/* BUG: need to hang up all pending i/o */
 print("close mount table %d\n", m->mntid);
-		qlock(&m->q);
+		qlock(m);
 		close(m->msg);
 		m->msg = 0;
-		qunlock(&m->q);
+		qunlock(m);
 	}
 	poperror();
 }
@@ -567,23 +567,23 @@ mntxmit(Mnt *m, Mnthdr *mh)
 	}
 	n = convS2M(&mh->thdr, mbw->buf);
 	isbit = 0;
-	if(devchar[m->msg->type] == 'b')
+	if(devchar[m->msg->type] == '3')
 		isbit = 1;
 	/*
 	 * Avoid qlock for bit, to maximize parallelism
 	 */
 	if(isbit){
-		lock(&m->q);		/* spin rather than sleep */
+		lock(&m->use);		/* spin rather than sleep */
 		if((msg = m->msg) == 0){
-			unlock(&m->q);
+			unlock(&m->use);
 			error(0, Eshutdown);
 		}
 		incref(msg);
-		unlock(&m->q);
+		unlock(&m->use);
 	}else{
-		qlock(&m->q);
+		qlock(m);
 		if((msg = m->msg) == 0){
-			qunlock(&m->q);
+			qunlock(m);
 			error(0, Eshutdown);
 		}
 		qlock(msg);
@@ -592,7 +592,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		if(isbit)
 			close(msg);
 		else{
-			qunlock(&m->q);
+			qunlock(m);
 			qunlock(msg);
 		}
 		nexterror();
@@ -609,7 +609,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 	if(isbit)
 		close(msg);
 	else{
-		qunlock(&m->q);
+		qunlock(m);
 		qunlock(msg);
 	}
 	poperror();

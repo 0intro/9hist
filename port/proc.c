@@ -364,13 +364,14 @@ pexit(char *s, int freemem)
 	 * Any of my children exiting?
 	 */
 	while(c->nchild){
-		lock(&c->wait);
-		if(c->wait.locked == 0){	/* no child is exiting */
+		lock(&c->wait.queue);
+		if(canlock(&c->wait.use)){	/* no child is exiting */
 			c->exiting = 1;
-			unlock(&c->wait);
+			unlock(&c->wait.use);
+			unlock(&c->wait.queue);
 			break;
 		}else{				/* must wait for child */
-			unlock(&c->wait);
+			unlock(&c->wait.queue);
 			pwait(0);
 		}
 	}
@@ -383,7 +384,7 @@ pexit(char *s, int freemem)
 	if(p == 0)
 		goto out;
 	qlock(&p->wait);
-	lock(&p->wait);
+	lock(&p->wait.queue);
 	if(p->pid==c->parentpid && !p->exiting){
 		w.pid = mypid;
 		strcpy(w.msg, status);
@@ -401,10 +402,10 @@ pexit(char *s, int freemem)
 		c->state = Exiting;
 		if(p->state == Inwait)
 			ready(p);
-		unlock(&p->wait);
+		unlock(&p->wait.queue);
 		sched();
 	}else{
-		unlock(&p->wait);
+		unlock(&p->wait.queue);
 		qunlock(&p->wait);
 	}
    out:
@@ -475,27 +476,21 @@ pwait(Waitmsg *w)
 
 	p = u->p;
 again:
-	while(canlock(&p->wait)){
-		if(p->wait.locked){	/* child is exiting; wait for him */
-			unlock(&p->wait);
-			break;
-		}
+	while(canlock(&p->wait.use)){
 		if(p->nchild == 0){
-			unlock(&p->wait);
 			qunlock(&p->wait);
 			error(0, Enochild);
 		}
 		p->state = Inwait;
-		unlock(&p->wait);
 		qunlock(&p->wait);
 		sched();
 	}
-	lock(&p->wait);	/* wait until child is finished */
+	lock(&p->wait.queue);	/* wait until child is finished */
 	c = p->child;
 	if(c == 0){
 		print("pwait %d\n", p->pid);
 		p->state = Inwait;
-		unlock(&p->wait);
+		unlock(&p->wait.queue);
 		sched();
 		goto again;
 	}
@@ -507,7 +502,7 @@ again:
 	p->time[TCSys] += c->time[TSys] + c->time[TCSys];
 	p->time[TCReal] += c->time[TReal];
 	p->nchild--;
-	unlock(&p->wait);
+	unlock(&p->wait.queue);
 	qunlock(&p->wait);
 	ready(c);
 	return cpid;

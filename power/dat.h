@@ -1,5 +1,5 @@
 typedef struct Alarm	Alarm;
-typedef struct Bitmsg	Bitmsg;
+typedef struct Bit3msg	Bit3msg;
 typedef struct Blist	Blist;
 typedef struct Block	Block;
 typedef struct Chan	Chan;
@@ -54,10 +54,10 @@ struct Ref
 
 struct QLock
 {
-	Lock;				/* to use object */
 	Proc	*head;			/* next process waiting for object */
 	Proc	*tail;			/* last process waiting for object */
-	int	locked;			/* flag; is locked */
+	Lock	use;			/* to use object */
+	Lock	queue;			/* to access list */
 };
 
 struct Label
@@ -76,7 +76,7 @@ struct Alarm
 	void	*arg;
 };
 
-struct Bitmsg
+struct Bit3msg
 {
 	ulong	cmd;
 	ulong	addr;
@@ -307,7 +307,8 @@ struct Proc
 	Proc	*pop;			/* some ascendant */
 	Proc	*kid;			/* some descendant */
 	Proc	*sib;			/* non-ascendant relatives (circular list) */
-	Rendez	exit;			/* child sleeps; parent wakes up */
+	int	nchild;
+	QLock	wait;			/* exiting children to be waited for */
 	Waitmsg	*waitmsg;
 	Proc	*child;
 	Proc	*parent;
@@ -341,10 +342,10 @@ struct User
 	Chan	*fd[NFD];
 	int	maxfd;			/* highest fd in use */
 	/*
-	 * I/O point for bit interface.  This is the easiest way to allocate
+	 * I/O point for bit3 interface.  This is the easiest way to allocate
 	 * them, but not the prettiest or most general.
 	 */
-	Bitmsg	bit;
+	Bit3msg	bit3;
 	/*
 	 * Rest of structure controlled by devproc.c and friends.
 	 * lock(&p->debug) to modify.

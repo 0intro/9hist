@@ -110,14 +110,7 @@ unlock(Lock *l)
 int
 canqlock(QLock *q)
 {
-	lock(q);
-	if(q->locked){
-		unlock(q);
-		return 0;
-	}
-	q->locked = 1;
-	unlock(q);
-	return 1;
+	return canlock(&q->use);
 }
 
 void
@@ -125,10 +118,11 @@ qlock(QLock *q)
 {
 	Proc *p;
 
-	lock(q);
-	if(!q->locked){
-		q->locked = 1;
-		unlock(q);
+	if(canlock(&q->use))
+		return;
+	lock(&q->queue);
+	if(canlock(&q->use)){
+		unlock(&q->queue);
 		return;
 	}
 	p = q->tail;
@@ -139,7 +133,7 @@ qlock(QLock *q)
 	q->tail = u->p;
 	u->p->qnext = 0;
 	u->p->state = Queueing;
-	unlock(q);
+	unlock(&q->queue);
 	sched();
 }
 
@@ -148,16 +142,16 @@ qunlock(QLock *q)
 {
 	Proc *p;
 
-	lock(q);
-	p = q->head;
-	if(p){
+	lock(&q->queue);
+	if(q->head){
+		p = q->head;
 		q->head = p->qnext;
 		if(q->head == 0)
 			q->tail = 0;
-		unlock(q);
+		unlock(&q->queue);
 		ready(p);
 	}else{
-		q->locked = 0;
-		unlock(q);
+		unlock(&q->use);
+		unlock(&q->queue);
 	}
 }

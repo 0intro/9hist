@@ -567,7 +567,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 	}
 	n = convS2M(&mh->thdr, mbw->buf);
 	isbit = 0;
-	if(devchar[m->msg->type] == 'b')
+	if(devchar[m->msg->type] == '3')
 		isbit = 1;
 	/*
 	 * Avoid qlock for bit, to maximize parallelism

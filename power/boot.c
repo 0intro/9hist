@@ -16,12 +16,12 @@ struct address {
 } Address;
 
 Address addr[] = {
+	{ "bitbootes", "bitconnect" },
 	{ "ross", "connect 020701005eff" },
 	{ "bootes", "connect 080069020205" },
 	{ "helix", "connect 080069020427" },
 	{ "spindle", "connect 0800690202df" },
 	{ "r70", "connect 08002b04265d" },
-	{ "bitbootes", "bitconnect" },
 	{ 0 }
 };
 
@@ -98,9 +98,9 @@ main(int argc, char *argv[])
 	close(fu);
 
 	if(strcmp(scmd, "bitconnect") == 0){
-		fd = open("#b/bit", ORDWR);
+		fd = open("#3/bit3", ORDWR);
 		if(fd < 0)
-			error("opening #b/bit");
+			error("opening #3/bit3");
 		goto Mesg;
 	}
 
