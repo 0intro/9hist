@@ -226,7 +226,7 @@ umbscan(void)
 	 * at 0xE0000 then the whole 64KB up to 0xF0000 is theoretically up
 	 * for grabs; check anyway.
 	 */
-	p = KADDR(0xC0000);
+	p = KADDR(0xD0000);
 	while(p < (uchar*)KADDR(0xE0000)){
 		/*
 		 * Test for 0x55 0xAA before poking obtrusively,
