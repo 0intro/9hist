@@ -262,6 +262,7 @@ void*		vmemchr(void*, int, int);
 void		wakeup(Rendez*);
 Chan*		walk(Chan*, char*, int);
 void		wlock(RWlock*);
+long		mntwrite9p(Chan*, void*, long, ulong);
 void		wunlock(RWlock*);
 #define		xalloc(s)	xallocz(s, 1)
 void*		xallocz(ulong, int);

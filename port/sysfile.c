@@ -326,6 +326,37 @@ sysread(ulong *arg)
 }
 
 long
+syswrite9p(ulong *arg)
+{
+	Chan *c;
+	long n;
+
+	validaddr(arg[1], arg[2], 0);
+	c = fdtochan(arg[0], OWRITE, 1, 1);
+	if(waserror()) {
+		close(c);
+		nexterror();
+	}
+
+	if(c->qid.path & CHDIR)
+		error(Eisdir);
+
+	if(devchar[c->type] != L'M')
+		n = (*devtab[c->type].write)(c, (void*)arg[1], arg[2], c->offset);
+	else
+		n = mntwrite9p(c, (void*)arg[1], arg[2], c->offset);
+
+	lock(c);
+	c->offset += n;
+	unlock(c);
+
+	poperror();
+	close(c);
+
+	return n;
+}
+
+long
 syswrite(ulong *arg)
 {
 	Chan *c;

@@ -44,7 +44,7 @@ void	mntgate(Mnt*);
 void	mntpntfree(Mnt*);
 void	mntqrm(Mnt*, Mntrpc*);
 Mntrpc*	mntralloc(Chan*);
-long	mntrdwr(int , Chan*, void*,long , ulong);
+long	mntrdwr(int , Chan*, void*,long , ulong, int);
 void	mntrpcread(Mnt*, Mntrpc*);
 void	mountio(Mnt*, Mntrpc*);
 void	mountmux(Mnt*, Mntrpc*);
@@ -168,6 +168,7 @@ mntattach(char *muxattach)
 	mattach(m, c, bogus.spec);
 	poperror();
 
+#ifdef STUPIDHACK
 	/* Work out how deep we are nested and reduce the blocksize
 	 * accordingly
 	 */
@@ -182,6 +183,7 @@ mntattach(char *muxattach)
 		mc = mc->mntptr->c;
 	}
 	m->blocksize -= nest * 32;
+#endif STUPIDHACK
 
 	/*
 	 * Detect a recursive mount for a mount point served by exportfs.
@@ -513,7 +515,7 @@ mntread(Chan *c, void *buf, long n, ulong offset)
 		}
 	}
 
-	n = mntrdwr(Tread, c, buf, n, offset);
+	n = mntrdwr(Tread, c, buf, n, offset, 0);
 	if(c->qid.path & CHDIR) {
 		for(p = (uchar*)buf, e = &p[n]; p < e; p += DIRLEN)
 			mntdirfix(p, c);
@@ -527,13 +529,19 @@ mntread(Chan *c, void *buf, long n, ulong offset)
 }
 
 long	 
+mntwrite9p(Chan *c, void *buf, long n, ulong offset)
+{
+	return mntrdwr(Twrite, c, buf, n, offset, 1);
+}
+
+long	 
 mntwrite(Chan *c, void *buf, long n, ulong offset)
 {
-	return mntrdwr(Twrite, c, buf, n, offset);
+	return mntrdwr(Twrite, c, buf, n, offset, 0);
 }
 
 long
-mntrdwr(int type, Chan *c, void *buf, long n, ulong offset)
+mntrdwr(int type, Chan *c, void *buf, long n, ulong offset, int p9msg)
 {
 	Mnt *m;
  	Mntrpc *r;
@@ -555,7 +563,10 @@ mntrdwr(int type, Chan *c, void *buf, long n, ulong offset)
 		r->request.fid = c->fid;
 		r->request.offset = offset;
 		r->request.data = uba;
-		r->request.count = limit(n, m->blocksize);
+		if(p9msg)
+			r->request.count = limit(n, m->blocksize + MAXMSG - 20);
+		else
+			r->request.count = limit(n, m->blocksize);
 		mountrpc(m, r);
 		nr = r->reply.count;
 		if(nr > r->request.count)
@@ -629,8 +640,13 @@ mountio(Mnt *m, Mntrpc *r)
 			nexterror();
 	}
 	else {
-		if((*devtab[m->c->type].write)(m->c, r->rpc, n, 0) != n)
-			error(Emountrpc);
+		if(devchar[m->c->type] == L'M'){
+			if(mntwrite9p(m->c, r->rpc, n, 0) != n)
+				error(Emountrpc);
+		}else{
+			if((*devtab[m->c->type].write)(m->c, r->rpc, n, 0) != n)
+				error(Emountrpc);
+		}
 		poperror();
 	}
 	if(m->mux) {

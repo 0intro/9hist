@@ -40,6 +40,8 @@ Syscall syssegflush;
 Syscall sysrendezvous;
 Syscall sysunmount;
 Syscall syswait;
+Syscall syswrite9p;
+Syscall ;
 Syscall ;
 Syscall	sysdeath;
 
@@ -81,6 +83,8 @@ Syscall *systab[]={
 	[RENDEZVOUS]	sysrendezvous,
 	[UNMOUNT]	sysunmount,
 	[WAIT]		syswait,
+	[WRITE9P]	syswrite9p,
+
 
 };
 
@@ -122,5 +126,7 @@ char *sysctab[]={
 	[RENDEZVOUS]	"Rendez",
 	[UNMOUNT]	"Unmount",
 	[WAIT]		"Wait",
+	[WRITE9P]	"Write9p",
+
 
 };
