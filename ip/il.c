@@ -762,10 +762,8 @@ ilrexmit(Ilcb *ic)
 		nb = copyblock(ic->unacked, blocklen(ic->unacked));
 	qunlock(&ic->ackq);
 
-	if(nb == nil){
-		print("ilrexmit: copyblock returns nil\n");
+	if(nb == nil)
 		return;
-	}
 
 	h = (Ilhdr*)nb->rp;
 

@@ -199,6 +199,7 @@ s3load(VGAscr* scr, Cursor* curs)
 	switch(id){
 
 	case 0xE110:				/* ViRGE/GX2 */
+	case 0xE131:				/* ViRGE */
 		p += scr->storage;
 		break;
 
@@ -242,6 +243,7 @@ s3load(VGAscr* scr, Cursor* curs)
 	switch(id){
 
 	case 0xE110:				/* ViRGE/GX2 */
+	case 0xE131:				/* ViRGE */
 		break;
 
 	default:
