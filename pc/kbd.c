@@ -574,6 +574,9 @@ mousectl(char *arg)
 			mousecmd(0xE7);
 			splx(x);
 			break;
+		default:
+			mouseaccelerate(field[1]);
+			break;
 		}
 	} else if(strcmp(field[0], "linear") == 0){
 		switch(mousetype){
@@ -581,6 +584,9 @@ mousectl(char *arg)
 			x = splhi();
 			mousecmd(0xE6);
 			splx(x);
+			break;
+		default:
+			mouseaccelerate("0");
 			break;
 		}
 	} else if(strcmp(field[0], "res") == 0){

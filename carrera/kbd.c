@@ -406,6 +406,11 @@ mousectl(char *cmd)
 		mousecmd(0xF4);	/* enabled */
 		splx(s);
 	}
+	else if(strcmp(cmd, "accelerated") == 0){
+		s = splhi();
+		mousecmd(0xE7);
+		splx(s);
+	}
 	else
 		error(Ebadctl);
 }

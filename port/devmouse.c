@@ -27,6 +27,8 @@ struct Mouseinfo
 	Ref;
 	QLock;
 	int	open;
+	int	acceleration;
+	int	maxacc;
 };
 
 Mouseinfo	mouse;
@@ -272,7 +274,10 @@ mousewrite(Chan *c, void *va, long n, ulong)
 		if(n >= sizeof(buf))
 			n = sizeof(buf)-1;
 		strncpy(buf, va, n);
-		buf[n] = 0;
+		if(buf[n - 1] == '\n')
+			buf[n-1] = 0;
+		else
+			buf[n] = 0;
 		mousectl(buf);
 		return n;
 
@@ -338,6 +343,34 @@ mouseclock(void)
 	graphicsactive(0);
 }
 
+static int
+scale(int x)
+{
+	int sign = 1;
+
+	if(x < 0){
+		sign = -1;
+		x = -x;
+	}
+	switch(x){
+	case 0:
+	case 1:
+	case 2:
+	case 3:
+		break;
+	case 4:
+		x = 6 + (mouse.acceleration>>2);
+		break;
+	case 5:
+		x = 9 + (mouse.acceleration>>1);
+		break;
+	default:
+		x *= mouse.maxacc;
+		break;
+	}
+	return sign*x;
+}
+
 /*
  *  called at interrupt level to update the structure and
  *  awaken any waiting procs.
@@ -347,6 +380,10 @@ mousetrack(int b, int dx, int dy)
 {
 	int x, y;
 
+	if(mouse.acceleration){
+		dx = scale(dx);
+		dy = scale(dy);
+	}
 	x = mouse.xy.x + dx;
 	if(x < gscreen.r.min.x)
 		x = gscreen.r.min.x;
@@ -448,4 +485,16 @@ Point
 mousexy(void)
 {
 	return mouse.xy;
+}
+
+void
+mouseaccelerate(char *x)
+{
+	if(x == 0)
+		x = "1";
+	mouse.acceleration = atoi(x);
+	if(mouse.acceleration < 3)
+		mouse.maxacc = 2;
+	else
+		mouse.maxacc = mouse.acceleration;
 }

@@ -142,6 +142,7 @@ void		mntrepl(char*);
 long		mntwrite9p(Chan*, void*, long, ulong);
 int		mount(Chan*, Chan*, int, char*);
 void		mountfree(Mount*);
+void		mouseaccelerate(char*);
 void		mousebuttons(int);
 void		mouseclock(void);
 void		mousectl(char*);
