@@ -56,7 +56,6 @@ memglobal(void)
 	int i, j;
 	ulong *pde, *pte;
 
-return;
 	/* only need to do this once, on bootstrap processor */
 	if(m->machno != 0)
 		return;
