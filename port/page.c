@@ -190,11 +190,13 @@ loop:
 		}
 #endif
 	}
-	print("no physical memory\n");
-	pprint("no physical memory\n");
 	unlock(&palloc);
+	if(freebroken())
+		goto loop;
 	if(u == 0)
 		panic("newpage");
+	print("no physical memory\n");
+	pprint("no physical memory\n");
 	u->p->state = Wakeme;
 	alarm(1000, wakeme, u->p);
 	sched();
@@ -316,6 +318,7 @@ neworig(ulong va, ulong npte, int flag, Chan *c)
 	Orig *o;
 	int i, freed;
 
+lockloop:
 	lock(&origalloc);
 loop:
 	if(o = origalloc.free){		/* assign = */
@@ -370,8 +373,10 @@ o->nmod = 0;
 	}
 	if(freed)
 		goto loop;
-	print("no origs freed\n");
 	unlock(&origalloc);
+	if(freebroken())
+		goto lockloop;
+	print("no origs freed\n");
 	if(u == 0)
 		panic("neworig");
 	u->p->state = Wakeme;

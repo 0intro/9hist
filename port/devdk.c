@@ -116,18 +116,21 @@ struct Line {
  *  dkmux line discipline is pushed onto.
  */
 struct Dk {
-	QLock;
-	int	ref;
+	Lock;
+	int	opened;
 	char	name[64];	/* dk name */
 	Queue	*wq;		/* dk output queue */
+	Stream	*s;
 	int	lines;		/* number of lines */
 	int	ncsc;		/* csc line number */
-	Chan	*csc;		/* common signalling line */
+	Chan	*csc;
 	Line	line[Nline];
 	int	restart;
 	int	urpwindow;
+	Rendez	timer;
 };
 static Dk dk[Ndk];
+static Lock dklock;
 
 /*
  *  conversation states (for Line.state)
@@ -178,17 +181,19 @@ extern Qinfo urpinfo;
  *  predeclared
  */
 Chan*		dkattach(char*);
-static void	dkmuxconfig(Dk*, Block*);
-static int	dkmesg(Dk*, int, int, int, int);
+static void	dkmuxconfig(Queue*, Block*);
+static Chan*	dkopenline(Dk*, int);
+static int	dkmesg(Chan*, int, int, int, int);
 static void	dkcsckproc(void*);
 static int	dklisten(Chan*);
 static void	dkanswer(Chan*, int, int);
 static void	dkwindow(Chan*);
 static void	dkcall(int, Chan*, char*, char*, char*);
 static void	dktimer(void*);
-static void	dkchgmesg(Dk*, Dkmsg*, int);
+static void	dkchgmesg(Chan*, Dk*, Dkmsg*, int);
 static void	dkreplymesg(Dk*, Dkmsg*, int);
 Chan*		dkopen(Chan*, int);
+static void	dkhangup(Line*);
 
 /*
  *  the datakit multiplexor stream module definition
@@ -200,33 +205,46 @@ static void dkmuxiput(Queue *, Block *);
 Qinfo dkmuxinfo = { dkmuxiput, dkmuxoput, dkmuxopen, dkmuxclose, "dkmux" };
 
 /*
+ *  Look for a dk struct with a name.  If none exists,  create one.
+ */ 
+static Dk *
+dkalloc(char *name)
+{
+	Dk *dp;
+	Dk *freep;
+
+	lock(&dklock);
+	freep = 0;
+	for(dp = dk; dp < &dk[Ndk]; dp++){
+		if(strcmp(name, dp->name) == 0){
+			unlock(&dklock);
+			return dp;
+		}
+		if(dp->name[0] == 0)
+			freep = dp;
+	}
+	if(freep == 0){
+		unlock(&dklock);
+		error(0, Enoifc);
+	}
+	dp = freep;
+	dp->opened = 0;
+	dp->s = 0;
+	dp->ncsc = 1;
+	strncpy(dp->name, name, sizeof(freep->name));
+	unlock(&dklock);
+	return dp;
+}
+
+/*
  *  a new dkmux.  find a free dk structure and assign it to this queue.
+ *  when we get though here dp->s is meaningful and the name is set to "/".
  */
 static void
 dkmuxopen(Queue *q, Stream *s)
 {
-	Dk *dp;
-	int i;
-
-	for(dp = dk; dp < &dk[Ndk]; dp++){
-		if(dp->wq == 0){
-			qlock(dp);
-			if(dp->wq) {
-				/* someone was faster than us */
-				qunlock(dp);
-				continue;
-			}
-			q->ptr = q->other->ptr = (void *)dp;
-			dp->csc = 0;
-			dp->ncsc = 4;
-			dp->lines = 16;
-			dp->name[0] = 0;
-			dp->wq = WR(q);
-			qunlock(dp);
-			return;
-		}
-	}
-	error(0, Enoifc);
+	RD(q)->ptr = s;
+	WR(q)->ptr = 0;
 }
 
 /*
@@ -236,13 +254,30 @@ static void
 dkmuxclose(Queue *q)
 {
 	Dk *dp;
+	int i;
 
-	dp = (Dk *)q->ptr;
-	qlock(dp);
-	if(dp->csc)
-		close(dp->csc);
-	dp->wq = 0;
-	qunlock(dp);
+	dp = WR(q)->ptr;
+	if(dp == 0)
+		return;
+
+	/*
+	 *  disallow new dkstopens() on this line.
+	 *  the lock syncs with dkstopen().
+	 */
+	lock(dp);
+	dp->opened = 0;
+	unlock(dp);
+
+	/*
+	 *  hang up all datakit connections
+	 */
+	for(i=dp->ncsc; i < dp->lines; i++)
+		dkhangup(&dp->line[i]);
+
+	/*
+	 *  wakeup the timer so it can die
+	 */
+	wakeup(&dp->timer);
 }
 
 /*
@@ -251,12 +286,9 @@ dkmuxclose(Queue *q)
 static void
 dkmuxoput(Queue *q, Block *bp)
 {
-	Dk *dp;
-
-	dp = (Dk *)q->ptr;
 	if(bp->type != M_DATA){
 		if(streamparse("config", bp))
-			dkmuxconfig(dp, bp);
+			dkmuxconfig(q, bp);
 		else
 			PUTNEXT(q, bp);
 		return;
@@ -272,7 +304,7 @@ dkmuxoput(Queue *q, Block *bp)
  *
  *  Simplifying assumption:  one put == one message && the channel number
  *	is in the first block.  If this isn't true, demultiplexing will not
-  *	work.
+ *	work.
  */
 static void
 dkmuxiput(Queue *q, Block *bp)
@@ -280,6 +312,14 @@ dkmuxiput(Queue *q, Block *bp)
 	Dk *dp;
 	Line *lp;
 	int line;
+
+	/*
+	 *  not configured yet
+	 */
+	if(q->other->ptr == 0){
+		freeb(bp);
+		return;
+	}
 
 	dp = (Dk *)q->ptr;
 	if(bp->type != M_DATA){
@@ -331,9 +371,15 @@ dkstopen(Queue *q, Stream *s)
 	dp = &dk[s->dev];
 	q->other->ptr = q->ptr = lp = &dp->line[s->id];
 	lp->dp = dp;
-	lp->rq = q;
-	if(lp->state == Lclosed)
+	lock(dp);
+	if(dp->opened==0 || streamenter(dp->s)<0){
+		unlock(dp);
+		error(0, Ehungup);
+	}
+	unlock(dp);
+	if(lp->state==Lclosed)
 		lp->state = Lopened;
+	lp->rq = q;
 }
 
 /*
@@ -344,42 +390,72 @@ dkstclose(Queue *q)
 {
 	Dk *dp;
 	Line *lp;
+	Chan *c;
 
 	lp = (Line *)q->ptr;
 	dp = lp->dp;
 
 	/*
-	 *  shake hands with dk
+	 *  if we never got going, we're done
+	 */
+	if(lp->rq == 0){
+		lp->state = Lclosed; 
+		return;
+	}
+
+	/*
+	 *  decrement ref count on mux'd line
+	 */
+	streamexit(dp->s, 0);
+
+	/*
+	 *  these states don't need the datakit
 	 */
 	switch(lp->state){
 	case Lclosed:
 	case Llclose:
-		break;
+	case Lopened:
+		lp->state = Lclosed;
+		goto out;
+	}
 
+	c = 0;
+	if(waserror()){
+		lp->state = Lclosed;
+		if(c)
+			close(c);
+		goto out;
+	}	
+	c = dkopenline(dp, dp->ncsc);
+
+	/*
+	 *  shake hands with dk
+	 */
+	switch(lp->state){
 	case Lrclose:
-		dkmesg(dp, T_CHG, D_CLOSE, lp - dp->line, 0);
+		dkmesg(c, T_CHG, D_CLOSE, lp - dp->line, 0);
 		lp->state = Lclosed;
 		break;
 
 	case Lackwait:
-		dkmesg(dp, T_CHG, D_CLOSE, lp - dp->line, 0);
+		dkmesg(c, T_CHG, D_CLOSE, lp - dp->line, 0);
 		lp->state = Llclose;
 		break;
 
 	case Llistening:
-		dkmesg(dp, T_CHG, D_CLOSE, lp - dp->line, 0);
+		dkmesg(c, T_CHG, D_CLOSE, lp - dp->line, 0);
 		lp->state = Llclose;
 		break;
 
 	case Lconnected:
-		dkmesg(dp, T_CHG, D_CLOSE, lp - dp->line, 0);
+		dkmesg(c, T_CHG, D_CLOSE, lp - dp->line, 0);
 		lp->state = Llclose;
 		break;
-
-	case Lopened:
-		lp->state = Lclosed;
 	}
+	poperror();
+	close(c);
 
+out:
 	qlock(lp);
 	lp->rq = 0;
 	qunlock(lp);
@@ -436,87 +512,102 @@ dkoput(Queue *q, Block *bp)
  *  we can configure only once
  */
 static void
-dkmuxconfig(Dk *dp, Block *bp)
+dkmuxconfig(Queue *q, Block *bp)
 {
-	Chan *c;
+	Dk *dp;
 	char *fields[5];
 	int n;
 	char buf[64];
-	static int dktimeron;
+	char name[NAMELEN];
+	int lines;
+	int ncsc;
+	int restart;
+	int window;
 
-	if(dp->csc != 0){
+	if(WR(q)->ptr){
 		freeb(bp);
-		error(0, Ebadarg);
+		error(0, Egreg);
 	}
+
+	/*
+	 *  defaults
+	 */
+	ncsc = 1;
+	restart = 1;
+	lines = 16;
+	window = WS_2K;
+	strcpy(name, "dk");
 
 	/*
 	 *  parse
 	 */
-	dp->restart = 1;
 	n = getfields((char *)bp->rptr, fields, 5, ' ');
-	strcpy(dp->name, "dk");
-	dp->urpwindow = WS_2K;
 	switch(n){
 	case 5:
-		dp->urpwindow = strtoul(fields[4], 0, 0);
+		window = strtoul(fields[4], 0, 0);
 	case 4:
-		strncpy(dp->name, fields[3], sizeof(dp->name));
+		strncpy(name, fields[3], sizeof(name));
 	case 3:
 		if(strcmp(fields[2], "restart")!=0)
-			dp->restart = 0;
+			restart = 0;
 	case 2:
-		dp->lines = strtoul(fields[1], 0, 0);
+		lines = strtoul(fields[1], 0, 0);
 	case 1:
-		dp->ncsc = strtoul(fields[0], 0, 0);
+		ncsc = strtoul(fields[0], 0, 0);
 		break;
 	default:
 		freeb(bp);
 		error(0, Ebadarg);
 	}
 	freeb(bp);
-	if(dp->ncsc <= 0 || dp->lines <= dp->ncsc){
-		dp->lines = 16;
+	if(ncsc <= 0 || lines <= ncsc)
 		error(0, Ebadarg);
-	}
-	DPRINT("dkmuxconfig: ncsc=%d, lines=%d, restart=%d, name=\"%s\"\n",
-		dp->ncsc, dp->lines, dp->restart, dp->name);
 
 	/*
-	 *  open a stream for the csc and push urp onto it
+	 *  set up
 	 */
-	c = 0;
-	if(waserror()){
-		if(c)
-			close(c);
-		nexterror();
+	dp = dkalloc(name);
+	lock(dp);
+	if(dp->opened){
+		unlock(dp);
+		error(0, Ebadarg);
 	}
-	c = dkattach(dp->name);
-	c->qid = STREAMQID(dp->ncsc, Sdataqid);
-	dkopen(c, ORDWR);
-	dp->csc = c;
+	dp->ncsc = ncsc;
+	dp->lines = lines;
+	dp->restart = restart;
+	dp->urpwindow = window;
+	dp->s = RD(q)->ptr;
+	q->ptr = q->other->ptr = dp;
+	dp->opened = 1;
+	dp->wq = WR(q);
+	unlock(dp);
+
+	/*
+	 *  open csc here so that boot, dktimer, and dkcsckproc aren't
+	 *  all fighting for it at once.
+	 */
+	dp->csc = dkopenline(dp, dp->ncsc);
 
 	/*
 	 *  tell datakit we've rebooted. It should close all channels.
+	 *  do this here to get it done before trying to open a channel.
 	 */
 	if(dp->restart) {
-		DPRINT("dkmuxconfig: restart %s\n", dp->name);
-		dkmesg(dp, T_ALIVE, D_RESTART, 0, 0);
+		DPRINT("dktimer: restart %s\n", dp->name);
+		dkmesg(dp->csc, T_ALIVE, D_RESTART, 0, 0);
 	}
 
 	/*
-	 *  start a process to deal with it
+	 *  start a process to listen to csc messages
 	 */
 	sprint(buf, "csc.%s.%d", dp->name, dp->ncsc);
 	kproc(buf, dkcsckproc, dp);
-	poperror();
 
 	/*
-	 *  start a keepalive process if one doesn't exist
+	 *  start a keepalive process
 	 */
-	if(dktimeron == 0){
-		dktimeron = 1;
-		kproc("dktimer", dktimer, 0);
-	}
+	sprint(buf, "timer.%s.%d", dp->name, dp->ncsc);
+	kproc(buf, dktimer, dp);
 }
 
 /*
@@ -607,17 +698,11 @@ dkattach(char *spec)
 	 */
 	if(*spec == 0)
 		spec = "dk";
-	for(dp = dk; dp < &dk[Ndk]; dp++){
-		qlock(dp);
-		if(dp->wq && strcmp(spec, dp->name)==0) {
-			dp->ref++;
-			qunlock(dp);
-			break;
-		}
-		qunlock(dp);
-	}
-	if(dp == &dk[Ndk])
-		error(0, Enoifc);
+	dp = dkalloc(spec);
+
+	/*
+	 *  return the new channel
+	 */
 	c = devattach('k', spec);
 	c->dev = dp - dk;
 	return c;
@@ -626,12 +711,6 @@ dkattach(char *spec)
 Chan*
 dkclone(Chan *c, Chan *nc)
 {
-	Dk *dp;
-
-	dp = &dk[c->dev];
-	qlock(dp);
-	dp->ref++;
-	qunlock(dp);
 	return devclone(c, nc);
 }
 
@@ -679,10 +758,10 @@ dkopen(Chan *c, int omode)
 			error(0, Ebadarg);
 	} else switch(STREAMTYPE(c->qid)){
 	case Dcloneqid:
+		dp = &dk[c->dev];
 		/*
 		 *  get an unused device and open it's control file
 		 */
-		dp = &dk[c->dev];
 		end = &dp->line[dp->lines];
 		for(lp = &dp->line[dp->ncsc+1]; lp < end; lp++){
 			if(lp->state == Lclosed && canqlock(lp)){
@@ -696,9 +775,10 @@ dkopen(Chan *c, int omode)
 		}
 		if(lp == end)
 			error(0, Enodev);
+		lp->state = Lopened;
+		qunlock(lp);
 		streamopen(c, &dkinfo);
 		pushq(c->stream, &urpinfo);
-		qunlock(lp);
 		break;
 	case Dlistenqid:
 		/*
@@ -746,16 +826,8 @@ dkcreate(Chan *c, char *name, int omode, ulong perm)
 void	 
 dkclose(Chan *c)
 {
-	Dk *dp;
-
-	/* real closing happens in dkstclose */
 	if(c->stream)
 		streamclose(c);
-
-	dp = &dk[c->dev];
-	qlock(dp);
-	dp->ref--;
-	qunlock(dp);
 }
 
 long	 
@@ -862,16 +934,35 @@ dkuserstr(Error *e, char *buf)
 }
 
 /*
+ *  open the common signalling channel
+ */
+static Chan*
+dkopenline(Dk *dp, int line)
+{
+	Chan *c;
+
+	c = 0;
+	if(waserror()){
+		if(c)
+			close(c);
+		nexterror();
+	}
+	c = dkattach(dp->name);
+	c->qid = STREAMQID(line, Sdataqid);
+	dkopen(c, ORDWR);
+	poperror();
+
+	return c;
+}
+
+/*
  *  send a message to the datakit on the common signaling line
  */
 static int
-dkmesg(Dk *dp, int type, int srv, int p0, int p1)
+dkmesg(Chan *c, int type, int srv, int p0, int p1)
 {
 	Dkmsg d;
-	Block *bp;
 
-	if(dp->csc == 0)
-		return -1;
 	if(waserror()){
 		print("dkmesg: error\n");
 		return -1;
@@ -888,7 +979,7 @@ dkmesg(Dk *dp, int type, int srv, int p0, int p1)
 	d.param3h = 0;
 	d.param4l = 0;
 	d.param4h = 0;
-	streamwrite(dp->csc, (char *)&d, sizeof(Dkmsg), 1);
+	streamwrite(c, (char *)&d, sizeof(Dkmsg), 1);
 	poperror();
 	return 0;
 }
@@ -914,8 +1005,9 @@ dkcall(int type, Chan *c, char *addr, char *nuser, char *machine)
 	Dk *dp;
 	Line *lp;
 	Chan *dc;
+	Chan *csc;
 	char *bang, *dot;
-
+	
 	line = STREAMID(c->qid);
 	dp = &dk[c->dev];
 	lp = &dp->line[line];
@@ -968,16 +1060,22 @@ dkcall(int type, Chan *c, char *addr, char *nuser, char *machine)
 	}
 
 	/*
-	 *  open the data file
+	 *  close temporary channels on error
 	 */
-	dc = dkattach(dp->name);
+	dc = 0;
+	csc = 0;
 	if(waserror()){
-		close(dc);
+		if(csc)
+			close(csc);
+		if(dc)
+			close(dc);
 		nexterror();
 	}
-	dc->qid = STREAMQID(line, Sdataqid);
-	dkopen(dc, ORDWR);
 
+	/*
+	 *  open the data file
+	 */
+	dc = dkopenline(dp, line);
 	lp->calltolive = 4;
 	lp->state = Ldialing;
 
@@ -985,7 +1083,10 @@ dkcall(int type, Chan *c, char *addr, char *nuser, char *machine)
 	 *  tell the controller we want to make a call
 	 */
 	DPRINT("dialout\n");
-	dkmesg(dp, t_val, d_val, line, W_WINDOW(dp->urpwindow,dp->urpwindow,2));
+	csc = dkopenline(dp, dp->ncsc);
+	dkmesg(csc, t_val, d_val, line, W_WINDOW(dp->urpwindow,dp->urpwindow,2));
+	close(csc);
+	csc = 0;
 
 	/*
 	 *  if redial, wait for a dial tone (otherwise we might send
@@ -1087,13 +1188,11 @@ dklisten(Chan *c)
 	/*
 	 *  open the data file
 	 */
-	dc = dkattach(dp->name);
+	dc = dkopenline(dp, STREAMID(c->qid));
 	if(waserror()){
 		close(dc);
 		nexterror();
 	}
-	dc->qid = STREAMQID(STREAMID(c->qid), Sdataqid);
-	dkopen(dc, ORDWR);
 
 	/*
 	 *  wait for a call in
@@ -1316,9 +1415,13 @@ dkcsckproc(void *a)
 	Dk *dp;
 	Dkmsg d;
 	int line;
-	int i;
 
-	dp = (Dk *)a;
+	dp = a;
+
+	if(waserror()){
+		close(dp->csc);
+		return;
+	}
 
 	/*
 	 *  loop forever listening
@@ -1326,6 +1429,8 @@ dkcsckproc(void *a)
 	for(;;){
 		n = streamread(dp->csc, (char *)&d, (long)sizeof(d));
 		if(n != sizeof(d)){
+			if(n == 0)
+				error(0, Ehungup);
 			print("strange csc message %d\n", n);
 			continue;
 		}
@@ -1334,7 +1439,7 @@ dkcsckproc(void *a)
 		switch (d.type) {
 
 		case T_CHG:	/* controller wants to close a line */
-			dkchgmesg(dp, &d, line);
+			dkchgmesg(dp->csc, dp, &d, line);
 			break;
 		
 		case T_REPLY:	/* reply to a dial request */
@@ -1346,11 +1451,8 @@ dkcsckproc(void *a)
 			break;
 		
 		case T_RESTART:	/* datakit reboot */
-			print("dk restart\n");
-			if(line >=0 && line<dp->lines){
-				print("maxlines=%d\n", line+1);
+			if(line >=0 && line<dp->lines)
 				dp->lines=line+1;
-			}
 			break;
 		
 		default:
@@ -1364,7 +1466,7 @@ dkcsckproc(void *a)
  *  datakit requests or confirms closing a line
  */
 static void
-dkchgmesg(Dk *dp, Dkmsg *dialp, int line)
+dkchgmesg(Chan *c, Dk *dp, Dkmsg *dialp, int line)
 {
 	Line *lp;
 
@@ -1373,7 +1475,7 @@ dkchgmesg(Dk *dp, Dkmsg *dialp, int line)
 	case D_CLOSE:		/* remote shutdown */
 		if (line <= 0 || line >= dp->lines) {
 			/* tell controller this line is not in use */
-			dkmesg(dp, T_CHG, D_CLOSE, line, 0);
+			dkmesg(c, T_CHG, D_CLOSE, line, 0);
 			return;
 		}
 		lp = &dp->line[line];
@@ -1394,13 +1496,13 @@ dkchgmesg(Dk *dp, Dkmsg *dialp, int line)
 			break;
 
 		case Lopened:
-			dkmesg(dp, T_CHG, D_CLOSE, line, 0);
+			dkmesg(c, T_CHG, D_CLOSE, line, 0);
 			break;
 
 		case Llclose:
 		case Lclosed:
 			dkhangup(lp);
-			dkmesg(dp, T_CHG, D_CLOSE, line, 0);
+			dkmesg(c, T_CHG, D_CLOSE, line, 0);
 			lp->state = Lclosed;
 			break;
 		}
@@ -1409,7 +1511,7 @@ dkchgmesg(Dk *dp, Dkmsg *dialp, int line)
 	case D_ISCLOSED:	/* acknowledging a local shutdown */
 		if (line <= 0 || line >= dp->lines) {
 			/* tell controller this line is not in use */
-			dkmesg(dp, T_CHG, D_CLOSE, line, 0);
+			dkmesg(c, T_CHG, D_CLOSE, line, 0);
 			return;
 		}
 		lp = &dp->line[line];
@@ -1428,6 +1530,9 @@ dkchgmesg(Dk *dp, Dkmsg *dialp, int line)
 		break;
 
 	case D_CLOSEALL:
+		/*
+		 *  datakit wants us to close all lines
+		 */
 		for(line = dp->ncsc+1; line < dp->lines; line++){
 			lp = &dp->line[line];
 			switch (lp->state) {
@@ -1442,8 +1547,8 @@ dkchgmesg(Dk *dp, Dkmsg *dialp, int line)
 			case Lconnected:
 			case Llistening:
 			case Lackwait:
-				dkhangup(lp);
 				lp->state = Lrclose;
+				dkhangup(lp);
 				break;
 	
 			case Lopened:
@@ -1503,57 +1608,72 @@ dkreplymesg(Dk *dp, Dkmsg *dialp, int line)
 }
 
 /*
- *  15-second timer for all interfaces
+ *  send a I'm alive message every 7.5 seconds and remind the dk of
+ *  any closed channels it hasn't acknowledged.
  */
-static Rendez dkt;
-static int
-fuckit(void *a)
-{
-	return 0;
-}
 static void
 dktimer(void *a)
 {
 	int dki, i;
 	Dk *dp;
 	Line *lp;
+	Chan *c;
 
-	while(waserror())
-		print("dktimer: error\n");
-
-	for(;;){
+	c = 0;
+	if(waserror()){
 		/*
-		 *  loop through the active dks
+		 *  hang up any calls waiting for the dk
 		 */
-		for(dki=0; dki<Ndk; dki++){
-			dp = &dk[dki];
-			if(dp->csc==0)
-				continue;
+		for (i=dp->ncsc+1; i<dp->lines; i++){
+			lp = &dp->line[i];
+			switch(lp->state){
+			case Llclose:
+				lp->state = Lclosed;
+				break;
 
-			/*
-			 * send keep alive
-			 */
-			dkmesg(dp, T_ALIVE, D_CONTINUE, 0, 0);
-
-			/*
-			 *  remind controller of dead lines and
-			 *  timeout calls that take to long
-			 */
-			for (i=dp->ncsc+1; i<dp->lines; i++){
-				lp = &dp->line[i];
-				switch(lp->state){
-				case Llclose:
-					dkmesg(dp, T_CHG, D_CLOSE, i, 0);
-					break;
-
-				case Ldialing:
-					if(lp->calltolive==0 || --lp->calltolive!=0)
-						break;
-					dkreplymesg(dp, (Dkmsg *)0, i);
-					break;
-				}
+			case Ldialing:
+				dkreplymesg(dp, (Dkmsg *)0, i);
+				break;
 			}
 		}
-		tsleep(&dkt, fuckit, 0, 7500);
+		if(c)
+			close(c);
+		return;
+	}
+
+	/*
+	 *  open csc
+	 */
+	dp = (Dk *)a;
+	c = dkopenline(dp, dp->ncsc);
+
+	for(;;){
+		if(dp->opened==0)
+			error(0, Ehungup);
+
+		/*
+		 * send keep alive
+		 */
+		dkmesg(c, T_ALIVE, D_CONTINUE, 0, 0);
+
+		/*
+		 *  remind controller of dead lines and
+		 *  timeout calls that take to long
+		 */
+		for (i=dp->ncsc+1; i<dp->lines; i++){
+			lp = &dp->line[i];
+			switch(lp->state){
+			case Llclose:
+				dkmesg(c, T_CHG, D_CLOSE, i, 0);
+				break;
+
+			case Ldialing:
+				if(lp->calltolive==0 || --lp->calltolive!=0)
+					break;
+				dkreplymesg(dp, (Dkmsg *)0, i);
+				break;
+			}
+		}
+		tsleep(&dp->timer, return0, 0, 7500);
 	}
 }

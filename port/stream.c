@@ -746,11 +746,12 @@ streamenter(Stream *s)
  *  Decrement the reference count on a stream.  If the count is
  *  zero, free the stream.
  */
-void
+int
 streamexit(Stream *s, int locked)
 {
 	Queue *q;
 	Queue *nq;
+	int rv;
 
 	if(!locked)
 		lock(s);
@@ -765,8 +766,10 @@ streamexit(Stream *s, int locked)
 		s->id = s->dev = s->type = 0;
 	}
 	s->inuse--;
+	rv = s->inuse;
 	if(!locked)
 		unlock(s);
+	return rv;
 }
 
 /*
@@ -791,6 +794,8 @@ streamclose1(Stream *s)
 			for(q = s->procq; q; q = q->next){
 				if(q->info->close)
 					(*q->info->close)(q->other);
+				WR(q)->put = nullput;
+
 				/*
 				 *  this may be 2 streams joined device end to device end
 				 */

@@ -158,6 +158,41 @@ inconset(Incon *ip, int cnt, int del)
 	dev->cmd = INCON_RUN | ENABLE_IRQ;
 }
 
+/*
+ *  parse a set request
+ */
+void
+inconsetctl(Incon *ip, Block *bp)
+{
+	char *field[3];
+	int n;
+	int del;
+	int cnt;
+
+	del = 15;
+	n = getfields((char *)bp->rptr, field, 3, ' ');
+	switch(n){
+	default:
+		freeb(bp);
+		error(0, Ebadarg);
+	case 2:
+		del = strtol(field[1], 0, 0);
+		if(del<0 || del>15){
+			freeb(bp);
+			error(0, Ebadarg);
+		}
+		/* fall through */
+	case 1:
+		cnt = strtol(field[0], 0, 0);
+		if(cnt<0 || cnt>15){
+			freeb(bp);
+			error(0, Ebadarg);
+		}
+	}
+	inconset(ip, cnt, del);
+	freeb(bp);
+}
+
 static void
 nop(void)
 {
@@ -463,8 +498,13 @@ inconoput(Queue *q, Block *bp)
 	int ctl;
 	int n, size;
 
+	ip = (Incon *)q->ptr;
+
 	if(bp->type != M_DATA){
-		freeb(bp);
+		if(streamparse("inconset", bp))
+			inconsetctl(ip, bp);
+		else
+			freeb(bp);
 		return;
 	}
 
@@ -477,7 +517,6 @@ inconoput(Queue *q, Block *bp)
 	/*
 	 *  one transmitter at a time
 	 */
-	ip = (Incon *)q->ptr;
 	qlock(&ip->xmit);
 	dev = ip->dev;
 
@@ -598,6 +637,7 @@ inconkproc(void *arg)
 	Incon *ip;
 	Block *bp, *nbp;
 	int i, n;
+	int locked;
 
 	ip = (Incon *)arg;
 	ip->kstarted = 1;
@@ -610,11 +650,14 @@ inconkproc(void *arg)
 		bp->wptr += 3;
 	}
 
-	/*
-	 *  ignore errors
-	 */
-	if(waserror())
-		;
+	locked = 0;
+	if(waserror()){
+		if(locked)
+			qunlock(ip);
+		ip->kstarted = 0;
+		wakeup(&ip->r);
+		return;
+	}
 
 	for(;;){
 		/*
@@ -625,6 +668,7 @@ inconkproc(void *arg)
 		/*
 		 *  die if the device is closed
 		 */
+		locked = 1;
 		qlock(ip);
 		if(ip->rq == 0){
 			qunlock(ip);
@@ -646,6 +690,7 @@ inconkproc(void *arg)
 			ip->ri = (ip->ri+1)%Nin;
 		}
 		qunlock(ip);
+		locked = 0;
 	}
 }
 

@@ -794,7 +794,6 @@ streamclose1(Stream *s)
 			for(q = s->procq; q; q = q->next){
 				if(q->info->close)
 					(*q->info->close)(q->other);
-				RD(q)->put = nullput;
 				WR(q)->put = nullput;
 
 				/*

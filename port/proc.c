@@ -343,6 +343,59 @@ postnote(Proc *p, int dolock, char *n, int flag)
 	return 1;
 }
 
+
+/*
+ * weird thing: keep at most NBROKEN around
+ */
+#define	NBROKEN 4
+struct{
+	Lock;
+	int	n;
+	Proc	*p[NBROKEN];
+}broken;
+
+void
+addbroken(Proc *c)
+{
+	int b;
+
+	lock(&broken);
+	if(broken.n == NBROKEN){
+		ready(broken.p[0]);
+		memcpy(&broken.p[0], &broken.p[1], sizeof(Proc*)*(NBROKEN-1));
+		--broken.n;
+	}
+	broken.p[broken.n++] = c;
+	unlock(&broken);
+	c->state = Broken;
+	sched();		/* until someone lets us go */
+	lock(&broken);
+	for(b=0; b<NBROKEN; b++)
+		if(broken.p[b] == c){
+			broken.n--;
+			memcpy(&broken.p[b], &broken.p[b+1], sizeof(Proc*)*(NBROKEN-(b+1)));
+			break;
+		}
+	unlock(&broken);
+}
+
+int
+freebroken(void)
+{
+	int n;
+
+
+	lock(&broken);
+	n = broken.n;
+	while(broken.n > 0){
+		ready(broken.p[0]);
+		memcpy(&broken.p[0], &broken.p[1], sizeof(Proc*)*(NBROKEN-1));
+		--broken.n;
+	}
+	unlock(&broken);
+	return n;
+}
+
 void
 pexit(char *s, int freemem)
 {
@@ -418,35 +471,7 @@ pexit(char *s, int freemem)
 	}
    out:
 	if(!freemem){
-		/*
-		 * weird thing: keep at most NBROKEN around
-		 */
-		#define	NBROKEN 4
-		static struct{
-			Lock;
-			int	n;
-			Proc	*p[NBROKEN];
-		}broken;
-		int b;
-
-		lock(&broken);
-		if(broken.n == NBROKEN){
-			ready(broken.p[0]);
-			memcpy(&broken.p[0], &broken.p[1], sizeof(Proc*)*(NBROKEN-1));
-			--broken.n;
-		}
-		broken.p[broken.n++] = c;
-		unlock(&broken);
-		c->state = Broken;
-		sched();		/* until someone lets us go */
-		lock(&broken);
-		for(b=0; b<NBROKEN; b++)
-			if(broken.p[b] == c){
-				broken.n--;
-				memcpy(&broken.p[b], &broken.p[b+1], sizeof(Proc*)*(NBROKEN-(b+1)));
-				break;
-			}
-		unlock(&broken);
+		addbroken(c);
 		freesegs(-1);
 		closepgrp(c->pgrp);
 		close(u->dot);

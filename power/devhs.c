@@ -466,17 +466,28 @@ hsvmekproc(void *arg)
 	Device *addr;
 	unsigned int c;
 	int miss;
+	int locked;
 
 	hp = (Hsvme *)arg;
 	addr = hp->addr;
 	hp->kstarted = 1;
 	hp->wptr = hp->buf;
 
+	locked = 0;
+	if(waserror()){
+		if(locked)
+			qunlock(hp);
+		hp->kstarted = 0;
+		wakeup(&hp->r);
+		return;
+	}
+
 	for(;;){
 		/*
 		 *  die if the device is closed
 		 */
 		qlock(hp);
+		locked = 1;
 		if(hp->rq == 0){
 			qunlock(hp);
 			hp->kstarted = 0;
@@ -515,6 +526,7 @@ hsvmekproc(void *arg)
 			}
 		}
 		qunlock(hp);
+		locked = 0;
 
 		/*
 		 *  sleep if input fifo empty
