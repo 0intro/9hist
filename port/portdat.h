@@ -774,3 +774,15 @@ enum
 
 	AUTHLEN	= 8,
 };
+
+/*
+ *  mouse types
+ */
+enum
+{
+	Mouseother=	0,
+	Mouseserial=	1,
+	MousePS2=	2,
+};
+extern int mouseshifted;
+extern int mousetype;

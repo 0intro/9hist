@@ -113,10 +113,7 @@ KIOQ	kbdq;
 
 static int keybuttons;
 static uchar ccc;
-static int mousetype;
-static int mouseport;
 static int shift;
-extern int mouseshifted;
 
 enum
 {
@@ -127,11 +124,6 @@ enum
 	Csf=		(1<<2),		/* system flag */
 	Cmouseint=	(1<<1),		/* mouse interrupt enable */
 	Ckbdint=	(1<<0),		/* kbd interrupt enable */
-
-	/* what kind of mouse */
-	Mouseother=	0,
-	Mouseserial=	1,
-	MousePS2=	2,
 };
 
 static void	kbdintr(Ureg*);
@@ -286,7 +278,6 @@ serialmouse(int port, char *type, int setspeed)
 	uartspecial(port, 0, &mouseq, setspeed ? 1200 : 0);
 	if(type && *type == 'M')
 		mouseq.putc = m3mouseputc;
-	mouseport = port;
 	mousetype = Mouseserial;
 }
 

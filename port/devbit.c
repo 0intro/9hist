@@ -109,6 +109,8 @@ Mouseinfo	mouse;
 Cursorinfo	cursor;
 Rendez		lcdmouse;
 int		mouseshifted;
+int		mousetype;
+int		islcd;
 
 Cursor	arrow =
 {
@@ -2047,14 +2049,15 @@ mouseupdate(int dolock)
  *	byte 2 -	0 Y5 Y4 Y3 Y2 Y1 Y0
  *	byte 3 -	0  M  x  x  x  x  x	(optional)
  *
- *  shift & left button is the same as middle button (for 2 button mice)
+ *  shift & right button is the same as middle button (for 2 button mice)
  */
 int
 m3mouseputc(IOQ *q, int c)
 {
 	static uchar msg[3];
 	static int nb;
-	static uchar b[] = { 0, 4, 1, 5, 0, 4, 3, 7 };
+	static int middle;
+	static uchar b[] = { 0, 4, 1, 5, 0, 2, 1, 5 };
 	short x;
 
 	USED(q);
@@ -2064,15 +2067,15 @@ m3mouseputc(IOQ *q, int c)
 	if(nb==0){
 		if((c&0x40) == 0){
 			/* an extra byte gets sent for the middle button */
-			mousebuttons((mouse.buttons & ~2) | ((c&0x20) ? 2 : 0));
+			middle = (c&0x20) ? 2 : 0;
+			mousebuttons((mouse.buttons & ~2) | middle);
 			return 0;
 		}
 	}
 	msg[nb] = c;
 	if(++nb == 3){
 		nb = 0;
-		mouse.newbuttons = (mouse.buttons & 2)
-				 | b[(msg[0]>>4)&3 | (mouseshifted ? 4 : 0)];
+		mouse.newbuttons = middle | b[(msg[0]>>4)&3 | (mouseshifted ? 4 : 0)];
 		x = (msg[0]&0x3)<<14;
 		mouse.dx = (x>>8) | msg[1];
 		x = (msg[0]&0xc)<<12;
@@ -2085,13 +2088,15 @@ m3mouseputc(IOQ *q, int c)
 
 /*
  *  Logitech 5 byte packed binary mouse format, 8 bit bytes
+ *
+ *  shift & right button is the same as middle button (for 2 button mice)
  */
 int
 mouseputc(IOQ *q, int c)
 {
 	static short msg[5];
 	static int nb;
-	static uchar b[] = {0, 4, 2, 6, 1, 5, 3, 7};
+	static uchar b[] = {0, 4, 2, 6, 1, 5, 3, 7, 0, 2, 2, 6, 1, 5, 3, 7};
 
 	USED(q);
 	if((c&0xF0) == 0x80)
@@ -2100,7 +2105,7 @@ mouseputc(IOQ *q, int c)
 	if(c & 0x80)
 		msg[nb] |= ~0xFF;	/* sign extend */
 	if(++nb == 5){
-		mouse.newbuttons = b[(msg[0]&7)^7];
+		mouse.newbuttons = b[((msg[0]&7)^7) | (mouseshifted ? 2 : 0)];
 		mouse.dx = msg[1]+msg[3];
 		mouse.dy = -(msg[2]+msg[4]);
 		mouse.track = 1;

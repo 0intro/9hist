@@ -44,6 +44,9 @@ boot(int argc, char *argv[])
 		print("%s ", argv[fd]);
 	print("\n");/**/
 
+	if(argc <= 1)
+		pflag = 1;
+
 	ARGBEGIN{
 	case 'a':
 		aflag = 1;

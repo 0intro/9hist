@@ -96,6 +96,7 @@ struct SCC
 	uchar	*data;		/* data register in Z8530 */
 	int	printing;	/* true if printing */
 	ulong	freq;		/* clock frequency */
+	uchar	mask;		/* bits/char */
 
 	/* console interface */
 	int	special;	/* can't use the stream interface */
@@ -198,19 +199,23 @@ sccbits(SCC *sp, int n)
 
 	switch(n){
 	case 5:
+		sp->mask = 0x1f;
 		rbits = Rx5bits;
 		tbits = Tx5bits;
 		break;
 	case 6:
+		sp->mask = 0x3f;
 		rbits = Rx6bits;
 		tbits = Tx6bits;
 		break;
 	case 7:
+		sp->mask = 0x7f;
 		rbits = Rx7bits;
 		tbits = Tx7bits;
 		break;
 	case 8:
 	default:
+		sp->mask = 0xff;
 		rbits = Rx8bits;
 		tbits = Tx8bits;
 		break;
@@ -298,6 +303,7 @@ sccsetup0(SCC *sp, int brsource)
 	sccwrreg(sp, 3, 0);
 	sp->sticky[5] = TxEna | Tx8bits;
 	sccwrreg(sp, 5, 0);
+	sp->mask = 0xff;
 }
 
 void
@@ -369,7 +375,7 @@ sccintr0(SCC *sp, uchar x)
 		cq = sp->iq;
 		while(*sp->ptr&RxReady){
 			onepointseven();
-			ch = *sp->data;
+			ch = *sp->data & sp->mask;
 			if (ch == CTLS && sp->xonoff)
 				sp->blocked = 1;
 			else if (ch == CTLQ && sp->xonoff) {
@@ -477,7 +483,8 @@ sccspecial(int port, IOQ *oq, IOQ *iq, int baud)
 	sp->oq = oq;
 	sp->iq = iq;
 	sccenable(sp);
-	sccsetbaud(sp, baud);
+	if(baud)
+		sccsetbaud(sp, baud);
 
 	if(iq){
 		/*
