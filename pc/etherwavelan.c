@@ -10,7 +10,6 @@
 	For known BUGS see the comments below. Besides,
 	the driver keeps interrupts disabled for just too
 	long. When it gets robust, locks should be revisited.
-	(see BUGs).
  */
 
 #include "u.h"
@@ -111,10 +110,9 @@ enum
 	WTyp_Prom	= 0xfc85,
 	WTyp_Keys	= 0xfcb0,
 	WTyp_TxKey	= 0xfcb1,
+	WTyp_CurName	= 0xfd41,
 	WTyp_HasCrypt	= 0xfd4f,
 };
-
-
 
 // Controller
 enum
@@ -228,7 +226,8 @@ struct Wltv
 			uchar	addr[8];
 		};
 		struct {
-			char	s[17*2];
+			ushort	slen;
+			char	s[WNameLen];
 		};
 		struct {
 			char	name[WNameLen];
@@ -424,12 +423,14 @@ ltv_outstr(Ctlr* ctlr, int type, char *val)
 	Wltv l;
 	int len;
 
-	len = (strlen(val)+1)&~1;
-	memset(&l,0,sizeof(l));
+	len = strlen(val);
+	if(len > sizeof(l.s))
+		len = sizeof(l.s);
+	memset(&l, 0, sizeof(l));
 	l.type = type;
-	l.len = (len/2)+2;
-	l.val = len;			// l.s[0] and l.s[1]
-	strncpy(l.s+2,val,strlen(val));
+	l.len = (sizeof(l.type)+sizeof(l.slen)+sizeof(l.s))/2;
+	l.slen = (len+1) & ~1;
+	strncpy(l.s, val, len);
 	w_outltv(ctlr, &l);
 }
 
@@ -625,8 +626,7 @@ w_enable(Ether* ether)
 			memset(&l, 0, sizeof(l));
 			l.len = sizeof(ctlr->key[0])*WNKeys/2 + 1;
 			l.type= WTyp_Keys;
-			memmove(l.key, &ctlr->key[0], 
-					sizeof(l.key[0])*WNKeys);
+			memmove(l.key, &ctlr->key[0], sizeof(l.key[0])*WNKeys);
 			w_outltv(ctlr, &l);
 			ltv_outs(ctlr, WTyp_Crypt, wep);
 			ltv_outs(ctlr, WTyp_XClear, ctlr->xclear);
@@ -1019,12 +1019,16 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 	PRINTSTR("\nCard stats: \n");
 	PRINTSTAT("Status: %ux\n", csr_ins(ctlr, WR_Sts));
 	PRINTSTAT("Event status: %ux\n", csr_ins(ctlr, WR_EvSts));
-	PRINTSTAT("Port type: %d\n", ltv_ins(ctlr, WTyp_Ptype));
+	i = ltv_ins(ctlr, WTyp_Ptype);
+	PRINTSTAT("Port type: %d\n", i);
 	PRINTSTAT("Transmit rate: %d\n", ltv_ins(ctlr, WTyp_TxRate));
 	PRINTSTAT("Channel: %d\n", ltv_ins(ctlr, WTyp_Chan));
 	PRINTSTAT("AP density: %d\n", ltv_ins(ctlr, WTyp_ApDens));
 	PRINTSTAT("Promiscuous mode: %d\n", ltv_ins(ctlr, WTyp_Prom));
-	PRINTSTAT("SSID name: %s\n", ltv_inname(ctlr, WTyp_NetName));
+	if(i == 3)
+		PRINTSTAT("SSID name: %s\n", ltv_inname(ctlr, WTyp_NetName));
+	else
+		PRINTSTAT("Current name: %s\n", ltv_inname(ctlr, WTyp_CurName));
 	PRINTSTAT("Net name: %s\n", ltv_inname(ctlr, WTyp_WantName));
 	PRINTSTAT("Node name: %s\n", ltv_inname(ctlr, WTyp_NodeName));
 	if (ltv_ins(ctlr, WTyp_HasCrypt) == 0)
@@ -1239,23 +1243,30 @@ interrupt(Ureg* ,void* arg)
 static void
 setopt(Ctlr* ctlr, char* opt, int no)
 {
-	int i, key;
-	char k[64];
+	int i;
+	char k[64], *ke, *nessid;
 	char *kn = &k[3];
 	WKey *kp;
-	char *ke;
+	int key;
 
 	if (strncmp(opt,"essid=",6) == 0){
-		if (ctlr->ptype == 3)
-			strncpy(ctlr->netname,opt+6,WNameLen);
+		if (strcmp(opt+6, "default") == 0)
+			nessid = "";
 		else
-			strncpy(ctlr->wantname,opt+6,WNameLen);
+			nessid = opt+6;
+		if (ctlr->ptype == 3){
+			memset(ctlr->netname, 0, sizeof(ctlr->netname));
+			strncpy(ctlr->netname, nessid, WNameLen);
+		}
+		else{
+			memset(ctlr->wantname, 0, sizeof(ctlr->wantname));
+			strncpy(ctlr->wantname, nessid, WNameLen);
+		}
 	} 
 	else if (strncmp(opt,"station_name=",13) == 0){
-		// BUG?
-		// In my kernel, it seems that the max length of
-		// opt is 16, and I get "na" as node name
-		// when I say station_name=nautilus.
+		// The max. length of an 'opt' is ISAOPTLEN in dat.h.
+		// It should be > 16 to give reasonable name lengths.
+		memset(ctlr->nodename, 0, sizeof(ctlr->nodename));
 		strncpy(ctlr->nodename, opt+13,WNameLen);
 	} 
 	else if (strncmp(opt, "channel=",8) == 0){
@@ -1331,7 +1342,8 @@ reset(Ether* ether)
 	ctlr->chan = 0;
 	ctlr->ptype= WDfltPType;
 	ctlr->keyid= 0;
-	*ctlr->netname = *ctlr->wantname = *ctlr->nodename = 0;
+	*ctlr->netname = *ctlr->wantname = 0;
+	strcpy(ctlr->nodename, "wvlancard");
 
 	for (i=0; i < ether->nopt; i++)
 		setopt(ctlr, ether->opt[i], ether->ctlrno);
