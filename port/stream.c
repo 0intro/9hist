@@ -247,8 +247,6 @@ freeb(Block *bp)
 		nbp = bp->next;
 		bp->next = 0;
 		unlock(bcp);
-		if(bcp->r.p)
-			wakeup(&bcp->r);
 	}
 }
 
