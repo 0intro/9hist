@@ -76,6 +76,7 @@ struct Timer
 {
 	Timer	*next;
 	Timer	*prev;
+	Timer	*readynext;
 	int	state;
 	int	start;
 	int	count;
@@ -262,18 +263,19 @@ tcpsetstate(Conv *s, uchar newstate)
 		tcpstates[oldstate], tcpstates[newstate], tpriv->tstats.tcpCurrEstab );
 	**/
 
-	tcb->state = newstate;
-
 	switch(newstate) {
 	case Closed:
 		qclose(s->rq);
 		qclose(s->wq);
 		qclose(s->eq);
+		break;
 
 	case Close_wait:		/* Remote closes */
 		qhangup(s->rq, nil);
 		break;
 	}
+
+	tcb->state = newstate;
 
 	if(oldstate == Syn_sent && newstate != Closed)
 		Fsconnected(s, nil);
@@ -419,6 +421,7 @@ deltimer(Tcppriv *tpriv, Timer *t)
 		t->next->prev = t->prev;
 	if(t->prev)
 		t->prev->next = t->next;
+	t->next = t->prev = nil;
 }
 
 void
@@ -463,6 +466,7 @@ tcpackproc(void *a)
 	Timer *t, *tp, *timeo;
 	Proto *tcp;
 	Tcppriv *tpriv;
+	int loop;
 
 	tcp = a;
 	tpriv = tcp->priv;
@@ -472,26 +476,27 @@ tcpackproc(void *a)
 
 		qlock(&tpriv->tl);
 		timeo = nil;
+		loop = 0;
 		for(t = tpriv->timers; t != nil; t = tp) {
+			if(loop++ > 10000)
+				panic("tcpackproc1");
 			tp = t->next;
  			if(t->state == TimerON) {
 				t->count--;
 				if(t->count == 0) {
 					deltimer(tpriv, t);
 					t->state = TimerDONE;
-					t->next = timeo;
+					t->readynext = timeo;
 					timeo = t;
 				}
 			}
 		}
 		qunlock(&tpriv->tl);
 
-		for(;;) {
-			t = timeo;
-			if(t == nil)
-				break;
-
-			timeo = t->next;
+		loop = 0;
+		for(t = timeo; t != nil; t = t->readynext) {
+			if(loop++ > 10000)
+				panic("tcpackproc2");
 			if(t->state == TimerDONE && t->func != nil)
 				(*t->func)(t->arg);
 		}
@@ -551,6 +556,7 @@ localclose(Conv *s, char *reason)	 /*  called with tcb locked */
 
 	tcphalt(tpriv, &tcb->timer);
 	tcphalt(tpriv, &tcb->rtt_timer);
+	tcphalt(tpriv, &tcb->acktimer);
 
 	/* Flush reassembly queue; nothing more can arrive */
 	for(rp = tcb->reseq; rp != nil; rp = rp1) {
@@ -1412,10 +1418,14 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 				 *  and the user isn't backing up
 				 */
 				if(tcb->rcv.nxt - tcb->last_ack >= 2*tcb->mss &&
-				   qlen(s->rq) < 8*tcb->mss)
+				   qlen(s->rq) < 8*tcb->mss){
 					tcb->flags |= FORCE;
-				else if(tcb->acktimer.state != TimerON)
-					tcpgo(tpriv, &tcb->acktimer);
+					if(tcb->acktimer.state == TimerON)
+						tcphalt(tpriv, &tcb->acktimer);
+				} else {
+					if(tcb->acktimer.state != TimerON)
+						tcpgo(tpriv, &tcb->acktimer);
+				}
 
 				break;
 			case Finwait2:

@@ -597,6 +597,7 @@ iliput(Proto *il, uchar*, Block *bp)
 	ic->querytime = Keepalivetime;
 	ic->deathtime = Deathtime;
 	ic->window = Defaultwin;
+	ic->unackeduchars = 0;
 
 	ilprocess(new, ih, bp);
 	return;
@@ -1078,6 +1079,8 @@ void
 ilbackoff(Ilcb *ic)
 {
 	ic->fasttime += ic->fasttime>>1;
+	if(ic->fasttime > Fasttime)
+		ic->fasttime = Fasttime;
 }
 
 char*
