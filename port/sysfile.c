@@ -14,9 +14,10 @@ newfd(Chan *c)
 {
 	int i;
 	Fgrp *f = up->fgrp;
+	Chan **newfd, **oldfd;
 
 	lock(f);
-	for(i=0; i<NFD; i++)
+	for(i=0; i<f->nfd; i++)
 		if(f->fd[i] == 0){
 			if(i > f->maxfd)
 				f->maxfd = i;
@@ -24,10 +25,27 @@ newfd(Chan *c)
 			unlock(f);
 			return i;
 		}
+	/*
+	 * Unbounded allocation is unwise; besides, there are only 16 bits
+	 * of fid in 9P
+	 */
+	if(f->nfd >= 5000){
+		unlock(f);
+		exhausted("file descriptors");
+		return -1;
+	}
+	newfd = smalloc((f->nfd+DELTAFD)*sizeof(Chan*));
+	oldfd = f->fd;
+	memmove(newfd, oldfd, f->nfd*sizeof(Chan*));
+	f->fd = newfd;
+	f->nfd += DELTAFD;
+	f->maxfd = i;
+	f->fd[i] = c;
 	unlock(f);
-print("process %d (%s) out of file descriptors\n", up->pid, up->text);
-	exhausted("file descriptors");
-	return 0;
+	free(oldfd);
+	if(i%100 == 0)
+		pprint("warning: process exceeds %d file descriptors\n", i);
+	return i;
 }
 
 Chan*
@@ -40,7 +58,7 @@ fdtochan(int fd, int mode, int chkmnt, int iref)
 	f = up->fgrp;
 
 	lock(f);
-	if(fd<0 || NFD<=fd || (c = f->fd[fd])==0) {
+	if(fd<0 || f->nfd<=fd || (c = f->fd[fd])==0) {
 		unlock(f);
 		error(Ebadfd);
 	}
@@ -156,7 +174,7 @@ sysdup(ulong *arg)
 	c = fdtochan(arg[0], -1, 0, 1);
 	fd = arg[1];
 	if(fd != -1){
-		if(fd<0 || NFD<=fd) {
+		if(fd<0 || f->nfd<=fd) {
 			cclose(c);
 			error(Ebadfd);
 		}

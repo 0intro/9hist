@@ -359,6 +359,8 @@ userinit(void)
 	p->egrp->ref = 1;
 	p->fgrp = smalloc(sizeof(Fgrp));
 	p->fgrp->ref = 1;
+	p->fgrp->fd = smalloc(DELTAFD*sizeof(Chan*));
+	p->fgrp->nfd = DELTAFD;
 	p->rgrp = newrgrp();
 	p->procmode = 0640;
 

@@ -430,8 +430,14 @@ struct Evalue
 struct Fgrp
 {
 	Ref;
-	Chan	*fd[NFD];
+	Chan	**fd;
+	int	nfd;			/* number allocated */
 	int	maxfd;			/* highest fd in use */
+};
+
+enum
+{
+	DELTAFD	= 20		/* incremental increase in Fgrp.fd's */
 };
 
 struct Palloc

@@ -167,6 +167,12 @@ dupfgrp(Fgrp *f)
 	int i;
 
 	new = smalloc(sizeof(Fgrp));
+	/* Make new fd list shorter if possible, preserving quantization */
+	new->nfd = f->maxfd+1;
+	i = new->nfd%DELTAFD;
+	if(i != 0)
+		new->nfd += DELTAFD - i;
+	new->fd = smalloc(new->nfd*sizeof(Chan*));
 	new->ref = 1;
 
 	lock(f);
@@ -198,6 +204,7 @@ closefgrp(Fgrp *f)
 		if(c = f->fd[i])
 			cclose(c);
 
+	free(f->fd);
 	free(f);
 }
 
