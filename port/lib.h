@@ -140,7 +140,6 @@ struct Qid
 	uchar	type;
 };
 
-typedef
 struct Dir {
 	/* system-modified data */
 	ushort	type;	/* server type */
@@ -155,7 +154,7 @@ struct Dir {
 	char	*uid;	/* owner name */
 	char	*gid;	/* group name */
 	char	*muid;	/* last modifier name */
-} Dir;
+};
 
 struct Waitmsg
 {

@@ -162,6 +162,7 @@ void		microdelay(int);
 void		mkqid(Qid*, vlong, ulong, int);
 void		mmurelease(Proc*);
 void		mmuswitch(Proc*);
+int		mntauth(Chan*, uchar*, int, uchar*, int);
 void		mntdump(void);
 void		mountfree(Mount*);
 ulong		msize(void*);

@@ -11,6 +11,31 @@ char	*eve;
 char	evekey[DESKEYLEN];
 char	hostdomain[DOMLEN];
 
+struct Session
+{
+	char *authlist;
+};
+
+Session*
+allocsession(char *authlist)
+{
+	Session *s;
+
+	s = smalloc(sizeof(*s));
+	s->authlist = nil;
+	kstrdup(&s->authlist, authlist);
+	return s;
+}
+
+void
+freesession(Session *s)
+{
+	if(s == nil)
+		return;
+	free(s->authlist);
+	free(s);
+}
+
 /*
  *  return true if current user is eve
  */
@@ -111,36 +136,16 @@ Return:
 	return m;
 }
 
-long
-sysfsession(ulong *arg)
+void
+sendsession(Chan *c)
 {
 	Fcall f;
 	uchar *msg;
-	uint authlen, n, m;
-	Chan *c;
+	uint n, m;
 	uvlong oo;
-
-//BUG print("warning: stub fsession being used\n");
-	authlen = arg[2];
-	validaddr(arg[1], authlen, 1);
-	c = fdtochan(arg[0], ORDWR, 0, 1);
-	if(waserror()){
-		cclose(c);
-		nexterror();
-	}
-
-	if(c->flag & CMSG){
-//BUG what to do?
-		((uchar*)arg[1])[0] = 0;
-		poperror();
-		cclose(c);
-		return 0;
-	}
 
 	f.type = Tsession;
 	f.tag = NOTAG;
-	f.nchal = 0;
-	f.chal = (uchar*)"";
 	msg = smalloc(8192+IOHDRSZ);
 	if(waserror()){
 		free(msg);
@@ -156,6 +161,7 @@ sysfsession(ulong *arg)
 	unlock(c);
 
 	m = devtab[c->type]->write(c, msg, n, oo);
+print("session sent\n");
 
 	if(m < n){
 		lock(c);
@@ -168,34 +174,78 @@ sysfsession(ulong *arg)
 	m = devtab[c->type]->read(c, msg, 8192+IOHDRSZ, c->offset);
 	if(m <= 0)
 		error("EOF receiving fsession reply");
+print("rsession rcvd\n");
 
 	lock(c);
 	c->offset += m;
 	unlock(c);
 
 	n = convM2S(msg, m, &f);
+print("rsession conv returns %d\n", n);
 	if(n != m)
 		error("bad fsession conversion on reply");
 	if(f.type != Rsession)
 		error("unexpected reply type in fsession");
-	m = f.nchal;
-	if(m > authlen)
-		error(Eshort);
-//BUG print("auth stuff ignored; noauth by default\n");
-	((uchar*)arg[1])[0] = 0;
+	c->session = allocsession(f.authlist);
 
 	free(msg);
 	poperror();
-	poperror();
-	cclose(c);
-	return m;
 }
 
 long
-sysfauth(ulong *)
+sysfsession(ulong *arg)
 {
-	error("sysfauth unimplemented");
-	return -1;
+	Chan *c;
+	uint authlen, n;
+
+	authlen = arg[2];
+	validaddr(arg[1], authlen, 1);
+	c = fdtochan(arg[0], ORDWR, 0, 1);
+	if(waserror()){
+		cclose(c);
+		nexterror();
+	}
+
+	if(c->session == nil){
+		if(c->flag&CMSG)
+			error("session on mounted channel");
+		sendsession(c);
+	}
+
+	n = strlen(c->session->authlist)+1;
+	if(n > authlen)
+		error(Eshort);
+	memmove((uchar*)arg[1], c->session->authlist, n);
+
+	poperror();
+	cclose(c);
+	return n;
+
+}
+
+long
+sysfauth(ulong *arg)
+{
+	Chan *c;
+	uint authlen, rauthlen;
+	int n;
+
+	authlen = arg[2];
+	validaddr(arg[1], authlen, 1);
+	rauthlen = arg[4];
+	validaddr(arg[3], rauthlen, 1);
+	c = fdtochan(arg[0], ORDWR, 0, 1);
+	if(waserror()){
+		cclose(c);
+		nexterror();
+	}
+
+	n = mntauth(c, (uchar*)arg[1], authlen, (uchar*)arg[3], rauthlen);
+
+	poperror();
+	cclose(c);
+	return n;
+
 }
 
 /*

@@ -197,7 +197,7 @@ struct Dev
 	long	(*bwrite)(Chan*, Block*, ulong);
 	void	(*remove)(Chan*);
 	int	(*wstat)(Chan*, uchar*, int);
-	void	(*power)(int);	/* power mgt: power(1) → on, power (0) → off */
+	void	(*power)(int);	/* power mgt: power(1) => on, power (0) => off */
 	int	(*config)(int, char*, DevConf*);
 };
 

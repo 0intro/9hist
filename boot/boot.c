@@ -120,8 +120,10 @@ boot(int argc, char *argv[])
 	rp = getenv("rootspec");
 	if(rp == nil)
 		rp = "";
+print("boot about to mount\n");
 	if(mount(fd, "/root", MREPL|MCREATE, rp) < 0)
 		fatal("mount /");
+print("mount is done\n");
 	rp = getenv("rootdir");
 	if(rp == nil)
 		rp = rootdir;
