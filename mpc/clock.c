@@ -110,8 +110,8 @@ clockintr(Ureg *ur)
 	m->iomem->swsr = 0xaa39;
 	
 	m->ticks++;
-//	if(m->ticks%MS2TK(1000) == 0)
-//		*(uchar*)(NIMMEM+0x2200) = (m->ticks/MS2TK(1000))&2;
+	if(m->ticks%MS2TK(1000) == 0)
+		*(uchar*)(NIMMEM+0x2200) = (m->ticks/MS2TK(1000))&2;
 
 	if(up)
 		up->pc = ur->pc;

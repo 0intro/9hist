@@ -826,6 +826,9 @@ uartkick(Uart *p)
 	if(p->outb == nil)
 		txstart(p);
 	iunlock(&p->plock);
+
+	if(predawn)
+		uartwait();
 }
 
 /*

@@ -9,7 +9,7 @@
 void
 mmuinit(void)
 {
-iprint("mmuinit\n");
+	print("mmuinit\n");
 	kernelmmu();
 }
 
@@ -26,3 +26,12 @@ mmurelease(Proc* proc)
 }
 
 
+void
+putmmu(ulong va, ulong pa, Page*)
+{
+	int x, r;
+print("putmmu va=%ux pa=%ux\n", va, pa);
+	x = splhi();
+	r = _putmmu(va, pa);
+	splx(x);
+}

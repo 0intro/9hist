@@ -196,6 +196,14 @@ ltlb:
 	MOVW	R5, SPR(MI_RPN)
 	BDNZ	ltlb
 
+	/* lock kernel entries in tlb - also reset tlb index*/
+	MOVW	$(MMUCIDEF|MMURSV4), R4
+	MOVW	R4, SPR(MI_CTR)	/* i-mmu control */
+	ISYNC
+	MOVW	$(MMUCIDEF|MMUWTDEF|MMURSV4), R4
+	MOVW	R4, SPR(MD_CTR)	/* d-mmu control */
+	ISYNC
+
 	/* enable MMU */
 	MOVW	MSR, R4
 	OR	$(MSR_IR|MSR_DR), R4
@@ -262,6 +270,14 @@ TEXT	gotolabel(SB), $-4
 	MOVW	$1, R3
 	RETURN
 
+TEXT	touser(SB), $-4
+	MOVW	$(UTZERO+32), R5	/* header appears in text */
+	MOVW	$(MSR_EE|MSR_PR|MSR_ME|MSR_IP|MSR_IR|MSR_DR|MSR_RI), R4
+	MOVW	R4, SPR(SRR1)
+	MOVW	R3, R1
+	MOVW	R5, SPR(SRR0)
+	RFI
+
 /*
  * enter with stack set and mapped.
  * on return, SB (R2) has been set, and R3 has the Ureg*,
@@ -276,6 +292,8 @@ TEXT	saveureg(SB), $-4
  */
 	MOVMW	R2, 48(R1)	/* r2:r31 */
 	MOVW	$setSB(SB), R2
+	MOVW	$mach0(SB), R(MACH)
+	MOVW	12(R(MACH)), R(USER)
 	MOVW	SPR(SAVER1), R4
 	MOVW	R4, 44(R1)
 	MOVW	SPR(SAVER0), R5
@@ -413,7 +431,22 @@ TEXT	flushmmu(SB), $0
 	TLBIA
 	RETURN
 
-TEXT	putmmu(SB), $0
+TEXT	_putmmu(SB), $0
+	MOVW	MSR, R7
+	MOVW	$~(MSR_DR|MSR_IR), R8
+	AND	R7, R8
+	MOVW	R8, MSR
+	OR	$MMUEV, R3
+	MOVW	R3, SPR(MD_EPN)
+	MOVW	R3, SPR(MI_EPN)
+	MOVW	$(MMUWT|MMUV), R5
+	MOVW	R5, SPR(MI_TWC)
+	MOVW	R5, SPR(MD_TWC)
+	MOVW	4(FP), R6
+	MOVW	R6, SPR(MD_RPN)
+	MOVW	R6, SPR(MI_RPN)
+	MOVW	SPR(MD_CTR), R3
+	MOVW	R7, MSR
 	RETURN
 
 TEXT	gotopc(SB), $0
@@ -530,7 +563,6 @@ TEXT	dtlbmiss(SB), $-4
 
 /*
  * traps force memory mapping off.
- * this code goes to too much effort (for the Inferno environment) to restore it.
  */
 TEXT	trapvec(SB), $-4
 traps:
@@ -538,9 +570,31 @@ traps:
 
 	MOVW	R0, SPR(SAVEXX)	/* vector */
 	MOVW	R1, SPR(SAVER1)
-	SUB	$UREGSPACE, R1
+	MOVW	CR, R1
+	MOVW	MSR, R0
+	OR	$(MSR_DR|MSR_IR), R0		/* make data space usable */
+	MOVW	R0, MSR
 	MOVW	SPR(SRR0), R0	/* save SRR0/SRR1 now, since DLTB might be missing stack page */
 	MOVW	R0, LR
+	MOVW	SPR(SRR1), R0
+	ANDCC	$MSR_PR, R0
+	BEQ	ktrap
+	
+	/* switch to kernel stack */
+	MOVW	R1, CR
+	MOVW	R2, R0
+	MOVW	$setSB(SB), R2
+	MOVW	$mach0(SB), R1	/* m-> */
+	MOVW	R0, R2
+	MOVW	12(R1), R1	/* m->proc */
+	MOVW	8(R1), R1	/* m->proc->kstack */
+	ADD	$(KSTACK-UREGSIZE), R1
+	BR	trap1
+ktrap:
+	MOVW	R1, CR
+	MOVW	SPR(SAVER1), R1
+	SUB	$UREGSPACE, R1
+trap1:
 	MOVW	SPR(SRR1), R0
 	MOVW	R0, 12(R1)	/* save status: could take DLTB miss here */
 	MOVW	LR, R0

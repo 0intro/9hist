@@ -110,12 +110,12 @@ struct Mach
 {
 	/* OFFSETS OF THE FOLLOWING KNOWN BY l.s */
 	int	machno;			/* physical id of processor (unused) */
-	ulong	splpc;			/* pc of last caller to splhi (unused) */
+	ulong	splpc;			/* pc of last caller to splhi */
 	int	mmask;			/* 1<<m->machno (unused) */
+	Proc	*proc;			/* current process on this processor */
 
 	/* ordering from here on irrelevant */
 	ulong	ticks;			/* of the clock since boot time */
-	Proc	*proc;			/* current process on this processor */
 	Label	sched;			/* scheduler wakeup */
 	Lock	alarmlock;		/* access to alarm list */
 	void	*alarm;			/* alarms bound to this clock */
@@ -215,3 +215,4 @@ struct
 extern register Mach	*m;
 extern register Proc	*up;
 
+extern int predawn;

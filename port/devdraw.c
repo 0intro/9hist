@@ -1830,7 +1830,7 @@ drawactive(int active)
 	if(active){
 		drawblankscreen(0);
 		sdraw.blanktime = 0;
-	}else {
+	}else{
 		if(TK2MS(sdraw.blanktime) > BLANKTIME)
 			drawblankscreen(1);
 		else

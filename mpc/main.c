@@ -13,6 +13,8 @@ char *confname[MAXCONF];
 char *confval[MAXCONF];
 int nconf;
 
+int	predawn = 1;
+
 Conf	conf;
 
 void
@@ -30,8 +32,6 @@ flash(void)
 void
 main(void)
 {
-	int i;
-
 	machinit();
 	clockinit();
 	confinit();
@@ -41,13 +41,23 @@ main(void)
 	cpminit();
 	uartinstall();
 	mmuinit();
-	spllo();
-	for(i=0; ; i++) {
-		print("hello again %d\n", i);
-		delay(100);
+if(0) {
+	predawn = 0;
+	print("spllo() = %ux\n", spllo());
+	for(;;) {
+		print("hello\n");
+		delay(1000);
 	}
-
-	reset();
+}
+	pageinit();
+	procinit0();
+	initseg();
+	links();
+	chandevreset();
+	swapinit();
+	userinit();
+predawn = 0;
+	schedinit();
 }
 
 void
@@ -68,6 +78,103 @@ machinit(void)
 	m->speed = osc*(mf+1);
 	m->cpuhz = m->speed*MHz;	/* general system clock (cycles) */
 	m->clockgen = osc*MHz;		/* clock generator frequency (cycles) */
+}
+
+void
+bootargs(ulong base)
+{
+print("bootargs = %ux\n", base);
+	USED(base);
+}
+
+void
+init0(void)
+{
+	int i;
+
+	up->nerrlab = 0;
+
+print("spllo = %ux\n", spllo());
+
+	/*
+	 * These are o.k. because rootinit is null.
+	 * Then early kproc's will have a root and dot.
+	 */
+	up->slash = namec("#/", Atodir, 0, 0);
+	up->dot = cclone(up->slash, 0);
+
+	chandevinit();
+
+	if(!waserror()){
+		ksetenv("cputype", "power");
+		if(cpuserver)
+			ksetenv("service", "cpu");
+		else
+			ksetenv("service", "terminal");
+		for(i = 0; i < nconf; i++)
+			if(confname[i] && confname[i][0] != '*')
+				ksetenv(confname[i], confval[i]);
+		poperror();
+	}
+	kproc("alarm", alarmkproc, 0);
+	print("to user!!\n");
+	touser((void*)(USTKTOP-8));
+}
+
+void
+userinit(void)
+{
+	Proc *p;
+	Segment *s;
+	KMap *k;
+	Page *pg;
+
+	p = newproc();
+	p->pgrp = newpgrp();
+	p->egrp = smalloc(sizeof(Egrp));
+	p->egrp->ref = 1;
+	p->fgrp = dupfgrp(nil);
+	p->rgrp = newrgrp();
+	p->procmode = 0640;
+
+	strcpy(p->text, "*init*");
+	strcpy(p->user, eve);
+	p->fpstate = FPinit;
+
+	/*
+	 * Kernel Stack
+	 *
+	 * N.B. The -12 for the stack pointer is important.
+	 *	4 bytes for gotolabel's return PC
+	 */
+	p->sched.pc = (ulong)init0;
+	p->sched.sp = (ulong)p->kstack+KSTACK-(1+MAXSYSARG)*BY2WD;
+
+	/*
+	 * User Stack
+	 */
+	s = newseg(SG_STACK, USTKTOP-USTKSIZE, USTKSIZE/BY2PG);
+	p->seg[SSEG] = s;
+	pg = newpage(1, 0, USTKTOP-BY2PG);
+	segpage(s, pg);
+	k = kmap(pg);
+	bootargs(VA(k));
+	kunmap(k);
+
+	/*
+	 * Text
+	 */
+	s = newseg(SG_TEXT, UTZERO, 1);
+	s->flushme++;
+	p->seg[TSEG] = s;
+	pg = newpage(1, 0, UTZERO);
+	memset(pg->cachectl, PG_TXTFLUSH, sizeof(pg->cachectl));
+	segpage(s, pg);
+	k = kmap(s->map[0]->pages[0]);
+	memmove((ulong*)VA(k), initcode, sizeof initcode);
+	kunmap(k);
+
+	ready(p);
 }
 
 void

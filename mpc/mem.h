@@ -122,7 +122,7 @@
 /*
  *  portable MMU bits for fault.c - though still machine specific
  */
-#define PTEVALID	(1<<0) 
+#define PTEVALID	(MMUPP|MMUSH|MMUCI|MMUV)
 #define PTEWRITE	(2<<10)
 #define	PTERONLY	(3<<10)
 #define	PTEUNCACHED	(1<<4)

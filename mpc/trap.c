@@ -31,6 +31,7 @@ struct
 	int	free;
 } halloc;
 
+void	faultpower(Ureg *ur, ulong addr, int read);
 void	kernfault(Ureg*, int);
 
 char *excname[] =
@@ -161,19 +162,28 @@ trap(Ureg *ur)
 		clockintr(ur);
 		break;
 
-	case CMCHECK:
-	case CDSI:
-	case CISI:
 	case CIMISS:
-	case CDMISS:
 	case CITLBE:
+		faultpower(ur, ur->pc, 1);
+		break;
+	case CDMISS:
+		faultpower(ur, getdepn(), 1);
+		break;
 	case CDTLBE:
-		goto Default;
+		faultpower(ur, getdar(), !(getdsisr() & (1<<25)));
 		break;
 
 	case CEMU:
 		print("pc=#%lux op=#%8.8lux\n", ur->pc, *(ulong*)ur->pc);
 		goto Default;
+		break;
+
+	case CSYSCALL:
+		spllo();
+		print("syscall!\n");
+		dumpregs(ur);
+		delay(100);
+		splhi();
 		break;
 
 	case CPROG:
@@ -190,11 +200,35 @@ trap(Ureg *ur)
 		print("kernel %s pc=0x%lux\n", excname[ecode], ur->pc);
 		dumpregs(ur);
 		dumpstack();
-		if(m->machno == 0)
-			spllo();
+		spllo();
 		exit(1);
 	}
 
+	splhi();
+}
+
+void
+faultpower(Ureg *ureg, ulong addr, int read)
+{
+	int user, insyscall, n;
+	char buf[ERRLEN];
+
+	user = (ureg->srr1 & MSR_PR) != 0;
+print("fault: pc = %ux, addr = %ux read = %d user = %d stack=%ux\n", ureg->pc, addr, read, user, &ureg);
+	insyscall = up->insyscall;
+	up->insyscall = 1;
+	spllo();
+	n = fault(addr, read);
+	if(n < 0){
+		if(!user){
+			dumpregs(ureg);
+			panic("fault: 0x%lux\n", addr);
+		}
+		sprint(buf, "sys: trap: fault %s addr=0x%lux",
+			read? "read" : "write", addr);
+		postnote(up, 1, buf, NDebug);
+	}
+	up->insyscall = insyscall;
 	splhi();
 }
 
@@ -413,8 +447,8 @@ dumpregs(Ureg *ur)
 	ulong *l;
 	if(up) {
 		print("registers for %s %d\n", up->text, up->pid);
-		if(ur->usp < (ulong)up->kstack ||
-		   ur->usp > (ulong)up->kstack+KSTACK)
+		if(ur->srr1 & MSR_PR == 0)
+		if(ur->usp < (ulong)up->kstack || ur->usp > (ulong)up->kstack+KSTACK)
 			print("invalid stack ptr\n");
 	}
 	else
@@ -429,6 +463,7 @@ dumpregs(Ureg *ur)
 static void
 linkproc(void)
 {
+print("linkproc %ux\n", up);
 	spllo();
 	(*up->kpfun)(up->kparg);
 	pexit("", 0);

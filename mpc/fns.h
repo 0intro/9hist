@@ -22,7 +22,7 @@ void	dumpregs(Ureg*);
 //void	eieio(void);
 #define	eieio()
 void	evenaddr(ulong);
-void	faultpower(Ureg*);
+void	faultpower(Ureg*, ulong addr, int read);
 void	firmware(int);
 void	fpinit(void);
 int	fpipower(Ureg*);
@@ -72,6 +72,7 @@ int	segflush(void*, ulong);
 void	spireset(void);
 long	spioutin(void*, long, void*);
 int	tas(void*);
+void	touser(void*);
 void	trapinit(void);
 void	trapvec(void);
 void	uartinstall(void);
