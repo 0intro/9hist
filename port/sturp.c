@@ -865,7 +865,7 @@ sendblock(Urp *up, int bn)
 	n = BLEN(bp);
 	m->rptr[0] = SEQ | bn;
 	m->rptr[1] = n;
-	m->rptr[2] = n<<8;
+	m->rptr[2] = n>>8;
 	m->flags |= S_DELIM;
 	PUTNEXT(q, m);
 	DPRINT("sb %d (%d)\n", bn, up->timer);

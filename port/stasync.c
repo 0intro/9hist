@@ -196,6 +196,7 @@ aswrite(Async *ap)
 		return;
 	FLOWCTL(ap->wq, ap->bp);
 	ap->bp = 0;
+	ap->count = 0;
 }
 
 void
