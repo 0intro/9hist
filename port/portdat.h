@@ -662,6 +662,8 @@ struct Proc
 
 	ulong	qpc;		/* pc calling last blocking qlock */
 
+	int	setargs;
+
 	void	*ureg;		/* User registers for notes */
 	void	*dbgreg;	/* User registers for devproc */
 	Notsave;
