@@ -11,11 +11,13 @@ struct Ether {
 	int	tbdf;			/* type+busno+devno+funcno */
 	int	mbps;			/* Mbps */
 	uchar	ea[Eaddrlen];
+	int	encry;
 
 	void	(*attach)(Ether*);	/* filled in by reset routine */
 	void	(*transmit)(Ether*);
 	void	(*interrupt)(Ureg*, void*);
 	long	(*ifstat)(Ether*, void*, long, ulong);
+	long 	(*ctl)(Ether*, void*, long); /* custom ctl messages */
 	void	*ctlr;
 
 	Queue*	oq;

@@ -288,7 +288,12 @@ devbwrite(Chan *c, Block *bp, ulong offset)
 {
 	long n;
 
+	if(waserror()) {
+		freeb(bp);
+		nexterror();
+	}
 	n = devtab[c->type]->write(c, bp->rp, BLEN(bp), offset);
+	poperror();
 	freeb(bp);
 
 	return n;
