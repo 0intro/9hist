@@ -131,7 +131,7 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 
 	case SG_PHYSICAL:
 		if(*pg == 0)
-			*pg = (*s->pgalloc)(addr);
+			*pg = (*s->pgalloc)(s, addr);
 
 		mmuphys = PPN((*pg)->pa) | PTEWRITE|PTEUNCACHED|PTEVALID;
 		(*pg)->modref = PG_MOD|PG_REF;

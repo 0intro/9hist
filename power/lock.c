@@ -48,12 +48,13 @@ lockinit(void)
 
 /* equivalent of newpage for pages of hardware locks */
 Page*
-lkpage(ulong va)
+lkpage(Segment *s, ulong va)
 {
 	uchar *p, *top;
 	Page *pg;
 	int i;
 
+	USED(s);
 	lock(&semalloc.lock);
 	if(--semalloc.ulockpg < 0) {
 		semalloc.ulockpg++;

@@ -5,8 +5,7 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
-Page *lkpage(ulong addr);
-Page *snewpage(ulong addr);
+Page *lkpage(Segment*, ulong);
 void lkpgfree(Page*);
 void imagereclaim(void);
 
@@ -486,10 +485,4 @@ done:
 	qunlock(&s->lk);
 	flushmmu();
 	return 0;
-}
-
-Page*
-snewpage(ulong addr)
-{
-	return newpage(1, 0, addr);
 }

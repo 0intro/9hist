@@ -423,7 +423,7 @@ struct Segment
 	ulong	flen;			/* length of segment in file */
 	int	flushme;		/* maintain consistent icache for this segment */
 	Image	*image;			/* text in file attached to this segment */
-	Page	*(*pgalloc)(ulong addr);/* SG_PHYSICAL page allocator */
+	Page	*(*pgalloc)(Segment*, ulong);/* SG_PHYSICAL page allocator */
 	void	(*pgfree)(Page *);	/* SG_PHYSICAL page free */
 	Pte	*map[SEGMAPSIZE];	/* segment pte map */
 };

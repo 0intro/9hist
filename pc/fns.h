@@ -9,8 +9,10 @@ void	clockinit(void);
 void	config(int);
 int	cpuspeed(int);
 void	delay(int);
+void	dsegfree(Page*);
 void	dmaend(int);
 long	dmasetup(int, void*, long, int);
+Page*	dsegalloc(Segment*, ulong);
 #define	evenaddr(x)		/* 386 doesn't care */
 void	fault386(Ureg*);
 void	faultinit(void);

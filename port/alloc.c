@@ -263,7 +263,7 @@ malloc(ulong size)
 	int pow, n;
 	Bucket *bp, *nbp;
 
-	for(pow = 3; pow <= Maxpow; pow++)
+	for(pow = 3; pow < Maxpow; pow++)
 		if(size <= (1<<pow))
 			goto good;
 
@@ -296,18 +296,16 @@ good:
 		if(bp == nil)
 			return nil;
 
-		next = (ulong)bp+size;
-		nbp = (Bucket*)next;
+		nbp = bp;
 		lock(&arena);
-		arena.btab[pow] = nbp;
 		arena.nbuck[pow] += n;
-		for(n -= 2; n; n--) {
+		while(--n) {
 			next = (ulong)nbp+size;
-			nbp->next = (Bucket*)next;
+			nbp = (Bucket*)next;
 			nbp->size = pow;
-			nbp = nbp->next;
+			nbp->next = arena.btab[pow];
+			arena.btab[pow] = nbp;
 		}
-		nbp->size = pow;
 		unlock(&arena);
 	}
 	else {
@@ -315,7 +313,9 @@ good:
 		if(bp == nil)
 			return nil;
 
+		lock(&arena);
 		arena.nbuck[pow]++;
+		unlock(&arena);
 	}
 
 	bp->size = pow;
