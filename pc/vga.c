@@ -76,18 +76,18 @@ VGAmode mode12 =
 };
 
 /*
- *  640x480 display, 8 bit color.
+ *  320x200 display, 8 bit color.
  */
 VGAmode mode13 = 
 {
 	/* general */
-	0xe7, 0x00,
+	0x63, 0x00,
 	/* sequence */
 	0x03, 0x01, 0x0f, 0x00, 0x0e,
 	/* crt */
-	0x65, 0x4f, 0x50, 0x88, 0x55, 0x9a, 0x09, 0x3e,
-	0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	0xe8, 0x8b, 0xdf, 0x28, 0x00, 0xe7, 0x04, 0xA3,
+	0x5f, 0x4f, 0x50, 0x82, 0x54, 0x80, 0xbf, 0x1f,
+	0x00, 0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x28,
+	0x9c, 0x8e, 0x8f, 0x28, 0x40, 0x96, 0xb9, 0xa3,
 	0xff,
 	/* graphics */
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x05, 0x0f,
@@ -217,42 +217,6 @@ printmode(VGAmode *v) {
 	print("\n");
 }
 
-#ifdef asdf
-void
-dumpmodes(void) {
-	VGAmode *v;
-	int i;
-
-	print("general registers: %02x %02x %02x %02x\n",
-		inb(0x3cc), inb(0x3ca), inb(0x3c2), inb(0x3da));
-
-	print("sequence registers: ");
-	for(i = 0; i < sizeof(v->sequencer); i++) {
-		outb(SRX, i);
-		print(" %02x", inb(SR));
-	}
-
-	print("\nCRT registers: ");
-	for(i = 0; i < sizeof(v->crt); i++) {
-		outb(CRX, i);
-		print(" %02x", inb(CR));
-	}
-
-	print("\nGraphics registers: ");
-	for(i = 0; i < sizeof(v->graphics); i++) {
-		outb(GRX, i);
-		print(" %02x", inb(GR));
-	}
-
-	print("\nAttribute registers: ");
-	for(i = 0; i < sizeof(v->attribute); i++) {
-		inb(0x3DA);
-		outb(ARW, i | 0x20);
-		print(" %02x", inb(ARR));
-	}
-}
-#endif asdf
-
 /*
  *  expand 3 and 6 bits of color to 32
  */
@@ -303,12 +267,23 @@ setscreen(int maxx, int maxy, int ldepth)
 	else
 		vgascreen.ldepth = 0;
 	vgascreen.width = (maxx*(1<<vgascreen.ldepth))/32;
-	vgamaxy = maxy % ((64*1024)/vgascreen.width);
+	if(maxy > (64*1024)/(vgascreen.width*BY2WD))
+		vgamaxy = (64*1024)/(vgascreen.width*BY2WD);
+	else
+		vgamaxy = maxy;
 	vgascreen.base = (void*)SCREENMEM;
 	vgascreen.r.min = Pt(0, 0);
 	vgascreen.r.max = Pt(maxx, vgamaxy);
 	vgascreen.clipr = vgascreen.r;
 	memset(vgascreen.base, 0xff, vgascreen.width * BY2WD * vgamaxy);
+	if(ldepth == 3){
+		uchar *v;
+
+		v = (uchar*)vgascreen.base;
+		for(x = 0; x < vgamaxy; x++)
+			for(i = 0; i < vgascreen.width*BY2WD; i+=8)
+				*v = 0;
+	}
 
 	/*
 	 *  setup new soft screen, free memory for old screen
@@ -433,7 +408,7 @@ static void
 vgaupdate(void)
 {
 	uchar *sp, *hp;
-	int y, len, incs, inch, off, page, y2pg, ey;
+	int y, len, incs, inch, off, page, ey;
 	Rectangle r;
 	static int nocheck;
 
@@ -503,8 +478,7 @@ vgaupdate(void)
 		}
 		break;
 	case 3:
-		y2pg = (64*1024/BY2WD)/gscreen.width;
-		off = (r.min.y % y2pg) * gscreen.width * BY2WD + r.min.x;
+		off = (r.min.y % vgascreen.r.max.y) * vgascreen.width * BY2WD + r.min.x;
 		hp = (uchar*)(vgascreen.base) + off;
 		off = r.min.y * gscreen.width * BY2WD + r.min.x;
 		sp = (uchar*)(gscreen.base) + off;
@@ -513,14 +487,14 @@ vgaupdate(void)
 			return;
 
 		y = r.min.y;
-		for(page = y/y2pg; y < r.max.y; page++){
+		for(page = y/vgascreen.r.max.y; y < r.max.y; page++){
 			unlocktseng();
 			outb(0x3cd, (page<<4)|page);
-			ey = (page+1)*y2pg;
+			ey = (page+1)*vgascreen.r.max.y;
 			if(ey > r.max.y)
 				ey = r.max.y;
 			for (; y < ey; y++){
-				memmove(sp, hp, len);
+				memmove(hp, sp, len);
 				sp += incs;
 				hp += inch;
 			}
@@ -554,8 +528,10 @@ screenputnl(void)
 
 	out.pos.x = MINX;
 	out.pos.y += defont0.height;
-	if(out.pos.y > gscreen.r.max.y-defont0.height)
+	if(out.pos.y > gscreen.r.max.y-defont0.height){
+		vgaupdate();
 		out.pos.y = gscreen.r.min.y;
+	}
 	r = Rect(0, out.pos.y, gscreen.r.max.x, out.pos.y+2*defont0.height);
 	gbitblt(&gscreen, r.min, &gscreen, r, flipD[0]);
 	mbbrect(r);
@@ -567,10 +543,9 @@ screenputs(char *s, int n)
 {
 	Rune r;
 	int i;
-	Rectangle rs;
 	char buf[4];
 
-	rs.min = Pt(0, out.pos.y);
+	mbbpt(out.pos);
 	while(n > 0){
 		i = chartorune(&r, s);
 		if(i == 0){
@@ -593,14 +568,14 @@ screenputs(char *s, int n)
 				out.pos.x -= out.bwid;
 				gsubfstring(&gscreen, out.pos, defont, " ", flipD[S]);
 			}
+			mbbpt(Pt(out.pos.x + out.bwid, out.pos.y+defont0.height));
 		}else{
 			if(out.pos.x >= gscreen.r.max.x-out.bwid)
 				screenputnl();
 			out.pos = gsubfstring(&gscreen, out.pos, defont, buf, flipD[S]);
+			mbbpt(Pt(out.pos.x, out.pos.y+defont0.height));
 		}
 	}
-	rs.max = Pt(gscreen.r.max.x, out.pos.y+defont0.height);
-	mbbrect(rs);
 	vgaupdate();
 }
 
@@ -609,7 +584,6 @@ screenbits(void)
 {
 	return 1<<gscreen.ldepth;	/* bits per pixel */
 }
-
 
 void
 getcolor(ulong p, ulong *pr, ulong *pg, ulong *pb)
@@ -625,11 +599,15 @@ getcolor(ulong p, ulong *pr, ulong *pg, ulong *pb)
 int
 setcolor(ulong p, ulong r, ulong g, ulong b)
 {
+	extern uchar bitrevtab[];
+
 	p &= (1<<(1<<gscreen.ldepth))-1;
 	lock(&vgalock);
 	colormap[p][0] = r;
 	colormap[p][1] = g;
 	colormap[p][2] = b;
+	if(vgascreen.ldepth == 3)
+		p = bitrevtab[p];
 	outb(CMWX, p);
 	outb(CM, r>>(32-6));
 	outb(CM, g>>(32-6));
