@@ -30,21 +30,44 @@ newfd(Chan *c)
 }
 
 Chan*
-fdtochan(int fd, int mode, int chkmnt)
+fdtochan(int fd, int mode, int chkmnt, int iref)
 {
 	Chan *c;
+	Fgrp *f;
 
 	c = 0;
-	if(fd<0 || NFD<=fd || (c = u->p->fgrp->fd[fd])==0)
+	f = u->p->fgrp;
+
+	lock(f);
+	if(fd<0 || NFD<=fd || (c = f->fd[fd])==0) {
+		unlock(f);
 		error(Ebadfd);
-	if(chkmnt && (c->flag&CMSG))
+	}
+	if(iref)
+		incref(c);
+	unlock(f);
+
+	if(chkmnt && (c->flag&CMSG)) {
+		if(iref)
+			close(c);
 		error(Ebadusefd);
+	}
+
 	if(mode<0 || c->mode==ORDWR)
 		return c;
-	if((mode&OTRUNC) && c->mode==OREAD)
+
+	if((mode&OTRUNC) && c->mode==OREAD) {
+		if(iref)
+			close(c);
 		error(Ebadusefd);
-	if((mode&~OTRUNC) != c->mode)
+	}
+
+	if((mode&~OTRUNC) != c->mode) {
+		if(iref)
+			close(c);
 		error(Ebadusefd);
+	}
+
 	return c;
 }
 
@@ -109,16 +132,17 @@ sysdup(ulong *arg)
 	/*
 	 * Close after dup'ing, so date > #d/1 works
 	 */
-	c = fdtochan(arg[0], -1, 0);
+	c = fdtochan(arg[0], -1, 0, 1);
 	fd = arg[1];
 	if(fd != -1){
-		if(fd<0 || NFD<=fd)
+		if(fd<0 || NFD<=fd) {
+			close(c);
 			error(Ebadfd);
-
+		}
 		lock(f);
 		if(fd > f->maxfd)
 			f->maxfd = fd;
-		incref(c);
+
 		oc = f->fd[fd];
 		f->fd[fd] = c;
 		unlock(f);
@@ -129,7 +153,6 @@ sysdup(ulong *arg)
 			close(c);
 			nexterror();
 		}
-		incref(c);
 		fd = newfd(c);
 		poperror();
 	}
@@ -188,7 +211,7 @@ fdclose(int fd, int flag)
 long
 sysclose(ulong *arg)
 {
-	fdtochan(arg[0], -1, 0);
+	fdtochan(arg[0], -1, 0, 0);
 	fdclose(arg[0], 0);
 
 	return 0;
@@ -252,32 +275,38 @@ unionread(Chan *c, void *va, long n)
 long
 sysread(ulong *arg)
 {
-	Chan *c;
+	int dir;
 	long n;
+	Chan *c;
 
-	c = fdtochan(arg[0], OREAD, 1);
 	validaddr(arg[1], arg[2], 1);
-	qlock(&c->rdl);
-
-	if(waserror()){
-		qunlock(&c->rdl);
+	c = fdtochan(arg[0], OREAD, 1, 1);
+	if(waserror()) {
+		close(c);
 		nexterror();
 	}
+
 	n = arg[2];
-	if(c->qid.path & CHDIR){
+	dir = c->qid.path&CHDIR;
+
+	if(dir) {
 		n -= n%DIRLEN;
 		if(c->offset%DIRLEN || n==0)
 			error(Etoosmall);
 	}
-	if((c->qid.path&CHDIR) && c->mnt)
+
+	if(dir && c->mnt)
 		n = unionread(c, (void*)arg[1], n);
 	else
 		n = (*devtab[c->type].read)(c, (void*)arg[1], n, c->offset);
-	qunlock(&c->rdl);
-	poperror();
-	lock(&c->offl);
+
+	lock(c);
 	c->offset += n;
-	unlock(&c->offl);
+	unlock(c);
+
+	poperror();
+	close(c);
+
 	return n;
 }
 
@@ -287,22 +316,25 @@ syswrite(ulong *arg)
 	Chan *c;
 	long n;
 
-	c = fdtochan(arg[0], OWRITE, 1);
 	validaddr(arg[1], arg[2], 0);
-	qlock(&c->wrl);
-
-	if(waserror()){
-		qunlock(&c->wrl);
+	c = fdtochan(arg[0], OWRITE, 1, 1);
+	if(waserror()) {
+		close(c);
 		nexterror();
 	}
+
 	if(c->qid.path & CHDIR)
 		error(Eisdir);
+
 	n = (*devtab[c->type].write)(c, (void*)arg[1], arg[2], c->offset);
-	qunlock(&c->wrl);
-	poperror();
-	lock(&c->offl);
+
+	lock(c);
 	c->offset += n;
-	unlock(&c->offl);
+	unlock(c);
+
+	poperror();
+	close(c);
+
 	return n;
 }
 
@@ -314,11 +346,13 @@ sysseek(ulong *arg)
 	Dir dir;
 	long off;
 
-	c = fdtochan(arg[0], -1, 1);
+	c = fdtochan(arg[0], -1, 1, 0);
 	if(c->qid.path & CHDIR)
 		error(Eisdir);
+
 	if(devchar[c->type] == '|')
 		error(Eisstream);
+
 	off = 0;
 	switch(arg[2]){
 	case 0:
@@ -326,10 +360,10 @@ sysseek(ulong *arg)
 		break;
 
 	case 1:
-		lock(&c->offl);	/* lock for read/write update */
+		lock(c);	/* lock for read/write update */
 		c->offset += (long)arg[1];
 		off = c->offset;
-		unlock(&c->offl);
+		unlock(c);
 		break;
 
 	case 2:
@@ -349,8 +383,14 @@ sysfstat(ulong *arg)
 
 	validaddr(arg[1], DIRLEN, 1);
 	evenaddr(arg[1]);
-	c = fdtochan(arg[0], -1, 0);
+	c = fdtochan(arg[0], -1, 0, 1);
+	if(waserror()) {
+		close(c);
+		nexterror();
+	}
 	(*devtab[c->type].stat)(c, (char*)arg[1]);
+	poperror();
+	close(c);
 	return 0;
 }
 
@@ -388,7 +428,7 @@ syschdir(ulong *arg)
 long
 bindmount(ulong *arg, int ismount)
 {
-	Chan *c0, *c1;
+	Chan *c0, *c1, *bc;
 	ulong flag;
 	long ret;
 	int fd;
@@ -403,18 +443,30 @@ bindmount(ulong *arg, int ismount)
 	if(flag>MMASK || (flag&MORDER)==(MBEFORE|MAFTER))
 		error(Ebadarg);
 	if(ismount){
-		bogus.chan = fdtochan(fd, 2, 0);
+		bc = fdtochan(fd, 2, 0, 1);
+		if(waserror()) {
+			close(bc);
+			nexterror();
+		}
+		bogus.chan = bc;
+
 		validaddr(arg[3], 1, 0);
 		if(vmemchr((char*)arg[3], '\0', NAMELEN) == 0)
 			error(Ebadarg);
+
 		bogus.spec = (char*)arg[3];
 		validaddr(arg[4], 1, 0);
 		if(vmemchr((char*)arg[4], '\0', NAMELEN) == 0)
 			error(Ebadarg);
+
 		bogus.serv = (char*)arg[4];
 		ret = devno('M', 0);
 		c0 = (*devtab[ret].attach)((char*)&bogus);
-	}else{
+
+		poperror();
+		close(bc);
+	}
+	else {
 		validaddr(arg[0], 1, 0);
 		c0 = namec((char*)arg[0], Aaccess, 0, 0);
 	}
@@ -556,7 +608,13 @@ sysfwstat(ulong *arg)
 
 	validaddr(arg[1], DIRLEN, 0);
 	nameok((char*)arg[1]);
-	c = fdtochan(arg[0], -1, 1);
+	c = fdtochan(arg[0], -1, 1, 1);
+	if(waserror()) {
+		close(c);
+		nexterror();
+	}
 	(*devtab[c->type].wstat)(c, (char*)arg[1]);
+	poperror();
+	close(c);
 	return 0;
 }

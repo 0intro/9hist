@@ -149,9 +149,6 @@ enum
 
 struct Chan
 {
-	QLock	rdl;			/* read access */
-	QLock	wrl;			/* write access */
-	Lock	offl;			/* offset access */
 	Ref;
 	union{
 		Chan	*next;		/* allocation */
@@ -231,6 +228,7 @@ enum
 {
 	ScsiTestunit	= 0x00,
 	ScsiExtsens	= 0x03,
+	ScsiInquiry	= 0x12,
 	ScsiModesense	= 0x1a,
 	ScsiGetcap	= 0x25,
 	ScsiRead	= 0x08,

@@ -306,12 +306,13 @@ undomount(Chan *c)
 	he = &pg->mnthash[MNTHASH];
 	for(h = pg->mnthash; h < he; h++) {
 		for(f = *h; f; f = f->hash) {
-			for(t = f->mount; t; t = t->next)
+			for(t = f->mount; t; t = t->next) {
 				if(eqchan(c, t->to, 1)) {
 					close(c);
 					c = clone(t->head->from, 0);
 					break;
 				}
+			}
 		}
 	}
 	poperror();
@@ -452,13 +453,15 @@ namec(char *name, int amode, int omode, ulong perm)
 	elem = u->elem;
 	mntok = 1;
 	isdot = 0;
-	if(name[0] == '/'){
+	if(name[0] == '/') {
 		c = clone(u->slash, 0);
 		/*
 		 * Skip leading slashes.
 		 */
 		name = skipslash(name);
-	}else if(name[0] == '#'){
+	}
+	else
+	if(name[0] == '#') {
 		mntok = 0;
 		if(name[1]=='M')
 			error(Enonexist);
@@ -472,7 +475,8 @@ namec(char *name, int amode, int omode, ulong perm)
 		}else
 			name = nextelem(name, elem);
 		c = (*devtab[t].attach)(elem);
-	}else{
+	}
+	else {
 		c = clone(u->dot, 0);
 		name = skipslash(name);	/* eat leading ./ */
 		if(*name == 0)

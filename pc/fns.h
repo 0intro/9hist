@@ -37,6 +37,7 @@ void	ksetpcinfo(void);
 void	mathinit(void);
 void	mmuinit(void);
 int	modem(int);
+void	mouseaccelerate(int);
 void	outb(int, int);
 void	outss(int, void*, int);
 void	pmubuzz(int, int);

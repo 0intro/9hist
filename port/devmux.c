@@ -465,7 +465,7 @@ muxwrite(Chan *c, void *va, long n, ulong offset)
 		memmove(buf, va, n);		/* so we can NUL-terminate */
 		buf[n] = 0;
 		fd = strtoul(buf, 0, 0);
-		fdtochan(fd, -1, 0);		/* error check */
+		fdtochan(fd, -1, 0, 0);		/* error check */
 		m->c = u->p->fgrp->fd[fd];
 		incref(m->c);
 		return n;

@@ -188,15 +188,13 @@ pprint(char *fmt, ...)
 		return 0;
 	n = sprint(buf, "%s %d: ", u->p->text, u->p->pid);
 	n = doprint(buf+n, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
-	qlock(&c->wrl);
-	if(waserror()){
-		qunlock(&c->wrl);
-		return 0;
-	}
+
 	(*devtab[c->type].write)(c, buf, n, c->offset);
+
+	lock(c);
 	c->offset += n;
-	qunlock(&c->wrl);
-	poperror();
+	unlock(c);
+
 	return n;
 }
 
@@ -887,8 +885,9 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 			error(Egreg);
 		memmove(buf, va, n);	/* so we can NUL-terminate */
 		buf[n] = 0;
+		/* start a pager if not already started */
 		if(strncmp(buf, "start", 5) == 0){
-			kickpager();		/* start a pager if not already started */
+			kickpager();
 			break;
 		}
 		if(cpuserver && strcmp(u->p->user, eve) != 0)
@@ -896,7 +895,7 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 		if(buf[0]<'0' || '9'<buf[0])
 			error(Ebadarg);
 		fd = strtoul(buf, 0, 0);
-		swc = fdtochan(fd, -1, 1);
+		swc = fdtochan(fd, -1, 1, 0);
 		setswapchan(swc);
 		break;
 
@@ -932,10 +931,6 @@ conswstat(Chan *c, char *dp)
 	error(Eperm);
 }
 
-/*
- *  Rand is huge and not worth it here.  Be small.
- *  Borrowed from the white book.
- */
 int
 nrand(int n)
 {

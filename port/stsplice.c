@@ -61,7 +61,7 @@ spliceoput(Queue *q, Block *bp)
 	freeb(bp);
 	if(RD(q)->ptr)
 		error("stream already spliced");
-	c = fdtochan(fd, ORDWR, 0);
+	c = fdtochan(fd, ORDWR, 0, 0);
 	s = c->stream;
 	if(s == 0)
 		error("splice attempt on non-stream");

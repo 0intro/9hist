@@ -7,7 +7,7 @@ static char *disk;
 void
 configlocal(Method *mp)
 {
-	disk = mp->arg;
+	disk = *sys ? sys : mp->arg;
 	USED(mp);
 }
 

@@ -326,6 +326,7 @@ scsicmd(int dev, int cmdbyte, Scsibuf *b, long size)
 		cmd->cmdblk[2] = 1;
 		/* fall through */
 	case ScsiExtsens:
+	case ScsiInquiry:
 		cmd->cmdblk[4] = size;
 		break;
 	case ScsiGetcap:
@@ -407,6 +408,30 @@ scsicap(int dev, void *p)
 }
 
 int
+scsiinquiry(int dev, void *p, int size)
+{
+	Scsi *cmd;
+	int status;
+
+	cmd = scsicmd(dev, ScsiInquiry, scsibuf(), size);
+	if(waserror()){
+		scsifree(cmd->b);
+		qunlock(cmd);
+		nexterror();
+	}
+	status = scsiexec(cmd, ScsiIn);
+	memmove(p, cmd->data.base, size);
+	poperror();
+	scsifree(cmd->b);
+	qunlock(cmd);
+	if((status&0xff00) != 0x6000)
+		error(Eio);
+	if(status & 0xFF)
+		scsisense(dev, p);
+	return status&0xff;
+}
+
+int
 scsiwp(int dev)
 {
 	Scsi *cmd;
@@ -426,6 +451,29 @@ scsiwp(int dev)
 	if ((status&0xffff) != 0x6000)
 		error(Eio);
 	return r;
+}
+
+int
+scsimodesense(int dev, int page, void *p, int size)
+{
+	Scsi *cmd;
+	int status;
+
+	cmd = scsicmd(dev, ScsiModesense, scsibuf(), size);
+	cmd->cmdblk[2] = page;
+	if(waserror()){
+		scsifree(cmd->b);
+		qunlock(cmd);
+		nexterror();
+	}
+	status = scsiexec(cmd, ScsiIn);
+	memmove(p, cmd->data.base, size);
+	poperror();
+	scsifree(cmd->b);
+	qunlock(cmd);
+	if ((status&0xffff) != 0x6000)
+		error(Eio);
+	return status&0xff;
 }
 
 int

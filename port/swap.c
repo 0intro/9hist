@@ -292,7 +292,6 @@ executeio(void)
 
 		k = kmap(out);
 		kaddr = (char*)VA(k);
-		qlock(&c->wrl);
 
 		if(waserror())
 			panic("executeio: page out I/O error");
@@ -301,7 +300,6 @@ executeio(void)
 		if(n != BY2PG)
 			nexterror();
 
-		qunlock(&c->wrl);
 		kunmap(k);
 		poperror();
 
@@ -332,4 +330,3 @@ setswapchan(Chan *c)
 	incref(c);
 	swapimage.c = c;
 }
-

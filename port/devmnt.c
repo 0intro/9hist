@@ -48,23 +48,23 @@ struct Mntalloc
 #define MAXRPC		(MAXFDATA+MAXMSG)
 #define limit(n, max)	(n > max ? max : n)
 
-Chan 	*mattach(Mnt*, char*, char*);
-Mntrpc	*mntralloc(void);
-void	mntfree(Mntrpc*);
-int	rpcattn(Mntrpc*);
-void	mountrpc(Mnt*, Mntrpc*);
-void	mountio(Mnt*, Mntrpc*);
-Mnt	*mntchk(Chan*);
-void	mountmux(Mnt*, Mntrpc*);
-long	mntrdwr(int , Chan*, void*,long , ulong);
-int	mntflush(Mnt*, Mntrpc*);
-void	mntqrm(Mnt*, Mntrpc*);
-void	mntdirfix(uchar*, Chan*);
-void	mntgate(Mnt*);
-void	mntrpcread(Mnt*, Mntrpc*);
-void	mntdoclunk(Mnt *, Mntrpc *);
+Chan*	mattach(Mnt*, char*, char*);
 void	mntauth(Mnt *, Mntrpc *, char *, ushort);
+Mnt*	mntchk(Chan*);
+void	mntdirfix(uchar*, Chan*);
+void	mntdoclunk(Mnt *, Mntrpc *);
+int	mntflush(Mnt*, Mntrpc*);
+void	mntfree(Mntrpc*);
+void	mntgate(Mnt*);
 void	mntpntfree(Mnt*);
+void	mntqrm(Mnt*, Mntrpc*);
+Mntrpc*	mntralloc(void);
+long	mntrdwr(int , Chan*, void*,long , ulong);
+void	mntrpcread(Mnt*, Mntrpc*);
+void	mountio(Mnt*, Mntrpc*);
+void	mountmux(Mnt*, Mntrpc*);
+void	mountrpc(Mnt*, Mntrpc*);
+int	rpcattn(Mntrpc*);
 
 enum
 {
@@ -203,9 +203,9 @@ mattach(Mnt *m, char *spec, char *serv)
 void
 mntauth(Mnt *m, Mntrpc *f, char *serv, ushort fid)
 {
+	int i;
 	Mntrpc *r;
 	uchar chal[AUTHLEN];
-	int i;
 
 	r = mntralloc();
 	if(waserror()) {
@@ -493,8 +493,8 @@ mntrdwr(int type, Chan *c, void *buf, long n, ulong offset)
 {
 	Mnt *m;
 	Mntrpc *r;
-	ulong cnt, nr;
 	char *uba;
+	ulong cnt, nr;
 
 	m = mntchk(c);
 	uba = buf;
@@ -561,23 +561,12 @@ mountio(Mnt *m, Mntrpc *r)
 	/* Transmit a file system rpc */
 	n = convS2M(&r->request, r->rpc);
 	if(waserror()) {
-		if(!m->mux)
-			qunlock(&m->c->wrl);
 		if(mntflush(m, r) == 0)
 			nexterror();
 	}
 	else {
-
-		if(m->mux) {
-			if((*devtab[m->c->type].write)(m->c, r->rpc, n, 0) != n)
-				error(Emountrpc);
-		}
-		else {
-			qlock(&m->c->wrl);
-			if((*devtab[m->c->type].write)(m->c, r->rpc, n, 0) != n)
-				error(Emountrpc);
-			qunlock(&m->c->wrl);
-		}
+		if((*devtab[m->c->type].write)(m->c, r->rpc, n, 0) != n)
+			error(Emountrpc);
 		poperror();
 	}
 	if(m->mux) {
@@ -618,8 +607,6 @@ mntrpcread(Mnt *m, Mntrpc *r)
 
 	for(;;) {
 		if(waserror()) {
-			if(!m->mux)
-				qunlock(&m->c->rdl);
 			if(mntflush(m, r) == 0) {
 				if(m->mux == 0)
 					mntgate(m);
@@ -629,13 +616,7 @@ mntrpcread(Mnt *m, Mntrpc *r)
 		}
 		r->reply.type = 0;
 		r->reply.tag = 0;
-		if(m->mux) 
-			n = (*devtab[m->c->type].read)(m->c, r->rpc, MAXRPC, 0);
-		else {
-			qlock(&m->c->rdl);
-			n = (*devtab[m->c->type].read)(m->c, r->rpc, MAXRPC, 0);
-			qunlock(&m->c->rdl);
-		}
+		n = (*devtab[m->c->type].read)(m->c, r->rpc, MAXRPC, 0);
 		poperror();
 		if(n == 0)
 			continue;
@@ -669,8 +650,8 @@ mntgate(Mnt *m)
 void
 mountmux(Mnt *m, Mntrpc *r)
 {
-	Mntrpc **l, *q;
 	char *dp;
+	Mntrpc **l, *q;
 
 	lock(m);
 	l = &m->queue;
@@ -698,8 +679,8 @@ mountmux(Mnt *m, Mntrpc *r)
 int
 mntflush(Mnt *m, Mntrpc *r)
 {
-	Fcall flush;
 	int n;
+	Fcall flush;
 
 	lock(m);
 	r->flushtag = m->flushtag++;
@@ -714,20 +695,12 @@ mntflush(Mnt *m, Mntrpc *r)
 	n = convS2M(&flush, r->flush);
 
 	if(waserror()) {
-		if(!m->mux)
-			qunlock(&m->c->wrl);
 		if(strcmp(u->error, Eintr) == 0)
 			return 1;
 		mntqrm(m, r);
 		return 0;
 	}
-	if(m->mux)
-		(*devtab[m->c->type].write)(m->c, r->flush, n, 0);
-	else {
-		qlock(&m->c->wrl);
-		(*devtab[m->c->type].write)(m->c, r->flush, n, 0);
-		qunlock(&m->c->wrl);
-	}
+	(*devtab[m->c->type].write)(m->c, r->flush, n, 0);
 	poperror();
 	return 1;
 }

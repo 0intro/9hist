@@ -207,7 +207,6 @@ long
 srvwrite(Chan *c, void *va, long n, ulong offset)
 {
 	Srv *sp;
-	Fgrp *f;
 	Chan *c1;
 	int fd;
 	char buf[32];
@@ -219,17 +218,7 @@ srvwrite(Chan *c, void *va, long n, ulong offset)
 	buf[n] = 0;
 	fd = strtoul(buf, 0, 0);
 
-	f = u->p->fgrp;
-	lock(f);
-	if(waserror()){
-		unlock(f);
-		nexterror();
-	}
-	fdtochan(fd, -1, 0);	/* error check only */
-	c1 = f->fd[fd];
-	incref(c1);
-	unlock(f);
-	poperror();
+	c1 = fdtochan(fd, -1, 0, 1);	/* error check only */
 
 	qlock(&srvlk);
 	if(waserror()) {

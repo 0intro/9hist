@@ -261,7 +261,7 @@ wrenpart(int dev)
 {
 	Drive *dp;
 	Partition *pp;
-	uchar buf[32];
+	uchar buf[128];
 	Scsibuf *b;
 	char *rawpart, *line[Npart+1], *field[3];
 	ulong n;
@@ -294,6 +294,9 @@ wrenpart(int dev)
 	pp->start = dp->p[0].end - 1;
 	pp->end = dp->p[0].end;
 
+	scsiinquiry(dev, buf, sizeof buf);
+	if(memcmp(&buf[8], "INSITE  I325VM        *F", 24) == 0)
+		scsimodesense(dev, 0x2e, buf, 0x2a);
 	/*
 	 *  read partition table from disk, null terminate
 	 */

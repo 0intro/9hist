@@ -185,11 +185,9 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 	
 	if(loadrec == 0) {			/* This is demand load */
 		c = s->image->c;
-		qlock(&c->rdl);
 		while(waserror()) {
 			if(strcmp(u->error, Eintr) == 0)
 				continue;
-			qunlock(&c->rdl);
 			kunmap(k);
 			putpage(new);
 			faulterror("sys: demand load I/O error");
@@ -207,7 +205,6 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 
 		poperror();
 		kunmap(k);
-		qunlock(&c->rdl);
 		qlock(&s->lk);
 		if(*p == 0) { 			/* Someone may have got there first */
 			new->daddr = daddr;
@@ -219,10 +216,8 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 	}
 	else {					/* This is paged out */
 		c = swapimage.c;
-		qlock(&c->rdl);
 
 		if(waserror()) {
-			qunlock(&c->rdl);
 			kunmap(k);
 			putpage(new);
 			qlock(&s->lk);
@@ -236,7 +231,6 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 
 		poperror();
 		kunmap(k);
-		qunlock(&c->rdl);
 		qlock(&s->lk);
 
 		if(pagedout(*p)) {

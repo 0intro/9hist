@@ -214,7 +214,7 @@ kbdinit(void)
 			print("can't initialize mouse\n");
 
 		/* turn on mouse acceleration */
-		mousecmd(0xE7);
+		mouseaccelerate(0);
 		break;
 	case At:
 		/* enable kbd xfers and interrupts */
@@ -225,6 +225,23 @@ kbdinit(void)
 
 		/* set up /dev/eia0 as the mouse */
 		uartspecial(0, 0, &mouseq, 1200);
+		break;
+	}
+}
+
+/*
+ *  turn mouse acceleration on/off
+ */
+void
+mouseaccelerate(int on)
+{
+
+	switch(machtype){
+	case Attnsx:
+		if(on)
+			mousecmd(0xE7);
+		else
+			mousecmd(0xE6);
 		break;
 	}
 }
