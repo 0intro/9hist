@@ -20,7 +20,7 @@ extern  void	(*kprofp)(ulong);
 /*
  *  parameters for sysproc.c
  */
-#define EXEC_MAGIC(magic)	(magic==I_MAGIC)
+#define AOUT_MAGIC	(I_MAGIC)
 
 struct Lock
 {

@@ -164,8 +164,6 @@ void
 serialinit(void)
 {
 	NS16552setup(Uart1, UartFREQ);
-	NS16552special(0, 9600, &kbdq, &printq, kbdcr2nl);
-
 	kbdinit();
 }
 
