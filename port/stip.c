@@ -313,7 +313,7 @@ ipetheriput(Queue *q, Block *bp)
 	/* Ensure we have enough data to process */
 	if(BLEN(bp) < (ETHER_HDR+ETHER_IPHDR)) {
 		bp = pullup(bp, ETHER_HDR+ETHER_IPHDR);
-		if(!bp)
+		if(bp == 0)
 			return;
 	}
 
@@ -391,6 +391,10 @@ ip_reassemble(int offset, Block *bp, Etherhdr *ip)
 	Block *bl, **l, *last, *prev;
 	int ovlap, len, fragsize, pktposn;
 
+	/* Check lance has handed us a contiguous buffer */
+	if(bp->next)
+		panic("ip: reass ?");
+
 	src = nhgetl(ip->src);
 	dst = nhgetl(ip->dst);
 	id = nhgets(ip->id);
@@ -407,7 +411,7 @@ ip_reassemble(int offset, Block *bp, Etherhdr *ip)
 	if(!ip->tos && (offset & ~(IP_MF|IP_DF)) == 0) {
 		if(f != 0) {
 			qlock(f);
-			ipfragfree(f);
+			ipfragfree(f, 1);
 		}
 		return(bp);
 	}
@@ -425,9 +429,6 @@ ip_reassemble(int offset, Block *bp, Etherhdr *ip)
 		f->dst = dst;
 
 		f->blist = bp;
-		/* Check lance has handed us a contiguous buffer */
-		if(bp->next)
-			panic("ip: reass ?");
 
 		qunlock(f);
 		return 0;
@@ -505,7 +506,7 @@ complete:
 	last->flags |= S_DELIM;
 	bl = f->blist;
 	f->blist = 0;
-	ipfragfree(f);
+	ipfragfree(f, 1);
 
 	ip = BLKIP(bl);
 	hnputs(ip->length, len);
@@ -518,7 +519,7 @@ complete:
  */
 
 void
-ipfragfree(Fragq *frag)
+ipfragfree(Fragq *frag, int lockq)
 {
 	Fragq *fl, **l;
 
@@ -530,7 +531,8 @@ ipfragfree(Fragq *frag)
 	frag->blist = 0;
 	qunlock(frag);
 
-	qlock(&fraglock);
+	if(lockq)
+		qlock(&fraglock);
 
 	l = &flisthead;
 	for(fl = *l; fl; fl = fl->next) {
@@ -544,7 +546,8 @@ ipfragfree(Fragq *frag)
 	frag->next = fragfree;
 	fragfree = frag;
 
-	qunlock(&fraglock);
+	if(lockq)
+		qunlock(&fraglock);
 }
 
 /*
@@ -559,11 +562,9 @@ ipfragallo(void)
 	while(fragfree == 0) {
 		for(f = flisthead; f; f = f->next)
 			if(canqlock(f)) {
-				qunlock(&fraglock);
-				ipfragfree(f);
+				ipfragfree(f, 0);
 				break;
 			}
-		qlock(&fraglock);
 	}
 	f = fragfree;
 	fragfree = f->next;

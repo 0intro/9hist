@@ -437,7 +437,7 @@ Block	*ip_reassemble(int, Block*, Etherhdr*);
 Ipconv	*portused(Ipconv *, Port);
 Port	nextport(Ipconv *, Port);
 Fragq   *ipfragallo(void);
-void	ipfragfree(Fragq*);
+void	ipfragfree(Fragq*, int);
 void	iproute(uchar*, uchar*);
 void	initfrag(int);
 int	ntohtcp(Tcp*, Block**);
