@@ -80,9 +80,9 @@ rootreset(void)
 	addrootdir("bin");
 	addrootdir("dev");
 	addrootdir("env");
-	addrootdir("proc");
 	addrootdir("net");
 	addrootdir("net.alt");
+	addrootdir("proc");
 	addrootdir("root");
 	addrootdir("srv");
 
