@@ -383,16 +383,19 @@ sleep1(Rendez *r, int (*f)(void*), void *arg)
 	 * at interrupt time. lock is mutual exclusion
 	 */
 	s = splhi();
-	lock(r);
 	lock(&up->rlock);
+	if(r->p){
+		print("double sleep %d %d\n", r->p->pid, up->pid);
+		dumpstack();
+	}
+	r->p = up;
 
 	/*
 	 * if condition happened, never mind
 	 */
 	if((*f)(arg)){
-		up->r = 0;
+		r->p = 0;
 		unlock(&up->rlock);
-		unlock(r);
 		splx(s);
 		return;
 	}
@@ -401,15 +404,9 @@ sleep1(Rendez *r, int (*f)(void*), void *arg)
 	 * now we are committed to
 	 * change state and call scheduler
 	 */
-	if(r->p){
-		print("double sleep %d %d\n", r->p->pid, up->pid);
-		dumpstack();
-	}
 	up->state = Wakeme;
-	r->p = up;
 	up->r = r;
 	unlock(&up->rlock);
-	unlock(r);
 }
 
 void
@@ -424,12 +421,10 @@ sleep(Rendez *r, int (*f)(void*), void *arg)
 	if(up->notepending) {
 		up->notepending = 0;
 		s = splhi();
-		lock(r);
 		lock(&up->rlock);
 		if(r->p == up)
 			r->p = 0;
 		unlock(&up->rlock);
-		unlock(r);
 		splx(s);
 		error(Eintr);
 	}
@@ -488,19 +483,22 @@ wakeup(Rendez *r)
 	Proc *p;
 	int s;
 
-	s = splhi();
-	lock(r);
 	p = r->p;
-	if(p){
-		lock(&p->rlock);
+	if(p == 0)
+		return;
+
+	s = splhi();
+	lock(&p->rlock);
+
+	if(r->p == p && p->r == r){
 		r->p = 0;
 		if(p->state != Wakeme) 
 			panic("wakeup: state");
 		p->r = 0;
-		unlock(&p->rlock);
 		ready(p);
 	}
-	unlock(r);
+
+	unlock(&p->rlock);
 	splx(s);
 }
 
@@ -530,38 +528,18 @@ postnote(Proc *p, int dolock, char *n, int flag)
 	if(dolock)
 		qunlock(&p->debug);
 
-	for(;;){
-		s = splhi();
-		lock(&p->rlock);
-		r = p->r;
-		if(r == 0){
-			unlock(&p->rlock);
-			splx(s);
-			break;
-		}
-
-		/*  the canlock deals with a different lock ordering
-		 *  twixt r and p->rlock than everywhere else.  If we
-		 *  locked in the normal order we wouldn't be sure
-		 *  r was valid when we did the lock.
-		 */
-		if(!canlock(r)){
-			unlock(&p->rlock);
-			splx(s);
-			continue;
-		}
-
-		/* check we won the race */
-		if(p->r == r && r->p == p && p->state==Wakeme) {
-			r->p = 0;
-			p->r = 0;
-			ready(p);
-		}
-
-		unlock(&p->rlock);
-		unlock(r);
-		splx(s);
+	s = splhi();
+	lock(&p->rlock);
+	r = p->r;
+	if(r){
+		if(r->p != p || p->r != r || p->state != Wakeme)
+			panic("postnote: state");
+		r->p = 0;
+		p->r = 0;
+		ready(p);
 	}
+	unlock(&p->rlock);
+	splx(s);
 
 	if(p->state != Rendezvous)
 		return ret;
