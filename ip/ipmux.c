@@ -727,7 +727,9 @@ yes:
 		/* tack on interface address */
 		bp = padblock(bp, IPaddrlen);
 		ipmove(bp->rp, ia);
-		qpass(c->rq, bp);
+		bp = concatblock(bp);
+		if(bp != nil)
+			qpass(c->rq, bp);
 		return;
 	}
 
