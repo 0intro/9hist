@@ -6,7 +6,6 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
-#include	"devtab.h"
 #include	"screen.h"
 
 typedef struct Mouseinfo	Mouseinfo;

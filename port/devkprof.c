@@ -5,7 +5,6 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
-#include	"devtab.h"
 
 #define	LRES	3		/* log of PC resolution */
 #define	SZ	4		/* sizeof of count cell; well known as 4 */

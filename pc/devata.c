@@ -10,7 +10,6 @@
 #include	"io.h"
 #include	"../port/error.h"
 
-#include	"devtab.h"
 
 #define DPRINT if(0)print
 #define XPRINT if(0)print

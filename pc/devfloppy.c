@@ -5,7 +5,6 @@
 #include	"fns.h"
 #include	"io.h"
 #include	"../port/error.h"
-#include	"devtab.h"
 
 /* Intel 82077A (8272A compatible) floppy controller */
 

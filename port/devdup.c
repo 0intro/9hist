@@ -5,7 +5,6 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
-#include	"devtab.h"
 
 
 int

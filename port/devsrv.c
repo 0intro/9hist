@@ -5,7 +5,6 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
-#include	"devtab.h"
 
 typedef struct Srv Srv;
 struct Srv

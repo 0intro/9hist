@@ -5,7 +5,6 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
-#include	"devtab.h"
 
 Queue	*mouseq;
 Queue	*kbdq;		/* unprocessed console input */

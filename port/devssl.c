@@ -10,7 +10,6 @@
 #include	"../port/error.h"
 #include	<libcrypt.h>
 
-#include	"devtab.h"
 
 typedef struct OneWay OneWay;
 struct OneWay
@@ -191,32 +190,6 @@ sslclose(Chan *c)
 	}
 }
 
-long
-sslread(Chan *c, void *a, long n, ulong offset)
-{
-	Block *b;
-
-	switch(c->qid.path & ~CHDIR){
-	case Qdir:
-		return devdirread(c, a, n, digesttab, Ndigesttab, devgen);
-	}
-
-	b = sslbread(c, n, offset);
-
-	if(waserror()){
-		freeb(b);
-		nexterror();
-	}
-
-	n = BLEN(b);
-	memmove(a, b->rp, n);
-	freeb(b);
-
-	poperror();
-
-	return n;
-}
-
 Block*
 sslbread(Chan *c, long n, ulong offset)
 {
@@ -301,93 +274,27 @@ sslbread(Chan *c, long n, ulong offset)
 }
 
 long
-sslwrite(Chan *c, void *a, long n, ulong offset)
+sslread(Chan *c, void *a, long n, ulong offset)
 {
-	Dstate *s;
 	Block *b;
-	int m;
-	char *p, *e, buf[32];
 
 	switch(c->qid.path & ~CHDIR){
-	case Qclone:
-		break;
-	default:
-		error(Ebadusefd);
+	case Qdir:
+		return devdirread(c, a, n, digesttab, Ndigesttab, devgen);
 	}
 
-	s = c->aux;
-	if(s == 0)
-		error(Ebadusefd);
+	b = sslbread(c, n, offset);
 
-	switch(s->state){
-	case Algwait:
-		/* get algorithm */
-		if(n >= sizeof(buf))
-			error(Ebadarg);
-		strncpy(buf, a, n);
-		buf[n] = 0;
-		s->blocklen = 1;
-		s->diglen = 0;
-		if(strcmp(buf, "md5") == 0){
-			s->hf = md5;
-			s->diglen = MD5dlen;
-		} else if(strcmp(buf, "sha") == 0){
-			s->hf = sha;
-			s->diglen = SHAdlen;
-		} else if(strcmp(buf, "descbc") == 0){
-			s->encryptalg = DESCBC;
-			s->blocklen = 8;
-		} else if(strcmp(buf, "desecb") == 0){
-			s->encryptalg = DESECB;
-			s->blocklen = 8;
-		} else
-			error(Ebadarg);
-		s->state = Fdwait;
-		break;
-	case Fdwait:
-		/* get communications channel */
-		s->c = buftochan(a, n);
-		s->state = Secretinwait;
-		break;
-	case Secretinwait:
-		/* get secret for incoming messages */
-		setsecret(s, &s->in, a, n);
-		s->state = Secretoutwait;
-		break;
-	case Secretoutwait:
-		/* get secret for outgoing messages */
-		setsecret(s, &s->out, a, n);
-		if(s->blocklen != 1){
-			s->max = (1<<15) - s->diglen;
-			s->max -= s->max % s->blocklen;
-			s->maxpad = (1<<14) - s->diglen;
-			s->maxpad -= s->maxpad % s->blocklen;
-		} else
-			s->maxpad = s->max = (1<<15) - s->diglen;
-		s->state = Established;
-		break;
-	case Established:
-		p = a;
-		for(e = p + n; p < e; p += m){
-			m = e - p;
-			if(m > s->max)
-				m = s->max;
-	
-			b = allocb(m);
-			if(waserror()){
-				freeb(b);
-				nexterror();
-			}
-			memmove(b->wp, p, m);
-			poperror();
-			b->wp += m;
-	
-			sslbwrite(c, b, offset);
-		}
-		break;
-	default:
-		error(Ebadusefd);
+	if(waserror()){
+		freeb(b);
+		nexterror();
 	}
+
+	n = BLEN(b);
+	memmove(a, b->rp, n);
+	freeb(b);
+
+	poperror();
 
 	return n;
 }
@@ -483,6 +390,98 @@ sslbwrite(Chan *c, Block *b, ulong offset)
 	poperror();
 
 	return rv;
+}
+
+long
+sslwrite(Chan *c, void *a, long n, ulong offset)
+{
+	Dstate *s;
+	Block *b;
+	int m;
+	char *p, *e, buf[32];
+
+	switch(c->qid.path & ~CHDIR){
+	case Qclone:
+		break;
+	default:
+		error(Ebadusefd);
+	}
+
+	s = c->aux;
+	if(s == 0)
+		error(Ebadusefd);
+
+	switch(s->state){
+	case Algwait:
+		/* get algorithm */
+		if(n >= sizeof(buf))
+			error(Ebadarg);
+		strncpy(buf, a, n);
+		buf[n] = 0;
+		s->blocklen = 1;
+		s->diglen = 0;
+		if(strcmp(buf, "md5") == 0){
+			s->hf = md5;
+			s->diglen = MD5dlen;
+		} else if(strcmp(buf, "sha") == 0){
+			s->hf = sha;
+			s->diglen = SHAdlen;
+		} else if(strcmp(buf, "descbc") == 0){
+			s->encryptalg = DESCBC;
+			s->blocklen = 8;
+		} else if(strcmp(buf, "desecb") == 0){
+			s->encryptalg = DESECB;
+			s->blocklen = 8;
+		} else
+			error(Ebadarg);
+		s->state = Fdwait;
+		break;
+	case Fdwait:
+		/* get communications channel */
+		s->c = buftochan(a, n);
+		s->state = Secretinwait;
+		break;
+	case Secretinwait:
+		/* get secret for incoming messages */
+		setsecret(s, &s->in, a, n);
+		s->state = Secretoutwait;
+		break;
+	case Secretoutwait:
+		/* get secret for outgoing messages */
+		setsecret(s, &s->out, a, n);
+		if(s->blocklen != 1){
+			s->max = (1<<15) - s->diglen;
+			s->max -= s->max % s->blocklen;
+			s->maxpad = (1<<14) - s->diglen;
+			s->maxpad -= s->maxpad % s->blocklen;
+		} else
+			s->maxpad = s->max = (1<<15) - s->diglen;
+		s->state = Established;
+		break;
+	case Established:
+		p = a;
+		for(e = p + n; p < e; p += m){
+			m = e - p;
+			if(m > s->max)
+				m = s->max;
+	
+			b = allocb(m);
+			if(waserror()){
+				freeb(b);
+				nexterror();
+			}
+			memmove(b->wp, p, m);
+			poperror();
+			b->wp += m;
+	
+			sslbwrite(c, b, offset);
+		}
+		break;
+	default:
+		error(Ebadusefd);
+	}
+
+	return n;
 }
 
 /*

@@ -6,7 +6,6 @@
 #include	"io.h"
 #include	"../port/error.h"
 
-#include	"devtab.h"
 
 enum
 {

@@ -7,7 +7,6 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"../port/error.h"
-#include	"devtab.h"
 #include	"io.h"
 #include	"audio.h"
 
