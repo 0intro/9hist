@@ -14,7 +14,9 @@
 
 enum {
 	Pramin = 0x00710000,
-	Pramdac = 0x00680000
+	Pramdac = 0x00680000,
+	Fifo = 0x00800000,
+	Pgraph = 0x00400000
 };
 
 enum {
@@ -124,8 +126,7 @@ nvidiaenable(VGAscr* scr)
 
 	memset(&seg, 0, sizeof(seg));
 	seg.attr = SG_PHYSICAL;
-	seg.name = smalloc(NAMELEN);
-	snprint(seg.name, NAMELEN, "nvidiammio");
+	seg.name = "nvidiammio";
 	seg.pa = scr->io;
 	seg.size = p->mem[0].size;
 	addphysseg(&seg);
@@ -138,8 +139,7 @@ nvidiaenable(VGAscr* scr)
 		scr->apsize = size;
 		memset(&seg, 0, sizeof(seg));
 		seg.attr = SG_PHYSICAL;
-		seg.name = smalloc(NAMELEN);
-		snprint(seg.name, NAMELEN, "nvidiascreen");
+		seg.name = "nvidiascreen";
 		seg.pa = aperture;
 		seg.size = size;
 		addphysseg(&seg);
@@ -229,6 +229,154 @@ nvidiacurenable(VGAscr* scr)
 	vgaxo(Crtx, 0x31, vgaxi(Crtx, 0x31) | 0x01);
 }
 
+enum {
+	RopFifo = 0x00000000, 
+	ClipFifo = 0x00002000,
+	PattFifo = 0x00004000,
+	BltFifo = 0x00008000,
+	BitmapFifo = 0x0000A000,
+};
+
+enum {
+	RopRop3 = RopFifo + 0x300,
+
+	ClipTopLeft = ClipFifo + 0x300,
+	ClipWidthHeight = ClipFifo + 0x304,
+
+	PattShape = PattFifo + 0x0308,
+	PattColor0 = PattFifo + 0x0310,
+	PattColor1 = PattFifo + 0x0314,
+	PattMonochrome0 = PattFifo + 0x0318,
+	PattMonochrome1 = PattFifo + 0x031C,
+
+	BltTopLeftSrc = BltFifo + 0x0300,
+	BltTopLeftDst = BltFifo + 0x0304,
+	BltWidthHeight = BltFifo + 0x0308,
+
+	BitmapColor1A = BitmapFifo + 0x03FC,
+	BitmapURect0TopLeft = BitmapFifo + 0x0400,
+	BitmapURect0WidthHeight = BitmapFifo + 0x0404,
+};
+
+static void
+waitforidle(VGAscr *scr)
+{
+	ulong*	pgraph;
+	int x;
+
+	pgraph = KADDR(scr->io + Pgraph);
+
+	x = 0;
+	while (pgraph[0x00000700/4] & 0x01 && x++ < 1000000)
+		;
+
+	if(x >= 1000000)
+		iprint("idle stat %d scrio %.8lux scr %p pc %luX\n", *pgraph, scr->io, scr, getcallerpc(&scr));
+}
+
+static void
+waitforfifo(VGAscr *scr, int fifo, int entries)
+{
+	ushort* fifofree;
+	int x;
+
+	x = 0;
+	fifofree = KADDR(scr->io + Fifo + fifo + 0x10);
+
+	while (((*fifofree >> 2) < entries) && x++ < 1000000)
+		;
+
+	if(x >= 1000000)
+		iprint("fifo stat %d scrio %.8lux scr %p pc %luX\n", *fifofree, scr->io, scr, getcallerpc(&scr));
+}
+
+static int
+nvidiahwfill(VGAscr *scr, Rectangle r, ulong sval)
+{
+	ulong*	fifo;
+
+	fifo = KADDR(scr->io + Fifo);
+
+	waitforfifo(scr, BitmapFifo, 1);
+
+	fifo[BitmapColor1A/4] = sval;
+
+	waitforfifo(scr, BitmapFifo, 2);
+
+	fifo[BitmapURect0TopLeft/4] = (r.min.x << 16) | r.min.y;
+	fifo[BitmapURect0WidthHeight/4] = (Dx(r) << 16) | Dy(r);
+
+	waitforidle(scr);
+
+	return 1;
+}
+
+static int
+nvidiahwscroll(VGAscr *scr, Rectangle r, Rectangle sr)
+{
+	ulong*	fifo;
+
+	fifo = KADDR(scr->io + Fifo);
+
+	waitforfifo(scr, BltFifo, 3);
+
+	fifo[BltTopLeftSrc/4] = (sr.min.y << 16) | sr.min.x;
+	fifo[BltTopLeftDst/4] = (r.min.y << 16) | r.min.x;
+	fifo[BltWidthHeight/4] = (Dy(r) << 16) | Dx(r);
+
+	waitforidle(scr);
+
+	return 1;
+}
+
+void
+nvidiablank(VGAscr*, int blank)
+{
+	uchar seq1, crtc1A;
+
+	seq1 = vgaxi(Seqx, 1) & ~0x20;
+	crtc1A = vgaxi(Crtx, 0x1A) & ~0xC0;
+
+	if(blank) {
+		seq1 |= 0x20;
+		crtc1A |= 0xC0;
+	}
+
+	vgaxo(Seqx, 1, seq1);
+	vgaxo(Crtx, 0x1A, crtc1A);
+}
+
+static void
+nvidiadrawinit(VGAscr *scr)
+{
+	ulong*	fifo;
+
+	fifo = KADDR(scr->io + Fifo);
+
+	waitforfifo(scr, ClipFifo, 2);
+
+	fifo[ClipTopLeft/4] = 0x0;
+	fifo[ClipWidthHeight/4] = 0x80008000;
+
+	waitforfifo(scr, PattFifo, 5);
+
+	fifo[PattShape/4] = 0;
+	fifo[PattColor0/4] = 0xffffffff;
+	fifo[PattColor1/4] = 0xffffffff;
+	fifo[PattMonochrome0/4] = 0xffffffff;
+	fifo[PattMonochrome1/4] = 0xffffffff;
+
+	waitforfifo(scr, RopFifo, 1);
+
+	fifo[RopRop3/4] = 0xCC;
+
+	waitforidle(scr);
+
+	scr->blank = nvidiablank;
+	scr->fill = nvidiahwfill;
+	scr->scroll = nvidiahwscroll;
+}
+
 VGAdev vganvidiadev = {
 	"nvidia",
 
@@ -236,6 +384,7 @@ VGAdev vganvidiadev = {
 	nil,
 	nil,
 	nvidialinear,
+	nvidiadrawinit,
 };
 
 VGAcur vganvidiacur = {
