@@ -45,20 +45,16 @@ extern int etherelnk3reset(Ether*);
 static int
 configASIC(Ether *ether, int port, int xcvr)
 {
-	ushort x;
-
 	/* set Window 0 configuration registers */
 	COMMAND(port, SelectWindow, 0);
+	outs(port+ConfigControl, 1);
 
-	x = ins(port+ConfigControl);
-	outs(port+ConfigControl, x|1);
+	/* IRQ must be 3 on 3C589/3C562 */
+	outs(port + ResourceConfig, 0x3F00);
 
 	/* ROM size & base - must be set before we can access ROM */
 	/* transceiver type is 2 for 'figure it out'  */
 	outs(port + AddressConfig, xcvr);
-
-	/* IRQ must be 3 on 3C589 */
-	outs(port + ResourceConfig, 0x3F00);
 
 	return etherelnk3reset(ether);
 }
@@ -75,9 +71,11 @@ reset(Ether *ether)
 		ether->port = 0x240;
 	port = ether->port;
 
-	slot = pcmspecial("3C589", ether);
-	if(slot < 0)
-		return -1;
+	if((slot = pcmspecial("3C589", ether)) < 0){
+		if((slot = pcmspecial("3C562", ether)) < 0)
+			return -1;
+		strcpy(ether->type, "3C562");
+	}
 
 	/* try configuring as a 10baseT */
 	if(configASIC(ether, port, Xcvr10BaseT) < 0){
@@ -89,7 +87,7 @@ reset(Ether *ether)
 	if(ins(port+MediaStatus) & LinkBeatOk){
 		/* reselect window 1 for normal operation */
 		COMMAND(port, SelectWindow, 1);
-		print("10baseT 3C589\n");
+		print("10baseT %s\n", ether->type);
 		return 0;
 	}
 
@@ -99,7 +97,7 @@ reset(Ether *ether)
 		pcmspecialclose(slot);
 		return -1;
 	}
-	print("BNC 3C589\n");
+	print("BNC %s\n", ether->type);
 	return 0;
 }
 

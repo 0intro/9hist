@@ -929,7 +929,8 @@ pcmio(int slotno, ISAConf *isa)
 	Slot *pp;
 	Conftab *ct, *et, *t;
 	PCMmap *m;
-	int irq;
+	int i, index, irq;
+	char *cp;
 
 	irq = isa->irq;
 	if(irq == 2)
@@ -944,36 +945,50 @@ pcmio(int slotno, ISAConf *isa)
 
 	et = &pp->ctab[pp->nctab];
 
-	/* assume default is right */
-	if(pp->def)
-		ct = pp->def;
-	else
-		ct = pp->ctab;
-
-	/* try for best match */
-	if(ct->nioregs == 0 || ct->port != isa->port || ((1<<irq) & ct->irqs) == 0){
-		for(t = pp->ctab; t < et; t++)
-			if(t->nioregs && t->port == isa->port && ((1<<irq) & t->irqs)){
-				ct = t;
-				break;
-			}
+	ct = 0;
+	for(i = 0; i < isa->nopt; i++){
+		if(strncmp(isa->opt[i], "index=", 6))
+			continue;
+		index = strtol(&isa->opt[i][6], &cp, 0);
+		if(cp == &isa->opt[i][6] || index >= pp->nctab)
+			return -1;
+		ct = &pp->ctab[index];
 	}
-	if(ct->nioregs == 0 || ((1<<irq) & ct->irqs) == 0){
-		for(t = pp->ctab; t < et; t++)
-			if(t->nioregs && ((1<<irq) & t->irqs)){
-				ct = t;
-				break;
-			}
-	}
-	if(ct->nioregs == 0){
-		for(t = pp->ctab; t < et; t++)
-			if(t->nioregs){
-				ct = t;
-				break;
-			}
+	if(ct == 0){
+	
+		/* assume default is right */
+		if(pp->def)
+			ct = pp->def;
+		else
+			ct = pp->ctab;
+	
+		/* try for best match */
+		if(ct->nioregs == 0 || ct->port != isa->port || ((1<<irq) & ct->irqs) == 0){
+			for(t = pp->ctab; t < et; t++)
+				if(t->nioregs && t->port == isa->port && ((1<<irq) & t->irqs)){
+					ct = t;
+					break;
+				}
+		}
+		if(ct->nioregs == 0 || ((1<<irq) & ct->irqs) == 0){
+			for(t = pp->ctab; t < et; t++)
+				if(t->nioregs && ((1<<irq) & t->irqs)){
+					ct = t;
+					break;
+				}
+		}
+		if(ct->nioregs == 0){
+			for(t = pp->ctab; t < et; t++)
+				if(t->nioregs){
+					ct = t;
+					break;
+				}
+		}
 	}
 
 	if(ct == et || ct->nioregs == 0)
+		return -1;
+	if(isa->port == 0 && ct->port == 0)
 		return -1;
 
 	/* route interrupts */
@@ -1068,6 +1083,8 @@ cisread(Slot *pp)
 	for(i = 0; i < 1000; i++){
 		this = pp->cispos;
 		if(readc(pp, &type) != 1)
+			break;
+		if(type == 0xFF)
 			break;
 		if(readc(pp, &link) != 1)
 			break;

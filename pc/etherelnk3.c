@@ -2,6 +2,7 @@
  * Etherlink III and Fast EtherLink adapters.
  * To do:
  *	check robustness in the face of errors;
+ *	RxEarly and busmaster;
  *	autoSelect;
  *	PCI latency timer and master enable;
  *	errata list.
@@ -409,7 +410,6 @@ attach(Ether* ether)
 	x = interruptMask|interruptLatch;
 	if(ctlr->busmaster)
 		x &= ~(rxEarly|rxComplete);
-x &= ~rxEarly;
 	COMMAND(port, SetIndicationEnable, x);
 	COMMAND(port, SetInterruptEnable, x);
 
@@ -745,6 +745,14 @@ interrupt(Ureg*, void* arg)
 		}
 
 		/*
+		 * Currently, this shouldn't happen.
+		 */
+		if(status & rxEarly){
+			COMMAND(port, AcknowledgeInterrupt, rxEarly);
+			status &= ~rxEarly;
+		}
+
+		/*
 		 * Panic if there are any interrupts not dealt with.
 		 */
 		if(status & interruptMask)
@@ -1039,7 +1047,7 @@ tcm59Xpci(Ether* ether)
 static int
 tcm5XXpcmcia(Ether* ether)
 {
-	if(cistrcmp(ether->type, "3C589") == 0)
+	if(cistrcmp(ether->type, "3C589") == 0 || cistrcmp(ether->type, "3C562") == 0)
 		return ether->port;
 
 	return 0;
@@ -1048,7 +1056,7 @@ tcm5XXpcmcia(Ether* ether)
 int
 etherelnk3reset(Ether* ether)
 {
-	int busmaster, i, port, rxstatus9, x, xcvr;
+	int busmaster, i, port, rxearly, rxstatus9, x, xcvr;
 	Adapter *ap, **app;
 	uchar ea[Eaddrlen];
 	Ctlr *ctlr;
@@ -1062,6 +1070,7 @@ etherelnk3reset(Ether* ether)
 	 * If an adapter is found save the IRQ and transceiver type.
 	 */
 	port = 0;
+	rxearly = 2044;
 	rxstatus9 = 0;
 	xcvr = 0;
 	for(app = &adapter, ap = *app; ap; app = &ap->next, ap = ap->next){
@@ -1079,12 +1088,14 @@ etherelnk3reset(Ether* ether)
 	}
 	else if(port == 0 && (port = tcm59Xpci(ether))){
 		COMMAND(port, SelectRegisterWindow, Wfifo);
+		rxearly = 8188;
 		xcvr = inl(port+InternalConfig) & xcvrMask;
 	}
 	else if(port == 0 && (port = tcm5XXeisa(ether))){
 		x = ins(port+ProductID);
 		if((x & 0xFF00) == 0x5900){
 			COMMAND(port, SelectRegisterWindow, Wfifo);
+			rxearly = 8188;
 			xcvr = inl(port+InternalConfig) & xcvrMask;
 		}
 		else{
@@ -1207,7 +1218,7 @@ etherelnk3reset(Ether* ether)
 	 */
 	ctlr->txthreshold = ETHERMINTU;
 	COMMAND(port, SetTxStartThresh, ETHERMINTU);
-	COMMAND(port, SetRxEarlyThresh, ETHERMAXTU);
+	COMMAND(port, SetRxEarlyThresh, rxearly);
 
 	iunlock(&ctlr->wlock);
 
