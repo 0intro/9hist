@@ -36,6 +36,7 @@ taskswitch(ulong pdb, ulong stack)
 	tss->ss2 = KDSEL;
 	tss->esp2 = stack;
 	tss->cr3 = pdb;
+	coherence();
 	putcr3(pdb);
 }
 
@@ -226,6 +227,7 @@ putmmu(ulong va, ulong pa, Page*)
 
 	s = splhi();
 	pdb[PDX(MACHADDR)] = m->pdb[PDX(MACHADDR)];
+	coherence();
 	mmuflushtlb(up->mmupdb->pa);
 	splx(s);
 }
