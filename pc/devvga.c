@@ -356,7 +356,7 @@ vgactl(char *arg)
 			s = screenmem & ~KZERO;
 			e = s + footprint;
 			s = ROUND(s, y);
-			if(e > s + x)
+			if(e >= s + x)
 				return;
 		}
 		y = getspace(x, y);

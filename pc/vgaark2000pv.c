@@ -120,8 +120,8 @@ load(Cursor *c)
 				*p++ = c->set[2*y + x];
 			}
 			else {
-				*p++ = 0x00;
-				*p++ = 0x00;
+				*p++ = 0xAA;
+				*p++ = 0x55;
 			}
 		}
 	}
