@@ -132,8 +132,8 @@ static Algorithm espalg[] =
 static Algorithm ahalg[] =
 {
 	"null",			0,	nullahinit,
-	"seanq_hmac_sha1_96",		128,	shaahinit,
-	"seanq_hmac_md5_96",		128,	md5ahinit,
+	"hmac_sha1_96",		128,	shaahinit,
+	"hmac_md5_96",		128,	md5ahinit,
 	nil,			0,	nil,
 };
 
