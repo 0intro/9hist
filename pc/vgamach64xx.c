@@ -122,7 +122,7 @@ mach64xxlinear(VGAscr* scr, int* size, int* align)
 	else
 		scr->isupamem = 1;
 
-	scr->mmio = (ulong*)(aperture+osize-0x400);
+	scr->mmio = KADDR(aperture+osize-0x400);
 	if(oaperture)
 		print("warning (BUG): redefinition of aperture does not change mach64mmio segment\n");
 	memset(&seg, 0, sizeof(seg));
