@@ -8,19 +8,36 @@
 
 static	ulong	clkreload;
 
-// the following can be 4 or 16 depending on the clock multiplier
-// see 15.3.3 in 860 manual
-enum {
-	Timebase = 16,	/* system clock cycles per time base cycle */
-};
+void
+delayloopinit(void)
+{
+	ulong v;
+	uvlong x;
+
+	m->loopconst = 5000;
+	v = getdec();
+	delay(1000);
+	v -= getdec();
+
+	x = m->loopconst;
+	x *= m->dechz;
+	x /= v;
+	m->loopconst = x;
+}
 
 void
 clockinit(void)
 {
-//	delayloopinit();
+	/* XXX the hardcoding of these values is WRONG */
+	m->cpuhz = 300000000;
+	m->bushz = 66666666;
 
-//	clkreload = (m->clockgen/Timebase)/HZ-1;
-	clkreload = (300000000/Timebase)/HZ-1;
+	m->dechz = m->bushz/4;			/* true for all 604e */
+	m->tbhz = m->dechz;				/* conjecture; manual says bugger all */
+
+	delayloopinit();
+
+	clkreload = m->dechz/HZ-1;		/* decremented at 1/4 bus clock speed */
 	putdec(clkreload);
 }
 
@@ -44,7 +61,6 @@ clockintr(Ureg *ureg)
 	}
 
 	portclock(ureg);
-if((m->ticks%HZ) == 0) print("tick! %d\n", m->ticks/HZ);
 }
 
 void

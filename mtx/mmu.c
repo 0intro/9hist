@@ -8,9 +8,6 @@
 void
 mmuinit(void)
 {
-	int i;
-
-	print("mmuinit\n");
 }
 
 void
@@ -18,7 +15,6 @@ flushmmu(void)
 {
 	int x;
 
-if(0)print("flushmmu(%ld)\n", up->pid);
 	x = splhi();
 	up->newtlb = 1;
 	mmuswitch(up);
@@ -33,7 +29,6 @@ mmuswitch(Proc *p)
 {
 	int tp;
 
-if(0)print("mmuswitch()\n");
 	if(p->newtlb) {
 		memset(p->pidonmach, 0, sizeof p->pidonmach);
 		p->newtlb = 0;
@@ -45,7 +40,6 @@ if(0)print("mmuswitch()\n");
 void
 mmurelease(Proc* p)
 {
-if(0)print("mmurelease(%ld)\n", p->pid);
 	memset(p->pidonmach, 0, sizeof p->pidonmach);
 }
 

@@ -34,8 +34,6 @@ main(void)
 	links();
 	chandevreset();
 	pageinit();
-spllo();
-for(;;);
 	swapinit();
 	userinit();
 	schedinit();
@@ -53,8 +51,8 @@ machinit(void)
 	 * be enough for a while. Cpuidentify will
 	 * calculate the real value later.
 	 */
-	m->loopconst = 100000;
-m->loopconst = 5000;
+//	m->loopconst = 100000;
+m->loopconst = 5000;			/* dog slow, the cache must be off */
 
 	active.machs = 1;
 	active.exiting = 0;
@@ -101,8 +99,6 @@ init0(void)
 //	char **p, *q, name[KNAMELEN];
 //	int n;
 
-print("init0\n");
-
 	up->nerrlab = 0;
 
 	spllo();
@@ -141,6 +137,7 @@ print("init0\n");
 		poperror();
 	}
 	kproc("alarm", alarmkproc, 0);
+for(;;);
 	touser((void*)(USTKTOP-8));
 }
 
@@ -160,8 +157,10 @@ userinit(void)
 	p->rgrp = newrgrp();
 	p->procmode = 0640;
 
-	strcpy(p->text, "*init*");
-	strcpy(p->user, eve);
+	kstrdup(&eve, "");
+	kstrdup(&p->text, "*init*");
+	kstrdup(&p->user, eve);
+
 	p->fpstate = FPinit;
 
 	/*
@@ -171,7 +170,7 @@ userinit(void)
 	 *	4 bytes for gotolabel's return PC
 	 */
 	p->sched.pc = (ulong)init0;
-	p->sched.sp = (ulong)p->kstack+KSTACK-(1+MAXSYSARG)*BY2WD;
+	p->sched.sp = (ulong)p->kstack+KSTACK-(sizeof(Sargs)+BY2WD);
 
 	/*
 	 * User Stack
