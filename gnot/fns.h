@@ -135,6 +135,8 @@ int	spllo(void);
 void	splx(int);
 Devgen	streamgen;
 void	streamclose(Chan*);
+int	streamenter(Stream*);
+void	streamexit(Stream*, int);
 void	streaminit(void);
 long	streamread(Chan*, void*, long);
 long	streamwrite(Chan*, void*, long, int);

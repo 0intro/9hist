@@ -315,7 +315,7 @@ ulong	boottime;		/* seconds since epoch at boot */
 long
 seconds(void)
 {
-	return boottime + TK2MS(MACHP(0)->ticks);
+	return boottime + TK2SEC(MACHP(0)->ticks);
 }
 
 int

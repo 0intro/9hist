@@ -771,7 +771,6 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		qlocked = 0;
 		n = (*devtab[q->msg->type].read)(q->msg, mh->mbr->buf, BUFSIZE);
 		if(convM2S(mh->mbr->buf, &mh->rhdr, n) == 0){
-			print("format error in mntxmit\n");
 			mnterrdequeue(q, mh);
 			error(0, Ebadmsg);
 		}
@@ -795,7 +794,6 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		/*
 		 * Hand response to correct recipient
 		 */
-		if(q->writer==0) print("response with empty queue\n");
 		for(ow=0,w=q->writer; w; ow=w,w=w->next)
 			if(mh->rhdr.fid == w->thdr.fid
 			&& mh->rhdr.type == w->thdr.type+1){
@@ -821,7 +819,6 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		qunlock(q);
 		qlocked = 0;
 		if(waserror()){		/* interrupted sleep */
-			print("interrupted i/o\n");
 			mnterrdequeue(q, mh);
 			nexterror();
 		}

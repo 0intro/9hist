@@ -258,6 +258,22 @@ allocq(Qinfo *qi)
 }
 
 /*
+ *  flush a queue
+ */
+static void
+flushq(Queue *q)
+{
+	Block *bp;
+
+	q = RD(q);
+	while(bp = getq(q))
+		freeb(bp);
+	q = WR(q);
+	while(bp = getq(q))
+		freeb(bp);
+}
+
+/*
  *  free a queue
  */
 static void
@@ -658,8 +674,8 @@ streamnew(Chan *c, Qinfo *qi)
  	 *  hang a device and process q off the stream
 	 */
 	s->inuse = 1;
+	s->opens = 1;
 	s->hread = 0;
-	s->tag[0] = 0;
 	q = allocq(&procinfo);
 	s->procq = WR(q);
 	q = allocq(qi);
@@ -697,6 +713,7 @@ streamopen(Chan *c, Qinfo *qi)
 			&& s->dev == c->dev
 		 	&& s->id == STREAMID(c->qid)){
 				s->inuse++;
+				s->opens++;
 				c->stream = s;
 				unlock(s);
 				return;
@@ -709,6 +726,54 @@ streamopen(Chan *c, Qinfo *qi)
 	 *  create a new stream
 	 */
 	streamnew(c, qi);
+}
+
+/*
+ *  Enter a stream.  Increment the reference count so it can't disappear
+ *  under foot.
+ */
+int
+streamenter(Stream *s)
+{
+	lock(s);
+	if(s->opens == 0){
+		unlock(s);
+		return -1;
+	}
+	s->inuse++;
+	unlock(s);
+	return 0;
+}
+
+/*
+ *  Decrement the reference count on a stream.  If the count is
+ *  zero, free the stream.
+ */
+void
+streamexit(Stream *s, int locked)
+{
+	Queue *q;
+	Queue *nq;
+
+	if(!locked)
+		lock(s);
+	s->inuse--;
+	if(s->inuse != 0){
+		if(!locked)
+			unlock(s);
+		return;
+	}
+
+	/*
+	 *  ascend the stream freeing the queues
+	 */
+	for(q = s->devq; q; q = nq){
+		nq = q->next;
+		freeq(q);
+	}
+	s->id = s->dev = s->type = 0;
+	if(!locked)
+		unlock(s);
 }
 
 /*
@@ -729,11 +794,11 @@ streamclose(Chan *c)
 		return;
 
 	/*
-	 *  decrement the reference cound
+	 *  decrement the reference count
 	 */
 	lock(s);
-	if(s->inuse != 1){
-		s->inuse--;
+	if(s->opens != 1){
+		s->opens--;
 		unlock(c->stream);
 		return;
 	}
@@ -747,15 +812,19 @@ streamclose(Chan *c)
 		if(q == s->devq->other)
 			break;
 	}
+
 	/*
-	 *  ascend the stream freeing the queues
+	 *  ascend the stream flushing the queues
 	 */
 	for(q = s->devq; q; q = nq){
 		nq = q->next;
-		freeq(q);
+		flushq(q);
 	}
-	s->id = s->dev = s->type = 0;
-	s->inuse--;
+
+	/*
+	 *  leave it and free it
+	 */
+	streamexit(s, 1);
 	unlock(s);
 }
 

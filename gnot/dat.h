@@ -421,7 +421,8 @@ struct Queue {
  */
 struct Stream {
 	Lock;			/* structure lock */
-	int	inuse;		/* use count */
+	int	inuse;		/* number of processes in stream */
+	int	opens;		/* number of processes with stream open */
 	int	hread;		/* number of reads after hangup */
 	int	type;		/* correclation with Chan */
 	int	dev;		/* ... */
@@ -430,7 +431,6 @@ struct Stream {
 	QLock	wrlock;		/* write lock */
 	Queue	*procq;		/* write queue at process end */
 	Queue	*devq;		/* read queue at device end */
-	char	tag[32];	/* when reading the tag qid */
 };
 #define	RD(q)		((q)->other < (q) ? (q->other) : q)
 #define	WR(q)		((q)->other > (q) ? (q->other) : q)
