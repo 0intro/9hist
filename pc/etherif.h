@@ -22,7 +22,7 @@ struct Ether {
 	Netif;
 };
 
-extern void etherrloop(Ether*, Etherpkt*, long);
+extern void etherrloop(Ether*, Etherpkt*, long, int);
 extern void addethercard(char*, int(*)(Ether*));
 
 /*

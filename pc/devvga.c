@@ -217,8 +217,8 @@ vgaread(Chan *c, void *buf, long n, ulong offset)
 		return readstr(offset, buf, n, cbuf);
 	case Qvgaiob:
 		port = offset;
-		if(checkvgaport(port, n))
-			error(Eperm);
+		/*if(checkvgaport(port, n))
+			error(Eperm);*/
 		for(cp = buf; port < offset+n; port++)
 			*cp++ = vgai(port);
 		return n;
@@ -330,8 +330,8 @@ vgawrite(Chan *c, void *buf, long n, ulong offset)
 		return n;
 	case Qvgaiob:
 		port = offset;
-		if(checkvgaport(port, n))
-			error(Eperm);
+		/*if(checkvgaport(port, n))
+			error(Eperm);*/
 		for(cp = buf; port < offset+n; port++)
 			vgao(port, *cp++);
 		return n;
