@@ -105,6 +105,8 @@ struct Conv
 	Queue*	rq;			/* queued data waiting to be read */
 	Queue*	wq;			/* queued data waiting to be written */
 	Queue*	eq;			/* returned error packets */
+	Queue*	sq;			/* snooping queue */
+	Ref	snoopers;		/* number of processes with snoop open */
 
 	QLock	car;
 	Rendez	cr;
