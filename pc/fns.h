@@ -1,6 +1,6 @@
 #include "../port/portfns.h"
 
-void	a20enable(void);
+void	meminit(void);
 #define	clearmmucache()		/* 386 doesn't have one */
 void	clock(Ureg*);
 void	clockinit(void);

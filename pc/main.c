@@ -13,12 +13,12 @@ extern long edata;
 void
 main(void)
 {
-	a20enable();
+	meminit();
 	machinit();
 	confinit();
 	screeninit();
 	printinit();
-	print("%lud K bytes of physical memory\n", 1024 + conf.npage1*BY2PG/1024);
+	print("%ludK bytes of physical memory\n", (conf.base1 + conf.npage1*BY2PG)/1024);
 	mmuinit();
 	trapinit();
 	kbdinit();
@@ -174,14 +174,14 @@ confinit(void)
 			break;
 		x += 0x3141526;
 	}
-	conf.npage1 = (i-2)*1024/4;
-	conf.base1 = 1024*1024;
+	conf.base1 = 0x100000;
+	conf.npage1 = ((i-1)*1024*1024 - conf.base1)/BY2PG;
 
 	conf.npage = conf.npage0 + conf.npage1;
 	conf.maxialloc = 2*1024*1024;
 
 	mul = 1;
-	conf.nproc = 20 + 20*mul;
+	conf.nproc = 10 + 10*mul;
 	conf.npgrp = conf.nproc/2;
 	conf.nseg = conf.nproc*3;
 	conf.npagetab = (conf.nseg*14)/10;
@@ -198,7 +198,7 @@ confinit(void)
 	conf.nmntbuf = conf.nmntdev+3;
 	conf.nmnthdr = 2*conf.nmntdev;
 	conf.nsrv = 16*mul;			/* was 32 */
-	conf.nbitmap = 512*mul;
+	conf.nbitmap = 256*mul;
 	conf.nbitbyte = conf.nbitmap*1024*screenbits();
 	conf.nfont = 10*mul;
 	conf.nnoifc = 1;
@@ -296,9 +296,9 @@ enum
  *  enable address bit 20
  */
 void
-a20enable(void)
+meminit(void)
 {
-	outb(Head, A20ena);
+	outb(Head, A20ena);		/* enable memory address bit 20 */
 }
 
 /*

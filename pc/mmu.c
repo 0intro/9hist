@@ -124,7 +124,7 @@ mmuinit(void)
 	 */
 
 	/*  allocate and fill low level page tables for kernel mem */
-	npage = (1024*1024)/BY2PG + conf.npage1;
+	npage = conf.base1/BY2PG + conf.npage1;
 	nbytes = PGROUND(npage*BY2WD);		/* words of page map */
 	nkpt = nbytes/BY2PG;			/* pages of page map */
 	kpt = ialloc(nbytes, 1);

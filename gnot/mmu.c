@@ -143,7 +143,9 @@ KMap*
 kmap(Page *pg)
 {
 	KMap *k;
+	int s;
 
+	s = splhi();
 	lock(&kmapalloc);
 	k = kmapalloc.free;
 	if(k == 0){
@@ -152,6 +154,7 @@ kmap(Page *pg)
 	}
 	kmapalloc.free = k->next;
 	unlock(&kmapalloc);
+	splx(s);
 
 	k->pa = pg->pa;
 	putkmmu(k->va, PPN(k->pa) | PTEVALID | PTEKERNEL);
@@ -161,13 +164,17 @@ kmap(Page *pg)
 void
 kunmap(KMap *k)
 {
+	int s;
+
 	k->pa = 0;
 	putkmmu(k->va, INVALIDPTE);
 
+	s = splhi();
 	lock(&kmapalloc);
 	k->next = kmapalloc.free;
 	kmapalloc.free = k;
 	unlock(&kmapalloc);
+	splx(s);
 }
 
 void
