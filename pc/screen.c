@@ -392,3 +392,15 @@ blankscreen(int blank)
 			vgablank(scr, blank);
 	}
 }
+
+void
+screensignal(int x)
+{
+	VGAscr *scr;
+
+	scr = &vgascreen[0];
+	if(scr->aperture == 0)
+		return;
+
+	memset(scr->aperture, x, 8*1024);
+}

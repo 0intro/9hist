@@ -1140,6 +1140,8 @@ char* wavenames[] = {
 	"WaveLAN/IEEE",
 	"TrueMobile 1150",
 	"Instant Wireless ; Network PC CARD",
+	"Avaya Wireless PC Card",
+	"AirLancer MC-11",
 	nil,
 };
 
