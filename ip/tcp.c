@@ -167,7 +167,7 @@ struct	Tcp
 	ulong	seq;
 	ulong	ack;
 	uchar	flags;
-	ushort	wnd;
+	ulong	wnd;
 	ushort	urg;
 	ushort	mss;
 	ushort	len;	/* size of data */
@@ -199,30 +199,32 @@ struct Tcpctl
 		ulong	una;		/* Unacked data pointer */
 		ulong	nxt;		/* Next sequence expected */
 		ulong	ptr;		/* Data pointer */
-		ushort	wnd;		/* Tcp send window */
+		ulong	wnd;		/* Tcp send window */
 		ulong	urg;		/* Urgent data pointer */
 		ulong	wl2;
 		/* to implement tahoe and reno TCP */
 		ulong	dupacks;	/* number of duplicate acks rcvd */
 		int	recovery;	/* loss recovery flag */
 		ulong	rxt;		/* right window marker for recovery */
+		int	scale;		/* how much to right shift window in xmitted packets */
 	} snd;
 	struct {
 		ulong	nxt;		/* Receive pointer to next uchar slot */
-		ushort	wnd;		/* Receive window incoming */
+		ulong	wnd;		/* Receive window incoming */
 		ulong	urg;		/* Urgent pointer */
 		ulong	lastacked;	/* Last ack sent */
 		int	blocked;
 		int	una;		/* unacked data segs */
+		int	scale;		/* how much to left shift window in rcved packets */
 	} rcv;
 	ulong	iss;			/* Initial sequence number */
-	ushort	cwind;			/* Congestion window */
+	ulong	cwind;			/* Congestion window */
 	ushort	ssthresh;		/* Slow start threshold */
 	int	resent;			/* Bytes just resent */
 	int	irs;			/* Initial received squence */
 	ushort	mss;			/* Mean segment size */
 	int	rerecv;			/* Overlap of data rerecevived */
-	ushort	window;			/* Recevive window */
+	ulong	window;			/* Recevive window */
 	uchar	backoff;		/* Exponential backoff counter */
 	int	backedoff;		/* ms we've backed off for rexmits */
 	uchar	flags;			/* State flags */
@@ -362,7 +364,7 @@ void	procsyn(Conv*, Tcp*);
 void	tcpiput(Proto*, Ipifc*, Block*);
 void	tcpoutput(Conv*);
 int	tcptrim(Tcpctl*, Tcp*, Block**, ushort*);
-void	tcpstart(Conv*, int, ushort);
+void	tcpstart(Conv*, int, ulong);
 void	tcptimeout(void*);
 void	tcpsndsyn(Tcpctl*);
 void	tcprcvwin(Conv*);
@@ -440,7 +442,7 @@ tcpstate(Conv *c, char *state, int n)
 	s = (Tcpctl*)(c->ptcl);
 
 	return snprint(state, n,
-		"%s srtt %d mdev %d cwin %d swin %d rwin %d timer.start %d timer.count %d rerecv %d\n",
+		"%s srtt %d mdev %d cwin %lud swin %lud rwin %lud timer.start %d timer.count %d rerecv %d\n",
 		tcpstates[s->state], s->srtt, s->mdev,
 		s->cwind, s->snd.wnd, s->rcv.wnd,
 		s->timer.start, s->timer.count, s->rerecv);
@@ -554,7 +556,7 @@ tcprcvwin(Conv *s)				/* Call with tcb locked */
 	Tcpctl *tcb;
 
 	tcb = (Tcpctl*)s->ptcl;
-	w = QMAX - qlen(s->rq);
+	w = tcb->window - qlen(s->rq);
 	if(w < 0)
 		w = 0;
 	tcb->rcv.wnd = w;
@@ -826,7 +828,7 @@ inittcpctl(Conv *s, int mode)
  *  called with s qlocked
  */
 void
-tcpstart(Conv *s, int mode, ushort window)
+tcpstart(Conv *s, int mode, ulong window)
 {
 	Tcpctl *tcb;
 	Tcppriv *tpriv;
@@ -850,6 +852,8 @@ tcpstart(Conv *s, int mode, ushort window)
 	inittcpctl(s, mode);
 	tcb->window = window;
 	tcb->rcv.wnd = window;
+	tcb->rcv.scale = 0;
+	tcb->snd.scale = 0;
 
 	iphtadd(&tpriv->ht, s);
 	switch(mode) {
@@ -930,7 +934,7 @@ htontcp6(Tcp *tcph, Block *data, Tcp6hdr *ph, Tcpctl *tcb)
 	hnputl(h->tcpseq, tcph->seq);
 	hnputl(h->tcpack, tcph->ack);
 	hnputs(h->tcpflag, (hdrlen<<10) | tcph->flags);
-	hnputs(h->tcpwin, tcph->wnd);
+	hnputs(h->tcpwin, tcph->wnd>>tcb->snd.scale);
 	hnputs(h->tcpurg, tcph->urg);
 
 	if(tcph->mss != 0){
@@ -989,7 +993,7 @@ htontcp4(Tcp *tcph, Block *data, Tcp4hdr *ph, Tcpctl *tcb)
 	hnputl(h->tcpseq, tcph->seq);
 	hnputl(h->tcpack, tcph->ack);
 	hnputs(h->tcpflag, (hdrlen<<10) | tcph->flags);
-	hnputs(h->tcpwin, tcph->wnd);
+	hnputs(h->tcpwin, tcph->wnd>>tcb->snd.scale);
 	hnputs(h->tcpurg, tcph->urg);
 
 	if(tcph->mss != 0){
@@ -1664,7 +1668,8 @@ update(Conv *s, Tcp *seg)
 {
 	int rtt, delta;
 	Tcpctl *tcb;
-	ushort acked, expand;
+	ulong acked;
+	ulong expand;
 	Tcppriv *tpriv;
 
 	tpriv = s->p->priv;
@@ -1752,7 +1757,7 @@ update(Conv *s, Tcp *seg)
 			expand = ((int)tcb->mss * tcb->mss) / tcb->cwind;
 
 		if(tcb->cwind + expand < tcb->cwind)
-			expand = 65535 - tcb->cwind;
+			expand = tcb->snd.wnd - tcb->cwind;
 		if(tcb->cwind + expand > tcb->snd.wnd)
 			expand = tcb->snd.wnd - tcb->cwind;
 		if(expand != 0)
@@ -1961,6 +1966,9 @@ reset:
 	}
 	qlock(s);
 	qunlock(tcp);
+
+	/* scale up window */
+	seg.wnd <<= tcb->rcv.scale;
 
 	if(tcb->kacounter > 0)
 		tcb->kacounter = MAXBACKMS / (tcb->katimer.start*MSPTICK);
@@ -2340,7 +2348,7 @@ tcpoutput(Conv *s)
 		}
 		ssize = sndcnt-sent;
 		if(ssize && usable < 2)
-			netlog(s->p->f, Logtcp, "throttled snd.wnd 0x%ux cwind 0x%ux\n",
+			netlog(s->p->f, Logtcp, "throttled snd.wnd %lud cwind %lud\n",
 				tcb->snd.wnd, tcb->cwind);
 		if(usable < ssize)
 			ssize = usable;

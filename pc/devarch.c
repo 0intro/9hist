@@ -110,9 +110,9 @@ ioinit(void)
 	ioalloc(0x10000, 1, 0, "dummy");
 	/*
 	 * Someone needs to explain why this was here...
+	 */
 	ioalloc(0x0fff, 1, 0, "dummy");	// i82557 is at 0x1000, the dummy
 					// entry is needed for swappable devs.
-	 */
 
 	if ((excluded = getconf("ioexclude")) != nil) {
 		char *s;
