@@ -11,14 +11,39 @@
 #include	<gnot.h>
 
 uchar	*intrreg;
-int	model;
 uchar	idprom[32];
 ROM	*rom;		/* open boot rom vector */
 int	cpuserver;
 void	(*romputcxsegm)(int, ulong, int);
 ulong	bank[2];
-char	rombuf[20000];
 char	mempres[256];
+
+typedef struct Sysparam Sysparam;
+struct Sysparam
+{
+	int	id;		/* Model type from id prom */
+	char	*name;		/* System name */
+	char	ss2;		/* Is sparcstation 2 ? */
+	int	vacsize;	/* Cache size */
+	int	vacline;	/* Cache line size */
+	int	ncontext;	/* Number of MMU contexts */
+	int	npmeg;		/* Number of process maps */
+	char	cachebug;	/* Machine needs cache bug work around */
+	char	monitor;	/* Needs to be computed */
+	int	memscan;	/* Number of Meg to scan looking for memory */
+}
+sysparam[] =
+{
+	{ 0x51, "1 4/60",   0, 65536, 16,  8, 128, 0, 1, 64 },
+	{ 0x52, "IPC 4/40", 0, 65536, 16,  8, 128, 0, 1, 64 },
+	{ 0x53, "1+ 4/65",  0, 65536, 16,  8, 128, 0, 1, 64 },
+	{ 0x54, "SLC 4/20", 0, 65536, 16,  8, 128, 0, 1, 64 },
+	{ 0x55, "2 4/75",   1, 65536, 32, 16, 256, 1, 0, 64 },
+	{ 0x56, "ELC 4/25", 1, 65536, 32, 16, 256, 1, 0, 64 },
+	{ 0x57, "IPX 4/50", 1, 65536, 32, 16, 256, 1, 0, 64 },
+	{ 0 }
+};
+Sysparam *sparam;
 
 void
 main(void)
@@ -110,7 +135,9 @@ init0(void)
 	u->p->mach = m;
 	spllo();
 
+	print("Sun Sparcstation %s\n", sparam->name);
 	print("bank 0: %dM  1: %dM\n", bank[0], bank[1]);
+
 	u->slash = (*devtab[0].attach)(0);
 	u->dot = clone(u->slash, 0);
 
@@ -218,7 +245,7 @@ scanmem(char *mempres, int n)
 	for(i=0; i<n; i++){
 		mempres[i] = 0;
 		addr = i*MB;
-		putw4(va, PPN(addr)|PTEVALID|PTEKERNEL|PTENOCACHE|PTEWRITE|PTEMAINMEM);
+		putw4(va, PPN(addr)|PTEPROBEMEM);
 		*(ulong*)va = addr;
 		if(*(ulong*)va == addr){
 			addr = ~addr;
@@ -232,62 +259,10 @@ scanmem(char *mempres, int n)
 	for(i=0; i<n; i++)
 		if(mempres[i]){
 			addr = i*MB;
-			putw4(va, PPN(addr)|PTEVALID|PTEKERNEL|PTENOCACHE|PTEWRITE|PTEMAINMEM);
+			putw4(va, PPN(addr)|PTEPROBEMEM);
 			mempres[i] = *(ulong*)va;
 		}else
 			mempres[i] = 0;
-}
-
-char name[1024];
-
-void
-romprops(ulong d, char *namep, ulong p)
-{
-	static ulong romp;
-	uchar buf[128];
-	int i, n;
-
-	romp += sprint(rombuf+romp, "romprops %lux %lux\n", d, p);
-	while(p && *(char*)p){
-		n = call(rom->conf->getproplen, d, p);
-		if(n>=0 && n<sizeof buf){
-			call(rom->conf->getprop, d, p, buf);
-			if(strcmp((char*)p, "name")==0){
-				strcpy(namep, (char*)buf);
-				romp += sprint(rombuf+romp, "`%s'\n", name);
-			}else{
-				romp += sprint(rombuf+romp, "%lux: %s: ", d, p);
-				for(i=0; i<n; i++)
-					romp += sprint(rombuf+romp, "%.2ux ", buf[i]);
-				romp += sprint(rombuf+romp, "\n");
-			}
-		}else
-			romp += sprint(rombuf+romp, "%lux: %s(%d)\n", d, p, n);
-		p = call(rom->conf->nextprop, d, p);
-	}
-}
-
-void
-romwalk(ulong d, char* namep)
-{
-	char *endp;
-
-	*namep++ = '/';
-	*namep = 0;
-	while(d){
-		romprops(d, namep, call(rom->conf->nextprop, d, 0));
-		endp = namep+strlen(namep);
-		romwalk(call(rom->conf->child, d), endp);
-		*endp = 0;
-		d = call(rom->conf->next, d);
-	}
-}
-
-void
-fuck(void)
-{
-	name[0] = 0;
-	romwalk(call(rom->conf->next, 0), name);
 }
 
 Conf	conf;
@@ -297,7 +272,7 @@ confinit(void)
 {
 	int mul;
 	ulong i, j;
-	ulong ktop, va, mbytes, nmeg, npg, v;
+	ulong ktop, va, mbytes, npg, v;
 
 	conf.nmach = 1;
 	if(conf.nmach > MAXMACH)
@@ -311,46 +286,30 @@ confinit(void)
 		*(ulong*)va = 0;
 	putw4(va, INVALIDPTE);
 
-	switch(idprom[1]){
+	for(sparam = sysparam; sparam->id; sparam++)
+		if(sparam->id == idprom[1])
+			break;
 
-	/* sparcstation 1+ BUG: unknown! */
-	case 0x52:		/* IPC 4/40 */
-	case 0x53:		/* sparcstation 1+ 4/65 */
-		/* fall through */
-	/* sparcstation 1 */
-	case 0x51:		/* sparcstation 1 4/60 */
-	case 0x54:		/* slc 4/20 */
-	default:
-		conf.ss2 = 0;
-		conf.vacsize = 65536;
-		conf.vaclinesize = 16;
-		conf.ncontext = 8;
-		conf.npmeg = 128;
-		conf.ss2cachebug = 0;
-		conf.monitor = 1;		/* BUG */
-		nmeg = 64;
-		break;
+	/* First entry in the table is the default */
+	if(sparam->id == 0)
+		sparam = sysparam;
 
-	/* sparcstation 2 */
-	case 0x55:		/* sparcstation 2 4/75 */
-	case 0x56:		/* ELC 4/25 */
-	case 0x57:		/* IPX 4/50 */
-		conf.ss2 = 1;
-		conf.vacsize = 65536;
-		conf.vaclinesize = 32;
-		conf.ncontext = 16;
-		conf.npmeg = 256;
-		conf.ss2cachebug = 1;
-		conf.monitor = 0;		/* BUG */
-		nmeg = 64;
-		break;
-	}
+	conf.ss2 = sparam->ss2;
+	conf.vacsize = sparam->vacsize;
+	conf.vaclinesize = sparam->vacline;
+	conf.ncontext = sparam->ncontext;
+	conf.npmeg = sparam->npmeg;
+	conf.ss2cachebug = sparam->cachebug;
+	conf.monitor = sparam->monitor;		/* BUG */
 
-	scanmem(mempres, nmeg);
-	for(i=0; i<nmeg; i++)
+	/* Chart memory */
+	scanmem(mempres, sparam->memscan);
+
+	/* Find mirrors and allocate banks */
+	for(i=0; i<sparam->memscan; i++)
 		if(mempres[i]){
 			v = mempres[i];
-			for(j=i+1; j<nmeg && mempres[j]>v; j++)
+			for(j=i+1; j<sparam->memscan && mempres[j]>v; j++)
 				v = mempres[j];
 			npg = ((v+1)-mempres[i])*MB/BY2PG;
 			if(conf.npage0 == 0){
