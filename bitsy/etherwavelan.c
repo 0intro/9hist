@@ -106,6 +106,7 @@ enum
 	WTyp_Crypt	= 0xfc20,
 	WTyp_XClear	= 0xfc22,
 	WTyp_Tick	= 0xfce0,
+ 	WTyp_CreateIBSS	= 0xfc81,
 	WTyp_RtsThres	= 0xfc83,
 	WTyp_TxRate	= 0xfc84,
 		WTx1Mbps	= 0x0,
@@ -273,6 +274,7 @@ struct Ctlr
 	int	attached;
 	int	slot;
 	int	iob;
+ 	int	createibss;
 	int	ptype;
 	int	apdensity;
 	int	rtsthres;
@@ -537,6 +539,7 @@ w_enable(Ether* ether)
 	ltv_outs(ctlr, WTyp_Tick, 8);
 	ltv_outs(ctlr, WTyp_MaxLen, ctlr->maxlen);
 	ltv_outs(ctlr, WTyp_Ptype, ctlr->ptype);
+ 	ltv_outs(ctlr, WTyp_CreateIBSS, ctlr->createibss);
 	ltv_outs(ctlr, WTyp_RtsThres, ctlr->rtsthres);
 	ltv_outs(ctlr, WTyp_TxRate, ctlr->txrate);
 	ltv_outs(ctlr, WTyp_ApDens, ctlr->apdensity);
@@ -913,7 +916,7 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 	k = ((ctlr->txbusy)? ", txbusy" : "");
 	PRINTSTAT("%s\n", k);
 
-	if (ctlr->txkey){
+	if (ctlr->hascrypt){
 		PRINTSTR("Keys: ");
 		for (i = 0; i < WNKeys; i++){
 			if (ctlr->keys.keys[i].len == 0)
@@ -1045,6 +1048,12 @@ option(Ctlr* ctlr, char* buf, long n)
 			ctlr->ptype = i;
 		else
 			r = -1;
+	}
+	else if(cistrcmp(cb->f[0], "ibss") == 0){
+		if(cistrcmp(cb->f[1], "on") == 0)
+			ctlr->createibss = 1;
+		else
+			ctlr->createibss = 0;
 	}
 	else if(cistrcmp(cb->f[0], "crypt") == 0){
 		if(cistrcmp(cb->f[1], "off") == 0)
@@ -1195,6 +1204,7 @@ reset(Ether* ether)
 	ctlr->chan = 0;
 	ctlr->ptype = WDfltPType;
 	ctlr->txkey = 0;
+	ctlr->createibss = 0;
 	ctlr->keys.len = sizeof(WKey)*WNKeys/2 + 1;
 	ctlr->keys.type = WTyp_Keys;
 	if(ctlr->hascrypt = ltv_ins(ctlr, WTyp_HasCrypt))
