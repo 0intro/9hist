@@ -45,6 +45,7 @@ struct Hsvme {
 	uchar	buf[1024];	/* bytes being collected */
 	uchar	*wptr;		/* pointer into buf */
 	int	kstarted;	/* true if kernel process started */
+	int	started;
 
 	/* statistics */
 
@@ -124,6 +125,7 @@ hsvmerestart(Hsvme *hp)
 	addr->csr = NORESET|IPL(Intlevel)|FORCEW|IENABLE|ALIVE;
 	wbflush();
 	delay(1);
+	hp->started = 1;
 }
 
 /*
@@ -164,7 +166,8 @@ hsvmeattach(char *spec)
 	if(i >= Nhsvme)
 		error(Ebadarg);
 	hp = &hsvme[i];
-	hsvmerestart(hp);
+	if(!hp->started)
+		hsvmerestart(hp);
 
 	c = devattach('h', spec);
 	c->dev = i;

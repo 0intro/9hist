@@ -110,7 +110,6 @@ struct Drive
 	int	dev;
 
 	ulong	lasttouched;	/* time last touched */
-	int	motoron;	/* motor is on */
 	int	cyl;		/* current cylinder */
 	int	confused;	/* needs to be recalibrated (or worse) */
 
@@ -137,11 +136,14 @@ struct Controller
 	int	confused;
 	int	intr;		/* true if interrupt occured */
 	Rendez	r;		/* wait here for command termination */
+	int	motor;
 
 	Rendez	kr;		/* for motor watcher */
 };
 
 Controller	floppy;
+
+#define MOTORBIT(i)	(1<<((i)+4))
 
 /*
  *  predeclared
@@ -201,7 +203,7 @@ floppyreset(void)
 		dp->dev = dp - floppy.d;
 		dp->t = &floppytype[0];		/* default type */
 		floppydir[NFDIR*dp->dev].length = dp->t->cap;
-		dp->motoron = 1;
+		floppy.motor |= MOTORBIT(dp->dev);
 		dp->cyl = -1;		/* because we don't know */
 		motoroff(dp);
 	}
@@ -376,36 +378,6 @@ floppywrite(Chan *c, void *a, long n)
 	return rv;
 }
 
-/*
- *  start a floppy drive's motor.  set an alarm for .75 second later to
- *  mark it as started (we get no interrupt to tell us).
- *
- *  assume the caller qlocked the drive.
- */
-static void
-motoron(Drive *dp)
-{
-	int cmd;
-
-	cmd = (1<<(dp->dev+4)) | Fintena | Fena | dp->dev;
-	outb(Fmotor, cmd);
-	tsleep(&dp->r, return0, 0, 750);
-	dp->motoron = 1;
-	dp->lasttouched = m->ticks;
-}
-
-/*
- *  stop the floppy if it hasn't been used in 5 seconds
- */
-static void
-motoroff(Drive *dp)
-{
-	int cmd;
-
-	cmd = Fintena | Fena | dp->dev;
-	outb(Fmotor, cmd);
-	dp->motoron = 0;	
-}
 static void
 floppykproc(void *a)
 {
@@ -416,7 +388,8 @@ floppykproc(void *a)
 		;
 	for(;;){
 		for(dp = floppy.d; dp < &floppy.d[conf.nfloppy]; dp++){
-			if(dp->motoron && TK2SEC(m->ticks - dp->lasttouched) > 5
+			if((floppy.motor&MOTORBIT(dp->dev))
+			&& TK2SEC(m->ticks - dp->lasttouched) > 5
 			&& canqlock(dp)){
 				if(TK2SEC(m->ticks - dp->lasttouched) > 5)
 					motoroff(dp);
@@ -427,6 +400,46 @@ floppykproc(void *a)
 		tsleep(&floppy.kr, return0, 0, 5*1000);
 		
 	}
+}
+
+static void
+driveselect(Drive *dp)
+{
+	int cmd;
+
+	cmd = floppy.motor | Fintena | Fena | dp->dev;
+	outb(Fmotor, cmd);
+}
+
+/*
+ *  start a floppy drive's motor.  set an alarm for .75 second later to
+ *  mark it as started (we get no interrupt to tell us).
+ *
+ *  assume the caller qlocked the drive.
+ *
+ *  this also selects the drive for subsequent operations
+ */
+static void
+motoron(Drive *dp)
+{
+	int alreadyon;
+
+	alreadyon = floppy.motor & MOTORBIT(dp->dev);
+	floppy.motor |= MOTORBIT(dp->dev);
+	driveselect(dp);
+	if(!alreadyon)
+		tsleep(&dp->r, return0, 0, 750);
+	dp->lasttouched = m->ticks;
+}
+
+/*
+ *  stop the floppy if it hasn't been used in 5 seconds
+ */
+static void
+motoroff(Drive *dp)
+{
+	floppy.motor &= ~MOTORBIT(dp->dev);
+	driveselect(dp);
 }
 
 /*
@@ -633,9 +646,9 @@ floppyrevive(void)
 		outb(Fmotor, Fintena|Fena);
 		spllo();
 		for(dp = floppy.d; dp < &floppy.d[conf.nfloppy]; dp++){
-			dp->motoron = 0;
 			dp->confused = 1;
 		}
+		floppy.motor = 0;
 		sleep(&floppy.r, interrupted, 0);
 		floppy.confused = 0;
 	}
@@ -716,8 +729,7 @@ floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 	 */
 	if(floppy.confused || dp->confused)
 		floppyrevive();
-	if(!dp->motoron)
-		motoron(dp);
+	motoron(dp);
 
 	/*
 	 *  calculate new position and seek to it (dp->len may be trimmed)

@@ -238,7 +238,7 @@ hardattach(char *spec)
 			dp->online = 0;
 	}
 
-	return devattach('h', spec);
+	return devattach('w', spec);
 }
 
 Chan*

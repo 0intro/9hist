@@ -181,6 +181,6 @@ srvwrite(Chan *c, void *va, long n, ulong offset)
 	fd = strtoul(buf, 0, 0);
 	fdtochan(fd, -1);	/* error check only */
 	srv.chan[i] = u->p->fgrp->fd[fd];
-	incref(u->p->fgrp->fd[fd]);
+	incref(srv.chan[i]);
 	return n;
 }

@@ -165,7 +165,8 @@ screeninit(void)
 
 	/*
 	 *  swizzle the font longs.
-	 *  we do it here since the font is initialized with big endian longs.
+	 *  we do it here since the font is initialized with big
+	 *  endian longs.
 	 */
 	defont = &defont0;
 	l = defont->bits->base;

@@ -125,7 +125,7 @@ wrenattach(char *param)
 
 	drive = wrendev(param);
 	wrenpart(drive);
-	c = devattach('r', param);
+	c = devattach('w', param);
 	c->dev = drive;
 	return c;
 }
