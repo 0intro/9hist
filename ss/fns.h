@@ -243,7 +243,7 @@ Chan	*walk(Chan*, char*, int);
 /*
  *  no external state to save on the SPARC
  */
-#define procsetup(x)
+#define procsetup(x)	((p)->fpstate = FPinit)
 #define procsave(x,y)
 #define procrestore(x,y)
 

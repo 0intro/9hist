@@ -536,7 +536,7 @@ struct Nomsg {
 	Rendez	r;
 	int	mid;		/* sequence number */
 	int	rem;		/* remaining */
-	long	time;
+	ulong	time;
 	int	acked;
 	int	inuse;
 };

@@ -127,6 +127,7 @@ sysfork(ulong *arg)
 	p->parentpid = u->p->pid;
 	p->pgrp = u->p->pgrp;
 	p->bssend = u->p->bssend;
+	p->fpstate = u->p->fpstate;
 	incref(p->pgrp);
 	u->p->nchild++;
 	pid = p->pid;

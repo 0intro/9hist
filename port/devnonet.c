@@ -86,6 +86,7 @@ enum {
 	Cconnecting,
 	Chungup,
 	Cclosing,
+	Csuperceded,
 };
 
 /*
@@ -470,7 +471,7 @@ nonetstclose(Queue *q)
 	 *  send hangup messages to the other side
 	 *  until it hangs up or we get tired.
 	 */
-	if(cp->state >= Cconnected){
+	if(cp->state>=Cconnected && cp->state!=Csuperceded){
 		sendctlmsg(cp, NO_HANGUP, 1);
 		for(i=0; i<10 && !ishungup(cp); i++){
 			sendctlmsg(cp, NO_HANGUP, 1);
@@ -961,6 +962,10 @@ sendmsg(Noconv *cp, Nomsg *mp)
 	}
 	cp->hdr->mid = mp->mid;
 
+	/*
+	 *  package n blocks into m packets.  make sure
+	 *  no packet is < mintu or > maxtu in length.
+	 */
 	if(ifc->mintu > mp->len) {
 		/*
 		 *  short message:
@@ -971,7 +976,10 @@ sendmsg(Noconv *cp, Nomsg *mp)
 			memcpy(pkt->wptr, bp->rptr, n = BLEN(bp));
 			pkt->wptr += n;
 		}
-		memset(pkt->wptr, 0, n = ifc->mintu - mp->len);
+		/*
+		 *  round up to mintu
+		 */
+		memset(pkt->wptr, 0, n = ifc->mintu-mp->len);
 		pkt->wptr += n;
 	} else {
 		/*
@@ -986,6 +994,7 @@ sendmsg(Noconv *cp, Nomsg *mp)
 		if(bp)
 			rptr = bp->rptr;
 		last = pkt = mkhdr(cp, msgrem);
+		n = 0;
 		while(bp){
 			/*
 			 *  if pkt full, send and create new header block
@@ -1011,11 +1020,24 @@ sendmsg(Noconv *cp, Nomsg *mp)
 					rptr = bp->rptr;
 			}
 		}
+		/*
+		 *  round up last packet to mintu
+		 */
+		if(n < ifc->mintu){
+			n = ifc->mintu - n;
+			last = last->next = allocb(n);
+			memset(last->wptr, 0, n);
+			last->wptr += n;
+		}
 	}
 	nonetcksum(pkt, ifc->hsize);
 	last->flags |= S_DELIM;
+	if(cp->rexmit > 10)
+		mp->time = NOW + 10*MSrexmit;
+	else
+		mp->time = NOW + (cp->rexmit+1)*MSrexmit;
+	DPRINT("xmit %d %lud %lud\n", cp->rexmit, NOW, mp->time);
 	(*wq->put)(wq, pkt);
-	mp->time = NOW + MSrexmit;
 	qunlock(&cp->xlock);
 	poperror();
 }
@@ -1067,10 +1089,14 @@ nonetrcvmsg(Noconv *cp, Block *bp)
 	/*
 	 *  if a new call request comes in on a connected channel, hang up the call
 	 */
-	if(h->mid==0 && (f & NO_NEWCALL) && cp->state==Cconnected){
+	if(h->mid==0 && (f & NO_NEWCALL)
+	&& (cp->state==Cconnected || cp->state==Csuperceded)){
 		DPRINT("new call on connected channel\n"); 
 		freeb(bp);
-		hangup(cp);
+		if(cp->state != Csuperceded){
+			cp->state = Csuperceded;
+			hangup(cp);
+		}
 		return;
 	}
 
@@ -1269,6 +1295,7 @@ nonetkproc(void *arg)
 {
 	Noifc *ifc;
 	Noconv *cp, *ep;
+	Nomsg *mp;
 
 	cp = 0;
 	ifc = 0;
@@ -1302,12 +1329,14 @@ loop:
 			/*
 			 *  resend the first message
 			 */
-			if(cp->first!=cp->next && cp->out[cp->first].time>=NOW){
-				if(cp->rexmit++ > 100){
+			if(cp->first!=cp->next && NOW>=cp->out[cp->first].time){
+				if(cp->rexmit++ > 60){
 					print("hanging up\n");
 					hangup(cp);
-				} else
-					sendmsg(cp, &(cp->out[cp->first]));
+				} else {
+					mp = &(cp->out[cp->first]);
+					sendmsg(cp, mp);
+				}
 			}
 
 			/*

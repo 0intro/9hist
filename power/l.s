@@ -448,6 +448,7 @@ TEXT	restfpregs(SB), $0
 	OR	$CU1, R3
 	MOVW	R3, M(STATUS)
 	MOVW	0x80(R1), R2
+	NOOP
 
 	MOVD	0x00(R1), F0
 	MOVD	0x08(R1), F2

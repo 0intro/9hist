@@ -218,7 +218,7 @@ sprintpacket(char *buf, Trace *t)
 		p->d[0], p->d[1], p->d[2], p->d[3], p->d[4], p->d[5],
 		p->s[0], p->s[1], p->s[2], p->s[3], p->s[4], p->s[5],
 		p->type[0], p->type[1]);
-	for(i=0; i<16; i++)
+	for(i=0; i<sizeof(p->data); i++)
 		sprint(buf+strlen(buf), "%.2ux", p->data[i]);
 	sprint(buf+strlen(buf), ")\n");
 }
@@ -362,10 +362,12 @@ lanceoput(Queue *q, Block *bp )
 	memcpy(p->s, l.ea, sizeof(l.ea));
 
 	/*
-	 *  pad the packet
+	 *  pad the packet (zero the pad)
 	 */
-	if(len < 60)
+	if(len < 60){
+		memset(((char*)p)+len, 0, 60-len);
 		len = 60;
+	}
 
 	lancedebq('o', p, len);/**/
 
@@ -636,7 +638,7 @@ lanceclose(Chan *c)
 static long
 lancetraceread(Chan *c, void *a, long n)
 {
-	char buf[512];
+	char buf[1024];
 	long rv;
 	int i;
 	char *ca = a;

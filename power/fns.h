@@ -215,7 +215,7 @@ void	wbflush(void);
 /*
  *  no external state to save on the SGI
  */
-#define procsetup(x)
+#define procsetup(p)	((p)->fpstate = FPinit)
 #define procsave(x,y)
 #define procrestore(x,y)
 
