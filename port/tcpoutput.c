@@ -226,7 +226,7 @@ void
 tcp_acktimer(Ipconv *s)
 {
 	Tcpctl *tcb = &s->tcpctl;
-print("Acktimer!\n");
+
 	qlock(tcb);
 	tcb->flags |= FORCE;
 	tcprcvwin(s);

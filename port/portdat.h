@@ -137,6 +137,7 @@ struct Chan
 {
 	QLock	rdl;			/* read access */
 	QLock	wrl;			/* write access */
+	Lock	offl;			/* offset access */
 	Ref;
 	union{
 		Chan	*next;		/* allocation */

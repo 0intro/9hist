@@ -19,7 +19,6 @@ enum {
 	 *  tuning parameters
 	 */
 	MSrexmit = 250,		/* retranmission interval in ms */
-	MSack = 50,		/* ms to sit on an ack */
 
 	/*
 	 *  relative or immutable
@@ -684,7 +683,8 @@ nostartconv(Noconv *cp, int circuit, char *raddr, int state)
 	cp->out[0].mid = 0;
 	cp->out[0].acked = 1;
 	cp->out[0].rem = 0;
-	cp->afirst = cp->anext = 0;
+	cp->ack = 0;
+	cp->sendack = 0;
 	cp->first = cp->next = 1;
 	cp->rexmit = cp->bad = cp->sent = cp->rcvd = 0;
 	cp->lastacked = Nnomsg|(Nnomsg-1);
@@ -972,13 +972,8 @@ norack(Noconv *cp, int mid)
 static void
 noqack(Noconv *cp, int mid)
 {
-	int next;
-
-	next = (cp->anext + 1)&Nmask;
-	if(next != cp->afirst){
-		cp->ack[cp->anext] = mid;
-		cp->anext = next;
-	}
+	cp->ack = mid;
+	cp->sendack = 1;
 }
 
 /*
@@ -1028,10 +1023,8 @@ nosend(Noconv *cp, Nomsg *mp)
 	 *  get the next acknowledge to use if the next queue up
 	 *  is not full.
 	 */
-	if(cp->afirst!=cp->anext && cp->rq->next->len<16*1024){
-		cp->hdr->ack = cp->ack[cp->afirst];
-		cp->afirst = (cp->afirst+1)&Nmask;
-	}
+	cp->sendack = 0;
+	cp->hdr->ack = cp->ack;
 	cp->hdr->mid = mp->mid;
 
 	/*
@@ -1268,7 +1261,6 @@ nonetrcvmsg(Noconv *cp, Block *bp)
 	if(mp->rem == 0){
 		cp->hdr->flag &= ~(NO_NEWCALL|NO_SERVICE);
 		norack(cp, h->ack);
-		noqack(cp, h->mid);
 		if(f & NO_ACKME)
 			noqack(cp, h->mid);
 		mp->last->flags |= S_DELIM;
@@ -1470,8 +1462,8 @@ nokproc(void *arg)
 				/*
 				 *  get the acknowledges out
 				 */
-				while(cp->afirst!=cp->anext && cp->rq->next->len<16*1024){
-					DPRINT("sending ack %d\n", cp->ack[cp->afirst]);
+				if(cp->sendack){
+					DPRINT("sending ack %d\n", cp->ack);
 					nosendctl(cp, /*NO_NULL*/0, 0);
 				}
 				qunlock(cp);

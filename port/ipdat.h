@@ -116,7 +116,7 @@ enum					/* Packet types */
 	Ilack,
 	Ilquerey,
 	Ilstate,
-	Ilreset,
+	Ilclose,
 };
 
 enum					/* Connection state */

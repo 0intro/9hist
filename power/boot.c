@@ -59,22 +59,9 @@ main(int argc, char *argv[])
 	int i;
 	int manual=0;
 
-	open("#c/cons", 0);
-	open("#c/cons", 1);
-	open("#c/cons", 1);
-
-	i = create("#e/sysname", 1, 0666);
-	if(i < 0)
-		error("sysname");
-	if(write(i, argv[0], strlen(argv[0])) != strlen(argv[0]))
-		error("sysname");
-	close(i);
-	i = create("#e/terminal", 1, 0666);
-	if(i < 0)
-		error("terminal");
-	if(write(i, "sgi power 4D", strlen("sgi power 4D")) < 0)
-		error("terminal");
-	close(i);
+	open("#c/cons", OREAD);
+	open("#c/cons", OWRITE);
+	open("#c/cons", OWRITE);
 
 	argv++;
 	argc--;	
@@ -139,7 +126,7 @@ nonetdial(char *arg)
 		 *  grab a lance channel, make it recognize ether type 0x900,
 		 *  and push the nonet ethernet multiplexor onto it.
 		 */
-		efd = open("#l/1/ctl", 2);
+		efd = open("#l/1/ctl", ORDWR);
 		if(efd < 0){
 			prerror("opening #l/1/ctl");
 			return -1;
@@ -165,12 +152,12 @@ nonetdial(char *arg)
 	/*
 	 *  grab a nonet channel and call up the file server
 	 */
-	fd = open("#nnonet/2/data", 2);
+	fd = open("#nnonet/2/data", ORDWR);
 	if(fd < 0) {
 		prerror("opening #nnonet/2/data");
 		return -1;
 	}
-	cfd = open("#nnonet/2/ctl", 2);
+	cfd = open("#nnonet/2/ctl", ORDWR);
 	if(cfd < 0){
 		close(fd);
 		fd = -1;
@@ -200,7 +187,7 @@ dkdial(char *arg)
 		/*
 		 *  grab the hsvme and configure it for a datakit
 		 */
-		efd = open("#h/ctl", 2);
+		efd = open("#h/ctl", ORDWR);
 		if(efd < 0){
 			prerror("opening #h/ctl");
 			return -1;
@@ -222,12 +209,12 @@ dkdial(char *arg)
 	/*
 	 *  grab a datakit channel and call up the file server
 	 */
-	fd = open("#kdk/5/data", 2);
+	fd = open("#kdk/5/data", ORDWR);
 	if(fd < 0) {
 		prerror("opening #kdk/5/data");
 		return -1;
 	}
-	cfd = open("#kdk/5/ctl", 2);
+	cfd = open("#kdk/5/ctl", ORDWR);
 	if(cfd < 0){
 		close(fd);
 		fd = -1;
@@ -291,8 +278,6 @@ hotdial(char *arg)
 	fprint(2, "go for it....\n");
 	return open("#H/hotrod", ORDWR);
 }
-
-
 
 int
 preamble(int fd)
@@ -424,9 +409,9 @@ boot(int ask)
 	}
 
 	if(ask){
-		execl("/mips/init", "init", "-m", 0);
+		execl("/mips/init", "init", "-mc", 0);
 	} else {
-		execl("/mips/init", "init", 0);
+		execl("/mips/init", "init", "-c", 0);
 	}
 	error("/mips/init");
 }

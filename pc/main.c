@@ -79,7 +79,7 @@ init0(void)
 	chandevinit();
 
 	if(!waserror()){
-		ksetenv("terminal", "safari");
+		ksetenv("terminal", "at&t safari");
 		ksetenv("cputype", "386");
 		poperror();
 	}

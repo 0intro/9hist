@@ -121,7 +121,7 @@ init0(void)
 	u->slash = (*devtab[0].attach)(0);
 	u->dot = clone(u->slash, 0);
 	if(!waserror()){
-		ksetenv("terminal", "at&t gnot 1");
+		ksetenv("terminal", "at&t gnot");
 		ksetenv("cputype", "68020");
 		ksetenv("bootuser", bootuser);
 		ksetenv("bootline", bootline);

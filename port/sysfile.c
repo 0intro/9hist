@@ -268,9 +268,11 @@ sysread(ulong *arg)
 		n = unionread(c, (void*)arg[1], n);
 	else
 		n = (*devtab[c->type].read)(c, (void*)arg[1], n, c->offset);
-	c->offset += n;
-	poperror();
 	qunlock(&c->rdl);
+	poperror();
+	lock(&c->offl);
+	c->offset += n;
+	unlock(&c->offl);
 	return n;
 }
 
@@ -291,9 +293,11 @@ syswrite(ulong *arg)
 	if(c->qid.path & CHDIR)
 		error(Eisdir);
 	n = (*devtab[c->type].write)(c, (void*)arg[1], arg[2], c->offset);
-	c->offset += n;
-	poperror();
 	qunlock(&c->wrl);
+	poperror();
+	lock(&c->offl);
+	c->offset += n;
+	unlock(&c->offl);
 	return n;
 }
 
@@ -310,32 +314,26 @@ sysseek(ulong *arg)
 		error(Eisdir);
 	if(devchar[c->type] == '|')
 		error(Eisstream);
-	qlock(&c->rdl);
-	qlock(&c->wrl);
-	if(waserror()){
-		qunlock(&c->rdl);
-		qunlock(&c->wrl);
-		nexterror();
-	}
+	off = 0;
 	switch(arg[2]){
 	case 0:
-		c->offset = arg[1];
+		off = c->offset = arg[1];
 		break;
 
 	case 1:
+		lock(&c->offl);	/* lock for read/write update */
 		c->offset += (long)arg[1];
+		off = c->offset;
+		unlock(&c->offl);
 		break;
 
 	case 2:
 		(*devtab[c->type].stat)(c, buf);
 		convM2D(buf, &dir);
 		c->offset = dir.length + (long)arg[1];
+		off = c->offset;
 		break;
 	}
-	off = c->offset;
-	poperror();
-	qunlock(&c->rdl);
-	qunlock(&c->wrl);
 	return off;
 }
 
