@@ -133,7 +133,7 @@ procgen(Chan *c, char *name, Dirtab *tab, int, int s, Dir *dp)
 	len = tab->length;
 	switch(QID(c->qid)) {
 	case Qwait:
-		len = p->nwait * sizeof(Waitmsg);
+		len = p->nwait;	/* incorrect size, but >0 means there's something to read */
 		break;
 	case Qprofile:
 		q = p->seg[TSEG];
@@ -653,9 +653,6 @@ procread(Chan *c, void *va, long n, vlong off)
 		return n;
 
 	case Qwait:
-		if(n < sizeof(Waitmsg))
-			error(Etoosmall);
-
 		if(!canqlock(&p->qwaitr))
 			error(Einuse);
 
@@ -684,9 +681,12 @@ procread(Chan *c, void *va, long n, vlong off)
 
 		qunlock(&p->qwaitr);
 		poperror();
-		memmove(a, &wq->w, sizeof(Waitmsg));
+		n = snprint(a, n, "%d %lud %lud %lud %q",
+			wq->w.pid,
+			wq->w.time[TUser], wq->w.time[TSys], wq->w.time[TReal],
+			wq->w.msg);
 		free(wq);
-		return sizeof(Waitmsg);
+		return n;
 
 	case Qns:
 		qlock(&p->debug);

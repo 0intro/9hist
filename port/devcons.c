@@ -241,7 +241,7 @@ panic(char *fmt, ...)
 	spllo();
 	prflush();
 	putstrn(buf, n+1);
-	dumpstack();
+//	dumpstack();
 
 	exit(1);
 }

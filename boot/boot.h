@@ -3,11 +3,11 @@ struct Method
 {
 	char	*name;
 	void	(*config)(Method*);
-	int	(*auth)(void);
 	int	(*connect)(void);
 	char	*arg;
 };
 
+extern void	authentication(int);
 extern char*	bootdisk;
 extern char*	rootdir;
 extern int	(*cfs)(int);
@@ -40,7 +40,7 @@ extern int	readfile(char*, char*, int);
 extern long	readn(int, void*, long);
 extern int	sendmsg(int, char*);
 extern void	setenv(char*, char*);
-extern void	settime(int);
+extern void	settime(int, int);
 extern void	srvcreate(char*, int);
 extern void	setusername(int, Method*);
 extern void	warning(char*);
@@ -63,3 +63,6 @@ extern int	connectlocal(void);
 extern void	configsac(Method*);
 extern int	authsac(void);
 extern int	connectsac(void);
+
+/* hack for passing authentication address */
+extern char	*authaddr;

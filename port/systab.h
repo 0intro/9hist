@@ -11,11 +11,11 @@ Syscall sysdup;
 Syscall sysalarm;
 Syscall sysexec;
 Syscall sysexits;
-Syscall sysfsession;
+Syscall sys_fsession;
 Syscall sysfauth;
 Syscall sys_fstat;
 Syscall syssegbrk;
-Syscall sysmount;
+Syscall sys_mount;
 Syscall sysopen;
 Syscall sys_read;
 Syscall sysoseek;
@@ -38,7 +38,7 @@ Syscall syssegfree;
 Syscall syssegflush;
 Syscall sysrendezvous;
 Syscall sysunmount;
-Syscall syswait;
+Syscall sys_wait;
 Syscall sysseek;
 Syscall sysfversion;
 Syscall syserrstr;
@@ -46,6 +46,8 @@ Syscall sysstat;
 Syscall sysfstat;
 Syscall syswstat;
 Syscall sysfwstat;
+Syscall sysmount;
+Syscall sysawait;
 Syscall syspread;
 Syscall syspwrite;
 Syscall	sysdeath;
@@ -60,11 +62,11 @@ Syscall *systab[]={
 	[ALARM]		sysalarm,
 	[EXEC]		sysexec,
 	[EXITS]		sysexits,
-	[FSESSION]	sysfsession,
+	[_FSESSION]	sys_fsession,
 	[FAUTH]		sysfauth,
 	[_FSTAT]	sys_fstat,
 	[SEGBRK]	syssegbrk,
-	[MOUNT]		sysmount,
+	[_MOUNT]	sys_mount,
 	[OPEN]		sysopen,
 	[_READ]		sys_read,
 	[OSEEK]		sysoseek,
@@ -87,7 +89,7 @@ Syscall *systab[]={
 	[SEGFLUSH]	syssegflush,
 	[RENDEZVOUS]	sysrendezvous,
 	[UNMOUNT]	sysunmount,
-	[WAIT]		syswait,
+	[_WAIT]		sys_wait,
 	[SEEK]		sysseek,
 	[FVERSION]	sysfversion,
 	[ERRSTR]	syserrstr,
@@ -95,6 +97,8 @@ Syscall *systab[]={
 	[FSTAT]		sysfstat,
 	[WSTAT]		syswstat,
 	[FWSTAT]	sysfwstat,
+	[MOUNT]		sysmount,
+	[AWAIT]		sysawait,
 	[PREAD]		syspread,
 	[PWRITE]	syspwrite,
 };
@@ -109,11 +113,11 @@ char *sysctab[]={
 	[ALARM]		"Alarm",
 	[EXEC]		"Exec",
 	[EXITS]		"Exits",
-	[FSESSION]	"Fsession",
+	[_FSESSION]	"_fsession",
 	[FAUTH]		"Fauth",
 	[_FSTAT]	"_fstat",
 	[SEGBRK]	"Segbrk",
-	[MOUNT]		"Mount",
+	[_MOUNT]	"_mount",
 	[OPEN]		"Open",
 	[_READ]		"_read",
 	[OSEEK]		"Oseek",
@@ -136,7 +140,7 @@ char *sysctab[]={
 	[SEGFLUSH]	"Segflush",
 	[RENDEZVOUS]	"Rendez",
 	[UNMOUNT]	"Unmount",
-	[WAIT]		"Wait",
+	[_WAIT]		"_wait",
 	[SEEK]		"Seek",
 	[FVERSION]	"Fversion",
 	[ERRSTR]	"Errstr",
@@ -144,6 +148,8 @@ char *sysctab[]={
 	[FSTAT]		"Fstat",
 	[WSTAT]		"Wstat",
 	[FWSTAT]	"Fwstat",
+	[MOUNT]		"Mount",
+	[AWAIT]		"Await",
 	[PREAD]		"Pread",
 	[PWRITE]	"Pwrite",
 };

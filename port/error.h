@@ -3,7 +3,7 @@ extern char Emount[];		/* inconsistent mount */
 extern char Eunmount[];		/* not mounted */
 extern char Eunion[];		/* not in union */
 extern char Emountrpc[];	/* mount rpc error */
-extern char Eshutdown[];	/* mounted device shut down */
+extern char Eshutdown[];	/* device shut down */
 extern char Enocreate[];	/* mounted directory forbids creation */
 extern char Enonexist[];	/* file does not exist */
 extern char Eexist[];		/* file already exists */

@@ -665,6 +665,8 @@ needsquotes(char *s, int *quotelenp)
 	int nextra, ok, w;
 	Rune r;
 
+	if(*s == '\0')
+		return 1;
 	nextra = 0;
 	ok = 1;
 	for(t=s; *t; t+=w){
@@ -692,6 +694,8 @@ runeneedsquotes(Rune *s, int *quotelenp)
 	int nextra, ok;
 	Rune r;
 
+	if(*s == L'\0')
+		return 1;
 	nextra = 0;
 	ok = 1;
 	for(t=s; *t; t++){

@@ -69,6 +69,7 @@ rootreset(void)
 	addrootdir("dev");
 	addrootdir("env");
 	addrootdir("fd");
+	addrootdir("mnt");
 	addrootdir("net");
 	addrootdir("net.alt");
 	addrootdir("proc");

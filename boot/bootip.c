@@ -4,9 +4,9 @@
 
 #include "boot.h"
 
-static uchar	fsip[IPaddrlen];
-static uchar	auip[IPaddrlen];
-static char	mpoint[32];
+static	uchar	fsip[IPaddrlen];
+	uchar	auip[IPaddrlen];
+static	char	mpoint[32];
 
 static int isvalidip(uchar*);
 static void netndb(char*, uchar*);
@@ -15,9 +15,9 @@ static void netenv(char*, uchar*);
 void
 configip(void)
 {
-	int argc, pid, wpid;
+	int argc, pid;
 	char **argv, *p;
-	Waitmsg w;
+	Waitmsg *w;
 	char **arg;
 	char buf[32];
 	
@@ -66,13 +66,15 @@ configip(void)
 
 	/* wait for ipconfig to finish */
 	for(;;){
-		wpid = wait(&w);
-		if(wpid == pid){
-			if(w.msg[0] != 0)
-				fatal(w.msg);
+		w = wait();
+		if(w != nil && w->pid == pid){
+			if(w->msg[0] != 0)
+				fatal(w->msg);
+			free(w);
 			break;
-		} else if(wpid < 0)
+		} else if(w == nil)
 			fatal("configuring ip");
+		free(w);
 	}
 
 	/* if we didn't get a file and auth server, query user */
@@ -95,6 +97,15 @@ configip(void)
 	}
 }
 
+static void
+setauthaddr(char *proto, int port)
+{
+	char buf[128];
+
+	snprint(buf, sizeof buf, "%s!%I!%d", proto, auip, port);
+	authaddr = strdup(buf);
+}
+
 void
 configtcp(Method*)
 {
@@ -105,12 +116,7 @@ configtcp(Method*)
 	sleep(100);
 	print(".");
 	sleep(100);
-}
-
-int
-authtcp(void)
-{
-	return -1;
+	setauthaddr("tcp", 567);
 }
 
 int
@@ -126,15 +132,7 @@ void
 configil(Method*)
 {
 	configip();
-}
-
-int
-authil(void)
-{
-	char buf[64];
-
-	snprint(buf, sizeof buf, "il!%I!566", auip);
-	return dial(buf, 0, 0, 0);
+	setauthaddr("il", 566);
 }
 
 int

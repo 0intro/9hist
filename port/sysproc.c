@@ -12,13 +12,13 @@ int	shargs(char*, int, char**);
 long
 sysr1(ulong *arg)
 {
-extern int chandebug;
-extern void dumpmount(void);
+	extern int chandebug;
+	extern void dumpmount(void);
 
 	print("[%s %s %lud] r1 = %lud\n", up->user, up->text, up->pid, arg[0]);
-chandebug=!chandebug;
-if(chandebug)
-	dumpmount();
+	chandebug=!chandebug;
+	if(chandebug)
+		dumpmount();
 
 	return 0;
 }
@@ -567,13 +567,49 @@ sysexits(ulong *arg)
 }
 
 long
-syswait(ulong *arg)
+sys_wait(ulong *arg)
 {
-	if(arg[0]){
-		validaddr(arg[0], sizeof(Waitmsg), 1);
-		evenaddr(arg[0]);
+	int pid;
+	Waitmsg w;
+	OWaitmsg *ow;
+
+	if(arg[0] == 0)
+		return pwait(nil);
+
+	validaddr(arg[0], sizeof(OWaitmsg), 1);
+	evenaddr(arg[0]);
+	pid = pwait(&w);
+	if(pid >= 0){
+		ow = (OWaitmsg*)arg[0];
+		readnum(0, ow->pid, NUMSIZE, w.pid, NUMSIZE);
+		readnum(0, ow->time+TUser*NUMSIZE, NUMSIZE, w.time[TUser], NUMSIZE);
+		readnum(0, ow->time+TSys*NUMSIZE, NUMSIZE, w.time[TSys], NUMSIZE);
+		readnum(0, ow->time+TReal*NUMSIZE, NUMSIZE, w.time[TReal], NUMSIZE);
+		strncpy(ow->msg, w.msg, sizeof(ow->msg));
+		ow->msg[sizeof(ow->msg)-1] = '\0';
 	}
-	return pwait((Waitmsg*)arg[0]);
+	return pid;
+}
+
+long
+sysawait(ulong *arg)
+{
+	int i;
+	int pid;
+	Waitmsg w;
+	ulong n;
+
+	n = arg[1];
+	validaddr(arg[0], n, 1);
+	pid = pwait(&w);
+	if(pid < 0)
+		return -1;
+	i = snprint((char*)arg[0], n, "%d %lud %lud %lud %q",
+		w.pid,
+		w.time[TUser], w.time[TSys], w.time[TReal],
+		w.msg);
+
+	return i;
 }
 
 long

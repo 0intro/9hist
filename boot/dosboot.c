@@ -30,13 +30,13 @@ dosboot(void)
 	 */
 	if(bind("/", "/", MREPL) < 0)
 		fatal("bind /");
-	if(mount(fd, "/", MAFTER|MCREATE, "#f/fd0disk") < 0)
-		if(mount(fd, "/", MAFTER|MCREATE, "#f/fd1disk") < 0)
-			if(mount(fd, "/", MAFTER|MCREATE, "#S/sdC0/dos") < 0)
+	if(mount(fd, -1, "/", MAFTER|MCREATE, "#f/fd0disk") < 0)
+		if(mount(fd, -1, "/", MAFTER|MCREATE, "#f/fd1disk") < 0)
+			if(mount(fd, -1, "/", MAFTER|MCREATE, "#S/sdC0/dos") < 0)
 				fatal("mount /");
 	close(fd);
 
-	settime(1);
+	settime(1, -1);
 	swapproc();
 
 	execl("/386/init", "init", "-mt", 0);

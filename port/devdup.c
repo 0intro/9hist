@@ -63,7 +63,7 @@ dupopen(Chan *c, int omode)
 	Chan *f;
 	int fd, twicefd;
 
-	if(c->qid.type == QTDIR){
+	if(c->qid.type & QTDIR){
 		if(omode != 0)
 			error(Eisdir);
 		c->mode = 0;
@@ -71,6 +71,8 @@ dupopen(Chan *c, int omode)
 		c->offset = 0;
 		return c;
 	}
+	if(c->qid.type & QTAUTH)
+		error(Eperm);
 	twicefd = c->qid.path - 1;
 	fd = twicefd/2;
 	if((twicefd & 1)){

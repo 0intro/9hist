@@ -38,8 +38,14 @@ fault(ulong addr, int read)
 }
 
 static void
-faulterror(char *s, int freemem)
+faulterror(char *s, Chan *c, int freemem)
 {
+	char buf[ERRMAX];
+
+	if(c && c->name){
+		snprint(buf, sizeof buf, "%s accessing %s: %s", s, c->name->s, up->error);
+		s = buf;
+	}
 	if(up->nerrlab) {
 		postnote(up, 1, s, NDebug);
 		error(s);
@@ -125,7 +131,7 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 			if(swapfull()){
 				qunlock(&s->lk);
 				pprint("swap space full\n");
-				faulterror(Enoswap, 1);
+				faulterror(Enoswap, nil, 1);
 			}
 
 			new = newpage(0, &s, addr);
@@ -217,7 +223,7 @@ retry:
 				continue;
 			kunmap(k);
 			putpage(new);
-			faulterror("sys: demand load I/O error", 0);
+			faulterror("sys: demand load I/O error", c, 0);
 		}
 
 		ask = s->flen-soff;
@@ -226,7 +232,7 @@ retry:
 
 		n = devtab[c->type]->read(c, kaddr, ask, daddr);
 		if(n != ask)
-			faulterror(Eioload, 0);
+			faulterror(Eioload, c, 0);
 		if(ask < BY2PG)
 			memset(kaddr+ask, 0, BY2PG-ask);
 
@@ -253,12 +259,12 @@ retry:
 			putpage(new);
 			qlock(&s->lk);
 			qunlock(&s->lk);
-			faulterror("sys: page in I/O error", 0);
+			faulterror("sys: page in I/O error", c, 0);
 		}
 
 		n = devtab[c->type]->read(c, kaddr, BY2PG, daddr);
 		if(n != BY2PG)
-			faulterror(Eioload, 0);
+			faulterror(Eioload, c, 0);
 
 		poperror();
 		kunmap(k);

@@ -157,16 +157,15 @@ struct Chan
 	int	uri;			/* union read index */
 	ulong	mountid;
 	Mntcache *mcp;			/* Mount cache pointer */
+	Mnt		*mux;		/* Mnt for clients using me for messages */
 	union {
 		void*	aux;
 		Qid	pgrpid;		/* for #p/notepg */
-		Mnt*	mntptr;		/* for devmnt */
 		ulong	mid;		/* for ns in devproc */
 	};
 	Chan*	mchan;			/* channel to mounted server */
 	Qid	mqid;			/* qid of root of mount point */
 	Session*session;
-	char	*version;			/* 9P version */
 	Cname	*name;
 };
 
@@ -254,13 +253,15 @@ struct Mhead
 
 struct Mnt
 {
-	Ref;			/* Count of attached channels */
+	Lock;
+	/* references are counted using c->ref; channels on this mount point incref(c->mchan) == Mnt.c */
 	Chan	*c;		/* Channel to file service */
 	Proc	*rip;		/* Reader in progress */
 	Mntrpc	*queue;		/* Queue of pending requests on this channel */
 	ulong	id;		/* Multiplexer id for channel check */
 	Mnt	*list;		/* Free list */
 	int	flags;		/* cache */
+	char	*version;			/* 9P version */
 	Queue	*q;		/* input queue */
 };
 

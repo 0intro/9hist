@@ -271,6 +271,7 @@ sysopen(ulong *arg)
 	if(fd < 0)
 		error(Enofd);
 	poperror();
+if(strstr(up->text, "syscall")!=0) pprint("open %s ref count %d\n", c2name(c), c->ref); // BUG
 	return fd;
 }
 
@@ -668,19 +669,17 @@ syschdir(ulong *arg)
 }
 
 long
-bindmount(ulong *arg, int ismount)
+bindmount(int ismount, int fd, int afd, char* arg0, char* arg1, ulong flag, char* spec)
 {
-	ulong flag;
-	int fd, ret;
-	Chan *c0, *c1, *bc;
+	int ret;
+	Chan *c0, *c1, *ac, *bc;
 	struct{
 		Chan	*chan;
+		Chan	*authchan;
 		char	*spec;
 		int	flags;
 	}bogus;
 
-	flag = arg[2];
-	fd = arg[0];
 	if(flag>MMASK || (flag&MORDER)==(MBEFORE|MAFTER))
 		error(Ebadarg);
 
@@ -690,32 +689,41 @@ bindmount(ulong *arg, int ismount)
 		if(up->pgrp->noattach)
 			error(Enoattach);
 
+		ac = nil;
 		bc = fdtochan(fd, ORDWR, 0, 1);
 		if(waserror()) {
+			if(ac)
+				cclose(ac);
 			cclose(bc);
 			nexterror();
 		}
+
+		if(afd >= 0)
+			ac = fdtochan(afd, ORDWR, 0, 1);
+
 		bogus.chan = bc;
+		bogus.authchan = ac;
 
-		validaddr(arg[3], 1, 0);
-		validname((char*)arg[3], 1);
+		validaddr((ulong)spec, 1, 0);
+		validname(spec, 1);
 
-		bogus.spec = (char*)arg[3];
+		bogus.spec = spec;
 		if(waserror())
 			error(Ebadspec);
-		validname(bogus.spec, 1);
 		poperror();
 
 		ret = devno('M', 0);
 		c0 = devtab[ret]->attach((char*)&bogus);
 
 		poperror();
+		if(ac)
+			cclose(ac);
 		cclose(bc);
 	}
 	else {
 		bogus.spec = 0;
-		validaddr(arg[0], 1, 0);
-		c0 = namec((char*)arg[0], Amount, 0, 0);
+		validaddr((ulong)arg0, 1, 0);
+		c0 = namec(arg0, Amount, 0, 0);
 	}
 
 	if(waserror()){
@@ -723,8 +731,8 @@ bindmount(ulong *arg, int ismount)
 		nexterror();
 	}
 
-	validaddr(arg[1], 1, 0);
-	c1 = namec((char*)arg[1], Amount, 0, 0);
+	validaddr((ulong)arg1, 1, 0);
+	c1 = namec(arg1, Amount, 0, 0);
 	if(waserror()){
 		cclose(c1);
 		nexterror();
@@ -738,19 +746,26 @@ bindmount(ulong *arg, int ismount)
 	cclose(c0);
 	if(ismount)
 		fdclose(fd, 0);
+
 	return ret;
 }
 
 long
 sysbind(ulong *arg)
 {
-	return bindmount(arg, 0);
+	return bindmount(0, -1, -1, (char*)arg[0], (char*)arg[1], arg[2], nil);
 }
 
 long
 sysmount(ulong *arg)
 {
-	return bindmount(arg, 1);
+	return bindmount(1, arg[0], arg[1], nil, (char*)arg[2], arg[3], (char*)arg[4]);
+}
+
+long
+sys_mount(ulong *arg)
+{
+	return bindmount(1, arg[0], -1, nil, (char*)arg[1], arg[2], (char*)arg[3]);
 }
 
 long

@@ -5,6 +5,17 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
+/*
+ * References are managed as follows:
+ * The channel to the server - a network connection or pipe - has one
+ * reference for every Chan open on the server.  The server channel has
+ * c->mux set to the Mnt used for muxing control to that server.  Mnts
+ * have no reference count; they go away when c goes away.
+ * Each channel derived from the mount point has mchan set to c,
+ * and increfs/decrefs mchan to manage references on the server
+ * connection.
+ */
+
 #define MAXRPC (IOHDRSZ+8192)
 
 struct Mntrpc
@@ -16,6 +27,7 @@ struct Mntrpc
 	Mnt*	m;		/* Mount device during rpc */
 	Rendez	r;		/* Place to hang out */
 	uchar*	rpc;		/* I/O Data buffer */
+	uint		rpclen;	/* len of buffer */
 	Block	*b;		/* reply blocks */
 	char	done;		/* Rpc completed */
 	uvlong	stime;		/* start time for mnt statistics */
@@ -37,7 +49,6 @@ struct Mntalloc
 }mntalloc;
 
 void	mattach(Mnt*, Chan*, char*);
-void	mntauth(Mnt*, Mntrpc*, char*, ushort);
 Mnt*	mntchk(Chan*);
 void	mntdirfix(uchar*, Chan*);
 Mntrpc*	mntflushalloc(Mntrpc*, ulong);
@@ -53,10 +64,10 @@ void	mountio(Mnt*, Mntrpc*);
 void	mountmux(Mnt*, Mntrpc*);
 void	mountrpc(Mnt*, Mntrpc*);
 int	rpcattn(void*);
-void	mclose(Mnt*, Chan*);
 Chan*	mntchan(void);
 
 char	Esbadstat[] = "invalid directory entry received from server";
+char Enoversion[] = "version not established for mount channel";
 
 void (*mntstats)(int, Chan*, uvlong, ulong);
 
@@ -77,43 +88,114 @@ mntreset(void)
 	cinit();
 }
 
-static Chan*
-mntattach(char *muxattach)
+/*
+ * Version is not multiplexed: message sent only once per connection.
+ */
+long
+mntversion(Chan *c, char *version, int msize, int returnlen)
 {
+	Fcall f;
+	uchar *msg;
 	Mnt *m;
-	Chan *c;
-	struct bogus{
-		Chan	*chan;
-		char	*spec;
-		int	flags;
-	}bogus;
+	char *v;
+	long k, l;
+	uvlong oo;
+	char buf[128];
 
-	bogus = *((struct bogus *)muxattach);
-	c = bogus.chan;
-
-	lock(&mntalloc);
-	for(m = mntalloc.list; m; m = m->list) {
-		if(m->c == c && m->id) {
-			lock(m);
-			if(m->id && m->ref > 0 && m->c == c) {
-				m->ref++;
-				unlock(m);
-				unlock(&mntalloc);
-				c = mntchan();
-				if(waserror()) {
-					chanfree(c);
-					nexterror();
-				}
-				mattach(m, c, bogus.spec);
-				poperror();
-				if(bogus.flags&MCACHE)
-					c->flag |= CCACHE;
-				return c;
-			}
-			unlock(m);
-		}
+	qlock(&c->umqlock);	/* make sure no one else does this until we've established ourselves */
+	if(waserror()){
+		qunlock(&c->umqlock);
+		nexterror();
 	}
 
+	/* defaults */
+	if(msize == 0)
+		msize = MAXRPC-IOHDRSZ;
+	v = version;
+	if(v == nil || v[0] == '\0')
+		v = VERSION9P;
+
+	/* validity */
+	if(msize < 0)
+		error("bad iounit in version call");
+	if(strncmp(v, VERSION9P, strlen(VERSION9P)) != 0)
+		error("bad 9P version specification");
+
+	m = c->mux;
+
+	if(m != nil){
+		qunlock(&c->umqlock);
+		poperror();
+
+		strecpy(buf, buf+sizeof buf, m->version);
+		k = strlen(buf);
+		if(strncmp(buf, v, k) != 0){
+			snprint(buf, sizeof buf, "incompatible 9P versions %s %s", m->version, v);
+			error(buf);
+		}
+		if(returnlen > 0){
+			if(returnlen < k)
+				error(Eshort);
+			memmove(version, buf, k);
+		}
+		return k;
+	}
+
+	f.type = Tversion;
+	f.tag = NOTAG;
+	f.msize = msize;
+	f.version = v;
+	msg = malloc(8192+IOHDRSZ);
+	if(msg == nil)
+		exhausted("version memory");
+	if(waserror()){
+		free(msg);
+		nexterror();
+	}
+	k = convS2M(&f, msg, 8192+IOHDRSZ);
+	if(k == 0)
+		error("bad fversion conversion on send");
+
+	lock(c);
+	oo = c->offset;
+	c->offset += k;
+	unlock(c);
+
+	l = devtab[c->type]->write(c, msg, k, oo);
+
+	if(l < k){
+		lock(c);
+		c->offset -= k - l;
+		unlock(c);
+		error("short write in fversion");
+	}
+
+	/* message sent; receive and decode reply */
+	k = devtab[c->type]->read(c, msg, 8192+IOHDRSZ, c->offset);
+	if(k <= 0)
+		error("EOF receiving fversion reply");
+
+	lock(c);
+	c->offset += k;
+	unlock(c);
+
+	l = convM2S(msg, k, &f);
+	if(l != k)
+		error("bad fversion conversion on reply");
+	if(f.type != Rversion)
+		error("unexpected reply type in fversion");
+	if(f.msize > msize)
+		error("server tries to increase msize in fversion");
+	if(f.msize<256 || f.msize>1024*1024)
+		error("nonsense value of msize in fversion");
+	if(strncmp(f.version, v, strlen(f.version)) != 0)
+		error("bad 9P version returned from server");
+	c->iounit = f.msize;
+	if(c->iounit == 0)
+		c->iounit = MAXRPC;
+
+	/* now build Mnt associated with this connection */
+	lock(&mntalloc);
 	m = mntalloc.mntfree;
 	if(m != 0)
 		mntalloc.mntfree = m->list;
@@ -126,27 +208,53 @@ mntattach(char *muxattach)
 	}
 	m->list = mntalloc.list;
 	mntalloc.list = m;
+	kstrdup(&m->version, f.version);
 	m->id = mntalloc.id++;
 	m->q = qopen(10*MAXRPC, 0, nil, nil);
 	unlock(&mntalloc);
 
+	poperror();	/* msg */
+	free(msg);
+
 	lock(m);
-	m->ref = 1;
 	m->queue = 0;
 	m->rip = 0;
+
+	c->flag |= CMSG;
+	c->mux = m;
 	m->c = c;
-	m->c->flag |= CMSG;
-	if(m->c->iounit == 0)
-		m->c->iounit = MAXRPC;
-	m->flags = bogus.flags & ~MCACHE;
-
-	incref(m->c);
-
 	unlock(m);
+
+	poperror();	/* c */
+	qunlock(&c->umqlock);
+
+	k = strlen(f.version);
+	if(returnlen > 0){
+		if(returnlen < k)
+			error(Eshort);
+		memmove(version, f.version, k);
+	}
+
+	return k;
+}
+
+Chan*
+mntauth(Chan *c, char *spec)
+{
+	Mnt *m;
+	Mntrpc *r;
+
+	m = c->mux;
+
+	if(m == nil){
+		mntversion(c, VERSION9P, MAXRPC, 0);
+		m = c->mux;
+		if(m == nil)
+			error(Enoversion);
+	}
 
 	c = mntchan();
 	if(waserror()) {
-		mclose(m, c);
 		/* Close must not be called since it will
 		 * call mnt recursively
 		 */
@@ -154,12 +262,97 @@ mntattach(char *muxattach)
 		nexterror();
 	}
 
-	mattach(m, c, bogus.spec);
-	poperror();
+	r = mntralloc(0, m->c->iounit);
 
-	if(bogus.flags & MCACHE)
+	if(waserror()) {
+		mntfree(r);
+		nexterror();
+	}
+
+	r->request.type = Tauth;
+	r->request.afid = c->fid;
+	r->request.uname = up->user;
+	r->request.aname = spec;
+	mountrpc(m, r);
+
+	c->qid = r->reply.aqid;
+	c->mchan = m->c;
+	incref(m->c);
+	c->mqid = c->qid;
+	c->mode = ORDWR;
+
+	poperror();	/* r */
+	mntfree(r);
+
+	poperror();	/* c */
+
+	return c;
+
+}
+
+static Chan*
+mntattach(char *muxattach)
+{
+	Mnt *m;
+	Chan *c;
+	Mntrpc *r;
+	struct bogus{
+		Chan	*chan;
+		Chan	*authchan;
+		char	*spec;
+		int	flags;
+	}bogus;
+
+	bogus = *((struct bogus *)muxattach);
+	c = bogus.chan;
+
+	m = c->mux;
+
+	if(m == nil){
+		mntversion(c, nil, 0, 0);
+		m = c->mux;
+		if(m == nil)
+			error(Enoversion);
+	}
+
+	c = mntchan();
+	if(waserror()) {
+		/* Close must not be called since it will
+		 * call mnt recursively
+		 */
+		chanfree(c);
+		nexterror();
+	}
+
+	r = mntralloc(0, m->c->iounit);
+
+	if(waserror()) {
+		mntfree(r);
+		nexterror();
+	}
+
+	r->request.type = Tattach;
+	r->request.fid = c->fid;
+	if(bogus.authchan == nil)
+		r->request.afid = NOFID;
+	else
+		r->request.afid = bogus.authchan->fid;
+	r->request.uname = up->user;
+	r->request.aname = bogus.spec;
+	mountrpc(m, r);
+
+	c->qid = r->reply.qid;
+	c->mchan = m->c;
+	incref(m->c);
+	c->mqid = c->qid;
+
+	poperror();	/* r */
+	mntfree(r);
+
+	poperror();	/* c */
+
+	if(bogus.flags&MCACHE)
 		c->flag |= CCACHE;
-
 	return c;
 }
 
@@ -173,36 +366,9 @@ mntchan(void)
 	c->dev = mntalloc.id++;
 	unlock(&mntalloc);
 
+	if(c->mchan)
+		panic("mntchan non-zero %p", c->mchan);
 	return c;
-}
-
-void
-mattach(Mnt *m, Chan *c, char *spec)
-{
-	Mntrpc *r;
-
-	r = mntralloc(0, m->c->iounit);
-	c->mntptr = m;
-
-	if(waserror()) {
-		mntfree(r);
-		nexterror();
-	}
-
-	r->request.type = Tattach;
-	r->request.fid = c->fid;
-	r->request.uname = up->user;
-	r->request.aname = spec;
-	r->request.nauth = 0;
-	r->request.auth = (uchar*)"";
-	mountrpc(m, r);
-
-	c->qid = r->reply.qid;
-	c->mchan = m->c;
-	c->mqid = c->qid;
-
-	poperror();
-	mntfree(r);
 }
 
 static Walkqid*
@@ -213,6 +379,8 @@ mntwalk(Chan *c, Chan *nc, char **name, int nname)
 	Mntrpc *r;
 	Walkqid *wq;
 
+	if(nc != nil)
+		print("mntwalk: nc != nil\n");
 	if(nname > MAXWELEM)
 		error("devmnt: too many name elements");
 	alloc = 0;
@@ -268,7 +436,8 @@ mntwalk(Chan *c, Chan *nc, char **name, int nname)
 	if(wq->clone != nil){
 		if(wq->clone != c){
 			wq->clone->type = c->type;
-			incref(m);
+			wq->clone->mchan = c->mchan;
+			incref(c->mchan);
 		}
 		if(r->reply.nwqid > 0)
 			wq->clone->qid = r->reply.wqid[r->reply.nwqid-1];
@@ -377,7 +546,6 @@ mntclunk(Chan *c, int t)
 	r = mntralloc(c, m->c->iounit);
 	if(waserror()){
 		mntfree(r);
-		mclose(m, c);
 		nexterror();
 	}
 
@@ -385,24 +553,19 @@ mntclunk(Chan *c, int t)
 	r->request.fid = c->fid;
 	mountrpc(m, r);
 	mntfree(r);
-	mclose(m, c);
 	poperror();
 }
 
 void
-mclose(Mnt *m, Chan*)
+muxclose(Mnt *m)
 {
 	Mntrpc *q, *r;
-
-	if(decref(m) != 0)
-		return;
 
 	for(q = m->queue; q; q = r) {
 		r = q->list;
 		mntfree(q);
 	}
 	m->id = 0;
-	cclose(m->c);
 	mntpntfree(m);
 }
 
@@ -853,11 +1016,23 @@ mntralloc(Chan *c, ulong iounit)
 			unlock(&mntalloc);
 			exhausted("mount rpc buffer");
 		}
+		new->rpclen = iounit;
 		new->request.tag = mntalloc.rpctag++;
 	}
 	else {
 		mntalloc.rpcfree = new->list;
 		mntalloc.nrpcfree--;
+		if(new->rpclen < iounit){
+			free(new->rpc);
+			new->rpc = mallocz(iounit, 0);
+			if(new->rpc == nil){
+				free(new);
+				mntalloc.nrpcused--;
+				unlock(&mntalloc);
+				exhausted("mount rpc buffer");
+			}
+			new->rpclen = iounit;
+		}
 	}
 	mntalloc.nrpcused++;
 	unlock(&mntalloc);
@@ -911,13 +1086,21 @@ mntchk(Chan *c)
 {
 	Mnt *m;
 
-	m = c->mntptr;
+	/* This routine is mostly vestiges of prior lives; now it's just sanity checking */
+
+	if(c->mchan == nil)
+		panic("mntchk 1: nil mchan c %s\n", c2name(c));
+
+	m = c->mchan->mux;
+
+	if(m == nil)
+		print("mntchk 2: nil mux c %s c->mchan %s \n", c2name(c), c2name(c->mchan));
 
 	/*
-	 * Was it closed and reused
+	 * Was it closed and reused (was error(Eshutdown); now, it can't happen)
 	 */
 	if(m->id == 0 || m->id >= c->dev)
-		error(Eshutdown);
+		panic("mntchk 3: can't happen");
 
 	return m;
 }

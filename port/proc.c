@@ -717,7 +717,6 @@ freebroken(void)
 void
 pexit(char *exitstr, int freemem)
 {
-	int n;
 	Proc *p;
 	Segment **s, **es;
 	long utime, stime;
@@ -773,20 +772,12 @@ pexit(char *exitstr, int freemem)
 		wq = smalloc(sizeof(Waitq));
 		poperror();
 
-		readnum(0, wq->w.pid, NUMSIZE, up->pid, NUMSIZE);
-		utime = up->time[TUser] + up->time[TCUser];
-		stime = up->time[TSys] + up->time[TCSys];
-		readnum(0, &wq->w.time[TUser*12], NUMSIZE,
-			TK2MS(utime), NUMSIZE);
-		readnum(0, &wq->w.time[TSys*12], NUMSIZE,
-			TK2MS(stime), NUMSIZE);
-		readnum(0, &wq->w.time[TReal*12], NUMSIZE,
-			TK2MS(MACHP(0)->ticks - up->time[TReal]), NUMSIZE);
-		if(exitstr && exitstr[0]){
-			n = sprint(wq->w.msg, "%s %lud:", up->text, up->pid);
-			strncpy(wq->w.msg+n, exitstr, sizeof wq->w.msg-n);
-			wq->w.msg[sizeof wq->w.msg-1] = 0;
-		}
+		wq->w.pid = up->pid;
+		wq->w.time[TUser] = utime = up->time[TUser] + up->time[TCUser];
+		wq->w.time[TSys] = stime = up->time[TSys] + up->time[TCSys];
+		wq->w.time[TReal] = TK2MS(MACHP(0)->ticks - up->time[TReal]);
+		if(exitstr && exitstr[0])
+			snprint(wq->w.msg, sizeof(wq->w.msg), "%s %lud: %s", up->text, up->pid, exitstr);
 		else
 			wq->w.msg[0] = '\0';
 
@@ -900,7 +891,7 @@ pwait(Waitmsg *w)
 
 	if(w)
 		memmove(w, &wq->w, sizeof(Waitmsg));
-	cpid = atoi(wq->w.pid);
+	cpid = wq->w.pid;
 	free(wq);
 	return cpid;
 }

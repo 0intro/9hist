@@ -112,6 +112,7 @@ extern	int	tokenize(char*, char**, int);
 
 typedef struct Qid	Qid;
 typedef struct Dir	Dir;
+typedef struct OWaitmsg	OWaitmsg;
 typedef struct Waitmsg	Waitmsg;
 
 #define	ERRMAX			128	/* max length of error string */
@@ -122,6 +123,7 @@ typedef struct Waitmsg	Waitmsg;
 #define QTAPPEND	0x40		/* type bit for append only files */
 #define QTEXCL		0x20		/* type bit for exclusive use files */
 #define QTMOUNT		0x10		/* type bit for mounted channel */
+#define QTAUTH		0x08		/* type bit for authentication file */
 #define QTFILE		0x00		/* plain file */
 
 /* bits in Dir.mode */
@@ -156,9 +158,16 @@ struct Dir {
 	char	*muid;	/* last modifier name */
 };
 
-struct Waitmsg
+struct OWaitmsg
 {
 	char	pid[12];	/* of loved one */
 	char	time[3*12];	/* of loved one and descendants */
 	char	msg[64];	/* compatibility BUG */
+};
+
+struct Waitmsg
+{
+	int	pid;	/* of loved one */
+	ulong	time[3];	/* of loved one and descendants */
+	char	msg[ERRMAX];	/* actually variable-size in user mode */
 };

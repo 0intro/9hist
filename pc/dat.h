@@ -17,7 +17,7 @@ typedef struct Segdesc	Segdesc;
 typedef struct Ureg	Ureg;
 typedef struct Vctl	Vctl;
 
-#define MAXSYSARG	5	/* for mount(fd, mpt, flag, arg, srv) */
+#define MAXSYSARG	5	/* for mount(fd, afd, mpt, flag, arg) */
 
 /*
  *  parameters for sysproc.c

@@ -115,7 +115,6 @@ devclone(Chan *c)
 	nc->umh = nil;
 	nc->mountid = c->mountid;
 	nc->aux = c->aux;
-	nc->mchan = c->mchan;
 	nc->mqid = c->mqid;
 	nc->mcp = c->mcp;
 	return nc;
@@ -131,12 +130,6 @@ devwalk(Chan *c, Chan *nc, char **name, int nname, Dirtab *tab, int ntab, Devgen
 
 	if(nname > 0)
 		isdir(c);
-
-//	print("devwalk (%d:%c:%p) ", nname, devtab[c->type]->dc, nc);
-//	for(i=0; i<nname; i++)
-//		print("%s/", name[i]);
-//	print("\n");
-//delay(500);
 
 	alloc = 0;
 	wq = smalloc(sizeof(Walkqid)+(nname-1)*sizeof(Qid));

@@ -34,7 +34,7 @@ rconv(va_list *arg, Fconv *fp)
 void
 boot(int argc, char *argv[])
 {
-	int fd;
+	int fd, afd;
 	Method *mp;
 	char cmd[64];
 	char rootbuf[64];
@@ -43,8 +43,10 @@ boot(int argc, char *argv[])
 	char *rp;
 	int n;
 	char buf[32];
+	AuthInfo *ai;
 
 	sleep(1000);
+
 
 	fmtinstall('r', rconv);
 
@@ -53,6 +55,7 @@ boot(int argc, char *argv[])
 	open("#c/cons", OWRITE);
 	bind("#c", "/dev", MAFTER);
 	bind("#e", "/env", MREPL|MCREATE);
+	bind("#s", "/srv", MREPL|MCREATE);
 
 #ifdef DEBUG
 	print("argc=%d\n", argc);
@@ -62,9 +65,6 @@ boot(int argc, char *argv[])
 #endif DEBUG
 
 	ARGBEGIN{
-	case 'u':
-		strcpy(username, ARGF());
-		break;
 	case 'k':
 		kflag = 1;
 		break;
@@ -87,9 +87,9 @@ boot(int argc, char *argv[])
 	ishybrid = strcmp(mp->name, "hybrid") == 0;
 
 	/*
-	 *  get/set key or password
+ 	 *  authentication agent
 	 */
-	(*pword)(islocal, mp);
+	authentication(cpuflag);
 
 	/*
 	 *  connect to the root file system
@@ -108,7 +108,6 @@ boot(int argc, char *argv[])
 	if(!islocal && !ishybrid){
 		if(cfs)
 			fd = (*cfs)(fd);
-		doauthenticate(fd, mp);
 	}
 	srvcreate("boot", fd);
 
@@ -120,10 +119,15 @@ boot(int argc, char *argv[])
 	rp = getenv("rootspec");
 	if(rp == nil)
 		rp = "";
-print("boot about to mount\n");
-	if(mount(fd, "/root", MREPL|MCREATE, rp) < 0)
+	
+	afd = fauth(fd, rp);
+	if(afd >= 0){
+		ai = auth_proxy(afd, "p9any", 0, auth_getkey);
+		if(ai == nil)
+			print("authentication failed (%r), trying mount anyways\n");
+	}
+	if(mount(fd, afd, "/root", MREPL|MCREATE, rp) < 0)
 		fatal("mount /");
-print("mount is done\n");
 	rp = getenv("rootdir");
 	if(rp == nil)
 		rp = rootdir;
@@ -160,13 +164,13 @@ print("mount is done\n");
 			fd = (*mp->connect)();
 			if(fd < 0)
 				break;
-			mount(fd, "/n/kfs", MAFTER|MCREATE, "") ;
+			mount(fd, -1, "/n/kfs", MAFTER|MCREATE, "") ;
 			close(fd);
 			break;
 		}
 	}
 
-	settime(islocal);
+	settime(islocal, afd);
 	swapproc();
 
 	sprint(cmd, "/%s/ninit", cputype);

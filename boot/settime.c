@@ -12,7 +12,7 @@ static long lusertime(char*);
 char *timeserver = "#s/boot";
 
 void
-settime(int islocal)
+settime(int islocal, int afd)
 {
 	int n, f;
 	int timeset;
@@ -44,17 +44,17 @@ settime(int islocal)
 		f = open(timeserver, ORDWR);
 		if(f < 0)
 			return;
-		if(mount(f, "/mnt", MREPL, "") < 0){
+		if(mount(f, afd, "/tmp", MREPL, "") < 0){
 			warning("settime mount");
 			close(f);
 			return;
 		}
 		close(f);
-		if(stat("/mnt", statbuf, sizeof statbuf) < 0)
+		if(stat("/tmp", statbuf, sizeof statbuf) < 0)
 			fatal("stat");
 		convM2D(statbuf, sizeof statbuf, &dir[0], (char*)&dir[1]);
 		sprint(timebuf, "%ld", dir[0].atime);
-		unmount(0, "/mnt");
+		unmount(0, "/tmp");
 	}
 
 	f = open("#c/time", OWRITE);
