@@ -38,7 +38,6 @@ int		i8259enable(int, int, Irqctl*);
 #define	idlehands()			/* nothing to do in the runproc */
 void		icflush(void);
 void		illegal0(void);
-void		intr(Ureg*);
 void		intr0(void);
 void		intrenable(int, void (*)(Ureg*, void*), void*, int);
 int		iprint(char*, ...);

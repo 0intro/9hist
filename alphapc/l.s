@@ -11,6 +11,7 @@ TEXT	_main(SB), $-8
 	MOVQ	$mach0(SB), R(MACH)
 	MOVQ	$(BY2PG-8)(R(MACH)), R30
 	MOVQ	R31, R(USER)
+	MOVQ	R31, 0(R(MACH))
 
 	MOVQ	$edata(SB), R1
 	MOVQ	$end(SB), R2

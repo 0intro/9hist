@@ -19,14 +19,14 @@
 
 #include "etherif.h"
 
-/* nasty PCI DMA hack... */
-
 #define DEBUG		0
 #define debug		if(DEBUG)print
 
 enum {
 	Nrde		= 64,
 	Ntde		= 64,
+
+	Rxbufsz		= ROUNDUP(sizeof(Etherpkt)+4, 4),
 };
 
 enum {					/* CRS0 - Bus Mode */
@@ -457,7 +457,7 @@ interrupt(Ureg*, void* arg)
 					if(des->status & De)
 						ctlr->de++;
 				}
-				else if(bp = iallocb(sizeof(Etherpkt)+4)){
+				else if(bp = iallocb(Rxbufsz)){
 					len = ((des->status & Fl)>>16)-4;
 					des->bp->wp = des->bp->rp+len;
 					etheriq(ether, des->bp, 1);
@@ -466,7 +466,7 @@ interrupt(Ureg*, void* arg)
 				}
 
 				des->control &= Er;
-				des->control |= ROUNDUP(sizeof(Etherpkt)+4, 4);
+				des->control |= Rxbufsz;
 				coherence();
 				des->status = Own;
 
@@ -566,11 +566,11 @@ ctlrinit(Ether* ether)
 	 * create and post a setup packet to initialise
 	 * the physical ethernet address.
 	 */
-	ctlr->rdr = malloc(ctlr->nrdr*sizeof(Des));
+	ctlr->rdr = xspanalloc(ctlr->nrdr*sizeof(Des), 8*sizeof(ulong), 0);
 	for(des = ctlr->rdr; des < &ctlr->rdr[ctlr->nrdr]; des++){
-		des->bp = allocb(ROUNDUP(sizeof(Etherpkt)+4, 4));
+		des->bp = allocb(Rxbufsz);
 		des->status = Own;
-		des->control = ROUNDUP(sizeof(Etherpkt)+4, 4);
+		des->control = Rxbufsz;
 		des->addr = PCIWADDR(des->bp->rp);
 	}
 	ctlr->rdr[ctlr->nrdr-1].control |= Er;

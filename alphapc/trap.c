@@ -35,55 +35,6 @@ intrenable(int irq, void (*f)(Ureg*, void*), void* a, int tbdf)
 	arch->intrenable(irq, f, a, tbdf);
 }
 
-void
-trap(Ureg *ur)
-{
-	char buf[ERRLEN];
-	int user, x;
-
-	m->intrts = fastticks(nil);
-	user = ur->status&UMODE;
-
-	if(user){
-		up = m->proc;
-		up->dbgreg = ur;
-	}
-	switch ((int)ur->type) {
-	case 1:	/* arith */
-		fptrap(ur);
-		break;
-	case 2:	/* bad instr or FEN */
-		illegal(ur);
-		break;
-	case 3:	/* intr */
-		intr(ur);
-		break;
-	case 4:	/* memory fault */
-		if(up == 0)
-			kernfault(ur, (ulong)ur->a1);
-
-		x = up->insyscall;
-		up->insyscall = 1;
-		spllo();
-		faultalpha(ur);
-		up->insyscall = x;
-		break;
-	case 6:	/* alignment fault */
-		ur->pc -= 4;
-		sprint(buf, "trap: unaligned addr 0x%lux", (ulong)ur->a0);
-		fataltrap(ur, buf);
-		break;
-	default:	/* cannot happen */
-		panic("bad trap type %d", (int)ur->type);
-		break;
-	}
-
-	if(user && (up->procctl || up->nnote)){
-		splhi();
-		notify(ur);
-	}
-}
-
 typedef struct Mcheck Mcheck;
 struct Mcheck
 {
@@ -149,33 +100,90 @@ mcheck(void *x)
 }
 
 void
-intr(Ureg *ur)
+trap(Ureg *ur)
 {
-	m->intr++;
-	switch ((int)ur->a0) {
-	case 0:	/* interprocessor */
-		panic("interprocessor intr");
+	char buf[ERRLEN];
+	int user, x;
+
+	m->intrts = fastticks(nil);
+	user = ur->status&UMODE;
+
+	if(user){
+		up = m->proc;
+		up->dbgreg = ur;
+	}
+	switch ((int)ur->type) {
+	case 1:	/* arith */
+		fptrap(ur);
 		break;
-	case 1:	/* clock */
-		clock(ur);
+	case 2:	/* bad instr or FEN */
+		illegal(ur);
 		break;
-	case 2:	/* machine check */
-		mcheck((void*)(KZERO|(ulong)ur->a2));
+
+	case 3:	/* intr */
+		m->intr++;
+		switch ((int)ur->a0) {
+		case 0:	/* interprocessor */
+			panic("interprocessor intr");
+			break;
+		case 1:	/* clock */
+			clock(ur);
+			break;
+		case 2:	/* machine check */
+			mcheck((void*)(KZERO|(ulong)ur->a2));
+			break;
+		case 3:	/* device */
+			arch->intr(ur);
+			/* 
+			 *  preemptive scheduling.  to limit stack depth,
+			 *  make sure process has a chance to return from
+			 *  the current interrupt before being preempted a
+			 *  second time.
+			 */
+			if(up && up->state == Running)
+			if(anyhigher())
+			if(up->preempted == 0)
+			if(!active.exiting){
+				up->preempted = 1;
+				sched();
+				splhi();
+				up->preempted = 0;
+				return;
+			}
+			break;
+		case 4:	/* perf counter */
+			panic("perf count");
+			break;
+		default:
+			panic("bad intr");
+			break;
+		}
 		break;
-	case 3:	/* device */
-		arch->intr(ur);
+
+	case 4:	/* memory fault */
+		if(up == 0)
+			kernfault(ur, (ulong)ur->a1);
+
+		x = up->insyscall;
+		up->insyscall = 1;
+		spllo();
+		faultalpha(ur);
+		up->insyscall = x;
 		break;
-	case 4:	/* perf counter */
-		panic("perf count");
+	case 6:	/* alignment fault */
+		ur->pc -= 4;
+		sprint(buf, "trap: unaligned addr 0x%lux", (ulong)ur->a0);
+		fataltrap(ur, buf);
 		break;
-	default:
-		panic("bad intr");
+	default:	/* cannot happen */
+		panic("bad trap type %d", (int)ur->type);
 		break;
 	}
 
-	/* preemptive scheduling */
-	if(up && up->state == Running && anyhigher())
-		sched();
+	if(user && (up->procctl || up->nnote)){
+		splhi();
+		notify(ur);
+	}
 }
 
 void
@@ -250,6 +258,8 @@ dumpstack(void)
 		el = sl + KSTACK;
 	}
 	if(l > el || l < sl){
+		iprint("dumpstack: l %lux sl %lux el %lux m %lux up %lux\n",
+			l, sl, el, m, up);
 		el = (ulong)m+BY2PG;
 		sl = el-KSTACK;
 	}
