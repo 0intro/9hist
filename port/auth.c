@@ -54,12 +54,12 @@ sysfversion(ulong *arg)
 	if(vers[0] == '\0')
 		vers = VERSION9P;
 	f.version = vers;
-	msg = smalloc(MAXMSG);
+	msg = smalloc(8192+IOHDRSZ);
 	if(waserror()){
 		free(msg);
 		nexterror();
 	}
-	n = convS2M(&f, msg, MAXMSG);
+	n = convS2M(&f, msg, 8192+IOHDRSZ);
 	if(n == 0)
 		error("bad fversion conversion on send");
 
@@ -78,7 +78,7 @@ sysfversion(ulong *arg)
 	}
 
 	/* message sent; receive and decode reply */
-	m = devtab[c->type]->read(c, msg, MAXMSG, c->offset);
+	m = devtab[c->type]->read(c, msg, 8192+IOHDRSZ, c->offset);
 	if(m <= 0)
 		error("EOF receiving fversion reply");
 
@@ -141,12 +141,12 @@ sysfsession(ulong *arg)
 	f.tag = NOTAG;
 	f.nchal = 0;
 	f.chal = (uchar*)"";
-	msg = smalloc(MAXMSG);
+	msg = smalloc(8192+IOHDRSZ);
 	if(waserror()){
 		free(msg);
 		nexterror();
 	}
-	n = convS2M(&f, msg, MAXMSG);
+	n = convS2M(&f, msg, 8192+IOHDRSZ);
 	if(n == 0)
 		error("bad fsession conversion on send");
 
@@ -165,7 +165,7 @@ sysfsession(ulong *arg)
 	}
 
 	/* message sent; receive and decode reply */
-	m = devtab[c->type]->read(c, msg, MAXMSG, c->offset);
+	m = devtab[c->type]->read(c, msg, 8192+IOHDRSZ, c->offset);
 	if(m <= 0)
 		error("EOF receiving fsession reply");
 

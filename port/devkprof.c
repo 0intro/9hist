@@ -24,7 +24,7 @@ enum{
 	Kprofctlqid,
 };
 Dirtab kproftab[]={
-	".",	{Kprofdirqid, 0, QTDIR},		0,	DMDIR|0600,
+	".",	{Kprofdirqid, 0, QTDIR},		0,	DMDIR|0550,
 	"kpdata",	{Kprofdataqid},		0,	0600,
 	"kpctl",	{Kprofctlqid},		0,	0600,
 };

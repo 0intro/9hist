@@ -152,7 +152,7 @@ enum
 typedef struct FPart FPart;
 struct FPart
 {
-	char	name[NAMELEN-4];
+	char	*name;
 	ulong	start;
 	ulong	end;
 };
@@ -163,25 +163,26 @@ static FPart	part[Maxpart];
 #define FPART(q)	(&part[(q) >>8])
 
 static int
-gen(Chan *c, Dirtab*, int, int i, Dir *dp)
+gen(Chan *c, char*, Dirtab*, int, int i, Dir *dp)
 {
 	Qid q;
-	char buf[NAMELEN];
+	char buf[KNAMELEN];
 	FPart *fp;
 
 	q.vers = 0;
 
 	/* top level directory contains the name of the network */
-	if(c->qid.path == CHDIR){
+	if(c->qid.path == Qtopdir){
 		switch(i){
 		case DEVDOTDOT:
-			q.path = CHDIR;
-			devdir(c, q, ".", 0, eve, CHDIR|0555, dp);
+			q.path = Qtopdir;
+			q.type = QTDIR;
+			devdir(c, q, "#F", 0, eve, DMDIR|0555, dp);
 			break;
 		case 0:
-			q.path = CHDIR | Q2nddir;
-			strcpy(buf, "flash");
-			devdir(c, q, buf, 0, eve, CHDIR|0555, dp);
+			q.path = Q2nddir;
+			q.type = QTDIR;
+			devdir(c, q, "flash", 0, eve, DMDIR|0555, dp);
 			break;
 		default:
 			return -1;
@@ -192,21 +193,24 @@ gen(Chan *c, Dirtab*, int, int i, Dir *dp)
 	/* second level contains all partitions and their control files */
 	switch(i) {
 	case DEVDOTDOT:
-		q.path = CHDIR;
-		devdir(c, q, "#F", 0, eve, CHDIR|0555, dp);
+		q.path = Qtopdir;
+		q.type = QTDIR;
+		devdir(c, q, "#F", 0, eve, DMDIR|0555, dp);
 		break;
 	default:
 		if(i >= 2*Maxpart)
 			return -1;
 		fp = &part[i>>1];
-		if(fp->name[0] == 0)
+		if(fp->name == nil)
 			return 0;
 		if(i & 1){
 			q.path = FQID(i>>1, Qfdata);
+			q.type = QTFILE;
 			devdir(c, q, fp->name, fp->end-fp->start, eve, 0660, dp);
 		} else {
 			snprint(buf, sizeof(buf), "%sctl", fp->name);
 			q.path = FQID(i>>1, Qfctl);
+			q.type = QTFILE;
 			devdir(c, q, buf, 0, eve, 0660, dp);
 		}
 		break;
@@ -232,8 +236,6 @@ addpart(FPart *fp, char *name, ulong start, ulong end)
 {
 	int i;
 
-	if(strlen(name) > NAMELEN-3)
-		error("name too long");
 	if(fp == nil){
 		if(start >= flash.size || end > flash.size)
 			error(Ebadarg);
@@ -257,7 +259,7 @@ addpart(FPart *fp, char *name, ulong start, ulong end)
 	if(i == Maxpart)
 		error("no more partitions");
 	fp = &part[i];
-	strncpy(fp->name, name, sizeof(fp->name)-1);
+	kstrdup(&fp->name, name);
 	fp->start = start;
 	fp->end = end;
 }
@@ -265,7 +267,11 @@ addpart(FPart *fp, char *name, ulong start, ulong end)
 static void
 rempart(FPart *fp)
 {
-	fp->name[0] = 0;
+	char *p;
+
+	p = fp->name;
+	fp->name = nil;
+	free(p);
 }
 
 void
@@ -292,16 +298,16 @@ flashattach(char* spec)
 	return devattach('F', spec);
 }
 
-static int	 
-flashwalk(Chan* c, char* name)
+static Walkqid*
+flashwalk(Chan *c, Chan *nc, char **name, int nname)
 {
-	return devwalk(c, name, nil, 0, gen);
+	return devwalk(c, nc, name, nname, nil, 0, gen);
 }
 
-static void	 
-flashstat(Chan* c, char* dp)
+static int	 
+flashstat(Chan *c, uchar *db, int n)
 {
-	devstat(c, dp, nil, 0, gen);
+	return devstat(c, db, n, nil, 0, gen);
 }
 
 static Chan*
@@ -353,7 +359,7 @@ flashdataread(FPart *fp, void* a, long n, vlong off)
 		runlock(&flash);
 		nexterror();
 	}
-	if(fp->name[0] == 0)
+	if(fp->name == nil)
 		error("partition vanished");
 	if(!iseve())
 		error(Eperm);
@@ -373,9 +379,12 @@ flashdataread(FPart *fp, void* a, long n, vlong off)
 static long	 
 flashread(Chan* c, void* a, long n, vlong off)
 {
-	if(c->qid.path&CHDIR)
+	int t;
+
+	if(c->qid.type == QTDIR)
 		return devdirread(c, a, n, nil, 0, gen);
-	switch(FTYPE(c->qid.path)){
+	t = FTYPE(c->qid.path);
+	switch(t){
 	default:
 		error(Eperm);
 	case Qfctl:
@@ -514,7 +523,7 @@ flashdatawrite(FPart *fp, uchar *p, long n, long off)
 		nexterror();
 	}
 
-	if(fp->name[0] == 0)
+	if(fp->name == nil)
 		error("partition vanished");
 	if(!iseve())
 		error(Eperm);
@@ -575,13 +584,16 @@ flashdatawrite(FPart *fp, uchar *p, long n, long off)
 static long	 
 flashwrite(Chan* c, void* a, long n, vlong off)
 {
-	if(c->qid.path & CHDIR)
+	int t;
+
+	if(c->qid.type == QTDIR)
 		error(Eperm);
 
 	if(!iseve())
 		error(Eperm);
 
-	switch(FTYPE(c->qid.path)){
+	t = FTYPE(c->qid.path);
+	switch(t){
 	default:
 		panic("flashwrite");
 	case Qfctl:
@@ -601,7 +613,6 @@ Dev flashdevtab = {
 	devreset,
 	flashinit,
 	flashattach,
-	devclone,
 	flashwalk,
 	flashstat,
 	flashopen,
@@ -655,7 +666,7 @@ ise_clearerror(void)
 static void
 ise_error(int bank, ulong status)
 {
-	char err[ERRLEN];
+	char err[64];
 
 	if(status & (ISEs_lockerr)){
 		sprint(err, "flash%d: block locked %lux", bank, status);

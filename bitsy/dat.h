@@ -189,6 +189,7 @@ enum
 	OneMeg=	1024*1024,
 };
 
+#ifdef NDEF
 /*
  *  routines to access UART hardware
  */
@@ -265,6 +266,7 @@ struct Uart
 
 	Rendez	r;
 };
+#endif
 
 /*
  * PCMCIA structures known by both port/cis.c and the pcmcia driver
@@ -360,5 +362,5 @@ struct DevConf
 	int	size;		/* access size */
 	int	itype;		/* type of interrupt */
 	ulong	interrupt;	/* interrupt number */
-	char	type[NAMELEN];	/* card type */
+	char	*type;	/* card type, mallocated */
 };

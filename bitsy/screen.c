@@ -152,6 +152,7 @@ int			drawdebug;
 static	ulong	rep(ulong, int);
 static	void	screenwin(void);
 static	void	screenputc(char *buf);
+static	void	bitsyscreenputs(char *s, int n);
 static	void	scroll(void);
 
 static void
@@ -248,6 +249,7 @@ screeninit(void)
 	blanktime = 3;	/* minutes */
 
 	screenwin();
+	screenputs = bitsyscreenputs;
 }
 
 void
@@ -312,8 +314,8 @@ blankscreen(int blank)
 	}
 }
 
-void
-screenputs(char *s, int n)
+static void
+bitsyscreenputs(char *s, int n)
 {
 	int i;
 	Rune r;

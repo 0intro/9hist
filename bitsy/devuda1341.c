@@ -904,7 +904,7 @@ audioattach(char *param)
 	return devattach('A', param);
 }
 
-static int
+static Walkqid*
 audiowalk(Chan *c, Chan *nc, char **name, int nname)
 {
 	return devwalk(c, nc, name, nname, audiodir, nelem(audiodir), devgen);

@@ -26,9 +26,9 @@ enum {
 
 struct SacDir
 {
-	char	name[NAMELEN];
-	char	uid[NAMELEN];
-	char	gid[NAMELEN];
+	char	name[KNAMELEN];
+	char	uid[KNAMELEN];
+	char	gid[KNAMELEN];
 	uchar	qid[4];
 	uchar	mode[4];
 	uchar	atime[4];
@@ -127,6 +127,7 @@ sacattach(char* spec)
 {
 	Chan *c;
 	int dev;
+	int opath;
 
 	dev = atoi(spec);
 	if(dev != 0)
@@ -137,7 +138,13 @@ sacattach(char* spec)
 		error("devsac: bad magic");
 
 	c = devattach('C', spec);
-	c->qid = (Qid){getl(root.qid), 0};
+	path = getl(root.qid);
+	if(path & CHDIR)
+		c->qid.type = QTDIR;
+	else
+		c->qid.type = QTFILE;
+	c->qid.path = path & ~CHDIR;
+	c->qid.vers = 0;
 	c->dev = dev;
 	c->aux = saccpy(&root);
 	return c;

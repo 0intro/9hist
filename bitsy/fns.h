@@ -74,12 +74,10 @@ void	putttb(ulong);
 void	putpid(ulong);
 void	qpanic(char *, ...);
 void	rs232power(int);
-Uart*	uartsetup(PhysUart*, void*, ulong, char*);
 void	uartspecial(Uart*, int, Queue**, Queue**, int (*)(Queue*, int));
 void	sa1100_uartsetup(int);
 void	screeninit(void);
 int	screenprint(char*, ...);			/* debugging */
-void	screenputs(char*, int);
 void	serialµcputs(uchar *str, int n);
 void	setr13(int, ulong*);
 uchar*	tarlookup(uchar*, char*, int*);

@@ -8,7 +8,7 @@
 
 #include	"../port/netif.h"
 
-/* this isn't strictly a sa1100 driver.  The rts/cts stuff is h3650 specific */
+/* this isn't strictly a sa1110 driver.  The rts/cts stuff is h3650 specific */
 
 enum
 {
@@ -51,38 +51,33 @@ enum
 	Overrun=	1<<5,
 };
 
-Uartregs *uart3regs = UART3REGS;
-Uartregs *uart1regs = UART1REGS ;
+extern PhysUart sa1110physuart;
 
-static void	sa1100_uartbaud(Uart *p, int rate);
-static void	sa1100_uartkick(Uart *p);
-static void	sa1100_uartrts(Uart *p, int on);
-static void	sa1100_uartintr(Ureg*, void*);
-static void	sa1100_uartbreak(Uart*, int);
-static void	sa1100_uartbits(Uart*, int);
-static void	sa1100_uartparity(Uart*, int);
-static void	sa1100_uartmodemctl(Uart*, int);
-static void	sa1100_uartstop(Uart*, int);
-static void	sa1100_uartdtr(Uart*, int);
-static long	sa1100_uartstatus(Uart*, void*, long, long);
-static void	sa1100_uartenable(Uart*, int);
-static void	sa1100_uartdisable(Uart*);
+static Uart sa1110uart[2] = {
+{	.regs	= UART3REGS,
+	.name	= "serialport3",
+	.freq	= ClockFreq,
+	.bits	= 8,
+	.stop	= 1,
+	.parity	= 'n',
+	.baud	= 115200,
+	.phys	= &sa1110physuart,
+	.special=0,
+	.next	= &sa1110uart[1], },
 
-PhysUart sa1100_uart = {
-	.enable=	sa1100_uartenable,
-	.disable=	sa1100_uartdisable,
-	.bits=		sa1100_uartbits,
-	.kick=		sa1100_uartkick,
-	.intr=		sa1100_uartintr,
-	.modemctl=	sa1100_uartmodemctl,
-	.baud=		sa1100_uartbaud,
-	.stop=		sa1100_uartstop,
-	.parity=	sa1100_uartparity,
-	.dobreak=	sa1100_uartbreak,
-	.rts=		sa1100_uartrts,
-	.dtr=		sa1100_uartdtr,
-	.status=	sa1100_uartstatus,
+{	.regs	= UART1REGS,
+	.name	= "serialport1",
+	.freq	= ClockFreq,
+	.bits	= 8,
+	.stop	= 1,
+	.parity	= 'n',
+	.baud	= 115200,
+	.phys	= &sa1110physuart,
+	.special=0,
+	.next	= nil, },
 };
+static Uart* consuart;
+static Uart* µcuart;
 
 #define R(p) ((Uartregs*)(p->regs))
 
@@ -90,7 +85,7 @@ PhysUart sa1100_uart = {
  *  enable a port's interrupts.  set DTR and RTS
  */
 static void
-sa1100_uartenable(Uart *p, int intena)
+sa1110_uartenable(Uart *p, int intena)
 {
 	ulong s;
 
@@ -105,13 +100,13 @@ sa1100_uartenable(Uart *p, int intena)
  *  disable interrupts. clear DTR, and RTS
  */
 static void
-sa1100_uartdisable(Uart *p)
+sa1110_uartdisable(Uart *p)
 {
 	R(p)->ctl[3] &= ~(Rintena|Tintena|Rena|Tena);
 }
 
 static long
-sa1100_uartstatus(Uart *p, void *buf, long n, long offset)
+sa1110_uartstatus(Uart *p, void *buf, long n, long offset)
 {
 	char str[256];
 	ulong ctl0;
@@ -134,8 +129,8 @@ sa1100_uartstatus(Uart *p, void *buf, long n, long offset)
 
 		p->dev,
 		p->type,
-		p->frame,
-		p->overrun, 
+		p->ferr,
+		p->oerr, 
 		"",
 		"",
 		"",
@@ -146,14 +141,14 @@ sa1100_uartstatus(Uart *p, void *buf, long n, long offset)
 /*
  *  set the buad rate
  */
-static void
-sa1100_uartbaud(Uart *p, int rate)
+static int
+sa1110_uartbaud(Uart *p, int rate)
 {
 	ulong brconst;
 	ulong ctl3;
 
 	if(rate <= 0)
-		return;
+		return -1;
 
 	/* disable */
 	ctl3 = R(p)->ctl[3];
@@ -165,14 +160,16 @@ sa1100_uartbaud(Uart *p, int rate)
 
 	/* reenable */
 	R(p)->ctl[3] = ctl3;
+
 	p->baud = rate;
+	return 0;
 }
 
 /*
  *  send a break
  */
 static void
-sa1100_uartbreak(Uart *p, int ms)
+sa1110_uartbreak(Uart *p, int ms)
 {
 	if(ms == 0)
 		ms = 200;
@@ -185,62 +182,74 @@ sa1100_uartbreak(Uart *p, int ms)
 /*
  *  set bits/char
  */
-static void
-sa1100_uartbits(Uart *p, int n)
+static int
+sa1110_uartbits(Uart *p, int n)
 {
-	ulong ctl3;
+	ulong ctl0, ctl3;
+
+	ctl0 = R(p)->ctl[0];
+	switch(n){
+	case 7:
+		ctl0 &= ~Bits8;
+		break;
+	case 8:
+		ctl0 |= Bits8;
+		break;
+	default:
+		return -1;
+	}
 
 	/* disable */
 	ctl3 = R(p)->ctl[3];
 	R(p)->ctl[3] = 0;
 
-	switch(n){
-	case 7:
-		R(p)->ctl[0] &= ~Bits8;
-		break;
-	case 8:
-		R(p)->ctl[0] |= Bits8;
-		break;
-	default:
-		error(Ebadarg);
-	}
+	R(p)->ctl[0] = ctl0;
 
 	/* reenable */
 	R(p)->ctl[3] = ctl3;
+
+	p->bits = n;
+	return 0;
 }
 
 /*
  *  set stop bits
  */
-static void
-sa1100_uartstop(Uart *p, int n)
+static int
+sa1110_uartstop(Uart *p, int n)
 {
-	ulong ctl3;
+	ulong ctl0, ctl3;
+
+	ctl0 = R(p)->ctl[0];
+	switch(n){
+	case 1:
+		ctl0 &= ~Stop2;
+		break;
+	case 2:
+		ctl0 |= Stop2;
+		break;
+	default:
+		return -1;
+	}
 
 	/* disable */
 	ctl3 = R(p)->ctl[3];
 	R(p)->ctl[3] = 0;
 
-	switch(n){
-	case 1:
-		R(p)->ctl[0] &= ~Stop2;
-		break;
-	case 2:
-		R(p)->ctl[0] |= Stop2;
-		break;
-	default:
-		error(Ebadarg);
-	}
+	R(p)->ctl[0] = ctl0;
 
 	/* reenable */
 	R(p)->ctl[3] = ctl3;
+
+	p->stop = n;
+	return 0;
 }
 
 /*
  *  turn on/off rts
  */
 static void
-sa1100_uartrts(Uart*, int)
+sa1110_uartrts(Uart*, int)
 {
 }
 
@@ -248,7 +257,7 @@ sa1100_uartrts(Uart*, int)
  *  turn on/off dtr
  */
 static void
-sa1100_uartdtr(Uart*, int)
+sa1110_uartdtr(Uart*, int)
 {
 }
 
@@ -256,7 +265,7 @@ sa1100_uartdtr(Uart*, int)
  *  turn on/off modem flow control on/off (rts/cts)
  */
 static void
-sa1100_uartmodemctl(Uart *p, int on)
+sa1110_uartmodemctl(Uart *p, int on)
 {
 	if(on) {
 	} else {
@@ -267,36 +276,41 @@ sa1100_uartmodemctl(Uart *p, int on)
 /*
  *  set parity
  */
-static void
-sa1100_uartparity(Uart *p, int type)
+static int
+sa1110_uartparity(Uart *p, int type)
 {
-	ulong ctl3;
+	ulong ctl0, ctl3;
+
+	ctl0 = R(p)->ctl[0];
+	switch(type){
+	case 'e':
+		ctl0 |= Parity|Even;
+		break;
+	case 'o':
+		ctl0 |= Parity;
+		break;
+	default:
+		ctl0 &= ~(Parity|Even);
+		break;
+	}
 
 	/* disable */
 	ctl3 = R(p)->ctl[3];
 	R(p)->ctl[3] = 0;
 
-	switch(type){
-	case 'e':
-		R(p)->ctl[0] |= Parity|Even;
-		break;
-	case 'o':
-		R(p)->ctl[0] |= Parity;
-		break;
-	default:
-		R(p)->ctl[0] &= ~(Parity|Even);
-		break;
-	}
+	R(p)->ctl[0] = ctl0;
 
 	/* reenable */
 	R(p)->ctl[3] = ctl3;
+
+	return 0;
 }
 
 /*
  *  restart output if not blocked and OK to send
  */
 static void
-sa1100_uartkick(Uart *p)
+sa1110_uartkick(Uart *p)
 {
 	int i;
 
@@ -317,48 +331,10 @@ sa1100_uartkick(Uart *p)
 }
 
 /*
- *  for iprint, just write it
- */
-void
-serialputs(char *str, int n)
-{
-	Uartregs *ur;
-
-	ur = uart3regs;
-	while(n-- > 0){
-		/* wait for output ready */
-		while((ur->status[1] & Tnotfull) == 0)
-			;
-		ur->data = *str++;
-	}
-	while((ur->status[1] & Tbusy))
-		;
-}
-
-/*
- *  for iprint, just write it
- */
-void
-serialµcputs(uchar *str, int n)
-{
-	Uartregs *ur;
-
-	ur = uart1regs;
-	while(n-- > 0){
-		/* wait for output ready */
-		while((ur->status[1] & Tnotfull) == 0)
-			;
-		ur->data = *str++;
-	}
-	while((ur->status[1] & Tbusy))
-		;
-}
-
-/*
  *  take an interrupt
  */
 static void
-sa1100_uartintr(Ureg*, void *x)
+sa1110_uartintr(Ureg*, void *x)
 {
 	Uart *p;
 	ulong s;
@@ -384,14 +360,79 @@ sa1100_uartintr(Ureg*, void *x)
 		if(s & ParityError)
 			p->parity++;
 		if(s & FrameError)
-			p->frame++;
+			p->ferr++;
 		if(s & Overrun)
-			p->overrun++;
+			p->oerr++;
 	}
 
 	/* receiver interrupt, snarf bytes */
 	while(regs->status[1] & Rnotempty)
 		uartrecv(p, regs->data);
+}
+
+static Uart*
+sa1110_pnp(void)
+{
+	return sa1110uart;
+}
+
+PhysUart sa1110physuart = {
+	.name=		"sa1110",
+	.pnp= 		sa1110_pnp,
+	.enable=	sa1110_uartenable,
+	.disable=	sa1110_uartdisable,
+	.bits=		sa1110_uartbits,
+	.kick=		sa1110_uartkick,
+	.modemctl=	sa1110_uartmodemctl,
+	.baud=		sa1110_uartbaud,
+	.stop=		sa1110_uartstop,
+	.parity=	sa1110_uartparity,
+	.dobreak=	sa1110_uartbreak,
+	.rts=		sa1110_uartrts,
+	.dtr=		sa1110_uartdtr,
+	.status=	sa1110_uartstatus,
+};
+
+/*
+ *  for iprint, just write it
+ */
+static void
+sa1110puts(char *str, int n)
+{
+	Uartregs *ur;
+
+	if(consuart == nil)
+		return;
+	ur = consuart->regs;
+	while(n-- > 0){
+		/* wait for output ready */
+		while((ur->status[1] & Tnotfull) == 0)
+			;
+		ur->data = *str++;
+	}
+	while((ur->status[1] & Tbusy))
+		;
+}
+
+/*
+ *  for iprint, just write it
+ */
+void
+serialµcputs(uchar *str, int n)
+{
+	Uartregs *ur;
+
+	if(µcuart == nil)
+		return;
+	ur = µcuart->regs;
+	while(n-- > 0){
+		/* wait for output ready */
+		while((ur->status[1] & Tnotfull) == 0)
+			;
+		ur->data = *str++;
+	}
+	while((ur->status[1] & Tbusy))
+		;
 }
 
 typedef struct Gpclkregs Gpclkregs;
@@ -417,25 +458,32 @@ Gpclkregs *gpclkregs;
  *  a serial port)
  */
 void
-sa1100_uartsetup(int console)
+sa1110_uartsetup(int console)
 {
 	Uart *p;
 
 	/* external serial port (eia0) */
-	uart3regs = mapspecial(UART3REGS, 64);
-	p = uartsetup(&sa1100_uart, uart3regs, ClockFreq, "serialport3");
-	intrenable(IRQ, IRQuart3, sa1100_uartintr, p, p->name);
+	p = &sa1110uart[0];
+	p->regs = mapspecial(UART3REGS, 64);
 
 	/* set eia0 up as a console */
-	if(console)
-		uartspecial(p, 115200, &kbdq, &printq, kbdcr2nl);
+	if(console){
+		uartctl(p, "b115200 l8 pn s1");
+		consuart = p;
+		(*p->phys->enable)(p, 0);
+		serialputs = sa1110puts;
+		p->console = 1;
+	}
+	intrenable(IRQ, IRQuart3, sa1110_uartintr, p, p->name);
 
 	/* port for talking to microcontroller (eia1) */
 	gpclkregs = mapspecial(GPCLKREGS, 64);
 	gpclkregs->r0 = Gpclk_sus;	/* set uart mode */
-	uart1regs = mapspecial(UART1REGS, 64);
 
-	p = uartsetup(&sa1100_uart, uart1regs, ClockFreq, "serialport1");
-	uartspecial(p, 115200, 0, 0, µcputc);
-	intrenable(IRQ, IRQuart1b, sa1100_uartintr, p, p->name);
+	p = &sa1110uart[1];
+	p->regs = mapspecial(UART1REGS, 64);
+	uartctl(p, "b115200 l8 pn s1");
+	µcuart = p;
+	(*p->phys->enable)(p, 0);
+	intrenable(IRQ, IRQuart1b, sa1110_uartintr, p, p->name);
 }

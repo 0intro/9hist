@@ -77,9 +77,10 @@ enum{
 };
 
 static Dirtab mousedir[]={
-	"mouse",	{Qmouse},		0,			0666,
-	"mousein",	{Qmousein},		0,			0220,
-	"mousectl",	{Qmousectl},	0,			0660,
+	".",			{Qdir, 0, QTDIR},	0,	DMDIR|0555,
+	"mouse",		{Qmouse},		0,	0666,
+	"mousein",	{Qmousein},		0,	0220,
+	"mousectl",	{Qmousectl},		0,	0660,
 };
 
 static uchar buttonmap[8] = {
@@ -145,32 +146,23 @@ penmouseattach(char *spec)
 	return devattach('m', spec);
 }
 
-static Chan*
-penmouseclone(Chan *c, Chan *nc)
+static Walkqid*
+penmousewalk(Chan *c, Chan *nc, char **name, int nname)
 {
-	nc = devclone(c, nc);
-	if(c->qid.path != CHDIR)
-		incref(&mouse);
-	return nc;
+	return devwalk(c, nc, name, nname, mousedir, nelem(mousedir), devgen);
 }
 
 static int
-penmousewalk(Chan *c, char *name)
+penmousestat(Chan *c, uchar *db, int n)
 {
-	return devwalk(c, name, mousedir, nelem(mousedir), devgen);
-}
-
-static void
-penmousestat(Chan *c, char *db)
-{
-	devstat(c, db, mousedir, nelem(mousedir), devgen);
+	return devstat(c, db, n, mousedir, nelem(mousedir), devgen);
 }
 
 static Chan*
 penmouseopen(Chan *c, int omode)
 {
-	switch(c->qid.path){
-	case CHDIR:
+	switch((ulong)c->qid.path){
+	case Qdir:
 		if(omode != OREAD)
 			error(Eperm);
 		break;
@@ -214,7 +206,7 @@ penmousecreate(Chan*, char*, int, ulong)
 static void
 penmouseclose(Chan *c)
 {
-	if(c->qid.path!=CHDIR && (c->flag&COPEN)){
+	if(c->qid.path != Qdir && (c->flag&COPEN)){
 		lock(&mouse);
 		if(c->qid.path == Qmouse)
 			mouse.open = 0;
@@ -235,8 +227,8 @@ penmouseread(Chan *c, void *va, long n, vlong)
 	static int map[8] = {0, 4, 2, 6, 1, 5, 3, 7 };
 	Mousestate m;
 
-	switch(c->qid.path){
-	case CHDIR:
+	switch((ulong)c->qid.path){
+	case Qdir:
 		return devdirread(c, va, n, mousedir, nelem(mousedir), devgen);
 
 	case Qmousectl:
@@ -334,8 +326,8 @@ penmousewrite(Chan *c, void *va, long n, vlong)
 	int nf, b;
 
 	p = va;
-	switch(c->qid.path){
-	case CHDIR:
+	switch((ulong)c->qid.path){
+	case Qdir:
 		error(Eisdir);
 
 	case Qmousectl:
@@ -419,7 +411,6 @@ Dev penmousedevtab = {
 	penmousereset,
 	penmouseinit,
 	penmouseattach,
-	penmouseclone,
 	penmousewalk,
 	penmousestat,
 	penmouseopen,

@@ -89,7 +89,7 @@ init0(void)
 	up->slash = namec("#/", Atodir, 0, 0);
 	cnameclose(up->slash->name);
 	up->slash->name = newcname("/");
-	up->dot = cclone(up->slash, 0);
+	up->dot = cclone(up->slash);
 
 	chandevinit();
 
@@ -188,8 +188,9 @@ userinit(void)
 	p->rgrp = newrgrp();
 	p->procmode = 0640;
 
-	strcpy(p->text, "*init*");
-	strcpy(p->user, eve);
+	kstrdup(&eve, "");
+	kstrdup(&p->text, "*init*");
+	kstrdup(&p->user, eve);
 
 	/*
 	 * Kernel Stack

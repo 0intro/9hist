@@ -22,7 +22,7 @@ struct Intrregs *intrregs;
 
 typedef struct Vctl {
 	Vctl*	next;			/* handlers on this vector */
-	char	name[NAMELEN];		/* of driver */
+	char	*name;		/* of driver, xallocated */
 	void	(*f)(Ureg*, void*);	/* handler to call */
 	void*	a;			/* argument to call it with */
 } Vctl;
@@ -133,8 +133,8 @@ irqenable(int irq, IntrHandler *f, void* a, char *name)
 	v = xalloc(sizeof(Vctl));
 	v->f = f;
 	v->a = a;
-	strncpy(v->name, name, NAMELEN-1);
-	v->name[NAMELEN-1] = 0;
+	v->name = xalloc(strlen(name)+1);
+	strcpy(v->name, name);
 
 	lock(&vctllock);
 	v->next = vctl[irq];
@@ -172,8 +172,8 @@ intrenable(int type, int which, IntrHandler *f, void* a, char *name)
 	v = xalloc(sizeof(Vctl));
 	v->f = f;
 	v->a = a;
-	strncpy(v->name, name, NAMELEN-1);
-	v->name[NAMELEN-1] = 0;
+	v->name = xalloc(strlen(name)+1);
+	strcpy(v->name, name);
 
 	lock(&vctllock);
 	v->next = gpiovctl[which];
@@ -206,7 +206,7 @@ static void
 faultarm(Ureg *ureg, ulong va, int user, int read)
 {
 	int n, insyscall;
-	char buf[ERRLEN];
+	char buf[ERRMAX];
 
 	insyscall = up->insyscall;
 	up->insyscall = 1;
@@ -250,7 +250,7 @@ trap(Ureg *ureg)
 	ulong inst;
 	int user, x, rv;
 	ulong va, fsr;
-	char buf[ERRLEN];
+	char buf[ERRMAX];
 	int rem;
 
 	if(up != nil)
@@ -531,7 +531,7 @@ noted(Ureg* ureg, ulong arg0)
 			pexit("Suicide", 0);
 		}
 		qunlock(&up->debug);
-		sp = oureg-4*BY2WD-ERRLEN;
+		sp = oureg-4*BY2WD-ERRMAX;
 		splhi();
 		ureg->sp = sp;
 		((ulong*)sp)[1] = oureg;	/* arg 1 0(FP) is ureg* */
@@ -575,8 +575,8 @@ notify(Ureg* ureg)
 	n = &up->note[0];
 	if(strncmp(n->msg, "sys:", 4) == 0){
 		l = strlen(n->msg);
-		if(l > ERRLEN-15)	/* " pc=0x12345678\0" */
-			l = ERRLEN-15;
+		if(l > ERRMAX-15)	/* " pc=0x12345678\0" */
+			l = ERRMAX-15;
 		sprint(n->msg+l, " pc=0x%.8lux", ureg->pc);
 	}
 
@@ -601,7 +601,7 @@ notify(Ureg* ureg)
 	sp -= sizeof(Ureg);
 
 	if(!okaddr((ulong)up->notify, 1, 0)
-	|| !okaddr(sp-ERRLEN-4*BY2WD, sizeof(Ureg)+ERRLEN+4*BY2WD, 1)){
+	|| !okaddr(sp-ERRMAX-4*BY2WD, sizeof(Ureg)+ERRMAX+4*BY2WD, 1)){
 		pprint("suicide: bad address in notify\n");
 		qunlock(&up->debug);
 		pexit("Suicide", 0);
@@ -611,8 +611,8 @@ notify(Ureg* ureg)
 	memmove((Ureg*)sp, ureg, sizeof(Ureg));
 	*(Ureg**)(sp-BY2WD) = up->ureg;	/* word under Ureg is old up->ureg */
 	up->ureg = (void*)sp;
-	sp -= BY2WD+ERRLEN;
-	memmove((char*)sp, up->note[0].msg, ERRLEN);
+	sp -= BY2WD+ERRMAX;
+	memmove((char*)sp, up->note[0].msg, ERRMAX);
 	sp -= 3*BY2WD;
 	*(ulong*)(sp+2*BY2WD) = sp+3*BY2WD;	/* arg 2 is string */
 	*(ulong*)(sp+1*BY2WD) = (ulong)up->ureg;	/* arg 1 is ureg* */

@@ -34,8 +34,8 @@ enum
 	 Clevel=	 (1<<6),	/*  level sensitive interrupt line */
 };
 
-#define SLOTNO(c)	((c->qid.path>>8)&0xff)
-#define TYPE(c)		(c->qid.path&0xff)
+#define SLOTNO(c)	((ulong)((c->qid.path>>8)&0xff))
+#define TYPE(c)	((ulong)(c->qid.path&0xff))
 #define QID(s,t)	(((s)<<8)|(t))
 
 static void increfp(PCMslot*);
@@ -45,16 +45,16 @@ static void slottiming(int, int, int, int, int);
 static void slotinfo(Ureg*, void*);
 
 static int
-pcmgen(Chan *c, Dirtab *, int , int i, Dir *dp)
+pcmgen(Chan *c, char *, Dirtab * , int, int i, Dir *dp)
 {
 	int slotno;
 	Qid qid;
 	long len;
 	PCMslot *sp;
-	char name[NAMELEN];
 
 	if(i == DEVDOTDOT){
-		devdir(c, (Qid){CHDIR, 0}, "#y", 0, eve, 0555, dp);
+		mkqid(&qid, Qdir, 0, QTDIR);
+		devdir(c, qid, "#y", 0, eve, 0555, dp);
 		return 1;
 	}
 
@@ -67,21 +67,21 @@ pcmgen(Chan *c, Dirtab *, int , int i, Dir *dp)
 	switch(i%Nents){
 	case 0:
 		qid.path = QID(slotno, Qmem);
-		sprint(name, "pcm%dmem", slotno);
+		snprint(up->genbuf, sizeof up->genbuf, "pcm%dmem", slotno);
 		len = sp->memlen;
 		break;
 	case 1:
 		qid.path = QID(slotno, Qattr);
-		sprint(name, "pcm%dattr", slotno);
+		snprint(up->genbuf, sizeof up->genbuf, "pcm%dattr", slotno);
 		len = sp->memlen;
 		break;
 	case 2:
 		qid.path = QID(slotno, Qctl);
-		sprint(name, "pcm%dctl", slotno);
+		snprint(up->genbuf, sizeof up->genbuf, "pcm%dctl", slotno);
 		break;
 	}
 	qid.vers = 0;
-	devdir(c, qid, name, len, eve, 0660, dp);
+	devdir(c, qid, up->genbuf, len, eve, 0660, dp);
 	return 1;
 }
 
@@ -125,22 +125,22 @@ pcmciaattach(char *spec)
 	return devattach('y', spec);
 }
 
-static int
-pcmciawalk(Chan *c, char *name)
+static Walkqid*
+pcmciawalk(Chan *c, Chan *nc, char **name, int nname)
 {
-	return devwalk(c, name, 0, 0, pcmgen);
+	return devwalk(c, nc, name, nname, 0, 0, pcmgen);
 }
 
-static void
-pcmciastat(Chan *c, char *db)
+static int
+pcmciastat(Chan *c, uchar *db, int n)
 {
-	devstat(c, db, 0, 0, pcmgen);
+	return devstat(c, db, n, 0, 0, pcmgen);
 }
 
 static Chan*
 pcmciaopen(Chan *c, int omode)
 {
-	if(c->qid.path == CHDIR){
+	if(c->qid.type & QTDIR){
 		if(omode != OREAD)
 			error(Eperm);
 	} else
@@ -155,7 +155,7 @@ static void
 pcmciaclose(Chan *c)
 {
 	if(c->flag & COPEN)
-		if(c->qid.path != CHDIR)
+		if((c->qid.type & QTDIR) == 0)
 			decrefp(slot+SLOTNO(c));
 }
 
@@ -320,8 +320,7 @@ pcmctlwrite(char *p, long n, ulong, PCMslot *sp)
 		}
 
 		/* configure device */
-		strncpy(cf.type, cmd->f[2], sizeof(cf.type)-1);
-		cf.type[sizeof(cf.type)-1] = 0;
+		kstrdup(&cf.type, cmd->f[2]);
 		cf.mem = (ulong)sp->mem;
 		cf.port = (ulong)sp->regs;
 		cf.itype = GPIOfalling;
@@ -374,7 +373,6 @@ Dev pcmciadevtab = {
 	pcmciareset,
 	devinit,
 	pcmciaattach,
-	devclone,
 	pcmciawalk,
 	pcmciastat,
 	pcmciaopen,

@@ -420,7 +420,7 @@ enum
 };
 
 #define SLOTNO(c)	((ulong)((c->qid.path>>8)&0xff))
-#define TYPE(c)		((ulong)(c->qid.path&0xff))
+#define TYPE(c)	((ulong)(c->qid.path&0xff))
 #define QID(s,t)	(((s)<<8)|(t))
 
 static int

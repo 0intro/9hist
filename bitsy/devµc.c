@@ -7,7 +7,8 @@
 #include	"../port/error.h"
 
 enum{
-	Qbacklight = 1,
+	Qdir,
+	Qbacklight,
 	Qbattery,
 	Qbuttons,
 	Qcruft,
@@ -48,19 +49,20 @@ enum {
 };
 
 Dirtab µcdir[]={
+	".",			{ Qdir, 0, QTDIR },	0,	DMDIR|0755,
 	"backlight",	{ Qbacklight, 0 },	0,	0664,
-	"battery",	{ Qbattery, 0 },	0,	0664,
-	"buttons",	{ Qbuttons, 0 },	0,	0664,
-	"cruft",	{ Qcruft, 0 },		0,	0664,
-	"kbdin",	{ Qkbdin, 0 },		0,	0664,
-	"led",		{ Qled, 0 },		0,	0664,
-	"version",	{ Qversion, 0 },	0,	0664,
+	"battery",		{ Qbattery, 0 },		0,	0664,
+	"buttons",		{ Qbuttons, 0 },		0,	0664,
+	"cruft",		{ Qcruft, 0 },		0,	0664,
+	"kbdin",		{ Qkbdin, 0 },		0,	0664,
+	"led",		{ Qled, 0 },			0,	0664,
+	"version",		{ Qversion, 0 },		0,	0664,
 };
 
 static struct µcontroller
 {
 	/* message being rcvd */
-	int	state;
+	int		state;
 	uchar	buf[16+4];
 	uchar	n;
 
@@ -261,16 +263,16 @@ static Chan*
 	return devattach('r', spec);
 }
 
-static int	 
-µcwalk(Chan* c, char* name)
+static Walkqid*
+µcwalk(Chan *c, Chan *nc, char **name, int nname)
 {
-	return devwalk(c, name, µcdir, nelem(µcdir), devgen);
+	return devwalk(c, nc, name, nname, µcdir, nelem(µcdir), devgen);
 }
 
-static void	 
-µcstat(Chan* c, char* dp)
+static int	 
+µcstat(Chan *c, uchar *dp, int n)
 {
-	devstat(c, dp, µcdir, nelem(µcdir), devgen);
+	return devstat(c, dp, n, µcdir, nelem(µcdir), devgen);
 }
 
 static Chan*
@@ -314,10 +316,10 @@ static long
 {
 	char buf[64];
 
-	if(c->qid.path & CHDIR)
+	if(c->qid.path == Qdir)
 		return devdirread(c, a, n, µcdir, nelem(µcdir), devgen);
 
-	switch(c->qid.path){
+	switch((ulong)c->qid.path){
 	case Qbattery:
 		sendmsgwithack(BLbattery, nil, 0);		/* send a battery request */
 		sprint(buf, "voltage: %d\nac: %s\nstatus: %s\n", ctlr.voltage,
@@ -361,7 +363,7 @@ static long
 	for(i = 0; i < cmd->nf; i++)
 		data[i] = atoi(cmd->f[i]);
 
-	switch(c->qid.path){
+	switch((ulong)c->qid.path){
 	case Qled:
 		sendmsgwithack(BLled, data, cmd->nf);
 		break;
@@ -384,7 +386,6 @@ Dev µcdevtab = {
 	devreset,
 	µcinit,
 	µcattach,
-	devclone,
 	µcwalk,
 	µcstat,
 	µcopen,

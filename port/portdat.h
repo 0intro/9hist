@@ -9,6 +9,7 @@ typedef struct Dirtab	Dirtab;
 typedef struct Egrp	Egrp;
 typedef struct Evalue	Evalue;
 typedef struct Fgrp	Fgrp;
+typedef struct DevConf	DevConf;
 typedef struct Image	Image;
 typedef struct List	List;
 typedef struct Log	Log;
@@ -197,6 +198,8 @@ struct Dev
 	long	(*bwrite)(Chan*, Block*, ulong);
 	void	(*remove)(Chan*);
 	int	(*wstat)(Chan*, uchar*, int);
+	void	(*power)(int);	/* power mgt: power(1) → on, power (0) → off */
+	int	(*config)(int, char*, DevConf*);
 };
 
 struct Dirtab

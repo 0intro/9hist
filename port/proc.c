@@ -544,10 +544,9 @@ tsleep(Rendez *r, int (*fn)(void*), void *arg, int ms)
 Proc*
 wakeup(Rendez *r)
 {
-	Proc *p, *rv;
+	Proc *p;
 	int s;
 
-	rv = 0;
 	s = splhi();
 
 	lock(r);
@@ -560,7 +559,6 @@ wakeup(Rendez *r)
 		r->p = nil;
 		p->r = nil;
 		ready(p);
-		rv = p;
 		unlock(&p->rlock);
 	}
 
@@ -568,7 +566,7 @@ wakeup(Rendez *r)
 
 	splx(s);
 
-	return rv;
+	return p;
 }
 
 /*
