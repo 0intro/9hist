@@ -16,6 +16,9 @@ int	cpuserver;
 ulong	romputcxsegm;
 ulong	bank[2];
 char	mempres[256];
+ulong	fbsz;
+char	fbstr[32];
+char	fbcrap[BY2PG];
 Label	catch;
 
 typedef struct Sysparam Sysparam;
@@ -135,7 +138,7 @@ init0(void)
 
 	print("Sun Sparcstation %s\n", sparam->name);
 	print("bank 0: %dM  1: %dM\n", bank[0], bank[1]);
-	print("frame buffer id %lux\n", conf.monitor);
+	print("frame buffer id %lux %lux %s\n", conf.monitor, fbsz, fbstr);
 
 	u->slash = (*devtab[0].attach)(0);
 	u->dot = clone(u->slash, 0);
@@ -285,16 +288,31 @@ confinit(void)
 		*(ulong*)va = 0;
 	putw4(va, INVALIDPTE);
 
-	/* map frame buffer id */
+	/* map frame buffer id; we expect it to be in SBUS slot 3 */
 	putw4(va, ((FRAMEBUFID>>PGSHIFT)&0xFFFF)|PTEVALID|PTEKERNEL|PTENOCACHE|PTEIO);
-	i = getpsr();
 	conf.monitor = 0;
 	/* if frame buffer not present, we will trap, so prepare to catch it */
 	if(setlabel(&catch) == 0){
-		setpsr(i|PSRET|(0xF<<8));	/* enable traps, not interrupts */
 		conf.monitor = *(ulong*)va;
+putw4(va, (((FRAMEBUFID+BY2PG)>>PGSHIFT)&0xFFFF)|PTEVALID|PTEKERNEL|PTENOCACHE|PTEIO);
+memmove(fbcrap, (void*)va, BY2PG);
+		j = *(ulong*)(va+4);
+		fbsz = j;
+		j = BY2PG - 8;	/* for safety */
+		for(i=0; i<j && fbstr[0]==0; i++)
+			switch(*(uchar*)(va+i)){
+			case 'b':
+				if(strncmp((char*)(va+i), "bwtwo", 5) == 0)
+					strcpy(fbstr, "bwtwo");
+				break;
+			case 'c':
+				if(strncmp((char*)(va+i), "cgthree", 7) == 0)
+					strcpy(fbstr, "cgthree");
+				if(strncmp((char*)(va+i), "cgsix", 5) == 0)
+					strcpy(fbstr, "cgsix");
+				break;
+			}
 	}
-	setpsr(i);
 	catch.pc = 0;
 	putw4(va, INVALIDPTE);
 

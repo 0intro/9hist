@@ -70,10 +70,7 @@ clock(Ureg *ur)
 			else
 				sched();
 		}
-		if((ur->psr&PSRPSUPER) == 0){
-			spllo();				/* Low because we may fault */
+		if((ur->psr&PSRPSUPER) == 0)
 			*(ulong*)(USTKTOP-BY2WD) += TK2MS(1);
-			splhi();				/* return hi for restore */
-		}
 	}
 }

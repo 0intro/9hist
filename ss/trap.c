@@ -108,7 +108,7 @@ trap(Ureg *ur)
 	 * Hack to catch bootstrap fault during probe
 	 */
 	if(catch.pc)
-		longjmp(&catch, 1);
+		gotolabel(&catch);
 
 	if(u)
 		u->dbgreg = ur;
@@ -245,6 +245,7 @@ trapinit(void)
 	*(ulong*)t = a;			/* CALL syscall(SB) */
 	*(ulong*)(t+4) = 0xa7480000;	/* MOVW PSR, R19 */
 	puttbr(TRAPS);
+	setpsr(getpsr()|PSRET|SPL(15));	/* enable traps, not interrupts */
 }
 
 void

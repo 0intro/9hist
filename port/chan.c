@@ -544,6 +544,8 @@ namec(char *name, int amode, int omode, ulong perm)
 		c = (*devtab[c->type].open)(c, omode);
 		if(omode & OCEXEC)
 			c->flag |= CCEXEC;
+		if(omode & ORCLOSE)
+			c->flag |= CRCLOSE;
 		break;
 
 	case Amount:

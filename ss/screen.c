@@ -49,7 +49,7 @@ screeninit(void)
 	if(conf.monitor){
 		s = screens;
 		goto found;
-	]
+	}
 	conf.monitor = 0;
 	return;
 

@@ -105,7 +105,7 @@ uchar kbtabesc1[] =
 KIOQ	kbdq;
 
 static int mousebuttons;
-static int middlebutton;
+static int keybuttons;
 
 /*
  *  predeclared
@@ -212,6 +212,9 @@ kbdinit(void)
 		if(mousecmd(0xEA) < 0
 		|| mousecmd(0xF4) < 0)
 			print("can't initialize mouse\n");
+
+		/* turn on mouse acceleration */
+		mousecmd(0xE7);
 		break;
 	case At:
 		/* enable kbd xfers and interrupts */
@@ -257,7 +260,7 @@ mymouseputc(int c)
 			msg[2] |= 0xFF00;
 
 		mousebuttons = b[msg[0]&7];
-		mouse.newbuttons = mousebuttons | middlebutton;
+		mouse.newbuttons = mousebuttons | keybuttons;
 		mouse.dx = msg[1];
 		mouse.dy = -msg[2];
 		mouse.track = 1;
@@ -270,10 +273,21 @@ mymouseputc(int c)
  *  Ctrl key used as middle button pressed
  */
 static void
-middle(int newval)
+mbon(int val)
 {
-	middlebutton = newval;
-	mouse.newbuttons = mousebuttons | middlebutton;
+	keybuttons |= val;
+	mouse.newbuttons = mousebuttons | keybuttons;
+	mouse.dx = 0;
+	mouse.dy = 0;
+	mouse.track = 1;
+	spllo();		/* mouse tracking kills uart0 */
+	mouseclock();
+}
+static void
+mboff(int val)
+{
+	keybuttons &= ~val;
+	mouse.newbuttons = mousebuttons | keybuttons;
 	mouse.dx = 0;
 	mouse.dy = 0;
 	mouse.track = 1;
@@ -360,8 +374,14 @@ kbdintr0(void)
 		case Ctrl:
 			ctl = 0;
 			break;
-		case Middle:
-			middle(0);
+		case KF|1:
+			mboff(4);
+			break;
+		case KF|2:
+			mboff(2);
+			break;
+		case KF|3:
+			mboff(1);
 			break;
 		}
 		return 0;
@@ -424,8 +444,14 @@ kbdintr0(void)
 		case Ctrl:
 			ctl = 1;
 			return 0;
-		case Middle:
-			middle(2);
+		case KF|1:
+			mbon(4);
+			return 0;
+		case KF|2:
+			mbon(2);
+			return 0;
+		case KF|3:
+			mbon(1);
 			return 0;
 		}
 	}

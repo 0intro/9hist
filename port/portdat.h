@@ -145,6 +145,7 @@ enum
 #define	CCREATE	4			/* permits creation if c->mnt */
 #define	CCEXEC	8			/* close on exec */
 #define	CFREE	16			/* not in use */
+#define	CRCLOSE	32			/* remove on close */
 
 struct Chan
 {

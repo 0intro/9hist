@@ -1,6 +1,6 @@
 #include "mem.h"
 
-#define	SYSPSR	(SPL(0x0)|PSREF|PSRSUPER|0)
+#define	SYSPSR	(SPL(0x0)|PSREF|PSRET|PSRSUPER|SPL(15)|0)
 #define	NOOP	ORN R0, R0; ORN R0, R0; ORN R0, R0
 
 TEXT	start(SB), $-4
@@ -90,7 +90,7 @@ TEXT	spllo(SB), $0
 
 	MOVW	PSR, R7
 	MOVW	R7, R10
-	OR	$PSRET, R10
+	ANDN	$SPL(15), R10
 	MOVW	R10, PSR
 	NOOP
 	RETURN
@@ -100,7 +100,7 @@ TEXT	splhi(SB), $0
 	MOVW	R15, 4(R(MACH))	/* save PC in m->splpc */
 	MOVW	PSR, R7
 	MOVW	R7, R10
-	AND	$~PSRET, R10	/* BUG: book says this is buggy */
+	OR	$SPL(15), R10
 	MOVW	R10, PSR
 	NOOP
 	RETURN
@@ -117,7 +117,7 @@ TEXT	spldone(SB), $0
 	RETURN
 
 TEXT	touser(SB), $0
-	MOVW	$(SYSPSR&~PSREF), R8
+	MOVW	$(SYSPSR&~(PSREF|PSRET|SPL(15))), R8
 	MOVW	R8, PSR
 	NOOP
 

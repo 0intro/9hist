@@ -616,7 +616,7 @@ bitread(Chan *c, void *va, long n, ulong offset)
 		n = 3;
 	}else if(bit.cacheid >= 0){
 		/*
-		 * allocate subfont:
+		 * check cache for subfont:
 		 *	'J'		1
 		 *	subfont id	2
 		 *	font info	3*12

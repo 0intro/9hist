@@ -216,7 +216,7 @@ fixq(FPsave *f, int n)
  * traps if you touch it when an exception is pending, and because if you
  * trap with ET==0 you halt, this routine sets some global flags to enable
  * the rest of the system to handle the trap that might occur here without
- * upsetting the kernel.
+ * upsetting the kernel.  Shouldn't be necessary, but safety first.
  */
 int
 fpquiet(void)
@@ -231,12 +231,9 @@ fpquiet(void)
 	u->p->fpstate = FPinactive;
 	for(;;){
 		m->fptrap = 0;
-		spllo();
 		fsr = getfsr();
-		splhi();
 		if(m->fptrap){
 			/* trap occurred and u->fpsave contains state */
-			spllo();
 			sprint(buf, "sys: %s", excname(8));
 			postnote(u->p, 1, buf, NDebug);
 			notrap = 0;

@@ -7,7 +7,7 @@
 #include	"devtab.h"
 #include	"io.h"
 
-int	scsiownid = 7;
+uchar	scsiownid = 7;
 int	scsidebugs[8];
 
 static int	dmatype;
@@ -106,6 +106,7 @@ resetscsi(void)
 	dmatype = (dma->csr>>28) & 0xF;
 
 	putenab(getenab()|ENABDMA); /**/
+print("scsi config #%2.2ux\n", dev->config);
 }
 
 void

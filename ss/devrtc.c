@@ -32,7 +32,6 @@ static struct
 	RTCdev	*rtc;
 }nvr;
 
-
 enum{
 	Qrtc = 1,
 	Qnvram,
