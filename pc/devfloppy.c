@@ -645,7 +645,7 @@ floppycmd(void)
 	fl.nstat = 0;
 	for(i = 0; i < fl.ncmd; i++){
 		for(tries = 0; ; tries++){
-			if(tries > 1000){
+			if(tries > 10000){
 				DPRINT("cmd %ux can't be sent (%d %ux)\n",
 					fl.cmd[0], i, inb(Pmsr));
 				fl.confused = 1;
@@ -769,7 +769,7 @@ floppyrecal(Drive *dp)
 		return -1;
 	floppywait();
 	if(fl.nstat < 2){
-		DPRINT("recalibrate: confused\n");
+		DPRINT("recalibrate: confused %ux\n", inb(Pmsr));
 		fl.confused = 1;
 		return -1;
 	}
@@ -816,7 +816,7 @@ floppyrevive(void)
 		floppywait();
 		fl.confused = 0;
 		outb(Pdsr, 0);
-		fl.rate = 0;
+		fl.rate = -1;
 	}
 }
 
