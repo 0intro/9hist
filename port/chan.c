@@ -664,6 +664,8 @@ namec(char *name, int amode, int omode, ulong perm)
 		cname = newcname(name);	/* save this before advancing */
 		name = skipslash(name);
 		c = cclone(up->slash, 0);
+		if(*name == 0)
+			isdot = 1;
 		break;
 	case '#':
 		cname = newcname(name);	/* save this before advancing */

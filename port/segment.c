@@ -158,7 +158,6 @@ dupseg(Segment **seg, int segno, int share)
 	case SG_TEXT:		/* New segment shares pte set */
 	case SG_SHARED:
 	case SG_PHYSICAL:
-	case SG_SHDATA:
 		goto sameseg;
 
 	case SG_STACK:
@@ -166,13 +165,8 @@ dupseg(Segment **seg, int segno, int share)
 		break;
 
 	case SG_BSS:		/* Just copy on write */
-	case SG_MAP:
-		if(share) {
-			if(s->ref != 1)
-				print("Fuckin A cap'n!\n");
-			s->type = (s->type&~SG_TYPE)|SG_SHARED;
+		if(share)
 			goto sameseg;
-		}
 		n = newseg(s->type, s->base, s->size);
 		break;
 
@@ -183,12 +177,8 @@ dupseg(Segment **seg, int segno, int share)
 			return data2txt(s);
 		}
 
-		if(share) {
-			if(s->ref != 1)
-				print("Fuckin A again cap'n!\n");
-			s->type = (s->type&~SG_TYPE)|SG_SHDATA;
+		if(share)
 			goto sameseg;
-		}
 		n = newseg(s->type, s->base, s->size);
 
 		incref(s->image);
@@ -203,6 +193,8 @@ dupseg(Segment **seg, int segno, int share)
 			n->map[i] = ptecpy(pte);
 
 	n->flushme = s->flushme;
+	if(s->ref > 1)
+		procflushseg(s);
 	poperror();
 	qunlock(&s->lk);
 	return n;
@@ -531,13 +523,8 @@ mfreeseg(Segment *s, ulong start, int pages)
 	}
 out:
 	/* flush this seg in all other processes */
-	i = s->type&SG_TYPE;
-	switch(i){
-	case SG_SHARED:
-	case SG_SHDATA:
+	if(s->ref > 1)
 		procflushseg(s);
-		break;
-	}
 
 	/* free the pages */
 	for(pg = list; pg != nil; pg = list){

@@ -40,6 +40,8 @@ extern	uchar rdbgcode[];
 extern	ulong	rdbglen;
 extern	int	noprint;
 
+static void	addps(void);
+
 void
 main(void)
 {
@@ -63,6 +65,7 @@ main(void)
 	procinit0();
 	initseg();
 	links();
+	addps();
 	chandevreset();
 	swapinit();
 	userinit();
@@ -589,4 +592,25 @@ return;/**/
 
 	/* Install the debugger code in a known place */
 	memmove((void*)0xA001C000, rdbgcode, rdbglen);
+}
+
+/*
+ *  physical segs unique to the carrera
+ */
+static Physseg myphyssegs[] =
+{
+	{ SG_PHYSICAL,	"eisaio",	Eisaphys,	64*1024,	0, 0 },
+	{ SG_PHYSICAL,	"eisavga",	Eisavgaphys,	128*1024,	0, 0 },
+	{ SG_PHYSICAL,	"bootrom",	0x1fc00000,	256*1024,	0, 0 },
+	{ SG_PHYSICAL,	"nvram",	0xe0009000,	12*1024,	0, 0 },
+	{ SG_PHYSICAL,	"fb",		0x40000000,	4*1024*1024,	0, 0 },
+};
+
+static void
+addps(void)
+{
+	int i;
+
+	for(i = 0; i < nelem(myphyssegs); i++)
+		addphysseg(&myphyssegs[i]);
 }
