@@ -43,7 +43,7 @@ enum
 	 ISA186ien=	 1<<7,		/*  I186 irq enable bit state */
 	 ISA186idata=	 1<<6,		/*  I186 irq data bit state */
 	 ISAmen=	 1<<4,		/*  enable memory to respond to ISA cycles */
-	 ISAmbank=	 0,		/*  shift for 4 bit memory bank */
+	 ISAmbank=	 0xf<<0,		/*  shift for 4 bit memory bank */
 	ISAmaddr=	3,		/* bits 14-19 of the boards mem address */
 	ISAstat1=	4,		/* board status (1 bit per channel) */
 	ISAstat2=	5,		/* board status (1 bit per channel) */
@@ -297,12 +297,14 @@ static void	astarctl(Astarchan*, char*);
 static void
 setpage(Astar *a, ulong offset)
 {
-	int i;
+	int i, c;
 
 	i = APAGE(offset);
 	if(i == a->page)
 		return;
-	outb(a->port+ISActl2, ISAmen|i);
+
+	c = inb(a->port+ISActl2) & ~ISAmbank;
+	outb(a->port+ISActl2, ISAmen|i|c);
 	a->page = i;
 }
 
@@ -394,6 +396,7 @@ astarreset(void)
 			continue;
 		}
 
+		/* check all possible names */
 		if(strcmp(a->type, "a100i") == 0 || strcmp(a->type,"A100I") == 0)
 			a->ramsize = 16*1024;
 		else if(strcmp(a->type, "a200i") == 0 || strcmp(a->type,"A200I") == 0)
@@ -404,6 +407,7 @@ astarreset(void)
 			continue;
 		}
 
+		/* defaults */
 		if(a->mem == 0)
 			a->mem = 0xD4000;
 		if(a->irq == 0)
@@ -415,21 +419,9 @@ astarreset(void)
 			astar[nastar] = 0;
 			continue;
 		}
-		print("serial%d avanstar port 0x%lux addr %lux irq %d\n", i, a->port,
+		print("serial%d avanstar port 0x%lux addr %lux irq %d\n", a->id, a->port,
 			a->addr, a->irq);
 		nastar++;
-
-		/* disable ISA memory response */
-		c = inb(a->port+ISActl2);
-		outb(a->port+ISActl2, c & ~ISAmen);
-
-		/* download mode to turn off cpu */
-		c = inb(a->port+ISActl1);
-		outb(a->port+ISActl1, c & ~ISAnotdl);
-		a->memsize = Pramsize;
-		a->page = -1;
-
-		setvec(Int0vec + a->irq, astarintr, a);
 	}
 }
 
@@ -453,7 +445,7 @@ astarprobe(int port)
 static int
 astarsetup(Astar *a)
 {
-	int i, found;
+	int i, c, found;
 
 	/* see if the card exists */
 	found = 0;
@@ -473,16 +465,29 @@ astarsetup(Astar *a)
 		return -1;
 	}
 
-	/* set memory address */
-	outb(a->port+ISAmaddr, (a->mem>>12) & 0xfc);
-	a->gcb = (GCB*)(KZERO | a->mem);
-	a->addr = (uchar*)(KZERO | a->mem);
-
-	/* set interrupt level */
+	/* check interrupt level */
 	if(isairqcode[a->irq] == -1){
 		print("Avanstar %d bad irq %d\n", a->id, a->irq);
 		return -1;
 	}
+
+	/* set ISA memory address */
+	outb(a->port+ISAmaddr, (a->mem>>12) & 0xfc);
+	a->gcb = (GCB*)(KZERO | a->mem);
+	a->addr = (uchar*)(KZERO | a->mem);
+
+	/* set up interrupt level, reset processor, leave interrupts off */
+	c = inb(a->port+ISActl1);
+	c &= ~(ISAnotdl|ISAien|ISAirq);
+	c |= isairqcode[a->irq];
+	outb(a->port+ISActl1, c);
+	setvec(Int0vec + a->irq, astarintr, a);
+
+	/* disable ISA memory response */
+	c = inb(a->port+ISActl2);
+	outb(a->port+ISActl2, c & ~ISAmen);
+	a->memsize = 0;
+	a->page = -1;
 
 	return 0;
 }
@@ -717,7 +722,7 @@ memwrite(Astar *a, uchar *from, long n, ulong offset)
 static void
 startcp(Astar *a)
 {
-	int n, i, sz;
+	int c, n, i, sz;
 	uchar *x;
 	CCB *ccb;
 	Astarchan *ac;
@@ -727,9 +732,9 @@ startcp(Astar *a)
 
 	/* take board out of download mode and enable IRQ */
 print("out of download\n");
-	outb(a->port+ISActl1, ISAien|isairqcode[a->irq]|ISAnotdl);
+	c = inb(a->port+ISActl1);
+	outb(a->port+ISActl1, c|ISAien|ISAnotdl);
 	a->memsize = a->ramsize;
-	setpage(a, 0);
 	if(a->memsize <= Pagesize)
 		a->needpage = 0;
 	else
@@ -827,6 +832,7 @@ bctlwrite(Astar *a, char *cmsg)
 		a->needpage = 1;
 
 		/* enable ISA access to first 16k */
+		a->page = -1;
 		setpage(a, 0);
 
 	} else if(strncmp(cmsg, "sharedmem", 9) == 0){
@@ -836,7 +842,8 @@ bctlwrite(Astar *a, char *cmsg)
 		a->memsize = a->ramsize;
 
 		/* enable ISA access to first 16k */
-		outb(a->port+ISActl2, ISAmen);
+		a->page = -1;
+		setpage(a, 0);
 
 	} else if(strncmp(cmsg, "run", 3) == 0){
 		/* start up downloaded program */

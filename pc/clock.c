@@ -94,19 +94,19 @@ typedef struct
 X86type x86type[] =
 {
 	/* from the cpuid instruction */
-	{ 4,	0,	24,	"Intel486DX", },
-	{ 4,	1,	24,	"Intel486DX", },
-	{ 4,	2,	24,	"Intel486SX", },
-	{ 4,	3,	24,	"Intel486DX2", },
-	{ 4,	4,	24,	"Intel486DX2", },
-	{ 4,	5,	24,	"Intel486SL", },
-	{ 4,	8,	24,	"IntelDX4", },
+	{ 4,	0,	22,	"Intel486DX", },
+	{ 4,	1,	22,	"Intel486DX", },
+	{ 4,	2,	22,	"Intel486SX", },
+	{ 4,	3,	22,	"Intel486DX2", },
+	{ 4,	4,	22,	"Intel486DX2", },
+	{ 4,	5,	22,	"Intel486SL", },
+	{ 4,	8,	22,	"IntelDX4", },
 	{ 5,	1,	23,	"Pentium510", },
 	{ 5,	2,	23,	"Pentium735", },
 
 	/* family defaults */
 	{ 3,	-1,	32,	"Intel386", },
-	{ 4,	-1,	24,	"Intel486", },
+	{ 4,	-1,	22,	"Intel486", },
 	{ 5,	-1,	23,	"Pentium", },
 
 	/* total default */
