@@ -415,9 +415,20 @@ stageoutput(Uart *p)
 static void
 ns16552kick0(Uart *p)
 {
+	int i;
+
 	if(p->cts == 0 || p->blocked)
 		return;
-	while(uartrdreg(p, Lstat) & Outready){
+
+	/*
+	 *  128 here is an arbitrary limit to make sure
+	 *  we don't stay in this loop too long.  If the
+	 *  chips output queue is longer than 128, too
+	 *  bad -- presotto
+	 */
+	for(i = 0; i < 128; i++){
+		if(!(uartrdreg(p, Lstat) & Outready))
+			break;
 		if(p->op >= p->oe && stageoutput(p) == 0)
 			break;
 		outb(p->port + Data, *(p->op++));
@@ -612,28 +623,32 @@ uartclock(void)
 	for(p = uartalloc.elist; p; p = p->elist){
 
 		/* this amortizes cost of qproduce to many chars */
-		lock(&p->rlock);
 		if(p->haveinput){
-			n = p->ip - p->istage;
-			if(n > 0 && p->iq){
-				if(n > Stagesize)
-					panic("uartclock");
-				if(qproduce(p->iq, p->istage, n) < 0)
-					ns16552rts(p, 0);
-				else
-					p->ip = p->istage;
+			lock(&p->rlock);
+			if(p->haveinput){
+				n = p->ip - p->istage;
+				if(n > 0 && p->iq){
+					if(n > Stagesize)
+						panic("uartclock");
+					if(qproduce(p->iq, p->istage, n) < 0)
+						ns16552rts(p, 0);
+					else
+						p->ip = p->istage;
+				}
+				p->haveinput = 0;
 			}
-			p->haveinput = 0;
+			unlock(&p->rlock);
 		}
-		unlock(&p->rlock);
 
 		/* this adds hysteresis to hardware flow control */
-		lock(&p->tlock);
 		if(p->ctsbackoff){
-			if(--(p->ctsbackoff) == 0)
-				ns16552kick0(p);
+			lock(&p->tlock);
+			if(p->ctsbackoff){
+				if(--(p->ctsbackoff) == 0)
+					ns16552kick0(p);
+			}
+			unlock(&p->tlock);
 		}
-		unlock(&p->tlock);
 	}
 }
 
