@@ -58,6 +58,7 @@ boot(int argc, char *argv[])
 	open("#c/cons", OWRITE);
 	open("#c/cons", OWRITE);
 	bind("#c", "/dev", MAFTER);
+	bind("#e", "/env", MREPL|MCREATE);
 
 #ifdef DEBUG
 	print("argc=%d\n", argc);
@@ -187,7 +188,7 @@ findmethod(char *a)
 /*
  *  ask user from whence cometh the root file system
  */
-Method*
+static Method*
 rootserver(char *arg)
 {
 	char prompt[256];
@@ -346,7 +347,7 @@ fail:
 	exits(0);
 }
 
-void
+static void
 recover(Method *mp)
 {
 	int fd, n;
