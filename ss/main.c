@@ -115,9 +115,9 @@ ioinit(void)
 
 	/* tell scc driver its addresses */
 	k = kmappa(KMDUART, PTEIO|PTENOCACHE);
-	sccsetup((void*)(k->va), KMFREQ);
+	sccsetup((void*)(k->va), KMFREQ, 1);
 	k = kmappa(EIADUART, PTEIO|PTENOCACHE);
-	sccsetup((void*)(k->va), EIAFREQ);
+	sccsetup((void*)(k->va), EIAFREQ, 1);
 
 	/* scc port 0 is the keyboard */
 	sccspecial(0, 0, &kbdq, 2400);

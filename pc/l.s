@@ -226,7 +226,7 @@ TEXT	ins(SB), $0
 
 	MOVL	p+0(FP), DX
 	XORL	AX, AX
-	INL
+	OP16; INL
 	RET
 
 
@@ -258,7 +258,7 @@ TEXT	insl(SB),$0
 TEXT	outs(SB), $0
 	MOVL	p+0(FP), DX
 	MOVL	s+4(FP), AX
-	OUTL
+	OP16; OUTL
 	RET
 
 /*

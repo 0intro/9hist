@@ -271,7 +271,7 @@ sccbreak(SCC *sp, int ms)
  *  transmit and receive enabled, interrupts disabled.
  */
 static void
-sccsetup0(SCC *sp)
+sccsetup0(SCC *sp, int brsource)
 {
 	memset(sp->sticky, 0, sizeof(sp->sticky));
 
@@ -284,9 +284,11 @@ sccsetup0(SCC *sp)
 	sccsetbaud(sp, 9600);
 	sp->sticky[4] = Rx1stop | X16;
 	sccwrreg(sp, 4, 0);
-	sp->sticky[11] = TxClockBR | RxClockBR | TRxCOutBR | TRxCOI;
+	sp->sticky[11] = TxClockBR | RxClockBR | TRxCOutBR /*| TRxCOI*/;
 	sccwrreg(sp, 11, 0);
-	sp->sticky[14] = BREna | BRSource;
+	sp->sticky[14] = BREna;
+	if(brsource)
+		sp->sticky[14] |= BRSource;
 	sccwrreg(sp, 14, 0);
 
 	/*
@@ -299,7 +301,7 @@ sccsetup0(SCC *sp)
 }
 
 void
-sccsetup(void *addr, ulong freq)
+sccsetup(void *addr, ulong freq, int brsource)
 {
 	SCCdev *dev;
 	SCC *sp;
@@ -314,13 +316,13 @@ sccsetup(void *addr, ulong freq)
 	sp->ptr = &dev->ptra;
 	sp->data = &dev->dataa;
 	sp->freq = freq;
-	sccsetup0(sp);
+	sccsetup0(sp, brsource);
 	sp = xalloc(sizeof(SCC));
 	scc[nscc+1] = sp;
 	sp->ptr = &dev->ptrb;
 	sp->data = &dev->datab;
 	sp->freq = freq;
-	sccsetup0(sp);
+	sccsetup0(sp, brsource);
 	nscc += 2;
 }
 

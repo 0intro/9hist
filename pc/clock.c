@@ -20,6 +20,7 @@ enum
 					 *  output a square wave whose
 					 *  period is the counter period
 					 */
+	Latch0=		0x06,
 	Freq=		1193182,	/* Real clock frequency */
 };
 
@@ -40,6 +41,8 @@ delay(int l)
 void
 clockinit(void)
 {
+	ulong dc;	/* change in counter */
+
 	/*
 	 *  set vector for clock interrupts
 	 */
@@ -51,6 +54,15 @@ clockinit(void)
 	outb(Tmode, Load0square);
 	outb(T0cntr, (Freq/HZ));	/* low byte */
 	outb(T0cntr, (Freq/HZ)>>8);	/* high byte */
+
+	/*
+	 *  measure cpu speed to make delay() system
+	 *  independent
+	 */
+	delay(100);
+	outb(Tmode, Latch0);
+	dc = inb(T0cntr);
+	dc |= inb(T0cntr)<<8;
 }
 
 void
