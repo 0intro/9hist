@@ -104,7 +104,7 @@ struct PMMU
 {
 	int	mmuvalid;
 	Page	*mmu[MAXMMU+MAXSMMU];	/* bottom level page tables */
-	ulong	mmue[MAXMMU+MAXSMMU];	/* top level pointers to mmup pages */
+	ulong	mmue[MAXMMU+MAXSMMU];	/* top level pointers to mmu pages */
 };
 
 #include "../port/portdat.h"
