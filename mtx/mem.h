@@ -22,7 +22,7 @@
 #define	MHz	1000000
 
 #define	BY2PTE		8				/* bytes per pte entry */
-#define	PTE2PG		(BY2PG/BY2PTE)	/* pte entries per page */
+#define	BY2PTEG		64				/* bytes per pte group */
 
 #define	MAXMACH	1				/* max # cpus system can run */
 #define	MACHSIZE	BY2PG
@@ -139,6 +139,11 @@
 #define SEGMAPSIZE	1984
 #define SSEGMAPSIZE	16
 #define PPN(x)		((x)&~(BY2PG-1))
+
+/*
+ *  First pte word
+ */
+#define	PTE0(v, vsid, h, va)	(((v)<<31)|((vsid)<<7)|((h)<<6)|(((va)>>22)&0x3f))
 
 /*
  *  Second pte word, known by fault.c, passed to putmmu()

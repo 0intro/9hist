@@ -143,10 +143,8 @@ intrdisable(int irq, void (*f)(Ureg *, void *), void *a, int tbdf, char *name)
 	xfree(v);
 }
 
-void	faultpower(Ureg *ur, ulong addr, int read);
 void	syscall(Ureg* ureg);
 void	noted(Ureg*, ulong);
-void	reset(void);
 
 char *excname[] =
 {
@@ -208,8 +206,6 @@ char *regname[]={
 	"R30",	"R31",
 };
 
-static int lastecode;
-
 void
 trap(Ureg *ur)
 {
@@ -232,7 +228,28 @@ trap(Ureg *ur)
 		clockintr(ur);
 		break;
 	case CSYSCALL:
+		if(!user)
+			panic("syscall in kernel: srr1 0x%4.4uX\n", ur->srr1);
 		syscall(ur);
+		return;		/* syscall() calls notify itself, don't do it again */
+	case CFPU:
+		if(!user || up == nil) {
+			dumpregs(ur);
+			panic("floating point in kernel");
+		}
+		switch(up->fpstate){
+		case FPinit:
+			fprestore(&initfp);
+			up->fpstate = FPactive;
+			break;
+		case FPinactive:
+			fprestore(&up->fpsave);
+			up->fpstate = FPactive;
+			break;
+		default:
+			panic("fpstate");
+		}
+		ur->srr1 |= MSR_FP;
 		break;
 	case CISI:
 		faultpower(ur, ur->pc, 1);
@@ -274,12 +291,11 @@ trap(Ureg *ur)
 			panic("%s", excname[ecode]);
 		panic("unknown trap/intr: %d\n", ecode);
 	}
-lastecode = ecode;
 
-	if(user && (up->procctl || up->nnote)){
-		splhi();
+	/* restoreureg must execute at high IPL */
+	splhi();
+	if(user)
 		notify(ur);
-	}
 }
 
 void
@@ -299,7 +315,6 @@ faultpower(Ureg *ureg, ulong addr, int read)
 			panic("fault: 0x%lux", addr);
 		}
 dumpregs(ureg);
-print("last ecode %x\n", lastecode);
 		sprint(buf, "sys: trap: fault %s addr=0x%lux", read? "read" : "write", addr);
 		postnote(up, 1, buf, NDebug);
 	}
@@ -406,6 +421,15 @@ fpexcname(Ureg *ur, ulong fpscr, char *buf)
 	return buf;
 }
 
+void
+fpoff(Proc *p)
+{
+	Ureg *ur;
+
+	ur = p->dbgreg;
+	ur->srr1 &= ~MSR_FP;
+}
+
 /*
  * Fill in enough of Ureg to get a stack trace, and call a function.
  * Used by debugging interface rdb.
@@ -510,6 +534,7 @@ execregs(ulong entry, ulong ssize, ulong nargs)
 	ureg = up->dbgreg;
 	ureg->usp = (ulong)sp;
 	ureg->pc = entry;
+	ureg->srr1 &= ~MSR_FP;
 	return USTKTOP-BY2WD;		/* address of user-level clock */
 }
 
@@ -581,19 +606,14 @@ dbgpc(Proc *p)
  */
 #include "../port/systab.h"
 
-/*
- *  Syscall should be called directly from assembler without going through trap().
- */
+/* TODO: make this trap a separate asm entry point, like on other RISC architectures */
 void
 syscall(Ureg* ureg)
 {
 	char *e;
-	ulong	sp;
+	ulong sp;
 	long	ret;
-	int	i, scallnr;
-
-	if((ureg->srr1 & MSR_PR) == 0)
-		panic("syscall: srr1 0x%4.4uX\n", ureg->srr1);
+	int i, scallnr;
 
 	m->syscall++;
 	up->insyscall = 1;
@@ -651,11 +671,12 @@ syscall(Ureg* ureg)
 	if(scallnr == NOTED)
 		noted(ureg, *(ulong*)(sp+BY2WD));
 
-	if(scallnr!=RFORK && (up->procctl || up->nnote)){
-		splhi();
+	/* restoreureg must execute at high IPL */
+	splhi();
+	if(scallnr!=RFORK)
 		notify(ureg);
-	}
 }
+
 /*
  *  Call user, if necessary, with note.
  *  Pass user the Ureg struct and the note on his stack.

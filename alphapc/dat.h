@@ -43,7 +43,7 @@ struct Label
 };
 
 /*
- * FPsave.fpstatus
+ * Proc.fpstate
  */
 enum
 {

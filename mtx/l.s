@@ -286,6 +286,22 @@ TEXT	putsr(SB), $0
 	MOVW	R4, SEG(R3)
 	RETURN
 
+TEXT	gethid0(SB), $0
+	MOVW	SPR(HID0), R3
+	RETURN
+
+TEXT	gethid1(SB), $0
+	MOVW	SPR(HID1), R3
+	RETURN
+
+TEXT	puthid0(SB), $0
+	MOVW	R3, SPR(HID0)
+	RETURN
+
+TEXT	puthid1(SB), $0
+	MOVW	R3, SPR(HID1)
+	RETURN
+
 TEXT	eieio(SB), $0
 	EIEIO
 	RETURN
@@ -349,7 +365,6 @@ TEXT	trapvec(SB), $-4
 	MOVW	R0, R2
 	BL	saveureg(SB)
 	BL	trap(SB)
-//	BL	splhi(SB)					/* BUG? */
 	BR	restoreureg
 ktrap:
 	MOVW	R1, CR
@@ -358,7 +373,6 @@ ktrap:
 	SUB	$UREGSPACE, R1
 	BL	saveureg(SB)
 	BL	trap(SB)
-//	BL	splhi(SB)					/* BUG? */
 	BR	restoreureg
 
 /*
@@ -405,7 +419,7 @@ TEXT	saveureg(SB), $-4
 	MOVW	$0, R0	/* compiler/linker expect R0 to be zero */
 
 	MOVW	MSR, R5
-	OR	$(MSR_IR|MSR_DR|MSR_RI), R5	/* enable MMU */
+	OR	$(MSR_IR|MSR_DR|MSR_FP|MSR_RI), R5	/* enable MMU */
 	MOVW	R5, SPR(SRR1)
 	MOVW	LR, R31
 	OR	$KZERO, R31	/* return PC in KSEG0 */
@@ -441,3 +455,77 @@ restoreureg:
 	MOVW	44(R1), R1	/* old SP */
 	MOVW	SPR(SAVER0), R0
 	RFI
+
+TEXT	fpsave(SB), $0
+	FMOVD	F0, (0*8)(R3)
+	FMOVD	F1, (1*8)(R3)
+	FMOVD	F2, (2*8)(R3)
+	FMOVD	F3, (3*8)(R3)
+	FMOVD	F4, (4*8)(R3)
+	FMOVD	F5, (5*8)(R3)
+	FMOVD	F6, (6*8)(R3)
+	FMOVD	F7, (7*8)(R3)
+	FMOVD	F8, (8*8)(R3)
+	FMOVD	F9, (9*8)(R3)
+	FMOVD	F10, (10*8)(R3)
+	FMOVD	F11, (11*8)(R3)
+	FMOVD	F12, (12*8)(R3)
+	FMOVD	F13, (13*8)(R3)
+	FMOVD	F14, (14*8)(R3)
+	FMOVD	F15, (15*8)(R3)
+	FMOVD	F16, (16*8)(R3)
+	FMOVD	F17, (17*8)(R3)
+	FMOVD	F18, (18*8)(R3)
+	FMOVD	F19, (19*8)(R3)
+	FMOVD	F20, (20*8)(R3)
+	FMOVD	F21, (21*8)(R3)
+	FMOVD	F22, (22*8)(R3)
+	FMOVD	F23, (23*8)(R3)
+	FMOVD	F24, (24*8)(R3)
+	FMOVD	F25, (25*8)(R3)
+	FMOVD	F26, (26*8)(R3)
+	FMOVD	F27, (27*8)(R3)
+	FMOVD	F28, (28*8)(R3)
+	FMOVD	F29, (29*8)(R3)
+	FMOVD	F30, (30*8)(R3)
+	FMOVD	F31, (31*8)(R3)
+	MOVFL	FPSCR, F0
+	FMOVD	F0, (32*8)(R3)
+	RETURN
+
+TEXT	fprestore(SB), $0
+	FMOVD	(32*8)(R3), F0
+	MOVFL	F0, FPSCR
+	FMOVD	(0*8)(R3), F0
+	FMOVD	(1*8)(R3), F1
+	FMOVD	(2*8)(R3), F2
+	FMOVD	(3*8)(R3), F3
+	FMOVD	(4*8)(R3), F4
+	FMOVD	(5*8)(R3), F5
+	FMOVD	(6*8)(R3), F6
+	FMOVD	(7*8)(R3), F7
+	FMOVD	(8*8)(R3), F8
+	FMOVD	(9*8)(R3), F9
+	FMOVD	(10*8)(R3), F10
+	FMOVD	(11*8)(R3), F11
+	FMOVD	(12*8)(R3), F12
+	FMOVD	(13*8)(R3), F13
+	FMOVD	(14*8)(R3), F14
+	FMOVD	(15*8)(R3), F15
+	FMOVD	(16*8)(R3), F16
+	FMOVD	(17*8)(R3), F17
+	FMOVD	(18*8)(R3), F18
+	FMOVD	(19*8)(R3), F19
+	FMOVD	(20*8)(R3), F20
+	FMOVD	(21*8)(R3), F21
+	FMOVD	(22*8)(R3), F22
+	FMOVD	(23*8)(R3), F23
+	FMOVD	(24*8)(R3), F24
+	FMOVD	(25*8)(R3), F25
+	FMOVD	(26*8)(R3), F26
+	FMOVD	(27*8)(R3), F27
+	FMOVD	(28*8)(R3), F28
+	FMOVD	(29*8)(R3), F29
+	FMOVD	(30*8)(R3), F30
+	FMOVD	(31*8)(R3), F31
+	RETURN

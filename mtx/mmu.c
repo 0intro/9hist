@@ -106,11 +106,11 @@ putmmu(ulong va, ulong pa, Page*)
 
 	vsid = VSID(mp, va>>28);
 	hash = (vsid ^ (va>>12)&0xffff) & ptab.mask;
-	ptehi = BIT(0)|(vsid<<7)|((va>>22)&0x3f);
+	ptehi = PTE0(1, vsid, 0, va);
 
-	pteg = ptab.base + 64*hash;
+	pteg = ptab.base + BY2PTEG*hash;
 	p = (ulong*)pteg;
-	ep = (ulong*)(pteg+64);
+	ep = (ulong*)(pteg+BY2PTEG);
 	q = nil;
 	lock(&ptab);
 	tlbflush(va);
@@ -127,7 +127,7 @@ if(q[1] == pa) panic("putmmu already set pte");
 	}
 	if(q == nil) {
 		q = (ulong*)(pteg+ptab.slotgen);
-		ptab.slotgen = (ptab.slotgen + 8) & 0x3f;
+		ptab.slotgen = (ptab.slotgen + BY2PTE) & (BY2PTEG-1);
 	}
 	q[0] = ptehi;
 	q[1] = pa;

@@ -258,13 +258,12 @@ procsave(Proc *p)
 	 */
 }
 
-/* still too do */
+/* still to do */
 void
 reboot(void*, void*, ulong)
 {
 	exit(0);
 }
-
 
 void
 exit(int)

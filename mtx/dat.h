@@ -42,7 +42,7 @@ struct Label
 };
 
 /*
- * FPsave.fpstatus
+ * Proc.fpstate
  */
 enum
 {
@@ -64,8 +64,6 @@ struct	FPsave
 			ulong	fpscr;
 		};
 	};
-	int	fpistate;	/* emulated fp */
-	ulong	emreg[32][3];	/* emulated fp */
 };
 
 struct Conf
