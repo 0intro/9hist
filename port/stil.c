@@ -11,7 +11,7 @@
 #include	"arp.h"
 #include 	"ipdat.h"
 
-#define	 DBG	if(0)print
+#define	 DBG	if(1)print
 int 		ilcksum = 1;
 static 	int 	initseq = 25000;
 static	Rendez	ilackr;
@@ -55,9 +55,6 @@ ilopen(Queue *q, Stream *s)
 	ipc->ipinterface = newipifc(IP_ILPROTO, ilrcvmsg, ipconv[s->dev],
 			            1500, 512, ETHER_HDR, "IL");
 
-	qlock(ipc);
-	ipc->ref++;
-	qunlock(ipc);
 	ipc->readq = RD(q);	
 	RD(q)->ptr = (void *)ipc;
 	WR(q)->next->ptr = (void *)ipc->ipinterface;
@@ -74,7 +71,6 @@ ilclose(Queue *q)
 	s = (Ipconv *)(q->ptr);
 	ic = &s->ilctl;
 	qlock(s);
-	s->ref--;
 	s->readq = 0;
 	qunlock(s);
 
@@ -161,6 +157,7 @@ iloput(Queue *q, Block *bp)
 
 	ilackq(ic, bp);
 	delay(100);
+	print("TX len = %d BLEN = %d IL %d\n", blen(bp), BLEN(bp), dlen+IL_HDRSIZE);
 	PUTNEXT(q, bp);
 }
 
@@ -231,6 +228,7 @@ ilrcvmsg(Ipconv *ipc, Block *bp)
 	dst = nhgetl(ih->src);
 
 	if(ilcksum && ptcl_csum(bp, IL_EHSIZE, illen) != 0) {
+print("len = %d BLEN = %d IL %d\n", blen(bp), BLEN(bp), illen);
 		st = (ih->iltype < 0 || ih->iltype > Ilclose) ? "?" : iltype[ih->iltype];
 		print("il: cksum error, pkt(%s id %d ack %d %d.%d.%d.%d/%d->%d)\n",
 			st, nhgetl(ih->ilid), nhgetl(ih->ilack), fmtaddr(dst), sp, dp);
@@ -269,8 +267,10 @@ ilrcvmsg(Ipconv *ipc, Block *bp)
 
 			ic = &new->ilctl;
 			ic->state = Ilsyncee;
+/*
 			initseq += TK2MS(MACHP(0)->ticks);
-			ic->next = initseq;
+*/
+initseq	=1;		ic->next = initseq;
 			ic->start = ic->next;
 			ic->recvd = 0;
 			ic->rstart = nhgetl(ih->ilid);
@@ -627,7 +627,10 @@ ilstart(Ipconv *ipc, int type, int window)
 	ic->timeout = 0;
 	ic->unacked = 0;
 	ic->outoforder = 0;
+/*
 	initseq += TK2MS(MACHP(0)->ticks);
+*/
+initseq = 1;
 	ic->next = initseq;
 	ic->start = ic->next;
 	ic->recvd = 0;

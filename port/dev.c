@@ -127,7 +127,8 @@ devstat(Chan *c, char *db, Dirtab *tab, int ntab, Devgen *gen)
 				convD2M(&dir, db);
 				return;
 			}
-			print("devstat %c %lux\n", devchar[c->type], c->qid.path);
+			print("%s %s: devstat %c %lux\n", u->p->text, u->p->user,
+							devchar[c->type], c->qid.path);
 			error(Enonexist);
 		case 0:
 			break;

@@ -380,7 +380,7 @@ postnote(Proc *p, int dolock, char *n, int flag)
 {
 	User *up;
 	KMap *k;
-	int s;
+	int s, ret;
 	Rendez *r;
 	Proc *d, **l;
 
@@ -403,16 +403,14 @@ postnote(Proc *p, int dolock, char *n, int flag)
 
 	if(flag!=NUser && (up->notify==0 || up->notified))
 		up->nnote = 0;	/* force user's hand */
-	else if(up->nnote == NNOTE-1){
-		if(up != u)
-			kunmap(k);
-		if(dolock)
-			unlock(&p->debug);
-		return 0;
+
+	ret = 0;
+	if(up->nnote < NNOTE){
+		strcpy(up->note[up->nnote].msg, n);
+		up->note[up->nnote++].flag = flag;
+		ret = 1;
 	}
 	p->notepending = 1;
-	strcpy(up->note[up->nnote].msg, n);
-	up->note[up->nnote++].flag = flag;
 	if(up != u)
 		kunmap(k);
 	if(dolock)
@@ -450,7 +448,7 @@ postnote(Proc *p, int dolock, char *n, int flag)
 		unlock(p->pgrp);
 	}
 
-	return 1;
+	return ret;
 }
 
 

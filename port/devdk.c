@@ -110,6 +110,7 @@ struct Dk {
 	Chan	*csc;
 
 	Lock;
+	int	ref;
 	int	opened;
 
 	char	name[64];	/* dk name */
@@ -240,7 +241,7 @@ dkalloc(char *name, int ncsc, int lines)
 			unlock(&dklock);
 			return dp;
 		}
-		if(dp->name[0] == 0)
+		if(dp->name[0] == 0 && dp->ref == 0)
 			freep = dp;
 	}
 	if(freep == 0){
@@ -334,6 +335,7 @@ dkmuxclose(Queue *q)
 	dp = WR(q)->ptr;
 	if(dp == 0)
 		return;
+	dp->name[0] = 0;
 
 	/*
 	 *  disallow new dkstopens() on this line.
@@ -454,6 +456,7 @@ dkstopen(Queue *q, Stream *s)
 	q->other->ptr = q->ptr = lp = dp->linep[s->id];
 	lp->dp = dp;
 	lock(dp);
+	dp->ref++;
 	if(dp->opened==0 || streamenter(dp->s)<0){
 		unlock(dp);
 		error(Ehungup);
@@ -545,6 +548,12 @@ out:
 	if(lp->lineno == dp->ncsc)
 		dp->csc = 0;
 	netdisown(&dp->net, lp->lineno);
+
+	lock(dp);
+	dp->ref--;
+	if(dp->ref == 0)
+		freeb(dp->alloc);
+	unlock(dp);
 }
 
 /*
@@ -1625,7 +1634,6 @@ dktimer(void *a)
 		}
 		if(c)
 			close(c);
-		freeb(dp->alloc);
 		return;
 	}
 

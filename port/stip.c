@@ -68,6 +68,8 @@ initfrag(int size)
 static void
 ipetheropen(Queue *q, Stream *s)
 {
+	Ipconv *ipc;
+
 	/* First open is by ipconfig and sets up channel
 	 * to ethernet
 	 */
@@ -75,6 +77,11 @@ ipetheropen(Queue *q, Stream *s)
 		Etherq = WR(q);
 		s->opens++;		/* Hold this queue in place */
 		s->inuse++;
+	} else {
+		ipc = &ipconv[s->dev][s->id];
+		RD(q)->ptr = (void *)ipc;
+		WR(q)->ptr = (void *)ipc;
+		ipc->ref = 1;
 	}
 
 	DPRINT("ipetheropen EQ %lux dev=%d id=%d RD %lux WR %lux\n",
@@ -131,7 +138,11 @@ newipifc(uchar ptcl, void (*recvfun)(Ipconv *, Block *bp),
 static void
 ipetherclose(Queue *q)
 {
-	USED(q);
+	Ipconv *ipc;
+
+	ipc = (Ipconv *)(q->ptr);
+	if(ipc)
+		ipc->ref = 0;
 }
 
 void

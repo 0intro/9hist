@@ -4,6 +4,7 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"io.h"
+#include	"errno.h"
 
 int	duartacr;
 int	duartimr;
@@ -779,7 +780,7 @@ duartopen(Chan *c, int omode)
 void
 duartcreate(Chan *c, char *name, int omode, ulong perm)
 {
-	errors(Eperm);
+	error(Eperm);
 }
 
 void

@@ -443,7 +443,6 @@ udpstclose(Queue *q)
 	ipc->psrc = 0;
 	ipc->pdst = 0;
 	ipc->dst = 0;
-	ipc->ref = 0;
 
 	closeipifc(ipc->ipinterface);
 	netdisown(&ipc->ipinterface->net, ipc->index);
@@ -458,7 +457,6 @@ udpstopen(Queue *q, Stream *s)
 	ipc->ipinterface = newipifc(IP_UDPPROTO, udprcvmsg, ipconv[s->dev],
 			            1500, 512, ETHER_HDR, "UDP");
 
-	ipc->ref = 1;
 	ipc->readq = RD(q);	
 	RD(q)->ptr = (void *)ipc;
 	WR(q)->next->ptr = (void *)ipc->ipinterface;
@@ -540,8 +538,6 @@ tcpstopen(Queue *q, Stream *s)
 	ipc = &ipconv[s->dev][s->id];
 	ipc->ipinterface = newipifc(IP_TCPPROTO, tcp_input, ipconv[s->dev], 
 			            1500, 512, ETHER_HDR, "TCP");
-
-	ipc->ref = 1;
 
 	ipc->readq = RD(q);
 	ipc->readq->rp = &tcpflowr;
@@ -641,8 +637,6 @@ tcpstclose(Queue *q)
 
 	s = (Ipconv *)(q->ptr);
 	tcb = &s->tcpctl;
-
-	s->ref = 0;
 
 	/* Not interested in data anymore */
 	s->readq = 0;

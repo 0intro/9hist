@@ -15,9 +15,6 @@ state_upcall(Ipconv *s, char oldstate, char newstate)
 {
 	Block *bp;
 	int len;
-	char *ptr = 0;
-
-	SET(len);
 
 	DPRINT("state_upcall: %s -> %s err %d\n", 
 	      tcpstate[oldstate], tcpstate[newstate], s->err);
@@ -33,23 +30,20 @@ state_upcall(Ipconv *s, char oldstate, char newstate)
 	case CLOSE_WAIT:		/* Remote closes */
 		if(s->readq == 0)
 			break;
+
 		if(s->err) {
-			ptr = errstrtab[s->err];
-			len = strlen(ptr)+1;
+			len = strlen(errstrtab[s->err]);
 			bp = allocb(len);
+			strcpy((char *)bp->wptr, errstrtab[s->err]);
+			bp->wptr += len;
 		}
 		else
 			bp = allocb(0);
 
-		if(bp) {
-			if(ptr) {
-				strcpy((char *)bp->wptr, ptr);
-				bp->wptr += len;
-			}
-			bp->flags |= S_DELIM;
-			bp->type = M_HANGUP;
-			PUTNEXT(s->readq, bp);
-		}
+		bp->flags |= S_DELIM;
+		bp->type = M_HANGUP;
+		PUTNEXT(s->readq, bp);
+		break;
 	}
 }
 
