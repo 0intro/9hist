@@ -415,6 +415,13 @@ enum					/* Argument to forkpgrp call */
 	FPclear	  = 8,
 };
 
+enum
+{
+	Forkpg	  = 1,
+	Forkeg	  = 2,
+	Forkfd	  = 4,
+};
+
 /*
  *  process memory segments - NSEG always last !
  */

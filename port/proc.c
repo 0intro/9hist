@@ -302,8 +302,10 @@ sleep1(Rendez *r, int (*f)(void*), void *arg)
 	 * now we are committed to
 	 * change state and call scheduler
 	 */
-	if(r->p)
+	if(r->p){
 		print("double sleep %d %d\n", r->p->pid, p->pid);
+		dumpstack();
+	}
 	p->state = Wakeme;
 	r->p = p;
 	unlock(r);
@@ -438,10 +440,11 @@ postnote(Proc *p, int dolock, char *n, int flag)
 		unlock(r);
 		splx(s);
 	}
+
 	if(p->state == Rendezvous) {
 		lock(p->pgrp);
 		if(p->state == Rendezvous) {
-			p->rendval = 0;
+			p->rendval = ~0;
 			l = &REND(p->pgrp, p->rendtag);
 			for(d = *l; d; d = d->rendhash) {
 				if(d == p) {
@@ -674,7 +677,8 @@ procdump(void)
 		p = procalloc.arena+i;
 		if(p->state != Dead){
 			print("%d:%s %s upc %lux %s ut %ld st %ld r %lux\n",
-				p->pid, p->text, p->pgrp ? p->pgrp->user : "pgrp=0", p->pc, 
+				p->pid, p->text, 
+				p->pgrp ? p->pgrp->user : "pgrp=0", p->pc, 
 				statename[p->state], p->time[0], p->time[1], p->r);
 		}
 	}

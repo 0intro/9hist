@@ -60,9 +60,13 @@ clock(Ureg *ur)
 
 	m->ticks++;
 
+	uartintr0(ur);
+
+	if(m->ticks % 50)
+		return;
+
 	checkalarms();
 	mouseclock();
-	uartintr0(ur);
 
 	p = m->proc;
 	if(p){

@@ -51,6 +51,7 @@ struct Uart
 	int	port;
 	uchar	sticky[8];	/* sticky write register values */
 	int	printing;	/* true if printing */
+	int	enabled;
 
 	/* console interface */
 	int	nostream;	/* can't use the stream interface */
@@ -185,7 +186,6 @@ uartputs(IOQ *cq, char *s, int n)
 	puts(cq, s, n);
 	if(up->printing == 0){
 		ch = getc(cq);
-print("<start %2.2ux>", ch);/**/
 		if(ch >= 0){
 			up->printing = 1;
 			for(tries = 0; tries<10000 && !(uartrdreg(up, Lstat)&Outready);
@@ -214,7 +214,6 @@ uartintr(Uart *up)
 	cq = up->iq;
 	while(l & Inready){
 		ch = uartrdreg(up, Data) & 0xff;
-print("<get %2.2ux>", ch);
 		if(cq->putc)
 			(*cq->putc)(cq, ch);
 		else {
@@ -232,7 +231,6 @@ print("<get %2.2ux>", ch);
 		cq = up->oq;
 		lock(cq);
 		ch = getc(cq);
-print("<put %2.2ux>", ch);/**/
 		if(ch < 0){
 			up->printing = 0;
 			wakeup(&cq->r);
@@ -244,7 +242,8 @@ print("<put %2.2ux>", ch);/**/
 void
 uartintr0(Ureg *ur)
 {
-	uartintr(&uart[0]);
+	if(uart[0].enabled)
+		uartintr(&uart[0]);
 }
 void
 uartintr1(Ureg *ur)
@@ -261,6 +260,14 @@ uartenable(Uart *up)
 	int x;
 
 	/*
+	 *  turn on power to the port
+	 */
+	if(up == &uart[0]){
+		if(serial(0) < 0)
+			print("can't turn on serial port power\n");
+	}
+
+	/*
 	 *  set up i/o routines
 	 */
 	if(up->oq){
@@ -272,6 +279,7 @@ uartenable(Uart *up)
 		up->iq->ptr = up;
 		up->sticky[Iena] |= Ircv;
 	}
+	up->enabled = 1;
 	up->sticky[Iena] |= (1<<2) | (1<<3);
 
 	/*
@@ -284,14 +292,33 @@ uartenable(Uart *up)
 	 */
 	uartdtr(up, 1);
 	uartrts(up, 1);
+}
+
+/*
+ *  turn off the uart
+ */
+uartdisable(Uart *up)
+{
 
 	/*
-	 *  read interrupt status till there aren't any pending
+ 	 *  turn off interrupts
 	 */
-	while(uartrdreg(up, Istat) != 1){
-		x = splhi();
-		uartintr(up);
-		splx(x);
+	up->sticky[Iena] = 0;
+	uartwrreg(up, Iena, 0);
+
+	/*
+	 *  turn off DTR and RTS
+	 */
+	uartdtr(up, 0);
+	uartrts(up, 0);
+	up->enabled = 0;
+
+	/*
+	 *  turn off power
+	 */
+	if(up == &uart[0]){
+		if(serial(1) < 0)
+			print("can't turn off serial power\n");
 	}
 }
 
@@ -309,10 +336,6 @@ uartspecial(int port, IOQ *oq, IOQ *iq, int baud)
 	up->iq = iq;
 	uartenable(up);
 	uartsetbaud(up, baud);
-	if(port == 0){
-		if(serial(0) < 0)
-			print("can't turn on serial port power\n");
-	}
 
 	if(iq){
 		/*
@@ -381,8 +404,6 @@ print("uartstopen: q=0x%ux, inuse=%d, type=%d, dev=%d, id=%d\n",
 
 	up = &uart[s->id];
 	uartenable(up);
-	if(s->id==0 && serial(0)<0)
-		print("can't turn on serial power\n");
 
 	qlock(up);
 	up->wq = WR(q);
@@ -407,6 +428,8 @@ uartstclose(Queue *q)
 {
 	Uart *up = q->ptr;
 
+	uartdisable(up);
+
 	qlock(up);
 	kprint("uartstclose: q=0x%ux, id=%d\n", q, up-uart);
 	up->wq = 0;
@@ -414,9 +437,6 @@ uartstclose(Queue *q)
 	WR(q)->ptr = 0;
 	RD(q)->ptr = 0;
 	qunlock(up);
-
-	if(serial(1) < 0)
-		print("can't turn off serial power\n");
 }
 
 static void

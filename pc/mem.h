@@ -18,7 +18,7 @@
 /*
  * Time
  */
-#define	HZ		(20)			/* clock frequency */
+#define	HZ		(1000)			/* clock frequency */
 #define	MS2HZ		(1000/HZ)		/* millisec per clock tick */
 #define	TK2SEC(t)	((t)/HZ)		/* ticks to seconds */
 #define	TK2MS(t)	((((ulong)(t))*1000)/HZ)	/* ticks to milliseconds */
@@ -43,7 +43,7 @@
 #define	KZERO		0x80000000		/* base of kernel address space */
 #define	KTZERO		KZERO			/* first address in kernel text */
 #define	USERADDR	0xC0000000		/* struct User */
-#define	UREGADDR	(USERADDR+BY2PG-4*16)	
+#define	UREGADDR	(USERADDR+BY2PG-4*17)	
 #define	TSTKTOP		USERADDR		/* end of new stack in sysexec */
 #define TSTKSIZ 10
 #define	USTKTOP		(TSTKTOP-TSTKSIZ*BY2PG)	/* byte just beyond user stack */

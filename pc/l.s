@@ -390,28 +390,34 @@ TEXT	intrbad(SB),$0
 
 intrcommon:
 	PUSHL	DS
+	PUSHL	ES
 	PUSHAL
 	MOVL	$(KDSEL),AX
 	MOVW	AX,DS
+	MOVW	AX,ES
 	LEAL	0(SP),AX
 	PUSHL	AX
 	CALL	trap(SB)
 	POPL	AX
 	POPAL
+	POPL	ES
 	POPL	DS
 	ADDL	$8,SP	/* error code and trap type */
 	IRETL
 
 intrscommon:
 	PUSHL	DS
+	PUSHL	ES
 	PUSHAL
 	MOVL	$(KDSEL),AX
 	MOVW	AX,DS
+	MOVW	AX,ES
 	LEAL	0(SP),AX
 	PUSHL	AX
 	CALL	trap(SB)
 	POPL	AX
 	POPAL
+	POPL	ES
 	POPL	DS
 	ADDL	$8,SP	/* error code and trap type */
 	IRETL

@@ -64,7 +64,8 @@ ialloc(ulong n, int align)
 		print("ialloc bad\n");
 
 	if(palloc.addr0 == 0){
-		palloc.addr0 = ((ulong)&end)&~KZERO;
+		/* addr0 and addr1 are physical addresses */
+		palloc.addr0 = (((ulong)&end)&~KZERO) + conf.base0;
 		palloc.addr1 = conf.base1;
 	}
 

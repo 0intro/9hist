@@ -9,6 +9,7 @@
 #include	<a.out.h>
 
 int	shargs(char*, int, char**);
+long	rfork(ulong);
 
 long
 sysr1(ulong *arg)
@@ -20,6 +21,19 @@ sysr1(ulong *arg)
 long
 sysfork(ulong *arg)
 {
+	return rfork(Forkfd|Forkeg|Forkpg);
+}
+
+/* This call will obsolete fork */
+long
+sysrfork(ulong *arg)
+{
+	return rfork(arg[0]);
+}
+
+long
+rfork(ulong flag)
+{
 	Proc *p;
 	Segment *s;
 	Page *np, *op;
@@ -27,7 +41,10 @@ sysfork(ulong *arg)
 	Chan *c;
 	KMap *k;
 	int n, on, i;
-	int lastvar;	/* used to compute stack address */
+	/*
+	 * used to compute last valid system stack address for copy
+	 */
+	int lastvar;	
 
 	p = newproc();
 
@@ -56,13 +73,31 @@ sysfork(ulong *arg)
 	 * Refs
 	 */
 	incref(u->dot);				/* File descriptors etc. */
-	p->fgrp = dupfgrp(u->p->fgrp);
 
-	p->pgrp = u->p->pgrp;			/* Process groups */
-	incref(p->pgrp);
+	if(flag & Forkfd)
+		p->fgrp = dupfgrp(u->p->fgrp);
+	else {
+		p->fgrp = u->p->fgrp;
+		incref(p->fgrp);
+	}
 
-	p->egrp = u->p->egrp;			/* Environment group */
-	incref(p->egrp);
+	if(flag & Forkpg) {
+		p->pgrp = u->p->pgrp;			/* Process groups */
+		incref(p->pgrp);
+	}
+	else {
+		p->pgrp = newpgrp();
+		pgrpcpy(p->pgrp, u->p->pgrp);
+	}
+
+	if(flag & Forkeg) {
+		p->egrp = u->p->egrp;			/* Environment group */
+		incref(p->egrp);
+	}
+	else {
+		p->egrp = newegrp();
+		envcpy(p->egrp, u->p->egrp);
+	}
 
 	/*
 	 * Sched
@@ -580,8 +615,8 @@ sysrendezvous(ulong *arg)
 			val = p->rendval;
 			p->rendval = arg[1];
 
-			if(p->state != Rendezvous)
-				panic("rendezvous");
+			while(p->state != Rendezvous)
+				;
 			ready(p);
 			unlock(u->p->pgrp);
 			return val;	
@@ -596,9 +631,8 @@ sysrendezvous(ulong *arg)
 	p->rendhash = *l;
 	*l = p;
 
-	unlock(p->pgrp);
-
 	s = splhi();
+	unlock(p->pgrp);
 	u->p->state = Rendezvous;
 	sched();
 	splx(s);

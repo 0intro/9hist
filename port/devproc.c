@@ -27,7 +27,7 @@ Dirtab procdir[]={
 	"notepg",	{Qnotepg},	0,			0200,
 	"proc",		{Qproc},	sizeof(Proc),		0600,
 	"segment",	{Qsegment},	0,			0400,
-	"status",	{Qstatus},	STATSIZE,		0600,
+	"status",	{Qstatus},	STATSIZE,		0400,
 	"text",		{Qtext},	0,			0600,
 };
 

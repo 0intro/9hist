@@ -173,8 +173,10 @@ trap(Ureg *ur)
 	int c;
 
 	v = ur->trap;
-	if(v>=256 || ivec[v] == 0)
-		panic("bad trap type %d %lux\n", v, ur->pc);
+	if(v>=256 || ivec[v] == 0){
+		print("bad trap type %d %lux %lux %lux\n", v, ur->pc, int0mask, int1mask);
+		return;
+	}
 
 	if(v==19 || v==20)
 		print("trap = %d\n", v);

@@ -8,7 +8,7 @@ Syscall	sysfstat, sysfwstat, sysgetpid, sysmount, sysnoted;
 Syscall	sysnotify, sysopen, syspipe, sysr1, sysread, sysremove, sysseek;
 Syscall syssleep, sysstat, syswait, syswrite, syswstat, sysalarm, syssegbrk;
 Syscall syssegattach, syssegdetach, syssegfree, syssegflush;
-Syscall sysrendezvous;
+Syscall sysrendezvous, sysrfork;
 
 Syscall *systab[]={
 	[SYSR1]		sysr1,
@@ -34,7 +34,7 @@ Syscall *systab[]={
 	[WRITE]		syswrite,
 	[PIPE]		syspipe,
 	[CREATE]	syscreate,
-	[___USERSTR___]	sysdeath,
+	[RFORK]		sysrfork,
 	[BRK_]		sysbrk_,
 	[REMOVE]	sysremove,
 	[WSTAT]		syswstat,
