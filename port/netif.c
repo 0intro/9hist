@@ -23,7 +23,6 @@ netifinit(Netif *nif, char *name, int nfile, ulong limit)
 	nif->f = xalloc(nfile*sizeof(Netfile*));
 	memset(nif->f, 0, nfile*sizeof(Netfile*));
 	nif->limit = limit;
-	nif->out = qopen(limit, 1, 0, 0);
 }
 
 /*

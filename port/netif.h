@@ -51,7 +51,6 @@ struct Netif
 	char	*name;			/* for top level directory */
 	int	nfile;			/* max number of Netfiles */
 	Netfile	**f;
-	Queue	*out;			/* output buffer */
 
 	/* about net */
 	int	limit;			/* flow control */
