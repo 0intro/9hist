@@ -264,12 +264,14 @@ sysexec(ulong *arg)
 		fdclose(i, CCEXEC);
 
 	/* Text.  Shared. Attaches to cache image if possible */
+	/* attachimage returns a locked cache image */
 	img = attachimage(SG_TEXT|SG_RONLY, tc, UTZERO, (t-UTZERO)>>PGSHIFT);
 	ts = img->s;
 	p->seg[TSEG] = ts;
 	ts->flushme = 1;
 	ts->fstart = 0;
 	ts->flen = sizeof(Exec)+text;
+	unlock(img);
 
 	/* Data. Shared. */
 	s = newseg(SG_DATA, t, (d-t)>>PGSHIFT);
@@ -408,6 +410,7 @@ syserrstr(ulong *arg)
 
 	validaddr(arg[0], ERRLEN, 1);
 	memmove((char*)arg[0], u->error, ERRLEN);
+	strncpy(u->error, errstrtab[0], ERRLEN);
 	return 0;
 }
 

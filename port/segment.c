@@ -196,7 +196,10 @@ attachimage(int type, Chan *c, ulong base, ulong len)
 
 	lock(&imagealloc);
 
-	/* Search the image cache for remains of the text from a previous incarnation */
+	/*
+	 * Search the image cache for remains of the text from a previous 
+	 * or currently running incarnation 
+	 */
 	for(i = ihash(c->qid.path); i; i = i->hash) {
 		if(c->qid.path == i->qid.path) {
 			lock(i);
@@ -211,6 +214,10 @@ attachimage(int type, Chan *c, ulong base, ulong len)
 		}
 	}
 	
+	/*
+	 * imagereclaim dumps pages from the free list which are cached by image
+	 * structures. This should free some image structures.
+	 */
 	while(!(i = imagealloc.free)) {
 		unlock(&imagealloc);
 		imagereclaim();
@@ -241,7 +248,6 @@ found:
 	else
 		incref(i->s);
 
-	unlock(i);
 	return i;
 }
 

@@ -63,7 +63,7 @@ struct Alarm
 	List;
 	Lock;
 	int	busy;
-	long	dt;		/* may underflow in clock(); must be signed */
+	long	dt;			/* may underflow in clock(); must be signed */
 	void	(*f)(void*);
 	void	*arg;
 };
@@ -86,20 +86,20 @@ struct Alarms
 struct Block
 {
 	Block	*next;
-	uchar	*rptr;		/* first unconsumed byte */
-	uchar	*wptr;		/* first empty byte */
-	uchar	*lim;		/* 1 past the end of the buffer */
-	uchar	*base;		/* start of the buffer */
+	uchar	*rptr;			/* first unconsumed byte */
+	uchar	*wptr;			/* first empty byte */
+	uchar	*lim;			/* 1 past the end of the buffer */
+	uchar	*base;			/* start of the buffer */
 	uchar	flags;
 	uchar	type;
 };
 
 struct Blist {
 	Lock;
-	Block	*first;		/* first data block */
-	Block	*last;		/* last data block */
-	long	len;		/* length of list in bytes */
-	int	nb;		/* number of blocks in list */
+	Block	*first;			/* first data block */
+	Block	*last;			/* last data block */
+	long	len;			/* length of list in bytes */
+	int	nb;			/* number of blocks in list */
 };
 
 /*
@@ -107,21 +107,21 @@ struct Blist {
  */
 enum
 {
-	Aaccess,	/* as in access, stat */
-	Atodir,		/* as in chdir */
-	Aopen,		/* for i/o */
-	Amount,		/* to be mounted upon */
-	Acreate,	/* file is to be created */
+	Aaccess,			/* as in access, stat */
+	Atodir,				/* as in chdir */
+	Aopen,				/* for i/o */
+	Amount,				/* to be mounted upon */
+	Acreate,			/* file is to be created */
 };
 
 /*
  *  Chan.flags
  */
-#define	COPEN	1	/* for i/o */
-#define	CMOUNT	2	/* is result of a mount/bind */
-#define	CCREATE	4	/* permits creation if CMOUNT */
-#define	CCEXEC	8	/* close on exec */
-#define	CFREE	16	/* not in use */
+#define	COPEN	1			/* for i/o */
+#define	CMOUNT	2			/* is result of a mount/bind */
+#define	CCREATE	4			/* permits creation if CMOUNT */
+#define	CCEXEC	8			/* close on exec */
+#define	CFREE	16			/* not in use */
 
 struct Chan
 {
@@ -200,9 +200,9 @@ struct Etherpkt {
 	uchar data[1500];
 	uchar crc[4];
 };
-#define	ETHERMINTU	60	/* minimum transmit size */
-#define	ETHERMAXTU	1514	/* maximum transmit size */
-#define ETHERHDRSIZE	14	/* size of an ethernet header */
+#define	ETHERMINTU	60		/* minimum transmit size */
+#define	ETHERMAXTU	1514		/* maximum transmit size */
+#define ETHERHDRSIZE	14		/* size of an ethernet header */
 
 /*
  *  character based IO (mouse, keyboard, console screen)
@@ -287,12 +287,12 @@ struct Page
 
 struct Swapalloc
 {
-	Lock;			/* Free map lock */
-	int	free;		/* Number of currently free swap pages */
-	char	*swmap;		/* Base of swap map in memory */
-	char	*alloc;		/* Round robin allocator */
-	char	*top;		/* Top of swap map */
-	Rendez	r;		/* Pager kproc idle sleep */
+	Lock;				/* Free map lock */
+	int	free;			/* Number of currently free swap pages */
+	char	*swmap;			/* Base of swap map in memory */
+	char	*alloc;			/* Round robin allocator */
+	char	*top;			/* Top of swap map */
+	Rendez	r;			/* Pager kproc idle sleep */
 }swapalloc;
 
 struct Image
@@ -390,17 +390,17 @@ struct Palloc
 	Lock;
 	ulong	addr;
 	int	active;
-	Page	*page;		/* base of Page structures, indexed by phys page number */
-	ulong	minppn;		/* index of first usable page */
-	Page	*head;		/* most recently used */
-	Page	*tail;		/* least recently used */
-	ulong	freecount;	/* how many pages on free list now */
-	ulong	user;		/* how many user pages */
+	Page	*page;			/* base of Page structures */
+	ulong	minppn;			/* index of first usable page */
+	Page	*head;			/* most recently used */
+	Page	*tail;			/* least recently used */
+	ulong	freecount;		/* how many pages on free list now */
+	ulong	user;			/* how many user pages */
 	Page	*hash[PGHSIZE];
 	Lock	hashlock;
-	Rendez	r;		/* Sleep for free mem */
-	QLock	pwait;		/* Queue of procs waiting for memory */
-	int	wanted;		/* Do the wakeup at free */
+	Rendez	r;			/* Sleep for free mem */
+	QLock	pwait;			/* Queue of procs waiting for memory */
+	int	wanted;			/* Do the wakeup at free */
 };
 
 enum					/* Argument to forkpgrp call */
@@ -523,37 +523,37 @@ struct Qinfo
 /*
  *  Queue.flag
  */
-#define QHUNGUP	0x1	/* flag bit meaning the stream has been hung up */
+#define QHUNGUP	0x1			/* flag bit meaning the stream has been hung up */
 #define QINUSE	0x2
-#define QHIWAT	0x4	/* queue has gone past the high water mark */	
+#define QHIWAT	0x4			/* queue has gone past the high water mark */	
 #define QDEBUG	0x8
 
 struct Queue {
 	Blist;
 	int	flag;
-	Qinfo	*info;		/* line discipline definition */
-	Queue	*other;		/* opposite direction, same line discipline */
-	Queue	*next;		/* next queue in the stream */
+	Qinfo	*info;			/* line discipline definition */
+	Queue	*other;			/* opposite direction, same line discipline */
+	Queue	*next;			/* next queue in the stream */
 	void	(*put)(Queue*, Block*);
-	QLock	rlock;		/* mutex for processes sleeping at r */
-	Rendez	r;		/* standard place to wait for flow control */
-	Rendez	*rp;		/* where flow control wakeups go to */
-	void	*ptr;		/* private info for the queue */
+	QLock	rlock;			/* mutex for processes sleeping at r */
+	Rendez	r;			/* standard place to wait for flow control */
+	Rendez	*rp;			/* where flow control wakeups go to */
+	void	*ptr;			/* private info for the queue */
 };
 
 struct Stream {
-	QLock;			/* structure lock */
-	short	inuse;		/* number of processes in stream */
-	short	opens;		/* number of processes with stream open */
-	ushort	hread;		/* number of reads after hangup */
-	ushort	type;		/* correlation with Chan */
-	ushort	dev;		/* ... */
-	ushort	id;		/* ... */
-	QLock	rdlock;		/* read lock */
-	Queue	*procq;		/* write queue at process end */
-	Queue	*devq;		/* read queue at device end */
-	Block	*err;		/* error message from down stream */
-	int	forcedelim;	/* force a delimiter before the next message */
+	QLock;				/* structure lock */
+	short	inuse;			/* number of processes in stream */
+	short	opens;			/* number of processes with stream open */
+	ushort	hread;			/* number of reads after hangup */
+	ushort	type;			/* correlation with Chan */
+	ushort	dev;			/* ... */
+	ushort	id;			/* ... */
+	QLock	rdlock;			/* read lock */
+	Queue	*procq;			/* write queue at process end */
+	Queue	*devq;			/* read queue at device end */
+	Block	*err;			/* error message from down stream */
+	int	forcedelim;		/* force a delimiter before the next message */
 };
 
 /*
@@ -578,13 +578,13 @@ enum {
 	Sdataqid = Shighqid,
 	Sctlqid = Sdataqid-1,
 	Slowqid = Sctlqid,
-	Streamhi= (9*1024),	/* byte count high water mark */
-	Streambhi= 32,		/* block count high water mark */
+	Streamhi= (9*1024),		/* byte count high water mark */
+	Streambhi= 32,			/* block count high water mark */
 };
 
-#define MAXSYSARG	6	/* for mount(fd, mpt, flag, arg, srv, authfd) */
+#define MAXSYSARG	6		/* for mount(fd, mpt, flag, arg, srv, authfd) */
 #define	PRINTSIZE	256
-#define	NUMSIZE	12		/* size of formatted number */
+#define	NUMSIZE		12		/* size of formatted number */
 
 extern	FPsave	initfp;
 extern	Conf	conf;
@@ -600,6 +600,3 @@ extern  Image	swapimage;
 #define	CHDIR		0x80000000L
 #define	CHAPPEND 	0x40000000L
 #define	CHEXCL		0x20000000L
-
-
-

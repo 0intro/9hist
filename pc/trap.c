@@ -259,7 +259,7 @@ syscall(Ureg *ur)
 	if(ax == NOTED){
 		noted(ur, *(ulong*)(sp+BY2WD));
 		ret = -1;
-	} else if(u->nnote){
+	} else if(u->nnote && ax!=FORK){
 		ur->ax = ret;
 		notify(ur);
 	}
@@ -346,7 +346,7 @@ noted(Ureg *ur, ulong arg0)
 	u->notified = 0;
 	nur->flags = (u->svflags&0xffffff00) | (ur->flags&0xff);
 	memmove(ur, u->ureg, sizeof(Ureg));
-	ur->ax = -1;	/* return error from the interrupted call */
+	ur->ax = -1;	/* return error from the interrupted syscall */
 	switch(arg0){
 	case NCONT:
 		splhi();

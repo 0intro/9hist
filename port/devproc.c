@@ -273,7 +273,7 @@ procread(Chan *c, void *va, long n, ulong offset)
 			s->steal++;
 			qunlock(&s->lk);
 			if(pagedout(pg)){
-				pprint("nonresident page addr %lux (complain to rob)\n", offset);
+				pprint("nonresident page addr %lux (complain to philw)\n", offset);
 				memset(a, 0, n);
 			}else{
 				k = kmap(pg);

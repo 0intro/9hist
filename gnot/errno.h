@@ -1,5 +1,5 @@
 enum{
-	Enevermind,	/* never mind */
+	Enoerror,	/* no error */
 	Enofd,		/* no free file descriptors */
 	Ebadfd,		/* fd out of range or not open */
 	Ebadusefd,	/* inappropriate use of fd */
