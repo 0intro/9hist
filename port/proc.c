@@ -79,10 +79,13 @@ sched(void)
 {
 	if(up) {
 		splhi();
+
+		/* statistics */
 		m->cs++;
 		up->counter[CSCNTR]++;
-up->counter[TLBCNTR] += m->tlbfault - m->otlbfault;
-m->otlbfault = m->tlbfault;
+		up->counter[TLBCNTR] += m->tlbfault - m->otlbfault;
+		m->otlbfault = m->tlbfault;
+
 		procsave(up);
 		if(setlabel(&up->sched)) {
 			procrestore(up);
@@ -102,7 +105,7 @@ m->otlbfault = m->tlbfault;
 int
 anyready(void)
 {
-	return runloq.head != 0 || runhiq.head != 0 || m->runq.head != 0;
+	return runhiq.head != 0 || runloq.head != 0;
 }
 
 void
@@ -113,12 +116,10 @@ ready(Proc *p)
 
 	s = splhi();
 
-	rq = &runhiq;
-	if(p->mp)
-		rq = &p->mp->runq;
-	else
 	if(p->state == Running)
 		rq = &runloq;
+	else
+		rq = &runhiq;
 
 	lock(&runhiq);
 	p->rnext = 0;
@@ -142,21 +143,16 @@ runproc(void)
 
 loop:
 	spllo();
-	while(runhiq.head == 0 && runloq.head == 0 && m->runq.head == 0)
+	while(runhiq.head == 0 && runloq.head == 0)
 		;
-
 	splhi();
 
-	lock(&runhiq);
-
-	if(m->runq.head)
-		rq = &m->runq;
-	else
 	if(runhiq.head)
 		rq = &runhiq;
 	else
 		rq = &runloq;
 
+	lock(&runhiq);
 	p = rq->head;
 	/* p->mach==0 only when process state is saved */
 	if(p == 0 || p->mach){	
@@ -170,6 +166,7 @@ loop:
 	if(p->state != Ready)
 		print("runproc %s %d %s\n", p->text, p->pid, statename[p->state]);
 	unlock(&runhiq);
+
 	p->state = Scheding;
 	return p;
 }

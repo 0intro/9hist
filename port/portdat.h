@@ -247,6 +247,7 @@ enum
 	PG_NOFLUSH	= 0,
 	PG_TXTFLUSH	= 1,		/* flush icache */
 	PG_DATFLUSH	= 2,		/* flush both i & d caches */
+	PG_NEWCOL	= 3,		/* page has been recolored */
 
 	PG_MOD		= 0x01,		/* software modified bit */
 	PG_REF		= 0x02,		/* software referenced bit */
@@ -554,7 +555,8 @@ struct Proc
 	Note	lastnote;
 	int	(*notify)(void*, char*);
 
-	Mach	*mp;		/* machine this process is tied to */
+	Mach	*mp;		/* machine this process last ran on */
+	ulong	mpfault;	/* page faults on that mach at sched time */
 
 	void	*ureg;		/* User registers for notes */
 	void	*dbgreg;	/* User registers for devproc */

@@ -112,7 +112,7 @@ retry:
 		lock(&palloc);
 	}
 
-	/* First try for out colour */
+	/* First try for our colour */
 	for(p = palloc.head; p; p = p->next)
 		if(p->color == color)
 			break;
@@ -120,7 +120,7 @@ retry:
 	if(p == 0) {
 print("! ");
 		p = palloc.head;
-		memset(p->cachectl, PG_DATFLUSH, sizeof(p->cachectl));
+		memset(p->cachectl, PG_NEWCOL, sizeof(p->cachectl));
 		p->color = color;
 	}
 

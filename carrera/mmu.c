@@ -287,13 +287,19 @@ putmmu(ulong tlbvirt, ulong tlbphys, Page *pg)
 	puttlb(entry->virt, entry->phys0, entry->phys1);
 
 	ctl = &pg->cachectl[m->machno];
-	if(*ctl == PG_DATFLUSH) {
-		dcflush((void*)pg->va, BY2PG);
-		*ctl = PG_NOFLUSH;
-	}else
-	if(*ctl == PG_TXTFLUSH) {
+	switch(*ctl) {
+	case PG_TXTFLUSH:
 		icflush((void*)pg->va, BY2PG);
 		*ctl = PG_NOFLUSH;
+		break;
+	case PG_DATFLUSH:
+		dcflush((void*)pg->va, BY2PG);
+		*ctl = PG_NOFLUSH;
+		break;
+	case PG_NEWCOL:
+		cleancache();		/* Too expensive */
+		*ctl = PG_NOFLUSH;
+		break;
 	}
 	splx(s);
 }

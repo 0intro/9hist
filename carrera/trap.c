@@ -201,13 +201,6 @@ trap(Ureg *ur)
 	case CTLBM:
 	case CTLBL:
 	case CTLBS:
-{
-((ulong*)0xA0090000)[0] = ur->pc;
-((ulong*)0xA0090000)[1] = ur->badvaddr;
-((ulong*)0xA0090000)[2] = ur->cause;
-((ulong*)0xA0090000)[3] = 0x12345678;
-((ulong*)0xA0090000)[4] = 0x87654321;
-}
 		if(up == 0)
 			kernfault(ur, ecode);
 
@@ -299,7 +292,6 @@ intr(Ureg *ur)
 			switch(devint) {
 			default:
 				panic("unknown devint=#%lux", devint);
-
 			case 0x28:		/* Serial 1 */
 				NS16552intr(0);
 				break;
@@ -329,7 +321,7 @@ intr(Ureg *ur)
 	}
 	if(cause & INTR4) {
 		devint = IO(uchar, I386ack);
-		iprint("i386ack=#%lux\n", devint);
+		iprint("i386ACK #%lux\n", devint);
 		cause &= ~INTR4;
 	}
 

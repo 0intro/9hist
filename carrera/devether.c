@@ -75,7 +75,7 @@ typedef struct
 enum
 {
 	Nrb		= 16,		/* receive buffers */
-	Ntb		= 8,		/* transmit buffers */
+	Ntb		= 16,		/* transmit buffers */
 };
 
 enum
@@ -425,6 +425,14 @@ sonicpkt(Ether *ctlr, RXpkt *r, Pbuf *p)
 	}
 }
 
+static int
+isoutbuf(void *arg)
+{
+	Ether *ctlr = arg;
+
+	return ctlr->tda[ctlr->th].status == Host;
+}
+
 void
 etherintr(void)
 {
@@ -462,7 +470,8 @@ etherintr(void)
 				txpkt = &c->tda[c->ti];
 			}
 			status &= ~(Txdn|Txer);
-			wakeup(&c->tr);
+			if(isoutbuf(c))
+				wakeup(&c->tr);
 		}
 
 		if((status & (Pktrx|Rde)) == 0)
@@ -514,7 +523,7 @@ etherintr(void)
 			status &= ~Lcd;
 	
 		/*
-		 * Warnings that something is afoot.
+		 * Warnings that something is atoe.
 		 */
 		if(status & Hbl){
 			print("sonic: cd heartbeat lost\n");
@@ -675,14 +684,6 @@ etherread(Chan *c, void *buf, long n, ulong offset)
 }
 
 static int
-isoutbuf(void *arg)
-{
-	Ether *ctlr = arg;
-
-	return ctlr->tda[ctlr->th].status == Host;
-}
-
-static int
 etherloop(Etherpkt *p, long n)
 {
 	int s, different;
@@ -722,12 +723,12 @@ etherwrite(Chan *c, void *buf, long n, ulong offset)
 
 	USED(offset);
 
-	if(n > ETHERMAXTU)
-		error(Ebadarg);
-
 	/* etherif.c handles structure */
 	if(NETTYPE(c->qid.path) != Ndataqid)
 		return netifwrite(ether[0], c, buf, n);
+
+	if(n > ETHERMAXTU)
+		error(Ebadarg);
 
 	/* we handle data */
 	if(etherloop(buf, n))
@@ -739,15 +740,12 @@ etherwrite(Chan *c, void *buf, long n, ulong offset)
 		nexterror();
 	}
 
-	tsleep(&ctlr->tr, isoutbuf, ctlr, 1000);
+	tsleep(&ctlr->tr, isoutbuf, ctlr, 10000);
 
-	if(!isoutbuf(ctlr)) {
-		print("ether transmitter jammed\n");
-		reset(ctlr);
-		WR(cr, Rxen);
-	}
+	if(!isoutbuf(ctlr))
+		print("ether transmitter jammed cr #%lux\n", RD(cr));
 	else {
-		p =(Pbuf*)ctlr->tb[ctlr->th];
+		p = (Pbuf*)ctlr->tb[ctlr->th];
 		memmove(p->d, buf, n);
 		if(n < 60) {
 			memset(p->d+n, 0, 60-n);

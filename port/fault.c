@@ -43,7 +43,7 @@ fault(ulong addr, int read)
 int
 fixfault(Segment *s, ulong addr, int read, int doputmmu)
 {
-	int i, type;
+	int type;
 	Pte **p, *etp;
 	ulong mmuphys=0, soff;
 	Page **pg, *lkp, *new;
@@ -69,15 +69,15 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 		panic("fault");
 		break;
 
-	case SG_TEXT:
-		if(pagedout(*pg)) 		/* Demand load */
+	case SG_TEXT: 			/* Demand load */
+		if(pagedout(*pg))
 			pio(s, addr, soff, pg);
 		
 		mmuphys = PPN((*pg)->pa) | PTERONLY|PTEVALID;
 		(*pg)->modref = PG_REF;
 		break;
 
-	case SG_SHDATA:				/* Shared data */
+	case SG_SHDATA:			/* Shared data */
 		if(pagedout(*pg))
 			pio(s, addr, soff, pg);
 
@@ -89,7 +89,7 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 		goto done;
 
 	case SG_BSS:
-	case SG_SHARED:				/* Zero fill on demand */
+	case SG_SHARED:			/* Zero fill on demand */
 	case SG_STACK:	
 		if(*pg == 0) {
 			new = newpage(1, &s, addr);
@@ -100,7 +100,7 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 		}
 		/* NO break */
 
-	case SG_DATA:				/* Demand load/pagein/copy on write */
+	case SG_DATA:			/* Demand load/pagein/copy on write */
 		if(pagedout(*pg))
 			pio(s, addr, soff, pg);
 
@@ -108,7 +108,7 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 			goto done;
 
 		if(read && conf.copymode == 0) {
-			mmuphys = PPN((*pg)->pa) | /*PTERONLY|*/PTEVALID;
+			mmuphys = PPN((*pg)->pa)|PTERONLY|PTEVALID;
 			(*pg)->modref |= PG_REF;
 			break;
 		}
@@ -125,7 +125,9 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 			putpage(lkp);
 		}
 		else {
-			/* put a duplicate of a text page back onto the free list */
+			/* put a duplicate of a text page back onto
+			 * the free list
+			 */
 			if(lkp->image)     
 				duppage(lkp);	
 		
@@ -152,13 +154,7 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 
 		mmuphys = PPN((*pg)->pa) |PTEWRITE|PTEUNCACHED|PTEVALID;
 		(*pg)->modref = PG_MOD|PG_REF;
-/*		print("v %lux p %lux\n", addr, mmuphys);	/**/
 		break;
-	}
-
-	if(s->flushme) {
-		for(i = 0; i < MAXMACH; i++)
-			(*pg)->cachectl[i] = PG_TXTFLUSH;
 	}
 
 	qunlock(&s->lk);
@@ -262,6 +258,9 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 		else
 			putpage(new);
 	}
+
+	if(s->flushme)
+		memset((*p)->cachectl, PG_TXTFLUSH, sizeof((*p)->cachectl));
 }
 
 void
