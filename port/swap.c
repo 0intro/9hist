@@ -15,13 +15,14 @@ int	canflush(Proc *p, Segment*);
 
 enum
 {
-	Maxpages = 300,		/* Max number of pageouts per segment pass */
+	Maxpages = 100,		/* Max number of pageouts per segment pass */
 };
 
 Image 	swapimage;
 static 	int swopen;
 Page	*iolist[Maxpages];
 int	ioptr;
+int	scavenge;
 
 void
 swapinit(void)
@@ -144,9 +145,10 @@ pager(void *junk)
 void			
 pageout(Proc *p, Segment *s)
 {
-	Pte **sm, **endsm;
-	Page **pg, **epg;
+	Pte **sm, **endsm, *l;
+	Page **pg, *entry;
 	int type;
+extern char *sname[];
 
 	if(!canqlock(&s->lk))	/* We cannot afford to wait, we will surely deadlock */
 		return;
@@ -163,26 +165,36 @@ pageout(Proc *p, Segment *s)
 		return;
 	}
 
+	scavenge = 0;
+
 	/* Pass through the pte tables looking for memory pages to swap out */
 	type = s->type&SG_TYPE;
 	endsm = &s->map[SEGMAPSIZE];
-	for(sm = s->map; sm < endsm && ioptr < Maxpages; sm++)
-		if(*sm) {
-			pg = (*sm)->pages;
-			for(epg = &pg[PTEPERTAB]; pg < epg && ioptr < Maxpages; pg++)
-				if(!pagedout(*pg)) {
-					if((*pg)->modref & PG_REF)
-						(*pg)->modref &= ~PG_REF;
-					else 
-					if(pagepte(type, s, pg) == 0)
-						break;
-				}
-		}
+	for(sm = s->map; sm < endsm; sm++) {
+		l = *sm;
+		if(l == 0)
+			continue;
+		for(pg = l->first; pg < l->last; pg++) {
+			entry = *pg;
+			if(pagedout(entry))
+				continue;
+			if(entry->modref & PG_REF) {
+				print("MODREF\n");
+				entry->modref &= ~PG_REF;
+			}
+			else 
+				pagepte(type, s, pg);
 
+			if(ioptr >= Maxpages)
+				goto out;
+		}
+	}
+out:
+	
+	print("%s: %d: type %s %d pages\n", p->text, p->pid, sname[type], scavenge);
 	poperror();
 	qunlock(&s->lk);
 	putseg(s);
-
 	wakeup(&palloc.r);
 }
 
@@ -206,12 +218,16 @@ canflush(Proc *p, Segment *s)
 	 */
 	p = proctab(0);
 	ep = &p[conf.nproc];
-	for(; p < ep; p++)
-		if(p->state != Dead)
+	while(p < ep) {
+		if(p->state != Dead) {
 			for(i = 0; i < NSEG; i++)
 				if(p->seg[i] == s)
 					if(!canpage(p))
 						return 0;
+		}
+		p++;
+	}
+
 	return 1;						
 }
 
@@ -226,12 +242,14 @@ pagepte(int type, Segment *s, Page **pg)
 	KMap *k;
 
 	outp = *pg;
-
+print("outp: %lux\n", *pg);
 	switch(type) {
 	case SG_TEXT:					/* Revert to demand load */
 		putpage(outp);
 		*pg = 0;
+		scavenge++;
 		break;
+
 	case SG_DATA:
 	case SG_BSS:
 	case SG_STACK:
@@ -253,6 +271,7 @@ pagepte(int type, Segment *s, Page **pg)
 
 		/* Add me to IO transaction list */
 		iolist[ioptr++] = outp;
+		scavenge++;
 	}
 
 	return 1;
@@ -286,9 +305,6 @@ executeio(void)
 		kaddr = (char*)VA(k);
 		qlock(&c->wrl);
 
-		/* BUG: what to do ? Nobody to tell, nowhere to go: open to suggestions 
-		 *	the problem is I do not know whose page this is.
-		 */
 		if(waserror())
 			panic("executeio: page out I/O error");
 

@@ -157,6 +157,8 @@ hotdial(char *arg)
 	char srvdir[100];
 	Waitmsg m;
 
+	return open("#H/hotrod", ORDWR);
+
 	/*
 	 * The killer: gotta get a hotrodboot running, so dial up
 	 * on datakit and load it.

@@ -65,24 +65,27 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 
 	switch(type) {
 	case SG_TEXT:
-		if(pagedout(*pg)) 		/* No data - must demand load */
+		if(pagedout(*pg)) 			/* Demand load */
 			pio(s, addr, soff, pg);
 		
 		mmuphys = PPN((*pg)->pa) | PTERONLY|PTEVALID;
 		(*pg)->modref = PG_REF;
 		break;
-	case SG_SHARED:
+
+	case SG_SHARED:					/* Zero fill on demand */
 	case SG_BSS:
 	case SG_STACK:	
-			/* Zero fill on demand */
 		if(*pg == 0) {
-			if(new == 0 && (new = newpage(1, &s, addr)) && s == 0)
+			if(new == 0)
+			if(new = newpage(1, &s, addr))
+			if(s == 0)
 				return -1;
 			*pg = new;
 			new = 0;
 		}
 		/* NO break */
-	case SG_DATA:
+
+	case SG_DATA:					/* Demand load/page in/copy on write */
 		if(pagedout(*pg))
 			pio(s, addr, soff, pg);
 		
@@ -99,7 +102,9 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 		lockpage(lkp);
 		if(lkp->ref > 1) {
 			unlockpage(lkp);
-			if(new == 0 && (new = newpage(0, &s, addr)) && s == 0)
+			if(new == 0)
+			if(new = newpage(0, &s, addr))
+			if(s == 0)
 				return -1;
 			*pg = new;
 			new = 0;
@@ -117,6 +122,7 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 		mmuphys = PPN((*pg)->pa) | PTEWRITE|PTEVALID;
 		(*pg)->modref = PG_MOD|PG_REF;
 		break;
+
 	case SG_PHYSICAL:
 		if(*pg == 0)
 			*pg = (*s->pgalloc)(addr);
@@ -124,6 +130,7 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 		mmuphys = PPN((*pg)->pa) | PTEWRITE|PTEUNCACHED|PTEVALID;
 		(*pg)->modref = PG_MOD|PG_REF;
 		break;
+
 	default:
 		panic("fault");
 	}

@@ -258,8 +258,8 @@ ilrcvmsg(Ipconv *ipc, Block *bp)
 
 	if(ilcksum && ptcl_csum(bp, IL_EHSIZE, illen) != 0) {
 		st = (ih->iltype < 0 || ih->iltype > Ilclose) ? "?" : iltype[ih->iltype];
-		print("il: cksum error, pkt(%s id %lud ack %lud %d.%d.%d.%d/%d->%d)\n",
-			st, nhgetl(ih->ilid), nhgetl(ih->ilack), fmtaddr(dst), sp, dp);
+/*		print("il: cksum error, pkt(%s id %lud ack %lud %d.%d.%d.%d/%d->%d)\n",
+			st, nhgetl(ih->ilid), nhgetl(ih->ilack), fmtaddr(dst), sp, dp); /**/
 		goto drop;
 	}
 
