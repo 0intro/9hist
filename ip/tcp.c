@@ -266,9 +266,6 @@ tcpsetstate(Conv *s, uchar newstate)
 		qclose(s->rq);
 		qclose(s->wq);
 		qclose(s->eq);
-//		s->lport = 0;		/* This connection is toast */
-//		s->rport = 0;
-//		ipmove(s->raddr, IPnoaddr);
 
 	case Close_wait:		/* Remote closes */
 		qhangup(s->rq, nil);
@@ -1573,11 +1570,21 @@ tcpoutput(Conv *s)
 		switch(tcb->state){
 		case Syn_sent:
 			seg.flags = 0;
-			/* No break */
-		case Syn_received:
 			if(tcb->snd.ptr == tcb->iss){
 				seg.flags |= SYN;
 				dsize--;
+				seg.mss = tcpmtu(s);
+			}
+			break;
+		case Syn_received:
+			/*
+			 *  don't send any data with a SYN/ACK packet
+			 *  because Linux rejects the packet in its
+			 *  attempt to solve the SYN attack problem
+			 */
+			if(tcb->snd.ptr == tcb->iss){
+				seg.flags |= SYN;
+				dsize = 0;
 				seg.mss = tcpmtu(s);
 			}
 			break;

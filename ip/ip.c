@@ -116,6 +116,10 @@ void
 iprouting(Fs *f, int on)
 {
 	f->ip->iprouting = on;
+	if(f->ip->iprouting==0)
+		f->ip->istats.ipForwarding = 2;
+	else
+		f->ip->istats.ipForwarding = 1;	
 }
 
 void
@@ -373,9 +377,11 @@ ipiput(Fs *f, uchar *ia, Block *bp)
 	if(notforme) {
 		if(ip->iprouting) {
 			/* gate */
-			if(h->ttl <= 1)
+			if(h->ttl <= 1){
+				ip->istats.ipInHdrErrors++;
+				icmpttlexceeded(f, ia, bp);
 				freeblist(bp);
-			else {
+			} else {
 				ip->istats.ipForwDatagrams++;
 				ipoput(f, bp, 1, h->ttl - 1);
 			}
@@ -414,6 +420,7 @@ ipstats(Fs *f, char *buf, int len)
 	IP *ip;
 
 	ip = f->ip;
+	ip->istats.ipDefaultTTL = MAXTTL;
 	return snprint(buf, len, "%d %d %d %d %d %d %d %d %d %d "
 				 "%d %d %d %d %d %d %d %d %d",
 		ip->istats.ipForwarding, ip->istats.ipDefaultTTL,

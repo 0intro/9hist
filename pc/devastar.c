@@ -467,7 +467,7 @@ astarreset(void)
 					break;
 			}
 			if(!(inl(a->port+PCIcommand) & 0x80000000))
-				print("#G: didn't reset\n", a->id);
+				print("#G%d: didn't reset\n", a->id);
 
 			/*
 			 * So the memory can be read before any other

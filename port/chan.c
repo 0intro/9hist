@@ -604,6 +604,7 @@ namec(char *name, int amode, int omode, ulong perm)
 		if(*name == 0)
 			isdot = 1;
 	}
+	c->mnt = nil;
 
 	if(waserror()){
 		cclose(c);

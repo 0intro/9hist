@@ -481,6 +481,7 @@ extern long	ipselftabread(Fs*, char *a, ulong offset, int n);
 extern void	iprouting(Fs*, int);
 extern void	closeifcconv(Ifcconv*);
 extern void	icmpnoconv(Fs*, Block*);
+extern void	icmpttlexceeded(Fs*, uchar*, Block*);
 extern void	initfrag(IP*, int);
 extern ushort	ipcsum(uchar*);
 extern void	(*ipextprotoiput)(Block*);

@@ -30,14 +30,17 @@ enum {			/* Packet Types */
 	EchoReply	= 0,
 	Unreachable	= 3,
 	SrcQuench	= 4,
+	Redirect	= 4,
 	EchoRequest	= 8,
 	TimeExceed	= 11,
+	InParmProblem	= 12,
 	Timestamp	= 13,
 	TimestampReply	= 14,
 	InfoRequest	= 15,
 	InfoReply	= 16,
-
-	Maxtype		= 16,
+	AddrMaskRequest = 17,
+	AddrMaskReply   = 18,
+	Maxtype		= 18,
 };
 
 enum {
@@ -46,9 +49,43 @@ enum {
 	ICMP_HDRSIZE	= 8,
 };
 
+typedef struct Icmpstats Icmpstats;
+struct Icmpstats 
+{
+	ulong	icmpInMsgs;
+	ulong	icmpInErrors;
+//	ulong	icmpInDestUnreachs;
+//	ulong	icmpInTimeExcds;
+//	ulong	icmpInParmProbs;
+//	ulong	icmpInSrcQuenchs;
+//	ulong	icmpInRedirects;
+//	ulong	icmpInEchos;
+//	ulong	icmpInEchoReps;
+//	ulong	icmpInTimestamps;
+//	ulong	icmpInTimestampReps;
+//	ulong	icmpInAddrMasks;
+//	ulong	icmpInAddrMaskReps;
+	ulong	icmpOutMsgs;
+	ulong	icmpOutErrors;
+//	ulong	icmpOutDestUnreachs;
+//	ulong	icmpOutTimeExcds;
+//	ulong	icmpOutParmProbs;
+//	ulong	icmpOutSrcQuenchs;
+//	ulong	icmpOutRedirects;
+//	ulong	icmpOutEchos;
+//	ulong	icmpOutEchoReps;
+//	ulong	icmpOutTimestamps;
+//	ulong	icmpOutTimestampReps;
+//	ulong	icmpOutAddrMasks;
+//	ulong	icmpOutAddrMaskReps;
+};
+
 typedef struct Icmppriv Icmppriv;
 struct Icmppriv
 {
+	/* MIB Counters */
+	Icmpstats	istats;
+
 	/* non-MIB stats */
 	ulong	csumerr;		/* checksum errors */
 	ulong	lenerr;			/* short packet */
@@ -123,17 +160,45 @@ icmpkick(Conv *c, int l)
 		return;
 	}
 	p = (Icmp *)(bp->rp);
-	if(p->type <= Maxtype){
-		ipriv = c->p->priv;
+	ipriv = c->p->priv;
+	if(p->type <= Maxtype)	
 		ipriv->out[p->type]++;
-	}
+	
 	v6tov4(p->dst, c->raddr);
 	v6tov4(p->src, c->laddr);
 	p->proto = IP_ICMPPROTO;
 	hnputs(p->icmpid, c->lport);
 	memset(p->cksum, 0, sizeof(p->cksum));
 	hnputs(p->cksum, ptclcsum(bp, ICMP_IPSIZE, blocklen(bp) - ICMP_IPSIZE));
+	ipriv->istats.icmpOutMsgs++;
 	ipoput(c->p->f, bp, 0, c->ttl);
+}
+
+extern void
+icmpttlexceeded(Fs *f, uchar *ia, Block *bp)
+{
+	Block	*nbp;
+	Icmp	*p, *np;
+
+	p = (Icmp *)bp->rp;
+
+	netlog(f, Logicmp, "sending icmpttlexceeded -> %V\n", p->src);
+	nbp = allocb(ICMP_IPSIZE + ICMP_HDRSIZE + ICMP_IPSIZE + 8);
+	nbp->wp += ICMP_IPSIZE + ICMP_HDRSIZE + ICMP_IPSIZE + 8;
+	np = (Icmp *)nbp->rp;
+	memmove(np->dst, p->src, sizeof(np->dst));
+	v6tov4(np->src, ia);
+	memmove(np->data, bp->rp, ICMP_IPSIZE + 8);
+	np->type = TimeExceed;
+	np->code = 0;
+	np->proto = IP_ICMPPROTO;
+	hnputs(np->icmpid, 0);
+	hnputs(np->seq, 0);
+	memset(np->cksum, 0, sizeof(np->cksum));
+	hnputs(np->cksum, ptclcsum(nbp, ICMP_IPSIZE, blocklen(nbp) - ICMP_IPSIZE));
+/*	stats.out[TimeExceed]++; */
+	ipoput(f, nbp, 0, MAXTTL);
+
 }
 
 extern void
@@ -236,11 +301,14 @@ icmpiput(Proto *icmp, uchar*, Block *bp)
 	Icmppriv *ipriv;
 
 	ipriv = icmp->priv;
+	
+	ipriv->istats.icmpInMsgs++;
 
 	p = (Icmp *)bp->rp;
 	netlog(icmp->f, Logicmp, "icmpiput %d %d\n", p->type, p->code);
 	n = blocklen(bp);
 	if(n < ICMP_IPSIZE+ICMP_HDRSIZE){
+		ipriv->istats.icmpInErrors++;
 		ipriv->hlenerr++;
 		netlog(icmp->f, Logicmp, "icmp hlen %d\n", n);
 		goto raise;
@@ -248,10 +316,12 @@ icmpiput(Proto *icmp, uchar*, Block *bp)
 	iplen = nhgets(p->length);
 	if(iplen > n || (iplen % 1)){
 		ipriv->lenerr++;
+		ipriv->istats.icmpInErrors++;
 		netlog(icmp->f, Logicmp, "icmp length %d\n", iplen);
 		goto raise;
 	}
 	if(ptclcsum(bp, ICMP_IPSIZE, iplen - ICMP_IPSIZE)){
+		ipriv->istats.icmpInErrors++;
 		ipriv->csumerr++;
 		netlog(icmp->f, Logicmp, "icmp checksum error\n");
 		goto raise;
@@ -341,25 +411,39 @@ icmpadvise(Proto *icmp, Block *bp, char *msg)
 int
 icmpstats(Proto *icmp, char *buf, int len)
 {
-	int i, n;
 	Icmppriv *ipriv;
 
 	ipriv = icmp->priv;
 
-	n = snprint(buf, len,
-		"icmp: csum %d hlen %d len %d\n",
-		ipriv->csumerr, ipriv->hlenerr, ipriv->lenerr);
-	n += snprint(buf+n, len-n, "\trcvd ");
-	for(i = 0; i < Maxtype && len > n; i++)
-		n += snprint(buf+n, len-n, " %d", ipriv->in[i]);	
-	n += snprint(buf+n, len-n, "\n\tsent ");
-	for(i = 0; i < Maxtype && len > n; i++)
-		n += snprint(buf+n, len-n, " %d", ipriv->out[i]);
-	if(n < len)
-		n += snprint(buf+n, len-n, "\n");
-	return n;	
+	return snprint(buf,len,"%d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d",
+			ipriv->istats.icmpInMsgs,
+			ipriv->istats.icmpInErrors,
+			ipriv->in[Unreachable],
+			ipriv->in[TimeExceed],
+			ipriv->in[InParmProblem],
+			ipriv->in[SrcQuench],
+			ipriv->in[Redirect],
+			ipriv->in[EchoRequest],
+			ipriv->in[EchoReply],
+			ipriv->in[Timestamp],
+			ipriv->in[TimestampReply],
+			ipriv->in[AddrMaskRequest],
+			ipriv->in[AddrMaskReply],
+			ipriv->istats.icmpOutMsgs,
+			ipriv->istats.icmpOutErrors,
+			ipriv->out[Unreachable],
+			ipriv->out[TimeExceed],
+			ipriv->out[InParmProblem],
+			ipriv->out[SrcQuench],
+			ipriv->out[Redirect],
+			ipriv->out[EchoRequest],
+			ipriv->out[EchoReply],
+			ipriv->out[Timestamp],
+			ipriv->out[TimestampReply],
+			ipriv->out[AddrMaskRequest],
+			ipriv->out[AddrMaskReply]);
 }
-
+	
 void
 icmpinit(Fs *fs)
 {
