@@ -36,11 +36,10 @@ rfork(ulong flag)
 {
 	Proc *p;
 	Segment *s;
-	Page *np, *op;
 	ulong usp, upa, pid;
+	int n, on, i;
 	Chan *c;
 	KMap *k;
-	int n, on, i;
 	/*
 	 * used to compute last valid system stack address for copy
 	 */
