@@ -167,6 +167,7 @@ mqfree(MntQ *mq)
 
 	lock(mq);
 	if(--mq->ref == 0){
+print("mqfree\n");
 		msg = mq->msg;
 		mq->msg = 0;
 		lock(&mntqalloc);
@@ -644,6 +645,7 @@ mnterrdequeue(MntQ *q, Mnthdr *mh)		/* queue is unlocked */
 	qlock(q);
 	/* take self from queue if necessary */
 	if(q->reader == u->p){	/* advance a writer to reader */
+print("err: reader\n");
 		w = q->writer;
 		if(w){
 			q->reader = w->p;
@@ -654,6 +656,7 @@ mnterrdequeue(MntQ *q, Mnthdr *mh)		/* queue is unlocked */
 			q->writer = 0;
 		}
 	}else{
+print("err: writer\n");
 		w = q->writer;
 		if(w == mh)
 			q->writer = w->next;
