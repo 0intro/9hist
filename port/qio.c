@@ -390,6 +390,7 @@ qread(Queue *q, void *vp, int len)
 				b = allocb(q->synclen);
 				memmove(b->wp, vp, q->synclen);
 				b->wp += q->synclen;
+				b->next = q->bfirst;
 				if(q->bfirst == 0)
 					q->blast = b;
 				q->bfirst = b;

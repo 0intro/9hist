@@ -64,15 +64,10 @@ extern void	s3page(int);
 
 Vgacard vgachips[] =
 {
-	{ "generic", nopage, },
-	{ "ati", atipage, },
-	{ "cirrus", cirruspage, },
+	{ "vga", nopage, },
 	{ "clgd542x", cirruspage, },
-	{ "pvga1a", cirruspage, },
-	{ "s3", s3page, },
-	{ "trident", tridentpage, },
 	{ "et4000", et4000page, },
-	{ "tseng", et4000page, },
+	{ "s3", s3page, },
 	{ 0, 0, },
 };
 
