@@ -401,8 +401,7 @@ typedef struct {
 	Pd*	upr;
 	Pd*	uphead;
 
-	Lock	dnlock;				/* full-busmaster -based transmission */
-	int	ndn;
+	int	ndn;				/* full-busmaster -based transmission */
 	void*	dnbase;
 	Pd*	dnr;
 	Pd*	dnhead;
@@ -456,7 +455,6 @@ init905(Ctlr* ctlr)
 	}
 	ctlr->uphead = ctlr->upr;
 
-	ilock(&ctlr->dnlock);
 	ctlr->dnbase = malloc((ctlr->ndn+1)*sizeof(Pd));
 	ctlr->dnr = (Pd*)ROUNDUP((ulong)ctlr->dnbase, 8);
 
@@ -468,7 +466,6 @@ init905(Ctlr* ctlr)
 	ctlr->dnhead = ctlr->dnr;
 	ctlr->dntail = ctlr->dnr;
 	ctlr->dnq = 0;
-	iunlock(&ctlr->dnlock);
 }
 
 static Block*
@@ -702,7 +699,6 @@ txstart905(Ether* ether)
 	ctlr = ether->ctlr;
 	port = ether->port;
 
-	ilock(&ctlr->dnlock);
 	COMMAND(port, Stall, dnStall);
 	while(STATUS(port) & commandInProgress)
 		;
@@ -757,7 +753,6 @@ txstart905(Ether* ether)
 		outl(port+DnListPtr, PADDR(&ctlr->dnhead->np));
 
 	COMMAND(port, Stall, dnUnStall);
-	iunlock(&ctlr->dnlock);
 }
 
 static void
@@ -769,16 +764,15 @@ transmit(Ether* ether)
 	port = ether->port;
 	ctlr = ether->ctlr;
 
-	if(ctlr->dnenabled){
-		txstart905(ether);
-		return;
-	}
-
 	ilock(&ctlr->wlock);
-	w = (STATUS(port)>>13) & 0x07;
-	COMMAND(port, SelectRegisterWindow, Wop);
-	txstart(ether);
-	COMMAND(port, SelectRegisterWindow, w);
+	if(ctlr->dnenabled)
+		txstart905(ether);
+	else{
+		w = (STATUS(port)>>13) & 0x07;
+		COMMAND(port, SelectRegisterWindow, Wop);
+		txstart(ether);
+		COMMAND(port, SelectRegisterWindow, w);
+	}
 	iunlock(&ctlr->wlock);
 }
 
@@ -1298,7 +1292,7 @@ tcm5XXeisa(void)
 	 * Check if this is an EISA machine.
 	 * If not, nothing to do.
 	 */
-	if(strncmp((char*)(KZERO|0xFFFD9), "EISA", 4))
+	if(strncmp((char*)KADDR(0xFFFD9), "EISA", 4))
 		return;
 
 	/*
