@@ -25,21 +25,8 @@ static void	noetheroput(Queue*, Block*);
 /*
  *  ethernet header of a packet
  */
-typedef struct Etherhdr	Etherhdr;
-
-struct Etherhdr {
-	uchar	d[6];
-	uchar	s[6];
-	uchar	type[2];
-	uchar	circuit[3];	/* circuit number */
-	uchar	flag;
-	uchar	mid;		/* message id */
-	uchar	ack;		/* piggy back ack */
-	uchar	remain[2];	/* count of remaing bytes of data */
-	uchar	sum[2];		/* checksum (0 means none) */
-};
-#define EHDRSIZE 24
-#define EMAXBODY	(1514-HDRSIZE)	/* maximum ethernet packet body */
+#define EHDRSIZE 	(ETHERHDRSIZE + NO_HDRSIZE)
+#define EMAXBODY	(ETHERMAXTU - EHDRSIZE)	/* maximum ethernet packet body */
 #define ETHER_TYPE	0x900	/* most significant byte last */
 
 /*
@@ -61,9 +48,9 @@ Qinfo noetherinfo =
 void
 noetherconnect(Noconv *cp, char *ea)
 {
-	Etherhdr *eh;
+	Etherpkt *eh;
 
-	eh = (Etherhdr *)cp->media->rptr;
+	eh = (Etherpkt*)cp->media->rptr;
 	etherparse(eh->d, ea);
 	eh->type[0] = ETHER_TYPE>>8;
 	eh->type[1] = ETHER_TYPE & 0xff;
@@ -75,7 +62,7 @@ noetherconnect(Noconv *cp, char *ea)
 static void
 noetheropen(Queue *q, Stream *s)
 {
-	nonetnewifc(q, s, 1514, ETHERMINMTU, 14, noetherconnect);
+	nonetnewifc(q, s, ETHERMAXTU, ETHERMINTU, ETHERHDRSIZE, noetherconnect);
 }
 
 /*
@@ -86,7 +73,7 @@ noetherclose(Queue *q)
 {
 	Noifc *ifc;
 
-	ifc = (Noifc *)(q->ptr);
+	ifc = (Noifc*)q->ptr;
 	nonetfreeifc(ifc);
 }
 
@@ -98,7 +85,7 @@ noetheroput(Queue *q, Block *bp)
 {
 	Noifc *ifc;
 
-	ifc = (Noifc *)(q->ptr);
+	ifc = (Noifc*)q->ptr;
 	if(bp->type != M_DATA){
 		if(streamparse("config", bp)){
 			if(*bp->rptr == 0)
@@ -119,7 +106,8 @@ noetheroput(Queue *q, Block *bp)
 void
 noetherbad(Noifc *ifc, Block *bp, int circuit)
 {
-	Etherhdr *eh, *neh;
+	Etherpkt *eh, *neh;
+	Nohdr *nh, *nnh;
 	Block *nbp;
 	int r;
 	Noconv *cp, *ep;
@@ -127,29 +115,18 @@ noetherbad(Noifc *ifc, Block *bp, int circuit)
 	/*
 	 *  crack the packet header
 	 */
-	eh = (Etherhdr *)bp->rptr;
+	eh = (Etherpkt*)bp->rptr;
+	nh = (Nohdr*)eh->data;
 	print("bad %.2ux%.2ux%.2ux%.2ux%.2ux%.2ux c %d m %d f %d\n",
 		eh->s[0], eh->s[1], eh->s[2], eh->s[3], eh->s[4],
-		eh->s[5], circuit, eh->mid, eh->flag);
-	if(eh->flag & NO_RESET)
+		eh->s[5], circuit, nh->mid, nh->flag);
+	if(nh->flag & NO_RESET)
 		goto out;
-
-ep = &ifc->conv[conf.nnoconv];
-for(cp = &ifc->conv[0]; cp < ep; cp++){
-	qlock(cp);
-	if(cp->media){
-		neh = (Etherhdr *)(cp->media->rptr);
-		print("%lux	%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux %s c %d\n", neh,
-			neh->s[0], neh->s[1], neh->s[2], neh->s[3], neh->s[4],
-			neh->s[5], cp->raddr, cp->rcvcircuit);
-	}
-	qunlock(cp);
-}
 
 	/*
 	 *  only one reset per message
 	 */
-	r = (eh->remain[1]<<8) | eh->remain[0];
+	r = (nh->remain[1]<<8) | nh->remain[0];
 	if(r<0)
 		goto out;
 
@@ -161,13 +138,14 @@ for(cp = &ifc->conv[0]; cp < ep; cp++){
 	nbp->flags |= S_DELIM;
 	nbp->wptr = nbp->rptr + 60;
 	memset(bp->rptr, 0, 60);
-	neh = (Etherhdr *)nbp->rptr;
-	memmove(neh, eh, sizeof(Etherhdr));
-	neh->circuit[0] ^= 1;
-	neh->remain[0] = neh->remain[1] = 0;
-	neh->flag = NO_HANGUP | NO_RESET;
-	neh->ack = eh->mid;
-	neh->mid = eh->ack;
+	neh = (Etherpkt *)nbp->rptr;
+	nnh = (Nohdr*)neh->data;
+	memmove(neh, eh, EHDRSIZE);
+	nnh->circuit[0] ^= 1;
+	nnh->remain[0] = nnh->remain[1] = 0;
+	nnh->flag = NO_HANGUP | NO_RESET;
+	nnh->ack = nh->mid;
+	nnh->mid = nh->ack;
 	memmove(neh->s, eh->d, sizeof(neh->s));
 	memmove(neh->d, eh->s, sizeof(neh->d));
 	nonetcksum(nbp, 14);
@@ -189,8 +167,8 @@ noetheriput(Queue *q, Block *bp)
 	Noifc *ifc;
 	int circuit;
 	Noconv *cp, *ep;
-	Etherhdr *h;
-	Etherhdr *ph;
+	Etherpkt *eh, *peh;
+	Nohdr *nh;
 	ulong s;
 	Block *nbp;
 	int next;
@@ -201,12 +179,13 @@ noetheriput(Queue *q, Block *bp)
 		return;
 	}
 
-	ifc = (Noifc *)(q->ptr);
-	h = (Etherhdr *)(bp->rptr);
-	circuit = (h->circuit[2]<<16) | (h->circuit[1]<<8) | h->circuit[0];
-	s = (h->sum[1]<<8) | h->sum[0];
-	if(s && s!=nonetcksum(bp, 14)){
-/*		print("checksum error %ux %ux\n", s, (h->sum[1]<<8) | h->sum[0]); /**/
+	ifc = (Noifc*)q->ptr;
+	eh = (Etherpkt*)bp->rptr;
+	nh = (Nohdr*)eh->data;
+	circuit = (nh->circuit[2]<<16) | (nh->circuit[1]<<8) | nh->circuit[0];
+	s = (nh->sum[1]<<8) | nh->sum[0];
+	if(s && s!=nonetcksum(bp, ETHERHDRSIZE)){
+/*		print("checksum error %ux %ux\n", s, (nh->sum[1]<<8) | nh->sum[0]); /**/
 		freeb(bp);
 		return;
 	}
@@ -218,9 +197,9 @@ noetheriput(Queue *q, Block *bp)
 	for(cp = &ifc->conv[0]; cp < ep; cp++){
 		if(circuit==cp->rcvcircuit){
 			qlock(cp);
-			ph = (Etherhdr *)(cp->media->rptr);
+			peh = (Etherpkt*)cp->media->rptr;
 			if(circuit == cp->rcvcircuit
-			&& memcmp(ph->d, h->s, sizeof(h->s)) == 0){
+			&& memcmp(peh->d, eh->s, sizeof(eh->s)) == 0){
 				bp->rptr += ifc->hsize;
 				nonetrcvmsg(cp, bp);
 				qunlock(cp);
@@ -233,7 +212,7 @@ noetheriput(Queue *q, Block *bp)
 	/*
 	 *  if not a new call, then its misaddressed
 	 */
-	if((h->flag & NO_NEWCALL) == 0){
+	if((nh->flag & NO_NEWCALL) == 0){
 		noetherbad(ifc, bp, circuit);
 		return;
 	}
@@ -252,7 +231,7 @@ noetheriput(Queue *q, Block *bp)
 	}
 	clp = &ifc->call[ifc->wptr];
 	sprint(clp->raddr, "%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux",
-		h->s[0], h->s[1], h->s[2], h->s[3], h->s[4], h->s[5]);
+		eh->s[0], eh->s[1], eh->s[2], eh->s[3], eh->s[4], eh->s[5]);
 	clp->circuit = circuit^1;
 	bp->rptr += ifc->hsize;
 	clp->msg = bp;

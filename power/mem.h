@@ -133,3 +133,5 @@
 #define	CUNK15	15		/* undefined 15 */
 
 #define	NSEG	5
+
+#define isphys(x) ((ulong)(x) & KZERO)

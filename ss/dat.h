@@ -512,7 +512,9 @@ struct Etherpkt {
 	uchar data[1500];
 	uchar crc[4];
 };
-#define	ETHERMINMTU	60	/* minimum transmit size */
+#define	ETHERMINTU	60	/* minimum transmit size */
+#define	ETHERMAXTU	1514	/* maximum transmit size */
+#define ETHERHDRSIZE	14	/* size of an ethernet header */
 
 #define NSTUB 32
 struct Service
