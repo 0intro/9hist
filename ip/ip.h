@@ -88,7 +88,6 @@ struct Conv
 	ushort	lport;			/* local port number */
 	ushort	rport;			/* remote port number */
 
-
 	char	*owner;			/* protections */
 	int	perm;
 	int	inuse;			/* opens of listen/data/ctl */
@@ -118,6 +117,9 @@ struct Conv
 	Ipmulti	*multi;			/* multicast bindings for this interface */
 
 	void*	ptcl;			/* protocol specific stuff */
+
+	Route	*r;			/* last route used */
+	ulong	routegen;		/* routetable generation for *r */
 };
 
 struct Medium
