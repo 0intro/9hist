@@ -635,10 +635,11 @@ struct Proc
 	Note	lastnote;
 	int	(*notify)(void*, char*);
 
-	Lock		*lockwait;	/* waiting for lock to be released */
+	Lock		*lockwait;
 
 	Mach	*wired;
 	Mach	*mp;		/* machine this process last ran on */
+	ulong	nlocks;	/* number of locks held by proc */
 	ulong	priority;	/* priority level */
 	ulong	basepri;	/* base priority level */
 	uchar	fixedpri;	/* priority level deson't change */

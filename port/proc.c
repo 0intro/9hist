@@ -347,6 +347,7 @@ newproc(void)
 	p->wired = 0;
 	p->ureg = 0;
 	p->privatemem = 0;
+	p->lockwait = nil;
 	p->errstr = p->errbuf0;
 	p->syserrstr = p->errbuf1;
 	p->errbuf0[0] = '\0';

@@ -72,16 +72,8 @@ lock(Lock *l)
 		lockstats.inglare++;
 		i = 0;
 		while(l->key){
-			if (isedf(up)){
-				/* Edf process waiting for a lock; process holding lock will not
-				 * be scheduled unless we give up the processor.  We give up
-				 * the processor, but make sure we get awoken when the lock
-				 * is released
-				 */
-				if (edf_waitlock(l))
-					sched();
-			} else if(conf.nmach < 2 && cansched){
-				if (i++ > 5000){
+			if(conf.nmach < 2 && cansched){
+				if (i++ > 1000){
 					i = 0;
 					lockloop(l, pc);
 				}
@@ -181,8 +173,6 @@ unlock(Lock *l)
 	l->pc = 0;
 	l->key = 0;
 	coherence();
-	if (l->edfwaiting)
-		edf_releaselock(l);
 }
 
 void
