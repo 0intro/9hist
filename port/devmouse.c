@@ -418,11 +418,12 @@ m3mouseputc(void*, int c)
 	short x;
 	int dx, dy, newbuttons;
 
-	/* 
-	 *  check bit 6 for consistency
-	 */
 	if(nb==0){
-		if((c&0x40) == 0){
+		/*
+		 * an extra byte comes for middle button motion.
+		 * only two possible values for the extra byte.
+		 */
+		if(c == 0x00 || c == 0x20){
 			/* an extra byte gets sent for the middle button */
 			middle = (c&0x20) ? 2 : 0;
 			newbuttons = (mouse.buttons & ~2) | middle;
