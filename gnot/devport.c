@@ -8,8 +8,6 @@
 
 #include	"devtab.h"
 
-#include	"port.h"
-
 enum {
 	Qdir,
 	Qdata,

@@ -307,7 +307,7 @@ execpc(ulong entry)
 void
 error(int code)
 {
-	strncpy(u->error, errstrtab[code], NAMELEN);
+	strncpy(u->error, errstrtab[code], ERRLEN);
 	nexterror();
 }
 

@@ -74,6 +74,8 @@ trap(Ureg *ur)
 		lanceintr();
 		return;
 	}
+	if(tbr == 8)				/* floating point exception */
+		clearfpintr();
 
 	user = !(ur->psr&PSRPSUPER);
 
@@ -81,6 +83,8 @@ trap(Ureg *ur)
 		u->p->pc = ur->pc;		/* BUG */
 	if(user){
 		sprint(buf, "sys: trap: pc=0x%lux %s", ur->pc, excname(tbr));
+		if(tbr == 8)
+			sprint(buf+strlen(buf), " FSR %lux", getfsr());
 		postnote(u->p, 1, buf, NDebug);
 	}else{
 		print("kernel trap: %s pc=0x%lux\n", excname(tbr), ur->pc);
@@ -328,7 +332,7 @@ execpc(ulong entry)
 void
 error(int code)
 {
-	strncpy(u->error, errstrtab[code], NAMELEN);
+	strncpy(u->error, errstrtab[code], ERRLEN);
 	nexterror();
 }
 

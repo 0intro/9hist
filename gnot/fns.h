@@ -2,6 +2,7 @@ Alarm	*alarm(int, void (*)(Alarm*), void*);
 void	alarminit(void);
 Block	*allocb(ulong);
 int	anyready(void);
+void	addportintr(int (*)(void));
 void	append(List**, List*);
 void	cancel(Alarm*);
 int	canlock(Lock*);
@@ -43,6 +44,7 @@ void	duartstartrs232o(void);
 void	duartstarttimer(void);
 void	duartstoptimer(void);
 void	dumpregs(Ureg*);
+void	dumpqueues(void);
 void	dumpstack(void);
 int	eqchan(Chan*, Chan*, long);
 int	eqqid(Qid, Qid);
@@ -81,6 +83,7 @@ int	getrs232o(void);
 void	gotolabel(Label*);
 void	growpte(Orig*, ulong);
 void	*ialloc(ulong, int);
+void	incontoggle(void);
 int	incref(Ref*);
 void	insert(List**, List*, List*);
 void	invalidateu(void);
@@ -125,6 +128,7 @@ void	pgrpcpy(Pgrp*, Pgrp*);
 void	pgrpinit(void);
 void	pgrpnote(Pgrp*, char*, long, int);
 Pgrp	*pgrptab(int);
+int	portprobe(char*, int, int, int, long);
 int	postnote(Proc*, int, char*, int);
 int	pprint(char*, ...);
 void	printinit(void);
@@ -156,6 +160,18 @@ void	sched(void);
 void	schedinit(void);
 void	screeninit(void);
 void	screenputc(int);
+int	scsicap(int, uchar *);
+void	scsicmd(Scsi *, int, int, uchar *, long);
+void	scsictrlintr(void);
+void	scsidmaintr(void);
+int	scsiexec(Scsi *, int);
+void	scsiinit(void);
+void	scsirun(void);
+int	scsiready(int);
+uchar	*scsirecv(uchar *);
+void	scsireset(void);
+int	scsisense(int, uchar *);
+uchar	*scsixmit(uchar *);
 long	seconds(void);
 Seg	*seg(Proc*, ulong);
 int	segaddr(Seg*, ulong, ulong);
@@ -164,6 +180,7 @@ void	service(char*, Chan*, Chan*, void (*)(Chan*, char*, long));
 int	setlabel(Label*);
 char	*skipslash(char*);
 void	sleep(Rendez*, int(*)(void*), void*);
+int	spl1(void);
 int	splhi(void);
 int	spllo(void);
 void	splx(int);
@@ -174,6 +191,7 @@ int	streamclose1(Stream*);
 int	streamenter(Stream*);
 int	streamexit(Stream*, int);
 void	streaminit(void);
+void	streaminit0(void);
 long	streamread(Chan*, void*, long);
 long	streamwrite(Chan*, void*, long, int);
 Stream	*streamnew(ushort, ushort, ushort, Qinfo*, int);
@@ -204,3 +222,19 @@ Chan	*walk(Chan*, char*, int);
 
 #define USED(x)	if(x)
 #define SET(x)	x = 0
+#define	flushvirt()
+
+/*
+ *  for SCSI
+ */
+#define P_qlock(sel)	(sel >= 0 ? (qlock(&portpage), \
+				PORTSELECT = portpage.select = sel) : -1)
+
+#define P_qunlock(sel)	(sel >= 0 ? (qunlock(&portpage),0) : -1)
+
+#define P_oper(sel, inst)	(P_qlock(sel), inst, P_qunlock(sel))
+
+#define P_read(sel, addr, val, type)	P_oper(sel, val = *(type *)(PORT+addr))
+
+#define P_write(sel, addr, val, type)	P_oper(sel, *(type *)(PORT+addr) = val)
+

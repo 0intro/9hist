@@ -52,6 +52,7 @@ main(int argc, char *argv[])
 		sendmsg(cfd, "push async");
 		break;
 	case 'a':
+	case 's':
 		/*
 		 *  grab the rs232 line,
 		 *  make it 19200 baud,

@@ -207,6 +207,7 @@ int	streamclose1(Stream*);
 int	streamenter(Stream*);
 int	streamexit(Stream*, int);
 void	streaminit(void);
+void	streaminit0(void);
 long	streamread(Chan*, void*, long);
 long	streamwrite(Chan*, void*, long, int);
 Stream	*streamnew(ushort, ushort, ushort, Qinfo*, int);
@@ -238,3 +239,4 @@ Chan	*walk(Chan*, char*, int);
 #define USED(x) if(x)
 #define SET(x) x = 0
 #define	wbflush()	/* mips compatibility */
+#define	flushvirt()	flushmmu()

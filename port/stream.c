@@ -56,8 +56,6 @@ Bclass bclass[Nclass]={
 	{ 4096 },
 };
 
-#include "stream.h"
-
 /*
  *  Allocate streams, queues, and blocks.  Allocate n block classes with
  *	1/2(m+1) to class m < n-1

@@ -7,8 +7,6 @@
 #include	"devtab.h"
 #include	"io.h"
 
-#include	"scsi.h"
-
 typedef struct Part	Part;
 typedef struct Disk	Disk;
 
@@ -39,8 +37,10 @@ struct Disk
 
 static Disk	wren[Ndisk];
 
-static Scsi	staticcmd;			/* BUG */
-static uchar	datablk[2*4*512];		/* BUG */
+static Scsi	staticcmd;		/* BUG */
+static uchar	datablk[BY2PG];		/* BUG */
+
+#define	BGLONG(p)	(((((((p)[0]<<8)|(p)[1])<<8)|(p)[2])<<8)|(p)[3])
 
 /*
  *  accepts [0-7].[0-7], or abbreviation
@@ -108,7 +108,7 @@ wrenreset(void)
 		p->qid.path = Qdata + i;
 		p->perm = 0600;
 		p++->length = 0;
-		strcpy(p->name, "struct%d");
+		sprint(p->name, "struct%d", i);
 		p->qid.path = Qstruct + i;
 		p->perm = 0600;
 		p++->length = 0;

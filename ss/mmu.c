@@ -69,14 +69,12 @@ newpid(Proc *p)
 		}
 	
 	sp = m->pidproc[i];
-	if(sp){
+	if(sp)
 		sp->pidonmach[m->machno] = 0;
-		purgepid(i);
-	}
+	purgepid(i);	/* also does putcontext */
 	pidtime[i] = m->ticks;
 	m->pidproc[i] = p;
 	m->lastpid = i;
-	putcontext(i-1);
 
 	/*
 	 * kludge: each context is allowed NKLUDGE pmegs.
@@ -96,7 +94,6 @@ newpid(Proc *p)
 void
 putcontext(int c)
 {
-	m->pidhere[c+1] = 1;
 	putcxreg(c);
 }
 
@@ -115,9 +112,6 @@ flushcontext(void)
 void
 purgepid(int pid)
 {
-	if(m->pidhere[pid] == 0)
-		return;
-	memset(m->pidhere, 0, sizeof m->pidhere);
 	putcontext(pid-1);
 	flushcontext();
 }
@@ -233,8 +227,7 @@ print("putmmu %lux %d %s\n", tlbvirt, seg, p->text);
 	/*
 	 * Prepare mmu up to this address
 	 */
-	tp--;	/* now tp==context */
-	tp = tp*NKLUDGE;
+	tp = (tp-1)*NKLUDGE;	/* now tp==base of pmeg area for this proc */
 	l = UZERO+p->nmmuseg*BY2SEGM;
 	for(j=p->nmmuseg; j<=seg; j++){
 		putsegm(l, kmapalloc.lowpmeg+tp+j);
@@ -260,8 +253,6 @@ putpmeg(ulong virt, ulong phys)
 	 */
 	for(i=0; i<0x100; i+=16)
 		putwD16(virt+(i<<4), 0);
-	if(u && u->p)
-		m->pidhere[u->p->pidonmach[m->machno]] = 1;	/* UGH! */
 	putw4(virt, phys);
 }
 

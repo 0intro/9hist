@@ -57,9 +57,9 @@ XXXstat(Chan *c, char *db)
 Chan *
 XXXopen(Chan *c, int omode)
 {
-	if(c->qid == CHDIR){
+	if(c->qid.path == CHDIR){
 		if(omode != OREAD)
-			error(0, Eperm);
+			error(Eperm);
 	}
 	c->mode = openmode(omode);
 	c->flag |= COPEN;
@@ -70,19 +70,19 @@ XXXopen(Chan *c, int omode)
 void
 XXXcreate(Chan *c, char *name, int omode, ulong perm)
 {
-	error(0, Eperm);
+	error(Eperm);
 }
 
 void
 XXXremove(Chan *c)
 {
-	error(0, Eperm);
+	error(Eperm);
 }
 
 void
 XXXwstat(Chan *c, char *dp)
 {
-	error(0, Eperm);
+	error(Eperm);
 }
 
 void
@@ -93,7 +93,7 @@ XXXclose(Chan *c)
 long
 XXXread(Chan *c, void *a, long n)
 {
-	switch((int)(c->qid&~CHDIR)){
+	switch((int)(c->qid.path&~CHDIR)){
 	case XXXdirqid:
 		return devdirread(c, a, n, XXXtab, NXXXtab, devgen);
 	case XXXdataqid:
@@ -108,11 +108,11 @@ XXXread(Chan *c, void *a, long n)
 long
 XXXwrite(Chan *c, char *a, long n)
 {
-	switch((int)(c->qid&~CHDIR)){
+	switch((int)(c->qid.path&~CHDIR)){
 	case XXXdataqid:
 		break;
 	default:
-		error(0, Ebadusefd);
+		error(Ebadusefd);
 	}
 	return n;
 }

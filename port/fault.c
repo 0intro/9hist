@@ -208,7 +208,7 @@ validaddr(ulong addr, ulong len, int write)
 
 	if((long)len < 0){
     Err:
-		pprint("invalid address in sys call pc %lux sp %lux\n", ((Ureg*)UREGADDR)->pc, ((Ureg*)UREGADDR)->sp);
+		pprint("invalid address %lux in sys call pc %lux sp %lux\n", addr, ((Ureg*)UREGADDR)->pc, ((Ureg*)UREGADDR)->sp);
 		postnote(u->p, 1, "sys: bad address", NDebug);
 		error(Ebadarg);
 	}

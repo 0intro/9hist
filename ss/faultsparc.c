@@ -79,7 +79,6 @@ void
 evenaddr(ulong addr)
 {
 	if(addr & 3){
-panic("evenaddr");
 		postnote(u->p, 1, "sys: odd address", NDebug);
 		error(Ebadarg);
 	}

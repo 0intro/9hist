@@ -23,6 +23,7 @@ typedef struct Note	Note;
 typedef struct Orig	Orig;
 typedef struct PTE	PTE;
 typedef struct Page	Page;
+typedef struct Portpage	Portpage;
 typedef struct Pgrp	Pgrp;
 typedef struct Proc	Proc;
 typedef struct Qinfo	Qinfo;
@@ -30,6 +31,8 @@ typedef struct QLock	QLock;
 typedef struct Queue	Queue;
 typedef struct Ref	Ref;
 typedef struct Rendez	Rendez;
+typedef struct Scsi	Scsi;
+typedef struct Scsidata	Scsidata;
 typedef struct Seg	Seg;
 typedef struct Service	Service;
 typedef struct Stream	Stream;
@@ -509,7 +512,6 @@ struct Service
 	char	name[NAMELEN];
 };
 
-
 #define	PRINTSIZE	256
 
 extern Mach	*m;
@@ -611,3 +613,42 @@ extern  void	(*kprofp)(ulong);
  *  parameters for sysproc.c
  */
 #define AOUT_MAGIC	A_MAGIC
+
+/*
+ *  for SCSI bus
+ */
+struct Scsidata
+{
+	uchar *	base;
+	uchar *	lim;
+	uchar *	ptr;
+};
+
+struct Scsi
+{
+	QLock;
+	ushort	target, lun;
+	ushort	state;
+	ushort	status;
+	Scsidata cmd;
+	Scsidata data;
+	uchar *	save;
+	uchar	cmdblk[16];
+};
+
+struct Portpage
+{
+	union {
+		Lock;
+		QLock;
+	};
+	int	 select;
+};
+
+#define PORTSIZE	64
+#define PORTSHIFT	6
+#define PORTSELECT	PORT[32]
+
+extern Portpage portpage;
+extern int	portispaged;
+extern int	(*portservice[])(void);

@@ -7,9 +7,6 @@
 #include	"devtab.h"
 #include	"io.h"
 
-#include	"port.h"
-#include	"scsi.h"
-
 int	scsiintr(void);
 
 #define	DPRINT	if(debug)kprint

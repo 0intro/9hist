@@ -25,7 +25,7 @@ TEXT	startvirt(SB), $-4
 	MOVW	$0x8, R7
 	MOVW	R7, WIM
 	JMPL	main(SB)
-	UNIMP
+	MOVW	(R0), R0
 	RETURN
 
 TEXT	swap1(SB), $0
@@ -461,4 +461,24 @@ TEXT	putsegm(SB), $0
 	MOVW	R8, (R7, 3)
 	RETURN
 
+TEXT	clearfpintr(SB), $0
+	MOVW	$fpq+BY2WD(SB), R7
+	ANDN	$0x7, R7		/* must be D aligned */
+	MOVW	$fpr+0(SB), R9
+clrq:
+	MOVD	FQ, (R7)
+	MOVW	FSR, (R9)
+	MOVW	(R9), R8
+	AND	$(1<<13), R8		/* queue not empty? */
+	BNE	clrq
+	RETURN
+
+TEXT	getfsr(SB), $0
+	MOVW	$fpr+0(SB), R7
+	MOVW	FSR, (R7)
+	MOVW	(R7), R7
+	RETURN
+
 GLOBL	mach0+0(SB), $MACHSIZE
+GLOBL	fpq+0(SB), $(3*BY2WD)
+GLOBL	fpr+0(SB), $BY2WD

@@ -877,7 +877,8 @@ inconintr(Ureg *ur)
 	}
 }
 
-incontoggle()
+void
+incontoggle(void)
 {
 	incondebug ^= 1;
 }

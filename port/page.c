@@ -464,6 +464,12 @@ freesegs(int save)
 	Page *pg;
 	Chan *c;
 
+	/*
+	 * flushvirt() is a no-op on machines without virtual write-back caches.
+	 * On such machines it is necessary to make sure the caches are flushed
+	 * before the pages are remapped.
+	 */
+	flushvirt();
 	s = u->p->seg;
 	for(i=0; i<NSEG; i++,s++){
 		if(i == save)
