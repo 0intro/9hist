@@ -103,12 +103,6 @@ static Rectangle mbb;
 static Rectangle NULLMBB = {10000, 10000, -10000, -10000};
 
 void
-unlocktseng(void) {
-	outb(0x3bf, 0x03);
-	outb(0x3d8, 0xa0);
-}
-
-void
 genout(int reg, int val)
 {
 	if(reg == 0)
@@ -274,7 +268,6 @@ setscreen(int maxx, int maxy, int ldepth)
 	if(p == 0)
 		panic("can't alloc screen bitmap");
 	mbb = NULLMBB;
-	cga = 0;
 
 	/*
 	 *  zero hard screen and setup a bitmap for the new size
@@ -338,6 +331,7 @@ setscreen(int maxx, int maxy, int ldepth)
 		gscreen.ldepth = ldepth;
 		break;
 	}
+	cga = 0;
 }
 
 void
@@ -345,8 +339,6 @@ screeninit(void)
 {
 	int i;
 	ulong *l;
-
-	unlocktseng();
 
 	/*
 	 *  arrow is defined as a big endian
@@ -427,9 +419,6 @@ vgaupdate(void)
 	if(r.max.y > gscreen.r.max.y)
 		r.max.y = gscreen.r.max.y;
 
-	outb(0x3bf, 0x03);
-	outb(0x3d8, 0xa0);
-
 	incs = gscreen.width * BY2WD;
 	inch = vgascreen.width * BY2WD;
 
@@ -457,6 +446,8 @@ vgaupdate(void)
 		f = memmove;
 		len = r.max.x - r.min.x;
 		break;
+	default:
+		return;
 	}
 	if(len < 1)
 		return;
@@ -471,10 +462,12 @@ vgaupdate(void)
 		} else {
 			off = edisp - hp;
 			if(off <= len){
-				f(hp, sp, off);
+				if(off > 0)
+					f(hp, sp, off);
 				page++;
 				outb(0x3cd, (page<<4)|page);
-				f(vgascreen.base, sp+off, len - off);
+				if(len - off > 0)
+					f(vgascreen.base, sp+off, len - off);
 			} else {
 				f(hp, sp, len);
 				page++;

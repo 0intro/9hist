@@ -642,8 +642,8 @@ TEXT	config(SB),$0
 TEXT	l0update(SB),$0
 	XORL	AX,AX
 	MOVL	len+8(FP),CX
-	MOVL	from+0(FP),SI
-	MOVL	to+4(FP),DI
+	MOVL	from+4(FP),SI
+	MOVL	to+0(FP),DI
 l00:
 	MOVB	-1(SI)(CX*1),AL
 	MOVB	revtab0(SB)(AX*1),AL
@@ -660,8 +660,8 @@ l00:
  */
 TEXT	l1update(SB),$0
 	XORL	AX,AX
-	MOVL	from+0(FP),SI
-	MOVL	to+4(FP),DI
+	MOVL	from+4(FP),SI
+	MOVL	to+0(FP),DI
 	MOVL	len+8(FP),CX
 	MOVB	$(Smmask),AL
 	MOVW	$(SRX),DX
@@ -701,8 +701,8 @@ l11:	LOOP	l10
  */
 TEXT	l2update(SB),$0
 	XORL	AX,AX
-	MOVL	from+0(FP),SI
-	MOVL	to+4(FP),DI
+	MOVL	from+4(FP),SI
+	MOVL	to+0(FP),DI
 	MOVL	len+8(FP),CX
 	MOVB	$(Smmask),AL
 	MOVW	$(SRX),DX

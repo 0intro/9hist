@@ -573,7 +573,7 @@ procctlreq(Proc *p, char *va, int n)
 	else if(strncmp(buf, "kill", 4) == 0) {
 		if(p->state == Broken)
 			ready(p);
-		else{
+		else {
 			if(p->state == Stopped)
 				ready(p);
 			postnote(p, 0, "sys: killed", NExit);
