@@ -198,7 +198,8 @@ init0(void)
 		poperror();
 	}
 
-	kproc("kdebug", debugger, 0);
+	if(conf.nmach > 2)
+		kproc("kdebug", debugger, 0);
 	kproc("alarm", alarmkproc, 0);
 	touser((uchar*)(USTKTOP - sizeof(argbuf)));
 }
