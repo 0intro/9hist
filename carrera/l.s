@@ -103,6 +103,7 @@ TEXT	splhi(SB), $0
 
 TEXT	splx(SB), $0
 	MOVW	R31, 12(R(MACH))	/* save PC in m->splpc */
+	/* fall though */
 
 TEXT	splxpc(SB), $0			/* for iunlock */
 	MOVW	M(STATUS), R2
