@@ -118,26 +118,26 @@ trapinit(void)
 	 *  set all interrupts to panics
 	 */
 	for(i = 0; i < 256; i++)
-		sethvec(i, intrbad, SEGTG, 0);
+		sethvec(i, intrbad, SEGIG, 0);
 
 	/*
 	 *  80386 processor (and coprocessor) traps
 	 */
-	sethvec(0, intr0, SEGTG, 0);
-	sethvec(1, intr1, SEGTG, 0);
-	sethvec(2, intr2, SEGTG, 0);
-	sethvec(4, intr4, SEGTG, 0);
-	sethvec(5, intr5, SEGTG, 0);
-	sethvec(6, intr6, SEGTG, 0);
-	sethvec(7, intr7, SEGTG, 0);
-	sethvec(8, intr8, SEGTG, 0);
-	sethvec(9, intr9, SEGTG, 0);
-	sethvec(10, intr10, SEGTG, 0);
-	sethvec(11, intr11, SEGTG, 0);
-	sethvec(12, intr12, SEGTG, 0);
-	sethvec(13, intr13, SEGTG, 0);
+	sethvec(0, intr0, SEGIG, 0);
+	sethvec(1, intr1, SEGIG, 0);
+	sethvec(2, intr2, SEGIG, 0);
+	sethvec(4, intr4, SEGIG, 0);
+	sethvec(5, intr5, SEGIG, 0);
+	sethvec(6, intr6, SEGIG, 0);
+	sethvec(7, intr7, SEGIG, 0);
+	sethvec(8, intr8, SEGIG, 0);
+	sethvec(9, intr9, SEGIG, 0);
+	sethvec(10, intr10, SEGIG, 0);
+	sethvec(11, intr11, SEGIG, 0);
+	sethvec(12, intr12, SEGIG, 0);
+	sethvec(13, intr13, SEGIG, 0);
 	sethvec(14, intr14, SEGIG, 0);	/* page fault, interrupts off */
-	sethvec(15, intr15, SEGTG, 0);
+	sethvec(15, intr15, SEGIG, 0);
 	sethvec(16, intr16, SEGIG, 0);	/* math coprocessor, interrupts off */
 
 	/*
@@ -163,9 +163,9 @@ trapinit(void)
 	/*
 	 *  system calls and break points
 	 */
-	sethvec(Syscallvec, intr64, SEGTG, 3);
+	sethvec(Syscallvec, intr64, SEGIG, 3);
 	setvec(Syscallvec, (void (*)(Ureg*))syscall);
-	sethvec(Bptvec, intr3, SEGTG, 3);
+	sethvec(Bptvec, intr3, SEGIG, 3);
 	setvec(Bptvec, debugbpt);
 
 	/*

@@ -536,9 +536,9 @@ namec(char *name, int amode, int omode, ulong perm)
 		elem[n] = '\0';
 		n = chartorune(&r, elem+1)+1;
 		if(r == 'M') {
-			name = skipslash(name);
-			if(*name)
+			if(amode != Aopen || omode != ORDWR)
 				error(Eperm);
+			name = skipslash(name);
 			return mchan(elem+n);
 		}
 		t = devno(r, 1);
