@@ -136,7 +136,9 @@ scsiprobe(Ctlr *ctlr)
 		 * Determine if the drive exists and is not ready or
 		 * is simply not responding
 		 */
-		if((s = scsireqsense(t, 0, 0)) != STok){
+		nbytes = Nscratch;
+		s = scsireqsense(t, 0, t->scratch, &nbytes, 0);
+		if(s != STok){
 			print("scsi%d: unit %d unavailable, status %d\n", t->ctlrno, i, s);
 			continue;
 		}
@@ -152,7 +154,7 @@ scsiprobe(Ctlr *ctlr)
 			print("scsi%d: unit %d inquire failed, status %d\n", t->ctlrno, i, s);
 			continue;
 		}
-		print("scsi%d: unit %d:%2.2ux: %s\n", t->ctlrno, i, t->inq[0], t->inq+8);
+		print("scsi%d: unit %d: %s\n", t->ctlrno, i, t->inq+8);
 		t->ok = 1;
 	}
 }
@@ -260,15 +262,12 @@ scsicap(Target *t, char lun, ulong *size, ulong *bsize)
 		return -1;
 
 	nbytes = 8;
-	s = scsiexec(t, SCSIread, cmd, sizeof(cmd), d, &nbytes);
-	if(s < 0) {
-		free(d);
-		return s;
+	if((s = scsiexec(t, SCSIread, cmd, sizeof(cmd), d, &nbytes)) == STok){
+		*size  = (d[0]<<24)|(d[1]<<16)|(d[2]<<8)|(d[3]<<0);
+		*bsize = (d[4]<<24)|(d[5]<<16)|(d[6]<<8)|(d[7]<<0);
 	}
-	*size  = (d[0]<<24)|(d[1]<<16)|(d[2]<<8)|(d[3]<<0);
-	*bsize = (d[4]<<24)|(d[5]<<16)|(d[6]<<8)|(d[7]<<0);
 	free(d);
-	return 0;
+	return s;
 }
 
 int
@@ -304,7 +303,8 @@ scsibio(Target *t, char lun, int dir, void *b, long n, long bsize, long bno)
 	nbytes = n*bsize;
 	s = scsiexec(t, dir, cmd, cdbsiz, b, &nbytes);
 	if(s < 0) {
-		scsireqsense(t, lun, 0);
+		nbytes = Nscratch;
+		scsireqsense(t, lun, t->scratch, &nbytes, 0);
 		return -1;
 	}
 	return nbytes;
@@ -331,37 +331,44 @@ static char *key[] =
 };
 
 int
-scsireqsense(Target *t, char lun, int quiet)
+scsireqsense(Target *t, char lun, void *data, int *nbytes, int quiet)
 {
 	char *s;
-	int sr, try, nbytes;
+	int status, try;
 	uchar cmd[6], *sense;
 
-	sense = t->scratch;
+	sense = malloc(*nbytes);
 
 	for(try = 0; try < 5; try++) {
 		memset(cmd, 0, sizeof(cmd));
 		cmd[0] = CMDreqsense;
 		cmd[1] = lun<<5;
-		cmd[4] = Nscratch;
-		memset(sense, 0, sizeof(sense));
+		cmd[4] = *nbytes;
+		memset(sense, 0, *nbytes);
 
-		nbytes = Nscratch;
-		sr = scsiexec(t, SCSIread, cmd, sizeof(cmd), sense, &nbytes);
-		if(sr != STok)
-			return sr;
+		status = scsiexec(t, SCSIread, cmd, sizeof(cmd), sense, nbytes);
+		if(status != STok){
+			free(sense);
+			return status;
+		}
+		*nbytes = sense[0x07]+8;
+		memmove(data, sense, *nbytes);
 
 		/*
 		 * Unit attention. We can handle that.
 		 */
-		if((sense[2] & 0x0F) == 0x00 || (sense[2] & 0x0F) == 0x06)
+		if((sense[2] & 0x0F) == 0x00 || (sense[2] & 0x0F) == 0x06){
+			free(sense);
 			return STok;
+		}
 
 		/*
 		 * Recovered error. Why bother telling me.
 		 */
-		if((sense[2] & 0x0F) == 0x01)
+		if((sense[2] & 0x0F) == 0x01){
+			free(sense);
 			return STok;
+		}
 
 		/*
 		 * Unit is becoming ready
@@ -372,12 +379,12 @@ scsireqsense(Target *t, char lun, int quiet)
 		delay(5000);
 	}
 
-	if(quiet)
-		return STcheck;
-
-	s = key[sense[2]&0xf];
-	print("scsi%d: unit %d reqsense: '%s' code #%2.2ux #%2.2ux\n",
-		t->ctlrno, t->target, s, sense[12], sense[13]);
+	if(quiet == 0){
+		s = key[sense[2]&0x0F];
+		print("scsi%d: unit %d reqsense: '%s' code #%2.2ux #%2.2ux\n",
+			t->ctlrno, t->target, s, sense[12], sense[13]);
+	}
+	free(sense);
 	return STcheck;
 }
 

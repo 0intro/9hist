@@ -100,8 +100,7 @@ void
 sdinit(void)
 {
 	Disk *d;
-	ulong s, b;
-	uchar inq[255];
+	uchar scratch[0xFF], type;
 	int dev, i, nbytes;
 
 	dev = 0;
@@ -111,43 +110,48 @@ sdinit(void)
 		if(dev < 0)
 			break;
 
-		if(scsitest(d->t, 0) < 0)
-			scsireqsense(d->t, 0, 0);
-		if(scsistart(d->t, 0, 1) < 0)
-			scsireqsense(d->t, 0, 0);
-print("sd1|");
-
-		/* Search for other lun's */
+		/*
+		 * Search for all the lun's.
+		 */
 		for(i = 0; i < Nlun; i++) {
 			d->lun = i;
-print("sd2|");
 
 			/*
 			 * A SCSI target does not support a lun if the
 			 * the peripheral device type and qualifier fields
 			 * in the response to an inquiry command are 0x7F.
 			 */
-			memset(inq, 0, sizeof(inq));
-			nbytes = sizeof(inq);
-			if(scsiinquiry(d->t, d->lun, inq, &nbytes) != STok || inq[0] == 0x7F)
+			nbytes = sizeof(scratch);
+			memset(scratch, 0, nbytes);
+			if(scsiinquiry(d->t, d->lun, scratch, &nbytes) != STok)
 				continue;
-print("sd3|");
+			if(scratch[0] == 0x7F)
+				continue;
+			type = scratch[0] & 0x1F;
 
-			s = 0;
-			b = 0;
-			if(scsicap(d->t, d->lun, &s, &b) != STok) {
-				scsireqsense(d->t, 0, 0);
-				continue;
+			/*
+			 * Read-capacity is mandatory for TypeDA, TypeMO and TypeCD.
+			 * It may return 'not ready' if TypeDA is not spun up,
+			 * TypeMO or TypeCD are not loaded or just plain slow getting
+			 * their act together after a reset.
+			 * If 'not ready' comes back, try starting a TypeDA and punt
+			 * the get capacity until the drive is attached.
+			 * It might be possible to be smarter here, and look at the
+			 * response from a test-unit-ready which would show if the
+			 * target was in the process of becoming ready.
+			 */
+			if(scsicap(d->t, d->lun, &d->size, &d->bsize) != STok) {
+				nbytes = sizeof(scratch);
+				memset(scratch, 0, nbytes);
+				scsireqsense(d->t, 0, scratch, &nbytes, 1);
+				if((scratch[2] & 0x0F) != 0x02)
+					continue;
+				if(type == TypeDA)
+					scsistart(d->t, d->lun, 0);
+				d->size = d->bsize = 0;
 			}
-print("sd4/%d/%d|", s, b);
 
-			if(s == 0 || b == 0)
-				continue;
-print("sd5/0x%2.2ux|", d->inquire[0]);
-
-			d->size = s;
-			d->bsize = b;
-			switch(d->inquire[0] & 0x1F){
+			switch(type){
 
 			case TypeDA:
 			case TypeMO:
@@ -161,7 +165,6 @@ print("sd5/0x%2.2ux|", d->inquire[0]);
 			default:
 				continue;
 			}
-print("sd6|");
 
 			if(++ndisk >= Ndisk)
 				break;
@@ -281,10 +284,23 @@ sdrdpart(Disk *d)
 	char *b, *line[Npart+2], *field[3];
 	static char MAGIC[] = "plan9 partitions";
 
+	/*
+	 * If the drive wasn't ready when we tried to do a
+	 * read-capacity earlier (in sdinit()), try again.
+	 * It might be possible to be smarter here, and look at the
+	 * response from a test-unit-ready which would show if the
+	 * target was in the process of becoming ready.
+	 */
+	if(d->size == 0 || d->bsize == 0){
+		if(scsicap(d->t, d->lun, &d->size, &d->bsize) != STok){
+			d->size = d->bsize = 0;
+			error(Eio);
+		}
+	}
+
 	b = scsialloc(d->bsize);
 	if(b == 0)
 		error(Enomem);
-
 	qlock(d);
 	
 	p = d->table;

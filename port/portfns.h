@@ -241,7 +241,7 @@ int		scsiexec(Target*, int, uchar*, int, void*, int*);
 #define		scsifree(p)	free(p)
 int		scsiinquiry(Target*, char, void*, int*);
 int		scsiinv(int, int*, Target**, uchar**, char*);
-int		scsireqsense(Target*, char, int);
+int		scsireqsense(Target*, char, void*, int*, int);
 int		scsistart(Target*, char, int);
 int		scsitest(Target*, char);
 Target*		scsiunit(int, int);
