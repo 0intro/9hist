@@ -10,6 +10,7 @@ static char	mpoint[32];
 
 static int isvalidip(uchar*);
 static void netndb(char*, uchar*);
+static void netenv(char*, uchar*);
 
 void
 configip(void)
@@ -76,13 +77,18 @@ configip(void)
 
 	/* if we didn't get a file and auth server, query user */
 	netndb("fs", fsip);
-	netndb("auth", auip);
-	if(!isvalidip(fsip)){
+	if(!isvalidip(fsip))
+		netenv("fs", fsip);
+	while(!isvalidip(fsip)){
 		buf[0] = 0;
 		outin("filesystem IP address", buf, sizeof(buf));
 		parseip(fsip, buf);
 	}
-	if(!isvalidip(auip)){
+
+	netndb("auth", auip);
+	if(!isvalidip(auip))
+		netenv("auth", auip);
+	while(!isvalidip(auip)){
 		buf[0] = 0;
 		outin("authentication server IP address", buf, sizeof(buf));
 		parseip(auip, buf);
@@ -151,6 +157,25 @@ isvalidip(uchar *ip)
 }
 
 static void
+netenv(char *attr, uchar *ip)
+{
+	int fd, n;
+	char buf[128];
+
+	ipmove(ip, IPnoaddr);
+	snprint(buf, sizeof(buf), "#e/%s", attr);
+	fd = open(buf, OREAD);
+	if(fd < 0)
+		return;
+
+	n = read(fd, buf, sizeof(buf)-1);
+	if(n <= 0)
+		return;
+	buf[n] = 0;
+	parseip(ip, buf);
+}
+
+static void
 netndb(char *attr, uchar *ip)
 {
 	int fd, n, c;
@@ -176,8 +201,9 @@ netndb(char *attr, uchar *ip)
 		if(*(p + n) == '=' && (p == buf || c == '\n' || c == ' ' || c == '\t')){
 			p += n+1;
 			parseip(ip, p);
-			break;
+			return;
 		}
 		p++;
 	}
+	return;
 }
