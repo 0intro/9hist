@@ -513,7 +513,7 @@ ns16552intr(int dev)
 	shakes = 0;
 	for(loops = 0;; loops++){
 		p->istat = s = uartrdreg(p, Istat);
-		if(loops > 50000){
+		if(loops > 100000){
 			if(shakes++ < 3){
 				/* try resetting the interface */
 				ns16552shake(p);
@@ -592,7 +592,11 @@ ns16552intr(int dev)
  *
  *  There's also a bit of code to get a stalled print going.
  *  It shouldn't happen, but it does.  Obviously I don't
- *  understand interrupts. -- presotto
+ *  understand something.  Since it was there, I bundled a
+ *  restart after flow control with it to give some histeresis
+ *  to the hardware flow control.  This makes compressing
+ *  modems happier but will probably bother something else.
+ *	 -- presotto
  */
 void
 uartclock(void)
@@ -607,8 +611,7 @@ uartclock(void)
 			if(n > 0 && p->iq){
 				if(n > Stagesize)
 					panic("uartclock");
-				if(qproduce(p->iq, p->istage, n) != n)
-					;
+				qproduce(p->iq, p->istage, n);
 				p->ip = p->istage;
 			}
 		}
@@ -737,19 +740,19 @@ ns16552close(Chan *c)
 		return;
 	if(NETTYPE(c->qid.path) == Nstatqid)
 		return;
+	if((c->flag & COPEN) == 0)
+		return;
 
 	p = uart[NETID(c->qid.path)];
-	if(c->flag & COPEN){
-		qlock(p);
-		p->opens--;
-		if(p->opens == 0){
-			ns16552disable(p);
-			qclose(p->iq);
-			qclose(p->oq);
-			p->ip = p->istage;
-		}
-		qunlock(p);
+	qlock(p);
+	p->opens--;
+	if(p->opens == 0){
+		ns16552disable(p);
+		qclose(p->iq);
+		qclose(p->oq);
+		p->ip = p->istage;
 	}
+	qunlock(p);
 }
 
 static long

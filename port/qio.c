@@ -531,7 +531,7 @@ qwrite(Queue *q, void *vp, int len)
 		}
 		memmove(b->wp, p+sofar, n);
 		b->wp += n;
-	
+
 		/* flow control */
 		while(!qnotfull(q)){
 			if(q->noblock){
@@ -544,9 +544,9 @@ qwrite(Queue *q, void *vp, int len)
 			q->state |= Qflow;
 			sleep(&q->wr, qnotfull, q);
 		}
-	
+
 		ilock(q);
-	
+
 		if(q->state & Qclosed){
 			iunlock(q);
 			error(Ehungup);
@@ -571,7 +571,7 @@ qwrite(Queue *q, void *vp, int len)
 				q->bfirst = b;
 			q->blast = b;
 			q->len += n;
-	
+
 			if(q->state & Qstarve){
 				q->state &= ~Qstarve;
 				dowakeup = 1;
