@@ -729,6 +729,8 @@ devrtwrite(Chan *c, void *va, long n, vlong)
 					t->T += ticks;
 					break;
 				}
+				if (t->T < time2ticks(10000000/HZ))
+					error("period too short");
 			}else if (strcmp(a, "D") == 0){
 				if (e=parsetime(&time, v))
 					error(e);
@@ -767,6 +769,8 @@ devrtwrite(Chan *c, void *va, long n, vlong)
 					t->C += ticks;
 					break;
 				}
+				if (t->C < time2ticks(10000000/HZ))
+					error("cost too small");
 			}else if (strcmp(a, "resources") == 0){
 				if (v == nil)
 					error("resources: value missing");

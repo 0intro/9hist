@@ -164,8 +164,13 @@ unlock(Lock *l)
 	l->key = 0;
 	coherence();
 
-	if(up)
-		--up->nlocks;
+	/* give up the processor if ... */
+	if(up && --up->nlocks == 0	/* we've closed the last nexted lock */
+	&& up->delaysched		/* we delayed scheduling because of the lock */
+	&& up->state == Running){	/* we're in running state */
+		up->delaysched = 0;
+		sched();
+	}
 }
 
 void

@@ -89,6 +89,7 @@ sched(void)
 {
 	if(up){
 		if(up->state == Running && up->nlocks){
+			up->delaysched = 1;
 			delayedscheds++;
 			return;
 		}

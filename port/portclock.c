@@ -118,8 +118,6 @@ hzclock(Ureg *ur)
 
 	checkalarms();
 
-	m->inclockintr = 0;
-
 	if(up == 0 || up->state != Running)
 		return;
 
@@ -144,10 +142,6 @@ timerintr(Ureg *u, uvlong)
 	uvlong when, now;
 	int callhzclock;
 
-	if(m->inclockintr)
-		return;
-	m->inclockintr = 1;
-
 	intrcount[m->machno]++;
 	callhzclock = 0;
 	tt = &timers[m->machno];
@@ -160,7 +154,6 @@ timerintr(Ureg *u, uvlong)
 			timerset(when);
 			if(callhzclock)
 				hzclock(u);
-			m->inclockintr = 0;
 			return;
 		}
 		tt->head = t->next;
@@ -178,7 +171,6 @@ timerintr(Ureg *u, uvlong)
 		}
 	}
 	iunlock(tt);
-	m->inclockintr = 0;
 }
 
 uvlong hzperiod;

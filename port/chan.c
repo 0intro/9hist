@@ -1114,9 +1114,10 @@ namec(char *aname, int amode, int omode, ulong perm)
 		len = prefix+e.off[npath];
 		strcpy(tmperrbuf, up->errstr);
 		if(len < ERRMAX/3 || (name=memrchr(aname, '/', len))==nil || name==aname)
-			snprint(up->errstr, ERRMAX, "\"%.*s\" %s", len, aname, tmperrbuf);
+			snprint(up->genbuf, sizeof up->genbuf, "%.*s", len, aname);
 		else
-			snprint(up->errstr, ERRMAX, "\"...%.*s\" %s", (int)(len-(name-aname)), name, tmperrbuf);
+			snprint(up->genbuf, sizeof up->genbuf, "...%.*s", (int)(len-(name-aname)), name);
+		snprint(up->errstr, ERRMAX, "%#q %s", up->genbuf, tmperrbuf);
 		nexterror();
 	}
 

@@ -934,24 +934,6 @@ portinfo(Usbhost *uh, char *s, char *se)
 }
 
 static void
-init(Usbhost* uh)
-{
-	Ctlr *ctlr;
-
-	ctlr = uh->ctlr;
-	ilock(ctlr);
-	outl(ctlr->io+Flbaseadd, PCIWADDR(ctlr->frames));
-	OUT(Frnum, 0);
-	OUT(Usbintr, 0xF);	/* enable all interrupts */
-	XPRINT("cmd 0x%x sofmod 0x%x\n", IN(Cmd), inb(ctlr->io+SOFMod));
-	XPRINT("sc0 0x%x sc1 0x%x\n", IN(Portsc0), IN(Portsc1));
-	if((IN(Cmd)&1)==0)
-		OUT(Cmd, 1);	/* run */
-//	pprint("at: c=%x s=%x c0=%x\n", IN(Cmd), IN(Status), IN(Portsc0));
-	iunlock(ctlr);
-}
-
-static void
 cleaniso(Endpt *e, int frnum)
 {
 	TD *td;
@@ -965,9 +947,8 @@ cleaniso(Endpt *e, int frnum)
 		return;
 	id = (e->x<<7)|(e->dev->x&0x7F);
 	do {
-//shut up!
-//		if (td->status & AnyError)
-//			iprint("usbisoerror 0x%lux\n", td->status);
+		if (td->status & AnyError)
+			XPRINT("usbisoerror 0x%lux\n", td->status);
 		n = (td->status + 1) & 0x3ff;
 		e->nbytes += n;
 		if ((td->flags & IsoClean) == 0)
@@ -1354,6 +1335,24 @@ XPRINT("qh %s: q=%p first=%p last=%p entries=%.8lux\n",
 }
 
 static void
+init(Usbhost* uh)
+{
+	Ctlr *ctlr;
+
+	ctlr = uh->ctlr;
+	ilock(ctlr);
+	outl(ctlr->io+Flbaseadd, PCIWADDR(ctlr->frames));
+	OUT(Frnum, 0);
+	OUT(Usbintr, 0xF);	/* enable all interrupts */
+	XPRINT("cmd 0x%x sofmod 0x%x\n", IN(Cmd), inb(ctlr->io+SOFMod));
+	XPRINT("sc0 0x%x sc1 0x%x\n", IN(Portsc0), IN(Portsc1));
+	if((IN(Cmd)&1)==0)
+		OUT(Cmd, 1);	/* run */
+//	pprint("at: c=%x s=%x c0=%x\n", IN(Cmd), IN(Status), IN(Portsc0));
+	iunlock(ctlr);
+}
+
+static void
 scanpci(void)
 {
 	int io;
@@ -1407,6 +1406,7 @@ reset(Usbhost *uh)
 	TD *t;
 	ulong io;
 	Ctlr *ctlr;
+	Pcidev *p;
 
 	scanpci();
 
@@ -1425,10 +1425,13 @@ reset(Usbhost *uh)
 	if(ctlr == nil)
 		return -1;
 
+	p = ctlr->pcidev;
+	pcicfgw16(p, 0xc0, 0x2000);		/* legacy support register: turn off lunacy mode */
+
 	uh->ctlr = ctlr;
 	uh->port = ctlr->io;
-	uh->irq = ctlr->pcidev->intl;
-	uh->tbdf = ctlr->pcidev->tbdf;
+	uh->irq = p->intl;
+	uh->tbdf = p->tbdf;
 
 	io = ctlr->io;
 	i = inb(io+SOFMod);

@@ -549,10 +549,10 @@ pnpread(Chan *c, void *va, long n, vlong offset)
 		p = pcimatchtbdf(tbdf);
 		if(p == nil)
 			error(Egreg);
-		if(offset > 128)
+		if(offset > 256)
 			return 0;
-		if(n+offset > 128)
-			n = 128-offset;
+		if(n+offset > 256)
+			n = 256-offset;
 		if(offset%4)
 			error(Ebadarg);
 		r = offset;
