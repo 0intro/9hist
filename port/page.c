@@ -118,6 +118,7 @@ retry:
 			break;
 
 	if(p == 0) {
+print("! ");
 		p = palloc.head;
 		memset(p->cachectl, PG_DATFLUSH, sizeof(p->cachectl));
 		p->color = color;

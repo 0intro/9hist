@@ -12,6 +12,8 @@
 
 #define	CONST(x,r)	MOVW $((x)&0xffff0000), r; OR  $((x)&0xffff), r
 
+#define	RDBGSV		CONST(0x80020000, R26); MOVW R29, 0(R26); MOVW M(EPC), R27; MOVW R27, 4(R26); MOVW R31, 8(R26)
+
 /*
  *  R4000 instructions
  */
@@ -305,22 +307,15 @@ TEXT	vector0(SB), $-4
 
 	NOOP4
 	NOOP4
+	RDBGSV
 	MOVW	$utlbmiss(SB), R26
 	JMP	(R26)
 
 TEXT	utlbmiss(SB), $-4
-
-	CONST	((0xA0090000), R27)
-	MOVW	M(EPC), R26
-	MOVW	R26, 0(R27)
-	MOVW	M(BADVADDR), R26
-	MOVW	R26, 4(R27)
-	MOVW	M(CAUSE), R26
-	MOVW	R26, 8(R27)
-	MOVW	M(TLBVIRT), R26
-	MOVW	R26, 12(R27)
-	MOVW	M(17), R26
-	MOVW	R26, 16(R27)
+	CONST	(MACHADDR, R26)		/* R26 = m-> */
+	MOVW	16(R26), R27
+	ADDU	$1, R27
+	MOVW	R27, 16(R26)			/* m->tlbfault++ */
 
 	MOVW	M(TLBVIRT), R27
 	WAIT
@@ -392,6 +387,7 @@ TEXT	vector100(SB), $-4
 
 	NOOP4
 	NOOP4
+	RDBGSV
 	MOVW	$exception(SB), R26
 	JMP	(R26)
 
@@ -399,6 +395,7 @@ TEXT	vector180(SB), $-4
 
 	NOOP4
 	NOOP4
+	RDBGSV
 	MOVW	$exception(SB), R26
 	JMP	(R26)
 	NOP
@@ -750,9 +747,6 @@ tas1:
  *  we avoid using R4, R5, R6, and R7 so gotopc can call us without saving them
  */
 TEXT	icflush(SB), $-4			/* icflush(virtaddr, count) */
-MOVW $0xA0090008, R10
-MOVW $2001, R9
-MOVW R9, (R10)
 	MOVW	M(STATUS), R10
 	WAIT
 	MOVW	4(FP), R9
@@ -782,9 +776,6 @@ icflush1:			/* primary cache line size is 16 bytes */
 	WAIT
 	WAIT
 	WAIT
-MOVW $0xA0090008, R10
-MOVW $2002, R9
-MOVW R9, (R10)
 	RET
 
 TEXT	dcflush(SB), $-4			/* dcflush(virtaddr, count) */
@@ -805,10 +796,10 @@ dcflush1:			/* primary cache line size is 16 bytes */
 	CACHE	PI+HI, 0x10(R8)
 	CACHE	PI+HI, 0x20(R8)
 	CACHE	PI+HI, 0x30(R8)
-	CACHE	PD+HWB, 0x00(R8)
-	CACHE	PD+HWB, 0x10(R8)
-	CACHE	PD+HWB, 0x20(R8)
-	CACHE	PD+HWB, 0x30(R8)
+	CACHE	PD+HWBI, 0x00(R8)
+	CACHE	PD+HWBI, 0x10(R8)
+	CACHE	PD+HWBI, 0x20(R8)
+	CACHE	PD+HWBI, 0x30(R8)
 	SUB	$0x40, R9
 	ADD	$0x40, R8
 	BGTZ	R9, dcflush1

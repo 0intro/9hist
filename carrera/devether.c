@@ -739,10 +739,13 @@ etherwrite(Chan *c, void *buf, long n, ulong offset)
 		nexterror();
 	}
 
-	tsleep(&ctlr->tr, isoutbuf, ctlr, 10000);
+	tsleep(&ctlr->tr, isoutbuf, ctlr, 1000);
 
-	if(!isoutbuf(ctlr))
+	if(!isoutbuf(ctlr)) {
 		print("ether transmitter jammed\n");
+		reset(ctlr);
+		WR(cr, Rxen);
+	}
 	else {
 		p =(Pbuf*)ctlr->tb[ctlr->th];
 		memmove(p->d, buf, n);

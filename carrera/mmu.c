@@ -6,8 +6,6 @@
 #include	"io.h"
 #include	"ureg.h"
 
-Mach	machstruct[100];
-
 /*
  *  tlb entry 0 is used only by mmuswitch() to set the current tlb pid.
  */
@@ -182,18 +180,16 @@ kfault(Ureg *ur)
 void
 kmapinval()
 {
-	int mno, i;
+	int mno, i, curpid;
 	KMap *k, *next;
-	int curpid;
 	uchar *ktlbx;
-
 
 	if(m->kactive == 0)
 		return;
 
 	curpid = PTEPID(TLBPID(tlbvirt()));
-	ktlbx = m->ktlbx;
-	for(i = TLBROFF; i < NTLB; i++, ktlbx++){
+	ktlbx = m->ktlbx+TLBROFF;
+	for(i = TLBROFF; i < NTLB; i++, ktlbx++) {
 		if(*ktlbx == 0)
 			continue;
 		TLBINVAL(i, curpid);
@@ -206,7 +202,6 @@ kmapinval()
 		kunmap(k);
 	}
 	m->kactive = 0;
-	m->ktlbnext = TLBROFF;
 }
 
 void
@@ -292,30 +287,15 @@ putmmu(ulong tlbvirt, ulong tlbphys, Page *pg)
 	puttlb(entry->virt, entry->phys0, entry->phys1);
 
 	ctl = &pg->cachectl[m->machno];
-((ulong*)0xA0090000)[8] = 0x1000;
-((ulong*)0xA0090000)[5] = tlbvirt;
-	if(*ctl == PG_TXTFLUSH) {
-ulong tlb[4];
-extern int gettlbp(ulong, ulong*);
-extern ulong tlbvirt(void);
-((ulong*)0xA0090000)[6] = tlbphys;
-((ulong*)0xA0090000)[7] = pg->va;
-((ulong*)0xA0090000)[8] = 0x2000;
-		if(gettlbp((pg->va & ~BY2PG)|TLBPID(tlbvirt()), tlb) < 0){
-			print("entry->virt %lux pg->va %lux\n", entry->virt, pg->va);
-			panic("icflush not in TLB");
-		}
-if(0 && pg->va == 0x19000) {
-print("xx>> virt %lux phys0 %lux phys1 %lux\n", tlb[0],tlb[1],tlb[2]);
-}
-		icflush((void*)pg->va, BY2PG);
-((ulong*)0xA0090000)[8] = 0x3000;
+	if(*ctl == PG_DATFLUSH) {
+		dcflush((void*)pg->va, BY2PG);
 		*ctl = PG_NOFLUSH;
-((ulong*)0xA0090000)[8] = 0x4000;
+	}else
+	if(*ctl == PG_TXTFLUSH) {
+		icflush((void*)pg->va, BY2PG);
+		*ctl = PG_NOFLUSH;
 	}
-((ulong*)0xA0090000)[8] = 0x5000;
 	splx(s);
-((ulong*)0xA0090000)[8] = 0x6000;
 }
 
 void

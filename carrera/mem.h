@@ -14,7 +14,7 @@
 #define	PGSHIFT		12			/* log(BY2PG) */
 #define PGROUND(s)	(((s)+(BY2PG-1))&~(BY2PG-1))
 
-#define	MAXMACH		4			/* max # cpus system can run */
+#define	MAXMACH		1			/* max # cpus system can run */
 #define KSTACK		4096			/* Size of kernel stack */
 
 /*
@@ -95,7 +95,7 @@
 /*
  * Fundamental addresses
  */
-#define	MACHADDR	0x8008e000	/* Mach structures */
+#define	MACHADDR	(KTZERO-MAXMACH*BY2PG)	/* warning: rdbg is near here */
 #define UREGSIZE	0xA0		/* Sizeof(Ureg)+retpc & ur */
 #define	MACHP(n)	((Mach *)(MACHADDR+(n)*BY2PG))
 
@@ -140,7 +140,7 @@
 #define	PTEPERTAB	(PTEMAPMEM/BY2PG)
 #define STLBLOG		13
 #define STLBSIZE	(1<<STLBLOG)
-#define KPTELOG		8
+#define KPTELOG		6
 #define KPTESIZE	(1<<KPTELOG)
 #define SEGMAPSIZE	512
 
