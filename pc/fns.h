@@ -97,9 +97,7 @@ int	x86(void);
 #define KADDR(a)	((void*)((ulong)(a)|KZERO))
 #define PADDR(a)	((ulong)(a)&~KZERO)
 
-void	NS16552special(int, int, Queue**, Queue**, int (*)(Queue*, int));
-int	NS16552m3mouse(Queue*, int);
-int	NS16552mouse(Queue*, int);
+void	ns16552special(int, int, Queue**, Queue**, int (*)(Queue*, int));
 
 void	hnputl(void*, ulong v);
 void	hnputs(void*, ushort v);

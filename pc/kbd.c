@@ -254,9 +254,9 @@ serialmouse(int port, char *type, int setspeed)
 	if(setspeed)
 		setspeed = 1200;
 	if(type && *type == 'M')
-		NS16552special(port, setspeed, &mouseq, 0, m3mouseputc);
+		ns16552special(port, setspeed, &mouseq, 0, m3mouseputc);
 	else
-		NS16552special(port, setspeed, &mouseq, 0, mouseputc);
+		ns16552special(port, setspeed, &mouseq, 0, mouseputc);
 	mousetype = Mouseserial;
 }
 
@@ -597,6 +597,7 @@ kbdinit(void)
 	int c;
 
 	kbdq = qopen(4*1024, 0, 0, 0);
+	qnoblock(kbdq, 1);
 
 	setvec(Kbdvec, kbdintr, 0);
 

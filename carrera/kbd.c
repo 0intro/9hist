@@ -354,6 +354,7 @@ kbdinit(void)
 	int i;
 
 	kbdq = qopen(4*1024, 0, 0, 0);
+	qnoblock(kbdq, 1);
 
 	/*
 	 *  empty the buffer

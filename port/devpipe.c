@@ -313,11 +313,11 @@ pipewrite(Chan *c, void *va, long n, ulong offset)
 
 	switch(NETTYPE(c->qid.path)){
 	case Qdata0:
-		n = qwrite(p->q[1], va, n, 0);
+		n = qwrite(p->q[1], va, n);
 		break;
 
 	case Qdata1:
-		n = qwrite(p->q[0], va, n, 0);
+		n = qwrite(p->q[0], va, n);
 		break;
 
 	default:

@@ -163,7 +163,7 @@ machinit(void)
 void
 serialinit(void)
 {
-	NS16552setup(Uart1, UartFREQ);
+	ns16552install();
 	kbdinit();
 }
 

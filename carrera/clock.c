@@ -91,6 +91,7 @@ clock(Ureg *ur)
 	}
 
 	checkalarms();
+	uartclock();
 	mouseclock();
 
 	if(up == 0 || up->state != Running)

@@ -298,10 +298,10 @@ intr(Ureg *ur)
 		default:
 			panic("unknown devint=#%lux", devint);
 		case 0x28:		/* Serial 1 */
-			NS16552intr(0);
+			ns16552intr(0);
 			break;
 		case 0x24:		/* Serial 2 */
-			NS16552intr(1);
+			ns16552intr(1);
 			break;
 		case 0x10:
 			fiberint(0);

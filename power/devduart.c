@@ -672,7 +672,7 @@ duartwrite(Chan *c, void *va, long n, ulong offset)
 	p = &uart[NETID(c->qid.path)];
 	switch(NETTYPE(c->qid.path)){
 	case Ndataqid:
-		return qwrite(p->oq, va, n, 0);
+		return qwrite(p->oq, va, n);
 	case Nctlqid:
 		if(n >= sizeof(cmd))
 			n = sizeof(cmd)-1;

@@ -34,7 +34,9 @@ void
 printinit(void)
 {
 	klogq = qopen(32*1024, 0, 0, 0);
+	qnoblock(klogq, 1);
 	lineq = qopen(2*1024, 0, 0, 0);
+	qnoblock(lineq, 1);
 }
 
 /*
@@ -73,7 +75,7 @@ putstrn0(char *str, int n, int usewrite)
 			buf[m] = '\r';
 			buf[m+1] = '\n';
 			if(usewrite)
-				qwrite(printq, buf, m+2, 0);
+				qwrite(printq, buf, m+2);
 			else {
 				x = splhi();
 				qproduce(printq, buf, m+2);
@@ -83,7 +85,7 @@ putstrn0(char *str, int n, int usewrite)
 			n -= m + 1;
 		} else {
 			if(usewrite)
-				qwrite(printq, str, n, 0);
+				qwrite(printq, str, n);
 			else {
 				x = splhi();
 				qproduce(printq, str, n);
@@ -138,7 +140,7 @@ kprint(char *fmt, ...)
 	int n;
 
 	n = doprint(buf, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
-	qwrite(klogq, buf, n, 1);
+	qwrite(klogq, buf, n);
 	return n;
 }
 
@@ -540,7 +542,7 @@ consread(Chan *c, void *buf, long n, ulong offset)
 			if(kbd.x == sizeof(kbd.line) || eol){
 				if(ch == 0x04)
 					kbd.x--;
-				qwrite(lineq, kbd.line, kbd.x, 1);
+				qwrite(lineq, kbd.line, kbd.x);
 				kbd.x = 0;
 			}
 		}
@@ -743,7 +745,7 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 			if(strncmp(a, "rawon", 5) == 0){
 				qlock(&kbd);
 				if(kbd.x){
-					qwrite(kbdq, kbd.line, kbd.x, 1);
+					qwrite(kbdq, kbd.line, kbd.x);
 					kbd.x = 0;
 				}
 				kbd.raw = 1;

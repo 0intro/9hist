@@ -13,6 +13,8 @@ struct
 
 static int debuging;
 
+#define QDEBUG if(0)
+
 /*
  *  IO queues
  */
@@ -27,7 +29,9 @@ struct Queue
 
 	int	len;		/* bytes in queue */
 	int	limit;		/* max bytes in queue */
+	int	inilim;		/* initial limit */
 	int	state;
+	int	noblock;	/* true if writes return immediately when q full */
 	int	eof;		/* number of eofs read by user */
 
 	void	(*kick)(void*);	/* restart output */
@@ -172,7 +176,7 @@ qconsume(Queue *q, void *vp, int len)
 		unlock(q);
 		return -1;
 	}
-checkb(b, "qconsume 1");
+	QDEBUG checkb(b, "qconsume 1");
 
 	n = BLEN(b);
 	if(n < len)
@@ -195,7 +199,7 @@ checkb(b, "qconsume 1");
 	if(dowakeup)
 		wakeup(&q->wr);
 
-checkb(b, "qconsume 2");
+	QDEBUG checkb(b, "qconsume 2");
 	/* discard the block if we're done with it */
 	if((q->state & Qmsg) || len == n)
 		freeb(b);
@@ -238,7 +242,7 @@ qpass(Queue *q, Block *b)
 		q->bfirst = b;
 	q->blast = b;
 	q->len += len;
-checkb(b, "qpass");
+	QDEBUG checkb(b, "qpass");
 
 	if(q->len >= q->limit/2)
 		q->state |= Qflow;
@@ -308,7 +312,7 @@ qproduce(Queue *q, void *vp, int len)
 		q->bfirst = b;
 	q->blast = b;
 	q->len += len;
-checkb(b, "qproduce");
+	QDEBUG checkb(b, "qproduce");
 
 	if(q->state & Qstarve){
 		q->state &= ~Qstarve;
@@ -337,7 +341,7 @@ qopen(int limit, int msg, void (*kick)(void*), void *arg)
 	if(q == 0)
 		return 0;
 
-	q->limit = limit;
+	q->limit = q->inilim = limit;
 	q->kick = kick;
 	q->arg = arg;
 	q->state = msg ? Qmsg : 0;
@@ -422,7 +426,7 @@ qread(Queue *q, void *vp, int len)
 			sleep(&q->rr, notempty, q);
 		}
 	}
-checkb(b, "qread 1");
+	QDEBUG checkb(b, "qread 1");
 
 	/* remove a buffered block */
 	q->bfirst = b->next;
@@ -443,7 +447,7 @@ checkb(b, "qread 1");
 	memmove(p, b->rp, n);
 	b->rp += n;
 
-checkb(b, "qread 2");
+	QDEBUG checkb(b, "qread 2");
 	/* free it or put what's left on the queue */
 	if(b->rp >= b->wp || (q->state&Qmsg)) {
 		freeb(b);
@@ -482,7 +486,7 @@ qnotfull(void *a)
  *  all copies should be outside of ilock since they can fault.
  */
 long
-qwrite(Queue *q, void *vp, int len, int nowait)
+qwrite(Queue *q, void *vp, int len)
 {
 	int n, sofar, dowakeup;
 	Block *b;
@@ -530,7 +534,7 @@ qwrite(Queue *q, void *vp, int len, int nowait)
 	
 		/* flow control */
 		while(!qnotfull(q)){
-			if(nowait){
+			if(q->noblock){
 				freeb(b);
 				qunlock(&q->wlock);
 				poperror();
@@ -549,7 +553,7 @@ qwrite(Queue *q, void *vp, int len, int nowait)
 		}
 		poperror();
 
-checkb(b, "qwrite");
+		QDEBUG checkb(b, "qwrite");
 		if(q->syncbuf){
 			/* we guessed wrong and did an extra copy */
 			if(n > q->synclen)
@@ -645,6 +649,8 @@ qreopen(Queue *q)
 	q->state &= ~Qclosed;
 	q->state |= Qstarve;
 	q->eof = 0;
+	q->noblock = 0;
+	q->limit = q->inilim;
 }
 
 /*
@@ -677,4 +683,22 @@ int
 qcanread(Queue *q)
 {
 	return q->bfirst!=0;
+}
+
+/*
+ *  change queue limit
+ */
+void
+qsetlimit(Queue *q, int limit)
+{
+	q->limit = limit;
+}
+
+/*
+ *  set blocking/nonblocking
+ */
+void
+qnoblock(Queue *q, int onoff)
+{
+	q->noblock = onoff;
 }
