@@ -11,8 +11,8 @@
 
 enum
 {
-	GRE_IPHDRSIZE	= 20,		/* size of ip header */
-	GRE_HDRSIZE	= 4,		/* minimum size of GRE header */
+	GRE_IPONLY	= 12,		/* size of ip header */
+	GRE_IPPLUSGRE	= 12,		/* minimum size of GRE header */
 	IP_GREPROTO	= 47,
 
 	GRErxms		= 200,
@@ -122,6 +122,7 @@ grekick(Conv *c, int l)
 {
 	GREhdr *ghp;
 	Block *bp;
+	ulong raddr, laddr;
 
 	USED(l);
 
@@ -130,20 +131,27 @@ grekick(Conv *c, int l)
 		return;
 
 	/* Make space to fit ip header (gre header already there) */
-	bp = padblock(bp, GRE_IPHDRSIZE);
+	bp = padblock(bp, GRE_IPONLY);
 	if(bp == nil)
 		return;
 
 	/* make sure the message has a GRE header */
-	bp = pullupblock(bp, GRE_IPHDRSIZE+GRE_HDRSIZE);
+	bp = pullupblock(bp, GRE_IPONLY+GRE_IPPLUSGRE);
 	if(bp == nil)
 		return;
 
 	ghp = (GREhdr *)(bp->rp);
 
+	raddr = nhgetl(ghp->src);
+	laddr = nhgetl(ghp->dst);
+	if(raddr == 0)
+		raddr = c->raddr;
+	if(laddr == 0 || Mediaforme(ghp->dst) <= 0)
+		laddr = c->laddr;
+
 	ghp->proto = IP_GREPROTO;
-	hnputl(ghp->dst, c->raddr);
-	hnputl(ghp->src, c->laddr);
+	hnputl(ghp->dst, raddr);
+	hnputl(ghp->src, laddr);
 	hnputs(ghp->eproto, c->rport);
 	ghp->frag[0] = 0;
 	ghp->frag[1] = 0;
@@ -184,12 +192,12 @@ greiput(Media *m, Block *bp)
 	/*
 	 * Trim the packet down to data size
 	 */
-	len = nhgets(ghp->len) - GRE_IPHDRSIZE;
-	if(len < GRE_HDRSIZE){
+	len = nhgets(ghp->len) - GRE_IPONLY;
+	if(len < GRE_IPPLUSGRE){
 		freeblist(bp);
 		return;
 	}
-	bp = trimblock(bp, GRE_IPHDRSIZE, len);
+	bp = trimblock(bp, GRE_IPONLY, len);
 	if(bp == nil){
 		gre.lenerr++;
 		return;

@@ -15,8 +15,7 @@ enum
 	UDP_HDRSIZE	= 20,
 	UDP_IPHDR	= 8,
 	IP_UDPPROTO	= 17,
-	UDP_USEAD	= 6,
-	UDP_RELSIZE	= 16,
+	UDP_USEAD	= 12,
 
 	Udprxms		= 200,
 	Udptickms	= 100,
@@ -123,8 +122,8 @@ void
 udpkick(Conv *c, int l)
 {
 	Udphdr *uh;
-	ushort port;
-	Ipaddr addr;
+	ushort rport;
+	Ipaddr laddr, raddr;
 	Block *bp, *f;
 	Udpcb *ucb;
 	int dlen, ptcllen;
@@ -143,13 +142,20 @@ udpkick(Conv *c, int l)
 			freeblist(bp);
 			return;
 		}
-		addr = nhgetl(bp->rp);
+		raddr = nhgetl(bp->rp);
 		bp->rp += 4;
-		port = nhgets(bp->rp);
+		laddr = nhgetl(bp->rp);
+		if(laddr != 0 && Mediaforme(bp->rp) <= 0)
+			laddr = 0;
+		bp->rp += 4;
+		rport = nhgets(bp->rp);
+		bp->rp += 2;
+		/* ignore local port number */
 		bp->rp += 2;
 	} else {
-		addr = 0;
-		port = 0;
+		raddr = 0;
+		rport = 0;
+		laddr = 0;
 	}
 
 	/* Round packet up to even number of bytes */
@@ -179,11 +185,12 @@ udpkick(Conv *c, int l)
 	uh->frag[1] = 0;
 	hnputs(uh->udpplen, ptcllen);
 	if(ucb->headers) {
-		hnputl(uh->udpdst, addr);
-		hnputs(uh->udpdport, port);
-
-		/* pick the closest source address (best we can do) */
-		hnputl(uh->udpsrc, Mediagetsrc(uh->udpdst));
+		hnputl(uh->udpdst, raddr);
+		hnputs(uh->udpdport, rport);
+		if(laddr)
+			hnputl(uh->udpsrc, laddr);
+		else
+			hnputl(uh->udpsrc, Mediagetsrc(uh->udpdst));
 	} else {
 		hnputl(uh->udpdst, c->raddr);
 		hnputs(uh->udpdport, c->rport);
@@ -204,10 +211,10 @@ udpiput(Media *m, Block *bp)
 {
 	int len;
 	Udphdr *uh;
-	Ipaddr addr;
 	Conv *c, **p;
 	Udpcb *ucb;
-	ushort dport, sport;
+	Ipaddr raddr, laddr;
+	ushort rport, lport;
 
 	USED(m);
 	uh = (Udphdr*)(bp->rp);
@@ -217,7 +224,8 @@ udpiput(Media *m, Block *bp)
 	len = nhgets(uh->udplen);
 	hnputs(uh->udpplen, len);
 
-	addr = nhgetl(uh->udpsrc);
+	raddr = nhgetl(uh->udpsrc);
+	laddr = nhgetl(uh->udpdst);
 
 	if(udpsum && nhgets(uh->udpcksum)) {
 		if(ptclcsum(bp, UDP_IPHDR, len+UDP_PHDRSIZE)) {
@@ -228,8 +236,8 @@ udpiput(Media *m, Block *bp)
 		}
 	}
 
-	dport = nhgets(uh->udpdport);
-	sport = nhgets(uh->udpsport);
+	lport = nhgets(uh->udpdport);
+	rport = nhgets(uh->udpsport);
 
 	/* Look for a conversation structure for this port */
 	c = nil;
@@ -237,7 +245,7 @@ udpiput(Media *m, Block *bp)
 		c = *p;
 		if(c->inuse == 0)
 			continue;
-		if(c->lport == dport && (c->rport == 0 || c->rport == sport))
+		if(c->lport == lport && (c->rport == 0 || c->rport == rport))
 			break;
 	}
 
@@ -261,14 +269,16 @@ udpiput(Media *m, Block *bp)
 	if(ucb->headers) {
 		/* pass the src address */
 		bp = padblock(bp, UDP_USEAD);
-		hnputl(bp->rp, addr);
-		hnputs(bp->rp+4, sport);
+		hnputl(bp->rp, raddr);
+		hnputl(bp->rp+4, laddr);
+		hnputs(bp->rp+8, rport);
+		hnputs(bp->rp+10, lport);
 	} else {
 		/* connection oriented udp */
 		if(c->raddr == 0){
 			/* save the src address in the conversation */
-		 	c->raddr = addr;
-			c->rport = sport;
+		 	c->raddr = raddr;
+			c->rport = rport;
 
 			/* reply with the same ip address (if not broadcast) */
 			if(Mediaforme(uh->udpdst) > 0)
