@@ -738,6 +738,7 @@ edfrunproc(void)
 		nilcount++;
 		return nil;
 	}
+
 	/* Figure out if the current proc should be preempted*/
 	ilock(&edflock);
 	now = fastticks(nil);
@@ -773,7 +774,7 @@ edfrunproc(void)
 		/* released task is better than current */
 		DPRINT("%d edfrunproc: released\n", m->machno);
 		edfdequeue(&qreleased);
-		assert(nt->runq.n >= 1);
+		assert(nt->runq.n >= 1 || (up && up->task == nt));
 		edfpush(nt);
 		t = nt;
 		t->scheduled = now;
