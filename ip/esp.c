@@ -7,7 +7,6 @@
 
 #include	"ip.h"
 
-#include	"mp.h"
 #include	"libsec.h"
 
 typedef struct Esphdr Esphdr;

@@ -8,7 +8,6 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
-#include	<mp.h>
 #include	<libsec.h>
 
 #define NOSPOOKS 1
