@@ -39,16 +39,13 @@ enum
 
 	/* file types */
 	Qdir=		0,
-	Qdata=		(1<<(3+3)),
-	Qpart=		(2<<(3+3)),
-	Qmask=		(3<<(3+3)),
 
 	Maxxfer=	4*1024,		/* maximum transfer size/cmd */
 	Npart=		8+2,		/* 8 sub partitions, disk, and partiiton */
 };
 #define PART(x)		((x)&0x3)
 #define DRIVE(x)	(((x)>>3)&0x7)
-#define MKQID(t,d,p)	((t) | ((d)<<3) | (p))
+#define MKQID(d,p)	(((d)<<3) | (p))
 
 /*
  *  ident sector from drive
@@ -136,10 +133,8 @@ struct Controller
 	int	thead;		/* target head */
 	int	tsec;		/* target sector */
 	int	tbyte;		/* target byte */
-	int	len;		/* length of transfer (bytes) */
-	int	toxfer;		/* bytes to be xferred */
+	int	nsecs;		/* length of transfer (sectors) */
 	int	sofar;		/* bytes transferred so far */
-	int	toskip;		/* bytes to skip over */
 	int	status;
 	int	error;
 	Drive	*dp;		/* drive being accessed */
@@ -149,7 +144,7 @@ Controller	*hardc;
 Drive		*hard;
 
 static void	hardintr(Ureg*);
-static long	hardxfer(Drive*, Partition*, int, void*, long, long);
+static long	hardxfer(Drive*, Partition*, int, long, long);
 static long	hardident(Drive*);
 static void	hardsetbuf(Drive*, int);
 static void	hardpart(Drive*);
@@ -174,7 +169,7 @@ hardgen(Chan *c, Dirtab *tab, long ntab, long s, Dir *dirp)
 	if(s < dp->npart){
 		pp = &dp->p[s];
 		sprint(name, "hd%d%s", drive, pp->name);
-		qid.path = MKQID(Qdata, drive, s);
+		qid.path = MKQID(drive, s);
 		l = (pp->end - pp->start) * dp->bytes;
 	} else
 		return 0;
@@ -298,28 +293,37 @@ hardread(Chan *c, void *a, long n)
 {
 	Drive *dp;
 	long rv, i;
+	int skip;
 	uchar *aa = a;
 	Partition *pp;
+	Controller *cp;
 
 	if(c->qid.path == CHDIR)
 		return devdirread(c, a, n, 0, 0, hardgen);
 
-	rv = 0;
-	dp = &hard[c->qid.path & ~Qmask];
-	switch ((int)(c->qid.path & Qmask)) {
-	case Qdata:
-		for(rv = 0; rv < n; rv += i){
-			pp = &dp->p[PART(c->qid.path)];
-			i = hardxfer(dp, pp, Cread, aa+rv, c->offset+rv, n-rv);
-			if(i <= 0)
-				break;
-		}
-		break;
-	case Qpart:
-		break;
-	default:
-		panic("hardread: bad qid");
+	dp = &hard[DRIVE(c->qid.path)];
+	pp = &dp->p[PART(c->qid.path)];
+	cp = dp->cp;
+
+	qlock(cp);
+	if(waserror()){
+		qunlock(cp);
+		nexterror();
 	}
+	skip = c->offset % dp->bytes;
+	for(rv = 0; rv < n; rv += i){
+		i = hardxfer(dp, pp, Cread, c->offset+rv-skip, n-rv+skip);
+		if(i == 0)
+			break;
+		i -= skip;
+		if(i > n - rv)
+			i = n - rv;
+		memmove(aa+rv, cp->buf + skip, i);
+		skip = 0;
+	}
+	qunlock(cp);
+	poperror();
+
 	return rv;
 }
 
@@ -330,23 +334,64 @@ hardwrite(Chan *c, void *a, long n)
 	long rv, i;
 	uchar *aa = a;
 	Partition *pp;
+	Controller *cp;
 
-	rv = 0;
-	dp = &hard[c->qid.path & ~Qmask];
-	switch ((int)(c->qid.path & Qmask)) {
-	case Qdata:
-		for(rv = 0; rv < n; rv += i){
-			pp = &dp->p[PART(c->qid.path)];
-			i = hardxfer(dp, pp, Cwrite, aa+rv, c->offset+rv, n-rv);
-			if(i <= 0)
-				break;
-		}
-		break;
-	case Qpart:
-		break;
-	default:
-		panic("hardwrite: bad qid");
+	if(c->qid.path == CHDIR)
+		errors("can't write directory");
+
+	dp = &hard[DRIVE(c->qid.path)];
+	pp = &dp->p[PART(c->qid.path)];
+	cp = dp->cp;
+
+	qlock(cp);
+	if(waserror()){
+		qunlock(cp);
+		nexterror();
 	}
+	/*
+	 *  if not starting on a sector boundary,
+	 *  read in the first sector before writing
+	 *  it out.
+	 */
+	i = c->offset % dp->bytes;
+	if(i){
+		hardxfer(dp, pp, Cread, c->offset-i, dp->bytes);
+		if(i+n > dp->bytes)
+			rv = dp->bytes - i;
+		else
+			rv = n;
+		memmove(cp->buf+i, aa, rv);
+		hardxfer(dp, pp, Cwrite, c->offset-i, dp->bytes);
+	} else
+		rv = 0;
+
+	/*
+	 *  write out the full sectors
+	 */
+	for(; rv + dp->bytes <= n; rv += i){
+		i = n - rv;
+		if(i > Maxxfer)
+			i = Maxxfer;
+		memmove(cp->buf, aa+rv, i);
+		i = hardxfer(dp, pp, Cwrite, c->offset+rv, i);
+		if(i == 0)
+			break;
+	}
+
+	/*
+	 *  if not ending on a sector boundary,
+	 *  read in the last sector before writing
+	 *  it out.
+	 */
+	if(n > rv){
+		hardxfer(dp, pp, Cread, c->offset+rv, dp->bytes);
+		memmove(cp->buf, aa+rv, n - rv);
+		hardxfer(dp, pp, Cwrite, c->offset+rv, dp->bytes);
+		rv = n;
+	}
+	qunlock(cp);
+	poperror();
+
 	return rv;
 }
 
@@ -378,63 +423,58 @@ print("cmdreadywait failed\n");
 }
 
 /*
- *  start a disk transfer.  hardintr will performa all the iterative
+ *  transfer a number of sectors.  hardintr will perform all the iterative
  *  parts.
  */
 static long
-hardxfer(Drive *dp, Partition *pp, int cmd, void *va, long off, long len)
+hardxfer(Drive *dp, Partition *pp, int cmd, long start, long len)
 {
 	Controller *cp;
 	int err;
-	int lsec;
+	long lsec;
 	int cyl;
+	int loop;
 
 	if(dp->online == 0)
 		errors("disk offline");
-	if(len > Maxxfer)
-		len = Maxxfer;
-
-	cp = dp->cp;
-	qlock(cp);
-	if(waserror()){
-		qunlock(cp);
-		nexterror();
-	}
 
 	/*
-	 *  calculate the physical address of off
+	 *  cut transfer size down to disk buffer size
 	 */
-	lsec = off/dp->bytes;
-	lsec += pp->start;
+	start = start / dp->bytes;
+	if(len > Maxxfer)
+		len = Maxxfer;
+	len = (len + dp->bytes - 1) / dp->bytes;
+
+	/*
+	 *  calculate physical address
+	 */
+	cp = dp->cp;
+	lsec = start + pp->start;
 	if(lsec >= pp->end)
-		errors("xfer past end of partition\n");
+		return 0;
 	cp->tcyl = lsec/(dp->sectors*dp->heads);
 	cp->tsec = (lsec % dp->sectors) + 1;
 	cp->thead = (lsec/dp->sectors) % dp->heads;
 
 	/*
-	 *  can't xfer across cylinder boundaries or end of disk
+	 *  can't xfer past end of disk
 	 */
-	lsec = (off+len+dp->bytes-1)/dp->bytes;
-	lsec += pp->start;
-	if(lsec > pp->end)
-		errors("xfer past end of partition\n");
-	cyl = lsec/(dp->sectors*dp->heads);
-	if(cyl == cp->tcyl)
-		cp->len = len;
-	else
-		cp->len = cyl*dp->sectors*dp->heads*dp->bytes - off;
+	if(lsec+len > pp->end)
+		len = pp->end - lsec;
+	cp->nsecs = len;
 
 	cmdreadywait(cp);
 
 	/*
 	 *  start the transfer
 	 */
-	cp->toskip = off % dp->bytes;
-	cp->sofar = 0;
 	cp->cmd = cmd;
 	cp->dp = dp;
-	outb(cp->pbase+Pcount, cp->secs);
+	cp->sofar = 0;
+print("xfer:\ttcyl %d, tsec %d, thead %d\n", cp->tcyl, cp->tsec, cp->thead);
+print("\tnsecs %d, sofar %d\n", cp->nsecs, cp->sofar);
+	outb(cp->pbase+Pcount, cp->nsecs);
 	outb(cp->pbase+Psector, cp->tsec);
 	outb(cp->pbase+Pdh, (dp->drive<<4) | cp->thead);
 	outb(cp->pbase+Pcyllsb, cp->tcyl);
@@ -442,22 +482,23 @@ hardxfer(Drive *dp, Partition *pp, int cmd, void *va, long off, long len)
 	outb(cp->pbase+Pcmd, cmd);
 
 	if(cmd == Cwrite){
-		memmove(cp->buf, va, cp->len);
-		outss(Pdata, cp->buf, dp->bytes/2);
+		loop = 0;
+		while((inb(cp->pbase+Pstatus) & Sdrq) == 0)
+			if(++loop > 10000)
+				panic("hardxfer");
+		outss(cp->pbase+Pdata, cp->buf, dp->bytes/2);
 	}
+
 	sleep(&cp->r, cmddone, cp);
+
 	if(cp->status & Serr){
 print("hd%d err: status %lux, err %lux\n", dp-hard, cp->status, cp->error);
 print("\ttcyl %d, tsec %d, thead %d\n", cp->tcyl, cp->tsec, cp->thead);
-print("\tsecs %d, sofar %d\n", cp->secs, cp->sofar);
+print("\tnsecs %d, sofar %d\n", cp->nsecs, cp->sofar);
 		errors("disk I/O error");
 	}
-	if(cmd == Cread)
-		memmove(va, cp->buf, cp->len);
 
-	poperror();
-	qunlock(cp);
-	return cp->len;
+	return cp->nsecs*dp->bytes;
 }
 
 /*
@@ -505,8 +546,7 @@ print("waserror in hardident\n");
 
 	cmdreadywait(cp);
 
-	cp->len = 512;
-	cp->toskip = 0;
+	cp->nsecs = 1;
 	cp->sofar = 0;
 	cp->cmd = Cident;
 	cp->dp = dp;
@@ -517,7 +557,7 @@ print("waserror in hardident\n");
 print("bad disk magic\n");
 		errors("disk I/O error");
 	}
-	memmove(&dp->id, cp->buf, cp->len);
+	memmove(&dp->id, cp->buf, dp->bytes);
 
 	if(dp->id.magic != 0xA5A){
 print("bad disk magic\n");
@@ -536,9 +576,9 @@ static void
 hardpart(Drive *dp)
 {
 	Partition *pp;
+	Controller *cp;
 	char *line[Npart+1];
 	char *field[3];
-	char buf[1024];
 	ulong n;
 	int i;
 
@@ -552,40 +592,44 @@ hardpart(Drive *dp)
 	pp->end = dp->p[0].end;
 	dp->npart = 2;
 
+	cp = dp->cp;
+	qlock(cp);
 	if(waserror()){
+		qunlock(cp);
 		print("error in hardpart\n");
 		nexterror();
 	}
 
-	hardxfer(dp, pp, Cread, buf, (pp->end - 1)*dp->bytes, dp->bytes);
-	buf[dp->bytes] = 0;
+	hardxfer(dp, pp, Cread, 0, dp->bytes);
+	cp->buf[dp->bytes-1] = 0;
 
-	n = getfields(buf, line, Npart+1, '\n');
+	n = getfields(cp->buf, line, Npart+1, '\n');
 	if(strncmp(line[0], MAGIC, sizeof(MAGIC)-1) != 0){
-		print("bad partition table 1\n");
+print("bad partition magic\n");
 		goto out;
 	}
 	for(i = 1; i < n; i++){
 		pp++;
 		if(getfields(line[i], field, 3, 0) != 3){
-			print("bad partition field\n");
+print("bad partition field\n");
 			goto out;
 		}
 		if(strlen(field[0]) > NAMELEN){
-			print("bad partition name\n");
+print("bad partition name\n");
 			goto out;
 		}
 		strcpy(pp->name, field[0]);
 		pp->start = strtoul(field[1], 0, 0);
 		pp->end = strtoul(field[2], 0, 0);
 		if(pp->start > pp->end || pp->start >= dp->p[0].end){
-			print("bad partition limit\n");
+print("bad partition limit\n");
 			goto out;
 		}
 print("partition %s from %d to %d\n", pp->name, pp->start, pp->end);
 		dp->npart++;
 	}
 out:
+	qunlock(cp);
 	poperror();
 }
 
@@ -596,6 +640,7 @@ static void
 hardintr(Ureg *ur)
 {
 	Controller *cp;
+	Drive *dp;
 	long loop;
 
 	/*
@@ -603,6 +648,7 @@ hardintr(Ureg *ur)
 	 *	  distinguish which interrupted
 	 */
 	cp = &hardc[0];
+	dp = cp->dp;
 
 	cp->status = inb(cp->pbase+Pstatus);
 	switch(cp->cmd){
@@ -614,12 +660,12 @@ hardintr(Ureg *ur)
 			return;
 		}
 		cp->sofar++;
-		if(cp->sofar != cp->secs){
+		if(cp->sofar < cp->nsecs){
 			while((inb(cp->pbase+Pstatus) & Sdrq) == 0)
 				if(++loop > 10000)
 					panic("hardintr 1");
-			outss(cp->pbase+Pdata, &cp->buf[cp->sofar*cp->dp->bytes],
-				cp->dp->bytes/2);
+			outss(cp->pbase+Pdata, &cp->buf[cp->sofar*dp->bytes],
+				dp->bytes/2);
 		} else{
 			cp->cmd = 0;
 			wakeup(&cp->r);
@@ -639,8 +685,8 @@ hardintr(Ureg *ur)
 				panic("hardintr 2");
 		inss(cp->pbase+Pdata, &cp->buf[cp->sofar*cp->dp->bytes],
 			cp->dp->bytes/2);
-		cp->sofar += cp->dp->bytes;
-		if(cp->sofar >= cp->len){
+		cp->sofar++;
+		if(cp->sofar >= cp->nsecs){
 			cp->cmd = 0;
 			wakeup(&cp->r);
 		}
