@@ -281,9 +281,9 @@ procread(Chan *c, void *va, long n, ulong offset)
 		return procctlmemio(p, offset, n, va, 1);
 
 	case Qnote:
-		lock(&p->debug);
+		qlock(&p->debug);
 		if(waserror()){
-			unlock(&p->debug);
+			qunlock(&p->debug);
 			nexterror();
 		}
 		if(p->pid != PID(c->qid))
@@ -309,7 +309,7 @@ procread(Chan *c, void *va, long n, ulong offset)
 			p->notepending = 0;
 		kunmap(k);
 		poperror();
-		unlock(&p->debug);
+		qunlock(&p->debug);
 		return n;
 
 	case Qproc:
@@ -381,9 +381,9 @@ procwrite(Chan *c, void *va, long n, ulong offset)
 		return n;
 	}
 
-	lock(&p->debug);
+	qlock(&p->debug);
 	if(waserror()){
-		unlock(&p->debug);
+		qunlock(&p->debug);
 		nexterror();
 	}
 	if(p->pid != PID(c->qid))
@@ -451,7 +451,7 @@ procwrite(Chan *c, void *va, long n, ulong offset)
 		error(Egreg);
 	}
 	poperror();
-	unlock(&p->debug);
+	qunlock(&p->debug);
 	return n;
 }
 
@@ -534,16 +534,16 @@ procstopwait(Proc *p, int ctl)
 		p->procctl = ctl;
 	p->pdbg = u->p;
 	pid = p->pid;
-	unlock(&p->debug);
+	qunlock(&p->debug);
 	u->p->psstate = "Stopwait";
 	if(waserror()) {
 		p->pdbg = 0;
-		lock(&p->debug);
+		qlock(&p->debug);
 		nexterror();
 	}
 	sleep(&u->p->sleep, procstopped, p);
 	poperror();
-	lock(&p->debug);
+	qlock(&p->debug);
 	if(p->pid != pid)
 		error(Eprocdied);
 }

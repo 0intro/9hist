@@ -81,7 +81,7 @@ schedinit(void)		/* never returns */
 			procalloc.free = p;
 		
 			unlock(&palloc);
-			unlock(&p->debug);
+			qunlock(&p->debug);
 			unlock(&procalloc);
 
 			p->state = Dead;
@@ -385,11 +385,11 @@ postnote(Proc *p, int dolock, char *n, int flag)
 	Proc *d, **l;
 
 	if(dolock)
-		lock(&p->debug);
+		qlock(&p->debug);
 
 	if(p->upage == 0){
 		if(dolock)
-			unlock(&p->debug);
+			qunlock(&p->debug);
 		errors("noted process disappeared");
 	}
 
@@ -415,7 +415,7 @@ postnote(Proc *p, int dolock, char *n, int flag)
 	if(up != u)
 		kunmap(k);
 	if(dolock)
-		unlock(&p->debug);
+		qunlock(&p->debug);
 
 	if(r = p->r){		/* assign = */
 		/* wake up; can't call wakeup itself because we're racing with it */
@@ -575,7 +575,7 @@ pexit(char *exitstr, int freemem)
 	/*
 	 * sched() cannot wait on these locks
 	 */
-	lock(&c->debug);
+	qlock(&c->debug);
 	/* release debuggers */
 	if(c->pdbg) {
 		wakeup(&c->pdbg->sleep);
@@ -747,12 +747,12 @@ procctl(Proc *p)
 		state = p->psstate;
 		p->psstate = "Stopped";
 		/* free a waiting debugger */
-		lock(&p->debug);
+		qlock(&p->debug);
 		if(p->pdbg) {
 			wakeup(&p->pdbg->sleep);
 			p->pdbg = 0;
 		}
-		unlock(&p->debug);
+		qunlock(&p->debug);
 		p->state = Stopped;
 		sched();
 		p->psstate = state;

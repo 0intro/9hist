@@ -361,13 +361,13 @@ notify(Ureg *ur)
 		return;
 
 	s = spllo();
-	lock(&u->p->debug);
+	qlock(&u->p->debug);
 	u->p->notepending = 0;
 	if(u->note[0].flag!=NUser && (u->notified || u->notify==0)){
 		if(u->note[0].flag == NDebug)
 			pprint("suicide: %s\n", u->note[0].msg);
     Die:
-		unlock(&u->p->debug);
+		qunlock(&u->p->debug);
 		pexit(u->note[0].msg, u->note[0].flag!=NDebug);
 	}
 	if(!u->notified){
@@ -380,7 +380,7 @@ notify(Ureg *ur)
 		sp -= sizeof(Ureg);
 		if(waserror()){
 			pprint("suicide: trap in notify\n");
-			unlock(&u->p->debug);
+			qunlock(&u->p->debug);
 			pexit("Suicide", 0);
 		}
 		validaddr((ulong)u->notify, 1, 0);
@@ -401,7 +401,7 @@ notify(Ureg *ur)
 		memmove(&u->lastnote, &u->note[0], sizeof(Note));
 		memmove(&u->note[0], &u->note[1], u->nnote*sizeof(Note));
 	}
-	unlock(&u->p->debug);
+	qunlock(&u->p->debug);
 	splx(s);
 }
 
@@ -423,10 +423,10 @@ noted(Ureg *ur, ulong arg0)
     Die:
 		pexit("Suicide", 0);
 	}
-	lock(&u->p->debug);
+	qlock(&u->p->debug);
 	if(!u->notified){
 		pprint("call to noted() when not notified\n");
-		unlock(&u->p->debug);
+		qunlock(&u->p->debug);
 		return;
 	}
 	u->notified = 0;
@@ -436,13 +436,13 @@ noted(Ureg *ur, ulong arg0)
 	case NCONT:
 		if(waserror()){
 			pprint("suicide: trap in noted\n");
-			unlock(&u->p->debug);
+			qunlock(&u->p->debug);
 			goto Die;
 		}
 		validaddr(nur->pc, 1, 0);
 		validaddr(nur->usp, BY2WD, 0);
 		poperror();
-		unlock(&u->p->debug);
+		qunlock(&u->p->debug);
 		return;
 
 	default:
@@ -453,7 +453,7 @@ noted(Ureg *ur, ulong arg0)
 	case NDFLT:
 		if(u->lastnote.flag == NDebug)
 			pprint("suicide: %s\n", u->lastnote.msg);
-		unlock(&u->p->debug);
+		qunlock(&u->p->debug);
 		pexit(u->lastnote.msg, u->lastnote.flag!=NDebug);
 	}
 }

@@ -377,6 +377,7 @@ struct Fragq
 	Ipaddr src;
 	Ipaddr dst;
 	ushort id;
+	ulong  age;
 };
 
 struct Ipfrag

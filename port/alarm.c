@@ -116,9 +116,9 @@ checkalarms(void)
 		now = MACHP(0)->ticks;
 		while((rp = alarms.head) && rp->alarm <= now){
 			if(rp->alarm != 0L){
-				if(canlock(&rp->debug)){
+				if(canqlock(&rp->debug)){
 					postnote(rp, 0, "alarm", NUser);
-					unlock(&rp->debug);
+					qunlock(&rp->debug);
 					rp->alarm = 0L;
 				}else
 					break;

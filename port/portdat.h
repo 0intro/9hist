@@ -529,7 +529,7 @@ struct Proc
 	short	insyscall;
 	int	fpstate;
 
-	Lock	debug;			/* to access debugging elements of User */
+	QLock	debug;			/* to access debugging elements of User */
 	Proc	*pdbg;			/* the debugging process */
 	ulong	procmode;		/* proc device file mode */
 	int	hang;			/* hang at next exec for debug */

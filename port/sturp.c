@@ -954,6 +954,8 @@ urpkproc(void *arg)
 {
 	Urp *up, *eup;
 
+	USED(arg);
+
 	if(waserror())
 		;
 

@@ -95,16 +95,16 @@ pgrpnote(Pgrp *pg, char *a, long n, int flag)
 	p = proctab(0);
 	for(i=0; i<conf.nproc; i++, p++) {
 		if(p->pgrp == pg && p->kp == 0) {
-			lock(&p->debug);
+			qlock(&p->debug);
 			if(p->pid==0 || p->pgrp!=pg){
-				unlock(&p->debug);
+				qunlock(&p->debug);
 				continue;
 			}
 			if(!waserror()){
 				postnote(p, 0, buf, flag);
 				poperror();
 			}
-			unlock(&p->debug);
+			qunlock(&p->debug);
 		}
 	}
 }

@@ -235,6 +235,7 @@ for(;;) ;
 void	 
 hotrodcreate(Chan *c, char *name, int omode, ulong perm)
 {
+	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
@@ -452,12 +453,14 @@ hotrodwrite(Chan *c, void *buf, long n, ulong offset)
 void	 
 hotrodremove(Chan *c)
 {
+	USED(c);
 	error(Eperm);
 }
 
 void	 
 hotrodwstat(Chan *c, char *dp)
 {
+	USED(c, dp);
 	error(Eperm);
 }
 

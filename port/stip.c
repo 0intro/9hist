@@ -212,6 +212,7 @@ ipetheroput(Queue *q, Block *bp)
 	/* If we dont need to fragment just send it */
 	if(len <= ifp->maxmtu) {
 		hnputs(eh->length, len-ETHER_HDR);
+		hnputs(eh->id, Id++);
 		eh->frag[0] = 0;
 		eh->frag[1] = 0;
 		eh->cksum[0] = 0;
@@ -567,6 +568,7 @@ ipfragallo(void)
 	fragfree = f->next;
 	f->next = flisthead;
 	flisthead = f;
+	f->age = TK2MS(MACHP(0)->ticks)/1000 + 600;
 
 	qunlock(&fraglock);
 	return f;

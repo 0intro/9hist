@@ -345,12 +345,12 @@ sysexec(ulong *arg)
 	 */
 	flushmmu();
 	clearmmucache();
-	lock(&p->debug);
+	qlock(&p->debug);
 	u->nnote = 0;
 	u->notify = 0;
 	u->notified = 0;
 	procsetup(p);
-	unlock(&p->debug);
+	qunlock(&p->debug);
 	if(p->hang)
 		p->procctl = Proc_stopme;
 
