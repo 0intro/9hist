@@ -29,10 +29,8 @@
 /*
  *  Address spaces
  */
-#define KZERO		0x80000000
+#define KZERO		0xC0000000
 #define MACHADDR	(KZERO+0x00001000)
-#define KTTB		(KZERO+0x00004000)
-#define KTZERO		(KZERO+0x00010000)
 
 #define KSTACK		(16*1024)		/* Size of kernel stack */
 

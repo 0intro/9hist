@@ -14,3 +14,8 @@ void
 main(void)
 {
 }
+
+void
+exit(int)
+{
+}

@@ -1,115 +1,83 @@
 #include "mem.h"
-#include "arm7500.h"
+#include "sa1110.h"
 #include "io.h"
 
 /*
- * Entered here from the boot loader with
- *	MMU, IDC and WB enabled.
+ * Entered here from Compaq's bootldr with MMU disabled.
  */
-TEXT _startup(SB), $-4
-	MOVW	$setR12(SB), R12
+TEXT _start(SB), $-4
+	MOVW	$setR12(SB), R12		/* load the SB */
 _main:
-	MOVW	$(PsrDirq|PsrDfiq|PsrMsvc), R1	/* SVC mode, interrupts disabled */
+	/* SVC mode, interrupts disabled */
+	MOVW	$(PsrDirq|PsrDfiq|PsrMsvc), R1
 	MOVW	R1, CPSR
+
+	/* turn on caches and write buffer */
+	MRC	CpMMU, 0, R1, C(CpControl), C(0x0)
+	ORR	$(CpCdcache|CpCwb), R1
+	MCR     CpMMU, 0, R1, C(CpControl), C(0x0)
+
 	MOVW	$(MACHADDR+BY2PG), R13		/* stack */
 	SUB	$4, R13				/* link */
 	BL	main(SB)
-
+	BL	exit(SB)
+	/* we shouldn't get here */
 _mainloop:
-	BEQ	_mainloop
-	BNE	_mainloop
-	BL	_div(SB)			/* loader botch */
-	BL	_mainloop
+	B	_mainloop
 
-TEXT mmuregr(SB), $-4
-	CMP	$CpCPUID, R0
-	BNE	_fsrr
-	MRC	CpMMU, 0, R0, C(CpCPUID), C(0)
+/* flush tlb's */
+TEXT flushmmu(SB), $-4
+	MCR	CpMMU, 0, R0, C(CpTLBFlush), C(0x0)
 	RET
 
-_fsrr:
-	CMP	$CpFSR, R0
-	BNE	_farr
-	MRC	CpMMU, 0, R0, C(CpFSR), C(0)
+/* flush instruction cache */
+TEXT flushicache(SB), $-4
+	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0x0)
+	/* drain prefetch */
+	MOVW	R0,R0					
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
 	RET
 
-_farr:
-	CMP	$CpFAR, R0
-	BNE	_ctlr
-	MRC	CpMMU, 0, R0, C(CpFAR), C(0)
+/* flush data cache */
+TEXT flushdcache(SB), $-4
+	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0x0)
 	RET
 
-_ctlr:
-	CMP	$CpControl, R0
-	BNE	_mmuregbad
-	MCR	CpMMU, 0, R0, C(CpControl), C(0)
+/* flush i and d caches */
+TEXT flushcache(SB), $-4
+	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0x0)
+	/* drain prefetch */
+	MOVW	R0,R0						
+	MOVW	R0,R0
+	MOVW	R0,R0
+	MOVW	R0,R0
 	RET
 
-_mmuregbad:
-	MOVW	$-1, R0
+/* drain write buffer */
+TEXT drainwb(SB), $-4
+	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0x0), 4
 	RET
 
-TEXT mmuregw(SB), $-4
-	CMP	$CpControl, R0
-	BNE	_ttbw
-	MOVW	4(FP), R0
-	MCR	CpMMU, 0, R0, C(CpControl), C(0)
+/* return cpu id */
+TEXT getcpuid(SB), $-4
+	MRC	CpMMU, 0, R0, C(CpControl), C(0x0)
 	RET
 
-_ttbw:
-	CMP	$CpTTB, R0
-	BNE	_dacw
-	MOVW	4(FP), R0
-	MCR	CpMMU, 0, R0, C(CpTTB), C(0)
+/* return fault status */
+TEXT getfsr(SB), $-4
+	MRC	CpMMU, 0, R0, C(CpFSR), C(0x0)
 	RET
 
-_dacw:
-	CMP	$CpDAC, R0
-	BNE	_TLBflushw
-	MOVW	4(FP), R0
-	MCR	CpMMU, 0, R0, C(CpDAC), C(0)
+/* return fault address */
+TEXT getfar(SB), $-4
+	MRC	CpMMU, 0, R0, C(CpFAR), C(0x0)
 	RET
 
-_TLBflushw:
-	CMP	$CpTLBflush, R0
-	BNE	_TLBpurgew
-	MCR	CpMMU, 0, R0, C(CpTLBflush), C(0)
-	RET
-
-_TLBpurgew:
-	CMP	$CpTLBpurge, R0
-	BNE	_IDCflushw
-	MOVW	4(FP), R0
-	MCR	CpMMU, 0, R0, C(CpTLBpurge), C(0)
-	RET
-
-_IDCflushw:
-	CMP	$CpIDCflush, R0
-	BNE	_WBdrain
-	MCR	CpMMU, 0, R0, C(CpIDCflush), C(CpIDCflush)
-	RET
-
-_WBdrain:
-	CMP	$CpWBdrain, R0
-	BNE	_mmuregbad
-	MCR	CpMMU, 4, R0, C(CpIDCflush), C(CpWBdrain), 4
-	RET
-
-TEXT mmuttb(SB), $-4
-	MCR	CpMMU, 0, R0, C(CpIDCflush), C(CpIDCflush)
-	MCR	CpMMU, 0, R0, C(CpTLBflush), C(0)
-	MCR	CpMMU, 0, R0, C(CpTTB), C(0)
-	RET
-
-TEXT mmureset(SB), $-4
-	MOVW	CPSR, R0
-	ORR	$(PsrDfiq|PsrDirq), R0, R0
-	MOVW	R0, CPSR
-
-	MOVW	$0, R0
-	MOVW	$(CpCsystem), R1
-	MCR	CpMMU, 0, R1, C(CpControl), C(0)
-	B	(R0)
+/* st the translation table base */
+TEXT setttb(SB), $-4
+	MCR	CpMMU, 0, R0, C(CpTTB), C(0x0)
 
 TEXT setr13(SB), $-4
 	MOVW	4(FP), R1
@@ -237,13 +205,6 @@ TEXT islo(SB), $-4
 	EOR	$(PsrDfiq|PsrDirq), R0
 	RET
 
-TEXT _exit(SB), $-4
-	MRC	CpMMU, 0, R1, C(CpControl), C(0), 0	/* Read MMUCR */
-	BIC	$MMUCR_M_ENABLE, R1			/* Clear MMU Enable bit */
-	MCR	CpMMU, 0, R1, C(CpControl), C(0), 0	/* Write to MMU CR */
-	MCR	CpMMU, 0, R1, C(CpIDCflush), C(7)	/* Flush (inval) I,D-cache */
-	B	(R0)
-
 TEXT cpsrr(SB), $-4
 	MOVW	CPSR, R0
 	RET
@@ -293,62 +254,3 @@ TEXT mmuctlregw(SB), $-4
 	MOVW		R0, R0
 	MOVW		R0, R0
 	RET	
-
-TEXT flushIcache(SB), $-4
-	MCR	 	CpMMU, 0, R0, C(CpCacheCtl), C(5), 0	
-	MOVW		R0,R0							
-	MOVW		R0,R0
-	MOVW		R0,R0
-	MOVW		R0,R0
-	RET
-
-TEXT cleanDentry(SB), $-4
-	MCR		CpMMU, 0, R0, C(CpCacheCtl), C(10), 1
-	RET
-
-TEXT flushDentry(SB), $-4
-	MCR		CpMMU, 0, R0, C(CpCacheCtl), C(6), 1
-	RET
-
-TEXT drainWBuffer(SB), $-4
-	MCR		CpMMU, 0, R0, C(CpCacheCtl), C(10), 4	
-	RET
-
-TEXT writeBackDC(SB), $-4
-	MOVW		$0xE0000000, R0
-	MOVW		$8192, R1
-	ADD		R0, R1
-
-wbflush:
-	MOVW.P.W	32(R0), R2
-	CMP		R1,R0
-	BNE		wbflush
-	RET
-
-TEXT flushDcache(SB), $-4
-	MCR		CpMMU, 0, R0, C(CpCacheCtl), C(6), 0	
-	RET
-
-TEXT writeBackBDC(SB), $-4		
-	MOVW		$0xE4000000, R0
-	MOVW		$0x200, R1
-	ADD		R0, R1
-
-wbbflush:
-	MOVW.P.W	32(R0), R2
-	CMP		R1,R0
-	BNE		wbbflush
-	MCR		CpMMU, 0, R0, C(CpCacheCtl), C(10), 4	
-	MOVW		R0,R0								
-	MOVW		R0,R0
-	MOVW		R0,R0
-	MOVW		R0,R0
-	RET
-
-TEXT flushIDC(SB), $-4
-/*BUG*/
-	BL 		drainWBuffer(SB)
-	BL 		writeBackDC(SB)
-	BL 		flushDcache(SB) 
-	BL 		flushIcache(SB)	
-	RET
