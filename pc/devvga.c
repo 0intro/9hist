@@ -471,12 +471,10 @@ setscreen(int maxx, int maxy, int ldepth)
 	case 2:
 	case 1:
 	case 0:
-		gscreen.ldepth = 3;
 		for(i = 0; i < 16; i++){
 			x = x6to32((i*63)/15);
 			setcolor(i, x, x, x);
 		}
-		gscreen.ldepth = ldepth;
 		break;
 	}
 	cga = 0;
@@ -608,7 +606,7 @@ screenupdate(void)
 	switch(gscreen.ldepth){
 	case 0:
 		r.min.x &= ~15;		/* 16 pixel alignment for l0update() */
-		f = l0update;
+		f = memmove;
 		len = (r.max.x + 7)/8 - r.min.x/8;
 		if(len & 1)
 			len++;		/* 16 bit alignment for l0update() */
@@ -1071,7 +1069,18 @@ screenbits(void)
 void
 getcolor(ulong p, ulong *pr, ulong *pg, ulong *pb)
 {
-	p &= (1<<(1<<gscreen.ldepth))-1;
+	ulong x;
+
+	switch(gscreen.ldepth){
+	default:
+		x = 0xf;
+		break;
+	case 3:
+		x = 0xff;
+		break;
+	}
+	p &= x;
+	p ^= x;
 	lock(&screenlock);
 	*pr = colormap[p][0];
 	*pg = colormap[p][1];
@@ -1082,7 +1091,18 @@ getcolor(ulong p, ulong *pr, ulong *pg, ulong *pb)
 int
 setcolor(ulong p, ulong r, ulong g, ulong b)
 {
-	p &= (1<<(1<<gscreen.ldepth))-1;
+	ulong x;
+
+	switch(gscreen.ldepth){
+	default:
+		x = 0xf;
+		break;
+	case 3:
+		x = 0xff;
+		break;
+	}
+	p &= x;
+	p ^= x;
 	lock(&screenlock);
 	colormap[p][0] = r;
 	colormap[p][1] = g;

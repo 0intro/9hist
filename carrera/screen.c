@@ -172,14 +172,14 @@ screeninit(void)
 {
 	int i, x;
 
+	gscreen.ldepth = 0;
+
 	setmode(&dfltmode);
 
-	gscreen.ldepth = 3;
 	for(i = 0; i < 16; i++){
 		x = x6to32((i*63)/15);
 		setcolor(i, x, x, x);
 	}
-	gscreen.ldepth = 0;
 
 	/* allocate a new soft bitmap area */
 	gscreen.base = xalloc(1024*1024);
@@ -303,7 +303,18 @@ screenputs(char *s, int n)
 void
 getcolor(ulong p, ulong *pr, ulong *pg, ulong *pb)
 {
-	p &= (1<<(1<<gscreen.ldepth))-1;
+	ulong x;
+
+	switch(gscreen.ldepth){
+	default:
+		x = 0xf;
+		break;
+	case 3:
+		x = 0xff;
+		break;
+	}
+	p &= x;
+	p ^= x;
 	*pr = colormap[p][0];
 	*pg = colormap[p][1];
 	*pb = colormap[p][2];
@@ -312,7 +323,18 @@ getcolor(ulong p, ulong *pr, ulong *pg, ulong *pb)
 int
 setcolor(ulong p, ulong r, ulong g, ulong b)
 {
-	p &= (1<<(1<<gscreen.ldepth))-1;
+	ulong x;
+
+	switch(gscreen.ldepth){
+	default:
+		x = 0xf;
+		break;
+	case 3:
+		x = 0xff;
+		break;
+	}
+	p &= x;
+	p ^= x;
 	colormap[p][0] = r;
 	colormap[p][1] = g;
 	colormap[p][2] = b;
@@ -442,7 +464,14 @@ setmode(VGAmode *v)
 	for(i = 0; i < sizeof(v->attribute); i++)
 		arout(i, v->attribute[i]);
 
-	EISAOUTB(0x3C6, 0x0F);	/* pel mask */
+	switch(gscreen.ldepth){
+	case 3:
+		EISAOUTB(0x3C6, 0xFF);	/* pel mask */
+		break;
+	default:
+		EISAOUTB(0x3C6, 0x0F);	/* pel mask */
+		break;
+	}
 	EISAOUTB(0x3C8, 0x00);	/* pel write address */
 
 	EISAOUTB(0x3bf, 0x03);	/* hercules compatibility reg */
@@ -522,8 +551,8 @@ screenupdate(void)
 		for(i = 0; i < len; i += 8) {
 			s = (ulong*)(sp+i);
 			h = (ulong*)(hp+i);
-			in1 = ~s[0];
-			in2 = ~s[1];
+			in1 = s[0];
+			in2 = s[1];
 			h[0] = swiz(in2);
 			h[1] = swiz(in1);
 		}

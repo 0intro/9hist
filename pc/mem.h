@@ -49,6 +49,7 @@
 #define KSTACK		4096			/* Size of kernel stack */
 #define ROMBIOS		(KZERO|0xF0000)
 #define	ISAMEMSIZE	(4*MB)			/* mem space reserved for ISA */
+#define globalmem(x)	(((ulong)x)&KZERO)	/* addresses valid in all contexts */
 
 #define	MACHSIZE	4096
 
