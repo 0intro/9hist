@@ -939,9 +939,9 @@ audioopen(Chan *c, int mode)
 			outenable();
 		}
 		mxvolume();
-		qunlock(&audio);
 		if (audio.amode & Aread)
 			sendaudio(&audio.o);
+		qunlock(&audio);
 			
 		if (debug) print("open done\n");
 		break;
@@ -1083,7 +1083,6 @@ audioread(Chan *c, void *v, long n, vlong off)
 		}
 		poperror();
 		qunlock(s);
-		break;
 		break;
 
 	case Qstatus:

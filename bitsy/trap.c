@@ -262,8 +262,11 @@ trap(Ureg *ureg)
 		rem = ((char*)ureg)-up->kstack;
 	else
 		rem = ((char*)ureg)-((char*)(MACHADDR+sizeof(Mach)));
-	if(rem < 256)
-		panic("trap %d bytes remaining", rem);
+	if(rem < 256) {
+		dumpstack();
+		panic("trap %d bytes remaining, up = 0x%lux, ureg = 0x%lux, at pc 0x%lux",
+			rem, up, ureg, ureg->pc);
+	}
 
 	user = (ureg->psr & PsrMask) == PsrMusr;
 
@@ -338,8 +341,8 @@ trap(Ureg *ureg)
 		}
 		break;
 	case PsrMund:	/* undefined instruction */
-		/* start of Inferno code [SJM] */
 		if (user) {
+			/* look for floating point instructions to interpret */
 			x = spllo();
 			rv = fpiarm(ureg);
 			splx(x);
@@ -351,7 +354,6 @@ trap(Ureg *ureg)
 			warnregs(ureg, "undefined instruction");
 			panic("undefined instruction");
 		}
-		/* end of Inferno code [SJM] */
 		break;
 	}
 
@@ -424,8 +426,9 @@ syscall(Ureg* ureg)
 	long	ret;
 	int	i, scallnr;
 
-	if((ureg->psr & PsrMask) != PsrMusr)
+	if((ureg->psr & PsrMask) != PsrMusr) {
 		panic("syscall: pc 0x%lux r14 0x%lux cs 0x%ux\n", ureg->pc, ureg->r14, ureg->psr);
+	}
 
 	m->syscall++;
 	up->insyscall = 1;
@@ -757,7 +760,7 @@ _dumpstack(Ureg *ureg)
 	extern ulong etext;
 
 	if(up == 0){
-		print("no current proc\n");
+		iprint("no current proc\n");
 		return;
 	}
 
@@ -769,17 +772,17 @@ _dumpstack(Ureg *ureg)
 			v -= 4;
 			p = (ulong*)v;
 			if((*p & 0x0f000000) == 0x0b000000){
-				print("%.8lux=%.8lux ", l, v);
+				iprint("%.8lux=%.8lux ", l, v);
 				i++;
 			}
 		}
 		if(i == 4){
 			i = 0;
-			print("\n");
+			iprint("\n");
 		}
 	}
 	if(i)
-		print("\n");
+		iprint("\n");
 }
 
 void

@@ -37,7 +37,6 @@ main(void)
 	trapinit();
 	sa1110_uartsetup(1);
 	rs232power(1);
-	powerinit();
 	dmainit();
 	screeninit();
 	printinit();	/* from here on, print works, before this we need iprint */
@@ -49,6 +48,7 @@ main(void)
 	pageinit();
 	swapinit();
 	userinit();
+	powerinit();
 	schedinit();
 }
 
@@ -104,6 +104,7 @@ init0(void)
 		poperror();
 	}
 	kproc("alarm", alarmkproc, 0);
+	kproc("power", powerkproc, 0);
 
 	touser(sp);
 }

@@ -13,7 +13,9 @@
  * it's only used up to 164/4.
  * it's only used by routines in l.s
  */
-ulong power_resume[200/4];
+ulong	power_resume[200/4];
+Rendez	powerr;
+ulong	powerflag = 0;	/* set to start power-off sequence */
 
 extern void	sa1100_power_resume(void);
 extern int		setpowerlabel(void);
@@ -72,10 +74,8 @@ gpiocpy(GPIOregs *to, GPIOregs *from)
 static void
 sa1100_power_off(void)
 {
-	iprint("11..");
 	/* enable wakeup by µcontroller, on/off switch or real-time clock alarm */
 	powerregs->pwer =  1 << IRQrtc | 1 << IRQgpio0 | 1 << IRQgpio1;
-	iprint("12..");
 
 	/* clear previous reset status */
 	resetregs->rcsr =  RCSR_all;
@@ -98,65 +98,6 @@ sa1100_power_off(void)
 	for(;;);
 }
 
-void
-onoffintr(Ureg* , void*)
-{
-	static int power_pl;
-	int i;
-	for (i = 0; i < 100; i++) {
-		delay(1);
-		if ((gpioregs->level & GPIO_PWR_ON_i) == 0)
-			return;	/* bounced */
-	}
-	power_pl = splhi();
-	cachewb();
-	delay(500);
-	if (setpowerlabel()) {
-		mmuinvalidate();
-		mmuenable();
-		cacheflush();
-		trapresume();
-		rs232power(1);
-		clockpower(1);
-		gpclkregs->r0 = 1<<0;
-		gpiocpy(gpioregs, &savedgpioregs);
-		intrcpy(intrregs, &savedintrregs);
-		if (intrregs->icip & (1<<IRQgpio0)){
-			// don't want to sleep now. clear on/off irq.
-			gpioregs->edgestatus = (1<<IRQgpio0);
-			intrregs->icip = (1<<IRQgpio0);
-		}
-		uartpower(1);
-		µcpower(1);
-		screenpower(1);
-		irpower(1);
-		audiopower(1);
-		iprint("\nresuming execution\n");
-//		dumpitall();
-		delay(800);
-		splx(power_pl);
-		return;
-	}
-	/* Power down */
-	iprint("\nentering suspend mode\n");
-	gpiocpy(&savedgpioregs, gpioregs);
-	intrcpy(&savedintrregs, intrregs);
-	delay(400);
-	clockpower(0);
-	irpower(0);
-	audiopower(0);
-	screenpower(0);
-	µcpower(0);
-	uartpower(0);
-	iprint("rs\n");
-	rs232power(0);
-	iprint("10..");
-	sa1100_power_off();
-	/* no return */
-}
-
-
-
 static int
 bitno(ulong x)
 {
@@ -169,12 +110,115 @@ bitno(ulong x)
 }
 
 void
+onoffintr(Ureg* , void*)
+{
+	int i;
+
+	/* Power down interrupt comes on power button release.
+	 * Act only after button has been released a full 100 ms
+	 */
+
+	if (powerflag)
+		return;
+
+	for (i = 0; i < 100; i++) {
+		delay(1);
+		if ((gpioregs->level & GPIO_PWR_ON_i) == 0)
+			return;	/* bounced */
+	}
+
+	powerflag = 1;
+	wakeup(&powerr);
+}
+
+int
+powerdown(void *)
+{
+	return powerflag;
+}
+
+void
+deepsleep(void) {
+	static int power_pl;
+
+	power_pl = splhi();
+
+	/* flush cache */
+	cachewb();
+	delay(500);
+
+	/* Save state and setjmp */
+	if (setpowerlabel()) {
+		/* return from longjmp, turn everything back on */
+		mmuinvalidate();
+		mmuenable();
+		cacheflush();
+		trapresume();
+		gpclkregs->r0 = 1<<0;
+		gpiocpy(gpioregs, &savedgpioregs);
+		intrcpy(intrregs, &savedintrregs);
+		if (intrregs->icip & (1<<IRQgpio0)){
+			// don't want to sleep now. clear on/off irq.
+			gpioregs->edgestatus = (1<<IRQgpio0);
+			intrregs->icip = (1<<IRQgpio0);
+		}
+//		dumpitall();
+		delay(800);
+		splx(power_pl);
+		return;
+	}
+	/* Power down */
+	gpiocpy(&savedgpioregs, gpioregs);
+	intrcpy(&savedintrregs, intrregs);
+	delay(400);
+	sa1100_power_off();
+	/* no return */
+}
+
+void
+powerkproc(void*)
+{
+	static int power_pl;
+
+	for(;;){
+		while(powerflag == 0)
+			sleep(&powerr, powerdown, 0);
+		iprint("starting power down\n");
+		powerflag = 0;
+
+		power_pl = splhi();
+
+//		irpower(0);
+//		audiopower(0);
+		screenpower(0);
+		µcpower(0);
+		clockpower(0);
+
+		rs232power(0);
+		uartpower(0);
+
+		deepsleep();
+
+		rs232power(1);
+		uartpower(1);
+
+		clockpower(1);
+		µcpower(1);
+		screenpower(1);
+//		audiopower(1);
+//		irpower(1);
+
+		splx(power_pl);
+
+		iprint("power restored\n");
+	}
+}
+
+void
 powerinit(void)
 {
 	intrenable(GPIOrising, bitno(GPIO_PWR_ON_i), onoffintr, (void*)0x12344321, "on/off");
 }
-
-
 
 void
 idlehands(void)

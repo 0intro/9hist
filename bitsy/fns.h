@@ -70,6 +70,7 @@ void	pcmunmap(int, PCMmap*);
 void	penbutton(int, int);
 void	pentrackxy(int x, int y);
 void	powerinit(void);
+void	powerkproc(void*);
 #define	procrestore(p)
 void	procsave(Proc*);
 void	procsetup(Proc*);

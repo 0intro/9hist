@@ -527,7 +527,7 @@ TEXT setpowerlabel(SB), $-4
 
 /* Entered after a resume from suspend state.
  * The bootldr jumps here after a processor reset.
- */ 
+ */
 TEXT sa1100_power_resume(SB), $-4
 	MOVW	$setR12(SB), R12		/* load the SB */
 	/* SVC mode, interrupts disabled */
