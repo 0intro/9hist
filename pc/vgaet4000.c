@@ -5,16 +5,11 @@
 #include "fns.h"
 #include "../port/error.h"
 
-#include <libg.h>
+#define	Image	IMAGE
+#include <draw.h>
+#include <memdraw.h>
+#include <cursor.h>
 #include "screen.h"
-#include "vga.h"
-
-extern Bitmap gscreen;
-extern Cursor curcursor;
-
-static Lock et4000lock;
-static ulong storage;
-static Point hotpoint;
 
 static void
 setet4000page(int page)
@@ -31,30 +26,29 @@ setet4000page(int page)
 }
 
 static void
-disable(void)
+et4000page(VGAscr *scr, int page)
 {
-	uchar imaF7;
-
-	lock(&et4000lock);
-	outb(0x217A, 0xF7);
-	imaF7 = inb(0x217B) & ~0x80;
-	outb(0x217B, imaF7);
-	unlock(&et4000lock);
+	lock(&scr->devlock);
+	setet4000page(page);
+	unlock(&scr->devlock);
 }
 
 static void
-enable(void)
+et4000disable(VGAscr*)
 {
 	uchar imaF7;
 
-	lock(&et4000lock);
-
-	/*
-	 * disable();
-	 */
 	outb(0x217A, 0xF7);
 	imaF7 = inb(0x217B) & ~0x80;
 	outb(0x217B, imaF7);
+}
+
+static void
+et4000enable(VGAscr *scr)
+{
+	uchar imaF7;
+
+	et4000disable(scr);
 
 	/*
 	 * Configure CRTCB for Sprite, 64x64,
@@ -84,15 +78,15 @@ enable(void)
 	 * 1024-byte boundary so that there's no danger of it
 	 * crossing a page.
 	 */
-	storage = (gscreen.width*BY2WD*gscreen.r.max.y+1023)/1024;
-	storage *= 1024/4;
+	scr->storage = (scr->gscreen->width*BY2WD*scr->gscreen->r.max.y+1023)/1024;
+	scr->storage *= 1024/4;
 	outb(0x217A, 0xE8);
-	outb(0x217B, storage & 0xFF);
+	outb(0x217B, scr->storage & 0xFF);
 	outb(0x217A, 0xE9);
-	outb(0x217B, (storage>>8) & 0xFF);
+	outb(0x217B, (scr->storage>>8) & 0xFF);
 	outb(0x217A, 0xEA);
-	outb(0x217B, (storage>>16) & 0x0F);
-	storage *= 4;
+	outb(0x217B, (scr->storage>>16) & 0x0F);
+	scr->storage *= 4;
 
 	/*
 	 * Row offset in "quadwords". Must be 2 for Sprite.
@@ -108,10 +102,10 @@ enable(void)
 	outb(0x217B, 0x00);
 
 	outb(0x217A, 0xEE);
-	if(gscreen.ldepth == 3)
+//	if(vgascreen.ldepth == 3)
 		outb(0x217B, 0x01);
-	else
-		outb(0x217B, 0x00);
+//	else
+//		outb(0x217B, 0x00);
 
 	/*
 	 * Enable the CRTCB/Sprite.
@@ -119,30 +113,21 @@ enable(void)
 	outb(0x217A, 0xF7);
 	imaF7 = inb(0x217B);
 	outb(0x217B, 0x80|imaF7);
-
-	unlock(&et4000lock);
 }
 
 static void
-load(Cursor *c)
+et4000load(VGAscr *scr, Cursor *c)
 {
-	uchar imaF7, p0, p1, *mem;
+	uchar p0, p1, *mem;
 	int i, x, y;
 	ushort p;
+	uchar clr[2*16], set[2*16];
 
 	/*
 	 * Lock the display memory so we can update the
 	 * cursor bitmap if necessary.
 	 */
-	lock(&et4000lock);
-	if(memcmp(c, &curcursor, sizeof(Cursor)) == 0){
-		outb(0x217A, 0xF7);
-		p0 = inb(0x217B);
-		outb(0x217B, 0x80|p0);
-		unlock(&et4000lock);
-		return;
-	}
-	memmove(&curcursor, c, sizeof(Cursor));
+	lock(&scr->devlock);
 
 	/*
 	 * Disable the cursor.
@@ -151,12 +136,10 @@ load(Cursor *c)
 	 * pointer to the two planes. What if this crosses
 	 * into a new page?
 	 */
-	outb(0x217A, 0xF7);
-	imaF7 = inb(0x217B) & ~0x80;
-	outb(0x217B, imaF7);
+	et4000disable(scr);
 
-	setet4000page(storage>>16);
-	mem = ((uchar*)gscreen.base) + (storage & 0xFFFF);
+	setet4000page(scr->storage>>16);
+	mem = (uchar*)KADDR(scr->aperture) + (scr->storage & 0xFFFF);
 
 	/*
 	 * Initialise the 64x64 cursor RAM array. There are 2 planes,
@@ -169,19 +152,26 @@ load(Cursor *c)
 	 *	 1  0	Transparent (allow CRTC pixel pass through)
 	 *	 1  1	Invert (allow CRTC pixel invert through)
 	 * Put the cursor into the top-left of the 64x64 array.
+	 *
+	 * This is almost certainly wrong, since it has not
+	 * been updated for the 3rd edition color values.
 	 */
+	memmove(clr, c->clr, sizeof(clr));
+//	pixreverse(clr, sizeof(clr), 0);
+	memmove(set, c->set, sizeof(set));
+//	pixreverse(set, sizeof(set), 0);
 	for(y = 0; y < 64; y++){
 		for(x = 0; x < 64/8; x++){
 			if(x < 16/8 && y < 16){
-				p0 = c->clr[x+y*2];
-				p1 = c->set[x+y*2];
+				p0 = clr[x+y*2];
+				p1 = set[x+y*2];
 
 				p = 0x0000;
 				for(i = 0; i < 8; i++){
 					if(p1 & (1<<(7-i)))
-						p |= 0x01<<(2*i);
-					else if(p0 & (1<<(7-i)))
 						;
+					else if(p0 & (1<<(7-i)))
+						p |= 0x01<<(2*i);
 					else
 						p |= 0x02<<(2*i);
 				}
@@ -196,22 +186,21 @@ load(Cursor *c)
 	}
 
 	/*
-	 * Set the cursor hotpoint and enable the cursor.
+	 * enable the cursor.
 	 */
-	hotpoint = c->offset;
 	outb(0x217A, 0xF7);
 	p = inb(0x217B)|0x80;
 	outb(0x217B, p);
 
-	unlock(&et4000lock);
+	unlock(&scr->devlock);
 }
 
 static int
-move(Point p)
+et4000move(VGAscr *scr, Point p)
 {
 	int x, xo, y, yo;
 
-	if(canlock(&et4000lock) == 0)
+	if(canlock(&scr->devlock) == 0)
 		return 1;
 
 	/*
@@ -219,13 +208,13 @@ move(Point p)
 	 * or it disappears. Therefore, if x or y is -ve, adjust the
 	 * cursor presets instead.
 	 */
-	if((x = p.x+hotpoint.x) < 0){
+	if((x = p.x+scr->offset.x) < 0){
 		xo = -x;
 		x = 0;
 	}
 	else
 		xo = 0;
-	if((y = p.y+hotpoint.y) < 0){
+	if((y = p.y+scr->offset.y) < 0){
 		yo = -y;
 		y = 0;
 	}
@@ -257,38 +246,24 @@ move(Point p)
 	outb(0x217A, 0xE4);
 	outb(0x217B, y & 0xFF);
 
-	unlock(&et4000lock);
+	unlock(&scr->devlock);
 	return 0;
 }
 
-Hwgc et4000hwgc = {
+VGAcur et4000cur = {
 	"et4000hwgc",
-	enable,
-	load,
-	move,
-	disable,
 
-	0,
+	et4000enable,
+	et4000disable,
+	et4000load,
+	et4000move,
 };
 
-static void
-et4000page(int page)
-{
-	lock(&et4000lock);
-	setet4000page(page);
-	unlock(&et4000lock);
-}
-
-static Vgac et4000 = {
+VGAdev et4000dev = {
 	"et4000",
-	et4000page,
 
 	0,
+	0,
+	et4000page,
+	0
 };
-
-void
-vgaet4000link(void)
-{
-	addvgaclink(&et4000);
-	addhwgclink(&et4000hwgc);
-}
