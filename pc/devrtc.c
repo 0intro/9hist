@@ -113,9 +113,8 @@ rtccreate(Chan*, char*, int, ulong)
 }
 
 void	 
-rtcclose(Chan *c)
+rtcclose(Chan*)
 {
-	USED(c);
 }
 
 #define GETBCD(o) ((bcdclock[o]&0xf) + 10*(bcdclock[o]>>4))
@@ -218,7 +217,6 @@ rtcwrite(Chan *c, void *buf, long n, ulong offset)
 	uchar bcdclock[Nbcd];
 	char *cp, *ep;
 
-	USED(c);
 	if(offset!=0)
 		error(Ebadarg);
 
@@ -288,16 +286,14 @@ rtcbwrite(Chan *c, Block *bp, ulong offset)
 }
 
 void	 
-rtcremove(Chan *c)
+rtcremove(Chan*)
 {
-	USED(c);
 	error(Eperm);
 }
 
 void	 
-rtcwstat(Chan *c, char *dp)
+rtcwstat(Chan*, char*)
 {
-	USED(c, dp);
 	error(Eperm);
 }
 

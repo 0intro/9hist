@@ -555,22 +555,31 @@ intrscommon:
 /*
  *  interrupt level is interrupts on or off
  */
-TEXT	spllo(SB),$0
-	PUSHFL
-	POPL	AX
-	STI
-	RET
-
 TEXT	splhi(SB),$0
+	MOVL	m(SB), AX 			/* save PC in m->splpc */
+	MOVL	(SP), BX
+	MOVL	BX, 4(AX)
+
 	PUSHFL
 	POPL	AX
 	CLI
 	RET
 
 TEXT	splx(SB),$0
+	MOVL	m(SB), AX 			/* save PC in m->splpc */
+	MOVL	(SP), BX
+	MOVL	BX, 4(AX)
+
 	MOVL	s+0(FP),AX
 	PUSHL	AX
 	POPFL
+	RET
+
+TEXT	spllo(SB),$0
+	PUSHFL
+	POPL	AX
+	STI
+TEXT spldone(SB), $0
 	RET
 
 TEXT	getstatus(SB),$0

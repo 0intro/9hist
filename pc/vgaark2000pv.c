@@ -154,16 +154,16 @@ move(Point p)
 	 */
 	if((x = p.x+hotpoint.x) < 0){
 		xo = -x;
-		x = 1;
+		x = 0;
 	}
 	else
-		xo = 1;
+		xo = 0;
 	if((y = p.y+hotpoint.y) < 0){
 		yo = -y;
-		y = 1;
+		y = 0;
 	}
 	else
-		yo = 1;
+		yo = 0;
 
 	/*
 	 * Load the new values.

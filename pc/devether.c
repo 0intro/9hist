@@ -88,9 +88,8 @@ etherbread(Chan *c, long n, ulong offset)
 }
 
 void
-etherremove(Chan *c)
+etherremove(Chan*)
 {
-	USED(c);
 }
 
 void
@@ -145,7 +144,7 @@ etherwloop(Ether *ctlr, Etherpkt *pkt, long len)
 	int s, different;
 
 	different = memcmp(pkt->d, ctlr->ea, sizeof(pkt->d));
-	if(!ctlr->prom && different && memcmp(pkt->d, ctlr->bcast, sizeof(pkt->d)))
+	if(different && memcmp(pkt->d, ctlr->bcast, sizeof(pkt->d)))
 		return 0;
 
 	s = splhi();
@@ -156,11 +155,10 @@ etherwloop(Ether *ctlr, Etherpkt *pkt, long len)
 }
 
 long
-etherwrite(Chan *c, void *buf, long n, ulong offset)
+etherwrite(Chan *c, void *buf, long n, ulong)
 {
 	Ether *ctlr;
 
-	USED(offset);
 	if(n > ETHERMAXTU)
 		error(Ebadarg);
 	ctlr = ether[c->dev];
@@ -177,8 +175,8 @@ etherwrite(Chan *c, void *buf, long n, ulong offset)
 		nexterror();
 	}
 	n = (*ctlr->write)(ctlr, buf, n);
-	poperror();
 	qunlock(&ctlr->tlock);
+	poperror();
 
 	return n;
 }
