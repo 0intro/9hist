@@ -19,7 +19,7 @@ struct
 } ialloc;
 
 /*
- *  allocate blocks, round the data base upt to a multiple of BLOCKALIGN.
+ *  allocate blocks, round the data base up to a multiple of BLOCKALIGN.
  */
 Block*
 allocb(int size)
