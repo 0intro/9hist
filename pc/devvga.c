@@ -112,14 +112,15 @@ vgaclose(Chan* c)
 	static char *closectl = "closectl\n";
 
 	scr = &vgascreen[0];
-	if ((ulong)c->qid.path == Qvgaovlctl) {
-		if (scr->dev->ovlctl){
-			if(waserror())
+	if((ulong)c->qid.path == Qvgaovlctl)
+		if(scr->dev->ovlctl){
+			if(waserror()){
+				print("ovlctl error: %s\n", up->errstr);
 				return;
+			}
 			scr->dev->ovlctl(scr, c, closectl, strlen(closectl));
 			poperror();
 		}
-	}
 }
 
 static void

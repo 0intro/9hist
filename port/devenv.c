@@ -178,7 +178,7 @@ static void
 envclose(Chan *c)
 {
 	/*
-	 * close can't fail, so errors from remove will be ignored anyway.
+	 * cclose can't fail, so errors from remove will be ignored.
 	 * since permissions aren't checked,
 	 * envremove can't not remove it if its there.
 	 */

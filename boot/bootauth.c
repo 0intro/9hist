@@ -17,6 +17,7 @@ authentication(int cpuflag)
 	av = argv;
 	av[ac++] = "factotum";
 //av[ac++] = "-d";
+//av[ac++] = "-D";	//9p messages
 	if(cpuflag)
 		av[ac++] = "-S";
 	else

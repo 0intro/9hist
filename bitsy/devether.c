@@ -185,11 +185,6 @@ etherbread(Chan* chan, long n, ulong offset)
 	return netifbread(etherxx[chan->dev], chan, n, offset);
 }
 
-static void
-etherremove(Chan*)
-{
-}
-
 static int
 etherwstat(Chan* chan, uchar* dp, int n)
 {
@@ -460,7 +455,7 @@ Dev etherdevtab = {
 	etherbread,
 	etherwrite,
 	etherbwrite,
-	etherremove,
+	devremove,
 	etherwstat,
 	nil,		/* no power management */
 	etherconfig,

@@ -499,18 +499,6 @@ ipopen(Chan* c, int omode)
 	return c;
 }
 
-static void
-ipcreate(Chan*, char*, int, ulong)
-{
-	error(Eperm);
-}
-
-static void
-ipremove(Chan*)
-{
-	error(Eperm);
-}
-
 static int
 ipwstat(Chan *c, uchar *dp, int n)
 {
@@ -1187,13 +1175,13 @@ Dev ipdevtab = {
 	ipwalk,
 	ipstat,
 	ipopen,
-	ipcreate,
+	devcreate,
 	ipclose,
 	ipread,
 	ipbread,
 	ipwrite,
 	ipbwrite,
-	ipremove,
+	devremove,
 	ipwstat,
 };
 

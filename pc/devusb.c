@@ -1700,9 +1700,9 @@ usbclose(Chan *c)
 	if(c->qid.type == QTDIR || QID(c->qid) < Q3rd)
 		return;
 	qlock(&usbstate);
-	if(waserror()){
+	if(waserror()){	/* usbdevice can error */
 		qunlock(&usbstate);
-		return;
+		nexterror();
 	}
 	d = usbdevice(c);
 	if(QID(c->qid) == Qctl)

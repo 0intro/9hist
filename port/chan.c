@@ -352,14 +352,10 @@ cclose(Chan *c)
 	if(decref(c))
 		return;
 
-	if(waserror()){
-		print("cclose error: type %C; error %s\n", devtab[c->type]->dc, up!=nil? up->errstr : "no user");
-		/* don't chanfree: better leak than leave a dangling pointer */
-		return;
+	if(!waserror()){
+		devtab[c->type]->close(c);
+		poperror();
 	}
-
-	devtab[c->type]->close(c);
-	poperror();
 	chanfree(c);
 }
 
