@@ -117,8 +117,7 @@ struct FChar
  * Reference counts in DImages:
  *	one per open by original client
  *	one per screen image or fill
- * Images published by name are not ref'ed, but protected by
- * comparing version number with the DName entry.
+ * 	one per image derived from this one by name
  */
 struct DImage
 {
@@ -131,6 +130,7 @@ struct DImage
 	int		nfchar;
 	FChar*		fchar;
 	DScreen*	dscreen;	/* 0 if not a window */
+	DImage*	fromname;	/* image this one is derived from, by name */
 	DImage*		next;
 };
 
@@ -496,10 +496,10 @@ drawinstall(Client *client, int id, Memimage *i, DScreen *dscreen)
 	d->image = i;
 	d->nfchar = 0;
 	d->fchar = 0;
+	d->fromname = 0;
 	d->dscreen = dscreen;
 	d->next = client->dimage[id&HASHMASK];
 	client->dimage[id&HASHMASK] = d;
-//	print("install %d %p...", id, d);
 	return i;
 }
 
@@ -616,8 +616,10 @@ drawfreedimage(DImage *dimage)
 			drawdelname(sdraw.name+i);
 		else
 			i++;
-	if(dimage->vers != 0)	/* acquired by name; owned by someone else*/
+	if(dimage->fromname){	/* acquired by name; owned by someone else*/
+		drawfreedimage(dimage->fromname);
 		goto Return;
+	}
 	if(dimage->image == screenimage)	/* don't free the display */
 		goto Return;
 	ds = dimage->dscreen;
@@ -1594,6 +1596,8 @@ drawmesg(Client *client, void *av, int n)
 				error("draw: can't happen");
 			di->vers = dn->vers;
 			di->name = smalloc(j+1);
+			di->fromname = dn->dimage;
+			di->fromname->ref++;
 			memmove(di->name, a+6, j);
 			di->name[j] = 0;
 			client->infoid = dstid;
