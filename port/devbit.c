@@ -1244,8 +1244,10 @@ bitalloc(Rectangle rect, int ld)
 	if(bit.free == 0)
 		error(Enobitmap);
 	ws = 1<<(5-ld);	/* pixels per word */
-	if(rect.min.x >= 0)
-		l = (rect.max.x+ws-1)/ws - rect.min.x/ws;
+	if(rect.min.x >= 0) {
+		l = (rect.max.x+ws-1)/ws;
+		l -= rect.min.x/ws;
+	}
 	else{	/* make positive before divide */
 		t = (-rect.min.x)+ws-1;
 		t = (t/ws)*ws;

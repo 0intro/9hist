@@ -297,6 +297,7 @@ void
 sleep(Rendez *r, int (*f)(void*), void *arg)
 {
 	Proc *p;
+	int s;
 
 	p = u->p;
 	sleep1(r, f, arg);
@@ -304,10 +305,12 @@ sleep(Rendez *r, int (*f)(void*), void *arg)
 		sched();	/* notepending may go true while asleep */
 	if(p->notepending){
 		p->notepending = 0;
+		s = splhi();
 		lock(r);
 		if(r->p == p)
 			r->p = 0;
 		unlock(r);
+		splx(s);
 		error(Eintr);
 	}
 }
@@ -317,6 +320,7 @@ tsleep(Rendez *r, int (*f)(void*), void *arg, int ms)
 {
 	Alarm *a;
 	Proc *p;
+	int s;
 
 	p = u->p;
 	sleep1(r, f, arg);
@@ -327,10 +331,12 @@ tsleep(Rendez *r, int (*f)(void*), void *arg, int ms)
 	}
 	if(p->notepending){
 		p->notepending = 0;
+		s = splhi();
 		lock(r);
 		if(r->p == p)
 			r->p = 0;
 		unlock(r);
+		splx(s);
 		error(Eintr);
 	}
 }

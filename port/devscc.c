@@ -451,7 +451,6 @@ sccspecial(int port, IOQ *oq, IOQ *iq, int baud)
 	}
 }
 
-static int	sccputc(IOQ *, int);
 static void	sccstopen(Queue*, Stream*);
 static void	sccstclose(Queue*);
 static void	sccoput(Queue*, Block*);

@@ -259,6 +259,7 @@ hardattach(char *spec)
 					print("  cyl=%d h=%d sec=%d\n",
 						dp->id.lcyls, dp->id.lheads, dp->id.ls2t);
 				}
+			case 0x427a:	/* for now: a list of those that work */
 				dp->cyl = dp->id.lcyls;
 				dp->heads = dp->id.lheads;
 				dp->sectors = dp->id.ls2t;

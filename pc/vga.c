@@ -100,14 +100,14 @@ VGAmode mode12 =
 VGAmode mode6a = 
 {
 	/* general */
-	0xe3, 0x00,  /* 0x70, 0x04, these are read-only */
+	0x2f, 0x00,  /* 0x70, 0x04, these are read-only */
 	/* sequence */
 	0x03, 0x01, 0x0f, 0x00, 0x06,
 	/* crt */
-	0x7f, 0x63, 0x64, 0x02, 0x6a, 0x1d, 0x77, 0xf0,
-	0x00, 0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x60,
-	0x5d, 0x8f, 0x57, 0x32, 0x00, 0x5b, 0x74, 0xc3,
-	0xff,  
+	0x7a, 0x63, 0x65, 0x9d, 0x67, 0x92, 0x39, 0x1f,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x33, 0x82, 0x2b, 0x32, 0x0f, 0x33, 0x36, 0xe7,
+	0xff,
 	/* graphics */
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x0f,
 	0xff,
@@ -208,7 +208,6 @@ setmode(VGAmode *v)
 		arout(i, v->attribute[i]);
 }
 
-#ifdef VGATROUBLE
 void
 getmode(VGAmode *v) {
 	int i;
@@ -236,27 +235,27 @@ getmode(VGAmode *v) {
 void
 printmode(VGAmode *v) {
 	int i;
-	print("general registers: %02x %02x\n",
+	print("g %2.2x %2x\n",
 		v->general[0], v->general[1]);
 
-	print("sequence registers: ");
+	print("s ");
 	for(i = 0; i < sizeof(v->sequencer); i++) {
-		print(" %02x", v->sequencer[i]);
+		print(" %2.2x", v->sequencer[i]);
 	}
 
-	print("\nCRT registers: ");
+	print("\nc ");
 	for(i = 0; i < sizeof(v->crt); i++) {
-		print(" %02x", v->crt[i]);
+		print(" %2.2x", v->crt[i]);
 	}
 
-	print("\nGraphics registers: ");
+	print("\ng ");
 	for(i = 0; i < sizeof(v->graphics); i++) {
-		print(" %02x", v->graphics[i]);
+		print(" %2.2x", v->graphics[i]);
 	}
 
-	print("\nAttribute registers: ");
+	print("\na ");
 	for(i = 0; i < sizeof(v->attribute); i++) {
-		print(" %02x", v->attribute[i]);
+		print(" %2.2x", v->attribute[i]);
 	}
 	print("\n");
 }
@@ -302,9 +301,10 @@ screeninit(void)
 	int i, j, k;
 	int c;
 	ulong *l;
-	VGAmode v;
+	VGAmode testmode;
 
-	setmode(&mode12);
+	setmode(&mode6a);
+	getmode(&testmode);
 
 	/*
 	 *  swizzle the font longs.
@@ -320,6 +320,9 @@ screeninit(void)
 	out.pos.x = MINX;
 	out.pos.y = 0;
 	out.bwid = defont0.info[' '].width;
+delay(50000);
+	setmode(&mode12);
+	printmode(&testmode);
 }
 
 void
