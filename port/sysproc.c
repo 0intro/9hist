@@ -12,7 +12,6 @@ int	shargs(char*, int, char**);
 long
 sysr1(ulong *arg)
 {
-	xsummary();
 	print("[%s %s %d] r1 = %d\n", up->user, up->text, up->pid, arg[0]);
 	return 0;
 }
@@ -216,7 +215,7 @@ sysexec(ulong *arg)
 	magic = l2be(exec.magic);
 	text = l2be(exec.text);
 	entry = l2be(exec.entry);
-	if(n==sizeof(Exec) && (magic==AOUT_MAGIC)){
+	if(n==sizeof(Exec) && EXEC_MAGIC(magic)){
 		if((text&KZERO)
 		|| entry < UTZERO+sizeof(Exec)
 		|| entry >= UTZERO+sizeof(Exec)+text)

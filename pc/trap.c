@@ -414,7 +414,6 @@ syscall(Ureg *ur, void *arg)
 			postnote(up, 1, "sys: bad sys call", NDebug);
 			error(Ebadarg);
 		}
-		up->syscall[up->scallnr]++;
 
 		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-(1+MAXSYSARG)*BY2WD))
 			validaddr(sp, (1+MAXSYSARG)*BY2WD, 0);

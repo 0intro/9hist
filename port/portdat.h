@@ -581,10 +581,6 @@ struct Proc
 	void	*dbgreg;	/* User registers for devproc */
 	Notsave;
 
-	/* statistics */
-	ulong	counter[Pcounter];	/* specialized per process counters */
-	ulong	*syscall;
-
 	/*
 	 *  machine specific MMU
 	 */

@@ -18,7 +18,6 @@ fault(ulong addr, int read)
 	spllo();
 
 	m->pfault++;
-	up->counter[FAULTCNTR]++;
 	for(;;) {
 		s = seg(up, addr, 1);
 		if(s == 0) {

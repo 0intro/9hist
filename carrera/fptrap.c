@@ -174,7 +174,7 @@ fpunimp(ulong iw)
 	return 0;
 }
 
-static ulong*
+static long*
 reg(Ureg *ur, int regno)
 {
 	/* regs go from R31 down in ureg, R29 is missing */

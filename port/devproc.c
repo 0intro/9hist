@@ -23,7 +23,6 @@ enum
 	Qregs,
 	Qsegment,
 	Qstatus,
-	Qcounters,
 	Qtext,
 	Qwait,
 };
@@ -31,7 +30,6 @@ enum
 #define	STATSIZE	(2*NAMELEN+12+7*12)
 Dirtab procdir[] =
 {
-	"counters",	{Qcounters},	0,			0444,
 	"ctl",		{Qctl},		0,			0000,
 	"fpregs",	{Qfpregs},	sizeof(FPsave),		0000,
 	"kregs",	{Qkregs},	sizeof(Ureg),		0000,
@@ -73,7 +71,6 @@ Chan*	proctext(Chan*, Proc*);
 Segment* txt2data(Proc*, Segment*);
 int	procstopped(void*);
 void	mntscan(Mntwalk*);
-ulong	readcounters(Proc*, ulong, void*, int);
 
 int
 procgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
@@ -121,11 +118,6 @@ procgen(Chan *c, Dirtab *tab, int ntab, int s, Dir *dp)
 void
 procinit(void)
 {
-	/* standard counters - this ordering is important */
-	proccounter("sched");
-	proccounter("fault");
-	proccounter("tlbmiss");
-
 	if(conf.nproc >= (1<<(16-QSHIFT))-1)
 		print("warning: too many procs for devproc\n");
 }
@@ -196,7 +188,6 @@ procopen(Chan *c, int omode)
 			error(Eperm);
 		break;
 
-	case Qcounters:
 	case Qctl:
 	case Qnote:
 	case Qnoteid:
@@ -374,9 +365,6 @@ procread(Chan *c, void *va, long n, ulong offset)
 			n = rsize - offset;
 		memmove(a, rptr+offset, n);
 		return n;
-
-	case Qcounters:
-		return readcounters(p, offset, va, n);
 
 	case Qstatus:
 		if(offset >= STATSIZE)
@@ -862,42 +850,4 @@ data2txt(Segment *s)
 	ps->flushme = 1;
 
 	return ps;
-}
-
-static char *counter[Pcounter];
-int ncounter;
-
-int
-proccounter(char *name)
-{
-	if(ncounter >= Pcounter)
-		panic("too many process counters");
-	counter[ncounter] = name;
-	return ncounter++;
-}
-
-ulong
-readcounters(Proc *p, ulong offset, void *va, int n)
-{
-	char *bp;
-	int i, j, m;
-	extern char *sysctab[];
-
-	bp = smalloc((nsyscall+ncounter)*(NAMELEN+8));
-	m = 0;
-	for(i = 0; i < Pcounter; i++)
-		if(counter[i])
-			m += sprint(bp+m, "%s\t%8d\n", counter[i], p->counter[i]);
-	j = 0;
-	for(i = 0; i < nsyscall; i++)
-		j += p->syscall[i];
-	m += sprint(bp+m, "syscall\t%8d\n", j);
-	for(i = 0; i < nsyscall; i++)
-		if(p->syscall[i])
-			m += sprint(bp+m, "%s\t%8d\n", sysctab[i], p->syscall[i]);
-	n = readstr(offset, va, n, bp);
-	free(bp);
-	memset(p->counter, 0, sizeof(p->counter));
-	memset(p->syscall, 0, sizeof(p->syscall));
-	return n;
 }

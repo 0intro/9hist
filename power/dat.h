@@ -14,7 +14,7 @@ typedef struct Ureg	Ureg;
 /*
  *  parameters for sysproc.c
  */
-#define AOUT_MAGIC	V_MAGIC
+#define EXEC_MAGIC(magic)	(magic==V_MAGIC)
 
 /*
  *  machine dependent definitions used by ../port/dat.h

@@ -15,7 +15,7 @@ typedef struct Ureg	Ureg;
 /*
  *  parameters for sysproc.c
  */
-#define AOUT_MAGIC	V_MAGIC
+#define EXEC_MAGIC(magic)	(magic==V_MAGIC||magic==M_MAGIC)
 
 /*
  *  machine dependent definitions used by ../port/dat.h
@@ -81,7 +81,8 @@ struct PMMU
 struct Notsave
 {
 	ulong	svstatus;
-	ulong	svr1;
+	long	svr1;
+	long	svhr1;
 };
 
 #include "../port/portdat.h"

@@ -66,6 +66,7 @@
 #define ERL		0x00000004
 #define KSUPER		0x00000008
 #define KUSER		0x00000010
+#define UX		0x00000020
 #define INTMASK		0x0000ff00
 #define INTR0		0x00000100
 #define INTR1		0x00000200
@@ -98,9 +99,54 @@
  * Fundamental addresses
  */
 #define	MACHADDR	(KTZERO-MAXMACH*BY2PG)	/* warning: rdbg is near here */
-/* Sizeof(Ureg)+R5,R6+16 bytes slop+retpc & ur */
-#define	UREGSIZE	0xC0		
 #define	MACHP(n)	((Mach *)(MACHADDR+(n)*BY2PG))
+
+/*
+ * offsets in ureg.h for l.s
+ */
+#define	Ureg_status	(Uoffset+0)
+#define	Ureg_pc		(Uoffset+4)
+#define	Ureg_sp		(Uoffset+8)
+#define	Ureg_cause	(Uoffset+12)
+#define	Ureg_badvaddr	(Uoffset+16)
+#define	Ureg_tlbvirt	(Uoffset+20)
+
+#define	Ureg_hi		(Uoffset+28-4)
+#define	Ureg_lo		(Uoffset+36-4)
+#define	Ureg_r31	(Uoffset+44-4)
+#define	Ureg_r30	(Uoffset+52-4)
+#define	Ureg_r28	(Uoffset+60-4)
+#define	Ureg_r27	(Uoffset+68-4)
+#define	Ureg_r26	(Uoffset+76-4)
+#define	Ureg_r25	(Uoffset+84-4)
+#define	Ureg_r24	(Uoffset+92-4)
+#define	Ureg_r23	(Uoffset+100-4)
+#define	Ureg_r22	(Uoffset+108-4)
+#define	Ureg_r21	(Uoffset+116-4)
+#define	Ureg_r20	(Uoffset+124-4)
+#define	Ureg_r19	(Uoffset+132-4)
+#define	Ureg_r18	(Uoffset+140-4)
+#define	Ureg_r17	(Uoffset+148-4)
+#define	Ureg_r16	(Uoffset+156-4)
+#define	Ureg_r15	(Uoffset+164-4)
+#define	Ureg_r14	(Uoffset+172-4)
+#define	Ureg_r13	(Uoffset+180-4)
+#define	Ureg_r12	(Uoffset+188-4)
+#define	Ureg_r11	(Uoffset+196-4)
+#define	Ureg_r10	(Uoffset+204-4)
+#define	Ureg_r9		(Uoffset+212-4)
+#define	Ureg_r8		(Uoffset+220-4)
+#define	Ureg_r7		(Uoffset+228-4)
+#define	Ureg_r6		(Uoffset+236-4)
+#define	Ureg_r5		(Uoffset+244-4)
+#define	Ureg_r4		(Uoffset+252-4)
+#define	Ureg_r3		(Uoffset+260-4)
+#define	Ureg_r2		(Uoffset+268-4)
+#define	Ureg_r1		(Uoffset+276-4)
+
+/* Sizeof(Ureg) + (R5,R6) + 16 bytes slop + retpc + ur */
+#define	UREGSIZE	((Ureg_r1+8-Uoffset) + 16 + 16 + 4 + 4)
+#define	Uoffset		8
 
 /*
  * MMU
