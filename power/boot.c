@@ -261,7 +261,7 @@ hotdial(char *arg)
 	/*
 	 * use /dev; it's local
 	 */
-	if(mount(fd, "/dev", MREPL, "", "", -1) < 0)
+	if(mount(fd, "/dev", MREPL, "", "") < 0)
 		error("mount");
 	switch(fork()){
 	case 0:
@@ -393,7 +393,7 @@ boot(int ask)
 	print("mount...");
 	if(bind("/", "/", MREPL) < 0)
 		error("bind");
-	if(mount(fd, "/", MAFTER|MCREATE, "", "", -1) < 0)
+	if(mount(fd, "/", MAFTER|MCREATE, "", "") < 0)
 		error("mount");
 
 	settime();
@@ -508,7 +508,7 @@ settime(void)
 	f = open("#s/boot", ORDWR);
 	if(f < 0)
 		return;
-	if(mount(f, "/n/boot", MREPL, "", "", -1) < 0){
+	if(mount(f, "/n/boot", MREPL, "", "") < 0){
 		close(f);
 		return;
 	}
