@@ -464,7 +464,7 @@ tlsopen(Chan *c, int omode)
 			lock(&tr->hqlock);
 			if(tr->handq != nil)
 				error(Einuse);
-			tr->handq = qopen(2 * MaxRecLen, 0, nil, nil);
+			tr->handq = qopen(2 * MaxCipherRecLen, 0, nil, nil);
 			if(tr->handq == nil)
 				error("can't allocate handshake queue");
 			tr->hqref = 1;
@@ -762,8 +762,8 @@ tlsrecread(TlsRec *tr)
 	if(ver != tr->version && (tr->verset || ver < MinProtoVersion || ver > MaxProtoVersion))
 		rcvError(tr, EProtocolVersion, "record layer saw ver %x, not %x/%d; %d %d",
 			ver, tr->version, tr->verset, type, len);
-	if(len > MaxRecLen || len < 0)
-		rcvError(tr, ERecordOverflow, "record message too long");
+	if(len > MaxCipherRecLen || len < 0)
+		rcvError(tr, ERecordOverflow, "record message too long %d", len);
 	ensure(tr, &tr->unprocessed, len);
 	nconsumed = 0;
 	poperror();
