@@ -133,6 +133,7 @@ void	audiodmaintr(void);
 ulong	fwblock(void*, void*, ulong);
 ulong	frblock(void*, void*, ulong);
 void	ifree(void*);
+void	ifflush(void*);
 Block*	iallocb(int);
 void*	ifroute(ulong);
 ulong	ifunroute(ulong);

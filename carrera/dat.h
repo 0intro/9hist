@@ -85,15 +85,6 @@ struct Notsave
 
 #include "../port/portdat.h"
 
-#define NCALLBACK	32
-
-typedef struct Callbk Callbk;
-struct Callbk
-{
-	void	(*func)(void*);
-	void*	arg;
-};
-
 /* First FOUR members offsets known by l.s */
 struct Mach
 {

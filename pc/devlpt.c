@@ -197,13 +197,18 @@ lptwrite(Chan *c, void *a, long n)
 static void
 outch(int base, int c)
 {
-	int status = inb(base+Qpsr);
+	int status, tries;
 
-	if(!(status & Fselect) || !(status & Fnoerror))
-		error(Eio);
-	if(!(status & Fnotbusy)){
-		outb(base+Qpcr, Finitbar|Fie);
-		sleep(&lptrendez, lptready, (void *)base);
+	for(tries = 0;; tries++){
+		status = inb(base+Qpsr);
+		if(!(status & Fselect) || !(status & Fnoerror))
+			error(Eio);
+		if(status & Fnotbusy)
+			break;
+		if(tries > 1000){
+			outb(base+Qpcr, Finitbar|Fie);
+			tsleep(&lptrendez, lptready, (void *)base, MS2HZ);
+		}
 	}
 	outb(base+Qdlr, c);
 	outb(base+Qpcr, Finitbar|Fstrobe);

@@ -114,8 +114,6 @@ struct Notsave
  *  machine dependent definitions not used by ../port/dat.h
  */
 
-#define NCALLBACK	32
-
 struct Mach
 {
 	int	machno;			/* physical id of processor */
@@ -129,10 +127,10 @@ struct Mach
 	Schedq	hiq;
 	Schedq	loq;
 
-	void	(**cbin)(void);
-	void	(**cbout)(void);
-	void	(**cbend)(void);
-	void	(*calls[NCALLBACK])(void);
+	Callbk*	cbin;
+	Callbk*	cbout;
+	Callbk*	cbend;
+	Callbk	calls[NCALLBACK];
 
 	int	tlbfault;
 	int	tlbpurge;

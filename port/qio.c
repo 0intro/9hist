@@ -415,8 +415,7 @@ qread(Queue *q, void *vp, int len)
 			q->synclen = len;
 			q->syncbuf = vp;
 			iunlock(q);
-			while(q->syncbuf != 0)
-				sleep(&q->rr, filled, q);
+			sleep(&q->rr, filled, q);
 			len = q->synclen;
 			poperror();
 			qunlock(&q->rlock);
