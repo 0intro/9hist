@@ -32,10 +32,6 @@ char	sysname[NAMELEN];
 static ulong	randomread(void*, ulong);
 static void	randominit(void);
 static void	seedrand(void);
-static long	qtimer(long, vlong);
-
-int qtimerentry = -1;
-vlong µoffset;
 
 void
 printinit(void)
@@ -212,6 +208,7 @@ echo(Rune r, char *buf, int n)
 {
 	static int ctrlt, pid;
 	extern ulong etext;
+	int x;
 
 	/*
 	 * ^p hack
@@ -243,7 +240,9 @@ echo(Rune r, char *buf, int n)
 				consdebug();
 			return;
 		case 'p':
+			x = spllo();
 			procdump();
+			splx(x);
 			return;
 		case 'q':
 			scheddump();
@@ -361,7 +360,6 @@ enum{
 	Qsysname,
 	Qsysstat,
 	Qtime,
-	Qtimer,
 	Quser,
 };
 
@@ -390,8 +388,7 @@ static Dirtab consdir[]={
 	"sysname",	{Qsysname},	0,		0664,
 	"sysstat",	{Qsysstat},	0,		0666,
 	"time",		{Qtime},	NUMSIZE,	0664,
-	"timer",	{Qtimer},	0,		0444,
- 	"user",		{Quser},	NAMELEN,	0666,
+	"user",		{Quser},	NAMELEN,	0666,
 };
 
 ulong	boottime;		/* seconds since epoch at boot */
@@ -450,13 +447,6 @@ static void
 consinit(void)
 {
 	randominit();
-
-	if (qtimerentry < 0) {
-		while (consdir[++qtimerentry].qid.path != Qtimer)
-			;
-		µoffset = (vlong)1000000*rtctime() -
-			  (vlong)1000*TK2MS(MACHP(0)->ticks);
-	}
 }
 
 static Chan*
@@ -474,9 +464,6 @@ conswalk(Chan *c, char *name)
 static void
 consstat(Chan *c, char *dp)
 {
-	if (c->qid.path == Qtimer)
-		consdir[qtimerentry].length = µoffset +
-			(vlong)1000*TK2MS(MACHP(0)->ticks);
 	devstat(c, dp, consdir, nelem(consdir), devgen);
 }
 
@@ -532,8 +519,6 @@ consread(Chan *c, void *buf, long n, vlong off)
 		return n;
 	switch(c->qid.path & ~CHDIR){
 	case Qdir:
-		consdir[qtimerentry].length = µoffset +
-			(vlong)1000*TK2MS(MACHP(0)->ticks);
 		return devdirread(c, buf, n, consdir, nelem(consdir), devgen);
 
 	case Qcons:
@@ -620,9 +605,6 @@ consread(Chan *c, void *buf, long n, vlong off)
 
 	case Qtime:
 		return readnum((ulong)offset, buf, n, rtctime(), 12);
-
-	case Qtimer:
-		return qtimer(n, offset);
 
 	case Qclock:
 		k = offset;
@@ -881,10 +863,6 @@ conswrite(Chan *c, void *va, long n, vlong off)
 			sysname[n-1] = 0;
 		break;
 
-	case Qtimer:
-		error(Eperm);
-		break;
-
 	default:
 		print("conswrite: %d\n", c->qid.path);
 		error(Egreg);
@@ -1073,23 +1051,5 @@ randomread(void *xp, ulong n)
 
 	wakeup(&rb.producer);
 
-	return n;
-}
-
-static long
-qtimer(long n, vlong offset)
-{
-	/* block until time ≥ offset;
-	 * add n to offset
-	 * return increment to offset (i.e., n)
-	 */
-	vlong time, rathole;
-
-	for (;;) {
-		rathole = µoffset/1000;
-		time = offset/1000 - (rathole + TK2MS(MACHP(0)->ticks));
-		if (time <= 0) break;
-		tsleep(&up->sleep, return0, 0, (long)time);
-	}
 	return n;
 }

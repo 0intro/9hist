@@ -286,7 +286,6 @@ etherread(void *a)
 		else
 			ipiput(er->f, ifc->lifc->local, bp);
 		runlock(ifc);	locked = 0;	USED(locked);
-
 	}
 }
 
