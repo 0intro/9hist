@@ -8,12 +8,20 @@
 
 Image	fscache;
 
-typedef Extent Extent;
+enum
+{
+	NHASH		= 128,
+	MAXCACHE	= 1024*1024,
+	NFILE		= 4096,
+};
+
+typedef struct Extent Extent;
 struct Extent
 {
 	int	bid;
 	ulong	start;
 	int	len;
+	Page	*cache;
 	Extent	*next;
 };
 
@@ -23,7 +31,7 @@ struct Mntcache
 	Qid;
 	int	dev;
 	int	type;
-	Qlock;
+	QLock;
 	Extent	 *list;
 	Mntcache *hash;
 	Mntcache *prev;
@@ -40,16 +48,38 @@ struct Cache
 };
 Cache cache;
 
+void
+cinit(void)
+{
+	int i;
+	Mntcache *m;
+
+	cache.ref = 1;
+	cache.head = xalloc(sizeof(Mntcache)*NFILE);
+	m = cache.head;
+	
+	for(i = NFILE; i > 0; i++) {
+		m->next = m+1;
+		m->prev = m-1;
+		m++;
+	}
+
+	cache.tail = m;
+	cache.tail->next = 0;
+	cache.head->prev = 0;
+}
+
 Mntcache*
 clook(Chan *c)
 {
 	int h;
+	Mntcache *m;
 
 	h = c->qid.path%NHASH;
 
 	lock(&cache);
 	for(m = cache.hash[h]; m; m = m->hash) {
-		if(m->path == c->path) {
+		if(m->path == c->qid.path) {
 			qlock(m);
 			if(m->path == c->qid.path)
 			if(m->dev  == c->dev)
@@ -65,6 +95,28 @@ clook(Chan *c)
 }
 
 void
+cprint(Mntcache *m)
+{
+	Extent *e;
+
+	print("%lux.%lux %d %d\n", m->path, m->vers, m->type, m->dev);
+
+	while(e)
+		print("\t%4d %5d %4d %lux\n",
+			e->bid, e->start, e->len, e->cache);
+}
+
+Page*
+cpage(Extent *e)
+{
+	/* Easy consistency check */
+	if(e->cache->daddr != e->bid)
+		return 0;
+
+	return lookpage(&fscache, e->bid);
+}
+
+void
 cnodata(Mntcache *m)
 {
 	Extent *e, *n;
@@ -74,7 +126,7 @@ cnodata(Mntcache *m)
 	 * Image lru will waste the pages
 	 */
 	for(e = m->list; e; e = n) {
-		n = e->list;
+		n = e->next;
 		free(e);
 	}
 }
@@ -116,7 +168,7 @@ copen(Chan *c)
 	m = clook(c);
 	if(m != 0) {
 		/* File was updated */
-		if(m->vers != c->vers)
+		if(m->vers != c->qid.vers)
 			cnodata(m);
 
 		ctail(m);
@@ -127,8 +179,8 @@ copen(Chan *c)
 	/* LRU the cache headers */
 	m = cache.head;
 	qlock(m);
-	lock(cache);
-	l = &cache.hash[m->qid.path%NHASH];
+	lock(&cache);
+	l = &cache.hash[m->path%NHASH];
 	for(f = *l; f; f = f->next) {
 		if(f == m) {
 			*l = f->next;
@@ -139,8 +191,8 @@ copen(Chan *c)
 	l = &cache.hash[c->qid.path%NHASH];
 	m->hash = *l;
 	*l = m;
-	unlock(cache);
-	m->qid = c->qid;
+	unlock(&cache);
+	m->Qid = c->qid;
 	m->dev = c->dev;
 	m->type = c->type;
 	cnodata(m);
@@ -152,9 +204,9 @@ copen(Chan *c)
 static int
 cdev(Mntcache *m, Chan *c)
 {
-	if(m->path != c->path)
+	if(m->path != c->qid.path)
 		return 0;
-	if(m->vers != c->vers)
+	if(m->vers != c->qid.vers)
 		return 0;
 	if(m->dev != c->dev)
 		return 0;
@@ -164,13 +216,13 @@ cdev(Mntcache *m, Chan *c)
 }
 
 int
-cread(Chan *c, uchar *buf, int len, long offset)
+cread(Chan *c, uchar *buf, int len, ulong offset)
 {
 	KMap *k;
 	Page *p;
 	Mntcache *m;
-	Extent *e, **l;
-	int o, l, total;
+	Extent *e, **t;
+	int o, l, total, end;
 
 	m = c->mcp;
 	if(m == 0)
@@ -182,11 +234,11 @@ cread(Chan *c, uchar *buf, int len, long offset)
 	}
 
 	end = offset+len;
-	l = &m->list;
-	for(e = *l; e; e = e->next) {
+	t = &m->list;
+	for(e = *t; e; e = e->next) {
 		if(e->start >= offset && e->start+e->len < end)
 			break;
-		l = &e->next;
+		t = &e->next;
 	}
 
 	if(e == 0) {
@@ -196,9 +248,9 @@ cread(Chan *c, uchar *buf, int len, long offset)
 
 	total = 0;
 	while(len) {
-		p = lookpage(&fscache, e->bid);
+		p = cpage(e);
 		if(p == 0) {
-			*l = e->next;
+			*t = e->next;
 			free(e);
 			qunlock(m);
 			return total;
@@ -217,8 +269,7 @@ cread(Chan *c, uchar *buf, int len, long offset)
 		if(l > e->len-o)
 			l = e->len-o;
 
-		p = (uchar*)VA(k) + o;
-		memset(buf, p, l);
+		memmove(buf, (uchar*)VA(k) + o, l);
 		kunmap(k);
 		putpage(p);
 
@@ -226,20 +277,85 @@ cread(Chan *c, uchar *buf, int len, long offset)
 		len -= l;
 		offset += l;
 		total += l;
-		l = &e->next;
+		t = &e->next;
 		e = e->next;
 		if(e == 0 || e->start != offset)
 			break;
 	}
-	qunlock(m)
+	qunlock(m);
 	return total;
 }
 
-void
-cwrite(Chan *c, uchar *buf, int len, long offset)
+Extent*
+cchain(uchar *buf, ulong offset, int len, Extent **tail)
 {
-	Extent *e;
+	int l;
+	Page *p;
+	KMap *k;
+	Extent *e, *start, **t;
+
+	start = 0;
+	t = &start;
+	while(len) {
+		e = malloc(sizeof(Extent));
+		if(e == 0)
+			break;
+
+		p = auxpage();
+		if(p == 0) {
+			free(e);
+			break;
+		}
+		e->cache = p;
+		e->start = offset;
+		l = len;
+		if(l > BY2PG)
+			l = BY2PG;
+
+		e->bid = incref(&cache);
+		p->daddr = e->bid;
+		k = kmap(p);
+		memmove((void*)VA(k), buf, l);
+		kunmap(k);
+
+		cachepage(p, &fscache);
+		putpage(p);
+
+		buf += l;
+		offset += l;
+		len -= l;
+
+		*t = e;
+		*tail = e;
+		t = &e->next;
+	}
+	return start;
+}
+
+int
+cpgmove(Extent *e, uchar *buf, int boff, int len)
+{
+	Page *p;
+	KMap *k;
+
+	p = cpage(e);
+	if(p == 0)
+		return 0;
+	k = kmap(p);
+	memmove((uchar*)VA(k)+boff, buf, len);
+	kunmap(k);
+	putpage(p);
+
+	return 1;
+}
+
+void
+cupdate(Chan *c, uchar *buf, int len, ulong offset)
+{
 	Mntcache *m;
+	Extent *tail;
+	Extent *e, *f, *p;
+	int o, ee, eblock; 
 
 	if(offset > MAXCACHE)
 		return;
@@ -253,22 +369,91 @@ cwrite(Chan *c, uchar *buf, int len, long offset)
 		return;
 	}
 
-	if(m->list == 0) {
-		e = malloc(sizeof(Extent));
-		if(e == 0)
-			return;
-		e->start = offset;
-		l = len;
-		if(l > BY2PG)
-			l = BY2PG;
-		p = auxpage();
-		if(p == 0)
-			return;
-		e->bid = incref(&cache);
-		p->daddr = e->bid;
-		cachepage(p, fscache);
-		k = kmap(p);
-		
-		kunmap(p);
+	/*
+	 * Find the insertion point
+	 */
+	p = 0;
+	for(f = m->list; f; f = f->next) {
+		if(f->start >= offset)
+			break;
+		p = f;
 	}
+	if(p == 0) {		/* at the head */
+		eblock = offset+len;
+		/* trim if there is a successor */
+		if(f != 0 && eblock >= f->start) {
+			len -= (eblock - f->start);
+			if(len <= 0) {
+				qunlock(m);
+				return;
+			}
+		}
+		e = cchain(buf, offset, len, &tail);
+		m->list = e;
+		if(tail != 0)
+			tail->next = f;
+		qunlock(m);
+		return;
+	}
+
+	/* trim to the predecessor */
+	ee = p->start+p->len;
+	if(offset < ee) {
+		o = ee - offset;
+		len -= o;
+		if(len <= 0) {
+			qunlock(m);
+			return;
+		}
+		buf += o;
+		offset += o;
+	}
+
+	/* try and pack data into the predecessor */
+	if(offset == ee && p->len < BY2PG) {
+		o = len;
+		if(o > BY2PG - p->len)
+			o = BY2PG - p->len;
+		if(len <= 0) {
+			qunlock(m);
+			return;
+		}
+		if(cpgmove(e, buf, p->len, o)) {
+			e->len += o;
+			buf += o;
+			len -= o;
+			offset += o;
+			if(len <= 0) {
+				qunlock(m);
+				return;
+			}
+		}
+	}
+
+	/* append to extent list */
+	if(f == 0) {
+		p->next = cchain(buf, offset, len, &tail);
+		qunlock(m);
+		return;
+	}
+
+	/* trim data against successor */
+	eblock = offset+len;
+	if(eblock > f->start) {
+		o = eblock - f->start;
+		if(o < 0) {
+			qunlock(m);
+			return;
+		}
+		len -= o;
+	}
+
+	/* Insert a middle block */
+	p->next = cchain(buf, offset, len, &tail);
+	if(p->next == 0)
+		p->next = f;
+	else
+		tail->next = f;
+
+	qunlock(m);
 }

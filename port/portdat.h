@@ -269,7 +269,7 @@ struct Mnt
 	ulong	id;		/* Multiplexor id for channel check */
 	Mnt	*list;		/* Free list */
 	char	mux;		/* Set if the device does the multiplexing */
-	char	recov;		/* Run recovery if channel is lost */
+	int	flags;		/* recover/cache */
 	char	recprog;	/* Recovery in progress */
 	int	blocksize;	/* read/write block size */
 	ushort	flushtag;	/* Tag to send flush on */

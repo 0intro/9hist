@@ -10,6 +10,7 @@ long		authread(Chan*, char*, int);
 void		authreply(Session*, ulong, Fcall*);
 ulong		authrequest(Session*, Fcall*);
 long		authwrite(Chan*, char*, int);
+Page*		auxpage(void);
 void		bitdebug(void);
 void		bitdepth(void);
 void		bitreverse(uchar*, int);
@@ -272,3 +273,7 @@ Segment*	newseg(int, ulong, ulong);
 Scsibuf*	scsialloc(ulong);
 Scsibuf*	scsibuf(void);
 Segment*	seg(Proc*, ulong, int);
+
+
+int		cread(Chan*, uchar*, int, ulong);
+void		cupdate(Chan*, uchar*, int, ulong);

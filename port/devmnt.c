@@ -44,7 +44,7 @@ void	mntgate(Mnt*);
 void	mntpntfree(Mnt*);
 void	mntqrm(Mnt*, Mntrpc*);
 Mntrpc*	mntralloc(Chan*);
-long	mntrdwr(int , Chan*, void*,long , ulong);
+long	mntrdwr(int , Mnt*, Chan*, void*,long , ulong);
 void	mntrpcread(Mnt*, Mntrpc*);
 void	mountio(Mnt*, Mntrpc*);
 void	mountmux(Mnt*, Mntrpc*);
@@ -83,7 +83,7 @@ mntattach(char *muxattach)
 	struct bogus{
 		Chan	*chan;
 		char	*spec;
-		char	recov;
+		int	flag;
 	}bogus;
 
 	bogus = *((struct bogus *)muxattach);
@@ -133,7 +133,7 @@ mntattach(char *muxattach)
 	m->c = c;
 	m->c->flag |= CMSG;
 	m->blocksize = MAXFDATA;	/**/
-	m->recov = bogus.recov;
+	m->flags = bogus.flags;
 
 	switch(devchar[m->c->type]) {
 	default:
@@ -301,13 +301,6 @@ mntwalk(Chan *c, char *name)
 	c->qid = r->reply.qid;
 	op = c->path;
 	c->path = ptenter(&m->tree, op, name);
-
-/* ASSERT do not remove */
-if(op->ref == 0) {
-	char buf[128];
-	ptpath(op, buf, sizeof(buf));
-	print("PATH: '%s' walking %s\n", op, name);
-}
 
 	decref(op);
 
@@ -488,12 +481,28 @@ mntwstat(Chan *c, char *dp)
 long	 
 mntread(Chan *c, void *buf, long n, ulong offset)
 {
+	int nc;
 	uchar *p, *e;
 
-	n = mntrdwr(Tread, c, buf, n, offset);
+	m = mntchk(c);
+	nc = 0;
+	if((m->flags&MCACHE) && !isdir(c)) {
+		nc = cread(c, buf, n, offset);
+		if(nc == n)
+			return n;
+
+		buf = (uchar*)buf+nc;
+		offset += nc;
+		n -= nc;
+	}
+
+	n = mntrdwr(Tread, m, c, buf, n, offset);
 	if(c->qid.path & CHDIR) 
 		for(p = (uchar*)buf, e = &p[n]; p < e; p += DIRLEN)
 			mntdirfix(p, c);
+
+	if(nc != 0)
+		cupdate(c, buf, n, offset);
 
 	return n;
 }
@@ -501,18 +510,17 @@ mntread(Chan *c, void *buf, long n, ulong offset)
 long	 
 mntwrite(Chan *c, void *buf, long n, ulong offset)
 {
-	return mntrdwr(Twrite, c, buf, n, offset);	
+	m = mntchk(c);
+	return mntrdwr(Twrite, m, c, buf, n, offset);	
 }
 
 long
-mntrdwr(int type, Chan *c, void *buf, long n, ulong offset)
+mntrdwr(int type, Mnt *m, Chan *c, void *buf, long n, ulong offset)
 {
-	Mnt *m;
 	Mntrpc *r;
 	char *uba;
 	ulong cnt, nr;
 
-	m = mntchk(c);
 	uba = buf;
 	cnt = 0;
 	for(;;) {
@@ -553,7 +561,7 @@ mountrpc(Mnt *m, Mntrpc *r)
 	r->reply.type = 4;
 
 	while(waserror()) {
-		if(m->recov == 0)
+		if((m->flags & MRECOV) == 0)
 			nexterror();
 		mntrecover(m, r);
 	}

@@ -450,7 +450,7 @@ bindmount(ulong *arg, int ismount)
 	struct{
 		Chan	*chan;
 		char	*spec;
-		char	recov;
+		int	flags;
 	}bogus;
 
 	flag = arg[2];
@@ -458,7 +458,7 @@ bindmount(ulong *arg, int ismount)
 	if(flag>MMASK || (flag&MORDER)==(MBEFORE|MAFTER))
 		error(Ebadarg);
 
-	bogus.recov = flag&MRECOV;
+	bogus.flags = flag & (MRECOV|MCACHE);
 
 	if(ismount){
 		bc = fdtochan(fd, ORDWR, 0, 1);
