@@ -220,6 +220,12 @@ envread(Chan *c, void *a, long n, ulong offset)
 	return n;
 }
 
+Block*
+envbread(Chan *c, long n, ulong offset)
+{
+	return devbread(c, n, offset);
+}
+
 long
 envwrite(Chan *c, void *a, long n, ulong offset)
 {
@@ -257,6 +263,12 @@ envwrite(Chan *c, void *a, long n, ulong offset)
 	memmove(e->value+offset, a, n);
 	qunlock(eg);
 	return n;
+}
+
+long
+envbwrite(Chan *c, Block *bp, ulong offset)
+{
+	return devbwrite(c, bp, offset);
 }
 
 void

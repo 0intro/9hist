@@ -82,6 +82,12 @@ etherread(Chan *c, void *buf, long n, ulong offset)
 	return netifread(ether[c->dev], c, buf, n, offset);
 }
 
+Block*
+etherbread(Chan *c, long n, ulong offset)
+{
+	return devbread(c, n, offset);
+}
+
 void
 etherremove(Chan *c)
 {
@@ -151,6 +157,12 @@ etherwrite(Chan *c, void *buf, long n, ulong offset)
 	qunlock(&ctlr->tlock);
 
 	return n;
+}
+
+long
+etherbwrite(Chan *c, Block *bp, ulong offset)
+{
+	return devbwrite(c, bp, offset);
 }
 
 static struct {

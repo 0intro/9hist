@@ -95,6 +95,12 @@ bootread(Chan *c, void *buf, long n, ulong offset)
 	return 0;	/* not reached */
 }
 
+Block*
+bootbread(Chan *c, long n, ulong offset)
+{
+	return devbread(c, n, offset);
+}
+
 long	 
 bootwrite(Chan *c, void *buf, long n, ulong offset)
 {
@@ -118,6 +124,12 @@ bootwrite(Chan *c, void *buf, long n, ulong offset)
 	}
 	error(Ebadarg);
 	return 0;	/* not reached */
+}
+
+long
+bootbwrite(Chan *c, Block *bp, ulong offset)
+{
+	return devbwrite(c, bp, offset);
 }
 
 void	 

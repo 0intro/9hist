@@ -291,6 +291,12 @@ piperead(Chan *c, void *va, long n, ulong offset)
 	return -1;	/* not reached */
 }
 
+Block*
+pipebread(Chan *c, long n, ulong offset)
+{
+	return devbread(c, n, offset);
+}
+
 /*
  *  a write to a closed pipe causes a note to be sent to
  *  the process.
@@ -328,4 +334,10 @@ pipewrite(Chan *c, void *va, long n, ulong offset)
 
 	poperror();
 	return n;
+}
+
+long
+pipebwrite(Chan *c, Block *bp, ulong offset)
+{
+	return devbwrite(c, bp, offset);
 }

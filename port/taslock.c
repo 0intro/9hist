@@ -8,9 +8,28 @@
 void
 lock(Lock *l)
 {
+	int n;
+
+	if(up) {
+		n = up->inlock+2;
+		up->inlock = n;
+		if(tas(&l->key) == 0)
+			return;
+
+		for(;;){
+			while(l->key)
+				if(conf.nproc == 1) {
+					up->yield = 1;
+					sched();
+				}
+			up->inlock = n;
+			if(tas(&l->key) == 0)
+				return;
+		}
+	}
+
 	if(tas(&l->key) == 0)
 		return;
-
 	for(;;){
 		while(l->key)
 			;
@@ -52,7 +71,15 @@ canlock(Lock *l)
 void
 unlock(Lock *l)
 {
+	int n;
+
 	l->key = 0;
+	if(up) {
+		n = up->inlock-2;
+		if(n < 0)
+			n = 0;
+		up->inlock = n;
+	}
 }
 
 void

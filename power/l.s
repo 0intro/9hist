@@ -101,7 +101,7 @@ TEXT	splhi(SB), $0
 
 	MOVW	R31, 0xC(R(MACH))	/* save PC in m->splpc */
 	MOVW	M(STATUS), R1
-	AND	$~IEC, R1, R2
+	AND	$~IE, R1, R2
 	MOVW	R2, M(STATUS)
 	NOOP
 	RET
@@ -110,8 +110,8 @@ TEXT	splx(SB), $0
 
 	MOVW	R31, 0xC(R(MACH))	/* save PC in m->splpc */
 	MOVW	M(STATUS), R2
-	AND	$IEC, R1
-	AND	$~IEC, R2
+	AND	$IE, R1
+	AND	$~IE, R2
 	OR	R2, R1
 	MOVW	R1, M(STATUS)
 	NOOP
@@ -120,7 +120,7 @@ TEXT	splx(SB), $0
 TEXT	spllo(SB), $0
 
 	MOVW	M(STATUS), R1
-	OR	$IEC, R1, R2
+	OR	$IE, R1, R2
 	MOVW	R2, M(STATUS)
 	NOOP
 	RET
@@ -131,7 +131,7 @@ TEXT	muxlock(SB),$0
 	MOVW	4(FP), R3	/* lk->val */
 
 	MOVW	M(STATUS), R5	/* splhi */
-	AND	$~IEC, R5, R4
+	AND	$~IE, R5, R4
 	MOVW	R4, M(STATUS)
 
 	MOVW	0(R2),R4	/* grab sbsem */

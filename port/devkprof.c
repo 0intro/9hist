@@ -162,6 +162,12 @@ kprofread(Chan *c, void *va, long n, ulong offset)
 	return n;
 }
 
+Block*
+kprofbread(Chan *c, long n, ulong offset)
+{
+	return devbread(c, n, offset);
+}
+
 long
 kprofwrite(Chan *c, char *a, long n, ulong offset)
 {
@@ -181,6 +187,12 @@ kprofwrite(Chan *c, char *a, long n, ulong offset)
 		error(Ebadusefd);
 	}
 	return n;
+}
+
+long
+kprofbwrite(Chan *c, Block *bp, ulong offset)
+{
+	return devbwrite(c, bp, offset);
 }
 
 void

@@ -229,10 +229,22 @@ sdread(Chan *c, void *a, long n, ulong offset)
 	return sdio(c, 0, a, n, offset);
 }
 
+Block*
+sdbread(Chan *c, long n, ulong offset)
+{
+	return devbread(c, n, offset);
+}
+
 long
 sdwrite(Chan *c, char *a, long n, ulong offset)
 {
 	return sdio(c, 1, a, n, offset);
+}
+
+long
+sdbwrite(Chan *c, Block *bp, ulong offset)
+{
+	return devbwrite(c, bp, offset);
 }
 
 static void

@@ -166,6 +166,12 @@ lptread(Chan *c, void *a, long n)
 	return n;
 }
 
+Block*
+lptbread(Chan *c, long n, ulong offset)
+{
+	return devbread(c, n, offset);
+}
+
 long
 lptwrite(Chan *c, void *a, long n)
 {
@@ -193,6 +199,12 @@ lptwrite(Chan *c, void *a, long n)
 		outch(base, *p++);
 	poperror();
 	return n;
+}
+
+long
+lptbwrite(Chan *c, Block *bp, ulong offset)
+{
+	return devbwrite(c, bp, offset);
 }
 
 static void

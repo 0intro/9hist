@@ -46,7 +46,7 @@
 /*
  * M(STATUS) bits
  */
-#define IEC		0x00000001
+#define IE		0x00000001
 #define KUC		0x00000002
 #define IEP		0x00000004
 #define KUP		0x00000008

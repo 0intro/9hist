@@ -111,7 +111,7 @@ freeb(Block *b)
 {
 	/*
 	 * drivers which perform non cache coherent DMA manage their
-	 * own buffer pools, so they provide their own free routines.
+	 * own buffer pool and provide their own free routine.
 	 */
 	if(b->free) {
 		b->free(b);
@@ -520,8 +520,8 @@ qwrite(Queue *q, void *vp, int len)
 
 	dowakeup = 0;
 
-	if((getstatus()&IE) == 0)
-		print("qwrite hi %lux\n", getcallerpc(q));
+if((getstatus()&IE) == 0)
+print("qwrite hi %lux\n", getcallerpc(q));
 
 	if(waserror()){
 		qunlock(&q->wlock);

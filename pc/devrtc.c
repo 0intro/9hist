@@ -201,6 +201,12 @@ rtcread(Chan *c, void *buf, long n, ulong offset)
 	return 0;
 }
 
+Block*
+rtcbread(Chan *c, long n, ulong offset)
+{
+	return devbread(c, n, offset);
+}
+
 #define PUTBCD(n,o) bcdclock[o] = (n % 10) | (((n / 10) % 10)<<4)
 
 long	 
@@ -274,6 +280,12 @@ rtcwrite(Chan *c, void *buf, long n, ulong offset)
 	}
 	error(Ebadarg);
 	return 0;
+}
+
+long
+rtcbwrite(Chan *c, Block *bp, ulong offset)
+{
+	return devbwrite(c, bp, offset);
 }
 
 void	 

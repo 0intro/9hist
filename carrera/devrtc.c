@@ -24,7 +24,8 @@ struct Rtc
 QLock rtclock;	/* mutex on clock operations */
 
 
-enum{
+enum
+{
 	Qrtc = 1,
 	Qnvram,
 
@@ -185,6 +186,12 @@ rtcread(Chan *c, void *buf, long n, ulong offset)
 	return 0;
 }
 
+Block*
+rtcbread(Chan *c, long n, ulong offset)
+{
+	return devbread(c, n, offset);
+}
+
 static void
 binary2bcd(int reg, uchar val)
 {
@@ -247,6 +254,12 @@ rtcwrite(Chan *c, void *buf, long n, ulong offset)
 	}
 	error(Ebadarg);
 	return 0;
+}
+
+long
+rtcbwrite(Chan *c, Block *bp, ulong offset)
+{
+	return devbwrite(c, bp, offset);
 }
 
 void	 

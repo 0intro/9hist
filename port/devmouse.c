@@ -230,6 +230,12 @@ mouseread(Chan *c, void *va, long n, ulong offset)
 	return 0;
 }
 
+Block*
+mousebread(Chan *c, long n, ulong offset)
+{
+	return devbread(c, n, offset);
+}
+
 long
 mousewrite(Chan *c, void *va, long n, ulong offset)
 {
@@ -294,6 +300,12 @@ mousewrite(Chan *c, void *va, long n, ulong offset)
 
 	error(Egreg);
 	return -1;
+}
+
+long
+mousebwrite(Chan *c, Block *bp, ulong offset)
+{
+	return devbwrite(c, bp, offset);
 }
 
 void

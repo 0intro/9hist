@@ -480,6 +480,12 @@ procread(Chan *c, void *va, long n, ulong offset)
 	return 0;		/* not reached */
 }
 
+Block*
+procbread(Chan *c, long n, ulong offset)
+{
+	return devbread(c, n, offset);
+}
+
 void
 mntscan(Mntwalk *mw)
 {
@@ -610,6 +616,12 @@ procwrite(Chan *c, void *va, long n, ulong offset)
 	poperror();
 	qunlock(&p->debug);
 	return n;
+}
+
+long
+procbwrite(Chan *c, Block *bp, ulong offset)
+{
+	return devbwrite(c, bp, offset);
 }
 
 Chan *

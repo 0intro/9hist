@@ -640,6 +640,12 @@ consread(Chan *c, void *buf, long n, ulong offset)
 	return -1;		/* never reached */
 }
 
+Block*
+consbread(Chan *c, long n, ulong offset)
+{
+	return devbread(c, n, offset);
+}
+
 void
 conslights(char *a, int n)
 {
@@ -823,6 +829,12 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 		error(Egreg);
 	}
 	return n;
+}
+
+long
+consbwrite(Chan *c, Block *bp, ulong offset)
+{
+	return devbwrite(c, bp, offset);
 }
 
 void

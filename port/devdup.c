@@ -122,10 +122,22 @@ dupread(Chan *c, void *va, long n, ulong offset)
 	return devdirread(c, a, n, (Dirtab *)0, 0L, dupgen);
 }
 
+Block*
+dupbread(Chan *c, long n, ulong offset)
+{
+	return devbread(c, n, offset);
+}
+
 long
 dupwrite(Chan *c, void *va, long n, ulong offset)
 {
 	USED(c, va, n, offset);
 	panic("dupwrite");
 	return 0;		/* not reached */
+}
+
+long
+dupbwrite(Chan *c, Block *bp, ulong offset)
+{
+	return devbwrite(c, bp, offset);
 }

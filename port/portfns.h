@@ -49,6 +49,8 @@ int		decref(Ref*);
 int		decrypt(void*, void*, int);
 void		delay(int);
 Chan*		devattach(int, char*);
+Block*		devbread(Chan*, long, ulong);
+long		devbwrite(Chan*, Block*, ulong);
 Chan*		devclone(Chan*, Chan*);
 void		devdir(Chan*, Qid, char*, long, char*, long, Dir*);
 long		devdirread(Chan*, char*, long, Dirtab*, int, Devgen*);

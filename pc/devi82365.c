@@ -712,6 +712,12 @@ i82365read(Chan *c, void *a, long n, ulong offset)
 	return n;
 }
 
+Block*
+i82365bread(Chan *c, long n, ulong offset)
+{
+	return devbread(c, n, offset);
+}
+
 long
 pcmwrite(int dev, int attr, void *a, long n, ulong offset)
 {
@@ -762,6 +768,12 @@ i82365write(Chan *c, void *a, long n, ulong offset)
 		error(Ebadusefd);
 	}
 	return n;
+}
+
+long
+i82365bwrite(Chan *c, Block *bp, ulong offset)
+{
+	return devbwrite(c, bp, offset);
 }
 
 /*

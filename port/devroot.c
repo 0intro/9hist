@@ -211,6 +211,12 @@ rootread(Chan *c, void *buf, long n, ulong offset)
 	return n;
 }
 
+Block*
+rootbread(Chan *c, long n, ulong offset)
+{
+	return devbread(c, n, offset);
+}
+
 long	 
 rootwrite(Chan *c, void *buf, long n, ulong offset)
 {
@@ -230,6 +236,12 @@ rootwrite(Chan *c, void *buf, long n, ulong offset)
 		return n;
 	}
 	return 0;
+}
+
+long
+rootbwrite(Chan *c, Block *bp, ulong offset)
+{
+	return devbwrite(c, bp, offset);
 }
 
 void	 

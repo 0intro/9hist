@@ -523,6 +523,12 @@ mntread(Chan *c, void *buf, long n, ulong offset)
 	return n;
 }
 
+Block*
+mntbread(Chan *c, long n, ulong offset)
+{
+	return devbread(c, n, offset);
+}
+
 long	 
 mntwrite9p(Chan *c, void *buf, long n, ulong offset)
 {
@@ -533,6 +539,12 @@ long
 mntwrite(Chan *c, void *buf, long n, ulong offset)
 {
 	return mntrdwr(Twrite, c, buf, n, offset, 0);
+}
+
+long
+mntbwrite(Chan *c, Block *bp, ulong offset)
+{
+	return devbwrite(c, bp, offset);
 }
 
 long

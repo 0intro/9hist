@@ -172,7 +172,8 @@ loop:
 		if(p->mach || (p->wired && p->wired != m))
 			continue;
 		if(bp == 0) {
-			p->yield = 0;
+			if(p->yield)
+				p->yield = 0;
 			bp = p;
 		} else
 		if(p->yield == 0 && p->pri < bp->pri)

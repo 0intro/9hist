@@ -709,6 +709,12 @@ astarread(Chan *c, void *buf, long n, ulong offset)
 	return 0;
 }
 
+Block*
+astarbread(Chan *c, long n, ulong offset)
+{
+	return devbread(c, n, offset);
+}
+
 /*
  *  write ISA mapped memory
  */
@@ -1198,6 +1204,12 @@ astarwrite(Chan *c, void *buf, long n, ulong offset)
 	}
 
 	return 0;
+}
+
+long
+astarbwrite(Chan *c, Block *bp, ulong offset)
+{
+	return devbwrite(c, bp, offset);
 }
 
 void

@@ -425,6 +425,12 @@ lanceread(Chan *c, void *buf, long n, ulong offset)
 	return netifread(&l, c, buf, n, offset);
 }
 
+Block*
+lancebread(Chan *c, long n, ulong offset)
+{
+	return devbread(c, n, offset);
+}
+
 static int
 isoutbuf(void *x)
 {
@@ -507,6 +513,12 @@ lancewrite(Chan *c, void *buf, long n, ulong offset)
 	qunlock(&l.tlock);
 	poperror();
 	return n;
+}
+
+long
+lancebwrite(Chan *c, Block *bp, ulong offset)
+{
+	return devbwrite(c, bp, offset);
 }
 
 void

@@ -226,6 +226,12 @@ srvread(Chan *c, void *va, long n, ulong offset)
 	return devdirread(c, va, n, 0, 0, srvgen);
 }
 
+Block*
+srvbread(Chan *c, long n, ulong offset)
+{
+	return devbread(c, n, offset);
+}
+
 long
 srvwrite(Chan *c, void *va, long n, ulong offset)
 {
@@ -263,6 +269,12 @@ srvwrite(Chan *c, void *va, long n, ulong offset)
 	qunlock(&srvlk);
 	poperror();
 	return n;
+}
+
+long
+srvbwrite(Chan *c, Block *bp, ulong offset)
+{
+	return devbwrite(c, bp, offset);
 }
 
 void

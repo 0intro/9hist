@@ -137,7 +137,7 @@ typedef void		KMap;
 #define	kmap(p)		(KMap*)((p)->pa|KZERO)
 #define	kunmap(k)
 #define PPN(x)		x
-
+#define AOUT_MAGIC	V_MAGIC || magic==M_MAGIC
 /*
  *  LANCE CSR3 (bus control bits)
  */

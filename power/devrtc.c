@@ -165,6 +165,12 @@ rtcread(Chan *c, void *buf, long n, ulong offset)
 	return -1;		/* never reached */
 }
 
+Block*
+rtcbread(Chan *c, long n, ulong offset)
+{
+	return devbread(c, n, offset);
+}
+
 long	 
 rtcwrite(Chan *c, void *buf, long n, ulong offset)
 {
@@ -215,6 +221,12 @@ rtcwrite(Chan *c, void *buf, long n, ulong offset)
 	}
 	error(Egreg);
 	return -1;		/* never reached */
+}
+
+long
+rtcbwrite(Chan *c, Block *bp, ulong offset)
+{
+	return devbwrite(c, bp, offset);
 }
 
 void	 

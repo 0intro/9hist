@@ -232,3 +232,32 @@ Return:
 	c->flag |= COPEN;
 	return c;
 }
+
+Block*
+devbread(Chan *c, long n, ulong offset)
+{
+	Block *bp;
+
+	bp = allocb(n);
+	if(bp == 0)
+		error(Enomem);
+	if(waserror()) {
+		freeb(bp);
+		nexterror();
+	}
+	bp->wp += devtab[c->type].read(c, bp->wp, n, offset);
+	poperror();
+	return bp;
+}
+
+long
+devbwrite(Chan *c, Block *bp, ulong offset)
+{
+	long n;
+
+	n = devtab[c->type].write(c, bp->rp, BLEN(bp), offset);
+	freeb(bp);
+
+	return n;	
+}
+

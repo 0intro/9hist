@@ -376,9 +376,6 @@ intr(Ureg *ur)
 		case 7:
 			audiosbintr();
 			break;
-		case 10:
-			mpegintr();
-			break;
 		case 13:
 			eisadmaintr();
 			break;
@@ -400,7 +397,7 @@ intr(Ureg *ur)
 	}
 
 	/* preemptive scheduling */
-	if(up && up->state == Running && anyhigher())
+	if(up && up->state == Running && anyhigher() && up->inlock == 0)
 		sched();
 }
 

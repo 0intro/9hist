@@ -121,6 +121,12 @@ configread(Chan *c, void *buf, long n, ulong offset)
 	return 0;
 }
 
+Block*
+configbread(Chan *c, long n, ulong offset)
+{
+	return devbread(c, n, offset);
+}
+
 long
 configwrite(Chan *c, void *buf, long n, ulong offset)
 {
@@ -179,6 +185,12 @@ configwrite(Chan *c, void *buf, long n, ulong offset)
 	}
 	error(Eperm);
 	return 0;
+}
+
+long
+configbwrite(Chan *c, Block *bp, ulong offset)
+{
+	return devbwrite(c, bp, offset);
 }
 
 void

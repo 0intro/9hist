@@ -177,7 +177,9 @@ struct Dev
 	void	(*create)(Chan*, char*, int, ulong);
 	void	(*close)(Chan*);
 	long	(*read)(Chan*, void*, long, ulong);
+	Block*	(*bread)(Chan*, long, ulong);
 	long	(*write)(Chan*, void*, long, ulong);
+	long	(*bwrite)(Chan*, Block*, ulong);
 	void	(*remove)(Chan*);
 	void	(*wstat)(Chan*, char*);
 };
@@ -587,7 +589,8 @@ struct Proc
 	Mach	*wired;		/* machine this process must run on */
 	int	pri;		/* scheduling priority - low is high priority */
 	short	nice;		/* time-passing algorithm - low is high priority */
-	short	yield;		/* force one lap in the runq */	
+	char	yield;		/* force one lap in the runq */
+	char	inlock;		/* temp hi proirity ~= 2*num of locks set */
 
 	void	*ureg;		/* User registers for notes */
 	void	*dbgreg;	/* User registers for devproc */

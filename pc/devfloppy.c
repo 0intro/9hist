@@ -524,6 +524,12 @@ floppyread(Chan *c, void *a, long n, ulong offset)
 	return rv;
 }
 
+Block*
+floppybread(Chan *c, long n, ulong offset)
+{
+	return devbread(c, n, offset);
+}
+
 #define SNCMP(a, b) strncmp(a, b, sizeof(b)-1)
 long
 floppywrite(Chan *c, void *a, long n, ulong offset)
@@ -587,6 +593,12 @@ floppywrite(Chan *c, void *a, long n, ulong offset)
 	}
 
 	return rv;
+}
+
+long
+floppybwrite(Chan *c, Block *bp, ulong offset)
+{
+	return devbwrite(c, bp, offset);
 }
 
 static void

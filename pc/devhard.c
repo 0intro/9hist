@@ -371,6 +371,12 @@ hardread(Chan *c, void *a, long n, ulong offset)
 	return rv;
 }
 
+Block*
+hardbread(Chan *c, long n, ulong offset)
+{
+	return devbread(c, n, offset);
+}
+
 long
 hardwrite(Chan *c, void *a, long n, ulong offset)
 {
@@ -439,6 +445,12 @@ hardwrite(Chan *c, void *a, long n, ulong offset)
 	poperror();
 
 	return rv;
+}
+
+long
+hardbwrite(Chan *c, Block *bp, ulong offset)
+{
+	return devbwrite(c, bp, offset);
 }
 
 /*

@@ -80,7 +80,6 @@ clock(Ureg *ur)
 		}
 		return;
 	}
-	nrun = 0;
 	i = *CLRTIM0;
 	USED(i);
 

@@ -615,6 +615,12 @@ duartread(Chan *c, void *buf, long n, ulong offset)
 	return 0;
 }
 
+Block*
+duartbread(Chan *c, long n, ulong offset)
+{
+	return devbread(c, n, offset);
+}
+
 static void
 duartctl(Uart *p, char *cmd)
 {
@@ -681,6 +687,12 @@ duartwrite(Chan *c, void *va, long n, ulong offset)
 		duartctl(p, cmd);
 		return n;
 	}
+}
+
+long
+duartbwrite(Chan *c, Block *bp, ulong offset)
+{
+	return devbwrite(c, bp, offset);
 }
 
 void

@@ -244,6 +244,12 @@ vgaread(Chan *c, void *buf, long n, ulong offset)
 	return 0;
 }
 
+Block*
+vgabread(Chan *c, long n, ulong offset)
+{
+	return devbread(c, n, offset);
+}
+
 static void
 vgactl(char *arg)
 {
@@ -356,6 +362,12 @@ vgawrite(Chan *c, void *buf, long n, ulong offset)
 	}
 	error(Eperm);
 	return 0;
+}
+
+long
+vgabwrite(Chan *c, Block *bp, ulong offset)
+{
+	return devbwrite(c, bp, offset);
 }
 
 void

@@ -837,6 +837,12 @@ ns16552read(Chan *c, void *buf, long n, ulong offset)
 	return 0;
 }
 
+Block*
+ns16552bread(Chan *c, long n, ulong offset)
+{
+	return devbread(c, n, offset);
+}
+
 static void
 ns16552ctl(Uart *p, char *cmd)
 {
@@ -942,6 +948,12 @@ ns16552write(Chan *c, void *buf, long n, ulong offset)
 		ns16552ctl(p, cmd);
 		return n;
 	}
+}
+
+long
+ns16552bwrite(Chan *c, Block *bp, ulong offset)
+{
+	return devbwrite(c, bp, offset);
 }
 
 void
