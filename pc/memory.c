@@ -520,8 +520,10 @@ upamalloc(ulong pa, int size, int align)
 	 * Therefore, if pa is 0 mapalloc will choose the base address.
 	 * Note, however, mmukmap is always asked to give a 1-to-1 mapping
 	 * of va to pa.
-	 */
 	ae = mmukmap(a, a, size);
+	 * ...but for the moment go back to the old scheme for VLB cards.
+	 */
+	ae = mmukmap(a, 0, size);
 
 	/*
 	 * Should check here that it was all delivered
@@ -530,7 +532,10 @@ upamalloc(ulong pa, int size, int align)
 	USED(ae);
 
 	/*
-	 * Be very careful this returns a PHYSICAL address.
+	 * Be very careful this returns a PHYSICAL address
+	 * mapped 1-to-1 with the virtual address.
+	 * If a < KZERO it's probably not a good idea to
+	 * try KADDR(a)...
 	 */
 	return a;
 }

@@ -1089,51 +1089,6 @@ bctlwrite(Astar *a, char *cmsg)
 		/* start up downloaded program */
 		startcp(a);
 
-	} else if(strncmp(cmsg, "test", 4) == 0){
-		uchar *p;
-
-#ifdef notdef
-		p = a->addr;
-		a->page = -1;
-		setpage(a, 16*1024);
-		*p = 'X';
-		p = a->addr;
-		print("page0: %8.8uX %2.2uX\n", inl(a->port+PCIremap), *p);
-		setpage(a, 2*16*1024);
-		print("page1: %8.8uX %2.2uX\n", inl(a->port+PCIremap), *p);
-		p = a->addr;
-		*p = 'Y';
-		p = a->addr;
-		print("page1: %8.8uX %2.2uX\n", inl(a->port+PCIremap), *p);
-		setpage(a, 16*1024);
-		p = a->addr;
-		print("page0: %8.8uX %2.2uX\n", inl(a->port+PCIremap), *p);
-#else
-		p = a->addr;
-		*p = 'A';
-		print(" 0K: %8.8luX %2.2uX\n", inl(a->port+PCIremap), *p);
-
-		p = a->addr+(16*1024);
-		*p = 'B';
-		print("16K: %8.8luX %2.2uX\n", inl(a->port+PCIremap), *p);
-
-		p = a->addr;
-		print(" 0K: %8.8luX %2.2uX\n", inl(a->port+PCIremap), *p);
-
-		*p = 'C';
-		print(" 0K: %8.8luX %2.2uX\n", inl(a->port+PCIremap), *p);
-
-		p = a->addr+(64*1024);
-		*p = 'D';
-		print("64K: %8.8luX %2.2uX\n", inl(a->port+PCIremap), *p);
-
-		p = a->addr;
-		print(" 0K: %8.8luX %2.2uX\n", inl(a->port+PCIremap), *p);
-
-		p = a->addr+(16*1024);
-		print("16K: %8.8luX %2.2uX\n", inl(a->port+PCIremap), *p);
-#endif /* notdef */
-
 	} else
 		error(Ebadarg);
 
