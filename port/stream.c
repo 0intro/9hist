@@ -1149,7 +1149,7 @@ streamread(Chan *c, void *vbuf, long n)
 			putbq(q, bp);
 			left = 0;
 		}
-	};
+	}
 
 	qunlock(&s->rdlock);
 	poperror();

@@ -227,6 +227,7 @@ sysread(ulong *arg)
 	c = fdtochan(arg[0], OREAD);
 	validaddr(arg[1], arg[2], 1);
 	qlock(&c->rdl);
+
 	if(waserror()){
 		qunlock(&c->rdl);
 		nexterror();
@@ -255,6 +256,7 @@ syswrite(ulong *arg)
 	c = fdtochan(arg[0], OWRITE);
 	validaddr(arg[1], arg[2], 0);
 	qlock(&c->wrl);
+
 	if(waserror()){
 		qunlock(&c->wrl);
 		nexterror();

@@ -118,6 +118,7 @@ ready(Proc *p)
 	int s;
 
 	s = splhi();
+
 	if(p->state == Running)
 		rq = &runloq;
 	else

@@ -40,25 +40,26 @@ newtlbpid(Proc *p)
 	if(s >= NTLBPID)
 		s = 1;
 	i = s;
-	for(h = m->pidhere; h[i] && i != s; i = (i == NTLBPID - 1 ? 1 : i + 1))
-		;
-	
+	h = m->pidhere;
+	do{
+		i++;
+		if(i >= NTLBPID)
+			i = 1;
+	}while(h[i] && i != s);
+
 	if(i == s){
 		i++;
 		if(i >= NTLBPID)
 			i = 1;
 	}
-	
+	if(h[i])
+		purgetlb(i);
 	sp = m->pidproc[i];
-	m->lastpid = i;
+	if(sp && sp->pidonmach[m->machno] == i)
+		sp->pidonmach[m->machno] = 0;
 	m->pidproc[i] = p;
 	p->pidonmach[m->machno] = i;
-	if(sp){
-		if(sp->pidonmach[m->machno] == i)
-			sp->pidonmach[m->machno] = 0;
-		if(h[i])
-			purgetlb(i);
-	}
+	m->lastpid = i;
 	return i;
 }
 
@@ -85,48 +86,50 @@ putmmu(ulong tlbvirt, ulong tlbphys)
 	spllo();
 }
 
-#ifdef POPCNT
-void
-stlbpopcnt(void)
-{
-	Softtlb *entry, *etab;
-	
-	entry = m->stb;
-	etab = &entry[STLBSIZE];
-	for(; entry < etab; entry++)
-		if(entry->virt)
-			m->spinlock++;
-
-	m->spinlock /= 2;
-}
-#endif
-
 void
 purgetlb(int pid)
 {
 	Softtlb *entry, *etab;
-	char *p;
+	char *pidhere;
 	Proc *sp, **pidproc;
 	int i, rpid, mno;
+	char dead[NTLBPID];
 
 	m->tlbpurge++;
-	p = m->pidhere;
-	memset(m->pidhere, 0, sizeof m->pidhere);
-	entry = m->stb;
-	etab = &entry[STLBSIZE];
+	/*
+	 * find all pid entries that are no longer used by processes
+	 */
 	mno = m->machno;
 	pidproc = m->pidproc;
+	memset(dead, 0, sizeof dead);
+	for(i=1; i<NTLBPID; i++){
+		sp = pidproc[i];
+		if(!sp || sp->pidonmach[mno] != i){
+			pidproc[i] = 0;
+			dead[i] = 1;
+		}
+	}
+	dead[pid] = 1;
+	/*
+	 * clean out all dead pids from the stlb;
+	 * garbage collect any pids with no entries
+	 */
+	memset(m->pidhere, 0, sizeof m->pidhere);
+	pidhere = m->pidhere;
+	entry = m->stb;
+	etab = &entry[STLBSIZE];
 	for(; entry < etab; entry++){
 		rpid = TLBPID(entry->virt);
-		sp = pidproc[rpid];
-		if(rpid == pid || !sp || sp->pidonmach[mno] != rpid){
-			entry->phys = 0;
+		if(dead[rpid])
 			entry->virt = 0;
-		}else
-			p[rpid] = 1;
+		else
+			pidhere[rpid] = 1;
 	}
+	/*
+	 * clean up the hardware
+	 */
 	for(i=TLBROFF; i<NTLB; i++)
-		if(!p[TLBPID(gettlbvirt(i))])
+		if(!pidhere[TLBPID(gettlbvirt(i))])
 			puttlbx(i, KZERO | PTEPID(i), 0);
 }
 

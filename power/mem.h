@@ -99,7 +99,7 @@
 #define TLBPID(n)	(((n)>>6)&0x3F)
 
 /* N.B. MUST CHANGE l.s utlbmiss if you want to change this */
-#define STLBLOG		13
+#define STLBLOG		11
 #define STLBSIZE	(1<<STLBLOG)
 
 #define	NTLBPID	64	/* number of pids */

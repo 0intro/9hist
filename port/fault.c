@@ -87,7 +87,7 @@ fault(ulong addr, int read)
 				qunlock(&o->chan->rdl);
 				pg->o = 0;
 				pg->ref--;
-				pexit("load i/o error", 0);
+				pexit("demand load i/o error", 0);
 			}
 			l = (char*)VA(k);
 			if((*devtab[o->chan->type].read)(o->chan, l, n, (addr-o->va) + o->minca) != n)
