@@ -556,7 +556,7 @@ struct Proc
 	int	(*notify)(void*, char*);
 
 	Mach	*mp;		/* machine this process last ran on */
-	ulong	mpfault;	/* page faults on that mach at sched time */
+	ulong	affinity;	/* affinity counter for that mach */
 
 	void	*ureg;		/* User registers for notes */
 	void	*dbgreg;	/* User registers for devproc */

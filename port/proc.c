@@ -83,8 +83,6 @@ sched(void)
 		/* statistics */
 		m->cs++;
 		up->counter[CSCNTR]++;
-		up->counter[TLBCNTR] += m->tlbfault - m->otlbfault;
-		m->otlbfault = m->tlbfault;
 
 		procsave(up);
 		if(setlabel(&up->sched)) {
@@ -105,7 +103,7 @@ sched(void)
 int
 anyready(void)
 {
-	return runhiq.head != 0 || runloq.head != 0;
+	return m->hiq.head != 0 || m->loq.head != 0;
 }
 
 void
@@ -117,9 +115,9 @@ ready(Proc *p)
 	s = splhi();
 
 	if(p->state == Running)
-		rq = &runloq;
+		rq = &m->loq;
 	else
-		rq = &runhiq;
+		rq = &affinity(p)->hiq;
 
 	lock(&runhiq);
 	p->rnext = 0;
@@ -143,14 +141,14 @@ runproc(void)
 
 loop:
 	spllo();
-	while(runhiq.head == 0 && runloq.head == 0)
+	while(m->hiq.head == 0 && m->loq.head == 0)
 		;
 	splhi();
 
-	if(runhiq.head)
-		rq = &runhiq;
+	if(m->hiq.head)
+		rq = &m->hiq;
 	else
-		rq = &runloq;
+		rq = &m->loq;
 
 	lock(&runhiq);
 	p = rq->head;

@@ -117,7 +117,8 @@ struct Mach
 	uchar	ktlbnext;
 	int	speed;			/* cpu speed */
 	ulong	delayloop;		/* for the delay() routine */
-	Schedq	runq;
+	Schedq	hiq;
+	Schedq	loq;
 
 	int	pfault;
 	int	cs;

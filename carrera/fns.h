@@ -3,6 +3,7 @@
 void	DEBUG(void);
 
 void	addportintr(int(*)(void));
+#define	affinity(x) (MACHP(0))
 void	allflush(void*, ulong);
 void	arginit(void);
 int	busprobe(ulong);
@@ -67,7 +68,7 @@ void	prflush(void);
 ulong	prid(void);
 void	printinit(void);
 #define	procrestore(p)
-#define	procsave(p)
+void	procsave(Proc*)
 #define	procsetup(p)	((p)->fpstate = FPinit)
 void	purgetlb(int);
 int	putnvram(ulong, void*, int);

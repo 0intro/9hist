@@ -415,3 +415,11 @@ rdbginit(void)
 {
 	memmove((void*)0xA001C000, rdbgcode, rdbglen);
 }
+
+void
+procsave(Proc *p)
+{
+	/* keep track of tlbfaults */
+	up->counter[TLBCNTR] += m->tlbfault - m->otlbfault;
+	m->otlbfault = m->tlbfault;
+}

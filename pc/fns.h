@@ -1,6 +1,7 @@
 #include "../port/portfns.h"
 
 void	addconf(char*, char*);
+#define	affinity(x) (MACHP(0))
 void	bbinit(void);
 void	bigcursor(void);
 void	bootargs(ulong);
