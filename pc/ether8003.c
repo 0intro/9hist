@@ -134,8 +134,7 @@ reset(Ctlr *ctlr)
 		}
 		outb(ctlr->card.io+Icr, ic[Icr]);
 
-		ic[Icr] = inb(ctlr->card.io+Icr);
-		if(ctlr->card.bit16 && (ic[Icr] & Bit16) == 0)
+		if(ctlr->card.bit16 && (inb(ctlr->card.io+Icr) & Bit16) == 0)
 			ctlr->card.bit16 = 0;
 	}
 
