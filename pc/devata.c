@@ -1582,12 +1582,12 @@ atareplinit(Drive *dp)
 	/*
 	 *  parse replacement table.
 	 */
-	n = parsefields((char*)buf, line, Nrepl+1, "\n");
+	n = getfields((char*)buf, line, Nrepl+1, 1, "\n");
 	if(strncmp(line[0], REPLMAGIC, sizeof(REPLMAGIC)-1)){
 		dp->repl.p = 0;
 	} else {
 		for(dp->repl.nrepl = 0, i = 1; i < n; i++, dp->repl.nrepl++){
-			if(parsefields(line[i], field, 1, " ") != 1)
+			if(getfields(line[i], field, 1, 1, " ") != 1)
 				break;
 			dp->repl.blk[dp->repl.nrepl] = strtoul(field[0], 0, 0);
 			if(dp->repl.blk[dp->repl.nrepl] <= 0)
@@ -1663,13 +1663,13 @@ atapart(Drive *dp)
 		ataxfer(dp, &dp->p[0], Cread, (dp->p[0].end-2)*
 			(vlong)dp->bytes, dp->bytes, buf);
 		buf[dp->bytes-1] = 0;
-		n = parsefields((char*)buf, line, Npart+1, "\n");
+		n = getfields((char*)buf, line, Npart+1, 1, "\n");
 		if(n > 0 && strncmp(line[0], PARTMAGIC, sizeof(PARTMAGIC)-1) == 0)
 			i = 1;
 		else{
 			ataxfer(dp, &dp->p[1], Cread, 0, dp->bytes, buf);
 			buf[dp->bytes-1] = 0;
-			n = parsefields((char*)buf, line, Npart+1, "\n");
+			n = getfields((char*)buf, line, Npart+1, 1, "\n");
 			if(n == 0 || strncmp(line[0], PARTMAGIC, sizeof(PARTMAGIC)-1))
 				i = 1;
 		}
@@ -1681,7 +1681,7 @@ atapart(Drive *dp)
 	}
 	else{
 		strcpy((char*)buf, p);
-		n = parsefields((char*)buf, line, Npart+1, "\n");
+		n = getfields((char*)buf, line, Npart+1, 1, "\n");
 	}
 
 	/*
@@ -1689,7 +1689,7 @@ atapart(Drive *dp)
 	 */
 	if(n > 0 && strncmp(line[0], PARTMAGIC, sizeof(PARTMAGIC)-1) == 0){
 		for(i = 1; i < n; i++){
-			if(parsefields(line[i], field, 3, " ") != 3)
+			if(getfields(line[i], field, 3, 1, " ") != 3)
 				break;
 			if(pp >= &dp->p[Npart])
 				break;

@@ -311,7 +311,7 @@ mousewrite(Chan *c, void *va, long n, vlong)
 			buf[n-1] = 0;
 		else
 			buf[n] = 0;
-		nf = parsefields(buf, field, 3, " ");
+		nf = getfields(buf, field, 3, 1, " ");
 		if(strcmp(field[0], "swap") == 0){
 			if(mouseswap)
 				setbuttonmap("123");

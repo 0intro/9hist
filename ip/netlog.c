@@ -167,7 +167,7 @@ netlogctl(Fs *f, char* s, int len)
 	if(len > 0 && buf[len-1] == '\n')
 		buf[len-1] = 0;
 
-	n = parsefields(buf, fields, 10, " ");
+	n = getfields(buf, fields, 10, 1, " ");
 	if(n < 2)
 		return Ebadnetctl;
 

@@ -264,7 +264,7 @@ parsemux(char *p)
 	}
 
 	/* parse vals */
-	f->n = parsefields(val, vals, sizeof(vals)/sizeof(char*), "|");
+	f->n = getfields(val, vals, sizeof(vals)/sizeof(char*), 1, "|");
 	if(f->n == 0)
 		goto parseerror;
 	f->val = smalloc(f->n*f->len);
@@ -540,7 +540,7 @@ ipmuxconnect(Conv *c, char **argv, int argc)
 	if(argc != 2)
 		return Ebadarg;
 
-	n = parsefields(argv[1], field, nelem(field), ";");
+	n = getfields(argv[1], field, nelem(field), 1, ";");
 	if(n <= 0)
 		return Ebadarg;
 

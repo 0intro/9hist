@@ -81,7 +81,7 @@ rcvbootp(void *a)
 		rp = (Bootp*)rcvbuf;
 		if(memcmp(req.chaddr, rp->chaddr, 6) == 0
 		&& rp->htype == 1 && rp->hlen == 6
-		&& parsefields((char*)rp->vend+4, field, 4, " ") == 4
+		&& getfields((char*)rp->vend+4, field, 4, 1, " ") == 4
 		&& strncmp((char*)rp->vend, "p9  ", 4) == 0){
 			if(ipaddr == 0)
 				ipaddr = nhgetl(rp->yiaddr);

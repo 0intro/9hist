@@ -210,7 +210,7 @@ rootserver(char *arg)
 		outin(prompt, reply, sizeof(reply));
 		mp = findmethod(reply);
 		if(mp){
-			bargc = parsefields(reply, bargv, Nbarg-1, " ");
+			bargc = getfields(reply, bargv, Nbarg-1, 1, " ");
 			cp = strchr(reply, '!');
 			if(cp)
 				strcpy(sys, cp+1);

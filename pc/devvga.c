@@ -142,7 +142,7 @@ vgactl(char* a)
 	extern VGAcur *vgacur[];
 	Rectangle r;
 
-	n = parsefields(a, field, nelem(field), " ");
+	n = getfields(a, field, nelem(field), 1, " ");
 	if(n < 1)
 		error(Ebadarg);
 

@@ -1776,36 +1776,6 @@ writeusb(Endpt *e, void *a, long n, int tok)
 	return p-(uchar*)a;
 }
 
-int
-getfields(char *ss, char **sp, int nptrs)
-{
-	uchar *s = (uchar*)ss;
-	uchar **p = (uchar**)sp;
-	uint c;
-
-	c = 0;
-	for(;;){
-		if(--nptrs < 0)
-			break;
-		*p++ = s;
-		do {
-			c = *s++;
-			if (c == ' ') break;
-			if (c == '\t') break;
-			if (c == '\n') break;
-		} while(c);
-		if(c == 0)
-			break;
-		s[-1] = 0;
-	}
-	if(nptrs > 0)
-		*p = 0;
-	else
-	if(--s >= (uchar*)ss)
-		*s = c;
-	return p - (uchar**)sp;
-}
-
 long
 usbwrite(Chan *c, void *a, long n, vlong)
 {
@@ -1822,7 +1792,7 @@ usbwrite(Chan *c, void *a, long n, vlong)
 			n = sizeof(cmd)-1;
 		memmove(cmd, a, n);
 		cmd[n] = 0;
-		nf = getfields(cmd, fields, nelem(fields));
+		nf = getfields(cmd, fields, nelem(fields), 0, " \t\n");
 		if(nf==1 && strcmp(fields[0], "dump")==0){
 			dumpframe(-1, -1);
 			return n;
@@ -1850,7 +1820,7 @@ usbwrite(Chan *c, void *a, long n, vlong)
 			n = sizeof(cmd)-1;
 		memmove(cmd, a, n);
 		cmd[n] = 0;
-		nf = getfields(cmd, fields, nelem(fields));
+		nf = getfields(cmd, fields, nelem(fields), 0, " \t\n");
 		if(nf > 1 && strcmp(fields[0], "speed") == 0){
 			d->ls = strtoul(fields[1], nil, 0) == 0;
 		} else if(nf > 5 && strcmp(fields[0], "class") == 0){

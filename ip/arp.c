@@ -271,7 +271,7 @@ arpwrite(Fs *fs, char *s, int len)
 	if(len > 0 && buf[len-1] == '\n')
 		buf[len-1] = 0;
 
-	n = parsefields(buf, f, 4, " ");
+	n = getfields(buf, f, 4, 1, " ");
 	if(strcmp(f[0], "flush") == 0){
 		qlock(arp);
 		for(a = arp->cache; a < &arp->cache[NCACHE]; a++){

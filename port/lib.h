@@ -77,6 +77,7 @@ extern	uvlong	strtoull(char*, char**, int);
 extern	char	etext[];
 extern	char	edata[];
 extern	char	end[];
+extern	int	getfields(char*, char**, int, int, char*);
 
 /*
  * Syscall data structures

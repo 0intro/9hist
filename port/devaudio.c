@@ -1081,7 +1081,7 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 		memmove(buf, a, n);
 		buf[n] = '\0';
 
-		nf = parsefields(buf, field, Ncmd, " \t\n");
+		nf = getfields(buf, field, Ncmd, 1, " \t\n");
 		for(i = 0; i < nf; i++){
 			/*
 			 * a number is volume

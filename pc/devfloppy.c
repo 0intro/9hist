@@ -880,7 +880,7 @@ floppyformat(FDrive *dp, char *params)
 	/*
 	 *  set the type
 	 */
-	if(parsefields(params, f, 3, " ") > 1){
+	if(getfields(params, f, 3, 1, " ") > 1){
 		for(t = floppytype; t < &floppytype[nelem(floppytype)]; t++){
 			if(strcmp(f[1], t->name)==0 && t->dt==dp->dt){
 				dp->t = t;

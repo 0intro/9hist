@@ -350,12 +350,12 @@ sdrdpart(Disk *d)
 	 */
 	scsibio(d->t, d->lun, SCSIread, b, 1, d->bsize, d->table[0].end-2);
 	b[d->bsize-1] = '\0';
-	n = parsefields(b, line, nelem(line), "\n");
+	n = getfields(b, line, nelem(line), 1, "\n");
 	if(n <= 0 || strncmp(line[0], MAGIC, sizeof(MAGIC)-1) != 0){
 		/* try the last */
 		scsibio(d->t, d->lun, SCSIread, b, 1, d->bsize, d->table[0].end-1);
 		b[d->bsize-1] = '\0';
-		n = parsefields(b, line, nelem(line), "\n");
+		n = getfields(b, line, nelem(line), 1, "\n");
 		/* only point partition file at last sector if there is one there */
 		if(n > 0 && strncmp(line[0], MAGIC, sizeof(MAGIC)-1) == 0){
 			d->table[1].beg++;
@@ -368,7 +368,7 @@ sdrdpart(Disk *d)
 	 */
 	if(n > 0 && strncmp(line[0], MAGIC, sizeof(MAGIC)-1) == 0) {
 		for(i = 1; i < n; i++) {
-			if(parsefields(line[i], field, nelem(field), " ") != 3)
+			if(getfields(line[i], field, nelem(field), 1, " ") != 3)
 				break;
 			if(p >= &d->table[Npart])
 				break;

@@ -157,7 +157,7 @@ vgactl(char* a)
 	extern VGAdev *vgadev[];
 	extern VGAcur *vgacur[];
 
-	n = parsefields(a, field, 4, " ");
+	n = getfields(a, field, 4, 1, " ");
 	if(n < 2)
 		error(Ebadarg);
 
