@@ -58,8 +58,6 @@
 #define	VAMASK		0x3FFFFFFF
 #define	BY2SEGM		(1<<18)
 #define	PG2SEGM		(1<<6)
-#define	NTLBPID		(1+MAXCONTEXT)	/* TLBPID 0 is unallocated */
-#define	MAXCONTEXT	16
 #define	CONTEXT		0x30000000	/* in ASI 2 */
 
 /*
@@ -67,15 +65,8 @@
  */
 #define	INVALIDSEGM	0xFFFC0000	/* highest seg of VA reserved as invalid */
 #define	INVALIDPMEG	(conf.npmeg-1)
-#define	ROMPMEG		(conf.npmeg-2)
-#define	ROMSEGM		0xFFE80000
-#define	ROMEND		0xFFEC0000
-#define	PG2ROM		((ROMEND-ROMSEGM)/BY2PG)
-#define	NIOSEGM		((MB/BY2SEGM) + 8)	/* 1M for screen + overhead */
-#define	IOSEGM0		(ROMSEGM-NIOSEGM*BY2SEGM)
-#define	IOPMEG0		(ROMPMEG-NIOSEGM)
-#define	IOEND		ROMSEGM
-#define	TOPPMEG		IOPMEG0
+#define IOSEGSIZE	(MB + 2*MB)	/* 1 meg for screen plus overhead */	
+#define IOSEGM		(INVALIDSEGM - IOSEGSIZE)
 
 /*
  * MMU entries

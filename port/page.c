@@ -55,8 +55,8 @@ pageinit(void)
 	hw = swapalloc.highwater*BY2PG;
 	hr = swapalloc.headroom*BY2PG;
 	
-	print("%lud free pages, %dK bytes, swap %dK, highwater %dK, headroom %dK\n", 
-	palloc.user, pmem, vmem, hw/1024, hr/1024);
+/*	print("%lud free pages, %dK bytes, swap %dK, highwater %dK, headroom %dK\n", 
+	palloc.user, pmem, vmem, hw/1024, hr/1024);/**/
 }
 
 Page*

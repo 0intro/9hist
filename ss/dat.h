@@ -1,4 +1,5 @@
 typedef struct Conf	Conf;
+typedef struct Ctx	Ctx;
 typedef struct FFrame	FFrame;
 typedef struct FPsave	FPsave;
 typedef struct KMap	KMap;
@@ -6,10 +7,13 @@ typedef struct Lance	Lance;
 typedef struct Lancemem	Lancemem;
 typedef struct Label	Label;
 typedef struct Lock	Lock;
+typedef struct Pmeg	Pmeg;
 typedef struct PMMU	PMMU;
 typedef struct Mach	Mach;
 typedef struct Ureg	Ureg;
+typedef struct List	List;
 typedef struct User	User;
+
 
 
 #define	MACHP(n)	(n==0? &mach0 : *(Mach**)0)
@@ -87,13 +91,13 @@ struct Conf
 	ulong	frag;		/* Ip fragment assemble queue size */
 };
 
+
 /*
  *  mmu goo in the Proc structure
  */
 struct PMMU
 {
-	int	pidonmach[MAXMACH];
-	int	nmmuseg;	/* number of segments active in mmu */
+	Ctx	*ctxonmach[MAXMACH];
 };
 
 #include "../port/portdat.h"
@@ -121,9 +125,13 @@ struct Mach
 	Lock	alarmlock;		/* access to alarm list */
 	void	*alarm;			/* alarms bound to this clock */
 	int	fpstate;		/* state of fp registers on machine */
-	char	pidhere[NTLBPID];	/* is this tlbpid possibly in this mmu? */
-	int	lastpid;		/* last pid allocated on this machine */
-	Proc	*pidproc[NTLBPID];	/* process that owns this pid on this mach */
+
+	Ctx	*cctx;			/* current context */
+	List	*clist;			/* lru list of all contexts */
+	Pmeg	*pmeg;			/* array of allocatable pmegs */
+	int	pfirst;			/* index of first allocatable pmeg */
+	List	*plist;			/* lru list of non-kernel Pmeg's */
+	int	needpmeg;		/* a process needs a pmeg */
 
 	int	tlbfault;
 	int	tlbpurge;

@@ -5,6 +5,7 @@ ulong	call(void*, ...);
 void	clearftt(ulong);
 #define	clearmmucache()
 void	clockinit(void);
+void	compile(void);
 void	disabfp(void);
 void	enabfp(void);
 void	evenaddr(ulong);
@@ -12,7 +13,6 @@ char*	excname(ulong);
 void	faultasync(Ureg*);
 void	faultsparc(Ureg*);
 void	flushcpucache(void);
-#define	flushpage(x)
 int	fpcr(int);
 int	fpquiet(void);
 void	fpregrestore(char*);
@@ -73,11 +73,18 @@ void	trapinit(void);
 /*
  * compiled entry points
  */
-extern	void	(*putcontext)(ulong);
-extern	void	(*putenab)(ulong);
-extern	ulong	(*getenab)(void);
-extern	void	(*putpmegspace)(ulong, ulong);
-extern	void	(*putsysspace)(ulong, ulong);
-extern	ulong	(*getsysspace)(ulong);
-extern	ulong	(*flushcx)(ulong);
-extern	ulong	(*flushpg)(ulong);
+extern ulong	(*getcontext)(void);
+extern void	(*putcontext)(ulong);
+extern void	(*putenab)(ulong);
+extern ulong	(*getenab)(void);
+extern ulong	(*getsysspace)(ulong);
+extern void	(*putsysspace)(ulong, ulong);
+extern uchar	(*getsysspaceb)(ulong);
+extern void	(*putsysspaceb)(ulong, uchar);
+extern ulong	(*getsegspace)(ulong);
+extern void	(*putsegspace)(ulong, ulong);
+extern ulong	(*getpmegspace)(ulong);
+extern void	(*putpmegspace)(ulong, ulong);
+extern ulong	(*flushcx)(ulong);
+extern ulong	(*flushpg)(ulong);
+extern ulong	(*flushpm)(ulong);

@@ -19,7 +19,6 @@ char	mempres[256];
 char	fbstr[32];
 ulong	fbslot;
 Label	catch;
-int	NKLUDGE;
 
 typedef struct Sysparam Sysparam;
 struct Sysparam
@@ -58,6 +57,7 @@ main(void)
 	active.machs = 1;
 	trapinit();
 	confinit();
+conf.monitor = 0;
 	xinit();
 	mmuinit();
 	kmapinit();
@@ -140,7 +140,6 @@ init0(void)
 	print("Sun Sparcstation %s\n", sparam->name);
 	print("bank 0: %dM  1: %dM\n", bank[0], bank[1]);
 	print("frame buffer id %lux slot %ld %s\n", conf.monitor, fbslot, fbstr);
-	print("NKLUDGE %d\n", NKLUDGE);
 	if(conf.npage1 != conf.base1)
 		print("kernel mem from second bank: reboot and fix!\n");
 
@@ -374,8 +373,6 @@ confinit(void)
 	conf.vacsize = sparam->vacsize;
 	conf.vaclinesize = sparam->vacline;
 	conf.ncontext = sparam->ncontext;
-	if(conf.ncontext > 8)
-		conf.ncontext = 8;	/* BUG to enlarge NKLUDGE */
 	conf.npmeg = sparam->npmeg;
 	conf.ss2cachebug = sparam->cachebug;
 

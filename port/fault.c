@@ -184,6 +184,8 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 	kaddr = (char*)VA(k);
 	
 	if(loadrec == 0) {			/* This is demand load */
+if(u && strcmp(u->p->text, "rc") == 0)
+print("dl: %d %s %lux\n", u->p->pid, u->p->text, addr);
 		c = s->image->c;
 		while(waserror()) {
 			if(strcmp(u->error, Eintr) == 0)

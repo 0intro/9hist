@@ -33,6 +33,8 @@ faultsparc(Ureg *ur)
 		if(ser&(SE_WRITE|SE_PROT))
 			read = 0;
 	}
+if(u && strcmp(u->p->text, "rc") == 0)
+print("fault pc=%lux addr=%lux %d\n", ur->pc, addr, read);/**/
 	spllo();
 	if(u == 0){
 		dumpregs(ur);
