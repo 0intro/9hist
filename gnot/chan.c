@@ -479,7 +479,7 @@ namec(char *name, int amode, int omode, ulong perm)
 		name = skipslash(name);
 	}else if(name[0] == '#'){
 		mntok = 0;
-		if(name[1]=='|' || name[1]=='M')
+		if(name[1]=='M')
 			error(0, Enonexist);
 		t = devno(name[1], 1);
 		if(t == -1)

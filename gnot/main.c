@@ -325,4 +325,5 @@ confinit(void)
 	conf.nfont = 10*mul;
 	conf.nurp = 32;
 	conf.nasync = 1;
+	conf.npipe = conf.nstream/2;
 }
