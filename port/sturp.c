@@ -11,7 +11,7 @@ enum {
 	Nmask=		0x7,
 };
 
-#define DPRINT /*if(q->flag&QDEBUG)kprint*/
+#define DPRINT if(q->flag&QDEBUG)print
 
 typedef struct Urp	Urp;
 
@@ -101,6 +101,7 @@ Urp	*urp;
 /*
  *  predeclared
  */
+static void	urpreset(void);
 static void	urpciput(Queue*, Block*);
 static void	urpiput(Queue*, Block*);
 static void	urpoput(Queue*, Block*);
@@ -119,12 +120,11 @@ static void	urpkproc(void *arg);
 static void	urptimer(Alarm*);
 static void	urpvomit(char*, Urp*);
 
-Qinfo urpinfo = { urpciput, urpoput, urpopen, urpclose, "urp" };
+Qinfo urpinfo = { urpciput, urpoput, urpopen, urpclose, "urp", urpreset };
 
-void
+static void
 urpreset(void)
 {
-	newqinfo(&urpinfo);
 	urp = (Urp *)ialloc(conf.nurp*sizeof(Urp), 0);
 	alarm(500, urptimer, 0);
 }

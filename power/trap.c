@@ -197,7 +197,7 @@ intr(ulong cause, ulong pc)
 	if(cause & INTR5){
 
 		if(!(*MPBERR1 & (1<<8))){
-			iprint("MP bus error %lux %lux\n", *MPBERR0, *MPBERR1); /**/
+			print("MP bus error %lux %lux\n", *MPBERR0, *MPBERR1);
 			*MPBERR0 = 0;
 			i = *SBEADDR;
 		}
@@ -235,24 +235,20 @@ intr(ulong cause, ulong pc)
 					*MPBERR0, *MPBERR1);
 				*MPBERR0 = 0;
 			}
-			switch(ioid){
-			case IO2R1:
-			case IO2R2:
+			if(ioid < IO3R1){
 				if(!(v & (1<<2)))
 					lanceintr();
 				if(!(v & (1<<1)))
 					lanceparity();
 				if(!(v & (1<<0)))
 					print("SCSI interrupt\n");
-				break;
-			case IO3R1:
+			} else {
 				if(v & (1<<2))
-					lance3intr();
+					lanceintr();
 				if(v & (1<<1))
 					print("SCSI 1 interrupt\n");
 				if(v & (1<<0))
 					print("SCSI 0 interrupt\n");
-				break;
 			}
 		}
 		/*

@@ -144,6 +144,7 @@ struct Conf
 	int	nbitbyte;	/* bytes of bitmap data (devbit.c) */
 	int	nfont;		/* font structs (devbit.c) */
 	int	nurp;		/* max urp conversations */
+	int	nasync;		/* number of async protocol modules */
 };
 
 struct Dev
@@ -371,6 +372,8 @@ struct Qinfo
 	void (*open)(Queue*, Stream*);
 	void (*close)(Queue*);
 	char *name;
+	void (*reset)(void);		/* initialization */
+	Qinfo *next;
 };
 
 /*

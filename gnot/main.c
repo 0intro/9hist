@@ -308,7 +308,7 @@ confinit(void)
 	conf.nmnthdr = 2*conf.nmntdev;
 	conf.nstream = 64;
 	conf.nqueue = 5 * conf.nstream;
-	conf.nblock = 24 * conf.nstream;
+	conf.nblock = 32 * conf.nstream;
 	conf.nsrv = 32*mul;
 	conf.nbitmap = 300*mul;
 	conf.nbitbyte = 300*1024*mul;
@@ -316,4 +316,5 @@ confinit(void)
 		conf.nbitbyte *= 2;	/* ldepth 1 */
 	conf.nfont = 10*mul;
 	conf.nurp = 32;
+	conf.nasync = 1;
 }

@@ -415,7 +415,7 @@ bitread(Chan *c, void *va, long n)
 			p = va;
 			for(y=miny; y<maxy; y++){
 				q = (uchar*)addr(src, Pt(src->r.min.x, y));
-				q += (src->r.min.x&((sizeof(ulong))*ws-1))/8;
+				q += (src->r.min.x&((sizeof(ulong))*ws-1))/ws;
 				for(x=0; x<l; x++)
 					*p++ = K2U(*q++);
 				n += l;
@@ -939,7 +939,7 @@ bitwrite(Chan *c, void *va, long n)
 			}
 			for(y=miny; y<maxy; y++){
 				q = (uchar*)addr(dst, Pt(dst->r.min.x, y));
-				q += (dst->r.min.x&((sizeof(ulong))*ws-1))/8;
+				q += (dst->r.min.x&((sizeof(ulong))*ws-1))/ws;
 				for(x=0; x<l; x++)
 					*q++ = U2K(*p++);
 				m -= l;

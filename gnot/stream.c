@@ -10,7 +10,6 @@
 
 enum {
 	Nclass=4,	/* number of block classes */
-	Nlds=32,	/* max number of pushable line disciplines */
 };
 
 /*
@@ -22,20 +21,7 @@ Qinfo procinfo = { stputq, nullput, 0, 0, "process" };
 /*
  *  line disciplines that can be pushed
  */
-static Qinfo *lds[Nlds+1];
-
-void
-newqinfo(Qinfo *qi)
-{
-	int i;
-
-	for(i=0; i<Nlds && lds[i]; i++)
-		if(lds[i] == qi)
-			return;
-	if(i == Nlds)
-		panic("pushable");
-	lds[i] = qi;
-}
+static Qinfo *lds;
 
 /*
  *  All stream structures are ialloc'd at boot time
@@ -62,54 +48,7 @@ Bclass bclass[Nclass]={
 	{ 4096 },
 };
 
-/*
- *  Dump all block information of how many blocks are in which queues
- */
-void
-dumpblocks(Queue *q, char c)
-{
-	Block *bp;
-	uchar *cp;
-
-	lock(q);
-	for(bp = q->first; bp; bp = bp->next){
-		print("%c%d%c", c, bp->wptr-bp->rptr, (bp->flags&S_DELIM));
-		for(cp = bp->rptr; cp<bp->wptr && cp<bp->rptr+10; cp++)
-			print(" %uo", *cp);
-		print("\n");
-	}
-	unlock(q);
-}
-
-void
-dumpqueues(void)
-{
-	Queue *q;
-	int count;
-	Block *bp;
-	Bclass *bcp;
-
-	print("\n");
-	for(q = qlist; q < qlist + conf.nqueue; q++, q++){
-		if(!(q->flag & QINUSE))
-			continue;
-		print("%s %ux  R n %d l %d f %ux r %ux", q->info->name, q, q->nb,
-			q->len, q->flag, &(q->r));
-		print("  W n %d l %d f %ux r %ux\n", WR(q)->nb, WR(q)->len, WR(q)->flag,
-			&(WR(q)->r));
-		dumpblocks(q, 'R');
-		dumpblocks(WR(q), 'W');
-	}
-	print("\n");
-	for(bcp=bclass; bcp<&bclass[Nclass]; bcp++){
-		lock(bcp);
-		for(count = 0, bp = bcp->first; bp; count++, bp = bp->next)
-			;
-		unlock(bcp);
-		print("%d blocks of size %d\n", count, bcp->size);
-	}
-	print("\n");
-}
+#include "stream.h"
 
 /*
  *  Allocate streams, queues, and blocks.  Allocate n block classes with
@@ -123,6 +62,9 @@ streaminit(void)
 	Block *bp;
 	Bclass *bcp;
 
+	/*
+	 *  allocate blocks, queues, and streams
+	 */
 	slist = (Stream *)ialloc(conf.nstream * sizeof(Stream), 0);
 	qlist = (Queue *)ialloc(conf.nqueue * sizeof(Queue), 0);
 	blist = (Block *)ialloc(conf.nblock * sizeof(Block), 0);
@@ -141,6 +83,24 @@ streaminit(void)
 			bp++;
 		}
 	}
+
+	/*
+	 *  make stream modules available
+	 */
+	streaminit0();
+}
+
+/*
+ *  make known a stream module and call its initialization routine, if
+ *  it has one.
+ */
+void
+newqinfo(Qinfo *qi)
+{
+	qi->next = lds;
+	lds = qi;
+	if(qi->reset)
+		(*qi->reset)();
 }
 
 /*
@@ -159,7 +119,6 @@ allocb(ulong size)
 {
 	Block *bp;
 	Bclass *bcp;
-	int loop=0;
 
 	/*
 	 *  map size to class
@@ -173,10 +132,6 @@ allocb(ulong size)
 	lock(bcp);
 	while(bcp->first == 0){
 		unlock(bcp);
-		if(loop++ == 10){
-			dumpqueues();
-			print("waiting for blocks\n");
-		}
 		qlock(bcp);
 		tsleep(&bcp->r, isblock, (void *)bcp, 250);
 		qunlock(bcp);
@@ -582,13 +537,13 @@ nullput(Queue *q, Block *bp)
 static Qinfo *
 qinfofind(char *name)
 {
-	Qinfo **qip;
+	Qinfo *qi;
 
 	if(name == 0)
 		error(0, Ebadld);
-	for(qip = lds; *qip; qip++)
-		if(strcmp((*qip)->name, name)==0)
-			return *qip;
+	for(qi = lds; qi; qi = qi->next)
+		if(strcmp(qi->name, name)==0)
+			return qi;
 	error(0, Ebadld);
 }
 
@@ -1006,10 +961,6 @@ streamread(Chan *c, void *vbuf, long n)
 
 	qunlock(&s->rdlock);
 	poperror();
-	if(left<0 || left>n){
-		print("streamread returns %d for a %d read\n", n-left, n);
-		panic("streamread");
-	}
 	return n - left;	
 }
 
@@ -1210,4 +1161,53 @@ streamstat(Chan *c, char *db, char *name)
 
 	devdir(c, c->qid, name, n, 0, &dir);
 	convD2M(&dir, db);
+}
+
+/*
+ *  Dump all block information of how many blocks are in which queues
+ */
+void
+dumpblocks(Queue *q, char c)
+{
+	Block *bp;
+	uchar *cp;
+
+	lock(q);
+	for(bp = q->first; bp; bp = bp->next){
+		print("%c%d%c", c, bp->wptr-bp->rptr, (bp->flags&S_DELIM));
+		for(cp = bp->rptr; cp<bp->wptr && cp<bp->rptr+10; cp++)
+			print(" %uo", *cp);
+		print("\n");
+	}
+	unlock(q);
+}
+
+void
+dumpqueues(void)
+{
+	Queue *q;
+	int count;
+	Block *bp;
+	Bclass *bcp;
+
+	print("\n");
+	for(q = qlist; q < qlist + conf.nqueue; q++, q++){
+		if(!(q->flag & QINUSE))
+			continue;
+		print("%s %ux  R n %d l %d f %ux r %ux", q->info->name, q, q->nb,
+			q->len, q->flag, &(q->r));
+		print("  W n %d l %d f %ux r %ux\n", WR(q)->nb, WR(q)->len, WR(q)->flag,
+			&(WR(q)->r));
+		dumpblocks(q, 'R');
+		dumpblocks(WR(q), 'W');
+	}
+	print("\n");
+	for(bcp=bclass; bcp<&bclass[Nclass]; bcp++){
+		lock(bcp);
+		for(count = 0, bp = bcp->first; bp; count++, bp = bp->next)
+			;
+		unlock(bcp);
+		print("%d blocks of size %d\n", count, bcp->size);
+	}
+	print("\n");
 }

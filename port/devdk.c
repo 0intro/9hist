@@ -6,8 +6,9 @@
 #include	"io.h"
 #include	"errno.h"
 
-#define NOW (MACHP(0)->ticks)
-#define DPRINT if(0)
+#define	DPRINT	if(0)	/*kprint*/
+
+#define	NOW	(MACHP(0)->ticks)
 
 enum {
 	/*
@@ -124,6 +125,7 @@ struct Dk {
 	Chan	*csc;		/* common signalling line */
 	Line	line[Nline];
 	int	restart;
+	int	urpwindow;
 };
 static Dk dk[Ndk];
 
@@ -395,7 +397,8 @@ dkiput(Queue *q, Block *bp)
 /*
  *  we assume that each put is a message.
  *
- *  add a 2 byte channel number to the start of each message
+ *  add a 2 byte channel number to the start of each message,
+ *  low order byte first.
  */
 static void
 dkoput(Queue *q, Block *bp)
@@ -413,14 +416,7 @@ dkoput(Queue *q, Block *bp)
 	dp = lp->dp;
 	line = lp - dp->line;
 
-	if(bp->base && bp->rptr - bp->base >= 2)
-		bp->rptr -= 2;
-	else {
-		print("dkoput l %d b %ux r %ux w %ux\n", line, bp->base, bp->rptr,
-			bp->wptr);
-		freeb(bp);
-		return;
-	}
+	bp = padb(bp, 2);
 	bp->rptr[0] = line;
 	bp->rptr[1] = line>>8;
 
@@ -432,12 +428,13 @@ dkoput(Queue *q, Block *bp)
 }
 
 /*
- *  configure a datakit multiplexor.  this takes 4 arguments separated
+ *  configure a datakit multiplexor.  this takes 5 arguments separated
  *  by spaces:
  *	the line number of the common signalling channel (must be > 0)
  *	the number of lines in the device (optional)
  *	the word `restart' or `norestart' (optional/default==restart)
- *	the name of the dk (optional)
+ *	the name of the dk (default==dk)
+ *	the urp window size (default==WS_2K)
  *
  *  we can configure only once
  */
@@ -445,7 +442,7 @@ static void
 dkmuxconfig(Dk *dp, Block *bp)
 {
 	Chan *c;
-	char *fields[4];
+	char *fields[5];
 	int n;
 	char buf[64];
 	static int dktimeron;
@@ -459,9 +456,12 @@ dkmuxconfig(Dk *dp, Block *bp)
 	 *  parse
 	 */
 	dp->restart = 1;
-	n = getfields((char *)bp->rptr, fields, 4, ' ');
+	n = getfields((char *)bp->rptr, fields, 5, ' ');
 	strcpy(dp->name, "dk");
+	dp->urpwindow = WS_2K;
 	switch(n){
+	case 5:
+		dp->urpwindow = strtoul(fields[4], 0, 0);
 	case 4:
 		strncpy(dp->name, fields[3], sizeof(dp->name));
 	case 3:
@@ -481,6 +481,8 @@ dkmuxconfig(Dk *dp, Block *bp)
 		dp->lines = 16;
 		error(0, Ebadarg);
 	}
+	DPRINT("dkmuxconfig: ncsc=%d, lines=%d, restart=%d, name=\"%s\"\n",
+		dp->ncsc, dp->lines, dp->restart, dp->name);
 
 	/*
 	 *  open a stream for the csc and push urp onto it
@@ -499,7 +501,7 @@ dkmuxconfig(Dk *dp, Block *bp)
 	/*
 	 *  start a process to deal with it
 	 */
-	sprint(buf, "csckproc%d", dp->ncsc);
+	sprint(buf, "csc.%s.%d", dp->name, dp->ncsc);
 	kproc(buf, dkcsckproc, dp);
 	poperror();
 
@@ -556,7 +558,6 @@ void
 dkreset(void)
 {
 	newqinfo(&dkmuxinfo);
-	urpreset();
 }
 
 /*
@@ -866,8 +867,10 @@ dkmesg(Dk *dp, int type, int srv, int p0, int p1)
 
 	if(dp->csc == 0)
 		return -1;
-	if(waserror())
+	if(waserror()){
+		print("dkmesg: error\n");
 		return -1;
+	}
 	d.type = type;
 	d.srv = srv;
 	d.param0l = p0;
@@ -977,7 +980,7 @@ dkcall(int type, Chan *c, char *addr, char *nuser, char *machine)
 	 *  tell the controller we want to make a call
 	 */
 	DPRINT("dialout\n");
-	dkmesg(dp, t_val, d_val, line, W_WINDOW(WS_2K,WS_2K,2));
+	dkmesg(dp, t_val, d_val, line, W_WINDOW(dp->urpwindow,dp->urpwindow,2));
 
 	/*
 	 *  if redial, wait for a dial tone (otherwise we might send
@@ -1318,8 +1321,11 @@ dkcsckproc(void *a)
 	/*
 	 *  tell datakit we've rebooted. It should close all channels.
 	 */
-	if(dp->restart)
+	if(dp->restart) {
+		DPRINT("dkcsckproc: restart %s\n", dp->name);
 		dkmesg(dp, T_ALIVE, D_RESTART, 0, 0);
+	}
+	DPRINT("dkcsckproc: closeall %s\n", dp->name);
 	dkmesg(dp, T_CHG, D_CLOSEALL, 0, 0);
 
 	/*
@@ -1484,7 +1490,8 @@ dktimer(void *a)
 	Dk *dp;
 	Line *lp;
 
-	waserror();
+	while(waserror())
+		print("dktimer: error\n");
 
 	for(;;){
 		/*

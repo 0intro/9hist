@@ -23,15 +23,16 @@ typedef
 struct address {
 	char *name;
 	char *cmd;
+	char *srvname;
 } Address;
 
 Address addr[] = {
-	{ "bitbootes", "bitconnect" },
-	{ "ross", "connect 020701005eff" },
-	{ "bootes", "connect 080069020205" },
-	{ "helix", "connect 080069020427" },
-	{ "spindle", "connect 0800690202df" },
-	{ "r70", "connect 08002b04265d" },
+	{ "bitbootes", "bitconnect", "bit!bootes" },
+	{ "ross", "connect 020701005eff", "nonet!ross" },
+	{ "bootes", "connect 080069020205", "nonet!bootes" },
+	{ "helix", "connect 080069020427", "nonet!helix" },
+	{ "spindle", "connect 0800690202df", "nonet!spindle" },
+	{ "r70", "connect 08002b04265d", "nonet!r70" },
 	{ 0 }
 };
 
@@ -61,7 +62,7 @@ struct a_out_h {
 /*
  *  predeclared
  */
-char	*lookup(char *);
+Address* lookup(char *);
 int	readseg(int, int, long, long, int);
 int	readkernel(int);
 int	readconf(int);
@@ -126,24 +127,21 @@ boot(int ask, char *addr)
 {
 	int n;
 	char conffile[128];
+	Address *a;
 
 	if(ask){
 		outin("bootfile", bootfile, bbuf, sizeof(bbuf));
 		bootfile = bbuf;
-	}
-
-	if(!ask)
-		scmd = lookup(sys);
-	else {
 		outin("server", sys, sbuf, sizeof(sbuf));
 		sys = sbuf;
-		scmd = lookup(sys);
 	}
-	if(scmd == 0){
+
+	a = lookup(sys);
+	if(a == 0){
 		fprint(2, "boot: %s unknown\n", sys);
 		return;
 	}
-
+	scmd = a->cmd;
 
 	/*
 	 *  for the bit, we skip all the ether goo
@@ -174,18 +172,22 @@ boot(int ask, char *addr)
 		prerror("push noether");
 		return;
 	}
+	if(write(cfd, "config nonet", sizeof("config nonet")-1)<0){
+		prerror("config nonet");
+		return;
+	}
 
 	/*
 	 *  grab a nonet channel and call up the ross file server
 	 */
-	fd = open("#n/1/data", 2);
+	fd = open("#nnonet/2/data", 2);
 	if(fd < 0) {
-		prerror("opening #n/1/data");
+		prerror("opening #n/2/data");
 		return;
 	}
-	cfd = open("#n/1/ctl", 2);
+	cfd = open("#nnonet/2/ctl", 2);
 	if(cfd < 0){
-		prerror("opening #n/1/ctl");
+		prerror("opening #n/2/ctl");
 		return;
 	}
 	if(write(cfd, scmd, strlen(scmd))<0){
@@ -301,7 +303,7 @@ error(char *s)
 /*
  *  lookup the address for a system
  */
-char *
+Address *
 lookup(char *arg)
 {
 	Address *a;
@@ -313,7 +315,7 @@ lookup(char *arg)
 	}
 	for(a = addr; a->name; a++){
 		if(strcmp(a->name, arg) == 0)
-			return a->cmd;
+			return a;
 	}
 	return 0;
 }

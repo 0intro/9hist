@@ -558,7 +558,6 @@ void
 dkreset(void)
 {
 	newqinfo(&dkmuxinfo);
-	urpreset();
 }
 
 /*

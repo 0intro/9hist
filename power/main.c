@@ -57,7 +57,6 @@ main(void)
 	clockinit();
 	alarminit();
 	ioboardinit();
-	ioboardid();
 	chandevreset();
 	streaminit();
 	sysloginit();
@@ -104,25 +103,6 @@ vecinit(void)
 		*p++ = *q++;
 }
 
-void
-ioboardid(void)
-{
-	switch(ioid){
-	case IO2R1:
-		iprint("IO2 revision 1\n");
-		break;
-	case IO2R2:
-		iprint("IO2 revision 2\n");
-		break;
-	case IO3R1:
-		iprint("IO3 revision 1\n");
-		break;
-	default:
-		iprint("unknown IO board\n");
-		break;
-	}
-}
-
 /*
  *  We have to program both the IO2 board to generate interrupts
  *  and the SBCC on CPU 0 to accept them.
@@ -131,16 +111,22 @@ void
 ioboardinit(void)
 {
 	long i;
+	int noforce;
 
 	ioid = *IOID;
+	if(ioid >= IO3R1)
+		noforce = 1;
+	else
+		noforce = 0;
+
 
 	/*
 	 *  reset VME bus (MODEREG is on the IO2)
 	 */
-	MODEREG->resetforce = (1<<1) | (1<<0);
+	MODEREG->resetforce = (1<<1) | noforce;
 	for(i=0; i<1000000; i++)
 		;
-	MODEREG->resetforce = (1<<0);
+	MODEREG->resetforce = noforce;
 	MODEREG->masterslave = (SLAVE<<4) | MASTER;
 
 	/*
@@ -596,27 +582,27 @@ confinit(void)
 	 */
 	conf.nmach = 1;
 	conf.nmod = 2000;
-	conf.nalarm = 1000;
-	conf.norig = 9;
-	conf.nchan = 64;
-	conf.nenv = 4;
-	conf.nenvchar = 1000;
-	conf.npgenv = 400;
-	conf.nmtab = 4;
-	conf.nmount = 4;
-	conf.nmntdev = 4;
-	conf.nmntbuf = 4;
-	conf.nmnthdr = 4;
-	conf.nstream = 4;
-	conf.nsrv = 0;
-	conf.nproc = 4;
-	conf.npgrp = 4;
-	conf.npte = 4 * conf.npage;
-	conf.nqueue = 5 * conf.nstream;
-	conf.nblock = 16 * conf.nstream;
+	conf.nalarm = 10000;
+	conf.norig = 500;
+	conf.nchan = 1000;
+	conf.npgenv = 800;
+	conf.nmtab = 100;
+	conf.nmount = 5000;
+	conf.nmntdev = 150;
+	conf.nmntbuf = 120;
+	conf.nmnthdr = 120;
+	conf.nstream = 128;
+	conf.nsrv = 32;
+	conf.nproc = 386;
+	conf.npgrp = 100;
 	conf.nnoifc = 1;
 	conf.nnoconv = 32;
 	conf.nurp = 256;
+	conf.nenv = 15*conf.nproc;
+	conf.nenvchar = 20 * conf.nenv;
+	conf.npte = 4 * conf.npage;
+	conf.nqueue = 3 * conf.nstream;
+	conf.nblock = 10 * conf.nstream;
 
 	confread();
 

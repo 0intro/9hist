@@ -387,6 +387,8 @@ struct Qinfo
 	void (*open)(Queue*, Stream*);
 	void (*close)(Queue*);
 	char *name;
+	void (*reset)(void);
+	Qinfo *next;
 };
 
 /*

@@ -11,7 +11,7 @@
  */
 enum {
 	Ntypes=		8,		/* max number of ethernet packet types */
-	Ndir=		Ntypes+1,	/* entries in top level directory */
+	Ndir=		Ntypes+2,	/* entries in top level directory */
 	LogNrrb=	7,		/* log of number of receive buffers */
 	Nrrb=		(1<<LogNrrb),	/* number of recieve buffers */
 	LogNtrb=	7,		/* log of number of transmit buffers */
@@ -22,6 +22,17 @@ enum {
 #define TSUCC(x) (((x)+1)%Ntrb)
 
 #define NOW (MACHP(0)->ticks*MS2HZ)
+
+/*
+ *  Ethernet packet buffers.  These must also be in lance addressible RAM.
+ */
+typedef struct {
+	uchar d[6];
+	uchar s[6];
+	uchar type[2];
+	uchar data[1500];
+	uchar crc[4];
+} Pkt;
 
 /*
  *  Communication with the lance is via a transmit and receive ring of
@@ -36,55 +47,44 @@ typedef struct {
 } Msg;
 
 /*
- *  Ethernet packet buffers.  These must also be in lance addressible RAM.
- */
-typedef struct {
-	uchar d[6];
-	uchar s[6];
-	uchar type[2];
-	uchar data[1500];
-	uchar crc[4];
-} Pkt;
-
-/*
  *  lance memory map
  */
-typedef
-struct
+typedef struct Lancemem
 {
 	/*
 	 *  initialization block
 	 */
-	struct initblock {	
-		ushort	mode;		/* chip control (see below) */
-		ushort	etheraddr[3];	/* the ethernet physical address */
-		ushort	multi[4];	/* multicast addresses, 1 bit for each of 64 */
-		ushort	rdralow;	/* receive buffer ring */
-		ushort	rdrahigh;	/* (top three bits define size of ring) */
-		ushort	tdralow;	/* transmit buffer ring */
-		ushort	tdrahigh;	/* (top three bits define size of ring) */
-	};
+	ushort	mode;		/* chip control (see below) */
+	ushort	etheraddr[3];	/* the ethernet physical address */
+	ushort	multi[4];	/* multicast addresses, 1 bit for each of 64 */
+	ushort	rdralow;	/* receive buffer ring */
+	ushort	rdrahigh;	/* (top three bits define size of ring) */
+	ushort	tdralow;	/* transmit buffer ring */
+	ushort	tdrahigh;	/* (top three bits define size of ring) */
 	
 	/*
-	 * ring buffers
-	 * first receive, then transmit
+	 *  ring buffers
+	 *  first receive, then transmit
 	 */
 	Msg	rmr[Nrrb];		/* recieve message ring */
 	Msg	tmr[Ntrb];		/* transmit message ring */
 
 	/*
-	 * actual packets
+	 *  packet buffers (for IO2 version)
 	 */
-	Pkt	p[1];
+	Pkt	rp[Nrrb];
+	Pkt	tp[Ntrb];
 } Lancemem;
-#define LANCEMEM ((Lancemem *)LANCERAM)
+#define LANCEMEM ((Lancemem*)0)
 
 /*
  *  Some macros for dealing with lance memory addresses.  The lance splits
  *  its 24 bit addresses across two 16 bit registers.
  */
-#define HADDR(a) ((((ulong)(a))>>16)&0xF)
+#define HADDR(a) ((((ulong)(a))>>16)&0xFF)
 #define LADDR(a) (((ulong)a)&0xFFFF)
+#define MPs(a) (*(short *)(l.lanceram + l.sep*((ushort*)&a - (ushort*)0)))
+#define MPus(a) (*(ushort *)(l.lanceram + l.sep*((ushort*)&a - (ushort*)0)))
 
 /*
  *  one per ethernet packet type
@@ -127,24 +127,40 @@ typedef struct {
 	uchar	*lmp;		/* location of parity test */
 	ushort	*rap;		/* lance address register */
 	ushort	*rdp;		/* lance data register */
+	int	sep;		/* separaqtion between shorts in lance ram
+				    as seen by host */
+	ushort	*lanceram;	/* start of lance ram as seen by host */
+	ushort	*lanceend;	/* end of lance ram as seen by host */
+	Lancemem *lm;		/* start of lance memory as seen by lance */
 
 	Rendez	rr;		/* rendezvous for an input buffer */
 	ushort	rl;		/* first rcv Message belonging to Lance */	
 	ushort	rc;		/* first rcv Message belonging to CPU */
-	Pkt	*rp[Nrrb];	/* receive buffers */
-	int	inpackets;
 
 	Rendez	tr;		/* rendezvous for an output buffer */
 	QLock	tlock;		/* semaphore on tc */
 	ushort	tl;		/* first xmt Message belonging to Lance */	
 	ushort	tc;		/* first xmt Message belonging to CPU */	
-	Pkt	*tp[Ntrb];	/* transmit buffers */
-	int	outpackets;
 
 	Ethertype e[Ntypes];
 	int	debug;
 	int	kstarted;
 	Debqueue dq;
+
+	Pkt	*rp;		/* receive buffers */
+	Pkt	*tp;		/* transmit buffers */
+	uchar	*rpa[Nrrb];	/* receive buffer address in lance space */
+	uchar	*tpa[Ntrb];	/* transmit buffer address in lance space */
+
+	/* sadistics */
+
+	int	inpackets;
+	int	outpackets;
+	int	crcs;		/* input crc errors */
+	int	oerrs;		/* output erros */
+	int	frames;		/* framing errors */
+	int	overflows;	/* packet overflows */
+	int	buffs;		/* buffering errors */
 } Lance;
 static Lance l;
 
@@ -231,7 +247,7 @@ sprintpacket(char *buf, Trace *t)
 		p->d[0], p->d[1], p->d[2], p->d[3], p->d[4], p->d[5],
 		p->s[0], p->s[1], p->s[2], p->s[3], p->s[4], p->s[5],
 		p->type[0], p->type[1]);
-	for(i=0; i<41; i++)
+	for(i=0; i<16; i++)
 		sprint(buf+strlen(buf), "%.2ux", p->data[i]);
 	sprint(buf+strlen(buf), ")\n");
 }
@@ -259,19 +275,6 @@ lancedebq(char tag, Pkt *p, int len)
 			print("%s\n", buf);
 		}
 	} /**/
-}
-
-/*
- *  copy to/from lance memory till we get it right
- */
-void
-slowcpy(uchar *to, uchar *from, int n)
-{
-	memcpy(to, from, n);
-	while(memcmp(to, from, n)!=0){
-		print("lance compare error\n");
-		memcpy(to, from, n);
-	}
 }
 
 /*
@@ -365,7 +368,7 @@ lanceoput(Queue *q, Block *bp )
 		sleep(&l.tr, isobuf, (void *)0);
 		print("done");
 	}
-	p = l.tp[l.tc];
+	p = &l.tp[l.tc];
 
 	/*
 	 *  copy message into lance RAM
@@ -395,16 +398,17 @@ lanceoput(Queue *q, Block *bp )
 	if(len < 60)
 		len = 60;
 
-	lancedebq('o', p, len);
+	lancedebq('o', p, len);/**/
 
 	/*
 	 *  set up the ring descriptor and hand to lance
 	 */
+	l.outpackets++;
 	m = &(LANCEMEM->tmr[l.tc]);
-	m->size = -len;
-	m->cntflags = 0;
-	m->laddr = LADDR(l.tp[l.tc]);
-	m->flags = OWN|STP|ENP|HADDR(l.tp[l.tc]);
+	MPs(m->size) = -len;
+	MPus(m->cntflags) = 0;
+	MPus(m->laddr) = LADDR(l.tpa[l.tc]);
+	MPus(m->flags) = OWN|STP|ENP|HADDR(l.tpa[l.tc]);
 	l.tc = TSUCC(l.tc);
 	*l.rdp = INEA|TDMD; /**/
 	qunlock(&l.tlock);
@@ -416,9 +420,9 @@ lanceoput(Queue *q, Block *bp )
 enum {
 	Lchanqid = 1,
 	Ltraceqid = 2,
+	Lstatsqid = 3,
 };
 Dirtab lancedir[Ndir];
-
 
 /*
  *  stop the lance, disable all ring buffers, and free all staged rcv buffers
@@ -426,30 +430,83 @@ Dirtab lancedir[Ndir];
 void
 lancereset(void)
 {
-	Lancemem *lm=LANCEMEM;
 	int i;
+	ushort *sp;
+	ulong x;
+	int index;
+	static int already;
 
 	/*
-	 *  toggle lance's reset line
+	 *  so that we don't have to indirect through constants
 	 */
-	MODEREG->promenet &= ~1;
-	MODEREG->promenet |= 1;
+	l.rap = LANCERAP;
+	l.rdp = LANCERDP;
 
 	/*
-	 *  disable all ring entries
+	 *  allocate the send and receive buffers and map them into
+	 *  the lance's address space.
 	 */
-	l.tl = l.tc = 0;
-	for(i = 0; i < Ntrb; i++)
-		lm->tmr[i].flags = 0;
-	l.rl = l.rc = 0;
-	for(i = 0; i < Ntrb; i++)
-		lm->rmr[i].flags = 0;
+	if(already == 0){
+		already = 1;
+		if(ioid < IO3R1){
+			/*
+			 *  toggle lance's reset line
+			 */
+			MODEREG->promenet &= ~1;
+			MODEREG->promenet |= 1;
+
+			l.lanceram = LANCERAM;
+			l.lanceend = LANCEEND;
+			l.lm = (Lancemem *)0;
+			l.sep = 1;
+
+			/*
+			 *  allocate packet buffers in lance memory
+			 */
+			for(i = 0; i < Nrrb; i++)
+				l.rpa[i] = (uchar *)&l.lm->rp[i];
+			for(i = 0; i < Ntrb; i++)
+				l.tpa[i] = (uchar *)&l.lm->tp[i];
+		} else {
+			/*
+			 *  toggle lance's reset line
+			 */
+			MODEREG->promenet |= 1;
+			MODEREG->promenet &= ~1;
+
+			l.lanceram = LANCE3RAM;
+			l.lanceend = LANCE3END;
+			l.lm = (Lancemem *)0x800000;
+			l.sep = 4;
+
+			/*
+			 *  allocate packet buffers in MP bus memory
+			 *  and map it into lance space
+			 */
+			l.rp = (Pkt *)ialloc((Nrrb + Ntrb)*sizeof(Pkt), 1);
+			l.tp = l.rp + Nrrb;
+			index = 0x1E00;
+			for(i = 0; i < Nrrb; i++){
+				x = (ulong)&l.rp[i];
+				*WRITEMAP = (index<<16) | (x>>12)&0xFFFF;
+				l.rpa[i] = (uchar *)((i<<12) | (x & 0xFFF));
+				index++;
+			}
+			for(i = 0; i < Ntrb; i++){
+				x = (ulong)&l.tp[i];
+				*WRITEMAP = (index<<16) | (x>>12)&0xFFFF;
+				l.tpa[i] = (uchar *)(((i+Nrrb)<<12) | (x & 0xFFF));
+				index++;
+			}
+		}
+	}
 
 	/*
 	 *  run through all lance memory to set parity
 	 */
-	for(l.lmp=LANCERAM; l.lmp<=LANCEEND; l.lmp++)
-		*l.lmp = 55;
+	for(sp = l.lanceram; sp < l.lanceend; sp += l.sep)
+		*sp = 0;
+
 }
 
 /*
@@ -459,90 +516,84 @@ lancereset(void)
 static void
 lancestart(void)
 {
-	Lancemem *lm=LANCEMEM;
 	int i;
 	Pkt *p;
+	Lancemem *lm = LANCEMEM;
+	Msg *m;
 
 	lancereset();
 
 	/*
 	 *  create the initialization block
 	 */
-	lm->mode = 0;
+	MPus(lm->mode) = 0;
 
 	/*
 	 *  set ether addr from the value in the id prom.
 	 *  the id prom has them in reverse order, the init
 	 *  structure wants them in byte swapped order
 	 */
-	lm->etheraddr[0] = (LANCEID[16]&0xff00)|((LANCEID[20]>>8)&0xff);
-	lm->etheraddr[1] = (LANCEID[8]&0xff00)|((LANCEID[12]>>8)&0xff);
-	lm->etheraddr[2] = (LANCEID[0]&0xff00)|((LANCEID[4]>>8)&0xff);
+	MPus(lm->etheraddr[0]) = (LANCEID[16]&0xff00)|((LANCEID[20]>>8)&0xff);
+	MPus(lm->etheraddr[1]) = (LANCEID[8]&0xff00)|((LANCEID[12]>>8)&0xff);
+	MPus(lm->etheraddr[2]) = (LANCEID[0]&0xff00)|((LANCEID[4]>>8)&0xff);
 	l.ea[0] = LANCEID[20]>>8;
 	l.ea[1] = LANCEID[16]>>8;
 	l.ea[2] = LANCEID[12]>>8;
 	l.ea[3] = LANCEID[8]>>8;
 	l.ea[4] = LANCEID[4]>>8;
 	l.ea[5] = LANCEID[0]>>8;
-/*
-	print("lance addr = %.4ux %.4ux %.4ux\n", lm->etheraddr[0], lm->etheraddr[1],
-		lm->etheraddr[2]);
-/**/
 
 	/*
 	 *  ignore multicast addresses
 	 */
-	for(i=0; i<4; i++)
-		lm->multi[i] = 0;
+	MPus(lm->multi[0]) = 0;
+	MPus(lm->multi[1]) = 0;
+	MPus(lm->multi[2]) = 0;
+	MPus(lm->multi[3]) = 0;
 
 	/*
 	 *  set up rcv message ring
 	 */
-	p = lm->p;
-	for(i = 0; i < Nrrb; i++){
-		l.rp[i] = p++;
-		lm->rmr[i].size = -sizeof(Pkt);
-		lm->rmr[i].cntflags = 0;
-		lm->rmr[i].laddr = LADDR(l.rp[i]);
-		lm->rmr[i].flags = HADDR(l.rp[i]);
+	m = lm->rmr;
+	for(i = 0; i < Nrrb; i++, m++){
+		MPs(m->size) = -sizeof(Pkt);
+		MPus(m->cntflags) = 0;
+		MPus(m->laddr) = LADDR(l.rpa[i]);
+		MPus(m->flags) = HADDR(l.rpa[i]);
 	}
-	lm->rdralow = LADDR(lm->rmr);
-	lm->rdrahigh = (LogNrrb<<13)|HADDR(lm->rmr);
+	MPus(lm->rdralow) = LADDR(l.lm->rmr);
+	MPus(lm->rdrahigh) = (LogNrrb<<13)|HADDR(l.lm->rmr);
+
 
 	/*
 	 *  give the lance all the rcv buffers except one (as a sentinel)
 	 */
 	l.rc = Nrrb - 1;
-	for(i = 0; i < l.rc; i++)
-		lm->rmr[i].flags |= OWN;
+	m = lm->rmr;
+	for(i = 0; i < l.rc; i++, m++)
+		MPus(m->flags) |= OWN;
 
 	/*
 	 *  set up xmit message ring
 	 */
-	for(i = 0; i < Ntrb; i++){
-		l.tp[i] = p++;
-		lm->tmr[i].size = 0;
-		lm->tmr[i].cntflags = 0;
-		lm->tmr[i].laddr = LADDR(l.tp[i]);
-		lm->tmr[i].flags = HADDR(l.tp[i]);
+	m = lm->tmr;
+	for(i = 0; i < Ntrb; i++, m++){
+		MPs(m->size) = 0;
+		MPus(m->cntflags) = 0;
+		MPus(m->laddr) = LADDR(l.tpa[i]);
+		MPus(m->flags) = HADDR(l.tpa[i]);
 	}
-	lm->tdralow = LADDR(lm->tmr);
-	lm->tdrahigh = (LogNtrb<<13)|HADDR(lm->tmr);
-
-	/*
-	 *  so that we don't have to indirect through constants
-	 */
-	l.rap = LANCERAP;
-	l.rdp = LANCERDP;
+	MPus(lm->tdralow) = LADDR(l.lm->tmr);
+	MPus(lm->tdrahigh) = (LogNtrb<<13)|HADDR(l.lm->tmr);
 
 	/*
 	 *  point lance to the initialization block
 	 */
 	*l.rap = 1;
-	*l.rdp = LADDR(lm);
+	*l.rdp = LADDR(l.lm);
 	wbflush();
 	*l.rap = 2;
-	*l.rdp = HADDR(lm);
+	*l.rdp = HADDR(l.lm);
 
 	/*
 	 *  The lance byte swaps the ethernet packet unless we tell it not to
@@ -580,7 +631,10 @@ lanceinit(void)
 	lancedir[Ntypes].qid = Ltraceqid;
 	lancedir[Ntypes].length = 0;
 	lancedir[Ntypes].perm = 0600;
-
+	strcpy(lancedir[Ntypes+1].name, "stats");
+	lancedir[Ntypes+1].qid = Lstatsqid;
+	lancedir[Ntypes+1].length = 0;
+	lancedir[Ntypes+1].perm = 0600;
 }
 
 Chan*
@@ -589,7 +643,7 @@ lanceattach(char *spec)
 	Chan *c;
 
 	if(l.kstarted == 0){
-		kproc("lancekproc", lancekproc, 0);
+		kproc("lancekproc", lancekproc, 0);/**/
 		l.kstarted = 1;
 		lancestart();
 	}
@@ -620,7 +674,7 @@ lancewalk(Chan *c, char *name)
 void	 
 lancestat(Chan *c, char *dp)
 {
-	if(c->qid==CHDIR || c->qid==Ltraceqid)
+	if(c->qid==CHDIR || c->qid==Ltraceqid || c->qid==Lstatsqid)
 		devstat(c, dp, lancedir, Ndir, devgen);
 	else
 		devstat(c, dp, 0, 0, streamgen);
@@ -637,6 +691,7 @@ lanceopen(Chan *c, int omode)
 	switch(c->qid){
 	case CHDIR:
 	case Ltraceqid:
+	case Lstatsqid:
 		if(omode != OREAD)
 			error(0, Eperm);
 		break;
@@ -663,6 +718,7 @@ lanceclose(Chan *c)
 	switch(c->qid){
 	case CHDIR:
 	case Ltraceqid:
+	case Lstatsqid:
 		break;
 	default:
 		streamclose(c);
@@ -706,9 +762,16 @@ lancetraceread(Chan *c, void *a, long n)
 long	 
 lanceread(Chan *c, void *a, long n)
 {
+	char buf[256];
+
 	switch(c->qid){
 	case CHDIR:
 		return devdirread(c, a, n, lancedir, Ndir, devgen);
+	case Lstatsqid:
+		sprint(buf, "in: %d\nout: %d\ncrc errs %d\noverflows: %d\nframe errs %d\nbuff errs: %d\noerrs %d\n",
+			l.inpackets, l.outpackets, l.crcs, l.overflows, l.frames,
+			l.buffs, l.oerrs);
+		return stringread(c, a, n, buf);
 	case Ltraceqid:
 		return lancetraceread(c, a, n);
 	default:
@@ -754,10 +817,9 @@ lanceuserstr(Error *e, char *buf)
 void
 lanceintr(void)
 {
+	int i;
 	ushort csr;
-	Lancemem *lm;
-
-	lm = LANCEMEM;
+	Lancemem *lm = LANCEMEM;
 
 	csr = *l.rdp;
 
@@ -778,17 +840,16 @@ lanceintr(void)
 	/*
 	 *  look for rcv'd packets, just wakeup the input process
 	 */
-	if(l.rl!=l.rc && (lm->rmr[l.rl].flags & OWN)==0)
+	if(l.rl!=l.rc && (MPus(lm->rmr[l.rl].flags) & OWN)==0)
 		wakeup(&l.rr);
 
 	/*
 	 *  look for xmitt'd packets, wake any process waiting for a
 	 *  transmit buffer
 	 */
-	while(l.tl != l.tc && (lm->tmr[l.tl].flags & OWN) == 0){
-		if(lm->tmr[l.tl].flags & ERR)
-			print("xmt error %ux %ux\n", lm->tmr[l.tl].flags,
-				lm->tmr[l.tl].cntflags);
+	while(l.tl!=l.tc && (MPus(lm->tmr[l.tl].flags) & OWN)==0){
+		if(MPus(lm->tmr[l.tl].flags) & ERR)
+			l.oerrs++;
 		l.tl = TSUCC(l.tl);
 		wakeup(&l.tr);
 	}
@@ -800,39 +861,45 @@ lanceintr(void)
 static int
 isinput(void *arg)
 {
-	return l.rl!=l.rc && (LANCEMEM->rmr[l.rl].flags & OWN)==0;
+	Lancemem *lm = LANCEMEM;
+	return l.rl!=l.rc && (MPus(lm->rmr[l.rl].flags) & OWN)==0;
 }
 void
 lancekproc(void *arg)
 {
 	Block *bp;
-	Lancemem *lm;
 	Pkt *p;
 	Ethertype *e;
 	int t;
-	Msg *m;
 	int len;
 	int i, last;
-
-	lm = LANCEMEM;
+	Lancemem *lm = LANCEMEM;
+	Msg *m;
 
 	for(;;){
-		for(; l.rl!=l.rc && (lm->rmr[l.rl].flags & OWN)==0 ; l.rl=RSUCC(l.rl)){
+		for(; l.rl!=l.rc && (MPus(lm->rmr[l.rl].flags) & OWN)==0 ; l.rl=RSUCC(l.rl)){
 			l.inpackets++;
 			m = &(lm->rmr[l.rl]);
-			if(m->flags & ERR){
-				print("rcv error %ux\n",
-					m->flags&(FRAM|OFLO|CRC|BUFF));
+			if(MPus(m->flags) & ERR){
+				t = MPus(m->flags);
+				if(t & FRAM)
+					l.frames++;
+				if(t & OFLO)
+					l.overflows++;
+				if(t & CRC)
+					l.crcs++;
+				if(t & BUFF)
+					l.buffs++;
 				goto stage;
 			}
 	
 			/*
 			 *  See if a queue exists for this packet type.
 			 */
-			p = l.rp[l.rl];
+			p = &l.rp[l.rl];
 			t = (p->type[0]<<8) | p->type[1];
-			len = m->cntflags - 4;
-			lancedebq('i', p, len);
+			len = MPus(m->cntflags) - 4;
+			lancedebq('i', p, len);/**/
 			for(e = &l.e[0]; e < &l.e[Ntypes]; e++){
 				if(!canqlock(e))
 					continue;
@@ -854,7 +921,7 @@ lancekproc(void *arg)
 					qunlock(e);
 				}
 			}
-			if(e != &l.e[Ntypes] && e->q->next->len <= Streamhi){
+			if(e!=&l.e[Ntypes] && e->q->next->len<=Streamhi){
 				/*
 				 *  The lock on e makes sure the queue is still there.
 				 */
@@ -871,10 +938,10 @@ stage:
 			 *  stage the next input buffer
 			 */
 			m = &(lm->rmr[l.rc]);
-			m->size = -sizeof(Pkt);
-			m->cntflags = 0;
-			m->laddr = LADDR(l.rp[l.rc]);
-			m->flags = OWN|HADDR(l.rp[l.rc]);
+			MPs(m->size) = -sizeof(Pkt);
+			MPus(m->cntflags) = 0;
+			MPus(m->laddr) = LADDR(l.rpa[l.rc]);
+			MPus(m->flags) = OWN|HADDR(l.rpa[l.rc]);
 			l.rc = RSUCC(l.rc);
 		}
 		sleep(&l.rr, isinput, 0);
@@ -887,10 +954,4 @@ lanceparity(void)
 	print("lance DRAM parity error lmp=%ux\n", l.lmp);
 	MODEREG->promenet &= ~4;
 	MODEREG->promenet |= 4;
-}
-
-void
-lance3intr(void)
-{
-	panic("lance3 interrupt\n");
 }

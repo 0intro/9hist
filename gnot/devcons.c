@@ -70,6 +70,7 @@ struct Rs232{
 	Queue	*wq;
 	Alarm	*a;		/* alarm for waking the rs232 kernel process */
 	int	started;
+	int	delay;		/* time between character input and waking kproc */
 	Rendez	r;
 };
 
@@ -290,7 +291,7 @@ echo(int c)
 		DEBUG();
 	if(c == 0x16)
 		dumpqueues();
-	if(c == 0x18)
+	if(c == 0x1A)
 		mntdump();
 	if(raw.ref)
 		return;
@@ -788,12 +789,21 @@ rs232output(Rs232 *r)
 	q = r->wq;
 
 	/*
+	 *  free old blocks
+	 */
+	for(next = r->out.f; next != r->out.r; next = NEXT(next)){
+		freeb(r->out.bp[next]);
+		r->out.bp[next] = 0;
+	}
+	r->out.f = next;
+
+	/*
 	 *  stage new blocks
 	 *
 	 *  if we run into a control block, wait till the queue
 	 *  is empty before doing the control.
 	 */
-	for(next = NEXT(r->out.w); next != r->out.r; next = NEXT(next)){
+	for(next = NEXT(r->out.w); next != r->out.f; next = NEXT(next)){
 		bp = getq(q);
 		if(bp == 0)
 			break;
@@ -803,11 +813,22 @@ rs232output(Rs232 *r)
 			l = strtoul((char *)(bp->rptr+1), 0, 0);
 			switch(*bp->rptr){
 			case 'B':
-				duartbaud(l); break;
+			case 'b':
+				duartbaud(l);
+				break;
 			case 'D':
-				duartdtr(l); break;
+			case 'd':
+				duartdtr(l);
+				break;
 			case 'K':
-				duartbreak(l); break;
+			case 'k':
+				duartbreak(l);
+				break;
+			case 'W':
+			case 'w':
+				if(l>=0 && l<1000)
+					r->delay = l;
+				break;
 			}
 			freeb(bp);
 			break;
@@ -919,7 +940,7 @@ rs232close(Queue *q)
 static void
 rs232oput(Queue *q, Block *bp)
 {
-	if(bp->rptr == bp->wptr)
+	if(bp->rptr >= bp->wptr)
 		freeb(bp);
 	else
 		putq(q, bp);
@@ -952,8 +973,12 @@ rs232ichar(int c)
 	/*
 	 *  pass upstream within 1/16 second
 	 */
-	if(r->a==0)
-		r->a = alarm(64, rs232timer, r);
+	if(r->a==0){
+		if(r->delay == 0)
+			wakeup(&r->r);
+		else
+			r->a = alarm(r->delay, rs232timer, r);
+	}
 }
 
 /*

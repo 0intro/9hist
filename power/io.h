@@ -42,18 +42,20 @@ struct SBCC
 
 #define	DUARTREG	SYNCBUS(Duart, 0x1A00000)
 
-#define LANCERAM	IO2(uchar, 0xE00000)
-#define LANCEEND	IO2(uchar, 0xF00000)
+#define LANCERAM	IO2(ushort, 0xE00000)
+#define LANCEEND	IO2(ushort, 0xF00000)
 #define LANCE3RAM	IO2(ushort, 0xFF4000)
 #define LANCE3END	IO2(ushort, 0xFF8000)
 #define LANCERDP	IO2(ushort, 0xFC0002)
 #define LANCERAP	IO2(ushort, 0xFC000a)
 #define LANCEID		IO2(ushort, 0xFF0002)
+#define	WRITEMAP	IO2(ulong, 0xFA0000)
 
 #define IOID		IO2(uchar, 0xFFFFF0)
 #define IO2R1		1	/* IO2 revision level 1 */
 #define IO2R2		2	/* IO2 revision level 2 */
 #define IO3R1		3	/* IO3 revision level 1 */
+extern int ioid;	/* io board type */
 
 typedef struct MODE	MODE;
 typedef struct INTVEC	INTVEC;
@@ -85,21 +87,3 @@ struct INTVEC {
 #define	MPBERR0		IO2(ulong, 0xF48000)
 #define	MPBERR1		IO2(ulong, 0xF4C000)
 #define SBEADDR		((ulong *)(UNCACHED|0x1F080000))
-
-extern int ioid;	/* io board type */
-extern int iolevels;	/* number of io levels */
-extern int iomask;	/* interrupts to enable */
-
-/*
- *  The IO2/IO3 slave maps.  These maps are used to map
- *  external addresses to MP bus addresses.
- */
-enum {
-	A24map,		/* VME A24 non-priv address space */
-	A32map,		/* VME A32 non-priv address space */
-	Lancemap,	/* Lance chip address space */
-	Scsi1map,	/* SCSI bus 1 address space */
-	Scsi0map,	/* SCSI bus 0 address space */
-	Nomap,
-};
-#define	WRITEMAP	IO2(ulong, 0xFA0000)
