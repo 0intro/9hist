@@ -322,9 +322,18 @@ ipiput(Fs *f, uchar *ia, Block *bp)
 //	DBG(nhgetl(h->src))(Logipmsg, "ipiput %V %V len %d proto %d\n",
 //				h->src, h->dst, BLEN(bp), h->proto);
 
-	/* Ensure we have enough data to process */
-	if(BLEN(bp) < IPHDR) {
-		bp = pullupblock(bp, IPHDR);
+	/*
+	 *  Ensure we have allt he header info in the first
+	 *  block.  Make life easier for other protocols by
+	 *  collecting up to the first 64 bytes in the first block.
+	 */
+	if(BLEN(bp) < 64) {
+		hl = blocklen(bp);
+		if(hl < IPHDR)
+			hl = IPHDR;
+		if(hl > 64)
+			hl = 64;
+		bp = pullupblock(bp, hl);
 		if(bp == nil)
 			return;
 	}

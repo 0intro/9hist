@@ -23,7 +23,7 @@ devno(int c, int user)
 }
 
 void
-devdir(Chan *c, Qid qid, char *n, long length, char *user, long perm, Dir *db)
+devdir(Chan *c, Qid qid, char *n, vlong length, char *user, long perm, Dir *db)
 {
 	strcpy(db->name, n);
 	db->qid = qid;
@@ -37,8 +37,7 @@ devdir(Chan *c, Qid qid, char *n, long length, char *user, long perm, Dir *db)
 		db->mode |= CHMOUNT;
 	db->atime = seconds();
 	db->mtime = kerndate;
-	db->length1 = length;	/* BOTCH */
-	db->length2 = length;	/* BOTCH */
+	db->length = length;
 	memmove(db->uid, user, NAMELEN);
 	memmove(db->gid, eve, NAMELEN);
 }

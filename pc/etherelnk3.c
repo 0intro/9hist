@@ -49,7 +49,7 @@
 
 #include "etherif.h"
 
-#define XCVRDEBUG		if(1)print
+#define XCVRDEBUG		if(0)print
 
 enum {
 	IDport			= 0x0110,	/* anywhere between 0x0100 and 0x01F0 */

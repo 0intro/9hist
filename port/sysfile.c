@@ -467,8 +467,8 @@ syswrite(ulong *arg)
 	return n;
 }
 
-long
-sysvseek(ulong *arg)
+static void
+sseek(ulong *arg)
 {
 	Chan *c;
 	char buf[DIRLEN];
@@ -479,7 +479,7 @@ sysvseek(ulong *arg)
 		ulong u[2];
 	} o;
 
-	c = fdtochan(arg[0], -1, 1, 0);
+	c = fdtochan(arg[1], -1, 1, 0);
 	if(c->qid.path & CHDIR)
 		error(Eisdir);
 
@@ -487,9 +487,9 @@ sysvseek(ulong *arg)
 		error(Eisstream);
 
 	off = 0;
-	o.u[0] = arg[1];
-	o.u[1] = arg[2];
-	switch(arg[3]){
+	o.u[0] = arg[2];
+	o.u[1] = arg[3];
+	switch(arg[4]){
 	case 0:
 		off = o.v;
 		c->offset = off;
@@ -505,11 +505,19 @@ sysvseek(ulong *arg)
 	case 2:
 		devtab[c->type]->stat(c, buf);
 		convM2D(buf, &dir);
-		off = (long)dir.length1 + o.v;	/* BOTCH */
+		off = dir.length + o.v;
 		c->offset = off;
 		break;
 	}
-	return off;
+	*(vlong*)arg[0] = off;
+}
+
+long
+sysvseek(ulong *arg)
+{
+	validaddr(arg[0], BY2V, 1);
+	sseek(arg);
+	return 0;
 }
 
 long
@@ -519,14 +527,16 @@ sysseek(ulong *arg)
 		vlong v;
 		ulong u[2];
 	} o;
-	ulong a[4];
+	ulong a[5];
 
 	o.v = arg[1];
-	a[0] = arg[0];
-	a[1] = o.u[0];
-	a[2] = o.u[1];
-	a[3] = arg[2];
-	return sysvseek(a);
+	a[0] = (ulong)&o.v;
+	a[1] = arg[0];
+	a[2] = o.u[0];
+	a[3] = o.u[1];
+	a[4] = arg[2];
+	sseek(a);
+	return o.v;
 }
 
 long

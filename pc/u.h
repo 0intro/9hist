@@ -10,10 +10,7 @@ typedef ushort		Rune;
 
 union Length
 {
-	struct{
-		long	length1;
-		long	length2;
-	};
+	vlong	length;
 };
 
 typedef char *va_list;

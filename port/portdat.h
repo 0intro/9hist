@@ -705,4 +705,3 @@ enum
 };
 
 extern int nsyscall;
-extern Physseg physseg[];

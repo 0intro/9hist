@@ -479,7 +479,7 @@ hnputv(void *p, vlong v)
 
 	a = p;
 	hnputl(a, v>>32);
-	hnputl(a+8, v);
+	hnputl(a+4, v);
 }
 
 void
@@ -510,7 +510,7 @@ nhgetv(void *p)
 	uchar *a;
 
 	a = p;
-	return ((vlong)nhgetl(a) << 32) | nhgetl(a+8);
+	return ((vlong)nhgetl(a) << 32) | nhgetl(a+4);
 }
 
 ulong

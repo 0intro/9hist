@@ -59,7 +59,7 @@ struct Ipmux
 	Ipmux	*yes;
 	Ipmux	*no;
 	uchar	type;
-	ushort	len;		/* length in bytes of item to compare */
+	uchar	len;		/* length in bytes of item to compare */
 	ushort	off;		/* offset of comparison */
 	int	n;		/* number of items val points to */
 	uchar	*val;
@@ -591,47 +591,43 @@ static void
 ipmuxiput(Proto *p, uchar *ia, Block *bp)
 {
 	int len;
-	Iphdr *ip;
 	Fs *f = p->f;
-	uchar *p;
+	uchar *m, *h, *v, *e, *ve, *hp;
 	Conv *c;
 
-	ip = bp->rptr;
 	rlock(f);
 	mux = f->t2m[ip->proto];
 	if(mux == nil)
 		goto out;
 
-	/* run the v4 filter */
-	len = BLEN(bp);
-	if(len < 64 && bp->next){
-		bp = concatblock(bp);
-		len = BLEN(bp);
+	/* make interface address part of packet */
+	h = bp->rptr - IPHDR - IPv4addrlen;
+	if(h < bp->base){
+		bp = padblock(bp, IPHDR + IPv4addrlen);
+		h = bp->rptr;
+		bp->rptr += IPHDR + IPv4addrlen;
 	}
+	memmove(h, ia+IPv4off, ia);
+
+	/* run the v4 filter */
 	c = nil;
 	while(mux != nil){
-		while(mux){
-			switch(mux->type){
-			case Tia:
-				p = ia;
-				break;
-			case Tsrc:
-				p = ip->src;
-				break;
-			case Tdst:
-				p = ip->dst;
-				break;
-			case Tdata:
-				p = ip->data;
-				if(mux->off+mux->len > len)
-					goto no;
-				break;
+		v = mux->val;
+		for(e = v + mux->n*mux->len; v < e; v = ve){
+			m = mux->mask;
+			hp = h + mux->off;
+			for(ve = v + mux->len; v < ve; v++){
+				if((*hp++ & *m++) != *v++)
+					break;
 			}
+			if(v == ve){
+				if(mux->c != nil)
+					c = mux->c;
+				mux = mux->yes;
+				if(
+				
 		}
-		if(mux->mask != nil){
-		} else {
-		}
-no:
+			
 		mux = mux->no;
 		continue;
 	}

@@ -5,19 +5,19 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
-Page*	lkpage(Segment*, ulong);
-void	lkpgfree(Page*);
-void	imagereclaim(void);
-void	imagechanreclaim(void);
+static void	imagereclaim(void);
+static void	imagechanreclaim(void);
 
 /* System specific segattach devices */
 #include "io.h"
 #include "segment.h"
 
+static Lock physseglock;
+
 #define NFREECHAN	64
 #define IHASHSIZE	64
 #define ihash(s)	imagealloc.hash[s%IHASHSIZE]
-struct
+static struct
 {
 	Lock;
 	Image	*free;
@@ -278,7 +278,7 @@ found:
 	return i;
 }
 
-void
+static void
 imagereclaim(void)
 {
 	Page *p;
@@ -303,7 +303,7 @@ imagereclaim(void)
  *  since close can block, this has to be called outside of
  *  spin locks.
  */
-void
+static void
 imagechanreclaim(void)
 {
 	Chan *c;
@@ -472,6 +472,33 @@ isoverlap(Proc *p, ulong va, int len)
 		   (va >= ns->base && va < ns->top))
 			return 1;
 	}
+	return 0;
+}
+
+int
+addphysseg(Physseg* new)
+{
+	Physseg *ps;
+
+	/*
+	 * Check not already entered and there is room
+	 * for a new entry and the terminating null entry.
+	 */
+	lock(&physseglock);
+	for(ps = physseg; ps->name; ps++){
+		if(strcmp(ps->name, new->name) == 0){
+			unlock(&physseglock);
+			return -1;
+		}
+	}
+	if(ps-physseg >= nelem(physseg)-2){
+		unlock(&physseglock);
+		return -1;
+	}
+
+	*ps = *new;
+	unlock(&physseglock);
+
 	return 0;
 }
 

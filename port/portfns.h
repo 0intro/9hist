@@ -1,5 +1,6 @@
 void		accounttime(void);
 void		addclock0link(void (*)(void));
+int		addphysseg(Physseg*);
 void		addrootfile(char*, uchar*, ulong);
 Block*		adjustblock(Block*, int);
 void		alarmkproc(void*);
@@ -60,7 +61,7 @@ Block*		devbread(Chan*, long, ulong);
 long		devbwrite(Chan*, Block*, ulong);
 Chan*		devclone(Chan*, Chan*);
 void		devcreate(Chan*, char*, int, ulong);
-void		devdir(Chan*, Qid, char*, long, char*, long, Dir*);
+void		devdir(Chan*, Qid, char*, vlong, char*, long, Dir*);
 long		devdirread(Chan*, char*, long, Dirtab*, int, Devgen*);
 Devgen		devgen;
 void		devinit(void);

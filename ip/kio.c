@@ -124,7 +124,7 @@ kseek(int fd, vlong offset, int whence)
 	case 2:
 		devtab[c->type]->stat(c, buf);
 		convM2D(buf, &dir);
-		c->offset = dir.length1 + offset;	/* BOTCH */
+		c->offset = dir.length + offset;
 		off = c->offset;
 		break;
 	}
