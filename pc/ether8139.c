@@ -487,29 +487,24 @@ rtl8139receive(Ether* edev)
 		p = ctlr->rbstart+capr;
 		capr = (capr+length) % ctlr->rblen;
 
-		bp = iallocb(length);
-		if(p+length >= ctlr->rbstart+ctlr->rblen){
-			l = ctlr->rbstart+ctlr->rblen - p;
-			if(bp != nil){
-				memmove(bp->rp, p, l);
+		if((bp = iallocb(length)) != nil){
+			if(p+length >= ctlr->rbstart+ctlr->rblen){
+				l = ctlr->rbstart+ctlr->rblen - p;
+				memmove(bp->wp, p, l);
 				bp->wp += l;
-				if(l == length)
-					bp->wp -= 4;
+				length -= l;
+				p = ctlr->rbstart;
 			}
-			length -= l;
-			p = ctlr->rbstart;
-		}
-		if(length > 0 && bp != nil){
-			length -= 4;
-			memmove(bp->wp, p, length);
-			bp->wp += length;
+			if(length > 0){
+				memmove(bp->wp, p, length);
+				bp->wp += length;
+			}
+			bp->wp -= 4;
+			etheriq(edev, bp, 1);
 		}
 
 		capr = ROUNDUP(capr, 4);
 		csr16w(ctlr, Capr, capr-16);
-
-		if(bp != nil)
-			etheriq(edev, bp, 1);
 	}
 }
 
