@@ -218,7 +218,7 @@ icmpnoconv(Fs *f, Block *bp)
 		return;
 	v4tov6(addr, p->src);
 	i = ipforme(f, addr);
-	if((i&Runi) == 0)
+	if(i != 0 && (i&Runi) == 0)
 		return;
 
 	netlog(f, Logicmp, "sending icmpnoconv -> %V\n", p->src);
