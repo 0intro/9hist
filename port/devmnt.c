@@ -517,7 +517,7 @@ mntopencreate(int type, Chan *c, char *name, int omode, ulong perm)
 	c->offset = 0;
 	c->mode = openmode(omode);
 	c->iounit = r->reply.iounit;
-	if(c->iounit > m->msize-IOHDRSZ)
+	if(c->iounit == 0 || c->iounit > m->msize-IOHDRSZ)
 		c->iounit = m->msize-IOHDRSZ;
 	c->flag |= COPEN;
 	poperror();
