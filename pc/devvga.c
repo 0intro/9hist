@@ -565,7 +565,7 @@ screenload(Rectangle r, uchar *data, int tl, int l)
 			*q ^= (*data^*q) & m;
 			if(tl > 2)
 				memmove(q+1, data+1, tl-2);
-			q[tl-1] ^= (data[tl-1]^q[l-1]) & mr;
+			q[tl-1] ^= (data[tl-1]^q[tl-1]) & mr;
 			q += gscreen.width*sizeof(ulong);
 			data += l;
 		}

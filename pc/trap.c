@@ -402,6 +402,8 @@ syscall(Ureg *ur, void *arg)
 
 	up->insyscall = 1;
 	up->pc = ur->pc;
+	up->dbgreg = ur;
+
 	if((ur->cs)&0xffff == KESEL)
 		panic("recursive system call");
 
