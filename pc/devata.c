@@ -669,7 +669,6 @@ ataread(Chan* c, void* a, long n, vlong off)
 			atapipart(dp);
 		qunlock(dp);
 		poperror();
-		return atapirwio(c, a, n, off, Cread2);
 	}
 	pp = &dp->p[PART(c->qid.path)];
 
@@ -681,7 +680,10 @@ ataread(Chan* c, void* a, long n, vlong off)
 
 	skip = off % dp->bytes;
 	for(rv = 0; rv < n; rv += i){
-		i = ataxfer(dp, pp, Cread, off+rv-skip, n-rv+skip, buf);
+		if(dp->atapi)
+			i = atapirwio(c, buf, n-rv+skip, off+rv-skip, Cread2);
+		else
+			i = ataxfer(dp, pp, Cread, off+rv-skip, n-rv+skip, buf);
 		if(i == 0)
 			break;
 		i -= skip;
@@ -1674,7 +1676,7 @@ atapiexec(Drive *dp)
 	}
 	
 	ILOCK(&cp->reglock);
-	cp->nsecs = 1;
+	cp->count = 0;
 	cp->sofar = 0;
 	cp->error = 0;
 	cp->cmd = Cpktcmd;
@@ -1734,8 +1736,8 @@ atapireqsense(Drive* dp)
 		return;
 	}
 
+	cp->nsecs = 1;
 	cp->len = 18;
-	cp->count = 0;
 	memset(cp->cmdblk, 0, sizeof(cp->cmdblk));
 	cp->cmdblk[0] = Creqsense;
 	cp->cmdblk[4] = 18;
@@ -1751,19 +1753,23 @@ atapireqsense(Drive* dp)
 }
 
 static long
-atapiio(Drive *dp, uchar *a, ulong len, vlong off, int cmd)
+atapiio(Drive *dp, uchar *buf, ulong len, vlong off, int cmd)
 {
-	ulong bn, n, o, m;
+	ulong start;
 	Controller *cp;
-	uchar *buf;
 	int retrycount;
 
-	cp = dp->cp;
+	/*
+	 *  cut transfer size down to disk buffer size
+	 */
+	start = off / dp->bytes;
+	if(len > Maxxfer)
+		len = Maxxfer;
+	len = (len + dp->bytes - 1) / dp->bytes;
+	if(len == 0)
+		return 0;
 
-	if(cmd == Cread2)
-		buf = smalloc(Maxxfer);
-	else
-		buf = 0;
+	cp = dp->cp;
 	qlock(cp->ctlrlock);
 	retrycount = 2;
 
@@ -1780,55 +1786,35 @@ retry:
 			}
 		}
 		cp->dp = 0;
-		if(cmd == Cread2)
-			free(buf);
+		cp->buf = 0;
 		qunlock(cp->ctlrlock);
 		nexterror();
 	}
 
-	if(cmd == Cread2)
-		cp->buf = buf;
-	else
-		cp->buf = a;
+	cp->buf = buf;
+	cp->nsecs = len;
+	cp->len = len*dp->bytes;
+	cp->cmd = cmd;
 	cp->dp = dp;
-	cp->len = dp->bytes;
 
-	n = len;
-	while(n > 0){
-		bn = off / dp->bytes;
-		if(off > dp->cap-dp->bytes)
-			break;
-		o = off % dp->bytes;
-		m = dp->bytes - o;
-		if(m > n)
-			m = n;
-		memset(cp->cmdblk, 0, 12);
-		cp->cmdblk[0] = cmd;
-		cp->cmdblk[2] = bn >> 24;
-		cp->cmdblk[3] = bn >> 16;
-		cp->cmdblk[4] = bn >> 8;
-		cp->cmdblk[5] = bn;
-		cp->cmdblk[7] = 0;
-		cp->cmdblk[8] = 1;
-		atapiexec(dp);
-		if(cp->count != dp->bytes){
-			print("short read\n");
-			break;
-		}
-		if(cmd == Cread2)
-			memmove(a, cp->buf + o, m);
-		else
-			cp->buf += m;
-		n -= m;
-		off += m;
-		a += m;
-	}
-	poperror();
-	if(cmd == Cread2)
-		free(buf);
+	memset(cp->cmdblk, 0, 12);
+	cp->cmdblk[0] = cmd;
+	cp->cmdblk[2] = start>>24;
+	cp->cmdblk[3] = start>>16;
+	cp->cmdblk[4] = start>>8;
+	cp->cmdblk[5] = start;
+	cp->cmdblk[7] = cp->nsecs>>8;
+	cp->cmdblk[8] = cp->nsecs;
+	atapiexec(dp);
+	if(cp->count != cp->len)
+		print("short read\n");
 	cp->dp = 0;
+	cp->buf = 0;
+	len = cp->count;
 	qunlock(cp->ctlrlock);
-	return len-n;
+	poperror();
+
+	return len;
 }
 
 static long
@@ -1901,8 +1887,8 @@ retry:
 	cp->buf = buf;
 	cp->dp = dp;
 
+	cp->nsecs = 1;
 	cp->len = 18;
-	cp->count = 0;
 	memset(cp->cmdblk, 0, sizeof(cp->cmdblk));
 	cp->cmdblk[0] = Creqsense;
 	cp->cmdblk[4] = 18;
@@ -1914,8 +1900,8 @@ retry:
 		error(Eio);
 	}
 
+	cp->nsecs = 1;
 	cp->len = 8;
-	cp->count = 0;
 	memset(cp->cmdblk, 0, sizeof(cp->cmdblk));
 	cp->cmdblk[0] = Ccapacity;
 	atapiexec(dp);
@@ -1946,7 +1932,6 @@ atapiintr(Controller *cp)
 {
 	uchar cause;
 	int count, loop, pbase;
-	uchar *addr;
 
 	pbase = cp->pbase;
 	cause = inb(pbase+Pcount) & 0x03;
@@ -1966,8 +1951,7 @@ atapiintr(Controller *cp)
 
 	case 0:						/* data out */
 	case 2:						/* data in */
-		addr = cp->buf;
-		if(addr == 0){
+		if(cp->buf == 0){
 			cp->lastcmd = cp->cmd;
 			cp->cmd = 0;
 			if(cp->status & Serr)
@@ -1993,14 +1977,13 @@ atapiintr(Controller *cp)
 			break;
 		}
 		count = inb(pbase+Pcyllsb)|(inb(pbase+Pcylmsb)<<8);
-		if (count > Maxxfer) 
-			count = Maxxfer;
+		if(cp->count+count > Maxxfer)
+			panic("hd%d: count %d, already %d\n", count, cp->count);
 		if(cause == 0)
-			outss(pbase+Pdata, addr, count/2);
+			outss(pbase+Pdata, cp->buf+cp->count, count/2);
 		else
-			inss(pbase+Pdata, addr, count/2);
-		cp->count = count;
-		cp->lastcmd = cp->cmd; 
+			inss(pbase+Pdata, cp->buf+cp->count, count/2);
+		cp->count += count;
 		break;
 
 	case 3:						/* status */

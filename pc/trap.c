@@ -140,17 +140,6 @@ trap(Ureg* ureg)
 		up->dbgreg = ureg;
 	}
 
-{
-ulong x, y;
-
-if(up)
-  x = (ulong)(up->kstack);
-else
-  x = (ulong)(m->stack);
-y = (ulong)&mach;
-if(y < x+512) panic("cpu%d: trap: kstack %lux %lux", m->machno, x, y);
-}
-
 	v = ureg->trap;
 	if(ctl = irqctl[v]){
 		if(ctl->isintr){
@@ -167,12 +156,22 @@ if(y < x+512) panic("cpu%d: trap: kstack %lux %lux", m->machno, x, y);
 		if(ctl->eoi)
 			ctl->eoi(v);
 
-		/* preemptive scheduling */
+		/* 
+		 *  preemptive scheduling.  to limit stack depth,
+		 *  make sure process has a chance to return from
+		 *  the current interrupt before being preempted a
+		 *  second time.
+		 */
 		if(ctl->isintr && v != VectorTIMER && v != VectorCLOCK)
 		if(up && up->state == Running)
 		if(anyhigher())
-		if(!active.exiting)
+		if(up->preempted == 0)
+		if(!active.exiting){
+			up->preempted = 1;
 			sched();
+			splhi();
+			up->preempted = 0;
+		}
 	}
 	else if(v <= 16 && user){
 		spllo();

@@ -135,7 +135,11 @@ ipifcbind(Conv *c, char **argv, int argc)
 	ifc->m = m;
 	ifc->minmtu = ifc->m->minmtu;
 	ifc->maxmtu = ifc->m->maxmtu;
-	ifc->conv->inuse++;
+	if(ifc->m->unbindonclose == 0){
+		lock(ifc->conv);
+		ifc->conv->inuse++;
+		unlock(ifc->conv);
+	}
 	ifc->ifcid++;
 
 	wunlock(ifc);
@@ -161,11 +165,15 @@ ipifcunbind(Ipifc *ifc)
 	wlock(ifc);
 
 	/* dissociate routes */
-	ifc->conv->inuse--;
+	if(ifc->m != nil && ifc->m->unbindonclose == 0){
+		lock(ifc->conv);
+		ifc->conv->inuse--;
+		unlock(ifc->conv);
+	}
 	ifc->ifcid++;
 
 	/* disassociate device */
-	if(ifc->m)
+	if(ifc->m != nil && ifc->m->unbind)
 		(*ifc->m->unbind)(ifc);
 	memset(ifc->dev, 0, sizeof(ifc->dev));
 	ifc->arg = nil;
@@ -188,6 +196,7 @@ ipifcunbind(Ipifc *ifc)
 	ifc->m = nil;
 	wunlock(ifc);
 	poperror();
+
 	return nil;
 }
 
@@ -294,7 +303,7 @@ ipifcclose(Conv *c)
 
 	ifc = (Ipifc*)c->ptcl;
 	m = ifc->m;
-	if(m == nil || m->unbindonclose)
+	if(m != nil && m->unbindonclose)
 		ipifcunbind(ifc);
 	unlock(c);
 }
