@@ -341,7 +341,6 @@ enum{
 	Qlights,
 	Qmsec,
 	Qnoise,
-	Qnoteid,
 	Qnull,
 	Qpgrpid,
 	Qpid,
@@ -369,7 +368,6 @@ Dirtab consdir[]={
 	"lights",	{Qlights},	0,		0220,
 	"msec",		{Qmsec},	NUMSIZE,	0444,
 	"noise",	{Qnoise},	0,		0220,
-	"noteid",	{Qnoteid},	NUMSIZE,	0444,
 	"null",		{Qnull},	0,		0666,
 	"pgrpid",	{Qpgrpid},	NUMSIZE,	0444,
 	"pid",		{Qpid},		NUMSIZE,	0444,
@@ -576,9 +574,6 @@ consread(Chan *c, void *buf, long n, ulong offset)
 
 	case Qpgrpid:
 		return readnum(offset, buf, n, up->pgrp->pgrpid, NUMSIZE);
-
-	case Qnoteid:
-		return readnum(offset, buf, n, up->noteid, NUMSIZE);
 
 	case Qpid:
 		return readnum(offset, buf, n, up->pid, NUMSIZE);

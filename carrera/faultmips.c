@@ -7,6 +7,8 @@
 #include	"../port/error.h"
 #include	"io.h"
 
+static int iwf;
+
 /*
  * Ask if the instruction at EPC could have cause this badvaddr
  */

@@ -82,10 +82,9 @@ VGAmode dfltmode =
 	0x0a, 0x00, 0x43, 0x1f, 
 };
 
+	Lock		screenlock;
+	GSubfont*	defont;
 extern	GSubfont	defont0;
-GSubfont		*defont;
-
-Lock	screenlock;
 
 GBitmap	gscreen =
 {
@@ -157,6 +156,7 @@ x3to32(uchar x)
 	y = (x<<(32-6))|(x<<(32-12))|(x<<(32-18))|(x<<(32-24))|(x<<(32-30));
 	return y;
 }
+
 static ulong
 x6to32(uchar x)
 {
@@ -183,7 +183,6 @@ screeninit(void)
 
 	/* allocate a new soft bitmap area */
 	gscreen.base = xalloc(1024*1024);
-
 	gbitblt(&gscreen, Pt(0, 0), &gscreen, gscreen.r, 0);
 
 	screenwin();
@@ -547,7 +546,8 @@ extern	cursorlock(Rectangle);
 extern	cursorunlock(void);
 /*
  * paste tile into screen.
- * tile is at location r, first pixel in *data.  tl is length of scan line to insert,
+ * tile is at location r, first pixel in *data. 
+ * tl is length of scan line to insert,
  * l is amount to advance data after each scan line.
  */
 void
