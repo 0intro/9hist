@@ -84,6 +84,7 @@ schedinit(void)		/* never returns */
 void
 sched(void)
 {
+	kmapinval();
 	if(up) {
 		splhi();
 		m->cs++;
