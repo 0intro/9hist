@@ -1242,9 +1242,7 @@ tcmadapter(int port, int irq, Pcidev* pcidev)
 	ctlr = malloc(sizeof(Ctlr));
 	ctlr->port = port;
 	ctlr->irq = irq;
-	if(pcidev != nil){
-		ctlr->pcidev = pcidev;
-	}
+	ctlr->pcidev = pcidev;
 
 	if(ctlrhead != nil)
 		ctlrtail->next = ctlr;
@@ -1490,6 +1488,7 @@ static Ctlr*
 tcm5XXpcmcia(Ether* ether)
 {
 	int i;
+	Ctlr *ctlr;
 
 	if(ether->type == nil)
 		return nil;
@@ -1497,7 +1496,9 @@ tcm5XXpcmcia(Ether* ether)
 	for(i = 0; tcmpcmcia[i] != nil; i++){
 		if(cistrcmp(ether->type, tcmpcmcia[i]))
 			continue;
-		return tcmadapter(ether->port, ether->irq, nil);
+		ctlr = tcmadapter(ether->port, ether->irq, nil);
+		ctlr->active = 1;
+		return ctlr;
 	}
 	return nil;
 }
