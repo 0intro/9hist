@@ -800,6 +800,31 @@ uartclose(Chan *c)
 }
 
 long
+uartstatus(Uart *up, void *buf, long n, ulong offset)
+{
+	uchar mstat;
+	uchar tstat;
+	char str[128];
+
+	str[0] = 0;
+	tstat = up->sticky[Mctl];
+	mstat = uartrdreg(up, Mstat);
+	if(mstat & Cts)
+		strcat(str, " cts");
+	if(mstat & Dsr)
+		strcat(str, " dsr");
+	if(mstat & Ring)
+		strcat(str, " ring");
+	if(mstat & Dcd)
+		strcat(str, " dcd");
+	if(tstat & Dtr)
+		strcat(str, " dtr");
+	if(tstat & Dtr)
+		strcat(str, " rts");
+	return readstr(offset, buf, n, str);
+}
+
+long
 uartread(Chan *c, void *buf, long n, ulong offset)
 {
 	USED(offset);
@@ -807,8 +832,9 @@ uartread(Chan *c, void *buf, long n, ulong offset)
 	case Qdir:
 		return devdirread(c, buf, n, uartdir, NUart, devgen);
 	case Qeia1ctl:
+		return uartstatus(&uart[1], buf, n, offset);
 	case Qeia0ctl:
-		return 0;
+		return uartstatus(&uart[0], buf, n, offset);
 	}
 	return streamread(c, buf, n);
 }
