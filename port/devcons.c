@@ -32,6 +32,10 @@ char	sysname[NAMELEN];
 static ulong	randomread(void*, ulong);
 static void	randominit(void);
 static void	seednrand(void);
+static long	qtimer(long, vlong);
+
+int qtimerentry = -1;
+vlong µoffset;
 
 void
 printinit(void)
@@ -356,6 +360,7 @@ enum{
 	Qsysname,
 	Qsysstat,
 	Qtime,
+	Qtimer,
 	Quser,
 };
 
@@ -383,6 +388,7 @@ static Dirtab consdir[]={
 	"sysname",	{Qsysname},	0,		0664,
 	"sysstat",	{Qsysstat},	0,		0666,
 	"time",		{Qtime},	NUMSIZE,	0664,
+	"timer",	{Qtimer},	0,		0444,
  	"user",		{Quser},	NAMELEN,	0666,
 };
 
@@ -427,6 +433,13 @@ static void
 consinit(void)
 {
 	randominit();
+
+	if (qtimerentry < 0) {
+		while (consdir[++qtimerentry].qid.path != Qtimer)
+			;
+		µoffset = (vlong)1000000*rtctime() -
+			  (vlong)1000*TK2MS(MACHP(0)->ticks);
+	}
 }
 
 static Chan*
@@ -450,6 +463,9 @@ conswalk(Chan *c, char *name)
 static void
 consstat(Chan *c, char *dp)
 {
+	if (c->qid.path == Qtimer)
+		consdir[qtimerentry].length = µoffset +
+			(vlong)1000*TK2MS(MACHP(0)->ticks);
 	devstat(c, dp, consdir, nelem(consdir), devgen);
 }
 
@@ -498,12 +514,14 @@ consread(Chan *c, void *buf, long n, vlong off)
 	char tmp[128];		/* must be >= 6*NUMSIZE */
 	char *cbuf = buf;
 	int ch, i, k, id, eol;
-	ulong offset = off;
+	vlong offset = off;
 
 	if(n <= 0)
 		return n;
 	switch(c->qid.path & ~CHDIR){
 	case Qdir:
+		consdir[qtimerentry].length = µoffset +
+			(vlong)1000*TK2MS(MACHP(0)->ticks);
 		return devdirread(c, buf, n, consdir, nelem(consdir), devgen);
 
 	case Qcons:
@@ -580,16 +598,19 @@ consread(Chan *c, void *buf, long n, vlong off)
 		return n;
 
 	case Qpgrpid:
-		return readnum(offset, buf, n, up->pgrp->pgrpid, NUMSIZE);
+		return readnum((ulong)offset, buf, n, up->pgrp->pgrpid, NUMSIZE);
 
 	case Qpid:
-		return readnum(offset, buf, n, up->pid, NUMSIZE);
+		return readnum((ulong)offset, buf, n, up->pid, NUMSIZE);
 
 	case Qppid:
-		return readnum(offset, buf, n, up->parentpid, NUMSIZE);
+		return readnum((ulong)offset, buf, n, up->parentpid, NUMSIZE);
 
 	case Qtime:
-		return readnum(offset, buf, n, rtctime(), 12);
+		return readnum((ulong)offset, buf, n, rtctime(), 12);
+
+	case Qtimer:
+		return qtimer(n, offset);
 
 	case Qclock:
 		k = offset;
@@ -615,22 +636,22 @@ consread(Chan *c, void *buf, long n, vlong off)
 		return authentread(c, cbuf, n);
 
 	case Qhostowner:
-		return readstr(offset, buf, n, eve);
+		return readstr((ulong)offset, buf, n, eve);
 
 	case Qhostdomain:
-		return readstr(offset, buf, n, hostdomain);
+		return readstr((ulong)offset, buf, n, hostdomain);
 
 	case Quser:
-		return readstr(offset, buf, n, up->user);
+		return readstr((ulong)offset, buf, n, up->user);
 
 	case Qnull:
 		return 0;
 
 	case Qmsec:
-		return readnum(offset, buf, n, TK2MS(MACHP(0)->ticks), NUMSIZE);
+		return readnum((ulong)offset, buf, n, TK2MS(MACHP(0)->ticks), NUMSIZE);
 
 	case Qhz:
-		return readnum(offset, buf, n, HZ, NUMSIZE);
+		return readnum((ulong)offset, buf, n, HZ, NUMSIZE);
 
 	case Qsysstat:
 		b = smalloc(conf.nmach*(NUMSIZE*8+1) + 1);	/* +1 for NUL */
@@ -657,7 +678,7 @@ consread(Chan *c, void *buf, long n, vlong off)
 				*bp++ = '\n';
 			}
 		}
-		n = readstr(offset, buf, n, b);
+		n = readstr((ulong)offset, buf, n, b);
 		free(b);
 		return n;
 
@@ -666,10 +687,10 @@ consread(Chan *c, void *buf, long n, vlong off)
 			palloc.user-palloc.freecount,
 			palloc.user, conf.nswap-swapalloc.free, conf.nswap);
 
-		return readstr(offset, buf, n, tmp);
+		return readstr((ulong)offset, buf, n, tmp);
 
 	case Qsysname:
-		return readstr(offset, buf, n, sysname);
+		return readstr((ulong)offset, buf, n, sysname);
 
 	case Qrandom:
 		return randomread(buf, n);
@@ -681,7 +702,7 @@ consread(Chan *c, void *buf, long n, vlong off)
 		n = 0;
 		for(i = 0; devtab[i] != nil; i++)
 			n += snprint(b+n, READSTR-n, "#%C %s\n", devtab[i]->dc,  devtab[i]->name);
-		n = readstr(offset, buf, n, b);
+		n = readstr((ulong)offset, buf, n, b);
 		free(b);
 		return n;
 
@@ -834,6 +855,9 @@ conswrite(Chan *c, void *va, long n, vlong off)
 		if(sysname[n-1] == '\n')
 			sysname[n-1] = 0;
 		break;
+
+	case Qtimer:
+		error(Eperm);
 
 	default:
 		print("conswrite: %d\n", c->qid.path);
@@ -1013,5 +1037,22 @@ randomread(void *xp, ulong n)
 
 	wakeup(&rb.producer);
 
+	return n;
+}
+
+static long
+qtimer(long n, vlong offset) {
+	/* block until time ≥ offset;
+	 * add n to offset
+	 * return increment to offset (i.e., n)
+	 */
+	vlong time, rathole;
+
+	for (;;) {
+		rathole = µoffset/1000;
+		time = offset/1000 - (rathole + TK2MS(MACHP(0)->ticks));
+		if (time <= 0) break;
+		tsleep(&up->sleep, return0, 0, (long)time);
+	}
 	return n;
 }

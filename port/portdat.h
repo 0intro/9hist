@@ -192,7 +192,7 @@ struct Dirtab
 {
 	char	name[NAMELEN];
 	Qid	qid;
-	long	length;
+	Length;
 	long	perm;
 };
 
