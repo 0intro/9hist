@@ -931,7 +931,7 @@ genrandom(void*)
 	}
 }
 
-void
+static void
 randominit(void)
 {
 	rb.ep = rb.buf + sizeof(rb.buf);

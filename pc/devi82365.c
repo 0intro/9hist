@@ -1265,7 +1265,7 @@ memspace(Slot *pp, int asize, int lsize, int host)
 	}
 }
 
-void
+static void
 tentry(Slot *pp, int ttype)
 {
 	uchar c, i, feature;
@@ -1338,7 +1338,7 @@ tentry(Slot *pp, int ttype)
 	pp->configed++;
 }
 
-void
+static void
 tvers1(Slot *pp, int ttype)
 {
 	uchar c, major, minor;

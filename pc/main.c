@@ -128,6 +128,10 @@ init0(void)
 		strcat(tstr, " %s");
 		ksetterm(tstr);
 		ksetenv("cputype", "386");
+		if(cpuserver)
+			ksetenv("service", "cpu");
+		else
+			ksetenv("service", "terminal");
 		for(i = 0; i < nconf; i++)
 			if(confname[i])
 				ksetenv(confname[i], confval[i]);
