@@ -1356,7 +1356,7 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 				tcb->kacounter = MAXBACKOFF;
 				tcpsetstate(s, Finwait2);
 				tcb->katimer.start = MSL2 * (1000 / MSPTICK);
-				tcpgo(tpriv, &tcb->timer);
+				tcpgo(tpriv, &tcb->katimer);
 			}
 			break;
 		case Finwait2:
