@@ -30,7 +30,7 @@ enum
 	MaxQ,
 
 	Maxbridge=	4,
-	Maxport=	16,		// power of 2
+	Maxport=	32,		// power of 2
 	CacheHash=	257,		// prime
 	CacheLook=	5,		// how many cache entries to examine
 	CacheSize=	(CacheHash+CacheLook-1),
