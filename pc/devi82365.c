@@ -110,6 +110,7 @@ enum
 	Ti82365,
 	Tpd6710,
 	Tpd6720,
+	Tvg46x,
 };
 struct I82365
 {
@@ -189,6 +190,7 @@ static long	pcmread(int, int, void*, long, ulong);
 static long	pcmwrite(int, int, void*, long, ulong);
 
 void i82365reset(void);
+static void i82365dump(Slot*);
 
 /*
  *  reading and writing card registers
@@ -508,6 +510,7 @@ static char *chipname[] =
 [Ti82365]	"Intel 82365SL",
 [Tpd6710]	"Cirrus Logic PD6710",
 [Tpd6720]	"Cirrus Logic PD6720",
+[Tvg46x]	"Vadem VG-46x",
 };
 
 static I82365*
@@ -549,12 +552,29 @@ i82386probe(int x, int d, int dev)
 		break;
 	}
 
+	if(cp->type == Ti82365){
+		outb(x, 0x0E + (dev<<7));
+		outb(x, 0x37 + (dev<<7));
+		outb(x, 0x3A + (dev<<7));
+		c = inb(d);
+		outb(d, c|0xC0);
+		outb(x, Rid + (dev<<7));
+		c = inb(d);
+		print("ctlr id %uX\n", c & 0xFF);
+		if(c & 0x08)
+			cp->type = Tvg46x;
+		outb(x, 0x3A + (dev<<7));
+		c = inb(d);
+		outb(d, c & ~0xC0);
+	}
+
 	print("pcmcia controller%d is a %d slot %s\n", ncontroller, cp->nslot,
 		chipname[cp->type]);
 
 	/* low power mode */
 	outb(x, Rmisc2 + (dev<<7));
-	outb(d, Flowpow);
+	c = inb(d);
+	outb(d, c & ~Flowpow);
 
 	controller[ncontroller++] = cp;
 	return cp;
@@ -566,9 +586,11 @@ i82365dump(Slot *pp)
 	int i;
 
 	for(i = 0; i < 0x40; i++){
-		if((i&0x7) == 0)
-			print("\n%ux:	", i);
-		print("%ux ", rdreg(pp, i));
+		if((i&0x0F) == 0)
+			print("\n%2.2uX:	", i);
+		if(((i+1) & 0x0F) == 0x08)
+			print(" - ");
+		print("%2.2uX ", rdreg(pp, i));
 	}
 	print("\n");
 }
@@ -611,6 +633,7 @@ i82365reset(void)
 
 			/* interrupt on status change */
 			wrreg(pp, Rcscic, ((PCMCIAvec-Int0vec)<<4) | Fchangeena);
+			rdreg(pp, Rcsc);
 		}
 	}
 
@@ -897,7 +920,7 @@ i82365write(Chan *c, void *a, long n, ulong offset)
 
 /*
  *  configure the Slot for IO.  We assume very heavily that we can read
- *  cofiguration info from the CIS.  If not, we won't set up correctly.
+ *  configuration info from the CIS.  If not, we won't set up correctly.
  */
 static int
 pcmio(int slotno, ISAConf *isa)
