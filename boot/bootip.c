@@ -97,33 +97,6 @@ configip(void)
 }
 
 void
-configtcp(Method*)
-{
-	sleep(100);
-	print("t");
-	sleep(100);
-	configip();
-	sleep(100);
-	print(".");
-	sleep(100);
-}
-
-int
-authtcp(void)
-{
-	return -1;
-}
-
-int
-connecttcp(void)
-{
-	char buf[2*NAMELEN];
-
-	sprint(buf, "tcp!%I!564", fsip);
-	return dial(buf, 0, 0, 0);
-}
-
-void
 configil(Method*)
 {
 	configip();
@@ -145,6 +118,34 @@ connectil(void)
 
 	sprint(buf, "il!%I!17008", fsip);
 	return dial(buf, 0, 0, 0);
+}
+
+void
+configtcp(Method*)
+{
+	configip();
+}
+
+int
+authtcp(void)
+{
+	char buf[2*NAMELEN];
+
+	sprint(buf, "tcp!%I!567", auip);
+	return dial(buf, 0, 0, 0);
+}
+
+int
+connecttcp(void)
+{
+	char buf[2*NAMELEN];
+	int fd;
+
+	sprint(buf, "tcp!%I!564", fsip);
+	fd = dial(buf, 0, 0, 0);
+	if(fd < 0)
+		return -1;
+	return pushfcall(fd);
 }
 
 static int

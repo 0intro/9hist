@@ -361,7 +361,6 @@ cunmount(Chan *mnt, Chan *mounted)
 			mountfree(f);
 			if(m->mount == nil) {
 				*l = m->hash;
-				wunlock(&pg->ns);
 				cclose(m->from);
 				wunlock(&m->lock);
 				putmhead(m);

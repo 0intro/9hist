@@ -15,6 +15,7 @@ extern int	cpuflag;
 extern char	cputype[];
 extern int	fflag;
 extern int	kflag;
+extern int pushfcall(int);
 extern Method	method[];
 extern void	(*pword)(int, Method*);
 extern char	sys[];

@@ -99,8 +99,6 @@ struct OneWay
 	int		(*auth)(OneWay*, uchar *buf, int len);
 
 	void	*compstate;
-	ulong	compseq;
-	ulong	compwindow;
 	int		(*comp)(Conv*, int subtype, ulong seq, Block **);
 };
 
@@ -1310,8 +1308,6 @@ print("pad too big\n");
 			c->lstats.inBadComp++;
 			return nil;
 		}
-		c->in.compseq = c->in.seq;
-		c->in.compwindow = c->in.window;
 		c->lstats.inDataBytes += BLEN(b);
 		if(control)
 			break;
@@ -2238,13 +2234,17 @@ thwackcomp(Conv *c, int, ulong seq, Block **bp)
 {
 	Block *b, *bb;
 	int nn;
+	ulong ackseq;
+	uchar mask;
 
 	// add ack info
 	b = padblock(*bp, 4);
-	b->rp[0] = (c->in.compwindow>>1) & 0xff;
-	b->rp[1] = c->in.compseq>>16;
-	b->rp[2] = c->in.compseq>>8;
-	b->rp[3] = c->in.compseq;
+
+	ackseq = unthwackstate(c->in.compstate, &mask);
+	b->rp[0] = mask;
+	b->rp[1] = ackseq>>16;
+	b->rp[2] = ackseq>>8;
+	b->rp[3] = ackseq;
 
 	bb = allocb(BLEN(b));
 	nn = thwack(c->out.compstate, bb->wp, b->rp, BLEN(b), seq, c->lstats.outCompStats);
