@@ -22,7 +22,7 @@ mapstack(Proc *p)
 	tp = p->pidonmach[m->machno];
 	if(tp == 0)
 		tp = newtlbpid(p);
-/*	if(p->upage->va != (USERADDR|(p->pid&0xFFFF)))
+/*	if(p->upage->va != (USERADDR|(p->pid&0xFFFF)) && p->pid != 0)
 		panic("mapstack %d 0x%lux 0x%lux", p->pid, p->upage->pa, p->upage->va);
 */
 	/* don't set m->pidhere[tp] because we're only writing entry 0 */

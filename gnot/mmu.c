@@ -23,7 +23,7 @@ mapstack(Proc *p)
 	MMU *mm, *mn, *me;
 
 
-	if(p->upage->va != (USERADDR|(p->pid&0xFFFF)))
+	if(p->upage->va != (USERADDR|(p->pid&0xFFFF)) && p->pid != 0)
 		panic("mapstack %d 0x%lux 0x%lux", p->pid, p->upage->pa, p->upage->va);
 	tlbvirt = USERADDR;
 	tlbphys = PPN(p->upage->pa) | PTEVALID | PTEKERNEL;

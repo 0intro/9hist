@@ -61,6 +61,7 @@ newswap(void)
 		swapalloc.alloc = look+1;
 
 	*look = 1;
+	swapalloc.free--;
 	unlock(&swapalloc);
 	return (look-swapalloc.swmap) * BY2PG; 
 }

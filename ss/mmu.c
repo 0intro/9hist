@@ -50,7 +50,7 @@ mapstack(Proc *p)
 		tp = newpid(p);
 		p->pidonmach[m->machno] = tp;
 	}
-	if(p->upage->va != (USERADDR|(p->pid&0xFFFF)))
+	if(p->upage->va != (USERADDR|(p->pid&0xFFFF)) && p->pid != 0)
 		panic("mapstack %s %d %lux 0x%lux 0x%lux", p->text, p->pid, p->upage, p->upage->pa, p->upage->va);
 	tlbphys = PPN(p->upage->pa)|PTEVALID|PTEWRITE|PTEKERNEL|PTEMAINMEM;
 	putcontext(tp-1);

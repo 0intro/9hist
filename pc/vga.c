@@ -52,6 +52,7 @@ enum
 	 Smmask=	 0x02,		/*  map mask */
 	CRX=		0x3D4,		/* index to crt registers */
 	CR=		0x3D5,		/* crt registers */
+	 Cvertend=	 0x12,		/*  vertical display end */
 	 Cmode=		 0x17,		/*  mode register */
 	 Cmsl=		 0x09,		/*  max scan line */
 	ARX=		0x3C0,		/* index to attribute registers */
@@ -106,6 +107,68 @@ vgardplane(int p)
 }
 
 /*
+ *  2 bit deep display.  the bits are adjacent.  maybe this
+ *  will work
+ *	4 color
+ *	640x480
+ */
+vga2(void)
+{
+	int i;
+	arout(Acpe, 0x00);	/* disable planes for output */
+
+	gscreen.ldepth = 1;
+	arout(Amode, 0x01);	/* color graphics mode */
+	grout(Gmisc, 0x01);	/* graphics mode */
+	grout(Gmode, 0x30);	/* 2 bits deep, even bytes are
+				 * planes 0 and 2, odd are planes
+				 * 1 and 3 */
+	grout(Grot, 0x00);	/* CPU writes bytes to video
+				 * mem without modifications */
+	crout(Cmode, 0xe3);	/* turn off address wrap &
+				 * word mode */
+	crout(Cmsl, 0x40);	/* 1 pixel per scan line */
+	crout(Cvertend, MAXY);	/* 480 lne display */
+	srout(Smode, 0x06);	/* extended memory, odd/even */
+	srout(Sclock, 0x01);	/* 8 bits/char */
+	srout(Smmask, 0x0f);	/* enable 2 planes for writing */
+
+	arout(Acpe, 0x0f);	/* enable 2 planes for output */
+	for(i = 0; i < 128*1024;){
+		((uchar*)SCREENMEM)[i++] = 0x1b;
+		((uchar*)SCREENMEM)[i++] = 0xe4;
+	}
+	for(;;);
+}
+
+/*
+ *  set up like vga mode 0x11
+ *	2 color
+ *	640x480
+ */
+vga1(void)
+{
+	arout(Acpe, 0x00);	/* disable planes for output */
+
+	gscreen.ldepth = 0;
+	arout(Amode, 0x01);	/* color graphics mode */
+	grout(Gmisc, 0x01);	/* graphics mode */
+	grout(Gmode, 0x00);	/* 1 bit deep */
+	grout(Grot, 0x00);	/* CPU writes bytes to video
+				 * mem without modifications */
+	crout(Cmode, 0xe3);	/* turn off address wrap &
+				 * word mode */
+	crout(Cmsl, 0x40);	/* 1 pixel per scan line */
+	crout(Cvertend, MAXY);	/* 480 lne display */
+	srout(Smode, 0x06);	/* extended memory,
+				 * odd/even off */
+	srout(Sclock, 0x01);	/* 8 bits/char */
+	srout(Smmask, 0x0f);	/* enable 4 planes for writing */
+
+	arout(Acpe, 0x0f);	/* enable 4 planes for output */
+}
+
+/*
  *  Set up for 4 separately addressed bit planes.  Each plane is 
  */
 void
@@ -115,17 +178,7 @@ screeninit(void)
 	int c;
 	ulong *l;
 
-	arout(Acpe, 0x0f);	/* enable all planes */
-	arout(Amode, 0x01);	/* graphics mode - 4 bit pixels */
-	grout(Gmisc, 0x01);	/* graphics mode */
-	grout(Gmode, 0x00);	/* write mode 0, read mode 0 */
-	grout(Grot, 0x00);	/* CPU writes bytes to video mem without modifications */
-	crout(Cmode, 0xe3);	/* turn off address wrap & word mode */
-	crout(Cmsl, 0x40);	/* 1 pixel per scan line */
-	srout(Smode, 0x06);	/* extended memory, odd/even off */
-	srout(Sclock, 0x01);	/* 8 bits/char */
-	srout(Smmask, 0x0f);	/* enable all 4 color planes for writing */
-
+	vga1();
 	/*
 	 *  swizzle the font longs.
 	 *  we do it here since the font is initialized with big
