@@ -370,7 +370,7 @@ confinit(void)
 	}
 	conf.npage = i*1024/4;
 
-	conf.npte = 50000;
+	conf.npte = 4*conf.npage;
 	conf.nmod = 2000;
 	conf.nalarm = 10000;
 	conf.norig = 500;
