@@ -170,6 +170,8 @@ struct Mach
 	int	syscall;
 	int	load;
 	int	intr;
+	vlong	fastclock;		/* last sampled value */
+	int	flushmmu;		/* make current proc flush it's mmu state */
 
 	ulong	spuriousintr;
 	ulong	lastintr;
@@ -186,8 +188,6 @@ struct Mach
 	vlong	mtrrdef;
 	vlong	mtrrfix[11];
 	vlong	mtrrvar[32];		/* 256 max. */
-
-	vlong	fastclock;		/* last sampled value */
 
 	int	stack[1];
 };

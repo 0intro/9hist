@@ -105,6 +105,12 @@ clock(Ureg *ur)
 		unlock(&clock0lock);
 	}
 
+	if(m->flushmmu){
+		if(up)
+			flushmmu();
+		m->flushmmu = 0;
+	}
+
 	if(up == 0 || up->state != Running)
 		return;
 

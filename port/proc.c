@@ -921,6 +921,51 @@ procdump(void)
 	}
 }
 
+/*
+ *  wait till all processes have flushed their mmu
+ *  state about segement s
+ */
+void
+procflushseg(Segment *s)
+{
+	int i, ns, nm, nwait;
+	Proc *p;
+
+	/*
+	 *  tell all processes with this
+	 *  segment to flush their mmu's
+	 */
+	nwait = 0;
+	for(i=0; i<conf.nproc; i++) {
+		p = &procalloc.arena[i];
+		if(p->state == Dead)
+			continue;
+		for(ns = 0; ns < NSEG; ns++)
+			if(p->seg[ns] == s){
+				p->newtlb = 1;
+				for(nm = 0; nm < conf.nmach; nm++){
+					if(MACHP(nm)->proc == p){
+						MACHP(nm)->flushmmu = 1;
+						nwait++;
+					}
+				}
+				break;
+			}
+	}
+
+	if(nwait == 0)
+		return;
+
+	/*
+	 *  wait for all processors to take a clock interrupt
+	 *  and flush their mmu's
+	 */
+	for(nm = 0; nm < conf.nmach; nm++)
+		if(MACHP(nm) != m)
+			while(MACHP(nm)->flushmmu)
+				sched();
+}
+
 void
 scheddump(void)
 {

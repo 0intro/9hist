@@ -1632,7 +1632,7 @@ eepromdata(int port, int offset)
 int
 etherelnk3reset(Ether* ether)
 {
-	int an, busmaster, did, i, phyaddr, port, rxearly, rxstatus9, x, xcvr;
+	int anar, anlpar, busmaster, did, i, phyaddr, port, rxearly, rxstatus9, x, xcvr;
 	Block *bp, **bpp;
 	Adapter *ap;
 	uchar ea[Eaddrlen];
@@ -1757,22 +1757,33 @@ else
 		scanphy(port);
 		 */
 		phyaddr = 24;
-		an = miir(port, phyaddr, 0x04);
-		an &= miir(port, phyaddr, 0x05) & 0x03E0;
-		XCVRDEBUG("mii an: %uX\n", an);
+		anar = miir(port, phyaddr, 0x04);
+		anlpar = miir(port, phyaddr, 0x05) & 0x03E0;
+		anar &= anlpar;
+		miir(port, phyaddr, 0x00);
+		XCVRDEBUG("mii an: %uX r0:%uX r1:%uX\n",
+			anar, anlpar, miir(port, phyaddr, 0x00), miir(port, phyaddr, 0x01));
 		for(i = 0; i < ether->nopt; i++){
 			if(cistrcmp(ether->opt[i], "fullduplex") == 0)
-				an |= 0x0100;
+				anar |= 0x0100;
 			else if(cistrcmp(ether->opt[i], "100BASE-TXFD") == 0)
-				an |= 0x0100;
+				anar |= 0x0100;
 			else if(cistrcmp(ether->opt[i], "force100") == 0)
-				an |= 0x0080;
+				anar |= 0x0080;
 		}
-		XCVRDEBUG("mii an: %uX\n", an);
-		if(an & 0x380)
+		XCVRDEBUG("mii anar: %uX\n", anar);
+		if(anar & 0x0100){		/* 100BASE-TXFD */
 			ether->mbps = 100;
-		if(an & 0x0140)
 			setfullduplex(port);
+		}
+		else if(anar & 0x0200)		/* 100BASE-T4 */
+			;
+		else if(anar & 0x0080)		/* 100BASE-TX */
+			ether->mbps = 100;
+		else if(anar & 0x0040)		/* 10BASE-TFD */
+			setfullduplex(port);
+		else				/* 10BASE-T */
+			;
 		break;
 
 	case xcvr100BaseTX:

@@ -460,9 +460,16 @@ mfreeseg(Segment *s, ulong start, int pages)
 		j = 0;
 	}
 out:
-	/* wait for others to get fix their tlb's and then free the pages */
-	if((s->type&SG_TYPE) == SG_SHARED){
+	/* flush this seg in all other processes */
+	i = s->type&SG_TYPE;
+	switch(i){
+	case SG_SHARED:
+	case SG_SHDATA:
+		procflushseg(s);
+		break;
 	}
+
+	/* free the pages */
 	for(pg = list; pg != nil; pg = list){
 		list = list->next;
 		putpage(pg);
