@@ -5,50 +5,12 @@
 #include "fns.h"
 #include "../port/error.h"
 
-struct {
+struct
+{
 	ulong	locks;
 	ulong	glare;
 	ulong	inglare;
 } lockstats;
-
-typedef struct PC {
-	ulong	pc;
-	int	count;
-} PC;
-
-PC lpcs[1024];
-
-void
-incpcref(Lock *l)
-{
-	int i;
-
-	for(i = 0; i < nelem(lpcs)-1; i++){
-		if(lpcs[i].pc == l->pc)
-			break;
-		if(lpcs[i].pc == 0){
-			lpcs[i].pc = l->pc;
-			break;
-		}
-	}
-	lpcs[i].count++;
-}
-
-void
-decpcref(Lock *l)
-{
-	int i;
-
-	for(i = 0; i < nelem(lpcs)-1; i++){
-		if(lpcs[i].pc == l->pc)
-			break;
-		if(lpcs[i].pc == 0){
-			lpcs[i].pc = l->pc;
-			break;
-		}
-	}
-	lpcs[i].count--;
-}
 
 static void
 dumplockmem(char *tag, Lock *l)
@@ -69,8 +31,6 @@ lockloop(Lock *l, ulong pc)
 	Proc *p;
 
 	p = l->p;
-print("lock loop %p\n", l);
-delay(1000);
 	print("lock 0x%lux loop key 0x%lux pc 0x%lux held by pc 0x%lux proc %lud\n",
 		l, l->key, pc, l->pc, p ? p->pid : 0);
 	dumpaproc(up);
@@ -81,66 +41,49 @@ delay(1000);
 		sched();
 }
 
-void
+int
 lock(Lock *l)
 {
-	int i, cansched;
-	ulong pc, oldpri;
+	int i;
+	ulong pc;
 
 	pc = getcallerpc(&l);
 
-	lockstats.locks++;	/* prevent being scheded */
-	if (up) up->nlocks++;
+	lockstats.locks++;
+	if(up)
+		up->nlocks++;	/* prevent being scheded */
 	if(tas(&l->key) == 0){
 		if (up) up->lastlock = l;
 		l->pc = pc;
-//		incpcref(l);
 		l->p = up;
 		l->isilock = 0;
-		return;
+		return 0;
 	}
-	if (up) up->nlocks--;	/* didn't get the lock, allow scheding */
+	if(up)
+		up->nlocks--;	/* didn't get the lock, allow scheding */
 
 	lockstats.glare++;
-	cansched = up != nil && up->state == Running;
-	if(cansched){
-		oldpri = up->priority;
-		up->priority = PriLock;
-		up->lockwait = l;
-	} else
-		oldpri = 0;
-
 	for(;;){
 		lockstats.inglare++;
 		i = 0;
 		while(l->key){
-			if(conf.nmach < 2 && cansched){
-				if (i++ > 1000){
-					i = 0;
-					lockloop(l, pc);
-				}
-				sched();
-			} else {
-				if(i++ > 100000000){
-					i = 0;
-					lockloop(l, pc);
-				}
+			if(i++ > 100000000){
+				i = 0;
+				lockloop(l, pc);
 			}
 		}
-		if (up) up->nlocks++;
+		if(up)
+			up->nlocks++;
 		if(tas(&l->key) == 0){
-			if (up) up->lastlock = l;
+			if(up)
+				up->lastlock = l;
 			l->pc = pc;
-//			incpcref(l);
 			l->p = up;
 			l->isilock = 0;
-			if(cansched){
-				up->lockwait = nil;
-				up->priority = oldpri;
-			}
-			return;
+			return 1;
 		}
-		if (up) up->nlocks--;
+		if(up)
+			up->nlocks--;
 	}
 }
 
@@ -148,15 +91,15 @@ void
 ilock(Lock *l)
 {
 	ulong x;
-	ulong pc, oldpri;
-	int cansched;
+	ulong pc;
 
 	pc = getcallerpc(&l);
 	lockstats.locks++;
 
 	x = splhi();
 	if(tas(&l->key) == 0){
-		if (up) up->lastlock = l;
+		if(up)
+			up->lastlock = l;
 		l->sr = x;
 		l->pc = pc;
 		l->p = up;
@@ -165,13 +108,6 @@ ilock(Lock *l)
 	}
 
 	lockstats.glare++;
-	cansched = up != nil && up->state == Running;
-	if(cansched){
-		oldpri = up->priority;
-		up->lockwait = l;
-		up->priority = PriLock;
-	} else
-		oldpri = 0;
 	if(conf.nmach < 2){
 		dumplockmem("ilock:", l);
 		panic("ilock: no way out: pc %luX\n", pc);
@@ -189,10 +125,6 @@ ilock(Lock *l)
 			l->pc = pc;
 			l->p = up;
 			l->isilock = 1;
-			if(cansched){
-				up->lockwait = nil;
-				up->priority = oldpri;
-			}
 			return;
 		}
 	}
@@ -201,15 +133,17 @@ ilock(Lock *l)
 int
 canlock(Lock *l)
 {
-	if (up) up->nlocks++;
+	if(up)
+		up->nlocks++;
 	if(tas(&l->key)){
-		if (up) up->nlocks--;
+		if(up)
+			up->nlocks--;
 		return 0;
 	}
 
-	if (up) up->lastlock = l;
+	if(up)
+		up->lastlock = l;
 	l->pc = getcallerpc(&l);
-//	incpcref(l);
 	l->p = up;
 	l->isilock = 0;
 	return 1;
@@ -224,8 +158,7 @@ unlock(Lock *l)
 		print("unlock of ilock: pc %lux, held by %lux\n", getcallerpc(&l), l->pc);
 	if(l->p != up)
 		print("unlock: up changed: pc %lux, acquired at pc %lux, lock p 0x%p, unlock up 0x%p\n", getcallerpc(&l), l->pc, l->p, up);
-//	decpcref(l);
-	l->pc = 0;
+	l->pc = ~0;
 	l->key = 0;
 	if (up && --up->nlocks == 0 && up->delaysched){
 		up->delaysched = 0;
@@ -245,7 +178,7 @@ iunlock(Lock *l)
 		print("iunlock of lock: pc %lux, held by %lux\n", getcallerpc(&l), l->pc);
 
 	sr = l->sr;
-	l->pc = 0;
+	l->pc = ~1;
 	l->key = 0;
 	coherence();
 

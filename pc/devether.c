@@ -343,87 +343,120 @@ parseether(uchar *to, char *from)
 	return 0;
 }
 
-static void
-etherreset(void)
+static Ether*
+etherprobe(int cardno, int ctlrno)
 {
+	int i;
 	Ether *ether;
-	int i, n, ctlrno;
-	char name[32], buf[128];
+	char buf[128], name[32];
 
-	for(ether = 0, ctlrno = 0; ctlrno < MaxEther; ctlrno++){
-		if(ether == 0)
-			ether = malloc(sizeof(Ether));
-		memset(ether, 0, sizeof(Ether));
-		ether->ctlrno = ctlrno;
-		ether->tbdf = BUSUNKNOWN;
-		ether->mbps = 10;
-		ether->minmtu = ETHERMINTU;
-		ether->maxmtu = ETHERMAXTU;
-		if(isaconfig("ether", ctlrno, ether) == 0)
-			continue;
-		for(n = 0; cards[n].type; n++){
-			if(cistrcmp(cards[n].type, ether->type))
+	ether = malloc(sizeof(Ether));
+	memset(ether, 0, sizeof(Ether));
+	ether->ctlrno = ctlrno;
+	ether->tbdf = BUSUNKNOWN;
+	ether->mbps = 10;
+	ether->minmtu = ETHERMINTU;
+	ether->maxmtu = ETHERMAXTU;
+
+	if(cardno < 0){
+		if(isaconfig("ether", ctlrno, ether) == 0){
+			free(ether);
+			return nil;
+		}
+		for(cardno = 0; cards[cardno].type; cardno++){
+			if(cistrcmp(cards[cardno].type, ether->type))
 				continue;
 			for(i = 0; i < ether->nopt; i++){
 				if(strncmp(ether->opt[i], "ea=", 3))
 					continue;
-				if(parseether(ether->ea, &ether->opt[i][3]) == -1)
+				if(parseether(ether->ea, &ether->opt[i][3]))
 					memset(ether->ea, 0, Eaddrlen);
-			}	
-			if(cards[n].reset(ether))
-				break;
-
-			/*
-			 * IRQ2 doesn't really exist, it's used to gang the interrupt
-			 * controllers together. A device set to IRQ2 will appear on
-			 * the second interrupt controller as IRQ9.
-			 */
-			if(ether->irq == 2)
-				ether->irq = 9;
-			snprint(name, sizeof(name), "ether%d", ctlrno);
-
-			/*
-			 * If ether->irq is 0, it is a hack to indicate no interrupt
-			 * used by ethersink.
-			 */
-			if(ether->irq > 0)
-				intrenable(ether->irq, ether->interrupt, ether, ether->tbdf, name);
-
-			i = sprint(buf, "#l%d: %s: %dMbps port 0x%luX irq %lud",
-				ctlrno, ether->type, ether->mbps, ether->port, ether->irq);
-			if(ether->mem)
-				i += sprint(buf+i, " addr 0x%luX", PADDR(ether->mem));
-			if(ether->size)
-				i += sprint(buf+i, " size 0x%luX", ether->size);
-			i += sprint(buf+i, ": %2.2uX%2.2uX%2.2uX%2.2uX%2.2uX%2.2uX",
-				ether->ea[0], ether->ea[1], ether->ea[2],
-				ether->ea[3], ether->ea[4], ether->ea[5]);
-			sprint(buf+i, "\n");
-			print(buf);
-
-			if(ether->mbps >= 100){
-				netifinit(ether, name, Ntypes, 256*1024);
-				if(ether->oq == 0)
-					ether->oq = qopen(256*1024, 1, 0, 0);
 			}
-			else{
-				netifinit(ether, name, Ntypes, 65*1024);
-				if(ether->oq == 0)
-					ether->oq = qopen(65*1024, 1, 0, 0);
-			}
-			if(ether->oq == 0)
-				panic("etherreset %s", name);
-			ether->alen = Eaddrlen;
-			memmove(ether->addr, ether->ea, Eaddrlen);
-			memset(ether->bcast, 0xFF, Eaddrlen);
-
-			etherxx[ctlrno] = ether;
-			ether = 0;
 			break;
 		}
 	}
-	if(ether)
+
+	if(cardno >= MaxEther || cards[cardno].type == nil){
 		free(ether);
+		return nil;
+	}
+	if(cards[cardno].reset(ether) < 0){
+		free(ether);
+		return nil;
+	}
+
+	/*
+	 * IRQ2 doesn't really exist, it's used to gang the interrupt
+	 * controllers together. A device set to IRQ2 will appear on
+	 * the second interrupt controller as IRQ9.
+	 */
+	if(ether->irq == 2)
+		ether->irq = 9;
+	snprint(name, sizeof(name), "ether%d", ctlrno);
+
+	/*
+	 * If ether->irq is 0, it is a hack to indicate no interrupt
+	 * used by ethersink.
+	 */
+	if(ether->irq > 0)
+		intrenable(ether->irq, ether->interrupt, ether, ether->tbdf, name);
+
+	i = sprint(buf, "#l%d: %s: %dMbps port 0x%luX irq %lud",
+		ctlrno, cards[cardno].type, ether->mbps, ether->port, ether->irq);
+	if(ether->mem)
+		i += sprint(buf+i, " addr 0x%luX", PADDR(ether->mem));
+	if(ether->size)
+		i += sprint(buf+i, " size 0x%luX", ether->size);
+	i += sprint(buf+i, ": %2.2uX%2.2uX%2.2uX%2.2uX%2.2uX%2.2uX",
+		ether->ea[0], ether->ea[1], ether->ea[2],
+		ether->ea[3], ether->ea[4], ether->ea[5]);
+	sprint(buf+i, "\n");
+	print(buf);
+
+	if(ether->mbps >= 100){
+		netifinit(ether, name, Ntypes, 256*1024);
+		if(ether->oq == 0)
+			ether->oq = qopen(256*1024, 1, 0, 0);
+	}
+	else{
+		netifinit(ether, name, Ntypes, 65*1024);
+		if(ether->oq == 0)
+			ether->oq = qopen(65*1024, 1, 0, 0);
+	}
+	if(ether->oq == 0)
+		panic("etherreset %s", name);
+	ether->alen = Eaddrlen;
+	memmove(ether->addr, ether->ea, Eaddrlen);
+	memset(ether->bcast, 0xFF, Eaddrlen);
+
+	return ether;
+}
+
+static void
+etherreset(void)
+{
+	Ether *ether;
+	int cardno, ctlrno;
+
+	for(ctlrno = 0; ctlrno < MaxEther; ctlrno++){
+		if((ether = etherprobe(-1, ctlrno)) == nil)
+			continue;
+		etherxx[ctlrno] = ether;
+	}
+
+	cardno = ctlrno = 0;
+	while(cards[cardno].type != nil && ctlrno < MaxEther){
+		if(etherxx[ctlrno] != nil){
+			ctlrno++;
+			continue;
+		}
+		if((ether = etherprobe(cardno, ctlrno)) == nil){
+			cardno++;
+			continue;
+		}
+		etherxx[ctlrno] = ether;
+		ctlrno++;
+	}
 }
 
 static void

@@ -27,7 +27,7 @@
 #include "../port/netif.h"
 #include "etherif.h"
 
-#define DEBUG	if(0){}else print
+#define DEBUG	if(1){}else print
 
 #define SEEKEYS 0
 
@@ -479,6 +479,7 @@ w_inltv(Ctlr* ctlr, Wltv* ltv)
 		return -1;
 	ltv->len = len;
 	if ((code=csr_ins(ctlr, WR_Data1)) != ltv->type){
+		USED(code);
 		DEBUG("wavelan: type %x != code %x\n",ltv->type,code);
 		return -1;
 	}
@@ -1384,8 +1385,8 @@ wavelanpcmciareset(Ether *ether)
 		ether->irq=WDfltIRQ;
 
 	if (ioalloc(ether->port,WIOLen,0,"wavelan")<0){
-		print("#l%d: port 0x%lx in use\n",
-				ether->ctlrno, ether->port);
+	//	print("#l%d: port 0x%lx in use\n",
+	//			ether->ctlrno, ether->port);
 		goto abort1;
 	}
 
@@ -1495,6 +1496,7 @@ wavelanpcireset(Ether *ether)
 	if(ctlr == nil)
 		return -1;
 
+	ctlr->active = 1;
 	ilock(ctlr);
 	ether->irq = ctlr->pcidev->intl;
 	ether->tbdf = ctlr->pcidev->tbdf;

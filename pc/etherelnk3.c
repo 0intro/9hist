@@ -1257,6 +1257,7 @@ typedef struct Adapter {
 	int	tbdf;
 	int	did;
 	ulong cbfns;
+	int	active;
 } Adapter;
 static Block* adapter;
 
@@ -1526,7 +1527,7 @@ tcm5XXpcmcia(Ether* ether)
 	int i;
 
 	for(i = 0; tcmpcmcia[i] != nil; i++){
-		if(!cistrcmp(ether->type, tcmpcmcia[i])){
+		if(ether->type==nil || !cistrcmp(ether->type, tcmpcmcia[i])){
 			/*
 			 * No need for an ioalloc here, the 589 reset
 			 * code deals with it.
@@ -1805,6 +1806,8 @@ etherelnk3reset(Ether* ether)
 	bpp = &adapter;
 	for(bp = *bpp; bp; bp = bp->next){
 		ap = (Adapter*)bp->rp;
+		if(ap->active)
+			continue;
 		if(ether->port == 0 || ether->port == ap->port){
 			port = ap->port;
 			did = ap->did;
@@ -1813,6 +1816,7 @@ etherelnk3reset(Ether* ether)
 			cbfns = ap->cbfns;
 			// *bpp = bp->next;		// HIRO.
 			// freeb(bp);
+			ap->active = 1;
 			break;
 		}
 		bpp = &bp->next;

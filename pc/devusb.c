@@ -384,55 +384,86 @@ usbgen(Chan *c, char *, Dirtab*, int, int s, Dir *dp)
 	return 1;
 }
 
-static void
-usbreset(void)
+static Usbhost*
+usbprobe(int cardno, int ctlrno)
 {
-	int n, ctlrno;
 	Usbhost *uh;
-	char name[64], buf[128], *p, *ebuf, *type;
+	char buf[128], *ebuf, name[64], *p, *type;
 
-	uh = nil;
-	for(ctlrno = 0; ctlrno < MaxUsb; ctlrno++){
-		if(uh == nil)
-			uh = malloc(sizeof(Usbhost));
-		memset(uh, 0, sizeof(Usbhost));
-		uh->tbdf = BUSUNKNOWN;
-		if(isaconfig("usb", ctlrno, uh) == 0)
-			continue;
-		for(n = 0; usbtypes[n].type; n++){
+	uh = malloc(sizeof(Usbhost));
+	memset(uh, 0, sizeof(Usbhost));
+	uh->tbdf = BUSUNKNOWN;
+
+	if(cardno < 0){
+		if(isaconfig("usb", ctlrno, uh) == 0){
+			free(uh);
+			return nil;
+		}
+		for(cardno = 0; usbtypes[cardno].type; cardno++){
 			type = uh->type;
-			if(type == nil || *type == '\0')
+			if(type==nil || *type==0)
 				type = "uhci";
-			if(cistrcmp(usbtypes[n].type, type))
+			if(cistrcmp(usbtypes[cardno].type, type))
 				continue;
-			if(usbtypes[n].reset(uh))
-				break;
-
-			/*
-			 * IRQ2 doesn't really exist, it's used to gang the interrupt
-			 * controllers together. A device set to IRQ2 will appear on
-			 * the second interrupt controller as IRQ9.
-			 */
-			if(uh->irq == 2)
-				uh->irq = 9;
-			snprint(name, sizeof(name), "usb%d", ctlrno);
-			intrenable(uh->irq, uh->interrupt, uh, uh->tbdf, name);
-
-			ebuf = buf + sizeof buf;
-			p = seprint(buf, ebuf, "#U/usb%d: %s: port 0x%luX irq %lud", ctlrno, type, uh->port, uh->irq);
-			if(uh->mem)
-				p = seprint(p, ebuf, " addr 0x%luX", PADDR(uh->mem));
-			if(uh->size)
-				seprint(p, ebuf, " size 0x%luX", uh->size);
-			print("%s\n", buf);
-
-			usbhost[ctlrno] = uh;
-			uh = nil;
 			break;
 		}
 	}
-	if(uh != nil)
+
+	if(cardno >= MaxUsb || usbtypes[cardno].type == nil){
 		free(uh);
+		return nil;
+	}
+	if(usbtypes[cardno].reset(uh) < 0){
+		free(uh);
+		return nil;
+	}
+
+	/*
+	 * IRQ2 doesn't really exist, it's used to gang the interrupt
+	 * controllers together. A device set to IRQ2 will appear on
+	 * the second interrupt controller as IRQ9.
+	 */
+	if(uh->irq == 2)
+		uh->irq = 9;
+	snprint(name, sizeof(name), "usb%d", ctlrno);
+	intrenable(uh->irq, uh->interrupt, uh, uh->tbdf, name);
+
+	ebuf = buf + sizeof buf;
+	p = seprint(buf, ebuf, "#U/usb%d: %s: port 0x%luX irq %lud", ctlrno, usbtypes[cardno].type, uh->port, uh->irq);
+	if(uh->mem)
+		p = seprint(p, ebuf, " addr 0x%luX", PADDR(uh->mem));
+	if(uh->size)
+		seprint(p, ebuf, " size 0x%luX", uh->size);
+	print("%s\n", buf);
+
+	return uh;
+}
+
+static void
+usbreset(void)
+{
+	int cardno, ctlrno;
+	Usbhost *uh;
+
+	for(ctlrno = 0; ctlrno < MaxUsb; ctlrno++){
+		if((uh = usbprobe(-1, ctlrno)) == nil)
+			continue;
+		usbhost[ctlrno] = uh;
+	}
+
+	cardno = ctlrno = 0;
+	while(usbtypes[cardno].type != nil && ctlrno < MaxUsb){
+		if(usbhost[ctlrno] != nil){
+			ctlrno++;
+			continue;
+		}
+		if((uh = usbprobe(cardno, ctlrno)) == nil){
+			cardno++;
+			continue;
+		}
+		usbhost[ctlrno] = uh;
+		ctlrno++;
+	}
 }
 
 void

@@ -104,6 +104,7 @@ init0(void)
 {
 //	char **p, *q, name[KNAMELEN];
 //	int n;
+	char buf[2*KNAMELEN];
 
 	up->nerrlab = 0;
 
@@ -121,6 +122,8 @@ init0(void)
 	chandevinit();
 
 	if(!waserror()){
+		snprint(buf, sizeof(buf), "power %s mtx", conffile);
+		ksetenv("terminal", buf, 0);
 		ksetenv("cputype", "power", 0);
 		if(cpuserver)
 			ksetenv("service", "cpu", 0);
@@ -137,7 +140,9 @@ init0(void)
 				n = KNAMELEN-1;
 			memmove(name, p[0], n);
 			name[n] = 0;
-			ksetenv(name, q+1);
+			if(name[0] != '*')
+				ksetenv(name, q+1, 0);
+			ksetenv(name, q+1, 1);
 		}
 */
 		poperror();

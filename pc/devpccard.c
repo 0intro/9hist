@@ -507,16 +507,8 @@ devpccardlink(void)
 		return;
 	initialized = 1;
 
-	if (!getconf("pccard0"))
+	if(_pcmspecial)
 		return;
-
-	if (_pcmspecial) {
-		print("#Y: CardBus and PCMCIA at the same time?\n");
-		return;
-	}
-
-	_pcmspecial = pccard_pcmspecial;
-	_pcmspecialclose = pccard_pcmspecialclose;
 
 	/* Allocate legacy space */
 	if (ioalloc(LegacyAddr, 2, 0, "i82365.0") < 0)
@@ -627,6 +619,9 @@ devpccardlink(void)
 
 	if (nslots == 0)
 		return;
+
+	_pcmspecial = pccard_pcmspecial;
+	_pcmspecialclose = pccard_pcmspecialclose;
 
 	for (i = 0; i != nslots; i++) {
 		Cardbus *cb = &cbslots[i];

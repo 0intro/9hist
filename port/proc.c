@@ -8,6 +8,8 @@
 int	nrdy;
 Ref	noteidalloc;
 
+long	delayedscheds;	/* statistics */
+
 static Ref	pidalloc;
 
 static struct Procalloc
@@ -83,14 +85,20 @@ schedinit(void)		/* never returns */
 void
 sched(void)
 {
-	if(up) {
+	if(up){
+		if(up->state == Running && up->nlocks){
+			up->delaysched++;
+			delayedscheds++;
+			return;
+		}
+
 		splhi();
 
 		/* statistics */
 		m->cs++;
 
 		procsave(up);
-		if(setlabel(&up->sched)) {
+		if(setlabel(&up->sched)){
 			procrestore(up);
 			spllo();
 			return;

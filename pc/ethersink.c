@@ -42,6 +42,8 @@ reset(Ether* ether)
 {
 	uchar ea[Eaddrlen];
 
+	if(ether->type==nil)
+		return -1;
 	memset(ea, 0, sizeof ea);
 	ether->mbps = 1000;
 	ether->attach = nop;

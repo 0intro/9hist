@@ -581,17 +581,11 @@ devi82365link(void)
 		return;
 	already = 1;
 
-	if (!getconf("pcmcia0"))
+	if(_pcmspecial)
 		return;
-	
-	if (_pcmspecial) {
-		print("#y: PCMCIA and CardBus at the same time?\n");
-		return;
-	}
 	
 	_pcmspecial = pcmcia_pcmspecial;
 	_pcmspecialclose = pcmcia_pcmspecialclose;
-
 
 	/* look for controllers if the ports aren't already taken */
 	if(ioalloc(0x3E0, 2, 0, "i82365.0") >= 0){
