@@ -14,7 +14,7 @@ enum
 #define uartwrreg(u,r,v)	outb((u)->port + r, (u)->sticky[r] | (v))
 #define uartrdreg(u,r)		inb((u)->port + r)
 
-void	ns16552setup(ulong, ulong, char*);
+void	ns16552setup(ulong, ulong, char*, int);
 void	ns16552special(int, int, Queue**, Queue**, int (*)(Queue*, int));
 void	uartclock(void);
 /*
@@ -93,9 +93,9 @@ ns16552install(void)
 	already = 1;
 
 	/* first two ports are always there and always the normal frequency */
-	ns16552setup(0x3F8, UartFREQ, "eia0");
+	ns16552setup(0x3F8, UartFREQ, "eia0", Ns550);
 	intrenable(IrqUART0, ns16552intrx, (void*)0, BUSUNKNOWN);
-	ns16552setup(0x2F8, UartFREQ, "eia1");
+	ns16552setup(0x2F8, UartFREQ, "eia1", Ns550);
 	intrenable(IrqUART1, ns16552intrx, (void*)1, BUSUNKNOWN);
 	addclock0link(uartclock);
 
@@ -133,9 +133,29 @@ ns16552install(void)
 			port = sc->port;
 			for(j=0; j < sc->size; j++){
 				sprint(name, "eia%d%2.2d", nscard, j);
-				ns16552setup(port, sc->freq, name);
+				ns16552setup(port, sc->freq, name, Ns550);
 				port += 8;
 			}
+		} else if(cistrcmp(sc->type, "turbo650") == 0){
+			/*
+			 *  port gives base port address for the uart
+			 *  irq is interrupt
+			 *  freq is the baud rate generator frequency
+			 */
+			if(sc->freq == 0)
+				sc->freq = UartFREQ*4;
+			sprint(name, "eia%d00", nscard);
+			ns16552setup(sc->port, sc->freq, name, Ns650);
+
+			/*
+			 *  multiply clock speed by 4
+			 */
+			if(sc->mem == 0)
+				outb(0x2c8, 0);
+			else
+				outb(sc->mem, 0);
+
+			intrenable(sc->irq, ns16552intrx, (void*)(nuart-1), BUSUNKNOWN);
 		} else if(cistrcmp(sc->type, "com") == 0 && sc->port != 0x3F8 && sc->port != 0x2F8){
 			/*
 			 *  port gives base port address for the uart
@@ -145,7 +165,7 @@ ns16552install(void)
 			if(sc->freq == 0)
 				sc->freq = UartFREQ;
 			sprint(name, "eia%d00", nscard);
-			ns16552setup(sc->port, sc->freq, name);
+			ns16552setup(sc->port, sc->freq, name, Ns550);
 			intrenable(sc->irq, ns16552intrx, (void*)(nuart-1), BUSUNKNOWN);
 		}
 		nscard++;

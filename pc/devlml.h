@@ -12,7 +12,7 @@
 // driver.
 
 // The number of uS delay in I2C state transitions (probably >= 10)
-#define I2C_DELAY 15
+#define I2C_DELAY 50
 
 // The amount of spinning to do before the I2C bus is timed out
 #define I2C_TIMEOUT 10000000
@@ -89,9 +89,9 @@ typedef struct {
 #define FRAGM_FINAL_B 1
 #define STAT_BIT 1
 
-#define writel(v, a)	*(ulong *)(a) = v
-#define writew(v, a)	*(ushort *)(a) = v
-#define writeb(v, a)	*(uchar *)(a) = v
+#define writel(v, a)	(*(ulong *)(a) = (v))
+#define writew(v, a)	(*(ushort *)(a) = (v))
+#define writeb(v, a)	(*(uchar *)(a) = (v))
 #define readl(a)		(*(ulong *)(a))
 #define readw(a)		(*(ushort *)(a))
 #define readb(a)		(*(uchar *)(a))

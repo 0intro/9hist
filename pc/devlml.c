@@ -11,33 +11,34 @@
 // Lml 22 driver
 
 enum{
+	Qdir,
 	Q819,
 	Q856,
 	Qreg,
-	Qvideo,
+	Qjvideo,
 	Qjframe,
 };
 
-static Dirtab viddir[]={
-//	 name,		 qid,	  size,		mode
-	"vid819",	{Q819},		0,		0644,
-	"vid856",	{Q856},		0,		0644,
-	"vidreg",	{Qreg},		0,		0644,
-	"video",	{Qvideo},	0,		0666,
+static Dirtab lmldir[]={
+//	 name,		 qid,		size,		mode
+	"lml819",	{Q819},		0,		0644,
+	"lml856",	{Q856},		0,		0644,
+	"lmlreg",	{Qreg},		0,		0644,
+	"jvideo",	{Qjvideo},	0,		0666,
 	"jframe",	{Qjframe},	0,		0666,
 };
 
 CodeData *	codeData;
 
-int			currentBuffer;
-int			currentBufferLength;
+int		currentBuffer;
+int		currentBufferLength;
 void *		currentBufferPtr;
-int			frameNo;
+int		frameNo;
 Rendez		sleeper;
-int			singleFrame;
-int			bufferPrepared;
-int			hdrPos;
-int			nopens;
+int		singleFrame;
+int		bufferPrepared;
+int		hdrPos;
+int		nopens;
 uchar		q856[3];
 
 static FrameHeader frameHeader = {
@@ -455,14 +456,13 @@ vwrite(Chan *, void *va, long count, vlong pos) {
 static void lmlintr(Ureg *, void *);
 
 static void
-vidreset(void)
+lmlreset(void)
 {
 	ulong regpa;
 	int i;
 
 	pcidev = pcimatch(nil, PCI_VENDOR_ZORAN, PCI_DEVICE_ZORAN_36067);
 	if (pcidev == nil) {
-		print("No zr36067 found.\n");
 		return;
 	}
 	codeData = (CodeData*)xspanalloc(sizeof(CodeData), BY2PG, 0);
@@ -472,7 +472,7 @@ vidreset(void)
 	}
 
 	print("Installing Motion JPEG driver %s\n", MJPG_VERSION); 
-	print("Buffer size %ux\n", sizeof(CodeData)); 
+	print("Buffer at 0x%.8lux, size 0x%.8ux\n", codeData, sizeof(CodeData)); 
 
 	// Get access to DMA memory buffer
 	memset(codeData, 0xAA, sizeof(CodeData));
@@ -491,7 +491,7 @@ vidreset(void)
 
 	pciPhysBaseAddr = (void *)(pcidev->mem[0].bar & ~0x0F);
 
-	print("zr36067 found at %lux\n", pciPhysBaseAddr);
+	print("zr36067 found at 0x%.8lux", pciPhysBaseAddr);
 
 	regpa = upamalloc(pcidev->mem[0].bar & ~0x0F, pcidev->mem[0].size, 0);
 	if (regpa == 0) {
@@ -499,6 +499,7 @@ vidreset(void)
 		return;
 	}
 	pciBaseAddr = (ulong)KADDR(regpa);
+	print(", mapped at 0x%.8lux\n", pciBaseAddr);
 
 	// make sure the device will respond to mem accesses
 	// (pcicmd_master | pcicmd_memory) -- probably superfluous
@@ -510,30 +511,29 @@ vidreset(void)
 	// Interrupt handler
 	intrenable(pcidev->intl, lmlintr, nil, pcidev->tbdf);
 
-	print("LML33 Installed\n"); 
 	return; 
 }
 
 static Chan*
-vidattach(char *spec)
+lmlattach(char *spec)
 {
 	return devattach('V', spec);
 }
 
 static int
-vidwalk(Chan *c, char *name)
+lmlwalk(Chan *c, char *name)
 {
-	return devwalk(c, name, viddir, nelem(viddir), devgen);
+	return devwalk(c, name, lmldir, nelem(lmldir), devgen);
 }
 
 static void
-vidstat(Chan *c, char *dp)
+lmlstat(Chan *c, char *dp)
 {
-	devstat(c, dp, viddir, nelem(viddir), devgen);
+	devstat(c, dp, lmldir, nelem(lmldir), devgen);
 }
 
 static Chan*
-vidopen(Chan *c, int omode)
+lmlopen(Chan *c, int omode)
 {
 	c->aux = 0;
 	switch(c->qid.path){
@@ -541,7 +541,7 @@ vidopen(Chan *c, int omode)
 	case Q856:
 	case Qreg:
 		break;
-	case Qvideo:
+	case Qjvideo:
 	case Qjframe:
 		if (nopens)
 			error(Einuse);
@@ -556,28 +556,34 @@ vidopen(Chan *c, int omode)
 		// allow one open total for these two
 		break;
 	}
-	return devopen(c, omode, viddir, nelem(viddir), devgen);
+	return devopen(c, omode, lmldir, nelem(lmldir), devgen);
 }
 
 static void
-vidclose(Chan *c)
+lmlclose(Chan *c)
 {
 	switch(c->qid.path){
 	case Q819:
 	case Q856:
 	case Qreg:
-	case Qvideo:
+	case Qjvideo:
 	case Qjframe:
 		authclose(c);
 	}
 }
 
 static long
-vidread(Chan *c, void *va, long n, vlong off) {
+lmlread(Chan *c, void *va, long n, vlong voff) {
 	int i, d;
 	uchar *buf = va;
+	long off = voff;
+	long v;
 
-	switch(c->qid.path){
+	switch(c->qid.path & ~CHDIR){
+
+	case Qdir:
+		return devdirread(c, (char *)buf, n, lmldir, nelem(lmldir), devgen);
+
 	case Q819:
 		if (off < 0 || off + n > 0x20)
 			return 0;
@@ -621,24 +627,30 @@ vidread(Chan *c, void *va, long n, vlong off) {
 			break;
 		case 4:
 			if (off & (n-1)) return 0;
-			*(long *)buf = readl(pciBaseAddr + off);
+			v = readl(pciBaseAddr + off);
+			*(long *)buf = v;
+print("reading %lux at %lux (%lux)\n", v, pciBaseAddr + off, off);
 			break;
 		default:
 			return 0;
 		}
 		return n;
-	case Qvideo:
+	case Qjvideo:
 	case Qjframe:
 		return vread(c, buf, n, off);
 	}
 }
 
 static long
-vidwrite(Chan *c, void *va, long n, vlong off) {
+lmlwrite(Chan *c, void *va, long n, vlong off) {
 	int i;
 	uchar *buf = va;
 
-	switch(c->qid.path){
+	switch(c->qid.path & ~CHDIR){
+
+	case Qdir:
+		error(Eperm);
+
 	case Q819:
 		if (off < 0 || off + n > 0x20)
 			return 0;
@@ -680,28 +692,28 @@ vidwrite(Chan *c, void *va, long n, vlong off) {
 			return 0;
 		}
 		return n;
-	case Qvideo:
+	case Qjvideo:
 	case Qjframe:
 		return vwrite(c, buf, n, off);
 	}
 }
 
-Dev viddevtab = {
+Dev lmldevtab = {
 	'V',
 	"video",
 
-	vidreset,
+	lmlreset,
 	devinit,
-	vidattach,
+	lmlattach,
 	devclone,
-	vidwalk,
-	vidstat,
-	vidopen,
+	lmlwalk,
+	lmlstat,
+	lmlopen,
 	devcreate,
-	vidclose,
-	vidread,
+	lmlclose,
+	lmlread,
 	devbread,
-	vidwrite,
+	lmlwrite,
 	devbwrite,
 	devremove,
 	devwstat,

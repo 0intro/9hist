@@ -22,11 +22,17 @@ enum
 	 Ixmt=	(1<<1),		/*  for xmit buffer empty */
 	 Irstat=(1<<2),		/*  for change in rcv'er status */
 	 Imstat=(1<<3),		/*  for change in modem status */
+	 Isleep=(1<<4),		/*  put in sleep mode; 16C650 */
+	 Ixoff=	(1<<5),		/*  for xoff received; 16C650 */
+	 Irts=	(1<<6),		/*  for !rts asserted in auto mode; 16C650 */
+	 Icts=	(1<<7),		/*  for !cts asserted in auto mode; 16C650 */
 	Istat=	2,		/* interrupt flag (read) */
 	 Fenabd=(3<<6),		/*  on if fifo's enabled */
+	 Irctsd=(1<<4),		/*  auto rts or cts changed state */
 	Fifoctl=2,		/* fifo control (write) */
 	 Fena=	(1<<0),		/*  enable xmit/rcv fifos */
-	 Ftrig=	(1<<6),		/*  trigger after 4 input characters */
+	 Ftrig4=	(1<<6),		/*  trigger after 4 input characters */
+	 Ftrig24=	(2<<6),		/*  trigger after 24 input characters */
 	 Fclear=(3<<1),		/*  clear xmit & rcv fifos */
 	Format=	3,		/* byte format */
 	 Bits8=	(3<<0),		/*  8 bits/byte */
@@ -36,12 +42,16 @@ enum
 	 Pforce=(1<<5),		/*  force parity */
 	 Break=	(1<<6),		/*  generate a break */
 	 Dra=	(1<<7),		/*  address the divisor */
+	 Ers=	0xbf,		/*  enable enhaced register set on 16C650 */
 	Mctl=	4,		/* modem control */
 	 Dtr=	(1<<0),		/*  data terminal ready */
 	 Rts=	(1<<1),		/*  request to send */
 	 Ri=	(1<<2),		/*  ring */
 	 Inton=	(1<<3),		/*  turn on interrupts */
 	 Loop=	(1<<4),		/*  loop back */
+	 Intsel=(1<<5),		/*  NO! open source interrupts; 16C650 */
+	 Irda=	(1<<6),		/*  infrared interface; 16C650 */
+	 Cdiv=	(1<<7),		/*  divide clock by four; 16C650 */
 	Lstat=	5,		/* line status */
 	 Inready=(1<<0),	/*  receive buffer full */
 	 Oerror=(1<<1),		/*  receiver overrun */
@@ -60,12 +70,20 @@ enum
 	Scratch=7,		/* scratchpad */
 	Dlsb=	0,		/* divisor lsb */
 	Dmsb=	1,		/* divisor msb */
+	Efr=	2,		/* enhanced features for 16C650 */
+	 Eena=	(1<<4),		/* enable enhanced bits in normal registers */
+	 Arts=	(1<<6),		/* auto rts */
+	 Acts=	(1<<7),		/* auto cts */
 
 	CTLS= 023,
 	CTLQ= 021,
 
 	Stagesize= 1024,
 	Nuart=	32,		/* max per machine */
+
+	Ns450=	0,
+	Ns550,
+	Ns650,
 };
 
 typedef struct Uart Uart;
@@ -79,7 +97,7 @@ struct Uart
 	char	name[NAMELEN];
 
 	uchar	sticky[8];		/* sticky write register values */
-	ulong	port;
+	ulong	port;			/* io ports */
 	ulong	freq;			/* clock frequency */
 	uchar	mask;			/* bits/char */
 	int	dev;
@@ -96,7 +114,7 @@ struct Uart
 
 	Lock	flock;			/* fifo */
 	uchar	fifoon;			/* fifo's enabled */
-	uchar	nofifo;			/* earlier chip version with nofifo */
+	uchar	type;			/* chip version */
 
 	Lock	rlock;			/* receive */
 	uchar	istage[Stagesize];
@@ -207,7 +225,6 @@ ns16552bits(Uart *p, int bits)
 	uartwrreg(p, Format, 0);
 }
 
-
 /*
  *  toggle DTR
  */
@@ -255,7 +272,7 @@ ns16552fifoon(Uart *p)
 {
 	ulong i, x;
 
-	if(p->nofifo)
+	if(p->type < Ns550)
 		return;
 
 	x = splhi();
@@ -273,11 +290,14 @@ ns16552fifoon(Uart *p)
 
 	/* turn on fifo */
 	p->fifoon = 1;
-	uartwrreg(p, Fifoctl, Fena|Ftrig);
+	if(p->type == Ns650)
+		uartwrreg(p, Fifoctl, Fena|Ftrig24);
+	else
+		uartwrreg(p, Fifoctl, Fena|Ftrig4);
 
 	if((p->istat & Fenabd) == 0){
 		/* didn't work, must be an earlier chip type */
-		p->nofifo = 1;
+		p->type = Ns450;
 	}
 
 	splx(x);
@@ -289,16 +309,32 @@ ns16552fifoon(Uart *p)
 static void
 ns16552mflow(Uart *p, int n)
 {
+
+
 	ilock(&p->tlock);
 	if(n){
-		p->sticky[Iena] |= Imstat;
-		uartwrreg(p, Iena, 0);
-		p->modem = 1;
-		p->cts = uartrdreg(p, Mstat) & Cts;
+print("mflow type %d\n", p->type);
+		if(p->type == Ns650){
+			outb(p->port + Format, 0xbf);
+			outb(p->port + Efr, Eena|Arts|Acts);
+			uartwrreg(p, Format, 0);
+			p->cts = 1;
+		} else {
+			p->sticky[Iena] |= Imstat;
+			uartwrreg(p, Iena, 0);
+			p->modem = 1;
+			p->cts = uartrdreg(p, Mstat) & Cts;
+		}
 	} else {
-		p->sticky[Iena] &= ~Imstat;
-		uartwrreg(p, Iena, 0);
-		p->modem = 0;
+		if(p->type == Ns650){
+			outb(p->port + Format, 0xbf);
+			outb(p->port + Efr, Eena|Arts|Acts);
+			uartwrreg(p, Format, 0);
+		} else {
+			p->sticky[Iena] &= ~Imstat;
+			uartwrreg(p, Iena, 0);
+			p->modem = 0;
+		}
 		p->cts = 1;
 	}
 	iunlock(&p->tlock);
@@ -521,7 +557,7 @@ ns16552setup0(Uart *p)
  *  called by main() to create a new duart
  */
 void
-ns16552setup(ulong port, ulong freq, char *name)
+ns16552setup(ulong port, ulong freq, char *name, int type)
 {
 	Uart *p;
 
@@ -535,6 +571,7 @@ ns16552setup(ulong port, ulong freq, char *name)
 	nuart++;
 	p->port = port;
 	p->freq = freq;
+	p->type = type;
 	ns16552setup0(p);
 }
 
@@ -990,7 +1027,7 @@ ns16552write(Chan *c, void *buf, long n, vlong)
 	 *  It must be something I don't understand. -- presotto
 	 */
 	lock(&p->flock);
-	if((p->istat & Fenabd) == 0 && p->fifoon && p->nofifo == 0)
+	if((p->istat & Fenabd) == 0 && p->fifoon && p->type < Ns550)
 		ns16552fifoon(p);
 	unlock(&p->flock);
 
