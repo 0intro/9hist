@@ -253,6 +253,7 @@ screenputc(char *buf)
 {
 	int pos;
 
+	mbbpt(cursor);
 	switch(buf[0]) {
 	case '\n':
 		if(cursor.y+h >= window.max.y)
@@ -278,6 +279,7 @@ screenputc(char *buf)
 
 		cursor = gsubfstring(&gscreen, cursor, &defont0, buf, S);
 	}
+	mbbpt(Pt(cursor.x, cursor.y+h));
 }
 
 void
@@ -295,7 +297,6 @@ screenputs(char *s, int n)
 	else
 		lock(&screenlock);
 
-	mbbpt(cursor);
 	while(n > 0) {
 		i = chartorune(&r, s);
 		if(i == 0){
@@ -313,8 +314,6 @@ screenputs(char *s, int n)
 		mbb = window;
 		isscroll = 0;
 	}
-	else
-		mbbpt(Pt(cursor.x, cursor.y+h));
 
 	screenupdate();
 	unlock(&screenlock);
@@ -548,4 +547,79 @@ screenupdate(void)
 		hp += inc;
 		sp += inc;
 	}
+}
+
+/*
+ * graphics
+ */
+void
+screenload(Rectangle r, uchar *data, long n)
+{
+	int y, ws, l, t, lpart, rpart, mx, m, mr;
+	uchar *q;
+
+	if(!rectclip(&r, gscreen.r))
+		return;
+	lock(&screenlock);
+	ws = 8>>gscreen.ldepth;	/* pixels per byte */
+	/* set l to number of bytes of data per scan line */
+	if(r.min.x >= 0)
+		l = (r.max.x+ws-1)/ws - r.min.x/ws;
+	else{		/* make positive before divide */
+		t = (-r.min.x)+ws-1;
+		t = (t/ws)*ws;
+		l = (t+r.max.x+ws-1)/ws;
+	}
+	if(n != l*Dy(r)){
+		unlock(&screenlock);
+		error("bad tile size");
+	}
+	q = gbaddr(&gscreen, r.min);
+	mx = 7>>gscreen.ldepth;
+	lpart = (r.min.x & mx) << gscreen.ldepth;
+	rpart = (r.max.x & mx) << gscreen.ldepth;
+	m = 0xFF >> lpart;
+	mr = 0xFF ^ (0xFF >> rpart);
+	/* may need to do bit insertion on edges */
+	if(l == 1){	/* all in one byte */
+		if(rpart)
+			m ^= 0xFF >> rpart;
+		for(y=r.min.y; y<r.max.y; y++){
+			*q ^= (*data^*q) & m;
+			q += gscreen.width*sizeof(ulong);
+			data++;
+		}
+	}else if(lpart==0 && rpart==0){	/* easy case */
+		for(y=r.min.y; y<r.max.y; y++){
+			memmove(q, data, l);
+			q += gscreen.width*sizeof(ulong);
+			data += l;
+		}
+	}else if(rpart==0){
+		for(y=r.min.y; y<r.max.y; y++){
+			*q ^= (*data^*q) & m;
+			if(l > 1)
+				memmove(q+1, data+1, l-1);
+			q += gscreen.width*sizeof(ulong);
+			data += l;
+		}
+	}else if(lpart == 0){
+		for(y=r.min.y; y<r.max.y; y++){
+			if(l > 1)
+				memmove(q, data, l-1);
+			q[l-1] ^= (data[l-1]^q[l-1]) & mr;
+			q += gscreen.width*sizeof(ulong);
+			data += l;
+		}
+	}else for(y=r.min.y; y<r.max.y; y++){
+			*q ^= (*data^*q) & m;
+			if(l > 2)
+				memmove(q+1, data+1, l-2);
+			q[l-1] ^= (data[l-1]^q[l-1]) & mr;
+			q += gscreen.width*sizeof(ulong);
+			data += l;
+		}
+	mbbrect(r);
+	screenupdate();
+	unlock(&screenlock);
 }

@@ -277,7 +277,7 @@ init0(void)
 
 	if(!waserror()){
 		ksetenv("cputype", "mips");
-		sprint(buf, "sgi %s 4D", conffile);
+		sprint(buf, "%s R4400PC", conffile);
 		ksetenv("terminal", buf);
 		ksetenv("sysname", sysname);
 		poperror();

@@ -485,7 +485,7 @@ syssegflush(ulong *arg)
 	len = arg[1];
 
 	while(len > 0) {
-		s = seg(u->p, addr, 1);
+		s = seg(up, addr, 1);
 		if(s == 0)
 			error(Ebadarg);
 

@@ -75,6 +75,7 @@
 #define INTR7		0x00008000
 #define ISC		0x00010000
 #define SWC		0x00020000
+#define CU0		0x10000000
 #define CU1		0x20000000
 
 /*
