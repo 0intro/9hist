@@ -41,7 +41,7 @@ typedef struct {
 	char*	name;
 } X86type;
 
-static X86type x86type[] =
+static X86type x86intel[] =
 {
 	{ 4,	0,	22,	"486DX", },	/* known chips */
 	{ 4,	1,	22,	"486DX50", },
@@ -70,6 +70,33 @@ static X86type x86type[] =
 	{ -1,	-1,	23,	"unknown", },	/* total default */
 };
 
+/*
+ * The AMD processors all implement the CPUID instruction.
+ * The later ones also return the processor name via functions
+ * 0x80000002, 0x80000003 and 0x80000004 in registers AX, BX, CX
+ * and DX:
+ *	K5	"AMD-K5(tm) Processor"
+ *	K6	"AMD-K6tm w/ multimedia extensions"
+ *	K6 3D	"AMD-K6(tm) 3D processor"
+ *	K6 3D+	?
+ */
+static X86type x86amd[] =
+{
+	{ 5,	0,	23,	"AMD-K5", },	/* guesswork */
+	{ 5,	1,	23,	"AMD-K5", },	/* guesswork */
+	{ 5,	2,	23,	"AMD-K5", },	/* guesswork */
+	{ 5,	3,	23,	"AMD-K5", },	/* guesswork */
+	{ 5,	6,	23,	"AMD-K6", },	/* guesswork */
+	{ 5,	7,	23,	"AMD-K6", },	/* guesswork */
+	{ 5,	8,	23,	"AMD-K6 3D", },	/* guesswork */
+	{ 5,	9,	23,	"AMD-K6 3D+", },/* guesswork */
+
+	{ 4,	-1,	22,	"Am486", },	/* guesswork */
+	{ 5,	-1,	23,	"AMD-K5/K6", },	/* guesswork */
+
+	{ -1,	-1,	23,	"unknown", },	/* total default */
+};
+
 void
 cpuidprint(void)
 {
@@ -93,13 +120,18 @@ cpuidentify(void)
 	vlong mct;
 
 	cpuid(m->cpuidid, &m->cpuidax, &m->cpuiddx);
+	if(strncmp(m->cpuidid, "AuthenticAMD", 12) == 0)
+		t = x86amd;
+	else
+		t = x86intel;
 	family = X86FAMILY(m->cpuidax);
 	model = X86MODEL(m->cpuidax);
-	for(t = x86type; t->name; t++){
+	while(t->name){
 		if((t->family == family && t->model == model)
 		|| (t->family == family && t->model == -1)
 		|| (t->family == -1))
 			break;
+		t++;
 	}
 	m->cpuidtype = t->name;
 	i8253init(t->aalcycles);

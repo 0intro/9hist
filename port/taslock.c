@@ -68,6 +68,9 @@ ilock(Lock *l)
 		return;
 	}
 
+	if(conf.nmach < 2)
+		panic("ilock: no way out: pc %uX\n", pc);
+
 	for(;;){
 		splx(x);
 		while(l->key)
@@ -96,6 +99,8 @@ canlock(Lock *l)
 void
 unlock(Lock *l)
 {
+	if(l->key == 0)
+		print("unlock: not locked: pc %uX\n", getcallerpc(l));
 	l->pc = 0;
 	l->key = 0;
 	coherence();

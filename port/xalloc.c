@@ -10,7 +10,7 @@ enum
 {
 	Chunk		= 64*1024,
 	Nhole		= 128,
-	Magichole	= 0xDeadBabe,
+	Magichole	= 0x484F4C45,			/* HOLE */
 };
 
 typedef struct Hole Hole;

@@ -108,7 +108,7 @@ typedef struct Rfd {
 	ushort	count;
 	ushort	size;
 
-	uchar	data[sizeof(Etherpkt)];
+	uchar	data[1700];
 } Rfd;
 
 enum {					/* field */
@@ -485,6 +485,7 @@ txstart(Ether* ether)
 		}
 		cb->status = 0;
 
+		coherence();
 		ctlr->cbhead->command &= ~CbS;
 		ctlr->cbhead = cb;
 		ctlr->cbq++;
@@ -504,7 +505,7 @@ configure(Ether* ether, int promiscuous)
 	ilock(&ctlr->cblock);
 	if(promiscuous){
 		ctlr->configdata[6] |= 0x80;		/* Save Bad Frames */
-		ctlr->configdata[6] &= ~0x40;		/* !Discard Overrun Rx Frames */
+		//ctlr->configdata[6] &= ~0x40;		/* !Discard Overrun Rx Frames */
 		ctlr->configdata[7] &= ~0x01;		/* !Discard Short Rx Frames */
 		ctlr->configdata[15] |= 0x01;		/* Promiscuous mode */
 		ctlr->configdata[18] &= ~0x01;		/* (!Padding enable?), !stripping enable */
@@ -512,7 +513,7 @@ configure(Ether* ether, int promiscuous)
 	}
 	else{
 		ctlr->configdata[6] &= ~0x80;
-		ctlr->configdata[6] |= 0x40;
+		//ctlr->configdata[6] |= 0x40;
 		ctlr->configdata[7] |= 0x01;
 		ctlr->configdata[15] &= ~0x01;
 		ctlr->configdata[18] |= 0x01;		/* 0x03? */
@@ -592,7 +593,7 @@ interrupt(Ureg*, void* arg)
 				 * If not, just adjust the necessary fields for reuse.
 				 */
 				if((rfd->field & RfdOK) && (xbp = rfdalloc(rfd->link))){
-					bp->rp += sizeof(Rfd)-sizeof(Etherpkt);
+					bp->rp += sizeof(Rfd)-sizeof(rfd->data);
 					bp->wp = bp->rp + (rfd->count & 0x3FFF);
 
 					xbp->next = bp->next;
@@ -621,6 +622,7 @@ interrupt(Ureg*, void* arg)
 				ctlr->rfdtail->next = bp;
 				((Rfd*)ctlr->rfdtail->rp)->link = PADDR(bp->rp);
 				((Rfd*)ctlr->rfdtail->rp)->field |= RfdS;
+				coherence();
 				rfd->field &= ~RfdS;
 
 				/*

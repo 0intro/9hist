@@ -108,7 +108,7 @@ cyber938xcurload(VGAscr* scr, Cursor* curs)
 	 * without a proper datasheet this is what binary search
 	 * through the display memory gives as the place for the
 	 * pattern.
-	 * Note also that is seems the cursor image offset (CRT44
+	 * Note also that it seems the cursor image offset (CRT44
 	 * and CRT45) cannot be set above 512KB.
 	 * This will do for now as the ThinkPad 560E has 1MB and
 	 * can only manage 800x600x8.
