@@ -101,7 +101,7 @@
 #define PTERONLY	0
 #define	PTEPID(n)	((n)<<6)
 #define TLBPID(n)	(((n)>>6)&0x3F)
-#define PTEMAPMEM	(1024*1024)	
+#define PTEMAPMEM	(2*1024*1024)	
 #define	PTEPERTAB	(PTEMAPMEM/BY2PG)
 #define STLBLOG		13
 #define STLBSIZE	(1<<STLBLOG)

@@ -115,14 +115,15 @@ clock(Ureg *ur)
 		checkalarms();
 		kproftimer(ur->pc);
 		if(u && (ur->status&IEP) && u->p->state==Running){
-			if(anyready()){
+			if(anyready()) {
 				if(u->p->hasspin)
 					u->p->hasspin = 0;	/* just in case */
 				else
 					sched();
 			}
+			/* user profiling clock */
 			if(ur->status & KUP)
-				(*(ulong*)(USTKTOP-BY2WD)) += TK2MS(1);	/* profiling clock */
+				(*(ulong*)(USTKTOP-BY2WD)) += TK2MS(1);	
 		}
 		return;
 	}
