@@ -56,7 +56,17 @@ TEXT flushdcache(SB), $-4
 
 /* flush i and d caches */
 TEXT flushcache(SB), $-4
+	/* write back any dirty data */
+	MOVW	$0xe0000000,R0
+	ADD	$(8*1024),R0,R1
+_wbloop:
+	MOVW.W	32(R0),R2
+	CMP	R0,R1
+	BNE	_wbloop
+	
+	/* flush cache contents */
 	MCR	CpMMU, 0, R0, C(CpCacheFlush), C(0x7), 0
+
 	/* drain prefetch */
 	MOVW	R0,R0						
 	MOVW	R0,R0
@@ -225,7 +235,7 @@ _vswitch:
 
 	/* interupted code kernel or user? */
 	AND.S	$0xf, R1, R4
-	B.EQ	_userexcep
+	BEQ	_userexcep
 
 	/* here for trap from SVC mode */
 	MOVM.DB.W [R0-R2], (R13)	/* set ureg->{type, psr, pc}; r13 points to ureg->type  */

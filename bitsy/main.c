@@ -48,6 +48,7 @@ exit(int ispanic)
 	USED(ispanic);
 	delay(1000);
 
+	iprint("it's a wonderful day to die\n");
 	mmudisable();
 	f = nil;
 	(*f)();
