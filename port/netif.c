@@ -182,6 +182,7 @@ netifread(Netif *nif, Chan *c, void *a, long n, ulong offset)
 		j += sprint(buf+j, "framing errs: %d\n", nif->frames);
 		j += sprint(buf+j, "buffer errs: %d\n", nif->buffs);
 		j += sprint(buf+j, "output errs: %d\n", nif->oerrs);
+		j += sprint(buf+j, "prom: %d\n", nif->prom);
 		j += sprint(buf+j, "addr: ");
 		for(i = 0; i < nif->alen; i++)
 			j += sprint(buf+j, "%2.2ux", nif->addr[i]);
@@ -276,6 +277,7 @@ netifclose(Netif *nif, Chan *c)
 			if(--(nif->prom) == 0)
 				(*nif->promiscuous)(nif->arg, 0);
 			qunlock(nif);
+			f->prom = 0;
 		}
 		if(f->type < 0){
 			qlock(nif);
