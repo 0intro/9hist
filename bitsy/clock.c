@@ -43,7 +43,7 @@ clockinit(void)
 	/* get processor type */
 	id = getcpuid();
 
-	print("%lud MHZ ARM, version %ux part %ux stepping %uxd\n", conf.mhz,
+	print("%lud MHZ ARM, ver %lux/part %lux/step %lud\n", conf.mhz,
 		(id>>16)&0xff, (id>>4)&0xfff, id&0xf);
 
 	/* post interrupt 1/HZ secs from now */

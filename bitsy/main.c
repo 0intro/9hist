@@ -456,6 +456,14 @@ outs(ulong a, ushort v)
 	*(ushort*)a = v;
 }
 void
+outss(ulong a, void *p, int n)
+{
+	ushort *sp = p;
+
+	while(n-- > 0)
+		*(ushort*)a = *sp++;
+}
+void
 outl(ulong a, ulong v)
 {
 	*(ulong*)a = v;
@@ -469,6 +477,14 @@ ushort
 ins(ulong a)
 {
 	return *(ushort*)a;
+}
+void
+inss(ulong a, void *p, int n)
+{
+	ushort *sp = p;
+
+	while(n-- > 0)
+		*sp++ = *(ushort*)a;
 }
 ulong
 inl(ulong a)
