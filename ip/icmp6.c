@@ -196,18 +196,6 @@ newIPICMP(int packetlen)
 	return nbp;
 }
 
-
-char*
-icmpconnect6(Conv *c, char **argv, int argc)
-{
-	char *e;
-
-	e = Fsstdconnect(c, argv, argc);
-	Fsconnected(c, e);
-
-	return e;
-}
-
 void
 icmpadvise6(Proto *icmp, Block *bp, char *msg)
 {
@@ -245,7 +233,6 @@ icmpkick6(Conv *c)
 
 	if(icb->headers==6) {
 		/* get user specified addresses */
-//print("icmpkick6: headers\n");
 		bp = pullupblock(bp, ICMP_USEAD6);
 		if(bp == nil)
 			return;
@@ -275,7 +262,6 @@ icmpkick6(Conv *c)
 	p->vcf[0] = 0x06 << 4;
 	if(p->type <= Maxtype6)	
 		ipriv->out[p->type]++;
-//print("icmpkick6: src %I dst %I\n", p->src, p->dst);
 	ipoput6(c->p->f, bp, 0, c->ttl, c->tos);
 }
 
@@ -893,6 +879,7 @@ icmpstats6(Proto *icmp6, char *buf, int len)
 // need to import from icmp.c
 extern int	icmpstate(Conv *c, char *state, int n);
 extern char*	icmpannounce(Conv *c, char **argv, int argc);
+extern char*	icmpconnect(Conv *c, char **argv, int argc);
 extern void	icmpcreate(Conv *c);
 extern void	icmpclose(Conv *c);
 
@@ -904,7 +891,7 @@ icmp6init(Fs *fs)
 	icmp6->priv = smalloc(sizeof(Icmppriv6));
 	icmp6->name = "icmpv6";
 	icmp6->kick = icmpkick6;
-	icmp6->connect = icmpconnect6;
+	icmp6->connect = icmpconnect;
 	icmp6->announce = icmpannounce;
 	icmp6->state = icmpstate;
 	icmp6->create = icmpcreate;

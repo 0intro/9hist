@@ -84,6 +84,7 @@ struct Conv
 	ushort	rport;			/* remote port number */
 	uint	ttl;			/* max time to live */
 	uint	tos;			/* type of service */
+	uchar	ipversion;		/* IPv4 or IPv6 */
 
 	char	*owner;			/* protections */
 	int	perm;
@@ -360,7 +361,7 @@ struct v6params
 
 
 int	Fsconnected(Conv*, char*);
-Conv*	Fsnewcall(Conv*, uchar*, ushort, uchar*, ushort);
+Conv*	Fsnewcall(Conv*, uchar*, ushort, uchar*, ushort, uchar);
 int	Fspcolstats(char*, int);
 int	Fsproto(Fs*, Proto*);
 int	Fsbuiltinproto(Fs*, uchar);

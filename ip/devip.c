@@ -878,8 +878,18 @@ Fsstdconnect(Conv *c, char *argv[], int argc)
 		p = setraddrport(c, argv[1]);
 		if(p != nil)
 			return p;
-		return setladdrport(c, argv[2], 0);
+		p = setladdrport(c, argv[2], 0);
+		if(p != nil)
+			return p;
 	}
+
+	if( (memcmp(c->raddr, v4prefix, IPv4off) == 0 &&
+		memcmp(c->laddr, v4prefix, IPv4off) == 0)
+		|| ipcmp(c->raddr, IPnoaddr) == 0)
+		c->ipversion = V4;
+	else
+		c->ipversion = V6;
+
 	return nil;
 }
 /*
@@ -1308,7 +1318,7 @@ Fsrcvpcolx(Fs *f, uchar proto)
  *  called with protocol locked
  */
 Conv*
-Fsnewcall(Conv *c, uchar *raddr, ushort rport, uchar *laddr, ushort lport)
+Fsnewcall(Conv *c, uchar *raddr, ushort rport, uchar *laddr, ushort lport, uchar version)
 {
 	Conv *nc;
 	Conv **l;
@@ -1336,6 +1346,8 @@ Fsnewcall(Conv *c, uchar *raddr, ushort rport, uchar *laddr, ushort lport)
 	nc->next = nil;
 	*l = nc;
 	nc->state = Connected;
+	nc->ipversion = version;
+
 	qunlock(c);
 
 	wakeup(&c->listenr);

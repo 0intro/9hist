@@ -597,7 +597,7 @@ iliput(Proto *il, Ipifc*, Block *bp)
 			goto raise;
 		}
 
-		new = Fsnewcall(s, raddr, dp, laddr, sp);
+		new = Fsnewcall(s, raddr, dp, laddr, sp, V4);
 		if(new == nil){
 			qunlock(il);
 			netlog(il->f, Logil, "il: bad newcall %I/%ud->%ud\n", raddr, sp, dp);

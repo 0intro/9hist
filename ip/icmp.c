@@ -110,9 +110,11 @@ icmpconnect(Conv *c, char **argv, int argc)
 	char *e;
 
 	e = Fsstdconnect(c, argv, argc);
+	if(e != nil)
+		return e;
 	Fsconnected(c, e);
 
-	return e;
+	return nil;
 }
 
 extern int

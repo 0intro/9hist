@@ -252,10 +252,16 @@ etherbwrite(Ipifc *ifc, Block *bp, int version, uchar *ip)
 		/* check for broadcast or multicast */
 		bp = multicastarp(er->f, a, ifc->m, mac);
 		if(bp==nil){
-			if(version == V4) 
+			switch(version){
+			case V4:
 				sendarp(ifc, a);
-			else 
+				break;
+			case V6: 
 				resolveaddr6(ifc, a);
+				break;
+			default:
+				panic("etherbwrite: version %d", version);
+			}
 			return;
 		}
 	}
@@ -283,6 +289,8 @@ etherbwrite(Ipifc *ifc, Block *bp, int version, uchar *ip)
 		eh->t[1] = 0xDD;
 		devtab[er->mchan6->type]->bwrite(er->mchan6, bp, 0);
 		break;
+	default:
+		panic("etherbwrite2: version %d", version);
 	}
 	ifc->out++;
 }
@@ -371,14 +379,20 @@ etheraddmulti(Ipifc *ifc, uchar *a, uchar *)
 	uchar mac[6];
 	char buf[64];
 	Etherrock *er = ifc->arg;
-	int type;
+	int version;
 
-	type = multicastea(mac, a);
+	version = multicastea(mac, a);
 	sprint(buf, "addmulti %E", mac);
-	if(type == V4) 
+	switch(version){
+	case V4:
 		devtab[er->cchan4->type]->write(er->cchan4, buf, strlen(buf), 0);
-	else if(type == V6) 
+		break;
+	case V6:
 		devtab[er->cchan6->type]->write(er->cchan6, buf, strlen(buf), 0);
+		break;
+	default:
+		panic("etheraddmulti: version %d", version);
+	}
 }
 
 static void
@@ -387,14 +401,20 @@ etherremmulti(Ipifc *ifc, uchar *a, uchar *)
 	uchar mac[6];
 	char buf[64];
 	Etherrock *er = ifc->arg;
-	int type;
+	int version;
 
-	type = multicastea(mac, a);
+	version = multicastea(mac, a);
 	sprint(buf, "remmulti %E", mac);
-	if(type == V4) 
+	switch(version){
+	case V4:
 		devtab[er->cchan4->type]->write(er->cchan4, buf, strlen(buf), 0);
-	else if(type == V6) 
+		break;
+	case V6:
 		devtab[er->cchan6->type]->write(er->cchan6, buf, strlen(buf), 0);
+		break;
+	default:
+		panic("etherremmulti: version %d", version);
+	}
 }
 
 /*
@@ -659,7 +679,8 @@ multicastea(uchar *ea, uchar *ip)
 
 /*
  *  fill in an arp entry for broadcast or multicast
- *  addresses
+ *  addresses.  Return the first queued packet for the
+ *  IP address.
  */
 static Block*
 multicastarp(Fs *f, Arpent *a, Medium *medium, uchar *mac)

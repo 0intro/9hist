@@ -250,18 +250,14 @@ udpkick(Conv *c)
 	}
 
 	dlen = blocklen(bp);
-	/* Make space to fit udp & ip header */
-	if(version == 4)
-		bp = padblock(bp, UDP4_IPHDR_SZ+UDP_UDPHDR_SZ);
-	else
-		bp = padblock(bp, UDP6_IPHDR_SZ+UDP_UDPHDR_SZ);
-
-	if(bp == nil)
-		return;
 
 	/* fill in pseudo header and compute checksum */
-	if(version == 4) 
-	{
+	switch(version){
+	case V4:
+		bp = padblock(bp, UDP4_IPHDR_SZ+UDP_UDPHDR_SZ);
+		if(bp == nil)
+			return;
+
 		uh4 = (Udp4hdr *)(bp->rp);
 		ptcllen = dlen + UDP_UDPHDR_SZ;
 		uh4->Unused = 0;
@@ -288,8 +284,13 @@ udpkick(Conv *c)
 		       ptclcsum(bp, UDP4_PHDR_OFF, dlen+UDP_UDPHDR_SZ+UDP4_PHDR_SZ));
 		uh4->vihl = IP_VER4;
 		ipoput4(f, bp, 0, c->ttl, c->tos);
-	}
-	else {
+		break;
+
+	case V6:
+		bp = padblock(bp, UDP6_IPHDR_SZ+UDP_UDPHDR_SZ);
+		if(bp == nil)
+			return;
+
 		// using the v6 ip header to create pseudo header 
 		// first then reset it to the normal ip header
 		uh6 = (Udp6hdr *)(bp->rp);
@@ -318,20 +319,13 @@ udpkick(Conv *c)
 		uh6->viclfl[0] = IP_VER6;
 		hnputs(uh6->len, ptcllen);
 		uh6->nextheader = IP_UDPPROTO;
-
 		ipoput6(f, bp, 0, c->ttl, c->tos);
+		break;
+
+	default:
+		panic("udpkick: version %d", version);
 	}
 	upriv->ustats.udpOutDatagrams++;
-}
-
-Conv*
-udpincoming(Conv *c, uchar *raddr, ushort rport, uchar *laddr, ushort lport)
-{
-	Conv *new;
-
-	new = Fsnewcall(c, raddr, rport, laddr, lport);
-	if(new == nil)
-		return nil;
 }
 
 void
@@ -347,6 +341,7 @@ udpiput(Proto *udp, Ipifc *ifc, Block *bp)
 	Udppriv *upriv;
 	Fs *f;
 	int version;
+	int ottl, oviclfl, olen;
 
 	upriv = udp->priv;
 	f = udp->f;
@@ -357,8 +352,8 @@ udpiput(Proto *udp, Ipifc *ifc, Block *bp)
 
 	/* Put back pseudo header for checksum 
 	 * (remember old values for icmpnoconv()) */
-	if(version == 4) {
-		int ottl, olen;
+	switch(version) {
+	case V4:
 		ottl = uh4->Unused;
 		uh4->Unused = 0;
 		len = nhgets(uh4->udplen);
@@ -381,9 +376,8 @@ udpiput(Proto *udp, Ipifc *ifc, Block *bp)
 		}
 		uh4->Unused = ottl;
 		hnputs(uh4->udpplen, olen);
-	}
-	else {
-		int ottl, oviclfl, olen;
+		break;
+	case V6:
 		uh6 = (Udp6hdr*)(bp->rp);
 		len = nhgets(uh6->udplen);
 		oviclfl = nhgetl(uh6->viclfl);
@@ -407,6 +401,10 @@ udpiput(Proto *udp, Ipifc *ifc, Block *bp)
 		hnputs(uh6->len, olen);
 		uh6->nextheader = IP_UDPPROTO;
 		uh6->hoplimit = ottl;
+		break;
+	default:
+		panic("udpiput: version %d", version);
+		return;	/* to avoid a warning */
 	}
 
 	qlock(udp);
@@ -419,11 +417,15 @@ udpiput(Proto *udp, Ipifc *ifc, Block *bp)
 		netlog(f, Logudp, "udp: no conv %I!%d -> %I!%d\n", raddr, rport,
 		       laddr, lport);
 
-		if(version == 4) 
+		switch(version){
+		case V4:
 			icmpnoconv(f, bp);
-		else {
-print("udpiput: no conv %I!%d -> %I!%d\n", raddr, rport, laddr, lport);
+			break;
+		case V6:
 			icmphostunr(f, ifc, bp, icmp6_port_unreach, 0);
+			break;
+		default:
+			panic("udpiput2: version %d", version);
 		}
 
 		freeblist(bp);
@@ -435,12 +437,18 @@ print("udpiput: no conv %I!%d -> %I!%d\n", raddr, rport, laddr, lport);
 		if(ucb->headers == 0){
 			/* create a new conversation */
 			if(ipforme(f, laddr) != Runi) {
-				if(version == 4)
+				switch(version){
+				case V4:
 					v4tov6(laddr, ifc->lifc->local);
-				else
+					break;
+				case V6:
 					ipmove(laddr, ifc->lifc->local);
+					break;
+				default:
+					panic("udpiput3: version %d", version);
+				}
 			}
-			c = Fsnewcall(c, raddr, rport, laddr, lport);
+			c = Fsnewcall(c, raddr, rport, laddr, lport, version);
 			if(c == nil){
 				qunlock(udp);
 				freeblist(bp);
@@ -458,10 +466,17 @@ print("udpiput: no conv %I!%d -> %I!%d\n", raddr, rport, laddr, lport);
 	 * Trim the packet down to data size
 	 */
 	len -= UDP_UDPHDR_SZ;
-	if(version == 4)
+	switch(version){
+	case V4:
 		bp = trimblock(bp, UDP4_IPHDR_SZ+UDP_UDPHDR_SZ, len);
-	else
+		break;
+	case V6:
 		bp = trimblock(bp, UDP6_IPHDR_SZ+UDP_UDPHDR_SZ, len);
+		break;
+	default:
+		bp = nil;
+		panic("udpiput4: version %d", version);
+	}
 	if(bp == nil){
 		qunlock(c);
 		netlog(f, Logudp, "udp: len err %I.%d -> %I.%d\n", raddr, rport,
@@ -545,17 +560,23 @@ udpadvise(Proto *udp, Block *bp, char *msg)
 	h4 = (Udp4hdr*)(bp->rp);
 	version = ((h4->vihl&0xF0)==IP_VER6) ? 6 : 4;
 
-	if(version == 4) {
+	switch(version) {
+	case V4:
 		v4tov6(dest, h4->udpdst);
 		v4tov6(source, h4->udpsrc);
 		psource = nhgets(h4->udpsport);
 		pdest = nhgets(h4->udpdport);
-	} else {
+		break;
+	case V6:
 		h6 = (Udp6hdr*)(bp->rp);
 		ipmove(dest, h6->udpdst);
 		ipmove(source, h6->udpsrc);
 		psource = nhgets(h6->udpsport);
 		pdest = nhgets(h6->udpdport);
+		break;
+	default:
+		panic("udpadvise: version %d", version);
+		return;  /* to avoid a warning */
 	}
 
 	/* Look for a connection */

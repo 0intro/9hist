@@ -676,15 +676,22 @@ tcpmtu(Conv *s)
 {
 	Ipifc *ifc;
 	int mtu;
-	int version = (isv4(s->raddr) && isv4(s->laddr)) ? 4 : 6;
+	uchar version;
 
+	version = s->ipversion;
 	mtu = 0;
 	ifc = findipifc(s->p->f, s->raddr, 0);
 	if(ifc != nil) {
-		if(version == 4)
+		switch(version){
+		case V4:
 			mtu = ifc->maxmtu - ifc->m->hsize - (TCP4_PKT + TCP4_HDRSIZE);
-		else
+			break;
+		case V6:
 			mtu = ifc->maxmtu - ifc->m->hsize - (TCP6_PKT + TCP6_HDRSIZE);
+			break;
+		default:
+			panic("tcpmtu: version %d", version);
+		}
 	}
 
 	if(mtu < 32) {
@@ -698,6 +705,9 @@ void
 inittcpctl(Conv *s, int mode)
 {
 	Tcpctl *tcb;
+	Tcp4hdr* h4;
+	Tcp6hdr* h6;
+
 	tcb = (Tcpctl*)s->ptcl;
 
 	memset(tcb, 0, sizeof(Tcpctl));
@@ -719,28 +729,32 @@ inittcpctl(Conv *s, int mode)
 	tcb->katimer.arg = s;
 
 	/* create a prototype(pseudo) header */
-	if(mode != TCP_LISTEN)
-	if(ipcmp(s->laddr, IPnoaddr) == 0)
-		findlocalip(s->p->f, s->laddr, s->raddr);
+	if(mode != TCP_LISTEN){
+		if(ipcmp(s->laddr, IPnoaddr) == 0)
+			findlocalip(s->p->f, s->laddr, s->raddr);
 
-//	if(isv4(s->raddr)) {
-	if(memcmp(s->raddr, v4prefix, IPv4off) == 0 &&
-		memcmp(s->laddr, v4prefix, IPv4off) == 0) {
-		Tcp4hdr* h4 = &tcb->protohdr.tcp4hdr;
-		memset(h4, 0, sizeof(*h4));
-		h4->proto = IP_TCPPROTO;
-		hnputs(h4->tcpsport, s->lport);
-		hnputs(h4->tcpdport, s->rport);
-		v6tov4(h4->tcpsrc, s->laddr);
-		v6tov4(h4->tcpdst, s->raddr);
-	} else {
-		Tcp6hdr* h6 = &tcb->protohdr.tcp6hdr;
-		memset(h6, 0, sizeof(*h6));
-		h6->proto = IP_TCPPROTO;
-		hnputs(h6->tcpsport, s->lport);
-		hnputs(h6->tcpdport, s->rport);
-		ipmove(h6->tcpsrc, s->laddr);
-		ipmove(h6->tcpdst, s->raddr);
+		switch(s->ipversion){
+		case V4:
+			h4 = &tcb->protohdr.tcp4hdr;
+			memset(h4, 0, sizeof(*h4));
+			h4->proto = IP_TCPPROTO;
+			hnputs(h4->tcpsport, s->lport);
+			hnputs(h4->tcpdport, s->rport);
+			v6tov4(h4->tcpsrc, s->laddr);
+			v6tov4(h4->tcpdst, s->raddr);
+			break;
+		case V6:
+			h6 = &tcb->protohdr.tcp6hdr;
+			memset(h6, 0, sizeof(*h6));
+			h6->proto = IP_TCPPROTO;
+			hnputs(h6->tcpsport, s->lport);
+			hnputs(h6->tcpdport, s->rport);
+			ipmove(h6->tcpsrc, s->laddr);
+			ipmove(h6->tcpdst, s->raddr);
+			break;
+		default:
+			panic("inittcpctl: version %d", s->ipversion);
+		}
 	}
 
 	tcb->mss = tcb->cwind = tcpmtu(s);
@@ -1062,7 +1076,7 @@ tcpsndsyn(Tcpctl *tcb)
 }
 
 void
-sndrst(Proto *tcp, uchar *source, uchar *dest, ushort length, Tcp *seg, int version)
+sndrst(Proto *tcp, uchar *source, uchar *dest, ushort length, Tcp *seg, uchar version)
 {
 	Block *hbp;
 	uchar rflags;
@@ -1076,7 +1090,8 @@ sndrst(Proto *tcp, uchar *source, uchar *dest, ushort length, Tcp *seg, int vers
 		return;
 
 	/* make pseudo header */
-	if(version == 4) {
+	switch(version) {
+	case V4:
 		memset(&ph4, 0, sizeof(ph4));
 		ph4.vihl = IP_VER4;
 		v6tov4(ph4.tcpsrc, dest);
@@ -1085,8 +1100,8 @@ sndrst(Proto *tcp, uchar *source, uchar *dest, ushort length, Tcp *seg, int vers
 		hnputs(ph4.tcplen, TCP4_HDRSIZE);
 		hnputs(ph4.tcpsport, seg->dest);
 		hnputs(ph4.tcpdport, seg->source);
-	}
-	else {
+		break;
+	case V6:
 		memset(&ph6, 0, sizeof(ph6));
 		ph6.vcf[0] = IP_VER6;
 		ipmove(ph6.tcpsrc, dest);
@@ -1095,6 +1110,9 @@ sndrst(Proto *tcp, uchar *source, uchar *dest, ushort length, Tcp *seg, int vers
 		hnputs(ph6.ploadlen, TCP6_HDRSIZE);
 		hnputs(ph6.tcpsport, seg->dest);
 		hnputs(ph6.tcpdport, seg->source);
+		break;
+	default:
+		panic("sndrst: version %d", version);
 	}
 
 	tpriv->stats[OutRsts]++;
@@ -1119,17 +1137,21 @@ sndrst(Proto *tcp, uchar *source, uchar *dest, ushort length, Tcp *seg, int vers
 	seg->wnd = 0;
 	seg->urg = 0;
 	seg->mss = 0;
-	if(version == 4) {
+	switch(version) {
+	case V4:
 		hbp = htontcp4(seg, nil, &ph4, nil);
 		if(hbp == nil)
 			return;
 		ipoput4(tcp->f, hbp, 0, MAXTTL, DFLTTOS);
-	}
-	else {
+		break;
+	case V6:
 		hbp = htontcp6(seg, nil, &ph6, nil);
 		if(hbp == nil)
 			return;
 		ipoput6(tcp->f, hbp, 0, MAXTTL, DFLTTOS);
+		break;
+	default:
+		panic("sndrst2: version %d", version);
 	}
 }
 
@@ -1148,7 +1170,6 @@ tcphangup(Conv *s)
 	if(waserror())
 		return commonerror();
 	if(s->raddr != 0) {
-		int version = isv4(s->raddr) ? 4 : 6;
 		seg.flags = RST | ACK;
 		seg.ack = tcb->rcv.nxt;
 		seg.seq = tcb->snd.ptr;
@@ -1156,15 +1177,19 @@ tcphangup(Conv *s)
 		seg.urg = 0;
 		seg.mss = 0;
 		tcb->last_ack = tcb->rcv.nxt;
-		if(version == 4) {
+		switch(s->ipversion) {
+		case V4:
 			tcb->protohdr.tcp4hdr.vihl = IP_VER4;
 			hbp = htontcp4(&seg, nil, &tcb->protohdr.tcp4hdr, tcb);
 			ipoput4(s->p->f, hbp, 0, s->ttl, s->tos);
-		}
-		else {
+			break;
+		case V6:
 			tcb->protohdr.tcp6hdr.vcf[0] = IP_VER6;
 			hbp = htontcp6(&seg, nil, &tcb->protohdr.tcp6hdr, tcb);
 			ipoput6(s->p->f, hbp, 0, s->ttl, s->tos);
+			break;
+		default:
+			panic("tcphangup: version %d", s->ipversion);
 		}
 	}
 	localclose(s, nil);
@@ -1172,14 +1197,16 @@ tcphangup(Conv *s)
 	return nil;
 }
 
-Conv*
-tcpincoming(Conv *s, Tcp *segp, uchar *src, uchar *dst)
+static Conv*
+tcpincoming(Conv *s, Tcp *segp, uchar *src, uchar *dst, uchar version)
 {
 	Conv *new;
 	Tcpctl *tcb;
 	Tcppriv *tpriv;
+	Tcp4hdr *h4;
+	Tcp6hdr *h6;
 
-	new = Fsnewcall(s, src, segp->source, dst, segp->dest);
+	new = Fsnewcall(s, src, segp->source, dst, segp->dest, version);
 	if(new == nil)
 		return nil;
 
@@ -1195,23 +1222,27 @@ tcpincoming(Conv *s, Tcp *segp, uchar *src, uchar *dst)
 	tcb->rtt_timer.arg = new;
 	tcb->rtt_timer.state = TcptimerOFF;
 
-	if(isv4(src)) {
-		Tcp4hdr *h = &tcb->protohdr.tcp4hdr;
-		memset(h, 0, sizeof(*h));
-		h->proto = IP_TCPPROTO;
-		hnputs(h->tcpsport, new->lport);
-		hnputs(h->tcpdport, new->rport);
-		v6tov4(h->tcpsrc, dst);
-		v6tov4(h->tcpdst, src);
-	}
-	else {
-		Tcp6hdr *h = &tcb->protohdr.tcp6hdr;
-		memset(h, 0, sizeof(*h));
-		h->proto = IP_TCPPROTO;
-		hnputs(h->tcpsport, new->lport);
-		hnputs(h->tcpdport, new->rport);
-		ipmove(h->tcpsrc, dst);
-		ipmove(h->tcpdst, src);
+	switch(version){
+	case V4:
+		h4 = &tcb->protohdr.tcp4hdr;
+		memset(h4, 0, sizeof(*h4));
+		h4->proto = IP_TCPPROTO;
+		hnputs(h4->tcpsport, new->lport);
+		hnputs(h4->tcpdport, new->rport);
+		v6tov4(h4->tcpsrc, dst);
+		v6tov4(h4->tcpdst, src);
+		break;
+	case V6:
+		h6 = &tcb->protohdr.tcp6hdr;
+		memset(h6, 0, sizeof(*h6));
+		h6->proto = IP_TCPPROTO;
+		hnputs(h6->tcpsport, new->lport);
+		hnputs(h6->tcpdport, new->rport);
+		ipmove(h6->tcpsrc, dst);
+		ipmove(h6->tcpdst, src);
+		break;
+	default:
+		panic("tcpincoming: version %d", new->ipversion);
 	}
 
 	tpriv = new->p->priv;
@@ -1442,7 +1473,7 @@ tcpiput(Proto *tcp, Ipifc*, Block *bp)
 	Conv *s;
 	Fs *f;
 	Tcppriv *tpriv;
-	int version;
+	uchar version;
 
 	f = tcp->f;
 	tpriv = tcp->priv;
@@ -1453,7 +1484,7 @@ tcpiput(Proto *tcp, Ipifc*, Block *bp)
 	h6 = (Tcp6hdr*)(bp->rp);
 
 	if((h4->vihl&0xF0)==IP_VER4) {
-		version = 4;
+		version = V4;
 		length = nhgets(h4->length);
 		v4tov6(dest, h4->tcpdst);
 		v4tov6(source, h4->tcpsrc);
@@ -1491,7 +1522,7 @@ tcpiput(Proto *tcp, Ipifc*, Block *bp)
 		int ttl = h6->ttl;
 		int proto = h6->proto;
 
-		version = 6;
+		version = V6;
 		length = nhgets(h6->ploadlen);
 		ipmove(dest, h6->tcpdst);
 		ipmove(source, h6->tcpsrc);
@@ -1554,7 +1585,7 @@ reset:
 		if((seg.flags & SYN) == 0 || (seg.flags & ACK) != 0)
 			goto reset;
 
-		s = tcpincoming(s, &seg, source, dest);
+		s = tcpincoming(s, &seg, source, dest, version);
 		if(s == nil)
 			goto reset;
 	}
@@ -1893,18 +1924,11 @@ tcpoutput(Conv *s)
 	ulong ssize, dsize, usable, sent;
 	Fs *f;
 	Tcppriv *tpriv;
-	//int version = isv4(s->raddr) ? 4 : 6;
-	int version;
-
-	if( (memcmp(s->raddr, v4prefix, IPv4off) == 0 &&
-		memcmp(s->laddr, v4prefix, IPv4off) == 0)
-		|| ipcmp(s->raddr, IPnoaddr) == 0)
-		version = 4;
-	else
-		version = 6;
+	uchar version;
 
 	f = s->p->f;
 	tpriv = s->p->priv;
+	version = s->ipversion;
 
 	for(msgs = 0; msgs < 100; msgs++) {
 		tcb = (Tcpctl*)s->ptcl;
@@ -2033,21 +2057,26 @@ tcpoutput(Conv *s)
 			tcb->snd.nxt = tcb->snd.ptr;
 
 		/* Build header, link data and compute cksum */
-		if(version == 4) {
+		switch(version){
+		case V4:
 			tcb->protohdr.tcp4hdr.vihl = IP_VER4;
 			hbp = htontcp4(&seg, bp, &tcb->protohdr.tcp4hdr, tcb);
 			if(hbp == nil) {
 				freeblist(bp);
 				return;
 			}
-		}
-		else {
+			break;
+		case V6:
 			tcb->protohdr.tcp6hdr.vcf[0] = IP_VER6;
 			hbp = htontcp6(&seg, bp, &tcb->protohdr.tcp6hdr, tcb);
 			if(hbp == nil) {
 				freeblist(bp);
 				return;
 			}
+			break;
+		default:
+			hbp = nil;	/* to suppress a warning */
+			panic("tcpoutput: version %d", version);
 		}
 
 		/* Start the transmission timers if there is new data and we
@@ -2076,10 +2105,16 @@ tcpoutput(Conv *s)
 			qlock(s);
 			nexterror();
 		}
-		if(version == 4)
+		switch(version){
+		case V4:
 			ipoput4(f, hbp, 0, s->ttl, s->tos);
-		else
+			break;
+		case V6:
 			ipoput6(f, hbp, 0, s->ttl, s->tos);
+			break;
+		default:
+			panic("tcpoutput2: version %d", version);
+		}
 		qlock(s);
 		poperror();
 	}

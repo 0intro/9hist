@@ -1278,7 +1278,7 @@ findlocalip(Fs *f, uchar *local, uchar *remote)
 	USED(atypel);
 	qlock(f->ipifc);
 	r = v6lookup(f, remote);
- 	version = (memcmp(remote, v4prefix, IPv4off) == 0) ? 4 : 6;
+ 	version = (memcmp(remote, v4prefix, IPv4off) == 0) ? V4 : V6;
 	
 	if(r != nil){
 		ifc = r->ifc;
@@ -1290,7 +1290,8 @@ findlocalip(Fs *f, uchar *local, uchar *remote)
 		}
 
 		/* find ifc address closest to the gateway to use */
-		if(version == 4) {
+		switch(version) {
+		case V4:
 			for(lifc = ifc->lifc; lifc; lifc = lifc->next){
 				maskip(gate, lifc->mask, gnet);
 				if(ipcmp(gnet, lifc->net) == 0){
@@ -1298,8 +1299,8 @@ findlocalip(Fs *f, uchar *local, uchar *remote)
 					goto out;
 				}
 			}
-		}
-		else {
+			break;
+		case V6:
 			for(lifc = ifc->lifc; lifc; lifc = lifc->next){
 				atypel = v6addrtype(lifc->local);
 				maskip(gate, lifc->mask, gnet);
@@ -1314,14 +1315,22 @@ findlocalip(Fs *f, uchar *local, uchar *remote)
 			}
 			if(atype > unspecifiedv6)
 				goto out;
+			break;
+		default:
+			panic("findlocalip: version %d", version);
 		}
 	}
 
-	if(version == 4)
+	switch(version){
+	case V4:
 		findprimaryip(f, local);
-	else
+		break;
+	case V6:
 		findprimaryip6(f, local);
-
+		break;
+	default:
+		panic("findlocalip2: version %d", version);
+	}
 
 out:
 	qunlock(f->ipifc);

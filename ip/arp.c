@@ -60,56 +60,9 @@ arpinit(Fs *f)
 	kproc("rxmitproc", rxmitproc, f->arp);
 }
 
-static Arpent*
-newarp(Arp *arp, uchar *ip, Medium *m)
-{
-	uint t;
-	Block *next, *xp;
-	Arpent *a, *e, *f, **l;
-
-	/* find oldest entry */
-	e = &arp->cache[NCACHE];
-	a = arp->cache;
-	t = a->used;
-	for(f = a; f < e; f++){
-		if(f->used < t){
-			t = f->used;
-			a = f;
-		}
-	}
-
-	/* dump waiting packets */
-	xp = a->hold;
-	a->hold = nil;
-
-	while(xp){
-		next = xp->list;
-		freeblist(xp);
-		xp = next;
-	}
-
-	/* take out of current chain */
-	l = &arp->hash[haship(a->ip)];
-	for(f = *l; f; f = f->hash){
-		if(f == a){
-			*l = a->hash;
-			break;
-		}
-		l = &f->hash;
-	}
-
-	/* insert into new chain */
-	l = &arp->hash[haship(ip)];
-	a->hash = *l;
-	*l = a;
-	memmove(a->ip, ip, sizeof(a->ip));
-	a->used = msec;
-	a->time = 0;
-	a->type = m;
-
-	return a;
-}
-
+/*
+ *  create a new arp entry for an ip address.
+ */
 static Arpent*
 newarp6(Arp *arp, uchar *ip, Ipifc *ifc, int addrxt)
 {
@@ -243,6 +196,12 @@ cleanarpent(Arp *arp, Arpent *a)
 	a->ifc = nil;
 }
 
+/*
+ *  fill in the media address if we have it.  Otherwise return an
+ *  Arpent that represents the state of the address resolution FSM
+ *  for ip.  Add the packet to be sent onto the list of packets
+ *  waiting for ip->mac to be resolved.
+ */
 Arpent*
 arpget(Arp *arp, Block *bp, int version, Ipifc *ifc, uchar *ip, uchar *mac)
 {
@@ -265,11 +224,7 @@ arpget(Arp *arp, Block *bp, int version, Ipifc *ifc, uchar *ip, uchar *mac)
 	}
 
 	if(a == nil){
-		//a = newarp6(arp, ip, ifc, (version != V4));
-		if(version == V4)
-			a = newarp(arp, ip, type);
-		else 
-			a = newarp6(arp, ip, ifc, 1);
+		a = newarp6(arp, ip, ifc, (version != V4));
 		a->state = AWAIT;
 	}
 	a->used = msec;
@@ -300,6 +255,9 @@ arprelease(Arp *arp, Arpent*)
 }
 
 /*
+ * Copy out the mac address from the Arpent.  Return the
+ * block waiting to get sent to this mac address.
+ *
  * called with arp locked
  */
 Block*
@@ -348,13 +306,19 @@ arpenter(Fs *fs, int version, uchar *ip, uchar *mac, int n, int refresh)
 		return;
 	}
 
-	if(version == V4){
+	switch(version){
+	case V4:
 		r = v4lookup(fs, ip);
 		v4tov6(v6ip, ip);
 		ip = v6ip;
-	}
-	else
+		break;
+	case V6:
 		r = v6lookup(fs, ip);
+		break;
+	default:
+		panic("arpenter: version %d", version);
+		return;	/* to supress warnings */
+	}
 
 	if(r == nil){
 //		print("arp: no route for entry\n");
@@ -417,12 +381,7 @@ arpenter(Fs *fs, int version, uchar *ip, uchar *mac, int n, int refresh)
 	}
 
 	if(refresh == 0){
-		//a = newarp6(arp, ip, ifc, 0);
-		if(version == 4)
-			a = newarp(arp, ip, type);
-		else 
-			a = newarp6(arp, ip, ifc, 0);
-
+		a = newarp6(arp, ip, ifc, 0);
 		a->state = AOK;
 		a->type = type;
 		memmove(a->mac, mac, type->maclen);
@@ -672,7 +631,7 @@ rxmitproc(void *v)
 	long wakeupat;
 
 	arp->rxmitp = up;
-	print("arp rxmitproc started\n");
+	//print("arp rxmitproc started\n");
 	if(waserror()){
 		arp->rxmitp = 0;
 		pexit("hangup", 1);
