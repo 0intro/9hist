@@ -74,13 +74,22 @@ iallockproc(void *arg)
 				continue;
 			}
 
-			/* increase goal if we've been drained twice in a row */
-			if(cl->have == 0 && cl->had == 0)
+			/*
+			 *  increase goal if we've been drained, decrease
+			 *  goal if we've had lots of blocks twice in a row.
+			 */
+			if(cl->have == 0)
 				cl->goal += cl->goal>>2;
+			else {
+				x = cl->goal/2;
+				if(cl->goal > 4 && cl->had > x && cl->have > x)
+					cl->goal--;
+			}
+
 			cl->had = cl->have;
 			l = &first;
 			for(i = x = cl->goal - cl->have; x > 0; x--){
-				p = alloc(1<<pow);
+				p = malloc(1<<pow);
 				if(p == 0)
 					break;
 				*l = p;
@@ -158,9 +167,9 @@ allocb(int size)
 {
 	Block *b;
 
-	b = alloc(sizeof(Block) + size);
+	b = malloc(sizeof(Block) + size);
 	if(b == 0)
-		exhausted("blocks");
+		exhausted("Blocks");
 
 	b->base = (uchar*)(b+1);
 	b->rp = b->wp = b->base;
@@ -180,7 +189,7 @@ consume(Queue *q, uchar *p, int len, int drop)
 	int n;
 
 	lock(q);
-	b = q->first;
+	b = q->bfirst;
 	if(b == 0){
 		q->state |= Qstarve;
 		unlock(q);
@@ -190,12 +199,21 @@ consume(Queue *q, uchar *p, int len, int drop)
 	if(n < len)
 		len = n;
 	memmove(p, b->rp, len);
-	if(len == n || drop){
-		q->first = b->next;
-		ifree(b);
-	} else
+	if(drop || len == n)
+		q->bfirst = b->next;
+	else
 		b->rp += len;
+	q->len -= len;
+
+	/* wakeup flow controlled writers */
+	if(q->len+len >= q->limit && q->len < q->limit)
+		wakeup(&q->r);
+
 	unlock(q);
+
+	if(drop || len == n)
+		ifree(b);
+
 	return len;
 }
 
@@ -204,5 +222,145 @@ produce(Queue *q, uchar *p, int len)
 {
 	Block *b;
 
-	b = ialloc(sizeof(Block)
+	lock(q);
+	b = q->rfirst;
+	if(b){
+		/* hand to waiting receiver */
+		n = b->lim - b->wp;
+		if(n < len)
+			len = n;
+		memmove(b->wp, p, len);
+		b->wp += len;
+		q->rfirst = b->next;
+		wakeup(&b->r);
+		unlock(q);
+		return len;
+	}
+
+	/* no waiting receivers, buffer */
+	if(q->len >= q->limit)
+		return -1;
+	b = ialloc(sizeof(Block)+len);
+	if(b == 0)
+		return -1;
+	b->base = (uchar*)(b+1);
+	b->rp = b->base;
+	b->wp = b->lim = b->base + len;
+	memmove(b->rp, p, len);
+	if(q->bfirst)
+		q->blast->next = b;
+	else
+		q->bfirst = b;
+	q->last = b;
+	q->len += len;
+	unlock(q);
+	return len;
+}
+
+/*
+ *  called by non-interrupt code
+ */
+Queue*
+qopen(int limit)
+{
+	Queue *q;
+
+	q = malloc(sizeof(Queue));
+	if(q == 0)
+		exhausted("Queues");
+	q->limit = limit;
+}
+
+static int
+bfilled(void *a)
+{
+	Block *b = a;
+
+	return b->wp - b->rp;
+}
+
+long
+qread(Queue *q, char *p, int len, int drop)
+{
+	Block *b, *bb;
+	int x, n;
+
+	/* ... to be replaced by a mapping */
+	b = allocb(len);
+
+	x = splhi();
+	lock(q);
+	bb = q->bfirst;
+	if(bb == 0){
+		/* wait for our block to be filled */
+		if(q->rfirst)
+			q->rlast->next = b;
+		else
+			q->rfirst = b;
+		q->rlast = b;
+		unlock(q);
+		splx(x);
+		sleep(&b->r, bfilled, b);
+		n = BLEN(b);
+		memmove(p, b->rp, n);
+		return n;
+	}
+
+	/* grab a block from the buffer */
+	n = BLEN(b);
+	if(drop || n <= len){
+		q->bfirst = b->next;
+		q->len -= n;
+		unlock(q);
+		slpx(x);
+		memmove(p, b->rp, n);
+	} else {
+		n = len;
+		q->len -= n;
+		memmove(p, b->rp, n);
+		b->rp += n;
+		unlock(q);
+		slpx(x);
+	}
+	free(b);
+	return n;
+}
+
+static int
+qnotfull(void *a)
+{
+	Queue *q = a;
+
+	return q->len < q->limit;
+}
+
+long
+qwrite(Queue *q, char *p, int len)
+{
+	Block *b;
+	int x, n;
+
+	b = allocb(len);
+	memmove(b->rp, p, len);
+	b->wp += len;
+
+	/* flow control */
+	if(!qnotfull(q)){
+		qlock(&q->wlock);
+		sleep(&q->r, qnotfull, q);
+		qunlock(&q->wlock);
+	}
+		
+	x = splhi();
+	lock(q);
+	if(q->bfirst)
+		q->blast->next = b;
+	else
+		q->bfirst = b;
+	q->blast = b;
+	q->len += len;
+	unlock(q);
+	splx(x);
+
+	return len;
 }

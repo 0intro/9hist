@@ -650,20 +650,25 @@ struct Block
 	uchar	*wp;			/* first empty byte */
 	uchar	*lim;			/* 1 past the end of the buffer */
 	uchar	*base;			/* start of the buffer */
+
+	Rendez	r;			/* waiting reader */
 };
 
 struct Queue
 {
 	Lock;
 
-	Block	*first;
-	Block	*last;
-	int	nbytes;		/* bytes in queue */
+	Block	*rfirst;	/* waiting readers */
+	Block	*rlast;
+
+	Block	*bfirst;	/* buffer */
+	Block	*blast;
+
+	int	len;		/* bytes in queue */
 	int	limit;		/* max bytes in queue */
 	int	state;
 
-	QLock	rlock;		/* mutex for readers */
-	QLock	wlock;		/* mutex for writers */
+	QLock	wlock;		/* mutex for r */
 	Rendez	r;
 };
 
