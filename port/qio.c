@@ -167,7 +167,7 @@ allocb(int size)
 	return b;
 }
 
-ulong bpadoverhead;
+ulong padblockoverhead;
 
 /*
  *  pad a block to the front (or the back if size is negative)
@@ -179,17 +179,20 @@ padblock(Block *bp, int size)
 	Block *nbp;
 
 	if(size >= 0){
-		if(bp->rp - bp->base >= size)
+		if(bp->rp - bp->base >= size){
+			bp->rp -= size;
 			return bp;
+		}
 
 		n = bp->wp - bp->rp;
-		bpadoverhead += n;
+		padblockoverhead += n;
 		nbp = allocb(size+n);
 		nbp->rp += size;
 		nbp->wp = nbp->rp;
 		memmove(nbp->wp, bp->rp, n);
 		nbp->wp += n;
 		freeb(bp);
+		nbp->rp -= size;
 	} else {
 		size = -size;
 
@@ -197,7 +200,7 @@ padblock(Block *bp, int size)
 			return bp;
 
 		n = bp->wp - bp->rp;
-		bpadoverhead += n;
+		padblockoverhead += n;
 		nbp = allocb(size+n);
 		memmove(nbp->wp, bp->rp, n);
 		nbp->wp += n;
