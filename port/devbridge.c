@@ -38,7 +38,6 @@ enum
 
 	TcpMssMax = 1400,			// max desirable Tcp MSS value
 
-	Addrlen=	16,		// must be long enough of IP addr and ether addr
 };
 
 static Dirtab bridgedirtab[]={
@@ -117,7 +116,7 @@ struct Port
 	
 	// the following uniquely identifies the port
 	int	type;
-	uchar	addr[Addrlen];
+	char	name[NAMELEN];
 	
 	// owner hash - avoids bind/unbind races
 	ulong	ownhash;
@@ -332,10 +331,10 @@ bridgeread(Chan *c, void *a, long n, vlong off)
 			switch(port->type) {
 			default: panic("bridgeread: unknown port type: %d", port->type);
 			case Tether:
-				i += snprint(buf+i, sizeof(buf)-i, "ether %E: ", port->addr);
+				i += snprint(buf+i, sizeof(buf)-i, "ether %s: ", port->name);
 				break;
 			case Ttun:
-				i += snprint(buf+i, sizeof(buf)-i, "tunnel %I: ", port->addr);
+				i += snprint(buf+i, sizeof(buf)-i, "tunnel %s: ", port->name);
 				break;
 			}
 			ingood = port->in-port->inmulti-port->inunknown;
@@ -507,23 +506,27 @@ portbind(Bridge *b, int argc, char *argv[])
 	char *dev, *dev2=nil, *p;
 	Chan *ctl;
 	int type=0, i, n;
-	char *usage = "usage: bind ether|tunnel addr ownhash dev [dev2]";
-	uchar addr[Addrlen];
+	char *usage = "usage: bind ether|tunnel name ownhash dev [dev2]";
+	char name[NAMELEN];
 	ulong ownhash;
 
-	memset(addr, 0, Addrlen);
+	memset(name, 0, NAMELEN);
 	if(argc < 4)
 		error(usage);
 	if(strcmp(argv[0], "ether") == 0) {
 		if(argc != 4)
 			error(usage);
 		type = Tether;
-		parseaddr(addr, argv[1], Eaddrlen);
+		strncpy(name, argv[1], NAMELEN);
+		name[NAMELEN-1] = 0;
+//		parseaddr(addr, argv[1], Eaddrlen);
 	} else if(strcmp(argv[0], "tunnel") == 0) {
 		if(argc != 5)
 			error(usage);
 		type = Ttun;
-		parseip(addr, argv[1]);
+		strncpy(name, argv[1], NAMELEN);
+		name[NAMELEN-1] = 0;
+//		parseip(addr, argv[1]);
 		dev2 = argv[4];
 	} else
 		error(usage);
@@ -533,7 +536,7 @@ portbind(Bridge *b, int argc, char *argv[])
 		port = b->port[i];
 		if(port != nil)
 		if(port->type == type)
-		if(memcmp(port->addr, addr, Addrlen) == 0)
+		if(memcmp(port->name, name, NAMELEN) == 0)
 			error("port in use");
 	}
 	for(i=0; i<Maxport; i++)
@@ -551,7 +554,7 @@ portbind(Bridge *b, int argc, char *argv[])
 		nexterror();
 	}
 	port->type = type;
-	memmove(port->addr, addr, Addrlen);
+	memmove(port->name, name, NAMELEN);
 	switch(port->type) {
 	default: panic("portbind: unknown port type: %d", type);
 	case Tether:
@@ -614,18 +617,22 @@ portunbind(Bridge *b, int argc, char *argv[])
 	Port *port=nil;
 	int type=0, i;
 	char *usage = "usage: unbind ether|tunnel addr [ownhash]";
-	uchar addr[Addrlen];
+	char name[NAMELEN];
 	ulong ownhash;
 
-	memset(addr, 0, Addrlen);
+	memset(name, 0, NAMELEN);
 	if(argc < 2 || argc > 3)
 		error(usage);
 	if(strcmp(argv[0], "ether") == 0) {
 		type = Tether;
-		parseaddr(addr, argv[1], Eaddrlen);
+		strncpy(name, argv[1], NAMELEN);
+		name[NAMELEN-1] = 0;
+//		parseaddr(addr, argv[1], Eaddrlen);
 	} else if(strcmp(argv[0], "tunnel") == 0) {
 		type = Ttun;
-		parseip(addr, argv[1]);
+		strncpy(name, argv[1], NAMELEN);
+		name[NAMELEN-1] = 0;
+//		parseip(addr, argv[1]);
 	} else
 		error(usage);
 	if(argc == 3)
@@ -636,7 +643,7 @@ portunbind(Bridge *b, int argc, char *argv[])
 		port = b->port[i];
 		if(port != nil)
 		if(port->type == type)
-		if(memcmp(port->addr, addr, Addrlen) == 0)
+		if(memcmp(port->name, name, NAMELEN) == 0)
 			break;
 	}
 	if(i == b->nport)

@@ -36,7 +36,7 @@ enum
 
 	Maxconv= 256,		// power of 2
 	Nfs= 4,				// number of file systems
-	MaxRetries=	8,
+	MaxRetries=	4,
 	KeepAlive = 60,		// keep alive in seconds
 	KeyLength= 32,
 };
@@ -203,11 +203,13 @@ static int readready(void *a);
 static int controlread();
 static Block *conviput(Conv *c, Block *b, int control);
 static void conviput2(Conv *c, Block *b);
+static void writecontrol(Conv *c, void *p, int n);
 static Block *readcontrol(Conv *c, int n);
 static Block *readdata(Conv *c, int n);
 static void convoput(Conv *c, int type, Block *b);
 static void convoput2(Conv *c, int op, ulong dialid, ulong acceptid);
 static void convreader(void *a);
+static void convopenchan(Conv *c, char *path);
 
 
 static void
@@ -378,7 +380,6 @@ sdpclose(Chan* ch)
 			if(c->dataopen == 0)
 				wakeup(&c->in.controlready);
 		}
-print("close c->ref = %d\n", c->ref);
 		if(c->ref == 0) {
 			switch(c->state) {
 			default:
@@ -429,12 +430,14 @@ sdpread(Chan *ch, void *a, long n, vlong off)
 		b = readcontrol(sdp->conv[CONV(ch->qid)], n);
 		if(b == nil)
 			return 0;
+print("readcontrol asked %ld got %ld\n", n, BLEN(b));
 		if(BLEN(b) < n)
 			n = BLEN(b);
 		memmove(a, b->rp, n);
 		freeb(b);
 		return n;
 	case Qdata:
+print("readdata\n");
 		b = readdata(sdp->conv[CONV(ch->qid)], n);
 		if(b == nil)
 			return 0;
@@ -456,6 +459,7 @@ sdpbread(Chan* ch, long n, ulong offset)
 	return readdata(sdp->conv[CONV(ch->qid)], n);
 }
 
+
 static long
 sdpwrite(Chan *ch, void *a, long n, vlong off)
 {
@@ -471,7 +475,6 @@ sdpwrite(Chan *ch, void *a, long n, vlong off)
 		error(Eperm);
 	case Qctl:
 		c = sdp->conv[CONV(ch->qid)];
-print("Qctl write : conv->id = %d\n", c->id);
 		cb = parsecmd(a, n);
 		qlock(c);
 		if(waserror()) {
@@ -482,23 +485,14 @@ print("Qctl write : conv->id = %d\n", c->id);
 		if(cb->nf == 0)
 			error("short write");
 		arg0 = cb->f[0];
-print("cmd = %s\n", arg0);
 		if(strcmp(arg0, "accept") == 0) {
 			if(cb->nf != 2)
 				error("usage: accect file");
-			if(c->chan != nil)
-				error("already connected");
-			c->chan = namec(cb->f[1], Aopen, ORDWR, 0);
-			c->channame = malloc(strlen(cb->f[1])+1);
-			strcpy(c->channame, cb->f[1]);
+			convopenchan(c, cb->f[1]);
 		} else if(strcmp(arg0, "dial") == 0) {
 			if(cb->nf != 2)
 				error("usage: accect file");
-			if(c->chan != nil)
-				error("already connected");
-			c->chan = namec(cb->f[1], Aopen, ORDWR, 0);
-			c->channame = malloc(strlen(cb->f[1])+1);
-			strcpy(c->channame, cb->f[1]);
+			convopenchan(c, cb->f[1]);
 			convsetstate(c, CDial);
 		} else if(strcmp(arg0, "drop") == 0) {
 			if(cb->nf != 2)
@@ -516,6 +510,10 @@ print("cmd = %s\n", arg0);
 		free(cb);
 		if(p != nil)
 			error(p);
+		return n;
+	case Qcontrol:
+print("writecontrol %ld\n", n);
+		writecontrol(sdp->conv[CONV(ch->qid)], a, n);
 		return n;
 	}
 }
@@ -608,10 +606,6 @@ sdpclone(Sdp *sdp)
 
 	c->ref++;
 	c->state = CInit;
-	if(!waserror()) {
-		kproc("convreader", convreader, c);
-		c->reader = 1;
-	}
 	strncpy(c->owner, up->user, sizeof(c->owner));
 	c->perm = 0660;
 	qunlock(c);
@@ -630,11 +624,14 @@ convretryinit(Conv *c)
 
 // assume c is locked
 static int
-convretry(Conv *c)
+convretry(Conv *c, int reset)
 {
 	c->retries++;
+print("convretry: %s: %d\n", convstatename[c->state], c->retries);
 	if(c->retries > MaxRetries) {
 print("convretry: giving up\n");
+		if(reset)
+			convoput2(c, ConReset, c->dialid, c->acceptid);
 		convsetstate(c, CClosed);
 		return 0;
 	}
@@ -645,6 +642,8 @@ print("convretry: giving up\n");
 static void
 convtimer(Conv *c, ulong sec)
 {
+	Block *b;
+
 	if(c->timeout == 0 || c->timeout > sec)
 		return;
 	qlock(c);
@@ -652,26 +651,35 @@ convtimer(Conv *c, ulong sec)
 		qunlock(c);
 		nexterror();
 	}
-print("convtimer: %s\n", convstatename[c->state]);
 	switch(c->state) {
 	case CDial:
-		if(convretry(c))
+		if(convretry(c, 1))
 			convoput2(c, ConOpenRequest, c->dialid, 0);
 		break;
 	case CAccept:
-		if(convretry(c))
+		if(convretry(c, 1))
 			convoput2(c, ConOpenAck, c->dialid, c->acceptid);
-		else
-			convoput2(c, ConReset, c->dialid, c->acceptid);
 		break;
 	case COpen:
-		// check for control packet and keepalive
+		b = c->out.controlpkt;
+		if(b != nil) {
+			if(convretry(c, 1))
+				convoput(c, TControl, copyblock(b, blocklen(b)));
+		} else {
+			c->timeout = 0;
+		}
+		// keepalive
 		break;
 	case CLocalClose:
-		if(convretry(c))
+		if(convretry(c, 0))
 			convoput2(c, ConClose, c->dialid, c->acceptid);
 		break;
+	case CRemoteClose:
+	case CClosed:
+		c->timeout = 0;
+		break;
 	}
+	poperror();
 	qunlock(c);
 }
 
@@ -756,9 +764,11 @@ print("convsetstate %s -> %s\n", convstatename[c->state], convstatename[state]);
 		convoput2(c, ConClose, c->dialid, c->acceptid);
 		break;
 	case CRemoteClose:
+		wakeup(&c->in.controlready);
 		convoput2(c, ConReset, c->dialid, c->acceptid);
 		break;
 	case CClosed:
+		wakeup(&c->in.controlready);
 		if(c->readproc)
 			postnote(c->readproc, 1, "interrupt", 0);
 		if(c->ref)
@@ -801,6 +811,26 @@ onewaycleanup(OneWay *ow)
 }
 
 
+// assumes conv is locked
+static void
+convopenchan(Conv *c, char *path)
+{
+	if(c->chan != nil)
+		error("already connected");
+	c->chan = namec(path, Aopen, ORDWR, 0);
+	c->channame = malloc(strlen(path)+1);
+	strcpy(c->channame, path);
+	if(waserror()) {
+		cclose(c->chan);
+		c->chan = nil;
+		free(c->channame);
+		c->channame = nil;
+		nexterror();
+	}
+	kproc("convreader", convreader, c);
+	c->reader = 1;
+	poperror();
+}
 
 
 // assume we hold lock for c
@@ -825,6 +855,7 @@ conviput(Conv *c, Block *b, int control)
 	b->rp += 4;
 
 	USED(seq);
+print("coniput seq=%ulx\n", seq);
 	// auth
 	// decrypt
 
@@ -836,30 +867,35 @@ conviput(Conv *c, Block *b, int control)
 			break;
 		cseq = nhgetl(b->rp);
 		if(cseq == c->in.controlseq) {
+print("duplicate control packet: %ulx\n", cseq);
 			// duplicate control packet
-			// send ack
-			b->wp = b->rp + 4;
-			convoput(c, TControlAck, b);
+			if(c->in.controlpkt == nil) {
+				// send ack
+				b->wp = b->rp + 4;
+				convoput(c, TControlAck, b);
+			} else
+				freeb(b);
 			return nil;
 		}
 
 		if(cseq != c->in.controlseq+1)
 			break;
-	
 		c->in.controlseq = cseq;
 		b->rp += 4;
 		c->in.controlpkt = b;
+print("recv %ld size=%ld\n", cseq, BLEN(b));
 		wakeup(&c->in.controlready);
 		return nil;
 	case TControlAck:
 		if(BLEN(b) != 4)
 			break;
 		cseq = nhgetl(b->rp);
+print("ControlAck expected %ulx got %ulx\n", c->out.controlseq, cseq);
 		if(cseq != c->out.controlseq)
 			break;
 		freeb(b);
 		freeb(c->out.controlpkt);
-		c->out.controlpkt = 0;
+		c->out.controlpkt = nil;
 		wakeup(&c->out.controlready);
 		return nil;
 	case TData:
@@ -888,6 +924,8 @@ conviput2(Conv *c, Block *b)
 	dialid = nhgetl(con->dialid);
 	acceptid = nhgetl(con->acceptid);
 
+print("conviput2: %s: %d %uld %uld\n", convstatename[c->state], con->op, dialid, acceptid);
+
 	switch(c->state) {
 	default:
 		panic("unknown state: %d", c->state);
@@ -909,7 +947,6 @@ conviput2(Conv *c, Block *b)
 	}
 
 
-print("conviput2: %s: %d %uld %uld\n", convstatename[c->state], con->op, dialid, acceptid);
 	switch(con->op) {
 	case ConOpenRequest:
 		switch(c->state) {
@@ -977,6 +1014,7 @@ print("conviput2: %s: %d %uld %uld\n", convstatename[c->state], con->op, dialid,
 	}
 Reset:
 	// invalid connection message - reset to sender
+print("invalid conviput2 - sending reset\n");
 	convoput2(c, ConReset, dialid, acceptid);
 }
 
@@ -1067,7 +1105,7 @@ readready(void *a)
 {
 	Conv *c = a;
 
-	return (c->state == CClosed) || c->in.controlpkt != nil;
+	return c->in.controlpkt != nil || (c->state == CClosed) || (c->state == CRemoteClose);
 }
 
 static Block *
@@ -1076,24 +1114,78 @@ readcontrol(Conv *c, int n)
 	Block *b;
 
 	USED(n);
+	qlock(c);
 	for(;;) {
-		qlock(c);
 		if(c->state == CInit || c->state == CClosed) {
 			qunlock(c);
+print("readcontrol: return error - state = %s\n", convstatename[c->state]);
+			error("conversation closed");
+		}
+
+		if(c->in.controlpkt != nil)
+			break;
+
+		if(c->state == CRemoteClose) {
+			qunlock(c);
+print("readcontrol: return nil - state = %s\n", convstatename[c->state]);
 			return nil;
 		}
-
-		if(c->in.controlpkt != nil) {
-			b = c->in.controlpkt;
-			c->in.controlpkt = nil;
-			qunlock(c);
-			return b;
-		}
 		qunlock(c);
-
 		sleep(&c->in.controlready, readready, c);
+		qlock(c);
 	}
-	return 0;
+
+	// send ack
+	b = allocb(4);
+	hnputl(b->wp, c->in.controlseq);
+	b->wp += 4;	
+	convoput(c, TControlAck, b);
+
+	b = c->in.controlpkt;
+	c->in.controlpkt = nil;
+	qunlock(c);
+	return b;
+}
+
+
+static int
+writeready(void *a)
+{
+	Conv *c = a;
+
+	return c->out.controlpkt == nil || (c->state == CClosed) || (c->state == CRemoteClose);
+}
+
+static void
+writecontrol(Conv *c, void *p, int n)
+{
+	Block *b;
+
+	qlock(c);
+	for(;;) {
+		if(c->state == CInit || c->state == CClosed || c->state == CRemoteClose) {
+			qunlock(c);
+print("writecontrol: return error - state = %s\n", convstatename[c->state]);
+			error("conversation closed");
+		}
+
+		if(c->state == COpen && c->out.controlpkt == nil)
+			break;
+
+		qunlock(c);
+		sleep(&c->out.controlready, writeready, c);
+		qlock(c);
+	}
+	b = allocb(4+n);
+	c->out.controlseq++;
+	hnputl(b->wp, c->out.controlseq);
+	memmove(b->wp+4, p, n);
+	b->wp += 4+n;
+	c->out.controlpkt = b;
+	convretryinit(c);
+print("send %ld size=%ld\n", c->out.controlseq, BLEN(b));	
+	convoput(c, TControl, copyblock(b, blocklen(b)));
+	qunlock(c);
 }
 
 static Block *
@@ -1122,6 +1214,7 @@ convreader(void *a)
 	Conv *c = a;
 	Block *b;
 
+print("convreader\n");
 	qlock(c);
 	assert(c->reader == 1);
 	while(c->dataopen == 0) {
@@ -1141,6 +1234,7 @@ convreader(void *a)
 			poperror();
 		}
 	}
+print("convreader exiting\n");
 	c->reader = 0;
 	qunlock(c);
 	pexit("hangup", 1);
