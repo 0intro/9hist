@@ -187,7 +187,10 @@ pprint(char *fmt, ...)
 	n = sprint(buf, "%s %d: ", u->p->text, u->p->pid);
 	n = doprint(buf+n, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
 
+	if(waserror())
+		return 0;
 	(*devtab[c->type].write)(c, buf, n, c->offset);
+	poperror();
 
 	lock(c);
 	c->offset += n;

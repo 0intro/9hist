@@ -297,6 +297,13 @@ confinit(void)
 	conf.base0 += ktop;
 
 	conf.topofmem = i*MB;
+	conf.nproc = 30 + i*5;
+	conf.monitor = 1;
+	conf.nswap = conf.nproc*80;
+	conf.nimage = 50;
+	conf.copymode = 0;			/* copy on write */
+	conf.nfloppy = 2;
+	conf.nhard = 2;
 
 	/*
 	 *  parse configuration args from dos file p9rc
@@ -319,13 +326,6 @@ confinit(void)
 		nconf++;
 	}
 
-	conf.monitor = 1;
-	conf.nproc = 30 + i*5;
-	conf.nswap = conf.nproc*80;
-	conf.nimage = 50;
-	conf.copymode = 0;			/* copy on write */
-	conf.nfloppy = 2;
-	conf.nhard = 2;
 }
 
 char *mathmsg[] =

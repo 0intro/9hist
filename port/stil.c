@@ -13,7 +13,7 @@
 
 #define	 DBG	if(0)print
 int 		ilcksum = 1;
-static 	int 	initseq = 25000;
+static 	int 	initseq = 25001;
 static	Rendez	ilackr;
 
 char	*ilstate[] = 

@@ -781,8 +781,10 @@ lbpintr(void)
 		return 1/*0*/;
 	}
 	if (!lbp.printing.p) {
+		csr = dev->csr;
 		CSRCLR(HFINTEN|EFINTEN|GO);
-		print("spurious lbpintr: 0x%4.4ux\n", csr);
+		if(csr & BINT)
+			print("spurious lbpintr: 0x%4.4ux\n", csr);
 		return 1;
 	}
 	if (!(csr & EFL)) {
