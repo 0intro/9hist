@@ -612,18 +612,18 @@ print("bad partition magic\n");
 		pp++;
 		if(getfields(line[i], field, 3, 0) != 3){
 print("bad partition field\n");
-			goto out;
+			break;
 		}
 		if(strlen(field[0]) > NAMELEN){
 print("bad partition name\n");
-			goto out;
+			break;
 		}
 		strcpy(pp->name, field[0]);
 		pp->start = strtoul(field[1], 0, 0);
 		pp->end = strtoul(field[2], 0, 0);
 		if(pp->start > pp->end || pp->start >= dp->p[0].end){
 print("bad partition limit\n");
-			goto out;
+			break;
 		}
 print("partition %s from %d to %d\n", pp->name, pp->start, pp->end);
 		dp->npart++;
