@@ -102,7 +102,7 @@ rootread(Chan *c, void *buf, long n)
 			return 0;
 		if(c->offset+n > sizeof bootcode)
 			n = sizeof bootcode - c->offset;
-		memcpy(buf, ((char*)bootcode)+c->offset, n);
+		memmove(buf, ((char*)bootcode)+c->offset, n);
 		return n;
 
 	case Qcfs:		/* cfs */
@@ -110,7 +110,7 @@ rootread(Chan *c, void *buf, long n)
 			return 0;
 		if(c->offset+n > cfslen)
 			n = cfslen - c->offset;
-		memcpy(buf, ((char*)cfscode)+c->offset, n);
+		memmove(buf, ((char*)cfscode)+c->offset, n);
 		return n;
 
 	case Qdev:

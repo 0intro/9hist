@@ -164,7 +164,7 @@ bit3read(Chan *c, void *buf, long n)
 			do
 				n = bp->rcount;
 			while(n == 0);
-			memcpy(buf, bit3.buf, n);
+			memmove(buf, bit3.buf, n);
 			qunlock(&bit3.buflock);
 		}
 		return n;
@@ -192,7 +192,7 @@ bit3write(Chan *c, void *buf, long n)
 			qlock(&bit3.buflock);
 
 			qlock(&bit3);
-			memcpy(bit3.buf, buf, n);
+			memmove(bit3.buf, buf, n);
 			bit3send(bp, WRITE, bit3.buf, n);
 			do; while(*BIT3ADDR);
 			qunlock(&bit3);

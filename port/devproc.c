@@ -269,12 +269,11 @@ procread(Chan *c, void *va, long n)
 			}else{
 				k = kmap(pg);
 				b = (char*)VA(k);
-				memcpy(a, b+(c->offset&(BY2PG-1)), n);
+				memmove(a, b+(c->offset&(BY2PG-1)), n);
 				kunmap(k);
 			}
 			return n;
 		}
-
 		/* u area */
 		if(c->offset>=USERADDR && c->offset<USERADDR+BY2PG){
 			if(c->offset+n > USERADDR+BY2PG)
@@ -284,7 +283,7 @@ procread(Chan *c, void *va, long n)
 				error(Eprocdied);
 			k = kmap(pg);
 			b = (char*)VA(k);
-			memcpy(a, b+(c->offset-USERADDR), n);
+			memmove(a, b+(c->offset-USERADDR), n);
 			kunmap(k);
 			return n;
 		}
@@ -293,7 +292,7 @@ procread(Chan *c, void *va, long n)
 		if(c->offset>=KZERO && c->offset<KZERO+conf.npage0*BY2PG){
 			if(c->offset+n > KZERO+conf.npage0*BY2PG)
 				n = KZERO+conf.npage0*BY2PG - c->offset;
-			memcpy(a, (char*)c->offset, n);
+			memmove(a, (char*)c->offset, n);
 			return n;
 		}
 		return 0;
@@ -319,9 +318,9 @@ procread(Chan *c, void *va, long n)
 		if(up->nnote == 0)
 			n = 0;
 		else{
-			memcpy(va, up->note[0].msg, ERRLEN);
+			memmove(va, up->note[0].msg, ERRLEN);
 			up->nnote--;
-			memcpy(&up->note[0], &up->note[1], up->nnote*sizeof(Note));
+			memmove(&up->note[0], &up->note[1], up->nnote*sizeof(Note));
 			n = ERRLEN;
 		}
 		kunmap(k);
@@ -333,7 +332,7 @@ procread(Chan *c, void *va, long n)
 			return 0;
 		if(c->offset+n > sizeof(Proc))
 			n = sizeof(Proc) - c->offset;
-		memcpy(a, ((char*)p)+c->offset, n);
+		memmove(a, ((char*)p)+c->offset, n);
 		return n;
 
 	case Qstatus:
@@ -349,7 +348,7 @@ procread(Chan *c, void *va, long n)
 			l = TK2MS(l);
 			readnum(0, statbuf+2*NAMELEN+12+NUMSIZE*i, NUMSIZE, l, NUMSIZE);
 		}
-		memcpy(a, statbuf+c->offset, n);
+		memmove(a, statbuf+c->offset, n);
 		return n;
 	}
 	error(Egreg);
@@ -417,7 +416,7 @@ procwrite(Chan *c, void *va, long n)
 			error(Etoobig);
 		if(n>=4 && strncmp(va, "sys:", 4)==0)
 			error(Ebadarg);
-		memcpy(buf, va, n);
+		memmove(buf, va, n);
 		buf[n] = 0;
 		if(!postnote(p, 0, buf, NUser))
 			error(Enonote);

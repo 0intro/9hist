@@ -630,7 +630,7 @@ growpte(Orig *o, ulong n)
 				goto Trouble;
 			p = ptealloc.free;
 			ptealloc.free += n;
-			memcpy(p+1, o->pte, o->npte*sizeof(PTE));
+			memmove(p+1, o->pte, o->npte*sizeof(PTE));
 			p->o = o;
 			((PTEA*)(o->pte-1))->o = 0;
 			o->pte = p+1;
@@ -689,7 +689,7 @@ compactpte(Orig *o, ulong n)
 				unlock(p2o);
 				goto Free;
 			}
-			memcpy(p1, p2, p2->n*sizeof(PTE));
+			memmove(p1, p2, p2->n*sizeof(PTE));
 			p2o->pte = p1+1;
 			if(p2o != o)
 				unlock(p2o);

@@ -275,7 +275,7 @@ srvwrite(Chan *c, void *va, long n)
 		error(Egreg);
 	if(n >= sizeof buf)
 		error(Egreg);
-	memcpy(buf, va, n);	/* so we can NUL-terminate */
+	memmove(buf, va, n);	/* so we can NUL-terminate */
 	buf[n] = 0;
 	fd = strtoul(buf, 0, 0);
 	fdtochan(fd, -1);	/* error check only */

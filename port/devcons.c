@@ -82,7 +82,7 @@ puts(char *s, int n)
 		printq.c = *s++;
 		n--;
 	}
-	memcpy(printq.in, s, n);
+	memmove(printq.in, s, n);
 	printq.in += n;
 	if(printq.in >= printq.buf+sizeof(printq.buf))
 		printq.in = printq.buf;
@@ -354,7 +354,7 @@ readnum(ulong off, char *buf, ulong n, ulong val, int size)
 		return 0;
 	if(off+n > size)
 		n = size-off;
-	memcpy(buf, tmp+off, n);
+	memmove(buf, tmp+off, n);
 	return n;
 }
 
@@ -368,7 +368,7 @@ readstr(ulong off, char *buf, ulong n, char *str)
 		return 0;
 	if(off+n > size)
 		n = size-off;
-	memcpy(buf, str+off, n);
+	memmove(buf, str+off, n);
 	return n;
 }
 
@@ -501,7 +501,7 @@ consread(Chan *c, void *buf, long n)
 			l = TK2MS(l);
 			readnum(0, tmp+NUMSIZE*i, NUMSIZE, l, NUMSIZE);
 		}
-		memcpy(buf, tmp+k, n);
+		memmove(buf, tmp+k, n);
 		return n;
 
 	case Qpgrpid:
@@ -549,7 +549,7 @@ conswrite(Chan *c, void *va, long n)
 			m = l;
 			if(m > sizeof buf)
 				m = sizeof buf;
-			memcpy(buf, a, m);
+			memmove(buf, a, m);
 			putstrn(a, m);
 			a += m;
 			l -= m;
@@ -561,7 +561,7 @@ conswrite(Chan *c, void *va, long n)
 			return 0;
 		if(n >= sizeof cbuf)
 			n = sizeof cbuf - 1;
-		memcpy(cbuf, a, n);
+		memmove(cbuf, a, n);
 		cbuf[n-1] = 0;
 		boottime = strtoul(a, 0, 0);
 		break;
@@ -573,7 +573,7 @@ conswrite(Chan *c, void *va, long n)
 			return 0;
 		if(c->offset+n >= NAMELEN-1)
 			n = NAMELEN-1 - c->offset;
-		memcpy(u->p->pgrp->user+c->offset, a, n);
+		memmove(u->p->pgrp->user+c->offset, a, n);
 		u->p->pgrp->user[c->offset+n] = 0;
 		break;
 
@@ -642,7 +642,7 @@ syslog(char *p, int n)
 			m = end - s->next;
 		else
 			m = n;
-		memcpy(s->next, p, m);
+		memmove(s->next, p, m);
 		s->next += m;
 		p += m;
 		n -= m;
@@ -691,7 +691,7 @@ readlog(ulong off, char *buf, ulong len)
 			m = end - start;
 		else
 			m = n;
-		memcpy(p, start, m);
+		memmove(p, start, m);
 		start += m;
 		p += m;
 		n -= m;

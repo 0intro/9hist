@@ -61,8 +61,8 @@ void
 unloadboot(void)
 {
 	strncpy(user, BOOT->user, NAMELEN);
-	memcpy(bootline, BOOT->line, 64);
-	memcpy(bootserver, BOOT->server, 64);
+	memmove(bootline, BOOT->line, 64);
+	memmove(bootserver, BOOT->server, 64);
 	bootdevice[0] = BOOT->device;
 }
 
@@ -181,7 +181,7 @@ userinit(void)
 	s->o->pte[0].page = newpage(0, 0, UTZERO);
 	s->o->npage = 1;
 	k = kmap(s->o->pte[0].page);
-	memcpy((ulong*)VA(k), initcode, sizeof initcode);
+	memmove((ulong*)VA(k), initcode, sizeof initcode);
 	kunmap(k);
 	s->minva = UTZERO;
 	s->maxva = UTZERO+BY2PG;
@@ -379,7 +379,7 @@ procsave(uchar *state, int len)
 		m->fpstate = FPdirty;
 	}
 	if(BALU->cr0 != 0xFFFFFFFF)	/* balu busy */
-		memcpy(balu, BALU, sizeof(Balu));
+		memmove(balu, BALU, sizeof(Balu));
 	else{
 		balu->cr0 = 0xFFFFFFFF;
 		BALU->cr0 = 0xFFFFFFFF;
@@ -409,5 +409,5 @@ procrestore(Proc *p, uchar *state)
 		}
 	}
 	if(balu->cr0 != 0xFFFFFFFF)	/* balu busy */
-		memcpy(BALU, balu, sizeof balu);
+		memmove(BALU, balu, sizeof balu);
 }

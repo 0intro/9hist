@@ -130,7 +130,7 @@ kprofread(Chan *c, void *a, long n)
 		}
 		if(c->offset+n > NBUF*sizeof timerbuf[0])
 			n = NBUF*sizeof timerbuf[0]-c->offset;
-		memcpy(a, ((char *)timerbuf)+c->offset, n);
+		memmove(a, ((char *)timerbuf)+c->offset, n);
 		break;
 	default:
 		n=0;

@@ -90,7 +90,7 @@ growenval(Env *e, ulong nchars)
 				compactenv(e, n);
 				p = envalloc.vfree;
 				envalloc.vfree += n;
-				memcpy(p, e->val, e->val->n*sizeof(Envval));
+				memmove(p, e->val, e->val->n*sizeof(Envval));
 				p->e = e;
 				e->val->e = 0;
 				e->val = p;
@@ -144,7 +144,7 @@ compactenv(Env *e, ulong n)
 			}
 			if(p2+p2->n > envalloc.end)
 				panic("compactenv copying too much");
-			memcpy(p1, p2, p2->n*sizeof(Envval));
+			memmove(p1, p2, p2->n*sizeof(Envval));
 			p2e->val = p1;
 			if(p2e != e)
 				unlock(p2e);
@@ -200,7 +200,7 @@ copyenv(Env *e, int trunc)
 		}
 		if((char*)(ne->val+ne->val->n) < ne->val->dat+n)
 			panic("copyenv corrupt");
-		memcpy(ne->val->dat, e->val->dat, n);
+		memmove(ne->val->dat, e->val->dat, n);
 		ne->val->len = n;
 	}
 	poperror();
@@ -461,7 +461,7 @@ envread(Chan *c, void *va, long n)
 	if(n <= 0)
 		n = 0;
 	else
-		memcpy(a, ev->dat+c->offset, n);
+		memmove(a, ev->dat+c->offset, n);
 	unlock(e);
 	unlock(pg);
 	return n;
@@ -501,7 +501,7 @@ envwrite(Chan *c, void *va, long n)
 	vn = ev? ev->len : 0;
 	if(c->offset > vn)
 		error(Egreg); /* perhaps should zero fill */
-	memcpy(ev->dat+c->offset, a, n);
+	memmove(ev->dat+c->offset, a, n);
 	e->val->len = c->offset+n;
 	poperror();
 	unlock(e);

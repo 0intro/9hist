@@ -38,8 +38,8 @@ devdir(Chan *c, Qid qid, char *n, long length, long perm, Dir *db)
 	db->mtime = db->atime;
 	db->hlength = 0;
 	db->length = length;
-	memcpy(db->uid, user, NAMELEN);
-	memcpy(db->gid, user, NAMELEN);
+	memmove(db->uid, user, NAMELEN);
+	memmove(db->gid, user, NAMELEN);
 }
 
 int

@@ -74,7 +74,7 @@ noetherconnect(Noconv *cp, char *ea)
 static void
 noetheropen(Queue *q, Stream *s)
 {
-	nonetnewifc(q, s, 1514, 60, 14, noetherconnect);
+	nonetnewifc(q, s, 1514, ETHERMINMTU, 14, noetherconnect);
 }
 
 /*
@@ -108,6 +108,7 @@ noetheroput(Queue *q, Block *bp)
 			PUTNEXT(q, bp);
 		return;
 	}
+
 	PUTNEXT(q, bp);
 }
 
@@ -148,14 +149,14 @@ noetherbad(Noifc *ifc, Block *bp)
 	nbp->wptr = nbp->rptr + 60;
 	memset(bp->rptr, 0, 60);
 	neh = (Etherhdr *)nbp->rptr;
-	memcpy(neh, eh, sizeof(Etherhdr));
+	memmove(neh, eh, sizeof(Etherhdr));
 	neh->circuit[0] ^= 1;
 	neh->remain[0] = neh->remain[1] = 0;
 	neh->flag = NO_HANGUP | NO_RESET;
 	neh->ack = eh->mid;
 	neh->mid = eh->ack;
-	memcpy(neh->s, eh->d, sizeof(neh->s));
-	memcpy(neh->d, eh->s, sizeof(neh->d));
+	memmove(neh->s, eh->d, sizeof(neh->s));
+	memmove(neh->d, eh->s, sizeof(neh->d));
 	nonetcksum(nbp, 14);
 	PUTNEXT(ifc->wq, nbp);
 out:

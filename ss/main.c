@@ -142,7 +142,7 @@ userinit(void)
 	s->o->pte[0].page = newpage(0, 0, UTZERO);
 	s->o->npage = 1;
 	k = kmap(s->o->pte[0].page);
-	memcpy((ulong*)VA(k), initcode, sizeof initcode);
+	memmove((ulong*)VA(k), initcode, sizeof initcode);
 	kunmap(k);
 	s->minva = UTZERO;
 	s->maxva = UTZERO+BY2PG;

@@ -369,7 +369,7 @@ addbroken(Proc *c)
 	lock(&broken);
 	if(broken.n == NBROKEN){
 		ready(broken.p[0]);
-		memcpy(&broken.p[0], &broken.p[1], sizeof(Proc*)*(NBROKEN-1));
+		memmove(&broken.p[0], &broken.p[1], sizeof(Proc*)*(NBROKEN-1));
 		--broken.n;
 	}
 	broken.p[broken.n++] = c;
@@ -380,7 +380,7 @@ addbroken(Proc *c)
 	for(b=0; b<NBROKEN; b++)
 		if(broken.p[b] == c){
 			broken.n--;
-			memcpy(&broken.p[b], &broken.p[b+1], sizeof(Proc*)*(NBROKEN-(b+1)));
+			memmove(&broken.p[b], &broken.p[b+1], sizeof(Proc*)*(NBROKEN-(b+1)));
 			break;
 		}
 	unlock(&broken);
@@ -450,7 +450,7 @@ pexit(char *s, int freemem)
 	qlock(&p->wait);
 	lock(&p->wait.queue);
 	if(p->pid==c->parentpid && !p->exiting){
-		memcpy(p->waitmsg.msg, msg, ERRLEN);
+		memmove(p->waitmsg.msg, msg, ERRLEN);
 		p->waitmsg.pid = mypid;
 		wp = &p->waitmsg.time[TUser];
 		up = &c->time[TUser];
@@ -576,10 +576,10 @@ kproc(char *name, void (*func)(void *), void *arg)
 	 * Save time: only copy u-> data and useful stack
 	 */
 	clearmmucache();
-	memcpy(up, u, sizeof(User));
+	memmove(up, u, sizeof(User));
 	n = USERADDR+BY2PG - (ulong)&lastvar;
 	n = (n+32) & ~(BY2WD-1);	/* be safe & word align */
-	memcpy((void*)(upa+BY2PG-n), (void*)(USERADDR+BY2PG-n), n);
+	memmove((void*)(upa+BY2PG-n), (void*)(USERADDR+BY2PG-n), n);
 
 	/*
 	 * Refs

@@ -159,9 +159,9 @@ notify(Ureg *ur)
 		sp = ur->usp;
 		sp -= sizeof(Ureg);
 		u->ureg = (void*)sp;
-		memcpy((Ureg*)sp, ur, sizeof(Ureg));
+		memmove((Ureg*)sp, ur, sizeof(Ureg));
 		sp -= ERRLEN;
-		memcpy((char*)sp, u->note[0].msg, ERRLEN);
+		memmove((char*)sp, u->note[0].msg, ERRLEN);
 		sp -= 3*BY2WD;
 		*(ulong*)(sp+2*BY2WD) = sp+3*BY2WD;	/* arg 2 is string */
 		*(ulong*)(sp+1*BY2WD) = (ulong)u->ureg;	/* arg 1 is ureg* */
@@ -170,7 +170,7 @@ notify(Ureg *ur)
 		ur->pc = (ulong)u->notify;
 		u->notified = 1;
 		u->nnote--;
-		memcpy(&u->note[0], &u->note[1], u->nnote*sizeof(Note));
+		memmove(&u->note[0], &u->note[1], u->nnote*sizeof(Note));
 	}
 	unlock(&u->p->debug);
 }
@@ -187,7 +187,7 @@ noted(Ureg **urp)
 		return;
 	}
 	u->notified = 0;
-	memcpy(*urp, u->ureg, sizeof(Ureg));
+	memmove(*urp, u->ureg, sizeof(Ureg));
 	unlock(&u->p->debug);
 	splhi();
 	rfnote(urp);

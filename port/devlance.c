@@ -236,7 +236,7 @@ lancedebq(char tag, Etherpkt *p, int len)
 	t->ticks = NOW;
 	t->tag = tag;
 	t->len = len;
-	memcpy(&(t->p), p, sizeof(Dpkt));
+	memmove(&(t->p), p, sizeof(Dpkt));
 	l.dq.next = (l.dq.next+1) % Ndpkt;
 	unlock(&l.dq);
 	if(plance){
@@ -345,7 +345,7 @@ lanceoput(Queue *q, Block *bp )
 	len = 0;
 	while(bp = getq(q)){
 		if(sizeof(Etherpkt) - len >= (n = BLEN(bp))){
-			memcpy(((uchar *)p)+len, bp->rptr, n);
+			memmove(((uchar *)p)+len, bp->rptr, n);
 			len += n;
 		} else
 			print("no room damn it\n");
@@ -359,7 +359,7 @@ lanceoput(Queue *q, Block *bp )
 	/*
 	 *  give packet a local address
 	 */
-	memcpy(p->s, l.ea, sizeof(l.ea));
+	memmove(p->s, l.ea, sizeof(l.ea));
 
 	/*
 	 *  pad the packet (zero the pad)
@@ -544,6 +544,7 @@ lanceinit(void)
 	lancedir[Ntypes+1].qid.path = Lstatsqid;
 	lancedir[Ntypes+1].length = 0;
 	lancedir[Ntypes+1].perm = 0600;
+
 }
 
 Chan*
@@ -645,7 +646,7 @@ lancetraceread(Chan *c, void *a, long n)
 		i = plen - offset;
 		if(i > n)
 			i = n;
-		memcpy(ca, buf + offset, i);
+		memmove(ca, buf + offset, i);
 		n -= i;
 		ca += i;
 		rv += i;
@@ -814,7 +815,7 @@ lancekproc(void *arg)
 			if(e!=&l.e[Ntypes]){
 				if(e->q->next->len<=Streamhi && !waserror()){
 					bp = allocb(len);
-					memcpy(bp->rptr, (uchar *)p, len);
+					memmove(bp->rptr, (uchar *)p, len);
 					bp->wptr += len;
 					bp->flags |= S_DELIM;
 					PUTNEXT(e->q, bp);

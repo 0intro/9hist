@@ -152,7 +152,7 @@ scsiread(Chan *c, char *a, long n)
 		cmd->save = cmd->data.base;
 		scsiexec(cmd, 1);
 		n = cmd->data.ptr - cmd->data.base;
-		memcpy(a, cmd->data.base, n);
+		memmove(a, cmd->data.base, n);
 		break;
 	case Qdebug:
 		if (c->offset == 0) {
@@ -184,7 +184,7 @@ scsiwrite(Chan *c, char *a, long n)
 			error(Ebadarg);
 		/*qlock(cmd);*/
 		cmd->cmd.base = cmd->cmdblk;
-		memcpy(cmd->cmd.base, a, n);
+		memmove(cmd->cmd.base, a, n);
 		cmd->cmd.lim = cmd->cmd.base + n;
 		cmd->cmd.ptr = cmd->cmd.base;
 		cmd->target = (c->qid.path>>4)&7;
@@ -199,7 +199,7 @@ scsiwrite(Chan *c, char *a, long n)
 		cmd->data.lim = cmd->data.base + n;
 		cmd->data.ptr = cmd->data.base;
 		cmd->save = cmd->data.base;
-		memcpy(cmd->data.base, a, n);
+		memmove(cmd->data.base, a, n);
 		scsiexec(cmd, 0);
 		n = cmd->data.ptr - cmd->data.base;
 		break;
@@ -282,7 +282,7 @@ scsisense(int dev, uchar *p)
 	int status;
 	scsicmd(&cmd, dev, 0x03, buf, sizeof buf);
 	status = scsiexec(&cmd, 1);
-	memcpy(p, buf, sizeof buf);
+	memmove(p, buf, sizeof buf);
 	qunlock(&cmd);
 	if ((status&0xff00) != 0x6000)
 		error(Eio);
@@ -297,7 +297,7 @@ scsicap(int dev, uchar *p)
 	int status;
 	scsicmd(&cmd, dev, 0x25, buf, sizeof buf);
 	status = scsiexec(&cmd, 1);
-	memcpy(p, buf, sizeof buf);
+	memmove(p, buf, sizeof buf);
 	qunlock(&cmd);
 	if ((status&0xff00) != 0x6000)
 		error(Eio);

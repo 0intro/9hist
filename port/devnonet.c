@@ -976,12 +976,13 @@ nohdr(Noconv *cp, int rem)
 	Nohdr *hp;
 
 	bp = allocb(cp->ifc->hsize + NO_HDRSIZE + cp->ifc->mintu);
-	memcpy(bp->wptr, cp->media->rptr, cp->ifc->hsize + NO_HDRSIZE);
+	memmove(bp->wptr, cp->media->rptr, cp->ifc->hsize + NO_HDRSIZE);
 	bp->wptr += cp->ifc->hsize + NO_HDRSIZE;
 	hp = (Nohdr *)(bp->rptr + cp->ifc->hsize);
 	hp->remain[1] = rem>>8;
 	hp->remain[0] = rem;
 	hp->sum[0] = hp->sum[1] = 0;
+
 	return bp;
 }
 
@@ -1029,7 +1030,7 @@ nosend(Noconv *cp, Nomsg *mp)
 		 */
 		last = pkt = nohdr(cp, mp->len);
 		for(bp = mp->first; bp; bp = bp->next){
-			memcpy(pkt->wptr, bp->rptr, n = BLEN(bp));
+			memmove(pkt->wptr, bp->rptr, n = BLEN(bp));
 			pkt->wptr += n;
 		}
 		/*
@@ -1092,6 +1093,7 @@ nosend(Noconv *cp, Nomsg *mp)
 		mp->time = NOW + 10*MSrexmit;
 	else
 		mp->time = NOW + (cp->rexmit+1)*MSrexmit;
+
 	(*wq->put)(wq, pkt);
 }
 

@@ -56,7 +56,7 @@ puts(IOQ *q, char *s, int n)
 			m = &q->buf[NQ] - q->in;
 		if(m > n)
 			m = n;
-		memcpy(q->in, s, m);
+		memmove(q->in, s, m);
 		n -= m;
 		q->in += m;
 		if(q->in >= &q->buf[NQ])

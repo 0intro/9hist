@@ -342,7 +342,7 @@ hotrodread(Chan *c, void *buf, long n)
 {int i; for(i=0; i<8; i++) print("%lux\n", ((ulong*)buf)[i]); }
 				error(Eio);
 			}
-			memcpy(buf, hp->buf, m);
+			memmove(buf, hp->buf, m);
 			qunlock(&hp->buflock);
 		}
 		return m;
@@ -389,7 +389,7 @@ hotrodwrite(Chan *c, void *buf, long n)
 			mp = &((User*)(u->p->upage->pa|KZERO))->uhot;
 			qlock(&hp->buflock);
 			qlock(hp);
-			memcpy(hp->buf, buf, n);
+			memmove(hp->buf, buf, n);
 			mp->cmd = Uwrite;
 			mp->param[0] = MP2VME(hp->buf);
 			mp->param[1] = n;

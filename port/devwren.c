@@ -246,7 +246,7 @@ wrenread(Chan *c, char *a, long n)
 		cmd->save = cmd->data.base;
 		scsiexec(cmd, 1);
 		n = cmd->data.ptr - cmd->data.base;
-		memcpy(a, cmd->data.base, n);
+		memmove(a, cmd->data.base, n);
 		qunlock(cmd);
 		break;
 	case Qstruct:
@@ -304,7 +304,7 @@ wrenwrite(Chan *c, char *a, long n)
 		cmd->data.lim = cmd->data.base + n;
 		cmd->data.ptr = cmd->data.base;
 		cmd->save = cmd->data.base;
-		memcpy(cmd->data.base, a, n);
+		memmove(cmd->data.base, a, n);
 		scsiexec(cmd, 0);
 		n = cmd->data.ptr - cmd->data.base;
 		qunlock(cmd);

@@ -7,7 +7,7 @@
 #define	LONG(x)		p[0] = f->x; p[1] = f->x>>8; p[2] = f->x>>16; p[3] = f->x>>24; p += 4
 #define	VLONG(x)	p[0] = f->x; p[1] = f->x>>8; p[2] = f->x>>16; p[3] = f->x>>24;\
 				p[4] = 0; p[5] = 0; p[6] = 0; p[7] = 0; p += 8
-#define	STRING(x,n)	memcpy(p, f->x, n); p += n
+#define	STRING(x,n)	memmove(p, f->x, n); p += n
 
 int
 convS2M(Fcall *f, char *ap)
@@ -199,7 +199,7 @@ convD2M(Dir *f, char *ap)
 				(p[2]<<16) | (p[3]<<24)); p += 4
 #define	VLONG(x)	f->x = (p[0] | (p[1]<<8) |\
 				(p[2]<<16) | (p[3]<<24)); p += 8
-#define	STRING(x,n)	memcpy(f->x, p, n); p += n
+#define	STRING(x,n)	memmove(f->x, p, n); p += n
 
 int
 convM2S(char *ap, Fcall *f, int n)

@@ -619,8 +619,8 @@ bitwrite(Chan *c, void *va, long n)
 				error(Ebadblt);
 			curs.offset.x = GLONG(p+1);
 			curs.offset.y = GLONG(p+5);
-			memcpy(curs.clr, p+9, 2*16);
-			memcpy(curs.set, p+41, 2*16);
+			memmove(curs.clr, p+9, 2*16);
+			memmove(curs.set, p+41, 2*16);
 			if(!isoff){
 				cursoroff(1);
 				isoff = 1;
@@ -1051,7 +1051,7 @@ bitcompact(void)
 			continue;
 		}
 		if(p1 != p2){
-			memcpy(p1, p2, (2+p2[0])*sizeof(ulong));
+			memmove(p1, p2, (2+p2[0])*sizeof(ulong));
 			((GBitmap*)p1[1])->base = p1+2;
 		}
 		p2 += 2 + p1[0];
@@ -1067,7 +1067,7 @@ Cursortocursor(Cursor *c)
 	int i;
 
 	lock(&cursor);
-	memcpy(&cursor, c, sizeof(Cursor));
+	memmove(&cursor, c, sizeof(Cursor));
 	for(i=0; i<16; i++){
 		setbits[i] = (c->set[2*i]<<24) + (c->set[2*i+1]<<16);
 		clrbits[i] = (c->clr[2*i]<<24) + (c->clr[2*i+1]<<16);

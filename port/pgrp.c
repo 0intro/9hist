@@ -62,7 +62,7 @@ pgrpnote(Pgrp *pg, char *a, long n, int flag)
 		error(Etoobig);
 	if(n>=4 && strncmp(a, "sys:", 4)==0)
 		error(Ebadarg);
-	memcpy(buf, a, n);
+	memmove(buf, a, n);
 	buf[n] = 0;
 	p = proctab(0);
 	for(i=0; i<conf.nproc; i++, p++){
@@ -190,8 +190,8 @@ pgrpcpy(Pgrp *to, Pgrp *from)
 	Env *e;
 
 	lock(from);
-	memcpy(to->user, from->user, NAMELEN);
-	memcpy(to->mtab, from->mtab, from->nmtab*sizeof(Mtab));
+	memmove(to->user, from->user, NAMELEN);
+	memmove(to->mtab, from->mtab, from->nmtab*sizeof(Mtab));
 	to->nmtab = from->nmtab;
 	m = to->mtab;
 	for(i=0; i<from->nmtab; i++,m++)

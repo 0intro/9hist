@@ -602,12 +602,12 @@ pullup(Block *bp, int n)
 	while(nbp = bp->next){
 		i = BLEN(nbp);
 		if(i > n) {
-			memcpy(bp->wptr, nbp->rptr, n);
+			memmove(bp->wptr, nbp->rptr, n);
 			bp->wptr += n;
 			nbp->rptr += n;
 			return bp;
 		} else {
-			memcpy(bp->wptr, nbp->rptr, i);
+			memmove(bp->wptr, nbp->rptr, i);
 			bp->wptr += i;
 			bp->next = nbp->next;
 			nbp->next = 0;
@@ -1018,7 +1018,7 @@ stringread(Chan *c, uchar *buf, long n, char *str)
 		n = i;
 	if(n<0)
 		return 0;
-	memcpy(buf, str + c->offset, n);
+	memmove(buf, str + c->offset, n);
 	return n;
 }
 
@@ -1102,7 +1102,7 @@ streamread(Chan *c, void *vbuf, long n)
 
 		i = BLEN(bp);
 		if(i <= left){
-			memcpy(buf, bp->rptr, i);
+			memmove(buf, bp->rptr, i);
 			left -= i;
 			buf += i;
 			if(bp->flags & S_DELIM){
@@ -1111,7 +1111,7 @@ streamread(Chan *c, void *vbuf, long n)
 			} else
 				freeb(bp);
 		} else {
-			memcpy(buf, bp->rptr, left);
+			memmove(buf, bp->rptr, left);
 			bp->rptr += left;
 			putbq(q, bp);
 			left = 0;
@@ -1170,7 +1170,7 @@ streamctlwrite(Chan *c, void *a, long n)
 	 *  package
 	 */
 	bp = allocb(n+1);
-	memcpy(bp->wptr, a, n);
+	memmove(bp->wptr, a, n);
 	bp->wptr[n] = 0;
 	bp->wptr += n + 1;
 
@@ -1270,14 +1270,14 @@ streamwrite(Chan *c, void *a, long n, int docopy)
 			bp = allocb(rem);
 			i = bp->lim - bp->wptr;
 			if(i >= rem){
-				memcpy(bp->wptr, a, rem);
+				memmove(bp->wptr, a, rem);
 				bp->flags |= S_DELIM;
 				bp->wptr += rem;
 				bp->type = M_DATA;
 				PUTNEXT(q, bp);
 				break;
 			} else {
-				memcpy(bp->wptr, a, i);
+				memmove(bp->wptr, a, i);
 				bp->wptr += i;
 				bp->type = M_DATA;
 				PUTNEXT(q, bp);

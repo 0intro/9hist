@@ -42,10 +42,10 @@ sysfork(ulong *arg)
 	 * Save time: only copy u-> data and useful stack
 	 */
 	clearmmucache();
-	memcpy((void*)upa, u, sizeof(User));
+	memmove((void*)upa, u, sizeof(User));
 	n = USERADDR+BY2PG - (ulong)&lastvar;
 	n = (n+32) & ~(BY2WD-1);	/* be safe & word align */
-	memcpy((void*)(upa+BY2PG-n), (void*)(USERADDR+BY2PG-n), n);
+	memmove((void*)(upa+BY2PG-n), (void*)(USERADDR+BY2PG-n), n);
 	((User *)upa)->p = p;
 	kunmap(k);
 
@@ -79,10 +79,10 @@ sysfork(ulong *arg)
 			p->seg[SSEG].o->pte[i].page = np;
 			if(i == 0){	/* only part of last stack page */
 				memset((void*)VA(k), 0, usp);
-				memcpy((void*)(VA(k)+usp),
+				memmove((void*)(VA(k)+usp),
 					(void*)(op->va+usp), BY2PG-usp);
 			}else		/* all of higher pages */
-				memcpy((void*)VA(k), (void*)op->va, BY2PG);
+				memmove((void*)VA(k), (void*)op->va, BY2PG);
 			kunmap(k);
 		}
 	}
@@ -133,7 +133,7 @@ sysfork(ulong *arg)
 	pid = p->pid;
 	memset(p->time, 0, sizeof(p->time));
 	p->time[TReal] = MACHP(0)->ticks;
-	memcpy(p->text, u->p->text, NAMELEN);
+	memmove(p->text, u->p->text, NAMELEN);
 	ready(p);
 	flushmmu();
 	clearmmucache();
@@ -185,7 +185,7 @@ sysexec(ulong *arg)
 	/*
 	 * Process #! /bin/sh args ...
 	 */
-	memcpy(line, &exec, sizeof(Exec));
+	memmove(line, &exec, sizeof(Exec));
 	if(indir || line[0]!='#' || line[1]!='!')
 		goto Err;
 	n = shargs(line, n, progarg);
@@ -265,11 +265,11 @@ sysexec(ulong *arg)
 		}
 		*argv++ = charp + (USTKTOP-TSTKTOP);
 		n = strlen(*argp) + 1;
-		memcpy(charp, *argp++, n);
+		memmove(charp, *argp++, n);
 		charp += n;
 	}
 
-	memcpy(p->text, elem, NAMELEN);
+	memmove(p->text, elem, NAMELEN);
 
 	/*
 	 * Committed.  Free old memory
@@ -448,7 +448,7 @@ syserrstr(ulong *arg)
 	char buf[ERRLEN];
 
 	validaddr(arg[0], ERRLEN, 1);
-	memcpy((char*)arg[0], u->error, ERRLEN);
+	memmove((char*)arg[0], u->error, ERRLEN);
 	return 0;
 }
 
@@ -465,7 +465,7 @@ sysforkpgrp(ulong *arg)
 	if(arg[0] == 0)
 		pgrpcpy(pg, u->p->pgrp);
 	else
-		memcpy(pg->user, u->p->pgrp->user, NAMELEN);
+		memmove(pg->user, u->p->pgrp->user, NAMELEN);
 	closepgrp(u->p->pgrp);
 	u->p->pgrp = pg;
 	return pg->pgrpid;

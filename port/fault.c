@@ -37,7 +37,7 @@ fault(ulong addr, int read)
 		poperror();
 		/* stacks grown down, sigh */
 		lock(o);
-		memcpy(o->pte+(o->npte-n), o->pte, n*sizeof(PTE));
+		memmove(o->pte+(o->npte-n), o->pte, n*sizeof(PTE));
 		memset(o->pte, 0, (o->npte-n)*sizeof(PTE));
 		unlock(o);
 		s->minva = addr;
@@ -164,7 +164,7 @@ fault(ulong addr, int read)
 			pte->page = newpage(1, o, addr);
 			k = kmap(pte->page);
 			k1 = kmap(pg);
-			memcpy((void*)VA(k), (void*)VA(k1), BY2PG);
+			memmove((void*)VA(k), (void*)VA(k1), BY2PG);
 			kunmap(k);
 			kunmap(k1);
 			if(pg->ref <= 1)

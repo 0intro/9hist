@@ -96,7 +96,7 @@ bootwrite(Chan *c, void *buf, long n)
 /*			print("%ux, %d\n", c->offset, n);/**/
 			if(c->offset+n > KZERO+conf.npage*BY2PG)
 				n = KZERO+conf.npage*BY2PG - c->offset;
-			memcpy((char*)c->offset, buf, n);
+			memmove((char*)c->offset, buf, n);
 			return n;
 		}
 		print("bootwrite: bad addr %lux\n", c->offset);

@@ -308,7 +308,7 @@ mntattach(char *crud)
 	}
 	mh->thdr.type = Tattach;
 	mh->thdr.fid = c->fid;
-	memcpy(mh->thdr.uname, u->p->pgrp->user, NAMELEN);
+	memmove(mh->thdr.uname, u->p->pgrp->user, NAMELEN);
 	strcpy(mh->thdr.aname, bogus.spec);
 	strcpy(mh->thdr.auth, bogus.auth);
 	mntxmit(m, mh);
@@ -403,7 +403,7 @@ mntstat(Chan *c, char *dp)
 	mh->thdr.type = Tstat;
 	mh->thdr.fid = c->fid;
 	mntxmit(m, mh);
-	memcpy(dp, mh->rhdr.stat, DIRLEN);
+	memmove(dp, mh->rhdr.stat, DIRLEN);
 	dp[DIRLEN-4] = devchar[c->type];
 	dp[DIRLEN-3] = 0;
 	dp[DIRLEN-2] = c->dev;
@@ -588,7 +588,7 @@ mntwstat(Chan *c, char *dp)
 	}
 	mh->thdr.type = Twstat;
 	mh->thdr.fid = c->fid;
-	memcpy(mh->thdr.stat, dp, DIRLEN);
+	memmove(mh->thdr.stat, dp, DIRLEN);
 	mntxmit(m, mh);
 	mhfree(mh);
 	poperror();
@@ -748,7 +748,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 	 * Copy out on read
 	 */
 	if(mh->thdr.type == Tread)
-		memcpy(mh->thdr.data, mh->rhdr.data, mh->rhdr.count);
+		memmove(mh->thdr.data, mh->rhdr.data, mh->rhdr.count);
 	mbfree(mh->mbr);
 	mbfree(mbw);
 	poperror();		/* 1 */
@@ -824,7 +824,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 			goto FreeRead;
 		w->mbr = mh->mbr;
 		mh->mbr = 0;
-		memcpy(&w->rhdr, &mh->rhdr, sizeof mh->rhdr);
+		memmove(&w->rhdr, &mh->rhdr, sizeof mh->rhdr);
 		mntwunlink(q, w);
 		w->readreply = 1;
 		wakeup(&w->r);
@@ -874,7 +874,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 	if(mh->thdr.type == Tread){
 		if(mh->rhdr.count > mh->thdr.count)
 			error(Ebadcnt);
-		memcpy(mh->thdr.data, mh->rhdr.data, mh->rhdr.count);
+		memmove(mh->thdr.data, mh->rhdr.data, mh->rhdr.count);
 	}
 	mbfree(mh->mbr);
 	mbfree(mbw);

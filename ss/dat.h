@@ -512,6 +512,7 @@ struct Etherpkt {
 	uchar data[1500];
 	uchar crc[4];
 };
+#define	ETHERMINMTU	60	/* minimum transmit size */
 
 /*
  *  nonet constants

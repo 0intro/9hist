@@ -266,7 +266,7 @@ userinit(void)
 	s->proc = p;
 	s->o = neworig(USTKTOP-BY2PG, 1, OWRPERM, 0);
 	s->o->pte[0].page = newpage(0, 0, USTKTOP-BY2PG);
-	memcpy((ulong*)(s->o->pte[0].page->pa|KZERO|(BY2PG-argsize)), 
+	memmove((ulong*)(s->o->pte[0].page->pa|KZERO|(BY2PG-argsize)), 
 		argbuf + sizeof(argbuf) - argsize, argsize);
 	av = (char **)(s->o->pte[0].page->pa|KZERO|(BY2PG-argsize));
 	for(i = 0; i < _argc; i++)
@@ -287,7 +287,7 @@ userinit(void)
 	s->o->pte[0].page = newpage(0, 0, UTZERO);
 	s->o->npage = 1;
 	k = kmap(s->o->pte[0].page);
-	memcpy((ulong*)VA(k), initcode, sizeof initcode);
+	memmove((ulong*)VA(k), initcode, sizeof initcode);
 	kunmap(k);
 	s->minva = 0x1000;
 	s->maxva = 0x2000;
@@ -699,7 +699,7 @@ arginit(void)
 	for(i=0; i<_argc; i++){
 		argv[i] = charp;
 		n = strlen(_argv[i]) + 1;
-		memcpy(charp, _argv[i], n);
+		memmove(charp, _argv[i], n);
 		charp += n;
 	}
 	_argv = argv;

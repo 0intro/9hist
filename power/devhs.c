@@ -442,7 +442,7 @@ upstream(Hsvme *hp, unsigned int ctl)
 	bp->wptr[1] = hp->chan>>8;
 	bp->wptr[2] = ctl;
 	if(n)
-		memcpy(&bp->wptr[3], hp->buf, n);
+		memmove(&bp->wptr[3], hp->buf, n);
 	bp->wptr += 3 + n;
 	bp->flags |= S_DELIM;
 	PUTNEXT(hp->rq, bp);
