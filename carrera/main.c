@@ -1,0 +1,341 @@
+#include	"u.h"
+#include	"../port/lib.h"
+#include	"mem.h"
+#include	"dat.h"
+#include	"fns.h"
+#include	"io.h"
+#include	"init.h"
+
+/*
+ *  args passed by boot process
+ */
+int _argc; char **_argv; char **_env;
+
+/*
+ *  arguments passed to initcode and /boot
+ */
+char argbuf[128];
+
+/*
+ *  environment passed to boot -- sysname, consname, diskid
+ */
+char consname[NAMELEN];
+char bootdisk[NAMELEN];
+char screenldepth[NAMELEN];
+
+/*
+ * software tlb simulation
+ */
+Softtlb stlb[MAXMACH][STLBSIZE];
+
+Conf	conf;
+FPsave	initfp;
+
+void
+main(void)
+{
+	*(uchar*)(Uart0) = '*';
+	tlbinit();		/* Very early to establish IO mappings */
+	ioinit();
+	arginit();
+	confinit();
+	savefpregs(&initfp);
+	machinit();
+	active.exiting = 0;
+	active.machs = 1;
+	kmapinit();
+	xinit();
+	printinit();
+	NS16552setup(Uart0, UartFREQ);
+	NS16552special(0, 9600, &kbdq, &printq, kbdcr2nl);
+	vecinit();
+	iprint("\n\nBrazil\n");
+	pageinit();
+	procinit0();
+	initseg();
+	chandevreset();
+	rootfiles();
+	swapinit();
+	userinit();
+	schedinit();
+}
+
+
+/*
+ *  copy arguments passed by the boot kernel (or ROM) into a temporary buffer.
+ *  we do this because the arguments are in memory that may be allocated
+ *  to processes or kernel buffers.
+ *
+ *  also grab any environment variables that might be useful
+ */
+struct
+{
+	char	*name;
+	char	*val;
+}bootenv[] = {
+	{"netaddr=",	sysname},
+	{"console=",	consname},
+	{"bootdisk=",	bootdisk},
+	{"ldepth=",	screenldepth},
+};
+char *sp;
+
+char *
+pusharg(char *p)
+{
+	int n;
+
+	n = strlen(p)+1;
+	sp -= n;
+	memmove(sp, p, n);
+	return sp;
+}
+
+void
+arginit(void)
+{
+	int i, n;
+	char **av;
+
+	/*
+	 *  get boot env variables
+	 */
+	if(*sysname == 0)
+		for(av = _env; *av; av++)
+			for(i=0; i < sizeof bootenv/sizeof bootenv[0]; i++){
+				n = strlen(bootenv[i].name);
+				if(strncmp(*av, bootenv[i].name, n) == 0){
+					strncpy(bootenv[i].val, (*av)+n, NAMELEN);
+					bootenv[i].val[NAMELEN-1] = '\0';
+					break;
+				}
+			}
+
+	/*
+	 *  pack args into buffer
+	 */
+	av = (char**)argbuf;
+	sp = argbuf + sizeof(argbuf);
+	for(i = 0; i < _argc; i++){
+		if(strchr(_argv[i], '='))
+			break;
+		av[i] = pusharg(_argv[i]);
+	}
+	av[i] = 0;
+}
+
+/*
+ *  initialize a processor's mach structure.  each processor does this
+ *  for itself.
+ */
+void
+machinit(void)
+{
+	int n;
+
+	/* Ensure CU1 is off */
+	clrfpintr();
+
+	/* scrub cache */
+	cleancache();
+
+	n = m->machno;
+	m->stb = &stlb[n][0];
+	clockinit();
+}
+
+/*
+ * Map IO address space in wired down TLB entry 1
+ */
+void
+ioinit(void)
+{
+	ulong phys;
+
+	phys = PPN(Devicephys)|PTEGLOBL|PTEVALID|PTEWRITE|PTEUNCACHED;
+
+	puttlbx(1, Devicevirt, phys, PTEGLOBL, PGSZ256K);
+}
+
+/*
+ *  setup MIPS trap vectors
+ */
+void
+vecinit(void)
+{
+	memmove((ulong*)UTLBMISS, (ulong*)vector0, 0x100);
+	memmove((ulong*)CACHETRAP, (ulong*)vector100, 0x80);
+	memmove((ulong*)EXCEPTION, (ulong*)vector180, 0x80);
+	icflush((ulong*)UTLBMISS, 32*1024);
+}
+
+void
+init0(void)
+{
+	char buf[2*NAMELEN];
+
+	spllo();
+
+	/*
+	 * These are o.k. because rootinit is null.
+	 * Then early kproc's will have a root and dot.
+	 */
+	up->slash = namec("#/", Atodir, 0, 0);
+	up->dot = clone(up->slash, 0);
+
+	iallocinit();
+	chandevinit();
+
+	if(!waserror()){
+		ksetenv("cputype", "mips");
+		sprint(buf, "sgi %s 4D", conffile);
+		ksetenv("terminal", buf);
+		ksetenv("sysname", sysname);
+		poperror();
+	}
+
+	kproc("alarm", alarmkproc, 0);
+	touser((uchar*)(USTKTOP-sizeof(argbuf)));
+}
+
+FPsave	initfp;
+
+void
+userinit(void)
+{
+	Proc *p;
+	KMap *k;
+	Page *pg;
+	char **av;
+	Segment *s;
+
+	p = newproc();
+	p->pgrp = newpgrp();
+	p->egrp = smalloc(sizeof(Egrp));
+	p->egrp->ref = 1;
+	p->fgrp = smalloc(sizeof(Fgrp));
+	p->fgrp->ref = 1;
+	p->procmode = 0640;
+
+	strcpy(p->text, "*init*");
+	strcpy(p->user, eve);
+
+	p->fpstate = FPinit;
+	p->fpsave.fpstatus = initfp.fpstatus;
+
+	/*
+	 * Kernel Stack
+	 */
+	p->sched.pc = (ulong)init0;
+	p->sched.sp = (ulong)p->kstack+KSTACK-(1+MAXSYSARG)*BY2WD;
+	/*
+	 * User Stack, pass input arguments to boot process
+	 */
+	s = newseg(SG_STACK, USTKTOP-USTKSIZE, USTKSIZE/BY2PG);
+	p->seg[SSEG] = s;
+	pg = newpage(1, 0, USTKTOP-BY2PG);
+	segpage(s, pg);
+	k = kmap(pg);
+	for(av = (char**)argbuf; *av; av++)
+		*av += (USTKTOP - sizeof(argbuf)) - (ulong)argbuf;
+
+	memmove((uchar*)VA(k) + BY2PG - sizeof(argbuf), argbuf, sizeof argbuf);
+	kunmap(k);
+
+	/* Text */
+	s = newseg(SG_TEXT, UTZERO, 1);
+	s->flushme++;
+	p->seg[TSEG] = s;
+	pg = newpage(1, 0, UTZERO);
+	memset(pg->cachectl, PG_TXTFLUSH, sizeof(pg->cachectl));
+	segpage(s, pg);
+	k = kmap(s->map[0]->pages[0]);
+	memmove((ulong*)VA(k), initcode, sizeof initcode);
+	kunmap(k);
+
+	ready(p);
+}
+
+void
+exit(long type)
+{
+	int timer;
+
+	spllo();
+	print("cpu %d exiting %d\n", m->machno, type);
+	timer = 0;
+	while(active.machs || consactive()) {
+		if(timer++ > 400)
+			break;
+		delay(10);
+	}
+	splhi();
+	for(;;)
+		;
+}
+
+void
+confinit(void)
+{
+	ulong ktop, top;
+
+	/*
+	 *  divide memory twixt user pages and kernel. Since
+	 *  the kernel can't use anything above .5G unmapped,
+	 *  make sure all that memory goes to the user.
+	 */
+	ktop = PGROUND((ulong)end);
+	ktop = PADDR(ktop);
+	top = (16*1024*1024)/BY2PG;
+
+	conf.base0 = 0;
+	conf.npage0 = top;
+	conf.npage = conf.npage0;
+	conf.npage0 -= ktop/BY2PG;
+	conf.base0 += ktop;
+	conf.npage1 = 0;
+	conf.base1 = 0;
+
+	conf.upages = (conf.npage*90)/100;
+	if(top - conf.upages > (256*1024*1024)/BY2PG)
+		conf.upages = top - (256*1024*1024)/BY2PG;
+
+	conf.nmach = 1;
+
+	/* set up other configuration parameters */
+	conf.nproc = 100;
+	conf.nswap = 262144;
+	conf.nimage = 200;
+	conf.ipif = 8;
+	conf.ip = 64;
+	conf.arp = 32;
+	conf.frag = 32;
+
+	conf.copymode = 0;		/* copy on reference */
+}
+
+
+/*
+ *  for the sake of devcons
+ */
+void
+lights(int v)
+{
+	USED(v);
+}
+
+void
+buzz(int f, int d)
+{
+	USED(f);
+	USED(d);
+}
+
+int
+mouseputc(IOQ *q, int c)
+{
+	USED(q);
+	USED(c);
+	return 0;
+}
+
