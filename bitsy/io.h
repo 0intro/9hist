@@ -248,3 +248,18 @@ struct SSPregs {
 	ulong	status;
 };
 extern SSPregs *sspregs;
+
+/* Multimedia Communications Port controller registers */
+typedef struct MCPregs MCPregs;
+struct MCPregs {
+	ulong	control0;
+	ulong	reserved0;
+	ulong	data0;
+	ulong	data1;
+	ulong	data2;
+	ulong	reserved1;
+	ulong	status;
+	ulong	reserved[11];
+	ulong	control1;
+};
+extern MCPregs *mcpregs;

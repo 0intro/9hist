@@ -138,7 +138,6 @@ struct	IOstate
 	int				dma;			/* dma chan, alloc on open, free on close */
 	int				bufinit;		/* boolean, if buffers allocated */
 	Buf				buf[Nbuf];		/* buffers and queues */
-	Ref				active;			/* # of dmas in progress */
 	volatile Buf	*current;		/* next dma to finish */
 	volatile Buf	*next;			/* next candidate for dma */
 	volatile Buf	*filling;		/* buffer being filled */
@@ -158,6 +157,14 @@ static	struct
 	IOstate	i;
 	IOstate	o;
 } audio;
+
+static struct
+{
+	ulong	bytes;
+	ulong	totaldma;
+	ulong	idledma;
+	ulong	faildma;
+} iostats;
 
 static	struct
 {
@@ -404,22 +411,7 @@ audioqnotfull(void *x)
 	IOstate *s = x;
 
 	/* called with lock */
-	return s->active.ref == 0 || s->filling != s->current;
-}
-
-static int
-audioqnotempty(IOstate *s)
-{
-	/* called with lock */
-	return s->next != s->filling;
-}
-
-static int
-audioidle(void *x)
-{
-	IOstate *s = x;
-	/* called with lock */
-	return s->active.ref == 0;
+	return dmaidle(s->dma) || s->filling != s->current;
 }
 
 static void
@@ -436,50 +428,46 @@ audioenable(void)
 	L3_init();
 
 	/* Setup the uarts */
-    ppcregs->assignment &= (1<<18);	/* Could be the other way round! */
+    ppcregs->assignment &= ~(1<<18);
 
     gpioregs->altfunc &= ~(GPIO_SSP_TXD_o | GPIO_SSP_RXD_i | GPIO_SSP_SCLK_o | GPIO_SSP_SFRM_o);
 	gpioregs->altfunc |= (GPIO_SSP_CLK_i);
 	gpioregs->direction &= ~(GPIO_SSP_CLK_i);
 
-	sspregs->control0 = 0xf<<0 | 0x1<<4 | 0x3<<8;
-	sspregs->control1 = 0<<3 + 0<<4 + 1<<5;
-
-	sspregs->control0 |= 1<<7;	/* enable */
+	sspregs->control0 = 0;
+	sspregs->control0 = 0x031f; /* 16 bits, TI frames, serial clock rate 3 */
+	sspregs->control1 = 0x0020; /* ext clock */
+	sspregs->control0 = 0x039f;	/* enable */
 
 	/* Enable the audio power */
 	audiopower(1);
 	amplifierpower(1);
 	audiomute(0);
 
+	/* external clock configured for 44100 samples/sec */
 	gpioregs->direction |=  (GPIO_CLK_SET0_o|GPIO_CLK_SET1_o);
-	  /* external clock configured for 44100 samples/sec */
-    gpioregs->set = GPIO_CLK_SET0_o;
-    gpioregs->clear = GPIO_CLK_SET1_o;
- 
+/* This is purportedly the wrong way round: 0 should be set, 1 cleared */
+    gpioregs->set	= GPIO_CLK_SET0_o|GPIO_CLK_SET1_o;
+//    gpioregs->clear	= GPIO_CLK_SET1_o;
+
 	/* Wait for the UDA1341 to wake up */
 	delay(100);
-    print("Ser4SSSR=0x%lux\n", sspregs->status);
-
-    gpioregs->clear = EGPIO_codec_reset;
-    gpioregs->set = EGPIO_codec_reset;
 
 	/* Reset the chip */
-	data[0] = 2<<4 /* system clock */ | 1<<1 /* lsb16 */ | 1<<6 /* reset */;
+	data[0] = 2<<UdaStatusSC | 1<<UdaStatusIF | 1<<UdaStatusRST;
 	L3_write(UDA1341_L3Addr<<2 | UDA1341_STATUS, data, 1 );
-
-	delay(10);
-
-	data[0] = 2<<4 /* system clock */ | 1<<1 /* lsb16 */;
-	L3_write( (UDA1341_L3Addr<<2)|UDA1341_STATUS, data, 1 );
-	/* Reset done */
+	gpioregs->set = EGPIO_codec_reset;
+	gpioregs->clear = EGPIO_codec_reset;
+	/* write uda 1341 status[0] */
+	data[0] &= ~(1<<UdaStatusRST); /* clear reset */
+	L3_write(UDA1341_L3Addr<<2 | UDA1341_STATUS, data, 1 );
 
 	/* write uda 1341 status[1] */
 	data[0] = 0x80 | 0x3<<UdaStatusPC | 1<<UdaStatusIGS | 1<<UdaStatusOGS;
 	L3_write(UDA1341_L3Addr<<2 | UDA1341_STATUS, data, 1);
 
 	/* write uda 1341 data0[0] (volume) */
-	data[0] = 0x00 | /* volume */ 15 & 0x3f;	/* 6 bits, others must be 0 */
+	data[0] = 15 & 0x3f;	/* 6 bits, others must be 0 */
 	L3_write(UDA1341_L3Addr<<2 | UDA1341_DATA0, data, 1);
 
 	/* write uda 1341 data0[2] (mode switch) */
@@ -501,31 +489,28 @@ audioenable(void)
 	data[1] = 0xe0 | 0<<2 | 3;	/* agc time constant and output level */
 	L3_write(UDA1341_L3Addr<<2 | UDA1341_DATA0, data, 2 );
 
-	/* Reset the chip */
-	data[0] = 2<<4 /* system clock */ | 1<<1 /* lsb16 */ | 1<<6 /* reset */;
-	L3_write(UDA1341_L3Addr<<2 | UDA1341_STATUS, data, 1 );
-
-	delay(10);
-
-	data[0] = 2<<4 /* system clock */ | 1<<1 /* lsb16 */;
-	L3_write( (UDA1341_L3Addr<<2)|UDA1341_STATUS, data, 1 );
-	/* Reset done */
-
-	if (debug) print("#A: audio enabled\n");
+	if (debug) {
+		print("#A: audio enabled\n");
+		print("\tsspregs->control0 = 0x%lux\n", sspregs->control0);
+		print("\tsspregs->control1 = 0x%lux\n", sspregs->control1);
+	}
 }
 
 static void
 sendaudio(IOstate *b) {
 	/* interrupt routine calls this too */
+	int n;
+
 	if (debug > 1) print("#A: sendaudio\n");
 	ilock(&b->ilock);
 	while (b->next != b->filling) {
 		assert(b->next->nbytes);
-		incref(&b->active);
-		if (dmastart(b->dma, b->next->virt, b->next->nbytes) == 0) {
-			decref(&b->active);
+		if ((n = dmastart(b->dma, b->next->virt, b->next->nbytes)) == 0) {
+			iostats.faildma++;
 			break;
 		}
+		iostats.totaldma++;
+		if (n == 1) iostats.idledma++;
 		if (debug > 1) print("#A: dmastart @%p\n", b->next);
 		b->next->nbytes = 0;
 		b->next++;
@@ -536,7 +521,7 @@ sendaudio(IOstate *b) {
 }
 
 static void
-audiointr(void *x, ulong) {
+audiointr(void *x, ulong ndma) {
 	IOstate *s = x;
 
 	if (s == &audio.o) {
@@ -545,8 +530,8 @@ audiointr(void *x, ulong) {
 		s->current++;
 		if (s->current == &s->buf[Nbuf])
 			s->current = &s->buf[0];
-		decref(&s->active);
-		sendaudio(s);
+		if (ndma > 0)
+			sendaudio(s);
 	}
 	wakeup(&s->vous);
 }
@@ -596,6 +581,7 @@ audioopen(Chan *c, int omode)
 			error(Einuse);
 		}
 		audioenable();
+		memset(&iostats, 0, sizeof(iostats));
 		if (omode & Aread) {
 			/* read */
 			audio.amode |= Aread;
@@ -663,10 +649,13 @@ audioclose(Chan *c)
 						audio.o.filling = &audio.o.buf[0];
 					sendaudio(&audio.o);
 				}
-				while(!audioidle(&audio.o))
-					sleep(&audio.o.vous, audioidle, &audio.o);
+				delay(2000);
+		//		dmawait(audio.o.dma);
+				if (!dmaidle(audio.o.dma))
+					print("dma still busy\n");
 				amplifierpower(0);
 				setempty(&audio.o);
+				dmafree(audio.o.dma);
 			}
 			if (audio.i.chan == c) {
 				/* closing the read end */
@@ -680,6 +669,9 @@ audioclose(Chan *c)
 			poperror();
 			qunlock(&audio.o);
 			qunlock(&audio);
+			print("total dmas: %lud\n", iostats.totaldma);
+			print("dmas while idle: %lud\n", iostats.idledma);
+			print("dmas while busy: %lud\n", iostats.faildma);
 		}
 		break;
 	}
@@ -857,7 +849,7 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 		}
 		while(n > 0) {
 			/* wait if dma in progress */
-			while (a->active.ref && a->filling == a->current) {
+			while (!dmaidle(a->dma) && a->filling == a->current) {
 				if (debug > 1) print("#A: sleep\n");
 				sleep(&a->vous, audioqnotfull, a);
 			}

@@ -16,6 +16,7 @@ int 	noprint;
 static void	gpioinit(void);
 static void ppcinit(void);
 static void sspinit(void);
+static void mcpinit(void);
 
 void
 main(void)
@@ -39,6 +40,7 @@ main(void)
 	mmuinit();
 	gpioinit();
 	ppcinit();
+	mcpinit();
 	sspinit();
 	trapinit();
 	sa1100_uartsetup(1);
@@ -384,6 +386,15 @@ PPCregs *ppcregs;
 static void
 ppcinit(void) {
 	ppcregs = mapspecial(PPCREGS, 32);
+}
+
+MCPregs *mcpregs;
+
+static void
+mcpinit(void) {
+	mcpregs = mapspecial(MCPREGS, 0x34);
+	mcpregs->status &= ~(1<<16);
+	/* Turn MCP operations off */
 }
 
 SSPregs *sspregs;

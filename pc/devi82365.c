@@ -446,19 +446,23 @@ pcmspecial(char *idstr, ISAConf *isa)
 	for(pp = slot; pp < lastslot; pp++){
 		if(pp->special)
 			continue;	/* already taken */
-		enabled = 0;
-		/* make sure we don't power on cards when we already know what's
-		 * in them.  We'll reread every two minutes if necessary
+
+		/*
+		 *  make sure we don't power on cards when we already know what's
+		 *  in them.  We'll reread every two minutes if necessary
 		 */
-		if (pp->msec == ~0 || TK2MS(MACHP(0)->ticks) - pp->msec > 120000) {
+		enabled = 0;
+		if (pp->msec == ~0 || TK2MS(MACHP(0)->ticks) - pp->msec > 120000){
 			increfp(pp);
 			enabled++;
 		}
 
 		if(pp->occupied) {
-			if(strstr(pp->verstr, idstr)) {
-				if (!enabled)
+			if(strstr(pp->verstr, idstr)){
+				if (!enabled){
+					enabled = 1;
 					increfp(pp);
+				}
 				if(isa == 0 || pcmio(pp->slotno, isa) == 0){
 					pp->special = 1;
 					return pp->slotno;
@@ -557,7 +561,9 @@ i82365probe(int x, int d, int dev)
 	outb(x, Rid + (dev<<7));
 	id = inb(d);
 	if((id & 0xf0) != 0x80)
-		return 0;		/* not this family */
+		return 0;		/* not a memory & I/O card */
+	if((id & 0x0f) == 0x00)
+		return 0;		/* no revision number, not possible */
 
 	cp = xalloc(sizeof(I82365));
 	cp->xreg = x;
@@ -588,22 +594,28 @@ i82365probe(int x, int d, int dev)
 		break;
 	}
 
+#ifdef adsf
+	/* if it's not a Cirrus, it could be a Vadem... */
 	if(cp->type == Ti82365){
+		/* unlock the Vadem extended regs */
 		outb(x, 0x0E + (dev<<7));
 		outb(x, 0x37 + (dev<<7));
+
+		/* make the id register show the Vadem id */
 		outb(x, 0x3A + (dev<<7));
 		c = inb(d);
 		outb(d, c|0xC0);
 		outb(x, Rid + (dev<<7));
 		c = inb(d);
-		if(c != id && !(c & 0x08))
-			print("#y%d: id %uX changed to %uX\n", ncontroller, id, c);
 		if(c & 0x08)
 			cp->type = Tvg46x;
+
+		/* go back to Intel compatible id */
 		outb(x, 0x3A + (dev<<7));
 		c = inb(d);
 		outb(d, c & ~0xC0);
 	}
+#endif asdf
 
 	/* low power mode */
 	outb(x, Rmisc2 + (dev<<7));
@@ -661,14 +673,14 @@ i82365reset(void)
 
 	/* look for controllers if the ports aren't already taken */
 	if(ioalloc(0x3E0, 2, 0, "i82365.0") >= 0){
-		i82365probe(0x3E0, 0x3E1, 0) ||
+		i82365probe(0x3E0, 0x3E1, 0);
 		i82365probe(0x3E0, 0x3E1, 1);
 		if(ncontroller == 0)
 			iofree(0x3E0);
 	}
 	if(ioalloc(0x3E2, 2, 0, "i82365.1") >= 0){
 		i = ncontroller;
-		i82365probe(0x3E2, 0x3E3, 0) ||
+		i82365probe(0x3E2, 0x3E3, 0);
 		i82365probe(0x3E2, 0x3E3, 1);
 		if(ncontroller == i)
 			iofree(0x3E2);
@@ -690,6 +702,7 @@ i82365reset(void)
 			pp->base = (cp->dev<<7) | (j<<6);
 			pp->cp = cp;
 			pp->msec = ~0;
+			pp->verstr[0] = 0;
 			slotdis(pp);
 
 			/* interrupt on status change */
@@ -813,8 +826,7 @@ pcmread(int slotno, int attr, void *a, long n, vlong off)
 static long
 i82365read(Chan *c, void *a, long n, vlong off)
 {
-	char *p;
-	int len;
+	char *p, *buf, *e;
 	Slot *pp;
 	ulong offset = off;
 
@@ -825,26 +837,30 @@ i82365read(Chan *c, void *a, long n, vlong off)
 	case Qattr:
 		return pcmread(SLOTNO(c), TYPE(c) == Qattr, a, n, off);
 	case Qctl:
-		p = malloc(READSTR);
-		len = 0;
+		buf = p = malloc(READSTR);
+		e = p + READSTR;
 		pp = slot + SLOTNO(c);
 
-		if(pp->occupied)
-			len += snprint(p+len, READSTR-len, "occupied\n");
+		buf[0] = 0;
+		if(pp->occupied){
+			p = seprint(p, e, "occupied\n");
+			if(pp->verstr[0])
+				p = seprint(p, e, "version %s\n", pp->verstr);
+		}
 		if(pp->enabled)
-			len += snprint(p+len, READSTR-len, "enabled\n");
+			p = seprint(p, e, "enabled\n");
 		if(pp->powered)
-			len += snprint(p+len, READSTR-len, "powered\n");
+			p = seprint(p, e, "powered\n");
 		if(pp->configed)
-			len += snprint(p+len, READSTR-len, "configed\n");
+			p = seprint(p, e, "configed\n");
 		if(pp->wrprot)
-			len += snprint(p+len, READSTR-len, "write protected\n");
+			p = seprint(p, e, "write protected\n");
 		if(pp->busy)
-			len += snprint(p+len, READSTR-len, "busy\n");
-		snprint(p+len, READSTR-len, "battery lvl %d\n", pp->battery);
+			p = seprint(p, e, "busy\n");
+		seprint(p, e, "battery lvl %d\n", pp->battery);
 
-		n = readstr(offset, a, n, p);
-		free(p);
+		n = readstr(offset, a, n, buf);
+		free(buf);
 
 		return n;
 	}
@@ -1183,6 +1199,7 @@ cisread(Slot *pp)
 	pp->cpresent = 0;
 	pp->configed = 0;
 	pp->nctab = 0;
+	pp->verstr[0] = 0;
 
 	for(i = 0; i < nelem(cistab); i++) {
 		if((nv = pcmcistuple(pp->slotno, cistab[i].n, -1, v, sizeof(v))) >= 0) {
