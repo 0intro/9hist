@@ -145,8 +145,7 @@ void
 kfault(Ureg *ur)
 {
 	KMap *k, *f;
-	ulong x, index, virt;
-	ulong addr;
+	ulong x, index, virt, addr;
 
 	addr = ur->badvaddr;
 	index = (addr & ~KMAPADDR) >> KMAPSHIFT;
