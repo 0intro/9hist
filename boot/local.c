@@ -110,6 +110,7 @@ connectlocal(void)
 	default:
 		break;
 	}
+	waitpid();
 
 	close(p[1]);
 	return p[0];

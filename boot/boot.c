@@ -197,6 +197,16 @@ rootserver(char *arg)
 	char *cp;
 	int n;
 
+	/* look for required reply */
+	readfile("#e/nobootprompt", reply, sizeof(reply));
+	if(reply[0]){
+		mp = findmethod(reply);
+		if(mp)
+			goto HaveMethod;
+		print("boot method %s not found\n", reply);
+		reply[0] = 0;
+	}
+
 	/* make list of methods */
 	mp = method;
 	n = sprint(prompt, "root is from (%s", mp->name);
@@ -221,6 +231,7 @@ rootserver(char *arg)
 		outin(prompt, reply, sizeof(reply));
 		mp = findmethod(reply);
 		if(mp){
+	    HaveMethod:
 			bargc = tokenize(reply, bargv, Nbarg-1);
 			cp = strchr(reply, '!');
 			if(cp)

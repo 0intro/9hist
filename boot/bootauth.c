@@ -5,12 +5,18 @@
 #include "../boot/boot.h"
 
 char	*authaddr;
+static void glenda(void);
 
 void
 authentication(int cpuflag)
 {
 	char *argv[16], **av;
 	int ac;
+
+	if(access("/factotum", 0) < 0){
+		glenda();
+		return;
+	}
 
 	/* start agent */
 	ac = 0;
@@ -44,4 +50,22 @@ authentication(int cpuflag)
 
 	if(cpuflag)
 		return;
+}
+
+static void
+glenda(void)
+{
+	int fd;
+	char *s;
+
+	s = getenv("user");
+	if(s == nil)
+		s = "glenda";
+
+	fd = open("#c/hostowner", OWRITE);
+	if(fd >= 0){
+		if(write(fd, s, strlen(s)) != strlen(s))
+			fprint(2, "setting #c/hostowner to %s: %r\n", s);
+		close(fd);
+	}
 }
