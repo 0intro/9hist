@@ -1364,7 +1364,6 @@ drawmesg(Client *client, void *av, int n)
 			}
 			i = allocmemimage(r, chan);
 			if(i == 0){
-				iprint("chan %lux\n", chan);
 				error(Edrawmem);
 			}
 			if(repl)

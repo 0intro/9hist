@@ -71,6 +71,11 @@ struct
 	ulong		*wb;		/* staging area for write buffer */
 } flash;
 
+enum
+{
+	Maxwchunk=	1024,	/* maximum chunk written by one call to falg->write */
+};
+
 /*
  *  common flash interface
  */
@@ -128,7 +133,7 @@ cfiquery(void)
 		addr += flash.r[q].size*flash.r[q].n;
 		flash.r[q].end = addr;
 	}
-	flash.wb = malloc(flash.wbsize);
+	flash.wb = malloc(flash.wbsize>1024 ? flash.wbsize : 1024);
 }
 
 /*
@@ -506,7 +511,10 @@ flashdatawrite(Chan *c, uchar *p, long n, long off)
 		m = blockend(off) - off;
 		if(m > end - p)
 			m = end - p;
-		(*flash.alg->write)(p, m, off);
+		if(m > Maxwchunk)
+			m = Maxwchunk;
+		memmove(flash.wb, p, m);
+		(*flash.alg->write)(flash.wb, m, off);
 		off += m;
 	}
 
@@ -561,6 +569,21 @@ Dev flashdevtab = {
 	devwstat,
 };
 
+enum
+{
+	/* status register */
+	ISEs_lockerr=		1<<1,
+	ISEs_powererr=		1<<3,
+	ISEs_progerr=		1<<4,
+	ISEs_eraseerr=		1<<5,
+	ISEs_ready=		1<<7,
+	ISEs_err= (ISEs_lockerr|ISEs_powererr|ISEs_progerr|ISEs_eraseerr),
+
+	/* extended status register */
+	ISExs_bufavail=		1<<7,
+};
+
+
 
 /* intel/sharp extended command set */
 static void
@@ -588,16 +611,16 @@ ise_error(int bank, ulong status)
 {
 	char err[ERRLEN];
 
-	if(status & (1<<3)){
-		sprint(err, "flash%d: low prog voltage", bank);
+	if(status & (ISEs_lockerr)){
+		sprint(err, "flash%d: block locked %lux", bank, status);
 		error(err);
 	}
-	if(status & (1<<1)){
-		sprint(err, "flash%d: block locked", bank);
+	if(status & (ISEs_powererr)){
+		sprint(err, "flash%d: low prog voltage %lux", bank, status);
 		error(err);
 	}
-	if(status & (1<<5)){
-		sprint(err, "flash%d: i/o error", bank);
+	if(status & (ISEs_progerr|ISEs_eraseerr)){
+		sprint(err, "flash%d: i/o error %lux", bank, status);
 		error(err);
 	}
 }
@@ -615,7 +638,7 @@ ise_erase(ulong addr)
 	start = m->ticks;
 	do {
 		x = flash.p[addr];
-		if((x & mirror(1<<7)) == mirror(1<<7))
+		if((x & mirror(ISEs_ready)) == mirror(ISEs_ready))
 			break;
 	} while(TK2MS(m->ticks-start) < 1500);
 	flashprogpower(0);
@@ -627,7 +650,7 @@ ise_erase(ulong addr)
 	ise_reset();
 }
 /*
- *  flash writing goes about 16 times faster if we use
+ *  the flash spec claimes writing goes faster if we use
  *  the write buffer.  We fill the write buffer and then
  *  issue the write request.  After the write request,
  *  subsequent reads will yield the status register or,
@@ -637,44 +660,60 @@ ise_erase(ulong addr)
  *  On timeout, we issue a read status register request so
  *  that the status register can be read no matter how we
  *  exit.
+ *
+ *  returns the status.
  */
-static int
-ise_wbwrite(ulong *p, int n, ulong off)
+static ulong
+ise_wbwrite(ulong *p, int n, ulong off, ulong baddr, ulong *status)
 {
-	ulong start;
+	ulong x, start;
 	int i;
-
-	/* copy out of user space to avoid faults later */
-	memmove(flash.wb, p, n*4);
-	p = flash.wb;
+	int s;
 
 	/* put flash into write buffer mode */
 	start = m->ticks;
 	for(;;) {
+		s = splhi();
 		/* request write buffer mode */
-		flash.p[off] = mirror(0xe8);
+		flash.p[baddr] = mirror(0xe8);
 
 		/* look at extended status reg for status */
-		if((flash.p[off] & mirror(1<<7)) == mirror(1<<7))
+		if((flash.p[baddr] & mirror(1<<7)) == mirror(1<<7))
 			break;
+		splx(s);
 
 		/* didn't work, keep trying for 2 secs */
 		if(TK2MS(m->ticks-start) > 2000){
 			/* set up to read status */
-			flash.p[off] = mirror(0x70);
+			flash.p[baddr] = mirror(0x70);
+			*status = flash.p[baddr];
+			pprint("write buffered cmd timed out\n");
 			return -1;
 		}
 	}
 
 	/* fill write buffer */
-	flash.p[off] = mirror(n-1);
+	flash.p[baddr] = mirror(n-1);
 	for(i = 0; i < n; i++)
 		flash.p[off+i] = *p++;
 
 	/* program from buffer */
-	flash.p[off] = mirror(0xd0);
+	flash.p[baddr] = mirror(0xd0);
+	splx(s);
 
-	/* subsequent reads will return status about the write */
+	/* wait till the programming is done */
+	start = m->ticks;
+	for(;;) {
+		x = *status = flash.p[baddr];	/* read status register */
+		if((x & mirror(ISEs_ready)) == mirror(ISEs_ready))
+			break;
+		if(TK2MS(m->ticks-start) > 2000){
+			pprint("read status timed out\n");
+			return -1;
+		}
+	}
+	if(x & mirror(ISEs_err))
+		return -1;
 
 	return n;
 }
@@ -683,14 +722,15 @@ ise_write(void *a, long n, ulong off)
 {
 	ulong *p, *end;
 	int i, wbsize;
-	ulong x, start, ooff;
+	ulong x, baddr;
 
 	/* everything in terms of ulongs */
 	wbsize = flash.wbsize>>2;
+	baddr = blockstart(off);
 	off >>= 2;
 	n >>= 2;
 	p = a;
-	ooff = off;
+	baddr >>= 2;
 
 	/* first see if write will succeed */
 	for(i = 0; i < n; i++)
@@ -715,21 +755,13 @@ ise_write(void *a, long n, ulong off)
 		if(i > end - p)
 			i = end - p;
 
-		if(ise_wbwrite(p, i, off) != i)
+		if(ise_wbwrite(p, i, off, baddr, &x) < 0)
 			break;
 
 		off += i;
 		p += i;
 		i = wbsize;
 	}
-
-	/* wait till the programming is done */
-	start = m->ticks;
-	do {
-		x = flash.p[ooff];
-		if((x & mirror(1<<7)) == mirror(1<<7))
-			break;
-	} while(TK2MS(m->ticks-start) < 1000);
 
 	ise_clearerror();
 	ise_error(0, x);
