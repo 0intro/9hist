@@ -109,7 +109,7 @@ rlock(RWlock *q)
 	up->qnext = 0;
 	up->state = QueueingR;
 	unlock(&q->use);
-	if (edf->isedf(up))
+	if(edf->isedf(up))
 		edf->edfblock(up);
 	sched();
 }
@@ -166,7 +166,7 @@ wlock(RWlock *q)
 	up->qnext = 0;
 	up->state = QueueingW;
 	unlock(&q->use);
-	if (edf->isedf(up))
+	if(edf->isedf(up))
 		edf->edfblock(up);
 	sched();
 }

@@ -318,7 +318,7 @@ tlsgen(Chan *c, char*, Dirtab *, int, int s, Dir *dp)
 			nm = tr->user;
 		else
 			nm = eve;
-		if ((name = trnames[s]) == nil) {
+		if((name = trnames[s]) == nil) {
 			name = trnames[s] = smalloc(16);
 			sprint(name, "%d", s);
 		}
