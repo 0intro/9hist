@@ -845,7 +845,8 @@ consread(Chan *c, void *buf, long n, vlong off)
 		return n;
 
 	case Qosversion:
-		n = readstr((ulong)offset, buf, n, "2000");
+		snprint(tmp, sizeof tmp, "2000 %d", qiomaxatomic);
+		n = readstr((ulong)offset, buf, n, tmp);
 		return n;
 
 	default:

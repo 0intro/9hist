@@ -676,6 +676,7 @@ extern	int	nsyscall;
 extern	char	*sysname;
 extern	Pthash	syspt;
 extern	Talarm	talarm;
+extern	uint	qiomaxatomic;
 
 enum
 {

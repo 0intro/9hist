@@ -60,6 +60,8 @@ enum
 	Maxatomic	= 32*1024,
 };
 
+uint	qiomaxatomic = Maxatomic;
+
 void
 ixsummary(void)
 {
