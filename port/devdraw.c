@@ -335,7 +335,7 @@ drawcmp(char *a, char *b, int n)
 }
 
 DName*
-drawlookupname(int n, char *str)
+drawlookupname(int n, char *str, int err)
 {
 	DName *name, *ename;
 
@@ -344,7 +344,8 @@ drawlookupname(int n, char *str)
 	for(; name<ename; name++)
 		if(drawcmp(name->name, str, n) == 0)
 			return name;
-	error(Enoname);
+	if(err)
+		error(Enoname);
 	return 0;
 }
 
@@ -360,7 +361,7 @@ drawgoodname(DImage *d)
 			return 0;
 	if(d->name == nil)
 		return 1;
-	n = drawlookupname(strlen(d->name), d->name);
+	n = drawlookupname(strlen(d->name), d->name, 0);
 	if(n==nil || n->vers!=d->vers)
 		return 0;
 	return 1;
@@ -425,6 +426,7 @@ drawinstall(Client *client, int id, Memimage *i, DScreen *dscreen)
 	d->id = id;
 	d->ref = 1;
 	d->name = 0;
+	d->vers = 0;
 	d->image = i;
 	d->nfchar = 0;
 	d->fchar = 0;
@@ -596,10 +598,6 @@ drawuninstall(Client *client, int id)
 {
 	DImage *d, *next;
 
-	/*
-	 * If this image is a screen fill or image, don't drop it yet; save it
-	 * in the DScreen and drawfreedscreen will ask again later.
-	 */
 	d = client->dimage[id&HASHMASK];
 	if(d == 0)
 		error(Enodrawimage);
@@ -1384,7 +1382,7 @@ drawmesg(Client *client, void *av, int n)
 			dstid = BGLONG(a+1);
 			if(drawlookup(client, dstid, 0))
 				error(Eimageexists);
-			dn = drawlookupname(j, (char*)a+6);
+			dn = drawlookupname(j, (char*)a+6, 1);
 			if(drawinstall(client, dstid, dn->dimage->image, 0) == 0)
 				error(Edrawmem);
 			di = drawlookup(client, dstid, 0);
@@ -1417,7 +1415,7 @@ drawmesg(Client *client, void *av, int n)
 			if(c)
 				drawaddname(client, di, j, (char*)a+7);
 			else{
-				dn = drawlookupname(j, (char*)a+7);
+				dn = drawlookupname(j, (char*)a+7, 1);
 				if(dn->dimage != di)
 					error(Ewrongname);
 				drawdelname(dn);
