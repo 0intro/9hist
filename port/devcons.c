@@ -397,11 +397,6 @@ static Dirtab consdir[]={
  	"user",		{Quser},	NAMELEN,	0666,
 };
 
-enum
-{
-	MBS	=	1024,
-};
-
 ulong	boottime;		/* seconds since epoch at boot */
 
 long
@@ -672,12 +667,12 @@ consread(Chan *c, void *buf, long n, ulong offset)
 		return randomread(buf, n);
 
 	case Qdrivers:
-		b = malloc(MBS);
+		b = malloc(READSTR);
 		if(b == nil)
 			error(Enomem);
 		n = 0;
 		for(i = 0; devtab[i] != nil; i++)
-			n += snprint(b+n, MBS-n, "#%C %s\n", devtab[i]->dc,  devtab[i]->name);
+			n += snprint(b+n, READSTR-n, "#%C %s\n", devtab[i]->dc,  devtab[i]->name);
 		n = readstr(offset, buf, n, b);
 		free(b);
 		return n;

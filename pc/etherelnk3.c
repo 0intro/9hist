@@ -856,9 +856,9 @@ interrupt(Ureg*, void* arg)
 static long
 ifstat(Ether* ether, void* a, long n, ulong offset)
 {
-	Ctlr *ctlr;
-	char buf[512];
+	char *p;
 	int len;
+	Ctlr *ctlr;
 
 	if(n == 0)
 		return 0;
@@ -869,22 +869,26 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 	statistics(ether);
 	iunlock(&ctlr->wlock);
 
-	len = sprint(buf, "interrupts: %ld\n", ctlr->interrupts);
-	len += sprint(buf+len, "timer: %ld\n", ctlr->timer);
-	len += sprint(buf+len, "carrierlost: %ld\n", ctlr->stats[CarrierLost]);
-	len += sprint(buf+len, "sqeerrors: %ld\n", ctlr->stats[SqeErrors]);
-	len += sprint(buf+len, "multiplecolls: %ld\n", ctlr->stats[MultipleColls]);
-	len += sprint(buf+len, "singlecollframes: %ld\n", ctlr->stats[SingleCollFrames]);
-	len += sprint(buf+len, "latecollisions: %ld\n", ctlr->stats[LateCollisions]);
-	len += sprint(buf+len, "rxoverruns: %ld\n", ctlr->stats[RxOverruns]);
-	len += sprint(buf+len, "framesxmittedok: %ld\n", ctlr->stats[FramesXmittedOk]);
-	len += sprint(buf+len, "framesrcvdok: %ld\n", ctlr->stats[FramesRcvdOk]);
-	len += sprint(buf+len, "framesdeferred: %ld\n", ctlr->stats[FramesDeferred]);
-	len += sprint(buf+len, "bytesrcvdok: %ld\n", ctlr->stats[BytesRcvdOk]);
-	len += sprint(buf+len, "bytesxmittedok: %ld\n", ctlr->stats[BytesRcvdOk+1]);
-	sprint(buf+len, "badssd: %ld\n", ctlr->stats[BytesRcvdOk+2]);
+	p = malloc(READSTR);
+	len = snprint(p, READSTR, "interrupts: %ld\n", ctlr->interrupts);
+	len += snprint(p+len, READSTR-len, "timer: %ld\n", ctlr->timer);
+	len += snprint(p+len, READSTR-len, "carrierlost: %ld\n", ctlr->stats[CarrierLost]);
+	len += snprint(p+len, READSTR-len, "sqeerrors: %ld\n", ctlr->stats[SqeErrors]);
+	len += snprint(p+len, READSTR-len, "multiplecolls: %ld\n", ctlr->stats[MultipleColls]);
+	len += snprint(p+len, READSTR-len, "singlecollframes: %ld\n", ctlr->stats[SingleCollFrames]);
+	len += snprint(p+len, READSTR-len, "latecollisions: %ld\n", ctlr->stats[LateCollisions]);
+	len += snprint(p+len, READSTR-len, "rxoverruns: %ld\n", ctlr->stats[RxOverruns]);
+	len += snprint(p+len, READSTR-len, "framesxmittedok: %ld\n", ctlr->stats[FramesXmittedOk]);
+	len += snprint(p+len, READSTR-len, "framesrcvdok: %ld\n", ctlr->stats[FramesRcvdOk]);
+	len += snprint(p+len, READSTR-len, "framesdeferred: %ld\n", ctlr->stats[FramesDeferred]);
+	len += snprint(p+len, READSTR-len, "bytesrcvdok: %ld\n", ctlr->stats[BytesRcvdOk]);
+	len += snprint(p+len, READSTR-len, "bytesxmittedok: %ld\n", ctlr->stats[BytesRcvdOk+1]);
+	snprint(p+len, READSTR-len, "badssd: %ld\n", ctlr->stats[BytesRcvdOk+2]);
 
-	return readstr(offset, a, n, buf);
+	n = readstr(offset, a, n, p);
+	free(p);
+
+	return n;
 }
 
 typedef struct Adapter {

@@ -121,7 +121,7 @@ void	Mediasetraddr(Media*, Ipaddr);
 Ipaddr	Mediagetaddr(Media*);
 Ipaddr	Mediagetraddr(Media*);
 void	Mediawrite(Media*, Block*, byte*);
-int	Mediaifcread(byte*, ulong, int);
+int	Mediaifcread(char*, ulong, int);
 char*	Mediaifcwrite(char*, int);
 void	Mediaresolver(Media*);
 void	Mediaread(Media*);

@@ -120,9 +120,10 @@ netifwalk(Netif *nif, Chan *c, char *name)
 Chan*
 netifopen(Netif *nif, Chan *c, int omode)
 {
-	int id = 0;
+	int id;
 	Netfile *f;
 
+	id = 0;
 	if(c->qid.path & CHDIR){
 		if(omode != OREAD)
 			error(Eperm);
@@ -162,7 +163,7 @@ netifread(Netif *nif, Chan *c, void *a, long n, ulong offset)
 {
 	int i, j;
 	Netfile *f;
-	char buf[1024];
+	char *p;
 
 	if(c->qid.path&CHDIR)
 		return devdirread(c, a, n, (Dirtab*)nif, 0, netifgen);
@@ -174,20 +175,23 @@ netifread(Netif *nif, Chan *c, void *a, long n, ulong offset)
 	case Nctlqid:
 		return readnum(offset, a, n, NETID(c->qid.path), NUMSIZE);
 	case Nstatqid:
-		j = sprint(buf, "in: %d\n", nif->inpackets);
-		j += sprint(buf+j, "out: %d\n", nif->outpackets);
-		j += sprint(buf+j, "crc errs: %d\n", nif->crcs);
-		j += sprint(buf+j, "overflows: %d\n", nif->overflows);
-		j += sprint(buf+j, "soft overflows: %d\n", nif->soverflows);
-		j += sprint(buf+j, "framing errs: %d\n", nif->frames);
-		j += sprint(buf+j, "buffer errs: %d\n", nif->buffs);
-		j += sprint(buf+j, "output errs: %d\n", nif->oerrs);
-		j += sprint(buf+j, "prom: %d\n", nif->prom);
-		j += sprint(buf+j, "addr: ");
+		p = malloc(READSTR);
+		j = snprint(p, READSTR, "in: %d\n", nif->inpackets);
+		j += snprint(p+j, READSTR-j, "out: %d\n", nif->outpackets);
+		j += snprint(p+j, READSTR-j, "crc errs: %d\n", nif->crcs);
+		j += snprint(p+j, READSTR-j, "overflows: %d\n", nif->overflows);
+		j += snprint(p+j, READSTR-j, "soft overflows: %d\n", nif->soverflows);
+		j += snprint(p+j, READSTR-j, "framing errs: %d\n", nif->frames);
+		j += snprint(p+j, READSTR-j, "buffer errs: %d\n", nif->buffs);
+		j += snprint(p+j, READSTR-j, "output errs: %d\n", nif->oerrs);
+		j += snprint(p+j, READSTR-j, "prom: %d\n", nif->prom);
+		j += snprint(p+j, READSTR-j, "addr: ");
 		for(i = 0; i < nif->alen; i++)
-			j += sprint(buf+j, "%2.2ux", nif->addr[i]);
-		sprint(buf+j, "\n");
-		return readstr(offset, a, n, buf);
+			j += snprint(p+j, READSTR-j, "%2.2ux", nif->addr[i]);
+		snprint(p+j, READSTR-j, "\n");
+		n = readstr(offset, a, n, p);
+		free(p);
+		return n;
 	case Ntypeqid:
 		f = nif->f[NETID(c->qid.path)];
 		return readnum(offset, a, n, f->type, NUMSIZE);
@@ -214,8 +218,7 @@ long
 netifwrite(Netif *nif, Chan *c, void *a, long n)
 {
 	Netfile *f;
-	char *p;
-	char buf[256];
+	char *p, buf[64];
 	uchar binaddr[Nmaxaddr];
 
 	if(NETTYPE(c->qid.path) != Nctlqid)

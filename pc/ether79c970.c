@@ -156,9 +156,9 @@ attach(Ether* ether)
 static long
 ifstat(Ether* ether, void* a, long n, ulong offset)
 {
-	Ctlr *ctlr;
-	char buf[512];
+	char *p;
 	int len;
+	Ctlr *ctlr;
 
 	ctlr = ether->ctlr;
 
@@ -170,17 +170,21 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 	if(n == 0)
 		return 0;
 
-	len = sprint(buf, "Rxbuff: %ld\n", ctlr->rxbuff);
-	len += sprint(buf+len, "Crc: %ld\n", ctlr->crc);
-	len += sprint(buf+len, "Oflo: %ld\n", ctlr->oflo);
-	len += sprint(buf+len, "Fram: %ld\n", ctlr->fram);
-	len += sprint(buf+len, "Rtry: %ld\n", ctlr->rtry);
-	len += sprint(buf+len, "Lcar: %ld\n", ctlr->lcar);
-	len += sprint(buf+len, "Lcol: %ld\n", ctlr->lcol);
-	len += sprint(buf+len, "Uflo: %ld\n", ctlr->uflo);
-	sprint(buf+len, "Txbuff: %ld\n", ctlr->txbuff);
+	p = malloc(READSTR);
+	len = snprint(p, READSTR, "Rxbuff: %ld\n", ctlr->rxbuff);
+	len += snprint(p+len, READSTR-len, "Crc: %ld\n", ctlr->crc);
+	len += snprint(p+len, READSTR-len, "Oflo: %ld\n", ctlr->oflo);
+	len += snprint(p+len, READSTR-len, "Fram: %ld\n", ctlr->fram);
+	len += snprint(p+len, READSTR-len, "Rtry: %ld\n", ctlr->rtry);
+	len += snprint(p+len, READSTR-len, "Lcar: %ld\n", ctlr->lcar);
+	len += snprint(p+len, READSTR-len, "Lcol: %ld\n", ctlr->lcol);
+	len += snprint(p+len, READSTR-len, "Uflo: %ld\n", ctlr->uflo);
+	snprint(p+len, READSTR-len, "Txbuff: %ld\n", ctlr->txbuff);
 
-	return readstr(offset, a, n, buf);
+	n = readstr(offset, a, n, p);
+	free(p);
+
+	return n;
 }
 
 static void
