@@ -119,11 +119,10 @@ hostownerwrite(char *a, int n)
 
 	if(!iseve())
 		error(Eperm);
-	if(n >= sizeof buf)
+	if(n <= 0 || n >= sizeof buf)
 		error(Ebadarg);
-	strncpy(buf, a, n+1);
-	if(buf[0] == '\0')
-		error(Ebadarg);
+	memmove(buf, a, n);
+	buf[n] = 0;
 
 	renameuser(eve, buf);
 	kstrdup(&eve, buf);

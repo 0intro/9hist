@@ -832,7 +832,7 @@ usbwrite(Chan *c, void *a, long n, vlong offset)
 					error(Ebadarg);
 				}
 				i = strtoul(cb->f[5], nil, 0);
-				if(i >= 1 && i <= 100000){
+				if(i >= 1 && i*e->samplesz <= 12*1000*1000){
 					/* Hz */
 					e->hz = i;
 					e->remain = 0;

@@ -13,6 +13,7 @@
 
 enum {
 	TI_vid = 0x104c,
+	TI_1131_did = 0xAC15,
 	TI_1250_did = 0xAC16,
 	TI_1450_did = 0xAC1B,
 	TI_1251A_did = 0xAC1D,
@@ -28,6 +29,19 @@ enum {
 
 	LegacyAddr = 0x3e0,
 	NUMEVENTS = 10,
+
+	TI1131xSC = 0x80,		// system control
+		TI122X_SC_INTRTIE	= 1 << 29,
+	TI12xxIM = 0x8c,		// 
+	TI1131xCC = 0x91,		// card control
+		TI113X_CC_RIENB = 1 << 7,
+		TI113X_CC_ZVENABLE = 1 << 6,
+		TI113X_CC_PCI_IRQ_ENA = 1 << 5,
+		TI113X_CC_PCI_IREQ = 1 << 4,
+		TI113X_CC_PCI_CSC = 1 << 3,
+		TI113X_CC_SPKROUTEN = 1 << 1,
+		TI113X_CC_IFG = 1 << 0,
+	TI1131xDC = 0x92,		// device control
 };
 
 typedef struct {
@@ -39,6 +53,7 @@ typedef struct {
 static Variant variant[] = {
 {	Ricoh_vid,	Ricoh_476_did,	"Ricoh 476 PCI/Cardbus bridge",	},
 {	Ricoh_vid,	Ricoh_478_did,	"Ricoh 478 PCI/Cardbus bridge",	},
+{	TI_vid,		TI_1131_did,		"TI PCI-1131 Cardbus Controller",	},
 {	TI_vid,		TI_1250_did,		"TI PCI-1250 Cardbus Controller",	},
 {	TI_vid,		TI_1450_did,		"TI PCI-1450 Cardbus Controller",	},
 {	TI_vid,		TI_1251A_did,		"TI PCI-1251A Cardbus Controller",	},
@@ -446,7 +461,7 @@ processevents(void *)
 }
 
 static void
-interrupt(Ureg *, void *)
+cbinterrupt(Ureg *, void *)
 {
 	int i;
 
@@ -529,14 +544,18 @@ devpccardlink(void)
 		cb->cb_pci = pci;
 		cb->cb_variant = &variant[i];
 		
-		pcicfgw32(pci, PciCBMBR0, 0xffffffff);
-		pcicfgw32(pci, PciCBMLR0, 0);
-		pcicfgw32(pci, PciCBMBR1, 0xffffffff);
-		pcicfgw32(pci, PciCBMLR1, 0);
-		pcicfgw32(pci, PciCBIBR0, 0xffffffff);
-		pcicfgw32(pci, PciCBILR0, 0);
-		pcicfgw32(pci, PciCBIBR1, 0xffffffff);
-		pcicfgw32(pci, PciCBILR1, 0);
+		if (pci->vid != TI_vid) {
+			// Gross hack, needs a fix.  Inherit the mappings from 9load
+			// for the TIs (pb)
+			pcicfgw32(pci, PciCBMBR0, 0xffffffff);
+			pcicfgw32(pci, PciCBMLR0, 0);
+			pcicfgw32(pci, PciCBMBR1, 0xffffffff);
+			pcicfgw32(pci, PciCBMLR1, 0);
+			pcicfgw32(pci, PciCBIBR0, 0xffffffff);
+			pcicfgw32(pci, PciCBILR0, 0);
+			pcicfgw32(pci, PciCBIBR1, 0xffffffff);
+			pcicfgw32(pci, PciCBILR1, 0);
+		}
 
 		// Set up PCI bus numbers if needed.
 		if (pcicfgr8(pci, PciSBN) == 0) {
@@ -556,8 +575,36 @@ devpccardlink(void)
 			if (pci->intl == 0xff || pci->intl == 0)
 				print("#Y%d: No interrupt?\n", (int)(cb - cbslots));
 		}
+
+		// Don't you love standards!
+		if (pci->vid == TI_vid) {
+			if (pci->did <= TI_1131_did) {
+				uchar cc;
+
+				cc = pcicfgr8(pci, TI1131xCC);
+				cc &= ~(TI113X_CC_PCI_IRQ_ENA |
+						TI113X_CC_PCI_IREQ | 
+						TI113X_CC_PCI_CSC |
+						TI113X_CC_ZVENABLE);
+				cc |= TI113X_CC_PCI_IRQ_ENA | 
+						TI113X_CC_PCI_IREQ | 
+						TI113X_CC_SPKROUTEN;
+				pcicfgw8(pci, TI1131xCC, cc);
+
+				// PCI interrupts only
+				pcicfgw8(pci, TI1131xDC, 
+						pcicfgr8(pci, TI1131xDC) & ~6);
+
+				// CSC ints to PCI bus.
+				wrreg(cb, Rigc, rdreg(cb, Rigc) | 0x10);
+			}
+			else if (pci->did == TI_1250_did) {
+				print("No support yet for the TI_1250_did, prod pb\n");
+			}
+		}
+
 		if (intl != -1 && intl != pci->intl)
-			intrenable(pci->intl, interrupt, cb, pci->tbdf, "cardbus");
+			intrenable(pci->intl, cbinterrupt, cb, pci->tbdf, "cardbus");
 		intl = pci->intl;
 
 		if ((baddr = pcicfgr32(cb->cb_pci, PciBAR0)) == 0) {
@@ -1277,11 +1324,11 @@ pccardread(Chan *c, void *a, long n, vlong offset)
 					for (i = 0; i != Nbars; i++)
 						if (pci->mem[i].size)
 							p = seprint(p, e, 
-									  "\tmem[%d] %.8uX (%.8uX)\n",
+									  "\tmem[%d] %.8ulX (%.8uX)\n",
 									  i, pci->mem[i].bar, 
 									  pci->mem[i].size);
 					if (pci->rom.size)
-						p = seprint(p, e, "\tROM %.8uX (%.8uX)\n", i, 
+						p = seprint(p, e, "\tROM %.8ulX (%.8uX)\n",
 								  pci->rom.bar, pci->rom.size);
 					pci = pci->list;
 				}
@@ -1301,12 +1348,12 @@ pccardread(Chan *c, void *a, long n, vlong offset)
 
 					ct = &pi->pi_ctab[n];
 					p = seprint(p, e, 
-						"\tconfiguration[%d] irqs %.4X; vpp %d, %d; %s\n",
+						"\tconfiguration[%ld] irqs %.4uX; vpp %d, %d; %s\n",
 							  n, ct->irqs, ct->vpp1, ct->vpp2,
 							  (ct == pi->pi_defctab)? "(default);": "");
 					for (i = 0; i != ct->nio; i++)
 						if (ct->io[i].len > 0)
-							p = seprint(p, e, "\t\tio[%d] %.8lX %d\n",
+							p = seprint(p, e, "\t\tio[%d] %.8ulX %uld\n",
 									  i, ct->io[i].start, ct->io[i].len);
 				}
 			}

@@ -882,31 +882,29 @@ out:
 }
 
 static char *stformat = "%-32.32I %2.2d %4.4s\n";
-enum
-{
-	Nstformat= 41,
-};
 
 long
 ipselftabread(Fs *f, char *cp, ulong offset, int n)
 {
-	int i, m, nifc;
+	int i, m, nifc, off;
 	Ipself *p;
 	Iplink *link;
 	char state[8];
 
 	m = 0;
+	off = offset;
 	qlock(f->self);
 	for(i = 0; i < NHASH && m < n; i++){
 		for(p = f->self->hash[i]; p != nil && m < n; p = p->next){
-			if(offset == 0){
-				nifc = 0;
-				for(link = p->link; link; link = link->selflink)
-					nifc++;
-				routetype(p->type, state);
-				m += snprint(cp + m, n - m, stformat, p->a, nifc, state);
+			nifc = 0;
+			for(link = p->link; link; link = link->selflink)
+				nifc++;
+			routetype(p->type, state);
+			m += snprint(cp + m, n - m, stformat, p->a, nifc, state);
+			if(off > 0){
+				off -= m;
+				m = 0;
 			}
-			offset -= Nstformat;
 		}
 	}
 	qunlock(f->self);

@@ -259,7 +259,7 @@ i8253enable(void)
 {
 	i8253.when = fastticks(nil);
 	i8253.fastperiod = (m->cpuhz + HZ/2) / HZ;
-	i8253.fast2freq = (vlong)m->cpuhz * FreqMul / Freq;
+	i8253.fast2freq = m->cpuhz * FreqMul / Freq;
 	i8253.enabled = 1;
 	intrenable(IrqCLOCK, clockintr0, 0, BUSUNKNOWN, "clock");
 }

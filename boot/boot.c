@@ -18,16 +18,6 @@ int	bargc;
 static void	swapproc(void);
 static Method	*rootserver(char*);
 
-static int
-rconv(Fmt* fp)
-{
-	char s[ERRMAX];
-
-	s[0] = '\0';
-	errstr(s, sizeof s);
-	return fmtstrcpy(fp, s);
-}
-
 void
 boot(int argc, char *argv[])
 {
@@ -41,7 +31,7 @@ boot(int argc, char *argv[])
 	char buf[32];
 	AuthInfo *ai;
 
-	fmtinstall('r', rconv);
+	fmtinstall('r', errfmt);
 
 	open("#c/cons", OREAD);
 	open("#c/cons", OWRITE);
