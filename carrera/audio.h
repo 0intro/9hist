@@ -30,5 +30,6 @@ enum
 	PORT_CLRI401	= Dspport + 0x100,
 };
 
+#define	setvec(a,b,c)
 #define	outb(a,b)	EISAOUTB(a,b)
 #define	inb(a)		EISAINB(a)

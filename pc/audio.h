@@ -30,6 +30,6 @@ enum
 	PORT_CLRI401	= Dspport + 0x100,
 };
 
-#define	seteisadma(a, b)	;
-#define	CACHELINESZ		8
+#define seteisadma(a, b)	;
+#define CACHELINESZ		8
 #define UNCACHED(type, v)	(type*)((ulong)(v))
