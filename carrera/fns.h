@@ -128,6 +128,7 @@ void	ifjab(void);
 ulong	ifaddr(void*);
 void	filiput(Block*);
 void	fiberint(int);
+void	freset(void*);
 void	audiosbintr(void);
 void	audiodmaintr(void);
 ulong	fwblock(void*, void*, ulong);

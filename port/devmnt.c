@@ -758,7 +758,7 @@ mountmux(Mnt *m, Mntrpc *r)
 int
 mntflush(Mnt *m, Mntrpc *r)
 {
-	int n;
+	int n, l;
 	Fcall flush;
 
 	lock(m);
@@ -779,7 +779,9 @@ mntflush(Mnt *m, Mntrpc *r)
 		mntqrm(m, r);
 		return 0;
 	}
-	(*devtab[m->c->type].write)(m->c, r->flush, n, 0);
+	l = (*devtab[m->c->type].write)(m->c, r->flush, n, 0);
+	if(l != n)
+		error(Ehungup);
 	poperror();
 	return 1;
 }
