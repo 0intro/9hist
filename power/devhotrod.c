@@ -11,14 +11,16 @@
 #include	"hrod.h"
 
 /*
- * If defined, causes memory test to be run at device open
+ * If defined, ENABMEMTEST causes memory test to be run at device open
  */
 #ifdef	ENABMEMTEST
 void	mem(Hot*, ulong*, ulong);
+#define	NTESTBUF	256
+ulong	testbuf[NTESTBUF];
 #endif
 
 /*
- * If set, causes data transfers to have checksums
+ * If 1, ENABCKSUM causes data transfers to have checksums
  */
 #define	ENABCKSUM	1
 
@@ -31,6 +33,12 @@ enum{
 	Qhotrod=	1,
 	Nhotrod=	1,
 };
+
+Dirtab hotroddir[]={
+	"hotrod",	{Qhotrod},	0,	0600,
+};
+
+#define	NHOTRODDIR	(sizeof hotroddir/sizeof(Dirtab))
 
 struct Hotrod{
 	QLock;
@@ -53,14 +61,6 @@ void	hotrodintr(int);
 /*
  * Commands
  */
-enum{
-	RESET=	0,	/* params: Q address, length of queue */
-	REBOOT=	1,	/* params: none */
-	READ=	2,	/* params: buffer, count, sum, returned count */
-	WRITE=	3,	/* params: buffer, count, sum */
-	TEST=	7,	/* params: none */
-};
-
 void
 hotsend(Hotrod *h, Hotmsg *m)
 {
@@ -100,8 +100,6 @@ hotrodreset(void)
 		hp->vec = Vmevec+i;
 		setvmevec(hp->vec, hotrodintr);
 	}	
-	wbflush();
-	delay(20);
 }
 
 void
@@ -139,24 +137,14 @@ hotrodclone(Chan *c, Chan *nc)
 int	 
 hotrodwalk(Chan *c, char *name)
 {
-	if(c->qid.path != CHDIR)
-		return 0;
-	if(strncmp(name, "hotrod", 6) == 0){
-		c->qid.path = Qhotrod;
-		return 1;
-	}
-	return 0;
+	return devwalk(c, name, hotroddir, NHOTRODDIR, devgen);
 }
 
 void	 
 hotrodstat(Chan *c, char *dp)
 {
-	print("hotrodstat\n");
-	error(Egreg);
+	devstat(c, dp, hotroddir, NHOTRODDIR, devgen);
 }
-
-#define	NTESTBUF	256
-ulong	testbuf[NTESTBUF];
 
 Chan*
 hotrodopen(Chan *c, int omode)
@@ -183,7 +171,7 @@ hotrodopen(Chan *c, int omode)
 		hp->wi = 0;
 		hp->ri = 0;
 		mp = &u->khot;
-		mp->cmd = RESET;
+		mp->cmd = Ureset;
 		mp->param[0] = MP2VME(hp->rq);
 		mp->param[1] = NRQ;
 		hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->khot);
@@ -195,7 +183,7 @@ hotrodopen(Chan *c, int omode)
 		 * Issue test
 		 */
 		mp = &u->khot;
-		mp->cmd = TEST;
+		mp->cmd = Utest;
 		mp->param[0] = MP2VME(testbuf);
 		mp->param[1] = NTESTBUF;
 		hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->khot);
@@ -226,7 +214,7 @@ hotrodclose(Chan *c)
 
 	hp = &hotrod[c->dev];
 	if(c->qid.path != CHDIR){
-		u->khot.cmd = REBOOT;
+		u->khot.cmd = Ureboot;
 		hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->khot);
 		unlock(&hp->busy);
 	}
@@ -266,7 +254,10 @@ hotrodread(Chan *c, void *buf, long n)
 	ulong l, m, isflush;
 
 	hp = &hotrod[c->dev];
-	switch(c->qid.path){
+	switch(c->qid.path & ~CHDIR){
+	case Qdir:
+		return devdirread(c, buf, n, hotroddir, NHOTRODDIR, devgen);
+
 	case Qhotrod:
 		if(n > sizeof hp->buf){
 			print("hotrod bufsize\n");
@@ -282,10 +273,10 @@ hotrodread(Chan *c, void *buf, long n)
 				mp = &((User*)(u->p->upage->pa|KZERO))->fhot;
 				isflush = 1;
 			}
-			mp->param[2] = 0;	/* checksum */
+			mp->param[2] = 0;	/* reply checksum */
 			mp->param[3] = 0;	/* reply count */
 			qlock(hp);
-			mp->cmd = READ;
+			mp->cmd = Uread;
 			mp->param[0] = MP2VME(buf);
 			mp->param[1] = n;
 			mp->abort = isflush;
@@ -310,8 +301,10 @@ hotrodread(Chan *c, void *buf, long n)
 				error(Egreg);
 			}
 			if(mp->param[2] != hotsum(buf, m, mp->param[2])){
+				hp->addr->error++;
 				print("hotrod cksum err is %lux sb %lux\n",
 					hotsum(buf, n, 1), mp->param[2]);
+{int i; for(i=0; i<8; i++) print("%lux\n", ((ulong*)buf)[i]); }
 				error(Eio);
 			}
 			if(!isflush)
@@ -321,11 +314,11 @@ hotrodread(Chan *c, void *buf, long n)
 			 * use hotrod buffer. lock the buffer until the reply
 			 */
 			mp = &((User*)(u->p->upage->pa|KZERO))->uhot;
-			mp->param[2] = 0;	/* checksum */
+			mp->param[2] = 0;	/* reply checksum */
 			mp->param[3] = 0;	/* reply count */
 			qlock(&hp->buflock);
 			qlock(hp);
-			mp->cmd = READ;
+			mp->cmd = Uread;
 			mp->param[0] = MP2VME(hp->buf);
 			mp->param[1] = n;
 			mp->abort = 1;
@@ -342,9 +335,11 @@ hotrodread(Chan *c, void *buf, long n)
 				error(Egreg);
 			}
 			if(mp->param[2] != hotsum((ulong*)hp->buf, m, mp->param[2])){
+				hp->addr->error++;
 				print("hotrod cksum err is %lux sb %lux\n",
 					hotsum((ulong*)hp->buf, n, 1), mp->param[2]);
 				qunlock(&hp->buflock);
+{int i; for(i=0; i<8; i++) print("%lux\n", ((ulong*)buf)[i]); }
 				error(Eio);
 			}
 			memcpy(buf, hp->buf, m);
@@ -364,8 +359,11 @@ hotrodwrite(Chan *c, void *buf, long n)
 	Hotmsg *mp;
 
 	hp = &hotrod[c->dev];
-	switch(c->qid.path){
-	case 1:
+	switch(c->qid.path & ~CHDIR){
+	case Qdir:
+		return devdirread(c, buf, n, hotroddir, NHOTRODDIR, devgen);
+
+	case Qhotrod:
 		if(n > sizeof hp->buf){
 			print("hotrod write bufsize\n");
 			error(Egreg);
@@ -378,7 +376,7 @@ hotrodwrite(Chan *c, void *buf, long n)
 			if(mp->abort)	/* use reserved flush msg */
 				mp = &((User*)(u->p->upage->pa|KZERO))->fhot;
 			qlock(hp);
-			mp->cmd = WRITE;
+			mp->cmd = Uwrite;
 			mp->param[0] = MP2VME(buf);
 			mp->param[1] = n;
 			mp->param[2] = hotsum(buf, n, ENABCKSUM);
@@ -392,7 +390,7 @@ hotrodwrite(Chan *c, void *buf, long n)
 			qlock(&hp->buflock);
 			qlock(hp);
 			memcpy(hp->buf, buf, n);
-			mp->cmd = WRITE;
+			mp->cmd = Uwrite;
 			mp->param[0] = MP2VME(hp->buf);
 			mp->param[1] = n;
 			mp->param[2] = hotsum((ulong*)hp->buf, n, ENABCKSUM);
