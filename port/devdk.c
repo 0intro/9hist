@@ -128,8 +128,8 @@ struct Dk {
 	int	restart;
 	int	urpwindow;
 	Rendez	timer;
-	Rendez	rallclosed;
-	int	allclosedp;	/* true once a closeall has been seen */
+	int	closeall;	/* set when we receive a closeall message */
+	Rendez	closeallr;	/* wait here for a closeall */
 };
 static Dk dk[Ndk];
 static Lock dklock;
@@ -528,12 +528,12 @@ dkoput(Queue *q, Block *bp)
  *  we can configure only once
  */
 static int
-allclosed(void *arg)
+haveca(void *arg)
 {
 	Dk *dp;
 
 	dp = arg;
-	return dp->allclosedp;
+	return dp->closeall;
 }
 static void
 dkmuxconfig(Queue *q, Block *bp)
@@ -610,6 +610,7 @@ dkmuxconfig(Queue *q, Block *bp)
 	 *  open csc here so that boot, dktimer, and dkcsckproc aren't
 	 *  all fighting for it at once.
 	 */
+	dp->closeall = 0;
 	dp->csc = dkopenline(dp, dp->ncsc);
 
 	/*
@@ -617,11 +618,7 @@ dkmuxconfig(Queue *q, Block *bp)
 	 */
 	sprint(buf, "csc.%s.%d", dp->name, dp->ncsc);
 	kproc(buf, dkcsckproc, dp);
-
-	/*
-	 *  wait for first possible closeall (may not come)
-	 */
-	tsleep(&dp->rallclosed, allclosed, dp, 2000);
+	tsleep(&dp->closeallr, haveca, dp, 5000);	/* wait for initial closeall */
 
 	/*
 	 *  tell datakit we've rebooted. It should close all channels.
@@ -629,7 +626,9 @@ dkmuxconfig(Queue *q, Block *bp)
 	 */
 	if(dp->restart) {
 		DPRINT("dktimer: restart %s\n", dp->name);
+		dp->closeall = 0;
 		dkmesg(dp->csc, T_ALIVE, D_RESTART, 0, 0);
+		tsleep(&dp->closeallr, haveca, dp, 5000); /* wait for restart closeall */
 	}
 
 	/*
@@ -637,12 +636,6 @@ dkmuxconfig(Queue *q, Block *bp)
 	 */
 	sprint(buf, "timer.%s.%d", dp->name, dp->ncsc);
 	kproc(buf, dktimer, dp);
-
-	/*
-	 *  wait for closeall in response to D_RESTART
-	 */
-	if(dp->restart)
-		tsleep(&dp->rallclosed, allclosed, dp, 10000);
 }
 
 /*
@@ -1585,8 +1578,8 @@ dkchgmesg(Chan *c, Dk *dp, Dkmsg *dialp, int line)
 				break;
 			}
 		}
-		dp->allclosedp = 1;
-		wakeup(&dp->rallclosed);
+		dp->closeall = 1;
+		wakeup(&dp->closeallr);
 		break;
 
 	default:

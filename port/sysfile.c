@@ -29,7 +29,7 @@ fdtochan(int fd, int mode)
 {
 	Chan *c;
 
-	c = 0;	/* set */
+	c = 0;		/* set */
 	if(fd<0 || NFD<=fd || (c=u->fd[fd])==0)
 		error(Ebadfd);
 	if(mode<0 || c->mode==ORDWR)
@@ -490,3 +490,19 @@ sysfwstat(ulong *arg)
 	(*devtab[c->type].wstat)(c, (char*)arg[1]);
 	return 0;
 }
+
+#ifdef asdf
+long
+sysfilsys(ulong *arg)
+{
+	Chan *cin, *cout;
+
+	cin = fdtochan(arg[0], OREAD);
+	cout = fdtochan(arg[1], OWRITE);
+	validaddr(arg[2], 1, 0);
+	if((cin->qid.path&CHDIR) || (cout->qid.path&CHDIR))
+		error(Ebadarg);
+	service((char *)arg[2], cin, cout, filsys);
+	return 0;
+}
+#endif

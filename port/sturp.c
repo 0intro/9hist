@@ -206,7 +206,10 @@ urpclose(Queue *q)
 	 *  if 2 minutes elapse, give it up
 	 */
 	up->state |= CLOSING;
-	tsleep(&up->r, isflushed, up, 2*60*1000);
+	if(!waserror()){
+		tsleep(&up->r, isflushed, up, 2*60*1000);
+		poperror();
+	}
 	up->state |= HUNGUP;
 
 	qlock(&up->xmit);
@@ -944,15 +947,23 @@ urpkproc(void *arg)
 	for(;;){
 		for(up = urp; up < eup; up++){
 			if(up->state==0 || (up->state&HUNGUP))
-				break;
+				continue;
 			if(!canqlock(up))
 				continue;
-			if(up->state==0 || (up->state&HUNGUP))
-				break;
+			if(waserror()){
+				qunlock(up);
+				continue;
+			}
+			if(up->state==0 || (up->state&HUNGUP)){
+				qunlock(up);
+				poperror();
+				continue;
+			}
 			if(up->iseq!=(up->lastecho&7) && !QFULL(up->rq->next))
 				sendack(up);
 			output(up);
 			qunlock(up);
+			poperror();
 		}
 		tsleep(&urpkr, return0, 0, 1000);
 	}
