@@ -3,6 +3,7 @@
 void	aamloop(int);
 void	addconf(char*, char*);
 #define	affinity(x) m
+#define	balance(x) m
 void	bbinit(void);
 void	bigcursor(void);
 void	bootargs(ulong);

@@ -114,7 +114,7 @@ ready(Proc *p)
 	s = splhi();
 
 	if(p->state == Running)
-		rq = &m->loq;
+		rq = &balance(p)->loq;
 	else
 		rq = &affinity(p)->hiq;
 

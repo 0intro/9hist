@@ -2,6 +2,7 @@
 
 #define affinity(x) m
 void	arginit(void);
+#define	balance(x) m
 void	clearmmucache(void);
 void	clock(Ureg*);
 void	clockinit(void);

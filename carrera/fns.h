@@ -6,6 +6,7 @@ void		addportintr(int(*)(void));
 #define		affinity(x) m
 void		allflush(void*, ulong);
 void		arginit(void);
+#define		balance(x) m
 int		busprobe(ulong);
 void		cleancache(void);
 void		clearmmucache(void);
