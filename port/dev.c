@@ -42,12 +42,19 @@ devdir(Chan *c, Qid qid, char *n, vlong length, char *user, long perm, Dir *db)
 	memmove(db->gid, eve, NAMELEN);
 }
 
+//
+// the zeroth element of the table MUST be the directory itself for ..
+//
 int
 devgen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
 {
-	if(tab==0 || i>=ntab)
+	if(tab==0)
 		return -1;
-	tab += i;
+	if(i!=DEVDOTDOT){
+		if(i>=ntab)
+			return -1;
+		tab += i;
+	}
 	devdir(c, tab->qid, tab->name, tab->length, eve, tab->perm, dp);
 	return 1;
 }
@@ -111,6 +118,11 @@ devwalk(Chan *c, char *name, Dirtab *tab, int ntab, Devgen *gen)
 	isdir(c);
 	if(name[0]=='.' && name[1]==0)
 		return 1;
+	if(name[0]=='.' && name[1]=='.' && name[2]==0){
+		(*gen)(c, tab, ntab, DEVDOTDOT, &dir);
+		c->qid = dir.qid;
+		return 1;
+	}
 	for(i=0;; i++) {
 		switch((*gen)(c, tab, ntab, i, &dir)){
 		case -1:

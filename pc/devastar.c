@@ -347,6 +347,11 @@ astargen(Chan *c, Dirtab *, int , int i, Dir *db)
 
 	sofar = 0;
 
+	if(i == DEVDOTDOT){
+		devdir(c, (Qid){CHDIR, 0}, "#G", 0, eve, 0555, db);
+		return 1;
+	}
+
 	for(dev = 0; dev < nastar; dev++){
 		if(sofar == i){
 			sprint(db->name, "astar%dmem", astar[dev]->id);

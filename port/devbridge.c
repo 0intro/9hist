@@ -222,21 +222,6 @@ bridgeattach(char* spec)
 static int
 bridgewalk(Chan *c, char *name)
 {
-	if(strcmp(name, "..") == 0){
-		switch(TYPE(c->qid)){
-		case Qtopdir:
-		case Qbridgedir:
-			c->qid = (Qid){CHDIR|Qtopdir, 0};
-			break;
-		case Qportdir:
-			c->qid = (Qid){CHDIR|Qbridgedir, 0};
-			break;
-		default:
-			panic("bridgewalk %lux", c->qid.path);
-		}
-		return 1;
-	}
-
 	return devwalk(c, name, 0, 0, bridgegen);
 }
 
@@ -430,6 +415,23 @@ bridgegen(Chan *c, Dirtab*, int, int s, Dir *dp)
 	char buf[32];
 	Dirtab *dt;
 	Qid qid;
+
+	if(s  == DEVDOTDOT){
+		switch(TYPE(c->qid)){
+		case Qtopdir:
+		case Qbridgedir:
+			snprint(buf, "#B%d", c->dev);
+			devdir(c, (Qid){CHDIR|Qtopdir, 0}, buf, 0, eve, 0555, dp);
+			break;
+		case Qportdir:
+			sprint(buf, "bridge%ld", c->dev);
+			devdir(c, (Qid){CHDIR|Qbridgedir, 0}, buf, 0, eve, 0555, dp);
+			break;
+		default:
+			panic("bridgewalk %lux", c->qid.path);
+		}
+		return 1;
+	}
 
 	switch(type) {
 	default:

@@ -1389,6 +1389,10 @@ usbgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 	 * Top level directory contains the name of the device.
 	 */
 	if(c->qid.path == CHDIR){
+		if(s == DEVDOTDOT){
+			devdir(c, (Qid){CHDIR, 0}, "#U", 0, eve, 0555, dp);
+			return 1;
+		}
 		if(s == 0){
 			devdir(c, (Qid){CHDIR|Q2nd, 0}, "usb", 0, eve, 0555, dp);
 			return 1;
@@ -1401,6 +1405,10 @@ usbgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 	 */
 	t = QID(c->qid);
 	if(t < Q3rd){
+		if(s == DEVDOTDOT){
+			devdir(c, (Qid){CHDIR, 0}, "#U", 0, eve, 0555, dp);
+			return 1;
+		}
 		if(s < nelem(usbdir2)){
 			tab = &usbdir2[s];
 			devdir(c, tab->qid, tab->name, tab->length, eve, tab->perm, dp);
@@ -1423,6 +1431,10 @@ usbgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 	 */
 	path = c->qid.path&~(CHDIR|QMASK);	/* slot component */
 	q.vers = c->qid.vers;
+	if(s == DEVDOTDOT){
+		devdir(c, (Qid){CHDIR|Q2nd, 0}, "usb", 0, eve, 0555, dp);
+		return 1;
+	}
 	if(s < nelem(usbdir3)){
 		Dirtab *tab = &usbdir3[s];
 		q.path = path | tab->qid.path;

@@ -79,6 +79,11 @@ sdgen(Chan *c, Dirtab*, int, int s, Dir *dirp)
 	char name[2*NAMELEN];
 	vlong l;
 
+	if(s == DEVDOTDOT){
+		devdir(c, qid, "#w", 0, eve, 0555, dirp);
+		return 1;
+	}
+
 	d = disk;
 	while(s >= d->npart) {
 		s -= d->npart;

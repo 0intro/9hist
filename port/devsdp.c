@@ -394,21 +394,6 @@ sdpattach(char* spec)
 static int
 sdpwalk(Chan *c, char *name)
 {
-	if(strcmp(name, "..") == 0){
-		switch(TYPE(c->qid)){
-		case Qtopdir:
-		case Qsdpdir:
-			c->qid = (Qid){CHDIR|Qtopdir, 0};
-			break;
-		case Qconvdir:
-			c->qid = (Qid){CHDIR|Qsdpdir, 0};
-			break;
-		default:
-			panic("sdpwalk %lux", c->qid.path);
-		}
-		return 1;
-	}
-
 	return devwalk(c, name, 0, 0, sdpgen);
 }
 
@@ -727,6 +712,23 @@ sdpgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 	char buf[32];
 	Dirtab *dt;
 	Qid qid;
+
+	if(s == DEVDOTDOT){
+		switch(TYPE(c->qid)){
+		case Qtopdir:
+		case Qsdpdir:
+			snprint(buf, sizeof(buf), "#E%d", c->dev);
+			devdir(c, (Qid){CHDIR|Qtopdir, 0}, buf, 0, eve, 0555, dp);
+			break;
+		case Qconvdir:
+			snprint(buf, sizeof(buf), "%d", s);
+			devdir(c, (Qid){CHDIR|Qsdpdir, 0}, buf, 0, eve, 0555, dp);
+			break;
+		default:
+			panic("sdpwalk %lux", c->qid.path);
+		}
+		return 1;
+	}
 
 	switch(type) {
 	default:

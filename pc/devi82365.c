@@ -482,6 +482,11 @@ pcmgen(Chan *c, Dirtab *, int , int i, Dir *dp)
 	Slot *pp;
 	char name[NAMELEN];
 
+	if(i == DEVDOTDOT){
+		devdir(c, (Qid){CHDIR, 0}, "#y", 0, eve, 0555, dp);
+		return 1;
+	}
+
 	if(i >= Nents*nslot)
 		return -1;
 	slotno = i/Nents;

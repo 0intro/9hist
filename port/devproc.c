@@ -82,6 +82,12 @@ procgen(Chan *c, Dirtab *tab, int, int s, Dir *dp)
 	char buf[NAMELEN];
 	ulong pid, path, perm, len;
 
+	if(s == DEVDOTDOT){
+		c->qid.path = CHDIR;
+		devdir(c, c->qid, "#p", 0, eve, 0555, dp);
+		return 1;
+	}
+
 	if(c->qid.path == CHDIR){
 		if(s >= conf.nproc)
 			return -1;
@@ -142,11 +148,6 @@ procattach(char *spec)
 static int
 procwalk(Chan *c, char *name)
 {
-	if(strcmp(name, "..") == 0) {
-		c->qid.path = CHDIR;
-		return 1;
-	}
-
 	return devwalk(c, name, 0, 0, procgen);
 }
 

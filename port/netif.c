@@ -45,10 +45,14 @@ netifgen(Chan *c, Dirtab *vp, int, int i, Dir *dp)
 	/* top level directory contains the name of the network */
 	if(c->qid.path == CHDIR){
 		switch(i){
+		case DEVDOTDOT:
+			q.path = CHDIR;
+			devdir(c, q, ".", 0, eve, CHDIR|0555, dp);
+			break;
 		case 0:
 			q.path = CHDIR | N2ndqid;
 			strcpy(buf, nif->name);
-			devdir(c, q, buf, 0, eve, 0555, dp);
+			devdir(c, q, buf, 0, eve, CHDIR|0555, dp);
 			break;
 		default:
 			return -1;
@@ -60,6 +64,10 @@ netifgen(Chan *c, Dirtab *vp, int, int i, Dir *dp)
 	t = NETTYPE(c->qid.path);
 	if(t == N2ndqid || t == Ncloneqid || t == Naddrqid){
 		switch(i) {
+		case DEVDOTDOT:
+			q.path = CHDIR;
+			devdir(c, q, ".", 0, eve, CHDIR|0555, dp);
+			break;
 		case 0:
 			q.path = Ncloneqid;
 			devdir(c, q, "clone", 0, eve, 0666, dp);
@@ -76,7 +84,7 @@ netifgen(Chan *c, Dirtab *vp, int, int i, Dir *dp)
 				return 0;
 			q.path = CHDIR|NETQID(i, N3rdqid);
 			sprint(buf, "%d", i);
-			devdir(c, q, buf, 0, eve, 0555, dp);
+			devdir(c, q, buf, 0, eve, CHDIR|0555, dp);
 			break;
 		}
 		return 1;
@@ -94,6 +102,11 @@ netifgen(Chan *c, Dirtab *vp, int, int i, Dir *dp)
 		perm = 0666;
 	}
 	switch(i){
+	case DEVDOTDOT:
+		q.path = CHDIR | N2ndqid;
+		strcpy(buf, nif->name);
+		devdir(c, q, buf, 0, eve, CHDIR|0555, dp);
+		break;
 	case 0:
 		q.path = NETQID(NETID(c->qid.path), Ndataqid);
 		devdir(c, q, "data", 0, o, perm, dp);

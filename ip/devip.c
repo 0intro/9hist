@@ -172,11 +172,17 @@ ipgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 
 	switch(TYPE(c->qid)) {
 	case Qtopdir:
+		if(s == DEVDOTDOT){
+			q = (Qid){QID(0, 0, Qtopdir)|CHDIR, 0};
+			sprint(name, "#I%lud", c->dev);
+			devdir(c, q, name, 0, network, 0555, dp);
+			return 1;
+		}
 		if(s < f->np) {
 			if(f->p[s]->connect == nil)
 				return 0;	/* protocol with no user interface */
 			q = (Qid){QID(s, 0, Qprotodir)|CHDIR, 0};
-			devdir(c, q, f->p[s]->name, 0, network, CHDIR|0555, dp);
+			devdir(c, q, f->p[s]->name, 0, network, 0555, dp);
 			return 1;
 		}
 		s -= f->np;
@@ -189,11 +195,17 @@ ipgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 	case Qipselftab:
 		return ip1gen(c, TYPE(c->qid), dp);
 	case Qprotodir:
+		if(s == DEVDOTDOT){
+			q = (Qid){QID(0, 0, Qtopdir)|CHDIR, 0};
+			sprint(name, "#I%lud", c->dev);
+			devdir(c, q, name, 0, network, 0555, dp);
+			return 1;
+		}
 		if(s < f->p[PROTO(c->qid)]->ac) {
 			cv = f->p[PROTO(c->qid)]->conv[s];
 			sprint(name, "%d", s);
 			q = (Qid){QID(PROTO(c->qid), s, Qconvdir)|CHDIR, 0};
-			devdir(c, q, name, 0, cv->owner, CHDIR|0555, dp);
+			devdir(c, q, name, 0, cv->owner, 0555, dp);
 			return 1;
 		}
 		s -= f->p[PROTO(c->qid)]->ac;
@@ -202,6 +214,12 @@ ipgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 	case Qstats:
 		return ip2gen(c, TYPE(c->qid), dp);
 	case Qconvdir:
+		if(s == DEVDOTDOT){
+			s = PROTO(c->qid);
+			q = (Qid){QID(s, 0, Qprotodir)|CHDIR, 0};
+			devdir(c, q, f->p[s]->name, 0, network, 0555, dp);
+			return 1;
+		}
 		return ip3gen(c, s+Qconvbase, dp);
 	case Qctl:
 	case Qdata:
@@ -285,21 +303,7 @@ ipclone(Chan* c, Chan* nc)
 static int
 ipwalk(Chan* c, char* name)
 {
-	if(strcmp(name, "..") != 0)
-		return devwalk(c, name, nil, 0, ipgen);
-
-	switch(TYPE(c->qid)){
-	case Qtopdir:
-	case Qprotodir:
-		c->qid = (Qid){QID(0, 0, Qtopdir)|CHDIR, 0};
-		break;
-	case Qconvdir:
-		c->qid = (Qid){QID(PROTO(c->qid), 0, Qprotodir)|CHDIR, 0};
-		break;
-	default:
-		panic("ipwalk %lux", c->qid.path);
-	}
-	return 1;
+	return devwalk(c, name, nil, 0, ipgen);
 }
 
 static void

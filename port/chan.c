@@ -19,7 +19,7 @@ struct
 }chanalloc;
 
 #define SEP(c) ((c) == 0 || (c) == '/')
-void cleancname(Cname*, int);
+void cleancname(Cname*);
 
 int
 incref(Ref *r)
@@ -483,7 +483,7 @@ updatecname(Chan *c, char *name, int dotdot)
 		c->name = addelem(c->name, name);
 	
 	if(dotdot){
-		cleancname(c->name, c->name->s[0]=='#');	/* could be cheaper */
+		cleancname(c->name);	/* could be cheaper */
 		c = undomount(c);
 	}
 	return c;
@@ -644,50 +644,25 @@ saveregisters(void)
  * In place, rewrite name to compress multiple /, eliminate ., and process ..
  */
 void
-cleancname(Cname *n, int offset)
+cleancname(Cname *n)
 {
-	char *p, *q, *dotdot, *name;
-	int rooted;
+	char *p;
 
-	name = n->s+offset;
-	rooted = name[0] == '/';
+	if(n->s[0] == '#'){
+		p = strchr(n->s, '/');
+		if(p == nil)
+			return;
+		cleanname(p);
 
-	/*
-	 * invariants:
-	 *	p points at beginning of path element we're considering.
-	 *	q points just past the last path element we wrote (no slash).
-	 *	dotdot points just past the point where .. cannot backtrack
-	 *		any further (no slash).
-	 */
-	p = q = dotdot = name+rooted;
-	while(*p) {
-		if(p[0] == '/')	/* null element */
-			p++;
-		else if(p[0] == '.' && SEP(p[1]))
-			p += 1;	/* don't count the separator in case it is nul */
-		else if(p[0] == '.' && p[1] == '.' && SEP(p[2])) {
-			p += 2;
-			if(q > dotdot) {	/* can backtrack */
-				while(--q > dotdot && *q != '/')
-					;
-			} else if(!rooted) {	/* /.. is / but ./../ is .. */
-				if(q != name)
-					*q++ = '/';
-				*q++ = '.';
-				*q++ = '.';
-				dotdot = q;
-			}
-		} else {	/* real path element */
-			if(q != name+rooted)
-				*q++ = '/';
-			while((*q = *p) != '/' && *q != 0)
-				p++, q++;
-		}
-	}
-	if(q == name)	/* empty string is really ``.'' */
-		*q++ = '.';
-	*q = '\0';
-	n->len = (q-name) + offset;
+		/*
+		 * The correct name is #i rather than #i/,
+		 * but the correct name of #/ is #/.
+		 */
+		if(strcmp(p, "/")==0 && n->s[1] != '/')
+			*p = '\0';
+	}else
+		cleanname(n->s);
+	n->len = strlen(n->s);
 }
 
 /*
@@ -911,12 +886,8 @@ namec(char *name, int amode, int omode, ulong perm)
 
 	poperror();
 
-	/* peculiar workaround for #/ */
 	if(newname){
-		if(cname->s[0]=='#' && cname->s[1]=='/')
-			cleancname(cname, 1);
-		else
-			cleancname(cname, 0);
+		cleancname(cname);
 		cnameclose(c->name);
 		c->name = cname;
 	}else

@@ -747,9 +747,10 @@ mountmux(Mnt *m, Mntrpc *r)
 	lock(m);
 	l = &m->queue;
 	for(q = *l; q; q = q->list) {
-		if(q->request.tag == r->reply.tag
-		|| q->flushed && q->flushtag == r->reply.tag) {
+		if((q->flushed==0 && q->request.tag == r->reply.tag)
+		|| (q->flushed && q->flushtag == r->reply.tag)) {
 			*l = q->list;
+			q->done = 1;
 			unlock(m);
 			if(q != r) {
 				/*
@@ -760,7 +761,6 @@ mountmux(Mnt *m, Mntrpc *r)
 				q->rpc = r->rpc;
 				r->rpc = dp;
 				q->reply = r->reply;
-				q->done = 1;
 				if(mntstats != nil)
 					(*mntstats)(q->request.type,
 						m->c, q->stime,
@@ -787,6 +787,10 @@ mntflush(Mnt *m, Mntrpc *r)
 	Fcall flush;
 
 	lock(m);
+	if(r->done){
+		unlock(m);
+		return 1;
+	}
 	r->flushtag = m->flushtag++;
 	if(m->flushtag == Tagend)
 		m->flushtag = m->flushbase;

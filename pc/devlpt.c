@@ -59,6 +59,11 @@ lptgen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
 	Qid qid;
 	char name[NAMELEN];
 
+	if(i == DEVDOTDOT){
+		sprint(name, "#L%lud", c->dev+1);
+		devdir(c, (Qid){CHDIR, 0}, name, 0, eve, 0555, dp);
+		return 1;
+	}
 	if(tab==0 || i>=ntab)
 		return -1;
 	tab += i;

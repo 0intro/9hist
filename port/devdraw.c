@@ -162,6 +162,7 @@ extern	void		flushmemscreen(Rectangle);
 	void		drawmesg(Client*, void*, int);
 	void		drawuninstall(Client*, int);
 	void		drawfreedimage(DImage*);
+	Client*		drawclientofpath(ulong);
 
 static	char Enodrawimage[] =	"unknown id for draw image";
 static	char Enodrawscreen[] =	"unknown id for draw screen";
@@ -193,6 +194,26 @@ drawgen(Chan *c, Dirtab *tab, int x, int s, Dir *dp)
 
 	USED(tab, x);
 	q.vers = 0;
+
+	if(s == DEVDOTDOT){
+		switch(QID(c->qid)){
+		case Qtopdir:
+		case Q2nd:
+			devdir(c, (Qid){CHDIR|Qtopdir, 0}, "#i", 0, eve, 0500, dp);
+			break;
+		case Q3rd:
+			cl = drawclientofpath(c->qid.path);
+			if(cl == nil)
+				strcpy(buf, "??");
+			else
+				sprint(buf, "%d", cl->clientid);
+			devdir(c, (Qid){CHDIR|Q2nd, 0}, buf, 0, eve, 0500, dp);
+			break;
+		default:
+			panic("drawwalk %lux", c->qid.path);
+		}
+		return 1;
+	}
 
 	/*
 	 * Top level directory contains the name of the device.
@@ -855,25 +876,6 @@ drawwalk(Chan *c, char *name)
 {
 	if(screendata.bdata == nil)
 		error("no frame buffer");
-	if(strcmp(name, "..") == 0){
-		switch(QID(c->qid)){
-		case Qtopdir:
-			return 1;
-		case Q2nd:
-			c->qid = (Qid){CHDIR|Qtopdir, 0};
-			break;
-		case Q3rd:
-			c->qid = (Qid){CHDIR|Q2nd, 0};
-			break;
-		default:
-			panic("drawwalk %lux", c->qid.path);
-		}
-print("drawwalk: ..?\n");
-//		op = c->path;
-//		c->path = ptenter(&syspt, op, name);
-//		decref(op);
-		return 1;
-	}
 	return devwalk(c, name, 0, 0, drawgen);
 }
 

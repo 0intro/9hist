@@ -114,6 +114,11 @@ pipegen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
 {
 	int id;
 
+	if(i == DEVDOTDOT){
+		devdir(c, c->qid, "#|", 0, eve, CHDIR|0555, dp);
+		return 1;
+	}
+
 	id = NETID(c->qid.path);
 	if(i > 1)
 		id++;

@@ -26,6 +26,11 @@ srvgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 {
 	Srv *sp;
 
+	if(s == DEVDOTDOT){
+		devdir(c, c->qid, "#s", 0, eve, 0555, dp);
+		return 1;
+	}
+
 	qlock(&srvlk);
 	for(sp = srv; sp && s; sp = sp->link)
 		s--;

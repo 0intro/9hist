@@ -13,6 +13,10 @@ dupgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 	Chan *f;
 	static int perm[] = { 0400, 0200, 0600, 0 };
 
+	if(s == DEVDOTDOT){
+		devdir(c, c->qid, "#d", 0, eve, 0555, dp);
+		return 1;
+	}
 	if(s > fgrp->maxfd)
 		return -1;
 	if((f=fgrp->fd[s]) == 0)

@@ -97,6 +97,11 @@ mntstatsgen(Chan *c, Dirtab*, int, int i, Dir *dp)
 	char name[NAMELEN];
 	Mntstats *m;
 
+	if(i == DEVDOTDOT){
+		devdir(c, (Qid){CHDIR,0}, "#z", 0, eve, 0555, dp);
+		return 1;
+	}
+
 	m = &msalloc.all[i];
 	if(i > Nms || m->inuse == 0)
 		return -1;

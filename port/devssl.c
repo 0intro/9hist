@@ -124,12 +124,22 @@ sslgen(Chan *c, Dirtab *d, int nd, int s, Dir *dp)
 	q.vers = 0;
 	switch(TYPE(c->qid)) {
 	case Qtopdir:
+		if(s == DEVDOTDOT){
+			q.path = QID(0, Qtopdir)|CHDIR;
+			devdir(c, q, "#D", 0, eve, 0555, dp);
+			return 1;
+		}
 		if(s > 0)
 			return -1;
 		q.path = QID(0, Qprotodir)|CHDIR;
 		devdir(c, q, "ssl", 0, eve, 0555, dp);
 		return 1;
 	case Qprotodir:
+		if(s == DEVDOTDOT){
+			q.path = QID(0, Qtopdir)|CHDIR;
+			devdir(c, q, ".", 0, eve, 0555, dp);
+			return 1;
+		}
 		if(s < dshiwat) {
 			sprint(name, "%d", s);
 			q.path = QID(s, Qconvdir)|CHDIR;
@@ -138,7 +148,7 @@ sslgen(Chan *c, Dirtab *d, int nd, int s, Dir *dp)
 				nm = ds->user;
 			else
 				nm = eve;
-			devdir(c, q, name, 0, nm, CHDIR|0555, dp);
+			devdir(c, q, name, 0, nm, 0555, dp);
 			return 1;
 		}
 		if(s > dshiwat)
@@ -147,6 +157,11 @@ sslgen(Chan *c, Dirtab *d, int nd, int s, Dir *dp)
 		devdir(c, q, "clone", 0, eve, 0555, dp);
 		return 1;
 	case Qconvdir:
+		if(s == DEVDOTDOT){
+			q.path = QID(0, Qprotodir)|CHDIR;
+			devdir(c, q, "ssl", 0, eve, 0555, dp);
+			return 1;
+		}
 		ds = dstate[CONV(c->qid)];
 		if(ds != 0)
 			nm = ds->user;

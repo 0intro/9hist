@@ -17,6 +17,11 @@ envgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 	Egrp *eg;
 	Evalue *e;
 
+	if(s == DEVDOTDOT){
+		devdir(c, c->qid, "#e", 0, eve, 0775, dp);
+		return 1;
+	}
+
 	eg = up->egrp;
 	qlock(eg);
 

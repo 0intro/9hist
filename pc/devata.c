@@ -248,6 +248,11 @@ atagen(Chan* c, Dirtab*, int, int s, Dir* dirp)
 	Partition *pp;
 	vlong l;
 
+	if(s == DEVDOTDOT){
+		devdir(c, (Qid){CHDIR, 0}, "#H", 0, eve, 0555, dirp);
+		return 1;
+	}
+
 	qid.vers = 0;
 	drive = s/Npart;
 	s = s % Npart;

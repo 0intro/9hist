@@ -452,14 +452,19 @@ tinyfsgen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
 	USED(ntab);
 	USED(tab);
 
+	qid.vers = 0;
 	fs = &tinyfs.fs[c->dev];
 	if(i >= fs->nf)
 		return -1;
+	if(i == DEVDOTDOT){
+		qid.path = CHDIR;
+		devdir(c, qid, ".", 0, eve, 0555, dp);
+		return 1;
+	}
 	f = &fs->f[i];
 	if(f->name[0] == 0)
 		return 0;
 	qid.path = i;
-	qid.vers = 0;
 	devdir(c, qid, f->name, f->length, eve, 0775, dp);
 	return 1;
 }

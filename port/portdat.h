@@ -739,6 +739,8 @@ struct Cmdbuf
 
 extern int nsyscall;
 
+#define DEVDOTDOT -1
+
 #pragma	varargck	argpos	print	1
 #pragma	varargck	argpos	snprint	3
 #pragma	varargck	argpos	sprint	2

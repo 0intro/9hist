@@ -149,7 +149,6 @@ rootread(Chan *c, void *buf, long n, vlong off)
 	ulong t;
 	Dirtab *d;
 	uchar *data;
-	Recover *r;
 	ulong offset = off;
 
 	t = c->qid.path & ~CHDIR;
@@ -169,7 +168,7 @@ rootread(Chan *c, void *buf, long n, vlong off)
 }
 
 static long
-rootwrite(Chan *c, void *buf, long n, vlong)
+rootwrite(Chan *c, void*, long, vlong)
 {
 	switch(c->qid.path & ~CHDIR){
 	default:
