@@ -1690,10 +1690,10 @@ usbread(Chan *c, void *a, long n, vlong offset)
 			free(s);
 			nexterror();
 		}
-		l = snprint(s, READSTR, "%s %#6.6x\n", devstates[d->state], d->csp);
+		l = snprint(s, READSTR, "%s %#6.6lux\n", devstates[d->state], d->csp);
 		for(i=0; i<nelem(d->ep); i++)
 			if((e = d->ep[i]) != nil)	/* TO DO: freeze e */
-				l += snprint(s+l, READSTR-l, "%2d %#6.6x %10lud bytes %10lud blocks\n", i, e->csp, e->nbytes, e->nblocks);
+				l += snprint(s+l, READSTR-l, "%2d %#6.6lux %10lud bytes %10lud blocks\n", i, e->csp, e->nbytes, e->nblocks);
 		n = readstr(offset, a, n, s);
 		poperror();
 		free(s);
@@ -1875,7 +1875,8 @@ usbwrite(Chan *c, void *a, long n, vlong)
 			if(i < 8 || i > 1023)
 				i = 8;
 			e->maxpkt = i;
-			e->mode = strcmp(fields[3],"r")==0? OREAD: strcmp(fields[3],"w") == 0? OWRITE: ORDWR;
+			e->mode = strcmp(fields[3],"r") == 0? OREAD :
+					  strcmp(fields[3],"w") == 0? OWRITE : ORDWR;
 			e->periodic = 0;
 			e->sched = -1;
 			if(strcmp(fields[4], "bulk") == 0){
@@ -1930,10 +1931,13 @@ usbwrite(Chan *c, void *a, long n, vlong)
 		break;
 
 	default:	/* sends DATA[01] */
-		if((t -= Qep0) < 0 || t >= nelem(d->ep))
+		if((t -= Qep0) < 0 || t >= nelem(d->ep)) {
+			print("t = %d\n", t);
 			error(Eio);
-		if((e = d->ep[t]) == nil || e->mode == OREAD)
+		}
+		if((e = d->ep[t]) == nil || e->mode == OREAD) {
 			error(Eio);	/* can't happen */
+		}
 		n = writeusb(e, a, n, TokOUT);
 		break;
 	}
