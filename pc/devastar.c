@@ -546,7 +546,7 @@ astaropen(Chan *c, int omode)
 		qlock(ac);
 		if(waserror()){
 			qunlock(ac);
-			ac->qopens--;
+			ac->opens--;
 			nexterror();
 		}
 		if(ac->opens++ == 0){

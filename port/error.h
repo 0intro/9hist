@@ -26,7 +26,7 @@ extern char Enoport[];		/* network port not available */
 extern char Enoifc[];		/* bad interface or no free interface slots */
 extern char Enolisten[];	/* not announced */
 extern char Ehungup[];		/* write to hungup channel */
-extern char Ebadctl[];		/* bad process or stream control request */
+extern char Ebadctl[];		/* bad process or channel control request */
 extern char Enodev[];		/* no free devices */
 extern char Enoenv[];		/* no free environment resources */
 extern char Emuxshutdown[];	/* mux server shut down */

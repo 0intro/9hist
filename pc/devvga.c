@@ -290,6 +290,7 @@ vgactl(char *arg)
 		case 1:
 			z = 0; break;
 		default:
+			z = 0;
 			error(Ebadarg);
 		}
 		interlaced[0] = *cp;

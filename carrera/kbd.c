@@ -406,4 +406,6 @@ mousectl(char *cmd)
 		mousecmd(0xF4);	/* enabled */
 		splx(s);
 	}
+	else
+		error(Ebadctl);
 }

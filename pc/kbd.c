@@ -590,6 +590,8 @@ mousectl(char *arg)
 		}
 	} else if(strcmp(field[0], "swap") == 0)
 		mouseswap ^= 1;
+	else
+		error(Ebadctl);
 }
 
 void
