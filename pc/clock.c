@@ -97,6 +97,7 @@ X86type x86type[] =
 	{ 4,	0,	24,	"Intel486DX", },
 	{ 4,	1,	24,	"Intel486DX", },
 	{ 4,	2,	24,	"Intel486SX", },
+	{ 4,	3,	24,	"Intel486DX2", },
 	{ 4,	4,	24,	"Intel486DX2", },
 	{ 4,	5,	24,	"Intel486SL", },
 	{ 4,	8,	24,	"IntelDX4", },

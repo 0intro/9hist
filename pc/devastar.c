@@ -57,6 +57,9 @@ enum
 
 #define APAGE(x) ((x)>>Pageshift)
 
+#define LOCKPAGE(a, o) if((a)->needpage){ilock(&(a)->pagelock);setpage(a, o);}
+#define UNLOCKPAGE(a) if((a)->needpage)iunlock(&(a)->pagelock)
+
 /* IRQ codes */
 static int isairqcode[16] =
 {
@@ -242,10 +245,10 @@ struct Astar
 	Astarchan	*c;		/* channels */
 	int		ramsize;	/* 16k or 256k */
 	int		memsize;	/* size of memory currently mapped */
+	int		needpage;
 	GCB		*gcb;		/* global board comm area */
 	uchar		*addr;		/* base of memory area */
 	int		running;
-
 };
 
 /* host per channel info */
@@ -258,6 +261,7 @@ struct Astarchan
 	CCB	*ccb;	/* channel control block */
 	int	perm;
 	int	opens;
+	int	baud;
 
 	Queue	*iq;
 	Queue	*oq;
@@ -282,6 +286,7 @@ enum
 static int	astarsetup(Astar*);
 static void	astarintr(Ureg*, void*);
 static void	astarkick(Astarchan*);
+static void	astarkickin(Astarchan*);
 static void	enable(Astarchan*);
 static void	disable(Astarchan*);
 static void	astarctl(Astarchan*, char*);
@@ -526,8 +531,11 @@ astaropen(Chan *c, int omode)
 			qunlock(ac);
 			nexterror();
 		}
-		if(ac->opens++ == 0)
+		if(ac->opens++ == 0){
 			enable(ac);
+			qreopen(ac->iq);
+			qreopen(ac->oq);
+		}
 		qunlock(ac);
 		poperror();
 		break;
@@ -598,11 +606,10 @@ memread(Astar *a, uchar *to, long n, ulong offset)
 		 *  go via tmp to avoid pagefaults while ilock'd
 		 */
 		tp = tmp;
-		ilock(&a->pagelock);
-		setpage(a, offset);
+		LOCKPAGE(a, offset);
 		for(e = tp + i; tp < e;)
 			*tp++ = *from++;
-		iunlock(&a->pagelock);
+		UNLOCKPAGE(a);
 		memmove(to, tmp, i);
 		to += i;
 
@@ -645,7 +652,7 @@ astarread(Chan *c, void *buf, long n, ulong offset)
 	case Qdata:
 		a = astar[BOARD(c->qid.path)];
 		ac = a->c + CHAN(c->qid.path);
-		return qread(ac->oq, buf, n);
+		return qread(ac->iq, buf, n);
 	}
 
 	return 0;
@@ -684,11 +691,10 @@ memwrite(Astar *a, uchar *from, long n, ulong offset)
 		 */
 		memmove(tmp, from, i);
 		tp = tmp;
-		ilock(&a->pagelock);
-		setpage(a, offset);
+		LOCKPAGE(a, offset);
 		for(e = tp + i; tp < e;)
 			*to++ = *tp++;
-		iunlock(&a->pagelock);
+		UNLOCKPAGE(a);
 		from += i;
 
 		offset += i;
@@ -714,6 +720,11 @@ startcp(Astar *a)
 	/* take board out of download mode and enable IRQ */
 	outb(a->port+ISActl1, ISAien|isairqcode[a->irq]|ISAnotdl);
 	a->memsize = a->ramsize;
+	setpage(a, 0);
+	if(a->memsize <= Pagesize)
+		a->needpage = 0;
+	else
+		a->needpage = 1;
 
 	/* wait for control program to signal life */
 	for(i = 0; i < 21; i++){
@@ -727,11 +738,10 @@ startcp(Astar *a)
 	}
 
 	if(waserror()){
-		iunlock(&a->pagelock);
+		UNLOCKPAGE(a);
 		poperror();
 	}
-	ilock(&a->pagelock);
-	setpage(a, 0);
+	LOCKPAGE(a, 0);
 	i = LEUS(a->gcb->type);
 	switch(i){
 	default:
@@ -761,7 +771,8 @@ startcp(Astar *a)
 			error(Eio);
 		}
 	}
-	iunlock(&a->pagelock);
+
+	UNLOCKPAGE(a);
 	poperror();
 
 	/* setup the channels */
@@ -773,13 +784,15 @@ startcp(Astar *a)
 		ac->a = a;
 		ac->ccb = (CCB*)x;
 		ac->perm = 0660;
-		ac->iq = qopen(4*1024, 0, 0, 0);
+		ac->iq = qopen(4*1024, 0, astarkickin, ac);
 		ac->oq = qopen(4*1024, 0, astarkick, ac);
 		x += sz;
 	}
 
-	/* reenable interrupts */
+	/* enable control program interrupt generation */
+	LOCKPAGE(a, 0);
 	a->gcb->cmd2 = LEUS(Gintack);
+	UNLOCKPAGE(a);
 }
 
 static void
@@ -801,9 +814,10 @@ bctlwrite(Astar *a, char *cmsg)
 		c = inb(a->port+ISActl1);
 		outb(a->port+ISActl1, c & ~ISAnotdl);
 		a->memsize = Pramsize;
+		a->needpage = 1;
 
 		/* enable ISA access to first 16k */
-		outb(a->port+ISActl2, ISAmen);
+		setpage(a, 0);
 
 	} else if(strncmp(cmsg, "sharedmem", 9) == 0){
 		/* map shared memory */
@@ -835,10 +849,9 @@ chancmddone(void *arg)
 	Astarchan *ac = arg;
 	int x;
 
-	ilock(&ac->a->pagelock);
-	setpage(ac->a, 0);
+	LOCKPAGE(ac->a, 0);
 	x = ac->ccb->cmd;
-	iunlock(&ac->a->pagelock);
+	UNLOCKPAGE(ac->a);
 
 	return !x;
 }
@@ -850,19 +863,17 @@ chancmd(Astarchan *ac, int cmd)
 
 	ccb = ac->ccb;
 
-	ilock(&ac->a->pagelock);
-	setpage(ac->a, 0);
+	LOCKPAGE(ac->a, 0);
 	ccb->cmd = cmd;
-	iunlock(&ac->a->pagelock);
+	UNLOCKPAGE(ac->a);
 
 	/* wait outside of lock */
 	tsleep(&ac->r, chancmddone, ac, 1000);
 
-	ilock(&ac->a->pagelock);
-	setpage(ac->a, 0);
+	LOCKPAGE(ac->a, 0);
 	status = ccb->status;
 	cmd = ccb->cmd;
-	iunlock(&ac->a->pagelock);
+	UNLOCKPAGE(ac->a);
 	if(cmd){
 		print("astar%d cmd didn't terminate\n", ac->a->id);
 		error(Eio);
@@ -884,12 +895,11 @@ enable(Astarchan *ac)
 	int n;
 
 	/* make sure we control RTS, DTR and break */
-	ilock(&a->pagelock);
-	setpage(a, 0);
+	LOCKPAGE(a, 0);
 	n = LEUS(ac->ccb->proto) | Cmctl;
 	ac->ccb->proto = LEUS(n);
 	ac->ccb->outlow = 64;
-	iunlock(&a->pagelock);
+	UNLOCKPAGE(a);
 	chancmd(ac, Cconfall);
 
 	astarctl(ac, "b9600");
@@ -910,11 +920,6 @@ disable(Astarchan *ac)
 {
 	astarctl(ac, "d0");
 	astarctl(ac, "r0");
-
-	ilock(&ac->a->pagelock);
-	setpage(ac->a, 0);
-	ac->ccb->intrigger = 0;
-	iunlock(&ac->a->pagelock);
 
 	chancmd(ac, Crcvdis|Cxmtdis|Cflushin|Cflushout|Cconfall);
 }
@@ -943,12 +948,12 @@ astarctl(Astarchan *ac, char *cmd)
 	i = atoi(cmd+1);
 
 	a = ac->a;
-	ilock(&a->pagelock);
-	setpage(a, 0);
+	LOCKPAGE(a, 0);
 
 	switch(*cmd){
 	case 'B':
 	case 'b':
+		/* set baud rate (high rates are special - only 16 bits) */
 		switch(i){
 		case 76800:
 			ccb->baud = LEUS(Cb76800);
@@ -960,6 +965,15 @@ astarctl(Astarchan *ac, char *cmd)
 			ccb->baud = LEUS(i);
 			break;
 		}
+		ac->baud = i;
+
+		/* set trigger level to about 50  per second */
+		n = i/500;
+		i = (LEUS(ccb->inlim) - LEUS(ccb->inbase))/2;
+		if(n > i)
+			n = i;
+		ccb->intrigger = LEUS(n);
+
 		command = Cconfall;
 		break;
 	case 'D':
@@ -993,14 +1007,14 @@ astarctl(Astarchan *ac, char *cmd)
 	case 'M':
 		/* turn on cts */
 		n = LEUS(ccb->proto);
-		if(i)
-			n |= Cobeycts;
-		else
-			n &= ~Cobeycts;
+		if(i){
+			n |= Cobeycts|Cgenrts;
+			n &= ~Cmctl;
+		} else {
+			n &= ~(Cobeycts|Cgenrts);
+			n |= Cmctl;
+		}
 		ccb->proto = LEUS(n);
-
-		/* set fifo sizes */
-		ccb->intrigger = 8;
 
 		command = Cconfall;
 		break;
@@ -1031,12 +1045,11 @@ astarctl(Astarchan *ac, char *cmd)
 			i = 250;
 		n = LEUS(ccb->mctl) | Cbreakctl;
 		ccb->mctl = LEUS(n);
-		iunlock(&a->pagelock);
+		UNLOCKPAGE(a);
 
 		tsleep(&ac->r, return0, 0, i);
 
-		ilock(&a->pagelock);
-		setpage(a, 0);
+		LOCKPAGE(a, 0);
 		n &= ~Cbreakctl;
 		ccb->mctl = LEUS(n);
 		break;
@@ -1065,7 +1078,7 @@ astarctl(Astarchan *ac, char *cmd)
 		command = Cconfall;
 		break;
 	}
-	iunlock(&a->pagelock);
+	UNLOCKPAGE(a);
 
 	if(command)
 		chancmd(ac, command);
@@ -1160,7 +1173,8 @@ astarkick1(Astarchan *ac)
 	uchar *rp, *wp, *bp, *ep, *p, *e;
 	int n;
 
-	setpage(a, 0);
+	if(a->needpage)
+		setpage(a, 0);
 	ep = a->addr;
 	rp = ep + LEUS(ccb->outrp);
 	wp = ep + LEUS(ccb->outwp);
@@ -1177,14 +1191,16 @@ astarkick1(Astarchan *ac)
 		n = qconsume(ac->oq, buf, n);
 		if(n <= 0)
 			break;
-		setpage(a, bp - a->addr);
+		if(a->needpage)
+			setpage(a, bp - a->addr);
 		e = buf + n;
 		for(p = buf; p < e;){
 			*wp++ = *p++;
 			if(wp > ep)
 				wp = bp;
 		}
-		setpage(a, 0);
+		if(a->needpage)
+			setpage(a, 0);
 		ccb->outwp = LEUS(wp - a->addr);
 	}
 }
@@ -1208,7 +1224,8 @@ astarinput(Astarchan *ac)
 	uchar *rp, *wp, *bp, *ep, *p, *e;
 	int n;
 
-	setpage(a, 0);
+	if(a->needpage)
+		setpage(a, 0);
 	ep = a->addr;
 	rp = ep + LEUS(ccb->inrp);
 	wp = ep + LEUS(ccb->inwp);
@@ -1222,17 +1239,33 @@ astarinput(Astarchan *ac)
 			n += ep - bp + 1;
 		if(n > sizeof(buf))
 			n = sizeof(buf);
-		setpage(a, bp - a->addr);
+		if(a->needpage)
+			setpage(a, bp - a->addr);
 		e = buf + n;
 		for(p = buf; p < e;){
 			*p++ = *rp++;
 			if(rp > ep)
 				rp = bp;
 		}
-		qproduce(ac->iq, buf, n);
+		if(qroduce(ac->iq, buf, n) < 0)
+			break;	/* flow controlled */
+		if(a->needpage)
+			setpage(a, 0);
+		ccb->inrp = LEUS(rp - a->addr);
 	}
-	setpage(a, 0);
-	ccb->inrp = LEUS(rp - a->addr);
+	if(a->needpage)
+		setpage(a, 0);
+}
+
+/*
+ *  get flow controlled input going again
+ */
+static void
+astarkick(Astarchan *ac)
+{
+	ilock(&ac->a->pagelock);
+	astarinput(ac);
+	iunlock(&ac->a->pagelock);
 }
 
 /*
@@ -1247,7 +1280,8 @@ astarintr(Ureg *ur, void *arg)
 
 	USED(ur);
 	lock(&a->pagelock);
-	setpage(a, 0);
+	if(a->needpage)
+		setpage(a, 0);
 
 	/* get causes */
 	invec = LEUS(xchgw(&a->gcb->inserv, 0));

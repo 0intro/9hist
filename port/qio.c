@@ -294,6 +294,7 @@ qproduce(Queue *q, void *vp, int len)
 
 	/* no waiting receivers, room in buffer? */
 	if(q->len >= q->limit){
+		q->state |= Qflow;
 		unlock(q);
 		return -1;
 	}
@@ -301,6 +302,7 @@ qproduce(Queue *q, void *vp, int len)
 	/* save in buffer */
 	b = iallocb(len);
 	if(b == 0){
+		q->state |= Qflow;
 		unlock(q);
 		return -2;
 	}
@@ -375,31 +377,11 @@ long
 qread(Queue *q, void *vp, int len)
 {
 	Block *b;
-	int n, dowakeup, syncwait;
+	int n, dowakeup;
 	uchar *p = vp;
 
 	qlock(&q->rlock);
-	syncwait = 0;
 	if(waserror()){
-		/* can't let go if the buffer is in use */
-		if(syncwait){
-			qlock(&q->wlock);
-			ilock(q);
-			if(q->syncbuf == 0){
-				/* we got some data before the interrupt, queue it */
-				b = allocb(q->synclen);
-				memmove(b->wp, vp, q->synclen);
-				b->wp += q->synclen;
-				b->next = q->bfirst;
-				if(q->bfirst == 0)
-					q->blast = b;
-				q->bfirst = b;
-				q->len += q->synclen;
-			}
-			q->syncbuf = 0;
-			iunlock(q);
-			qunlock(&q->wlock);
-		}
 		qunlock(&q->rlock);
 		nexterror();
 	}
@@ -427,8 +409,28 @@ qread(Queue *q, void *vp, int len)
 			q->synclen = len;
 			q->syncbuf = vp;
 			iunlock(q);
-			syncwait = 1; USED(syncwait);
+			if(waserror()){
+				/* sync with qwrite() & qproduce() */
+				qlock(&q->wlock);
+				ilock(q);
+				if(q->syncbuf == 0){
+					/* we got some data before the interrupt */
+					b = allocb(q->synclen);
+					memmove(b->wp, vp, q->synclen);
+					b->wp += q->synclen;
+					b->next = q->bfirst;
+					if(q->bfirst == 0)
+						q->blast = b;
+					q->bfirst = b;
+					q->len += q->synclen;
+				}
+				q->syncbuf = 0;
+				iunlock(q);
+				qunlock(&q->wlock);
+				nexterror();
+			}
 			sleep(&q->rr, filled, q);
+			poperror();
 			len = q->synclen;
 			qunlock(&q->rlock);
 			poperror();
@@ -461,12 +463,15 @@ qread(Queue *q, void *vp, int len)
 	b->rp += n;
 
 	QDEBUG checkb(b, "qread 2");
+
 	/* free it or put what's left on the queue */
 	if(b->rp >= b->wp || (q->state&Qmsg)) {
 		freeb(b);
 	} else {
 		ilock(q);
 		b->next = q->bfirst;
+		if(q->bfirst == 0)
+			q->blast = b;
 		q->bfirst = b;
 		q->len += BLEN(b);
 		iunlock(q);
