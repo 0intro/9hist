@@ -381,7 +381,7 @@ w_enable(Ether* ether)
 
 	ltv_outs(ctlr, WTyp_Prom, (ether->prom?1:0));
 
-	if(ctlr->hascrypt){
+	if(ctlr->hascrypt && ctlr->crypt){
 		ltv_outs(ctlr, WTyp_Crypt, ctlr->crypt);
 		ltv_outs(ctlr, WTyp_TxKey, ctlr->txkey);
 		w_outltv(ctlr, &ctlr->keys);
@@ -572,7 +572,7 @@ w_info(Ctlr* ctlr)
 		w_scan(ctlr, ltv.len);
 		return 0;
 	}
-	print("got type %d\n", ltv.len);
+	print("got type %d\n", ltv.type);
 	return -1;
 }
 
@@ -593,6 +593,7 @@ w_intr(Ether *ether)
 
 	rc = csr_ins(ctlr, WR_EvSts);
 	csr_ack(ctlr, ~WEvs);	// Not interested in them
+print("intr %ux\n", rc);
 	if(rc & WRXEv){
 		w_rxdone(ether);
 		csr_ack(ctlr, WRXEv);
@@ -663,10 +664,10 @@ w_timer(void* arg)
 		// the card frames in the wrong way; due to the
 		// lack of documentation I cannot know.
 
-		if(csr_ins(ctlr, WR_EvSts)&WEvs){
-			ctlr->tickintr++;
-			w_intr(ether);
-		}
+//		if(csr_ins(ctlr, WR_EvSts)&WEvs){
+//			ctlr->tickintr++;
+//			w_intr(ether);
+//		}
 
 		if((ctlr->ticks % 10) == 0) {
 			if(ctlr->txtmout && --ctlr->txtmout == 0){
@@ -921,10 +922,7 @@ w_option(Ctlr* ctlr, char* buf, long n)
 	r = 0;
 
 	cb = parsecmd(buf, n);
-	if(cistrcmp(cb->f[0], "scan") == 0){
-		w_cmd(ctlr, WCmdEnquire, WTyp_Scan);
-	}
-	else if(cb->nf < 2)
+	if(cb->nf < 2)
 		r = -1;
 	else if(cistrcmp(cb->f[0], "essid") == 0){
 		if(cistrcmp(cb->f[1],"default") == 0)
@@ -1112,7 +1110,7 @@ wavelanreset(Ether* ether, Ctlr *ctlr)
 	ctlr->keys.len = sizeof(WKey)*WNKeys/2 + 1;
 	ctlr->keys.type = WTyp_Keys;
 	if(ctlr->hascrypt = ltv_ins(ctlr, WTyp_HasCrypt))
-		ctlr->crypt = 1;
+		ctlr->crypt = 0;
 	*ctlr->netname = *ctlr->wantname = 0;
 	strcpy(ctlr->nodename, "Plan 9 STA");
 
