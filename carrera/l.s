@@ -368,9 +368,10 @@ TEXT	exception(SB), $-4
 
 wasuser:
 	MOVW	SP, R27
-	CONST	(MACHADDR, SP)		/* R27 = m-> */
-	MOVW	8(SP), SP		/* R26 = m->proc */
-	MOVW	8(SP), SP		/* R27 = m->proc->kstack */
+	CONST	(MACHADDR, SP)		/*  m-> */
+	MOVW	8(SP), SP		/*  m->proc */
+	MOVW	8(SP), SP		/*  m->proc->kstack */
+	MOVW	M(STATUS), R26		/* redundant test */
 	ADDU	$(KSTACK-UREGSIZE), SP
 	MOVV	R31, (Ureg_r31-4)(SP)
 
@@ -381,8 +382,7 @@ wasuser:
 	MOVV	R(USER), (Ureg_r24-4)(SP)
 
 	MOVW	$setR30(SB), R30
-	CONST	(MACHADDR, R1)
-	MOVW	R1, R(MACH)			/* R(MACH) = m-> */
+	CONST	(MACHADDR, R(MACH))		/* R(MACH) = m-> */
 	MOVW	8(R(MACH)), R(USER)		/* up = m->proc */
 
 	AND	$(EXCMASK<<2), R26, R1
@@ -564,7 +564,6 @@ TEXT	rfnote(SB), $0
 	SUBU	$(BY2WD), R26, SP	/* pc hole */
 	JMP	restore
 	
-
 TEXT	clrfpintr(SB), $0
 	MOVW	M(STATUS), R3
 	WAIT

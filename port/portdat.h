@@ -580,6 +580,7 @@ struct Proc
 	ulong	priority;	/* priority level */
 	ulong	basepri;	/* base priority level */
 	ulong	movetime;	/* last time process switched processors */
+	ulong	readyticks;	/* time process went ready */
 
 	void	*ureg;		/* User registers for notes */
 	void	*dbgreg;	/* User registers for devproc */

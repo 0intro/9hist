@@ -94,7 +94,7 @@ reset(Ether *ether)
 	 */
 	port = ether->port;
 	sum = 0;
-	for(i = 0; i < sizeof(ether->ea); i++){
+	for(i = 0; i < sizeof(ea); i++){
 		ea[i] = inb(port+Lar+i);
 		sum += ea[i];
 		ic[i] = inb(port+i);

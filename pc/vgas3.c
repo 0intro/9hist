@@ -17,9 +17,9 @@
 static Lock s3pagelock;
 static ulong storage;
 static Point hotpoint;
-static Cursor loaded;
 
 extern Bitmap gscreen;
+extern Cursor curcursor;
 
 static void
 sets3page(int page)
@@ -123,13 +123,13 @@ load(Cursor *c)
 	 * just make sure it's enabled.
 	 */
 	lock(&s3pagelock);
-	if(memcmp(c, &loaded, sizeof(Cursor)) == 0){
+	if(memcmp(c, &curcursor, sizeof(Cursor)) == 0){
 		vsyncactive();
 		vgaxo(Crtx, 0x45, 0x01);
 		unlock(&s3pagelock);
 		return;
 	}
-	memmove(&loaded, c, sizeof(Cursor));
+	memmove(&curcursor, c, sizeof(Cursor));
 
 	/*
 	 * Disable the cursor.
@@ -189,7 +189,7 @@ move(Point p)
 	int x, xo, y, yo;
 
 	if(canlock(&s3pagelock) == 0)
-		return -1;
+		return 1;
 
 	/*
 	 * Mustn't position the cursor offscreen even partially,

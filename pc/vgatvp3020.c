@@ -9,6 +9,8 @@
 #include "screen.h"
 #include "vga.h"
 
+extern Cursor curcursor;
+
 /*
  * TVP3020 Viewpoint Video Interface Pallette.
  * Assumes hooked up to an S3 86C928.
@@ -59,7 +61,19 @@ load(Cursor *c)
 	uchar p, p0, p1;
 	int x, y;
 
+	/*
+	 * Lock the DAC registers so we can update the
+	 * cursor bitmap if necessary.
+	 * If it's the same as the last cursor we loaded,
+	 * just make sure it's enabled.
+	 */
 	lock(&palettelock);
+	if(memcmp(c, &curcursor, sizeof(Cursor)) == 0){
+		tvp3020xo(0x06, 0x40|0x10);		/* Cursor Control Register */
+		unlock(&palettelock);
+		return;
+	}
+	memmove(&curcursor, c, sizeof(Cursor));
 
 	/*
 	 * Make sure cursor is off by initialising the cursor

@@ -141,6 +141,7 @@ ready(Proc *p)
 	rq->tail = p;
 	rq->n++;
 	nrdy++;
+	p->readyticks = m->ticks;
 	p->state = Ready;
 	unlock(runq);
 	splx(s);
@@ -737,7 +738,7 @@ procdump(void)
 	for(rq = runq; rq < &runq[Nrq]; rq++){
 		print("rq%d:", rq-runq);
 		for(p = rq->head; p; p = p->rnext)
-			print(" %d", p->pid);
+			print(" %d(%d)", p->pid, m->ticks - p->readyticks);
 		print("\n");
 	}
 	print("nrdy %d\n", nrdy);

@@ -37,7 +37,6 @@ clock(Ureg *ur, void *arg)
 {
 	Proc *p;
 	int nrun = 0;
-	int islow = 0;
 
 	USED(arg);
 
@@ -65,25 +64,11 @@ clock(Ureg *ur, void *arg)
 			sched();
 	
 		/* user profiling clock */
-		if((ur->cs&0xffff) == UESEL){
-			islow = 1;
-			spllo();		/* in case we fault */
+		if((ur->cs&0xffff) == UESEL)
 			(*(ulong*)(USTKTOP-BY2WD)) += TK2MS(1);
-		}
-	}
-
-	/*
-	 *  anything from here down can be running spllo()
-	 */
-	if(!islow){
-		islow = 1;
-		spllo();
 	}
 
 	mouseclock();
-
-	if(islow)
-		splhi();
 }
 
 /*

@@ -21,11 +21,12 @@ extern	Subfont defont0;
 
 /* exported */
 Bitmap	gscreen;
+Lock palettelock;			/* access to DAC registers */
+Cursor curcursor;			/* current cursor */
 
 /* vga screen */
 static	Lock	screenlock;
 static	ulong	colormap[256][3];
-Lock palettelock;
 
 /* cga screen */
 static	int	cga = 1;		/* true if in cga mode */
