@@ -3,6 +3,7 @@ typedef struct	Fs	Fs;
 typedef union	Hwaddr	Hwaddr;
 typedef struct	Ifcconv	Ifcconv;
 typedef struct	IP	IP;
+typedef struct	IPaux	IPaux;
 typedef struct	Ipself	Ipself;
 typedef struct	Ipselftab	Ipselftab;
 typedef struct	Iplink	Iplink;
@@ -416,6 +417,22 @@ extern long	routewrite(Fs *f, Chan*, char*, int);
 extern void	routetype(int, char*);
 extern void	ipwalkroutes(Fs*, Routewalk*);
 extern void	convroute(Route*, uchar*, uchar*, uchar*, char*, int*);
+
+/*
+ *  devip.c
+ */
+
+/*
+ *  Hanging off every ip channel's ->aux is the following structure.
+ *  It maintains the state used by devip and iproute.
+ */
+struct IPaux
+{
+	char	owner[NAMELEN];		/* the user that did the attach */
+	char	tag[4];
+};
+
+extern IPaux*	newipaux(char*, char*);
 
 /*
  *  arp.c

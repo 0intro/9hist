@@ -114,6 +114,7 @@ enum
 	WTyp_Prom	= 0xfc85,
 	WTyp_Keys	= 0xfcb0,
 	WTyp_TxKey	= 0xfcb1,
+	WTyp_StationID	= 0xfd20,
 	WTyp_CurName	= 0xfd41,
 	WTyp_BaseID	= 0xfd42,	// ID of the currently connected-to base station
 	WTyp_CurTxRate	= 0xfd44,	// Current TX rate
@@ -942,8 +943,14 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 	if(i == 3)
 		PRINTSTAT("SSID name: %s\n", ltv_inname(ctlr, WTyp_NetName));
 	else {
+		Wltv ltv;
 		PRINTSTAT("Current name: %s\n", ltv_inname(ctlr, WTyp_CurName));
-//		PRINTSTAT("Base station: %s\n", ltv_inname(ctlr, WTyp_BaseID));
+		ltv.type = WTyp_BaseID;
+		ltv.len = 4;
+		if (w_inltv(ctlr, &ltv))
+			print("#l%d: unable to read base station mac addr\n", ether->ctlrno);
+		l += snprint(p+l, READSTR-l, "Base station: %2.2x%2.2x%2.2x%2.2x%2.2x%2.2x\n",
+			ltv.addr[0], ltv.addr[1], ltv.addr[2], ltv.addr[3], ltv.addr[4], ltv.addr[5]);
 	}
 	PRINTSTAT("Net name: %s\n", ltv_inname(ctlr, WTyp_WantName));
 	PRINTSTAT("Node name: %s\n", ltv_inname(ctlr, WTyp_NodeName));
@@ -1192,8 +1199,8 @@ reset(Ether* ether)
 		DEBUG("no wavelan found\n");
 		goto abort;
 	}
-//	DEBUG("#l%d: port=0x%lx irq=%ld\n",
-//			ether->ctlrno, ether->port, ether->irq);
+	// DEBUG("#l%d: port=0x%lx irq=%ld\n",
+	//		ether->ctlrno, ether->port, ether->irq);
 
 	w_intdis(ctlr);
 	if (w_cmd(ctlr,WCmdIni,0)){

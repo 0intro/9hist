@@ -13,17 +13,24 @@ parsecmd(char *p, int n)
 {
 	Cmdbuf *volatile cb;
 
-	cb = smalloc(sizeof(*cb));
+	if(up != nil)
+		cb = smalloc(sizeof(*cb));
+	else{
+		cb = malloc(sizeof(*cb));
+		if(cb == nil)
+			return nil;
+	}
 	
 	if(n > sizeof(cb->buf)-1)
 		n = sizeof(cb->buf)-1;
 
-	if(waserror()){
+	if(up != nil && waserror()){
 		free(cb);
 		nexterror();
 	}
 	memmove(cb->buf, p, n);
-	poperror();
+	if(up != nil)
+		poperror();
 
 	if(n > 0 && cb->buf[n-1] == '\n')
 		n--;

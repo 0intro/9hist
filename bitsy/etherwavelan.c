@@ -948,7 +948,7 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 		ltv.len = 4;
 		if (w_inltv(ctlr, &ltv))
 			print("#l%d: unable to read base station mac addr\n", ether->ctlrno);
-		l += snprint(p+l, READSTR-l, "Base station: %2.2x:%2.2x:%2.2x:%2.2x:%2.2x:%2.2x\n",
+		l += snprint(p+l, READSTR-l, "Base station: %2.2x%2.2x%2.2x%2.2x%2.2x%2.2x\n",
 			ltv.addr[0], ltv.addr[1], ltv.addr[2], ltv.addr[3], ltv.addr[4], ltv.addr[5]);
 	}
 	PRINTSTAT("Net name: %s\n", ltv_inname(ctlr, WTyp_WantName));

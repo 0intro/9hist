@@ -66,6 +66,8 @@ ip3gen(Chan *c, int i, Dir *dp)
 	char *p;
 
 	cv = ipfs[c->dev]->p[PROTO(c->qid)]->conv[CONV(c->qid)];
+	if(cv->owner[0] == 0)
+		memmove(cv->owner, eve, NAMELEN);
 	switch(i) {
 	default:
 		return -1;
@@ -282,6 +284,24 @@ ipgetfs(int dev)
 	return ipfs[dev];
 }
 
+IPaux*
+newipaux(char *owner, char *tag)
+{
+	IPaux *a;
+	int n;
+
+	a = smalloc(sizeof(*a));
+	memmove(a->owner, owner, NAMELEN);
+	memset(a->tag, ' ', sizeof(a->tag));
+	n = strlen(tag);
+	if(n > sizeof(a->tag))
+		n = sizeof(a->tag);
+	memmove(a->tag, tag, n);
+	return a;
+}
+
+#define ATTACHER(c) (((IPaux*)((c)->aux))->owner)
+
 static Chan*
 ipattach(char* spec)
 {
@@ -297,13 +317,19 @@ ipattach(char* spec)
 	c->qid = (Qid){QID(0, 0, Qtopdir)|CHDIR, 0};
 	c->dev = dev;
 
+	c->aux = newipaux(commonuser(), "none");
+
 	return c;
 }
 
 static Chan*
 ipclone(Chan* c, Chan* nc)
 {
-	return devclone(c, nc);
+	IPaux *a = c->aux;
+
+	nc = devclone(c, nc);
+	nc->aux = newipaux(a->owner, a->tag);
+	return nc;
 }
 
 static int
@@ -359,7 +385,6 @@ ipopen(Chan* c, int omode)
 		netlogopen(f);
 		break;
 	case Qiproute:
-		memmove(c->tag, "none", sizeof(c->tag));
 		break;
 	case Qtopdir:
 	case Qprotodir:
@@ -380,7 +405,7 @@ ipopen(Chan* c, int omode)
 			qunlock(p);
 			nexterror();
 		}
-		cv = Fsprotoclone(p, commonuser());
+		cv = Fsprotoclone(p, ATTACHER(c));
 		qunlock(p);
 		poperror();
 		if(cv == nil) {
@@ -402,7 +427,7 @@ ipopen(Chan* c, int omode)
 			nexterror();
 		}
 		if((perm & (cv->perm>>6)) != perm) {
-			if(strcmp(commonuser(), cv->owner) != 0)
+			if(strcmp(ATTACHER(c), cv->owner) != 0)
 				error(Eperm);
 		 	if((perm & cv->perm) != perm)
 				error(Eperm); 
@@ -410,7 +435,7 @@ ipopen(Chan* c, int omode)
 		}
 		cv->inuse++;
 		if(cv->inuse == 1){
-			memmove(cv->owner, commonuser(), NAMELEN);
+			memmove(cv->owner, ATTACHER(c), NAMELEN);
 			cv->perm = 0660;
 		}
 		qunlock(cv);
@@ -420,7 +445,7 @@ ipopen(Chan* c, int omode)
 	case Qlisten:
 		cv = f->p[PROTO(c->qid)]->conv[CONV(c->qid)];
 		if((perm & (cv->perm>>6)) != perm) {
-			if(strcmp(commonuser(), cv->owner) != 0)
+			if(strcmp(ATTACHER(c), cv->owner) != 0)
 				error(Eperm);
 		 	if((perm & cv->perm) != perm)
 				error(Eperm); 
@@ -450,7 +475,7 @@ ipopen(Chan* c, int omode)
 			if(nc != nil){
 				cv->incall = nc->next;
 				c->qid = (Qid){QID(PROTO(c->qid), nc->x, Qctl), 0};
-				memmove(cv->owner, commonuser(), NAMELEN);
+				memmove(nc->owner, ATTACHER(c), NAMELEN);
 			}
 			qunlock(cv);
 
@@ -499,7 +524,7 @@ ipwstat(Chan *c, char *dp)
 
 	p = f->p[PROTO(c->qid)];
 	cv = p->conv[CONV(c->qid)];
-	if(!iseve() && strcmp(commonuser(), cv->owner) != 0)
+	if(!iseve() && strcmp(ATTACHER(c), cv->owner) != 0)
 		error(Eperm);
 	if(d.uid[0]){
 		strncpy(cv->owner, d.uid, sizeof(cv->owner));
@@ -558,6 +583,7 @@ ipclose(Chan* c)
 		if(c->flag & COPEN)
 			closeconv(f->p[PROTO(c->qid)]->conv[CONV(c->qid)]);
 	}
+	free(c->aux);
 }
 
 enum

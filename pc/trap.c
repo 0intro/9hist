@@ -390,15 +390,12 @@ _dumpstack(Ureg *ureg)
 		v = *(ulong*)l;
 		if(KTZERO < v && v < (ulong)&etext){
 			/*
-			 * Pick off general CALL (0xE8) and CALL indirect
-			 * through AX (0xFFD0).
+			 * we could Pick off general CALL (((uchar*)v)[-5] == 0xE8)
+			 * and CALL indirect through AX (((uchar*)v)[-2] == 0xFF && ((uchar*)v)[-2] == 0xD0),
+			 * but this is too clever and misses faulting address.
 			 */
-			p = (uchar*)v;
-			if(*(p-5) == 0xE8
-			|| (*(p-2) == 0xFF && *(p-1) == 0xD0)){
-				print("%.8lux=%.8lux ", l, v);
-				i++;
-			}
+			print("%.8lux=%.8lux ", l, v);
+			i++;
 		}
 		if(i == 4){
 			i = 0;

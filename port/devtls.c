@@ -15,6 +15,10 @@ typedef struct Secret Secret;
 
 enum {
 	MaxRecLen	= 1<<14,	/* max payload length of a record layer message */
+	MaxCipherRecLen	= MaxRecLen + 2048,
+
+//ZZZ
+	Maxdstate	= 64,
 	RecHdrLen	= 5,
 	TLSVersion	= 0x0301,
 	SSL3Version	= 0x0300,
@@ -102,17 +106,20 @@ struct TlsRec
 	void		(*packMac)(Secret*, uchar*, uchar*, uchar*, uchar*, int, uchar*);
 
 	/* input side -- protected by in.q */
-	OneWay	in;
-	Queue	*handq;				/* queue of handshake messages */
-	Block	*processed;			/* next bunch of application data */
-	Block	*unprocessed;			/* data read from c but not parsed into records */
+	OneWay		in;
+	Block		*processed;			/* next bunch of application data */
+	Block		*unprocessed;			/* data read from c but not parsed into records */
+
+	Lock		hqlock;
+	int		hqref;
+	Queue		*handq;				/* queue of handshake messages */
 
 	/* output side */
-	OneWay	out;
+	OneWay		out;
 
 	/* protections */
-	char	user[NAMELEN];
-	int	perm;
+	char		user[NAMELEN];
+	int		perm;
 };
 
 typedef struct TlsErrs	TlsErrs;
@@ -182,13 +189,6 @@ static	int	maxdstate = 128;
 static	TlsRec** dstate;
 static	char	*encalgs;
 static	char	*hashalgs;
-
-enum
-{
-//ZZZ
-	Maxdmsg=	1<<16,
-	Maxdstate=	64
-};
 
 enum{
 	Qtopdir		= 1,	/* top level directory */
@@ -351,27 +351,6 @@ tlsstat(Chan *c, char *db)
 	devstat(c, db, 0, 0, tlsgen);
 }
 
-static void
-closedown(Chan *c, TlsRec *tr)
-{
-	lock(&dslock);
-	if(--tr->ref > 0) {
-		unlock(&dslock);
-		return;
-	}
-	dstate[CONV(c->qid)] = nil;
-	unlock(&dslock);
-
-	tlshangup(tr);
-	if(tr->c)
-		cclose(tr->c);
-	free(tr->in.sec);
-	free(tr->in.new);
-	free(tr->out.sec);
-	free(tr->out.new);
-	free(tr);
-}
-
 static Chan*
 tlsopen(Chan *c, int omode)
 {
@@ -421,29 +400,29 @@ tlsopen(Chan *c, int omode)
 			dsnew(c, pp);
 		else {
 			if((perm & (tr->perm>>6)) != perm
-			   && (strcmp(up->user, tr->user) != 0
-			     || (perm & tr->perm) != perm))
+			&& (strcmp(up->user, tr->user) != 0
+			    || (perm & tr->perm) != perm))
 				error(Eperm);
-
+			if(t == Qhand){
+				if(waserror()){
+					unlock(&tr->hqlock);
+					nexterror();
+				}
+				lock(&tr->hqlock);
+				if(tr->handq != nil)
+					error(Einuse);
+//ZZZ what is the correct buffering here?
+				tr->handq = qopen(2 * MaxRecLen, 0, nil, nil);
+				if(tr->handq == nil)
+					error("can't allocate handshake queue");
+				tr->hqref = 1;
+				unlock(&tr->hqlock);
+				poperror();
+			}
 			tr->ref++;
 		}
 		unlock(&dslock);
 		poperror();
-		if(t == Qhand){
-			if(waserror()){
-				qunlock(&tr->in.io);
-				closedown(c, tr);
-			}
-			qlock(&tr->in.io);
-			if(tr->handq != nil)
-				error(Einuse);
-//ZZZ what is the correct buffering here?
-			tr->handq = qopen(2 * MaxRecLen, 0, nil, nil);
-			if(tr->handq == nil)
-				error("can't allocate handshake queue");
-			qunlock(&tr->in.io);
-			poperror();
-		}
 		break;
 	case Qencalgs:
 	case Qhashalgs:
@@ -471,8 +450,20 @@ tlswstat(Chan *c, char *dp)
 	if(strcmp(tr->user, up->user) != 0)
 		error(Eperm);
 
+//ZZZ propagate chown to tr->datafd?
 	memmove(tr->user, d.uid, NAMELEN);
 	tr->perm = d.mode;
+}
+
+static void
+dechandq(TlsRec *tr)
+{
+	lock(&tr->hqlock);
+	if(--tr->hqref == 0 && tr->handq != nil){
+		qfree(tr->handq);
+		tr->handq = nil;
+	}
+	unlock(&tr->hqlock);
 }
 
 static void
@@ -493,15 +484,25 @@ tlsclose(Chan *c)
 		if(tr == nil)
 			break;
 
-		if(t == Qhand){
-			qlock(&tr->in.io);
-			if(tr->handq != nil){
-				qfree(tr->handq);
-				tr->handq = nil;
-			}
-			qunlock(&tr->in.io);
+		if(t == Qhand)
+			dechandq(tr);
+
+		lock(&dslock);
+		if(--tr->ref > 0) {
+			unlock(&dslock);
+			return;
 		}
-		closedown(c, tr);
+		dstate[CONV(c->qid)] = nil;
+		unlock(&dslock);
+
+		tlshangup(tr);
+		if(tr->c)
+			cclose(tr->c);
+		free(tr->in.sec);
+		free(tr->in.new);
+		free(tr->out.sec);
+		free(tr->out.new);
+		free(tr);
 		break;
 	}
 }
@@ -524,7 +525,7 @@ ensure(TlsRec *s, Block **l, int n)
 	}
 
 	while(sofar < n){
-		bl = devtab[s->c->type]->bread(s->c, Maxdmsg, 0);
+		bl = devtab[s->c->type]->bread(s->c, MaxCipherRecLen + RecHdrLen, 0);
 		if(bl == 0)
 			error(Ehungup);
 		*l = bl;
@@ -704,6 +705,7 @@ tlsrecread(TlsRec *tr)
 		(*tr->packMac)(in->sec, in->sec->mackey, seq, header, p, len, hmac);
 		if(memcmp(hmac, p+len, in->sec->maclen) != 0)
 			rcvError(tr, EBadRecordMac, "record mac mismatch");
+		b->wp -= in->sec->maclen;
 	}
 	qunlock(&in->seclock);
 	poperror();
@@ -733,13 +735,19 @@ tlsrecread(TlsRec *tr)
 			rcvError(tr, EDecodeError, "invalid alert");
 		if(p[0] == 1) {
 			if(p[1] == ECloseNotify) {
-				rcvError(tr, ECloseNotify, "remote close");
 				tlsSetState(tr, SRemoteClosed);
+//				handclose(tr, "remote close");
+				error("remote close");
 			}
 			/*
-			 * ignore EUserCancelled, it's meaningless
-			 * need to handle ENoRenegotiation
+			 * propate messages to handshaker
+			 * EUserCancelled ENoRenegotiation
+ZZZ better comment, better thoughts about this
 			 */
+//			if(p[1] == ENoRenegotiation)
+//				handclose(tr, "no renegotiation");
+//			if(p[1] == EUserCancelled)
+//				handclose(tr, "user cancelled");
 		} else {
 			rcvAlert(tr, p[1]);
 		}
@@ -752,9 +760,13 @@ tlsrecread(TlsRec *tr)
 		 * if there isn't any handshaker, ignore the request,
 		 * but notify the other side we are doing so.
 		 */
+		lock(&tr->hqlock);
 		if(tr->handq != nil){
+			tr->hqref++;
+			unlock(&tr->hqlock);
 			qbwrite(tr->handq, b);
 			b = nil;
+			dechandq(tr);
 		}else if(tr->verset && tr->version != SSL3Version)
 			sendAlert(tr, ENoRenegotiation);
 		break;
@@ -801,7 +813,7 @@ tlsbread(Chan *c, long n, ulong offset)
 	}
 	qlock(&tr->in.io);
 	if(TYPE(c->qid) == Qdata){
-//ZZZ race setting state
+//ZZZ race on state
 		if(tr->state != SOpen)
 			error(Ebadusefd);
 		while(tr->processed == nil)
@@ -812,7 +824,7 @@ tlsbread(Chan *c, long n, ulong offset)
 		qunlock(&tr->in.io);
 		poperror();
 	}else{
-//ZZZ race setting state
+//ZZZ race on state
 		while(tr->state == SHandshake && !qcanread(tr->handq))
 			tlsrecread(tr);
 		qunlock(&tr->in.io);
@@ -906,7 +918,7 @@ tlsrecwrite(TlsRec *tr, int type, Block *b)
 
 	while(bb != nil){
 //ZZZ race on state
-		if(tr->state != SHandshake && tr->state != SOpen)
+		if(tr->state != SHandshake && tr->state != SOpen && tr->state != SRemoteClosed)
 			error(Ebadusefd);
 
 		/*
@@ -949,7 +961,7 @@ tlsrecwrite(TlsRec *tr, int type, Block *b)
 			put64(seq, out->seq);
 			out->seq++;
 			(*tr->packMac)(out->sec, out->sec->mackey, seq, p, p + RecHdrLen, n, nb->wp);
-			b->wp += maclen;
+			nb->wp += maclen;
 			n += maclen;
 
 			/* update length */
@@ -957,6 +969,14 @@ tlsrecwrite(TlsRec *tr, int type, Block *b)
 
 			/* encrypt */
 			rc4(&out->sec->rc4, p+RecHdrLen, n);
+		}
+		if(type == RChangeCipherSpec){
+			if(out->new == nil)
+				error("change cipher without a new cipher");
+			free(out->sec);
+			out->sec = out->new;
+			out->new = nil;
+			out->seq = 0;
 		}
 		qunlock(&out->seclock);
 		poperror();
@@ -987,13 +1007,10 @@ tlsbwrite(Chan *c, Block *b, ulong offset)
 	default:
 		return devbwrite(c, b, offset);
 	case Qhand:
-//ZZZ race setting state
-//		if(tr->state != SHandshake && tr->state != SOpen)
-//			error(Ebadusefd);
 		tlsrecwrite(tr, RHandshake, b);
 		break;
 	case Qdata:
-//ZZZ race setting state
+//ZZZ race on state
 		if(tr->state != SOpen)
 			error(Ebadusefd);
 		tlsrecwrite(tr, RApplication, b);
@@ -1172,7 +1189,14 @@ tlswrite(Chan *c, void *a, long n, vlong off)
 	}else if(strcmp(cb->f[0], "opened") == 0){
 		if(cb->nf != 1)
 			error("usage: opened");
-		tlsSetState(tr, SOpen);
+		lock(&tr->statelk);
+		if(tr->state != SHandshake && tr->state != SOpen){
+			unlock(&tr->statelk);
+//ZZZ bad error message
+			error("can't set open state");
+		}
+		tr->state = SOpen;
+		unlock(&tr->statelk);
 	}else if(strcmp(cb->f[0], "alert") == 0){
 		if(cb->nf != 2)
 			error("usage: alert n");
@@ -1195,24 +1219,19 @@ tlswrite(Chan *c, void *a, long n, vlong off)
 		if(tr->out.new == nil)
 			error("can't change cipher spec without setting secret");
 
-		toc = tr->out.new;
-		tr->out.new = nil;
-
-//ZZZ minor race; worth fixing?
 		qunlock(&tr->in.seclock);
 		qunlock(&tr->out.seclock);
 		poperror();
 		free(cb);
 		poperror();
-	
+
+		/*
+		 * the real work is done as the message is written
+		 * so the stream is encrypted in sync.
+		 */
 		b = allocb(1);
 		*b->wp++ = 1;
 		tlsrecwrite(tr, RChangeCipherSpec, b);
-
-		qlock(&tr->out.seclock);
-		free(tr->out.sec);
-		tr->out.sec = toc;
-		qunlock(&tr->out.seclock);
 		return n;
 	}else if(strcmp(cb->f[0], "secret") == 0){
 		if(cb->nf != 5)
@@ -1379,24 +1398,26 @@ sendAlert(TlsRec *tr, int err)
 		tlsSetState(tr, SError);
 }
 
+/*
+ * got a fatal alert message
+ */
 static void
 rcvAlert(TlsRec *tr, int err)
 {
 	char *s;
-	int i, fatal;
+	int i;
 
 	s = "unknown error";
-	fatal = 1;
 	for(i=0; i < nelem(tlserrs); i++){
 		if(tlserrs[i].err == err){
 			s = tlserrs[i].msg;
-			fatal = tlserrs[i].fatal;
 			break;
 		}
 	}
 //ZZZ need to kill session if fatal error
-	if(fatal)
-		tlsSetState(tr, SError);
+//	handclose(tr, err);
+	tlshangup(tr);
+	tlsSetState(tr, SError);
 	error(s);
 }
 
@@ -1424,21 +1445,24 @@ tlsSetState(TlsRec *tr, int newstate)
 
 /* hand up a digest connection */
 static void
-tlshangup(TlsRec *s)
+tlshangup(TlsRec *tr)
 {
 	Block *b;
 
-	qlock(&s->in.io);
-	for(b = s->processed; b; b = s->processed){
-		s->processed = b->next;
+	qlock(&tr->in.io);
+	for(b = tr->processed; b; b = tr->processed){
+		tr->processed = b->next;
 		freeb(b);
 	}
-	if(s->unprocessed != nil){
-		freeb(s->unprocessed);
-		s->unprocessed = nil;
+	if(tr->unprocessed != nil){
+		freeb(tr->unprocessed);
+		tr->unprocessed = nil;
 	}
-	s->state = SClosed;
-	qunlock(&s->in.io);
+	qunlock(&tr->in.io);
+
+	tlsrecwrite(tr, RAlert, ECloseNotify);
+
+	tlsSetState(tr, SClosed);
 }
 
 static TlsRec*

@@ -100,7 +100,18 @@ s3linear(VGAscr* scr, int* size, int* align)
 	mmiosize = 0;
 	mmiobase = 0;
 	mmioname = nil;
-	if(p = pcimatch(nil, PCIS3, 0)){
+
+	/*
+	 * S3 makes cards other than display controllers, so
+	 * look for the first S3 display controller (device class 3)
+	 * and not one of their sound cards.
+	 */
+	p = nil;
+	while(p = pcimatch(p, PCIS3, 0)){
+		if(p->ccrb == 0x03)
+			break;
+	}
+	if(p != nil){
 		for(i=0; i<nelem(p->mem); i++){
 			if(p->mem[i].size >= *size
 			&& ((p->mem[i].bar & ~0x0F) & (*align-1)) == 0)

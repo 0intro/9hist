@@ -760,6 +760,7 @@ routewrite(Fs *f, Chan *c, char *p, int n)
 	uchar addr[IPaddrlen];
 	uchar mask[IPaddrlen];
 	uchar gate[IPaddrlen];
+	IPaux *a, *na;
 
 	cb = parsecmd(p, n);
 	if(waserror()){
@@ -797,8 +798,10 @@ routewrite(Fs *f, Chan *c, char *p, int n)
 		parseipmask(mask, cb->f[2]);
 		parseip(gate, cb->f[3]);
 		tag = "none";
-		if(c != nil)
-			tag = c->tag;
+		if(c != nil){
+			a = c->aux;
+			tag = a->tag;
+		}
 		if(memcmp(addr, v4prefix, IPv4off) == 0)
 			v4addroute(f, tag, addr+IPv4off, mask+IPv4off, gate+IPv4off, 0);
 		else
@@ -807,12 +810,10 @@ routewrite(Fs *f, Chan *c, char *p, int n)
 		if(cb->nf < 2)
 			error(Ebadarg);
 
-		h = strlen(cb->f[1]);
-		if(h > sizeof(c->tag))
-			h = sizeof(c->tag);
-		strncpy(c->tag, cb->f[1], h);
-		if(h < 4)
-			memset(c->tag+h, ' ', sizeof(c->tag)-h);
+		a = c->aux;
+		na = newipaux(a->owner, cb->f[1]);
+		c->aux = na;
+		free(a);
 	}
 
 	poperror();
