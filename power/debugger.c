@@ -4,6 +4,7 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"io.h"
+#include	"ureg.h"
 
 IOQ dkbdq;
 IOQ dprintq;
@@ -133,6 +134,7 @@ printinfo(void)
 	Mach *mp;
 	Proc *p;
 	Page *pg;
+	Ureg *ur;
 	ulong l;
 	int i;
 
@@ -141,8 +143,8 @@ printinfo(void)
 			continue;
 		mp = (void*)(MACHADDR+i*BY2PG);
 		l = (ulong)(mp->proc);
-		dprint("mach[%d]->proc/	%lux\r\n", i, l);
-		dprint("mach[%d]->splpc/	%lux\r\n", i, mp->splpc);
+		dprint("mach[%d] proc/%lux\r\n", i, l);
+		dprint("mach[%d] splpc/%lux\r\n", i, mp->splpc);
 
 		if(l & KZERO){
 			p = (Proc*)l;
@@ -150,9 +152,15 @@ printinfo(void)
 			if(l & KZERO){
 				pg = (Page*)l;
 				l = pg->pa;
-				dprint("mach[%d]->proc->upage->pa/	%lux\r\n", i, l);
+				dprint("mach[%d] proc->upage->pa/%lux\r\n", i, l);
 			}
 		}
+		l = (ulong)(mp->ur);
+		dprint("mach[%d] ur/%lux", i, l);
+		ur = (Ureg*)l;
+		dprint(" &status/%lux &cause/%lux &sp/%lux &pc/%lux",
+				&ur->status, &ur->cause, &ur->sp, &ur->pc);
+		dprint("\r\n");
 	}
 }
 

@@ -72,6 +72,8 @@ trap(Ureg *ur)
 	int user, cop, x, fpchk;
 	char buf[2*ERRLEN], buf1[ERRLEN], *fpexcep;
 
+m->ur = ur;
+
 	ecode = (ur->cause>>2)&0xf;
 	user = ur->status&KUP;
 	if(user)
