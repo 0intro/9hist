@@ -78,6 +78,8 @@ machinit(void)
 	m->machno = n;
 	m->stb = &stlb[n][0];
 	duartinit();
+
+	m->ledval = 0xff;
 }
 
 void

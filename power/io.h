@@ -12,9 +12,10 @@ enum
 	LEDhotintr=	1<<0,
 	LEDclock=	1<<1,
 	LEDfault=	1<<2,
+	LEDpulse=	1<<7,
 };
-#define LEDON(x) { m->ledval |= x; *LED = m->ledval; }
-#define LEDOFF(x) { m->ledval &= ~x; *LED = m->ledval; }
+#define LEDON(x) 	(m->ledval &= ~x, *LED = m->ledval)
+#define LEDOFF(x) 	(m->ledval |= x, *LED = m->ledval)
 
 typedef struct SBCC	SBCC;
 typedef struct Timer	Timer;

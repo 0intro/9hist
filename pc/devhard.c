@@ -10,6 +10,7 @@ typedef	struct Drive		Drive;
 typedef	struct Ident		Ident;
 typedef	struct Controller	Controller;
 typedef struct Partition	Partition;
+typedef struct Repl		Repl;
 
 enum
 {
@@ -42,8 +43,9 @@ enum
 	Qdir=		0,
 
 	Maxxfer=	4*1024,		/* maximum transfer size/cmd */
-	Maxread=	1024,		/* maximum transfer size/read */
+	Maxread=	4*1024,		/* maximum transfer size/read */
 	Npart=		8+2,		/* 8 sub partitions, disk, and partition */
+	Nrepl=		16,		/* maximum replacement blocks */
 };
 #define PART(x)		((x)&0xF)
 #define DRIVE(x)	(((x)>>4)&0x7)
@@ -94,6 +96,16 @@ struct Partition
 	char	name[NAMELEN+1];
 };
 
+struct Repl
+{
+	Partition *p;
+	int	nrepl;
+	ulong	blk[Nrepl];
+};
+
+#define PARTMAGIC	"plan9 partitions"
+#define REPLMAGIC	"block replacements"
+
 /*
  *  a hard drive
  */
@@ -105,6 +117,7 @@ struct Drive
 	int	online;
 	int	npart;		/* number of real partitions */
 	Partition p[Npart];
+	Repl	repl;
 
 	ulong	cap;		/* total bytes */
 	int	bytes;		/* bytes/sector */
@@ -503,8 +516,7 @@ hardxfer(Drive *dp, Partition *pp, int cmd, long start, long len)
 	cp->dp = dp;
 	cp->sofar = 0;
 	cp->status = 0;
-/*print("xfer:\ttcyl %d, tsec %d, thead %d\n", cp->tcyl, cp->tsec, cp->thead);
-print("\tnsecs %d, sofar %d\n", cp->nsecs, cp->sofar);/**/
+
 	outb(cp->pbase+Pcount, cp->nsecs);
 	outb(cp->pbase+Psector, cp->tsec);
 	outb(cp->pbase+Pdh, 0x20 | (dp->drive<<4) | cp->thead);
@@ -523,7 +535,7 @@ print("\tnsecs %d, sofar %d\n", cp->nsecs, cp->sofar);/**/
 	sleep(&cp->r, cmddone, cp);
 
 	if(cp->status & Serr){
-print("hd%d err: status %lux, err %lux\n", dp-hard, cp->status, cp->error);
+print("hd%d err: lsec %ld status %lux, err %lux\n", dp-hard, lsec, cp->status, cp->error);
 print("\ttcyl %d, tsec %d, thead %d\n", cp->tcyl, cp->tsec, cp->thead);
 print("\tnsecs %d, sofar %d\n", cp->nsecs, cp->sofar);
 		error(Eio);
@@ -602,10 +614,55 @@ hardident(Drive *dp)
 	qunlock(cp);
 }
 
+
+/*
+ *  Read block replacement table.
+ *  The table is just ascii block numbers.
+ */
+static void
+hardreplinit(Drive *dp)
+{
+	Controller *cp;
+	char *line[Nrepl+1];
+	char *field[1];
+	ulong n;
+	int i;
+
+	/*
+	 *  check the partition is big enough
+	 */
+	if(dp->repl.p->end - dp->repl.p->start < Nrepl+1){
+		dp->repl.p = 0;
+		return;
+	}
+
+	cp = dp->cp;
+
+	/*
+	 *  read replacement table from disk, null terminate
+	 */
+	hardxfer(dp, dp->repl.p, Cread, 0, dp->bytes);
+	cp->buf[dp->bytes-1] = 0;
+
+	/*
+	 *  parse replacement table.
+	 */
+	n = getfields(cp->buf, line, Nrepl+1, '\n');
+	if(strncmp(line[0], REPLMAGIC, sizeof(REPLMAGIC)-1)){
+		dp->repl.p = 0;
+		return;
+	}
+	for(dp->repl.nrepl = 0, i = 1; i < n; i++, dp->repl.nrepl++){
+		if(getfields(line[i], field, 1, ' ') != 1)
+			break;
+		if((dp->repl.blk[dp->repl.nrepl] = strtoul(field[1], 0, 0)) <= 0)
+			break;
+	}
+}
+
 /*
  *  read partition table.  The partition table is just ascii strings.
  */
-#define MAGIC "plan9 partitions"
 static void
 hardpart(Drive *dp)
 {
@@ -639,6 +696,11 @@ hardpart(Drive *dp)
 	dp->npart = 2;
 
 	/*
+	 * initialise the bad-block replacement info
+	 */
+	dp->repl.p = 0;
+
+	/*
 	 *  read partition table from disk, null terminate
 	 */
 	hardxfer(dp, pp, Cread, 0, dp->bytes);
@@ -648,12 +710,14 @@ hardpart(Drive *dp)
 	 *  parse partition table.
 	 */
 	n = getfields(cp->buf, line, Npart+1, '\n');
-	if(strncmp(line[0], MAGIC, sizeof(MAGIC)-1) == 0){
+	if(strncmp(line[0], PARTMAGIC, sizeof(PARTMAGIC)-1) == 0){
 		for(i = 1; i < n; i++){
 			pp++;
 			if(getfields(line[i], field, 3, ' ') != 3)
 				break;
 			strncpy(pp->name, field[0], NAMELEN);
+			if(strncmp(pp->name, "repl", NAMELEN) == 0)
+				dp->repl.p = pp;
 			pp->start = strtoul(field[1], 0, 0);
 			pp->end = strtoul(field[2], 0, 0);
 			if(pp->start > pp->end || pp->start >= dp->p[0].end)
@@ -661,6 +725,8 @@ hardpart(Drive *dp)
 			dp->npart++;
 		}
 	}
+	if(dp->repl.p)
+		hardreplinit(dp);
 	qunlock(cp);
 	poperror();
 }

@@ -10,6 +10,8 @@ qlock(QLock *q)
 {
 	Proc *p, *mp;
 
+	if(u)
+		u->p->qlockpc = getcallerpc(((uchar*)&q) - sizeof(q));
 	lock(&q->use);
 	if(!q->locked) {
 		q->locked = 1;

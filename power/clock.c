@@ -83,6 +83,11 @@ clock(Ureg *ur)
 		i = *CLRTIM0;
 		USED(i);
 		m->ticks++;
+		if(m->ticks&(1<<4))
+			LEDON(LEDpulse);
+		else
+			LEDOFF(LEDpulse);
+
 		if(m->machno == 0){
 			p = m->proc;
 			if(p) {

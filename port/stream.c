@@ -1503,10 +1503,8 @@ dumpqueues(void)
 	}
 	print("%d queues\n", qcount);
 	for(bcp=bclass; bcp<&bclass[Nclass]; bcp++){
-		qlock(bcp);
 		for(count = 0, bp = bcp->first; bp; count++, bp = bp->next)
 			;
-		qunlock(bcp);
 		print("%d byte blocks: %d made %d free\n", bcp->size,
 			bcp->made, count);
 	}
