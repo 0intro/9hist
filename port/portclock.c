@@ -141,6 +141,13 @@ timerintr(Ureg *u, uvlong)
 	Timers *tt;
 	uvlong when, now;
 	int callhzclock;
+	static int intimer;
+
+	if(intimer){
+		print("!");
+		return;
+	}
+	intimer = 1;
 
 	intrcount[m->machno]++;
 	callhzclock = 0;
@@ -154,6 +161,7 @@ timerintr(Ureg *u, uvlong)
 			timerset(when);
 			if(callhzclock)
 				hzclock(u);
+			intimer = 0;
 			return;
 		}
 		tt->head = t->next;
@@ -171,6 +179,7 @@ timerintr(Ureg *u, uvlong)
 		}
 	}
 	iunlock(tt);
+	intimer = 0;
 }
 
 uvlong hzperiod;
@@ -208,4 +217,31 @@ addclock0link(void (*f)(void))
 	 * this one's synchronized with hztimer which is already running
 	 */
 	iunlock(&timers[0]);
+}
+
+/*
+ *  This tk2ms avoids overflows that the macro version is prone to.
+ *  It is a LOT slower so shouldn't be used if you're just converting
+ *  a delta.
+ */
+ulong
+tk2ms(ulong ticks)
+{
+	uvlong t, hz;
+
+	t = ticks;
+	hz = HZ;
+	t *= 1000L;
+	t = t/hz;
+	ticks = t;
+	return ticks;
+}
+
+ulong
+ms2tk(ulong ms)
+{
+	/* avoid overflows at the cost of precision */
+	if(ms >= 1000000000/HZ)
+		return (ms/1000)*HZ;
+	return (ms*HZ+500)/1000;
 }

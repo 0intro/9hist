@@ -445,7 +445,7 @@ ipifcadd(Ipifc *ifc, char **argv, int argc, int tentative, Iplifc *lifcp)
 		lifc->autoflag = 1;
 		lifc->validlt = 0xffffffff;
 		lifc->preflt = 0xffffffff;
-		lifc->origint = msec / 10^3;
+		lifc->origint = NOW / 10^3;
 	}
 	lifc->next = nil;
 
@@ -940,7 +940,7 @@ static void
 iplinkfree(Iplink *p)
 {
 	Iplink **l, *np;
-	ulong now = msec;
+	ulong now = NOW;
 
 	l = &freeiplink;
 	for(np = *l; np; np = *l){
@@ -959,7 +959,7 @@ static void
 ipselffree(Ipself *p)
 {
 	Ipself **l, *np;
-	ulong now = msec;
+	ulong now = NOW;
 
 	l = &freeipself;
 	for(np = *l; np; np = *l){
@@ -1205,7 +1205,7 @@ v6addrtype(uchar *addr)
 	return unknownv6;
 }
 
-#define v6addrcurr(lifc) (( (lifc)->origint + (lifc)->preflt >= (msec/10^3) ) || ( (lifc)->preflt == 0xffffffff ))
+#define v6addrcurr(lifc) (( (lifc)->origint + (lifc)->preflt >= (NOW/10^3) ) || ( (lifc)->preflt == 0xffffffff ))
 
 void
 findprimaryip6(Fs *f, uchar *local)
@@ -1732,7 +1732,7 @@ ipifcaddgate6(Fs *f, Ipifc *ifc, char**argv, int argc)
 		r[j].ifc = ifc;
 		r[j].ifcid = ifc->ifcid;
 		ipmove(r[j].routeraddr, routeraddr);
-		r[j].ltorigin = msec / 10^3;
+		r[j].ltorigin = NOW / 10^3;
 		r[j].rp.mflag = (mflag!=0);
 		r[j].rp.oflag = (oflag!=0);
 		r[j].rp.rxmitra = rxmitra;
@@ -1769,7 +1769,7 @@ ipifcaddpref6(Ipifc *ifc, char**argv, int argc)
 	uchar	autoflag = 1;
 	long 	validlt = 0xffffffff;
 	long 	preflt = 0xffffffff;
-	long	origint = msec / 10^3;
+	long	origint = NOW / 10^3;
 	uchar	prefix[IPaddrlen];
 	int	plen = 64;
 	Iplifc	*lifc;

@@ -490,7 +490,7 @@ ipfragallo6(IP *ip)
 	ip->fragfree6 = f->next;
 	f->next = ip->flisthead6;
 	ip->flisthead6 = f;
-	f->age = msec + 30000;
+	f->age = NOW + 30000;
 
 	return f;
 }
@@ -599,7 +599,7 @@ ip6reassemble(IP* ip, int uflen, Block* bp, Ip6hdr* ih)
 		fnext = f->next;
 		if(ipcmp(f->src, src)==0 && ipcmp(f->dst, dst)==0 && f->id == id)
 			break;
-		if(f->age < msec){
+		if(f->age < NOW){
 			ip->stats[ReasmTimeout]++;
 			ipfragfree6(ip, f);
 		}

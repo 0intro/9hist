@@ -529,15 +529,6 @@ tfn(void *arg)
 	return MACHP(0)->ticks >= up->twhen || up->tfn(arg);
 }
 
-ulong
-ms2tk(ulong ms)
-{
-	/* avoid overflows at the cost of precision */
-	if(ms >= 1000000000/HZ)
-		return (ms/1000)*HZ;
-	return (ms*HZ+500)/1000;
-}
-
 void
 tsleep(Rendez *r, int (*fn)(void*), void *arg, int ms)
 {
@@ -818,9 +809,9 @@ pexit(char *exitstr, int freemem)
 		wq->w.pid = up->pid;
 		utime = up->time[TUser] + up->time[TCUser];
 		stime = up->time[TSys] + up->time[TCSys];
-		wq->w.time[TUser] = TK2MS(utime);
-		wq->w.time[TSys] = TK2MS(stime);
-		wq->w.time[TReal] = TK2MS(MACHP(0)->ticks - up->time[TReal]);
+		wq->w.time[TUser] = tk2ms(utime);
+		wq->w.time[TSys] = tk2ms(stime);
+		wq->w.time[TReal] = tk2ms(MACHP(0)->ticks - up->time[TReal]);
 		if(exitstr && exitstr[0])
 			snprint(wq->w.msg, sizeof(wq->w.msg), "%s %lud: %s", up->text, up->pid, exitstr);
 		else

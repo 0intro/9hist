@@ -146,7 +146,6 @@ void	wrmsr(int, vlong);
 void	wbflush(void);
 void	wbinvd(void);
 int	xchgw(ushort*, int);
-ulong	TK2MS(ulong);				/* ticks to milliseconds */
 
 #define	waserror()	(up->nerrlab++, setlabel(&up->errlab[up->nerrlab-1]))
 #define KADDR(a)	((void*)((ulong)(a)|KZERO))

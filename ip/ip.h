@@ -68,7 +68,7 @@ enum
 };
 
 /*
- *  contained in each conversation
+ *  one per conversation directory
  */
 struct Conv
 {
@@ -77,15 +77,17 @@ struct Conv
 	int	x;			/* conversation index */
 	Proto*	p;
 
-	uchar	laddr[IPaddrlen];	/* local IP address */
-	uchar	raddr[IPaddrlen];	/* remote IP address */
 	int	restricted;		/* remote port is restricted */
-	ushort	lport;			/* local port number */
-	ushort	rport;			/* remote port number */
 	uint	ttl;			/* max time to live */
 	uint	tos;			/* type of service */
-	uchar	ipversion;		/* IPv4 or IPv6 */
 	int	ignoreadvice;		/* don't terminate connection on icmp errors */
+
+	uchar	ipversion;
+	uchar	laddr[IPaddrlen];	/* local IP address */
+	uchar	raddr[IPaddrlen];	/* remote IP address */
+	ushort	lport;			/* local port number */
+	ushort	rport;			/* remote port number */
+
 
 	char	*owner;			/* protections */
 	int	perm;
@@ -550,8 +552,8 @@ extern void	v4tov6(uchar *v6, uchar *v4);
 extern int	v6tov4(uchar *v4, uchar *v6);
 extern int	eipfmt(Fmt*);
 
-#define	ipcmp(x, y) memcmp(x, y, IPaddrlen)
 #define	ipmove(x, y) memmove(x, y, IPaddrlen)
+#define	ipcmp(x, y) ( (x)[IPaddrlen-1] != (y)[IPaddrlen-1] || memcmp(x, y, IPaddrlen) )
 
 extern uchar IPv4bcast[IPaddrlen];
 extern uchar IPv4bcastobs[IPaddrlen];
@@ -561,7 +563,7 @@ extern uchar IPnoaddr[IPaddrlen];
 extern uchar v4prefix[IPaddrlen];
 extern uchar IPallbits[IPaddrlen];
 
-#define	msec	TK2MS(MACHP(0)->ticks)
+#define	NOW	TK2MS(MACHP(0)->ticks)
 
 /*
  *  media

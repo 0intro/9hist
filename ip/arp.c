@@ -124,11 +124,11 @@ newarp6(Arp *arp, uchar *ip, Ipifc *ifc, int addrxt)
 	*l = a;
 
 	memmove(a->ip, ip, sizeof(a->ip));
-	a->used = msec;
+	a->used = NOW;
 	a->time = 0;
 	a->type = m;
 
-	a->rxtat = msec + ReTransTimer;
+	a->rxtat = NOW + ReTransTimer;
 	a->rxtsrem = MAX_MULTICAST_SOLICIT;
 	a->ifc = ifc;
 	a->ifcid = ifc->ifcid;
@@ -227,7 +227,7 @@ arpget(Arp *arp, Block *bp, int version, Ipifc *ifc, uchar *ip, uchar *mac)
 		a = newarp6(arp, ip, ifc, (version != V4));
 		a->state = AWAIT;
 	}
-	a->used = msec;
+	a->used = NOW;
 	if(a->state == AWAIT){
 		if(bp != nil){
 			if(a->hold)
@@ -280,7 +280,7 @@ arpresolve(Arp *arp, Arpent *a, Medium *type, uchar *mac)
 	memmove(a->mac, mac, type->maclen);
 	a->type = type;
 	a->state = AOK;
-	a->used = msec;
+	a->used = NOW;
 	bp = a->hold;
 	a->hold = nil;
 	qunlock(arp);
@@ -375,7 +375,7 @@ arpenter(Fs *fs, int version, uchar *ip, uchar *mac, int n, int refresh)
 					freeb(bp);
 				bp = next;
 			}
-			a->used = msec;
+			a->used = NOW;
 			return;
 		}
 	}
@@ -532,7 +532,7 @@ rxmitsols(Arp *arp)
 		nrxt = 0;
 		goto dodrops; 		//return nrxt;
 	}
-	nrxt = a->rxtat - msec;
+	nrxt = a->rxtat - NOW;
 	if(nrxt > 3*ReTransTimer/4) 
 		goto dodrops; 		//return nrxt;
 
@@ -589,14 +589,14 @@ rxmitsols(Arp *arp)
 	*l = a;
 	a->rxtsrem--;
 	a->nextrxt = nil;
-	a->time = msec;
-	a->rxtat = msec + ReTransTimer;
+	a->time = NOW;
+	a->rxtat = NOW + ReTransTimer;
 
 	a = arp->rxmt;
 	if(a==nil)
 		nrxt = 0;
 	else 
-		nrxt = a->rxtat - msec;
+		nrxt = a->rxtat - NOW;
 
 dodrops:
 	xp = arp->dropf;

@@ -585,7 +585,7 @@ ip4reassemble(IP *ip, int offset, Block *bp, Ip4hdr *ih)
 		fnext = f->next;	/* because ipfragfree4 changes the list */
 		if(f->src == src && f->dst == dst && f->id == id)
 			break;
-		if(f->age < msec){
+		if(f->age < NOW){
 			ip->stats[ReasmTimeout]++;
 			ipfragfree4(ip, f);
 		}
@@ -765,7 +765,7 @@ ipfragallo4(IP *ip)
 	ip->fragfree4 = f->next;
 	f->next = ip->flisthead4;
 	ip->flisthead4 = f;
-	f->age = msec + 30000;
+	f->age = NOW + 30000;
 
 	return f;
 }

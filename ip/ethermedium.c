@@ -435,7 +435,7 @@ sendarp(Ipifc *ifc, Arpent *a)
 	Etherrock *er = ifc->arg;
 
 	/* don't do anything if it's been less than a second since the last */
-	if(msec - a->time < 1000){
+	if(NOW - a->time < 1000){
 		arprelease(er->f->arp, a);
 		return;
 	}
@@ -449,7 +449,7 @@ sendarp(Ipifc *ifc, Arpent *a)
 	}
 
 	/* try to keep it around for a second more */
-	a->time = msec;
+	a->time = NOW;
 	arprelease(er->f->arp, a);
 
 	n = sizeof(Etherarp);
@@ -486,7 +486,7 @@ resolveaddr6(Ipifc *ifc, Arpent *a)
 	uchar ipsrc[IPaddrlen];
 
 	/* don't do anything if it's been less than a second since the last */
-	if(msec - a->time < ReTransTimer){
+	if(NOW - a->time < ReTransTimer){
 		arprelease(er->f->arp, a);
 		return;
 	}
@@ -500,8 +500,8 @@ resolveaddr6(Ipifc *ifc, Arpent *a)
 	}
 
 	/* try to keep it around for a second more */
-	a->time = msec;
-	a->rxtat = msec + ReTransTimer;
+	a->time = NOW;
+	a->rxtat = NOW + ReTransTimer;
 	if(a->rxtsrem <= 0) {
 		arprelease(er->f->arp, a);
 		return;

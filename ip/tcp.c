@@ -61,6 +61,7 @@ enum
 
 	LOGAGAIN	= 3,
 	LOGDGAIN	= 2,
+
 	Closed		= 0,		/* Connection states */
 	Listen,
 	Syn_sent,
@@ -71,7 +72,11 @@ enum
 	Close_wait,
 	Closing,
 	Last_ack,
-	Time_wait
+	Time_wait,
+
+	Maxlimbo	= 1000,		/* maximum procs waiting for response to SYN ACK */
+	NLHT		= 256,		/* hash table size, must be a power of 2 */
+	LHTMASK		= NLHT-1
 };
 
 /* Must correspond to the enumeration above */
@@ -95,6 +100,10 @@ struct Tcptimer
 	void	*arg;
 };
 
+/*
+ *  v4 and v6 pseudo headers used for
+ *  checksuming tcp
+ */
 typedef struct Tcp4hdr Tcp4hdr;
 struct Tcp4hdr
 {
@@ -143,7 +152,12 @@ struct Tcp6hdr
 	uchar	tcpmss[2];
 };
 
-
+/*
+ *  this represents the control info
+ *  for a single packet.  It is derived from
+ *  a packet in ntohtcp{4,6}() and stuck into
+ *  a packet in htontcp{4,6}().
+ */
 typedef struct Tcp Tcp;
 struct	Tcp
 {
@@ -158,6 +172,10 @@ struct	Tcp
 	ushort	len;	/* size of data */
 };
 
+/*
+ *  this header is malloc'd to thread together fragments
+ *  waiting to be coalesced
+ */
 typedef struct Reseq Reseq;
 struct Reseq
 {
@@ -202,7 +220,6 @@ struct Tcpctl
 	ushort	mss;			/* Mean segment size */
 	int	rerecv;			/* Overlap of data rerecevived */
 	ushort	window;			/* Recevive window */
-	int	max_snd;		/* Max send */
 	ulong	last_ack;		/* Last acknowledege received */
 	uchar	backoff;		/* Exponential backoff counter */
 	int	backedoff;		/* ms we've backed off for rexmits */
@@ -219,12 +236,42 @@ struct Tcpctl
 	uint	sndsyntime;		/* time syn sent */
 	ulong	time;			/* time Finwait2 or Syn_received was sent */
 	int	nochecksum;		/* non-zero means don't send checksums */
-	int	flgcnt;			/* 1 when we're waiting for a SYN/FIN ACK */
+	int	flgcnt;			/* number of flags in the sequence (FIN,SEQ) */
 
 	union {
 		Tcp4hdr	tcp4hdr;
 		Tcp6hdr	tcp6hdr;
 	} protohdr;		/* prototype header */
+};
+
+/*
+ *  New calls are put in limbo rather than having a conversation structure
+ *  allocated.  Thus, a SYN attack results in lots of limbo'd calls but not
+ *  any real Conv structures mucking things up.  Calls in limbo rexmit their
+ *  SYN ACK every 250 ms up to 4 times, i.e., they disappear after 1 second.
+ *
+ *  In particular they aren't on a listener's queue so that they don't figure
+ *  in the input queue limit.
+ *
+ *  If 1/2 of a T3 was attacking SYN packets, we'ld have a permanent queue
+ *  of 70000 limbo'd calls.  Not great for a linear list but doable.  Therefore
+ *  there is no hashing of this list.
+ */
+typedef struct Limbo Limbo;
+struct Limbo
+{
+	Limbo	*next;
+
+	uchar	laddr[IPaddrlen];
+	uchar	raddr[IPaddrlen];
+	ushort	lport;
+	ushort	rport;
+	ulong	irs;		/* initial received sequence */
+	ulong	iss;		/* initial sent sequence */
+	ushort	mss;		/* mss from the other end */
+	ulong	lastsend;	/* last time we sent a synack */
+	uchar	version;	/* v4 or v6 */
+	uchar	rexmits;	/* number of retransmissions */
 };
 
 int	tcp_irtt = DEF_RTT;	/* Initial guess at round trip time */
@@ -275,18 +322,24 @@ static char *statnames[] =
 typedef struct Tcppriv Tcppriv;
 struct Tcppriv
 {
-	Tcptimer 	*timers;	/* List of active timers */
-	QLock 	tl;			/* Protect timer list */
+	/* List of active timers */
+	QLock 	tl;
+	Tcptimer *timers;
+
 	Rendez	tcpr;			/* used by tcpackproc */
 
 	/* hash table for matching conversations */
 	Ipht	ht;
 
-	ulong	stats[Nstats];
+	/* calls in limbo waiting for an ACK to our SYN ACK */
+	int	nlimbo;
+	Limbo	*lht[NLHT];
 
 	/* for keeping track of tcpackproc */
-	int	ackprocstarted;
 	QLock	apl;
+	int	ackprocstarted;
+
+	ulong	stats[Nstats];
 };
 
 int	addreseq(Tcpctl*, Tcp*, Block*, ushort);
@@ -305,6 +358,10 @@ void	tcpkeepalive(void*);
 void	tcpsetkacounter(Tcpctl*);
 void    tcprxmit(Conv*);
 void	tcpsettimer(Tcpctl*);
+void	tcpsynackrtt(Conv*);
+
+static void limborexmit(Proto*);
+static void limbo(Conv*, uchar*, uchar*, Tcp*, int);
 
 void
 tcpsetstate(Conv *s, uchar newstate)
@@ -457,11 +514,6 @@ tcpkick(Conv *s)
 	qlock(s);
 
 	switch(tcb->state) {
-	case Listen:
-		tcb->flags |= ACTIVE;
-		tcpsndsyn(tcb);
-		tcpsetstate(s, Syn_sent);
-		/* No break */
 	case Syn_sent:
 	case Syn_received:
 	case Established:
@@ -599,6 +651,8 @@ tcpackproc(void *a)
 				poperror();
 			}
 		}
+
+		limborexmit(tcp);
 	}
 }
 
@@ -672,14 +726,12 @@ localclose(Conv *s, char *reason)	 /*  called with tcb locked */
 
 /* mtu (- TCP + IP hdr len) of 1st hop */
 int
-tcpmtu(Conv *s)
+tcpmtu(Proto *tcp, uchar *addr, int version)
 {
 	Ipifc *ifc;
 	int mtu;
-	uchar version;
 
-	version = s->ipversion;
-	ifc = findipifc(s->p->f, s->raddr, 0);
+	ifc = findipifc(tcp->f, addr, 0);
 	switch(version){
 	default:
 	case V4:
@@ -753,7 +805,7 @@ inittcpctl(Conv *s, int mode)
 		}
 	}
 
-	tcb->mss = tcb->cwind = tcpmtu(s);
+	tcb->mss = tcb->cwind = tcpmtu(s->p, s->laddr, s->ipversion);
 }
 
 /*
@@ -1056,7 +1108,10 @@ ntohtcp4(Tcp *tcph, Block **bpp)
 	return hdrlen;
 }
 
-/* Generate an initial sequence number and put a SYN on the send queue */
+/*
+ *  For outgiing calls, generate an initial sequence
+ *  number and put a SYN on the send queue
+ */
 void
 tcpsndsyn(Tcpctl *tcb)
 {
@@ -1068,7 +1123,7 @@ tcpsndsyn(Tcpctl *tcb)
 	tcb->snd.nxt = tcb->rttseq;
 	tcb->flgcnt++;
 	tcb->flags |= FORCE;
-	tcb->sndsyntime = msec;
+	tcb->sndsyntime = NOW;
 }
 
 void
@@ -1193,6 +1248,200 @@ tcphangup(Conv *s)
 	return nil;
 }
 
+/*
+ *  (re)send a SYN ACK
+ */
+int
+sndsynack(Proto *tcp, Limbo *lp)
+{
+	Block *hbp;
+	Tcp4hdr ph4;
+	Tcp6hdr ph6;
+	Tcp seg;
+
+	/* make pseudo header */
+	switch(lp->version) {
+	case V4:
+		memset(&ph4, 0, sizeof(ph4));
+		ph4.vihl = IP_VER4;
+		v6tov4(ph4.tcpsrc, lp->laddr);
+		v6tov4(ph4.tcpdst, lp->raddr);
+		ph4.proto = IP_TCPPROTO;
+		hnputs(ph4.tcplen, TCP4_HDRSIZE);
+		hnputs(ph4.tcpsport, lp->lport);
+		hnputs(ph4.tcpdport, lp->rport);
+		break;
+	case V6:
+		memset(&ph6, 0, sizeof(ph6));
+		ph6.vcf[0] = IP_VER6;
+		ipmove(ph6.tcpsrc, lp->laddr);
+		ipmove(ph6.tcpdst, lp->raddr);
+		ph6.proto = IP_TCPPROTO;
+		hnputs(ph6.ploadlen, TCP6_HDRSIZE);
+		hnputs(ph6.tcpsport, lp->lport);
+		hnputs(ph6.tcpdport, lp->rport);
+		break;
+	default:
+		panic("sndrst: version %d", lp->version);
+	}
+
+	seg.seq = lp->iss;
+	seg.ack = lp->irs+1;
+	seg.flags = SYN|ACK;
+	seg.wnd = 0;
+	seg.urg = 0;
+	seg.mss = tcpmtu(tcp, lp->laddr, lp->version);
+
+	switch(lp->version) {
+	case V4:
+		hbp = htontcp4(&seg, nil, &ph4, nil);
+		if(hbp == nil)
+			return -1;
+		ipoput4(tcp->f, hbp, 0, MAXTTL, DFLTTOS);
+		break;
+	case V6:
+		hbp = htontcp6(&seg, nil, &ph6, nil);
+		if(hbp == nil)
+			return -1;
+		ipoput6(tcp->f, hbp, 0, MAXTTL, DFLTTOS);
+		break;
+	default:
+		panic("sndsnack: version %d", lp->version);
+	}
+	lp->lastsend = NOW;
+	return 0;
+}
+
+/*
+ *  hash an address, walk the permutation
+ */
+static int
+limbohash(uchar *perm, uchar *addr)
+{
+	int i;
+	uchar x;
+
+	x = 0;
+	for(i = 0; i < IPaddrlen; i++)
+		x = perm[(addr[i]+x) & 0xff];
+	return x;
+}
+
+#define hashipa(a) ( ( (a)[IPaddrlen-2] + (a)[IPaddrlen-1] )&LHTMASK )
+
+/*
+ *  put a call into limbo and respond with a SYN ACK
+ *
+ *  called with proto locked
+ */
+static void
+limbo(Conv *s, uchar *source, uchar *dest, Tcp *seg, int version)
+{
+	Limbo *lp, **l;
+	Tcppriv *tpriv;
+	int h;
+
+	tpriv = s->p->priv;
+	h = hashipa(source);
+
+	for(l = &tpriv->lht[h]; *l != nil; l = &lp->next){
+		lp = *l;
+		if(lp->lport != seg->dest || lp->rport != seg->source || lp->version != version)
+			continue;
+		if(ipcmp(lp->raddr, source) != 0)
+			continue;
+		if(ipcmp(lp->laddr, dest) != 0)
+			continue;
+
+		/* each new SYN restarts the retramsmits */
+		lp->irs = seg->seq;
+		break;
+	}
+	lp = *l;
+	if(lp == nil){
+		if(tpriv->nlimbo >= Maxlimbo && tpriv->lht[h]){
+			lp = tpriv->lht[h];
+			tpriv->lht[h] = lp->next;
+			lp->next = nil;
+		} else {
+			lp = malloc(sizeof(*lp));
+			if(lp == nil)
+				return;
+			tpriv->nlimbo++;
+		}
+		*l = lp;
+		lp->version = version;
+		ipmove(lp->laddr, dest);
+		ipmove(lp->raddr, source);
+		lp->lport = seg->dest;
+		lp->rport = seg->source;
+		lp->mss = seg->mss;
+		lp->irs = seg->seq;
+		lp->iss = (nrand(1<<16)<<16)|nrand(1<<16);
+	}
+
+	if(sndsynack(s->p, lp) < 0){
+		*l = lp->next;
+		tpriv->nlimbo--;
+		free(lp);
+	}
+}
+
+/*
+ *  resend SYN ACK's once every 250 ms.
+ */
+static void
+limborexmit(Proto *tcp)
+{
+	Tcppriv *tpriv;
+	Limbo **l, *lp;
+	int h;
+	int seen;
+	ulong now;
+
+	tpriv = tcp->priv;
+
+	if(!canqlock(tcp))
+		return;
+	seen = 0;
+	now = NOW;
+	for(h = 0; h < nelem(tpriv->lht) && seen < tpriv->nlimbo; h++){
+		for(l = &tpriv->lht[h]; *l != nil && seen < tpriv->nlimbo; ){
+			lp = *l;
+			seen++;
+			if(now - lp->lastsend < 250)
+				continue;
+
+			/* time it out after 1 second */
+			if(++(lp->rexmits) > 4){
+				tpriv->nlimbo--;
+				*l = lp->next;
+				free(lp);
+				continue;
+			}
+
+			/* if we're being attacked, don't bother resending SYN ACK's */
+			if(tpriv->nlimbo > 100)
+				continue;
+
+			if(sndsynack(tcp, lp) < 0){
+				tpriv->nlimbo--;
+				*l = lp->next;
+				free(lp);
+				continue;
+			}
+
+			l = &lp->next;
+		}
+	}
+	qunlock(tcp);
+}
+
+/*
+ *  lookup call in limbo.  if found, create a new conversation
+ *
+ *  called with proto locked
+ */
 static Conv*
 tcpincoming(Conv *s, Tcp *segp, uchar *src, uchar *dst, uchar version)
 {
@@ -1201,6 +1450,38 @@ tcpincoming(Conv *s, Tcp *segp, uchar *src, uchar *dst, uchar version)
 	Tcppriv *tpriv;
 	Tcp4hdr *h4;
 	Tcp6hdr *h6;
+	Limbo *lp, **l;
+	int h;
+
+	/* unless it's just an ack, it can't be someone coming out of limbo */
+	if((segp->flags & SYN) || (segp->flags & ACK) == 0)
+		return nil;
+
+	tpriv = s->p->priv;
+
+	/* find a call in limbo */
+	lp = nil;
+	h = hashipa(src);
+	for(l = &tpriv->lht[h]; *l != nil; l = &lp->next){
+		lp = *l;
+		if(lp->lport != segp->dest || lp->rport != segp->source || lp->version != version)
+			continue;
+		if(ipcmp(lp->laddr, dst) != 0)
+			continue;
+		if(ipcmp(lp->raddr, src) != 0)
+			continue;
+
+		/* we're assuming no data with the initial SYN */
+		if(segp->seq != lp->irs+1 || segp->ack != lp->iss+1)
+			lp = nil;
+		else{
+			tpriv->nlimbo--;
+			*l = lp->next;
+		}
+		break;
+	}
+	if(lp == nil)
+		return nil;
 
 	new = Fsnewcall(s, src, segp->source, dst, segp->dest, version);
 	if(new == nil)
@@ -1218,6 +1499,34 @@ tcpincoming(Conv *s, Tcp *segp, uchar *src, uchar *dst, uchar version)
 	tcb->rtt_timer.arg = new;
 	tcb->rtt_timer.state = TcptimerOFF;
 
+	tcb->irs = lp->irs;
+	tcb->rcv.nxt = tcb->irs+1;
+	tcb->rcv.urg = tcb->rcv.nxt;
+
+	tcb->iss = lp->iss;
+	tcb->rttseq = tcb->iss;
+	tcb->snd.wl2 = tcb->iss;
+	tcb->snd.una = tcb->iss+1;
+	tcb->snd.ptr = tcb->iss+1;
+	tcb->snd.nxt = tcb->iss+1;
+	tcb->flgcnt = 0;
+	tcb->flags |= SYNACK;
+
+	/* our sending max segment size cannot be bigger than what he asked for */
+	if(lp->mss != 0 && lp->mss < tcb->mss)
+		tcb->mss = lp->mss;
+
+	/* the congestion window always starts out as a single segment */
+	tcb->snd.wnd = segp->wnd;
+	tcb->cwind = tcb->mss;
+
+	/* set initial round trip time */
+	tcb->sndsyntime = lp->lastsend;
+	tcpsynackrtt(new);
+
+	free(lp);
+
+	/* set up proto header */
 	switch(version){
 	case V4:
 		h4 = &tcb->protohdr.tcp4hdr;
@@ -1241,7 +1550,8 @@ tcpincoming(Conv *s, Tcp *segp, uchar *src, uchar *dst, uchar version)
 		panic("tcpincoming: version %d", new->ipversion);
 	}
 
-	tpriv = new->p->priv;
+	tcpsetstate(new, Established);
+
 	iphtadd(&tpriv->ht, new);
 
 	return new;
@@ -1299,7 +1609,7 @@ tcpsynackrtt(Conv *s)
 	tcb = (Tcpctl*)s->ptcl;
 	tpriv = s->p->priv;
 
-	delta = msec - tcb->sndsyntime;
+	delta = NOW - tcb->sndsyntime;
 	tcb->srtt = delta<<LOGAGAIN;
 	tcb->mdev = delta<<LOGDGAIN;
 
@@ -1356,7 +1666,6 @@ update(Conv *s, Tcp *seg)
 		tcb->snd.wnd = seg->wnd;
 		tcb->snd.wl2 = seg->ack;
 	}
-
 
 	if(!seq_gt(seg->ack, tcb->snd.una)){
 		/*
@@ -1491,6 +1800,7 @@ tcpiput(Proto *tcp, Ipifc*, Block *bp)
 			ptclcsum(bp, TCP4_IPLEN, length-TCP4_IPLEN)) {
 			tpriv->stats[CsumErrs]++;
 			tpriv->stats[InErrs]++;
+print("cksum is %ux\n", ptclcsum(bp, TCP4_IPLEN, length-TCP4_IPLEN));
 			netlog(f, Logtcp, "bad tcp proto cksum\n");
 			freeblist(bp);
 			return;
@@ -1578,9 +1888,19 @@ reset:
 			freeblist(bp);
 			return;
 		}
-		if((seg.flags & SYN) == 0 || (seg.flags & ACK) != 0)
-			goto reset;
 
+		/* if this is a new SYN, put the call into limbo */
+		if((seg.flags & SYN) && (seg.flags & ACK) == 0){
+			limbo(s, source, dest, &seg, version);
+			qunlock(tcp);
+			freeblist(bp);
+			return;
+		}
+
+		/*
+		 *  if there's a matching call in limbo, tcpincoming will
+		 *  return it in state Syn_received
+		 */
 		s = tcpincoming(s, &seg, source, dest, version);
 		if(s == nil)
 			goto reset;
@@ -1607,16 +1927,6 @@ reset:
 	case Closed:
 		sndrst(tcp, source, dest, length, &seg, version);
 		goto raise;
-	case Listen:
-		if(seg.flags & SYN) {
-			procsyn(s, &seg);
-			tcpsndsyn(tcb);
-			tcb->time = msec;
-			tcpsetstate(s, Syn_received);
-			if(length != 0 || (seg.flags & FIN))
-				break;
-		}
-		goto raise;
 	case Syn_sent:
 		if(seg.flags & ACK) {
 			if(!seq_within(seg.ack, tcb->iss+1, tcb->snd.nxt)) {
@@ -1638,7 +1948,7 @@ reset:
 				tcpsetstate(s, Established);
 			}
 			else {
-				tcb->time = msec;
+				tcb->time = NOW;
 				tcpsetstate(s, Syn_received);
 			}
 
@@ -1661,15 +1971,16 @@ reset:
 		break;
 	}
 
+	/*
+	 *  One DOS attack is to open connections to us and then forget about them,
+	 *  thereby tying up a conv at no long term cost to the attacker.
+	 *  This is an attempt to defeat these stateless DOS attacks.  See
+	 *  corresponding code in tcpsendka().
+	 */
 	if(tcb->state != Syn_received){
-		/*
-		 *  One DOS attack is to open connections to us and then forget about them,
-		 *  thereby tying up a conv at no long term cost to the attacker.
-		 *  This is an attempt to defeat these stateless DOS attacks.  See
-		 *  corresponding code in tcpsendka().
-		 */
 		if(seq_within(seg.ack, tcb->snd.una-(1<<31), tcb->snd.una-(1<<29))){
-			print("stateless hog %lux - %lux - %lux\n", tcb->snd.una-(1<<31), seg.ack, tcb->snd.una-(1<<29));
+			print("stateless hog %lux - %lux - %lux\n", tcb->snd.una-(1<<31), seg.ack,
+				tcb->snd.una-(1<<29));
 			localclose(s, "stateless hog");
 		}
 	}
@@ -1747,7 +2058,7 @@ reset:
 				tcphalt(tpriv, &tcb->rtt_timer);
 				tcphalt(tpriv, &tcb->acktimer);
 				tcpsetkacounter(tcb);
-				tcb->time = msec;
+				tcb->time = NOW;
 				tcpsetstate(s, Finwait2);
 				tcb->katimer.start = MSL2 * (1000 / MSPTICK);
 				tcpgo(tpriv, &tcb->katimer);
@@ -2011,7 +2322,7 @@ tcpoutput(Conv *s)
 			if(tcb->snd.ptr == tcb->iss){
 				seg.flags |= SYN;
 				dsize--;
-				seg.mss = tcpmtu(s);
+				seg.mss = tcpmtu(s->p, s->laddr, s->ipversion);
 			}
 			break;
 		case Syn_received:
@@ -2024,7 +2335,7 @@ tcpoutput(Conv *s)
 				seg.flags |= SYN;
 				dsize = 0;
 				ssize = 1;
-				seg.mss = tcpmtu(s);
+				seg.mss = tcpmtu(s->p, s->laddr, s->ipversion);
 			}
 			break;
 		}
@@ -2329,6 +2640,9 @@ inwindow(Tcpctl *tcb, int seq)
 	return seq_within(seq, tcb->rcv.nxt, tcb->rcv.nxt+tcb->rcv.wnd-1);
 }
 
+/*
+ *  set up state for a received SYN (or SYN ACK) packet
+ */
 void
 procsyn(Conv *s, Tcp *seg)
 {
@@ -2340,11 +2654,13 @@ procsyn(Conv *s, Tcp *seg)
 	tcb->rcv.nxt = seg->seq + 1;
 	tcb->rcv.urg = tcb->rcv.nxt;
 	tcb->irs = seg->seq;
-	tcb->snd.wnd = seg->wnd;
 
+	/* our sending max segment size cannot be bigger than what he asked for */
 	if(seg->mss != 0 && seg->mss < tcb->mss)
 		tcb->mss = seg->mss;
-	tcb->max_snd = seg->wnd;
+
+	/* the congestion window always starts out as a single segment */
+	tcb->snd.wnd = seg->wnd;
 	tcb->cwind = tcb->mss;
 }
 
@@ -2591,13 +2907,13 @@ tcpgc(Proto *tcp)
 		tcb = (Tcpctl*)c->ptcl;
 		switch(tcb->state){
 		case Syn_received:
-			if(msec - tcb->time > 5000){
+			if(NOW - tcb->time > 5000){
 				localclose(c, "timed out");
 				n++;
 			}
 			break;
 		case Finwait2:
-			if(msec - tcb->time > 5*60*1000){
+			if(NOW - tcb->time > 5*60*1000){
 				localclose(c, "timed out");
 				n++;
 			}

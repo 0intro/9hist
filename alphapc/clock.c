@@ -94,16 +94,3 @@ clock(Ureg *ureg)
 
 	timerintr(ureg, 0);
 }
-
-ulong
-TK2MS(ulong ticks)
-{
-	uvlong t, hz;
-
-	t = ticks;
-	hz = HZ;
-	t *= 1000L;
-	t = t/hz;
-	ticks = t;
-	return ticks;
-}
