@@ -538,9 +538,14 @@ qwrite(Queue *q, void *vp, int len, int nowait)
 		if(nowait)
 			return len;
 		qlock(&q->wlock);
+		if(waserror()) {
+			qunlock(&q->wlock);
+			nexterror();
+		}
 		q->state |= Qflow;
 		sleep(&q->wr, qnotfull, q);
 		qunlock(&q->wlock);
+		poperror();
 	}
 
 	x = splhi();
