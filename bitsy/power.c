@@ -64,12 +64,24 @@ intrcpy(Intrregs *to, Intrregs *from)
 }
 
 static void
-gpiocpy(GPIOregs *to, GPIOregs *from)
+gpiosave(GPIOregs *to, GPIOregs *from)
+{
+	to->level = from->level;
+	to->rising = from->rising;		// gpio intrs enabled
+	to->falling= from->falling;		// gpio intrs enabled
+	to->altfunc = from->altfunc;
+	to->direction = from->direction;
+}
+
+static void
+gpiorestore(GPIOregs *to, GPIOregs *from)
 {
 	to->rising = from->rising;		// gpio intrs enabled
 	to->falling= from->falling;		// gpio intrs enabled
 	to->altfunc = from->altfunc;
 	to->direction = from->direction;
+	to->set = from->level & 0x0fffffff;
+	to->clear = ~from->level & 0x0fffffff;
 }
 
 void	(*restart)(void) = nil;
@@ -90,14 +102,15 @@ sa1100_power_off(void)
 	powerregs->pcfr = PCFR_opde | PCFR_fp | PCFR_fs;
 	powerregs->pgsr = 0;
 	/* set resume address. The loader jumps to it */
-//	powerregs->pspr = (ulong)sa1100_power_resume;
-	powerregs->pspr = 0;
-	/* set lowest clock; delay to avoid resume hangs on fast sa1110 */
+	powerregs->pspr = (ulong)sa1100_power_resume;
+//	powerregs->pspr = 0;
 
-sa1100_power_resume();
-	delay(90);
-	powerregs->ppcr = 0;
-	delay(90);
+//sa1100_power_resume();
+
+	/* set lowest clock; delay to avoid resume hangs on fast sa1110 */
+//	delay(90);
+//	powerregs->ppcr = 0;
+//	delay(90);
 
 	/* set all GPIOs to input mode  */
 	gpioregs->direction = 0;
@@ -131,12 +144,30 @@ deepsleep(void) {
 	void *xsp, *xlink;
 
 	power_pl = splhi();
-	cachewb();
-	delay(500);
+	delay(50);
+	/* Power down */
+	iprint("entering suspend mode\n");
+	uartpower(0);
+	clockpower(0);
+	irpower(0);
+	audiopower(0);
+	screenpower(0);
+	µcpower(0);
+	rs232power(0);
+	gpiosave(&savedgpioregs, gpioregs);
+	intrcpy(&savedintrregs, intrregs);
+	cacheflush();
+	delay(50);
 	if (setpowerlabel()) {
-		mmuinvalidate();
-		mmuenable();
-		cacheflush();
+		mmurestart();
+		gpiorestore(gpioregs, &savedgpioregs);
+		delay(50);
+		intrcpy(intrregs, &savedintrregs);
+		if (intrregs->icip & (1<<IRQgpio0)){
+			// don't want to sleep now. clear on/off irq.
+			gpioregs->edgestatus = (1<<IRQgpio0);
+			intrregs->icip = (1<<IRQgpio0);
+		}
 		trapresume();
 		rs232power(1);
 		uartpower(1);
@@ -144,13 +175,6 @@ deepsleep(void) {
 //		audiopower(1);
 		clockpower(1);
 		gpclkregs->r0 = 1<<0;
-		gpiocpy(gpioregs, &savedgpioregs);
-		intrcpy(intrregs, &savedintrregs);
-		if (intrregs->icip & (1<<IRQgpio0)){
-			// don't want to sleep now. clear on/off irq.
-			gpioregs->edgestatus = (1<<IRQgpio0);
-			intrregs->icip = (1<<IRQgpio0);
-		}
 		µcpower(1);
 		screenpower(1);
 		iprint("\nresuming execution\n");
@@ -159,18 +183,6 @@ deepsleep(void) {
 		splx(power_pl);
 		return;
 	}
-	/* Power down */
-	iprint("entering suspend mode\n");
-	gpiocpy(&savedgpioregs, gpioregs);
-	intrcpy(&savedintrregs, intrregs);
-	uartpower(0);
-	delay(400);
-	clockpower(0);
-	irpower(0);
-	audiopower(0);
-	screenpower(0);
-	µcpower(0);
-	rs232power(0);
 	sa1100_power_off();
 	/* no return */
 }

@@ -36,7 +36,6 @@ main(void)
 	machinit();
 	trapinit();
 	sa1110_uartsetup(1);
-	rs232power(1);
 	dmainit();
 	screeninit();
 	printinit();	/* from here on, print works, before this we need iprint */
@@ -423,18 +422,35 @@ void
 rs232power(int on)
 {
 	egpiobits(EGPIO_rs232_power, on);
+	delay(50);
+}
+
+void
+audioamppower(int on)
+{
+	egpiobits(EGPIO_audio_power, on);
+	delay(50);
+}
+
+void
+audioicpower(int on)
+{
+	egpiobits(EGPIO_audio_ic_power, on);
+	delay(50);
 }
 
 void
 irpower(int on)
 {
 	egpiobits(EGPIO_ir_power, on);
+	delay(50);
 }
 
 void
 lcdpower(int on)
 {
 	egpiobits(EGPIO_lcd_3v|EGPIO_lcd_ic_power|EGPIO_lcd_5v|EGPIO_lcd_9v, on);
+	delay(50);
 }
 
 void

@@ -517,7 +517,8 @@ enable(void)
 	sspregs->control0 = 0x039f;	/* enable */
 
 	/* Enable the audio power */
-	egpiobits(EGPIO_audio_ic_power | EGPIO_codec_reset, 1);
+	audioicpower(1);
+	egpiobits(EGPIO_codec_reset, 1);
 
 	setspeed(0, 0, 0, 0, volumes[Vspeed].ilval);
 
@@ -672,7 +673,7 @@ setreg(char *name, int val, int n)
 static void
 outenable(void) {
 	/* turn on DAC, set output gain switch */
-	egpiobits(EGPIO_audio_power, 1);
+	audioamppower(1);
 	audiomute(0);
 	status1[0] |= 0x41;
 	L3_write(UDA1341_L3Addr | UDA1341_STATUS, status1, 1);
@@ -690,13 +691,12 @@ outdisable(void) {
 	dmastop(audio.o.dma);
 	/* turn off DAC, clear output gain switch */
 	audiomute(1);
-	egpiobits(EGPIO_audio_power, 0);
 	status1[0] &= ~0x41;
 	L3_write(UDA1341_L3Addr | UDA1341_STATUS, status1, 1);
 	if (debug) {
 		print("outdisable:	status1	= 0x%2.2ux\n", status1[0]);
 	}
-	egpiobits(EGPIO_audio_power, 0);
+	audioamppower(0);
 }
 
 static void
@@ -812,7 +812,9 @@ audiopower(int flag) {
 	if (flag) {
 		/* power on only when necessary */
 		if (audio.amode) {
-			egpiobits(EGPIO_audio_power | EGPIO_audio_ic_power | EGPIO_codec_reset, 1);
+			audioamppower(1);
+			audioicpower(1);
+			egpiobits(EGPIO_codec_reset, 1);
 			enable();
 			if (audio.amode & Aread) {
 				inenable();
@@ -834,7 +836,9 @@ audiopower(int flag) {
 			indisable();
 		if (audio.amode & Awrite)
 			outdisable();
-		egpiobits(EGPIO_audio_ic_power | EGPIO_codec_reset | EGPIO_audio_power, 0);
+		egpiobits(EGPIO_codec_reset, 0);
+		audioamppower(0);
+		audioicpower(0);
 	}
 }
 
@@ -1020,7 +1024,8 @@ audioclose(Chan *c)
 			}
 			if (audio.amode == 0) {
 				/* turn audio off */
-				egpiobits(EGPIO_audio_ic_power | EGPIO_codec_reset, 0);
+				egpiobits(EGPIO_codec_reset, 0);
+				audioicpower(0);
 			}
 			qunlock(&audio);
 		}

@@ -1,6 +1,8 @@
 #include "../port/portfns.h"
 
 void	audiopower(int);
+void	audioamppower(int);
+void	audioicpower(int);
 void	cacheflush(void);
 void	cachewb(void);
 void	cachewbaddr(void*);
@@ -55,6 +57,7 @@ void	mmuenable(void);
 void	mmudisable(void);
 void	mmuinvalidate(void);
 void	mmuinvalidateaddr(ulong);
+void	mmurestart(void);
 ulong	mmu_kaddr(ulong);
 ulong	mmu_paddr(ulong);
 int	µcputc(Queue*, int);

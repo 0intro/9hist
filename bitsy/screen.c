@@ -159,6 +159,13 @@ static void
 lcdinit(void)
 {
 	/* the following line works because main memory is direct mapped */
+	gpioregs->direction |= 
+		GPIO_LDD8_o|GPIO_LDD9_o|GPIO_LDD10_o|GPIO_LDD11_o
+		|GPIO_LDD12_o|GPIO_LDD13_o|GPIO_LDD14_o|GPIO_LDD15_o;
+	gpioregs->altfunc |= 
+		GPIO_LDD8_o|GPIO_LDD9_o|GPIO_LDD10_o|GPIO_LDD11_o
+		|GPIO_LDD12_o|GPIO_LDD13_o|GPIO_LDD14_o|GPIO_LDD15_o;
+	framebuf->palette[0] = Pal0;
 	lcd->dbar1 = framebuf->palette;
 	lcd->lccr3 = pcd<<PCD | 0<<ACB | 0<<API | 1<<VSP | 1<<HSP | 0<<PCP | 0<<OEP;
 	lcd->lccr2 = (Wid-1)<<LPP | vsw<<VSW | efw<<EFW | bfw<<BFW;
@@ -216,8 +223,6 @@ screeninit(void)
 	framebuf = xspanalloc(sizeof *framebuf, 0x100, 0);
 
 	vscreen = xalloc(sizeof(ushort)*Wid*Ht);
-
-	framebuf->palette[0] = Pal0;
 
 	lcdpower(1);
 	lcdinit();
@@ -304,9 +309,18 @@ setcolor(ulong p, ulong r, ulong g, ulong b)
 void
 blankscreen(int blank)
 {
+	int cnt;
+
 	if (blank) {
-		lcd->lccr0 &= ~(0<<LEN);	/* disable the LCD */
-		delay(100);
+		lcd->lccr0 &= ~(1<<LEN);	/* disable the LCD */
+		cnt = 0;
+		while((lcd->lcsr & (1<<LDD)) == 0) {
+			delay(10);
+			if (++cnt == 100) {
+				iprint("LCD doesn't stop\n");
+				break;
+			}
+		}
 		lcdpower(0);
 	} else {
 		lcdpower(1);
