@@ -359,7 +359,7 @@ dumpstack(void)
 		return;
 
 	i = 0;
-	lim = 3;
+	lim = 6;
 	for(l=(ulong)&l; l<(ulong)(up->kstack+BY2PG) && lim; l+=4){
 		v = *(ulong*)l;
 		if(KTZERO < v && v < (ulong)&etext){

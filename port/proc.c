@@ -257,6 +257,7 @@ newproc(void)
 	p->pgrp = 0;
 	p->egrp = 0;
 	p->fgrp = 0;
+	p->rgrp = 0;
 	p->pdbg = 0;
 	p->fpstate = FPinit;
 	p->kp = 0;
@@ -356,7 +357,7 @@ tfn(void *arg)
 void
 tsleep(Rendez *r, int (*fn)(void*), void *arg, int ms)
 {
-	ulong when, i;
+	ulong when;
 	Proc *f, **l;
 
 	when = MS2TK(ms)+MACHP(0)->ticks;
@@ -364,7 +365,6 @@ tsleep(Rendez *r, int (*fn)(void*), void *arg, int ms)
 	lock(&talarm);
 	/* take out of list if checkalarm didn't */
 	if(up->trend) {
-i = 0;
 		l = &talarm.list;
 		for(f = *l; f; f = f->tlink) {
 			if(f == up) {
@@ -372,12 +372,6 @@ i = 0;
 				break;
 			}
 			l = &f->tlink;
-if(i++ > 20) {
-	print("tlarm loop: %lux\n", talarm.list);
-	for(i = 20, f = talarm.list; f && i--; f = f->tlink)
-		print("%lux ", f);
-		for(;;);
-}
 		}
 	}
 	/* insert in increasing time order */
@@ -468,10 +462,10 @@ postnote(Proc *p, int dolock, char *n, int flag)
 		return ret;
 
 	/* Try and pull out of a rendezvous */
-	lock(p->pgrp);
+	lock(p->rgrp);
 	if(p->state == Rendezvous) {
 		p->rendval = ~0;
-		l = &REND(p->pgrp, p->rendtag);
+		l = &REND(p->rgrp, p->rendtag);
 		for(d = *l; d; d = d->rendhash) {
 			if(d == p) {
 				*l = p->rendhash;
@@ -481,7 +475,7 @@ postnote(Proc *p, int dolock, char *n, int flag)
 		}
 		ready(p);
 	}
-	unlock(p->pgrp);
+	unlock(p->rgrp);
 	return ret;
 }
 
@@ -561,6 +555,8 @@ pexit(char *exitstr, int freemem)
 		closefgrp(up->fgrp);
 	if(up->egrp)
 		closeegrp(up->egrp);
+	if(up->rgrp)
+		closergrp(up->rgrp);
 
 	close(up->dot);
 	closepgrp(up->pgrp);

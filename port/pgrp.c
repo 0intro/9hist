@@ -50,6 +50,23 @@ newpgrp(void)
 	return p;
 }
 
+Rgrp*
+newrgrp(void)
+{
+	Rgrp *r;
+
+	r = smalloc(sizeof(Rgrp));
+	r->ref = 1;
+	return r;
+}
+
+void
+closergrp(Rgrp *r)
+{
+	if(decref(r) == 0)
+		free(r);
+}
+
 void
 closepgrp(Pgrp *p)
 {

@@ -130,7 +130,7 @@ chanfree(Chan *c)
 void
 close(Chan *c)
 {
-	if(c->flag&CFREE)
+	if(c == 0 || (c->flag&CFREE))
 		panic("close");
 
 	if(decref(c))

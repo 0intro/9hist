@@ -322,6 +322,12 @@ good:
 }
 
 void*
+malloc(ulong size)
+{
+	return mallocz(size, 1);
+}
+
+void*
 smalloc(ulong size)
 {
 	char *s;

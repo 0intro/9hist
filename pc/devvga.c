@@ -625,7 +625,7 @@ setscreen(int maxx, int maxy, int ldepth)
 	h = defont0.height;
 	w = defont0.info[' '].width;
 	window.min = Pt(48, 48);
-	window.max = add(window.min, Pt(10+w*64, 36*h));
+	window.max = add(window.min, Pt(10+w*80, 50*h));
 	if(window.max.y >= gscreen.r.max.y)
 		window.max.y = gscreen.r.max.y-1;
 	if(window.max.x >= gscreen.r.max.x)
@@ -635,7 +635,7 @@ setscreen(int maxx, int maxy, int ldepth)
 
 	/* work areas change when dimensions change */
 	workinit(&chwork, w, h);
-	workinit(&scrollwork, 64*w, 1);
+	workinit(&scrollwork, 80*w, 1);
 	workinit(&scrollwork, Dx(window), 1);
 	cursorinit();
 

@@ -29,6 +29,7 @@ typedef struct QLock	QLock;
 typedef struct Queue	Queue;
 typedef struct Ref	Ref;
 typedef struct Rendez	Rendez;
+typedef struct Rgrp	Rgrp;
 typedef struct RWlock	RWlock;
 typedef struct Sargs	Sargs;
 typedef struct Schedq	Schedq;
@@ -389,12 +390,16 @@ enum
 struct Pgrp
 {
 	Ref;				/* also used as a lock when mounting */
-	Pgrp	*next;			/* free list */
 	ulong	pgrpid;
 	QLock	debug;			/* single access via devproc.c */
 	RWlock	ns;			/* Namespace n read/one write lock */
 	QLock	nsh;
 	Mhead	*mnthash[MNTHASH];
+};
+
+struct Rgrp
+{
+	Ref;
 	Proc	*rendhash[RENDHASH];	/* Rendezvous tag hash */
 };
 
@@ -456,7 +461,8 @@ enum
 	RFNOWAIT	= (1<<6),
 	RFCNAMEG	= (1<<10),
 	RFCENVG		= (1<<11),
-	RFCFDG		= (1<<12)
+	RFCFDG		= (1<<12),
+	RFREND		= (1<<13),
 };
 
 /*
@@ -528,6 +534,7 @@ struct Proc
 	Pgrp	*pgrp;		/* Process group for namespace */
 	Egrp 	*egrp;		/* Environment group */
 	Fgrp	*fgrp;		/* File descriptor group */
+	Rgrp	*rgrp;		/* Rendez group */
 
 	ulong	parentpid;
 	ulong	time[6];	/* User, Sys, Real; child U, S, R */

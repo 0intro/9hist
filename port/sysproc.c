@@ -63,6 +63,10 @@ sysrfork(ulong *arg)
 			up->noteid = incref(&noteidalloc);
 		if(flag & (RFMEM|RFNOWAIT))
 			error(Ebadarg);
+		if(flag & RFREND) {
+			closergrp(up->rgrp);
+			up->rgrp = newrgrp();
+		}
 		return 0;
 	}
 	/* Check flags before we commit */
@@ -120,6 +124,15 @@ sysrfork(ulong *arg)
 	else {
 		p->pgrp = up->pgrp;
 		incref(p->pgrp);
+	}
+
+	if(flag & RFREND) {
+		closergrp(up->rgrp);
+		up->rgrp = newrgrp();
+	}
+	else {
+		incref(up->rgrp);
+		p->rgrp = up->rgrp;
 	}
 
 	/* Environment group */
@@ -202,55 +215,52 @@ sysexec(ulong *arg)
 	validaddr(arg[0], 1, 0);
 	file = (char*)arg[0];
 	indir = 0;
-    Header:
-	tc = namec(file, Aopen, OEXEC, 0);
-	if(waserror()){
+	for(;;){
+		tc = namec(file, Aopen, OEXEC, 0);
+		if(waserror()){
+			close(tc);
+			nexterror();
+		}
+		if(!indir)
+			strcpy(elem, up->elem);
+	
+		n = (*devtab[tc->type].read)(tc, &exec, sizeof(Exec), 0);
+		if(n < 2)
+			error(Ebadexec);
+		magic = l2be(exec.magic);
+		text = l2be(exec.text);
+		entry = l2be(exec.entry);
+		if(n==sizeof(Exec) && (magic == AOUT_MAGIC)){
+			if((text&KZERO)
+			|| entry < UTZERO+sizeof(Exec)
+			|| entry >= UTZERO+sizeof(Exec)+text)
+				error(Ebadexec);
+			break; /* for binary */
+		}
+	
+		/*
+		 * Process #! /bin/sh args ...
+		 */
+		memmove(line, &exec, sizeof(Exec));
+		if(indir || line[0]!='#' || line[1]!='!')
+			error(Ebadexec);
+		n = shargs(line, n, progarg);
+		if(n == 0)
+			error(Ebadexec);
+		indir = 1;
+		/*
+		 * First arg becomes complete file name
+		 */
+		progarg[n++] = file;
+		progarg[n] = 0;
+		validaddr(arg[1], BY2WD, 1);
+		arg[1] += BY2WD;
+		file = progarg[0];
+		progarg[0] = elem;
+		poperror();
 		close(tc);
-		nexterror();
-	}
-	if(!indir)
-		strcpy(elem, up->elem);
-
-	n = (*devtab[tc->type].read)(tc, &exec, sizeof(Exec), 0);
-	if(n < 2)
-    Err:
-		error(Ebadexec);
-	magic = l2be(exec.magic);
-	text = l2be(exec.text);
-	entry = l2be(exec.entry);
-	if(n==sizeof(Exec) && (magic == AOUT_MAGIC)){
-		if((text&KZERO)
-		|| entry < UTZERO+sizeof(Exec)
-		|| entry >= UTZERO+sizeof(Exec)+text)
-			goto Err;
-		goto Binary;
 	}
 
-	/*
-	 * Process #! /bin/sh args ...
-	 */
-	memmove(line, &exec, sizeof(Exec));
-	if(indir || line[0]!='#' || line[1]!='!')
-		goto Err;
-	n = shargs(line, n, progarg);
-	if(n == 0)
-		goto Err;
-	indir = 1;
-	/*
-	 * First arg becomes complete file name
-	 */
-	progarg[n++] = file;
-	progarg[n] = 0;
-	validaddr(arg[1], BY2WD, 1);
-	arg[1] += BY2WD;
-	file = progarg[0];
-	progarg[0] = elem;
-	poperror();
-	close(tc);
-	goto Header;
-
-    Binary:
-	poperror();
 	data = l2be(exec.data);
 	bss = l2be(exec.bss);
 	t = (UTZERO+sizeof(Exec)+text+(BY2PG-1)) & ~(BY2PG-1);
@@ -328,7 +338,7 @@ sysexec(ulong *arg)
 	/*
 	 * Committed.
 	 * Free old memory.
-	 * Special segments are maintained accross exec
+	 * Special segments are maintained across exec
 	 */
 	for(i = SSEG; i <= BSEG; i++) {
 		putseg(up->seg[i]);
@@ -391,6 +401,7 @@ sysexec(ulong *arg)
 	else
 		up->basepri = 1;
 	up->priority = up->basepri;
+	poperror();
 	close(tc);
 
 	/*
@@ -644,9 +655,9 @@ sysrendezvous(ulong *arg)
 	Proc *p, **l;
 
 	tag = arg[0];
-	l = &REND(up->pgrp, tag);
+	l = &REND(up->rgrp, tag);
 
-	lock(up->pgrp);
+	lock(up->rgrp);
 	for(p = *l; p; p = p->rendhash) {
 		if(p->rendtag == tag) {
 			*l = p->rendhash;
@@ -656,7 +667,7 @@ sysrendezvous(ulong *arg)
 			while(p->mach != 0)
 				;
 			ready(p);
-			unlock(up->pgrp);
+			unlock(up->rgrp);
 			return val;	
 		}
 		l = &p->rendhash;
@@ -668,7 +679,7 @@ sysrendezvous(ulong *arg)
 	up->rendhash = *l;
 	*l = up;
 	up->state = Rendezvous;
-	unlock(up->pgrp);
+	unlock(up->rgrp);
 
 	sched();
 
