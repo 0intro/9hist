@@ -1140,13 +1140,15 @@ tcpsndsyn(Tcpctl *tcb)
 }
 
 void
-sndrst(Proto *tcp, uchar *source, uchar *dest, ushort length, Tcp *seg, uchar version)
+sndrst(Proto *tcp, uchar *source, uchar *dest, ushort length, Tcp *seg, uchar version, char *reason)
 {
 	Block *hbp;
 	uchar rflags;
 	Tcppriv *tpriv;
 	Tcp4hdr ph4;
 	Tcp6hdr ph6;
+
+	netlog(tcp->f, Logtcp, "sndrst: %s", reason);
 
 	tpriv = tcp->priv;
 
@@ -1495,6 +1497,12 @@ tcpincoming(Conv *s, Tcp *segp, uchar *src, uchar *dst, uchar version)
 	/* find a call in limbo */
 	h = hashipa(src, segp->source);
 	for(l = &tpriv->lht[h]; (lp = *l) != nil; l = &lp->next){
+		netlog(s->p->f, Logtcp, "tcpincoming s %I,%ux/%I,%ux d %I,%ux/%I,%ux v %d/%d",
+			src, segp->source, lp->raddr, lp->rport,
+			dst, segp->dest, lp->laddr, lp->lport,
+			version, lp->version
+ 		);
+
 		if(lp->lport != segp->dest || lp->rport != segp->source || lp->version != version)
 			continue;
 		if(ipcmp(lp->laddr, dst) != 0)
@@ -1503,9 +1511,11 @@ tcpincoming(Conv *s, Tcp *segp, uchar *src, uchar *dst, uchar version)
 			continue;
 
 		/* we're assuming no data with the initial SYN */
-		if(segp->seq != lp->irs+1 || segp->ack != lp->iss+1)
+		if(segp->seq != lp->irs+1 || segp->ack != lp->iss+1){
+			netlog(s->p->f, Logtcp, "tcpincoming s %lux/%lux a %lux %lux",
+				segp->seq, lp->irs+1, segp->ack, lp->iss+1);
 			lp = nil;
-		else{
+		} else {
 			tpriv->nlimbo--;
 			*l = lp->next;
 		}
@@ -1904,9 +1914,10 @@ tcpiput(Proto *tcp, Ipifc*, Block *bp)
 	/* Look for a matching conversation */
 	s = iphtlook(&tpriv->ht, source, seg.source, dest, seg.dest);
 	if(s == nil){
+		netlog(f, Logtcp, "iphtlook failed");
 reset:
 		qunlock(tcp);
-		sndrst(tcp, source, dest, length, &seg, version);
+		sndrst(tcp, source, dest, length, &seg, version, "no conversation");
 		freeblist(bp);
 		return;
 	}
@@ -1957,12 +1968,13 @@ reset:
 
 	switch(tcb->state) {
 	case Closed:
-		sndrst(tcp, source, dest, length, &seg, version);
+		sndrst(tcp, source, dest, length, &seg, version, "sending to Closed");
 		goto raise;
 	case Syn_sent:
 		if(seg.flags & ACK) {
 			if(!seq_within(seg.ack, tcb->iss+1, tcb->snd.nxt)) {
-				sndrst(tcp, source, dest, length, &seg, version);
+				sndrst(tcp, source, dest, length, &seg, version,
+					 "bad seq in Syn_sent");
 				goto raise;
 			}
 		}
@@ -2042,7 +2054,7 @@ reset:
 
 	/* Cannot accept so answer with a rst */
 	if(length && tcb->state == Closed) {
-		sndrst(tcp, source, dest, length, &seg, version);
+		sndrst(tcp, source, dest, length, &seg, version, "sending to Closed");
 		goto raise;
 	}
 
@@ -2077,7 +2089,8 @@ reset:
 		switch(tcb->state) {
 		case Syn_received:
 			if(!seq_within(seg.ack, tcb->snd.una+1, tcb->snd.nxt)){
-				sndrst(tcp, source, dest, length, &seg, version);
+				sndrst(tcp, source, dest, length, &seg, version,
+					"bad seq in Syn_received");
 				goto raise;
 			}
 			update(s, &seg);
@@ -2185,7 +2198,8 @@ reset:
 				/* no process to read the data, send a reset */
 				if(bp != nil)
 					freeblist(bp);
-				sndrst(tcp, source, dest, length, &seg, version);
+				sndrst(tcp, source, dest, length, &seg, version,
+					"send to Finwait2");
 				qunlock(s);
 				poperror();
 				return;
