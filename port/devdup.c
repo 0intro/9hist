@@ -118,7 +118,7 @@ dupread(Chan *c, void *va, long n, vlong offset)
 }
 
 static long
-dupwrite(Chan *c, void *va, long n, vlong)
+dupwrite(Chan *c, void*, long, vlong)
 {
 	if(c->qid.path & 1){
 		print("do ctl write\n");

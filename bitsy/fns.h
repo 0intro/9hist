@@ -28,7 +28,9 @@ char*	getconf(char*);
 ulong	getcpuid(void);
 ulong	getfar(void);
 ulong	getfsr(void);
+void*	getlink(void);
 #define	getpgcolor(a)	0
+void*	getsp(void);
 void	gpiointrenable(ulong, int, void (*)(Ureg*, void*), void*, char*);
 void	h3650uartsetup(void);
 void	icacheinvalidate(void);

@@ -74,8 +74,6 @@ extern	int	print(char*, ...);
  */
 extern	char*	cleanname(char*);
 extern	ulong	getcallerpc(void*);
-extern	void*	getsp(void);
-extern	void*	getlink(void);
 
 extern	long	strtol(char*, char**, int);
 extern	ulong	strtoul(char*, char**, int);

@@ -107,9 +107,13 @@ enum {					/* md2 */
 	TxBuff		= 0x80000000,	/* buffer error */
 };
 
+typedef struct Ctlr Ctlr;
 typedef struct Ctlr {
 	Lock;
 	int	port;
+	Pcidev*	pcidev;
+	Ctlr*	next;
+	int	active;
 
 	int	init;			/* initialisation in progress */
 	Iblock	iblock;
@@ -137,6 +141,9 @@ typedef struct Ctlr {
 	ulong	miss;
 	ulong	babl;
 } Ctlr;
+
+static Ctlr* ctlrhead;
+static Ctlr* ctlrtail;
 
 #define csr32r(c, r)	(inl((c)->port+(r)))
 #define csr32w(c, r, l)	(outl((c)->port+(r), (ulong)(l)))
@@ -419,38 +426,12 @@ intrloop:
 	goto intrloop;
 }
 
-typedef struct Adapter {
-	int	port;
-	int	irq;
-	int	tbdf;
-} Adapter;
-static Block* adapter;
-
-static int
-amd79c970adapter(Block** bpp, int port, int irq, int tbdf)
-{
-	Block *bp;
-	Adapter *ap;
-
-	bp = allocb(sizeof(Adapter));
-	if(bp == nil)
-		return -1;
-	ap = (Adapter*)bp->rp;
-	ap->port = port;
-	ap->irq = irq;
-	ap->tbdf = tbdf;
-
-	bp->next = *bpp;
-	*bpp = bp;
-
-	return 0;
-}
-
 static void
 amd79c970pci(void)
 {
-	Pcidev *p;
 	int port;
+	Ctlr *ctlr;
+	Pcidev *p;
 
 	p = nil;
 	while(p = pcimatch(p, 0x1022, 0x2000)){
@@ -459,58 +440,53 @@ amd79c970pci(void)
 			print("amd79c970: port 0x%uX in use\n", port);
 			continue;
 		}
-		if(amd79c970adapter(&adapter, port, p->intl, p->tbdf)){
-			iofree(port);
-			continue;
-		}
-		pcisetbme(p);
+		ctlr = malloc(sizeof(Ctlr));
+		ctlr->port = p->mem[0].bar & ~0x01;
+		ctlr->pcidev = p;
+
+		if(ctlrhead != nil)
+			ctlrtail->next = ctlr;
+		else
+			ctlrhead = ctlr;
+		ctlrtail = ctlr;
 	}
 }
 
 static int
 reset(Ether* ether)
 {
-	int port, x;
-	Block *bp, **bpp;
-	Adapter *ap;
+	int x;
 	uchar ea[Eaddrlen];
 	Ctlr *ctlr;
-	static int scandone;
 
-	if(scandone == 0){
+	if(ctlrhead == nil)
 		amd79c970pci();
-		scandone = 1;
-	}
 
 	/*
 	 * Any adapter matches if no port is supplied,
 	 * otherwise the ports must match.
 	 */
-	port = 0;
-	bpp = &adapter;
-	for(bp = *bpp; bp; bp = bp->next){
-		ap = (Adapter*)bp->rp;
-		if(ether->port == 0 || ether->port == ap->port){
-			port = ap->port;
-			ether->irq = ap->irq;
-			ether->tbdf = ap->tbdf;
-			*bpp = bp->next;
-			freeb(bp);
+	for(ctlr = ctlrhead; ctlr != nil; ctlr = ctlr->next){
+		if(ctlr->active)
+			continue;
+		if(ether->port == 0 || ether->port == ctlr->port){
+			ctlr->active = 1;
 			break;
 		}
-		bpp = &bp->next;
 	}
-	if(port == 0)
+	if(ctlr == nil)
 		return -1;
 
 	/*
 	 * Allocate a controller structure and start to initialise it.
 	 */
-	ether->ctlr = malloc(sizeof(Ctlr));
-	ctlr = ether->ctlr;
+	ether->ctlr = ctlr;
+	ether->port = ctlr->port;
+	ether->irq = ctlr->pcidev->intl;
+	ether->tbdf = ctlr->pcidev->tbdf;
+	pcisetbme(ctlr->pcidev);
 	ilock(ctlr);
 	ctlr->init = 1;
-	ctlr->port = port;
 
 	/*
 	 * How to tell what mode the chip is in at this point - if it's in WORD
@@ -592,7 +568,6 @@ reset(Ether* ether)
 	/*
 	 * Linkage to the generic ethernet driver.
 	 */
-	ether->port = port;
 	ether->attach = attach;
 	ether->transmit = transmit;
 	ether->interrupt = interrupt;
