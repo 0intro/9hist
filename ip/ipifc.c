@@ -579,7 +579,7 @@ ipifcrem(Ipifc *ifc, char **argv, int argc, int dolock)
 
 	/*
 	 *  find address on this interface and remove from chain.
-	 *  for pt to pt we actually specify the remote address at the
+	 *  for pt to pt we actually specify the remote address as the
 	 *  addresss to remove.
 	 */
 	l = &ifc->lifc;

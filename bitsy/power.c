@@ -9,6 +9,26 @@
 
 /* Power management for the bitsy */
 
+
+/*
+ * Very ugly. This is just to get/set the offset field without
+ * touching port/tod.c.
+ */
+#define TODFREQ	1000000000LL
+extern struct {
+	ulong	cnt;
+	Lock;
+	vlong	multiplier;	// t = off + (multiplier*ticks)>>31
+	vlong	hz;		// frequency of fast clock
+	vlong	last;		// last reading of fast clock
+	vlong	off;		// offset from epoch to last
+	vlong	lasttime;	// last return value from todget
+	vlong	delta;	// add 'delta' each slow clock tick from sstart to send
+	ulong	sstart;	// ...
+	ulong	send;	// ...
+} tod;
+
+
 /* saved state during power down. 
  * it's only used up to 164/4.
  * it's only used by routines in l.s
@@ -29,6 +49,18 @@ Intrregs savedintrregs;
 #define R(p) ((Uartregs*)((p)->regs))
 
 uchar *savedtext;
+
+static vlong
+todgetoff(void)
+{
+	return tod.off;
+}
+
+static void
+todsetoff(vlong off)
+{
+	tod.off = off;
+}
 
 static void
 checkflash(void)
@@ -166,6 +198,8 @@ deepsleep(void) {
 	static int power_pl;
 	ulong xsp, xlink;
 //	ulong mecr;
+	ulong clkd;
+	vlong savedtod;
 	extern void power_resume(void);
 
 	power_pl = splhi();
@@ -199,8 +233,10 @@ deepsleep(void) {
 			gpioregs->edgestatus = (1<<IRQgpio0);
 			intrregs->icip = (1<<IRQgpio0);
 		}
-		clockpower(1);
+		clkd = clockpower(1);
 		gpclkregs->r0 = 1<<0;
+		todsetoff( savedtod + clkd * TODFREQ);
+		resetsuspendtimer();
 		rs232power(1);
 		uartpower(1);
 		delay(100);
@@ -218,6 +254,7 @@ deepsleep(void) {
 	}
 	cacheflush();
 	delay(100);
+	savedtod = todgetoff();
 	power_down();
 	/* no return */
 }
@@ -273,6 +310,37 @@ blanktimer(void)
 	drawactive(0);
 }
 
+static ulong suspendtime = 120 * HZ;
+static int lastsuspend;
+
+void
+resetsuspendtimer(void)
+{
+	suspendtime = 60 * HZ;
+}
+
+static void
+suspendtimer(void)
+{
+	uvlong	now;
+
+	return;	// does not work well.
+
+	if (suspendtime > 0)
+		suspendtime--;
+	if (suspendtime == 0){
+		now = seconds();
+		if (now < lastsuspend + 10){
+			resetsuspendtimer();
+			return;
+		}
+		lastsuspend = seconds();
+		deepsleep();
+		lastsuspend = seconds();
+		return;
+	}
+}
+
 void
 powerinit(void)
 {
@@ -292,6 +360,7 @@ powerinit(void)
 
 	*resumeaddr = (ulong) power_resume;
 	addclock0link(blanktimer, 1000/HZ);
+	addclock0link(suspendtimer, 1000/HZ);
 	intrenable(GPIOrising, bitno(GPIO_PWR_ON_i), onoffintr, nil, "on/off");
 }
 
@@ -311,3 +380,4 @@ idlehands(void)
 		spllo();
 	}
 }
+
