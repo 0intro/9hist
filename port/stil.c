@@ -12,10 +12,9 @@
 #include 	"ipdat.h"
 
 #define DPRINT if(pip)print
-int ilcksum = 1;
-
-static int initseq = 25000;
-char *ilstate[] = { "Closed", "Syncer", "Syncee", "Established", "Listening", "Closing" };
+int 	ilcksum = 1;
+static 	int initseq = 25000;
+char	*ilstate[] = { "Closed", "Syncer", "Syncee", "Established", "Listening", "Closing" };
 
 void	ilrcvmsg(Ipconv*, Block*);
 void	ilackproc(void*);
@@ -186,7 +185,7 @@ ilrcvmsg(Ipconv *ipc, Block *bp)
 {
 	Ilhdr *ih;
 	int plen;
-	Ipconv *s, *etab;
+	Ipconv *s, *etab, *new;
 	short sp, dp;
 
 	ih = (Ilhdr *)bp;
@@ -210,13 +209,29 @@ ilrcvmsg(Ipconv *ipc, Block *bp)
 		}
 			
 	}
+
 	for(s = ipc; s < etab; s++) {
 		if(s->ilctl.state == Illistening && s->psrc == 0) {
 			/* Do the listener stuff */
-			ilprocess(s, ih, bp);
+			new = ipincoming(ipc);
+			if(new == 0) 
+				goto reset;
+			if(ih->type != Ilsync)
+				goto reset;
+
+			new->newcon = 1;
+			new->ipinterface = s->ipinterface;
+			s->ipinterface->ref++;
+			new->psrc = sp;
+			new->pdst = dp;
+			new->dst = nhgetl(ih->src);
+			ilprocess(new, ih, bp);
+
+			wakeup(&s->listenr);
 			return;
 		}
 	}
+reset:
 	ilsendctl(0, ih, Ilreset, 0);
 drop:
 	freeb(bp);
@@ -333,5 +348,4 @@ ilstart(Ipconv *ipc, int type, int window)
 		ilsendctl(ipc, 0, Ilsync, 1);
 		break;
 	}
-
 }

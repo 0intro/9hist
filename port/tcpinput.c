@@ -34,7 +34,7 @@ tcpinit(void)
 void
 tcp_input(Ipconv *ipc, Block *bp)
 {
-	Ipconv *s, *new, *etab;
+	Ipconv *s, *new;
 	Tcpctl *tcb;		
 	Tcphdr *h;
 	Tcp seg;
@@ -108,21 +108,8 @@ tcp_input(Ipconv *ipc, Block *bp)
 			goto clear;
 		}
 
-		/* Find a conversation to clone onto */
-		etab = &ipc[conf.ip];
-		for(new = ipc; new < etab; new++) {
-			if(new->ref == 0 && canqlock(new)) {
-				if(new->ref || new->tcpctl.state != CLOSED) {
-					qunlock(new);
-					continue;
-				}
-				new->ref++;
-				qunlock(new);
-				break;
-			}
-		}
-
-		if(new == etab)
+		new = ipincoming(ipc);
+		if(new == 0)
 			goto clear;
 
 		s->curlog++;
@@ -137,11 +124,11 @@ tcp_input(Ipconv *ipc, Block *bp)
 		new->tcpctl.acktimer.arg = new;
 		new->tcpctl.acktimer.state = TIMER_STOP;
 
+		new->newcon = 1;
 		new->ipinterface = s->ipinterface;
 		s->ipinterface->ref++;
-
-		/* Wake the sleeping dodo */
 		wakeup(&s->listenr);
+
 		s = new;
 	}
 	

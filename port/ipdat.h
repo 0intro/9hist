@@ -263,22 +263,19 @@ struct Ipconv
 	int 	ref;
 	Qinfo	*stproto;		/* Stream protocol for this device */
 	Ipaddr	dst;			/* Destination from connect */
-
 	Port	psrc;			/* Source port */
 	Port	pdst;			/* Destination port */
 
-	uchar	ptype;			/* Source port type */
 	Ipifc	*ipinterface;		/* Ip protocol interface */
 	Queue	*readq;			/* Pointer to upstream read q */
-
 	QLock	listenq;		/* List of people waiting incoming cons */
 	Rendez	listenr;		/* Some where to sleep while waiting */
-	Ipconv	*listen;
 		
 	char	err;			/* Async protocol error */
 	int	backlog;		/* Maximum number of waiting connections */
 	int	curlog;			/* Number of waiting connections */
-	int 	contype;
+	int 	newcon;			/* Flags that this is the start of a connection */
+
 	union {
 		Tcpctl	tcpctl;			/* Tcp control block */
 		Ilcb	ilctl;			/* Il control block */
@@ -476,6 +473,7 @@ int	seq_gt(int, int);
 void	appendb(Block **, Block *);
 Ipconv	*ip_conn(Ipconv *, Port, Port, Ipaddr dest, char proto);
 void	ipmkdir(Qinfo *, Dirtab *, Ipconv *);
+Ipconv	*ipincoming(Ipconv*);
 int	inb_window(Tcpctl *, int);
 Block	*htontcp(Tcp *, Block *, Tcphdr *);
 void	start_timer(Timer *);

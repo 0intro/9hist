@@ -555,7 +555,6 @@ ip_csum(uchar *addr)
 
 	sum = (sum & 0xffff) + (sum >> 16);
 	sum = (sum & 0xffff) + (sum >> 16);
-
 	return (sum^0xffff);
 }
 

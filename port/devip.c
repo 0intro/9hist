@@ -226,6 +226,30 @@ ipclonecon(Chan *c)
 	base = ipconv[c->dev];
 	etab = &base[conf.ip];
 	for(new = base; new < etab; new++) {
+		new = ipincoming(c->dev);
+		if(new == 0)
+			error(Enodev);
+
+		c->qid.path = CHDIR|STREAMQID(new-base, ipchanqid);
+		devwalk(c, "ctl", 0, 0, streamgen);
+
+		streamopen(c, &ipinfo);
+		pushq(c->stream, new->stproto);
+		new->ref--;
+		return new;
+	}
+
+	error(Enodev);
+}
+
+Ipconv *
+ipincoming(int dev)
+{
+	Ipconv *base, *new, *etab;
+
+	base = ipconv[dev];
+	etab = &base[conf.ip];
+	for(new = base; new < etab; new++) {
 		if(new->ref == 0 && canqlock(new)) {
 			if(new->ref ||
 		          (new->stproto == &tcpinfo && new->tcpctl.state != CLOSED) ||
@@ -234,18 +258,11 @@ ipclonecon(Chan *c)
 				continue;
 			}
 			new->ref++;
-			c->qid.path = CHDIR|STREAMQID(new-base, ipchanqid);
-			devwalk(c, "ctl", 0, 0, streamgen);
 			qunlock(new);
-
-			streamopen(c, &ipinfo);
-			pushq(c->stream, new->stproto);
-			new->ref--;
 			return new;
 		}	
 	}
-
-	error(Enodev);
+	return 0;
 }
 
 void
@@ -642,7 +659,7 @@ tcpstopen(Queue *q, Stream *s)
 }
 
 int
-tcp_havecon(Ipconv *s)
+iphavecon(Ipconv *s)
 {
 	return s->curlog;
 }
@@ -655,28 +672,25 @@ iplisten(Chan *c, Ipconv *s, Ipconv *base)
 	qlock(&s->listenq);
 
 	for(;;) {
-		sleep(&s->listenr, tcp_havecon, s);
+		sleep(&s->listenr, iphavecon, s);
 
-		/* Search for the new connection, clone the control channel and
-		 * return an open channel to the listener
-		 */
-		for(new = base, etab = &base[conf.ip]; new < etab; new++) {
-			if(new->psrc == s->psrc && new->pdst != 0 && 
-			   new->dst && (new->tcpctl.flags & CLONE) == 0) {
-				new->ref++;
-
+		new = base;
+ 		for(etab = &base[conf.ip]; new < etab; new++) {
+			if(new->newcon) {
 				/* Remove the listen channel reference */
 				streamclose(c);
 
 				s->curlog--;
+
 				/* Attach the control channel to the new connection */
+				new->newcon = 0;
 				c->qid.path = CHDIR|STREAMQID(new-base, ipchanqid);
 				devwalk(c, "ctl", 0, 0, streamgen);
 				streamopen(c, &ipinfo);
 				pushq(c->stream, new->stproto);
 				new->ref--;
-
 				qunlock(&s->listenq);
+
 				return;
 			}
 		}

@@ -487,7 +487,7 @@ bitread(Chan *c, void *va, long n, ulong offset)
 		ws = 1<<(3-gscreen.ldepth);	/* pixels per byte */
 		l = (gscreen.r.max.x+ws-1)/ws - gscreen.r.min.x/ws;
 		t = offset-5*12;
-		miny = t/l;
+		miny = t/l;	/* unsigned computation */
 		maxy = (t+n)/l;
 		if(miny >= gscreen.r.max.y)
 			return 0;
