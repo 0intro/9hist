@@ -350,6 +350,7 @@ enum{
 	Qhostdomain,
 	Qhostowner,
 	Qmsec,
+	Qnsec,
 	Qnull,
 	Qpgrpid,
 	Qpid,
@@ -378,6 +379,7 @@ static Dirtab consdir[]={
 	"hz",		{Qhz},		NUMSIZE,	0666,
 	"key",		{Qkey},		DESKEYLEN,	0622,
 	"msec",		{Qmsec},	NUMSIZE,	0444,
+	"nsec",		{Qnsec},	NUMSIZE,	0664,
 	"null",		{Qnull},	0,		0666,
 	"pgrpid",	{Qpgrpid},	NUMSIZE,	0444,
 	"pid",		{Qpid},		NUMSIZE,	0444,
@@ -393,10 +395,111 @@ static Dirtab consdir[]={
 
 ulong	boottime;		/* seconds since epoch at boot */
 
+struct
+{
+	Lock;
+	vlong	hz;		/* frequency of fast clock */
+	vlong	last;		/* last reading of fast clock */
+	vlong	off;		/* offset from epoch to last */
+	vlong	lastns;		/* last return value from gettod */
+	vlong	bias;		/* current bias */
+	vlong	delta;		/* amount to add to bias each slow clock tick */
+	int	n;		/* number of times to add in delta */
+	int	i;		/* number of times we've added in delta */
+} tod;
+
+void
+settod(vlong now, vlong delta, int n)
+{
+	ilock(&tod);
+	tod.last = fastticks(nil);
+	tod.off = now;
+	tod.delta = delta;
+	tod.n = n;
+	tod.i = 0;
+	iunlock(&tod);
+}
+
+// largest vlong devided by 10, 100, ...
+static vlong vlmax[9] = {
+	9223372036LL,
+	92233720368LL,
+	922337203685LL,
+	9223372036854LL,
+	92233720368547LL,
+	922337203685477LL,
+	9223372036854775LL,
+	92233720368547758LL,
+	922337203685477580LL,
+};
+static vlong vlmult[9] = {
+	1000000000LL,
+	100000000LL,
+	10000000LL,
+	1000000LL,
+	100000LL,
+	10000LL,
+	1000LL,
+	100LL,
+	10LL,
+};
+
+vlong
+gettod(void)
+{
+	vlong x;
+	int i;
+
+	ilock(&tod);
+	if(tod.hz == 0)
+		x = fastticks((uvlong*)&tod.hz);
+	else
+		x = fastticks(nil);
+	x -= tod.last;
+
+	/* convert to nanoseconds */
+	for(i = 0; i < 9; i++)
+		if(x < vlmax[i]){
+			x *= vlmult[i];
+			break;
+		}
+	x /= tod.hz;
+	if(i > 0)
+		x *= vlmult[9-i];
+
+	/* convert to epoch */
+	x += tod.off;
+
+	/* add in bias */
+	x += tod.bias;
+
+	if(x < tod.lastns)
+		x = tod.lastns;
+	tod.lastns = x;
+	iunlock(&tod);
+
+	return x;
+}
+
+void
+fixtod(void)
+{
+	ilock(&tod);
+	if(tod.n > tod.i)
+		tod.bias += tod.delta;
+	iunlock(&tod);
+}
+
 long
 seconds(void)
 {
-	return boottime + TK2SEC(MACHP(0)->ticks);
+	vlong x;
+	int i;
+
+	x = gettod();
+	x /= 1000000000LL;
+	i = x;
+	return i;
 }
 
 int
@@ -512,8 +615,8 @@ consread(Chan *c, void *buf, long n, vlong off)
 	char tmp[128];		/* must be >= 6*NUMSIZE */
 	char *cbuf = buf;
 	int ch, i, k, id, eol;
-	vlong offset = off;
-	uvlong ticks, fasthz;
+	vlong offset = off, x;
+	uvlong ticks;
 
 	if(n <= 0)
 		return n;
@@ -603,9 +706,6 @@ consread(Chan *c, void *buf, long n, vlong off)
 	case Qppid:
 		return readnum((ulong)offset, buf, n, up->parentpid, NUMSIZE);
 
-	case Qtime:
-		return readnum((ulong)offset, buf, n, boottime+TK2SEC(MACHP(0)->ticks), 12);
-
 	case Qclock:
 		k = offset;
 		if(k >= 2*NUMSIZE)
@@ -618,7 +718,10 @@ consread(Chan *c, void *buf, long n, vlong off)
 		return n;
 
 	case Qfastclock:
-		ticks = fastticks(&fasthz);
+		if(tod.hz == 0L)
+			ticks = fastticks((uvlong*)&tod.hz);
+		else
+			ticks = fastticks(nil);
 
 		k = offset;
 		if(k >= 4*NUMSIZE)
@@ -626,7 +729,7 @@ consread(Chan *c, void *buf, long n, vlong off)
 		if(k+n > 4*NUMSIZE)
 			n = 4*NUMSIZE - k;
 		readvlnum(0, tmp, 2*NUMSIZE, ticks, 2*NUMSIZE);
-		readvlnum(0, tmp+2*NUMSIZE, 2*NUMSIZE, fasthz, 2*NUMSIZE);
+		readvlnum(0, tmp+2*NUMSIZE, 2*NUMSIZE, tod.hz, 2*NUMSIZE);
 		memmove(buf, tmp+k, n);
 		return n;
 
@@ -654,8 +757,21 @@ consread(Chan *c, void *buf, long n, vlong off)
 	case Qnull:
 		return 0;
 
+	case Qnsec:
+		x = gettod();
+		return readvlnum((ulong)offset, buf, n, x, 2*NUMSIZE);
+
 	case Qmsec:
-		return readnum((ulong)offset, buf, n, TK2MS(MACHP(0)->ticks), NUMSIZE);
+		x = gettod();
+		x /= 1000000LL;
+		i = x;
+		return readnum((ulong)offset, buf, n, i, NUMSIZE);
+
+	case Qtime:
+		x = gettod();
+		x /= 1000000000LL;
+		i = x;
+		return readnum((ulong)offset, buf, n, i, NUMSIZE);
 
 	case Qhz:
 		return readnum((ulong)offset, buf, n, HZ, NUMSIZE);
@@ -731,6 +847,7 @@ conswrite(Chan *c, void *va, long n, vlong off)
 	int id, fd;
 	Chan *swc;
 	ulong offset = off;
+	vlong f, nsec, delta;
 
 	switch(c->qid.path){
 	case Qcons:
@@ -781,9 +898,37 @@ conswrite(Chan *c, void *va, long n, vlong off)
 			return 0;
 		if(n >= sizeof cbuf)
 			n = sizeof cbuf - 1;
-		memmove(cbuf, a, n);
-		cbuf[n-1] = 0;
-		boottime = strtoul(a, 0, 0)-TK2SEC(MACHP(0)->ticks);
+		strncpy(cbuf, a, n);
+		cbuf[n] = 0;
+		nsec = strtol(cbuf, 0, 0);
+		nsec *= 1000000000LL;
+		settod(nsec, 0, 0);
+		break;
+
+	case Qfastclock:
+		if(n<=0 || !iseve())
+			return 0;
+		if(n >= sizeof(cbuf))
+			n = sizeof(cbuf)-1;
+		strncpy(cbuf, a, n);
+		cbuf[n] = 0;
+		f = strtovl(cbuf, 0, 0);
+		if(f <= 0L)
+			error(Ebadarg);
+		tod.hz = f;
+		break;
+
+	case Qnsec:
+		if(n<=0 || !iseve())
+			return 0;
+		if(n >= sizeof cbuf)
+			n = sizeof cbuf - 1;
+		strncpy(cbuf, a, n);
+		cbuf[n] = 0;
+		nsec = strtovl(cbuf, &a, 0);
+		delta = strtovl(a, &a, 0);
+		n = strtol(a, &a, 0);
+		settod(nsec, delta, n);
 		break;
 
 	case Qkey:

@@ -96,6 +96,7 @@ int		fault(ulong, int);
 void		fdclose(int, int);
 Chan*		fdtochan(int, int, int, int);
 int		fixfault(Segment*, ulong, int, int);
+void		fixtod(void);
 void		flushmmu(void);
 void		forkchild(Proc*, Ureg*);
 void		forkret(void);
