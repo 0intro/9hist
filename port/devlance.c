@@ -112,6 +112,7 @@ typedef struct {
 	Ethertype e[Ntypes];
 	int	debug;
 	int	kstarted;
+	uchar	bcast[6];
 
 	Queue	self;	/* packets turned around at the interface */
 
@@ -307,6 +308,15 @@ lanceoput(Queue *q, Block *bp )
 		}
 		return;
 	}
+	if(memcmp(l.bcast, p->d, sizeof(l.bcast)) == 0){
+		len = blen(bp);
+		nbp = copyb(bp, len = len >= ETHERMINTU ? len : ETHERMINTU);
+		if(nbp){
+			nbp->wptr = nbp->rptr+len;
+			putq(&l.self, nbp);
+			wakeup(&l.rr);
+		}
+	}
 
 	/*
 	 *  only one transmitter at a time
@@ -387,6 +397,8 @@ lancereset(void)
 		l.net.info[0].fill = lancestatsfill;
 		l.net.info[1].name = "type";
 		l.net.info[1].fill = lancetypefill;
+
+		memset(l.bcast, 0xff, sizeof l.bcast);
 	}
 
 	/*

@@ -625,6 +625,7 @@ expandb(Block *bp, int len)
 {
 	Block *nbp, *new;
 	int i;
+	ulong delim = 0;
 
 	new = allocb(len);
 	if(new == 0){
@@ -636,7 +637,8 @@ expandb(Block *bp, int len)
 	 *  copy bytes into new block
 	 */
 	for(nbp = bp; len>0 && nbp; nbp = nbp->next){
-		i = BLEN(bp);
+		delim = nbp->flags & S_DELIM;
+		i = BLEN(nbp);
 		if(i > len) {
 			memmove(new->wptr, nbp->rptr, len);
 			new->wptr += len;
@@ -651,6 +653,7 @@ expandb(Block *bp, int len)
 		memset(new->wptr, 0, len);
 		new->wptr += len;
 	}
+	new->flags |= delim;
 	freeb(bp);
 	return new;
 

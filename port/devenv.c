@@ -268,7 +268,8 @@ envwrite(Chan *c, void *a, long n, ulong offset)
 
 	if(n <= 0)
 		return 0;
-	if(offset + n > MAXENV)
+	olen = (offset + n + ALIGN - 1) & ~(ALIGN - 1);
+	if(olen > MAXENV)
 		error(Etoobig);
 	eg = u->p->egrp;
 	qlock(&eg->ev);
@@ -338,8 +339,8 @@ evalloc(ulong n)
 	char *b, *lim;
 	ulong size;
 
-	n = (n - 1) / ALIGN;
-	size = (n + 1) * ALIGN;
+	size = (n + ALIGN - 1) & ~(ALIGN - 1);
+	n = (size - 1) / ALIGN;
 	p = &envalloc.free[n < EVFREE ? n : EVFREE];
 	for(ev = *p; ev; ev = *p){
 		if(ev->len == size){

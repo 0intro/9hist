@@ -312,10 +312,7 @@ nonetclose(Chan *c)
 {
 	Noifc *ifc;
 
-	/*
-	 *  real closing happens in noclose
-	 */
-	if(c->qid.path != CHDIR)
+	if(c->stream)
 		streamclose(c);
 
 	/*
@@ -446,7 +443,12 @@ noopen(Queue *q, Stream *s)
 	RD(q)->ptr = WR(q)->ptr = (void *)cp;
 }
 
-
+/*
+ *  wait until a hangup is received.
+ *  then send a hangup message (until one is received).
+ *
+ *	State Transitions:	* -> Cclosed
+ */
 static int
 ishungup(void *a)
 {
@@ -461,12 +463,20 @@ ishungup(void *a)
 	}
 	return 0;
 }
-/*
- *  wait until a hangup is received.
- *  then send a hangup message (until one is received).
- *
- *	State Transitions:	* -> Cclosed
- */
+static int
+isempty(void *a)
+{
+	Noconv *cp;
+
+	cp = (Noconv *)a;
+	switch(cp->state){
+	case Cconnecting:
+	case Cconnected:
+		return cp->first == cp->next;
+	default:
+		return 1;
+	}
+}
 static void
 noclose(Queue *q)
 {
@@ -476,39 +486,43 @@ noclose(Queue *q)
 
 	cp = (Noconv *)q->ptr;
 
-	if(waserror()){
-		cp->rcvcircuit = -1;
-		cp->state = Cclosed;
-		nexterror();
-	}
-
-	/*
-	 *  send hangup messages to the other side
-	 *  until it hangs up or we get tired.
-	 */
-	switch(cp->state){
-	case Cconnected:
+	if(!waserror()){
 		/*
-		 *  send close till we get one back
+		 *  wait till we have nothing to transmit
 		 */
-		nosendctl(cp, NO_HANGUP, 1);
-		for(i=0; i<10 && !ishungup(cp); i++){
-			nosendctl(cp, NO_HANGUP, 0);
-			tsleep(&cp->r, ishungup, cp, MSrexmit);
+		while(!isempty(cp))
+			tsleep(&cp->r, isempty, cp, MSrexmit);
+
+		/*
+		 *  send hangup messages to the other side
+		 *  until it hangs up or we get tired.
+		 */
+		switch(cp->state){
+		case Cconnecting:
+		case Cconnected:
+			/*
+			 *  send close till we get one back
+			 */
+			nosendctl(cp, NO_HANGUP, 1);
+			for(i=0; i<10 && !ishungup(cp); i++){
+				nosendctl(cp, NO_HANGUP, 0);
+				tsleep(&cp->r, ishungup, cp, MSrexmit);
+			}
+			break;
+		case Chungup:
+			/*
+			 *  ack any close
+			 */
+			nosendctl(cp, NO_HANGUP, 1);
+			break;
 		}
-		break;
-	case Chungup:
-		/*
-		 *  ack any close
-		 */
-		nosendctl(cp, NO_HANGUP, 1);
-		break;
+		poperror();
 	}
 
-	qlock(cp);
 	/*
 	 *  we give up, ack any unacked messages
 	 */
+	qlock(cp);
 	for(i = cp->first; i != cp->next; i = MSUCC(i))
 		norack(cp, cp->out[i].mid);
 	cp->rcvcircuit = -1;
@@ -518,8 +532,6 @@ noclose(Queue *q)
 		cp->media = 0;
 	}
 	qunlock(cp);
-
-	poperror();
 }
 
 /*
@@ -791,6 +803,7 @@ nolisten(Chan *c, Noifc *ifc)
 	char buf[2*NAMELEN+4];
 	char *user;
 	long n;
+	Block *bp;
 
 	call.msg = 0;
 
@@ -841,31 +854,38 @@ nolisten(Chan *c, Noifc *ifc)
 		 *  stuff the connect message into it
 		 */
 		f = ((Nohdr *)(call.msg->rptr))->flag;
-		DPRINT("call from %d %s\n", call.circuit, call.raddr);
 		nostartconv(cp, call.circuit, call.raddr, Cconnecting);
-		DPRINT("rcving %d byte message\n", call.msg->wptr - call.msg->rptr);
-		nonetrcvmsg(cp, call.msg);
+		bp = call.msg;
 		call.msg = 0;
-
-		/*
-		 *  if a service and remote user were specified,
-		 *  grab them
-		 */
-		if(f & NO_SERVICE){
-			DPRINT("reading service\n");
-			c->qid.path = STREAMQID(cp - ifc->conv, Sdataqid);
-			n = streamread(c, buf, sizeof(buf));
-			c->qid.path = STREAMQID(cp - ifc->conv, Sctlqid);
-			if(n <= 0)
-				error(Ebadctl);
-			buf[n] = 0;
-			user = strchr(buf, ' ');
-			if(user){
-				*user++ = 0;
-				strncpy(cp->ruser, user, NAMELEN);
-			} else
-				strcpy(cp->ruser, "none");
-			strncpy(cp->addr, buf, NAMELEN);
+		switch(nonetrcvmsg(cp, bp)){
+		case -1:
+			print("bad call message");
+			streamclose(c);
+			continue;
+		case 0:
+			if(f & NO_SERVICE){
+				streamclose(c);
+				print("bad call message");
+				continue;
+			}
+			break;
+		default:
+			if(f & NO_SERVICE){
+				c->qid.path = STREAMQID(cp - ifc->conv, Sdataqid);
+				n = streamread(c, buf, sizeof(buf));
+				c->qid.path = STREAMQID(cp - ifc->conv, Sctlqid);
+				if(n <= 0)
+					error(Ebadctl);
+				buf[n] = 0;
+				user = strchr(buf, ' ');
+				if(user){
+					*user++ = 0;
+					strncpy(cp->ruser, user, NAMELEN);
+				} else
+					strcpy(cp->ruser, "none");
+				strncpy(cp->addr, buf, NAMELEN);
+			}
+			break;
 		}
 		break;
 	}
@@ -1132,7 +1152,7 @@ nosendctl(Noconv *cp, int flag, int new)
  *
  *	State Transition:	(no NO_NEWCALL in msg) Cconnecting -> Cconnected
  */
-void
+int
 nonetrcvmsg(Noconv *cp, Block *bp)
 {
 	Block *nbp;
@@ -1161,7 +1181,7 @@ nonetrcvmsg(Noconv *cp, Block *bp)
 		DPRINT("reset received\n");
 		noreset(cp);
 		freeb(bp);
-		return;
+		return -1;
 	}
 
 	/*
@@ -1179,22 +1199,15 @@ nonetrcvmsg(Noconv *cp, Block *bp)
 		case Creset:
 			DPRINT("nonetrcvmsg %d %d\n", cp->rcvcircuit, cp - cp->ifc->conv);
 			freeb(bp);
-			return;
+			return -1;
 		case Chungup:
 		case Cconnected:
 			DPRINT("Nonet call on connected/hanging-up circ %d conv %d\n",
 				cp->rcvcircuit, cp - cp->ifc->conv); 
 			freeb(bp);
 			noreset(cp);
-			return;
+			return -1;
 		case Cconnecting:
-			if(h->mid != mp->mid){
-				DPRINT("Nonet call on connecting circ %d conv %d\n",
-					cp->rcvcircuit, cp - cp->ifc->conv); 
-				freeb(bp);
-				noreset(cp);
-				return;
-			}
 			break;
 		}
 	}
@@ -1216,7 +1229,7 @@ nonetrcvmsg(Noconv *cp, Block *bp)
 			cp->bad++;
 		}
 		freeb(bp);
-		return;
+		return -1;
 	}
 
 	if(r>=0){
@@ -1238,7 +1251,7 @@ nonetrcvmsg(Noconv *cp, Block *bp)
 			DPRINT("mp->mid==%d mp->rem==%d r==%d\n", mp->mid, mp->rem, r);
 			cp->bad++;
 			freeb(bp);
-			return;
+			return -1;
 		}
 	}
 
@@ -1268,6 +1281,7 @@ nonetrcvmsg(Noconv *cp, Block *bp)
 			noqack(cp, h->mid);
 		mp->last->flags |= S_DELIM;
 		PUTNEXT(q, mp->first);
+		r = mp->len;
 		mp->first = mp->last = 0;
 		mp->len = 0;
 		cp->rcvd++;
@@ -1289,10 +1303,13 @@ nonetrcvmsg(Noconv *cp, Block *bp)
 		if(f & NO_HANGUP){
 			DPRINT("hangup with message\n");
 			nohangup(cp);
+			return -1;
 		}
-	} else
+		return r;
+	} else {
 		mp->last->flags &= ~S_DELIM;
-
+		return 0;
+	}
 }
 
 
@@ -1453,7 +1470,7 @@ nokproc(void *arg)
 			for(cp = ifc->conv; cp < ep; cp++){
 				if(cp->state<=Copen || !canqlock(cp))
 					continue;
-				if(cp->state <= Copen){
+				if(cp->state != Cconnected && cp->state != Cconnecting){
 					qunlock(cp);
 					continue;
 				}

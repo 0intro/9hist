@@ -154,10 +154,8 @@ iloput(Queue *q, Block *bp)
 	/* Checksum of ilheader plus data (not ip & no pseudo header) */
 	if(ilcksum)
 		hnputs(ih->ilsum, ptcl_csum(bp, IL_EHSIZE, dlen+IL_HDRSIZE));
-
 	ilackq(ic, bp);
 	delay(100);
-	print("TX len = %d BLEN = %d IL %d\n", blen(bp), BLEN(bp), dlen+IL_HDRSIZE);
 	PUTNEXT(q, bp);
 }
 
@@ -214,7 +212,6 @@ ilrcvmsg(Ipconv *ipc, Block *bp)
 	char *st;
 
 	ih = (Ilhdr *)bp->rptr;
-
 	plen = blen(bp);
 	if(plen < IL_EHSIZE+IL_HDRSIZE)
 		goto drop;
@@ -228,7 +225,6 @@ ilrcvmsg(Ipconv *ipc, Block *bp)
 	dst = nhgetl(ih->src);
 
 	if(ilcksum && ptcl_csum(bp, IL_EHSIZE, illen) != 0) {
-print("len = %d BLEN = %d IL %d\n", blen(bp), BLEN(bp), illen);
 		st = (ih->iltype < 0 || ih->iltype > Ilclose) ? "?" : iltype[ih->iltype];
 		print("il: cksum error, pkt(%s id %d ack %d %d.%d.%d.%d/%d->%d)\n",
 			st, nhgetl(ih->ilid), nhgetl(ih->ilack), fmtaddr(dst), sp, dp);
@@ -237,9 +233,7 @@ print("len = %d BLEN = %d IL %d\n", blen(bp), BLEN(bp), illen);
 
 	etab = &ipc[conf.ip];
 	for(s = ipc; s < etab; s++)
-		if(s->psrc == sp)
-		if(s->pdst == dp)
-		if(s->dst == dst) {
+		if(s->psrc == sp && s->pdst == dp && s->dst == dst) {
 			ilprocess(s, ih, bp);
 			return;
 		}
@@ -315,8 +309,8 @@ _ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 			break;
 		case Ilsync:
 			if(ack != ic->start) {
-				ilhangup(s);
 				ic->state = Ilclosed;
+				ilhangup(s);
 			}
 			else {
 				ic->recvd = id;
@@ -405,7 +399,7 @@ _ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 				h->ilsum[0] = 0;
 				h->ilsum[1] = 0;
 				if(ilcksum)
-					hnputs(h->ilsum, ptcl_csum(nb, IL_EHSIZE, IL_HDRSIZE));
+					hnputs(h->ilsum, ptcl_csum(nb, IL_EHSIZE, nhgets(h->illen)));
 				PUTNEXT(Ipoutput, nb);
 			}
 			freeb(bp);
@@ -448,14 +442,14 @@ ilprocess(Ipconv *s, Ilhdr *h, Block *bp)
 	Ilcb *ic = &s->ilctl;
 
 	USED(ic);
-	DBG("%s rcv %d/%d snt %d/%d pkt(%s id %d ack %d %d->%d) ",
+	DBG("%11s rcv %d/%d snt %d/%d pkt(%s id %d ack %d %d->%d) ",
 		ilstate[ic->state],  ic->rstart, ic->recvd, ic->start, ic->next,
 		iltype[h->iltype], nhgetl(h->ilid), nhgetl(h->ilack), 
 		nhgets(h->ilsrc), nhgets(h->ildst));
 
 	_ilprocess(s, h, bp);
 
-	DBG("%s rcv %d snt %d\n", ilstate[ic->state], ic->recvd, ic->next);
+	DBG("%11s rcv %d snt %d\n", ilstate[ic->state], ic->recvd, ic->next);
 }
 
 void
@@ -578,10 +572,10 @@ ilsendctl(Ipconv *ipc, Ilhdr *inih, int type)
 	if(ilcksum)
 		hnputs(ih->ilsum, ptcl_csum(bp, IL_EHSIZE, IL_HDRSIZE));
 
-	DBG("\nctl(%s id %d ack %d %d->%d)\n",
+/*	DBG("\nctl(%s id %d ack %d %d->%d)\n",
 		iltype[ih->iltype], nhgetl(ih->ilid), nhgetl(ih->ilack), 
 		nhgets(ih->ilsrc), nhgets(ih->ildst));
-
+*/
 	PUTNEXT(Ipoutput, bp);
 }
 

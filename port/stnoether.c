@@ -220,7 +220,7 @@ noetheriput(Queue *q, Block *bp)
 	/*
 	 *  if not a new call, then its misaddressed
 	 */
-	if((nh->flag & NO_NEWCALL) == 0){
+	if((nh->flag & NO_NEWCALL) == 0 || nh->mid != 1){
 		noetherbad(ifc, bp, circuit);
 		return;
 	}
@@ -228,7 +228,6 @@ noetheriput(Queue *q, Block *bp)
 	/*
 	 *  Queue call in a circular queue and wakeup a listener.
 	 */
-	DPRINT("call in\n");
 	lock(&ifc->lock);
 	next = (ifc->wptr + 1) % Nnocalls;
 	if(next == ifc->rptr){
@@ -246,6 +245,7 @@ noetheriput(Queue *q, Block *bp)
 	ifc->wptr = next;
 	unlock(&ifc->lock);
 	wakeup(&ifc->listenr);
+	DPRINT("call from %s wptr %d\n", clp->raddr, ifc->wptr);
 }
 
 /*

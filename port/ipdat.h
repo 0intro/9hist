@@ -436,7 +436,6 @@ Fragq   *ipfragallo(void);
 void	ipfragfree(Fragq*);
 void	iproute(uchar*, uchar*);
 void	initfrag(int);
-Block	*copyb(Block*, int);
 int	ntohtcp(Tcp*, Block**);
 void	reset(Ipaddr, Ipaddr, char, ushort, Tcp*);
 void	proc_syn(Ipconv*, char, Tcp*);

@@ -616,6 +616,7 @@ iplisten(Chan *c)
 
 	for(;;) {
 		sleep(&s->listenr, iphavecon, s);
+		print("listen wakes\n");
 		poperror();
 		new = base;
  		for(etab = &base[conf.ip]; new < etab; new++) {
@@ -626,6 +627,7 @@ iplisten(Chan *c)
 				return new - base;
 			}
 		}
+		print("no newcon\n");
 	}
 }
 
@@ -713,7 +715,6 @@ ptcl_csum(Block *bp, int offset, int len)
 			break;
 		blen = BLEN(bp);
 		addr = bp->rptr;
-
 	}
 
 	losum += hisum>>8;
