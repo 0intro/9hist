@@ -112,7 +112,7 @@ decref(Ref *r)
 	x = --r->ref;
 	unlock(r);
 	if(x < 0)
-		panic("decref");
+		panic("decref, pc=0x%lux", getcallerpc(&r));
 
 	return x;
 }

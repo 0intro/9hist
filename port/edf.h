@@ -38,7 +38,7 @@ typedef enum Edfstate	Edfstate;
 struct Edf {
 	/* time intervals */
 	Ticks	D;		/* Deadline */
-	Ticks	Delta;		/* Inherited deadline */
+	Ticks	Delta;	/* Inherited deadline */
 	Ticks	T;		/* period */
 	Ticks	C;		/* Cost */
 	Ticks	S;		/* Slice: time remaining in this period */
