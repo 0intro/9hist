@@ -794,17 +794,17 @@ initscreenimage(void)
 
 	if(screendata.data != nil)
 		return 1;
+
+	screendata.base = nil;
 	screendata.data = attachscreen(&screenimage.r, &screenimage.ldepth, &width, &sdraw.softscreen);
+
 	if(screendata.data == nil)
 		return 0;
 
-	screendata.base = nil;
-	if(screendata.data != nil){
-		screendata.ref = 1;
-		screenimage.data = &screendata;
-		screenimage.width = width;
-		screenimage.clipr  = screenimage.r;
-	}
+	screendata.ref = 1;
+	screenimage.data = &screendata;
+	screenimage.width = width;
+	screenimage.clipr  = screenimage.r;
 
 	return 1;
 }
