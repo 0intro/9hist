@@ -20,7 +20,7 @@ sethvec(int v, void (*r)(void), int type)
 }
 
 void
-setvec(int v, void (*r)(void*), int type)
+setvec(int v, void (*r)(Ureg*), int type)
 {
 	ilt[v].d1 &= ~SEGTYPE;
 	ilt[v].d1 |= type;
@@ -55,11 +55,18 @@ trapinit(void)
 	sethvec(14, intr14, SEGTG);
 	sethvec(15, intr15, SEGTG);
 	sethvec(16, intr16, SEGTG);
+	sethvec(17, intr17, SEGTG);
+	sethvec(18, intr18, SEGTG);
+	sethvec(19, intr19, SEGTG);
+	sethvec(20, intr20, SEGTG);
+	sethvec(21, intr21, SEGTG);
+	sethvec(22, intr22, SEGTG);
+	sethvec(23, intr23, SEGTG);
 
 	/*
 	 *  set all others to unknown
 	 */
-	for(i = 17; i < 256; i++)
+	for(i = 24; i < 256; i++)
 		sethvec(i, intrbad, SEGIG);
 
 	/*
@@ -88,26 +95,9 @@ trapinit(void)
  */
 trap(Ureg *ur)
 {
-	print("trap %lux\n", ur->trap);
-	print(" edi %lux\n", ur->edi);
-	print(" esi %lux\n", ur->esi);
-	print(" ebp %lux\n", ur->ebp);
-	print(" esp %lux\n", ur->esp);
-	print(" ebx %lux\n", ur->ebx);
-	print(" edx %lux\n", ur->edx);
-	print(" ecx %lux\n", ur->ecx);
-	print(" eax %lux\n", ur->eax);
-	print(" ds %lux\n", ur->ds);
-	print(" trap %lux\n", ur->trap);
-	print(" ecode %lux\n", ur->ecode);
-	print(" eip %lux\n", ur->eip);
-	print(" cs %lux\n", ur->cs);
-	print(" eflags %lux\n", ur->eflags);
-	print(" oesp %lux\n", ur->oesp);
-	print(" ss %lux\n", ur->ss);
-	delay(500);
 	if(ur->trap>=256 || ivec[ur->trap] == 0)
 		panic("bad trap type %d\n", ur->trap);
 
 	(*ivec[ur->trap])(ur);
+	INT0ENABLE;
 }

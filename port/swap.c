@@ -9,7 +9,6 @@
 /* Predeclaration */
 void	pageout(Proc *p, Segment*);
 int	pagepte(int, Segment*, Page**);
-void	openswap(void);
 int	needpages(void*);
 void	pager(void*);
 void	executeio(void);
@@ -17,7 +16,7 @@ int	canflush(Proc *p, Segment*);
 
 enum
 {
-	Maxpages = 500,		/* Max number of pageouts per process pass */
+	Maxpages = 500,		/* Max number of pageouts per segment pass */
 };
 
 Image 	swapimage;
@@ -196,7 +195,7 @@ canflush(Proc *p, Segment *s)
 	unlock(s);
 
 	/* Now we must do hardwork to ensure all processes which have tlb
-	 * entries for this segment are flushed
+	 * entries for this segment will be flushed if we suceed in pageing it out
 	 */
 	p = proctab(0);
 	ep = &p[conf.nproc];

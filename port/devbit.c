@@ -6,12 +6,30 @@
 #include	"errno.h"
 
 #include	"devtab.h"
-#include	"ureg.h"
 
 #include	<libg.h>
 #include	<gnot.h>
 
 extern GFont	*defont;
+
+/*
+ * Some monochrome screens are reversed from what we like:
+ * We want 0's bright and 1s dark.
+ * Indexed by an Fcode, these compensate for the source bitmap being wrong
+ * (exchange S rows) and destination (exchange D columns and invert result)
+ */
+int flipS[] = {
+	0x0, 0x4, 0x8, 0xC, 0x1, 0x5, 0x9, 0xD,
+	0x2, 0x6, 0xA, 0xE, 0x3, 0x7, 0xB, 0xF
+};
+
+int flipD[] = {
+	0xF, 0xD, 0xE, 0xC, 0x7, 0x5, 0x6, 0x4,
+	0xB, 0x9, 0xA, 0x8, 0x3, 0x1, 0x2, 0x0, 
+};
+
+int flipping;	/* are flip tables being used to transform Fcodes? */
+int hwcursor;	/* is there a hardware cursor? */
 
 /*
  * Device (#b/bitblt) is exclusive use on open, so no locks are necessary
@@ -41,26 +59,25 @@ struct
 	int	rid;		/* read bitmap id */
 	int	rminy;		/* read miny */
 	int	rmaxy;		/* read maxy */
+	int	mid;		/* colormap read bitmap id */
 }bit;
 
 #define	FREE	0x80000000
 void	bitcompact(void);
 void	bitfree(GBitmap*);
-void	mouseupdate(int);
 extern	GBitmap	gscreen;
 
 struct{
 	/*
-	 * First three fields are known in l.s
+	 * First four fields are known in screen.c
 	 */
 	int	dx;		/* interrupt-time delta */
 	int	dy;
 	int	track;		/* update cursor on screen */
-	int	clock;		/* check mouse.track on RTE */
 	Mouse;
 	int	changed;	/* mouse structure changed since last read */
-	int	newbuttons;	/* interrupt time access only */
 	Rendez	r;
+	int	newbuttons;	/* interrupt time access only */
 }mouse;
 
 Cursor	arrow =
@@ -105,7 +122,7 @@ GBitmap	clr =
 	{0, 0, 16, 16}
 };
 
-ulong cursorbackbits[16];
+ulong cursorbackbits[16*4];
 GBitmap cursorback =
 {
 	cursorbackbits,
@@ -141,6 +158,7 @@ bitreset(void)
 {
 	int i;
 	GBitmap *bp;
+	ulong r;
 
 	bit.map = ialloc(conf.nbitmap * sizeof(GBitmap), 0);
 	for(i=0,bp=bit.map; i<conf.nbitmap; i++,bp++){
@@ -150,6 +168,9 @@ bitreset(void)
 	bp--;
 	bp->base = 0;
 	bit.map[0] = gscreen;	/* bitmap 0 is screen */
+	getcolor(0, &r, &r, &r);
+	if(r == 0)
+		flipping = 1;
 	bit.free = bit.map+1;
 	bit.lastid = -1;
 	bit.lastfid = -1;
@@ -168,9 +189,12 @@ bitinit(void)
 {
 	lock(&bit);
 	unlock(&bit);
-	if(gscreen.ldepth > 1)
-		panic("bitinit ldepth>1");
-	cursorback.ldepth = gscreen.ldepth;
+	if(gscreen.ldepth > 3)
+		cursorback.ldepth = 0;
+	else {
+		cursorback.ldepth = gscreen.ldepth;
+		cursorback.width = ((16 << gscreen.ldepth) + 31) >> 5;
+	}
 	cursoron(1);
 }
 
@@ -186,6 +210,7 @@ bitclone(Chan *c, Chan *nc)
 	nc = devclone(c, nc);
 	if(c->qid.path != CHDIR)
 		incref(&bit);
+	return nc;
 }
 
 int
@@ -215,6 +240,7 @@ bitopen(Chan *c, int omode)
 		bit.lastid = -1;
 		bit.lastfid = -1;
 		bit.rid = -1;
+		bit.mid = -1;
 		bit.init = 0;
 		bit.ref = 1;
 		Cursortocursor(&arrow);
@@ -272,7 +298,8 @@ bitclose(Chan *c)
 
 /*
  * These macros turn user-level (high bit at left) into internal (whatever)
- * bit order.  On the gnot they're trivial.
+ * bit order. So far all machines have the same (good) order; when
+ * that changes, these should switch on a variable set at init time.
  */
 #define	U2K(x)	(x)
 #define	K2U(x)	(x)
@@ -282,7 +309,7 @@ bitread(Chan *c, void *va, long n, ulong offset)
 {
 	uchar *p, *q;
 	long miny, maxy, t, x, y;
-	ulong l, nw, ws;
+	ulong l, nw, ws, rv, gv, bv;
 	int off, j;
 	Fontchar *i;
 	GBitmap *src;
@@ -387,9 +414,36 @@ bitread(Chan *c, void *va, long n, ulong offset)
 			n = 3;
 			break;
 		}
+		if(bit.mid >= 0){
+			/*
+			 * read colormap:
+			 *	data		12*(2**bitmapdepth)
+			 */
+			l = (1<<bit.map[bit.mid].ldepth);
+			nw = 1 << l;
+			if(n < 12*nw)
+				error(Ebadblt);
+			for(j = 0; j < nw; j++){
+				if(bit.mid == 0){
+					getcolor(flipping? ~j : j, &rv, &gv, &bv);
+				}else{
+					rv = j;
+					for(off = 32-l; off > 0; off -= l)
+						rv = (rv << l) | j;
+					gv = bv = rv;
+				}
+				PLONG(p, rv);
+				PLONG(p+4, gv);
+				PLONG(p+8, bv);
+				p += 12;
+			}
+			bit.mid = -1;
+			n = 12*nw;
+			break;
+		}
 		if(bit.rid >= 0){
 			/*
-			 * read
+			 * read bitmap:
 			 *	data		bytewidth*(maxy-miny)
 			 */
 			src = &bit.map[bit.rid];
@@ -420,8 +474,12 @@ bitread(Chan *c, void *va, long n, ulong offset)
 			for(y=miny; y<maxy; y++){
 				q = (uchar*)gaddr(src, Pt(src->r.min.x, y));
 				q += (src->r.min.x&((sizeof(ulong))*ws-1))/ws;
-				for(x=0; x<l; x++)
-					*p++ = K2U(*q++);
+				if(bit.rid == 0 && flipping)	/* flip bits */
+					for(x=0; x<l; x++)
+						*p++ = ~K2U(*q++);
+				else
+					for(x=0; x<l; x++)
+						*p++ = K2U(*q++);
 				n += l;
 			}
 			if(off)
@@ -473,12 +531,13 @@ long
 bitwrite(Chan *c, void *va, long n, ulong offset)
 {
 	uchar *p, *q;
-	long m, v, miny, maxy, minx, maxx, t, x, y, tw, th;
-	ulong l, nw, ws;
-	int off, isoff, i;
+	long m, v, miny, maxy, minx, maxx, t, x, y;
+	ulong l, nw, ws, rv;
+	int off, isoff, i, ok;
 	Point pt, pt1, pt2;
 	Rectangle rect;
 	Cursor curs;
+	Fcode fc;
 	Fontchar *fcp;
 	GBitmap *bp, *src, *dst;
 	GFont *f;
@@ -514,7 +573,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			if(m < 18)
 				error(Ebadblt);
 			v = *(p+1);
-			if(v!=0 && v!=1)	/* BUG */
+			if(v>3)	/* BUG */
 				error(Ebadblt);
 			ws = 1<<(5-v);	/* pixels per word */
 			if(bit.free == 0)
@@ -572,31 +631,37 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			 */
 			if(m < 31)
 				error(Ebadblt);
-			v = GSHORT(p+1);
-			dst = &bit.map[v];
-			if(v<0 || v>=conf.nbitmap || dst->ldepth < 0)
-				error(Ebadbitmap);
-			off = 0;
-			if(v == 0)
-				off = 1;
-			pt.x = GLONG(p+3);
-			pt.y = GLONG(p+7);
+			fc = GSHORT(p+29) & 0xF;
 			v = GSHORT(p+11);
 			src = &bit.map[v];
 			if(v<0 || v>=conf.nbitmap || src->ldepth < 0)
 				error(Ebadbitmap);
-			if(v == 0)
+			off = 0;
+			if(v == 0){
+				if(flipping)
+					fc = flipS[fc];
 				off = 1;
+			}
+			v = GSHORT(p+1);
+			dst = &bit.map[v];
+			if(v<0 || v>=conf.nbitmap || dst->ldepth < 0)
+				error(Ebadbitmap);
+			if(v == 0){
+				if(flipping)
+					fc = flipD[fc];
+				off = 1;
+			}
+			pt.x = GLONG(p+3);
+			pt.y = GLONG(p+7);
 			rect.min.x = GLONG(p+13);
 			rect.min.y = GLONG(p+17);
 			rect.max.x = GLONG(p+21);
 			rect.max.y = GLONG(p+25);
-			v = GSHORT(p+29);
 			if(off && !isoff){
 				cursoroff(1);
 				isoff = 1;
 			}
-			balubitblt(dst, pt, src, rect, v);
+			gbitblt(dst, pt, src, rect, fc);
 			m -= 31;
 			p += 31;
 			break;
@@ -744,21 +809,42 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			if(v<0 || v>=conf.nbitmap || dst->ldepth<0)
 				error(Ebadbitmap);
 			off = 0;
-			if(v == 0)
+			fc = GSHORT(p+20) & 0xF;
+			if(v == 0){
+				if(flipping)
+					fc = flipD[fc];
 				off = 1;
+			}
 			pt1.x = GLONG(p+3);
 			pt1.y = GLONG(p+7);
 			pt2.x = GLONG(p+11);
 			pt2.y = GLONG(p+15);
 			t = p[19];
-			v = GSHORT(p+20);
 			if(off && !isoff){
 				cursoroff(1);
 				isoff = 1;
 			}
-			gsegment(dst, pt1, pt2, t, v);
+			gsegment(dst, pt1, pt2, t, fc);
 			m -= 22;
 			p += 22;
+			break;
+
+		case 'm':
+			/*
+			 * read colormap
+			 *
+			 *	'm'		1
+			 *	id		2
+			 */
+			if(m < 3)
+				error(Ebadblt);
+			v = GSHORT(p+1);
+			dst = &bit.map[v];
+			if(v<0 || v>=conf.nbitmap || dst->ldepth<0)
+				error(Ebadbitmap);
+			bit.mid = v;
+			m -= 3;
+			p += 3;
 			break;
 
 		case 'p':
@@ -778,17 +864,20 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			if(v<0 || v>=conf.nbitmap || dst->ldepth<0)
 				error(Ebadbitmap);
 			off = 0;
-			if(v == 0)
+			fc = GSHORT(p+12) & 0xF;
+			if(v == 0){
+				if(flipping)
+					fc = flipD[fc];
 				off = 1;
+			}
 			pt1.x = GLONG(p+3);
 			pt1.y = GLONG(p+7);
 			t = p[11];
-			v = GSHORT(p+12);
 			if(off && !isoff){
 				cursoroff(1);
 				isoff = 1;
 			}
-			gpoint(dst, pt1, t, v);
+			gpoint(dst, pt1, t, fc);
 			m -= 14;
 			p += 14;
 			break;
@@ -835,15 +924,18 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			if(v<0 || v>=conf.nbitmap || dst->ldepth<0)
 				error(Ebadbitmap);
 			off = 0;
-			if(v == 0)
+			fc = GSHORT(p+13) & 0xF;
+			if(v == 0){
+				if(flipping)
+					fc = flipD[fc];
 				off = 1;
+			}
 			pt.x = GLONG(p+3);
 			pt.y = GLONG(p+7);
 			v = GSHORT(p+11);
 			f = &bit.font[v];
 			if(v<0 || v>=conf.nfont || f->bits==0 || f->bits->ldepth<0)
 				error(Ebadblt);
-			v = GSHORT(p+13);
 			p += 15;
 			m -= 15;
 			q = memchr(p, 0, m);
@@ -853,7 +945,7 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 				cursoroff(1);
 				isoff = 1;
 			}
-			gstring(dst, pt, f, (char*)p, v);
+			gstring(dst, pt, f, (char*)p, fc);
 			q++;
 			m -= q-p;
 			p = q;
@@ -875,8 +967,12 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			if(v<0 || v>=conf.nbitmap || dst->ldepth<0)
 				error(Ebadbitmap);
 			off = 0;
-			if(v == 0)
+			fc = GSHORT(p+21) & 0xF;
+			if(v == 0){
+				if(flipping)
+					fc = flipD[fc];
 				off = 1;
+			}
 			rect.min.x = GLONG(p+3);
 			rect.min.y = GLONG(p+7);
 			rect.max.x = GLONG(p+11);
@@ -885,12 +981,11 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			src = &bit.map[v];
 			if(v<0 || v>=conf.nbitmap || src->ldepth<0)
 				error(Ebadbitmap);
-			v = GSHORT(p+21);
 			if(off && !isoff){
 				cursoroff(1);
 				isoff = 1;
 			}
-			gtexture(dst, rect, src, v);
+			gtexture(dst, rect, src, fc);
 			m -= 23;
 			p += 23;
 			break;
@@ -937,8 +1032,12 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			for(y=miny; y<maxy; y++){
 				q = (uchar*)gaddr(dst, Pt(dst->r.min.x, y));
 				q += (dst->r.min.x&((sizeof(ulong))*ws-1))/ws;
-				for(x=0; x<l; x++)
-					*q++ = U2K(*p++);
+				if(v == 0 && flipping)	/* flip bits */
+					for(x=0; x<l; x++)
+						*q++ = ~U2K(*p++);
+				else
+					for(x=0; x<l; x++)
+						*q++ = U2K(*p++);
 				m -= l;
 			}
 			break;
@@ -954,13 +1053,45 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 				error(Ebadblt);
 			pt1.x = GLONG(p+1);
 			pt1.y = GLONG(p+5);
-			if(!eqpt(mouse.xy, pt1)){
+/*			if(!eqpt(mouse.xy, pt1))*/{
 				mouse.xy = pt1;
 				mouse.track = 1;
 				mouseclock();
 			}
 			m -= 9;
 			p += 9;
+			break;
+
+		case 'z':
+			/*
+			 * write the colormap
+			 *
+			 *	'z'		1
+			 *	id		2
+			 *	map		12*(2**bitmapdepth)
+			 */
+			if(m < 3)
+				error(Ebadblt);
+			v = GSHORT(p+1);
+			if(v != 0)
+				error(Ebadbitmap);
+			m -= 3;
+			p += 3;
+			nw = 1 << (1 << bit.map[v].ldepth);
+			if(m < 12*nw)
+				error(Ebadblt);
+			ok = 1;
+			for(i = 0; i < nw; i++){
+				ok &= setcolor(i, GLONG(p), GLONG(p+4), GLONG(p+8));
+				p += 12;
+				m -= 12;
+			}
+			if(!ok){
+				/* assume monochrome: possibly change flipping */
+				l = GLONG(p-12);
+				getcolor(nw-1, &rv, &rv, &rv);
+				flipping = (l != rv);
+			}
 			break;
 		}
 
@@ -1011,8 +1142,6 @@ bitcompact(void)
 		p1 += 2 + p1[0];
 	}
 	bit.wfree = p1;
-	if(p1<bit.words || p1>=bit.words+bit.nwords)
-		panic("bitcompact");
 	qunlock(&bitlock);
 }
 
@@ -1041,9 +1170,9 @@ cursoron(int dolock)
 		cursor.r = raddp(cursor.r, cursor.offset);
 		gbitblt(&cursorback, Pt(0, 0), &gscreen, cursor.r, S);
 		gbitblt(&gscreen, add(mouse.xy, cursor.offset),
-			&clr, Rect(0, 0, 16, 16), D&~S);
+			&clr, Rect(0, 0, 16, 16), flipping? flipD[D&~S] : D&~S);
 		gbitblt(&gscreen, add(mouse.xy, cursor.offset),
-			&set, Rect(0, 0, 16, 16), S|D);
+			&set, Rect(0, 0, 16, 16), flipping? flipD[S|D] : S|D);
 	}
 	if(dolock)
 		unlock(&cursor);
@@ -1061,7 +1190,16 @@ cursoroff(int dolock)
 }
 
 void
-mousebuttons(int b)	/* called spl5 */
+mousedelta(int b, int dx, int dy)	/* called at higher priority */
+{
+	mouse.dx += dx;
+	mouse.dy += dy;
+	mouse.newbuttons = b;
+	mouse.track = 1;
+}
+
+void
+mousebuttons(int b)	/* called at higher priority */
 {
 	/*
 	 * It is possible if you click very fast and get bad luck
@@ -1074,20 +1212,28 @@ mousebuttons(int b)	/* called spl5 */
 }
 
 void
-mouseclock(void)	/* called spl6 */
+mouseclock(void)	/* called splhi */
 {
-	++mouse.clock;
-}
-
-void
-mousetry(Ureg *ur)
-{
-	int s;
-
-	if(mouse.clock && mouse.track && (ur->sr&SPL(7)) == 0 && canlock(&cursor)){
-		s = spl1();
-		mouseupdate(0);
-		splx(s);
+	int x, y;
+	if(mouse.track && canlock(&cursor)){
+		x = mouse.xy.x + mouse.dx;
+		if(x < gscreen.r.min.x)
+			x = gscreen.r.min.x;
+		if(x >= gscreen.r.max.x)
+			x = gscreen.r.max.x;
+		y = mouse.xy.y + mouse.dy;
+		if(y < gscreen.r.min.y)
+			y = gscreen.r.min.y;
+		if(y >= gscreen.r.max.y)
+			y = gscreen.r.max.y;
+		cursoroff(0);
+		mouse.xy = Pt(x, y);
+		cursoron(0);
+		mouse.dx = 0;
+		mouse.dy = 0;
+		mouse.track = 0;
+		mouse.buttons = mouse.newbuttons;
+		mouse.changed = 1;
 		unlock(&cursor);
 		wakeup(&mouse.r);
 	}
@@ -1096,42 +1242,22 @@ mousetry(Ureg *ur)
 int
 mouseputc(IOQ *q, int c)
 {
-	/*
-	 *  put your favorite serial mouse code here
-	 */
-}
+	static short msg[5];
+	static int nb;
+	static uchar b[] = {0, 4, 2, 6, 1, 5, 3, 7};
 
-void
-mouseupdate(int dolock)
-{
-	int x, y;
-
-	if(dolock && !canlock(&cursor))
-		return;
-
-	x = mouse.xy.x + mouse.dx;
-	if(x < gscreen.r.min.x)
-		x = gscreen.r.min.x;
-	if(x >= gscreen.r.max.x)
-		x = gscreen.r.max.x;
-	y = mouse.xy.y + mouse.dy;
-	if(y < gscreen.r.min.y)
-		y = gscreen.r.min.y;
-	if(y >= gscreen.r.max.y)
-		y = gscreen.r.max.y;
-	cursoroff(0);
-	mouse.xy = Pt(x, y);
-	cursoron(0);
-	mouse.dx = 0;
-	mouse.dy = 0;
-	mouse.clock = 0;
-	mouse.track = 0;
-	mouse.buttons = mouse.newbuttons;
-	mouse.changed = 1;
-
-	if(dolock){
-		unlock(&cursor);
-		wakeup(&mouse.r);
+	if((c&0xF0) == 0x80)
+		nb=0;
+	msg[nb] = c;
+	if(c & 0x80)
+		msg[nb] |= 0xFF00;	/* sign extend */
+	if(++nb == 5){
+		mouse.newbuttons = b[(msg[0]&7)^7];
+		mouse.dx = msg[1]+msg[3];
+		mouse.dy = -(msg[2]+msg[4]);
+		mouse.track = 1;
+		mouseclock();
+		nb = 0;
 	}
 }
 

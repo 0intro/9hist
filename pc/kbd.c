@@ -1,9 +1,9 @@
 #include	"u.h"
 #include	"lib.h"
+#include	"mem.h"
 #include	"dat.h"
 #include	"fns.h"
 #include	"io.h"
-#include	"mem.h"
 
 enum {
 	Data=		0x60,	/* data port */
@@ -241,28 +241,11 @@ kbdinit(void)
 	setvec(Kbdvec, kbdintr, SEGIG);
 }
 
-/*
- *  get a byte from the keyboard
- */
-int
-kbdc(void)
-{
-	int c;
-
-	for(;;){
-		while((inb(Status)&Inready)==0)
-			;
-		kbdintr(&c);
-		c = getc(&kbdq);
-		if(c != -1)
-			return c;
-	}
-}
-
 int
 kbdputc(IOQ* q, int c)
 {
-	screenputc(c);
+	if(c==0x10)
+		panic("^p");
 	putc(q, c);
 }
 
@@ -270,7 +253,7 @@ kbdputc(IOQ* q, int c)
  *  keyboard interrupt
  */
 void
-kbdintr(void *a)
+kbdintr(Ureg *ur)
 {
 	int c, nc;
 	static int esc1, esc2;
@@ -291,7 +274,7 @@ kbdintr(void *a)
 	if(c > sizeof kbtab){
 		print("unknown key %ux\n", c|keyup);
 		kbdputc(&kbdq, k1);
-		goto out;
+		return;
 	}
 
 	/*
@@ -299,10 +282,10 @@ kbdintr(void *a)
 	 */
 	if(c == 0xe0){
 		esc1 = 1;
-		goto out;
+		return;
 	} else if(c == 0xe1){
 		esc2 = 2;
-		goto out;
+		return;
 	}
 
 	if(esc1){
@@ -310,7 +293,7 @@ kbdintr(void *a)
 		esc1 = 0;
 	} else if(esc2){
 		esc2--;
-		goto out;
+		return;
 	} else if(shift)
 		c = kbtabshift[c];
 	else
@@ -331,7 +314,7 @@ kbdintr(void *a)
 			ctl = 0;
 			break;
 		}
-		goto out;
+		return;
 	}
 
 	/*
@@ -361,23 +344,21 @@ kbdintr(void *a)
 		switch(c){
 		case Caps:
 			caps ^= 1;
-			goto out;
+			return;
 		case Num:
 			num ^= 1;
-			goto out;
+			return;
 		case Shift:
 			shift = 1;
-			goto out;
+			return;
 		case Latin:
 			lstate = 1;
-			goto out;
+			return;
 		case Ctrl:
 			ctl = 1;
-			goto out;
+			return;
 		}
 	}
 	kbdputc(&kbdq, c);
-out:
-	INT0ENABLE;			/* reenable interrupt */
 	return;
 }

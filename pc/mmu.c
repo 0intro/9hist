@@ -49,11 +49,13 @@ struct Tss
 #define	DATASEG(p) 	{ 0xFFFF, SEGG|SEGB|(0xF<<16)|SEGP|SEGPL(p)|SEGDATA|SEGW }
 #define	EXECSEG(p) 	{ 0xFFFF, SEGG|SEGD|(0xF<<16)|SEGP|SEGPL(p)|SEGEXEC|SEGR }
 #define CALLGATE(s,o,p)	{ (o)&0xFFFF|((s)<<16), (o)&0xFFFF0000|SEGP|SEGPL(p)|SEGCG }
+#define	D16SEG(p) 	{ 0xFFFF, (0x0<<16)|SEGP|SEGPL(p)|SEGDATA|SEGW }
+#define	E16SEG(p) 	{ 0xFFFF, (0x0<<16)|SEGP|SEGPL(p)|SEGEXEC|SEGR }
 
 /*
  *  global descriptor table describing all segments
  */
-Segdesc gdt[6] =
+Segdesc gdt[] =
 {
 [NULLSEG]	{ 0, 0},		/* null descriptor */
 [KDSEG]		DATASEG(0),		/* kernel data/stack */
@@ -61,6 +63,8 @@ Segdesc gdt[6] =
 [UDSEG]		DATASEG(3),		/* user data/stack */
 [UESEG]		EXECSEG(3),		/* user code */
 [SYSGATE]	CALLGATE(KESEL,0,3),	/* call gate for system calls */
+[RDSEG]		D16SEG(0),		/* reboot data/stack */
+[RESEG]		E16SEG(0),		/* reboot code */
 };
 
 void

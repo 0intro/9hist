@@ -101,6 +101,7 @@ struct Conf
 	int	npipe;		/* number of pipes */
 	int	nservice;	/* number of services */
 	int	nfsyschan;	/* number of filsys open channels */
+	int	nlapd;		/* number of dragnet protocol modules */
 	ulong	maxialloc;	/* maximum bytes used by ialloc */
 	int	copymode;	/* 0 is copy on write, 1 is copy on reference */
 	int	portispaged;	/* ??? */

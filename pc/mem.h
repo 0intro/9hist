@@ -5,7 +5,6 @@
 /*
  * Sizes
  */
-
 #define	BI2BY		8			/* bits per byte */
 #define BI2WD		32			/* bits per word */
 #define	BY2WD		4			/* bytes per word */
@@ -20,7 +19,6 @@
  * Time
  * Clock frequency is ??? HZ
  */
-
 #define	HZ		(18)			/* clock frequency */
 #define	MS2HZ		(54)			/* millisec per clock tick */
 #define	TK2SEC(t)	((t)*10/185)		/* ticks to seconds */
@@ -30,7 +28,6 @@
 /*
  * Fundamental addresses
  */
-
 #define	USERADDR	0xC0000000
 #define	UREGADDR	(USERADDR+BY2PG-4*16)
 
@@ -40,7 +37,6 @@
  * User is at 0-2GB
  * Kernel is at 2GB-4GB
  */
-
 #define	UZERO	0			/* base of user address space */
 #define	UTZERO	(UZERO+BY2PG)		/* first address in user text */
 #define	TSTKTOP	USERADDR		/* end of new stack in sysexec */
@@ -55,15 +51,16 @@
 #define isphys(x) ((x)&KZERO)
 
 /*
- *  known segments (in GDT) and their selectors
+ *  known 80386 segments (in GDT) and their selectors
  */
-
 #define	NULLSEG	0	/* null segment */
 #define	KDSEG	1	/* kernel data/stack */
 #define	KESEG	2	/* kernel executable */	
 #define	UDSEG	3	/* user data/stack */
 #define	UESEG	4	/* user executable */
 #define	SYSGATE	5	/* system call gate */
+#define	RDSEG	6	/* reboot data/stack */
+#define	RESEG	7	/* reboot executable */	
 
 #define SELGDT	(0<<3)	/* selector is in gdt */
 #define	SELLDT	(1<<3)	/* selector is in ldt */
@@ -77,6 +74,8 @@
 #define UESEL	SELECTOR(UESEG, SELGDT, 3)
 #define UDSEL	SELECTOR(UDSEG, SELGDT, 3)
 #define USSEL	SELECTOR(UDSEG, SELGDT, 3)
+#define RDSEL	SELECTOR(RDSEG, SELGDT, 0)
+#define RESEL	SELECTOR(RESEG, SELGDT, 0)
 
 /*
  *  fields in segment descriptors
@@ -96,3 +95,10 @@
 #define SEGW	(1<<9)		/* writable (for data/stack) */
 #define	SEGR	(1<<9)		/* readable (for code) */
 #define SEGD	(1<<22)		/* default 1==32bit (for code) */
+
+/*
+ *  virtual MMU entries
+ */
+#define PTEMAPMEM	(1024*1024)	/* ??? */	
+#define SEGMAPSIZE	16		/* ??? */
+#define	PTEPERTAB	(PTEMAPMEM/BY2PG)	/* ??? */

@@ -150,7 +150,7 @@ wrenattach(char *param)
 	d = &wren[dev];
 	d->blocksize = BGLONG(&buf[4]);
 
-	plen = BGLONG(&buf[0]);
+	plen = BGLONG(&buf[0])+1;
 	d->p[Npart].firstblock = 0;
 	d->p[Npart].maxblock = plen;
 	plen = plen/Npart;

@@ -129,6 +129,7 @@ sysexec(ulong *arg)
 	}
 	if(!indir)
 		strcpy(elem, u->elem);
+
 	n = (*devtab[tc->type].read)(tc, &exec, sizeof(Exec), 0);
 	if(n < 2)
     Err:
@@ -257,6 +258,7 @@ sysexec(ulong *arg)
 	img = attachimage(SG_TEXT|SG_RONLY, tc, UTZERO, (t-UTZERO)>>PGSHIFT);
 	ts = img->s;
 	p->seg[TSEG] = ts;
+	ts->flushme = 1;
 	ts->fstart = 0;
 	ts->flen = sizeof(Exec)+exec.text;
 
@@ -270,11 +272,8 @@ sysexec(ulong *arg)
 	s->fstart = ts->fstart+ts->flen;
 	s->flen = exec.data;
 
-
 	/* BSS. Zero fill on demand */
 	p->seg[BSEG] = newseg(SG_BSS, d, (b-d)>>PGSHIFT);
-
-	close(tc);
 
 	/*
 	 * Move the stack
@@ -286,6 +285,7 @@ sysexec(ulong *arg)
 	relocateseg(s, TSTKTOP-USTKTOP);
 	p->seg[ESEG] = 0;
 
+	close(tc);
 	poperror();
 
 	/*
@@ -525,12 +525,12 @@ syssegfree(ulong *arg)
 	Segment *s;
 	ulong from, len;
 
-	s = seg(u->p, arg[0], 1);
+	from = PGROUND(arg[0]);
+	s = seg(u->p, from, 1);
 	if(s == 0)
 		errors("not in address space");
 
-	from = PGROUND(arg[1]);
-	len = arg[2];
+	len = arg[1];
 
 	if(from+len > s->top) {
 		qunlock(&s->lk);

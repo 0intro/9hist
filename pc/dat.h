@@ -126,7 +126,6 @@ typedef void		KMap;
 
 #define	NERR	15
 #define	NNOTE	5
-#define	NFD	100
 struct User
 {
 	Proc	*p;
@@ -137,8 +136,6 @@ struct User
 	char	elem[NAMELEN];		/* last name element from namec */
 	Chan	*slash;
 	Chan	*dot;
-	Chan	*fd[NFD];
-	int	maxfd;			/* highest fd in use */
 	/*
 	 * Rest of structure controlled by devproc.c and friends.
 	 * lock(&p->debug) to modify.

@@ -348,6 +348,7 @@ struct Segment
 	ulong	size;			/* size in pages */
 	ulong	fstart;			/* start address in file for demand load */
 	ulong	flen;			/* length of segment in file */
+	int	flushme;		/* maintain consistent icache for this segment */
 	Image	*image;			/* image in file system attached to this segment */
 	Page	*(*pgalloc)(ulong addr);/* SG_PHYSICAL page allocator */
 	void	(*pgfree)(Page *);	/* SG_PHYSICAL page free */

@@ -10,7 +10,7 @@ enum
 
 	Intena=		0x20,		/* written to Intctlport, enables next int */
 
-	Int0vec=	17,		/* first interrupt vector used by the 8259 */
+	Int0vec=	16,		/* first interrupt vector used by the 8259 */
 	Clockvec=	Int0vec+0,	/* clock interrupts */
 	Kbdvec=		Int0vec+1,	/* keyboard interrupts */
 };

@@ -80,7 +80,7 @@ flush:
 	MOVW	AX,SS
 	MOVW	AX,ES
 
-/*	JMPFAR*	SELECTOR(2, SELGDT, 0):$protected(SB) /**/
+/*	JMPFAR	SELECTOR(2, SELGDT, 0):$mode32bit(SB) /**/
 	 BYTE	$0xEA
 	 WORD	$mode32bit(SB)
 	 WORD	$SELECTOR(2, SELGDT, 0)
@@ -261,6 +261,34 @@ TEXT	intr16(SB),$0
 	PUSHL	$0
 	PUSHL	$16
 	JMP	intrcommon
+TEXT	intr17(SB),$0
+	PUSHL	$0
+	PUSHL	$17
+	JMP	intrcommon
+TEXT	intr18(SB),$0
+	PUSHL	$0
+	PUSHL	$18
+	JMP	intrcommon
+TEXT	intr19(SB),$0
+	PUSHL	$0
+	PUSHL	$19
+	JMP	intrcommon
+TEXT	intr20(SB),$0
+	PUSHL	$0
+	PUSHL	$20
+	JMP	intrcommon
+TEXT	intr21(SB),$0
+	PUSHL	$0
+	PUSHL	$21
+	JMP	intrcommon
+TEXT	intr22(SB),$0
+	PUSHL	$0
+	PUSHL	$22
+	JMP	intrcommon
+TEXT	intr23(SB),$0
+	PUSHL	$0
+	PUSHL	$23
+	JMP	intrcommon
 TEXT	intrbad(SB),$0
 	PUSHL	$0
 	PUSHL	$0x1ff
@@ -311,3 +339,9 @@ TEXT	splhi(SB),$0
  */
 TEXT	splx(SB),$0
 	RET
+
+/*
+ *	
+ */
+TEXT	idle(SB),$0
+	HLT

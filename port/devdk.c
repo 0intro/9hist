@@ -767,7 +767,7 @@ dkstat(Chan *c, char *dp)
 /*
  *  opening a dk device allocates a Line.  Opening the `clone'
  *  device is a ``macro'' for finding a free Line and opening
- *  it's ctl file.
+ *  its ctl file.
  *
  *  opening the `listen' sub device is a macro for listening for
  *  a new call.  Lile `clone' the ctl file of the new channel is
@@ -1473,7 +1473,8 @@ dkcsckproc(void *a)
 			break;
 		
 		default:
-			DPRINT("unrecognized csc message %o(%o)\n", d.type, line);
+			print("unrecognized csc message %o.%o(%o)\n",
+				d.type, d.srv, line);
 			break;
 		}
 	}

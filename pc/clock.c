@@ -4,6 +4,7 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"io.h"
+#include	"ureg.h"
 
 /*
  *  8253 timer
@@ -24,10 +25,20 @@ clockinit(void)
 }
 
 void
-clock(void *arg)
+clock(Ureg *ur)
 {
+	Proc *p;
+
 	m->ticks++;
-	if((m->ticks%185)==0)
-		print("%d secs\n", TK2SEC(m->ticks));
-	INT0ENABLE;
+	p = m->proc;
+	if(p){
+		p->pc = ur->eip;
+		if (p->state==Running)
+			p->time[p->insyscall]++;
+	}
+
+	if((m->ticks%185) == 92)
+		floppystart();
+	else if((m->ticks%185) == 0)
+		floppystop();
 }

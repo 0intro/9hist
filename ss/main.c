@@ -34,7 +34,8 @@ main(void)
 	cacheinit();
 	intrinit();
 	procinit0();
-	pgrpinit();
+	initseg();
+	grpinit();
 	chaninit();
 	alarminit();
 	chandevreset();
@@ -109,6 +110,7 @@ init0(void)
 	u->slash = (*devtab[0].attach)(0);
 	u->dot = clone(u->slash, 0);
 
+	kickpager();
 	touser(USTKTOP-5*BY2WD);
 }
 
@@ -118,12 +120,15 @@ void
 userinit(void)
 {
 	Proc *p;
-	Seg *s;
+	Segment *s;
 	User *up;
 	KMap *k;
 
 	p = newproc();
 	p->pgrp = newpgrp();
+	p->egrp = newegrp();
+	p->fgrp = newfgrp();
+
 	strcpy(p->text, "*init*");
 	savefpregs(&initfp);
 	p->fpstate = FPinit;
@@ -146,25 +151,18 @@ userinit(void)
 	/*
 	 * User Stack
 	 */
-	s = &p->seg[SSEG];
-	s->proc = p;
-	s->o = neworig(USTKTOP-BY2PG, 1, OWRPERM, 0);
-	s->minva = USTKTOP-BY2PG;
-	s->maxva = USTKTOP;
+	s = newseg(SG_STACK, USTKTOP-BY2PG, 1);
+	p->seg[SSEG] = s;
 
 	/*
 	 * Text
 	 */
-	s = &p->seg[TSEG];
-	s->proc = p;
-	s->o = neworig(UTZERO, 1, 0, 0);
-	s->o->pte[0].page = newpage(0, 0, UTZERO);
-	s->o->npage = 1;
-	k = kmap(s->o->pte[0].page);
+	s = newseg(SG_TEXT, UTZERO, 1);
+	p->seg[TSEG] = s;
+	segpage(s, newpage(1, 0, UTZERO));
+	k = kmap(s->map[0]->pages[0]);
 	memmove((ulong*)VA(k), initcode, sizeof initcode);
 	kunmap(k);
-	s->minva = UTZERO;
-	s->maxva = UTZERO+BY2PG;
 
 	ready(p);
 }
@@ -271,10 +269,11 @@ confinit(void)
 		mul = 2;
 	conf.nproc = 50*mul;
 	conf.npgrp = 12*mul;
-	conf.npte = 1400*mul;
-	conf.nmod = 800*mul;
+	conf.nseg = conf.nproc*4;
+	conf.npagetab = conf.nseg*2;
+	conf.nswap = 4096;
+	conf.nimage = 50;
 	conf.nalarm = 1000;
-	conf.norig = 150*mul;
 	conf.nchan = 200*mul;
 	conf.nenv = 100*mul;
 	conf.nenvchar = 8000*mul;

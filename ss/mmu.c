@@ -22,6 +22,8 @@ struct
 
 int	newpid(Proc*);
 void	purgepid(int);
+void	flushcontext(void);
+
 int	pidtime[NTLBPID];	/* should be per m */
 
 /*
@@ -32,6 +34,16 @@ mapstack(Proc *p)
 {
 	short tp;
 	ulong tlbphys;
+
+	if(p->newtlb) {
+		flushcontext();
+		tp = u->p->pidonmach[m->machno];
+		if(tp)
+			pidtime[tp] = 0;
+		/* easiest is to forget what pid we had.... */
+		memset(u->p->pidonmach, 0, sizeof u->p->pidonmach);
+		p->newtlb = 0;
+	}
 
 	tp = p->pidonmach[m->machno];
 	if(tp == 0){
@@ -194,7 +206,7 @@ mmuinit(void)
 }
 
 void
-putmmu(ulong tlbvirt, ulong tlbphys)
+putmmu(ulong tlbvirt, ulong tlbphys, Page *pg)
 {
 	short tp;
 	Proc *p;

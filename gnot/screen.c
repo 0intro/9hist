@@ -83,3 +83,53 @@ screenputs(char *s, int n)
 	while(n-- > 0)
 		screenputc(*s++);
 }
+
+int
+screenbits(void)
+{
+	if(*(uchar*)MOUSE & (1<<4))
+		return 2;
+	else
+		return 1;
+}
+
+void
+getcolor(ulong p, ulong *pr, ulong *pg, ulong *pb)
+{
+	ulong ans;
+
+	/*
+	 * The gnot says 0 is white (max intensity)
+	 */
+	if(gscreen.ldepth == 0){
+		if(p == 0)
+				ans = ~0;
+		else
+				ans = 0;
+	}else{
+		switch(p){
+		case 0:		ans = ~0;		break;
+		case 1:		ans = 0xAAAAAAAA;	break;
+		case 2:		ans = 0x55555555;	break;
+		default:	ans = 0;		break;
+	}
+	*pr = *pg = *pb = ans;
+}
+
+int
+setcolor(ulong p, ulong r, ulong g, ulong b)
+{
+	return 0;	/* can't change mono screen colormap */
+}
+
+int
+hwcursset(uchar *s, uchar *c, int ox, int oy)
+{
+	return 0;
+}
+
+int
+hwcursmove(int x, int y)
+{
+	return 0;
+}

@@ -124,7 +124,7 @@ sysdup(ulong *arg)
 		unlock(f);
 		if(oc)
 			close(oc);
-	}else {
+	}else{
 		if(waserror()) {
 			close(c);
 			nexterror();
@@ -144,7 +144,7 @@ sysopen(ulong *arg)
 	Chan *c = 0;
 
 	openmode(arg[1]);	/* error check only */
-	if(waserror()) {
+	if(waserror()){
 		if(c)
 			close(c);
 		nexterror();

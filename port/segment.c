@@ -11,6 +11,7 @@
 Page *lkpage(ulong addr);
 Page *snewpage(ulong addr);
 void lkpgfree(Page*);
+void imagereclaim(void);
 
 /* System specific segattach devices */
 #include "segment.h"
@@ -29,6 +30,8 @@ struct segalloc
 	Lock;
 	Segment *free;
 }segalloc;
+
+static QLock ireclaim;
 
 void
 initseg(void)
@@ -75,6 +78,7 @@ newseg(int type, ulong base, ulong size)
 			s->flen = 0;
 			s->pgalloc = 0;
 			s->pgfree = 0;
+			s->flushme = 0;
 			memset(s->map, 0, sizeof(s->map));
 
 			return s;
@@ -135,13 +139,20 @@ dupseg(Segment *s)
 	int i;
 
 	switch(s->type&SG_TYPE) {
-	case SG_TEXT:		/* new segment shares pte set */
+	case SG_TEXT:			/* New segment shares pte set */
 	case SG_SHARED:
 	case SG_PHYSICAL:
 		incref(s);
 		return s;
-	case SG_DATA:		/* copy on write both old and new plus demand load info */
-		lock(s);
+
+	case SG_BSS:			/* Just copy on write */
+	case SG_STACK:
+		qlock(&s->lk);
+		n = newseg(s->type, s->base, s->size);
+		goto copypte;
+
+	case SG_DATA:			/* Copy on write plus demand load info */
+		qlock(&s->lk);
 		n = newseg(s->type, s->base, s->size);
 
 		incref(s->image);
@@ -152,13 +163,10 @@ dupseg(Segment *s)
 		for(i = 0; i < SEGMAPSIZE; i++)
 			if(pte = s->map[i])
 				n->map[i] = ptecpy(pte);
-		unlock(s);
+
+		n->flushme = s->flushme;
+		qunlock(&s->lk);
 		return n;	
-	case SG_BSS:		/* Just copy on write */
-	case SG_STACK:
-		lock(s);
-		n = newseg(s->type, s->base, s->size);
-		goto copypte;
 	}
 
 	panic("dupseg");
@@ -188,6 +196,7 @@ attachimage(int type, Chan *c, ulong base, ulong len)
 
 	lock(&imagealloc);
 
+	/* Search the image cache for remains of the text from a previous incarnation */
 	for(i = ihash(c->qid.path); i; i = i->hash) {
 		if(c->qid.path == i->qid.path) {
 			lock(i);
@@ -204,6 +213,7 @@ attachimage(int type, Chan *c, ulong base, ulong len)
 	
 	while(!(i = imagealloc.free)) {
 		unlock(&imagealloc);
+		imagereclaim();
 		resrcwait("no images");
 		lock(&imagealloc);
 	}
@@ -233,6 +243,32 @@ found:
 
 	unlock(i);
 	return i;
+}
+
+void
+imagereclaim(void)
+{
+	Page *p;
+
+	if(!canqlock(&ireclaim))	/* Somebody is already cleaning the page cache */
+		return;
+
+	lock(&palloc);
+	for(p = palloc.head; p; p = p->next) {
+		if(p->image == 0)
+			continue;
+
+		unlock(&palloc);
+		lockpage(p);
+		if(p->ref == 0 && p->image != &swapimage)
+			uncachepage(p);
+		unlockpage(p);
+		lock(&palloc);
+	}
+
+	unlock(&palloc);
+
+	qunlock(&ireclaim);
 }
 
 void
@@ -271,7 +307,7 @@ putimage(Image *i)
 }
 
 long
-ibrk(ulong addr, int seg)		/* Called with a locked segment */
+ibrk(ulong addr, int seg)
 {
 	Segment *s, *ns;
 	ulong newtop, newsize;
@@ -427,6 +463,8 @@ syssegflush(ulong *arg)
 	s = seg(u->p, arg[0], 1);
 	if(s == 0)
 		errors("bad segment address");
+
+	s->flushme = 1;
 
 	soff = arg[0]-s->base;
 	j = (soff&(PTEMAPMEM-1))/BY2PG;

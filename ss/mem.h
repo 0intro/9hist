@@ -93,6 +93,9 @@
 #define	PTEACCESS	(1<<25)
 #define	PTEMODIFY	(1<<24)
 #define PTEUNCACHED	0
+#define PTEMAPMEM	(1024*1024)	
+#define	PTEPERTAB	(PTEMAPMEM/BY2PG)
+#define SEGMAPSIZE	16
 
 #define	INVALIDPTE	0
 #define	PPN(pa)		((pa>>12)&0xFFFF)
