@@ -17,6 +17,7 @@
 
 #define RD(rn)		(delay(1), *(ulong*)((ulong)&SONICADDR->rn^4))
 #define WR(rn, v)	(delay(1), *(ulong*)((ulong)&SONICADDR->rn^4) = v)
+#define ISquad(s)	if((ulong)s & 0x7) panic("sonoc: Quad alignment");
 
 typedef struct
 {
@@ -177,13 +178,14 @@ enum{
 	Interface	= -1,	/* descriptor belongs to interface */
 
 	Nether		= 1,
-	Ntypes=		8,
+	Ntypes		= 8,
 };
 
 /*
  * CAM Descriptor
  */
-typedef struct {
+typedef struct
+{
 	uchar	pad0[2];
 	ushort	cep;		/* CAM entry pointer */
 	uchar	pad1[2];
@@ -234,7 +236,6 @@ reset(Ether *ctlr)
 {
 	int i;
 
-iprint("reset sonic dcr=#%lux mydcr=#%lux\n", RD(dcr), Sterm|Dw32|Lbr|Efm|W14tf);
 	/*
 	 * Reset the SONIC, toggle the Rst bit.
 	 * Set the data config register for synchronous termination
@@ -242,7 +243,8 @@ iprint("reset sonic dcr=#%lux mydcr=#%lux\n", RD(dcr), Sterm|Dw32|Lbr|Efm|W14tf)
 	 * Clear the descriptor and buffer area.
 	 */
 	WR(cr, Rst);
-	WR(dcr, Sterm|Dw32|Lbr|Efm|W14tf);
+	WR(dcr, 0x2423);	/* 5-19 Carrera manual */
+iprint("eobc #%lux\n", RD(eobc));
 	WR(cr, 0);
 
 	/*
@@ -255,7 +257,7 @@ iprint("reset sonic dcr=#%lux mydcr=#%lux\n", RD(dcr), Sterm|Dw32|Lbr|Efm|W14tf)
 	 * thus the size of the receive buffers must be sizeof(Etherpkt)+4.
 	 * Set up the receive descriptors as a ring.
 	 */
-	for(i = 0; i < Nrb; i++){
+	for(i = 0; i < Nrb; i++) {
 		ctlr->rra[i].wc0 = (sizeof(ctlr->rb[0])/2) & 0xFFFF;
 		ctlr->rra[i].wc1 = ((sizeof(ctlr->rb[0])/2)>>16) & 0xFFFF;
 
@@ -266,6 +268,10 @@ iprint("reset sonic dcr=#%lux mydcr=#%lux\n", RD(dcr), Sterm|Dw32|Lbr|Efm|W14tf)
 		ctlr->rra[i].ptr1 = ctlr->rda[i].ptr1 = MS16(ctlr->rb[i]);
 	}
 
+	ISquad(ctlr->rra);
+	ISquad(ctlr->rda);
+	ISquad(ctlr->rb);
+
 	/*
 	 * Terminate the receive descriptor ring
 	 * and load the SONIC registers to describe the RDA.
@@ -275,6 +281,7 @@ iprint("reset sonic dcr=#%lux mydcr=#%lux\n", RD(dcr), Sterm|Dw32|Lbr|Efm|W14tf)
 	WR(crda, LS16(ctlr->rda));
 	WR(urda, MS16(ctlr->rda));
 	WR(eobc, sizeof(ctlr->rb[0])/2 - 2);
+iprint("eobc #%lux\n", RD(eobc));
 
 	/*
 	 * Load the SONIC registers to describe the RRA.
@@ -291,11 +298,9 @@ iprint("reset sonic dcr=#%lux mydcr=#%lux\n", RD(dcr), Sterm|Dw32|Lbr|Efm|W14tf)
 	WR(rea, LS16(&ctlr->rra[Nrb]));
 	WR(rwp, LS16(&ctlr->rra[Nrb+1]));
 
-iprint("wait rra\n");
 	WR(cr, Rrra);
 	while(RD(cr) & Rrra)
 		;
-iprint("rra done\n");
 
 	/*
 	 * Initialise the transmit descriptor area (TDA).
@@ -358,7 +363,25 @@ iprint("rra done\n");
 	WR(rcr, Err|Rnt|Brd);
 	WR(tcr, 0);
 	WR(imr, AllIntr);
-iprint("reset done\n");
+}
+
+void
+pxp(RXpkt *rxpkt)
+{
+	print("%lux %lux\n", rxpkt->pad0[0], rxpkt->pad0[1]);
+	print("status %lux\n", rxpkt->status);		/* receive status */
+	print("%lux %lux\n", rxpkt->pad1[0], rxpkt->pad1[1]);
+	print("count %lux\n", rxpkt->count);		/* packet byte count */
+	print("%lux %lux\n", rxpkt->pad2[0], rxpkt->pad2[1]);
+	print("ptr0 %lux\n", rxpkt->ptr0);		/* buffer pointer */
+	print("%lux %lux\n", rxpkt->pad3[0], rxpkt->pad3[1]);
+	print("ptr1 %lux\n", rxpkt->ptr1);
+	print("%lux %lux\n", rxpkt->pad4[0], rxpkt->pad4[1]);
+	print("seqno %lux\n", rxpkt->seqno);		/*  */
+	print("%lux %lux\n", rxpkt->pad5[0], rxpkt->pad5[1]);
+	print("link %lux\n", rxpkt->link);		/* descriptor link and EOL */
+	print("%lux %lux\n", rxpkt->pad6[0], rxpkt->pad6[1]);
+	print("owner %lux\n", rxpkt->owner);		/* in use */
 }
 
 void
@@ -379,6 +402,7 @@ etherintr(void)
 		status = RD(isr) & AllIntr;
 		if(status == 0)
 			break;
+print("s %lux\n", status);	
 
 		WR(isr, status);
 	
@@ -410,8 +434,8 @@ etherintr(void)
 		/*
 		 * A packet arrived or we ran out of descriptors.
 		 */
-		status &= ~(Pktrx|Rde);
 		rxpkt = &ctlr->rda[ctlr->rh];
+pxp(rxpkt);
 		while(rxpkt->owner == Host){
 			ctlr->inpackets++;
 	
@@ -470,16 +494,16 @@ etherintr(void)
 		 * Warnings that something is afoot.
 		 */
 		if(status & Hbl){
-			print("sonic: cd heartbeat lost\n");
+			iprint("sonic: cd heartbeat lost\n");
 			status &= ~Hbl;
 		}
 		if(status & Br){
-			print("sonic: bus retry occurred\n");
+			iprint("sonic: bus retry occurred\n");
 			status &= ~Br;
 		}
 	
 		if(status & AllIntr)
-			print("sonic %ux\n", status);
+			iprint("sonic #%lux\n", status);
 	}
 }
 
@@ -513,7 +537,11 @@ etherreset(void)
 	 */
 	if(ether[0] == 0) {
 		ether[0] = xspanalloc(sizeof(Ether), BY2PG, 64*1024);
-/*		memmove(ether[0]->ea, eeprom.ea, sizeof(ether[0]->ea)); */
+
+		if(PADDR(ether[0])+sizeof(Ether) > Ntranslation*BY2PG)
+			panic("sonic: 16M io map");
+
+		enetaddr(ether[0]->ea);
 	}
 	ctlr = ether[0];
 
@@ -531,6 +559,12 @@ etherreset(void)
 }
 
 void
+enab(void)
+{
+	WR(cr, Rxen);
+}
+
+void
 etherinit(void)
 {
 }
@@ -538,6 +572,13 @@ etherinit(void)
 Chan*
 etherattach(char *spec)
 {
+	static int enable;
+
+	if(enable == 0) {
+		enable = 1;
+		WR(cr, Rxen);
+	}
+
 	return devattach('l', spec);
 }
 
@@ -594,6 +635,8 @@ etherwrite(Chan *c, void *buf, long n, ulong offset)
 
 	USED(offset);
 
+iprint("ether tx\n");
+
 	if(n > ETHERMAXTU)
 		error(Ebadarg);
 
@@ -604,9 +647,9 @@ etherwrite(Chan *c, void *buf, long n, ulong offset)
 	/* we handle data */
 	qlock(&ctlr->tlock);
 	tsleep(&ctlr->tr, isoutbuf, ctlr, 10000);
-	if(!isoutbuf(ctlr)){
+
+	if(!isoutbuf(ctlr))
 		print("ether transmitter jammed\n");
-	}
 	else {
 		p =(Etherpkt*)ctlr->tb[ctlr->th];
 		memmove(p->d, buf, n);
@@ -627,6 +670,9 @@ etherwrite(Chan *c, void *buf, long n, ulong offset)
 		WR(cr, Txp);
 	}
 	qunlock(&ctlr->tlock);
+
+iprint("tx done %d\n", n);
+
 	return n;
 }
 

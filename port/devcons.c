@@ -122,6 +122,7 @@ panic(char *fmt, ...)
 	strcpy(buf, "panic: ");
 	n = doprint(buf+strlen(buf), buf+sizeof(buf), fmt, (&fmt+1)) - buf;
 	buf[n] = '\n';
+iprint("%s\n", buf);
 	putstrn(buf, n+1);
 	prflush();
 	dumpstack();
@@ -158,7 +159,8 @@ pprint(char *fmt, ...)
 void
 prflush(void)
 {
-	while(qlen(printq) > 0) ;
+	while(consactive())
+		;
 }
 
 void

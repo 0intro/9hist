@@ -102,10 +102,13 @@ void	wbflush(void);
 void	wrcompare(ulong);
 void	Xdelay(int);
 
+void	serialinit(void);
 void	NS16552special(int, int, Queue**, Queue**, int (*)(Queue*, int));
 void	NS16552setup(ulong, ulong);
 void	NS16552intr(int);
 void	etherintr(void);
+void	iomapinit(void);
+void	enetaddr(uchar*);
 
 #define	waserror()	setlabel(&up->errlab[up->nerrlab++])
 #define	kmapperm(x)	kmap(x)

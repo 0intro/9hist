@@ -1,3 +1,6 @@
+/*
+ * These register addresses have already been adjusted for BE operation
+ */
 enum
 {
 	Devicephys	= 0x80000000,
@@ -34,6 +37,20 @@ enum
 	  Soundint	= (1<<2),
 	  Floppyint	= (1<<1),
 	  Parallelint	= (1<<0),
-	Intenareg	= 0xE0040004,
-	Intcause	= 0xE0040007
+	Intenareg	= 0xE0040004,	/* Device interrupt enable */
+	Intcause	= 0xE0040007,	/* Decice interrupt cause register */
+
+	Ttbr		= 0x8000001C,	/* Translation table base address */
+	Tlrb		= 0x80000024,	/* Translation table limit address */
+	Tir		= 0x8000002c,	/* Translation invalidate register */
+	Ntranslation	= 4096,		/* Number of translation registers */
+};
+
+#define IO(type, reg)	(*(type*)reg)
+
+typedef struct Tte Tte;
+struct Tte
+{
+	ulong	hi;
+	ulong	lo;
 };

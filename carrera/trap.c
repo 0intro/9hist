@@ -205,6 +205,7 @@ trap(Ureg *ur)
 			kernfault(ur, ecode);
 
 		if(!user && (ur->badvaddr & KSEGM) == KSEG3) {
+iprint("kf %lux %lux\n", ur->pc, ur->r31);
 			kfault(ur->badvaddr);
 			break;
 		}
@@ -285,7 +286,7 @@ intr(Ureg *ur)
 	cause &= INTR7|INTR6|INTR5|INTR4|INTR3|INTR2|INTR1|INTR0;
 
 	if(cause & INTR3) {
-		devint = *(uchar*)Intcause;
+		devint = IO(uchar, Intcause);
 		switch(devint) {
 		default:
 			panic("unknown devint=#%lux", devint);
@@ -304,7 +305,7 @@ intr(Ureg *ur)
 	}
 
 	if(cause & INTR4) {
-		devint = *(uchar*)I386ack;
+		devint = IO(uchar, I386ack);
 		iprint("i386ack=#%lux\n", devint);
 		cause &= ~INTR4;
 	}

@@ -40,15 +40,11 @@ main(void)
 	confinit();
 	savefpregs(&initfp);
 	machinit();
-	active.exiting = 0;
-	active.machs = 1;
 	kmapinit();
 	xinit();
+	iomapinit();
 	printinit();
-
-	NS16552setup(Uart1, UartFREQ);
-	NS16552special(0, 9600, &kbdq, &printq, kbdcr2nl);
-
+	serialinit();
 	vecinit();
 	iprint("\n\nBrazil\n");
 	pageinit();
@@ -58,6 +54,10 @@ main(void)
 	rootfiles();
 	swapinit();
 	userinit();
+enab();
+spllo();
+for(;;)
+  ;
 	schedinit();
 }
 
@@ -143,7 +143,21 @@ machinit(void)
 	n = m->machno;
 	m->stb = &stlb[n][0];
 
+	m->speed = 50;
 	clockinit();
+
+	active.exiting = 0;
+	active.machs = 1;
+}
+
+/*
+ * Set up a console on serial port 2
+ */
+void
+serialinit(void)
+{
+	NS16552setup(Uart1, UartFREQ);
+	NS16552special(0, 9600, &kbdq, &printq, kbdcr2nl);
 }
 
 /*
@@ -166,7 +180,40 @@ ioinit(void)
 	phys = PPN(Intctlphys)|PTEGLOBL|PTEVALID|PTEWRITE|PTEUNCACHED;
 	puttlbx(2, Intctlvirt, phys, PTEGLOBL, PGSZ4K);
 
-	*(ushort*)Intenareg = 0xffff;
+	/* Enable all devce interrupt */
+	IO(ushort, Intenareg) = 0xffff;
+}
+
+void
+enetaddr(uchar *ea)
+{
+	/** BUG get from PROM */
+	static uchar tea[] = { 0x00, 0x00, 0x77, 0x01, 0xD2, 0xba };
+
+	memmove(ea, tea, sizeof(tea));
+}
+
+/*
+ * All DMA and ether IO buffers must reside in the first 16M bytes of
+ * memory to be covered by the translation registers
+ */
+void
+iomapinit(void)
+{
+	int i;
+	Tte *t;
+
+	t = xspanalloc(Ntranslation*sizeof(Tte), BY2PG, 0);
+
+	for(i = 0; i < Ntranslation; i++)
+		t[i].lo = i<<PGSHIFT;
+
+	/* Set the translation table */
+	IO(ulong, Ttbr) = PADDR(t);
+	IO(ulong, Tlrb) = (Ntranslation-1)*sizeof(Tte);
+
+	/* Invalidate the old entries */
+	IO(ulong, Tir) = 0;
 }
 
 /*
@@ -272,10 +319,10 @@ userinit(void)
 void
 exit(long type)
 {
-	int timer;
+	USED(type);
 
 	spllo();
-	print("cpu %d exiting %d\n", m->machno, type);
+	print("cpu %d exiting\n", m->machno);
 	while(consactive())
 		delay(10);
 	splhi();
@@ -288,11 +335,6 @@ confinit(void)
 {
 	ulong ktop, top;
 
-	/*
-	 *  divide memory twixt user pages and kernel. Since
-	 *  the kernel can't use anything above .5G unmapped,
-	 *  make sure all that memory goes to the user.
-	 */
 	ktop = PGROUND((ulong)end);
 	ktop = PADDR(ktop);
 	top = (16*1024*1024)/BY2PG;
@@ -306,8 +348,6 @@ confinit(void)
 	conf.base1 = 0;
 
 	conf.upages = (conf.npage*70)/100;
-	if(top - conf.upages > (256*1024*1024)/BY2PG)
-		conf.upages = top - (256*1024*1024)/BY2PG;
 
 	conf.nmach = 1;
 
@@ -320,7 +360,7 @@ confinit(void)
 	conf.arp = 32;
 	conf.frag = 32;
 
-	conf.copymode = 0;		/* copy on reference */
+	conf.copymode = 0;		/* copy on write */
 }
 
 

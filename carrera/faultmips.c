@@ -97,7 +97,8 @@ tstbadvaddr(Ureg *ur, int read)
 		break;
 	}
 
-	/* print("ea %lux 0x%lux(R%d) bv 0x%lux pc 0x%lux\n", ea, off, rn, ur->badvaddr, ur->pc); /**/
+	/* print("ea %lux 0x%lux(R%d) bv 0x%lux pc 0x%lux\n",
+		ea, off, rn, ur->badvaddr, ur->pc); /**/
 
 	if(ur->badvaddr == ea)
 		return 0;
@@ -122,13 +123,15 @@ faultmips(Ureg *ur, int user, int code)
 	addr &= ~(BY2PG-1);
 	read = !(code==CTLBM || code==CTLBS);
 
-	print("fault: %s code %d va %lux pc %lux r31 %lux %lux\n", up->text, code, ur->badvaddr, ur->pc, ur->r31, tlbvirt());/**/
+	/* print("fault: %s code %d va %lux pc %lux r31 %lux %lux\n",
+		up->text, code, ur->badvaddr, ur->pc, ur->r31, tlbvirt());/**/
 
 	if(fault(addr, read) == 0)
 		return;
 
 	if(tstbadvaddr(ur, read)) {
-/*		print("spurious badvaddr 0x%lux in %s at pc 0x%lux\n", ur->badvaddr, up->text, ur->pc);/**/
+		/* print("spurious badvaddr 0x%lux in %s at pc 0x%lux\n",
+				ur->badvaddr, up->text, ur->pc);/**/
 		return;
 	}
 
@@ -136,7 +139,8 @@ faultmips(Ureg *ur, int user, int code)
 		p = "store";
 		if(read)
 			p = "load";
-		sprint(buf, "sys: trap: fault %s addr=0x%lux r31=0x%lux", p, ur->badvaddr, ur->r31);
+		sprint(buf, "sys: trap: fault %s addr=0x%lux r31=0x%lux",
+					p, ur->badvaddr, ur->r31);
 		postnote(up, 1, buf, NDebug);
 		return;
 	}

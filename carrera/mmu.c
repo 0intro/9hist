@@ -97,12 +97,12 @@ kmap(Page *pg)
 	k->virt = virt;
 	pte = PPN(pg->pa)|PTECOHERXCLW|PTEGLOBL|PTEWRITE|PTEVALID;
 	if(virt & BY2PG) {
-		k->phys0 = PTEGLOBL;
+		k->phys0 = PTEGLOBL|PTECOHERXCLW;
 		k->phys1 = pte;
 	}
 	else {
 		k->phys0 = pte;
-		k->phys1 = PTEGLOBL;
+		k->phys1 = PTEGLOBL|PTECOHERXCLW;
 	}
 
 	x = m->ktlbnext;
@@ -185,7 +185,7 @@ kmapinval()
 
 	curpid = PTEPID(TLBPID(tlbvirt()));
 	ktlbx = m->ktlbx;
-	for(i = 0; i < NTLB; i++, ktlbx++){
+	for(i = TLBROFF; i < NTLB; i++, ktlbx++){
 		if(*ktlbx == 0)
 			continue;
 		TLBINVAL(i, curpid);
