@@ -47,8 +47,6 @@ char *statename[] =
 	"Rendez",
 };
 
-ulong randomcount;
-
 /*
  * Always splhi()'ed.
  */
@@ -186,9 +184,6 @@ loop:
 	 */
 	spllo();
 	for(;;){
-		if(m->machno == 0)
-			randomcount++;
-
 		/*
 		 *  Once a second we look for a long waiting process
 		 *  in the lowest priority queue to make sure nothing

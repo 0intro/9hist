@@ -30,7 +30,7 @@ static struct
 char	sysname[NAMELEN];
 
 static ulong randomread(uchar*, ulong);
-static void randomreset(void);
+static void randominit(void);
 
 void
 printinit(void)
@@ -410,12 +410,12 @@ readstr(ulong off, char *buf, ulong n, char *str)
 void
 consreset(void)
 {
-	randomreset();
 }
 
 void
 consinit(void)
 {
+	randominit();
 }
 
 Chan*
@@ -891,7 +891,8 @@ setterm(char *f)
 static struct
 {
 	QLock;
-	Rendez	r;
+	Rendez	producer;
+	Rendez	consumer;
 	uchar	buf[4096];
 	uchar	*ep;
 	uchar	*rp;
@@ -903,11 +904,34 @@ static struct
 
 ulong randomcount;
 
+static int
+rbnotfull(void*)
+{
+	int i;
+
+	i = rb.rp - rb.wp;
+	return i != 1 && i != (1 - sizeof(rb.buf));
+}
+
 void
-randomreset(void)
+genrandom(void*)
+{
+	up->basepri = PriNormal;
+	up->priority = up->basepri;
+
+	for(;;){
+		if(!rbnotfull(0))
+			sleep(&rb.producer, rbnotfull, 0);
+		randomcount++;
+	}
+}
+
+void
+randominit(void)
 {
 	rb.ep = rb.buf + sizeof(rb.buf);
 	rb.rp = rb.wp = rb.buf;
+	kproc("genrandom", genrandom, 0);
 }
 
 /*
@@ -916,14 +940,16 @@ randomreset(void)
 void
 randomclock(void)
 {
-	int i;
 	uchar *p;
 
-	i = rb.rp - rb.wp;
-	if(i == 1 || i == (1 - sizeof(rb.buf)))
+	if(randomcount == 0)
+		return;
+
+	if(!rbnotfull(0))
 		return;
 
 	rb.bits = (rb.bits<<2) ^ randomcount;
+	randomcount = 0;
 	rb.next += 2;
 	if(rb.next != 8)
 		return;
@@ -936,11 +962,11 @@ randomclock(void)
 	rb.wp = p;
 
 	if(rb.wakeme)
-		wakeup(&rb.r);
+		wakeup(&rb.consumer);
 }
 
 static int
-notempty(void*)
+rbnotempty(void*)
 {
 	return rb.wp != rb.rp;
 }
@@ -964,7 +990,7 @@ randomread(uchar *p, ulong n)
 		i = rb.wp - rb.rp;
 		if(i == 0){
 			rb.wakeme = 1;
-			sleep(&rb.r, notempty, 0);
+			sleep(&rb.consumer, rbnotempty, 0);
 			rb.wakeme = 0;
 			continue;
 		}
@@ -980,6 +1006,8 @@ randomread(uchar *p, ulong n)
 	}
 	qunlock(&rb);
 	poperror();
+
+	wakeup(&rb.producer);
 
 	return n;
 }
