@@ -315,6 +315,7 @@ newproc(void)
 	p->movetime = 0;
 	p->wired = 0;
 	p->ureg = 0;
+	p->error[0] = '\0';
 	memset(p->seg, 0, sizeof p->seg);
 	p->pid = incref(&pidalloc);
 	p->noteid = incref(&noteidalloc);
