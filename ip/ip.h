@@ -293,6 +293,7 @@ struct Fs
 	Ifclog	*ilog;
 
 	char	ndb[1024];		/* an ndb entry for this interface */
+	int	ndbvers;
 };
 
 int	Fsconnected(Conv*, char*);

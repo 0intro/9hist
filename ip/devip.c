@@ -166,6 +166,7 @@ ip1gen(Chan *c, int i, Dir *dp)
 	case Qndb:
 		p = "ndb";
 		len = strlen(f->ndb);
+		q.vers = f->ndbvers;
 		break;
 	case Qiproute:
 		p = "iproute";
@@ -381,10 +382,12 @@ ipopen(Chan* c, int omode)
 	default:
 		break;
 	case Qndb:
-		if(omode & (OWRITE|OTRUNC) && !iseve())
+		if((omode & (OWRITE|OTRUNC)) && !iseve())
 			error(Eperm);
-		if((omode & (OWRITE|OTRUNC)) == (OWRITE|OTRUNC))
+		if((omode & (OWRITE|OTRUNC)) == (OWRITE|OTRUNC)){
 			f->ndb[0] = 0;
+			f->ndbvers++;
+		}
 		break;
 	case Qlog:
 		netlogopen(f);
@@ -1370,6 +1373,7 @@ ndbwrite(Fs *f, char *a, ulong off, int n)
 		error(Eio);
 	memmove(f->ndb+off, a, n);
 	f->ndb[off+n] = 0;
+	f->ndbvers++;
 	return n;
 }
 
