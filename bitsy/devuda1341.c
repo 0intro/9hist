@@ -10,6 +10,7 @@
  *
  *	The interface should be identical to that of devaudio.c
  */
+
 #include	"u.h"
 #include	"../port/lib.h"
 #include	"mem.h"
@@ -149,6 +150,7 @@ enum {
 Dirtab
 audiodir[] =
 {
+	".",		{Qdir, 0, QTDIR},	0,	DMDIR|0555,
 	"audio",	{Qaudio},			0,	0666,
 	"volume",	{Qvolume},		0,	0666,
 	"speed",	{Qspeed},			0,	0666,
@@ -766,27 +768,29 @@ sendaudio(IOstate *s) {
 		return;
 	}
 	while (s->next != s->filling) {
-		assert(s->next->nbytes);
-		if ((n = dmastart(s->dma, s->next->phys, s->next->nbytes)) == 0) {
-			iostats.faildma++;
-			break;
+		s->next->nbytes &= ~0x3;	/* must be a multiple of 4 */
+		if(s->next->nbytes) {
+			if ((n = dmastart(s->dma, s->next->phys, s->next->nbytes)) == 0) {
+				iostats.faildma++;
+				break;
+			}
+			iostats.totaldma++;
+			switch (n >> 8) {
+			case 1:
+				iostats.idledma++;
+				break;
+			case 3:
+				iostats.faildma++;
+				break;
+			}
+			if (debug) {
+				if (debug > 1)
+					print("dmastart @%p\n", s->next);
+				else
+					iprint("+");
+			}
+			s->next->nbytes = 0;
 		}
-		iostats.totaldma++;
-		switch (n >> 8) {
-		case 1:
-			iostats.idledma++;
-			break;
-		case 3:
-			iostats.faildma++;
-			break;
-		}
-		if (debug) {
-			if (debug > 1)
-				print("dmastart @%p\n", s->next);
-			else
-				iprint("+");
-		}
-		s->next->nbytes = 0;
 		s->next++;
 		if (s->next == &s->buf[Nbuf])
 			s->next = &s->buf[0];
@@ -901,15 +905,15 @@ audioattach(char *param)
 }
 
 static int
-audiowalk(Chan *c, char *name)
+audiowalk(Chan *c, Chan *nc, char **name, int nname)
 {
-	return devwalk(c, name, audiodir, nelem(audiodir), devgen);
+	return devwalk(c, nc, name, nname, audiodir, nelem(audiodir), devgen);
 }
 
-static void
-audiostat(Chan *c, char *db)
+static int
+audiostat(Chan *c, uchar *db, int n)
 {
-	devstat(c, db, audiodir, nelem(audiodir), devgen);
+	return devstat(c, db, n, audiodir, nelem(audiodir), devgen);
 }
 
 static Chan*
@@ -918,7 +922,7 @@ audioopen(Chan *c, int mode)
 	IOstate *s;
 	int omode = mode;
 
-	switch(c->qid.path & ~CHDIR) {
+	switch((ulong)c->qid.path) {
 	default:
 		error(Eperm);
 		break;
@@ -986,7 +990,7 @@ audioclose(Chan *c)
 {
 	IOstate *s;
 
-	switch(c->qid.path & ~CHDIR) {
+	switch((ulong)c->qid.path) {
 	default:
 		error(Eperm);
 		break;
@@ -1074,7 +1078,7 @@ audioread(Chan *c, void *v, long n, vlong off)
 
 	n0 = n;
 	p = v;
-	switch(c->qid.path & ~CHDIR) {
+	switch((ulong)c->qid.path) {
 	default:
 		error(Eperm);
 		break;
@@ -1212,7 +1216,7 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 
 	p = vp;
 	n0 = n;
-	switch(c->qid.path & ~CHDIR) {
+	switch((ulong)c->qid.path) {
 	default:
 		error(Eperm);
 		break;
@@ -1373,7 +1377,6 @@ Dev uda1341devtab = {
 	devreset,
 	audioinit,
 	audioattach,
-	devclone,
 	audiowalk,
 	audiostat,
 	audioopen,

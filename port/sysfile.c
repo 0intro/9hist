@@ -363,7 +363,7 @@ read(ulong *arg, uvlong *offp)
 	int dir;
 	long n;
 	Chan *c;
-	uvlong off;
+	vlong off;
 
 	n = arg[2];
 	validaddr(arg[1], n, 1);
@@ -384,6 +384,9 @@ read(ulong *arg, uvlong *offp)
 		off = c->offset;
 	else
 		off = *offp;
+
+	if(off < 0)
+		error(Enegoff);
 
 	if(dir && c->umh)
 		n = unionread(c, (void*)arg[1], n);
@@ -430,7 +433,7 @@ write(ulong *arg, uvlong *offp)
 {
 	Chan *c;
 	long m, n;
-	uvlong off;
+	vlong off;
 
 	validaddr(arg[1], arg[2], 0);
 	n = 0;
@@ -457,6 +460,9 @@ write(ulong *arg, uvlong *offp)
 		unlock(c);
 	}else
 		off = *offp;
+
+	if(off < 0)
+		error(Enegoff);
 
 	m = devtab[c->type]->write(c, (void*)arg[1], n, off);
 

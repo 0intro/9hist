@@ -46,3 +46,4 @@ extern char Enoreg[];		/* process has no saved registers */
 extern char Enoattach[];	/* mount/attach disallowed */
 extern char Eshortstat[];	/* stat buffer too small */
 extern char Ebadstat[];		/* malformed stat buffer */
+extern char Enegoff[];	/* negative i/o offset */

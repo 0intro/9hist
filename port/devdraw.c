@@ -1509,8 +1509,10 @@ drawmesg(Client *client, void *av, int n)
 				error(Enodrawimage);
 			if(font->image->layer)
 				error("can't use window as font");
-			free(font->fchar);	/* should we complain if non-zero? */
 			ni = BGLONG(a+5);
+			if(ni<=0 || ni>4096)
+				error("bad font size (4096 chars max)");
+			free(font->fchar);	/* should we complain if non-zero? */
 			font->fchar = malloc(ni*sizeof(FChar));
 			if(font->fchar == 0)
 				error("no memory for font");
