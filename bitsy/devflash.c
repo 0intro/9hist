@@ -68,7 +68,6 @@ struct
 	ulong		nr;		/* number of regions */
 	uchar		bootprotect;
 	FlashRegion	r[32];
-	ulong		*wb;		/* staging area for write buffer */
 } flash;
 
 enum
@@ -133,7 +132,6 @@ cfiquery(void)
 		addr += flash.r[q].size*flash.r[q].n;
 		flash.r[q].end = addr;
 	}
-	flash.wb = malloc(flash.wbsize>1024 ? flash.wbsize : 1024);
 }
 
 /*
@@ -145,7 +143,7 @@ enum
 	Qtopdir,
 	Q2nddir,
 	Qfctl,
-	Qfpart,
+	Qfdata,
 
 	Maxpart= 8,
 };
@@ -154,7 +152,7 @@ enum
 typedef struct FPart FPart;
 struct FPart
 {
-	char	name[NAMELEN];
+	char	name[NAMELEN-4];
 	ulong	start;
 	ulong	end;
 };
@@ -168,7 +166,7 @@ static int
 gen(Chan *c, Dirtab*, int, int i, Dir *dp)
 {
 	Qid q;
-	char buf[32];
+	char buf[NAMELEN];
 	FPart *fp;
 
 	q.vers = 0;
@@ -191,25 +189,26 @@ gen(Chan *c, Dirtab*, int, int i, Dir *dp)
 		return 1;
 	}
 
-	/* second level contains ctl plus all partitions */
+	/* second level contains all partitions and their control files */
 	switch(i) {
 	case DEVDOTDOT:
 		q.path = CHDIR;
 		devdir(c, q, "#F", 0, eve, CHDIR|0555, dp);
 		break;
-	case 0:
-		q.path = Qfctl;
-		devdir(c, q, "ctl", 0, eve, 0666, dp);
-		break;
 	default:
-		i -= 1;
-		if(i >= Maxpart)
+		if(i >= 2*Maxpart)
 			return -1;
-		fp = &part[i];
+		fp = &part[i>>1];
 		if(fp->name[0] == 0)
 			return 0;
-		q.path = FQID(i, Qfpart);
-		devdir(c, q, fp->name, fp->end-fp->start, eve, 0660, dp);
+		if(i & 1){
+			q.path = FQID(i>>1, Qfdata);
+			devdir(c, q, fp->name, fp->end-fp->start, eve, 0660, dp);
+		} else {
+			snprint(buf, sizeof(buf), "%sctl", fp->name);
+			q.path = FQID(i>>1, Qfctl);
+			devdir(c, q, buf, 0, eve, 0660, dp);
+		}
 		break;
 	}
 	return 1;
@@ -229,17 +228,26 @@ findpart(char *name)
 }
 
 static void
-addpart(char *name, ulong start, ulong end)
+addpart(FPart *fp, char *name, ulong start, ulong end)
 {
 	int i;
-	FPart *fp;
 
-	if(start >= flash.size || end > flash.size)
-		error(Ebadarg);
+	if(strlen(name) > NAMELEN-3)
+		error("name too long");
+	if(fp == nil){
+		if(start >= flash.size || end > flash.size)
+			error(Ebadarg);
+	} else {
+		start += fp->start;
+		end += fp->start;
+		if(start >= fp->end || end > fp->end)
+			error(Ebadarg);
+	}
 	if(blockstart(start) != start)
 		error("must start on erase boundary");
 	if(blockstart(end) != end && end != flash.size)
 		error("must end on erase boundary");
+
 	fp = findpart(name);
 	if(fp != nil)
 		error(Eexist);
@@ -255,14 +263,9 @@ addpart(char *name, ulong start, ulong end)
 }
 
 static void
-rempart(char *name)
+rempart(FPart *fp)
 {
-	FPart *fp;
-
-	/* can't remove the total partition */
-	fp = findpart(name);
-	if(fp != nil)
-		fp->name[0] = 0;
+	fp->name[0] = 0;
 }
 
 void
@@ -280,7 +283,7 @@ flashinit(void)
 		}
 	flash.bootprotect = 1;
 
-	addpart("whole", 0, flash.size);
+	addpart(nil, "flash", 0, flash.size);
 }
 
 static Chan*
@@ -315,49 +318,71 @@ flashclose(Chan*)
 {
 }
 
-static long	 
-flashread(Chan* c, void* a, long n, vlong off)
+static long
+flashctlread(FPart *fp, void* a, long n, vlong off)
 {
 	char *buf, *p, *e;
 	int i;
-	FPart *fp;
+	ulong addr, end;
 
+	buf = smalloc(1024);
+	e = buf + 1024;
+	p = seprint(buf, e, "0x%-9lux 0x%-9lux 0x%-9lux 0x%-9lux\n", fp->end-fp->start,
+		flash.wbsize, flash.manid, flash.devid);
+	addr = fp->start;
+	for(i = 0; i < flash.nr && addr < fp->end; i++)
+		if(flash.r[i].addr <= addr && flash.r[i].end > addr){
+			if(fp->end <= flash.r[i].end)
+				end = fp->end;
+			else
+				end = flash.r[i].end;
+			p = seprint(p, e, "0x%-9lux 0x%-9lux 0x%-9lux\n", addr,
+				(end-addr)/flash.r[i].size, flash.r[i].size);
+			addr = end;
+		}
+	n = readstr(off, a, n, buf);
+	free(buf);
+	return n;
+}
+
+static long
+flashdataread(FPart *fp, void* a, long n, vlong off)
+{
+	rlock(&flash);
+	if(waserror()){
+		runlock(&flash);
+		nexterror();
+	}
+	if(fp->name[0] == 0)
+		error("partition vanished");
+	if(!iseve())
+		error(Eperm);
+	off += fp->start;
+	if(off >= fp->end)
+		n = 0;
+	if(off+n >= fp->end)
+		n = fp->end - off;
+	if(n > 0)
+		memmove(a, ((uchar*)FLASHZERO)+off, n);
+	runlock(&flash);
+	poperror();
+
+	return n;
+}
+
+static long	 
+flashread(Chan* c, void* a, long n, vlong off)
+{
 	if(c->qid.path&CHDIR)
 		return devdirread(c, a, n, nil, 0, gen);
 	switch(FTYPE(c->qid.path)){
 	default:
 		error(Eperm);
 	case Qfctl:
-		buf = smalloc(1024);
-		e = buf + 1024;
-		p = seprint(buf, e, "0x%-9lux 0x%-9lux 0x%-9lux 0x%-9lux\n", flash.size,
-			flash.wbsize, flash.manid, flash.devid);
-		for(i = 0; i < flash.nr; i++)
-			p = seprint(p, e, "0x%-9lux 0x%-9lux 0x%-9lux\n", flash.r[i].addr,
-				flash.r[i].n, flash.r[i].size);
-		n = readstr(off, a, n, buf);
-		free(buf);
+		n = flashctlread(FPART(c->qid.path), a, n, off);
 		break;
-	case Qfpart:
-		fp = FPART(c->qid.path);
-		rlock(&flash);
-		if(waserror()){
-			runlock(&flash);
-			nexterror();
-		}
-		if(fp->name[0] == 0)
-			error("partition vanished");
-		if(!iseve())
-			error(Eperm);
-		off += fp->start;
-		if(off >= fp->end)
-			n = 0;
-		if(off+n >= fp->end)
-			n = fp->end - off;
-		if(n > 0)
-			memmove(a, ((uchar*)FLASHZERO)+off, n);
-		runlock(&flash);
-		poperror();
+	case Qfdata:
+		n = flashdataread(FPART(c->qid.path), a, n, off);
 		break;
 	}
 	return n;
@@ -412,11 +437,13 @@ blockend(ulong addr)
 }
 
 static long
-flashctlwrite(char *p, long n)
+flashctlwrite(FPart *fp, char *p, long n)
 {
 	Cmdbuf *cmd;
 	ulong off;
-	FPart *fp;
+
+	if(fp == nil)
+		panic("flashctlwrite");
 
 	cmd = parsecmd(p, n);
 	wlock(&flash);
@@ -425,16 +452,10 @@ flashctlwrite(char *p, long n)
 		nexterror();
 	}
 	if(strcmp(cmd->f[0], "erase") == 0){
-		if(cmd->nf < 2)
-			error(Ebadarg);
-		fp = findpart(cmd->f[1]);
-		if(fp == nil)
-			error("no such partition");
-
 		switch(cmd->nf){
-		case 3:
-			/* erase a single block */
-			off = atoi(cmd->f[2]);
+		case 2:
+			/* erase a single block in the partition */
+			off = atoi(cmd->f[1]);
 			off += fp->start;
 			if(off >= fp->end)
 				error("region not in partition");
@@ -443,7 +464,7 @@ flashctlwrite(char *p, long n)
 			bootprotect(off);
 			(*flash.alg->erase)(off);
 			break;
-		case 2:
+		case 1:
 			/* erase the whole partition */
 			bootprotect(fp->start);
 			for(off = fp->start; off < fp->end; off = blockend(off))
@@ -455,11 +476,9 @@ flashctlwrite(char *p, long n)
 	} else if(strcmp(cmd->f[0], "add") == 0){
 		if(cmd->nf != 4)
 			error(Ebadarg);
-		addpart(cmd->f[1], strtoul(cmd->f[2], nil, 0), strtoul(cmd->f[3], nil, 0));
+		addpart(fp, cmd->f[1], strtoul(cmd->f[2], nil, 0), strtoul(cmd->f[3], nil, 0));
 	} else if(strcmp(cmd->f[0], "remove") == 0){
-		if(cmd->nf != 2)
-			error(Ebadarg);
-		rempart(cmd->f[1]);
+		rempart(fp);
 	} else if(strcmp(cmd->f[0], "protectboot") == 0){
 		if(cmd->nf == 0 || strcmp(cmd->f[1], "off") != 0)
 			flash.bootprotect = 1;
@@ -475,19 +494,23 @@ flashctlwrite(char *p, long n)
 }
 
 static long
-flashdatawrite(Chan *c, uchar *p, long n, long off)
+flashdatawrite(FPart *fp, uchar *p, long n, long off)
 {
 	uchar *end;
 	int m;
+	int on;
 	long ooff;
-	uchar *op = p;
-	FPart *fp;
+	uchar *buf;
 
-	fp = FPART(c->qid.path);
+	if(fp == nil)
+		panic("flashctlwrite");
 
+	buf = nil;
 	wlock(&flash);
 	if(waserror()){
 		wunlock(&flash);
+		if(buf != nil)
+			free(buf);
 		nexterror();
 	}
 
@@ -496,8 +519,7 @@ flashdatawrite(Chan *c, uchar *p, long n, long off)
 	if(!iseve())
 		error(Eperm);
 
-	if((off & 0x3) || (n & 0x3))
-		error("only quad writes");
+	/* can't cross partition boundaries */
 	off += fp->start;
 	if(off >= fp->end || off+n > fp->end || n <= 0)
 		error(Ebadarg);
@@ -505,27 +527,49 @@ flashdatawrite(Chan *c, uchar *p, long n, long off)
 	/* make sure we're not writing the boot sector */
 	bootprotect(off);
 
+	on = n;
+
+	/*
+	 *  get the data into kernel memory to avoid faults during writing.
+	 *  if write is not on a quad boundary or not a multiple of 4 bytes,
+	 *  extend with data already in flash.
+	 */
+	buf = smalloc(n+8);
+	m = off & 3;
+	if(m){
+		*(ulong*)buf = flash.p[(off)>>2];
+		n += m;
+		off -= m;
+	}
+	if(n & 3){
+		n -= n & 3;
+		*(ulong*)(&buf[n]) = flash.p[(off+n)>>2];
+		n += 4;
+	}
+	memmove(&buf[m], p, on);
+
 	/* (*flash.alg->write) can't cross blocks */
 	ooff = off;
+	p = buf;
 	for(end = p + n; p < end; p += m){
 		m = blockend(off) - off;
 		if(m > end - p)
 			m = end - p;
 		if(m > Maxwchunk)
 			m = Maxwchunk;
-		memmove(flash.wb, p, m);
-		(*flash.alg->write)(flash.wb, m, off);
+		(*flash.alg->write)(p, m, off);
 		off += m;
 	}
 
 	/* make sure write succeeded */
-	if(memcmp(op, &flash.p[ooff>>2], n) != 0)
+	if(memcmp(buf, &flash.p[ooff>>2], n) != 0)
 		error("written bytes don't match");
 
 	wunlock(&flash);
+	free(buf);
 	poperror();
 
-	return n;
+	return on;
 }
 
 static long	 
@@ -541,9 +585,11 @@ flashwrite(Chan* c, void* a, long n, vlong off)
 	default:
 		panic("flashwrite");
 	case Qfctl:
-		return flashctlwrite(a, n);
-	case Qfpart:
-		return flashdatawrite(c, a, n, off);
+		n = flashctlwrite(FPART(c->qid.path), a, n);
+		break;
+	case Qfdata:
+		n = flashdatawrite(FPART(c->qid.path), a, n, off);
+		break;
 	}
 	return n;
 }
