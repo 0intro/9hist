@@ -215,10 +215,13 @@ sysfauth(ulong *arg)
 	validaddr(arg[1], 2*TICKETLEN, 0);
 	c = fdtochan(arg[0], OWRITE, 0, 1);
 	s = c->session;
-	if(s == 0)
+	if(s == 0){
+		cclose(c);
 		error("fauth must follow fsession");
+	}
 	cp = newcrypt();
 	if(waserror()){
+		cclose(c);
 		freecrypt(cp);
 		nexterror();
 	}
@@ -249,6 +252,7 @@ sysfauth(ulong *arg)
 	cp->next = s->cache;
 	s->cache = cp;
 	unlock(s);
+	cclose(c);
 	poperror();
 	return 0;
 }

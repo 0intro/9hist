@@ -1055,6 +1055,7 @@ loop:
 				ilbackoff(ic);
 			}
 			break;
+
 		case Ilsyncee:
 		case Ilsyncer:
 			if(ic->timeout <= msec) {
@@ -1066,6 +1067,7 @@ loop:
 				ilbackoff(ic);
 			}
 			break;
+
 		case Ilestablished:
 			if(ic->recvd != ic->acksent && ic->acktime <= msec)
 				ilsendctl(p, nil, Ilack, ic->next, ic->recvd, 0);
