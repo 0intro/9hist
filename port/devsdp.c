@@ -1185,7 +1185,7 @@ print("dup sequence number: %ld (%ld %ld)\n", seq, c->in.seqwrap, seqdiff);
 if(0) print("coniput seq=%ulx\n", seq);
 	if(c->in.auth != 0) {
 		if(!(*c->in.auth)(&c->in, b->rp-4, BLEN(b)+4)) {
-print("bad auth\n");
+print("bad auth %d\n", BLEN(b)+4);
 			c->lstats.inBadAuth++;
 			freeb(b);
 			return nil;
@@ -1726,7 +1726,7 @@ writedata(Conv *c, Block *b)
 	c->lstats.outDataPackets++;
 	c->lstats.outDataBytes += n;
 
-	if(c->out.comp != nil) {
+	if(c->out.comp != nil && 0) {
 		// must generate same value as convoput
 		seq = (c->out.seq + 1) & (SeqMax-1);
 

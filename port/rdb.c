@@ -62,7 +62,7 @@ talkrdb(Ureg *ureg)
 	char *req;
 
 	printq = nil;	// turn off serial console
-//	scrprint("Brazil debugger\n");
+//	scrprint("Plan 9 debugger\n");
 	iprint("Edebugger reset\n");
 	for(;;){
 		req = getline();

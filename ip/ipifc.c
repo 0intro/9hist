@@ -463,6 +463,8 @@ ipifcrem(Ipifc *ifc, char **argv, int argc, int dolock)
 	uchar mask[IPaddrlen];
 	Iplifc *lifc, **l;
 	Fs *f;
+	uchar *addr;
+	int type;
 
 	if(argc < 3)
 		return Ebadarg;
@@ -490,7 +492,8 @@ ipifcrem(Ipifc *ifc, char **argv, int argc, int dolock)
 		addr = lifc->local;
 		if(type == Rptpt)
 			addr = lifc->remote;
-		if(memcmp(ip, addr, IPaddrlen) == 0 && memcmp(mask, lifc->mask, IPaddrlen) == 0) {
+		if(memcmp(ip, addr, IPaddrlen) == 0)
+		if(memcmp(mask, lifc->mask, IPaddrlen) == 0) {
 			*l = lifc->next;
 			break;
 		}

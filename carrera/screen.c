@@ -130,7 +130,7 @@ screenwin(void)
 	freememimage(grey);
 	window = insetrect(window, 5);
 
-	greet = " Brazil Console: New Draw version ";
+	greet = " Plan 9 Console ";
 	p = addpt(window.min, Pt(10, 0));
 	q = memsubfontwidth(memdefont, greet);
 	memimagestring(gscreen, p, conscol, memdefont, greet);

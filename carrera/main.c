@@ -56,10 +56,9 @@ main(void)
 	iomapinit();
 	printinit();
 	serialinit();
-	iprint("Brazil\n");		/**/
+	iprint("Plan 9\n");		/**/
 	vecinit();
 	screeninit();
-//	print("Brazil config reg %#ux\n", configreg);
 	pageinit();
 	procinit0();
 	initseg();

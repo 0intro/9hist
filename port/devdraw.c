@@ -1559,12 +1559,16 @@ drawmesg(Client *client, void *av, int n)
 			continue;
 
 		/* create image mask: 'm' newid[4] id[4] */
+/*
+ *
 		case 'm':
 			printmesg("LL", a, 0);
 			m = 4+4;
 			if(n < m)
 				error(Eshortdraw);
 			break;
+ *
+ */
 
 		/* attach to a named image: 'n' dstid[4] j[1] name[j] */
 		case 'n':
@@ -1876,10 +1880,8 @@ drawmesg(Client *client, void *av, int n)
 			drawflush();
 			continue;
 
-		/* old write: 'w' id[4] R[4*4] data[x*1] */
-		/* old write from compressed data: 'W' id[4] R[4*4] data[x*1] */
-		/* new write: 'y' id[4] R[4*4] data[x*1] */
-		/* new write from compressed data: 'Y' id[4] R[4*4] data[x*1] */
+		/* write: 'y' id[4] R[4*4] data[x*1] */
+		/* write from compressed data: 'Y' id[4] R[4*4] data[x*1] */
 		case 'y':
 		case 'Y':
 			printmesg(fmt="LR", a, 0);
