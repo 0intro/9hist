@@ -92,12 +92,14 @@ vgascreenputc(VGAscr* scr, char* buf, Rectangle *flushr)
 	case '\t':
 		p = memsubfontwidth(scr->memdefont, " ");
 		w = p.x;
-		*xp++ = curpos.x;
+		if(curpos.x >= window.max.x-4*w)
+			vgascreenputc(scr, "\n", flushr);
+
 		pos = (curpos.x-window.min.x)/w;
 		pos = 4-(pos%4);
-		r = Rect(curpos.x, curpos.y, curpos.x+pos*w, curpos.y+h);
-		memimagedraw(scr->gscreen, r, back, back->r.min, nil, ZP);
-		combinerect(flushr, r);
+		*xp++ = curpos.x;
+		r = Rect(curpos.x, curpos.y, curpos.x+pos*w, curpos.y + h);
+		memimagedraw(scr->gscreen, r, back, back->r.min, nil, back->r.min);
 		curpos.x += pos*w;
 		break;
 
@@ -109,6 +111,9 @@ vgascreenputc(VGAscr* scr, char* buf, Rectangle *flushr)
 		memimagedraw(scr->gscreen, r, back, back->r.min, nil, ZP);
 		combinerect(flushr, r);
 		curpos.x = *xp;
+		break;
+
+	case '\0':
 		break;
 
 	default:

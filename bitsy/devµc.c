@@ -156,6 +156,12 @@ int
 		case BLbacklight:
 			wakeup(&ctlr.r);
 			break;
+		default:
+			print("unknown µc message: %ux");
+			for(i = 0; i < len; i++)
+				print(" %ux", p[i]);
+			print("\n");
+			break;
 		}
 	
 		/* remove the message */

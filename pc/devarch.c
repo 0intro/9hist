@@ -271,7 +271,7 @@ archread(Chan *c, void *a, long n, vlong offset)
 	case Qiow:
 		if((n & 0x01) || (offset & 0x01))
 			error(Ebadarg);
-		checkport(offset, offset+n+1);
+		checkport(offset, offset+n);
 		n /= 2;
 		sp = a;
 		for(port = offset; port < offset+n; port += 2)
@@ -281,7 +281,7 @@ archread(Chan *c, void *a, long n, vlong offset)
 	case Qiol:
 		if((n & 0x03) || (offset & 0x03))
 			error(Ebadarg);
-		checkport(offset, offset+n+3);
+		checkport(offset, offset+n);
 		n /= 4;
 		lp = a;
 		for(port = offset; port < offset+n; port += 4)
@@ -338,7 +338,7 @@ archwrite(Chan *c, void *a, long n, vlong offset)
 	case Qiow:
 		if((n & 01) || (offset & 01))
 			error(Ebadarg);
-		checkport(offset, offset+n+1);
+		checkport(offset, offset+n);
 		n /= 2;
 		sp = a;
 		for(port = offset; port < offset+n; port += 2)
@@ -348,7 +348,7 @@ archwrite(Chan *c, void *a, long n, vlong offset)
 	case Qiol:
 		if((n & 0x03) || (offset & 0x03))
 			error(Ebadarg);
-		checkport(offset, offset+n+3);
+		checkport(offset, offset+n);
 		n /= 4;
 		lp = a;
 		for(port = offset; port < offset+n; port += 4)

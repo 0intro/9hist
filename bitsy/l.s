@@ -65,7 +65,7 @@ _cfloop:
 	MOVW	R0,R0
 	RET
 
-/* write back and invalidate i and d caches */
+/* write back d cache */
 TEXT cachewb(SB), $-4
 	/* write back any dirty data */
 	MOVW	$0xe0000000,R0

@@ -182,7 +182,7 @@ enum {	/* Interrupt values */
 	IntRcv		= 0x0001,
 	IntTxError	= 0x0002,
 	IntTxEmpty	= 0x0004,
-	IntAllo		= 0x0008,
+	IntAlloc	= 0x0008,
 	IntRxOvrn	= 0x0010,
 	IntEph		= 0x0020,
 };
