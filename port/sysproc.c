@@ -178,8 +178,9 @@ sysrfork(ulong *arg)
 	 *  (i.e. has bad properties) and has to be discarded.
 	 */
 	flushmmu();
-	p->nice = up->nice;
-	p->pri = up->pri;
+	p->priority = up->priority;
+	p->basepri = up->basepri;
+	p->mp = up->mp;
 	if(up->wired)
 		procwired(p);
 	ready(p);
@@ -397,10 +398,9 @@ sysexec(ulong *arg)
 	/*
 	 *  '/' processes are higher priority (hack to make /ip more responsive).
 	 */
-	if(devchar[tc->type] == L'/') {
-		up->nice = NiceRoot;
-		up->pri = 0;
-	}
+	if(devchar[tc->type] == L'/')
+		up->basepri = PriRoot;
+	up->priority = up->basepri;
 	poperror();
 	close(tc);
 
@@ -462,11 +462,11 @@ return0(void *a)
 long
 syssleep(ulong *arg)
 {
+
 	int n;
 
 	n = arg[0];
 	if(n <= 0) {
-		up->yield = 1;
 		sched();
 		return 0;
 	} 

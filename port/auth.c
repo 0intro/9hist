@@ -124,10 +124,8 @@ sysfsession(ulong *arg)
 	unlock(c);
 
 	/* back off if someone else is doing an fsession */
-	while(!canlock(&s->send)) {
-		up->yield = 1;
+	while(!canlock(&s->send))
 		sched();
-	}
 
 	if(s->valid == 0){
 		/*
@@ -575,7 +573,7 @@ userwrite(char *a, int n)
 		error(Eperm);
 	memset(up->user, 0, NAMELEN);
 	strcpy(up->user, "none");
-	up->nice = NiceNormal;
+	up->basepri = PriNormal;
 	return n;
 }
 
@@ -600,7 +598,7 @@ hostownerwrite(char *a, int n)
 	renameuser(eve, buf);
 	memmove(eve, buf, NAMELEN);
 	memmove(up->user, buf, NAMELEN);
-	up->nice = NiceNormal;
+	up->basepri = PriNormal;
 	return n;
 }
 

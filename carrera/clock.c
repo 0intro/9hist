@@ -47,7 +47,6 @@ clockinit(void)
 void
 clock(Ureg *ur)
 {
-	int n;
 
 	wrcompare(rdcount()+(m->speed*1000000)/HZ);
 
@@ -78,7 +77,7 @@ clock(Ureg *ur)
 	if(up == 0 || up->state != Running)
 		return;
 
-	if(anyready() && !up->inlock)
+	if(anyready())
 		sched();
 
 	/* user profiling clock */

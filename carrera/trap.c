@@ -397,7 +397,7 @@ intr(Ureg *ur)
 	}
 
 	/* preemptive scheduling */
-	if(up && up->state == Running && anyhigher() && !up->inlock)
+	if(up && up->state == Running && anyhigher())
 		sched();
 }
 
