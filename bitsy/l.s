@@ -235,7 +235,7 @@ TEXT splx(SB), $-4
 	MOVW	R1, CPSR
 	RET
 
-TEXT splxpc(SB), $0				/* for iunlock */
+TEXT splxpc(SB), $-4				/* for iunlock */
 	MOVW	R0, R1
 	MOVW	CPSR, R0
 	MOVW	R1, CPSR

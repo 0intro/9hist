@@ -14,12 +14,16 @@ Conf conf;
 void
 main(void)
 {
-	int i;
+	/* zero out bss */
+	memset(edata, 0, end-edata);
 
 	iprint("bitsy kernel\n");
 	confinit();
+	iprint("%d pages %lux(%lud) %lux(%lud)\n", conf.npage, conf.base0, conf.npage0, conf.base1, conf.npage1);
 	xinit();
+	iprint("after xinit\n");
 	mmuinit();
+	iprint("after mmuinit\n");
 	delay(100000);
 	exit(1);
 }
@@ -88,7 +92,6 @@ probemem(ulong addr)
 		*p = 0;
 	}
 	p = (ulong*)addr;
-	iprint("%lux @ %lux\n", *p, addr);
 	if(*p != addr)
 		return -1;
 	return 0;
@@ -142,9 +145,8 @@ confinit(void)
 		conf.base1 = ktop;
 	else
 		iprint("kernel not in allocatable space\n");
-	iprint("%lux-%lux %lux-%lux\n", conf.base0, conf.npage0, conf.base1, conf.npage1);
 
-	/* make npages the right thing */
+	/* make npage the right thing */
 	conf.npage0 = (conf.npage0 - conf.base0)/BY2PG;
 	conf.npage1 = (conf.npage1 - conf.base1)/BY2PG;
 	conf.npage = conf.npage0+conf.npage1;

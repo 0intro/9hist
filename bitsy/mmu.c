@@ -63,18 +63,19 @@ mmuinit(void)
 {
 	ulong a, e;
 
-	/* set up the domain register to cause all domains to obey pte access bits */
-	putdac(0x55555555);
-
 	/* get a prototype level 1 page */
 	l1table = xspanalloc(BY2PG, 16*1024, 0);
 	memset(l1table, 0, BY2PG);
 
 	/* direct map DRAM */
-	e = conf.base1 + BY2PG*conf.npage2;
+	e = conf.base1 + BY2PG*conf.npage1;
 	for(a = PHYSDRAM0; a < e; a += OneMeg)
 		l1table[a>>20] = L1Section | L1KernelRW |
 				L1Cached | L1Buffered | (a&L1SectBaseMask);
+
+	/* direct map devs */
+	for(a = REGZERO; a < REGTOP; a += OneMeg)
+		l1table[a>>20] = L1Section | L1KernelRW | (a&L1SectBaseMask);
 
 	/* direct map zeros area */
 	for(a = PHYSNULL0; a < PHYSNULL0 + 128 * OneMeg; a += OneMeg)
@@ -82,12 +83,20 @@ mmuinit(void)
 				L1Cached | L1Buffered | (a&L1SectBaseMask);
 
 	/* direct map flash */
-	for(a = PHYFLASH0; a < PHYFLASH0 + 128 * OneMeg; a += OneMeg)
+	for(a = PHYSFLASH0; a < PHYSFLASH0 + 128 * OneMeg; a += OneMeg)
 		l1table[a>>20] = L1Section | L1KernelRW |
 				L1Cached | L1Buffered | (a&L1SectBaseMask);
 
 	/* map the uart so that we can continue using iprint */
-	uart3regs = mapspecial(UART3REGS, 64);
+//	uart3regs = mapspecial(UART3REGS, 64);
+
+	/* set up the domain register to cause all domains to obey pte access bits */
+	iprint("setting up domain access\n");
+	putdac(0x55555555);
+
+	/* point to map */
+	iprint("setting tlb map %lux\n", (ulong)l1table);
+	putttb((ulong)l1table);
 }
 
 /*
@@ -97,7 +106,7 @@ ulong*
 mapspecial(ulong pa, int len)
 {
 	ulong *t;
-	ulong va, i, base, end, off;
+	ulong va, i, base, end, off, entry;
 	int livelarge;
 	ulong* rv;
 
@@ -127,7 +136,7 @@ mapspecial(ulong pa, int len)
 
 			/* create a page table and keep going */
 			t = xspanalloc(BY2PG, 1024, 0);
-			memzero(t, BY2PG, 0);
+			memset(t, 0, BY2PG);
 			l1table[va>>20] = L1PageTable | L1Domain0 |
 						(((ulong)t) & L1PTBaseMask);
 		}

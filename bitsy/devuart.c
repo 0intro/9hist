@@ -504,4 +504,6 @@ serialputs(char *str, int n)
 			;
 		ur->data = *str++;
 	}
+	while((ur->status1 & XmitBusy))
+		;
 }
