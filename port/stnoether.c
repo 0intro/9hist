@@ -267,9 +267,24 @@ noetheriput(Queue *q, Block *bp)
 static void
 etherparse(uchar *to, char *from)
 {
+	ulong ip;
+	uchar nip[4];
 	int tdig;
 	int fdig;
 	int i;
+
+#ifdef MAGNUM
+	/* Dot means ip address */
+	if(strchr(from, '.')) {
+		ip = ipparse(from);
+		if(ip == 0)
+			error(Ebadnet);
+
+		hnputl(nip, ip);			
+		if(arp_lookup(nip, to))
+			return;
+	}
+#endif
 
 	if(strlen(from) != 12)
 		error(Ebadnet);
