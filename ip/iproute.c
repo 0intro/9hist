@@ -743,9 +743,10 @@ routeflush(Fs *f, Route *r, char *tag)
 	if(routeflush(f, r->right, tag))
 		return 1;
 	if((r->type & Rifc) == 0){
-		if(tag == nil || strncmp(tag, r->tag, sizeof(r->tag)) == 0)
+		if(tag == nil || strncmp(tag, r->tag, sizeof(r->tag)) == 0){
 			delroute(f, r, 0);
-		return 1;
+			return 1;
+		}
 	}
 	return 0;
 }
