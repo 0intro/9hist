@@ -13,7 +13,6 @@ struct {
 	ulong qlockq;
 } rwstats;
 
-int shutup=1;	/* RSC: you can take this out, it's just to silence a print in a loop on the dist floppy */
 void
 qlock(QLock *q)
 {
@@ -21,14 +20,10 @@ qlock(QLock *q)
 
 	if(up == 0)
 		panic("qlock");
-	if(m->ilockdepth != 0 && !shutup){
+	if(m->ilockdepth != 0)
 		print("qlock: %lux: ilockdepth %d", getcallerpc(&q), m->ilockdepth);
-		shutup = 1;
-	}
-	if(up->nlocks && !shutup){
-		print("qlock: %lux: nlocks %d", getcallerpc(&q), up->nlocks);
-		shutup = 1;
-	}
+	if(up->nlocks)
+		print("qlock: %lux: nlocks %lud", getcallerpc(&q), up->nlocks);
 
 	lock(&q->use);
 	rwstats.qlock++;
@@ -48,7 +43,7 @@ qlock(QLock *q)
 	up->state = Queueing;
 	up->qpc = getcallerpc(&q);
 	unlock(&q->use);
-	if (isedf(up))
+	if(isedf(up))
 		edfblock(up);
 	sched();
 }
@@ -74,7 +69,7 @@ qunlock(QLock *q)
 
 	lock(&q->use);
 	p = q->head;
-	if(p) {
+	if(p){
 		q->head = p->qnext;
 		if(q->head == 0)
 			q->tail = 0;
@@ -214,7 +209,7 @@ wunlock(RWlock *q)
 	unlock(&q->use);
 }
 
-/* same as rlock but punts if there are any readers waiting */
+/* same as rlock but punts if there are any writers waiting */
 int
 canrlock(RWlock *q)
 {

@@ -96,8 +96,8 @@ ilock(Lock *l)
 	lockstats.locks++;
 
 	x = splhi();
-	m->ilockdepth++;
 	if(tas(&l->key) == 0){
+		m->ilockdepth++;
 		if(up)
 			up->lastlock = l;
 		l->sr = x;
@@ -120,6 +120,7 @@ ilock(Lock *l)
 			;
 		x = splhi();
 		if(tas(&l->key) == 0){
+			m->ilockdepth++;
 			if(up)
 				up->lastlock = l;
 			l->sr = x;

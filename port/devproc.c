@@ -418,7 +418,14 @@ procfds(Proc *p, char *va, int count, long offset)
 {
 	Fgrp *f;
 	Chan *c;
+	char buf[256];
 	int n, i, w, ww;
+	char *a;
+
+	/* print to buf to avoid holding fgrp lock while writing to user space */
+	if(count > sizeof buf)
+		count = sizeof buf;
+	a = buf;
 
 	qlock(&p->debug);
 	f = p->fgrp;
@@ -433,9 +440,9 @@ procfds(Proc *p, char *va, int count, long offset)
 		nexterror();
 	}
 
-	n = readstr(0, va, count, p->dot->name->s);
-	n += snprint(va+n, count-n, "\n");
-	offset = procoffset(offset, va, &n);
+	n = readstr(0, a, count, p->dot->name->s);
+	n += snprint(a+n, count-n, "\n");
+	offset = procoffset(offset, a, &n);
 	/* compute width of qid.path */
 	w = 0;
 	for(i = 0; i <= f->maxfd; i++) {
@@ -450,12 +457,15 @@ procfds(Proc *p, char *va, int count, long offset)
 		c = f->fd[i];
 		if(c == nil)
 			continue;
-		n += procfdprint(c, i, w, va+n, count-n);
-		offset = procoffset(offset, va, &n);
+		n += procfdprint(c, i, w, a+n, count-n);
+		offset = procoffset(offset, a, &n);
 	}
 	unlock(f);
 	qunlock(&p->debug);
 	poperror();
+
+	/* copy result to user space, now that locks are released */
+	memmove(va, buf, n);
 
 	return n;
 }

@@ -14,7 +14,6 @@ Ref sysr1ref;
 long
 sysr1(ulong *arg)
 {
-	int x;
 	long a;
 
 	a = *arg;
