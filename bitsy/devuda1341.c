@@ -19,6 +19,8 @@
 #include	"io.h"
 #include	"sa1110dma.h"
 
+static int debug = 1;
+
 /*
  * GPIO based L3 bus support.
  *
@@ -375,6 +377,7 @@ bufinit(IOstate *b)
 {
 	int i;
 
+	if (debug) print("#A: bufinit\n");
 	for (i = 0; i < Nbuf; i++)
 		b->buf[i].virt = xalloc(Bufsize);
 	b->bufinit = 1;
@@ -385,6 +388,7 @@ setempty(IOstate *b)
 {
 	int i;
 
+	if (debug) print("#A: setempty\n");
 	for (i = 0; i < Nbuf; i++) {
 		b->buf[i].nbytes = 0;
 	}
@@ -492,12 +496,13 @@ audioenable(void)
 	data[1] = 0xe0 | 0<<2 | 3;	/* agc time constant and output level */
 	L3_write(UDA1341_L3Addr<<2 | UDA1341_DATA0, data, 2 );
 
-	print("audio enabled\n");
+	if (debug) print("#A: audio enabled\n");
 }
 
 static void
 sendaudio(IOstate *b) {
 	/* call this with lock held */
+	if (debug) print("#A: sendaudio\n");
 	while (b->next != b->filling) {
 		assert(b->next->nbytes);
 		if (dmastart(b->dma, b->next->virt, b->next->nbytes) == 0)
@@ -594,6 +599,7 @@ audioopen(Chan *c, int omode)
 		}
 		qunlock(&audio);
 //		mxvolume();
+		if (debug) print("#A: open done\n");
 		break;
 	}
 	c = devopen(c, omode, audiodir, nelem(audiodir), devgen);
@@ -820,6 +826,7 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 		break;
 
 	case Qaudio:
+		if (debug) print("#A: write %ld\n", n);
 		if((audio.amode & Awrite) == 0)
 			error(Emode);
 		a = &audio.o;

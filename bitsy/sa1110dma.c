@@ -7,6 +7,8 @@
 #include	"../port/error.h"
 #include	"sa1110dma.h"
 
+static int debug = 1;
+
 /*
  *	DMA helper routines
  */
@@ -78,6 +80,7 @@ int
 dmaalloc(int rd, int bigendian, int burstsize, int datumsize, int device, ulong port, void (*intr)(void*, ulong), void *param) {
 	int i;
 
+	if (debug) print("dma: dmaalloc\n");
 	lock(&dma);
 	for (i = 0; i < NDMA; i++) {
 		if (dma.chan[i].inuse)
@@ -114,6 +117,7 @@ ulong
 dmastart(int chan, void *addr, int count) {
 	ulong status;
 
+	if (debug) print("dma: dmastart\n");
 	if (((status = dmaregs[chan].dcsr_rd) & ((1<<DONEA)|(1<<DONEB))) == 0)
 		return 0;
 
@@ -174,6 +178,7 @@ dmaintr(Ureg*, void *x)
 	struct dmaregs *regs = x;
 	ulong dcsr;
 
+	if (debug) print("dma: interrupt\n");
 	i = regs - dmaregs;
 	if ((dcsr = regs->dcsr_rd) & (1<<DONEA | 1<<DONEB | 1<<ERROR)) {
 		wakeup(&dma.chan[i].r);
