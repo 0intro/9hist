@@ -172,8 +172,6 @@ loop:
 		unlock(&pidalloc);
 		if(p->pid == 0)
 			panic("pidalloc");
-print("allocate process %d\n", p->pid);
-DEBUG();
 		return p;
 	}
 	unlock(&procalloc);

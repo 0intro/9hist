@@ -174,7 +174,6 @@ sysexec(ulong *arg)
 	}
 	if(!indir)
 		strcpy(elem, u->elem);
-print("offset %lux\n", tc->offset);
 	n = (*devtab[tc->type].read)(tc, &exec, sizeof(Exec));
 	if(n < 2){
 		print("short read\n");

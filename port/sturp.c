@@ -123,6 +123,8 @@ urpopen(Queue *q, Stream *s)
 	int i;
 	char name[128];
 
+	DPRINT("urpopen\n");
+
 	/*
 	 *  find a free urp structure
 	 */
@@ -379,7 +381,7 @@ urpiput(Queue *q, Block *bp)
 	case 0:
 		break;
 	case ENQ:
-		print("rENQ\n");
+		print("rENQ %uo %uo\n", up->lastecho, ACK+up->iseq);
 		urpstat.enqsr++;
 		sendctl(up, up->lastecho);
 		sendctl(up, ACK+up->iseq);
@@ -443,19 +445,19 @@ urpiput(Queue *q, Block *bp)
 		if(up->trx != 3){
 			urpstat.rjtrs++;
 			flushinput(up);
-			print("sREJ\n");
+			print("sREJ1 %d\n", up->iseq);
 			sendctl(up, up->lastecho = REJ+up->iseq);
 			break;
 		} else if(q->len != up->trbuf[1] + (up->trbuf[2]<<8)){
 			urpstat.rjpks++;
 			flushinput(up);
-			print("sREJ\n");
+			print("sREJ2 %d\n", up->iseq);
 			sendctl(up, up->lastecho = REJ+up->iseq);
 			break;
 		} else if(i != ((up->iseq+1)&Nmask)) {
 			urpstat.rjseq++;
 			flushinput(up);
-			print("sREJ\n");
+			print("sREJ3 %d %d\n", i, up->iseq);
 			sendctl(up, up->lastecho = REJ+up->iseq);
 			break;
 		}
@@ -780,6 +782,7 @@ initoutput(Urp *up, int window)
 		qlock(&up->xl[i]);
 		if(up->xb[i])
 			freeb(up->xb[i]);
+		up->xb[i] = 0;
 		qunlock(&up->xl[i]);
 	}
 
@@ -823,6 +826,7 @@ urpkproc(void *arg)
 	Urp *up;
 
 	up = (Urp *)arg;
+	DPRINT("urpkproc started\n");
 
 	for(;;){
 		if(up->state & (HUNGUP|CLOSING)){

@@ -278,8 +278,6 @@ syscall(Ureg *aur)
 		ur->r0 = ret;
 		notify(ur);
 	}
-{ulong *arg=(ulong*)(sp+BY2WD);
-if(ret==-1)print("syscall %d(%lux %lux %lux) returns error %d\n", r0, arg[0], arg[1], arg[2], u->error.code);}
 	return ret;
 }
 

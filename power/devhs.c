@@ -364,8 +364,9 @@ hsvmeoput(Queue *q, Block *bp)
 		qunlock(&hp->xmit);
 		return;
 	}
-	chan = CHNO | *bp->rptr++ | (*bp->rptr++<<8);
-	ctl = *bp->rptr++;
+	chan = CHNO | bp->rptr[0] | (bp->rptr[1]<<8);
+	ctl = bp->rptr[2];
+	bp->rptr += 3;
 
 	/*
 	 *  send the 8 bit data, burst are up to Maxburst (9-bit) bytes long

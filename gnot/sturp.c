@@ -12,7 +12,7 @@ enum {
 	Nmask=		0x7,
 };
 
-#define DPRINT print
+#define DPRINT if(0)
 
 typedef struct Urp	Urp;
 
@@ -782,6 +782,7 @@ initoutput(Urp *up, int window)
 		qlock(&up->xl[i]);
 		if(up->xb[i])
 			freeb(up->xb[i]);
+		up->xb[i] = 0;
 		qunlock(&up->xl[i]);
 	}
 
@@ -825,7 +826,7 @@ urpkproc(void *arg)
 	Urp *up;
 
 	up = (Urp *)arg;
-	print("urpkproc started\n");
+	DPRINT("urpkproc started\n");
 
 	for(;;){
 		if(up->state & (HUNGUP|CLOSING)){

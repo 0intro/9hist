@@ -287,7 +287,7 @@ dkmuxiput(Queue *q, Block *bp)
 	line = bp->rptr[0] | (bp->rptr[1]<<8);
 	bp->rptr += 2;
 	if(line<0 || line>=dp->lines){
-		print("dkmuxiput bad line %d\n", line);
+		DPRINT("dkmuxiput bad line %d\n", line);
 		freeb(bp);
 		return;
 	}
@@ -297,12 +297,12 @@ dkmuxiput(Queue *q, Block *bp)
 		if(lp->rq)
 			PUTNEXT(lp->rq, bp);
 		else{
-			print("dkmuxiput unopened line %d\n", line);
+			DPRINT("dkmuxiput unopened line %d\n", line);
 			freeb(bp);
 		}
 		qunlock(lp);
 	} else {
-		print("dkmuxiput unopened line %d\n", line);
+		DPRINT("dkmuxiput unopened line %d\n", line);
 		freeb(bp);
 	}
 }
@@ -412,6 +412,8 @@ dkoput(Queue *q, Block *bp)
 
 	if(bp->base && bp->rptr - bp->base >= 2)
 		bp->rptr -= 2;
+	else
+		panic("dkoput");
 	bp->rptr[0] = line;
 	bp->rptr[1] = line>>8;
 
@@ -574,14 +576,12 @@ dkattach(char *spec)
 {
 	Chan *c;
 	Dk *dp;
-print("attach\n");
 
 	/*
 	 *  find a multiplexor with the same name
 	 */
 	for(dp = dk; dp < &dk[Ndk]; dp++){
 		qlock(dp);
-print("name %s %lux\n", dp->name, dp->wq);
 		if(dp->wq && strcmp(spec, dp->name)==0) {
 			dp->ref++;
 			qunlock(dp);
@@ -593,7 +593,6 @@ print("name %s %lux\n", dp->name, dp->wq);
 		error(0, Enoifc);
 	c = devattach('k', spec);
 	c->dev = dp - dk;
-print("attach done\n");
 	return c;
 }
 
@@ -1115,13 +1114,13 @@ dklisten(Chan *c)
 		 *  for the call to come in on).
 		 */
 		if(!canqlock(lp)){
-			print("DKbusy1\n");
+			DPRINT("DKbusy1\n");
 			dkanswer(c, lineno, DKbusy);
 			continue;
 		} else {
 			if(lp->state != Lclosed){
 				qunlock(lp);
-				print("DKbusy2 %ux\n", lp->state);
+				DPRINT("DKbusy2 %ux\n", lp->state);
 				dkanswer(c, lineno, DKbusy);
 				continue;
 			}

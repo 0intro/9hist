@@ -19,16 +19,6 @@ main(int argc, char *argv[])
 	open("#c/cons", OWRITE);
 	open("#c/cons", OWRITE);
 
-	fd = open("#c/user", 0);
-	if(fd < 0)
-		error("#c/user");
-	n = read(fd, buf, sizeof buf-1);
-	if(n < 0)
-		error("can't read #c/user; please reboot");
-	buf[n] = 0;
-	print("hello %s!\n", buf);
-	close(fd);
-
 	/*
 	 *  grab the incon,
 	 *  push the dk multiplexor onto it,
@@ -39,7 +29,6 @@ main(int argc, char *argv[])
 		error("opening #i/ctl");
 	sendmsg(cfd, "push dkmux");
 	sendmsg(cfd, "config 1 16");
-	print("dkmux configured\n");
 
 	/*
 	 *  open a datakit channel and call ken via r70, leave the
@@ -51,17 +40,9 @@ main(int argc, char *argv[])
 	cfd = open("#k/2/ctl", 2);
 	if(cfd < 0)
 		error("opening #k/2/ctl");
-	print("#k/2/ctl open\n");
 	sendmsg(cfd, "connect r70.nonet!bootes!fs");
 	print("connected to r70.nonet!bootes!fs\n");
 	close(cfd);
-
-/*
-	for(;;){
-		print("ding\n");
-		sleep(10000);
-	}
-/**/
 
 	/*
 	 *  talk to the file server

@@ -89,12 +89,12 @@ fault(Ureg *ur, FFrame *f)
 	if(s == 0){
 		if(addr>USTKTOP){
 	    cant:
-			u->p->state = MMUing;
 			if(user){
 				pprint("user %s error addr=0x%lux\n", read? "read" : "write", badvaddr);
 				pprint("status=0x%lux pc=0x%lux sp=0x%lux\n", ur->sr, ur->pc, ur->sp);
 				pexit("Suicide", 0);
 			}
+			u->p->state = MMUing;
 			dumpregs(ur);
 			panic("fault");
 			exit();

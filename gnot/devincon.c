@@ -13,13 +13,16 @@ typedef struct Device	Device;
 
 #define NOW (MACHP(0)->ticks*MS2HZ)
 
+static int SpEcIaL;
+#define MICROSECOND SpEcIaL = 0
+
 #define DPRINT if(0)
 
 enum {
 	Minstation=	2,	/* lowest station # to poll */
 	Maxstation=	15,	/* highest station # to poll */
 	Nincon=		1,	/* number of incons */
-	Nraw=		1024,	/* size of raw input buffer */
+	Nin=		32,	/* size of raw input buffer */
 };
 
 /*
@@ -58,13 +61,13 @@ struct Incon {
 	Rendez	kr;		/* input kernel process */
 	ushort	chan;		/* current input channel */
 	Queue	*rq;		/* read queue */
-	uchar	buf[1024];	/* bytes being collected */
-	uchar	*wptr;		/* pointer into buf */
 	int	kstarted;	/* true if kernel process started */
 
-	ushort	raw[Nraw];
-	ushort	*rp;
-	ushort	*wp;
+	/*  input blocks */
+
+	Block	*inb[Nin];
+	ushort	wi;		
+	ushort	ri;
 
 	/* statistics */
 
@@ -131,18 +134,22 @@ Qinfo inconinfo = { nullput, inconoput, inconstopen, inconstclose, "incon" };
  *  set the incon parameters
  */
 void
-inconset(Incon *ip, int cnt, int delay)
+inconset(Incon *ip, int cnt, int del)
 {
 	Device *dev;
 
-	if (cnt<1 || cnt>14 || delay<1 || delay>15)
+	if (cnt<1 || cnt>14 || del<1 || del>15)
 		error(0, Ebadarg);
 
 	dev = ip->dev;
 	dev->cmd = sel_rcv_cnt | INCON_RUN;
+	MICROSECOND;
 	*(uchar *)&dev->data_cntl = cnt;
+	MICROSECOND;
 	dev->cmd = sel_rcv_tim | INCON_RUN;
-	*(uchar *)&dev->data_cntl = delay;
+	MICROSECOND;
+	*(uchar *)&dev->data_cntl = del;
+	MICROSECOND;
 	dev->cmd = INCON_RUN | ENABLE_IRQ;
 }
 
@@ -253,12 +260,13 @@ inconreset(void)
 
 	incon[0].dev = INCON;
 	incon[0].state = Selected;
-	incon[0].rp = incon[0].wp = incon[0].raw;
+	incon[0].ri = incon[0].wi = 0;
+	inconset(&incon[0], 8, 9);
 	for(i=1; i<Nincon; i++){
 		incon[i].dev = INCON+i;
 		incon[i].state = Dead;
 		incon[i].dev->cmd = INCON_STOP;
-		incon[i].rp = incon[i].wp = incon[i].raw;
+		incon[i].ri = incon[i].wi = 0;
 	}
 }
 
@@ -551,6 +559,7 @@ inconoput(Queue *q, Block *bp)
 		}
 		DPRINT("CTL|%uo->\n", ctl);
 		dev->cdata = ctl;
+		MICROSECOND;
 	}
 	dev->cdata = 0;
 
@@ -567,29 +576,7 @@ notempty(void *arg)
 	Incon *ip;
 
 	ip = (Incon *)arg;
-	return ip->wp!=ip->rp;
-}
-
-/*
- *  fill a block with what is currently buffered and send it upstream
- */
-static void
-upstream(Incon *ip, unsigned int ctl)
-{
-	int n;
-	Block *bp;
-
-	n = ip->wptr - ip->buf;
-	bp = allocb(3 + n);
-	bp->wptr[0] = ip->chan;
-	bp->wptr[1] = ip->chan>>8;
-	bp->wptr[2] = ctl;
-	if(n)
-		memcpy(&bp->wptr[3], ip->buf, n);
-	bp->wptr += 3 + n;
-	bp->flags |= S_DELIM;
-	PUTNEXT(ip->rq, bp);
-	ip->wptr = ip->buf;
+	return ip->ri!=ip->wi;
 }
 
 /*
@@ -599,16 +586,26 @@ static void
 inconkproc(void *arg)
 {
 	Incon *ip;
-	unsigned int c;
-	uchar *lim;
-	ushort *p, *e;
+	Block *bp;
+	int i;
 
 	ip = (Incon *)arg;
 	ip->kstarted = 1;
-	ip->wptr = ip->buf;
 
-	e = &ip->raw[Nraw];
+	/*
+	 *  create a number of blocks for input
+	 */
+	for(i = 0; i < Nin; i++){
+		bp = ip->inb[i] = allocb(128);
+		bp->wptr += 3;
+	}
+
 	for(;;){
+		/*
+		 *  sleep if input fifo empty
+		 */
+		sleep(&ip->kr, notempty, ip);
+
 		/*
 		 *  die if the device is closed
 		 */
@@ -621,96 +618,117 @@ inconkproc(void *arg)
 		}
 
 		/*
-		 *  sleep if input fifo empty
+		 *  send blocks upstream and stage new blocks
 		 */
-		while(!notempty(ip))
-			sleep(&ip->kr, notempty, ip);
-		p = ip->rp;
+		while(ip->ri != ip->wi){
+			PUTNEXT(ip->rq, ip->inb[ip->ri]);
+			bp = ip->inb[ip->ri] = allocb(128);
+			bp->wptr += 3;
+			ip->ri = (ip->ri+1)%Nin;
+		}
+		qunlock(ip);
+	}
+}
+
+/*
+ *  drop an input packet on the floor
+ */
+static void
+droppacket(Device *dev)
+{
+	int i;
+	int c;
+
+	for(i = 0; i < 17; i++){
+		c = dev->data_cntl;
+		if(c==0)
+			break;
+	}
+}
+
+/*
+ *  advance the queue. if we've run out of staged input blocks,
+ *  drop the packet and return 0.  otherwise return the next input
+ *  block to fill.
+ */
+static Block *
+nextin(Incon *ip, unsigned int c)
+{
+	Block *bp = ip->inb[ip->wi];
+
+	bp->base[0] = ip->chan;
+	bp->base[1] = ip->chan>>8;
+	bp->base[2] = c;
+	ip->wi = (ip->wi + 1) % Nin;
+
+	if(((ip->wi+1)%Nin) == ip->ri){
+		droppacket(ip->dev);
+		return 0;
+	}
+	return ip->inb[ip->wi];
+}
+
+/*
+ *  read the packets from the device into the staged input blocks.
+ *  we have to do this at interrupt tevel to turn off the interrupts.
+ */
+static void
+rdpackets(Incon *ip)
+{
+	Block *bp;
+	unsigned int c;
+	Device *dev;
+
+	dev = ip->dev;
+	while(!(dev->status & RCV_EMPTY)){
+		bp = ip->inb[ip->wi];
+		if(((ip->wi+1)%Nin) == ip->ri || bp==0){
+			c = dev->data_cntl;
+			droppacket(dev);
+			continue;
+		}
 
 		/*
 		 *  get channel number
 		 */
-		c = (*p++)>>8;
-		if(p == e)
-			p = ip->raw;
+		c = (dev->data_cntl)>>8;
 		DPRINT("<-CH|%uo\n", c);
 		if(ip->chan != c){
-			if(ip->wptr - ip->buf != 0)
-				upstream(ip, 0);
+			if(bp->wptr - bp->rptr > 3){
+				bp = nextin(ip, 0);
+				if(bp == 0)
+					continue;
+			}
 			ip->chan = c;
 		}
 
 		/*
 		 *  null byte marks end of packet
 		 */
-		for(lim = &ip->buf[sizeof ip->buf];;){
-			if((c=*p++)&1) {
+		for(;;){
+			if((c=dev->data_cntl)&1) {
 				/*
 				 *  data byte, put in local buffer
 				 */
-				c = *ip->wptr++ = c>>8;
+				c = *bp->wptr++ = c>>8;
 				DPRINT("<-%uo\n", c);
-				if(ip->wptr >= lim)
-					upstream(ip, 0);
+				if(bp->wptr >= bp->lim){
+					bp = nextin(ip, 0);
+					if(bp == 0)
+						continue;
+				}
 			} else if (c>>=8) {
 				/*
 				 *  control byte ends block
 				 */
 				DPRINT("<-CTL|%uo\n", c);
-				upstream(ip, c);
+				bp = nextin(ip, c);
+				if(bp == 0)
+					continue;
 			} else {
 				/* end of packet */
 				break;
 			}
-			if(p == e)
-				p = ip->raw;
-		}
-		ip->rp = p;
-		qunlock(ip);
-	}
-}
-
-/*
- *  read the packets from the device into the raw input buffer.
- *  we have to do this at interrupt tevel to turn off the interrupts.
- */
-static
-rdpackets(Incon *ip)
-{
-	Device *dev;
-	unsigned int c;
-	ushort *p, *e;
-	int n;
-
-	dev = ip->dev;
-	while(!(dev->status & RCV_EMPTY)){
-		n = ip->rp - ip->wp;
-		if(n <= 0)
-			n += Nraw;
-		if(n < 19){
-			/*
-			 *  no room in the raw queue, throw it away
-			 */
-			c = (dev->data_cntl)>>8;
-			for(c=0;c<18;c++){
-				if(dev->data_cntl == 0)
-					break;
-			}
-		} else {
-			/*
-			 *  put packet in the raw queue
-			 */
-			p = ip->wp;
-			e = &ip->raw[Nraw];
-			*p++ = dev->data_cntl;
-			if(p == e)
-				p = ip->raw;
-			do {
-				*p++ = c = dev->data_cntl;
-				if(p == e)
-					p = ip->raw;
-			} while(c);
-			ip->wp = p;
 		}
 	}
 	wakeup(&ip->kr);
