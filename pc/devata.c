@@ -619,7 +619,8 @@ atapislave:
 
 	print("#H%d: cmdport 0x%uX ctlport 0x%uX irq %d mask 0x%uX atapi 0x%uX\n",
 		ctlrno, cmdport, ctlport,  irq, mask, atapi);
-	intrenable(irq, ataintr, ctlr, ctlr->tbdf);
+	snprint(name, sizeof name, "ata%d", ctlrno);
+	intrenable(irq, ataintr, ctlr, ctlr->tbdf, name);
 	inb(cmdport+Pstatus);
 	outb(ctlport+Pctl, 0);
 	if(devp->ienable)

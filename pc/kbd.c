@@ -384,7 +384,7 @@ i8042auxenable(void (*putc)(int, int))
 		return;
 	}
 	auxputc = putc;
-	intrenable(IrqAUX, i8042intr, 0, BUSUNKNOWN);
+	intrenable(IrqAUX, i8042intr, 0, BUSUNKNOWN, "kbdaux");
 	iunlock(&i8042lock);
 }
 
@@ -401,7 +401,7 @@ kbdinit(void)
 	ioalloc(Data, 1, 0, "kbd");
 	ioalloc(Cmd, 1, 0, "kbd");
 
-	intrenable(IrqKBD, i8042intr, 0, BUSUNKNOWN);
+	intrenable(IrqKBD, i8042intr, 0, BUSUNKNOWN, "kbd");
 
 	/* wait for a quiescent controller */
 	while((c = inb(Status)) & (Outbusy | Inready))

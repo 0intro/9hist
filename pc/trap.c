@@ -16,10 +16,10 @@ static Lock vctllock;
 static Vctl *vctl[256];
 
 void
-intrenable(int irq, void (*f)(Ureg*, void*), void* a, int tbdf)
+intrenable(int irq, void (*f)(Ureg*, void*), void* a, int tbdf, char *name)
 {
 	int vno;
-	Vctl *v;
+	Vctl *v, *p;
 
 	v = xalloc(sizeof(Vctl));
 	v->isintr = 1;
@@ -27,19 +27,28 @@ intrenable(int irq, void (*f)(Ureg*, void*), void* a, int tbdf)
 	v->tbdf = tbdf;
 	v->f = f;
 	v->a = a;
+	strncpy(v->name, name, NAMELEN-1);
+	v->name[NAMELEN-1] = 0;
 
 	ilock(&vctllock);
 	vno = arch->intrenable(v);
 	if(vno == -1){
 		iunlock(&vctllock);
-		print("intrenable: couldn't enable irq %d, tbdf 0x%uX\n",
-			irq, tbdf);
+		print("intrenable: couldn't enable irq %d, tbdf 0x%uX for %s\n",
+			irq, tbdf, v->name);
+		if(p=vctl[vno]){
+			print("intrenable: irq %d is already used by", irq);
+			for(; p; p=p->next)
+				print(" %s", p->name);
+			print("\n");
+		}
 		xfree(v);
 		return;
 	}
 	if(vctl[vno]){
 		if(vctl[vno]->isr != v->isr || vctl[vno]->eoi != v->eoi)
-			panic("intrenable: handler: %luX %luX %luX %luX\n",
+			panic("intrenable: handler: %s %s %luX %luX %luX %luX\n",
+				vctl[vno]->name, v->name,
 				vctl[vno]->isr, v->isr, vctl[vno]->eoi, v->eoi);
 		v->next = vctl[vno];
 	}
@@ -47,8 +56,47 @@ intrenable(int irq, void (*f)(Ureg*, void*), void* a, int tbdf)
 	iunlock(&vctllock);
 }
 
+int
+irqallocread(char *buf, long n, vlong offset)
+{
+	int vno;
+	Vctl *v;
+	long oldn;
+	char str[11+1+NAMELEN+1], *p;
+	int m;
+
+	if(n < 0 || offset < 0)
+		error(Ebadarg);
+
+	oldn = n;
+	for(vno=0; vno<nelem(vctl); vno++){
+		for(v=vctl[vno]; v; v=v->next){
+			m = snprint(str, sizeof str, "%11d %11d %.*s\n", vno, v->irq, NAMELEN, v->name);
+			if(m <= offset)	/* if do not want this, skip entry */
+				offset -= m;
+			else{
+				/* skip offset bytes */
+				m -= offset;
+				p = str+offset;
+				offset = 0;
+
+				/* write at most max(n,m) bytes */
+				if(m > n)
+					m = n;
+				memmove(buf, p, m);
+				n -= m;
+				buf += m;
+
+				if(n == 0)
+					return oldn;
+			}	
+		}
+	}
+	return oldn - n;
+}
+
 void
-trapenable(int vno, void (*f)(Ureg*, void*), void* a)
+trapenable(int vno, void (*f)(Ureg*, void*), void* a, char *name)
 {
 	Vctl *v;
 
@@ -58,6 +106,8 @@ trapenable(int vno, void (*f)(Ureg*, void*), void* a)
 	v->tbdf = BUSUNKNOWN;
 	v->f = f;
 	v->a = a;
+	strncpy(v->name, name, NAMELEN);
+	v->name[NAMELEN-1] = 0;
 
 	lock(&vctllock);
 	if(vctl[vno])
@@ -116,8 +166,8 @@ trapinit(void)
 	 * Special traps.
 	 * Syscall() is called directly without going through trap().
 	 */
-	trapenable(VectorBPT, debugbpt, 0);
-	trapenable(VectorPF, fault386, 0);
+	trapenable(VectorBPT, debugbpt, 0, "debugpt");
+	trapenable(VectorPF, fault386, 0, "fault386");
 
 	nmienable();
 }

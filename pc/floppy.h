@@ -164,7 +164,7 @@ floppysetup1(FController *fl)
 		floppysetdef(&fl->d[1]);
 	}
 
-	intrenable(IrqFLOPPY, pcfloppyintr, fl, BUSUNKNOWN);
+	intrenable(IrqFLOPPY, pcfloppyintr, fl, BUSUNKNOWN, "floppy");
 }
 
 /*

@@ -658,7 +658,7 @@ i82365reset(void)
 
 	/* for card management interrupts */
 	if(ncontroller)
-		intrenable(irq, i82365intr, 0, BUSUNKNOWN);
+		intrenable(irq, i82365intr, 0, BUSUNKNOWN, "i82365");
 }
 
 static Chan*

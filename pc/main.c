@@ -566,11 +566,11 @@ mathover(Ureg*, void*)
 void
 mathinit(void)
 {
-	trapenable(VectorCERR, matherror, 0);
+	trapenable(VectorCERR, matherror, 0, "matherror");
 	if(X86FAMILY(m->cpuidax) == 3)
-		intrenable(IrqIRQ13, matherror, 0, BUSUNKNOWN);
-	trapenable(VectorCNA, mathemu, 0);
-	trapenable(VectorCSO, mathover, 0);
+		intrenable(IrqIRQ13, matherror, 0, BUSUNKNOWN, "matherror");
+	trapenable(VectorCNA, mathemu, 0, "mathemu");
+	trapenable(VectorCSO, mathover, 0, "mathover");
 }
 
 /*

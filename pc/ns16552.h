@@ -96,11 +96,11 @@ ns16552install(void)
 	if(ioalloc(0x3f8, 8, 0, "eia0") < 0)
 		print("eia0: port %d in use\n", 0x3f8);
 	ns16552setup(0x3F8, UartFREQ, "eia0", Ns550);
-	intrenable(IrqUART0, ns16552intrx, (void*)0, BUSUNKNOWN);
+	intrenable(IrqUART0, ns16552intrx, (void*)0, BUSUNKNOWN, "eia0");
 	if(ioalloc(0x2F8, 8, 0, "eia1") < 0)
 		print("eia1: port %d in use\n", 0x2F8);
 	ns16552setup(0x2F8, UartFREQ, "eia1", Ns550);
-	intrenable(IrqUART1, ns16552intrx, (void*)1, BUSUNKNOWN);
+	intrenable(IrqUART1, ns16552intrx, (void*)1, BUSUNKNOWN, "eia1");
 	addclock0link(uartclock);
 
 	/* set up a serial console */
@@ -120,6 +120,7 @@ ns16552install(void)
 			continue;
 		}
 
+		snprint(name, sizeof name, "eia%d00", nscard);
 		if(cistrcmp(sc->type, "MP008") == 0){
 			/*
 			 *  port gives base port address for uarts
@@ -133,13 +134,13 @@ ns16552install(void)
 			if(sc->freq == 0)
 				sc->freq = UartFREQ;
 			sc->first = nuart;
-			if(ioalloc(sc->port, 8*sc->size, 0, "mp008") < 0){
+			if(ioalloc(sc->port, 8*sc->size, 0, name) < 0){
 				print("mp008: port %lud in use\n", sc->port);
 				xfree(sc);
 				scard[nscard] = 0;
 				continue;
 			}
-			intrenable(sc->irq, mp008intr, sc, BUSUNKNOWN);
+			intrenable(sc->irq, mp008intr, sc, BUSUNKNOWN, name);
 			port = sc->port;
 			for(j=0; j < sc->size; j++){
 				sprint(name, "eia%d%2.2d", nscard, j);
@@ -154,7 +155,6 @@ ns16552install(void)
 			 */
 			if(sc->freq == 0)
 				sc->freq = UartFREQ*4;
-			sprint(name, "eia%d00", nscard);
 			if(ioalloc(sc->port, 8, 0, name) < 0){
 				print("%s: port %lud in use\n", name, sc->port);
 				xfree(sc);
@@ -171,7 +171,7 @@ ns16552install(void)
 			else
 				outb(sc->mem, 0);
 
-			intrenable(sc->irq, ns16552intrx, (void*)(nuart-1), BUSUNKNOWN);
+			intrenable(sc->irq, ns16552intrx, (void*)(nuart-1), BUSUNKNOWN, name);
 		} else if(cistrcmp(sc->type, "com") == 0 && sc->port != 0x3F8 && sc->port != 0x2F8){
 			/*
 			 *  port gives base port address for the uart
@@ -180,7 +180,6 @@ ns16552install(void)
 			 */
 			if(sc->freq == 0)
 				sc->freq = UartFREQ;
-			sprint(name, "eia%d00", nscard);
 			if(ioalloc(sc->port, 8, 0, name) < 0){
 				print("%s: port %lud in use\n", name, sc->port);
 				xfree(sc);
@@ -188,7 +187,7 @@ ns16552install(void)
 				continue;
 			}
 			ns16552setup(sc->port, sc->freq, name, Ns550);
-			intrenable(sc->irq, ns16552intrx, (void*)(nuart-1), BUSUNKNOWN);
+			intrenable(sc->irq, ns16552intrx, (void*)(nuart-1), BUSUNKNOWN, name);
 		}
 		nscard++;
 	}

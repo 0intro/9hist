@@ -215,7 +215,7 @@ lmlreset(void)
 	}
 
 	// Interrupt handler
-	intrenable(pcidev->intl, lmlintr, nil, pcidev->tbdf);
+	intrenable(pcidev->intl, lmlintr, nil, pcidev->tbdf, "lml");
 
 	return;
 }

@@ -12,4 +12,4 @@ enum
 #define UNCACHED(type, v)	(type*)((ulong)(v))
 
 #define Int0vec
-#define setvec(v, f, a)		intrenable(v, f, a, BUSUNKNOWN)
+#define setvec(v, f, a)		intrenable(v, f, a, BUSUNKNOWN, "audio")

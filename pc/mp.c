@@ -552,9 +552,9 @@ mpinit(void)
 	 * and do not appear in the I/O APIC so it is OK
 	 * to set them now.
 	 */
-	intrenable(IrqTIMER, clockintr, 0, BUSUNKNOWN);
-	intrenable(IrqERROR, lapicerror, 0, BUSUNKNOWN);
-	intrenable(IrqSPURIOUS, lapicspurious, 0, BUSUNKNOWN);
+	intrenable(IrqTIMER, clockintr, 0, BUSUNKNOWN, "clock");
+	intrenable(IrqERROR, lapicerror, 0, BUSUNKNOWN, "lapicerror");
+	intrenable(IrqSPURIOUS, lapicspurious, 0, BUSUNKNOWN, "lapicspurious");
 	lapiconline();
 
 	checkmtrr();

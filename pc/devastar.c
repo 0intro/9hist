@@ -977,6 +977,7 @@ startcp(Astar *a)
 	uchar *x;
 	CCB *ccb;
 	Astarchan *ac;
+	char name[10];
 
 	if(a->running)
 		error(Eio);
@@ -1079,20 +1080,21 @@ startcp(Astar *a)
 		x += sz;
 	}
 
+	snprint(name, sizeof name, "astar%d", a->id);
 	/* set up interrupt level, enable interrupts */
 	if(a->pci){
 		/*
 		 * Which bits in the interrupt control register should be set?
 		 */
 		outl(a->port+PCIcontrol, 0x00031F00);
-		intrenable(a->irq, astarintr, a, a->pci->tbdf);
+		intrenable(a->irq, astarintr, a, a->pci->tbdf, name);
 	}
 	else{
 		c = inb(a->port+ISActl1);
 		c &= ~ISAirq;
 		c |= ISAien|isairqcode[a->irq];
 		outb(a->port+ISActl1, c);
-		intrenable(a->irq, astarintr, a, BUSUNKNOWN);
+		intrenable(a->irq, astarintr, a, BUSUNKNOWN, name);
 	}
 
 	/* enable control program interrupt generation */

@@ -127,7 +127,7 @@ i8253init(int aalcycles, int havecycleclock)
 void
 i8253enable(void)
 {
-	intrenable(IrqCLOCK, clockintr, 0, BUSUNKNOWN);
+	intrenable(IrqCLOCK, clockintr, 0, BUSUNKNOWN, "clock");
 }
 
 /*

@@ -43,6 +43,7 @@ enum {
 typedef struct Vctl {
 	Vctl*	next;			/* handlers on this vector */
 
+	char	name[NAMELEN];	/* of driver */
 	int	isintr;			/* interrupt or fault/trap */
 	int	irq;
 	int	tbdf;
