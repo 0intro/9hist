@@ -1,7 +1,6 @@
 #include "mem.h"
 
 TEXT	start(SB),$0
-
 	JMP	start16
 
 /*
@@ -14,12 +13,12 @@ TEXT	tgdt(SB),$0
 	LONG	$0
 
 	/* data segment descriptor for 4 gigabytes (PL 0) */
-	LONG	SEGG|SEGB|(0xF<<16)|SEGP|SEGPL(0)|SEGDATA|SEGW
-	LONG	0xFFFF
+	LONG	$(SEGG|SEGB|(0xF<<16)|SEGP|SEGPL(0)|SEGDATA|SEGW)
+	LONG	$(0xFFFF)
 
 	/* exec segment descriptor for 4 gigabytes (PL 0) */
-	LONG	SEGG|SEGD|(0xF<<16)|SEGP|SEGPL(p)|SEGEXEC|SEGR
-	LONG	0xFFFF
+	LONG	$(SEGG|SEGD|(0xF<<16)|SEGP|SEGPL(0)|SEGEXEC|SEGR)
+	LONG	$(0xFFFF)
 
 /*
  *  pointer to initial gdt
@@ -27,7 +26,7 @@ TEXT	tgdt(SB),$0
 TEXT	tgdtptr(SB),$0
 
 	WORD	$(3*8)
-	LONG	$tgdt(SB)
+	LONG	tgdt(SB)
 
 /*
  *  come here in (16bit) real-address mode
@@ -64,7 +63,7 @@ flush:
 	MOVW	AX,SS
 
 	/* switch to 32 bit code */
-	JMPFAR	SELECTOR(2, SELGDT, 0):start32
+/*	JMPFAR	SELECTOR(2, SELGDT, 0):start32 /**/
 
 /*
  *  come here in USE32 protected mode
@@ -85,10 +84,10 @@ TEXT	start32(SB),$0
 
 	/* set up stack */
 	MOVL	$mach0(SB),AX
-	MOVL	A0, m(SB)
-	MOVL	$0, 0(A0)
-	MOVL	A0, A7
-	ADDL	$(MACHSIZE-4), A7	/* start stack under machine struct */
+	MOVL	AX, m(SB)
+	MOVL	$0, 0(AX)
+	MOVL	AX, SP
+	ADDL	$(MACHSIZE-4), AX	/* start stack under machine struct */
 	MOVL	$0, u(SB)
 
 	CALL	main(SB),$0
