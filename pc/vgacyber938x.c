@@ -137,7 +137,7 @@ cyber938xcurload(VGAscr* scr, Cursor* curs)
 	 * Save the cursor hotpoint and enable the cursor.
 	 */
 	scr->offset = curs->offset;
-	vgaxo(Crtx, 0x50, 0xC0);
+	vgaxo(Crtx, 0x50, 0xC8);
 }
 
 static int
@@ -204,11 +204,12 @@ cyber938xcurenable(VGAscr* scr)
 	/*
 	 * Load, locate and enable the 32x32 cursor.
 	 * (64x64 is bit 0, X11 format is bit 6 and cursor
-	 * enable is bit 7).
+	 * enable is bit 7). Bit 3 needs to be set on 9382
+	 * chips otherwise even the white bits are black.
 	 */
 	cyber938xcurload(scr, &arrow);
 	cyber938xcurmove(scr, ZP);
-	vgaxo(Crtx, 0x50, 0xC0);
+	vgaxo(Crtx, 0x50, 0xC8);
 }
 
 VGAdev vgacyber938xdev = {
