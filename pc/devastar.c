@@ -1346,8 +1346,8 @@ astarinput(Astarchan *ac)
 			if(rp > ep)
 				rp = bp;
 		}
-		if(qproduce(ac->iq, buf, n) < 0)
-			break;	/* flow controlled */
+		if(ac->opens == 0 || qproduce(ac->iq, buf, n) < 0)
+			break;	/* flow controlled or not open */
 		if(a->needpage)
 			setpage(a, 0);
 		ccb->inrp = LEUS(rp - a->addr);

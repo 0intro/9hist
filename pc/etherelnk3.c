@@ -6,7 +6,6 @@
  *	autoSelect;
  *	PCI latency timer and master enable;
  *	errata list;
- *	limit 3C90x transmit queue;
  *	rewrite all initialisation.
  *
  * Product ID:
@@ -365,32 +364,26 @@ enum {						/* 3C90x extended register set */
 	dnIndicate		= 0x80000000,	/* FrameStartHeader (dpd->control) */
 
 	updnLastFrag		= 0x80000000,	/* (dpd->len) */
+
+	Nup			= 32,
+	Ndn			= 16,
 };
 
 /*
- * Up/Dn Packet Descriptor.
- * The hardware info (np, control, addr, len) must be 8-byte aligned.
+ * Up/Dn Packet Descriptors.
+ * The hardware info (np, control, addr, len) must be 8-byte aligned
+ * and this structure size must be a multiple of 8.
  */
-typedef struct Dpd Dpd;
-typedef struct Dpd {
+typedef struct Pd Pd;
+typedef struct Pd {
 	ulong	np;				/* next pointer */
 	ulong	control;			/* FSH or UpPktStatus */
 	ulong	addr;
 	ulong	len;
 
-	Dpd*	next;
+	Pd*	next;
 	Block*	bp;
-	void*	base;				/* base of this allocation */
-} Dpd;
-
-typedef struct Upd {
-	ulong	np;				/* next pointer */
-	ulong	control;			/* FSH or UpPktStatus */
-	ulong	addr;
-	ulong	len;
-
-	uchar	data[sizeof(Etherpkt)];
-} Upd;
+} Pd;
 
 typedef struct {
 	Lock	wlock;				/* window access */
@@ -403,22 +396,28 @@ typedef struct {
 	int	txthreshold;
 	int	txbusy;
 
-	//Lock	upqlock;			/* full-busmaster -based reception */
-	Block*	upqhead;
-	Block*	upqtail;
-	int	upalloc;
-	int	nupd;
+	int	nup;				/* full-busmaster -based reception */
+	void*	upbase;
+	Pd*	upr;
+	Pd*	uphead;
 
-	Lock	dpdlock;			/* pool of free Dpd's */
-	Dpd*	dpdpool;
-
-	Lock	dnqlock;			/* full-busmaster -based transmission */
-	Dpd*	dnqhead;
-	Dpd*	dnqtail;
+	Lock	dnlock;				/* full-busmaster -based transmission */
+	int	ndn;
+	void*	dnbase;
+	Pd*	dnr;
+	Pd*	dnhead;
+	Pd*	dntail;
+	int	dnq;
 
 	long	interrupts;			/* statistics */
 	long	timer;
 	long	stats[BytesRcvdOk+3];
+
+	int	upqmax;
+	int	upstalls;
+	int	dnqmax;
+	long	dninterrupts;
+	long	dnqueued;
 
 	int	xcvr;				/* transceiver type */
 	int	rxstatus9;			/* old-style RxStatus register */
@@ -428,81 +427,48 @@ typedef struct {
 	int	dnenabled;
 } Ctlr;
 
-static Block*
-updalloc(ulong np)
-{
-	Block *bp;
-	Upd *upd;
-
-	/*
-	 * The hardware info (np, control, addr, len)
-	 * must be 8-byte aligned.
-	 */
-	if(bp = iallocb(sizeof(Upd)+8)){
-		bp->rp = (uchar*)ROUNDUP((ulong)bp->rp, 8);
-		bp->wp = bp->rp;
-		upd = (Upd*)bp->rp;
-		upd->np = np;
-		upd->control = 0;
-		upd->addr = PADDR(upd->data);
-		upd->len = updnLastFrag|sizeof(Etherpkt);
-	}
-
-	return bp;
-}
-
 static void
 init905(Ctlr* ctlr)
 {
-	int i;
-	ulong np;
 	Block *bp;
-	Upd *upd;
+	Pd *pd, *prev;
 
-	np = 0;
-	for(i = 0; i < 64; i++){
-		bp = updalloc(np);
-		if(ctlr->upqhead == 0)
-			ctlr->upqtail = bp;
-		bp->next = ctlr->upqhead;
-		ctlr->upqhead = bp;
-		np = PADDR(bp->rp);
+	/*
+	 * Create rings for the receive and transmit sides.
+	 * Take care with alignment:
+	 *	make sure ring base is 8-byte aligned;
+	 *	make sure each entry is 8-byte aligned.
+	 */
+	ctlr->upbase = malloc((ctlr->nup+1)*sizeof(Pd));
+	ctlr->upr = (Pd*)ROUNDUP((ulong)ctlr->upbase, 8);
+
+	prev = ctlr->upr;
+	for(pd = &ctlr->upr[ctlr->nup-1]; pd >= ctlr->upr; pd--){
+		pd->np = PADDR(&prev->np);
+		pd->control = 0;
+		bp = allocb(sizeof(Etherpkt));
+		pd->addr = PADDR(bp->rp);
+		pd->len = updnLastFrag|sizeof(Etherpkt);
+
+		pd->next = prev;
+		prev = pd;
+		pd->bp = bp;
 	}
-	ctlr->upqtail->next = ctlr->upqhead;
-	upd = (Upd*)ctlr->upqtail->rp;
-	upd->np = PADDR(ctlr->upqhead->rp);
-}
+	ctlr->uphead = ctlr->upr;
 
-static Dpd*
-dpdalloc(Ctlr* ctlr)
-{
-	Dpd *dpd;
-	void *base;
+	ilock(&ctlr->dnlock);
+	ctlr->dnbase = malloc((ctlr->ndn+1)*sizeof(Pd));
+	ctlr->dnr = (Pd*)ROUNDUP((ulong)ctlr->dnbase, 8);
 
-	ilock(&ctlr->dpdlock);
-	if(dpd = ctlr->dpdpool){
-		ctlr->dpdpool = dpd->next;
-		iunlock(&ctlr->dpdlock);
-		dpd->next = 0;
-		dpd->bp = 0;
+	prev = ctlr->dnr;
+	for(pd = &ctlr->dnr[ctlr->ndn-1]; pd >= ctlr->dnr; pd--){
+		pd->next = prev;
+		prev = pd;
 	}
-	else{
-		iunlock(&ctlr->dpdlock);
-		base = smalloc(sizeof(Dpd)+8);
-		dpd = (Dpd*)ROUNDUP((ulong)base, 8);
-		dpd->base = base;
-	}
-
-	return dpd;
-}
-
-static void
-dpdfree(Ctlr* ctlr, Dpd* dpd)
-{
-	ilock(&ctlr->dpdlock);
-	dpd->next = ctlr->dpdpool;
-	ctlr->dpdpool = dpd;
-	iunlock(&ctlr->dpdlock);
+	ctlr->dnhead = ctlr->dnr;
+	ctlr->dntail = ctlr->dnr;
+	ctlr->dnq = 0;
+	iunlock(&ctlr->dnlock);
 }
 
 static Block*
@@ -629,7 +595,7 @@ attach(Ether* ether)
 		startdma(ether, PADDR(ctlr->rbp->rp));
 	else{
 		if(ctlr->upenabled)
-			outl(port+UpListPtr, PADDR(ctlr->upqhead->rp));
+			outl(port+UpListPtr, PADDR(&ctlr->uphead->np));
 	}
 
 	ctlr->attached = 1;
@@ -726,16 +692,17 @@ txstart(Ether* ether)
 }
 
 static void
-start905(Ether* ether, Dpd* add)
+txstart905(Ether* ether)
 {
 	Ctlr *ctlr;
 	int dnlistptr, port;
-	Dpd *dpd;
+	Block *bp;
+	Pd *pd;
 
 	ctlr = ether->ctlr;
 	port = ether->port;
 
-	ilock(&ctlr->dnqlock);
+	ilock(&ctlr->dnlock);
 	COMMAND(port, Stall, dnStall);
 	while(STATUS(port) & commandInProgress)
 		;
@@ -744,64 +711,53 @@ start905(Ether* ether, Dpd* add)
 	 * Free any completed packets.
 	 */
 	dnlistptr = inl(port+DnListPtr);
-	while(dpd = ctlr->dnqhead){
-		if(PADDR(dpd) == dnlistptr)
+	pd = ctlr->dntail;
+	while(ctlr->dnq){
+		if(PADDR(&pd->np) == dnlistptr)
 			break;
-		ctlr->dnqhead = dpd->next;
-		if(dpd->bp)
-			freeb(dpd->bp);
-		dpdfree(ctlr, dpd);
+		if(pd->bp){
+			freeb(pd->bp);
+			pd->bp = nil;
+		}
+		ctlr->dnq--;
+		pd = pd->next;
+	}
+	ctlr->dntail = pd;
+
+	while(ctlr->dnq < (ctlr->ndn-1)){
+		bp = qget(ether->oq);
+		if(bp == nil)
+			break;
+
+		pd = ctlr->dnhead->next;
+		pd->np = 0;
+		pd->control = dnIndicate|BLEN(bp);
+		pd->addr = PADDR(bp->rp);
+		pd->len = updnLastFrag|BLEN(bp);
+		pd->bp = bp;
+
+		if(ctlr->dnq == 0)
+			ctlr->dntail = pd;
+		ctlr->dnhead->np = PADDR(&pd->np);
+		ctlr->dnhead->control &= ~dnIndicate;
+		ctlr->dnhead = pd;
+		ctlr->dnq++;
+
+		ctlr->dnqueued++;
 	}
 
-	/*
-	 * Add any new packets to the queue.
-	 */
-	if(add){
-		if(ctlr->dnqhead){
-			dpd = ctlr->dnqtail;
-			dpd->next = add;
-			dpd->np = PADDR(&add->np);
-			dpd->control &= ~dnIndicate;
-		}
-		else
-			ctlr->dnqhead = add;
-		ctlr->dnqtail = add;
-	}
+	if(ctlr->dnq > ctlr->dnqmax)
+		ctlr->dnqmax = ctlr->dnq;
 
 	/*
 	 * If the adapter is not currently processing anything
 	 * and there is something on the queue, start it processing.
 	 */
-	if(dnlistptr == 0 && ctlr->dnqhead)
-		outl(port+DnListPtr, PADDR(ctlr->dnqhead));
+	if(dnlistptr == 0 && ctlr->dnq)
+		outl(port+DnListPtr, PADDR(&ctlr->dnhead->np));
 
 	COMMAND(port, Stall, dnUnStall);
-	iunlock(&ctlr->dnqlock);
-}
-
-static void
-transmit905(Ether* ether)
-{
-	Ctlr *ctlr;
-	Block *bp;
-	Dpd* dpd;
-
-	bp = qget(ether->oq);
-	if(bp == nil)
-		return;
-
-	ctlr = ether->ctlr;
-
-	dpd = dpdalloc(ctlr);
-	dpd->next = 0;
-	dpd->bp = bp;
-
-	dpd->np = 0;
-	dpd->control = dnIndicate|BLEN(bp);
-	dpd->addr = PADDR(bp->rp);
-	dpd->len = updnLastFrag|BLEN(bp);
-
-	start905(ether, dpd);
+	iunlock(&ctlr->dnlock);
 }
 
 static void
@@ -814,7 +770,7 @@ transmit(Ether* ether)
 	ctlr = ether->ctlr;
 
 	if(ctlr->dnenabled){
-		transmit905(ether);
+		txstart905(ether);
 		return;
 	}
 
@@ -830,56 +786,44 @@ static void
 receive905(Ether* ether)
 {
 	Ctlr *ctlr;
-	int port;
-	Block *bp, *xbp;
-	Upd *upd;
+	int len, port, q;
+	Pd *pd;
+	Block *bp;
 
 	ctlr = ether->ctlr;
 	port = ether->port;
 
-	//ilock(&ctlr->upqlock);
-	COMMAND(port, Stall, upStall);
-	while(STATUS(port) & commandInProgress)
-		;
-
-	bp = ctlr->upqhead;
-	upd = (Upd*)bp->rp;
-	while(upd->control & upPktComplete){
-		if(upd->control & upError){
-			if(upd->control & upOverrun)
+	if(inl(port+UpPktStatus) & upStalled)
+		ctlr->upstalls++;
+	q = 0;
+	for(pd = ctlr->uphead; pd->control & upPktComplete; pd = pd->next){
+		if(pd->control & upError){
+			if(pd->control & upOverrun)
 				ether->overflows++;
-			if(upd->control & (upOversizedFrame|upRuntFrame))
+			if(pd->control & (upOversizedFrame|upRuntFrame))
 				ether->buffs++;
-			if(upd->control & upAlignmentError)
+			if(pd->control & upAlignmentError)
 				ether->frames++;
-			if(upd->control & upCRCError)
+			if(pd->control & upCRCError)
 				ether->crcs++;
-
-			upd->control = 0;
 		}
-		else if(xbp = updalloc(upd->np)){
-			bp->rp += sizeof(Upd)-sizeof(Etherpkt);
-			bp->wp = bp->rp + (upd->control & rxBytes);
-
-			xbp->next = bp->next;
-			bp->next = 0;
-
-			etheriq(ether, bp, 1);
-			bp = xbp;
+		else if(bp = iallocb(sizeof(Etherpkt)+4)){
+			len = pd->control & rxBytes;
+			pd->bp->wp = pd->bp->rp+len;
+			etheriq(ether, pd->bp, 1);
+			pd->bp = bp;
+			pd->addr = PADDR(bp->rp);
 		}
 
-		upd = (Upd*)ctlr->upqtail->rp;
-		upd->np = PADDR(bp->rp);
-		ctlr->upqtail->next = bp;
-		ctlr->upqtail = bp;
-		ctlr->upqhead = bp->next;
+		pd->control = 0;
+		COMMAND(port, Stall, upUnStall);
 
-		bp = ctlr->upqhead;
-		upd = (Upd*)bp->rp;
+		q++;
 	}
+	ctlr->uphead = pd;
 
-	COMMAND(port, Stall, upUnStall);
-	//iunlock(&ctlr->upqlock);
+	if(q > ctlr->upqmax)
+		ctlr->upqmax = q;
 }
 
 static void
@@ -1044,8 +988,8 @@ interrupt(Ureg*, void* arg)
 		}
 
 		if(status & (upComplete)){
-			COMMAND(port, AcknowledgeInterrupt, upComplete);
 			receive905(ether);
+			COMMAND(port, AcknowledgeInterrupt, upComplete);
 			status &= ~upComplete;
 		}
 
@@ -1103,9 +1047,10 @@ interrupt(Ureg*, void* arg)
 		}
 
 		if(status & dnComplete){
+			txstart905(ether);
 			COMMAND(port, AcknowledgeInterrupt, dnComplete);
-			start905(ether, 0);
 			status &= ~dnComplete;
+			ctlr->dninterrupts++;
 		}
 
 		if(status & updateStats){
@@ -1164,6 +1109,12 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 	len += snprint(p+len, READSTR-len, "framesdeferred: %lud\n", ctlr->stats[FramesDeferred]);
 	len += snprint(p+len, READSTR-len, "bytesrcvdok: %lud\n", ctlr->stats[BytesRcvdOk]);
 	len += snprint(p+len, READSTR-len, "bytesxmittedok: %lud\n", ctlr->stats[BytesRcvdOk+1]);
+len += snprint(p+len, READSTR-len, "up: q %lud s %lud\n",
+    ctlr->upqmax, ctlr->upstalls);
+ctlr->upqmax = 0;
+len += snprint(p+len, READSTR-len, "dn: q %lud i %lud m %d\n",
+    ctlr->dnqueued, ctlr->dninterrupts, ctlr->dnqmax);
+ctlr->dnqmax = 0;
 	snprint(p+len, READSTR-len, "badssd: %lud\n", ctlr->stats[BytesRcvdOk+2]);
 
 	n = readstr(offset, a, n, p);
@@ -1761,8 +1712,11 @@ etherelnk3reset(Ether* ether)
 		if(!(x & 0x01))
 			outl(port+PktStatus, upRxEarlyEnable);
 
-		if(ctlr->upenabled)
+		if(ctlr->upenabled || ctlr->dnenabled){
+			ctlr->nup = Nup;
+			ctlr->ndn = Ndn;
 			init905(ctlr);
+		}
 		else
 			ctlr->rbp = rbpalloc(allocb);
 		outl(port+TxFreeThresh, HOWMANY(ETHERMAXTU, 256));
