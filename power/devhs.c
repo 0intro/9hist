@@ -485,10 +485,6 @@ hsvmekproc(void *arg)
 		}
 
 		/*
-		 *  if we loop many times without finding a character, sleep
-		 */
-		for(miss = 0; miss < 10; miss++){
-		/*
 		 *  0xFFFF means an empty fifo
 		 */
 		while ((c = addr->data) != 0xFFFF) {
@@ -516,7 +512,6 @@ hsvmekproc(void *arg)
 				if(hp->wptr == &hp->buf[sizeof hp->buf])
 					upstream(hp, 0);
 			}
-		}
 		}
 		qunlock(hp);
 

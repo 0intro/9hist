@@ -157,7 +157,7 @@ sysexec(ulong *arg)
 	Seg *s;
 	ulong l, t, d, b, v;
 	int i;
-	Chan *tc;
+	Chan *tc, *c;
 	Orig *o;
 	char **argv, **argp;
 	char *a, *charp, *file;
@@ -287,6 +287,15 @@ sysexec(ulong *arg)
 	 * Committed.  Free old memory
 	 */
 	freesegs(ESEG);
+
+	/*
+	 * Close on exec
+	 */
+	for(i=0; i<=u->maxfd; i++)
+		if((c=u->fd[i]) && c->flag&CCEXEC){
+			close(c);
+			fdclose(i);
+		}
 
 	/*
 	 * Text.  Shared.

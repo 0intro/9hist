@@ -447,7 +447,7 @@ namec(char *name, int amode, int omode, ulong perm)
 		mntok = 0;
 		if(!((ulong)name & KZERO))
 			validaddr((ulong)(name+1), 2, 0);
-		if(name[1]=='|' || ('A'<=name[1] && name[1]<='Z'))
+		if(name[1]=='|' || name[1]=='M')
 			error(0, Enonexist);
 		t = devno(name[1], 1);
 		if(t == -1)
@@ -511,6 +511,8 @@ namec(char *name, int amode, int omode, ulong perm)
 		c = nc;
 	Open:
 		c = (*devtab[c->type].open)(c, omode);
+		if(omode & OCEXEC)
+			c->flag |= CCEXEC;
 		break;
 
 	case Amount:
@@ -533,6 +535,8 @@ namec(char *name, int amode, int omode, ulong perm)
 		if((c->flag&(CMOUNT|CCREATE)) == CMOUNT)
 			c = createdir(c);
 		(*devtab[c->type].create)(c, elem, omode, perm);
+		if(omode & OCEXEC)
+			c->flag |= CCEXEC;
 		break;
 
 	default:

@@ -53,6 +53,7 @@ void	error(Chan*, int);
 void	evenaddr(ulong);
 void	exit(void);
 void	fault(Ureg*, int, int);
+void	fdclose(int);
 Chan*	fdtochan(int, int);
 void	firmware(void);
 void	flowctl(Queue*);

@@ -634,6 +634,7 @@ extern	char	*statename[];
 #define	COPEN	1	/* for i/o */
 #define	CMOUNT	2	/* is result of a mount/bind */
 #define	CCREATE	4	/* permits creation if CMOUNT */
+#define	CCEXEC	8	/* close on exec */
 
 /*
  * Proc.time

@@ -342,7 +342,7 @@ notify(Ureg *ur)
 	if(!u->notified){
 		if(!u->notify)
 			goto Die;
-		sp = ur->sp;
+		sp = ur->usp;
 		sp -= sizeof(Ureg);
 		u->ureg = (void*)sp;
 		memcpy((Ureg*)sp, ur, sizeof(Ureg));
@@ -352,7 +352,7 @@ notify(Ureg *ur)
 		*(ulong*)(sp+2*BY2WD) = sp+3*BY2WD;	/* arg 2 is string */
 		*(ulong*)(sp+1*BY2WD) = (ulong)u->ureg;	/* arg 1 is ureg* */
 		*(ulong*)(sp+0*BY2WD) = 0;		/* arg 0 is pc */
-		ur->sp = sp;
+		ur->usp = sp;
 		ur->pc = (ulong)u->notify;
 		u->notified = 1;
 		u->nnote--;

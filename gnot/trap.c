@@ -156,8 +156,7 @@ notify(Ureg *ur)
 	if(!u->notified){
 		if(!u->notify)
 			goto Die;
-		#ifdef asdfasdf
-		sp = ur->sp;
+		sp = ur->usp;
 		sp -= sizeof(Ureg);
 		u->ureg = (void*)sp;
 		memcpy((Ureg*)sp, ur, sizeof(Ureg));
@@ -167,13 +166,11 @@ notify(Ureg *ur)
 		*(ulong*)(sp+2*BY2WD) = sp+3*BY2WD;	/* arg 2 is string */
 		*(ulong*)(sp+1*BY2WD) = (ulong)u->ureg;	/* arg 1 is ureg* */
 		*(ulong*)(sp+0*BY2WD) = 0;		/* arg 0 is pc */
-		ur->sp = sp;
+		ur->usp = sp;
 		ur->pc = (ulong)u->notify;
 		u->notified = 1;
 		u->nnote--;
 		memcpy(&u->note[0], &u->note[1], u->nnote*sizeof(Note));
-		#endif
-		panic("notify");
 	}
 	unlock(&u->p->debug);
 }
@@ -184,7 +181,6 @@ notify(Ureg *ur)
 void
 noted(Ureg **urp)
 {
-	#ifdef asdfasdf
 	lock(&u->p->debug);
 	if(!u->notified){
 		unlock(&u->p->debug);
@@ -195,8 +191,6 @@ noted(Ureg **urp)
 	unlock(&u->p->debug);
 	splhi();
 	rfnote(urp);
-	#endif
-	panic("noted");
 }
 
 #undef	CHDIR	/* BUG */
@@ -206,7 +200,7 @@ typedef long Syscall(ulong*);
 Syscall	sysr1, sysfork, sysexec, sysgetpid, syssleep, sysexits, syslasterr, syswait;
 Syscall	sysopen, sysclose, sysread, syswrite, sysseek, syserrstr, sysaccess, sysstat, sysfstat;
 Syscall sysdup, syschdir, sysforkpgrp, sysbind, sysmount, syspipe, syscreate, sysuserstr;
-Syscall	sysbrk_, sysremove, syswstat, sysfwstat;
+Syscall	sysbrk_, sysremove, syswstat, sysfwstat, sysnotify, sysnoted;
 
 Syscall *systab[]={
 	sysr1,
@@ -237,6 +231,8 @@ Syscall *systab[]={
 	sysremove,
 	syswstat,
 	sysfwstat,
+	sysnotify,
+	sysnoted,
 };
 
 long

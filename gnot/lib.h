@@ -71,6 +71,8 @@ extern	long	end;
 #define	ORDWR	2	/* read and write */
 #define	OEXEC	3	/* execute, == read but check execute permission */
 #define	OTRUNC	16	/* or'ed in (except for exec), truncate file first */
+#define	OCEXEC	32	/* or'ed in, close on exec */
+#define	ORCLOSE	64	/* or'ed in, remove on close */
 
 typedef struct Error	Error;
 typedef struct Dir	Dir;

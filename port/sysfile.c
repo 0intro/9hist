@@ -44,10 +44,10 @@ fdtochan(int fd, int mode)
 int
 openmode(ulong o)
 {
-	if(o >= (OTRUNC|OEXEC))
+	if(o >= (OTRUNC|OCEXEC|ORCLOSE|OEXEC))
     Err:
 		error(0, Ebadarg);
-	o &= ~OTRUNC;
+	o &= ~(OTRUNC|OCEXEC|ORCLOSE);
 	if(o > OEXEC)
 		goto Err;
 	if(o == OEXEC)

@@ -42,6 +42,7 @@ void	envpgclose(Env *);
 void	error(Chan*, int);
 void	exit(void);
 void	fault(Ureg*, FFrame*);
+void	fdclose(int);
 Chan*	fdtochan(int, int);
 void	firmware(void);
 void	flowctl(Queue*);

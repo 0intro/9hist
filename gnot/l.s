@@ -104,6 +104,17 @@ TEXT	tas(SB), $0
 tas_1:
 	RTS
 
+TEXT	rfnote(SB), $0
+
+	MOVL	uregpp+0(FP), A0
+	MOVL	(A0), A7
+	MOVL	A7, -(A7)
+	MOVL	((1+8+8)*BY2WD)(A7), A0
+	MOVL	A0, USP
+	MOVL	((1+8+6)*BY2WD)(A7), A6
+	ADDL	$((1+8+8+1)*4), A7
+	RTE
+
 TEXT	illegal(SB), $0
 
 	SUBL	$((8+8+1)*BY2WD), A7

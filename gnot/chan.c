@@ -511,6 +511,8 @@ namec(char *name, int amode, int omode, ulong perm)
 		c = nc;
 	Open:
 		c = (*devtab[c->type].open)(c, omode);
+		if(omode & OCEXEC)
+			c->flag |= CCEXEC;
 		break;
 
 	case Amount:
@@ -533,6 +535,8 @@ namec(char *name, int amode, int omode, ulong perm)
 		if((c->flag&(CMOUNT|CCREATE)) == CMOUNT)
 			c = createdir(c);
 		(*devtab[c->type].create)(c, elem, omode, perm);
+		if(omode & OCEXEC)
+			c->flag |= CCEXEC;
 		break;
 
 	default:
