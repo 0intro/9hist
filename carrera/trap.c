@@ -449,20 +449,25 @@ kernfault(Ureg *ur, int code)
 void
 dumpstack(void)
 {
-	ulong l, v, top;
+	ulong l, v, top, i;
 	extern ulong etext;
 
 	if(up == 0)
 		return;
 
 	top = (ulong)up->kstack + KSTACK;
+	i = 0;
 	for(l=(ulong)&l; l < top; l += BY2WD) {
 		v = *(ulong*)l;
 		if(KTZERO < v && v < (ulong)&etext) {
-			print("%lux=%lux\n", l, v);
-			delay(100);
+			print("%.8lux=%.8lux ", l, v);
+			if((++i%4) == 0){
+				print("\n");
+				delay(200);
+			}
 		}
 	}
+	print("\n");
 }
 
 void

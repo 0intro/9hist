@@ -90,8 +90,9 @@ struct Uart
 	int	enabled;
 	int	dev;
 
-	int	frame;
-	int	overrun;
+	int	frame;		/* framing errors */
+	int	overrun;	/* rcvr overruns */
+	int	baud;		/* baud rate */
 
 	/* flow control */
 	int	xonoff;		/* software flow control on */
@@ -149,6 +150,8 @@ ns16552setbaud(Uart *p, int rate)
 	outb(p->port + Dmsb, (brconst>>8) & 0xff);
 	outb(p->port + Dlsb, brconst & 0xff);
 	uartwrreg(p, Format, 0);
+
+	p->baud = rate;
 }
 
 static void
@@ -787,16 +790,13 @@ uartstatus(Chan *c, Uart *p, void *buf, long n, long offset)
 	uchar mstat;
 	uchar tstat;
 	char str[256];
-	int i;
+
+	USED(c);
 
 	str[0] = 0;
 	tstat = p->sticky[Mctl];
 	mstat = uartrdreg(p, Mstat);
-	i = sprint(str, "%d printing %d cts %d qlen %d/%d", NETID(c->qid.path),
-		p->printing, p->cts, qlen(p->iq), qlen(p->oq));
-	sprint(str+i, " lstat %ux mstat %ux istat %ux ier %ux ferr %d oerr %d",
-		uartrdreg(p, Lstat), mstat, uartrdreg(p, Istat), uartrdreg(p, Iena),
-		p->frame, p->overrun);
+	sprint(str, "ferr %d oerr %d baud %d", p->frame, p->overrun, p->baud);
 	if(mstat & Cts)
 		strcat(str, " cts");
 	if(mstat & Dsr)

@@ -43,7 +43,7 @@ enum
 	 ISA186ien=	 1<<7,		/*  I186 irq enable bit state */
 	 ISA186idata=	 1<<6,		/*  I186 irq data bit state */
 	 ISAmen=	 1<<4,		/*  enable memory to respond to ISA cycles */
-	 ISAmbank=	 0xf<<0,		/*  shift for 4 bit memory bank */
+	 ISAmbank=	 0xf<<0,	/*  shift for 4 bit memory bank */
 	ISAmaddr=	3,		/* bits 14-19 of the boards mem address */
 	ISAstat1=	4,		/* board status (1 bit per channel) */
 	ISAstat2=	5,		/* board status (1 bit per channel) */
@@ -254,14 +254,17 @@ struct Astar
 /* host per channel info */
 struct Astarchan
 {
-	QLock;		/* lock for rendez */
-	Rendez	r;	/* waiting for command completion */
+	QLock;			/* lock for rendez */
+	Rendez	r;		/* waiting for command completion */
 
-	Astar	*a;	/* controller */
-	CCB	*ccb;	/* channel control block */
+	Astar	*a;		/* controller */
+	CCB	*ccb;		/* channel control block */
 	int	perm;
 	int	opens;
-	int	baud;
+	int	baud;		/* baud rate */
+	int	framing;	/* framing errors */
+	int	overrun;	/* overruns */
+	int	dtr;		/* non-zero means dtr on */
 
 	Queue	*iq;
 	Queue	*oq;
@@ -297,14 +300,13 @@ static void	astarctl(Astarchan*, char*);
 static void
 setpage(Astar *a, ulong offset)
 {
-	int i, c;
+	int i;
 
 	i = APAGE(offset);
 	if(i == a->page)
 		return;
 
-	c = inb(a->port+ISActl2) & ~ISAmbank;
-	outb(a->port+ISActl2, ISAmen|i|c);
+	outb(a->port+ISActl2, ISAmen|i);
 	a->page = i;
 }
 
@@ -346,17 +348,17 @@ astargen(Chan *c, Dirtab *tab, int ntab, int i, Dir *db)
 			t = i%3;
 			switch(t){
 			case 0:
-				sprint(db->name, "eia%d%2.2d", dev, ch);
+				sprint(db->name, "eia%d%2.2d", astar[dev]->id, ch);
 				db->mode = astar[dev]->c[ch].perm;
 				db->qid.path = QID(dev, ch, Qdata);
 				break;
 			case 1:
-				sprint(db->name, "eia%d%2.2dctl", dev, ch);
+				sprint(db->name, "eia%d%2.2dctl", astar[dev]->id, ch);
 				db->mode = astar[dev]->c[ch].perm;
 				db->qid.path = QID(dev, ch, Qctl);
 				break;
 			case 2:
-				sprint(db->name, "eia%d%2.2dstat", dev, ch);
+				sprint(db->name, "eia%d%2.2dstat", astar[dev]->id, ch);
 				db->mode = 0444;
 				db->qid.path = QID(dev, ch, Qstat);
 				break;
@@ -385,7 +387,7 @@ astargen(Chan *c, Dirtab *tab, int ntab, int i, Dir *db)
 void
 astarreset(void)
 {
-	int i, c;
+	int i;
 	Astar *a;
 
 	for(i = 0; i < Maxcard; i++){
@@ -421,6 +423,9 @@ astarreset(void)
 		}
 		print("serial%d avanstar port 0x%lux addr %lux irq %d\n", a->id, a->port,
 			a->addr, a->irq);
+		print("\tctl1 %ux ctl2 %ux maddr %ux stat1 %ux stat2 %ux\n", inb(a->port+ISActl1),
+			inb(a->port+ISActl2), inb(a->port+ISAmaddr), inb(a->port+ISAstat1),
+			inb(a->port+ISAstat2));
 		nastar++;
 	}
 }
@@ -445,7 +450,7 @@ astarprobe(int port)
 static int
 astarsetup(Astar *a)
 {
-	int i, c, found;
+	int i, found;
 
 	/* see if the card exists */
 	found = 0;
@@ -476,18 +481,13 @@ astarsetup(Astar *a)
 	a->gcb = (GCB*)(KZERO | a->mem);
 	a->addr = (uchar*)(KZERO | a->mem);
 
-	/* set up interrupt level, reset processor, leave interrupts off */
-	c = inb(a->port+ISActl1);
-	c &= ~(ISAnotdl|ISAien|ISAirq);
-	c |= isairqcode[a->irq];
-	outb(a->port+ISActl1, c);
-	setvec(Int0vec + a->irq, astarintr, a);
-
 	/* disable ISA memory response */
-	c = inb(a->port+ISActl2);
-	outb(a->port+ISActl2, c & ~ISAmen);
+	outb(a->port+ISActl2, 0);
 	a->memsize = 0;
 	a->page = -1;
+
+	/* reset processor */
+	outb(a->port+ISActl1, 0);
 
 	return 0;
 }
@@ -648,6 +648,35 @@ bctlread(Astar *a, void *buf, long n, ulong offset)
 	return readstr(offset, buf, n, s);
 }
 
+static long
+statread(Astarchan *ac, void *buf, long n, ulong offset)
+{
+	char s[128];
+	int mstat, bstat;
+
+	LOCKPAGE(ac->a, 0);
+	mstat = LEUS(ac->ccb->mstat);
+	bstat = LEUS(ac->ccb->bstat);
+	UNLOCKPAGE(ac->a);
+
+	/* CCB.mstat fields */
+	sprint(s, "ferr %d oerr %d baud %d", ac->framing, ac->overrun, ac->baud);
+	if(mstat & Cctsstat)
+		strcat(s, " cts");
+	if(mstat & Cdsrstat)
+		strcat(s, " dsr");
+	if(mstat & Cristat)
+		strcat(s, " ring");
+	if(mstat & Cdcdstat)
+		strcat(s, " dcd");
+	if(ac->opens)
+		strcat(s, " dtr");
+	if((bstat & Crbrts) == 0)
+		strcat(s, " rts");
+
+	return readstr(offset, buf, n, s);
+}
+
 long
 astarread(Chan *c, void *buf, long n, ulong offset)
 {
@@ -658,6 +687,9 @@ astarread(Chan *c, void *buf, long n, ulong offset)
 		return devdirread(c, buf, n, 0, 0, astargen);
 
 	switch(TYPE(c->qid.path)){
+	case Qstat:
+		a = astar[BOARD(c->qid.path)];
+		return statread(a->c + CHAN(c->qid.path), buf, n, offset);
 	case Qmem:
 		return memread(astar[BOARD(c->qid.path)], buf, n, offset);
 	case Qbctl:
@@ -731,7 +763,6 @@ startcp(Astar *a)
 		error(Eio);
 
 	/* take board out of download mode and enable IRQ */
-print("out of download\n");
 	c = inb(a->port+ISActl1);
 	outb(a->port+ISActl1, c|ISAien|ISAnotdl);
 	a->memsize = a->ramsize;
@@ -739,9 +770,10 @@ print("out of download\n");
 		a->needpage = 0;
 	else
 		a->needpage = 1;
+	a->page = -1;
+	setpage(a, 0);
 
 	/* wait for control program to signal life */
-print("waiting for cp\n");
 	for(i = 0; i < 21; i++){
 		if(inb(a->port+ISActl1) & ISApr)
 			break;
@@ -788,17 +820,13 @@ print("waiting for cp\n");
 		}
 	}
 
-	/* enable control program interrupt generation */
-	a->gcb->cmd2 = LEUS(Gintack);
-
 	UNLOCKPAGE(a);
 	poperror();
-print("setting up channels\n");
 
 	/* setup the channels */
 	a->running = 1;
 	a->nchan = i;
-	a->c = xalloc(a->nchan * sizeof(Astarchan));
+	a->c = smalloc(a->nchan * sizeof(Astarchan));
 	for(i = 0; i < a->nchan; i++){
 		ac = &a->c[i];
 		ac->a = a;
@@ -808,6 +836,19 @@ print("setting up channels\n");
 		ac->oq = qopen(4*1024, 0, astarkick, ac);
 		x += sz;
 	}
+
+	/* set up interrupt level, enable interrupts */
+	c = inb(a->port+ISActl1);
+	c &= ~ISAirq;
+	c |= ISAien|isairqcode[a->irq];
+	outb(a->port+ISActl1, c);
+
+	setvec(Int0vec + a->irq, astarintr, a);
+
+	/* enable control program interrupt generation */
+	LOCKPAGE(a, 0);
+	a->gcb->cmd2 = LEUS(Gintack);
+	UNLOCKPAGE(a);
 }
 
 static void
@@ -1006,6 +1047,7 @@ astarctl(Astarchan *ac, char *cmd)
 			 n |= Cdtrctl;
 		else
 			 n &= ~Cdtrctl;
+		ac->dtr = n;
 		ccb->mctl = LEUS(n);
 		break;
 	case 'f':
@@ -1300,15 +1342,15 @@ astarintr(Ureg *ur, void *arg)
 	Astar *a = arg;
 	Astarchan *ac;
 	ulong vec, invec, outvec, errvec, mvec, cmdvec;
+	int c;
 
 	USED(ur);
+	if(a->running == 0)
+		panic("astar interrupt but cp not running\n");
+
 	lock(&a->pagelock);
 	if(a->needpage)
 		setpage(a, 0);
-	if(a->running == 0){
-		print("astar interrupt but cp not running\n");
-		return;
-	}
 
 	/* get causes */
 	invec = LEUS(xchgw(&a->gcb->inserv, 0));
@@ -1318,7 +1360,6 @@ astarintr(Ureg *ur, void *arg)
 	cmdvec = LEUS(xchgw(&a->gcb->cmdserv, 0));
 	USED(mvec);
 	USED(cmdvec);
-	USED(errvec);
 
 	/* reenable interrupts */
 	a->gcb->cmd2 = LEUS(Gintack);
@@ -1340,6 +1381,15 @@ astarintr(Ureg *ur, void *arg)
 	for(vec = cmdvec; vec; vec >>= 1){
 		if(vec&1)
 			wakeup(&ac->r);
+		ac++;
+	}
+	ac = a->c;
+	for(vec = errvec; vec; vec >>= 1){
+		c = LEUS(ac->ccb->errstat);
+		if(c & Cframing)
+			ac->framing++;
+		if(c & Coverrun)
+			ac->overrun++;
 		ac++;
 	}
 	unlock(&a->pagelock);
