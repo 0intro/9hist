@@ -212,12 +212,35 @@ netifbread(Netif *nif, Chan *c, long n, ulong offset)
 }
 
 /*
+ *  make sure this type isn't already in use on this device
+ */
+static int
+typeinuse(Netif *nif, int type)
+{
+	Netfile *f, **fp, **efp;
+
+	if(type <= 0)
+		return 0;
+
+	efp = &nif->f[nif->nfile];
+	for(fp = nif->f; fp < efp; fp++){
+		f = *fp;
+		if(f == 0)
+			continue;
+		if(f->type == type)
+			return 1;
+	}
+	return 0;
+}
+
+/*
  *  the devxxx.c that calls us handles writing data, it knows best
  */
 long
 netifwrite(Netif *nif, Chan *c, void *a, long n)
 {
 	Netfile *f;
+	int type;
 	char *p, buf[64];
 	uchar binaddr[Nmaxaddr];
 
@@ -237,7 +260,10 @@ netifwrite(Netif *nif, Chan *c, void *a, long n)
 	qlock(nif);
 	f = nif->f[NETID(c->qid.path)];
 	if((p = matchtoken(buf, "connect")) != 0){
-		f->type = atoi(p);
+		type = atoi(p);
+		if(typeinuse(nif, type))
+			error(Einuse);
+		f->type = type;
 		if(f->type < 0)
 			nif->all++;
 	} else if(matchtoken(buf, "promiscuous")){
