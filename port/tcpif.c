@@ -46,9 +46,12 @@ state_upcall(Ipconv *s, char oldstate, char newstate)
 			qunlock(s);
 			nexterror();
 		}
-		if(s->readq == 0)
-			freeb(bp);
-		else
+		if(s->readq == 0){
+			if(newstate == Close_wait)
+				putb(&tcb->rcvq, bp);
+			else
+				freeb(bp);
+		} else
 			PUTNEXT(s->readq, bp);
 		poperror();
 		qunlock(s);

@@ -268,5 +268,6 @@ netown(Network *np, int id, char *o, int omode)
 void
 netdisown(Network *np, int id)
 {
+if(np == 0) panic("np == 0");
 	*np->prot[id].owner = 0;
 }

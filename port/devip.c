@@ -21,6 +21,7 @@ Ipifc	*ipifc;				/* IP protocol interfaces for stip */
 Ipconv	*ipconv[Nrprotocol];		/* Connections for each protocol */
 Network	*ipnet[Nrprotocol];		/* User level interface for protocol */
 QLock	ipalloc;			/* Protocol port allocation lock */
+Ipconv	*tcpbase;			/* Base tcp connection */
 
 /* ARPA User Datagram Protocol */
 void	udpstiput(Queue *, Block *);
@@ -171,7 +172,6 @@ ipincoming(Ipconv *base, Ipconv *from)
 				netown(new->net, new->index, u->p->user, 0);
 
 			new->ref = 1;
-			new->newcon = 0;
 			qunlock(new);
 			return new;
 		}	
@@ -262,10 +262,11 @@ ipwrite(Chan *c, char *a, long n, ulong offset)
 		cp->pdst = atoi(ctlarg[1]);
 
 		/* If we have no local port assign one */
-		qlock(&ipalloc);
-		if(cp->psrc == 0)
+		if(cp->psrc == 0){
+			qlock(&ipalloc);
 			cp->psrc = nextport(ipconv[c->dev], priv);
-		qunlock(&ipalloc);
+			qunlock(&ipalloc);
+		}
 
 		if(cp->stproto == &tcpinfo)
 			tcpstart(cp, TCP_ACTIVE, Streamhi, 0);
@@ -289,13 +290,20 @@ ipwrite(Chan *c, char *a, long n, ulong offset)
 
 		port = atoi(field[1]);
 
-		qlock(&ipalloc);
-		if(portused(ipconv[c->dev], port)) {
-			qunlock(&ipalloc);	
-			error(Einuse);
-		}
-		cp->psrc = port;
-		qunlock(&ipalloc);
+		if(port){
+			qlock(&ipalloc);
+			if(portused(ipconv[c->dev], port)) {
+				qunlock(&ipalloc);	
+				error(Einuse);
+			}
+			cp->psrc = port;
+			qunlock(&ipalloc);
+		} else if(*field[1] != '*'){
+			qlock(&ipalloc);
+			cp->psrc = nextport(ipconv[c->dev], 0);
+			qunlock(&ipalloc);
+		} else
+			cp->psrc = 0;
 
 		if(cp->stproto == &tcpinfo)
 			tcpstart(cp, TCP_PASSIVE, Streamhi, 0);
@@ -557,6 +565,8 @@ void
 tcpstopen(Queue *q, Stream *s)
 {
 	Ipconv *ipc;
+	Tcpctl *tcb;
+	Block *bp;	
 	static int tcpkprocs;
 
 	if(!Ipoutput) {
@@ -573,6 +583,8 @@ tcpstopen(Queue *q, Stream *s)
 
 	}
 
+	if(tcpbase == 0)
+		tcpbase = ipconv[s->dev];
 	ipc = &ipconv[s->dev][s->id];
 	ipc->ipinterface = newipifc(IP_TCPPROTO, tcp_input, ipconv[s->dev], 
 			            1500, 512, ETHER_HDR, "TCP");
@@ -584,6 +596,13 @@ tcpstopen(Queue *q, Stream *s)
 	RD(q)->ptr = (void *)ipc;
 	WR(q)->next->ptr = (void *)ipc->ipinterface;
 	WR(q)->ptr = (void *)ipc;
+
+	/* pass any waiting data upstream */
+	tcb = &ipc->tcpctl;
+	qlock(tcb);
+	while(bp = getb(&tcb->rcvq))
+		PUTNEXT(ipc->readq, bp);
+	qunlock(tcb);
 }
 
 void
@@ -682,6 +701,7 @@ void
 tcpstclose(Queue *q)
 {
 	Ipconv *s;
+	Ipconv *etab, *ifc;
 	Tcpctl *tcb;
 
 	s = (Ipconv *)(q->ptr);
@@ -693,10 +713,32 @@ tcpstclose(Queue *q)
 	qunlock(s);
 
 	switch(tcb->state){
-	case Closed:
 	case Listen:
-	case Syn_sent:
+		/*
+		 *  reset any incoming calls to this listener
+		 */
+		qlock(s);
+		s->backlog = 0;
+		s->curlog = 0;
+		etab = &tcpbase[conf.ip];
+		for(ifc = tcpbase; ifc < etab; ifc++){
+			if(ifc->newcon == s) {
+				ifc->newcon = 0;
+				tcpflushincoming(ifc);
+			}
+		}
+		qunlock(s);
+
+		qlock(tcb);
 		close_self(s, 0);
+		qunlock(tcb);
+		break;
+
+	case Closed:
+	case Syn_sent:
+		qlock(tcb);
+		close_self(s, 0);
+		qunlock(tcb);
 		break;
 
 	case Syn_received:

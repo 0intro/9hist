@@ -79,25 +79,56 @@ reset(Ipaddr source, Ipaddr dest, char tos, ushort length, Tcp *seg)
 	PUTNEXT(Ipoutput, hbp);
 }
 
+/*
+ *  flush an incoming call; send a reset to the remote side and close the
+ *  conversation
+ */
+void
+tcpflushincoming(Ipconv *s)
+{
+	Tcp seg;
+	Tcpctl *tcb;		
+
+	tcb = &s->tcpctl;
+	seg.source = s->pdst;
+	seg.dest = s->psrc;
+	seg.flags = ACK;	
+	seg.seq = tcb->snd.ptr;
+	seg.ack = tcb->last_ack = tcb->rcv.nxt;
+
+	reset(s->dst, Myip[Myself], 0, 0, &seg);
+	close_self(s, 0);
+}
+
+static void
+tcpmove(struct Tctl *to, struct Tctl *from)
+{
+	memmove(to, from, sizeof(struct Tctl));
+}
+
 Ipconv*
 tcpincoming(Ipconv *ipc, Ipconv *s, Tcp *segp, Ipaddr source)
 {
 	Ipconv *new;
 
-	if(s->curlog >= s->backlog)
+	qlock(s);
+	if(s->curlog >= s->backlog){
+		qunlock(s);
 		return 0;
+	}
 
 	new = ipincoming(ipc, s);
-	if(new == 0)
+	if(new == 0){
+		qunlock(s);
 		return 0;
+	}
 
-	qlock(s);
 	s->curlog++;
 	qunlock(s);
 	new->psrc = segp->dest;
 	new->pdst = segp->source;
 	new->dst = source;
-	memmove(&new->tcpctl, &s->tcpctl, sizeof(Tcpctl));
+	tcpmove(&new->tcpctl, &s->tcpctl);
 	new->tcpctl.flags &= ~CLONE;
 	new->tcpctl.timer.arg = new;
 	new->tcpctl.timer.state = TIMER_STOP;
@@ -269,7 +300,8 @@ tcp_input(Ipconv *ipc, Block *bp)
 
 	/* If we dont understand answer with a rst */
 	if(length)
-	if(s->readq == 0) {
+	if(s->readq == 0)
+	if(tcb->state == Closed) {
 		freeb(bp);
 		reset(source, dest, tos, length, &seg);
 		goto done;
@@ -370,9 +402,11 @@ tcp_input(Ipconv *ipc, Block *bp)
 			case Finwait2:
 				/* Place on receive queue */
 				tcb->rcvcnt += blen(bp);
-				if(bp)
-				if(s->readq) {
-					PUTNEXT(s->readq, bp);
+				if(bp){
+					if(s->readq)
+						PUTNEXT(s->readq, bp);
+					else
+						putb(&tcb->rcvq, bp);
 					bp = 0;
 				}
 				tcb->rcv.nxt += length;
@@ -811,15 +845,23 @@ init_tcpctl(Ipconv *s)
 	tcb->acktimer.arg = (void *)s;
 }
 
+/*
+ *  called with tcb locked
+ */
 void
 close_self(Ipconv *s, char reason[])
 {
 	Reseq *rp,*rp1;
 	Tcpctl *tcb = &s->tcpctl;
+	Block *bp;
 
 	stop_timer(&tcb->timer);
 	stop_timer(&tcb->rtt_timer);
 	s->err = reason;
+
+	/* flush receive queue */
+	while(bp = getb(&tcb->rcvq))
+		freeb(bp);
 
 	/* Flush reassembly queue; nothing more can arrive */
 	for(rp = tcb->reseq;rp != 0;rp = rp1){

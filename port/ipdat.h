@@ -231,7 +231,7 @@ struct Tctl
 	char	flags;
 	char	tos;
 
-	Block	*rcvq;
+	Blist	rcvq;
 	ulong	rcvcnt;
 
 	Block	*sndq;			/* List of data going out */
@@ -249,8 +249,8 @@ struct Tctl
 struct Tcpctl
 {
 	QLock;
-	struct Tctl;
 	Rendez syner;
+	struct Tctl;
 };
 
 struct	Tcp
@@ -499,6 +499,7 @@ void	ipstatusfill(Chan*, char*, int);
 int	ipforme(uchar*);
 void	ipsetaddrs(void);
 int	ipconbusy(Ipconv*);
+void	tcpflushincoming(Ipconv*);
 
 #define	fmtaddr(xx)	(xx>>24)&0xff,(xx>>16)&0xff,(xx>>8)&0xff,xx&0xff
 #define	MIN(a, b)	((a) < (b) ? (a) : (b))
