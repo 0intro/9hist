@@ -872,7 +872,6 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			ff->ascent = p[2];
 			ff->ldepth = v;
 			ff->width = 0;
-if(ff->b)print("font allocate: bitmap nonzero\n");
 			ff->b = 0;
 			m -= 5;
 			p += 5;
