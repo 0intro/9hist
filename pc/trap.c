@@ -595,8 +595,8 @@ noted(Ureg* ureg, ulong arg0)
 	case NCONT:
 	case NRSTR:
 		if(!okaddr(nureg->pc, 1, 0) || !okaddr(nureg->usp, BY2WD, 0)){
-			pprint("suicide: trap in noted\n");
 			qunlock(&up->debug);
+			pprint("suicide: trap in noted\n");
 			pexit("Suicide", 0);
 		}
 		up->ureg = (Ureg*)(*(ulong*)(oureg-BY2WD));
@@ -606,8 +606,8 @@ noted(Ureg* ureg, ulong arg0)
 	case NSAVE:
 		if(!okaddr(nureg->pc, BY2WD, 0)
 		|| !okaddr(nureg->usp, BY2WD, 0)){
-			pprint("suicide: trap in noted\n");
 			qunlock(&up->debug);
+			pprint("suicide: trap in noted\n");
 			pexit("Suicide", 0);
 		}
 		qunlock(&up->debug);
@@ -624,9 +624,11 @@ noted(Ureg* ureg, ulong arg0)
 		/* fall through */
 		
 	case NDFLT:
-		if(up->lastnote.flag == NDebug)
+		if(up->lastnote.flag == NDebug){ 
+			qunlock(&up->debug);
 			pprint("suicide: %s\n", up->lastnote.msg);
-		qunlock(&up->debug);
+		} else
+			qunlock(&up->debug);
 		pexit(up->lastnote.msg, up->lastnote.flag!=NDebug);
 	}
 }
