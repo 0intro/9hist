@@ -193,6 +193,7 @@ extern register Mach	*m;		/* R6 */
 extern register User	*u;		/* R5 */
 
 extern	uchar	*intrreg;
+extern	FPsave	*initfpp;
 
 struct
 {

@@ -35,6 +35,7 @@ main(void)
 	initseg();
 	chandevreset();
 	streaminit();
+	swapinit();
 	userinit();
 	clockinit();
 	schedinit();
@@ -112,7 +113,8 @@ init0(void)
 	touser(USTKTOP-(1+MAXSYSARG)*BY2WD);
 }
 
-FPsave	initfp;
+FPsave	*initfpp;
+uchar	initfpa[sizeof(FPsave)+7];
 
 void
 userinit(void)
@@ -121,6 +123,7 @@ userinit(void)
 	Segment *s;
 	User *up;
 	KMap *k;
+	ulong l;
 
 	p = newproc();
 	p->pgrp = newpgrp();
@@ -132,8 +135,13 @@ userinit(void)
 
 	strcpy(p->text, "*init*");
 	strcpy(p->user, eve);
-	savefpregs(&initfp);
-/*	initfp.fsr |= 0x1E << 23;	/* trap on all but INEXACT */
+	/* must align initfpp to an ODD word boundary */
+	l = (ulong)initfpa;
+	l += 3;
+	l &= ~7;
+	l += 4;
+	initfpp = (FPsave*)l;
+	savefpregs(initfpp);
 	p->fpstate = FPinit;
 
 	/*

@@ -95,6 +95,29 @@ excname(ulong tbr)
 	return excbuf;
 }
 
+/*
+ * This routine is frightening.  See comment in fptrap.c
+ */
+void
+fpquiet(void)
+{
+	int i;
+	ulong fsr;
+
+	i = 0;
+	fsr = getfsr();
+	while(fsr & (1<<13)){
+		if(fsr & 0x1F){
+			print("trap in fpquiet\n");
+			break;
+		}
+		if(++i > 1000){
+			print("fp not quiescent\n");
+			break;
+		}
+	}
+}
+
 void
 trap(Ureg *ur)
 {
@@ -111,7 +134,8 @@ trap(Ureg *ur)
 	tbr = (ur->tbr&0xFFF)>>4;
 	if(tbr > 16){			/* interrupt */
 		if(u && u->p->state==Running){
-			if(u->p->fpstate == FPactive) {
+			if(u->p->fpstate == FPactive){
+				fpquiet();
 				savefpregs(&u->fpsave);
 				u->p->fpstate = FPinactive;
 				ur->psr &= ~PSREF;
@@ -138,6 +162,7 @@ trap(Ureg *ur)
 		case 1:				/* instr. access */
 		case 9:				/* data access */
 			if(u && u->p->fpstate==FPactive) {
+				fpquiet();
 				savefpregs(&u->fpsave);
 				u->p->fpstate = FPinactive;
 				ur->psr &= ~PSREF;
@@ -161,7 +186,7 @@ trap(Ureg *ur)
 		case 4:				/* floating point disabled */
 			if(u && u->p){
 				if(u->p->fpstate == FPinit)
-					restfpregs(&initfp);
+					restfpregs(initfpp);
 				else if(u->p->fpstate == FPinactive)
 					restfpregs(&u->fpsave);
 				else
@@ -514,6 +539,7 @@ syscall(Ureg *aur)
 	 * guarantee anything about registers,
 	 */
 	if(u->p->fpstate == FPactive) {
+		fpquiet();
 		u->p->fpstate = FPinit;
 		ur->psr &= ~PSREF;
 	}
