@@ -52,8 +52,10 @@ enum
 
 static struct
 {
-	Lock	lock;
+	Lock;
+	int	mode;
 	vlong	when;		/* next fastticks a clock interrupt should occur */
+	vlong	cycwhen;	/* next fastticks a cycintr happens; 0 == infinity */
 	long	fastperiod;	/* fastticks/hz */
 	long	fast2freq;	/* fastticks*FreqMul/Freq */
 }i8253;
@@ -74,6 +76,7 @@ i8253init(int aalcycles, int havecycleclock)
 		 *  set clock for 1/HZ seconds
 		 */
 		outb(Tmode, Load0|Square);
+		i8253.mode = Square;
 		outb(T0cntr, (Freq/HZ));	/* low byte */
 		outb(T0cntr, (Freq/HZ)>>8);	/* high byte */
 
@@ -158,31 +161,70 @@ i8253init(int aalcycles, int havecycleclock)
 	}
 }
 
-#ifdef SETNEXT
-set up clock so it is reloaded every interrupt
-	outb(Tmode, Load0|Trigger);
-	outb(T0cntr, (Freq/HZ));	/* low byte */
-	outb(T0cntr, (Freq/HZ)>>8);	/* high byte */
-#endif
+/*
+ * schedule the next interrupt
+ * cycwhen is the next time for the cycle counter routines
+ */
+static void
+clockintrsched0(vlong next)
+{
+	vlong now;
+	long set;
+
+	i8253.cycwhen = next;
+	if(i8253.mode == Square && next == 0)
+		return;
+
+	now = fastticks(nil);
+	if(next || now < i8253.when - i8253.fastperiod || now > i8253.when - ((3*i8253.fastperiod)>>2)){
+		if(next > i8253.when)
+			next = i8253.when;
+		set = (long)(next - now) * FreqMul / i8253.fast2freq;
+		set -= 3;	/* three cycles for the count to take effect: outb, outb, wait */
+		if(i8253.mode != Trigger){
+			outb(Tmode, Load0|Trigger);
+			i8253.mode = Trigger;
+			set--;
+		}
+		if(set < 3)
+			set = 5;
+		outb(T0cntr, set);	/* low byte */
+		outb(T0cntr, set>>8);	/* high byte */
+	}else if(i8253.mode != Square){
+		i8253.mode = Square;
+		outb(Tmode, Load0|Square);
+		outb(T0cntr, (Freq/HZ));	/* low byte */
+		outb(T0cntr, (Freq/HZ)>>8);	/* high byte */
+	}
+}
+
+void
+clockintrsched(void)
+{
+	vlong next;
+
+	ilock(&i8253);
+	next = cycintrnext();
+	if(next != i8253.cycwhen)
+		clockintrsched0(next);
+	iunlock(&i8253);
+}
 
 static void
 clockintr0(Ureg* ureg, void *v)
 {
-#ifdef SETNEXT
-	vlong now;
-	long set;
+	vlong now, when;
 
 	now = fastticks(nil);
-	while(i8253.when < now)
-		i8253.when += i8253.fastperiod;
-	set = (long)(i8253.when - now) * FreqMul / i8253.fast2freq;
-	set -= 3;	/* three cycles for the count to take effect: outb, outb, wait */
-	outb(T0cntr, set);	/* low byte */
-	outb(T0cntr, set>>8);	/* high byte */
-#endif
-
-	checkcycintr(ureg, v);
-	clockintr(ureg, v);
+	when = i8253.when;
+	if(now >= i8253.when){
+		clockintr(ureg, v);
+		do
+			i8253.when += i8253.fastperiod;
+		while(i8253.when < now);
+	}
+	if(i8253.cycwhen || i8253.mode != Square)
+		clockintrsched0(checkcycintr(ureg, v));
 }
 
 void

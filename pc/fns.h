@@ -1,9 +1,10 @@
 #include "../port/portfns.h"
 
-void	checkcycintr(Ureg*, void*);
+vlong	checkcycintr(Ureg*, void*);
 void	cycintradd(Cycintr*);
 void	cycintrdel(Cycintr*);
-
+void	clockintrsched(void);
+vlong	cycintrnext(void);
 
 void	aamloop(int);
 void	addconf(char*, char*);

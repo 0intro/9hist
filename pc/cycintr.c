@@ -9,31 +9,47 @@
 static struct
 {
 	Lock;
-	vlong	when;			/* next scheduled interrupt time */
 	Cycintr	*ci;
 }cycintrs;
 
-static void
-cycsched(void)
+/*
+ * called by clockintrsched()
+ */
+vlong
+cycintrnext(void)
 {
+	Cycintr *ci;
+	vlong when;
+
+	ilock(&cycintrs);
+	when = 0;
+	ci = cycintrs.ci;
+	if(ci != nil)
+		when = ci->when;
+	iunlock(&cycintrs);
+	return when;
 }
 
-void
+vlong
 checkcycintr(Ureg *u, void*)
 {
 	Cycintr *ci;
+	vlong when;
 
 	ilock(&cycintrs);
 	while(ci = cycintrs.ci){
-		if(ci->when > fastticks(nil))
-			break;
+		when = ci->when;
+		if(when > fastticks(nil)){
+			iunlock(&cycintrs);
+			return when;
+		}
 		cycintrs.ci = ci->next;
 		iunlock(&cycintrs);
 		(*ci->f)(u, ci);
 		ilock(&cycintrs);
 	}
-	cycsched();
 	iunlock(&cycintrs);
+	return 0;
 }
 
 void
@@ -59,8 +75,6 @@ cycintradd(Cycintr *nci)
 	}
 	nci->next = *last;
 	*last = nci;
-	if(nci->when < cycintrs.when)
-		cycsched();
 	iunlock(&cycintrs);
 }
 
