@@ -1,6 +1,5 @@
 typedef struct Alarms	Alarms;
 typedef struct Block	Block;
-typedef struct Blist	Blist;
 typedef struct Chan	Chan;
 typedef struct Crypt	Crypt;
 typedef struct Dev	Dev;
@@ -30,7 +29,6 @@ typedef struct Physseg	Physseg;
 typedef struct Proc	Proc;
 typedef struct Pte	Pte;
 typedef struct Pthash	Pthash;
-typedef struct Qinfo	Qinfo;
 typedef struct QLock	QLock;
 typedef struct Queue	Queue;
 typedef struct Ref	Ref;
@@ -42,14 +40,9 @@ typedef struct Scsibuf	Scsibuf;
 typedef struct Scsidata	Scsidata;
 typedef struct Segment	Segment;
 typedef struct Session	Session;
-typedef struct Stream	Stream;
 typedef struct Talarm	Talarm;
 typedef struct Waitq	Waitq;
 typedef int    Devgen(Chan*, Dirtab*, int, int, Dir*);
-typedef	void   Streamput(Queue*, Block*);
-typedef	void   Streamopen(Queue*, Stream*);
-typedef	void   Streamclose(Queue*);
-typedef	void   Streamreset(void);
 
 #include <auth.h>
 #include <fcall.h>
@@ -100,37 +93,6 @@ struct Sargs
 	ulong	args[MAXSYSARG];
 };
 
-/* Block.flags */
-#define S_DELIM 0x80
-#define S_CLASS 0x07
-
-/* Block.type */
-#define M_DATA 0
-#define M_CTL 1
-#define M_HANGUP 2
-
-struct Block
-{
-	Block	*next;
-	Block	*list;			/* chain of block lists */
-	uchar	*rptr;			/* first unconsumed byte */
-	uchar	*wptr;			/* first empty byte */
-	uchar	*lim;			/* 1 past the end of the buffer */
-	uchar	*base;			/* start of the buffer */
-	uchar	flags;
-	uchar	type;
-	ulong	pc;			/* pc of caller */
-};
-
-struct Blist
-{
-	Lock;
-	Block	*first;			/* first data block */
-	Block	*last;			/* last data block */
-	long	len;			/* length of list in bytes */
-	int	nb;			/* number of blocks in list */
-};
-
 /*
  * Access types in namec & channel flags
  */
@@ -172,7 +134,6 @@ struct Chan
 	ushort	flag;
 	Qid	qid;
 	int	fid;			/* for devmnt */
-	Stream	*stream;		/* for stream channels */
 	Path	*path;
 	Mount	*mnt;			/* mount point that derived Chan */
 	Mount	*xmnt;			/* Last mount point crossed */
@@ -679,85 +640,53 @@ struct Proc
 };
 
 /*
- *  operations available to a queue
+ *  IO queues
  */
-struct Qinfo
+struct Block
 {
-	Streamput	*iput;		/* input routine */
-	Streamput	*oput;		/* output routine */
-	Streamopen	*open;
-	Streamclose	*close;
-	char		*name;
-	Streamreset	*reset;		/* initialization */
-	char		nodelim;	/* True if stream does not preserve delimiters */
-	Qinfo		*next;
-};
+	Block	*next;
 
-/* Queue.flag */
-enum
-{
-	QHUNGUP	=	0x1,	/* stream has been hung up */
-	QINUSE =	0x2,	/* allocation check */
-	QHIWAT =	0x4,	/* queue has gone past the high water mark */	
-	QDEBUG =	0x8,
+	uchar	*rp;			/* first unconsumed byte */
+	uchar	*wp;			/* first empty byte */
+	uchar	*lim;			/* 1 past the end of the buffer */
+	uchar	*base;			/* start of the buffer */
 };
 
 struct Queue
 {
-	Blist;
-	int	flag;
-	Qinfo	*info;			/* line discipline definition */
-	Queue	*other;			/* opposite direction, same line discipline */
-	Queue	*next;			/* next queue in the stream */
-	void	(*put)(Queue*, Block*);
-	QLock	rlock;			/* mutex for processes sleeping at r */
-	Rendez	r;			/* standard place to wait for flow control */
-	Rendez	*rp;			/* where flow control wakeups go to */
-	void	*ptr;			/* private info for the queue */
+	Lock;
+
+	Block	*first;
+	Block	*last;
+	int	nbytes;		/* bytes in queue */
+	int	limit;		/* max bytes in queue */
+	int	state;
+
+	QLock	rlock;		/* mutex for readers */
+	QLock	wlock;		/* mutex for writers */
+	Rendez	r;
 };
 
-struct Stream
+enum
 {
-	QLock;				/* structure lock */
-	Stream	*next;
-	short	inuse;			/* number of processes in stream */
-	short	opens;			/* number of processes with stream open */
-	ushort	hread;			/* number of reads after hangup */
-	ushort	type;			/* correlation with Chan */
-	ushort	dev;			/* ... */
-	ushort	id;			/* ... */
-	QLock	rdlock;			/* read lock */
-	Queue	*procq;			/* write queue at process end */
-	Queue	*devq;			/* read queue at device end */
-	Block	*err;			/* error message from down stream */
-	int	flushmsg;		/* flush up till the next delimiter */
+	Qcsleep=1,	/* consumer sleeping */
 };
 
 /*
- *  useful stream macros
+ *  Macros to manage Qid's used for multiplexed devices
  */
-#define	RD(q)		((q)->other < (q) ? (q->other) : q)
-#define	WR(q)		((q)->other > (q) ? (q->other) : q)
 #define STREAMTYPE(x)	((x)&0x1f)
 #define STREAMID(x)	(((x)&~CHDIR)>>5)
 #define STREAMQID(i,t)	(((i)<<5)|(t))
-#define PUTNEXT(q,b)	(*(q)->next->put)((q)->next, b)
-#define BLEN(b)		((b)->wptr - (b)->rptr)
-#define QFULL(q)	((q)->flag & QHIWAT)
-#define FLOWCTL(q,b)	{ if(QFULL(q->next)) flowctl(q,b); else PUTNEXT(q,b);}
-
-/*
- *  stream file qid's & high water mark
- */
+#define BLEN(b)		((b)->wp - (b)->rp)
 enum
 {
 	Shighqid	= STREAMQID(1,0) - 1,
 	Sdataqid	= Shighqid,
 	Sctlqid		= Sdataqid-1,
 	Slowqid		= Sctlqid,
-	Streamhi	= (32*1024),	/* byte count high water mark */
-	Streambhi	= 128,		/* block count high water mark */
 };
+
 
 /*
  *  a multiplexed network

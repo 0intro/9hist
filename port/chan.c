@@ -96,7 +96,6 @@ newchan(void)
 	c->dev = 0;
 	c->offset = 0;
 	c->mnt = 0;
-	c->stream = 0;
 	c->aux = 0;
 	c->mchan = 0;
 	c->path = 0;
