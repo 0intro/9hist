@@ -10,6 +10,8 @@
 
 #include	<libcrypt.h>
 
+#define NOSPOOKS 1
+
 typedef struct OneWay OneWay;
 struct OneWay
 {
@@ -728,6 +730,40 @@ initDESkey(OneWay *w)
 		error("secret too short");
 }
 
+/*
+ *  40 bit DES is the same as 56 bit DES.  However,
+ *  16 bits of the key are masked to zero.
+ */
+static void
+initDESkey_40(OneWay *w)
+{
+	if(w->state){
+		free(w->state);
+		w->state = 0;
+	}
+
+	if(w->slen >= 16) {
+		w->secret[8] &= 0x0f; 
+		w->secret[10] &= 0x0f; 
+		w->secret[12] &= 0x0f; 
+		w->secret[14] &= 0x0f;
+	}
+	if(w->slen >= 8) {
+		w->secret[0] &= 0x0f; 
+		w->secret[2] &= 0x0f; 
+		w->secret[4] &= 0x0f; 
+		w->secret[6] &= 0x0f;
+	}
+
+	w->state = malloc(sizeof(DESstate));
+	if(w->slen >= 16)
+		setupDESstate(w->state, w->secret, w->secret+8);
+	else if(w->slen >= 8)
+		setupDESstate(w->state, w->secret, 0);
+	else
+		error("secret too short");
+}
+
 static void
 initRC4key(OneWay *w)
 {
@@ -740,12 +776,34 @@ initRC4key(OneWay *w)
 	setupRC4state(w->state, w->secret, w->slen);
 }
 
+/*
+ *  40 bit RC4 is the same as n-bit RC4.  However,
+ *  we ignore all but the first 40 bits of the key.
+ */
+static void
+initRC4key_40(OneWay *w)
+{
+	if(w->state){
+		free(w->state);
+		w->state = 0;
+	}
+
+	if(w->slen > 5)
+		w->slen = 5;
+
+	w->state = malloc(sizeof(RC4state));
+	setupRC4state(w->state, w->secret, w->slen);
+}
+
+typedef struct Hashalg Hashalg;
 struct Hashalg
 {
 	char	*name;
 	int	diglen;
 	DigestState *(*hf)(uchar*, ulong, uchar*, DigestState*);
-} hashtab[] =
+};
+
+Hashalg hashtab[] =
 {
 	{ "md4", MD4dlen, md4, },
 	{ "md5", MD5dlen, md5, },
@@ -756,7 +814,7 @@ struct Hashalg
 static int
 parsehashalg(char *p, Dstate *s)
 {
-	struct Hashalg *ha;
+	Hashalg *ha;
 
 	for(ha = hashtab; ha->name; ha++){
 		if(strcmp(p, ha->name) == 0){
@@ -770,24 +828,43 @@ parsehashalg(char *p, Dstate *s)
 	return -1;
 }
 
+typedef struct Encalg Encalg;
 struct Encalg
 {
 	char	*name;
 	int	blocklen;
 	int	alg;
 	void	(*keyinit)(OneWay*);
-} encrypttab[] =
+};
+
+#ifdef NOSPOOKS
+Encalg encrypttab[] =
 {
 	{ "descbc", 8, DESCBC, initDESkey, },
 	{ "desebc", 8, DESECB, initDESkey, },
+	{ "descbc_40", 8, DESCBC, initDESkey_40, },
+	{ "desebc_40", 8, DESECB, initDESkey_40, },
 	{ "rc4", 1, RC4, initRC4key, },
+	{ "rc4_40", 1, RC4, initRC4key_40, },
 	{ 0 }
 };
+#else
+Encalg encrypttab[] =
+{
+	{ "descbc", 8, DESCBC, initDESkey_40, },
+	{ "desebc", 8, DESECB, initDESkey_40, },
+	{ "descbc_40", 8, DESCBC, initDESkey_40, },
+	{ "desebc_40", 8, DESECB, initDESkey_40, },
+	{ "rc4", 1, RC4, initRC4key_40, },
+	{ "rc4_40", 1, RC4, initRC4key_40, },
+	{ 0 }
+};
+#endif NOSPOOKS
 
 static int
 parseencryptalg(char *p, Dstate *s)
 {
-	struct Encalg *ea;
+	Encalg *ea;
 
 	for(ea = encrypttab; ea->name; ea++){
 		if(strcmp(p, ea->name) == 0){

@@ -18,21 +18,24 @@ static Irqctl *irqctl[256];
 void
 intrenable(int v, void (*f)(Ureg*, void*), void* a, int tbdf)
 {
-	Irq * irq;
+	Irq *irq;
 	Irqctl *ctl;
 
 	lock(&irqctllock);
-	if(irqctl[v] == 0){
-		ctl = xalloc(sizeof(Irqctl));
-		if(v >= VectorINTR && arch->intrenable(v, tbdf, ctl) == -1){
-			unlock(&irqctllock);
-			//print("intrenable: didn't find v %d, tbdf 0x%uX\n", v, tbdf);
-			xfree(ctl);
-			return;
-		}
-		irqctl[v] = ctl;
-	}
+	if(irqctl[v] == 0)
+		irqctl[v] = xalloc(sizeof(Irqctl));
 	ctl = irqctl[v];
+
+	if(v >= VectorINTR && arch->intrenable(v, tbdf, ctl) == -1){
+		if(ctl->irq == nil){
+			irqctl[v] = nil;
+			xfree(ctl);
+		}
+		unlock(&irqctllock);
+		print("intrenable: didn't find v %d, tbdf 0x%uX\n", v, tbdf);
+		return;
+	}
+
 	irq = xalloc(sizeof(Irq));
 	irq->f = f;
 	irq->a = a;
