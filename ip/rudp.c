@@ -759,10 +759,8 @@ relackproc(void *a)
 	Proto *rudp;
 	Reliable *r;
 	Conv **s, *c;
-	Rudppriv *upriv;
 
 	rudp = (Proto *)a;
-	upriv = rudp->priv;
 
 loop:
 	tsleep(&up->sleep, return0, 0, Rudptickms);

@@ -112,7 +112,6 @@ setauthaddr(char *proto, int port)
 void
 configtcp(Method*)
 {
-	print("t");	
 	sleep(100);
 	configip();
 	sleep(100);
@@ -133,7 +132,6 @@ connecttcp(void)
 void
 configil(Method*)
 {
-	print("i");
 	configip();
 	setauthaddr("tcp", 567);
 }
