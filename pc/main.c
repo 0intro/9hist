@@ -105,6 +105,7 @@ main(void)
 	links();
 conf.monitor = 1;
 	chandevreset();
+	i8253link();
 	pageinit();
 	swapinit();
 	userinit();
