@@ -64,7 +64,7 @@ static int pcimaxdno;
 static Pcidev* pciroot;
 static Pcidev* pcilist;
 static Pcidev* pcitail;
-static int nobios;
+static int nobios, nopcirouting;
 
 static int pcicfgrw32(int, int, int, int);
 static int pcicfgrw8(int, int, int, int);
@@ -753,6 +753,9 @@ pcicfginit(void)
 
 	if (getconf("*nobios"))
 		nobios = 1;
+	if (getconf("*nopcirouting"))
+		nopcirouting = 1;
+
 	/*
 	 * Try to determine which PCI configuration mode is implemented.
 	 * Mode2 uses a byte at 0xCF8 and another at 0xCFA; Mode1 uses
@@ -843,7 +846,8 @@ pcicfginit(void)
 		return;
 	}
 
-	pcirouting();
+	if (!nopcirouting)
+		pcirouting();
 
 out:
 	unlock(&pcicfginitlock);
