@@ -104,7 +104,7 @@ boot(int argc, char *argv[])
 	n = fversion(fd, 0, buf, sizeof buf);
 	if(n < 0)
 		fatal("can't init 9P");
-	print("(%.*s)", n, buf);
+	print("(%.*s)...", n, buf);
 	if(!islocal && !ishybrid){
 		if(cfs)
 			fd = (*cfs)(fd);
