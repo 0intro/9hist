@@ -688,25 +688,23 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		nexterror();
 	}
 	n = convS2M(&mh->thdr, mbw->buf);
-#ifdef	bit3
+	q = m->q;
+	if(q == 0)
+		error(0, Eshutdown);
+#ifdef	BIT3
 	/*
 	 * Bit3 does its own multiplexing.  (Well, the file server does.)
 	 * The code is different enough that it's broken out separately here.
 	 */
-	if(devchar[m->msg->type] != '3')
+	if(devchar[q->msg->type] != '3')
 		goto Normal;
-	lock(&m->use);		/* spin rather than sleep */
-	if((msg = m->msg) == 0){
-		unlock(&m->use);
-		error(0, Eshutdown);
-	}
-	incref(msg);
-	unlock(&m->use);
+
+	incref(q);
 	if(waserror()){
-		close(msg);
+		mqfree(q);
 		nexterror();
 	}
-	if((*devtab[msg->type].write)(msg, mbw->buf, n) != n){
+	if((*devtab[q->msg->type].write)(q->msg, mbw->buf, n) != n){
 		print("short write in mntxmit\n");
 		error(0, Eshortmsg);
 	}
@@ -714,8 +712,8 @@ mntxmit(Mnt *m, Mnthdr *mh)
 	/*
 	 * Read response
 	 */
-	n = (*devtab[msg->type].read)(msg, mbr->buf, BUFSIZE);
-	close(msg);
+	n = (*devtab[q->msg->type].read)(q->msg, mbr->buf, BUFSIZE);
+	mqfree(q);
 	poperror();
 
 	if(convM2S(mbr->buf, &mh->rhdr, n) == 0){
@@ -753,9 +751,6 @@ mntxmit(Mnt *m, Mnthdr *mh)
 
     Normal:
 #endif
-	q = m->q;
-	if(q == 0)
-		error(0, Eshutdown);
 	incref(q);
 	qlock(q);
 	qlocked = 1;

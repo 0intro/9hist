@@ -196,7 +196,7 @@ bitopen(Chan *c, int omode)
 			error(0, Einuse);
 		}
 		bit.lastid = -1;
-		bit.init = 1;
+		bit.init = 0;
 		bit.ref = 1;
 		Cursortocursor(&arrow);
 		unlock(&bit);
@@ -506,6 +506,17 @@ bitwrite(Chan *c, void *va, long n)
 			bitfree(dst);
 			m -= 3;
 			p += 3;
+			break;
+
+		case 'i':
+			/*
+			 * init
+			 *
+			 *	'i'		1
+			 */
+			bit.init = 1;
+			m -= 1;
+			p += 1;
 			break;
 
 		case 's':

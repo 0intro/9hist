@@ -127,7 +127,6 @@ mountsplit(Mount *omnt)
 {
 	Mount *nmnt;
 
-	print("mount copy on write\n");
 	nmnt = newmount();
 	lock(nmnt);
 	nmnt->term = omnt->term;

@@ -47,4 +47,6 @@ enum{
 	Enetotl,	/* datakit controller out to lunch */
 	Erejected,	/* datakit destination rejected call */
 	Egreg,		/* it's all greg's fault */
+	Eshortmsg,	/* short message */
+	Ebadmsg,	/* format error or mismatch in message */
 };
