@@ -1,5 +1,6 @@
 typedef struct Alarms	Alarms;
 typedef struct Block	Block;
+typedef struct CSN	CSN;
 typedef struct Chan	Chan;
 typedef struct Cmdbuf	Cmdbuf;
 typedef struct Cmdtab	Cmdtab;
@@ -856,9 +857,11 @@ struct Edfinterface {
 	Proc*	(*edfrunproc)(void);
 	void		(*edfblock)(Proc*);
 	void		(*edfinit)(void);
-	void		(*edfexpel)(Task *t);
-	char *	(*edfadmit)(Task *t);
-	void		(*edfdeadline)(Proc *p);
+	void		(*edfexpel)(Task*);
+	char *	(*edfadmit)(Task*);
+	void		(*edfdeadline)(Proc*);
+	void		(*edfacquire)(Task*, CSN*);
+	void		(*edfrelease)(Task*);
 };
 
 /*
