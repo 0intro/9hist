@@ -185,7 +185,10 @@ loop:
 	 *  or one that hasn't moved in a while (load balancing).
 	 */
 	spllo();
-	for(randomcount++;;randomcount++){
+	for(;;){
+		if(m->machno == 0)
+			randomcount++;
+
 		/*
 		 *  Once a second we look for a long waiting process
 		 *  in the lowest priority queue to make sure nothing
