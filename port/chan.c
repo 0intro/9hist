@@ -725,6 +725,8 @@ namec(char *name, int amode, int omode, ulong perm)
 		(*devtab[c->type].create)(c, elem, omode, perm);
 		if(omode & OCEXEC)
 			c->flag |= CCEXEC;
+		if(omode & ORCLOSE)
+			c->flag |= CRCLOSE;
 		poperror();
 		break;
 
