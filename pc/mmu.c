@@ -151,9 +151,7 @@ mmuinit(void)
 
 	/*  map all memory to KZERO (add some address space for ISA memory) */
 	isamemalloc.addr = conf.topofmem;
-	isamemalloc.end = conf.topofmem + ISAMEMSIZE;
-	if(isamemalloc.end > 64*MB)
-		isamemalloc.end = 64*MB;	/* ISA can only access 64 meg */
+	isamemalloc.end = 64*MB;
 	npage = isamemalloc.end/BY2PG;
 	nbytes = PGROUND(npage*BY2WD);		/* words of page map */
 	nkpt = nbytes/BY2PG;			/* pages of page map */

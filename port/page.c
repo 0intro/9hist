@@ -331,7 +331,7 @@ uncachepage(Page *p)			/* Always called with a locked page */
 {
 	Page **l, *f;
 
-	if(p->image == 0 || p->image->notext)
+	if(p->image == 0)
 		return;
 
 	lock(&palloc.hashlock);
