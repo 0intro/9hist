@@ -45,12 +45,14 @@ int	nroot;
 int
 rootgen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
 {
-	if(tab==0 || i>=ntab)
+	if(i >= nroot)
 		return -1;
+
 	if(i < NROOT)
-		tab += i;
+		tab = &rootdir[i];
 	else
 		tab = rootmap[i - NROOT];
+
 	devdir(c, tab->qid, tab->name, tab->length, eve, tab->perm, dp);
 	return 1;
 }
@@ -92,6 +94,8 @@ rootwalk(Chan *c, char *name)
 		c->qid.path = Qdir|CHDIR;
 		return 1;
 	}
+	if((c->qid.path & ~CHDIR) != Qdir)
+		error(Enonexist);
 	return devwalk(c, name, rootdir, nroot, rootgen);
 }
 

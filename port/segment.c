@@ -274,7 +274,9 @@ imagereclaim(void)
 	for(;;) {
 		lock(&palloc);
 		for(p = palloc.head; p; p = p->next)
-			if(p->image && p->ref == 0 && p->image != &swapimage)
+			if(p->image)
+			if(p->ref == 0)
+			if(p->image != &swapimage)
 				break;
 
 		unlock(&palloc);
@@ -282,7 +284,7 @@ imagereclaim(void)
 			break;
 
 		lockpage(p);
-		if(p->ref == 0 && p->image != &swapimage)
+		if(p->ref == 0)
 			uncachepage(p);
 		unlockpage(p);
 	}

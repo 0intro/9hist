@@ -8,13 +8,18 @@
 
 #include	"devtab.h"
 
+#define	ROMADDR	0x40000000
+#define	ROMSIZE	((256*1024)/8)
+
 enum {
 	Qdir,
 	Qdata,
+	Qrom
 };
 
 Dirtab portdir[]={
 	"data",		{Qdata},	0,	0666,
+	"rom",		{Qrom},	ROMSIZE,	0444,
 };
 
 #define	NPORT	(sizeof portdir/sizeof(Dirtab))
@@ -131,6 +136,14 @@ portread(Chan *c, char *a, long n, ulong offset)
 			error(Ebadarg);
 		}
 		P_qunlock(s);
+		break;
+	case Qrom:
+		if(offset >= ROMSIZE)
+			return 0;
+		if(offset+n > ROMSIZE)
+			n = ROMSIZE - offset;
+		memmove(a, ((char*)ROMADDR)+offset, n);
+		return n;
 		break;
 	default:
 		panic("portread");
