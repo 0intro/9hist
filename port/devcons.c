@@ -193,8 +193,11 @@ echo(Rune r, char *buf, int n)
 	/*
 	 * ^p hack
 	 */
-	if(r==0x10 && cpuserver && !kbd.ctlpoff)
-		exit(0);
+	if(r==0x10 && cpuserver && !kbd.ctlpoff){
+		lock(&active);
+		active.exiting = 1;
+		unlock(&active);
+	}
 
 	/*
 	 * ^t hack BUG

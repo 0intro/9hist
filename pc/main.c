@@ -50,9 +50,9 @@ main(void)
 	screeninit();
 	printinit();
 	mmuinit();
+	trapinit();
 	ns16552install();
 	pageinit();
-	trapinit();
 	mathinit();
 	clockinit();
 	faultinit();
@@ -640,12 +640,14 @@ exit(int ispanic)
 {
 	up = 0;
 	print("exiting\n");
+	spllo();
 	if(ispanic){
 		if(cpuserver)
 			delay(10000);
 		else
 			for(;;);
-	}
+	} else
+		delay(1000);
 
 	(*arch->reset)();
 }

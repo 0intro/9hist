@@ -80,7 +80,6 @@ struct Uart
 	uchar	sticky[8];	/* sticky write register values */
 	ulong	port;
 	Lock	plock;		/* for printing variable */
-	int	printing;	/* true if printing */
 	ulong	freq;		/* clock frequency */
 	int	opens;
 	uchar	mask;		/* bits/char */
@@ -418,7 +417,7 @@ ns16552kick(Uart *p)
 
 	x = splhi();
 	lock(&p->plock);
-	if(p->printing == 0 || (uartrdreg(p, Lstat) & Outready))
+	if((uartrdreg(p, Lstat) & Outready))
 	if(p->cts && p->blocked == 0)
 	if(p->op < p->oe || stageoutput(p)){
 		n = 0;
@@ -595,16 +594,16 @@ ns16552intr(int dev)
 					l = uartrdreg(p, Lstat) & Outready;
 				}while(l);
 			}
-			if(l)
-				p->printing = 0;
 			unlock(&p->plock);
 			break;
 	
 		case 0:	/* modem status */
 			ch = uartrdreg(p, Mstat);
 			if(ch & Ctsc){
-				p->cts = ch & Cts; /* clock gets output going again */
-				p->ctsbackoff += 1;
+				l = p->cts;
+				p->cts = ch & Cts;
+				if(l == 0 && p->cts)
+					p->ctsbackoff = 2; /* clock gets output going again */
 			}
 			break;
 	
@@ -623,7 +622,7 @@ ns16552intr(int dev)
  *  There's also a bit of code to get a stalled print going.
  *  It shouldn't happen, but it does.  Obviously I don't
  *  understand something.  Since it was there, I bundled a
- *  restart after flow control with it to give some histeresis
+ *  restart after flow control with it to give some hysteresis
  *  to the hardware flow control.  This makes compressing
  *  modems happier but will probably bother something else.
  *	 -- presotto
@@ -635,7 +634,7 @@ uartclock(void)
 	Uart *p;
 
 	for(p = uartalloc.elist; p; p = p->elist){
-		ns16552intr(p->dev);
+		/* this amortizes cost of qproduce to many chars */
 		if(haveinput){
 			n = p->ip - p->istage;
 			if(n > 0 && p->iq){
@@ -647,9 +646,11 @@ uartclock(void)
 					p->ip = p->istage;
 			}
 		}
-		if(p->ctsbackoff-- < 0){
-			p->ctsbackoff = 0;
-			ns16552kick(p);
+
+		/* this adds hysteresis to hardware flow control */
+		if(p->ctsbackoff){
+			if(--(p->ctsbackoff) == 0)
+				ns16552kick(p);
 		}
 	}
 	haveinput = 0;
