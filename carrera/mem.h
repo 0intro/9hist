@@ -131,6 +131,7 @@
 #define PTECOHERXCL	(4<<3)
 #define PTECOHERXCLW	(5<<3)
 #define PTECOHERUPDW	(6<<3)
+#define IOPTE		(PTEGLOBL|PTEVALID|PTEWRITE|PTEUNCACHED)
 
 #define	PTEPID(n)	(n)
 #define TLBPID(n)	((n)&0xFF)

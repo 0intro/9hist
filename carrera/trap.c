@@ -309,7 +309,14 @@ intr(Ureg *ur)
 		}
 		cause &= ~INTR3;
 	}
-
+	if(cause & INTR2) {
+		iprint("R4030 Interrupt\n");
+		iprint(" ISR #%lux\n", IO(ulong, R4030Isr));
+		iprint(" ET  #%lux\n", IO(ulong, R4030Et));
+		iprint(" RFA #%lux\n", IO(ulong, R4030Rfa));
+		iprint(" MFA #%lux\n", IO(ulong, R4030Mfa));
+		cause &= ~INTR2;
+	}
 	if(cause & INTR4) {
 		devint = IO(uchar, I386ack);
 		iprint("i386ack=#%lux\n", devint);

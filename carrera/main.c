@@ -47,7 +47,7 @@ main(void)
 	serialinit();
 	vecinit();
 	iprint("\n\nBrazil\n");
-/*screeninit();*/
+ screeninit(); /**/
 	pageinit();
 	procinit0();
 	initseg();
@@ -170,21 +170,26 @@ ioinit(void)
 	/*
 	 * Map devices and the Eisa control space
 	 */
-	devphys = PPN(Devicephys)|PTEGLOBL|PTEVALID|PTEWRITE|PTEUNCACHED;
-	isaphys = PPN(Eisaphys)|PTEGLOBL|PTEVALID|PTEWRITE|PTEUNCACHED;
+	devphys = IOPTE|PPN(Devicephys);
+	isaphys = IOPTE|PPN(Eisaphys);
 
 	puttlbx(1, Devicevirt, devphys, isaphys, PGSZ64K);
 
 	/*
 	 * Map Interrupt control & Eisa memory
 	 */
-	intphys = PPN(Intctlphys)|PTEGLOBL|PTEVALID|PTEWRITE|PTEUNCACHED;
-	isamphys = PPN(Eisamphys)|PTEGLOBL|PTEVALID|PTEWRITE|PTEUNCACHED;
+	intphys  = IOPTE|PPN(Intctlphys);
+	isamphys = IOPTE|PPN(Eisamphys);
 
 	puttlbx(2, Intctlvirt, intphys, isamphys, PGSZ1M);
 
 	/* Enable all devce interrupt */
 	IO(ushort, Intenareg) = 0xffff;
+
+	/* Look at the first 16M of Eisa memory */
+iprint("write latch\n");
+/*	IO(uchar, EisaLatch) = 0; /**/
+iprint("done\n");
 }
 
 /*

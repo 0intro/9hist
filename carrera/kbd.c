@@ -152,7 +152,7 @@ kdbdly(int l)
 {
 	int i;
 
-	l *= 21;
+	l *= 21;	/* experimentally determined */
 	for(i=0; i<l; i++)
 		;
 }
@@ -167,7 +167,6 @@ kbdwait(void)
 
 	for(tries = 0; tries < 2000; tries++){
 		if(KBDCTL & Sobf){
-			kdbdly(1);
 			return 1;
 		}
 		kdbdly(1);
@@ -193,6 +192,7 @@ kbdintr(void)
 	uchar ch, code;
 	static uchar kc[5];
 	static int shifted, ctrled, lstate;
+	static int upcode;
 
 	kbdwait();
 	code = KBDDAT;
@@ -201,17 +201,23 @@ kbdintr(void)
 	 *  key has gone up
 	 */
 	if(code == Up) {
-		kbdwait();
-		ch = keymap[KBDDAT];
-		if(ch == Ctrl)
-			ctrled = 0;
-		else if(ch == Shift)
-			shifted = 0;
+		upcode = 1;
 		return 0;
 	}
 
 	if(code > 0x87)
 		return 1;
+
+	if(upcode){
+		ch = keymap[code];
+		if(ch == Ctrl)
+			ctrled = 0;
+		else if(ch == Shift)
+			shifted = 0;
+		upcode = 0;
+		return 0;
+	}
+	upcode = 0;
 
 	/*
 	 *  convert
@@ -220,7 +226,6 @@ kbdintr(void)
 		ch = skeymap[code];
 	else
 		ch = keymap[code];
-iprint("code %d %d\n", code, ch);
 	/*
  	 *  normal character
 	 */

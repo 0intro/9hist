@@ -7,6 +7,10 @@ enum
 	Eisaphys	= 0x90000000,	/* IO port physical */
 	Devicevirt	= 0xE0000000,
 	Dmabase		= 0xE0000000,	
+	  R4030Isr	= 0xE0000204,	/* Interrupt status register */
+	  R4030Et	= 0xE000020C,	/* Eisa error type */
+	  R4030Rfa	= 0xE000003C,	/* Remote failed address */
+	  R4030Mfa	= 0xE0000044,	/* Memory failed address */
 	Sonicbase	= 0xE0001000,    	
 	Scsibase 	= 0xE0002000,   	
 	Floppybase	= 0xE0003000,	
@@ -24,7 +28,7 @@ enum
 	 Keydat		= 7,	
 	MouseIO		= 0xE0005000,  	
 	SoundIO		= 0xE000C000,
-	EisaLatch	= 0xE000E000,
+	EisaLatch	= 0xE000E007,
 	Diag		= 0xE000F000,
 	VideoCTL	= 0x60000000,	
 	VideoMEM	= 0x40000000, 	
@@ -66,5 +70,5 @@ struct Tte
 #define UNCACHED(type, v)	(type*)((ulong)(v)|0xA0000000)
 
 #define EISA(v)			(Eisamvirt+(v))
-#define EISAOUTB(port, v)	*(uchar*)((EisaControl+(port))^7) = v
-#define EISAINB(port)		(*(uchar*)((EisaControl+(port))^7))
+#define EISAOUTB(port, v)	*(uchar*)((EisaControl+(port))^2) = v
+#define EISAINB(port)		(*(uchar*)((EisaControl+(port))^2))

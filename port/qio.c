@@ -70,6 +70,7 @@ struct Queue
 	int	len;		/* bytes in queue */
 	int	limit;		/* max bytes in queue */
 	int	state;
+	int	eof;		/* number of eofs read by user */
 
 	void	(*kick)(void*);	/* restart output */
 	void	*arg;		/* argument to kick */
@@ -409,6 +410,7 @@ qopen(int limit, int msg, void (*kick)(void*), void *arg)
 	q->arg = arg;
 	q->state = msg ? Qmsg : 0;
 	q->state |= Qstarve;
+	q->eof = 0;
 
 	return q;
 }
@@ -451,6 +453,10 @@ qread(Queue *q, void *vp, int len)
 		if(q->state & Qclosed){
 			unlock(q);
 			splx(x);
+			poperror();
+			qunlock(&q->rlock);
+			if(++q->eof > 3)
+				error(Ehungup);
 			return 0;
 		}
 
@@ -632,6 +638,7 @@ qreopen(Queue *q)
 {
 	q->state &= ~Qclosed;
 	q->state |= Qstarve;
+	q->eof = 0;
 }
 
 /*

@@ -296,19 +296,19 @@ procread(Chan *c, void *va, long n, ulong offset)
 			if(offset+n > (ulong)end)
 				n = (ulong)end - offset;
 			memmove(a, (char*)offset, n);
-			break;
+			return n;
 		}
 		if(offset >= conf.base0 && offset < conf.npage0){
 			if(offset+n > conf.npage0)
 				n = conf.npage0 - offset;
 			memmove(a, (char*)offset, n);
-			break;
+			return n;
 		}
 		if(offset >= conf.base1 && offset < conf.npage1){
 			if(offset+n > conf.npage1)
 				n = conf.npage1 - offset;
 			memmove(a, (char*)offset, n);
-			break;
+			return n;
 		}
 		error(Ebadarg);
 
@@ -349,6 +349,7 @@ procread(Chan *c, void *va, long n, ulong offset)
 		memset(&kur, 0, sizeof(Ureg));
 		kur.pc = p->sched.pc;
 		kur.sp = p->sched.sp;
+		kur.r31 = (ulong)sched;
 		rptr = (uchar*)&kur;
 		rsize = sizeof(Ureg);
 		goto regread;

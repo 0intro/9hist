@@ -180,6 +180,10 @@ screenwin(void)
 	hwcurs = 0;
 }
 
+void	getvmode(VGAmode *v);
+void	writeregisters(VGAmode *v);
+VGAmode x;
+
 void
 screeninit(void)
 {
@@ -187,10 +191,12 @@ screeninit(void)
 	uchar *scr;
 
 	setmode(&dfltmode);
-
+	getvmode(&x);
+	writeregisters(&x);
+return;
 	memmove(&arrow, &fatarrow, sizeof(fatarrow));
 
-	scr = (uchar*)EISA(0xA0000);
+	scr = (uchar*)EISA(0xC0000);
 iprint("%lux\n", scr);
 *scr = 0xaa;
 i = *scr;
@@ -383,7 +389,8 @@ srout(int reg, int val)
 }
 
 uchar
-srin(ushort i) {
+srin(ushort i)
+{
         EISAOUTB(SRX, i);
         return EISAINB(SR);
 }
@@ -438,6 +445,9 @@ setmode(VGAmode *v)
 {
 	int i;
 
+	for(i = 0; i < sizeof(v->general); i++)
+		genout(i, v->general[i]);
+
 	/* turn screen off (to avoid damage) */
 	srout(1, 0x21);
 
@@ -446,9 +456,6 @@ setmode(VGAmode *v)
 	EISAOUTB(0x3cd, 0x00);		/* segment select */
 
 	srout(0x00, srin(0x00) & 0xFD);	/* synchronous reset*/
-
-	for(i = 0; i < sizeof(v->general); i++)
-		genout(i, v->general[i]);
 
 	for(i = 0; i < sizeof(v->sequencer); i++)
 		if(i == 1)
@@ -489,4 +496,100 @@ setmode(VGAmode *v)
 
 	/* turn screen on */
 	srout(1, v->sequencer[1]);
+}
+
+uchar
+grin(ushort i)
+{
+	EISAOUTB(GRX, i);
+	return EISAINB(GR);
+}
+
+uchar
+arin(ushort i)
+{
+	uchar junk;
+	junk = EISAINB(0x3DA);
+	USED(junk);
+	EISAOUTB(ARW, i | 0x20);
+	return EISAINB(ARR);
+}
+
+uchar
+crin(ushort i) {
+	EISAOUTB(CRX, i);
+	return EISAINB(CR);
+}
+
+void
+getvmode(VGAmode *v)
+{
+	int i;
+
+	v->general[0] = EISAINB(EMISCR);	/* misc output */
+	v->general[1] = EISAINB(EFCR);	/* feature control */
+	for(i = 0; i < sizeof(v->sequencer); i++)
+		v->sequencer[i] = srin(i);
+	for(i = 0; i < sizeof(v->crt); i++) 
+		v->crt[i] = crin(i);
+	for(i = 0; i < sizeof(v->graphics); i++) 
+		v->graphics[i] = grin(i);
+	for(i = 0; i < sizeof(v->attribute); i++)
+		v->attribute[i] = arin(i);
+
+	v->tseng.viden = EISAINB(0x3c3);
+	v->tseng.sr6  = srin(6);
+	v->tseng.sr7  = srin(7);
+	v->tseng.ar16 = arin(0x16);
+	v->tseng.ar17 = arin(0x17);
+	v->tseng.crt31= crin(0x31);
+	v->tseng.crt32= crin(0x32);
+	v->tseng.crt33= crin(0x33);
+	v->tseng.crt34= crin(0x34);
+	v->tseng.crt35= crin(0x35);
+	v->tseng.crt36= crin(0x36);
+	v->tseng.crt37= crin(0x37);
+}
+
+void
+writeregisters(VGAmode *v)
+{
+	int i;
+
+	print("\t/* general */\n\t");
+	for (i=0; i<sizeof(v->general); i++)
+		print("0x%.2x, ", v->general[i]);
+	print("\n\t/* sequence */\n\t");
+	for (i=0; i<sizeof(v->sequencer); i++) {
+		if (i>0 && i%8 == 0)
+			print("\n\t");
+		print("0x%.2x, ", v->sequencer[i]);
+	}
+	print("\n\t/* crt */\n\t");
+	for (i=0; i<sizeof(v->crt); i++) {
+		if (i>0 && i%8 == 0)
+			print("\n\t");
+		print("0x%.2x, ", v->crt[i]);
+	}
+	print("\n\t/* graphics */\n\t");
+	for (i=0; i<sizeof(v->graphics); i++) {
+		if (i>0 && i%8 == 0)
+			print("\n\t");
+		print("0x%.2x, ", v->graphics[i]);
+	}
+	print("\n\t/* attribute */\n\t");
+	for (i=0; i<sizeof(v->attribute); i++) {
+		if (i>0 && i%8 == 0)
+			print("\n\t");
+		print("0x%.2x, ", v->attribute[i]);
+	}
+	print("\n");
+	print("\t/* special */\n");
+
+	for (i=0; i<12; i++) {
+		if (i%8 == 0)
+			print("\n\t");
+		print("0x%.2x, ", ((uchar*)(&v->tseng))[i]);
+	}
+	print("\n");
 }
