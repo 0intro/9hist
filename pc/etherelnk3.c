@@ -460,7 +460,7 @@ init905(Ctlr* ctlr)
 	Upd *upd;
 
 	np = 0;
-	for(i = 0; i < 16; i++){
+	for(i = 0; i < 64; i++){
 		bp = updalloc(np);
 		if(ctlr->upqhead == 0)
 			ctlr->upqtail = bp;
@@ -1747,14 +1747,19 @@ etherelnk3reset(Ether* ether)
 		ctlr->dnenabled = 1;
 
 		/*
-		 * Too severe, can use receive busmastering at 100Mbps OK,
-		 * but how to tell which rate is actually being used - the
-		 * 3c905 always seems to have dataRate100 set?
+		 * 10MUpldBug.
+		 * Disabling is too severe, can use receive busmastering at
+		 * 100Mbps OK, but how to tell which rate is actually being used -
+		 * the 3c905 always seems to have dataRate100 set?
+		 * Believe the bug doesn't apply if upRxEarlyEnable is set
+		 * and the threshold is set such that uploads won't start
+		 * until the whole packet has been received.
 		 */
+		ctlr->upenabled = 1;
 		x = eepromdata(port, 0x0F);
-		print("software info 2: %uX\n", x);
-		if(x & 0x01)
-			ctlr->upenabled = 1;
+		//print("software info 2: %uX\n", x);
+		if(!(x & 0x01))
+			outl(port+PktStatus, upRxEarlyEnable);
 
 		if(ctlr->upenabled)
 			init905(ctlr);
