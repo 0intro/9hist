@@ -130,6 +130,8 @@ struct Conf
 	int	nqueue;		/* stream queues */
 	int	nblock;		/* stream blocks */
 	int	nsrv;		/* public servers (devsrv.c) */
+	int	nbitmap;	/* bitmap structs (devbit.c) */
+	int	nbitbyte;	/* bytes of bitmap data (devbit.c) */
 };
 
 struct Dev

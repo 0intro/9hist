@@ -253,4 +253,6 @@ confinit(void)
 	conf.nqueue = 5 * conf.nstream;
 	conf.nblock = 12 * conf.nstream;
 	conf.nsrv = 32;
+	conf.nbitmap = 100;
+	conf.nbitbyte = 200*1024;
 }

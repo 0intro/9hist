@@ -46,6 +46,8 @@ enum{
 	Edestotl,	/* datakit destination out to lunch */
 	Enetotl,	/* datakit controller out to lunch */
 	Erejected,	/* datakit destination rejected call */
-	Ebadblt,	/* bad bitblt or bitctl request */
+	Ebadblt,	/* bad bitblt or bitmap request */
+	Enobitmap,	/* out of bitmap descriptors */
+	Enobitstore,	/* out of bitmap storage */
 	Egreg,		/* it's all greg's fault */
 };
