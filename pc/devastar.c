@@ -403,7 +403,9 @@ astarreset(void)
 		/* check all possible names */
 		if(strcmp(a->type, "a100i") == 0 || strcmp(a->type,"A100I") == 0)
 			a->ramsize = 16*1024;
-		else if(strcmp(a->type, "a200i") == 0 || strcmp(a->type,"A200I") == 0)
+ 		else if(strcmp(a->type, "a200i") == 0 ||
+		      strcmp(a->type,"A200I") == 0 ||
+		      strcmp(a->type, "a16i") == 0)
 			a->ramsize = 256*1024;
 		else {
 			xfree(a);
@@ -1373,7 +1375,7 @@ astarintr(Ureg *ur, void *arg)
 {
 	Astar *a = arg;
 	Astarchan *ac;
-	ulong vec, invec, outvec, errvec, mvec, cmdvec;
+	ulong globvec, vec, invec, outvec, errvec, mvec, cmdvec;
 	int c;
 
 	USED(ur);
@@ -1385,13 +1387,14 @@ astarintr(Ureg *ur, void *arg)
 		setpage(a, 0);
 
 	/* get causes */
+	globvec = LEUS(xchgw(&a->gcb->serv, 0));
+	USED(globvec);
 	invec = LEUS(xchgw(&a->gcb->inserv, 0));
 	outvec = LEUS(xchgw(&a->gcb->outserv, 0));
 	errvec = LEUS(xchgw(&a->gcb->errserv, 0));
 	mvec = LEUS(xchgw(&a->gcb->modemserv, 0));
 	cmdvec = LEUS(xchgw(&a->gcb->cmdserv, 0));
 	USED(mvec);
-	USED(cmdvec);
 
 	/* reenable interrupts */
 	a->gcb->cmd2 = LEUS(Gintack);

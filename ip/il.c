@@ -1114,7 +1114,7 @@ iltimers(Ilcb *ic)
 	if(ic->fasttime > Fasttime)
 		ic->fasttime = Fasttime;
 	ic->slowtime = (Slowtime/Seconds)*pt;
-	if(ic->slowtime > Slowtime)
+	if(ic->slowtime < Slowtime)
 		ic->slowtime = Slowtime;
 }
 
