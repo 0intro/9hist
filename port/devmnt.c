@@ -29,7 +29,7 @@ struct Mnt
 	Mntrpc	*queue;		/* Queue of pending requests on this channel */
 	int	id;		/* Multiplexor id for channel check */
 	Mnt	*list;		/* Free list */
-	char	mux;		/* Set if the device aleady does the multiplexing */
+	char	mux;		/* Set if the device does the multiplexing */
 	int	blocksize;	/* read/write block size */
 	ushort	flushtag;	/* Tag to send flush on */
 	ushort	flushbase;	/* Base tag of flush window for this buffer */
@@ -65,6 +65,7 @@ void	mountio(Mnt*, Mntrpc*);
 void	mountmux(Mnt*, Mntrpc*);
 void	mountrpc(Mnt*, Mntrpc*);
 int	rpcattn(Mntrpc*);
+void	mclose(Mnt*);
 
 enum
 {
@@ -91,7 +92,7 @@ Chan*
 mntattach(char *muxattach)
 {
 	Mnt *m;
-	Chan *c;
+	Chan *c, *mc;
 	struct bogus{
 		Chan	*chan;
 		char	*spec;
@@ -114,6 +115,7 @@ mntattach(char *muxattach)
 			unlock(m);	
 		}
 	}
+
 	m = mntalloc.mntfree;
 	if(m != 0)
 		mntalloc.mntfree = m->list;	
@@ -151,13 +153,21 @@ mntattach(char *muxattach)
 	unlock(m);
 
 	if(waserror()) {
-		close(m->c);
-		if(decref(m) == 0)
-			mntpntfree(m);
+		mclose(m);
 		nexterror();
 	}
 
 	c = mattach(m, bogus.spec, bogus.serv);
+
+	mc = m->c;
+	if(mc->type == devno('M', 0)) {
+		c->mntptr = mc->mntptr;
+		c->mchan = c->mntptr->c;
+		c->mqid = c->qid;
+		incref(c->mntptr);
+		mclose(m);
+	}
+
 	poperror();
 	return c;
 }
@@ -391,21 +401,28 @@ mntclunk(Chan *c, int t)
 }
 
 void
+mclose(Mnt *m)
+{
+	Mntrpc *q, *r;
+
+	if(decref(m) != 0)
+		return;
+
+	for(q = m->queue; q; q = r) {
+		r = q->list;
+		q->flushed = 0;
+		mntfree(q);
+	}
+	m->id = 0;
+	close(m->c);
+	mntpntfree(m);
+}
+
+void
 mntdoclunk(Mnt *m, Mntrpc *r)
 {
-	Mntrpc *q;
-
 	mntfree(r);
-	if(decref(m) == 0) {
-		for(q = m->queue; q; q = r) {
-			r = q->list;
-			q->flushed = 0;
-			mntfree(q);
-		}
-		m->id = 0;
-		close(m->c);
-		mntpntfree(m);
-	}
+	mclose(m);
 }
 
 void
