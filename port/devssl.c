@@ -111,6 +111,7 @@ static Chan*	buftochan(char*);
 static void	sslhangup(Dstate*);
 static Dstate*	dsclone(Chan *c);
 static void	dsnew(Chan *c, Dstate **);
+static long	sslput(Dstate *s, Block * volatile b);
 
 char *sslnames[] = {
 [Qclonus]	"clone",
@@ -542,40 +543,40 @@ qtake(Block **l, int n, int discard)
 static Block*
 sslbread(Chan *c, long n, ulong)
 {
-	volatile struct { Dstate *s; } s;
+	Dstate * volatile s;
 	Block *b;
 	uchar consumed[3], *p;
 	int toconsume;
 	int len, pad;
 
-	s.s = dstate[CONV(c->qid)];
-	if(s.s == 0)
+	s = dstate[CONV(c->qid)];
+	if(s == 0)
 		panic("sslbread");
-	if(s.s->state == Sincomplete)
+	if(s->state == Sincomplete)
 		error(Ebadusefd);
 
-	qlock(&s.s->in.q);
+	qlock(&s->in.q);
 	if(waserror()){
-		qunlock(&s.s->in.q);
+		qunlock(&s->in.q);
 		nexterror();
 	}
 
-	if(s.s->processed == 0){
+	if(s->processed == 0){
 		/*
 		 * Read in the whole message.  Until we've got it all,
-		 * it stays on s.s->unprocessed, so that if we get Eintr,
+		 * it stays on s->unprocessed, so that if we get Eintr,
 		 * we'll pick up where we left off.
 		 */
-		ensure(s.s, &s.s->unprocessed, 3);
-		s.s->unprocessed = pullupblock(s.s->unprocessed, 2);
-		p = s.s->unprocessed->rp;
+		ensure(s, &s->unprocessed, 3);
+		s->unprocessed = pullupblock(s->unprocessed, 2);
+		p = s->unprocessed->rp;
 		if(p[0] & 0x80){
 			len = ((p[0] & 0x7f)<<8) | p[1];
-			ensure(s.s, &s.s->unprocessed, len);
+			ensure(s, &s->unprocessed, len);
 			pad = 0;
 			toconsume = 2;
 		} else {
-			s.s->unprocessed = pullupblock(s.s->unprocessed, 3);
+			s->unprocessed = pullupblock(s->unprocessed, 3);
 			len = ((p[0] & 0x3f)<<8) | p[1];
 			pad = p[2];
 			if(pad > len){
@@ -584,7 +585,7 @@ sslbread(Chan *c, long n, ulong)
 			}
 			toconsume = 3;
 		}
-		ensure(s.s, &s.s->unprocessed, toconsume+len);
+		ensure(s, &s->unprocessed, toconsume+len);
 
 		/*
 		 * Now we have a full SSL packet in the unprocessed list.
@@ -600,61 +601,61 @@ sslbread(Chan *c, long n, ulong)
 		}
 
 		/* skip header */
-		consume(&s.s->unprocessed, consumed, toconsume);
+		consume(&s->unprocessed, consumed, toconsume);
 
 		/* grab the next message and decode/decrypt it */
-		b = qtake(&s.s->unprocessed, len, 0);
+		b = qtake(&s->unprocessed, len, 0);
 
 		if(blocklen(b) != len)
 			print("devssl: sslbread got wrong count %d != %d", blocklen(b), len);
 
 		if(waserror()){
-			qunlock(&s.s->in.ctlq);
+			qunlock(&s->in.ctlq);
 			if(b != nil)
 				freeb(b);
 			nexterror();
 		}
-		qlock(&s.s->in.ctlq);
-		switch(s.s->state){
+		qlock(&s->in.ctlq);
+		switch(s->state){
 		case Sencrypting:
 			if(b == nil)
 				error("ssl message too short (encrypting)");
-			b = decryptb(s.s, b);
+			b = decryptb(s, b);
 			break;
 		case Sdigesting:
-			b = pullupblock(b, s.s->diglen);
+			b = pullupblock(b, s->diglen);
 			if(b == nil)
 				error("ssl message too short (digesting)");
-			checkdigestb(s.s, b);
-			b->rp += s.s->diglen;
+			checkdigestb(s, b);
+			b->rp += s->diglen;
 			break;
 		case Sdigenc:
-			b = decryptb(s.s, b);
-			b = pullupblock(b, s.s->diglen);
+			b = decryptb(s, b);
+			b = pullupblock(b, s->diglen);
 			if(b == nil)
 				error("ssl message too short (dig+enc)");
-			checkdigestb(s.s, b);
-			b->rp += s.s->diglen;
-			len -= s.s->diglen;
+			checkdigestb(s, b);
+			b->rp += s->diglen;
+			len -= s->diglen;
 			break;
 		}
 
 		/* remove pad */
 		if(pad)
-			s.s->processed = qtake(&b, len - pad, 1);
+			s->processed = qtake(&b, len - pad, 1);
 		else
-			s.s->processed = b;
+			s->processed = b;
 		b = nil;
-		s.s->in.mid++;
-		qunlock(&s.s->in.ctlq);
+		s->in.mid++;
+		qunlock(&s->in.ctlq);
 		poperror();
 		poperror();
 	}
 
 	/* return at most what was asked for */
-	b = qtake(&s.s->processed, n, 0);
+	b = qtake(&s->processed, n, 0);
 
-	qunlock(&s.s->in.q);
+	qunlock(&s->in.q);
 	poperror();
 
 	return b;
@@ -663,7 +664,7 @@ sslbread(Chan *c, long n, ulong)
 static long
 sslread(Chan *c, void *a, long n, vlong off)
 {
-	volatile struct { Block *b; } b;
+	Block * volatile b;
 	Block *nb;
 	uchar *va;
 	int i;
@@ -683,7 +684,7 @@ sslread(Chan *c, void *a, long n, vlong off)
 		sprint(buf, "%d", ft);
 		return readstr(offset, a, n, buf);
 	case Qdata:
-		b.b = sslbread(c, n, offset);
+		b = sslbread(c, n, offset);
 		break;
 	case Qencalgs:
 		return readstr(offset, a, n, encalgs);
@@ -694,19 +695,19 @@ sslread(Chan *c, void *a, long n, vlong off)
 	}
 
 	if(waserror()){
-		freeblist(b.b);
+		freeblist(b);
 		nexterror();
 	}
 
 	n = 0;
 	va = a;
-	for(nb = b.b; nb; nb = nb->next){
+	for(nb = b; nb; nb = nb->next){
 		i = BLEN(nb);
 		memmove(va+n, nb->rp, i);
 		n += i;
 	}
 
-	freeblist(b.b);
+	freeblist(b);
 	poperror();
 
 	return n;
@@ -723,6 +724,36 @@ randfill(uchar *buf, int len)
 		*buf++ = nrand(256);
 }
 
+static long
+sslbwrite(Chan *c, Block *b, ulong)
+{
+	Dstate * volatile s;
+	long rv;
+
+	s = dstate[CONV(c->qid)];
+	if(s == nil)
+		panic("sslbwrite");
+
+	if(s->state == Sincomplete){
+		freeb(b);
+		error(Ebadusefd);
+	}
+
+	/* lock so split writes won't interleave */
+	if(waserror()){
+		qunlock(&s->out.q);
+		nexterror();
+	}
+	qlock(&s->out.q);
+
+	rv = sslput(s, b);
+
+	poperror();
+	qunlock(&s->out.q);
+
+	return rv;
+}
+
 /*
  *  use SSL record format, add in count, digest and/or encrypt.
  *  the write is interruptable.  if it is interrupted, we'll
@@ -730,48 +761,36 @@ randfill(uchar *buf, int len)
  *  it since we don't know if any bytes have been written.
  */
 static long
-sslbwrite(Chan *c, Block *b, ulong offset)
+sslput(Dstate *s, Block * volatile b)
 {
-	volatile struct { Dstate *s; } s;
-	volatile struct { Block *b; } bb;
 	Block *nb;
 	int h, n, m, pad, rv;
 	uchar *p;
-
-	bb.b = b;
-	s.s = dstate[CONV(c->qid)];
-	if(s.s == 0)
-		panic("sslbwrite");
-	if(s.s->state == Sincomplete){
-		freeb(b);
-		error(Ebadusefd);
-	}
+	int offset;
 
 	if(waserror()){
-		qunlock(&s.s->out.q);
-		if(bb.b != nil)
-			freeb(bb.b);
+		if(b != nil)
+			free(b);
 		nexterror();
 	}
-	qlock(&s.s->out.q);
 
 	rv = 0;
-	while(bb.b){
-		m = n = BLEN(bb.b);
-		h = s.s->diglen + 2;
+	while(b != nil){
+		m = n = BLEN(b);
+		h = s->diglen + 2;
 
 		/* trim to maximum block size */
 		pad = 0;
-		if(m > s.s->max){
-			m = s.s->max;
-		} else if(s.s->blocklen != 1){
-			pad = (m + s.s->diglen)%s.s->blocklen;
+		if(m > s->max){
+			m = s->max;
+		} else if(s->blocklen != 1){
+			pad = (m + s->diglen)%s->blocklen;
 			if(pad){
-				if(m > s.s->maxpad){
+				if(m > s->maxpad){
 					pad = 0;
-					m = s.s->maxpad;
+					m = s->maxpad;
 				} else {
-					pad = s.s->blocklen - pad;
+					pad = s->blocklen - pad;
 					h++;
 				}
 			}
@@ -780,15 +799,15 @@ sslbwrite(Chan *c, Block *b, ulong offset)
 		rv += m;
 		if(m != n){
 			nb = allocb(m + h + pad);
-			memmove(nb->wp + h, bb.b->rp, m);
+			memmove(nb->wp + h, b->rp, m);
 			nb->wp += m + h;
-			bb.b->rp += m;
+			b->rp += m;
 		} else {
 			/* add header space */
-			nb = padblock(bb.b, h);
-			bb.b = 0;
+			nb = padblock(b, h);
+			b = 0;
 		}
-		m += s.s->diglen;
+		m += s->diglen;
 
 		/* SSL style count */
 		if(pad){
@@ -809,28 +828,27 @@ sslbwrite(Chan *c, Block *b, ulong offset)
 			offset = 2;
 		}
 
-		switch(s.s->state){
+		switch(s->state){
 		case Sencrypting:
-			nb = encryptb(s.s, nb, offset);
+			nb = encryptb(s, nb, offset);
 			break;
 		case Sdigesting:
-			nb = digestb(s.s, nb, offset);
+			nb = digestb(s, nb, offset);
 			break;
 		case Sdigenc:
-			nb = digestb(s.s, nb, offset);
-			nb = encryptb(s.s, nb, offset);
+			nb = digestb(s, nb, offset);
+			nb = encryptb(s, nb, offset);
 			break;
 		}
 
-		s.s->out.mid++;
+		s->out.mid++;
 
 		m = BLEN(nb);
-		devtab[s.s->c->type]->bwrite(s.s->c, nb, s.s->c->offset);
-		s.s->c->offset += m;
+		devtab[s->c->type]->bwrite(s->c, nb, s->c->offset);
+		s->c->offset += m;
 	}
-	qunlock(&s.s->out.q);
-	poperror();
 
+	poperror();
 	return rv;
 }
 
@@ -1033,64 +1051,73 @@ parseencryptalg(char *p, Dstate *s)
 }
 
 static long
-sslwrite(Chan *c, void *a, long n, vlong off)
+sslwrite(Chan *c, void *a, long n, vlong)
 {
-	volatile struct { Dstate *s; } s;
-	volatile struct { Block *b; } b;
+	Dstate * volatile s;
+	Block * volatile b;
 	int m, t;
 	char *p, *np, *e, buf[128];
 	uchar *x;
-	ulong offset = off;
 
-	s.s = dstate[CONV(c->qid)];
-	if(s.s == 0)
+	s = dstate[CONV(c->qid)];
+	if(s == 0)
 		panic("sslwrite");
 
 	t = TYPE(c->qid);
 	if(t == Qdata){
-		if(s.s->state == Sincomplete)
+		if(s->state == Sincomplete)
 			error(Ebadusefd);
+
+		/* lock should a write gets split over multiple records */
+		if(waserror()){
+			qunlock(&s->out.q);
+			nexterror();
+		}
+		qlock(&s->out.q);
 
 		p = a;
 		e = p + n;
 		do {
 			m = e - p;
-			if(m > s.s->max)
-				m = s.s->max;
+			if(m > s->max)
+				m = s->max;
 
-			b.b = allocb(m);
+			b = allocb(m);
 			if(waserror()){
-				freeb(b.b);
+				freeb(b);
 				nexterror();
 			}
-			memmove(b.b->wp, p, m);
+			memmove(b->wp, p, m);
 			poperror();
-			b.b->wp += m;
+			b->wp += m;
 
-			sslbwrite(c, b.b, offset);
+			sslput(s, b);
 
 			p += m;
 		} while(p < e);
+
+		poperror();
+		qunlock(&s->out.q);
 		return n;
 	}
 
 	/* mutex with operations using what we're about to change */
 	if(waserror()){
-		qunlock(&s.s->in.ctlq);
-		qunlock(&s.s->out.q);
+		qunlock(&s->in.ctlq);
+		qunlock(&s->out.q);
 		nexterror();
 	}
-	qlock(&s.s->in.ctlq);
-	qlock(&s.s->out.q);
+	qlock(&s->in.ctlq);
+	qlock(&s->out.q);
 
 	switch(t){
 	default:
 		panic("sslwrite");
 	case Qsecretin:
-		setsecret(&s.s->in, a, n);
+		setsecret(&s->in, a, n);
 		goto out;
 	case Qsecretout:
-		setsecret(&s.s->out, a, n);
+		setsecret(&s->out, a, n);
 		goto out;
 	case Qctl:
 		break;
@@ -1108,46 +1135,46 @@ sslwrite(Chan *c, void *a, long n, vlong off)
 		*p++ = 0;
 
 	if(strcmp(buf, "fd") == 0){
-		s.s->c = buftochan(p);
+		s->c = buftochan(p);
 
 		/* default is clear (msg delimiters only) */
-		s.s->state = Sclear;
-		s.s->blocklen = 1;
-		s.s->diglen = 0;
-		s.s->maxpad = s.s->max = (1<<15) - s.s->diglen - 1;
-		s.s->in.mid = 0;
-		s.s->out.mid = 0;
+		s->state = Sclear;
+		s->blocklen = 1;
+		s->diglen = 0;
+		s->maxpad = s->max = (1<<15) - s->diglen - 1;
+		s->in.mid = 0;
+		s->out.mid = 0;
 	} else if(strcmp(buf, "alg") == 0 && p != 0){
-		s.s->blocklen = 1;
-		s.s->diglen = 0;
+		s->blocklen = 1;
+		s->diglen = 0;
 
-		if(s.s->c == 0)
+		if(s->c == 0)
 			error("must set fd before algorithm");
 
-		s.s->state = Sclear;
-		s.s->maxpad = s.s->max = (1<<15) - s.s->diglen - 1;
+		s->state = Sclear;
+		s->maxpad = s->max = (1<<15) - s->diglen - 1;
 		if(strcmp(p, "clear") == 0){
 			goto out;
 		}
 
-		if(s.s->in.secret && s.s->out.secret == 0)
-			setsecret(&s.s->out, s.s->in.secret, s.s->in.slen);
-		if(s.s->out.secret && s.s->in.secret == 0)
-			setsecret(&s.s->in, s.s->out.secret, s.s->out.slen);
-		if(s.s->in.secret == 0 || s.s->out.secret == 0)
+		if(s->in.secret && s->out.secret == 0)
+			setsecret(&s->out, s->in.secret, s->in.slen);
+		if(s->out.secret && s->in.secret == 0)
+			setsecret(&s->in, s->out.secret, s->out.slen);
+		if(s->in.secret == 0 || s->out.secret == 0)
 			error("algorithm but no secret");
 
-		s.s->hf = 0;
-		s.s->encryptalg = Noencryption;
-		s.s->blocklen = 1;
+		s->hf = 0;
+		s->encryptalg = Noencryption;
+		s->blocklen = 1;
 
 		for(;;){
 			np = strchr(p, ' ');
 			if(np)
 				*np++ = 0;
 
-			if(parsehashalg(p, s.s) < 0)
-			if(parseencryptalg(p, s.s) < 0)
+			if(parsehashalg(p, s) < 0)
+			if(parseencryptalg(p, s) < 0)
 				error("bad algorithm");
 
 			if(np == 0)
@@ -1155,34 +1182,34 @@ sslwrite(Chan *c, void *a, long n, vlong off)
 			p = np;
 		}
 
-		if(s.s->hf == 0 && s.s->encryptalg == Noencryption)
+		if(s->hf == 0 && s->encryptalg == Noencryption)
 			error("bad algorithm");
 
-		if(s.s->blocklen != 1){
-			s.s->max = (1<<15) - s.s->diglen - 1;
-			s.s->max -= s.s->max % s.s->blocklen;
-			s.s->maxpad = (1<<14) - s.s->diglen - 1;
-			s.s->maxpad -= s.s->maxpad % s.s->blocklen;
+		if(s->blocklen != 1){
+			s->max = (1<<15) - s->diglen - 1;
+			s->max -= s->max % s->blocklen;
+			s->maxpad = (1<<14) - s->diglen - 1;
+			s->maxpad -= s->maxpad % s->blocklen;
 		} else
-			s.s->maxpad = s.s->max = (1<<15) - s.s->diglen - 1;
+			s->maxpad = s->max = (1<<15) - s->diglen - 1;
 	} else if(strcmp(buf, "secretin") == 0 && p != 0) {
 		m = (strlen(p)*3)/2;
 		x = smalloc(m);
 		t = dec64(x, m, p, strlen(p));
-		setsecret(&s.s->in, x, t);
+		setsecret(&s->in, x, t);
 		free(x);
 	} else if(strcmp(buf, "secretout") == 0 && p != 0) {
 		m = (strlen(p)*3)/2 + 1;
 		x = smalloc(m);
 		t = dec64(x, m, p, strlen(p));
-		setsecret(&s.s->out, x, t);
+		setsecret(&s->out, x, t);
 		free(x);
 	} else
 		error(Ebadarg);
 
 out:
-	qunlock(&s.s->in.ctlq);
-	qunlock(&s.s->out.q);
+	qunlock(&s->in.ctlq);
+	qunlock(&s->out.q);
 	poperror();
 	return n;
 }
