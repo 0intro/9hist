@@ -332,6 +332,11 @@ ns16552enable(Uart *p)
 	p->cts = 1;
 	p->blocked = 0;
 
+	/*
+	 *  set baud rate to the last used
+	 */
+	ns16552setbaud(p, p->baud);
+
 	lock(&uartalloc);
 	for(l = &uartalloc.elist; *l; l = &(*l)->elist){
 		if(*l == p)

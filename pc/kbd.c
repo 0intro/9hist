@@ -375,6 +375,7 @@ kbdintr(Ureg *ur, void *arg)
 	static int ctl;
 	static int num;
 	static int collecting, nk;
+	static int alt;
 	static uchar kc[5];
 	int keyup;
 
@@ -438,6 +439,9 @@ kbdintr(Ureg *ur, void *arg)
 	 */
 	if(keyup){
 		switch(c){
+		case Latin:
+			alt = 0;
+			break;
 		case Shift:
 			mouseshifted = shift = 0;
 			break;
@@ -452,8 +456,11 @@ kbdintr(Ureg *ur, void *arg)
  	 *  normal character
 	 */
 	if(!(c & Spec)){
-		if(ctl)
+		if(ctl){
+			if(alt && c == Del)
+				exit(0);
 			c &= 0x1f;
+		}
 		if(!collecting){
 			kbdputc(kbdq, c);
 			return;
@@ -482,6 +489,7 @@ kbdintr(Ureg *ur, void *arg)
 			mouseshifted = shift = 1;
 			return;
 		case Latin:
+			alt = 1;
 			collecting = 1;
 			nk = 0;
 			return;
