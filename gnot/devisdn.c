@@ -57,7 +57,7 @@ int	isdndebug;
 void
 isdnreset(void)
 {
-	isdndev = ialloc(conf.nisdn*sizeof(Isdn), 0);
+	isdndev = xalloc(conf.nisdn*sizeof(Isdn));
 	isdndevN = &isdndev[conf.nisdn];
 }
 

@@ -99,7 +99,7 @@ int	hifidebug = 1;
 void
 hifireset(void)
 {
-	hifichan = ialloc(2*conf.nisdn*sizeof(Hifichan), 0);
+	hifichan = xalloc(2*conf.nisdn*sizeof(Hifichan));
 	hifichanN = &hifichan[2*conf.nisdn];
 }
 

@@ -75,6 +75,7 @@ struct Lapd
 {
 	QLock;		/* access, state change */
 	Rendez;		/* waiting for state change */
+	int	klocked;/* locked by kernel proc */
 	int	state;
 	int	flags;
 	Queue *	rq;
@@ -723,12 +724,14 @@ static void
 lapdkproc(void *arg)
 {
 	Lapd *lp = (Lapd *)arg;
-	int locked = 0;
+
+	lp->klocked = 0;
 	lp->kstarted = 1;
 
 	if(waserror()){
-		if (locked)
+		if(lp->klocked)
 			qunlock(lp);
+		lp->klocked = 0;
 		print("lapdkproc %d error\n", lp-lapd);
 		lp->kstarted = 0;
 		wakeup(lp);
@@ -739,12 +742,10 @@ lapdkproc(void *arg)
 		if(!lp->t200 || NOW < lp->t200)
 			continue;
 		qlock(lp);
-		locked = 1;
-		USED(locked);
+		lp->klocked = 1;
 		if(lp->flags & Hungup){
 			qunlock(lp);
-			locked = 0;
-			USED(locked);
+			lp->klocked = 0;
 			break;
 		}
 		switch(lp->state){
@@ -762,8 +763,7 @@ lapdkproc(void *arg)
 			break;
 		}
 		qunlock(lp);
-		locked = 0;
-		USED(locked);
+		lp->klocked = 0;
 	}
 	lp->kstarted = 0;
 	wakeup(lp);

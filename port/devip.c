@@ -382,6 +382,9 @@ ipwrite(Chan *c, char *a, long n, ulong offset)
 			backlog = 5;
 		cp->backlog = backlog;
 	}
+	else if(strcmp(field[0], "headers") == 0) {
+		cp->headers = 1;	/* include addr/port in user packet */
+	}
 	else
 		return streamwrite(c, a, n, 0);
 
@@ -419,6 +422,7 @@ udprcvmsg(Ipifc *ifc, Block *bp)
 	Port   dport, sport;
 	ushort sum, len;
 	Ipaddr addr;
+	Block *nbp;
 
 	uh = (Udphdr *)(bp->rptr);
 
@@ -457,9 +461,20 @@ udprcvmsg(Ipifc *ifc, Block *bp)
 			if(bp == 0)
 				return;
 
-			/* Stuff the src address into the remote file */
-		 	cp->dst = addr;
-			cp->pdst = sport;
+			if(cp->headers){
+				/* pass the src address to the stream head */
+				nbp = allocb(Udphdrsize);
+				nbp->next = bp;
+				bp = nbp;
+				hnputl(bp->wptr, addr);
+				bp->wptr += 4;
+				hnputs(bp->wptr, sport);
+				bp->wptr += 2;
+			} else {
+				/* save the src address in the conversation struct */
+			 	cp->dst = addr;
+				cp->pdst = sport;
+			}
 			PUTNEXT(cp->readq, bp);
 			return;
 		}
@@ -471,18 +486,19 @@ udprcvmsg(Ipifc *ifc, Block *bp)
 void
 udpstoput(Queue *q, Block *bp)
 {
-	Ipconv *ipc;
+	Ipconv *cp;
 	Udphdr *uh;
 	int dlen, ptcllen, newlen;
+	Ipaddr addr;
+	Port port;
 
 	if(bp->type == M_CTL) {
 		PUTNEXT(q, bp);
 		return;
 	}
 
-	/* Prepend udp header to packet and pass on to ip layer */
-	ipc = (Ipconv *)(q->ptr);
-	if(ipc->psrc == 0)
+	cp = (Ipconv *)(q->ptr);
+	if(cp->psrc == 0)
 		error(Enoport);
 
 	if(bp->type != M_DATA) {
@@ -495,6 +511,25 @@ udpstoput(Queue *q, Block *bp)
 		freeb(bp);
 		error(Emsgsize);
 	}
+
+	/*
+	 *  if we're in header mode, rip off the first 64 bytes as the
+	 *  destination.  The destination is in ascii in the form
+	 *	%d.%d.%d.%d!%d
+	 */
+	if(cp->headers){
+		/* get user specified addresses */
+		bp = pullup(bp, Udphdrsize);
+		if(bp == 0){
+			freeb(bp);
+			error(Emsgsize);
+		}
+		addr = nhgetl(bp->rptr);
+		bp->rptr += 4;
+		port = nhgets(bp->rptr);
+		bp->rptr += 2;
+	} else
+		addr = port = 0;
 
 	/* Round packet up to even number of bytes and check we can
 	 * send it
@@ -517,10 +552,15 @@ udpstoput(Queue *q, Block *bp)
 	uh->frag[0] = 0;
 	uh->frag[1] = 0;
 	hnputs(uh->udpplen, ptcllen);
-	hnputl(uh->udpdst, ipc->dst);
 	hnputl(uh->udpsrc, Myip[Myself]);
-	hnputs(uh->udpsport, ipc->psrc);
-	hnputs(uh->udpdport, ipc->pdst);
+	hnputs(uh->udpsport, cp->psrc);
+	if(cp->headers){
+		hnputl(uh->udpdst, addr);
+		hnputs(uh->udpdport, port);
+	} else {
+		hnputl(uh->udpdst, cp->dst);
+		hnputs(uh->udpdport, cp->pdst);
+	}
 	hnputs(uh->udplen, ptcllen);
 	uh->udpcksum[0] = 0;
 	uh->udpcksum[1] = 0;
@@ -536,6 +576,7 @@ udpstclose(Queue *q)
 
 	ipc = (Ipconv *)(q->ptr);
 
+	ipc->headers = 0;
 	ipc->psrc = 0;
 	ipc->pdst = 0;
 	ipc->dst = 0;

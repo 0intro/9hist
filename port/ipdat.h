@@ -291,6 +291,7 @@ struct Ipconv
 		
 	char	*err;		/* Async protocol error */
 	int	backlog;	/* Maximum number of waiting connections */
+	int	headers;	/* include header in packet */
 	int	curlog;		/* Number of waiting connections */
 	Ipconv 	*newcon;	/* This is the start of a connection */
 
@@ -361,6 +362,7 @@ enum				/* Tcp connection states */
 enum
 {
 	Nipconv=	512,		/* max conversations per interface */
+	Udphdrsize=	6,		/* size if a to/from user Udp header */
 };
 
 /*

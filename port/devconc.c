@@ -6,8 +6,6 @@
 #include	"io.h"
 #include	"../port/error.h"
 
-#include	"fcall.h"
-
 #define	concdebug	1
 
 #define	DPRINT	if(concdebug)kprint
@@ -285,7 +283,7 @@ concdevstclose(Queue *q)
 	q->ptr = 0;
 	q->other->ptr = 0;
 	dp->rq = 0;
-	streamexit(cp->s);
+	streamexit(cp->s, 1);
 	qunlock(cp);
 }
 

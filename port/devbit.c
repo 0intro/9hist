@@ -352,7 +352,7 @@ bitread(Chan *c, void *va, long n, ulong offset)
 	uchar *p, *q;
 	long miny, maxy, t, x, y;
 	ulong l, nw, ws, rv, gv, bv;
-	int off, j, dn;
+	int off, j;
 	Fontchar *i;
 	GBitmap *src;
 
@@ -436,11 +436,11 @@ bitread(Chan *c, void *va, long n, ulong offset)
 		 *	'I'		1
 		 *	ldepth		1
 		 * 	rectangle	16
-		 * if count great enough, also
+		 * 	clip rectangle	16
 		 *	font info	3*12
 		 *	fontchars	6*(defont->n+1)
 		 */
-		if(n < 18)
+		if(n < 34)
 			error(Ebadblt);
 		p[0] = 'I';
 		p[1] = gscreen.ldepth;
@@ -448,16 +448,12 @@ bitread(Chan *c, void *va, long n, ulong offset)
 		PLONG(p+6, gscreen.r.min.y);
 		PLONG(p+10, gscreen.r.max.x);
 		PLONG(p+14, gscreen.r.max.y);
-		dn = 18;
-		if(bit.init=='j' && n>=18+16){
-			PLONG(p+18, gscreen.clipr.min.x);
-			PLONG(p+22, gscreen.clipr.min.y);
-			PLONG(p+26, gscreen.clipr.max.x);
-			PLONG(p+30, gscreen.clipr.max.y);
-			dn += 16;
-		}
-		if(n >= dn+3*12+6*(defont->n+1)){
-			p += dn;
+		PLONG(p+18, gscreen.clipr.min.x);
+		PLONG(p+22, gscreen.clipr.min.y);
+		PLONG(p+26, gscreen.clipr.max.x);
+		PLONG(p+30, gscreen.clipr.max.y);
+		if(n >= 34+3*12+6*(defont->n+1)){
+			p += 34;
 			sprint((char*)p, "%11d %11d %11d ", defont->n,
 				defont->height, defont->ascent);
 			p += 3*12;
@@ -468,9 +464,9 @@ bitread(Chan *c, void *va, long n, ulong offset)
 				p[4] = i->left;
 				p[5] = i->width;
 			}
-			n = dn+3*12+6*(defont->n+1);
+			n = 34+3*12+6*(defont->n+1);
 		}else
-			n = dn;
+			n = 34;
 		bit.init = 0;
 	}else if(bit.lastid > 0){
 		/*
@@ -782,13 +778,12 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			break;
 
 		case 'i':
-		case 'j':
 			/*
 			 * init
 			 *
-			 *	'i','j'		1
+			 *	'i'		1
 			 */
-			bit.init = *p;
+			bit.init = 1;
 			m -= 1;
 			p += 1;
 			break;
@@ -905,12 +900,14 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			 *	height		1
 			 *	ascent		1
 			 *	ldepth		2
+			 *	ncache		2
 			 * next read returns allocated font id
 			 */
-			if(m < 5)
+			if(m < 7)
 				error(Ebadblt);
 			v = GSHORT(p+3);
-			if(v < 0)
+			t = GSHORT(p+5);
+			if(v<0 || t<0)
 				error(Ebadblt);
 			for(i=0; i<bit.nfont; i++)
 				if(bit.font[i] == 0)
@@ -922,6 +919,8 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			bit.nfont += DMAP;
 		fontfound:
 			ff = smalloc(sizeof(GFont));
+			ff->ncache = t;
+			ff->cache = smalloc(t*sizeof(GCacheinfo));
 			bit.font[i] = ff;
 			ff = bit.font[i];
 			ff->height = p[1];
@@ -929,8 +928,8 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			ff->ldepth = v;
 			ff->width = 0;
 			ff->b = 0;
-			m -= 5;
-			p += 5;
+			m -= 7;
+			p += 7;
 			bit.lastfid = i;
 			break;
 
@@ -1016,6 +1015,48 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			m -= 11;
 			break;
 
+		case 's':
+			/*
+			 * string
+			 *	's'		1
+			 *	id		2
+			 *	pt		8
+			 *	font id		2
+			 *	code		2
+			 *	n		2
+			 * 	cache indices	2*n (not null terminated)
+			 */
+			if(m < 17)
+				error(Ebadblt);
+			v = GSHORT(p+1);
+			if(v<0 || v>=bit.nmap || (dst=bit.map[v])==0)
+				error(Ebadbitmap);
+			off = 0;
+			fc = GSHORT(p+13) & 0xF;
+			if(v == 0){
+				if(flipping)
+					fc = flipD[fc];
+				off = 1;
+			}
+			pt.x = GLONG(p+3);
+			pt.y = GLONG(p+7);
+			v = GSHORT(p+11);
+			if(v<0 || v>=bit.nfont || (ff=bit.font[v])==0)
+				error(Ebadblt);
+			l = GSHORT(p+15)*2;
+			p += 17;
+			m -= 17;
+			if(l > m)
+				error(Ebadblt);
+			if(off && !isoff){
+				cursoroff(1);
+				isoff = 1;
+			}
+			bitstring(dst, pt, ff, p, l, fc);
+			m -= l;
+			p += l;
+			break;
+
 		case 't':
 			/*
 			 * texture
@@ -1051,48 +1092,6 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			gtexture(dst, rect, src, fc);
 			m -= 23;
 			p += 23;
-			break;
-
-		case 'u':
-			/*
-			 * string
-			 *	'u'		1
-			 *	id		2
-			 *	pt		8
-			 *	font id		2
-			 *	code		2
-			 *	n		2
-			 * 	cache indexes	2*n (not null terminated)
-			 */
-			if(m < 17)
-				error(Ebadblt);
-			v = GSHORT(p+1);
-			if(v<0 || v>=bit.nmap || (dst=bit.map[v])==0)
-				error(Ebadbitmap);
-			off = 0;
-			fc = GSHORT(p+13) & 0xF;
-			if(v == 0){
-				if(flipping)
-					fc = flipD[fc];
-				off = 1;
-			}
-			pt.x = GLONG(p+3);
-			pt.y = GLONG(p+7);
-			v = GSHORT(p+11);
-			if(v<0 || v>=bit.nfont || (ff=bit.font[v])==0)
-				error(Ebadblt);
-			l = GSHORT(p+15)*2;
-			p += 17;
-			m -= 17;
-			if(l > m)
-				error(Ebadblt);
-			if(off && !isoff){
-				cursoroff(1);
-				isoff = 1;
-			}
-			bitstring(dst, pt, ff, p, l, fc);
-			m -= l;
-			p += l;
 			break;
 
 		case 'v':
@@ -1380,6 +1379,7 @@ fontfree(GFont *f)
 {
 	if(f->b)
 		bitfree(f->b);
+	free(f->cache);
 	free(f);
 }
 
