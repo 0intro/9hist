@@ -13,15 +13,164 @@
 #include <cursor.h>
 #include "screen.h"
 
+enum {
+	Wid		= 320,
+	Ht		= 240,
+	Pal0	= 0x2000,	/* 16-bit pixel data in active mode (12 in passive) */
+
+	hsw		= 0x4,
+	elw		= 0x11,
+	blw		= 0xc,
+
+	vsw		= 0x3,
+	efw		= 0x1,
+	bfw		= 0xa,
+
+	pcd		= 0x10,
+};
+
+struct sa1110fb {
+	/* Frame buffer for 16-bit active color */
+	short	palette[16];		/* entry 0 set to Pal0, the rest to 0 */
+	ushort	pixel[Wid*Ht];		/* Pixel data */
+} *framebuf;
+
+enum {
+/* LCD Control Register 0, lcd->lccr0 */
+	LEN	=  0,	/*  1 bit */
+	CMS	=  1,	/*  1 bit */
+	SDS	=  2,	/*  1 bit */
+	LDM	=  3,	/*  1 bit */
+	BAM	=  4,	/*  1 bit */
+	ERM	=  5,	/*  1 bit */
+	PAS	=  7,	/*  1 bit */
+	BLE	=  8,	/*  1 bit */
+	DPD	=  9,	/*  1 bit */
+	PDD	= 12,	/*  8 bits */
+};
+
+enum {
+/* LCD Control Register 1, lcd->lccr1 */
+	PPL	=  0,	/* 10 bits */
+	HSW	= 10,	/*  6 bits */
+	ELW	= 16,	/*  8 bits */
+	BLW	= 24,	/*  8 bits */
+};
+
+enum {
+/* LCD Control Register 2, lcd->lccr2 */
+	LPP	=  0,	/* 10 bits */
+	VSW	= 10,	/*  6 bits */
+	EFW	= 16,	/*  8 bits */
+	BFW	= 24,	/*  8 bits */
+};
+
+enum {
+/* LCD Control Register 3, lcd->lccr3 */
+	PCD	=  0,	/*  8 bits */
+	ACB	=  8,	/*  8 bits */
+	API	= 16,	/*  4 bits */
+	VSP	= 20,	/*  1 bit */
+	HSP	= 21,	/*  1 bit */
+	PCP	= 22,	/*  1 bit */
+	OEP	= 23,	/*  1 bit */
+};
+
+enum {
+/* LCD Status Register, lcd->lcsr */
+	LFD	=  0,	/*  1 bit */
+	BAU	=  1,	/*  1 bit */
+	BER	=  2,	/*  1 bit */
+	ABC	=  3,	/*  1 bit */
+	IOL	=  4,	/*  1 bit */
+	IUL	=  5,	/*  1 bit */
+	OIU	=  6,	/*  1 bit */
+	IUU	=  7,	/*  1 bit */
+	OOL	=  8,	/*  1 bit */
+	OUL	=  9,	/*  1 bit */
+	OOU	= 10,	/*  1 bit */
+	OUU	= 11,	/*  1 bit */
+};
+
+struct sa1110regs {
+	ulong	lccr0;	/* 0xb0100000 */
+	ulong	lcsr;	/* 0xb0100004 */
+	ulong	dummies[2];	/* unused  0xb0100008 and 0xb010000c */
+	short*	dbar1;	/* 0xb0100010 */
+	ulong	dcar1;	/* 0xb0100014 */
+	ulong	dbar2;	/* 0xb0100018 */
+	ulong	dcar2;	/* 0xb010001c */
+	ulong	lccr1;	/* 0xb0100020 */
+	ulong	lccr2;	/* 0xb0100024 */
+	ulong	lccr3;	/* 0xb0100028 */
+} *lcd;
+
+Point	ZP = {0, 0};
+
+static Memimage xgscreen =
+{
+	{ 0, 0, Wid, Ht },	/* r */
+	{ 0, 0, Wid, Ht },	/* clipr */
+	16,					/* depth */
+	1,					/* nchan */
+	RGB16,				/* chan */
+	nil,				/* cmap */
+	nil,				/* data */
+	0,					/* zero */
+	Wid/2,				/* width */
+	0,					/* layer */
+	Frepl,				/* flags */
+};
+
+Memimage *gscreen;
+Memimage *conscol;
+Memimage *back;
+Memimage *hwcursor;
+
+static void
+lcdinit(void)
+{
+	lcd = (struct sa1110regs*)0xb0100000;
+
+	lcd->dbar1 = framebuf->palette;
+	lcd->lccr3 = (pcd << PCD) | (0 << ACB) | (0 << API) | (1 << VSP) | (1 << HSP);
+	lcd->lccr2 = ((Ht-1) << LPP) | (vsw << VSW) | (efw << EFW) | (bfw << BFW);
+	lcd->lccr1 = (Wid << PPL) | (hsw << HSW) | (elw << ELW) | (blw << BLW);
+	lcd->lccr0 = 1<<LEN | 1 << CMS | 0<<SDS | 1<<LDM | 1<<BAM | 1<<ERM | 1<<PAS | 0<<BLE | 0<<PDD;
+
+}
+
+void
+screeninit(void)
+{
+	framebuf = xspanalloc(sizeof *framebuf, 0x10, 0);
+	memset(framebuf->palette, 0, sizeof framebuf->palette);
+	framebuf->palette[0] = Pal0;
+
+	lcdinit();
+
+	gscreen = &xgscreen;
+	gscreen->data = (struct Memdata *)framebuf->pixel;
+}
+
 void
 flushmemscreen(Rectangle)
 {
 }
 
+/* 
+ * export screen to devdraw
+ */
 uchar*
-attachscreen(Rectangle*, ulong*, int*, int*, int*)
+attachscreen(Rectangle *r, ulong *chan, int* d, int *width, int *softscreen)
 {
-	return nil;
+	*r = gscreen->r;
+	*d = gscreen->depth;
+	*chan = gscreen->chan;
+	*width = gscreen->width;
+	*softscreen = 0;
+
+	return (uchar*)gscreen->data;
 }
 
 void
