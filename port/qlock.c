@@ -3,6 +3,7 @@
 #include "mem.h"
 #include "dat.h"
 #include "fns.h"
+#include "../port/edf.h"
 
 struct {
 	ulong rlock;
@@ -37,6 +38,8 @@ rwstats.qlockq++;
 	q->tail = mp;
 	mp->qnext = 0;
 	mp->state = Queueing;
+	if (isedf(mp))
+		edf_block(mp);
 	up->qpc = getcallerpc(&q);
 	unlock(&q->use);
 	sched();
@@ -101,6 +104,8 @@ rwstats.rlockq++;
 	q->tail = mp;
 	mp->qnext = 0;
 	mp->state = QueueingR;
+	if (isedf(mp))
+		edf_block(mp);
 	unlock(&q->use);
 	sched();
 }
@@ -157,6 +162,8 @@ rwstats.wlockq++;
 	q->tail = mp;
 	mp->qnext = 0;
 	mp->state = QueueingW;
+	if (isedf(mp))
+		edf_block(mp);
 	unlock(&q->use);
 	sched();
 }

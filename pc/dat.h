@@ -29,8 +29,9 @@ struct Lock
 	ulong	key;
 	ulong	sr;
 	ulong	pc;
-	Proc	*p;
+	Proc	*	p;
 	ushort	isilock;
+	Proc	*	edfwaiting;
 };
 
 struct Label

@@ -4,6 +4,7 @@
 #include "dat.h"
 #include "fns.h"
 #include "../port/error.h"
+#include "../port/edf.h"
 
 struct {
 	ulong	locks;
@@ -62,8 +63,8 @@ lock(Lock *l)
 	cansched = up != nil && up->state == Running;
 	if(cansched){
 		oldpri = up->priority;
-		up->lockwait = 1;
 		up->priority = PriLock;
+		up->lockwait = l;
 	} else
 		oldpri = 0;
 
@@ -71,8 +72,16 @@ lock(Lock *l)
 		lockstats.inglare++;
 		i = 0;
 		while(l->key){
-			if(conf.nmach < 2 && cansched){
-				if(i++ > 1000){
+			if (isedf(up)){
+				/* Edf process waiting for a lock; process holding lock will not
+				 * be scheduled unless we give up the processor.  We give up
+				 * the processor, but make sure we get awoken when the lock
+				 * is released
+				 */
+				if (edf_waitlock(l))
+					sched();
+			} else if(conf.nmach < 2 && cansched){
+				if (i++ > 1000){
 					i = 0;
 					lockloop(l, pc);
 				}
@@ -89,7 +98,7 @@ lock(Lock *l)
 			l->p = up;
 			l->isilock = 0;
 			if(cansched){
-				up->lockwait = 0;
+				up->lockwait = nil;
 				up->priority = oldpri;
 			}
 			return;
@@ -120,7 +129,7 @@ ilock(Lock *l)
 	cansched = up != nil && up->state == Running;
 	if(cansched){
 		oldpri = up->priority;
-		up->lockwait = 1;
+		up->lockwait = l;
 		up->priority = PriLock;
 	} else
 		oldpri = 0;
@@ -142,7 +151,7 @@ dumplockmem("ilock:", l);
 			l->p = up;
 			l->isilock = 1;
 			if(cansched){
-				up->lockwait = 0;
+				up->lockwait = nil;
 				up->priority = oldpri;
 			}
 			return;
@@ -165,7 +174,6 @@ canlock(Lock *l)
 void
 unlock(Lock *l)
 {
-
 	if(l->key == 0)
 		print("unlock: not locked: pc %luX\n", getcallerpc(&l));
 	if(l->isilock)
@@ -173,6 +181,8 @@ unlock(Lock *l)
 	l->pc = 0;
 	l->key = 0;
 	coherence();
+	if (l->edfwaiting)
+		edf_releaselock(l);
 }
 
 void

@@ -37,8 +37,10 @@ typedef struct Rendez	Rendez;
 typedef struct Rgrp	Rgrp;
 typedef struct RWlock	RWlock;
 typedef struct Sargs	Sargs;
+typedef struct Schedq	Schedq;
 typedef struct Segment	Segment;
 typedef struct Session	Session;
+typedef struct Task	Task;
 typedef struct Talarm	Talarm;
 typedef struct Uart	Uart;
 typedef struct Waitq	Waitq;
@@ -538,6 +540,16 @@ enum
 	PriRoot		= 13,	/* base priority for root processes */
 };
 
+typedef uvlong	Ticks;
+
+struct Schedq
+{
+	Lock;
+	Proc*	head;
+	Proc*	tail;
+	int	n;
+};
+
 struct Proc
 {
 	Label	sched;		/* known to l.s */
@@ -623,7 +635,7 @@ struct Proc
 	Note	lastnote;
 	int	(*notify)(void*, char*);
 
-	int	lockwait;	/* waiting for lock to be released */
+	Lock		*lockwait;	/* waiting for lock to be released */
 
 	Mach	*wired;
 	Mach	*mp;		/* machine this process last ran on */
@@ -637,6 +649,8 @@ struct Proc
 	int	preempted;	/* true if this process hasn't finished the interrupt
 				 *  that last preempted it
 				 */
+	Task		*task;	/* if non-null, real-time proc, task contains scheduling params */
+
 	ulong	qpc;		/* pc calling last blocking qlock */
 
 	void	*ureg;		/* User registers for notes */

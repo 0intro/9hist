@@ -4,6 +4,7 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"../port/error.h"
+#include	"../port/edf.h"
 
 int	nrdy;
 Ref	noteidalloc;
@@ -18,17 +19,10 @@ static struct Procalloc
 	Proc*	free;
 } procalloc;
 
-typedef struct
-{
-	Lock;
-	Proc*	head;
-	Proc*	tail;
-	int	n;
-} Schedq;
 static Schedq	runq[Nrq];
 
 char *statename[] =
-{			/* BUG: generate automatically */
+{	/* BUG: generate automatically */
 	"Dead",
 	"Moribund",
 	"Ready",
@@ -41,6 +35,7 @@ char *statename[] =
 	"Broken",
 	"Stopped",
 	"Rendez",
+	"Released",
 };
 
 static void pidhash(Proc*);
@@ -61,6 +56,10 @@ schedinit(void)		/* never returns */
 			break;
 		case Moribund:
 			up->state = Dead;
+
+			if (isedf(up))
+				edf_bury(up);
+
 			/*
 			 * Holding locks from pexit:
 			 * 	procalloc
@@ -76,7 +75,7 @@ schedinit(void)		/* never returns */
 			break;
 		}
 		up->mach = 0;
-		up = 0;
+		up = nil;
 	}
 	sched();
 }
@@ -113,7 +112,7 @@ sched(void)
 int
 anyready(void)
 {
-	return nrdy;
+	return nrdy || edf_anyready();
 }
 
 int
@@ -127,7 +126,7 @@ anyhigher(void)
 	for(rq = &runq[Nrq-1]; rq > &runq[up->priority]; rq--)
 		if(rq->head != nil)
 			return 1;
-	
+
 	return 0;
 }
 
@@ -144,6 +143,11 @@ ready(Proc *p)
 
 	s = splhi();
 
+	if(isedf(p)){
+		edf_ready(p);
+		splx(s);
+		return;
+	}
 	if(p->fixedpri){
 		pri = p->basepri;
 	} else {
@@ -159,7 +163,7 @@ ready(Proc *p)
 		pri = p->basepri - (pri/Squantum);
 		if(pri < 0)
 			pri = 0;
-	
+
 		/* the only intersection between the classes is at PriNormal */
 		if(pri < PriNormal && p->basepri > PriNormal)
 			pri = PriNormal;
@@ -193,6 +197,9 @@ runproc(void)
 	Schedq *rq, *xrq;
 	Proc *p, *l;
 	ulong rt;
+
+	if ((p = edf_runproc()) != nil)
+		return p;
 
 loop:
 
@@ -279,6 +286,7 @@ found:
 	if(p->mp != MACHP(m->machno))
 		p->movetime = MACHP(0)->ticks + HZ/10;
 	p->mp = MACHP(m->machno);
+
 	return p;
 }
 
@@ -355,6 +363,8 @@ newproc(void)
 		panic("pidalloc");
 	if(p->kstack == 0)
 		p->kstack = smalloc(KSTACK);
+
+	p->task = nil;
 
 	return p;
 }
@@ -459,7 +469,7 @@ sleep(Rendez *r, int (*f)(void*), void *arg)
 
 		/* statistics */
 		m->cs++;
-	
+
 		procsave(up);
 		if(setlabel(&up->sched)) {
 			/*
@@ -473,6 +483,11 @@ sleep(Rendez *r, int (*f)(void*), void *arg)
 			 */
 			unlock(&up->rlock);
 			unlock(r);
+
+			// Behind unlock, we may call wakeup on ourselves.
+			if (isedf(up))
+				edf_block(up);
+
 			gotolabel(&m->sched);
 		}
 	}
@@ -566,7 +581,6 @@ wakeup(Rendez *r)
 		ready(p);
 		unlock(&p->rlock);
 	}
-
 	unlock(r);
 
 	splx(s);
@@ -677,6 +691,8 @@ addbroken(Proc *p)
 	broken.p[broken.n++] = p;
 	qunlock(&broken);
 
+	if (isedf(up))
+		edf_bury(up);
 	p->state = Broken;
 	p->psstate = 0;
 	sched();
@@ -844,6 +860,8 @@ pexit(char *exitstr, int freemem)
 	lock(&procalloc);
 	lock(&palloc);
 
+	if (isedf(up))
+		edf_bury(up);
 	up->state = Moribund;
 	sched();
 	panic("pexit");
@@ -1096,6 +1114,8 @@ procctl(Proc *p)
 		qunlock(&p->debug);
 		splhi();
 		p->state = Stopped;
+		if (isedf(up))
+			edf_block(up);
 		sched();
 		p->psstate = state;
 		splx(s);

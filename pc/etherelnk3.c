@@ -1833,6 +1833,7 @@ etherelnk3reset(Ether* ether)
 	case 0x9051:
 	case 0x9055:
 	case 0x9200:
+	case 0x7646:		/* 3CSOHO100-TX */
 	case 0x5157:		/* 3C575 Cyclone */
 		if(BUSTYPE(ether->tbdf) != BusPCI)
 			goto buggery;
@@ -1909,7 +1910,7 @@ etherelnk3reset(Ether* ether)
 	/*
 	 * forgive me, but i am weak
 	 */
-	if(did == 0x9055 || did == 0x9200 || did == 0x5157){
+	if(did == 0x9055 || did == 0x7646 || did == 0x9200 || did == 0x5157){
 		xcvr = xcvrMii;
 		txrxreset(port);
 		XCVRDEBUG("905[BC] reset ops 0x%uX\n", ins(port+ResetOp905B));
