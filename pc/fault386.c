@@ -35,7 +35,7 @@ fault386(Ureg *ur)
 		}
 		u->p->state = MMUing;
 		dumpregs(ur);
-		panic("fault: 0x%lux 0x%lux", addr);
+		panic("fault: 0x%lux", addr);
 	}
 	faulting = 0;
 	u->p->insyscall = insyscall;

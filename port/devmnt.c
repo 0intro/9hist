@@ -124,7 +124,10 @@ loop:
 	lock(&mnthdralloc);
 	if(mh = mnthdralloc.free){		/* assign = */
 		mnthdralloc.free = mh->next;
-		mh->flushing = 0;
+if(mh->active) print("mh->active\n");
+if(mh->flushing) print("mh->flushing\n");
+if(mh->mbr) print("mh->mbr\n");
+		mh->mbr = 0;
 		unlock(&mnthdralloc);
 		return mh;
 	}
@@ -619,8 +622,10 @@ mntflush(Mnt *m, Mnthdr *omh)	/* queue is unlocked */
 {
 	Mnthdr *mh;
 
-	if(omh->thdr.type == Tflush)
+	if(omh->thdr.type == Tflush){
+		omh->flushing = 0;
 		return;
+	}
 
 	mh = mhalloc();
 	if(waserror()){
@@ -680,8 +685,10 @@ mntxmit(Mnt *m, Mnthdr *mh)
 	mh->mbr = 0;
 	mbw = mballoc();
 	if(waserror()){			/* 1 */
-		if(mh->mbr)
+		if(mh->mbr){
 			mbfree(mh->mbr);
+			mh->mbr = 0;
+		}
 		mbfree(mbw);
 		nexterror();
 	}
@@ -780,6 +787,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		qunlock(q);
 		qlocked = 0;
 		if(waserror()){		/* 3 */
+print("%d interrupted read %lux %lux\n", u->p->pid, mh, mh->mbr);
 			mnterrdequeue(m, mh);
 			nexterror();
 		}
@@ -789,7 +797,7 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		}while(n == 0);
 		poperror();		/* 3 */
 		if(convM2S(mh->mbr->buf, &mh->rhdr, n) == 0){
-print("POO bad len %d %ux!\n", n, mh->mbr->buf[0]);
+print("%d POO bad len %d %ux %lux %lux\n", u->p->pid, n, mh->mbr->buf[0], mh, mh->mbr);
 			mnterrdequeue(m, mh);
 			error(Ebadmsg);
 		}
@@ -845,7 +853,9 @@ print("POO bad len %d %ux!\n", n, mh->mbr->buf[0]);
 		qunlock(q);
 		qlocked = 0;
 		if(waserror()){		/* interrupted sleep */
+print("%d interrupted queued sleep %lux %lux %d %d\n", u->p->pid, mh, mh->mbr, mh->active, mh->flushing);
 			mnterrdequeue(m, mh);
+print("%d after flush sleep %lux %lux %d %d\n", u->p->pid, mh, mh->mbr, mh->active, mh->flushing);
 			nexterror();
 		}
 		sleep(&mh->r, mntreadreply, mh);
@@ -885,6 +895,7 @@ print("POO bad len %d %ux!\n", n, mh->mbr->buf[0]);
 		memmove(mh->thdr.data, mh->rhdr.data, mh->rhdr.count);
 	}
 	mbfree(mh->mbr);
+	mh->mbr = 0;
 	mbfree(mbw);
 	USED(qlocked);
 	poperror();		/* 1 */

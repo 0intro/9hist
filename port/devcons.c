@@ -44,7 +44,14 @@ putstrn(char *str, int n)
 {
 	int s, c, m;
 	char *t;
+static Lock fuck;
 
+loop:
+s = splhi();
+if(!canlock(&fuck)){
+	splx(s);
+	goto loop;
+}
 	while(n > 0){
 		if(printq.puts && *str=='\n')
 			(*printq.puts)(&printq, "\r", 1);
@@ -59,6 +66,8 @@ putstrn(char *str, int n)
 		n -= m;
 		str += m;
 	}
+unlock(&fuck);
+splx(s);
 }
 
 /*

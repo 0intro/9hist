@@ -18,15 +18,16 @@ initq(IOQ *q)
 int
 putc(IOQ *q, int c)
 {
-	uchar *nextin;
-	if(q->in >= &q->buf[sizeof(q->buf)-1])
-		nextin = q->buf;
+	uchar *next;
+
+	if(q->in ==  &q->buf[NQ-1])
+		next = q->buf;
 	else
-		nextin = q->in+1;
-	if(nextin == q->out)
+		next = q->in+1;
+	if(next == q->out)
 		return -1;
 	*q->in = c;
-	q->in = nextin;
+	q->in = next;
 	return 0;
 }
 
@@ -38,7 +39,7 @@ getc(IOQ *q)
 	if(q->in == q->out)
 		return -1;
 	c = *q->out;
-	if(q->out == q->buf+sizeof(q->buf)-1)
+	if(q->out == &q->buf[NQ-1])
 		q->out = q->buf;
 	else
 		q->out++;
@@ -48,60 +49,44 @@ getc(IOQ *q)
 void
 puts(IOQ *q, void *buf, int n)
 {
-	int m; uchar *nextin;
-	uchar *s = buf;
+	uchar *next;
+	uchar *p = buf;
 
-	while(n){
-		m = q->out - q->in - 1;
-		if(m < 0)
-			m = &q->buf[NQ] - q->in;
-		if(m == 0)
-			break;
-		if(m > n)
-			m = n;
-		memmove(q->in, s, m);
-		n -= m;
-		s += m;
-		nextin = q->in + m;
-		if(nextin >= &q->buf[NQ])
-			q->in = q->buf;
+	for(; n; n--){
+		if(q->in == &q->buf[NQ-1])
+			next = q->buf;
 		else
-			q->in = nextin;
+			next = q->in + 1;
+		if(next == q->out)
+			break;
+		*q->in = *p++;
+		q->in = next;
 	}
 }
 
 int
 gets(IOQ *q, void *buf, int n)
 {
-	int m, k = 0; uchar *nextout;
-	uchar *s = buf;
+	uchar *p = buf;
 
-	while(n){
-		m = q->in - q->out;
-		if(m < 0)
-			m = &q->buf[NQ] - q->out;
-		if(m == 0)
-			return k;
-		if(m > n)
-			m = n;
-		memmove(s, q->out, m);
-		s += m;
-		k += m;
-		n -= m;
-		nextout = q->out + m;
-		if(nextout >= &q->buf[NQ])
+	for(; n && q->out != q->in; n--){
+		*p++ = *q->out;
+		if(q->out == &q->buf[NQ-1])
 			q->out = q->buf;
 		else
-			q->out = nextout;
+			q->out++;
 	}
-	return k;
+	return p - (uchar*)buf;
 }
 
 int
 cangetc(void *arg)
 {
-	IOQ *q = (IOQ *)arg;
-	int n = q->in - q->out;
+	IOQ *q;
+	int n;
+
+	q = (IOQ *)arg;
+	n = q->in - q->out;
 	if (n < 0)
 		n += sizeof(q->buf);
 	return n;
@@ -110,6 +95,12 @@ cangetc(void *arg)
 int
 canputc(void *arg)
 {
-	IOQ *q = (IOQ *)arg;
-	return sizeof(q->buf)-cangetc(q)-1;
+	IOQ *q;
+	int n;
+
+	q = (IOQ *)arg;
+	n = q->out - q->in - 1;
+	if (n < 0)
+		n += sizeof(q->buf);
+	return n;
 }

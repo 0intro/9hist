@@ -4,12 +4,15 @@ void	a20enable(void);
 #define	clearmmucache()		/* 386 doesn't have one */
 void	clock(Ureg*);
 void	clockinit(void);
+void	config(int);
 void	delay(int);
 void	dmaend(int);
 long	dmasetup(int, void*, long, int);
 #define	evenaddr(x)		/* 386 doesn't care */
 void	fault386(Ureg*);
 void	faultinit(void);
+void	fclock(Ureg*);
+void	fclockinit(void);
 #define	flushvirt();
 void	fpsave(FPsave*);
 void	fprestore(FPsave*);
@@ -20,8 +23,10 @@ int	inss(int, void*, int);
 int	outss(int, void*, int);
 void	kbdinit(void);
 void	kbdintr(Ureg*);
+int	mail(int);
 void	mmuinit(void);
 void	outb(int, int);
+int	owl(int);
 void	prhex(ulong);
 void	procrestore(Proc*, uchar*);
 void	procsave(uchar*, int);
@@ -39,5 +44,6 @@ void	systrap(void);
 void	touser(void);
 void	trapinit(void);
 int	tas(Lock*);
+void	uartintr0(Ureg*);
 void	vgainit(void);
 #define	waserror()	(u->nerrlab++, setlabel(&u->errlab[u->nerrlab-1]))

@@ -373,14 +373,6 @@ pmuwrbit(int index, int bit, int pos)
 int
 serial(int onoff)
 {
-	int x;
-
-	/*
-	 *  set config (enable everything)
-	 */
-	x = splhi();
-	config(0x00);
-	splx(x);
 	return pmuwrbit(1, onoff, 6);
 }
 

@@ -21,7 +21,7 @@ sysr1(ulong *arg)
 long
 sysfork(ulong *arg)
 {
-	return rfork(Forkfd|Forkeg|Forkpg);
+	return rfork(Forkfd);
 }
 
 /* This call will obsolete fork */
@@ -76,27 +76,27 @@ rfork(ulong flag)
 
 	if(flag & Forkfd)
 		p->fgrp = dupfgrp(u->p->fgrp);
-	else {
+	else{
 		p->fgrp = u->p->fgrp;
 		incref(p->fgrp);
 	}
 
 	if(flag & Forkpg) {
-		p->pgrp = u->p->pgrp;			/* Process groups */
-		incref(p->pgrp);
-	}
-	else {
 		p->pgrp = newpgrp();
 		pgrpcpy(p->pgrp, u->p->pgrp);
 	}
+	else {
+		p->pgrp = u->p->pgrp;			/* Process groups */
+		incref(p->pgrp);
+	}
 
 	if(flag & Forkeg) {
-		p->egrp = u->p->egrp;			/* Environment group */
-		incref(p->egrp);
-	}
-	else {
 		p->egrp = newegrp();
 		envcpy(p->egrp, u->p->egrp);
+	}
+	else {
+		p->egrp = u->p->egrp;			/* Environment group */
+		incref(p->egrp);
 	}
 
 	/*
@@ -406,14 +406,16 @@ long
 sysexits(ulong *arg)
 {
 	char *status;
+	char *inval = "invalid exit string";
 
 	status = (char*)arg[0];
 	if(status){
 		if(waserror())
-			status = "invalid exit string";
+			status = inval;
 		else{
 			validaddr((ulong)status, 1, 0);
-			vmemchr(status, 0, ERRLEN);
+			if(vmemchr(status, 0, ERRLEN) == 0)
+				status = inval;
 		}
 		poperror();
 

@@ -21,12 +21,11 @@ ulong	testbuf[NTESTBUF];
 /*
  * If defined, ENABBUSTEST causes bus error diagnostic to be run at device open
  */
-#define	ENABBUSTEST
 
 /*
  * If 1, ENABCKSUM causes data transfers to have checksums
  */
-#define	ENABCKSUM	1
+#define	ENABCKSUM	0
 
 typedef struct Hotrod	Hotrod;
 
@@ -72,14 +71,11 @@ hotsend(Hotrod *h, Hotmsg *m)
 
 	lock(h);
 	mp = (Hotmsg**)&h->addr->reqstq[h->wi];
-print("send 1 %lux\n", MP2VME(m)); delay(500);
 	*mp = (Hotmsg*)MP2VME(m);
-print("send 2\n"); delay(500);
 	h->wi++;
 	if(h->wi >= NRQ)
 		h->wi = 0;
 	unlock(h);
-print("send 3\n"); delay(500);
 	return mp;
 }
 

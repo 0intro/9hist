@@ -34,8 +34,8 @@ enum
 	EOI=		0x20,		/* non-specific end of interrupt */
 };
 
-int	int0mask = 0xff;	/* interrupts enabled for first 8259 */
-int	int1mask = 0xff;	/* interrupts enabled for second 8259 */
+int	int0mask = 0x00;	/* interrupts enabled for first 8259 */
+int	int1mask = 0x00;	/* interrupts enabled for second 8259 */
 
 /*
  *  trap/interrupt gates
@@ -231,7 +231,7 @@ dumpregs(Ureg *ur)
 	else
 		print("registers for kernel\n");
 	print("FLAGS=%lux ECODE=%lux CS=%lux PC=%lux SS=%lux USP=%lux\n", ur->flags,
-		ur->ecode, ur->cs, ur->pc, ur->ss, ur->usp);
+		ur->ecode, ur->cs&0xff, ur->pc, ur->ss&0xff, ur->usp);
 
 	print("  AX %8.8lux  BX %8.8lux  CX %8.8lux  DX %8.8lux\n",
 		ur->ax, ur->bx, ur->cx, ur->dx);
@@ -286,7 +286,11 @@ syscall(Ureg *ur)
 		}
 		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-(1+MAXSYSARG)*BY2WD))
 			validaddr(sp, (1+MAXSYSARG)*BY2WD, 0);
+		if(ax == EXITS)
+			print("%d exiting\n", u->p->pid);
 		ret = (*systab[ax])((ulong*)(sp+BY2WD));
+		if(ax == EXITS)
+			print("%d returned from sysexits!\n", u->p->pid);
 		poperror();
 	}
 	if(u->nerrlab){

@@ -1,4 +1,4 @@
-#include	"u.h"
+#include	"u.h"
 #include	"lib.h"
 #include	"mem.h"
 #include	"dat.h"
@@ -18,9 +18,8 @@ enum
 	 */
 	Data=	0,		/* xmit/rcv buffer */
 	Iena=	1,		/* interrupt enable */
-	 Ircv=	(1<<0),		/*  interrupt on receive */
-	 Ixmt=	(1<<1),		/*  interrupt on xmit */
-	Istat=	2,		/* interrupt flag */
+	Istat=	2,		/* interrupt flag (read) */
+	Tctl=	2,		/* test control (write) */
 	Format=	3,		/* byte format */
 	 Bits8=	(3<<0),		/*  8 bits/byte */
 	 Stop2=	(1<<2),		/*  2 stop bits */
@@ -42,6 +41,9 @@ enum
 	Scratch=7,		/* scratchpad */
 	Dlsb=	0,		/* divisor lsb */
 	Dmsb=	1,		/* divisor msb */
+
+	Serial=	0,
+	Modem=	1,
 };
 
 typedef struct Uart	Uart;
@@ -62,7 +64,6 @@ struct Uart
 	Queue	*wq;		/* write queue */
 	Rendez	r;		/* kproc waiting for input */
 	Alarm	*a;		/* alarm for waking the kernel process */
-	int	delay;		/* between character input and waking kproc */
  	int	kstarted;	/* kproc started */
 	uchar	delim[256/8];	/* characters that act as delimiters */
 };
@@ -248,7 +249,8 @@ uartintr0(Ureg *ur)
 void
 uartintr1(Ureg *ur)
 {
-	uartintr(&uart[1]);
+	if(uart[1].enabled)
+		uartintr(&uart[1]);
 }
 
 /*
@@ -262,10 +264,15 @@ uartenable(Uart *up)
 	/*
 	 *  turn on power to the port
 	 */
-	if(up == &uart[0]){
+	if(up == &uart[Serial]){
 		if(serial(0) < 0)
 			print("can't turn on serial port power\n");
 	}
+
+	/*
+	 *  speed up the clock to poll the uart
+	 */
+	fclockinit();
 
 	/*
 	 *  set up i/o routines
@@ -273,25 +280,26 @@ uartenable(Uart *up)
 	if(up->oq){
 		up->oq->puts = uartputs;
 		up->oq->ptr = up;
-		up->sticky[Iena] |= Ixmt;
 	}
 	if(up->iq){
 		up->iq->ptr = up;
-		up->sticky[Iena] |= Ircv;
 	}
 	up->enabled = 1;
-	up->sticky[Iena] |= (1<<2) | (1<<3);
+	up->sticky[Iena] = 0xf;
 
 	/*
  	 *  turn on interrupts
 	 */
 	uartwrreg(up, Iena, 0);
+	uartwrreg(up, Tctl, 0x0);
 
 	/*
 	 *  turn on DTR and RTS
 	 */
 	uartdtr(up, 1);
 	uartrts(up, 1);
+
+print("uart enabled: Iena=%lux\n", uartrdreg(up, Iena));
 }
 
 /*
@@ -316,10 +324,15 @@ uartdisable(Uart *up)
 	/*
 	 *  turn off power
 	 */
-	if(up == &uart[0]){
+	if(up == &uart[Serial]){
 		if(serial(1) < 0)
 			print("can't turn off serial power\n");
 	}
+
+	/*
+	 *  slow the clock down again
+	 */
+	clockinit();
 }
 
 /*
@@ -374,25 +387,6 @@ uarttimer(Alarm *a)
 	wakeup(&up->iq->r);
 }
 
-static int
-uartputc(IOQ *cq, int ch)
-{
-	Uart *up = cq->ptr; int r;
-
-	r = putc(cq, ch);
-
-	/*
-	 *  pass upstream within up->delay milliseconds
-	 */
-	if(up->a==0){
-		if(up->delay == 0)
-			wakeup(&cq->r);
-		else
-			up->a = alarm(up->delay, uarttimer, up);
-	}
-	return r;
-}
-
 static void
 uartstopen(Queue *q, Stream *s)
 {
@@ -403,18 +397,17 @@ print("uartstopen: q=0x%ux, inuse=%d, type=%d, dev=%d, id=%d\n",
 		q, s->inuse, s->type, s->dev, s->id);
 
 	up = &uart[s->id];
+	up->iq->putc = 0;
 	uartenable(up);
 
 	qlock(up);
 	up->wq = WR(q);
 	WR(q)->ptr = up;
 	RD(q)->ptr = up;
-	up->delay = 64;
-	up->iq->putc = uartputc;
 	qunlock(up);
 
 	/* start with all characters as delimiters */
-	memset(up->delim, 1, sizeof(up->delim));
+	memset(up->delim, 0xff, sizeof(up->delim));
 	
 	if(up->kstarted == 0){
 		up->kstarted = 1;
@@ -468,6 +461,18 @@ uartoput(Queue *q, Block *bp)
 		case 'd':
 			uartdtr(up, n);
 			break;
+		case 'e':
+		case 'E':
+			/*
+			 *  the characters in the block are the message
+			 *  delimiters to use upstream
+			 */
+			memset(up->delim, 0, sizeof(up->delim));
+			while(++(bp->rptr) < bp->wptr){
+				m = *bp->rptr;
+				up->delim[m/8] |= 1<<(m&7);
+			}
+			break;
 		case 'K':
 		case 'k':
 			uartbreak(up, n);
@@ -476,15 +481,9 @@ uartoput(Queue *q, Block *bp)
 		case 'r':
 			uartrts(up, n);
 			break;
-		case 'W':
-		case 'w':
-			if(n>=0 && n<1000)
-				up->delay = n;
-			break;
 		}
 	}else while((m = BLEN(bp)) > 0){
 		while ((n = canputc(cq)) == 0){
-print("uartoput: sleeping\n");
 			sleep(&cq->r, canputc, cq);
 		}
 		if(n > m)
@@ -507,21 +506,23 @@ uartkproc(void *a)
 	Block *bp;
 	int n;
 
-loop:
-	while ((n = cangetc(cq)) == 0){
+	if(waserror())
+		print("uartkproc got an error\n");
+
+	for(;;){
 		sleep(&cq->r, cangetc, cq);
+		qlock(up);
+		if(up->wq == 0){
+			cq->out = cq->in;
+		}else{
+			n = cangetc(cq);
+			bp = allocb(n);
+			bp->flags |= S_DELIM;
+			bp->wptr += gets(cq, bp->wptr, n);
+			PUTNEXT(RD(up->wq), bp);
+		}
+		qunlock(up);
 	}
-	qlock(up);
-	if(up->wq == 0){
-		cq->out = cq->in;
-	}else{
-		bp = allocb(n);
-		bp->flags |= S_DELIM;
-		bp->wptr += gets(cq, bp->wptr, n);
-		PUTNEXT(RD(up->wq), bp);
-	}
-	qunlock(up);
-	goto loop;
 }
 
 enum{
