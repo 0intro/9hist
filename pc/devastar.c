@@ -13,7 +13,7 @@
  *
  *  At the expense of performance, I've tried to be careful about
  *  endian-ness to make this convertable to other ISA bus machines.
- *  However, xchngus() is in assembler and will have to be translated.
+ *  However, xchgw() is in assembler and will have to be translated.
  */
 #define LENDIAN 1
 
@@ -49,11 +49,22 @@ enum
 	ISAstat1=	4,		/* board status (1 bit per channel) */
 	ISAstat2=	5,		/* board status (1 bit per channel) */
 
-	Maxcard=	8,
-	Pramsize=	64*1024,	/* size of program ram */
 	Pageshift=	14,		/* footprint of card mem in ISA space */
 	Pagesize=	1<<Pageshift,
 	Pagemask=	Pagesize-1,
+
+	PCIrange=	0x00,
+	PCIremap=	0x04,
+	PCIregion=	0x18,
+	PCImailbox=	0x40,
+	PCIdoorbell0=	0x60,
+	PCIdoorbell1=	0x64,
+	PCIcontrol=	0x68,		/* write */
+	PCIstatus=	0x68,		/* read */
+	PCIcommand=	0x6C,
+
+	Maxcard=	8,
+	Pramsize=	64*1024,	/* size of program ram */
 };
 
 #define APAGE(x) ((x)>>Pageshift)
@@ -239,6 +250,7 @@ struct Astar
 	Rendez		r;		/* waiting for command completion */
 
 	ISAConf;
+	Pcidev*		pci;
 	Lock		pagelock;	/* lock for setting page */
 	int		page;		/* page currently mapped */
 	int		id;		/* from plan9.ini */
@@ -247,6 +259,7 @@ struct Astar
 	int		ramsize;	/* 16k or 256k */
 	int		memsize;	/* size of memory currently mapped */
 	int		needpage;
+	int		pagebase;	/* pci */
 	GCB		*gcb;		/* global board comm area */
 	uchar		*addr;		/* base of memory area */
 	int		running;
@@ -303,6 +316,11 @@ static void
 setpage(Astar *a, ulong offset)
 {
 	int i;
+
+	if(a->pci){
+		print("#G%d: setpage caller pc %uX\n", a->id, getcallerpc(a));
+		return;
+	}
 
 	i = APAGE(offset);
 	if(i == a->page)
@@ -389,9 +407,11 @@ astargen(Chan *c, Dirtab *tab, int ntab, int i, Dir *db)
 static void
 astarreset(void)
 {
-	int i;
+	int i, x;
 	Astar *a;
+	Pcidev *p;
 
+	p = nil;
 	for(i = 0; i < Maxcard; i++){
 		a = astar[nastar] = xalloc(sizeof(Astar));
 		if(isaconfig("serial", i, a) == 0){
@@ -400,39 +420,84 @@ astarreset(void)
 			continue;
 		}
 
+		a->ramsize = 0;
 		/* check all possible names */
-		if(strcmp(a->type, "a100i") == 0 || strcmp(a->type,"A100I") == 0)
+		if(cistrcmp(a->type, "a100i") == 0 || cistrcmp(a->type,"A100I") == 0)
 			a->ramsize = 16*1024;
- 		else if(strcmp(a->type, "a200i") == 0 ||
-		      strcmp(a->type,"A200I") == 0 ||
-		      strcmp(a->type, "a16i") == 0)
+ 		else if(cistrcmp(a->type, "a200i") == 0 ||
+		      cistrcmp(a->type,"A200I") == 0 ||
+		      cistrcmp(a->type, "a16i") == 0)
 			a->ramsize = 256*1024;
-		else {
+		else if(cistrcmp(a->type, "AvanstarXp") == 0){
+			if(p = pcimatch(p, 0x114F, 0x6001)){
+				a->pci = p;
+				/*
+				 * It's really 128KB, but split into
+				 * two 64KB chunks.
+				 */
+				a->ramsize = 64*1024;
+			}
+		}
+
+		if(a->ramsize == 0){
 			xfree(a);
 			astar[nastar] = 0;
 			continue;
 		}
 
-		/* defaults */
-		if(a->irq == 0)
-			a->irq = 15;
 		a->id = i;
+		if(a->pci){
+			a->irq = p->intl;
+			a->port = p->mem[1].bar & ~0x03;
+			a->mem = upamalloc(p->mem[2].bar & ~0x0F, p->mem[2].size, 0);
+			a->addr = (uchar*)a->mem;
+			a->gcb = (GCB*)(a->mem+0x10000);
 
-		a->mem = umbmalloc(a->mem, Pagesize, Pagesize);
-		if(a->mem == 0)
-			panic("astarreset: %lux", a->mem);
-		a->mem &= ~KZERO;
+			/*
+			 * Toggle the software reset and wait for
+			 * the adapter local init status to indicate done.
+			 */
+			outl(a->port+PCIremap, 0xA0000001);
+			x = inl(a->port+PCIcommand);
+			outl(a->port+PCIcommand, 0x40000000|x);
+			microdelay(1);
+			outl(a->port+PCIcommand, x);
+			delay(100);
+			for(x = 0; x < 10000; x++){
+				 if(inl(a->port+PCIcommand) & 0x80000000)
+					break;
+			}
+			if(!(inl(a->port+PCIcommand) & 0x80000000))
+				print("#G: didn't reset\n", a->id);
 
-		if(astarsetup(a) < 0){
-			xfree(a);
-			astar[nastar] = 0;
-			continue;
+			/*
+			 * So the memory can be read before any other
+			 * initialisation takes place.
+			 */
+			a->memsize = a->ramsize;
 		}
-		print("serial%d avanstar port 0x%lux addr %lux irq %d\n", a->id, a->port,
-			a->addr, a->irq);
-		print("\tctl1 %ux ctl2 %ux maddr %ux stat1 %ux stat2 %ux\n", inb(a->port+ISActl1),
-			inb(a->port+ISActl2), inb(a->port+ISAmaddr), inb(a->port+ISAstat1),
-			inb(a->port+ISAstat2));
+		else{
+			/* defaults */
+			if(a->irq == 0)
+				a->irq = 15;
+	
+			a->mem = umbmalloc(a->mem, Pagesize, Pagesize);
+			if(a->mem == 0)
+				panic("astarreset: %lux", a->mem);
+			a->mem = PADDR(a->mem);
+	
+			if(astarsetup(a) < 0){
+				xfree(a);
+				astar[nastar] = 0;
+				continue;
+			}
+			print("\tctl1 %ux ctl2 %ux maddr %ux stat1 %ux stat2 %ux\n",
+				inb(a->port+ISActl1), inb(a->port+ISActl2), inb(a->port+ISAmaddr),
+				inb(a->port+ISAstat1), inb(a->port+ISAstat2));
+		}
+
+		print("#G%d: %s port 0x%luX addr 0x%luX irq %d\n",
+			a->id, a->type, a->port, a->addr, a->irq);
 		nastar++;
 	}
 }
@@ -475,20 +540,20 @@ astarsetup(Astar *a)
 	else
 		found = astarprobe(a->port);
 	if(!found){
-		print("avanstar %d not found\n", a->id);
+		print("#G%d: not found\n", a->id);
 		return -1;
 	}
 
 	/* check interrupt level */
 	if(isairqcode[a->irq] == -1){
-		print("Avanstar %d bad irq %d\n", a->id, a->irq);
+		print("#G%d: bad irq %d\n", a->id, a->irq);
 		return -1;
 	}
 
 	/* set ISA memory address */
 	outb(a->port+ISAmaddr, (a->mem>>12) & 0xfc);
-	a->gcb = (GCB*)(KZERO | a->mem);
-	a->addr = (uchar*)(KZERO | a->mem);
+	a->gcb = KADDR(a->mem);
+	a->addr = KADDR(a->mem);
 
 	/* disable ISA memory response */
 	outb(a->port+ISActl2, 0);
@@ -588,10 +653,32 @@ astarclose(Chan *c)
 }
 
 /*
+ *  read PCI mapped memory
+ */
+static long
+pcimemread(Astar *a, uchar *to, long n, ulong offset)
+{
+	uchar *from;
+	int rem;
+
+	if(offset+n > a->memsize){
+		if(offset >= a->memsize)
+			return 0;
+		n = a->memsize - offset;
+	}
+
+	from = a->addr+offset;
+	for(rem = n; rem > 0; rem--)
+		*to++ = *from++;
+
+	return n;
+}
+
+/*
  *  read ISA mapped memory
  */
 static long
-memread(Astar *a, uchar *to, long n, ulong offset)
+isamemread(Astar *a, uchar *to, long n, ulong offset)
 {
 	uchar *from, *e, *tp;
 	int i, rem;
@@ -640,11 +727,23 @@ bctlread(Astar *a, void *buf, long n, ulong offset)
 {
 	char s[128];
 
-	sprint(s, "id %4.4ux ctl1 %2.2ux ctl2 %2.2ux maddr %2.2ux stat %4.4ux",
-		(inb(a->port+ISAid)<<8)|inb(a->port+ISAid),
-		inb(a->port+ISActl1), inb(a->port+ISActl2), 
-		inb(a->port+ISAmaddr),
-		(inb(a->port+ISAstat2)<<8)|inb(a->port+ISAstat1));
+	if(a->pci)
+		sprint(s, "range %uX remap %uX region %uX mailbox %uX doorbell0 %uX doorbell1 %uX control %uX command %uX",
+			inl(a->port+PCIrange),
+			inl(a->port+PCIremap),
+			inl(a->port+PCIregion),
+			inl(a->port+PCImailbox),
+			inl(a->port+PCIdoorbell0),
+			inl(a->port+PCIdoorbell1),
+			inl(a->port+PCIcontrol),
+			inl(a->port+PCIcommand));
+	else
+		sprint(s, "id %4.4ux ctl1 %2.2ux ctl2 %2.2ux maddr %2.2ux stat %4.4ux",
+			(inb(a->port+ISAid)<<8)|inb(a->port+ISAid),
+			inb(a->port+ISActl1), inb(a->port+ISActl2), 
+			inb(a->port+ISAmaddr),
+			(inb(a->port+ISAstat2)<<8)|inb(a->port+ISAstat1));
+
 	return readstr(offset, buf, n, s);
 }
 
@@ -693,7 +792,10 @@ astarread(Chan *c, void *buf, long n, ulong offset)
 		a = astar[BOARD(c->qid.path)];
 		return statread(a->c + CHAN(c->qid.path), buf, n, offset);
 	case Qmem:
-		return memread(astar[BOARD(c->qid.path)], buf, n, offset);
+		a = astar[BOARD(c->qid.path)];
+		if(a->pci)
+			return pcimemread(a, buf, n, offset);
+		return isamemread(a, buf, n, offset);
 	case Qbctl:
 		return bctlread(astar[BOARD(c->qid.path)], buf, n, offset);
 	case Qdata:
@@ -706,10 +808,41 @@ astarread(Chan *c, void *buf, long n, ulong offset)
 }
 
 /*
+ *  write PCI mapped memory
+ */
+static long
+pcimemwrite(Astar *a, uchar *from, long n, ulong offset)
+{
+	uchar *to;
+	int rem;
+	ulong limit;
+
+	/*
+	 * Disallow writes above 0xD000 where the i960
+	 * data structures live if writing in the lower bank.
+	 */
+	if(a->addr == (uchar*)a->mem)
+		limit = 0xD000;
+	else
+		limit = a->memsize;
+	if(offset+n > limit){
+		if(offset >= limit)
+			return 0;
+		n = limit - offset;
+	}
+
+	to = a->addr+offset;
+	for(rem = n; rem > 0; rem--)
+		*to++ = *from++;
+
+	return n;
+}
+
+/*
  *  write ISA mapped memory
  */
 static long
-memwrite(Astar *a, uchar *from, long n, ulong offset)
+isamemwrite(Astar *a, uchar *from, long n, ulong offset)
 {
 	uchar *to, *e, *tp;
 	int i, rem;
@@ -759,25 +892,35 @@ downloadmode(Astar *a)
 	int c, i;
 
 	/* put board in download mode */
-	c = inb(a->port+ISActl1);
-	outb(a->port+ISActl1, c & ~ISAnotdl);
-	a->memsize = Pramsize;
-	a->needpage = 1;
-
-	/* give it up to 5 seconds to reset */
-	for(i = 0; i < 21; i++){
-		if(!(inb(a->port+ISActl1) & ISAnotdl))
-			break;
-		tsleep(&a->r, return0, 0, 500);
+	if(a->pci){
+		/*
+		 * Don't let the download write over the
+		 * i960 data structures.
+		 */
+		a->memsize = 0xD000;
+		a->addr = (uchar*)a->mem;
 	}
-	if(inb(a->port+ISActl1) & ISAnotdl){
-		print("astar%d did not reset\n", a->id);
-		error(Eio);
-	}
+	else{
+		a->memsize = Pramsize;
+		a->needpage = 1;
+		c = inb(a->port+ISActl1);
+		outb(a->port+ISActl1, c & ~ISAnotdl);
 
-	/* enable ISA access to first 16k */
-	a->page = -1;
-	setpage(a, 0);
+		/* give it up to 5 seconds to reset */
+		for(i = 0; i < 21; i++){
+			if(!(inb(a->port+ISActl1) & ISAnotdl))
+				break;
+			tsleep(&a->r, return0, 0, 500);
+		}
+		if(inb(a->port+ISActl1) & ISAnotdl){
+			print("#G%d: did not reset\n", a->id);
+			error(Eio);
+		}
+
+		/* enable ISA access to first 16k */
+		a->page = -1;
+		setpage(a, 0);
+	}
 }
 
 /*
@@ -795,25 +938,46 @@ startcp(Astar *a)
 		error(Eio);
 
 	/* take board out of download mode and enable IRQ */
-	c = inb(a->port+ISActl1);
-	outb(a->port+ISActl1, c|ISAien|ISAnotdl);
-	a->memsize = a->ramsize;
-	if(a->memsize <= Pagesize)
-		a->needpage = 0;
-	else
-		a->needpage = 1;
-	a->page = -1;
-	setpage(a, 0);
+	if(a->pci){
+		outl(a->port+PCImailbox, 1);
 
-	/* wait for control program to signal life */
-	for(i = 0; i < 21; i++){
-		if(inb(a->port+ISActl1) & ISApr)
-			break;
-		tsleep(&a->r, return0, 0, 500);
+		/* wait for control program to signal life */
+		delay(100);
+		for(i = 0; i < 10; i++){
+			if(inl(a->port+PCImailbox) & 0x80000000)
+				break;
+			tsleep(&a->r, return0, 0, 100);
+		}
+		if(!(inl(a->port+PCImailbox) & 0x80000000)){
+			print("#G%d: program not ready\n", a->id);
+			//error(Eio);
+		}
+
+		a->addr = (uchar*)(a->mem+0x10000);
 	}
-	if((inb(a->port+ISActl1) & ISApr) == 0){
-		print("astar%d program not ready\n", a->id);
-		error(Eio);
+	else{
+		c = inb(a->port+ISActl1);
+		outb(a->port+ISActl1, c|ISAien|ISAnotdl);
+
+		/* wait for control program to signal life */
+		for(i = 0; i < 21; i++){
+			if(inb(a->port+ISActl1) & ISApr)
+				break;
+			tsleep(&a->r, return0, 0, 500);
+		}
+		if((inb(a->port+ISActl1) & ISApr) == 0){
+			print("#G%d: program not ready\n", a->id);
+			error(Eio);
+		}
+	}
+
+	a->memsize = a->ramsize;
+	if(a->pci || a->memsize <= Pagesize)
+		a->needpage = 0;
+	else{
+		a->page = -1;
+		setpage(a, 0);
+		a->needpage = 1;
 	}
 
 	if(waserror()){
@@ -825,29 +989,30 @@ startcp(Astar *a)
 	i = LEUS(a->gcb->type);
 	switch(i){
 	default:
-		print("astar%d wrong board type %ux\n", a->id, i);
+		print("#G%d: wrong board type %uX\n", a->id, i);
 		error(Eio);
-	case 0xc:
+	case 0x0C:
+	case 0x12:					/* AvanstarXp */
 		break;
 	}
 
 	/* check assumptions */
 	n = LEUS(a->gcb->ccbn);
 	if(n != 8 && n != 16){
-		print("astar%d had %d channels?\n", a->id, i);
+		print("#G%d: has %d channels?\n", a->id, i);
 		error(Eio);
 	}
 	x = a->addr + LEUS(a->gcb->ccboff);
 	sz = LEUS(a->gcb->ccbsz);
 	if(x+n*sz > a->addr+Pagesize){
-		print("astar%d ccb's not in 1st page\n", a->id);
+		print("#G%d: ccb's not in 1st page\n", a->id);
 		error(Eio);
 	}
 	for(i = 0; i < n; i++){
 		ccb = (CCB*)(x + i*sz);
 		if(APAGE(LEUS(ccb->inbase)) != APAGE(LEUS(ccb->inlim)) ||
 		   APAGE(LEUS(ccb->outbase)) != APAGE(LEUS(ccb->outlim))){
-			print("astar%d chan buffer spans pages\n", a->id);
+			print("#G%d: chan buffer spans pages\n", a->id);
 			error(Eio);
 		}
 	}
@@ -871,12 +1036,20 @@ startcp(Astar *a)
 	}
 
 	/* set up interrupt level, enable interrupts */
-	c = inb(a->port+ISActl1);
-	c &= ~ISAirq;
-	c |= ISAien|isairqcode[a->irq];
-	outb(a->port+ISActl1, c);
-
-	intrenable(VectorPIC + a->irq, astarintr, a, BUSUNKNOWN);
+	if(a->pci){
+		/*
+		 * Which bits in the interrupt control register should be set?
+		 */
+		outl(a->port+PCIcontrol, 0x00031F00);
+		intrenable(VectorPIC + a->irq, astarintr, a, a->pci->tbdf);
+	}
+	else{
+		c = inb(a->port+ISActl1);
+		c &= ~ISAirq;
+		c |= ISAien|isairqcode[a->irq];
+		outb(a->port+ISActl1, c);
+		intrenable(VectorPIC + a->irq, astarintr, a, BUSUNKNOWN);
+	}
 
 	/* enable control program interrupt generation */
 	LOCKPAGE(a, 0);
@@ -887,8 +1060,6 @@ startcp(Astar *a)
 static void
 bctlwrite(Astar *a, char *cmsg)
 {
-	uchar c;
-
 	if(waserror()){
 		qunlock(a);
 		nexterror();
@@ -902,19 +1073,54 @@ bctlwrite(Astar *a, char *cmsg)
 		/* put board in download mode */
 		downloadmode(a);
 
-	} else if(strncmp(cmsg, "sharedmem", 9) == 0){
-		/* map shared memory */
-		c = inb(a->port+ISActl1);
-		outb(a->port+ISActl1, c | ISAnotdl);
-		a->memsize = a->ramsize;
-
-		/* enable ISA access to first 16k */
-		a->page = -1;
-		setpage(a, 0);
-
 	} else if(strncmp(cmsg, "run", 3) == 0){
 		/* start up downloaded program */
 		startcp(a);
+
+	} else if(strncmp(cmsg, "test", 4) == 0){
+		uchar *p;
+
+#ifdef notdef
+		p = a->addr;
+		a->page = -1;
+		setpage(a, 16*1024);
+		*p = 'X';
+		p = a->addr;
+		print("page0: %8.8uX %2.2uX\n", inl(a->port+PCIremap), *p);
+		setpage(a, 2*16*1024);
+		print("page1: %8.8uX %2.2uX\n", inl(a->port+PCIremap), *p);
+		p = a->addr;
+		*p = 'Y';
+		p = a->addr;
+		print("page1: %8.8uX %2.2uX\n", inl(a->port+PCIremap), *p);
+		setpage(a, 16*1024);
+		p = a->addr;
+		print("page0: %8.8uX %2.2uX\n", inl(a->port+PCIremap), *p);
+#else
+		p = a->addr;
+		*p = 'A';
+		print(" 0K: %8.8uX %2.2uX\n", inl(a->port+PCIremap), *p);
+
+		p = a->addr+(16*1024);
+		*p = 'B';
+		print("16K: %8.8uX %2.2uX\n", inl(a->port+PCIremap), *p);
+
+		p = a->addr;
+		print(" 0K: %8.8uX %2.2uX\n", inl(a->port+PCIremap), *p);
+
+		*p = 'C';
+		print(" 0K: %8.8uX %2.2uX\n", inl(a->port+PCIremap), *p);
+
+		p = a->addr+(64*1024);
+		*p = 'D';
+		print("64K: %8.8uX %2.2uX\n", inl(a->port+PCIremap), *p);
+
+		p = a->addr;
+		print(" 0K: %8.8uX %2.2uX\n", inl(a->port+PCIremap), *p);
+
+		p = a->addr+(16*1024);
+		print("16K: %8.8uX %2.2uX\n", inl(a->port+PCIremap), *p);
+#endif /* notdef */
 
 	} else
 		error(Ebadarg);
@@ -959,11 +1165,11 @@ chancmd(Astarchan *ac, int cmd)
 	cmd = ccb->cmd;
 	UNLOCKPAGE(ac->a);
 	if(cmd){
-		print("astar%d cmd didn't terminate\n", ac->a->id);
+		print("#G%d: cmd didn't terminate\n", ac->a->id);
 		error(Eio);
 	}
 	if(status){
-		print("astar%d cmd status %ux\n", ac->a->id, status);
+		print("#G%d: cmd status %ux\n", ac->a->id, status);
 		error(Eio);
 	}
 }
@@ -1188,7 +1394,9 @@ astarwrite(Chan *c, void *buf, long n, ulong offset)
 	a = astar[BOARD(c->qid.path)];
 	switch(TYPE(c->qid.path)){
 	case Qmem:
-		return memwrite(a, buf, n, offset);
+		if(a->pci)
+			return pcimemwrite(a, buf, n, offset);
+		return isamemwrite(a, buf, n, offset);
 	case Qbctl:
 		if(n > sizeof cmsg)
 			n = sizeof(cmsg) - 1;
@@ -1376,11 +1584,12 @@ astarintr(Ureg *ur, void *arg)
 	Astar *a = arg;
 	Astarchan *ac;
 	ulong globvec, vec, invec, outvec, errvec, mvec, cmdvec;
-	int c;
+	int c, status;
+
 
 	USED(ur);
 	if(a->running == 0)
-		panic("astar interrupt but cp not running\n");
+		panic("#G%d: interrupt but cp not running\n", a->id);
 
 	lock(&a->pagelock);
 	if(a->needpage)
@@ -1397,6 +1606,16 @@ astarintr(Ureg *ur, void *arg)
 	USED(mvec);
 
 	/* reenable interrupts */
+	if(a->pci){
+		/*
+		 * Only the PCI doorbell interrupt is expected.
+		 */
+		status = inl(a->port+PCIstatus);
+		if((status & 0x0810E000) != 0x00002000)
+			print("#G%d: unexpected interrupt %uX\n", a->id, status);
+		if(status & 0x00002000)
+			outl(a->port+PCIdoorbell1, 1);
+	}
 	a->gcb->cmd2 = LEUS(Gintack);
 
 	/* service interrupts */

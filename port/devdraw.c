@@ -57,6 +57,7 @@ struct Draw
 	int		nname;
 	DName*	name;
 	int		vers;
+	int		softscreen;
 	int		blanked;	/* screen turned off */
 	ulong		blanktime;	/* time of last operation */
 	ulong		savemap[3*256];
@@ -152,6 +153,7 @@ static	Draw		sdraw;
 static	Memimage	screenimage;
 static	Memdata	screendata;
 static	Rectangle	flushrect;
+static	int		waste;
 static	DScreen*	dscreen;
 extern	void		flushmemscreen(Rectangle);
 	void		drawmesg(Client*, void*, int);
@@ -294,11 +296,47 @@ drawrefresh(Memimage *l, Rectangle r, void *v)
 	}
 }
 
-static
-void
+static void
 addflush(Rectangle r)
 {
-	bbox(&flushrect, r);
+	int abb, ar, anbb;
+	Rectangle nbb;
+
+	if(sdraw.softscreen==0 || !rectclip(&r, screenimage.r))
+		return;
+
+	if(flushrect.min.x >= flushrect.max.x){
+		flushrect = r;
+		waste = 0;
+		return;
+	}
+	nbb = flushrect;
+	bbox(&nbb, r);
+	ar = Dx(r)*Dy(r);
+	abb = Dx(flushrect)*Dy(flushrect);
+	anbb = Dx(nbb)*Dy(nbb);
+	/*
+	 * Area of new waste is area of new bb minus area of old bb,
+	 * less the area of the new segment, which we assume is not waste.
+	 * This could be negative, but that's OK.
+	 */
+	waste += anbb-abb - ar;
+	if(waste < 0)
+		waste = 0;
+	/*
+	 * absorb if:
+	 *	total area is small
+	 *	waste is less than ½ total area
+	 * 	rectangles touch
+	 */
+	if(anbb<=1024 || waste*2<anbb || rectXrect(flushrect, r)){
+		flushrect = nbb;
+		return;
+	}
+	/* emit current state */
+	flushmemscreen(flushrect);
+	flushrect = r;
+	waste = 0;
 }
 
 static
@@ -320,7 +358,7 @@ dstflush(int dstid, Memimage *dst, Rectangle r)
 		r = rectaddpt(r, l->delta);
 		l = l->screen->image->layer;
 	}while(l);
-	bbox(&flushrect, r);
+	addflush(r);
 }
 
 static
@@ -756,7 +794,7 @@ drawattach(char *spec)
 
 	if(screendata.data == nil){
 		screendata.base = nil;
-		screendata.data = attachscreen(&screenimage.r, &screenimage.ldepth, &width);
+		screendata.data = attachscreen(&screenimage.r, &screenimage.ldepth, &width, &sdraw.softscreen);
 		if(screendata.data != nil){
 			screendata.ref = 1;
 			screenimage.data = &screendata;

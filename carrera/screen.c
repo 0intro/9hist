@@ -295,11 +295,12 @@ scroll(void)
  * export screen to devdraw
  */
 ulong*
-attachscreen(Rectangle *r, int *ld, int *width)
+attachscreen(Rectangle *r, int *ld, int *width, int *softscreen)
 {
 	*r = gscreen.r;
 	*ld = gscreen.ldepth;
 	*width = gscreen.width;
+	*softscreen = 0;
 
 	return gscreendata.data;
 }
@@ -308,8 +309,23 @@ attachscreen(Rectangle *r, int *ld, int *width)
  * update screen (no-op: frame buffer is direct-mapped)
  */
 void
-flushmemscreen(Rectangle)
+flushmemscreen(Rectangle r)
 {
+	USED(r);
+/*
+	DEBUG version flashes the screen to indicate what's being painted
+	Memimage *x;
+	int i;
+
+	if(Dx(r)<=0 || Dy(r)<=0)
+		return;
+	x = allocmemimage(r, 3);
+	memimagedraw(x, r, &gscreen, r.min, memones, r.min);
+	memimagedraw(&gscreen, r, memones, r.min, memones, r.min);
+	for(i=1000000; --i>0; );
+	memimagedraw(&gscreen, r, x, r.min, memones, r.min);
+	freememimage(x);
+*/
 }
 
 static void

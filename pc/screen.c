@@ -117,7 +117,7 @@ screenaperture(int size, int align)
 }
 
 ulong*
-attachscreen(Rectangle* r, int* ld, int* width)
+attachscreen(Rectangle* r, int* ld, int* width, int *softscreen)
 {
 	VGAscr *scr;
 
@@ -128,6 +128,7 @@ attachscreen(Rectangle* r, int* ld, int* width)
 	*r = scr->gscreen->r;
 	*ld = scr->gscreen->ldepth;
 	*width = scr->gscreen->width;
+	*softscreen = scr->useflush;
 
 	return scr->gscreendata->data;
 }
