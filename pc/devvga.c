@@ -476,7 +476,7 @@ void
 setscreen(int maxx, int maxy, int ldepth)
 {
 	int len, vgamaxy, width, i, x, s;
-	uchar *p, *oldp;
+	ulong *p, *oldp;
 
 	if(ldepth == 3)
 		setmode(&mode13);
@@ -518,7 +518,7 @@ setscreen(int maxx, int maxy, int ldepth)
 	gscreen.r.min = Pt(0, 0);
 	gscreen.r.max = Pt(maxx, maxy);
 	gscreen.clipr = gscreen.r;
-	gscreen.base = (ulong*)p;
+	gscreen.base = p;
 	splx(s);
 	if(oldp)
 		xfree(oldp);

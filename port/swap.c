@@ -19,7 +19,7 @@ enum
 
 	Image 	swapimage;
 static 	int	swopen;
-static	Page	*iolist[Maxpages];
+static	Page	**iolist;
 static	int	ioptr;
 
 void
@@ -30,6 +30,9 @@ swapinit(void)
 	swapalloc.alloc = swapalloc.swmap;
 	swapalloc.last = swapalloc.swmap;
 	swapalloc.free = conf.nswap;
+	iolist = xalloc(Maxpages*sizeof(Page*));
+	if(swapalloc.swmap == 0 || iolist == 0)
+		panic("swapinit: not enough memory");
 }
 
 ulong

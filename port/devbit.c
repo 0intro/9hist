@@ -932,6 +932,9 @@ bitwrite(Chan *c, void *va, long n, ulong offset)
 			/*
 			 * cursorswitch
 			 *	'c'		1
+			 * if one more byte, says whether to disable
+			 * because of stupid lcd's (thank you bart)
+			 * else
 			 * nothing more: return to arrow; else
 			 * 	Point		8
 			 *	clr		32
