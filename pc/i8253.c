@@ -156,71 +156,19 @@ i8253init(int aalcycles, int havecycleclock)
 		m->cpumhz = (cpufreq + cpufreq/200)/1000000;
 		m->cpuhz = cpufreq;
 	}
-
-outb(Tmode, Load0|Trigger);
-outb(T0cntr, (Freq/HZ));	/* low byte */
-outb(T0cntr, (Freq/HZ)>>8);	/* high byte */
 }
 
-static vlong lastfast;
-
-int
-i8253readcnt(int cntr)
-{
-	int v;
-
-	ilock(&i8253.lock);
-	if(cntr == 2){
-		outb(Tmode, Rdback|Rd2cntr);
-		v = inb(T2cntr) << 16;
-		v |= inb(T2cntr);
-		v |= inb(T2cntr) << 8;
-	}else if(cntr == 0){
-		outb(Tmode, Rdback|Rd0cntr);
-		v = inb(T0cntr) << 16;
-		v |= inb(T0cntr);
-		v |= inb(T0cntr) << 8;
-	}else if(cntr == 3){
-		vlong nf = fastticks(nil);
-		long set;
-
-		set = (long)(nf - lastfast) * 100 / (long)((vlong)m->cpuhz * 100 / Freq);
-		set = (Freq/HZ) - set;
-		set -= 3 - 1;	/* outb, outb, wait - outb(mode) */
-		outb(Tmode, Rdback|Rdnstat|Rd0cntr);
-		v = inb(T0cntr);
-		v |= inb(T0cntr) << 8;
-		v = set - v;
-	}else if(cntr == 4){
-		vlong nf = fastticks(nil);
-		long set;
-
-		set = (long)(nf - lastfast) * 16 / (long)((vlong)m->cpuhz * 16 / Freq);
-		set = (Freq/HZ) - set;
-		set -= 3 - 1;	/* outb, outb, wait - outb(mode) */
-		outb(Tmode, Rdback|Rdnstat|Rd0cntr);
-		v = inb(T0cntr);
-		v |= inb(T0cntr) << 8;
-		v = set - v;
-	}else{
-		vlong nf = fastticks(nil);
-		long set;
-
-		set = (nf - lastfast) * Freq / m->cpuhz;
-		set = (Freq/HZ) - set;
-		set -= 3 - 1;	/* outb, outb, wait - outb(mode) */
-		outb(Tmode, Rdback|Rdnstat|Rd0cntr);
-		v = inb(T0cntr);
-		v |= inb(T0cntr) << 8;
-		v = set - v;
-	}
-	iunlock(&i8253.lock);
-	return v;
-}
+#ifdef SETNEXT
+set up clock so it is reloaded every interrupt
+	outb(Tmode, Load0|Trigger);
+	outb(T0cntr, (Freq/HZ));	/* low byte */
+	outb(T0cntr, (Freq/HZ)>>8);	/* high byte */
+#endif
 
 static void
 clockintr0(Ureg* ureg, void *v)
 {
+#ifdef SETNEXT
 	vlong now;
 	long set;
 
@@ -229,9 +177,9 @@ clockintr0(Ureg* ureg, void *v)
 		i8253.when += i8253.fastperiod;
 	set = (long)(i8253.when - now) * FreqMul / i8253.fast2freq;
 	set -= 3;	/* three cycles for the count to take effect: outb, outb, wait */
-lastfast = now;
 	outb(T0cntr, set);	/* low byte */
 	outb(T0cntr, set>>8);	/* high byte */
+#endif
 
 	checkcycintr(ureg, v);
 	clockintr(ureg, v);
