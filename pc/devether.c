@@ -83,12 +83,11 @@ struct Ctlr {
 	uchar	ba[6];		/* broadcast address */
 
 	Rendez	rr;		/* rendezvous for a receive buffer */
-	QLock	rlock;		/* semaphore on rc */
 	ushort	rh;		/* first receive buffer belonging to host */
 	ushort	ri;		/* first receive buffer belonging to interface */	
 
 	Rendez	tr;		/* rendezvous for a transmit buffer */
-	QLock	tlock;		/* semaphore on tc */
+	QLock	tlock;		/* semaphore on th */
 	ushort	th;		/* first transmit buffer belonging to host */	
 	ushort	ti;		/* first transmit buffer belonging to interface */	
 
@@ -333,6 +332,7 @@ etherstclose(Queue *q)
 	tp->prom = 0;
 	tp->inuse = 0;
 	netdisown(&tp->ctlr->net, tp - tp->ctlr->type);
+	tp->ctlr = 0;
 	qunlock(tp);
 }
 
@@ -456,7 +456,7 @@ etherkproc(void *arg)
 	}
 	cp->kproc = 1;
 	for(;;){
-		qlock(&cp->rlock);
+		sleep(&cp->rr, isinput, cp);
 
 		/*
 		 * process any internal loopback packets
@@ -477,9 +477,6 @@ etherkproc(void *arg)
 			rb->owner = Interface;
 			cp->rh = NEXT(cp->rh, cp->nrb);
 		}
-
-		qunlock(&cp->rlock);
-		sleep(&cp->rr, isinput, cp);
 	}
 }
 
@@ -629,6 +626,18 @@ wd8013reset(Ctlr *cp)
 	setvec(Ethervec, hw->intr);
 }
 
+static void
+dp8390rinit(Ctlr *cp)
+{
+	Hw *hw = cp->hw;
+
+	OUT(hw, w.cr, 0x21);			/* Page0|RD2|STP */
+	OUT(hw, w.bnry, hw->pstart);
+	OUT(hw, w.cr, 0x61);			/* Page1|RD2|STP */
+	OUT(hw, curr, hw->pstart+1);
+	OUT(hw, w.cr, 0x22);			/* Page0|RD2|STA */
+}
+
 /*
  * we leave the chip idling on internal loopback
  * and pointing to Page0.
@@ -705,7 +714,13 @@ wd8013receive(Ctlr *cp)
 			break;
 		cp->inpackets++;
 		p = &((Ring*)hw->ram)[next];
-		len = (p->len1<<8)|p->len0-4;
+		len = ((p->len1<<8)|p->len0)-4;
+		if(p->next < hw->pstart || p->next >= hw->pstop || len < 60){
+			print("%d: #%2.2ux #%2.2ux  #%2.2ux #%2.2ux\n", next,
+				p->status, p->next, p->len0, p->len1);
+			dp8390rinit(cp);
+			return;
+		}
 
 		rb = &cp->rb[cp->ri];
 		if(rb->owner == Interface){

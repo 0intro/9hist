@@ -568,7 +568,6 @@ mountio(Mnt *m, Mntrpc *r)
 	unlock(m);
 
 	/* Transmit a file system rpc */
-memset(r->rpc, 0x55, 2048);
 	n = convS2M(&r->request, r->rpc);
 	if(waserror()) {
 		if(!m->mux)
@@ -625,7 +624,7 @@ void
 mntrpcread(Mnt *m, Mntrpc *r)
 {
 	int n;
-int i;
+
 	for(;;) {
 		if(waserror()) {
 			if(!m->mux)
@@ -649,12 +648,6 @@ int i;
 		poperror();
 		if(n == 0)
 			continue;
-if(n > 2048)
-for(i = 0; i < 256;) {
-print("%.2ux ", r->rpc[i] & 0xff);
-i++;
-if((i%16) == 0) { print("\n"); prflush(); }
-}
 
 		if(convM2S(r->rpc, &r->reply, n) != 0)
 			return;
