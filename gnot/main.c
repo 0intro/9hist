@@ -23,7 +23,6 @@ void unloadboot(void);
 void
 main(void)
 {
-	Lock l;
 	unloadboot();
 	machinit();
 	mmuinit();
@@ -69,12 +68,12 @@ mmuinit(void)
 	for(l=0; l<4*1024*1024; l+=BY2PG)
 		putmmu(l, INVALIDPTE);
 	/*
-	 * Two meg of usable memory
+	 * Four meg of usable memory, with top 256K for screen
 	 */
-	for(i=1,l=KTZERO; i<2*1024*1024/BY2PG; l+=BY2PG,i++)
+	for(i=1,l=KTZERO; i<(4*1024*1024-256*1024)/BY2PG; l+=BY2PG,i++)
 		putkmmu(l, PPN(l)|PTEVALID|PTEKERNEL);
 	/*
-	 * Screen at two meg
+	 * Screen at top of memory
 	 */
 	for(i=0,d=DISPLAYRAM; i<256*1024/BY2PG; d+=BY2PG,l+=BY2PG,i++)
 		putkmmu(l, PPN(d)|PTEVALID|PTEKERNEL);
@@ -234,9 +233,9 @@ confinit(void)
 	conf.nmach = 1;
 	if(conf.nmach > MAXMACH)
 		panic("confinit");
-	conf.nproc = 15;
+	conf.nproc = 32;
 	conf.npgrp = 15;
-	conf.npage = (2*1024*1024)/BY2PG;
+	conf.npage = (4*1024*1024-256*1024)/BY2PG;
 	conf.npte = 500;
 	conf.nmod = 50;
 	conf.nalarm = 1000;

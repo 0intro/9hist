@@ -7,6 +7,7 @@
 #include	"devtab.h"
 
 #include	"io.h"
+#include	"ureg.h"
 
 typedef struct Incon	Incon;
 typedef struct Device	Device;
@@ -22,7 +23,8 @@ enum {
 	Minstation=	2,	/* lowest station # to poll */
 	Maxstation=	15,	/* highest station # to poll */
 	Nincon=		1,	/* number of incons */
-	Nin=		32,	/* size of raw input buffer */
+	Nin=		16,	/* Blocks in the input ring */
+	Bsize=		128,	/* size of an input ring block */
 };
 
 /*
@@ -522,9 +524,7 @@ inconoput(Queue *q, Block *bp)
 			n = 16;
 		size = n;
 		dev->cdata = chan;
-		DPRINT("CH|%uo->\n", chan);
 		while(n--){
-			DPRINT("->%uo\n", *bp->rptr);
 			*(uchar *)&dev->data_cntl = *bp->rptr++;
 		}
 
@@ -554,13 +554,13 @@ inconoput(Queue *q, Block *bp)
 	if(ctl){
 		if(size >= 16){
 			dev->cdata = 0;
-			DPRINT("CH|%uo->\n", chan);
+			MICROSECOND;
 			dev->cdata = chan;
+			MICROSECOND;
 		}
-		DPRINT("CTL|%uo->\n", ctl);
 		dev->cdata = ctl;
-		MICROSECOND;
 	}
+	MICROSECOND;
 	dev->cdata = 0;
 
 	qunlock(&ip->xmit);
@@ -596,7 +596,7 @@ inconkproc(void *arg)
 	 *  create a number of blocks for input
 	 */
 	for(i = 0; i < Nin; i++){
-		bp = ip->inb[i] = allocb(128);
+		bp = ip->inb[i] = allocb(Bsize);
 		bp->wptr += 3;
 	}
 
@@ -622,7 +622,7 @@ inconkproc(void *arg)
 		 */
 		while(ip->ri != ip->wi){
 			PUTNEXT(ip->rq, ip->inb[ip->ri]);
-			bp = ip->inb[ip->ri] = allocb(128);
+			bp = ip->inb[ip->ri] = allocb(Bsize);
 			bp->wptr += 3;
 			ip->ri = (ip->ri+1)%Nin;
 		}
@@ -639,10 +639,13 @@ droppacket(Device *dev)
 	int i;
 	int c;
 
-	for(i = 0; i < 17; i++){
-		c = dev->data_cntl;
-		if(c==0)
-			break;
+	screenputc('!');
+	while(!(dev->status & RCV_EMPTY)){
+		for(i = 0; i < 17; i++){
+			c = dev->data_cntl;
+			if(c==0)
+				break;
+		}
 	}
 }
 
@@ -655,16 +658,19 @@ static Block *
 nextin(Incon *ip, unsigned int c)
 {
 	Block *bp = ip->inb[ip->wi];
+	int next;
 
-	bp->base[0] = ip->chan;
-	bp->base[1] = ip->chan>>8;
-	bp->base[2] = c;
-	ip->wi = (ip->wi + 1) % Nin;
-
-	if(((ip->wi+1)%Nin) == ip->ri){
+	next = (ip->wi+1)%Nin;
+	if(next == ip->ri){
+		bp->wptr = bp->base+3;
 		droppacket(ip->dev);
 		return 0;
 	}
+	bp->base[0] = ip->chan;
+	bp->base[1] = ip->chan>>8;
+	bp->base[2] = c;
+	ip->wi = next;
+
 	return ip->inb[ip->wi];
 }
 
@@ -678,26 +684,28 @@ rdpackets(Incon *ip)
 	Block *bp;
 	unsigned int c;
 	Device *dev;
+	uchar *p;
+	int first = ip->wi;
 
 	dev = ip->dev;
+	bp = ip->inb[ip->wi];
+	if(bp==0){
+		droppacket(ip->dev);
+		goto done;
+	}
+	p = bp->wptr;
 	while(!(dev->status & RCV_EMPTY)){
-		bp = ip->inb[ip->wi];
-		if(((ip->wi+1)%Nin) == ip->ri || bp==0){
-			c = dev->data_cntl;
-			droppacket(dev);
-			continue;
-		}
-
 		/*
 		 *  get channel number
 		 */
 		c = (dev->data_cntl)>>8;
-		DPRINT("<-CH|%uo\n", c);
 		if(ip->chan != c){
-			if(bp->wptr - bp->rptr > 3){
+			if(p - bp->rptr > 3){
+				bp->wptr = p;
 				bp = nextin(ip, 0);
 				if(bp == 0)
-					continue;
+					goto done;
+				p = bp->wptr;
 			}
 			ip->chan = c;
 		}
@@ -710,28 +718,39 @@ rdpackets(Incon *ip)
 				/*
 				 *  data byte, put in local buffer
 				 */
-				c = *bp->wptr++ = c>>8;
-				DPRINT("<-%uo\n", c);
-				if(bp->wptr >= bp->lim){
-					bp = nextin(ip, 0);
-					if(bp == 0)
-						continue;
-				}
+				*p++ = c>>8;
 			} else if (c>>=8) {
 				/*
 				 *  control byte ends block
 				 */
-				DPRINT("<-CTL|%uo\n", c);
+				bp->wptr = p;
 				bp = nextin(ip, c);
 				if(bp == 0)
-					continue;
+					goto done;
+				p = bp->wptr;
 			} else {
 				/* end of packet */
 				break;
 			}
 		}
-	}
-	wakeup(&ip->kr);
+
+		/*
+		 *  pass a block on if it doesn't have room for one more
+		 *  packet.  this way we don't have to check per byte.
+		 */
+		if(p + 16 > bp->lim){
+			bp->wptr = p;
+			bp = nextin(ip, 0);
+			if(bp == 0)
+				goto done;
+			p = bp->wptr;
+		}
+	}	
+	bp->wptr = p;
+
+done:
+	if(first != ip->wi)/**/
+		wakeup(&ip->kr);
 }
 
 /*
@@ -754,11 +773,11 @@ inconintr(Ureg *ur)
 	/* check for exceptional conditions */
 	if(status&(OVERFLOW|CRC_ERROR)){
 		if(status&OVERFLOW){
-			print("incon overflow\n");
+			screenputc('^');
 			ip->overflow++;
 		}
 		if(status&CRC_ERROR){
-			print("incon crc error\n");
+			screenputc('+');
 			ip->crc++;
 		}
 	}

@@ -18,7 +18,7 @@ struct{
 
 Bitmap	screen =
 {
-	(ulong*)(2*1024*1024|KZERO),	/* BUG */
+	(ulong*)((4*1024*1024-256*1024)|KZERO),	/* BUG */
 	0,
 	64,
 	0,

@@ -123,8 +123,6 @@ urpopen(Queue *q, Stream *s)
 	int i;
 	char name[128];
 
-	DPRINT("urpopen\n");
-
 	/*
 	 *  find a free urp structure
 	 */
@@ -200,13 +198,11 @@ urpclose(Queue *q)
 		i = 7;
 	rcvack(up, ECHO+i);
 	qunlock(&up->xmit);
-	DPRINT("urpclose(%ux)\n", up);
 
 	/*
 	 *  kill off the kernel process
 	 */
 	wakeup(&up->rq->r);
-	DPRINT("urpclosed(%ux)\n", up);
 }
 
 /*
@@ -381,7 +377,7 @@ urpiput(Queue *q, Block *bp)
 	case 0:
 		break;
 	case ENQ:
-		print("rENQ %uo %uo\n", up->lastecho, ACK+up->iseq);
+		DPRINT("rENQ %uo %uo\n", up->lastecho, ACK+up->iseq);
 		urpstat.enqsr++;
 		sendctl(up, up->lastecho);
 		sendctl(up, ACK+up->iseq);
@@ -422,7 +418,7 @@ urpiput(Queue *q, Block *bp)
 
 	case REJ+0: case REJ+1: case REJ+2: case REJ+3:
 	case REJ+4: case REJ+5: case REJ+6: case REJ+7:
-		print("rREJ\n");
+		DPRINT("rREJ\n");
 		rcvack(up, ctl);
 		break;
 	
@@ -445,20 +441,24 @@ urpiput(Queue *q, Block *bp)
 		if(up->trx != 3){
 			urpstat.rjtrs++;
 			flushinput(up);
-			print("sREJ1 %d\n", up->iseq);
-			sendctl(up, up->lastecho = REJ+up->iseq);
+			DPRINT("sREJ1 %d\n", up->iseq);
+			if((up->lastecho&~7)==ECHO)
+				sendctl(up, up->lastecho = REJ+up->iseq);/**/
 			break;
 		} else if(q->len != up->trbuf[1] + (up->trbuf[2]<<8)){
 			urpstat.rjpks++;
+			DPRINT("sREJ2 %d %d %d\n", up->iseq, q->len,
+				up->trbuf[1] + (up->trbuf[2]<<8));
 			flushinput(up);
-			print("sREJ2 %d\n", up->iseq);
-			sendctl(up, up->lastecho = REJ+up->iseq);
+			if((up->lastecho&~7)==ECHO)
+				sendctl(up, up->lastecho = REJ+up->iseq);/**/
 			break;
 		} else if(i != ((up->iseq+1)&Nmask)) {
 			urpstat.rjseq++;
 			flushinput(up);
-			print("sREJ3 %d %d\n", i, up->iseq);
-			sendctl(up, up->lastecho = REJ+up->iseq);
+			DPRINT("sREJ3 %d %d\n", i, up->iseq);
+			if((up->lastecho&~7)==ECHO)
+				sendctl(up, up->lastecho = REJ+up->iseq);/**/
 			break;
 		}
 
@@ -481,8 +481,7 @@ urpiput(Queue *q, Block *bp)
 		 *  acknowledge receipt
 		 */
 		if(q->next->len < Streamhi){
-			sendctl(up, ECHO+i);
-			up->lastecho = ECHO+i;
+			sendctl(up, up->lastecho = ECHO+i);
 			wakeup(&up->rq->r);
 		}
 		up->iseq = i;
@@ -510,7 +509,6 @@ urpctloput(Urp *up, Queue *q, Block *bp)
 				outwin = strtoul(fields[0], 0, 0);
 			}
 /*			initinput(up, inwin); */
-			DPRINT("initoutput %d\n", outwin);
 			initoutput(up, outwin);
 			freeb(bp);
 			return;
@@ -596,7 +594,7 @@ output(Urp *up)
 	 *  if a retransmit time has elapsed since a transmit, send an ENQ
 	 */
 	if(up->unechoed != up->next && NOW > up->timer){
-		print("sENQ\n");
+		DPRINT("sENQ\n");
 		up->timer = NOW + MSrexmit;
 		up->state &= ~REJECTING;
 		sendctl(up, ENQ);
@@ -826,7 +824,6 @@ urpkproc(void *arg)
 	Urp *up;
 
 	up = (Urp *)arg;
-	DPRINT("urpkproc started\n");
 
 	for(;;){
 		if(up->state & (HUNGUP|CLOSING)){
@@ -840,7 +837,6 @@ urpkproc(void *arg)
 		output(up);
 		tsleep(&up->rq->r, todo, up, MSrexmit/2);
 	}
-	DPRINT("urpkproc exiting %ux\n", up);
 	up->kstarted = 0;
 	up->state = 0;
 }
