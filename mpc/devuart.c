@@ -462,7 +462,7 @@ sccsetup(Uart *up)
 	if(0){
 		print("gsmrl=%8.8lux gsmrh=%8.8lux dsr=%4.4ux irmode=%4.4ux\n", scc->gsmrl, scc->gsmrh, scc->dsr, scc->irmode);
 		for(i=0; i<sizeof(Uartscc); i+=4)
-			print("%2.2lux %8.8lux\n", i, *(ulong*)((uchar*)up->param+i));
+			print("%2.2ux %8.8lux\n", i, *(ulong*)((uchar*)up->param+i));
 	}
 }
 
@@ -763,7 +763,7 @@ static void
 txstart(Uart *p)
 {
 	Block *b;
-	int n, flags, s;
+	int n, flags;
 
 
 	if(!p->cts || p->blocked || p->txb->status & BDReady)
@@ -1080,8 +1080,6 @@ setlength(int i)
 void
 uartinstall(void)
 {
-	int port;
-	char *p, *q;
 	static int already;
 
 	if(already)
@@ -1089,6 +1087,8 @@ uartinstall(void)
 	already = 1;
 	uartsetup(1, SMC1ID, "eia0");
 /*
+	int port;
+	char *p, *q;
 	if((p = getconf("console")) || (p = "0")){
 		if(USESMC2)
 			port = strtol(p, &q, 0);
@@ -1098,7 +1098,7 @@ uartinstall(void)
 			uartspecial(port, 9600, &kbdq, &printq, kbdcr2nl);
 	}
 */
-	uartspecial(0, 19200, &kbdq, &printq, kbdcr2nl);
+	uartspecial(0, 9600, &kbdq, &printq, kbdcr2nl);
 
 //	if(USESMC2)
 //		uartsetup(2, SMC2ID, "eia1");

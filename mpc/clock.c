@@ -59,8 +59,10 @@ microdelay(int l)
 		;
 }
 
+// the following can be 4 or 16 depending on the clock multiplier
+// see 15.3.3 in 860 manual
 enum {
-	Timebase = 4,	/* system clock cycles per time base cycle */
+	Timebase = 16,	/* system clock cycles per time base cycle */
 };
 
 static	ulong	clkreload;
@@ -70,18 +72,18 @@ clockinit(void)
 {
 	long x, est;
 
-	est = m->clockgen/1000;	/* initial estimate */
+	est = m->cpuhz/1000;	/* initial estimate */
 	m->delayloop = est;
 	do {
 		x = gettbl();
-		delay(10);
+		delay(1);
 		x = gettbl() - x;
 	} while(x < 0);
 
 	/*
 	 *  fix count
 	 */
-	m->delayloop = (m->delayloop*10*est)/(x*Timebase);
+	m->delayloop = (m->delayloop*est/Timebase)/(x);
 	if(m->delayloop == 0)
 		m->delayloop = 1;
 
@@ -110,8 +112,6 @@ clockintr(Ureg *ur)
 	m->iomem->swsr = 0xaa39;
 	
 	m->ticks++;
-	if(m->ticks%MS2TK(1000) == 0)
-		*(uchar*)(NIMMEM+0x2200) = (m->ticks/MS2TK(1000))&2;
 
 	if(up)
 		up->pc = ur->pc;

@@ -176,7 +176,6 @@
  * atlas board registers
  */
 #define	INTMEM		0x80000000
-#define NIMMEM		0x80100000
 #define	FLASH0MEM	0x80200000
 #define	FLASH1MEM	0x80400000
 #define	SDRAMMEM	0x03000000

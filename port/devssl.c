@@ -737,23 +737,26 @@ initDESkey(OneWay *w)
 static void
 initDESkey_40(OneWay *w)
 {
+	uchar key[8];
+
 	if(w->state){
 		free(w->state);
 		w->state = 0;
 	}
 
-	if(w->slen >= 8) {
-		w->secret[0] &= 0x0f;
-		w->secret[2] &= 0x0f;
-		w->secret[4] &= 0x0f;
-		w->secret[6] &= 0x0f;
+	if(w->slen >= 8){
+		memmove(key, w->secret, 8);
+		key[0] &= 0x0f;
+		key[2] &= 0x0f;
+		key[4] &= 0x0f;
+		key[6] &= 0x0f;
 	}
 
 	w->state = malloc(sizeof(DESstate));
 	if(w->slen >= 16)
-		setupDESstate(w->state, w->secret, w->secret+8);
+		setupDESstate(w->state, key, w->secret+8);
 	else if(w->slen >= 8)
-		setupDESstate(w->state, w->secret, 0);
+		setupDESstate(w->state, key, 0);
 	else
 		error("secret too short");
 }

@@ -1,0 +1,108 @@
+#include "../port/portfns.h"
+
+void		addclock0link(void (*)(void));
+void		archinit(void);
+void		arginit(void);
+void		arith(void);
+void		clearmmucache(void);
+void		clock(Ureg*);
+void		clockinit(void);
+#define 	coherence 	mb
+int		cistrcmp(char*, char*);
+int		cistrncmp(char*, char*, int);
+void		cpuidprint(void);
+void		cserve(ulong, ulong);
+int	dmacount(int);
+int	dmadone(int);
+void	dmaend(int);
+void	dmainit(int);
+long	dmasetup(int, void*, long, int);
+void		evenaddr(ulong);
+void		fataltrap(Ureg *, char *);
+void		fault0(void);
+void		faultalpha(Ureg*);
+ulong	fcr31(void);
+void		firmware(void);
+#define	flushpage(s)	icflush()
+void		fpenab(int);
+void		fptrap(Ureg*);
+ulong	getcallerpc(void*);
+char		*getconf(char*);
+ulong	getfcr(void);
+ulong	getstatus(void);
+void		gotopc(ulong);
+int		i8042auxcmd(int);
+void		i8042auxenable(void (*)(int, int));
+void		i8042reset(void);
+void		i8259init(void);
+int		i8259enable(int, int, Irqctl*);
+#define	idlehands()			/* nothing to do in the runproc */
+void		icflush(void);
+void		illegal0(void);
+void		intr(Ureg*);
+void		intr0(void);
+void		intrenable(int, void (*)(Ureg*, void*), void*, int);
+int		iprint(char*, ...);
+int		isaconfig(char*, int, ISAConf*);
+void		kbdinit(void);
+void		*kmapv(uvlong, int);
+int		kprint(char*, ...);
+void		launchinit(void);
+void		launch(int);
+void		links(void);
+void		mb(void);
+ulong 	meminit(void);
+void		mmuinit(void);
+#define	mmunewpage(x)
+void		mntdump(void);
+void		ns16552special(int, int, Queue**, Queue**, int (*)(Queue*, int));
+void		ns16552setup(ulong, ulong, char*);
+void		ns16552install(void);
+void		ns16552intr(int);
+ulong	pcibarsize(Pcidev*, int);
+int	pcicfgr8(Pcidev*, int);
+int	pcicfgr16(Pcidev*, int);
+int	pcicfgr32(Pcidev*, int);
+void	pcicfgw8(Pcidev*, int, int);
+void	pcicfgw16(Pcidev*, int, int);
+void	pcicfgw32(Pcidev*, int, int);
+void	pcihinv(Pcidev*);
+Pcidev* pcimatch(Pcidev*, int, int);
+void	pcireset(void);
+void		prflush(void);
+void		printinit(void);
+#define	procrestore(p)
+#define	procsave(p)
+#define	procsetup(p)	((p)->fpstate = FPinit)
+void		restfpregs(FPsave*);
+void		screeninit(void);
+void		(*screenputs)(char*, int);
+void 		setpcb(PCB *);
+PCB		*swpctx(PCB *);
+void		syscall0(void);
+int		tas(ulong*);
+void		tlbflush(int, ulong);
+void		touser(void*);
+void		trapinit(void);
+void		unaligned(void);
+void		wrent(int, void*);
+void		wrvptptr(uvlong);
+
+#define	waserror()	(up->nerrlab++, setlabel(&up->errlab[up->nerrlab-1]))
+#define	kmapperm(x)	kmap(x)
+#define KADDR(a)	((void*)((ulong)(a)|KZERO))
+#define PADDR(a)	((ulong)(a)&~KZERO)
+
+#define	inb(p)	(arch->_inb)(p)
+#define	ins(p)	(arch->_ins)(p)
+#define	inl(p)	(arch->_inl)(p)
+#define	outb(p, x)	(arch->_outb)((p), (x))
+#define	outs(p, x)	(arch->_outs)((p), (x))
+#define	outl(p, x)	(arch->_outl)((p), (x))
+
+#define	insb(p, buf, len)	(arch->_insb)((p), (buf), (len))
+#define	inss(p, buf, len)		(arch->_inss)((p), (buf), (len))
+#define	insl(p, buf, len)		(arch->_insl)((p), (buf), (len))
+#define	outsb(p, buf, len)	(arch->_outsb)((p), (buf), (len))
+#define	outss(p, buf, len)	(arch->_outss)((p), (buf), (len))
+#define	outsl(p, buf, len)	(arch->_outsl)((p), (buf), (len))
