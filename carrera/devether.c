@@ -682,6 +682,37 @@ isoutbuf(void *arg)
 	return ctlr->tda[ctlr->th].status == Host;
 }
 
+static int
+etherloop(Etherpkt *p, long n)
+{
+	int s, different;
+	ushort t;
+	Netfile *f, **fp;
+
+	different = memcmp(p->d, p->s, sizeof(p->s));
+	if(different && memcmp(p->d, ether.bcast, sizeof(p->d)))
+		return 0;
+
+	s = splhi();
+	t = (p->type[0]<<8) | p->type[1];
+	for(fp = ether.f; fp < &ether.f[Ntypes]; fp++) {
+		f = *fp;
+		if(f == 0)
+			continue;
+		if(f->type == t || f->type < 0)
+			switch(qproduce(f->in, p->d, n)){
+			case -1:
+				print("etherloop overflow\n");
+				break;
+			case -2:
+				print("etherloop memory\n");
+				break;
+			}
+	}
+	splx(s);
+	return !different;
+}
+
 long
 etherwrite(Chan *c, void *buf, long n, ulong offset)
 {
@@ -699,6 +730,9 @@ etherwrite(Chan *c, void *buf, long n, ulong offset)
 		return netifwrite(ether[0], c, buf, n);
 
 	/* we handle data */
+	if(etherloop(buf, n))
+		return n;
+
 	qlock(&ctlr->tlock);
 	if(waserror()) {
 		qunlock(&ctlr->tlock);

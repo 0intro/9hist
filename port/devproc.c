@@ -151,7 +151,7 @@ int
 procwalk(Chan *c, char *name)
 {
 	if(strcmp(name, "..") == 0) {
-		c->qid.path = Qdir|CHDIR;
+		c->qid.path = CHDIR;
 		return 1;
 	}
 

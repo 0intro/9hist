@@ -474,6 +474,11 @@ lancewrite(Chan *c, void *buf, long n, ulong offset)
 		return n;
 
 	qlock(&l.tlock);
+	if(waserror()) {
+		qunlock(&ctlr->tlock);
+		nexterror();
+	}
+
 	m = &(LANCEMEM->tmr[l.tc]);
 	tsleep(&l.tr, isoutbuf, m, 10000);
 	if(!isoutbuf(m) || l.wedged)
@@ -496,6 +501,7 @@ lancewrite(Chan *c, void *buf, long n, ulong offset)
 		*l.rdp = INEA|TDMD;
 	}
 	qunlock(&l.tlock);
+	poperror();
 	return n;
 }
 
