@@ -73,7 +73,6 @@ newpage(int clear, Segment **s, ulong va)
 
 
 	lock(&palloc);
-retry:
 	color = getpgcolor(va);
 	hw = swapalloc.highwater;
 	for(;;) {
@@ -129,23 +128,15 @@ retry:
 		p->prev->next = p->next;
 	else
 		palloc.head = p->next;
-
 	if(p->next)
 		p->next->prev = p->prev;
 	else
 		palloc.tail = p->prev;
-
 	palloc.freecount--;
-	unlock(&palloc);
 
 	lock(p);
-	if(p->ref != 0) {	/* lookpage has priority on steal */
-		unlock(p);
-		print("stolen\n");
-		lock(&palloc);
-		palloc.freecount++;
-		goto retry;
-	}
+	if(p->ref != 0)
+		panic("newpage");
 
 	uncachepage(p);
 	p->ref++;
@@ -154,6 +145,7 @@ retry:
 	for(i = 0; i < MAXMACH; i++)
 		p->cachectl[i] = ct;
 	unlock(p);
+	unlock(&palloc);
 
 	if(clear) {
 		k = kmap(p);
@@ -178,13 +170,14 @@ putpage(Page *p)
 		return;
 	}
 
+	lock(&palloc);
 	lock(p);
 	if(--p->ref > 0) {
 		unlock(p);
+		unlock(&palloc);
 		return;
 	}
 
-	lock(&palloc);
 	if(p->image && p->image != &swapimage) {
 		if(palloc.tail) {
 			p->prev = palloc.tail;
@@ -209,13 +202,13 @@ putpage(Page *p)
 		palloc.head = p;
 		p->prev = 0;
 	}
-
 	palloc.freecount++;
+
 	if(palloc.r.p != 0)
 		wakeup(&palloc.r);
 
-	unlock(&palloc);
 	unlock(p);
+	unlock(&palloc);
 }
 
 Page*
@@ -232,16 +225,15 @@ auxpage()
 	p->next->prev = 0;
 	palloc.head = p->next;
 	palloc.freecount--;
-	unlock(&palloc);
 
 	lock(p);
-	if(p->ref != 0) {		/* Stolen by lookpage */
-		unlock(p);
-		return 0;
-	}
+	if(p->ref != 0)
+		panic("auxpage");
 	p->ref++;
 	uncachepage(p);
 	unlock(p);
+	unlock(&palloc);
+
 	return p;
 }
 
@@ -250,12 +242,31 @@ duppage(Page *p)				/* Always call with p locked */
 {
 	Page *np;
 	int color;
+	int retries;
+
+	retries = 0;
+retry:
+	if(retries++ > 10000)
+		panic("duppage");
 
 	/* No dup for swap/cache pages */
-	if(p->image->notext)
+	if(p->ref == 0 || p->image == nil || p->image->notext)
 		return;
 
-	lock(&palloc);
+	/*
+	 *  normal lock ordering is to call
+	 *  lock(&palloc) before lock(p).
+	 *  To avoid deadlock, we have to drop
+	 *  our locks and try again.
+	 */
+	if(!canlock(&palloc)){
+		unlock(p);
+		if(up)
+			sched();
+		lock(p);
+		goto retry;
+	}
+
 	/* No freelist cache when memory is very low */
 	if(palloc.freecount < swapalloc.highwater) {
 		unlock(&palloc);
@@ -279,7 +290,6 @@ duppage(Page *p)				/* Always call with p locked */
 		np->prev->next = np->next;
 	else
 		palloc.head = np->next;
-
 	if(np->next)
 		np->next->prev = np->prev;
 	else
@@ -297,15 +307,10 @@ duppage(Page *p)				/* Always call with p locked */
 		np->prev = np->next = 0;
 	}
 
+	lock(np);
 	unlock(&palloc);
 
-	lock(np);				/* Cache the new version */
-	if(np->ref != 0) {			/* Stolen by lookpage */
-		uncachepage(p);
-		unlock(np);
-		return;
-	}
-
+	/* Cache the new version */
 	uncachepage(np);
 	np->va = p->va;
 	np->daddr = p->daddr;
@@ -399,33 +404,32 @@ lookpage(Image *i, ulong daddr)
 		if(f->image == i && f->daddr == daddr) {
 			unlock(&palloc.hashlock);
 
+			lock(&palloc);
 			lock(f);
 			if(f->image != i || f->daddr != daddr) {
 				unlock(f);
+				unlock(&palloc);
 				return 0;
 			}
-
-			lock(&palloc);
 			if(++f->ref == 1) {
 				if(f->prev)
 					f->prev->next = f->next;
 				else
 					palloc.head = f->next;
-
 				if(f->next)
 					f->next->prev = f->prev;
 				else
 					palloc.tail = f->prev;
-
 				palloc.freecount--;
 			}
 			unlock(&palloc);
-
 			unlock(f);
+
 			return f;
 		}
 	}
 	unlock(&palloc.hashlock);
+
 	return 0;
 }
 

@@ -378,68 +378,68 @@ procinit0(void)		/* bad planning - clashes with devproc.c */
 }
 
 void
-sleep1(Rendez *r, int (*f)(void*), void *arg)
+sleep(Rendez *r, int (*f)(void*), void *arg)
 {
 	int s;
 
-	/*
-	 * spl is to allow lock to be called
-	 * at interrupt time. lock is mutual exclusion
-	 */
 	s = splhi();
+
 	lock(&up->rlock);
 	if(r->p){
 		print("double sleep %d %d\n", r->p->pid, up->pid);
 		dumpstack();
 	}
+
+	/*
+	 * Wakeup only knows there may be something to do by testing
+	 * r->p in order to get something to lock on.
+	 * Flush that information out to memory in case the sleep is
+	 * committed.
+	 */
 	r->p = up;
+	coherence();
 
-	coherence();	/* force memory state to reflect processor state */
-
-	/*
-	 * if condition happened, never mind
-	 */
-	if((*f)(arg)){
-		r->p = 0;
+	if((*f)(arg) || up->notepending){
+		/*
+		 *  if condition happened or a note is pending
+		 *  never mind
+		 */
+		r->p = nil;
 		unlock(&up->rlock);
-		splx(s);
-		return;
+	} else {
+		/*
+		 *  now we are committed to
+		 *  change state and call scheduler
+		 */
+		up->state = Wakeme;
+		up->r = r;
+
+		/* statistics */
+		m->cs++;
+	
+		procsave(up);
+		if(setlabel(&up->sched)) {
+			/*
+			 *  here when the process is awakened
+			 */
+			procrestore(up);
+			spllo();
+		} else {
+			/*
+			 *  here to go to sleep (i.e. stop Running)
+			 */
+			unlock(&up->rlock);
+			gotolabel(&m->sched);
+		}
 	}
-
-	/*
-	 * now we are committed to
-	 * change state and call scheduler
-	 */
-	up->state = Wakeme;
-	up->r = r;
-	unlock(&up->rlock);
-	splx(s);
-}
-
-void
-sleep(Rendez *r, int (*f)(void*), void *arg)
-{
-	int s;
-
-	sleep1(r, f, arg);
-	if(up->notepending == 0)
-		sched();	/* notepending may go true while asleep */
 
 	if(up->notepending) {
 		up->notepending = 0;
-		s = splhi();
-		lock(&up->rlock);
-		if(r->p == up){
-			/* undo the sleep1() */
-			up->r = 0;
-			r->p = 0;
-			if(up->state == Wakeme)
-				up->state = Running;
-		}
-		unlock(&up->rlock);
 		splx(s);
 		error(Eintr);
 	}
+
+	splx(s);
 }
 
 int
