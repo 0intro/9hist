@@ -1,4 +1,3 @@
-typedef struct Alarm	Alarm;
 typedef struct Alarms	Alarms;
 typedef struct Block	Block;
 typedef struct Blist	Blist;
@@ -35,6 +34,7 @@ typedef struct Rendez	Rendez;
 typedef struct RWlock	RWlock;
 typedef struct Segment	Segment;
 typedef struct Stream	Stream;
+typedef struct Talarm	Talarm;
 typedef struct Waitq	Waitq;
 typedef int    Devgen(Chan*, Dirtab*, int, int, Dir*);
 
@@ -71,14 +71,10 @@ struct RWlock
 	int	readers;		/* Count of readers in lock */
 };
 
-struct Alarm
+struct Talarm
 {
-	List;
 	Lock;
-	int	busy;
-	ulong	when;			/* may underflow in clock(); must be signed */
-	void	(*f)(void*);
-	void	*arg;
+	Proc	*list;
 };
 
 struct Alarms
@@ -550,7 +546,7 @@ struct Proc
 	ulong	pc;			/* DEBUG only */
 
 	Rendez	*r;			/* rendezvous point slept on */
-	Rendez	sleep;			/* place for tsleep/syssleep/debug */
+	Rendez	sleep;			/* place for syssleep/debug */
 	int	notepending;		/* note issued but not acted on */
 	int	kp;			/* true if a kernel process */
 	Proc	*palarm;		/* Next alarm time */
@@ -561,6 +557,11 @@ struct Proc
 	ulong	rendtag;		/* Tag for rendezvous */ 
 	ulong	rendval;		/* Value for rendezvous */
 	Proc	*rendhash;		/* Hash list for tag values */
+
+	ulong	twhen;
+	Rendez	*trend;
+	Proc	*tlink;
+
 	/*
 	 *  machine specific MMU goo
 	 */
@@ -696,6 +697,7 @@ extern	int	nrdy;
 extern	char	sysname[NAMELEN];
 extern	int	cpuserver;
 extern  Ref	noteidalloc;
+extern	Talarm	talarm;
 
 #define	CHDIR		0x80000000L
 #define	CHAPPEND 	0x40000000L

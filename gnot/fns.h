@@ -36,7 +36,6 @@ void	procrestore(Proc*);
 void	procsave(Proc*);
 void	procsetup(Proc*);
 void	putkmmu(ulong, ulong);
-void	restartprint(Alarm*);
 void	restfpregs(FPsave*);
 void	screeninit(void);
 void	screenputc(int);

@@ -317,29 +317,32 @@ sleep(Rendez *r, int (*f)(void*), void *arg)
 }
 
 void
-tsleep(Rendez *r, int (*f)(void*), void *arg, int ms)
+tsleep(Rendez *r, int (*fn)(void*), void *arg, int ms)
 {
-	Alarm *a;
-	Proc *p;
-	int s;
+	ulong when;
+	Proc *p, *f, **l, **i;
 
 	p = u->p;
-	sleep1(r, f, arg);
-	if(p->notepending == 0){
-		a = alarm(ms, twakeme, r);
-		sched();	/* notepending may go true while asleep */
-		cancel(a);
+	when = MS2TK(ms)+MACHP(0)->ticks;
+	i = &talarm.list;
+
+	lock(&talarm);
+	l = &talarm.list;
+	for(f = talarm.list; f; f = f->tlink) {
+		if(f == p)
+			*l = p->tlink;
+		if(f->twhen && f->twhen < when)
+			i = &f->tlink;
+		l = &f->tlink;
 	}
-	if(p->notepending){
-		p->notepending = 0;
-		s = splhi();
-		lock(r);
-		if(r->p == p)
-			r->p = 0;
-		unlock(r);
-		splx(s);
-		error(Eintr);
-	}
+	p->trend = r;
+	p->twhen = when;
+	p->tlink = *i;
+	*i = p;
+	unlock(&talarm);
+
+	sleep(r, fn, arg);
+	p->twhen = 0;
 }
 
 void
@@ -356,27 +359,10 @@ wakeup(Rendez *r)
 		if(p->state != Wakeme) 
 			panic("wakeup: state");
 		p->r = 0;
-if((p->sched.pc&KZERO) != KZERO){
-	spllo();
-	panic("wakeup");
-}
 		ready(p);
 	}
 	unlock(r);
 	splx(s);
-}
-
-void
-wakeme(Alarm *a)
-{
-	ready((Proc*)(a->arg));
-	cancel(a);
-}
-
-void
-twakeme(Alarm *a)
-{
-	wakeup((Rendez*)(a->arg));
 }
 
 int

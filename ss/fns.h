@@ -55,7 +55,6 @@ void	putwD(ulong, ulong);
 void	putwE16(ulong, ulong);
 void	putwE(ulong, ulong);
 void	systemreset(void);
-void	restartprint(Alarm*);
 void	restfpregs(FPsave*);
 void	screeninit(void);
 void	screenputc(int);

@@ -17,6 +17,7 @@ fault(ulong addr, int read)
 
 	sps = u->p->psstate;
 	u->p->psstate = "Fault";
+	spllo();
 
 	m->pfault++;
 	for(;;) {

@@ -70,7 +70,6 @@ struct Uart
 	/* stream interface */
 	Queue	*wq;		/* write queue */
 	Rendez	r;		/* kproc waiting for input */
-	Alarm	*a;		/* alarm for waking the kernel process */
  	int	kstarted;	/* kproc started */
 
 	/* error statistics */
@@ -401,7 +400,6 @@ uartspecial(int port, IOQ *oq, IOQ *iq, int baud)
 	}
 }
 
-static void	uarttimer(Alarm*);
 static int	uartputc(IOQ *, int);
 static void	uartstopen(Queue*, Stream*);
 static void	uartstclose(Queue*);
@@ -415,19 +413,6 @@ Qinfo uartinfo =
 	uartstclose,
 	"uart"
 };
-
-/*
- *  create a helper process per port
- */
-static void
-uarttimer(Alarm *a)
-{
-	Uart *up = a->arg;
-
-	cancel(a);
-	up->a = 0;
-	wakeup(&up->iq->r);
-}
 
 static void
 uartstopen(Queue *q, Stream *s)

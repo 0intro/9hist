@@ -1048,7 +1048,7 @@ bsdoput(Queue *q, Block *bp)
 	}
 
 	/* collect into a single block */
-	lock(q);
+	qlock(&q->rlock);
 	if(q->first == 0)
 		q->first = pullup(bp, blen(bp));
 	else{
@@ -1058,7 +1058,7 @@ bsdoput(Queue *q, Block *bp)
 	}
 	bp = q->first;
 	if(bp == 0){
-		unlock(q);
+		qunlock(&q->rlock);
 		bsdclose(q);
 		return;
 	}
@@ -1066,12 +1066,12 @@ bsdoput(Queue *q, Block *bp)
 	/* look for 2 nulls to indicate stderr port and local user */
 	luser = memchr(bp->rptr, 0, BLEN(bp));
 	if(luser == 0){
-		unlock(q);
+		qunlock(&q->rlock);
 		return;
 	}
 	luser++;
 	if(memchr(luser, 0, bp->wptr - luser) == 0){
-		unlock(q);
+		qunlock(&q->rlock);
 		return;
 	}
 
@@ -1084,5 +1084,5 @@ bsdoput(Queue *q, Block *bp)
 	q->first = 0;
 	bp->flags |= S_DELIM;
 	PUTNEXT(q, bp);
-	unlock(q);
+	qunlock(&q->rlock);
 }

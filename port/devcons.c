@@ -513,10 +513,8 @@ consread(Chan *c, void *buf, long n, ulong offset)
 			do{
 				lock(&lineq);
 				ch = getc(&kbdq);
-				if(raw){
-					unlock(&lineq);
+				if(raw)
 					goto Default;
-				}
 				switch(ch){
 				case '\b':
 					if(lineq.in != lineq.out){

@@ -50,7 +50,6 @@ main(void)
 	initseg();
 	grpinit();
 	chaninit();
-	alarminit();
 	chandevreset();
 	streaminit();
 /*	serviceinit(); /**/

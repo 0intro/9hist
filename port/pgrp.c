@@ -199,9 +199,8 @@ resrcwait(char *reason)
 	}
 	if(u == 0)
 		panic("resrcwait");
-	u->p->state = Wakeme;
-	alarm(1000, wakeme, u->p);
-	sched();
+
+	tsleep(&u->p->sleep, return0, 0, 1000);
 	u->p->psstate = p;
 }
 

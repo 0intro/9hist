@@ -56,7 +56,6 @@ main(void)
 	grpinit();
 	chaninit();
 	clockinit();
-	alarminit();
 	ioboardinit();
 	chandevreset();
 	streaminit();
@@ -600,7 +599,7 @@ confinit(void)
  *  we do this because the arguments are in memory that may be allocated
  *  to processes or kernel buffers.
  */
-#define SYSENV "netaddr="
+#define IPADDRENV "netaddr="
 void
 arginit(void)
 {
@@ -614,16 +613,13 @@ arginit(void)
 	/*
 	 *  get the system name from the environment
 	 */
-	if(*sysname == 0){
-		for(argv = _env; *argv; argv++){
-			if(strncmp(*argv, SYSENV, sizeof(SYSENV)-1)==0){
-				strcpy(sysname, (*argv) + sizeof(SYSENV)-1);
-				break;
-			}
+	strcpy(envbuf, IPADDRENV);
+	for(argv = _env; *argv; argv++){
+		if(strncmp(*argv, IPADDRENV, sizeof(IPADDRENV)-1)==0){
+			strcat(envbuf, (*argv) + sizeof(IPADDRENV)-1);
+			break;
 		}
 	}
-	strcpy(envbuf, SYSENV);
-	strcat(envbuf, sysname);
 	env[0] = envbuf;
 	env[1] = 0;
 
