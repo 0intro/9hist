@@ -52,15 +52,13 @@ static	void	sdrdpart(Disk*);
 static	long	sdio(Chan*, int, char*, ulong, ulong);
 
 static int
-sdgen(Chan *c, Dirtab *tab, long ntab, long s, Dir *dirp)
+sdgen(Chan *c, Dirtab*, long, long s, Dir *dirp)
 {
 	Qid qid;
 	Disk *d;
 	Part *p;
 	int unit;
 	char name[2*NAMELEN];
-
-	USED(tab, ntab);
 
 	d = disk;
 	while(s >= d->npart) {
@@ -183,23 +181,20 @@ sdopen(Chan *c, int omode)
 }
 
 void
-sdcreate(Chan *c, char *name, int omode, ulong perm)
+sdcreate(Chan*, char*, int, ulong)
 {
-	USED(c, name, omode, perm);
 	error(Eperm);
 }
 
 void
-sdremove(Chan *c)
+sdremove(Chan*)
 {
-	USED(c);
 	error(Eperm);
 }
 
 void
-sdwstat(Chan *c, char *dp)
+sdwstat(Chan*, char*)
 {
-	USED(c, dp);
 	error(Eperm);
 }
 
@@ -209,22 +204,19 @@ sdclose(Chan *c)
 	Disk *d;
 	Part *p;
 
-	if(c->mode != OWRITE && c->mode != ORDWR)
+	if(c->qid.path & CHDIR)
 		return;
 
-print("sdclose: qid 0x%lux drive %d, part %d\n", c->qid, DRIVE(c->qid), PART(c->qid));
 	d = &disk[DRIVE(c->qid)];
 	p = &d->table[PART(c->qid)];
-	if(strcmp(p->name, "partition"))
-		return;
-
-	sdrdpart(d);
+	if((c->mode&3) != OREAD && strcmp(p->name, "partition") == 0)
+		sdrdpart(d);
 }
 
 long
 sdread(Chan *c, void *a, long n, ulong offset)
 {
-	if(c->qid.path == CHDIR)
+	if(c->qid.path & CHDIR)
 		return devdirread(c, a, n, 0, 0, sdgen);
 
 	return sdio(c, 0, a, n, offset);
