@@ -177,6 +177,9 @@ struct PCArch
 	int	(*extvga)(int);		/* 1 == external, 0 == internal */
 };
 
+/*
+ *  a parsed plan9.ini line
+ */
 struct ISAConf {
 	char	type[NAMELEN];
 	ulong	port;
@@ -187,11 +190,13 @@ struct ISAConf {
 	uchar	ea[6];
 };
 
+/*
+ *  SCSI bus
+ */
 enum {
 	MaxScsi		= 4,
 	NTarget		= 8,
 };
-
 struct Target {
 	int	ctlrno;
 	int	target;

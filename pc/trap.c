@@ -259,7 +259,7 @@ trap(Ureg *ur)
 	char buf[ERRLEN];
 	Handler *h;
 	static int iret_traps;
-	uchar isr0, isr1;
+	ushort isr;
 
 	v = ur->trap;
 
@@ -279,12 +279,12 @@ trap(Ureg *ur)
 	 *  off at this point)
 	 */
 	c = v&~0x7;
-	isr0 = isr1 = 0x00;
+	isr = 0;
 	if(c==Int0vec || c==Int1vec){
-		isr0 = inb(Int0ctl);
+		isr = inb(Int0ctl);
 		outb(Int0ctl, EOI);
 		if(c == Int1vec){
-			isr1 = inb(Int1ctl);
+			isr |= inb(Int1ctl)<<8;
 			outb(Int1ctl, EOI);
 		}
 	}
@@ -308,7 +308,7 @@ for(;;);
 			}
 		}
 
-		if(v >= Int0vec || v < Int0vec+16){
+		if(v >= Int0vec && v < Int0vec+16){
 			/* an unknown interrupt */
 			v -= Int0vec;
 			/*
@@ -316,13 +316,14 @@ for(;;);
 			 * the IRQ input goes away before the acknowledge.
 			 * In this case, a 'default IRQ7' is generated, but
 			 * the corresponding bit in the ISR isn't set.
+			 * In fact, just ignore all such interrupts.
 			 */
-			if(v == 7 && (isr0 & 0x80) == 0)
+			if((isr & (1<<v)) == 0)
 				goto out;
 			if(badintr[v]++ == 0 || (badintr[v]%100000) == 0){
 				print("unknown interrupt %d pc=0x%lux: total %d\n", v,
 					ur->pc, badintr[v]);
-				print("isr0 = 0x%2.2ux, isr1 = 0x%2.2ux\n", isr0, isr1);
+				print("isr = 0x%4.4ux\n", isr);
 			}
 		} else {
 			/* unimplemented traps */

@@ -92,6 +92,8 @@ enum
 	Rconfig=	0,
 	 Creset=	 (1<<7),	/*  reset device */
 	 Clevel=	 (1<<6),	/*  level sensitive interrupt line */
+
+	Maxctab=	8,		/* maximum configuration table entries */
 };
 
 #define MAP(x,o)	(Rmap + (x)*0x8 + o)
@@ -99,6 +101,7 @@ enum
 typedef struct I82365	I82365;
 typedef struct Slot	Slot;
 typedef struct PCMmap	PCMmap;
+typedef struct Conftab	Conftab;
 
 /* maps between ISA memory space and the card memory space */
 struct PCMmap
@@ -128,7 +131,23 @@ struct I82365
 static I82365 *controller[4];
 static int ncontroller;
 
-/* a Slot slot */
+/* configuration table entry */
+struct Conftab
+{
+	int	index;
+	ushort	irqs;		/* legal irqs */
+	ushort	port;		/* port address */
+	uchar	nioregs;	/* number of io registers */
+	uchar	bit16;		/* true for 16 bit access */
+	uchar	vpp1;
+	uchar	vpp2;
+	uchar	memwait;
+	ulong	maxwait;
+	ulong	readywait;
+	ulong	otherwait;
+};
+
+/* a card slot */
 struct Slot
 {
 	Lock;
@@ -142,7 +161,6 @@ struct Slot
 	/* status */
 	uchar	special;	/* in use for a special device */
 	uchar	already;	/* already inited */
-	uchar	gotmem;		/* already got memmap space */
 	uchar	occupied;
 	uchar	battery;
 	uchar	wrprot;
@@ -153,25 +171,21 @@ struct Slot
 
 	/* cis info */
 	char	verstr[512];	/* version string */
-	uchar	vpp1;
-	uchar	vpp2;
-	uchar	bit16;
-	uchar	nioregs;
-	uchar	memwait;
 	uchar	cpresent;	/* config registers present */
-	uchar	def;		/* default configuration */
-	ushort	irqs;		/* valid interrupt levels */
 	ulong	caddr;		/* relative address of config registers */
+	int	nctab;		/* number of config table entries */
+	Conftab	ctab[Maxctab];
+	Conftab	*def;		/* default conftab */
+
+	/* for walking through cis */
 	int	cispos;		/* current position scanning cis */
 	uchar	*cisbase;
-	ulong	maxwait;
-	ulong	readywait;
-	ulong	otherwait;
 
 	/* memory maps */
 	QLock	mlock;		/* lock down the maps */
 	int	time;
-	PCMmap	mmap[Nmap];
+	PCMmap	mmap[Nmap];	/* maps, last is always for the kernel */
+	int	nmap;		/* number of maps */
 };
 static Slot	*slot;
 static Slot	*lastslot;
@@ -234,27 +248,21 @@ slotena(Slot *pp)
 	if(pp->enabled)
 		return;
 
-	/* enable the card */
-	wrreg(pp, Rpc, vcode(5)|Fautopower|Foutena|Fcardena);
-	delay(300);	/* give the card time to sit up and take notice */
+	/* power up and reset, wait's are empirical (???) */
+	wrreg(pp, Rpc, Fautopower|Foutena|Fcardena);
+	delay(300);
 	wrreg(pp, Rigc, 0);
 	delay(100);
 	wrreg(pp, Rigc, Fnotreset);
-	delay(100);
-	wrreg(pp, Rcscic, ((PCMCIAvec-Int0vec)<<4) | Fchangeena);
+	delay(500);
 
-	/* display status */
+	/* get configuration */
 	slotinfo(pp);
 	if(pp->occupied){
 		cisread(pp);
-
-		/* set real power values if we configured successfully */
-		if(pp->configed)
-			wrreg(pp, Rpc, vcode(pp->vpp1)|Fautopower|Foutena|Fcardena);
-
+		pp->enabled = 1;
 	} else
-		wrreg(pp, Rpc, vcode(5)|Fautopower);
-	pp->enabled = 1;
+		wrreg(pp, Rpc, Fautopower);
 }
 
 /*
@@ -263,8 +271,7 @@ slotena(Slot *pp)
 static void
 slotdis(Slot *pp)
 {
-	wrreg(pp, Rmisc2, Flowpow);	 	/* low power mode */
-	wrreg(pp, Rpc, vcode(5)|Fautopower);			/* turn off card */
+	wrreg(pp, Rpc, Fautopower);		/* turn off card */
 	wrreg(pp, Rwe, 0);			/* no windows */
 	pp->enabled = 0;
 }
@@ -307,22 +314,11 @@ getmap(Slot *pp, ulong offset, int attr)
 	PCMmap *m, *lru;
 	int i;
 
-	if(pp->gotmem == 0){
-		pp->gotmem = 1;
-
-		/* grab ISA address space for memory maps */
-		for(i = 0; i < Nmap; i++){
-			pp->mmap[i].isa = getisa(0, Mchunk, BY2PG);
-			if(pp->mmap[i].isa == 0)
-				panic("getmap");
-		}
-	}
-
 	/* look for a map that starts in the right place */
 	we = rdreg(pp, Rwe);
 	bit = 1;
 	lru = pp->mmap;
-	for(m = pp->mmap; m < &pp->mmap[Nmap]; m++){
+	for(m = pp->mmap; m < &pp->mmap[pp->nmap]; m++){
 		if((we & bit) && m->attr == attr && offset >= m->ca && offset < m->cea){
 			m->time = pp->time++;
 			return m;
@@ -345,7 +341,7 @@ getmap(Slot *pp, ulong offset, int attr)
 	wrreg(pp, MAP(i, Mbtmlo), m->isa>>12);
 	wrreg(pp, MAP(i, Mbtmhi), (m->isa>>(12+8)) | F16bit);
 	wrreg(pp, MAP(i, Mtoplo), (m->isa+Mchunk-1)>>12);
-	wrreg(pp, MAP(i, Mtophi), ((m->isa+Mchunk-1)>>(12+8)) | Ftimer1);
+	wrreg(pp, MAP(i, Mtophi), ((m->isa+Mchunk-1)>>(12+8)) /*| Ftimer1/**/);
 	offset -= m->isa;
 	offset &= (1<<25)-1;
 	offset >>= 12;
@@ -509,6 +505,10 @@ i82386probe(int x, int d, int dev)
 	print("pcmcia controller%d is a %d slot %s\n", ncontroller, cp->nslot,
 		chipname[cp->type]);
 
+	/* low power mode */
+	outb(x, Rmisc2 + (dev<<7));
+	outb(d, Flowpow);
+
 	controller[ncontroller++] = cp;
 	return cp;
 }
@@ -522,6 +522,7 @@ i82365reset(void)
 	static int already;
 	int i, j;
 	I82365 *cp;
+	Slot *pp;
 
 	if(already)
 		return;
@@ -541,14 +542,26 @@ i82365reset(void)
 	for(i = 0; i < ncontroller; i++){
 		cp = controller[i];
 		for(j = 0; j < cp->nslot; j++){
-			lastslot->slotno = lastslot - slot;
-			lastslot->memlen = 64*MB;
-			lastslot->base = (cp->dev<<7) | (j<<6);
-			lastslot->cp = cp;
-			slotdis(lastslot);
-			lastslot++;
+			pp = lastslot++;
+			pp->slotno = pp - slot;
+			pp->memlen = 64*MB;
+			pp->base = (cp->dev<<7) | (j<<6);
+			pp->cp = cp;
+			slotdis(pp);
+
+			/* interrupt on status change */
+			wrreg(pp, Rcscic, ((PCMCIAvec-Int0vec)<<4) | Fchangeena);
 		}
 	}
+
+	/* get ISA address space for memory maps */
+	for(i = 0; i < Nmap; i++)
+		for(pp = slot; pp < lastslot; pp++){
+			pp->mmap[i].isa = getisa(0, Mchunk, BY2PG);
+			if(pp->mmap[i].isa == 0)
+				break;
+			pp->nmap++;
+		}
 
 	/* for card management interrupts */
 	setvec(PCMCIAvec, i82365intr, 0);
@@ -815,6 +828,7 @@ pcmio(int dev, ISAConf *isa)
 {
 	uchar we, x;
 	Slot *pp;
+	Conftab *ct;
 
 	if(dev > nslot)
 		return -1;
@@ -823,23 +837,33 @@ pcmio(int dev, ISAConf *isa)
 	if(!pp->occupied)
 		return -1;
 
-	/* if no io registers, assume not an io card (iffy!) */
-	if(pp->nioregs == 0)
+	/* find a configuration with the right port */
+	for(ct = pp->ctab; ct < &pp->ctab[pp->nctab]; ct++)
+		if(ct->nioregs && ct->port == isa->port)
+			break;
+
+	/* if non found, settle for one with the some ioregs */
+	if(ct == &pp->ctab[pp->nctab])
+		for(ct = pp->ctab; ct < &pp->ctab[pp->nctab]; ct++)
+			if(ct->nioregs)
+				break;
+
+	if(ct == &pp->ctab[pp->nctab])
 		return -1;
 
-	/* route interrupts, make sure card can use specified interrupt */
+print("%s\n\tindex %d vpp1 %d bit16 %d nioregs %d\n", pp->verstr, ct->index, ct->vpp1, ct->bit16, ct->nioregs);
+
+	/* route interrupts */
 	if(isa->irq == 2)
 		isa->irq = 9;
-	if(((1<<isa->irq) & pp->irqs) == 0)
-		return -1;
 	wrreg(pp, Rigc, isa->irq | Fnotreset | Fiocard);
 	
 	/* set power and enable device */
-	x = vcode(pp->vpp1);
+	x = vcode(ct->vpp1);
 	wrreg(pp, Rpc, x|Fautopower|Foutena|Fcardena);
 
 	/* 16-bit data path */
-	if(pp->bit16)
+	if(ct->bit16)
 		wrreg(pp, Rio, (1<<0)|(1<<1));
 
 	/* enable io port map 0 */
@@ -848,8 +872,8 @@ pcmio(int dev, ISAConf *isa)
 	we = rdreg(pp, Rwe);
 	wrreg(pp, Riobtm0lo, isa->port);
 	wrreg(pp, Riobtm0hi, isa->port>>8);
-	wrreg(pp, Riotop0lo, (isa->port+pp->nioregs));
-	wrreg(pp, Riotop0hi, (isa->port+pp->nioregs)>>8);
+	wrreg(pp, Riotop0lo, (isa->port+ct->nioregs));
+	wrreg(pp, Riotop0hi, (isa->port+ct->nioregs)>>8);
 	wrreg(pp, Rwe, we | (1<<6));
 
 	/* only touch Rconfig if it is present */
@@ -867,7 +891,10 @@ pcmio(int dev, ISAConf *isa)
 		 *  configuration number 1.
 		 *  Setting the configuration number enables IO port access.
 		 */
-		x = Clevel | 1;
+		if(isa->irq > 7)
+			x = Clevel | ct->index;
+		else
+			x = ct->index;
 		pcmwrite(dev, 1, &x, 1, pp->caddr + Rconfig);
 		delay(5);
 	}
@@ -907,12 +934,11 @@ cisread(Slot *pp)
 	int this, i;
 	PCMmap *m;
 
-	pp->vpp1 = pp->vpp2 = 5;
-	pp->bit16 = 0;
+	memset(pp->ctab, 0, sizeof(pp->ctab));
 	pp->caddr = 0;
 	pp->cpresent = 0;
-	pp->def = 0;
-	pp->irqs = 0xffff;
+	pp->configed = 0;
+	pp->nctab = 0;
 
 	m = getmap(pp, 0, 1);
 	if(m == 0)
@@ -1062,7 +1088,7 @@ ttiming(Slot *pp, int scale)
 }
 
 static void
-timing(Slot *pp)
+timing(Slot *pp, Conftab *ct)
 {
 	uchar c, i;
 
@@ -1070,27 +1096,27 @@ timing(Slot *pp)
 		return;
 	i = c&0x3;
 	if(i != 3)
-		pp->maxwait = ttiming(pp, i);		/* max wait */
+		ct->maxwait = ttiming(pp, i);		/* max wait */
 	i = (c>>2)&0x7;
 	if(i != 7)
-		pp->readywait = ttiming(pp, i);		/* max ready/busy wait */
+		ct->readywait = ttiming(pp, i);		/* max ready/busy wait */
 	i = (c>>5)&0x7;
 	if(i != 7)
-		pp->otherwait = ttiming(pp, i);		/* reserved wait */
+		ct->otherwait = ttiming(pp, i);		/* reserved wait */
 }
 
 void
-iospaces(Slot *pp)
+iospaces(Slot *pp, Conftab *ct)
 {
 	uchar c;
 	int i;
-	ulong address, len;
+	ulong len;
 
 	if(readc(pp, &c) != 1)
 		return;
 
-	pp->nioregs = 1<<(c&0x1f);
-	pp->bit16 = ((c>>5)&3) >= 2;
+	ct->nioregs = 1<<(c&0x1f);
+	ct->bit16 = ((c>>5)&3) >= 2;
 	if((c & 0x80) == 0)
 		return;
 
@@ -1098,23 +1124,23 @@ iospaces(Slot *pp)
 		return;
 
 	for(i = (c&0xf)+1; i; i--){
-		address = getlong(pp, (c>>4)&0x3);
+		ct->port = getlong(pp, (c>>4)&0x3);
 		len = getlong(pp, (c>>6)&0x3);
-		USED(address, len);
+		USED(len);
 	}
 }
 
 static void
-irq(Slot *pp)
+irq(Slot *pp, Conftab *ct)
 {
 	uchar c;
 
 	if(readc(pp, &c) != 1)
 		return;
 	if(c & 0x10)
-		pp->irqs = getlong(pp, 2);
+		ct->irqs = getlong(pp, 2);
 	else
-		pp->irqs = 1<<(c&0xf);
+		ct->irqs = 1<<(c&0xf);
 }
 
 static void
@@ -1135,42 +1161,58 @@ void
 tentry(Slot *pp, int ttype)
 {
 	uchar c, i, feature;
+	Conftab *ct;
 
 	USED(ttype);
+
+	if(pp->nctab >= Maxctab)
+		return;
 	if(readc(pp, &c) != 1)
 		return;
-	if(c&0x40)
-		pp->def = 1;
+	ct = &pp->ctab[pp->nctab++];
+
+	/* copy from last default config */
+	if(pp->def)
+		*ct = *pp->def;
+
+	ct->index = c & 0x3f;
+
+	/* is this the new default? */
+	if(c & 0x40)
+		pp->def = ct;
+
+	/* memory wait specified? */
 	if(c & 0x80){
 		if(readc(pp, &i) != 1)
 			return;
 		if(i&0x80)
-			pp->memwait = 1;
+			ct->memwait = 1;
 	}
+
 	if(readc(pp, &feature) != 1)
 		return;
 	switch(feature&0x3){
 	case 1:
-		pp->vpp1 = pp->vpp2 = power(pp);
+		ct->vpp1 = ct->vpp2 = power(pp);
 		break;
 	case 2:
 		power(pp);
-		pp->vpp1 = pp->vpp2 = power(pp);
+		ct->vpp1 = ct->vpp2 = power(pp);
 		break;
 	case 3:
 		power(pp);
-		pp->vpp1 = power(pp);
-		pp->vpp2 = power(pp);
+		ct->vpp1 = power(pp);
+		ct->vpp2 = power(pp);
 		break;
 	default:
 		break;
 	}
 	if(feature&0x4)
-		timing(pp);
+		timing(pp, ct);
 	if(feature&0x8)
-		iospaces(pp);
+		iospaces(pp, ct);
 	if(feature&0x10)
-		irq(pp);
+		irq(pp, ct);
 	switch(feature&0x3){
 	case 1:
 		memspace(pp, 0, 2, 0);
