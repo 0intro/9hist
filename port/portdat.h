@@ -32,7 +32,6 @@ typedef struct Rendez	Rendez;
 typedef struct Rgrp	Rgrp;
 typedef struct RWlock	RWlock;
 typedef struct Sargs	Sargs;
-typedef struct Schedq	Schedq;
 typedef struct Segment	Segment;
 typedef struct Session	Session;
 typedef struct Talarm	Talarm;
@@ -501,9 +500,9 @@ enum
 	NERR = 15,
 	NNOTE = 5,
 
-	Nrq		= 20,
-	PriNormal	= 10,
-	PriRoot		= 5,
+	Nrq		= 20,	/* number of scheduler priority levels */
+	PriNormal	= 10,	/* base priority for normal processes */
+	PriRoot		= 5,	/* base priority for root processes */
 };
 
 struct Proc
@@ -597,14 +596,6 @@ struct Proc
 	 *  machine specific MMU
 	 */
 	PMMU;
-};
-
-struct Schedq
-{
-	Lock;
-	Proc	*head;
-	Proc	*tail;
-	int	n;
 };
 
 enum

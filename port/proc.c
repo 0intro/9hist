@@ -21,6 +21,13 @@ struct
 	Waitq	*free;
 }waitqalloc;
 
+typedef struct
+{
+	Lock;
+	Proc	*head;
+	Proc	*tail;
+	int	n;
+} Schedq;
 
 int	nrdy;
 int	lastreadied;

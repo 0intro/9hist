@@ -123,7 +123,7 @@ loop:
 		/* don't swap out programs from devroot.c - they
 		 * supply important system services
 		 */
-		img = p->seg[SG_TEXT]->image;
+		img = p->seg[TSEG]->image;
 		if(img && devchar[img->c->type] == '/')
 			continue;
 

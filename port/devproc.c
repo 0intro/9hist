@@ -737,10 +737,10 @@ procctlreq(Proc *p, char *va, int n)
 	else
 	if(strncmp(buf, "pri", 3) == 0){
 		if(n < 4)
-			error(Ebadarg);
+			error(Ebadctl);
 		i = atoi(buf+4);
 		if(i < 0 || i >= Nrq)
-			error(Ebadarg);
+			error(Ebadctl);
 		p->basepri = i;
 	}
 	else
