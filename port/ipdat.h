@@ -422,6 +422,7 @@ enum {
 	/* Protocol port numbers */
 	PORTALLOC	= 5000,			/* First automatic allocated port */
 	PRIVPORTALLOC	= 600,			/* First priveleged port allocated */
+	UNPRIVPORTALLOC	= 1024,			/* First unpriveleged port allocated */
 	PORTMAX		= 30000,		/* Last port to allocte */
 };
 

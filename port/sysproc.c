@@ -32,7 +32,7 @@ sysrfork(ulong *arg)
 	 */
 	int lastvar;	
 
-		flag = arg[0];
+	flag = arg[0];
 	p = u->p;
 	if((flag&RFPROC) == 0) {
 		if(flag & (RFNAMEG|RFCNAMEG)) {
@@ -345,7 +345,9 @@ sysexec(ulong *arg)
 	memmove(p->text, elem, NAMELEN);
 
 	/*
-	 * Committed.  Free old memory. Special segments are maintained accross exec
+	 * Committed.
+	 * Free old memory.
+	 * Special segments are maintained accross exec
 	 */
 	for(i = SSEG; i <= BSEG; i++) {
 		putseg(p->seg[i]);
@@ -616,6 +618,7 @@ syssegfree(ulong *arg)
 
 	mfreeseg(s, from, pages);
 	qunlock(&s->lk);
+	flushmmu();
 
 	return 0;
 }
@@ -643,7 +646,7 @@ sysrendezvous(ulong *arg)
 			*l = p->rendhash;
 			val = p->rendval;
 			p->rendval = arg[1];
-
+			/* Easy race avoidance */
 			while(p->state != Rendezvous)
 				;
 			ready(p);

@@ -1063,7 +1063,7 @@ nextport(Ipifc *ifc, int priv)
 
 	if(priv){
 		base = PRIVPORTALLOC;
-		max = PORTALLOC;
+		max = UNPRIVPORTALLOC;
 		p = &lastport[1];
 	} else {
 		base = PORTALLOC;

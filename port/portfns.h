@@ -254,6 +254,7 @@ void		naildownstream(Stream*);
 void		swapinit(void);
 long		syscall(Ureg*);
 void		tsleep(Rendez*, int (*)(void*), void*, int);
+void		unbreak(Proc*);
 void		uncachepage(Page*);
 long		unicode(uchar*);
 long		unionread(Chan*, void*, long);

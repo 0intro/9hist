@@ -335,6 +335,7 @@ ibrk(ulong addr, int seg)
 	if(newtop < s->top) {
 		mfreeseg(s, newtop, (s->top-newtop)/BY2PG);
 		qunlock(&s->lk);
+		flushmmu();
 		return 0;
 	}
 
@@ -371,24 +372,24 @@ mfreeseg(Segment *s, ulong start, int pages)
 
 	for(i = soff/PTEMAPMEM; i < SEGMAPSIZE; i++) {
 		if(pages <= 0) 
-			goto done;
-		if(s->map[i]) {
-			while(j < PTEPERTAB) {
-				if(pg = s->map[i]->pages[j]) {
-					putpage(pg);
-					s->map[i]->pages[j] = 0;	
-				}
-				if(--pages == 0)
-					goto done;
-				j++;
-			}
-		}
-		else
+			break;
+		if(s->map[i] == 0) {
 			pages -= PTEPERTAB-j;
+			j = 0;
+			continue;
+		}
+		while(j < PTEPERTAB) {
+			pg = s->map[i]->pages[j];
+			if(pg) {
+				putpage(pg);
+				s->map[i]->pages[j] = 0;	
+			}
+			if(--pages == 0)
+				return;
+			j++;
+		}
 		j = 0;
 	}
-done:
-	flushmmu();
 }
 
 ulong
@@ -407,8 +408,7 @@ segattach(Proc *p, ulong attr, char *name, ulong va, ulong len)
 	vmemchr(name, 0, ~0);
 
 	for(sno = 0; sno < NSEG; sno++)
-		if(u->p->seg[sno] == 0)
-		if(sno != ESEG)
+		if(u->p->seg[sno] == 0 && sno != ESEG)
 			break;
 
 	if(sno == NSEG)

@@ -571,11 +571,16 @@ procctlreq(Proc *p, char *va, int n)
 	if(strncmp(buf, "stop", 4) == 0)
 		procstopwait(p, Proc_stopme);
 	else if(strncmp(buf, "kill", 4) == 0) {
-		if(p->state == Broken)
+		switch(p->state) {
+		case Broken:
+			unbreak(p);
+			break;
+		case Stopped:
+			postnote(p, 0, "sys: killed", NExit);
+			p->procctl = Proc_exitme;
 			ready(p);
-		else {
-			if(p->state == Stopped)
-				ready(p);
+			break;
+		default:
 			postnote(p, 0, "sys: killed", NExit);
 			p->procctl = Proc_exitme;
 		}
