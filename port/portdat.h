@@ -348,14 +348,9 @@ struct Proc
 	ulong	pc;			/* DEBUG only */
 	int	kp;			/* true if a kernel process */
 	/*
-	 *  MMU goo.  which of the fillowing fields gets used depends on the
-	 *  processor.
+	 *  machine specific MMU goo
 	 */
-	struct {
-		int	pidonmach[MAXMACH];
-		MMU	*mmu;
-		int	nmmuseg;		/* number of segments active in mmu */
-	};
+	PMMU;
 };
 
 struct PTE

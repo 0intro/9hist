@@ -60,7 +60,7 @@ schedinit(void)		/* never returns */
 			ready(p);
 		else if(p->state == Moribund){
 			p->pid = 0;
-			memset(p->pidonmach, 0, sizeof p->pidonmach);
+			mmurelease(p);
 			/* procalloc already locked */
 			p->qnext = procalloc.free;
 			procalloc.free = p;
@@ -194,7 +194,6 @@ loop:
 		p->pgrp = 0;
 		p->fpstate = FPinit;
 		p->kp = 0;
-		memset(p->pidonmach, 0, sizeof p->pidonmach);
 		memset(p->seg, 0, sizeof p->seg);
 		lock(&pidalloc);
 		p->pid = ++pidalloc.pid;

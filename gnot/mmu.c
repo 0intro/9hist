@@ -54,6 +54,12 @@ mapstack(Proc *p)
 }
 
 void
+mmurelease(Proc *p)
+{
+	USED(p);
+}
+
+void
 putkmmu(ulong tlbvirt, ulong tlbphys)
 {
 	if(!(tlbvirt&KZERO))

@@ -1011,9 +1011,6 @@ stputq(Queue *q, Block *bp)
 		wakeup(q->other->rp);
 		delim = 1;
 	} else {
-		if(BLEN(bp) == 1 && *(bp->rptr) == 1)
-			print("stputq u->p->pid %d %s\n", u->p->pid, u->p->text);
-
 		lock(q);
 		if(q->first)
 			q->last->next = bp;

@@ -50,6 +50,12 @@ mapstack(Proc *p)
 	u = (User*)USERADDR;
 }
 
+void
+mmurelease(Proc *p)
+{
+	memset(p->pidonmach, 0, sizeof p->pidonmach);
+}
+
 /*
  * Process must be non-interruptible
  */

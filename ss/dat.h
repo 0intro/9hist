@@ -6,7 +6,7 @@ typedef struct Lance	Lance;
 typedef struct Lancemem	Lancemem;
 typedef struct Label	Label;
 typedef struct Lock	Lock;
-typedef struct MMU	MMU;
+typedef struct PMMU	PMMU;
 typedef struct Mach	Mach;
 typedef struct Ureg	Ureg;
 typedef struct User	User;
@@ -93,6 +93,15 @@ struct Conf
 	int	nfsyschan;	/* number of filsys open channels */
 	ulong	maxialloc;	/* maximum bytes used by ialloc */
 	int	copymode;	/* 0 is copy on write, 1 is copy on reference */
+};
+
+/*
+ *  mmu goo in the Proc structure
+ */
+struct PMMU
+{
+	int	pidonmach[MAXMACH];
+	int	nmmuseg;	/* number of segments active in mmu */
 };
 
 #include "../port/portdat.h"

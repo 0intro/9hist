@@ -7,6 +7,7 @@ typedef struct Lock	Lock;
 typedef struct MMU	MMU;
 typedef struct MMUCache	MMUCache;
 typedef struct Mach	Mach;
+typedef struct PMMU	PMMU;
 typedef struct Portpage	Portpage;
 typedef struct Scsi	Scsi;
 typedef struct Scsidata	Scsidata;
@@ -56,17 +57,12 @@ struct Label
 	ushort	sr;
 };
 
-struct MMU
+/*
+ *  MMU info included in the Proc structure
+ */
+struct PMMU
 {
-	ulong	va;
-	ulong	pa;
-};
-
-#define NMMU 16
-struct MMUCache
-{
-	ulong	next;
-	MMU	mmu[NMMU];
+	int	pmmu_dummy;
 };
 
 struct Conf
@@ -144,6 +140,19 @@ struct Mach
 	int	stack[1];
 };
 
+struct MMU
+{
+	ulong	va;
+	ulong	pa;
+};
+
+#define NMMU 16
+struct MMUCache
+{
+	ulong	next;
+	MMU	mmu[NMMU];
+};
+
 /*
  *  gnot bus ports
  */
@@ -214,7 +223,8 @@ struct User
 	ushort	svsr;
 	ushort	svvo;
 	/*
-	 *  machine dependent User stuff
+	 *  mmu cache for preloading MMU.
+	 *  should be replaced by software TLB? -- presotto
 	 */
 	MMUCache mc;
 };

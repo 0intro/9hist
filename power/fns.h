@@ -1,8 +1,6 @@
 #include "../port/portfns.h"
 
 void	arginit(void);
-int	blen(Block *);
-int	bround(Block *, int);
 void	clearmmucache(void);
 void	clockinit(void);
 ulong	confeval(char*);
@@ -48,7 +46,6 @@ void	prflush(void);
 #define procsetup(p)	((p)->fpstate = FPinit)
 #define procsave(x,y)
 #define procrestore(x,y)
-Block*	pullup(Block *, int);
 void	purgetlb(int);
 void	putstlb(ulong, ulong);
 void	putstrn(char*, long);

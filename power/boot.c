@@ -451,17 +451,7 @@ boot(int ask)
 	if(ask){
 		execl("/mips/init", "init", "-m", 0);
 	} else {
-		switch(fork()){
-		case -1:
-			print("can't start connection server\n");
-			break;
-		case 0:
-			execl("/mips/init", "init", "-d", "/bin/cs", 0);
-			error("/mips/bin/cs");
-			break;
-		default:
-			execl("/mips/init", "init", 0);
-		}
+		execl("/mips/init", "init", 0);
 	}
 	error("/mips/init");
 }

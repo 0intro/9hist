@@ -8,6 +8,7 @@ typedef struct Label	Label;
 typedef struct Lock	Lock;
 typedef struct Mach	Mach;
 typedef struct MMU	MMU;
+typedef struct PMMU	PMMU;
 typedef struct Softtlb	Softtlb;
 typedef struct Ureg	Ureg;
 typedef struct User	User;
@@ -87,6 +88,14 @@ struct	FPsave
 {
 	long	fpreg[32];
 	long	fpstatus;
+};
+
+/*
+ *  mmu goo in the Proc structure
+ */
+struct PMMU
+{
+	int	pidonmach[MAXMACH];
 };
 
 #include "../port/portdat.h"
