@@ -427,25 +427,14 @@ amd79c970adapter(Block** bpp, int port, int irq, int tbdf)
 	*bpp = bp;
 }
 
-static int
-amd79c90(Ether* ether)
+static void
+amd79c970pci(void)
 {
-	static Pcidev *p;
-	int irq, port;
+	Pcidev *p;
 
-	while(p = pcimatch(p, 0x1022, 0x2000)){
-		port = p->bar[0] & ~0x01;
-		irq = p->intl;
-		if(ether->port == 0 || ether->port == port){
-			ether->irq = irq;
-			ether->tbdf = p->tbdf;
-			return port;
-		}
-
-		amd79c970adapter(&adapter, port, irq, p->tbdf);
-	}
-
-	return 0;
+	p = nil;
+	while(p = pcimatch(p, 0x1022, 0x2000))
+		amd79c970adapter(&adapter, p->mem[0].bar & ~0x01, p->intl, p->tbdf);
 }
 
 static int
@@ -456,11 +445,16 @@ reset(Ether* ether)
 	Adapter *ap;
 	uchar ea[Eaddrlen];
 	Ctlr *ctlr;
+	static int scandone;
+
+	if(scandone == 0){
+		amd79c970pci();
+		scandone = 1;
+	}
 
 	/*
-	 * Any adapter matches if no ether->port is supplied, otherwise the
-	 * ports must match. First see if an adapter that fits the bill has
-	 * already been found. If not, scan for another.
+	 * Any adapter matches if no port is supplied,
+	 * otherwise the ports must match.
 	 */
 	port = 0;
 	bpp = &adapter;
@@ -476,7 +470,7 @@ reset(Ether* ether)
 		}
 		bpp = &bp->next;
 	}
-	if(port == 0 && (port = amd79c90(ether)) == 0)
+	if(port == 0)
 		return -1;
 
 	/*

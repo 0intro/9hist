@@ -57,6 +57,8 @@ void	mathinit(void);
 #define mmuflushtlb(pdb) putcr3(pdb)
 void	meminit(ulong);
 void	mmuinit(void);
+ulong	mmukmap(ulong, ulong, int);
+int	mmukmapsync(ulong);
 #define	mmunewpage(x)
 ulong*	mmuwalk(ulong*, ulong, int);
 void	ns16552install(void);
@@ -69,12 +71,14 @@ void	outs(int, ushort);
 void	outss(int, void*, int);
 void	outl(int, ulong);
 void	outsl(int, void*, int);
+ulong	pcibarsize(Pcidev*, int);
 int	pcicfgr8(Pcidev*, int);
 int	pcicfgr16(Pcidev*, int);
 int	pcicfgr32(Pcidev*, int);
 void	pcicfgw8(Pcidev*, int, int);
 void	pcicfgw16(Pcidev*, int, int);
 void	pcicfgw32(Pcidev*, int, int);
+void	pcihinv(Pcidev*);
 Pcidev* pcimatch(Pcidev*, int, int);
 void	pcireset(void);
 PCMmap*	pcmmap(int, ulong, int, int);

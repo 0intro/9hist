@@ -131,11 +131,20 @@ typedef struct Pcidev {
 	int	tbdf;			/* type+bus+device+function */
 	ushort	vid;			/* vendor ID */
 	ushort	did;			/* device ID */
-	ulong	bar[2];			/* base address */
-	uchar	intl;			/* interrupt line */
 
-	Pcidev*	next;			/* next device on this bno */
-} Pcidev;
+	struct {
+		ulong	bar;		/* base address */
+		int	size;
+	} mem[3];
+
+	uchar	intl;			/* interrupt line */
+	ushort	ccru;
+
+
+	Pcidev*	list;
+	Pcidev*	bridge;			/* down a bus */
+	Pcidev*	link;			/* next device on this bno */
+};
 
 /*
  * PCMCIA support code.

@@ -23,8 +23,6 @@ Segdesc gdt[6] =
 #define PDX(va)		((((ulong)(va))>>22) & 0x03FF)
 #define PTX(va)		((((ulong)(va))>>12) & 0x03FF)
 
-static int ptebits = 0;
-
 static void
 taskswitch(ulong pagetbl, ulong stack)
 {
@@ -71,23 +69,6 @@ mmuinit(void)
 	ltr(TSSSEL);
 }
 
-ulong*
-mmuwalk(ulong *pdb, ulong va, int create)
-{
-	ulong *table, x;
-
-	table = &pdb[PDX(va)];
-	if(*table == 0){
-		if(create == 0)
-			return 0;
-		x = PADDR((ulong)xspanalloc(BY2PG, BY2PG, 0));
-		*table = x|ptebits|PTEWRITE|PTEVALID;
-	}
-	table = (ulong*)(KZERO|PPN(*table));
-	va = PTX(va);
-	return &table[va];
-}
-
 void
 flushmmu(void)
 {
@@ -100,7 +81,7 @@ flushmmu(void)
 }
 
 static void
-mmuptefree(Proc *p)
+mmuptefree(Proc* p)
 {
 	ulong *pdb;
 	Page **lpg, *pg;
@@ -119,7 +100,7 @@ mmuptefree(Proc *p)
 }
 
 void
-mmuswitch(Proc *p)
+mmuswitch(Proc* p)
 {
 	ulong *top;
 
@@ -138,7 +119,7 @@ mmuswitch(Proc *p)
 }
 
 void
-mmurelease(Proc *p)
+mmurelease(Proc* p)
 {
 	Page *pg, *next;
 
@@ -216,7 +197,7 @@ mmupdballoc(void)
 }
 
 void
-putmmu(ulong va, ulong pa, Page *pg)
+putmmu(ulong va, ulong pa, Page* pg)
 {
 	int pdbx;
 	ulong *pdb, *pt;
@@ -237,17 +218,107 @@ putmmu(ulong va, ulong pa, Page *pg)
 			up->mmufree = pg->next;
 			memset((void*)pg->va, 0, BY2PG);
 		}
-		pdb[pdbx] = PPN(pg->pa)|ptebits|PTEUSER|PTEWRITE|PTEVALID;
+		pdb[pdbx] = PPN(pg->pa)|PTEUSER|PTEWRITE|PTEVALID;
 		pg->daddr = pdbx;
 		pg->next = up->mmuused;
 		up->mmuused = pg;
 	}
 
 	pt = (ulong*)(PPN(pdb[pdbx])|KZERO);
-	pt[PTX(va)] = pa|ptebits|PTEUSER;
+	pt[PTX(va)] = pa|PTEUSER;
 
 	s = splhi();
 	pdb[PDX(MACHADDR)] = ((ulong*)m->pdb)[PDX(MACHADDR)];
-	putcr3(up->mmupdb->pa);
+	mmuflushtlb(up->mmupdb->pa);
 	splx(s);
+}
+
+ulong*
+mmuwalk(ulong* pdb, ulong va, int create)
+{
+	ulong pa, *table;
+
+	table = &pdb[PDX(va)];
+	if(*table == 0){
+		if(create == 0)
+			return 0;
+		pa = PADDR((ulong)xspanalloc(BY2PG, BY2PG, 0));
+		*table = pa|PTEWRITE|PTEVALID;
+	}
+	if(*table & PTESIZE)
+		return table;
+
+	table = (ulong*)(KZERO|PPN(*table));
+	va = PTX(va);
+
+	return &table[va];
+}
+
+static Lock mmukmaplock;
+
+int
+mmukmapsync(ulong va)
+{
+	Mach *mach0;
+	ulong entry;
+
+	mach0 = MACHP(0);
+
+	lock(&mmukmaplock);
+
+	if(mmuwalk(mach0->pdb, va, 0) == nil){
+		unlock(&mmukmaplock);
+		return 0;
+	}
+	entry = ((ulong*)mach0->pdb)[PDX(va)];
+
+	if(!(((ulong*)m->pdb)[PDX(va)] & PTEVALID))
+		((ulong*)m->pdb)[PDX(va)] = entry;
+
+	if(up && up->mmupdb){
+		((ulong*)up->mmupdb->va)[PDX(va)] = entry;
+		mmuflushtlb(up->mmupdb->pa);
+	}
+	else
+		mmuflushtlb(PADDR(m->pdb));
+
+	unlock(&mmukmaplock);
+
+	return 1;
+}
+
+ulong
+mmukmap(ulong pa, ulong va, int size)
+{
+	Mach *mach0;
+	ulong ova, pae, *table, pgsz, *pte;
+
+	pa &= ~(BY2PG-1);
+	if(va == 0)
+		va = (ulong)KADDR(pa);
+	va &= ~(BY2PG-1);
+	ova = va;
+
+	pae = pa + size;
+	mach0 = MACHP(0);
+	lock(&mmukmaplock);
+	while(pa < pae){
+		table = &((ulong*)mach0->pdb)[PDX(va)];
+		if((pa % (4*MB)) == 0 && (mach0->cpuiddx & 0x08)){
+			*table = pa|PTESIZE|PTEWRITE|PTEUNCACHED|PTEVALID;
+			pgsz = 4*MB;
+		}
+		else{
+			pte = mmuwalk(mach0->pdb, va, 1);
+			*pte = pa|PTEWRITE|PTEUNCACHED|PTEVALID;
+			pgsz = BY2PG;
+		}
+		pa += pgsz;
+		va += pgsz;
+	}
+	unlock(&mmukmaplock);
+
+	mmukmapsync(ova);
+
+	return pa;
 }

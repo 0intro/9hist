@@ -99,7 +99,7 @@ dumpmembank(void)
 #endif /* notdef */
 
 void
-mapfree(RMap* rmap, ulong addr, int size)
+mapfree(RMap* rmap, ulong addr, ulong size)
 {
 	Map *mp;
 	ulong t;
@@ -256,7 +256,7 @@ ramscan(ulong maxmem)
 	 * the BIOS data area.
 	 */
 	x = PADDR(CPU0MACH+BY2PG);
-	bda = (uchar*)(KZERO|0x400);
+	bda = (uchar*)KADDR(0x400);
 	mapfree(&rmapram, x, ((bda[0x14]<<8)|bda[0x13])*KB-x);
 
 	x = PADDR(PGROUND((ulong)end));
@@ -290,7 +290,7 @@ ramscan(ulong maxmem)
 	 * be written and read correctly. The page tables are created here
 	 * on the fly, allocating from low memory as necessary.
 	 */
-	k0 = (ulong*)KZERO;
+	k0 = (ulong*)KADDR(0);
 	kzero = *k0;
 	map = 0;
 	x = 0x12345678;
@@ -383,46 +383,10 @@ ramscan(ulong maxmem)
 		mapfree(&rmapram, map, BY2PG);
 	if(pa < maxmem)
 		mapfree(&rmapupa, pa, maxmem-pa);
+	if(maxmem < 0xFEC00000)
+		mapfree(&rmapupa, maxmem, 0xFEC00000-maxmem);
 	*k0 = kzero;
 }
-
-static void
-upainit(void)
-{
-	ulong addr, pa, pae, *table, *va, x;
-
-	/*
-	 * Allocate an 8MB chunk aligned to 16MB. Later can
-	 * make the region selectable via conf if necessary.
-	 */
-	if((addr = mapalloc(&rmapupa, 0, 8*MB, 16*MB)) == 0)
-		return;
-
-	pa = addr;
-	pae = pa+(8*MB);
-	while(pa < pae){
-		va = KADDR(pa);
-		table = &((ulong*)m->pdb)[PDX(va)];
-		if((pa % (4*MB)) == 0 && (m->cpuiddx & 0x08)){
-			*table = pa|PTESIZE|PTEWRITE|PTEUNCACHED|PTEVALID;
-			pa += (4*MB);
-		}
-		else{
-			if(*table == 0){
-				if((x = mapalloc(&rmapram, 0, BY2PG, BY2PG)) == 0)
-					break;
-				memset(KADDR(x), 0, BY2PG);
-				*table = x|PTEWRITE|PTEVALID;
-			}
-			table = (ulong*)(KZERO|PPN(*table));
-			table[PTX(va)] = pa|PTEWRITE|PTEUNCACHED|PTEVALID;
-			pa += BY2PG;
-		}
-	}
-
-	mapfree(&xrmapupa, addr, pa-addr);
-}
-
 
 void
 meminit(ulong maxmem)
@@ -448,7 +412,6 @@ meminit(ulong maxmem)
 
 	umbscan();
 	ramscan(maxmem);
-	upainit();
 
 	/*
 	 * Set the conf entries describing two banks of allocatable memory.
@@ -477,7 +440,7 @@ umbmalloc(ulong addr, int size, int align)
 	ulong a;
 
 	if(a = mapalloc(&rmapumb, addr, size, align))
-		return KZERO|a;
+		return (ulong)KADDR(a);
 
 	return 0;
 }
@@ -485,7 +448,7 @@ umbmalloc(ulong addr, int size, int align)
 void
 umbfree(ulong addr, int size)
 {
-	mapfree(&rmapumb, addr & ~KZERO, size);
+	mapfree(&rmapumb, PADDR(addr), size);
 }
 
 ulong
@@ -495,7 +458,7 @@ umbrwmalloc(ulong addr, int size, int align)
 	uchar *p;
 
 	if(a = mapalloc(&rmapumbrw, addr, size, align))
-		return KZERO|a;
+		return(ulong)KADDR(a);
 
 	/*
 	 * Perhaps the memory wasn't visible before
@@ -516,22 +479,36 @@ umbrwmalloc(ulong addr, int size, int align)
 void
 umbrwfree(ulong addr, int size)
 {
-	mapfree(&rmapumbrw, addr & ~KZERO, size);
+	mapfree(&rmapumbrw, PADDR(addr), size);
 }
 
 ulong
 upamalloc(ulong addr, int size, int align)
 {
-	ulong a;
+	ulong a, ae;
 
 	if(a = mapalloc(&xrmapupa, addr, size, align))
-		return KZERO|a;
+		return (ulong)KADDR(a);
 
-	return 0;
+	if((a = mapalloc(&rmapupa, addr, size, align)) == 0)
+		return 0;
+
+	ae = mmukmap(a, 0, size);
+
+	/*
+	 * Should check here that it was all delivered
+	 * and put it back and barf if not.
+	 */
+	USED(ae);
+
+	/*
+	 * Be very careful this returns a PHYSICAL address.
+	 */
+	return a;
 }
 
 void
 upafree(ulong addr, int size)
 {
-	mapfree(&xrmapupa, addr & ~KZERO, size);
+	mapfree(&xrmapupa, addr, size);
 }

@@ -1335,7 +1335,7 @@ tcm59Xpci(void)
 
 	p = nil;
 	while(p = pcimatch(p, 0x10B7, 0)){
-		port = p->bar[0] & ~0x01;
+		port = p->mem[0].bar & ~0x01;
 		irq = p->intl;
 		COMMAND(port, GlobalReset, 0);
 		while(STATUS(port) & commandInProgress)

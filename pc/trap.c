@@ -295,8 +295,10 @@ fault386(Ureg* ureg, void*)
 			postnote(up, 1, buf, NDebug);
 			return;
 		}
-		dumpregs(ureg);
-		panic("fault: 0x%lux\n", addr);
+		if(mmukmapsync(addr) == 0){	
+			dumpregs(ureg);
+			panic("fault: 0x%lux\n", addr);
+		}
 	}
 	up->insyscall = insyscall;
 }

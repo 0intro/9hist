@@ -354,9 +354,16 @@ vgactl(char *arg)
 		if(mem == 0)
 			error("not enough free address space");
 
+		/*
+		 * Be very careful here, upamalloc now returns a
+		 * PHYSICAL address. This won't work once devices
+		 * start mapping PCI framebuffers at the address
+		 * the BIOS sets, but that hopefully will be after
+		 * conversion to the Draw kernel.
+		 */
 		if(screenmem != SCREENMEM)
 			upafree(screenmem, footprint);
-		screenmem = mem;
+		screenmem = (ulong)KADDR(mem);
 		gscreen.base = (void*)screenmem;
 		footprint = size;
 		for(n = 0; n < 31; n++)

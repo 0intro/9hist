@@ -28,6 +28,7 @@ static Lock pcicfginitlock;
 static int pcicfgmode = -1;
 static int pcimaxdno;
 static Pcidev* pciroot;
+static Pcidev* pcilist;
 
 static int pcicfgrw8(int, int, int, int);
 static int pcicfgrw16(int, int, int, int);
@@ -36,11 +37,13 @@ static int pcicfgrw32(int, int, int, int);
 static int
 pciscan(int bno, Pcidev** list)
 {
+	ulong v;
 	Pcidev *p, *head, *tail;
-	int dno, fno, l, maxfno, maxubn, sbn, tbdf, ubn;
+	int dno, fno, i, l, maxfno, maxubn, rno, sbn, tbdf, ubn;
 
 	maxubn = bno;
-	head = tail = 0;
+	head = nil;
+	tail = nil;
 	for(dno = 0; dno <= pcimaxdno; dno++){
 		maxfno = 0;
 		for(fno = 0; fno <= maxfno; fno++){
@@ -59,29 +62,29 @@ pciscan(int bno, Pcidev** list)
 			p->tbdf = tbdf;
 			p->vid = l;
 			p->did = l>>16;
-			p->bar[0] = pcicfgrw32(tbdf, PciBAR0, 0, 1);
-			p->bar[1] = pcicfgrw32(tbdf, PciBAR1, 0, 1);
-			p->intl = pcicfgrw8(tbdf, PciINTL, 0, 1);
+			p->list = pcilist;
+			pcilist = p;
 
-			/*
-			 * Read the base and sub- class and if the device is
-			 * a bridge put it on a list of buses to be descended
-			 * later.
-			 * If it's not a bridge just add it to the tail of the
-			 * device list.
-			 */
-			l = pcicfgrw16(tbdf, PciCCRu, 0, 1);
-			if(l == ((0x06<<8)|0x04)){
-				if(head)
-					tail->next = p;
-				else
-					head = p;
-				tail = p;
+			p->intl = pcicfgrw8(tbdf, PciINTL, 0, 1);
+			p->ccru = pcicfgrw16(tbdf, PciCCRu, 0, 1);
+
+			rno = PciBAR0 - 4;
+			for(i = 0; i < nelem(p->mem); i++) {
+				rno += 4;
+				p->mem[i].bar = pcicfgrw32(tbdf, rno, 0, 1);
+				if(i > 0 && p->ccru == ((0x06<<8)|0x04))
+					continue;
+				pcicfgrw32(tbdf, rno, -1, 0);
+				v = pcicfgrw32(tbdf, rno, 0, 1);
+				pcicfgrw32(tbdf, rno, p->mem[i].bar, 0);
+				p->mem[i].size = -(v & ~0xF);
 			}
-			else{
-				*list = p;
-				list = &p->next;
-			}
+
+			if(head != nil)
+				tail->link = p;
+			else
+				head = p;
+			tail = p;
 
 			/*
 			 * If the device is a multi-function device adjust the
@@ -93,20 +96,25 @@ pciscan(int bno, Pcidev** list)
 		}
 	}
 
-	/*
-	 * If any bridges were found, recursively descend the tree.
-	 * The end result will be a single list of all devices in ascending
-	 * bus number order.
-	 */
-	for(p = head; p; p = head){
+	*list = head;
+	for(p = head; p != nil; p = p->link){
 		/*
-		 * Take the primary bridge device off the bridge list
-		 * and link to the end of the final device list.
+		 * Find bridges and recursively descend the tree.
+		 * Special case the Intel 82454GX Host-to-PCI bridge,
+		 * there can be two of them.
+		 * Otherwise, only descend PCI-to-PCI bridges.
 		 */
-		head = p->next;
-		p->next = 0;
-		*list = p;
-		list = &p->next;
+		if(p->ccru == ((0x06<<8)|0) && p->vid == 0x8086 && p->did == 0x84C4){
+			tbdf = p->tbdf;
+			if((sbn = pcicfgrw8(tbdf, 0x4A, 0, 1)) == 0)
+				continue;
+			ubn = pcicfgrw8(tbdf, 0x4B, 0, 1);
+			maxubn = ubn;
+			pciscan(sbn, &p->bridge);
+			continue;
+		}
+		if(p->ccru != ((0x06<<8)|0x04))
+			continue;
 
 		/*
 		 * If the secondary or subordinate bus number is not initialised
@@ -133,13 +141,13 @@ pciscan(int bno, Pcidev** list)
 			l = (MaxUBN<<16)|(sbn<<8)|bno;
 			pcicfgrw32(tbdf, PciPBN, l, 0);
 			pcicfgrw16(tbdf, PciSPSR, 0xFFFF, 0);
-			maxubn = pciscan(sbn, list);
+			maxubn = pciscan(sbn, &p->bridge);
 			l = (maxubn<<16)|(sbn<<8)|bno;
 			pcicfgrw32(tbdf, PciPBN, l, 0);
 		}
 		else{
 			maxubn = ubn;
-			pciscan(sbn, list);
+			pciscan(sbn, &p->bridge);
 		}
 	}
 
@@ -348,27 +356,36 @@ pcicfgw32(Pcidev* pcidev, int rno, int data)
 	pcicfgrw32(pcidev->tbdf, rno, data, 0);
 }
 
-Pcidev*
-pcimatch(Pcidev* previous, int vid, int did)
+ulong
+pcibarsize(Pcidev* p, int rno)
 {
-	Pcidev *p;
+	ulong v, size;
 
+	v = pcicfgrw32(p->tbdf, rno, 0, 1);
+	pcicfgrw32(p->tbdf, rno, 0xFFFFFFF0, 0);
+	size = pcicfgrw32(p->tbdf, rno, 0, 1);
+	pcicfgrw32(p->tbdf, rno, v, 0);
+
+	return -(size & ~0x0F);
+}
+
+Pcidev*
+pcimatch(Pcidev* prev, int vid, int did)
+{
 	if(pcicfgmode == -1)
 		pcicfginit();
 
-	if(previous == 0)
-		previous = pciroot;
+	if(prev == nil)
+		prev = pcilist;
 	else
-		previous = previous->next;
+		prev = prev->list;
 
-	for(p = previous; p; p = p->next) {
-		if(p->vid != vid)
-			continue;
-		if(did == 0 || p->did == did)
+	while(prev != nil) {
+		if(prev->vid == vid && (did == 0 || prev->did == did))
 			break;
+		prev = prev->list;
 	}
-
-	return p;
+	return prev;
 }
 
 void
@@ -380,9 +397,39 @@ pcireset(void)
 	if(pcicfgmode == -1)
 		pcicfginit();
 
-	for(p = pciroot; p; p = p->next){
+	for(p = pcilist; p != nil; p = p->list){
 		pcr = pcicfgr16(p, PciPSR);
 		pcicfgw16(p, PciPSR, pcr & ~0x04);
+	}
+}
+
+void
+pcihinv(Pcidev* p)
+{
+	int i;
+	Pcidev *t;
+
+	if(p == nil) {
+		p = pciroot;
+		print("bus dev type vid  did  memory\n");
+	}
+	for(t = p; t != nil; t = t->link) {
+		print("%d  %2d/%d %.4ux %.4ux %.4ux ",
+			BUSBNO(t->tbdf), BUSDNO(t->tbdf), BUSFNO(t->tbdf),
+			t->ccru, t->vid, t->did);
+
+		for(i = 0; i < nelem(p->mem); i++) {
+			if(t->mem[i].size == 0)
+				continue;
+			print("%d:%.8lux %d ", i,
+				t->mem[i].bar, t->mem[i].size);
+		}
+		print("\n");
+	}
+	while(p != nil) {
+		if(p->bridge != nil)
+			pcihinv(p->bridge);
+		p = p->link;
 	}
 }
 

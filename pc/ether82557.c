@@ -255,12 +255,14 @@ command(Ctlr* ctlr, int c, int v)
 	 * Only back-to-back CUresume can be done
 	 * without waiting for any previous command to complete.
 	 * This should be the common case.
-	 */
+	 * Unfortunately there's a chip errata where back-to-back
+	 * CUresumes can be lost, the fix is to always wait.
 	if(c == CUresume && ctlr->command == CUresume){
 		csr8w(ctlr, CommandR, c);
 		iunlock(&ctlr->rlock);
 		return;
 	}
+	 */
 
 	while(csr8r(ctlr, CommandR))
 		;
@@ -757,7 +759,7 @@ i82557pci(void)
 		 * bar[1] is the I/O port register address (32 bytes) and
 		 * bar[2] is for the flash ROM (1MB).
 		 */
-		i82557adapter(&adapter, p->bar[1] & ~0x01, p->intl, p->tbdf);
+		i82557adapter(&adapter, p->mem[1].bar & ~0x01, p->intl, p->tbdf);
 	}
 }
 
