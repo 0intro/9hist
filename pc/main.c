@@ -81,6 +81,7 @@ main(void)
 	archinit();
 	confinit();
 	xinit();
+	dmainit();
 	trapinit();
 	screeninit();
 	printinit();
