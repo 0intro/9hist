@@ -13,18 +13,22 @@ enum
 	T0cntr=	0x40,		/* counter ports */
 	T1cntr=	0x41,		/* ... */
 	T2cntr=	0x42,		/* ... */
-	Tmode=	0x43,		/* mode port */
+	Tmode=	0x43,		/* mode port (control word register) */
 
 	/* commands */
 	Latch0=	0x00,		/* latch counter 0's value */
+	Load0l=	0x10,		/* load counter 0's lsb */
+	Load0m=	0x20,		/* load counter 0's msb */
 	Load0=	0x30,		/* load counter 0 with 2 bytes */
 
 	/* modes */
-	Square=	0x36,		/* periodic square wave */
-	Trigger= 0x30,		/* interrupt on terminal count */
+	Square=	0x6,		/* periodic square wave */
+	Trigger= 0x0,		/* interrupt on terminal count */
 
 	Freq=	1193182,	/* Real clock frequency */
 };
+
+static Lock	i8253lock;
 
 void
 i8253init(int aalcycles, int havecycleclock)
@@ -124,10 +128,17 @@ i8253init(int aalcycles, int havecycleclock)
 	}
 }
 
+int
+i8253readcnt(void)
+{
+	ilock(&i8253lock);
+	iunlock(&i8253lock);
+}
+
 static void
 clockintr0(Ureg* ureg, void *v)
 {
-	loopbackintr();
+	loopbackintr(ureg);
 	clockintr(ureg, v);
 }
 

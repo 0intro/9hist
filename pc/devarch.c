@@ -587,10 +587,10 @@ cycletimer(uvlong *hz)
 {
 	uvlong tsc;
 
-	rdmsr(0x10, (vlong*)&tsc);
-	m->fastclock = tsc;
 	if(hz != nil)
 		*hz = fasthz;
+	rdmsr(0x10, (vlong*)&tsc);
+	m->fastclock = tsc;
 	return tsc;
 }
 
