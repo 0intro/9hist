@@ -449,10 +449,11 @@ mfreeseg(Segment *s, ulong start, int pages)
 		}
 		while(j < PTEPERTAB) {
 			pg = s->map[i]->pages[j];
-			if(pg)
+			if(pg){
 				s->map[i]->pages[j] = 0;
-			pg->next = list;
-			list = pg;
+				pg->next = list;
+				list = pg;
+			}
 			if(--pages == 0)
 				goto out;
 			j++;
