@@ -66,6 +66,7 @@ static void	addselfcache(Fs *f, Ipifc *ifc, Iplifc *lifc, uchar *a, int type);
 static void	remselfcache(Fs *f, Ipifc *ifc, Iplifc *lifc, uchar *a);
 static char*	ipifcjoinmulti(Ipifc *ifc, char **argv, int argc);
 static char*	ipifcleavemulti(Ipifc *ifc, char **argv, int argc);
+static void	ipifcregisterproxy(Fs*, Ipifc*, uchar*);
 
 /*
  *  link in a new medium
@@ -409,8 +410,10 @@ ipifcadd(Ipifc *ifc, char **argv, int argc)
 
 	addselfcache(f, ifc, lifc, ip, Runi);
 
-	if(type & Rptpt)
+	if(type & Rptpt){
+		ipifcregisterproxy(f, ifc, rem);
 		goto out;
+	}
 
 	/* add subnet directed broadcast addresses to the self cache */
 	for(i = 0; i < IPaddrlen; i++)
@@ -435,6 +438,10 @@ ipifcadd(Ipifc *ifc, char **argv, int argc)
 	addselfcache(f, ifc, lifc, bcast, Rbcast);
 
 	addselfcache(f, ifc, lifc, IPv4bcast, Rbcast);
+
+	/* register the address on this network for address resolution */
+	if(ifc->m->areg != nil)
+		(*ifc->m->areg)(ifc, ip);
 
 out:
 	wunlock(ifc);
@@ -1231,3 +1238,30 @@ ipifcleavemulti(Ipifc *ifc, char **argv, int argc)
 	return nil;
 }
 
+static void
+ipifcregisterproxy(Fs *f, Ipifc *ifc, uchar *ip)
+{
+	Conv **cp, **e;
+	Ipifc *nifc;
+	Iplifc *lifc;
+	uchar net[IPaddrlen];
+
+	/* register the address on any network that will proxy for us */
+	e = &f->ipifc->conv[f->ipifc->nc];
+	for(cp = f->ipifc->conv; cp < e; cp++){
+		if(*cp == nil)
+			continue;
+		nifc = (Ipifc*)(*cp)->ptcl;
+		if(nifc->m->areg == nil)
+			continue;
+		if(nifc == ifc)
+			continue;
+		for(lifc = nifc->lifc; lifc; lifc = lifc->next){
+			maskip(ip, lifc->mask, net);
+			if(ipcmp(net, lifc->remote) == 0){
+				(*nifc->m->areg)(nifc, ip);
+				break;
+			}
+		}
+	}
+}

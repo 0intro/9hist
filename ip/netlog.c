@@ -132,15 +132,10 @@ netlogread(Fs *f, void *a, ulong, long n)
 			f->alog->len -= n;
 			unlock(f->alog);
 
-			i = n;
+			i = n-d;
 			p = a;
-			if(d){
-				memmove(p, rptr, d);
-				i -= d;
-				p += d;
-				rptr = f->alog->buf;
-			}
 			memmove(p, rptr, i);
+			memmove(p+i, f->alog->buf, d);
 			break;
 		}
 		else

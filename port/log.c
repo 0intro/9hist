@@ -82,15 +82,10 @@ logread(Log *alog, void *a, ulong, long n)
 			alog->len -= n;
 			unlock(alog);
 
-			i = n;
+			i = n-d;
 			p = a;
-			if(d){
-				memmove(p, rptr, d);
-				i -= d;
-				p += d;
-				rptr = alog->buf;
-			}
 			memmove(p, rptr, i);
+			memmove(p+i, alog->buf, d);
 			break;
 		}
 		else

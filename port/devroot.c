@@ -7,37 +7,21 @@
 
 enum{
 	Qdir=	0,
-	Qbin,
-	Qdev,
-	Qenv,
-	Qproc,
-	Qnet,
-	Qnetalt,
 	Qrecover,
-	Qroot,		/* boot root */
 
-	// add new entries above this
-	Qboot,		/* readable files */
-
-	Nfiles=13,	/* max root files */
+	Nfiles=32,	/* max root files */
 };
 
 extern ulong	bootlen;
 extern uchar	bootcode[];
 
-Dirtab rootdir[Nfiles]={
-	"bin",		{Qbin|CHDIR},	0,	0777,
-	"dev",		{Qdev|CHDIR},	0,	0777,
-	"env",		{Qenv|CHDIR},	0,	0777,
-	"proc",		{Qproc|CHDIR},	0,	0777,
-	"net",		{Qnet|CHDIR},	0,	0777,
-	"net.alt",	{Qnetalt|CHDIR},	0,	0777,
+Dirtab rootdir[Nfiles]=
+{
 	"recover",	{Qrecover},	0,	0777,
-	"root",		{Qroot|CHDIR},	0,	0777,
 };
 
 static uchar	*rootdata[Nfiles];
-static int	nroot = Qboot - 1;
+static int	nroot = 1;
 static int	recovbusy;
 
 typedef struct Recover Recover;
@@ -59,11 +43,10 @@ struct
 /*
  *  add a root file
  */
-void
-addrootfile(char *name, uchar *contents, ulong len)
+static void
+addroot(char *name, uchar *contents, ulong len, int perm)
 {
 	Dirtab *d;
-
 
 	if(nroot >= Nfiles)
 		panic("too many root files");
@@ -71,9 +54,20 @@ addrootfile(char *name, uchar *contents, ulong len)
 	d = &rootdir[nroot];
 	strcpy(d->name, name);
 	d->length = len;
-	d->perm = 0555;
+	d->perm = perm;
 	d->qid.path = nroot+1;
+	if(perm & CHDIR)
+		d->qid.path |= CHDIR;
 	nroot++;
+}
+
+/*
+ *  add a root file
+ */
+void
+addrootfile(char *name, uchar *contents, ulong len)
+{
+	addroot(name, contents, len, 0555);
 }
 
 /*
@@ -82,22 +76,22 @@ addrootfile(char *name, uchar *contents, ulong len)
 static void
 addrootdir(char *name)
 {
-	Dirtab *d;
-
-	if(nroot >= Nfiles)
-		panic("too many root files");
-	rootdata[nroot] = nil;
-	d = &rootdir[nroot];
-	strcpy(d->name, name);
-	d->length = 0;
-	d->perm = 0;
-	d->qid.path = nroot+1;
-	nroot++;
+	addroot(name, nil, 0, CHDIR);
 }
 
 static void
 rootreset(void)
 {
+	addrootdir("bin");
+	addrootdir("dev");
+	addrootdir("env");
+	addrootdir("proc");
+	addrootdir("net");
+	addrootdir("net.alt");
+	addrootdir("root");
+	addrootdir("srv");
+	addrootdir("xsrv");
+
 	addrootfile("boot", bootcode, bootlen);	/* always have a boot file */
 }
 
@@ -203,9 +197,6 @@ rootread(Chan *c, void *buf, long n, vlong off)
 		return n;
 	}
 
-	if(t < Qboot)
-		return 0;
-
 	d = &rootdir[t-1];
 	data = rootdata[t-1];
 	if(offset >= d->length)
@@ -239,16 +230,12 @@ rootwrite(Chan *c, void *buf, long n, vlong)
 static void
 rootcreate(Chan *c, char *name, int mode, ulong perm)
 {
-	if(!iseve())
-		error(Eperm);
-	if(c->qid.path != (CHDIR|Qdir))
-		error(Eperm);
-	perm &= 0777|CHDIR;
-	if((perm & CHDIR) == 0)
+	if(!iseve() || c->qid.path != (CHDIR|Qdir) ||
+	   (perm & CHDIR) == 0 || mode != OREAD)
 		error(Eperm);
 	addrootdir(name);
 	c->flag |= COPEN;
-	c->mode = mode & ~OWRITE;
+	c->mode = OREAD;
 }
 
 Dev rootdevtab = {

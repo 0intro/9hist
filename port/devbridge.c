@@ -266,7 +266,7 @@ bridgeread(Chan *c, void *a, long n, vlong off)
 	char buf[256];
 	Bridge *b = bridgetab + c->dev;
 	Port *port;
-	int i;
+	int i, ingood, outgood;
 
 	USED(off);
 	switch(TYPE(c->qid)) {
@@ -294,9 +294,11 @@ bridgeread(Chan *c, void *a, long n, vlong off)
 				i += snprint(buf+i, sizeof(buf)-i, "tunnel %I: ", port->addr);
 				break;
 			}
-			i += snprint(buf+i, sizeof(buf)-i, "in=%d/%d/%d out=%d/%d/%d\n",
-				port->in, port->inmulti, port->inunknown,
-				port->out, port->outmulti, port->outunknown);
+			ingood = port->in-port->inmulti-port->inunknown;
+			outgood = port->out-port->outmulti-port->outunknown;
+			i += snprint(buf+i, sizeof(buf)-i, "in=%d(%d:%d:%d) out=%d(%d:%d:%d)\n",
+				port->in, ingood, port->inmulti, port->inunknown,
+				port->out, outgood, port->outmulti, port->outunknown);
 			USED(i);
 		}
 		n = readstr(off, a, n, buf);
@@ -317,7 +319,6 @@ bridgewrite(Chan *c, void *a, long n, vlong off)
 	char *p;
 	
 	USED(off);
-
 	switch(TYPE(c->qid)) {
 	default:
 		error(Eperm);
@@ -482,7 +483,6 @@ portbind(Bridge *b, int argc, char *argv[])
 		portfree(port);
 		nexterror();
 	}
-
 	port->type = type;
 	memmove(port->addr, addr, Addrlen);
 	switch(port->type) {
@@ -822,7 +822,6 @@ etherread(void *a)
 		if(waserror()) {
 			if(bp)
 				freeb(bp);
-print("devbridge: etherread: %r\n");
 			continue;
 		}
 		if(blocklen(bp) < ETHERMINTU)

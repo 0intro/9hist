@@ -124,12 +124,14 @@ arpget(Arp *arp, Block *bp, int version, Medium *type, uchar *ip, uchar *mac)
 	}
 	a->used = msec;
 	if(a->state == AWAIT){
-		if(a->hold)
-			a->last->list = bp;
-		else
-			a->hold = bp;
-		a->last = bp;
-		bp->list = nil; 
+		if(bp != nil){
+			if(a->hold)
+				a->last->list = bp;
+			else
+				a->hold = bp;
+			a->last = bp;
+			bp->list = nil; 
+		}
 		return a;		/* return with arp qlocked */
 	}
 

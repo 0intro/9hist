@@ -21,28 +21,18 @@ static void	tripares(Fs*, int, uchar*, uchar*, int, int);
 
 Medium tripmedium =
 {
-	"trip",
-	0,			/* Header size */
-
-	20,			/* Min TU */
-	64*1024,		/* Max TU */
-
-	LCIMACSIZE,		/* Maximum MAC address length */
-
-	tripbind,
-	tripunbind,
-	tripbwrite,
-	tripaddmulti,
-	tripremmulti,
-	nil,			/* pktin */
-	tripaddroute,
-	tripremroute,
-	nil,			/* flushroutes */
-	nil,			/* joinmulti */
-	nil,			/* leavemulti */
-	tripares,		/* address cache enter */
-
-	0
+.name=		"trip",
+.minmtu=	20,
+.maxmtu=	64*1024,
+.maclen=	LCIMACSIZE,
+.bind=		tripbind,
+.unbind=	tripunbind,
+.bwrite=	tripbwrite,
+.addmulti=	tripaddmulti,
+.remmulti=	tripremmulti,
+.addroute=	tripaddroute,
+.remroute=	tripremroute,
+.ares=		tripares,
 };
 
 typedef struct	Tripinfo Tripinfo;

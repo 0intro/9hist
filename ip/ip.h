@@ -126,7 +126,9 @@ struct Medium
 	void	(*joinmulti)(Ipifc *ifc, uchar *a, uchar *ia);
 	void	(*leavemulti)(Ipifc *ifc, uchar *a, uchar *ia);
 
-	void	(*ares)(Fs*, int, uchar*, uchar*, int, int);
+	/* address resolution */
+	void	(*ares)(Fs*, int, uchar*, uchar*, int, int);	/* resolve */
+	void	(*areg)(Ipifc*, uchar*);			/* register */
 
 	int	unbindonclose;	/* if non-zero, unbind on last close */
 };

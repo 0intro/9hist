@@ -16,24 +16,16 @@ static void	pktin(Fs*, Ipifc *ifc, Block *bp);
 
 Medium pktmedium =
 {
-	"pkt",
-	14,
-	40,
-	4*1024,
-	6,
-	pktbind,
-	pktunbind,
-	pktbwrite,
-	nil,		/* addmulti */
-	nil,		/* remmulti */
-	pktin,
-	nil,		/* addroute */
-	nil,		/* remroute */
-	nil,		/* flushroute */
-	nil,		/* joinmulti */
-	nil,		/* leave multi */
-	nil,		/* ares */
-	1,		/* unbind on last close */
+.name=		"pkt",
+.hsize=		14,
+.minmtu=	40,
+.maxmtu=	4*1024,
+.maclen=	6,
+.bind=		pktbind,
+.unbind=	pktunbind,
+.bwrite=	pktbwrite,
+.pktin=		pktin,
+.unbindonclose=	1,
 };
 
 /*

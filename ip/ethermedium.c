@@ -24,29 +24,24 @@ static void	etheraddmulti(Ipifc *ifc, uchar *a, uchar *ia);
 static void	etherremmulti(Ipifc *ifc, uchar *a, uchar *ia);
 static Block*	multicastarp(Fs *f, Arpent *a, uchar *mac);
 static void	sendarp(Ipifc *ifc, Arpent *a);
+static void	sendgarp(Ipifc *ifc, uchar*);
 static int	multicastea(uchar *ea, uchar *ip);
 static void	recvarpproc(void*);
 
 Medium ethermedium =
 {
-	"ether",
-	14,
-	60,
-	1514,
-	6,
-	etherbind,
-	etherunbind,
-	etherbwrite,
-	etheraddmulti,
-	etherremmulti,
-	nil,			/* pktin */
-	nil,			/* addroute */
-	nil,			/* remroute */
-	nil,			/* flushroute */
-	nil,			/* joinmulti */
-	nil,			/* leavemulti */
-	arpenter,		/* ares */
-	0,			/* don't unbind on last close */
+.name=		"ether",
+.hsize=		14,
+.minmtu=	60,
+.maxmtu=	1514,
+.maclen=	6,
+.bind=		etherbind,
+.unbind=	etherunbind,
+.bwrite=	etherbwrite,
+.addmulti=	etheraddmulti,
+.remmulti=	etherremmulti,
+.ares=		arpenter,
+.areg=		sendgarp,
 };
 
 typedef struct	Etherrock Etherrock;
@@ -373,6 +368,46 @@ sendarp(Ipifc *ifc, Arpent *a)
 		print("arp: send: %r\n");
 }
 
+/*
+ *  send a gratuitous arp to refresh arp caches
+ */
+static void
+sendgarp(Ipifc *ifc, uchar *ip)
+{
+	int n;
+	Block *bp;
+	Etherarp *e;
+	Etherrock *er = ifc->arg;
+
+	/* don't arp for our initial non address */
+	if(ipcmp(ip, IPnoaddr) == 0)
+		return;
+
+	n = sizeof(Etherarp);
+	if(n < ethermedium.minmtu)
+		n = ethermedium.minmtu;
+	bp = allocb(n);
+	memset(bp->rp, 0, n);
+	e = (Etherarp*)bp->rp;
+	memmove(e->tpa, ip+IPv4off, sizeof(e->tpa));
+	memmove(e->spa, ip+IPv4off, sizeof(e->spa));
+	memmove(e->sha, ifc->mac, sizeof(e->sha));
+	memset(e->d, 0xff, sizeof(e->d));		/* ethernet broadcast */
+	memmove(e->s, ifc->mac, sizeof(e->s));
+
+	hnputs(e->type, ETARP);
+	hnputs(e->hrd, 1);
+	hnputs(e->pro, ETIP);
+	e->hln = sizeof(e->sha);
+	e->pln = sizeof(e->spa);
+	hnputs(e->op, ARPREQUEST);
+	bp->wp += n;
+
+	n = devtab[er->achan->type]->bwrite(er->achan, bp, 0);
+	if(n < 0)
+		print("garp: send: %r\n");
+}
+
 static void
 recvarp(Ipifc *ifc)
 {
@@ -404,7 +439,7 @@ recvarp(Ipifc *ifc)
 
 		/* check for someone that think's they're me */
 		v4tov6(ip, e->spa);
-		if(iplocalonifc(ifc, ip)){
+		if(iplocalonifc(ifc, ip) || ipproxyifc(er->f, ifc, ip)){
 			if(memcmp(e->sha, ifc->mac, sizeof(e->sha)) != 0)
 				print("arp: 0x%E also has ip addr %V\n", e->sha, e->spa);
 		} else {
@@ -420,7 +455,7 @@ recvarp(Ipifc *ifc)
 		/* answer only requests for our address or systems we're proxying for */
 		v4tov6(ip, e->tpa);
 		if(!iplocalonifc(ifc, ip))
-		if(ipproxyifc(er->f, ifc, ip) == 0)
+		if(!ipproxyifc(er->f, ifc, ip))
 			break;
 
 /* print("arp: rem %I %E (for %I)\n", e->spa, e->sha, e->tpa); /**/
