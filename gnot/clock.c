@@ -87,13 +87,15 @@ delay(int ms)
 		;
 }
 
+#define NA 10
 void
 clock(Ureg *ur)
 {
-	int i;
+	int i, n;
 	Alarm *a;
 	void (*f)(void*);
 	Proc *p;
+	Alarm *alist[NA];
 
 	SYNCREG[1] = 0x5F;	/* clear interrupt */
 	m->ticks++;
@@ -106,16 +108,22 @@ clock(Ureg *ur)
 		if(m->alarm){
 			a = m->alarm;
 			a->dt--;
-			while(a && a->dt<=0){
-				f = a->f;	/* avoid race with cancel */
-				if(f)
-					(*f)(a);
+			for(n = 0; a && a->dt<=0 && n<NA; n++){
+				alist[n] = a;
 				delete(&m->alarm, 0, a);
-				a->busy = 0;
 				a = m->alarm;
 			}
-		}
-		unlock(&m->alarmlock);
+			unlock(&m->alarmlock);
+
+			/*  execute alarm functions outside the lock */
+			for(i = 0; i < n; i++){
+				f = alist[i]->f;	/* avoid race with cancel */
+				if(f)
+					(*f)(alist[i]);
+				alist[i]->busy = 0;
+			}
+		} else
+			unlock(&m->alarmlock);
 	}
 	kbdclock();
 	mouseclock();

@@ -299,7 +299,6 @@ void
 twakeme(Alarm *a)
 {
 	wakeup((Rendez*)(a->arg));
-	cancel(a);
 }
 
 int

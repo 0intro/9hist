@@ -560,10 +560,14 @@ growpte(Orig *o, ulong n)
 	lock(&ptealloc);
 	lock(o);
 	if(o->pte){
-		if(o->npte == n)
-			panic("growpte pointless");
+		if(o->npte == n){
+			print("growpte pointless\n");
+			goto Return;
+		}
 		p = (PTEA*)(o->pte - 1);
 		if(o->npte > n){
+			print("growpte shrink");
+			goto Return;
 			nfree = o->npte - n;
 			p->n -= nfree;
 			o->npte -= nfree;
@@ -589,9 +593,7 @@ growpte(Orig *o, ulong n)
 			p->n = n;
 			o->npte = n-1;
 		}
-		unlock(o);
-		unlock(&ptealloc);
-		return;
+		goto Return;
 	}
 	n++;
 	compactpte(o, n);
@@ -602,6 +604,7 @@ growpte(Orig *o, ulong n)
 	p->o = o;
 	o->pte = p+1;
 	o->npte = n-1;
+    Return:
 	unlock(o);
 	unlock(&ptealloc);
 }

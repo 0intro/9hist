@@ -135,13 +135,15 @@ clockinit(void)
 	m->ticks = 0;
 }
 
+#define NA 10
 void
 clock(ulong n)
 {
-	int i;
+	int i, na;
 	Alarm *a;
 	void (*f)(void*);
 	Proc *p;
+	Alarm *alist[NA];
 
 	if(n&INTR2){
 		i = *CLRTIM0;
@@ -170,16 +172,22 @@ clock(ulong n)
 			if(m->alarm){
 				a = m->alarm;
 				a->dt--;
-				while(a && a->dt<=0){
-					f = a->f;	/* avoid race with cancel */
-					if(f)
-						(*f)(a);
+				for(na = 0; a && a->dt<=0 && na<NA; na++){
+					alist[na] = a;
 					delete(&m->alarm, 0, a);
-					a->busy = 0;
 					a = m->alarm;
 				}
-			}
-			unlock(&m->alarmlock);
+				unlock(&m->alarmlock);
+	
+				/*  execute alarm functions outside the lock */
+				for(i = 0; i < na; i++){
+					f = alist[i]->f;	/* avoid race with cancel */
+					if(f)
+						(*f)(alist[i]);
+					alist[i]->busy = 0;
+				}
+			} else
+				unlock(&m->alarmlock);
 		}
 		return;
 	}
