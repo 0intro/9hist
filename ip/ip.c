@@ -180,7 +180,16 @@ ipoput(Fs *f, Block *bp, int gating, int ttl, int tos)
 	else
 		gate = r->v4.gate;
 
-	if(!gating){
+	if(gating){
+		switch(eh->ttl){
+		case 0:
+		case 1:
+			goto free;
+		default:
+			eh->ttl--;
+			break;
+		}
+	} else {
 		eh->vihl = IP_VER|IP_HLEN;
 		eh->ttl = ttl;
 		eh->tos = tos;
