@@ -288,6 +288,47 @@ unionread(Chan *c, void *va, long n)
 }
 
 long
+sysread9p(ulong *arg)
+{
+	int dir;
+	long n;
+	Chan *c;
+
+	validaddr(arg[1], arg[2], 1);
+	c = fdtochan(arg[0], OREAD, 1, 1);
+	if(waserror()) {
+		close(c);
+		nexterror();
+	}
+
+	n = arg[2];
+	dir = c->qid.path&CHDIR;
+
+	if(dir) {
+		n -= n%DIRLEN;
+		if(c->offset%DIRLEN || n==0)
+			error(Etoosmall);
+	}
+
+	if(dir && c->mnt)
+		n = unionread(c, (void*)arg[1], n);
+	else if(devchar[c->type] != L'M')
+		n = (*devtab[c->type].read)(c, (void*)arg[1], n, c->offset);
+	else
+		n = mntread9p(c, (void*)arg[1], n, c->offset);
+
+
+	lock(c);
+	c->offset += n;
+	unlock(c);
+
+	poperror();
+	close(c);
+
+	return n;
+}
+
+long
 sysread(ulong *arg)
 {
 	int dir;
@@ -345,7 +386,6 @@ syswrite9p(ulong *arg)
 		n = (*devtab[c->type].write)(c, (void*)arg[1], arg[2], c->offset);
 	else
 		n = mntwrite9p(c, (void*)arg[1], arg[2], c->offset);
-
 	lock(c);
 	c->offset += n;
 	unlock(c);

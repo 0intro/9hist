@@ -79,7 +79,6 @@ Chan*
 mntattach(char *muxattach)
 {
 	Mnt *m;
-	int nest;
 	Chan *c, *mc;
 	char buf[NAMELEN];
 	struct bogus{
@@ -167,23 +166,6 @@ mntattach(char *muxattach)
 
 	mattach(m, c, bogus.spec);
 	poperror();
-
-#ifdef STUPIDHACK
-	/* Work out how deep we are nested and reduce the blocksize
-	 * accordingly
-	 */
-	nest = 0;
-	mc = m->c;
-	while(mc) {
-		if(mc->type != devno('M', 0))
-			break;
-		nest++;
-		if(mc->mntptr == 0)
-			break;
-		mc = mc->mntptr->c;
-	}
-	m->blocksize -= nest * 32;
-#endif STUPIDHACK
 
 	/*
 	 * Detect a recursive mount for a mount point served by exportfs.
@@ -496,6 +478,12 @@ mntwstat(Chan *c, char *dp)
 }
 
 long	 
+mntread9p(Chan *c, void *buf, long n, ulong offset)
+{
+	return mntrdwr(Tread, c, buf, n, offset, 1);
+}
+
+long	 
 mntread(Chan *c, void *buf, long n, ulong offset)
 {
 	uchar *p, *e;
@@ -563,9 +551,14 @@ mntrdwr(int type, Chan *c, void *buf, long n, ulong offset, int p9msg)
 		r->request.fid = c->fid;
 		r->request.offset = offset;
 		r->request.data = uba;
-		if(p9msg)
-			r->request.count = limit(n, m->blocksize + MAXMSG - 20);
-		else
+		if(p9msg) {
+			if(n > MAXRPC-32){
+				if(type == Twrite)
+					error("write9p too long");
+				n = MAXRPC-32;
+			}
+			r->request.count = n;
+		} else
 			r->request.count = limit(n, m->blocksize);
 		mountrpc(m, r);
 		nr = r->reply.count;
@@ -641,7 +634,7 @@ mountio(Mnt *m, Mntrpc *r)
 	}
 	else {
 		if(devchar[m->c->type] == L'M'){
-			if(mntwrite9p(m->c, r->rpc, n, 0) != n)
+			if(mntrdwr(Twrite, m->c, r->rpc, n, 0, 1) != n)
 				error(Emountrpc);
 		}else{
 			if((*devtab[m->c->type].write)(m->c, r->rpc, n, 0) != n)
@@ -696,7 +689,10 @@ mntrpcread(Mnt *m, Mntrpc *r)
 		}
 		r->reply.type = 0;
 		r->reply.tag = 0;
-		n = devtab[m->c->type].read(m->c, r->rpc, MAXRPC, 0);
+		if(devchar[m->c->type] == L'M')
+			n = mntrdwr(Tread, m->c, r->rpc, MAXRPC, 0, 1);
+		else
+			n = devtab[m->c->type].read(m->c, r->rpc, MAXRPC, 0);
 		poperror();
 		if(n == 0)
 			continue;

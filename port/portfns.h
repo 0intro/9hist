@@ -135,7 +135,9 @@ void		mfreeseg(Segment*, ulong, int);
 void		mmurelease(Proc*);
 void		mmuswitch(Proc*);
 void		mntdump(void);
+long		mntread9p(Chan*, void*, long, ulong);
 void		mntrepl(char*);
+long		mntwrite9p(Chan*, void*, long, ulong);
 int		mount(Chan*, Chan*, int, char*);
 void		mountfree(Mount*);
 void		mousebuttons(int);
@@ -262,7 +264,6 @@ void*		vmemchr(void*, int, int);
 void		wakeup(Rendez*);
 Chan*		walk(Chan*, char*, int);
 void		wlock(RWlock*);
-long		mntwrite9p(Chan*, void*, long, ulong);
 void		wunlock(RWlock*);
 #define		xalloc(s)	xallocz(s, 1)
 void*		xallocz(ulong, int);

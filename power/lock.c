@@ -114,6 +114,29 @@ lock(Lock *lk)
 	dumpstack();
 }	
 
+void
+ilock(Lock *lk)
+{
+	int *hwsem, hash;
+	ulong x;
+
+	x = splhi();
+	hash = lhash(lk);
+	hwsem = (int*)SBSEM+hash;
+
+	for(;;) {
+		if(muxlock(hwsem, &lk->val)){
+			lk->sr = x;
+			return;
+		}
+		while(lk->val)
+			;
+	}
+	splx(x);
+	print("lock loop %lux pc %lux held by pc %lux\n", lk, getcallerpc(lk), lk->pc);
+	dumpstack();
+}	
+
 int
 canlock(Lock *lk)
 {
@@ -128,4 +151,15 @@ unlock(Lock *l)
 {
 	l->pc = 0;
 	l->val = 0;
+}
+
+void
+iunlock(Lock *l)
+{
+	ulong sr;
+
+	sr = l->sr;
+	l->pc = 0;
+	l->val = 0;
+	splx(sr);
 }

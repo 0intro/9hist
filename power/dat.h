@@ -25,6 +25,7 @@ struct Lock
 {
 	int	val;
 	ulong	pc;
+	ulong	sr;
 };
 
 struct Label
@@ -51,6 +52,7 @@ struct Conf
 	ulong	arp;		/* Arp table size */
 	ulong	frag;		/* Ip fragment assemble queue size */
 	ulong	debugger;	/* use processor 1 as a kernel debugger */
+	ulong	ialloc;		/* bytes available for interrupt time allocation */
 };
 
 /*
@@ -133,6 +135,11 @@ struct Mach
 	int	otlbfault;
 	Schedq	hiq;
 	Schedq	loq;
+
+	Callbk*	cbin;
+	Callbk*	cbout;
+	Callbk*	cbend;
+	Callbk	calls[NCALLBACK];
 
 	int	stack[1];
 };

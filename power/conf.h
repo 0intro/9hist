@@ -15,6 +15,7 @@ Conftab conftab[] = {
 	{"arp", &conf.arp },
 	{"frag", &conf.frag },
 	{"debugger", &conf.debugger },
+	{"ialloc", &conf.ialloc },
 	{ 0, 0 },
 };
 
