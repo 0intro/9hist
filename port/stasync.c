@@ -178,7 +178,7 @@ aswrite(Async *ap)
 }
 
 void
-asputf(Async *ap, int frame)
+asputf(Async *ap)
 {
 	uchar *p;
 	int c;
@@ -195,10 +195,8 @@ asputf(Async *ap, int frame)
 			*p++ = 0x00;
 		ap->count = 0;
 	}
-	if(frame) {
-		*p++ = FRAME;
-		*p++ = FRAME;
-	}
+	*p++ = FRAME;
+	*p++ = FRAME;
 	ap->bp->wptr = p;
 	if(asyncdebug > 2)
 		showframe("out", ap, ap->bp->rptr, BLEN(ap->bp));
@@ -215,8 +213,6 @@ asputc(Async *ap, int c)
 		ap->bp = allocb(MAXFRAME+4);
 	p = ap->bp->wptr;
 	if(ap->count <= 0) {
-		*p++ = FRAME;
-		*p++ = FRAME;
 		*p++ = d = 0x80|((ap->chan>>5)&0x7e);
 		ap->crc = CRCFUNC(CRCSTART, d);
 		*p++ = d = 0x80|((ap->chan<<1)&0x7e);
@@ -228,7 +224,7 @@ asputc(Async *ap, int c)
 	ap->crc = CRCFUNC(ap->crc, c);
 	ap->bp->wptr = p;
 	if(++ap->count >= MAXFRAME-4)
-		asputf(ap, 0);
+		asputf(ap);
 	else if(ap->bp->lim - p < 8)
 		aswrite(ap);
 }
@@ -281,7 +277,7 @@ asyncoput(Queue *q, Block *bp)
 	 *  new frame if the channel number has changed
 	 */
 	if(chan != ap->chan && ap->count > 0)
-		asputf(ap, 0);
+		asputf(ap);
 	ap->chan = chan;
 
 	/*
@@ -322,7 +318,7 @@ asyncoput(Queue *q, Block *bp)
 		case BOTS:
 			break;
 		default:
-			asputf(ap, 1);
+			asputf(ap);
 		}
 	}
 
