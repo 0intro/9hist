@@ -14,13 +14,13 @@ enum
 	 Kbdvec=	Int0vec+1,	/*  keyboard interrupts */
 	 Uart1vec=	Int0vec+3,	/*  modem line */
 	 Uart0vec=	Int0vec+4,	/*  serial line */
-	 Ethervec=	Int0vec+5,	/*  ethernet interrupt */
 	 Floppyvec=	Int0vec+6,	/*  floppy interrupts */
 	 Parallelvec=	Int0vec+7,	/*  parallel port interrupts */
-	Int1vec=	Int0vec+8,	/* second 8259 */
-	 Mousevec=	Int1vec+4,	/*  mouse interrupt */
-	 Matherr2vec=	Int1vec+5,	/*  math coprocessor */
-	 Hardvec=	Int1vec+6,	/*  hard disk */
+	Int1vec=	Int0vec+8,
+	 Ethervec=	Int0vec+10,	/*  ethernet interrupt */
+	 Mousevec=	Int0vec+12,	/*  mouse interrupt */
+	 Matherr2vec=	Int0vec+13,	/*  math coprocessor */
+	 Hardvec=	Int0vec+14,	/*  hard disk */
 
 	Syscallvec=	64,
 };

@@ -194,6 +194,12 @@ configwrite(Chan *c, void *buf, long n, ulong offset)
 			mouseaccelerate(1);
 		else if(strncmp("linear", cbuf, 6) == 0)
 			mouseaccelerate(0);
+		else if(strncmp("serial", cbuf, 6) == 0)
+			mouseserial(atoi(cbuf+6));
+		else if(strncmp("ps2", cbuf, 3) == 0)
+			mouseps2();
+		else if(strncmp("resolution", cbuf, 10) == 0)
+			mouseres(atoi(cbuf+10));
 		return n;
 	}
 	error(Eperm);

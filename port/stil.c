@@ -788,7 +788,10 @@ ilbackoff(Ilcb *ic)
 static int
 notsyncer(void *ic)
 {
-	return ((Ilcb*)ic)->state != Ilsyncer;
+	Ilcb *i;
+
+	i = ic;
+	return i->state != Ilsyncer;
 }
 void
 ilstart(Ipconv *ipc, int type, int window)

@@ -1,6 +1,7 @@
-#define	FRAMEBUF	0xFE000000
-#define	FRAMEBUFID	(FRAMEBUF+0x000000)
-#define	DISPLAYRAM	(FRAMEBUF+0x800000)
+#define	SBUS(n)		(0xF8000000+(n)*0x2000000)
+#define	FRAMEBUF(n)	SBUS(n)
+#define	FRAMEBUFID(n)	(SBUS(n)+0x000000)
+#define	DISPLAYRAM(n)	(SBUS(n)+0x800000)
 #define	EPROM		0xF6000000
 #define	CLOCK		0xF3000000
 #define	CLOCKFREQ	1000000		/* one microsecond increments */

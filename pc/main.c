@@ -8,7 +8,17 @@
 #include	"init.h"
 
 /* configuration parameters */
-int mousetype;
+enum
+{
+	/* what kind of power management */
+	PMUother=	0,
+	PMUnsx20=	1,
+
+	/* how to reset the processor */
+	Resetother=	0,
+	Reset8042=	1,
+	Resetheadland=	2,
+};
 int pmutype;
 int resettype;
 
@@ -54,14 +64,10 @@ ident(void)
 	char *id = (char*)(ROMBIOS + 0xFF40);
 
 	if(strncmp(id, "AT&TNSX", 7) == 0){
-		mousetype = MousePS2;
 		pmutype = PMUnsx20;
 		resettype = Resetheadland;
 	}else if(strncmp(id, "NCRD.0", 6) == 0){
-		mousetype = MousePS2;
 		resettype = Reset8042;
-	}else{
-		mousetype = Mouseserial;
 	}
 }
 

@@ -112,6 +112,14 @@ static int keybuttons;
  */
 static void	kbdintr(Ureg*);
 
+enum
+{
+	/* what kind of mouse */
+	Mouseother=	0,
+	Mouseserial=	1,
+	MousePS2=	2,
+};
+static int mousetype;
 
 /*
  *  wait for output no longer busy
@@ -207,46 +215,52 @@ kbdinit(void)
 		if(c & Inready)
 			inb(Data);
 
-	switch(mousetype){
-	case MousePS2:
-		bigcursor();
-		setvec(Mousevec, kbdintr);
+	/* enable kbd xfers and interrupts */
+	outb(Cmd, 0x60);
+	if(outready() < 0)
+		print("kbd init failed\n");
+	outb(Data, 0x65);
+}
 
-		/* enable kbd/mouse xfers and interrupts */
-		outb(Cmd, 0x60);
-		if(outready() < 0)
-			print("kbd init failed\n");
-		outb(Data, 0x47);
-		if(outready() < 0)
-			print("kbd init failed\n");
-		outb(Cmd, 0xA8);
-	
-		/* make mouse streaming, enabled */
-		if(mousecmd(0xEA) < 0
-		|| mousecmd(0xF4) < 0)
-			print("can't initialize mouse\n");
+/*
+ *  setup a serial mouse
+ */
+void
+mouseserial(int port)
+{
+	if(mousetype)
+		return;
 
-		/* turn on mouse acceleration */
-		mouseaccelerate(0);
-		break;
-	case Mouseserial:
-		/* enable kbd xfers and interrupts */
-		outb(Cmd, 0x60);
-		if(outready() < 0)
-			print("kbd init failed\n");
-		outb(Data, 0x65);
+	/* set up /dev/eia0 as the mouse */
+	uartspecial(port, 0, &mouseq, 1200);
+	mousetype = Mouseserial;
+}
 
-		/* set up /dev/eia0 as the mouse */
-		uartspecial(0, 0, &mouseq, 1200);
-		break;
-	case Mouseother:
-		/* enable kbd xfers and interrupts */
-		outb(Cmd, 0x60);
-		if(outready() < 0)
-			print("kbd init failed\n");
-		outb(Data, 0x65);
-		break;
-	}
+/*
+ *  set up a ps2 mouse
+ */
+void
+mouseps2(void)
+{
+	if(mousetype)
+		return;
+
+	bigcursor();
+	setvec(Mousevec, kbdintr);
+
+	/* enable kbd/mouse xfers and interrupts */
+	outb(Cmd, 0x60);
+	if(outready() < 0)
+		print("kbd init failed\n");
+	outb(Data, 0x47);
+	if(outready() < 0)
+		print("kbd init failed\n");
+	outb(Cmd, 0xA8);
+
+	/* make mouse streaming, enabled */
+	mousecmd(0xEA);
+	mousecmd(0xF4);
+	mousetype = MousePS2;
 }
 
 /*
@@ -262,6 +276,21 @@ mouseaccelerate(int on)
 			mousecmd(0xE7);
 		else
 			mousecmd(0xE6);
+		break;
+	}
+}
+
+/*
+ *  set mouse resolution
+ */
+void
+mouseres(int res)
+{
+
+	switch(mousetype){
+	case MousePS2:
+		mousecmd(0xE8);
+		mousecmd(res);
 		break;
 	}
 }

@@ -17,6 +17,7 @@ ulong	romputcxsegm;
 ulong	bank[2];
 char	mempres[256];
 char	fbstr[32];
+ulong	fbslot;
 Label	catch;
 int	NKLUDGE;
 
@@ -61,7 +62,7 @@ main(void)
 	mmuinit();
 	kmapinit();
 	if(conf.monitor)
-		screeninit(fbstr);
+		screeninit(fbstr, fbslot);
 	printinit();
 	ioinit();
 	if(conf.monitor == 0)
@@ -138,8 +139,9 @@ init0(void)
 
 	print("Sun Sparcstation %s\n", sparam->name);
 	print("bank 0: %dM  1: %dM\n", bank[0], bank[1]);
-	print("frame buffer id %lux %s\n", conf.monitor, fbstr);
+	print("frame buffer id %lux slot %ld %s\n", conf.monitor, fbslot, fbstr);
 	print("NKLUDGE %d\n", NKLUDGE);
+mapcrap();
 	if(conf.npage1 != conf.base1)
 		print("kernel mem from second bank: reboot and fix!\n");
 
@@ -278,7 +280,7 @@ void
 confinit(void)
 {
 	int mul;
-	ulong i, j;
+	ulong i, j, f;
 	ulong ktop, va, mbytes, npg, v;
 
 	conf.nmach = 1;
@@ -310,48 +312,55 @@ confinit(void)
 	case 0x52:	/* IPC */
 	case 0x54:	/* SLC */
 		conf.monitor = 1;
+		fbslot = 3;
 		strcpy(fbstr, "bwtwo");
 		break;
 	case 0x57:	/* IPX */
 		conf.monitor = 1;
+		fbslot = 3;
 		strcpy(fbstr, "cgsix");
 		break;
 	default:
-		/* map frame buffer id in SBUS slot 3 */
-		putw4(va, ((FRAMEBUFID>>PGSHIFT)&0xFFFF)|PTEPROBEIO);
-		conf.monitor = 0;
-		/* if frame buffer not present, we will trap, so prepare to catch it */
-		if(setlabel(&catch) == 0){
-			conf.monitor = *(ulong*)va;
-			switch(conf.monitor){
-			case 0xFE010101:
-				strcpy(fbstr, "cgthree");
-				break;
-			case 0xFE010104:
-				strcpy(fbstr, "bwtwo");
-				break;
+		/* map frame buffer id in SBUS slots 0..3 */
+		for(f=0; f<=3 && fbstr[0]==0; f++){
+			putw4(va, ((FRAMEBUFID(f)>>PGSHIFT)&0xFFFF)|PTEPROBEIO);
+			conf.monitor = 0;
+			/* if frame buffer not present, we will trap, so prepare to catch it */
+			if(setlabel(&catch) == 0){
+				conf.monitor = *(ulong*)va;
+				switch(conf.monitor & 0xF0FFFFFF){
+				case 0xF0010101:
+					strcpy(fbstr, "cgthree");
+					break;
+				case 0xF0010104:
+					strcpy(fbstr, "bwtwo");
+					break;
+				}
+				if(fbstr[0] == 0){
+					j = *(ulong*)(va+4);
+					if(j > BY2PG-8)
+						j = BY2PG - 8;	/* -8 for safety */
+					for(i=0; i<j && fbstr[0]==0; i++)
+						switch(*(uchar*)(va+i)){
+						case 'b':
+							if(strncmp((char*)(va+i), "bwtwo", 5) == 0)
+								strcpy(fbstr, "bwtwo");
+							break;
+						case 'c':
+							if(strncmp((char*)(va+i), "cgthree", 7) == 0)
+								strcpy(fbstr, "cgthree");
+							if(strncmp((char*)(va+i), "cgsix", 5) == 0)
+								strcpy(fbstr, "cgsix");
+							break;
+						}
+				}
 			}
-			if(fbstr[0] == 0){
-				j = *(ulong*)(va+4);
-				if(j > BY2PG-8)
-					j = BY2PG - 8;	/* -8 for safety */
-				for(i=0; i<j && fbstr[0]==0; i++)
-					switch(*(uchar*)(va+i)){
-					case 'b':
-						if(strncmp((char*)(va+i), "bwtwo", 5) == 0)
-							strcpy(fbstr, "bwtwo");
-						break;
-					case 'c':
-						if(strncmp((char*)(va+i), "cgthree", 7) == 0)
-							strcpy(fbstr, "cgthree");
-						if(strncmp((char*)(va+i), "cgsix", 5) == 0)
-							strcpy(fbstr, "cgsix");
-						break;
-					}
-			}
+			catch.pc = 0;
+			putw4(va, INVALIDPTE);
+			if(fbstr[0])
+				fbslot = f;
 		}
-		catch.pc = 0;
-		putw4(va, INVALIDPTE);
+		break;
 	}
 
 	for(sparam = sysparam; sparam->id; sparam++)

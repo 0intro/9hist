@@ -23,10 +23,10 @@ struct{
 static ulong	rep(ulong, int);
 void		(*kprofp)(ulong);
 
-/* Brooktree 458/451 */
-typedef struct	DAC DAC;
-struct DAC
+typedef struct	Video Video;
+struct Video
 {
+	/* Brooktree 458/451 */
 	uchar	addr;		/* address register */
 	uchar	pad0[3];
 	uchar	color;		/* color palette */
@@ -35,7 +35,24 @@ struct DAC
 	uchar	pad2[3];
 	uchar	ovrl;		/* overlay palette */
 	uchar	pad3[3];
-}*dac;
+	/* Sun-4 video chip */
+	uchar	mcr;		/* master control register */
+	uchar	sr;		/* status register */
+	uchar	csa;		/* cursor start address */
+	uchar	cea;		/* cursor end address */
+	uchar	hbs;		/* horizontal blank set */
+	uchar	hbc;		/* horizontal blank clear */
+	uchar	hss;		/* horizontal sync set */
+	uchar	hsc;		/* horizontal sync clear */
+	uchar	csc;		/* composite sync clear */
+	uchar	vbsh;		/* vertical blank set high byte */
+	uchar	vbsl;		/* vertical blank set low byte */
+	uchar	vbc;		/* vertical blank clear */
+	uchar	vss;		/* vertical sync set */
+	uchar	vsc;		/* vertical sync clear */
+	uchar	xcs;		/* transfer cycle hold off set */
+	uchar	xcc;		/* transfer cycle hold off clear */
+}*vid;
 
 GBitmap gscreen;
 
@@ -45,7 +62,7 @@ struct screens
 	int	x;
 	int	y;
 	int	ld;
-	ulong	dacaddr;
+	ulong	vidaddr;
 }screens[] = {
 	{ "bwtwo", 1152, 900, 0, 0x400000 },
 	{ "cgsix", 1152, 900, 3, 0x200000 },
@@ -56,7 +73,7 @@ struct screens
 Lock screenlock;
 
 void
-screeninit(char *str)
+screeninit(char *str, int slot)
 {
 	struct screens *s;
 	ulong n, r, g, b;
@@ -78,7 +95,7 @@ screeninit(char *str)
 	gscreen.zero = 0;
 	gscreen.width = (s->x<<s->ld)/(8*sizeof(ulong));
 	n = sizeof(ulong) * gscreen.width * s->y;
-	gscreen.base = (ulong*)kmapregion(DISPLAYRAM, n, PTENOCACHE|PTEIO);
+	gscreen.base = (ulong*)kmapregion(DISPLAYRAM(slot), n, PTENOCACHE|PTEIO);
 	gscreen.ldepth = s->ld;
 	gscreen.r = Rect(0, 0, s->x, s->y);
 	gscreen.clipr = gscreen.r;
@@ -88,16 +105,16 @@ screeninit(char *str)
 	out.pos.x = MINX;
 	out.pos.y = 0;
 	out.bwid = defont0.info[' '].width;
-	dac = (DAC*)(kmappa(FRAMEBUF+s->dacaddr, PTENOCACHE|PTEIO)->va);
+	vid = (Video*)(kmappa(FRAMEBUF(slot)+s->vidaddr, PTENOCACHE|PTEIO)->va);
 	if(gscreen.ldepth == 3){
-		dac->addr = 4;
-		dac->cntrl = 0xFF;	/* enable all planes */
-		dac->addr = 5;
-		dac->cntrl = 0x00;	/* no blinking */
-		dac->addr = 6;
-		dac->cntrl = 0x43;	/* enable palette ram and display */
-		dac->addr = 7;
-		dac->cntrl = 0x00;	/* no tests */
+		vid->addr = 4;
+		vid->cntrl = 0xFF;	/* enable all planes */
+		vid->addr = 5;
+		vid->cntrl = 0x00;	/* no blinking */
+		vid->addr = 6;
+		vid->cntrl = 0x43;	/* enable palette ram and display */
+		vid->addr = 7;
+		vid->cntrl = 0x00;	/* no tests */
 		havecol = 0;	
 		if(havecol) {
 		/*
@@ -116,14 +133,25 @@ screeninit(char *str)
 			setcolor(85, 0xAAAAAAAA, 0xAAAAAAAA, 0xAAAAAAAA);
 			setcolor(170, 0x55555555, 0x55555555, 0x55555555);
 		} else {
-			dac->addr = 0;
+			vid->addr = 0;
 			for(i=255; i>=0; i--){
-				dac->color = i;
-				dac->color = i;
-				dac->color = i;
+				vid->color = i;
+				vid->color = i;
+				vid->color = i;
 			}
 		}
 	}
+}
+
+void
+mapcrap(void)
+{
+	uchar *v;
+	int i;
+
+	v = &vid->mcr;
+	for(i=0; i<16; i++,v++)
+		print("%lux %.2ux\n", v, *v);
 }
 
 void
@@ -461,10 +489,10 @@ getcolor(ulong p, ulong *pr, ulong *pg, ulong *pb)
 			ans = 0;
 		*pr = *pg = *pb = ans;
 	} else {
-		*(uchar *)&dac->addr = p & 0xFF;
-		r = dac->color;
-		g = dac->color;
-		b = dac->color;
+		*(uchar *)&vid->addr = p & 0xFF;
+		r = vid->color;
+		g = vid->color;
+		b = vid->color;
 		*pr = (r<<24) | (r<<16) | (r<<8) | r;
 		*pg = (g<<24) | (g<<16) | (g<<8) | g;
 		*pb = (b<<24) | (b<<16) | (b<<8) | b;
@@ -478,10 +506,10 @@ setcolor(ulong p, ulong r, ulong g, ulong b)
 	if(gscreen.ldepth == 0)
 		return 0;	/* can't change mono screen colormap */
 	else{
-		dac->addr = p & 0xFF;
-		dac->color = r >> 24;
-		dac->color = g >> 24;
-		dac->color = b >> 24;
+		vid->addr = p & 0xFF;
+		vid->color = r >> 24;
+		vid->color = g >> 24;
+		vid->color = b >> 24;
 		return 1;
 	}
 }

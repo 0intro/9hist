@@ -186,26 +186,3 @@ extern int	flipD[];	/* for flipping bitblt destination polarity */
  *  bootline passed by boot program
  */
 #define BOOTLINE ((char *)0x80000100)
-
-/*
- *  configuration info
- */
-enum
-{
-	/* what kind of power management */
-	PMUother=	0,
-	PMUnsx20=	1,
-
-	/* what kind of mouse */
-	Mouseother=	0,
-	Mouseserial=	1,
-	MousePS2=	2,
-
-	/* how to reset the processor */
-	Resetother=	0,
-	Reset8042=	1,
-	Resetheadland=	2,
-};
-extern int mousetype;
-extern int pmutype;
-extern int resettype;

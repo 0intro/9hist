@@ -39,7 +39,8 @@ TEXT	startvirt(SB), $-4
 
 	MOVW	$(0x35<<22), R7		/* NVM OFM DZM NS */
 	MOVW	R7, fsr+0(SB)
-	MOVW	fsr+0(SB), FSR
+	MOVW	$fsr+0(SB), R8
+	MOVW	(R8), FSR
 	FMOVD	$0.5, F26		/* 0.5 -> F26 */
 	FSUBD	F26, F26, F24		/* 0.0 -> F24 */
 	FADDD	F26, F26, F28		/* 1.0 -> F28 */

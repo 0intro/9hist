@@ -56,7 +56,7 @@ void	puttbr(ulong);
 void	putw4(ulong, ulong);	/* needed only at boot time */
 void	systemreset(void);
 void	restfpregs(FPsave*, ulong);
-void	screeninit(char*);
+void	screeninit(char*, int);
 void	screenputc(int);
 void	screenputs(char*, int);
 void	scsiintr(void);
