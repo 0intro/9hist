@@ -63,11 +63,11 @@ clrbss:
 
 TEXT	touser(SB), $-4
 
+	MOVW	R1, SP
 	MOVW	M(STATUS), R1
 	OR	$(KUP|IEP), R1
 	MOVW	R1, M(STATUS)
 	NOOP
-	MOVW	0(FP), SP
 	MOVW	$(UTZERO+32), R26	/* header appears in text */
 	RFE	(R26)
 
@@ -109,7 +109,6 @@ TEXT	splhi(SB), $0
 TEXT	splx(SB), $0
 
 	MOVW	R31, 8(R(MACH))	/* save PC in m->splpc */
-	MOVW	0(FP), R1
 	MOVW	M(STATUS), R2
 	AND	$IEC, R1
 	AND	$~IEC, R2
@@ -138,18 +137,16 @@ TEXT	wbflush(SB), $-4
 
 TEXT	setlabel(SB), $-4
 
-	MOVW	0(FP), R2
+	MOVW	R31, 0(R1)
+	MOVW	R29, 4(R1)
 	MOVW	$0, R1
-	MOVW	R31, 0(R2)
-	MOVW	R29, 4(R2)
 	RET
 
 TEXT	gotolabel(SB), $-4
 
-	MOVW	0(FP), R2
+	MOVW	0(R1), R31
+	MOVW	4(R1), R29
 	MOVW	$1, R1
-	MOVW	0(R2), R31
-	MOVW	4(R2), R29
 	RET
 
 TEXT	getcallerpc(SB), $0
@@ -159,10 +156,11 @@ TEXT	getcallerpc(SB), $0
 
 TEXT	gotopc(SB), $8
 
-	MOVW	$(64*1024), R1
-	MOVW	R1, 8(SP)
+	MOVW	R1, 0(FP)		/* save arguments for later */
+	MOVW	$(64*1024), R7
+	MOVW	R7, 8(SP)
 	JAL	icflush(SB)
-	MOVW	0(FP), R7		/* save arguments for later */
+	MOVW	0(FP), R7
 	MOVW	_argc(SB), R4
 	MOVW	_argv(SB), R5
 	MOVW	_env(SB), R6
@@ -171,15 +169,14 @@ TEXT	gotopc(SB), $8
 
 TEXT	puttlb(SB), $4
 
-	MOVW	0(FP), R2
-	MOVW	4(FP), R3
-	MOVW	R2, M(TLBVIRT)
-	MOVW	R3, M(TLBPHYS)
+	MOVW	4(FP), R2
+	MOVW	R1, M(TLBVIRT)
+	MOVW	R2, M(TLBPHYS)
 	NOOP
 	TLBP
 	NOOP
-	MOVW	M(INDEX), R4
-	BGEZ	R4, index
+	MOVW	M(INDEX), R3
+	BGEZ	R3, index
 	TLBWR
 	NOOP
 	RET
@@ -187,18 +184,16 @@ TEXT	puttlb(SB), $4
 index:
 	TLBWI
 	NOOP
-	JAL	splx(SB)
 	RET
 
 TEXT	puttlbx(SB), $0
 
-	MOVW	0(FP), R4
 	MOVW	4(FP), R2
 	MOVW	8(FP), R3
-	SLL	$8, R4
+	SLL	$8, R1
 	MOVW	R2, M(TLBVIRT)
 	MOVW	R3, M(TLBPHYS)
-	MOVW	R4, M(INDEX)
+	MOVW	R1, M(INDEX)
 	NOOP
 	TLBWI
 	NOOP
@@ -219,10 +214,9 @@ TEXT	tlbvirt(SB), $0
 
 TEXT	gettlb(SB), $0
 
-	MOVW	0(FP), R3
 	MOVW	4(FP), R4
-	SLL	$8, R3
-	MOVW	R3, M(INDEX)
+	SLL	$8, R1
+	MOVW	R1, M(INDEX)
 	NOOP
 	TLBR
 	NOOP
@@ -235,9 +229,8 @@ TEXT	gettlb(SB), $0
 
 TEXT	gettlbvirt(SB), $0
 
-	MOVW	0(FP), R3
-	SLL	$8, R3
-	MOVW	R3, M(INDEX)
+	SLL	$8, R1
+	MOVW	R1, M(INDEX)
 	NOOP
 	TLBR
 	NOOP
@@ -329,6 +322,7 @@ wasuser:
 	AND	$7, R1
 	SLL	$PGSHIFT, R1
 	ADDU	R1, R(MACH)			/* add offset for mach # */
+	MOVW	4(SP), R1			/* first arg for syscall, trap */
 
 	BNE	R26, notsys
 
@@ -361,6 +355,7 @@ waskernel:
 	SUB	$0xA0, SP
 	MOVW	R31, 0x28(SP)
 	JAL	saveregs(SB)
+	MOVW	4(SP), R1		/* first arg for trap */
 	JAL	trap(SB)
 	JAL	restregs(SB)
 	MOVW	0x28(SP), R31
@@ -456,11 +451,10 @@ TEXT	restregs(SB), $-4
 	RET
 
 TEXT	rfnote(SB), $0
-	MOVW	0(FP), R26		/* 1st arg is &uregpointer */
+	MOVW	R1, R26			/* 1st arg is &uregpointer */
 	SUBU	$(BY2WD), R26, SP	/* pc hole */
 	JMP	restore
 	
-
 TEXT	clrfpintr(SB), $0
 	MOVW	FCR31, R1
 	MOVW	R1, R2
@@ -470,7 +464,6 @@ TEXT	clrfpintr(SB), $0
 
 TEXT	savefpregs(SB), $0
 	MOVW	M(STATUS), R3
-	MOVW	0(FP), R1
 	MOVW	FCR31, R2
 
 	MOVD	F0, 0x00(R1)
@@ -498,7 +491,6 @@ TEXT	savefpregs(SB), $0
 TEXT	restfpregs(SB), $0
 
 	MOVW	M(STATUS), R3
-	MOVW	0(FP), R1
 	OR	$CU1, R3
 	MOVW	R3, M(STATUS)
 	MOVW	fpstat+4(FP), R2
@@ -534,7 +526,7 @@ TEXT	fcr31(SB), $0
 #define NOP	WORD	$0x0
 
 TEXT icflush(SB), $-4
-	MOVW	0(FP), R4
+	MOVW	R1, R4
 	MOVW	4(FP), R5
 	MOVW	$icflush0(SB), R2	/* Jump to uncache space */
 	MOVW	$0xA0000000, R1
@@ -638,7 +630,7 @@ TEXT icflush4(SB), $-4
 	RET
 
 TEXT dcflush(SB), $-4
-	MOVW	0(FP), R4
+	MOVW	R1, R4
 	MOVW	4(FP), R5
 	MOVW	$dcflush0(SB), R2	/* Jump to uncache space */
 	MOVW	$0xA0000000, R1
