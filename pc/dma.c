@@ -206,3 +206,13 @@ dmaend(int chan)
 	memmove(xp->va, (void*)(xp->pg.va), xp->len);
 	xp->len = 0;
 }
+
+void
+dmaemode(int chan, int value)
+{
+	if(chan < 4)
+		outb(0x40b, value|chan);
+	else
+		outb(0x4d6, value|chan);
+
+}
