@@ -364,7 +364,7 @@ interrupt(Ureg *ur, void *arg)
 		 */
 		if(status & AllIntr)
 			panic("ether509 interrupt: #%lux, #%ux\n", status, getdiag(ether));
-		}
+	}
 }
 
 typedef struct Adapter Adapter;
