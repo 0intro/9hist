@@ -1,8 +1,8 @@
 /*
 	Lucent Wavelan IEEE 802.11 pcmcia.
 	There is almost no documentation for the card.
-	the driver is done using both the freebsd and the linux
-	driver as `documentation'.
+	the driver is done using both the FreeBSD, Linux and
+	original Plan 9 drivers as `documentation'.
 
 	Has been used with the card plugged in during all up time.
 	no cards removals/insertions yet.
@@ -12,10 +12,10 @@
 	long. When it gets robust, locks should be revisited.
 
 	BUGS: check endian, alignment and mem/io issues;
+	      multicast;
 	      receive watchdog interrupts.
 	TODO: automatic power management;
-	      improve locking;
-	      remove copy in transmit.
+	      improve locking.
  */
 #include "u.h"
 #include "../port/lib.h"
@@ -123,7 +123,7 @@ enum
 enum
 {
 	WDfltIRQ	= 3,		// default irq
-	WDfltIOB	= 0x100,	// default IO base
+	WDfltIOB	= 0x180,	// default IO base
 
 	WIOLen		= 0x40,		// Hermes IO length
 
@@ -150,13 +150,14 @@ enum
 		WCmdIni		= 0x0000,
 		WCmdEna		= 0x0001,
 		WCmdDis		= 0x0002,
+		WCmdTx		= 0x000b,
 		WCmdMalloc	= 0x000a,
 		WCmdAskStats	= 0x0011,
 		WCmdMsk		= 0x003f,
 		WCmdAccRd	= 0x0021,
+		WCmdReclaim	= 0x0100,
 		WCmdAccWr	= 0x0121,
 		WCmdBusy	= 0x8000,
-		WCmdTxFree	= 0x000b|0x0100,
 	WR_Parm0	= 0x02,
 	WR_Parm1	= 0x04,
 	WR_Parm2	= 0x06,
@@ -289,7 +290,6 @@ struct Ctlr
 	char	nodename[WNameLen];
 	WFrame	txf;
 	uchar	txbuf[1536];
-	int	txlen;
 
 	int	hascrypt;		// card has encryption
 	int	crypt;			// encryption off/on
@@ -572,7 +572,7 @@ w_enable(Ether* ether)
 	ctlr->txmid = w_alloc(ctlr, 1518 + sizeof(WFrame) + 8);
 	if (ctlr->txdid == -1 || ctlr->txmid == -1)
 		DEBUG("wavelan: alloc failed");
-	ctlr->txbusy= 0;
+	ctlr->txbusy = 0;
 	w_intena(ctlr);
 	return 0;
 }
@@ -637,85 +637,68 @@ rxerror:
 	ctlr->nrxerr++;
 }
 
-static int
-w_txstart(Ether* ether, int again)
+static void
+w_txstart(Ether* ether)
 {
-	Etherpkt* ep;
-	Ctlr* ctlr = (Ctlr*) ether->ctlr;
-	Block* bp;
-	int txid;
+	Etherpkt *pkt;
+	Ctlr *ctlr;
+	Block *bp;
+	int len, off;
 
-	if (ctlr == 0 || ctlr->attached == 0 )
-		return -1;
-	if (ctlr->txbusy && again==0)
-		return -1;
+	if((ctlr = ether->ctlr) == nil || ctlr->attached == 0 || ctlr->txbusy)
+		return;
 
-	if (again){
-		bp = 0;		// a watchdog reenabled the card.
-		goto retry;	// must retry a previously failed tx.
+	if((bp = qget(ether->oq)) == nil)
+		return;
+	pkt = (Etherpkt*)bp->rp;
+
+	//
+	// If the packet header type field is > 1500 it is an IP or
+	// ARP datagram, otherwise it is an 802.3 packet. See RFC1042.
+	//
+	memset(&ctlr->txf, 0, sizeof(ctlr->txf));
+	if(((pkt->type[0]<<8)|pkt->type[1]) > 1500){
+		ctlr->txf.framectl = WF_Data;
+		memmove(ctlr->txf.addr1, pkt->d, Eaddrlen);
+		memmove(ctlr->txf.addr2, pkt->s, Eaddrlen);
+		memmove(ctlr->txf.dstaddr, pkt->d, Eaddrlen);
+		memmove(ctlr->txf.srcaddr, pkt->s, Eaddrlen);
+		memmove(&ctlr->txf.type, pkt->type, 2);
+		bp->rp += ETHERHDRSIZE;
+		len = BLEN(bp);
+		off = WF_802_11_Off;
+		ctlr->txf.dlen = len+ETHERHDRSIZE-WSnapHdrLen;
+		hnputs((uchar*)&ctlr->txf.dat[0], WSnap0);
+		hnputs((uchar*)&ctlr->txf.dat[1], WSnap1);
+		hnputs((uchar*)&ctlr->txf.len, len+ETHERHDRSIZE-WSnapHdrLen);
 	}
-
-	bp = qget(ether->oq);
-	if (bp == 0)
-		return 0;
-	ep = (Etherpkt*) bp->rp;
-	ctlr->txbusy = 1;
-
-	// BUG: only IP/ARP/RARP seem to be ok for 802.3
-	// Other packets should be just copied to the board.
-	// The driver is not doing so, though.
-	// Besides, the Block should be used instead of txbuf,
-	// to save a memory copy.
-	memset(ctlr->txbuf,0,sizeof(ctlr->txbuf));
-	memset(&ctlr->txf,0,sizeof(ctlr->txf));
-	ctlr->txf.framectl = WF_Data;
-	memmove(ctlr->txf.addr1, ep->d, Eaddrlen);
-	memmove(ctlr->txf.addr2, ep->s, Eaddrlen);
-	memmove(ctlr->txf.dstaddr, ep->d, Eaddrlen);
-	memmove(ctlr->txf.srcaddr, ep->s, Eaddrlen);
-	memmove(&ctlr->txf.type,ep->type,2);
-	ctlr->txlen = BLEN(bp);
-	ctlr->txf.dlen = ctlr->txlen - WSnapHdrLen;
-	hnputs((uchar*)&ctlr->txf.dat[0], WSnap0);
-	hnputs((uchar*)&ctlr->txf.dat[1], WSnap1);
-	hnputs((uchar*)&ctlr->txf.len, ctlr->txlen - WSnapHdrLen);
-	if (ctlr->txlen - ETHERHDRSIZE > 1536){
-		print("wavelan: txbuf overflow");
-		freeb(bp);
-		return -1;
+	else{
+		len = BLEN(bp);
+		off = WF_802_3_Off;
+		ctlr->txf.dlen = len;
 	}
-	memmove(ctlr->txbuf, bp->rp+sizeof(ETHERHDRSIZE)+10,
-			ctlr->txlen - ETHERHDRSIZE);
-retry:
-	txid = ctlr->txdid;
-	w_write(ctlr, txid, 0, &ctlr->txf, sizeof(ctlr->txf));
+	w_write(ctlr, ctlr->txdid, 0, &ctlr->txf, sizeof(ctlr->txf));
+	w_write(ctlr, ctlr->txdid, off, bp->rp, len+2);
 
-	w_write(ctlr, txid, WF_802_11_Off, ctlr->txbuf,
-			ctlr->txlen - ETHERHDRSIZE + 2);
-	if (w_cmd(ctlr, WCmdTxFree, txid)){
+	if(w_cmd(ctlr, WCmdReclaim|WCmdTx, ctlr->txdid)){
 		DEBUG("wavelan: transmit failed\n");
-		ctlr->txbusy=0;	// added
 		ctlr->ntxerr++;
-		freeb(bp);
-		return -1;
 	}
-	ctlr->txtmout = 2;
+	else{
+		ctlr->txbusy = 1;
+		ctlr->txtmout = 2;
+	}
 	freeb(bp);
-	return 0;
 }
 
 static void
 w_txdone(Ctlr* ctlr, int sts)
 {
-	int b = ctlr->txbusy;
-
 	ctlr->txbusy = 0;
-	ctlr->txtmout= 0;
-	if (sts & WTxErrEv){
+	ctlr->txtmout = 0;
+	if (sts & WTxErrEv)
 		ctlr->ntxerr++;
-		if (sts&1) // it was a watchdog, stay busy to retry.
-			ctlr->txbusy = b;
-	} else
+	else
 		ctlr->ntx++;
 }
 
@@ -725,14 +708,14 @@ w_stats(Ctlr* ctlr)
 	int i, rc, sp;
 	Wltv ltv;
 	ulong* p = (ulong*)&ctlr->WStats;
-	ulong* pend= (ulong*)&ctlr->end;
+	ulong* pend = (ulong*)&ctlr->end;
 
 	sp = csr_ins(ctlr, WR_InfoId);
 	ltv.len = ltv.type = 0;
 	w_read(ctlr, sp, 0, &ltv, 4);
 	if (ltv.type == WTyp_Stats){
 		ltv.len--;
-		for (i = 0; i < ltv.len && p < pend ; i++){
+		for (i = 0; i < ltv.len && p < pend; i++){
 			rc = csr_ins(ctlr, WR_Data1);
 			if (rc > 0xf000)
 				rc = ~rc & 0xffff;
@@ -791,7 +774,7 @@ w_intr(Ether *ether)
 	}
 
 	w_intena(ctlr);
-	w_txstart(ether,0);
+	w_txstart(ether);
 }
 
 // Watcher to ensure that the card still works properly and
@@ -838,12 +821,11 @@ w_timer(void* arg)
 		if ((ctlr->ticks % 10) == 0) {
 			if (ctlr->txtmout && --ctlr->txtmout == 0){
 				ctlr->nwatchdogs++;
-				w_txdone(ctlr, WTxErrEv|1); // 1: keep it busy
+				w_txdone(ctlr, WTxErrEv);
 				if (w_enable(ether)){
 					DEBUG("wavelan: wdog enable failed\n");
 				}
-				if (ctlr->txbusy)
-					w_txstart(ether,1);
+				w_txstart(ether);
 			}
 			if ((ctlr->ticks % 120) == 0)
 			if (ctlr->txbusy == 0)
@@ -1045,11 +1027,11 @@ option(Ctlr* ctlr, char* buf, long n)
 	}
 	else if(cistrcmp(cb->f[0], "mode") == 0){
 		if(cistrcmp(cb->f[1], "managed") == 0)
-			ctlr->ptype = 1;
+			ctlr->ptype = WPTypeManaged;
 		else if(cistrcmp(cb->f[1], "wds") == 0)
-			ctlr->ptype = 2;
+			ctlr->ptype = WPTypeWDS;
 		else if(cistrcmp(cb->f[1], "adhoc") == 0)
-			ctlr->ptype = 3;
+			ctlr->ptype = WPTypeAdHoc;
 		else if((i = atoi(cb->f[1])) >= 1 && i <= 3)
 			ctlr->ptype = i;
 		else
@@ -1127,8 +1109,9 @@ ctl(Ether* ether, void* buf, long n)
 		error(Ebadctl);
 	}
 	if(ctlr->txbusy)
-		w_txdone(ctlr, WTxErrEv|1);	// retry tx later.
+		w_txdone(ctlr, WTxErrEv);
 	w_enable(ether);
+	w_txstart(ether);
 	iunlock(&ctlr->Lock);
 
 	return n;
@@ -1144,7 +1127,7 @@ transmit(Ether* ether)
 
 	ilock(&ctlr->Lock);
 	ctlr->ntxrq++;
-	w_txstart(ether,0);
+	w_txstart(ether);
 	iunlock(&ctlr->Lock);
 }
 
@@ -1211,8 +1194,8 @@ reset(Ether* ether)
 		DEBUG("no wavelan found\n");
 		goto abort;
 	}
-	DEBUG("#l%d: port=0x%lx irq=%ld\n",
-			ether->ctlrno, ether->port, ether->irq);
+//	DEBUG("#l%d: port=0x%lx irq=%ld\n",
+//			ether->ctlrno, ether->port, ether->irq);
 
 	w_intdis(ctlr);
 	if (w_cmd(ctlr,WCmdIni,0)){
@@ -1255,10 +1238,6 @@ reset(Ether* ether)
 		goto abort;
 	}
 	memmove(ether->ea, ltv.addr, Eaddrlen);
-	DEBUG("#l%d: %2.2uX%2.2uX%2.2uX%2.2uX%2.2uX%2.2uX\n",
-			ether->ctlrno,
-			ether->ea[0], ether->ea[1], ether->ea[2],
-			ether->ea[3], ether->ea[4], ether->ea[5]);
 
 	if (ctlr->chan == 0)
 		ctlr->chan = ltv_ins(ctlr, WTyp_Chan);
@@ -1283,11 +1262,11 @@ reset(Ether* ether)
 	ether->multicast = multicast;
 	ether->arg = ether;
 
-	DEBUG("#l%d: irq %ld port %lx type %s",
-		ether->ctlrno, ether->irq, ether->port,	ether->type);
-	DEBUG(" %2.2uX%2.2uX%2.2uX%2.2uX%2.2uX%2.2uX\n",
-		ether->ea[0], ether->ea[1], ether->ea[2],
-		ether->ea[3], ether->ea[4], ether->ea[5]);
+//	DEBUG("#l%d: irq %ld port %lx type %s",
+//		ether->ctlrno, ether->irq, ether->port,	ether->type);
+//	DEBUG(" %2.2uX%2.2uX%2.2uX%2.2uX%2.2uX%2.2uX\n",
+//		ether->ea[0], ether->ea[1], ether->ea[2],
+//		ether->ea[3], ether->ea[4], ether->ea[5]);
 
 	iunlock(&ctlr->Lock);
 	return 0;
