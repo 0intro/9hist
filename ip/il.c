@@ -233,10 +233,19 @@ static	char	*etime = "connection timed out";
 static char*
 ilconnect(Conv *c, char **argv, int argc)
 {
-	char *e;
+	char *e, *p;
 	int fast;
 
-	fast = argc > 1 && strstr(argv[1], "!fasttimeout") != nil;
+	/* huge hack to quickly try an il connection */
+	fast = 0;
+	if(argc > 1){
+		p = strstr(argv[1], "!fasttimeout");
+		if(p != nil){
+			*p = 0;
+			fast = 1;
+		}
+	}
+
 	e = Fsstdconnect(c, argv, argc);
 	if(e != nil)
 		return e;
