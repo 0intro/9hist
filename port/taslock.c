@@ -25,18 +25,21 @@ lock(Lock *l)
 		for(i=0; i<1000000; i++)
 			if(tas(&l->key) == 0){
 				l->pc = pc;
+				l->pri = 0;
 				return;
 			}
 		lockloop(l, pc);
 		return;
 	}
 
+	/* priority interacts with code in ready() in proc.c */
 	pri = up->priority;
-	up->priority = PriLock;
 
 	for(i=0; i<1000; i++){
+		up->lockpri = l->pri;		/* assume priority of process holding lock */
 		if(tas(&l->key) == 0){
 			l->pri = pri;
+			up->lockpri = 0;	/* back to normal priority */
 			l->pc = pc;
 			return;
 		}
@@ -44,6 +47,7 @@ lock(Lock *l)
 			sched();
 	}
 	lockloop(l, pc);
+	up->lockpri = 0;	/* back to normal priority */
 }
 
 void
@@ -80,13 +84,11 @@ canlock(Lock *l)
 {
 	int pri;
 
-	SET(pri);
-	if(up) {
+	if(up)
 		pri = up->priority;
-		up->priority = PriLock;
-	}
+	else
+		pri = 0;
 	if(tas(&l->key)) {
-		up->priority = pri;
 		l->pc = getcallerpc(l);
 		return 0;
 	}
@@ -97,13 +99,9 @@ canlock(Lock *l)
 void
 unlock(Lock *l)
 {
-	int p;
-
-	p = l->pri;
 	l->pc = 0;
 	l->key = 0;
-	if(up != 0)
-		up->priority = p;
+	l->pri = 0;
 }
 
 void
