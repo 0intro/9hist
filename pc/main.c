@@ -430,8 +430,8 @@ exit(void)
 		headreset();		/* via headland chip */
 		break;
 	case At:
-		i8042reset();		/* via keyboard controller */
-		break;
+		putcr3(0);		/* crash and burn */
+		for(;;);
 	}
 }
 

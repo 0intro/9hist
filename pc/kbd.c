@@ -182,19 +182,6 @@ i8042a20(void)
 	outready();
 }
 
-/*
- *  ask 8042 to reset the 386
- */
-void
-i8042reset(void)
-{
-	outready();
-	outb(Cmd, 0xD1);
-	outready();
-	outb(Data, 0x0);
-	outready();
-}
-
 void
 kbdinit(void)
 {
