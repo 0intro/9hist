@@ -212,7 +212,10 @@ mouseread(Chan *c, void *va, long n, ulong offset)
 	case Qmouse:
 		while(mousechanged(0) == 0)
 			sleep(&mouse.r, mousechanged, 0);
-		lock(&cursor);
+
+		while(!canlock(&cursor))
+			tsleep(&up->sleep, return0, 0, TK2MS(1));
+
 		sprint(buf, "m%11d %11d %11d %11d",
 			mouse.xy.x, mouse.xy.y,
 			mouseswap ? map[mouse.buttons&7] : mouse.buttons,

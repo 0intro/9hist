@@ -43,6 +43,7 @@ clock(Ureg *ur, void *arg)
 	checkalarms();
 	hardclock();
 	uartclock();
+	mouseclock();
 
 	if(up && up->state == Running){
 		if(anyready())
@@ -52,8 +53,6 @@ clock(Ureg *ur, void *arg)
 		if((ur->cs&0xffff) == UESEL)
 			(*(ulong*)(USTKTOP-BY2WD)) += TK2MS(1);
 	}
-
-	mouseclock();
 }
 
 #define STEPPING(x)	((x)&0xf)
