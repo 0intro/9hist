@@ -137,7 +137,7 @@ dmasetup(int chan, void *va, long len, int isread)
 	pa = PADDR(va);
 	if((((ulong)va)&0xF0000000) != KZERO
 	|| (pa&0xFFFF0000) != ((pa+len)&0xFFFF0000)
-	|| pa > 16*MB) {
+	|| pa >= 16*MB) {
 		if(xp->bva == nil)
 			return -1;
 		if(len > BY2PG)
