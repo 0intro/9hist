@@ -149,7 +149,7 @@ sysfsession(ulong *arg)
 				n = (*devtab[c->type].read)(c, buf, sizeof buf, 0);
 			poperror();
 			if(convM2S(buf, &f, n) == 0){
-				unlock(s);
+				unlock(&s->send);
 				error(Emountrpc);
 			}
 			switch(f.type){
@@ -159,10 +159,10 @@ sysfsession(ulong *arg)
 				memmove(s->authdom, f.authdom, DOMLEN);
 				break;
 			case Rerror:
-				unlock(s);
+				unlock(&s->send);
 				error(f.ename);
 			default:
-				unlock(s);
+				unlock(&s->send);
 				error(Emountrpc);
 			}
 		}
