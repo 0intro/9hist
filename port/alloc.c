@@ -254,8 +254,8 @@ poolalloc(Pool *p, int size)
 		}
 
 		iunlock(&p->l);
-		print("arena too large: size %d cursize %d arenasize %d maxsize %d\n",
-			 size, p->cursize, p->arenasize, p->maxsize);
+		print("%s arena too large: size %d cursize %d arenasize %d maxsize %d\n",
+			 p->name, size, p->cursize, p->arenasize, p->maxsize);
 		return nil;
 	}
 
