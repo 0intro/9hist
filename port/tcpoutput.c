@@ -9,7 +9,8 @@
 
 extern int tcpdbg;
 extern ushort tcp_mss;
-extern Queue *Tcpoutput;
+int tcptimertype = 0;
+
 
 #define DPRINT if(tcpdbg) print
 
@@ -190,11 +191,9 @@ tcp_output(Ipconv *s)
 		DPRINT("tcp_output: ip_send s%lux a%lux w%lux u%lux\n",
 			seg.seq, seg.ack, seg.wnd, seg.up);
 
-		PUTNEXT(Tcpoutput, hbp);
+		PUTNEXT(Ipoutput, hbp);
 	}
 }
-
-int tcptimertype = 0;
 
 void
 tcp_timeout(void *arg)

@@ -11,7 +11,6 @@ int tcpdbg = 0;
 #define DPRINT	if(tcpdbg) print
 #define LPRINT  if(tcpdbg) print
 
-extern Queue *Tcpoutput;
 QLock	reseqlock;
 Reseq	*reseqfree;
 
@@ -497,7 +496,7 @@ reset(Ipaddr source, Ipaddr dest, char tos, ushort length, Tcp *seg)
 	DPRINT("Reset: seq = %lux ack = %d flags = %lux\n",
 	       seg->seq, seg->ack, seg->flags);
 
-	PUTNEXT(Tcpoutput, hbp);
+	PUTNEXT(Ipoutput, hbp);
 }
 
 void

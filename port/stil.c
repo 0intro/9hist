@@ -13,7 +13,7 @@
 
 #define DPRINT if(pip)print
 int ilcksum = 1;
-Queue	*Iloutput;		/* Il to lance output channel */
+
 static int initseq = 25000;
 char *ilstate[] = { "Closed", "Syncer", "Syncee", "Established", "Listening", "Closing" };
 
@@ -25,13 +25,18 @@ void
 ilopen(Queue *q, Stream *s)
 {
 	Ipconv *ipc;
+	static int ilkproc;
 
 	/* Start il service processes */
-	if(!Iloutput) {
-		Iloutput = WR(q);
+	if(!Ipoutput) {
+		Ipoutput = WR(q);
 		/* This never goes away - we use this queue to send acks/rejects */
 		s->opens++;
 		s->inuse++;
+	}
+
+	if(ilkproc == 0) {
+		ilkproc = 1;
 		kproc("ilack", ilackproc, 0);
 	}
 
@@ -62,10 +67,17 @@ iloput(Queue *q, Block *bp)
 	int dlen;
 	Block *np;
 
-	/* Prepend udp header to packet and pass on to ip layer */
 	ipc = (Ipconv *)(q->ptr);
 	if(ipc->psrc == 0)
 		error(Enoport);
+
+	switch(ipc->ilctl.state) {
+	case Ilclosed:
+	case Ilsyncee:
+	case Illistening:
+	case Ilclosing:
+		error(Ehungup);
+	}
 
 	if(bp->type != M_DATA) {
 		freeb(bp);
@@ -90,7 +102,12 @@ iloput(Queue *q, Block *bp)
 	ih = (Ilhdr *)(bp->rptr);
 	ic = &ipc->ilctl;
 
-	hnputs(ih->illen, dlen+IL_EHSIZE+IL_HDRSIZE);
+	/* Ip fields */
+	hnputl(ih->src, Myip);
+	hnputl(ih->dst, ipc->dst);
+	ih->proto = IP_ILPROTO;
+	/* Il fields */
+	hnputs(ih->illen, dlen+IL_HDRSIZE);
 	hnputs(ih->ilsrc, ipc->psrc);
 	hnputs(ih->ildst, ipc->pdst);
 	ih->iltype = Ildata;
@@ -104,8 +121,20 @@ iloput(Queue *q, Block *bp)
 	if(ilcksum)
 		hnputs(ih->ilsum, ptcl_csum(bp, IL_EHSIZE, dlen+IL_HDRSIZE));
 
+	ilackq(ic, bp);
+
+	PUTNEXT(q, bp);
+}
+
+void
+ilackq(Ilctl *ic, Block *bp)
+{
+	Block *np;
+
 	/* Enqueue a copy on the unacked queue in case this one gets lost */
 	np = copyb(bp, blen(bp));
+
+	lock(ic);
 	if(ic->unacked) {
 		ic->unackedtail->next = np;
 		ic->unackedtail = np;
@@ -115,8 +144,33 @@ iloput(Queue *q, Block *bp)
 		ic->unackedtail = np;
 	}
 	np->next = 0;
+	unlock(ic);
+}
 
-	PUTNEXT(q, bp);
+void
+ilackto(Ilctl *ic, ulong ackto)
+{
+	Ilhdr *h;
+	Block *bp;
+
+	for(;;) {
+		lock(ic);
+		if(ic->unacked) {
+			h = (Ilhdr *)ic->unacked->rptr;
+			if(ackto < hngetl(h->ilack)) {
+				unlock(ic);
+				break;	
+			}
+			bp = ic->unacked;
+			ic->unacked = bp->next;
+			unlock(ic);
+			freeb(bp);
+		}
+		else {
+			unlock(ic);
+			break;
+		}
+	}
 }
 
 void
@@ -143,29 +197,79 @@ ilrcvmsg(Ipconv *ipc, Block *bp)
 		goto drop;
 	}
 
-	s = ip_conn(ipc, nhgets(ih->ildst), nhgets(ih->ilsrc), nhgetl(ih->src), IP_ILPROTO);
-	if(s == 0) {
-		ilsendctl(0, ih, Ilreset);
-		goto drop;
+	etab = &ipc[conf.ip];
+	for(s = ipc; s < etab; s++) {
+		if(s->sport == ih->ildst && s->dport == ih->ilsrc) {
+			ilprocess(s, ih, bp);
+			return;
+		}
+			
 	}
-
-	
-drop:
+	for(s = ipc; s < etab; s++) {
+		if(s->state == 	Illistening && s->sport == 0) {
+			/* Do the listener stuff */
+			ilprocess(s, ih, bp);
+			return;
+		}
+	}
+	ilsendctl(0, ih, Ilreset);
 	freeb(bp);
 }
 
 void
-ilsendctl(Ipconv *ipc, Ilhdr *inih, int type)
+ilprocess(Ipconv *s, Ihdr *h, Block *bp)
+{
+	switch(s->ilctl.state) {
+	case Ilclosed:
+	case Ilclosing:
+	case Illistener:
+		error(Ehungup);
+	}
+
+	switch(h->type) {
+	case Ilsync:
+		if(s->ilctl.state == Ilsync)
+			s->ilctl.state = Ilestablished;
+		freeb(bp);
+		break;
+	case Ilack:
+		ilackto(&s->ilctl, hngetl(g->ilack));
+		freeb(bp);
+		break;
+	case Ilquerey:
+		ilsendctl(s, 0, Ilack, 1);
+		freeb(bp);
+		break;
+	case Ildataquery:
+	case Ildata:
+		ilackto(&s->ilctl, hngetl(h->ilack));
+		bp->rptr += IL_EHSIZE+IL_HDRSIZE;
+		PUTNEXT(s->readq, bp);
+		break;
+	case Ilreset:
+		s->ilctl.state = Closed;
+		freeb(bp);
+	}
+}
+
+void
+ilsendctl(Ipconv *ipc, Ilhdr *inih, int type, int ack)
 {
 	Ilhdr *ih;
 	Ilcb *ic;
 	Block *bp;
 
 	bp = allocb(IL_EHSIZE+IL_HDRSIZE);
+	bp->wptr += IL_EHSIZE+IL_HDRSIZE;
+
 	ih = (Ilhdr *)(bp->rptr);
 	ic = &ipc->ilctl;
 
-	hnputs(ih->illen, IL_EHSIZE+IL_HDRSIZE);
+	/* Ip fields */
+	hnputl(ih->src, Myip);
+	hnputl(ih->dst, ipc->dst);
+	ih->proto = IP_ILPROTO;
+	hnputs(ih->illen, IL_HDRSIZE);
 	if(inih) {
 		hnputs(ih->ilsrc, nhgets(inih->ildst));
 		hnputs(ih->ildst, nhgets(inih->ilsrc));
@@ -186,7 +290,11 @@ ilsendctl(Ipconv *ipc, Ilhdr *inih, int type)
 	if(ilcksum)
 		hnputs(ih->ilsum, ptcl_csum(bp, IL_EHSIZE, IL_HDRSIZE));
 
-	PUTNEXT(Iloutput, bp);
+	if(!ack) {
+		ic->sent++;			/* Maybe needs locking */
+		ilackq(&ipc->ilctl, bp);
+	}
+	PUTNEXT(Ipoutput, bp);
 }
 
 void

@@ -17,7 +17,7 @@ enum
 
 int udpsum = 1;
 
-Queue	*Tcpoutput;		/* Tcp to lance output channel */
+Queue	*Ipoutput;		/* Control message stream for tcp/il */
 Ipifc	*ipifc;			/* IP protocol interfaces for stip */
 Ipconv	*ipconv[Nrprotocol];	/* Connections for each protocol */
 Dirtab  *ipdir[Nrprotocol];	/* Connection directory structures */
@@ -609,14 +609,17 @@ void
 tcpstopen(Queue *q, Stream *s)
 {
 	Ipconv *ipc;
+	static int tcpkprocs;
 
-	/* Start tcp service processes */
-	if(!Tcpoutput) {
-		Tcpoutput = WR(q);
-		/* This never goes away - we use this queue to send acks/rejects */
+	if(!Ipoutput) {
+		Ipoutput = WR(q);
 		s->opens++;
 		s->inuse++;
-		/* Flow control and tcp timer processes */
+	}
+
+	/* Flow control and tcp timer processes */
+	if(tcpkprocs == 0) {
+		tcpkprocs = 1;
 		kproc("tcpack", tcpackproc, 0);
 		kproc("tcpflow", tcpflow, &ipconv[s->dev]);
 

@@ -14,7 +14,8 @@ typedef struct Drive		Drive;
 
 enum {
 	Npart=		8+2,	/* 8 sub partitions, disk, and partition */
-	Ndisk=		64,	/* maximum disks; must be power of 2 or change DRIVE */
+	Ndisk=		64,	/* maximum disks; if you change it, you must
+				   map from dev to disk */
 
 	/* file types */
 	Qdir=		0,
@@ -49,30 +50,20 @@ static long	wrenio(Drive *, Partition *, int, char *, ulong, ulong);
 static int
 wrendev(char *p)
 {
-	int dev = 0;
+	int drive, unit;
 
-	if(p == 0 || p[0] == 0)
-		goto out;
+	if(p == 0 || p[0] == '\0')
+		return 0;
 	if(p[0] < '0' || p[0] > '7')
-		goto cant;
-	dev = (p[0] - '0') << 3;
-	if(p[1] == 0)
-		goto out;
-	if(p[1] != '.')
-		goto cant;
-	if(p[2] == 0)
-		goto out;
-	if(p[2] < '0' || p[2] > '7')
-		goto cant;
-	dev |= p[2] - '0';
-	if(p[3] != 0)
-		goto cant;
-out:
-	if(dev >= Ndisk)
-		error(Ebadarg);
-	return dev;
-cant:
-	error(Ebadarg);
+		errors("bad scsi drive specifier");
+	drive = p[0] - '0';
+	unit = 0;
+	if(p[1]){
+		if(p[1] != '.' || p[2] < '0' || p[2] > '7' || p[3] != '\0')
+			errors("bad scsi unit specifier");
+		unit = p[2] - '0';
+	}
+	return (drive << 3) | unit;
 }
 
 static int
@@ -191,7 +182,7 @@ wrenread(Chan *c, char *a, long n, ulong offset)
 
 	d = &wren[DRIVE(c->qid.path)];
 	if(d->npart == 0)
-		errors("bad drive");
+		errors("drive repartitioned");
 	p = &d->p[PART(c->qid.path)];
 	return wrenio(d, p, 0, a, n, offset);
 }
@@ -204,7 +195,7 @@ wrenwrite(Chan *c, char *a, long n, ulong offset)
 
 	d = &wren[DRIVE(c->qid.path)];
 	if(d->npart == 0)
-		errors("bad drive");
+		errors("drive repartitioned");
 	p = &d->p[PART(c->qid.path)];
 	return wrenio(d, p, 1, a, n, offset);
 }
@@ -216,7 +207,7 @@ wrenio(Drive *d, Partition *p, int write, char *a, ulong n, ulong offset)
 	ulong block;
 
 	if(n % d->bytes || offset % d->bytes)
-		error(Ebadarg);
+		errors("io not block aligned");
 	block = offset / d->bytes + p->start;
 	if(block >= p->end)
 		return 0;

@@ -473,7 +473,9 @@ hotrodintr(int vec)
 		print("bad hotrod vec\n");
 		return;
 	}
-	h->addr->lcsr3 &= ~INT_VME;
+	l = h->addr->lcsr3 & ~INT_VME;
+	h->addr->lcsr3 = l;
+	h->addr->lcsr3 = l;
 	while(l = h->addr->replyq[h->ri]){	/* assign = */
 		hm = (Hotmsg*)(VME2MP(l));
 		h->addr->replyq[h->ri] = 0;

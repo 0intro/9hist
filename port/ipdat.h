@@ -82,7 +82,7 @@ struct Ilhdr
 	uchar	cksum[2];	/* Header checksum */
 	uchar	src[4];		/* Ip source */
 	uchar	dst[4];		/* Ip destination */
-#define IL_HDRSIZE	16	
+#define IL_HDRSIZE	18	
 	uchar	ilsum[2];	/* Checksum including header */
 	uchar	illen[2];	/* Packet length */
 	uchar	iltype;		/* Packet type */
@@ -95,6 +95,7 @@ struct Ilhdr
 
 struct Ilcb				/* Control block */
 {
+	Lock;
 	int	state;
 	Block	*unacked;
 	Block	*unackedtail;
@@ -527,3 +528,4 @@ extern Qinfo tcpinfo;
 extern Qinfo ipinfo;
 extern Qinfo udpinfo;
 extern Qinfo ilinfo;
+extern Queue *Ipoutput;
