@@ -455,6 +455,9 @@ syspread(ulong *arg)
 		ulong u[2];
 	} o;
 
+	if(arg[3] == ~0UL && arg[4] == ~0UL)
+		return sysread(arg);
+
 	n = arg[2];
 	validaddr(arg[1], n, 1);
 	c = fdtochan(arg[0], OREAD, 1, 1);
@@ -556,6 +559,9 @@ syspwrite(ulong *arg)
 		uvlong v;
 		ulong u[2];
 	} o;
+
+	if(arg[3] == ~0UL && arg[4] == ~0UL)
+		return syswrite(arg);
 
 	validaddr(arg[1], arg[2], 0);
 	n = arg[2];

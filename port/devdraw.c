@@ -959,7 +959,7 @@ drawclose(Chan *c)
 	Client *cl;
 	Refresh *r;
 
-	if(c->qid.path & CHDIR)
+	if(QID(c->qid) < Qcolormap)	/* Qtopdir, Qnew, Q3rd, Q2nd have no client */
 		return;
 	qlock(&sdraw);
 	if(waserror()){

@@ -19,7 +19,7 @@
 #include	"io.h"
 #include	"sa1110dma.h"
 
-static int debug = 2;
+static int debug = 0;
 
 /*
  * GPIO based L3 bus support.
@@ -139,15 +139,15 @@ struct	IOstate
 {
 	QLock;
 	Lock			ilock;
-	Rendez			vous;
-	Chan			*chan;			/* chan of open */
-	int				dma;			/* dma chan, alloc on open, free on close */
-	int				bufinit;		/* boolean, if buffers allocated */
-	Buf				buf[Nbuf];		/* buffers and queues */
+	Rendez		vous;
+	Chan		*chan;		/* chan of open */
+	int			dma;			/* dma chan, alloc on open, free on close */
+	int			bufinit;		/* boolean, if buffers allocated */
+	Buf			buf[Nbuf];		/* buffers and queues */
 	volatile Buf	*current;		/* next dma to finish */
-	volatile Buf	*next;			/* next candidate for dma */
+	volatile Buf	*next;		/* next candidate for dma */
 	volatile Buf	*filling;		/* buffer being filled */
-/* just be be cute (and to have defines like linux, a real operating system) */
+/* to have defines just like linux — there's a real operating system */
 #define emptying filling
 };
 
@@ -166,6 +166,9 @@ static	struct
 	IOstate	o;
 } audio;
 
+Buf	zeroes;
+int	zerodma;	/* dma buffer used for sending zero */
+
 static struct
 {
 	ulong	bytes;
@@ -173,6 +176,7 @@ static struct
 	ulong	idledma;
 	ulong	faildma;
 	ulong	samedma;
+	ulong	empties;
 } iostats;
 
 static	struct
@@ -183,14 +187,14 @@ static	struct
 	int	irval;
 } volumes[] =
 {
-[Vaudio]	{"audio",	Fout|Fmono,	 80,	 80},
-[Vmic]		{"mic",		Fin|Fmono,	  0,	  0},
-[Vtreb]		{"treb",	Fout|Fmono,	 50,	 50},
-[Vbass]		{"bass",	Fout|Fmono, 	 50,	 50},
+[Vaudio]	{"audio",	Fout|Fmono,	 	80,		80},
+[Vmic]	{"mic",	Fin|Fmono,		  0,		  0},
+[Vtreb]	{"treb",	Fout|Fmono,		50,		50},
+[Vbass]	{"bass",	Fout|Fmono, 		50,		50},
 [Vspeed]	{"speed",	Fin|Fout|Fmono,	Speed,	Speed},
-[Vfilter]	{"filter",	Fout|Fmono,	  0,	  0},
-[Vinvert]	{"invert",	Fin|Fout|Fmono,	  0,	  0},
-[Nvol]		{0}
+[Vfilter]	{"filter",	Fout|Fmono,		  0,		  0},
+[Vinvert]	{"invert",	Fin|Fout|Fmono,	  0,		  0},
+[Nvol]	{0}
 };
 
 static void	setreg(char *name, int val, int n);
@@ -397,8 +401,15 @@ bufinit(IOstate *b)
 	for (i = 0; i < Nbuf; i++) {
 		b->buf[i].virt = xalloc(Bufsize);
 		b->buf[i].phys = PADDR(b->buf[i].virt);
+		memset(b->buf[i].virt, 0xAA, Bufsize);
 	}
 	b->bufinit = 1;
+
+	if (b == &audio.o) {
+		zeroes.virt = xalloc(Bufsize);
+		zeroes.phys = PADDR(b->buf[i].virt);
+		memset(zeroes.virt, 0, Bufsize);
+	}
 };
 
 static void
@@ -681,6 +692,15 @@ sendaudio(IOstate *s) {
 
 	if (debug > 1) print("#A: sendaudio\n");
 	ilock(&s->ilock);
+	if ((audio.amode &  Aread) && s->next == s->filling && dmaidle(s->dma)) {
+		// send an empty buffer to provide an input clock
+		zerodma |= dmastart(s->dma, zeroes.phys, Bufsize) & 0xff;
+		if (zerodma == 0)
+			if (debug) print("emptyfail\n");
+		iostats.empties++;
+		iunlock(&s->ilock);
+		return;
+	}
 	while (s->next != s->filling) {
 		assert(s->next->nbytes);
 		if ((n = dmastart(s->dma, s->next->phys, s->next->nbytes)) == 0) {
@@ -688,7 +708,7 @@ sendaudio(IOstate *s) {
 			break;
 		}
 		iostats.totaldma++;
-		switch (n) {
+		switch (n >> 8) {
 		case 1:
 			iostats.idledma++;
 			break;
@@ -724,7 +744,7 @@ recvaudio(IOstate *s) {
 			break;
 		}
 		iostats.totaldma++;
-		switch (n) {
+		switch (n >> 8) {
 		case 1:
 			iostats.idledma++;
 			break;
@@ -791,14 +811,20 @@ audiointr(void *x, ulong ndma) {
 		else
 			iprint("-");
 	}
-	/* Only interrupt routine touches s->current */
-	s->current++;
-	if (s->current == &s->buf[Nbuf])
-		s->current = &s->buf[0];
-	if (ndma > 0) {
-		if (s == &audio.o)
+	if (s == &audio.i || (ndma & ~zerodma)) {
+		/* A dma, not of a zero buffer completed, update current
+		 * Only interrupt routine touches s->current
+		 */
+		s->current->nbytes = (s == &audio.i)? Bufsize: 0;
+		s->current++;
+		if (s->current == &s->buf[Nbuf])
+			s->current = &s->buf[0];
+	}
+	if (ndma) {
+		if (s == &audio.o) {
+			zerodma &= ~ndma;
 			sendaudio(s);
-		else if (s == &audio.i)
+		} else if (s == &audio.i)
 			recvaudio(s);
 	}
 	wakeup(&s->vous);
@@ -862,19 +888,23 @@ audioopen(Chan *c, int mode)
 			s->dma = dmaalloc(1, 0, 4, 2, SSPRecvDMA, Port4SSP, audiointr, (void*)s);
 			audio.amode |= Aread;
 		}
-		if (omode & Awrite) {
-			outenable();
+		if (omode & (Aread|Awrite) && (audio.amode & Awrite) == 0) {
 			s = &audio.o;
-			audio.amode |= Awrite;
 			if(s->bufinit == 0)
 				bufinit(s);
 			setempty(s);
 			s->chan = c;
 			s->dma = dmaalloc(0, 0, 4, 2, SSPXmitDMA, Port4SSP, audiointr, (void*)s);
+		}	
+		if (omode & Awrite) {
 			audio.amode |= Awrite;
+			outenable();
 		}
 		mxvolume();
 		qunlock(&audio);
+		if (audio.amode == Aread)
+			sendaudio(&audio.o);
+			
 		if (debug) print("open done\n");
 		break;
 	}
@@ -905,19 +935,34 @@ audioclose(Chan *c)
 		if (debug > 1) print("#A: close\n");
 		if(c->flag & COPEN) {
 			qlock(&audio);
-			if(waserror()){
-				qunlock(&audio);
-				nexterror();
+			if (audio.i.chan == c) {
+				/* closing the read end */
+				audio.amode &= ~Aread;
+				s = &audio.i;
+				qlock(s);
+				indisable();
+				setempty(s);
+				dmafree(s->dma);
+				qunlock(s);
+				if ((audio.amode & Awrite) == 0) {
+					s = &audio.o;
+					qlock(s);
+					while(waserror()) {
+						dmawait(s->dma);
+						if (dmaidle(s->dma))
+							break;
+					}
+					outdisable();
+					setempty(s);
+					dmafree(s->dma);
+					qunlock(s);
+				}
 			}
 			if (audio.o.chan == c) {
 				/* closing the write end */
 				audio.amode &= ~Awrite;
 				s = &audio.o;
 				qlock(s);
-				if(waserror()){
-					qunlock(s);
-					nexterror();
-				}
 				if (s->filling->nbytes) {
 					/* send remaining partial buffer */
 					s->filling++;
@@ -925,34 +970,22 @@ audioclose(Chan *c)
 						s->filling = &s->buf[0];
 					sendaudio(s);
 				}
-				dmawait(s->dma);
+				while(waserror()) {
+					dmawait(s->dma);
+					if (dmaidle(s->dma))
+						break;
+				}
 				outdisable();
 				setempty(s);
-				dmafree(s->dma);
+				if ((audio.amode & Aread) == 0)
+					dmafree(s->dma);
 				qunlock(s);
-				poperror();
-			}
-			if (audio.i.chan == c) {
-				/* closing the read end */
-				audio.amode &= ~Aread;
-				s = &audio.i;
-				qlock(s);
-				if(waserror()){
-					qunlock(s);
-					nexterror();
-				}
-				indisable();
-				setempty(s);
-				dmafree(s->dma);
-				qunlock(s);
-				poperror();
 			}
 			if (audio.amode == 0) {
 				/* turn audio off */
 				egpiobits(EGPIO_audio_ic_power | EGPIO_codec_reset, 0);
 			}
 			qunlock(&audio);
-			poperror();
 			if (debug) {
 				print("total dmas: %lud\n", iostats.totaldma);
 				print("dmas while idle: %lud\n", iostats.idledma);
@@ -1009,10 +1042,9 @@ audioread(Chan *c, void *v, long n, vlong off)
 				sleep(&s->vous, audioqnotempty, s);
 			}
 
-			m = Bufsize - s->emptying->nbytes;
-			if(m > n)
-				m = n;
-			memmove(p, s->emptying->virt + s->emptying->nbytes, m);
+			m = (s->emptying->nbytes > n)? n: s->emptying->nbytes;
+			memmove(p, s->emptying->virt + Bufsize - 
+					  s->emptying->nbytes, m);
 
 			s->emptying->nbytes -= m;
 			n -= m;
