@@ -30,7 +30,22 @@ static Dirtab viddir[]={
 };
 
 CodeData *	codeData;
-MjpgDrv *	mjpgDrv;
+
+int			currentBuffer;
+int			currentBufferLength;
+void *		currentBufferPtr;
+int			frameNo;
+Rendez		sleeper;
+int			singleFrame;
+int			bufferPrepared;
+int			hdrPos;
+int			nopens;
+
+static FrameHeader frameHeader = {
+	MRK_SOI, MRK_APP3, (sizeof(FrameHeader)-4) << 8,
+	{ 'L', 'M', 'L', '\0'},
+	-1, 0, 0, 0, 0
+};
 
 static void
 lml33_i2c_pause(void) {
@@ -182,43 +197,45 @@ lml33_i2c_write_bytes(uchar addr, uchar sub, uchar *bytes, long num) {
 	lml33_i2c_stop();
 }
 
-static uchar
+static int
 lml33_i2c_rd8(int addr, int sub)
 {
-	int ack;
 	uchar msb;
 
 	lml33_i2c_start();
 
-	ack = lml33_i2c_wrbyte(addr);
-	if (ack == 1){
+	if (lml33_i2c_wrbyte(addr) == 1
+	 || lml33_i2c_wrbyte(sub) == 1) {
 		lml33_i2c_stop();
-		error(Eio);
-	}
-
-	ack = lml33_i2c_wrbyte(sub);
-	if (ack == 1){
-		lml33_i2c_stop();
-		error(Eio);
+		return -1;
 	}
 
 	lml33_i2c_start();
 
-	ack = lml33_i2c_wrbyte(addr+1);
-	if (ack == 1){
+	if (lml33_i2c_wrbyte(addr+1) == 1
+	 || lml33_i2c_rdbyte(&msb) == 0){
 		lml33_i2c_stop();
-		error(Eio);
-	}
-
-	ack = lml33_i2c_rdbyte(&msb);
-	if (ack == 0){
-		lml33_i2c_stop();
-		error(Eio);
+		return -1;
 	}
 
 	lml33_i2c_stop();
 
 	return msb;
+}
+
+static int
+lml33_i2c_wr8(uchar addr, uchar sub, uchar msb) {
+	
+	lml33_i2c_start();
+
+	if (lml33_i2c_wrbyte(addr) == 1
+	 || lml33_i2c_wrbyte(sub) == 1
+	 || lml33_i2c_wrbyte(msb) == 1)
+		return 0;
+	
+	lml33_i2c_stop();
+	
+	return 1;
 }
 
 /*
@@ -252,7 +269,7 @@ lml33_post_idle(void) {
 }
 
 // lml33_post_write writes a byte to a guest using postoffice mechanism
-static void
+static int
 lml33_post_write(int guest, int reg, int v) {
 	int w;
 
@@ -269,14 +286,11 @@ lml33_post_write(int guest, int reg, int v) {
 	writel(w, pciBaseAddr + ZR36057_POST_OFFICE);
 
 	// wait for postoffice not busy
-	w = lml33_post_idle();
-
-	// decide if write went ok
-	if (w == -1) error(Eio);
+	return lml33_post_idle() == -1;
 }
 
 // lml33_post_read reads a byte from a guest using postoffice mechanism
-static uchar
+static int
 lml33_post_read(int guest, int reg) {
 	int w;
 
@@ -295,12 +309,12 @@ lml33_post_read(int guest, int reg) {
 	w = lml33_post_idle();
 
 	// decide if read went ok
-	if (w == -1) error(Eio);
+	if (w == -1) return -1;
 
-	return (uchar)(w & 0xFF);
+	return w & 0xFF;
 }
 
-static void
+static int
 lml33_zr060_write(int reg, int v) {
 	int guest_id;
 
@@ -308,10 +322,10 @@ lml33_zr060_write(int reg, int v) {
 
 	lml33_post_write(guest_id, 1, reg>>8 & 0x03);
 	lml33_post_write(guest_id, 2, reg    & 0xff);
-	lml33_post_write(guest_id, 3, v);
+	return lml33_post_write(guest_id, 3, v);
 }
 
-static uchar
+static int
 lml33_zr060_read(int reg) {
 	int guest_id;
 
@@ -323,24 +337,203 @@ lml33_zr060_read(int reg) {
 	return lml33_post_read(guest_id, 3);
 }
 
-long
-chipread(long addr, char *buf, long n, long off) {
-	long i;
-
-	for (i = 0; i < n; i++) {
-		*buf++ = lml33_i2c_rd8(addr, off++);
-	}
-	return i;
+static int
+prepareBuffer(CodeData * this, int bufferNo) {
+  if(bufferNo >= 0 && bufferNo < NBUF && (this->statCom[bufferNo] & STAT_BIT)) {
+    this->statCom[bufferNo] = this->statComInitial[bufferNo];
+    return this->fragmDescr[bufferNo].fragmLength;
+  } else
+    return -1;
 }
 
-long
-post060read(char *buf, long n, long off) {
-	long i;
+static int
+getProcessedBuffer(CodeData* this){
+	static lastBuffer=NBUF-1;
+	int lastBuffer0 = lastBuffer;
 
-	for (i = 0; i < n; i++) {
-		*buf++ = lml33_zr060_read(off++);
+	while (1) { 
+		lastBuffer = (lastBuffer+1) % NBUF;
+		if(this->statCom[lastBuffer]&STAT_BIT)
+			return lastBuffer;
+		if(lastBuffer==lastBuffer0)
+			break;
 	}
-	return i;
+	return -1;
+}
+
+static int
+getBuffer(CodeData *this, int bufferNo, void** bufferPtr, int* frameNo) {
+	int codeLength;
+	if(this->statCom[bufferNo] & STAT_BIT) {
+		*bufferPtr = (void*)this->fragmDescr[bufferNo].fragmAddress;
+		*frameNo = this->statCom[bufferNo] >> 24;
+		codeLength=((this->statCom[bufferNo] & 0x00FFFFFF) >> 1);
+		return codeLength;
+	} else
+		return -1;
+}
+
+static long
+vread(Chan *, void *va, long count, vlong pos) {
+	int prevFrame;
+	//  how much bytes left to transfer for the header
+	int hdrLeft;
+	// Count of bytes that we need to copy into buf from code-buffer
+	// (different from count only while in header reading mode)
+	int cpcount = count;
+	// Count of bytes that we copied into buf altogether and will return
+	int retcount=0;
+	vlong thetime;
+	uchar *buf = va;
+
+	//print("devlml::vread() count=%ld pos=%lld\n", count, pos);
+
+	// If we just begin reading a file, pos would never be 0 otherwise
+	if (pos == 0 && hdrPos == -1) {
+		 currentBuffer = -1;
+		 currentBufferLength = 0;
+		 frameNo = -1;
+	}
+	prevFrame = frameNo;
+
+	// We get to the end of the current buffer, also covers just
+	// open file, since 0 >= -1
+	if(hdrPos == -1 && pos >= currentBufferLength) {
+		prepareBuffer(codeData, currentBuffer);
+		// if not the first buffer read and single frame mode - return EOF
+		if (currentBuffer != -1 && singleFrame)
+			return 0;
+		while((currentBuffer = getProcessedBuffer(codeData)) == -1)
+			sleep(&sleeper, return0, 0);
+		currentBufferLength = getBuffer(codeData, currentBuffer,
+			&currentBufferPtr, &frameNo);
+
+		pos = 0; // ??????????????
+
+		// print("getBufffer %d -> %d 0x%x %d\n",currentBuffer, currentBufferLength, currentBufferPtr, frameNo);
+		if(frameNo != (prevFrame + 1) % 256)
+			print("Frames out of sequence: %d %d\n", prevFrame, frameNo);
+		// Fill in APP marker fields here
+		thetime = todget();
+		frameHeader.sec = (ulong)(thetime / 1000000000LL);
+		frameHeader.usec = (ulong)(thetime % 1000000000LL) / 1000;
+		frameHeader.frameSize = currentBufferLength - 2 + sizeof(FrameHeader);
+		frameHeader.frameSeqNo++;
+		frameHeader.frameNo = frameNo;
+		hdrPos=0;
+	}
+
+	if (hdrPos != -1) {
+		hdrLeft = sizeof(FrameHeader) - hdrPos;
+		// Write the frame size here
+		if (count >= hdrLeft) {
+			memmove(buf, (char*)&frameHeader + hdrPos, hdrLeft);
+			retcount += hdrLeft;
+			cpcount = count - hdrLeft;
+			pos = sizeof(frameHeader.mrkSOI);
+			hdrPos = -1;
+		} else {
+			memmove(buf, (char*)&frameHeader + hdrPos, count);
+			hdrPos += count;
+			return count;
+		}
+	}
+
+	if(cpcount + pos > currentBufferLength)
+		cpcount = currentBufferLength - pos;
+
+	memmove(buf + retcount, (char *)currentBufferPtr + pos, cpcount);
+	retcount += cpcount;
+
+	//pr_debug("return %d %d\n",cpcount,retcount);
+	return retcount;
+}
+
+static long
+vwrite(Chan *, void *va, long count, vlong pos) {
+	//  how much bytes left to transfer for the header
+	int hdrLeft;
+	char *buf = va;
+
+	//print("devlml::vwrite() count=0x%x pos=0x%x\n", count, pos);
+
+	// We just started writing, not into the header copy
+	if(pos==0 && hdrPos == -1) {
+		 currentBuffer=-1;
+		 currentBufferLength=0;
+		 frameNo=-1;
+		 bufferPrepared = 0;
+	}
+
+	// We need next buffer to fill (either because we're done with the
+	// current buffer) of because we're just beginning (but not into the header)
+	if (hdrPos == -1 && pos >= currentBufferLength) {
+		while((currentBuffer = getProcessedBuffer(codeData)) == -1)
+			sleep(&sleeper, return0, 0);
+		// print("current buffer %d\n",currentBuffer);
+
+		getBuffer(codeData, currentBuffer, &currentBufferPtr, &frameNo);
+		// We need to receive the header now
+		hdrPos = 0;
+	}
+	
+	// We're into the header processing 
+	if (hdrPos != -1) {
+		// Calculate how many bytes we need to receive to fill the header
+		hdrLeft = sizeof(FrameHeader) - hdrPos;
+	
+		// If we complete or go over the header with this count
+		if (count >= hdrLeft) {
+			// Adjust count of bytes that remain to be copied into video buffer
+			count = count - hdrLeft; 
+			memmove((char*)&frameHeader + hdrPos, buf, hdrLeft);
+			// Make sure we have a standard LML33 header
+			if (frameHeader.mrkSOI == MRK_SOI
+			 && frameHeader.mrkAPP3==MRK_APP3
+			 && strcmp(frameHeader.nm,APP_NAME) == 0) {
+				//print("Starting new buffer len=0x%x frame=%d\n", frameHeader.frameSize, frameHeader.frameSeqNo);
+				// Obtain values we need for playback process from the header
+				currentBufferLength = frameHeader.frameSize;
+			} else if (singleFrame) {
+				currentBufferLength = FRAGSIZE;
+			} else {
+				// We MUST have header for motion video decompression
+				print("No frame size (APP3 marker) in MJPEG file\n");
+				error(Eio);
+			}
+			// Finish header processing
+			hdrPos = -1;
+			// Copy the header into the playback buffer
+			memmove(currentBufferPtr, (char*)&frameHeader, sizeof(FrameHeader));
+			// And set position just behind header for playback buffer write
+			pos = sizeof(FrameHeader);
+		} else {
+			memmove((char*)&frameHeader + hdrPos, buf, count);
+			hdrPos += count;
+			return count;
+		}
+	} else
+		hdrLeft = 0;
+
+	if(count + pos > currentBufferLength) {
+		count = currentBufferLength - pos;
+	}
+
+	memmove((char *)currentBufferPtr + pos, buf + hdrLeft, count);
+
+	pos += count;
+	// print("return 0x%x 0x%x\n",pos,count);
+
+	// Now is the right moment to initiate playback of the frame (if it's full)
+	if(pos >= currentBufferLength) {
+		// We have written the frame, time to display it
+		//print("Passing written buffer to 067\n");
+		prepareBuffer(codeData, currentBuffer);
+		bufferPrepared = 1;
+	}
+	//print("return 0x%lx 0x%x 0x%x 0x%x\n",pos,count,hdrLeft+count,currentBufferLength);
+
+	return hdrLeft + count;
 }
 
 static void lmlintr(Ureg *, void *);
@@ -376,12 +569,6 @@ vidreset(void)
 			(Fragment *)PADDR(&(codeData->frag[i]));
 		// Length is in double words, in position 1..20
 		codeData->fragmDescr[i].fragmLength = (FRAGSIZE >> 1) | FRAGM_FINAL_B;
-	}
-
-	// Get dynamic kernel memory allocaton for the driver
-	if((mjpgDrv = xallocz(sizeof(MjpgDrv), 0)) == nil) {
-		print("LML33: can't allocate dynamic memory for MjpgDrv\n");
-		return;
 	}
 
 	print("initializing LML33 board...");
@@ -438,10 +625,19 @@ vidopen(Chan *c, int omode)
 	case Q856:
 	case Q060:
 	case Q067:
-		// allow one open per file
 		break;
 	case Qvideo:
 	case Qjframe:
+		if (nopens)
+			error(Einuse);
+		nopens = 1;
+		singleFrame = (c->qid.path == Qjframe) ? 1 : 0;;
+		currentBuffer = 0;
+		currentBufferLength = 0;
+		currentBufferPtr = 0;
+		frameNo = 0;
+		bufferPrepared = 0;
+		hdrPos = -1;
 		// allow one open total for these two
 		break;
 	}
@@ -463,51 +659,89 @@ vidclose(Chan *c)
 }
 
 static long
-vidread(Chan *c, void *buf, long n, vlong off) {
+vidread(Chan *c, void *va, long n, vlong off) {
+	int i, d;
+	uchar *buf = va;
 
 	switch(c->qid.path){
 	case Q819:
-		if (off < 0 || off + n > 20)
+		if (off < 0 || off + n > 0x20)
 			return 0;
-		return chipread(BT819Addr, buf, n, off);
+		for (i = 0; i < n; i++) {
+			if ((d = lml33_i2c_rd8(BT819Addr, off++)) < 0) break;
+			*buf++ = d;
+		}
+		return n - i;
 	case Q856:
 		if (off < 0xda || off + n > 0xe0)
 			return 0;
-		return chipread(BT856Addr, buf, n, off);
+		for (i = 0; i < n; i++) {
+			if ((d = lml33_i2c_rd8(BT856Addr, off++)) < 0) break;
+			*buf++ = d;
+		}
+		return n - i;
 	case Q060:
-		return post060read(buf, n, off);
+		if (off < 0 || off + n > 0x60)
+			return 0;
+		for (i = 0; i < n; i++) {
+			if ((d = lml33_zr060_read(off++)) < 0) break;
+			*buf++ = d;
+		}
+		return n - i;
 	case Q067:
-		if (off < 0 || off + n > 20 || (off & 0x3) || n != 4) return 0;
-		*(long *)buf = readl(pciBaseAddr + off);
-		return 4;
+		if (off < 0 || off + n > 0x200 || (off & 0x3))
+			return 0;
+		for (i = n; i >= 4; i -= 4) {
+			*(long *)buf = readl(pciBaseAddr + off);
+			buf += 4;
+			off += 4;
+		}
+		return n-i;
 	case Qvideo:
 	case Qjframe:
-		return videoread(c, buf, n, off);
+		return vread(c, buf, n, off);
 	}
 }
 
 static long
-vidwrite(Chan *c, void *va, long n, vlong off)
-{
+vidwrite(Chan *c, void *va, long n, vlong off) {
+	int i;
+	uchar *buf = va;
 
 	switch(c->qid.path){
 	case Q819:
-		if (off < 0 || off + n > 20)
+		if (off < 0 || off + n > 0x20)
 			return 0;
-		return chipwrite(BT819Addr, buf, n, off);
+		for (i = n; i > 0; i--)
+			if (lml33_i2c_wr8(BT819Addr, off++, *buf++) == 0)
+				break;
+		return n - i;
 	case Q856:
 		if (off < 0xda || off + n > 0xe0)
 			return 0;
-		return chipwrite(BT856Addr, buf, n, off);
+		for (i = n; i > 0; i--)
+			if (lml33_i2c_wr8(BT856Addr, off++, *buf++) == 0)
+				break;
+		return n - i;
 	case Q060:
-		return post060write(buf, n, off);
+		if (off < 0 || off + n > 0x60)
+			return 0;
+		for (i = 0; i < n; i++)
+			if (lml33_zr060_write(off++, *buf++) < 0)
+				break;
+		return n - i;
 	case Q067:
-		if (off < 0 || off + n > 20 || (off & 0x3) || n != 4) return 0;
-		writel(*(long *)buf, pciBaseAddr + off);
-		return 4;
+		if (off < 0 || off + n > 0x200 || (off & 0x3))
+			return 0;
+		for (i = n; i >= 4; i -= 4) {
+			writel(*(long *)buf, pciBaseAddr + off);
+			buf += 4;
+			off += 4;
+		}
+		return n-i;
 	case Qvideo:
 	case Qjframe:
-		return videowrite(c, buf, n, off);
+		return vwrite(c, buf, n, off);
 	}
 }
 
@@ -533,8 +767,15 @@ Dev viddevtab = {
 };
 
 static void
-lmlintr(Ureg *ur, void *)
-{
+lmlintr(Ureg *, void *) {
+	ulong flags = readl(pciBaseAddr+ZR36057_INTR_STAT);
+	
+//  print("MjpgDrv_intrHandler stat=0x%08x\n", flags);
 
+	// Reset all interrupts from 067
+	writel(0xff000000, pciBaseAddr + ZR36057_INTR_STAT);
 
+	if(flags & ZR36057_INTR_JPEGREP)
+			wakeup(&sleeper);
+	return;
 }

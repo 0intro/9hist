@@ -132,6 +132,7 @@ dmasetup(int chan, void *va, long len, int isread)
 	 *  if this isn't kernel memory or crossing 64k boundary or above 16 meg
 	 *  use the bounce buffer.
 	 */
+print("va%lux+", va);
 #ifdef notdef
 	pa = PADDR(va);
 	if((((ulong)va)&0xF0000000) != KZERO
@@ -151,7 +152,7 @@ dmasetup(int chan, void *va, long len, int isread)
 	else
 		xp->len = 0;
 #else
-	pa = PCIWADDR(va);
+	pa = ISAWADDR(va);
 #endif /* notdef */
 
 	/*
@@ -164,11 +165,12 @@ dmasetup(int chan, void *va, long len, int isread)
 	outb(dp->addr[chan], pa>>dp->shift);		/* set address */
 	outb(dp->addr[chan], pa>>(8+dp->shift));
 	outb(dp->page[chan], pa>>16);
-outb(0x400|dp->page[chan], pa>>24);
+//outb(0x400|dp->page[chan], pa>>24);
 	outb(dp->count[chan], (len>>dp->shift)-1);		/* set count */
 	outb(dp->count[chan], ((len>>dp->shift)-1)>>8);
 	outb(dp->sbm, chan);		/* enable the channel */
 	iunlock(dp);
+print("pa%lux+", pa);
 
 	return len;
 }
@@ -206,6 +208,15 @@ dmaend(int chan)
 	ilock(dp);
 	outb(dp->sbm, 4|chan);
 	iunlock(dp);
+
+{ int i;
+outb(dp->cbp, 0);
+i = inb(dp->addr[chan]);
+i |= inb(dp->addr[chan])<<8;
+i |= inb(dp->page[chan])<<16;
+i |= inb(0x400|dp->page[chan])<<24;
+print("X%uX+", i);
+}
 
 	xp = &dp->x[chan];
 	if(xp->len == 0 || !xp->isread)

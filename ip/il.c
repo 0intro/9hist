@@ -1024,6 +1024,26 @@ ilbackoff(Ilcb *ic)
 	ic->rexmit++;
 }
 
+// complain if two numbers not within an hour of each other
+#define Tfuture (1000*60*60)
+int
+later(ulong t1, ulong t2, char *x)
+{
+	int dt;
+
+	dt = t1 - t2;
+	if(dt > 0) {
+		if(dt > Tfuture)
+			print("%s: way future %d\n", x, dt);
+		return 1;
+	}
+	if(dt < -Tfuture) {
+		print("%s: way past %d\n", x, -dt);
+		return 1;
+	}
+	return 0;
+}
+
 void
 ilackproc(void *x)
 {
@@ -1046,7 +1066,7 @@ loop:
 		case Illistening:
 			break;
 		case Ilclosing:
-			if(ic->timeout <= msec) {
+			if(later(msec, ic->timeout, "timeout")) {
 				if(ic->rexmit > MaxRexmit){
 					ilhangup(p, nil);
 					break;
@@ -1058,7 +1078,7 @@ loop:
 
 		case Ilsyncee:
 		case Ilsyncer:
-			if(ic->timeout <= msec) {
+			if(later(msec, ic->timeout, "timeout")) {
 				if(ic->rexmit > MaxRexmit){
 					ilhangup(p, etime);
 					break;
@@ -1069,11 +1089,12 @@ loop:
 			break;
 
 		case Ilestablished:
-			if(ic->recvd != ic->acksent && ic->acktime <= msec)
+			if(ic->recvd != ic->acksent)
+			if(later(msec, ic->acktime, "acktime"))
 				ilsendctl(p, nil, Ilack, ic->next, ic->recvd, 0);
 
-			if(ic->querytime <= msec){
-				if(msec - ic->lastrecv > DeathTime){
+			if(later(msec, ic->querytime, "querytime")){
+				if(later(msec, ic->lastrecv+DeathTime, "deathtime")){
 					netlog(il->f, Logil, "il: hangup: deathtime\n");
 					ilhangup(p, etime);
 					break;
@@ -1082,7 +1103,8 @@ loop:
 				ic->querytime = msec + QueryTime;
 			}
 
-			if(ic->unacked != nil && ic->timeout <= msec) {
+			if(ic->unacked != nil)
+			if(later(msec, ic->timeout, "timeout")) {
 				if(ic->rexmit > MaxRexmit){
 					netlog(il->f, Logil, "il: hangup: too many rexmits\n");
 					ilhangup(p, etime);

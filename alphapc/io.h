@@ -205,3 +205,5 @@ typedef struct SCSIdev {
 
 #define PCIWINDOW	0x40000000
 #define PCIWADDR(va)	(PADDR(va)+PCIWINDOW)
+#define ISAWINDOW	0x00800000
+#define ISAWADDR(va)	(PADDR(va)+ISAWINDOW)

@@ -27,6 +27,26 @@ ident(void)
 	return 0;	/* bug! */
 }
 
+static uvlong* sgmap;
+
+static void
+sginit(void)
+{
+	ulong pa;
+	uvlong *pte;
+
+	sgmap = xspanalloc(BY2PG, BY2PG, 0);
+	memset(sgmap, 0, BY2PG);
+
+	pte = sgmap;
+	for(pa = 0; pa < 8*1024*1024; pa += BY2PG)
+		*pte++ = ((pa>>PGSHIFT)<<1)|1;
+
+	wind[0x400/4] = ISAWINDOW|2;
+	wind[0x440/4] = 0x00700000;
+	wind[0x480/4] = PADDR(sgmap);
+}
+
 static void *
 kmapio(ulong space, ulong offset, int size)
 {
@@ -54,17 +74,18 @@ coreinit(void)
 	}
 	coresave[0] = core[0x140/4];
 
-#ifdef notdef
+	/* disable windows */
+	wind[0x400/4] = 0;
+	wind[0x500/4] = 0;
+	wind[0x600/4] = 0;
+	wind[0x700/4] = 0;
+
 	/* direct map bottom 1G PCI target space to KZERO in window 1 */
 	wind[0x500/4] = PCIWINDOW|1;
 	wind[0x540/4] = 0x3ff00000;
 	wind[0x580/4] = 0;
 
-	/* disable other windows */
-	wind[0x400/4] = 0;
-	wind[0x600/4] = 0;
-	wind[0x700/4] = 0;
-#endif /* notdef */
+sginit();
 
 	/* clear error state */
 	core[0x8200/4] = 0x7ff;

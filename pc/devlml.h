@@ -87,6 +87,8 @@ typedef struct {
 #define ZR36057_POST_PEND				0x02000000
 #define ZR36057_POST_TIME				0x01000000
 #define ZR36057_POST_DIR				0x00800000
+#define ZR36057_INTR_JPEGREP			0x08000000
+#define ZR36057_INTR_STAT				0x03c
 
 #define MB 0x100000
 #define NBUF 4
@@ -101,6 +103,7 @@ typedef struct {
 #define readw(a)		(*(ushort *)(a))
 #define readb(a)		(*(uchar *)(a))
 
+typedef struct FrameHeader			FrameHeader;
 typedef struct MjpgDrv				MjpgDrv;
 typedef struct Fragment				Fragment;
 typedef struct FragmentTable		FragmentTable;
@@ -113,12 +116,12 @@ struct Fragment {
 	uchar	fragbytes[FRAGSIZE];
 };
 
-struct FragmentTable {
+struct FragmentTable {	// Don't modify this struct, used by h/w
 	Fragment *		fragmAddress;			// Physical address
 	ulong			fragmLength;
 };
 
-struct CodeData {
+struct CodeData {	// Don't modify this struct, used by h/w
 	char			idString[16];
 	ulong			statCom[4];				// Physical address
 	ulong			statComInitial[4];		// Physical address
@@ -126,23 +129,24 @@ struct CodeData {
 	Fragment		frag[4];
 };
 
-extern char static_MjpgDrv_GPL_Notice[];
-extern struct file_operations static_MjpgDrv_fOps;
-
-struct MjpgDrv {
-	int					openCount;
-	int					sleepFlag;
-	struct wait_queue *	intrWaitQ;
-};
-
 static void *		pciPhysBaseAddr;
 static ulong		pciBaseAddr;
 static Pcidev *		pcidev;
 
-void	LML33Board_mjpegGo(LML33Board*);
+//If we're on the little endian architecture, then 0xFF, 0xD8 byte sequence is
+#define MRK_SOI		0xD8FF
+#define MRK_APP3	0xE3FF
+#define APP_NAME	"LML"
 
-void	MjpgDrv_ctor(MjpgDrv*);
-void	MjpgDrv_dtor(MjpgDrv*);
-int		MjpgDrv_open(struct inode *iNode, struct file *filePtr);
-void	MjpgDrv_release(struct inode *iNode, struct file *filePtr);
-void	MjpgDrv_intrHandler(int irqNo, void *devId, struct pt_regs *ptRegs);
+struct FrameHeader	// Don't modify this struct, used by h/w
+{
+	short mrkSOI;
+	short mrkAPP3;
+	short lenAPP3;
+	char nm[4];
+	short frameNo;
+	ulong sec;
+	ulong usec;
+	ulong frameSize;
+	ulong frameSeqNo;
+};
