@@ -100,21 +100,21 @@ ipoput(Block *bp, int gating, int ttl)
 		chunk = nhgets(eh->length);
 		if(chunk > len){
 			netlog(Logip, "short gated packet\n");
-			goto raise;
+			goto free;
 		}
 		if(chunk < len)
 			len = chunk;
 	}
 	if(len >= IP_MAX){
 		netlog(Logip, "exceeded ip max size %V\n", eh->dst);
-		goto raise;
+		goto free;
 	}
 
 	r = v4lookup(eh->dst);
 	if(r == nil){
 		stats.noroute++;
 		netlog(Logip, "no interface %V\n", eh->dst);
-		goto raise;
+		goto free;
 	}
 	if(r->type & (Rifc|Runi|Rbcast|Rmulti))
 		gate = eh->dst;
@@ -224,6 +224,7 @@ ipoput(Block *bp, int gating, int ttl)
 raise:
 	runlock(ifc);
 	poperror();
+free:
 	freeblist(bp);	
 }
 
