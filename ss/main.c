@@ -461,7 +461,7 @@ lancesetup(Lance *lp)
 	KMap *k;
 	uchar *cp;
 	ulong pa, va;
-	int i, j;
+	int i;
 
 	k = kmappa(ETHER, PTEIO|PTENOCACHE);
 	lp->rdp = (void*)(k->va+0);
@@ -497,20 +497,10 @@ lancesetup(Lance *lp)
 	i = (lp->nrrb+lp->ntrb)*sizeof(Etherpkt);
 	i = (i+(BY2PG-1))/BY2PG;
 	pa = (ulong)xspanalloc(i*BY2PG, BY2PG, 0)&~KZERO;
-	va = 0;
-	for(j=i-1; j>=0; j--){
-		k = kmappa(pa+j*BY2PG, PTEMAINMEM|PTENOCACHE);
-		if(va){
-			if(va != k->va+BY2PG)
-				panic("lancesetup va unordered");
-			va = k->va;
-		}
-	}
-	/*
-	 * k->va is the base of the region
-	 */
-	lp->lrp = (Etherpkt*)k->va;
-	lp->rp = (Etherpkt*)k->va;
+	va = kmapregion(pa, i*BY2PG, PTEMAINMEM|PTENOCACHE);
+
+	lp->lrp = (Etherpkt*)va;
+	lp->rp = (Etherpkt*)va;
 	lp->ltp = lp->lrp+lp->nrrb;
 	lp->tp = lp->rp+lp->nrrb;
 }

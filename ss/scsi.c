@@ -18,31 +18,20 @@ scsialloc(ulong n)
 	Scsibuf *b;
 	KMap *k;
 	ulong pa, va;
-	int i, j;
+	int i;
 
 	b = xalloc(sizeof(Scsibuf));
 
 	/*
 	 * Allocate space in host memory for the io buffer.
-	 * Allocate a block and kmap it page by page.  kmap's are initially
-	 * in reverse order so rearrange them.
 	 * NOTE: dma mustn't cross a 16Mb boundary.
 	 */
 	i = (n+(BY2PG-1))/BY2PG;
 	pa = (ulong)xspanalloc(i*BY2PG, BY2PG, 16*1024*1024) & ~KZERO;
-	va = 0;
-	k = 0;
-	for(j=i-1; j>=0; j--){
-		k = kmappa(pa+j*BY2PG, PTEMAINMEM|PTENOCACHE);
-		if(va && va != k->va+BY2PG)
-			panic("scsialloc va unordered\n");
-		va = k->va;
-	}
-	/*
-	 * k->va is the base of the region
-	 */
-	b->virt = (void*)k->va;
-	b->phys = (void*)k->pa;
+	va = kmapregion(pa, i*BY2PG, PTEMAINMEM|PTENOCACHE);
+
+	b->virt = (void*)va;
+	b->phys = (void*)pa;
 
 	return b;
 }
