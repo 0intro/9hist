@@ -927,10 +927,12 @@ gc82543pci(void)
 		ctlr->id = (p->did<<16)|p->vid;
 
 		ctlr->nic = KADDR(ctlr->port);
+print("status0 %8.8uX\n", csr32r(ctlr, Status));
 		if(gc82543reset(ctlr)){
 			free(ctlr);
 			continue;
 		}
+print("status1 %8.8uX\n", csr32r(ctlr, Status));
 
 		if(ctlrhead != nil)
 			ctlrtail->next = ctlr;

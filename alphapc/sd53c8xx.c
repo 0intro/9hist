@@ -1103,7 +1103,7 @@ write_mismatch_recover(Controller *c, Ncr *n, Dsa *dsa)
 }
 
 static void
-interrupt(Ureg *ur, void *a)
+sd53c8xxinterrupt(Ureg *ur, void *a)
 {
 	uchar istat;
 	ushort sist;
@@ -1581,7 +1581,7 @@ reset(Controller *c)
 }
 
 static int
-symrio(SDreq* r)
+sd53c8xxrio(SDreq* r)
 {
 	Dsa *d;
 	uchar *bp;
@@ -1896,7 +1896,7 @@ na_fixup(Controller *c, ulong pa_reg,
 }
 
 static SDev*
-sympnp(void)
+sd53c8xxpnp(void)
 {
 	char *cp;
 	Pcidev *p;
@@ -1985,6 +1985,14 @@ buggery:
 		ctlr->v = v;
 		ctlr->script = script;
 		memmove(ctlr->script, na_script, sizeof(na_script));
+
+		/*
+		 * Because we don't yet have an abstraction for the
+		 * addresses as seen from the controller side (and on
+		 * the 386 it doesn't matter), the follwong two lines
+		 * are different between the 386 and alpha copies of
+		 * this driver.
+		 */
 		ctlr->scriptpa = p->mem[ba].bar & ~0x0F;
 		if(!na_fixup(ctlr, p->mem[1].bar & ~0x0F, na_patches, NA_PATCHES, xfunc)){
 			print("script fixup failed\n");
@@ -2018,13 +2026,13 @@ buggery:
 }
 
 static SDev*
-symid(SDev* sdev)
+sd53c8xxid(SDev* sdev)
 {
 	return scsiid(sdev, &sd53c8xxifc);
 }
 
 static int
-symenable(SDev* sdev)
+sd53c8xxenable(SDev* sdev)
 {
 	Pcidev *pcidev;
 	Controller *ctlr;
@@ -2035,7 +2043,7 @@ symenable(SDev* sdev)
 
 	pcisetbme(pcidev);
 	snprint(name, sizeof(name), "%s (%s)", sdev->name, sdev->ifc->name);
-	intrenable(pcidev->intl, interrupt, ctlr, pcidev->tbdf, name);
+	intrenable(pcidev->intl, sd53c8xxinterrupt, ctlr, pcidev->tbdf, name);
 
 	ilock(ctlr);
 	synctabinit(ctlr);
@@ -2049,18 +2057,20 @@ symenable(SDev* sdev)
 SDifc sd53c8xxifc = {
 	"53c8xx",			/* name */
 
-	sympnp,				/* pnp */
+	sd53c8xxpnp,			/* pnp */
 	nil,				/* legacy */
-	symid,				/* id */
-	symenable,			/* enable */
+	sd53c8xxid,			/* id */
+	sd53c8xxenable,			/* enable */
 	nil,				/* disable */
 
 	scsiverify,			/* verify */
 	scsionline,			/* online */
-	symrio,				/* rio */
+	sd53c8xxrio,			/* rio */
 	nil,				/* rctl */
 	nil,				/* wctl */
 
 	scsibio,			/* bio */
+	nil,				/* probe */
+	nil,				/* clear */
+	nil,				/* stat */
 };
-

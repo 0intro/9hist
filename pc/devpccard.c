@@ -14,6 +14,7 @@
 enum {
 	TI_vid = 0x104c,
 	TI_1450_did = 0xAC1B,
+	TI_1251A_did = 0xAC1D,
 
 	Ricoh_vid = 0x1180,
 	Ricoh_476_did = 0x0476,
@@ -36,6 +37,7 @@ typedef struct {
 static variant_t variant[] = {
 {	Ricoh_vid,	Ricoh_476_did,	"Ricoh 476 PCI/Cardbus bridge",	},
 {	TI_vid,		TI_1450_did,		"TI PCI-1450 Cardbus Controller",	},
+{	TI_vid,		TI_1251A_did,		"TI PCI-1251A Cardbus Controller",	},
 };
 
 /* Cardbus registers */

@@ -30,6 +30,8 @@ lockloop(Lock *l, ulong pc)
 	Proc *p;
 
 	p = l->p;
+print("lock loop %p\n", l);
+delay(1000);
 	print("lock 0x%lux loop key 0x%lux pc 0x%lux held by pc 0x%lux proc %lud\n",
 		l, l->key, pc, l->pc, p ? p->pid : 0);
 	dumpaproc(up);
