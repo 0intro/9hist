@@ -328,12 +328,18 @@ vgactl(char *arg)
 			y = strtoul(field[2], 0, 0);
 
 		/* see if it fits in the usual place */
-		if(x <= 2*Footprint){
+		if(x <= Footprint){
 			screenmem = SCREENMEM;
-			if(x == 0)
+			if(x == 0){
 				footprint = Footprint;
-			else
+				footshift = Footshift;
+			} else {
 				footprint = x;
+				for(n = 0; n < 31; n++)
+					if((1<<n) >= footprint)
+						break;
+				footshift = n;
+			}
 			gscreen.base = (void*)screenmem;
 			return;
 		}
@@ -357,6 +363,10 @@ vgactl(char *arg)
 		screenmem = y;
 		gscreen.base = (void*)y;
 		footprint = x;
+		for(n = 0; n < 31; n++)
+			if((1<<n) >= footprint)
+				break;
+		footshift = n;
 		return;
 	}
 
