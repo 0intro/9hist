@@ -71,6 +71,8 @@ flush:
 	MOVW	AX,DS
 	MOVW	AX,SS
 	MOVW	AX,ES
+	MOVW	AX,FS
+	MOVW	AX,GS
 
 /*	JMPFAR	SELECTOR(2, SELGDT, 0):$mode32bit(SB) /**/
 	 BYTE	$0x66
@@ -469,6 +471,8 @@ TEXT	intrbad(SB),$0
 intrcommon:
 	PUSHL	DS
 	PUSHL	ES
+	PUSHL	FS
+	PUSHL	GS
 	PUSHAL
 	MOVL	$(KDSEL),AX
 	MOVW	AX,DS
@@ -478,6 +482,8 @@ intrcommon:
 	CALL	trap(SB)
 	POPL	AX
 	POPAL
+	POPL	GS
+	POPL	FS
 	POPL	ES
 	POPL	DS
 	ADDL	$8,SP	/* error code and trap type */
@@ -486,6 +492,8 @@ intrcommon:
 intrscommon:
 	PUSHL	DS
 	PUSHL	ES
+	PUSHL	FS
+	PUSHL	GS
 	PUSHAL
 	MOVL	$(KDSEL),AX
 	MOVW	AX,DS
@@ -495,6 +503,8 @@ intrscommon:
 	CALL	trap(SB)
 	POPL	AX
 	POPAL
+	POPL	GS
+	POPL	FS
 	POPL	ES
 	POPL	DS
 	ADDL	$8,SP	/* error code and trap type */

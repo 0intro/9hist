@@ -136,7 +136,7 @@ trapinit(void)
 	sethvec(39, intr39, SEGIG, 0);
 
 	/*
-	 *  system calls
+	 *  system calls and break points
 	 */
 	sethvec(Syscallvec, intr64, SEGTG, 3);
 	setvec(Syscallvec, (void (*)(Ureg*))syscall);
@@ -224,6 +224,8 @@ trap(Ureg *ur)
 	}
 
 	if(v>=256 || ivec[v] == 0){
+		if(v == 13)
+			return;
 		if(v <= 16){
 			if(user){
 				sprint(buf, "sys: %s pc=0x%lux", excname[v], ur->pc);
@@ -247,27 +249,6 @@ trap(Ureg *ur)
 }
 
 /*
- *  print 8259 status
- */
-void
-dump8259(void)
-{
-	int c;
-
-	outb(Int0ctl, 0x0a);	/* read ir */
-	print("ir0 %lux\n", inb(Int0ctl));
-	outb(Int0ctl, 0x0b);	/* read is */
-	print("is0 %lux\n", inb(Int0ctl));
-	print("im0 %lux\n", inb(Int0aux));
-
-	outb(Int1ctl, 0x0a);	/* read ir */
-	print("ir1 %lux\n", inb(Int1ctl));
-	outb(Int1ctl, 0x0b);	/* read is */
-	print("is1 %lux\n", inb(Int1ctl));
-	print("im1 %lux\n", inb(Int1aux));
-}
-
-/*
  *  dump registers
  */
 void
@@ -277,13 +258,18 @@ dumpregs(Ureg *ur)
 		print("registers for %s %d\n", u->p->text, u->p->pid);
 	else
 		print("registers for kernel\n");
-	print("FLAGS=%lux ECODE=%lux CS=%lux PC=%lux SS=%lux USP=%lux\n", ur->flags,
-		ur->ecode, ur->cs&0xff, ur->pc, ur->ss&0xff, ur->usp);
-
+	print("FLAGS=%lux ECODE=%lux CS=%lux PC=%lux", ur->flags,
+		ur->ecode, ur->cs&0xff, ur->pc);
+	if(ur == (Ureg*)UREGADDR)
+		print(" SS=%lux USP=%lux\n", ur->ss&0xff, ur->usp);
+	else
+		print("\n");
 	print("  AX %8.8lux  BX %8.8lux  CX %8.8lux  DX %8.8lux\n",
 		ur->ax, ur->bx, ur->cx, ur->dx);
-	print("  SI %8.8lux  DI %8.8lux  BP %8.8lux  DS %8.8lux\n",
-		ur->si, ur->di, ur->bp, ur->ds);
+	print("  SI %8.8lux  DI %8.8lux  BP %8.8lux\n",
+		ur->si, ur->di, ur->bp);
+	print("  DS %4.4ux  ES %4.4ux  FS %4.4ux  GS %4.4ux\n",
+		ur->ds&0xffff, ur->es&0xffff, ur->fs&0xffff, ur->gs&0xffff);
 }
 
 void
@@ -291,10 +277,16 @@ dumpstack(void)
 {
 }
 
-void
-execpc(ulong entry)
+long
+execregs(ulong entry, ulong ssize, ulong nargs)
 {
+	ulong *sp;
+
+	sp = (ulong*)(USTKTOP - ssize);
+	*--sp = nargs;
+	((Ureg*)UREGADDR)->usp = (ulong)sp;
 	((Ureg*)UREGADDR)->pc = entry;
+	return USTKTOP-BY2WD;			/* address of user-level clock */
 }
 
 /*
@@ -312,7 +304,6 @@ syscall(Ureg *ur)
 
 	u->p->insyscall = 1;
 	u->p->pc = ur->pc;
-	u->dbgreg = ur;
 	if((ur->cs)&0xffff == KESEL)
 		panic("recursive system call");
 

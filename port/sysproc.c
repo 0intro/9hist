@@ -345,10 +345,6 @@ sysexec(ulong *arg)
 	 */
 	flushmmu();
 	clearmmucache();
-	execpc(entry);
-	sp = (ulong*)(USTKTOP - ssize);
-	*--sp = nargs;
-	((Ureg*)UREGADDR)->usp = (ulong)sp;
 	lock(&p->debug);
 	u->nnote = 0;
 	u->notify = 0;
@@ -358,7 +354,7 @@ sysexec(ulong *arg)
 	if(p->hang)
 		p->procctl = Proc_stopme;
 
-	return (USTKTOP-BY2WD);	/* address of user-level clock */
+	return execregs(entry, ssize, nargs);
 }
 
 int

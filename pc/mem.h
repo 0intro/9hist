@@ -43,7 +43,7 @@
 #define	KZERO		0x80000000		/* base of kernel address space */
 #define	KTZERO		KZERO			/* first address in kernel text */
 #define	USERADDR	0xC0000000		/* struct User */
-#define	UREGADDR	(USERADDR+BY2PG-4*17)	
+#define	UREGADDR	(USERADDR+BY2PG-4*19)	
 #define	TSTKTOP		USERADDR		/* end of new stack in sysexec */
 #define TSTKSIZ 10
 #define	USTKTOP		(TSTKTOP-TSTKSIZ*BY2PG)	/* byte just beyond user stack */
@@ -62,8 +62,7 @@
 #define	KESEG	2	/* kernel executable */	
 #define	UDSEG	3	/* user data/stack */
 #define	UESEG	4	/* user executable */
-#define	SYSGATE	5	/* system call gate */
-#define TSSSEG	6	/* task segment */
+#define TSSSEG	5	/* task segment */
 
 #define SELGDT	(0<<3)	/* selector is in gdt */
 #define	SELLDT	(1<<3)	/* selector is in ldt */

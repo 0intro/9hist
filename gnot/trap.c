@@ -323,10 +323,16 @@ syscall(Ureg *aur)
 	return ret;
 }
 
-void
-execpc(ulong entry)
+long
+execregs(ulong entry, ulong ssize, ulong nargs)
 {
+	ulong *sp;
+
+	sp = (ulong*)(USTKTOP - ssize);
+	*--sp = nargs;
+	((Ureg*)UREGADDR)->usp = (ulong)sp;
 	((Ureg*)UREGADDR)->pc = entry;
+	return USTKTOP-BY2WD;			/* address of user-level clock */
 }
 
 /* This routine must save the values of registers the user is not permitted to write

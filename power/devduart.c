@@ -780,6 +780,7 @@ duartopen(Chan *c, int omode)
 void
 duartcreate(Chan *c, char *name, int omode, ulong perm)
 {
+	USED(c);
 	error(Eperm);
 }
 
@@ -825,12 +826,14 @@ duartwrite(Chan *c, void *va, long n, ulong offset)
 void
 duartremove(Chan *c)
 {
+	USED(c);
 	errors("can't remove a duart");
 }
 
 void
 duartwstat(Chan *c, char *dp)
 {
+	USED(c);
 	errors("can't write a duart");
 }
 
@@ -842,4 +845,5 @@ duartactive(void)
 	for(i = 0; i < nduartport; i++)
 		if(duartport[i].printing)
 			return 1;
-	return 0;                                                             }
+	return 0;
+}

@@ -319,13 +319,6 @@ lanceoput(Queue *q, Block *bp )
 		}
 	}
 
-	/* restart the lance if'n it needs it */
-	if(l.misses > 4){
-		l.misses = 0;
-		print("restarting lance\n");
-		lancestart(0, 1);
-	}
-
 	/*
 	 *  only one transmitter at a time
 	 */
@@ -338,9 +331,17 @@ lanceoput(Queue *q, Block *bp )
 	}
 
 	/*
-	 *  Wait till we get an output buffer
+	 *  Wait till we get an output buffer, reset the lance if input
+	 *  or output seems wedged.
 	 */
-	sleep(&l.tr, isobuf, (void *)0);
+	tsleep(&l.tr, isobuf, (void *)0, 1000);
+	if(isobuf(0) == 0 || l.misses > 4){
+		l.misses = 0;
+		print("lance wedged, restarting\n");
+		lancestart(0, 0);
+		freeb(bp);
+		return;		/* the interrupt routine will qunlock(&l.tlock) */
+	}
 	p = &l.tp[l.tc];
 
 	/*
@@ -433,10 +434,9 @@ lancestart(int mode, int dolock)
 	 *   wait till both receiver and transmitter are
 	 *   quiescent
 	 */
-	if(dolock){
+	if(dolock)
 		qlock(&l.tlock);
-		qlock(&l.rlock);
-	}
+	qlock(&l.rlock);
 
 	lancereset();
 	l.rl = 0;

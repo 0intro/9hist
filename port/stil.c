@@ -746,6 +746,7 @@ ilstart(Ipconv *ipc, int type, int window)
 	ic->next = ic->start+1;
 	ic->recvd = 0;
 	ic->window = window;
+	ic->oblks = 0;
 
 	switch(type) {
 	case IL_PASSIVE:

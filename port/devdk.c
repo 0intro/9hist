@@ -777,6 +777,7 @@ dkopen(Chan *c, int omode)
 void	 
 dkcreate(Chan *c, char *name, int omode, ulong perm)
 {
+	USED(c);
 	error(Eperm);
 }
 
@@ -849,6 +850,7 @@ dkwrite(Chan *c, void *a, long n, ulong offset)
 void	 
 dkremove(Chan *c)
 {
+	USED(c);
 	error(Eperm);
 }
 

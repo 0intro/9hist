@@ -65,7 +65,6 @@ Segdesc gdt[] =
 [KESEG]		EXECSEGM(0),		/* kernel code */
 [UDSEG]		DATASEGM(3),		/* user data/stack */
 [UESEG]		EXECSEGM(3),		/* user code */
-[SYSGATE]	CALLGATE(KESEL,0,3),	/* call gate for system calls */
 [TSSSEG]	TSSSEGM(0,0),		/* tss segment */
 };
 
@@ -87,19 +86,6 @@ static ulong	*upt;		/* 2nd level page table for struct User */
  */
 #define BTMOFF(v)	(((v)>>(PGSHIFT))&(WD2PG-1))
 
-void
-mmudump(void)
-{
-	int i;
-	ulong *z;
-	z = (ulong*)gdt;
-	for(i = 0; i < sizeof(gdt)/4; i+=2)
-		print("%8.8lux %8.8lux\n", *z++, *z++);
-	print("UESEL %lux UDSEL %lux\n", UESEL, UDSEL);
-	print("KESEL %lux KDSEL %lux\n", KESEL, KDSEL);
-	panic("done");
-}
-
 /*
  *  Create a prototype page map that maps all of memory into
  *  kernel (KZERO) space.  This is the default map.  It is used
@@ -115,11 +101,10 @@ mmuinit(void)
 	ulong *top;
 
 	/*
-	 *  set up the global descriptor table
+	 *  set up the global descriptor table. we make the tss entry here
+	 *  since it requires arithmetic on an address and hence cannot
+	 *  be a compile or link time constant.
 	 */
-	x = (ulong)systrap;
-	gdt[SYSGATE].d0 = (x&0xFFFF)|(KESEL<<16);
-	gdt[SYSGATE].d1 = (x&0xFFFF0000)|SEGP|SEGPL(3)|SEGCG;
 	x = (ulong)&tss;
 	gdt[TSSSEG].d0 = (x<<16)|sizeof(Tss);
 	gdt[TSSSEG].d1 = (x&0xFF000000)|((x>>16)&0xFF)|SEGTSS|SEGPL(0)|SEGP;
@@ -128,7 +113,6 @@ mmuinit(void)
 	/*
 	 *  set up system page tables.
 	 *  map all of physical memory to start at KZERO.
-	 *  map ROM BIOS at the usual place (F0000000).
 	 *  leave a map entry for a user area.
 	 */
 
@@ -358,10 +342,4 @@ invalidateu(void)
 
 	/* flush cached mmu entries */
 	putcr3(ktoppg.pa);
-}
-
-void
-systrap(void)
-{
-	panic("system trap from user");
 }

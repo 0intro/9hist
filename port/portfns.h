@@ -61,7 +61,7 @@ int	eqchan(Chan*, Chan*, long);
 int	eqqid(Qid, Qid);
 void	error(int);
 void	errors(char*);
-void	execpc(ulong);
+long	execregs(ulong, ulong, ulong);
 void	exit(void);
 Block*	expandb(Block *, int);
 int	fault(ulong, int);

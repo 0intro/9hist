@@ -210,6 +210,7 @@ hsvmeopen(Chan *c, int omode)
 void	 
 hsvmecreate(Chan *c, char *name, int omode, ulong perm)
 {
+	USED(c);
 	error(Eperm);
 }
 
@@ -235,12 +236,14 @@ hsvmewrite(Chan *c, void *buf, long n, ulong offset)
 void	 
 hsvmeremove(Chan *c)
 {
+	USED(c);
 	error(Eperm);
 }
 
 void	 
 hsvmewstat(Chan *c, char *dp)
 {
+	USED(c);
 	error(Eperm);
 }
 

@@ -103,12 +103,14 @@ rtcopen(Chan *c, int omode)
 void	 
 rtccreate(Chan *c, char *name, int omode, ulong perm)
 {
+	USED(c);
 	error(Eperm);
 }
 
 void	 
 rtcclose(Chan *c)
 {
+	USED(c);
 }
 
 long	 
@@ -203,12 +205,14 @@ rtcwrite(Chan *c, void *buf, long n, ulong offset)
 void	 
 rtcremove(Chan *c)
 {
+	USED(c);
 	error(Eperm);
 }
 
 void	 
 rtcwstat(Chan *c, char *dp)
 {
+	USED(c);
 	error(Eperm);
 }
 

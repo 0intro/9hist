@@ -774,11 +774,13 @@ lanceparity(void)
 void
 buzz(int f, int d)
 {
+	USED(f);
 }
 
 int
 mouseputc(IOQ *q, int c)
 {
+	USED(q);
 	return 0;
 }
 

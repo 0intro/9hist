@@ -324,9 +324,10 @@ duartxintr(void)
 void
 duartintr(Ureg *ur)
 {
-	int cause, status, c;
+	int cause, status, ch, i, nk;
 	Duart *duart;
-	static int kbdstate, k1, k2;
+	static int lstate;
+	static uchar kc[5];
 
 	duart = DUARTREG;
 	cause = duart->is_imr;
@@ -339,12 +340,12 @@ duartintr(Ureg *ur)
 	if(cause & IM_CRDY){
 		if(kprofp)
 			(*kprofp)(ur->pc);
-		c = duart[1].scc_ropbc;
-		USED(c);
+		ch = duart[1].scc_ropbc;
+		USED(ch);
 		duart[0].ctur = (Kptime)>>8;
 		duart[0].ctlr = (Kptime)&255;
-		c = duart[1].scc_sopbc;
-		USED(c);
+		ch = duart[1].scc_sopbc;
+		USED(ch);
 		return;
 	}
 	/*
@@ -352,35 +353,51 @@ duartintr(Ureg *ur)
 	 */
 	if(cause & IM_RRDYA){		/* keyboard input */
 		status = duart->sr_csr;
-		c = duart->data;
+		ch = duart->data;
 		if(status & (FRM_ERR|OVR_ERR|PAR_ERR))
 			duart->cmnd = RESET_ERR;
 		if(status & PAR_ERR) /* control word: caps lock (0x4) or repeat (0x10) */
-			kbdrepeat((c&0x10) == 0);
+			kbdrepeat((ch&0x10) == 0);
 		else{
-			if(c == 0x7F)	/* VIEW key (bizarre) */
-				c = 0xFF;
-			if(c == 0xB6)	/* NUM PAD */
-				kbdstate = 1;
+			if(ch == 0x7F)	/* VIEW key (bizarre) */
+				ch = 0xFF;
+			if(ch == 0xB6)	/* NUM PAD */
+				lstate = 1;
 			else{
-				if(c & 0x80)
-					c = keymap[c&0x7F];
-				switch(kbdstate){
+				if(ch & 0x80)
+					ch = keymap[ch&0x7F];
+				switch(lstate){
 				case 1:
-					k1 = c;
-					kbdstate = 2;
+					kc[0] = ch;
+					lstate = 2;
+					if(ch == 'X')
+						lstate = 3;
 					break;
 				case 2:
-					k2 = c;
-					c = latin1(k1, k2);
-					if(c == 0){
-						kbdputc(&kbdq, k1);
-						c = k2;
-					}
-					/* fall through */
+					kc[1] = ch;
+					ch = latin1(kc);
+					nk = 2;
+				putit:
+					lstate = 0;
+					if(ch != -1)
+						kbdputc(&kbdq, ch);
+					else for(i=0; i<nk; i++)
+						kbdputc(&kbdq, kc[i]);
+					break;
+				case 3:
+				case 4:
+				case 5:
+					kc[lstate-2] = ch;
+					lstate++;
+					break;
+				case 6:
+					kc[4] = ch;
+					ch = unicode(kc);
+					nk = 5;
+					goto putit;
 				default:
-					kbdstate = 0;
-					kbdputc(&kbdq, c);
+					kbdputc(&kbdq, ch);
+					break;
 				}
 			}
 		}
@@ -390,11 +407,11 @@ duartintr(Ureg *ur)
 	 */
 	while(cause & IM_RRDYB){	/* duart input */
 		status = duart[1].sr_csr;
-		c = duart[1].data;
+		ch = duart[1].data;
 		if(status & (FRM_ERR|OVR_ERR|PAR_ERR))
 			duart[1].cmnd = RESET_ERR;
 		else
-			duartrintr(c);
+			duartrintr(ch);
 		cause = duart->is_imr;
 	}
 	/*
