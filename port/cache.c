@@ -56,7 +56,7 @@ cinit(void)
 
 	cache.head = xalloc(sizeof(Mntcache)*NFILE);
 	m = cache.head;
-	
+
 	for(i = 0; i < NFILE-1; i++) {
 		m->next = m+1;
 		m->prev = m-1;
@@ -129,7 +129,7 @@ void
 ctail(Mntcache *m)
 {
 	/* Unlink and send to the tail */
-	if(m->prev) 
+	if(m->prev)
 		m->prev->next = m->next;
 	else
 		cache.head = m->next;
@@ -534,7 +534,7 @@ cwrite(Chan* c, uchar *buf, int len, vlong off)
 	for(f = m->list; f; f = f->next) {
 		if(f->start >= offset)
 			break;
-		p = f;		
+		p = f;
 	}
 
 	if(0 && f != 0 && offset < f->start+f->len) {

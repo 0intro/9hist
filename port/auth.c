@@ -170,7 +170,7 @@ sysfsession(ulong *arg)
 	}
 	unlock(&s->send);
 
-	/* 
+	/*
 	 *  If server requires no ticket, or user is "none", or a ticket
 	 *  is already cached, zero the request type
 	 */
@@ -349,7 +349,7 @@ authreply(Session *s, ulong id, Fcall *f)
 	if(memcmp(cp->a.chal, s->cchal, sizeof(cp->a.chal))){
 		print("bad returned challenge\n");
 		error("server lies");
-	}	
+	}
 	if(cp->a.id != id){
 		print("bad returned id\n");
 		error("server lies");

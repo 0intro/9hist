@@ -61,7 +61,7 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 	addr &= ~(BY2PG-1);
 	soff = addr-s->base;
 	p = &s->map[soff/PTEMAPMEM];
-	if(*p == 0) 
+	if(*p == 0)
 		*p = ptealloc();
 
 	etp = *p;
@@ -81,7 +81,7 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 	case SG_TEXT: 			/* Demand load */
 		if(pagedout(*pg))
 			pio(s, addr, soff, pg);
-		
+
 		mmuphys = PPN((*pg)->pa) | PTERONLY|PTEVALID;
 		(*pg)->modref = PG_REF;
 		break;
@@ -92,15 +92,15 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 
 		lkp = *pg;
 		lock(lkp);
-		if(lkp->image)     
-			duppage(lkp);	
+		if(lkp->image)
+			duppage(lkp);
 		unlock(lkp);
 		goto done;
 
 	case SG_BSS:
 	case SG_SHARED:			/* Zero fill on demand */
 	case SG_STACK:
-	case SG_MAP:	
+	case SG_MAP:
 		if(*pg == 0) {
 			if(type == SG_MAP) {
 				sprint(buf, "map 0x%lux %c", va, read ? 'r' : 'w');
@@ -142,9 +142,9 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 			/* put a duplicate of a text page back onto
 			 * the free list
 			 */
-			if(lkp->image)     
-				duppage(lkp);	
-		
+			if(lkp->image)
+				duppage(lkp);
+
 			unlock(lkp);
 		}
 	done:
@@ -211,7 +211,7 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 	new = newpage(0, 0, addr);
 	k = kmap(new);
 	kaddr = (char*)VA(k);
-	
+
 	if(loadrec == 0) {			/* This is demand load */
 		c = s->image->c;
 		while(waserror()) {
@@ -240,7 +240,7 @@ pio(Segment *s, ulong addr, ulong soff, Page **p)
 			cachepage(new, s->image);
 			*p = new;
 		}
-		else 
+		else
 			putpage(new);
 	}
 	else {				/* This is paged out */
@@ -301,14 +301,14 @@ okaddr(ulong addr, ulong len, int write)
 	pprint("suicide: invalid address 0x%lux in sys call pc=0x%lux\n", addr, userpc());
 	return 0;
 }
-  
+
 void
 validaddr(ulong addr, ulong len, int write)
 {
 	if(!okaddr(addr, len, write))
 		pexit("Suicide", 0);
 }
-  
+
 /*
  * &s[0] is known to be a valid address.
  */
@@ -348,7 +348,7 @@ seg(Proc *p, ulong addr, int dolock)
 		if(addr >= n->base && addr < n->top) {
 			if(dolock == 0)
 				return n;
-	
+
 			qlock(&n->lk);
 			if(addr >= n->base && addr < n->top)
 				return n;

@@ -49,12 +49,12 @@ newswap(void)
 	look = memchr(swapalloc.last, 0, swapalloc.top-swapalloc.last);
 	if(look == 0)
 		panic("inconsistent swap");
-	
+
 	*look = 1;
 	swapalloc.last = look;
 	swapalloc.free--;
 	unlock(&swapalloc);
-	return (look-swapalloc.swmap) * BY2PG; 
+	return (look-swapalloc.swmap) * BY2PG;
 }
 
 void
@@ -100,7 +100,7 @@ pager(void *junk)
 	Segment *s;
 	Proc *p, *ep;
 
-	if(waserror()) 
+	if(waserror())
 		panic("pager: os error\n");
 
 	p = proctab(0);
@@ -160,7 +160,7 @@ loop:
 	goto loop;
 }
 
-static void			
+static void
 pageout(Proc *p, Segment *s)
 {
 	int type, i;
@@ -244,7 +244,7 @@ canflush(Proc *p, Segment *s)
 		}
 		p++;
 	}
-	return 1;						
+	return 1;
 }
 
 static void

@@ -65,7 +65,7 @@ pooldel(Pool *p, Bhdr *t)
 		t->fwd->prev = t->prev;
 		return;
 	}
- 
+
 	if(t->fwd != t) {
 		f = t->fwd;
 		s = t->parent;
@@ -78,7 +78,7 @@ pooldel(Pool *p, Bhdr *t)
 			else
 				s->right = f;
 		}
- 
+
 		rp = t->left;
 		f->left = rp;
 		if(rp != nil)
@@ -87,7 +87,7 @@ pooldel(Pool *p, Bhdr *t)
 		f->right = rp;
 		if(rp != nil)
 			rp->parent = f;
- 
+
 		t->prev->fwd = t->fwd;
 		t->fwd->prev = t->prev;
 		return;
@@ -96,7 +96,7 @@ pooldel(Pool *p, Bhdr *t)
 	if(t->left == nil)
 		rp = t->right;
 	else {
-		if(t->right == nil) 
+		if(t->right == nil)
 			rp = t->left;
 		else {
 			f = t;
@@ -230,7 +230,7 @@ poolalloc(Pool *p, int size)
 		t = B2NB(q);
 		t->size = ns;
 		B2T(t)->hdr = t;
-		pooladd(p, t);				
+		pooladd(p, t);
 		p->cursize += q->size;
 		if(p->cursize > p->hw)
 			p->hw = p->cursize;

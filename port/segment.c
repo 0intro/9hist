@@ -180,7 +180,7 @@ dupseg(Segment **seg, int segno, int share)
 
 	n->flushme = s->flushme;
 	qunlock(&s->lk);
-	return n;	
+	return n;
 }
 
 void
@@ -218,8 +218,8 @@ attachimage(int type, Chan *c, ulong base, ulong len)
 	lock(&imagealloc);
 
 	/*
-	 * Search the image cache for remains of the text from a previous 
-	 * or currently running incarnation 
+	 * Search the image cache for remains of the text from a previous
+	 * or currently running incarnation
 	 */
 	for(i = ihash(c->qid.path); i; i = i->hash) {
 		if(c->qid.path == i->qid.path) {
@@ -234,7 +234,7 @@ attachimage(int type, Chan *c, ulong base, ulong len)
 			unlock(i);
 		}
 	}
-	
+
 	/*
 	 * imagereclaim dumps pages from the free list which are cached by image
 	 * structures. This should free some image structures.
@@ -335,10 +335,10 @@ putimage(Image *i)
 	lock(i);
 	if(--i->ref == 0) {
 		l = &ihash(i->qid.path);
-		i->qid = (Qid){~0, ~0};	
+		i->qid = (Qid){~0, ~0};
 		unlock(i);
 		c = i->c;
-	
+
 		lock(&imagealloc);
 		for(f = *l; f; f = f->hash) {
 			if(f == i) {
@@ -393,7 +393,7 @@ ibrk(ulong addr, int seg)
 		}
 		addr = s->base;
 	}
-		
+
 	newtop = PGROUND(addr);
 	newsize = (newtop-s->base)/BY2PG;
 	if(newtop < s->top) {
@@ -435,7 +435,7 @@ mfreeseg(Segment *s, ulong start, int pages)
 	j = (soff&(PTEMAPMEM-1))/BY2PG;
 
 	for(i = soff/PTEMAPMEM; i < SEGMAPSIZE; i++) {
-		if(pages <= 0) 
+		if(pages <= 0)
 			break;
 		if(s->map[i] == 0) {
 			pages -= PTEPERTAB-j;
@@ -446,7 +446,7 @@ mfreeseg(Segment *s, ulong start, int pages)
 			pg = s->map[i]->pages[j];
 			if(pg) {
 				putpage(pg);
-				s->map[i]->pages[j] = 0;	
+				s->map[i]->pages[j] = 0;
 			}
 			if(--pages == 0)
 				return;
@@ -467,7 +467,7 @@ isoverlap(Proc *p, ulong va, int len)
 	for(i = 0; i < NSEG; i++) {
 		ns = p->seg[i];
 		if(ns == 0)
-			continue;	
+			continue;
 		if((newtop > ns->base && newtop <= ns->top) ||
 		   (va >= ns->base && va < ns->top))
 			return 1;

@@ -40,6 +40,38 @@ clgd542xpage(VGAscr* scr, int page)
 	unlock(&scr->devlock);
 }
 
+static ulong
+clgd542xlinear(VGAscr* scr, int* size, int* align)
+{
+	ulong aperture, oaperture;
+	int oapsize, wasupamem;
+	Pcidev *p;
+
+	oaperture = scr->aperture;
+	oapsize = scr->apsize;
+	wasupamem = scr->isupamem;
+	if(wasupamem)
+		upafree(oaperture, oapsize);
+	scr->isupamem = 0;
+
+	if(p = pcimatch(nil, 0x1013, 0)){
+		aperture = p->mem[0].bar & ~0x0F;
+		*size = p->mem[0].size;
+	}
+	else
+		aperture = 0;
+
+	aperture = upamalloc(aperture, *size, *align);
+	if(aperture == 0){
+		if(wasupamem && upamalloc(oaperture, oapsize, 0))
+			scr->isupamem = 1;
+	}
+	else
+		scr->isupamem = 1;
+
+	return aperture;
+}
+
 static void
 clgd542xdisable(VGAscr*)
 {
@@ -244,7 +276,7 @@ VGAdev vgaclgd542xdev = {
 	0,
 	0,
 	clgd542xpage,
-	0,
+	clgd542xlinear,
 };
 
 VGAcur vgaclgd542xcur = {

@@ -56,7 +56,7 @@ envopen(Chan *c, int omode)
 {
 	Egrp *eg;
 	Evalue *e;
-	
+
 	eg = up->egrp;
 	if(c->qid.path & CHDIR) {
 		if(omode != OREAD)
@@ -115,7 +115,7 @@ envcreate(Chan *c, char *name, int omode, ulong)
 	e->link = eg->entries;
 	eg->entries = e;
 	c->qid = (Qid){e->path, 0};
-	
+
 	qunlock(eg);
 	poperror();
 

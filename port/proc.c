@@ -63,7 +63,7 @@ schedinit(void)		/* never returns */
 			break;
 		case Moribund:
 			up->state = Dead;
-			/* 
+			/*
 			 * Holding locks from pexit:
 			 * 	procalloc
 			 */
@@ -244,7 +244,7 @@ found:
 	/*
 	 *  p->mach==0 only when process state is saved
 	 */
-	if(p == 0 || p->mach){	
+	if(p == 0 || p->mach){
 		unlock(runq);
 		goto loop;
 	}
@@ -507,7 +507,7 @@ wakeup(Rendez *r)
 
 	if(r->p == p && p->r == r){
 		r->p = 0;
-		if(p->state != Wakeme) 
+		if(p->state != Wakeme)
 			panic("wakeup: state");
 		p->r = 0;
 		ready(p);
@@ -551,7 +551,7 @@ postnote(Proc *p, int dolock, char *n, int flag)
 	r = p->r;
 	if(r){
 		if(r->p != p || p->r != r || p->state != Wakeme)
-			panic("postnote: state");
+			panic("postnote: state %d %d %d", r->p != p, p->r != r, p->state);
 		r->p = 0;
 		p->r = 0;
 		ready(p);
@@ -682,7 +682,7 @@ pexit(char *exitstr, int freemem)
 
 		while(waserror())
 			;
-	
+
 		wq = smalloc(sizeof(Waitq));
 		poperror();
 
@@ -711,15 +711,15 @@ pexit(char *exitstr, int freemem)
 		 *  written daemon processes from accumulating lots of wait
 		 *  records.
 		 */
-		if(p->pid == up->parentpid && p->state != Broken && p->nwait < 128) {	
+		if(p->pid == up->parentpid && p->state != Broken && p->nwait < 128) {
 			p->nchild--;
 			p->time[TCUser] += utime;
 			p->time[TCSys] += stime;
-	
+
 			wq->next = p->waitq;
 			p->waitq = wq;
 			p->nwait++;
-	
+
 			wakeup(&p->waitr);
 			unlock(&p->exl);
 		}

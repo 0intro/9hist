@@ -253,7 +253,7 @@ ns16552fifoon(Uart *p)
 		if(uartrdreg(p, Data))
 			;
 	}
-  
+
 	/* turn on fifo */
 	p->fifoon = 1;
 	uartwrreg(p, Fifoctl, Fena|Ftrig);
@@ -262,7 +262,7 @@ ns16552fifoon(Uart *p)
 		/* didn't work, must be an earlier chip type */
 		p->nofifo = 1;
 	}
-		
+
 	splx(x);
 }
 
@@ -555,7 +555,7 @@ ns16552intr(int dev)
 			if(l & Oerror)
 				p->overrun++;
 			break;
-	
+
 		case 4:	/* received data available */
 		case 12:
 			ch = uartrdreg(p, Data) & 0xff;
@@ -579,11 +579,11 @@ ns16552intr(int dev)
 				iunlock(&p->rlock);
 			}
 			break;
-	
+
 		case 2:	/* transmitter not full */
 			ns16552kick(p);
 			break;
-	
+
 		case 0:	/* modem status */
 			ch = uartrdreg(p, Mstat);
 			if(ch & Ctsc){
@@ -595,7 +595,7 @@ ns16552intr(int dev)
 				iunlock(&p->tlock);
 			}
 			break;
-	
+
 		default:
 			if(s&1)
 				return;
@@ -844,7 +844,7 @@ ns16552ctl(Uart *p, char *cmd)
 		ns16552break(p, 0);
 		return;
 	}
-		
+
 
 	n = atoi(cmd+1);
 	switch(*cmd){

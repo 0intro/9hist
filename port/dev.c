@@ -235,7 +235,7 @@ Return:
 	return c;
 }
 
-void	 
+void
 devcreate(Chan*, char*, int, ulong)
 {
 	error(Eperm);
@@ -266,7 +266,7 @@ devbwrite(Chan *c, Block *bp, ulong offset)
 	n = devtab[c->type]->write(c, bp->rp, BLEN(bp), offset);
 	freeb(bp);
 
-	return n;	
+	return n;
 }
 
 void

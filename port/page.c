@@ -103,8 +103,8 @@ retry:
 
 		/*
 		 * If called from fault and we lost the segment from
-		 * underneath don't waste time allocating and freeing 
-		 * a page. Fault will call newpage again when it has 
+		 * underneath don't waste time allocating and freeing
+		 * a page. Fault will call newpage again when it has
 		 * reacquired the segment locks
 		 */
 		if(dontalloc)
@@ -125,7 +125,7 @@ retry:
 		ct = PG_NEWCOL;
 	}
 
-	if(p->prev) 
+	if(p->prev)
 		p->prev->next = p->next;
 	else
 		palloc.head = p->next;
@@ -259,7 +259,7 @@ duppage(Page *p)				/* Always call with p locked */
 	/* No freelist cache when memory is very low */
 	if(palloc.freecount < swapalloc.highwater) {
 		unlock(&palloc);
-		uncachepage(p);	
+		uncachepage(p);
 		return;
 	}
 
@@ -271,11 +271,11 @@ duppage(Page *p)				/* Always call with p locked */
 	/* No page of the correct color */
 	if(np == 0) {
 		unlock(&palloc);
-		uncachepage(p);	
+		uncachepage(p);
 		return;
 	}
 
-	if(np->prev) 
+	if(np->prev)
 		np->prev->next = np->next;
 	else
 		palloc.head = np->next;
@@ -305,7 +305,7 @@ duppage(Page *p)				/* Always call with p locked */
 		unlock(np);
 		return;
 	}
-	
+
 	uncachepage(np);
 	np->va = p->va;
 	np->daddr = p->daddr;
@@ -407,7 +407,7 @@ lookpage(Image *i, ulong daddr)
 
 			lock(&palloc);
 			if(++f->ref == 1) {
-				if(f->prev) 
+				if(f->prev)
 					f->prev->next = f->next;
 				else
 					palloc.head = f->next;
@@ -422,7 +422,7 @@ lookpage(Image *i, ulong daddr)
 			unlock(&palloc);
 
 			unlock(f);
-			return f;	
+			return f;
 		}
 	}
 	unlock(&palloc.hashlock);
@@ -451,7 +451,7 @@ ptecpy(Pte *old)
 			*dst = *src;
 		}
 
-	return new;		
+	return new;
 }
 
 Pte*
@@ -487,7 +487,7 @@ freepte(Segment *s, Pte *p)
 		}
 		for(pg = p->pages; pg < ptop; pg++) {
 			pt = *pg;
-			if(pt == 0) 
+			if(pt == 0)
 				continue;
 			lock(pt);
 			ref = --pt->ref;

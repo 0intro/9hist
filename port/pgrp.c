@@ -71,7 +71,7 @@ void
 closepgrp(Pgrp *p)
 {
 	Mhead **h, **e, *f, *next;
-	
+
 	if(decref(p) != 0)
 		return;
 
@@ -145,7 +145,7 @@ pgrpcpy(Pgrp *to, Pgrp *from)
 				m->copy = n;
 				pgrpinsert(&order, m);
 				*link = n;
-				link = &n->next;	
+				link = &n->next;
 			}
 		}
 	}

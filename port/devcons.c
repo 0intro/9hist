@@ -101,7 +101,7 @@ putstrn0(char *str, int n, int usewrite)
 		} else {
 			if(usewrite)
 				qwrite(printq, str, n);
-			else 
+			else
 				qiwrite(printq, str, n);
 			break;
 		}

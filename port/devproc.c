@@ -926,10 +926,10 @@ procctlmemio(Proc *p, ulong offset, int n, void *va, int read)
 	poperror();
 	pte = s->map[soff/PTEMAPMEM];
 	if(pte == 0)
-		panic("procctlmemio"); 
+		panic("procctlmemio");
 	pg = pte->pages[(soff&(PTEMAPMEM-1))/BY2PG];
 	if(pagedout(pg))
-		panic("procctlmemio1"); 
+		panic("procctlmemio1");
 
 	l = BY2PG - (offset&(BY2PG-1));
 	if(n > l)

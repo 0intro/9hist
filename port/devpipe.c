@@ -220,7 +220,7 @@ pipeclose(Chan *c)
 		}
 	}
 
-	
+
 	/*
 	 *  if both sides are closed, they are reusable
 	 */

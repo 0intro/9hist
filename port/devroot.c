@@ -16,7 +16,7 @@ enum{
 	Qrecover,
 	Qboot,		/* readable files */
 
-	Nfiles=13,	/* max root files */	
+	Nfiles=13,	/* max root files */
 };
 
 extern ulong	bootlen;
@@ -44,7 +44,7 @@ struct Recover
 	Recover	*next;
 };
 
-struct 
+struct
 {
 	Lock;
 	QLock;
@@ -59,7 +59,7 @@ void
 addrootfile(char *name, uchar *contents, ulong len)
 {
 	Dirtab *d;
-	
+
 
 	if(nroot >= Nfiles)
 		panic("too many root files");
@@ -84,7 +84,7 @@ rootattach(char *spec)
 	return devattach('/', spec);
 }
 
-static int	 
+static int
 rootwalk(Chan *c, char *name)
 {
 	if(strcmp(name, "..") == 0) {
@@ -96,7 +96,7 @@ rootwalk(Chan *c, char *name)
 	return devwalk(c, name, rootdir, nroot, devgen);
 }
 
-static void	 
+static void
 rootstat(Chan *c, char *dp)
 {
 	devstat(c, dp, rootdir, nroot, devgen);
@@ -110,7 +110,7 @@ rootopen(Chan *c, int omode)
 		break;
 	case Qrecover:
 		if(recovbusy)
-			error(Einuse);		
+			error(Einuse);
 		if(strcmp(up->user, eve) != 0)
 			error(Eperm);
 		recovbusy = 1;
@@ -123,7 +123,7 @@ rootopen(Chan *c, int omode)
 /*
  * sysremove() knows this is a nop
  */
-static void	 
+static void
 rootclose(Chan *c)
 {
 	switch(c->qid.path) {
@@ -142,7 +142,7 @@ rdrdy(void*)
 	return reclist.q != 0;
 }
 
-static long	 
+static long
 rootread(Chan *c, void *buf, long n, vlong off)
 {
 	ulong t;
@@ -193,7 +193,7 @@ rootread(Chan *c, void *buf, long n, vlong off)
 	return n;
 }
 
-static long	 
+static long
 rootwrite(Chan *c, void *buf, long n, vlong)
 {
 	char tmp[256];

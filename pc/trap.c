@@ -140,6 +140,14 @@ trap(Ureg* ureg)
 		up->dbgreg = ureg;
 	}
 
+{
+ulong x, y;
+
+x = (ulong)&(m->stack[512]);
+y = (ulong)&mach;
+if(y < x) panic("trap: kstack %lux %lux", m->stack, y);
+}
+
 	v = ureg->trap;
 	if(ctl = irqctl[v]){
 		if(ctl->isintr){
@@ -158,8 +166,10 @@ trap(Ureg* ureg)
 
 		/* preemptive scheduling */
 		if(ctl->isintr && v != VectorTIMER && v != VectorCLOCK)
-			if(up && up->state == Running && anyhigher())
-				sched();
+		if(up && up->state == Running)
+		if(anyhigher())
+		if(!active.exiting)
+			sched();
 	}
 	else if(v <= 16 && user){
 		spllo();

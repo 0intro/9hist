@@ -120,5 +120,5 @@ done:
 	up->alarm = when;
 	qunlock(&alarms);
 
-	return old;			
+	return old;
 }

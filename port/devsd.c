@@ -189,7 +189,7 @@ sdattach(char *spec)
 			sdrdpart(&disk[i]);
 		qunlock(&disk[i]);
 	}
-	
+
 	return devattach('w', spec);
 }
 

@@ -302,7 +302,7 @@ unionread(Chan *c, void *va, long n)
 		}
 
 		/* Error causes component of union to be skipped */
-		if(waserror()) {	
+		if(waserror()) {
 			cclose(nc);
 			goto next;
 		}
@@ -311,7 +311,7 @@ unionread(Chan *c, void *va, long n)
 		nc->offset = c->offset;
 		nr = devtab[nc->type]->read(nc, va, n, nc->offset);
 		/* devdirread e.g. changes it */
-		c->offset = nc->offset;	
+		c->offset = nc->offset;
 		poperror();
 
 		cclose(nc);
@@ -708,7 +708,7 @@ sysunmount(ulong *arg)
 	cclose(cmount);
 	if(cmounted)
 		cclose(cmounted);
-	poperror();	
+	poperror();
 	return 0;
 }
 

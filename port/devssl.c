@@ -827,7 +827,7 @@ sslwrite(Chan *c, void *a, long n, vlong off)
 			m = e - p;
 			if(m > s.s->max)
 				m = s.s->max;
-	
+
 			b.b = allocb(m);
 			if(waserror()){
 				freeb(b.b);
@@ -836,7 +836,7 @@ sslwrite(Chan *c, void *a, long n, vlong off)
 			memmove(b.b->wp, p, m);
 			poperror();
 			b.b->wp += m;
-	
+
 			sslbwrite(c, b.b, offset);
 
 			p += m;

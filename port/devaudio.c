@@ -781,7 +781,7 @@ audioinit(void)
 		}
 		audio.major = 4;
 	}
-	
+
 	/*
 	 * initialize the mixer
 	 */

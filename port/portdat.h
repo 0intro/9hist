@@ -575,7 +575,7 @@ struct Proc
 	ulong	alarm;		/* Time of call */
 	int	newtlb;		/* Pager has changed my pte's, I must flush */
 
-	ulong	rendtag;	/* Tag for rendezvous */ 
+	ulong	rendtag;	/* Tag for rendezvous */
 	ulong	rendval;	/* Value for rendezvous */
 	Proc	*rendhash;	/* Hash list for tag values */
 

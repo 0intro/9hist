@@ -32,7 +32,7 @@ decref(Ref *r)
 	lock(r);
 	x = --r->ref;
 	unlock(r);
-	if(x < 0) 
+	if(x < 0)
 		panic("decref");
 
 	return x;
@@ -120,12 +120,12 @@ chanfree(Chan *c)
 	 */
 	if(c->path) {
 		if (c->path->ref <= 0) {
-			char buf[100]; 
-			ptpath(c->path, buf, sizeof(buf)); 
-			print("decref %s\n", buf); 
-		} 
+			char buf[100];
+			ptpath(c->path, buf, sizeof(buf));
+			print("decref %s\n", buf);
+		}
 		decref(c->path);
-	} 
+	}
 
 	lock(&chanalloc);
 	c->next = chanalloc.free;
@@ -214,7 +214,7 @@ cmount(Chan *new, Chan *old, int flag, char *spec)
 		 *  if this is a union mount, add the old
 		 *  node to the mount chain.
 		 */
-		if(order != MREPL) 
+		if(order != MREPL)
 			m->mount = newmount(m, old, 0, 0);
 	}
 
@@ -342,8 +342,8 @@ domount(Chan *c)
 			nc->xmnt = nc->mnt;
 			nc->mountid = m->mount->mountid;
 			cclose(c);
-			c = nc;	
-			break;			
+			c = nc;
+			break;
 		}
 
 	poperror();
@@ -412,7 +412,7 @@ walk(Chan **cp, char *name, int domnt)
 		return 0;
 	}
 
-	if(ac->mnt == nil) 
+	if(ac->mnt == nil)
 		return -1;
 
 	c = nil;
@@ -453,7 +453,7 @@ walk(Chan **cp, char *name, int domnt)
 	}
 	cclose(ac);
 	*cp = c;
-	return 0;	
+	return 0;
 }
 
 /*
@@ -659,7 +659,7 @@ namec(char *name, int amode, int omode, ulong perm)
 
 		if(omode == OEXEC)
 			c->flag &= ~CCACHE;
-	
+
 		c = devtab[c->type]->open(c, omode);
 
 		if(omode & OCEXEC)
@@ -671,7 +671,7 @@ namec(char *name, int amode, int omode, ulong perm)
 	case Amount:
 		/*
 		 * When mounting on an already mounted upon directory,
-		 * one wants subsequent mounts to be attached to the 
+		 * one wants subsequent mounts to be attached to the
 		 * original directory, not the replacement.
 		 */
 		if(walk(&c, elem, 0) < 0)

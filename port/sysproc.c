@@ -80,7 +80,7 @@ sysrfork(ulong *arg)
 	p->nerrlab = 0;
 	p->slash = up->slash;
 	p->dot = up->dot;
-	incref(p->dot);	
+	incref(p->dot);
 
 	memmove(p->note, up->note, sizeof(p->note));
 	p->nnote = up->nnote;
@@ -109,7 +109,7 @@ sysrfork(ulong *arg)
 	}
 
 	/* Process groups */
-	if(flag & (RFNAMEG|RFCNAMEG)) {	
+	if(flag & (RFNAMEG|RFCNAMEG)) {
 		p->pgrp = newpgrp();
 		if(flag & RFNAMEG)
 			pgrpcpy(p->pgrp, up->pgrp);
@@ -144,7 +144,7 @@ sysrfork(ulong *arg)
 	 * the scheduler in user mode with the return register zero
 	 */
 	forkchild(p, up->dbgreg);
-	
+
 	p->parent = up;
 	p->parentpid = up->pid;
 	if(flag&RFNOWAIT)
@@ -217,7 +217,7 @@ sysexec(ulong *arg)
 		}
 		if(!indir)
 			strcpy(elem, up->elem);
-	
+
 		n = devtab[tc->type]->read(tc, &exec, sizeof(Exec), 0);
 		if(n < 2)
 			error(Ebadexec);
@@ -231,7 +231,7 @@ sysexec(ulong *arg)
 				error(Ebadexec);
 			break; /* for binary */
 		}
-	
+
 		/*
 		 * Process #! /bin/sh args ...
 		 */
@@ -461,7 +461,7 @@ syssleep(ulong *arg)
 		up->priority = 0;
 		sched();
 		return 0;
-	} 
+	}
 	if(n < TK2MS(1))
 		n = TK2MS(1);
 	tsleep(&up->sleep, return0, 0, n);
@@ -471,7 +471,7 @@ syssleep(ulong *arg)
 long
 sysalarm(ulong *arg)
 {
-	return procalarm(arg[0]);		
+	return procalarm(arg[0]);
 }
 
 long
@@ -592,7 +592,7 @@ syssegdetach(ulong *arg)
 	for(i = 0; i < NSEG; i++)
 		if(s = up->seg[i]) {
 			qlock(&s->lk);
-			if((addr >= s->base && addr < s->top) || 
+			if((addr >= s->base && addr < s->top) ||
 			   (s->top == s->base && addr == s->base))
 				goto found;
 			qunlock(&s->lk);
@@ -668,7 +668,7 @@ sysrendezvous(ulong *arg)
 				;
 			ready(p);
 			unlock(up->rgrp);
-			return val;	
+			return val;
 		}
 		l = &p->rendhash;
 	}

@@ -106,13 +106,13 @@ mntattach(char *muxattach)
 					c->flag |= CCACHE;
 				return c;
 			}
-			unlock(m);	
+			unlock(m);
 		}
 	}
 
 	m = mntalloc.mntfree;
 	if(m != 0)
-		mntalloc.mntfree = m->list;	
+		mntalloc.mntfree = m->list;
 	else {
 		m = malloc(sizeof(Mnt));
 		if(m == 0) {
@@ -269,7 +269,7 @@ mntclone(Chan *c, Chan *nc)
 	return nc;
 }
 
-static int	 
+static int
 mntwalk(Chan *c, char *name)
 {
 	Mnt *m;
@@ -298,7 +298,7 @@ mntwalk(Chan *c, char *name)
 	return 1;
 }
 
-static void	 
+static void
 mntstat(Chan *c, char *dp)
 {
 	Mnt *m;
@@ -350,7 +350,7 @@ mntopen(Chan *c, int omode)
 	return c;
 }
 
-static void	 
+static void
 mntcreate(Chan *c, char *name, int omode, ulong perm)
 {
 	Mnt *m;
@@ -379,12 +379,12 @@ mntcreate(Chan *c, char *name, int omode, ulong perm)
 		copen(c);
 }
 
-static void	 
+static void
 mntclunk(Chan *c, int t)
 {
 	Mnt *m;
 	Mntrpc *r;
-		
+
 	m = mntchk(c);
 	r = mntralloc(c);
 	if(waserror()){
@@ -448,7 +448,7 @@ mntclose(Chan *c)
 	mntclunk(c, Tclunk);
 }
 
-static void	 
+static void
 mntremove(Chan *c)
 {
 	mntclunk(c, Tremove);
@@ -474,13 +474,13 @@ mntwstat(Chan *c, char *dp)
 	mntfree(r);
 }
 
-long	 
+long
 mntread9p(Chan *c, void *buf, long n, vlong off)
 {
 	return mnt9prdwr(Tread, c, buf, n, off);
 }
 
-static long	 
+static long
 mntread(Chan *c, void *buf, long n, vlong off)
 {
 	uchar *p, *e;
@@ -517,13 +517,13 @@ mntread(Chan *c, void *buf, long n, vlong off)
 	return n;
 }
 
-long	 
+long
 mntwrite9p(Chan *c, void *buf, long n, vlong off)
 {
 	return mnt9prdwr(Twrite, c, buf, n, off);
 }
 
-static long	 
+static long
 mntwrite(Chan *c, void *buf, long n, vlong off)
 {
 	return mntrdwr(Twrite, c, buf, n, off);
@@ -641,7 +641,7 @@ mountrpc(Mnt *m, Mntrpc *r)
 			break;
 		print("mnt: proc %s %d: mismatch rep 0x%lux T%d R%d rq %d fls %d rp %d\n",
 			up->text, up->pid,
-			r, r->request.type, r->reply.type, r->request.tag, 
+			r, r->request.type, r->reply.type, r->request.tag,
 			r->flushtag, r->reply.tag);
 		error(Emountrpc);
 	}

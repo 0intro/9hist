@@ -121,7 +121,7 @@ loop:
 	case 0:
 		*local.out = 0;
 		return local.out;
-	
+
 	default:
 		printcol++;
 		goto common;
