@@ -38,6 +38,7 @@ void		closemount(Mount*);
 void		closepgrp(Pgrp*);
 void		closergrp(Rgrp*);
 long		clrfpintr(void);
+void		cmderror(Cmdbuf*, char*);
 int		cmount(Chan**, Chan*, int, char*);
 void		cnameclose(Cname*);
 void		confinit(void);

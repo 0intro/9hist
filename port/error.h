@@ -22,7 +22,6 @@ extern char Etoosmall[];	/* read or write too small */
 extern char Enoport[];		/* network port not available */
 extern char Ehungup[];		/* i/o on hungup channel */
 extern char Ebadctl[];		/* bad process or channel control request */
-extern char Eargctl[];		/* wrong number of arguments in control request */
 extern char Enodev[];		/* no free devices */
 extern char Eprocdied[];	/* process exited */
 extern char Enochild[];		/* no living children */
@@ -48,3 +47,4 @@ extern char Enoattach[];	/* mount/attach disallowed */
 extern char Eshortstat[];	/* stat buffer too small */
 extern char Ebadstat[];		/* malformed stat buffer */
 extern char Enegoff[];		/* negative i/o offset */
+extern char Ecmdargs[];		/* wrong #args in control message */

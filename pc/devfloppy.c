@@ -92,7 +92,7 @@ FController	fl;
  *  predeclared
  */
 static int	cmddone(void*);
-static void	floppyformat(FDrive*, char*);
+static void	floppyformat(FDrive*, Cmdbuf*);
 static void	floppykproc(void*);
 static void	floppypos(FDrive*,long);
 static int	floppyrecal(FDrive*);
@@ -115,6 +115,22 @@ Dirtab floppydir[]={
 	"fd3ctl",		{Qctl + 3},	0,	0660,
 };
 #define NFDIR	2	/* directory entries/drive */
+
+enum
+{
+	CMdebug,
+	CMeject,
+	CMformat,
+	CMreset,
+};
+
+static Cmdtab floppyctlmsg[] =
+{
+	CMdebug,	"debug",	1,
+	CMeject,	"eject",	1,
+	CMformat,	"format",	0,
+	CMreset,	"reset",	1,
+};
 
 static void
 fldump(void)
@@ -396,14 +412,14 @@ floppyread(Chan *c, void *a, long n, vlong off)
 	return rv;
 }
 
-#define SNCMP(a, b) strncmp(a, b, sizeof(b)-1)
 static long
 floppywrite(Chan *c, void *a, long n, vlong off)
 {
 	FDrive *dp;
 	long rv, i;
 	char *aa = a;
-	char ctlmsg[64];
+	Cmdbuf *cb;
+	Cmdtab *ct;
 	ulong offset = off;
 
 	rv = 0;
@@ -433,28 +449,36 @@ floppywrite(Chan *c, void *a, long n, vlong off)
 		break;
 	case Qctl:
 		rv = n;
+		cb = parsecmd(a, n);
+		if(waserror()){
+			free(cb);
+			nexterror();
+		}
 		qlock(&fl);
 		if(waserror()){
 			qunlock(&fl);
 			nexterror();
 		}
-		if(n >= sizeof(ctlmsg))
-			n = sizeof(ctlmsg) - 1;
-		memmove(ctlmsg, aa, n);
-		ctlmsg[n] = 0;
-		if(SNCMP(ctlmsg, "eject") == 0){
+		ct = lookupcmd(cb, floppyctlmsg, nelem(floppyctlmsg));
+		switch(ct->index){
+		case CMeject:
 			floppyeject(dp);
-		} else if(SNCMP(ctlmsg, "reset") == 0){
+			break;
+		case CMformat:
+			floppyformat(dp, cb);
+			break;
+		case CMreset:
 			fl.confused = 1;
 			floppyon(dp);
-		} else if(SNCMP(ctlmsg, "format") == 0){
-			floppyformat(dp, ctlmsg);
-		} else if(SNCMP(ctlmsg, "debug") == 0){
+			break;
+		case CMdebug:
 			floppydebug = 1;
-		} else
-			error(Ebadctl);
+			break;
+		}
 		poperror();
 		qunlock(&fl);
+		poperror();
+		free(cb);
 		break;
 	default:
 		panic("floppywrite: bad qid");
@@ -893,20 +917,19 @@ floppyxfer(FDrive *dp, int cmd, void *a, long off, long n)
  *  format a track
  */
 static void
-floppyformat(FDrive *dp, char *params)
+floppyformat(FDrive *dp, Cmdbuf *cb)
 {
  	int cyl, h, sec;
 	ulong track;
 	uchar *buf, *bp;
 	FType *t;
-	char *f[3];
 
 	/*
 	 *  set the type
 	 */
-	if(tokenize(params, f, 3) > 1){
+	if(cb->nf == 2){
 		for(t = floppytype; t < &floppytype[nelem(floppytype)]; t++){
-			if(strcmp(f[1], t->name)==0 && t->dt==dp->dt){
+			if(strcmp(cb->f[1], t->name)==0 && t->dt==dp->dt){
 				dp->t = t;
 				floppydir[1+NFDIR*dp->dev].length = dp->t->cap;
 				break;
@@ -914,9 +937,12 @@ floppyformat(FDrive *dp, char *params)
 		}
 		if(t >= &floppytype[nelem(floppytype)])
 			error(Ebadarg);
-	} else {
+	} else if(cb->nf == 1){
 		floppysetdef(dp);
 		t = dp->t;
+	} else {
+		cmderror(cb, "invalid floppy format command");
+		SET(t);
 	}
 
 	/*

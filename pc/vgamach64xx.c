@@ -1007,13 +1007,10 @@ mach64xxdrawinit(VGAscr *scr)
 }
 
 static void
-ovl_configure(VGAscr *scr, Chan *c, int nfields, char **field)
+ovl_configure(VGAscr *scr, Chan *c, char **field)
 {
 	int w, h;
 	char *format;
-
-	if (nfields != 4) 
-		error(Ebadarg);
 
 	w = (int)strtol(field[1], nil, 0);
 	h = (int)strtol(field[2], nil, 0);
@@ -1071,13 +1068,10 @@ ovl_configure(VGAscr *scr, Chan *c, int nfields, char **field)
 }
 
 static void
-ovl_enable(VGAscr *scr, Chan *c, int nfields, char **field)
+ovl_enable(VGAscr *scr, Chan *c, char **field)
 {
 	int x, y, w, h;
 	long h_inc, v_inc;
-
-	if (nfields != 5) 
-		error(Ebadarg);
 
 	x = (int)strtol(field[1], nil, 0);
 	y = (int)strtol(field[2], nil, 0);
@@ -1114,11 +1108,8 @@ ovl_enable(VGAscr *scr, Chan *c, int nfields, char **field)
 }
 
 static void
-ovl_status(VGAscr *scr, Chan *, int nfields, char **field)
+ovl_status(VGAscr *scr, Chan *, char **field)
 {
-	if (nfields != 1) 
-		error(Ebadarg);
-
 	pprint("%s: %s %.4uX, VT/GT %s, PRO %s, ovlclock %d, rev B %s, refclock %ld\n",
 		   scr->dev->name, field[0], mach64type->m64_id,
 		   mach64type->m64_vtgt? "yes": "no",
@@ -1132,19 +1123,17 @@ ovl_status(VGAscr *scr, Chan *, int nfields, char **field)
 }
 	
 static void
-ovl_openctl(VGAscr *, Chan *c, int nfields, char **)
+ovl_openctl(VGAscr *, Chan *c, char **)
 {
-	if (nfields != 1) 
-		error(Ebadarg);
 	if (ovl_chan) 
 		error(Einuse);
 	ovl_chan = c;
 }
 
 static void
-ovl_closectl(VGAscr *scr, Chan *c, int nfields, char **)
+ovl_closectl(VGAscr *scr, Chan *c, char **)
 {
-	if (c != ovl_chan || nfields != 1) return;
+	if (c != ovl_chan) return;
 
 	waitforidle(scr);
 	scr->mmio[mmoffset[OverlayScaleCntl]] &=
@@ -1153,39 +1142,54 @@ ovl_closectl(VGAscr *scr, Chan *c, int nfields, char **)
 	ovl_width = ovl_height = ovl_fib = 0;
 }
 
-static struct {
-	char *ovl_command;
-	void	 (*ovl_f)(VGAscr *, Chan *, int, char **);
-} ovl_cmds[] = {
-	{	"openctl",		ovl_openctl	},
-	{	"configure", 	ovl_configure,	},
-	{	"enable",		ovl_enable,	},
-	{	"closectl",		ovl_closectl	},
-	{	"status",		ovl_status		},
+enum
+{
+	CMclosectl,
+	CMconfigure,
+	CMenable,
+	CMopenctl,
+	CMstatus,
+};
+
+static void (*ovl_cmds[])(VGAscr *, Chan *, char **) =
+{
+	[CMclosectl]	ovl_closectl,
+	[CMconfigure]	ovl_configure,
+	[CMenable]	ovl_enable,
+	[CMopenctl]	ovl_openctl,
+	[CMstatus]	ovl_status,
+};
+
+static Cmdtab mach64xxcmd[] =
+{
+	CMclosectl,	"closectl",	1,
+	CMconfigure,	"configure",	4,
+	CMenable,	"enable",	5,
+	CMopenctl,	"openctl",	1,
+	CMstatus,	"status",	1,
 };
 
 static void
-mach64xxovlctl(VGAscr *scr, Chan *c, void *a, int)
+mach64xxovlctl(VGAscr *scr, Chan *c, void *a, int n)
 {
-#define MAXARGS	10
-	char *field[MAXARGS];
-	int nfields, i;
+	Cmdbuf *cb;
+	Cmdtab *ct;
 
 	if (!mach64type->m64_vtgt) 
 		error(Enodev);
 
-	nfields = tokenize(a, field, nelem(field));
-	if (nfields < 1) 
-		error(Ebadarg);
+	cb = parsecmd(a, n);
+	if(waserror()){
+		free(cb);
+		nexterror();
+	}
 
-	for (i = 0; i != nelem(ovl_cmds); i++)
-		if (!strcmp(field[0], ovl_cmds[i].ovl_command))
-			break;
+	ct = lookupcmd(cb, mach64xxcmd, nelem(mach64xxcmd));
 
-	if (i == nelem(ovl_cmds))
-		error(Ebadarg);
+	ovl_cmds[ct->index](scr, c, cb->f);
 
-	ovl_cmds[i].ovl_f(scr, c, nfields, field);
+	poperror();
+	free(cb);
 }
 
 static int

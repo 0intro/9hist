@@ -68,23 +68,47 @@ parsecmd(char *p, int n)
 }
 
 /*
+ * Reconstruct original message, for error diagnostic
+ */
+void
+cmderror(Cmdbuf *cb, char *s)
+{
+	int i;
+	char *p, *e;
+
+	p = up->genbuf;
+	e = p+ERRMAX-10;
+	p = seprint(p, e, "%s \"", s);
+	for(i=0; i<cb->nf; i++){
+		if(i > 0)
+			p = seprint(p, e, " ");
+		p = seprint(p, e, "%q", cb->f[i]);
+	}
+	strcpy(p, "\"");
+	error(up->genbuf);
+}
+
+/*
  * Look up entry in table
  */
 Cmdtab*
-lookupcmd(Cmdbuf *cb, Cmdtab *ct, int nct)
+lookupcmd(Cmdbuf *cb, Cmdtab *ctab, int nctab)
 {
 	int i;
+	Cmdtab *ct;
 
 	if(cb->nf == 0)
-		error(Ebadctl);
+		error("empty control message");
 
-	for(i=0; i<nct; i++, ct++){
-		if(strcmp(cb->f[0], ct->cmd) != 0)
+	for(ct = ctab, i=0; i<nctab; i++, ct++){
+		if(strcmp(ct->cmd, "*") !=0)	/* wildcard always matches */
+		if(strcmp(ct->cmd, cb->f[0]) != 0)
 			continue;
-		if(ct->narg!=0 && ct->narg!=cb->nf)
-			error(Eargctl);
+		if(ct->narg != 0 && ct->narg != cb->nf)
+			cmderror(cb, Ecmdargs);
 		return ct;
 	}
-	error(Ebadctl);
+
+	cmderror(cb, "unknown control message");
 	return nil;
 }

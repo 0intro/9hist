@@ -16,6 +16,22 @@ Route*	v4freelist;
 Route*	v6freelist;
 RWlock	routelock;
 
+enum
+{
+	RWadd,
+	RWflush,
+	RWremove,
+	RWtag,
+};
+
+static
+Cmdtab routecmd[] = {
+	RWadd,		"add",		4,
+	RWflush,	"flush",	2,
+	RWremove,	"remove",	3,
+	RWtag,		"tag",		2,
+};
+
 static void
 freeroute(Route *r)
 {
@@ -763,6 +779,7 @@ routewrite(Fs *f, Chan *c, char *p, int n)
 	int h, changed;
 	char *tag;
 	Cmdbuf *cb;
+	Cmdtab *ct;
 	uchar addr[IPaddrlen];
 	uchar mask[IPaddrlen];
 	uchar gate[IPaddrlen];
@@ -774,7 +791,25 @@ routewrite(Fs *f, Chan *c, char *p, int n)
 		nexterror();
 	}
 
-	if(strcmp(cb->f[0], "flush") == 0){
+	ct = lookupcmd(cb, routecmd, nelem(routecmd));
+
+	switch(ct->index){
+	case RWadd:
+		parseip(addr, cb->f[1]);
+		parseipmask(mask, cb->f[2]);
+		parseip(gate, cb->f[3]);
+		tag = "none";
+		if(c != nil){
+			a = c->aux;
+			tag = a->tag;
+		}
+		if(memcmp(addr, v4prefix, IPv4off) == 0)
+			v4addroute(f, tag, addr+IPv4off, mask+IPv4off, gate+IPv4off, 0);
+		else
+			v6addroute(f, tag, addr, mask, gate, 0);
+		break;
+
+	case RWflush:
 		tag = cb->f[1];
 		for(h = 0; h < nelem(f->v4root); h++)
 			for(changed = 1; changed;){
@@ -788,34 +823,18 @@ routewrite(Fs *f, Chan *c, char *p, int n)
 				changed = routeflush(f, f->v6root[h], tag);
 				wunlock(&routelock);
 			}
-	} else if(strcmp(cb->f[0], "remove") == 0){
-		if(cb->nf < 3)
-			error(Ebadarg);
+		break;
+
+	case RWremove:
 		parseip(addr, cb->f[1]);
 		parseipmask(mask, cb->f[2]);
 		if(memcmp(addr, v4prefix, IPv4off) == 0)
 			v4delroute(f, addr+IPv4off, mask+IPv4off, 1);
 		else
 			v6delroute(f, addr, mask, 1);
-	} else if(strcmp(cb->f[0], "add") == 0){
-		if(cb->nf < 4)
-			error(Ebadarg);
-		parseip(addr, cb->f[1]);
-		parseipmask(mask, cb->f[2]);
-		parseip(gate, cb->f[3]);
-		tag = "none";
-		if(c != nil){
-			a = c->aux;
-			tag = a->tag;
-		}
-		if(memcmp(addr, v4prefix, IPv4off) == 0)
-			v4addroute(f, tag, addr+IPv4off, mask+IPv4off, gate+IPv4off, 0);
-		else
-			v6addroute(f, tag, addr, mask, gate, 0);
-	} else if(strcmp(cb->f[0], "tag") == 0) {
-		if(cb->nf < 2)
-			error(Ebadarg);
+		break;
 
+	case RWtag:
 		a = c->aux;
 		na = newipaux(a->owner, cb->f[1]);
 		c->aux = na;

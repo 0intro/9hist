@@ -122,7 +122,7 @@ enum {
 };
 
 /* mouse.c */
-extern void mousectl(char*[], int);
+extern void mousectl(Cmdbuf*);
 
 /* screen.c */
 extern int		hwaccel;	/* use hw acceleration; default on */

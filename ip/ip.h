@@ -336,7 +336,7 @@ enum
 void	netloginit(Fs*);
 void	netlogopen(Fs*);
 void	netlogclose(Fs*);
-char*	netlogctl(Fs*, char*, int);
+void	netlogctl(Fs*, char*, int);
 long	netlogread(Fs*, void*, ulong, long);
 void	netlog(Fs*, int, char*, ...);
 void	ifcloginit(Fs*);

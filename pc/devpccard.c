@@ -241,6 +241,18 @@ static ulong mantissa[16] = {
 
 static char Enocard[] = "No card in slot";
 
+enum
+{
+	CMdown,
+	CMpower,
+};
+
+static Cmdtab pccardctlmsg[] =
+{
+	CMdown,		"down",	2,
+	CMpower,	"power",	1,
+};
+
 static void cbint(Ureg *, void *);
 static int powerup(Cardbus *);
 static void configure(Cardbus *);
@@ -1314,37 +1326,37 @@ pccardwrite(Chan *c, void *v, long n, vlong)
 {
 	Rune r;
 	ulong n0;
-	int i, nf;
-	char buf[255], *field[Ncmd], *device;
+	char *device;
+	Cmdbuf *cbf;
+	Cmdtab *ct;
 	Cardbus *cb;
 
 	n0 = n;
 	switch(TYPE(c)){
 	case Qctl:
 		cb = &cbslots[SLOTNO(c)];
-		if(n > sizeof(buf)-1) n = sizeof(buf)-1;
-		memmove(buf, v, n);
-		buf[n] = '\0';
 
-		nf = tokenize(buf, field, Ncmd);
-		for (i = 0; i != nf; i++) {
-			if (!strcmp(field[i], "down")) {
-
-				if (i + 1 < nf && *field[i + 1] == '#') {
-					device = field[++i];
-					device += chartorune(&r, device);
-					if ((n = devno(r, 1)) >= 0 && devtab[n]->config)
-						devtab[n]->config(0, device, nil);
-				}
-				qengine(cb, CardEjected);
-			}
-			else if (!strcmp(field[i], "power")) {
-				if ((cb->cb_regs[SocketState] & SS_CCD) == 0)
-					qengine(cb, CardDetected);
-			}
-			else
-				error(Ebadarg);
+		cbf = parsecmd(v, n);
+		if(waserror()){
+			free(cbf);
+			nexterror();
 		}
+		ct = lookupcmd(cbf, pccardctlmsg, nelem(pccardctlmsg));
+		switch(ct->index){
+		case CMdown:
+			device = cbf->f[1];
+			device += chartorune(&r, device);
+			if ((n = devno(r, 1)) >= 0 && devtab[n]->config)
+				devtab[n]->config(0, device, nil);
+			qengine(cb, CardEjected);
+			break;
+		case CMpower:
+			if ((cb->cb_regs[SocketState] & SS_CCD) == 0)
+				qengine(cb, CardDetected);
+			break;
+		}
+		poperror();
+		free(cbf);
 		break;
 	}
 	return n0 - n;

@@ -73,6 +73,7 @@ Dirtab procdir[] =
 	"profile",	{Qprofile},	0,			0400,
 };
 
+static
 Cmdtab proccmd[] = {
 	CMclose,		"close",		2,
 	CMclosefiles,	"closefiles",	1,
@@ -1059,9 +1060,6 @@ procctlreq(Proc *p, char *va, int n)
 		free(cb);
 		nexterror();
 	}
-
-	if(cb->nf <= 0)
-		error(Ebadctl);
 
 	ct = lookupcmd(cb, proccmd, nelem(proccmd));
 

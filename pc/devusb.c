@@ -279,6 +279,7 @@ struct Ctlr {
 
 static	Ctlr	ubus;
 static	char	Estalled[] = "usb endpoint stalled";
+static	char	Ebadusbmsg[] = "invalid parameters to USB ctl message";
 
 static	QLock	usbstate;	/* protects name space state */
 static	Udev*	usbdev[32];
@@ -286,6 +287,42 @@ static struct {
 	Lock;
 	Endpt*	f;
 } activends;
+
+enum
+{
+	BCMdisable,
+	BCMenable,
+	BCMreset,
+};
+
+enum
+{
+	CMclass,
+	CMdata,
+	CMdebug,
+	CMep,
+	CMmaxpkt,
+	CMspeed,
+	CMunstall,
+};
+
+static Cmdtab usbbusctlmsg[] =
+{
+	BCMdisable,	"disable",	2,
+	BCMenable,	"enable",	2,
+	BCMreset,	"reset",	2,
+};
+
+static Cmdtab usbctlmsg[] =
+{
+	CMclass,	"class",	4,
+	CMdata,		"data",		3,
+	CMdebug,	"debug",	3,
+	CMep,		"ep",		6,
+	CMmaxpkt,	"maxpkt",	3,
+	CMspeed,	"speed",	2,
+	CMunstall,	"unstall",	2,
+};
 
 static long readusb(Endpt*, void*, long);
 static long writeusb(Endpt*, void*, long, int);
@@ -2003,93 +2040,109 @@ usbwrite(Chan *c, void *a, long n, vlong offset)
 {
 	Udev *d;
 	Endpt *e;
-	int id, nw, nf, t, i;
+	Cmdbuf *cb;
+	Cmdtab *ct;
+	int id, nw, t, i;
 	char cmd[50], *fields[10];
 
 	if(c->qid.type == QTDIR)
 		error(Egreg);
 	t = QID(c->qid);
 	if(t == Qbusctl){
-		if(n >= sizeof(cmd)-1)
-			n = sizeof(cmd)-1;
-		memmove(cmd, a, n);
-		cmd[n] = 0;
-		nf = tokenize(cmd, fields, nelem(fields));
-		if(nf < 2)
-			error(Ebadarg);
+		cb = parsecmd(a, n);
+		if(waserror()){
+			free(cb);
+			nexterror();
+		}
+
+		ct = lookupcmd(cb, usbbusctlmsg, nelem(usbbusctlmsg));
 		id = strtol(fields[1], nil, 0);
 		if(id != 1 && id != 2)
-			error(Ebadarg);	/* there are two ports on the root hub */
-		if(strcmp(fields[0], "reset") == 0)
-			portreset(id);
-		else if(strcmp(fields[0], "enable") == 0)
-			portenable(id, 1);
-		else if(strcmp(fields[0], "disable") == 0)
+			cmderror(cb, "usb port number not 1 or 2 in");
+		switch(ct->index){
+		case BCMdisable:
 			portenable(id, 0);
-		else
-			error(Ebadarg);
+			break;
+		case BCMenable:
+			portenable(id, 1);
+			break;
+		case BCMreset:
+			portreset(id);
+			break;
+		}
+	
+		poperror();
+		free(cb);
 		return n;
 	}
 	d = usbdevice(c);
 	t = QID(c->qid);
 	switch(t){
 	case Qctl:
-		if(n >= sizeof(cmd)-1)
-			n = sizeof(cmd)-1;
-		memmove(cmd, a, n);
-		cmd[n] = 0;
-		nf = tokenize(cmd, fields, nelem(fields));
-		if(nf > 1 && strcmp(fields[0], "speed") == 0){
-			d->ls = strtoul(fields[1], nil, 0) == 0;
-		} else if(nf > 3 && strcmp(fields[0], "class") == 0){
-			i = strtoul(fields[2], nil, 0);
-			d->npt = strtoul(fields[1], nil, 0);
+		cb = parsecmd(a, n);
+		if(waserror()){
+			free(cb);
+			nexterror();
+		}
+
+		ct = lookupcmd(cb, usbctlmsg, nelem(usbctlmsg));
+		switch(ct->index){
+		case CMspeed:
+			d->ls = strtoul(cb->f[1], nil, 0) == 0;
+			break;
+		case CMclass:
+			i = strtoul(cb->f[2], nil, 0);
+			d->npt = strtoul(cb->f[1], nil, 0);
 			/* class config# csp ( == class subclass proto) */
 			if (i < 0 || i >= nelem(d->ep)
 			 || d->npt > nelem(d->ep) || i >= d->npt)
-				error(Ebadarg);
-			if (i == 0) {
-				d->csp = strtoul(fields[3], nil, 0);
-			}
+				cmderror(cb, Ebadusbmsg);
+			if (i == 0)
+				d->csp = strtoul(cb->f[3], nil, 0);
 			if(d->ep[i] == nil)
 				d->ep[i] = devendpt(d, i, 1);
-			d->ep[i]->csp = strtoul(fields[3], nil, 0);
-		}else if(nf > 2 && strcmp(fields[0], "data") == 0){
-			i = strtoul(fields[1], nil, 0);
+			d->ep[i]->csp = strtoul(cb->f[3], nil, 0);
+			break;
+		case CMdata:
+			i = strtoul(cb->f[1], nil, 0);
 			if(i < 0 || i >= nelem(d->ep) || d->ep[i] == nil)
-				error(Ebadarg);
+				error(Ebadusbmsg);
 			e = d->ep[i];
-			e->data01 = strtoul(fields[2], nil, 0) != 0;
-		}else if(nf > 2 && strcmp(fields[0], "maxpkt") == 0){
-			i = strtoul(fields[1], nil, 0);
+			e->data01 = strtoul(cb->f[2], nil, 0) != 0;
+			break;
+		case CMmaxpkt:
+			i = strtoul(cb->f[1], nil, 0);
 			if(i < 0 || i >= nelem(d->ep) || d->ep[i] == nil)
-				error(Ebadarg);
+				error(Ebadusbmsg);
 			e = d->ep[i];
-			e->maxpkt = strtoul(fields[2], nil, 0);
+			e->maxpkt = strtoul(cb->f[2], nil, 0);
 			if(e->maxpkt > 1500)
 				e->maxpkt = 1500;
-		}else if(nf > 2 && strcmp(fields[0], "debug") == 0){
-			i = strtoul(fields[1], nil, 0);
+			break;
+		case CMdebug:
+			i = strtoul(cb->f[1], nil, 0);
 			if(i < -1 || i >= nelem(d->ep) || d->ep[i] == nil)
-				error(Ebadarg);
+				error(Ebadusbmsg);
 			if (i == -1)
 				debug = 0;
 			else {
 				debug = 1;
 				e = d->ep[i];
-				e->debug = strtoul(fields[2], nil, 0);
+				e->debug = strtoul(cb->f[2], nil, 0);
 			}
-		}else if(nf > 1 && strcmp(fields[0], "unstall") == 0){
-			i = strtoul(fields[1], nil, 0);
+			break;
+		case CMunstall:
+			i = strtoul(cb->f[1], nil, 0);
 			if(i < 0 || i >= nelem(d->ep) || d->ep[i] == nil)
-				error(Ebadarg);
+				error(Ebadusbmsg);
 			e = d->ep[i];
 			e->err = nil;
-		}else if(nf == 6 && strcmp(fields[0], "ep") == 0){
+			break;
+		case CMep:
 			/* ep n `bulk' mode maxpkt nbuf     OR
 			 * ep n period mode samplesize KHz
 			 */
-			i = strtoul(fields[1], nil, 0);
+			i = strtoul(cb->f[1], nil, 0);
 			if(i < 0 || i >= nelem(d->ep)) {
 				XPRINT("field 1: 0 <= %d < %d\n", i, nelem(d->ep));
 				error(Ebadarg);
@@ -2104,7 +2157,7 @@ usbwrite(Chan *c, void *a, long n, vlong offset)
 			}
 			if (e->active)
 				error(Eperm);
-			if(strcmp(fields[2], "bulk") == 0){
+			if(strcmp(cb->f[2], "bulk") == 0){
 				Ctlr *ub;
 
 				e->iso = 0;
@@ -2119,34 +2172,34 @@ usbwrite(Chan *c, void *a, long n, vlong offset)
 						panic("usbwrite: allocqh");
 				}
 				queueqh(e->epq);
-				e->mode = strcmp(fields[3],"r") == 0? OREAD :
-					  	strcmp(fields[3],"w") == 0? OWRITE : ORDWR;
-				i = strtoul(fields[4], nil, 0);
+				e->mode = strcmp(cb->f[3],"r") == 0? OREAD :
+					  	strcmp(cb->f[3],"w") == 0? OWRITE : ORDWR;
+				i = strtoul(cb->f[4], nil, 0);
 				if(i < 8 || i > 1023)
 					i = 8;
 				e->maxpkt = i;
-				i = strtoul(fields[5], nil, 0);
+				i = strtoul(cb->f[5], nil, 0);
 				if(i >= 1 && i <= 32)
 					e->nbuf = i;
 			} else {
 				/* ep n period mode samplesize KHz */
-				i = strtoul(fields[2], nil, 0);
+				i = strtoul(cb->f[2], nil, 0);
 				if(i > 0 && i <= 1000){
 					e->pollms = i;
 				}else {
 					XPRINT("field 4: 0 <= %d <= 1000\n", i);
 					error(Ebadarg);
 				}
-				e->mode = strcmp(fields[3],"r") == 0? OREAD :
-					  	strcmp(fields[3],"w") == 0? OWRITE : ORDWR;
-				i = strtoul(fields[4], nil, 0);
+				e->mode = strcmp(cb->f[3],"r") == 0? OREAD :
+					  	strcmp(cb->f[3],"w") == 0? OWRITE : ORDWR;
+				i = strtoul(cb->f[4], nil, 0);
 				if(i >= 1 && i <= 8){
 					e->samplesz = i;
 				}else {
 					XPRINT("field 4: 0 < %d <= 8\n", i);
 					error(Ebadarg);
 				}
-				i = strtoul(fields[5], nil, 0);
+				i = strtoul(cb->f[5], nil, 0);
 				if(i >= 1 && i <= 100000){
 					/* Hz */
 					e->hz = i;
@@ -2161,10 +2214,10 @@ usbwrite(Chan *c, void *a, long n, vlong offset)
 			}
 			poperror();
 			qunlock(&usbstate);
-		}else {
-			XPRINT("command %s, fields %d\n", fields[0], nf);
-			error(Ebadarg);
 		}
+	
+		poperror();
+		free(cb);
 		return n;
 
 	case Qsetup:	/* SETUP endpoint 0 */

@@ -27,6 +27,30 @@ static int packetsize;
 static int resolution;
 static int accelerated;
 
+enum
+{
+	CMaccelerated,
+	CMintellimouse,
+	CMlinear,
+	CMps2,
+	CMps2intellimouse,
+	CMres,
+	CMreset,
+	CMserial,
+};
+
+static Cmdtab mousectlmsg[] =
+{
+	CMaccelerated,		"accelerated",		0,
+	CMintellimouse,		"intellimouse",		1,
+	CMlinear,		"linear",		1,
+	CMps2,			"ps2",			1,
+	CMps2intellimouse,	"ps2intellimouse",	1,
+	CMres,			"res",			0,
+	CMreset,		"reset",		1,
+	CMserial,		"serial",		0,
+};
+
 /*
  *  setup a serial mouse
  */
@@ -232,35 +256,35 @@ resetmouse(void)
 }
 
 void
-mousectl(char* field[], int n)
+mousectl(Cmdbuf *cb)
 {
-	if(strncmp(field[0], "serial", 6) == 0){
-		switch(n){
-		case 1:
-			serialmouse(atoi(field[0]+6), 0, 1);
-			break;
-		case 2:
-			serialmouse(atoi(field[1]), 0, 0);
-			break;
-		case 3:
-		default:
-			serialmouse(atoi(field[1]), field[2], 0);
-			break;
-		}
-	} else if(strcmp(field[0], "ps2") == 0){
+	Cmdtab *ct;
+
+	ct = lookupcmd(cb, mousectlmsg, nelem(mousectlmsg));
+	switch(ct->index){
+	case CMaccelerated:
+		setaccelerated(cb->nf == 1 ? 1 : atoi(cb->f[1]));
+		break;
+	case CMintellimouse:
+		setintellimouse();
+		break;
+	case CMlinear:
+		setlinear();
+		break;
+	case CMps2:
 		ps2mouse();
-	} else if(strcmp(field[0], "ps2intellimouse") == 0){
+		break;
+	case CMps2intellimouse:
 		ps2mouse();
 		setintellimouse();
-	} else if(strcmp(field[0], "accelerated") == 0){
-		setaccelerated(n == 1 ? 1 : atoi(field[1]));
-	} else if(strcmp(field[0], "linear") == 0){
-		setlinear();
-	} else if(strcmp(field[0], "res") == 0){
-		if(n >= 2)
-			n = atoi(field[1]);
-		setres(n);
-	} else if(strcmp(field[0], "reset") == 0){
+		break;
+	case CMres:
+		if(cb->nf >= 2)
+			setres(atoi(cb->f[1]));
+		else
+			setres(1);
+		break;
+	case CMreset:
 		resetmouse();
 		if(accelerated)
 			setaccelerated(accelerated);
@@ -268,9 +292,20 @@ mousectl(char* field[], int n)
 			setres(resolution);
 		if(intellimouse)
 			setintellimouse();
-	} else if(strcmp(field[0], "intellimouse") == 0){
-		setintellimouse();
+		break;
+	case CMserial:
+		switch(cb->nf){
+		case 1:
+			serialmouse(atoi(cb->f[0]+6), 0, 1);
+			break;
+		case 2:
+			serialmouse(atoi(cb->f[1]), 0, 0);
+			break;
+		case 3:
+		default:
+			serialmouse(atoi(cb->f[1]), cb->f[2], 0);
+			break;
+		}
+		break;
 	}
-	else
-		error(Ebadctl);
 }

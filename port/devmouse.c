@@ -43,6 +43,20 @@ struct Mouseinfo
 	uchar	qfull;	/* queue is full */
 };
 
+enum
+{
+	CMbuttonmap,
+	CMswap,
+	CMwildcard,
+};
+
+static Cmdtab mousectlmsg[] =
+{
+	CMbuttonmap,	"buttonmap",	0,
+	CMswap,		"swap",		1,
+	CMwildcard,	"*",			0,
+};
+
 Mouseinfo	mouse;
 Cursorinfo	cursor;
 int		mouseshifted;
@@ -307,8 +321,10 @@ mousewrite(Chan *c, void *va, long n, vlong)
 {
 	char *p;
 	Point pt;
-	char buf[64], *field[3];
-	int nf, b, msec;
+	Cmdbuf *cb;
+	Cmdtab *ct;
+	char buf[64];
+	int b, msec;
 
 	p = va;
 	switch((ulong)c->qid.path){
@@ -336,29 +352,37 @@ mousewrite(Chan *c, void *va, long n, vlong)
 		return n;
 
 	case Qmousectl:
-		if(n >= sizeof(buf))
-			n = sizeof(buf)-1;
-		strncpy(buf, va, n);
-		if(buf[n - 1] == '\n')
-			buf[n-1] = 0;
-		else
-			buf[n] = 0;
-		nf = tokenize(buf, field, 3);
-		if(strcmp(field[0], "swap") == 0){
+		cb = parsecmd(va, n);
+		if(waserror()){
+			free(cb);
+			nexterror();
+		}
+
+		ct = lookupcmd(cb, mousectlmsg, nelem(mousectlmsg));
+
+		switch(ct->index){
+		case CMswap:
 			if(mouseswap)
 				setbuttonmap("123");
 			else
 				setbuttonmap("321");
 			mouseswap ^= 1;
-		}
-		else if(strcmp(field[0], "buttonmap") == 0){
-			if(nf == 1)
+			break;
+
+		case CMbuttonmap:
+			if(cb->nf == 1)
 				setbuttonmap("123");
 			else
-				setbuttonmap(field[1]);
+				setbuttonmap(cb->f[1]);
+			break;
+
+		case CMwildcard:
+			mousectl(cb);
+			break;
 		}
-		else
-			mousectl(field, nf);
+
+		free(cb);
+		poperror();
 		return n;
 
 	case Qmousein:

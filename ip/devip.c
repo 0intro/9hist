@@ -54,6 +54,30 @@ QLock	fslock;
 Fs	*ipfs[Nfs];	/* attached fs's */
 Queue	*qlog;
 
+enum
+{
+	CMaddmulti,
+	CMannounce,
+	CMbind,
+	CMconnect,
+	CMremmulti,
+	CMtos,
+	CMttl,
+	CMwildcard,
+};
+
+Cmdtab ipctlmsg[] =
+{
+	CMaddmulti,	"addmulti",	0,
+	CMannounce,	"announce",	0,
+	CMbind,		"bind",		0,
+	CMconnect,	"connect",	0,
+	CMremmulti,	"remmulti",	0,
+	CMtos,		"tos",		0,
+	CMttl,		"ttl",			0,
+	CMwildcard,	"*",			0,
+};
+
 extern	void nullmediumlink(void);
 extern	void pktmediumlink(void);
 	long ndbwrite(Fs *f, char *a, ulong off, int n);
@@ -1023,6 +1047,7 @@ ipwrite(Chan* ch, void *v, long n, vlong off)
 	Proto *x;
 	char *p;
 	Cmdbuf *cb;
+	Cmdtab *ct;
 	uchar ia[IPaddrlen], ma[IPaddrlen];
 	Fs *f;
 	char *a;
@@ -1049,9 +1074,7 @@ ipwrite(Chan* ch, void *v, long n, vlong off)
 	case Qiproute:
 		return routewrite(f, ch, a, n);
 	case Qlog:
-		p = netlogctl(f, a, n);
-		if(p != nil)
-			error(p);
+		netlogctl(f, a, n);
 		return n;
 	case Qndb:
 		return ndbwrite(f, a, offset, n);
@@ -1069,19 +1092,27 @@ ipwrite(Chan* ch, void *v, long n, vlong off)
 		}
 		if(cb->nf < 1)
 			error("short control request");
-		if(strcmp(cb->f[0], "connect") == 0)
+
+		ct = lookupcmd(cb, ipctlmsg, nelem(ipctlmsg));
+		switch(ct->index){
+		case CMconnect:
 			connectctlmsg(x, c, cb);
-		else if(strcmp(cb->f[0], "announce") == 0)
+			break;
+		case CMannounce:
 			announcectlmsg(x, c, cb);
-		else if(strcmp(cb->f[0], "bind") == 0)
+			break;
+		case CMbind:
 			bindctlmsg(x, c, cb);
-		else if(strcmp(cb->f[0], "ttl") == 0)
+			break;
+		case CMttl:
 			ttlctlmsg(c, cb);
-		else if(strcmp(cb->f[0], "tos") == 0)
+			break;
+		case CMtos:
 			tosctlmsg(c, cb);
-		else if(strcmp(cb->f[0], "addmulti") == 0){
-			if(cb->nf < 2)
-				error("addmulti needs interface address");
+			break;
+		case CMaddmulti:
+			if(cb->nf != 2 && cb->nf != 3)
+				cmderror(cb, Ecmdargs);
 			if(cb->nf == 2){
 				if(!ipismulticast(c->raddr))
 					error("addmulti for a non multicast address");
@@ -1094,19 +1125,23 @@ ipwrite(Chan* ch, void *v, long n, vlong off)
 				parseip(ia, cb->f[1]);
 				ipifcaddmulti(c, ma, ia);
 			}
-		} else if(strcmp(cb->f[0], "remmulti") == 0){
+			break;
+		case CMremmulti:
 			if(cb->nf < 2)
 				error("remmulti needs interface address");
 			if(!ipismulticast(c->raddr))
 				error("remmulti for a non multicast address");
 			parseip(ia, cb->f[1]);
 			ipifcremmulti(c, c->raddr, ia);
-		} else if(x->ctl != nil) {
+			break;
+		case CMwildcard:
+			if(x->ctl == nil)
+				cmderror(cb, "unknown control request");
 			p = x->ctl(c, cb->f, cb->nf);
 			if(p != nil)
 				error(p);
-		} else
-			error("unknown control request");
+		}
+
 		qunlock(c);
 		free(cb);
 		poperror();
