@@ -368,7 +368,7 @@ malloc(ulong size)
 	v = poolalloc(mainmem, size);
 	if(v != nil)
 		memset(v, 0, size);
-{
+if(v != nil){
 Bhdr *h;
 D2B(h, v);
 B2T(h)->pad = getcallerpc(&size);
@@ -403,11 +403,11 @@ mallocz(ulong size, int clr)
 
 	v = poolalloc(mainmem, size);
 	if(clr && v != nil)
-{
+		memset(v, 0, size);
+if(v != nil){
 Bhdr *h;
 D2B(h, v);
 B2T(h)->pad = getcallerpc(&size);
-		memset(v, 0, size);
 }
 	return v;
 }
