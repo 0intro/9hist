@@ -483,8 +483,14 @@ tinyfsattach(char *spec)
 	char *p;
 
 	p = 0;
-	if(strcmp(spec, "hd0") == 0)
+	if(strncmp(spec, "hd0") == 0)
 		p = "#H/hd0nvram";
+	else if(strncmp(spec, "hd1") == 0)
+		p = "#H/hd1nvram";
+	else if(strncmp(spec, "sd0") == 0)
+		p = "#H/sd0nvram";
+	else if(strncmp(spec, "sd1") == 0)
+		p = "#H/sd1nvram";
 	else
 		error("bad spec");
 
