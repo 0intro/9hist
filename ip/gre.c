@@ -158,6 +158,8 @@ grekick(Conv *c, int l)
 	hnputl(ghp->dst, c->raddr);
 	hnputl(ghp->src, c->laddr);
 	hnputs(ghp->eproto, c->rport);
+	ghp->frag[0] = 0;
+	ghp->frag[1] = 0;
 
 	ipoput(bp, 0, c->ttl);
 }

@@ -140,6 +140,7 @@ main(void)
 	xinit();
 	trapinit();
 	printinit();
+	cpuidprint();
 	if(isoldbcom)
 		print("    ****OLD B.COM - UPGRADE****\n");
 	pageinit();
@@ -153,7 +154,6 @@ main(void)
 		arch->clockenable();
 	procinit0();
 	initseg();
-	cpuidprint();
 	links();
 	chandevreset();
 	swapinit();

@@ -235,6 +235,7 @@ umbscan(void)
 	}
 }
 
+
 static void
 ramscan(ulong maxmem)
 {
@@ -258,6 +259,10 @@ ramscan(ulong maxmem)
 	bda = (uchar*)(KZERO|0x400);
 	mapfree(&rmapram, x, ((bda[0x14]<<8)|bda[0x13])*KB-x);
 
+	x = PADDR(PGROUND((ulong)end));
+	pa = MemMinMB*MB;
+	mapfree(&rmapram, x, pa-x);
+
 	/*
 	 * Check if the extended memory size can be obtained from the CMOS.
 	 * If it's 0 then it's either not known or >= 64MB. Always check
@@ -280,22 +285,17 @@ ramscan(ulong maxmem)
 		maxpa = maxmem;
 
 	/*
-	 * March up memory from the end of the loaded kernel to maxpa
-	 * a page at a time, mapping the page and checking the page can
+	 * March up memory from MemMinMB to maxpa 1MB at a time,
+	 * mapping the first page and checking the page can
 	 * be written and read correctly. The page tables are created here
 	 * on the fly, allocating from low memory as necessary.
-	 * Nvalid must be initialised to include some UMB's to prevent the
-	 * first 4MB being mapped with a 4MB page extension, it's already
-	 * partly mapped.
 	 */
 	k0 = (ulong*)KZERO;
 	kzero = *k0;
 	map = 0;
 	x = 0x12345678;
 	memset(nvalid, 0, sizeof(nvalid));
-	nvalid[MemUMB] = (0x100000-0xC8000)/BY2PG;
-	nvalid[MemRAM] = PADDR(PGROUND((ulong)end))/BY2PG - nvalid[MemUMB];
-	for(pa = PADDR(PGROUND((ulong)end)); pa < maxpa; pa += BY2PG){
+	while(pa < maxpa){
 		/*
 		 * Map the page. Use mapalloc(&rmapram, ...) to make
 		 * the page table if necessary, it will be returned to the
@@ -319,30 +319,40 @@ ramscan(ulong maxmem)
 		/*
 		 * Write a pattern to the page and write a different
 		 * pattern to a possible mirror at KZER0. If the data
-		 * reads back correctly the page is some type of RAM (possibly
+		 * reads back correctly the chunk is some type of RAM (possibly
 		 * a linearly-mapped VGA framebuffer, for instance...) and
 		 * can be cleared and added to the memory pool. If not, the
-		 * page is marked invalid and added to the UMB or NOT pool
-		 * depending on whether it is <16MB or not.
+		 * chunk is marked uncached and added to the UMB pool if <16MB
+		 * or is marked invalid and added to the UPA pool.
 		 */
 		*va = x;
 		*k0 = ~x;
 		if(*va == x){
-			*pte &= ~PTEUNCACHED;
-			nvalid[MemRAM]++;
-			mapfree(&rmapram, pa, BY2PG);
-			memset(va, 0, BY2PG);
+			nvalid[MemRAM] += MB/BY2PG;
+			mapfree(&rmapram, pa, MB);
+
+			do{
+				*pte++ = pa|PTEWRITE|PTEVALID;
+				pa += BY2PG;
+			}while(pa % MB);
+			mmuflushtlb(PADDR(m->pdb));
+			//memset(va, 0, MB);
+		}
+		else if(pa < 16*MB){
+			nvalid[MemUMB] += MB/BY2PG;
+			mapfree(&rmapumb, pa, MB);
+
+			do{
+				*pte++ = pa|PTEWRITE|PTEUNCACHED|PTEVALID;
+				pa += BY2PG;
+			}while(pa % MB);
 		}
 		else{
-			if(pa < 16*MB){
-				nvalid[MemUMB]++;
-				mapfree(&rmapumb, pa, BY2PG);
-			}
-			else{
-				*pte = 0;
-				nvalid[MemUPA]++;
-				mapfree(&rmapupa, pa, BY2PG);
-			}
+			nvalid[MemUPA] += MB/BY2PG;
+			mapfree(&rmapupa, pa, MB);
+
+			*pte = 0;
+			pa += MB;
 		}
 
 		/*
@@ -354,14 +364,14 @@ ramscan(ulong maxmem)
 		 * 4) mixed or no 4MB page extension - commit the already
 		 *    initialised space for the page table.
 		 */
-		if(((pa+BY2PG) % (4*MB)) == 0){
+		if((pa % (4*MB)) == 0){
 			table = &((ulong*)m->pdb)[PDX(va)];
-			if(nvalid[MemUPA] == 1024)
+			if(nvalid[MemUPA] == (4*MB)/BY2PG)
 				*table = 0;
-			else if(nvalid[MemRAM] == 1024 && (m->cpuiddx & 0x08))
-				*table = (pa & ~(4*MB-1))|PTESIZE|PTEWRITE|PTEVALID;
-			else if(nvalid[MemUMB] == 1024 && (m->cpuiddx & 0x08))
-				*table = (pa & ~(4*MB-1))|PTESIZE|PTEWRITE|PTEUNCACHED|PTEVALID;
+			else if(nvalid[MemRAM] == (4*MB)/BY2PG && (m->cpuiddx & 0x08))
+				*table = (pa - 4*MB)|PTESIZE|PTEWRITE|PTEVALID;
+			else if(nvalid[MemUMB] == (4*MB)/BY2PG && (m->cpuiddx & 0x08))
+				*table = (pa - 4*MB)|PTESIZE|PTEWRITE|PTEUNCACHED|PTEVALID;
 			else
 				map = 0;
 		}

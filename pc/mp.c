@@ -207,6 +207,8 @@ mpintrinit(Bus* bus, PCMPintr* intr, int vector)
 		break;
 
 	case PcmpExtINT:
+po = PcmpHIGH;
+el = PcmpEDGE;
 		v |= ApicExtINT;
 		break;
 	}

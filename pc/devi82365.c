@@ -637,7 +637,8 @@ i82365reset(void)
 	}
 
 	/* for card management interrupts */
-	intrenable(VectorPCMCIA, i82365intr, 0, BUSUNKNOWN);
+	if(ncontroller)
+		intrenable(VectorPCMCIA, i82365intr, 0, BUSUNKNOWN);
 }
 
 static Chan*

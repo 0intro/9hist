@@ -137,7 +137,7 @@ ipoput(Block *bp, int gating, int ttl)
 	}
 
 	if(eh->frag[0] & (IP_DF>>8)){
-		netlog(Logip, "%I: eh->frag[0] & (IP_DF>>8)", eh->dst);
+		netlog(Logip, "%I: eh->frag[0] & (IP_DF>>8)\n", eh->dst);
 		goto raise;
 	}
 
