@@ -197,7 +197,7 @@ s3load(VGAscr* scr, Cursor* curs)
 	switch(id){
 
 	case 0xE131:				/* ViRGE */
-	case 0xE18A:				/* ViRGE/[DG]X */
+	case 0xE101:				/* ViRGE/[DG]X */
 	case 0xE110:				/* ViRGE/GX2 */
 	case 0xE13D:				/* ViRGE/VX */
 	case 0xE112:				/* Savage4/IX-MV */
@@ -213,8 +213,8 @@ s3load(VGAscr* scr, Cursor* curs)
 	}
 
 	/*
-	 * The cursor is set in Microsoft Windows format (the ViRGE/GX2 no
-	 * longer supports the X11 format) which gives the following truth table:
+	 * The cursor is set in Microsoft Windows format (the ViRGE/GX2 doesn't
+	 * support the X11 format) which gives the following truth table:
 	 *	and xor	colour
 	 *	 0   0	background colour
 	 *	 0   1	foreground colour
@@ -245,7 +245,7 @@ s3load(VGAscr* scr, Cursor* curs)
 	switch(id){
 
 	case 0xE131:				/* ViRGE */
-	case 0xE18A:				/* ViRGE/[DG]X */
+	case 0xE101:				/* ViRGE/[DG]X */
 	case 0xE110:				/* ViRGE/GX2 */
 	case 0xE13D:				/* ViRGE/VX */
 	case 0xE112:				/* Savage4/IX-MV */
