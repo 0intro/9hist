@@ -229,7 +229,6 @@ getcolor(ulong p, ulong* pr, ulong* pg, ulong* pb)
 		break;
 	}
 	p &= x;
-	p ^= x;
 
 	lock(&cursor);
 	*pr = scr->colormap[p][0];
