@@ -261,7 +261,7 @@ hotrodread(Chan *c, void *buf, long n, ulong offset)
 				isflush = 1;
 			}
 			mp->param[2] = 0;	/* reply checksum */
-			mp->param[3] = 0;	/* reply count */
+			mp->param[3] = 0xDEADBEEF;	/* reply count */
 			mp->cmd = Uread;
 			mp->param[0] = MP2VME(buf);
 			mp->param[1] = n;
@@ -273,6 +273,7 @@ hotrodread(Chan *c, void *buf, long n, ulong offset)
 				do
 					m = mp->param[3];
 				while(m==0 && --l>0);
+				print("isflush blocked\n");
 			}else{
 				if(waserror()){
 					if(*hmp && *hmp==mp)
@@ -284,7 +285,7 @@ hotrodread(Chan *c, void *buf, long n, ulong offset)
 				m = mp->param[3];
 			}
 			if(m==0 || m>n){
-				print("devhotrod: count %ld %ld\n", m, n);
+				print("devhotrod: count 0x%lux 0x%lux\n", m, n);
 				error(Egreg);
 			}
 			if(mp->param[2] != hotsum(buf, m, mp->param[2])){
@@ -424,6 +425,8 @@ hotrodintr(int vec)
 		if(h->ri >= NRQ)
 			h->ri = 0;
 		hm->intr = 1;
+		if(hm->param[3]==0 || hm->param[3] > 10000)
+			print("hotrodintr count 0x%lux\n", hm->param[3]);
 		if(!hm->abort)
 			wakeup(&hm->r);
 	}

@@ -599,7 +599,7 @@ setvmevec(int v, void (*f)(int))
 
 	v &= 0xff;
 	g = vmevec[v];
-	if(g && g != novme)
+	if(g && g != novme && g != f)
 		print("second setvmevec to 0x%.2x\n", v);
 	vmevec[v] = f;
 }

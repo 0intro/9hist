@@ -8,37 +8,53 @@
 
 #include	"io.h"
 
-typedef struct Hsvme	Hsvme;
-typedef struct Device	Device;
+typedef struct Hs	Hs;
 
 enum {
 	Maxburst=	1023,		/* maximum transmit burst size */
-	Vmevec=		0xd0,		/* vme vector for interrupts */
+	Intvec=		0xd0,		/* vme vector for interrupts */
 	Intlevel=	5,		/* level to interrupt on */
-	Nhsvme=		1,
+	Nhs=		1,
+
+	/*
+	 * csr flags
+	 */
+	ALIVE		= 0x0001,
+	IENABLE		= 0x0004,
+	EXOFLOW		= 0x0008,
+	IRQ		= 0x0010,
+	EMUTE		= 0x0020,
+	EPARITY		= 0x0040,
+	EFRAME		= 0x0080,
+	EROFLOW		= 0x0100,
+	REF		= 0x0800,
+	XFF		= 0x4000,
+	XHF		= 0x8000,
+
+	/*
+	 * csr reset flags
+	 */
+	FORCEW		= 0x0008,
+	NORESET		= 0xFF00,
+	RESET		= 0x0000,
+
+	/*
+	 * data flags
+	 */
+	CTL		= 0x0100,
+	CHNO		= 0x0200,
+	TXEOD		= 0x0400,
+	NND		= 0x8000,
 };
 
 #define NOW (MACHP(0)->ticks*MS2HZ)
+#define IPL(x)		((x)<<5)
 
-/*
- *  hsvme datakit board
- */
-struct Device {
-	ushort	version;
-	ushort	pad0x02;
-	ushort	vector;
-	ushort	pad0x06;
-	ushort	csr;
-	ushort	pad0x0A;
-	ushort	data;
-};
-#define HSVME		VMEA24SUP(Device, 0xF90000)
-
-struct Hsvme {
+struct Hs {
 	QLock;
 
 	QLock	xmit;
-	Device	*addr;
+	HSdev	*addr;
 	int	vec;		/* interupt vector */
 	Rendez	r;		/* output process */
 	Rendez	kr;		/* input kernel process */
@@ -59,55 +75,30 @@ struct Hsvme {
 	ulong	out;		/* bytes out */
 };
 
-Hsvme hsvme[Nhsvme];
+Hs hs[Nhs];
 
-#define ALIVE		0x0001
-#define IENABLE		0x0004
-#define EXOFLOW		0x0008
-#define IRQ		0x0010
-#define EMUTE		0x0020
-#define EPARITY		0x0040
-#define EFRAME		0x0080
-#define EROFLOW		0x0100
-#define REF		0x0800
-#define XFF		0x4000
-#define XHF		0x8000
-
-#define FORCEW		0x0008
-#define IPL(x)		((x)<<5)
-#define NORESET		0xFF00
-#define RESET		0x0000
-
-#define CTL		0x0100
-#define CHNO		0x0200
-#define TXEOD		0x0400
-#define NND		0x8000
-
-static void hsvmeintr(int);
-static void hsvmekproc(void*);
+static void hsintr(int);
+static void hskproc(void*);
 
 /*
- *  hsvme stream module definition
+ *  hs stream module definition
  */
-static void hsvmeoput(Queue*, Block*);
-static void hsvmestopen(Queue*, Stream*);
-static void hsvmestclose(Queue*);
-Qinfo hsvmeinfo =
+static void hsoput(Queue*, Block*);
+static void hsstopen(Queue*, Stream*);
+static void hsstclose(Queue*);
+Qinfo hsinfo =
 {
 	nullput,
-	hsvmeoput,
-	hsvmestopen,
-	hsvmestclose,
-	"hsvme"
+	hsoput,
+	hsstopen,
+	hsstclose,
+	"hs"
 };
 
-/*
- *  restart a VME board
- */
 void
-hsvmerestart(Hsvme *hp)
+hsrestart(Hs *hp)
 {
-	Device *addr;
+	HSdev *addr;
 
 	addr = hp->addr;
 
@@ -117,7 +108,7 @@ hsvmerestart(Hsvme *hp)
 
 	/*
 	 *  set interrupt vector
-	 *  turn on addrice
+	 *  turn on device
 	 *  set forcew to a known value
 	 *  interrupt on level `Intlevel'
 	 */
@@ -135,23 +126,24 @@ hsvmerestart(Hsvme *hp)
  *  reset all vme boards
  */
 void
-hsvmereset(void)
+hsreset(void)
 {
 	int i;
-	Hsvme *hp;
+	Hs *hp;
 
-	for(i=0; i<Nhsvme; i++){
-		hsvme[i].addr = HSVME+i;
-		hsvme[i].vec = Vmevec+i;
-		hsvme[i].addr->csr = RESET;
-		setvmevec(hsvme[i].vec, hsvmeintr);
+	for(i=0; i<Nhs; i++){
+		hp = &hs[i];
+		hp->addr = HSDEV+i;
+		hp->vec = Intvec+i;
+		hp->addr->csr = RESET;
+		setvmevec(hp->vec, hsintr);
 	}	
 	wbflush();
 	delay(20);
 }
 
 void
-hsvmeinit(void)
+hsinit(void)
 {
 }
 
@@ -159,18 +151,18 @@ hsvmeinit(void)
  *  enable the device for interrupts, spec is the device number
  */
 Chan*
-hsvmeattach(char *spec)
+hsattach(char *spec)
 {
-	Hsvme *hp;
+	Hs *hp;
 	int i;
 	Chan *c;
 
 	i = strtoul(spec, 0, 0);
-	if(i >= Nhsvme)
+	if(i >= Nhs)
 		error(Ebadarg);
-	hp = &hsvme[i];
+	hp = &hs[i];
 	if(!hp->started)
-		hsvmerestart(hp);
+		hsrestart(hp);
 
 	c = devattach('h', spec);
 	c->dev = i;
@@ -179,31 +171,31 @@ hsvmeattach(char *spec)
 }
 
 Chan*
-hsvmeclone(Chan *c, Chan *nc)
+hsclone(Chan *c, Chan *nc)
 {
 	return devclone(c, nc);
 }
 
 int	 
-hsvmewalk(Chan *c, char *name)
+hswalk(Chan *c, char *name)
 {
 	return devwalk(c, name, 0, 0, streamgen);
 }
 
 void	 
-hsvmestat(Chan *c, char *dp)
+hsstat(Chan *c, char *dp)
 {
 	devstat(c, dp, 0, 0, streamgen);
 }
 
 Chan*
-hsvmeopen(Chan *c, int omode)
+hsopen(Chan *c, int omode)
 {
 	if(c->qid.path == CHDIR){
 		if(omode != OREAD)
 			error(Eperm);
 	}else
-		streamopen(c, &hsvmeinfo);
+		streamopen(c, &hsinfo);
 	c->mode = openmode(omode);
 	c->flag |= COPEN;
 	c->offset = 0;
@@ -211,40 +203,40 @@ hsvmeopen(Chan *c, int omode)
 }
 
 void	 
-hsvmecreate(Chan *c, char *name, int omode, ulong perm)
+hscreate(Chan *c, char *name, int omode, ulong perm)
 {
 	USED(c);
 	error(Eperm);
 }
 
 void	 
-hsvmeclose(Chan *c)
+hsclose(Chan *c)
 {
 	if(c->qid.path != CHDIR)
 		streamclose(c);
 }
 
 long	 
-hsvmeread(Chan *c, void *buf, long n, ulong offset)
+hsread(Chan *c, void *buf, long n, ulong offset)
 {
 	return streamread(c, buf, n);
 }
 
 long	 
-hsvmewrite(Chan *c, void *buf, long n, ulong offset)
+hswrite(Chan *c, void *buf, long n, ulong offset)
 {
 	return streamwrite(c, buf, n, 0);
 }
 
 void	 
-hsvmeremove(Chan *c)
+hsremove(Chan *c)
 {
 	USED(c);
 	error(Eperm);
 }
 
 void	 
-hsvmewstat(Chan *c, char *dp)
+hswstat(Chan *c, char *dp)
 {
 	USED(c);
 	error(Eperm);
@@ -258,40 +250,45 @@ hsvmewstat(Chan *c, char *dp)
  *  create the kernel process for input
  */
 static void
-hsvmestopen(Queue *q, Stream *s)
+hsstopen(Queue *q, Stream *s)
 {
-	Hsvme *hp;
+	Hs *hp;
 	char name[32];
 
-	hp = &hsvme[s->dev];
-	sprint(name, "hsvme%d", s->dev);
+	hp = &hs[s->dev];
+	sprint(name, "hs%d", s->dev);
 	q->ptr = q->other->ptr = hp;
 	hp->rq = q;
-	kproc(name, hsvmekproc, hp);
+	kproc(name, hskproc, hp);
 }
 
 /*
- *  kill off the kernel process
+ *  ask kproc to die and wait till it happens
  */
 static int
 kdead(void *arg)
 {
-	Hsvme *hp;
+	Hs *hp;
 
-	hp = (Hsvme *)arg;
+	hp = (Hs *)arg;
 	return hp->kstarted == 0;
 }
 static void
-hsvmestclose(Queue * q)
+hsstclose(Queue * q)
 {
-	Hsvme *hp;
+	Hs *hp;
 
-	hp = (Hsvme *)q->ptr;
+	hp = (Hs *)q->ptr;
 	qlock(hp);
 	hp->rq = 0;
 	qunlock(hp);
-	wakeup(&hp->kr);
-	sleep(&hp->r, kdead, hp);
+	while(waserror())
+		;
+	while(hp->kstarted){
+		wakeup(&hp->kr);
+		sleep(&hp->r, kdead, hp);
+	}
+	poperror();
 }
 
 /*
@@ -317,9 +314,9 @@ freemsg(Queue *q, Block *bp)
 static int
 halfempty(void *arg)
 {
-	Device *addr;
+	HSdev *addr;
 
-	addr = (Device*)arg;
+	addr = (HSdev*)arg;
 	return addr->csr & XHF;
 }
 
@@ -331,10 +328,10 @@ halfempty(void *arg)
  *  character.
  */
 void
-hsvmeoput(Queue *q, Block *bp)
+hsoput(Queue *q, Block *bp)
 {
-	Device *addr;
-	Hsvme *hp;
+	HSdev *addr;
+	Hs *hp;
 	int burst;
 	int chan;
 	int ctl;
@@ -354,12 +351,12 @@ hsvmeoput(Queue *q, Block *bp)
 	/*
 	 *  one transmitter at a time
 	 */
-	hp = (Hsvme *)q->ptr;
+	hp = (Hs *)q->ptr;
+	qlock(&hp->xmit);
 	if(waserror()){
 		qunlock(&hp->xmit);
 		nexterror();
 	}
-	qlock(&hp->xmit);
 	addr = hp->addr;
 
 	/*
@@ -369,6 +366,7 @@ hsvmeoput(Queue *q, Block *bp)
 	if(bp->wptr - bp->rptr < 3){
 		freemsg(q, bp);
 		qunlock(&hp->xmit);
+		poperror();
 		return;
 	}
 	chan = CHNO | bp->rptr[0] | (bp->rptr[1]<<8);
@@ -435,9 +433,9 @@ hsvmeoput(Queue *q, Block *bp)
 static int
 notempty(void *arg)
 {
-	Device *addr;
+	HSdev *addr;
 
-	addr = (Device *)arg;
+	addr = (HSdev *)arg;
 	return addr->csr & REF;
 }
 
@@ -445,7 +443,7 @@ notempty(void *arg)
  *  fill a block with what is currently buffered and send it upstream
  */
 static void
-upstream(Hsvme *hp, unsigned int ctl)
+upstream(Hs *hp, unsigned int ctl)
 {
 	int n;
 	Block *bp;
@@ -470,14 +468,14 @@ upstream(Hsvme *hp, unsigned int ctl)
  *  fifo fill up.
  */
 static void
-hsvmekproc(void *arg)
+hskproc(void *arg)
 {
-	Hsvme *hp;
-	Device *addr;
+	Hs *hp;
+	HSdev *addr;
 	unsigned int c;
 	int locked;
 
-	hp = (Hsvme *)arg;
+	hp = (Hs *)arg;
 	addr = hp->addr;
 	hp->kstarted = 1;
 	hp->wptr = hp->buf;
@@ -509,7 +507,7 @@ hsvmekproc(void *arg)
 		/*
 		 *  0xFFFF means an empty fifo
 		 */
-		while ((c = addr->data) != 0xFFFF) {
+		while((c = addr->data) != 0xFFFF){
 			hp->in++;
 			if(c & CHNO){
 				c &= 0x1FF;
@@ -561,31 +559,31 @@ hsvmekproc(void *arg)
  *  and not empty bits to figure out whom to wake.
  */
 static void
-hsvmeintr(int vec)
+hsintr(int vec)
 {
 	ushort csr;
-	Device *addr;
-	Hsvme *hp;
+	HSdev *addr;
+	Hs *hp;
 
-	hp = &hsvme[vec - Vmevec];
-	if(hp < hsvme || hp > &hsvme[Nhsvme]){
-		print("bad hsvme vec\n");
+	hp = &hs[vec - Intvec];
+	if(hp < hs || hp > &hs[Nhs]){
+		print("bad hs vec\n");
 		return;
 	}
 	csr = hp->addr->csr;
 
-	if (csr & REF) {
+	if(csr & REF){
 		hp->rintr++;
 		wakeup(&hp->kr);
 	}
-	if (csr & XHF) {
+	if(csr & XHF){
 		hp->tintr++;
 		wakeup(&hp->r);
 	}
-	if ((csr^XFF) & (XFF|EROFLOW|EFRAME|EPARITY|EXOFLOW)) {
+	if((csr^XFF) & (XFF|EROFLOW|EFRAME|EPARITY|EXOFLOW)){
 		hp->parity++;
-		hsvmerestart(hp);
-		print("hsvme %d: reset, csr = 0x%ux\n",
-			vec - Vmevec, csr);
+		hsrestart(hp);
+		print("hs %d: reset, csr = 0x%ux\n",
+			vec - Intvec, csr);
 	}
 }

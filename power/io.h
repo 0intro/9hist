@@ -117,3 +117,19 @@ struct INTVEC {
 #define       PROM_REINIT     3   /* re-init monitor, then cmd loop */
 #define       PROM_REBOOT     4   /* check bootmode, no config */
 #define       PROM_AUTOBOOT   5   /* autoboot the system */
+
+/*
+ *  hs datakit board
+ */
+typedef struct HSdev	HSdev;
+struct HSdev {
+	ushort	version;
+	ushort	pad0x02;
+	ushort	vector;
+	ushort	pad0x06;
+	ushort	csr;
+	ushort	pad0x0A;
+	ushort	data;
+};
+#define HSDEV		VMEA24SUP(HSdev, 0xF90000)
+
