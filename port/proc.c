@@ -137,8 +137,12 @@ ready(Proc *p)
 
 	/* history counts */
 	if(p->state == Running){
-		p->rt++;
-		pri = ((p->art + (p->rt<<1))>>2)/Squantum;
+		if(up->priority == PriLock){
+			pri = 0;
+		} else {
+			p->rt++;
+			pri = ((p->art + (p->rt<<1))>>2)/Squantum;
+		}
 	} else {
 		p->art = (p->art + (p->rt<<1))>>2;
 		p->rt = 0;

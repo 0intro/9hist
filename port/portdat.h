@@ -507,6 +507,7 @@ enum
 	NNOTE = 5,
 
 	Nrq		= 20,	/* number of scheduler priority levels */
+	PriLock		= 19,	/* priority for processes holding locks */
 	PriNormal	= 10,	/* base priority for normal processes */
 	PriKproc	= 13,	/* base priority for kernel processes */
 	PriRoot		= 13,	/* base priority for root processes */

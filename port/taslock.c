@@ -16,31 +16,34 @@ lockloop(Lock *l, ulong pc)
 void
 lock(Lock *l)
 {
-	int i;
-	ulong pc, pid;
+	int pri, i;
+	ulong pc;
 
 	pc = getcallerpc(l);
-	pid = up ? up->pid : 0;
 
-	if(tas(&l->key) == 0){
-		l->pc = pc;
-		l->pid = pid;
+	if(up == 0) {
+		for(i=0; i<1000000; i++)
+			if(tas(&l->key) == 0){
+				l->pc = pc;
+				return;
+			}
+		lockloop(l, pc);
 		return;
 	}
 
-	for(;;){
-		i = 0;
-		while(l->key)
-			if(i++ > 100000000){
-				i = 0;
-				lockloop(l, pc);
-			}
+	pri = up->priority;
+	up->priority = PriLock;
+
+	for(i=0; i<1000; i++){
 		if(tas(&l->key) == 0){
+			l->pri = pri;
 			l->pc = pc;
-			l->pid = pid;
 			return;
 		}
+		if(conf.nmach == 1 && up->state == Running && (getstatus()&IE))
+			sched();
 	}
+	lockloop(l, pc);
 }
 
 void
@@ -75,19 +78,32 @@ ilock(Lock *l)
 int
 canlock(Lock *l)
 {
-	if(tas(&l->key))
-		return 0;
+	int pri;
 
-	l->pc = getcallerpc(l);
-	l->pid = up ? up->pid : 0;
+	SET(pri);
+	if(up) {
+		pri = up->priority;
+		up->priority = PriLock;
+	}
+	if(tas(&l->key)) {
+		up->priority = pri;
+		l->pc = getcallerpc(l);
+		return 0;
+	}
+	l->pri = pri;
 	return 1;
 }
 
 void
 unlock(Lock *l)
 {
-	l->key = 0;
+	int p;
+
+	p = l->pri;
 	l->pc = 0;
+	l->key = 0;
+	if(up != 0)
+		up->priority = p;
 }
 
 void
