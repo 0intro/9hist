@@ -474,7 +474,8 @@ sysforkpgrp(ulong *arg)
 long
 sysnotify(ulong *arg)
 {
-	validaddr(arg[0], sizeof(ulong), 0);
+	if(arg[0] != 0)
+		validaddr(arg[0], sizeof(ulong), 0);
 	u->notify = (int(*)(void*, char*))(arg[0]);
 	return 0;
 }

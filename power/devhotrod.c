@@ -422,22 +422,26 @@ hotrodintr(int vec)
 {
 	Hotrod *h;
 	Hotmsg *hm;
+	ulong l;
 
 	h = &hotrod[vec - Vmevec];
-	if(h < hotrod || h > &hotrod[Nhotrod]){
+	if(h<hotrod || h>&hotrod[Nhotrod]){
 		print("bad hotrod vec\n");
 		return;
 	}
 	h->addr->lcsr3 &= ~INT_VME;
-	hm = (Hotmsg*)VME2MP(h->rq[h->ri]);
-	h->rq[h->ri] = 0;
-	h->ri++;
-	if(h->ri >= NRQ)
-		h->ri = 0;
-	hm->intr = 1;
-	if(hm->abort)
-		return;
-	wakeup(&hm->r);
+	while(l = h->rq[h->ri]){	/* assign = */
+		hm = (Hotmsg*)(VME2MP(l));
+		h->rq[h->ri] = 0;
+		h->ri++;
+		if(h->ri >= NRQ)
+			h->ri = 0;
+		hm->intr = 1;
+		if(hm->abort)
+			print("abort wakeup\n");
+		else
+			wakeup(&hm->r);
+	}
 }
 
 #ifdef	ENABMEMTEST
