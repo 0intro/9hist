@@ -96,12 +96,6 @@ void
 hzclock(Ureg *ur)
 {
 	m->ticks++;
-if((m->ticks % 10000) == 0){
-	extern int allints[];
-	int i;
-	for(i=0; i < 32; i++)
-		print("[%d] %d\n", i, allints[i]);
-}
 	if(m->proc)
 		m->proc->pc = ur->pc;
 
