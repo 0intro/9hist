@@ -35,7 +35,7 @@ main(int argc, char *argv[])
 	if(cfd < 0)
 		error("opening #i/ctl");
 	sendmsg(cfd, "push dkmux");
-	sendmsg(cfd, "config 1 16");
+	sendmsg(cfd, "config 1 16 norestart");
 
 	/*
 	 *  fork a process to hold the incon channel open

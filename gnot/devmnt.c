@@ -859,3 +859,22 @@ mntxmit(Mnt *m, Mnthdr *mh)
 	mbfree(mbw);
 	poperror();
 }
+
+mntdump()
+{
+	int i;
+	MntQ *q;
+	Mnthdr *h;
+	Proc *p;
+
+	for(i=0; i<conf.nmntdev; i++){
+		q = &mntqalloc.arena[i];
+		if(!q->msg)
+			continue;
+		p = q->reader;
+		print("q rdr %d wrtr ", p? p->pid : 0);
+		for(h=q->writer; h; h=h->next)
+			print("(%lux %lux %d)", h, &h->r, (p=h->p)? p->pid : 0);
+		print("\n");
+	}
+}

@@ -950,9 +950,6 @@ urpkproc(void *arg)
 static void
 urpvomit(char *msg, Urp* up)
 {
-	Block *bp;
-	uchar *cp;
-
 	print("urpvomit: %s %ux next %d unechoed %d unacked %d nxb %d\n",
 		msg, up, up->next, up->unechoed, up->unacked, up->nxb);
 	print("\txb: %ux %ux %ux %ux %ux %ux %ux %ux\n",
@@ -963,15 +960,6 @@ urpvomit(char *msg, Urp* up)
 		up->trbuf[2]);
 	print("\tupq: %ux %d %d\n", &up->rq->next->r,  up->rq->next->nb,
 		up->rq->next->len);
-	lock(up->rq->next);
-	for(bp = up->rq->next->first; bp; bp = bp->next){
-		print("%d%c:\t", bp->wptr - bp->rptr, (bp->flags&S_DELIM)?'D':' ');
-		
-		for(cp = bp->rptr; cp<bp->wptr && cp<bp->rptr+10; cp++)
-			print(" %uo", *cp);
-		print("\n");
-	}
-	unlock(up->rq->next);
 }
 
 int

@@ -200,7 +200,7 @@ duartinit(void)
 	duart[1].ip_opcr = 0x00;
 	duart[1].scc_ropbc = 0xFF;	/* make sure the port is reset first */
 	duart[1].scc_sopbc = 0x04;	/* dtr = 1, pp = 01 */
-	duart[0].is_imr = IM_IPC|IM_RRDYB|IM_XRDYB|IM_RRDYA;
+	duart[0].is_imr = IM_IPC|IM_RRDYB|IM_XRDYB|IM_RRDYA|IM_XRDYA;
 	duart[0].cmnd = ENB_TX|ENB_RX;	/* enable TX and RX last */
 	duart[1].cmnd = ENB_TX|ENB_RX;
 

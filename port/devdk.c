@@ -123,6 +123,7 @@ struct Dk {
 	int	ncsc;		/* csc line number */
 	Chan	*csc;		/* common signalling line */
 	Line	line[Nline];
+	int	restart;
 };
 static Dk dk[Ndk];
 
@@ -427,10 +428,11 @@ dkoput(Queue *q, Block *bp)
 }
 
 /*
- *  configure a datakit multiplexor.  this takes 3 arguments separated
+ *  configure a datakit multiplexor.  this takes 4 arguments separated
  *  by spaces:
  *	the line number of the common signalling channel (must be > 0)
  *	the number of lines in the device (optional)
+ *	the word `restart' or `norestart' (optional/default==restart)
  *	the name of the dk (optional)
  *
  *  we can configure only once
@@ -439,7 +441,7 @@ static void
 dkmuxconfig(Dk *dp, Block *bp)
 {
 	Chan *c;
-	char *fields[3];
+	char *fields[4];
 	int n;
 	char buf[64];
 	static int dktimeron;
@@ -452,10 +454,14 @@ dkmuxconfig(Dk *dp, Block *bp)
 	/*
 	 *  parse
 	 */
-	n = getfields((char *)bp->rptr, fields, 3, ' ');
+	dp->restart = 1;
+	n = getfields((char *)bp->rptr, fields, 4, ' ');
 	switch(n){
+	case 4:
+		strncpy(dp->name, fields[3], sizeof(dp->name));
 	case 3:
-		strncpy(dp->name, fields[2], sizeof(dp->name));
+		if(strcmp(fields[2], "restart")!=0)
+			dp->restart = 0;
 	case 2:
 		dp->lines = strtoul(fields[1], 0, 0);
 	case 1:
@@ -893,6 +899,7 @@ dkcall(int type, Chan *c, char *addr, char *nuser, char *machine)
 	Dk *dp;
 	Line *lp;
 	Chan *dc;
+	char *bang, *dot;
 
 	line = STREAMID(c->qid);
 	dp = &dk[c->dev];
@@ -907,13 +914,21 @@ dkcall(int type, Chan *c, char *addr, char *nuser, char *machine)
 	DPRINT("dkcall(line=%d, type=%d, dest=%s)\n", line, type, addr);
 
 	/*
-	 *  build dial string (guard against new lines)
+	 *  build dial string
+	 *	- guard against new lines
+	 *	- change ! into . to delimit service
 	 */
 	if(strchr(addr, '\n'))
 		error(0, Ebadarg);
 	if(strlen(addr)+strlen(u->p->pgrp->user)+2 >= sizeof(dialstr))
 		error(0, Ebadarg);
 	strcpy(dialstr, addr);
+	bang = strchr(dialstr, '!');
+	if(bang){
+		dot = strchr(dialstr, '.');
+		if(dot==0 || dot > bang)
+			*bang = '.';
+	}
 	switch(type){
 	case Dial:
 		t_val = T_SRV;
@@ -1296,7 +1311,8 @@ dkcsckproc(void *a)
 	/*
 	 *  tell datakit we've rebooted. It should close all channels.
 	 */
-	dkmesg(dp, T_ALIVE, D_RESTART, 0, 0);	/* do this on mips but not 68020 */
+	if(dp->restart)
+		dkmesg(dp, T_ALIVE, D_RESTART, 0, 0);
 	dkmesg(dp, T_CHG, D_CLOSEALL, 0, 0);
 
 	/*

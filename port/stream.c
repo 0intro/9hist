@@ -65,6 +65,22 @@ Bclass bclass[Nclass]={
  *  Dump all block information of how many blocks are in which queues
  */
 void
+dumpblocks(Queue *q, char c)
+{
+	Block *bp;
+	uchar *cp;
+
+	lock(q);
+	for(bp = q->first; bp; bp = bp->next){
+		print("%c%d%c", c, bp->wptr-bp->rptr, (bp->flags&S_DELIM)?'D':' ');
+		for(cp = bp->rptr; cp<bp->wptr && cp<bp->rptr+10; cp++)
+			print(" %uo", *cp);
+		print("\n");
+	}
+	unlock(q);
+}
+
+void
 dumpqueues(void)
 {
 	Queue *q;
@@ -76,13 +92,12 @@ dumpqueues(void)
 	for(q = qlist; q < qlist + conf.nqueue; q++, q++){
 		if(!(q->flag & QINUSE))
 			continue;
-		for(count = 0, bp = q->first; bp; bp = bp->next)
-			count++;
-		print("%s %ux  R c %d l %d f %ux", q->info->name, q, count,
-			q->len, q->flag);
-		for(count = 0, bp = WR(q)->first; bp; bp = bp->next)
-			count++;
-		print("  W c %d l %d f %ux\n", count, WR(q)->len, WR(q)->flag);
+		print("%s %ux  R n %d l %d f %ux r %ux", q->info->name, q, q->nb,
+			q->len, q->flag, &(q->r));
+		print("  W n %d l %d f %ux r %ux\n", WR(q)->nb, WR(q)->len, WR(q)->flag,
+			&(WR(q)->r));
+		dumpblocks(q, 'R');
+		dumpblocks(WR(q), 'W');
 	}
 	print("\n");
 	for(bcp=bclass; bcp<&bclass[Nclass]; bcp++){

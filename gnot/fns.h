@@ -67,6 +67,7 @@ void	kbdrepeat(int);
 void	kbdclock(void);
 void	kmapinit(void);
 KMap	*kmap(Page*);
+int	kprint(char*, ...);
 void	kproc(char*, void(*)(void*), void*);
 void	kproftimer(ulong);
 void	kunmap(KMap*);

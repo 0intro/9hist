@@ -21,7 +21,7 @@ enum {
 #define RSUCC(x) (((x)+1)%Nrrb)
 #define TSUCC(x) (((x)+1)%Ntrb)
 
-#define NOW (MACHP(0)->ticks)
+#define NOW (MACHP(0)->ticks*MS2HZ)
 
 /*
  *  Communication with the lance is via a transmit and receive ring of
@@ -580,6 +580,7 @@ lanceinit(void)
 	lancedir[Ntypes].qid = Ltraceqid;
 	lancedir[Ntypes].length = 0;
 	lancedir[Ntypes].perm = 0600;
+
 }
 
 Chan*

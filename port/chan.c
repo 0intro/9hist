@@ -72,6 +72,7 @@ loop:
 	lock(&chanalloc);
 	if(c = chanalloc.free){		/* assign = */
 		chanalloc.free = c->next;
+		c->type = 0;	/* if closed before changed, this calls rooterror, a nop */
 		c->flag = 0;
 		c->ref = 1;
 		unlock(&chanalloc);

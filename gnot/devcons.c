@@ -35,6 +35,11 @@ IOQ	rs232iq;
 IOQ	rs232oq;
 
 struct{
+	IOQ;
+	Lock	put;
+}klogq;
+
+struct{
 	IOQ;		/* qlock to getc; interrupt putc's */
 	int	c;
 	int	repeat;
@@ -56,6 +61,8 @@ printinit(void)
 	rs232iq.out = rs232iq.buf;
 	rs232oq.in = rs232oq.buf;
 	rs232oq.out = rs232oq.buf;
+	klogq.in = klogq.buf;
+	klogq.out = klogq.buf;
 	lineq.in = lineq.buf;
 	lineq.out = lineq.buf;
 	qlock(&kbdq);		/* allocate qlock */
@@ -66,6 +73,10 @@ printinit(void)
 	unlock(&rs232iq);
 	lock(&rs232oq);		/* allocate lock */
 	unlock(&rs232oq);
+	lock(&klogq);		/* allocate lock */
+	unlock(&klogq);
+	lock(&klogq.put);		/* allocate lock */
+	unlock(&klogq.put);
 
 	screeninit();
 }
@@ -91,7 +102,16 @@ putstrn(char *str, long n)
 int
 cangetc(IOQ *q)
 {
-	return q->in != q->out;
+	int n = q->in - q->out;
+	if (n < 0)
+		n += sizeof(q->buf);
+	return n;
+}
+
+int
+canputc(IOQ *q)
+{
+	return sizeof(q->buf)-cangetc(q)-1;
 }
 
 int
@@ -124,12 +144,36 @@ getc(IOQ *q)
 	return c;
 }
 
-void
+int
 putc(IOQ *q, int c)
 {
-	*q->in++ = c;
-	if(q->in == q->buf+sizeof(q->buf))
-		q->in = q->buf;
+	uchar *nextin;
+	if(q->in >= &q->buf[sizeof(q->buf)-1])
+		nextin = q->buf;
+	else
+		nextin = q->in+1;
+	if(nextin == q->out)
+		return -1;
+	*q->in = c;
+	q->in = nextin;
+	return 0;
+}
+
+void
+putstrk(char *str, long n)
+{
+	int s;
+
+	s = splhi();
+	lock(&klogq.put);
+	while(--n >= 0){
+		*klogq.in++ = *str++;
+		if(klogq.in == klogq.buf+sizeof(klogq.buf))
+			klogq.in = klogq.buf;
+	}
+	unlock(&klogq.put);
+	splx(s);
+	wakeup(&klogq.r);
 }
 
 int
@@ -146,6 +190,17 @@ print(char *fmt, ...)
 
 	n = doprint(buf, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
 	putstrn(buf, n);
+	return n;
+}
+
+int
+kprint(char *fmt, ...)
+{
+	char buf[PRINTSIZE];
+	int n;
+
+	n = doprint(buf, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
+	putstrk(buf, n);
 	return n;
 }
 
@@ -202,9 +257,10 @@ echo(int c)
 	 */
 	if(c == 0x14)
 		DEBUG();
-	if(c == 0x16){
+	if(c == 0x16)
 		dumpqueues();
-	}
+	if(c == 0x18)
+		mntdump();
 	if(raw.ref)
 		return;
 	if(c == 0x15)
@@ -257,9 +313,7 @@ kbdclock(void)
 void
 rs232ichar(int c)
 {
-	*rs232iq.in++ = c;
-	if(rs232iq.in == rs232iq.buf+sizeof(rs232iq.buf))
-		rs232iq.in = rs232iq.buf;
+	putc(&rs232iq, c);
 	wakeup(&rs232iq.r);
 }
 
@@ -271,6 +325,7 @@ getrs232o(void)
 	c = getc(&rs232oq);
 	if(c == -1)
 		rs232oq.state = 0;
+	wakeup(&rs232oq.r);
 	return c;
 }
 
@@ -295,6 +350,7 @@ enum{
 	Qrs232,
 	Qtime,
 	Quser,
+	Qklog,
 };
 
 Dirtab consdir[]={
@@ -308,9 +364,24 @@ Dirtab consdir[]={
 	"rs232",	Qrs232,		0,	0600,
 	"time",		Qtime,		12,	0600,
 	"user",		Quser,		0,	0600,
+	"klog",		Qklog,		0,	0400,
 };
 
 #define	NCONS	(sizeof consdir/sizeof(Dirtab))
+
+static int
+consgen(Chan *c, Dirtab *tab, int ntab, int i, Dir *dp)
+{
+	if(tab==0 || i>=ntab)
+		return -1;
+	tab += i;
+	devdir(c, tab->qid, tab->name, tab->length, tab->perm, dp);
+	switch(dp->qid){
+	case Qrs232:
+		dp->length = cangetc(&rs232iq); break;
+	}
+	return 1;
+}
 
 ulong	boottime;		/* seconds since epoch at boot */
 
@@ -375,13 +446,13 @@ consclone(Chan *c, Chan *nc)
 int
 conswalk(Chan *c, char *name)
 {
-	return devwalk(c, name, consdir, NCONS, devgen);
+	return devwalk(c, name, consdir, NCONS, consgen);
 }
 
 void
 consstat(Chan *c, char *dp)
 {
-	devstat(c, dp, consdir, NCONS, devgen);
+	devstat(c, dp, consdir, NCONS, consgen);
 }
 
 Chan*
@@ -406,7 +477,7 @@ consopen(Chan *c, int omode)
 			}
 			unlock(&lineq);
 		}
-	return devopen(c, omode, consdir, NCONS, devgen);
+	return devopen(c, omode, consdir, NCONS, consgen);
 }
 
 void
@@ -437,7 +508,7 @@ consread(Chan *c, void *buf, long n)
 		return n;
 	switch(c->qid&~CHDIR){
 	case Qdir:
-		return devdirread(c, buf, n, consdir, NCONS, devgen);
+		return devdirread(c, buf, n, consdir, NCONS, consgen);
 
 	case Qrcons:
 	case Qcons:
@@ -538,6 +609,22 @@ consread(Chan *c, void *buf, long n)
 	case Qnull:
 		return 0;
 
+	case Qklog:
+		qlock(&klogq);
+		if(waserror()){
+			qunlock(&klogq);
+			nexterror();
+		}
+		while(!cangetc(&klogq))
+			sleep(&klogq.r, (int(*)(void*))cangetc, &klogq);
+		for(i=0; i<n; i++){
+			if((ch=getc(&klogq)) == -1)
+				break;
+			*cbuf++ = ch;
+		}
+		qunlock(&klogq);
+		return i;
+
 	default:
 		panic("consread %lux\n", c->qid);
 		return 0;
@@ -573,14 +660,19 @@ conswrite(Chan *c, void *va, long n)
 	case Qrs232:
 		qlock(&rs232oq);
 		l = n;
-		while(--l >= 0)
-			putc(&rs232oq, *a++);
-		splhi();
-		if(rs232oq.state == 0){
-			rs232oq.state = 1;
-			duartstartrs232o();
+		while(--l >= 0) {
+			while (putc(&rs232oq, *a) < 0)
+				sleep(&rs232oq.r, (int(*)(void*))canputc, &rs232oq);
+			a++;
+			if(rs232oq.state == 0){
+				splhi();
+				if(rs232oq.state == 0){
+					rs232oq.state = 1;
+					duartstartrs232o();
+				}
+				spllo();
+			}
 		}
-		spllo();
 		qunlock(&rs232oq);
 		break;
 

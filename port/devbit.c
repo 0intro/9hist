@@ -640,7 +640,7 @@ bitwrite(Chan *c, void *va, long n)
 			 *	height		1
 			 *	ascent		1
 			 *	bitmap id	2
-			 *	fontchars	6*n
+			 *	fontchars	6*(n+1)
 			 * next read returns allocated font id
 			 */
 			if(m < 7)
