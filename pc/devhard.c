@@ -14,31 +14,35 @@ enum
 {
 	/* ports */
 	Pbase=		0x1F0,
-	Pdata=		Pbase+0,	/* data port (16 bits) */
-	Perror=		Pbase+1,	/* error port */
-	Pcount=		Pbase+2,	/* sector count port */
-	Psector=	Pbase+3,	/* sector number port */
-	Pcyllsb=	Pbase+4,	/* least significant byte cylinder # */
-	Pcylmsb=	Pbase+5,	/* most significant byte cylinder # */
-	Pdh=		Pbase+6,	/* drive/head port */
-	Pstatus=	Pbase+7,	/* status port */
+	Pdata=		0,	/* data port (16 bits) */
+	Perror=		1,	/* error port (read) */
+	Pbmode=		1,	/* buffer mode port (write) */
+	Pcount=		2,	/* sector count port */
+	Psector=	3,	/* sector number port */
+	Pcyllsb=	4,	/* least significant byte cylinder # */
+	Pcylmsb=	5,	/* most significant byte cylinder # */
+	Pdh=		6,	/* drive/head port */
+	Pstatus=	7,	/* status port (read) */
 	 Sbusy=		 (1<<7),
 	 Sready=	 (1<<6),
 	 Sdrq=		 (1<<5),
 	 Serr=		 (1<<0),
-	Pcmd=		Pbase+7,	/* cmd port */
+	Pcmd=		7,	/* cmd port (write) */
 
 	/* commands */
 	Crecal=		0x10,
 	Cread=		0x20,
 	Cwrite=		0x30,
 	Cident=		0xEC,
+	Csetbuf=	0xEF,
 
 	/* file types */
 	Qdir=		0,
-	Qdata=		(1<<1),
-	Qstruct=	(2<<1),
-	Qmask=		(3<<1),
+	Qdata=		(1<<4),
+	Qstruct=	(2<<4),
+	Qmask=		(3<<4),
+
+	Maxxfer=	4*1024,		/* maximum transfer size/cmd */
 };
 
 /*
@@ -84,7 +88,8 @@ struct Ident
  */
 struct Drive
 {
-	int	dev;
+	Controller *cp;
+	int	drive;
 	int	confused;	/* needs to be recalibrated (or worse) */
 	int	online;
 
@@ -94,10 +99,7 @@ struct Drive
 	int	heads;		/* heads/cyl */
 	long	cyl;		/* cylinders/drive */
 
-	int	tcyl;		/* target cylinder */
-	int	thead;		/* target head */
-	int	tsec;		/* target sector */
-	long	len;		/* size of xfer */
+	Ident	id;		/* disk properties */
 };
 
 /*
@@ -107,67 +109,109 @@ struct Controller
 {
 	QLock;			/* exclusive access to the drive */
 
-	int	intr;		/* true if interrupt occured */
-	int	status;		/* status of last interupt */
-	Rendez	r;		/* wait here for command termination */
 	int	confused;	/* needs to be recalibrated (or worse) */
+	int	pbase;		/* base port */
 
-	Drive	*d;
-	Ident	id;
+	/*
+	 *  current operation
+	 */
+	int	cmd;		/* current command */
+	Rendez	r;		/* wait here for command termination */
+	char	*buf;		/* xfer buffer */
+	int	tcyl;		/* target cylinder */
+	int	thead;		/* target head */
+	int	tsec;		/* target sector */
+	int	tbyte;		/* target byte */
+	int	len;		/* length of transfer (bytes) */
+	int	secs;		/* sectors to be xferred */
+	int	sofar;		/* bytes transferred so far */
+	int	status;
+	int	error;
+	Drive	*dp;		/* drive being accessed */
 };
 
-Controller	hard;
-
-Dirtab harddir[]={
-	"hddata",		{Qdata},	0,	0600,
-	"hdstruct",		{Qstruct},	8,	0600,
-};
-#define NHDIR	(sizeof(harddir)/sizeof(Dirtab))
+Controller	*hardc;
+Drive		*hard;
+Dirtab 		*harddir;
+#define NHDIR	2	/* directory entries/drive */
 
 static void	hardintr(Ureg*);
 static long	hardxfer(Drive*, int, void*, long, long);
 static long	hardident(Drive*);
-static void	hardpos(Drive*, long);
+static void	hardsetbuf(Drive*, int);
 
+/*
+ *  we assume drives 0 and 1 are on the first controller, 2 and 3 on the
+ *  second, etc.
+ */
 void
 hardreset(void)
 {
 	Drive *dp;
+	Controller *cp;
+	int drive;
+	Dirtab *dir;
 
-	hard.d = ialloc(conf.nhard * sizeof(Drive), 0);
-	for(dp = hard.d; dp < &hard.d[conf.nhard]; dp++){
-		dp->dev = dp - hard.d;
+	hard = ialloc(conf.nhard * sizeof(Drive), 0);
+	hardc = ialloc(((conf.nhard+1)/2 + 1) * sizeof(Controller), 0);
+	dir = harddir = ialloc(NHDIR * conf.nhard * sizeof(Dirtab), 0);
+	
+	for(drive = 0; drive < conf.nhard; drive++){
+		dp = &hard[drive];
+		cp = &hardc[drive/2];
+		dp->drive = drive&1;
 		dp->online = 0;
+		dp->cp = cp;
+		if((drive&1) == 0){
+			cp->buf = ialloc(Maxxfer, 0);
+			cp->cmd = 0;
+			cp->pbase = Pbase + (cp-hardc)*8;	/* BUG!! guessing */
+			setvec(Hardvec + (cp-hardc)*8, hardintr); /* BUG!! guessing */
+		}
+		sprint(harddir[drive*2].name, "hd%ddata", drive);
+		dir->length = 0;
+		dir->qid.path = Qdata + drive;
+		dir->perm = 0600;
+		dir++;
+		sprint(dir->name, "hd%dstruct", drive);
+		dir->length = 8;
+		dir->qid.path = Qstruct + drive;
+		dir->perm = 0600;
+		dir++;
 	}
-
-	setvec(Hardvec, hardintr);
 }
 
 void
 hardinit(void)
 {
-	qunlock(&hard);
 }
 
+/*
+ *  Get the characteristics of each drive.  Mark unresponsive ones
+ *  off line.
+ */
 Chan*
 hardattach(char *spec)
 {
 	Drive *dp;
 
-	qlock(&hard);
-	for(dp = hard.d; dp < &hard.d[conf.nhard]; dp++){
+	for(dp = hard; dp < &hard[conf.nhard]; dp++){
 		if(!waserror()){
+			hardsetbuf(dp, 1);
 			hardident(dp);
-			dp->cyl = hard.id.lcyls;
-			dp->heads = hard.id.lheads;
-			dp->sectors = hard.id.ls2t;
+			dp->cyl = dp->id.lcyls;
+			dp->heads = dp->id.lheads;
+			dp->sectors = dp->id.ls2t;
 			dp->bytes = 512;
 			dp->cap = dp->bytes * dp->cyl * dp->heads * dp->sectors;
+			harddir[NHDIR*dp->drive].length = dp->cap;
+print("drive %d online\n", dp - hard);
 			dp->online = 1;
 			poperror();
-		}
+		} else
+			dp->online = 0;
 	}
-	qunlock(&hard);
+
 	return devattach('h', spec);
 }
 
@@ -180,19 +224,19 @@ hardclone(Chan *c, Chan *nc)
 int
 hardwalk(Chan *c, char *name)
 {
-	return devwalk(c, name, harddir, NHDIR, devgen);
+	return devwalk(c, name, harddir, conf.nhard*NHDIR, devgen);
 }
 
 void
 hardstat(Chan *c, char *dp)
 {
-	devstat(c, dp, harddir, NHDIR, devgen);
+	devstat(c, dp, harddir, conf.nhard*NHDIR, devgen);
 }
 
 Chan*
 hardopen(Chan *c, int omode)
 {
-	return devopen(c, omode, harddir, NHDIR, devgen);
+	return devopen(c, omode, harddir, conf.nhard*NHDIR, devgen);
 }
 
 void
@@ -235,10 +279,10 @@ hardread(Chan *c, void *a, long n)
 	uchar *aa = a;
 
 	if(c->qid.path == CHDIR)
-		return devdirread(c, a, n, harddir, NHDIR, devgen);
+		return devdirread(c, a, n, harddir, conf.nhard*NHDIR, devgen);
 
 	rv = 0;
-	dp = &hard.d[c->qid.path & ~Qmask];
+	dp = &hard[c->qid.path & ~Qmask];
 	switch ((int)(c->qid.path & Qmask)) {
 	case Qdata:
 		for(rv = 0; rv < n; rv += i){
@@ -270,7 +314,7 @@ hardwrite(Chan *c, void *a, long n)
 	uchar *aa = a;
 
 	rv = 0;
-	dp = &hard.d[c->qid.path & ~Qmask];
+	dp = &hard[c->qid.path & ~Qmask];
 	switch ((int)(c->qid.path & Qmask)) {
 	case Qdata:
 		for(rv = 0; rv < n; rv += i){
@@ -292,9 +336,115 @@ hardwrite(Chan *c, void *a, long n)
  *  did an interrupt happen?
  */
 static int
-interrupted(void *a)
+cmddone(void *a)
 {
-	return hard.intr;
+	Controller *cp;
+
+	return cp->cmd == 0;
+}
+
+/*
+ *  start a disk transfer.  hardintr will performa all the iterative
+ *  parts.
+ */
+static long
+hardxfer(Drive *dp, int cmd, void *va, long off, long len)
+{
+	Controller *cp;
+	int err;
+	int lsec;
+	int cyl;
+
+	if(dp->online == 0)
+		errors("disk offline");
+	if(len % dp->bytes)
+		errors("bad length");	/* BUG - this shouldn't be a problem */
+	if(off % dp->bytes)
+		errors("bad offset");	/* BUG - this shouldn't be a problem */
+
+	cp = dp->cp;
+	qlock(cp);
+	if(waserror()){
+		qunlock(cp);
+		nexterror();
+	}
+
+	/*
+	 *  calculate the physical address of off
+	 */
+	lsec = off/dp->bytes;
+	cp->tcyl = lsec/(dp->sectors*dp->heads);
+	cp->tsec = (lsec % dp->sectors) + 1;
+	cp->thead = (lsec/dp->sectors) % dp->heads;
+
+	/*
+	 *  can't xfer across cylinder boundaries.
+	 */
+	lsec = (off+len)/dp->bytes;
+	cyl = lsec/(dp->sectors*dp->heads);
+	if(cyl == cp->tcyl)
+		cp->len = len;
+	else
+		cp->len = cyl*dp->sectors*dp->heads*dp->bytes - off;
+
+	/*
+	 *  wait for the controller to accept commands
+	 */
+	while(inb(cp->pbase+Pstatus) & Sbusy)
+		;
+
+	/*
+	 *  start the transfer
+	 */
+	cp->secs = cp->len/dp->bytes;
+	cp->sofar = 0;
+	cp->cmd = cmd;
+	outb(cp->pbase+Pcount, cp->secs);
+	outb(cp->pbase+Psector, cp->tsec);
+	outb(cp->pbase+Pdh, (1<<5) | (dp->drive<<4) | cp->thead);
+	outb(cp->pbase+Pcyllsb, cp->tcyl);
+	outb(cp->pbase+Pcylmsb, cp->tcyl>>8);
+	outb(cp->pbase+Pcmd, cmd);
+
+	if(cmd == Cwrite){
+		memmove(cp->buf, va, cp->len);
+		outss(Pdata, cp->buf, dp->bytes/2);
+	}
+	sleep(&cp->r, cmddone, cp);
+	if(cp->status & Serr){
+print("hd%d err: status %lux, err %lux\n", dp-hard, cp->status, cp->error);
+print("\ttcyl %d, tsec %d, thead %d\n", cp->tcyl, cp->tsec, cp->thead);
+print("\tsecs %d, sofar %d\n", cp->secs, cp->sofar);
+		errors("disk I/O error");
+	}
+	if(cmd == Cread)
+		memmove(va, cp->buf, cp->len);
+
+	poperror();
+	qunlock(cp);
+	return cp->len;
+}
+
+/*
+ *  set read ahead mode (1 == on, 0 == off)
+ */
+static void
+hardsetbuf(Drive *dp, int on)
+{
+	Controller *cp = dp->cp;
+
+	qlock(cp);
+	if(waserror()){
+		qunlock(cp);
+		nexterror();
+	}
+
+	outb(cp->pbase+Pbmode, on ? 0xAA : 0x55);
+	outb(cp->pbase+Pdh, (1<<5) | dp->drive<<4);
+	outb(cp->pbase+Pcmd, Csetbuf);
+
+	poperror();
+	qunlock(cp);
 }
 
 /*
@@ -303,102 +453,95 @@ interrupted(void *a)
 static long
 hardident(Drive *dp)
 {
-	hard.intr = 0;
-	outb(Pdh, dp->dev<<4);
-	outb(Pcmd, Cident);
-	sleep(&hard.r, interrupted, 0);
-	inss(Pdata, &hard.id, 512/2);
-}
+	Controller *cp;
 
-static long
-hardxfer(Drive *dp, int cmd, void *va, long off, long len)
-{
-	int secs;
-	int i;
-	uchar *aa = va;
-
-	if(off % dp->bytes)
-		errors("bad offset");
-	if(len % dp->bytes)
-		errors("bad length");
-
+	cp = dp->cp;
+	qlock(cp);
 	if(waserror()){
-		qunlock(&hard);
+		qunlock(cp);
 		nexterror();
 	}
-	qlock(&hard);
-	dp->len = len;
-	hardpos(dp, off);
-	secs = dp->len/dp->bytes;
 
-	outb(Pcount, secs);
-	outb(Psector, dp->tsec);
-	outb(Pdh, (1<<5) | (dp->dev<<4) | dp->thead);
-	outb(Pcyllsb, dp->tcyl);
-	outb(Pcylmsb, dp->tcyl>>8);
-	outb(Pcmd, cmd);
-
-	if(cmd == Cwrite)
-		outss(Pdata, aa, dp->bytes/2);
-	for(i = 0; i < secs; i++){
-		hard.intr = 0;
-		sleep(&hard.r, interrupted, 0);
-		if(hard.status & Serr)
-			errors("disk error");
-		if(cmd == Cread){
-			if((hard.status & Sdrq) == 0)
-				panic("disk read");
-			inss(Pdata, aa + i*dp->bytes, dp->bytes/2);
-		} else {
-			if((hard.status & Sdrq) == 0){
-				if(i+1 != secs)
-					panic("disk write");
-			} else
-				outss(Pdata, aa + (i+1)*dp->bytes, dp->bytes/2);
-		}
+	cp->len = 512;
+	cp->secs = 1;
+	cp->sofar = 0;
+	cp->cmd = Cident;
+	outb(cp->pbase+Pdh, (1<<5) | dp->drive<<4);
+	outb(cp->pbase+Pcmd, Cident);
+	sleep(&cp->r, cmddone, cp);
+	if(cp->status & Serr){
+print("bad disk magic\n");
+		errors("disk I/O error");
 	}
-	qunlock(&hard);
+	memmove(&dp->id, cp->buf, cp->len);
+
+	if(dp->id.magic != 0xA5A){
+print("bad disk magic\n");
+		errors("bad disk magic");
+	}
+
+if((dp->id.interface & 0x4000) == 0)
+	print("lookaheads disabled\n");	
+
+	poperror();
+	qunlock(cp);
 }
 
 /*
- *  take/clear a disk interrupt
+ *  we get an interrupt for every sector transferred
  */
 static void
 hardintr(Ureg *ur)
 {
-	hard.status = inb(Pstatus);
-	if(hard.status & Sbusy)
-		panic("disk busy");
-	hard.intr = 1;
-	wakeup(&hard.r);
-}
-
-/*
- *  calculate physical address of a logical byte offset into the disk
- *
- *  truncate dp->len if it crosses a cylinder boundary
- */
-static void
-hardpos(Drive *dp, long off)
-{
-	int lsec;
-	int end;
-	int cyl;
-
-	lsec = off/dp->bytes;
-	dp->tcyl = lsec/(dp->sectors*dp->heads);
-	dp->tsec = (lsec % dp->sectors) + 1;
-	dp->thead = (lsec/dp->sectors) % dp->heads;
+	Controller *cp;
 
 	/*
-	 *  can't read across cylinder boundaries.
-	 *  if so, decrement the bytes to be read.
+ 	 *  BUG!! if there is ever more than one controller, we need a way to
+	 *	  distinguish which interrupted
 	 */
-	lsec = (off+dp->len)/dp->bytes;
-	cyl = lsec/(dp->sectors*dp->heads);
-	if(cyl != dp->tcyl){
-		dp->len -= (lsec % dp->sectors)*dp->bytes;
-		dp->len -= ((lsec/dp->sectors) % dp->heads)*dp->bytes*dp->sectors;
-	}
-}
+	cp = &hardc[0];
 
+	cp->status = inb(cp->pbase+Pstatus);
+	switch(cp->cmd){
+	case Cwrite:
+		if(cp->status & Serr){
+			cp->cmd = 0;
+			cp->error = inb(cp->pbase+Perror);
+			wakeup(&cp->r);
+			return;
+		}
+		cp->sofar++;
+		if(cp->sofar != cp->secs){
+			while((inb(cp->pbase+Pstatus) & Sdrq) == 0)
+				;
+			outss(cp->pbase+Pdata, &cp->buf[cp->sofar*cp->dp->bytes],
+				cp->dp->bytes/2);
+		} else{
+			cp->cmd = 0;
+			wakeup(&cp->r);
+		}
+		break;
+	case Cread:
+	case Cident:
+		if(cp->status & Serr){
+			cp->cmd = 0;
+			cp->error = inb(cp->pbase+Perror);
+			wakeup(&cp->r);
+			return;
+		}
+		while((inb(cp->pbase+Pstatus) & Sdrq) == 0)
+			;
+		inss(cp->pbase+Pdata, &cp->buf[cp->sofar*cp->dp->bytes],
+			cp->dp->bytes/2);
+		cp->sofar++;
+		if(cp->sofar == cp->secs){
+			cp->cmd = 0;
+			wakeup(&cp->r);
+		}
+		break;
+	default:
+		print("wierd disk interrupt\n");
+		break;
+	}
+	wakeup(&cp->r);
+}

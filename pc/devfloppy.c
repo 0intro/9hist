@@ -172,7 +172,7 @@ Dirtab floppydir[]={
 	"fd3data",		{Qdata + 3},	0,	0600,
 	"fd3struct",		{Qstruct + 3},	8,	0600,
 };
-#define NFDIR	(sizeof(floppydir)/sizeof(Dirtab))
+#define NFDIR	2	/* directory entries/drive */
 
 #define k64(x) (((ulong)(x))>>16)
 void
@@ -201,7 +201,7 @@ floppyreset(void)
 	for(dp = floppy.d; dp < &floppy.d[conf.nfloppy]; dp++){
 		dp->dev = dp - floppy.d;
 		dp->t = &floppytype[0];		/* default type */
-		floppydir[2*dp->dev].length = dp->t->cap;
+		floppydir[NFDIR*dp->dev].length = dp->t->cap;
 		dp->motoron = 1;
 		dp->cyl = -1;		/* because we don't know */
 		motoroff(dp);
@@ -244,19 +244,19 @@ floppyclone(Chan *c, Chan *nc)
 int
 floppywalk(Chan *c, char *name)
 {
-	return devwalk(c, name, floppydir, NFDIR, devgen);
+	return devwalk(c, name, floppydir, conf.nfloppy*NFDIR, devgen);
 }
 
 void
 floppystat(Chan *c, char *dp)
 {
-	devstat(c, dp, floppydir, NFDIR, devgen);
+	devstat(c, dp, floppydir, conf.nfloppy*NFDIR, devgen);
 }
 
 Chan*
 floppyopen(Chan *c, int omode)
 {
-	return devopen(c, omode, floppydir, NFDIR, devgen);
+	return devopen(c, omode, floppydir, conf.nfloppy*NFDIR, devgen);
 }
 
 void
@@ -304,7 +304,7 @@ floppyread(Chan *c, void *a, long n)
 	uchar *aa = a;
 
 	if(c->qid.path == CHDIR)
-		return devdirread(c, a, n, floppydir, NFDIR, devgen);
+		return devdirread(c, a, n, floppydir, conf.nfloppy*NFDIR, devgen);
 
 	rv = 0;
 	dp = &floppy.d[c->qid.path & ~Qmask];

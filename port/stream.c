@@ -1094,6 +1094,7 @@ long
 streamread(Chan *c, void *vbuf, long n)
 {
 	Block *bp;
+	Block *tofree;
 	Stream *s;
 	Queue *q;
 	int left, i;
@@ -1108,13 +1109,18 @@ streamread(Chan *c, void *vbuf, long n)
 	s = c->stream;
 	left = n;
 	qlock(&s->rdlock);
+	tofree = 0;
 	if(waserror()){
 		/*
-		 *  notes will flush the rest of any partially
-		 *  read message.
+		 *  put any partially read message back into the
+		 *  queue
 		 */
-		if(n != left)
-			s->flushmsg = 1;
+		while(tofree){
+			bp = tofree;
+			tofree = bp->next;
+			bp->next = 0;
+			putbq(q, bp);
+		}
 		qunlock(&s->rdlock);
 		nexterror();
 	}
@@ -1139,23 +1145,15 @@ streamread(Chan *c, void *vbuf, long n)
 			continue;
 		}
 
-		if(s->flushmsg){
-			if(bp->flags & S_DELIM)
-				s->flushmsg = 0;
-			freeb(bp);
-			continue;
-		}
-
 		i = BLEN(bp);
 		if(i <= left){
 			memmove(buf, bp->rptr, i);
 			left -= i;
 			buf += i;
-			if(bp->flags & S_DELIM){
-				freeb(bp);
+			bp->next = tofree;
+			tofree = bp;
+			if(bp->flags & S_DELIM)
 				break;
-			} else
-				freeb(bp);
 		} else {
 			memmove(buf, bp->rptr, left);
 			bp->rptr += left;
@@ -1163,6 +1161,12 @@ streamread(Chan *c, void *vbuf, long n)
 			left = 0;
 		}
 	}
+
+	/*
+	 *  free completely read blocks
+	 */
+	if(tofree)
+		freeb(tofree);
 
 	qunlock(&s->rdlock);
 	poperror();

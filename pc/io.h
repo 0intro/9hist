@@ -7,8 +7,8 @@ enum
 	Int0vec=	16,		/* first 8259 */
 	 Clockvec=	Int0vec+0,	/*  clock interrupts */
 	 Kbdvec=	Int0vec+1,	/*  keyboard interrupts */
-	 Uart0vec=	Int0vec+4,	/*  serial line */
 	 Uart1vec=	Int0vec+3,	/*  modem line */
+	 Uart0vec=	Int0vec+4,	/*  serial line */
 	 Floppyvec=	Int0vec+6,	/*  floppy interrupts */
 	Int1vec=	Int0vec+8,	/* second 8259 */
 	 Mousevec=	Int1vec+4,	/*  mouse interrupt */
