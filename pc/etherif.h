@@ -38,10 +38,10 @@ typedef struct {
 #define Dp8390BufSz	256
 
 extern int dp8390reset(Ether*);
-extern void dp8390getea(Ether*);
-extern void dp8390setea(Ether*);
 extern void *dp8390read(Dp8390*, void*, ulong, ulong);
 extern void *dp8390write(Dp8390*, ulong, void*, ulong);
+extern void dp8390getea(Ether*);
+extern void dp8390setea(Ether*);
 
 #define NEXT(x, l)	(((x)+1)%(l))
 #define	HOWMANY(x, y)	(((x)+((y)-1))/(y))

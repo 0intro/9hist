@@ -14,8 +14,8 @@
 
 #include "etherif.h"
 
-extern int dp8390inb(ulong);
-extern void dp8390outb(ulong, uchar);
+extern int slowinb(ulong);
+extern void slowoutb(ulong, uchar);
 
 enum {
 	Cr		= 0x00,		/* command register, all pages */
@@ -163,10 +163,10 @@ dp8390disable(Dp8390 *dp8390)
 	 * chip there if this is called when probing for a device
 	 * at boot.
 	 */
-	dp8390outb(port+Cr, Page0|RDMAabort|Stp);
-	dp8390outb(port+Rbcr0, 0);
-	dp8390outb(port+Rbcr1, 0);
-	for(timo = 10000; (dp8390inb(port+Isr) & Rst) == 0 && timo; timo--)
+	slowoutb(port+Cr, Page0|RDMAabort|Stp);
+	slowoutb(port+Rbcr0, 0);
+	slowoutb(port+Rbcr1, 0);
+	for(timo = 10000; (slowinb(port+Isr) & Rst) == 0 && timo; timo--)
 			;
 }
 
@@ -175,13 +175,13 @@ dp8390ring(Dp8390 *dp8390)
 {
 	ulong port = dp8390->dp8390;
 
-	dp8390outb(port+Pstart, dp8390->pstart);
-	dp8390outb(port+Pstop, dp8390->pstop);
-	dp8390outb(port+Bnry, dp8390->pstop-1);
+	slowoutb(port+Pstart, dp8390->pstart);
+	slowoutb(port+Pstop, dp8390->pstop);
+	slowoutb(port+Bnry, dp8390->pstop-1);
 
-	dp8390outb(port+Cr, Page1|RDMAabort|Stp);
-	dp8390outb(port+Curr, dp8390->pstart);
-	dp8390outb(port+Cr, Page0|RDMAabort|Stp);
+	slowoutb(port+Cr, Page1|RDMAabort|Stp);
+	slowoutb(port+Curr, dp8390->pstart);
+	slowoutb(port+Cr, Page0|RDMAabort|Stp);
 
 	dp8390->nxtpkt = dp8390->pstart;
 }
@@ -200,11 +200,11 @@ dp8390setea(Ether *ether)
 	 * addresses as we never set the multicast
 	 * enable.
 	 */
-	cr = dp8390inb(port+Cr) & ~Txp;
-	dp8390outb(port+Cr, Page1|(~(Ps1|Ps0) & cr));
+	cr = slowinb(port+Cr) & ~Txp;
+	slowoutb(port+Cr, Page1|(~(Ps1|Ps0) & cr));
 	for(i = 0; i < sizeof(ether->ea); i++)
-		dp8390outb(port+Par0+i, ether->ea[i]);
-	dp8390outb(port+Cr, cr);
+		slowoutb(port+Par0+i, ether->ea[i]);
+	slowoutb(port+Cr, cr);
 }
 
 void
@@ -221,11 +221,11 @@ dp8390getea(Ether *ether)
 	 * addresses as we never set the multicast
 	 * enable.
 	 */
-	cr = dp8390inb(port+Cr) & ~Txp;
-	dp8390outb(port+Cr, Page1|(~(Ps1|Ps0) & cr));
+	cr = slowinb(port+Cr) & ~Txp;
+	slowoutb(port+Cr, Page1|(~(Ps1|Ps0) & cr));
 	for(i = 0; i < sizeof(ether->ea); i++)
-		ether->ea[i] = dp8390inb(port+Par0+i);
-	dp8390outb(port+Cr, cr);
+		ether->ea[i] = slowinb(port+Par0+i);
+	slowoutb(port+Cr, cr);
 }
 
 void*
@@ -240,25 +240,25 @@ dp8390read(Dp8390 *dp8390, void *to, ulong from, ulong len)
 	 * using the DP8390 remote DMA facility, and place it at
 	 * 'to' in main memory, via the I/O data port.
 	 */
-	cr = dp8390inb(port+Cr) & ~Txp;
-	dp8390outb(port+Cr, Page0|RDMAabort|Sta);
-	dp8390outb(port+Isr, Rdc);
+	cr = slowinb(port+Cr) & ~Txp;
+	slowoutb(port+Cr, Page0|RDMAabort|Sta);
+	slowoutb(port+Isr, Rdc);
 
 	/*
 	 * Set up the remote DMA address and count.
 	 */
 	if(dp8390->bit16)
 		len = ROUNDUP(len, 2);
-	dp8390outb(port+Rbcr0, len & 0xFF);
-	dp8390outb(port+Rbcr1, (len>>8) & 0xFF);
-	dp8390outb(port+Rsar0, from & 0xFF);
-	dp8390outb(port+Rsar1, (from>>8) & 0xFF);
+	slowoutb(port+Rbcr0, len & 0xFF);
+	slowoutb(port+Rbcr1, (len>>8) & 0xFF);
+	slowoutb(port+Rsar0, from & 0xFF);
+	slowoutb(port+Rsar1, (from>>8) & 0xFF);
 
 	/*
 	 * Start the remote DMA read and suck the data
 	 * out of the I/O port.
 	 */
-	dp8390outb(port+Cr, Page0|RDMAread|Sta);
+	slowoutb(port+Cr, Page0|RDMAread|Sta);
 	if(dp8390->bit16)
 		inss(dp8390->data, to, len/2);
 	else
@@ -271,11 +271,11 @@ dp8390read(Dp8390 *dp8390, void *to, ulong from, ulong len)
 	 * to the miracles of the bus, we could get this far
 	 * and still be talking to a slot full of nothing.
 	 */
-	for(timo = 10000; (dp8390inb(port+Isr) & Rdc) == 0 && timo; timo--)
+	for(timo = 10000; (slowinb(port+Isr) & Rdc) == 0 && timo; timo--)
 			;
 
-	dp8390outb(port+Isr, Rdc);
-	dp8390outb(port+Cr, cr);
+	slowoutb(port+Isr, Rdc);
+	slowoutb(port+Cr, cr);
 	return to;
 }
 
@@ -291,9 +291,9 @@ dp8390write(Dp8390 *dp8390, ulong to, void *from, ulong len)
 	 * using the DP8390 remote DMA facility, reading it at
 	 * 'from' in main memory, via the I/O data port.
 	 */
-	cr = dp8390inb(port+Cr) & ~Txp;
-	dp8390outb(port+Cr, Page0|RDMAabort|Sta);
-	dp8390outb(port+Isr, Rdc);
+	cr = slowinb(port+Cr) & ~Txp;
+	slowoutb(port+Cr, Page0|RDMAabort|Sta);
+	slowoutb(port+Isr, Rdc);
 
 	if(dp8390->bit16)
 		len = ROUNDUP(len, 2);
@@ -304,24 +304,24 @@ dp8390write(Dp8390 *dp8390, ulong to, void *from, ulong len)
 	 * the initial set up for read.
 	 */
 	crda = to-1-dp8390->bit16;
-	dp8390outb(port+Rbcr0, (len+1+dp8390->bit16) & 0xFF);
-	dp8390outb(port+Rbcr1, ((len+1+dp8390->bit16)>>8) & 0xFF);
-	dp8390outb(port+Rsar0, crda & 0xFF);
-	dp8390outb(port+Rsar1, (crda>>8) & 0xFF);
-	dp8390outb(port+Cr, Page0|RDMAread|Sta);
+	slowoutb(port+Rbcr0, (len+1+dp8390->bit16) & 0xFF);
+	slowoutb(port+Rbcr1, ((len+1+dp8390->bit16)>>8) & 0xFF);
+	slowoutb(port+Rsar0, crda & 0xFF);
+	slowoutb(port+Rsar1, (crda>>8) & 0xFF);
+	slowoutb(port+Cr, Page0|RDMAread|Sta);
 
 	for(;;){
-		crda = dp8390inb(port+Crda0);
-		crda |= dp8390inb(port+Crda1)<<8;
+		crda = slowinb(port+Crda0);
+		crda |= slowinb(port+Crda1)<<8;
 		if(crda == to){
 			/*
 			 * Start the remote DMA write and make sure
 			 * the registers are correct.
 			 */
-			dp8390outb(port+Cr, Page0|RDMAwrite|Sta);
+			slowoutb(port+Cr, Page0|RDMAwrite|Sta);
 
-			crda = dp8390inb(port+Crda0);
-			crda |= dp8390inb(port+Crda1)<<8;
+			crda = slowinb(port+Crda0);
+			crda |= slowinb(port+Crda1)<<8;
 			if(crda != to)
 				panic("crda write %d to %d\n", crda, to);
 
@@ -342,11 +342,11 @@ dp8390write(Dp8390 *dp8390, ulong to, void *from, ulong len)
 	 * a timeout here if this ever gets called before
 	 * we know there really is a chip there.
 	 */
-	while((dp8390inb(port+Isr) & Rdc) == 0)
+	while((slowinb(port+Isr) & Rdc) == 0)
 			;
 
-	dp8390outb(port+Isr, Rdc);
-	dp8390outb(port+Cr, cr);
+	slowoutb(port+Isr, Rdc);
+	slowoutb(port+Cr, cr);
 	return (void*)to;
 }
 
@@ -356,10 +356,10 @@ getcurr(Dp8390 *dp8390)
 	ulong port = dp8390->dp8390;
 	uchar cr, curr;
 
-	cr = dp8390inb(port+Cr) & ~Txp;
-	dp8390outb(port+Cr, Page1|(~(Ps1|Ps0) & cr));
-	curr = dp8390inb(port+Curr);
-	dp8390outb(port+Cr, cr);
+	cr = slowinb(port+Cr) & ~Txp;
+	slowoutb(port+Cr, Page1|(~(Ps1|Ps0) & cr));
+	curr = slowinb(port+Curr);
+	slowoutb(port+Cr, cr);
 	return curr;
 }
 
@@ -405,9 +405,9 @@ receive(Ether *ether)
 		  || len < 60 || len > sizeof(Etherpkt)){
 			print("dp8390: H#%2.2ux#%2.2ux#%2.2ux#%2.2ux,%d\n",
 				hdr.status, hdr.next, hdr.len0, hdr.len1, len);
-			dp8390outb(port+Cr, Page0|RDMAabort|Stp);
+			slowoutb(port+Cr, Page0|RDMAabort|Stp);
 			dp8390ring(dp8390);
-			dp8390outb(port+Cr, Page0|RDMAabort|Sta);
+			slowoutb(port+Cr, Page0|RDMAabort|Sta);
 			return;
 		}
 
@@ -459,7 +459,7 @@ receive(Ether *ether)
 		hdr.next--;
 		if(hdr.next < dp8390->pstart)
 			hdr.next = dp8390->pstop-1;
-		dp8390outb(port+Bnry, hdr.next);
+		slowoutb(port+Bnry, hdr.next);
 	}
 }
 
@@ -511,9 +511,9 @@ write(Ether *ether, void *buf, long len)
 	if(dp8390->ram == 0)
 		dp8390write(dp8390, dp8390->tstart*Dp8390BufSz, pkt, len);
 
-	dp8390outb(port+Tbcr0, len & 0xFF);
-	dp8390outb(port+Tbcr1, (len>>8) & 0xFF);
-	dp8390outb(port+Cr, Page0|RDMAabort|Txp|Sta);
+	slowoutb(port+Tbcr0, len & 0xFF);
+	slowoutb(port+Tbcr1, (len>>8) & 0xFF);
+	slowoutb(port+Cr, Page0|RDMAabort|Txp|Sta);
 
 	return len;
 }
@@ -533,24 +533,24 @@ overflow(Ether *ether)
 	 * The following procedure is taken from the DP8390[12D] datasheet,
 	 * it seems pretty adamant that this is what has to be done.
 	 */
-	txp = dp8390inb(port+Cr) & Txp;
-	dp8390outb(port+Cr, Page0|RDMAabort|Stp);
+	txp = slowinb(port+Cr) & Txp;
+	slowoutb(port+Cr, Page0|RDMAabort|Stp);
 	delay(2);
-	dp8390outb(port+Rbcr0, 0);
-	dp8390outb(port+Rbcr1, 0);
+	slowoutb(port+Rbcr0, 0);
+	slowoutb(port+Rbcr1, 0);
 
 	resend = 0;
-	if(txp && (dp8390inb(port+Isr) & (Txe|Ptx)) == 0)
+	if(txp && (slowinb(port+Isr) & (Txe|Ptx)) == 0)
 		resend = 1;
 
-	dp8390outb(port+Tcr, Lb);
-	dp8390outb(port+Cr, Page0|RDMAabort|Sta);
+	slowoutb(port+Tcr, Lb);
+	slowoutb(port+Cr, Page0|RDMAabort|Sta);
 	receive(ether);
-	dp8390outb(port+Isr, Ovw);
-	dp8390outb(port+Tcr, 0);
+	slowoutb(port+Isr, Ovw);
+	slowoutb(port+Tcr, 0);
 
 	if(resend)
-		dp8390outb(port+Cr, Page0|RDMAabort|Txp|Sta);
+		slowoutb(port+Cr, Page0|RDMAabort|Txp|Sta);
 }
 
 static void
@@ -571,12 +571,12 @@ interrupt(Ureg *ur, void *arg)
 	 * While there is something of interest,
 	 * clear all the interrupts and process.
 	 */
-	dp8390outb(port+Imr, 0x00);
-	while(isr = dp8390inb(port+Isr)){
+	slowoutb(port+Imr, 0x00);
+	while(isr = slowinb(port+Isr)){
 
 		if(isr & Ovw){
 			overflow(ether);
-			dp8390outb(port+Isr, Ovw);
+			slowoutb(port+Isr, Ovw);
 			ether->overflows++;
 		}
 
@@ -586,7 +586,7 @@ interrupt(Ureg *ur, void *arg)
 		 */
 		if(isr & (Rxe|Prx)){
 			receive(ether);
-			dp8390outb(port+Isr, Rxe|Prx);
+			slowoutb(port+Isr, Rxe|Prx);
 		}
 
 		/*
@@ -595,14 +595,14 @@ interrupt(Ureg *ur, void *arg)
 		 * and wake the output routine.
 		 */
 		if(isr & (Txe|Ptx)){
-			r = dp8390inb(port+Tsr);
+			r = slowinb(port+Tsr);
 			if(isr & Txe){
 				if((r & (Cdh|Fu|Crs|Abt)))
 					print("dp8390: Tsr#%2.2ux\n", r);
 				ether->oerrs++;
 			}
 
-			dp8390outb(port+Isr, Txe|Ptx);
+			slowoutb(port+Isr, Txe|Ptx);
 
 			if(isr & Ptx)
 				ether->outpackets++;
@@ -611,13 +611,13 @@ interrupt(Ureg *ur, void *arg)
 		}
 
 		if(isr & Cnt){
-			ether->frames += dp8390inb(port+Cntr0);
-			ether->crcs += dp8390inb(port+Cntr1);
-			ether->buffs += dp8390inb(port+Cntr2);
-			dp8390outb(port+Isr, Cnt);
+			ether->frames += slowinb(port+Cntr0);
+			ether->crcs += slowinb(port+Cntr1);
+			ether->buffs += slowinb(port+Cntr2);
+			slowoutb(port+Isr, Cnt);
 		}
 	}
-	dp8390outb(port+Imr, Cnte|Ovwe|Txee|Rxee|Ptxe|Prxe);
+	slowoutb(port+Imr, Cnte|Ovwe|Txee|Rxee|Ptxe|Prxe);
 }
 
 static void
@@ -629,9 +629,9 @@ promiscuous(void *arg, int on)
 	 * Set/reset promiscuous mode.
 	 */
 	if(on)
-		dp8390outb(dp8390->dp8390+Rcr, Pro|Ab);
+		slowoutb(dp8390->dp8390+Rcr, Pro|Ab);
 	else
-		dp8390outb(dp8390->dp8390+Rcr, Ab);
+		slowoutb(dp8390->dp8390+Rcr, Ab);
 }
 
 static void
@@ -645,8 +645,8 @@ attach(Ether *ether)
 	 * mode. Clear the missed-packet counter, it
 	 * increments while in monitor mode.
 	 */
-	dp8390outb(dp8390->dp8390+Rcr, Ab);
-	dp8390inb(dp8390->dp8390+Cntr2);
+	slowoutb(dp8390->dp8390+Rcr, Ab);
+	slowinb(dp8390->dp8390+Cntr2);
 }
 
 int
@@ -665,15 +665,15 @@ dp8390reset(Ether *ether)
 	 */ 
 	dp8390disable(dp8390);
 	if(dp8390->bit16)
-		dp8390outb(port+Dcr, Ft4|Ls|Wts);
+		slowoutb(port+Dcr, Ft4|Ls|Wts);
 	else
-		dp8390outb(port+Dcr, Ft4|Ls);
+		slowoutb(port+Dcr, Ft4|Ls);
 
-	dp8390outb(port+Rbcr0, 0);
-	dp8390outb(port+Rbcr1, 0);
+	slowoutb(port+Rbcr0, 0);
+	slowoutb(port+Rbcr1, 0);
 
-	dp8390outb(port+Tcr, 0);
-	dp8390outb(port+Rcr, Mon);
+	slowoutb(port+Tcr, 0);
+	slowoutb(port+Rcr, Mon);
 
 	/*
 	 * Init the ring hardware and software ring pointers.
@@ -681,16 +681,16 @@ dp8390reset(Ether *ether)
 	 * it yet.
 	 */
 	dp8390ring(dp8390);
-	dp8390outb(port+Tpsr, dp8390->tstart);
+	slowoutb(port+Tpsr, dp8390->tstart);
 
-	dp8390outb(port+Isr, 0xFF);
-	dp8390outb(port+Imr, Cnte|Ovwe|Txee|Rxee|Ptxe|Prxe);
+	slowoutb(port+Isr, 0xFF);
+	slowoutb(port+Imr, Cnte|Ovwe|Txee|Rxee|Ptxe|Prxe);
 
 	/*
 	 * Leave the chip initialised,
 	 * but in monitor mode.
 	 */
-	dp8390outb(port+Cr, Page0|RDMAabort|Sta);
+	slowoutb(port+Cr, Page0|RDMAabort|Sta);
 
 	/*
 	 * Set up the software configuration.

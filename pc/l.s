@@ -733,6 +733,7 @@ l20:
 	LOOP	l20
 	RET
 
+#ifdef notdef
 /*
  * The DP8390 ethernet chip needs some time between
  * successive chip selects, so we force a jump into
@@ -759,6 +760,29 @@ TEXT dp8390outb(SB), $0
 	MOVL	AX,AX
 
 _dp8390outb0:
+	RET
+#endif
+
+TEXT slowinb(SB), $0
+	MOVL	$0x84, DX
+	INB
+
+	MOVL	p+0(FP),DX
+	XORL	AX,AX
+	INB
+	RET
+
+TEXT slowoutb(SB),$0
+	MOVL	$0x84, DX
+	INB
+
+	MOVL	p+0(FP),DX
+	MOVL	b+4(FP),AX
+	OUTB
+
+	MOVL	$0x84, DX
+	INB
+
 	RET
 
 /*
