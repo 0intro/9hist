@@ -91,6 +91,7 @@ static Hwgc *hwcursor[] = {
 
 Hwgc *hwgc;
 extern Cursor curs;		/* barf */
+static char interlaced[2];
 
 /*
  *  work areas for bitblting screen characters, scrolling, and cursor redraw
@@ -211,8 +212,9 @@ vgaread(Chan *c, void *buf, long n, ulong offset)
 		return devdirread(c, buf, n, vgadir, Nvga, devgen);
 	case Qvgactl:
 		port = sprint(cbuf, "type: %s\n", vgacard->name);
-		port += sprint(cbuf+port, "size: %dx%dx%d\n",
-			gscreen.r.max.x, gscreen.r.max.y, 1<<gscreen.ldepth);
+		port += sprint(cbuf+port, "size: %dx%dx%d%s\n",
+			gscreen.r.max.x, gscreen.r.max.y,
+			1<<gscreen.ldepth, interlaced);
 		port += sprint(cbuf+port, "hwgc: ");
 		if(hwgc)
 			sprint(cbuf+port, "%s\n", hwgc->name);
@@ -303,6 +305,7 @@ vgactl(char *arg)
 			z = 3;
 		else
 			error(Ebadarg);
+		interlaced[0] = *cp;
 
 		cursoroff(1);
 		setscreen(x, y, z);
