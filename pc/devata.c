@@ -885,11 +885,11 @@ ataparams(Drive *dp)
 	 *  work to read sectors.
 	 */
 	dp->lba = 0;
-	for(i = 0; i < 32; i++)
+	for(i = 0; i < 16; i++)
 		if(ataprobe(dp, 0, 0, i) < 0)
 			break;
 	dp->heads = i;
-	for(i = 0; i < 128; i++)
+	for(i = 0; i < 64; i++)
 		if(ataprobe(dp, 0, i, 0) < 0)
 			break;
 	dp->sectors = i;
