@@ -1429,6 +1429,7 @@ bitalloc(Rectangle rect, int ld)
 	*a->wfree++ = nw;
 	*a->wfree++ = (ulong)a;
 	*a->wfree++ = (ulong)b;
+	memset(a->wfree, 0, (nw-HDR)*sizeof(ulong));
 	b->base = a->wfree;
 	a->wfree += nw;
 	a->nbusy++;
@@ -1628,7 +1629,6 @@ bitcompact(void)
 			na++;
 		}
 		a->wfree = p1;
-		memset(p1, 0, ((a->words+a->nwords)-p1)*sizeof(ulong));
 	}
 	for(a=bit.arena; a<ea; a++)
 		if(a->words && a->nbusy==0)

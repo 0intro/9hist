@@ -678,11 +678,11 @@ kproc(char *name, void (*func)(void *), void *arg)
 	Proc *p;
 	int n;
 	ulong upa;
-	int lastvar;	/* used to compute stack address */
 	User *up;
 	KMap *k;
 	static Pgrp *kpgrp;
 	char *user;
+	int lastvar;	/* used to compute stack address */
 
 	/*
 	 * Kernel stack
@@ -733,7 +733,7 @@ kproc(char *name, void (*func)(void *), void *arg)
 
 	if(u->p->user[0] != '\0')
 		user = u->p->user;
-	sprint(p->text, "%s.%.6s", name, user);
+	strcpy(p->text, name);
 
 	p->nchild = 0;
 	p->parent = 0;

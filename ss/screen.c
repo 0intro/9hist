@@ -342,11 +342,13 @@ kbdstate(IOQ *q, int c)
 void
 buzz(int freq, int dur)
 {
+	USED(freq, dur);
 }
 
 void
 lights(int mask)
 {
+	USED(mask);
 }
 
 int

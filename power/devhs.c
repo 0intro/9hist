@@ -544,11 +544,11 @@ hskproc(void *arg)
 
 		/*
 		 *  Sleep if input fifo empty. Make sure we don't hold onto
-		 *  any byte for more tha 1/10 second.
+		 *  any byte for more than 1/10 second.
 		 */
 		if(!(addr->csr & REF)){
 			if(hp->wptr == hp->buf)
-				sleep(&hp->kr, notempty, addr);
+				tsleep(&hp->kr, notempty, addr, 2000);
 			else
 				tsleep(&hp->kr, notempty, addr, 100);
 		}
