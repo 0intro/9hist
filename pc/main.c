@@ -386,7 +386,6 @@ confinit(void)
 		nconf++;
 	}
 
-
 	/*
 	 *  size memory above 1 meg. Kernel sits at 1 meg.  We
 	 *  only recognize MB size chunks.
@@ -485,14 +484,6 @@ confinit(void)
 	conf.monitor = 1;
 	conf.nswap = conf.nproc*80;
 	conf.nimage = 50;
-	switch(x86()){
-	case 3:
-		conf.copymode = 1;	/* copy on reference */
-		break;
-	default:
-		conf.copymode = 0;	/* copy on write */
-		break;
-	}
 	conf.nfloppy = 2;
 	conf.nhard = 2;
 	conf.nmach = 1;

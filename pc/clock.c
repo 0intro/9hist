@@ -133,12 +133,6 @@ printcpufreq(void)
 		cpumhz, cputype->name, cpuidax, cpuiddx);
 }
 
-int
-x86(void)
-{
-	return cputype->family;
-}
-
 void
 clockinit(void)
 {
@@ -163,6 +157,15 @@ clockinit(void)
 		|| (t->family == -1))
 			break;
 	cputype = t;
+
+	switch(cputype->family){
+	case 3:
+		conf.copymode = 1;	/* copy on reference */
+		break;
+	default:
+		conf.copymode = 0;	/* copy on write */
+		break;
+	}
 
 	/*
 	 *  set clock for 1/HZ seconds
