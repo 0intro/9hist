@@ -129,7 +129,7 @@ screenwin(void)
 	h = defont0.height;
 
 	window.min = Pt(100, 100);
-	window.max = add(window.min, Pt(10+w*80, 10+h*40));
+	window.max = add(window.min, Pt(10+w*120, 10+h*60));
 
 	gbitblt(&gscreen, add(window.min, Pt(5, 5)), &gscreen, window, F);
 	gbitblt(&gscreen, window.min, &gscreen, window, Zero);
