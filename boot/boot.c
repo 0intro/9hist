@@ -314,7 +314,7 @@ reattach(int rec, Method *amp, char *buf)
 	close(fd);
 	tmp[n-1] = '\0';
 
-	print("boot: Service %s down, wait...\n", tmp);
+	print("boot: Service %s!%s down, wait...\n", buf, tmp);
 
 	p = strrchr(buf, '/');
 	if(p == 0)
@@ -327,7 +327,7 @@ reattach(int rec, Method *amp, char *buf)
 	nop(sv[1]);
 	doauthenticate(sv[1], amp);
 
-	print("boot: Service %s Ok\n", tmp);
+	print("\nboot: Service %s Ok\n", tmp);
 
 	n = sprint(tmp, "%d %s", sv[1], mp);
 	if(write(rec, tmp, n) < 0) {

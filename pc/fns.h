@@ -113,6 +113,7 @@ void	filiput(Block*);
 void	fiberint(Ureg*, void*);
 ulong	fwblock(ulong, void*, ulong);
 ulong	frblock(ulong, void*, ulong);
+void	freset(void*);
 void	ifree(void*);
 void	ifflush(void*);
 Block*	iallocb(int);
