@@ -296,16 +296,26 @@ found:
 	return i;
 }
 
+static struct {
+	int	calls;			/* times imagereclaim was called */
+	int	loops;			/* times the main loop was run */
+	uvlong	ticks;			/* total time in the main loop */
+	uvlong	maxt;			/* longest time in main loop */
+} irstats;
+
 static void
 imagereclaim(void)
 {
 	Page *p;
+	uvlong ticks;
 
+	irstats.calls++;
 	/* Somebody is already cleaning the page cache */
 	if(!canqlock(&imagealloc.ireclaim))
 		return;
 
 	lock(&palloc);
+	ticks = fastticks(nil);
 	for(p = palloc.head; p; p = p->next) {
 		if(p->ref == 0 && p->image && canlock(p)) {
 			if(p->ref == 0)
@@ -313,7 +323,13 @@ imagereclaim(void)
 			unlock(p);
 		}
 	}
+	ticks = fastticks(nil) - ticks;
 	unlock(&palloc);
+	irstats.loops++;
+	irstats.ticks += ticks;
+	if(ticks > irstats.maxt)
+		irstats.maxt = ticks;
+	//print("T%llud+", ticks);
 	qunlock(&imagealloc.ireclaim);
 }
 
