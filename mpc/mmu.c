@@ -14,6 +14,13 @@ mmuinit(void)
 }
 
 void
+flushmmu(void)
+{
+//	print("flushmmu()\n");
+	_flushmmu();
+}
+
+void
 mmuswitch(Proc*)
 {
 	flushmmu();
@@ -30,7 +37,7 @@ void
 putmmu(ulong va, ulong pa, Page*)
 {
 	int x, r;
-print("putmmu va=%ux pa=%ux\n", va, pa);
+//print("putmmu va=%ux pa=%ux\n", va, pa);
 	x = splhi();
 	r = _putmmu(va, pa);
 	splx(x);

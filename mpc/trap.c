@@ -33,6 +33,7 @@ struct
 
 void	faultpower(Ureg *ur, ulong addr, int read);
 void	kernfault(Ureg*, int);
+void	syscall(Ureg* ureg);
 
 char *excname[] =
 {
@@ -179,11 +180,7 @@ trap(Ureg *ur)
 		break;
 
 	case CSYSCALL:
-		spllo();
-		print("syscall!\n");
-		dumpregs(ur);
-		delay(100);
-		splhi();
+		syscall(ur);
 		break;
 
 	case CPROG:
@@ -214,7 +211,7 @@ faultpower(Ureg *ureg, ulong addr, int read)
 	char buf[ERRLEN];
 
 	user = (ureg->srr1 & MSR_PR) != 0;
-print("fault: pc = %ux, addr = %ux read = %d user = %d stack=%ux\n", ureg->pc, addr, read, user, &ureg);
+//print("fault: pc = %ux, addr = %ux read = %d user = %d stack=%ux\n", ureg->pc, addr, read, user, &ureg);
 	insyscall = up->insyscall;
 	up->insyscall = 1;
 	spllo();
@@ -229,7 +226,6 @@ print("fault: pc = %ux, addr = %ux read = %d user = %d stack=%ux\n", ureg->pc, a
 		postnote(up, 1, buf, NDebug);
 	}
 	up->insyscall = insyscall;
-	splhi();
 }
 
 void
@@ -540,9 +536,8 @@ forkchild(Proc *p, Ureg *ur)
 
 	cur = (Ureg*)(p->sched.sp+2*BY2WD);
 	memmove(cur, ur, sizeof(Ureg));
-
-	cur->pc += 4;
-
+	cur->r3 = 0;
+	
 	/* Things from bottom of syscall we never got to execute */
 	p->psstate = 0;
 	p->insyscall = 0;
@@ -558,12 +553,6 @@ userpc(void)
 }
 
 
-// need to be in l.s
-void
-forkret(void)
-{
-	panic("forkret");
-}
 /* This routine must save the values of registers the user is not 
  * permitted to write from devproc and then restore the saved values 
  * before returning
@@ -598,4 +587,78 @@ dbgpc(Proc *p)
 		return 0;
 
 	return ureg->pc;
+}
+
+/*
+ *  system calls
+ */
+#include "../port/systab.h"
+
+/*
+ *  Syscall should be called directly from assembler without going through trap().
+ */
+void
+syscall(Ureg* ureg)
+{
+	ulong	sp;
+	long	ret;
+	int	i, scallnr;
+
+	if((ureg->srr1 & MSR_PR) == 0)
+		panic("syscall: srr1 0x%4.4uX\n", ureg->srr1);
+
+	m->syscall++;
+	up->insyscall = 1;
+	up->pc = ureg->pc;
+	up->dbgreg = ureg;
+
+	scallnr = ureg->r3;
+//print("scall %s\n", sysctab[scallnr]);
+	up->scallnr = scallnr;
+	spllo();
+
+	sp = ureg->usp;
+	up->nerrlab = 0;
+	ret = -1;
+	if(!waserror()){
+		if(scallnr >= nsyscall){
+			pprint("bad sys call number %d pc %lux\n", scallnr, ureg->pc);
+			postnote(up, 1, "sys: bad sys call", NDebug);
+			error(Ebadarg);
+		}
+
+		if(sp<(USTKTOP-BY2PG) || sp>(USTKTOP-sizeof(Sargs)-BY2WD))
+			validaddr(sp, sizeof(Sargs)+BY2WD, 0);
+
+		up->s = *((Sargs*)(sp+BY2WD));
+		up->psstate = sysctab[scallnr];
+
+		ret = systab[scallnr](up->s.args);
+		poperror();
+	}
+	if(up->nerrlab){
+		print("bad errstack [%d]: %d extra\n", scallnr, up->nerrlab);
+		for(i = 0; i < NERR; i++)
+			print("sp=%lux pc=%lux\n", up->errlab[i].sp, up->errlab[i].pc);
+		panic("error stack");
+	}
+
+	up->insyscall = 0;
+	up->psstate = 0;
+
+	/*
+	 *  Put return value in frame.  On the x86 the syscall is
+	 *  just another trap and the return value from syscall is
+	 *  ignored.  On other machines the return value is put into
+	 *  the results register by caller of syscall.
+	 */
+	ureg->r3 = ret;
+//print("ret = %d\n", ret);
+//	if(scallnr == NOTED)
+//		noted(ureg, *(ulong*)(sp+BY2WD));
+
+//	if(scallnr!=RFORK && (up->procctl || up->nnote)){
+//		splhi();
+//		notify(ureg);
+//	}
 }

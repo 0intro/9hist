@@ -60,7 +60,7 @@
 /* special instruction definitions */
 #define	BDNZ	BC	16,0,
 #define	BDNE	BC	0,2,
-#define	TLBIA	WORD	$(31<<26)
+#define	TLBIA	WORD	$((31<<26)|(370<<1))
 #define	MFTB(tbr,d)	WORD	$((31<<26)|((d)<<21)|((tbr&0x1f)<<16)|(((tbr>>5)&0x1f)<<11)|(371<<1))
 
 /* on some models mtmsr doesn't synchronise enough (eg, 603e) */
@@ -427,7 +427,7 @@ TEXT	eieio(SB), $0
 	EIEIO
 	RETURN
 
-TEXT	flushmmu(SB), $0
+TEXT	_flushmmu(SB), $0
 	TLBIA
 	RETURN
 
@@ -639,6 +639,9 @@ TEXT	intrvec(SB), $-4
 /*
  * restore state from Ureg and return from trap/interrupt
  */
+TEXT	forkret(SB), $0
+	BR	restoreureg
+
 restoreureg:
 	MOVMW	48(R1), R2	/* r2:r31 */
 	/* defer R1 */
@@ -664,6 +667,7 @@ restoreureg:
 	MOVW	SPR(SAVER0), R0
 	RFI
 
+	
 GLOBL	mach0+0(SB), $MACHSIZE
 GLOBL	spltbl+0(SB), $4
 GLOBL	intrtbl+0(SB), $4

@@ -10,6 +10,8 @@
  *  real time clock and non-volatile ram
  */
 
+extern ulong boottime;
+
 typedef struct Rtc	Rtc;
 struct Rtc
 {
@@ -192,8 +194,6 @@ rtctime(void)
 
 	return t;
 #else
-	extern ulong boottime;
-
 	return boottime+TK2SEC(MACHP(0)->ticks);
 #endif /* notdef */
 }
@@ -264,6 +264,8 @@ rtcwrite(Chan *c, void *buf, long n, vlong off)
 			rtc.year = PUTBCD(rtc.year);
 		}
 
+/* disgusting hack because RTC doesn't work and m->ticks drifts */
+if(boottime == 0){
 		ilock(&rtclock);
 		/* set clock values */
 		x = (*(uchar*)Rtcindex)&~0x7f;
@@ -280,6 +282,11 @@ rtcwrite(Chan *c, void *buf, long n, vlong off)
 		*(uchar*)Rtcindex = x|Year;
 		*(uchar*)Rtcdata = rtc.year;
 		iunlock(&rtclock);
+}else{
+		splhi();
+		MACHP(0)->ticks = HZ*(secs - boottime);	/* inverse of SEC2TK() */
+		spllo();
+}
 
 		return n;
 	case Qnvram:

@@ -787,21 +787,37 @@ drawchar(Memimage *dst, Point p, Memimage *src, Point *sp, DImage *font, int ind
 	return p;
 }
 
-Chan*
-drawattach(char *spec)
+static int
+initscreenimage(void)
 {
 	int width;
 
-	if(screendata.data == nil){
-		screendata.base = nil;
-		screendata.data = attachscreen(&screenimage.r, &screenimage.ldepth, &width, &sdraw.softscreen);
-		if(screendata.data != nil){
-			screendata.ref = 1;
-			screenimage.data = &screendata;
-			screenimage.width = width;
-			screenimage.clipr  = screenimage.r;
-		}
+	if(screendata.data != nil)
+		return 1;
+	screendata.data = attachscreen(&screenimage.r, &screenimage.ldepth, &width, &sdraw.softscreen);
+	if(screendata.data == nil)
+		return 0;
+
+	screendata.base = nil;
+	if(screendata.data != nil){
+		screendata.ref = 1;
+		screenimage.data = &screendata;
+		screenimage.width = width;
+		screenimage.clipr  = screenimage.r;
 	}
+
+	return 1;
+}
+
+Chan*
+drawattach(char *spec)
+{
+	qlock(&sdraw);
+	if(!initscreenimage()){
+		qunlock(&sdraw);
+		error("no frame buffer");
+	}
+	qunlock(&sdraw);
 	return devattach('i', spec);
 }
 
@@ -1606,7 +1622,6 @@ drawmesg(Client *client, void *av, int n)
 			if(n < m)
 				error(Eshortdraw);
 
-		CaseS:
 			dst = drawimage(client, a+1);
 			dstid = BGLONG(a+1);
 			src = drawimage(client, a+5);
@@ -1808,6 +1823,12 @@ drawblankscreen(int blank)
 
 	if(blank == sdraw.blanked)
 		return;
+	if(!canqlock(&sdraw))
+		return;
+	if(!initscreenimage()){
+		qunlock(&sdraw);
+		return;
+	}
 	p = sdraw.savemap;
 	nc = 1<<(1<<screenimage.ldepth);
 	if(blank == 0)	/* turn screen on */
@@ -1819,6 +1840,7 @@ drawblankscreen(int blank)
 			setcolor(i, 0, 0, 0);
 		}
 	sdraw.blanked = blank;
+	qunlock(&sdraw);
 }
 
 /*

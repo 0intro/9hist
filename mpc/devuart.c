@@ -997,7 +997,6 @@ uartintr(Uart *p, int events)
 		p->overrun++;
 	p->interrupts++;
 	dokick = 0;
-/*
 	while(p->rxb != nil && ((bd = &p->rxb[p->rdrx])->status & BDEmpty) == 0){
 		if(p->mode)
 			framedinput(p, bd);
@@ -1008,7 +1007,6 @@ uartintr(Uart *p, int events)
 		bd->status = (bd->status & BDWrap) | BDEmpty|BDInt;
 		p->rdrx ^= 1;
 	}
-*/
 	if((bd = p->txb) != nil){
 		if((bd->status & BDReady) == 0){
 			ilock(&p->plock);
