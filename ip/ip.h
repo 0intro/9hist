@@ -390,13 +390,14 @@ enum
 	Logilmsg=	1<<8,
 	Loggre=		1<<9,
 	Logppp=		1<<10,
-	Logtcpmsg=	1<<11,
+	Logtcprxmt=	1<<11,
 	Logigmp=	1<<12,
 	Logudpmsg=	1<<13,
 	Logipmsg=	1<<14,
 	Logrudp=	1<<15,
 	Logrudpmsg=	1<<16,
 	Logesp=		1<<17,
+	Logtcpwin=	1<<18,
 };
 
 void	netloginit(Fs*);

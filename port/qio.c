@@ -1124,6 +1124,8 @@ qnotfull(void *a)
 	return q->len < q->limit || (q->state & Qclosed);
 }
 
+ulong noblockcnt;
+
 /*
  *  add a block to a queue obeying flow control
  */
@@ -1156,6 +1158,7 @@ qbwrite(Queue *q, Block *b)
 		if(q->noblock){
 			iunlock(q);
 			freeb(b);
+			noblockcnt += n;
 			qunlock(&q->wlock);
 			poperror();
 			return n;
@@ -1448,7 +1451,6 @@ qsetlimit(Queue *q, int limit)
 void
 qnoblock(Queue *q, int onoff)
 {
-print("nonblocking %d\n", onoff);
 	q->noblock = onoff;
 }
 

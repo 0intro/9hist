@@ -576,7 +576,7 @@ static void
 tcpcreate(Conv *c)
 {
 	c->rq = qopen(QMAX, Qcoalesce, tcpacktimer, c);
-	c->wq = qopen(2*QMAX, Qkick, tcpkick, c);
+	c->wq = qopen(4*QMAX, Qkick, tcpkick, c);
 }
 
 static void
@@ -1662,7 +1662,7 @@ update(Conv *s, Tcp *seg)
 	&& seg->wnd == tcb->snd.wnd) {
 
 		/* this is a pure ack w/o window update */
-		netlog(s->p->f, Logtcpmsg, "dupack %lud ack %lud sndwnd %d advwin %d\n",
+		netlog(s->p->f, Logtcprxmt, "dupack %lud ack %lud sndwnd %d advwin %d\n",
 			tcb->snd.dupacks, seg->ack, tcb->snd.wnd, seg->wnd);
 
 		if(++tcb->snd.dupacks == TCPREXMTTHRESH) {
@@ -1672,7 +1672,7 @@ update(Conv *s, Tcp *seg)
 			 */
 			tcb->snd.recovery = 1;
 			tcb->snd.rxt = tcb->snd.nxt;
-			netlog(s->p->f, Logtcpmsg, "fast rxt %lud, nxt %lud\n", tcb->snd.una, tcb->snd.nxt);
+			netlog(s->p->f, Logtcprxmt, "fast rxt %lud, nxt %lud\n", tcb->snd.una, tcb->snd.nxt);
 			tcprxmit(s);
 		} else {
 			/* do reno tcp here. */
@@ -2303,7 +2303,7 @@ tcpoutput(Conv *s)
 			if(sent != 0) {
 				if((tcb->flags&FORCE) == 0)
 					break;
-				tcb->snd.ptr = tcb->snd.una;
+//				tcb->snd.ptr = tcb->snd.una;
 			}
 			usable = 1;
 		}
@@ -2443,11 +2443,7 @@ tcpoutput(Conv *s)
 		tpriv->stats[OutSegs]++;
 		if(tcb->kacounter > 0)
 			tcpgo(tpriv, &tcb->katimer);
-		qunlock(s);
-		if(waserror()){
-			qlock(s);
-			nexterror();
-		}
+
 		switch(version){
 		case V4:
 			ipoput4(f, hbp, 0, s->ttl, s->tos);
@@ -2458,8 +2454,11 @@ tcpoutput(Conv *s)
 		default:
 			panic("tcpoutput2: version %d", version);
 		}
-		qlock(s);
-		poperror();
+		if((msgs%4) == 1){
+			qunlock(s);
+			sched();
+			qlock(s);
+		}
 	}
 }
 
@@ -2641,8 +2640,8 @@ tcptimeout(void *arg)
 			localclose(s, Etimedout);
 			break;
 		}
+		netlog(s->p->f, Logtcprxmt, "timeout rexmit 0x%lux %d/%d\n", tcb->snd.una, tcb->timer.start, NOW);
 		tcpsettimer(tcb);
-		netlog(s->p->f, Logtcp, "timeout rexmit 0x%lux\n", tcb->snd.una);
 		tcprxmit(s);
 		tpriv->stats[RetransTimeouts]++;
 		tcb->snd.dupacks = 0;
