@@ -336,8 +336,8 @@ lanceoput(Queue *q, Block *bp )
 	qlock(&l.tlock);
 
 	if(waserror()){
-		freeb(bp);
 		qunlock(&l.tlock);
+		freeb(bp);
 		nexterror();
 	}
 
@@ -347,12 +347,11 @@ lanceoput(Queue *q, Block *bp )
 	 */
 	tsleep(&l.tr, isobuf, (void *)0, 1000);
 	if(isobuf(0) == 0 || l.misses > 4){
-		l.misses = 0;
-print("lance wedged, restarting\n");
-		lancestart(0, 0);
+print("lance wedged\n");
+		qunlock(&l.tlock);
 		freeb(bp);
 		poperror();
-		return;		/* the interrupt routine will qunlock(&l.tlock) */
+		return;
 	}
 	p = &l.tp[l.tc];
 
@@ -390,8 +389,8 @@ print("lance wedged, restarting\n");
 	l.tc = TSUCC(l.tc);
 	*l.rdp = INEA|TDMD; /**/
 	wbflush();
-	freeb(bp);
 	qunlock(&l.tlock);
+	freeb(bp);
 	poperror();
 }
 

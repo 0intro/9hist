@@ -716,8 +716,9 @@ wd8013receive(Ctlr *cp)
 		p = &((Ring*)hw->ram)[next];
 		len = ((p->len1<<8)|p->len0)-4;
 		if(p->next < hw->pstart || p->next >= hw->pstop || len < 60){
-			print("%d: #%2.2ux #%2.2ux  #%2.2ux #%2.2ux\n", next,
+			print("%d/%d : #%2.2ux #%2.2ux  #%2.2ux #%2.2ux\n", next, len,
 				p->status, p->next, p->len0, p->len1);
+			panic("receive");
 			dp8390rinit(cp);
 			return;
 		}

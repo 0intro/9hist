@@ -325,13 +325,13 @@ consactive(void)
 }
 
 enum{
+	Qdir,
 	Qchal,
 	Qclock,
 	Qcons,
 	Qconsctl,
 	Qcputime,
 	Qcrypt,
-	Qdir,
 	Qkey,
 	Qklog,
 	Qlights,
