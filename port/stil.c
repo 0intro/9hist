@@ -736,16 +736,16 @@ void
 ilackproc(void *a)
 {
 	Ipifc *ifc;
-	Ipconv **base, **p, **end, *s;
+	Ipconv **base, **p, **last, *s;
 	Ilcb *ic;
 
 	ifc = (Ipifc*)a;
 	base = ifc->conv;
-	end = &base[Nipconv];
+	last = &base[Nipconv];
 
 	for(;;) {
 		tsleep(&ilackr, return0, 0, Iltickms);
-		for(p = base; p < end && *p; p++) {
+		for(p = base; p < last && *p; p++) {
 			s = *p;
 			ic = &s->ilctl;
 			ic->timeout += Iltickms;

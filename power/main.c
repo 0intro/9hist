@@ -464,16 +464,16 @@ void
 confread(void)
 {
 	char *line;
-	char *end;
+	char *lend;
 
 	/*
 	 *  process configuration file
 	 */
 	line = confbuf;
-	while(end = strchr(line, '\n')){
-		*end = 0;
+	while(lend = strchr(line, '\n')){
+		*lend = 0;
 		confset(line);
-		line = end+1;
+		line = lend+1;
 	}
 }
 

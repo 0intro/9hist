@@ -17,6 +17,7 @@ enum {
 	StartCoax	= 0x02,		/* Start Coaxial Transceiver */
 	RxDisable	= 0x03,		/* RX Disable */
 	RxEnable	= 0x04,		/* RX Enable */
+	RxReset		= 0x05,		/* RX Reset */
 	RxDiscard	= 0x08,		/* RX Discard Top Packet */
 	TxEnable	= 0x09,		/* TX Enable */
 	TxDisable	= 0x0A,		/* TX Disable */
@@ -49,6 +50,7 @@ enum {
 
 					/* Status/Interrupt Bits */
 	Latch		= 0x0001,	/* Interrupt Latch */
+	Failure		= 0x0002,	/* Adapter Failure */
 	TxComplete	= 0x0004,	/* TX Complete */
 	TxAvailable	= 0x0008,	/* TX Available */
 	RxComplete	= 0x0010,	/* RX Complete */
@@ -71,6 +73,15 @@ enum {
 	RxErrCRC	= 0x2800,	/*   CRC */
 	RxError		= 0x4000,	/* Error */
 	RxEmpty		= 0x8000,	/* Incomplete or FIFO empty */
+
+	FIFOdiag	= 0x04,		/* window 4 */
+
+					/* FIFOdiag bits */
+	TxOverrun	= 0x0400,	/* TX Overrrun */
+	RxOverrun	= 0x0800,	/* RX Overrun */
+	RxStatusOverrun	= 0x1000,	/* RX Status Overrun */
+	RxUnderrun	= 0x2000,	/* RX Underrun */
+	RxReceiving	= 0x8000,	/* RX Receiving */
 };
 
 #define COMMAND(board, cmd, a)	outs(board->io+Command, ((cmd)<<11)|(a))
@@ -252,7 +263,7 @@ getdiag(Board *board)
 	int bytes;
 
 	COMMAND(board, SelectWindow, 4);
-	bytes = ins(board->io+0x04);
+	bytes = ins(board->io+FIFOdiag);
 	COMMAND(board, SelectWindow, 1);
 	return bytes & 0xFFFF;
 }
@@ -341,21 +352,22 @@ transmit(Ctlr *ctlr)
 		/*
 		 * If there's no room in the FIFO for this packet,
 		 * set up an interrupt for when space becomes available.
+		 * Output packet must be a multiple of 4 in length and
+		 * we need 4 bytes for the preamble.
 		 */
-		if(tb->len > ins(board->io+TxFreeBytes)){
-			COMMAND(board, SetTxAvailable, tb->len);
+		len = ROUNDUP(tb->len, 4);
+		if(len > ins(board->io+TxFreeBytes)+4){
+			COMMAND(board, SetTxAvailable, len);
 			break;
 		}
 
 		/*
 		 * There's room, copy the packet to the FIFO and free
 		 * the buffer back to the host.
-		 * Output packet must be a multiple of 4 in length.
 		 */
-		len = ROUNDUP(tb->len, 4)/2;
 		outs(board->io+Fifo, tb->len);
 		outs(board->io+Fifo, 0);
-		outss(board->io+Fifo, tb->pkt, len);
+		outss(board->io+Fifo, tb->pkt, len/2);
 		tb->owner = Host;
 		ctlr->ti = NEXT(ctlr->ti, ctlr->ntb);
 	}
@@ -366,10 +378,37 @@ static void
 interrupt(Ctlr *ctlr)
 {
 	Board *board = ctlr->board;
-	ushort status;
+	ushort status, diag;
 	uchar txstatus, x;
 
 	status = ins(board->io+Status);
+
+	if(status & Failure){
+		/*
+		 * Adapter failure, try to find out why.
+		 * Reset if necessary.
+		 * What happens if Tx is active and we reset,
+		 * need to retransmit?
+		 * This probably isn't right.
+		 */
+		diag = getdiag(board);
+		print("ether509: status #%ux, diag #%ux\n", status, diag);
+
+		if(diag & TxOverrun){
+			COMMAND(board, TxReset, 0);
+			COMMAND(board, TxEnable, 0);
+		}
+
+		if(diag & RxUnderrun){
+			COMMAND(board, RxReset, 0);
+			attach(ctlr);
+		}
+
+		if(diag & TxOverrun)
+			transmit(ctlr);
+
+		return;
+	}
 
 	if(status & RxComplete){
 		receive(ctlr);

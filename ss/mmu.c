@@ -324,9 +324,9 @@ mmuinit(void)
 	Ctx *ctx;
 
 	/*
-	 *  mmuinit is entered with PMEG's 0 & 1 providing mappng
-	 *  for virtual addresses KZERO<->KZERO+2*BY2SEGM to physical
-	 *  0<->2*BY2SEGM
+	 *  mmuinit is entered with PMEG's 0-3 providing mapping
+	 *  for virtual addresses KZERO<->KZERO+4*BY2SEGM to physical
+	 *  0<->4*BY2SEGM
 	 */
 	compile();
 

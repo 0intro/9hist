@@ -124,7 +124,7 @@ kprofclose(Chan *c)
 long
 kprofread(Chan *c, void *va, long n, ulong offset)
 {
-	ulong end;
+	ulong tabend;
 	ulong w, *bp;
 	uchar *a, *ea;
 
@@ -133,15 +133,15 @@ kprofread(Chan *c, void *va, long n, ulong offset)
 		return devdirread(c, va, n, kproftab, Nkproftab, devgen);
 
 	case Kprofdataqid:
-		end = kprof.nbuf*SZ;
+		tabend = kprof.nbuf*SZ;
 		if(offset & (SZ-1))
 			error(Ebadarg);
-		if(offset >= end){
+		if(offset >= tabend){
 			n = 0;
 			break;
 		}
-		if(offset+n > end)
-			n = end-offset;
+		if(offset+n > tabend)
+			n = tabend-offset;
 		n &= ~(SZ-1);
 		a = va;
 		ea = a + n;

@@ -370,7 +370,7 @@ ip_reassemble(int offset, Block *bp, Etherhdr *ip)
 	ushort id;
 	Block *bl, **l, *last, *prev;
 	int ovlap, len, fragsize, pktposn;
-	int end;
+	int fend;
 
 	/* Check ethrnet has handed us a contiguous buffer */
 	if(bp->next)
@@ -453,10 +453,10 @@ ip_reassemble(int offset, Block *bp, Etherhdr *ip)
 	/* Check to see if succeeding segments overlap */
 	if(bp->next) {
 		l = &bp->next;
-		end = BLKFRAG(bp)->foff + BLKFRAG(bp)->flen;
+		fend = BLKFRAG(bp)->foff + BLKFRAG(bp)->flen;
 		/* Take completely covered segements out */
 		while(*l){
-			ovlap = end - BLKFRAG(*l)->foff;
+			ovlap = fend - BLKFRAG(*l)->foff;
 			if(ovlap <= 0)
 				break;
 			fragstat.succ++;

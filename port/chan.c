@@ -671,20 +671,20 @@ char*
 nextelem(char *name, char *elem)
 {
 	int w;
-	char *end;
+	char *nend;
 	Rune r;
 
 	if(*name == '/')
 		error(Efilename);
-	end = utfrune(name, '/');
-	if(end == 0)
-		end = strchr(name, 0);
-	w = end-name;
+	nend = utfrune(name, '/');
+	if(nend == 0)
+		nend = strchr(name, 0);
+	w = nend-name;
 	if(w >= NAMELEN)
 		error(Efilename);
 	memmove(elem, name, w);
 	elem[w] = 0;
-	while(name < end){
+	while(name < nend){
 		name += chartorune(&r, name);
 		if(r<sizeof(isfrog) && isfrog[r])
 			error(Ebadchar);
