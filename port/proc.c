@@ -259,6 +259,21 @@ ready(Proc *p)
 	splx(s);
 }
 
+/*
+ *  yield the processor to any other runnable process
+ */
+void
+yield(void)
+{
+	if(anyready()){
+		up->yield = 1;
+		sched();
+	}
+}
+
+/*
+ *  pick a process to run
+ */
 Proc*
 runproc(void)
 {
@@ -282,13 +297,15 @@ loop:
 	for(i = 0;; i++){
 		/*
 		 *  find the highest priority target process that this
-		 *  processor can run given affinity constraints
+		 *  processor can run given affinity constraints.
+		 *
 		 */
 		for(rq = &runq[Nrq-1]; rq >= runq; rq--){
-			tp = rq->head;
-			if(tp == 0)
-				continue;
-			for(; tp; tp = tp->rnext){
+			for(tp = rq->head; tp; tp = tp->rnext){
+				if(tp->yield){
+					tp->yield = 0;
+					continue;
+				}	
 				if(tp->mp == nil || tp->mp == MACHP(m->machno)
 				|| (!tp->wired && i > 0))
 					goto found;
