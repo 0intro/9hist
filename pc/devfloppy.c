@@ -38,8 +38,8 @@ enum {
 	DMAchan=	2,	/* floppy dma channel */
 };
 
-#define DPRINT if(floppydebug)iprint
-int floppydebug;
+#define DPRINT if(floppydebug)print
+int floppydebug = 1;
 
 /*
  *  types of drive (from PC equipment byte)
@@ -185,7 +185,7 @@ floppyreset(void)
 		dp->cyl = -1;			/* because we don't know */
 		dp->cache = (uchar*)xspanalloc(maxtsize, BY2PG, 64*1024);
 		dp->ccyl = -1;
-		dp->vers = 1;
+		dp->vers = 0;
 	}
 
 	/*
