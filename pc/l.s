@@ -618,6 +618,37 @@ TEXT	config(SB),$0
 #define Smmask	0x02		/*  map mask */
 
 /*
+ *  invert the ldepth 0 bitmap
+ */
+TEXT	l0update(SB),$0
+	MOVL	from+4(FP),SI
+	MOVL	to+0(FP),DI
+	MOVL	len+8(FP),BX
+
+	MOVL	BX,CX
+	SHRL	$2,CX
+	JZ	l01
+l00:
+	MOVL	-4(SI)(CX*4),AX
+	NOTL	AX
+	MOVL	AX,-4(DI)(CX*4)
+	LOOP	l00
+l01:
+	MOVL	BX,CX
+	ANDL	$(~3),BX
+	ANDL	$3,CX
+	JZ	l03
+	ADDL	BX,SI
+	ADDL	BX,DI
+l02:
+	MOVB	-1(SI)(CX*1),AL
+	NOTL	AX
+	MOVB	AL,-1(DI)(CX*1)
+	LOOP	l02
+l03:
+	RET
+
+/*
  *  separate ldepth 1 bitmap into 2 bit planes
  */
 TEXT	l1update(SB),$0

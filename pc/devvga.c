@@ -608,7 +608,7 @@ screenupdate(void)
 	switch(gscreen.ldepth){
 	case 0:
 		r.min.x &= ~15;		/* 16 pixel alignment for l0update() */
-		f = memmove;
+		f = l0update;
 		len = (r.max.x + 7)/8 - r.min.x/8;
 		if(len & 1)
 			len++;		/* 16 bit alignment for l0update() */

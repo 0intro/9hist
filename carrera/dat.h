@@ -102,6 +102,7 @@ struct Mach
 	Label	sched;			/* scheduler wakeup */
 	int	lastpid;		/* last pid allocated on this machine */
 	Proc*	pidproc[NTLBPID];	/* proc that owns tlbpid on this mach */
+	ulong	vaddrtst;		/* address probe by tstbadvaddr */
 	Ureg*	ur;
 	KMap*	kactive;		/* active on this machine */
 	int	knext;

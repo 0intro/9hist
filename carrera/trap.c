@@ -172,6 +172,15 @@ trap(Ureg *ur)
 	int user, cop, x, fpchk;
 	char buf[2*ERRLEN], buf1[ERRLEN], *fpexcep;
 
+	/*
+	 * Retry failed probes of legal addresses from tstbadvaddr
+	 * workaround for the R4400 >2.3
+	 */
+	if(m->vaddrtst) {
+		m->vaddrtst = 0;
+		return;
+	}
+
 	ecode = (ur->cause>>2)&EXCMASK;
 	user = ur->status&KUSER;
 

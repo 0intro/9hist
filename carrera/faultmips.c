@@ -26,7 +26,9 @@ tstbadvaddr(Ureg *ur, int read)
 	if(seg(up, iw, 0) == 0)
 		return 0;
 
+	m->vaddrtst = iw;
 	iw = *(ulong*)iw;
+	m->vaddrtst = 0;
 
 /*	print("iw: %lux\n", iw);	/**/
 
