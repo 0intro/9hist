@@ -796,6 +796,7 @@ qopen(int limit, int msg, void (*kick)(void*), void *arg)
 	q->state = msg ? Qmsg : 0;
 	q->state |= Qstarve;
 	q->eof = 0;
+	q->noblock = 0;
 	iunlock(q);
 
 	return q;
