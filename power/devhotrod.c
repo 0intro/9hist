@@ -169,8 +169,9 @@ hotrodread(Chan *c, void *buf, long n)
 	to = buf;
 	from = &dp->mem[c->offset/sizeof(ulong)];
 	end = to + (n/sizeof(ulong));
-	while(to != end)
+	while(to != end){
 		*to++ = *from++;
+	}
 	qunlock(hp);
 	return n;
 }

@@ -206,6 +206,7 @@ static void
 dkmuxopen(Queue *q, Stream *s)
 {
 	Dk *dp;
+	Line *lp;
 	int i;
 
 	for(dp = dk; dp < &dk[Ndk]; dp++){
@@ -222,6 +223,9 @@ dkmuxopen(Queue *q, Stream *s)
 			dp->lines = 16;
 			dp->name[0] = 0;
 			dp->wq = WR(q);
+			for(lp = dp->line; lp < &dp->line[Nline]; lp++)
+				if(lp->state != 0)
+					panic("dkmuxopen l %d s %lux", lp-dp->line, lp->state);
 			qunlock(dp);
 			return;
 		}
@@ -1368,15 +1372,15 @@ dkchgmesg(Dk *dp, Dkmsg *dialp, int line)
 {
 	Line *lp;
 
-	if (line <= 0 || line >= dp->lines) {
-		/* tell controller this line is not in use */
-		dkmesg(dp, T_CHG, D_CLOSE, line, 0);
-		return;
-	}
-	lp = &dp->line[line];
 	switch (dialp->srv) {
 
 	case D_CLOSE:		/* remote shutdown */
+		if (line <= 0 || line >= dp->lines) {
+			/* tell controller this line is not in use */
+			dkmesg(dp, T_CHG, D_CLOSE, line, 0);
+			return;
+		}
+		lp = &dp->line[line];
 		switch (lp->state) {
 
 		case Ldialing:
@@ -1407,6 +1411,12 @@ dkchgmesg(Dk *dp, Dkmsg *dialp, int line)
 		break;
 	
 	case D_ISCLOSED:	/* acknowledging a local shutdown */
+		if (line <= 0 || line >= dp->lines) {
+			/* tell controller this line is not in use */
+			dkmesg(dp, T_CHG, D_CLOSE, line, 0);
+			return;
+		}
+		lp = &dp->line[line];
 		switch (lp->state) {
 		case Llclose:
 		case Lclosed:
@@ -1418,6 +1428,36 @@ dkchgmesg(Dk *dp, Dkmsg *dialp, int line)
 		case Llistening:
 		case Lackwait:
 			break;
+		}
+		break;
+
+	case D_CLOSEALL:
+		for(line = dp->ncsc+1; line < dp->lines; line++){
+			lp = &dp->line[line];
+			switch (lp->state) {
+	
+			case Ldialing:
+				/* simulate a failed connection */
+				dkreplymesg(dp, (Dkmsg *)0, line);
+				lp->state = Lrclose;
+				break;
+	
+			case Lrclose:
+			case Lconnected:
+			case Llistening:
+			case Lackwait:
+				dkhangup(lp);
+				lp->state = Lrclose;
+				break;
+	
+			case Lopened:
+				break;
+	
+			case Llclose:
+			case Lclosed:
+				lp->state = Lclosed;
+				break;
+			}
 		}
 		break;
 
@@ -1503,7 +1543,7 @@ dktimer(void *a)
 			 *  remind controller of dead lines and
 			 *  timeout calls that take to long
 			 */
-			for (i=0; i<dp->lines; i++){
+			for (i=dp->ncsc+1; i<dp->lines; i++){
 				lp = &dp->line[i];
 				switch(lp->state){
 				case Llclose:
