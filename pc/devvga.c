@@ -61,7 +61,6 @@ vgastat(Chan* c, char* dp)
 static Chan*
 vgaopen(Chan* c, int omode)
 {
-	pprint("vgaopen: pid %d, %d %p\n", up->pid, c->ref, c);
 	return devopen(c, omode, vgadir, nelem(vgadir), devgen);
 }
 
@@ -73,8 +72,8 @@ vgaclose(Chan*c)
 	pprint("vgaclose: pid %d, %d, %p\n", up->pid, c->ref, c);
 	scr = &vgascreen[0];
 	if (scr && scr->dev && scr->dev->ovlctl) {
-		static char *disable = "disable\n";
-		pprint("vgaclose: Calling ovlctl (%p) %p\n", scr->dev->ovlctl, disable);
+		static char disable[] = "disable\n"; 
+
 		scr->dev->ovlctl(scr, disable, strlen(disable));
 	}
 }
@@ -387,8 +386,11 @@ vgawrite(Chan* c, void* a, long n, vlong off)
 
 	case Qvgaovl:
 		scr = &vgascreen[0];
-		pprint("vgawrite: Qvgaovl %d (%s)\n", Qvgaovl, scr->dev->name);
-		return 0;
+		if (scr->dev->ovlwrite == nil) {
+			error(Enooverlay);
+			break;
+		}
+		return scr->dev->ovlwrite(scr, a, n, off);
 
 	case Qvgaovlctl:
 		scr = &vgascreen[0];

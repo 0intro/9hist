@@ -44,13 +44,15 @@ static int debug = 0;
  * L3 setup and hold times (expressed in µs)
  */
 enum {
-	L3_DataSetupTime =	1,	/* 190 ns */
-	L3_DataHoldTime =		1,	/*  30 ns */
-	L3_ModeSetupTime =	1,	/* 190 ns */
-	L3_ModeHoldTime =	1,	/* 190 ns */
-	L3_ClockHighTime =	1,	/* 100 ns */
-	L3_ClockLowTime =		1,	/* 100 ns */
-	L3_HaltTime =			1,	/* 190 ns */
+	L3_AcquireTime =		1,
+	L3_ReleaseTime =		1,
+	L3_DataSetupTime =	(190+999)/1000,	/* 190 ns */
+	L3_DataHoldTime =		( 30+999)/1000,
+	L3_ModeSetupTime =	(190+999)/1000,
+	L3_ModeHoldTime =	(190+999)/1000,
+	L3_ClockHighTime =	(100+999)/1000,
+	L3_ClockLowTime =		(100+999)/1000,
+	L3_HaltTime =			(190+999)/1000,
 };
 
 /* UDA 1341 Registers */
@@ -199,9 +201,9 @@ static void	setreg(char *name, int val, int n);
 static void
 L3_acquirepins(void)
 {
-	gpioregs->set = (GPIO_L3_SCLK_o | GPIO_L3_SDA_io);
-	gpioregs->direction |=  (GPIO_L3_SCLK_o | GPIO_L3_SDA_io);
-	µdelay(2);
+	gpioregs->set = (GPIO_L3_MODE_o | GPIO_L3_SCLK_o | GPIO_L3_SDA_io);
+	gpioregs->direction |=  (GPIO_L3_MODE_o | GPIO_L3_SCLK_o | GPIO_L3_SDA_io);
+	µdelay(L3_AcquireTime);
 }
 
 /*
@@ -210,7 +212,8 @@ L3_acquirepins(void)
 static void
 L3_releasepins(void)
 {
-	gpioregs->direction &= ~(GPIO_L3_SCLK_o | GPIO_L3_SDA_io);
+	gpioregs->direction &= ~(GPIO_L3_MODE_o | GPIO_L3_SCLK_o | GPIO_L3_SDA_io);
+	µdelay(L3_ReleaseTime);
 }
 
 /*
@@ -220,8 +223,6 @@ static void
 L3_init(void)
 {
 	gpioregs->altfunc &= ~(GPIO_L3_SDA_io | GPIO_L3_SCLK_o | GPIO_L3_MODE_o);
-	gpioregs->set = GPIO_L3_MODE_o;
-	gpioregs->direction |= GPIO_L3_MODE_o;
 	L3_releasepins();
 }
 
@@ -276,8 +277,6 @@ L3_sendbyte(char data, int mode)
 {
 	int i;
 
-//suspect	L3_acquirepins();
-
 	switch(mode) {
 	case 0: /* Address mode */
 		gpioregs->clear = GPIO_L3_MODE_o;
@@ -296,14 +295,10 @@ L3_sendbyte(char data, int mode)
 	for (i = 0; i < 8; i++)
 		L3_sendbit(data >> i);
 
-	µdelay(L3_ModeHoldTime);
-
 	if (mode == 0)  /* Address mode */
 		gpioregs->set = GPIO_L3_MODE_o;
 
 	µdelay(L3_ModeHoldTime);
-
-//suspect		L3_releasepins();
 }
 
 /*
@@ -318,8 +313,6 @@ L3_getbyte(int mode)
 {
 	char data = 0;
 	int i;
-
-//suspect		L3_acquirepins();
 
 	switch(mode) {
 	case 0: /* Address mode - never valid */
@@ -339,8 +332,6 @@ L3_getbyte(int mode)
 		data |= (L3_getbit() << i);
 
 	µdelay(L3_ModeHoldTime);
-
-	L3_releasepins();
 
 	return data;
 }
