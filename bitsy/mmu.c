@@ -91,7 +91,7 @@ mmuinit(void)
 }
 
 /*
- *  map special use space 
+ *  map special use space
  */
 ulong*
 mapspecial(ulong physaddr, int len)
@@ -110,8 +110,9 @@ mapspecial(ulong physaddr, int len)
 		}
 		t = (ulong*)(l1table[virtaddr>>20] & L1PTBaseMask);
 		for(i = 0; i < OneMeg; i += BY2PG){
-			if((t[virtaddr>>20] & L2TypeMask) != L2SmallPage)
+			if((t[(virtaddr+i)>>20] & L2TypeMask) != L2SmallPage)
 				break;
+			
 		}
 		if(i < OneMeg){
 			virtaddr += i;
@@ -119,8 +120,7 @@ mapspecial(ulong physaddr, int len)
 		}
 	}
 
-	/* we get here if no entry was found mapping this physical address */
-	
+	/* we get here if no entry was found mapping this physical range */
 }
 
 void
