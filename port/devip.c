@@ -215,6 +215,7 @@ ipincoming(Ipifc *ifc, Ipconv *from)
 	qlock(new);
 	*p = new;
 	qunlock(ifc);
+	poperror();
 	if(from)	/* copy ownership from listening channel */
 		netown(new, from->owner, 0);
 	else		/* current user becomes owner */

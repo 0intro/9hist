@@ -306,7 +306,7 @@ TEXT	fpinit(SB),$0		/* turn on & init the floating point */
 	FPON
 	FINIT
 	WAIT
-	PUSHW	$0x0330
+	PUSHW	$0x033E
 	FLDCW	0(SP)		/* ignore underflow/precision, signal others */
 	POPW	AX
 	WAIT

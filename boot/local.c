@@ -20,12 +20,10 @@ authlocal(void)
 int
 connectlocal(void)
 {
-	ulong i;
 	int p[2];
 	char d[DIRLEN];
 	char sbuf[32];
 	char rbuf[32];
-	char *mtpt;
 	char partition[2*NAMELEN];
 
 	if(stat("/kfs", d) < 0)

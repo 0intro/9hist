@@ -1,7 +1,7 @@
 #include "mem.h"
 
 #define	SYSPSR	(SPL(0x0)|PSREF|PSRSUPER|0)
-#define	NOOP	OR R0, R0; OR R0, R0; OR R0, R0
+#define	NOOP	ORN R0, R0; ORN R0, R0; ORN R0, R0
 
 TEXT	start(SB), $-4
 

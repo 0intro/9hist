@@ -17,7 +17,6 @@ userpasswd(int islocal, Method *mp)
 	char key[7];
 	char buf[8 + NAMELEN];
 	int fd, crfd;
-	char *p;
 
 	if(*username == 0 || strcmp(username, "none") == 0){
 		strcpy(username, "none");
