@@ -903,7 +903,7 @@ static struct
 	Rendez	producer;
 	Rendez	consumer;
 	ulong	randomcount;
-	uchar	buf[4096];
+	uchar	buf[1024];
 	uchar	*ep;
 	uchar	*rp;
 	uchar	*wp;

@@ -329,6 +329,9 @@ ipifcadd(Ipifc *ifc, char **argv, int argc)
 	int i, type, mtu;
 	Fs *f;
 
+	if(ifc->m == nil)
+		return "ipifc not yet bound to device";
+
 	f = ifc->conv->p->f;
 
 	memset(ip, 0, IPaddrlen);
