@@ -599,8 +599,7 @@ struct Proc
 	void	*dbgreg;	/* User registers for devproc */
 	ulong	svstatus;
 	ulong	svr1;
-int entpc;
-int entr31;
+
 	/*
 	 *  machine specific MMU
 	 */

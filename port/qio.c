@@ -404,15 +404,16 @@ qread(Queue *q, void *vp, int len)
 		x = splhi();
 		lock(q);
 
+		b = q->bfirst;
+		if(b)
+			break;
+
 		if(q->state & Qclosed){
 			unlock(q);
 			splx(x);
 			return 0;
 		}
 
-		b = q->bfirst;
-		if(b)
-			break;
 		q->state |= Qstarve;
 		unlock(q);
 		splx(x);
