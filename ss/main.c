@@ -448,9 +448,10 @@ confinit(void)
 		bank[1] = bank[0]-8;
 		bank[0] = 8;
 	}
-
 	conf.npage = conf.npage0+conf.npage1;
-	conf.upages = (conf.npage*70)/100;
+	i = screenbits()-1;		/* Calculate % of memory for page pool */
+	i = 70 - (i*10);
+	conf.upages = (conf.npage*i)/100;
 	if(cpuserver){
 		i = conf.npage-conf.upages;
 		if(i > (12*MB)/BY2PG)
@@ -473,7 +474,7 @@ confinit(void)
 	if(cpuserver)
 		conf.nswap = conf.npage*2;
 	else
-		conf.nswap = 4096;
+		conf.nswap = 16*MB/BY2PG;
 	conf.nimage = 50;
 	conf.copymode = 0;		/* copy on write */
 	conf.ipif = 8;

@@ -34,8 +34,8 @@ faultmips(Ureg *ur, int user, int code)
 			LEDOFF(LEDfault);
 			return;
 		}
-		print("kernel %s badvaddr=0x%lux\n", excname[code], ur->badvaddr);
-		print("status=0x%lux pc=0x%lux sp=0x%lux\n", ur->status, ur->pc, ur->sp);
+		iprint("kernel %s badvaddr=0x%lux\n", excname[code], ur->badvaddr);
+		iprint("status=0x%lux pc=0x%lux sp=0x%lux\n", ur->status, ur->pc, ur->sp);
 		dumpregs(ur);
 		panic("fault");
 	}

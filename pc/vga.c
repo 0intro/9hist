@@ -381,3 +381,49 @@ bigcursor(void)
 
 	memmove(&arrow, &fatarrow, sizeof(fatarrow));
 }
+
+/*
+ *  collect changes to the 'soft' screen
+ */
+static Rectangle mbb;
+
+void
+mbbrect(Rectangle r)
+{
+	if(!islcd)
+		return;
+	if (r.min.x < mbb.min.x)
+		mbb.min.x = r.min.x;
+	if (r.min.y < mbb.min.y)
+		mbb.min.y = r.min.y;
+	if (r.max.x > mbb.max.x)
+		mbb.max.x = r.max.x;
+	if (r.max.y > mbb.max.y)
+		mbb.max.y = r.max.y;
+}
+
+void
+mbbpt(Point p)
+{
+	if(!islcd)
+		return;
+	if (p.x < mbb.min.x)
+		mbb.min.x = p.x;
+	if (p.y < mbb.min.y)
+		mbb.min.y = p.y;
+	if (p.x >= mbb.max.x)
+		mbb.max.x = p.x+1;
+	if (p.y >= mbb.max.y)
+		mbb.max.y = p.y+1;
+}
+
+void
+screenupdate(void)
+{
+}
+
+void
+mousescreenupdate(void)
+{
+}
+
