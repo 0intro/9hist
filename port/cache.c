@@ -483,26 +483,26 @@ cupdate(Chan *c, uchar *buf, int len, vlong off)
 	offset = off;
 	p = 0;
 	for(f = m->list; f; f = f->next) {
-		if(f->start >= offset)
+		if(f->start > offset)
 			break;
 		p = f;
 	}
 
-	if(p == 0) {		/* at the head */
-		eblock = offset+len;
-		/* trim if there is a successor */
-		if(f != 0 && eblock >= f->start) {
-			len -= (eblock - f->start);
-			if(len <= 0) {
-				qunlock(m);
-				return;
-			}
+	/* trim if there is a successor */
+	eblock = offset+len;
+	if(f != 0 && eblock > f->start) {
+		len -= (eblock - f->start);
+		if(len <= 0) {
+			qunlock(m);
+			return;
 		}
+	}
+
+	if(p == 0) {		/* at the head */
 		e = cchain(buf, offset, len, &tail);
 		if(e != 0) {
 			m->list = e;
-			if(tail != 0)
-				tail->next = f;
+			tail->next = f;
 		}
 		qunlock(m);
 		return;
@@ -532,44 +532,25 @@ cupdate(Chan *c, uchar *buf, int len, vlong off)
 			len -= o;
 			offset += o;
 			if(len <= 0) {
+if (f && p->start + p->len > f->start) print("CACHE: p->start=%uld p->len=%d f->start=%uld\n", p->start, p->len, f->start);
 				qunlock(m);
 				return;
 			}
 		}
 	}
 
-	/* append to extent list */
-	if(f == 0) {
-		p->next = cchain(buf, offset, len, &tail);
-		qunlock(m);
-		return;
-	}
-
-	/* trim data against successor */
-	eblock = offset+len;
-	if(eblock > f->start) {
-		o = eblock - f->start;
-		len -= o;
-		if(len <= 0) {
-			qunlock(m);
-			return;
-		}
-	}
-
-	/* insert a middle block */
-	p->next = cchain(buf, offset, len, &tail);
-	if(p->next == 0)
-		p->next = f;
-	else
+	e = cchain(buf, offset, len, &tail);
+	if(e != 0) {
+		p->next = e;
 		tail->next = f;
-
+	}
 	qunlock(m);
 }
 
 void
 cwrite(Chan* c, uchar *buf, int len, vlong off)
 {
-	int o, n;
+	int o, eo;
 	Mntcache *m;
 	ulong eblock, ee;
 	Extent *p, *f, *e, *tail;
@@ -599,65 +580,42 @@ cwrite(Chan* c, uchar *buf, int len, vlong off)
 		p = f;
 	}
 
-	if(0 && f != 0 && offset < f->start+f->len) {
-		o = offset - f->start;
-		n = f->len - o;
-		if(n > len)
-			n = len;
-		if(cpgmove(f, buf, o, n)) {
-			len -= n;
-			if(len == 0) {
-				qunlock(m);
-				return;
-			}
-			offset += n;
-			buf += n;
-		}
-	}
-
 	if(p != 0) {
 		ee = p->start+p->len;
-		if(ee > offset) {
-			o = ee - offset;
-			p->len -= o;
-			if(p->len == 0)
-				panic("del empty extent");
-		}
-		/* Pack sequential write if there is space */
-		if(ee == offset && p->len < BY2PG) {
+		eo = offset - p->start;
+		/* pack in predecessor if there is space */
+		if(offset <= ee && eo < BY2PG) {
 			o = len;
-			if(o > BY2PG - p->len)
-				o = BY2PG - p->len;
-			if(cpgmove(p, buf, p->len, o)) {
-				p->len += o;
+			if(o > BY2PG - eo)
+				o = BY2PG - eo;
+			if(cpgmove(p, buf, eo, o)) {
+				if(eo+o > p->len)
+					p->len = eo+o;
 				buf += o;
 				len -= o;
 				offset += o;
-				if(len <= 0) {
-					qunlock(m);
-					return;
-				}
 			}
 		}
 	}
 
+	/* free the overlap -- it's a rare case */
 	eblock = offset+len;
-	/* free the overlap - its a rare case */
 	while(f && f->start < eblock) {
 		e = f->next;
 		extentfree(f);
 		f = e;
 	}
 
+	/* link the block (if any) into the middle */
 	e = cchain(buf, offset, len, &tail);
 	if(e != 0) {
-		if(p == 0)
-			m->list = e;
-		else
-			p->next = e;
-
-		if(tail != 0)
-			tail->next = f;
+		tail->next = f;
+		f = e;
 	}
+
+	if(p == 0)
+		m->list = f;
+	else
+		p->next = f;
 	qunlock(m);
 }
