@@ -31,12 +31,13 @@ struct MntQ
 	Mnthdr	*writer;	/* queue of headers of written messages */
 };
 
-#define	BUFSIZE	(MAXFDATA+500) 	/* BUG */
+#define	BITROUND 256
+#define	BUFSIZE	(MAXFDATA+MAXMSG)
 typedef struct Mntbuf Mntbuf;
 struct Mntbuf
 {
 	Mntbuf	*next;
-	char	buf[BUFSIZE];
+	char	buf[BUFSIZE+BITROUND]; 	/* BUG */
 };
 
 struct

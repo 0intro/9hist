@@ -40,7 +40,7 @@ struct Hotrod{
 	HotQ		rq;		/* read this queue to receive replies */
 	int		ri;		/* where to read next response */
 	Rendez		r;
-	uchar		buf[MAXFDATA+100];
+	uchar		buf[MAXFDATA+MAXMSG];
 };
 
 Hotrod hotrod[Nhotrod];
@@ -63,12 +63,12 @@ enum{
 void
 hotsend(Hotrod *h, Hotmsg *m)
 {
-print("hotsend send %d %lux %lux\n", m->cmd, m, m->param[0]);
+/* print("hotsend send %d %d %lux %lux\n", h->wi, m->cmd, m, m->param[0]); /**/
 	h->wq->msg[h->wi] = (Hotmsg*)MP2VME(m);
 	do
 		delay(1);
 	while(h->wq->msg[h->wi]);
-print("hotsend done\n");
+/* print("hotsend done\n"); /**/
 	h->wi++;
 	if(h->wi >= NhotQ)
 		h->wi = 0;
@@ -179,6 +179,7 @@ hotrodopen(Chan *c, int omode)
 		delay(100);
 		print("reset\n");
 
+#ifdef asdf
 		/*
 		 * Issue test
 		 */
@@ -187,6 +188,7 @@ hotrodopen(Chan *c, int omode)
 		hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->khot);
 		delay(100);
 		print("tested\n");
+#endif
 	}
 	c->mode = openmode(omode);
 	c->flag |= COPEN;
@@ -229,8 +231,10 @@ hotrodread(Chan *c, void *buf, long n)
 	hp = &hotrod[c->dev];
 	switch(c->qid.path){
 	case Qhotrod:
-		if(n > sizeof hp->buf)
+		if(n > sizeof hp->buf){
+			print("hotrod bufsize\n");
 			error(Egreg);
+		}
 		if((((ulong)buf)&(KSEGM|3)) == KSEG0){
 			/*
 			 *  use supplied buffer, no need to lock for reply
@@ -243,7 +247,7 @@ hotrodread(Chan *c, void *buf, long n)
 			mp->param[1] = n;
 			hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->khot);
 			qunlock(hp);
-			l = 100*1000*000;
+			l = 100*1000*1000;
 			do
 				n = mp->param[2];
 			while(n==0 && --l>0);
@@ -277,6 +281,7 @@ hotrodread(Chan *c, void *buf, long n)
 		}
 		return n;
 	}
+	print("hotrod read unk\n");
 	error(Egreg);
 	return 0;
 }
@@ -293,8 +298,10 @@ hotrodwrite(Chan *c, void *buf, long n)
 	hp = &hotrod[c->dev];
 	switch(c->qid.path){
 	case 1:
-		if(n > sizeof hp->buf)
+		if(n > sizeof hp->buf){
+			print("hotrod write bufsize\n");
 			error(Egreg);
+		}
 		if((((ulong)buf)&(KSEGM|3)) == KSEG0){
 			/*
 			 *  use supplied buffer, no need to lock for reply
@@ -323,6 +330,7 @@ hotrodwrite(Chan *c, void *buf, long n)
 		}
 		return n;
 	}
+	print("hotrod write unk\n");
 	error(Egreg);
 	return 0;
 }
@@ -344,7 +352,7 @@ hotrodintr(int vec)
 {
 	Hotrod *hp;
 
-	print("hotrod%d interrupt\n", vec - Vmevec);
+/*	print("hotrod%d interrupt\n", vec - Vmevec); /**/
 	hp = &hotrod[vec - Vmevec];
 	if(hp < hotrod || hp > &hotrod[Nhotrod]){
 		print("bad hotrod vec\n");
