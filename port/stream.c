@@ -571,6 +571,7 @@ streamclose(Chan *c)
 {
 	Queue *q, *nq;
 	Block *bp;
+	Stream *s = c->stream;
 
 	/*
 	 *  if not open, ignore it
@@ -581,8 +582,9 @@ streamclose(Chan *c)
 	/*
 	 *  decrement the reference cound
 	 */
-	lock(c->stream);
-	if(--(c->stream->inuse) != 0){
+	lock(s);
+	if(s->inuse != 1){
+		s->inuse--;
 		unlock(c->stream);
 		return;
 	}
@@ -590,21 +592,22 @@ streamclose(Chan *c)
 	/*
 	 *  descend the stream closing the queues
 	 */
-	for(q = c->stream->procq; q; q = q->next){
+	for(q = s->procq; q; q = q->next){
 		if(q->info->close)
 			(*q->info->close)(q->other);
-		if(q == c->stream->devq->other)
+		if(q == s->devq->other)
 			break;
 	}
 	/*
 	 *  ascend the stream freeing the queues
 	 */
-	for(q = c->stream->devq; q; q = nq){
+	for(q = s->devq; q; q = nq){
 		nq = q->next;
 		freeq(q);
 	}
-	c->stream->id = c->stream->dev = c->stream->type = 0;
-	unlock(c->stream);
+	s->id = s->dev = s->type = 0;
+	s->inuse--;
+	unlock(s);
 }
 
 /*

@@ -231,7 +231,7 @@ sleep1(Rendez *r, int (*f)(void*), void *arg)
 	 */
 	p = u->p;
 	if(r->p)
-		print("double sleep %d\n", r->p->pid);
+		print("double sleep %d %d\n", r->p->pid, p->pid);
 	p->r = r;
 	p->wokeup = 0;
 	p->state = Wakeme;

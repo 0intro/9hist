@@ -750,7 +750,7 @@ lancekproc(void *arg)
 			 *  See if a queue exists for this packet type.
 			 */
 			p = l.rp[l.rl];
-			t = (p->type[1]<<8) | p->type[0];
+			t = (p->type[0]<<8) | p->type[1];
 			len = m->cntflags - 4;
 			lancedebq("in", p, len);
 			for(e = &l.e[0]; e < &l.e[Ntypes]; e++){
