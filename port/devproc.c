@@ -317,15 +317,16 @@ procwstat(Chan *c, uchar *db, int n)
 
 	d = smalloc(sizeof(Dir)+n);
 	n = convM2D(db, n, &d[0], (char*)&d[1]);
-	if(n > 0){
-		if(strcmp(d->uid, "") != 0 && strcmp(d->uid, p->user) != 0){
-			if(strcmp(up->user, eve) != 0)
-				error(Eperm);
-			else
-				kstrdup(&p->user, d->uid);
-		}
-		p->procmode = d->mode&0777;
+	if(n == 0)
+		error(Eshortstat);
+	if(!emptystr(d->uid) && strcmp(d->uid, p->user) != 0){
+		if(strcmp(up->user, eve) != 0)
+			error(Eperm);
+		else
+			kstrdup(&p->user, d->uid);
 	}
+	if(d->mode != ~0UL)
+		p->procmode = d->mode&0777;
 
 	poperror();
 	free(d);

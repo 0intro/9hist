@@ -342,10 +342,16 @@ sslwstat(Chan *c, uchar *db, int n)
 
 	dir = smalloc(sizeof(Dir)+n);
 	m = convM2D(db, n, &dir[0], (char*)&dir[1]);
-	if(m > 0){
-		kstrdup(&s->user, dir->uid);
-		s->perm = dir->mode;
+	if(m == 0){
+		free(dir);
+		error(Eshortstat);
 	}
+
+	if(!emptystr(dir->uid))
+		kstrdup(&s->user, dir->uid);
+	if(dir->mode != ~0UL)
+		s->perm = dir->mode;
+
 	free(dir);
 	return m;
 }

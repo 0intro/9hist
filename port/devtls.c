@@ -491,7 +491,9 @@ tlswstat(Chan *c, uchar *dp, int n)
 	TlsRec *tr;
 	int rv;
 
+	d = nil;
 	if(waserror()){
+		free(d);
 		unlock(&tdlock);
 		nexterror();
 	}
@@ -505,10 +507,13 @@ tlswstat(Chan *c, uchar *dp, int n)
 
 	d = smalloc(n + sizeof *d);
 	rv = convM2D(dp, n, &d[0], (char*) &d[1]);
-	if (rv > 0) {
+	if(rv == 0)
+		error(Eshortstat);
+	if(!emptystr(d->uid)
 		kstrdup(&tr->user, d->uid);
+	if(d->mode != ~0UL)
 		tr->perm = d->mode;
-	}
+
 	free(d);
 	poperror();
 	unlock(&tdlock);

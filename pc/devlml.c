@@ -40,24 +40,10 @@ static ulong		jpgframeno;
 
 //static FrameHeader	rawheader;
 
-static FrameHeader	jpgheader[NBUF] = {
-	{
-		MRK_SOI, MRK_APP3, (sizeof(FrameHeader)-4) << 8,
-		{ 'L', 'M', 'L', '\0'},
-		-1, 0, 0,  0
-	}, {
-		MRK_SOI, MRK_APP3, (sizeof(FrameHeader)-4) << 8,
-		{ 'L', 'M', 'L', '\0'},
-		-1, 0, 0,  0
-	}, {
-		MRK_SOI, MRK_APP3, (sizeof(FrameHeader)-4) << 8,
-		{ 'L', 'M', 'L', '\0'},
-		-1, 0, 0,  0
-	}, {
-		MRK_SOI, MRK_APP3, (sizeof(FrameHeader)-4) << 8,
-		{ 'L', 'M', 'L', '\0'},
-		-1, 0, 0,  0
-	}
+static FrameHeader	jpgheader = {
+	MRK_SOI, MRK_APP3, (sizeof(FrameHeader)-4) << 8,
+	{ 'L', 'M', 'L', '\0'},
+	-1, 0, 0,  0
 };
 
 int		frameNo;
@@ -88,13 +74,15 @@ getbuffer(void){
 static long
 jpgread(Chan *, void *va, long nbytes, vlong) {
 	int bufno;
+	FrameHeader *jpgheader;
 
 	// reads should be of size 1 or sizeof(FrameHeader)
 	// Frameno is the number of the buffer containing the data
 	bufno = getbuffer();
+	jpgheader = (FrameHeader*)codeData->frag[bufno].hdr;
 	if (nbytes == sizeof(FrameHeader)) {
-		memmove(va, &jpgheader[bufno], sizeof jpgheader[bufno]);
-		return sizeof jpgheader[bufno];
+		memmove(va, jpgheader, sizeof(FrameHeader));
+		return sizeof(FrameHeader);
 	}
 	if (nbytes == 1) {
 		*(char *)va = bufno;
@@ -124,9 +112,10 @@ prepbuf(void) {
 
 	for (i = 0; i < NBUF; i++) {
 		codeData->statCom[i] = PADDR(&(codeData->fragdesc[i]));
-		codeData->fragdesc[i].addr = PADDR(&(codeData->frag[i]));
+		codeData->fragdesc[i].addr = PADDR(codeData->frag[i].fb);
 		// Length is in double words, in position 1..20
-		codeData->fragdesc[i].leng = ((sizeof codeData->frag[i]) >> 1) | FRAGM_FINAL_B;
+		codeData->fragdesc[i].leng = (FRAGSIZE >> 1) | FRAGM_FINAL_B;
+		memmove(codeData->frag[i].hdr, &jpgheader, sizeof(FrameHeader)-2);
 	}
 }
 
@@ -141,7 +130,6 @@ lmlreset(void)
 	void *grabbuf;
 	ulong grablen;
 	ISAConf isa;
-	uchar ipin, intl;
 
 	if(isaconfig("lml", 0, &isa) == 0) {
 		if (debug) print("lml not in plan9.ini\n");
@@ -217,9 +205,6 @@ lmlreset(void)
 		print("lml: physsegment: lmlgrab\n");
 		return;
 	}
-
-	iprint("%.8uX: %.8uX\n", pciBaseAddr + INTR_STAT,
-			*((unsigned long *)(pciBaseAddr + INTR_STAT)));
 
 	// Interrupt handler
 	intrenable(pcidev->intl, lmlintr, nil, pcidev->tbdf, "lml");
@@ -331,6 +316,7 @@ static void
 lmlintr(Ureg *, void *) {
 	ulong fstart, fno;
 	ulong flags = readl(pciBaseAddr+INTR_STAT);
+	FrameHeader *jpgheader;
 	
 	// Reset all interrupts from 067
 	writel(0xff000000, pciBaseAddr + INTR_STAT);
@@ -352,11 +338,12 @@ lmlintr(Ureg *, void *) {
 				return;
 			}
 		}
-		jpgheader[fno].ftime  = todget(nil);
-		jpgheader[fno].frameSize =
+		jpgheader = (FrameHeader *)codeData->frag[fno].hdr;
+		jpgheader->ftime  = todget(nil);
+		jpgheader->frameSize =
 			(codeData->statCom[fno] & 0x00ffffff) >> 1;
-		jpgheader[fno].frameSeqNo = codeData->statCom[fno] >> 24;
-		jpgheader[fno].frameNo = jpgframeno;
+		jpgheader->frameSeqNo = codeData->statCom[fno] >> 24;
+		jpgheader->frameNo = jpgframeno;
 		wakeup(&sleepjpg);
 	}
 	return;

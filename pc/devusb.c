@@ -1623,13 +1623,6 @@ usbremove(Chan*)
 }
 
 void
-usbwstat(Chan *c, char *dp)
-{
-	USED(c, dp);
-	error(Eperm);
-}
-
-void
 usbclose(Chan *c)
 {
 	Udev *d;

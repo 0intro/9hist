@@ -346,10 +346,14 @@ netifwstat(Netif *nif, Chan *c, uchar *db, int n)
 
 	dir = smalloc(sizeof(Dir)+n);
 	m = convM2D(db, n, &dir[0], (char*)&dir[1]);
-	if(m > 0){
-		strncpy(f->owner, dir[0].uid, KNAMELEN);
-		f->mode = dir[0].mode;
+	if(m == 0){
+		free(dir);
+		error(Eshortstat);
 	}
+	if(!emptystr(dir[0].uid))
+		strncpy(f->owner, dir[0].uid, KNAMELEN);
+	if(dir[0].mode != ~0UL)
+		f->mode = dir[0].mode;
 	free(dir);
 	return m;
 }

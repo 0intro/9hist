@@ -54,6 +54,7 @@ typedef struct {
 #define FRAGM_FINAL_B 1
 #define STAT_BIT 1
 
+typedef struct	HdrFragment		HdrFragment;
 typedef struct	FrameHeader		FrameHeader;
 typedef union	Fragment		Fragment;
 typedef struct	FragmentTable		FragmentTable;
@@ -82,6 +83,11 @@ union Fragment {
 	char		fb[FRAGSIZE];
 };
 
+struct HdrFragment {
+	uchar	hdr[sizeof(FrameHeader)-2];
+	Fragment;
+};
+
 struct FragmentTable {	// Don't modify this struct, used by h/w
 	ulong		addr;		// Physical address
 	ulong		leng;
@@ -92,7 +98,7 @@ struct CodeData {	// Don't modify this struct, used by h/w
 	ulong		pagrab;		// Physical addr of grab buffer
 	ulong		statCom[4];	// Physical addresses of fragdescs
 	FragmentTable	fragdesc[4];
-	Fragment	frag[4];
+	HdrFragment	frag[4];
 };
 
 #define CODEDATASIZE ((sizeof(CodeData) + BY2PG - 1) & ~(BY2PG - 1))

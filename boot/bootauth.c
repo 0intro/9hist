@@ -16,7 +16,7 @@ authentication(int cpuflag)
 	ac = 0;
 	av = argv;
 	av[ac++] = "factotum";
-//av[ac++] = "-dt";
+av[ac++] = "-dt";
 	if(cpuflag)
 		av[ac++] = "-s";
 	else

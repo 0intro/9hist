@@ -486,7 +486,8 @@ uartwstat(Chan *c, uchar *dp, int n)
 	n = convM2D(dp, n, &d, nil);
 	if(n == 0)
 		error(Eshortstat);
-	dt[0].perm = dt[1].perm = d.mode;
+	if(d.mode != ~0UL)
+		dt[0].perm = dt[1].perm = d.mode;
 	return n;
 }
 

@@ -490,7 +490,7 @@ ipremove(Chan*)
 static int
 ipwstat(Chan *c, uchar *dp, int n)
 {
-	Dir d;
+	Dir *d;
 	Conv *cv;
 	Fs *f;
 	Proto *p;
@@ -505,16 +505,26 @@ ipwstat(Chan *c, uchar *dp, int n)
 		break;
 	}
 
-	n = convM2D(dp, n, &d, nil);
-	if(n > 0){
-		p = f->p[PROTO(c->qid)];
-		cv = p->conv[CONV(c->qid)];
-		if(!iseve() && strcmp(ATTACHER(c), cv->owner) != 0)
-			error(Eperm);
-		if(d.uid[0])
-			kstrdup(&cv->owner, d.uid);
-		cv->perm = d.mode & 0777;
+	d = smalloc(n + sizeof(Dir));
+	if(waserror()){
+		free(d);
+		nexterror();
 	}
+	n = convM2D(dp, n, d, nil);
+	if(n == 0)
+		error(Eshortstat);
+
+	p = f->p[PROTO(c->qid)];
+	cv = p->conv[CONV(c->qid)];
+	if(!iseve() && strcmp(ATTACHER(c), cv->owner) != 0)
+		error(Eperm);
+	if(!emptystr(d->uid))
+		kstrdup(&cv->owner, d->uid);
+	if(d->mode != ~0UL)
+		cv->perm = d->mode & 0777;
+
+	poperror();
+	free(d);
 	return n;
 }
 

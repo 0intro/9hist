@@ -239,7 +239,9 @@ srvwstat(Chan *c, uchar *dp, int n)
 		error(Eperm);
 
 	n = convM2D(dp, n, &d, nil);
-	if(n > 0)
+	if(n == 0)
+		error (Eshortstat);
+	if(d.mode != ~0UL)
 		sp->perm = d.mode & 0777;
 
 	qunlock(&srvlk);

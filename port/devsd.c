@@ -1230,7 +1230,7 @@ sdwrite(Chan *c, void *a, long n, vlong off)
 static int
 sdwstat(Chan* c, uchar* dp, int n)
 {
-	Dir d[2];
+	Dir *d;
 	SDpart *pp;
 	SDperm *perm;
 	SDunit *unit;
@@ -1244,7 +1244,9 @@ sdwstat(Chan* c, uchar* dp, int n)
 		error(Enonexist);
 	unit = sdev->unit[UNIT(c->qid)];
 	qlock(&unit->ctl);
+	d = nil;
 	if(waserror()){
+		free(d);
 		qunlock(&unit->ctl);
 		decref(&sdev->r);
 		nexterror();
@@ -1269,12 +1271,17 @@ sdwstat(Chan* c, uchar* dp, int n)
 
 	if(strcmp(up->user, perm->user) && !iseve())
 		error(Eperm);
+
+	d = smalloc(sizeof(Dir)+n);
 	n = convM2D(dp, n, &d[0], (char*)&d[1]);
 	if(n == 0)
 		error(Eshortstat);
-	kstrdup(&perm->user, d[0].uid);
-	perm->perm = (perm->perm & ~0777) | (d[0].mode & 0777);
+	if(!emptystr(d[0].uid))
+		kstrdup(&perm->user, d[0].uid);
+	if(d[0].mode != ~0UL)
+		perm->perm = (perm->perm & ~0777) | (d[0].mode & 0777);
 
+	free(d);
 	qunlock(&unit->ctl);
 	decref(&sdev->r);
 	poperror();
