@@ -218,7 +218,7 @@ exit(int ispanic)
 	if(active.ispanic && m->machno == 0){
 		if(cpuserver)
 			delay(10000);
-		else
+		else if(conf.monitor)
 			for(;;);
 	}
 	else
@@ -248,16 +248,15 @@ procsave(Proc *p)
 void
 confinit(void)
 {
-	int nbytes;
 	ulong pa;
+	extern ulong memsize;	/* passed in from ROM monitor */
 
 	conf.nmach = 1;		/* processors */
-	conf.nproc = 60;	/* processes */
+	conf.nproc = 60;		/* processes */
 
 	pa = PGROUND(PADDR(end));
-	nbytes = 256*1024*1024;	// hard wire for now
-	
-	conf.npage0 = nbytes/BY2PG;
+
+	conf.npage0 = memsize/BY2PG;
 	conf.base0 = pa;
 	
 	conf.npage1 = 0;

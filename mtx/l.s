@@ -50,8 +50,11 @@
 	MOVW	$setSB(SB), R2
 
 	/* save SPR(SPRG3), or else we can't go back to firmware! */
-	MOVW SPR(SAVEXX), R3
+	MOVW SPR(SPRG3), R3
 	MOVW R3, initsprg3(SB)
+
+	/* debugger sets R1 to top of usable memory +1 */
+	MOVW R1, memsize(SB)
 
 	/* set up Mach */
 	MOVW	$mach0(SB), R(MACH)
@@ -66,6 +69,7 @@
 
 GLOBL	mach0(SB), $(MAXMACH*BY2PG)
 GLOBL	initsprg3(SB), $4
+GLOBL	memsize(SB), $4
 
 /*
  * on return from this function we will be running in virtual mode.
@@ -236,7 +240,7 @@ tas0:
 
 TEXT	firmware(SB), $0
 	MOVW	initsprg3(SB), R3
-	MOVW	R3, SPR(SAVEXX)
+	MOVW	R3, SPR(SPRG3)
 	MOVW	$MSR_IP, R4
 	MOVW	R4, SPR(SRR1)
 	MOVW	$0xfff00100, R5
