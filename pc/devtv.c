@@ -1,6 +1,5 @@
 /*
-  * Driver for Bt848 TV tuner.  WARNING, I used the Linux driver as
-  * documentation.
+  * Driver for Bt848 TV tuner.  
   *
   */
 #include	"u.h"
@@ -16,7 +15,6 @@ enum {
 	Qdata,
 	Qctl,
 	Qregs,
-	Qdbuf,
 
 	Brooktree_vid = 0x109e,
 	Brooktree_848_did = 0x0350,
@@ -25,6 +23,8 @@ enum {
 
 	K = 1024,
 	M = K * K,
+
+	Numring = 16,
 
 	ntsc_rawpixels = 910,
 	ntsc_sqpixels = 780,					// Including blanking & inactive
@@ -75,7 +75,8 @@ enum {
 	capctl_captureeven = 1 << 0,
 	vbipacksize = 0x190,				// 0E0
 
-	intstat_i2crack = 1 << 25,				// 100
+	intstat_riscstatshift = 28,				// 100
+	intstat_i2crack = 1 << 25,
 	intstat_scerr = 1 << 19,
 	intstat_ocerr = 1 << 18,
 	intstat_fbus = 1 << 12,
@@ -112,6 +113,8 @@ enum {
 		riscsync_vre = fifo_vre << 0,
 		riscsync_vro = fifo_vro << 0,
 		riscsync_fm1 = fifo_fm1 << 0,
+	risclabelshift_set = 16,
+	risclabelshift_reset = 20,
 };
 
 typedef struct {
@@ -203,20 +206,27 @@ typedef struct {
 } Tuner;
 
 typedef struct {
+	ulong	*fstart;
+	ulong	*fjmp;
+	uchar	*fbase;
+} Frame;
+
+typedef struct {
 	Lock;
 	Bt848	*bt848;
 	Variant	*variant;
 	Tuner	*tuner;
 	Pcidev	*pci;
-	ulong	*program;	// Current DMA program
 	uchar	i2ctuneraddr;
-	uchar	i2ccmd;		// I2C command
-	int		board;		// What board is this?
+	uchar	i2ccmd;			// I2C command
+	int		board;			// What board is this?
 
-	uchar	*dbuf;
+	Ref		fref;				// Copying images?
+	int		nframes;			// Number of frames to capture.
+	Frame	*frames;			// DMA program
+	int		lframe;			// Last frame DMAed
 } Tv;
 
-// Tuner related.
 enum {
 	TemicPAL = 0,
 	PhilipsPAL,
@@ -260,12 +270,14 @@ static Tuner tuners[] = {
 
 enum {
 	CMvstart,
+	CMvgastart,
 	CMvstop,
 	CMchannel,
 };
 
 static Cmdtab tvctlmsg[] = {
-	CMvstart,			"vstart",			3,
+	CMvstart,			"vstart",			2,
+	CMvgastart,		"vgastart",		3,
 	CMvstop,			"vstop",			1,
 	CMchannel,		"channel",			3,
 };
@@ -275,7 +287,6 @@ static Dirtab tvtab[]={
 	"tv",		{ Qdata, 0 },		0,	0600,
 	"tvctl",	{ Qctl, 0 },			0,	0600,
 	"tvregs",	{ Qregs, 0 },		0,	0400,
-	"tvdbuf",	{ Qdbuf, 0 },		0,	0400,
 };
 
 static Variant variant[] = {
@@ -292,18 +303,17 @@ static Tv *tv;
 static int i2cread(Tv *, uchar, uchar *);
 static int i2cwrite(Tv *, uchar, uchar, uchar, int);
 static void tvinterrupt(Ureg *, Tv *);
-static void vstart(Tv *, ulong, int);
+static void vgastart(Tv *, ulong, int);
+static void vstart(Tv *, int, int, int, int);
 static void vstop(Tv *);
 static void frequency(Tv *, int, int);
+static int getbpp(Tv *);
 
 static void
 tvinit(void)
 {
 	Pcidev *pci;
 	ulong intmask;
-
-	if (!getconf("tv0"))
-		return;
 
 	// Test for a triton memory controller.
 	intmask = 0;
@@ -435,9 +445,6 @@ tvinit(void)
 
 		intrenable(pci->intl, (void (*)(Ureg *, void *))tvinterrupt, 
 				tv, pci->tbdf, "tv");	
-
-		tv->dbuf = (uchar *)malloc(ntsc_hactive * ntsc_vactive * sizeof(ushort));
-		memset(tv->dbuf, 0, ntsc_hactive * ntsc_vactive * sizeof(ushort));
 	}
 }
 
@@ -462,7 +469,15 @@ tvstat(Chan *c, uchar *db, int n)
 static Chan*
 tvopen(Chan *c, int omode)
 {
-	return devopen(c, omode, tvtab, nelem(tvtab), devgen);
+	switch ((int)c->qid.path) {
+	case Qdir:
+		return devopen(c, omode, tvtab, nelem(tvtab), devgen);
+	}
+
+	c->mode = openmode(omode);
+	c->flag |= COPEN;
+	c->offset = 0;
+	return c;
 }
 
 static void
@@ -475,15 +490,49 @@ tvread(Chan *c, void *a, long n, vlong offset)
 	static char regs[10 * K];
 	static int regslen;
 	char *e, *p;
-	int nbytes;
 
 	USED(offset);
 
 	switch((int)c->qid.path) {
 	case Qdir:
 		return devdirread(c, a, n, tvtab, nelem(tvtab), devgen);
-	case Qdata:
-		error(Eio);
+
+	case Qdata: {
+		uchar *src;
+		int bpf, nb;
+
+		bpf = ntsc_hactive * ntsc_vactive * getbpp(tv);
+
+		if (offset >= bpf) 
+			return 0;
+
+		nb = n;
+		if (offset + nb > bpf)
+			nb = bpf - offset;
+
+		ilock(tv);
+		if (tv->frames == nil || tv->lframe >= tv->nframes) {
+			iunlock(tv);
+			return 0;
+		}
+
+		src = tv->frames[tv->lframe].fbase;
+		incref(&tv->fref);
+		iunlock(tv);
+
+		memmove(a, src + offset, nb);
+		decref(&tv->fref);
+		return nb;
+	}
+
+	case Qctl: {
+		char str[128];
+
+		snprint(str, sizeof str, "%dx%dx%d\n", 
+				ntsc_hactive, ntsc_vactive, getbpp(tv));
+		return readstr(offset, a, n, str);
+	}
+		
 	case Qregs:
 		if (offset == 0) {
 			Bt848 *bt848 = tv->bt848;
@@ -502,20 +551,6 @@ tvread(Chan *c, void *a, long n, vlong offset)
 			n = regslen - offset;
 
 		return readstr(offset, a, n, &regs[offset]);
-
-	case Qdbuf:
-		if (offset > ntsc_hactive * ntsc_vactive * sizeof(ushort)) {
-			memset(tv->dbuf, 0xaa, 
-					ntsc_hactive * ntsc_vactive * sizeof(ushort));
-			return 0;
-		}
-
-		if (offset + n > ntsc_hactive * ntsc_vactive * sizeof(ushort))
-			nbytes = ntsc_hactive * ntsc_vactive * sizeof(ushort) - offset;
-		else
-			nbytes = n;
-		memmove(a, tv->dbuf + offset, nbytes);
-		return nbytes;
 
 	default:
 		n=0;
@@ -540,12 +575,19 @@ tvwrite(Chan *c, void *a, long n, vlong)
 		ct = lookupcmd(cb, tvctlmsg, nelem(tvctlmsg));
 		switch (ct->index) {
 		case CMvstart:
-			vstart(tv, strtoul(cb->f[1], (char **)nil, 0),
+			vstart(tv, (int)strtol(cb->f[1], (char **)nil, 0), 
+					ntsc_hactive, ntsc_vactive, ntsc_hactive);
+			break;
+
+		case CMvgastart:
+			vgastart(tv, strtoul(cb->f[1], (char **)nil, 0),
 					(int)strtoul(cb->f[2], (char **)nil, 0));
 			break;
+
 		case CMvstop:
 			vstop(tv);
 			break;
+
 		case CMchannel:
 			frequency(tv, (int)strtol(cb->f[1], (char **)nil, 0), 
 				(int)strtol(cb->f[2], (char **)nil, 0));
@@ -585,9 +627,18 @@ static void
 tvinterrupt(Ureg *, Tv *tv)
 {
 	Bt848 *bt848 = tv->bt848;
-	ulong status;
 
-	while ((status = bt848->intstat & bt848->intmask) != 0) {
+	while (1) {
+		ulong status;
+		uchar fnum;
+
+		status = bt848->intstat;
+		fnum = (status >> intstat_riscstatshift) & 0xf;
+		status &= bt848->intmask;
+
+		if (status == 0)
+			break;
+
 		bt848->intstat = status;
 
 		if ((status & intstat_fmtchg) == intstat_fmtchg) {
@@ -613,7 +664,7 @@ tvinterrupt(Ureg *, Tv *tv)
 		}
 
 		if ((status & intstat_risci) == intstat_risci) {
-			iprint("int: risci\n");
+			tv->lframe = fnum;
 			status &= ~intstat_risci;
 		}
 			
@@ -692,17 +743,16 @@ i2cwrite(Tv *tv, uchar off, uchar d1, uchar d2, int both)
 	return 1;
 }
 
-
 static ulong *
-riscprogram(ulong paddr, int stride, int bpp)
+riscframe(ulong paddr, int fnum, int w, int h, int stride, ulong **lastjmp)
 {
 	ulong *p, *pbase;
 	int i;
 
-	pbase = p = (ulong *)malloc((ntsc_vactive + 5) * 2 * sizeof(ulong));
+	pbase = p = (ulong *)malloc((h + 6) * 2 * sizeof(ulong));
 	assert(p);
 
-	assert(ntsc_hactive * bpp <= 0x7FF);
+	assert(w <= 0x7FF);
 
 	*p++ = riscsync | riscsync_resync | riscsync_vre;
 	*p++ = 0;
@@ -710,9 +760,9 @@ riscprogram(ulong paddr, int stride, int bpp)
 	*p++ = riscsync | riscsync_fm1;
 	*p++ = 0;
 
-	for (i = 0; i != ntsc_vactive / 2; i++) {
-		*p++ = riscwrite | ntsc_hactive * bpp | riscwrite_sol | riscwrite_eol;
-		*p++ = paddr + i * 2 * stride * bpp;
+	for (i = 0; i != h / 2; i++) {
+		*p++ = riscwrite | w | riscwrite_sol | riscwrite_eol;
+		*p++ = paddr + i * 2 * stride;
 	}
 
 	*p++ = riscsync | riscsync_resync | riscsync_vro;
@@ -721,59 +771,103 @@ riscprogram(ulong paddr, int stride, int bpp)
 	*p++ = riscsync | riscsync_fm1;
 	*p++ = 0;
 
-	for (i = 0; i != ntsc_vactive / 2; i++) {
-		*p++ = riscwrite | ntsc_hactive * bpp | riscwrite_sol | riscwrite_eol;
-		*p++ = paddr + (i * 2 + 1) * stride * bpp;
+	for (i = 0; i != h / 2; i++) {
+		*p++ = riscwrite | w | riscwrite_sol | riscwrite_eol;
+		*p++ = paddr + (i * 2 + 1) * stride;
 	}
 
-	*p++ = riscjmp;
-	*p++ = PADDR(pbase);
-	USED(p);
+	// reset status.  you really need two instructions ;-(.
+	*p++ = riscjmp | (0xf << risclabelshift_reset); 	
+	*p++ = PADDR(p);
+	*p++ = riscjmp | riscirq | (fnum << risclabelshift_set);
+	*lastjmp = p;
 
 	return pbase;
 }
 
 static void
-vstart(Tv *tv, ulong paddr, int stride)
+vactivate(Tv *tv, Frame *frames, int nframes)
 {
 	Bt848 *bt848 = tv->bt848;
-	ulong *program, cfmt;
-	int bpp;
-
-	cfmt = bt848->colorfmt;
-	bpp = -1;
-	switch (cfmt) {
-	case colorfmt_rgb16:
-		bpp = 2;
-		break;
-	default:
-		panic("render: Unsupport color format\n");
-	}
-
-	program = riscprogram(paddr, stride, bpp);
-//	program = riscprogram(PADDR(tv->dbuf), ntsc_hactive * bpp, bpp);
 
 	ilock(tv);
-	if (waserror()) {
+	if (tv->frames) {
 		iunlock(tv);
-		free(program);
-		nexterror();
-	}
-
-	if (tv->program)
 		error(Einuse);
+	}
+	poperror();
 
-	if (cfmt != bt848->colorfmt)
-		error(Eio);
+	tv->frames = frames;
+	tv->nframes = nframes;
 
-	tv->program = program;
-	bt848->riscstrtadd = PADDR(tv->program);
+	bt848->riscstrtadd = PADDR(tv->frames[0].fstart);
 	bt848->capctl |= capctl_captureodd|capctl_captureeven;
 	bt848->gpiodmactl |= gpiodmactl_fifoenable;
 	bt848->gpiodmactl |= gpiodmactl_riscenable;
 	
-	poperror();
 	iunlock(tv);
+}
+
+static void
+vstart(Tv *tv, int nframes, int w, int h, int stride)
+{
+	Frame *frames;
+	int bpp, i, bpf;
+
+	if (nframes >= 0x10)
+		error(Ebadarg);
+
+	bpp = getbpp(tv);
+	bpf = w * h * bpp;
+
+	// Add one as a spare.
+	frames = (Frame *)malloc(nframes * sizeof(Frame));
+	assert(frames);
+	if (waserror()) {
+		for (i = 0; i != nframes; i++)
+			if (frames[i].fbase)
+				free(frames[i].fbase);
+		free(frames);
+		nexterror();
+	}
+	memset(frames, 0, nframes * sizeof(Frame));
+
+	for (i = 0; i != nframes; i++) {
+		if ((frames[i].fbase = (uchar *)malloc(bpf)) == nil)
+			error(Enomem);
+		
+		frames[i].fstart = riscframe(PADDR(frames[i].fbase), i, 
+								w * bpp, h, stride * bpp, 
+								&frames[i].fjmp);
+	}
+
+	for (i = 0; i != nframes; i++)
+		*frames[i].fjmp = 
+			PADDR((i == nframes - 1)? frames[0].fstart: frames[i + 1].fstart);
+
+	vactivate(tv, frames, nframes);
+}
+
+static void
+vgastart(Tv *tv, ulong paddr, int stride)
+{
+	Frame *frame;
+
+	frame = (Frame *)malloc(sizeof(Frame));
+	assert(frame);
+	if (waserror()) {
+		free(frame);
+		nexterror();
+	}
+
+	frame->fbase = nil;
+	frame->fstart = 
+			riscframe(paddr, 0, ntsc_hactive * getbpp(tv), ntsc_vactive, 
+					stride * getbpp(tv), 
+					&frame->fjmp);
+	*frame->fjmp = PADDR(frame->fstart);
+
+	vactivate(tv, frame, 1);
 }
 
 static void
@@ -782,24 +876,24 @@ vstop(Tv *tv)
 	Bt848 *bt848 = tv->bt848;
 
 	ilock(tv);
-	if (waserror()) {
-
-		if (tv->program)
-			free(tv->program);
+	if (tv->fref.ref > 0) {
 		iunlock(tv);
-		nexterror();
+		error(Einuse);
 	}
 
-	if (tv->program) {
+	if (tv->frames) {
+		int i;
+
 		bt848->gpiodmactl &= ~gpiodmactl_riscenable;
 		bt848->gpiodmactl &= ~gpiodmactl_fifoenable;
 		bt848->capctl &= ~(capctl_captureodd|capctl_captureeven);
 
-		free(tv->program);
-		tv->program = nil;
+		for (i = 0; i != tv->nframes; i++)
+			if (tv->frames[i].fbase)
+				free(tv->frames[i].fbase);
+		free(tv->frames);
+		tv->frames = nil;
 	}
-	
-	poperror();
 	iunlock(tv);
 }
 
@@ -852,3 +946,16 @@ frequency(Tv *tv, int channel, int finetune)
 		error(Eio);
 }
 
+static int
+getbpp(Tv *tv)
+{
+	switch (tv->bt848->colorfmt) {
+	case colorfmt_rgb16:
+		return 2;
+	default:
+		error("getbpp: Unsupport color format\n");
+	}	
+	return -1;
+}
+
+	
