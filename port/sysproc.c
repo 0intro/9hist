@@ -194,8 +194,8 @@ sysrfork(ulong *arg)
 	 *  (i.e. has bad properties) and has to be discarded.
 	 */
 	flushmmu();
-	p->priority = up->priority;
 	p->basepri = up->basepri;
+	p->priority = up->basepri;
 	p->fixedpri = up->fixedpri;
 	p->mp = up->mp;
 	wm = up->wired;

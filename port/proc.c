@@ -133,7 +133,7 @@ anyhigher(void)
 
 enum
 {
-	Squantum = (HZ+Nrq-1)/Nrq,
+	Squantum = 1,
 };
 
 void
@@ -150,13 +150,13 @@ ready(Proc *p)
 		/* history counts */
 		if(p->state == Running){
 			p->rt++;
-			pri = ((p->art + (p->rt<<1))>>2)/Squantum;
+			pri = (p->art + p->rt)/2;
 		} else {
-			p->art = (p->art + (p->rt<<1))>>2;
+			p->art = (p->art + p->rt + 2)/2;
+			pri = (p->art + p->rt)/2;
 			p->rt = 0;
-			pri = p->art/Squantum;
 		}
-		pri = p->basepri - pri;
+		pri = p->basepri - (pri/Squantum);
 		if(pri < 0)
 			pri = 0;
 	
