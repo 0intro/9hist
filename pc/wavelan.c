@@ -793,7 +793,7 @@ w_ifstat(Ether* ether, void* a, long n, ulong offset)
 	k = ((ctlr->state & Attached) ? "attached" : "not attached");
 	PRINTSTAT("Card %s", k);
 	k = ((ctlr->state & Power) ? "on" : "off");
-	PRINTSTAT("PCardower %s", k);
+	PRINTSTAT(", power %s", k);
 	k = ((ctlr->txbusy)? ", txbusy" : "");
 	PRINTSTAT("%s\n", k);
 
