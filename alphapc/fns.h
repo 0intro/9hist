@@ -71,8 +71,8 @@ void	pcisetbme(Pcidev*);
 void		prflush(void);
 void		printinit(void);
 #define	procrestore(p)
-#define	procsave(p)
-#define	procsetup(p)	((p)->fpstate = FPinit)
+void	procsave(Proc*);
+void	procsetup(Proc*);
 void		restfpregs(FPsave*);
 uvlong		rpcc(uvlong*);
 void		screeninit(void);

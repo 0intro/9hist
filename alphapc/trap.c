@@ -46,11 +46,6 @@ trap(Ureg *ur)
 	if(user){
 		up = m->proc;
 		up->dbgreg = ur;
-		if(up && up->fpstate == FPactive) {
-			up->fpstate = FPinactive;
-			savefpregs(&up->fpsave);
-			fpenab(0);
-		}
 	}
 	switch ((int)ur->type) {
 	case 1:	/* arith */
@@ -82,15 +77,9 @@ trap(Ureg *ur)
 		break;
 	}
 
-	splhi();
-	if(!user)
-		return;
-
-	notify(ur);
-	if(up->fpstate == FPinactive) {
-		fpenab(1);
-		restfpregs(&up->fpsave);
-		up->fpstate = FPactive;
+	if(user && (up->procctl || up->nnote)){
+		splhi();
+		notify(ur);
 	}
 }
 
@@ -500,32 +489,32 @@ syscall(Ureg *aur)
 	up->dbgreg = aur;
 	ur->type = 5;		/* for debugging */
 
-	if(up->fpstate == FPactive) {
-		up->fpsave.fpstatus = getfcr();
-		up->fpstate = FPinit;
-		fpenab(0);
+	up->scallnr = ur->r0;
+
+	if(up->scallnr == RFORK && up->fpstate == FPactive){
+		savefpregs(&up->fpsave);
+		up->fpstate = FPinactive;
+//print("SR=%lux+", up->fpsave.fpstatus);
 	}
 	spllo();
 
-	if(up->procctl)
-		procctl(up);
-
-	up->scallnr = ur->r0;
-	up->nerrlab = 0;
 	sp = ur->sp;
+	up->nerrlab = 0;
 	ret = -1;
 	if(waserror())
 		goto error;
 
 	if(up->scallnr >= nsyscall){
-		pprint("bad sys call %d pc %lux\n", up->scallnr, (ulong)ur->pc);
+		pprint("bad sys call %d pc %lux\n",
+			up->scallnr, (ulong)ur->pc);
 print("bad sys call %d pc %lux\n", up->scallnr, (ulong)ur->pc);
 		postnote(up, 1, "sys: bad sys call", NDebug);
 		error(Ebadarg);
 	}
 
 	if(sp & (BY2WD-1)){	/* XXX too weak? */
-		pprint("odd sp in sys call pc %lux sp %lux\n", (ulong)ur->pc, (ulong)ur->sp);
+		pprint("odd sp in sys call pc %lux sp %lux\n",
+			(ulong)ur->pc, (ulong)ur->sp);
 		postnote(up, 1, "sys: odd stack", NDebug);
 		error(Ebadarg);
 	}
@@ -543,18 +532,14 @@ error:
 	up->nerrlab = 0;
 	up->psstate = 0;
 	up->insyscall = 0;
-	if(up->scallnr == NOTED)				/* ugly hack */
+	if(up->scallnr == NOTED)			/* ugly hack */
 		noted(ur, &aur, *(ulong*)(sp+2*BY2WD));	/* doesn't return */
 
-	splhi();
 	if(up->scallnr!=RFORK && (up->procctl || up->nnote)){
 		ur->r0 = ret;				/* load up for noted() */
 		if(notify(ur))
 			return ur->r0;
 	}
-
-	if(up->fpstate == FPinactive)		/* due to race with intr */
-		up->fpstate = FPinit;
 
 	return ret;
 }
@@ -605,7 +590,6 @@ execregs(ulong entry, ulong ssize, ulong nargs)
 	ur = (Ureg*)up->dbgreg;
 	ur->usp = (ulong)sp;
 	ur->pc = entry;
-	up->fpsave.fpstatus = initfp.fpstatus;
 	return USTKTOP-BY2WD;			/* address of user-level clock */
 }
 
@@ -683,18 +667,20 @@ illegal(Ureg *ur)
 void
 fen(Ureg *ur)
 {
-	ulong fpcr;
-
-	if ((ur->status&UMODE) && up) {
-		if(up->fpstate == FPinit) {
+	if(up){
+		switch(up->fpstate){
+		case FPinit:
+			restfpregs(&initfp);
 			up->fpstate = FPactive;
-			fpcr = up->fpsave.fpstatus;
-			up->fpsave = initfp;
-			up->fpsave.fpstatus = fpcr;
-			fpenab(1);
+//print("EI=%lux+", initfp.fpstatus);
+			return;
+
+		case FPinactive:
 			restfpregs(&up->fpsave);
+			up->fpstate = FPactive;
+//print("EIA=%lux+", up->fpsave.fpstatus);
 			return;
 		}
 	}
-	fataltrap(ur, "trap: floating enable");		/* should never happen */
+	fataltrap(ur, "trap: floating enable");	/* should never happen */
 }

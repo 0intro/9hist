@@ -8,6 +8,11 @@
 
 #include	"devlml.h"
 
+#define DBGREGS 0x1
+#define DBGREAD 0x2
+#define DBGWRIT 0x4
+int debug = DBGREAD|DBGWRIT;
+
 // Lml 22 driver
 
 enum{
@@ -15,6 +20,7 @@ enum{
 	Q819,
 	Q856,
 	Qreg,
+	Qmap,
 	Qjvideo,
 	Qjframe,
 };
@@ -24,6 +30,7 @@ static Dirtab lmldir[]={
 	"lml819",	{Q819},		0,		0644,
 	"lml856",	{Q856},		0,		0644,
 	"lmlreg",	{Qreg},		0,		0644,
+	"lmlmap",	{Qmap},		0,		0444,
 	"jvideo",	{Qjvideo},	0,		0666,
 	"jframe",	{Qjframe},	0,		0666,
 };
@@ -41,11 +48,74 @@ int		hdrPos;
 int		nopens;
 uchar		q856[3];
 
+struct {
+	ulong pci;
+	ulong dma;
+	ulong codedata;
+} lmlmap;
+
 static FrameHeader frameHeader = {
 	MRK_SOI, MRK_APP3, (sizeof(FrameHeader)-4) << 8,
 	{ 'L', 'M', 'L', '\0'},
 	-1, 0, 0, 0, 0
 };
+
+ulong
+writel(ulong v, ulong a) {
+	if (debug&DBGREGS)
+		pprint("writing %.8lux  to  %.8lux (%.4lux)\n",
+			v, a, (ulong)a-pciBaseAddr);
+	return *(ulong *)a = v;
+}
+
+ushort
+writew(ushort v, ulong a) {
+	if (debug&DBGREGS)
+		pprint("writing     %.4ux  to  %.8lux (%.4lux)\n",
+			v, a, (ulong)a-pciBaseAddr);
+	return *(ushort *)a = v;
+}
+
+uchar
+writeb(uchar v, ulong a) {
+	if (debug&DBGREGS)
+		pprint("writing       %.2ux  to  %.8lux (%.4lux)\n",
+			v, a, (ulong)a-pciBaseAddr);
+	return *(uchar *)a = v;
+}
+
+ulong
+readl(ulong a) {
+	ulong v;
+
+	v = *(ulong*)a;
+	if (debug&DBGREGS)
+		pprint("reading %.8lux from %.8lux (%.4lux)\n",
+			v, a, (ulong)a-pciBaseAddr);
+	return v;
+}
+
+ushort
+readw(ulong a) {
+	ushort v;
+
+	v = *(ushort*)a;
+	if (debug&DBGREGS)
+		pprint("reading     %.4ux from %.8lux (%.4lux)\n",
+			v, a, (ulong)a-pciBaseAddr);
+	return v;
+}
+
+uchar
+readb(ulong a) {
+	uchar v;
+
+	v = *(uchar*)a;
+	if (debug&DBGREGS)
+		pprint("reading       %.2ux from %.8lux (%.4lux)\n",
+			v, a, (ulong)a-pciBaseAddr);
+	return v;
+}
 
 static void
 i2c_pause(void) {
@@ -222,6 +292,7 @@ i2c_rd8(int addr, int sub)
 
 	if (i2c_wrbyte(addr) == 1
 	 || i2c_wrbyte(sub) == 1) {
+		if (debug&DBGREGS) pprint("i2c_rd8, failure 1\n");
 		i2c_stop();
 		return -1;
 	}
@@ -230,6 +301,7 @@ i2c_rd8(int addr, int sub)
 
 	if (i2c_wrbyte(addr+1) == 1
 	 || i2c_rdbyte(&msb) == 0){
+		if (debug&DBGREGS) pprint("i2c_rd8, failure 2\n");
 		i2c_stop();
 		return -1;
 	}
@@ -303,10 +375,13 @@ vread(Chan *, void *va, long count, vlong pos) {
 	vlong thetime;
 	uchar *buf = va;
 
-	//print("devlml::vread() count=%ld pos=%lld\n", count, pos);
+	if(debug&DBGREAD)
+		pprint("devlml::vread() count=%ld pos=%lld\n", count, pos);
 
 	// If we just begin reading a file, pos would never be 0 otherwise
 	if (pos == 0 && hdrPos == -1) {
+		if(debug&DBGREAD)
+			pprint("devlml::first read\n");
 		 currentBuffer = -1;
 		 currentBufferLength = 0;
 		 frameNo = -1;
@@ -316,12 +391,18 @@ vread(Chan *, void *va, long count, vlong pos) {
 	// We get to the end of the current buffer, also covers just
 	// open file, since 0 >= -1
 	if(hdrPos == -1 && pos >= currentBufferLength) {
+		if(debug&DBGREAD)
+			pprint("devlml::prepareBuffer\n");
 		prepareBuffer(codeData, currentBuffer);
 		// if not the first buffer read and single frame mode - return EOF
 		if (currentBuffer != -1 && singleFrame)
 			return 0;
+		if(debug&DBGREAD)
+			pprint("devlml::sleep\n");
 		while((currentBuffer = getProcessedBuffer(codeData)) == -1)
 			sleep(&sleeper, return0, 0);
+		if(debug&DBGREAD)
+			pprint("devlml::wokeup\n");
 		currentBufferLength = getBuffer(codeData, currentBuffer,
 			&currentBufferPtr, &frameNo);
 
@@ -362,7 +443,7 @@ vread(Chan *, void *va, long count, vlong pos) {
 	memmove(buf + retcount, (char *)currentBufferPtr + pos, cpcount);
 	retcount += cpcount;
 
-	//pr_debug("return %d %d\n",cpcount,retcount);
+	//pr_debug&DBGREGS("return %d %d\n",cpcount,retcount);
 	return retcount;
 }
 
@@ -511,6 +592,10 @@ lmlreset(void)
 	// Interrupt handler
 	intrenable(pcidev->intl, lmlintr, nil, pcidev->tbdf);
 
+	lmlmap.pci = pciBaseAddr;
+	lmlmap.dma = PADDR(codeData);
+	lmlmap.codedata = (ulong)codeData;
+
 	return; 
 }
 
@@ -540,6 +625,7 @@ lmlopen(Chan *c, int omode)
 	case Q819:
 	case Q856:
 	case Qreg:
+	case Qmap:
 		break;
 	case Qjvideo:
 	case Qjframe:
@@ -566,8 +652,12 @@ lmlclose(Chan *c)
 	case Q819:
 	case Q856:
 	case Qreg:
+	case Qmap:
+		authclose(c);
+		break;
 	case Qjvideo:
 	case Qjframe:
+		nopens = 0;
 		authclose(c);
 	}
 }
@@ -577,7 +667,6 @@ lmlread(Chan *c, void *va, long n, vlong voff) {
 	int i, d;
 	uchar *buf = va;
 	long off = voff;
-	long v;
 
 	switch(c->qid.path & ~CHDIR){
 
@@ -591,7 +680,7 @@ lmlread(Chan *c, void *va, long n, vlong voff) {
 			if ((d = i2c_rd8(BT819Addr, off++)) < 0) break;
 			*buf++ = d;
 		}
-		return n - i;
+		return i;
 	case Q856:
 		if (n != 1)
 			return 0;
@@ -614,6 +703,15 @@ lmlread(Chan *c, void *va, long n, vlong voff) {
 			return 0;
 		}
 		return 1;
+	case Qmap:
+		if (off < 0)
+			return 0;
+		for (i = 0; i < n; i++) {
+			if (off + i > sizeof lmlmap)
+				break;
+			buf[i] = ((uchar *)&lmlmap)[off + i];
+		}
+		return i;
 	case Qreg:
 		if (off < 0 || off + n > 0x400)
 			return 0;
@@ -627,9 +725,7 @@ lmlread(Chan *c, void *va, long n, vlong voff) {
 			break;
 		case 4:
 			if (off & (n-1)) return 0;
-			v = readl(pciBaseAddr + off);
-			*(long *)buf = v;
-print("reading %lux at %lux (%lux)\n", v, pciBaseAddr + off, off);
+			*(long *)buf = readl(pciBaseAddr + off);
 			break;
 		default:
 			return 0;
@@ -658,7 +754,7 @@ lmlwrite(Chan *c, void *va, long n, vlong voff) {
 		for (i = n; i > 0; i--)
 			if (i2c_wr8(BT819Addr, off++, *buf++) == 0)
 				break;
-		return n - i;
+		return i;
 	case Q856:
 		if (n != 1 || off < 0xda || off + n > 0xe0)
 			return 0;
@@ -677,17 +773,20 @@ lmlwrite(Chan *c, void *va, long n, vlong voff) {
 		}
 		return 1;
 	case Qreg:
-		if (off < 0 || off + n > 0x200 || (off & 0x3))
+		if (off < 0 || off + n > 0x400)
 			return 0;
 		switch (n) {
 		case 1:
 			writeb(*buf, pciBaseAddr + off);
 			break;
 		case 2:
+			if (off & 0x1)
+				return 0;
 			writew(*(short *)buf, pciBaseAddr + off);
 			break;
 		case 4:
-print("writing %lux to %lux (%lux)\n", *(long *)buf, pciBaseAddr + off, off);
+			if (off & 0x3)
+				return 0;
 			writel(*(long *)buf, pciBaseAddr + off);
 			break;
 		default:
@@ -725,12 +824,16 @@ static void
 lmlintr(Ureg *, void *) {
 	ulong flags = readl(pciBaseAddr+ZR36057_INTR_STAT);
 	
-//  print("MjpgDrv_intrHandler stat=0x%08x\n", flags);
+	if(debug&(DBGREAD|DBGWRIT))
+		print("MjpgDrv_intrHandler stat=0x%.8lux\n", flags);
 
 	// Reset all interrupts from 067
 	writel(0xff000000, pciBaseAddr + ZR36057_INTR_STAT);
 
-	if(flags & ZR36057_INTR_JPEGREP)
-			wakeup(&sleeper);
+	if(flags & ZR36057_INTR_JPEGREP) {
+		if(debug&(DBGREAD|DBGWRIT))
+			print("MjpgDrv_intrHandler wakeup\n");
+		wakeup(&sleeper);
+	}
 	return;
 }

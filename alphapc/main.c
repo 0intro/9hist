@@ -15,6 +15,7 @@ Hwrpb *hwrpb;
 Bootconf *bootconf;
 Conf	conf;
 FPsave	initfp;
+uvlong initfpcr = 0x2800800000000000LL;
 
 void
 main(void)
@@ -26,8 +27,6 @@ main(void)
 	clockinit();
 	confinit();
 	archinit();
-	savefpregs(&initfp);
-	fpenab(0);
 	mmuinit();
 	xinit();
 	printinit();
@@ -47,8 +46,8 @@ main(void)
 
 #ifdef	NEVER
 	percpu = hwrpb + (hwrpb[40]>>2);
-//	percpu[32] |= 2;			/* restart capable */
-	percpu[32] &= ~1;			/* boot in progress - not */
+//	percpu[32] |= 2;		/* restart capable */
+	percpu[32] &= ~1;		/* boot in progress - not */
 //	percpu[32] |= (3<<16);		/* warm boot requested */
 //	percpu[32] |= (2<<16);		/* cold boot requested */
 //	percpu[32] |= (4<<16);		/* stay halted */
@@ -61,6 +60,8 @@ main(void)
 	chandevreset();
 	pageinit();
 	swapinit();
+	savefpregs(&initfp);
+initfp.fpstatus = 0x68028000;
 	userinit();
 	schedinit();
 }
@@ -131,9 +132,7 @@ userinit(void)
 	strcpy(p->text, "*init*");
 	strcpy(p->user, eve);
 
-	p->fpstate = FPinit;
-	p->fpsave.fpstatus = initfp.fpstatus;
-	fpenab(0);
+	procsetup(p);
 
 	/*
 	 * Kernel Stack
@@ -168,6 +167,44 @@ userinit(void)
 	kunmap(k);
 
 	ready(p);
+}
+
+void
+procsetup(Proc *p)
+{
+	p->fpstate = FPinit;
+	fpenab(0);
+}
+
+void
+procsave(Proc *p)
+{
+	if(p->fpstate == FPactive){
+		if(p->state == Moribund)
+			fpenab(0);
+		else{
+			/*
+			 * Fpsave() stores without handling pending
+			 * unmasked exeptions. Postnote() can't be called
+			 * here as sleep() already has up->rlock, so
+			 * the handling of pending exceptions is delayed
+			 * until the process runs again and generates an
+			 * emulation fault to activate the FPU.
+			 */
+			savefpregs(&up->fpsave);
+//print("PS=%lux+", up->fpsave.fpstatus);
+		}
+		p->fpstate = FPinactive;
+	}
+
+	/*
+	 * Switch to the prototype page tables for this processor.
+	 * While this processor is in the scheduler, the process could run
+	 * on another processor and exit, returning the page tables to
+	 * the free list where they could be reallocated and overwritten.
+	 * When this processor eventually has to get an entry from the
+	 * trashed page tables it will crash.
+	 */
 }
 
 void

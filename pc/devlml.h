@@ -89,13 +89,6 @@ typedef struct {
 #define FRAGM_FINAL_B 1
 #define STAT_BIT 1
 
-#define writel(v, a)	(*(ulong  *)(a) = (v))
-#define writew(v, a)	(*(ushort *)(a) = (v))
-#define writeb(v, a)	(*(uchar  *)(a) = (v))
-#define readl(a)	(*(ulong  *)(a))
-#define readw(a)	(*(ushort *)(a))
-#define readb(a)	(*(uchar  *)(a))
-
 typedef struct FrameHeader		FrameHeader;
 typedef struct MjpgDrv			MjpgDrv;
 typedef struct Fragment			Fragment;

@@ -356,7 +356,7 @@ etherreset(void)
 				ether->irq = 9;
 			intrenable(VectorPCI+ether->irq, ether->interrupt, ether, ether->tbdf);
 
-			i = sprint(buf, "#l%d: %s: %dMbps port 0x%luX irq %d",
+			i = sprint(buf, "#l%d: %s: %dMbps port 0x%luX irq %ld",
 				ctlrno, ether->type, ether->mbps, ether->port, ether->irq);
 			if(ether->mem)
 				i += sprint(buf+i, " addr 0x%luX", PADDR(ether->mem));

@@ -1,6 +1,6 @@
 #include "mem.h"
 
-#define SP		R30
+#define SP	R30
 
 #define	HI_IPL	6			/* use 7 to disable mchecks */
 
@@ -23,48 +23,45 @@ clrbss:
 	MOVL	R0, bootconf(SB)	/* passed in from boot loader */
 
 _fpinit:
-	MOVQ	R0, R16
+	MOVQ	$1, R16
 	CALL_PAL $PALwrfen
-	MOVQ	$1, R1
-	SLLQ	$59, R1			/* normal rounding mode */
+
+	MOVQ	initfpcr(SB), R1	/* MOVQ	$0x2800800000000000, R1 */
 	MOVQ	R1, (R30)
 	MOVT	(R30), F1
-	EXCB
 	MOVT	F1, FPCR
-	EXCB
 
 	MOVT	$0.5, F28
 	ADDT	F28, F28, F29
 	ADDT	F29, F29, F30
 
-	SUBT	F28, F28, F0
-	MOVT	F0, F1
-	MOVT	F0, F2
-	MOVT	F0, F3
-	MOVT	F0, F4
-	MOVT	F0, F5
-	MOVT	F0, F6
-	MOVT	F0, F7
-	MOVT	F0, F8
-	MOVT	F0, F9
-	MOVT	F0, F10
-	MOVT	F0, F11
-	MOVT	F0, F12
-	MOVT	F0, F13
-	MOVT	F0, F14
-	MOVT	F0, F15
-	MOVT	F0, F16
-	MOVT	F0, F17
-	MOVT	F0, F18
-	MOVT	F0, F19
-	MOVT	F0, F20
-	MOVT	F0, F21
-	MOVT	F0, F22
-	MOVT	F0, F23
-	MOVT	F0, F24
-	MOVT	F0, F25
-	MOVT	F0, F26
-	MOVT	F0, F27
+	MOVT	F31, F1
+	MOVT	F31, F2
+	MOVT	F31, F3
+	MOVT	F31, F4
+	MOVT	F31, F5
+	MOVT	F31, F6
+	MOVT	F31, F7
+	MOVT	F31, F8
+	MOVT	F31, F9
+	MOVT	F31, F10
+	MOVT	F31, F11
+	MOVT	F31, F12
+	MOVT	F31, F13
+	MOVT	F31, F14
+	MOVT	F31, F15
+	MOVT	F31, F16
+	MOVT	F31, F17
+	MOVT	F31, F18
+	MOVT	F31, F19
+	MOVT	F31, F20
+	MOVT	F31, F21
+	MOVT	F31, F22
+	MOVT	F31, F23
+	MOVT	F31, F24
+	MOVT	F31, F25
+	MOVT	F31, F26
+	MOVT	F31, F27
 
 	JSR	main(SB)
 	MOVQ	$_divq(SB), R31		/* touch _divq etc.; doesn't need to execute */
@@ -380,9 +377,15 @@ TEXT	savefpregs(SB), $-8
 	MOVT	F31, 0xF8(R0)
 	MOVT	FPCR, F0
 	MOVT	F0, 0x100(R0)
+
+	MOVQ	$0, R16
+	CALL_PAL $PALwrfen		/* disable */
 	RET
 
 TEXT	restfpregs(SB), $-8
+	MOVQ	$1, R16
+	CALL_PAL $PALwrfen		/* enable */
+
 	MOVT	0x100(R0), F0
 	MOVT	F0, FPCR
 	MOVT	0x00(R0), F0
