@@ -16,6 +16,7 @@
 #define PGROUND(s)	ROUND(s, BY2PG)
 
 #define	MAXMACH		8			/* max # cpus system can run */
+#define KSTACK		4096			/* Size of kernel stack */
 
 /*
  * Time
@@ -23,8 +24,8 @@
 #define	HZ		(100)			/* clock frequency */
 #define	MS2HZ		(1000/HZ)		/* millisec per clock tick */
 #define	TK2SEC(t)	((t)/HZ)		/* ticks to seconds */
-#define	TK2MS(t)	((((ulong)(t))*1000)/HZ)	/* ticks to milliseconds */
-#define	MS2TK(t)	((((ulong)(t))*HZ)/1000)	/* milliseconds to ticks */
+#define	TK2MS(t)	((t)*MS2HZ)		/* ticks to milliseconds */
+#define	MS2TK(t)	((t)/MS2HZ)		/* milliseconds to ticks */
 
 /*
  * Fundamental addresses
@@ -45,26 +46,18 @@
  *
  *  User is at 0-2GB
  *  Kernel is at 2GB-4GB
- *
- *  To avoid an extra page map, both the user stack (USTKTOP) and
- *  the temporary user stack (TSTKTOP) should be in the the same
- *  4 meg.
  */
 #define	UZERO		0			/* base of user address space */
 #define	UTZERO		(UZERO+BY2PG)		/* first address in user text */
 #define	KZERO		0x80000000		/* base of kernel address space */
 #define	KTZERO		0x80100000		/* first address in kernel text */
-#define	TSTKTOP		0xC0000000		/* end of new stack in sysexec */
-#define TSTKSIZ 10
-#define	USTKTOP		(TSTKTOP-TSTKSIZ*BY2PG)	/* byte just beyond user stack */
-#define	USTKSIZE	(16*1024*1024 - TSTKSIZ*BY2PG)	/* size of user stack */
-#define KSTACK		4096			/* Size of kernel stack */
-#define ROMBIOS		(KZERO|0xF0000)
-#define	ISAMEMSIZE	(4*MB)			/* mem space reserved for ISA */
-#define globalmem(x)	((((ulong)x)&0xF0000000)==KZERO)	/* addresses valid in all contexts */
+#define	USTKTOP		(KZERO-BY2PG)		/* byte just beyond user stack */
+#define	USTKSIZE	(4*1024*1024)		/* size of user stack */
+#define	TSTKTOP		(USTKTOP-USTKSIZE)	/* end of new stack in sysexec */
+#define TSTKSIZ 	100
 
 /*
- *  known 80386 segments (in GDT) and their selectors
+ *  known x86 segments (in GDT) and their selectors
  */
 #define	NULLSEG	0	/* null segment */
 #define	KDSEG	1	/* kernel data/stack */
@@ -93,7 +86,7 @@
 #define	SEGTSS	(0x9<<8)	/* TSS segment */
 #define SEGCG	(0x0C<<8)	/* call gate */
 #define	SEGIG	(0x0E<<8)	/* interrupt gate */
-#define SEGTG	(0x0F<<8)	/* task gate */
+#define SEGTG	(0x0F<<8)	/* trap gate */
 #define SEGTYPE	(0x1F<<8)
 
 #define SEGP	(1<<15)		/* segment present */
