@@ -20,7 +20,7 @@ enum
 	TimerON		= 1,
 	TimerDONE	= 2,
 	MAX_TIME 	= (1<<20),	/* Forever */
-	TCP_ACK		= 50,		/* Timed ack sequence in ms */
+	TCP_ACK		= 200,		/* Timed ack sequence in ms */
 
 	URG		= 0x20,		/* Data marked urgent */
 	ACK		= 0x10,		/* Acknowledge is valid */
@@ -1384,17 +1384,21 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 				 * receive queue
 				 */
 				if(bp) {
-					qpass(s->rq, bp);
+					qpassnolim(s->rq, packblock(bp));
 					bp = nil;
 				}
 				tcb->rcv.nxt += length;
 				tcprcvwin(s);
-				if(tcb->acktimer.state != TimerON)
-					tcpgo(tpriv, &tcb->acktimer);
 
-				/* force an ack if there's a lot of unacked data */
-				if(tcb->rcv.nxt-tcb->last_ack > (QMAX>>4))
+				/*
+				 *  force an ack if we've got 2 segs
+				 *  and the user isn't backing up
+				 */
+				if(tcb->rcv.nxt - tcb->last_ack >= 2*tcb->mss &&
+				   qlen(s->rq) < 8*tcb->mss)
 					tcb->flags |= FORCE;
+				else if(tcb->acktimer.state != TimerON)
+					tcpgo(tpriv, &tcb->acktimer);
 
 				break;
 			case Finwait2:
@@ -1637,8 +1641,15 @@ tcpoutput(Conv *s)
 		 * expect acknowledges
 		 */
 		if(ssize != 0){
+			/* round trip depenency */
 			x = backoff(tcb->backoff) *
 			    (tcb->mdev + (tcb->srtt>>LOGAGAIN) + MSPTICK) / MSPTICK;
+
+			/* take into account delayed ack */
+			if(sent <= 2*tcb->mss)
+				x += TCP_ACK/MSPTICK;
+
+			/* sanity check */
 			if(x > (10000/MSPTICK))
 				x = 10000/MSPTICK;
 			tcb->timer.start = x;

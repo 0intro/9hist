@@ -136,6 +136,7 @@ struct Block
 	ulong	flag;
 };
 #define BLEN(s)	((s)->wp - (s)->rp)
+#define BALLOC(s) ((s)->lim - (s)->base);
 
 struct Chan
 {

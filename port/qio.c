@@ -95,6 +95,19 @@ checkb(Block *b, char *msg)
 }
 
 void
+checkqlen(Queue *q)
+{
+	int len;
+	Block *b;
+
+	len = 0;
+	for(b = q->bfirst; b; b = b->next)
+		len += BALLOC(b);
+	if(len != q->len)
+		panic("checkqlen");
+}
+
+void
 ixsummary(void)
 {
 	debugging ^= 1;
@@ -517,7 +530,7 @@ qget(Queue *q)
 	}
 	q->bfirst = b->next;
 	b->next = 0;
-	q->len -= BLEN(b);
+	q->len -= BALLOC(b);
 	QDEBUG checkb(b, "qget");
 
 	/* if writer flow controlled, restart */
@@ -554,12 +567,12 @@ qdiscard(Queue *q, int len)
 		if(n <= len - sofar){
 			q->bfirst = b->next;
 			b->next = 0;
+			q->len -= BALLOC(b);
 			freeb(b);
 		} else {
 			n = len - sofar;
 			b->rp += n;
 		}
-		q->len -= n;
 	}
 
 	/* if writer flow controlled, restart */
@@ -601,6 +614,7 @@ qconsume(Queue *q, void *vp, int len)
 		if(n > 0)
 			break;
 		q->bfirst = b->next;
+		q->len -= BALLOC(b);
 		freeb(b);
 	};
 
@@ -611,7 +625,6 @@ qconsume(Queue *q, void *vp, int len)
 	if((q->state & Qmsg) || len == n)
 		q->bfirst = b->next;
 	b->rp += len;
-	q->len -= len;
 
 	/* if writer flow controlled, restart */
 	if((q->state & Qflow) && q->len < q->limit/2){
@@ -629,6 +642,7 @@ qconsume(Queue *q, void *vp, int len)
 	/* discard the block if we're done with it */
 	if((q->state & Qmsg) || len == n){
 		b->next = 0;
+		q->len -= BALLOC(b);
 		freeb(b);
 	}
 	return len;
@@ -643,7 +657,7 @@ qpass(Queue *q, Block *b)
 	dowakeup = 0;
 	ilock(q);
 	if(q->len >= q->limit){
-		freeb(b);
+		freeblist(b);
 		iunlock(q);
 		return -1;
 	}
@@ -653,12 +667,12 @@ qpass(Queue *q, Block *b)
 		q->blast->next = b;
 	else
 		q->bfirst = b;
-	len = BLEN(b);
+	len = BALLOC(b);
 	QDEBUG checkb(b, "qpass");
 	while(b->next){
 		b = b->next;
 		QDEBUG checkb(b, "qpass");
-		len += BLEN(b);
+		len += BALLOC(b);
 	}
 	q->blast = b;
 	q->len += len;
@@ -670,12 +684,78 @@ qpass(Queue *q, Block *b)
 		q->state &= ~Qstarve;
 		dowakeup = 1;
 	}
+checkqlen(q);
 	iunlock(q);
 
 	if(dowakeup)
 		wakeup(&q->rr);
 
 	return len;
+}
+
+int
+qpassnolim(Queue *q, Block *b)
+{
+	int len, dowakeup;
+
+	/* sync with qread */
+	dowakeup = 0;
+	ilock(q);
+
+	/* add buffer to queue */
+	if(q->bfirst)
+		q->blast->next = b;
+	else
+		q->bfirst = b;
+	len = BALLOC(b);
+	QDEBUG checkb(b, "qpass");
+	while(b->next){
+		b = b->next;
+		QDEBUG checkb(b, "qpass");
+		len += BALLOC(b);
+	}
+	q->blast = b;
+	q->len += len;
+
+	if(q->len >= q->limit/2)
+		q->state |= Qflow;
+
+	if(q->state & Qstarve){
+		q->state &= ~Qstarve;
+		dowakeup = 1;
+	}
+checkqlen(q);
+	iunlock(q);
+
+	if(dowakeup)
+		wakeup(&q->rr);
+
+	return len;
+}
+
+/*
+ *  if the allocated space is way out of line with the used
+ *  space, reallocate to a smaller block
+ */
+Block*
+packblock(Block *bp)
+{
+	int len, alen;
+	Block *nbp;
+
+	len = alen = 0;
+	for(nbp = bp; nbp; nbp = bp->next){
+		len += BLEN(bp);
+		alen += BALLOC(bp);
+	}
+
+	if(alen >= (len<<2)){
+		nbp = allocb(len);
+		nbp->next = bp;
+		return pullupblock(nbp, len);
+	}
+
+	return bp;
 }
 
 int
@@ -711,13 +791,14 @@ qproduce(Queue *q, void *vp, int len)
 		q->bfirst = b;
 	q->blast = b;
 	/* b->next = 0; done by iallocb() */
-	q->len += len;
+	q->len += BALLOC(b);
 	QDEBUG checkb(b, "qproduce");
 
 	if(q->state & Qstarve){
 		q->state &= ~Qstarve;
 		dowakeup = 1;
 	}
+checkqlen(q);
 	iunlock(q);
 
 	if(dowakeup)
@@ -854,7 +935,7 @@ qbread(Queue *q, int len)
 	q->bfirst = b->next;
 	b->next = 0;
 	n = BLEN(b);
-	q->len -= n;
+	q->len -= BALLOC(b);
 	QDEBUG checkb(b, "qbread 1");
 
 	/* if writer flow controlled, restart */
@@ -880,11 +961,12 @@ qbread(Queue *q, int len)
 			if(q->bfirst == 0)
 				q->blast = b;
 			q->bfirst = b;
-			q->len += n;
+			q->len += BALLOC(b);
 		}
 		nb->wp = nb->rp + len;
 	}
 
+checkqlen(q);
 	iunlock(q);
 
 	/* wakeup flow controlled writers */
@@ -975,7 +1057,7 @@ qbwrite(Queue *q, Block *b)
 		q->bfirst = b;
 	q->blast = b;
 	b->next = 0;
-	q->len += n;
+	q->len += BALLOC(b);
 	QDEBUG checkb(b, "qbwrite");
 
 	if(q->state & Qstarve){
@@ -983,6 +1065,7 @@ qbwrite(Queue *q, Block *b)
 		dowakeup = 1;
 	}
 
+checkqlen(q);
 	iunlock(q);
 
 	if(dowakeup){
@@ -1063,13 +1146,14 @@ qiwrite(Queue *q, void *vp, int len)
 		else
 			q->bfirst = b;
 		q->blast = b;
-		q->len += n;
+		q->len += BALLOC(b);
 
 		if(q->state & Qstarve){
 			q->state &= ~Qstarve;
 			dowakeup = 1;
 		}
 
+checkqlen(q);
 		iunlock(q);
 
 		if(dowakeup){
@@ -1167,7 +1251,13 @@ qreopen(Queue *q)
 int
 qlen(Queue *q)
 {
-	return q->len;
+	int len;
+	Block *b;
+
+	len = 0;
+	for(b = q->bfirst; b; b= b->next)
+		len += BLEN(b);
+	return len;
 }
 
 /*

@@ -129,7 +129,7 @@ ns16552install(void)
 			if(sc->freq == 0)
 				sc->freq = UartFREQ;
 			sc->first = nuart;
-			intrenable(VectorPIC+sc->irq, mp008intr, sc, BUSUNKNOWN);
+			intrenable(sc->irq, mp008intr, sc, BUSUNKNOWN);
 			port = sc->port;
 			for(j=0; j < sc->size; j++){
 				sprint(name, "eia%d%2.2d", nscard, j);
@@ -146,7 +146,7 @@ ns16552install(void)
 				sc->freq = UartFREQ;
 			sprint(name, "eia%d00", nscard);
 			ns16552setup(sc->port, sc->freq, name);
-			intrenable(VectorPIC+sc->irq, ns16552intrx, (void*)(nuart-1), BUSUNKNOWN);
+			intrenable(sc->irq, ns16552intrx, (void*)(nuart-1), BUSUNKNOWN);
 		}
 		nscard++;
 	}
