@@ -10,32 +10,36 @@
 
 enum
 {
-	Qdir,
 	Qctl,
+	Qdir,
+	Qfpregs,
+	Qkregs,
 	Qmem,
 	Qnote,
 	Qnotepg,
-	Qproc,
+	Qns,
+	Qregs,
 	Qsegment,
 	Qstatus,
 	Qtext,
 	Qwait,
-	Qns,
 };
 
 #define	STATSIZE	(2*NAMELEN+12+7*12)
 Dirtab procdir[] =
 {
 	"ctl",		{Qctl},		0,			0000,
+	"fpregs",	{Qfpregs},	sizeof(FPsave),		0000,
+	"kregs",	{Qkregs},	sizeof(Ureg),		0000,
 	"mem",		{Qmem},		0,			0000,
 	"note",		{Qnote},	0,			0000,
 	"notepg",	{Qnotepg},	0,			0000,
-	"proc",		{Qproc},	sizeof(Proc),		0000,
+	"ns",		{Qns},		0,			0400,
+	"regs",		{Qregs},	sizeof(Ureg),		0000,
 	"segment",	{Qsegment},	0,			0444,
 	"status",	{Qstatus},	STATSIZE,		0444,
 	"text",		{Qtext},	0,			0000,
 	"wait",		{Qwait},	0,			0400,
-	"ns",		{Qns},		0,			0400,
 };
 
 /* Segment type from portdat.h */
@@ -173,16 +177,24 @@ procopen(Chan *c, int omode)
 		tc->offset = 0;
 		return tc;
 
+	case Qkregs:
+	case Qsegment:
+		if(omode != OREAD)
+			error(Eperm);
+		break;
+
 	case Qctl:
 	case Qnote:
 	case Qmem:
-	case Qsegment:
-	case Qproc:
 	case Qstatus:
 	case Qwait:
+	case Qregs:
+	case Qfpregs:
 		break;
 
 	case Qns:
+		if(omode != OREAD)
+			error(Eperm);
 		c->aux = malloc(sizeof(Mntwalk));
 		break;
 
@@ -251,9 +263,11 @@ procread(Chan *c, void *va, long n, ulong offset)
 {
 	long l;
 	Proc *p;
-	int i, j;
 	Waitq *wq;
+	Ureg kur;
+	uchar *rptr;
 	Mntwalk *mw;
+	int i, j, rsize;
 	Segment *sg, *s;
 	char *a = va, *sps;
 	char statbuf[NSEG*32];
@@ -267,33 +281,33 @@ procread(Chan *c, void *va, long n, ulong offset)
 
 	switch(QID(c->qid)){
 	case Qmem:
-		if(offset >= KZERO) {
-			/* Protect crypt key memory */
-			if(offset >= palloc.cmembase&&offset < palloc.cmemtop)
-				error(Eperm);
+		if(offset < KZERO)
+			return procctlmemio(p, offset, n, va, 1);
 
-			/* validate physical kernel addresses */
-			if(offset < (ulong)end) {
-				if(offset+n > (ulong)end)
-					n = (ulong)end - offset;
-				memmove(a, (char*)offset, n);
-				return n;
-			}
-			if(offset >= conf.base0 && offset < conf.npage0){
-				if(offset+n > conf.npage0)
-					n = conf.npage0 - offset;
-				memmove(a, (char*)offset, n);
-				return n;
-			}
-			if(offset >= conf.base1 && offset < conf.npage1){
-				if(offset+n > conf.npage1)
-					n = conf.npage1 - offset;
-				memmove(a, (char*)offset, n);
-				return n;
-			}
+		/* Protect crypt key memory */
+		if(offset >= palloc.cmembase&&offset < palloc.cmemtop)
+			error(Eperm);
+
+		/* validate physical kernel addresses */
+		if(offset < (ulong)end) {
+			if(offset+n > (ulong)end)
+				n = (ulong)end - offset;
+			memmove(a, (char*)offset, n);
+			break;
 		}
-
-		return procctlmemio(p, offset, n, va, 1);
+		if(offset >= conf.base0 && offset < conf.npage0){
+			if(offset+n > conf.npage0)
+				n = conf.npage0 - offset;
+			memmove(a, (char*)offset, n);
+			break;
+		}
+		if(offset >= conf.base1 && offset < conf.npage1){
+			if(offset+n > conf.npage1)
+				n = conf.npage1 - offset;
+			memmove(a, (char*)offset, n);
+			break;
+		}
+		error(Ebadarg);
 
 	case Qnote:
 		qlock(&p->debug);
@@ -319,12 +333,28 @@ procread(Chan *c, void *va, long n, ulong offset)
 		qunlock(&p->debug);
 		return n;
 
-	case Qproc:
-		if(offset >= sizeof(Proc))
+	case Qregs:
+		rptr = (uchar*)p->dbgreg;
+		rsize = sizeof(Ureg);
+		goto regread;
+
+	case Qkregs:
+		memset(&kur, 0, sizeof(Ureg));
+		kur.pc = p->sched.pc;
+		kur.sp = p->sched.sp;
+		rptr = (uchar*)&kur;
+		rsize = sizeof(Ureg);
+		goto regread;
+
+	case Qfpregs:
+		rptr = (uchar*)&p->fpsave;
+		rsize = sizeof(FPsave);
+	regread:
+		if(offset >= rsize)
 			return 0;
-		if(offset+n > sizeof(Proc))
-			n = sizeof(Proc) - offset;
-		memmove(a, ((char*)p)+offset, n);
+		if(offset+n > rsize)
+			n = rsize - offset;
+		memmove(a, rptr+offset, n);
 		return n;
 
 	case Qstatus:
@@ -362,11 +392,15 @@ procread(Chan *c, void *va, long n, ulong offset)
 
 	case Qsegment:
 		j = 0;
-		for(i = 0; i < NSEG; i++)
-			if(sg = p->seg[i])
-				j += sprint(&statbuf[j], "%-6s %c %.8lux %.8lux %4d\n",
-				sname[sg->type&SG_TYPE], sg->type&SG_RONLY ? 'R' : ' ',
+		for(i = 0; i < NSEG; i++) {
+			sg = p->seg[i];
+			if(sg == 0)
+				continue;
+			j += sprint(&statbuf[j], "%-6s %c %.8lux %.8lux %4d\n",
+				sname[sg->type&SG_TYPE],
+				sg->type&SG_RONLY ? 'R' : ' ',
 				sg->base, sg->top, sg->ref);
+		}
 		if(offset >= j)
 			return 0;
 		if(offset+n > j)
@@ -504,6 +538,22 @@ procwrite(Chan *c, void *va, long n, ulong offset)
 			error(Ebadctl);
 
 		n = procctlmemio(p, offset, n, va, 0);
+		break;
+
+	case Qregs:
+		if(offset >= sizeof(Ureg))
+			return 0;
+		if(offset+n > sizeof(Ureg))
+			n = sizeof(Ureg) - offset;
+		setregisters(p->dbgreg, (char*)(p->dbgreg)+offset, va, n);
+		break;
+
+	case Qfpregs:
+		if(offset >= sizeof(FPsave))
+			return 0;
+		if(offset+n > sizeof(FPsave))
+			n = sizeof(FPsave) - offset;
+		memmove((uchar*)&p->fpsave+offset, va, n);
 		break;
 
 	case Qctl:

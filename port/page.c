@@ -140,11 +140,6 @@ retry:
 		goto retry;
 	}
 
-if(p->log == 0) {
-	p->log = smalloc(8192);
-	p->lptr = 0;
-}
-
 	uncachepage(p);
 	p->ref++;
 	p->va = va;
@@ -260,7 +255,8 @@ duppage(Page *p)				/* Always call with p locked */
 	else
 		palloc.tail = np->prev;
 
-	if(palloc.tail) {		/* Link back onto tail to give us lru */
+	/* Link back onto tail to give us lru in the free list */
+	if(palloc.tail) {
 		np->prev = palloc.tail;
 		palloc.tail->next = np;
 		np->next = 0;
@@ -279,10 +275,6 @@ duppage(Page *p)				/* Always call with p locked */
 		unlock(np);
 		return;
 	}
-if(np->log == 0) {
-	np->log = smalloc(8192);
-	np->lptr = 0;
-}
 	
 	uncachepage(np);
 	np->va = p->va;

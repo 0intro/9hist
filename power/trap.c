@@ -80,6 +80,7 @@ trap(Ureg *ur)
 			fpchk = 1;
 		}
 	}
+
 	switch(ecode){
 	case CINT:
 		if(ur->cause&INTR3) {			/* FP trap */

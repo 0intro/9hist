@@ -312,9 +312,6 @@ struct Page
 	Page	*next;			/* Lru free list */
 	Page	*prev;
 	Page	*hash;			/* Image hash chains */
-
-	uchar	*log;
-	int	lptr;
 };
 
 struct Swapalloc

@@ -52,7 +52,7 @@ extern char Eintr[];		/* interrupted */
 extern char Eneedservice[];	/* service required for tcp/udp/il calls */
 extern char Enomem[];		/* kernel allocate failed */
 extern char Esfnotcached[];	/* subfont not cached */
-extern char Egreg[];		/* it's a thermal problem */
 extern char Esoverlap[];	/* segments overlap */
 extern char Emouseset[];	/* mouse type already set */
 extern char Erecover[];		/* failed to recover fd */
+extern char Egreg[];		/* coherency problem */

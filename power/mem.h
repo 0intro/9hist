@@ -113,6 +113,8 @@
 #define	NTLB	64	/* number of entries */
 #define	TLBROFF	8	/* offset of first randomly indexed entry */
 
+#define NCOLOR	1
+#define getcolor(a)	0
 /*
  * Address spaces
  */
