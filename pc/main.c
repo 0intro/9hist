@@ -92,8 +92,6 @@ machinit(void)
 	m->mmask = 1<<m->machno;
 }
 
-ulong garbage;
-
 void
 ksetterm(char *f)
 {
@@ -292,7 +290,7 @@ confinit(void)
 	pcnt = 0;
 
 	/*
-	 *  parse configuration args from dos file p9rc
+	 *  parse configuration args from dos file plan9.ini
 	 */
 	cp = BOOTARGS;	/* where b.com leaves its config */
 	cp[BOOTARGSLEN-1] = 0;
@@ -542,7 +540,7 @@ exit(int ispanic)
 	up = 0;
 	print("exiting\n");
 	if(ispanic){
-		if(cpuflag)
+		if(cpuserver)
 			delay(10000);
 		else
 			for(;;);

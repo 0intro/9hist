@@ -104,10 +104,10 @@ struct
 static void
 taskswitch(ulong pagetbl, ulong stack)
 {
-	putcr3(pagetbl);
 	tss.ss0 = KDSEL;
 	tss.sp0 = stack;
 	tss.cr3 = pagetbl;
+	putcr3(pagetbl);
 }
 
 /*
@@ -166,11 +166,11 @@ mmuinit(void)
 	 */
 	memset(&tss, 0, sizeof(tss));
 	taskswitch(ktoppg.pa, BY2PG + (ulong)m);
-	puttr(TSSSEL);
+	puttr(TSSSEL);/**/
 }
 
 /*
- *  Mark the mmu and tlb as inconsistent and call mapstack to fix it up.
+ *  Mark the mmu and tlb as inconsistent and call mmuswitch to fix it up.
  */
 void
 flushmmu(void)
@@ -221,6 +221,32 @@ mmuswitch(Proc *p)
 		taskswitch(p->mmutop->pa, (ulong)(p->kstack+KSTACK));
 	else
 		taskswitch(ktoppg.pa, (ulong)(p->kstack+KSTACK));
+}
+
+void
+simpleputpage(Page *pg)
+{
+	Rendez *r;
+
+	if(pg->ref != 1)
+		panic("simpleputpage");
+
+	pg->ref = 0;
+	if(palloc.head){
+		pg->next = palloc.head;
+		palloc.head->prev = pg;
+	}
+	else {
+		palloc.tail = pg;
+		pg->next = 0;
+	}
+	palloc.head = pg;
+	pg->prev = 0;
+
+	palloc.freecol[pg->color]++;
+	r = &palloc.r[pg->color];
+	if(r->p != 0)
+		wakeup(r);
 }
 
 /*
@@ -305,7 +331,8 @@ putmmu(ulong va, ulong pa, Page *pg)
 	pt[BTMOFF(va)] = pa | PTEUSER;
 
 	/* flush cached mmu entries */
-	taskswitch(up->mmutop->pa, (ulong)up->kstack);
+	/*taskswitch(up->mmutop->pa, (ulong)(up->kstack+KSTACK));/**/
+	putcr3(up->mmutop->pa);/**/
 	splx(s);
 }
 

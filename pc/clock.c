@@ -88,7 +88,6 @@ clock(Ureg *ur)
 	m->ticks++;
 
 	checkalarms();
-	uartclock();
 	mouseclock();
 
 	/*

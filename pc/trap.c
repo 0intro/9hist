@@ -219,6 +219,7 @@ char *excname[] =
 };
 
 Ureg lasttrap, *lastur;
+Proc *lastup;
 
 
 /*
@@ -234,9 +235,16 @@ trap(Ureg *ur)
 
 	v = ur->trap;
 
-	user = ((ur->cs)&0xffff)!=KESEL && v!=Syscallvec;
+	user = (ur->cs&0xffff) == UESEL;
 	if(user)
 		up->dbgreg = ur;
+
+ur->cs &= 0xffff;
+ur->ds &= 0xffff;
+ur->es &= 0xffff;
+ur->fs &= 0xffff;
+ur->gs &= 0xffff;
+if(user) ur->ss &= 0xffff;
 
 	/*
 	 *  tell the 8259 that we're done with the
@@ -253,6 +261,7 @@ trap(Ureg *ur)
 	if(v>=256 || (h = halloc.ivec[v]) == 0){
 lasttrap = *ur;
 lastur = ur;
+lastup = up;
 		/* an old 386 generates these fairly often, no idea why */
 		if(v == 13)
 			return;
@@ -292,6 +301,8 @@ lastur = ur;
 	splhi();
 	if(user && (up->procctl || up->nnote))
 		notify(ur);
+
+lastup = up;
 lasttrap = *ur;
 lastur = ur;
 }
@@ -307,24 +318,31 @@ dumpregs2(Ureg *ur)
 	else
 		print("registers for kernel\n");
 	print("FLAGS=%lux TRAP=%lux ECODE=%lux CS=%lux PC=%lux", ur->flags, ur->trap,
-		ur->ecode, ur->cs&0xff, ur->pc);
-	print(" SS=%lux USP=%lux\n", ur->ss&0xff, ur->usp);
+		ur->ecode, ur->cs, ur->pc);
+	print(" SS=%lux USP=%lux\n", ur->ss, ur->usp);
 	print("  AX %8.8lux  BX %8.8lux  CX %8.8lux  DX %8.8lux\n",
 		ur->ax, ur->bx, ur->cx, ur->dx);
 	print("  SI %8.8lux  DI %8.8lux  BP %8.8lux\n",
 		ur->si, ur->di, ur->bp);
-	print("  DS %4.4ux  ES %4.4ux  FS %4.4ux  GS %4.4ux\n",
-		ur->ds&0xffff, ur->es&0xffff, ur->fs&0xffff, ur->gs&0xffff);
+	print("  DS %4.4lux  ES %4.4lux  FS %4.4lux  GS %4.4lux\n",
+		ur->ds, ur->es, ur->fs, ur->gs);
 
 }
 
 void
 dumpregs(Ureg *ur)
 {
+	ulong *x;
+
+	x = (ulong*)(ur+1);
 	dumpregs2(ur);
-	print("  ur %lux\n", ur);
+	print("  magic %lux %lux %lux\n", x[0], x[1], x[2]);
+	print("  ur %lux up %lux\n", ur, up);
 	dumpregs2(&lasttrap);
-	print("  lastur %lux\n", lastur);
+	print("  lastur %lux lastup %lux\n", lastur);
+splhi();
+dumpstack();
+for(;;);
 }
 
 void
@@ -332,47 +350,26 @@ dumpstack(void)
 {
 	ulong l, v, i;
 	extern ulong etext;
+	int lim;
 
 	if(up == 0)
 		return;
 
 	i = 0;
-	for(l=(ulong)&l; l<(ulong)(up->kstack+BY2PG); l+=4){
+	lim = 3;
+	for(l=(ulong)&l; l<(ulong)(up->kstack+BY2PG) && lim; l+=4){
 		v = *(ulong*)l;
 		if(KTZERO < v && v < (ulong)&etext){
 			print("%lux ", v);
 			i++;
 		}
-		if(i == 4){
+		if(i == 8){
 			i = 0;
 			print("\n");
+			lim--;
 		}
 	}
 
-}
-
-long
-execregs(ulong entry, ulong ssize, ulong nargs)
-{
-	ulong *sp;
-	Ureg *ur;
-
-	sp = (ulong*)(USTKTOP - ssize);
-	*--sp = nargs;
-
-	ur = up->dbgreg;
-	ur->usp = (ulong)sp;
-	ur->pc = entry;
-	return USTKTOP-BY2WD;			/* address of user-level clock */
-}
-
-ulong
-userpc(void)
-{
-	Ureg *ur;
-
-	ur = (Ureg*)up->dbgreg;
-	return ur->pc;
 }
 
 /*
@@ -573,6 +570,30 @@ noted(Ureg *ur, ulong arg0)
 	}
 }
 
+long
+execregs(ulong entry, ulong ssize, ulong nargs)
+{
+	ulong *sp;
+	Ureg *ur;
+
+	sp = (ulong*)(USTKTOP - ssize);
+	*--sp = nargs;
+
+	ur = up->dbgreg;
+	ur->usp = (ulong)sp;
+	ur->pc = entry;
+	return USTKTOP-BY2WD;			/* address of user-level clock */
+}
+
+ulong
+userpc(void)
+{
+	Ureg *ur;
+
+	ur = (Ureg*)up->dbgreg;
+	return ur->pc;
+}
+
 /* This routine must save the values of registers the user is not permitted to write
  * from devproc and the restore the saved values before returning
  */
@@ -590,6 +611,45 @@ setregisters(Ureg *xp, char *pureg, char *uva, int n)
 	xp->flags = (xp->flags & 0xff) | (flags & 0xff00);
 	xp->cs = cs;
 	xp->ss = ss;
+}
+
+static void
+linkproc(void)
+{
+	spllo();
+	(*up->kpfun)(up->kparg);
+}
+
+void
+kprocchild(Proc *p, void (*func)(void*), void *arg)
+{
+	p->sched.pc = (ulong)linkproc;
+	p->sched.sp = (ulong)p->kstack+KSTACK;
+
+	p->kpfun = func;
+	p->kparg = arg;
+}
+
+void
+forkchild(Proc *p, Ureg *ur)
+{
+	Ureg *cur;
+
+	/*
+	 * We add 2*BY2Wd to the stack because we have to account for
+	 *  - the return PC
+	 *  - trap's argument (ur)
+	 */
+	p->sched.sp = (ulong)p->kstack+KSTACK-(sizeof(Ureg)+2*BY2WD);
+	p->sched.pc = (ulong)forkret;
+
+	cur = (Ureg*)(p->sched.sp+2*BY2WD);
+	memmove(cur, ur, sizeof(Ureg));
+	cur->ax = 0;				/* return value of syscall in child */
+
+	/* Things from bottom of syscall we never got to execute */
+	p->psstate = 0;
+	p->insyscall = 0;
 }
 
 /* Give enough context in the ureg to produce a kernel stack for

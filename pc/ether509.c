@@ -3,11 +3,11 @@
 #include "mem.h"
 #include "dat.h"
 #include "fns.h"
-#include "../port/error.h"
 #include "io.h"
-#include "devtab.h"
+#include "../port/error.h"
+#include "../port/netif.h"
 
-#include "ether.h"
+#include "etherif.h"
 
 enum {
 	IDport		= 0x0100,	/* anywhere between 0x0100 and 0x01F0 */
@@ -87,11 +87,11 @@ enum {
 #define COMMAND(port, cmd, a)	outs(port+Command, ((cmd)<<11)|(a))
 
 static void
-attach(Ctlr *ctlr)
+attach(Ether *ether)
 {
 	ulong port;
 
-	port = ctlr->card.port;
+	port = ether->port;
 	/*
 	 * Set the receiver packet filter for our own and
 	 * and broadcast addresses, set the interrupt masks
@@ -108,11 +108,11 @@ attach(Ctlr *ctlr)
 }
 
 static void
-mode(Ctlr *ctlr, int on)
+promiscuous(void *arg, int on)
 {
 	ulong port;
 
-	port = ctlr->card.port;
+	port = ((Ether*)arg)->port;
 	if(on)
 		COMMAND(port, SetRxFilter, Promiscuous|Broadcast|MyEtherAddr);
 	else
@@ -120,14 +120,14 @@ mode(Ctlr *ctlr, int on)
 }
 
 static void
-receive(Ctlr *ctlr)
+receive(Ether *ether)
 {
-	ushort status;
-	RingBuf *rb;
+	ushort status, type;
 	int len;
 	ulong port;
+	Netfile *f, **fp, **ep;
 
-	port = ctlr->card.port;
+	port = ether->port;
 	while(((status = ins(port+RxStatus)) & RxEmpty) == 0){
 		/*
 		 * If we had an error, log it and continue
@@ -137,47 +137,44 @@ receive(Ctlr *ctlr)
 			switch(status & RxErrMask){
 
 			case RxErrOverrun:	/* Overrrun */
-				ctlr->overflows++;
+				ether->overflows++;
 				break;
 
 			case RxErrOversize:	/* Oversize Packet (>1514) */
 			case RxErrRunt:		/* Runt Packet */
-				ctlr->buffs++;
+				ether->buffs++;
 				break;
 			case RxErrFraming:	/* Alignment (Framing) */
-				ctlr->frames++;
+				ether->frames++;
 				break;
 
 			case RxErrCRC:		/* CRC */
-				ctlr->crcs++;
+				ether->crcs++;
 				break;
 			}
 		}
 		else {
 			/*
-			 * We have a packet. Read it into the next
-			 * free ring buffer, if any.
-			 * The CRC is already stripped off.
+			 * We have a packet. Read it into the
+			 * buffer. The CRC is already stripped off.
+			 * Must read len bytes padded to a
+			 * doubleword. We can pick them out 16-bits
+			 * at a time (can try 32-bits at a time
+			 * later).
+			insl(port+Fifo, ether->rpkt, HOWMANY(len, 4));
 			 */
-			rb = &ctlr->rb[ctlr->ri];
-			if(rb->owner == Interface){
-				len = (status & RxByteMask);
-				rb->len = len;
-	
-				/*
-				 * Must read len bytes padded to a
-				 * doubleword. We can pick them out 16-bits
-				 * at a time (can try 32-bits at a time
-				 * later).
-				insl(port+Fifo, rb->pkt, HOWMANY(len, 4));
-				 */
-				inss(port+Fifo, rb->pkt, HOWMANY(len, 2));
+			len = (status & RxByteMask);
+			inss(port+Fifo, &ether->rpkt, HOWMANY(len, 2));
 
-				/*
-				 * Update the ring.
-				 */
-				rb->owner = Host;
-				ctlr->ri = NEXT(ctlr->ri, ctlr->nrb);
+			/*
+			 * Copy the packet to whoever wants it.
+			 */
+			type = (ether->rpkt.type[0]<<8)|ether->rpkt.type[1];
+			ep = &ether->f[Ntypes];
+			for(fp = ether->f; fp < ep; fp++) {
+				f = *fp;
+				if(f && (f->type == type || f->type < 0))
+					qproduce(f->in, &ether->rpkt, len);
 			}
 		}
 
@@ -191,46 +188,69 @@ receive(Ctlr *ctlr)
 	}
 }
 
-static void
-transmit(Ctlr *ctlr)
+static int
+istxfifo(void *arg)
 {
-	RingBuf *tb;
+	Ether *ether;
 	ushort len;
 	ulong port;
 
-	port = ctlr->card.port;
-	for(tb = &ctlr->tb[ctlr->ti]; tb->owner == Interface; tb = &ctlr->tb[ctlr->ti]){
-		/*
-		 * If there's no room in the FIFO for this packet,
-		 * set up an interrupt for when space becomes available.
-		 * Output packet must be a multiple of 4 in length and
-		 * we need 4 bytes for the preamble.
-		 */
-		len = ROUNDUP(tb->len, 4);
-		if(len+4 > ins(port+TxFreeBytes)){
-			COMMAND(port, SetTxAvailable, len);
-			break;
-		}
-
-		/*
-		 * There's room, copy the packet to the FIFO and free
-		 * the buffer back to the host.
-		 */
-		outs(port+Fifo, tb->len);
-		outs(port+Fifo, 0);
-		outss(port+Fifo, tb->pkt, len/2);
-		tb->owner = Host;
-		ctlr->ti = NEXT(ctlr->ti, ctlr->ntb);
+	ether = arg;
+	port = ether->port;
+	/*
+	 * If there's no room in the FIFO for this packet,
+	 * set up an interrupt for when space becomes available.
+	 * Output packet must be a multiple of 4 in length and
+	 * we need 4 bytes for the preamble.
+	 * Assume here that when we are called (via tsleep) that
+	 * we are safe from interrupts.
+	 */
+	len = ROUNDUP(ether->tlen, 4);
+	if(len+4 > ins(port+TxFreeBytes)){
+		COMMAND(port, SetTxAvailable, len);
+		return 0;
 	}
+	return 1;
+}
+
+static long
+write(Ether *ether, void *buf, long n)
+{
+	ushort len;
+	ulong port;
+
+print("W|");
+	port = ether->port;
+	ether->tlen = n;
+	len = ROUNDUP(ether->tlen, 4);
+	tsleep(&ether->tr, istxfifo, ether, 10000);
+	if(len+4 > ins(port+TxFreeBytes)){
+		print("ether509: transmitter jammed\n");
+		return 0;
+	}
+	/*
+	 * We know there's room, copy the packet to the FIFO.
+	 * To save copying the packet into a local buffer just
+	 * so we can set the source address, stuff the packet
+	 * into the FIFO in 3 pieces.
+	 * Transmission won't start until the entire packet is
+	 * in the FIFO, so it's OK to fault here.
+	 */
+	outs(port+Fifo, ether->tlen);
+	outs(port+Fifo, 0);
+	outss(port+Fifo, buf, Eaddrlen/2);
+	outss(port+Fifo, ether->ea, Eaddrlen/2);
+	outss(port+Fifo, (uchar*)buf+2*Eaddrlen, (len-2*Eaddrlen)/2);
+	return n;
 }
 
 static ushort
-getdiag(Ctlr *ctlr)
+getdiag(Ether *ether)
 {
 	ushort bytes;
 	ulong port;
 
-	port = ctlr->card.port;
+	port = ether->port;
 	COMMAND(port, SelectWindow, 4);
 	bytes = ins(port+FIFOdiag);
 	COMMAND(port, SelectWindow, 1);
@@ -238,15 +258,16 @@ getdiag(Ctlr *ctlr)
 }
 
 static void
-interrupt(Ctlr *ctlr)
+interrupt(Ether *ether)
 {
 	ushort status, diag;
 	uchar txstatus, x;
 	ulong port;
 
-	port = ctlr->card.port;
+	port = ether->port;
 	status = ins(port+Status);
 
+print("I%2.2ux|", status);
 	if(status & Failure){
 		/*
 		 * Adapter failure, try to find out why.
@@ -255,28 +276,25 @@ interrupt(Ctlr *ctlr)
 		 * need to retransmit?
 		 * This probably isn't right.
 		 */
-		diag = getdiag(ctlr);
+		diag = getdiag(ether);
 		print("ether509: status #%ux, diag #%ux\n", status, diag);
 
 		if(diag & TxOverrun){
 			COMMAND(port, TxReset, 0);
 			COMMAND(port, TxEnable, 0);
+			wakeup(&ether->tr);
 		}
 
 		if(diag & RxUnderrun){
 			COMMAND(port, RxReset, 0);
-			attach(ctlr);
+			attach(ether);
 		}
-
-		if(diag & TxOverrun)
-			transmit(ctlr);
 
 		return;
 	}
 
 	if(status & RxComplete){
-		receive(ctlr);
-		wakeup(&ctlr->rr);
+		receive(ether);
 		status &= ~RxComplete;
 	}
 
@@ -297,17 +315,17 @@ interrupt(Ctlr *ctlr)
 		if(txstatus & (TxJabber|TxUnderrun))
 			COMMAND(port, TxReset, 0);
 		COMMAND(port, TxEnable, 0);
-		ctlr->oerrs++;
+		ether->oerrs++;
 	}
 
 	if(status & (TxAvailable|TxComplete)){
 		/*
 		 * Reset the Tx FIFO threshold.
 		 */
-		if(status & TxAvailable)
+		if(status & TxAvailable){
 			COMMAND(port, AckIntr, TxAvailable);
-		transmit(ctlr);
-		wakeup(&ctlr->tr);
+			wakeup(&ether->tr);
+		}
 		status &= ~(TxAvailable|TxComplete);
 	}
 
@@ -317,7 +335,7 @@ interrupt(Ctlr *ctlr)
 	 * Otherwise, acknowledge the interrupt.
 	 */
 	if(status & AllIntr)
-		panic("ether509 interrupt: #%lux, #%ux\n", status, getdiag(ctlr));
+		panic("ether509 interrupt: #%lux, #%ux\n", status, getdiag(ether));
 
 	COMMAND(port, AckIntr, Latch);
 }
@@ -349,17 +367,15 @@ idseq(void)
 /*
  * Get configuration parameters.
  */
-int
-ccc509reset(Ctlr *ctlr)
+static int
+reset(Ether *ether)
 {
 	int i, ea;
 	ushort x, acr;
 	ulong port;
 
 	/*
-	 * Do the little configuration dance. We only look
-	 * at the first card that responds, if we ever have more
-	 * than one we'll need to modify this sequence.
+	 * Do the little configuration dance:
 	 *
 	 * 2. get to command state, reset, then return to command state
 	 */
@@ -408,8 +424,8 @@ ccc509reset(Ctlr *ctlr)
 	 *
 	 *    Enable the adapter. 
 	 */
-	ctlr->card.port = (acr & 0x1F)*0x10 + 0x200;
-	port = ctlr->card.port;
+	ether->port = (acr & 0x1F)*0x10 + 0x200;
+	port = ether->port;
 	outb(port+ConfigControl, 0x01);
 
 	/*
@@ -418,7 +434,7 @@ ccc509reset(Ctlr *ctlr)
 	 * The EEPROM command is 8bits, the lower 6 bits being
 	 * the address offset.
 	 */
-	ctlr->card.irq = (ins(port+ResourceConfig)>>12) & 0x0F;
+	ether->irq = (ins(port+ResourceConfig)>>12) & 0x0F;
 	for(ea = 0, i = 0; i < 3; i++, ea += 2){
 		while(ins(port+EEPROMcmd) & 0x8000)
 			;
@@ -426,8 +442,8 @@ ccc509reset(Ctlr *ctlr)
 		while(ins(port+EEPROMcmd) & 0x8000)
 			;
 		x = ins(port+EEPROMdata);
-		ctlr->ea[ea] = (x>>8) & 0xFF;
-		ctlr->ea[ea+1] = x & 0xFF;
+		ether->ea[ea] = (x>>8) & 0xFF;
+		ether->ea[ea+1] = x & 0xFF;
 	}
 
 	/*
@@ -438,7 +454,7 @@ ccc509reset(Ctlr *ctlr)
 	 */
 	COMMAND(port, SelectWindow, 2);
 	for(i = 0; i < 6; i++)
-		outb(port+i, ctlr->ea[i]);
+		outb(port+i, ether->ea[i]);
 
 	/*
 	 * Finished with window 2.
@@ -458,12 +474,12 @@ ccc509reset(Ctlr *ctlr)
 	/*
 	 * Set up the software configuration.
 	 */
-	ctlr->card.reset = ccc509reset;
-	ctlr->card.attach = attach;
-	ctlr->card.mode = mode;
-	ctlr->card.transmit = transmit;
-	ctlr->card.intr = interrupt;
-	ctlr->card.bit16 = 1;
+	ether->attach = attach;
+	ether->write = write;
+	ether->interrupt = interrupt;
+
+	ether->promiscuous = promiscuous;
+	ether->arg = ether;
 
 	return 0;
 }
@@ -471,5 +487,5 @@ ccc509reset(Ctlr *ctlr)
 void
 ether509link(void)
 {
-	addethercard("3C509",  ccc509reset);
+	addethercard("3C509",  reset);
 }

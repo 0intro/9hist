@@ -115,11 +115,6 @@ uchar kbtabesc1[] =
 [0x58]	No,	No,	No,	No,	No,	No,	No,	No,
 };
 
-/*
- *  keyboard input q
- */
-KIOQ	kbdq;
-
 static int keybuttons;
 static uchar ccc;
 static int shift;
@@ -138,7 +133,8 @@ enum
 
 static void	kbdintr(Ureg*);
 static void	ctps2intr(Ureg*);
-static int	ps2mouseputc(IOQ*, int);
+
+extern int m3mouseputc(IOQ*, int);
 
 /*
  *  wait for output no longer busy
@@ -246,6 +242,8 @@ kbdinit(void)
 {
 	int c;
 
+	kbdq = qopen(4*1024, 0, 0, 0);
+
 	setvec(Kbdvec, kbdintr);
 	bigcursor();
 
@@ -287,9 +285,12 @@ serialmouse(int port, char *type, int setspeed)
 		error(Ebadarg);
 
 	/* set up /dev/eia0 as the mouse */
-	uartspecial(port, 0, &mouseq, setspeed ? 1200 : 0);
+	if(setspeed)
+		setspeed = 1200;
 	if(type && *type == 'M')
-		mouseq.putc = m3mouseputc;
+		NS16552special(port, setspeed, 0, 0, m3mouseputc);
+	else
+		NS16552special(port, setspeed, 0, 0, 0);
 	mousetype = Mouseserial;
 }
 
@@ -390,14 +391,13 @@ ps2mouse(void)
  *  shift & left button is the same as middle button
  */
 static int
-ps2mouseputc(IOQ *q, int c)
+ps2mouseputc(int c)
 {
 	static short msg[3];
 	static int nb;
 	static uchar b[] = {0, 1, 4, 5, 2, 3, 6, 7, 0, 1, 2, 5, 2, 3, 6, 7 };
 	int buttons, dx, dy;
 
-	USED(q);		/* not */
 	/* 
 	 *  check byte 0 for consistency
 	 */
@@ -508,7 +508,7 @@ kbdintr0(void)
 	 *  if it's the mouse...
 	 */
 	if(s & Minready){
-		ps2mouseputc(&mouseq, c);
+		ps2mouseputc(c);
 		return 0;
 	}
 
@@ -579,9 +579,9 @@ kbdintr0(void)
 		putit:
 			lstate = 0;
 			if(c != -1)
-				kbdputc(&kbdq, c);
+				kbdputc(kbdq, c);
 			else for(i=0; i<nk; i++)
-				kbdputc(&kbdq, kc[i]);
+				kbdputc(kbdq, kc[i]);
 			break;
 		case 3:
 		case 4:
@@ -595,7 +595,7 @@ kbdintr0(void)
 			nk = 5;
 			goto putit;
 		default:
-			kbdputc(&kbdq, c);
+			kbdputc(kbdq, c);
 			break;
 		}
 		return 0;
@@ -618,7 +618,7 @@ kbdintr0(void)
 			return 0;
 		}
 	}
-	kbdputc(&kbdq, c);
+	kbdputc(kbdq, c);
 	return 0;
 }
 
@@ -641,5 +641,5 @@ ctps2intr(Ureg *ur)
 	if((c & Rready) == 0)
 		return;
 	c = inb(ctport + CTdata);
-	ps2mouseputc(&mouseq, c);
+	ps2mouseputc(c);
 }

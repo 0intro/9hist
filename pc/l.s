@@ -498,6 +498,18 @@ intrcommon:
 	ADDL	$8,SP	/* error code and trap type */
 	IRETL
 
+TEXT forkret(SB), $0
+	POPL	AX
+	POPAL
+	NOP
+	POPL	GS
+	POPL	FS
+	POPL	ES
+	POPL	DS
+	NOP
+	ADDL	$8,SP	/* error code and trap type */
+	IRETL
+
 intrscommon:
 	PUSHL	DS
 	PUSHL	ES
@@ -596,6 +608,7 @@ TEXT	config(SB),$0
 	OUTB
 	RET
 
+#ifdef notdef
 /*
  *  copy bitmap changes to screen memory for ldepth 0 screen.
  *  reverse the bits since the screen is big-endian
@@ -706,6 +719,7 @@ l20:
 	MOVB	BX,-1(DI)(CX*1)
 	LOOP	l20
 	RET
+#endif /* notdef */
 
 /*
  * The DP8390 ethernet chip needs some time between

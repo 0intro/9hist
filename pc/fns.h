@@ -63,6 +63,7 @@ long	pcmread(int, int, void*, long, ulong);
 int	pcmspecial(int);
 void	pcmspecialclose(int);
 long	pcmwrite(int, int, void*, long, ulong);
+void	prflush(void);
 void	prhex(ulong);
 void	procrestore(Proc*);
 void	procsave(Proc*);
@@ -91,3 +92,5 @@ void	vgainit(void);
 #define getcallerpc(x)	(*(ulong*)(x))
 #define KADDR(a)	((void*)((ulong)(a)|KZERO))
 #define PADDR(a)	((ulong)(a)&~KZERO)
+
+void	NS16552special(int, int, Queue**, Queue**, int (*)(Queue*, int));

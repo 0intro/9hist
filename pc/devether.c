@@ -3,46 +3,42 @@
 #include "mem.h"
 #include "dat.h"
 #include "fns.h"
-#include "../port/error.h"
 #include "io.h"
-#include "devtab.h"
+#include "ureg.h"
+#include "../port/error.h"
+#include "../port/netif.h"
 
-#include "ether.h"
+#include "etherif.h"
 
-/*
- * Half-arsed attempt at a general top-level
- * ethernet driver. Needs work:
- *	handle multiple controllers
- *	much tidying
- *	set ethernet address
- *	need a ctl file passed down to card drivers
- *	  so we can set options.
- */
-extern Card ether8003, ether503, ether2000;
-extern Card ether509;
+static Ether *ether[MaxEther];
 
-/*
- * The ordering here is important for those cards
- * using the DP8390 (WD8003, 3Com503 and NE2000) as
- * attempting to determine if a card is a NE2000
- * cannot be done passively, so it must be last to
- * prevent scrogging one of the others.
- */
-static Card *cards[] = {
-	&ether8003,
-	&ether503,
-	&ether2000,
+void
+etherinit(void)
+{
+}
 
-	&ether509,
-	0
-};
+Chan*
+etherattach(char *spec)
+{
+	ulong ctlrno;
+	char *p;
+	Chan *c;
 
-enum {
-	NCtlr		= 1,
-};
+	ctlrno = 0;
+	if(spec && *spec){
+		ctlrno = strtoul(spec, &p, 0);
+		if((ctlrno == 0 && p == spec) || *p || (ctlrno >= MaxEther))
+			error(Ebadarg);
+	}
+	if(ether[ctlrno] == 0)
+		error(Enodev);
 
-/*static */struct Ctlr *softctlr[NCtlr];
-static int nctlr;
+	c = devattach('l', spec);
+	c->dev = ctlrno;
+	if(ether[ctlrno]->attach)
+		(*ether[ctlrno]->attach)(ether[ctlrno]);
+	return c;
+}
 
 Chan*
 etherclone(Chan *c, Chan *nc)
@@ -53,530 +49,164 @@ etherclone(Chan *c, Chan *nc)
 int
 etherwalk(Chan *c, char *name)
 {
-	return netwalk(c, name, &softctlr[0]->net);
+	return netifwalk(ether[c->dev], c, name);
 }
 
 void
 etherstat(Chan *c, char *dp)
 {
-	netstat(c, dp, &softctlr[0]->net);
+	netifstat(ether[c->dev], c, dp);
 }
 
 Chan*
 etheropen(Chan *c, int omode)
 {
-	return netopen(c, omode, &softctlr[0]->net);
+	return netifopen(ether[c->dev], c, omode);
 }
 
 void
 ethercreate(Chan *c, char *name, int omode, ulong perm)
 {
 	USED(c, name, omode, perm);
-	error(Eperm);
 }
 
 void
 etherclose(Chan *c)
 {
-	if(c->stream)
-		streamclose(c);
+	netifclose(ether[c->dev], c);
 }
 
 long
-etherread(Chan *c, void *a, long n, ulong offset)
+etherread(Chan *c, void *buf, long n, ulong offset)
 {
-	return netread(c, a, n, offset, &softctlr[0]->net);
-}
-
-long
-etherwrite(Chan *c, char *a, long n, ulong offset)
-{
-	USED(offset);
-	return streamwrite(c, a, n, 0);
+	return netifread(ether[c->dev], c, buf, n, offset);
 }
 
 void
 etherremove(Chan *c)
 {
 	USED(c);
-	error(Eperm);
 }
 
 void
 etherwstat(Chan *c, char *dp)
 {
-	netwstat(c, dp, &softctlr[0]->net);
+	netifwstat(ether[c->dev], c, dp);
 }
 
-static int
-isobuf(void *arg)
+long
+etherwrite(Chan *c, void *buf, long n, ulong offset)
 {
-	Ctlr *ctlr = arg;
+	Ether *ctlr;
 
-	return ctlr->tb[ctlr->th].owner == Host;
-}
+	USED(offset);
+	if(n > ETHERMAXTU)
+		error(Ebadarg);
+	ctlr = ether[c->dev];
 
-static void
-etheroput(Queue *q, Block *bp)
-{
-	Ctlr *ctlr;
-	Type *type;
-	Etherpkt *pkt;
-	RingBuf *ring;
-	int len, n, s;
-	Block *nbp;
+	if(NETTYPE(c->qid.path) != Ndataqid)
+		return netifwrite(ctlr, c, buf, n);
 
-	type = q->ptr;
-	ctlr = type->ctlr;
-	if(bp->type == M_CTL){
-		qlock(ctlr);
-		if(streamparse("connect", bp)){
-			if(type->type == -1)
-				ctlr->all--;
-			type->type = strtol((char*)bp->rptr, 0, 0);
-			if(type->type == -1)
-				ctlr->all++;
-		}
-		else if(streamparse("promiscuous", bp)) {
-			type->prom = 1;
-			ctlr->prom++;
-			if(ctlr->prom == 1)
-				(*ctlr->card.mode)(ctlr, 1);
-		}
-		qunlock(ctlr);
-		freeb(bp);
-		return;
-	}
-
-	/*
-	 * Give packet a local address, return upstream if destined for
-	 * this machine.
-	 */
-	if(BLEN(bp) < ETHERHDRSIZE && (bp = pullup(bp, ETHERHDRSIZE)) == 0)
-		return;
-	pkt = (Etherpkt*)bp->rptr;
-	memmove(pkt->s, ctlr->ea, sizeof(ctlr->ea));
-	if(memcmp(ctlr->ea, pkt->d, sizeof(ctlr->ea)) == 0){
-		len = blen(bp);
-		if(bp = expandb(bp, len >= ETHERMINTU ? len: ETHERMINTU)){
-			putq(&ctlr->lbq, bp);
-			wakeup(&ctlr->rr);
-		}
-		return;
-	}
-	if(memcmp(ctlr->ba, pkt->d, sizeof(ctlr->ba)) == 0 || ctlr->prom || ctlr->all){
-		len = blen(bp);
-		nbp = copyb(bp, len);
-		if(nbp = expandb(nbp, len >= ETHERMINTU ? len: ETHERMINTU)){
-			nbp->wptr = nbp->rptr+len;
-			putq(&ctlr->lbq, nbp);
-			wakeup(&ctlr->rr);
-		}
-	}
-
-	/*
-	 * Only one transmitter at a time.
-	 */
 	qlock(&ctlr->tlock);
 	if(waserror()){
 		qunlock(&ctlr->tlock);
-		freeb(bp);
 		nexterror();
 	}
-
-	/*
-	 * Wait till we get an output buffer.
-	 * should try to restart.
-	 */
-	if(isobuf(ctlr) == 0){
-		tsleep(&ctlr->tr, isobuf, ctlr, 3*1000);
-		if(isobuf(ctlr) == 0){
-			qunlock(&ctlr->tlock);
-			freeb(bp);
-			poperror();
-			return;
-		}
-	}
-
-	ring = &ctlr->tb[ctlr->th];
-
-	/*
-	 * Copy message into buffer.
-	 */
-	len = 0;
-	for(nbp = bp; nbp; nbp = nbp->next){
-		if(sizeof(Etherpkt) - len >= (n = BLEN(nbp))){
-			memmove(ring->pkt+len, nbp->rptr, n);
-			len += n;
-		}
-		if(bp->flags & S_DELIM)
-			break;
-	}
-
-	/*
-	 * Pad the packet (zero the pad).
-	 */
-	if(len < ETHERMINTU){
-		memset(ring->pkt+len, 0, ETHERMINTU-len);
-		len = ETHERMINTU;
-	}
-
-	/*
-	 * Set up the transmit buffer and 
-	 * start the transmission.
-	 */
-	s = splhi();
-	ring->len = len;
-	ring->owner = Interface;
-	ctlr->th = NEXT(ctlr->th, ctlr->ntb);
-	(*ctlr->card.transmit)(ctlr);
-	splx(s);
-
-	qunlock(&ctlr->tlock);
-	freeb(bp);
+	n = (*ctlr->write)(ctlr, buf, n);
 	poperror();
-}
+	qunlock(&ctlr->tlock);
 
-/*
- * Open an ether line discipline.
- */
-static void
-etherstopen(Queue *q, Stream *s)
-{
-	Ctlr *ctlr = softctlr[0];
-	Type *type;
-
-	type = &ctlr->type[s->id];
-	RD(q)->ptr = WR(q)->ptr = type;
-	type->type = 0;
-	type->q = RD(q);
-	type->inuse = 1;
-	type->ctlr = ctlr;
-}
-
-/*
- * Close ether line discipline.
- *
- * The locking is to synchronize changing the ethertype with
- * sending packets up the stream on interrupts.
- */
-static int
-isclosed(void *arg)
-{
-	return ((Type*)arg)->q == 0;
-}
-
-static void
-etherstclose(Queue *q)
-{
-	Type *type = (Type*)(q->ptr);
-	Ctlr *ctlr = type->ctlr;
-
-	if(type->prom){
-		qlock(ctlr);
-		ctlr->prom--;
-		if(ctlr->prom == 0)
-			(*ctlr->card.mode)(ctlr, 0);
-		qunlock(ctlr);
-	}
-	if(type->type == -1){
-		qlock(ctlr);
-		ctlr->all--;
-		qunlock(ctlr);
-	}
-
-	/*
-	 * Mark as closing and wait for kproc
-	 * to close us.
-	 */
-	lock(&ctlr->clock);
-	type->clist = ctlr->clist;
-	ctlr->clist = type;
-	unlock(&ctlr->clock);
-	wakeup(&ctlr->rr);
-	sleep(&type->cr, isclosed, type);
-
-	type->type = 0;
-	type->prom = 0;
-	type->inuse = 0;
-	netdisown(type);
-	type->ctlr = 0;
-}
-
-static Qinfo info = {
-	nullput,
-	etheroput,
-	etherstopen,
-	etherstclose,
-	"ether"
-};
-
-static int
-clonecon(Chan *c)
-{
-	Ctlr *ctlr = softctlr[0];
-	Type *type;
-
-	USED(c);
-	for(type = ctlr->type; type < &ctlr->type[NType]; type++){
-		qlock(type);
-		if(type->inuse || type->q){
-			qunlock(type);
-			continue;
-		}
-		type->inuse = 1;
-		netown(type, u->p->user, 0);
-		qunlock(type);
-		return type - ctlr->type;
-	}
-	exhausted("ether channels");
-	return 0;
-}
-
-static void
-statsfill(Chan *c, char *p, int n)
-{
-	Ctlr *ctlr = softctlr[0];
-	char buf[256];
-
-	USED(c);
-	sprint(buf, "in: %d\nout: %d\ncrc errs %d\noverflows: %d\nframe errs %d\nbuff errs: %d\noerrs %d\naddr: %.02x:%.02x:%.02x:%.02x:%.02x:%.02x\n",
-		ctlr->inpackets, ctlr->outpackets, ctlr->crcs,
-		ctlr->overflows, ctlr->frames, ctlr->buffs, ctlr->oerrs,
-		ctlr->ea[0], ctlr->ea[1], ctlr->ea[2],
-		ctlr->ea[3], ctlr->ea[4], ctlr->ea[5]);
-	strncpy(p, buf, n);
-}
-
-static void
-typefill(Chan *c, char *p, int n)
-{
-	char buf[16];
-	Type *type;
-
-	type = &softctlr[0]->type[STREAMID(c->qid.path)];
-	sprint(buf, "%d", type->type);
-	strncpy(p, buf, n);
-}
-
-static void
-etherup(Ctlr *ctlr, Etherpkt *pkt, int len)
-{
-	int t;
-	Type *type;
-	Block *bp;
-
-	t = (pkt->type[0]<<8)|pkt->type[1];
-	for(type = &ctlr->type[0]; type < &ctlr->type[NType]; type++){
-
-		/*
-		 * Check for open, the right type, and flow control.
-		 */
-		if(type->q == 0)
-			continue;
-		if(t != type->type && type->type != -1)
-			continue;
-		if(type->q->next->len > Streamhi)
-			continue;
-
-		/*
-		 * Only a trace channel gets packets destined for other machines.
-		 */
-		if(type->type != -1 && pkt->d[0] != 0xFF
-		  && (*pkt->d != *ctlr->ea || memcmp(pkt->d, ctlr->ea, sizeof(pkt->d))))
-			continue;
-
-		if(waserror() == 0){
-			bp = allocb(len);
-			memmove(bp->rptr, pkt, len);
-			bp->wptr += len;
-			bp->flags |= S_DELIM;
-			PUTNEXT(type->q, bp);
-			poperror();
-		}
-	}
-}
-
-static int
-isinput(void *arg)
-{
-	Ctlr *ctlr = arg;
-
-	return ctlr->lbq.first || ctlr->rb[ctlr->rh].owner == Host || ctlr->clist;
-}
-
-static void
-etherkproc(void *arg)
-{
-	Ctlr *ctlr = arg;
-	RingBuf *ring;
-	Block *bp;
-	Type *type;
-
-	if(waserror()){
-		print("%s noted\n", ctlr->name);
-		/* fix
-		if(ctlr->card.reset)
-			(*ctlr->card.reset)(ctlr);
-		 */
-		ctlr->kproc = 0;
-		nexterror();
-	}
-
-	for(;;){
-		tsleep(&ctlr->rr, isinput, ctlr, 500);
-		if(ctlr->card.watch)
-			(*ctlr->card.watch)(ctlr);
-
-		/*
-		 * Process any internal loopback packets.
-		 */
-		while(bp = getq(&ctlr->lbq)){
-			ctlr->inpackets++;
-			etherup(ctlr, (Etherpkt*)bp->rptr, BLEN(bp));
-			freeb(bp);
-		}
-
-		/*
-		 * Process any received packets.
-		 */
-		while(ctlr->rb[ctlr->rh].owner == Host){
-			ctlr->inpackets++;
-			ring = &ctlr->rb[ctlr->rh];
-			etherup(ctlr, (Etherpkt*)ring->pkt, ring->len);
-			ring->owner = Interface;
-			ctlr->rh = NEXT(ctlr->rh, ctlr->nrb);
-		}
-
-		/*
-		 * Close Types requesting it.
-		 */
-		if(ctlr->clist){
-			lock(&ctlr->clock);
-			for(type = ctlr->clist; type; type = type->clist){
-				type->q = 0;
-				wakeup(&type->cr);
-			}
-			ctlr->clist = 0;
-			unlock(&ctlr->clock);
-		}
-	}
+	return n;
 }
 
 static void
 etherintr(Ureg *ur)
 {
-	Ctlr *ctlr = softctlr[0];
+	int i, irq;
 
-	USED(ur);
-	(*ctlr->card.intr)(ctlr);
+	/*
+	 * Call all ethernet interrupt routines on this IRQ.
+	 * Might be better if setvec() took an argument which
+	 * was passed down to the interrupt routine when
+	 * called. This would let us easily distinguish multiple
+	 * controllers. A hack by any other name...
+	 */
+	irq = ur->trap-Int0vec;
+	for(i = 0; i < MaxEther; i++){
+		if(ether[i] && ether[i]->irq == irq)
+			(*ether[i]->interrupt)(ether[i]);
+	}
+}
+
+#define NCARD 32
+static struct {
+	char	*type;
+	int	(*reset)(Ether*);
+} cards[NCARD+1];
+
+void
+addethercard(char *t, int (*r)(Ether*))
+{
+	static int ncard;
+
+	if(ncard == NCARD)
+		panic("too many ether cards");
+	cards[ncard].type = t;
+	cards[ncard].reset = r;
+	ncard++;
 }
 
 void
 etherreset(void)
 {
-	Ctlr *ctlr;
-	Card **card;
-	int i;
+	Ether *ctlr;
+	int i, n, ctlrno;
+	ulong irqmask;
 
-	if(nctlr >= NCtlr)
-		return;
-	if(softctlr[nctlr] == 0)
-		softctlr[nctlr] = xalloc(sizeof(Ctlr));
-	ctlr = softctlr[nctlr];
-	for(card = cards; *card; card++){
-		memset(ctlr, 0, sizeof(Ctlr));
-		ctlr->card = **card;
-		if((*ctlr->card.reset)(ctlr) == 0){
-			ctlr->present = 1;
+	irqmask = 0;
+	for(ctlr = 0, ctlrno = 0; ctlrno < MaxEther; ctlrno++){
+		if(ctlr == 0)
+			ctlr = malloc(sizeof(Ether));
+		memset(ctlr, 0, sizeof(Ether));
+		if(isaconfig("ether", ctlrno, ctlr) == 0)
+			continue;
+		for(n = 0; cards[n].type; n++){
+			if(strcmp(cards[n].type, ctlr->type))
+				continue;
+			if((*cards[n].reset)(ctlr))
+				break;
 
 			/*
 			 * IRQ2 doesn't really exist, it's used to gang the interrupt
 			 * controllers together. A device set to IRQ2 will appear on
 			 * the second interrupt controller as IRQ9.
+			 * If there are multiple controllers on the same IRQ, only
+			 * call setvec() for one of them, etherintr() will scan through
+			 * all the controllers looking for those at the IRQ it was
+			 * called with. This is a hack, see the comments in etherintr().
 			 */
-			if(ctlr->card.irq == 2)
-				ctlr->card.irq = 9;
-			setvec(Int0vec + ctlr->card.irq, etherintr);
-			break;
+			if(ctlr->irq == 2)
+				ctlr->irq = 9;
+			if((irqmask & (1<<ctlr->irq)) == 0){
+				setvec(Int0vec+ctlr->irq, etherintr);
+				irqmask |= 1<<ctlr->irq;
+			}
+
+			print("ether%d: %s: port %lux irq %d addr %lux size %d:",
+				ctlrno, ctlr->type, ctlr->port, ctlr->irq, ctlr->mem, ctlr->size);
+			for(i = 0; i < sizeof(ctlr->ea); i++)
+				print(" %2.2ux", ctlr->ea[i]);
+			print("\n");
+
+			netifinit(ctlr, "ether", Ntypes, 32*1024);
+			ctlr->alen = Eaddrlen;
+			memmove(ctlr->addr, ctlr->ea, sizeof(ctlr->ea));
+			memmove(ctlr->bcast, etherbcast, sizeof(etherbcast));
+
+			ether[ctlrno] = ctlr;
+			ctlr = 0;
 		}
 	}
-	if(ctlr->present == 0)
-		return;
-
-	print("ether%d: %s: I/O addr %lux width %d addr %lux size %d irq %d:",
-		nctlr, ctlr->card.id,
-		ctlr->card.io, ctlr->card.bit16 ? 16: 8, ctlr->card.ramstart,
-		ctlr->card.ramstop-ctlr->card.ramstart, ctlr->card.irq);
-	for(i = 0; i < sizeof(ctlr->ea); i++)
-		print(" %2.2ux", ctlr->ea[i]);
-	print("\n");
-
-	nctlr++;
-
-	if(ctlr->nrb == 0)
-		ctlr->nrb = Nrb;
-	ctlr->rb = xalloc(sizeof(RingBuf)*ctlr->nrb);
-	if(ctlr->ntb == 0)
-		ctlr->ntb = Ntb;
-	ctlr->tb = xalloc(sizeof(RingBuf)*ctlr->ntb);
-
-	memset(ctlr->ba, 0xFF, sizeof(ctlr->ba));
-
-	ctlr->net.name = "ether";
-	ctlr->net.nconv = NType;
-	ctlr->net.devp = &info;
-	ctlr->net.protop = 0;
-	ctlr->net.listen = 0;
-	ctlr->net.clone = clonecon;
-	ctlr->net.ninfo = 2;
-	ctlr->net.info[0].name = "stats";
-	ctlr->net.info[0].fill = statsfill;
-	ctlr->net.info[1].name = "type";
-	ctlr->net.info[1].fill = typefill;
-	for(i = 0; i < NType; i++)
-		netadd(&ctlr->net, &ctlr->type[i], i);
-}
-
-void
-etherinit(void)
-{
-	int ctlrno = 0;
-	Ctlr *ctlr = softctlr[ctlrno];
-	int i;
-
-	if(ctlr->present == 0)
-		return;
-
-	ctlr->rh = 0;
-	ctlr->ri = 0;
-	for(i = 0; i < ctlr->nrb; i++)
-		ctlr->rb[i].owner = Interface;
-
-	ctlr->th = 0;
-	ctlr->ti = 0;
-	for(i = 0; i < ctlr->ntb; i++)
-		ctlr->tb[i].owner = Host;
-}
-
-Chan*
-etherattach(char *spec)
-{
-	int ctlrno = 0;
-	Ctlr *ctlr = softctlr[ctlrno];
-
-	if(ctlr->present == 0)
-		error(Enodev);
-
-	/*
-	 * Enable the interface
-	 * and start the kproc.
-	 */	
-	(*ctlr->card.attach)(ctlr);
-	if(ctlr->kproc == 0){
-		sprint(ctlr->name, "ether%dkproc", ctlrno);
-		ctlr->kproc = 1;
-		kproc(ctlr->name, etherkproc, ctlr);
-	}
-	return devattach('l', spec);
+	if(ctlr)
+		free(ctlr);
 }
