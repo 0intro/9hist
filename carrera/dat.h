@@ -133,7 +133,7 @@ struct KMap
 };
 
 #define	VA(k)		((k)->virt)
-#define PPN(x)		((ulong)(x)>>6)
+#define	PPN(x)		((ulong)(x)>>6)
 
 struct Softtlb
 {
