@@ -546,10 +546,17 @@ cunmount(Chan *mnt, Chan *mounted)
 	Mhead *m, **l;
 	Mount *f, **p;
 
-if(mnt->umh)	/* should not happen */
-	print("cunmount newp extra umh %p has %p\n", mnt, mnt->umh);
-if(mounted && mounted->umh)
-	print("cunmount old extra umh %p has %p\n", mounted, mounted->umh);
+	if(mnt->umh)	/* should not happen */
+		print("cunmount newp extra umh %p has %p\n", mnt, mnt->umh);
+
+	/*
+	 * It _can_ happen that mounted->umh is non-nil, 
+	 * because mounted is the result of namec(Aopen)
+	 * (see sysfile.c:/^sysunmount).
+	 * If we open a union directory, it will have a umh.
+	 * Although surprising, this is okay, since the
+	 * cclose will take care of freeing the umh.
+	 */
 
 	pg = up->pgrp;
 	wlock(&pg->ns);

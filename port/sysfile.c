@@ -784,7 +784,13 @@ sysunmount(ulong *arg)
 			nexterror();
 		}
 		validaddr(arg[0], 1, 0);
-		cmounted = namec((char*)arg[0], Aaccess, OREAD, 0);
+		/*
+		 * This has to be namec(..., Aopen, ...) because
+		 * if arg[0] is something like /srv/cs or /fd/0,
+		 * opening it is the only way to get at the real
+		 * Chan underneath.
+		 */
+		cmounted = namec((char*)arg[0], Aopen, OREAD, 0);
 		poperror();
 	}
 

@@ -105,7 +105,6 @@ enum
 	WTyp_NodeName	= 0xfc0e,
 	WTyp_Crypt	= 0xfc20,
 	WTyp_XClear	= 0xfc22,
-	WTyp_Tick	= 0xfce0,
  	WTyp_CreateIBSS	= 0xfc81,
 	WTyp_RtsThres	= 0xfc83,
 	WTyp_TxRate	= 0xfc84,
@@ -115,10 +114,12 @@ enum
 	WTyp_Prom	= 0xfc85,
 	WTyp_Keys	= 0xfcb0,
 	WTyp_TxKey	= 0xfcb1,
+	WTyp_StationID	= 0xfd20,
 	WTyp_CurName	= 0xfd41,
 	WTyp_BaseID	= 0xfd42,	// ID of the currently connected-to base station
 	WTyp_CurTxRate	= 0xfd44,	// Current TX rate
 	WTyp_HasCrypt	= 0xfd4f,
+	WTyp_Tick	= 0xfce0,
 };
 
 // Controller
@@ -435,7 +436,10 @@ ltv_outstr(Ctlr* ctlr, int type, char* val)
 	memset(&ltv, 0, sizeof(ltv));
 	ltv.len = (sizeof(ltv.type)+sizeof(ltv.slen)+sizeof(ltv.s))/2;
 	ltv.type = type;
+
+//	This should be ltv.slen = len; according to Axel Belinfante
 	ltv.slen = (len+1) & ~1;
+
 	strncpy(ltv.s, val, len);
 	w_outltv(ctlr, &ltv);
 }
