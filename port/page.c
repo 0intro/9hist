@@ -68,6 +68,7 @@ newpage(int clear, Segment **s, ulong va)
 {
 	Page *p;
 	KMap *k;
+	uchar ct;
 	int i, hw, dontalloc, color;
 
 
@@ -117,10 +118,11 @@ retry:
 		if(p->color == color)
 			break;
 
+	ct = PG_NOFLUSH;
 	if(p == 0) {
 		p = palloc.head;
-		memset(p->cachectl, PG_NEWCOL, sizeof(p->cachectl));
 		p->color = color;
+		ct = PG_NEWCOL;
 	}
 
 	if(p->prev) 
@@ -150,7 +152,7 @@ retry:
 	p->va = va;
 	p->modref = 0;
 	for(i = 0; i < MAXMACH; i++)
-		p->cachectl[i] = PG_NOFLUSH;
+		p->cachectl[i] = ct;
 	unlock(p);
 
 	if(clear) {
