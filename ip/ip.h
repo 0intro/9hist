@@ -278,7 +278,7 @@ Proto*	Fsrcvpcolx(Fs*, uchar);
 char*	Fsstdconnect(Conv*, char**, int);
 char*	Fsstdannounce(Conv*, char**, int);
 char*	Fsstdbind(Conv*, char**, int);
-
+void	closeconv(Conv*);
 /* 
  *  logging
  */

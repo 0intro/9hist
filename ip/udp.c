@@ -119,6 +119,7 @@ udpclose(Conv *c)
 {
 	Udpcb *ucb;
 
+	c->state = 0;
 	qclose(c->rq);
 	qclose(c->wq);
 	qclose(c->eq);
@@ -234,7 +235,7 @@ udpiput(Proto *udp, uchar *ia, Block *bp)
 {
 	int len, olen, ottl;
 	Udphdr *uh;
-	Conv *c, **p, *gc;
+	Conv *c, **p, *spec, *gen;
 	Udpcb *ucb;
 	uchar raddr[IPaddrlen], laddr[IPaddrlen];
 	ushort rport, lport;
@@ -273,11 +274,9 @@ udpiput(Proto *udp, uchar *ia, Block *bp)
 	qlock(udp);
 
 	/*
-	 *  Look for a conversation structure for this port.  One
-	 *  with headers off wins over one with headers on, i.e.,
-	 *  specific wins over generic.
+	 *  Look for a conversation structure for this packet
 	 */
-	gc = c = nil;
+	spec = gen = c = nil;
 	for(p = udp->conv; *p; p++) {
 		c = *p;
 		if(c->inuse == 0)
@@ -285,23 +284,41 @@ udpiput(Proto *udp, uchar *ia, Block *bp)
 		if(c->lport == lport){
 			ucb = (Udpcb*)c->ptcl;
 
-			/* with headers turned on, descriminate only on local port */
-			if(ucb->headers && gc == nil){
-				gc = c;
-				continue;
+			switch(c->state){
+			case Announced:
+				/* headers + Announced is special behaviour */
+				if(ucb->headers)
+					goto found;
+				spec = c;
+				break;
+				
+			case Connected:
+				/* exact match */
+				if(c->rport == rport)
+				if(ipcmp(c->raddr, raddr) == 0 || ipisbm(c->raddr))
+					goto found;
 			}
 
-			/* otherwise discriminate on lport, rport, and raddr */
-			if(c->rport == 0 || c->rport == rport)
-			if(ipisbm(c->raddr) || ipcmp(c->raddr, IPnoaddr) == 0
-			   || ipcmp(c->raddr, raddr) == 0)
-				break;
+		} else if(c->lport == 0) {
+			/* generic listen for all udp ports */
+			if(c->state == Announced)
+				gen = c;
 		}
 	}
+found:
 	if(*p == nil){
-		if(gc != nil)
-			c = gc;
-		else {
+		if(spec != nil)
+			gen = spec;
+		if(gen != nil){
+			if(ipforme(f, laddr) != Runi)
+				v4tov6(laddr, ia);
+			c = Fsnewcall(gen, raddr, rport, laddr, lport);
+			if(c == nil){
+				freeblist(bp);
+				return;
+			}
+			c->state = Connected;
+		} else {
 			upriv->ustats.udpNoPorts++;
 			qunlock(udp);
 			netlog(f, Logudp, "udp: no conv %I!%d -> %I!%d\n", raddr, rport,
@@ -357,21 +374,8 @@ udpiput(Proto *udp, uchar *ia, Block *bp)
 		hnputs(bp->rp + 2*IPv4addrlen, rport);
 		hnputs(bp->rp + 2*IPv4addrlen + 2, lport);
 		break;
-	default:
-		/* connection oriented udp */
-		if(ipcmp(c->raddr, IPnoaddr) == 0){
-			/* save the src address in the conversation */
-		 	ipmove(c->raddr, raddr);
-			c->rport = rport;
-
-			/* reply with the same ip address (if not broadcast) */
-			if(ipforme(f, laddr) == Runi)
-				ipmove(c->laddr, laddr);
-			else
-				v4tov6(c->laddr, ia);
-		}
-		break;
 	}
+
 	if(bp->next)
 		bp = concatblock(bp);
 
@@ -388,6 +392,22 @@ udpiput(Proto *udp, uchar *ia, Block *bp)
 
 }
 
+/* close any incoming calls waiting on this conversation */
+void
+udpcloseincalls(Conv *c)
+{
+	Conv *nc;
+
+	qlock(c);
+
+	for(nc = c->incall; nc; nc = c->incall){
+		c->incall = nc->next;
+		closeconv(nc);
+	}
+
+	qunlock(c);
+}
+
 char*
 udpctl(Conv *c, char **f, int n)
 {
@@ -397,9 +417,13 @@ udpctl(Conv *c, char **f, int n)
 	if(n == 1){
 		if(strcmp(f[0], "headers4") == 0){
 			ucb->headers = 4;
+			/* close any calls that got in twixt announce and headers */
+			udpcloseincalls(c);
 			return nil;
 		} else if(strcmp(f[0], "headers") == 0){
 			ucb->headers = 6;
+			/* close any calls that got in twixt announce and headers */
+			udpcloseincalls(c);
 			return nil;
 		}
 	}

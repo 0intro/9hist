@@ -462,7 +462,7 @@ ipwstat(Chan*, char*)
 	error(Eperm);
 }
 
-static void
+void
 closeconv(Conv *cv)
 {
 	Conv *nc;

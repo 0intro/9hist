@@ -74,7 +74,8 @@ enum {
 	CDial,
 	CAccept,
 	COpen,
-	CClosing,
+	CLocalClose,
+	CRemoteClose,
 	CClosed,
 };
 
@@ -86,7 +87,7 @@ struct Conv {
 
 	int state;
 	int dataopen;
-
+	int reader;		// reader proc has been started
 
 	ulong	timeout;
 	int		retries;
@@ -95,9 +96,11 @@ struct Conv {
 	ulong dialid;
 	ulong acceptid;
 
+	QLock readlk;		// protects readproc
 	Proc *readproc;
-	QLock readlk;
+
 	Chan *chan;	// packet channel
+	char *channame;
 
 	char owner[NAMELEN];		/* protections */
 	int	perm;
@@ -131,8 +134,8 @@ enum {
 enum {
 	ConOpenRequest,
 	ConOpenAck,
+	ConOpenAckAck,
 	ConClose,
-	ConCloseAck,
 	ConReset,
 };
 
@@ -186,7 +189,8 @@ static char *convstatename[] = {
 	[CDial] "Dial",
 	[CAccept] "Accept",
 	[COpen] "Open",
-	[CClosing] "Closing",
+	[CLocalClose] "LocalClose",
+	[CRemoteClose] "RemoteClose",
 	[CClosed] "Closed",
 };
 
@@ -203,6 +207,7 @@ static Block *readcontrol(Conv *c, int n);
 static Block *readdata(Conv *c, int n);
 static void convoput(Conv *c, int type, Block *b);
 static void convoput2(Conv *c, int op, ulong dialid, ulong acceptid);
+static void convreader(void *a);
 
 
 static void
@@ -328,8 +333,12 @@ sdpopen(Chan* ch, int omode)
 		if(strcmp(up->user, c->owner) != 0 || (perm & c->perm) != perm)
 				error(Eperm);
 		c->ref++;
-		if(TYPE(ch->qid) == Qdata)
+		if(TYPE(ch->qid) == Qdata) {
+			if(c->dataopen == 0)
+			if(c->readproc != nil)
+				postnote(c->readproc, 1, "interrupt", 0);
 			c->dataopen++;
+		}
 		qunlock(c);
 		poperror();
 		break;
@@ -377,10 +386,10 @@ print("close c->ref = %d\n", c->ref);
 				break;
 			case CAccept:
 			case COpen:
-				convsetstate(c, CClosing);
+				convsetstate(c, CLocalClose);
 				break;
-			case CClosing:
-				break;
+			case CLocalClose:
+				panic("local close already happened");
 			}
 		}
 		qunlock(c);
@@ -474,20 +483,22 @@ print("Qctl write : conv->id = %d\n", c->id);
 			error("short write");
 		arg0 = cb->f[0];
 print("cmd = %s\n", arg0);
-		if(strcmp(arg0, "chan") == 0) {
+		if(strcmp(arg0, "accept") == 0) {
 			if(cb->nf != 2)
-				error("usage: chan file");
+				error("usage: accect file");
 			if(c->chan != nil)
-				error("chan already set");
+				error("already connected");
 			c->chan = namec(cb->f[1], Aopen, ORDWR, 0);
-		} else if(strcmp(arg0, "accept") == 0) {
-			if(cb->nf != 2)
-				error("usage: accect id");
-			c->dialid = atoi(cb->f[1]);
-			convsetstate(c, CAccept);
+			c->channame = malloc(strlen(cb->f[1])+1);
+			strcpy(c->channame, cb->f[1]);
 		} else if(strcmp(arg0, "dial") == 0) {
-			if(cb->nf != 1)
-				error("usage: dial");
+			if(cb->nf != 2)
+				error("usage: accect file");
+			if(c->chan != nil)
+				error("already connected");
+			c->chan = namec(cb->f[1], Aopen, ORDWR, 0);
+			c->channame = malloc(strlen(cb->f[1])+1);
+			strcpy(c->channame, cb->f[1]);
 			convsetstate(c, CDial);
 		} else if(strcmp(arg0, "drop") == 0) {
 			if(cb->nf != 2)
@@ -584,7 +595,7 @@ sdpclone(Sdp *sdp)
 			break;
 		}
 		if(canqlock(c)){
-			if(c->state == CClosed)
+			if(c->state == CClosed && c->reader == 0)
 				break;
 			qunlock(c);
 		}
@@ -597,7 +608,10 @@ sdpclone(Sdp *sdp)
 
 	c->ref++;
 	c->state = CInit;
-
+	if(!waserror()) {
+		kproc("convreader", convreader, c);
+		c->reader = 1;
+	}
 	strncpy(c->owner, up->user, sizeof(c->owner));
 	c->perm = 0660;
 	qunlock(c);
@@ -647,11 +661,13 @@ print("convtimer: %s\n", convstatename[c->state]);
 	case CAccept:
 		if(convretry(c))
 			convoput2(c, ConOpenAck, c->dialid, c->acceptid);
+		else
+			convoput2(c, ConReset, c->dialid, c->acceptid);
 		break;
 	case COpen:
 		// check for control packet and keepalive
 		break;
-	case CClosing:
+	case CLocalClose:
 		if(convretry(c))
 			convoput2(c, ConClose, c->dialid, c->acceptid);
 		break;
@@ -730,14 +746,17 @@ print("convsetstate %s -> %s\n", convstatename[c->state], convstatename[state]);
 		assert(c->state == CDial || c->state == CAccept);
 		if(c->state == CDial) {
 			convretryinit(c);
-			convoput2(c, ConOpenAck, c->dialid, c->acceptid);
+			convoput2(c, ConOpenAckAck, c->dialid, c->acceptid);
 		}
 		// setup initial key and auth method
 		break;
-	case CClosing:
-		assert(c->state == COpen);
+	case CLocalClose:
+		assert(c->state == CAccept || c->state == COpen);
 		convretryinit(c);
 		convoput2(c, ConClose, c->dialid, c->acceptid);
+		break;
+	case CRemoteClose:
+		convoput2(c, ConReset, c->dialid, c->acceptid);
 		break;
 	case CClosed:
 		if(c->readproc)
@@ -747,6 +766,10 @@ print("convsetstate %s -> %s\n", convstatename[c->state], convstatename[state]);
 		if(c->chan) {	
 			cclose(c->chan);
 			c->chan = nil;
+		}
+		if(c->channame) {
+			free(c->channame);
+			c->channame = nil;
 		}
 		strcpy(c->owner, "network");
 		c->perm = 0660;
@@ -778,34 +801,6 @@ onewaycleanup(OneWay *ow)
 }
 
 
-static Block *
-convreadblock(Conv *c, int n)
-{
-	Block *b;
-
-	qlock(&c->readlk);
-	if(waserror()) {
-		c->readproc = nil;
-		qunlock(&c->readlk);
-		nexterror();
-	}
-	qlock(c);
-	if(c->state == CClosed) {
-		qunlock(c);
-		poperror();
-		qunlock(&c->readlk);
-		return 0;
-	}
-	c->readproc = up;
-	qunlock(c);
-
-	b = devtab[c->chan->type]->bread(c->chan, n, 0);
-	c->readproc = nil;
-	poperror();
-	qunlock(&c->readlk);
-
-	return b;
-}
 
 
 // assume we hold lock for c
@@ -853,8 +848,6 @@ conviput(Conv *c, Block *b, int control)
 	
 		c->in.controlseq = cseq;
 		b->rp += 4;
-		if(control)
-			return b;
 		c->in.controlpkt = b;
 		wakeup(&c->in.controlready);
 		return nil;
@@ -895,63 +888,96 @@ conviput2(Conv *c, Block *b)
 	dialid = nhgetl(con->dialid);
 	acceptid = nhgetl(con->acceptid);
 
-print("conviput2: %d %uld %uld\n", con->op, dialid, acceptid);
+	switch(c->state) {
+	default:
+		panic("unknown state: %d", c->state);
+	case CInit:
+		break;
+	case CDial:
+		if(dialid != c->dialid)
+			goto Reset;
+		break;
+	case CAccept:
+	case COpen:
+	case CLocalClose:
+	case CRemoteClose:
+		if(dialid != c->dialid || acceptid != c->acceptid)
+			goto Reset;
+		break;
+	case CClosed:
+		goto Reset;
+	}
+
+
+print("conviput2: %s: %d %uld %uld\n", convstatename[c->state], con->op, dialid, acceptid);
 	switch(con->op) {
 	case ConOpenRequest:
 		switch(c->state) {
-		default:
-			convoput2(c, ConReset, dialid, acceptid);
-			break;
 		case CInit:
 			c->dialid = dialid;
 			convsetstate(c, CAccept);
-			break;
+			return;
 		case CAccept:
 		case COpen:
-			if(dialid != c->dialid || acceptid != c->acceptid)
-				convoput2(c, ConReset, dialid, acceptid);
-			break;
+			// duplicate ConOpenRequest that we ignore
+			return;
 		}
 		break;
 	case ConOpenAck:
 		switch(c->state) {
 		case CDial:
-			if(dialid != c->dialid) {
-				convoput2(c, ConReset, dialid, acceptid);
-				break;
-			}
 			c->acceptid = acceptid;
 			convsetstate(c, COpen);
-			break;
+			return;
+		case COpen:
+			// duplicate that we have to ack
+			convoput2(c, ConOpenAckAck, acceptid, dialid);
+			return;
+		}
+		break;
+	case ConOpenAckAck:
+		switch(c->state) {
 		case CAccept:
-			if(dialid != c->dialid || acceptid != c->acceptid) {
-				convoput2(c, ConReset, dialid, acceptid);
-				break;
-			}
 			convsetstate(c, COpen);
+			return;
+		case COpen:
+			// duplicate that we ignore
+			return;
 		}
 		break;
 	case ConClose:
-		convoput2(c, ConCloseAck, dialid, acceptid);
-		// fall though
+		convoput2(c, ConReset, dialid, acceptid);
+		switch(c->state) {
+		case CInit:
+		case CDial:
+		case CAccept:
+		case CLocalClose:
+			convsetstate(c, CClosed);
+			return;
+		case COpen:
+			convsetstate(c, CRemoteClose);
+			return;
+		case CRemoteClose:
+			return;
+		}
+		return;
 	case ConReset:
 		switch(c->state) {
+		case CInit:
 		case CDial:
-			if(dialid == c->dialid)
-				convsetstate(c, CClosed);
-			break;
 		case CAccept:
 		case COpen:
-		case CClosing:
-			if(dialid == c->dialid && acceptid == c->acceptid)
-				convsetstate(c, CClosed);
-			break;
-		}
-	case ConCloseAck:
-		if(c->state == CClosing && dialid == c->dialid && acceptid == c->acceptid)
+		case CLocalClose:
 			convsetstate(c, CClosed);
-		break;
+			return;
+		case CRemoteClose:
+			return;
+		}
+		return;
 	}
+Reset:
+	// invalid connection message - reset to sender
+	convoput2(c, ConReset, dialid, acceptid);
 }
 
 // assume hold conv lock
@@ -1003,12 +1029,45 @@ print("chan = nil\n");
 	devtab[c->chan->type]->write(c->chan, &con, sizeof(con), 0);
 }
 
+static Block *
+convreadblock(Conv *c, int n)
+{
+	Block *b;
+	Chan *ch = nil;
+
+	qlock(&c->readlk);
+	if(waserror()) {
+		c->readproc = nil;
+		if(ch)
+			cclose(ch);
+		qunlock(&c->readlk);
+		nexterror();
+	}
+	qlock(c);
+	if(c->state == CClosed) {
+		qunlock(c);
+		error("closed");
+	}
+	c->readproc = up;
+	ch = c->chan;
+	incref(ch);
+	qunlock(c);
+
+	b = devtab[ch->type]->bread(ch, n, 0);
+	c->readproc = nil;
+	cclose(ch);
+	poperror();
+	qunlock(&c->readlk);
+
+	return b;
+}
+
 static int
 readready(void *a)
 {
 	Conv *c = a;
 
-	return (c->state == CClosed) || c->in.controlpkt != nil || c->dataopen == 0;
+	return (c->state == CClosed) || c->in.controlpkt != nil;
 }
 
 static Block *
@@ -1016,9 +1075,10 @@ readcontrol(Conv *c, int n)
 {
 	Block *b;
 
+	USED(n);
 	for(;;) {
 		qlock(c);
-		if(c->state == CClosed || c->state == CInit) {
+		if(c->state == CInit || c->state == CClosed) {
 			qunlock(c);
 			return nil;
 		}
@@ -1031,34 +1091,9 @@ readcontrol(Conv *c, int n)
 		}
 		qunlock(c);
 
-		// hack - this is to avoid gating onto the
-		// read which will in general result in excessive
-		// context switches.
-		// The assumed behavior is that the client will read
-		// from the control channel until the session is authenticated
-		// at which point it will open the data channel and
-		// start reading on that.  After the data channel is opened,
-		// read on the channel are required for packets to
-		// be delivered to the control channel
-
-		if(c->dataopen) {
-			sleep(&c->in.controlready, readready, c);
-		} else {
-			b = convreadblock(c, n);
-			if(b == nil)
-				return nil;
-			qlock(c);
-			if(waserror()) {
-				qunlock(c);
-				return nil;
-			}
-			b = conviput(c, b, 1);
-			poperror();
-			qunlock(c);
-			if(b != nil)
-				return b;
-		}
+		sleep(&c->in.controlready, readready, c);
 	}
+	return 0;
 }
 
 static Block *
@@ -1068,8 +1103,6 @@ readdata(Conv *c, int n)
 
 	for(;;) {
 		b = convreadblock(c, n);
-		if(b == nil)
-			return nil;
 		qlock(c);
 		if(waserror()) {
 			qunlock(c);
@@ -1081,4 +1114,34 @@ readdata(Conv *c, int n)
 		if(b != nil)
 			return b;
 	}
+}
+
+static void
+convreader(void *a)
+{
+	Conv *c = a;
+	Block *b;
+
+	qlock(c);
+	assert(c->reader == 1);
+	while(c->dataopen == 0) {
+		qunlock(c);
+		b = nil;
+		if(!waserror()) {
+			b = convreadblock(c, 2000);
+			poperror();
+		}
+		qlock(c);
+		if(b == nil) {
+			convsetstate(c, CClosed);
+			break;
+		}
+		if(!waserror()) {
+			conviput(c, b, 1);
+			poperror();
+		}
+	}
+	c->reader = 0;
+	qunlock(c);
+	pexit("hangup", 1);
 }
