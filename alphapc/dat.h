@@ -143,7 +143,7 @@ struct Mach
 
 	ulong	fairness;		/* for runproc */
 
-	ulong	cpuhz;			/* hwrpb->cfreq */
+	vlong	cpuhz;			/* hwrpb->cfreq */
 	ulong	pcclast;
 	uvlong	fastclock;
 	vlong	intrts;			/* time stamp of last interrupt */

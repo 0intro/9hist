@@ -143,7 +143,7 @@ struct Mach
 	int	lastpid;		/* highest assigned pid slot */
 
 	int	cpumhz;			/* speed of cpu */
-	int	cpuhz;			/* ... *
+	vlong	cpuhz;			/* ... */
 
 	/* save areas for exceptions */
 	ulong	sfiq[5];

@@ -134,7 +134,7 @@ struct Mach
 
 	ulong	fairness;		/* for runproc */
 
-	ulong	cpuhz;
+	vlong	cpuhz;
 	ulong	bushz;
 	ulong	dechz;
 	ulong	tbhz;
