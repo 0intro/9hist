@@ -37,10 +37,15 @@ enum {
 	BIU		=	7
 };
 
+typedef struct Chan {
+	int		inuse;
+	Rendez	r;
+	void	(*f)(void);
+} Chan;
+
 struct {
 	Lock;
-	Rendez	r[6];
-	int		channels;
+	Chan	chan[6];
 } dma;
 
 struct dmaregs {
@@ -66,9 +71,9 @@ dmaalloc(int rd, int bigendian, int burstsize, int datumsize, int device, void *
 
 	lock(&dma);
 	for (i = 0; i < NDMA; i++) {
-		if (dma.channels & (1 << i))
+		if (dma.chan[i].inuse)
 			continue;
-		dma.channels |= 1 << i;
+		dma.chan[i].inuse++;
 		unlock(&dma);
 		dmaregs[i].ddar =
 			(rd?1:0)<<RW |
@@ -85,9 +90,7 @@ dmaalloc(int rd, int bigendian, int burstsize, int datumsize, int device, void *
 
 void
 dmafree(int i) {
-	lock(&dma);
-	dma.channels &= ~(1<<i);
-	unlock(&dma);
+	dma.chan[i].inuse = 0;
 }
 
 static int
@@ -97,13 +100,14 @@ dmaready(void *dcsr) {
 
 ulong
 dmastart(int chan, void *addr, int count) {
-	ulong ab;
+	ulong status;
 
-	while ((ab = dmaready(&dmaregs[chan].dcsr_rd)) == 0) {
-		sleep(&dma.r[chan], dmaready, &dmaregs[chan].dcsr_rd);
-	}
-	cachewb();
-	if (ab & (1<<DONEA)) {
+	if (((status = dmaregs[chan].dcsr_rd) & ((1<<DONEA)|(1<<DONEB))) == 0)
+		return 0;
+
+	cachewbregion(addr, count);
+	if ((status & (1<<BIU | 1<<STRTB)) == (1<<BIU | 1<<STRTB) ||
+				(status & (1<<BIU | 1<<STRTA)) == (1<<STRTA)) {
 		dmaregs[chan].dcsr_clr |= 1<<DONEA | 1<<STRTA;
 		dmaregs[chan].dstrtA = addr;
 		dmaregs[chan].dxcntA = count-1;
@@ -133,7 +137,7 @@ dmawait(int chan, ulong op) {
 	ulong dcsr;
 
 	while (((dcsr = dmaregs[chan].dcsr_rd) & (op | 1<<ERROR)) == 0)
-		sleep(&dma.r[chan], dmaready, &dmaregs[chan].dcsr_rd);
+		sleep(&dma.chan[chan].r, dmaready, &dmaregs[chan].dcsr_rd);
 	if (dcsr & 1<<ERROR)
 		pprint("DMA error, chan %d, status 0x%lux\n", chan, dcsr);
 }
@@ -145,9 +149,12 @@ static void
 dmaintr(Ureg*, void *x)
 {
 	int i;
+	ulong dcsr;
 
 	for (i = 0; i < NDMA; i++) {
-		if (dmaregs[i].dcsr_rd & (1<<DONEA | 1<<DONEB | 1<<ERROR))
-			wakeup(&dma.r[i]);
+		if ((dcsr = dmaregs[i].dcsr_rd) & (1<<DONEA | 1<<DONEB | 1<<ERROR))
+			wakeup(&dma.chan[i].r);
+			if (dma.chan[i].f)
+				(*dma.chan[i].f)(dcsr);
 	}
 }

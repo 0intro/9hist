@@ -77,6 +77,7 @@ enum {
 
 typedef struct	AQueue	AQueue;
 typedef struct	Buf	Buf;
+typedef struct	IOstate IOstate;
 
 enum
 {
@@ -104,8 +105,8 @@ enum
 	Vspeed,
 	Nvol,
 
-	Bufsize		= 16*1024,	/* 92 ms each */
-	Nbuf		= 16,		/* 1.5 seconds total */
+	Bufsize		= 8*1024,	/* 46 ms each */
+	Nbuf		= 32,		/* 1.5 seconds total */
 
 	Speed		= 44100,
 	Ncmd		= 50,		/* max volume command words */
@@ -121,66 +122,34 @@ audiodir[] =
 
 struct	Buf
 {
+	int		active;			/* dma running */
 	uchar*	virt;
-	ulong	phys;
-	Buf*	next;
+	uint	nbytes;
 };
 
-struct	AQueue
+struct	IOstate
 {
-	Lock;
-	Buf*	first;
-	Buf*	last;
+	QLock;
+	Rendez	vous;
+	int		bufinit;		/* boolean, if buffers allocated */
+	Buf		buf[Nbuf];		/* buffers and queues */
+	Buf		*current;		/* next candidate for dma */
+	Buf		*filling;		/* buffer being filled */
 };
 
 static	struct
 {
 	QLock;
-	Rendez	vous;
-	int	bufinit;	/* boolean if buffers allocated */
-	int	curcount;	/* how much data in current buffer */
-	int	active;		/* boolean dma running */
-	int	intr;		/* boolean an interrupt has happened */
-	int	amode;		/* Aclosed/Aread/Awrite for /audio */
-	int	rivol[Nvol];		/* right/left input/output volumes */
-	int	livol[Nvol];
-	int	rovol[Nvol];
-	int	lovol[Nvol];
-	int	major;		/* SB16 major version number (sb 4) */
-	int	minor;		/* SB16 minor version number */
-	ulong	totcount;	/* how many bytes processed since open */
-	vlong	tottime;	/* time at which totcount bytes were processed */
-
-	Buf	buf[Nbuf];	/* buffers and queues */
-	AQueue	empty;
-	AQueue	full;
-	Buf*	current;
-	Buf*	filling;
-} input, output;
-
-static	struct
-{
-	QLock;
-	Rendez	vous;
-	int	bufinit;	/* boolean if buffers allocated */
-	int	curcount;	/* how much data in current buffer */
-	int	active;		/* boolean dma running */
-	int	intr;		/* boolean an interrupt has happened */
-	int	amode;		/* Aclosed/Aread/Awrite for /audio */
-	int	rivol[Nvol];		/* right/left input/output volumes */
-	int	livol[Nvol];
-	int	rovol[Nvol];
-	int	lovol[Nvol];
-	int	major;		/* SB16 major version number (sb 4) */
-	int	minor;		/* SB16 minor version number */
-	ulong	totcount;	/* how many bytes processed since open */
-	vlong	tottime;	/* time at which totcount bytes were processed */
-
-	Buf	buf[Nbuf];	/* buffers and queues */
-	AQueue	empty;
-	AQueue	full;
-	Buf*	current;
-	Buf*	filling;
+	int		amode;			/* Aclosed/Aread/Awrite for /audio */
+	int		intr;			/* boolean an interrupt has happened */
+	int		rivol[Nvol];	/* right/left input/output volumes */
+	int		livol[Nvol];
+	int		rovol[Nvol];
+	int		lovol[Nvol];
+	ulong	totcount;		/* how many bytes processed since open */
+	vlong	tottime;		/* time at which totcount bytes were processed */
+	IOstate	i;
+	IOstate	o;
 } audio;
 
 static	struct
@@ -388,32 +357,27 @@ static int L3_read(char addr, char * data, int len)
 static	char	Emode[]		= "illegal open mode";
 static	char	Evolume[]	= "illegal volume specifier";
 
-static	Buf*
-getbuf(AQueue *q)
+static void
+bufinit(IOstate *b)
 {
-	Buf *b;
+	int i;
 
-	ilock(q);
-	b = q->first;
-	if(b)
-		q->first = b->next;
-	iunlock(q);
+	for (i = 0; i < Nbuf; i++)
+		b->buf[i].virt = xalloc(Bufsize);
+	b->bufinit = 1;
+};
 
-	return b;
-}
-
-static	void
-putbuf(AQueue *q, Buf *b)
+static void
+setempty(IOstate *b)
 {
+	int i;
 
-	ilock(q);
-	b->next = 0;
-	if(q->first)
-		q->last->next = b;
-	else
-		q->first = b;
-	q->last = b;
-	iunlock(q);
+	for (i = 0; i < Nbuf; i++) {
+		b->buf[i].nbytes = 0;
+		b->buf[i].active = 0;
+	}
+	b->filling = b->buf;
+	b->current = b->buf;
 }
 
 static void
@@ -462,9 +426,14 @@ audioinit(void)
 }
 
 static void
-audioinit(void)
-{}
-
+sendaudio(IOstat *b) {
+	if (dmastart(b->chan, b->current->virt, b->current->nbytes)) {
+		b->current->active++;
+		b->current++;
+		if (b->current == &b->buf[Nbuf])
+			b->current == &b->buf[0];
+	}
+}
 
 static Chan*
 audioattach(char *param)
@@ -487,7 +456,6 @@ audiostat(Chan *c, char *db)
 static Chan*
 audioopen(Chan *c, int omode)
 {
-	int amode;
 
 	switch(c->qid.path & ~CHDIR) {
 	default:
@@ -502,31 +470,30 @@ audioopen(Chan *c, int omode)
 		break;
 
 	case Qaudio:
-		if ((omode & 0x7) > 2)
+		omode = (omode & 0x7) + 1;
+		if (omode & ~(Aread | Awrite))
 			error(Ebadarg);
 		qlock(&audio);
-		omode++;
 		if(audio.amode & omode){
 			qunlock(&audio);
 			error(Einuse);
 		}
-		if (omode & AudioIn) {
+		if (omode & Aread) {
 			/* read */
-			audio.amode |= AudioIn;
-			if((audio.bufinit & AudioIn) == 0) {
-				audio.bufinit |= AudioIn;
-				sbbufinit();
-			}
+			audio.amode |= Aread;
+			if(audio.i.bufinit == 0)
+				bufinit(&audio.i);
+			setempty(&audio.i);
 		}
 		if (omode & 0x2) {
 			/* write */
-			audio.amode |= 0x2;
+			audio.amode |= Awrite;
+			if(audio.o.bufinit == 0)
+				bufinit(&audio.o);
+			setempty(&audio.o);
 		}
-		audio.amode = amode;
-		setempty();
-		audio.curcount = 0;
 		qunlock(&audio);
-		mxvolume();
+//		mxvolume();
 		break;
 	}
 	c = devopen(c, omode, audiodir, nelem(audiodir), devgen);
@@ -555,17 +522,12 @@ audioclose(Chan *c)
 	case Qaudio:
 		if(c->flag & COPEN) {
 			qlock(&audio);
-			if(audio.amode == Awrite) {
+			if(audio.amode & Awrite) {
 				/* flush out last partial buffer */
-				b = audio.filling;
-				if(b) {
-					audio.filling = 0;
-					memset(b->virt+audio.curcount, 0, Bufsize-audio.curcount);
-					swab(b->virt);
+				b = audio.o.filling;
+				if(audio.o.buf[b].count) {
 					putbuf(&audio.full, b);
 				}
-				if(!audio.active && audio.full.first)
-					pokeaudio();
 			}
 			audio.amode = Aclosed;
 			if(waserror()){
@@ -697,9 +659,10 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 	int i, nf, v, left, right, in, out;
 	char buf[255], *field[Ncmd];
 	Buf *b;
-	char *a;
+	char *p;
+	IOstate *a;
 
-	a = vp;
+	p = vp;
 	n0 = n;
 	switch(c->qid.path & ~CHDIR) {
 	default:
@@ -714,7 +677,7 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 		out = 1;
 		if(n > sizeof(buf)-1)
 			n = sizeof(buf)-1;
-		memmove(buf, a, n);
+		memmove(buf, p, n);
 		buf[n] = '\0';
 
 		nf = getfields(buf, field, Ncmd, 1, " \t\n");
@@ -779,41 +742,36 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 		break;
 
 	case Qaudio:
-		if(audio.amode != Awrite)
+		if((audio.amode & Awrite) == 0)
 			error(Emode);
-		qlock(&audio);
+		a = &audio.o;
+		qlock(a);
 		if(waserror()){
-			qunlock(&audio);
+			qunlock(a);
 			nexterror();
 		}
 		while(n > 0) {
-			b = audio.filling;
-			if(b == 0) {
-				b = getbuf(&audio.empty);
-				if(b == 0) {
-					waitaudio();
-					continue;
-				}
-				audio.filling = b;
-				audio.curcount = 0;
-			}
+			/* wait if dma in progress */
+			while (a->filling->active)
+				waitaudio(a);
 
-			m = Bufsize-audio.curcount;
+			m = Bufsize - a->filling->nbytes;
 			if(m > n)
 				m = n;
-			memmove(b->virt+audio.curcount, a, m);
+			memmove(a->filling->buf + a->filling->nbytes, p, m);
 
-			audio.curcount += m;
+			a->filling->nbytes += m;
 			n -= m;
-			a += m;
-			if(audio.curcount >= Bufsize) {
-				audio.filling = 0;
-				swab(b->virt);
-				putbuf(&audio.full, b);
+			p += m;
+			if(a->filling->nbytes >= Bufsize) {
+				sendaudio(a);
+				a->filling++;
+				if (a->filling == &a->buf[Nbuf])
+					a->filling = a->buf;
 			}
 		}
 		poperror();
-		qunlock(&audio);
+		qunlock(a);
 		break;
 	}
 	return n0 - n;
