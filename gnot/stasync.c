@@ -11,8 +11,7 @@
  *  configuration
  */
 enum {
-	MAXFRAME=	246,
-	Nasync=		1,
+	MAXFRAME=	256,	/* also known to tsm8 code */
 };
 
 /* input states */
@@ -98,16 +97,17 @@ asyncopen(Queue *q, Stream *s)
 
 	DPRINT("asyncopen %d\n", s->dev);
 
-	for(ap = async; ap < &async[Nasync]; ap++){
+	for(ap = async; ap < &async[conf.nasync]; ap++){
 		qlock(ap);
 		if(ap->inuse == 0)
 			break;
 		qunlock(ap);
 	}
-	if(ap == &async[Nasync])
+	if(ap == &async[conf.nasync])
 		error(0, Enoasync);
 	q->ptr = q->other->ptr = ap;
 
+	ap->inuse = 1;
 	ap->bp = 0;
 	ap->chan = -1;
 	ap->count = 0;
@@ -120,6 +120,7 @@ asyncopen(Queue *q, Stream *s)
 	ap->out = 0;
 	ap->wq = WR(q);
 	ap->state = Hunt;
+	qunlock(ap);
 }
 
 static void
@@ -329,12 +330,12 @@ void
 asdeliver(Queue *q, Async *ap)
 {
 	int chan, c;
-	Block *bp;
+	Block *bp = 0;
 	uchar *p = ap->buf;
 	int n = ap->icount;
 
-	chan = p[1] & 0x7e;
-	chan = (chan<<5)|((p[2] & 0x7e)>>1);
+	chan = *p++ & 0x7e;
+	chan = (chan<<5)|((*p++ & 0x7e)>>1);
 	if(chan==0) {
 		DPRINT("a%d deliver chan 0\n", ap-async);
 		ap->chan0++;

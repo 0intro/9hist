@@ -98,13 +98,15 @@ printinit(void)
 	klogq.out = klogq.buf;
 	lineq.in = lineq.buf;
 	lineq.out = lineq.buf;
+	rs232.in.in = rs232.in.buf;
+	rs232.in.out = rs232.in.buf;
 	qlock(&kbdq);		/* allocate qlock */
 	qunlock(&kbdq);
 	lock(&lineq);		/* allocate lock */
 	unlock(&lineq);
 	lock(&klogq);		/* allocate lock */
 	unlock(&klogq);
-	lock(&klogq.put);		/* allocate lock */
+	lock(&klogq.put);	/* allocate lock */
 	unlock(&klogq.put);
 
 	screeninit();

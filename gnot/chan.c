@@ -96,11 +96,14 @@ loop:
 void
 close(Chan *c)
 {
+	if(c->flag & CFREE)
+		panic("close");
 	if(decref(c) == 0){
 		if(!waserror()){
 			(*devtab[c->type].close)(c);
 			poperror();
 		}
+		c->flag = CFREE;
 		lock(&chanalloc);
 		c->next = chanalloc.free;
 		chanalloc.free = c;
@@ -369,11 +372,21 @@ walk(Chan *ac, char *name, int domnt)
 	if(name[0])			/* walk succeeded */
 		c->flag &= ~CMOUNT;
 
+	if(domnt){
+		if(waserror()){
+			print("domount error\n");
+			if(!first)
+				close(c);
+			return 0;
+		}
+		c = domount(c);
+		poperror();
+	}
+
 	if(!first)
 		close(ac);
 
-	if(domnt)
-		return domount(c);
+
 	return c;
 
     Notfound:
@@ -420,6 +433,11 @@ createdir(Chan *c)
 	close(mc);
 	nc->mnt = mnt;
 	return nc;
+}
+
+void
+saveregisters(void)
+{
 }
 
 /*
@@ -539,6 +557,7 @@ namec(char *name, int amode, int omode, ulong perm)
 			c = nc;
 		}
 	Open:
+		saveregisters();	/* else error() in open has wrong value of c saved */
 		c = (*devtab[c->type].open)(c, omode);
 		if(omode & OCEXEC)
 			c->flag |= CCEXEC;

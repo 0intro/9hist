@@ -13,7 +13,6 @@
 #define	MINX	8
 
 extern	GFont	defont0;
-extern	GFont	defont1;
 GFont		*defont;
 
 struct{
@@ -42,11 +41,9 @@ screeninit(void)
 	/*
 	 * Read HEX switch to set ldepth
 	 */
-	if(*(uchar*)MOUSE & (1<<4)){
+	if(*(uchar*)MOUSE & (1<<4))
 		gscreen.ldepth = 1;
-		defont = &defont1;
-	}else
-		defont = &defont0;
+	defont = &defont0;	/* save space; let bitblt do the conversion work */
 	gbitblt(&gscreen, Pt(0, 0), &gscreen, gscreen.r, 0);
 	out.pos.x = MINX;
 	out.pos.y = 0;
@@ -81,7 +78,7 @@ screenputc(int c)
 			screenputc('\n');
 		buf[0] = c&0x7F;
 		buf[1] = 0;
-		out.pos = gstring(&gscreen, out.pos, defont, buf, S);
+		out.pos = gbitbltstring(&gscreen, out.pos, defont, buf, S);
 	}
 }
 

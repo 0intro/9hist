@@ -1035,15 +1035,16 @@ streamwrite(Chan *c, void *a, long n, int docopy)
 	long rem;
 	int i;
 
+	s = c->stream;
+
 	/*
 	 *  one writer at a time
-	 */
-	s = c->stream;
 	qlock(&s->wrlock);
 	if(waserror()){
 		qunlock(&s->wrlock);
 		nexterror();
 	}
+	 */
 
 	/*
 	 *  decode the qid
@@ -1053,9 +1054,7 @@ streamwrite(Chan *c, void *a, long n, int docopy)
 		break;
 	case Sctlqid:
 		n = streamctlwrite(s, a, n);
-		qunlock(&s->wrlock);
-		poperror();
-		return n;
+		goto out;
 	default:
 		panic("bad stream qid\n");
 	}
@@ -1104,8 +1103,9 @@ streamwrite(Chan *c, void *a, long n, int docopy)
 			}
 		}
 	}
-	qunlock(&s->wrlock);
-	poperror();
+out:
+/*	qunlock(&s->wrlock);
+	poperror(); /**/
 	return n;
 }
 
@@ -1148,16 +1148,17 @@ streamstat(Chan *c, char *db, char *name)
 
 	s = c->stream;
 	if(s == 0)
-		panic("streamstat");
-
-	q = RD(s->procq);
-	lock(q);
-	for(n=0, bp=q->first; bp; bp = bp->next){
-		n += BLEN(bp);
-		if(bp->flags&S_DELIM)
-			break;
+		n = 0;
+	else {
+		q = RD(s->procq);
+		lock(q);
+		for(n=0, bp=q->first; bp; bp = bp->next){
+			n += BLEN(bp);
+			if(bp->flags&S_DELIM)
+				break;
+		}
+		unlock(q);
 	}
-	unlock(q);
 
 	devdir(c, c->qid, name, n, 0, &dir);
 	convD2M(&dir, db);

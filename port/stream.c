@@ -1148,16 +1148,17 @@ streamstat(Chan *c, char *db, char *name)
 
 	s = c->stream;
 	if(s == 0)
-		panic("streamstat");
-
-	q = RD(s->procq);
-	lock(q);
-	for(n=0, bp=q->first; bp; bp = bp->next){
-		n += BLEN(bp);
-		if(bp->flags&S_DELIM)
-			break;
+		n = 0;
+	else {
+		q = RD(s->procq);
+		lock(q);
+		for(n=0, bp=q->first; bp; bp = bp->next){
+			n += BLEN(bp);
+			if(bp->flags&S_DELIM)
+				break;
+		}
+		unlock(q);
 	}
-	unlock(q);
 
 	devdir(c, c->qid, name, n, 0, &dir);
 	convD2M(&dir, db);

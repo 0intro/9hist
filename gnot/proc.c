@@ -5,6 +5,7 @@
 #include	"fns.h"
 #include	"errno.h"
 
+#include	<libg.h>
 #include	<gnot.h>
 
 struct

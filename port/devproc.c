@@ -4,6 +4,7 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"errno.h"
+#include 	"io.h"
 
 #include	"devtab.h"
 
@@ -280,6 +281,11 @@ procread(Chan *c, void *va, long n)
 		if(c->offset>=KZERO && c->offset<KZERO+conf.npage0*BY2PG){
 			if(c->offset+n > KZERO+conf.npage0*BY2PG)
 				n = KZERO+conf.npage0*BY2PG - c->offset;
+			memcpy(a, (char*)c->offset, n);
+			return n;
+		} else if(c->offset>=UNCACHED && c->offset<UNCACHED+conf.npage0*BY2PG){
+			if(c->offset+n > UNCACHED+conf.npage0*BY2PG)
+				n = UNCACHED+conf.npage0*BY2PG - c->offset;
 			memcpy(a, (char*)c->offset, n);
 			return n;
 		}
