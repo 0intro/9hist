@@ -422,8 +422,6 @@ exit(void)
 {
 	int i;
 
-etherdump();
-return;
 	u = 0;
 	print("exiting\n");
 	switch(machtype){
@@ -431,6 +429,7 @@ return;
 		headreset();		/* via headland chip */
 		break;
 	case At:
+		print("hit the button...");
 		for(;;);
 		putcr3(0);		/* crash and burn */
 	}

@@ -26,7 +26,7 @@ typedef struct Ring Ring;
 
 enum {
 	IObase		= 0x360,
-	RAMbase		= 0xD0000,
+	RAMbase		= 0xC8000,
 	RAMsize		= 8*1024,
 	BUFsize		= 256,
 
@@ -143,6 +143,30 @@ struct Ctlr {
 };
 static Ctlr ctlr[Nctlr];
 
+static Etherpkt txpkt;
+
+static void
+xmemmove(void *to, void *from, long len)
+{
+	ushort *t, *f;
+	int s;
+	Ctlr *cp = &ctlr[0];
+	uchar reg;
+
+	t = to;
+	f = from;
+	len = (len+1)/2;
+	s = splhi();
+	reg = inb(cp->iobase+0x05);
+	outb(cp->iobase+Imr, 0);
+	outb(cp->iobase+0x05, 0x80|reg);
+	while(len--)
+		*t++ = *f++;
+	outb(cp->iobase+0x05, reg);
+	outb(cp->iobase+Imr, 0x1F);
+	splx(s);
+}
+
 static int
 isxfree(void *arg)
 {
@@ -208,6 +232,7 @@ etheroput(Queue *q, Block *bp)
 	 */
 	qlock(&cp->xl);
 	if(waserror()){
+		freeb(bp);
 		qunlock(&cp->xl);
 		nexterror();
 	}
@@ -215,8 +240,10 @@ etheroput(Queue *q, Block *bp)
 	/*
 	 * Wait till we get an output buffer
 	 */
-	sleep(&cp->xr, isxfree, cp);
-	p = cp->xpkt;
+	tsleep(&cp->xr, isxfree, cp, 1000);
+	if(isxfree(cp) == 0)
+		print("Tx wedged\n");
+	p = &txpkt;
 
 	/*
 	 * copy message into buffer
@@ -244,6 +271,7 @@ etheroput(Queue *q, Block *bp)
 	 * give packet a local address
 	 */
 	memmove(p->s, cp->ea, sizeof(cp->ea));
+	xmemmove(cp->xpkt, p, len);
 
 	/*
 	 * start the transmission
@@ -445,18 +473,16 @@ etherreset(void)
 {
 	Ctlr *cp = &ctlr[0];
 	int i;
-	uchar msr;
+	uchar reg;
 
 	cp->iobase = IObase;
-	msr = 0x40|inb(cp->iobase);
-	outb(cp->iobase, msr);
-msr=0x40|inb(cp->iobase+0x05);
-outb(cp->iobase+0x05, msr);
+	reg = 0x40|inb(cp->iobase);
+	outb(cp->iobase, reg);
+	reg = 0x40|inb(cp->iobase+0x05);
+	outb(cp->iobase+0x05, reg);
 for(i = 0; i < 0x10; i++)
     print("#%2.2ux ", inb(cp->iobase+i));
 print("\n");
-msr=0x40|inb(cp->iobase+0x05);
-outb(cp->iobase+0x05, msr);
 	for(i = 0; i < sizeof(cp->ea); i++)
 		cp->ea[i] = inb(cp->iobase+EA+i);
 	init(cp);
@@ -512,9 +538,9 @@ etherup(Ctlr *cp, uchar *d0, int len0, uchar *d1, int len1)
 		}
 		if(waserror() == 0){
 			bp = allocb(len0+len1);
-			memmove(bp->rptr, d0, len0);
+			xmemmove(bp->rptr, d0, len0);
 			if(len1)
-				memmove(bp->rptr+len0, d1, len1);
+				xmemmove(bp->rptr+len0, d1, len1);
 			bp->wptr += len0+len1;
 			bp->flags |= S_DELIM;
 			PUTNEXT(tp->q, bp);
@@ -683,7 +709,7 @@ etherwrite(Chan *c, char *a, long n, ulong offset)
 }
 
 void
-etherdump(void)
+consdebug(void)
 {
 	Ctlr *cp = &ctlr[0];
 	uchar bnry, curr, isr;

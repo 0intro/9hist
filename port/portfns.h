@@ -29,6 +29,7 @@ void	closepgrp(Pgrp*);
 long	clrfpintr(void);
 void	confinit(void);
 int	consactive(void);
+void	consdebug(void);
 Block	*copyb(Block*, int);
 Env*	copyenv(Env*, int);
 void	copypage(Page*, Page*);
