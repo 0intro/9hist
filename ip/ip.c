@@ -182,11 +182,11 @@ ipoput(Fs *f, Block *bp, int gating, int ttl)
 		eh->ttl = ttl;
 	}
 
+	rlock(ifc);
 	if(waserror()){
 		runlock(ifc);
 		nexterror();
 	}
-	rlock(ifc);
 	if(ifc->m == nil)
 		goto raise;
 

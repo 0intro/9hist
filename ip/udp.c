@@ -327,7 +327,7 @@ udpiput(Proto *udp, uchar *ia, Block *bp)
 		if(ipforme(f, laddr) == Runi)
 			v6tov4(bp->rp+IPv4addrlen, laddr);
 		else
-			memmove(bp->rp+IPv4addrlen, ia, IPv4addrlen);
+			v6tov4(bp->rp+IPv4addrlen, ia);
 		hnputs(bp->rp + 2*IPv4addrlen, rport);
 		hnputs(bp->rp + 2*IPv4addrlen + 2, lport);
 		break;

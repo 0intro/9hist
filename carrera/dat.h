@@ -12,6 +12,7 @@ typedef struct Notsave	Notsave;
 typedef struct PMMU	PMMU;
 typedef struct Softtlb	Softtlb;
 typedef struct Ureg	Ureg;
+typedef struct Proc	Proc;
 
 /*
  *  parameters for sysproc.c
@@ -26,7 +27,9 @@ struct Lock
 	ulong	key;			/* semaphore (non-zero = locked) */
 	ulong	sr;
 	ulong	pc;
-	ulong	pid;
+	Proc	*p;
+	ushort	pri;
+	ushort	isilock;
 };
 
 struct Label

@@ -610,7 +610,6 @@ struct Proc
 	ulong	art;		/* avg # ticks used since last blocked */
 	ulong	movetime;	/* last time process switched processors */
 	ulong	readytime;	/* time process went ready */
-	ulong	lockpri;	/* priority of process holding lock we're trying for */
 	int	preempted;	/* true if this process hasn't finished the interrupt
 				 *  that last preempted it
 				 */

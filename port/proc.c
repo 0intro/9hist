@@ -157,10 +157,6 @@ ready(Proc *p)
 	if(pri < PriNormal && p->basepri > PriNormal)
 		pri = PriNormal;
 
-	/* hack for livelocks due to priority */
-	if(p->lockpri)
-		pri = 0;
-
 	p->priority = pri;
 	rq = &runq[p->priority];
 
@@ -327,7 +323,6 @@ newproc(void)
 	p->wired = 0;
 	p->ureg = 0;
 	p->error[0] = '\0';
-	p->lockpri = 0;
 	memset(p->seg, 0, sizeof p->seg);
 	p->pid = incref(&pidalloc);
 	p->noteid = incref(&noteidalloc);
