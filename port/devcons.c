@@ -61,8 +61,7 @@ putstrn(char *str, int n)
 
 	/*
 	 *  if there's a serial line being used as a console,
-	 *  put the message there.  Tack a carriage return
-	 *  before new lines.
+	 *  put the message there.
 	 */
 	if(printq == 0)
 		return;
@@ -228,8 +227,6 @@ kbdcr2nl(Queue *q, int ch)
 
 /*
  *  Put character, possibly a rune, into read queue at interrupt time.
- *  Always called splhi from processor 0.
- *
  *  Called at interrupt time to process a character.
  */
 int

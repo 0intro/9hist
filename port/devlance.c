@@ -120,7 +120,6 @@ struct Softlance
 {
 	Lance;			/* host dependent lance params */
 
-	uchar	ea[6];
 	uchar	bcast[6];
 
 	int	wedged;		/* the lance is wedged */
@@ -139,10 +138,10 @@ static void	promiscuous(void*, int);
 void
 lancereset(void)
 {
-	static int already;
+	static int inited;
 
-	if(already == 0){
-		already = 1;
+	if(inited == 0){
+		inited = 1;
 		lancesetup(&l);
 
 		/* general network interface structure */
@@ -150,6 +149,7 @@ lancereset(void)
 		l.alen = 6;
 		memmove(l.addr, l.ea, 6);
 		memmove(l.bcast, etherbcast, 6);
+
 		l.promiscuous = promiscuous;
 		l.arg = &l;
 	}
@@ -170,8 +170,8 @@ static void
 lancestart(int mode)
 {
 	int i;
-	Lancemem *lm = LANCEMEM;
 	Msg *m;
+	Lancemem *lm = LANCEMEM;
 
 	/*
 	 *   wait till both receiver and transmitter are
@@ -328,6 +328,7 @@ lanceintr(void)
 				p = &l.rp[l.rl];
 				x = MPus(m->cntflags) - 4;
 				t = (p->type[0]<<8) | p->type[1];
+
 				for(fp = l.f; fp < &l.f[Ntypes]; fp++){
 					f = *fp;
 					if(f == 0)
@@ -448,9 +449,8 @@ lancewrite(Chan *c, void *buf, long n, ulong offset)
 	qlock(&l.tlock);
 	m = &(LANCEMEM->tmr[l.tc]);
 	tsleep(&l.tr, isoutbuf, m, 10000);
-	if(!isoutbuf(m) || l.wedged){
+	if(!isoutbuf(m) || l.wedged)
 		print("lance transmitter jammed\n");
-	}
 	else {
 		p = &l.tp[l.tc];
 		memmove(p->d, buf, n);
@@ -466,7 +466,7 @@ lancewrite(Chan *c, void *buf, long n, ulong offset)
 		MPus(m->laddr) = LADDR(&l.ltp[l.tc]);
 		MPus(m->flags) = LANCEOWNER|STP|ENP|HADDR(&l.ltp[l.tc]);
 		l.tc = TSUCC(l.tc);
-		*l.rdp = INEA|TDMD; /**/
+		*l.rdp = INEA|TDMD;
 	}
 	qunlock(&l.tlock);
 	return n;

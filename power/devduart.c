@@ -306,7 +306,6 @@ duartslave0(Uart *p)
 	case Dprint:
 		p->reg->cmnd = ENBTX;
 		p->reg->data = p->val;
-iprint("slave %c\n", p->val);
 		break;
 	case Dena:
 		duartenable(p);
@@ -380,7 +379,7 @@ duartkick(Uart *p)
 void
 duartxintr(Uart *p)
 {
-	int ch;
+	char ch;
 	Duartreg *reg;
 
 	reg = p->reg;
@@ -462,9 +461,9 @@ duartspecial(int port, int s, Queue **in, Queue **out, int (*putc)(Queue*, int))
 		duartbaud(p, s);
 
 	p->putc = putc;
-	if(in)
+	if(in != 0)
 		*in = p->iq;
-	if(out)
+	if(out != 0)
 		*out = p->oq;
 
 	p->opens++;

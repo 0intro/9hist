@@ -23,7 +23,6 @@ main(void)
 	machinit();
 	active.exiting = 0;
 	active.machs = 1;
-iprint("Boot baby\n");
 	arginit();
 	confinit();
 	lockinit();
@@ -31,7 +30,6 @@ iprint("Boot baby\n");
 	duartinit();
 	printinit();
 	duartspecial(0, 9600, &kbdq, &printq, kbdcr2nl);
-iprint("F:\n", printq);
 	print("\n\nBrazil\n");
 	pageinit();
 	tlbinit();
@@ -41,6 +39,7 @@ iprint("F:\n", printq);
 	clockinit();
 	ioboardinit();
 	chandevreset();
+	rootfiles();
 	swapinit();
 	userinit();
 	launchinit();
@@ -80,6 +79,7 @@ vecinit(void)
 	q = (ulong*)vector80;
 	for(size=0; size<4; size++)
 		*p++ = *q++;
+
 	p = (ulong*)UTLBMISS;
 	q = (ulong*)vector0;
 	for(size=0; size<0x80/sizeof(*q); size++)
@@ -190,6 +190,7 @@ init0(void)
 	up->slash = namec("#/", Atodir, 0, 0);
 	up->dot = clone(up->slash, 0);
 
+	iallocinit();
 	chandevinit();
 
 	if(!waserror()){
