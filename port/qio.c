@@ -807,7 +807,7 @@ pullupblock(Block *bp, int n)
 	n -= BLEN(bp);
 	while(nbp = bp->next){
 		i = BLEN(nbp);
-		if(i >= n) {
+		if(i > n) {
 			memmove(bp->wp, nbp->rp, n);
 			bp->wp += n;
 			nbp->rp += n;
@@ -820,6 +820,8 @@ pullupblock(Block *bp, int n)
 			nbp->next = 0;
 			freeb(nbp);
 			n -= i;
+			if(n == 0)
+				return bp;
 		}
 	}
 	freeb(bp);
