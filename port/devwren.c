@@ -298,7 +298,7 @@ wrenpart(int dev)
 	 *  parse partition table.
 	 */
 	n = getfields(rawpart, line, Npart+1, '\n');
-	if(strncmp(line[0], MAGIC, sizeof(MAGIC)-1) == 0){
+	if(n > 0 && strncmp(line[0], MAGIC, sizeof(MAGIC)-1) == 0){
 		for(i = 1; i < n; i++){
 			pp++;
 			if(getfields(line[i], field, 3, ' ') != 3){
