@@ -16,7 +16,7 @@ enum {
 	Nrrb=		(1<<LogNrrb),	/* number of recieve buffers */
 	LogNtrb=	7,		/* log of number of transmit buffers */
 	Ntrb=		(1<<LogNtrb),	/* number of transmit buffers */
-	Ndpkt=		1000,		/* number of debug packets */
+	Ndpkt=		200,		/* number of debug packets */
 };
 #define RSUCC(x) (((x)+1)%Nrrb)
 #define TSUCC(x) (((x)+1)%Ntrb)
@@ -102,7 +102,7 @@ typedef struct {
 	uchar d[6];
 	uchar s[6];
 	uchar type[2];
-	uchar data[40];
+	uchar data[60];
 } Dpkt;
 typedef struct {
 	ulong	ticks;
@@ -224,13 +224,16 @@ void lancekproc(void *);
 sprintpacket(char *buf, Trace *t)
 {
 	Dpkt *p = &t->p;
+	int i;
 
-	sprint(buf, "%c: %.8ud %.4d d(%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux)s(%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux)t(%.2ux %.2ux)d(%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux)\n",
-	    t->tag, t->ticks, t->len,
-	    p->d[0], p->d[1], p->d[2], p->d[3], p->d[4], p->d[5],
-	    p->s[0], p->s[1], p->s[2], p->s[3], p->s[4], p->s[5], p->type[0],p->type[1],
-	    p->data[0], p->data[1], p->data[2], p->data[3], p->data[4], p->data[5],
-	    p->data[6], p->data[7], p->data[8], p->data[9], p->data[10], p->data[11]);
+	sprint(buf, "%c: %.8ud %.4d d(%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux)s(%.2ux%.2ux%.2ux%.2ux%.2ux%.2ux)t(%.2ux %.2ux)d(",
+		t->tag, t->ticks, t->len,
+		p->d[0], p->d[1], p->d[2], p->d[3], p->d[4], p->d[5],
+		p->s[0], p->s[1], p->s[2], p->s[3], p->s[4], p->s[5],
+		p->type[0], p->type[1]);
+	for(i=0; i<41; i++)
+		sprint(buf+strlen(buf), "%.2ux", p->data[i]);
+	sprint(buf+strlen(buf), ")\n");
 }
 
 /*

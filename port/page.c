@@ -189,6 +189,7 @@ loop:
 #endif
 	}
 	print("no physical memory\n");
+	pprint("no physical memory\n");
 	unlock(&palloc);
 	if(u == 0)
 		panic("newpage");
