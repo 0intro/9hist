@@ -100,7 +100,7 @@ struct Hotmsg
 	Rendez	r;
 	uchar	intr;			/* flag: interrupt has occurred */
 	uchar	abort;			/* flag: don't interrupt */
-	uchar	wtype;			/* type of last message written */
+	ushort	wlen;			/* length of last message written */
 };
 
 #define	CHDIR	0x80000000L

@@ -25,7 +25,7 @@ ulong	testbuf[NTESTBUF];
 /*
  * If 1, ENABCKSUM causes data transfers to have checksums
  */
-#define	ENABCKSUM	1
+#define	ENABCKSUM	0
 
 typedef struct Hotrod	Hotrod;
 
@@ -44,7 +44,7 @@ Dirtab hotroddir[]={
 #define	NHOTRODDIR	(sizeof hotroddir/sizeof(Dirtab))
 
 struct Hotrod{
-	QLock;
+	Lock;
 	QLock		buflock;
 	Lock		busy;
 	Hot		*addr;		/* address of the device */
@@ -63,18 +63,27 @@ void	hotrodintr(int);
 /*
  * Commands
  */
-void
+
+Hotmsg**
 hotsend(Hotrod *h, Hotmsg *m)
 {
 	Hotmsg **mp;
-	long l;
 
-/* print("hotsend send %d %d %lux %lux\n", h->wi, m->cmd, m, m->param[0]); /**/
+	lock(h);
 	mp = (Hotmsg**)&h->addr->reqstq[h->wi];
 	*mp = (Hotmsg*)MP2VME(m);
 	h->wi++;
 	if(h->wi >= NRQ)
 		h->wi = 0;
+	unlock(h);
+	return mp;
+}
+
+void
+hotwait(Hotmsg **mp)
+{
+	ulong l;
+
 	l = 0;
 	while(*mp){
 		delay(0);	/* just a subroutine call; stay off VME */
@@ -83,6 +92,7 @@ hotsend(Hotrod *h, Hotmsg *m)
 			print("hotsend blocked\n");
 		}
 	}
+	return;
 }
 
 /*
@@ -152,7 +162,7 @@ Chan*
 hotrodopen(Chan *c, int omode)
 {
 	Hotrod *hp;
-	Hotmsg *mp;
+	Hotmsg *mp, **hmp;
 
 	if(c->qid.path == CHDIR){
 		if(omode != OREAD)
@@ -176,7 +186,8 @@ hotrodopen(Chan *c, int omode)
 		hp->ri = 0;
 		mp = &u->khot;
 		mp->cmd = Ureset;
-		hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->khot);
+		hmp = hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->khot);
+		hotwait(hmp);
 		delay(100);
 		print("reset\n");
 
@@ -188,7 +199,8 @@ hotrodopen(Chan *c, int omode)
 		mp->cmd = Utest;
 		mp->param[0] = MP2VME(testbuf);
 		mp->param[1] = NTESTBUF;
-		hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->khot);
+		hmp = hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->khot);
+		hotwait(hmp);
 		delay(100);
 		print("testing addr %lux size %ld\n", mp->param[0], mp->param[1]);
 		for(;;){
@@ -202,7 +214,8 @@ hotrodopen(Chan *c, int omode)
 		 */
 		mp = &u->khot;
 		mp->cmd = Ubus;
-		hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->khot);
+		hmp = hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->khot, 0);
+		hotwait(hmp);
 #endif
 	}
 	c->mode = openmode(omode);
@@ -221,11 +234,13 @@ void
 hotrodclose(Chan *c)
 {
 	Hotrod *hp;
+	Hotmsg **hmp;
 
 	hp = &hotrod[c->dev];
 	if(c->qid.path != CHDIR){
 		u->khot.cmd = Ureboot;
-		hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->khot);
+		hmp = hotsend(hp, &((User*)(u->p->upage->pa|KZERO))->khot);
+		hotwait(hmp);
 		unlock(&hp->busy);
 	}
 }
@@ -260,7 +275,7 @@ long
 hotrodread(Chan *c, void *buf, long n)
 {
 	Hotrod *hp;
-	Hotmsg *mp;
+	Hotmsg *mp, **hmp;
 	ulong l, m, isflush;
 
 	hp = &hotrod[c->dev];
@@ -278,7 +293,6 @@ hotrodread(Chan *c, void *buf, long n)
 			 *  use supplied buffer, no need to lock for reply
 			 */
 			isflush = 0;
-memset(buf, 0, n);
 			mp = &((User*)(u->p->upage->pa|KZERO))->khot;
 			if(mp->abort){	/* use reserved flush msg */
 				mp = &((User*)(u->p->upage->pa|KZERO))->fhot;
@@ -286,14 +300,12 @@ memset(buf, 0, n);
 			}
 			mp->param[2] = 0;	/* reply checksum */
 			mp->param[3] = 0;	/* reply count */
-			qlock(hp);
 			mp->cmd = Uread;
 			mp->param[0] = MP2VME(buf);
 			mp->param[1] = n;
 			mp->abort = isflush;
 			mp->intr = 0;
-			hotsend(hp, mp);
-			qunlock(hp);
+			hmp = hotsend(hp, mp);
 			if(isflush){		/* busy loop */
 				l = 100*1000*1000;
 				do
@@ -301,6 +313,8 @@ memset(buf, 0, n);
 				while(m==0 && --l>0);
 			}else{
 				if(waserror()){
+					if(*hmp && *hmp==mp)
+						hotwait(hmp);
 					mp->abort = 1;
 					nexterror();
 				}
@@ -315,6 +329,7 @@ memset(buf, 0, n);
 				hp->addr->error++;
 				print("hotrod cksum err is %lux sb %lux\n",
 					hotsum(buf, m, 1), mp->param[2]);
+/*
 				print("addr %lux\n", ((char*)buf)+m);
 				{
 					int i;
@@ -323,6 +338,7 @@ memset(buf, 0, n);
 						if(p[i] != i-2)
 							print("%d sb %d %lux %lux\n", p[i], i-2, p[i], &p[i]);
 				}
+*/
 				error(Eio);
 			}
 			mp->abort = 0;
@@ -338,14 +354,13 @@ memset(buf, 0, n);
 			mp->param[2] = 0;	/* reply checksum */
 			mp->param[3] = 0;	/* reply count */
 			qlock(&hp->buflock);
-			qlock(hp);
 			mp->cmd = Uread;
 			mp->param[0] = MP2VME(hp->buf);
 			mp->param[1] = n;
 			mp->abort = 1;
 			mp->intr = 0;
-			hotsend(hp, mp);
-			qunlock(hp);
+			hmp = hotsend(hp, mp);
+			hotwait(hmp);
 			l = 100*1000*1000;
 			do
 				m = mp->param[3];
@@ -360,7 +375,6 @@ memset(buf, 0, n);
 				print("hotrod cksum err is %lux sb %lux\n",
 					hotsum((ulong*)hp->buf, m, 1), mp->param[2]);
 				qunlock(&hp->buflock);
-{int i; for(i=0; i<8; i++) print("%lux\n", ((ulong*)buf)[i]); }
 				error(Eio);
 			}
 			memmove(buf, hp->buf, m);
@@ -378,7 +392,7 @@ long
 hotrodwrite(Chan *c, void *buf, long n)
 {
 	Hotrod *hp;
-	Hotmsg *mp;
+	Hotmsg *mp, **hmp;
 
 	hp = &hotrod[c->dev];
 	switch(c->qid.path & ~CHDIR){
@@ -395,31 +409,29 @@ hotrodwrite(Chan *c, void *buf, long n)
 			 * use supplied buffer, no need to lock for reply
 			 */
 			mp = &((User*)(u->p->upage->pa|KZERO))->khot;
-			mp->wtype = ((char*)buf)[0];
+			mp->wlen = n;
 			if(mp->abort)	/* use reserved flush msg */
 				mp = &((User*)(u->p->upage->pa|KZERO))->fhot;
-			qlock(hp);
 			mp->cmd = Uwrite;
 			mp->param[0] = MP2VME(buf);
 			mp->param[1] = n;
 			mp->param[2] = hotsum(buf, n, ENABCKSUM);
-			hotsend(hp, mp);
-			qunlock(hp);
+			hmp = hotsend(hp, mp);
+			hotwait(hmp);
 		}else{
 			/*
 			 * use hotrod buffer.  lock the buffer until the reply
 			 */
 			mp = &((User*)(u->p->upage->pa|KZERO))->uhot;
-			mp->wtype = ((char*)buf)[0];
+			mp->wlen = n;
 			qlock(&hp->buflock);
-			qlock(hp);
 			memmove(hp->buf, buf, n);
 			mp->cmd = Uwrite;
 			mp->param[0] = MP2VME(hp->buf);
 			mp->param[1] = n;
 			mp->param[2] = hotsum((ulong*)hp->buf, n, ENABCKSUM);
-			hotsend(hp, mp);
-			qunlock(hp);
+			hmp = hotsend(hp, mp);
+			hotwait(hmp);
 			qunlock(&hp->buflock);
 		}
 		return n;
