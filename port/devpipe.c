@@ -294,6 +294,19 @@ piperead(Chan *c, void *va, long n, ulong offset)
 Block*
 pipebread(Chan *c, long n, ulong offset)
 {
+	Pipe *p;
+
+	USED(offset);
+
+	p = c->aux;
+
+	switch(NETTYPE(c->qid.path)){
+	case Qdata0:
+		return qbread(p->q[0], n);
+	case Qdata1:
+		return qbread(p->q[1], n);
+	}
+
 	return devbread(c, n, offset);
 }
 
@@ -329,7 +342,7 @@ pipewrite(Chan *c, void *va, long n, ulong offset)
 		break;
 
 	default:
-		panic("piperead");
+		panic("pipewrite");
 	}
 
 	poperror();
@@ -339,5 +352,32 @@ pipewrite(Chan *c, void *va, long n, ulong offset)
 long
 pipebwrite(Chan *c, Block *bp, ulong offset)
 {
-	return devbwrite(c, bp, offset);
+	long n;
+	Pipe *p;
+
+	USED(offset);
+
+	if(waserror()) {
+		/* avoid notes when pipe is a mounted queue */
+		if((c->flag & CMSG) == 0)
+			postnote(up, 1, "sys: write on closed pipe", NUser);
+		error(Ehungup);
+	}
+
+	p = c->aux;
+	switch(NETTYPE(c->qid.path)){
+	case Qdata0:
+		n = qbwrite(p->q[1], bp);
+		break;
+
+	case Qdata1:
+		n = qbwrite(p->q[0], bp);
+		break;
+
+	default:
+		panic("pipebwrite");
+	}
+
+	poperror();
+	return n;
 }

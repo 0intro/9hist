@@ -41,9 +41,6 @@ struct Queue
 	Rendez	rr;		/* process waiting to read */
 	QLock	wlock;		/* mutex for writing processes */
 	Rendez	wr;		/* process waiting to write */
-
-	uchar*	syncbuf;	/* synchronous IO buffer */
-	int	synclen;	/* syncbuf length */
 };
 
 enum
@@ -224,31 +221,12 @@ qconsume(Queue *q, void *vp, int len)
 int
 qpass(Queue *q, Block *b)
 {
-	int i, len, dowakeup;
+	int len, dowakeup;
 
 	len = BLEN(b);
 	/* sync with qread */
 	dowakeup = 0;
 	ilock(q);
-
-	if(q->syncbuf){
-		/* synchronous communications, just copy into buffer */
-		if(len < q->synclen)
-			q->synclen = len;
-		i = q->synclen;
-		memmove(q->syncbuf, b->rp, i);
-		q->syncbuf = 0;		/* tell reader buffer is full */
-		len -= i;
-		if(len <= 0 || (q->state & Qmsg)) {
-			iunlock(q);
-			wakeup(&q->rr);
-			freeb(b);
-			return i;
-		}
-		dowakeup = 1;
-		/* queue anything that's left */
-		b->rp += i;
-	}
 
 	/* save in buffer */
 	if(q->bfirst)
@@ -278,31 +256,12 @@ int
 qproduce(Queue *q, void *vp, int len)
 {
 	Block *b;
-	int i, dowakeup;
+	int dowakeup;
 	uchar *p = vp;
 
 	/* sync with qread */
 	dowakeup = 0;
 	lock(q);
-
-	if(q->syncbuf){
-		/* synchronous communications, just copy into buffer */
-		if(len < q->synclen)
-			q->synclen = len;
-		i = q->synclen;
-		memmove(q->syncbuf, p, i);
-		q->syncbuf = 0;		/* tell reader buffer is full */
-		len -= i;
-		if(len <= 0 || (q->state & Qmsg)){
-			unlock(q);
-			wakeup(&q->rr);
-			return i;
-		}
-
-		/* queue anything that's left */
-		dowakeup = 1;
-		p += i;
-	}
 
 	/* no waiting receivers, room in buffer? */
 	if(q->len >= q->limit){
@@ -362,14 +321,6 @@ qopen(int limit, int msg, void (*kick)(void*), void *arg)
 }
 
 static int
-filled(void *a)
-{
-	Queue *q = a;
-
-	return q->syncbuf == 0;
-}
-
-static int
 notempty(void *a)
 {
 	Queue *q = a;
@@ -378,15 +329,13 @@ notempty(void *a)
 }
 
 /*
- *  read a queue.  if no data is queued, post a Block
- *  and wait on its Rendez.
+ *  get next block from a queue (up to a limit)
  */
-long
-qread(Queue *q, void *vp, int len)
+Block*
+qbread(Queue *q, int len)
 {
-	Block *b;
+	Block *b, *nb;
 	int n, dowakeup;
-	uchar *p = vp;
 
 	qlock(&q->rlock);
 	if(waserror()){
@@ -412,44 +361,10 @@ qread(Queue *q, void *vp, int len)
 			return 0;
 		}
 
-		if(globalmem(vp)){
-			/* just let the writer fill the buffer directly */
-			q->synclen = len;
-			q->syncbuf = vp;
-			iunlock(q);
-			if(waserror()){
-				/* sync with qwrite() & qproduce() */
-				qlock(&q->wlock);
-				ilock(q);
-				if(q->syncbuf == 0){
-					/* we got some data before the interrupt */
-					b = allocb(q->synclen);
-					memmove(b->wp, vp, q->synclen);
-					b->wp += q->synclen;
-					b->next = q->bfirst;
-					if(q->bfirst == 0)
-						q->blast = b;
-					q->bfirst = b;
-					q->len += q->synclen;
-				}
-				q->syncbuf = 0;
-				iunlock(q);
-				qunlock(&q->wlock);
-				nexterror();
-			}
-			sleep(&q->rr, filled, q);
-			poperror();
-			len = q->synclen;
-			qunlock(&q->rlock);
-			poperror();
-			return len;
-		} else {
-			q->state |= Qstarve;
-			iunlock(q);
-			sleep(&q->rr, notempty, q);
-		}
+		q->state |= Qstarve;	/* flag requesting producer to wake me */
+		iunlock(q);
+		sleep(&q->rr, notempty, q);
 	}
-	QDEBUG checkb(b, "qread 1");
 
 	/* remove a buffered block */
 	q->bfirst = b->next;
@@ -462,30 +377,28 @@ qread(Queue *q, void *vp, int len)
 		dowakeup = 1;
 	} else
 		dowakeup = 0;
-	iunlock(q);
 
-	/* do this outside of the lock(q)! */
-	if(n > len)
-		n = len;
-	memmove(p, b->rp, n);
-	b->rp += n;
+	/* split block if its too big and this is not a message oriented queue */
+	nb = b;
+	if(n > len){
+		if((q->state&Qmsg) == 0){
+			n -= len;
+			b = allocb(n);
+			memmove(b->wp, nb->rp+len, n);
+			b->wp += n;
 
-	QDEBUG checkb(b, "qread 2");
-
-	/* free it or put what's left on the queue */
-	if(b->rp >= b->wp || (q->state&Qmsg)) {
-		freeb(b);
-	} else {
-		ilock(q);
-		b->next = q->bfirst;
-		if(q->bfirst == 0)
-			q->blast = b;
-		q->bfirst = b;
-		q->len += BLEN(b);
-		iunlock(q);
+			b->next = q->bfirst;
+			if(q->bfirst == 0)
+				q->blast = b;
+			q->bfirst = b;
+			q->len += n;
+		}
+		nb->wp = nb->rp + len;
 	}
 
-	/* wakeup flow controlled writers (with a bit of histeria) */
+	iunlock(q);
+
+	/* wakeup flow controlled writers */
 	if(dowakeup){
 		if(q->kick)
 			(*q->kick)(q->arg);
@@ -494,7 +407,26 @@ qread(Queue *q, void *vp, int len)
 
 	poperror();
 	qunlock(&q->rlock);
-	return n;
+	return nb;
+}
+
+/*
+ *  read a queue.  if no data is queued, post a Block
+ *  and wait on its Rendez.
+ */
+long
+qread(Queue *q, void *vp, int len)
+{
+	Block *b;
+
+	b = qbread(q, len);
+	if(b == 0)
+		return 0;
+
+	len = BLEN(b);
+	memmove(vp, b->rp, len);
+	freeb(b);
+	return len;
 }
 
 static int
@@ -506,22 +438,15 @@ qnotfull(void *a)
 }
 
 /*
- *  write to a queue.  if no reader blocks are posted
- *  queue the data.
- *
- *  all copies should be outside of ilock since they can fault.
+ *  add a block to a queue obeying flow control
  */
 long
-qwrite(Queue *q, void *vp, int len)
+qbwrite(Queue *q, Block *b)
 {
-	int n, sofar, dowakeup;
-	Block *b;
-	uchar *p = vp;
+	int n, dowakeup;
 
 	dowakeup = 0;
-
-if((getstatus()&IE) == 0)
-print("qwrite hi %lux\n", getcallerpc(q));
+	n = BLEN(b);
 
 	if(waserror()){
 		qunlock(&q->wlock);
@@ -529,25 +454,64 @@ print("qwrite hi %lux\n", getcallerpc(q));
 	}
 	qlock(&q->wlock);
 
-	sofar = 0;
-	if(q->syncbuf){
-		if(len < q->synclen)
-			sofar = len;
-		else
-			sofar = q->synclen;
-
-		memmove(q->syncbuf, p, sofar);
-		q->synclen = sofar;
-		q->syncbuf = 0;
-		wakeup(&q->rr);
-
-		if(len == sofar || (q->state & Qmsg)){
+	/* flow control */
+	while(!qnotfull(q)){
+		if(q->noblock){
+			freeb(b);
 			qunlock(&q->wlock);
 			poperror();
-			return len;
+			return n;
 		}
+		q->state |= Qflow;
+		sleep(&q->wr, qnotfull, q);
 	}
 
+	ilock(q);
+
+	if(q->state & Qclosed){
+		iunlock(q);
+		error(Ehungup);
+	}
+
+	if(q->bfirst)
+		q->blast->next = b;
+	else
+		q->bfirst = b;
+	q->blast = b;
+	q->len += n;
+
+	if(q->state & Qstarve){
+		q->state &= ~Qstarve;
+		dowakeup = 1;
+	}
+
+	iunlock(q);
+
+	if(dowakeup){
+		if(q->kick)
+			(*q->kick)(q->arg);
+		wakeup(&q->rr);
+	}
+
+	qunlock(&q->wlock);
+	poperror();
+	return n;
+}
+
+/*
+ *  write to a queue.  only 128k at a time is atomic.
+ */
+long
+qwrite(Queue *q, void *vp, int len)
+{
+	int n, sofar;
+	Block *b;
+	uchar *p = vp;
+
+	QDEBUG if((getstatus()&IE) == 0)
+		print("qwrite hi %lux\n", getcallerpc(q));
+
+	sofar = 0;
 	do {
 		n = len-sofar;
 		if(n > 128*1024)
@@ -559,72 +523,20 @@ print("qwrite hi %lux\n", getcallerpc(q));
 			nexterror();
 		}
 		memmove(b->wp, p+sofar, n);
+		poperror();
 		b->wp += n;
 
-		/* flow control */
-		while(!qnotfull(q)){
-			if(q->noblock){
-				freeb(b);
-				qunlock(&q->wlock);
-				poperror();
-				poperror();
-				return len;
-			}
-			q->state |= Qflow;
-			sleep(&q->wr, qnotfull, q);
-		}
-
-		ilock(q);
-
-		if(q->state & Qclosed){
-			iunlock(q);
-			error(Ehungup);
-		}
-		poperror();
-
-		QDEBUG checkb(b, "qwrite");
-		if(q->syncbuf){
-			/* we guessed wrong and did an extra copy */
-			if(n > q->synclen)
-				n = q->synclen;
-			memmove(q->syncbuf, b->rp, n);
-			q->synclen = n;
-			q->syncbuf = 0;
-			dowakeup = 1;
-			freeb(b);
-		} else {
-			/* we guessed right, queue it */
-			if(q->bfirst)
-				q->blast->next = b;
-			else
-				q->bfirst = b;
-			q->blast = b;
-			q->len += n;
-
-			if(q->state & Qstarve){
-				q->state &= ~Qstarve;
-				dowakeup = 1;
-			}
-		}
-
-		iunlock(q);
-
-		if(dowakeup){
-			if(q->kick)
-				(*q->kick)(q->arg);
-			wakeup(&q->rr);
-		}
+		qbwrite(q, b);
 
 		sofar += n;
 	} while(sofar < len && (q->state & Qmsg) == 0);
 
-	qunlock(&q->wlock);
-	poperror();
 	return len;
 }
 
 /*
- *  used by print() to write to a queue
+ *  used by print() to write to a queue.  Since we may be splhi or not in
+ *  a process, don't qlock.
  */
 int
 qiwrite(Queue *q, void *vp, int len)
@@ -648,28 +560,16 @@ qiwrite(Queue *q, void *vp, int len)
 		ilock(q);
 
 		QDEBUG checkb(b, "qiwrite");
-		if(q->syncbuf){
-			/* we guessed wrong and did an extra copy */
-			if(n > q->synclen)
-				n = q->synclen;
-			memmove(q->syncbuf, b->rp, n);
-			q->synclen = n;
-			q->syncbuf = 0;
-			dowakeup = 1;
-			freeb(b);
-		} else {
-			/* we guessed right, queue it */
-			if(q->bfirst)
-				q->blast->next = b;
-			else
-				q->bfirst = b;
-			q->blast = b;
-			q->len += n;
+		if(q->bfirst)
+			q->blast->next = b;
+		else
+			q->bfirst = b;
+		q->blast = b;
+		q->len += n;
 
-			if(q->state & Qstarve){
-				q->state &= ~Qstarve;
-				dowakeup = 1;
-			}
+		if(q->state & Qstarve){
+			q->state &= ~Qstarve;
+			dowakeup = 1;
 		}
 
 		iunlock(q);

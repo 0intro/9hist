@@ -194,6 +194,8 @@ void		putstr(char*);
 void		putstrn(char*, long);
 void		putswap(Page*);
 ulong		pwait(Waitmsg*);
+Block*		qbread(Queue*, int);
+long		qbwrite(Queue*, Block*);
 int		qcanread(Queue*);
 void		qclose(Queue*);
 int		qconsume(Queue*, void*, int);
