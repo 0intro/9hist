@@ -633,7 +633,7 @@ floppysense(void)
 	if(floppycmd() < 0)
 		return -1;
 	if(floppyresult() < 2){
-print("can't read sense response\n");
+/*print("can't read sense response\n");/**/
 		fl.confused = 1;
 		return -1;
 	}

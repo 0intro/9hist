@@ -173,11 +173,15 @@ trap(Ureg *ur)
 {
 	int v;
 	int c;
+	static int spuriousfloppy;
 
 	v = ur->trap;
 	if(v>=256 || ivec[v] == 0){
-		panic("bad trap type %d %lux %lux %lux\n", v, ur->pc, int0mask, int1mask);
-		return;
+		if(v == 10 && spuriousfloppy == 0){
+			v = Floppyvec;
+			spuriousfloppy = 1;
+		}else
+			panic("bad trap type %d %lux %lux %lux\n", v, ur->pc, int0mask, int1mask);
 	}
 
 	/*

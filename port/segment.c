@@ -346,7 +346,6 @@ ibrk(ulong addr, int seg)
 	newtop = PGROUND(addr);
 	newsize = (newtop-s->base)/BY2PG;
 	if(newtop < s->top) {
-		print("down brk\n");
 		mfreeseg(s, newtop, (s->top-newtop)/BY2PG);
 		qunlock(&s->lk);
 		return 0;

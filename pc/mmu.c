@@ -297,6 +297,7 @@ putmmu(ulong va, ulong pa, Page *pg)
 	ulong *pt;
 	Proc *p;
 	char err[64];
+	int x;
 
 	if(u==0)
 		panic("putmmu");
@@ -313,8 +314,16 @@ putmmu(ulong va, ulong pa, Page *pg)
 	 *  into it.
 	 */
 	if(p->mmutop == 0){
-		p->mmutop = mmugetpage(0);
-		memmove((void*)p->mmutop->va, (void*)ktoppg.va, BY2PG);
+		/*
+		 *  N.B. The assignment to pg is neccessary.
+		 *  We can't assign to p->mmutop until after
+		 *  copying ktoppg into the new page since we might
+		 *  get scheded in this code and p->mmutop will be
+		 *  pointing to a bad map.
+		 */
+		pg = mmugetpage(0);
+		memmove((void*)pg->va, (void*)ktoppg.va, BY2PG);
+		p->mmutop = pg;
 	}
 	top = (ulong*)p->mmutop->va;
 

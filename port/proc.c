@@ -534,26 +534,27 @@ pexit(char *exitstr, int freemem)
 	else
 		wq->w.msg[0] = '\0';
 
-	/* Find my parent */
-	p = c->parent;
-
-	lock(&p->exl);
-	/* My parent still alive */
-	if(p->pid == c->parentpid && p->state != Broken && p->nwait < 128) {	
-		p->nchild--;
-		p->time[TCUser] += c->time[TUser] + c->time[TCUser];
-		p->time[TCSys] += c->time[TSys] + c->time[TCSys];
-
-		wq->next = p->waitq;
-		p->waitq = wq;
-		p->nwait++;
-		unlock(&p->exl);
-
-		wakeup(&p->waitr);
-	}
-	else {
-		unlock(&p->exl);
-		freewaitq(wq);
+	if(c->kp == 0) {
+		/* Find my parent */
+		p = c->parent;
+		lock(&p->exl);
+		/* My parent still alive */
+		if(p->pid == c->parentpid && p->state != Broken && p->nwait < 128) {	
+			p->nchild--;
+			p->time[TCUser] += c->time[TUser] + c->time[TCUser];
+			p->time[TCSys] += c->time[TSys] + c->time[TCSys];
+	
+			wq->next = p->waitq;
+			p->waitq = wq;
+			p->nwait++;
+			unlock(&p->exl);
+	
+			wakeup(&p->waitr);
+		}
+		else {
+			unlock(&p->exl);
+			freewaitq(wq);
+		}
 	}
 
 	if(!freemem)
