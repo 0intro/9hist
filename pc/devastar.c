@@ -344,17 +344,17 @@ astargen(Chan *c, Dirtab *tab, int ntab, int i, Dir *db)
 			t = i%3;
 			switch(t){
 			case 0:
-				sprint(db->name, "eia%d%2.2d", dev, ch);
+				sprint(db->name, "eia%d%2.2d", dev, ch+1);
 				db->mode = astar[dev]->c[ch].perm;
 				db->qid.path = QID(dev, ch, Qdata);
 				break;
 			case 1:
-				sprint(db->name, "eia%d%2.2dctl", dev, ch);
+				sprint(db->name, "eia%d%2.2dctl", dev, ch+1);
 				db->mode = astar[dev]->c[ch].perm;
 				db->qid.path = QID(dev, ch, Qctl);
 				break;
 			case 2:
-				sprint(db->name, "eia%d%2.2dstat", dev, ch);
+				sprint(db->name, "eia%d%2.2dstat", dev, ch+1);
 				db->mode = 0444;
 				db->qid.path = QID(dev, ch, Qstat);
 				break;
@@ -918,9 +918,15 @@ enable(Astarchan *ac)
 static void
 disable(Astarchan *ac)
 {
+	int n;
+
 	astarctl(ac, "d0");
 	astarctl(ac, "r0");
 
+	LOCKPAGE(ac->a, 0);
+	n = LEUS(ac->ccb->proto) | Cmctl;
+	ac->ccb->proto = LEUS(n);
+	UNLOCKPAGE(ac->a);
 	chancmd(ac, Crcvdis|Cxmtdis|Cflushin|Cflushout|Cconfall);
 }
 
@@ -1165,7 +1171,7 @@ astarwstat(Chan *c, char *dp)
  *  get output going
  */
 static void
-astarkick1(Astarchan *ac)
+astaroutput(Astarchan *ac)
 {
 	Astar *a = ac->a;
 	CCB *ccb = ac->ccb;
@@ -1208,7 +1214,7 @@ static void
 astarkick(Astarchan *ac)
 {
 	ilock(&ac->a->pagelock);
-	astarkick1(ac);
+	astaroutput(ac);
 	iunlock(&ac->a->pagelock);
 }
 
@@ -1247,7 +1253,7 @@ astarinput(Astarchan *ac)
 			if(rp > ep)
 				rp = bp;
 		}
-		if(qroduce(ac->iq, buf, n) < 0)
+		if(qproduce(ac->iq, buf, n) < 0)
 			break;	/* flow controlled */
 		if(a->needpage)
 			setpage(a, 0);
@@ -1261,7 +1267,7 @@ astarinput(Astarchan *ac)
  *  get flow controlled input going again
  */
 static void
-astarkick(Astarchan *ac)
+astarkickin(Astarchan *ac)
 {
 	ilock(&ac->a->pagelock);
 	astarinput(ac);
@@ -1306,7 +1312,7 @@ astarintr(Ureg *ur, void *arg)
 	ac = a->c;
 	for(vec = outvec; vec; vec >>= 1){
 		if(vec&1)
-			astarkick1(ac);
+			astaroutput(ac);
 		ac++;
 	}
 	ac = a->c;

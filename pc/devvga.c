@@ -58,8 +58,9 @@ struct Vgacard
 	void	(*setpage)(int);	/* routine to page though display memory */
 };
 
-static void	nopage(int), et4000page(int), tridentpage(int);
-static void	atipage(int), cirruspage(int);
+static void	nopage(int);
+static void	cirruspage(int);
+static void	et4000page(int);
 extern void	s3page(int);
 
 Vgacard vgachips[] =
@@ -1067,40 +1068,6 @@ nopage(int page)
 	USED(page);
 }
 
-/*
- * Extended registers can be read with inb(), but must be
- * written with outs(). The index must be written each time
- * before the register is accessed.
- * The page bits are spread across registers 0xAE and 0xB2.
- * This can go away when we use the memory aperture.
- */
-static void
-atipage(int page)
-{
-	/* the ext register is in the ATI ROM at a fixed address */
-	ushort extreg = *((ushort *)0x800C0010);
-	uchar v;
-
-	outb(extreg, 0xAE);
-	v = (inb(extreg+1) & 0xFC)|((page>>4) & 0x03);
-	outs(extreg, (v<<8)|0xAE);
-
-	outb(extreg, 0xB2);
-	v = (inb(extreg+1) & 0xE1)|((page & 0x0F)<<1);
-	outs(extreg, (v<<8)|0xB2);
-}
-
-/*
- * The following assumes that the new mode registers have been selected.
- */
-static void
-tridentpage(int page)
-{
-	uchar seq0E;
-
-	seq0E = vgaxi(Seqx, 0x0E) & 0xF0;
-	vgaxo(Seqx, 0x0E, seq0E|(page^0x02));
-}
 static void
 et4000page(int page)
 {
@@ -1114,6 +1081,7 @@ et4000page(int page)
 	p |= p>>4;
 	outb(0x3CB, p);
 }
+
 static void
 cirruspage(int page)
 {

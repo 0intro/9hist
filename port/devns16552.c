@@ -97,8 +97,9 @@ struct Uart
 	int	xonoff;		/* software flow control on */
 	int	blocked;
 	int	modem;		/* hardware flow control on */
-	int	cts;
+	int	cts;		/* ... cts state */
 	int	ctsbackoff;
+	int	rts;		/* ... rts state */
 	Rendez	r;
 
 	/* buffers */
@@ -204,12 +205,21 @@ ns16552dtr(Uart *p, int n)
 void
 ns16552rts(Uart *p, int n)
 {
+	int x;
+
+	x = splhi();
+	lock(&p->plock);
+
 	if(n)
 		p->sticky[Mctl] |= Rts;
 	else
 		p->sticky[Mctl] &= ~Rts;
 
 	uartwrreg(p, Mctl, 0);
+	p->rts = n;
+
+	unlock(&p->plock);
+	splx(x);
 }
 
 /*
@@ -309,6 +319,7 @@ ns16552enable(Uart *p)
 	 */
 	ns16552dtr(p, 1);
 	ns16552rts(p, 1);
+	ns16552setbaud(p, 9600);
 
 	/*
 	 *  assume we can send
@@ -417,6 +428,18 @@ ns16552kick(Uart *p)
 }
 
 /*
+ *  restart input if its off
+ */
+static void
+ns16552flow(Uart *p)
+{
+	if(p->modem){
+		ns16552rts(p, 1);
+		haveinput = 1;
+	}
+}
+
+/*
  *  default is 9600 baud, 1 stop bit, 8 bit chars, no interrupts,
  *  transmit and receive enabled, interrupts disabled.
  */
@@ -437,7 +460,7 @@ ns16552setup0(Uart *p)
 
 	ns16552setbaud(p, 9600);
 
-	p->iq = qopen(4*1024, 0, 0, 0);
+	p->iq = qopen(4*1024, 0, ns16552flow, p);
 	p->oq = qopen(4*1024, 0, ns16552kick, p);
 
 	p->ip = p->istage;
@@ -613,8 +636,10 @@ uartclock(void)
 			if(n > 0 && p->iq){
 				if(n > Stagesize)
 					panic("uartclock");
-				qproduce(p->iq, p->istage, n);
-				p->ip = p->istage;
+				if(qproduce(p->iq, p->istage, n) < 0)
+					ns16552rts(p, 0);
+				else
+					p->ip = p->istage;
 			}
 		}
 		if(p->ctsbackoff-- < 0){

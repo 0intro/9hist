@@ -253,11 +253,8 @@ qpass(Queue *q, Block *b)
 	}
 	iunlock(q);
 
-	if(dowakeup){
-		if(q->kick)
-			(*q->kick)(q->arg);
+	if(dowakeup)
 		wakeup(&q->rr);
-	}
 
 	return len;
 }
@@ -302,9 +299,8 @@ qproduce(Queue *q, void *vp, int len)
 	/* save in buffer */
 	b = iallocb(len);
 	if(b == 0){
-		q->state |= Qflow;
 		unlock(q);
-		return -2;
+		return 0;
 	}
 	memmove(b->wp, p, len);
 	b->wp += len;
@@ -322,11 +318,8 @@ qproduce(Queue *q, void *vp, int len)
 	}
 	unlock(q);
 
-	if(dowakeup){
-		if(q->kick)
-			(*q->kick)(q->arg);
+	if(dowakeup)
 		wakeup(&q->rr);
-	}
 
 	return len;
 }
