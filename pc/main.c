@@ -294,7 +294,7 @@ confinit(void)
 	conf.arp = 32;
 	conf.frag = 32;
 	conf.nfloppy = 2;
-	conf.nhard = 1;
+	conf.nhard = 2;
 }
 
 char *mathmsg[] =

@@ -167,10 +167,20 @@ hardreset(void)
 	Drive *dp;
 	Controller *cp;
 	int drive;
+	uchar equip;
 
 	hard = xalloc(conf.nhard * sizeof(Drive));
 	hardc = xalloc(((conf.nhard+1)/2) * sizeof(Controller));
 	
+	/*
+	 *  read nvram for number of hard drives (2 max)
+	 */
+	equip = nvramread(0x12);
+	if(conf.nhard > 0 && (equip>>4) == 0)
+		conf.nhard = 0;
+	if(conf.nhard > 1 && (equip&0xf) == 0)
+		conf.nhard = 1;
+
 	for(drive = 0; drive < conf.nhard; drive++){
 		dp = &hard[drive];
 		cp = &hardc[drive/2];
@@ -457,7 +467,7 @@ hardxfer(Drive *dp, Partition *pp, int cmd, long start, long len, char *buf)
 		len = pp->end - lblk;
 	cyl = lblk/(dp->sectors*dp->heads);
 	sec = (lblk % dp->sectors) + 1;
-	head = (dp->drive<<4) | ((lblk/dp->sectors) % dp->heads);
+	head =  ((lblk/dp->sectors) % dp->heads);
 
 	cp = dp->cp;
 	qlock(cp);
@@ -481,7 +491,7 @@ hardxfer(Drive *dp, Partition *pp, int cmd, long start, long len, char *buf)
 	cp->status = 0;
 	outb(cp->pbase+Pcount, cp->nsecs);
 	outb(cp->pbase+Psector, sec);
-	outb(cp->pbase+Pdh, 0x20 | head);
+	outb(cp->pbase+Pdh, 0x20 | (dp->drive<<4) | head);
 	outb(cp->pbase+Pcyllsb, cyl);
 	outb(cp->pbase+Pcylmsb, cyl>>8);
 	outb(cp->pbase+Pcmd, cmd);
@@ -685,7 +695,7 @@ hardprobe(Drive *dp, int cyl, int sec, int head)
 
 	outb(cp->pbase+Pcount, 1);
 	outb(cp->pbase+Psector, sec+1);
-	outb(cp->pbase+Pdh, 0x20 | head);
+	outb(cp->pbase+Pdh, 0x20 | head | (dp->drive<<4));
 	outb(cp->pbase+Pcyllsb, cyl);
 	outb(cp->pbase+Pcylmsb, cyl>>8);
 	outb(cp->pbase+Pcmd, Cread);

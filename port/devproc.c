@@ -344,7 +344,11 @@ procread(Chan *c, void *va, long n, ulong offset)
 		sps = p->psstate;
 		if(sps == 0)
 			sps = statename[p->state];
-		j = sprint(statbuf, "%-27s %-27s %-11s ", p->text, p->user, sps);
+		memset(statbuf, ' ', sizeof statbuf);
+		memmove(statbuf+0*NAMELEN, p->text, strlen(p->text));
+		memmove(statbuf+1*NAMELEN, p->user, strlen(p->user));
+		memmove(statbuf+2*NAMELEN, sps, strlen(sps));
+		j = 2*NAMELEN + 12;
 
 		for(i = 0; i < 6; i++) {
 			l = p->time[i];
