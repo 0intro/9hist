@@ -340,7 +340,7 @@ atadebug(int cmdport, int ctlport, char* fmt, ...)
 			n--;
 		n += snprint(buf+n, PRINTSIZE-n, " ataregs 0x%uX:",
 			cmdport);
-		for(i = 1; i < 7; i++)
+		for(i = Features; i < Command; i++)
 			n += snprint(buf+n, PRINTSIZE-n, " 0x%2.2uX",
 				inb(cmdport+i));
 		if(ctlport)
@@ -366,7 +366,7 @@ ataready(int cmdport, int ctlport, int dev, int reset, int ready, int micro)
 		 * Wait for the controller to become not busy and
 		 * possibly for a status bit to become true (usually
 		 * Drdy). Must change to the appropriate device
-		 * register set before testing for ready.
+		 * register set if necessary before testing for ready.
 		 * Always run through the loop at least once so it
 		 * can be used as a test for !Bsy.
 		 */
@@ -385,8 +385,7 @@ ataready(int cmdport, int ctlport, int dev, int reset, int ready, int micro)
 		}
 
 		if(micro-- <= 0){
-			atadebug(0, 0, "ataready: %d 0x%2.2uX\n",
-				micro, as);
+			atadebug(0, 0, "ataready: %d 0x%2.2uX\n", micro, as);
 			break;
 		}
 		microdelay(1);
@@ -417,35 +416,43 @@ atacsfenabled(Drive* drive, vlong csf)
 static int
 atasetrwmode(Drive* drive, int cmdport, int ctlport, int dev)
 {
-	int as, block;
+	int as, maxrwm, rwm;
 
 	drive->block = drive->secsize;
 	drive->pior = Crs;
 	drive->piow = Cws;
-	if((block = drive->info[Imaxrwm] & 0xFF) == 0)
+	maxrwm = (drive->info[Imaxrwm] & 0xFF);
+	if(maxrwm == 0)
 		return 0;
 
 	/*
-	 * Prior to ATA-4 there was no way to determine the
-	 * current block count (now in Irwm).
 	 * Sometimes drives come up with the current count set
-	 * to 0, so always set a suitable value.
+	 * to 0; if so, set a suitable value, otherwise believe
+	 * the value in Irwm if the 0x100 bit is set.
 	 */
-	if(ataready(cmdport, ctlport, dev, Bsy|Drq, Drdy, 100*1000) < 0)
+	if(drive->info[Irwm] & 0x100)
+		rwm = (drive->info[Irwm] & 0xFF);
+	else
+		rwm = 0;
+	if(rwm == 0)
+		rwm = maxrwm;
+	if(rwm > 16)
+		rwm = 16;
+	if(ataready(cmdport, ctlport, dev, Bsy|Drq, Drdy, 102*1000) < 0)
 		return 0;
-	outb(cmdport+Sector, block);
+	outb(cmdport+Sector, rwm);
 	outb(cmdport+Command, Csm);
 	microdelay(1);
 	as = ataready(cmdport, ctlport, dev, Bsy, Drdy|Df|Err, 1000);
+	inb(cmdport+Status);
 	if(as < 0 || (as & (Df|Err)))
-		return -1;
+		return 0;
 
-	drive->info[Irwm] = 0x100|block;
-	drive->block = block*drive->secsize;
+	drive->block = rwm*drive->secsize;
 	drive->pior = Crsm;
 	drive->piow = Cwsm;
 
-	return block;
+	return rwm;
 }
 
 static Drive*

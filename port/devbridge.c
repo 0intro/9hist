@@ -256,21 +256,10 @@ bridgeopen(Chan* c, int omode)
 	switch(TYPE(c->qid)) {
 	default:
 		break;
-	case Qtopdir:
-	case Qbridgedir:
-	case Qportdir:
-	case Qstatus:
-	case Qlocal:
-	case Qstats:
-		if(omode != OREAD)
-			error(Eperm);
-		break;
 	case Qlog:
 		logopen(b);
 		break;
 	case Qcache:
-		if(omode != OREAD)
-			error(Eperm);
 		c->aux = cachedump(b);
 		break;
 	}
@@ -340,6 +329,11 @@ bridgeread(Chan *c, void *a, long n, vlong off)
 		}
 		n = readstr(off, a, n, buf);
 		qunlock(b);
+		return n;
+	case Qbctl:
+		snprint(buf, sizeof(buf), "%s tcpmss\ndelay %ld %ld\n", b->tcpmss ? "set" : "clear",
+			b->delay0, b->delayn);
+		n = readstr(off, a, n, buf);
 		return n;
 	case Qcache:
 		n = readstr(off, a, n, c->aux);

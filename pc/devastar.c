@@ -432,7 +432,7 @@ astarreset(void)
 
 		a->ramsize = 0;
 		/* check all possible names */
-		if(cistrcmp(a->type, "a100i") == 0 || cistrcmp(a->type,"A100I") == 0)
+		if(cistrcmp(a->type, "a100i") == 0)
 			a->ramsize = 16*1024;
  		else if(cistrcmp(a->type, "a200i") == 0 ||
 		      cistrcmp(a->type,"A200I") == 0 ||
