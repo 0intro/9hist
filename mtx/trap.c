@@ -143,8 +143,9 @@ intrdisable(int irq, void (*f)(Ureg *, void *), void *a, int tbdf, char *name)
 	xfree(v);
 }
 
-void	syscall(Ureg* ureg);
+void	syscall(Ureg*);
 void	noted(Ureg*, ulong);
+static void _dumpstack(Ureg*);
 
 char *excname[] =
 {
@@ -317,11 +318,11 @@ faultpower(Ureg *ureg, ulong addr, int read)
 	if(n < 0){
 		if(!user){
 			dumpregs(ureg);
+			_dumpstack(ureg);
 			panic("fault: 0x%lux", addr);
 		}
 		sprint(buf, "sys: trap: fault %s addr=0x%lux", read? "read" : "write", addr);
 		postnote(up, 1, buf, NDebug);
-dumpregs(ureg);
 	}
 	up->insyscall = insyscall;
 }
@@ -440,16 +441,25 @@ fpoff(Proc *p)
  * Fill in enough of Ureg to get a stack trace, and call a function.
  * Used by debugging interface rdb.
  */
+
+static void
+getpcsp(ulong *pc, ulong *sp)
+{
+	*pc = getcallerpc(&pc);
+	*sp = (ulong)&pc-4;
+}
+
 void
 callwithureg(void (*fn)(Ureg*))
 {
 	Ureg ureg;
-	ureg.pc = getcallerpc(&fn);
-	ureg.sp = (ulong)&fn;
+
+	getpcsp((ulong*)&ureg.pc, (ulong*)&ureg.sp);
+	ureg.lr = getcallerpc(&fn);
 	fn(&ureg);
 }
 
-void
+static void
 _dumpstack(Ureg *ureg)
 {
 	ulong l, v;
@@ -464,6 +474,7 @@ _dumpstack(Ureg *ureg)
 		v = *(ulong*)l;
 		if(KTZERO < v && v < (ulong)etext){
 			print("%.8lux=%.8lux ", l, v);
+//delay(1);
 			if(i++ == 4){
 				print("\n");
 				i = 0;
@@ -485,6 +496,7 @@ dumpregs(Ureg *ur)
 	ulong *l;
 	if(up) {
 		print("registers for %s %ld\n", up->text, up->pid);
+print("ur %lux\n", ur);
 		if(ur->srr1 & MSR_PR == 0)
 		if(ur->usp < (ulong)up->kstack || ur->usp > (ulong)up->kstack+KSTACK)
 			print("invalid stack ptr\n");
@@ -773,7 +785,6 @@ noted(Ureg* ureg, ulong arg0)
 	Ureg *nureg;
 	ulong oureg, sp;
 
-print("noted %d\n", arg0);
 	qlock(&up->debug);
 	if(arg0!=NRSTR && !up->notified) {
 		qunlock(&up->debug);

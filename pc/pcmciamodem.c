@@ -24,6 +24,7 @@ static char* modems[] = {
 	"CM-56G",			/* Xircom CreditCard Modem 56 - GlobalACCESS */
 	"KeepInTouch",
 	"CEM56",
+	"MONTANA V.34 FAX/MODEM",	/* Motorola */
 	0,
 };
 
