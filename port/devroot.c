@@ -17,7 +17,7 @@ enum{
 };
 
 extern long	cfslen;
-extern ulong	*cfscode;
+extern ulong	cfscode[];
 
 
 Dirtab rootdir[]={
