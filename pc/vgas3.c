@@ -155,7 +155,7 @@ s3linear(VGAscr* scr, int* size, int* align)
 	else
 		scr->isupamem = 1;
 
-	if(oaperture)
+	if(oaperture && oaperture != aperture)
 		print("warning (BUG): redefinition of aperture does not change s3screen segment\n");
 	memset(&seg, 0, sizeof(seg));
 	seg.attr = SG_PHYSICAL;
