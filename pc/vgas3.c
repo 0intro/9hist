@@ -200,7 +200,7 @@ s3load(VGAscr* scr, Cursor* curs)
 	case 0x8A01:				/* ViRGE/[DG]X */
 	case 0x8A10:				/* ViRGE/GX2 */
 	case 0x883D:				/* ViRGE/VX */
-	case 0x8A12:				/* Savage4/IX-MV */
+	case 0x8C12:				/* Savage4/IX-MV */
 	case 0x8A22:				/* Savage4 */
 		p += scr->storage;
 		break;
@@ -248,7 +248,7 @@ s3load(VGAscr* scr, Cursor* curs)
 	case 0x8A01:				/* ViRGE/[DG]X */
 	case 0x8A10:				/* ViRGE/GX2 */
 	case 0x883D:				/* ViRGE/VX */
-	case 0x8A12:				/* Savage4/IX-MV */
+	case 0x8C12:				/* Savage4/IX-MV */
 	case 0x8A22:				/* Savage4 */
 		break;
 
