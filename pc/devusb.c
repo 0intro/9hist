@@ -116,8 +116,9 @@ enum {
 	StatusChange = 1<<1,	/* write 1 to clear */
 	DevicePresent = 1<<0,
 
-	FRAMESIZE=	4096,	/* fixed by hardware; aligned to same */
-	NFRAME = 	(FRAMESIZE/4),
+	NFRAME = 	1024,
+	FRAMESIZE=	NFRAME*sizeof(ulong),	/* fixed by hardware; aligned to same */
+	FRAMEMASK=	FRAMESIZE-1,	/* fixed by hardware; aligned to same */
 	NISOTD = 4,			/* number of TDs for isochronous io per frame */
 
 	Vf = 1<<2,	/* TD only */
@@ -214,8 +215,8 @@ struct Endpt {
 	uchar	active;	/* listed for examination by interrupts */
 	int		setin;
 	/* ISO related: */
-	uchar*	tdalloc;
-	uchar*	bpalloc;
+	void*	tdalloc;
+	void*	bpalloc;
 	int		hz;
 	int		remain;	/* for packet size calculations */
 	int		samplesz;
@@ -1350,12 +1351,12 @@ if(0){
 	intrenable(cfg->intl, interrupt, ub, cfg->tbdf, "usb");
 
 	ub->io = port;
-	ub->tdpool = xspanalloc(128*sizeof(TD), 16, 0);
+	ub->tdpool = (TD*)(((ulong)xalloc(128*sizeof(TD) + 0x10) + 0xf) & ~0xf);
 	for(i=128; --i>=0;){
 		ub->tdpool[i].next = ub->freetd;
 		ub->freetd = &ub->tdpool[i];
 	}
-	ub->qhpool = xspanalloc(32*sizeof(QH), 16, 0);
+	ub->qhpool = (QH*)(((ulong)xalloc(32*sizeof(QH) + 0x10) + 0xf) & ~0xf);
 	for(i=32; --i>=0;){
 		ub->qhpool[i].next = ub->freeqh;
 		ub->freeqh = &ub->qhpool[i];
@@ -1388,8 +1389,8 @@ if(0){
 	XPRINT("frbaseadd\t0x%.4x\nsofmod\t0x%x\nportsc1\t0x%.4x\nportsc2\t0x%.4x\n",
 		IN(Flbaseadd), inb(port+SOFMod), IN(Portsc0), IN(Portsc1));
 	OUT(Cmd, 0);	/* stop */
-	ub->frames = xspanalloc(FRAMESIZE, FRAMESIZE, 0);
-	ub->frameld = mallocz(FRAMESIZE, 1);
+	ub->frames = (ulong*)(((ulong)xalloc(2*FRAMESIZE) + FRAMEMASK) & ~FRAMEMASK);
+	ub->frameld = xallocz(FRAMESIZE, 1);
 
 	for (i = 0; i < NFRAME; i++)
 		ub->frames[i] = PADDR(ub->ctlq) | IsQH;
@@ -1781,6 +1782,8 @@ isoio(Endpt *e, void *a, long n, ulong offset, int w)
 				panic("usb iso: can't happen");
 			break;
 		}
+		if(w)
+			td->offset = offset + (p-(uchar*)a) - (((td->dev >> 21) + 1) & 0x7ff);
 		td->status = ErrLimit3 | Active | IsoSelect | IOC;
 		e->etd = td->next;
 		e->off = 0;

@@ -150,16 +150,16 @@ lmlreset(void)
 		return;
 	}
 	cdsize = CODEDATASIZE;
-	codeData = (CodeData*)xspanalloc(cdsize, BY2PG, 0);
+	codeData = (CodeData*)(((ulong*)xalloc(cdsize+ BY2PG) +BY2PG-1)&~(BY2PG-1));
 	if (codeData == nil) {
-		print("devlml: xspanalloc(%lux, %ux, 0)\n", cdsize, BY2PG);
+		print("devlml: xalloc(%lux, %ux, 0)\n", cdsize, BY2PG);
 		return;
 	}
 
 	grablen = GRABDATASIZE;
-	grabbuf = xspanalloc(grablen, BY2PG, 0);
+	grabbuf = (void*)(((ulong*)xalloc(grablen+ BY2PG) +BY2PG-1)&~(BY2PG-1));
 	if (grabbuf == nil) {
-		print("devlml: xspanalloc(%lux, %ux, 0)\n", grablen, BY2PG);
+		print("devlml: xalloc(%lux, %ux, 0)\n", grablen, BY2PG);
 		return;
 	}
 

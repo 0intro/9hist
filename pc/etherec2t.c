@@ -30,6 +30,7 @@ static Ec2t ec2tpcmcia[] = {
 	{ "FA410TX", 1, },		/* Netgear FA410TX */
 	{ "Network Everywhere", 0, },	/* Linksys NP10T 10BaseT Card */
 	{ "10/100 Port Attached", 1, },	/* SMC 8040TX */
+	{ "FA411", 0 },			/* Netgear FA411 PCMCIA */
 	{ nil, 0, },
 };
 

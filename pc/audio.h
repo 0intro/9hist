@@ -1,7 +1,7 @@
 enum
 {
-	Bufsize		= 1024,	/* 5.8 ms each */
-	Nbuf		= 128,		/* .74 seconds total */
+	Bufsize	= 1024,	/* 5.8 ms each, must be power of two */
+	Nbuf		= 128,	/* .74 seconds total */
 	Dma		= 6,
 	IrqAUDIO	= 7,
 	SBswab	= 0,

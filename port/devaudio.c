@@ -68,6 +68,7 @@ static	struct
 {
 	QLock;
 	Rendez	vous;
+	int	buffered;		/* number of bytes en route */
 	int	bufinit;		/* boolean if buffers allocated */
 	int	curcount;		/* how much data in current buffer */
 	int	active;		/* boolean dma running */
@@ -81,7 +82,6 @@ static	struct
 	int	minor;		/* SB16 minor version number */
 	ulong	totcount;	/* how many bytes processed since open */
 	vlong	tottime;	/* time at which totcount bytes were processed */
-	int	buffered;		/* number of bytes en route */
 
 	Buf	buf[Nbuf];		/* buffers and queues */
 	AQueue	empty;
@@ -347,6 +347,10 @@ contindma(void)
 		goto shutdown;
 
 	b = audio.current;
+	if (b){
+		audio.totcount += Bufsize;
+		audio.tottime = todget(nil);
+	}
 	if(audio.amode == Aread) {
 		if(b){
 			putbuf(&audio.full, b);
@@ -526,8 +530,6 @@ sb16intr(void)
 		if(stat & 2) {
 			ilock(&blaster);
 			dummy = inb(blaster.clri16);
-			audio.totcount += Bufsize;
-			audio.tottime = todget(nil);
 			contindma();
 			iunlock(&blaster);
 			audio.intr = 1;
@@ -550,8 +552,6 @@ ess1688intr(void)
 
 	if(audio.active){
 		ilock(&blaster);
-		audio.totcount += Bufsize;
-		audio.tottime = todget(nil);
 		contindma();
 		dummy = inb(blaster.clri8);
 		iunlock(&blaster);
@@ -615,13 +615,14 @@ static void
 sbbufinit(void)
 {
 	int i;
-	void *p;
+	uchar *p;
 
+	p = (uchar*)(((ulong)xalloc((Nbuf+1) * Bufsize) + Bufsize-1)&~(Bufsize-1));
 	for(i=0; i<Nbuf; i++) {
-		p = xspanalloc(Bufsize, CACHELINESZ, 64*1024);
 		dcflush(p, Bufsize);
 		audio.buf[i].virt = UNCACHED(uchar, p);
 		audio.buf[i].phys = (ulong)PADDR(p);
+		p += Bufsize;
 	}
 }
 
