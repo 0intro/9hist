@@ -113,7 +113,7 @@ trap(Ureg *ur)
 	case CTLBL:
 	case CTLBS:
 		if(u == 0)
-			panic("fault");
+			panic("fault u==0 pc %lux addr %lux", ur->pc, ur->badvaddr);
 		if(u->p->fpstate == FPactive) {
 			savefpregs(&u->fpsave);
 			u->p->fpstate = FPinactive;

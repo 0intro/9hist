@@ -493,6 +493,8 @@ inconoput(Queue *q, Block *bp)
 	chan = bp->rptr[0] | (bp->rptr[1]<<8);
 	ctl = bp->rptr[2];
 	bp->rptr += 3;
+	if(chan<=0)
+		print("bad channel %d\n", chan);
 
 	if(incondebug)
 		print("->(%d)%uo %d\n", chan, ctl, bp->wptr - bp->rptr);

@@ -143,7 +143,7 @@ compactenv(Env *e, ulong n)
 				goto Free;
 			}
 			if(p2+p2->n > envalloc.end)
-				panic("compactpte copying too much");
+				panic("compactenv copying too much");
 			memcpy(p1, p2, p2->n*sizeof(Envval));
 			p2e->val = p1;
 			if(p2e != e)

@@ -50,5 +50,6 @@ enum{
 	Ebadmsg,	/* format error or mismatch in message */
 	Ebadcnt,	/* read count greater than requested */
 	Enoannounce,	/* listening on an unannounced network connection */
+	Enovmem,	/* virtual memory allocation failed */
 	Egreg,		/* it's all greg's fault */
 };

@@ -43,9 +43,15 @@ fault(Ureg *ur, int user, int code)
 		/* grow stack */
 		o = s->o;
 		n = o->npte;
-		growpte(o, (s->maxva-addr)>>PGSHIFT);
-		/* stacks grown down, sigh */
 		lock(o);
+		if(waserror()){
+			unlock(o);
+			pprint("can't allocate stack page\n");
+			goto cant;
+		}
+		growpte(o, (s->maxva-addr)>>PGSHIFT);
+		poperror();
+		/* stacks grown down, sigh */
 		memcpy(o->pte+(o->npte-n), o->pte, n*sizeof(PTE));
 		memset(o->pte, 0, (o->npte-n)*sizeof(PTE));
 		unlock(o);

@@ -15,7 +15,7 @@ void	close(Chan*);
 void	closemount(Mount*);
 void	closepgrp(Pgrp*);
 long	clrfpintr(void);
-void	compactpte(Orig*, ulong);
+int	compactpte(Orig*, ulong);
 void	confinit(void);
 Env	*copyenv(Env*, int);
 int	decref(Ref*);

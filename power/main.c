@@ -246,8 +246,13 @@ userinit(void)
 	 */
 	s = &p->seg[TSEG];
 	s->proc = p;
-	s->o = neworig(UTZERO, 1, 0, 0);
+	/*
+	 * On the mips, init text must be OCACHED to avoid reusing page
+	 * and getting in trouble with the hardware instruction cache.
+	 */
+	s->o = neworig(UTZERO, 1, OCACHED, 0);
 	s->o->pte[0].page = newpage(0, 0, UTZERO);
+	s->o->npage = 1;
 	k = kmap(s->o->pte[0].page);
 	memcpy((ulong*)VA(k), initcode, sizeof initcode);
 	kunmap(k);

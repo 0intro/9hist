@@ -4,6 +4,7 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"ureg.h"
+#include	"errno.h"
 
 struct
 {
@@ -257,7 +258,6 @@ usepage(Page *p, int dolock)
 void
 unusepage(Page *p, int dolock)
 {
-return;
 	if(dolock)
 		lock(&palloc);
 	/*
@@ -339,7 +339,16 @@ o->nmod = 0;
 			o->mqid = -1;
 			o->mchan = 0;
 		}
+		lock(o);
+		if(u && u->p && waserror()){
+			unlock(o);
+			unlock(&origalloc);
+			nexterror();
+		}
 		growpte(o, npte);
+		if(u && u->p)
+			poperror();
+		unlock(o);
 		unlock(&origalloc);
 		return o;
 	}
@@ -527,7 +536,6 @@ segaddr(Seg *s, ulong min, ulong max)
 
 	if(max < min)
 		return 0;
-if(max > 20*1024*1024) {pprint("segaddr %lux\n", max);print("segaddr %lux\n", max);}
 	if(min != s->minva)	/* can't grow down yet (stacks: fault.c) */
 		return 0;
 	max = (max+(BY2PG-1)) & ~(BY2PG-1);
@@ -539,8 +547,15 @@ if(max > 20*1024*1024) {pprint("segaddr %lux\n", max);print("segaddr %lux\n", ma
 		 * Grow
 		 */
 		/* BUG: check spill onto other segments */
+		lock(o);
+		if(waserror()){
+			unlock(o);
+			nexterror();
+		}
 		if(o->va+BY2PG*o->npte < max)
 			growpte(o, (max-o->va)>>PGSHIFT);
+		unlock(o);
+		poperror();
 		s->maxva = max;
 		return 1;
 	}
@@ -593,7 +608,6 @@ growpte(Orig *o, ulong n)
 	ulong nfree;
 
 	lock(&ptealloc);
-	lock(o);
 	if(o->pte){
 		if(o->npte == n){
 if(u && u->p) print("%s: ", u->p->text);
@@ -613,11 +627,13 @@ if(u && u->p) print("%s: ", u->p->text);
 		}else{
 			n++;
 			if(p+p->n == ptealloc.free){
-				compactpte(o, n - p->n);
+				if(!compactpte(o, n - p->n))
+					goto Trouble;
 				p = (PTEA*)(o->pte - 1);
 				ptealloc.free += n - p->n;
 			}else{
-				compactpte(o, n);
+				if(!compactpte(o, n))
+					goto Trouble;
 				p = ptealloc.free;
 				ptealloc.free += n;
 				memcpy(p+1, o->pte, o->npte*sizeof(PTE));
@@ -632,7 +648,8 @@ if(u && u->p) print("%s: ", u->p->text);
 		goto Return;
 	}
 	n++;
-	compactpte(o, n);
+	if(!compactpte(o, n))
+		goto Trouble;
 	p = ptealloc.free;
 	ptealloc.free += n;
 	memset(p, 0, n*sizeof(PTE));
@@ -641,18 +658,24 @@ if(u && u->p) print("%s: ", u->p->text);
 	o->pte = p+1;
 	o->npte = n-1;
     Return:
-	unlock(o);
 	unlock(&ptealloc);
+	return;
+
+    Trouble:
+	unlock(&ptealloc);
+	if(u && u->p)
+		error(0, Enovmem);
+	panic("growpte fails %d %lux %d\n", n, o->va, o->npte);
 }
 
-void
+int
 compactpte(Orig *o, ulong n)
 {
 	PTEA *p1, *p2;
 	Orig *p2o;
 
 	if(ptealloc.end-ptealloc.free >= n)
-		return;
+		return 1;
 	p1 = ptealloc.arena;	/* dest */
 	p2 = ptealloc.arena;	/* source */
 	while(p2 < ptealloc.free){
@@ -681,8 +704,11 @@ compactpte(Orig *o, ulong n)
 	}
 	ptealloc.free = p1;
 	if(ptealloc.end-ptealloc.free >= n)
-		return;
+		return 1;
 	unlock(o);
 	unlock(&ptealloc);
-	panic("compactpte %d %lux %d", n, o->va, o->npte);
+	if(u && u->p)
+		print("%s: %s: ", u->p->text, u->p->pgrp->user);
+	print("compactpte fails addr %lux\n", o->va+n*BY2PG);
+	return 0;
 }

@@ -16,7 +16,7 @@ void	close(Chan*);
 void	closemount(Mount*);
 void	closepgrp(Pgrp*);
 long	clrfpintr(void);
-void	compactpte(Orig*, ulong);
+int	compactpte(Orig*, ulong);
 ulong	confeval(char*);
 void	confprint(void);
 void	confinit(void);

@@ -116,7 +116,7 @@ struct Timer{
 #define	MODE2	0x04		/* interval timer */
 
 
-#define	PROFILING
+/* #define	PROFILING /**/
 #ifdef PROFILING
 #undef TIME1
 #define	TIME1	211		/* profiling clock; prime; about 10ms per tick */

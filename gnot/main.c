@@ -160,6 +160,7 @@ userinit(void)
 	s->proc = p;
 	s->o = neworig(UTZERO, 1, 0, 0);
 	s->o->pte[0].page = newpage(0, 0, UTZERO);
+	s->o->npage = 1;
 	k = kmap(s->o->pte[0].page);
 	memcpy((ulong*)VA(k), initcode, sizeof initcode);
 	kunmap(k);
