@@ -75,11 +75,11 @@ void
 trap(Ureg *ur)
 {
 	int ecode;
-	int user;
-	ulong x;
+	int user, x;
+	ulong fcr31;
 	char buf[ERRLEN];
 
-	SET(x);
+	SET(fcr31);
 	ecode = EXCCODE(ur->cause);
 	LEDON(ecode);
 	user = ur->status&KUP;
@@ -92,14 +92,15 @@ trap(Ureg *ur)
 		if(u && u->p->state==Running){
 			if(u->p->fpstate == FPactive) {
 				if(ur->cause & INTR3){	/* FP trap */
-					x = clrfpintr();
+					fcr31 = clrfpintr();
+					if(user && fptrap(ur, fcr31))
+						goto Return;
 					ecode = FPEXC;
+					goto Default;
 				}
 				savefpregs(&u->fpsave);
 				u->p->fpstate = FPinactive;
 				ur->status &= ~CU1;
-				if(ecode == FPEXC)
-					goto Default;
 			}
 		}
 		intr(ur);
@@ -151,7 +152,7 @@ trap(Ureg *ur)
 		if(user){
 			spllo();
 			if(ecode == FPEXC)
-				sprint(buf, "sys: fp: %s FCR31 %lux", fpexcname(x), x);
+				sprint(buf, "sys: fp: %s FCR31 %lux", fpexcname(fcr31), fcr31);
 			else
 				sprint(buf, "sys: %s", excname[ecode]);
 
@@ -159,7 +160,7 @@ trap(Ureg *ur)
 		}else{
 			print("%s %s pc=%lux\n", user? "user": "kernel", excname[ecode], ur->pc);
 			if(ecode == FPEXC)
-				print("fp: %s FCR31 %lux\n", fpexcname(x), x);
+				print("fp: %s FCR31 %lux\n", fpexcname(fcr31), fcr31);
 			dumpregs(ur);
 			if(m->machno == 0)
 				spllo();
@@ -168,6 +169,7 @@ trap(Ureg *ur)
 	}
 
 	splhi();
+    Return:
 	if(user) {
 		notify(ur);
 		if(u->p->fpstate == FPinactive) {
@@ -600,7 +602,7 @@ setvmevec(int v, void (*f)(int))
 }
 
 /* This routine must save the values of registers the user is not permitted to write
- * from devproc and the restore the saved values before returning
+ * from devproc and then restore the saved values before returning
  */
 void
 setregisters(Ureg *xp, char *pureg, char *uva, int n)

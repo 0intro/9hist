@@ -13,6 +13,7 @@ void	faultsparc(Ureg*);
 void	flushcpucache(void);
 #define	flushpage(x)
 int	fpcr(int);
+int	fpquiet(void);
 void	fpregrestore(char*);
 void	fpregsave(char*);
 void	fprestore(FPsave*);

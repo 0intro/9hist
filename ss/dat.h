@@ -124,6 +124,8 @@ struct Mach
 	int	cs;
 	int	syscall;
 	int	load;
+	int	fpunsafe;		/* FP unsaved */
+	int	fptrap;			/* FP trap occurred while unsafe */
 	int	intr;
 
 	int	stack[1];

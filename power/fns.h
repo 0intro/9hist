@@ -23,6 +23,7 @@ ulong	fcr31(void);
 void	firmware(int);
 void	flushmmu(void);
 #define	flushpage(s)	icflush((void*)(s), BY2PG)
+int	fptrap(Ureg*, ulong);
 void	gettlb(int, ulong*);
 ulong	gettlbvirt(int);
 void	gotopc(ulong);

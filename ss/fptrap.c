@@ -8,7 +8,7 @@
 #include	"../port/error.h"
 
 static	int	unfinished(FPsave*);
-static	int	fixq(FPsave*, int);
+static	void	fixq(FPsave*, int);
 extern	void*	bbmalloc(int);
 
 int
@@ -35,9 +35,7 @@ fptrap(void)
 		clearftt(fsr & ~0x1F);	/* clear ftt and cexc */
 		restfpregs(&u->fpsave);
 		enabfp();	/* restfpregs disables it */
-		n = fixq(&u->fpsave, n);
-		if(n > 0)
-			goto again;
+		fixq(&u->fpsave, n);
 	}
 	return ret;
 }
@@ -172,52 +170,83 @@ unfinished(FPsave *f)
 	return 0;
 }
 
-static int
+static void
 fixq(FPsave *f, int n)
 {
 	ulong instr, fsr;
 	ulong *ip;
 
 	while(n > 1){
-		memmove(&f->q[0], &f->q[1], (n-1)*sizeof f->q[0]);
+		--n;
+		memmove(&f->q[0], &f->q[1], n*sizeof f->q[0]);
+		memset(&f->q[n], 0, (NFPQ-n)*sizeof f->q[0]);
 		instr = f->q[0].i;
+		/*
+		 * Sparc says you have to emulate.  To hell with that.
+		 * Let's compile!
+		 */
 		ip = bbmalloc(3*sizeof(ulong));
 		ip[0] = instr;
 		ip[1] = 0x81c3e008;	/* JMPL #8(R15), R0 [RETURN] */
 		ip[2] = 0x01000000;	/* SETHI #0, R0 [NOP] */
-		(*(void(*)(void))ip)();
 		/*
-		 * WARNING: This code is wrong (and I don't know how
-		 * to fix it without emulating the entire FPU in
-		 * software--please let me knw) if the queued
-		 * instruction gets an exception: the getfsr() generates
-		 * a trap and the staggeringly inept SPARC design
-		 * translates that to a reset, as you can't have
-		 * nested exceptions.  So here's the fairly solid but
-		 * not fail-safe solution: jump out NOW if there's
-		 * nothing else pending.  If this last instruction
-		 * causes an exception, it will fire when the *user*
-		 * executes the next FP instruction.  The system
-		 * avoids executing any FP on the way out.  The
-		 * user will trap and we'll be back but will have
-		 * made progress.  The FQ will point to kernel space
-		 * but the trap will happen in user space, and that's
-		 * what matters.
-		 *
-		 * This same botch may cause the system to reset
-		 * if a trap is pending when we call savefpregs() in
-		 * trap.c.  I don't know; the documentation is unclear.
+		 * You can always pump one instruction without immediate trap.
+		 * Therefore run one and wait for it to complete or trap.
+		 * If it traps, we'll recurse but we won't overwrite
+		 * our own data structures because there will be only
+		 * one instruction uncompleted in the FPU.
+		 * If that instruction generates an unfixable trap,
+		 * stop the processing, which means a buglet: if the user
+		 * process is attempting to resolve FP errors, it must
+		 * find and extract the uncompleted instructions behind
+		 * the trap by examining the non-zero members of the FPQ.
+		 * Tough.
 		 */
-		if(n == 1)
-			return 0;
-		for(;;){
-			fsr = getfsr();
-			if((fsr & (1<<13)) == 0)	/* qne */
-				break;
-			if(fsr & 0x1F)			/* cexc */
-				return n;
-		}
-		--n;
+		(*(void(*)(void))ip)();
+		if(!fpquiet())
+			break;
 	}
-	return 0;
+}
+
+/*
+ * Must only be called splhi() when it is safe to spllo().  Because the FP unit
+ * traps if you touch it when an exception is pending, and because if you
+ * trap with ET==0 you halt, this routine sets some global flags to enable
+ * the rest of the system to handle the trap that might occur here without
+ * upsetting the kernel.
+ */
+int
+fpquiet(void)
+{
+	int i, notrap;
+	ulong fsr;
+	char buf[128];
+
+	i = 0;
+	notrap = 1;
+	m->fpunsafe = 1;
+	u->p->fpstate = FPinactive;
+	for(;;){
+		m->fptrap = 0;
+		spllo();
+		fsr = getfsr();
+		splhi();
+		if(m->fptrap){
+			/* trap occurred and u->fpsave contains state */
+			spllo();
+			sprint(buf, "sys: %s", excname(8));
+			postnote(u->p, 1, buf, NDebug);
+			notrap = 0;
+			break;
+		}
+		if((fsr&(1<<13)) == 0)
+			break;
+		if(++i > 1000){
+			print("fp not quiescent\n");
+			break;
+		}
+	}
+	m->fpunsafe = 0;
+	u->p->fpstate = FPactive;
+	return notrap;
 }

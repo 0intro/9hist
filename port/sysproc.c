@@ -308,6 +308,12 @@ sysexec(ulong *arg)
 		nargs++;
 	}
 	ssize = BY2WD*(nargs+1) + ((nbytes+(BY2WD-1)) & ~(BY2WD-1));
+	/*
+	 * 8-byte align SP for those (e.g. sparc) that need it.
+	 * execregs() will subtract another 4 bytes for argc.
+	 */
+	if((ssize+4) & 7)
+		ssize += 4;
 	spage = (ssize+(BY2PG-1)) >> PGSHIFT;
 	/*
 	 * Build the stack segment, putting it in kernel virtual for the moment
@@ -315,7 +321,6 @@ sysexec(ulong *arg)
 	if(spage > TSTKSIZ)
 		error(Enovmem);
 
-	 
 	p->seg[ESEG] = newseg(SG_STACK, TSTKTOP-USTKSIZE, USTKSIZE/BY2PG);
 
 	/*

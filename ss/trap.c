@@ -52,11 +52,11 @@ excname(ulong tbr)
 
 	switch(tbr){
 	case 8:
-		if(u == 0){
-			fsr = getfsr();
-			sprint(excbuf, "fp: %s FSR %lux",
-				fptrapname[(fsr>>14)&7], fsr);
-		}else{
+		if(u == 0)
+			panic("fptrap in kernel\n");
+		else{
+			if(m->fpunsafe==0 && u->p->fpstate!=FPactive)
+				panic("fptrap not active\n");
 			fsr = u->fpsave.fsr;
 			sprint(excbuf, "fp: %s FQpc=0x%lux",
 				fptrapname[(fsr>>14)&7],
@@ -95,33 +95,10 @@ excname(ulong tbr)
 	return excbuf;
 }
 
-/*
- * This routine is frightening.  See comment in fptrap.c
- */
-void
-fpquiet(void)
-{
-	int i;
-	ulong fsr;
-
-	i = 0;
-	fsr = getfsr();
-	while(fsr & (1<<13)){
-		if(fsr & 0x1F){
-			print("trap in fpquiet\n");
-			break;
-		}
-		if(++i > 1000){
-			print("fp not quiescent\n");
-			break;
-		}
-	}
-}
-
 void
 trap(Ureg *ur)
 {
-	int user, x;
+	int user, x, fpunsafe;
 	char buf[64];
 	ulong tbr, iw;
 
@@ -130,6 +107,7 @@ trap(Ureg *ur)
 		u->dbgreg = ur;
 	}
 
+	fpunsafe = 0;
 	user = !(ur->psr&PSRPSUPER);
 	tbr = (ur->tbr&0xFFF)>>4;
 	/* SS2 bug: flush cache line holding trap entry in table */
@@ -137,11 +115,11 @@ trap(Ureg *ur)
 		putw2(CACHETAGS+((TRAPS+16*tbr)&(VACSIZE-1)), 0);
 	if(tbr > 16){			/* interrupt */
 		if(u && u->p->state==Running){
+			/* if active, FPop at head of Q is probably an excep */
 			if(u->p->fpstate == FPactive){
-				fpquiet();
-				savefpregs(&u->fpsave);
+				fpunsafe = 1;
+				m->fpunsafe = 1;
 				u->p->fpstate = FPinactive;
-				ur->psr &= ~PSREF;
 			}
 		}
 		switch(tbr-16){
@@ -165,10 +143,9 @@ trap(Ureg *ur)
 		case 1:				/* instr. access */
 		case 9:				/* data access */
 			if(u && u->p->fpstate==FPactive) {
-				fpquiet();
-				savefpregs(&u->fpsave);
+				fpunsafe = 1;
+				m->fpunsafe = 1;
 				u->p->fpstate = FPinactive;
-				ur->psr &= ~PSREF;
 			}
 			if(u){
 				x = u->p->insyscall;
@@ -200,10 +177,13 @@ trap(Ureg *ur)
 			}
 			break;
 		case 8:				/* floating point exception */
-			if(fptrap()){
-				/* do NOT talk to the FPU: see fptrap.c */
+			/* if unsafe, trap happened shutting down FPU; just return */
+			if(m->fpunsafe){
+				m->fptrap = (fptrap()==0);
 				return;
 			}
+			if(fptrap())
+				goto Return;	/* handled the problem */
 			break;
 		default:
 			break;
@@ -213,14 +193,16 @@ trap(Ureg *ur)
 			spllo();
 			sprint(buf, "sys: %s", excname(tbr));
 			postnote(u->p, 1, buf, NDebug);
-		}else{
-			print("kernel trap: %s pc=0x%lux\n", excname(tbr), ur->pc);
-			dumpregs(ur);
-			for(;;);
-		}
+		}else
+			panic("kernel trap: %s pc=0x%lux\n", excname(tbr), ur->pc);
 	}
     Return:
-	if(user) {
+	/*
+	 * Handled the interrupt; now it's safe to look at the FPQ
+	 */
+	if(fpunsafe)
+		fpquiet();
+	if(user){
 		notify(ur);
 		if(u->p->fpstate == FPinactive) {
 			restfpregs(&u->fpsave);
@@ -443,7 +425,9 @@ notify(Ureg *ur)
 		sent = 1;
 		u->svpsr = ur->psr;
 		sp = ur->usp;
-		sp -= sizeof(Ureg);
+		sp -= sizeof(Ureg)+ERRLEN+3*BY2WD;
+		sp &= ~7;	/* SP must be 8-byte aligned */
+		sp += ERRLEN+3*BY2WD;
 		if(!okaddr((ulong)u->notify, 1, 0)
 		|| !okaddr(sp-ERRLEN-3*BY2WD, sizeof(Ureg)+ERRLEN-3*BY2WD, 0)){
 			pprint("suicide: bad address in notify\n");

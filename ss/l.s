@@ -598,6 +598,7 @@ getfpq1:
 	MOVW	(R9), R10
 	ANDCC	$(1<<13), R10		/* queue not empty? */
 	BE	getfpq2
+	MOVW	(R8), R0		/* SS2 bug fix */
 	MOVD	FQ, (R8)
 	ADD	$1, R7
 	ADD	$8, R8
