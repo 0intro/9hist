@@ -305,7 +305,6 @@ struct Page
 	ulong	va;			/* Virtual address for user */
 	ulong	daddr;			/* Disc address on swap */
 	ushort	ref;			/* Reference count */
-	char	lock;			/* Software lock */
 	char	modref;			/* Simulated modify/reference bits */
 	char	cachectl[MAXMACH];	/* Cache flushing control for putmmu */
 	Image	*image;			/* Associated text or swap image */

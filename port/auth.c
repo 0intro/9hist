@@ -15,15 +15,18 @@ struct Crypt
 	char		tbuf[TICKETLEN];	/* remote ticket */
 };
 
+typedef struct Session	Session;
 struct Session
 {
 	Lock;
+	Lock	send;
 	Crypt	*cache;			/* cache of tickets */
 	char	cchal[CHALLEN];		/* client challenge */
 	char	schal[CHALLEN];		/* server challenge */
 	char	authid[NAMELEN];	/* server encryption uid */
 	char	authdom[DOMLEN];	/* server encryption domain */
 	ulong	cid;			/* challenge id */
+	int	valid;
 };
 
 struct
@@ -108,21 +111,24 @@ sysfsession(ulong *arg)
 		nexterror();
 	}
 
-	/*
-	 *  if two processes get here at the same
-	 *  time with no session exchanged, we have
-	 *  a race.
-	 */
+	/* add a session structure to the channel if it has none */
+	lock(c);
 	s = c->session;
 	if(s == 0){
-		/*
-		 *  no session exchanged yet
-		 */
 		s = malloc(sizeof(Session));
-		if(s == 0)
+		if(s == 0){
+			unlock(c);
 			error(Enomem);
-		memset(s, 0, sizeof(Session));
+		}
+		c->session = s;
+	}
+	unlock(c);
 
+	/* back off if someone else is doing an fsession */
+	while(!canlock(&s->send))
+		sched();
+
+	if(s->valid == 0){
 		/*
 		 *  Exchange a session message with the server.
 		 *  If an error occurs reading or writing,
@@ -138,13 +144,12 @@ sysfsession(ulong *arg)
 			n = convS2M(&f, buf);
 			if((*devtab[c->type].write)(c, buf, n, 0) != n)
 				error(Emountrpc);
-		dkhack:
 			n = (*devtab[c->type].read)(c, buf, sizeof buf, 0);
 			if(n == 2 && buf[0] == 'O' && buf[1] == 'K')
-				goto dkhack;
+				n = (*devtab[c->type].read)(c, buf, sizeof buf, 0);
 			poperror();
 			if(convM2S(buf, &f, n) == 0){
-				free(s);
+				unlock(&s->send);
 				error(Emountrpc);
 			}
 			switch(f.type){
@@ -154,33 +159,38 @@ sysfsession(ulong *arg)
 				memmove(s->authdom, f.authdom, DOMLEN);
 				break;
 			case Rerror:
-				free(s);
+				unlock(&s->send);
 				error(f.ename);
 			default:
-				free(s);
+				unlock(&s->send);
 				error(Emountrpc);
 			}
 		}
-		c->session = s;
+		s->valid = 1;
 	}
+	unlock(&s->send);
 
 	/* 
 	 *  If server requires no ticket, or user is "none", or a ticket
 	 *  is already cached, zero the request type
 	 */
 	tr.type = AuthTreq;
-	if(strcmp(up->user, "none") == 0 || c->session->authid[0] == 0)
+	if(strcmp(up->user, "none") == 0 || s->authid[0] == 0)
 		tr.type = 0;
-	else for(cp = s->cache; cp; cp = cp->next)
-		if(strcmp(cp->t.cuid, up->user) == 0){
-			tr.type = 0;
-			break;
-		}
+	else{
+		lock(s);
+		for(cp = s->cache; cp; cp = cp->next)
+			if(strcmp(cp->t.cuid, up->user) == 0){
+				tr.type = 0;
+				break;
+			}
+		unlock(s);
+	}
 
 	/*  create ticket request */
-	memmove(tr.chal, c->session->schal, CHALLEN);
-	memmove(tr.authid, c->session->authid, NAMELEN);
-	memmove(tr.authdom, c->session->authdom, DOMLEN);
+	memmove(tr.chal, s->schal, CHALLEN);
+	memmove(tr.authid, s->authid, NAMELEN);
+	memmove(tr.authdom, s->authdom, DOMLEN);
 	memmove(tr.uid, up->user, NAMELEN);
 	memmove(tr.hostid, eve, NAMELEN);
 	convTR2M(&tr, (char*)arg[1]);
@@ -351,8 +361,8 @@ authreply(Session *s, ulong id, Fcall *f)
  *
  *  The protocol is
  *	1) read ticket request from #c/authenticate
- *	2) write ticket to #c/authenticate. if it matchs the challenge the
- *	  user is changed to the suid field of the ticket
+ *	2) write ticket+authenticator to #c/authenticate. if it matches
+ *	  the challenge the user is changed to the suid field of the ticket
  *	3) read authenticator (to confirm this is the server advertised)
  */
 long
@@ -370,6 +380,7 @@ authread(Chan *c, char *a, int n)
 			error(Ebadarg);
 		c->aux = newcrypt();
 		cp = c->aux;
+
 		memset(&tr, 0, sizeof(tr));
 		tr.type = AuthTreq;
 		strcpy(tr.hostid, eve);
@@ -387,10 +398,13 @@ authread(Chan *c, char *a, int n)
 		if(n != AUTHENTLEN)
 			error(Ebadarg);
 		cp = c->aux;
+
 		cp->a.num = AuthAs;
 		memmove(cp->a.chal, cp->t.chal, CHALLEN);
 		cp->a.id = 0;
-		convA2M(&cp->a, a, cp->t.key);
+		convA2M(&cp->a, cp->tbuf, cp->t.key);
+		memmove(a, cp->tbuf, AUTHENTLEN);
+
 		freecrypt(cp);
 		c->aux = 0;
 	}
@@ -402,14 +416,22 @@ authwrite(Chan *c, char *a, int n)
 {
 	Crypt *cp;
 
-	if(n != TICKETLEN)
+	if(n != TICKETLEN+AUTHENTLEN)
 		error(Ebadarg);
 	if(c->aux == 0)
 		error(Ebadarg);
 	cp = c->aux;
-	convM2T(a, &cp->t, evekey);
+
+	memmove(cp->tbuf, a, TICKETLEN);
+	convM2T(cp->tbuf, &cp->t, evekey);
 	if(cp->t.num != AuthTs || memcmp(cp->a.chal, cp->t.chal, CHALLEN))
 		error(Eperm);
+
+	memmove(cp->tbuf, a+TICKETLEN, AUTHENTLEN);
+	convM2A(cp->tbuf, &cp->a, cp->t.key);
+	if(cp->a.num != AuthAc || memcmp(cp->a.chal, cp->t.chal, CHALLEN))
+		error(Eperm);
+
 	memmove(up->user, cp->t.suid, NAMELEN);
 	return n;
 }
@@ -417,26 +439,91 @@ authwrite(Chan *c, char *a, int n)
 /*
  *  called by devcons() for #c/authcheck
  *
- *  a write of a ticket+authenticator succeeds if they match
+ *  a write of a ticket+authenticator [+challenge+id] succeeds if they match
  */
 long
 authcheck(Chan *c, char *a, int n)
 {
 	Crypt *cp;
+	char *chal;
+	ulong id;
 
-	if(n != TICKETLEN+AUTHENTLEN)
+	if(n != TICKETLEN+AUTHENTLEN && n != TICKETLEN+AUTHENTLEN+CHALLEN+4)
 		error(Ebadarg);
 	if(c->aux == 0)
 		c->aux = newcrypt();
 	cp = c->aux;
-	convM2T(a, &cp->t, evekey);
+
+	memmove(cp->tbuf, a, TICKETLEN);
+	convM2T(cp->tbuf, &cp->t, evekey);
 	if(cp->t.num != AuthTc)
 		error(Ebadarg);
 	if(strcmp(up->user, cp->t.cuid))
 		error(cp->t.cuid);
-	convM2A(a+TICKETLEN, &cp->a, cp->t.key);
-	if(cp->a.num != AuthAs || memcmp(cp->t.chal, cp->a.chal, CHALLEN))
+
+	memmove(cp->tbuf, a+TICKETLEN, AUTHENTLEN);
+	convM2A(cp->tbuf, &cp->a, cp->t.key);
+	if(n == TICKETLEN+AUTHENTLEN+CHALLEN+4){
+		uchar *p = (uchar *)&a[TICKETLEN+AUTHENTLEN+CHALLEN];
+		id = p[0] | (p[1]<<8) | (p[2]<<16) | (p[3]<<24);
+		chal = &a[TICKETLEN+AUTHENTLEN];
+	}else{
+		id = 0;
+		chal = cp->t.chal;
+	}
+	if(cp->a.num != AuthAs || memcmp(chal, cp->a.chal, CHALLEN) || cp->a.id != id)
 		error(Eperm);
+
+	return n;
+}
+
+/*
+ *  called by devcons() for #c/authenticator
+ *
+ *  a read after a write of a ticket (or ticket+id) returns an authenticator
+ *  for that ticket.
+ */
+long
+authentwrite(Chan *c, char *a, int n)
+{
+	Crypt *cp;
+
+	if(n != TICKETLEN && n != TICKETLEN+4)
+		error(Ebadarg);
+	if(c->aux == 0)
+		c->aux = newcrypt();
+	cp = c->aux;
+
+	memmove(cp->tbuf, a, TICKETLEN);
+	convM2T(cp->tbuf, &cp->t, evekey);
+	if(cp->t.num != AuthTc || strcmp(cp->t.cuid, up->user)){
+		freecrypt(cp);
+		c->aux = 0;
+		error(Ebadarg);
+	}
+	if(n == TICKETLEN+4){
+		uchar *p = (uchar *)&a[TICKETLEN];
+		cp->a.id = p[0] | (p[1]<<8) | (p[2]<<16) | (p[3]<<24);
+	}else
+		cp->a.id = 0;
+
+	return n;
+}
+
+long
+authentread(Chan *c, char *a, int n)
+{
+	Crypt *cp;
+
+	cp = c->aux;
+	if(cp == 0)
+		error("authenticator read must follow a write");
+
+	cp->a.num = AuthAc;
+	memmove(cp->a.chal, cp->t.chal, CHALLEN);
+	convA2M(&cp->a, cp->tbuf, cp->t.key);
+	memmove(a, cp->tbuf, AUTHENTLEN);
+
 	return n;
 }
 

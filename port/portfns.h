@@ -2,6 +2,8 @@ void		addrootfile(char*, uchar*, ulong);
 void		alarmkproc(void*);
 int		anyready(void);
 Image*		attachimage(int, Chan*, ulong, ulong);
+long		authentwrite(Chan*, char*, int);
+long		authentread(Chan*, char*, int);
 long		authread(Chan*, char*, int);
 long		authwrite(Chan*, char*, int);
 long		authcheck(Chan*, char*, int);
