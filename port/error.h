@@ -51,6 +51,6 @@ extern char Esoverlap[];	/* segments overlap */
 extern char Emouseset[];	/* mouse type already set */
 extern char Erecover[];		/* failed to recover fd */
 extern char Eshort[];		/* i/o count too small */
-extern char Enobitstore[];	/* out of screen memory */
 extern char Egreg[];		/* ken scheduled it */
 extern char Ebadspec[];		/* bad attach specifier */
+extern char Enoreg[];		/* process has no saved registers */

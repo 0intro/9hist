@@ -361,6 +361,8 @@ procread(Chan *c, void *va, long n, ulong offset)
 		rptr = (uchar*)&p->fpsave;
 		rsize = sizeof(FPsave);
 	regread:
+		if(rptr == 0)
+			error(Enoreg);
 		if(offset >= rsize)
 			return 0;
 		if(offset+n > rsize)
@@ -566,6 +568,8 @@ procwrite(Chan *c, void *va, long n, ulong offset)
 			return 0;
 		if(offset+n > sizeof(Ureg))
 			n = sizeof(Ureg) - offset;
+		if(p->dbgreg == 0)
+			error(Enoreg);
 		setregisters(p->dbgreg, (char*)(p->dbgreg)+offset, va, n);
 		break;
 

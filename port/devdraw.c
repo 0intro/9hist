@@ -1531,9 +1531,9 @@ drawmesg(Client *client, void *av, int n)
 			drawrectangle(&r, a+5);
 			if(!rectinrect(r, i->r))
 				error(Ereadoutside);
-			free(client->readdata);
 			c = bytesperline(r, i->ldepth);
 			c *= Dy(r);
+			free(client->readdata);
 			client->readdata = mallocz(c, 0);
 			if(client->readdata == nil)
 				error("readimage malloc failed");
