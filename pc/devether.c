@@ -374,9 +374,9 @@ etherreset(void)
 					ether->oq = qopen(256*1024, 1, 0, 0);
 			}
 			else{
-				netifinit(ether, name, Ntypes, 32*1024);
+				netifinit(ether, name, Ntypes, 65*1024);
 				if(ether->oq == 0)
-					ether->oq = qopen(64*1024, 1, 0, 0);
+					ether->oq = qopen(65*1024, 1, 0, 0);
 			}
 			if(ether->oq == 0)
 				panic("etherreset %s", name);
