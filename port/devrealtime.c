@@ -66,7 +66,7 @@ dumptask(char *p, char *e, Task *t, Ticks now)
 	char c;
 
 	p = seprint(p, e, "{%s, D%U, Δ%U,T%U, C%U, S%U",
-		edf_statename[t->state], t->D, t->Δ, t->T, t->C, t->S);
+		edf_statename[t->state], t->D, t->Delta, t->T, t->C, t->S);
 	n = t->r - now;
 	if (n >= 0)
 		c = ' ';
@@ -214,7 +214,7 @@ devrtinit(void)
 static Chan *
 devrtattach(char *param)
 {
-	return devattach(L'⌛', param);
+	return devattach(L'Σ', param);
 }
 
 static Walkqid *
@@ -327,6 +327,7 @@ devrtread(Chan *c, void *v, long n, vlong offs)
 	Task *t;
 	int s, i, fst;
 	Ticks now;
+	Time tim;
 
 	n0 = n;
 //	print("schedread 0x%lux\n", (ulong)c->qid.path);
@@ -342,13 +343,18 @@ devrtread(Chan *c, void *v, long n, vlong offs)
 		return devdirread(c, v, n, nil, 0, schedgen);
 
 	case Qtime:
-		if (n < sizeof(Ticks))
+		if (n < sizeof(Time))
 			error(Ebadarg);
 		now = fastticks(nil);
- 		memmove(v, &now, sizeof(Ticks));
+		tim = ticks2time(now);
+ 		memmove(v, &tim, sizeof(Time));
 		n -= sizeof(Ticks);
 		if (n >= sizeof(Ticks)){
-			memmove((char*)v + sizeof(Time), &fasthz, sizeof(Ticks));
+			memmove((char*)v + sizeof(Time), &now, sizeof(Ticks));
+			n -= sizeof(Ticks);
+		}
+		if (n >= sizeof(Ticks)){
+			memmove((char*)v + sizeof(Time) + sizeof(Ticks), &fasthz, sizeof(Ticks));
 			n -= sizeof(Ticks);
 		}
 		break;
@@ -403,10 +409,10 @@ devrtread(Chan *c, void *v, long n, vlong offs)
 					}
 				p = seprint(p, e, "'");
 			}
-			if (resources[i].Δ)
-				p = seprint(p, e, " Δ=%T", ticks2time(resources[i].Δ));
-			else if (resources[i].testΔ)
-				p = seprint(p, e, " testΔ=%T", ticks2time(resources[i].testΔ));
+			if (resources[i].Delta)
+				p = seprint(p, e, " Δ=%T", ticks2time(resources[i].Delta));
+			else if (resources[i].testDelta)
+				p = seprint(p, e, " testΔ=%T", ticks2time(resources[i].testDelta));
 			p = seprint(p, e, "\n");
 		}
 		return readstr(offs, v, n, buf);
@@ -450,10 +456,11 @@ devrtread(Chan *c, void *v, long n, vlong offs)
 			p = seprint(p, e, " D=%T", ticks2time(t->D));
 		if (t->C)
 			p = seprint(p, e, " C=%T", ticks2time(t->C));
-		if (t->Δ)
-			p = seprint(p, e, " Δ=%T", ticks2time(t->Δ));
-		else if (t->testΔ)
-			p = seprint(p, e, " testΔ=%T", ticks2time(t->testΔ));
+		if (t->Delta)
+			p = seprint(p, e, " Δ=%T", ticks2time(t->Delta));
+		else if (t->testDelta)
+			p = seprint(p, e, " testΔ=%T", ticks2time(t->testDelta));
+		p = seprint(p, e, " yieldonblock=%d", (t->flags & Verbose) != 0);
 		if (t->nres){
 			p = seprint(p, e, " resources='");
 			fst = 0;
@@ -603,6 +610,49 @@ proctotask(Task *t, Proc *p, int add)
 	return nil;
 }
 
+static void
+removetask(Task *t)
+{
+	int s, i;
+	Proc *p, **pp;
+	Resource *r;
+
+	qlock(t);
+	edf_expel(t);
+	for (pp = t->procs; pp < t->procs + nelem(t->procs); pp++)
+		if (p = *pp)
+			p->task = nil;
+	while (p = t->runq.head){
+		/* put runnable procs on regular run queue */
+		t->runq.head = p->rnext;
+		ready(p);
+		t->runq.n--;
+	}
+	t->runq.tail = nil;
+	assert(t->runq.n == 0);
+	for (s = 0; s < nelem(t->res); s++){
+		if (t->res[s] == nil)
+			continue;
+		r = t->res[s];
+		for (i = 0; i < nelem(r->tasks); i++)
+			if (r->name && r->tasks[i] == t){
+				r->tasks[i] = nil;
+				if (--r->ntasks == 0){
+					/* resource became unused, delete it */
+					free(r->name);
+					r->name = nil;
+					nresources--;
+				}
+			}
+	}
+	if(t->user){
+		free(t->user);
+		t->user = nil;
+	}
+	t->state = EdfUnused;
+	qunlock(t);
+}
+
 static long
 devrtwrite(Chan *c, void *va, long n, vlong)
 {
@@ -611,6 +661,7 @@ devrtwrite(Chan *c, void *va, long n, vlong)
 	Resource **rp, *r;
 	Proc **pp;
 	Task *t;
+	Ticks ticks;
 	Time time;
 	long pid;
 	Proc *p;
@@ -652,18 +703,60 @@ devrtwrite(Chan *c, void *va, long n, vlong)
 			if (strcmp(a, "T") == 0){
 				if (e=parsetime(&time, v))
 					error(e);
+				ticks = time2ticks(time);
 				edf_expel(t);
-				t->T = time2ticks(time);
+				switch(add){
+				case -1:
+					if (ticks > t->T)
+						t->T = 0;
+					else
+						t->T -= ticks;
+					break;
+				case 0:
+					t->T = ticks;
+					break;
+				case 1:
+					t->T += ticks;
+					break;
+				}
 			}else if (strcmp(a, "D") == 0){
 				if (e=parsetime(&time, v))
 					error(e);
+				ticks = time2ticks(time);
 				edf_expel(t);
-				t->D = time2ticks(time);
+				switch(add){
+				case -1:
+					if (ticks > t->D)
+						t->D = 0;
+					else
+						t->D -= ticks;
+					break;
+				case 0:
+					t->D = ticks;
+					break;
+				case 1:
+					t->D += ticks;
+					break;
+				}
 			}else if (strcmp(a, "C") == 0){
 				if (e=parsetime(&time, v))
 					error(e);
+				ticks = time2ticks(time);
 				edf_expel(t);
-				t->C = time2ticks(time);
+				switch(add){
+				case -1:
+					if (ticks > t->C)
+						t->C = 0;
+					else
+						t->C -= ticks;
+					break;
+				case 0:
+					t->C = ticks;
+					break;
+				case 1:
+					t->C += ticks;
+					break;
+				}
 			}else if (strcmp(a, "resources") == 0){
 				if (v == nil)
 					error("resources: value missing");
@@ -703,13 +796,17 @@ devrtwrite(Chan *c, void *va, long n, vlong)
 				}
 				nrargs = tokenize(v, rargs, nelem(rargs));
 				for (j = 0; j < nrargs; j++){
-					pid = atoi(rargs[j]);
-					if (pid <= 0)
-						error("bad process number");
-					s = procindex(pid);
-					if(s < 0)
-						error("no such process");
-					p = proctab(s);
+					if (strcmp("self", rargs[j]) == 0){
+						p = up;
+					}else{
+						pid = atoi(rargs[j]);
+						if (pid <= 0)
+							error("bad process number");
+						s = procindex(pid);
+						if(s < 0)
+							error("no such process");
+						p = proctab(s);
+					}
 					if (e = proctotask(t, p, add))
 						error(e);
 				}
@@ -717,15 +814,25 @@ devrtwrite(Chan *c, void *va, long n, vlong)
 				/* Do the admission test */
 				if (e = edf_admit(t))
 					error(e);
+			}else if (strcmp(a, "expel") == 0){
+				/* Do the admission test */
+				edf_expel(t);
+			}else if (strcmp(a, "remove") == 0){
+				/* Do the admission test */
+				removetask(t);
+				return n;	/* Ignore any subsequent commands */
 			}else if (strcmp(a, "verbose") == 0){
 				/* Do the admission test */
 				if (t->flags & Verbose)
 					t->flags &= ~Verbose;
 				else
 					t->flags |= Verbose;
-			}else if (strcmp(a, "useblocking") == 0){
-				/* Do the admission test */
-				if (t->flags & Useblocking)
+			}else if (strcmp(a, "yieldonblock") == 0){
+				if (v == nil)
+					error("yieldonblock: value missing");
+				if (add != 0)
+					error("yieldonblock: cannot increment/decrement");
+				if (atoi(v) == 0)
 					t->flags &= ~Useblocking;
 				else
 					t->flags |= Useblocking;
@@ -745,10 +852,8 @@ devrtwrite(Chan *c, void *va, long n, vlong)
 static void
 devrtremove(Chan *c)
 {
-	int s, i;
+	int s;
 	Task *t;
-	Proc *p, **pp;
-	Resource *r;
 
 	if ((c->qid.path & Qistask) == 0)
 		error(Eperm);
@@ -756,44 +861,11 @@ devrtremove(Chan *c)
 	t = tasks + s;
 	if (s < 0 || s >= Maxtasks || t->state == EdfUnused)
 		error(Enonexist);
-	qlock(t);
-	edf_expel(t);
-	for (pp = t->procs; pp < t->procs + nelem(t->procs); pp++)
-		if (p = *pp)
-			p->task = nil;
-	while (p = t->runq.head){
-		/* put runnable procs on regular run queue */
-		t->runq.head = p->rnext;
-		ready(p);
-		t->runq.n--;
-	}
-	t->runq.tail = nil;
-	assert(t->runq.n == 0);
-	for (s = 0; s < nelem(t->res); s++){
-		if (t->res[s] == nil)
-			continue;
-		r = t->res[s];
-		for (i = 0; i < nelem(r->tasks); i++)
-			if (r->name && r->tasks[i] == t){
-				r->tasks[i] = nil;
-				if (--r->ntasks == 0){
-					/* resource became unused, delete it */
-					free(r->name);
-					r->name = nil;
-					nresources--;
-				}
-			}
-	}
-	if(t->user){
-		free(t->user);
-		t->user = nil;
-	}
-	t->state = EdfUnused;
-	qunlock(t);
+	removetask(t);
 }
 
 Dev realtimedevtab = {
-	L'⌛',
+	L'Σ',
 	"scheduler",
 
 	devreset,

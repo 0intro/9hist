@@ -72,8 +72,8 @@ void (*devrt)(Task*, Ticks, int);
 
 static void		edf_intr(Ureg*, Cycintr*);
 static void		edf_resched(Task *t);
-static void		setΔ(void);
-static void		testΔ(Task *thetask);
+static void		setdelta(void);
+static void		testdelta(Task *thetask);
 static char *	edf_testschedulability(Task *thetask);
 static void		edf_setclock(void);
 
@@ -226,10 +226,14 @@ edf_block(Proc *p)
 	/* The current proc has blocked */
 	ilock(&edflock);
 	t = p->task;
+	assert(t);
+	if (t->state != EdfRunning){
+		/* called by a proc just joining the task */
+		iunlock(&edflock);
+		return;
+	}
 	DENTER("%.*s%d edf_block, %s, %d\n", ind, tabs, m->machno, edf_statename[t->state], t->runq.n);
 
-	assert(t);
-	assert(t->state == EdfRunning);
 	if (t->runq.n){
 		/* There's another runnable proc in the running task, leave task where it is */
 		iunlock(&edflock);
@@ -255,12 +259,11 @@ edfdeadline(Proc *p, SEvent why)
 	if (p){
 		nt = p->task;
 		assert(nt);
-		assert(nt->state == EdfRunning);
 	}
 	t = edfpop();
 
 	if(p != nil && nt != t){
-		DPRINT("%.*s%d edfdeadline, %s, %d\n", ind, tabs, m->machno, edf_statename[p->task->state], p->task->runq.n);
+		iprint("edfdeadline, %s, %d\n", edf_statename[p->task->state], p->task->runq.n);
 		iunlock(&edflock);
 		assert(0 && p == nil || nt == t);
 	}
@@ -326,7 +329,7 @@ edf_admit(Task *t)
 		t->scheduled = now;
 		t->state = EdfRunning;
 		if(devrt) devrt(t, now, SRun);
-		setΔ();
+		setdelta();
 		assert(t->runq.n > 0 || (up && up->task == t));
 		edfpush(t);
 		edf_setclock();
@@ -336,7 +339,7 @@ edf_admit(Task *t)
 				t->state = EdfAdmitted;
 				t->r = now;
 				edf_release(t);
-				setΔ();
+				setdelta();
 				edf_resched(t);
 			}else{
 				edfenqueue(&qadmit, t);
@@ -393,7 +396,7 @@ edf_expel(Task *t)
 	}
 	t->state = EdfExpelled;
 	if(devrt) devrt(t, now, SExpel);
-	setΔ();
+	setdelta();
 	DLEAVE;
 	iunlock(&edflock);
 	qunlock(&edfschedlock);
@@ -739,7 +742,7 @@ edf_runproc(void)
 		return nil;
 	}
 	DENTER("edf_runproc %lud\n", nilcount);
-	if (nt && (t == nil || (nt->D < t->Δ && nt->d < t->d))){
+	if (nt && (t == nil || (nt->d < t->d && nt->D < t->Delta))){
 		/* released task is better than current */
 		DPRINT("%.*s%d edf_runproc: released\n", ind, tabs, m->machno);
 		edfdequeue(&qreleased);
@@ -777,8 +780,6 @@ static Lock	waitlock;
 int
 edf_waitlock(Lock *l)
 {
-	Task *t;
-
 	iprint("edf_waitlock\n");
 	ilock(&waitlock);	/* can't afford normal locks here */
 	if (l->key == 0){
@@ -820,7 +821,7 @@ edf_releaselock(Lock *l)
 /* Schedulability testing and its supporting routines */
 
 static void
-setΔ(void)
+setdelta(void)
 {
 	Resource *r, **rr;
 	Task **tt, *t;
@@ -828,23 +829,23 @@ setΔ(void)
 	for (r = resources; r < resources + nelem(resources); r++){
 		if (r->name == nil)
 			continue;
-		r->Δ = ~0LL;
+		r->Delta = ~0LL;
 		for (tt = r->tasks; tt < r->tasks + nelem(r->tasks); tt++)
-			if (*tt && (*tt)->D < r->Δ)
-				r->Δ = (*tt)->D;
+			if (*tt && (*tt)->D < r->Delta)
+				r->Delta = (*tt)->D;
 	}
 	for (t = tasks; t < tasks + nelem(tasks); t++){
 		if (t->state < EdfIdle)
 			continue;
-		t->Δ = t->D;
+		t->Delta = t->D;
 		for (rr = t->res; rr < t->res + nelem(t->res); rr++)
-			if (*rr && (*rr)->Δ < t->Δ)
-				t->Δ = (*rr)->Δ;
+			if (*rr && (*rr)->Delta < t->Delta)
+				t->Delta = (*rr)->Delta;
 	}
 }
 
 static void
-testΔ(Task *thetask)
+testdelta(Task *thetask)
 {
 	Resource *r, **rr;
 	Task **tt, *t;
@@ -852,18 +853,18 @@ testΔ(Task *thetask)
 	for (r = resources; r < resources + nelem(resources); r++){
 		if (r->name == nil)
 			continue;
-		r->testΔ = ~0ULL;
+		r->testDelta = ~0ULL;
 		for (tt = r->tasks; tt < r->tasks + nelem(r->tasks); tt++)
-			if (*tt && (*tt)->D < r->testΔ)
-				r->testΔ = (*tt)->D;
+			if (*tt && (*tt)->D < r->testDelta)
+				r->testDelta = (*tt)->D;
 	}
 	for (t = tasks; t < tasks + nelem(tasks); t++){
 		if (t->state <= EdfExpelled && t != thetask)
 			continue;
-		t->testΔ = t->D;
+		t->testDelta = t->D;
 		for (rr = t->res; rr < t->res + nelem(t->res); rr++)
-			if (*rr && (*rr)->testΔ < t->testΔ)
-				t->testΔ = (*rr)->testΔ;
+			if (*rr && (*rr)->testDelta < t->testDelta)
+				t->testDelta = (*rr)->testDelta;
 	}
 }
 
@@ -877,7 +878,7 @@ blockcost(Ticks ticks, Task *thetask)
 	for (t = tasks; t < tasks + Maxtasks; t++){
 		if (t->state <= EdfExpelled && t != thetask)
 			continue;
-		if (t->testΔ <= ticks && ticks < t->D && Cb < t->C)
+		if (t->testDelta <= ticks && ticks < t->D && Cb < t->C)
 			Cb = t->C;
 	}
 	return Cb;
@@ -917,7 +918,7 @@ edf_testschedulability(Task *thetask)
 	int steps;
 
 	/* initialize */
-	testΔ(thetask);
+	testdelta(thetask);
 	if (thetask && (thetask->flags & Verbose))
 		pprint("schedulability test\n");
 	qschedulability = nil;
@@ -986,6 +987,8 @@ Time
 ticks2time(Ticks ticks)
 {
 	assert(ticks >= 0);
+	if (fasthz == 0)
+		fastticks(&fasthz);
 	return uvmuldiv(ticks, Onesecond, fasthz);
 }
 

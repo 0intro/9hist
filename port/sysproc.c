@@ -825,9 +825,9 @@ sysrendezvous(ulong *arg)
 	up->rendhash = *l;
 	*l = up;
 	up->state = Rendezvous;
+	unlock(up->rgrp);
 	if (isedf(up))
 		edf_block(up);
-	unlock(up->rgrp);
 
 	sched();
 

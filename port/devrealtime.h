@@ -1,9 +1,10 @@
+
+typedef vlong	Time;
+typedef struct	Schedevent Schedevent;
+
 #define Onemicrosecond			((Time)1000ULL)
 #define Onemillisecond			((Time)1000*Onemicrosecond)
 #define Onesecond				((Time)1000*Onemillisecond)
-
-typedef vlong	Time;
-typedef struct Schedevent Schedevent;
 
 enum SEvent {
 	SAdmit,		/* new proc arrives*/
@@ -20,8 +21,8 @@ enum SEvent {
 typedef enum SEvent	SEvent;
 
 struct Schedevent {
-	ulong	tid;		// Task ID
-	Time		ts;		// Event time
-	SEvent	etype;	// Event type
+	ushort	tid;		/* Task ID */
+	SEvent	etype;	/* Event type */
+	Time		ts;		/* Event time */
 };
 

@@ -38,7 +38,7 @@ typedef enum Edfstate	Edfstate;
 struct Edf {
 	/* time intervals */
 	Ticks	D;		/* Deadline */
-	Ticks	Δ;		/* Inherited deadline */
+	Ticks	Delta;		/* Inherited deadline */
 	Ticks	T;		/* period */
 	Ticks	C;		/* Cost */
 	Ticks	S;		/* Slice: time remaining in this period */
@@ -47,7 +47,7 @@ struct Edf {
 	Ticks	d;		/* (this) deadline */
 	Ticks	t;		/* Start of next period, t += T at release */
 	/* for schedulability testing */
-	Ticks	testΔ;
+	Ticks	testDelta;
 	int		testtype;	/* Release or Deadline */
 	Ticks	testtime;
 	Task	*	testnext;
@@ -82,9 +82,9 @@ struct Resource
 	char	*	name;
 	Task *	tasks[Ntask];	/* may contain holes */
 	int		ntasks;
-	Ticks	Δ;
+	Ticks	Delta;
 	/* for schedulability testing */
-	Ticks	testΔ;
+	Ticks	testDelta;
 };
 
 extern Lock		edftestlock;	/* for atomic admitting/expelling */

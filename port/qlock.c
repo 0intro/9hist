@@ -38,10 +38,10 @@ rwstats.qlockq++;
 	q->tail = mp;
 	mp->qnext = 0;
 	mp->state = Queueing;
-	if (isedf(mp))
-		edf_block(mp);
 	up->qpc = getcallerpc(&q);
 	unlock(&q->use);
+	if (isedf(mp))
+		edf_block(mp);
 	sched();
 }
 
@@ -104,9 +104,9 @@ rwstats.rlockq++;
 	q->tail = mp;
 	mp->qnext = 0;
 	mp->state = QueueingR;
+	unlock(&q->use);
 	if (isedf(mp))
 		edf_block(mp);
-	unlock(&q->use);
 	sched();
 }
 
@@ -162,9 +162,9 @@ rwstats.wlockq++;
 	q->tail = mp;
 	mp->qnext = 0;
 	mp->state = QueueingW;
+	unlock(&q->use);
 	if (isedf(mp))
 		edf_block(mp);
-	unlock(&q->use);
 	sched();
 }
 
