@@ -121,6 +121,27 @@ icmpkick(Conv *c, int l)
 	ipoput(bp, 0, MAXTTL);
 }
 
+extern void
+icmpnoconv(Block *bp)
+{
+	Block	*nbp;
+	Icmp	*p, *np;
+
+	p = (Icmp *)bp->rp;
+	nbp = allocb(ICMP_IPSIZE + ICMP_HDRSIZE + ICMP_IPSIZE + 8);
+	nbp->wp += ICMP_IPSIZE + ICMP_HDRSIZE + ICMP_IPSIZE + 8;
+	np = (Icmp *)nbp->rp;
+	memmove(np->dst, p->src, sizeof(np->dst));
+	memmove(np->src, p->dst, sizeof(np->src));
+	memmove(np->data, bp->rp, ICMP_IPSIZE + 8);
+	np->type = Unreachable;
+	np->code = 3;
+	p->proto = IP_ICMPPROTO;
+	hnputs(p->icmpid, 0);
+	memset(p->cksum, 0, sizeof(p->cksum));
+	hnputs(p->cksum, ptclcsum(bp, ICMP_IPSIZE, blocklen(bp) - ICMP_IPSIZE));
+	ipoput(nbp, 0, MAXTTL);
+}
 
 static void
 goticmpkt(Block *bp)

@@ -250,6 +250,7 @@ int	equivip(byte*, byte*);
 void	fatal(byte*, ...);
 void	hnputl(byte*, ulong);
 void	hnputs(byte*, ushort);
+void	icmpnoconv(Block*);
 void	initfrag(int);
 ushort	ipcsum(byte*);
 void	(*ipextprotoiput)(Block*);

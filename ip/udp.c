@@ -244,6 +244,7 @@ udpiput(Media *m, Block *bp)
 	if(*p == nil) {
 		netlog(Logudp, "udp: no conv %I.%d -> %I.%d\n", src, rport,
 			dst, lport);
+		icmpnoconv(bp);
 		freeblist(bp);
 		return;
 	}
