@@ -184,6 +184,7 @@ tcptimeout(void *arg)
 	default:
 		tcb->backoff++;
 		if (tcb->backoff >= MAXBACKOFF && tcb->snd.wnd > 0) {
+print("tcp connection timed out\n"); 
 			localclose(s, Etimedout);
 			break;
 		}

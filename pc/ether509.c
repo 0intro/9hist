@@ -331,7 +331,7 @@ transmit(Ctlr *ctlr)
 		 * we need 4 bytes for the preamble.
 		 */
 		len = ROUNDUP(tb->len, 4);
-		if(len > ins(ctlr->card.io+TxFreeBytes)+4){
+		if(len+4 > ins(ctlr->card.io+TxFreeBytes)){
 			COMMAND(ctlr, SetTxAvailable, len);
 			break;
 		}

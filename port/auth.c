@@ -150,6 +150,7 @@ sysfsession(ulong *arg)
 			poperror();
 			if(convM2S(buf, &f, n) == 0){
 				unlock(&s->send);
+print("error converting %d bytes %ux %ux %ux\n", n, buf[0], buf[1], buf[2]);
 				error(Emountrpc);
 			}
 			switch(f.type){
@@ -163,6 +164,7 @@ sysfsession(ulong *arg)
 				error(f.ename);
 			default:
 				unlock(&s->send);
+print("error using %d bytes %ux %ux %ux\n", n, buf[0], buf[1], buf[2]);
 				error(Emountrpc);
 			}
 		}
