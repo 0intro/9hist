@@ -604,7 +604,7 @@ consread(Chan *c, void *buf, long n, vlong off)
 		return readnum((ulong)offset, buf, n, up->parentpid, NUMSIZE);
 
 	case Qtime:
-		return readnum((ulong)offset, buf, n, rtctime(), 12);
+		return readnum((ulong)offset, buf, n, boottime+TK2SEC(MACHP(0)->ticks), 12);
 
 	case Qclock:
 		k = offset;
@@ -777,7 +777,7 @@ conswrite(Chan *c, void *va, long n, vlong off)
 		break;
 
 	case Qtime:
-		if(n<=0 || (boottime != 0 && !iseve()))	/* write once file */
+		if(n<=0 || !iseve())
 			return 0;
 		if(n >= sizeof cbuf)
 			n = sizeof cbuf - 1;

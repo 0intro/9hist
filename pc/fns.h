@@ -110,6 +110,7 @@ void	vectortable(void);
 void	wrmsr(int, vlong);
 void	wbflush(void);
 int	xchgw(ushort*, int);
+ulong	TK2MS(ulong);				/* ticks to milliseconds */
 
 #define	waserror()	(up->nerrlab++, setlabel(&up->errlab[up->nerrlab-1]))
 #define getcallerpc(x)	(((ulong*)(&x))[-1])
