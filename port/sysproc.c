@@ -650,7 +650,7 @@ syssegfree(ulong *arg)
 	return 0;
 }
 
-/* For binary compatability */
+/* For binary compatibility */
 long
 sysbrk_(ulong *arg)
 {
