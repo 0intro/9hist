@@ -1723,12 +1723,25 @@ bitloadchar(GFont *f, int ci, GSubfont *subf, int si)
 	gbitblt(f->b, Pt(c->x, f->ascent-subf->ascent), subf->bits, rect, S);
 }
 
+QLock	bitlock;
+
+GBitmap*
+id2bit(int v)
+{
+	GBitmap *bp=0;
+
+	if(v<0 || v>=bit.nmap || (bp=bit.map[v])==0)
+		error(Ebadbitmap);
+	return bp;
+}
+
 void
 bitcompact(void)
 {
 	Arena *a, *ea, *na;
 	ulong *p1, *p2, n;
 
+	qlock(&bitlock);
 	ea = &bit.arena[bit.narena];
 	for(a=bit.arena; a<ea; a++){
 		if(a->words == 0)
@@ -1782,6 +1795,7 @@ bitcompact(void)
 	for(a=bit.arena; a<ea; a++)
 		if(a->words && a->nbusy==0)
 			arenafree(a);
+	qunlock(&bitlock);
 }
 
 void
