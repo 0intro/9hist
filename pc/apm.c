@@ -97,13 +97,8 @@ static long
 apmwrite(Chan*, void *a, long n, vlong off)
 {
 	int s;
-	if(off || n != sizeof apmu){
-//		if(n == 5 && strncmp(a, "ether", 5) == 0){
-//			ether589reset();
-//			return 5;
-//		}
+	if(off || n != sizeof apmu)
 		error("write a Ureg");
-	}
 
 	memmove(&apmu, a, sizeof apmu);
 	s = splhi();
