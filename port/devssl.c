@@ -97,8 +97,8 @@ enum{
 };
 
 #define TYPE(x) 	((x).path & 0xf)
-#define CONV(x) 	(((x).path >> 4)&(Maxdstate-1))
-#define QID(c, y) 	(((c)<<4) | (y))
+#define CONV(x) 	(((x).path >> 5)&(Maxdstate-1))
+#define QID(c, y) 	(((c)<<5) | (y))
 
 static void	ensure(Dstate*, Block**, int);
 static void	consume(Block**, uchar*, int);
@@ -111,6 +111,16 @@ static Chan*	buftochan(char*);
 static void	sslhangup(Dstate*);
 static Dstate*	dsclone(Chan *c);
 static void	dsnew(Chan *c, Dstate **);
+
+char *sslnames[] = {
+[Qclonus]	"clone",
+[Qdata]		"data",
+[Qctl]		"ctl",
+[Qsecretin]	"secretin",
+[Qsecretout]	"secretout",
+[Qencalgs]	"encalgs",
+[Qhashalgs]	"hashalgs",
+};
 
 static int
 sslgen(Chan *c, Dirtab *d, int nd, int s, Dir *dp)
@@ -126,18 +136,18 @@ sslgen(Chan *c, Dirtab *d, int nd, int s, Dir *dp)
 	case Qtopdir:
 		if(s == DEVDOTDOT){
 			q.path = QID(0, Qtopdir)|CHDIR;
-			devdir(c, q, "#D", 0, eve, 0555, dp);
+			devdir(c, q, "#D", 0, eve, CHDIR|0555, dp);
 			return 1;
 		}
 		if(s > 0)
 			return -1;
 		q.path = QID(0, Qprotodir)|CHDIR;
-		devdir(c, q, "ssl", 0, eve, 0555, dp);
+		devdir(c, q, "ssl", 0, eve, CHDIR|0555, dp);
 		return 1;
 	case Qprotodir:
 		if(s == DEVDOTDOT){
 			q.path = QID(0, Qtopdir)|CHDIR;
-			devdir(c, q, ".", 0, eve, 0555, dp);
+			devdir(c, q, ".", 0, eve, CHDIR|0555, dp);
 			return 1;
 		}
 		if(s < dshiwat) {
@@ -148,7 +158,7 @@ sslgen(Chan *c, Dirtab *d, int nd, int s, Dir *dp)
 				nm = ds->user;
 			else
 				nm = eve;
-			devdir(c, q, name, 0, nm, 0555, dp);
+			devdir(c, q, name, 0, nm, CHDIR|0555, dp);
 			return 1;
 		}
 		if(s > dshiwat)
@@ -159,7 +169,7 @@ sslgen(Chan *c, Dirtab *d, int nd, int s, Dir *dp)
 	case Qconvdir:
 		if(s == DEVDOTDOT){
 			q.path = QID(0, Qprotodir)|CHDIR;
-			devdir(c, q, "ssl", 0, eve, 0555, dp);
+			devdir(c, q, "ssl", 0, eve, CHDIR|0555, dp);
 			return 1;
 		}
 		ds = dstate[CONV(c->qid)];
@@ -196,6 +206,13 @@ sslgen(Chan *c, Dirtab *d, int nd, int s, Dir *dp)
 			break;
 		}
 		devdir(c, q, p, 0, nm, 0660, dp);
+		return 1;
+	case Qclonus:
+		devdir(c, c->qid, sslnames[TYPE(c->qid)], 0, eve, 0555, dp);
+		return 1;
+	default:
+		ds = dstate[CONV(c->qid)];
+		devdir(c, c->qid, sslnames[TYPE(c->qid)], 0, ds->user, 0660, dp);
 		return 1;
 	}
 	return -1;

@@ -560,6 +560,8 @@ procread(Chan *c, void *va, long n, vlong off)
 		return sizeof(Waitmsg);
 
 	case Qns:
+		if(p->pgrp == nil)
+			error(Ebadusefd);
 		mw = c->aux;
 		if(mw->cddone)
 			return 0;
@@ -584,6 +586,8 @@ procread(Chan *c, void *va, long n, vlong off)
 	case Qnoteid:
 		return readnum(offset, va, n, p->noteid, NUMSIZE);
 	case Qfd:
+		if(p->fgrp == nil)
+			error(Ebadusefd);
 		return procfds(p, va, n, offset);
 	}
 	error(Egreg);

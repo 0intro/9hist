@@ -747,13 +747,19 @@ pexit(char *exitstr, int freemem)
 		closefgrp(fgrp);
 		qunlock(&up->debug);
 	}
-	if(up->egrp)
+	if(up->egrp){
 		closeegrp(up->egrp);
-	if(up->rgrp)
+		up->egrp = nil;
+	}
+	if(up->rgrp){
 		closergrp(up->rgrp);
+		up->rgrp = nil;
+	}
 
 	cclose(up->dot);
+	up->dot = nil;
 	closepgrp(up->pgrp);
+	up->pgrp = nil;
 
 	/*
 	 * if not a kernel process and have a parent,
