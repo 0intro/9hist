@@ -183,12 +183,8 @@ vgascreenwin(VGAscr* scr)
 	h = scr->memdefont->height;
 	w = scr->memdefont->info[' '].width;
 
-	window.min = Pt(48, 48);
-	window.max = addpt(window.min, Pt(10+w*80, 10+h*50));
-	if(window.max.y >= scr->gscreen->r.max.y)
-		window.max.y = scr->gscreen->r.max.y-1;
-	if(window.max.x >= scr->gscreen->r.max.x)
-		window.max.x = scr->gscreen->r.max.x-1;
+	window = insetrect(scr->gscreen->r, 48);
+	window.max.x = window.min.x+((window.max.x-window.min.x)/w)*w;
 	window.max.y = window.min.y+((window.max.y-window.min.y)/h)*h;
 	curpos = window.min;
 
