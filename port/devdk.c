@@ -160,13 +160,13 @@ enum {
 };
 char* dkerr[]={
 	[DKok]"",
-	[DKbusy]"destination busy",
-	[DKnetotl]"network not answering",
-	[DKdestotl]"destination not answering",
-	[DKbadnet]"unknown address",
-	[DKnetbusy]"network busy",
-	[DKinuse]"service in use",
-	[DKreject]"connection refused", 
+	[DKbusy]"devdk: destination busy",
+	[DKnetotl]"devdk: network not answering",
+	[DKdestotl]"devdk: destination not answering",
+	[DKbadnet]"devdk: unknown address",
+	[DKnetbusy]"devdk: network busy",
+	[DKinuse]"devdk: service in use",
+	[DKreject]"devdk: connection refused", 
 };
 #define DKERRS sizeof(dkerr)/sizeof(char*)
 
