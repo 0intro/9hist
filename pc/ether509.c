@@ -579,6 +579,10 @@ tcm590(Ether *ether)
 			continue;
 
 		port = pcicfg->baseaddr[0] & ~0x01;
+		COMMAND(port, GlobalReset, 0);
+		while(ins(port+Status) & CmdInProgress)
+			;
+
 		if(ether->port == 0 || ether->port == port)
 			return pcicfg;
 
