@@ -351,31 +351,3 @@ isamem(int len)
 	unlock(&isamemalloc);
 	return a;
 }
-
-/*
- *  mapping for user access to d segment (access to TARGA)
- */
-Page*
-dsegalloc(Segment *s, ulong va)
-{
-	Page *pg;
-
-	pg = smalloc(sizeof(Page));
-	memset(pg, 0, sizeof(Page));
-	pg->va = va;
-	pg->pa = 0xd0000 + (va - s->base);
-	pg->ref = 1;
-	return pg;
-}
-
-void
-dsegfree(Page *pg)
-{
-	int x;
-
-	lock(pg);
-	x = --pg->ref;
-	unlock(pg);
-	if(x <= 0)
-		free(pg);
-}

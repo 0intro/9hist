@@ -12,7 +12,7 @@ Syscall sysdup;
 Syscall sysalarm;
 Syscall sysexec;
 Syscall sysexits;
-Syscall sys_x1;
+Syscall sysfsession;
 Syscall sys_x2;
 Syscall sysfstat;
 Syscall syssegbrk;
@@ -40,7 +40,6 @@ Syscall syssegflush;
 Syscall sysrendezvous;
 Syscall sysunmount;
 Syscall syswait;
-Syscall sysfsession;
 Syscall	sysdeath;
 
 Syscall *systab[]={
@@ -53,7 +52,7 @@ Syscall *systab[]={
 	[ALARM]		sysalarm,
 	[EXEC]		sysexec,
 	[EXITS]		sysexits,
-	[_X1]		sysdeath,
+	[FSESSION]	sysfsession,
 	[_X2]		sysdeath,
 	[FSTAT]		sysfstat,
 	[SEGBRK]	syssegbrk,
@@ -81,7 +80,6 @@ Syscall *systab[]={
 	[RENDEZVOUS]	sysrendezvous,
 	[UNMOUNT]	sysunmount,
 	[WAIT]		syswait,
-	[FSESSION]	sysfsession,
 };
 
 char *sysctab[]={
@@ -94,7 +92,7 @@ char *sysctab[]={
 	[ALARM]		"Alarm",
 	[EXEC]		"Exec",
 	[EXITS]		"Exits",
-	[_X1]		"_x1",
+	[FSESSION]	"Fsession",
 	[_X2]		"_x2",
 	[FSTAT]		"Fstat",
 	[SEGBRK]	"Segbrk",
@@ -122,5 +120,4 @@ char *sysctab[]={
 	[RENDEZVOUS]	"Rendez",
 	[UNMOUNT]	"Unmount",
 	[WAIT]		"Wait",
-	[FSESSION]	"Fsession",
 };

@@ -24,6 +24,7 @@ typedef struct Page	Page;
 typedef struct Palloc	Palloc;
 typedef struct Pgrps	Pgrps;
 typedef struct Pgrp	Pgrp;
+typedef struct Physseg	Physseg;
 typedef struct Proc	Proc;
 typedef struct Pte	Pte;
 typedef struct Qinfo	Qinfo;
@@ -408,22 +409,31 @@ enum
 
 #define SEGMAXSIZE	(SEGMAPSIZE*PTEMAPMEM)
 
+struct Physseg
+{
+	ulong	attr;			/* Segment attributes */
+	char	*name;			/* Attach name */
+	ulong	pa;			/* Physical address */
+	ulong	size;			/* Maximum segment size in pages */
+	Page	*(*pgalloc)(Segment*, ulong);	/* Allocation if we need it */
+	void	(*pgfree)(Page*);
+};
+
 struct Segment
 {
 	Ref;
 	QLock	lk;
-	ushort	steal;			/* Page stealer lock */
-	Segment	*next;			/* free list pointers */
-	ushort	type;			/* segment type */
-	ulong	base;			/* virtual base */
-	ulong	top;			/* virtual top */
-	ulong	size;			/* size in pages */
-	ulong	fstart;			/* start address in file for demand load */
-	ulong	flen;			/* length of segment in file */
-	int	flushme;		/* maintain consistent icache for this segment */
-	Image	*image;			/* text in file attached to this segment */
-	Page	*(*pgalloc)(Segment*, ulong);/* SG_PHYSICAL page allocator */
-	void	(*pgfree)(Page *);	/* SG_PHYSICAL page free */
+	ushort	steal;		/* Page stealer lock */
+	Segment	*next;		/* free list pointers */
+	ushort	type;		/* segment type */
+	ulong	base;		/* virtual base */
+	ulong	top;		/* virtual top */
+	ulong	size;		/* size in pages */
+	ulong	fstart;		/* start address in file for demand load */
+	ulong	flen;		/* length of segment in file */
+	int	flushme;	/* maintain consistent icache for this segment */
+	Image	*image;		/* text in file attached to this segment */
+	Physseg *pseg;
 	Pte	*map[SEGMAPSIZE];	/* segment pte map */
 };
 

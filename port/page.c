@@ -407,16 +407,33 @@ ptealloc(void)
 void
 freepte(Segment *s, Pte *p)
 {
-	Page **pg, **ptop;
+	int ref;
+	Page *pt, **pg, **ptop;
+	void (*fn)(Page*);
 
 	switch(s->type&SG_TYPE) {
 	case SG_PHYSICAL:
+		fn = s->pseg->pgfree;
 		ptop = &p->pages[PTEPERTAB];
-		for(pg = p->pages; pg < ptop; pg++)
-			if(*pg) {
-				(*s->pgfree)(*pg);
+		if(fn) {
+			for(pg = p->pages; pg < ptop; pg++) {
+				if(*pg == 0)
+					continue;
+				(*fn)(*pg);
 				*pg = 0;
 			}
+			break;
+		}
+		for(pg = p->pages; pg < ptop; pg++) {
+			pt = *pg;
+			if(pt == 0) 
+				continue;
+			lock(pt);
+			ref = --pt->ref;
+			unlock(pt);
+			if(ref == 0)
+				free(pt);
+		}
 		break;
 	default:
 		for(pg = p->first; pg <= p->last; pg++)

@@ -10,6 +10,7 @@ void lkpgfree(Page*);
 void imagereclaim(void);
 
 /* System specific segattach devices */
+#include "io.h"
 #include "segment.h"
 
 #define IHASHSIZE	64
@@ -438,11 +439,8 @@ found:
 	attr |= ps->attr;			/* Copy in defaults */
 
 	s = newseg(attr, va, len/BY2PG);
-	s->pgalloc = ps->pgalloc;
-	s->pgfree = ps->pgfree;
+	s->pseg = ps;
 	u->p->seg[sno] = s;
-
-	/* Need some code build mapped devices here */
 
 	return 0;
 }

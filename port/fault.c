@@ -42,10 +42,11 @@ fault(ulong addr, int read)
 int
 fixfault(Segment *s, ulong addr, int read, int doputmmu)
 {
+	int type;
+	Pte **p, *etp;
 	ulong mmuphys=0, soff;
 	Page **pg, *lkp, *new;
-	Pte **p, *etp;
-	int type;
+	Page *(*fn)(Segment*, ulong);
 
 	addr &= ~(BY2PG-1);
 	soff = addr-s->base;
@@ -130,10 +131,20 @@ fixfault(Segment *s, ulong addr, int read, int doputmmu)
 		break;
 
 	case SG_PHYSICAL:
-		if(*pg == 0)
-			*pg = (*s->pgalloc)(s, addr);
+		if(*pg == 0) {
+			fn = s->pseg->pgalloc;
+			if(fn)
+				*pg = (*fn)(s, addr);
+			else {
+				new = smalloc(sizeof(Page));
+				new->va = addr;
+				new->pa = s->pseg->pa+(addr-s->base);
+				new->ref = 1;
+				*pg = new;
+			}
+		}
 
-		mmuphys = PPN((*pg)->pa) | PTEWRITE|PTEUNCACHED|PTEVALID;
+		mmuphys = PPN((*pg)->pa) |PTEWRITE|PTEUNCACHED|PTEVALID;
 		(*pg)->modref = PG_MOD|PG_REF;
 		break;
 	}
