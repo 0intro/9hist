@@ -9,8 +9,8 @@
 enum
 {
 	Qctl,
-	Qargs,
 	Qdir,
+	Qargs,
 	Qfd,
 	Qfpregs,
 	Qkregs,
@@ -158,7 +158,7 @@ procwalk(Chan *c, char *name)
 	if(c->qid.path == CHDIR && name[0] != '.'){
 		/* this is a hack to speed walks through a large directory */
 		pid = strtol(name, &name, 0);
-		if(pid < 0 || *name != 0)
+		if(pid <= 0 || *name != 0)
 			return 0;
 		s = procindex(pid);
 		if(s < 0)
