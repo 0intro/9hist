@@ -9,6 +9,8 @@
 #include "fns.h"
 #include "io.h"
 
+#define MEMDEBUG	0
+
 #define PDX(va)		((((ulong)(va))>>22) & 0x03FF)
 #define PTX(va)		((((ulong)(va))>>12) & 0x03FF)
 
@@ -74,13 +76,14 @@ static RMap rmapumbrw = {
 	&mapumbrw[7],
 };
 
-#define notdef
-#ifdef notdef
 void
-dumpmembank(void)
+memdebug(void)
 {
 	Map *mp;
 	ulong maxpa, maxpa1, maxpa2;
+
+	if(MEMDEBUG == 0)
+		return;
 
 	maxpa = (nvramread(0x18)<<8)|nvramread(0x17);
 	maxpa1 = (nvramread(0x31)<<8)|nvramread(0x30);
@@ -97,7 +100,6 @@ dumpmembank(void)
 	for(mp = rmapupa.map; mp->size; mp++)
 		print("%8.8uX %8.8uX %8.8uX\n", mp->addr, mp->size, mp->addr+mp->size);
 }
-#endif /* notdef */
 
 void
 mapfree(RMap* rmap, ulong addr, ulong size)
@@ -156,7 +158,20 @@ mapalloc(RMap* rmap, ulong addr, int size, int align)
 		maddr = mp->addr;
 
 		if(addr){
+			/*
+			 * A specific address range has been given:
+			 *   if the current map entry is greater then
+			 *   the address is not in the map;
+			 *   if the current map entry does not overlap
+			 *   the beginning of the requested range then
+			 *   continue on to the next map entry;
+			 *   if the current map entry does not entirely
+			 *   contain the requested range then the range
+			 *   is not in the map.
+			 */
 			if(maddr > addr)
+				break;
+			if(maddr+mp->size < addr)
 				continue;
 			if(addr+size > maddr+mp->size)
 				break;
@@ -386,7 +401,8 @@ ramscan(ulong maxmem)
 		mapfree(&rmapupa, pa, maxmem-pa);
 	if(maxmem < 0xFFE00000)
 		mapfree(&rmapupa, maxmem, 0xFFE00000-maxmem);
-print("maxmem %uX %uX\n", maxmem, 0xFFE00000-maxmem);
+	if(MEMDEBUG)
+		print("maxmem %uX %uX\n", maxmem, 0xFFE00000-maxmem);
 	*k0 = kzero;
 }
 
@@ -434,7 +450,8 @@ meminit(ulong maxmem)
 		conf.base1 = xmp->addr;
 		conf.npage1 = xmp->size/BY2PG;
 	}
-dumpmembank();
+	if(MEMDEBUG)
+		memdebug();
 }
 
 ulong
@@ -491,7 +508,7 @@ upamalloc(ulong addr, int size, int align)
 	ulong a, ae;
 
 	if(a = mapalloc(&xrmapupa, addr, size, align))
-		return (ulong)KADDR(a);
+		return a;
 
 	if((a = mapalloc(&rmapupa, addr, size, align)) == 0)
 		return 0;
