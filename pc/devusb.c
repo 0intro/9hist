@@ -20,13 +20,6 @@
 #include	"io.h"
 #include	"../port/error.h"
 
-/*
-#ifndef Inferno
-#include	"devtab.h"
-#include	"brazilia.h"
-#endif
-*/
-
 #define Chatty	1
 #define DPRINT if(Chatty)print
 #define XPRINT if(debug)print

@@ -26,7 +26,7 @@ growfd(Fgrp *f, int fd)	/* fd is always >= 0 */
 	 */
 	if(f->nfd >= 5000){
     Exhausted:
-		exhausted("file descriptors");
+		print("no free file descriptors\n");
 		return -1;
 	}
 	newfd = malloc((f->nfd+DELTAFD)*sizeof(Chan*));
