@@ -130,7 +130,7 @@ struct Drive
 	int	state;
 	char	vol[NAMELEN];
 
-	ulong	cap;		/* total bytes */
+	vlong	cap;		/* total bytes */
 	int	bytes;		/* bytes/sector */
 	int	sectors;	/* sectors/track */
 	int	heads;		/* heads/cyl */
@@ -190,7 +190,7 @@ static int defirq[NCtlr] = {
 };
 
 static void	ataintr(Ureg*, void*);
-static long	ataxfer(Drive*, Partition*, int, ulong, long, uchar*);
+static long	ataxfer(Drive*, Partition*, int, vlong, long, uchar*);
 static void	ataident(Drive*);
 static void	atafeature(Drive*, uchar);
 static void	ataparams(Drive*);
@@ -200,7 +200,7 @@ static void	atasleep(Controller*, int);
 static void	ataclock(void);
 
 static int	isatapi(Drive*);
-static long	atapirwio(Chan*, uchar*, ulong, ulong, int);
+static long	atapirwio(Chan*, uchar*, ulong, vlong, int);
 static void	atapipart(Drive*);
 static void	atapiintr(Controller*);
 
@@ -212,7 +212,7 @@ atagen(Chan* c, Dirtab*, int, int s, Dir* dirp)
 	char name[NAMELEN+4];
 	Drive *dp;
 	Partition *pp;
-	ulong l;
+	vlong l;
 
 	qid.vers = 0;
 	drive = s/Npart;
@@ -231,7 +231,7 @@ atagen(Chan* c, Dirtab*, int, int s, Dir* dirp)
 	sprint(name, "%s%s", dp->vol, pp->name);
 	name[NAMELEN] = 0;
 	qid.path = MKQID(drive, s);
-	l = (pp->end - pp->start) * dp->bytes;
+	l = (pp->end - pp->start) * (vlong)dp->bytes;
 	devdir(c, qid, name, l, eve, 0660, dirp);
 	return 1;
 }
@@ -642,7 +642,6 @@ ataread(Chan* c, void* a, long n, vlong off)
 	uchar *aa = a;
 	Partition *pp;
 	uchar *buf;
-	ulong offset = off;
 
 	if(c->qid.path == CHDIR)
 		return devdirread(c, a, n, 0, 0, atagen);
@@ -660,7 +659,7 @@ ataread(Chan* c, void* a, long n, vlong off)
 			atapipart(dp);
 		qunlock(dp);
 		poperror();
-		return atapirwio(c, a, n, offset, Cread2);
+		return atapirwio(c, a, n, off, Cread2);
 	}
 	pp = &dp->p[PART(c->qid.path)];
 
@@ -670,9 +669,9 @@ ataread(Chan* c, void* a, long n, vlong off)
 		nexterror();
 	}
 
-	skip = offset % dp->bytes;
+	skip = off % dp->bytes;
 	for(rv = 0; rv < n; rv += i){
-		i = ataxfer(dp, pp, Cread, offset+rv-skip, n-rv+skip, buf);
+		i = ataxfer(dp, pp, Cread, off+rv-skip, n-rv+skip, buf);
 		if(i == 0)
 			break;
 		i -= skip;
@@ -696,7 +695,6 @@ atawrite(Chan *c, void *a, long n, vlong off)
 	uchar *aa = a;
 	Partition *pp;
 	uchar *buf;
-	ulong offset = off;
 
 	if(c->qid.path == CHDIR)
 		error(Eisdir);
@@ -728,21 +726,21 @@ atawrite(Chan *c, void *a, long n, vlong off)
 	 *  read in the first sector before writing
 	 *  it out.
 	 */
-	partial = offset % dp->bytes;
+	partial = off % dp->bytes;
 	if(partial){
 		if(dp->atapi)
-			atapirwio(c, buf, dp->bytes, offset-partial, Cread2);
+			atapirwio(c, buf, dp->bytes, off-partial, Cread2);
 		else
-			ataxfer(dp, pp, Cread, offset-partial, dp->bytes, buf);
+			ataxfer(dp, pp, Cread, off-partial, dp->bytes, buf);
 		if(partial+n > dp->bytes)
 			rv = dp->bytes - partial;
 		else
 			rv = n;
 		memmove(buf+partial, aa, rv);
 		if(dp->atapi)
-			atapirwio(c, buf, dp->bytes, offset-partial, Cwrite2);
+			atapirwio(c, buf, dp->bytes, off-partial, Cwrite2);
 		else
-			ataxfer(dp, pp, Cwrite, offset-partial, dp->bytes, buf);
+			ataxfer(dp, pp, Cwrite, off-partial, dp->bytes, buf);
 	} else
 		rv = 0;
 
@@ -757,9 +755,9 @@ atawrite(Chan *c, void *a, long n, vlong off)
 			i = Maxxfer;
 		memmove(buf, aa+rv, i);
 		if(dp->atapi)
-			i = atapirwio(c, buf, i, offset+rv, Cwrite2);
+			i = atapirwio(c, buf, i, off+rv, Cwrite2);
 		else
-			i = ataxfer(dp, pp, Cwrite, offset+rv, i, buf);
+			i = ataxfer(dp, pp, Cwrite, off+rv, i, buf);
 		if(i == 0)
 			break;
 	}
@@ -771,14 +769,14 @@ atawrite(Chan *c, void *a, long n, vlong off)
 	 */
 	if(partial){
 		if(dp->atapi)
-			atapirwio(c, buf, dp->bytes, offset+rv, Cread2);
+			atapirwio(c, buf, dp->bytes, off+rv, Cread2);
 		else
-			ataxfer(dp, pp, Cread, offset+rv, dp->bytes, buf);
+			ataxfer(dp, pp, Cread, off+rv, dp->bytes, buf);
 		memmove(buf, aa+rv, partial);
 		if(dp->atapi)
-			atapirwio(c, buf, dp->bytes, offset+rv, Cwrite2);
+			atapirwio(c, buf, dp->bytes, off+rv, Cwrite2);
 		else
-			ataxfer(dp, pp, Cwrite, offset+rv, dp->bytes, buf);
+			ataxfer(dp, pp, Cwrite, off+rv, dp->bytes, buf);
 		rv += partial;
 	}
 
@@ -832,7 +830,8 @@ atarepl(Drive *dp, long bblk)
 		return;
 	for(i = 0; i < dp->repl.nrepl; i++){
 		if(dp->repl.blk[i] == bblk)
-			DPRINT("%s: found bblk %ld at offset %ld\n", dp->vol, bblk, i);
+			DPRINT("%s: found bblk %ld at offset %ld\n",
+			dp->vol, bblk, i);
 	}
 }
 
@@ -852,12 +851,13 @@ atasleep(Controller *cp, int ms)
  *  parts.
  */
 static long
-ataxfer(Drive *dp, Partition *pp, int cmd, ulong start, long len, uchar *buf)
+ataxfer(Drive *dp, Partition *pp, int cmd, vlong off, long len, uchar *buf)
 {
 	Controller *cp;
 	long lblk;
 	int cyl, sec, head;
 	int loop, stat;
+	ulong start;
 
 	if(dp->online == 0)
 		error(Eio);
@@ -865,7 +865,7 @@ ataxfer(Drive *dp, Partition *pp, int cmd, ulong start, long len, uchar *buf)
 	/*
 	 *  cut transfer size down to disk buffer size
 	 */
-	start = start / dp->bytes;
+	start = off / dp->bytes;
 	if(len > Maxxfer)
 		len = Maxxfer;
 	len = (len + dp->bytes - 1) / dp->bytes;
@@ -890,7 +890,8 @@ ataxfer(Drive *dp, Partition *pp, int cmd, ulong start, long len, uchar *buf)
 		head = ((lblk/dp->sectors) % dp->heads);
 	}
 
-	XPRINT("%s: ataxfer cyl %d sec %d head %d len %d\n", dp->vol, cyl, sec, head, len);
+	XPRINT("%s: ataxfer cyl %d sec %d head %d len %d\n",
+		dp->vol, cyl, sec, head, len);
 
 	cp = dp->cp;
 	qlock(cp->ctlrlock);
@@ -1140,8 +1141,9 @@ retryatapi:
 	dp->cyl = ip->cyls;
 	dp->heads = ip->heads;
 	dp->sectors = ip->s2t;
-	XPRINT("%s: %s %d/%d/%d CHS %d bytes\n",
-		dp->vol, id, dp->cyl, dp->heads, dp->sectors, dp->cap);
+	XPRINT("%s: %s %d/%d/%d CHS %lld bytes\n",
+		dp->vol, id, dp->cyl, dp->heads, dp->sectors,
+		dp->cap);
 
 	if(ip->cvalid&(1<<0)){
 		/* use current settings */
@@ -1156,13 +1158,14 @@ retryatapi:
 	if((ip->capabilities & (1<<9)) && (lbasecs & 0xf0000000) == 0){
 		dp->lba = 1;
 		dp->lbasecs = lbasecs;
-		dp->cap = dp->bytes * dp->lbasecs;
-		XPRINT("%s: LBA: %s %d sectors %d bytes\n",
-			dp->vol, id, dp->lbasecs, dp->cap);
+		dp->cap = (vlong)dp->bytes * dp->lbasecs;
+		XPRINT("%s: LBA: %s %d sectors %lld bytes\n",
+			dp->vol, id, dp->lbasecs,
+			dp->cap);
 	} else {
 		dp->lba = 0;
 		dp->lbasecs = 0;
-		dp->cap = dp->bytes * dp->cyl * dp->heads * dp->sectors;
+		dp->cap = (vlong)dp->bytes * dp->cyl * dp->heads * dp->sectors;
 	}
 
 	if(cp->cmd){
@@ -1285,9 +1288,10 @@ ataparams(Drive *dp)
 			lo = i;
 	}
 	dp->cyl = lo + 1;
-	dp->cap = dp->bytes * dp->cyl * dp->heads * dp->sectors;
-	DPRINT("%s: probed: %d/%d/%d CHS %d bytes\n",
-		dp->vol, dp->cyl, dp->heads, dp->sectors, dp->cap);
+	dp->cap = (vlong)dp->bytes * dp->cyl * dp->heads * dp->sectors;
+	DPRINT("%s: probed: %d/%d/%d CHS %lld bytes\n",
+		dp->vol, dp->cyl, dp->heads, dp->sectors,
+		dp->cap);
 	if(dp->cyl == 0 || dp->heads == 0 || dp->sectors == 0)
 		error(Eio);
 }
@@ -1703,7 +1707,7 @@ atapiexec(Drive *dp)
 }
 
 static long
-atapiio(Drive *dp, uchar *a, ulong len, ulong offset, int cmd)
+atapiio(Drive *dp, uchar *a, ulong len, vlong off, int cmd)
 {
 	ulong bn, n, o, m;
 	Controller *cp;
@@ -1718,6 +1722,7 @@ atapiio(Drive *dp, uchar *a, ulong len, ulong offset, int cmd)
 		buf = 0;
 	qlock(cp->ctlrlock);
 	retrycount = 2;
+
 retry:
 	if(waserror()){
 		dp->partok = 0;
@@ -1744,10 +1749,10 @@ retry:
 
 	n = len;
 	while(n > 0){
-		bn = offset / dp->bytes;
-		if(offset > dp->cap-dp->bytes)
+		bn = off / dp->bytes;
+		if(off > dp->cap-dp->bytes)
 			break;
-		o = offset % dp->bytes;
+		o = off % dp->bytes;
 		m = dp->bytes - o;
 		if(m > n)
 			m = n;
@@ -1766,7 +1771,7 @@ retry:
 		}
 		memmove(a, cp->buf + o, m);
 		n -= m;
-		offset += m;
+		off += m;
 		a += m;
 	}
 	poperror();
@@ -1778,7 +1783,7 @@ retry:
 }
 
 static long
-atapirwio(Chan *c, uchar *a, ulong len, ulong offset, int cmd)
+atapirwio(Chan *c, uchar *a, ulong len, vlong off, int cmd)
 {
 	Drive *dp;
 	ulong vers;
@@ -1796,7 +1801,7 @@ atapirwio(Chan *c, uchar *a, ulong len, ulong offset, int cmd)
 	c->qid.vers = dp->vers;
 	if(vers && vers != dp->vers)
 		error(Eio);
-	rv = atapiio(dp, a, len, offset, cmd);
+	rv = atapiio(dp, a, len, off, cmd);
 
 	poperror();
 	qunlock(dp);

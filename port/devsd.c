@@ -231,17 +231,17 @@ sdclose(Chan *c)
 }
 
 static long
-sdread(Chan *c, void *a, long n, vlong offset)
+sdread(Chan *c, void *a, long n, vlong off)
 {
 
 	if(c->qid.path & CHDIR)
 		return devdirread(c, a, n, 0, 0, sdgen);
 
-	return sdio(c, 0, a, n, offset);
+	return sdio(c, 0, a, n, off);
 }
 
 static long
-sdwrite(Chan *c, char *a, long n, vlong offset)
+sdwrite(Chan *c, char *a, long n, vlong off)
 {
 	Disk *d;
 
@@ -249,7 +249,7 @@ sdwrite(Chan *c, char *a, long n, vlong offset)
 
 	if((d->inquire[0] & 0x1F) == TypeCD)
 		error(Eperm);
-	return sdio(c, 1, a, n, offset);
+	return sdio(c, 1, a, n, off);
 }
 
 Dev sddevtab = {
@@ -354,13 +354,13 @@ sdio(Chan *c, int write, char *a, ulong len, vlong off)
 	Part *p;
 	uchar *b;
 	ulong block, n, max, x;
-	ulong offset = off;
+	ulong offset;
 
 	d = &disk[DRIVE(c->qid)];
 	p = &d->table[PART(c->qid)];
 
-	block = (offset / d->bsize) + p->beg;
-	n = (offset + len + d->bsize - 1) / d->bsize + p->beg - block;
+	block = (off / d->bsize) + p->beg;
+	n = (off + len + d->bsize - 1) / d->bsize + p->beg - block;
 	max = SCSImaxxfer / d->bsize;
 	if(n > max)
 		n = max;
@@ -373,7 +373,7 @@ sdio(Chan *c, int write, char *a, ulong len, vlong off)
 	if(b == 0)
 		return scsierrstr(STnomem);
 
-	offset %= d->bsize;
+	offset = off % d->bsize;
 	if(write) {
 		if(offset || len % d->bsize) {
 			x = scsibio(d->t, d->lun, SCSIread, b, n, d->bsize, block);

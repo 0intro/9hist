@@ -964,20 +964,26 @@ audioread(Chan *c, char *a, long n, vlong off)
 					j += snprint(buf+j, sizeof(buf)-j, " %d", liv);
 				else{
 					if(volumes[m].flag & Fin)
-						j += snprint(buf+j, sizeof(buf)-j, " in %d", liv);
+						j += snprint(buf+j, sizeof(buf)-j,
+						" in %d", liv);
 					if(volumes[m].flag & Fout)
-						j += snprint(buf+j, sizeof(buf)-j, " out %d", lov);
+						j += snprint(buf+j, sizeof(buf)-j,
+						" out %d", lov);
 				}
 			}else{
-				if((volumes[m].flag&(Fin|Fout))==(Fin|Fout) && liv==lov && riv==rov)
-					j += snprint(buf+j, sizeof(buf)-j, " left %d right %d",
+				if((volumes[m].flag&(Fin|Fout))==(Fin|Fout) &&
+				    liv==lov && riv==rov)
+					j += snprint(buf+j, sizeof(buf)-j,
+						" left %d right %d",
 						liv, riv);
 				else{
 					if(volumes[m].flag & Fin)
-						j += snprint(buf+j, sizeof(buf)-j, " in left %d right %d",
+						j += snprint(buf+j, sizeof(buf)-j,
+							" in left %d right %d",
 							liv, riv);
 					if(volumes[m].flag & Fout)
-						j += snprint(buf+j, sizeof(buf)-j, " out left %d right %d",
+						j += snprint(buf+j, sizeof(buf)-j,
+							" out left %d right %d",
 							lov, rov);
 				}
 			}

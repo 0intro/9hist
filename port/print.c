@@ -219,6 +219,10 @@ numbconv(va_list *arg, Fconv *fp)
 	int i, f, n, b, ucase;
 	short h;
 	long v;
+	vlong vl;
+
+	SET(v);
+	SET(vl);
 
 	ucase = 0;
 	b = fp->chr;
@@ -241,7 +245,15 @@ numbconv(va_list *arg, Fconv *fp)
 	}
 
 	f = 0;
-	switch(fp->f3 & (FLONG|FSHORT|FUNSIGN)) {
+	switch(fp->f3 & (FVLONG|FLONG|FSHORT|FUNSIGN)) {
+	case FVLONG|FLONG:
+		vl = va_arg(*arg, vlong);
+		break;
+
+	case FUNSIGN|FVLONG|FLONG:
+		vl = va_arg(*arg, uvlong);
+		break;
+
 	case FLONG:
 		v = va_arg(*arg, long);
 		break;
@@ -268,13 +280,23 @@ numbconv(va_list *arg, Fconv *fp)
 		v = va_arg(*arg, unsigned);
 		break;
 	}
-	if(!(fp->f3 & FUNSIGN) && v < 0) {
-		v = -v;
-		f = 1;
+	if(fp->f3 & FVLONG) {
+		if(!(fp->f3 & FUNSIGN) && vl < 0) {
+			vl = -vl;
+			f = 1;
+		}
+	} else {
+		if(!(fp->f3 & FUNSIGN) && v < 0) {
+			v = -v;
+			f = 1;
+		}
 	}
 	s[IDIGIT-1] = 0;
 	for(i = IDIGIT-2;; i--) {
-		n = (ulong)v % b;
+		if(fp->f3 & FVLONG)
+			n = (uvlong)vl % b;
+		else
+			n = (ulong)v % b;
 		n += '0';
 		if(n > '9') {
 			n += 'a' - ('9'+1);
@@ -284,9 +306,17 @@ numbconv(va_list *arg, Fconv *fp)
 		s[i] = n;
 		if(i < 2)
 			break;
-		v = (ulong)v / b;
+		if(fp->f3 & FVLONG)
+			vl = (uvlong)vl / b;
+		else
+			v = (ulong)v / b;
 		if(fp->f2 != NONE && i >= IDIGIT-fp->f2)
 			continue;
+		if(fp->f3 & FVLONG) {
+			if(vl <= 0)
+				break;
+			continue;
+		}
 		if(v <= 0)
 			break;
 	}

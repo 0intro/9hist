@@ -5,6 +5,7 @@ typedef	signed char	schar;
 typedef unsigned int	uint;
 typedef unsigned long	ulong;
 typedef	 long long	vlong;
+typedef unsigned long long uvlong;
 typedef union Length	Length;
 typedef ushort		Rune;
 

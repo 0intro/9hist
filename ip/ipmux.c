@@ -32,6 +32,7 @@ struct Iphdr
 	uchar	dst[4];		/* IP destination */
 	uchar	data[1];	/* start of data */
 };
+Iphdr *ipoff = 0;
 
 enum
 {
@@ -66,6 +67,7 @@ struct Ipmux
 	uchar	*mask;
 
 	int	ref;		/* so we can garbage collect */
+	Conv	*conv;
 };
 
 /*
@@ -74,7 +76,6 @@ struct Ipmux
 struct Ipmuxrock
 {
 	Ipmux	*chain;
-	int	proto;
 };
 
 static char*
@@ -107,25 +108,28 @@ parseop(char **pp)
 	int type, off, end, len;
 	Ipmux *f;
 
-	off = 0;
 	p = skipwhite(p);
 	if(strncmp(p, "dst", 3) == 0){
 		type = Tdst;
-		len = IPaddrlen;
+		off = ((ulong)(ipoff->dst)) - IPHDR;
+		len = IPv4addrlen;
 		p += 3;
 	}
 	else if(strncmp(p, "src", 3) == 0){
 		type = Tsrc;
-		len = IPaddrlen;
+		off = ((ulong)(ipoff->src)) - IPHDR;
+		len = IPv4addrlen;
 		p += 3;
 	}
 	else if(strncmp(p, "ifc", 3) == 0){
 		type = Tifc;
-		len = IPaddrlen;
+		off = -IPv4addrlen - IPHDR;
+		len = IPv4addrlen;
 		p += 3;
 	}
 	else if(strncmp(p, "proto", 5) == 0){
 		type = Tproto;
+		off = ((ulong)&(ipoff->proto)) - IPHDR;
 		len = 1;
 		p += 5;
 	}
@@ -137,6 +141,8 @@ parseop(char **pp)
 			return nil;
 		p++;
 		off = strtoul(p, &p, 0);
+		if(off < 0 || off > (64-IPHDR))
+			return nil;
 		p = skipwhite(p);
 		if(*p != ':')
 			end = off;
@@ -150,8 +156,9 @@ parseop(char **pp)
 		}
 		if(*p != ']')
 			return nil;
-		len = end - off + 1;
 		p++;
+		len = end - off + 1;
+		off += ((ulong)(ipoff->data)) - IPHDR;
 	}
 	else 
 		return nil;
@@ -198,7 +205,7 @@ parseval(uchar *v, char *p, int len)
 }
 
 static Ipmux*
-parsedemux(char *p)
+parsemux(char *p)
 {
 	int n;
 	Ipmux *f;
@@ -234,11 +241,13 @@ parsedemux(char *p)
 		default:
 			goto parseerror;
 		}
-	} else
-		f->mask = nil;
+	} else {
+		f->mask = smalloc(f->len);
+		memset(f->mask, 0xff, f->len);
+	}
 
 	/* parse vals */
-	f->n = tokenize(val, vals, sizeof(vals)/sizeof(char*));
+	f->n = parsefields(val, vals, sizeof(vals)/sizeof(char*), "|");
 	if(f->n == 0)
 		goto parseerror;
 	f->val = smalloc(f->n*f->len);
@@ -374,6 +383,8 @@ ipmuxfree(Ipmux *f)
 static void
 ipmuxtreefree(Ipmux *f)
 {
+	if(f == nil)
+		return;
 	if(f->no != nil)
 		ipmuxfree(f->no);
 	if(f->yes != nil)
@@ -481,7 +492,7 @@ ipmuxremove(Ipmux **l, Ipmux *f)
 static char*
 ipmuxconnect(Conv *c, char **argv, int argc)
 {
-	int n, proto;
+	int i, n;
 	char *field[10];
 	Ipmux *mux, *chain;
 	Ipmuxrock *r;
@@ -496,36 +507,28 @@ ipmuxconnect(Conv *c, char **argv, int argc)
 	if(n <= 0)
 		return Ebadarg;
 
-	chain = nil; 
+	chain = nil;
+	mux = nil;
 	for(i = 0; i < n; i++){
-		mux = ipmuxparse(field[i]);
+		mux = parsemux(field[i]);
 		if(mux == nil){
 			ipmuxtreefree(chain);
 			return Ebadarg;
 		}
 		ipmuxchain(&chain, mux);
 	}
-
-	/* optimize the protocol into an array lookup */
-	if(chain->type != Tproto){
-		ipmuxtreefree(chain);
-		return "need proto rule";
-	}
-	mux = chain;
-	proto = mux->val;
-	chain = chain->yes;
-	ipmuxfree(mux);
+	if(chain == nil)
+		return Ebadarg;
+	mux->conv = c;
 
 	/* save a copy of the chain so we can later remove it */
-	mux->conv = c;
 	mux = ipmuxcopy(chain);
 	r = (Ipmuxrock*)(c->ptcl);
 	r->chain = chain;
-	r->proto = proto;
 
 	/* add the chain to the protocol demultiplexor tree */
 	wlock(f);
-	f->t2m[proto] = ipmuxmerge(f->t2m[proto], mux);
+	f->ipmux->priv = ipmuxmerge(f->ipmux->priv, mux);
 	wunlock(f);
 
 	Fsconnected(c, nil);
@@ -542,9 +545,12 @@ ipmuxstate(Conv *c, char *state, int n)
 static void
 ipmuxcreate(Conv *c)
 {
+	Ipmuxrock *r;
+
 	c->rq = qopen(64*1024, 0, 0, c);
 	c->wq = qopen(64*1024, 0, 0, 0);
-	*(IPmux**)(c->ptcl) = nil;
+	r = (Ipmuxrock*)(c->ptcl);
+	r->chain = nil;
 }
 
 static char*
@@ -557,10 +563,9 @@ static void
 ipmuxclose(Conv *c)
 {
 	Ipmuxrock *r;
+	Fs *f = c->p->f;
 
 	r = (Ipmuxrock*)(c->ptcl);
-	r->chain = chain;
-	r->proto = proto;
 
 	qclose(c->rq);
 	qclose(c->wq);
@@ -571,9 +576,9 @@ ipmuxclose(Conv *c)
 	c->rport = 0;
 
 	wlock(f);
-	ipmuxremove(&(f->t2m[r->proto]), r->chain);
+	ipmuxremove(&(c->p->priv), r->chain);
 	wunlock(f);
-	ipmuxtreefree(f->chain);
+	ipmuxtreefree(r->chain);
 
 	unlock(c);
 }
@@ -583,8 +588,14 @@ ipmuxclose(Conv *c)
  *  the stack
  */
 static void
-ipmuxkick(Conv *c, int l)
+ipmuxkick(Conv *c, int)
 {
+	Block *bp;
+
+	bp = qget(c->wq);
+	if(bp == nil)
+		return;
+	ipoput(c->p->f, bp, 0, 0);
 }
 
 static void
@@ -594,24 +605,31 @@ ipmuxiput(Proto *p, uchar *ia, Block *bp)
 	Fs *f = p->f;
 	uchar *m, *h, *v, *e, *ve, *hp;
 	Conv *c;
+	Ipmux *mux;
+	Iphdr *ip;
 
-	rlock(f);
-	mux = f->t2m[ip->proto];
-	if(mux == nil)
-		goto out;
+	if(p->priv == nil)
+		goto nomatch;
 
 	/* make interface address part of packet */
-	h = bp->rptr - IPHDR - IPv4addrlen;
+	h = bp->rp - IPHDR - IPv4addrlen;
 	if(h < bp->base){
 		bp = padblock(bp, IPHDR + IPv4addrlen);
-		h = bp->rptr;
-		bp->rptr += IPHDR + IPv4addrlen;
+		h = bp->rp;
+		bp->rp += IPHDR + IPv4addrlen;
 	}
-	memmove(h, ia+IPv4off, ia);
+	memmove(h, ia+IPv4off, IPv4addrlen);
+	len = BLEN(bp);
 
-	/* run the v4 filter */
+	/* run the v4 filter (needs optimizing) */
+	rlock(f);
 	c = nil;
+	mux = f->ipmux->priv;
 	while(mux != nil){
+		if(mux->len + mux->off > len){
+			mux = mux->no;
+			continue;
+		}
 		v = mux->val;
 		for(e = v + mux->n*mux->len; v < e; v = ve){
 			m = mux->mask;
@@ -621,35 +639,77 @@ ipmuxiput(Proto *p, uchar *ia, Block *bp)
 					break;
 			}
 			if(v == ve){
-				if(mux->c != nil)
-					c = mux->c;
+				if(mux->conv != nil)
+					c = mux->conv;
 				mux = mux->yes;
-				if(
-				
+				break;
+			}
 		}
-			
-		mux = mux->no;
-		continue;
+		if(v == e)
+			mux = mux->no;
 	}
-out:
-	/* doesn't match any filter, hand it to the specific protocol handler */
 	runlock(f);
+
+	if(c != nil){
+		bp->rp -= IPHDR;
+		if(bp->next){
+			bp = concatblock(bp);
+			if(bp == 0)
+				panic("ilpullup");
+		}
+		qpass(c->rq, bp);
+	}
+
+nomatch:
+	/* doesn't match any filter, hand it to the specific protocol handler */
+	ip = (Iphdr*)bp->rp;
 	p = f->t2p[ip->proto];
 	if(p)
 		(*p->rcv)(p, ia, bp);
 	else
 		freeblist(bp);
-	return;	
+	return;
 }
 
-int
+static int
+ipmuxsprint(Ipmux *mux, int level, char *buf, int len)
+{
+	int i, j, n;
+
+	n = 0;
+	if(mux == nil)
+		return n;
+	for(i = 0; i < level; i++)
+		n += snprint(buf+n, len-n, " ");
+	n += snprint(buf+n, len-n, "h[%d:%d] & ", mux->off, mux->off+mux->len-1);
+	for(i = 0; i < mux->len; i++)
+		n += snprint(buf+n, len - n, "%2.2ux", mux->mask[i]);
+	for(j = 0; j < mux->n; j++){
+		for(i = 0; i < mux->len; i++)
+			n += snprint(buf+n, len - n, "%2.2ux", mux->mask[i]);
+		n += snprint(buf+n, len-n, "|");
+	}
+	level++;
+	n += ipmuxsprint(mux->no, level, buf+n, len-n);
+	n += ipmuxsprint(mux->yes, level, buf+n, len-n);
+	return n;
+}
+
+static int
 ipmuxstats(Proto *p, char *buf, int len)
 {
-	return 0;
+	int n;
+	Fs *f = p->f;
+
+	rlock(f);
+	n = ipmuxsprint(p->priv, 0, buf, len);
+	runlock(f);
+
+	return n;
 }
 
 void
-ipmuxinit(Fs *fs)
+ipmuxinit(Fs *f)
 {
 	Proto *ipmux;
 
@@ -670,5 +730,7 @@ ipmuxinit(Fs *fs)
 	ipmux->nc = 64;
 	ipmux->ptclsize = sizeof(Ipmuxrock);
 
-	Fsproto(fs, ipmux);
+	f->ipmux = ipmux;			/* hack for Fsrcvpcol */
+
+	Fsproto(f, ipmux);
 }

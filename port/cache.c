@@ -231,13 +231,17 @@ cdev(Mntcache *m, Chan *c)
 }
 
 int
-cread(Chan *c, uchar *buf, int len, ulong offset)
+cread(Chan *c, uchar *buf, int len, vlong off)
 {
 	KMap *k;
 	Page *p;
 	Mntcache *m;
 	Extent *e, **t;
 	int o, l, total;
+	ulong offset;
+
+	if(off+len > MAXCACHE)
+		return 0;
 
 	m = c->mcp;
 	if(m == 0)
@@ -249,6 +253,7 @@ cread(Chan *c, uchar *buf, int len, ulong offset)
 		return 0;
 	}
 
+	offset = off;
 	t = &m->list;
 	for(e = *t; e; e = e->next) {
 		if(offset >= e->start && offset < e->start+e->len)
@@ -390,14 +395,15 @@ cpgmove(Extent *e, uchar *buf, int boff, int len)
 }
 
 void
-cupdate(Chan *c, uchar *buf, int len, ulong offset)
+cupdate(Chan *c, uchar *buf, int len, vlong off)
 {
 	Mntcache *m;
 	Extent *tail;
 	Extent *e, *f, *p;
 	int o, ee, eblock;
+	ulong offset;
 
-	if(offset > MAXCACHE || len == 0)
+	if(off > MAXCACHE || len == 0)
 		return;
 
 	m = c->mcp;
@@ -412,6 +418,7 @@ cupdate(Chan *c, uchar *buf, int len, ulong offset)
 	/*
 	 * Find the insertion point
 	 */
+	offset = off;
 	p = 0;
 	for(f = m->list; f; f = f->next) {
 		if(f->start >= offset)
@@ -498,14 +505,15 @@ cupdate(Chan *c, uchar *buf, int len, ulong offset)
 }
 
 void
-cwrite(Chan* c, uchar *buf, int len, ulong offset)
+cwrite(Chan* c, uchar *buf, int len, vlong off)
 {
 	int o, n;
 	Mntcache *m;
 	ulong eblock, ee;
 	Extent *p, *f, *e, *tail;
+	ulong offset;
 
-	if(offset > MAXCACHE || len == 0)
+	if(off > MAXCACHE || len == 0)
 		return;
 
 	m = c->mcp;
@@ -518,6 +526,7 @@ cwrite(Chan* c, uchar *buf, int len, ulong offset)
 		return;
 	}
 
+	offset = off;
 	m->vers++;
 	c->qid.vers++;
 

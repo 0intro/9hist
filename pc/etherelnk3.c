@@ -1509,7 +1509,7 @@ miir(Ether* ether, int phyad, int regad)
 
 	if(data & 0x10000)
 		return -1;
-print("%d/%d: data=%uX\n", phyad, regad, data);
+	XCVRDEBUG("phy%d/%d: data=%uX\n", phyad, regad, data);
 
 	return data & 0xFFFF;
 }

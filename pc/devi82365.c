@@ -187,8 +187,8 @@ static void	cisread(Slot*);
 static void	i82365intr(Ureg*, void*);
 static void	i82365reset(void);
 static int	pcmio(int, ISAConf*);
-static long	pcmread(int, int, void*, long, ulong);
-static long	pcmwrite(int, int, void*, long, ulong);
+static long	pcmread(int, int, void*, long, vlong);
+static long	pcmwrite(int, int, void*, long, vlong);
 
 static void i82365dump(Slot*);
 
@@ -713,12 +713,13 @@ memmoves(uchar *to, uchar *from, int n)
 }
 
 static long
-pcmread(int slotno, int attr, void *a, long n, ulong offset)
+pcmread(int slotno, int attr, void *a, long n, vlong off)
 {
 	int i, len;
 	PCMmap *m;
 	uchar *ac;
 	Slot *pp;
+	ulong offset = off;
 
 	pp = slot + slotno;
 	if(pp->memlen < offset)
@@ -765,7 +766,7 @@ i82365read(Chan *c, void *a, long n, vlong off)
 		return devdirread(c, a, n, 0, 0, pcmgen);
 	case Qmem:
 	case Qattr:
-		return pcmread(SLOTNO(c), TYPE(c) == Qattr, a, n, offset);
+		return pcmread(SLOTNO(c), TYPE(c) == Qattr, a, n, off);
 	case Qctl:
 		p = malloc(READSTR);
 		len = 0;
@@ -795,12 +796,13 @@ i82365read(Chan *c, void *a, long n, vlong off)
 }
 
 static long
-pcmwrite(int dev, int attr, void *a, long n, ulong offset)
+pcmwrite(int dev, int attr, void *a, long n, vlong off)
 {
 	int i, len;
 	PCMmap *m;
 	uchar *ac;
 	Slot *pp;
+	ulong offset = off;
 
 	pp = slot + dev;
 	if(pp->memlen < offset)
@@ -839,7 +841,6 @@ i82365write(Chan *c, void *a, long n, vlong off)
 {
 	Slot *pp;
 	char buf[32];
-	ulong offset = off;
 
 	switch(TYPE(c)){
 	case Qctl:
@@ -860,7 +861,7 @@ i82365write(Chan *c, void *a, long n, vlong off)
 		pp = slot + SLOTNO(c);
 		if(pp->occupied == 0 || pp->enabled == 0)
 			error(Eio);
-		n = pcmwrite(pp->slotno, TYPE(c) == Qattr, a, n, offset);
+		n = pcmwrite(pp->slotno, TYPE(c) == Qattr, a, n, off);
 		if(n < 0)
 			error(Eio);
 		return n;

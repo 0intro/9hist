@@ -241,8 +241,7 @@ struct Fs
 
 	int	np;
 	Proto*	p[Maxproto+1];		/* list of supported protocols */
-	Proto*	t2p[256];		/* vector of all ip protocol handlers */
-	Ipmux*	t2m[256];		/* vector of all ip multiplexors */
+	Proto*	t2p[256];		/* vector of all protocols */
 	Proto*	ipifc;			/* kludge for ipifcremroute & ipifcaddroute */
 	Proto*	ipmux;			/* kludge for finding an ip multiplexor */
 

@@ -427,14 +427,12 @@ qremove(Block **l, int n, int discard)
 }
 
 static Block*
-sslbread(Chan *c, long n, ulong offset)
+sslbread(Chan *c, long n, ulong)
 {
 	volatile struct { Dstate *s; } s;
 	Block *b;
 	uchar count[2];
 	int len, pad;
-
-	USED(offset);
 
 	s.s = dstate[CONV(c->qid)];
 	if(s.s == 0)
