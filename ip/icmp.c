@@ -465,6 +465,7 @@ icmpinit(Fs *fs)
 	icmp->stats = icmpstats;
 	icmp->ctl = nil;
 	icmp->advise = icmpadvise;
+	icmp->gc = nil;
 	icmp->ipproto = IP_ICMPPROTO;
 	icmp->nc = 16;
 	icmp->ptclsize = 0;

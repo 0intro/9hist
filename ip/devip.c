@@ -1084,6 +1084,7 @@ Fsprotoclone(Proto *p, char *user)
 {
 	Conv *c, **pp, **ep;
 
+retry:
 	c = nil;
 	ep = &p->conv[p->nc];
 	for(pp = p->conv; pp < ep; pp++) {
@@ -1120,6 +1121,8 @@ Fsprotoclone(Proto *p, char *user)
 		}
 	}
 	if(pp >= ep) {
+		if(p->gc != nil && (*p->gc)(p))
+			goto retry;
 		return nil;
 	}
 

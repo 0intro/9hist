@@ -1341,6 +1341,7 @@ ilinit(Fs *f)
 	il->advise = iladvise;
 	il->stats = ilxstats;
 	il->inuse = ilinuse;
+	il->gc = nil;
 	il->ipproto = IP_ILPROTO;
 	il->nc = Nchans;
 	il->ptclsize = sizeof(Ilcb);

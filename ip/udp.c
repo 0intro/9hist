@@ -497,6 +497,7 @@ udpinit(Fs *fs)
 	udp->rcv = udpiput;
 	udp->advise = udpadvise;
 	udp->stats = udpstats;
+	udp->gc = nil;
 	udp->ipproto = IP_UDPPROTO;
 	udp->nc = Nchans;
 	udp->ptclsize = sizeof(Udpcb);

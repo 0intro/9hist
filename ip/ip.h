@@ -27,7 +27,7 @@ enum
 	Maxproto=	20,
 	Nhash=		64,
 	Maxincall=	5,
-	Nchans=		256,
+	Nchans=		512,
 	MAClen=		16,		/* longest mac address */
 
 	MAXTTL=		255,
@@ -218,6 +218,7 @@ struct Proto
 	int		(*local)(Conv*, char*, int);
 	int		(*remote)(Conv*, char*, int);
 	int		(*inuse)(Conv*);
+	int		(*gc)(Proto*);	/* returns true if any conversations are freed */
 
 	Fs		*f;		/* file system this proto is part of */
 	Conv		**conv;		/* array of conversations */

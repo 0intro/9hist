@@ -123,7 +123,7 @@ struct	Tcp
 	ushort	wnd;
 	ushort	urg;
 	ushort	mss;
-        ushort  len;  /* size of data */
+        ushort  len;	/* size of data */
 };
 
 typedef struct Reseq Reseq;
@@ -188,6 +188,7 @@ struct Tcpctl
 	int	mdev;			/* Mean deviation of round trip */
 	int	kacounter;		/* count down for keep alive */
 	uint	sndsyntime;		/* time syn sent */
+	ulong	time;			/* time Finwait2 or Syn_received was sent */
 
 	Tcphdr	protohdr;		/* prototype header */
 };
@@ -1340,6 +1341,7 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 		if(seg.flags & SYN) {
 			procsyn(s, &seg);
 			tcpsndsyn(tcb);
+			tcb->time = msec;
 			tcpsetstate(s, Syn_received);
 			if(length != 0 || (seg.flags & FIN))
 				break;
@@ -1365,8 +1367,10 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 				tcpsynackrtt(s);
 				tcpsetstate(s, Established);
 			}
-			else
+			else {
+				tcb->time = msec;
 				tcpsetstate(s, Syn_received);
+			}
 
 			if(length != 0 || (seg.flags & FIN))
 				break;
@@ -1460,6 +1464,7 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 				tcphalt(tpriv, &tcb->rtt_timer);
 				tcphalt(tpriv, &tcb->acktimer);
 				tcpsetkacounter(tcb);
+				tcb->time = msec;
 				tcpsetstate(s, Finwait2);
 				tcb->katimer.start = MSL2 * (1000 / MSPTICK);
 				tcpgo(tpriv, &tcb->katimer);
@@ -2238,6 +2243,51 @@ tcpstats(Proto *tcp, char *buf, int len)
 		tpriv->tstats.OutRsts);
 }
 
+/*
+ *  garbage collect any stale conversations:
+ *	- SYN received but no SYN-ACK after 5 seconds (could be the SYN attack)
+ *	- Finwait2 after 5 minutes
+ *
+ *  this is called whenever we run out of channels.  Both checks are
+ *  of questionable validity so we try to use them only when we're
+ *  up against the wall.
+ */
+int
+tcpgc(Proto *tcp)
+{
+	Conv *c, **pp, **ep;
+	int n;
+	Tcpctl *tcb;
+
+
+	n = 0;
+	ep = &tcp->conv[tcp->nc];
+	for(pp = tcp->conv; pp < ep; pp++) {
+		c = *pp;
+		if(c == nil)
+			break;
+		if(!canqlock(c))
+			continue;
+		tcb = (Tcpctl*)c->ptcl;
+		switch(tcb->state){
+		case Syn_received:
+			if(msec - tcb->time > 5000){
+				localclose(c, "timed out");
+				n++;
+			}
+			break;
+		case Finwait2:
+			if(msec - tcb->time > 5*60*1000){
+				localclose(c, "timed out");
+				n++;
+			}
+			break;
+		}
+		qunlock(c);
+	}
+	return n;
+}
+
 void
 tcpinit(Fs *fs)
 {
@@ -2258,6 +2308,7 @@ tcpinit(Fs *fs)
 	tcp->advise = tcpadvise;
 	tcp->stats = tcpstats;
 	tcp->inuse = tcpinuse;
+	tcp->gc = tcpgc;
 	tcp->ipproto = IP_TCPPROTO;
 	tcp->nc = Nchans;
 	tcp->ptclsize = sizeof(Tcpctl);
