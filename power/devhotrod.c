@@ -9,26 +9,15 @@
 #include	"fcall.h"
 
 #include	"io.h"
-#include	"hrod.h"
+#include	"../../fs/cyc/comm.h"
 
-/*
- * If defined, ENABMEMTEST causes memory test to be run at device open
- */
-#ifdef	ENABMEMTEST
-void	mem(Hot*, ulong*, ulong);
-#define	NTESTBUF	256
-ulong	testbuf[NTESTBUF];
-#endif
-/*
- * If defined, ENABBUSTEST causes bus error diagnostic to be run at device open
- */
 
 /*
  * If 1, ENABCKSUM causes data transfers to have checksums
  */
-#define	ENABCKSUM	1
+#define	ENABCKSUM	0
 
-typedef struct Hotrod	Hotrod;
+typedef struct Commrod	Commrod;
 
 enum{
 	Vmevec=		0xd2,		/* vme vector for interrupts */
@@ -44,29 +33,30 @@ Dirtab hotroddir[]={
 
 #define	NHOTRODDIR	(sizeof hotroddir/sizeof(Dirtab))
 
-struct Hotrod{
+struct Commrod
+{
 	Lock;
 	QLock		buflock;
 	Lock		busy;
-	Hot		*addr;		/* address of the device */
+	Comm		*addr;		/* address of the device */
 	int		vec;		/* vme interrupt vector */
 	int		wi;		/* where to write next cmd */
 	int		ri;		/* where to read next reply */
 	uchar		buf[MAXFDATA+MAXMSG+BITBOTCH];
 };
 
-Hotrod hotrod[Nhotrod];
+Commrod hotrod[Nhotrod];
 
 void	hotrodintr(int);
 
-#define	HOTROD	VMEA24SUP(Hot, 0xB00000);
+#define	HOTROD	VMEA24SUP(Comm, 0x10000);
 
 /*
  * Commands
  */
 
 Hotmsg**
-hotsend(Hotrod *h, Hotmsg *m)
+hotsend(Commrod *h, Hotmsg *m)
 {
 	Hotmsg **mp;
 
@@ -103,7 +93,7 @@ void
 hotrodreset(void)
 {
 	int i;
-	Hotrod *hp;
+	Commrod *hp;
 
 	for(hp=hotrod,i=0; i<Nhotrod; i++,hp++){
 		hp->addr = HOTROD+i;
@@ -126,7 +116,7 @@ hotrodinit(void)
 Chan*
 hotrodattach(char *spec)
 {
-	Hotrod *hp;
+	Commrod *hp;
 	int i;
 	Chan *c;
 
@@ -162,7 +152,7 @@ hotrodstat(Chan *c, char *dp)
 Chan*
 hotrodopen(Chan *c, int omode)
 {
-	Hotrod *hp;
+	Commrod *hp;
 	Hotmsg *mp, **hmp;
 
 	if(c->qid.path == CHDIR){
@@ -242,7 +232,7 @@ hotrodcreate(Chan *c, char *name, int omode, ulong perm)
 void	 
 hotrodclose(Chan *c)
 {
-	Hotrod *hp;
+	Commrod *hp;
 	Hotmsg **hmp;
 
 	hp = &hotrod[c->dev];
@@ -283,7 +273,7 @@ hotmsgintr(Hotmsg *hm)
 long	 
 hotrodread(Chan *c, void *buf, long n, ulong offset)
 {
-	Hotrod *hp;
+	Commrod *hp;
 	Hotmsg *mp, **hmp;
 	ulong l, m, isflush;
 
@@ -335,43 +325,8 @@ hotrodread(Chan *c, void *buf, long n, ulong offset)
 				error(Egreg);
 			}
 			if(mp->param[2] != hotsum(buf, m, mp->param[2])){
-				hp->addr->lcsr7 = 0xBEEF;
-{
-	ulong *i, j, posn, nerr, val;
-
-	i = buf;
-	posn = -1;
-	nerr = 0;
-	for(j = 0; j < n/4; j++) {
-		val = *i & 0xffff;
-		if(posn == -1)
-			posn = val+1;
-		else if(posn != val) {
-			print("error at offset %d %8lux != %8lux word=%8lux\n", 
-						j, posn, val, *i);
-			posn = -1;
-			if(++nerr > 10) {
-				print("too many\n");
-				break;
-			}
-		}
-		else
-			posn++;
-		i++;
-	}
-}
 				print("hotrod cksum err is %lux sb %lux\n",
 					hotsum(buf, m, 1), mp->param[2]);
-/*
-				print("addr %lux\n", ((char*)buf)+m);
-				{
-					int i;
-					ulong *p = buf;
-					for(i=2; i<m/4; i++)
-						if(p[i] != i-2)
-							print("%d sb %d %lux %lux\n", p[i], i-2, p[i], &p[i]);
-				}
-*/
 				error(Eio);
 			}
 			mp->abort = 0;
@@ -404,7 +359,6 @@ hotrodread(Chan *c, void *buf, long n, ulong offset)
 				error(Egreg);
 			}
 			if(mp->param[2] != hotsum((ulong*)hp->buf, m, mp->param[2])){
-				hp->addr->error++;
 				print("hotrod cksum err is %lux sb %lux\n",
 					hotsum((ulong*)hp->buf, m, 1), mp->param[2]);
 				qunlock(&hp->buflock);
@@ -424,7 +378,7 @@ hotrodread(Chan *c, void *buf, long n, ulong offset)
 long	 
 hotrodwrite(Chan *c, void *buf, long n, ulong offset)
 {
-	Hotrod *hp;
+	Commrod *hp;
 	Hotmsg *mp, **hmp;
 
 	hp = &hotrod[c->dev];
@@ -491,7 +445,7 @@ hotrodwstat(Chan *c, char *dp)
 void
 hotrodintr(int vec)
 {
-	Hotrod *h;
+	Commrod *h;
 	Hotmsg *hm;
 	ulong l;
 
@@ -500,9 +454,6 @@ hotrodintr(int vec)
 		print("bad hotrod vec\n");
 		return;
 	}
-	l = h->addr->lcsr3 & ~INT_VME;
-	h->addr->lcsr3 = l;
-	h->addr->lcsr3 = l;
 	while(l = h->addr->replyq[h->ri]){	/* assign = */
 		hm = (Hotmsg*)(VME2MP(l));
 		h->addr->replyq[h->ri] = 0;
@@ -516,95 +467,3 @@ hotrodintr(int vec)
 			wakeup(&hm->r);
 	}
 }
-
-#ifdef	ENABMEMTEST
-void
-mem(Hot *hot, ulong *buf, ulong size)
-{
-	long i, j, k, l;
-	ulong *p, bit, u;
-	int q;
-
-goto part4;
-	/* one bit */
-	bit = 0;
-	p = buf;
-	for(i=0; i<size; i++,p++) {
-		if(bit == 0)
-			bit = 1;
-		*p = bit;
-		bit <<= 1;
-	}
-	bit = 0;
-	p = buf;
-	for(i=0; i<size; i++,p++) {
-		if(bit == 0)
-			bit = 1;
-		if(*p != bit) {
-			print("A: %lux is %lux sb %lux\n", p, *p, bit);
-			hot->error++;
-			delay(500);
-		}
-		bit <<= 1;
-	}
-	/* all but one bit */
-	bit = 0;
-	p = buf;
-	for(i=0; i<size; i++,p++) {
-		if(bit == 0)
-			bit = 1;
-		*p = ~bit;
-		bit <<= 1;
-	}
-	bit = 0;
-	p = buf;
-	for(i=0; i<size; i++,p++) {
-		if(bit == 0)
-			bit = 1;
-		if(*p != ~bit) {
-			print("B: %lux is %lux sb %lux\n", p, *p, ~bit);
-			hot->error++;
-			delay(500);
-		}
-		bit <<= 1;
-	}
-	/* rand bit */
-	bit = 0;
-	p = buf;
-	for(i=0; i<size; i++,p++) {
-		if(bit == 0)
-			bit = 1;
-		*p = bit;
-		bit += PRIME;
-	}
-	bit = 0;
-	p = buf;
-	for(i=0; i<size; i++,p++) {
-		if(bit == 0)
-			bit = 1;
-		if(*p != bit) {
-			print("C: %lux is %lux sb %lux\n", p, *p, bit);
-			hot->error++;
-			delay(500);
-		}
-		bit += PRIME;
-	}
-part4:
-	/* address */
-	p = buf;
-	for(i=0; i<size; i++,p++)
-		*p = i;
-	for(j=0; j<200; j++) {
-		p = buf;
-		for(i=0; i<size; i++,p++) {
-			u = *p;
-			if(u != i+j) {
-				print("D: %lux is %lux sb %lux (%lux)\n", p, u, i+j, *p);
-			hot->error++;
-				delay(500);
-			}
-			*p = i+j+1;
-		}
-	}
-}
-#endif
