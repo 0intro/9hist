@@ -94,6 +94,7 @@
 #define	PTEGLOBL	(1<<8)
 #define	PTEVALID	(1<<9)
 #define	PTEWRITE	(1<<10)
+#define PTERONLY	0
 #define	PTEPID(n)	((n)<<6)
 
 #define	NTLBPID	64	/* number of pids */

@@ -311,6 +311,9 @@ echo(int c)
 		case 'm':
 			mntdump();
 			return;
+		case 'i':
+			incontoggle();
+			return;
 		}
 	}else if(c == 0x14){
 		ctrlt++;

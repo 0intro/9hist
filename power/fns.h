@@ -57,7 +57,8 @@ void	error(int);
 void	errors(char*);
 void	evenaddr(ulong);
 void	exit(void);
-void	fault(Ureg*, int, int);
+int	fault(ulong, int);
+void	faultmips(Ureg*, int, int);
 void	fdclose(int);
 Chan*	fdtochan(int, int);
 void	firmware(void);
@@ -66,7 +67,7 @@ void	flushmmu(void);
 void	forkmod(Seg*, Seg*, Proc*);
 void	freeb(Block*);
 int	freebroken(void);
-void	freepage(Orig*);
+void	freepage(Orig*, int);
 void	freepte(Orig*);
 void	freesegs(int);
 void	freealarm(Alarm*);
@@ -155,11 +156,9 @@ int	readnum(ulong, char*, ulong, ulong, int);
 void	ready(Proc*);
 void	qlock(QLock*);
 void	qunlock(QLock*);
-void	restore(Proc*, uchar*);
 void	restfpregs(FPsave*);
 int	return0(void*);
 Proc	*runproc(void);
-void	save(uchar*, int);
 void	savefpregs(FPsave*);
 void	sched(void);
 void	schedinit(void);
@@ -167,7 +166,6 @@ long	seconds(void);
 Seg	*seg(Proc*, ulong);
 int	segaddr(Seg*, ulong, ulong);
 int	setlabel(Label*);
-void	setup(Proc*);
 void	setvmevec(int, void (*)(int));
 void	sinit(void);
 char*	skipslash(char*);
@@ -212,3 +210,10 @@ void	wbflush(void);
 
 #define	waserror()	setlabel(&u->errlab[u->nerrlab++])
 #define	poperror()	u->nerrlab--
+
+/*
+ *  no external state to save on the SGI
+ */
+#define procsetup(x)
+#define procsave(x,y)
+#define procrestore(x,y)

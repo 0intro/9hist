@@ -205,10 +205,7 @@ sysexec(ulong *arg)
 
     Binary:
 	t = (UTZERO+sizeof(Exec)+exec.text+(BY2PG-1)) & ~(BY2PG-1);
-	/*
-	 * Last partial page of data goes into BSS.
-	 */
-	d = (t + exec.data) & ~(BY2PG-1);
+	d = (t + exec.data + (BY2PG-1)) & ~(BY2PG-1);
 	bssend = t + exec.data + exec.bss;
 	b = (bssend + (BY2PG-1)) & ~(BY2PG-1);
 	if((t|d|b) & KZERO)
@@ -311,7 +308,7 @@ sysexec(ulong *arg)
 	if(o == 0){
 		o = neworig(t, (d-t)>>PGSHIFT, OWRPERM|OPURE|OCACHED, tc);
 		o->minca = p->seg[TSEG].o->maxca;
-		o->maxca = o->minca + (exec.data & ~(BY2PG-1));
+		o->maxca = o->minca + exec.data;
 	}
 	s->o = o;
 	s->minva = t;
@@ -319,15 +316,13 @@ sysexec(ulong *arg)
 	s->mod = 0;
 
 	/*
-	 * BSS.  Created afresh, starting with last page of data.
-	 * BUG: should pick up the last page of data, which should be cached in the
-	 * data segment.
+	 * BSS.  Created afresh.
 	 */
 	s = &p->seg[BSEG];
 	s->proc = p;
-	o = neworig(d, (b-d)>>PGSHIFT, OWRPERM, tc);
-	o->minca = p->seg[DSEG].o->maxca;
-	o->maxca = o->minca + (exec.data & (BY2PG-1));
+	o = neworig(d, (b-d)>>PGSHIFT, OWRPERM, 0);
+	o->minca = 0;
+	o->maxca = 0;
 	s->o = o;
 	s->minva = d;
 	s->maxva = b;
@@ -353,7 +348,7 @@ sysexec(ulong *arg)
 	unlock(o);
 
 	flushmmu();
- 	clearmmucache();
+	clearmmucache();
 	((Ureg*)UREGADDR)->pc = exec.entry + ENTRYOFFSET;
 	sp = (ulong*)(USTKTOP - ssize);
 	*--sp = nargs;
@@ -362,7 +357,7 @@ sysexec(ulong *arg)
 	u->nnote = 0;
 	u->notify = 0;
 	u->notified = 0;
-	setup(p);
+	procsetup(p);
 	unlock(&p->debug);
 	return 0;
 }

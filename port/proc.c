@@ -59,7 +59,6 @@ schedinit(void)		/* never returns */
 		else if(p->state == Moribund){
 			p->pid = 0;
 			unlock(&p->debug);
-			unusepage(p->upage, 1);
 			p->upage->ref--;
 			/* procalloc already locked */
 			p->qnext = procalloc.free;
@@ -83,13 +82,13 @@ sched(void)
 
 	if(u){
 		splhi();
-		save(procstate, sizeof(procstate));
+		procsave(procstate, sizeof(procstate));
 		if(setlabel(&u->p->sched)){	/* woke up */
 			p = u->p;
 			p->state = Running;
 			p->mach = m;
 			m->proc = p;
-			restore(p, procstate);
+			procrestore(p, procstate);
 			spllo();
 			return;
 		}
@@ -481,6 +480,7 @@ pexit(char *s, int freemem)
 
 	lock(&procalloc);	/* sched() can't do this */
 	lock(&c->debug);	/* sched() can't do this */
+	unusepage(c->upage, 1);	/* sched() can't do this (it locks) */
 	c->state = Moribund;
 	sched();	/* never returns */
 }
@@ -567,6 +567,7 @@ kproc(char *name, void (*func)(void *), void *arg)
 	 * Kernel stack
 	 */
 	p = newproc();
+	p->kp = 1;
 	p->upage = newpage(1, 0, USERADDR|(p->pid&0xFFFF));
 	k = kmap(p->upage);
 	upa = VA(k);

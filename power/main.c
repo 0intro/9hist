@@ -631,6 +631,7 @@ confinit(void)
 
 	if(conf.nmach > MAXMACH)
 		panic("confinit");
+	conf.copymode = 1;		/* copy on reference */
 
 }
 
@@ -694,28 +695,4 @@ arginit(void)
 	}
 	_argv = argv;
 	argsize = ssize;
-}
-
-/*
- *  set up machine dependent process state for a new process
- */
-void
-setup(Proc *p)
-{
-}
-
-/*
- *  Save machine dependent process state
- */
-void
-save(uchar *state, int len)
-{
-}
-
-/*
- *  Restore what save() saves
- */
-void
-restore(Proc *p, uchar *state)
-{
 }

@@ -600,9 +600,20 @@ inconoput(Queue *q, Block *bp)
 		if(size >= 16){
 			dev->cdata = 0;
 			MICROSECOND;
+			for(end = NOW+1000; dev->status & TX_FULL;){
+				nop();	/* make sure we don't optimize too much */
+				if(NOW > end){
+					print("incon output stuck\n");
+					freemsg(q, bp);
+					qunlock(&ip->xmit);
+					return;
+				}
+			}
 			dev->cdata = chan;
 			MICROSECOND;
 		}
+		if(dev->status & TX_FULL)
+			print("inconfull\n");
 		dev->cdata = ctl;
 	}
 	MICROSECOND;

@@ -122,7 +122,7 @@ trap(Ureg *ur)
 		spllo();
 		x = u->p->insyscall;
 		u->p->insyscall = 1;
-		fault(ur, user, ecode);
+		faultmips(ur, user, ecode);
 		u->p->insyscall = x;
 		break;
 

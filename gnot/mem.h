@@ -68,6 +68,7 @@
  * MMU entries
  */
 #define	PTEVALID	(1<<13)
+#define PTEWRITE	0
 #define	PTERONLY	(1<<14)
 #define	PTEKERNEL	(1<<15)
 #define	INVALIDPTE	0

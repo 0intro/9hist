@@ -314,6 +314,7 @@ allocq(Qinfo *qi)
 	q->put = qi->iput;
 	q->len = q->nb = 0;
 	q->ptr = 0;
+	q->rp = &q->r;
 	wq = q->other = q + 1;
 
 	wq->flag = QINUSE;
@@ -323,6 +324,7 @@ allocq(Qinfo *qi)
 	wq->other = q;
 	wq->ptr = 0;
 	wq->len = wq->nb = 0;
+	wq->rp = &wq->r;
 
 	unlock(q);
 
@@ -495,7 +497,7 @@ getq(Queue *q)
 		q->len -= BLEN(bp);
 		q->nb--;
 		if((q->flag&QHIWAT) && q->len<Streamhi/2 && q->nb<Streambhi/2){
-			wakeup(&q->other->next->other->r);
+			wakeup(q->other->next->other->rp);
 			q->flag &= ~QHIWAT;
 		}
 		bp->next = 0;
@@ -928,7 +930,7 @@ stputq(Queue *q, Block *bp)
 		freeb(bp);
 		q->flag |= QHUNGUP;
 		q->other->flag |= QHUNGUP;
-		wakeup(&q->other->r);
+		wakeup(q->other->rp);
 		delim = 1;
 	} else {
 		delim = 0;
@@ -954,7 +956,7 @@ stputq(Queue *q, Block *bp)
 		unlock(q);
 	}
 	if(delim)
-		wakeup(&q->r);
+		wakeup(q->rp);
 }
 
 /*
@@ -1048,7 +1050,8 @@ streamread(Chan *c, void *vbuf, long n)
 				else
 					error(Ehungup);
 			}
-			sleep(&q->r, &isinput, (void *)q);
+			q->rp = &q->r;
+			sleep(q->rp, &isinput, (void *)q);
 			continue;
 		}
 
@@ -1167,7 +1170,8 @@ flowctl(Queue *q)
 		qunlock(&q->rlock);
 		nexterror();
 	}
-	sleep(&q->r, notfull, q->next);
+	q->rp = &q->r;
+	sleep(q->rp, notfull, q->next);
 	qunlock(&q->rlock);
 	poperror();
 }

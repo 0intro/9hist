@@ -339,13 +339,14 @@ confinit(void)
 	conf.npipe = conf.nstream/2;
 	conf.nservice = 3*mul;			/* was conf.nproc/5 */
 	conf.nfsyschan = 31 + conf.nchan/20;
+	conf.copymode = 0;		/* copy on write */
 }
 
 /*
  *  set up floating point for a new process
  */
 void
-setup(Proc *p)
+procsetup(Proc *p)
 {
 	long fpnull;
 
@@ -361,7 +362,7 @@ setup(Proc *p)
  * Save the part of the process state.
  */
 void
-save(uchar *state, int len)
+procsave(uchar *state, int len)
 {
 	Balu *balu;
 
@@ -385,12 +386,12 @@ save(uchar *state, int len)
 }
 
 /*
- *  Restore what save() saves
+ *  Restore what procsave() saves
  *
- *  Save() makes sure that what state points to is long enough
+ *  Procsave() makes sure that what state points to is long enough
  */
 void
-restore(Proc *p, uchar *state)
+procrestore(Proc *p, uchar *state)
 {
 	Balu *balu;
 

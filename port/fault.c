@@ -6,11 +6,10 @@
 #include	"ureg.h"
 #include	"errno.h"
 
-void
-fault(Ureg *ur, int user, int code)
+int
+fault(ulong addr, int read)
 {
-	ulong addr, mmuvirt, mmuphys, n;
-	extern char *excname[];
+	ulong mmuvirt, mmuphys, n;
 	Seg *s;
 	PTE *opte, *pte, *npte;
 	Orig *o;
@@ -18,34 +17,21 @@ fault(Ureg *ur, int user, int code)
 	Page *pg;
 	int zeroed = 0, head = 1;
 	int i;
-
-	addr = ur->badvaddr;
-	addr &= ~(BY2PG-1);
+	KMap *k, *k1;
 
 	s = seg(u->p, addr);
 	if(s == 0){
-		if(addr>USTKTOP){
-	    cant:
-			if(user){
-				pprint("user %s badvaddr=0x%lux\n", excname[code], ur->badvaddr);
-				pprint("status=0x%lux pc=0x%lux sp=0x%lux\n", ur->status, ur->pc, ur->sp);
-				pexit("Suicide", 0);
-			}
-			print("kernel %s badvaddr=0x%lux\n", excname[code], ur->badvaddr);
-			print("status=0x%lux pc=0x%lux sp=0x%lux\n", ur->status, ur->pc, ur->sp);
-			u->p->state = MMUing;
-			dumpregs(ur);
-			panic("fault");
-		}
+		if(addr>USTKTOP)
+			return -1;
 		s = &u->p->seg[SSEG];
 		if(s->o==0 || addr<s->maxva-USTACKSIZE || addr>=s->maxva)
-			goto cant;
+			return -1;
 		/* grow stack */
 		o = s->o;
 		n = o->npte;
 		if(waserror()){
 			pprint("can't allocate stack page\n");
-			goto cant;
+			return -1;
 		}
 		growpte(o, (s->maxva-addr)>>PGSHIFT);
 		poperror();
@@ -58,8 +44,8 @@ fault(Ureg *ur, int user, int code)
 		o->va = addr;
 	}else
 		o = s->o;
-	if((code==CTLBM || code==CTLBS) && (o->flag&OWRPERM)==0)
-		goto cant;
+	if(!read && (o->flag&OWRPERM)==0)
+		return -1;
 	lock(o);
 	opte = &o->pte[(addr-o->va)>>PGSHIFT];
 	pte = opte;
@@ -92,23 +78,25 @@ fault(Ureg *ur, int user, int code)
 			if(n > BY2PG)
 				n = BY2PG;
 			pg = newpage(1, o, addr);
+			k = kmap(pg);
 			qlock(o->chan);
 			if(waserror()){
+				kunmap(k);
 				qunlock(o->chan);
 				pg->o = 0;
 				pg->ref--;
 				pexit("load i/o error", 0);
 			}
 			o->chan->offset = (addr-o->va) + o->minca;
-			l = (char*)(pg->pa|KZERO);
+			l = (char*)VA(k);
 			if((*devtab[o->chan->type].read)(o->chan, l, n) != n)
 				error(Eioload);
 			qunlock(o->chan);
-			poperror();
-			/* BUG: if was first page of bss, move to data */
 			if(n<BY2PG)
 				memset(l+n, 0, BY2PG-n);
 			lock(o);
+			kunmap(k);
+			poperror();
 			opte = &o->pte[(addr-s->minva)>>PGSHIFT];	/* could move */
 			pte = opte;
 			if(pte->page == 0){
@@ -121,9 +109,9 @@ fault(Ureg *ur, int user, int code)
 		}
 	}
 	/*
-	 * Copy on reference
+	 * Copy on reference (conf.copymode==1) or write (conf.copymode==0)
 	 */
-	if((o->flag & OWRPERM)
+	if((o->flag & OWRPERM) && (conf.copymode || !read)
 	&& ((head && ((o->flag&OPURE) || o->nproc>1))
 	    || (!head && pte->page->ref>1))){
 
@@ -173,7 +161,11 @@ fault(Ureg *ur, int user, int code)
 			opte->page = 0;
 		}else{		/* copy page */
 			pte->page = newpage(1, o, addr);
-			memcpy((void*)(pte->page->pa|KZERO), (void*)(pg->pa|KZERO), BY2PG);
+			k = kmap(pte->page);
+			k1 = kmap(pg);
+			memcpy((void*)VA(k), (void*)VA(k1), BY2PG);
+			kunmap(k);
+			kunmap(k1);
 			if(pg->ref <= 1)
 				panic("pg->ref <= 1");
 			pg->ref--;
@@ -181,7 +173,7 @@ fault(Ureg *ur, int user, int code)
     easy:
 		mmuphys = PTEWRITE;
 	}else{
-		mmuphys = 0;
+		mmuphys = PTERONLY;
 		if(o->flag & OWRPERM)
 			if(o->flag & OPURE){
 				if(!head && pte->page->ref==1)
@@ -192,7 +184,7 @@ fault(Ureg *ur, int user, int code)
 					mmuphys = PTEWRITE;
 	}
 	mmuvirt = addr;
-	mmuphys |= pte->page->pa | PTEVALID;
+	mmuphys |= PPN(pte->page->pa) | PTEVALID;
 	usepage(pte->page, 1);
 	if(pte->page->va != addr)
 		panic("wrong addr in tail %lux %lux", pte->page->va, addr);
@@ -203,6 +195,7 @@ fault(Ureg *ur, int user, int code)
 	}
 	unlock(o);
 	putmmu(mmuvirt, mmuphys);
+	return 0;
 }
 
 /*
@@ -232,15 +225,6 @@ validaddr(ulong addr, ulong len, int write)
 		len -= s->maxva - addr;
 		addr = s->maxva;
 		goto Again;
-	}
-}
-
-void
-evenaddr(ulong addr)
-{
-	if(addr & 3){
-		postnote(u->p, 1, "sys: odd address", NDebug);
-		error(Ebadarg);
 	}
 }
 

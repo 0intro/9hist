@@ -169,6 +169,7 @@ urpopen(Queue *q, Stream *s)
 	}
 
 	q->ptr = q->other->ptr = up;
+	q->rp = &urpkr;
 	up->rq = q;
 	up->wq = q->other;
 	up->state = OPEN;

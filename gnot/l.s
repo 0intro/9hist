@@ -200,7 +200,7 @@ TEXT	buserror(SB), $0
 	MOVL	A0, ((8+8)*BY2WD)(A7)
 	PEA	((8+8+1+2)*BY2WD)(A7)
 	PEA	4(A7)
-	BSR	fault(SB)
+	BSR	fault68020(SB)
 	ADDL	$8, A7
 	MOVL	((8+8)*BY2WD)(A7), A0
 	MOVL	A0, USP

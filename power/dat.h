@@ -152,6 +152,7 @@ struct Conf
 	ulong	maxialloc;	/* maximum bytes used by ialloc */
 	ulong	base0;		/* base of bank 0 */
 	ulong	base1;		/* base of bank 1 */
+	ulong	copymode;	/* 0 is copy on write, 1 is copy on reference */
 };
 
 struct Dev
@@ -336,6 +337,7 @@ struct Proc
 	Rendez	sleep;			/* place for tsleep and syssleep */
 	int	wokeup;			/* whether sleep was interrupted */
 	ulong	pc;			/* DEBUG only */
+	int	kp;			/* true if kernel process */
 
 };
 
@@ -378,6 +380,7 @@ typedef void		KMap;
 #define	VA(k)		((ulong)(k))
 #define	kmap(p)		(KMap*)(p->pa|KZERO)
 #define	kunmap(k)
+#define PPN(x)		x
 
 /*
  *  operations available to a queue
@@ -438,7 +441,8 @@ struct Queue {
 	Queue	*next;		/* next queue in the stream */
 	void	(*put)(Queue*, Block*);
 	QLock	rlock;		/* mutex for r */
-	Rendez	r;
+	Rendez	r;		/* standard place to wait for flow control */
+	Rendez	*rp;		/* where flow control wakeups go to */
 	void	*ptr;		/* private info for the queue */
 };
 #define QHUNGUP	0x1	/* flag bit meaning the stream has been hung up */

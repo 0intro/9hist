@@ -29,6 +29,7 @@ Conftab conftab[] = {
 	{"maxialloc", &conf.maxialloc },
 	{"base0", &conf.base0 },
 	{"base1", &conf.base1 },
+	{"copymode", &conf.copymode },
 	{ 0, 0 },
 };
 

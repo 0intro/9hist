@@ -55,7 +55,7 @@ ialloc(ulong n, int align)
 {
 	ulong p;
 
-	if(palloc.active)
+	if(palloc.active && n!=0)
 		print("ialloc bad\n");
 	if(palloc.addr == 0)
 		palloc.addr = ((ulong)&end)&~KZERO;
@@ -185,7 +185,7 @@ loop:
 					continue;
 				}
 				print("free %d pages va %lux %lux %c\n", o1->npage, o->va, o1->qid, devchar[o1->type]);
-				freepage(o1);
+				freepage(o1, 0);
 				/* neworig will free the orig and pte's later */
 				unlock(o1);
 				if(p->ref == 0)
@@ -367,7 +367,7 @@ loop:
 				unlock(o);
 				continue;
 			}
-			freepage(o);
+			freepage(o, 1);
 			freepte(o);
 			unlock(o);
 			o->next = origalloc.free;
@@ -506,7 +506,7 @@ freesegs(int save)
 				close(c);
 			}
 			if(!(o->flag&OCACHED) || o->npage==0){
-				freepage(o);
+				freepage(o, 1);
 				freepte(o);
 				unlock(o);
 				lock(&origalloc);
@@ -566,7 +566,7 @@ segaddr(Seg *s, ulong min, ulong max)
  * o is locked
  */
 void
-freepage(Orig *o)
+freepage(Orig *o, int dolock)
 {
 	PTE *pte;
 	Page *pg;
@@ -576,7 +576,7 @@ freepage(Orig *o)
 	for(i=0; i<o->npte; i++,pte++)
 		if(pg = pte->page){	/* assign = */
 			if(pg->ref == 1){
-				unusepage(pg, 1);
+				unusepage(pg, dolock);
 				pte->page = 0;
 				pg->o = 0;
 			}

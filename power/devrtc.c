@@ -27,7 +27,7 @@ struct Rtc
 QLock rtclock;	/* mutex on clock operations */
 
 static Dirtab rtcdir[]={
-	"rtc",		{1},	0,	0600,
+	"rtc",		{1, 0},	0,	0600,
 };
 
 static uchar pattern[] =
@@ -144,6 +144,9 @@ rtcread(Chan *c, void *buf, long n)
 	uchar bcdclock[Nbcd];
 	char atime[64];
 	Rtc rtc;
+
+	if(c->qid.path & CHDIR)
+		return devdirread(c, buf, n, rtcdir, 1, devgen);
 
 	nv = RTC;
 

@@ -153,6 +153,7 @@ struct Conf
 	int	nservice;	/* number of services */
 	int	nfsyschan;	/* number of filsys open channels */
 	ulong	maxialloc;	/* maximum bytes used by ialloc */
+	int	copymode;	/* 0 is copy on write, 1 is copy on reference */
 };
 
 struct Dev
@@ -448,7 +449,8 @@ struct Queue {
 	Queue	*next;		/* next queue in the stream */
 	void	(*put)(Queue*, Block*);
 	QLock	rlock;		/* mutex for processes sleeping at r */
-	Rendez	r;
+	Rendez	r;		/* standard place to wait for flow control */
+	Rendez	*rp;		/* where flow control wakeups go to */
 	void	*ptr;		/* private info for the queue */
 };
 #define QHUNGUP	0x1	/* flag bit meaning the stream has been hung up */
