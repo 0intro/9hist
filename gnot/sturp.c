@@ -63,7 +63,8 @@ struct Urp {
 
 	int	kstarted;
 };
-#define WINDOW(u) ((u->unechoed + u->maxout - u->next)%8)
+#define WINDOW(u) ((u)->unechoed>(u)->next ? (u)->unechoed+(u)->maxout-(u)->next-8 :\
+			(u)->unechoed+(u)->maxout-(u)->next)
 #define IN(x, f, n) (f<=n ? x>=f && x<n : x<n || x>=f)
 #define NEXT(x) (((x)+1)&Nmask)
 

@@ -408,6 +408,7 @@ struct Queue {
 struct Stream {
 	Lock;			/* structure lock */
 	int	inuse;		/* use count */
+	int	hread;		/* number of reads after hangup */
 	int	type;		/* correclation with Chan */
 	int	dev;		/* ... */
 	int	id;		/* ... */

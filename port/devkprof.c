@@ -162,5 +162,6 @@ kproftimer(ulong pc)
 		pc -= KTZERO;
 		pc >>= LRES;
 		timerbuf[pc]++;
-	}
+	} else
+		timerbuf[1]++;
 }

@@ -58,8 +58,30 @@ Bclass bclass[Nclass]={
 	{ 0 },
 	{ 68 },
 	{ 260 },
-	{ 4096 },
+	{ 1024 },
 };
+
+/*
+ *  Dump all block information of how many blocks are in which queues
+ */
+void
+dumpqueues(void)
+{
+	Queue *q;
+	int count;
+	Block *bp;
+
+	for(q = qlist; q < qlist + conf.nqueue; q++, q++){
+		if(!(q->flag & QINUSE))
+			continue;
+		for(count = 0, bp = q->first; bp; bp = bp->next)
+			count++;
+		print("%s %ux  RD count %d len %d", q->info->name, q, count, q->len);
+		for(count = 0, bp = WR(q)->first; bp; bp = bp->next)
+			count++;
+		print("  WR count %d len %d\n", count, WR(q)->len);
+	}
+}
 
 /*
  *  Allocate streams, queues, and blocks.  Allocate n block classes with
@@ -123,8 +145,11 @@ allocb(ulong size)
 	lock(bcp);
 	while(bcp->first == 0){
 		unlock(bcp);
-		if(loop++ > 10)
+		if(loop++ > 10){
+			dumpqueues();
+			dumpstack();
 			panic("waiting for blocks\n");
+		}
 		qlock(bcp);
 		tsleep(&bcp->r, isblock, (void *)bcp, 250);
 		qunlock(bcp);
@@ -614,6 +639,7 @@ streamnew(Chan *c, Qinfo *qi)
  	 *  hang a device and process q off the stream
 	 */
 	s->inuse = 1;
+	s->hread = 0;
 	s->tag[0] = 0;
 	q = allocq(&procinfo);
 	s->procq = WR(q);
@@ -825,8 +851,12 @@ streamread(Chan *c, void *vbuf, long n)
 	while(left){
 		bp = getq(q);
 		if(bp == 0){
-			if(q->flag & QHUNGUP)
-				break;
+			if(q->flag & QHUNGUP){
+				if(s->hread++ < 3)
+					break;
+				else
+					error(0, Ehungup);
+			}
 			sleep(&q->r, &isinput, (void *)q);
 			continue;
 		}

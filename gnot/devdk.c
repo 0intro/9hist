@@ -417,7 +417,11 @@ dkoput(Queue *q, Block *bp)
 	bp->rptr[0] = line;
 	bp->rptr[1] = line>>8;
 
-	PUTNEXT(dp->wq, bp);
+	if(dp->wq->len >= Streamhi){
+		print("dkoput free\n");
+		freeb(bp);
+	} else
+		PUTNEXT(dp->wq, bp);
 }
 
 /*

@@ -243,7 +243,7 @@ inconrestart(Incon *ip)
 		break;
 	case Selected:
 		print("incon[%d] station %d\n", ip-incon, ip->station);
-		inconset(ip, 8, 9);
+		inconset(ip, 3, 15);
 		break;
 	default:
 		print("incon[%d] bollixed\n", ip-incon);
@@ -264,7 +264,7 @@ inconreset(void)
 	incon[0].dev = INCON;
 	incon[0].state = Selected;
 	incon[0].ri = incon[0].wi = 0;
-/*	inconset(&incon[0], 8, 9); /**/
+/*	inconset(&incon[0], 3, 15); /**/
 	for(i=1; i<Nincon; i++){
 		incon[i].dev = INCON+i;
 		incon[i].state = Dead;
@@ -625,15 +625,7 @@ inconkproc(void *arg)
 		while(ip->ri != ip->wi){
 			bp = ip->inb[ip->ri];
 			n = BLEN(bp);
-			if(n <= 64){
-				nbp = allocb(n);
-				memcpy(nbp->wptr, bp->rptr, n);
-				nbp->wptr += n;
-				freeb(bp);
-				PUTNEXT(ip->rq, nbp);
-			} else {
-				PUTNEXT(ip->rq, bp);
-			}
+			PUTNEXT(ip->rq, bp);
 			bp = ip->inb[ip->ri] = allocb(Bsize);
 			bp->wptr += 3;
 			ip->ri = (ip->ri+1)%Nin;
