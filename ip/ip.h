@@ -47,6 +47,8 @@ enum
 
 	/* 2^Lroot trees in the root table */
 	Lroot	= 10,
+
+	Maxpath =	64,
 };
 
 enum
@@ -76,7 +78,7 @@ struct Conv
 	uint	ttl;			/* max time to live */
 	uint	tos;			/* type of service */
 
-	char	owner[NAMELEN];		/* protections */
+	char	*owner		;	/* protections */
 	int	perm;
 	int	inuse;			/* opens of listen/data/ctl */
 	int	length;
@@ -95,7 +97,7 @@ struct Conv
 
 	QLock	car;
 	Rendez	cr;
-	char	cerr[ERRLEN];
+	char	cerr[ERRMAX];
 
 	QLock	listenq;
 	Rendez	listenr;
@@ -428,7 +430,7 @@ extern void	convroute(Route*, uchar*, uchar*, uchar*, char*, int*);
  */
 struct IPaux
 {
-	char	owner[NAMELEN];		/* the user that did the attach */
+	char	*owner;		/* the user that did the attach */
 	char	tag[4];
 };
 

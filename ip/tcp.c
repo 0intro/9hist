@@ -700,7 +700,7 @@ tcpstart(Conv *s, int mode, ushort window)
 {
 	Tcpctl *tcb;
 	Tcppriv *tpriv;
-	char kpname[NAMELEN];
+	char kpname[KNAMELEN];
 
 	tpriv = s->p->priv;
 

@@ -104,6 +104,7 @@ static void	floppywait(int);
 static long	floppyxfer(FDrive*, int, void*, long, long);
 
 Dirtab floppydir[]={
+	".",		{Qdir, 0, QTDIR},	0,	0550,
 	"fd0disk",		{Qdata + 0},	0,	0660,
 	"fd0ctl",		{Qctl + 0},	0,	0660,
 	"fd1disk",		{Qdata + 1},	0,	0660,
@@ -216,16 +217,16 @@ floppyattach(char *spec)
 	return devattach('f', spec);
 }
 
-static int
-floppywalk(Chan *c, char *name)
+static Walkqid*
+floppywalk(Chan *c, Chan *nc, char **name, int nname)
 {
-	return devwalk(c, name, floppydir, fl.ndrive*NFDIR, devgen);
+	return devwalk(c, nc, name, nname, floppydir, fl.ndrive*NFDIR, devgen);
 }
 
-static void
-floppystat(Chan *c, char *dp)
+static int
+floppystat(Chan *c, uchar *dp, int n)
 {
-	devstat(c, dp, floppydir, fl.ndrive*NFDIR, devgen);
+	return devstat(c, dp, n, floppydir, fl.ndrive*NFDIR, devgen);
 }
 
 static Chan*
@@ -351,7 +352,7 @@ floppyread(Chan *c, void *a, long n, vlong off)
 	uchar *aa;
 	ulong offset = off;
 
-	if(c->qid.path == CHDIR)
+	if(c->qid.type & QTDIR)
 		return devdirread(c, a, n, floppydir, fl.ndrive*NFDIR, devgen);
 
 	rv = 0;
@@ -1035,7 +1036,6 @@ Dev floppydevtab = {
 	floppyreset,
 	devinit,
 	floppyattach,
-	devclone,
 	floppywalk,
 	floppystat,
 	floppyopen,

@@ -5,22 +5,18 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
-Ref	pidalloc;
+int	nrdy;
 Ref	noteidalloc;
 
-struct Procalloc
+static Ref	pidalloc;
+
+static struct Procalloc
 {
 	Lock;
 	Proc*	ht[128];
 	Proc*	arena;
 	Proc*	free;
-}procalloc;
-
-struct
-{
-	Lock;
-	Waitq*	free;
-}waitqalloc;
+} procalloc;
 
 typedef struct
 {
@@ -29,9 +25,7 @@ typedef struct
 	Proc*	tail;
 	int	n;
 } Schedq;
-
-int	nrdy;
-Schedq	runq[Nrq];
+static Schedq	runq[Nrq];
 
 char *statename[] =
 {			/* BUG: generate automatically */
@@ -344,6 +338,10 @@ newproc(void)
 	p->wired = 0;
 	p->ureg = 0;
 	p->error[0] = '\0';
+	kstrdup(&p->user, "*nouser");
+	kstrdup(&p->text, "*notext");
+	kstrdup(&p->args, "");
+	p->nargs = 0;
 	memset(p->seg, 0, sizeof p->seg);
 	p->pid = incref(&pidalloc);
 	pidhash(p);
@@ -784,8 +782,8 @@ pexit(char *exitstr, int freemem)
 			TK2MS(MACHP(0)->ticks - up->time[TReal]), NUMSIZE);
 		if(exitstr && exitstr[0]){
 			n = sprint(wq->w.msg, "%s %lud:", up->text, up->pid);
-			strncpy(wq->w.msg+n, exitstr, ERRLEN-n);
-			wq->w.msg[ERRLEN-1] = 0;
+			strncpy(wq->w.msg+n, exitstr, sizeof wq->w.msg-n);
+			wq->w.msg[sizeof wq->w.msg-1] = 0;
 		}
 		else
 			wq->w.msg[0] = '\0';
@@ -948,7 +946,6 @@ procdump(void)
 			continue;
 
 		dumpaproc(p);
-		prflush();
 	}
 }
 
@@ -1023,8 +1020,8 @@ kproc(char *name, void (*func)(void *), void *arg)
 	static Pgrp *kpgrp;
 
 	p = newproc();
-	p->psstate = "kproc";
-	p->procmode = 0644;
+	p->psstate = 0;
+	p->procmode = 0640;
 	p->kp = 1;
 
 	p->fpsave = up->fpsave;
@@ -1048,13 +1045,12 @@ kproc(char *name, void (*func)(void *), void *arg)
 
 	kprocchild(p, func, arg);
 
-	strcpy(p->user, eve);
+	kstrdup(&p->user, eve);
+	kstrdup(&p->text, name);
 	if(kpgrp == 0)
 		kpgrp = newpgrp();
 	p->pgrp = kpgrp;
 	incref(kpgrp);
-
-	strcpy(p->text, name);
 
 	p->nchild = 0;
 	p->parent = 0;
@@ -1121,7 +1117,7 @@ void
 error(char *err)
 {
 	spllo();
-	strncpy(up->error, err, ERRLEN);
+	strncpy(up->error, err, ERRMAX);
 	nexterror();
 }
 
@@ -1134,7 +1130,7 @@ nexterror(void)
 void
 exhausted(char *resource)
 {
-	char buf[ERRLEN];
+	char buf[ERRMAX];
 
 	sprint(buf, "no free %s", resource);
 	iprint("%s\n", buf);
@@ -1188,8 +1184,8 @@ renameuser(char *old, char *new)
 
 	ep = procalloc.arena+conf.nproc;
 	for(p = procalloc.arena; p < ep; p++)
-		if(strcmp(old, p->user) == 0)
-			memmove(p->user, new, NAMELEN);
+		if(p->user!=nil && strcmp(old, p->user)==0)
+			kstrdup(&p->user, new);
 }
 
 /*
@@ -1249,7 +1245,7 @@ pidunhash(Proc *p)
 }
 
 int
-procindex(int pid)
+procindex(ulong pid)
 {
 	Proc *p;
 	int h;

@@ -13,18 +13,12 @@ parsecmd(char *p, int n)
 {
 	Cmdbuf *volatile cb;
 
-	if(up != nil)
-		cb = smalloc(sizeof(*cb));
-	else{
-		cb = malloc(sizeof(*cb));
-		if(cb == nil)
-			return nil;
-	}
+	cb = smalloc(sizeof(*cb));
 	
 	if(n > sizeof(cb->buf)-1)
 		n = sizeof(cb->buf)-1;
 
-	if(up != nil && waserror()){
+	if(up!=nil && waserror()){
 		free(cb);
 		nexterror();
 	}
@@ -35,7 +29,7 @@ parsecmd(char *p, int n)
 	if(n > 0 && cb->buf[n-1] == '\n')
 		n--;
 	cb->buf[n] = '\0';
-	cb->nf = tokenize(cb->buf, cb->f, nelem(cb->f));
+	cb->nf = getfields(cb->buf, cb->f, nelem(cb->f), 1, " ");
 	return cb;
 }
 

@@ -6,8 +6,6 @@
 #include "io.h"
 #include "ureg.h"
 
-extern Queue *printq;
-
 #define DBG	if(0)scrprint
 #pragma varargck argpos scrprint 1
 static Ureg ureg;
@@ -62,7 +60,8 @@ talkrdb(Ureg *ureg)
 	char *p;
 	char *req;
 
-	printq = nil;	// turn off serial console
+	serialoq = nil;	// turn off serial console
+	kprintoq = nil;	// turn off /dev/kprint if active
 //	scrprint("Plan 9 debugger\n");
 	iprint("Edebugger reset\n");
 	for(;;){

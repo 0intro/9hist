@@ -27,7 +27,7 @@ configip(void)
 
 	arg = malloc((bargc+1) * sizeof(char*));
 	if(arg == nil)
-		fatal("malloc");
+		fatal("%r");
 	memmove(arg, bargv, (bargc+1) * sizeof(char*));
 
 	argc = bargc;
@@ -43,7 +43,6 @@ configip(void)
 	case 'b':
 	case 'h':
 	case 'm':
-	case 'c':
 		p = ARGF();
 		USED(p);
 		break;
@@ -57,7 +56,7 @@ configip(void)
 	/* let ipconfig configure the ip interface */
 	switch(pid = fork()){
 	case -1:
-		fatal("configuring ip");
+		fatal("configuring ip: %r");
 	case 0:
 		exec("/ipconfig", arg);
 		fatal("execing /ipconfig");
@@ -97,6 +96,33 @@ configip(void)
 }
 
 void
+configtcp(Method*)
+{
+	sleep(100);
+	print("t");
+	sleep(100);
+	configip();
+	sleep(100);
+	print(".");
+	sleep(100);
+}
+
+int
+authtcp(void)
+{
+	return -1;
+}
+
+int
+connecttcp(void)
+{
+	char buf[64];
+
+	snprint(buf, sizeof buf, "tcp!%I!564", fsip);
+	return dial(buf, 0, 0, 0);
+}
+
+void
 configil(Method*)
 {
 	configip();
@@ -105,47 +131,19 @@ configil(Method*)
 int
 authil(void)
 {
-	char buf[2*NAMELEN];
+	char buf[64];
 
-	sprint(buf, "il!%I!566", auip);
+	snprint(buf, sizeof buf, "il!%I!566", auip);
 	return dial(buf, 0, 0, 0);
 }
 
 int
 connectil(void)
 {
-	char buf[2*NAMELEN];
+	char buf[64];
 
-	sprint(buf, "il!%I!17008", fsip);
+	snprint(buf, sizeof buf, "il!%I!17008", fsip);
 	return dial(buf, 0, 0, 0);
-}
-
-void
-configtcp(Method*)
-{
-	configip();
-}
-
-int
-authtcp(void)
-{
-	char buf[2*NAMELEN];
-
-	sprint(buf, "tcp!%I!567", auip);
-	return dial(buf, 0, 0, 0);
-}
-
-int
-connecttcp(void)
-{
-	char buf[2*NAMELEN];
-	int fd;
-
-	sprint(buf, "tcp!%I!564", fsip);
-	fd = dial(buf, 0, 0, 0);
-	if(fd < 0)
-		return -1;
-	return pushfcall(fd);
 }
 
 static int

@@ -1218,7 +1218,7 @@ ilstart(Conv *c, int type, int fasttimeout)
 {
 	Ilcb *ic;
 	Ilpriv *ipriv;
-	char kpname[NAMELEN];
+	char kpname[KNAMELEN];
 
 	ipriv = c->p->priv;
 

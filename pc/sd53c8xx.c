@@ -2,8 +2,6 @@
  * NCR/Symbios/LSI Logic 53c8xx driver for Plan 9
  * Nigel Roles (nigel@9fs.org)
  *
- * 13/3/01	Fixed microcode to support targets > 7
- *
  * 01/12/00	Removed previous comments. Fixed a small problem in
  *			mismatch recovery for targets with synchronous offsets of >=16
  *			connected to >=875s. Thanks, Jean.
@@ -315,7 +313,6 @@ typedef struct Controller {
 } Controller;
 
 #define SYNCOFFMASK(c)		(((c)->v->maxsyncoff * 2) - 1)
-#define SSIDMASK(c)		(((c)->v->feature & Wide) ? 15 : 7)
 
 /* ISTAT */
 enum { Abrt = 0x80, Srst = 0x40, Sigp = 0x20, Sem = 0x10, Con = 0x08, Intf = 0x04, Sip = 0x02, Dip = 0x01 };
@@ -1341,8 +1338,8 @@ interrupt(Ureg *ur, void *a)
 				break;
 			case A_SIR_ERROR_NOT_MSG_IN_AFTER_RESELECT:
 				IPRINT(PRINTPREFIX "%d: not msg_in after reselect (%s)",
-				    n->ssid & SSIDMASK(c), phase[n->sstat1 & 7]);
-				dsa = dsafind(c, n->ssid & SSIDMASK(c), -1, A_STATE_DISCONNECTED);
+				    n->ssid & 7, phase[n->sstat1 & 7]);
+				dsa = dsafind(c, n->ssid & 7, -1, A_STATE_DISCONNECTED);
 				dumpncrregs(c, 1);
 				wakeme = 1;
 				break;
@@ -1838,8 +1835,6 @@ xfunc(Controller *c, enum na_external x, unsigned long *v)
 		*v = offsetof(Dsa, status_buf); return 1;
 	case X_dsa_head:
 		*v = DMASEG(&c->dsalist.head[0]); return 1;
-	case X_ssid_mask:
-		*v = SSIDMASK(c); return 1;
 	default:
 		print("xfunc: can't find external %d\n", x);
 		return 0;
@@ -2030,13 +2025,13 @@ symenable(SDev* sdev)
 {
 	Pcidev *pcidev;
 	Controller *ctlr;
-	char name[NAMELEN];
+	char name[32];
 
 	ctlr = sdev->ctlr;
 	pcidev = ctlr->pcidev;
 
 	pcisetbme(pcidev);
-	snprint(name, NAMELEN, "%s (%s)", sdev->name, sdev->ifc->name);
+	snprint(name, sizeof(name), "%s (%s)", sdev->name, sdev->ifc->name);
 	intrenable(pcidev->intl, interrupt, ctlr, pcidev->tbdf, name);
 
 	ilock(ctlr);

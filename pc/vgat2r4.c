@@ -132,8 +132,7 @@ t2r4enable(VGAscr* scr)
 
 	memset(&seg, 0, sizeof(seg));
 	seg.attr = SG_PHYSICAL;
-	seg.name = smalloc(NAMELEN);
-	snprint(seg.name, NAMELEN, "t2r4mmio");
+	kstrdup(&seg.name, "t2r4mmio");
 	seg.pa = mmio;
 	seg.size = p->mem[4].size;
 	addphysseg(&seg);
@@ -148,8 +147,7 @@ t2r4enable(VGAscr* scr)
 		scr->apsize = size;
 		memset(&seg, 0, sizeof(seg));
 		seg.attr = SG_PHYSICAL;
-		seg.name = smalloc(NAMELEN);
-		snprint(seg.name, NAMELEN, "t2r4screen");
+		kstrdup(&seg.name, "t2r4screen");
 		seg.pa = aperture;
 		seg.size = size;
 		addphysseg(&seg);

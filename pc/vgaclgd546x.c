@@ -104,8 +104,7 @@ clgd546xenable(VGAscr* scr)
 
 	memset(&seg, 0, sizeof(seg));
 	seg.attr = SG_PHYSICAL;
-	seg.name = smalloc(NAMELEN);
-	snprint(seg.name, NAMELEN, "clgd546xmmio");
+	kstrdup(&seg.name, "clgd546xmmio");
 	seg.pa = scr->io;
 	seg.size = p->mem[1].size;
 	addphysseg(&seg);
@@ -120,8 +119,7 @@ clgd546xenable(VGAscr* scr)
 		scr->apsize = size;
 		memset(&seg, 0, sizeof(seg));
 		seg.attr = SG_PHYSICAL;
-		seg.name = smalloc(NAMELEN);
-		snprint(seg.name, NAMELEN, "clgd546xscreen");
+		kstrdup(&seg.name, "clgd546xscreen");
 		seg.pa = aperture;
 		seg.size = size;
 		addphysseg(&seg);

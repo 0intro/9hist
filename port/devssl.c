@@ -66,14 +66,15 @@ struct Dstate
 	OneWay	out;
 
 	/* protections */
-	char	user[NAMELEN];
+	char	*user;
 	int	perm;
 };
 
 Lock	dslock;
 int	dshiwat;
 int	maxdstate = 128;
-Dstate** dstate;
+char	**dsname;
+Dstate	**dstate;
 char	*encalgs;
 char	*hashalgs;
 
@@ -123,42 +124,54 @@ char *sslnames[] = {
 };
 
 static int
-sslgen(Chan *c, Dirtab *d, int nd, int s, Dir *dp)
+sslgen(Chan *c, char*, Dirtab *d, int nd, int s, Dir *dp)
 {
 	Qid q;
 	Dstate *ds;
 	char name[16], *p, *nm;
+	int ft;
 
 	USED(nd);
 	USED(d);
+
+	q.type = QTFILE;
 	q.vers = 0;
-	switch(TYPE(c->qid)) {
+
+	ft = TYPE(c->qid);
+	switch(ft) {
 	case Qtopdir:
 		if(s == DEVDOTDOT){
-			q.path = QID(0, Qtopdir)|CHDIR;
-			devdir(c, q, "#D", 0, eve, CHDIR|0555, dp);
+			q.path = QID(0, Qtopdir);
+			q.type = QTDIR;
+			devdir(c, q, "#D", 0, eve, 0555, dp);
 			return 1;
 		}
 		if(s > 0)
 			return -1;
-		q.path = QID(0, Qprotodir)|CHDIR;
-		devdir(c, q, "ssl", 0, eve, CHDIR|0555, dp);
+		q.path = QID(0, Qprotodir);
+		q.type = QTDIR;
+		devdir(c, q, "ssl", 0, eve, 0555, dp);
 		return 1;
 	case Qprotodir:
 		if(s == DEVDOTDOT){
-			q.path = QID(0, Qtopdir)|CHDIR;
-			devdir(c, q, ".", 0, eve, CHDIR|0555, dp);
+			q.path = QID(0, Qtopdir);
+			q.type = QTDIR;
+			devdir(c, q, ".", 0, eve, 0555, dp);
 			return 1;
 		}
 		if(s < dshiwat) {
-			sprint(name, "%d", s);
-			q.path = QID(s, Qconvdir)|CHDIR;
+			q.path = QID(s, Qconvdir);
+			q.type = QTDIR;
 			ds = dstate[s];
 			if(ds != 0)
 				nm = ds->user;
 			else
 				nm = eve;
-			devdir(c, q, name, 0, nm, CHDIR|0555, dp);
+			if(dsname[s] == nil){
+				sprint(name, "%d", s);
+				kstrdup(&dsname[s], name);
+			}
+			devdir(c, q, dsname[s], 0, nm, 0555, dp);
 			return 1;
 		}
 		if(s > dshiwat)
@@ -168,8 +181,9 @@ sslgen(Chan *c, Dirtab *d, int nd, int s, Dir *dp)
 		return 1;
 	case Qconvdir:
 		if(s == DEVDOTDOT){
-			q.path = QID(0, Qprotodir)|CHDIR;
-			devdir(c, q, "ssl", 0, eve, CHDIR|0555, dp);
+			q.path = QID(0, Qprotodir);
+			q.type = QTDIR;
+			devdir(c, q, "ssl", 0, eve, 0555, dp);
 			return 1;
 		}
 		ds = dstate[CONV(c->qid)];
@@ -212,11 +226,7 @@ sslgen(Chan *c, Dirtab *d, int nd, int s, Dir *dp)
 		return 1;
 	default:
 		ds = dstate[CONV(c->qid)];
-		if(ds != nil)
-			nm = ds->user;
-		else
-			nm = eve;
-		devdir(c, c->qid, sslnames[TYPE(c->qid)], 0, nm, 0660, dp);
+		devdir(c, c->qid, sslnames[TYPE(c->qid)], 0, ds->user, 0660, dp);
 		return 1;
 	}
 	return -1;
@@ -228,21 +238,22 @@ sslattach(char *spec)
 	Chan *c;
 
 	c = devattach('D', spec);
-	c->qid.path = QID(0, Qtopdir)|CHDIR;
+	c->qid.path = QID(0, Qtopdir);
 	c->qid.vers = 0;
+	c->qid.type = QTDIR;
 	return c;
 }
 
-static int
-sslwalk(Chan *c, char *name)
+static Walkqid*
+sslwalk(Chan *c, Chan *nc, char **name, int nname)
 {
-	return devwalk(c, name, 0, 0, sslgen);
+	return devwalk(c, nc, name, nname, nil, 0, sslgen);
 }
 
-static void
-sslstat(Chan *c, char *db)
+static int
+sslstat(Chan *c, uchar *db, int n)
 {
-	devstat(c, db, 0, 0, sslgen);
+	return devstat(c, db, n, nil, 0, sslgen);
 }
 
 static Chan*
@@ -250,6 +261,7 @@ sslopen(Chan *c, int omode)
 {
 	Dstate *s, **pp;
 	int perm;
+	int ft;
 
 	perm = 0;
 	omode &= 3;
@@ -265,7 +277,8 @@ sslopen(Chan *c, int omode)
 		break;
 	}
 
-	switch(TYPE(c->qid)) {
+	ft = TYPE(c->qid);
+	switch(ft) {
 	default:
 		panic("sslopen");
 	case Qtopdir:
@@ -315,13 +328,12 @@ sslopen(Chan *c, int omode)
 	return c;
 }
 
-static void
-sslwstat(Chan *c, char *dp)
+static int
+sslwstat(Chan *c, uchar *db, int n)
 {
-	Dir d;
+	Dir *dir;
 	Dstate *s;
-
-	convM2D(dp, &d);
+	int m;
 
 	s = dstate[CONV(c->qid)];
 	if(s == 0)
@@ -329,16 +341,24 @@ sslwstat(Chan *c, char *dp)
 	if(strcmp(s->user, up->user) != 0)
 		error(Eperm);
 
-	memmove(s->user, d.uid, NAMELEN);
-	s->perm = d.mode;
+	dir = smalloc(sizeof(Dir)+n);
+	m = convM2D(db, n, &dir[0], (char*)&dir[1]);
+	if(m > 0){
+		kstrdup(&s->user, dir->uid);
+		s->perm = dir->mode;
+	}
+	free(dir);
+	return m;
 }
 
 static void
 sslclose(Chan *c)
 {
 	Dstate *s;
+	int ft;
 
-	switch(TYPE(c->qid)) {
+	ft = TYPE(c->qid);
+	switch(ft) {
 	case Qctl:
 	case Qdata:
 	case Qsecretin:
@@ -358,6 +378,8 @@ sslclose(Chan *c)
 		dstate[CONV(c->qid)] = 0;
 		unlock(&dslock);
 
+		if(s->user != nil)
+			free(s->user);
 		sslhangup(s);
 		if(s->c)
 			cclose(s->c);
@@ -506,11 +528,11 @@ qremove(Block **l, int n, int discard)
 }
 
 /*
- *  We can't let Eintrs lose data, since doing so will get
- *  us out of sync with the sender and break the reliablity
- *  of the channel.  Eintr only happens during the reads in
- *  consume.  Therefore we put back any bytes consumed before
- *  the last call to ensure.
+ *  We can't let Eintr's lose data since the program
+ *  doing the read may be able to handle it.  The only
+ *  places Eintr is possible is during the read's in consume.
+ *  Therefore, we make sure we can always put back the bytes
+ *  consumed before the last ensure.
  */
 static Block*
 sslbread(Chan *c, long n, ulong)
@@ -529,10 +551,8 @@ sslbread(Chan *c, long n, ulong)
 
 	nconsumed = 0;
 	if(waserror()){
-		if(strcmp(up->error, Eintr) == 0 && !waserror()){
+		if(strcmp(up->error, Eintr) != 0)
 			regurgitate(s.s, consumed, nconsumed);
-			poperror();
-		}
 		qunlock(&s.s->in.q);
 		nexterror();
 	}
@@ -627,23 +647,28 @@ sslread(Chan *c, void *a, long n, vlong off)
 	int i;
 	char buf[128];
 	ulong offset = off;
+	int ft;
 
-	if(c->qid.path & CHDIR)
+	if(c->qid.type & QTDIR)
 		return devdirread(c, a, n, 0, 0, sslgen);
 
-	switch(TYPE(c->qid)) {
+	ft = TYPE(c->qid);
+	switch(ft) {
 	default:
 		error(Ebadusefd);
 	case Qctl:
-		sprint(buf, "%lud", CONV(c->qid));
+		ft = CONV(c->qid);
+		sprint(buf, "%d", ft);
 		return readstr(offset, a, n, buf);
 	case Qdata:
 		b.b = sslbread(c, n, offset);
 		break;
 	case Qencalgs:
 		return readstr(offset, a, n, encalgs);
+		break;
 	case Qhashalgs:
 		return readstr(offset, a, n, hashalgs);
+		break;
 	}
 
 	if(waserror()){
@@ -777,7 +802,9 @@ sslbwrite(Chan *c, Block *b, ulong offset)
 
 		s.s->out.mid++;
 
+		m = BLEN(nb);
 		devtab[s.s->c->type]->bwrite(s.s->c, nb, s.s->c->offset);
+		s.s->c->offset += m;
 	}
 	qunlock(&s.s->out.q);
 	poperror();
@@ -1149,6 +1176,9 @@ sslinit(void)
 	if((dstate = smalloc(sizeof(Dstate*) * maxdstate)) == 0)
 		panic("sslinit");
 
+	if((dsname = smalloc(sizeof(char*) * maxdstate)) == 0)
+		panic("sslinit");
+
 	n = 1;
 	for(e = encrypttab; e->name != nil; e++)
 		n += strlen(e->name) + 1;
@@ -1185,7 +1215,6 @@ Dev ssldevtab = {
 	devreset,
 	sslinit,
 	sslattach,
-	devclone,
 	sslwalk,
 	sslstat,
 	sslopen,
@@ -1394,6 +1423,7 @@ static Dstate*
 dsclone(Chan *ch)
 {
 	Dstate **pp, **ep, **np;
+	char **names;
 	int newmax;
 
 	if(waserror()) {
@@ -1417,13 +1447,20 @@ dsclone(Chan *ch)
 		newmax = 2 * maxdstate;
 		if(newmax > Maxdstate)
 			newmax = Maxdstate;
+
 		np = smalloc(sizeof(Dstate*) * newmax);
 		if(np == 0)
 			error(Enomem);
 		memmove(np, dstate, sizeof(Dstate*) * maxdstate);
 		dstate = np;
 		pp = &dstate[maxdstate];
-		memset(pp, 0, sizeof(Dstate*)*(newmax - maxdstate));
+
+		names = smalloc(sizeof(char*) * newmax);
+		if(names == 0)
+			error(Enomem);
+		memmove(names, dsname, sizeof(char*) * maxdstate);
+		dsname = names;
+
 		maxdstate = newmax;
 		dsnew(ch, pp);
 	}
@@ -1446,7 +1483,7 @@ dsnew(Chan *ch, Dstate **pp)
 	memset(s, 0, sizeof(*s));
 	s->state = Sincomplete;
 	s->ref = 1;
-	strncpy(s->user, up->user, sizeof(s->user));
+	kstrdup(&s->user, up->user);
 	s->perm = 0660;
 	t = TYPE(ch->qid);
 	if(t == Qclonus)

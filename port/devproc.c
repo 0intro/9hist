@@ -8,9 +8,9 @@
 
 enum
 {
-	Qctl,
 	Qdir,
 	Qargs,
+	Qctl,
 	Qfd,
 	Qfpregs,
 	Qkregs,
@@ -28,14 +28,19 @@ enum
 	Qprofile,
 };
 
-#define	STATSIZE	(2*NAMELEN+12+9*12)
+#define	STATSIZE	(2*KNAMELEN+12+9*12)
+/*
+ * Status, fd, and ns are left fully readable (0444) because of their use in debugging,
+ * particularly on shared servers.
+ * Arguably, ns and fd shouldn't be readable; if you'd prefer, change them to 0000
+ */
 Dirtab procdir[] =
 {
 	"args",	{Qargs},		0,			0440,
 	"ctl",		{Qctl},		0,			0000,
-	"fd",		{Qfd},		0,			0000,
+	"fd",		{Qfd},		0,			0444,
 	"fpregs",	{Qfpregs},	sizeof(FPsave),		0000,
-	"kregs",	{Qkregs},	sizeof(Ureg),		0440,
+	"kregs",	{Qkregs},	sizeof(Ureg),		0400,
 	"mem",		{Qmem},		0,			0000,
 	"note",		{Qnote},	0,			0000,
 	"noteid",	{Qnoteid},	0,			0664,
@@ -51,7 +56,7 @@ Dirtab procdir[] =
 };
 
 /* Segment type from portdat.h */
-static char *sname[]={ "Text", "Data", "Bss", "Stack", "Shared", "Phys" };
+static char *sname[]={ "Text", "Data", "Bss", "Stack", "Shared", "Phys", };
 
 /*
  * Qids are, in path:
@@ -63,8 +68,8 @@ static char *sname[]={ "Text", "Data", "Bss", "Stack", "Shared", "Phys" };
  */
 #define	QSHIFT	5	/* location in qid of proc slot # */
 
-#define	QID(q)		(((q).path&0x0000001F)>>0)
-#define	SLOT(q)		((((q).path&0x07FFFFFE0)>>QSHIFT)-1)
+#define	QID(q)		((((ulong)(q).path)&0x0000001F)>>0)
+#define	SLOT(q)		(((((ulong)(q).path)&0x07FFFFFE0)>>QSHIFT)-1)
 #define	PID(q)		((q).vers)
 #define	NOTEID(q)	((q).vers)
 
@@ -76,30 +81,38 @@ int	procstopped(void*);
 void	mntscan(Mntwalk*, Proc*);
 
 static int
-procgen(Chan *c, Dirtab *tab, int, int s, Dir *dp)
+procgen(Chan *c, char *name, Dirtab *tab, int, int s, Dir *dp)
 {
 	Qid qid;
 	Proc *p;
 	Segment *q;
-	char buf[NAMELEN];
 	ulong pid, path, perm, len;
 
 	if(s == DEVDOTDOT){
-		c->qid.path = CHDIR;
-		devdir(c, c->qid, "#p", 0, eve, 0555, dp);
+		mkqid(&qid, Qdir, 0, QTDIR);
+		devdir(c, qid, "#p", 0, eve, 0555, dp);
 		return 1;
 	}
 
-	if(c->qid.path == CHDIR){
-		if(s >= conf.nproc)
-			return -1;
+	if(c->qid.path == Qdir){
+		if(name != nil){
+			/* ignore s and use name to find pid */
+			pid = strtol(name, &name, 0);
+			if(pid==0 || name[0]!='\0')
+				return -1;
+			s = procindex(pid);
+			if(s < 0)
+				return -1;
+		}else
+			if(s >= conf.nproc)
+				return -1;
 		p = proctab(s);
 		pid = p->pid;
 		if(pid == 0)
 			return 0;
-		sprint(buf, "%lud", pid);
-		qid = (Qid){CHDIR|((s+1)<<QSHIFT), pid};
-		devdir(c, qid, buf, 0, p->user, CHDIR|0555, dp);
+		sprint(up->genbuf, "%lud", pid);
+		mkqid(&qid, (s+1)<<QSHIFT, pid, QTDIR);
+		devdir(c, qid, up->genbuf, 0, p->user, DMDIR|0555, dp);
 		return 1;
 	}
 	if(s >= nelem(procdir))
@@ -108,7 +121,7 @@ procgen(Chan *c, Dirtab *tab, int, int s, Dir *dp)
 		panic("procgen");
 
 	tab = &procdir[s];
-	path = c->qid.path&~(CHDIR|((1<<QSHIFT)-1));	/* slot component */
+	path = c->qid.path&~(((1<<QSHIFT)-1));	/* slot component */
 
 	p = proctab(SLOT(c->qid));
 	perm = tab->perm;
@@ -131,7 +144,7 @@ procgen(Chan *c, Dirtab *tab, int, int s, Dir *dp)
 		break;
 	}
 
-	qid = (Qid){path|tab->qid.path, c->qid.vers};
+	mkqid(&qid, path|tab->qid.path, c->qid.vers, QTFILE);
 	devdir(c, qid, tab->name, len, p->user, perm, dp);
 	return 1;
 }
@@ -149,30 +162,16 @@ procattach(char *spec)
 	return devattach('p', spec);
 }
 
-static int
-procwalk(Chan *c, char *name)
+static Walkqid*
+procwalk(Chan *c, Chan *nc, char **name, int nname)
 {
-	int s;
-	int pid;
-
-	if(c->qid.path == CHDIR && name[0] != '.'){
-		/* this is a hack to speed walks through a large directory */
-		pid = strtol(name, &name, 0);
-		if(pid <= 0 || *name != 0)
-			return 0;
-		s = procindex(pid);
-		if(s < 0)
-			return 0;
-		c->qid = (Qid){CHDIR|((s+1)<<QSHIFT), pid};
-		return 1;
-	} else
-		return devwalk(c, name, 0, 0, procgen);
+	return devwalk(c, nc, name, nname, 0, 0, procgen);
 }
 
-static void
-procstat(Chan *c, char *db)
+static int
+procstat(Chan *c, uchar *db, int n)
 {
-	devstat(c, db, 0, 0, procgen);
+	return devstat(c, db, n, 0, 0, procgen);
 }
 
 /*
@@ -201,7 +200,7 @@ procopen(Chan *c, int omode)
 	Chan *tc;
 	int pid;
 
-	if(c->qid.path & CHDIR)
+	if(c->qid.type & QTDIR)
 		return devopen(c, omode, 0, 0, procgen);
 
 	p = proctab(SLOT(c->qid));
@@ -285,13 +284,13 @@ procopen(Chan *c, int omode)
 	return tc;
 }
 
-static void
-procwstat(Chan *c, char *db)
+static int
+procwstat(Chan *c, uchar *db, int n)
 {
 	Proc *p;
-	Dir d;
+	Dir *d;
 
-	if(c->qid.path&CHDIR)
+	if(c->qid.type&QTDIR)
 		error(Eperm);
 
 	p = proctab(SLOT(c->qid));
@@ -308,20 +307,23 @@ procwstat(Chan *c, char *db)
 	if(strcmp(up->user, p->user) != 0 && strcmp(up->user, eve) != 0)
 		error(Eperm);
 
-	convM2D(db, &d);
-	if(strcmp(d.uid, p->user) != 0){
-		if(strcmp(up->user, eve) != 0)
-			error(Eperm);
-		else {
-			strncpy(p->user, d.uid, sizeof(p->user));
-			p->user[sizeof(p->user)-1] = 0;
+	d = smalloc(sizeof(Dir)+n);
+	n = convM2D(db, n, &d[0], (char*)&d[1]);
+	if(n > 0){
+		if(strcmp(d->uid, "") != 0 && strcmp(d->uid, p->user) != 0){
+			if(strcmp(up->user, eve) != 0)
+				error(Eperm);
+			else
+				kstrdup(&p->user, d->uid);
 		}
+		p->procmode = d->mode&0777;
 	}
-	p->procmode = d.mode&0777;
 
 	poperror();
 	qunlock(&p->debug);
+	return n;
 }
+
 
 static long
 procoffset(long offset, char *va, int *np)
@@ -343,7 +345,8 @@ procfds(Proc *p, char *va, int count, long offset)
 {
 	Fgrp *f;
 	Chan *c;
-	int n, i;
+	int n, i, w, ww;
+	char buf[32];
 
 	qlock(&p->debug);
 	f = p->fgrp;
@@ -361,15 +364,25 @@ procfds(Proc *p, char *va, int count, long offset)
 	n = readstr(0, va, count, p->dot->name->s);
 	n += snprint(va+n, count-n, "\n");
 	offset = procoffset(offset, va, &n);
+	/* compute width of qid.path */
+	w = 0;
 	for(i = 0; i <= f->maxfd; i++) {
 		c = f->fd[i];
 		if(c == nil)
 			continue;
-		n += snprint(va+n, count-n, "%3d %.2s %C %4ld %.8lux.%.8lud %8lld ",
+		ww = sprint(buf, "%lud", c->qid.vers);
+		if(ww > w)
+			w = ww;
+	}
+	for(i = 0; i <= f->maxfd; i++) {
+		c = f->fd[i];
+		if(c == nil)
+			continue;
+		n += snprint(va+n, count-n, "%3d %.2s %C %4ld (%.16llux %*lud %.2ux) %8lld ",
 			i,
 			&"r w rw"[(c->mode&3)<<1],
 			devtab[c->type]->dc, c->dev,
-			c->qid.path, c->qid.vers,
+			c->qid.path, w, c->qid.vers, c->qid.type,
 			c->offset);
 		n += readstr(0, va+n, count-n, c->name->s);
 		n += snprint(va+n, count-n, "\n");
@@ -433,6 +446,7 @@ procargs(Proc *p, char *buf, int nbuf)
 static long
 procread(Chan *c, void *va, long n, vlong off)
 {
+	int m;
 	long l;
 	Proc *p;
 	Waitq *wq;
@@ -445,7 +459,7 @@ procread(Chan *c, void *va, long n, vlong off)
 	char statbuf[NSEG*32], *srv, flag[10];
 	ulong offset = off;
 
-	if(c->qid.path & CHDIR)
+	if(c->qid.type & QTDIR)
 		return devdirread(c, a, n, 0, 0, procgen);
 
 	p = proctab(SLOT(c->qid));
@@ -454,12 +468,12 @@ procread(Chan *c, void *va, long n, vlong off)
 
 	switch(QID(c->qid)){
 	case Qargs:
-		j = procargs(p, statbuf, sizeof statbuf);
+		j = procargs(p, p->genbuf, sizeof p->genbuf);
 		if(offset >= j)
 			return 0;
 		if(offset+n > j)
 			n = j-offset;
-		memmove(a, &statbuf[offset], n);
+		memmove(a, &p->genbuf[offset], n);
 		return n;
 
 	case Qmem:
@@ -491,6 +505,7 @@ procread(Chan *c, void *va, long n, vlong off)
 			return n;
 		}
 		error(Ebadarg);
+
 	case Qprofile:
 		s = p->seg[TSEG];
 		if(s == 0 || s->profile == 0)
@@ -512,15 +527,19 @@ procread(Chan *c, void *va, long n, vlong off)
 		}
 		if(p->pid != PID(c->qid))
 			error(Eprocdied);
-		if(n < ERRLEN)
+		if(n < 1)	/* must accept at least the '\0' */
 			error(Etoosmall);
 		if(p->nnote == 0)
 			n = 0;
 		else {
-			memmove(va, p->note[0].msg, ERRLEN);
+			m = strlen(p->note[0].msg) + 1;
+			if(m > n)
+				m = n;
+			memmove(va, p->note[0].msg, m);
+			((char*)va)[m-1] = '\0';
 			p->nnote--;
 			memmove(p->note, p->note+1, p->nnote*sizeof(Note));
-			n = ERRLEN;
+			n = m;
 		}
 		if(p->nnote == 0)
 			p->notepending = 0;
@@ -571,10 +590,10 @@ procread(Chan *c, void *va, long n, vlong off)
 		if(sps == 0)
 			sps = statename[p->state];
 		memset(statbuf, ' ', sizeof statbuf);
-		memmove(statbuf+0*NAMELEN, p->text, strlen(p->text));
-		memmove(statbuf+1*NAMELEN, p->user, strlen(p->user));
-		memmove(statbuf+2*NAMELEN, sps, strlen(sps));
-		j = 2*NAMELEN + 12;
+		memmove(statbuf+0*KNAMELEN, p->text, strlen(p->text));
+		memmove(statbuf+1*KNAMELEN, p->user, strlen(p->user));
+		memmove(statbuf+2*KNAMELEN, sps, strlen(sps));
+		j = 2*KNAMELEN + 12;
 
 		for(i = 0; i < 6; i++) {
 			l = p->time[i];
@@ -675,12 +694,12 @@ procread(Chan *c, void *va, long n, vlong off)
 			poperror();
 			return i;
 		}
-		int2flag(mw->cm->flag, flag);
+		int2flag(mw->cm->mflag, flag);
 		if(strcmp(mw->cm->to->name->s, "#M") == 0){
 			srv = srvname(mw->cm->to->mchan);
-			i = snprint(a, n, "mount %s %s %s %.*s\n", flag,
+			i = snprint(a, n, "mount %s %s %s %s\n", flag,
 				srv==nil? mw->cm->to->mchan->name->s : srv,
-				mw->mh->from->name->s, NAMELEN, mw->cm->spec);
+				mw->mh->from->name->s, mw->cm->spec? mw->cm->spec : "");
 			free(srv);
 		}else
 			i = snprint(a, n, "bind %s %s %s\n", flag,
@@ -741,11 +760,11 @@ procwrite(Chan *c, void *va, long n, vlong off)
 {
 	int id;
 	Proc *p, *t, *et;
-	char *a, buf[ERRLEN];
+	char *a, buf[ERRMAX];
 	ulong offset = off;
 
 	a = va;
-	if(c->qid.path & CHDIR)
+	if(c->qid.type & QTDIR)
 		error(Eisdir);
 
 	p = proctab(SLOT(c->qid));
@@ -799,7 +818,7 @@ procwrite(Chan *c, void *va, long n, vlong off)
 	case Qnote:
 		if(p->kp)
 			error(Eperm);
-		if(n >= ERRLEN-1)
+		if(n >= ERRMAX-1)
 			error(Etoobig);
 		memmove(buf, va, n);
 		buf[n] = 0;
@@ -840,7 +859,6 @@ Dev procdevtab = {
 	devreset,
 	procinit,
 	procattach,
-	devclone,
 	procwalk,
 	procstat,
 	procopen,
@@ -960,11 +978,9 @@ procctlreq(Proc *p, char *va, int n)
 {
 	Segment *s;
 	int i, npc;
-	char buf[NAMELEN];
+	char buf[64];
 
-	if(n > NAMELEN)
-		n = NAMELEN;
-	strncpy(buf, va, n);
+	kstrcpy(buf, va, sizeof buf);
 
 	if(strncmp(buf, "stop", 4) == 0)
 		procstopwait(p, Proc_stopme);

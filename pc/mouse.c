@@ -33,6 +33,7 @@ static int accelerated;
 static void
 serialmouse(int port, char *type, int setspeed)
 {
+#ifdef notdef
 	if(mousetype == Mouseserial)
 		error(Emouseset);
 
@@ -43,11 +44,15 @@ serialmouse(int port, char *type, int setspeed)
 	if(setspeed)
 		setspeed = 1200;
 	if(type && *type == 'M')
-		ns16552special(port, setspeed, 0, 0, m3mouseputc);
+		uartspecial(port, setspeed, 0, 0, m3mouseputc);
 	else
-		ns16552special(port, setspeed, 0, 0, mouseputc);
+		uartspecial(port, setspeed, 0, 0, mouseputc);
 	mousetype = Mouseserial;
 	packetsize = 3;
+#else
+	error("serial mouse not supported yet");
+	USED(port, type, setspeed);
+#endif /* notdef */
 }
 
 /*
@@ -131,7 +136,7 @@ ps2mouseputc(int c, int shift)
 		}
 		dx = msg[1];
 		dy = -msg[2];
-		mousetrack(buttons, dx, dy);
+		mousetrack(dx, dy, buttons, TK2MS(MACHP(0)->ticks));
 	}
 	return;
 }

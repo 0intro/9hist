@@ -77,7 +77,10 @@ key(int islocal, Method *mp)
 		warning("can't read nvram");
 	}
 	check(safe->machkey, DESKEYLEN, safe->machsum, "bad nvram key");
+#define NAMELEN 28
+/*BUG: THIS IS TOTALLY BOGUS */
 	check(safe->authid, NAMELEN, safe->authidsum, "bad authentication id");
+#undef NAMELEN
 	check(safe->authdom, DOMLEN, safe->authdomsum, "bad authentication domain");
 	if(kflag){
 		do

@@ -40,7 +40,9 @@ extern char Enoswap[];		/* swap space full */
 extern char Esoverlap[];	/* segments overlap */
 extern char Emouseset[];	/* mouse type already set */
 extern char Eshort[];		/* i/o count too small */
-extern char Egreg[];		/* xterm: Error 50, errno 1: Too big */
+extern char Egreg[];		/* ken has left the building */
 extern char Ebadspec[];		/* bad attach specifier */
 extern char Enoreg[];		/* process has no saved registers */
 extern char Enoattach[];	/* mount/attach disallowed */
+extern char Eshortstat[];	/* stat buffer too small */
+extern char Ebadstat[];		/* malformed stat buffer */

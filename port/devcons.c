@@ -5,11 +5,17 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
+#include	<auth.h>
+
 void	(*consdebug)(void) = nil;
+void	(*screenputs)(char*, int) = nil;
+void	(*serialputs)(char*, int) = nil;
 
 Queue*	kbdq;			/* unprocessed console input */
 Queue*	lineq;			/* processed console input */
-Queue*	printq;			/* console output */
+Queue*	serialoq;			/* serial console output */
+Queue*	kprintoq;			/* console output, for /dev/kprint */
+Lock		kprintinuse;		/* test and set whether /dev/kprint is open */
 
 static struct
 {
@@ -31,7 +37,7 @@ static struct
 	char	*ie;
 } kbd;
 
-char	sysname[NAMELEN];
+char	*sysname;
 vlong	fasthz;
 
 static void	seedrand(void);
@@ -52,8 +58,8 @@ printinit(void)
 int
 consactive(void)
 {
-	if(printq)
-		return qlen(printq) > 0;
+	if(serialoq)
+		return qlen(serialoq) > 0;
 	return 0;
 }
 
@@ -81,38 +87,47 @@ putstrn0(char *str, int n, int usewrite)
 	char *t;
 
 	/*
-	 *  if there's an attached bit mapped display,
-	 *  put the message there.  screenputs is defined
-	 *  as a null macro for systems that have no such
-	 *  display.
-	 */
-	screenputs(str, n);
-
-	/*
+	 *  if someone is reading /dev/kprint and the message
+	 *  is from the kernel (as opposed to from conswrite),
+	 *  put the message there.
+	 *  if not and there's an attached bit mapped display,
+	 *  put the message there.
+	 *
 	 *  if there's a serial line being used as a console,
 	 *  put the message there.
 	 */
-	if(printq == 0)
+	if(kprintoq != nil && !qisclosed(kprintoq)){
+		if(usewrite)
+			qwrite(kprintoq, str, n);
+		else
+			qiwrite(kprintoq, str, n);
+	}else if(screenputs != nil)
+		screenputs(str, n);
+
+	if(serialoq == nil){
+		if(serialputs != nil)
+			serialputs(str, n);
 		return;
+	}
 
 	while(n > 0) {
 		t = memchr(str, '\n', n);
 		if(t && !kbd.raw) {
 			m = t-str;
 			if(usewrite){
-				qwrite(printq, str, m);
-				qwrite(printq, "\r\n", 2);
+				qwrite(serialoq, str, m);
+				qwrite(serialoq, "\r\n", 2);
 			} else {
-				qiwrite(printq, str, m);
-				qiwrite(printq, "\r\n", 2);
+				qiwrite(serialoq, str, m);
+				qiwrite(serialoq, "\r\n", 2);
 			}
 			n -= m+1;
 			str = t+1;
 		} else {
 			if(usewrite)
-				qwrite(printq, str, n);
+				qwrite(serialoq, str, n);
 			else
-				qiwrite(printq, str, n);
+				qiwrite(serialoq, str, n);
 			break;
 		}
 	}
@@ -190,8 +205,10 @@ iprint(char *fmt, ...)
 	va_start(arg, fmt);
 	n = doprint(buf, buf+sizeof(buf), fmt, arg) - buf;
 	va_end(arg);
-	serialputs(buf, n);
-//	screenputs(buf, n);
+	if(screenputs != nil)
+		screenputs(buf, n);
+	if(serialputs != nil)
+		serialputs(buf, n);
 	splx(s);
 
 	return n;
@@ -203,6 +220,13 @@ panic(char *fmt, ...)
 	int n;
 	va_list arg;
 	char buf[PRINTSIZE];
+	static int panicking;
+
+	kprintoq = nil;	/* don't try to write to /dev/kprint */
+
+	if(panicking)
+		for(;;);
+	panicking = 1;
 
 	splhi();
 	strcpy(buf, "panic: ");
@@ -210,7 +234,8 @@ panic(char *fmt, ...)
 	n = doprint(buf+strlen(buf), buf+sizeof(buf), fmt, arg) - buf;
 	va_end(arg);
 	buf[n] = '\n';
-	serialputs(buf, n+1);
+	if(serialputs != nil)
+		serialputs(buf, n+1);
 	if(consdebug)
 		consdebug();
 	spllo();
@@ -285,7 +310,7 @@ echoscreen(char *buf, int n)
 }
 
 static void
-echoprintq(char *buf, int n)
+echoserialoq(char *buf, int n)
 {
 	char *e, *p;
 	char ebuf[128];
@@ -295,7 +320,7 @@ echoprintq(char *buf, int n)
 	e = ebuf + sizeof(ebuf) - 4;
 	while(n-- > 0){
 		if(p >= e){
-			qiwrite(printq, ebuf, p - ebuf);
+			qiwrite(serialoq, ebuf, p - ebuf);
 			p = ebuf;
 		}
 		x = *buf++;
@@ -310,7 +335,7 @@ echoprintq(char *buf, int n)
 			*p++ = x;
 	}
 	if(p != ebuf)
-		qiwrite(printq, ebuf, p - ebuf);
+		qiwrite(serialoq, ebuf, p - ebuf);
 }
 
 void
@@ -385,9 +410,10 @@ echo(char *buf, int n)
 	qproduce(kbdq, buf, n);
 	if(kbd.raw)
 		return;
-	echoscreen(buf, n);
-	if(printq)
-		echoprintq(buf, n);
+	if(screenputs != nil)
+		echoscreen(buf, n);
+	if(serialoq)
+		echoserialoq(buf, n);
 }
 
 /*
@@ -476,18 +502,17 @@ kbdputcinit(void)
 
 enum{
 	Qdir,
-	Qauth,
-	Qauthcheck,
-	Qauthent,
 	Qbintime,
 	Qcons,
 	Qconsctl,
 	Qcputime,
 	Qdrivers,
 	Qkey,
+	Qkprint,
 	Qhostdomain,
 	Qhostowner,
 	Qnull,
+	Qosversion,
 	Qpgrpid,
 	Qpid,
 	Qppid,
@@ -507,18 +532,18 @@ enum
 };
 
 static Dirtab consdir[]={
-	"authenticate",	{Qauth},	0,		0666,
-	"authcheck",	{Qauthcheck},	0,		0666,
-	"authenticator", {Qauthent},	0,		0666,
+	".",	{Qdir, 0, QTDIR},	0,		DMDIR|0555,
 	"bintime",	{Qbintime},	24,		0664,
 	"cons",		{Qcons},	0,		0660,
 	"consctl",	{Qconsctl},	0,		0220,
 	"cputime",	{Qcputime},	6*NUMSIZE,	0444,
 	"drivers",	{Qdrivers},	0,		0644,
 	"hostdomain",	{Qhostdomain},	DOMLEN,		0664,
-	"hostowner",	{Qhostowner},	NAMELEN,	0664,
+	"hostowner",	{Qhostowner},	0,	0664,
 	"key",		{Qkey},		DESKEYLEN,	0622,
+	"kprint",		{Qkprint, 0, QTEXCL},	0,	DMEXCL|0440,
 	"null",		{Qnull},	0,		0666,
+	"osversion",	{Qosversion},	0,		0444,
 	"pgrpid",	{Qpgrpid},	NUMSIZE,	0444,
 	"pid",		{Qpid},		NUMSIZE,	0444,
 	"ppid",		{Qppid},	NUMSIZE,	0444,
@@ -528,7 +553,7 @@ static Dirtab consdir[]={
 	"sysname",	{Qsysname},	0,		0664,
 	"sysstat",	{Qsysstat},	0,		0666,
 	"time",		{Qtime},	NUMSIZE+3*VLNUMSIZE,	0664,
-	"user",		{Quser},	NAMELEN,	0666,
+	"user",		{Quser},	0,	0666,
 	"zero",		{Qzero},	0,		0444,
 };
 
@@ -575,39 +600,54 @@ consattach(char *spec)
 	return devattach('c', spec);
 }
 
-static int
-conswalk(Chan *c, char *name)
+static Walkqid*
+conswalk(Chan *c, Chan *nc, char **name, int nname)
 {
-	return devwalk(c, name, consdir, nelem(consdir), devgen);
+	return devwalk(c, nc, name,nname, consdir, nelem(consdir), devgen);
 }
 
-static void
-consstat(Chan *c, char *dp)
+static int
+consstat(Chan *c, uchar *dp, int n)
 {
-	devstat(c, dp, consdir, nelem(consdir), devgen);
+	return devstat(c, dp, n, consdir, nelem(consdir), devgen);
 }
 
 static Chan*
 consopen(Chan *c, int omode)
 {
-	c->aux = 0;
-	switch(c->qid.path){
+	c->aux = nil;
+	c = devopen(c, omode, consdir, nelem(consdir), devgen);
+	switch((ulong)c->qid.path){
 	case Qconsctl:
-		if(!iseve())
-			error(Eperm);
 		qlock(&kbd);
 		kbd.ctl++;
 		qunlock(&kbd);
 		break;
+
+	case Qkprint:
+		if(!canlock(&kprintinuse)){
+			c->flag &= ~COPEN;
+			error(Einuse);
+		}
+		if(kprintoq == nil){
+			kprintoq = qopen(8*1024, -1, 0, 0);
+			if(kprintoq == nil){
+				c->flag &= ~COPEN;
+				error(Enomem);
+			}
+			qnoblock(kprintoq, 1);
+		}else
+			qreopen(kprintoq);
+		break;
 	}
-	return devopen(c, omode, consdir, nelem(consdir), devgen);
+	return c;
 }
 
 static void
 consclose(Chan *c)
 {
+	switch((ulong)c->qid.path){
 	/* last close of control file turns off raw */
-	switch(c->qid.path){
 	case Qconsctl:
 		if(c->flag&COPEN){
 			qlock(&kbd);
@@ -616,10 +656,14 @@ consclose(Chan *c)
 			qunlock(&kbd);
 		}
 		break;
-	case Qauth:
-	case Qauthcheck:
-	case Qauthent:
-		authclose(c);
+
+	/* close of kprint allows other opens */
+	case Qkprint:
+		if(c->flag & COPEN){
+			unlock(&kprintinuse);
+			qhangup(kprintoq, nil);
+		}
+		break;
 	}
 }
 
@@ -636,7 +680,7 @@ consread(Chan *c, void *buf, long n, vlong off)
 
 	if(n <= 0)
 		return n;
-	switch(c->qid.path & ~CHDIR){
+	switch((ulong)c->qid.path){
 	case Qdir:
 		return devdirread(c, buf, n, consdir, nelem(consdir), devgen);
 
@@ -708,6 +752,9 @@ consread(Chan *c, void *buf, long n, vlong off)
 		memmove(buf, tmp+k, n);
 		return n;
 
+	case Qkprint:
+		return qread(kprintoq, buf, n);
+
 	case Qpgrpid:
 		return readnum((ulong)offset, buf, n, up->pgrp->pgrpid, NUMSIZE);
 
@@ -725,15 +772,6 @@ consread(Chan *c, void *buf, long n, vlong off)
 
 	case Qkey:
 		return keyread(buf, n, offset);
-
-	case Qauth:
-		return authread(c, cbuf, n);
-
-	case Qauthcheck:
-		return authcheckread(c, cbuf, n);
-
-	case Qauthent:
-		return authentread(c, cbuf, n);
 
 	case Qhostowner:
 		return readstr((ulong)offset, buf, n, eve);
@@ -784,6 +822,8 @@ consread(Chan *c, void *buf, long n, vlong off)
 		return readstr((ulong)offset, buf, n, tmp);
 
 	case Qsysname:
+		if(sysname == nil)
+			return 0;
 		return readstr((ulong)offset, buf, n, sysname);
 
 	case Qrandom:
@@ -804,8 +844,12 @@ consread(Chan *c, void *buf, long n, vlong off)
 		memset(buf, 0, n);
 		return n;
 
+	case Qosversion:
+		n = readstr((ulong)offset, buf, n, "2000");
+		return n;
+
 	default:
-		print("consread %lux\n", c->qid.path);
+		print("consread 0x%llux\n", c->qid.path);
 		error(Egreg);
 	}
 	return -1;		/* never reached */
@@ -822,7 +866,7 @@ conswrite(Chan *c, void *va, long n, vlong off)
 	Chan *swc;
 	ulong offset = off;
 
-	switch(c->qid.path){
+	switch((ulong)c->qid.path){
 	case Qcons:
 		/*
 		 * Can't page fault in putstrn, so copy the data locally.
@@ -890,15 +934,6 @@ conswrite(Chan *c, void *va, long n, vlong off)
 	case Quser:
 		return userwrite(a, n);
 
-	case Qauth:
-		return authwrite(c, a, n);
-
-	case Qauthcheck:
-		return authcheck(c, a, n);
-
-	case Qauthent:
-		return authentwrite(c, a, n);
-
 	case Qnull:
 		break;
 
@@ -958,16 +993,17 @@ conswrite(Chan *c, void *va, long n, vlong off)
 	case Qsysname:
 		if(offset != 0)
 			error(Ebadarg);
-		if(n <= 0 || n >= NAMELEN)
+		if(n <= 0 || n >= sizeof buf)
 			error(Ebadarg);
-		strncpy(sysname, a, n);
-		sysname[n] = 0;
-		if(sysname[n-1] == '\n')
-			sysname[n-1] = 0;
+		strncpy(buf, a, n);
+		buf[n] = 0;
+		if(buf[n-1] == '\n')
+			buf[n-1] = 0;
+		kstrdup(&sysname, buf);
 		break;
 
 	default:
-		print("conswrite: %lud\n", c->qid.path);
+		print("conswrite: 0x%llux\n", c->qid.path);
 		error(Egreg);
 	}
 	return n;
@@ -976,9 +1012,9 @@ conswrite(Chan *c, void *va, long n, vlong off)
 void
 setterm(char *f)
 {
-	char buf[2*NAMELEN];
+	char buf[64];
 
-	sprint(buf, f, conffile);
+	snprint(buf, sizeof buf, f, conffile);
 	ksetenv("terminal", buf);
 }
 
@@ -989,7 +1025,6 @@ Dev consdevtab = {
 	devreset,
 	consinit,
 	consattach,
-	devclone,
 	conswalk,
 	consstat,
 	consopen,

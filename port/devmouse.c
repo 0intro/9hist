@@ -61,6 +61,7 @@ enum{
 };
 
 static Dirtab mousedir[]={
+	".",	{Qdir, 0, QTDIR},	0,			DMDIR|0555,
 	"cursor",	{Qcursor},	0,			0666,
 	"mouse",	{Qmouse},	0,			0666,
 	"mousein",	{Qmousein},	0,			0220,
@@ -102,32 +103,28 @@ mouseattach(char *spec)
 	return devattach('m', spec);
 }
 
-static Chan*
-mouseclone(Chan *c, Chan *nc)
+static Walkqid*
+mousewalk(Chan *c, Chan *nc, char **name, int nname)
 {
-	nc = devclone(c, nc);
-	if(c->qid.path != CHDIR)
+	Walkqid *wq;
+
+	wq = devwalk(c, nc, name, nname, mousedir, nelem(mousedir), devgen);
+	if(wq != nil && wq->clone != c && (wq->clone->qid.type&QTDIR)==0)
 		incref(&mouse);
-	return nc;
+	return wq;
 }
 
 static int
-mousewalk(Chan *c, char *name)
+mousestat(Chan *c, uchar *db, int n)
 {
-	return devwalk(c, name, mousedir, nelem(mousedir), devgen);
-}
-
-static void
-mousestat(Chan *c, char *db)
-{
-	devstat(c, db, mousedir, nelem(mousedir), devgen);
+	return devstat(c, db, n, mousedir, nelem(mousedir), devgen);
 }
 
 static Chan*
 mouseopen(Chan *c, int omode)
 {
-	switch(c->qid.path){
-	case CHDIR:
+	switch((ulong)c->qid.path){
+	case Qdir:
 		if(omode != OREAD)
 			error(Eperm);
 		break;
@@ -171,7 +168,7 @@ mousecreate(Chan*, char*, int, ulong)
 static void
 mouseclose(Chan *c)
 {
-	if(c->qid.path!=CHDIR && (c->flag&COPEN)){
+	if((c->qid.type&QTDIR)==0 && (c->flag&COPEN)){
 		lock(&mouse);
 		if(c->qid.path == Qmouse)
 			mouse.open = 0;
@@ -202,8 +199,8 @@ mouseread(Chan *c, void *va, long n, vlong off)
 	int b;
 
 	p = va;
-	switch(c->qid.path){
-	case CHDIR:
+	switch((ulong)c->qid.path){
+	case Qdir:
 		return devdirread(c, va, n, mousedir, nelem(mousedir), devgen);
 
 	case Qcursor:
@@ -311,11 +308,11 @@ mousewrite(Chan *c, void *va, long n, vlong)
 	char *p;
 	Point pt;
 	char buf[64], *field[3];
-	int nf, b;
+	int nf, b, msec;
 
 	p = va;
-	switch(c->qid.path){
-	case CHDIR:
+	switch((ulong)c->qid.path){
+	case Qdir:
 		error(Eisdir);
 
 	case Qcursor:
@@ -377,7 +374,10 @@ mousewrite(Chan *c, void *va, long n, vlong)
 		if(p == 0)
 			error(Eshort);
 		b = strtol(p, &p, 0);
-		mousetrack(b, pt.x, pt.y);
+		msec = strtol(p, &p, 0);
+		if(msec == 0)
+			msec = TK2MS(MACHP(0)->ticks);
+		mousetrack(pt.x, pt.y, b, msec);
 		return n;
 		
 	case Qmouse:
@@ -412,7 +412,6 @@ Dev mousedevtab = {
 	mousereset,
 	mouseinit,
 	mouseattach,
-	mouseclone,
 	mousewalk,
 	mousestat,
 	mouseopen,
@@ -443,7 +442,7 @@ static void
 mouseclock(void)
 {
 	if(mouse.track){
-		mousetrack(mouse.buttons, mouse.dx, mouse.dy);
+		mousetrack(mouse.dx, mouse.dy, mouse.buttons, TK2MS(MACHP(0)->ticks));
 		mouse.track = 0;
 		mouse.dx = 0;
 		mouse.dy = 0;
@@ -490,7 +489,7 @@ scale(int x)
  *  awaken any waiting procs.
  */
 void
-mousetrack(int b, int dx, int dy)
+mousetrack(int dx, int dy, int b, int msec)
 {
 	int x, y, lastb;
 
@@ -517,7 +516,7 @@ mousetrack(int b, int dx, int dy)
 	mouse.buttons = b;
 	mouse.redraw = 1;
 	mouse.counter++;
-	mouse.msec = TK2MS(MACHP(0)->ticks);
+	mouse.msec = msec;
 
 	/*
 	 * if the queue fills, we discard the entire queue and don't
@@ -563,7 +562,7 @@ m3mouseputc(Queue*, int c)
 			/* an extra byte gets sent for the middle button */
 			middle = (c&0x20) ? 2 : 0;
 			newbuttons = (mouse.buttons & ~2) | middle;
-			mousetrack(newbuttons, 0, 0);
+			mousetrack(0, 0, newbuttons, TK2MS(MACHP(0)->ticks));
 			return 0;
 		}
 	}
@@ -575,7 +574,7 @@ m3mouseputc(Queue*, int c)
 		dx = (x>>8) | msg[1];
 		x = (msg[0]&0xc)<<12;
 		dy = (x>>8) | msg[2];
-		mousetrack(newbuttons, dx, dy);
+		mousetrack(dx, dy, newbuttons, TK2MS(MACHP(0)->ticks));
 	}
 	return 0;
 }
@@ -602,7 +601,7 @@ mouseputc(Queue*, int c)
 		newbuttons = b[((msg[0]&7)^7) | (mouseshifted ? 8 : 0)];
 		dx = msg[1]+msg[3];
 		dy = -(msg[2]+msg[4]);
-		mousetrack(newbuttons, dx, dy);
+		mousetrack(dx, dy, newbuttons, TK2MS(MACHP(0)->ticks));
 		nb = 0;
 	}
 	return 0;

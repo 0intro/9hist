@@ -17,7 +17,7 @@ static Pcidev *		pcidev;
 #define DBGINTR	0x04
 #define DBGINTS	0x08
 
-int debug = 0;
+int debug = -1;
 
 // Lml 22 driver
 

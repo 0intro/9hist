@@ -110,8 +110,7 @@ neomagicenable(VGAscr* scr)
 
 	memset(&seg, 0, sizeof(seg));
 	seg.attr = SG_PHYSICAL;
-	seg.name = smalloc(NAMELEN);
-	snprint(seg.name, NAMELEN, "neomagicmmio");
+	kstrdup(&seg.name, "neomagicmmio");
 	seg.pa = scr->io;
 	seg.size = p->mem[1].size;
 	addphysseg(&seg);
@@ -132,8 +131,7 @@ neomagicenable(VGAscr* scr)
 		scr->apsize = size;
 		memset(&seg, 0, sizeof(seg));
 		seg.attr = SG_PHYSICAL;
-		seg.name = smalloc(NAMELEN);
-		snprint(seg.name, NAMELEN, "neomagicscreen");
+		kstrdup(&seg.name, "neomagicscreen");
 		seg.pa = aperture;
 		seg.size = size;
 		addphysseg(&seg);

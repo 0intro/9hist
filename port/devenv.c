@@ -12,13 +12,13 @@ enum
 };
 
 static int
-envgen(Chan *c, Dirtab*, int, int s, Dir *dp)
+envgen(Chan *c, char*, Dirtab*, int, int s, Dir *dp)
 {
 	Egrp *eg;
 	Evalue *e;
 
 	if(s == DEVDOTDOT){
-		devdir(c, c->qid, "#e", 0, eve, 0775, dp);
+		devdir(c, c->qid, "#e", 0, eve, DMDIR|0775, dp);
 		return 1;
 	}
 
@@ -33,7 +33,9 @@ envgen(Chan *c, Dirtab*, int, int s, Dir *dp)
 		return -1;
 	}
 
-	devdir(c, e->qid, e->name, e->len, eve, 0666, dp);
+	/* make sure name string continues to exist after we release lock */
+	kstrcpy(up->genbuf, e->name, sizeof up->genbuf);
+	devdir(c, e->qid, up->genbuf, e->len, eve, 0666, dp);
 	qunlock(eg);
 	return 1;
 }
@@ -54,34 +56,18 @@ envattach(char *spec)
 	return devattach('e', spec);
 }
 
-static int
-envwalk(Chan *c, char *name)
+static Walkqid*
+envwalk(Chan *c, Chan *nc, char **name, int nname)
 {
-	Evalue *e;
-	Egrp *eg;
-	int rv;
-
-	if(c->qid.path == CHDIR && name[0] != '.'){
-		rv = 0;
-		eg = up->egrp;
-		qlock(eg);
-		for(e = eg->entries; e; e = e->link)
-			if(strcmp(e->name, name) == 0){
-				rv = 1;
-				c->qid = e->qid;
-			}
-		qunlock(eg);
-		return rv;
-	} else
-		return devwalk(c, name, 0, 0, envgen);
+	return devwalk(c, nc, name, nname, 0, 0, envgen);
 }
 
-static void
-envstat(Chan *c, char *db)
+static int
+envstat(Chan *c, uchar *db, int n)
 {
-	if(c->qid.path & CHDIR)
+	if(c->qid.type & QTDIR)
 		c->qid.vers = up->egrp->vers;
-	devstat(c, db, 0, 0, envgen);
+	return devstat(c, db, n, 0, 0, envgen);
 }
 
 static Chan*
@@ -91,7 +77,7 @@ envopen(Chan *c, int omode)
 	Evalue *e;
 
 	eg = up->egrp;
-	if(c->qid.path & CHDIR) {
+	if(c->qid.type & QTDIR) {
 		if(omode != OREAD)
 			error(Eperm);
 	}
@@ -122,7 +108,7 @@ envcreate(Chan *c, char *name, int omode, ulong)
 	Egrp *eg;
 	Evalue *e;
 
-	if(c->qid.path != CHDIR)
+	if(c->qid.type != QTDIR)
 		error(Eperm);
 
 	omode = openmode(omode);
@@ -162,7 +148,7 @@ envremove(Chan *c)
 	Egrp *eg;
 	Evalue *e, **l;
 
-	if(c->qid.path & CHDIR)
+	if(c->qid.type & QTDIR)
 		error(Eperm);
 
 	eg = up->egrp;
@@ -207,7 +193,7 @@ envread(Chan *c, void *a, long n, vlong off)
 	Evalue *e;
 	ulong offset = off;
 
-	if(c->qid.path & CHDIR)
+	if(c->qid.type & QTDIR)
 		return devdirread(c, a, n, 0, 0, envgen);
 
 	eg = up->egrp;
@@ -275,7 +261,6 @@ Dev envdevtab = {
 	devreset,
 	devinit,
 	envattach,
-	devclone,
 	envwalk,
 	envstat,
 	envopen,
@@ -336,7 +321,7 @@ void
 ksetenv(char *ename, char *eval)
 {
 	Chan *c;
-	char buf[2*NAMELEN];
+	char buf[2*KNAMELEN];
 
 	sprint(buf, "#e/%s", ename);
 	c = namec(buf, Acreate, OWRITE, 0600);

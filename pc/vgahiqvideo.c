@@ -126,8 +126,7 @@ hiqvideoenable(VGAscr* scr)
 		scr->apsize = size;
 		memset(&seg, 0, sizeof(seg));
 		seg.attr = SG_PHYSICAL;
-		seg.name = smalloc(NAMELEN);
-		snprint(seg.name, NAMELEN, "hiqvideoscreen");
+		kstrdup(&seg.name, "hiqvideoscreen");
 		seg.pa = aperture;
 		seg.size = size;
 		addphysseg(&seg);

@@ -47,6 +47,7 @@ portclock(Ureg *ur)
 	m->inclockintr = 1;
 
 	accounttime();
+	kmapinval();
 
 	if(kproftimer != nil)
 		kproftimer(ur->pc);
@@ -70,6 +71,7 @@ portclock(Ureg *ur)
 	}
 
 	m->inclockintr = 0;
+
 	if(up == 0 || up->state != Running)
 		return;
 

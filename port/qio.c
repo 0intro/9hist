@@ -45,7 +45,7 @@ struct Queue
 	QLock	wlock;		/* mutex for writing processes */
 	Rendez	wr;		/* process waiting to write */
 
-	char	err[ERRLEN];
+	char	err[ERRMAX];
 };
 
 enum
@@ -1277,7 +1277,7 @@ qhangup(Queue *q, char *msg)
 	if(msg == 0 || *msg == 0)
 		strcpy(q->err, Ehungup);
 	else
-		strncpy(q->err, msg, ERRLEN-1);
+		strncpy(q->err, msg, ERRMAX-1);
 	iunlock(q);
 
 	/* wake up readers/writers */

@@ -27,8 +27,8 @@ intrenable(int irq, void (*f)(Ureg*, void*), void* a, int tbdf, char *name)
 	v->tbdf = tbdf;
 	v->f = f;
 	v->a = a;
-	strncpy(v->name, name, NAMELEN-1);
-	v->name[NAMELEN-1] = 0;
+	strncpy(v->name, name, KNAMELEN-1);
+	v->name[KNAMELEN-1] = 0;
 
 	ilock(&vctllock);
 	vno = arch->intrenable(v);
@@ -53,7 +53,7 @@ intrenable(int irq, void (*f)(Ureg*, void*), void* a, int tbdf, char *name)
 static long
 irqallocread(Chan*, void *vbuf, long n, vlong offset)
 {
-	char *buf, *p, str[11+1+NAMELEN+1];
+	char *buf, *p, str[11+1+KNAMELEN+1];
 	int m, vno;
 	long oldn;
 	Vctl *v;
@@ -65,7 +65,7 @@ irqallocread(Chan*, void *vbuf, long n, vlong offset)
 	buf = vbuf;
 	for(vno=0; vno<nelem(vctl); vno++){
 		for(v=vctl[vno]; v; v=v->next){
-			m = snprint(str, sizeof str, "%11d %11d %.*s\n", vno, v->irq, NAMELEN, v->name);
+			m = snprint(str, sizeof str, "%11d %11d %.*s\n", vno, v->irq, KNAMELEN, v->name);
 			if(m <= offset)	/* if do not want this, skip entry */
 				offset -= m;
 			else{
@@ -100,8 +100,8 @@ trapenable(int vno, void (*f)(Ureg*, void*), void* a, char *name)
 	v->tbdf = BUSUNKNOWN;
 	v->f = f;
 	v->a = a;
-	strncpy(v->name, name, NAMELEN);
-	v->name[NAMELEN-1] = 0;
+	strncpy(v->name, name, KNAMELEN);
+	v->name[KNAMELEN-1] = 0;
 
 	lock(&vctllock);
 	if(vctl[vno])
@@ -214,7 +214,7 @@ void
 trap(Ureg* ureg)
 {
 	int i, vno, user;
-	char buf[ERRLEN];
+	char buf[ERRMAX];
 	Vctl *ctl, *v;
 	Mach *mach;
 
@@ -276,7 +276,7 @@ trap(Ureg* ureg)
 		 */
 		print("cpu%d: spurious interrupt %d, last %d",
 			m->machno, vno, m->lastintr);
-		for(i = 0; i < conf.nmach; i++){
+		for(i = 0; i < 32; i++){
 			if(!(active.machs & (1<<i)))
 				continue;
 			mach = MACHP(i);
@@ -414,7 +414,7 @@ dumpstack(void)
 static void
 debugbpt(Ureg* ureg, void*)
 {
-	char buf[ERRLEN];
+	char buf[ERRMAX];
 
 	if(up == 0)
 		panic("kernel bpt");
@@ -429,13 +429,14 @@ fault386(Ureg* ureg, void*)
 {
 	ulong addr;
 	int read, user, n, insyscall;
-	char buf[ERRLEN];
+	char buf[ERRMAX];
 
 	addr = getcr2();
 	user = (ureg->cs & 0xFFFF) == UESEL;
 	if(!user && mmukmapsync(addr))
 		return;
 	read = !(ureg->ecode & 2);
+if(up == nil) {print("what? up is zero pc %8lux\n", ureg->pc); for(;;);}
 	insyscall = up->insyscall;
 	up->insyscall = 1;
 	n = fault(addr, read);
@@ -552,8 +553,8 @@ notify(Ureg* ureg)
 	n = &up->note[0];
 	if(strncmp(n->msg, "sys:", 4) == 0){
 		l = strlen(n->msg);
-		if(l > ERRLEN-15)	/* " pc=0x12345678\0" */
-			l = ERRLEN-15;
+		if(l > ERRMAX-15)	/* " pc=0x12345678\0" */
+			l = ERRMAX-15;
 		sprint(n->msg+l, " pc=0x%.8lux", ureg->pc);
 	}
 
@@ -578,7 +579,7 @@ notify(Ureg* ureg)
 	sp -= sizeof(Ureg);
 
 	if(!okaddr((ulong)up->notify, 1, 0)
-	|| !okaddr(sp-ERRLEN-4*BY2WD, sizeof(Ureg)+ERRLEN+4*BY2WD, 1)){
+	|| !okaddr(sp-ERRMAX-4*BY2WD, sizeof(Ureg)+ERRMAX+4*BY2WD, 1)){
 		pprint("suicide: bad address in notify\n");
 		qunlock(&up->debug);
 		pexit("Suicide", 0);
@@ -588,8 +589,8 @@ notify(Ureg* ureg)
 	memmove((Ureg*)sp, ureg, sizeof(Ureg));
 	*(Ureg**)(sp-BY2WD) = up->ureg;	/* word under Ureg is old up->ureg */
 	up->ureg = (void*)sp;
-	sp -= BY2WD+ERRLEN;
-	memmove((char*)sp, up->note[0].msg, ERRLEN);
+	sp -= BY2WD+ERRMAX;
+	memmove((char*)sp, up->note[0].msg, ERRMAX);
 	sp -= 3*BY2WD;
 	*(ulong*)(sp+2*BY2WD) = sp+3*BY2WD;	/* arg 2 is string */
 	*(ulong*)(sp+1*BY2WD) = (ulong)up->ureg;	/* arg 1 is ureg* */
@@ -673,7 +674,7 @@ noted(Ureg* ureg, ulong arg0)
 			pexit("Suicide", 0);
 		}
 		qunlock(&up->debug);
-		sp = oureg-4*BY2WD-ERRLEN;
+		sp = oureg-4*BY2WD-ERRMAX;
 		splhi();
 		ureg->sp = sp;
 		((ulong*)sp)[1] = oureg;	/* arg 1 0(FP) is ureg* */

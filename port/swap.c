@@ -370,8 +370,9 @@ needpages(void*)
 void
 setswapchan(Chan *c)
 {
-	char dirbuf[DIRLEN];
+	uchar dirbuf[sizeof(Dir)+100];
 	Dir d;
+	int n;
 
 	if(swapimage.c) {
 		if(swapalloc.free != conf.nswap){
@@ -386,8 +387,12 @@ setswapchan(Chan *c)
 	 *  to be at most the size of the partition
 	 */
 	if(devtab[c->type]->dc != L'M'){
-		devtab[c->type]->stat(c, dirbuf);
-		convM2D(dirbuf, &d);
+		n = devtab[c->type]->stat(c, dirbuf, sizeof dirbuf);
+		if(n <= 0){
+			cclose(c);
+			error("stat failed in setswapchan");
+		}
+		convM2D(dirbuf, n, &d, nil);
 		if(d.length < conf.nswap*BY2PG){
 			conf.nswap = d.length/BY2PG;
 			swapalloc.top = &swapalloc.swmap[conf.nswap];

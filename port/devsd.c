@@ -34,14 +34,13 @@ enum {
 	Qunitdir,			/* directory per unit */
 	Qunitbase,
 	Qctl		= Qunitbase,
-	Qlog,
 	Qraw,
 	Qpart,
 };
 
-#define TYPE(q)		((q).path & 0x0F)
-#define PART(q)		(((q).path>>4) & 0x0F)
-#define UNIT(q)		(((q).path>>8) & 0xFF)
+#define TYPE(q)		(((ulong)(q).path) & 0x0F)
+#define PART(q)		((((ulong)(q).path)>>4) & 0x0F)
+#define UNIT(q)		((((ulong)(q).path)>>8) & 0xFF)
 #define QID(u, p, t)	(((u)<<8)|((p)<<4)|(t))
 
 static void
@@ -63,7 +62,7 @@ sdaddpart(SDunit* unit, char* name, ulong start, ulong end)
 					partno = i;
 				break;
 			}
-			if(strncmp(name, pp->name, NAMELEN) == 0){
+			if(strcmp(name, pp->name) == 0){
 				if(pp->start == start && pp->end == end)
 					return;
 				error(Ebadctl);
@@ -99,8 +98,8 @@ sdaddpart(SDunit* unit, char* name, ulong start, ulong end)
 	pp = &unit->part[partno];
 	pp->start = start;
 	pp->end = end;
-	strncpy(pp->name, name, NAMELEN);
-	strncpy(pp->user, eve, NAMELEN);
+	kstrdup(&pp->name, name);
+	kstrdup(&pp->user, eve);
 	pp->perm = 0640;
 	pp->valid = 1;
 }
@@ -117,12 +116,14 @@ sddelpart(SDunit* unit,  char* name)
 	 */
 	pp = unit->part;
 	for(i = 0; i < unit->npart; i++){
-		if(strncmp(name, pp->name, NAMELEN) == 0)
+		if(strcmp(name, pp->name) == 0)
 			break;
 		pp++;
 	}
 	if(i >= unit->npart)
 		error(Ebadctl);
+	if(strcmp(up->user, pp->user) && !iseve())
+		error(Eperm);
 	pp->valid = 0;
 	pp->vers++;
 }
@@ -193,6 +194,7 @@ sdgetunit(SDev* sdev, int subno)
 {
 	int index;
 	SDunit *unit;
+	char buf[32];
 
 	/*
 	 * Associate a unit with a given device and sub-unit
@@ -222,15 +224,12 @@ sdgetunit(SDev* sdev, int subno)
 			sdev->ifc->enable(sdev);
 		sdev->enabled = 1;
 
-		snprint(unit->name, NAMELEN, "%s%d", sdev->name, subno);
-		strncpy(unit->user, eve, NAMELEN);
+		snprint(buf, sizeof(buf), "%s%d", sdev->name, subno);
+		kstrdup(&unit->name, buf);
+		kstrdup(&unit->user, eve);
 		unit->perm = 0555;
 		unit->subno = subno;
 		unit->dev = sdev;
-
-		unit->log.logmask = ~0;
-		unit->log.nlog = 16*1024;
-		unit->log.minread = 4*1024;
 
 		/*
 		 * No need to lock anything here as this is only
@@ -337,39 +336,30 @@ sd2gen(Chan* c, int i, Dir* dp)
 
 	unit = sdunit[UNIT(c->qid)];
 	switch(i){
-	case Qlog:
-		q = (Qid){QID(UNIT(c->qid), PART(c->qid), Qlog), unit->vers};
-		perm = &unit->rawperm;
-		if(perm->user[0] == '\0'){
-			strncpy(perm->user, eve, NAMELEN);
-			perm->perm = 0666;
-		}
-		devdir(c, q, "log", 0, perm->user, perm->perm, dp);
-		return 1;
 	case Qctl:
-		q = (Qid){QID(UNIT(c->qid), PART(c->qid), Qctl), unit->vers};
+		mkqid(&q, QID(UNIT(c->qid), PART(c->qid), Qctl), unit->vers, QTFILE);
 		perm = &unit->ctlperm;
-		if(perm->user[0] == '\0'){
-			strncpy(perm->user, eve, NAMELEN);
+		if(emptystr(perm->user)){
+			kstrdup(&perm->user, eve);
 			perm->perm = 0640;
 		}
 		devdir(c, q, "ctl", 0, perm->user, perm->perm, dp);
 		return 1;
 	case Qraw:
-		q = (Qid){QID(UNIT(c->qid), PART(c->qid), Qraw), unit->vers};
+		mkqid(&q, QID(UNIT(c->qid), PART(c->qid), Qraw), unit->vers, QTFILE);
 		perm = &unit->rawperm;
-		if(perm->user[0] == '\0'){
-			strncpy(perm->user, eve, NAMELEN);
-			perm->perm = CHEXCL|0600;
+		if(emptystr(perm->user)){
+			kstrdup(&perm->user, eve);
+			perm->perm = DMEXCL|0600;
 		}
 		devdir(c, q, "raw", 0, perm->user, perm->perm, dp);
 		return 1;
 	case Qpart:
 		pp = &unit->part[PART(c->qid)];
 		l = (pp->end - pp->start) * (vlong)unit->secsize;
-		q = (Qid){QID(UNIT(c->qid), PART(c->qid), Qpart), unit->vers+pp->vers};
-		if(pp->user[0] == '\0')
-			strncpy(pp->user, eve, NAMELEN);
+		mkqid(&q, QID(UNIT(c->qid), PART(c->qid), Qpart), unit->vers+pp->vers, QTFILE);
+		if(emptystr(pp->user))
+			kstrdup(&pp->user, eve);
 		devdir(c, q, pp->name, l, pp->user, pp->perm, dp);
 		return 1;
 	}	
@@ -387,21 +377,20 @@ sd1gen(Chan*, int i, Dir*)
 }
 
 static int
-sdgen(Chan* c, Dirtab*, int, int s, Dir* dp)
+sdgen(Chan* c, char*, Dirtab*, int, int s, Dir* dp)
 {
 	Qid q;
 	vlong l;
 	int i, r;
 	SDpart *pp;
 	SDunit *unit;
-	char name[NAMELEN];
 
 	switch(TYPE(c->qid)){
 	case Qtopdir:
 		if(s == DEVDOTDOT){
-			q = (Qid){QID(0, 0, Qtopdir)|CHDIR, 0};
-			snprint(name, NAMELEN, "#%C", sddevtab.dc);
-			devdir(c, q, name, 0, eve, 0555, dp);
+			mkqid(&q, QID(s, 0, Qtopdir), 0, QTDIR);
+			sprint(up->genbuf, "#%C", sddevtab.dc);
+			devdir(c, q, up->genbuf, 0, eve, 0555, dp);
 			return 1;
 		}
 		if(s < sdnunit){
@@ -409,9 +398,9 @@ sdgen(Chan* c, Dirtab*, int, int s, Dir* dp)
 				if((unit = sdindex2unit(s)) == nil)
 					return 0;
 			}
-			q = (Qid){QID(s, 0, Qunitdir)|CHDIR, 0};
-			if(unit->user[0] == '\0')
-				strncpy(unit->user, eve, NAMELEN);
+			mkqid(&q, QID(s, 0, Qunitdir), 0, QTDIR);
+			if(emptystr(unit->user))
+				kstrdup(&unit->user, eve);
 			devdir(c, q, unit->name, 0, unit->user, unit->perm, dp);
 			return 1;
 		}
@@ -419,9 +408,9 @@ sdgen(Chan* c, Dirtab*, int, int s, Dir* dp)
 		return sd1gen(c, s+Qtopbase, dp);
 	case Qunitdir:
 		if(s == DEVDOTDOT){
-			q = (Qid){QID(0, 0, Qtopdir)|CHDIR, 0};
-			snprint(name, NAMELEN, "#%C", sddevtab.dc);
-			devdir(c, q, name, 0, eve, 0555, dp);
+			mkqid(&q, QID(s, 0, Qtopdir), 0, QTDIR);
+			sprint(up->genbuf, "#%C", sddevtab.dc);
+			devdir(c, q, up->genbuf, 0, eve, 0555, dp);
 			return 1;
 		}
 		unit = sdunit[UNIT(c->qid)];
@@ -455,16 +444,15 @@ sdgen(Chan* c, Dirtab*, int, int s, Dir* dp)
 			return 0;
 		}
 		l = (pp->end - pp->start) * (vlong)unit->secsize;
-		q = (Qid){QID(UNIT(c->qid), i, Qpart), unit->vers+pp->vers};
-		if(pp->user[0] == '\0')
-			strncpy(pp->user, eve, NAMELEN);
+		mkqid(&q, QID(UNIT(c->qid), i, Qpart), unit->vers+pp->vers, QTFILE);
+		if(emptystr(pp->user))
+			kstrdup(&pp->user, eve);
 		devdir(c, q, pp->name, l, pp->user, pp->perm, dp);
 		qunlock(&unit->ctl);
 		return 1;
 	case Qraw:
 	case Qctl:
 	case Qpart:
-	case Qlog:
 		unit = sdunit[UNIT(c->qid)];
 		qlock(&unit->ctl);
 		r = sd2gen(c, TYPE(c->qid), dp);
@@ -487,7 +475,7 @@ sdattach(char* spec)
 
 	if(sdnunit == 0 || *spec == '\0'){
 		c = devattach(sddevtab.dc, spec);
-		c->qid = (Qid){QID(0, 0, Qtopdir)|CHDIR, 0};
+		mkqid(&c->qid, QID(0, 0, Qtopdir), 0, QTDIR);
 		return c;
 	}
 
@@ -505,27 +493,21 @@ sdattach(char* spec)
 		error(Enonexist);
 
 	c = devattach(sddevtab.dc, spec);
-	c->qid = (Qid){QID(sdev->index+subno, 0, Qunitdir)|CHDIR, 0};
+	mkqid(&c->qid, QID(sdev->index+subno, 0, Qunitdir), 0, QTDIR);
 	c->dev = sdev->index+subno;
 	return c;
 }
 
-static Chan*
-sdclone(Chan* c, Chan* nc)
+static Walkqid*
+sdwalk(Chan* c, Chan* nc, char** name, int nname)
 {
-	return devclone(c, nc);
+	return devwalk(c, nc, name, nname, nil, 0, sdgen);
 }
 
 static int
-sdwalk(Chan* c, char* name)
+sdstat(Chan* c, uchar* db, int n)
 {
-	return devwalk(c, name, nil, 0, sdgen);
-}
-
-static void
-sdstat(Chan* c, char* db)
-{
-	devstat(c, db, nil, 0, sdgen);
+	return devstat(c, db, n, nil, 0, sdgen);
 }
 
 static Chan*
@@ -537,10 +519,6 @@ sdopen(Chan* c, int omode)
 	c = devopen(c, omode, 0, 0, sdgen);
 	switch(TYPE(c->qid)){
 	default:
-		break;
-	case Qlog:
-		unit = sdunit[UNIT(c->qid)];
-		logopen(&unit->log);
 		break;
 	case Qctl:
 		unit = sdunit[UNIT(c->qid)];
@@ -577,17 +555,13 @@ sdclose(Chan* c)
 {
 	SDunit *unit;
 
-	if(c->qid.path & CHDIR)
+	if(c->qid.type & QTDIR)
 		return;
 	if(!(c->flag & COPEN))
 		return;
 
 	switch(TYPE(c->qid)){
 	default:
-		break;
-	case Qlog:
-		unit = sdunit[UNIT(c->qid)];
-		logclose(&unit->log);
 		break;
 	case Qraw:
 		unit = sdunit[UNIT(c->qid)];
@@ -653,26 +627,6 @@ sdbio(Chan* c, int write, char* a, long len, vlong off)
 	if(!(unit->inquiry[1] & 0x80)){
 		qunlock(&unit->ctl);
 		poperror();
-	}
-
-	if(unit->log.opens) {
-		int i;
-		uchar lbuf[1+4+8], *p;
-		ulong x[3];
-
-		p = lbuf;
-		*p++ = write ? 'w' : 'r';
-		x[0] = off>>32;
-		x[1] = off;
-		x[2] = len;
-		for(i=0; i<3; i++) {
-			*p++ = x[i]>>24;
-			*p++ = x[i]>>16;
-			*p++ = x[i]>>8;
-			*p++ = x[i];
-		}
-
-		logn(&unit->log, 1, lbuf, 1+4+8);
 	}
 
 	b = sdmalloc(nb*unit->secsize);
@@ -782,9 +736,6 @@ sdread(Chan *c, void *a, long n, vlong off)
 	case Qtopdir:
 	case Qunitdir:
 		return devdirread(c, a, n, 0, 0, sdgen);
-	case Qlog:
-		unit = sdunit[UNIT(c->qid)];
-		return logread(&unit->log, a, 0, n);
 	case Qctl:
 		unit = sdunit[UNIT(c->qid)];
 		p = malloc(READSTR);
@@ -809,9 +760,8 @@ sdread(Chan *c, void *a, long n, vlong off)
 			for(i = 0; i < unit->npart; i++){
 				if(pp->valid)
 					l += snprint(p+l, READSTR-l,
-						"part %.*s %lud %lud\n",
-						NAMELEN, pp->name,
-						pp->start, pp->end);
+						"part %s %lud %lud\n",
+						pp->name, pp->start, pp->end);
 				pp++;
 			}
 		}
@@ -859,10 +809,6 @@ sdwrite(Chan *c, void *a, long n, vlong off)
 	switch(TYPE(c->qid)){
 	default:
 		error(Eperm);
-
-	case Qlog:
-		error(Ebadctl);
-
 	case Qctl:
 		cb = parsecmd(a, n);
 		unit = sdunit[UNIT(c->qid)];
@@ -940,8 +886,7 @@ sdwrite(Chan *c, void *a, long n, vlong off)
 		}
 		qunlock(&unit->raw);
 		poperror();
-		return n;
-
+		break;
 	case Qpart:
 		return sdbio(c, 1, a, n, off);
 	}
@@ -949,15 +894,15 @@ sdwrite(Chan *c, void *a, long n, vlong off)
 	return n;
 }
 
-static void
-sdwstat(Chan* c, char* dp)
+static int
+sdwstat(Chan* c, uchar* dp, int n)
 {
-	Dir d;
+	Dir d[2];
 	SDpart *pp;
 	SDperm *perm;
 	SDunit *unit;
 
-	if(c->qid.path & CHDIR)
+	if(c->qid.type & QTDIR)
 		error(Eperm);
 
 	unit = sdunit[UNIT(c->qid)];
@@ -984,14 +929,17 @@ sdwstat(Chan* c, char* dp)
 		break;
 	}
 
-	if(strncmp(up->user, perm->user, NAMELEN) && !iseve())
+	if(strcmp(up->user, perm->user) && !iseve())
 		error(Eperm);
-	convM2D(dp, &d);
-	strncpy(perm->user, d.uid, NAMELEN);
-	perm->perm = (perm->perm & ~0777) | (d.mode & 0777);
+	n = convM2D(dp, n, &d[0], (char*)&d[1]);
+	if(n == 0)
+		error(Eshortstat);
+	kstrdup(&perm->user, d[0].uid);
+	perm->perm = (perm->perm & ~0777) | (d[0].mode & 0777);
 
 	qunlock(&unit->ctl);
 	poperror();
+	return n;
 }
 
 Dev sddevtab = {
@@ -1001,7 +949,6 @@ Dev sddevtab = {
 	sdreset,
 	devinit,
 	sdattach,
-	sdclone,
 	sdwalk,
 	sdstat,
 	sdopen,

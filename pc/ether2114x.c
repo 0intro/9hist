@@ -578,7 +578,7 @@ ctlrinit(Ether* ether)
 	for(des = ctlr->rdr; des < &ctlr->rdr[ctlr->nrdr]; des++){
 		des->bp = iallocb(Rbsz);
 		if(des->bp == nil)
-			panic("can't allocate ethernet receive ring");
+			panic("can't allocate ethernet receive ring\n");
 		des->status = Own;
 		des->control = Rbsz;
 		des->addr = PADDR(des->bp->rp);
@@ -611,7 +611,7 @@ ctlrinit(Ether* ether)
 	}
 	bp = iallocb(Eaddrlen*2*16);
 	if(bp == nil)
-		panic("can't allocate ethernet setup buffer");
+		panic("can't allocate ethernet setup buffer\n");
 	memset(bp->rp, 0xFF, sizeof(bi));
 	for(i = sizeof(bi); i < sizeof(bi)*16; i += sizeof(bi))
 		memmove(bp->rp+i, bi, sizeof(bi));

@@ -1193,7 +1193,7 @@ mylexenable(SDev* sdev)
 	int tbdf;
 	Ctlr *ctlr;
 	void (*interrupt)(Ureg*, void*);
-	char name[NAMELEN];
+	char name[32];
 
 	ctlr = sdev->ctlr;
 	if(ctlr->cache == nil){
@@ -1216,7 +1216,7 @@ mylexenable(SDev* sdev)
 	else
 		return 0;
 
-	snprint(name, NAMELEN, "sd%c (%s)", sdev->idno, sdev->ifc->name);
+	snprint(name, sizeof(name), "sd%c (%s)", sdev->idno, sdev->ifc->name);
 	intrenable(ctlr->irq, interrupt, ctlr, tbdf, name);
 
 	return 1;

@@ -24,53 +24,16 @@ static  uchar *sp;	/* stack pointer for /boot */
 #define	BOOTARGSLEN	(4096-0x200-BOOTLINELEN)
 #define	MAXCONF		32
 
-char bootdisk[NAMELEN];
+char bootdisk[KNAMELEN];
 char *confname[MAXCONF];
 char *confval[MAXCONF];
 int nconf;
 
-extern void ns16552install(void);	/* botch: config */
-
-static int isoldbcom;
-
-static int
-getcfields(char* lp, char** fields, int n, char* sep)
-{
-	int i;
-
-	for(i = 0; lp && *lp && i < n; i++){
-		while(*lp && strchr(sep, *lp) != 0)
-			*lp++ = 0;
-		if(*lp == 0)
-			break;
-		fields[i] = lp;
-		while(*lp && strchr(sep, *lp) == 0){
-			if(*lp == '\\' && *(lp+1) == '\n')
-				*lp++ = ' ';
-			lp++;
-		}
-	}
-
-	return i;
-}
-
 static void
 options(void)
 {
-	uchar *bda;
 	long i, n;
 	char *cp, *line[MAXCONF], *p, *q;
-
-	if(strncmp(BOOTARGS, "ZORT 0\r\n", 8)){
-		isoldbcom = 1;
-
-		memmove(BOOTARGS, KADDR(1024), BOOTARGSLEN);
-		memmove(BOOTLINE, KADDR(0x100), BOOTLINELEN);
-
-		bda = KADDR(0x400);
-		bda[0x13] = 639;
-		bda[0x14] = 639>>8;
-	}
 
 	/*
 	 *  parse configuration args from dos file plan9.ini
@@ -91,16 +54,14 @@ options(void)
 	}
 	*p = 0;
 
-	n = getcfields(cp, line, MAXCONF, "\n");
+	n = getfields(cp, line, MAXCONF, 1, "\n");
 	for(i = 0; i < n; i++){
 		if(*line[i] == '#')
 			continue;
 		cp = strchr(line[i], '=');
-		if(cp == 0)
+		if(cp == nil)
 			continue;
-		*cp++ = 0;
-		if(cp - line[i] >= NAMELEN+1)
-			*(line[i]+NAMELEN-1) = 0;
+		*cp++ = '\0';
 		confname[nconf] = line[i];
 		confval[nconf] = cp;
 		nconf++;
@@ -110,45 +71,27 @@ options(void)
 void
 main(void)
 {
-	outb(0x3F2, 0x00);			/* botch: turn off the floppy motor */
-
-	/*
-	 * There is a little leeway here in the ordering but care must be
-	 * taken with dependencies:
-	 *	function		dependencies
-	 *	========		============
-	 *	machinit		depends on: m->machno, m->pdb
-	 *	cpuidentify		depends on: m
-	 *	confinit		calls: meminit
-	 *	meminit			depends on: cpuidentify (needs to know processor
-	 *				  type for caching, etc.)
-	 *	archinit		depends on: meminit (MP config table may be at the
-	 *				  top of system physical memory);
-	 *				conf.nmach (not critical, mpinit will check);
-	 *	arch->intrinit		depends on: trapinit
-	 */
 	conf.nmach = 1;
 	MACHP(0) = (Mach*)CPU0MACH;
 	m->pdb = (ulong*)CPU0PDB;
 	machinit();
-	ioinit();
 	active.machs = 1;
 	active.exiting = 0;
 	options();
-	screeninit();
+	ioinit();
+	i8250console();
+	print("\nPlan 9\n");
 	cpuidentify();
+	screeninit();
 	confinit();
 	archinit();
 	xinit();
 	trapinit();
 	printinit();
 	cpuidprint();
-	if(isoldbcom)
-		print("    ****OLD B.COM - UPGRADE****\n");
 	mmuinit();
 	if(arch->intrinit)
 		arch->intrinit();
-	ns16552install();			/* botch: config */
 	mathinit();
 	kbdinit();
 	if(arch->clockenable)
@@ -175,12 +118,20 @@ machinit(void)
 	memset(m, 0, sizeof(Mach));
 	m->machno = machno;
 	m->pdb = pdb;
+
+	/*
+	 * For polled uart output at boot, need
+	 * a default delay constant. 100000 should
+	 * be enough for a while. Cpuidentify will
+	 * calculate the real value later.
+	 */
+	m->loopconst = 100000;
 }
 
 void
 ksetterm(char *f)
 {
-	char buf[2*NAMELEN];
+	char buf[2*KNAMELEN];
 
 	sprint(buf, f, conffile);
 	ksetenv("terminal", buf);
@@ -203,7 +154,7 @@ init0(void)
 	up->slash = namec("#/", Atodir, 0, 0);
 	cnameclose(up->slash->name);
 	up->slash->name = newcname("/");
-	up->dot = cclone(up->slash, 0);
+	up->dot = cclone(up->slash);
 
 	chandevinit();
 
@@ -241,8 +192,10 @@ userinit(void)
 	p->rgrp = newrgrp();
 	p->procmode = 0640;
 
-	strcpy(p->text, "*init*");
-	strcpy(p->user, eve);
+	kstrdup(&eve, "");
+	kstrdup(&p->text, "*init*");
+	kstrdup(&p->user, eve);
+
 	p->fpstate = FPinit;
 	fpoff();
 
@@ -465,7 +418,7 @@ mathnote(void)
 {
 	int i;
 	ulong status;
-	char *msg, note[ERRLEN];
+	char *msg, note[ERRMAX];
 
 	status = up->fpsave.status;
 
@@ -642,29 +595,18 @@ exit(int ispanic)
 int
 isaconfig(char *class, int ctlrno, ISAConf *isa)
 {
-	char cc[NAMELEN], *p, *q, *r;
-	int n;
+	char cc[32], *p;
+	int i, n;
 
-	sprint(cc, "%s%d", class, ctlrno);
+	snprint(cc, sizeof cc, "%s%d", class, ctlrno);
 	for(n = 0; n < nconf; n++){
-		if(cistrncmp(confname[n], cc, NAMELEN))
+		if(cistrcmp(confname[n], cc) != 0)
 			continue;
-		isa->nopt = 0;
-		p = confval[n];
-		while(*p){
-			while(*p == ' ' || *p == '\t')
-				p++;
-			if(*p == '\0')
-				break;
-			if(cistrncmp(p, "type=", 5) == 0){
-				p += 5;
-				for(q = isa->type; q < &isa->type[NAMELEN-1]; q++){
-					if(*p == '\0' || *p == ' ' || *p == '\t')
-						break;
-					*q = *p++;
-				}
-				*q = '\0';
-			}
+		isa->nopt = tokenize(confval[n], isa->opt, NISAOPT);
+		for(i = 0; i < isa->nopt; i++){
+			p = isa->opt[i];
+			if(cistrncmp(p, "type=", 5) == 0)
+				isa->type = p + 5;
 			else if(cistrncmp(p, "port=", 5) == 0)
 				isa->port = strtoul(p+5, &p, 0);
 			else if(cistrncmp(p, "irq=", 4) == 0)
@@ -677,41 +619,11 @@ isaconfig(char *class, int ctlrno, ISAConf *isa)
 				isa->size = strtoul(p+5, &p, 0);
 			else if(cistrncmp(p, "freq=", 5) == 0)
 				isa->freq = strtoul(p+5, &p, 0);
-			else if(isa->nopt < NISAOPT){
-				r = isa->opt[isa->nopt];
-				while(*p && *p != ' ' && *p != '\t'){
-					*r++ = *p++;
-					if(r-isa->opt[isa->nopt] >= ISAOPTLEN-1)
-						break;
-				}
-				*r = '\0';
-				isa->nopt++;
-			}
-			while(*p && *p != ' ' && *p != '\t')
-				p++;
 		}
 		return 1;
 	}
 	return 0;
 }
-
-/*
-int
-iprint(char *fmt, ...)
-{
-	char buf[PRINTSIZE];
-	int n;
-	va_list arg;
-
-	va_start(arg, fmt);
-	n = doprint(buf, buf+sizeof(buf), fmt, arg) - buf;
-	va_end(arg);
-
-	screenputs(buf, n);
-
-	return n;
-}
-*/
 
 int
 cistrcmp(char *a, char *b)

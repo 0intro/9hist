@@ -38,7 +38,6 @@ ulong	getcr3(void);
 ulong	getcr4(void);
 char*	getconf(char*);
 int	havecycintr(void);
-void	halt(void);	/* x86 HLT */
 int	i8042auxcmd(int);
 void	i8042auxenable(void (*)(int, int));
 void	i8042reset(void);
@@ -63,6 +62,7 @@ int	ioalloc(int, int, int, char*);
 int	iprint(char*, ...);
 int	isaconfig(char*, int, ISAConf*);
 void	kbdinit(void);
+#define	kmapinval()
 void	lgdt(ushort[3]);
 void	lidt(ushort[3]);
 void	links(void);
@@ -75,8 +75,6 @@ ulong	mmukmap(ulong, ulong, int);
 int	mmukmapsync(ulong);
 #define	mmunewpage(x)
 ulong*	mmuwalk(ulong*, ulong, int, int);
-void	ns16552install(void);
-void	ns16552special(int, int, Queue**, Queue**, int (*)(Queue*, int));
 uchar	nvramread(int);
 void	nvramwrite(int, uchar);
 void	outb(int, int);
@@ -134,9 +132,3 @@ ulong	TK2MS(ulong);				/* ticks to milliseconds */
 #define PADDR(a)	((ulong)(a)&~KZERO)
 
 #define	dcflush(a, b)
-
-/*
- * wrapper around memmove that causes kprof to credit caller for time
- */
-// extern void	*kpmemmove(void*, void*, long);
-// #define memmove kpmemmove

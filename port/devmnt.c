@@ -5,15 +5,17 @@
 #include	"fns.h"
 #include	"../port/error.h"
 
+#define MAXRPC (IOHDRSZ+8192)
+
 struct Mntrpc
 {
 	Chan*	c;		/* Channel for whom we are working */
 	Mntrpc*	list;		/* Free/pending list */
 	Fcall	request;	/* Outgoing file system protocol message */
-	Fcall	reply;		/* Incoming reply */
+	Fcall reply;		/* Incoming reply */
 	Mnt*	m;		/* Mount device during rpc */
 	Rendez	r;		/* Place to hang out */
-	char*	rpc;		/* I/O Data buffer */
+	uchar*	rpc;		/* I/O Data buffer */
 	char	done;		/* Rpc completed */
 	uvlong	stime;		/* start time for mnt statistics */
 	ulong	reqlen;		/* request length for mnt statistics */
@@ -33,26 +35,27 @@ struct Mntalloc
 	int	rpctag;
 }mntalloc;
 
-static void	mattach(Mnt*, Chan*, char*);
-static void	mntauth(Mnt*, Mntrpc*, char*, ushort);
-static Mnt*	mntchk(Chan*);
-static void	mntdirfix(uchar*, Chan*);
-static Mntrpc*	mntflushalloc(Mntrpc*);
-static void	mntflushfree(Mnt*, Mntrpc*);
-static void	mntfree(Mntrpc*);
-static void	mntgate(Mnt*);
-static void	mntpntfree(Mnt*);
-static void	mntqrm(Mnt*, Mntrpc*);
-static Mntrpc*	mntralloc(Chan*);
-static long	mntrdwr(int, Chan*, void*, long, vlong);
-static long	mnt9prdwr(int, Chan*, void*, long, vlong);
-static void	mntrpcread(Mnt*, Mntrpc*);
-static void	mountio(Mnt*, Mntrpc*);
-static void	mountmux(Mnt*, Mntrpc*);
-static void	mountrpc(Mnt*, Mntrpc*);
-static int	rpcattn(void*);
-static void	mclose(Mnt*, Chan*);
-static Chan*	mntchan(void);
+void	mattach(Mnt*, Chan*, char*);
+void	mntauth(Mnt*, Mntrpc*, char*, ushort);
+Mnt*	mntchk(Chan*);
+void	mntdirfix(uchar*, Chan*);
+Mntrpc*	mntflushalloc(Mntrpc*, ulong);
+void	mntflushfree(Mnt*, Mntrpc*);
+void	mntfree(Mntrpc*);
+void	mntgate(Mnt*);
+void	mntpntfree(Mnt*);
+void	mntqrm(Mnt*, Mntrpc*);
+Mntrpc*	mntralloc(Chan*, ulong);
+long	mntrdwr(int, Chan*, void*, long, vlong);
+int	mntrpcread(Mnt*, Mntrpc*);
+void	mountio(Mnt*, Mntrpc*);
+void	mountmux(Mnt*, Mntrpc*);
+void	mountrpc(Mnt*, Mntrpc*);
+int	rpcattn(void*);
+void	mclose(Mnt*, Chan*);
+Chan*	mntchan(void);
+
+char	Esbadstat[] = "invalid directory entry received from server";
 
 void (*mntstats)(int, Chan*, uvlong, ulong);
 
@@ -66,6 +69,9 @@ mntreset(void)
 {
 	mntalloc.id = 1;
 	mntalloc.rpctag = Tagspace;
+	fmtinstall('F', fcallconv);
+	fmtinstall('D', dirconv);
+	fmtinstall('M', dirmodeconv);
 
 	cinit();
 }
@@ -75,7 +81,6 @@ mntattach(char *muxattach)
 {
 	Mnt *m;
 	Chan *c, *mc;
-	char buf[NAMELEN];
 	struct bogus{
 		Chan	*chan;
 		char	*spec;
@@ -95,7 +100,7 @@ mntattach(char *muxattach)
 				unlock(&mntalloc);
 				c = mntchan();
 				if(waserror()) {
-					cclose(c);
+					chanfree(c);
 					nexterror();
 				}
 				mattach(m, c, bogus.spec);
@@ -129,27 +134,21 @@ mntattach(char *muxattach)
 	m->rip = 0;
 	m->c = c;
 	m->c->flag |= CMSG;
-	if(strncmp(bogus.spec, "mntblk=", 7) == 0) {
-		m->blocksize = strtoul(bogus.spec+7, 0, 0);
-		if(m->blocksize > MAXFDATA)
-			m->blocksize = MAXFDATA;
-		print("mount blk %d\n", m->blocksize);
-		bogus.spec = "";
-	}
-	else
-		m->blocksize = MAXFDATA;
+	if(m->c->iounit == 0)
+		m->c->iounit = MAXRPC;
 	m->flags = bogus.flags & ~MCACHE;
 
 	incref(m->c);
-
-	sprint(buf, "#M%lud", m->id);
 
 	unlock(m);
 
 	c = mntchan();
 	if(waserror()) {
 		mclose(m, c);
-		cclose(c);
+		/* Close must not be called since it will
+		 * call mnt recursively
+		 */
+		chanfree(c);
 		nexterror();
 	}
 
@@ -158,15 +157,15 @@ mntattach(char *muxattach)
 
 	/*
 	 * Detect a recursive mount for a mount point served by exportfs.
-	 * If CHDIR is clear in the returned qid, the foreign server is
+	 * If QTDIR is clear in the returned qid, the foreign server is
 	 * requesting the mount point be folded into the connection
 	 * to the exportfs. In this case the remote mount driver does
 	 * the multiplexing.
 	 */
 	mc = m->c;
-	if(mc->type == devno('M', 0) && (c->qid.path&CHDIR) == 0) {
+	if(mc->type == devno('M', 0) && (c->qid.type&QTDIR) == 0) {
 		mclose(m, c);
-		c->qid.path |= CHDIR;
+		c->qid.type |= QTDIR;
 		c->mntptr = mc->mntptr;
 		c->mchan = c->mntptr->c;
 		c->mqid = c->qid;
@@ -179,17 +178,12 @@ mntattach(char *muxattach)
 	return c;
 }
 
-/*
- * start off the channel as a root device
- * until we've really gotten it started so
- * an early close won't run through devmnt again
- */
-static Chan*
+Chan*
 mntchan(void)
 {
 	Chan *c;
 
-	c = devattach('/', 0);
+	c = devattach('M', 0);
 	lock(&mntalloc);
 	c->dev = mntalloc.id++;
 	unlock(&mntalloc);
@@ -197,13 +191,12 @@ mntchan(void)
 	return c;
 }
 
-static void
+void
 mattach(Mnt *m, Chan *c, char *spec)
 {
-	ulong id;
 	Mntrpc *r;
 
-	r = mntralloc(0);
+	r = mntralloc(0, m->c->iounit);
 	c->mntptr = m;
 
 	if(waserror()) {
@@ -213,89 +206,116 @@ mattach(Mnt *m, Chan *c, char *spec)
 
 	r->request.type = Tattach;
 	r->request.fid = c->fid;
-	memmove(r->request.uname, up->user, NAMELEN);
-	strncpy(r->request.aname, spec, NAMELEN);
-	id = authrequest(m->c->session, &r->request);
+	r->request.uname = up->user;
+	r->request.aname = spec;
+	r->request.nauth = 0;
+	r->request.auth = (uchar*)"";
 	mountrpc(m, r);
 
-	c->type = devno('M', 0);
 	c->qid = r->reply.qid;
 	c->mchan = m->c;
 	c->mqid = c->qid;
 
-	authreply(m->c->session, id, &r->reply);
-
 	poperror();
 	mntfree(r);
 }
 
-static Chan*
-mntclone(Chan *c, Chan *nc)
+static Walkqid*
+mntwalk(Chan *c, Chan *nc, char **name, int nname)
 {
+	int i, alloc;
 	Mnt *m;
 	Mntrpc *r;
-	int alloc = 0;
+	Walkqid *wq;
+extern int chandebug;
+if(chandebug){
+	print("mntwalk ");
+	for(i=0; i<nname; i++)
+		print("%s/", name[i]);
+	print("\n");
+}
 
+	if(nname > MAXWELEM)
+		error("devmnt: too many name elements");
+	alloc = 0;
+	wq = smalloc(sizeof(Walkqid)+(nname-1)*sizeof(Qid));
+	if(waserror()){
+		if(alloc && wq->clone!=nil)
+			cclose(wq->clone);
+		free(wq);
+		return nil;
+	}
+
+	alloc = 0;
 	m = mntchk(c);
-	r = mntralloc(c);
-	if(nc == 0) {
-		nc = newchan();
+	r = mntralloc(c, m->c->iounit);
+	if(nc == nil){
+		nc = devclone(c);
+		/*
+		 * Until the other side accepts this fid, we can't mntclose it.
+		 * Therefore set type to 0 for now; rootclose is known to be safe.
+		 */
+		nc->type = 0;
 		alloc = 1;
 	}
+	wq->clone = nc;
+
 	if(waserror()) {
 		mntfree(r);
-		if(alloc)
-			cclose(nc);
 		nexterror();
-	}
-
-	r->request.type = Tclone;
-	r->request.fid = c->fid;
-	r->request.newfid = nc->fid;
-	mountrpc(m, r);
-
-	devclone(c, nc);
-	nc->mqid = c->qid;
-	incref(m);
-
-	USED(alloc);
-	poperror();
-	mntfree(r);
-	return nc;
-}
-
-static int
-mntwalk(Chan *c, char *name)
-{
-	Mnt *m;
-	Mntrpc *r;
-
-	m = mntchk(c);
-	r = mntralloc(c);
-	if(waserror()) {
-		mntfree(r);
-		return 0;
+		return nil;
 	}
 	r->request.type = Twalk;
 	r->request.fid = c->fid;
-	strncpy(r->request.name, name, NAMELEN);
+	r->request.newfid = nc->fid;
+	r->request.nwname = nname;
+	memmove(r->request.wname, name, nname*sizeof(char*));
+
 	mountrpc(m, r);
 
-	c->qid = r->reply.qid;
+	if(r->reply.nwqid > nname)
+		error("too many QIDs returned by walk");
+	if(r->reply.nwqid < nname){
+		if(alloc)
+			cclose(nc);
+		wq->clone = nil;
+		if(r->reply.nwqid == 0){
+			free(wq);
+			wq = nil;
+			goto Return;
+		}
+	}
 
+	/* move new fid onto mnt device and update its qid */
+	if(wq->clone != nil){
+		if(wq->clone != c){
+			wq->clone->type = c->type;
+			incref(m);
+		}
+		if(r->reply.nwqid > 0)
+			wq->clone->qid = r->reply.wqid[r->reply.nwqid-1];
+	}
+	wq->nqid = r->reply.nwqid;
+	for(i=0; i<wq->nqid; i++)
+		wq->qid[i] = r->reply.wqid[i];
+
+    Return:
 	poperror();
 	mntfree(r);
-	return 1;
+	poperror();
+	return wq;
 }
 
-static void
-mntstat(Chan *c, char *dp)
+static int
+mntstat(Chan *c, uchar *dp, int n)
 {
 	Mnt *m;
 	Mntrpc *r;
 
+	if(n < BIT16SZ)
+		error(Eshortstat);
 	m = mntchk(c);
-	r = mntralloc(c);
+	r = mntralloc(c, m->c->iounit);
 	if(waserror()) {
 		mntfree(r);
 		nexterror();
@@ -304,32 +324,49 @@ mntstat(Chan *c, char *dp)
 	r->request.fid = c->fid;
 	mountrpc(m, r);
 
-	memmove(dp, r->reply.stat, DIRLEN);
-	mntdirfix((uchar*)dp, c);
+	if(r->reply.nstat >= 1<<(8*BIT16SZ))
+		error("returned stat buffer count too large");
+
+	if(r->reply.nstat > n){
+		/* doesn't fit; just patch the count and return */
+		PBIT16((uchar*)dp, r->reply.nstat);
+		n = BIT16SZ;
+	}else{
+		n = r->reply.nstat;
+		memmove(dp, r->reply.stat, n);
+		validstat(dp, n);
+		mntdirfix(dp, c);
+	}
 	poperror();
 	mntfree(r);
+	return n;
 }
 
 static Chan*
-mntopen(Chan *c, int omode)
+mntopencreate(int type, Chan *c, char *name, int omode, ulong perm)
 {
 	Mnt *m;
 	Mntrpc *r;
 
 	m = mntchk(c);
-	r = mntralloc(c);
+	r = mntralloc(c, m->c->iounit);
 	if(waserror()) {
 		mntfree(r);
 		nexterror();
 	}
-	r->request.type = Topen;
+	r->request.type = type;
 	r->request.fid = c->fid;
 	r->request.mode = omode;
+	if(type == Tcreate){
+		r->request.perm = perm;
+		r->request.name = name;
+	}
 	mountrpc(m, r);
 
 	c->qid = r->reply.qid;
 	c->offset = 0;
 	c->mode = openmode(omode);
+	c->iounit = r->reply.iounit;
 	c->flag |= COPEN;
 	poperror();
 	mntfree(r);
@@ -340,33 +377,16 @@ mntopen(Chan *c, int omode)
 	return c;
 }
 
+static Chan*
+mntopen(Chan *c, int omode)
+{
+	return mntopencreate(Topen, c, nil, omode, 0);
+}
+
 static void
 mntcreate(Chan *c, char *name, int omode, ulong perm)
 {
-	Mnt *m;
-	Mntrpc *r;
-
-	m = mntchk(c);
-	r = mntralloc(c);
-	if(waserror()) {
-		mntfree(r);
-		nexterror();
-	}
-	r->request.type = Tcreate;
-	r->request.fid = c->fid;
-	r->request.mode = omode;
-	r->request.perm = perm;
-	strncpy(r->request.name, name, NAMELEN);
-	mountrpc(m, r);
-
-	c->qid = r->reply.qid;
-	c->flag |= COPEN;
-	c->mode = openmode(omode);
-	poperror();
-	mntfree(r);
-
-	if(c->flag & CCACHE)
-		copen(c);
+	mntopencreate(Tcreate, c, name, omode, perm);
 }
 
 static void
@@ -376,7 +396,7 @@ mntclunk(Chan *c, int t)
 	Mntrpc *r;
 
 	m = mntchk(c);
-	r = mntralloc(c);
+	r = mntralloc(c, m->c->iounit);
 	if(waserror()){
 		mntfree(r);
 		mclose(m, c);
@@ -391,7 +411,7 @@ mntclunk(Chan *c, int t)
 	poperror();
 }
 
-static void
+void
 mclose(Mnt *m, Chan*)
 {
 	Mntrpc *q, *r;
@@ -408,7 +428,7 @@ mclose(Mnt *m, Chan*)
 	mntpntfree(m);
 }
 
-static void
+void
 mntpntfree(Mnt *m)
 {
 	Mnt *f, **l;
@@ -440,41 +460,37 @@ mntremove(Chan *c)
 	mntclunk(c, Tremove);
 }
 
-static void
-mntwstat(Chan *c, char *dp)
+static int
+mntwstat(Chan *c, uchar *dp, int n)
 {
 	Mnt *m;
 	Mntrpc *r;
 
 	m = mntchk(c);
-	r = mntralloc(c);
+	r = mntralloc(c, m->c->iounit);
 	if(waserror()) {
 		mntfree(r);
 		nexterror();
 	}
 	r->request.type = Twstat;
 	r->request.fid = c->fid;
-	memmove(r->request.stat, dp, DIRLEN);
+	r->request.nstat = n;
+	r->request.stat = dp;
 	mountrpc(m, r);
 	poperror();
 	mntfree(r);
-}
-
-long
-mntread9p(Chan *c, void *buf, long n, vlong off)
-{
-	return mnt9prdwr(Tread, c, buf, n, off);
+	return n;
 }
 
 static long
 mntread(Chan *c, void *buf, long n, vlong off)
 {
 	uchar *p, *e;
-	int nc, cache, isdir;
+	int nc, cache, isdir, dirlen;
 
 	isdir = 0;
 	cache = c->flag & CCACHE;
-	if(c->qid.path & CHDIR) {
+	if(c->qid.type & QTDIR) {
 		cache = 0;
 		isdir = 1;
 	}
@@ -496,17 +512,18 @@ mntread(Chan *c, void *buf, long n, vlong off)
 
 	n = mntrdwr(Tread, c, buf, n, off);
 	if(isdir) {
-		for(e = &p[n]; p < e; p += DIRLEN)
+		for(e = &p[n]; p+BIT16SZ < e; p += dirlen){
+			dirlen = BIT16SZ+GBIT16(p);
+			if(p+dirlen > e)
+				break;
+			validstat(p, dirlen);
 			mntdirfix(p, c);
+		}
+		if(p != e)
+			error(Esbadstat);
 	}
 
 	return n;
-}
-
-long
-mntwrite9p(Chan *c, void *buf, long n, vlong off)
-{
-	return mnt9prdwr(Twrite, c, buf, n, off);
 }
 
 static long
@@ -515,44 +532,7 @@ mntwrite(Chan *c, void *buf, long n, vlong off)
 	return mntrdwr(Twrite, c, buf, n, off);
 }
 
-static long
-mnt9prdwr(int type, Chan *c, void *buf, long n, vlong off)
-{
-	Mnt *m;
- 	ulong nr;
-	Mntrpc *r;
-
-	if(n > MAXRPC-32) {
-		if(type == Twrite)
-			error("write9p too long");
-		n = MAXRPC-32;
-	}
-
-	m = mntchk(c);
-	r = mntralloc(c);
-	if(waserror()) {
-		mntfree(r);
-		nexterror();
-	}
-	r->request.type = type;
-	r->request.fid = c->fid;
-	r->request.offset = off;
-	r->request.data = buf;
-	r->request.count = n;
-	mountrpc(m, r);
-	nr = r->reply.count;
-	if(nr > r->request.count)
-		nr = r->request.count;
-
-	if(type == Tread)
-		memmove(buf, r->reply.data, nr);
-
-	poperror();
-	mntfree(r);
-	return nr;
-}
-
-static long
+long
 mntrdwr(int type, Chan *c, void *buf, long n, vlong off)
 {
 	Mnt *m;
@@ -565,10 +545,10 @@ mntrdwr(int type, Chan *c, void *buf, long n, vlong off)
 	uba = buf;
 	cnt = 0;
 	cache = c->flag & CCACHE;
-	if(c->qid.path & CHDIR)
+	if(c->qid.type & QTDIR)
 		cache = 0;
 	for(;;) {
-		r = mntralloc(c);
+		r = mntralloc(c, m->c->iounit);
 		if(waserror()) {
 			mntfree(r);
 			nexterror();
@@ -577,13 +557,12 @@ mntrdwr(int type, Chan *c, void *buf, long n, vlong off)
 		r->request.fid = c->fid;
 		r->request.offset = off;
 		r->request.data = uba;
-		if(n > m->blocksize){
-			if(c->qid.path & CHDIR)
-				r->request.count = (m->blocksize/DIRLEN)*DIRLEN;
-			else
-				r->request.count = m->blocksize;
-		} else
-			r->request.count = n;
+		nr = n;
+		if(nr > m->c->iounit-IOHDRSZ)
+			nr = m->c->iounit-IOHDRSZ;
+		if(c->iounit != 0 && nr > c->iounit)
+			nr = c->iounit;
+		r->request.count = nr;
 		mountrpc(m, r);
 		nreq = r->request.count;
 		nr = r->reply.count;
@@ -607,7 +586,7 @@ mntrdwr(int type, Chan *c, void *buf, long n, vlong off)
 	return cnt;
 }
 
-static void
+void
 mountrpc(Mnt *m, Mntrpc *r)
 {
 	char *sn, *cn;
@@ -641,7 +620,7 @@ mountrpc(Mnt *m, Mntrpc *r)
 	}
 }
 
-static void
+void
 mountio(Mnt *m, Mntrpc *r)
 {
 	int n;
@@ -653,7 +632,7 @@ mountio(Mnt *m, Mntrpc *r)
 			mntflushfree(m, r);
 			nexterror();
 		}
-		r = mntflushalloc(r);
+		r = mntflushalloc(r, m->c->iounit);
 	}
 
 	lock(m);
@@ -663,16 +642,13 @@ mountio(Mnt *m, Mntrpc *r)
 	unlock(m);
 
 	/* Transmit a file system rpc */
-	n = convS2M(&r->request, r->rpc);
+	if(m->c->iounit == 0)
+		panic("iounit");
+	n = convS2M(&r->request, r->rpc, m->c->iounit);
 	if(n < 0)
 		panic("bad message type in mountio");
-	if(devtab[m->c->type]->dc == L'M'){
-		if(mnt9prdwr(Twrite, m->c, r->rpc, n, 0) != n)
-			error(Emountrpc);
-	}else{
-		if(devtab[m->c->type]->write(m->c, r->rpc, n, 0) != n)
-			error(Emountrpc);
-	}
+	if(devtab[m->c->type]->write(m->c, r->rpc, n, 0) != n)
+		error(Emountrpc);
 	r->stime = fastticks(nil);
 	r->reqlen = n;
 
@@ -692,7 +668,8 @@ mountio(Mnt *m, Mntrpc *r)
 	m->rip = up;
 	unlock(m);
 	while(r->done == 0) {
-		mntrpcread(m, r);
+		if(mntrpcread(m, r) < 0)
+			error(Emountrpc);
 		mountmux(m, r);
 	}
 	mntgate(m);
@@ -700,28 +677,62 @@ mountio(Mnt *m, Mntrpc *r)
 	mntflushfree(m, r);
 }
 
-static void
-mntrpcread(Mnt *m, Mntrpc *r)
+int
+mntreadn(Chan *c, uchar *buf, int n)
 {
-	int n;
+	int m, dm;
 
-	for(;;) {
-		r->reply.type = 0;
-		r->reply.tag = 0;
-		if(devtab[m->c->type]->dc == L'M')
-			n = mnt9prdwr(Tread, m->c, r->rpc, MAXRPC, 0);
-		else
-			n = devtab[m->c->type]->read(m->c, r->rpc, MAXRPC, 0);
-		if(n == 0)
-			continue;
-
-		r->replen = n;
-		if(convM2S(r->rpc, &r->reply, n) != 0)
-			return;
+	for(m=0; m<n; m+=dm){
+		dm = devtab[c->type]->read(c, buf, n-m, 0);
+		if(dm <= 0)
+			return 0;
+		buf += dm;
 	}
+	return n;
 }
 
-static void
+int
+mntrpcread(Mnt *m, Mntrpc *r)
+{
+	int n, len;
+	ulong chunk;
+
+	chunk = m->c->iounit;
+	if(chunk == 0 || chunk > m->c->iounit)
+		chunk = m->c->iounit;
+	r->reply.type = 0;
+	r->reply.tag = 0;
+	/* read size, then read exactly the right number of bytes */
+	n = mntreadn(m->c, r->rpc, BIT32SZ);
+	if(n != BIT32SZ){
+		if(n > 0)
+			print("devmnt expected BIT32SZ got %d\n", n);
+		return -1;
+	}
+	len = GBIT32((uchar*)r->rpc);
+	if(len <= BIT32SZ || len > chunk){
+		print("devmnt: len %d max messagesize %ld\n", len, m->c->iounit);
+		return -1;
+	}
+	n += mntreadn(m->c, r->rpc+BIT32SZ, len-BIT32SZ);
+	if(n != len){
+		print("devmnt: length %d expected %d\n", n, len);
+		return -1;
+	}
+
+	r->replen = n;
+	if(convM2S(r->rpc, n, &r->reply) == 0){
+		int i;
+		print("bad conversion of received message; %d bytes iounit %ld\n", n, m->c->iounit);
+		for(i=0; i<n; i++)
+			print("%.2ux ", (uchar)r->rpc[i]);
+		print("\n");
+		return -1;
+	}
+	return 0;
+}
+
+void
 mntgate(Mnt *m)
 {
 	Mntrpc *q;
@@ -736,10 +747,10 @@ mntgate(Mnt *m)
 	unlock(m);
 }
 
-static void
+void
 mountmux(Mnt *m, Mntrpc *r)
 {
-	char *dp;
+	uchar *dp;
 	Mntrpc **l, *q;
 
 	lock(m);
@@ -771,18 +782,19 @@ mountmux(Mnt *m, Mntrpc *r)
 		l = &q->list;
 	}
 	unlock(m);
+	print("unexpected reply tag %ud; type %d\n", r->reply.tag, r->reply.type);
 }
 
 /*
  * Create a new flush request and chain the previous
  * requests from it
  */
-static Mntrpc*
-mntflushalloc(Mntrpc *r)
+Mntrpc*
+mntflushalloc(Mntrpc *r, ulong iounit)
 {
 	Mntrpc *fr;
 
-	fr = mntralloc(0);
+	fr = mntralloc(0, iounit);
 
 	fr->request.type = Tflush;
 	if(r->request.type == Tflush)
@@ -801,7 +813,7 @@ mntflushalloc(Mntrpc *r)
  *  and if it hasn't been answered set the reply to to
  *  Rflush.
  */
-static void
+void
 mntflushfree(Mnt *m, Mntrpc *r)
 {
 	Mntrpc *fr;
@@ -818,8 +830,8 @@ mntflushfree(Mnt *m, Mntrpc *r)
 	}
 }
 
-static Mntrpc*
-mntralloc(Chan *c)
+Mntrpc*
+mntralloc(Chan *c, ulong iounit)
 {
 	Mntrpc *new;
 
@@ -835,7 +847,7 @@ mntralloc(Chan *c)
 		 * The header is split from the data buffer as
 		 * mountmux may swap the buffer with another header.
 		 */
-		new->rpc = mallocz(MAXRPC, 0);
+		new->rpc = mallocz(iounit, 0);
 		if(new->rpc == nil){
 			free(new);
 			unlock(&mntalloc);
@@ -855,7 +867,7 @@ mntralloc(Chan *c)
 	return new;
 }
 
-static void
+void
 mntfree(Mntrpc *r)
 {
 	lock(&mntalloc);
@@ -872,7 +884,7 @@ mntfree(Mntrpc *r)
 	unlock(&mntalloc);
 }
 
-static void
+void
 mntqrm(Mnt *m, Mntrpc *r)
 {
 	Mntrpc **l, *f;
@@ -891,7 +903,7 @@ mntqrm(Mnt *m, Mntrpc *r)
 	unlock(m);
 }
 
-static Mnt*
+Mnt*
 mntchk(Chan *c)
 {
 	Mnt *m;
@@ -907,19 +919,24 @@ mntchk(Chan *c)
 	return m;
 }
 
-static void
+/*
+ * Rewrite channel type and dev for in-flight data to
+ * reflect local values.  These entries are known to be
+ * the first two in the Dir encoding after the count.
+ */
+void
 mntdirfix(uchar *dirbuf, Chan *c)
 {
-	int r;
+	uint r;
 
 	r = devtab[c->type]->dc;
-	dirbuf[DIRLEN-4] = r>>0;
-	dirbuf[DIRLEN-3] = r>>8;
-	dirbuf[DIRLEN-2] = c->dev;
-	dirbuf[DIRLEN-1] = c->dev>>8;
+	dirbuf += BIT16SZ;	/* skip count */
+	PBIT16(dirbuf, r);
+	dirbuf += BIT16SZ;
+	PBIT32(dirbuf, c->dev);
 }
 
-static int
+int
 rpcattn(void *v)
 {
 	Mntrpc *r;
@@ -935,7 +952,6 @@ Dev mntdevtab = {
 	mntreset,
 	devinit,
 	mntattach,
-	mntclone,
 	mntwalk,
 	mntstat,
 	mntopen,

@@ -109,8 +109,7 @@ mga2164wenable(VGAscr* scr)
 
 	memset(&seg, 0, sizeof(seg));
 	seg.attr = SG_PHYSICAL;
-	seg.name = smalloc(NAMELEN);
-	snprint(seg.name, NAMELEN, "mga2164wmmio");
+	kstrdup(&seg.name, "mga2164wmmio");
 	seg.pa = scr->io;
 	seg.size = p->mem[immio].size;
 	addphysseg(&seg);
@@ -126,8 +125,7 @@ mga2164wenable(VGAscr* scr)
 		scr->apsize = size;
 		memset(&seg, 0, sizeof(seg));
 		seg.attr = SG_PHYSICAL;
-		seg.name = smalloc(NAMELEN);
-		snprint(seg.name, NAMELEN, "mga2164wscreen");
+		kstrdup(&seg.name, "mga2164wscreen");
 		seg.pa = aperture;
 		seg.size = size;
 		addphysseg(&seg);

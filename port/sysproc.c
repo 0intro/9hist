@@ -12,7 +12,14 @@ int	shargs(char*, int, char**);
 long
 sysr1(ulong *arg)
 {
+extern int chandebug;
+extern void dumpmount(void);
+
 	print("[%s %s %lud] r1 = %lud\n", up->user, up->text, up->pid, arg[0]);
+chandebug=!chandebug;
+if(chandebug)
+	dumpmount();
+
 	return 0;
 }
 
@@ -164,7 +171,7 @@ sysrfork(ulong *arg)
 	p->parent = up;
 	p->parentpid = up->pid;
 	if(flag&RFNOWAIT)
-		p->parentpid = 1;
+		p->parentpid = 0;
 	else {
 		lock(&up->exl);
 		up->nchild++;
@@ -177,8 +184,9 @@ sysrfork(ulong *arg)
 	pid = p->pid;
 	memset(p->time, 0, sizeof(p->time));
 	p->time[TReal] = MACHP(0)->ticks;
-	memmove(p->text, up->text, NAMELEN);
-	memmove(p->user, up->user, NAMELEN);
+
+	kstrdup(&p->text, up->text);
+	kstrdup(&p->user, up->user);
 	/*
 	 *  since the bss/data segments are now shareable,
 	 *  any mmu info about this process is now stale
@@ -215,7 +223,7 @@ sysexec(ulong *arg)
 	Chan *tc;
 	char **argv, **argp;
 	char *a, *charp, *args, *file;
-	char *progarg[sizeof(Exec)/2+1], elem[NAMELEN];
+	char *progarg[sizeof(Exec)/2+1], *elem, progelem[64];
 	ulong ssize, spage, nargs, nbytes, n, bssend;
 	int indir;
 	Exec exec;
@@ -227,6 +235,11 @@ sysexec(ulong *arg)
 	validaddr(arg[0], 1, 0);
 	file = (char*)arg[0];
 	indir = 0;
+	elem = nil;
+	if(waserror()){
+		free(elem);
+		nexterror();
+	}
 	for(;;){
 		tc = namec(file, Aopen, OEXEC, 0);
 		if(waserror()){
@@ -234,7 +247,7 @@ sysexec(ulong *arg)
 			nexterror();
 		}
 		if(!indir)
-			strcpy(elem, up->elem);
+			kstrdup(&elem, up->genbuf);
 
 		n = devtab[tc->type]->read(tc, &exec, sizeof(Exec), 0);
 		if(n < 2)
@@ -268,7 +281,10 @@ sysexec(ulong *arg)
 		validaddr(arg[1], BY2WD, 1);
 		arg[1] += BY2WD;
 		file = progarg[0];
-		progarg[0] = elem;
+		if(strlen(elem) >= sizeof progelem)
+			error(Ebadexec);
+		strcpy(progelem, elem);
+		progarg[0] = progelem;
 		poperror();
 		cclose(tc);
 	}
@@ -351,7 +367,10 @@ sysexec(ulong *arg)
 		charp += n;
 	}
 
-	memmove(up->text, elem, NAMELEN);
+	free(up->text);
+	up->text = elem;
+	elem = nil;	/* so waserror() won't free elem */
+	USED(elem);
 
 	/* copy args; easiest from new process's stack */
 	n = charp - args;
@@ -428,7 +447,8 @@ sysexec(ulong *arg)
 	up->seg[ESEG] = 0;
 	up->seg[SSEG] = s;
 	qunlock(&up->seglock);
-	poperror();
+	poperror();	/* seglock */
+	poperror();	/* elem */
 	s->base = USTKTOP-USTKSIZE;
 	s->top = USTKTOP;
 	relocateseg(s, USTKTOP-TSTKTOP);
@@ -525,7 +545,7 @@ sysexits(ulong *arg)
 {
 	char *status;
 	char *inval = "invalid exit string";
-	char buf[ERRLEN];
+	char buf[ERRMAX];
 
 	status = (char*)arg[0];
 	if(status){
@@ -533,9 +553,9 @@ sysexits(ulong *arg)
 			status = inval;
 		else{
 			validaddr((ulong)status, 1, 0);
-			if(vmemchr(status, 0, ERRLEN) == 0){
-				memmove(buf, status, ERRLEN);
-				buf[ERRLEN-1] = 0;
+			if(vmemchr(status, 0, ERRMAX) == 0){
+				memmove(buf, status, ERRMAX);
+				buf[ERRMAX-1] = 0;
 				status = buf;
 			}
 		}
@@ -573,22 +593,44 @@ werrstr(char *fmt, ...)
 		return;
 
 	va_start(va, fmt);
-	doprint(up->error, up->error+ERRLEN, fmt, va);
+	doprint(up->error, up->error+ERRMAX, fmt, va);
 	va_end(va);
 }
 
 long
 syserrstr(ulong *arg)
 {
-	char *e, tmp[ERRLEN];
+	char *e, tmp[sizeof up->error];
+	uint n;
 
-	validaddr(arg[0], ERRLEN, 1);
+	n = arg[1];
+	if(n > sizeof tmp)
+		n = sizeof tmp;
+	validaddr(arg[0], n, 1);
 	e = (char*)arg[0];
-	memmove(tmp, e, ERRLEN);
-	memmove(e, up->error, ERRLEN);
-	memmove(up->error, tmp, ERRLEN);
+	memmove(tmp, e, n);
+	/* make sure it's NUL-terminated */
+	tmp[n-1] = '\0';
+	memmove(e, up->error, n);
+	e[n-1] = '\0';
+	memmove(up->error, tmp, n);
 	return 0;
 }
+
+/* compatibility for old binaries */
+long
+sys_errstr(ulong *arg)
+{
+	char *e, tmp[64];
+
+	validaddr(arg[0], 64, 1);
+	e = (char*)arg[0];
+	memmove(tmp, e, 64);
+	memmove(e, up->error, 64);
+	memmove(up->error, tmp, 64);
+	return 0;
+}
+
 
 long
 sysnotify(ulong *arg)

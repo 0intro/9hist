@@ -294,7 +294,7 @@ pcmmap(int slotno, ulong offset, int len, int attr)
 		}
 		m->isa = PADDR(umbmalloc(0, len, Mgran));
 		if(m->isa == 0){
-			print("pcmmap: %d out of isa space\n", len);
+			print("pcmmap: out of isa space\n");
 			unlock(&pp->mlock);
 			return 0;
 		}
@@ -419,21 +419,21 @@ enum
 	Nents = 3,
 };
 
-#define SLOTNO(c)	((c->qid.path>>8)&0xff)
-#define TYPE(c)		(c->qid.path&0xff)
+#define SLOTNO(c)	((ulong)((c->qid.path>>8)&0xff))
+#define TYPE(c)		((ulong)(c->qid.path&0xff))
 #define QID(s,t)	(((s)<<8)|(t))
 
 static int
-pcmgen(Chan *c, Dirtab *, int , int i, Dir *dp)
+pcmgen(Chan *c, char*, Dirtab *, int , int i, Dir *dp)
 {
 	int slotno;
 	Qid qid;
 	long len;
 	PCMslot *pp;
-	char name[NAMELEN];
 
 	if(i == DEVDOTDOT){
-		devdir(c, (Qid){CHDIR, 0}, "#y", 0, eve, 0555, dp);
+		mkqid(&qid, Qdir, 0, QTDIR);
+		devdir(c, qid, "#y", 0, eve, 0555, dp);
 		return 1;
 	}
 
@@ -445,21 +445,21 @@ pcmgen(Chan *c, Dirtab *, int , int i, Dir *dp)
 	switch(i%Nents){
 	case 0:
 		qid.path = QID(slotno, Qmem);
-		sprint(name, "pcm%dmem", slotno);
+		snprint(up->genbuf, sizeof up->genbuf, "pcm%dmem", slotno);
 		len = pp->memlen;
 		break;
 	case 1:
 		qid.path = QID(slotno, Qattr);
-		sprint(name, "pcm%dattr", slotno);
+		snprint(up->genbuf, sizeof up->genbuf, "pcm%dattr", slotno);
 		len = pp->memlen;
 		break;
 	case 2:
 		qid.path = QID(slotno, Qctl);
-		sprint(name, "pcm%dctl", slotno);
+		snprint(up->genbuf, sizeof up->genbuf, "pcm%dctl", slotno);
 		break;
 	}
 	qid.vers = 0;
-	devdir(c, qid, name, len, eve, 0660, dp);
+	devdir(c, qid, up->genbuf, len, eve, 0660, dp);
 	return 1;
 }
 
@@ -584,7 +584,7 @@ i82365reset(void)
 	int i, j;
 	I82365 *cp;
 	PCMslot *pp;
-	char buf[NAMELEN];
+	char buf[32];
 
 	if(already)
 		return;
@@ -630,7 +630,7 @@ i82365reset(void)
 		}
 
 		/* for card management interrupts */
-		sprint(buf, "i82365.%d", i);
+		snprint(buf, sizeof buf, "i82365.%d", i);
 		intrenable(cp->irq, i82365intr, 0, BUSUNKNOWN, buf);
 	}
 }
@@ -641,22 +641,22 @@ i82365attach(char *spec)
 	return devattach('y', spec);
 }
 
-static int
-i82365walk(Chan *c, char *name)
+static Walkqid*
+i82365walk(Chan *c, Chan *nc, char **name, int nname)
 {
-	return devwalk(c, name, 0, 0, pcmgen);
+	return devwalk(c, nc, name, nname, 0, 0, pcmgen);
 }
 
-static void
-i82365stat(Chan *c, char *db)
+static int
+i82365stat(Chan *c, uchar *db, int n)
 {
-	devstat(c, db, 0, 0, pcmgen);
+	return devstat(c, db, n, 0, 0, pcmgen);
 }
 
 static Chan*
 i82365open(Chan *c, int omode)
 {
-	if(c->qid.path == CHDIR){
+	if(c->qid.type & QTDIR){
 		if(omode != OREAD)
 			error(Eperm);
 	} else
@@ -671,7 +671,7 @@ static void
 i82365close(Chan *c)
 {
 	if(c->flag & COPEN)
-		if(c->qid.path != CHDIR)
+		if((c->qid.type & QTDIR) == 0)
 			decrefp(slot+SLOTNO(c));
 }
 
@@ -869,7 +869,6 @@ Dev i82365devtab = {
 	i82365reset,
 	devinit,
 	i82365attach,
-	devclone,
 	i82365walk,
 	i82365stat,
 	i82365open,

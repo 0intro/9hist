@@ -387,7 +387,7 @@ putimage(Image *i)
 	lock(i);
 	if(--i->ref == 0) {
 		l = &ihash(i->qid.path);
-		i->qid = (Qid){~0, ~0};
+		mkqid(&i->qid, ~0, ~0, QTFILE);
 		unlock(i);
 		c = i->c;
 
@@ -541,11 +541,13 @@ out:
 }
 
 Segment*
-isoverlap(Proc *p, ulong va, int newtop)
+isoverlap(Proc *p, ulong va, int len)
 {
 	int i;
 	Segment *ns;
+	ulong newtop;
 
+	newtop = va+len;
 	for(i = 0; i < NSEG; i++) {
 		ns = p->seg[i];
 		if(ns == 0)
@@ -584,30 +586,10 @@ addphysseg(Physseg* new)
 	return 0;
 }
 
-int
-isphysseg(char *name)
-{
-	Physseg *ps;
-	int rv = 0;
-
-	lock(&physseglock);
-	for(ps = physseg; ps->name; ps++){
-		if(strcmp(ps->name, name) == 0){
-			rv = 1;
-			break;
-		}
-	}
-	unlock(&physseglock);
-	return rv;
-}
-
-Segment* (*_globalsegattach)(Proc*, char*);
-
 ulong
 segattach(Proc *p, ulong attr, char *name, ulong va, ulong len)
 {
 	int sno;
-	ulong top;
 	Segment *s, *os;
 	Physseg *ps;
 
@@ -624,18 +606,7 @@ segattach(Proc *p, ulong attr, char *name, ulong va, ulong len)
 	if(sno == NSEG)
 		error(Enovmem);
 
-	/*
-	 *  first look for a global segment with the
-	 *  same name
-	 */
-	if(_globalsegattach != nil){
-		s = (*_globalsegattach)(p, name);
-		if(s != nil){
-			p->seg[sno] = s;
-			return s->base;
-		}
-	}
-
+	len = PGROUND(len);
 	if(len == 0)
 		error(Ebadarg);
 
@@ -647,10 +618,9 @@ segattach(Proc *p, ulong attr, char *name, ulong va, ulong len)
 	 * or the address space is exhausted.
 	 */
 	if(va == 0) {
-		len = PGROUND(len);
 		va = p->seg[SSEG]->base - len;
 		for(;;) {
-			os = isoverlap(p, va, va+len);
+			os = isoverlap(p, va, len);
 			if(os == nil)
 				break;
 			va = os->base;
@@ -660,10 +630,8 @@ segattach(Proc *p, ulong attr, char *name, ulong va, ulong len)
 		}
 	}
 
-	top = PGROUND(va + len);
 	va = va&~(BY2PG-1);
-	len = top - va;
-	if(isoverlap(p, va, top) != nil)
+	if(isoverlap(p, va, len) != nil)
 		error(Esoverlap);
 
 	for(ps = physseg; ps->name; ps++)
@@ -702,9 +670,9 @@ long
 syssegflush(ulong *arg)
 {
 	Segment *s;
-	ulong addr, l, ps, pe;
+	ulong addr, l;
 	Pte *pte;
-	int chunk, len;
+	int chunk, ps, pe, len;
 
 	addr = arg[0];
 	len = arg[1];

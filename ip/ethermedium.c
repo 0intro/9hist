@@ -106,8 +106,8 @@ static void
 etherbind(Ipifc *ifc, int argc, char **argv)
 {
 	Chan *mchan, *cchan, *achan;
-	char addr[2*NAMELEN];
-	char dir[2*NAMELEN];
+	char addr[Maxpath];
+	char dir[Maxpath];
 	char *buf;
 	int n;
 	char *ptr;

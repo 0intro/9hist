@@ -369,13 +369,15 @@ again:
 SDev*
 scsiid(SDev* sdev, SDifc* ifc)
 {
+	char name[32];
 	static char idno[16] = "0123456789abcdef";
 	static char *p = idno;
 
 	while(sdev){
 		if(sdev->ifc == ifc){
 			sdev->idno = *p++;
-			snprint(sdev->name, NAMELEN, "sd%c", sdev->idno);
+			snprint(name, sizeof(name), "sd%c", sdev->idno);
+			kstrdup(&sdev->name, name);
 			if(p >= &idno[sizeof(idno)])
 				break;
 		}

@@ -209,6 +209,8 @@ ringinit(Ctlr* ctlr)
 		ctlr->rdr = xspanalloc(Nrdre*sizeof(Dre), 0x10, 0);
 		for(dre = ctlr->rdr; dre < &ctlr->rdr[Nrdre]; dre++){
 			dre->bp = iallocb(Rbsize);
+			if(dre->bp == nil)
+				panic("can't allocate ethernet receive ring\n");
 			dre->addr = PADDR(dre->bp->rp);
 			dre->md2 = 0;
 			dre->md1 = Own|(-Rbsize & 0xFFFF);
@@ -424,15 +426,15 @@ typedef struct Adapter {
 } Adapter;
 static Block* adapter;
 
-static void
+static int
 amd79c970adapter(Block** bpp, int port, int irq, int tbdf)
 {
 	Block *bp;
 	Adapter *ap;
 
-	bp = iallocb(sizeof(Adapter));
+	bp = allocb(sizeof(Adapter));
 	if(bp == nil)
-		return;
+		return -1;
 	ap = (Adapter*)bp->rp;
 	ap->port = port;
 	ap->irq = irq;
@@ -440,6 +442,8 @@ amd79c970adapter(Block** bpp, int port, int irq, int tbdf)
 
 	bp->next = *bpp;
 	*bpp = bp;
+
+	return 0;
 }
 
 static void
@@ -455,7 +459,10 @@ amd79c970pci(void)
 			print("amd79c970: port 0x%uX in use\n", port);
 			continue;
 		}
-		amd79c970adapter(&adapter, port, p->intl, p->tbdf);
+		if(amd79c970adapter(&adapter, port, p->intl, p->tbdf)){
+			iofree(port);
+			continue;
+		}
 		pcisetbme(p);
 	}
 }

@@ -402,7 +402,7 @@ atacsf(Drive* drive, vlong csf, int supported)
 		info = &drive->info[Icsfs];
 	else
 		info = &drive->info[Icsfe];
-	
+
 	for(i = 0; i < 3; i++){
 		x = (csf>>(16*i)) & 0xFFFF;
 		if(x == 0)
@@ -1500,7 +1500,7 @@ atainterrupt(Ureg*, void* arg)
 	if((drive = ctlr->curdrive) == nil){
 		iunlock(ctlr);
 		if((DEBUG & DbgDEBUG) && ctlr->command != Cedd)
-			print("Inil%2.2uX/%2.2uX+", ctlr->command, status);
+			print("Inil%2.2uX+", ctlr->command);
 		return;
 	}
 
@@ -1702,6 +1702,7 @@ ataid(SDev* sdev)
 {
 	int i;
 	Ctlr *ctlr;
+	char name[32];
 
 	/*
 	 * Legacy controllers are always 'C' and 'D' and if
@@ -1727,7 +1728,8 @@ ataid(SDev* sdev)
 				sdev->idno = 'C'+i;
 				i++;
 			}
-			snprint(sdev->name, NAMELEN, "sd%c", sdev->idno);
+			snprint(name, sizeof(name), "sd%c", sdev->idno);
+			kstrdup(&sdev->name, name);
 		}
 		sdev = sdev->next;
 	}
@@ -1739,7 +1741,7 @@ static int
 ataenable(SDev* sdev)
 {
 	Ctlr *ctlr;
-	char name[NAMELEN];
+	char name[32];
 
 	ctlr = sdev->ctlr;
 
@@ -1748,7 +1750,7 @@ ataenable(SDev* sdev)
 			pcisetbme(ctlr->pcidev);
 		ctlr->prdt = xspanalloc(Nprd*sizeof(Prd), 4, 4*1024);
 	}
-	snprint(name, NAMELEN, "%s (%s)", sdev->name, sdev->ifc->name);
+	snprint(name, sizeof(name), "%s (%s)", sdev->name, sdev->ifc->name);
 	intrenable(ctlr->irq, atainterrupt, ctlr, ctlr->tbdf, name);
 	outb(ctlr->ctlport+Dc, 0);
 	if(ctlr->ienable)

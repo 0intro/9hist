@@ -82,6 +82,7 @@ struct Conf
 	ulong	copymode;	/* 0 is copy on write, 1 is copy on reference */
 	ulong	ialloc;		/* max interrupt time allocation in bytes */
 	ulong	pipeqsize;	/* size in bytes of pipe queues */
+	int	nuart;	/* number of uart devices */
 };
 
 /*
@@ -246,11 +247,10 @@ struct PCArch
 /*
  *  a parsed plan9.ini line
  */
-#define ISAOPTLEN	28
 #define NISAOPT		8
 
 struct ISAConf {
-	char	type[NAMELEN];
+	char		*type;
 	ulong	port;
 	ulong	irq;
 	ulong	dma;
@@ -259,7 +259,7 @@ struct ISAConf {
 	ulong	freq;
 
 	int	nopt;
-	char	opt[NISAOPT][ISAOPTLEN];
+	char	*opt[NISAOPT];
 };
 
 extern PCArch	*arch;			/* PC architecture */

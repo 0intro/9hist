@@ -27,8 +27,8 @@ static struct
 } iomap;
 
 enum {
-	Qdir = CHDIR,
-	Qioalloc = 0,
+	Qdir = 0,
+	Qioalloc = 1,
 	Qiob,
 	Qiow,
 	Qiol,
@@ -43,6 +43,7 @@ static Rdwrfn *readfn[Qmax];
 static Rdwrfn *writefn[Qmax];
 
 static Dirtab archdir[Qmax] = {
+	".",	{ Qdir, 0, QTDIR },	0,	0555,
 	"ioalloc",	{ Qioalloc, 0 },	0,	0444,
 	"iob",		{ Qiob, 0 },		0,	0660,
 	"iow",		{ Qiow, 0 },		0,	0660,
@@ -223,16 +224,16 @@ archattach(char* spec)
 	return devattach('P', spec);
 }
 
-int
-archwalk(Chan* c, char* name)
+Walkqid*
+archwalk(Chan* c, Chan *nc, char** name, int nname)
 {
-	return devwalk(c, name, archdir, narchdir, devgen);
+	return devwalk(c, nc, name, nname, archdir, narchdir, devgen);
 }
 
-static void
-archstat(Chan* c, char* dp)
+static int
+archstat(Chan* c, uchar* dp, int n)
 {
-	devstat(c, dp, archdir, narchdir, devgen);
+	return devstat(c, dp, n, archdir, narchdir, devgen);
 }
 
 static Chan*
@@ -261,7 +262,7 @@ archread(Chan *c, void *a, long n, vlong offset)
 	IOMap *m;
 	Rdwrfn *fn;
 
-	switch(c->qid.path){
+	switch((ulong)c->qid.path){
 
 	case Qdir:
 		return devdirread(c, a, n, archdir, narchdir, devgen);
@@ -331,7 +332,7 @@ archwrite(Chan *c, void *a, long n, vlong offset)
 	ulong *lp;
 	Rdwrfn *fn;
 
-	switch(c->qid.path & ~CHDIR){
+	switch((ulong)c->qid.path){
 
 	case Qiob:
 		p = a;
@@ -376,7 +377,6 @@ Dev archdevtab = {
 	devreset,
 	devinit,
 	archattach,
-	devclone,
 	archwalk,
 	archstat,
 	archopen,

@@ -100,18 +100,7 @@ s3linear(VGAscr* scr, int* size, int* align)
 	mmiosize = 0;
 	mmiobase = 0;
 	mmioname = nil;
-
-	/*
-	 * S3 makes cards other than display controllers, so
-	 * look for the first S3 display controller (device class 3)
-	 * and not one of their sound cards.
-	 */
-	p = nil;
-	while(p = pcimatch(p, PCIS3, 0)){
-		if(p->ccrb == 0x03)
-			break;
-	}
-	if(p != nil){
+	if(p = pcimatch(nil, PCIS3, 0)){
 		for(i=0; i<nelem(p->mem); i++){
 			if(p->mem[i].size >= *size
 			&& ((p->mem[i].bar & ~0x0F) & (*align-1)) == 0)
@@ -170,8 +159,7 @@ s3linear(VGAscr* scr, int* size, int* align)
 		print("warning (BUG): redefinition of aperture does not change s3screen segment\n");
 	memset(&seg, 0, sizeof(seg));
 	seg.attr = SG_PHYSICAL;
-	seg.name = smalloc(NAMELEN);
-	snprint(seg.name, NAMELEN, "s3screen");
+	kstrdup(&seg.name, "s3screen");
 	seg.pa = aperture;
 	seg.size = osize;
 	addphysseg(&seg);
@@ -179,8 +167,7 @@ s3linear(VGAscr* scr, int* size, int* align)
 	if(mmiosize){
 		memset(&seg, 0, sizeof(seg));
 		seg.attr = SG_PHYSICAL;
-		seg.name = smalloc(NAMELEN);
-		snprint(seg.name, NAMELEN, mmioname);
+		kstrdup(&seg.name, mmioname);
 		seg.pa = mmiobase;
 		seg.size = mmiosize;
 		addphysseg(&seg);

@@ -509,6 +509,14 @@ TEXT setlabel(SB), $0
  * Attempt at power saving. -rsc
  */
 TEXT halt(SB), $0
+	CLI
+	CMPL	nrdy(SB), $0
+	JEQ	_nothingready
+	STI
+	RET
+
+_nothingready:
+	STI
 	HLT
 	RET
 

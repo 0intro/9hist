@@ -46,6 +46,7 @@ enum
 Dirtab
 audiodir[] =
 {
+	".",	{Qdir, 0, QTDIR},		0,	DMDIR|0555,
 	"audio",	{Qaudio},		0,	0666,
 	"volume",	{Qvolume},		0,	0666,
 	"audiostat",{Qstatus},		0,	0444,
@@ -144,7 +145,6 @@ sbcmd(int val)
 		s = inb(blaster.wstatus);
 		if((s & 0x80) == 0) {
 			outb(blaster.write, val);
-			delay(1);
 			return 0;
 		}
 	}
@@ -190,9 +190,7 @@ mxcmd(int addr, int val)
 {
 
 	outb(blaster.mixaddr, addr);
-	delay(1);
 	outb(blaster.mixdata, val);
-	delay(1);
 	return 1;
 }
 
@@ -844,16 +842,16 @@ audioattach(char *param)
 	return devattach('A', param);
 }
 
-static int
-audiowalk(Chan *c, char *name)
+static Walkqid*
+audiowalk(Chan *c, Chan *nc, char **name, int nname)
 {
-	return devwalk(c, name, audiodir, nelem(audiodir), devgen);
+	return devwalk(c, nc, name, nname, audiodir, nelem(audiodir), devgen);
 }
 
-static void
-audiostat(Chan *c, char *db)
+static int
+audiostat(Chan *c, uchar *db, int n)
 {
-	devstat(c, db, audiodir, nelem(audiodir), devgen);
+	return devstat(c, db, n, audiodir, nelem(audiodir), devgen);
 }
 
 static Chan*
@@ -864,7 +862,7 @@ audioopen(Chan *c, int omode)
 	if(audio.major != 4)
 		error(Emajor);
 
-	switch(c->qid.path & ~CHDIR) {
+	switch((ulong)c->qid.path) {
 	default:
 		error(Eperm);
 		break;
@@ -909,9 +907,9 @@ audioclose(Chan *c)
 {
 	Buf *b;
 
-	switch(c->qid.path & ~CHDIR) {
+	switch((ulong)c->qid.path) {
 	default:
-		error(Eperm);		/* can't happen */
+		error(Eperm);
 		break;
 
 	case Qdir:
@@ -935,8 +933,10 @@ audioclose(Chan *c)
 					pokeaudio();
 			}
 			audio.amode = Aclosed;
-			while(waserror())
-				;
+			if(waserror()){
+				qunlock(&audio);
+				nexterror();
+			}
 			while(audio.active)
 				waitaudio();
 			setempty();
@@ -960,7 +960,7 @@ audioread(Chan *c, void *v, long n, vlong off)
 
 	n0 = n;
 	a = v;
-	switch(c->qid.path & ~CHDIR) {
+	switch((ulong)c->qid.path) {
 	default:
 		error(Eperm);
 		break;
@@ -1066,7 +1066,7 @@ audiowrite(Chan *c, void *vp, long n, vlong)
 
 	a = vp;
 	n0 = n;
-	switch(c->qid.path & ~CHDIR) {
+	switch((ulong)c->qid.path) {
 	default:
 		error(Eperm);
 		break;
@@ -1211,7 +1211,6 @@ Dev audiodevtab = {
 	devreset,
 	audioinit,
 	audioattach,
-	devclone,
 	audiowalk,
 	audiostat,
 	audioopen,

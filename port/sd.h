@@ -9,8 +9,8 @@ typedef struct SDreq SDreq;
 typedef struct SDunit SDunit;
 
 typedef struct SDperm {
-	char	name[NAMELEN];
-	char	user[NAMELEN];
+	char	*name;
+	char	*user;
 	ulong	perm;
 } SDperm;
 
@@ -50,7 +50,7 @@ typedef struct SDev {
 	SDifc*	ifc;			/* pnp/legacy */
 	void	*ctlr;
 	int	idno;
-	char	name[NAMELEN];
+	char	*name;
 	int	index;			/* into unit space */
 	int	nunit;
 	SDev*	next;

@@ -105,8 +105,7 @@ tdfxenable(VGAscr* scr)
 
 	memset(&seg, 0, sizeof(seg));
 	seg.attr = SG_PHYSICAL;
-	seg.name = smalloc(NAMELEN);
-	snprint(seg.name, NAMELEN, "3dfxmmio");
+	kstrdup(&seg.name, "3dfxmmio");
 	seg.pa = scr->io;
 	seg.size = p->mem[0].size;
 	addphysseg(&seg);
@@ -119,8 +118,7 @@ tdfxenable(VGAscr* scr)
 		scr->apsize = size;
 		memset(&seg, 0, sizeof(seg));
 		seg.attr = SG_PHYSICAL;
-		seg.name = smalloc(NAMELEN);
-		snprint(seg.name, NAMELEN, "3dfxscreen");
+		kstrdup(&seg.name, "3dfxscreen");
 		seg.pa = aperture;
 		seg.size = size;
 		addphysseg(&seg);

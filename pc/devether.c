@@ -35,16 +35,16 @@ etherattach(char* spec)
 	return chan;
 }
 
-static int
-etherwalk(Chan* chan, char* name)
+static Walkqid*
+etherwalk(Chan* chan, Chan* nchan, char** name, int nname)
 {
-	return netifwalk(etherxx[chan->dev], chan, name);
+	return netifwalk(etherxx[chan->dev], chan, nchan, name, nname);
 }
 
-static void
-etherstat(Chan* chan, char* dp)
+static int
+etherstat(Chan* chan, uchar* dp, int n)
 {
-	netifstat(etherxx[chan->dev], chan, dp);
+	return netifstat(etherxx[chan->dev], chan, dp, n);
 }
 
 static Chan*
@@ -71,7 +71,7 @@ etherread(Chan* chan, void* buf, long n, vlong off)
 	ulong offset = off;
 
 	ether = etherxx[chan->dev];
-	if((chan->qid.path & CHDIR) == 0 && ether->ifstat){
+	if((chan->qid.type & QTDIR) == 0 && ether->ifstat){
 		/*
 		 * With some controllers it is necessary to reach
 		 * into the chip to extract statistics.
@@ -96,18 +96,17 @@ etherremove(Chan*)
 {
 }
 
-static void
-etherwstat(Chan* chan, char* dp)
+static int
+etherwstat(Chan* chan, uchar* dp, int n)
 {
-	netifwstat(etherxx[chan->dev], chan, dp);
+	return netifwstat(etherxx[chan->dev], chan, dp, n);
 }
 
 static void
 etherrtrace(Netfile* f, Etherpkt* pkt, int len)
 {
-	int n;
+	int i, n;
 	Block *bp;
-	uvlong ts;
 
 	if(qwindow(f->in) <= 0)
 		return;
@@ -115,22 +114,18 @@ etherrtrace(Netfile* f, Etherpkt* pkt, int len)
 		n = 58;
 	else
 		n = len;
-	bp = iallocb(68);
+	bp = iallocb(64);
 	if(bp == nil)
 		return;
 	memmove(bp->wp, pkt->d, n);
-	ts = fastticks(nil);
+	i = TK2MS(MACHP(0)->ticks);
 	bp->wp[58] = len>>8;
 	bp->wp[59] = len;
-	bp->wp[60] = ts>>56;
-	bp->wp[61] = ts>>48;
-	bp->wp[62] = ts>>40;
-	bp->wp[63] = ts>>32;
-	bp->wp[64] = ts>>24;
-	bp->wp[65] = ts>>16;
-	bp->wp[66] = ts>>8;
-	bp->wp[67] = ts;
-	bp->wp += 68;
+	bp->wp[60] = i>>24;
+	bp->wp[61] = i>>16;
+	bp->wp[62] = i>>8;
+	bp->wp[63] = i;
+	bp->wp += 64;
 	qpass(f->in, bp);
 }
 
@@ -248,7 +243,7 @@ static long
 etherwrite(Chan* chan, void* buf, long n, vlong)
 {
 	Ether *ether;
-	Block *volatile bp;
+	Block *bp;
 	int nn;
 
 	ether = etherxx[chan->dev];
@@ -357,7 +352,7 @@ etherreset(void)
 {
 	Ether *ether;
 	int i, n, ctlrno;
-	char name[NAMELEN], buf[128];
+	char name[32], buf[128];
 
 	for(ether = 0, ctlrno = 0; ctlrno < MaxEther; ctlrno++){
 		if(ether == 0)
@@ -461,7 +456,6 @@ Dev etherdevtab = {
 	etherreset,
 	devinit,
 	etherattach,
-	devclone,
 	etherwalk,
 	etherstat,
 	etheropen,

@@ -3,6 +3,9 @@
 #include <auth.h>
 #include <fcall.h>
 #include "../boot/boot.h"
+/*BUG transition*/
+int client9p=2;
+int kernel9p=2;
 
 static long lusertime(char*);
 
@@ -13,8 +16,8 @@ settime(int islocal)
 {
 	int n, f;
 	int timeset;
-	Dir dir;
-	char dirbuf[DIRLEN];
+	Dir dir[2];
+	char timebuf[64];
 
 	print("time...");
 	timeset = 0;
@@ -24,15 +27,15 @@ settime(int islocal)
 		 */
 		f = open("#r/rtc", ORDWR);
 		if(f >= 0){
-			if((n = read(f, dirbuf, sizeof(dirbuf)-1)) > 0){
-				dirbuf[n] = 0;
+			if((n = read(f, timebuf, sizeof(timebuf)-1)) > 0){
+				timebuf[n] = '\0';
 				timeset = 1;
 			}
 			close(f);
 		}else do{
-			strcpy(dirbuf, "yymmddhhmm[ss]");
-			outin("\ndate/time ", dirbuf, sizeof(dirbuf));
-		}while((timeset=lusertime(dirbuf)) <= 0);
+			strcpy(timebuf, "yymmddhhmm[ss]");
+			outin("\ndate/time ", timebuf, sizeof(timebuf));
+		}while((timeset=lusertime(timebuf)) <= 0);
 	}
 	if(timeset == 0){
 		/*
@@ -47,15 +50,15 @@ settime(int islocal)
 			return;
 		}
 		close(f);
-		if(stat("/mnt", dirbuf) < 0)
+		if(stat("/mnt", statbuf, sizeof statbuf) < 0)
 			fatal("stat");
-		convM2D(dirbuf, &dir);
-		sprint(dirbuf, "%ld", dir.atime);
+		convM2D(statbuf, sizeof statbuf, &dir[0], (char*)&dir[1]);
+		sprint(timebuf, "%ld", dir[0].atime);
 		unmount(0, "/mnt");
 	}
 
 	f = open("#c/time", OWRITE);
-	if(write(f, dirbuf, strlen(dirbuf)) < 0)
+	if(write(f, timebuf, strlen(timebuf)) < 0)
 		warning("can't set #c/time");
 	close(f);
 	print("\n");

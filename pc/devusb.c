@@ -718,8 +718,8 @@ qrcv(Endpt *e)
 	QH *qh;
 	int vf;
 
-	b = allocb(e->maxpkt);
 	t = alloctde(e, TokIN, e->maxpkt);
+	b = allocb(e->maxpkt);
 	t->bp = b;
 	t->buffer = PADDR(b->wp);
 	ub = &ubus;
@@ -732,6 +732,21 @@ qrcv(Endpt *e)
 	}
 	queuetd(ub, qh, t, vf);
 	return qh;
+}
+
+static Block *
+usbreq(int type, int req, int value, int offset, int count)
+{
+	Block *b;
+
+	b = allocb(8);
+	b->wp[0] = type;
+	b->wp[1] = req;
+	PUT2(b->wp+2, value);
+	PUT2(b->wp+4, offset);
+	PUT2(b->wp+6, count);
+	b->wp += 8;
+	return b;
 }
 
 /*
@@ -816,14 +831,14 @@ dumpframe(int f, int t)
 	if(t < 0)
 		t = 32;
 	for(i=f; i<t; i++){
-		pprint("F%.2d %8.8lux %8.8lux\n", i, frame[i], QFOL(frame[i])->head);
+		XPRINT("F%.2d %8.8lux %8.8lux\n", i, frame[i], QFOL(frame[i])->head);
 		for(p=frame[i]; (p & IsQH) && (p &Terminate) == 0; p = q->head){
 			q = QFOL(p);
 			if(!(q >= tree && q < &tree[n])){
-				pprint("Q: p=%8.8lux out of range\n", p);
+				XPRINT("Q: p=%8.8lux out of range\n", p);
 				break;
 			}
-			pprint("  -> %8.8lux h=%8.8lux e=%8.8lux\n", p, q->head, q->entries);
+			XPRINT("  -> %8.8lux h=%8.8lux e=%8.8lux\n", p, q->head, q->entries);
 		}
 	}
 }
@@ -1182,7 +1197,7 @@ usbdevice(Chan *c)
 
 	d = usbdeviceofpath(c->qid.path);
 	if(d == nil || d->id != c->qid.vers || d->state == Disabled)
-		return nil;
+		error(Ehungup);
 	return d;
 }
 
@@ -1223,36 +1238,29 @@ static void
 usbreset(void)
 {
 	Pcidev *cfg;
-	int i, port;
+	int i;
+	ulong port;
 	QTree *qt;
 	TD *t;
 	Ctlr *ub;
 
 	ub = &ubus;
-	for(cfg = pcimatch(nil, 0, 0); cfg != nil; cfg = pcimatch(cfg, 0, 0)){
-		/*
-		 * Look for devices with the correct class and
-		 * sub-class code and known device and vendor ID.
-		 */
-		if(cfg->ccrb != 0x0C || cfg->ccru != 0x03)
-			continue;
-		switch((cfg->did<<16)|cfg->vid){
-		default:
-			continue;
-		case (0x7112<<16)|0x8086:	/* 82371[AE]B (PIIX4[E]) */
-		case (0x719A<<16)|0x8086:	/* 82443MX */
-		case (0x1106<<16)|0x0586:	/* VIA 82C586 */
-			break;
+	memset(&cfg, 0, sizeof(cfg));
+	cfg = pcimatch(0, 0x8086, 0x7112);	/* Intel chipset PIIX 4*/
+	if(cfg == nil) {
+		cfg = pcimatch(0, 0x1106, 0x0586);	/* Via chipset */
+		if(cfg == nil) {
+			DPRINT("No USB device found\n");
+			return;
 		}
-		if((cfg->mem[4].bar & ~0x0F) != 0)
-			break;
 	}
-	if(cfg == nil)
-		return;
-
 	port = cfg->mem[4].bar & ~0x0F;
+	if (port == 0) {
+		print("usb: failed to map registers\n");
+		return;
+	}
 
-	DPRINT("USB: %x/%x port 0x%ux size 0x%x irq %d\n",
+	DPRINT("USB: %x/%x port 0x%lux size 0x%x irq %d\n",
 		cfg->vid, cfg->did, port, cfg->mem[4].size, cfg->intl);
 
 	i = inb(port+SOFMod);
@@ -1295,7 +1303,6 @@ usbreset(void)
 	ub->bwsop = allocqh(ub);
 	ub->bulkq = allocqh(ub);
 	ub->recvq = allocqh(ub);
-if(0){
 	t = alloctd(ub);	/* inactive TD, looped */
 	t->link = PADDR(t);
 	ub->bwsop->entries = PADDR(t);
@@ -1303,7 +1310,6 @@ if(0){
 	ub->bwsop->head = PADDR(ub->bulkq) | IsQH;
 	ub->bulkq->head = PADDR(ub->recvq) | IsQH;
 	ub->recvq->head = PADDR(ub->bwsop) | IsQH;	/* loop back */
-}
 	XPRINT("usbcmd\t0x%.4x\nusbsts\t0x%.4x\nusbintr\t0x%.4x\nfrnum\t0x%.2x\n",
 		IN(Cmd), IN(Status), IN(Usbintr), inb(port+Frnum));
 	XPRINT("frbaseadd\t0x%.4x\nsofmod\t0x%x\nportsc1\t0x%.4x\nportsc2\t0x%.4x\n",
@@ -1500,8 +1506,6 @@ usbopen(Chan *c, int omode)
 	switch(QID(c->qid)){
 	case Qctl:
 		d = usbdevice(c);
-		if (d == nil)
-			error(Ehungup);
 		if(0&&d->busy)
 			error(Einuse);
 		d->busy = 1;
@@ -1511,8 +1515,6 @@ usbopen(Chan *c, int omode)
 
 	default:
 		d = usbdevice(c);
-		if (d == nil)
-			error(Ehungup);
 		s = QID(c->qid) - Qep0;
 		if(s >= 0 && s < nelem(d->ep)){
 			Endpt *e;
@@ -1561,13 +1563,16 @@ usbclose(Chan *c)
 	if(c->qid.path & CHDIR || c->qid.path < Q3rd)
 		return;
 	qlock(&usbstate);
-	d = usbdeviceofpath(c->qid.path);
-	if (d && d->id == c->qid.vers) {
-		if(QID(c->qid) == Qctl)
-			d->busy = 0;
-		if(c->flag & COPEN)
-			freedev(d);
+	if(waserror()){
+		qunlock(&usbstate);
+		nexterror();
 	}
+	d = usbdevice(c);
+	if(QID(c->qid) == Qctl)
+		d->busy = 0;
+	if(c->flag & COPEN)
+		freedev(d);
+	poperror();
 	qunlock(&usbstate);
 }
 
@@ -1658,15 +1663,11 @@ usbread(Chan *c, void *a, long n, vlong offset)
 
 	case Qctl:
 		d = usbdevice(c);
-		if (d == nil)
-			error(Ehungup);
 		sprint(buf, "%11d %11d ", d->x, d->id);
 		return readstr(offset, a, n, buf);
 
 	case Qsetup:	/* endpoint 0 */
 		d = usbdevice(c);
-		if (d == nil)
-			error(Ehungup);
 		if((e = d->ep[0]) == nil)
 			error(Eio);	/* can't happen */
 		e->data01 = 1;
@@ -1684,8 +1685,6 @@ usbread(Chan *c, void *a, long n, vlong offset)
 
 	case Qstatus:
 		d = usbdevice(c);
-		if (d == nil)
-			error(Ehungup);
 		s = smalloc(READSTR);
 		if(waserror()){
 			free(s);
@@ -1702,8 +1701,6 @@ usbread(Chan *c, void *a, long n, vlong offset)
 
 	default:
 		d = usbdevice(c);
-		if (d == nil)
-			error(Ehungup);
 		if((t -= Qep0) < 0 || t >= nelem(d->ep))
 			error(Eio);
 		if((e = d->ep[t]) == nil || e->mode == OWRITE)
@@ -1807,8 +1804,6 @@ usbwrite(Chan *c, void *a, long n, vlong)
 		return n;
 	}
 	d = usbdevice(c);
-	if (d == nil)
-		error(Ehungup);
 	t = QID(c->qid);
 	switch(t){
 	case Qctl:

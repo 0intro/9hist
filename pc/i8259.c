@@ -95,7 +95,7 @@ i8259init(void)
 			if(inb(Elcr1) == 0x20)
 				i8259elcr = x;
 			outb(Elcr1, x & 0xFF);
-			//print("ELCR: %4.4uX\n", i8259elcr);
+			print("ELCR: %4.4uX\n", i8259elcr);
 		}
 	}
 	iunlock(&i8259lock);

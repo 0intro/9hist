@@ -17,14 +17,11 @@
 enum {
 	Qdir,
 	Qvgactl,
-	Qvgaovl,
-	Qvgaovlctl,
 };
 
 static Dirtab vgadir[] = {
-	"vgactl",		{ Qvgactl, 0 },		0,	0660,
-	"vgaovl",		{ Qvgaovl, 0 },		0,	0660,
-	"vgaovlctl",	{ Qvgaovlctl, 0 },	0, 	0660,
+	".",	{ Qdir, 0, QTDIR },		0,	0550,
+	"vgactl",	{ Qvgactl, 0 },		0,	0660,
 };
 
 static void
@@ -46,49 +43,27 @@ vgaattach(char* spec)
 	return devattach('v', spec);
 }
 
-int
-vgawalk(Chan* c, char* name)
+Walkqid*
+vgawalk(Chan* c, Chan *nc, char** name, int nname)
 {
-	return devwalk(c, name, vgadir, nelem(vgadir), devgen);
+	return devwalk(c, nc, name, nname, vgadir, nelem(vgadir), devgen);
 }
 
-static void
-vgastat(Chan* c, char* dp)
+static int
+vgastat(Chan* c, uchar* dp, int n)
 {
-	devstat(c, dp, vgadir, nelem(vgadir), devgen);
+	return devstat(c, dp, n, vgadir, nelem(vgadir), devgen);
 }
 
 static Chan*
 vgaopen(Chan* c, int omode)
 {
-	VGAscr *scr;
-	static char *openctl = "openctl\n";
-
-	scr = &vgascreen[0];
-	if ((c->qid.path & ~CHDIR) == Qvgaovlctl) {
-		if (scr->dev->ovlctl)
-			scr->dev->ovlctl(scr, c, openctl, strlen(openctl));
-		else 
-			error(Enonexist);
-	}
 	return devopen(c, omode, vgadir, nelem(vgadir), devgen);
 }
 
 static void
-vgaclose(Chan* c)
-{		
-	VGAscr *scr;
-	static char *closectl = "closectl\n";
-
-	scr = &vgascreen[0];
-	if ((c->qid.path & ~CHDIR) == Qvgaovlctl) {
-		if (scr->dev->ovlctl){
-			if(waserror())
-				return;
-			scr->dev->ovlctl(scr, c, closectl, strlen(closectl));
-			poperror();
-		}
-	}
+vgaclose(Chan*)
+{
 }
 
 static void
@@ -114,7 +89,7 @@ vgaread(Chan* c, void* a, long n, vlong off)
 	ulong offset = off;
 	char chbuf[30];
 
-	switch(c->qid.path & ~CHDIR){
+	switch((ulong)c->qid.path){
 
 	case Qdir:
 		return devdirread(c, a, n, vgadir, nelem(vgadir), devgen);
@@ -156,11 +131,6 @@ vgaread(Chan* c, void* a, long n, vlong off)
 		free(p);
 
 		return n;
-
-	case Qvgaovl:
-	case Qvgaovlctl:
-		error(Ebadusefd);
-		break;
 
 	default:
 		error(Egreg);
@@ -368,16 +338,13 @@ vgactl(char* a)
 	error(Ebadarg);
 }
 
-char Enooverlay[] = "No overlay support";
-
 static long
 vgawrite(Chan* c, void* a, long n, vlong off)
 {
 	char *p;
 	ulong offset = off;
-	VGAscr *scr;
 
-	switch(c->qid.path & ~CHDIR){
+	switch((ulong)c->qid.path){
 
 	case Qdir:
 		error(Eperm);
@@ -397,23 +364,6 @@ vgawrite(Chan* c, void* a, long n, vlong off)
 		free(p);
 		return n;
 
-	case Qvgaovl:
-		scr = &vgascreen[0];
-		if (scr->dev->ovlwrite == nil) {
-			error(Enooverlay);
-			break;
-		}
-		return scr->dev->ovlwrite(scr, a, n, off);
-
-	case Qvgaovlctl:
-		scr = &vgascreen[0];
-		if (scr->dev->ovlctl == nil) {
-			error(Enooverlay);
-			break;
-		}
-		scr->dev->ovlctl(scr, c, a, n);
-		return n;
-
 	default:
 		error(Egreg);
 		break;
@@ -429,7 +379,6 @@ Dev vgadevtab = {
 	vgareset,
 	devinit,
 	vgaattach,
-	devclone,
 	vgawalk,
 	vgastat,
 	vgaopen,

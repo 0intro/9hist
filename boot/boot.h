@@ -15,15 +15,15 @@ extern int	cpuflag;
 extern char	cputype[];
 extern int	fflag;
 extern int	kflag;
-extern int pushfcall(int);
 extern Method	method[];
 extern void	(*pword)(int, Method*);
 extern char	sys[];
 extern uchar	hostkey[];
-extern char	username[NAMELEN];
+extern char	username[];
+extern uchar	statbuf[STATMAX];
 enum
 {
-	Nbarg=	32,
+	Nbarg=	16,
 };
 extern int	bargc;
 extern char	*bargv[Nbarg];
@@ -34,8 +34,6 @@ extern char*	checkkey(Method*, char*, char*);
 extern void	fatal(char*);
 extern void	getpasswd(char*, int);
 extern void	key(int, Method*);
-extern void glendakey(int, Method*);
-extern int	nop(int);
 extern int	outin(char*, char*, int);
 extern int	plumb(char*, char*, int*, char*);
 extern int	readfile(char*, char*, int);
@@ -44,11 +42,12 @@ extern int	sendmsg(int, char*);
 extern void	setenv(char*, char*);
 extern void	settime(int);
 extern void	srvcreate(char*, int);
-extern void	userpasswd(int, Method*);
+extern void	setusername(int, Method*);
 extern void	warning(char*);
 extern int	writefile(char*, char*, int);
 extern void	boot(int, char **);
 extern void	doauthenticate(int, Method*);
+extern int		old9p(int);
 extern int	parsefields(char*, char**, int, char*);
 
 /* methods */

@@ -363,7 +363,7 @@ static void
 attach(Ether* ether)
 {
 	Ctlr *ctlr;
-	char name[NAMELEN];
+	char name[KNAMELEN];
 
 	ctlr = ether->ctlr;
 	lock(&ctlr->slock);
@@ -380,7 +380,7 @@ attach(Ether* ether)
 		 * omitted.
 		 */
 		if((ctlr->eeprom[0x03] & 0x0003) != 0x0003){
-			snprint(name, NAMELEN, "#l%dwatchdog", ether->ctlrno);
+			snprint(name, KNAMELEN, "#l%dwatchdog", ether->ctlrno);
 			kproc(name, watchdog, ether);
 		}
 	}
