@@ -246,7 +246,7 @@ struct PCArch
 /*
  *  a parsed plan9.ini line
  */
-#define ISAOPTLEN	16
+#define ISAOPTLEN	28
 #define NISAOPT		8
 
 struct ISAConf {
