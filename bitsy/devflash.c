@@ -653,15 +653,17 @@ ise_erase(ulong addr)
  *  the flash spec claimes writing goes faster if we use
  *  the write buffer.  We fill the write buffer and then
  *  issue the write request.  After the write request,
- *  subsequent reads will yield the status register or,
- *  since error bits are sticky, another write buffer can
- *  be filled and written.
+ *  subsequent reads will yield the status register.
  *
- *  On timeout, we issue a read status register request so
- *  that the status register can be read no matter how we
- *  exit.
+ *  returns the status, even on timeouts.
  *
- *  returns the status.
+ *  NOTE: I tried starting back to back buffered writes
+ *	without reading the status in between, as the
+ *	flowchart in the intel data sheet suggests.
+ *	However, it always responded with an illegal
+ *	command sequence, so I must be missing something.
+ *	If someone learns better, please email me, though
+ *	I doubt it will be much faster. -  presotto@bell-labs.com
  */
 static ulong
 ise_wbwrite(ulong *p, int n, ulong off, ulong baddr, ulong *status)
