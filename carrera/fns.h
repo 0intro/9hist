@@ -57,6 +57,7 @@ void	launch(int);
 void	lightbits(int, int);
 ulong	machstatus(void);
 void	mmunewpage(Page*);
+void	mouseintr(void);
 void	mntdump(void);
 void	newstart(void);
 int	newtlbpid(Proc*);
