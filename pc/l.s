@@ -635,7 +635,9 @@ TEXT	config(SB),$0
 	RET
 
 /*
- *  copy bytes to screen memory for ldepth 0 screen
+ *  copy bitmap changes to screen memory for ldepth 0 screen
+ *  reverse the bits since the screen is big-endian
+ *  and the bitmaps are little.
  */
 TEXT	l0update(SB),$0
 	XORL	AX,AX
@@ -644,7 +646,42 @@ TEXT	l0update(SB),$0
 	MOVL	to+4(FP),DX
 l00:
 	MOVB	-1(BX)(CX*1),AL
-	MOVB	cswizzle(SB)(AX*1),AL
+	MOVB	bitrevtab(SB)(AX*1),AL
 	MOVB	AL,-1(DX)(CX*1)
 	LOOP	l00
+	RET
+
+#define SRX	0x3C4		/* index to sequence registers */
+#define	SR	0x3C5		/* sequence registers */
+#define Smmask	0x02		/*  map mask */
+
+/*
+ *  same as l0update but for ldepth 1 (2 bit plane) screens
+ */
+TEXT	l1update(SB),$0
+	MOVL	from+0(FP),SI
+	MOVL	to+4(FP),DI
+	MOVL	len+8(FP),CX
+l10:
+	XORL	DX,DX
+	MOVB	-2(SI)(CX*2),DL		/* high order nibbles */
+	MOVW	l1revsep(SB)(DX*2),BX
+	SHLW	$4,BX
+	MOVB	-1(SI)(CX*2),DL		/* low order nibbles */
+	ORW	l1revsep(SB)(DX*2),BX
+	MOVB	$(Smmask),AL		/* write hi order bits to bit planes 0 & 2 */
+	MOVW	$(SRX),DX
+	OUTB
+	MOVB	$0xA,AL
+	MOVW	$(SR),DX
+	OUTB
+	MOVB	BH,-1(DI)(CX*1)
+	MOVB	$(Smmask),AL		/* write lo order bits to bit planes 1 & 3 */
+	MOVW	$(SRX),DX
+	OUTB
+	MOVB	$0x5,AL
+	MOVW	$(SR),DX
+	OUTB
+	MOVB	BL,-1(DI)(CX*1)
+	LOOP	l10
 	RET
