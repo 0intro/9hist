@@ -230,6 +230,8 @@ enum
 	ScsiExtsens	= 0x03,
 	ScsiInquiry	= 0x12,
 	ScsiModesense	= 0x1a,
+	ScsiStartunit	= 0x1B,
+	ScsiStopunit	= 0x1B,
 	ScsiGetcap	= 0x25,
 	ScsiRead	= 0x08,
 	ScsiWrite	= 0x0a,

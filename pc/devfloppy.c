@@ -5,6 +5,7 @@
 #include	"fns.h"
 #include	"io.h"
 #include	"../port/error.h"
+#include	"devtab.h"
 
 /* Intel 82077A (8272A compatible) floppy controller */
 
@@ -194,7 +195,7 @@ static long	floppyseek(Drive*, long);
 static int	floppysense(void);
 static void	floppywait(void);
 static long	floppyxfer(Drive*, int, void*, long, long);
-static int	floppyformat(Drive*, ulong, ulong);
+static void	floppyformat(Drive*, char*);
 static long	floppythrice(Drive*, int, void*, long, long);
 static int	cmddone(void*);
 void Xdelay(int);
@@ -362,9 +363,9 @@ floppywstat(Chan *c, char *dp)
 }
 
 static void
-islegal(Chan *c, long n, Drive *dp)
+islegal(ulong offset, long n, Drive *dp)
 {
-	if(c->offset % dp->t->bytes)
+	if(offset % dp->t->bytes)
 		error(Ebadarg);
 	if(n % dp->t->bytes)
 		error(Ebadarg);
@@ -400,7 +401,7 @@ changed(Chan *c, Drive *dp)
 }
 
 long
-floppyread(Chan *c, void *a, long n)
+floppyread(Chan *c, void *a, long n, ulong offset)
 {
 	Drive *dp;
 	long rv, i;
@@ -415,7 +416,7 @@ floppyread(Chan *c, void *a, long n)
 	dp = &fl.d[c->qid.path & ~Qmask];
 	switch ((int)(c->qid.path & Qmask)) {
 	case Qdata:
-		islegal(c, n, dp);
+		islegal(offset, n, dp);
 		aa = a;
 
 		qlock(&fl);
@@ -430,7 +431,7 @@ floppyread(Chan *c, void *a, long n)
 			 *  truncate xfer at track boundary
 			 */
 			dp->len = n - rv;
-			floppypos(dp, c->offset+rv);
+			floppypos(dp, offset+rv);
 			cyl = dp->tcyl;
 			head = dp->thead;
 			len = dp->len;
@@ -470,19 +471,18 @@ floppyread(Chan *c, void *a, long n)
 
 #define SNCMP(a, b) strncmp(a, b, sizeof(b)-1)
 long
-floppywrite(Chan *c, void *a, long n)
+floppywrite(Chan *c, void *a, long n, ulong offset)
 {
 	Drive *dp;
 	long rv, i;
 	char *aa = a;
-	char *f[3];
 	char ctlmsg[64];
 
 	rv = 0;
 	dp = &fl.d[c->qid.path & ~Qmask];
 	switch ((int)(c->qid.path & Qmask)) {
 	case Qdata:
-		islegal(c, n, dp);
+		islegal(offset, n, dp);
 		qlock(&fl);
 		if(waserror()){
 			qunlock(&fl);
@@ -491,10 +491,10 @@ floppywrite(Chan *c, void *a, long n)
 		floppyon(dp);
 		changed(c, dp);
 		for(rv = 0; rv < n; rv += i){
-			floppypos(dp, c->offset+rv);
+			floppypos(dp, offset+rv);
 			if(dp->tcyl == dp->ccyl)
 				dp->ccyl = -1;
-			i = floppythrice(dp, Fwrite, aa+rv, c->offset+rv, n-rv);
+			i = floppythrice(dp, Fwrite, aa+rv, offset+rv, n-rv);
 			if(i < 0)
 				break;
 			if(i == 0)
@@ -504,6 +504,7 @@ floppywrite(Chan *c, void *a, long n)
 		poperror();
 		break;
 	case Qctl:
+		rv = n;
 		qlock(&fl);
 		if(waserror()){
 			qunlock(&fl);
@@ -519,9 +520,7 @@ floppywrite(Chan *c, void *a, long n)
 			fl.confused = 1;
 			floppyon(dp);
 		} else if(SNCMP(ctlmsg, "format") == 0){
-			if(getfields(ctlmsg, f, 3, ' ') != 3)
-				error(Ebadarg);
-			rv = n*floppyformat(dp, strtoul(f[1], 0, 0), strtoul(f[2], 0, 0));
+			floppyformat(dp, ctlmsg);
 		}
 		poperror();
 		qunlock(&fl);
@@ -956,82 +955,107 @@ floppyxfer(Drive *dp, int cmd, void *a, long off, long n)
 /*
  *  format a track
  */
-static int
-floppyformat(Drive *dp, ulong track, ulong filler)
+static void
+floppyformat(Drive *dp, char *params)
 {
  	int cyl, h, sec;
+	ulong track;
 	uchar *buf, *bp;
 	Type *t;
+	char *f[3];
 
-	t = dp->t;
-	cyl = track/t->heads;
-	h = track % t->heads;
-	if(track >= t->tracks * t->heads)
-		return 0;
-	setdef(dp);
+	/*
+	 *  set the type
+	 */
+	if(getfields(params, f, 3, ' ') > 1){
+		for(t = floppytype; t < &floppytype[NTYPES]; t++)
+			if(strcmp(f[1], t->name)==0 && t->dt==dp->dt){
+				dp->t = t;
+				floppydir[NFDIR*dp->dev].length = dp->t->cap;
+				break;
+			}
+	} else {
+		setdef(dp);
+		t = dp->t;
+	}
+
+	/*
+	 *  buffer for per track info
+	 */
 	buf = smalloc(t->sectors*4);
 	if(waserror()){
 		free(buf);
 		nexterror();
 	}
-	if(!waserror()){
-		floppyon(dp);
-		poperror();
-	}
-	floppyseek(dp, track*t->tsize);
-	dp->cyl = cyl;
-	dp->confused = 0;
 
 	/*
-	 *  set up the dma (dp->len may be trimmed)
+	 *  format a track at time
 	 */
-	bp = buf;
-	for(sec = 1; sec <= t->sectors; sec++){
-		*bp++ = cyl;
-		*bp++ = h;
-		*bp++ = sec;
-		*bp++ = t->bcode;
-	}
-	dmasetup(DMAchan, buf, bp-buf, 0);
+	for(track = 0; track < t->tracks*t->heads; track++){
+		cyl = track/t->heads;
+		h = track % t->heads;
 
-	/*
-	 *  start operation
-	 */
-	fl.ncmd = 0;
-	fl.cmd[fl.ncmd++] = Fformat;
-	fl.cmd[fl.ncmd++] = (h<<2) | dp->dev;
-	fl.cmd[fl.ncmd++] = t->bcode;
-	fl.cmd[fl.ncmd++] = t->sectors;
-	fl.cmd[fl.ncmd++] = t->fgpl;
-	fl.cmd[fl.ncmd++] = filler;
-	if(floppycmd() < 0){
-		DPRINT("xfer cmd failed\n");
-		error(Eio);
-	}
+		/*
+		 *  seek to track, ignore errors
+		 */
+		if(!waserror()){
+			floppyon(dp);
+			poperror();
+		}
+		floppyseek(dp, track*t->tsize);
+		dp->cyl = cyl;
+		dp->confused = 0;
 
-	/*
-	 *  give bus to DMA, floppyintr() will read result
-	 */
-	floppywait();
-	dmaend(DMAchan);
+		/*
+		 *  set up the dma (dp->len may be trimmed)
+		 */
+		bp = buf;
+		for(sec = 1; sec <= t->sectors; sec++){
+			*bp++ = cyl;
+			*bp++ = h;
+			*bp++ = sec;
+			*bp++ = t->bcode;
+		}
+		dmasetup(DMAchan, buf, bp-buf, 0);
 
-	/*
-	 *  check for errors
-	 */
-	if(fl.nstat < 7){
-		DPRINT("format result failed %lux\n", inb(Pmsr));
-		fl.confused = 1;
-		error(Eio);
-	}
-	if((fl.stat[0]&Codemask)!=0 || fl.stat[1] || fl.stat[2]){
-		DPRINT("format failed %lux %lux %lux\n",
-			fl.stat[0], fl.stat[1], fl.stat[2]);
-		dp->confused = 1;
-		error(Eio);
+		/*
+		 *  start operation
+		 */
+		fl.ncmd = 0;
+		fl.cmd[fl.ncmd++] = Fformat;
+		fl.cmd[fl.ncmd++] = (h<<2) | dp->dev;
+		fl.cmd[fl.ncmd++] = t->bcode;
+		fl.cmd[fl.ncmd++] = t->sectors;
+		fl.cmd[fl.ncmd++] = t->fgpl;
+		fl.cmd[fl.ncmd++] = 0x5a;
+		if(floppycmd() < 0){
+			DPRINT("xfer cmd failed\n");
+			error(Eio);
+		}
+
+		/*
+		 *  give bus to DMA, floppyintr() will read result
+		 */
+		floppywait();
+		dmaend(DMAchan);
+
+		/*
+		 *  check for errors
+		 */
+		if(fl.nstat < 7){
+			DPRINT("format result failed %lux\n",inb(Pmsr));
+			fl.confused = 1;
+			error(Eio);
+		}
+		if((fl.stat[0]&Codemask)!=0 || fl.stat[1]|| fl.stat[2]){
+			DPRINT("format failed %lux %lux %lux\n",
+				fl.stat[0], fl.stat[1], fl.stat[2]);
+			dp->confused = 1;
+			error(Eio);
+		}
 	}
 	free(buf);
 	poperror();
-	return 1;
 }
 
 static void

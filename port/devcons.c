@@ -837,7 +837,6 @@ conswrite(Chan *c, void *va, long n, ulong offset)
 			memmove(u->p->user, buf, NAMELEN);
 		else
 			error(Eperm);
-		memset(u->p->pgrp->crypt->key, 0, DESKEYLEN);
 		if(!cpuserver && strcmp(eve, "bootes")==0)
 			memmove(eve, u->p->user, NAMELEN);
 		break;

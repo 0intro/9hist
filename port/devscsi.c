@@ -324,6 +324,9 @@ scsicmd(int dev, int cmdbyte, Scsibuf *b, long size)
 	switch(cmdbyte){
 	case ScsiTestunit:
 		break;
+	case ScsiStartunit:
+		cmd->cmdblk[4] = 1;
+		break;
 	case ScsiModesense:
 		cmd->cmdblk[2] = 1;
 		/* fall through */
@@ -349,6 +352,27 @@ scsiready(int dev)
 	int status;
 
 	cmd = scsicmd(dev, ScsiTestunit, scsibuf(), 0);
+	if(waserror()){
+		scsifree(cmd->b);
+		qunlock(cmd);
+		nexterror();
+	}
+	status = scsiexec(cmd, ScsiOut);
+	poperror();
+	scsifree(cmd->b);
+	qunlock(cmd);
+	if((status&0xff00) != 0x6000)
+		error(Eio);
+	return status&0xff;
+}
+
+int
+scsistartstop(int dev, int cmdbyte)
+{
+	Scsi *cmd;
+	int status;
+
+	cmd = scsicmd(dev, cmdbyte, scsibuf(), 0);
 	if(waserror()){
 		scsifree(cmd->b);
 		qunlock(cmd);

@@ -208,6 +208,7 @@ void		scsifree(Scsibuf*);
 int		scsiinquiry(int, void*, int);
 int		scsimodesense(int, int, void*, int);
 int		scsiready(int);
+int		scsistartstop(int, int);
 int		scsisense(int, void*);
 int		scsiwp(int);
 long		seconds(void);
