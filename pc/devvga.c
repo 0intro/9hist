@@ -58,7 +58,8 @@ struct Vgacard
 };
 
 static void	nopage(int), tsengpage(int), tridentpage(int);
-static void	atipage(int), cirruspage(int), s3page(int);
+static void	atipage(int), cirruspage(int);
+extern void	s3page(int);
 
 Vgacard vgachips[] =
 {
@@ -75,16 +76,18 @@ Vgacard vgachips[] =
 
 Vgacard	*vgacard = &vgachips[0];	/* current vga card */
 
-extern Hwgc tvp3020hwgc;
 extern Hwgc bt485hwgc;
+extern Hwgc s3hwgc;
+extern Hwgc tvp3020hwgc;
 
 static Hwgc *hwcursor[] = {
-	&tvp3020hwgc,
 	&bt485hwgc,
+	&s3hwgc,
+	&tvp3020hwgc,
 	0,
 };
 
-static Hwgc *hwgc;
+Hwgc *hwgc;
 extern Cursor curs;		/* barf */
 
 /*
@@ -1108,31 +1111,6 @@ static void
 cirruspage(int page)
 {
 	vgaxo(Grx, 0x09, page<<4);
-}
-static void
-s3page(int page)
-{
-	uchar crt51;
-
-	/*
-	 * I don't understand why these are different.
-	 */
-	if(gscreen.ldepth == 3){
-		/*
-		 * The S3 registers need to be unlocked for this.
-		 * Let's hope they are already:
-		 *	vgaxo(Crtx, 0x38, 0x48);
-		 *	vgaxo(Crtx, 0x39, 0xA0);
-		 *
-		 * The page is 6 bits, the lower 4 bits in Crt35<3:0>,
-		 * the upper 2 in Crt51<3:2>.
-		 */
-		vgaxo(Crtx, 0x35, page & 0x0F);
-		crt51 = vgaxi(Crtx, 0x51) & 0xF3;
-		vgaxo(Crtx, 0x51, crt51|((page & 0x30)>>2));
-	}
-	else
-		vgaxo(Crtx, 0x35, (page<<2) & 0x0C);
 }
 
 /*
