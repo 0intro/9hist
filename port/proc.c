@@ -1193,7 +1193,7 @@ killbig(void)
 			if(s != 0)
 				l += s->top - s->base;
 		}
-		if(l > max) {
+		if(l > max && strcmp(p->text, "kfs") != 0){
 			kp = p;
 			max = l;
 		}

@@ -226,6 +226,24 @@ i8042auxcmd(int cmd)
 	return 0;
 }
 
+int
+i8042auxcmds(uchar *cmd, int ncmd)
+{
+	int i;
+
+	ilock(&i8042lock);
+	for(i=0; i<ncmd; i++){
+		if(outready() < 0)
+			break;
+		outb(Cmd, 0xD4);
+		if(outready() < 0)
+			break;
+		outb(Data, cmd[i]);
+	}
+	iunlock(&i8042lock);
+	return i;
+}
+
 /*
  *  keyboard interrupt
  */
@@ -451,3 +469,4 @@ kbdenable(void)
 
 	intrenable(IrqKBD, i8042intr, 0, BUSUNKNOWN, "kbd");
 }
+
