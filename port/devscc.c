@@ -118,6 +118,11 @@ SCC	*scc[8];	/* up to 4 8530's */
 #define CTLS	023
 #define CTLQ	021
 
+#ifdef	Zduart
+#define	SCCTYPE	'z'
+#define	onepointseven()
+#else
+#define	SCCTYPE	't'
 void
 onepointseven(void)
 {
@@ -125,6 +130,7 @@ onepointseven(void)
 	for(i = 0; i < 20; i++)
 		;
 }
+#endif
 
 /*
  *  Access registers using the pointer in register 0.
@@ -407,20 +413,21 @@ sccintr0(SCC *sp, uchar x)
 		unlock(cq);
 	}
 }
-void
+int
 sccintr(void)
 {
 	uchar x;
-	int i;
+	int i, j;
 
-	for(i = 0; i < nscc; i += 2){
+	for(i = j = 0; i < nscc; i += 2){
 		x = sccrdreg(scc[i], 3);
 		if(x & (ExtPendB|RxPendB|TxPendB))
-			sccintr0(scc[i+1], x);
+			++j, sccintr0(scc[i+1], x);
 		x = x >> 3;
 		if(x & (ExtPendB|RxPendB|TxPendB))
-			sccintr0(scc[i], x);
+			++j, sccintr0(scc[i], x);
 	}
+	return j;
 }
 
 void
@@ -707,7 +714,7 @@ sccinit(void)
 Chan*
 sccattach(char *spec)
 {
-	return devattach('t', spec);
+	return devattach(SCCTYPE, spec);
 }
 
 Chan*

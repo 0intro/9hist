@@ -201,7 +201,7 @@ void		runlock(RWlock*);
 Proc*		runproc(void);
 void		savefpregs(FPsave*);
 void		sccclock(void);
-void		sccintr(void);
+int		sccintr(void);
 void		sccsetup(void*, ulong, int);
 void		sccspecial(int, IOQ*, IOQ*, int);
 void		sched(void);
