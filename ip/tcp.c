@@ -20,7 +20,7 @@ enum
 	TimerON		= 1,
 	TimerDONE	= 2,
 	MAX_TIME 	= (1<<20),	/* Forever */
-	TCP_ACK		= 50,		/* Timed ack sequence in ms */
+	TCP_ACK		= 200,		/* Timed ack sequence in ms */
 
 	URG		= 0x20,		/* Data marked urgent */
 	ACK		= 0x10,		/* Acknowledge is valid */
@@ -270,6 +270,7 @@ void	tcpacktimer(void*);
 void	tcpkeepalive(void*);
 void	tcpsetkacounter(Tcpctl*);
 void    tcprxmit(Conv*);
+void	tcpsettimer(Tcpctl*);
 
 void
 tcpsetstate(Conv *s, uchar newstate)
@@ -1206,6 +1207,7 @@ update(Conv *s, Tcp *seg)
 				if(tcb->mdev <= 0)
 					tcb->mdev = 1;
 			}
+			tcpsettimer(tcb);
 		}
 	}
 
@@ -1637,7 +1639,6 @@ raise:
 void
 tcpoutput(Conv *s)
 {
-	int x;
 	Tcp seg;
 	int msgs;
 	Tcpctl *tcb;
@@ -1787,19 +1788,6 @@ tcpoutput(Conv *s)
 		 * expect acknowledges
 		 */
 		if(ssize != 0){
-			/* round trip depenency */
-			x = backoff(tcb->backoff) *
-			    (tcb->mdev + (tcb->srtt>>LOGAGAIN) + MSPTICK) / MSPTICK;
-
-			/* take into account delayed ack */
-			if(sent <= 2*tcb->mss)
-				x += TCP_ACK/MSPTICK;
-
-			/* sanity check */
-			if(x > (10000/MSPTICK))
-				x = 10000/MSPTICK;
-			tcb->timer.start = x;
-
 			if(tcb->timer.state != TimerON)
 				tcpgo(tpriv, &tcb->timer);
 
@@ -1991,6 +1979,7 @@ tcptimeout(void *arg)
 			localclose(s, Etimedout);
 			break;
 		}
+		tcpsettimer(tcb);
 		netlog(s->p->f, Logtcp, "timeout rexmit 0x%lux\n", tcb->snd.una);
 		tcprxmit(s);
 		tpriv->stats[RetransTimeouts]++;
@@ -2285,6 +2274,25 @@ tcpgc(Proto *tcp)
 		qunlock(c);
 	}
 	return n;
+}
+
+void
+tcpsettimer(Tcpctl *tcb)
+{
+	int x;
+
+	/* round trip depenency */
+	x = backoff(tcb->backoff) *
+	    (tcb->mdev + (tcb->srtt>>LOGAGAIN) + MSPTICK) / MSPTICK;
+
+	/* take into account delayed ack */
+	if((tcb->snd.ptr - tcb->snd.una) <= 2*tcb->mss)
+		x += TCP_ACK/MSPTICK;
+
+	/* sanity check */
+	if(x > (10000/MSPTICK))
+		x = 10000/MSPTICK;
+	tcb->timer.start = x;
 }
 
 void

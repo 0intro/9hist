@@ -115,8 +115,8 @@ enum
 	Vinvert,
 	Nvol,
 
-	Bufsize		= 4* 1024,	/* 46 ms each */
-	Nbuf			= 10,			/* 1.5 seconds total */
+	Bufsize		= 4* 1024,	/* 23 ms each */
+	Nbuf			= 10,			/* 230 ms total */
 
 	Speed		= 44100,
 	Ncmd		= 50,			/* max volume command words */

@@ -802,8 +802,9 @@ if(chandebug) print("\ttry chan: qid %.8llux devchar %C dev %lud ->\n", c->qid.p
 		if(dotdot) {
 			assert(wq->nqid == 1);
 			assert(wq->clone != nil);
-if(chandebug) print("undo.");
+if(chandebug) print("undo wq->clone->name %s cname %s...", wq->clone->name->s, cname->s);
 			nc = undomount(wq->clone, cname);
+if(chandebug) print("undidmount nc %s...", nc->name->s);
 			n = 1;
 		} else {
 			nc = nil;

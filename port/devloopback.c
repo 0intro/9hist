@@ -92,9 +92,9 @@ static Loop	loopbacks[Nloopbacks];
 
 static uvlong	fasthz;
 
-#define TYPE(x) 	((x)&0xff)
-#define ID(x) 		(((x)&~CHDIR)>>8)
-#define QID(x,y) 	(((x)<<8)|(y))
+#define TYPE(x) 	(((ulong)(x))&0xff)
+#define ID(x) 		(((ulong)(x))>>8)
+#define QID(x,y) 	((((ulong)(x))<<8)|((ulong)(y)))
 
 #define NS2FASTHZ(t)	((fasthz*(t))/1000000000);
 
@@ -179,7 +179,7 @@ loopbackattach(char *spec)
 	poperror();
 	qunlock(lb);
 
-	c->qid = (Qid){CHDIR|QID(0, Qtopdir), 0};
+	mkqid(&c->qid, QID(0, Qtopdir), 0, QTDIR);
 	c->aux = lb;
 	c->dev = dev;
 	return c;
@@ -201,24 +201,26 @@ loopbackclone(Chan *c, Chan *nc)
 }
 
 static int
-loopbackgen(Chan *c, Dirtab*, int, int i, Dir *dp)
+loopbackgen(Chan *c, char*, Dirtab*, int, int i, Dir *dp)
 {
 	Loop *lb;
 	Dirtab *tab;
-	char buf[NAMELEN];
 	int len, type;
+	Qid qid;
 
 	type = TYPE(c->qid.path);
 	if(i == DEVDOTDOT){
 		switch(type){
 		case Qtopdir:
 		case Qloopdir:
-			snprint(buf, sizeof(buf), "#X%ld", c->dev);
-			devdir(c, (Qid){CHDIR|QID(0, Qtopdir), 0}, buf, 0, eve, 0555, dp);
+			snprint(up->genbuf, sizeof(up->genbuf), "#X%ld", c->dev);
+			mkqid(&qid, QID(0, Qtopdir), 0, QTDIR);
+			devdir(c, qid, up->genbuf, 0, eve, 0555, dp);
 			break;
 		case Qportdir:
-			snprint(buf, sizeof(buf), "loopback%ld", c->dev);
-			devdir(c, (Qid){CHDIR|QID(0, Qloopdir), 0}, buf, 0, eve, 0555, dp);
+			snprint(up->genbuf, sizeof(up->genbuf), "loopback%ld", c->dev);
+			mkqid(&qid, QID(0, Qloopdir), 0, QTDIR);
+			devdir(c, qid, up->genbuf, 0, eve, 0555, dp);
 			break;
 		default:
 			panic("loopbackgen %lux", c->qid.path);
@@ -230,24 +232,27 @@ loopbackgen(Chan *c, Dirtab*, int, int i, Dir *dp)
 	case Qtopdir:
 		if(i != 0)
 			return -1;
-		snprint(buf, sizeof(buf), "loopback%ld", c->dev);
-		devdir(c, (Qid){QID(0, Qloopdir) | CHDIR, 0}, buf, 0, eve, 0555, dp);
+		snprint(up->genbuf, sizeof(up->genbuf), "loopback%ld", c->dev);
+		mkqid(&qid, QID(0, Qloopdir), 0, QTDIR);
+		devdir(c, qid, up->genbuf, 0, eve, 0555, dp);
 		return 1;
 	case Qloopdir:
 		if(i >= 2)
 			return -1;
-		snprint(buf, sizeof(buf), "%d", i);
-		devdir(c, (Qid){QID(i, QID(0, Qportdir)) | CHDIR, 0}, buf, 0, eve, 0555, dp);
+		snprint(up->genbuf, sizeof(up->genbuf), "%d", i);
+		mkqid(&qid, QID(i, QID(0, Qportdir)), 0, QTDIR);
+		devdir(c, qid, up->genbuf, 0, eve, 0555, dp);
 		return 1;
 	case Qportdir:
 		if(i >= nelem(loopportdir))
 			return -1;
 		tab = &loopportdir[i];
-		devdir(c, (Qid){QID(ID(c->qid.path), tab->qid.path), 0}, tab->name, tab->length, eve, tab->perm, dp);
+		mkqid(&qid, QID(ID(c->qid.path), tab->qid.path), 0, QTDIR);
+		devdir(c, qid, tab->name, tab->length, eve, tab->perm, dp);
 		return 1;
 	default:
 		/* non directory entries end up here; must be in lowest level */
-		if(c->qid.path & CHDIR)
+		if(c->qid.type & QTDIR)
 			panic("loopbackgen: unexpected directory");	
 		if(i != 0)
 			return -1;
@@ -265,16 +270,16 @@ loopbackgen(Chan *c, Dirtab*, int, int i, Dir *dp)
 }
 
 
-static int
-loopbackwalk(Chan *c, char *name)
+static Walkqid*
+loopbackwalk(Chan *c, Chan *nc, char **name, int nname)
 {
-	return devwalk(c, name, nil, 0, loopbackgen);
+	return devwalk(c, nc, name, nname, nil, 0, loopbackgen);
 }
 
-static void
-loopbackstat(Chan *c, char *db)
+static int
+loopbackstat(Chan *c, uchar *db, int n)
 {
-	devstat(c, db, nil, 0, loopbackgen);
+	return devstat(c, db, n, nil, 0, loopbackgen);
 }
 
 /*
@@ -285,7 +290,7 @@ loopbackopen(Chan *c, int omode)
 {
 	Loop *lb;
 
-	if(c->qid.path & CHDIR){
+	if(c->qid.type & QTDIR){
 		if(omode != OREAD)
 			error(Ebadarg);
 		c->mode = omode;
@@ -745,7 +750,6 @@ Dev loopbackdevtab = {
 	devreset,
 	loopbackinit,
 	loopbackattach,
-	loopbackclone,
 	loopbackwalk,
 	loopbackstat,
 	loopbackopen,
