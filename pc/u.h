@@ -15,3 +15,5 @@ union Length
 		long	length;
 	};
 };
+
+#include <stdarg.h>

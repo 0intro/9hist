@@ -28,11 +28,11 @@ static void	recover(Method*);
 static Method	*rootserver(char*);
 
 static int
-rconv(void *o, Fconv *fp)
+rconv(va_list *arg, Fconv *fp)
 {
 	char s[ERRLEN];
 
-	USED(o);
+	USED(arg);
 
 	s[0] = 0;
 	errstr(s);

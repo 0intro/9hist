@@ -442,8 +442,12 @@ iprint(char *fmt, ...)
 {
 	int n, i;
 	char buf[512];
+	va_list arg;
 
-	n = doprint(buf, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
+	va_start(arg, fmt);
+	n = doprint(buf, buf+sizeof(buf), fmt, arg) - buf;
+	va_end(arg);
+
 	for(i = 0; i < n; i++)
 		duartrawputc(buf[i]);
 	return n;
@@ -630,13 +634,12 @@ duartctl(Uart *p, char *cmd)
 	for(i = 0; i < 16 && qlen(p->oq); i++)
 		tsleep(&p->r, qlen, p->oq, 125);
 
-	if(strncmp(cmd, "break", 5) == 0)
-		cmed += 4;
-
 	n = atoi(cmd+1);
 	switch(cmd[0]){
 	case 'B':
 	case 'b':
+		if(strncmp(cmd+1, "reak", 4) == 0)
+			break;
 		p->val = n;
 		p->op = Dbaud;
 		sleep(&p->opr, opdone, p);

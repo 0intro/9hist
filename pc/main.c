@@ -835,8 +835,12 @@ iprint(char *fmt, ...)
 {
 	char buf[PRINTSIZE];
 	int n;
+	va_list arg;
 
-	n = doprint(buf, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
+	va_start(arg, fmt);
+	n = doprint(buf, buf+sizeof(buf), fmt, arg) - buf;
+	va_end(arg);
+
 	screenputs(buf, n);
 
 	return n;

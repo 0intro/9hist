@@ -99,22 +99,36 @@ putstrn(char *str, int n)
 int
 snprint(char *s, int n, char *fmt, ...)
 {
-	return doprint(s, s+n, fmt, (&fmt+1)) - s;
+	va_list arg;
+
+	va_start(arg, fmt);
+	n = doprint(s, s+n, fmt, arg) - s;
+	va_end(arg);
+	return n;
 }
 
 int
 sprint(char *s, char *fmt, ...)
 {
-	return doprint(s, s+PRINTSIZE, fmt, (&fmt+1)) - s;
+	va_list arg;
+	int n;
+
+	va_start(arg, fmt);
+	n = doprint(s, s+PRINTSIZE, fmt, arg) - s;
+	va_end(arg);
+	return n;
 }
 
 int
 print(char *fmt, ...)
 {
 	char buf[PRINTSIZE];
+	va_list arg;
 	int n;
 
-	n = doprint(buf, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
+	va_start(arg, fmt);
+	n = doprint(buf, buf+sizeof(buf), fmt, arg) - buf;
+	va_end(arg);
 	putstrn(buf, n);
 
 	return n;
@@ -124,9 +138,12 @@ int
 fprint(int, char *fmt, ...)	/* needed so we can use user-level libg */
 {
 	char buf[PRINTSIZE];
+	va_list arg;
 	int n;
 
-	n = doprint(buf, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
+	va_start(arg, fmt);
+	n = doprint(buf, buf+sizeof(buf), fmt, arg) - buf;
+	va_end(arg);
 	putstrn(buf, n);
 
 	return n;
@@ -136,10 +153,13 @@ void
 panic(char *fmt, ...)
 {
 	char buf[PRINTSIZE];
+	va_list arg;
 	int n;
 
 	strcpy(buf, "panic: ");
-	n = doprint(buf+strlen(buf), buf+sizeof(buf), fmt, (&fmt+1)) - buf;
+	va_start(arg, fmt);
+	n = doprint(buf+strlen(buf), buf+sizeof(buf), fmt, arg) - buf;
+	va_end(arg);
 	buf[n] = '\n';
 	putstrn(buf, n+1);
 	spllo();
@@ -154,6 +174,7 @@ pprint(char *fmt, ...)
 {
 	char buf[2*PRINTSIZE];
 	Chan *c;
+	va_list arg;
 	int n;
 
 	if(up->fgrp == 0)
@@ -163,7 +184,9 @@ pprint(char *fmt, ...)
 	if(c==0 || (c->mode!=OWRITE && c->mode!=ORDWR))
 		return 0;
 	n = sprint(buf, "%s %d: ", up->text, up->pid);
-	n = doprint(buf+n, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
+	va_start(arg, fmt);
+	n = doprint(buf+n, buf+sizeof(buf), fmt, arg) - buf;
+	va_end(arg);
 
 	if(waserror())
 		return 0;
@@ -387,9 +410,8 @@ int
 readnum(ulong off, char *buf, ulong n, ulong val, int size)
 {
 	char tmp[64];
-	Fconv fconv = (Fconv){ tmp, tmp+sizeof(tmp), size-1, 0, 0, 'u' };
 
-	numbconv(&val, &fconv);
+	snprint(tmp, sizeof(tmp), "%*.0ud", size-1, val);
 	tmp[size-1] = ' ';
 	if(off >= size)
 		return 0;

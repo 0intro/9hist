@@ -56,9 +56,9 @@ struct
 	int	chr;
 } Fconv;
 extern	void	strconv(char*, Fconv*);
-extern	int	numbconv(void*, Fconv*);
-extern	char	*doprint(char*, char*, char*, void*);
-extern	int	fmtinstall(int, int (*)(void*, Fconv*));
+extern	int	numbconv(va_list*, Fconv*);
+extern	char	*doprint(char*, char*, char*, va_list);
+extern	int	fmtinstall(int, int (*)(va_list*, Fconv*));
 extern	int	sprint(char*, char*, ...);
 extern	int	snprint(char*, int, char*, ...);
 extern	int	print(char*, ...);

@@ -32,8 +32,12 @@ iprint(char *fmt, ...)
 {
 	int n, i;
 	char buf[512];
+	va_list arg;
 
-	n = doprint(buf, buf+sizeof(buf), fmt, (&fmt+1)) - buf;
+	va_start(arg, fmt);
+	n = doprint(buf, buf+sizeof(buf), fmt, arg) - buf;
+	va_end(arg);
+
 	for(i = 0; i < n; i++)
 		ns16552iputc(buf[i]);
 	
