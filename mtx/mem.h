@@ -141,46 +141,12 @@
 #define PPN(x)		((x)&~(BY2PG-1))
 
 /*
- * MMU
+ *  Second pte word, known by fault.c, passed to putmmu()
  */
-
-/* L1 table entry and Mx_TWC flags */
-#define PTEVALID	(1<<0)
-#define PTEWT		(1<<1)	/* write through */
-#define PTE4K		(0<<2)
-#define PTE512K	(1<<2)
-#define PTE8MB	(3<<2)
-#define PTEG		(1<<4)	/* guarded */
-
-/* L2 table entry and Mx_RPN flags (also PTEVALID) */
-#define PTECI		(1<<1)	/*  cache inhibit */
-#define PTESH		(1<<2)	/* page is shared; ASID ignored */
-#define PTELPS		(1<<3)	/* large page size */
-//#define PTEWRITE	0x9F0
-
-#define	PTEKERNEL	(0<<2)
-#define	PTEUSER		(1<<2)
-#define PTESIZE		(1<<7)
-
-#define	NTLBPID		16
-#define	TLBPID(n)	((n)&(NTLBPID-1))
-
-/*
- *  portable MMU bits for fault.c - though still machine specific
- */
-//#define PTEVALID	(MMUPP|MMUV)
-#define PTEWRITE	(2<<10)
-#define	PTERONLY	(3<<10)
-#define	PTEUNCACHED	(1<<4)
-
-/*
- * physical MMU bits
- */
-
-/* TLB and MxEPN flag */
-#define	TLBVALID	(1<<9)
-
-#define	TLBSETS	32	/* number of tlb sets (603/603e) */
+#define	PTEVALID	0			/* implied for putmmu -- real V bit in first pte word */
+#define	PTEWRITE	2
+#define	PTERONLY	3
+#define	PTEUNCACHED	BIT(26)
 
 /*
  * Address spaces

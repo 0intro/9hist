@@ -16,10 +16,24 @@
 
 static struct {
 	Lock;
-	void		*base;		/* start of page table in kernel virtual space */
+	ulong	base;		/* start of page table in kernel virtual space */
 	ulong	size;			/* number of bytes in page table */
-	int		slotgen;		/* used to choose which pte to alocate in pteg */
+	ulong	mask;		/* hash mask */
+	int		slotgen;		/* next pte (byte offset) when pteg is full */
+	int		pidgen;		/* next mmu pid to use */
 } ptab;
+
+/*
+ *	VSID is 24 bits.  3 are required to distinguish segments in user
+ *	space (kernel space only uses the BATs).
+ */
+
+#define	VSID(pid, i)	(((pid)<<3)|i)
+
+enum {
+	PIDBASE = 1,
+	PIDMAX = ((1<<21)-1),
+};
 
 void
 mmuinit(void)
@@ -36,8 +50,10 @@ mmuinit(void)
 	}
 
 	ptab.size = (1<<(lhash+6));
-	ptab.base = xspanalloc(ptab.size, 0, ptab.size);
+	ptab.base = (ulong)xspanalloc(ptab.size, 0, ptab.size);
 	putsdr1(PADDR(ptab.base) | ((1<<(lhash-10))-1));
+	ptab.pidgen = PIDBASE;
+	ptab.mask = (1<<lhash)-1;
 }
 
 void
@@ -57,7 +73,7 @@ flushmmu(void)
 void
 mmuswitch(Proc *p)
 {
-	int mp;
+	int i, mp;
 
 	if(p->newtlb) {
 		p->mmupid = 0;
@@ -67,8 +83,8 @@ mmuswitch(Proc *p)
 	if(mp == 0)
 		mp = newmmupid();
 
-//	for(i = 0; i < 8; i++)
-//		putsr(i, 
+	for(i = 0; i < 8; i++)
+		putsr(i<<28, VSID(mp, i)|BIT(1)|BIT(2));
 }
 
 void
@@ -78,12 +94,57 @@ mmurelease(Proc* p)
 }
 
 void
-putmmu(ulong va, ulong pa, Page *pg)
+putmmu(ulong va, ulong pa, Page*)
 {
+	int mp;
+	ulong *p, *ep, *q, pteg;
+	ulong vsid, ptehi, x, hash;
+
+	mp = up->mmupid;
+	if(mp == 0)
+		panic("putmmu pid");
+
+	vsid = VSID(mp, va>>28);
+	hash = (vsid ^ (va>>12)&0xffff) & ptab.mask;
+	ptehi = BIT(0)|(vsid<<7)|((va>>22)&0x3f);
+
+	pteg = ptab.base + 64*hash;
+	p = (ulong*)pteg;
+	ep = (ulong*)(pteg+64);
+	q = nil;
+	lock(&ptab);
+	tlbflush(va);
+	while(p < ep) {
+		x = p[0];
+		if(x == ptehi) {
+			q = p;
+if(q[1] == pa) panic("putmmu already set pte");
+			break;
+		}
+		if(q == nil && (x & BIT(0)) == 0)
+			q = p;
+		p += 2;
+	}
+	if(q == nil) {
+		q = (ulong*)(pteg+ptab.slotgen);
+		ptab.slotgen = (ptab.slotgen + 8) & 0x3f;
+	}
+	q[0] = ptehi;
+	q[1] = pa;
+	sync();
+	unlock(&ptab);
 }
 
 int
 newmmupid(void)
 {
-	return -1;
+	int pid;
+
+	lock(&ptab);
+	pid = ptab.pidgen++;
+	unlock(&ptab);
+	if(pid > PIDMAX)
+		panic("newmmupid");
+	up->mmupid = pid;
+	return pid;
 }

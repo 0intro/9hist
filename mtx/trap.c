@@ -211,6 +211,7 @@ char *regname[]={
 void
 trap(Ureg *ur)
 {
+	ulong dsisr;
 	int ecode,user;
 	char buf[ERRMAX], *s;
 
@@ -230,6 +231,16 @@ trap(Ureg *ur)
 		break;
 	case CSYSCALL:
 		syscall(ur);
+		break;
+	case CISI:
+		faultpower(ur, ur->pc, 1);
+		break;
+	case CDSI:
+		dsisr = getdsisr();
+		if(dsisr & BIT(6))
+			faultpower(ur, getdar(), 0);
+		else
+			faultpower(ur, getdar(), 1);
 		break;
 	case CPROG:
 		if(ur->status & (1<<19))
@@ -282,7 +293,7 @@ faultpower(Ureg *ureg, ulong addr, int read)
 	if(n < 0){
 		if(!user){
 			dumpregs(ureg);
-			panic("fault: 0x%lux\n", addr);
+			panic("fault: 0x%lux", addr);
 		}
 		sprint(buf, "sys: trap: fault %s addr=0x%lux", read? "read" : "write", addr);
 		postnote(up, 1, buf, NDebug);

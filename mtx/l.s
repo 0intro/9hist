@@ -281,8 +281,17 @@ TEXT	putsdr1(SB), $0
 	MOVW	R3, SPR(SDR1)
 	RETURN
 
+TEXT	putsr(SB), $0
+	MOVW	4(FP), R4
+	MOVW	R4, SEG(R3)
+	RETURN
+
 TEXT	eieio(SB), $0
 	EIEIO
+	RETURN
+
+TEXT	sync(SB), $0
+	SYNC
 	RETURN
 
 TEXT	tlbflushall(SB), $0
