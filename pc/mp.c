@@ -9,8 +9,6 @@
 #include "mp.h"
 #include "apbootstrap.h"
 
-extern int elcr;
-
 static Bus* mpbus;
 static Bus* mpbuslast;
 static int mpisabus = -1;
