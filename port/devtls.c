@@ -14,11 +14,12 @@ typedef struct OneWay OneWay;
 typedef struct Secret Secret;
 
 enum {
+	/* buffer limits */
 	MaxRecLen	= 1<<14,	/* max payload length of a record layer message */
 	MaxCipherRecLen	= MaxRecLen + 2048,
-
-//ZZZ
 	RecHdrLen	= 5,
+
+	/* protocol versions we can accept */
 	TLSVersion	= 0x0301,
 	SSL3Version	= 0x0300,
 	ProtocolVersion	= 0x0301,	/* maximum version we speak */
@@ -26,13 +27,13 @@ enum {
 	MaxProtoVersion	= 0x03ff,
 
 	/* connection states */
-	SHandshake	= 1 << 0,		// doing handshake
-	SOpen		= 1 << 1,		// application data can be sent
-	SRClose		= 1 << 2,		// remote side has closed down
-	SLClose		= 1 << 3,		// sent a close notify alert
-	SAlert		= 1 << 5,		// sending or sent a fatal alert
-	SError		= 1 << 6,		// some sort of error has occured
-	SClosed		= 1 << 7,		// it is all over
+	SHandshake	= 1 << 0,	/* doing handshake */
+	SOpen		= 1 << 1,	/* application data can be sent */
+	SRClose		= 1 << 2,	/* remote side has closed down */
+	SLClose		= 1 << 3,	/* sent a close notify alert */
+	SAlert		= 1 << 5,	/* sending or sent a fatal alert */
+	SError		= 1 << 6,	/* some sort of error has occured */
+	SClosed		= 1 << 7,	/* it is all over */
 
 	/* record types */
 	RChangeCipherSpec = 20,
@@ -89,12 +90,12 @@ struct OneWay
 typedef struct TlsRec TlsRec;
 struct TlsRec
 {
-	Chan		*c;			/* io channel */
-	int		ref;			/* serialized by dslock for atomic destroy */
-	int		version;		/* version of the protocol we are speaking */
-	char		verset;			/* version has been set */
-	char		opened;			/* opened command every issued? */
-	char		err[ERRLEN];		/* error message to return to handshake requests */
+	Chan		*c;		/* io channel */
+	int		ref;		/* serialized by tdlock for atomic destroy */
+	int		version;	/* version of the protocol we are speaking */
+	char		verset;		/* version has been set */
+	char		opened;		/* opened command every issued? */
+	char		err[ERRLEN];	/* error message to return to handshake requests */
 
 	Lock		statelk;
 	int		state;
@@ -104,13 +105,15 @@ struct TlsRec
 
 	/* input side -- protected by in.io */
 	OneWay		in;
-	Block		*processed;			/* next bunch of application data */
-	Block		*unprocessed;			/* data read from c but not parsed into records */
+	Block		*processed;	/* next bunch of application data */
+	Block		*unprocessed;	/* data read from c but not parsed into records */
 
 	/* handshake queue */
-	Lock		hqlock;
+	Lock		hqlock;		/* protects hqref, alloc & free of handq, hprocessed */
 	int		hqref;
-	Queue		*handq;				/* queue of handshake messages */
+	Queue		*handq;		/* queue of handshake messages */
+	Block		*hprocessed;	/* remainder of last block read from handq */
+	QLock		hqread;		/* protects reads for hprocessed, handq */
 
 	/* output side */
 	OneWay		out;
@@ -178,18 +181,18 @@ static TlsErrs tlserrs[] = {
 		0, "handshake canceled by user"},
 	{ENoRenegotiation,		EUnexpectedMessage,		ENoRenegotiation,
 		0, "no renegotiation"},
-	{-1},
 };
 
 enum
 {
-	Maxdstate	= 64,
+	/* max. open tls connections */
+	MaxTlsDevs	= 1024
 };
 
-static	Lock	dslock;
-static	int	dshiwat;
-static	int	maxdstate = 128;
-static	TlsRec** dstate;
+static	Lock	tdlock;
+static	int	tdhiwat;
+static	int	maxtlsdevs = 128;
+static	TlsRec	**tlsdevs;
 static	char	*encalgs;
 static	char	*hashalgs;
 
@@ -206,7 +209,7 @@ enum{
 };
 
 #define TYPE(x) 	((x).path & 0xf)
-#define CONV(x) 	(((x).path >> 5)&(Maxdstate-1))
+#define CONV(x) 	(((x).path >> 5)&(MaxTlsDevs-1))
 #define QID(c, y) 	(((c)<<5) | (y))
 
 static void	checkstate(TlsRec *, int, int);
@@ -270,10 +273,10 @@ tlsgen(Chan *c, Dirtab *d, int nd, int s, Dir *dp)
 			devdir(c, q, ".", 0, eve, CHDIR|0555, dp);
 			return 1;
 		}
-		if(s < dshiwat) {
+		if(s < tdhiwat) {
 			sprint(name, "%d", s);
 			q.path = QID(s, Qconvdir)|CHDIR;
-			ds = dstate[s];
+			ds = tlsdevs[s];
 			if(ds != 0)
 				nm = ds->user;
 			else
@@ -281,7 +284,7 @@ tlsgen(Chan *c, Dirtab *d, int nd, int s, Dir *dp)
 			devdir(c, q, name, 0, nm, CHDIR|0555, dp);
 			return 1;
 		}
-		if(s > dshiwat)
+		if(s > tdhiwat)
 			return -1;
 		q.path = QID(0, Qclonus);
 		devdir(c, q, "clone", 0, eve, 0555, dp);
@@ -292,7 +295,7 @@ tlsgen(Chan *c, Dirtab *d, int nd, int s, Dir *dp)
 			devdir(c, q, "tls", 0, eve, CHDIR|0555, dp);
 			return 1;
 		}
-		ds = dstate[CONV(c->qid)];
+		ds = tlsdevs[CONV(c->qid)];
 		if(ds != 0)
 			nm = ds->user;
 		else
@@ -327,7 +330,7 @@ tlsgen(Chan *c, Dirtab *d, int nd, int s, Dir *dp)
 		devdir(c, c->qid, tlsnames[TYPE(c->qid)], 0, eve, 0555, dp);
 		return 1;
 	default:
-		ds = dstate[CONV(c->qid)];
+		ds = tlsdevs[CONV(c->qid)];
 		devdir(c, c->qid, tlsnames[TYPE(c->qid)], 0, ds->user, 0660, dp);
 		return 1;
 	}
@@ -396,11 +399,11 @@ tlsopen(Chan *c, int omode)
 	case Qdata:
 	case Qhand:
 		if(waserror()) {
-			unlock(&dslock);
+			unlock(&tdlock);
 			nexterror();
 		}
-		lock(&dslock);
-		pp = &dstate[CONV(c->qid)];
+		lock(&tdlock);
+		pp = &tlsdevs[CONV(c->qid)];
 		tr = *pp;
 		if(tr == nil)
 			error("must open connection using clone");
@@ -425,7 +428,7 @@ tlsopen(Chan *c, int omode)
 			poperror();
 		}
 		tr->ref++;
-		unlock(&dslock);
+		unlock(&tdlock);
 		poperror();
 		break;
 	case Qencalgs:
@@ -448,7 +451,7 @@ tlswstat(Chan *c, char *dp)
 
 	convM2D(dp, &d);
 
-	tr = dstate[CONV(c->qid)];
+	tr = tlsdevs[CONV(c->qid)];
 	if(tr == nil)
 		error(Ebadusefd);
 	if(strcmp(tr->user, up->user) != 0)
@@ -463,9 +466,15 @@ static void
 dechandq(TlsRec *tr)
 {
 	lock(&tr->hqlock);
-	if(--tr->hqref == 0 && tr->handq != nil){
-		qfree(tr->handq);
-		tr->handq = nil;
+	if(--tr->hqref == 0){
+		if(tr->handq != nil){
+			qfree(tr->handq);
+			tr->handq = nil;
+		}
+		if(tr->hprocessed != nil){
+			freeb(tr->hprocessed);
+			tr->hprocessed = nil;
+		}
 	}
 	unlock(&tr->hqlock);
 }
@@ -484,20 +493,20 @@ tlsclose(Chan *c)
 		if((c->flag & COPEN) == 0)
 			break;
 
-		tr = dstate[CONV(c->qid)];
+		tr = tlsdevs[CONV(c->qid)];
 		if(tr == nil)
 			break;
 
 		if(t == Qhand)
 			dechandq(tr);
 
-		lock(&dslock);
+		lock(&tdlock);
 		if(--tr->ref > 0) {
-			unlock(&dslock);
+			unlock(&tdlock);
 			return;
 		}
-		dstate[CONV(c->qid)] = nil;
-		unlock(&dslock);
+		tlsdevs[CONV(c->qid)] = nil;
+		unlock(&tdlock);
 
 		if(tr->c != nil && !waserror()){
 			checkstate(tr, 0, SOpen|SHandshake|SRClose);
@@ -943,7 +952,7 @@ tlsbread(Chan *c, long n, ulong offset)
 		break;
 	}
 
-	tr = dstate[CONV(c->qid)];
+	tr = tlsdevs[CONV(c->qid)];
 	if(tr == nil)
 		panic("tlsbread");
 
@@ -969,17 +978,30 @@ tlsbread(Chan *c, long n, ulong offset)
 		 * since it only protects reading records,
 		 * and we have that tr->in.io held.
 		 */
-		while(!tr->opened && !qcanread(tr->handq))
+		while(!tr->opened && tr->hprocessed == nil && !qcanread(tr->handq))
 			tlsrecread(tr);
 
 		qunlock(&tr->in.io);
 		poperror();
-		b = qbread(tr->handq, n);
-		if(*b->rp++ == RAlert){
-			strncpy(up->error, (char*)b->rp, ERRLEN - 1);
-			up->error[ERRLEN - 1] = '\0';
-			error(up->error);
+
+		if(waserror()){
+			qunlock(&tr->hqread);
+			nexterror();
 		}
+		qlock(&tr->hqread);
+		if(tr->hprocessed == nil){
+			b = qbread(tr->handq, MaxRecLen + 1);
+			if(*b->rp++ == RAlert){
+				strncpy(up->error, (char*)b->rp, ERRLEN - 1);
+				up->error[ERRLEN - 1] = '\0';
+				freeb(b);
+				error(up->error);
+			}
+			tr->hprocessed = b;
+		}
+		b = qremove(&tr->hprocessed, n, 0);
+		poperror();
+		qunlock(&tr->hqread);
 	}
 
 	return b;
@@ -1156,7 +1178,7 @@ tlsbwrite(Chan *c, Block *b, ulong offset)
 
 	n = BLEN(b);
 
-	tr = dstate[CONV(c->qid)];
+	tr = tlsdevs[CONV(c->qid)];
 	if(tr == nil)
 		panic("tlsbread");
 
@@ -1261,7 +1283,7 @@ tlswrite(Chan *c, void *a, long n, vlong off)
 	uchar *volatile x;
 	ulong offset = off;
 
-	tr = dstate[CONV(c->qid)];
+	tr = tlsdevs[CONV(c->qid)];
 	if(tr == nil)
 		panic("tlswrite");
 
@@ -1305,7 +1327,6 @@ tlswrite(Chan *c, void *a, long n, vlong off)
 		error("short control request");
 
 	/* mutex with operations using what we're about to change */
-//ZZZ check this locking
 	if(waserror()){
 		qunlock(&tr->in.seclock);
 		qunlock(&tr->out.seclock);
@@ -1418,8 +1439,7 @@ tlswrite(Chan *c, void *a, long n, vlong off)
 		lock(&tr->statelk);
 		if(tr->state != SHandshake && tr->state != SOpen){
 			unlock(&tr->statelk);
-//ZZZ bad error message
-			error("can't set open state");
+			error("can't enable data messages");
 		}
 		tr->state = SOpen;
 		unlock(&tr->statelk);
@@ -1463,7 +1483,7 @@ tlsinit(void)
 	int n;
 	char *cp;
 
-	if((dstate = smalloc(sizeof(TlsRec*) * maxdstate)) == 0)
+	if((tlsdevs = smalloc(sizeof(TlsRec*) * maxtlsdevs)) == 0)
 		panic("tlsinit");
 
 	n = 1;
@@ -1618,39 +1638,39 @@ newtls(Chan *ch)
 	int t, newmax;
 
 	if(waserror()) {
-		unlock(&dslock);
+		unlock(&tdlock);
 		nexterror();
 	}
-	lock(&dslock);
-	ep = &dstate[maxdstate];
-	for(pp = dstate; pp < ep; pp++)
+	lock(&tdlock);
+	ep = &tlsdevs[maxtlsdevs];
+	for(pp = tlsdevs; pp < ep; pp++)
 		if(*pp == nil)
 			break;
 	if(pp >= ep) {
-		if(maxdstate >= Maxdstate) {
-			unlock(&dslock);
+		if(maxtlsdevs >= MaxTlsDevs) {
+			unlock(&tdlock);
 			poperror();
 			return nil;
 		}
-		newmax = 2 * maxdstate;
-		if(newmax > Maxdstate)
-			newmax = Maxdstate;
+		newmax = 2 * maxtlsdevs;
+		if(newmax > MaxTlsDevs)
+			newmax = MaxTlsDevs;
 		np = smalloc(sizeof(TlsRec*) * newmax);
-		memmove(np, dstate, sizeof(TlsRec*) * maxdstate);
-		dstate = np;
-		pp = &dstate[maxdstate];
-		memset(pp, 0, sizeof(TlsRec*)*(newmax - maxdstate));
-		maxdstate = newmax;
+		memmove(np, tlsdevs, sizeof(TlsRec*) * maxtlsdevs);
+		tlsdevs = np;
+		pp = &tlsdevs[maxtlsdevs];
+		memset(pp, 0, sizeof(TlsRec*)*(newmax - maxtlsdevs));
+		maxtlsdevs = newmax;
 	}
 	*pp = mktlsrec();
-	if(pp - dstate >= dshiwat)
-		dshiwat++;
+	if(pp - tlsdevs >= tdhiwat)
+		tdhiwat++;
 	t = TYPE(ch->qid);
 	if(t == Qclonus)
 		t = Qctl;
-	ch->qid.path = QID(pp - dstate, t);
+	ch->qid.path = QID(pp - tlsdevs, t);
 	ch->qid.vers = 0;
-	unlock(&dslock);
+	unlock(&tdlock);
 	poperror();
 	return *pp;
 }
