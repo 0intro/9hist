@@ -566,7 +566,11 @@ w_scaninfo(Ether* ether, Ctlr *ctlr, int len)
 	for (i = 0; i < len ; i++)
 		scanbuf[i] = csr_ins(ctlr, WR_Data1);
 
+	/* calculate number of samples */
 	len /= 25;
+	if(len == 0)
+		goto out;
+
 	i = ether->scan;
 	ep = &ether->f[Ntypes];
 	for(fp = ether->f; fp < ep && i > 0; fp++){
@@ -589,6 +593,7 @@ w_scaninfo(Ether* ether, Ctlr *ctlr, int len)
 		qpass(f->in, bp);
 		i--;
 	}
+out:
 	free(scanbuf);
 }
 

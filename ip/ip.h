@@ -35,7 +35,7 @@ enum
 	Maxproto=	20,
 	Nhash=		64,
 	Maxincall=	5,
-	Nchans=		512,
+	Nchans=		1024,
 	MAClen=		16,		/* longest mac address */
 
 	MAXTTL=		255,
