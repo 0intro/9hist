@@ -375,7 +375,7 @@ transmit(EtherCtlr *cp)
 		/*
 		 * There's room, copy the packet to the FIFO and free
 		 * the buffer back to the host.
-		 * Output packet muat be a multiple of 4 in length.
+		 * Output packet must be a multiple of 4 in length.
 		 */
 		len = ROUNDUP(tb->len, 4)/2;
 		outs(hw->addr+Fifo, tb->len);

@@ -788,7 +788,6 @@ lanceup(Etherpkt *p, int len)
 			PUTNEXT(e->q, bp);
 			poperror();
 		}
-		qunlock(e);
 	}
 }
 
