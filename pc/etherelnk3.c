@@ -722,7 +722,7 @@ interrupt(Ureg*, void* arg)
 			}
 
 			if(txstatus & (txJabber|txUnderrun)){
-				COMMAND(port, TxReset, 0);
+				COMMAND(port, TxReset, dmaReset);
 				while(STATUS(port) & commandInProgress)
 					;
 				COMMAND(port, SetTxStartThresh, ctlr->txthreshold>>ctlr->ts);
@@ -1219,8 +1219,8 @@ etherelnk3reset(Ether* ether)
 	 * if any txUnderrun errors occur and ensure no RxEarly
 	 * interrupts happen.
 	 */
-	ctlr->txthreshold = ETHERMINTU;
-	COMMAND(port, SetTxStartThresh, ETHERMINTU>>ctlr->ts);
+	ctlr->txthreshold = ETHERMINTU*2;
+	COMMAND(port, SetTxStartThresh, ctlr->txthreshold>>ctlr->ts);
 	COMMAND(port, SetRxEarlyThresh, rxearly>>ctlr->ts);
 
 	iunlock(&ctlr->wlock);

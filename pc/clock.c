@@ -93,11 +93,13 @@ X86type x86type[] =
 	{ 4,	8,	22,	"IntelDX4", },
 	{ 5,	1,	23,	"Pentium510", },
 	{ 5,	2,	23,	"Pentium735", },
+	{ 6,	1,	16,	"PentiumPro", },/* determined by trial and error */
 
 	/* family defaults */
 	{ 3,	-1,	32,	"Intel386", },
 	{ 4,	-1,	22,	"Intel486", },
 	{ 5,	-1,	23,	"Pentium", },
+	{ 6,	-1,	16,	"PentiumPro", },
 
 	/* total default */
 	{ -1,	-1,	23,	"unknown", },
