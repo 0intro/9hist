@@ -277,6 +277,7 @@ slotdis(Slot *pp)
 static void
 i82365intr(Ureg *ur, void *a)
 {
+	int tries, changed;
 	uchar csc, was;
 	Slot *pp;
 
@@ -284,18 +285,25 @@ i82365intr(Ureg *ur, void *a)
 	if(slot == 0)
 		return;
 
-	for(pp = slot; pp < lastslot; pp++){
-		csc = rdreg(pp, Rcsc);
-		was = pp->occupied;
-		slotinfo(pp);
-		if(csc & (1<<3) && was != pp->occupied){
-			if(pp->occupied)
-				print("slot%d card inserted\n", pp->slotno);
-			else {
-				print("slot%d card removed\n", pp->slotno);
-				slotdis(pp);
+	changed = 0;
+	for(tries = 0; tries < 5; tries++){
+		for(pp = slot; pp < lastslot; pp++){
+			csc = rdreg(pp, Rcsc);
+			was = pp->occupied;
+			slotinfo(pp);
+			if(csc & (1<<3) && was != pp->occupied){
+				changed++;
+				if(pp->occupied)
+					print("slot%d card inserted\n", pp->slotno);
+				else {
+					print("slot%d card removed\n", pp->slotno);
+					slotdis(pp);
+				}
 			}
 		}
+		if(changed)
+			break;
+		delay(100);
 	}
 }
 
