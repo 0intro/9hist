@@ -381,8 +381,7 @@ echo(char *buf, int n)
 			scheddump();
 			return;
 		case 'k':
-			if(!cpuserver)
-				killbig();
+			killbig();
 			return;
 		case 'r':
 			exit(0);

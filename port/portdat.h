@@ -860,8 +860,8 @@ struct Edfinterface {
 	void		(*edfexpel)(Task*);
 	char *	(*edfadmit)(Task*);
 	void		(*edfdeadline)(Proc*);
-	void		(*edfacquire)(Task*, CSN*);
-	void		(*edfrelease)(Task*);
+	void		(*resacquire)(Task*, CSN*);
+	void		(*resrelease)(Task*);
 };
 
 /*
