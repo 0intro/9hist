@@ -18,10 +18,17 @@ enum
 	 Floppyvec=	Int0vec+6,	/*  floppy interrupts */
 	 Parallelvec=	Int0vec+7,	/*  parallel port interrupts */
 	Int1vec=	Int0vec+8,
-	 Ethervec=	Int0vec+10,	/*  ethernet interrupt */
+	 Vector9=	Int0vec+9,	/*  unassigned */
+	 Vector10=	Int0vec+10,	/*  unassigned, usually ethernet */
+	 Vector11=	Int0vec+11,	/*  unassigned, usually scsi */
 	 Mousevec=	Int0vec+12,	/*  mouse interrupt */
 	 Matherr2vec=	Int0vec+13,	/*  math coprocessor */
 	 Hardvec=	Int0vec+14,	/*  hard disk */
+	 Vector15=	Int0vec+15,	/*  unassigned */
 
 	Syscallvec=	64,
+};
+
+enum {
+	MaxEISA		= 16,
 };

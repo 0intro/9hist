@@ -187,6 +187,21 @@ struct ISAConf {
 	uchar	ea[6];
 };
 
+enum {
+	MaxScsi		= 4,
+	NTarget		= 8,
+};
+
+struct Target {
+	int	ctlrno;
+	int	target;
+	uchar*	inq;
+	uchar*	scratch;
+
+	int	ok;
+};
+typedef int 	(*Scsiio)(Target*, int, uchar*, int, void*, int*);
+
 #define MAXPCMCIA 8			/* maximum number of PCMCIA cards */
 #define BOOTLINE ((char *)0x80000100)	/*  bootline passed by boot program */
 

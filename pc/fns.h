@@ -118,3 +118,12 @@ Block*	iallocb(int);
 void*	ifroute(ulong);
 ulong	ifunroute(ulong);
 void	parseip(char*, char*);
+
+#define	scsialloc(n)	mallocz((n)+512, 0)
+#define scsifree(p)	free(p)
+
+void	addscsicard(char*, Scsiio (*)(int, ISAConf*));
+int	scsistart(Target*, char, int);
+int	scsireqsense(Target*, char, int);
+int	scsicap(Target*, char, ulong*, ulong*);
+int	scsibio(Target*, char, int, void*, long, long, long);

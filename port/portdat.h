@@ -667,6 +667,8 @@ enum
 /* Things scsi */
 enum
 {
+	STtimeout	=-3,
+	STownid		=-2,
 	STharderr	=-1,	/* Command status error returns */
 	STok		= 0,
 	STcheck		= 2,

@@ -228,26 +228,28 @@ ns16552break(Uart *p, int ms)
 void
 ns16552fifoon(Uart *p)
 {
-	ulong i, x, c;
+	ulong i, x;
 
 	if(p->nofifo)
 		return;
 
 	x = splhi();
 
-	/* empty buffer */
-	c = 0;				/* c is to to avoid an unused warning */
-	for(i = 0; i < 16; i++)
-		c = uartrdreg(p, Data);
-	USED(c);
-	ns16552intr(p->dev);
+	/* reset fifos */
+	uartwrreg(p, Fifoctl, Fclear);
 
+	/* empty buffer and interrupt conditions */
+	for(i = 0; i < 16; i++){
+		if(uartrdreg(p, Istat))
+			;
+		if(uartrdreg(p, Data))
+			;
+	}
+  
 	/* turn on fifo */
 	p->fifoon = 1;
 	uartwrreg(p, Fifoctl, Fena|Ftrig);
 
-	ns16552intr(p->dev);
-	USED(c);
 	if((p->istat & Fenabd) == 0){
 		/* didn't work, must be an earlier chip type */
 		p->nofifo = 1;
@@ -483,19 +485,45 @@ ns16552special(int port, int baud, Queue **in, Queue **out, int (*putc)(Queue*, 
 }
 
 /*
+ *  reset the interface
+ */
+void
+ns16552shake(Uart *p)
+{
+	int xonoff, modem;
+
+	xonoff = p->xonoff;
+	modem = p->modem;
+	ns16552disable(p);
+	ns16552enable(p);
+	p->xonoff = xonoff;
+	ns16552mflow(p, modem);
+}
+
+/*
  *  handle an interrupt to a single uart
  */
 void
 ns16552intr(int dev)
 {
 	uchar ch;
-	int s, l, loops;
+	int s, l, loops, shakes;
 	Uart *p = uart[dev];
 
+	shakes = 0;
 	for(loops = 0;; loops++){
-		if(loops > 100000)
-			panic("ns16552intr");
 		p->istat = s = uartrdreg(p, Istat);
+		if(loops > 50000){
+			if(shakes++ < 3){
+				/* try resetting the interface */
+				ns16552shake(p);
+				continue;
+			}
+			print("lstat %ux mstat %ux istat %ux iena %ux ferr %d oerr %d",
+				uartrdreg(p, Lstat), uartrdreg(p, Mstat),
+				s, uartrdreg(p, Iena), p->frame, p->overrun);
+			panic("ns16552intr");
+		}
 		switch(s&0x3f){
 		case 6:	/* receiver line status */
 			l = uartrdreg(p, Lstat);
