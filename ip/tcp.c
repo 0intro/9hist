@@ -245,6 +245,9 @@ struct Tcppriv
 	QLock 	tl;			/* Protect timer list */
 	Rendez	tcpr;			/* used by tcpackproc */
 
+	/* hash table for matching conversations */
+	Ipht	ht;
+
 	ulong	stats[Nstats];
 
 	/* for keeping track of tcpackproc */
@@ -604,6 +607,8 @@ localclose(Conv *s, char *reason)	 /*  called with tcb locked */
 	tpriv = s->p->priv;
 	tcb = (Tcpctl*)s->ptcl;
 
+	iphtrem(&tpriv->ht, s);
+
 	tcphalt(tpriv, &tcb->timer);
 	tcphalt(tpriv, &tcb->rtt_timer);
 	tcphalt(tpriv, &tcb->acktimer);
@@ -711,6 +716,7 @@ tcpstart(Conv *s, int mode, ushort window)
 	tcb->window = window;
 	tcb->rcv.wnd = window;
 
+	iphtadd(&tpriv->ht, s);
 	switch(mode) {
 	case TCP_LISTEN:
 		tpriv->stats[PassiveOpens]++;
@@ -983,6 +989,7 @@ tcpincoming(Conv *s, Tcp *segp, uchar *src, uchar *dst)
 	Conv *new;
 	Tcpctl *tcb;
 	Tcphdr *h;
+	Tcppriv *tpriv;
 
 	new = Fsnewcall(s, src, segp->source, dst, segp->dest);
 	if(new == nil)
@@ -1007,6 +1014,9 @@ tcpincoming(Conv *s, Tcp *segp, uchar *src, uchar *dst)
 	hnputs(h->tcpdport, new->rport);
 	v6tov4(h->tcpsrc, dst);
 	v6tov4(h->tcpdst, src);
+
+	tpriv = new->p->priv;
+	iphtadd(&tpriv->ht, new);
 
 	return new;
 }
@@ -1218,7 +1228,7 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 	Tcpctl *tcb;
 	ushort length;
 	uchar source[IPaddrlen], dest[IPaddrlen];
-	Conv *spec, *gen, *s, **p;
+	Conv *s;
 	Fs *f;
 	Tcppriv *tpriv;
 
@@ -1229,9 +1239,9 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 
 	h = (Tcphdr*)(bp->rp);
 
+	length = nhgets(h->length);
 	v4tov6(dest, h->tcpdst);
 	v4tov6(source, h->tcpsrc);
-	length = nhgets(h->length);
 
 	h->Unused = 0;
 	hnputs(h->tcplen, length-TCP_PKT);
@@ -1265,77 +1275,30 @@ tcpiput(Proto *tcp, uchar*, Block *bp)
 	/* lock protocol while searching for a conversation */
 	qlock(tcp);
 
-	/* Look for a connection. failing that look for a listener. */
-	for(p = tcp->conv; *p; p++) {
-		s = *p;
-		tcb = (Tcpctl*)s->ptcl;
-		if(s->rport == seg.source)
-		if(s->lport == seg.dest)
-		if(tcb->state != Closed)
-		if(ipcmp(s->raddr, source) == 0)
-			break;
+	/* Look for a matching conversation */
+	s = iphtlook(&tpriv->ht, source, seg.source, dest, seg.dest);
+	if(s == nil){
+reset:
+		qunlock(tcp);
+		sndrst(tcp, source, dest, length, &seg);
+		freeblist(bp);
+		return;
 	}
-	s = *p;
-	if(s){
-		/* can't send packets to a listener */
-		tcb = (Tcpctl*)s->ptcl;
-		if(tcb->state == Listen){
-			qunlock(tcp);
-			freeblist(bp);
-			return;
-		}
-	}
-	if(s == nil && (seg.flags & SYN)) {
-		/*
-		 *  dump packets with bogus flags
-		 */
+
+	/* if it's a listener, look for the right flags and get a new conv */
+	tcb = (Tcpctl*)s->ptcl;
+	if(tcb->state == Listen){
 		if(seg.flags & RST){
 			qunlock(tcp);
 			freeblist(bp);
 			return;
 		}
+		if((seg.flags & SYN) == 0 || (seg.flags & ACK) != 0)
+			goto reset;
 
-		if(seg.flags & ACK) {
-			qunlock(tcp);
-			sndrst(tcp, source, dest, length, &seg);
-			freeblist(bp);
-			return;
-		}
-
-		/*
-		 *  find a listener specific to this port (spec) or,
-		 *  failing that, a general one (gen)
-		 */
-		gen = nil;
-		spec = nil;
-		for(p = tcp->conv; *p; p++) {
-			s = *p;
-			tcb = (Tcpctl*)s->ptcl;
-			if((tcb->flags & CLONE) == 0)
-				continue;
-			if(tcb->state != Listen)
-				continue;
-			if(s->rport == 0 && ipcmp(s->raddr, IPnoaddr) == 0) {
-				if(s->lport == seg.dest){
-					spec = s;
-					break;
-				}
-				if(s->lport == 0)
-					gen = s;
-			}
-		}
-		s = nil;
-		if(spec != nil)
-			s = tcpincoming(spec, &seg, source, dest);
-		else
-		if(gen != nil)
-			s = tcpincoming(gen, &seg, source, dest);
-	}
-	if(s == nil) {
-		qunlock(tcp);
-		sndrst(tcp, source, dest, length, &seg);
-		freeblist(bp);
-		return;
+		s = tcpincoming(s, &seg, source, dest);
+		if(s == nil)
+			goto reset;
 	}
 
 	/* The rest of the input state machine is run with the control block

@@ -40,7 +40,6 @@ boot(int argc, char *argv[])
 	Method *mp;
 	char *cmd, cmdbuf[64], *iargv[16];
 	char rootbuf[64];
-	char flags[6];
 	int islocal, ishybrid, iargc;
 	char *rp;
 

@@ -58,6 +58,8 @@ struct Udpstats
 typedef struct Udppriv Udppriv;
 struct Udppriv
 {
+	Ipht		ht;
+
 	/* MIB counters */
 	Udpstats	ustats;
 
@@ -80,9 +82,12 @@ static char*
 udpconnect(Conv *c, char **argv, int argc)
 {
 	char *e;
+	Udppriv *upriv;
 
+	upriv = c->p->priv;
 	e = Fsstdconnect(c, argv, argc);
 	Fsconnected(c, e);
+	iphtadd(&upriv->ht, c);
 
 	return e;
 }
@@ -98,11 +103,14 @@ static char*
 udpannounce(Conv *c, char** argv, int argc)
 {
 	char *e;
+	Udppriv *upriv;
 
+	upriv = c->p->priv;
 	e = Fsstdannounce(c, argv, argc);
 	if(e != nil)
 		return e;
 	Fsconnected(c, nil);
+	iphtadd(&upriv->ht, c);
 
 	return nil;
 }
@@ -118,6 +126,10 @@ static void
 udpclose(Conv *c)
 {
 	Udpcb *ucb;
+	Udppriv *upriv;
+
+	upriv = c->p->priv;
+	iphtrem(&upriv->ht, c);
 
 	c->state = 0;
 	qclose(c->rq);
@@ -245,7 +257,7 @@ udpiput(Proto *udp, uchar *ia, Block *bp)
 {
 	int len, olen, ottl;
 	Udphdr *uh;
-	Conv *c, **p, *gen;
+	Conv *c;
 	Udpcb *ucb;
 	uchar raddr[IPaddrlen], laddr[IPaddrlen];
 	ushort rport, lport;
@@ -283,85 +295,37 @@ udpiput(Proto *udp, uchar *ia, Block *bp)
 
 	qlock(udp);
 
-	gen = nil;
-
-	/* look for an announced port with headers (most likely) */
-	for(p = udp->conv; *p; p++){
-		c = *p;
-		ucb = (Udpcb*)c->ptcl;
-		if(c->inuse == 0 || c->state != Announced || ucb->headers == 0)
-			continue;
-		
-		if(c->lport != lport)
-			continue;
-
-		if(ipcmp(c->laddr, laddr) == 0)
-			goto found;
-
-		if(ipcmp(c->laddr, IPnoaddr) == 0 || ipcmp(c->laddr, v4prefix) == 0)
-			gen = c;
+	c = iphtlook(&upriv->ht, raddr, rport, laddr, lport);
+	if(c == nil){
+		/* no converstation found */
+		upriv->ustats.udpNoPorts++;
+		qunlock(udp);
+		netlog(f, Logudp, "udp: no conv %I!%d -> %I!%d\n", raddr, rport,
+			laddr, lport);
+		uh->Unused = ottl;
+		hnputs(uh->udpplen, olen);
+		icmpnoconv(f, bp);
+		freeblist(bp);
+		return;
 	}
-	if(gen != nil){
-		c = gen;
-		goto found;
-	}
-
-	/* look for a connected port */
-	for(p = udp->conv; *p; p++){
-		c = *p;
-		if(c->inuse == 0 || c->state != Connected)
-			continue;
-		if(c->lport == lport
-		&& c->rport == rport
-		&& (ipcmp(c->laddr, laddr) == 0)
-		&& ipcmp(c->raddr, raddr) == 0 || ipisbm(c->raddr))
-			goto found;
-	}
-
-	/* finally, look for a listener */
-	for(p = udp->conv; *p; p++){
-		c = *p;
-		ucb = (Udpcb*)c->ptcl;
-		if(c->inuse == 0 || c->state != Announced || ucb->headers != 0)
-			continue;
-		
-		if(c->lport != lport)
-			continue;
-
-		if(ipcmp(c->laddr, laddr) == 0)
-			break;
-
-		if(ipcmp(c->laddr, IPnoaddr) == 0)
-			gen = c;
-	}
-	c = *p;
-	if(c == nil)
-		c = gen;
-	if(c != nil){
-		if(ipforme(f, laddr) != Runi)
-			v4tov6(laddr, ia);
-		c = Fsnewcall(gen, raddr, rport, laddr, lport);
-		if(c == nil){
-			freeblist(bp);
-			return;
-		}
-		c->state = Connected;
-		goto found;
-	}
-
-	/* no converstation found */
-	upriv->ustats.udpNoPorts++;
-	qunlock(udp);
-	netlog(f, Logudp, "udp: no conv %I!%d -> %I!%d\n", raddr, rport,
-		laddr, lport);
-	uh->Unused = ottl;
-	hnputs(uh->udpplen, olen);
-	icmpnoconv(f, bp);
-	freeblist(bp);
-	return;
-
-found:
 	ucb = (Udpcb*)c->ptcl;
+
+	if(c->state == Announced){
+		if(ucb->headers == 0){
+			/* create a new conversation */
+			if(ipforme(f, laddr) != Runi)
+				v4tov6(laddr, ia);
+			c = Fsnewcall(c, raddr, rport, laddr, lport);
+			if(c == nil){
+				qunlock(udp);
+				freeblist(bp);
+				return;
+			}
+			iphtadd(&upriv->ht, c);
+			ucb = (Udpcb*)c->ptcl;
+		}
+	}
+
 	qlock(c);
 	qunlock(udp);
 

@@ -754,29 +754,27 @@ setladdrport(Conv* c, char* str, int announcing)
 	}
 
 	c->lport = 0;
-	if(announcing){
-		if(p == nil){
+	if(p == nil){
+		if(announcing)
 			ipmove(c->laddr, IPnoaddr);
-			lport = atoi(str);
-		} else {
-			if(strcmp(str, "*") == 0)
-				ipmove(c->laddr, IPnoaddr);
-			else
-				parseip(c->laddr, str);
-			lport = atoi(p);
-		}
-	} else {
-		if(p == nil){
+		else
 			setladdr(c);
-			lport = atoi(str);
-		} else {
-			if(strcmp(str, "*") == 0)
-				setladdr(c);
-			else
-				parseip(c->laddr, str);
-			lport = atoi(p);
-		}
+		p = str;
+	} else {
+		if(strcmp(str, "*") == 0)
+			ipmove(c->laddr, IPnoaddr);
+		else
+			parseip(c->laddr, str);
 	}
+
+	/* one process can get all connections */
+	if(announcing && strcmp(p, "*") == 0){
+		if(!iseve())
+			error(Eperm);
+		return setluniqueport(c, 0);
+	}
+
+	lport = atoi(p);
 	if(lport <= 0)
 		setlport(c);
 	else

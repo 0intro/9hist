@@ -183,17 +183,19 @@ static char *statnames[] =
 typedef struct Ilpriv Ilpriv;
 struct Ilpriv
 {
+	Ipht	ht;
+
 	ulong	stats[Nstats];
 
-	ulong		csumerr;		/* checksum errors */
-	ulong		hlenerr;		/* header length error */
-	ulong		lenerr;			/* short packet */
-	ulong		order;			/* out of order */
-	ulong		rexmit;			/* retransmissions */
-	ulong		dup;
-	ulong		dupb;
+	ulong	csumerr;		/* checksum errors */
+	ulong	hlenerr;		/* header length error */
+	ulong	lenerr;			/* short packet */
+	ulong	order;			/* out of order */
+	ulong	rexmit;			/* retransmissions */
+	ulong	dup;
+	ulong	dupb;
 
-	Rendez		ilr;
+	Rendez	ilr;
 
 	/* keeping track of the ack kproc */
 	int	ackprocstarted;
@@ -222,7 +224,7 @@ int	ilnextqt(Ilcb*);
 void	ilcbinit(Ilcb*);
 int	later(ulong, ulong, char*);
 void	ilreject(Fs*, Ilhdr*);
-
+void	illocalclose(Conv *c);
 	int 	ilcksum = 1;
 static 	int 	initseq = 25001;
 static	ulong	scalediv, scalemul;
@@ -280,6 +282,20 @@ ilannounce(Conv *c, char **argv, int argc)
 	return nil;
 }
 
+void
+illocalclose(Conv *c)
+{
+	Ilcb *ic;
+	Ilpriv *ipriv;
+
+	ipriv = c->p->priv;
+	ic = (Ilcb*)c->ptcl;
+	ic->state = Ilclosed;
+	iphtrem(&ipriv->ht, c);
+	ipmove(c->laddr, IPnoaddr);
+	c->lport = 0;
+}
+
 static void
 ilclose(Conv *c)
 {
@@ -303,9 +319,7 @@ ilclose(Conv *c)
 		ilsendctl(c, nil, Ilclose, ic->next, ic->recvd, 0);
 		break;
 	case Illistening:
-		ic->state = Ilclosed;
-		ipmove(c->laddr, IPnoaddr);
-		c->lport = 0;
+		illocalclose(c);
 		break;
 	}
 	ilfreeq(ic);
@@ -516,7 +530,7 @@ iliput(Proto *il, uchar*, Block *bp)
 	uchar laddr[IPaddrlen];
 	ushort sp, dp, csum;
 	int plen, illen;
-	Conv *s, **p, *new, *spec, *gen;
+	Conv *s;
 	Ilpriv *ipriv;
 
 	ipriv = il->priv;
@@ -539,6 +553,7 @@ iliput(Proto *il, uchar*, Block *bp)
 	sp = nhgets(ih->ildst);
 	dp = nhgets(ih->ilsrc);
 	v4tov6(raddr, ih->src);
+	v4tov6(laddr, ih->dst);
 
 	if((csum = ptclcsum(bp, IL_IPSIZE, illen)) != 0) {
 		if(ih->iltype < 0 || ih->iltype > Ilclose)
@@ -552,96 +567,55 @@ iliput(Proto *il, uchar*, Block *bp)
 	}
 
 	qlock(il);
+	s = iphtlook(&ipriv->ht, raddr, dp, laddr, sp);
+	if(s == nil){
+		qunlock(il);
+		goto raise;
+	}
 
-	for(p = il->conv; *p; p++) {
-		s = *p;
-		if(s->lport == sp)
-		if(s->rport == dp)
-		if(ipcmp(s->raddr, raddr) == 0) {
-			qlock(s);
+	ic = (Ilcb*)s->ptcl;
+	if(ic->state == Illistening){
+		if(ih->iltype != Ilsync){
 			qunlock(il);
-			if(waserror()){
-				qunlock(s);
-				nexterror();
-			}
-			ilprocess(s, ih, bp);
-			qunlock(s);
-			poperror();
-			return;
+			if(ih->iltype < 0 || ih->iltype > Ilclose)
+				st = "?";
+			else
+				st = iltype[ih->iltype];
+			ilreject(il->f, ih);		/* no channel and not sync */
+			netlog(il->f, Logil, "il: no channel, pkt(%s id %lud ack %lud %I/%ud->%ud)\n",
+				st, nhgetl(ih->ilid), nhgetl(ih->ilack), raddr, sp, dp); 
+			goto raise;
 		}
-	}
 
-	if(ih->iltype != Ilsync){
-		qunlock(il);
-		if(ih->iltype < 0 || ih->iltype > Ilclose)
-			st = "?";
-		else
-			st = iltype[ih->iltype];
-		ilreject(il->f, ih);		/* no channel and not sync */
-		netlog(il->f, Logil, "il: no channel, pkt(%s id %lud ack %lud %I/%ud->%ud)\n",
-			st, nhgetl(ih->ilid), nhgetl(ih->ilack), raddr, sp, dp); 
-		goto raise;
-	}
-
-	gen = nil;
-	spec = nil;
-	for(p = il->conv; *p; p++) {
-		s = *p;
+		s = Fsnewcall(s, raddr, dp, laddr, sp);
+		if(s == nil){
+			qunlock(il);
+			netlog(il->f, Logil, "il: bad newcall %I/%ud->%ud\n", raddr, sp, dp);
+			ilsendctl(s, ih, Ilclose, 0, nhgetl(ih->ilid), 0);
+			goto raise;
+		}
+	
 		ic = (Ilcb*)s->ptcl;
-		if(ic->state != Illistening)
-			continue;
-
-		if(s->rport == 0 && ipcmp(s->raddr, IPnoaddr) == 0) {
-			if(s->lport == sp) {
-				spec = s;
-				break;
-			}
-			if(s->lport == 0)
-				gen = s;
-		}
+	
+		ic->conv = s;
+		ic->state = Ilsyncee;
+		ilcbinit(ic);
+		ic->rstart = nhgetl(ih->ilid);
+		iphtadd(&ipriv->ht, s);
 	}
 
-	if(spec)
-		s = spec;
-	else
-	if(gen)
-		s = gen;
-	else {
-		qunlock(il);
-		ilreject(il->f, ih);		/* no listener */
-		goto raise;
-	}
-
-	v4tov6(laddr, ih->dst);
-	new = Fsnewcall(s, raddr, dp, laddr, sp);
-	if(new == nil){
-		qunlock(il);
-		netlog(il->f, Logil, "il: bad newcall %I/%ud->%ud\n", raddr, sp, dp);
-		ilsendctl(s, ih, Ilclose, 0, nhgetl(ih->ilid), 0);
-		goto raise;
-	}
-
-	ic = (Ilcb*)new->ptcl;
-
-	ic->conv = new;
-	ic->state = Ilsyncee;
-	ilcbinit(ic);
-	ic->rstart = nhgetl(ih->ilid);
-
-	qlock(new);
+	qlock(s);
 	qunlock(il);
 	if(waserror()){
-		qunlock(new);
+		qunlock(s);
 		nexterror();
 	}
-	ilprocess(new, ih, bp);
-	qunlock(new);
+	ilprocess(s, ih, bp);
+	qunlock(s);
 	poperror();
 	return;
-
 raise:
 	freeblist(bp);
-	return;
 }
 
 void
@@ -695,9 +669,9 @@ _ilprocess(Conv *s, Ilhdr *h, Block *bp)
 		default:
 			break;
 		case Ilsync:
-			if(id != ic->rstart || ack != 0)
-				ic->state = Ilclosed;
-			else {
+			if(id != ic->rstart || ack != 0){
+				illocalclose(s);
+			} else {
 				ic->recvd = id;
 				ilsendctl(s, nil, Ilsync, ic->start, ic->recvd, 0);
 			}
@@ -867,7 +841,7 @@ ilhangup(Conv *s, char *msg)
 
 	ic = (Ilcb*)s->ptcl;
 	callout = ic->state == Ilsyncer;
-	ic->state = Ilclosed;
+	illocalclose(s);
 
 	qhangup(s->rq, msg);
 	qhangup(s->wq, msg);
@@ -1264,9 +1238,11 @@ ilstart(Conv *c, int type, int fasttimeout)
 		break;
 	case IL_LISTEN:
 		ic->state = Illistening;
+		iphtadd(&ipriv->ht, c);
 		break;
 	case IL_CONNECT:
 		ic->state = Ilsyncer;
+		iphtadd(&ipriv->ht, c);
 		ilsendctl(c, nil, Ilsync, ic->start, ic->recvd, 0);
 		break;
 	}

@@ -11,6 +11,8 @@ typedef struct	Ipmulti	Ipmulti;
 typedef struct	Ipmux	Ipmux;
 typedef struct	IProuter IProuter;
 typedef struct	Ipifc	Ipifc;
+typedef struct	Iphash	Iphash;
+typedef struct	Ipht	Ipht;
 typedef struct	Netlog	Netlog;
 typedef struct	Ifclog	Ifclog;
 typedef struct	Medium	Medium;
@@ -194,6 +196,34 @@ struct Ipmulti
 	uchar	ia[IPaddrlen];
 	Ipmulti	*next;
 };
+
+/*
+ *  hash table for 2 ip addresses + 2 ports
+ */
+enum
+{
+	Nipht=		521,	/* convenient prime */
+
+	IPmatchexact=	0,	/* match on 4 tuple */
+	IPmatchany,		/* *!* */
+	IPmatchport,		/* *!port */
+	IPmatchaddr,		/* addr!* */
+	IPmatchpa,		/* addr!port */
+};
+struct Iphash
+{
+	Iphash	*next;
+	Conv	*c;
+	int	match;
+};
+struct Ipht
+{
+	Lock;
+	Iphash	*tab[Nipht];
+};
+void iphtadd(Ipht*, Conv*);
+void iphtrem(Ipht*, Conv*);
+Conv* iphtlook(Ipht *ht, uchar *sa, ushort sp, uchar *da, ushort dp);
 
 /*
  *  one per multiplexed protocol
