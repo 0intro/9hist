@@ -1,5 +1,5 @@
 /*
- *  devssl - secure sockets layer emulation
+ *  devssl - secure sockets layer
  */
 #include	"u.h"
 #include	"../port/lib.h"
@@ -575,6 +575,7 @@ sslbread(Chan *c, long n, ulong)
 			pad = 0;
 			toconsume = 2;
 		} else {
+			s.s->unprocessed = pullupblock(s.s->unprocessed, 3);
 			len = ((p[0] & 0x3f)<<8) | p[1];
 			pad = p[2];
 			if(pad > len){
@@ -583,7 +584,7 @@ sslbread(Chan *c, long n, ulong)
 			}
 			toconsume = 3;
 		}
-		ensure(s.s, &s.s->unprocessed, toconsume+len+pad);
+		ensure(s.s, &s.s->unprocessed, toconsume+len);
 
 		/*
 		 * Now we have a full SSL packet in the unprocessed list.
@@ -602,9 +603,9 @@ sslbread(Chan *c, long n, ulong)
 		consume(&s.s->unprocessed, consumed, toconsume);
 
 		/* grab the next message and decode/decrypt it */
-		b = qtake(&s.s->unprocessed, len+pad, 0);
+		b = qtake(&s.s->unprocessed, len, 0);
 
-		if(blocklen(b) != len+pad)
+		if(blocklen(b) != len)
 			print("devssl: sslbread got wrong count %d != %d", blocklen(b), len);
 
 		if(waserror()){
@@ -1167,14 +1168,14 @@ sslwrite(Chan *c, void *a, long n, vlong off)
 	} else if(strcmp(buf, "secretin") == 0 && p != 0) {
 		m = (strlen(p)*3)/2;
 		x = smalloc(m);
-		n = dec64(x, m, p, strlen(p));
-		setsecret(&s.s->in, x, n);
+		t = dec64(x, m, p, strlen(p));
+		setsecret(&s.s->in, x, t);
 		free(x);
 	} else if(strcmp(buf, "secretout") == 0 && p != 0) {
 		m = (strlen(p)*3)/2 + 1;
 		x = smalloc(m);
-		n = dec64(x, m, p, strlen(p));
-		setsecret(&s.s->out, x, n);
+		t = dec64(x, m, p, strlen(p));
+		setsecret(&s.s->out, x, t);
 		free(x);
 	} else
 		error(Ebadarg);
