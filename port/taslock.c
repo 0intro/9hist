@@ -4,13 +4,51 @@
 #include "dat.h"
 #include "fns.h"
 #include "../port/error.h"
-#include "../port/edf.h"
 
 struct {
 	ulong	locks;
 	ulong	glare;
 	ulong	inglare;
 } lockstats;
+
+typedef struct PC {
+	ulong	pc;
+	int	count;
+} PC;
+
+PC lpcs[1024];
+
+void
+incpcref(Lock *l)
+{
+	int i;
+
+	for(i = 0; i < nelem(lpcs)-1; i++){
+		if(lpcs[i].pc == l->pc)
+			break;
+		if(lpcs[i].pc == 0){
+			lpcs[i].pc = l->pc;
+			break;
+		}
+	}
+	lpcs[i].count++;
+}
+
+void
+decpcref(Lock *l)
+{
+	int i;
+
+	for(i = 0; i < nelem(lpcs)-1; i++){
+		if(lpcs[i].pc == l->pc)
+			break;
+		if(lpcs[i].pc == 0){
+			lpcs[i].pc = l->pc;
+			break;
+		}
+	}
+	lpcs[i].count--;
+}
 
 static void
 dumplockmem(char *tag, Lock *l)
@@ -51,13 +89,17 @@ lock(Lock *l)
 
 	pc = getcallerpc(&l);
 
-	lockstats.locks++;
+	lockstats.locks++;	/* prevent being scheded */
+	if (up) up->nlocks++;
 	if(tas(&l->key) == 0){
+		if (up) up->lastlock = l;
 		l->pc = pc;
+//		incpcref(l);
 		l->p = up;
 		l->isilock = 0;
 		return;
 	}
+	if (up) up->nlocks--;	/* didn't get the lock, allow scheding */
 
 	lockstats.glare++;
 	cansched = up != nil && up->state == Running;
@@ -85,8 +127,11 @@ lock(Lock *l)
 				}
 			}
 		}
+		if (up) up->nlocks++;
 		if(tas(&l->key) == 0){
+			if (up) up->lastlock = l;
 			l->pc = pc;
+//			incpcref(l);
 			l->p = up;
 			l->isilock = 0;
 			if(cansched){
@@ -95,6 +140,7 @@ lock(Lock *l)
 			}
 			return;
 		}
+		if (up) up->nlocks--;
 	}
 }
 
@@ -110,6 +156,7 @@ ilock(Lock *l)
 
 	x = splhi();
 	if(tas(&l->key) == 0){
+		if (up) up->lastlock = l;
 		l->sr = x;
 		l->pc = pc;
 		l->p = up;
@@ -125,11 +172,10 @@ ilock(Lock *l)
 		up->priority = PriLock;
 	} else
 		oldpri = 0;
-	if(conf.nmach < 2)
-{
-dumplockmem("ilock:", l);
+	if(conf.nmach < 2){
+		dumplockmem("ilock:", l);
 		panic("ilock: no way out: pc %luX\n", pc);
-}
+	}
 
 	for(;;){
 		lockstats.inglare++;
@@ -138,6 +184,7 @@ dumplockmem("ilock:", l);
 			;
 		x = splhi();
 		if(tas(&l->key) == 0){
+			if (up) up->lastlock = l;
 			l->sr = x;
 			l->pc = pc;
 			l->p = up;
@@ -154,10 +201,15 @@ dumplockmem("ilock:", l);
 int
 canlock(Lock *l)
 {
-	if(tas(&l->key))
+	if (up) up->nlocks++;
+	if(tas(&l->key)){
+		if (up) up->nlocks--;
 		return 0;
+	}
 
+	if (up) up->lastlock = l;
 	l->pc = getcallerpc(&l);
+//	incpcref(l);
 	l->p = up;
 	l->isilock = 0;
 	return 1;
@@ -170,8 +222,15 @@ unlock(Lock *l)
 		print("unlock: not locked: pc %luX\n", getcallerpc(&l));
 	if(l->isilock)
 		print("unlock of ilock: pc %lux, held by %lux\n", getcallerpc(&l), l->pc);
+	if(l->p != up)
+		print("unlock: up changed: pc %lux, acquired at pc %lux, lock p 0x%p, unlock up 0x%p\n", getcallerpc(&l), l->pc, l->p, up);
+//	decpcref(l);
 	l->pc = 0;
 	l->key = 0;
+	if (up && --up->nlocks == 0 && up->delaysched){
+		up->delaysched = 0;
+		sched();
+	}
 	coherence();
 }
 

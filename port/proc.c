@@ -4,7 +4,6 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"../port/error.h"
-#include	"../port/edf.h"
 
 int	nrdy;
 Ref	noteidalloc;
@@ -56,9 +55,6 @@ schedinit(void)		/* never returns */
 			break;
 		case Moribund:
 			up->state = Dead;
-
-			if (isedf(up))
-				edf_bury(up);
 
 			/*
 			 * Holding locks from pexit:
@@ -112,7 +108,7 @@ sched(void)
 int
 anyready(void)
 {
-	return nrdy || edf_anyready();
+	return nrdy;
 }
 
 int
@@ -143,11 +139,6 @@ ready(Proc *p)
 
 	s = splhi();
 
-	if(isedf(p)){
-		edf_ready(p);
-		splx(s);
-		return;
-	}
 	if(p->fixedpri){
 		pri = p->basepri;
 	} else {
@@ -197,9 +188,6 @@ runproc(void)
 	Schedq *rq, *xrq;
 	Proc *p, *l;
 	ulong rt;
-
-	if ((p = edf_runproc()) != nil)
-		return p;
 
 loop:
 
@@ -486,8 +474,6 @@ sleep(Rendez *r, int (*f)(void*), void *arg)
 			unlock(r);
 
 			// Behind unlock, we may call wakeup on ourselves.
-			if (isedf(up))
-				edf_block(up);
 
 			gotolabel(&m->sched);
 		}
@@ -696,8 +682,6 @@ addbroken(Proc *p)
 	broken.p[broken.n++] = p;
 	qunlock(&broken);
 
-	if (isedf(up))
-		edf_bury(up);
 	p->state = Broken;
 	p->psstate = 0;
 	sched();
@@ -865,8 +849,6 @@ pexit(char *exitstr, int freemem)
 	lock(&procalloc);
 	lock(&palloc);
 
-	if (isedf(up))
-		edf_bury(up);
 	up->state = Moribund;
 	sched();
 	panic("pexit");
@@ -1119,8 +1101,6 @@ procctl(Proc *p)
 		qunlock(&p->debug);
 		splhi();
 		p->state = Stopped;
-		if (isedf(up))
-			edf_block(up);
 		sched();
 		p->psstate = state;
 		splx(s);

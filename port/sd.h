@@ -38,7 +38,7 @@ typedef struct SDunit {
 	SDperm	ctlperm;
 
 	QLock	raw;			/* raw read or write in progress */
-	Lock	rawinuse;		/* really just a test-and-set */
+	ulong	rawinuse;		/* really just a test-and-set */
 	int	state;
 	SDreq*	req;
 	SDperm	rawperm;

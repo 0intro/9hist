@@ -303,8 +303,6 @@ trap(Ureg* ureg)
 		postnote(up, 1, buf, NDebug);
 	}
 	else if(vno >= VectorPIC && vno != VectorSYSCALL){
-		i8259isr(vno);
-			
 		/*
 		 * An unknown interrupt.
 		 * Check for a default IRQ7. This can happen when
@@ -313,6 +311,26 @@ trap(Ureg* ureg)
 		 * the corresponding bit in the ISR isn't set.
 		 * In fact, just ignore all such interrupts.
 		 */
+
+		/* call all interrupt routines, just in case */
+		for(i = VectorPIC; i <= MaxIrqLAPIC; i++){
+			ctl = vctl[i];
+			if(ctl == nil)
+				continue;
+			if(!ctl->isintr)
+				continue;
+			for(v = ctl; v != nil; v = v->next){
+				if(v->f)
+					v->f(ureg, v->a);
+			}
+			/* should we do this? */
+			if(ctl->eoi)
+				ctl->eoi(i);
+		}
+
+		/* clear the interrupt */
+		i8259isr(vno);
+			
 		print("cpu%d: spurious interrupt %d, last %d",
 			m->machno, vno, m->lastintr);
 		for(i = 0; i < 32; i++){

@@ -15,7 +15,7 @@ Queue*	kbdq;			/* unprocessed console input */
 Queue*	lineq;			/* processed console input */
 Queue*	serialoq;		/* serial console output */
 Queue*	kprintoq;		/* console output, for /dev/kprint */
-Lock	kprintinuse;		/* test and set whether /dev/kprint is open */
+ulong	kprintinuse;		/* test and set whether /dev/kprint is open */
 
 static struct
 {
@@ -595,7 +595,7 @@ consopen(Chan *c, int omode)
 		break;
 
 	case Qkprint:
-		if(!canlock(&kprintinuse)){
+		if(tas(&kprintinuse) != 0){
 			c->flag &= ~COPEN;
 			error(Einuse);
 		}
@@ -631,7 +631,7 @@ consclose(Chan *c)
 	/* close of kprint allows other opens */
 	case Qkprint:
 		if(c->flag & COPEN){
-			unlock(&kprintinuse);
+			kprintinuse = 0;
 			qhangup(kprintoq, nil);
 		}
 		break;

@@ -656,7 +656,7 @@ sdopen(Chan* c, int omode)
 		break;
 	case Qraw:
 		c->qid.vers = unit->vers;
-		if(!canlock(&unit->rawinuse)){
+		if(tas(&unit->rawinuse) != 0){
 			c->flag &= ~COPEN;
 			error(Einuse);
 		}
@@ -697,7 +697,7 @@ sdclose(Chan* c)
 		sdev = sdgetdev(DEV(c->qid));
 		if (sdev) {
 			unit = sdev->unit[UNIT(c->qid)];
-			unlock(&unit->rawinuse);
+			unit->rawinuse = 0;
 			decref(&sdev->r);
 		}
 		break;
