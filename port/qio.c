@@ -405,10 +405,10 @@ qget(Queue *q)
 	ilock(q);
 
 	b = q->bfirst;
-	if(b == 0){
+	if(b == nil){
 		q->state |= Qstarve;
 		iunlock(q);
-		return 0;
+		return nil;
 	}
 	q->bfirst = b->next;
 	b->next = 0;
@@ -484,6 +484,42 @@ qdiscard(Queue *q, int len)
 	return sofar;
 }
 
+long
+qblen(Queue *q)
+{
+	Block *b;
+	int n;
+	Block *tofree = nil;
+
+	ilock(q);
+
+	for(;;) {
+		b = q->bfirst;
+		if(b == 0){
+			q->state |= Qstarve;
+			iunlock(q);
+			return -1;
+		}
+		QDEBUG checkb(b, "qblen 1");
+
+		n = BLEN(b);
+		if(n > 0)
+			break;
+		q->bfirst = b->next;
+		q->len -= BALLOC(b);
+
+		/* remember to free this */
+		b->next = tofree;
+		tofree = b;
+	};
+	iunlock(q);
+
+	if(tofree != nil)
+		freeblist(tofree);
+
+	return len;
+}
+
 /*
  *  Interrupt level copy out of a queue, return # bytes copied.
  */
@@ -522,13 +558,12 @@ qconsume(Queue *q, void *vp, int len)
 		len = n;
 	memmove(p, b->rp, len);
 	consumecnt += n;
-	if((q->state & Qmsg) || len == n)
-		q->bfirst = b->next;
 	b->rp += len;
 	q->dlen -= len;
 
 	/* discard the block if we're done with it */
 	if((q->state & Qmsg) || len == n){
+		q->bfirst = b->next;
 		b->next = 0;
 		q->len -= BALLOC(b);
 		q->dlen -= BLEN(b);
