@@ -92,17 +92,12 @@ capopen(Chan *c, int omode)
 		return c;
 	}
 
-	if(waserror()){
-		qunlock(&capalloc);
-		nexterror();
-	}
 	switch((ulong)c->qid.path){
 	case Qhash:
 		if(!iseve())
 			error(Eperm);
 		break;
 	}
-	poperror();
 
 	c->mode = openmode(omode);
 	c->flag |= COPEN;
