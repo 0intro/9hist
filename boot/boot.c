@@ -120,7 +120,7 @@ boot(int argc, char *argv[])
 	
 	afd = fauth(fd, rp);
 	if(afd >= 0){
-		ai = auth_proxy(afd, "p9any", 0, auth_getkey);
+		ai = auth_proxy(afd, auth_getkey, "proto=p9any role=client");
 		if(ai == nil)
 			print("authentication failed (%r), trying mount anyways\n");
 	}
