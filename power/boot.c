@@ -370,7 +370,7 @@ boot(int ask)
 		fd = -1;
 		if(strncmp(sys, "bit!", 4) == 0)
 			fd = bitdial(srvname = &sys[4]);
-		if(strncmp(sys, "hot!", 4) == 0)
+		else if(strncmp(sys, "hot!", 4) == 0)
 			fd = hotdial(srvname = &sys[4]);
 		else if(strncmp(sys, "dk!", 3) == 0)
 			fd = dkdial(srvname = &sys[3]);

@@ -785,7 +785,6 @@ mntxmit(Mnt *m, Mnthdr *mh)
 		n = (*devtab[q->msg->type].read)(q->msg, mh->mbr->buf, BUFSIZE);
 		poperror();		/* 3 */
 		if(convM2S(mh->mbr->buf, &mh->rhdr, n) == 0){
-			print("bad reply message\n");
 			mnterrdequeue(m, mh);
 			error(Ebadmsg);
 		}

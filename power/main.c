@@ -210,10 +210,14 @@ init0(void)
 	u->p->mach = m;
 	spllo();
 
-	chandevinit();
-
+	/*
+	 * These are o.k. because rootinit is null.
+	 * Then early kproc's will have a root and dot.
+	 */
 	u->slash = (*devtab[0].attach)(0);
 	u->dot = clone(u->slash, 0);
+
+	chandevinit();
 
 	sp = (ulong*)(USTKTOP - argsize);
 
