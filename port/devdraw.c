@@ -1928,23 +1928,29 @@ Dev drawdevtab = {
  * On 8 bit displays, load the default color map
  */
 void
-drawcmap(int invert){
+drawcmap(int invert)
+{
 	int r, g, b, cr, cg, cb, v;
 	int num, den;
 	int i, j;
+
 	drawactive(1);	/* to restore map from backup */
-	for(r=0,i=0;r!=4;r++) for(v=0;v!=4;v++,i+=16){
-		for(g=0,j=v-r;g!=4;g++) for(b=0;b!=4;b++,j++){
-			den=r;
-			if(g>den) den=g;
-			if(b>den) den=b;
-			if(den==0)	/* divide check -- pick grey shades */
-				cr=cg=cb=v*17;
+	for(r=0,i=0; r!=4; r++)
+	    for(v=0; v!=4; v++,i+=16){
+		for(g=0,j=v-r; g!=4; g++)
+		    for(b=0;b!=4;b++,j++){
+			den = r;
+			if(g > den)
+				den = g;
+			if(b > den)
+				den = b;
+			if(den == 0)	/* divide check -- pick grey shades */
+				cr = cg = cb = v*17;
 			else{
-				num=17*(4*den+v);
-				cr=r*num/den;
-				cg=g*num/den;
-				cb=b*num/den;
+				num = 17*(4*den+v);
+				cr = r*num/den;
+				cg = g*num/den;
+				cb = b*num/den;
 			}
 			if(invert)
 				setcolor(255-i-(j&15),
@@ -1952,7 +1958,7 @@ drawcmap(int invert){
 			else
 				setcolor(i+(j&15),
 					cr*0x01010101, cg*0x01010101, cb*0x01010101);
-		}
+		    }
 	}
 }
 

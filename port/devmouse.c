@@ -27,6 +27,7 @@ struct Mouseinfo
 	Ref;
 	QLock;
 	int	open;
+	int	inopen;
 	int	acceleration;
 	int	maxacc;
 };
@@ -44,12 +45,14 @@ enum{
 	Qdir,
 	Qcursor,
 	Qmouse,
+	Qmousein,
 	Qmousectl,
 };
 
 static Dirtab mousedir[]={
 	"cursor",	{Qcursor},	0,			0666,
 	"mouse",	{Qmouse},	0,			0666,
+	"mousein",	{Qmousein},	0,			0220,
 	"mousectl",	{Qmousectl},	0,			0220,
 };
 
@@ -127,6 +130,15 @@ mouseopen(Chan *c, int omode)
 		mouse.ref++;
 		unlock(&mouse);
 		break;
+	case Qmousein:
+		lock(&mouse);
+		if(mouse.inopen){
+			unlock(&mouse);
+			error(Einuse);
+		}
+		mouse.inopen = 1;
+		unlock(&mouse);
+		break;
 	default:
 		incref(&mouse);
 	}
@@ -151,6 +163,11 @@ mouseclose(Chan *c)
 		lock(&mouse);
 		if(c->qid.path == Qmouse)
 			mouse.open = 0;
+		else if(c->qid.path == Qmousein){
+			mouse.inopen = 0;
+			unlock(&mouse);
+			return;
+		}
 		if(--mouse.ref == 0){
 			cursoroff(1);
 			curs = arrow;
@@ -259,7 +276,7 @@ mousewrite(Chan *c, void *va, long n, vlong)
 	char *p;
 	Point pt;
 	char buf[64], *field[3];
-	int nf;
+	int nf, b;
 
 	p = va;
 	switch(c->qid.path){
@@ -312,6 +329,22 @@ mousewrite(Chan *c, void *va, long n, vlong)
 			mousectl(field, nf);
 		return n;
 
+	case Qmousein:
+		if(n > sizeof buf-1)
+			n = sizeof buf -1;
+		memmove(buf, va, n);
+		buf[n] = 0;
+		p = 0;
+		pt.x = strtol(buf+1, &p, 0);
+		if(p == 0)
+			error(Eshort);
+		pt.y = strtol(p, &p, 0);
+		if(p == 0)
+			error(Eshort);
+		b = strtol(p, &p, 0);
+		mousetrack(b, pt.x, pt.y);
+		return n;
+		
 	case Qmouse:
 		if(n > sizeof buf-1)
 			n = sizeof buf -1;
