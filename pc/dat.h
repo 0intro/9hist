@@ -167,6 +167,9 @@ struct Mach
 	int	load;
 	int	intr;
 
+	ulong	spuriousintr;
+	ulong	lastintr;
+
 	int	loopconst;
 
 	int	cpumhz;

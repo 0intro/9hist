@@ -1820,11 +1820,6 @@ retry:
 			cp->count, cp->status, cp->error);
 		error(Eio);
 	}
-{ int i;
-  for(i = 0; i < 18; i++)
-    print("%2.2uX ", buf[i]);
-  print("\n");
-}
 
 	cp->len = 8;
 	cp->count = 0;

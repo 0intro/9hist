@@ -121,8 +121,6 @@ char *excname[] = {
 	[18]	"machine check",
 };
 
-static int nspuriousintr;
-
 /*
  *  All traps come here.  It is slower to have all traps call trap() rather than
  *  directly vectoring the handler.  However, this avoids a lot of code duplication
@@ -132,10 +130,11 @@ static int nspuriousintr;
 void
 trap(Ureg* ureg)
 {
-	int v, user;
+	int i, v, user;
 	char buf[ERRLEN];
 	Irqctl *ctl;
 	Irq *irq;
+	Mach *mach;
 
 	user = 0;
 	if((ureg->cs & 0xFFFF) == UESEL){
@@ -149,6 +148,8 @@ trap(Ureg* ureg)
 			m->intr++;
 			if(ctl->isr)
 				ctl->isr(v);
+			if(v >= VectorPIC && v <= MaxVectorPIC)
+				m->lastintr = v-VectorPIC;
 		}
 
 		for(irq = ctl->irq; irq; irq = irq->next)
@@ -171,9 +172,18 @@ trap(Ureg* ureg)
 		 * the corresponding bit in the ISR isn't set.
 		 * In fact, just ignore all such interrupts.
 		 */
-		if(nspuriousintr < 2)
-			print("spurious interrupt %d\n", v-VectorPIC);
-		nspuriousintr++;
+		print("cpu%d: spurious interrupt %d, last %d",
+			m->machno, v-VectorPIC, m->lastintr);
+		for(i = 0; i < 32; i++){
+			if(!(active.machs & (1<<i)))
+				continue;
+			mach = MACHP(i);
+			if(m->machno == mach->machno)
+				continue;
+			print(": cpu%d: last %d", mach->machno, mach->lastintr);
+		}
+		print("\n");
+		m->spuriousintr++;
 		return;
 	}
 	else{
