@@ -537,6 +537,10 @@ syscall(Ureg* ureg)
 	if((ureg->cs & 0xFFFF) != UESEL)
 		panic("syscall: cs 0x%4.4luX\n", ureg->cs);
 
+	/* check syscall has an empty kernel stack */
+	if(up->kstack + KSTACK - (char*)ureg > 512)
+		panic("syscall: stack %ld\n", up->kstack + KSTACK - (char*)ureg);
+
 	m->syscall++;
 	up->insyscall = 1;
 	up->pc = ureg->pc;

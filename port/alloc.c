@@ -189,12 +189,14 @@ malloc(ulong size)
 	void *v;
 
 	v = poolalloc(mainmem, size+Npadlong*sizeof(ulong));
-	if(Npadlong && v != nil) {
+	if(v == nil)
+		return nil;
+	if(Npadlong){
 		v = (ulong*)v+Npadlong;
 		setmalloctag(v, getcallerpc(&size));
 		setrealloctag(v, 0);
-		memset(v, 0, size);
 	}
+	memset(v, 0, size);
 	return v;
 }
 
