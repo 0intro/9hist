@@ -393,6 +393,19 @@ idseq(void)
 {
 	int i;
 	uchar al;
+	static int reset, untag;
+
+	/*
+	 * One time only:
+	 *	reset any adapters listening
+	 */
+	if(reset == 0){
+		outb(IDport, 0);
+		outb(IDport, 0);
+		outb(IDport, 0xC0);
+		delay(20);
+		reset = 1;
+	}
 
 	outb(IDport, 0);
 	outb(IDport, 0);
@@ -405,14 +418,25 @@ idseq(void)
 		else
 			al <<= 1;
 	}
+
+	/*
+	 * One time only:
+	 *	write ID sequence to get the attention of all adapters;
+	 *	untag all adapters.
+	 * If we do a global reset here on all adapters we'll confuse any
+	 * ISA cards configured for EISA mode.
+	 */
+	if(untag == 0){
+		outb(IDport, 0xD0);
+		untag = 1;
+	}
 }
 
 static ulong
-activate(int tag)
+activate(void)
 {
 	int i;
 	ushort x, acr;
-	ulong port;
 
 	/*
 	 * Do the little configuration dance:
@@ -432,8 +456,9 @@ activate(int tag)
 	 * If the ID doesn't match, there are no more adapters.
 	 */
 	outb(IDport, 0x87);
+	delay(20);
 	for(x = 0, i = 0; i < 16; i++){
-		delay(5);
+		delay(20);
 		x <<= 1;
 		x |= inb(IDport) & 0x01;
 	}
@@ -450,27 +475,8 @@ activate(int tag)
 		acr <<= 1;
 		acr |= inb(IDport) & 0x01;
 	}
-	port = (acr & 0x1F)*0x10 + 0x200;
 
-	if(tag){
-		/*
-		 * 6. Tag the adapter so it won't respond in future.
-		 * 6. Activate the adapter by writing the Activate command
-		 *    (0xFF).
-		 */
-		outb(IDport, 0xD1);
-		outb(IDport, 0xFF);
-
-		/*
-		 * 8. Now we can talk to the adapter's I/O base addresses.
-		 *    We get the I/O base address from the acr just read.
-		 *
-		 *    Enable the adapter.
-		 */
-		outs(port+ConfigControl, Ena);
-	}
-
-	return port;
+	return (acr & 0x1F)*0x10 + 0x200;
 }
 
 static ulong
@@ -494,20 +500,39 @@ tcm509(Ether *ether)
 	}
 
 	/*
-	 * Attempt to activate adapters until one matches our
-	 * address criteria. If adapter is set for EISA mode,
-	 * tag it and ignore. Otherwise, reset the adapter and
-	 * activate it fully.
+	 * Attempt to activate adapters until one matches the
+	 * address criteria. If adapter is set for EISA mode (0x3F0),
+	 * tag it and ignore. Otherwise, activate it fully.
 	 */
-	while(port = activate(0)){
-		if(port == 0x3F0){
-			outb(IDport, 0xD1);
+	while(port = activate()){
+		/*
+		 * 6. Tag the adapter so it won't respond in future.
+		 */
+		outb(IDport, 0xD1);
+		if(port == 0x3F0)
 			continue;
-		}
-		outb(IDport, 0xC0);
-		delay(2);
-		if(activate(1) != port)
-			print("tcm509: activate\n");
+
+		/*
+		 * 6. Activate the adapter by writing the Activate command
+		 *    (0xFF).
+		 */
+		outb(IDport, 0xFF);
+		delay(20);
+
+		/*
+		 * 8. Now we can talk to the adapter's I/O base addresses.
+		 *    Use the I/O base address from the acr just read.
+		 *
+		 *    Enable the adapter.
+		 */
+		while(ins(port+Status) & CmdInProgress)
+			;
+		COMMAND(port, SelectWindow, 0);
+		outs(port+ConfigControl, Ena);
+
+		COMMAND(port, TxReset, 0);
+		COMMAND(port, RxReset, 0);
+		COMMAND(port, AckIntr, 0xFF);
 		
 		if(ether->port == 0 || ether->port == port)
 			return port;
