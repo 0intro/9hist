@@ -204,7 +204,14 @@ hotrodopen(Chan *c, int omode)
 		hotwait(hmp);
 		delay(100);
 		print("testing addr %lux size %ld\n", mp->param[0], mp->param[1]);
+		if(mp->param[0] == MP2VME(testbuf)){
+			print("no way jose\n");
+			unlock(&hp->busy);
+			error(Egreg);
+		}
+			
 		for(;;){
+for(;;);
 			print("-");
 			mem(hp->addr, &hp->addr->ram[(mp->param[0]-0x40000)/sizeof(ulong)], mp->param[1]);
 		}

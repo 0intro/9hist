@@ -438,7 +438,6 @@ noted(Ureg **urp, ulong arg0)
 	}
 	u->notified = 0;
 	memmove(*urp, u->ureg, sizeof(Ureg));
-	(*urp)->r1 = -1;	/* return error from the interrupted call */
 	switch(arg0){
 	case NCONT:
 		splhi();
@@ -572,7 +571,7 @@ syscall(Ureg *aur)
 	u->p->insyscall = 0;
 	if(r1 == NOTED)	/* ugly hack */
 		noted(&aur, *(ulong*)(sp+BY2WD));	/* doesn't return */
-	if(u->nnote){
+	if(u->nnote && r1!=FORK){
 		ur->r1 = ret;
 		notify(ur);
 	}
