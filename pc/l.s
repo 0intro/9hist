@@ -1,35 +1,10 @@
 #include "mem.h"
 
 /*
- *  gdt to get us to 32-bit/segmented/unpaged mode
- */
-GLOBL	tgdt(SB),$(6*4)
-
-	/* null descriptor */
-	DATA tgdt+0(SB)/4, $0
-	DATA tgdt+4(SB)/4, $0
-
-	/* data segment descriptor for 4 gigabytes (PL 0) */
-	DATA tgdt+8(SB)/4, $(0xFFFF)
-	DATA tgdt+12(SB)/4, $(SEGG|SEGB|(0xF<<16)|SEGP|SEGPL(0)|SEGDATA|SEGW)
-
-	/* exec segment descriptor for 4 gigabytes (PL 0) */
-	DATA tgdt+16(SB)/4, $(0xFFFF)
-	DATA tgdt+20(SB)/4, $(SEGG|SEGD|(0xF<<16)|SEGP|SEGPL(0)|SEGEXEC|SEGR)
-
-/*
- *  pointer to initial gdt
- */
-GLOBL	tgdtptr(SB),$6
-
-	DATA tgdtptr+0(SB)/2, $(3*8)
-	DATA tgdtptr+2(SB)/4, $tgdt(SB)
-
-TEXT	start(SB),$0
-
-/*
  *	about to walk all over ms/dos - turn off interrupts
  */
+TEXT	origin(SB),$0
+
 	CLI
 
 /*
@@ -47,7 +22,7 @@ TEXT	start(SB),$0
 	CLD
 	REP
 	MOVSL
-/*	JMPFAR*	00:$lowcore(SB) /**/
+/*	JMPFAR	00:$lowcore(SB) /**/
 	 BYTE	$0xEA
 	 WORD	$lowcore(SB)
 	 WORD	$0
@@ -112,16 +87,6 @@ flush:
 
 TEXT	mode32bit(SB),$0
 
-/*
- *	print a blue 3 on a red background
- */
-	MOVL	$0xb8100,BX
-	MOVB	$0x33,AL
-	MOVB	AL,(BX)
-	INCW	BX
-	MOVB	$0x43,AL
-	MOVB	AL,(BX)
-
 	/*
 	 * Clear BSS
 	 */
@@ -135,20 +100,6 @@ TEXT	mode32bit(SB),$0
 	REP
 	MOVSL
 
-
-/*
- *	print a blue 4 on a red background
- */
-	MOVL	$0xb8100,BX
-	MOVB	$0x34,AL
-	MOVB	AL,(BX)
-	INCW	BX
-	MOVB	$0x43,AL
-	MOVB	AL,(BX)
-here:
-	JMP	here
-
-
 	/*
 	 *  stack and mach
 	 */
@@ -159,15 +110,6 @@ here:
 	MOVL	$0, u(SB)
 
 	CALL	main(SB)
-/*
- *	print a blue 4 on a red background
- */
-	MOVL	$0xb8100,BX
-	MOVB	$0x34,AL
-	MOVB	AL,(BX)
-	INCW	BX
-	MOVB	$0x43,AL
-	MOVB	AL,(BX)
 
 loop:
 	JMP	loop
@@ -175,3 +117,48 @@ loop:
 GLOBL	mach0+0(SB), $MACHSIZE
 GLOBL	u(SB), $4
 GLOBL	m(SB), $4
+
+/*
+ *  gdt to get us to 32-bit/segmented/unpaged mode
+ */
+TEXT	tgdt(SB),$0
+
+	/* null descriptor */
+	LONG	$0
+	LONG	$0
+
+	/* data segment descriptor for 4 gigabytes (PL 0) */
+	LONG	$(0xFFFF)
+	LONG	$(SEGG|SEGB|(0xF<<16)|SEGP|SEGPL(0)|SEGDATA|SEGW)
+
+	/* exec segment descriptor for 4 gigabytes (PL 0) */
+	LONG	$(0xFFFF)
+	LONG	$(SEGG|SEGD|(0xF<<16)|SEGP|SEGPL(0)|SEGEXEC|SEGR)
+
+/*
+ *  pointer to initial gdt
+ */
+TEXT	tgdtptr(SB),$0
+
+	WORD	$(3*8)
+	LONG	$tgdt(SB)
+
+/*
+ *  input a byte
+ */
+TEXT	inb(SB),$0
+
+	MOVL	p+0(FP),DX
+	XORL	AX,AX
+	INB
+	RET
+
+/*
+ *  output a byte
+ */
+TEXT	outb(SB),$0
+
+	MOVL	p+0(FP),DX
+	MOVL	b+4(FP),AX
+	OUTB
+	RET
